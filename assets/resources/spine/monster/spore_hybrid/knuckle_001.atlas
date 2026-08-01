@@ -1,0 +1,174 @@
+
+knuckle_001.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+body_01_l_001
+  rotate: false
+  xy: 998, 366
+  size: 133, 132
+  orig: 133, 132
+  offset: 0, 0
+  index: -1
+body_01_r_001
+  rotate: false
+  xy: 1421, 315
+  size: 125, 183
+  orig: 125, 183
+  offset: 0, 0
+  index: -1
+spore_01_l_001
+  rotate: false
+  xy: 716, 299
+  size: 83, 75
+  orig: 83, 75
+  offset: 0, 0
+  index: -1
+spore_01_l_002
+  rotate: false
+  xy: 374, 34
+  size: 58, 63
+  orig: 58, 63
+  offset: 0, 0
+  index: -1
+spore_01_r_001
+  rotate: false
+  xy: 716, 227
+  size: 73, 70
+  orig: 73, 70
+  offset: 0, 0
+  index: -1
+spore_01_r_002
+  rotate: false
+  xy: 548, 65
+  size: 96, 92
+  orig: 96, 92
+  offset: 0, 0
+  index: -1
+tentacle_01_b_001
+  rotate: false
+  xy: 447, 159
+  size: 185, 188
+  orig: 185, 188
+  offset: 0, 0
+  index: -1
+tentacle_01_f_001
+  rotate: false
+  xy: 1658, 329
+  size: 113, 169
+  orig: 113, 169
+  offset: 0, 0
+  index: -1
+tentacle_01_l_001
+  rotate: false
+  xy: 1984, 405
+  size: 51, 93
+  orig: 51, 93
+  offset: 0, 0
+  index: -1
+tentacle_01_l_002
+  rotate: false
+  xy: 428, 349
+  size: 232, 149
+  orig: 232, 149
+  offset: 0, 0
+  index: -1
+tentacle_01_l_003
+  rotate: false
+  xy: 204, 15
+  size: 168, 82
+  orig: 168, 82
+  offset: 0, 0
+  index: -1
+tentacle_01_l_004
+  rotate: false
+  xy: 1133, 386
+  size: 150, 112
+  orig: 150, 112
+  offset: 0, 0
+  index: -1
+tentacle_01_l_005
+  rotate: false
+  xy: 1658, 209
+  size: 101, 118
+  orig: 101, 118
+  offset: 0, 0
+  index: -1
+tentacle_01_l_006
+  rotate: false
+  xy: 1285, 383
+  size: 134, 115
+  orig: 134, 115
+  offset: 0, 0
+  index: -1
+tentacle_01_l_007
+  rotate: false
+  xy: 634, 220
+  size: 80, 127
+  orig: 80, 127
+  offset: 0, 0
+  index: -1
+tentacle_01_l_008
+  rotate: false
+  xy: 847, 366
+  size: 149, 132
+  orig: 149, 132
+  offset: 0, 0
+  index: -1
+tentacle_01_r_001
+  rotate: false
+  xy: 1879, 364
+  size: 103, 134
+  orig: 103, 134
+  offset: 0, 0
+  index: -1
+tentacle_01_r_002
+  rotate: false
+  xy: 662, 376
+  size: 183, 122
+  orig: 183, 122
+  offset: 0, 0
+  index: -1
+tentacle_01_r_003
+  rotate: false
+  xy: 1773, 344
+  size: 104, 154
+  orig: 104, 154
+  offset: 0, 0
+  index: -1
+tentacle_01_r_004
+  rotate: false
+  xy: 204, 99
+  size: 241, 222
+  orig: 241, 222
+  offset: 0, 0
+  index: -1
+tower_01_001
+  rotate: false
+  xy: 2, 323
+  size: 424, 175
+  orig: 424, 175
+  offset: 0, 0
+  index: -1
+tower_01_002
+  rotate: false
+  xy: 2, 2
+  size: 200, 319
+  orig: 200, 319
+  offset: 0, 0
+  index: -1
+tower_01_003
+  rotate: false
+  xy: 447, 82
+  size: 99, 75
+  orig: 99, 75
+  offset: 0, 0
+  index: -1
+tower_01_004
+  rotate: false
+  xy: 1548, 208
+  size: 108, 290
+  orig: 108, 290
+  offset: 0, 0
+  index: -1

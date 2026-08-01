@@ -1,0 +1,13 @@
+
+knuckle_001.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+nude_001/tentacle_stem
+  rotate: false
+  xy: 2, 2
+  size: 1485, 1203
+  orig: 1485, 1203
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,482 @@
+
+infected_bishop_001.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+cloth001_infected_bishop_001/acc_01_001
+  rotate: false
+  xy: 1324, 138
+  size: 102, 141
+  orig: 102, 141
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/acc_01_001_01
+  rotate: false
+  xy: 548, 546
+  size: 21, 42
+  orig: 21, 42
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/acc_01_001_02
+  rotate: false
+  xy: 1283, 316
+  size: 12, 43
+  orig: 12, 43
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/acc_01_001_03
+  rotate: false
+  xy: 1198, 120
+  size: 124, 146
+  orig: 124, 146
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/acc_01_001_04
+  rotate: false
+  xy: 1435, 278
+  size: 72, 218
+  orig: 72, 218
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/acc_candle_01_f_001
+  rotate: false
+  xy: 1062, 22
+  size: 134, 215
+  orig: 134, 215
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/cape_01_b_001
+  rotate: false
+  xy: 1583, 224
+  size: 115, 140
+  orig: 115, 140
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/cape_01_b_002
+  rotate: false
+  xy: 1717, 661
+  size: 140, 360
+  orig: 140, 360
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/cape_01_b_003
+  rotate: false
+  xy: 1175, 361
+  size: 122, 251
+  orig: 122, 251
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/cape_01_f_001
+  rotate: false
+  xy: 904, 248
+  size: 91, 352
+  orig: 91, 352
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/cape_01_f_001_01
+  rotate: false
+  xy: 1043, 614
+  size: 138, 407
+  orig: 138, 407
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/cape_01_f_001_02
+  rotate: false
+  xy: 582, 265
+  size: 159, 323
+  orig: 159, 323
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/chest_01_001
+  rotate: false
+  xy: 2, 472
+  size: 271, 549
+  orig: 271, 549
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/face_01_001
+  rotate: false
+  xy: 1700, 309
+  size: 59, 65
+  orig: 59, 65
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/forearm_01_l_001
+  rotate: false
+  xy: 259, 9
+  size: 79, 28
+  orig: 79, 28
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/forearm_01_l_002
+  rotate: false
+  xy: 1288, 2
+  size: 79, 28
+  orig: 79, 28
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/forearm_01_r_001
+  rotate: false
+  xy: 1425, 96
+  size: 107, 32
+  orig: 107, 32
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/forearm_01_r_002
+  rotate: false
+  xy: 340, 16
+  size: 118, 33
+  orig: 118, 33
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_l_001
+  rotate: false
+  xy: 1198, 29
+  size: 88, 89
+  orig: 88, 89
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_l_002
+  rotate: false
+  xy: 1926, 455
+  size: 80, 63
+  orig: 80, 63
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_l_003
+  rotate: false
+  xy: 1835, 465
+  size: 89, 47
+  orig: 89, 47
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_r_001
+  rotate: false
+  xy: 1175, 268
+  size: 106, 91
+  orig: 106, 91
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_r_002
+  rotate: false
+  xy: 1731, 557
+  size: 102, 65
+  orig: 102, 65
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_r_003
+  rotate: false
+  xy: 1920, 520
+  size: 87, 71
+  orig: 87, 71
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/hand_01_r_004
+  rotate: false
+  xy: 497, 18
+  size: 83, 77
+  orig: 83, 77
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/tentacle_01_r_001
+  rotate: false
+  xy: 2, 39
+  size: 336, 431
+  orig: 336, 431
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/tentacle_01_r_001_01
+  rotate: false
+  xy: 1323, 498
+  size: 103, 523
+  orig: 103, 523
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/tentacle_01_r_002
+  rotate: false
+  xy: 582, 30
+  size: 176, 233
+  orig: 176, 233
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/tentacle_01_r_002_01
+  rotate: false
+  xy: 497, 97
+  size: 83, 373
+  orig: 83, 373
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/tentacle_01_r_003
+  rotate: false
+  xy: 340, 51
+  size: 155, 419
+  orig: 155, 419
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/tentacle_01_r_003_01
+  rotate: false
+  xy: 1533, 602
+  size: 90, 419
+  orig: 90, 419
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/upperarm_01_l_001
+  rotate: false
+  xy: 1324, 105
+  size: 99, 31
+  orig: 99, 31
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/upperarm_01_r_001
+  rotate: false
+  xy: 1849, 628
+  size: 123, 31
+  orig: 123, 31
+  offset: 0, 0
+  index: -1
+cloth001_infected_bishop_001/upperarm_01_r_002
+  rotate: false
+  xy: 1717, 624
+  size: 130, 35
+  orig: 130, 35
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/acc_01_001
+  rotate: false
+  xy: 1583, 366
+  size: 102, 141
+  orig: 102, 141
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/acc_01_001_01
+  rotate: false
+  xy: 1299, 570
+  size: 21, 42
+  orig: 21, 42
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/acc_01_001_02
+  rotate: false
+  xy: 1554, 233
+  size: 12, 43
+  orig: 12, 43
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/acc_01_001_03
+  rotate: false
+  xy: 1428, 130
+  size: 124, 146
+  orig: 124, 146
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/acc_01_001_04
+  rotate: false
+  xy: 1509, 278
+  size: 72, 218
+  orig: 72, 218
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/acc_candle_01_f_001
+  rotate: false
+  xy: 1299, 281
+  size: 134, 215
+  orig: 134, 215
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/cape_01_b_001
+  rotate: false
+  xy: 1554, 82
+  size: 115, 140
+  orig: 115, 140
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/cape_01_b_002
+  rotate: false
+  xy: 1859, 661
+  size: 140, 360
+  orig: 140, 360
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/cape_01_b_003
+  rotate: false
+  xy: 760, 12
+  size: 122, 251
+  orig: 122, 251
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/cape_01_f_001
+  rotate: false
+  xy: 997, 248
+  size: 91, 352
+  orig: 91, 352
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/cape_01_f_001_01
+  rotate: false
+  xy: 1183, 614
+  size: 138, 407
+  orig: 138, 407
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/cape_01_f_001_02
+  rotate: false
+  xy: 743, 265
+  size: 159, 323
+  orig: 159, 323
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/chest_01_001
+  rotate: false
+  xy: 275, 472
+  size: 271, 549
+  orig: 271, 549
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/face_01_001
+  rotate: false
+  xy: 1700, 242
+  size: 59, 65
+  orig: 59, 65
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/forearm_01_l_001
+  rotate: false
+  xy: 1700, 212
+  size: 79, 28
+  orig: 79, 28
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/forearm_01_l_002
+  rotate: false
+  xy: 1671, 182
+  size: 79, 28
+  orig: 79, 28
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/forearm_01_r_001
+  rotate: false
+  xy: 1377, 62
+  size: 107, 32
+  orig: 107, 32
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/forearm_01_r_002
+  rotate: false
+  xy: 1849, 593
+  size: 118, 33
+  orig: 118, 33
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_l_001
+  rotate: false
+  xy: 1641, 511
+  size: 88, 89
+  orig: 88, 89
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_l_002
+  rotate: false
+  xy: 1687, 425
+  size: 80, 63
+  orig: 80, 63
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_l_003
+  rotate: false
+  xy: 1687, 376
+  size: 89, 47
+  orig: 89, 47
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_r_001
+  rotate: false
+  xy: 1533, 509
+  size: 106, 91
+  orig: 106, 91
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_r_002
+  rotate: false
+  xy: 1731, 490
+  size: 102, 65
+  orig: 102, 65
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_r_003
+  rotate: false
+  xy: 1288, 32
+  size: 87, 71
+  orig: 87, 71
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/hand_01_r_004
+  rotate: false
+  xy: 1835, 514
+  size: 83, 77
+  orig: 83, 77
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/tentacle_01_r_001
+  rotate: false
+  xy: 548, 590
+  size: 336, 431
+  orig: 336, 431
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/tentacle_01_r_001_01
+  rotate: false
+  xy: 1428, 498
+  size: 103, 523
+  orig: 103, 523
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/tentacle_01_r_002
+  rotate: false
+  xy: 884, 13
+  size: 176, 233
+  orig: 176, 233
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/tentacle_01_r_002_01
+  rotate: false
+  xy: 1090, 239
+  size: 83, 373
+  orig: 83, 373
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/tentacle_01_r_003
+  rotate: false
+  xy: 886, 602
+  size: 155, 419
+  orig: 155, 419
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/tentacle_01_r_003_01
+  rotate: false
+  xy: 1625, 602
+  size: 90, 419
+  orig: 90, 419
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/upperarm_01_l_001
+  rotate: false
+  xy: 1377, 29
+  size: 99, 31
+  orig: 99, 31
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/upperarm_01_r_001
+  rotate: false
+  xy: 134, 6
+  size: 123, 31
+  orig: 123, 31
+  offset: 0, 0
+  index: -1
+cloth002_infected_bishop_001/upperarm_01_r_002
+  rotate: false
+  xy: 2, 2
+  size: 130, 35
+  orig: 130, 35
+  offset: 0, 0
+  index: -1

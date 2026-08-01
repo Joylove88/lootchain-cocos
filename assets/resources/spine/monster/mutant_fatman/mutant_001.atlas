@@ -1,0 +1,356 @@
+
+mutant_001.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+darkness_001/chest_01_001
+  rotate: false
+  xy: 2, 362
+  size: 244, 325
+  orig: 244, 325
+  offset: 0, 0
+  index: -1
+darkness_001/chest_02_001
+  rotate: false
+  xy: 1216, 733
+  size: 187, 282
+  orig: 187, 282
+  offset: 0, 0
+  index: -1
+darkness_001/chest_03_001
+  rotate: false
+  xy: 1000, 751
+  size: 214, 264
+  orig: 214, 264
+  offset: 0, 0
+  index: -1
+darkness_001/face_01_001
+  rotate: false
+  xy: 334, 68
+  size: 68, 49
+  orig: 68, 49
+  offset: 0, 0
+  index: -1
+darkness_001/face_01_002
+  rotate: false
+  xy: 414, 102
+  size: 70, 48
+  orig: 70, 48
+  offset: 0, 0
+  index: -1
+darkness_001/face_01_003
+  rotate: false
+  xy: 911, 717
+  size: 74, 53
+  orig: 74, 53
+  offset: 0, 0
+  index: -1
+darkness_001/foot_01_l_001
+  rotate: false
+  xy: 1974, 920
+  size: 68, 95
+  orig: 68, 95
+  offset: 0, 0
+  index: -1
+darkness_001/foot_01_l_002
+  rotate: false
+  xy: 591, 434
+  size: 70, 88
+  orig: 70, 88
+  offset: 0, 0
+  index: -1
+darkness_001/foot_01_r_001
+  rotate: false
+  xy: 591, 524
+  size: 73, 95
+  orig: 73, 95
+  offset: 0, 0
+  index: -1
+darkness_001/forearm_01_l_001
+  rotate: false
+  xy: 806, 701
+  size: 103, 69
+  orig: 103, 69
+  offset: 0, 0
+  index: -1
+darkness_001/forearm_01_r_001
+  rotate: false
+  xy: 217, 18
+  size: 115, 77
+  orig: 115, 77
+  offset: 0, 0
+  index: -1
+darkness_001/forearm_01_r_002
+  rotate: false
+  xy: 680, 696
+  size: 124, 74
+  orig: 124, 74
+  offset: 0, 0
+  index: -1
+darkness_001/forearm_01_r_003
+  rotate: false
+  xy: 1724, 636
+  size: 153, 80
+  orig: 153, 80
+  offset: 0, 0
+  index: -1
+darkness_001/hammer_001_01_001
+  rotate: false
+  xy: 307, 775
+  size: 354, 240
+  orig: 354, 240
+  offset: 0, 0
+  index: -1
+darkness_001/hammer_001_01_002
+  rotate: false
+  xy: 1567, 769
+  size: 194, 246
+  orig: 194, 246
+  offset: 0, 0
+  index: -1
+darkness_001/hammer_001_02_001
+  rotate: false
+  xy: 663, 772
+  size: 335, 243
+  orig: 335, 243
+  offset: 0, 0
+  index: -1
+darkness_001/hammer_001_02_002
+  rotate: false
+  xy: 2, 36
+  size: 213, 324
+  orig: 213, 324
+  offset: 0, 0
+  index: -1
+darkness_001/hammer_001_03_001
+  rotate: false
+  xy: 2, 689
+  size: 303, 326
+  orig: 303, 326
+  offset: 0, 0
+  index: -1
+darkness_001/hammer_001_03_002
+  rotate: false
+  xy: 1405, 726
+  size: 160, 289
+  orig: 160, 289
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_l_001
+  rotate: false
+  xy: 334, 13
+  size: 64, 53
+  orig: 64, 53
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_l_002
+  rotate: false
+  xy: 820, 644
+  size: 64, 55
+  orig: 64, 55
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_l_002_01
+  rotate: false
+  xy: 486, 97
+  size: 49, 53
+  orig: 49, 53
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_001
+  rotate: false
+  xy: 1925, 749
+  size: 57, 66
+  orig: 57, 66
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_002
+  rotate: false
+  xy: 1984, 779
+  size: 57, 59
+  orig: 57, 59
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_003
+  rotate: false
+  xy: 886, 639
+  size: 37, 60
+  orig: 37, 60
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_003_01
+  rotate: false
+  xy: 1928, 631
+  size: 43, 56
+  orig: 43, 56
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_004
+  rotate: false
+  xy: 925, 659
+  size: 47, 56
+  orig: 47, 56
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_004_01
+  rotate: false
+  xy: 759, 634
+  size: 59, 60
+  orig: 59, 60
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_005
+  rotate: false
+  xy: 307, 713
+  size: 54, 60
+  orig: 54, 60
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_005_01
+  rotate: false
+  xy: 1879, 656
+  size: 47, 60
+  orig: 47, 60
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_006
+  rotate: false
+  xy: 1928, 689
+  size: 53, 58
+  orig: 53, 58
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_007
+  rotate: false
+  xy: 666, 543
+  size: 73, 76
+  orig: 73, 76
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_008
+  rotate: false
+  xy: 680, 621
+  size: 77, 73
+  orig: 77, 73
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_009
+  rotate: false
+  xy: 1984, 726
+  size: 61, 51
+  orig: 61, 51
+  offset: 0, 0
+  index: -1
+darkness_001/hand_01_r_009_01
+  rotate: false
+  xy: 1983, 669
+  size: 53, 55
+  orig: 53, 55
+  offset: 0, 0
+  index: -1
+darkness_001/hip_01_001
+  rotate: false
+  xy: 1763, 817
+  size: 209, 198
+  orig: 209, 198
+  offset: 0, 0
+  index: -1
+darkness_001/lowerleg_01_l_001
+  rotate: false
+  xy: 591, 621
+  size: 87, 149
+  orig: 87, 149
+  offset: 0, 0
+  index: -1
+darkness_001/lowerleg_01_r_001
+  rotate: false
+  xy: 325, 119
+  size: 87, 152
+  orig: 87, 152
+  offset: 0, 0
+  index: -1
+darkness_001/tentacle_001_01_001
+  rotate: false
+  xy: 248, 273
+  size: 114, 414
+  orig: 114, 414
+  offset: 0, 0
+  index: -1
+darkness_001/tentacle_001_01_002
+  rotate: false
+  xy: 364, 391
+  size: 127, 382
+  orig: 127, 382
+  offset: 0, 0
+  index: -1
+darkness_001/tentacle_001_01_003
+  rotate: false
+  xy: 493, 430
+  size: 96, 343
+  orig: 96, 343
+  offset: 0, 0
+  index: -1
+darkness_001/thigh_01_l_001
+  rotate: false
+  xy: 217, 97
+  size: 106, 174
+  orig: 106, 174
+  offset: 0, 0
+  index: -1
+darkness_001/thigh_01_r_001
+  rotate: false
+  xy: 414, 152
+  size: 107, 133
+  orig: 107, 133
+  offset: 0, 0
+  index: -1
+darkness_001/toe_01_l_001
+  rotate: false
+  xy: 2, 2
+  size: 35, 32
+  orig: 35, 32
+  offset: 0, 0
+  index: -1
+darkness_001/toe_01_l_002
+  rotate: false
+  xy: 493, 391
+  size: 27, 37
+  orig: 27, 37
+  offset: 0, 0
+  index: -1
+darkness_001/toe_01_r_001
+  rotate: false
+  xy: 741, 568
+  size: 41, 51
+  orig: 41, 51
+  offset: 0, 0
+  index: -1
+darkness_001/upperarm_01_l_001
+  rotate: false
+  xy: 1763, 718
+  size: 160, 97
+  orig: 160, 97
+  offset: 0, 0
+  index: -1
+darkness_001/upperarm_01_r_001
+  rotate: false
+  xy: 364, 287
+  size: 163, 102
+  orig: 163, 102
+  offset: 0, 0
+  index: -1
+darkness_001/upperarm_01_r_002
+  rotate: false
+  xy: 1567, 665
+  size: 155, 102
+  orig: 155, 102
+  offset: 0, 0
+  index: -1
+darkness_001/upperarm_03_r_002
+  rotate: false
+  xy: 1974, 840
+  size: 71, 78
+  orig: 71, 78
+  offset: 0, 0
+  index: -1

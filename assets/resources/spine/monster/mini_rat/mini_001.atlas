@@ -1,0 +1,300 @@
+
+mini_001.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+small_base_001/chest_01_001
+  rotate: false
+  xy: 356, 102
+  size: 119, 116
+  orig: 119, 116
+  offset: 0, 0
+  index: -1
+small_base_001/chin_01_001
+  rotate: false
+  xy: 598, 84
+  size: 67, 67
+  orig: 67, 67
+  offset: 0, 0
+  index: -1
+small_base_001/chin_01_002
+  rotate: false
+  xy: 812, 195
+  size: 93, 59
+  orig: 93, 59
+  offset: 0, 0
+  index: -1
+small_base_001/ear_01_l_001
+  rotate: false
+  xy: 955, 43
+  size: 36, 54
+  orig: 36, 54
+  offset: 0, 0
+  index: -1
+small_base_001/face_01_001
+  rotate: false
+  xy: 598, 153
+  size: 105, 101
+  orig: 105, 101
+  offset: 0, 0
+  index: -1
+small_base_001/front_foot_01_l_001
+  rotate: false
+  xy: 958, 99
+  size: 53, 27
+  orig: 53, 27
+  offset: 0, 0
+  index: -1
+small_base_001/front_foot_01_r_001
+  rotate: false
+  xy: 274, 65
+  size: 58, 28
+  orig: 58, 28
+  offset: 0, 0
+  index: -1
+small_base_001/front_lowerleg_01_l_001
+  rotate: false
+  xy: 209, 62
+  size: 63, 31
+  orig: 63, 31
+  offset: 0, 0
+  index: -1
+small_base_001/front_lowerleg_01_r_001
+  rotate: false
+  xy: 2, 21
+  size: 67, 36
+  orig: 67, 36
+  offset: 0, 0
+  index: -1
+small_base_001/front_thigh_01_l_001
+  rotate: false
+  xy: 850, 73
+  size: 52, 82
+  orig: 52, 82
+  offset: 0, 0
+  index: -1
+small_base_001/front_thigh_01_r_001
+  rotate: false
+  xy: 736, 64
+  size: 55, 87
+  orig: 55, 87
+  offset: 0, 0
+  index: -1
+small_base_001/hind_foot_01_l_001
+  rotate: false
+  xy: 71, 3
+  size: 44, 21
+  orig: 44, 21
+  offset: 0, 0
+  index: -1
+small_base_001/hind_foot_01_r_001
+  rotate: false
+  xy: 904, 16
+  size: 45, 26
+  orig: 45, 26
+  offset: 0, 0
+  index: -1
+small_base_001/hind_lowerleg_01_l_001
+  rotate: false
+  xy: 486, 24
+  size: 34, 44
+  orig: 34, 44
+  offset: 0, 0
+  index: -1
+small_base_001/hind_lowerleg_01_r_001
+  rotate: false
+  xy: 408, 19
+  size: 37, 47
+  orig: 37, 47
+  offset: 0, 0
+  index: -1
+small_base_001/hind_thigh_01_l_001
+  rotate: false
+  xy: 465, 70
+  size: 49, 30
+  orig: 49, 30
+  offset: 0, 0
+  index: -1
+small_base_001/hind_thigh_01_r_001
+  rotate: false
+  xy: 850, 39
+  size: 52, 32
+  orig: 52, 32
+  offset: 0, 0
+  index: -1
+small_base_001/hind_upperleg_01_l_001
+  rotate: false
+  xy: 274, 2
+  size: 46, 61
+  orig: 46, 61
+  offset: 0, 0
+  index: -1
+small_base_001/hind_upperleg_01_r_001
+  rotate: false
+  xy: 958, 128
+  size: 49, 65
+  orig: 49, 65
+  offset: 0, 0
+  index: -1
+small_base_001/hip_01_001
+  rotate: false
+  xy: 2, 95
+  size: 175, 159
+  orig: 175, 159
+  offset: 0, 0
+  index: -1
+small_base_001/tail_01_001
+  rotate: false
+  xy: 2, 59
+  size: 205, 34
+  orig: 205, 34
+  offset: 0, 0
+  index: -1
+small_base_002/chest_01_001
+  rotate: false
+  xy: 477, 102
+  size: 119, 116
+  orig: 119, 116
+  offset: 0, 0
+  index: -1
+small_base_002/chin_01_001
+  rotate: false
+  xy: 667, 84
+  size: 67, 67
+  orig: 67, 67
+  offset: 0, 0
+  index: -1
+small_base_002/chin_01_002
+  rotate: false
+  xy: 907, 195
+  size: 93, 59
+  orig: 93, 59
+  offset: 0, 0
+  index: -1
+small_base_002/ear_01_l_001
+  rotate: false
+  xy: 370, 17
+  size: 36, 54
+  orig: 36, 54
+  offset: 0, 0
+  index: -1
+small_base_002/face_01_001
+  rotate: false
+  xy: 705, 153
+  size: 105, 101
+  orig: 105, 101
+  offset: 0, 0
+  index: -1
+small_base_002/front_foot_01_l_001
+  rotate: false
+  xy: 356, 73
+  size: 53, 27
+  orig: 53, 27
+  offset: 0, 0
+  index: -1
+small_base_002/front_foot_01_r_001
+  rotate: false
+  xy: 136, 29
+  size: 58, 28
+  orig: 58, 28
+  offset: 0, 0
+  index: -1
+small_base_002/front_lowerleg_01_l_001
+  rotate: false
+  xy: 71, 26
+  size: 63, 31
+  orig: 63, 31
+  offset: 0, 0
+  index: -1
+small_base_002/front_lowerleg_01_r_001
+  rotate: false
+  xy: 812, 157
+  size: 67, 36
+  orig: 67, 36
+  offset: 0, 0
+  index: -1
+small_base_002/front_thigh_01_l_001
+  rotate: false
+  xy: 904, 111
+  size: 52, 82
+  orig: 52, 82
+  offset: 0, 0
+  index: -1
+small_base_002/front_thigh_01_r_001
+  rotate: false
+  xy: 793, 64
+  size: 55, 87
+  orig: 55, 87
+  offset: 0, 0
+  index: -1
+small_base_002/hind_foot_01_l_001
+  rotate: false
+  xy: 209, 39
+  size: 44, 21
+  orig: 44, 21
+  offset: 0, 0
+  index: -1
+small_base_002/hind_foot_01_r_001
+  rotate: false
+  xy: 951, 15
+  size: 45, 26
+  orig: 45, 26
+  offset: 0, 0
+  index: -1
+small_base_002/hind_lowerleg_01_l_001
+  rotate: false
+  xy: 522, 24
+  size: 34, 44
+  orig: 34, 44
+  offset: 0, 0
+  index: -1
+small_base_002/hind_lowerleg_01_r_001
+  rotate: false
+  xy: 447, 19
+  size: 37, 47
+  orig: 37, 47
+  offset: 0, 0
+  index: -1
+small_base_002/hind_thigh_01_l_001
+  rotate: false
+  xy: 516, 70
+  size: 49, 30
+  orig: 49, 30
+  offset: 0, 0
+  index: -1
+small_base_002/hind_thigh_01_r_001
+  rotate: false
+  xy: 411, 68
+  size: 52, 32
+  orig: 52, 32
+  offset: 0, 0
+  index: -1
+small_base_002/hind_upperleg_01_l_001
+  rotate: false
+  xy: 322, 2
+  size: 46, 61
+  orig: 46, 61
+  offset: 0, 0
+  index: -1
+small_base_002/hind_upperleg_01_r_001
+  rotate: false
+  xy: 904, 44
+  size: 49, 65
+  orig: 49, 65
+  offset: 0, 0
+  index: -1
+small_base_002/hip_01_001
+  rotate: false
+  xy: 179, 95
+  size: 175, 159
+  orig: 175, 159
+  offset: 0, 0
+  index: -1
+small_base_002/tail_01_001
+  rotate: false
+  xy: 356, 220
+  size: 205, 34
+  orig: 205, 34
+  offset: 0, 0
+  index: -1

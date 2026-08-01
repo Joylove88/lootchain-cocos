@@ -1,0 +1,160 @@
+
+golem_001.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+chest_01_001
+  rotate: false
+  xy: 775, 105
+  size: 177, 145
+  orig: 177, 145
+  offset: 0, 0
+  index: -1
+chest_02_001
+  rotate: false
+  xy: 954, 107
+  size: 161, 143
+  orig: 161, 143
+  offset: 0, 0
+  index: -1
+chest_03_001
+  rotate: false
+  xy: 588, 108
+  size: 185, 142
+  orig: 185, 142
+  offset: 0, 0
+  index: -1
+face_01_001
+  rotate: false
+  xy: 1664, 185
+  size: 75, 65
+  orig: 75, 65
+  offset: 0, 0
+  index: -1
+face_02_001
+  rotate: false
+  xy: 1117, 93
+  size: 58, 65
+  orig: 58, 65
+  offset: 0, 0
+  index: -1
+flower_01_001
+  rotate: false
+  xy: 1177, 121
+  size: 30, 37
+  orig: 30, 37
+  offset: 0, 0
+  index: -1
+flower_02_001
+  rotate: false
+  xy: 1997, 178
+  size: 25, 36
+  orig: 25, 36
+  offset: 0, 0
+  index: -1
+flower_03_001
+  rotate: false
+  xy: 1997, 216
+  size: 35, 34
+  orig: 35, 34
+  offset: 0, 0
+  index: -1
+foot_01_l_001
+  rotate: false
+  xy: 1741, 166
+  size: 65, 84
+  orig: 65, 84
+  offset: 0, 0
+  index: -1
+foot_01_r_001
+  rotate: false
+  xy: 1808, 183
+  size: 62, 67
+  orig: 62, 67
+  offset: 0, 0
+  index: -1
+foot_02_r_001
+  rotate: false
+  xy: 1872, 183
+  size: 61, 67
+  orig: 61, 67
+  offset: 0, 0
+  index: -1
+foot_03_l_001
+  rotate: false
+  xy: 120, 2
+  size: 66, 88
+  orig: 66, 88
+  offset: 0, 0
+  index: -1
+foot_03_r_001
+  rotate: false
+  xy: 1935, 184
+  size: 60, 66
+  orig: 60, 66
+  offset: 0, 0
+  index: -1
+forearm_01_l_001
+  rotate: false
+  xy: 1229, 170
+  size: 107, 80
+  orig: 107, 80
+  offset: 0, 0
+  index: -1
+forearm_01_r_001
+  rotate: false
+  xy: 1117, 160
+  size: 110, 90
+  orig: 110, 90
+  offset: 0, 0
+  index: -1
+forearm_03_r_001
+  rotate: false
+  xy: 2, 3
+  size: 116, 87
+  orig: 116, 87
+  offset: 0, 0
+  index: -1
+hip_01_001
+  rotate: false
+  xy: 2, 92
+  size: 203, 158
+  orig: 203, 158
+  offset: 0, 0
+  index: -1
+hip_02_001
+  rotate: false
+  xy: 408, 91
+  size: 178, 159
+  orig: 178, 159
+  offset: 0, 0
+  index: -1
+hip_03_001
+  rotate: false
+  xy: 207, 93
+  size: 199, 157
+  orig: 199, 157
+  offset: 0, 0
+  index: -1
+upperarm_01_l_001
+  rotate: false
+  xy: 1449, 183
+  size: 112, 67
+  orig: 112, 67
+  offset: 0, 0
+  index: -1
+upperarm_01_r_001
+  rotate: false
+  xy: 1338, 178
+  size: 109, 72
+  orig: 109, 72
+  offset: 0, 0
+  index: -1
+upperarm_03_r_001
+  rotate: false
+  xy: 1563, 183
+  size: 99, 67
+  orig: 99, 67
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,293 @@
+
+knuckle_002_darkness.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+uterus001_mutant_physical/chest_01_001
+  rotate: false
+  xy: 547, 102
+  size: 200, 152
+  orig: 200, 152
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/chest_01_002
+  rotate: false
+  xy: 200, 47
+  size: 200, 207
+  orig: 200, 207
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/chest_02_001
+  rotate: false
+  xy: 1219, 61
+  size: 153, 131
+  orig: 153, 131
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/chest_02_002
+  rotate: false
+  xy: 1764, 60
+  size: 151, 194
+  orig: 151, 194
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_f_001
+  rotate: false
+  xy: 1651, 163
+  size: 46, 91
+  orig: 46, 91
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_f_001_01
+  rotate: false
+  xy: 692, 16
+  size: 92, 84
+  orig: 92, 84
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_f_002
+  rotate: false
+  xy: 1285, 201
+  size: 118, 53
+  orig: 118, 53
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_f_002_01
+  rotate: false
+  xy: 1952, 86
+  size: 61, 58
+  orig: 61, 58
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_l_001
+  rotate: false
+  xy: 1575, 56
+  size: 54, 85
+  orig: 54, 85
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_l_001_01
+  rotate: false
+  xy: 1171, 194
+  size: 112, 60
+  orig: 112, 60
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_l_002
+  rotate: false
+  xy: 786, 2
+  size: 107, 99
+  orig: 107, 99
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_l_002_01
+  rotate: false
+  xy: 749, 103
+  size: 75, 45
+  orig: 75, 45
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_r_001
+  rotate: false
+  xy: 1219, 4
+  size: 90, 55
+  orig: 90, 55
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_r_001_01
+  rotate: false
+  xy: 1554, 143
+  size: 95, 111
+  orig: 95, 111
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_r_002
+  rotate: false
+  xy: 1699, 193
+  size: 63, 61
+  orig: 63, 61
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/finger_01_r_002_01
+  rotate: false
+  xy: 1411, 24
+  size: 89, 65
+  orig: 89, 65
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/foot_01_l_001
+  rotate: false
+  xy: 1311, 10
+  size: 47, 49
+  orig: 47, 49
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/foot_01_l_002
+  rotate: false
+  xy: 250, 10
+  size: 51, 35
+  orig: 51, 35
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/foot_01_r_001
+  rotate: false
+  xy: 1360, 12
+  size: 49, 47
+  orig: 49, 47
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/foot_01_r_002
+  rotate: false
+  xy: 200, 3
+  size: 48, 42
+  orig: 48, 42
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/forearm_01_l_001
+  rotate: false
+  xy: 979, 161
+  size: 77, 93
+  orig: 77, 93
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/forearm_01_l_002
+  rotate: false
+  xy: 1077, 28
+  size: 140, 163
+  orig: 140, 163
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hand_01_001
+  rotate: false
+  xy: 749, 150
+  size: 228, 104
+  orig: 228, 104
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hand_01_002
+  rotate: false
+  xy: 895, 32
+  size: 180, 116
+  orig: 180, 116
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hand_01_r_001
+  rotate: false
+  xy: 1952, 21
+  size: 52, 63
+  orig: 52, 63
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hand_01_r_002
+  rotate: false
+  xy: 1405, 206
+  size: 35, 48
+  orig: 35, 48
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hand_01_r_003
+  rotate: false
+  xy: 303, 3
+  size: 35, 42
+  orig: 35, 42
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hand_acc_001
+  rotate: false
+  xy: 547, 38
+  size: 143, 62
+  orig: 143, 62
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/hip_01_001
+  rotate: false
+  xy: 1502, 21
+  size: 71, 68
+  orig: 71, 68
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/lowerleg_01_l_001
+  rotate: false
+  xy: 1917, 36
+  size: 33, 108
+  orig: 33, 108
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/lowerleg_01_l_002
+  rotate: false
+  xy: 1954, 151
+  size: 34, 103
+  orig: 34, 103
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/lowerleg_01_r_001
+  rotate: false
+  xy: 1917, 146
+  size: 35, 108
+  orig: 35, 108
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/thigh_01_l_001
+  rotate: false
+  xy: 1631, 41
+  size: 42, 100
+  orig: 42, 100
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/thigh_01_l_002
+  rotate: false
+  xy: 1718, 90
+  size: 40, 101
+  orig: 40, 101
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/thigh_01_r_001
+  rotate: false
+  xy: 1675, 60
+  size: 41, 101
+  orig: 41, 101
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/toe_01_l_001
+  rotate: false
+  xy: 2, 6
+  size: 35, 18
+  orig: 35, 18
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/toe_01_r_001
+  rotate: false
+  xy: 340, 22
+  size: 41, 23
+  orig: 41, 23
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/upperarm_01_l_001
+  rotate: false
+  xy: 1058, 193
+  size: 111, 61
+  orig: 111, 61
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/upperarm_01_l_002
+  rotate: false
+  xy: 1374, 91
+  size: 178, 108
+  orig: 178, 108
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/upperarm_01_r_001
+  rotate: false
+  xy: 2, 26
+  size: 196, 228
+  orig: 196, 228
+  offset: 0, 0
+  index: -1
+uterus001_mutant_physical/upperarm_02_r_001
+  rotate: false
+  xy: 402, 41
+  size: 143, 213
+  orig: 143, 213
+  offset: 0, 0
+  index: -1

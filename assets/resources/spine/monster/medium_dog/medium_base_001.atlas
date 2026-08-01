@@ -1,0 +1,909 @@
+
+medium_base_001.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+medium_base_001/chest_01_001
+  rotate: false
+  xy: 177, 155
+  size: 146, 99
+  orig: 146, 99
+  offset: 0, 0
+  index: -1
+medium_base_001/chin_01_001
+  rotate: false
+  xy: 120, 3
+  size: 39, 32
+  orig: 39, 32
+  offset: 0, 0
+  index: -1
+medium_base_001/chin_01_002
+  rotate: false
+  xy: 625, 87
+  size: 51, 45
+  orig: 51, 45
+  offset: 0, 0
+  index: -1
+medium_base_001/chin_02_001
+  rotate: false
+  xy: 618, 53
+  size: 39, 32
+  orig: 39, 32
+  offset: 0, 0
+  index: -1
+medium_base_001/chin_02_002
+  rotate: false
+  xy: 640, 134
+  size: 60, 45
+  orig: 60, 45
+  offset: 0, 0
+  index: -1
+medium_base_001/crotch_01_001
+  rotate: false
+  xy: 559, 89
+  size: 64, 44
+  orig: 64, 44
+  offset: 0, 0
+  index: -1
+medium_base_001/ear_01_l_001
+  rotate: false
+  xy: 255, 52
+  size: 20, 29
+  orig: 20, 29
+  offset: 0, 0
+  index: -1
+medium_base_001/ear_01_r_001
+  rotate: false
+  xy: 1359, 79
+  size: 24, 38
+  orig: 24, 38
+  offset: 0, 0
+  index: -1
+medium_base_001/ear_02_r_001
+  rotate: false
+  xy: 1732, 127
+  size: 22, 41
+  orig: 22, 41
+  offset: 0, 0
+  index: -1
+medium_base_001/face_01_001
+  rotate: false
+  xy: 378, 98
+  size: 64, 55
+  orig: 64, 55
+  offset: 0, 0
+  index: -1
+medium_base_001/face_02_001
+  rotate: false
+  xy: 1760, 200
+  size: 69, 54
+  orig: 69, 54
+  offset: 0, 0
+  index: -1
+medium_base_001/front_foot_01_l_001
+  rotate: false
+  xy: 1256, 44
+  size: 27, 19
+  orig: 27, 19
+  offset: 0, 0
+  index: -1
+medium_base_001/front_foot_01_r_001
+  rotate: false
+  xy: 1797, 175
+  size: 33, 23
+  orig: 33, 23
+  offset: 0, 0
+  index: -1
+medium_base_001/front_leg_01_l_001
+  rotate: false
+  xy: 981, 56
+  size: 35, 53
+  orig: 35, 53
+  offset: 0, 0
+  index: -1
+medium_base_001/front_leg_01_r_001
+  rotate: false
+  xy: 444, 85
+  size: 47, 68
+  orig: 47, 68
+  offset: 0, 0
+  index: -1
+medium_base_001/front_lowerleg_01_l_001
+  rotate: false
+  xy: 1388, 48
+  size: 18, 29
+  orig: 18, 29
+  offset: 0, 0
+  index: -1
+medium_base_001/front_lowerleg_01_r_001
+  rotate: false
+  xy: 344, 46
+  size: 21, 36
+  orig: 21, 36
+  offset: 0, 0
+  index: -1
+medium_base_001/front_thigh_01_l_001
+  rotate: false
+  xy: 1536, 111
+  size: 22, 59
+  orig: 22, 59
+  offset: 0, 0
+  index: -1
+medium_base_001/front_thigh_01_r_001
+  rotate: false
+  xy: 1607, 106
+  size: 30, 62
+  orig: 30, 62
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_foot_01_l_001
+  rotate: false
+  xy: 1933, 180
+  size: 31, 18
+  orig: 31, 18
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_foot_01_r_001
+  rotate: false
+  xy: 1728, 170
+  size: 30, 20
+  orig: 30, 20
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_leg_01_l_001
+  rotate: false
+  xy: 1089, 106
+  size: 38, 70
+  orig: 38, 70
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_leg_01_r_001
+  rotate: false
+  xy: 1129, 114
+  size: 45, 75
+  orig: 45, 75
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_lowerleg_01_l_001
+  rotate: false
+  xy: 1385, 79
+  size: 17, 38
+  orig: 17, 38
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_lowerleg_01_r_001
+  rotate: false
+  xy: 1114, 51
+  size: 22, 53
+  orig: 22, 53
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_thigh_01_l_001
+  rotate: false
+  xy: 731, 86
+  size: 31, 46
+  orig: 31, 46
+  offset: 0, 0
+  index: -1
+medium_base_001/hind_thigh_01_r_001
+  rotate: false
+  xy: 1420, 124
+  size: 43, 62
+  orig: 43, 62
+  offset: 0, 0
+  index: -1
+medium_base_001/hip_01_001
+  rotate: false
+  xy: 493, 2
+  size: 54, 49
+  orig: 54, 49
+  offset: 0, 0
+  index: -1
+medium_base_001/neck_01_001
+  rotate: false
+  xy: 938, 178
+  size: 79, 76
+  orig: 79, 76
+  offset: 0, 0
+  index: -1
+medium_base_001/scapula_01_l_001
+  rotate: false
+  xy: 1489, 112
+  size: 45, 58
+  orig: 45, 58
+  offset: 0, 0
+  index: -1
+medium_base_001/scapula_01_r_001
+  rotate: false
+  xy: 272, 84
+  size: 51, 69
+  orig: 51, 69
+  offset: 0, 0
+  index: -1
+medium_base_001/tail_01_001
+  rotate: false
+  xy: 566, 135
+  size: 72, 45
+  orig: 72, 45
+  offset: 0, 0
+  index: -1
+medium_base_001/tongue_01_001
+  rotate: false
+  xy: 2, 3
+  size: 57, 32
+  orig: 57, 32
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/chest_01_001
+  rotate: false
+  xy: 2, 145
+  size: 173, 109
+  orig: 173, 109
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/chin_01_001
+  rotate: false
+  xy: 1266, 191
+  size: 76, 63
+  orig: 76, 63
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/chin_01_002
+  rotate: false
+  xy: 1689, 192
+  size: 69, 62
+  orig: 69, 62
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/chin_02_001
+  rotate: false
+  xy: 1344, 191
+  size: 75, 63
+  orig: 75, 63
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/chin_02_002
+  rotate: false
+  xy: 1100, 191
+  size: 83, 63
+  orig: 83, 63
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/crotch_01_001
+  rotate: false
+  xy: 1902, 200
+  size: 67, 54
+  orig: 67, 54
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/face_01_001
+  rotate: false
+  xy: 668, 181
+  size: 94, 73
+  orig: 94, 73
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/face_02_001
+  rotate: false
+  xy: 566, 182
+  size: 100, 72
+  orig: 100, 72
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_foot_01_l_001
+  rotate: false
+  xy: 1760, 173
+  size: 35, 25
+  orig: 35, 25
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_foot_01_r_001
+  rotate: false
+  xy: 1318, 56
+  size: 37, 27
+  orig: 37, 27
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_leg_01_l_001
+  rotate: false
+  xy: 990, 111
+  size: 48, 65
+  orig: 48, 65
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_leg_01_r_001
+  rotate: false
+  xy: 883, 117
+  size: 49, 66
+  orig: 49, 66
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_lowerleg_01_l_001
+  rotate: false
+  xy: 277, 52
+  size: 17, 30
+  orig: 17, 30
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_lowerleg_01_r_001
+  rotate: false
+  xy: 679, 14
+  size: 19, 37
+  orig: 19, 37
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_thigh_01_l_001
+  rotate: false
+  xy: 166, 2
+  size: 26, 61
+  orig: 26, 61
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/front_thigh_01_r_001
+  rotate: false
+  xy: 1390, 124
+  size: 28, 65
+  orig: 28, 65
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_foot_01_l_001
+  rotate: false
+  xy: 731, 65
+  size: 31, 19
+  orig: 31, 19
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_foot_01_r_001
+  rotate: false
+  xy: 1867, 176
+  size: 32, 22
+  orig: 32, 22
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_leg_01_l_001
+  rotate: false
+  xy: 1223, 119
+  size: 38, 72
+  orig: 38, 72
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_leg_01_r_001
+  rotate: false
+  xy: 166, 65
+  size: 44, 78
+  orig: 44, 78
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_lowerleg_01_l_001
+  rotate: false
+  xy: 721, 3
+  size: 21, 44
+  orig: 21, 44
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_lowerleg_01_r_001
+  rotate: false
+  xy: 1018, 50
+  size: 20, 59
+  orig: 20, 59
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_thigh_01_l_001
+  rotate: false
+  xy: 1226, 67
+  size: 32, 50
+  orig: 32, 50
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hind_thigh_01_r_001
+  rotate: false
+  xy: 811, 72
+  size: 43, 59
+  orig: 43, 59
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/hip_01_001
+  rotate: false
+  xy: 1421, 188
+  size: 69, 66
+  orig: 69, 66
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/neck_01_001
+  rotate: false
+  xy: 1492, 172
+  size: 69, 82
+  orig: 69, 82
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/scapula_01_l_001
+  rotate: false
+  xy: 1628, 176
+  size: 59, 78
+  orig: 59, 78
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/scapula_01_r_001
+  rotate: false
+  xy: 1563, 170
+  size: 63, 84
+  orig: 63, 84
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/tail_01_001
+  rotate: false
+  xy: 1185, 193
+  size: 79, 61
+  orig: 79, 61
+  offset: 0, 0
+  index: -1
+medium_base_001_disease/tongue_01_001
+  rotate: false
+  xy: 880, 47
+  size: 54, 31
+  orig: 54, 31
+  offset: 0, 0
+  index: -1
+medium_base_002/chest_01_001
+  rotate: false
+  xy: 325, 155
+  size: 146, 99
+  orig: 146, 99
+  offset: 0, 0
+  index: -1
+medium_base_002/chin_01_001
+  rotate: false
+  xy: 659, 53
+  size: 39, 32
+  orig: 39, 32
+  offset: 0, 0
+  index: -1
+medium_base_002/chin_01_002
+  rotate: false
+  xy: 678, 87
+  size: 51, 45
+  orig: 51, 45
+  offset: 0, 0
+  index: -1
+medium_base_002/chin_02_001
+  rotate: false
+  xy: 1318, 85
+  size: 39, 32
+  orig: 39, 32
+  offset: 0, 0
+  index: -1
+medium_base_002/chin_02_002
+  rotate: false
+  xy: 702, 134
+  size: 60, 45
+  orig: 60, 45
+  offset: 0, 0
+  index: -1
+medium_base_002/crotch_01_001
+  rotate: false
+  xy: 378, 52
+  size: 64, 44
+  orig: 64, 44
+  offset: 0, 0
+  index: -1
+medium_base_002/ear_01_l_001
+  rotate: false
+  xy: 744, 3
+  size: 20, 29
+  orig: 20, 29
+  offset: 0, 0
+  index: -1
+medium_base_002/ear_01_r_001
+  rotate: false
+  xy: 256, 12
+  size: 24, 38
+  orig: 24, 38
+  offset: 0, 0
+  index: -1
+medium_base_002/ear_02_r_001
+  rotate: false
+  xy: 700, 2
+  size: 19, 45
+  orig: 19, 45
+  offset: 0, 0
+  index: -1
+medium_base_002/face_01_001
+  rotate: false
+  xy: 493, 99
+  size: 64, 55
+  orig: 64, 55
+  offset: 0, 0
+  index: -1
+medium_base_002/face_02_001
+  rotate: false
+  xy: 1831, 200
+  size: 69, 54
+  orig: 69, 54
+  offset: 0, 0
+  index: -1
+medium_base_002/front_foot_01_l_001
+  rotate: false
+  xy: 764, 52
+  size: 27, 19
+  orig: 27, 19
+  offset: 0, 0
+  index: -1
+medium_base_002/front_foot_01_r_001
+  rotate: false
+  xy: 1832, 175
+  size: 33, 23
+  orig: 33, 23
+  offset: 0, 0
+  index: -1
+medium_base_002/front_leg_01_l_001
+  rotate: false
+  xy: 1040, 52
+  size: 35, 53
+  orig: 35, 53
+  offset: 0, 0
+  index: -1
+medium_base_002/front_leg_01_r_001
+  rotate: false
+  xy: 444, 15
+  size: 47, 68
+  orig: 47, 68
+  offset: 0, 0
+  index: -1
+medium_base_002/front_lowerleg_01_l_001
+  rotate: false
+  xy: 744, 34
+  size: 18, 29
+  orig: 18, 29
+  offset: 0, 0
+  index: -1
+medium_base_002/front_lowerleg_01_r_001
+  rotate: false
+  xy: 1404, 86
+  size: 21, 36
+  orig: 21, 36
+  offset: 0, 0
+  index: -1
+medium_base_002/front_thigh_01_l_001
+  rotate: false
+  xy: 856, 72
+  size: 22, 59
+  orig: 22, 59
+  offset: 0, 0
+  index: -1
+medium_base_002/front_thigh_01_r_001
+  rotate: false
+  xy: 1138, 50
+  size: 30, 62
+  orig: 30, 62
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_foot_01_l_001
+  rotate: false
+  xy: 936, 38
+  size: 31, 18
+  orig: 31, 18
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_foot_01_r_001
+  rotate: false
+  xy: 1901, 178
+  size: 30, 20
+  orig: 30, 20
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_leg_01_l_001
+  rotate: false
+  xy: 1310, 119
+  size: 38, 70
+  orig: 38, 70
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_leg_01_r_001
+  rotate: false
+  xy: 1176, 114
+  size: 45, 75
+  orig: 45, 75
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_lowerleg_01_l_001
+  rotate: false
+  xy: 1427, 84
+  size: 17, 38
+  orig: 17, 38
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_lowerleg_01_r_001
+  rotate: false
+  xy: 1202, 59
+  size: 22, 53
+  orig: 22, 53
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_thigh_01_l_001
+  rotate: false
+  xy: 605, 5
+  size: 31, 46
+  orig: 31, 46
+  offset: 0, 0
+  index: -1
+medium_base_002/hind_thigh_01_r_001
+  rotate: false
+  xy: 1639, 112
+  size: 43, 62
+  orig: 43, 62
+  offset: 0, 0
+  index: -1
+medium_base_002/hip_01_001
+  rotate: false
+  xy: 549, 2
+  size: 54, 49
+  orig: 54, 49
+  offset: 0, 0
+  index: -1
+medium_base_002/neck_01_001
+  rotate: false
+  xy: 1019, 178
+  size: 79, 76
+  orig: 79, 76
+  offset: 0, 0
+  index: -1
+medium_base_002/scapula_01_l_001
+  rotate: false
+  xy: 1560, 110
+  size: 45, 58
+  orig: 45, 58
+  offset: 0, 0
+  index: -1
+medium_base_002/scapula_01_r_001
+  rotate: false
+  xy: 325, 84
+  size: 51, 69
+  orig: 51, 69
+  offset: 0, 0
+  index: -1
+medium_base_002/tail_01_001
+  rotate: false
+  xy: 1971, 207
+  size: 74, 47
+  orig: 74, 47
+  offset: 0, 0
+  index: -1
+medium_base_002/tongue_01_001
+  rotate: false
+  xy: 61, 3
+  size: 57, 32
+  orig: 57, 32
+  offset: 0, 0
+  index: -1
+medium_base_003/chest_01_001
+  rotate: false
+  xy: 2, 37
+  size: 162, 106
+  orig: 162, 106
+  offset: 0, 0
+  index: -1
+medium_base_003/chin_01_002
+  rotate: false
+  xy: 826, 133
+  size: 55, 50
+  orig: 55, 50
+  offset: 0, 0
+  index: -1
+medium_base_003/chin_02_001
+  rotate: false
+  xy: 638, 16
+  size: 39, 35
+  orig: 39, 35
+  offset: 0, 0
+  index: -1
+medium_base_003/chin_02_002
+  rotate: false
+  xy: 764, 133
+  size: 60, 50
+  orig: 60, 50
+  offset: 0, 0
+  index: -1
+medium_base_003/crotch_01_001
+  rotate: false
+  xy: 493, 53
+  size: 64, 44
+  orig: 64, 44
+  offset: 0, 0
+  index: -1
+medium_base_003/ear_01_l_001
+  rotate: false
+  xy: 296, 46
+  size: 22, 36
+  orig: 22, 36
+  offset: 0, 0
+  index: -1
+medium_base_003/ear_01_r_001
+  rotate: false
+  xy: 1684, 123
+  size: 24, 44
+  orig: 24, 44
+  offset: 0, 0
+  index: -1
+medium_base_003/ear_02_r_001
+  rotate: false
+  xy: 1710, 121
+  size: 20, 46
+  orig: 20, 46
+  offset: 0, 0
+  index: -1
+medium_base_003/face_01_001
+  rotate: false
+  xy: 854, 185
+  size: 82, 69
+  orig: 82, 69
+  offset: 0, 0
+  index: -1
+medium_base_003/face_02_001
+  rotate: false
+  xy: 764, 185
+  size: 88, 69
+  orig: 88, 69
+  offset: 0, 0
+  index: -1
+medium_base_003/front_foot_01_l_001
+  rotate: false
+  xy: 1689, 169
+  size: 37, 21
+  orig: 37, 21
+  offset: 0, 0
+  index: -1
+medium_base_003/front_foot_01_r_001
+  rotate: false
+  xy: 212, 52
+  size: 41, 29
+  orig: 41, 29
+  offset: 0, 0
+  index: -1
+medium_base_003/front_leg_01_l_001
+  rotate: false
+  xy: 1077, 51
+  size: 35, 53
+  orig: 35, 53
+  offset: 0, 0
+  index: -1
+medium_base_003/front_leg_01_r_001
+  rotate: false
+  xy: 1040, 107
+  size: 47, 69
+  orig: 47, 69
+  offset: 0, 0
+  index: -1
+medium_base_003/front_lowerleg_01_l_001
+  rotate: false
+  xy: 282, 15
+  size: 21, 29
+  orig: 21, 29
+  offset: 0, 0
+  index: -1
+medium_base_003/front_lowerleg_01_r_001
+  rotate: false
+  xy: 700, 49
+  size: 29, 36
+  orig: 29, 36
+  offset: 0, 0
+  index: -1
+medium_base_003/front_thigh_01_l_001
+  rotate: false
+  xy: 1465, 123
+  size: 22, 63
+  orig: 22, 63
+  offset: 0, 0
+  index: -1
+medium_base_003/front_thigh_01_r_001
+  rotate: false
+  xy: 1170, 50
+  size: 30, 62
+  orig: 30, 62
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_foot_01_l_001
+  rotate: false
+  xy: 1226, 48
+  size: 28, 17
+  orig: 28, 17
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_foot_01_r_001
+  rotate: false
+  xy: 1357, 57
+  size: 29, 20
+  orig: 29, 20
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_leg_01_l_001
+  rotate: false
+  xy: 1350, 119
+  size: 38, 70
+  orig: 38, 70
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_leg_01_r_001
+  rotate: false
+  xy: 1263, 114
+  size: 45, 75
+  orig: 45, 75
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_lowerleg_01_l_001
+  rotate: false
+  xy: 320, 44
+  size: 22, 38
+  orig: 22, 38
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_lowerleg_01_r_001
+  rotate: false
+  xy: 1294, 59
+  size: 22, 53
+  orig: 22, 53
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_thigh_01_l_001
+  rotate: false
+  xy: 1260, 65
+  size: 32, 47
+  orig: 32, 47
+  offset: 0, 0
+  index: -1
+medium_base_003/hind_thigh_01_r_001
+  rotate: false
+  xy: 936, 58
+  size: 43, 62
+  orig: 43, 62
+  offset: 0, 0
+  index: -1
+medium_base_003/hip_01_001
+  rotate: false
+  xy: 934, 122
+  size: 54, 54
+  orig: 54, 54
+  offset: 0, 0
+  index: -1
+medium_base_003/neck_01_001
+  rotate: false
+  xy: 473, 156
+  size: 91, 98
+  orig: 91, 98
+  offset: 0, 0
+  index: -1
+medium_base_003/scapula_01_l_001
+  rotate: false
+  xy: 764, 73
+  size: 45, 58
+  orig: 45, 58
+  offset: 0, 0
+  index: -1
+medium_base_003/scapula_01_r_001
+  rotate: false
+  xy: 212, 83
+  size: 58, 70
+  orig: 58, 70
+  offset: 0, 0
+  index: -1
+medium_base_003/scapula_01_r_001_up_top
+  rotate: false
+  xy: 194, 2
+  size: 60, 48
+  orig: 60, 48
+  offset: 0, 0
+  index: -1
+medium_base_003/tail_01_001
+  rotate: false
+  xy: 880, 80
+  size: 54, 35
+  orig: 54, 35
+  offset: 0, 0
+  index: -1
+medium_base_003/tongue_01_001
+  rotate: false
+  xy: 559, 55
+  size: 57, 32
+  orig: 57, 32
+  offset: 0, 0
+  index: -1

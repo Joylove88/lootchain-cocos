@@ -1,0 +1,90 @@
+
+disease_mushroom_001.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+base
+  rotate: false
+  xy: 2, 119
+  size: 284, 135
+  orig: 284, 135
+  offset: 0, 0
+  index: -1
+base_effect_01_01
+  rotate: false
+  xy: 459, 58
+  size: 92, 50
+  orig: 92, 50
+  offset: 0, 0
+  index: -1
+base_effect_01_02
+  rotate: false
+  xy: 646, 134
+  size: 66, 53
+  orig: 66, 53
+  offset: 0, 0
+  index: -1
+base_effect_01_03
+  rotate: false
+  xy: 190, 64
+  size: 72, 53
+  orig: 72, 53
+  offset: 0, 0
+  index: -1
+base_effect_02_01
+  rotate: false
+  xy: 722, 195
+  size: 34, 59
+  orig: 34, 59
+  offset: 0, 0
+  index: -1
+base_effect_02_02
+  rotate: false
+  xy: 758, 213
+  size: 28, 41
+  orig: 28, 41
+  offset: 0, 0
+  index: -1
+mushroom_01
+  rotate: false
+  xy: 96, 37
+  size: 92, 80
+  orig: 92, 80
+  offset: 0, 0
+  index: -1
+mushroom_02
+  rotate: false
+  xy: 2, 2
+  size: 92, 115
+  orig: 92, 115
+  offset: 0, 0
+  index: -1
+mushroom_03
+  rotate: false
+  xy: 288, 52
+  size: 169, 202
+  orig: 169, 202
+  offset: 0, 0
+  index: -1
+mushroom_04
+  rotate: false
+  xy: 646, 189
+  size: 74, 65
+  orig: 74, 65
+  offset: 0, 0
+  index: -1
+mushroom_05
+  rotate: false
+  xy: 459, 110
+  size: 104, 144
+  orig: 104, 144
+  offset: 0, 0
+  index: -1
+mushroom_06
+  rotate: false
+  xy: 565, 123
+  size: 79, 131
+  orig: 79, 131
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,118 @@
+
+statue_of_veda_001_story_01.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+large_statue_veda_floor_001_01
+  rotate: false
+  xy: 220, 127
+  size: 308, 122
+  orig: 308, 122
+  offset: 0, 0
+  index: -1
+statue_001
+  rotate: false
+  xy: 325, 42
+  size: 65, 83
+  orig: 65, 83
+  offset: 0, 0
+  index: -1
+statue_002
+  rotate: false
+  xy: 1460, 112
+  size: 74, 137
+  orig: 74, 137
+  offset: 0, 0
+  index: -1
+statue_003
+  rotate: false
+  xy: 1026, 33
+  size: 130, 216
+  orig: 130, 216
+  offset: 0, 0
+  index: -1
+statue_004
+  rotate: false
+  xy: 1536, 120
+  size: 70, 129
+  orig: 70, 129
+  offset: 0, 0
+  index: -1
+statue_005
+  rotate: false
+  xy: 721, 83
+  size: 168, 166
+  orig: 168, 166
+  offset: 0, 0
+  index: -1
+statue_006
+  rotate: false
+  xy: 220, 12
+  size: 103, 113
+  orig: 103, 113
+  offset: 0, 0
+  index: -1
+statue_007
+  rotate: false
+  xy: 2, 2
+  size: 216, 247
+  orig: 216, 247
+  offset: 0, 0
+  index: -1
+statue_008
+  rotate: false
+  xy: 1158, 86
+  size: 132, 163
+  orig: 132, 163
+  offset: 0, 0
+  index: -1
+statue_009
+  rotate: false
+  xy: 1659, 140
+  size: 15, 109
+  orig: 15, 109
+  offset: 0, 0
+  index: -1
+statue_010
+  rotate: false
+  xy: 1292, 92
+  size: 86, 157
+  orig: 86, 157
+  offset: 0, 0
+  index: -1
+statue_011
+  rotate: false
+  xy: 530, 78
+  size: 189, 171
+  orig: 189, 171
+  offset: 0, 0
+  index: -1
+statue_012
+  rotate: false
+  xy: 891, 57
+  size: 133, 192
+  orig: 133, 192
+  offset: 0, 0
+  index: -1
+statue_013
+  rotate: false
+  xy: 1608, 130
+  size: 49, 119
+  orig: 49, 119
+  offset: 0, 0
+  index: -1
+statue_014
+  rotate: false
+  xy: 1380, 20
+  size: 78, 229
+  orig: 78, 229
+  offset: 0, 0
+  index: -1
+statue_015
+  rotate: false
+  xy: 1460, 42
+  size: 29, 68
+  orig: 29, 68
+  offset: 0, 0
+  index: -1
