@@ -4882,6 +4882,10 @@ export class LobbyBattlePreviewPanelRenderer {
       const spineScale = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, width, height, scale, unit.role === 'boss', unit);
       this.recordBattleActorSpineVisualTelemetry(unit, enemy, runtimeData.width, runtimeData.height, width, height, spineScale);
       const nodePosition = resolveBattleUnitSpineNodePosition(runtimeData, spineScale, height, unit, enemy);
+      if (enemy) {
+        // P8c 排障:敌怪 spine 视觉与血条/脚圈错位的定位数据(问题定位后移除)。
+        console.debug(`[MonsterSpine] ${unit.unitKey} rd=(${runtimeData.x},${runtimeData.y},${runtimeData.width}x${runtimeData.height}) scale=${spineScale.toFixed(3)} node=(${nodePosition.x.toFixed(1)},${nodePosition.y.toFixed(1)}) slot=${width.toFixed(0)}x${height.toFixed(0)}`);
+      }
       spineNode.setPosition(new Vec3(nodePosition.x, nodePosition.y, 0));
       spineNode.setScale(new Vec3(resolveBattleUnitSpineMirrorScaleX(spineScale, enemy), spineScale, 1));
       if (!animationName) {
@@ -6218,7 +6222,9 @@ export class LobbyBattlePreviewPanelRenderer {
           ? win
             ? '奖励发放异常，请稍后在背包核对'
             : '挑战失败：不消耗次数与体力，可直接再战'
-          : '本关已首通，重复挑战不再发放奖励'
+          : win
+            ? '本关已首通，重复挑战不再发放奖励'
+            : '挑战失败：不发放奖励、不扣体力、不推进进度，可调整阵容再战'
         : '结算提交中，奖励以回执为准…';
       const empty = this.host.addChildLabel(overlay, 'LobbyBattleStage12RewardSlotEmpty', emptyText, 0, rewardY, 18 * scale, rgba(196, 181, 136), new Size(overlayWidth - 80 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;

@@ -308,12 +308,15 @@ function resolveSrRSpineAnimationNames(names: string[]): BattleUnitSpineAnimatio
 
 // 怪物/BOSS：idle/run/attack/hit/dead，无技能/大招/胜利（渲染层做伪动画占位）。
 function resolveEnemySpineAnimationNames(names: string[]): BattleUnitSpineAnimationNames {
-  const idle = resolvePreferredBattleUnitSpineName(names, 'idle', ['daiji', 'daji', 'stand', 'wait', '待机']);
-  // S196 怪物包命名:run_h=正向跑(run_b 是倒退跑,不能作为默认移动);受击=beaten_* 系。
-  const move = resolvePreferredBattleUnitSpineName(names, 'run', ['run_h', 'move', 'walk', 'run', 'zou', '移动']);
-  const attack = resolvePreferredBattleUnitSpineName(names, 'attack', ['atk', 'attack_01', 'gongji', 'gj', '普攻']);
-  const hit = resolvePreferredBattleUnitSpineName(names, 'hit', ['hurt', 'beaten_slash_start', 'beaten', 'shouji', 'damage', '受击']);
-  const death = resolvePreferredBattleUnitSpineName(names, 'dead', ['death', 'die', 'down_start', '死亡']);
+  // S196 怪物包命名坑:含 _turn_(转身过渡)/_link_(衔接段)的动画绝不能被包含匹配选中
+  // (如 'run_h' 会命中 'run_b_turn_run_h',移动时反复播转身=卡顿+背对);先过滤再选主动画。
+  const mainNames = names.filter((name) => !name.includes('_turn_') && !name.includes('_link_'));
+  const pool = mainNames.length > 0 ? mainNames : names;
+  const idle = resolvePreferredBattleUnitSpineName(pool, 'idle', ['daiji', 'daji', 'stand', 'wait', '待机']);
+  const move = resolvePreferredBattleUnitSpineName(pool, 'run_h', ['run', 'move', 'walk', 'zou', '移动']);
+  const attack = resolvePreferredBattleUnitSpineName(pool, 'attack', ['atk', 'attack_01', 'gongji', 'gj', '普攻']);
+  const hit = resolvePreferredBattleUnitSpineName(pool, 'hit', ['hurt', 'beaten_slash_start', 'beaten', 'shouji', 'damage', '受击']);
+  const death = resolvePreferredBattleUnitSpineName(pool, 'dead', ['death', 'die', 'down_start', '死亡']);
   return {
     idle, move, attack, skill1: null, skill2: null, skill3: null, ult: null, hit, death, victory: null,
     skill1Kz: null, skill2Kz: null, skill3Kz: null, skill4Kz: null, skill: null,
@@ -360,6 +363,12 @@ export function resolveBattleUnitSpineScale(
   const fit = Math.min(targetHeight / safeHeight, maxWidth / safeWidth) * profile.scaleMultiplier;
   const baseScale = clamp(fit, profile.minScale * uiScale, profile.maxScale * uiScale);
   const tier = unit ? resolveBattleUnitSpineRarityTier(unit) : 'DEFAULT';
+  // P8 敌方怪物:目标视高与立绘规则一致(站位高 0.9 × 模板 display_scale);
+  // bounds 修复后画布高=真实 AABB,scale=目标高/画布高即可与立绘怪同高,不吃英雄补偿表。
+  if (unit && unit.side === 'enemy') {
+    const monsterScale = Math.max(0.5, Math.min(2, unit.monsterDisplayScale ?? 1));
+    return clamp((slotHeight * 0.9 * monsterScale) / safeHeight, 0.02 * uiScale, 6 * uiScale);
+  }
   if (unit?.scaleProfile === 'FORMATION_PREVIEW') {
     // 站台统一体型:按"统一目标高/有效原高"定缩放(不受 baseScale 封顶),画布差用共用补偿表精确抵消。
     const uniformVisualHeight = slotHeight * resolveBattleUnitFormationPreviewMaxHeightRatio(unit, tier);
@@ -372,8 +381,10 @@ export function resolveBattleUnitSpineScale(
   if (unit && unit.side !== 'enemy' && !boss) {
     const allyRatio = resolveBattleUnitFormationPreviewMaxHeightRatio(unit, tier);
     const allyAsset = resolveBattleUnitSpinePrimaryAsset(unit);
+    // 2026-08-01:补偿表与布阵统一为 ACT 表——两页相对比例永远一致,体型只需调一张表;
+    // 整体大小仍由 BATTLE_COMBAT_SIZE_SCALE 控制。(旧 COMBAT 表弃用保留作参考。)
     return ((slotHeight * allyRatio * BATTLE_COMBAT_SIZE_SCALE) / safeHeight)
-      * resolveCanvasCompensation(allyAsset, BATTLE_COMBAT_CANVAS_COMPENSATION_BY_ASSET);
+      * resolveCanvasCompensation(allyAsset, BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET);
   }
   // 战斗中按资源缩放微调（仅战斗，不影响编队预览）。
   const primaryAsset = unit ? resolveBattleUnitSpinePrimaryAsset(unit) : null;
