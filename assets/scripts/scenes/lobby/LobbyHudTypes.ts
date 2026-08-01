@@ -102,18 +102,22 @@ export interface LobbyHudHost {
   currentLobbyAdventureState(): LobbyAdventurePanelState;
   /** 大厅目标追踪只读取最近战斗记录，用于提示下一步；不能从这里触发奖励或进度写入。 */
   currentLobbyBattleState(): LobbyBattlePanelState;
-  /** 当前选中的主线关卡仅作为 UI 提示来源，非法或锁定关卡必须回到冒险面板校验。 */
+  /** 当前选中的主线关卡仅作为 UI 提示来源，非法或锁定关卡必须回到爬塔面板校验。 */
   currentLobbySelectedStageCode(): string;
   openPlayerProfileDialog(): void;
   /** 公告/活动入口走只读详情面板；该面板只读取服务端公告，不承载玩法动作。 */
   openLobbyNoticePanel(): void;
+  /** 限时副本入口进入每日材料副本面板;挑战复用战斗接口,开放日/次数校验以后端为准。 */
+  openLobbyDailyDungeonPanel(): void;
   /** 图鉴入口走只读预览面板；该面板只读取大厅门面数据，不进入英雄养成。 */
   openLobbyCodexPanel(): void;
   /** 英雄入口走只读英雄队列；该面板只读取已拥有英雄，不提供任何养成写操作。 */
   openLobbyHeroRosterPanel(): void;
   /** 背包入口走只读道具列表；该面板只读取背包和来源，不提供使用/出售写操作。 */
   openLobbyBagPanel(): void;
-  /** 冒险入口走主线只读地图；当前不进入战斗、不保存编队、不产生结算。 */
+  /** 锻造入口进入装备养成工坊(合成/强化/分解);全部写入走服务器装备接口。 */
+  openLobbyForgePanel(): void;
+  /** 冒险/副本入口走主线关卡地图；战斗必须再经弹框/编队确认，当前不保存编队、不产生结算。 */
   openLobbyAdventurePanel(): void;
   /** 召唤入口进入独立抽奖预览页；当前只展示卡池视觉和规则入口，不触发抽卡写入。 */
   openLobbyGachaScene(): void;
@@ -137,6 +141,10 @@ export interface LobbyHudHost {
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addLobbyAvatar(parent: Node, x: number, y: number, size: number, displayName: string): void;
+  /** 挂机演出读取英雄与上阵阵容(只读);挑战 BOSS 复用既有战斗预览流程(内部含解锁校验)。 */
+  currentLobbyHeroRosterState(): import('../../types/LobbyHeroTypes').LobbyHeroRosterPanelState;
+  currentLobbyFormationHeroIds(): number[];
+  openLobbyBattlePreviewPanel(stageCode: string): void;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   applyPointerCursor(node: Node): void;
   setStatus(text: string): void;
@@ -147,6 +155,21 @@ export interface LobbyHudHost {
 // 左上玩家信息面板使用固定逻辑宽高比，避免美术资源自动裁切导致文字坐标漂移。
 export const LOBBY_PLAYER_INFO_PANEL_ASPECT = 540 / 218;
 export const LOBBY_PLAYER_INFO_PANEL_ASSET = 'ui/lobby/lobby_player_info_panel/spriteFrame';
+
+// C1812 顶部资源栏货币图标；加载失败时回退到原 Graphics 矢量图形。
+export const LOBBY_C1812_CURRENCY_STAMINA_ASSET = 'ui/lobby/c1812/currency_stamina/spriteFrame';
+export const LOBBY_C1812_CURRENCY_GOLD_ASSET = 'ui/lobby/c1812/currency_gold/spriteFrame';
+export const LOBBY_C1812_CURRENCY_DIAMOND_ASSET = 'ui/lobby/c1812/currency_diamond/spriteFrame';
+// 未开放资源位使用锁图标，避免被误读为可购买入口。
+export const COMMON_C1812_ICON_LOCK_ASSET = 'ui/common/c1812/icon_lock/spriteFrame';
+
+// 货币图标换用 bag/ai 物品图标(160 方图,aspect 1);未开放资源位保留锁图标。
+export const LOBBY_C1812_RESOURCE_ICON_ASSETS: Record<LobbyResourceItem['key'], { path: string; aspect: number }> = {
+  stamina: { path: 'ui/bag/ai/icon_stamina/spriteFrame', aspect: 1 },
+  coin: { path: 'ui/bag/ai/icon_gold/spriteFrame', aspect: 1 },
+  ruby: { path: 'ui/bag/ai/icon_diamond/spriteFrame', aspect: 1 },
+  crystal: { path: COMMON_C1812_ICON_LOCK_ASSET, aspect: 56 / 66 },
+};
 
 export function rgba(red: number, green: number, blue: number, alpha = 255): Color {
   return new Color(red, green, blue, alpha);

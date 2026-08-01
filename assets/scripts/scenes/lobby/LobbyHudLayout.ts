@@ -3,6 +3,22 @@ import { LOBBY_PLAYER_INFO_PANEL_ASPECT, clamp } from './LobbyHudTypes';
 
 export type LobbyHudEdgeAxis = 'x' | 'y';
 
+export interface LobbyHudModeSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * 浏览器视口比 Cocos 设计舞台窄时，用可见视口尺寸决定 HUD 显隐模式，
+ * 避免 720 宽 Preview 仍按 1920 舞台渲染完整底栏而被裁切。
+ */
+export function resolveLobbyHudModeSize(layout: UiLayout): LobbyHudModeSize {
+  return {
+    width: Math.min(layout.stageWidth, layout.viewportWidth),
+    height: Math.min(layout.stageHeight, layout.viewportHeight),
+  };
+}
+
 /**
  * 大厅 HUD 几何布局工具。
  *

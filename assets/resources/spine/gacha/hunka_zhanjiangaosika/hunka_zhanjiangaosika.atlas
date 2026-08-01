@@ -1,0 +1,384 @@
+
+hunka_zhanjiangaosika.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+kaaosi_0
+  rotate: true
+  xy: 1274, 216
+  size: 171, 138
+  orig: 171, 138
+  offset: 0, 0
+  index: -1
+kaaosi_1
+  rotate: true
+  xy: 1070, 640
+  size: 143, 148
+  orig: 150, 153
+  offset: 4, 1
+  index: -1
+kaaosi_10
+  rotate: true
+  xy: 736, 422
+  size: 566, 332
+  orig: 566, 332
+  offset: 0, 0
+  index: -1
+kaaosi_11
+  rotate: false
+  xy: 1833, 458
+  size: 202, 179
+  orig: 202, 179
+  offset: 0, 0
+  index: -1
+kaaosi_12
+  rotate: true
+  xy: 1650, 192
+  size: 246, 186
+  orig: 246, 186
+  offset: 0, 0
+  index: -1
+kaaosi_13
+  rotate: true
+  xy: 134, 2
+  size: 136, 292
+  orig: 153, 306
+  offset: 11, 14
+  index: -1
+kaaosi_14
+  rotate: false
+  xy: 996, 32
+  size: 197, 69
+  orig: 197, 69
+  offset: 0, 0
+  index: -1
+kaaosi_15
+  rotate: true
+  xy: 1274, 44
+  size: 170, 135
+  orig: 170, 142
+  offset: 0, 7
+  index: -1
+kaaosi_16
+  rotate: false
+  xy: 1222, 741
+  size: 251, 247
+  orig: 251, 247
+  offset: 0, 0
+  index: -1
+kaaosi_17
+  rotate: false
+  xy: 1247, 990
+  size: 392, 451
+  orig: 392, 451
+  offset: 0, 0
+  index: -1
+kaaosi_18
+  rotate: true
+  xy: 1070, 785
+  size: 213, 150
+  orig: 213, 150
+  offset: 0, 0
+  index: -1
+kaaosi_19
+  rotate: true
+  xy: 2, 100
+  size: 458, 130
+  orig: 458, 130
+  offset: 0, 0
+  index: -1
+kaaosi_2
+  rotate: false
+  xy: 1475, 837
+  size: 146, 151
+  orig: 146, 151
+  offset: 0, 0
+  index: -1
+kaaosi_20
+  rotate: false
+  xy: 1475, 655
+  size: 123, 180
+  orig: 130, 186
+  offset: 7, 6
+  index: -1
+kaaosi_21
+  rotate: false
+  xy: 730, 174
+  size: 217, 246
+  orig: 217, 254
+  offset: 0, 0
+  index: -1
+kaaosi_22
+  rotate: true
+  xy: 700, 26
+  size: 146, 158
+  orig: 146, 158
+  offset: 0, 0
+  index: -1
+kaaosi_23
+  rotate: false
+  xy: 125, 998
+  size: 192, 49
+  orig: 192, 49
+  offset: 0, 0
+  index: -1
+kaaosi_24
+  rotate: false
+  xy: 134, 154
+  size: 221, 70
+  orig: 221, 70
+  offset: 0, 0
+  index: -1
+kaaosi_25
+  rotate: true
+  xy: 626, 167
+  size: 225, 72
+  orig: 225, 72
+  offset: 0, 0
+  index: -1
+kaaosi_26
+  rotate: false
+  xy: 1415, 385
+  size: 209, 268
+  orig: 234, 271
+  offset: 0, 3
+  index: -1
+kaaosi_27
+  rotate: false
+  xy: 571, 5
+  size: 125, 160
+  orig: 125, 160
+  offset: 0, 0
+  index: -1
+kaaosi_28
+  rotate: false
+  xy: 1336, 655
+  size: 113, 84
+  orig: 113, 84
+  offset: 0, 0
+  index: -1
+kaaosi_29
+  rotate: false
+  xy: 2, 992
+  size: 121, 55
+  orig: 121, 58
+  offset: 0, 3
+  index: -1
+kaaosi_3
+  rotate: false
+  xy: 1068, 103
+  size: 204, 284
+  orig: 204, 294
+  offset: 0, 0
+  index: -1
+kaaosi_30
+  rotate: true
+  xy: 626, 394
+  size: 118, 102
+  orig: 118, 102
+  offset: 0, 0
+  index: -1
+kaaosi_31
+  rotate: true
+  xy: 1641, 639
+  size: 802, 345
+  orig: 802, 373
+  offset: 0, 28
+  index: -1
+kaaosi_32
+  rotate: false
+  xy: 1650, 5
+  size: 192, 185
+  orig: 192, 192
+  offset: 0, 7
+  index: -1
+kaaosi_33
+  rotate: false
+  xy: 1411, 53
+  size: 170, 130
+  orig: 170, 130
+  offset: 0, 0
+  index: -1
+kaaosi_34
+  rotate: true
+  xy: 428, 16
+  size: 122, 138
+  orig: 122, 138
+  offset: 0, 0
+  index: -1
+kaaosi_35
+  rotate: true
+  xy: 1151, 1011
+  size: 74, 92
+  orig: 74, 92
+  offset: 0, 0
+  index: -1
+kaaosi_36
+  rotate: false
+  xy: 1414, 185
+  size: 234, 198
+  orig: 234, 198
+  offset: 0, 0
+  index: -1
+kaaosi_37
+  rotate: false
+  xy: 1220, 641
+  size: 114, 98
+  orig: 114, 98
+  offset: 0, 0
+  index: -1
+kaaosi_39
+  rotate: false
+  xy: 562, 1031
+  size: 227, 272
+  orig: 227, 272
+  offset: 0, 0
+  index: -1
+kaaosi_4
+  rotate: false
+  xy: 860, 2
+  size: 134, 122
+  orig: 134, 122
+  offset: 0, 0
+  index: -1
+kaaosi_40
+  rotate: false
+  xy: 791, 991
+  size: 214, 94
+  orig: 214, 94
+  offset: 0, 0
+  index: -1
+kaaosi_41
+  rotate: true
+  xy: 626, 514
+  size: 198, 105
+  orig: 198, 105
+  offset: 0, 0
+  index: -1
+kaaosi_42
+  rotate: true
+  xy: 949, 126
+  size: 294, 117
+  orig: 294, 121
+  offset: 0, 4
+  index: -1
+kaaosi_43
+  rotate: false
+  xy: 2, 560
+  size: 362, 152
+  orig: 362, 158
+  offset: 0, 6
+  index: -1
+kaaosi_44
+  rotate: true
+  xy: 1838, 266
+  size: 190, 185
+  orig: 190, 195
+  offset: 0, 0
+  index: -1
+kaaosi_45
+  rotate: true
+  xy: 134, 226
+  size: 332, 222
+  orig: 368, 222
+  offset: 36, 0
+  index: -1
+kaaosi_46
+  rotate: false
+  xy: 1070, 389
+  size: 343, 248
+  orig: 343, 248
+  offset: 0, 0
+  index: -1
+kaaosi_47
+  rotate: true
+  xy: 366, 369
+  size: 343, 258
+  orig: 343, 258
+  offset: 0, 0
+  index: -1
+kaaosi_48
+  rotate: true
+  xy: 1662, 1487
+  size: 558, 366
+  orig: 570, 366
+  offset: 12, 0
+  index: -1
+kaaosi_49
+  rotate: false
+  xy: 2, 1049
+  size: 558, 254
+  orig: 558, 254
+  offset: 0, 0
+  index: -1
+kaaosi_5
+  rotate: false
+  xy: 1626, 440
+  size: 205, 197
+  orig: 205, 197
+  offset: 0, 0
+  index: -1
+kaaosi_50
+  rotate: true
+  xy: 1755, 1456
+  size: 29, 31
+  orig: 29, 31
+  offset: 0, 0
+  index: -1
+kaaosi_51
+  rotate: false
+  xy: 806, 1087
+  size: 414, 322
+  orig: 414, 322
+  offset: 0, 0
+  index: -1
+kaaosi_52
+  rotate: false
+  xy: 2, 714
+  size: 732, 274
+  orig: 732, 274
+  offset: 0, 0
+  index: -1
+kaaosi_53
+  rotate: false
+  xy: 2, 1305
+  size: 802, 104
+  orig: 802, 104
+  offset: 0, 0
+  index: -1
+kaaosi_54
+  rotate: false
+  xy: 1007, 1000
+  size: 142, 85
+  orig: 142, 86
+  offset: 0, 0
+  index: -1
+kaaosi_6
+  rotate: true
+  xy: 1662, 1443
+  size: 42, 91
+  orig: 42, 91
+  offset: 0, 0
+  index: -1
+kaaosi_7
+  rotate: true
+  xy: 358, 140
+  size: 227, 211
+  orig: 227, 211
+  offset: 0, 0
+  index: -1
+kaaosi_8
+  rotate: false
+  xy: 2, 1411
+  size: 1243, 634
+  orig: 1243, 634
+  offset: 0, 0
+  index: -1
+kaaosi_9
+  rotate: true
+  xy: 1247, 1443
+  size: 602, 413
+  orig: 602, 413
+  offset: 0, 0
+  index: -1

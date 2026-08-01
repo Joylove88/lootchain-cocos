@@ -13,8 +13,9 @@ import {
 import { lootChainI18n } from '../../i18n/LootChainI18n';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { LOBBY_SYSTEM_ICONS } from './LobbyHudConfig';
-import { lobbyHudEdgeInset, lobbyHudScale, resolveLobbyPlayerInfoLayout } from './LobbyHudLayout';
+import { lobbyHudEdgeInset, lobbyHudScale, resolveLobbyHudModeSize, resolveLobbyPlayerInfoLayout } from './LobbyHudLayout';
 import {
+  LOBBY_C1812_RESOURCE_ICON_ASSETS,
   LOBBY_PLAYER_INFO_PANEL_ASSET,
   rgba,
   type LobbyHudHost,
@@ -176,13 +177,14 @@ export class LobbyTopHudRenderer {
     const expLabel = this.addChildLabel(
       panel,
       'LobbyPlayerExpBadge',
-      'EXP',
+      this.expBadgeText(profile),
       panelLeft + 80 * hudScale,
       panelTop - 160 * hudScale,
       17 * hudScale,
       rgba(245, 210, 122),
-      new Size(70 * hudScale, 26 * hudScale),
+      new Size(92 * hudScale, 26 * hudScale),
     );
+    expLabel.overflow = Label.Overflow.SHRINK;
     this.applyPlayerTextStyle(expLabel, hudScale, false);
   }
 
@@ -194,12 +196,13 @@ export class LobbyTopHudRenderer {
     const hudInsetY = lobbyHudEdgeInset(layout, 'y', scale);
     const itemHeight = 34 * scale;
     const gap = 14 * scale;
+    const modeWidth = resolveLobbyHudModeSize(layout).width;
     let items = this.resourceItems(profile);
-    if (layout.stageWidth < 720) {
+    if (modeWidth < 720) {
       items = items.slice(0, 1);
-    } else if (layout.stageWidth < 840) {
+    } else if (modeWidth < 840) {
       items = items.slice(0, 2);
-    } else if (layout.stageWidth < 1180) {
+    } else if (modeWidth < 1180) {
       items = items.slice(0, 3);
     }
 
@@ -207,7 +210,7 @@ export class LobbyTopHudRenderer {
     let totalWidth = this.sumWithGaps(itemWidths, gap);
     const systemWidth = this.systemIconsWidth(scale);
     const systemLeft = layout.stageRight - hudInsetX - systemWidth;
-    const systemVisible = layout.stageWidth >= 720 && systemLeft >= playerLayout.right + 14 * scale;
+    const systemVisible = modeWidth >= 720 && systemLeft >= playerLayout.right + 14 * scale;
     const right = layout.stageRight - hudInsetX - (systemVisible ? systemWidth + 22 * scale : 0);
     const minGapFromPlayer = 18 * scale;
     // 空间不足时从右往左减少资源项，优先保证不和左上玩家信息重叠。
@@ -269,8 +272,7 @@ export class LobbyTopHudRenderer {
       'LobbyCompactStaminaValue',
       item.value,
       -chipWidth / 2 + 38 * scale,
-      0,
-      18 * scale,
+      0, 20 * scale,
       rgba(245, 222, 168),
       new Size(chipWidth - 50 * scale, chipHeight),
       HorizontalTextAlignment.LEFT,
@@ -288,7 +290,7 @@ export class LobbyTopHudRenderer {
     const totalWidth = this.systemIconsWidth(scale);
     const playerLayout = resolveLobbyPlayerInfoLayout(layout);
     const systemLeft = layout.stageRight - hudInsetX - totalWidth;
-    if (layout.stageWidth < 720 || systemLeft < playerLayout.right + 14 * scale) {
+    if (resolveLobbyHudModeSize(layout).width < 720 || systemLeft < playerLayout.right + 14 * scale) {
       return;
     }
     const x = layout.stageRight - hudInsetX - totalWidth / 2;
@@ -331,6 +333,14 @@ export class LobbyTopHudRenderer {
         tint: rgba(132, 94, 226),
       },
     ];
+  }
+
+  private expBadgeText(profile: PlayerLobbyProfileVO): string {
+    const progress = profile.levelProgress;
+    if (!progress || progress.nextLevel == null) {
+      return 'EXP';
+    }
+    return `EXP ${Math.max(0, Math.min(100, Math.trunc(progress.progressPercent)))}%`;
   }
 
   private resourceItemWidth(key: LobbyResourceItem['key'], scale: number): number {
@@ -508,6 +518,16 @@ export class LobbyTopHudRenderer {
     tint: Color,
     scale: number,
   ): void {
+    // 优先使用 C1812 货币切图；资源未就绪时回退到矢量图形，避免资源栏出现空位。
+    const iconAsset = LOBBY_C1812_RESOURCE_ICON_ASSETS[key];
+    if (iconAsset) {
+      const iconHeight = size * 1.18;
+      const iconWidth = iconHeight * iconAsset.aspect;
+      const sprite = this.addSprite(`LobbyResourceIcon_${key}`, iconAsset.path, x, y, iconWidth, iconHeight, parent);
+      if (sprite) {
+        return;
+      }
+    }
     const glyph = new Node(`LobbyResourceGlyph_${key}`);
     glyph.layer = this.node.layer;
     parent.addChild(glyph);

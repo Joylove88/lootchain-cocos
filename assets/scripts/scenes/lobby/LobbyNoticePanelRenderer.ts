@@ -7,6 +7,7 @@ import {
   Label,
   Node,
   Size,
+  Sprite,
   UITransform,
   Vec3,
 } from 'cc';
@@ -20,6 +21,7 @@ export interface LobbyNoticePanelHost {
   closeLobbyNoticePanel(): void;
   reloadLobbyNotices(): void;
   createUiNode(name: string): Node;
+  addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addChildLabel(
@@ -86,18 +88,7 @@ export class LobbyNoticePanelRenderer {
   }
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyNoticePanelState): void {
-    const title = this.host.addChildLabel(
-      parent,
-      'LobbyNoticeTitle',
-      '公告与活动',
-      0,
-      height / 2 - 44 * scale,
-      27 * scale,
-      rgba(250, 222, 156),
-      new Size(width - 96 * scale, 38 * scale),
-    );
-    title.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(title, scale, true);
+    // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
 
     const statusText = state.loading ? '正在读取服务端公告...' : state.error ? '服务端公告暂不可用，已显示本地说明' : state.loaded ? '服务端只读公告' : '等待公告数据';
     const status = this.host.addChildLabel(
@@ -105,8 +96,7 @@ export class LobbyNoticePanelRenderer {
       'LobbyNoticeStatus',
       statusText,
       0,
-      height / 2 - 78 * scale,
-      17 * scale,
+      height / 2 - 78 * scale, 19 * scale,
       rgba(198, 164, 91),
       new Size(width - 104 * scale, 28 * scale),
     );
@@ -150,7 +140,7 @@ export class LobbyNoticePanelRenderer {
     graphics.fill();
     graphics.strokeColor = rgba(148, 110, 56, 118);
     graphics.stroke();
-    const label = this.host.addChildLabel(box, 'LobbyNoticeEmptyText', text, 0, 0, 19 * scale, rgba(213, 193, 151), new Size(width - 128 * scale, 48 * scale));
+    const label = this.host.addChildLabel(box, 'LobbyNoticeEmptyText', text, 0, 0, 20 * scale, rgba(213, 193, 151), new Size(width - 128 * scale, 48 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
   }
@@ -168,7 +158,7 @@ export class LobbyNoticePanelRenderer {
     badgeGraphics.fill();
     badgeGraphics.strokeColor = rgba(196, 139, 67, 160);
     badgeGraphics.stroke();
-    const type = this.host.addChildLabel(badge, 'LobbyNoticeType', this.compactType(notice.noticeType), 0, 0, 14 * scale, rgba(246, 211, 139), new Size(badgeWidth - 8 * scale, 24 * scale));
+    const type = this.host.addChildLabel(badge, 'LobbyNoticeType', this.compactType(notice.noticeType), 0, 0, 16 * scale, rgba(246, 211, 139), new Size(badgeWidth - 8 * scale, 24 * scale));
     type.overflow = Label.Overflow.SHRINK;
 
     const title = this.host.addChildLabel(
@@ -190,8 +180,7 @@ export class LobbyNoticePanelRenderer {
       'LobbyNoticeRowContent',
       notice.content,
       -width / 2 + 20 * scale,
-      -12 * scale,
-      16 * scale,
+      -12 * scale, 18 * scale,
       rgba(205, 190, 153),
       new Size(width - 38 * scale, Math.max(34 * scale, height - 44 * scale)),
       HorizontalTextAlignment.LEFT,
@@ -200,7 +189,7 @@ export class LobbyNoticePanelRenderer {
     content.overflow = Label.Overflow.SHRINK;
 
     const timeText = notice.publishTime ? `发布 ${notice.publishTime.slice(0, 16).replace('T', ' ')}` : '本地只读展示';
-    const time = this.host.addChildLabel(row, 'LobbyNoticePublishTime', timeText, width / 2 - 114 * scale, -height / 2 + 17 * scale, 14 * scale, rgba(161, 139, 98), new Size(210 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
+    const time = this.host.addChildLabel(row, 'LobbyNoticePublishTime', timeText, width / 2 - 114 * scale, -height / 2 + 17 * scale, 16 * scale, rgba(161, 139, 98), new Size(210 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
     time.overflow = Label.Overflow.SHRINK;
   }
 
@@ -210,8 +199,7 @@ export class LobbyNoticePanelRenderer {
       'LobbyNoticeBoundaryNote',
       '当前面板只读取公告信息，不进入玩法，不改变玩家资源。',
       0,
-      -height / 2 + 62 * scale,
-      15 * scale,
+      -height / 2 + 62 * scale, 17 * scale,
       rgba(167, 146, 105),
       new Size(width - 110 * scale, 24 * scale),
     );
@@ -231,7 +219,7 @@ export class LobbyNoticePanelRenderer {
     graphics.stroke();
     button.addComponent(Button);
     this.host.applyImageButtonFeedback(button, 1.025, 0.97);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18 * scale, rgba(242, 207, 122), new Size(width, height));
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 20 * scale, rgba(242, 207, 122), new Size(width, height));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
     return button;

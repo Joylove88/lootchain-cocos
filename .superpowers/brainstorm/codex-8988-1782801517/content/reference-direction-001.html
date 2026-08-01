@@ -1,0 +1,226 @@
+<style>
+  .reference-note {
+    border: 1px solid rgba(214, 184, 111, 0.32);
+    background: rgba(34, 26, 40, 0.62);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 14px 0 22px;
+  }
+
+  .reference-note strong {
+    color: #f1d48a;
+  }
+
+  .direction-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .direction-card {
+    position: relative;
+    min-height: 230px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
+    overflow: hidden;
+    background:
+      linear-gradient(145deg, rgba(243, 203, 108, 0.12), transparent 32%),
+      linear-gradient(180deg, rgba(30, 22, 44, 0.95), rgba(14, 15, 24, 0.96));
+  }
+
+  .direction-card[data-choice="battle"] {
+    background:
+      linear-gradient(145deg, rgba(214, 49, 62, 0.16), transparent 34%),
+      linear-gradient(180deg, rgba(28, 24, 37, 0.96), rgba(12, 18, 24, 0.98));
+  }
+
+  .direction-card[data-choice="summon"] {
+    background:
+      linear-gradient(145deg, rgba(113, 168, 255, 0.15), transparent 34%),
+      linear-gradient(180deg, rgba(23, 24, 45, 0.96), rgba(12, 15, 26, 0.98));
+  }
+
+  .direction-card[data-choice="system"] {
+    background:
+      linear-gradient(145deg, rgba(88, 203, 162, 0.13), transparent 34%),
+      linear-gradient(180deg, rgba(23, 30, 36, 0.96), rgba(12, 16, 22, 0.98));
+  }
+
+  .direction-body {
+    padding: 18px;
+  }
+
+  .direction-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .rune {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #251a0d;
+    background: linear-gradient(180deg, #f3d27c, #b98934);
+    font-weight: 800;
+  }
+
+  .direction-title h3 {
+    margin: 0;
+  }
+
+  .mini-screen {
+    height: 80px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.045);
+    margin: 10px 0 14px;
+    padding: 10px;
+  }
+
+  .mini-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    height: 100%;
+  }
+
+  .mini-pillar {
+    flex: 0 0 26%;
+    height: 100%;
+    border-radius: 6px;
+    background: rgba(241, 212, 138, 0.18);
+  }
+
+  .mini-stage {
+    flex: 1;
+    height: 58%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(71, 135, 235, 0.7), rgba(231, 72, 66, 0.72));
+  }
+
+  .mini-card {
+    width: 22%;
+    height: 100%;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .mini-lines {
+    flex: 1;
+    display: grid;
+    gap: 7px;
+  }
+
+  .mini-line {
+    height: 9px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .direction-card p {
+    color: rgba(255, 255, 255, 0.72);
+    line-height: 1.5;
+  }
+
+  @media (max-width: 820px) {
+    .direction-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<h2>先确定《不朽箴言》参照落点</h2>
+<p class="subtitle">我们只借鉴产品结构、视觉语言和交互节奏，不复制资产、文案、专名或具体 UI 构图。</p>
+
+<div class="reference-note">
+  <strong>当前边界：</strong>继续 Cocos-only；不新增后端协议；不新增经济写入口；不改真实结算、抽卡、奖励写入逻辑。先做设计确认，再进入实施计划。
+</div>
+
+<div class="direction-grid">
+  <div class="card direction-card" data-choice="lobby" onclick="toggleSelect(this)">
+    <div class="direction-body">
+      <div class="direction-title">
+        <div class="rune">A</div>
+        <h3>大厅首屏包装</h3>
+      </div>
+      <div class="mini-screen">
+        <div class="mini-row">
+          <div class="mini-pillar"></div>
+          <div class="mini-lines">
+            <div class="mini-line"></div>
+            <div class="mini-line" style="width:72%"></div>
+            <div class="mini-line" style="width:46%"></div>
+          </div>
+        </div>
+      </div>
+      <p>优先把 LootChain 大厅从功能面板感，调整成“神秘学主城/占卜大厅”的第一视觉：深色基底、金色信息层级、模块入口有仪式感。</p>
+    </div>
+  </div>
+
+  <div class="card direction-card" data-choice="battle" onclick="toggleSelect(this)">
+    <div class="direction-body">
+      <div class="direction-title">
+        <div class="rune">B</div>
+        <h3>战斗表现优先</h3>
+      </div>
+      <div class="mini-screen">
+        <div class="mini-row">
+          <div class="mini-card" style="height:62%"></div>
+          <div class="mini-stage"></div>
+          <div class="mini-card" style="height:72%"></div>
+        </div>
+      </div>
+      <p>优先处理当前最影响观感的战斗：双方开场跑到对方面前，贴身攻击、技能卡释放、受击反馈、胜利弹框统一成连续镜头。</p>
+    </div>
+  </div>
+
+  <div class="card direction-card" data-choice="summon" onclick="toggleSelect(this)">
+    <div class="direction-body">
+      <div class="direction-title">
+        <div class="rune">C</div>
+        <h3>英雄与召唤包装</h3>
+      </div>
+      <div class="mini-screen">
+        <div class="mini-row">
+          <div class="mini-card"></div>
+          <div class="mini-card" style="height:88%"></div>
+          <div class="mini-card"></div>
+          <div class="mini-lines">
+            <div class="mini-line"></div>
+            <div class="mini-line" style="width:64%"></div>
+          </div>
+        </div>
+      </div>
+      <p>保留现有真实抽卡接口，只改表现层：英雄卡面、召唤法阵、星座/塔罗感反馈、结果页稀有度层级。</p>
+    </div>
+  </div>
+
+  <div class="card direction-card" data-choice="system" onclick="toggleSelect(this)">
+    <div class="direction-body">
+      <div class="direction-title">
+        <div class="rune">D</div>
+        <h3>全局产品框架</h3>
+      </div>
+      <div class="mini-screen">
+        <div class="mini-row">
+          <div class="mini-pillar" style="flex-basis:18%"></div>
+          <div class="mini-lines">
+            <div class="mini-line"></div>
+            <div class="mini-line"></div>
+            <div class="mini-line" style="width:80%"></div>
+          </div>
+          <div class="mini-pillar" style="flex-basis:18%"></div>
+        </div>
+      </div>
+      <p>先搭“像完整放置卡牌 RPG”的信息架构：导航、主线推进、红点、活动/公告、英雄养成入口和战斗入口的整体节奏。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <p class="subtitle">请先选一个主方向。若按当前痛点，我建议先选 B：战斗表现优先；再把大厅和召唤包装接上同一套神秘学视觉语言。</p>
+</div>

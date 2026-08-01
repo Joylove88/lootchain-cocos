@@ -1,0 +1,134 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "ee5c6372-64ee-4cdf-8f55-28c8cc6b92fe",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "ee5c6372-64ee-4cdf-8f55-28c8cc6b92fe@f9941",
+      "displayName": "item_sell_button",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": 0,
+        "offsetY": 0,
+        "trimX": 0,
+        "trimY": 0,
+        "width": 320,
+        "height": 97,
+        "rawWidth": 320,
+        "rawHeight": 97,
+        "borderTop": 10,
+        "borderBottom": 10,
+        "borderLeft": 90,
+        "borderRight": 20,
+        "packable": false,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "ee5c6372-64ee-4cdf-8f55-28c8cc6b92fe@6c48a",
+        "atlasUuid": "",
+        "trimType": "none",
+        "vertices": {
+          "rawPosition": [
+            -160,
+            -48.5,
+            0,
+            160,
+            -48.5,
+            0,
+            -160,
+            48.5,
+            0,
+            160,
+            48.5,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            0,
+            97,
+            320,
+            97,
+            0,
+            0,
+            320,
+            0
+          ],
+          "nuv": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "minPos": [
+            -160,
+            -48.5,
+            0
+          ],
+          "maxPos": [
+            160,
+            48.5,
+            0
+          ]
+        }
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "ee5c6372-64ee-4cdf-8f55-28c8cc6b92fe@6c48a",
+      "displayName": "item_sell_button",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "ee5c6372-64ee-4cdf-8f55-28c8cc6b92fe",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": true,
+    "hasAlpha": true,
+    "redirect": "ee5c6372-64ee-4cdf-8f55-28c8cc6b92fe@6c48a"
+  }
+}

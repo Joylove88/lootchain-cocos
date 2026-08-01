@@ -1,4 +1,5 @@
 import type { BagApi } from '../../api/BagApi';
+import type { EquipmentApi, EquipmentItemVO } from '../../api/EquipmentApi';
 import type { HeroApi } from '../../api/HeroApi';
 import type { BagItemEntryVO, ItemTypeBagGroupVO, LobbyBagPanelState } from '../../types/BagTypes';
 import type { UserHeroFragmentVO } from '../../types/HeroTypes';
@@ -18,6 +19,7 @@ export class LobbyBagLoader {
   constructor(
     private readonly bagApi: BagApi,
     private readonly heroApi: HeroApi,
+    private readonly equipmentApi: EquipmentApi,
     private readonly host: LobbyBagLoaderHost,
   ) {}
 
@@ -48,6 +50,12 @@ export class LobbyBagLoader {
     return this.bagState.snapshot();
   }
 
+  clearSelection(): void {
+    if (this.bagState.clearSelection()) {
+      this.refreshIfActive();
+    }
+  }
+
   selectItem(itemCode: string): boolean {
     const changed = this.bagState.selectItem(itemCode);
     if (changed) {
@@ -67,17 +75,22 @@ export class LobbyBagLoader {
     this.bagState.startLoading();
     this.refreshIfActive();
     try {
-      const [bag, fragments] = await Promise.all([
+      const [bag, fragments, equipments] = await Promise.all([
         this.bagApi.myBag(),
         this.heroApi.fragments().catch((error) => {
           console.warn('[LootChain] hero fragments load failed while composing bag:', error);
           return [] as UserHeroFragmentVO[];
         }),
+        // 装备存 user_equipment 独立表(非 user_bag),背包页把它合成为 EQUIPMENT 分组展示(只读;穿戴入口在英雄详情)。
+        this.equipmentApi.list().catch((error) => {
+          console.warn('[LootChain] equipment load failed while composing bag:', error);
+          return [] as EquipmentItemVO[];
+        }),
       ]);
       if (!this.isCurrentLoad(ticket)) {
         return;
       }
-      this.bagState.applyLoaded(mergeBagGroupsWithFragments(bag.groups ?? [], fragments));
+      this.bagState.applyLoaded(mergeBagGroupsWithEquipments(mergeBagGroupsWithFragments(bag.groups ?? [], fragments), equipments));
       const selectedItemCode = this.bagState.snapshot().selectedItemCode;
       if (selectedItemCode) {
         void this.loadSource(selectedItemCode, true);
@@ -110,6 +123,12 @@ export class LobbyBagLoader {
     const fragmentItem = this.findItem(safeCode);
     if (fragmentItem && isHeroFragmentItem(fragmentItem)) {
       this.bagState.applySourceLoaded(safeCode, heroFragmentSourceDesc(fragmentItem));
+      this.refreshIfActive();
+      return;
+    }
+    // 装备是合成分组(user_equipment),后端 item source 接口查不到,直接给本地途径文案。
+    if (fragmentItem && isEquipBagItem(fragmentItem)) {
+      this.bagState.applySourceLoaded(safeCode, equipSourceDesc(fragmentItem));
       this.refreshIfActive();
       return;
     }
@@ -193,6 +212,93 @@ function toFragmentBagItem(fragment: UserHeroFragmentVO, index: number): BagItem
     sellGold: 0,
     useEffectType: '重复英雄转化碎片',
   };
+}
+
+// 装备合成为背包 EQUIPMENT 分组:同编码聚合计数,名称后缀"(已穿N)",品质映射到背包稀有度配色。
+function mergeBagGroupsWithEquipments(groups: ItemTypeBagGroupVO[], equipments: EquipmentItemVO[]): ItemTypeBagGroupVO[] {
+  const list = (equipments ?? []).filter((item) => item && item.equipCode);
+  if (list.length === 0) {
+    return groups ?? [];
+  }
+  const byCode = new Map<string, { sample: EquipmentItemVO; total: number; equipped: number }>();
+  list.forEach((item) => {
+    const entry = byCode.get(item.equipCode) ?? { sample: item, total: 0, equipped: 0 };
+    entry.total += 1;
+    if (item.heroId != null) {
+      entry.equipped += 1;
+    }
+    byCode.set(item.equipCode, entry);
+  });
+  const items: BagItemEntryVO[] = [...byCode.values()].map((entry, index) => toEquipBagItem(entry.sample, entry.total, entry.equipped, index));
+  return [
+    ...(groups ?? []),
+    {
+      itemType: 'EQUIPMENT',
+      itemTypeLabel: '装备',
+      items,
+    },
+  ];
+}
+
+function toEquipBagItem(sample: EquipmentItemVO, total: number, equipped: number, index: number): BagItemEntryVO {
+  const attrParts: string[] = [];
+  if (sample.attrHp > 0) {
+    attrParts.push(`生命+${sample.attrHp}`);
+  }
+  if (sample.attrAttack > 0) {
+    attrParts.push(`攻击+${sample.attrAttack}`);
+  }
+  if (sample.attrDefense > 0) {
+    attrParts.push(`防御+${sample.attrDefense}`);
+  }
+  if (sample.attrSpeed > 0) {
+    attrParts.push(`速度+${sample.attrSpeed}`);
+  }
+  if (sample.attrCrit > 0) {
+    attrParts.push(`暴击+${sample.attrCrit}`);
+  }
+  const effects = safeText(sample.specialEffectsJson ?? '');
+  if (effects.includes('combo')) {
+    attrParts.push('连击');
+  }
+  if (effects.includes('execute')) {
+    attrParts.push('斩杀');
+  }
+  return {
+    bagId: -200000 - index,
+    itemCode: `EQUIP:${sample.equipCode}`,
+    itemName: `${(sample.tier ?? 1) > 1 ? `${sample.tier}阶·` : ''}${safeText(sample.equipName)}${equipped > 0 ? `（已穿${equipped}）` : ''}`,
+    itemType: 'EQUIPMENT',
+    rarity: equipQualityToBagRarity(sample.quality),
+    itemCount: total,
+    expireTime: null,
+    maxStack: 999999,
+    sellGold: 0,
+    useEffectType: attrParts.join(' · ') || null,
+  };
+}
+
+// 装备品质 → 背包稀有度配色近似(蓝→R蓝框、紫→SR、金→SSR、红/神话→UR)。
+function equipQualityToBagRarity(quality: string): string {
+  switch (safeText(quality || '').toUpperCase()) {
+    case 'MYTHIC':
+    case 'RED':
+      return 'UR';
+    case 'GOLD':
+      return 'SSR';
+    case 'PURPLE':
+      return 'SR';
+    default:
+      return 'R';
+  }
+}
+
+function isEquipBagItem(item: BagItemEntryVO): boolean {
+  return (item.itemType || '').toUpperCase() === 'EQUIPMENT' && item.itemCode.startsWith('EQUIP:');
+}
+
+function equipSourceDesc(item: BagItemEntryVO): string {
+  return `${safeText(item.itemName)}为装备:请在「英雄详情 → 装备」中穿戴/卸下;来源:主线首通掉落与召唤。`;
 }
 
 function isHeroFragmentItem(item: BagItemEntryVO): boolean {

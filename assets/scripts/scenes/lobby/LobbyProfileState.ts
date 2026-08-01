@@ -93,6 +93,18 @@ export class LobbyProfileState {
       avatar: null,
       playerLevel: 1,
       exp: 0,
+      levelProgress: {
+        currentLevel: 1,
+        currentExp: 0,
+        currentLevelNeedExp: 0,
+        nextLevel: null,
+        nextLevelNeedExp: null,
+        expIntoLevel: 0,
+        expToNextLevel: 0,
+        progressPercent: 0,
+        maxHeroLevel: null,
+        nextUnlockDesc: null,
+      },
       stamina: 0,
       maxStamina: 120,
       gold: 0,
@@ -111,6 +123,8 @@ export class LobbyProfileState {
     const userId = positiveInteger(profile.userId, this.currentUserId);
     const protagonistName = safeText(profile.protagonistName || '');
     const displayName = safeText(profile.displayName || protagonistName || profile.nickname || profile.username || `Player${userId}`);
+    const playerLevel = positiveInteger(profile.playerLevel, 1);
+    const exp = positiveInteger(profile.exp, 0);
     return {
       userId,
       displayName,
@@ -118,8 +132,9 @@ export class LobbyProfileState {
       username: profile.username ?? null,
       nickname: profile.nickname ?? null,
       avatar: profile.avatar ?? null,
-      playerLevel: positiveInteger(profile.playerLevel, 1),
-      exp: positiveInteger(profile.exp, 0),
+      playerLevel,
+      exp,
+      levelProgress: normalizeLevelProgress(profile.levelProgress, playerLevel, exp),
       stamina: positiveInteger(profile.stamina, 0),
       maxStamina: positiveInteger(profile.maxStamina, 120),
       gold: normalizeCurrency(profile.gold),
@@ -138,4 +153,37 @@ export class LobbyProfileState {
 function normalizeCurrency(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function normalizeLevelProgress(
+  progress: PlayerLobbyProfileVO['levelProgress'],
+  playerLevel: number,
+  exp: number,
+): NonNullable<PlayerLobbyProfileVO['levelProgress']> {
+  if (!progress) {
+    return {
+      currentLevel: playerLevel,
+      currentExp: exp,
+      currentLevelNeedExp: 0,
+      nextLevel: null,
+      nextLevelNeedExp: null,
+      expIntoLevel: exp,
+      expToNextLevel: 0,
+      progressPercent: 0,
+      maxHeroLevel: null,
+      nextUnlockDesc: null,
+    };
+  }
+  return {
+    currentLevel: positiveInteger(progress.currentLevel, playerLevel),
+    currentExp: positiveInteger(progress.currentExp, exp),
+    currentLevelNeedExp: positiveInteger(progress.currentLevelNeedExp, 0),
+    nextLevel: progress.nextLevel == null ? null : positiveInteger(progress.nextLevel, 1),
+    nextLevelNeedExp: progress.nextLevelNeedExp == null ? null : positiveInteger(progress.nextLevelNeedExp, 0),
+    expIntoLevel: positiveInteger(progress.expIntoLevel, 0),
+    expToNextLevel: positiveInteger(progress.expToNextLevel, 0),
+    progressPercent: Math.max(0, Math.min(100, positiveInteger(progress.progressPercent, 0))),
+    maxHeroLevel: progress.maxHeroLevel == null ? null : positiveInteger(progress.maxHeroLevel, 1),
+    nextUnlockDesc: progress.nextUnlockDesc ?? null,
+  };
 }

@@ -6,6 +6,7 @@ import {
   Label,
   Node,
   Size,
+  Tween,
   UIOpacity,
   UITransform,
   Vec3,
@@ -20,8 +21,10 @@ import {
 import {
   lobbyHudEdgeInset as resolveLobbyHudEdgeInset,
   lobbyHudScale as resolveLobbyHudScale,
+  resolveLobbyHudModeSize,
   resolveLobbyPlayerInfoLayout as resolveHudPlayerInfoLayout,
   type LobbyHudEdgeAxis,
+  type LobbyHudModeSize,
 } from './LobbyHudLayout';
 import {
   clamp,
@@ -32,7 +35,9 @@ import {
   type LobbyPlayerInfoLayout,
   type UiLayout,
 } from './LobbyHudTypes';
+import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
+import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
 export type { LobbyHudHost } from './LobbyHudTypes';
@@ -60,9 +65,12 @@ interface LobbyNextGoalView {
  */
 export class LobbyHudRenderer {
   private readonly topHudRenderer: LobbyTopHudRenderer;
+  private readonly idleStageRenderer: LobbyIdleStageRenderer;
+  private idleStageRoot: Node | null = null;
 
   constructor(private readonly host: LobbyHudHost) {
     this.topHudRenderer = new LobbyTopHudRenderer(host);
+    this.idleStageRenderer = new LobbyIdleStageRenderer(host);
   }
 
   render(layout: UiLayout): void {
@@ -74,7 +82,8 @@ export class LobbyHudRenderer {
     }
     this.topHudRenderer.render(layout);
     this.renderLobbyActivityRail(layout);
-    this.renderLobbySceneHotspots(layout);
+    // 大厅重心改为挂机战斗演出:功能入口已收进底部导航,场景热点不再渲染(方法保留)。
+    this.renderIdleStage(layout);
     this.renderLobbyGoalTracker(layout);
     if (SHOW_LOBBY_RIGHT_CHALLENGE_RAIL) {
       this.renderLobbyChallengeRail(layout);
@@ -87,6 +96,71 @@ export class LobbyHudRenderer {
 
   private get node(): Node {
     return this.host.node;
+  }
+
+  private renderIdleStage(layout: UiLayout): void {
+    // 大厅数据(资料/阵容/关卡)分批到位会触发多次 HUD render;挂机演出带随机时序动画,旧舞台必须先拆,否则叠层。
+    if (this.idleStageRoot && this.idleStageRoot.isValid) {
+      this.stopIdleStageTweens(this.idleStageRoot);
+      this.idleStageRoot.destroy();
+    }
+    this.idleStageRoot = null;
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const root = this.createSizedUiNode('LobbyIdleStageRoot', centerX, centerY, layout.stageWidth, layout.stageHeight);
+    this.idleStageRoot = root;
+    const towerStageCode = this.resolveIdleTowerStageCode();
+    this.idleStageRenderer.render(root, layout, towerStageCode, this.resolveIdleTowerFloor(towerStageCode));
+  }
+
+  // 真实爬塔层数 = 该关卡在主线全序列里的累计序号(每关=1层),而不是"每章16层"的估算。
+  // 各章关卡数不固定(如第一章9关、第二章…),按 adventure 章节里的关卡顺序数到该关即真实层数。
+  private resolveIdleTowerFloor(stageCode: string): number {
+    const adventure = this.host.currentLobbyAdventureState().adventure;
+    if (adventure && stageCode) {
+      const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
+      const index = stages.findIndex((stage) => stage.stageCode === stageCode);
+      if (index >= 0) {
+        return index + 1;
+      }
+    }
+    return 0;
+  }
+
+  // 挂机层显示"真实已爬到的层数"=已通关最高关(maxCompletedStageCode),不是"下一关"的推荐关。
+  // 未通关(新号)则退回推荐关(=第一关,显示第1层)/最后解锁关兜底。
+  private resolveIdleTowerStageCode(): string {
+    const adventure = this.host.currentLobbyAdventureState().adventure;
+    if (adventure) {
+      const maxCompleted = adventure.maxCompletedStageCode
+        ? this.normalizeMainStageCode(adventure.maxCompletedStageCode)
+        : '';
+      if (maxCompleted) {
+        return maxCompleted;
+      }
+      const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
+      const recommendedCode = this.normalizeMainStageCode(adventure.recommendedStageCode);
+      const stage = (recommendedCode ? stages.find((item) => item.stageCode === recommendedCode) : null)
+        ?? stages.find((item) => item.recommended)
+        ?? [...stages].reverse().find((item) => item.unlocked)
+        ?? null;
+      if (stage) {
+        return stage.stageCode;
+      }
+    }
+    return this.host.currentLobbySelectedStageCode() || 'MAIN_1_1';
+  }
+
+  // destroy 不会连带停掉 tween,挂机演出的循环 tween 必须逐节点手动止住,避免残留动作驱动已失效节点。
+  private stopIdleStageTweens(node: Node): void {
+    Tween.stopAllByTarget(node);
+    const opacity = node.getComponent(UIOpacity);
+    if (opacity) {
+      Tween.stopAllByTarget(opacity);
+    }
+    for (const child of node.children) {
+      this.stopIdleStageTweens(child);
+    }
   }
 
   private createUiNode(name: string): Node {
@@ -135,6 +209,10 @@ export class LobbyHudRenderer {
     return layout.viewportWidth < 640 || layout.viewportHeight < 420;
   }
 
+  private hudMode(layout: UiLayout): LobbyHudModeSize {
+    return resolveLobbyHudModeSize(layout);
+  }
+
   private viewportUnit(layout: UiLayout): number {
     // 微型 HUD 需要补偿 Cocos 设计舞台被浏览器小窗口缩放后的物理像素差异，但必须封顶，避免 390 宽 Preview 被放大到接近 5 倍后压住画面。
     const widthUnit = layout.stageWidth / Math.max(1, layout.viewportWidth);
@@ -150,6 +228,10 @@ export class LobbyHudRenderer {
     this.host.openLobbyNoticePanel();
   }
 
+  private openLobbyDailyDungeonPanel(): void {
+    this.host.openLobbyDailyDungeonPanel();
+  }
+
   private openLobbyCodexPanel(): void {
     this.host.openLobbyCodexPanel();
   }
@@ -162,8 +244,18 @@ export class LobbyHudRenderer {
     this.host.openLobbyBagPanel();
   }
 
+  private openLobbyForgePanel(): void {
+    this.host.openLobbyForgePanel();
+  }
+
   private openLobbyAdventurePanel(): void {
     this.host.openLobbyAdventurePanel();
+  }
+
+  private openLobbyBattleMapFromDungeonEntry(source: string): void {
+    // 副本/挑战入口只进入主线关卡地图；真正 battle start 仍必须经过关卡弹框和战力校验。
+    this.openLobbyAdventurePanel();
+    this.setStatus(`${source}：已进入关卡地图；战斗胜利后自动提交结算并发放奖励。`);
   }
 
   private openLobbyGachaScene(): void {
@@ -291,8 +383,10 @@ export class LobbyHudRenderer {
   private renderMicroActionBar(layout: UiLayout, unit: number): void {
     const actions = [
       { label: '公告', detail: '', notice: true },
-      { label: '冒险', detail: '', adventure: true },
+      { label: '爬塔', detail: '', adventure: true },
       { label: '英雄', detail: '', heroRoster: true },
+      { label: '背包', detail: '', bag: true },
+      { label: '召唤', detail: '', gacha: true },
       { label: '图鉴', detail: '', codex: true },
     ];
     const margin = 8 * unit;
@@ -318,7 +412,9 @@ export class LobbyHudRenderer {
         unit,
         Boolean(action.codex),
         Boolean(action.heroRoster),
+        Boolean(action.bag),
         Boolean(action.adventure),
+        Boolean(action.gacha),
       );
     }
   }
@@ -369,13 +465,9 @@ export class LobbyHudRenderer {
     const hudInsetX = this.lobbyHudEdgeInset(layout, 'x', scale);
     const width = Math.min(410 * scale, Math.max(330 * scale, layout.stageWidth * 0.24));
     const height = 126 * scale;
-    const leftRailReserve = Math.min(206 * scale, layout.stageWidth * 0.18) + 18 * scale;
-    const rightRailReserve = SHOW_LOBBY_RIGHT_CHALLENGE_RAIL ? Math.min(184 * scale, layout.stageWidth * 0.16) + 18 * scale : 0;
-    const minX = layout.stageLeft + hudInsetX + leftRailReserve + width / 2;
-    const maxX = layout.stageRight - hudInsetX - rightRailReserve - width / 2;
-    const preferredX = layout.stageLeft + layout.stageWidth * 0.34;
-    const x = minX <= maxX ? clamp(preferredX, minX, maxX) : (layout.stageLeft + layout.stageRight) / 2;
-    const y = layout.stageBottom + 96 * scale + height / 2 + 12 * scale;
+    // 任务/目标卡挂右侧中间,给大厅挂机演出让出中下部舞台。
+    const x = layout.stageRight - hudInsetX - width / 2 - 6 * scale;
+    const y = (layout.stageTop + layout.stageBottom) / 2 + 24 * scale;
     const group = this.createSizedUiNode('LobbyGoalTracker', x, y, width, height);
     const graphics = group.addComponent(Graphics);
     const goal = this.resolveLobbyNextGoalView();
@@ -393,7 +485,8 @@ export class LobbyHudRenderer {
     const scale = this.lobbyHudScale(layout);
     const hudInsetX = this.lobbyHudEdgeInset(layout, 'x', scale);
     const hudInsetY = this.lobbyHudEdgeInset(layout, 'y', scale);
-    const bottomHudVisible = layout.stageWidth >= 900 && layout.stageHeight >= 500;
+    const mode = this.hudMode(layout);
+    const bottomHudVisible = mode.width >= 900 && mode.height >= 500;
     const width = bottomHudVisible
       ? Math.min(330 * scale, Math.max(270 * scale, layout.stageWidth * 0.34))
       : Math.min(300 * scale, Math.max(230 * scale, layout.stageWidth * 0.32));
@@ -401,7 +494,7 @@ export class LobbyHudRenderer {
     let x: number;
     let y: number;
     if (bottomHudVisible) {
-      const leftRailReserve = layout.stageWidth >= 900 && layout.stageHeight >= 520 ? Math.min(206 * scale, layout.stageWidth * 0.18) + 18 * scale : 0;
+      const leftRailReserve = mode.width >= 900 && mode.height >= 520 ? Math.min(206 * scale, layout.stageWidth * 0.18) + 18 * scale : 0;
       const minX = layout.stageLeft + hudInsetX + leftRailReserve + width / 2;
       const maxX = layout.stageRight - hudInsetX - width / 2;
       x = minX <= maxX ? clamp(layout.stageLeft + layout.stageWidth * 0.34, minX, maxX) : (layout.stageLeft + layout.stageRight) / 2;
@@ -426,10 +519,10 @@ export class LobbyHudRenderer {
     const stage = this.addChildLabel(parent, 'LobbyGoalTrackerStage', goal.stageLine, left + 24 * scale, top - 53 * scale, 20 * scale, rgba(248, 226, 169), new Size(width - 48 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
     stage.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(stage, scale, true);
-    const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + 24 * scale, top - 79 * scale, 14 * scale, rgba(205, 187, 143), new Size(width - 48 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
+    const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + 24 * scale, top - 79 * scale, 16 * scale, rgba(205, 187, 143), new Size(width - 48 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     recent.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(recent, scale, false);
-    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + 24 * scale, -height / 2 + 16 * scale, 12 * scale, rgba(151, 126, 82), new Size(width - 170 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + 24 * scale, -height / 2 + 16 * scale, 14 * scale, rgba(151, 126, 82), new Size(width - 170 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
     boundary.overflow = Label.Overflow.SHRINK;
     this.addLobbyGoalActionButton(parent, goal, width / 2 - 62 * scale, -height / 2 + 21 * scale, 104 * scale, 32 * scale, scale);
   }
@@ -438,7 +531,7 @@ export class LobbyHudRenderer {
     const title = this.addChildLabel(parent, 'LobbyCompactGoalTitle', `下一步：${goal.actionLabel}`, -width / 2 + 16 * scale, height / 2 - 18 * scale, 14 * scale, rgba(246, 218, 150), new Size(width - 126 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(title, scale, true);
-    const stage = this.addChildLabel(parent, 'LobbyCompactGoalStage', goal.stageLine, -width / 2 + 16 * scale, -height / 2 + 17 * scale, 13 * scale, rgba(204, 186, 141), new Size(width - 126 * scale, 19 * scale), HorizontalTextAlignment.LEFT);
+    const stage = this.addChildLabel(parent, 'LobbyCompactGoalStage', goal.stageLine, -width / 2 + 16 * scale, -height / 2 + 17 * scale, 15 * scale, rgba(204, 186, 141), new Size(width - 126 * scale, 19 * scale), HorizontalTextAlignment.LEFT);
     stage.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(stage, scale, false);
     this.addLobbyGoalActionButton(parent, goal, width / 2 - 52 * scale, 0, 88 * scale, Math.min(32 * scale, height - 12 * scale), scale);
@@ -465,7 +558,7 @@ export class LobbyHudRenderer {
     graphics.strokeColor = goal.disabled ? rgba(104, 86, 58, 120) : rgba(222, 174, 83, 202);
     graphics.lineWidth = Math.max(1, 1 * scale);
     graphics.stroke();
-    const label = this.addChildLabel(node, 'LobbyGoalTrackerButtonLabel', goal.actionLabel, 0, 0, 14 * scale, goal.disabled ? rgba(153, 137, 104) : rgba(248, 219, 138), new Size(width - 12 * scale, height));
+    const label = this.addChildLabel(node, 'LobbyGoalTrackerButtonLabel', goal.actionLabel, 0, 0, 16 * scale, goal.disabled ? rgba(153, 137, 104) : rgba(248, 219, 138), new Size(width - 12 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(label, scale, true);
   }
@@ -491,10 +584,10 @@ export class LobbyHudRenderer {
     if (adventureState.error && !adventure) {
       return {
         title: '主线目标异常',
-        stageLine: '冒险状态暂时不可用',
+        stageLine: '爬塔状态暂时不可用',
         recentLine: battleState.recentError ? '最近记录也读取异常' : this.formatRecentBattleLine(recent, false, ''),
-        boundaryLine: '可打开冒险面板重试，不发起战斗。',
-        actionLabel: '进入冒险',
+        boundaryLine: '可打开爬塔面板重试，不发起战斗。',
+        actionLabel: '进入爬塔',
         disabled: false,
         tone: 'error',
       };
@@ -504,8 +597,8 @@ export class LobbyHudRenderer {
         title: '开始主线预演',
         stageLine: '等待服务器推荐主线目标',
         recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
-        boundaryLine: '创建主角后从冒险面板选择关卡。',
-        actionLabel: '进入冒险',
+        boundaryLine: '准备英雄队伍后从爬塔面板选择关卡。',
+        actionLabel: '进入爬塔',
         disabled: false,
         tone: 'empty',
       };
@@ -525,8 +618,8 @@ export class LobbyHudRenderer {
       title: '下一步目标',
       stageLine: `${stage.stageName} · ${stage.stageCode}`,
       recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
-      boundaryLine: '只打开主线冒险，不发奖励、不扣体力、不推进主线。',
-      actionLabel: recent ? '继续冒险' : '进入冒险',
+      boundaryLine: '打开深渊爬塔选关；战斗胜利后自动结算发奖并推进主线。',
+      actionLabel: recent ? '继续爬塔' : '进入爬塔',
       disabled: false,
       tone: recent ? 'recent' : 'ready',
     };
@@ -557,12 +650,16 @@ export class LobbyHudRenderer {
       return '最近记录同步中';
     }
     if (error && !recent) {
-      return '最近记录读取异常，可从冒险面板重试';
+      return '最近记录读取异常，可从爬塔面板重试';
     }
     if (!recent) {
-      return '尚无战斗记录，先完成一次无奖励预演';
+      return '尚无战斗记录，先完成一次主线挑战';
     }
-    const readonlyTag = !recent.rewardGranted && recent.readonlyEconomy && !recent.economyApplied ? '无奖励记录' : '只读记录待核验';
+    const readonlyTag = recent.rewardGranted && recent.economyApplied
+      ? '首通奖励已结算'
+      : !recent.rewardGranted && recent.readonlyEconomy && !recent.economyApplied
+        ? '无奖励记录'
+        : '记录待核验';
     return `最近 ${recent.stageCode} · ${recent.result} · ${readonlyTag}`;
   }
 
@@ -576,7 +673,7 @@ export class LobbyHudRenderer {
       return;
     }
     this.openLobbyAdventurePanel();
-    this.setStatus(`${goal.stageLine}：已打开主线冒险，当前仍是无奖励预演。`);
+    this.setStatus(`${goal.stageLine}：已打开深渊爬塔；战斗胜利后自动提交结算。`);
   }
 
   private drawLobbyGoalTrackerPanel(graphics: Graphics, width: number, height: number, scale: number, tone: LobbyNextGoalTone): void {
@@ -682,7 +779,8 @@ export class LobbyHudRenderer {
   }
 
   private renderLobbyActivityRail(layout: UiLayout): void {
-    if (layout.stageWidth < 900 || layout.stageHeight < 520) {
+    const mode = this.hudMode(layout);
+    if (mode.width < 900 || mode.height < 520) {
       return;
     }
     const playerLayout = this.resolveLobbyPlayerInfoLayout(layout);
@@ -712,7 +810,8 @@ export class LobbyHudRenderer {
   }
 
   private renderLobbySceneHotspots(layout: UiLayout): void {
-    if (layout.stageWidth < 900 || layout.stageHeight < 560) {
+    const mode = this.hudMode(layout);
+    if (mode.width < 900 || mode.height < 560) {
       return;
     }
     const scale = this.lobbyHudScale(layout);
@@ -765,7 +864,8 @@ export class LobbyHudRenderer {
   }
 
   private renderLobbyBottomHud(layout: UiLayout): void {
-    if (layout.stageWidth < 900 || layout.stageHeight < 500) {
+    const mode = this.hudMode(layout);
+    if (mode.width < 900 || mode.height < 500) {
       return;
     }
     const scale = this.lobbyHudScale(layout);
@@ -777,6 +877,8 @@ export class LobbyHudRenderer {
     group.addComponent(UITransform).setContentSize(new Size(layout.stageWidth, bandHeight));
     const graphics = group.addComponent(Graphics);
     this.drawLobbyBottomPlatform(graphics, layout.stageWidth, bandHeight, scale);
+    // AI 导航底板(整图拉伸,盖在手绘平台上;缺图时平台兜底)。
+    this.host.addSprite('LobbyBottomHudBar', 'ui/lobby/ai/nav_bar_bg/spriteFrame', 0, 12 * scale, layout.stageWidth, bandHeight + 80 * scale, group);
 
     const compassSize = 86 * scale;
     this.addLobbyCompass(group, -layout.stageWidth / 2 + hudInsetX + compassSize / 2, 4 * scale, compassSize, scale);
@@ -885,7 +987,7 @@ export class LobbyHudRenderer {
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => {
       if (icon === 'event') {
-        this.openLobbyNoticePanel();
+        this.openLobbyDailyDungeonPanel();
         return;
       }
       if (icon === 'summon') {
@@ -921,7 +1023,7 @@ export class LobbyHudRenderer {
     const titleLabel = this.addChildLabel(node, `LobbyActivityTitle_${icon}`, title, -width / 2 + 66 * scale, 14 * scale, 22 * scale, rgba(243, 218, 164), new Size(width - 118 * scale, 27 * scale), HorizontalTextAlignment.LEFT);
     titleLabel.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(titleLabel, scale, true);
-    const subLabel = this.addChildLabel(node, `LobbyActivitySubline_${icon}`, subline, -width / 2 + 66 * scale, -16 * scale, 19 * scale, hot ? rgba(231, 181, 63) : rgba(199, 169, 108), new Size(width - 118 * scale, 25 * scale), HorizontalTextAlignment.LEFT);
+    const subLabel = this.addChildLabel(node, `LobbyActivitySubline_${icon}`, subline, -width / 2 + 66 * scale, -16 * scale, 20 * scale, hot ? rgba(231, 181, 63) : rgba(199, 169, 108), new Size(width - 118 * scale, 25 * scale), HorizontalTextAlignment.LEFT);
     subLabel.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(subLabel, scale, false);
     this.addLobbyStateBadge(node, 'LobbyActivityPreviewBadge', this.lobbyStateBadgeText(subline), width / 2 - 33 * scale, -12 * scale, 46 * scale, 20 * scale, scale);
@@ -1121,6 +1223,11 @@ export class LobbyHudRenderer {
       this.openLobbyGachaScene();
       return;
     }
+    if (label === '战役') {
+      this.openLobbyBattleMapFromDungeonEntry(label);
+      this.playLobbyClickEffect(parent, x, y, scale);
+      return;
+    }
     this.showUnopenedFeature(label, '场景玩法入口暂未开放；当前不会跳转到玩法页面，也不会调用玩法或经济接口。');
     this.playLobbyClickEffect(parent, x, y, scale);
   }
@@ -1164,7 +1271,7 @@ export class LobbyHudRenderer {
   private addLobbyChallengeCard(parent: Node, title: string, subline: string, tint: Color, hot: boolean, x: number, y: number, width: number, height: number, scale: number): void {
     const node = this.addChildPlainNode(parent, `LobbyChallengeCard_${title}`, x, y, width, height);
     node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.showUnopenedFeature(title, '挑战副本仍是本地占位；当前不会进入战斗、结算或发放资源。'), this);
+    node.on(Button.EventType.CLICK, () => this.openLobbyBattleMapFromDungeonEntry(title), this);
     this.applyImageButtonFeedback(node, 1.025, 0.975);
     const graphics = node.addComponent(Graphics);
     graphics.fillColor = rgba(0, 0, 0, 112);
@@ -1191,7 +1298,7 @@ export class LobbyHudRenderer {
     const titleLabel = this.addChildLabel(node, 'LobbyChallengeTitle', title, -width / 2 + 14 * scale, -height / 2 + 30 * scale, 22 * scale, rgba(247, 221, 162), new Size(width - 26 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
     titleLabel.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(titleLabel, scale, true);
-    const subLabel = this.addChildLabel(node, 'LobbyChallengeSubline', subline, -width / 2 + 14 * scale, -height / 2 + 10 * scale, 18 * scale, rgba(230, 179, 58), new Size(width - 26 * scale, 23 * scale), HorizontalTextAlignment.LEFT);
+    const subLabel = this.addChildLabel(node, 'LobbyChallengeSubline', subline, -width / 2 + 14 * scale, -height / 2 + 10 * scale, 20 * scale, rgba(230, 179, 58), new Size(width - 26 * scale, 23 * scale), HorizontalTextAlignment.LEFT);
     subLabel.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(subLabel, scale, false);
     this.addLobbyStateBadge(node, 'LobbyChallengePreviewBadge', this.lobbyStateBadgeText(subline), width / 2 - 40 * scale, height / 2 - 18 * scale, 52 * scale, 21 * scale, scale);
@@ -1250,7 +1357,7 @@ export class LobbyHudRenderer {
     graphics.strokeColor = rgba(162, 119, 58, 148);
     graphics.lineWidth = Math.max(1, 0.9 * scale);
     graphics.stroke();
-    const label = this.addChildLabel(node, `${name}Label`, text, 0, 0, 14 * scale, rgba(219, 184, 116), new Size(width - 8 * scale, height));
+    const label = this.addChildLabel(node, `${name}Label`, text, 0, 0, 16 * scale, rgba(219, 184, 116), new Size(width - 8 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(label, scale, false);
   }
@@ -1344,10 +1451,10 @@ export class LobbyHudRenderer {
     graphics.lineTo(width / 2 - 42 * scale, height / 2 - 9 * scale);
     graphics.stroke();
     this.addLobbyCompass(node, -width / 2 + 48 * scale, 0, 66 * scale, scale * 0.78);
-    const title = this.addChildLabel(node, 'LobbyAdventureTitle', '冒险', -width / 2 + 104 * scale, 14 * scale, 31 * scale, rgba(249, 220, 166), new Size(width - 130 * scale, 38 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.addChildLabel(node, 'LobbyAdventureTitle', '深渊爬塔', -width / 2 + 104 * scale, 14 * scale, 31 * scale, rgba(249, 220, 166), new Size(width - 130 * scale, 38 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(title, scale, true);
-    const chapter = this.addChildLabel(node, 'LobbyAdventureChapter', this.resolveAdventureCtaText(), -width / 2 + 104 * scale, -20 * scale, 19 * scale, rgba(223, 185, 126), new Size(width - 130 * scale, 27 * scale), HorizontalTextAlignment.LEFT);
+    const chapter = this.addChildLabel(node, 'LobbyAdventureChapter', this.resolveAdventureCtaText(), -width / 2 + 104 * scale, -20 * scale, 20 * scale, rgba(223, 185, 126), new Size(width - 130 * scale, 27 * scale), HorizontalTextAlignment.LEFT);
     chapter.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(chapter, scale, false);
   }
@@ -1369,12 +1476,12 @@ export class LobbyHudRenderer {
     const items = LOBBY_NAV_ITEMS;
     const slot = width / items.length;
     const graphics = node.addComponent(Graphics);
-    graphics.strokeColor = rgba(159, 119, 67, 44);
-    graphics.lineWidth = Math.max(1, 0.8 * scale);
+    graphics.strokeColor = rgba(172, 130, 74, 92);
+    graphics.lineWidth = Math.max(1, 0.9 * scale);
     for (let index = 1; index < items.length; index += 1) {
       const splitX = -width / 2 + slot * index;
-      graphics.moveTo(splitX, -34 * scale);
-      graphics.lineTo(splitX, 38 * scale);
+      graphics.moveTo(splitX, -28 * scale);
+      graphics.lineTo(splitX, 32 * scale);
     }
     graphics.stroke();
     for (let index = 0; index < items.length; index += 1) {
@@ -1384,7 +1491,8 @@ export class LobbyHudRenderer {
   }
 
   private renderCompactSceneEntrances(layout: UiLayout): void {
-    if (layout.stageWidth >= 900 && layout.stageHeight >= 560) {
+    const mode = this.hudMode(layout);
+    if (mode.width >= 900 && mode.height >= 560) {
       return;
     }
     if (layout.stageHeight < 340) {
@@ -1393,7 +1501,7 @@ export class LobbyHudRenderer {
     const scale = this.lobbyHudScale(layout);
     const hudInsetX = this.lobbyHudEdgeInset(layout, 'x', scale);
     const hudInsetY = this.lobbyHudEdgeInset(layout, 'y', scale);
-    const columns = layout.stageWidth >= 720 ? 4 : 2;
+    const columns = mode.width >= 720 ? 4 : 2;
     const rows = Math.ceil(LOBBY_SCENE_HOTSPOTS.length / columns);
     const panelWidth = Math.min(layout.stageWidth - hudInsetX * 2, columns * 110 * scale + 22 * scale);
     const itemWidth = panelWidth / columns;
@@ -1454,14 +1562,15 @@ export class LobbyHudRenderer {
     graphics.strokeColor = rgba(145, 109, 62, 142);
     graphics.lineWidth = Math.max(1, 0.9 * scale);
     graphics.stroke();
-    const text = this.addChildLabel(node, 'LobbyCompactSceneEntranceLabel', label, 0, 0, 16 * scale, rgba(226, 198, 137), new Size(width - 12 * scale, height));
+    const text = this.addChildLabel(node, 'LobbyCompactSceneEntranceLabel', label, 0, 0, 18 * scale, rgba(226, 198, 137), new Size(width - 12 * scale, height));
     text.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(text, scale, false);
   }
 
   private renderCompactActionEntrances(layout: UiLayout): void {
-    const sideRailsVisible = layout.stageWidth >= 1000 && layout.stageHeight >= 520;
-    const bottomHudVisible = layout.stageWidth >= 900 && layout.stageHeight >= 500;
+    const mode = this.hudMode(layout);
+    const sideRailsVisible = mode.width >= 1000 && mode.height >= 520;
+    const bottomHudVisible = mode.width >= 900 && mode.height >= 500;
     if (sideRailsVisible && bottomHudVisible) {
       return;
     }
@@ -1475,7 +1584,7 @@ export class LobbyHudRenderer {
     if (entries.length === 0) {
       return;
     }
-    const columns = layout.stageWidth >= 720 && entries.length > 2 ? 4 : 2;
+    const columns = mode.width >= 720 && entries.length > 2 ? 4 : 2;
     const rows = Math.ceil(entries.length / columns);
     const panelWidth = Math.min(layout.stageWidth - hudInsetX * 2, columns * 116 * scale + 20 * scale);
     const itemWidth = panelWidth / columns;
@@ -1523,12 +1632,12 @@ export class LobbyHudRenderer {
     // 小屏隐藏侧栏/底栏时，用本地快捷入口保留大厅模块的可达性。
     return [
       { label: '活动', detail: '活动公告只读展示；当前不进入玩法或改变玩家资源。', notice: true },
-      { label: '召唤', detail: '召唤祭坛只做视觉预览；当前不会扣资源、发奖或更新保底。', gacha: true },
-      { label: '挑战', detail: '挑战副本暂未开放；当前不会进入战斗、结算或发放资源。' },
-      { label: '冒险', detail: '主线章节只读展示；当前不会进入战斗或产生进度写入。', adventure: true },
+      { label: '召唤', detail: '召唤祭坛按后端卡池状态开放真实召唤；当前仅开放 draw，兑换和补发关闭。', gacha: true },
+      { label: '挑战', detail: '进入关卡地图后选择关卡；胜利后自动提交结算并发放奖励。', adventure: true },
+      { label: '爬塔', detail: '主线章节只读展示；当前不会进入战斗或产生进度写入。', adventure: true },
       { label: '聊天', detail: '聊天系统暂未开放；当前仅展示本地欢迎语，不连接聊天服务，也不会发送消息。' },
       { label: '图鉴', detail: '英雄图鉴只读预览；当前不会进入养成或改变英雄状态。', codex: true },
-      { label: '英雄', detail: '英雄队列只读展示；当前不会升级、升星、觉醒或写入成长进度。', heroRoster: true },
+      { label: '英雄', detail: '英雄队列展示已开放详情页升级；升星、觉醒仍关闭。', heroRoster: true },
       { label: '背包', detail: '背包只读展示道具和来源；当前不会使用、出售或发放任何道具。', bag: true },
       { label: '任务', detail: '任务系统暂未开放；当前不会领取奖励或写入任务进度。' },
       { label: '商店', detail: '商店入口暂未开放；当前不会购买、兑换或消耗资源。' },
@@ -1633,16 +1742,25 @@ export class LobbyHudRenderer {
         this.openLobbyBagPanel();
         return;
       }
+      if (key === 'forge') {
+        // 锻造 = 装备养成工坊:合成/强化/分解。
+        this.openLobbyForgePanel();
+        return;
+      }
+      if (key === 'contract') {
+        // 圣契 = 召唤:直达召唤(抽卡)场景。
+        this.openLobbyGachaScene();
+        return;
+      }
       this.showUnopenedFeature(label, '底部导航入口暂未开放；当前不会进入养成、商店或其他写入型系统。');
     }, this);
     this.applyImageButtonFeedback(node, 1.04, 0.97);
-    const graphics = node.addComponent(Graphics);
-    this.drawLobbyNavSlot(graphics, width, height, scale, hot);
-    this.addLobbyNavIcon(node, key, 0, 13 * scale, 29 * scale, scale);
-    const text = this.addChildLabel(node, `LobbyNavLabel_${key}`, label, 0, -26 * scale, 19 * scale, rgba(190, 167, 119), new Size(width, 25 * scale));
+    // 新导航图标自带徽章造型:去掉旧六边槽,直接放大展示。
+    this.addLobbyNavIcon(node, key, 0, 12 * scale, 46 * scale, scale);
+    const text = this.addChildLabel(node, `LobbyNavLabel_${key}`, label, 0, -28 * scale, 20 * scale, rgba(214, 190, 138), new Size(width, 26 * scale));
     text.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(text, scale, false);
-    this.addLobbyRedDot(node, 17 * scale, 30 * scale, 5 * scale, hot);
+    this.addLobbyRedDot(node, 22 * scale, 34 * scale, 5 * scale, hot);
   }
 
   private drawLobbyNavSlot(graphics: Graphics, width: number, height: number, scale: number, hot: boolean): void {
@@ -1667,6 +1785,10 @@ export class LobbyHudRenderer {
   }
 
   private addLobbyNavIcon(parent: Node, key: LobbyNavIconKey, x: number, y: number, size: number, scale: number): void {
+    const asset = LOBBY_C1812_NAV_ICON_ASSETS[key];
+    if (asset && this.host.addSprite(`LobbyNavIcon_${key}`, asset, x, y, size, size, parent)) {
+      return;
+    }
     const node = this.addChildPlainNode(parent, `LobbyNavIcon_${key}`, x, y, size, size);
     const graphics = node.addComponent(Graphics);
     const half = size / 2;
@@ -1759,10 +1881,10 @@ export class LobbyHudRenderer {
     graphics.strokeColor = rgba(139, 104, 63, 82);
     graphics.lineWidth = Math.max(1, 0.9 * scale);
     graphics.stroke();
-    const channel = this.addChildLabel(node, 'LobbyChatChannel', '[世界]', -width / 2 + 39 * scale, 0, 16 * scale, rgba(112, 214, 254), new Size(64 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
+    const channel = this.addChildLabel(node, 'LobbyChatChannel', '[世界]', -width / 2 + 39 * scale, 0, 18 * scale, rgba(112, 214, 254), new Size(64 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     channel.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(channel, scale, false);
-    const text = this.addChildLabel(node, 'LobbyChatText', 'LootChain: 欢迎来到LootChain的世界！', -width / 2 + 102 * scale, 0, 16 * scale, rgba(178, 169, 130), new Size(width - 110 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const text = this.addChildLabel(node, 'LobbyChatText', 'LootChain: 欢迎来到LootChain的世界！', -width / 2 + 102 * scale, 0, 18 * scale, rgba(178, 169, 130), new Size(width - 110 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     text.overflow = Label.Overflow.SHRINK;
   }
 

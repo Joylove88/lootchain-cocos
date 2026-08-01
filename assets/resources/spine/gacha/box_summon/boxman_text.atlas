@@ -1,0 +1,221 @@
+
+boxman_text.png
+size: 976,932
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+bxg0
+  rotate: true
+  xy: 854, 816
+  size: 113, 118
+  orig: 115, 120
+  offset: 1, 1
+  index: -1
+bxg1
+  rotate: true
+  xy: 162, 309
+  size: 146, 434
+  orig: 173, 434
+  offset: 5, 0
+  index: -1
+bxg10
+  rotate: false
+  xy: 616, 399
+  size: 159, 157
+  orig: 159, 158
+  offset: 0, 0
+  index: -1
+bxg11
+  rotate: true
+  xy: 2, 653
+  size: 135, 167
+  orig: 135, 167
+  offset: 0, 0
+  index: -1
+bxg12
+  rotate: true
+  xy: 747, 691
+  size: 123, 168
+  orig: 123, 168
+  offset: 0, 0
+  index: -1
+bxg13
+  rotate: false
+  xy: 502, 599
+  size: 197, 127
+  orig: 202, 127
+  offset: 0, 0
+  index: -1
+bxg14
+  rotate: false
+  xy: 701, 558
+  size: 188, 131
+  orig: 188, 131
+  offset: 0, 0
+  index: -1
+bxg15
+  rotate: false
+  xy: 2, 342
+  size: 158, 166
+  orig: 158, 166
+  offset: 0, 0
+  index: -1
+bxg16
+  rotate: true
+  xy: 777, 399
+  size: 157, 164
+  orig: 159, 164
+  offset: 0, 0
+  index: -1
+bxg17
+  rotate: true
+  xy: 2, 510
+  size: 141, 164
+  orig: 149, 164
+  offset: 0, 0
+  index: -1
+bxg18
+  rotate: true
+  xy: 444, 457
+  size: 140, 170
+  orig: 140, 170
+  offset: 0, 0
+  index: -1
+bxg19
+  rotate: true
+  xy: 2, 790
+  size: 98, 182
+  orig: 132, 182
+  offset: 21, 0
+  index: -1
+bxg2
+  rotate: true
+  xy: 350, 40
+  size: 267, 217
+  orig: 284, 230
+  offset: 9, 3
+  index: -1
+bxg20
+  rotate: true
+  xy: 670, 839
+  size: 90, 182
+  orig: 90, 182
+  offset: 0, 0
+  index: -1
+bxg21
+  rotate: true
+  xy: 77, 890
+  size: 39, 169
+  orig: 39, 169
+  offset: 0, 0
+  index: -1
+bxg22
+  rotate: true
+  xy: 2, 907
+  size: 22, 73
+  orig: 24, 76
+  offset: 1, 1
+  index: -1
+bxg26
+  rotate: false
+  xy: 598, 217
+  size: 235, 180
+  orig: 235, 180
+  offset: 0, 0
+  index: -1
+bxg28
+  rotate: true
+  xy: 386, 844
+  size: 85, 282
+  orig: 85, 287
+  offset: 0, 5
+  index: -1
+bxg3
+  rotate: true
+  xy: 248, 856
+  size: 73, 136
+  orig: 76, 137
+  offset: 3, 0
+  index: -1
+bxg4
+  rotate: false
+  xy: 186, 738
+  size: 356, 104
+  orig: 357, 105
+  offset: 0, 0
+  index: -1
+bxg5
+  rotate: true
+  xy: 171, 614
+  size: 122, 329
+  orig: 133, 339
+  offset: 0, 9
+  index: -1
+bxg6
+  rotate: true
+  xy: 2, 109
+  size: 198, 346
+  orig: 198, 367
+  offset: 0, 0
+  index: -1
+bxg7
+  rotate: true
+  xy: 569, 2
+  size: 213, 302
+  orig: 222, 302
+  offset: 0, 0
+  index: -1
+bxg8
+  rotate: true
+  xy: 168, 479
+  size: 133, 274
+  orig: 137, 290
+  offset: 3, 1
+  index: -1
+bxg9
+  rotate: false
+  xy: 544, 728
+  size: 201, 109
+  orig: 212, 109
+  offset: 0, 0
+  index: -1
+
+boxman_text2.png
+size: 756,844
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+bxg23
+  rotate: false
+  xy: 2, 390
+  size: 752, 451
+  orig: 789, 451
+  offset: 0, 0
+  index: -1
+bxg24
+  rotate: false
+  xy: 2, 2
+  size: 733, 386
+  orig: 767, 388
+  offset: 32, 1
+  index: -1
+
+boxman_text3.png
+size: 684,620
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+bxg25
+  rotate: false
+  xy: 2, 2
+  size: 560, 336
+  orig: 562, 342
+  offset: 1, 1
+  index: -1
+bxg27
+  rotate: false
+  xy: 2, 340
+  size: 678, 275
+  orig: 680, 277
+  offset: 1, 1
+  index: -1

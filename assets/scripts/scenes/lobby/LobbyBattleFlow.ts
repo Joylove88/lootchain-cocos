@@ -1,17 +1,31 @@
 import type { BattleApi } from '../../api/BattleApi';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
 import type { PlayerBattleSettleDTO, PlayerBattleStartDTO } from '../../types/BattleTypes';
-import { createLobbyBattlePanelState, type LobbyBattlePanelState } from './LobbyBattleState';
+import {
+  createLobbyBattlePanelState,
+  LOBBY_BATTLE_PRESENTATION_FRAME_INTERVAL_MS,
+  LOBBY_BATTLE_PRESENTATION_STEP_COUNT,
+  LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS,
+  type LobbyBattlePanelState,
+} from './LobbyBattleState';
+import { resolveLobbyBattlePresentationSnapshot } from './LobbyBattlePresentationSnapshot';
+import { resolveLobbyBattlePresentationTimeline } from './LobbyBattlePresentationTimeline';
+import { resolveLobbyBattleVisualCompletionDurationMs } from './LobbyBattleVisualCompletion';
+import { resolveBattleReplay } from './LobbyBattleReplayModel';
+
+const FALLBACK_BATTLE_PRESENTATION_TOTAL_MS = 45_000;
 
 export interface LobbyBattleFlowHost {
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
   currentLobbyFormationHeroIds(): number[];
   refreshLobbyBattlePreviewPanel(): void;
+  refreshLobbyBattlePresentationPlayback(): void;
   refreshLobbyOverlay(): void;
   setStatus(message: string): void;
+  onBattleSettlementRecorded?(): void;
 }
 
-/** 战斗流程控制器。只调用 battle session 和无奖励 settlement，不接触奖励、体力或进度写入。 */
+/** 战斗流程控制器。客户端只调用 battle start/settle，奖励、体力和进度全部以后端结算为准。 */
 export class LobbyBattleFlow {
   private readonly state = createLobbyBattlePanelState();
   private ticket = 0;
@@ -37,6 +51,8 @@ export class LobbyBattleFlow {
     this.state.start = null;
     this.state.settlement = null;
     this.state.presentationStep = 0;
+    this.state.presentationElapsedMs = 0;
+    this.state.presentationStartedAtMs = 0;
     this.state.presentationComplete = false;
     this.state.recentLoading = false;
     this.state.recentError = '';
@@ -57,6 +73,8 @@ export class LobbyBattleFlow {
       this.state.start = null;
       this.state.settlement = null;
       this.state.presentationStep = 0;
+      this.state.presentationElapsedMs = 0;
+      this.state.presentationStartedAtMs = 0;
       this.state.presentationComplete = false;
       this.bump();
     }
@@ -74,6 +92,8 @@ export class LobbyBattleFlow {
     this.state.start = null;
     this.state.settlement = null;
     this.state.presentationStep = 0;
+    this.state.presentationElapsedMs = 0;
+    this.state.presentationStartedAtMs = 0;
     this.state.presentationComplete = false;
     if (!selectedStageCode) {
       this.state.error = '关卡选择已失效，请重新选择主线关卡。';
@@ -93,6 +113,8 @@ export class LobbyBattleFlow {
       this.state.start = null;
       this.state.settlement = null;
       this.state.presentationStep = 0;
+      this.state.presentationElapsedMs = 0;
+      this.state.presentationStartedAtMs = 0;
       this.state.presentationComplete = false;
       this.host.setStatus(this.state.error);
       this.bump();
@@ -110,6 +132,8 @@ export class LobbyBattleFlow {
     this.state.start = null;
     this.state.settlement = null;
     this.state.presentationStep = 0;
+    this.state.presentationElapsedMs = 0;
+    this.state.presentationStartedAtMs = 0;
     this.state.presentationComplete = false;
     this.clearPresentationTimers();
     this.bump();
@@ -123,14 +147,18 @@ export class LobbyBattleFlow {
       this.state.stageCode = start.stageCode;
       this.state.starting = false;
       this.state.presentationStep = 0;
+      this.state.presentationElapsedMs = 0;
+      this.state.presentationStartedAtMs = Date.now();
       this.state.presentationComplete = false;
       this.host.setStatus(`战斗会话已创建：${start.stageCode}`);
+      this.bump();
       this.schedulePresentationTicks(currentTicket);
     } catch (error) {
       if (!this.isCurrent(currentTicket)) {
         return;
       }
-      this.state.error = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.state.error = message.includes('战斗力不足') ? `${message}；请返回编队调整阵容，或先升级英雄。` : message;
       this.state.starting = false;
       this.host.setStatus(`战斗会话创建失败：${this.state.error}`);
     } finally {
@@ -138,6 +166,22 @@ export class LobbyBattleFlow {
         this.bump();
       }
     }
+  }
+
+  // 视觉胜负确认(敌方全灭弹结算框)即提前收口演出并提交结算,消除"胜利框到自动结算"的空窗:
+  // 空窗期离场会清计时器导致 settle 永不提交,玩家看到胜利却拿不到奖励、主线不推进。
+  completePresentationEarlyAndSettle(): void {
+    if (!this.state.start || this.state.settlement || this.state.settling) {
+      return;
+    }
+    if (!this.state.presentationComplete) {
+      this.clearPresentationTimers();
+      this.state.presentationComplete = true;
+      this.state.presentationElapsedMs = this.resolvePresentationTotalDurationMs();
+      this.host.setStatus('战斗胜负已定，正在提交后端结算…');
+      this.bump();
+    }
+    void this.settle();
   }
 
   async settle(): Promise<void> {
@@ -153,7 +197,8 @@ export class LobbyBattleFlow {
     try {
       const dto: PlayerBattleSettleDTO = {
         requestId: createRequestId('battle-settle'),
-        result: 'WIN',
+        // 真实胜负:客户端确定性 sim 敌全灭=WIN、我方全灭=LOSE(后端权威裁决奖励,LOSE 不发奖不推进)。
+        result: this.resolveBattleOutcome(),
         durationSeconds: 45,
         roundCount: 3,
         clientChecksum: currentStart.serverSeed.slice(0, 32),
@@ -167,7 +212,8 @@ export class LobbyBattleFlow {
       }
       this.state.settlement = settlement;
       this.state.settling = false;
-      this.host.setStatus(settlement.message || '战斗记录完成，奖励未开放。');
+      this.host.setStatus(settlement.message || (settlement.rewardGranted ? '主线首通结算完成。' : '战斗记录完成，未产生奖励。'));
+      this.host.onBattleSettlementRecorded?.();
     } catch (error) {
       if (!this.isCurrent(currentTicket)) {
         return;
@@ -198,7 +244,7 @@ export class LobbyBattleFlow {
       if (this.recentTicket !== currentTicket) {
         return;
       }
-      // 最近战斗记录只读展示；接口校验已保证 rewardGranted=false 且 economyApplied=false。
+      // 最近战斗记录只展示后端已结算结果；接口校验已限制为 NO_REWARD 或 R1 白名单。
       this.state.recentBattles = records;
       this.state.recentLoading = false;
       this.state.recentError = '';
@@ -219,9 +265,9 @@ export class LobbyBattleFlow {
   private buildStartDTO(stageCode: string): PlayerBattleStartDTO {
     const heroes = this.resolveLineupHeroes(this.host.currentLobbyFormationHeroIds());
     if (heroes.length === 0) {
-      throw new Error('当前没有可上阵英雄，请先确认主角或英雄队列。');
+      throw new Error('当前没有可上阵英雄，请先获取英雄或刷新英雄队列。');
     }
-    const leader = heroes.find((hero) => hero.protagonist) ?? heroes[0];
+    const leader = heroes[0];
     return {
       requestId: createRequestId('battle-start'),
       stageCode,
@@ -233,7 +279,7 @@ export class LobbyBattleFlow {
 
   private resolveLineupHeroes(selectedHeroIds: number[]): LobbyHeroItemVO[] {
     const selectable = [...this.host.currentLobbyHeroRosterState().heroes]
-      .filter((hero) => hero.id > 0 && hero.rarity.toUpperCase() !== 'EX' && !hero.heroCode.toUpperCase().startsWith('EX_'));
+      .filter((hero) => hero.id > 0 && !hero.protagonist && hero.rarity.toUpperCase() !== 'EX' && !hero.heroCode.toUpperCase().startsWith('EX_'));
     const byId = new Map(selectable.map((hero) => [hero.id, hero]));
     if (selectedHeroIds.length > 0) {
       // 战斗请求只提交玩家当前确认的本地阵容 ID；属性、奖励、消耗仍由后端掌控。
@@ -244,7 +290,7 @@ export class LobbyBattleFlow {
       throw new Error('本次确认阵容已失效，请刷新英雄队列后重新编队。');
     }
     return selectable
-      .sort((a, b) => Number(b.protagonist) - Number(a.protagonist) || b.power - a.power)
+      .sort((a, b) => b.power - a.power)
       .slice(0, 5);
   }
 
@@ -264,21 +310,65 @@ export class LobbyBattleFlow {
 
   private schedulePresentationTicks(currentTicket: number): void {
     // 本地表现时间轴只驱动画面节奏，不决定胜负、奖励、体力或主线进度。
-    const steps = [1, 2, 3, 4];
-    steps.forEach((step) => {
-      const timer = setTimeout(() => {
-        if (!this.isCurrent(currentTicket) || !this.state.start || this.state.settlement || this.state.settling) {
-          return;
-        }
-        this.state.presentationStep = step;
-        this.state.presentationComplete = step >= 4;
-        if (this.state.presentationComplete) {
-          this.host.setStatus('战斗演出完成，可记录无奖励结果。');
-        }
+    const totalDurationMs = this.resolvePresentationTotalDurationMs();
+    const maxPresentationStep = Math.max(
+      LOBBY_BATTLE_PRESENTATION_STEP_COUNT,
+      Math.ceil(totalDurationMs / LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS),
+    );
+    const tick = () => {
+      if (!this.isCurrent(currentTicket) || !this.state.start || this.state.settlement || this.state.settling) {
+        return;
+      }
+      const startedAtMs = this.state.presentationStartedAtMs || Date.now();
+      this.state.presentationStartedAtMs = startedAtMs;
+      const elapsedMs = Math.min(totalDurationMs, Math.max(0, Date.now() - startedAtMs));
+      this.state.presentationElapsedMs = elapsedMs;
+      this.state.presentationStep = Math.min(
+        maxPresentationStep,
+        Math.floor(elapsedMs / LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS),
+      );
+      this.state.presentationComplete = elapsedMs >= totalDurationMs;
+      if (this.state.presentationComplete) {
+        this.host.setStatus('战斗演出完成，正在提交后端结算…');
         this.bump();
-      }, step * 750);
+        void this.settle();
+        return;
+      }
+      this.host.refreshLobbyBattlePresentationPlayback();
+      const timer = setTimeout(tick, LOBBY_BATTLE_PRESENTATION_FRAME_INTERVAL_MS);
       this.presentationTimers.push(timer);
-    });
+    };
+    const timer = setTimeout(tick, LOBBY_BATTLE_PRESENTATION_FRAME_INTERVAL_MS);
+    this.presentationTimers.push(timer);
+  }
+
+  private resolvePresentationTotalDurationMs(): number {
+    if (!this.state.start) {
+      return FALLBACK_BATTLE_PRESENTATION_TOTAL_MS;
+    }
+    try {
+      const snapshot = resolveLobbyBattlePresentationSnapshot(this.state, this.host.currentLobbyHeroRosterState().heroes);
+      const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
+      return resolveLobbyBattleVisualCompletionDurationMs(snapshot, timeline);
+    } catch (error) {
+      console.warn('[LootChain] battle visual completion duration fallback:', error);
+      return FALLBACK_BATTLE_PRESENTATION_TOTAL_MS;
+    }
+  }
+
+  // 客户端确定性 sim 的胜负结果:敌全灭且我方尚存=WIN,否则(我方全灭)=LOSE。异常兜底 WIN 保持旧行为。
+  private resolveBattleOutcome(): PlayerBattleSettleDTO['result'] {
+    if (!this.state.start) {
+      return 'WIN';
+    }
+    try {
+      const snapshot = resolveLobbyBattlePresentationSnapshot(this.state, this.host.currentLobbyHeroRosterState().heroes);
+      const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
+      return resolveBattleReplay(snapshot, timeline).victory ? 'WIN' : 'LOSE';
+    } catch (error) {
+      console.warn('[LootChain] battle outcome fallback to WIN:', error);
+      return 'WIN';
+    }
   }
 
   private clearPresentationTimers(): void {
@@ -293,7 +383,8 @@ export class LobbyBattleFlow {
 
 function normalizeStageCode(stageCode: string): string | null {
   const value = (stageCode || '').trim().toUpperCase();
-  return /^MAIN_\d+_\d+$/.test(value) ? value : null;
+  // 每日材料副本(P7b)与主线共用同一条战斗流;DAILY 码由后端做开放日/次数/解锁校验。
+  return /^MAIN_\d+_\d+$/.test(value) || /^DAILY_[A-Z]+_[1-3]$/.test(value) ? value : null;
 }
 
 function createRequestId(prefix: string): string {

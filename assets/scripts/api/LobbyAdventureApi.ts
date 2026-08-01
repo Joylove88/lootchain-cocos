@@ -3,8 +3,10 @@ import type { LobbyAdventureChapterVO, LobbyAdventureStageVO, LobbyAdventureVO }
 
 type UnknownRecord = Record<string, unknown>;
 
-const MAX_CHAPTER_COUNT = 12;
-const MAX_STAGE_COUNT = 80;
+const MAX_CHAPTER_COUNT = 25;
+const MAX_STAGE_COUNT = 393;
+const FIRST_CHAPTER_STAGE_COUNT = 9;
+const STAGES_PER_CHAPTER_AFTER_FIRST = 16;
 const MAX_TEXT_LENGTH = 120;
 const MAX_REWARD_PREVIEW = 6;
 
@@ -35,9 +37,10 @@ function validateLobbyAdventure(data: unknown): LobbyAdventureVO {
     currentChapterName: readText(data, 'currentChapterName', MAX_TEXT_LENGTH, '主线章节'),
     recommendedStageCode: readText(data, 'recommendedStageCode', MAX_TEXT_LENGTH, ''),
     recommendedStageName: readText(data, 'recommendedStageName', MAX_TEXT_LENGTH, '当前关卡'),
-    recommendationText: readText(data, 'recommendationText', 180, '继续主线冒险。'),
+    recommendationText: readText(data, 'recommendationText', 180, '继续深渊爬塔。'),
     guardrails: sanitizeTextArray(readArray(data, 'guardrails', 8), 160),
     chapters,
+    maxCompletedStageCode: readText(data, 'maxCompletedStageCode', MAX_TEXT_LENGTH, ''),
   };
 }
 
@@ -51,7 +54,7 @@ function normalizeChapter(item: unknown): LobbyAdventureChapterVO {
     subtitle: readText(item, 'subtitle', MAX_TEXT_LENGTH, ''),
     summary: readText(item, 'summary', 180, ''),
     unlocked: item.unlocked !== false,
-    stages: readArray(item, 'stages', 20)
+    stages: readArray(item, 'stages', STAGES_PER_CHAPTER_AFTER_FIRST)
       .map(normalizeStage)
       .filter((stage): stage is LobbyAdventureStageVO => stage !== null),
   };
@@ -63,7 +66,7 @@ function normalizeStage(item: unknown): LobbyAdventureStageVO | null {
   }
   const stageCode = normalizeMainStageCode(readText(item, 'stageCode', MAX_TEXT_LENGTH, ''));
   if (!stageCode) {
-    // 冒险面板只展示当前开放的主线关卡；EX 或非法关卡不进入 UI，避免玩家点到后才被 root 拦截。
+    // 爬塔面板只展示当前开放的主线关卡；EX 或非法关卡不进入 UI，避免玩家点到后才被 root 拦截。
     return null;
   }
   return {
@@ -77,6 +80,17 @@ function normalizeStage(item: unknown): LobbyAdventureStageVO | null {
     enemySummary: readText(item, 'enemySummary', 180, '敌情待确认'),
     rewardPreview: sanitizeTextArray(readArray(item, 'rewardPreview', MAX_REWARD_PREVIEW), 64),
     statusLabel: readText(item, 'statusLabel', 32, item.unlocked === true ? '可预览' : '锁定'),
+    unlockHint: readText(item, 'unlockHint', 120, item.unlocked === true ? '已达成进入条件' : '暂未满足进入条件'),
+    lockReasonCode: readText(item, 'lockReasonCode', 32, item.unlocked === true ? 'NONE' : 'PROGRESS_REQUIRED'),
+    levelGap: readInteger(item.levelGap, 0, 999),
+    requiredLevelNeedExp: readInteger(item.requiredLevelNeedExp, 0, Number.MAX_SAFE_INTEGER),
+    expToRequiredLevel: readInteger(item.expToRequiredLevel, 0, Number.MAX_SAFE_INTEGER),
+    nextGuidanceTitle: readText(item, 'nextGuidanceTitle', 80, item.unlocked === true ? '已开放主线' : '关卡暂未解锁'),
+    nextGuidanceText: readText(item, 'nextGuidanceText', 180, item.unlocked === true ? '可进入编队确认。' : '当前未满足进入条件。'),
+    growthSourceSummary: readText(item, 'growthSourceSummary', 160, '当前阶段经验来源以服务端配置为准。'),
+    growthSourceStatus: readText(item, 'growthSourceStatus', 48, item.unlocked === true ? 'NEXT_FIRST_CLEAR_AVAILABLE' : 'LOCKED'),
+    growthSourceHint: readText(item, 'growthSourceHint', 180, '当前未开放新的经验获取入口。'),
+    repeatableExpAvailable: item.repeatableExpAvailable === true,
   };
 }
 
@@ -89,7 +103,23 @@ function sanitizeTextArray(values: unknown[], maxLength: number): string[] {
 
 function normalizeMainStageCode(stageCode: string): string {
   const value = (stageCode || '').trim().toUpperCase();
-  return /^MAIN_\d+_\d+$/.test(value) ? value : '';
+  return annualMainlineStageOrder(value) > 0 ? value : '';
+}
+
+function annualMainlineStageOrder(stageCode: string): number {
+  const match = /^MAIN_(\d{1,2})_(\d{1,2})$/.exec(stageCode);
+  if (!match) {
+    return 0;
+  }
+  const chapter = Number(match[1]);
+  const stage = Number(match[2]);
+  if (chapter === 1) {
+    return stage >= 1 && stage <= FIRST_CHAPTER_STAGE_COUNT ? stage : 0;
+  }
+  if (chapter < 2 || chapter > MAX_CHAPTER_COUNT || stage < 1 || stage > STAGES_PER_CHAPTER_AFTER_FIRST) {
+    return 0;
+  }
+  return FIRST_CHAPTER_STAGE_COUNT + (chapter - 2) * STAGES_PER_CHAPTER_AFTER_FIRST + stage;
 }
 
 function isRecord(value: unknown): value is UnknownRecord {

@@ -12,6 +12,8 @@ export interface BagItemEntryVO {
   maxStack: number;
   sellGold: DecimalValue;
   useEffectType?: string | null;
+  /** 用途文案(item_template.use_desc,配置表直读);老数据缺失回退 useEffectType。 */
+  useDesc?: string | null;
 }
 
 export interface ItemTypeBagGroupVO {

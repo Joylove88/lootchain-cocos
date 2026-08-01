@@ -1,0 +1,90 @@
+{
+  "screenshotPath": "D:\\project\\lootchain-cocos\\artifacts\\battle-visual-teleport-current\\visual-teleport-diagnostic.png",
+  "videoPath": "D:\\project\\lootchain-cocos\\artifacts\\battle-visual-teleport-current\\visual-teleport-diagnostic.webm",
+  "forcedBattleFormation": {
+    "mode": "srr",
+    "heroIds": [
+      17,
+      20,
+      18,
+      1,
+      19
+    ],
+    "leaderHeroId": 17,
+    "selected": [
+      {
+        "id": 17,
+        "heroCode": "SR_PALADIN_02",
+        "heroName": "见习圣骑士",
+        "rarity": "SR",
+        "heroClass": "坦克",
+        "portraitAsset": "act_1002",
+        "power": 6125
+      },
+      {
+        "id": 20,
+        "heroCode": "SR_ABYSS_06",
+        "heroName": "深渊行者",
+        "rarity": "SR",
+        "heroClass": "刺客",
+        "portraitAsset": "act_1036",
+        "power": 5918
+      },
+      {
+        "id": 18,
+        "heroCode": "SR_BLADE_04",
+        "heroName": "断刃佣兵",
+        "rarity": "SR",
+        "heroClass": "战士",
+        "portraitAsset": "act_1038",
+        "power": 5491
+      },
+      {
+        "id": 1,
+        "heroCode": "R_PATROL_01",
+        "heroName": "王国巡逻兵",
+        "rarity": "R",
+        "heroClass": "战士",
+        "portraitAsset": "act_1001",
+        "power": 4469
+      },
+      {
+        "id": 19,
+        "heroCode": "R_GUARD_07",
+        "heroName": "城门卫兵",
+        "rarity": "R",
+        "heroClass": "坦克",
+        "portraitAsset": "act_1003",
+        "power": 4350
+      }
+    ]
+  },
+  "forcedBattleStartBodies": [
+    {
+      "requestId": "battle-start-1782462263475-953592-visual-teleport",
+      "stageCode": "MAIN_1_2",
+      "heroIds": [
+        17,
+        20,
+        18,
+        1,
+        19
+      ],
+      "leaderHeroId": 17,
+      "clientVersion": "cocos-lobby-stage-4o"
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "settleRequests": [],
+  "analysis": {
+    "errors": [],
+    "summary": {
+      "frameCount": 116,
+      "actorNodeCount": 8,
+      "jumpCount": 0,
+      "maxJump": null
+    },
+    "jumps": []
+  }
+}

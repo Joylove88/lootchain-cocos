@@ -15,6 +15,7 @@ import {
   SpriteFrame,
   Texture2D,
   tween,
+  UIOpacity,
   UITransform,
   Vec3,
 } from 'cc';
@@ -22,6 +23,7 @@ import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/Lob
 import { lootChainI18n } from '../../i18n/LootChainI18n';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
+import { C1812_BUTTON_PRIMARY_ASSET, C1812_TAB_SELECTED_ASSET, starBandAssetOf, starBandTextRgb, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 
 export const LOBBY_HERO_ROSTER_BACKDROP_ASSET = 'ui/hero-detail/hero_detail_backdrop/spriteFrame';
@@ -90,9 +92,9 @@ const HERO_ROSTER_CARD_BACKGROUND_MATCHED_VISIBLE_HEIGHT_RATIO = 0.58;
 const HERO_ROSTER_CARD_BACKGROUND_MAX_DISPLAY_HEIGHT_RATIO = 1.06;
 const HERO_ROSTER_CARD_BACKGROUND_MIN_VISIBLE_ALPHA_RATIO = 0.56;
 const HERO_ROSTER_CARD_BACKGROUND_NPC_PREFIX = 'ui/hero-roster/card_background/npc_';
-const HERO_ROSTER_CARD_BACKGROUND_NPC_VISIBLE_HEIGHT_RATIO = 0.42;
-const HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_HEIGHT_RATIO = 0.56;
-const HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_WIDTH_RATIO = 0.82;
+const HERO_ROSTER_CARD_BACKGROUND_NPC_VISIBLE_HEIGHT_RATIO = 0.58;
+const HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_HEIGHT_RATIO = 0.74;
+const HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_WIDTH_RATIO = 0.96;
 const HERO_ROSTER_CARD_BACKGROUND_VISIBLE_HEIGHT_RATIOS: Record<string, number> = {
   'ui/hero-roster/card_background/Belladonna_Illust': 0.635,
   'ui/hero-roster/card_background/Carmilla_center': 0.93,
@@ -126,6 +128,14 @@ const HERO_ROSTER_BORDER_ANIMATION_BY_RARITY: Record<string, string> = {
 const HERO_ROSTER_UR_SEQUENCE_BORDER_PATH_PREFIX = 'ui/hero-roster/UR-card-border';
 const HERO_ROSTER_UR_SEQUENCE_BORDER_FRAME_COUNT = 12;
 const HERO_ROSTER_UR_SEQUENCE_BORDER_FRAME_DURATION_SECONDS = 0.07;
+// 仅 SSR/UR 保留动画 spine 边框;R/SR 降级为静态描边(性能优化)。
+const HERO_ROSTER_ANIMATED_BORDER_RARITIES = new Set(['SSR', 'UR']);
+// SSR/UR 边框 spine 分帧实例化步长:相邻槽位骨骼创建间隔,错峰摊平首帧尖峰。
+const HERO_ROSTER_BORDER_SPINE_STAGGER_SECONDS = 0.05;
+// 卡片分帧构建:首屏至少同步建这么多张(保证打开即有内容),其余按批错峰,消除"进入时"整墙同帧构建的卡顿。
+const HERO_ROSTER_CARD_INITIAL_SYNC_MIN = 4;
+const HERO_ROSTER_CARD_DEFER_BATCH = 3;
+const HERO_ROSTER_CARD_DEFER_STEP_SECONDS = 0.032;
 const HERO_ROSTER_UR_SEQUENCE_BORDER_ALPHA = 255;
 const HERO_ROSTER_UR_SEQUENCE_BORDER_OUTER_WIDTH_RATIO = 1.25;
 const HERO_ROSTER_UR_SEQUENCE_BORDER_OUTER_HEIGHT_RATIO = 1.25;
@@ -155,6 +165,7 @@ export interface LobbyHeroRosterPanelHost {
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
   closeLobbyHeroRosterPanel(): void;
   reloadLobbyHeroRoster(): void;
+  openLobbyFormationPanel(stageCode?: string, origin?: string): void;
   refreshLobbyOverlay?(): void;
   openLobbyHeroDetail(heroId: number): void;
   createUiNode(name: string): Node;
@@ -178,6 +189,9 @@ export interface LobbyHeroRosterPanelHost {
 /** 大厅英雄队列只读面板。参考竖卡英雄墙排版，但保持当前阶段无养成写入口。 */
 export class LobbyHeroRosterPanelRenderer {
   private selectedHeroClass = HERO_FILTER_ALL;
+  // 边框光效 spine 的分帧实例化槽位:每次名册重建时归零,SSR/UR 卡按槽位错峰创建骨骼,
+  // 避免一帧内集中实例化多张 spine 造成开面板卡顿(R/SR 已降级为静态描边,不占 spine)。
+  private borderSpineStaggerSlot = 0;
   private borderEffectData: sp.SkeletonData | null = null;
   private borderEffectLoading = false;
   private readonly borderEffectCallbacks: Array<(data: sp.SkeletonData | null) => void> = [];
@@ -238,13 +252,36 @@ export class LobbyHeroRosterPanelRenderer {
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbyHeroRosterBackButton', () => this.host.closeLobbyHeroRosterPanel(), scale, '英雄');
   }
 
+  // 面板复用内容签名:凡是会影响渲染结果的输入都纳入(筛选/加载态/英雄逐项数据/职业选项)。
+  // 签名不变 = 面板内容完全一致,可原样复用;宁可多算字段(多重建)也不可漏字段(露旧数据)。
+  currentContentSignature(): string {
+    const state = this.host.currentLobbyHeroRosterState();
+    const flags = `${state.loaded ? 1 : 0}${state.loading ? 1 : 0}${state.error ? 1 : 0}`;
+    const options = (state.heroClassOptions ?? []).join('/');
+    const heroes = state.heroes
+      .map((hero) => [
+        hero.id,
+        hero.level,
+        hero.star,
+        hero.power,
+        hero.rarity,
+        hero.heroClass ?? '',
+        safeText(hero.heroName),
+        hero.cardBackgroundAsset ?? '',
+        hero.protagonist ? 1 : 0,
+      ].join(':'))
+      .join(',');
+    return `${this.selectedHeroClass}|${flags}|${options}|${state.heroes.length}|${heroes}`;
+  }
+
   private createUiNode(name: string): Node {
     return this.host.createUiNode(name);
   }
 
   private renderTopBar(parent: Node, width: number, height: number, scale: number, state: LobbyHeroRosterPanelState): void {
     const y = height / 2 - 42 * scale;
-    const topBarRightInset = 42 * scale;
+    // 顶右胶囊让位右上关闭按钮(关闭钮占 stageRight-58 一带)。
+    const topBarRightInset = 118 * scale;
     const topBarLeftReserve = -width / 2 + 170 * scale;
     const right = width / 2 - topBarRightInset;
     const compact = width < 760 * scale;
@@ -287,8 +324,7 @@ export class LobbyHeroRosterPanelRenderer {
       'LobbyHeroRosterStatus',
       statusText,
       statusX,
-      y,
-      15 * scale,
+      y, 17 * scale,
       state.error ? rgba(238, 116, 92) : rgba(213, 191, 137),
       new Size(statusWidth, 24 * scale),
     );
@@ -305,7 +341,7 @@ export class LobbyHeroRosterPanelRenderer {
     graphics.lineWidth = Math.max(1, 1.2 * scale);
     this.traceSlantRect(graphics, width, height, 8 * scale);
     graphics.stroke();
-    const label = this.host.addChildLabel(node, `${name}Label`, text, 0, 0, 14 * scale, rgba(238, 218, 166), new Size(width - 12 * scale, height));
+    const label = this.host.addChildLabel(node, `${name}Label`, text, 0, 0, 16 * scale, rgba(238, 218, 166), new Size(width - 12 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
     return node;
@@ -355,25 +391,35 @@ export class LobbyHeroRosterPanelRenderer {
     tab.addComponent(Button);
     tab.on(Button.EventType.CLICK, () => this.selectHeroClassFilter(text), this);
     this.host.applyImageButtonFeedback(tab, 1.025, 0.97);
-    const graphics = tab.addComponent(Graphics);
-    graphics.fillColor = active ? rgba(82, 55, 31, 218) : rgba(10, 10, 13, horizontal ? 142 : 118);
-    this.traceSlantRect(graphics, width, height, active ? 9 * scale : 5 * scale);
-    graphics.fill();
-    graphics.strokeColor = active ? rgba(232, 177, 82, 206) : rgba(87, 73, 55, 92);
-    graphics.lineWidth = Math.max(1, active ? 1.4 * scale : 1 * scale);
-    this.traceSlantRect(graphics, width, height, active ? 9 * scale : 5 * scale);
-    graphics.stroke();
-    if (active && !horizontal) {
-      graphics.fillColor = rgba(230, 180, 82, 214);
-      graphics.moveTo(width / 2 - 4 * scale, 0);
-      graphics.lineTo(width / 2 + 8 * scale, 9 * scale);
-      graphics.lineTo(width / 2 + 8 * scale, -9 * scale);
-      graphics.close();
+    // 选中背景按素材原比例(400×116)整图显示:SLICED 在窄栏里会把翼饰压成一条线。
+    const tabArtWidth = Math.max(width * 1.45, height * (400 / 170) * 1.15);
+    const tabArtHeight = tabArtWidth * (170 / 400);
+    const tabArt = active ? this.host.addSprite(`LobbyHeroRosterFilterTabArt_${index}`, C1812_TAB_SELECTED_ASSET, 0, 0, tabArtWidth, tabArtHeight, tab) : null;
+    if (tabArt) {
+      void 0;
+    } else {
+      const graphics = tab.addComponent(Graphics);
+      graphics.fillColor = active ? rgba(82, 55, 31, 218) : rgba(10, 10, 13, horizontal ? 142 : 118);
+      this.traceSlantRect(graphics, width, height, active ? 9 * scale : 5 * scale);
       graphics.fill();
+      graphics.strokeColor = active ? rgba(232, 177, 82, 206) : rgba(87, 73, 55, 92);
+      graphics.lineWidth = Math.max(1, active ? 1.4 * scale : 1 * scale);
+      this.traceSlantRect(graphics, width, height, active ? 9 * scale : 5 * scale);
+      graphics.stroke();
+      if (active && !horizontal) {
+        graphics.fillColor = rgba(230, 180, 82, 214);
+        graphics.moveTo(width / 2 - 4 * scale, 0);
+        graphics.lineTo(width / 2 + 8 * scale, 9 * scale);
+        graphics.lineTo(width / 2 + 8 * scale, -9 * scale);
+        graphics.close();
+        graphics.fill();
+      }
     }
-    const label = this.host.addChildLabel(tab, 'LobbyHeroRosterFilterLabel', text, 0, 0, 17 * scale, active ? rgba(252, 226, 164) : rgba(158, 146, 125), new Size(width - 12 * scale, height));
+    const label = this.host.addChildLabel(tab, 'LobbyHeroRosterFilterLabel', text, 0, 0, 19 * scale, active ? rgba(252, 226, 164) : rgba(158, 146, 125), new Size(width - 12 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, active);
+    if (!tabArt) {
+      this.applyOutline(label, scale, active);
+    }
   }
 
   private selectHeroClassFilter(text: string): void {
@@ -452,11 +498,36 @@ export class LobbyHeroRosterPanelRenderer {
     const startX = -bodyWidth / 2 + cardInsetX + cardWidth / 2;
     const startY = contentHeight / 2 - scrollEffectTopPadding - cardInsetY - cardHeight / 2;
 
-    displayHeroes.forEach((hero, index) => {
+    // 每次重建名册归零边框 spine 错峰槽位,让 SSR/UR 骨骼分帧创建。
+    this.borderSpineStaggerSlot = 0;
+    const buildCard = (hero: LobbyHeroItemVO, index: number): void => {
+      if (!content.isValid) {
+        return;
+      }
       const col = index % columns;
       const row = Math.floor(index / columns);
       this.renderHeroCard(content, hero, index, startX + col * (cardWidth + gap), startY - row * (cardHeight + rowGap), cardWidth, cardHeight, scale);
-    });
+    };
+    // 首屏(至少两行)同步建好,保证打开即有内容;其余卡按批分帧错峰,消除"进入英雄界面"时整墙节点同帧构建的卡顿。
+    // 面板重建时旧 content 失效,已入队的延迟批次通过 content.isValid 兜底跳过(tween 目标销毁也会自动停)。
+    const initialSyncCount = Math.min(displayHeroes.length, Math.max(columns, HERO_ROSTER_CARD_INITIAL_SYNC_MIN));
+    for (let i = 0; i < initialSyncCount; i += 1) {
+      buildCard(displayHeroes[i], i);
+    }
+    let deferBatch = 0;
+    for (let i = initialSyncCount; i < displayHeroes.length; i += HERO_ROSTER_CARD_DEFER_BATCH) {
+      deferBatch += 1;
+      const batchStart = i;
+      tween(content)
+        .delay(deferBatch * HERO_ROSTER_CARD_DEFER_STEP_SECONDS)
+        .call(() => {
+          const batchEnd = Math.min(batchStart + HERO_ROSTER_CARD_DEFER_BATCH, displayHeroes.length);
+          for (let j = batchStart; j < batchEnd; j += 1) {
+            buildCard(displayHeroes[j], j);
+          }
+        })
+        .start();
+    }
   }
 
   private resolveHeroFilterTabs(heroes: LobbyHeroItemVO[], heroClassOptions: string[] = []): string[] {
@@ -590,7 +661,7 @@ export class LobbyHeroRosterPanelRenderer {
     graphics.strokeColor = rgba(148, 110, 56, 124);
     this.traceSlantRect(graphics, boxWidth, 118 * scale, 14 * scale);
     graphics.stroke();
-    const label = this.host.addChildLabel(box, 'LobbyHeroRosterEmptyText', text, 0, 0, 18 * scale, rgba(213, 193, 151), new Size(boxWidth - 36 * scale, 48 * scale));
+    const label = this.host.addChildLabel(box, 'LobbyHeroRosterEmptyText', text, 0, 0, 20 * scale, rgba(213, 193, 151), new Size(boxWidth - 36 * scale, 48 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
   }
@@ -791,7 +862,8 @@ export class LobbyHeroRosterPanelRenderer {
 
   private renderHeroCardBorderEffect(card: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
     const rarity = safeText(hero.rarity).toUpperCase();
-    if (!HERO_ROSTER_BORDER_ANIMATION_BY_RARITY[rarity]) {
+    // 只有 SSR/UR 保留动画 spine 边框;R/SR 不挂任何边框(静态描边已移除),保留卡框底图即可。
+    if (!HERO_ROSTER_ANIMATED_BORDER_RARITIES.has(rarity)) {
       return;
     }
     if (rarity === 'UR') {
@@ -849,18 +921,32 @@ export class LobbyHeroRosterPanelRenderer {
       clamp((height + HERO_ROSTER_GOODS_BORDER_HEIGHT_PADDING) / 120, 1.75, 4.2),
       1,
     ));
-    const skeleton = effectNode.addComponent(sp.Skeleton);
-    skeleton.premultipliedAlpha = false;
-    this.loadBorderEffectData((data) => {
-      if (!data || !effectNode.isValid) {
+    // 分帧实例化:节点先建好(便宜),昂贵的 spine 骨骼创建 + setAnimation 按错峰槽位延后,
+    // 摊平"打开英雄界面时多张 SSR/UR 骨骼同帧实例化"的卡顿尖峰。
+    const staggerDelay = this.borderSpineStaggerSlot * HERO_ROSTER_BORDER_SPINE_STAGGER_SECONDS;
+    this.borderSpineStaggerSlot += 1;
+    const buildSkeleton = (): void => {
+      if (!effectNode.isValid) {
         return;
       }
-      skeleton.skeletonData = data;
-      const animationName = this.resolveRarityBorderAnimationName(data, rarity);
-      if (animationName) {
-        skeleton.setAnimation(0, animationName, true);
-      }
-    });
+      const skeleton = effectNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      this.loadBorderEffectData((data) => {
+        if (!data || !effectNode.isValid || !skeleton.isValid) {
+          return;
+        }
+        skeleton.skeletonData = data;
+        const animationName = this.resolveRarityBorderAnimationName(data, rarity);
+        if (animationName) {
+          skeleton.setAnimation(0, animationName, true);
+        }
+      });
+    };
+    if (staggerDelay <= 0) {
+      buildSkeleton();
+    } else {
+      tween(effectNode).delay(staggerDelay).call(buildSkeleton).start();
+    }
   }
 
   private loadUrSequenceBorderFrames(callback: (frames: SpriteFrame[] | null) => void): void {
@@ -952,7 +1038,7 @@ export class LobbyHeroRosterPanelRenderer {
     const badgeY = height * HERO_ROSTER_CARD_BADGE_Y_RATIO;
     const topBadge = this.host.addChildPlainNode(card, 'LobbyHeroRosterClassBadge', badgeX, badgeY, badgeSize, badgeSize);
     this.drawCircleBadge(topBadge, badgeSize, this.rarityStroke(rarity), scale);
-    const topLabel = this.host.addChildLabel(topBadge, 'LobbyHeroRosterClassBadgeText', this.resolveHeroClassBadgeText(hero), 0, 0, 15 * scale, rgba(255, 235, 181), new Size(30 * scale, 26 * scale));
+    const topLabel = this.host.addChildLabel(topBadge, 'LobbyHeroRosterClassBadgeText', this.resolveHeroClassBadgeText(hero), 0, 0, 17 * scale, rgba(255, 235, 181), new Size(30 * scale, 26 * scale));
     topLabel.overflow = Label.Overflow.SHRINK;
     this.applyOutline(topLabel, scale, false);
 
@@ -961,9 +1047,25 @@ export class LobbyHeroRosterPanelRenderer {
     rarityLabel.overflow = Label.Overflow.SHRINK;
     this.applyOutline(rarityLabel, scale, true);
 
-    const star = this.host.addChildLabel(card, 'LobbyHeroRosterStars', starText(hero.star), 0, -height / 2 + height * HERO_ROSTER_CARD_STARS_Y_RATIO, Math.min(16 * scale, height * 0.048), rgba(245, 202, 82), new Size(width - 54 * scale, height * 0.06));
-    star.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(star, scale, false);
+    // 五档进阶星行(v2):满档满亮/当前档半亮/未达不画,卡上保持干净;素材缺失回退文字星。
+    // v3(用户定稿):每 5 星一轮逐颗点亮,升轮整排换色。
+    const starDisplay = starDisplayV3(hero.star);
+    const starY = -height / 2 + height * HERO_ROSTER_CARD_STARS_Y_RATIO;
+    const starSize = Math.min(24 * scale, height * 0.07);
+    const starGap = 4.5 * scale;
+    const starFirstX = -(starDisplay.count * starSize + Math.max(0, starDisplay.count - 1) * starGap) / 2 + starSize / 2;
+    let anyStarSprite = false;
+    for (let index = 0; index < starDisplay.count; index += 1) {
+      if (this.host.addSprite(`LobbyHeroRosterStar_${index}`, starBandAssetOf(starDisplay.color), starFirstX + index * (starSize + starGap), starY, starSize, starSize, card)) {
+        anyStarSprite = true;
+      }
+    }
+    if (!anyStarSprite) {
+      const starBand = starBandTextRgb(hero.star);
+      const star = this.host.addChildLabel(card, 'LobbyHeroRosterStars', starText(hero.star), 0, starY, Math.min(16 * scale, height * 0.048), rgba(starBand[0], starBand[1], starBand[2]), new Size(width - 54 * scale, height * 0.06));
+      star.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(star, scale, false);
+    }
 
     const name = this.host.addChildLabel(card, 'LobbyHeroRosterHeroName', safeText(hero.heroName), 0, -height / 2 + height * HERO_ROSTER_CARD_NAME_Y_RATIO, Math.min(13 * scale, height * 0.038), rgba(250, 218, 146), new Size(width - 72 * scale, height * 0.054));
     name.overflow = Label.Overflow.SHRINK;
@@ -1014,35 +1116,37 @@ export class LobbyHeroRosterPanelRenderer {
   }
 
   private renderUpgradeDock(parent: Node, width: number, height: number, scale: number): void {
-    const dockWidth = Math.min(320 * scale, width * 0.34);
-    const dockHeight = 86 * scale;
-    const dockX = width / 2 - dockWidth / 2 - 34 * scale;
+    // 右下角"查看详情"底座已按需求移除,只保留布阵入口;点卡片即可进详情。
+    const dockWidth = 0;
+    const dockX = width / 2 - 34 * scale;
     const dockY = -height / 2 + 70 * scale;
-    const dock = this.host.addChildPlainNode(parent, 'LobbyHeroRosterUpgradeDock', dockX, dockY, dockWidth, dockHeight);
-    const graphics = dock.addComponent(Graphics);
-    graphics.fillColor = rgba(25, 18, 21, 210);
-    this.traceSlantRect(graphics, dockWidth, dockHeight, 22 * scale);
-    graphics.fill();
-    graphics.strokeColor = rgba(122, 85, 70, 148);
-    graphics.lineWidth = Math.max(1, 1 * scale);
-    this.traceSlantRect(graphics, dockWidth, dockHeight, 22 * scale);
-    graphics.stroke();
+    void dockWidth;
 
-    const note = this.host.addChildLabel(dock, 'LobbyHeroRosterUpgradeCostDisabled', '养成入口未开放', -dockWidth / 2 + 18 * scale, 14 * scale, 14 * scale, rgba(177, 158, 125), new Size(dockWidth - 116 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
-    note.overflow = Label.Overflow.SHRINK;
-
-    const button = this.host.addChildPlainNode(dock, 'LobbyHeroRosterUpgradeButtonDisabled', dockWidth / 2 - 58 * scale, 0, 92 * scale, 60 * scale);
-    const buttonGraphics = button.addComponent(Graphics);
-    buttonGraphics.fillColor = rgba(54, 36, 34, 190);
-    this.traceSlantRect(buttonGraphics, 92 * scale, 60 * scale, 16 * scale);
-    buttonGraphics.fill();
-    buttonGraphics.strokeColor = rgba(188, 145, 82, 148);
-    buttonGraphics.lineWidth = Math.max(1, 1.3 * scale);
-    this.traceSlantRect(buttonGraphics, 92 * scale, 60 * scale, 16 * scale);
-    buttonGraphics.stroke();
-    const label = this.host.addChildLabel(button, 'LobbyHeroRosterUpgradeButtonLabel', '升级关闭', 0, 0, 17 * scale, rgba(222, 198, 146), new Size(78 * scale, 42 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, false);
+    // 布阵入口:跳转编队面板,布阵结果同步大厅挂机演出阵容。
+    // 按钮整图按素材原比例(240×84)放大显示,不用 SLICED(源像素九宫会把雕花框压变形)。
+    const formationWidth = 208 * scale;
+    const formationHeight = formationWidth * (84 / 240);
+    const formationX = dockX - dockWidth / 2 - formationWidth / 2 - 20 * scale;
+    const formation = this.host.addChildPlainNode(parent, 'LobbyHeroRosterFormationButton', formationX, dockY, formationWidth, formationHeight);
+    const formationArt = this.host.addSprite('LobbyHeroRosterFormationButtonArt', C1812_BUTTON_PRIMARY_ASSET, 0, 0, formationWidth, formationHeight, formation);
+    if (formationArt) {
+      // 整图等比,保持雕花边框不变形。
+    } else {
+      const formationGraphics = formation.addComponent(Graphics);
+      formationGraphics.fillColor = rgba(48, 36, 22, 220);
+      this.traceSlantRect(formationGraphics, formationWidth, formationHeight, 16 * scale);
+      formationGraphics.fill();
+      formationGraphics.strokeColor = rgba(206, 162, 82, 190);
+      formationGraphics.lineWidth = Math.max(1, 1.3 * scale);
+      this.traceSlantRect(formationGraphics, formationWidth, formationHeight, 16 * scale);
+      formationGraphics.stroke();
+    }
+    const formationLabel = this.host.addChildLabel(formation, 'LobbyHeroRosterFormationButtonLabel', '布阵', 10 * scale, 0, 22 * scale, rgba(255, 240, 200), new Size(formationWidth - 76 * scale, 32 * scale));
+    formationLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(formationLabel, scale, true);
+    formation.addComponent(Button);
+    this.host.applyImageButtonFeedback(formation, 1.035, 0.965);
+    formation.on(Button.EventType.CLICK, () => this.host.openLobbyFormationPanel(undefined, 'roster'), this);
   }
 
   private renderFooter(parent: Node, width: number, height: number, scale: number): void {
@@ -1050,10 +1154,9 @@ export class LobbyHeroRosterPanelRenderer {
     const note = this.host.addChildLabel(
       parent,
       'LobbyHeroRosterBoundaryNote',
-      '当前英雄页只读展示已拥有英雄；不提供升级、升星、觉醒、抽卡、领取或资源变更入口。',
+      '英雄列表只读展示；进入英雄详情可升级，升星、觉醒、抽卡、领取仍关闭。',
       -width / 2 + 42 * scale,
-      -height / 2 + 30 * scale,
-      14 * scale,
+      -height / 2 + 30 * scale, 16 * scale,
       rgba(170, 150, 109),
       new Size(maxWidth, 24 * scale),
       HorizontalTextAlignment.LEFT,
@@ -1145,10 +1248,10 @@ export class LobbyHeroRosterPanelRenderer {
   private rarityTextColor(rarity: string): Color {
     const key = rarity.toUpperCase();
     if (key === 'UR') {
-      return rgba(255, 219, 124);
+      return rgba(255, 112, 78);
     }
     if (key === 'SSR') {
-      return rgba(255, 168, 98);
+      return rgba(255, 174, 84);
     }
     if (key === 'SR') {
       return rgba(222, 176, 255);
@@ -1159,10 +1262,10 @@ export class LobbyHeroRosterPanelRenderer {
   private rarityStroke(rarity: string): Color {
     const key = rarity.toUpperCase();
     if (key === 'UR') {
-      return rgba(236, 190, 84, 220);
+      return rgba(240, 72, 44, 224);
     }
     if (key === 'SSR') {
-      return rgba(218, 92, 58, 220);
+      return rgba(238, 148, 50, 220);
     }
     if (key === 'SR') {
       return rgba(148, 92, 218, 218);
@@ -1197,8 +1300,11 @@ function formatCompactInteger(value: number): string {
 }
 
 function starText(star: number): string {
-  const count = Math.max(1, Math.min(6, Math.trunc(star || 1)));
-  return `${'★'.repeat(count)}${'☆'.repeat(Math.max(0, 6 - count))}`;
+  // 星级色带:亮星=档内进度(1-3),颜色由调用侧按档上色;>3 星补真实星数。
+  const real = Math.max(1, Math.trunc(star || 1));
+  const progress = ((Math.min(15, real) - 1) % 3) + 1;
+  const bar = `${'★'.repeat(progress)}${'☆'.repeat(3 - progress)}`;
+  return real > 3 ? `${bar} ${real}星` : bar;
 }
 
 function formatHeroCardLevel(level: number): string {

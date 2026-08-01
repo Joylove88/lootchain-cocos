@@ -7,6 +7,7 @@ import {
   Label,
   Node,
   Size,
+  Sprite,
   UITransform,
   Vec3,
 } from 'cc';
@@ -20,6 +21,7 @@ export interface LobbyProfileDialogHost {
   currentLobbyProfile(): PlayerLobbyProfileVO;
   closePlayerProfileDialog(): void;
   createUiNode(name: string): Node;
+  addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addBeveledPanelNode(name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildLabel(
@@ -78,6 +80,8 @@ export class LobbyProfileDialogRenderer {
     panel.addComponent(BlockInputEvents);
     panel.addComponent(Button);
 
+    // C1812 标题横幅托底,统一各面板标题视觉;缺图时仅显示文字标题。
+    this.host.addSprite('LobbyProfileTitleBanner', 'ui/common/ai/title_banner/spriteFrame', 0, panelHeight / 2 - 46 * dialogScale, Math.min(300 * dialogScale, panelWidth * 0.5), 56 * dialogScale, panel);
     const titleLabel = this.host.addChildLabel(
       panel,
       'LobbyProfileTitle',
@@ -177,7 +181,8 @@ export class LobbyProfileDialogRenderer {
 
   private addProfileRows(panel: Node, profile: PlayerLobbyProfileVO, panelWidth: number, panelHeight: number, scale: number): void {
     const rows: [string, string, string, string][] = [
-      ['等级', `Lv.${profile.playerLevel}`, '经验', this.host.formatInteger(profile.exp)],
+      ['等级', `Lv.${profile.playerLevel}`, '经验', this.profileExpSummary(profile)],
+      ['下一级', this.profileNextLevelText(profile), '英雄上限', this.profileHeroLevelCapText(profile)],
       ['战力', this.host.formatInteger(profile.combatPower), '体力', `${this.host.formatInteger(profile.stamina)}/${this.host.formatInteger(profile.maxStamina)}`],
       ['账号状态', profile.accountStatus, '登录方式', profile.loginMethod],
       ['钱包绑定', profile.walletBound ? '已绑定' : '未绑定', '钱包地址', this.maskWalletAddress(profile.walletAddress)],
@@ -247,6 +252,27 @@ export class LobbyProfileDialogRenderer {
       HorizontalTextAlignment.LEFT,
     );
     valueNode.overflow = Label.Overflow.SHRINK;
+  }
+
+  private profileExpSummary(profile: PlayerLobbyProfileVO): string {
+    const progress = profile.levelProgress;
+    if (!progress?.nextLevelNeedExp) {
+      return this.host.formatInteger(profile.exp);
+    }
+    return `${this.host.formatInteger(progress.currentExp)}/${this.host.formatInteger(progress.nextLevelNeedExp)}`;
+  }
+
+  private profileNextLevelText(profile: PlayerLobbyProfileVO): string {
+    const progress = profile.levelProgress;
+    if (!progress || progress.nextLevel == null) {
+      return '已达当前上限';
+    }
+    return `Lv.${progress.nextLevel} 还差 ${this.host.formatInteger(progress.expToNextLevel)} EXP`;
+  }
+
+  private profileHeroLevelCapText(profile: PlayerLobbyProfileVO): string {
+    const maxHeroLevel = profile.levelProgress?.maxHeroLevel;
+    return maxHeroLevel == null ? LOBBY_PROFILE_PLACEHOLDER : `Lv.${maxHeroLevel}`;
   }
 
   private profileStatusText(profile: PlayerLobbyProfileVO): string {

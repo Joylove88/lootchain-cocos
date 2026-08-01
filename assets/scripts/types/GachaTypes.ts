@@ -12,6 +12,14 @@ export interface GachaPoolVO {
   costCode?: string | null;
   singleCost?: DecimalValue | null;
   tenCost?: DecimalValue | null;
+  primaryCostType?: string | null;
+  primaryCostCode?: string | null;
+  primarySingleCost?: DecimalValue | null;
+  primaryTenCost?: DecimalValue | null;
+  backupCostType?: string | null;
+  backupCostCode?: string | null;
+  backupSingleCost?: DecimalValue | null;
+  backupTenCost?: DecimalValue | null;
   startTime?: DateTimeString | null;
   endTime?: DateTimeString | null;
   status: number;
@@ -106,6 +114,7 @@ export interface GachaDrawDTO {
   requestId: string;
   drawCount: 1 | 10;
   useTicket?: boolean;
+  paymentMode?: 'AUTO' | 'TICKET' | 'CURRENCY';
 }
 
 export interface GachaDrawItemVO {
@@ -117,6 +126,8 @@ export interface GachaDrawItemVO {
   duplicate: boolean;
   grantNo?: string | null;
   fragmentCount?: number | null;
+  /** 单次奖励数量(材料按稀有度多发,2026-07-22);历史记录可能为空按 1 处理。 */
+  amount?: number | null;
 }
 
 export interface GachaDrawResultVO {

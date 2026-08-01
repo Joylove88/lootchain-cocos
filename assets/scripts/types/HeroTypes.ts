@@ -46,6 +46,14 @@ export interface UserHeroDetailVO {
   ultimateSkillCode?: string | null;
   story?: string | null;
   attrs: HeroAttrVO[];
+  /** 英雄等级上限:min(70, 玩家等级+10)。 */
+  heroLevelCap?: number | null;
+  /** 升到下一级所需经验;已达上限或配置缺失时为 null。 */
+  nextLevelNeedExp?: number | null;
+  /** 升到下一级所需英雄经验书数量;已达上限或配置缺失时为 null。 */
+  nextLevelExpBookCost?: number | null;
+  /** 升到下一级所需金币;已达上限或配置缺失时为 null。 */
+  nextLevelGoldCost?: number | null;
 }
 
 export interface UserHeroFragmentVO {
@@ -77,4 +85,5 @@ export interface HeroOperationResultVO {
   star: number;
   awakenStatus: number;
   power: number;
+  ultimateSkillLevel: number;
 }

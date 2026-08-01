@@ -6,8 +6,8 @@ LootChain 玩家游戏前端。当前阶段的登录页、UI、按钮、全屏�
 
 - Cocos Creator 负责登录页完整内容：背景、粒子、UI、全屏逻辑场景页和 `dev-login` 联调。
 - `web-vue` 仅作为历史实验目录保留，不作为当前阶段验收入口；除非用户明确要求，不再修改或运行它。
-- 当前流程为 Cocos 登录页 -> 主角色检查/创建 -> 资源加载进度页 -> 大厅背景页 + 大厅 HUD。
-- 登录成功后先检查/创建服务端主角色，再加载 `assets/resources/lobby` 下的大厅资源，资源准备完成后进入大厅背景界面，并展示玩家资料、公告活动和图鉴等只读/占位入口。
+- 当前流程为 Cocos 登录页 -> 隐藏主角档案检查/静默初始化 -> 资源加载进度页 -> 大厅背景页 + 大厅 HUD。
+- 登录成功后先检查服务端隐藏主角档案；新用户未创建时静默调用既有 `POST /api/player/protagonist` 初始化默认档案，不再让玩家选择主角。随后加载 `assets/resources/lobby` 下的大厅资源，资源准备完成后进入大厅背景界面，并展示玩家资料、公告活动、图鉴、英雄、召唤和主线等当前阶段入口。
 - 大厅阶段 1 已恢复播放 `assets/resources/lobby/lobby_bg_loop.mp4`；poster 作为首帧兜底，`VideoPlayer.stayOnBottom=true`，视频开始播放后淡出 poster，避免视频层覆盖 HUD。
 - 所有叠在背景上的 UI 元素必须使用 `LootChainGameRoot.resolveLayout()` 计算出的舞台安全区定位，不能写死屏幕坐标；`check:layout` 会按多种分辨率校验关键 HUD 不越界。
 - 左上玩家信息已按参考图方向深化为徽章式铭牌：头像徽章、EXP 小牌、等级/名称/战力三层排版、名称徽记和暗金细线底纹。
@@ -16,13 +16,374 @@ LootChain 玩家游戏前端。当前阶段的登录页、UI、按钮、全屏�
 - 大厅 Stage 1A 已将左上铭牌改为参考图式贴近左上角的小边距定位，动态文字限制在头像右侧有效区域内，并增加描边与缩放，提升视频背景上的可读性。
 - 英雄列表左侧职业筛选来自只读 `GET /api/player/lobby/heroes/filter-options` 与已加载英雄 `heroClass`；Cocos 现在用规范化职业 key 做选中态和过滤匹配，按钮仍显示配置/接口返回的职业文本，避免文本格式差异导致点击后空列表。
 
+## 2026-06-23 Battle Phase A Impact Upgrade
+
+- 战斗表现层已接入 Phase A 打击反馈：近战保持目标前接触攻击，`damage_float` 命中帧同步触发目标后仰、Hit Stop、Slash VFX、飘字；暴击额外触发红金大号飘字和 Screen Shake。
+- 新增纯表现模块 `assets/scripts/scenes/lobby/LobbyBattleImpactDirector.ts`，只计算前端视觉强度，不修改后端协议或战斗结算。
+- 新增守卫与验收：`npm.cmd run check:battle-phase-a-impact`、`npm.cmd run screenshot:battle-center`；运行时验收要求 `/settle=0`、命中/飘字同步差小于 `90ms`、暴击存在震屏和大号飘字。
+- 详细说明见 `docs/battle/phase-a-impact-upgrade.md`。
+
+## 2026-06-17 Visual Battle Stage 1 Spec Freeze
+
+- 可视化战斗 10 阶段已启动，当前完成第 1 阶段：规格冻结、UI/音效候选清单和只读守卫。
+- 新增文档：`docs/battle/stage1-visual-battle-spec.md`、`docs/battle/stage1-asset-audio-inventory.md`。
+- 新增守卫：`npm.cmd run check:battle-stage1`，校验规格必备章节、Cocos 当前可复用战斗 UI、外部 C1812 候选路径和经济红线。
+- 本阶段不实现运行时战斗动画，不复制或导入 `C:\Users\axian\Desktop\C1812-1` / `C:\Users\axian\Desktop\C1812音效` 外部素材。
+- 后续战斗仍只使用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`；本地表现时间轴只用于动画、飘字和音效，不作为奖励、体力、进度或掉落依据。
+- 边界不变：不新增持久编队接口，不新增经济写入口，不开放 EX V1、背包 use/sell/batch-use、升星、觉醒、精炼、补发或重结算。
+
+## 2026-06-17 Visual Battle Stage 2 Resource Import
+
+- Stage 2 已导入首批通用战斗表现资源，并新增 `npm.cmd run check:battle-stage2`。
+- 新增文档：`docs/battle/stage2-resource-import.md`。
+- 新增脚本：`scripts/import-battle-stage2-assets.mjs`、`scripts/check-battle-stage2.mjs`。
+- 导入 UI：Boss 血条框/填充、技能目标框、4 个 Buff 图标、受击/地面冲击装饰候选。
+- 导入音频：`battle_loop_01.wav`、近战/远程普攻、轻受击候选、技能、治疗、Buff、胜利/失败结算和战斗开始提示。
+- 当前只是资源基座；未接入运行时播放、未实现战斗动画、未改后端接口、未新增经济写入口。
+
+## 2026-06-17 Visual Battle Stage 3 Scene Skeleton
+
+- Stage 3 已新增表现快照适配层 `LobbyBattlePresentationSnapshot.ts`，把 `battle start` 回执、只读英雄列表和敌方预览合并为 Cocos 表现快照。
+- 新增文档：`docs/battle/stage3-battle-scene-skeleton.md`。
+- 新增守卫：`npm.cmd run check:battle-stage3`，校验快照层、Stage 2 资源接入、渲染器骨架和文档边界。
+- 战斗页现在消费表现快照渲染左右阵营、前排/后排/首领定位、Boss 血条、目标框、命中装饰和 Buff 托盘。
+- Stage 2 音频路径已作为 `stage2AudioCues` 暴露给后续阶段，但本阶段不自动播放 BGM/SFX。
+- 本阶段仍不新增后端接口、SQL、持久编队、战斗 AI、技能时间轴、伤害结算或经济写入口；战斗写入仍只走既有 start/settle。
+
+## 2026-06-17 Visual Battle Stage 4 Spine Formation Layer
+
+- Stage 4 已新增 `LobbyBattleUnitSpineRuntime.ts`，集中处理战斗单位 Spine 资源路径、UUID、动画名、缩放和镜像。
+- 战斗页 actor 现在会优先用只读英雄队列的 `spineAsset/spineUuid` 渲染 `LobbyBattleActorSpineNode`，播放基础待机动画。
+- 无 Spine、加载失败或运行时解析失败时回退 `LobbyBattleActorSpineFallbackSilhouette`；敌方当前仍使用 `LobbyBattleEnemyStandin` 通用 stand-in。
+- 新增文档：`docs/battle/stage4-spine-formation-layer.md`。
+- 新增守卫：`npm.cmd run check:battle-stage4`，校验 Spine 站位层、兜底剪影、Preview freshness tokens 和阶段边界。
+- 本阶段仍不新增后端接口、SQL、持久编队、战斗 AI、技能时间轴、伤害结算、音频自动播放或经济写入口；战斗写入仍只走既有 start/settle。
+
+## 2026-06-17 Visual Battle Stage 5 Deterministic Timeline
+
+- Stage 5 已新增 `LobbyBattlePresentationTimeline.ts`，基于 `serverSeed + battleNo + unitSnapshot` 生成确定性本地表现时间线。
+- 时间线事件覆盖开战、入场、回合开始、出手、锁定目标、`damage_preview`、受击、`buff_preview`、回合结束和战斗结束。
+- 战斗页新增 `LobbyBattleTimelineEventRail`，并让伤害飘字与 Buff 托盘读取时间线事件，而不是继续使用固定硬编码伤害数字。
+- 新增文档：`docs/battle/stage5-deterministic-timeline.md`。
+- 新增守卫：`npm.cmd run check:battle-stage5`，校验时间线 helper、渲染器接入、文档和 Preview freshness tokens。
+- 本阶段仍不新增后端接口、SQL、持久编队、战斗 AI、权威伤害结算、音频自动播放或经济写入口；本地时间线只用于表现，战斗写入仍只走既有 start/settle。
+
+## 2026-06-17 Visual Battle Stage 6 Actions And Float Text
+
+- Stage 6 已新增 `LobbyBattleActionPresentation.ts`，把 Stage 5 的 `action_start/damage_preview/hit_react` 转换为本地动作 cue。
+- 战斗页新增近战短推进、普攻动作、后排远程弹道、伤害飘字和受击飘字表现。
+- 渲染器新增 `LobbyBattleActionProjectileLayer`、`LobbyBattleActionFloatingTextLayer` 和 `LobbyBattleMeleeAdvanceGhost`，并让英雄 Spine 在当前 cue 对应时优先播放 `move/attack_01/skill_01/hit` 后回到 `idle`。
+- 新增文档：`docs/battle/stage6-actions-and-float-text.md`。
+- 新增守卫：`npm.cmd run check:battle-stage6`，校验动作 cue helper、渲染器接入、文档和 Preview freshness tokens。
+- 本阶段仍不新增后端接口、SQL、权威伤害结算、音频自动播放或经济写入口；动作与飘字只用于表现，不提交伤害到服务端，战斗写入仍只走既有 start/settle。
+
+## 2026-06-17 Visual Battle Stage 7 Skills And Assist
+
+- Stage 7 已新增 `LobbyBattleAssistPresentation.ts`，把 Stage 5 的 `buff_preview` 转换为本地技能与辅助 cue。
+- 战斗页新增施法光环、辅助连线、治疗飘字、护盾飘字、Buff 飘字和敌方 Debuff 飘字表现。
+- 渲染器新增 `LobbyBattleAssistAuraLayer`、`LobbyBattleAssistFloatingTextLayer` 和 `LobbyBattleAssistSkillCastRing`，并在辅助 cue 生效时让 Spine 优先播放 `skill_01/heal/shield/hit` 对应兜底动画。
+- 新增文档：`docs/battle/stage7-skill-and-assist.md`。
+- 新增守卫：`npm.cmd run check:battle-stage7`，校验辅助 cue helper、渲染器接入、文档和 Preview freshness tokens。
+- 本阶段仍不新增后端接口、SQL、权威治疗/护盾/Buff 结算、音频自动播放或经济写入口；技能与辅助只用于表现，不提交治疗或护盾到服务端，战斗写入仍只走既有 start/settle。
+
+## 2026-06-17 Visual Battle Stage 8 Settlement And Recovery
+
+- Stage 8 已新增 `LobbyBattleSettlementPresentation.ts`，把现有战斗状态翻译为本地结算链路步骤。
+- 战斗页新增 `LobbyBattleStage8SettlementFlowPanel`、`LobbyBattleStage8RecoveryBanner`、`LobbyBattleStage8ReceiptStatus` 和重复点击拦截徽标。
+- 本阶段覆盖 `start/settle` 幂等、断线、返回重进、失败兜底和以后端回执结算的前端可见提示。
+- 新增文档：`docs/battle/stage8-settlement-and-recovery.md`。
+- 新增守卫：`npm.cmd run check:battle-stage8`，校验结算链路 helper、渲染器接入、文档、Preview freshness tokens 和状态机确定性。
+- 本阶段仍不新增后端接口、SQL、重结算、补发、客户端胜负推导或经济写入口；战斗写入仍只走既有 start/settle。
+
+## 2026-06-17 Stage 7 Growth Loop Closure
+
+- 本阶段在年度主线 R1-R393 基座上完成 5 环节成长闭环：冒险推荐 -> 本地一次性编队 -> 战力不足拦截 -> 英雄详情升级 -> 回读资源/英雄/背包/冒险 -> 重新进入战斗。
+- Cocos 不新增保存阵容接口；编队只在战斗 start 时提交 `stageCode/heroIds/leaderHeroId/requestId`，继续复用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`。
+- 冒险详情与编队页新增当前阵容战力、推荐战力、差距和达标状态；战力不足时按钮引导到英雄升级，不再让玩家点进必失败的战斗预演。
+- 英雄详情只开放 `level-up`，展示金币与英雄经验书持有量；升级成功后按后端 `HeroOperationResultVO` 显示等级、战力和增量，并回读 `me/lobby`、英雄列表、背包和冒险。
+- 后端权威战力仍来自 `user_hero.power`；Stage 7 将英雄等级战力系数调为每级 `12%`，并通过 `sql/64_stage7_growth_loop_power_tuning.sql` 调整 R1-R15 推荐战力曲线，让 R1/R2 后首次升级可以打开 R3，后续关卡继续递增难度。
+- 已验证：`scripts/smoke-stage7-growth-loop.ps1` 通过，测试账号 `userId=54 / heroId=62` 从 R1/R2 到 R3 升级前拦截、升级后 `9432 -> 10372`、R3 结算并推荐 `MAIN_1_4`；后端相关 `60 tests, 0 failures`；年度守卫通过；Cocos `npm.cmd run check:layout` 通过。
+- 当前环境缺口：本机未启动 Cocos Preview，`npm.cmd run check:preview` 返回 `ECONNREFUSED`；打开 Cocos Creator Preview 后需复跑并做视觉验收。
+- 边界不变：不开放 EX V1、gacha exchange/reissue、背包 use/sell/batch-use、升星、觉醒、精炼、奖励/体力/进度手写、补发/重结算或其它新经济写入口。
+
+## 2026-06-17 Stage 6S Annual Mainline / 393 Real First Clears
+
+- 当前主线按产品/策划/DB/开发/测试口径升级为年度推进：共 `25` 章 `393` 关，`MAIN_1_1` 至 `MAIN_25_16` 均为一次性真实首通节点。
+- 年度顺序：第 1 章 `9` 关；第 2-25 章每章 `16` 关；`R16=MAIN_2_7`，最终 `R393=MAIN_25_16`。
+- Cocos 不再维护 R1-R15 枚举白名单，改用同一公式识别 `MAIN_1_1..MAIN_25_16` 与 `REAL_MAINLINE_R1..REAL_MAINLINE_R393`；越界如 `MAIN_25_17` 会被拒绝。
+- 客户端仍只调用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，不提交奖励、体力、进度、货币、背包或英雄字段。
+- 后端不限制每日真实主线首通次数，也不以体力或等级卡节奏；只要前置进度满足且出战阵容战力达到推荐战力即可继续挑战，重复挑战返回 `NO_REWARD`，不扣体力、不发奖励、不推进主线。
+- 新增 SQL/守卫/Smoke：`D:\project\LootChain\sql\63_battle_mainline_year_full_open.sql`、`D:\project\LootChain\scripts\check-battle-mainline-year-config.ps1`、`D:\project\LootChain\scripts\smoke-mainline-year-full-chain.ps1`。
+- DB 已提升长期材料堆叠上限：`HERO_EXP_BOOK` 与 `LOW_ENHANCE_STONE` 均为 `999999`，覆盖全年累计首通投放，避免年度链路中后段因背包堆叠上限中断。
+- 当前 full-chain smoke 使用 `0` 体力测试账号验证 R1-R393 可连续推进，测试账号 `userId=50 / heroId=58` 最终 `Lv.60 / exp=91450 / stamina=0`，最终关重复挑战为 `NO_REWARD`，`MAIN_25_17` 被拦截。
+- 已验证：年度 SQL 导入通过；年度经济守卫通过，含 `annual mainline stamina gate enabled count = 0`、`daily limit text active count = 0`；后端主线/冒险/后台战斗配置/PhaseGate 单测 `67 tests, 0 failures`；`lootchain-game -am -DskipTests compile` 通过；`smoke-mainline-year-full-chain.ps1` 通过；Cocos `npm.cmd run check:layout` 通过；当前 `localhost:7456` 未启动，`npm.cmd run check:preview` 返回 `ECONNREFUSED`，打开 Cocos Creator Preview 后需要复跑。
+- 边界不变：不开放重复刷关经验/掉落、扫荡、随机掉落、副本/Boss、排行奖励、USDT、资金池、EX V1、后台补发/重结算、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼或其它新经济写入口。
+
+## 2026-06-17 Stage 6R MAIN_2_6 / R15 Real First Clear
+
+- 本阶段开放 `MAIN_2_6` 一次性真实首通，Cocos 仍只调用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，不提交奖励、体力、进度、货币或背包字段。
+- `BattleApi` 白名单扩展到 `REAL_MAINLINE_R15`，并按 `MAIN_2_6` 精确校验：`PLAYER_EXP 750`、`GOLD 1400`、`LOW_ENHANCE_STONE x6`、`HERO_EXP_BOOK x1`。
+- 冒险/战斗入口白名单扩展到 `MAIN_1_1` 至 `MAIN_2_6`；`MAIN_2_7` 是新的只读预热边界，锁定节点只可预览，不能进入编队或创建战斗。
+- 正常 R1-R15 后后端应回读 `Lv.15 / exp=5950 / stamina=110`，推荐 `MAIN_2_7`，但 `MAIN_2_7` 必须显示阶段保护，不发奖励、不推进 `MAIN_2_8`。
+- 新增 SQL/Smoke：`D:\project\LootChain\sql\62_battle_mainline_main26_first_clear_open.sql`，`D:\project\LootChain\scripts\smoke-stage6r-main26-first-clear.ps1`。
+- 验证：后端 Stage 6R smoke 通过，测试账号 `userId=45 / heroId=53`；`MAIN_2_7` stage guard 通过；Cocos `check:layout` 通过；当前 `localhost:7456` 未启动，`check:preview` 返回 `ECONNREFUSED`，需要打开 Creator Preview 后复跑。
+- 边界不变：不开放 `MAIN_2_7` 真实结算、`REAL_MAINLINE_R16`、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-17 Stage 6Q MAIN_2_5 / R14 Real First Clear
+
+- 本阶段开放 `MAIN_2_5` 一次性真实首通，Cocos 仍只调用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，不提交奖励、体力、进度、货币或背包字段。
+- `BattleApi` 白名单扩展到 `REAL_MAINLINE_R14`，并按 `MAIN_2_5` 精确校验：`PLAYER_EXP 700`、`GOLD 1300`、`LOW_ENHANCE_STONE x5`、`HERO_EXP_BOOK x1`。
+- 冒险/战斗入口白名单扩展到 `MAIN_1_1` 至 `MAIN_2_5`；`MAIN_2_6` 是新的只读预热边界，锁定节点只可预览，不能进入编队或创建战斗。
+- 正常 R1-R14 后后端应回读 `Lv.14 / exp=5200 / stamina=116`，推荐 `MAIN_2_6`，但 `MAIN_2_6` 必须显示阶段保护，不发奖励、不推进 `MAIN_2_7`。
+- 新增 SQL/Smoke：`D:\project\LootChain\sql\61_battle_mainline_main25_first_clear_open.sql`，`D:\project\LootChain\scripts\smoke-stage6q-main25-first-clear.ps1`。
+- 验证：后端 Stage 6Q smoke 通过，测试账号 `userId=44 / heroId=52`；`MAIN_2_6` stage guard 通过；Cocos `check:layout` 通过；当前 `localhost:7456` 未启动，`check:preview` 返回 `ECONNREFUSED`，需要打开 Creator Preview 后复跑。
+- 边界不变：不开放 `MAIN_2_6` 真实结算、`REAL_MAINLINE_R15`、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-17 Stage 6P MAIN_2_4 / R13 Real First Clear
+
+- 本阶段开放 `MAIN_2_4` 一次性真实首通，Cocos 仍只调用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，不提交奖励、体力、进度、货币或背包字段。
+- `BattleApi` 白名单扩展到 `REAL_MAINLINE_R13`，并按 `MAIN_2_4` 精确校验：`PLAYER_EXP 650`、`GOLD 1200`、`LOW_ENHANCE_STONE x5`、`HERO_EXP_BOOK x1`。
+- 冒险/战斗入口白名单扩展到 `MAIN_1_1` 至 `MAIN_2_4`；`MAIN_2_5` 仍为只读预热，锁定节点只可预览，不能进入编队或创建战斗。
+- 正常 R1-R13 后后端应回读 `Lv.13 / exp=4500 / stamina=122`，推荐 `MAIN_2_5`，但 `MAIN_2_5` 必须显示阶段保护，不发奖励、不推进 `MAIN_2_6`。
+- 验证：后端 Stage 6P smoke 通过，测试账号 `userId=43 / heroId=51`；`MAIN_2_5` stage guard 通过；Cocos `check:layout` 通过；当前 `localhost:7456` 未启动，`check:preview` 返回 `ECONNREFUSED`，需要打开 Creator Preview 后复跑。
+- 边界不变：不开放 `MAIN_2_5` 真实结算、`REAL_MAINLINE_R14`、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-17 Stage 6O MAIN_2_4 Readonly Prewarm
+
+- 本阶段不开放 `R13 / MAIN_2_4` 真实首通，真实结算仍停在 `MAIN_2_3 / REAL_MAINLINE_R12`。
+- `MAIN_2_4` 只作为 R12 后的推荐预览：不创建战斗、不扣体力、不发奖励、不推进 `MAIN_2_5`，活跃 `battle_reward_rule=0`，`REAL_MAINLINE_R13/PHASE6_REAL_BATTLE_R13/R13_*` 活跃配置计数为 `0`。
+- 新增并本地导入 `D:\project\LootChain\sql\59_battle_mainline_main24_readonly_prewarm.sql`；后台掉落预览新增三条 no-grant 展示行：玩家经验、金币、装备材料。
+- Cocos 冒险页新增前端真实战斗入口白名单，只允许 `MAIN_1_1` 至 `MAIN_2_3` 进入编队/战斗；锁定或未进入白名单的节点只可预览。R12 后旧本地选择停在 `MAIN_2_3` 时，详情优先切到推荐锁定的 `MAIN_2_4`。
+- 验证：后端相关 `45 tests, 0 failures`；`PlayerApiPhaseGateTest` `3 tests, 0 failures`；经济守卫通过；Stage 6N/6O smoke 通过，测试账号 `userId=42 / heroId=50`；`MAIN_2_4` stage guard 通过，前后 `battle_session=0`；Cocos `check:layout` 通过。
+- 当前环境缺口：未找到本机 Creator 3.8.8 `tsc.cmd`；`check:preview` 因 `http://localhost:7456` 未启动返回 `ECONNREFUSED`，打开 Cocos Creator Preview 后需要复跑。
+- 边界不变：不开放 `MAIN_2_4` 真实结算、`REAL_MAINLINE_R13`、`MAIN_2_5` 推进、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-17 Stage 6N MAIN_2_3 R12 First Clear
+
+- 本阶段开放 `MAIN_2_3` 一次性真实首通，仍不新增玩家经济接口、不开放重复刷关或 `MAIN_2_4`。
+- `MAIN_2_3` 首通走 `REAL_MAINLINE_R12`，固定扣体力 `6`，发放 `PLAYER_EXP 600`、`GOLD 1100`、`LOW_ENHANCE_STONE x4`、`HERO_EXP_BOOK x1`，正常 R1-R12 后达到 `Lv.12 / exp=3850 / stamina=128`。
+- 后端 `GET /api/player/lobby/adventure` 在 R12 后推荐 `MAIN_2_4`，但必须返回 `unlocked=false`、`lockReasonCode=PHASE_LOCKED`、活跃奖励规则为 `0`。
+- Cocos `BattleApi` 白名单扩展到 `REAL_MAINLINE_R12`，并按 `MAIN_2_3` 精确校验奖励；冒险页底部说明为 `MAIN_1_1` 至 `MAIN_2_3` 首通真实结算，`MAIN_2_4` 只读预热。
+- 新增 SQL/Smoke：`D:\project\LootChain\sql\58_battle_mainline_main23_first_clear_open.sql`，`D:\project\LootChain\scripts\smoke-stage6n-main23-first-clear.ps1`。
+- 验证：后端相关 `45 tests, 0 failures`；经济守卫通过；Stage 6N smoke 通过，测试账号 `userId=40` 完成 R1-R12 后 `Lv.12 / exp=3850 / stamina=128`；`MAIN_2_4` stage guard 通过；Cocos `check:layout` 通过。
+- 当前环境缺口：未找到本机 Creator 3.8.8 `tsc.cmd`，定向 TypeScript no-emit 未执行；`http://localhost:7456` 未启动，`check:preview` 返回 `ECONNREFUSED`；打开 Cocos Creator Preview 后需要复跑。
+- 边界不变：不开放 `MAIN_2_4` 真实结算、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-15 Stage 6M MAIN_2_2 R11 First Clear
+
+- 本阶段开放 `MAIN_2_2` 一次性真实首通，仍不新增玩家经济接口、不开放重复刷关或 `MAIN_2_3`。
+- `MAIN_2_2` 首通走 `REAL_MAINLINE_R11`，固定扣体力 `6`，发放 `PLAYER_EXP 550`、`GOLD 1000`、`LOW_ENHANCE_STONE x4`、`HERO_EXP_BOOK x1`，正常 R1-R11 后达到 `Lv.11 / exp=3250`。
+- 后端 `GET /api/player/lobby/adventure` 在 R11 后推荐 `MAIN_2_3`，但必须返回 `unlocked=false`、`lockReasonCode=PHASE_LOCKED`、活跃奖励规则为 `0`。
+- Cocos `BattleApi` 白名单扩展到 `REAL_MAINLINE_R11`，并按 `MAIN_2_2` 精确校验奖励；冒险页底部说明为 `MAIN_1_1` 至 `MAIN_2_2` 首通真实结算，`MAIN_2_3` 只读预热。
+- 新增 SQL/Smoke：`D:\project\LootChain\sql\57_battle_mainline_main22_first_clear_open.sql`，`D:\project\LootChain\scripts\smoke-stage6m-main22-first-clear.ps1`。
+- 验证：后端相关 48 tests 0 failures；经济守卫通过；Stage 6M smoke 通过，测试账号 `userId=39` 完成 R1-R11 后 `Lv.11 / exp=3250 / stamina=134`；`MAIN_2_3` stage guard 通过；Cocos `check:layout` 与定向 TypeScript no-emit 通过。
+- Preview 注意：本轮 `http://localhost:7456` 未启动，`check:preview` 返回 `ECONNREFUSED`；打开 Cocos Creator Preview 后需要复跑。
+- 边界不变：不开放 `MAIN_2_3` 真实结算、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-14 Stage 6L MAIN_2_1 Lv10 Preheat
+
+- 本阶段不开放 R11；`MAIN_2_2` 只作为 R1-R10 后的推荐详情与后续章节预热展示。
+- `MAIN_2_1` 首通仍走 `REAL_MAINLINE_R10`，基础奖励保留 `PLAYER_EXP 450`，同一首通事务追加 `第二章预热经验 PLAYER_EXP 500`，正常 R1-R10 后达到 `Lv.10 / exp=2700`。
+- 后端 `GET /api/player/lobby/adventure` 在 R10 后应推荐 `MAIN_2_2`，但仍返回 `unlocked=false`、`lockReasonCode=PHASE_LOCKED`、`levelGap=0`、`expToRequiredLevel=0`。
+- `MAIN_2_2` 奖励项全部是 no-grant 文案：`玩家经验（预览，不发放）`、`金币（预览，不发放）`、`装备材料（预览，不发放）`；不配置活跃 `battle_reward_rule`。
+- Cocos 冒险详情优先展示推荐的锁定 `MAIN_2_2`，不再回退到旧已解锁关卡；奖励标题为 `奖励只读预览（当前不发放）`，阶段保护按钮为 `仅预览`，底部说明强调不创建战斗或奖励。
+- 新增 SQL/守卫：`D:\project\LootChain\sql\56_battle_mainline_stage6l_lv10_prewarm.sql`，`check-battle-r1-economy-config.ps1` 增加 Stage 6L 预热经验规则和 `MAIN_2_2` display-only/preview-only/经济写开关关闭校验。
+- 验收口径：后端冒险/战斗测试、经济守卫、6L smoke、`MAIN_2_2` stage guard、Cocos `check:layout`、TypeScript no-emit 与 `check:preview` 均需通过；Preview 若出现旧 chunk，先让 Cocos Creator 前台刷新再硬刷新浏览器。
+- 边界不变：不开放 `MAIN_2_2` 真实结算、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-14 Stage 6J Runtime Preview And MAIN_2_2 Guard
+
+- 本阶段不开放新玩法；目标是补强 R1-R10 后 `MAIN_2_2` 的阶段保护与 Preview 验收可靠性。
+- 后端新增 `MAIN_2_2` 强制启动回归测试：请求在冒险查询、阵容读取和会话创建前被 `关卡暂未开放` 阻断。
+- DB 经济守卫新增 `MAIN_2_2` 校验：必须为 `PHASE5_READONLY/status=1/display-only/preview-only`，且活跃 `battle_reward_rule` 数量为 `0`。
+- `check-preview-freshness.mjs` 补充 Preview target 缺失、chunk 缺失和 scoped dependency 映射缺失诊断；本机通过让 Creator 前台刷新并同步同轮 preview chunks/scopes 恢复 `http://localhost:7456/`。
+- 验收：`npm.cmd run check:layout` 通过，`npm.cmd run check:preview` 通过；浏览器打开 Preview 后无 SystemJS 错误、控制台 error 为 `0`、canvas 已挂载可见；后端保护 smoke 确认强制 `MAIN_2_2` 不写 `battle_session`。
+- 边界不变：不开放 `MAIN_2_2` 真实结算、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-14 Stage 6I MAIN_2_1 Second-Chapter Entry
+
+- 本阶段开放 `MAIN_2_1` 一次性主线首通，继续复用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，不新增玩家侧经济写接口。
+- R10 首通固定消耗/奖励：扣体力 `6`，发放 `PLAYER_EXP 450`、`GOLD 900`、`LOW_ENHANCE_STONE x3`、`HERO_EXP_BOOK x1`，结算模式 `REAL_MAINLINE_R10`，推进/推荐 `MAIN_2_2`。
+- Cocos `BattleApi` 白名单扩展为 `REAL_MAINLINE_R1` 至 `REAL_MAINLINE_R10`，并按 `MAIN_2_1` 精确校验奖励；客户端仍不提交奖励、体力、进度、货币或背包字段。
+- `MAIN_2_2` 仍为阶段保护：冒险页可推荐展示，但 `unlocked=false`，启动被后端阻断，重复 `MAIN_2_1` 结算为 `NO_REWARD`。
+- 新增 SQL/Smoke：`D:\project\LootChain\sql\54_battle_mainline_main21_first_clear_open.sql`、`D:\project\LootChain\scripts\smoke-stage6i-main21-first-clear.ps1`；经济守卫已升级为 R1-R10。
+- 最新接口闭环结果：测试玩家 `userId=29` / `heroId=37` 完成 R1-R10，经验 `0 -> 2200`，等级 `1 -> 9`，体力 `200 -> 140`，金币 `6500`，`LOW_ENHANCE_STONE=18`，`HERO_EXP_BOOK=6`；`MAIN_2_2` 启动阻断，重复 `MAIN_2_1` 为 `NO_REWARD`，临时账号提升到 Lv.10 后 `MAIN_2_2` 仍锁定。
+- 边界：不开放 `MAIN_2_2` 真实结算、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-14 Stage 6H Growth Bridge To Lv.8
+
+- 本阶段开放 `MAIN_1_4` 至 `MAIN_1_9` 一次性主线首通成长桥，继续复用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`。
+- R1-R9 首通总经验达到 `1750`，后端自动回写玩家 Lv.8；`MAIN_2_1` 因等级/进度达成而解锁，但第二章真实结算仍关闭。
+- Cocos `BattleApi` 白名单扩展为 `REAL_MAINLINE_R1` 至 `REAL_MAINLINE_R9`，并按关卡精确校验奖励；客户端仍不提交奖励、体力、进度、货币或背包字段。
+- 冒险地图改为围绕当前推荐/选中关卡显示窗口，新增到 `MAIN_1_9` 后窄屏和桌面都不会只显示早期关卡。
+- 新增 smoke：`D:\project\LootChain\scripts\smoke-stage6h-growth-bridge-to-lv8.ps1`；最新结果 `userId=25`，经验 `0 -> 1750`，等级 `1 -> 8`，`MAIN_2_1.unlocked=true`，`MAIN_2_1` 结算为 `NO_REWARD`。
+- 验证：后端相关 71 tests 0 failures；经济守卫、6H smoke、Cocos `check:layout`、focused TypeScript no-emit、`check:preview` 均通过。
+- 边界：不开放 `MAIN_2_1` 真实结算、重复刷关经验/掉落、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、USDT、资金池或 EX V1。
+
+## 2026-06-14 Stage 6G Adventure Next-Step Readonly Guidance
+
+- 本阶段继续保持只读，不开放 `MAIN_2_1` 战斗或结算，不新增玩家经验、体力、奖励、背包、任务或进度写入口。
+- `GET /api/player/lobby/adventure` stage 新增 `nextGuidanceTitle`、`nextGuidanceText`、`growthSourceSummary`、`growthSourceStatus`、`growthSourceHint`、`repeatableExpAvailable`，用于说明锁定后下一步和当前经验来源状态。
+- 当前 `MAIN_2_1` 在 Lv.2 / 190 EXP 下返回 `growthSourceStatus=FIRST_CLEAR_USED_UP`、`repeatableExpAvailable=false`；Cocos 冒险详情底部显示“首通经验已用完；暂无重复经验入口。”。
+- 新增 smoke：`D:\project\LootChain\scripts\smoke-stage6g-adventure-next-step-readonly.ps1`；最新结果 `userId=24`，`recommendedStageCode=MAIN_2_1`、`main21Unlocked=false`、`main21GrowthSourceStatus=FIRST_CLEAR_USED_UP`、`battleSessionRowsCreated=0`。
+- 验证：后端相关 27 tests 0 failures；6E/6F 只读 smoke 与 6G smoke 均通过；Cocos `check:layout`、`check:preview` 和 directed TypeScript no-emit 通过。
+
+## 2026-06-14 Stage 6E Level Progress Readability
+
+- 本阶段不开放新关卡、不新增经济写入口；只补齐玩家等级/经验进度和 `MAIN_2_1` 锁定原因的可读性。
+- `GET /api/player/me/lobby` 新增只读 `levelProgress`，由后端按 `game_user.exp/player_level` 与 `user_level_config.need_exp` 计算，包含当前等级门槛、下一等级、距离下一级经验、百分比、当前英雄等级上限和下一等级解锁说明。
+- `GET /api/player/lobby/adventure` 的每个 stage 新增 `unlockHint`；完成 R1/R2/R3 后推荐 `MAIN_2_1`，但返回 `unlocked=false`，提示需要 Lv.8、当前 Lv.2。
+- Cocos 左上铭牌 EXP 小牌显示百分比，玩家资料页显示 `当前经验/下一级门槛`、下一级差距和英雄等级上限，冒险详情显示后端 `unlockHint`；冒险页过期“无奖励/当前不发放”文案已更新为 R1/R2/R3 首通白名单结算口径。
+- 新增 smoke：`D:\project\LootChain\scripts\smoke-stage6e-level-progress-readonly.ps1`；最新本机结果 `userId=19`，`playerLevel=2`、`exp=190`、`expToNextLevel=60`、`progressPercent=60`、`recommendedStageCode=MAIN_2_1`、`main21Unlocked=false`。
+- 验证：后端 `PlayerLobbyProfileServiceTest,PlayerLobbyAdventureServiceImplTest,PlayerBattleServiceImplTest` 共 26 tests 0 failures；Cocos `npm.cmd run check:layout` 与 `npm.cmd run check:preview` 通过；Preview 加载 `http://localhost:7456/` 后控制台 error 为空。
+
+## 2026-06-14 Stage 6F Locked Stage Gap Readability
+
+- 本阶段继续保持只读，不开放 `MAIN_2_1` 战斗或结算；在 Stage 6E 的 `unlockHint` 基础上补结构化锁定差距字段。
+- `GET /api/player/lobby/adventure` stage 新增 `lockReasonCode`、`levelGap`、`requiredLevelNeedExp`、`expToRequiredLevel`。当前 `MAIN_2_1` 在 Lv.2 / 190 EXP 下返回 `LEVEL_REQUIRED`、还差 `6` 级、距 Lv.8 阈值还差 `1560` EXP。
+- Cocos 冒险详情新增“距离要求：6 级 / 1560 EXP”，避免玩家把 Lv.2 到 Lv.3 的 `60 EXP` 误认为 `MAIN_2_1` 解锁差距。
+- 同一 smoke 已升级验证 6F 字段；最新结果 `userId=20`，`main21LockReasonCode=LEVEL_REQUIRED`、`main21LevelGap=6`、`main21ExpToRequiredLevel=1560`。
+- 验证：后端相关 26 tests 0 failures；`npm.cmd run check:layout` 与 `npm.cmd run check:preview` 通过。
+
+## 2026-06-14 Stage 6D Player Level Auto-Growth
+
+- 本阶段不扩大 R1/R2/R3 战斗开放范围，不开放 `MAIN_2_1` 真实结算；只补齐主线首通玩家经验到账后的玩家等级成长。
+- 后端 `PlayerBattleServiceImpl` 在 R1/R2/R3 首通事务内按累计经验回写 `game_user.player_level`，等级来自 `user_level_config.need_exp`；完整 R1+R2+R3 后玩家经验 `190`，等级应为 `2`。
+- Cocos 不新增接口、不提交等级/经验字段；战斗后沿用既有刷新，回读 `GET /api/player/me/lobby` 与 `GET /api/player/lobby/adventure` 展示 `Lv.2`。
+- 新增可复跑 smoke：`D:\project\LootChain\scripts\smoke-stage6d-player-levelup.ps1`，覆盖 `playerExp 0 -> 50 -> 110 -> 190`、`playerLevel 1 -> 1 -> 2 -> 2` 和 `MAIN_2_1` 启动不写 `battle_session`。
+- 边界不变：不开放玩家手动升级、升级奖励领取、体力领取/购买、重复刷关掉落、副本、Boss、排行、扫荡、USDT、资金池、EX V1、背包 use/sell/batch-use、升星、觉醒、精炼或其它新经济写入口。
+
+## 2026-06-14 Stage 6C MAIN_1_3 R3 Settlement And Hero Level-Up
+
+- 当前战斗开放范围为 `MAIN_1_1` R1、`MAIN_1_2` R2 和 `MAIN_1_3` R3 首通真实结算；Cocos 仍只调用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，客户端不提交奖励、掉落、体力、主线进度、货币或背包字段。
+- R3：`MAIN_1_3` 首次 `WIN`，扣体力 `6`，发放 `PLAYER_EXP 80`、`GOLD 1200`、`LOW_ENHANCE_STONE x3`、`HERO_EXP_BOOK x1`，结算模式 `REAL_MAINLINE_R3`，推进 `MAIN_2_1` 推荐展示。
+- 英雄成长仍仅开放 `POST /api/player/heroes/{heroId}/level-up`。R3 奖励用于支撑英雄 2→3；`star-up/awaken/refine` 仍关闭。
+- 新增后端 SQL：`D:\project\LootChain\sql\52_battle_mainline_r3_levelup_open.sql`；`check-battle-r1-economy-config.ps1` 已升级为 R1/R2/R3 经济守卫；新增可复跑 smoke `D:\project\LootChain\scripts\smoke-stage6c-r3-levelup.ps1`。
+- Cocos `BattleApi` 已扩展为 `NO_REWARD`/`REAL_MAINLINE_R1`/`REAL_MAINLINE_R2`/`REAL_MAINLINE_R3`，按关卡精确校验奖励白名单；结果页把 R3 视为真实首通回执展示。
+- 本机接口闭环 smoke 已通过：测试玩家 `userId=13` / `heroId=30` 完成 R1、R2、英雄 1→2、R3 和英雄 2→3，体力 `100 -> 82`、玩家经验 `0 -> 190`、金币 `1100 -> 300 -> 1500 -> 412`、`HERO_EXP_BOOK 1 -> 0 -> 1 -> 0`、英雄等级 `1 -> 2 -> 3`；`MAIN_2_1` 强制启动返回 `code=1000` 且未写入 `battle_session`。
+- 边界不变：不开放 `MAIN_2_1` 真实结算、重复刷关掉落、副本、Boss、排行、扫荡、USDT、资金池奖励、EX V1、后台补发/重结算、背包 use/sell/batch-use、升星、觉醒、精炼或其它新经济写入口。
+
+## 2026-06-14 Stage 6B MAIN_1_2 R2 Settlement And Hero Level-Up
+
+- 当前战斗开放范围为 `MAIN_1_1` R1 与 `MAIN_1_2` R2 首通真实结算；Cocos 仍只调用既有 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`，客户端不提交奖励、掉落、体力、主线进度、货币或背包字段。
+- R1：`MAIN_1_1` 首次 `WIN`，扣体力 `6`，发放 `PLAYER_EXP 50`、`GOLD 300`、`LOW_ENHANCE_STONE x2`，结算模式 `REAL_MAINLINE_R1`，推进 `MAIN_1_2`。
+- R2：`MAIN_1_2` 首次 `WIN`，扣体力 `6`，发放 `PLAYER_EXP 60`、`GOLD 800`、`LOW_ENHANCE_STONE x2`、`HERO_EXP_BOOK x1`，结算模式 `REAL_MAINLINE_R2`，推进 `MAIN_1_3`，刚好支撑英雄 1→2 首次升级。
+- 英雄成长仅开放 `POST /api/player/heroes/{heroId}/level-up`。Cocos 只在英雄详情页提供 `升级` 按钮，成功后回读玩家资料、英雄列表和背包；`star-up/awaken/refine` 仍关闭。
+- 新增后端 SQL：`D:\project\LootChain\sql\51_battle_mainline_r2_levelup_open.sql`；`check-battle-r1-economy-config.ps1` 已升级为 R1/R2 经济守卫；新增可复跑 smoke `D:\project\LootChain\scripts\smoke-stage6b-r2-levelup.ps1`。
+- 本机接口闭环 smoke 已通过：测试玩家 `userId=10` / `heroId=27` 完成 R1、R2 和一次 `level-up`，体力 `100 -> 88`、玩家经验 `0 -> 110`、金币 `1100 -> 300`、`HERO_EXP_BOOK 1 -> 0`、英雄等级 `1 -> 2`；`star-up/awaken/refine` 被阻断，`MAIN_1_3` 强制启动返回 `code=1000` 且未写入 `battle_session`。
+- 边界不变：不开放 `MAIN_1_3` 真实结算、重复刷关掉落、副本、Boss、排行、扫荡、USDT、资金池奖励、EX V1、后台补发/重结算、背包 use/sell/batch-use、升星、觉醒、精炼或其它新经济写入口。
+
+## 2026-06-12 Stage 6A MAIN_1_1 R1 First-Clear Settlement
+
+- 当前战斗从历史 no-reward 预演推进到 R1 主线首通真实结算，但只开放 `MAIN_1_1` 首次 `WIN`。
+- Cocos 仍只调用既有玩家端接口：`POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`；客户端不提交奖励、掉落、体力、主线进度、货币或背包字段。
+- 后端 R1 固定消耗/奖励：`staminaCost=6`、`PLAYER_EXP=50`、`GOLD=300`、`LOW_ENHANCE_STONE=2`，结算模式为 `REAL_MAINLINE_R1`，首通后推荐/解锁 `MAIN_1_2`。
+- Cocos `BattleApi` 只接受 `NO_REWARD` 与 `REAL_MAINLINE_R1`，并拦截 `USDT/HERO/HERO_FRAGMENT/DIAMOND/BOUND_DIAMOND/STAMINA/EX_*` 等未开放奖励资源。
+- 战斗结算页展示后端权威回执：奖励摘要、体力变化、主线进度；返回大厅后刷新资料、冒险、最近战斗和背包只读数据。
+- 新增后端 SQL/守卫：`D:\project\LootChain\sql\45_battle_real_mainline_r1.sql` 与 `D:\project\LootChain\scripts\check-battle-r1-economy-config.ps1`。
+- 新增并跑通 R1 接口 smoke：`D:\project\LootChain\scripts\smoke-battle-r1-mainline-settlement.ps1`；本机一次性测试玩家 `userId=5` 首通后体力 `100 -> 94`、经验 `0 -> 50`、金币 `300`、`LOW_ENHANCE_STONE=2`、冒险推荐 `MAIN_1_2`，同一 settle requestId 重放未二次写入。
+- 边界不变：不开重复刷关掉落、副本、Boss、排行、扫荡、USDT、资金池奖励、EX V1、后台补发/重结算、背包 use/sell/batch-use、英雄养成或其他新经济写入口。
+
+## 2026-06-11 Stage 4HE Gacha Price Model And C1812 Summon UI
+
+- 当前抽卡价格模型：
+  - `限定召唤`: 限定契约券 1/10 优先，不足时钻石 300/3000；
+  - `英雄召唤`: 英雄契约券 1/10 优先，不足时钻石 280/2800；
+  - `普通召唤`: 普通契约券 1/10 优先，不足时绑定钻石 80/800。
+- Cocos 真实抽卡请求现在发送 `paymentMode='AUTO'`，仍只走现有 `POST /api/player/gacha/draw`。
+- 普通召唤保持 R/SR-only，并使用 `BASIC_RS_ONLY` 空保底组；`HERO_BASE` 的 `SSR=80`、`UR=180` 只适用于限定/英雄召唤。
+- 召唤页已接入从 `C:\Users\axian\Desktop\C1812-1` 筛选的 UI 切图到 `assets/resources/ui/gacha/c1812`，用于中心地台、法阵、揭示卡框和结果奖励槽。
+- Verification: economy guard passed, targeted gacha Maven tests `25 tests, 0 failures`, AUTO low-balance smoke passed for all three real pools with no persistence, `npm.cmd run check:layout` passed, and directed Cocos TypeScript no-emit passed.
+- Preview note: after reboot, `http://localhost:7456` is not serving Cocos Preview, so `npm.cmd run check:preview` currently fails with `ECONNREFUSED`; start/refresh Creator Preview before visual acceptance.
+
+## 2026-06-13 Stage 4HG Permanent Pool No-UR And Limited First UR Pair
+
+- 后端卡池条目已在 V1 基线上按用户要求继续调整：
+  - `BASIC_CONTRACT_PREVIEW`：6R + 6SR，权重均 `100`，不含 SSR/UR；
+  - `NORMAL_HERO`：6R + 6SR + 4SSR，权重均 `100`，不含 UR；
+  - `LIMITED_ABYSS_PREVIEW`：6R + 6SR + 4SSR + 2UR，UR 只保留第一版 `UR_ARTHAS` 与 `UR_EVELYN`，权重各 `500`。
+- 当前有效概率：
+  - `LIMITED_ABYSS_PREVIEW`：`R=0.576000`、`SR=0.384000`、`SSR=0.036000`、`UR=0.004000`；
+  - `NORMAL_HERO`：`R=0.576000`、`SR=0.384000`、`SSR=0.040000`，无 active UR rate；
+  - `BASIC_CONTRACT_PREVIEW`：`R=0.600000`、`SR=0.400000`，SSR/UR rate、reward item 和 duplicate config 均为非活跃。
+- `NORMAL_HERO` 已切到 `HERO_PERMANENT_SSR_ONLY`，只保留 `SSR=80` 保底；`HERO_BASE` 的 `SSR=80`、`UR=180` 只适用于限定召唤。
+- 历史 `BASIC_CONTRACT_PREVIEW config_version=2` 及三池非 v1 子配置已禁用，避免后端优先选择旧 SSR 占位池。
+- Cocos 召唤页的 `奖池内容`、`概率保底` 和真实抽卡均以后端返回为准；普通召唤现在应显示完整 6R+6SR，而不是旧的 2R+2SR。
+- 新增/同步后端 SQL 与守卫：
+  - `D:\project\LootChain\sql\47_gacha_pool_item_v1_baseline.sql`;
+  - `D:\project\LootChain\sql\48_gacha_normal_no_ur_limited_first_ur_pair.sql`;
+  - `D:\project\LootChain\sql\07_gacha_module.sql`;
+  - `D:\project\LootChain\sql\35_gacha_rate_pity_open_normal_limited.sql`;
+  - `D:\project\LootChain\sql\37_basic_contract_rs_only_box_summon_display.sql`;
+  - `D:\project\LootChain\scripts\check-gacha-economy-config.ps1`.
+- 边界不变：Cocos 仍只走现有 `POST /api/player/gacha/draw`；不开放 EX V1、exchange/reissue、bag use/sell/batch-use、hero growth、reward/stamina/progress write 或新增经济写入口。
+
+## 2026-06-13 Stage 4HH Gacha Pool Content Scroll Fix
+
+- 限定池 `奖池内容` 弹层此前只渲染面板可见的前 14 行，并提示“后续补滚动列表”，导致当前 18 条 active 奖池内容中的后 4 条（剩余 SSR/UR）看不到。
+- `GachaSceneRenderer` 已将右侧功能弹层列表改为 `ScrollView + Mask`，奖池内容不再 `.slice(0, 22)` 截断；后端返回的全部 active item 都会渲染到滚动内容里，超出面板高度时拖动查看。
+- 只读接口复核 `LIMITED_ABYSS_PREVIEW` 当前 active item = 18：`R=6, SR=6, SSR=4, UR=2`，UR 为 `UR_ARTHAS` 与 `UR_EVELYN`。
+- Verification: `npm.cmd run check:layout` passed, `npm.cmd run check:preview` passed after focusing Cocos Creator, and `git diff --check` passed with LF/CRLF warnings only. Playwright visual pass: opened `http://127.0.0.1:7456/`, logged in, opened limited pool `奖池内容`, scrolled the modal, and confirmed all 4 SSR plus 2 UR rows are visible.
+- No backend gacha config, rates, pity, costs, draw API, or economy writes changed.
+
+## 2026-06-10 Stage 4HD Normal Summon R/SR Only And Box Summon Spine
+
+- 用户要求：普通召唤移除 SSR/UR 级别英雄，并使用 `assets/resources/spine/gacha/box_summon` 作为召唤界面中心骨骼，尺寸与其他两个真实开放池保持一致。
+- 已新增并本地导入 `D:\project\LootChain\sql\37_basic_contract_rs_only_box_summon_display.sql`。
+- 当前有效概率：
+  - `LIMITED_ABYSS_PREVIEW`：`R=0.576000`、`SR=0.384000`、`SSR=0.036000`、`UR=0.004000`；
+  - `NORMAL_HERO`：`R=0.576000`、`SR=0.384000`、`SSR=0.040000`，无 active UR rate；
+  - `BASIC_CONTRACT_PREVIEW`：`R=0.600000`、`SR=0.400000`，SSR/UR rate、reward item 和 duplicate config 均为非活跃。
+- `BASIC_CONTRACT_PREVIEW.centerSpineResource=spine/gacha/box_summon/boxman_text`，`centerSpineUuid=3a0e1b57-8392-4f08-83ce-31ce91d26481`；Cocos 已为 `box_summon` 生成 meta，并将 `252.spine` 源文件移至 `docs/spine-source-archive/gacha/box_summon/252.spine`。
+- `GachaSceneRenderer` 对普通召唤继续使用和限定池相同的中心舞台缩放逻辑；仅英雄召唤保留额外落点偏移，因此普通召唤尺寸与其他非英雄中心骨骼一致。
+- 后端守卫 `check-gacha-economy-config.ps1` 现在要求普通召唤只有 R/SR 两个活跃概率、无活跃 SSR/UR 奖励项、中心 Spine 为 `box_summon`，且不复用限定/英雄中心 Spine。
+- 边界不变：Cocos 仍只通过现有 `POST /api/player/gacha/draw` 抽卡；不开放 EX V1、exchange/reissue、bag use/sell/batch-use、hero growth、reward/stamina/progress write 或新增经济写入口；本阶段未充值、未做成功真实抽卡。
+
+## 2026-06-10 R/SR NPC Hero Card Scale
+
+- R/SR 英雄卡牌背景 `ui/hero-roster/card_background/npc_*` 在新电脑 Preview 中显示过小，源图透明边界正常，问题来自之前 NPC compact profile 压缩过度。
+- `LobbyHeroRosterPanelRenderer` 已将 NPC 卡面目标高度从 `0.42` 调整到 `0.58`，最大高度从 `0.56` 调整到 `0.74`，最大宽度从 `0.82` 调整到 `0.96`。
+- 该调整仅影响 R/SR `npc_*` 卡牌背景展示；UR/SSR、Nuu、英雄数据、抽卡经济和任何写入口均未变化。
+- 新电脑本地 `profiles/v2/packages/engine.json` 已按项目 spine-3.8 baseline 从 `settings/v2/packages/engine.json` 同步，避免本地 Preview 配置缺模块导致 layout 检查失败。
+- Verification: `check:layout`, focused Cocos TypeScript no-emit, `.spine/.spine.meta` scan `0`, `check:preview`, and `git diff --check` passed.
+
+## 2026-06-10 Stage 4HB Multi-Pool Failure Guard Closure
+
+- 后端低余额失败 smoke `D:\project\LootChain\scripts\smoke-cocos-gacha-draw-guard.ps1` 默认覆盖三个真实开放池：`LIMITED_ABYSS_PREVIEW`、`NORMAL_HERO`、`BASIC_CONTRACT_PREVIEW`。
+- 脚本仍会在测试账号余额足够单抽时立即中止，避免误做成功付费抽卡；本阶段不充值、不做新的成功真实抽卡。
+- 每个池都会调用现有 `POST /api/player/gacha/draw` 两次，验证低余额失败不会写入 draw/result/reward/currency/hero/fragment/pity 状态，且重试不会停留在“处理中”。
+- `SEALED_LIGHT_DARK` 仍保持可见的 locked/display-only 池，不参与该真实抽卡 smoke。
+- Verification: three-pool low-balance smoke passed for `userId=4` with `drawLogs=0`, `drawResults=0`, `rewardGrantLogs=0`, and `currencyLogs=0` per pool; economy guard, targeted Maven tests, `check:layout`, focused TypeScript no-emit, `check:preview`, `.spine/.spine.meta` scan, and both repo `git diff --check` passed.
+- 边界不变：Cocos 不新增经济写入口；EX V1、exchange/reissue、bag use/sell/batch-use、hero growth、reward/stamina/progress writes 仍关闭。
+
+## 2026-06-10 Stage 4HC Hero Summon Center Spine Fix
+
+- 用户反馈：点击 `英雄召唤` 后，召唤页中心骨骼仍显示限定池的黄风教宗。
+- 根因：`NORMAL_HERO` 的后端展示配置 `center_spine_resource` 仍 seed 为 `spine/gacha/huangfengjiaozong/huangfengjiaozong`，与 `LIMITED_ABYSS_PREVIEW` 相同。
+- 修复：新增并本地导入 `D:\project\LootChain\sql\36_gacha_hero_center_spine_display_sync.sql`，将 `NORMAL_HERO` 中心 Spine 改为 `spine/gacha/hunka_nima/hunka_nima`，UUID `cd644c64-da4a-4397-8f3b-cdb3ffcbd3c5`。
+- 已同步 fresh SQL：`D:\project\LootChain\sql\17_gacha_pool_display_config.sql` 与 `D:\project\LootChain\sql\35_gacha_rate_pity_open_normal_limited.sql`。
+- `check-gacha-economy-config.ps1` 已新增守卫，要求 `NORMAL_HERO` 中心 Spine 与限定池不同，防止后续回退。
+- Browser self-preview: 刷新 `http://127.0.0.1:7456` 后登录 `userId=4`，进入 `召唤祭坛` 并切到 `英雄召唤`，中心已显示 `hunka_nima` 白发坐姿骨骼；未点击单抽/十连。
+- Verification: economy/display guard, three-pool low-balance smoke, targeted Maven suite `35 tests, 0 failures`, `check:layout`, focused TypeScript no-emit, `check:preview`, `.spine/.spine.meta` scan, and both repo `git diff --check` passed.
+- 边界不变：仅显示配置调整，不改概率、权重、保底、消耗、奖励、抽卡写路径、EX V1、exchange/reissue、背包写入、英雄养成或任何新增经济写入口。
+
+## 2026-06-10 Controlled Normal Hero Real Draw Closure
+
+- 一次性测试账号 `userId=4 / codex_cocos_draw_20260610140143` 完成 `NORMAL_HERO` 真实单抽闭环。
+- 本次只给该测试账号写入 `DIAMOND=280`，未修改 `userId=1` 或长期联调账号余额。
+- 请求 `POST /api/player/gacha/draw`：`requestId=codex-cocos-normal-draw-20260610140143`、`drawCount=1`、`useTicket=false`。
+- 返回成功：`drawNo=GACHA96a43b72b1734a69a71a613021717f8d`，命中 `SR_WITCH_03 / 契约魔女 / SR`，`grantNo=RWDc334bcee86e34bca953807914ca29c98-19875bc0`。
+- 幂等重放同一 requestId 返回同一 `drawNo` / `grantNo`，未二次扣费。
+- DB 核对：测试账号钻石 `280 -> 0`；本次 requestId 只有 1 条扣费流水和 1 条 draw log；本次 drawNo 只有 1 条 draw result；奖励日志成功发放 HERO，测试账号新增 `SR_WITCH_03`；`gacha_event_outbox` / `reward_event_outbox` / `user_operation_log` 均有对应记录。
+- 红线仍关闭：EX V1、exchange/reissue、bag use/sell/batch-use、hero growth、reward/stamina/progress writes，以及任何新经济写入口。
+
 ## 2026-06-09 Gacha Summon Animation
 
-- 召唤演出页已移除额外红色圆形遮罩，背景改为按最高稀有度选择单张全屏图：普通/R/SR/未返回稀有度时使用 `RecruitBG.png`，SSR/UR 时使用 `Headhunting_bg.png`。
-- `Headhunting_bg.png` 已导入到 `assets/resources/ui/gacha/summon/Headhunting_bg.png`，并通过 `GachaSceneConfig.headhuntingBg` 暴露给 Cocos `resources.load`。
-- `Recruit_take4` Spine 的 `BG` 背景槽位会在播放前后多次隐藏；舞台尺寸按屏幕扩展，角色仍播放原 `take4` 骨骼动画。
-- 召唤页新增 `SSR` / `UR` 本地演出预览按钮，用于查看金光表现；预览只改 Cocos 本地状态，不调用 `/api/player/gacha/draw`，不扣资源、不写日志、不发英雄/碎片、不更新保底。
-- 真实抽卡按钮和后端结果流程不变；SSR/UR 金光在真实 draw 返回最高稀有度后由前端只读展示驱动，未修改概率、权重、保底、消耗、奖励、重复转碎片规则或 `gacha_pool_item`。
+- 召唤演出当前 active 路径已切换为结果驱动全屏视频：普通/R/SR 播放 `assets/resources/video/gacha/call1.mp4`，SSR/UR 播放 `assets/resources/video/gacha/call2.mp4`。
+- Cocos 先提交真实 draw，拿到结果最高稀有度后再进入 summon video 视图；失败或余额不足不会播放结果视频。
+- `VideoPlayer.keepAspectRatio=true`，按 1680x720 视频比例做 cover 适配，避免 1920x1080 Preview 中圆形/法阵被拉伸变形。
+- 旧的本地 `SSR` / `UR` 演出预览按钮不是当前 active 验收路径，相关 legacy token 被 check 脚本禁止回流；SSR/UR 视觉应通过 `call2` 资源或受控真实结果验收。
+- 真实抽卡按钮和后端结果流程不变；SSR/UR 视频选择由真实 draw 返回最高稀有度驱动，未修改概率、权重、保底、消耗、奖励、重复转碎片规则或 `gacha_pool_item`。
 - 清理了英雄/图鉴只读 fallback 中重复的 `R_PATROL_01` 资源兜底，只保留带 `cardBackgroundAsset` 的记录，保证 Cocos TypeScript no-emit 能通过。
 
 ## 登录背景资源
@@ -37,12 +398,16 @@ LootChain 玩家游戏前端。当前阶段的登录页、UI、按钮、全屏�
 - 登录只对接现有 `/api/player/auth/dev-login`。
 - 登录成功后对接主角色初始化接口：`GET /api/player/protagonist/state` 与 `POST /api/player/protagonist`。该写入只创建账号主角色和对应 `user_hero source_type=PROTAGONIST` 实例，不涉及抽卡、奖励、扣费、资金池或 EX。
 - 大厅只对接只读接口：`GET /api/player/me/lobby`、`GET /api/player/lobby/notices`、`GET /api/player/lobby/codex`、`GET /api/player/lobby/heroes`、`GET /api/player/lobby/heroes/filter-options`。
-- 不修改游戏经济规则。
+- 召唤只允许使用现有 `POST /api/player/gacha/draw`，且仅当后端返回 `locked=false`、`drawEnabled=true`、`previewOnly=false` 时可抽。
+- 当前真实开放池为 `LIMITED_ABYSS_PREVIEW`、`NORMAL_HERO`、`BASIC_CONTRACT_PREVIEW`；`SEALED_LIGHT_DARK` 仅可见展示，仍为 locked/display-only。
+- 战斗只允许通过既有 `POST /api/player/battles/start` 和 `POST /api/player/battles/{battleNo}/settle` 完成 R1-R11 主线首通结算；只有 `MAIN_1_1` 至 `MAIN_2_2` 首次 `WIN` 会真实扣体力、发固定低风险奖励并推进下一关；`MAIN_2_3` 仍保持锁定/display-only，不开放真实结算。
+- 英雄成长只允许通过英雄详情页调用 `POST /api/player/heroes/{heroId}/level-up`；升星、觉醒、精炼仍关闭。
+- 除真实抽卡、R1-R11 首通结算和英雄 level-up 外，本阶段不再修改游戏经济规则，也不新增任何经济写入口。
 - 不开放 EX 获取。
 - 不做 USDT 直接领取。
 - 不直连 MySQL、Redis、RabbitMQ。
 - 大厅当前可展示背景、HUD、玩家资料只读场景页、公告活动只读场景页、图鉴只读场景页和本地未开放占位场景页。
-- 不开放抽卡、英雄养成、背包使用/出售、队伍、装备、商店交易、副本结算、Boss 奖励、资金池、链上领取入口。
+- 不开放 gacha exchange/reissue、升星、觉醒、精炼、背包使用/出售、装备、商店交易、重复刷关掉落、副本结算、Boss 奖励、资金池、链上领取入口。
 
 ## Cocos 打开方式
 
@@ -3478,9 +3843,13 @@ mysql -uroot -p lootchain < .\sql\17_gacha_pool_display_config.sql
 ## 2026-06-09 Gacha Rate/Pity Adjustment And Real Pool Opening
 
 - User explicitly approved this economy change and real-opening pass.
-- Final active rates for `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW` are `R=0.576000`, `SR=0.384000`, `SSR=0.036000`, `UR=0.004000`.
-- `HERO_BASE` pity is now `SSR=80` and `UR=180`.
-- `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW` are now real drawable pools: `locked=false`, `drawEnabled=true`, `previewOnly=false`, cost `DIAMOND 280/2800`.
+- Current active rates after Stage 4HD: `LIMITED_ABYSS_PREVIEW` and `NORMAL_HERO` use `R=0.576000`, `SR=0.384000`, `SSR=0.036000`, `UR=0.004000`; `BASIC_CONTRACT_PREVIEW` uses `R=0.600000`, `SR=0.400000` and has no active SSR/UR rate or reward item.
+- `HERO_BASE` pity is now `SSR=80` and `UR=180` for limited/hero summon; normal summon uses `BASIC_RS_ONLY` without SSR/UR pity.
+- `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW` are now real drawable pools: `locked=false`, `drawEnabled=true`, `previewOnly=false`.
+- Current cost model:
+  - `LIMITED_ABYSS_PREVIEW`: `LIMITED_CONTRACT_TICKET` 1/10 first, fallback `DIAMOND` 300/3000;
+  - `NORMAL_HERO`: `HERO_CONTRACT_TICKET` 1/10 first, fallback `DIAMOND` 280/2800;
+  - `BASIC_CONTRACT_PREVIEW`: `NORMAL_CONTRACT_TICKET` 1/10 first, fallback `BOUND_DIAMOND` 80/800.
 - `SEALED_LIGHT_DARK` remains locked/display-only.
 - Cocos did not need a new write path: summon buttons already follow backend gate fields and still call only `POST /api/player/gacha/draw`.
 - Added backend SQL/guard:
@@ -3493,3 +3862,253 @@ mysql -uroot -p lootchain < .\sql\17_gacha_pool_display_config.sql
   - draw log/result counts stayed unchanged, so no accidental paid reward write occurred.
 - Verification passed: backend economy guard, gacha service tests, Cocos `check:layout`, directed TypeScript no-emit, `check:preview`, `.spine/.spine.meta` scan `0`, and `git diff --check` in both repositories.
 - Still closed: EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress writes, and any new economy write endpoint.
+
+## 2026-06-10 Gacha Draw Guard And Display-Only Pool Closure
+
+- Cocos now treats gacha drawability as fail-closed:
+  - only `drawEnabled === true`, `previewOnly=false`, `locked=false`, and `status=1` can enable summon;
+  - missing `drawEnabled` no longer opens a pool by accident.
+- `SEALED_LIGHT_DARK` remains visible as a locked/display-only pool; Cocos now filters only explicit hidden rows (`displayType=HIDDEN` or `themeColor=hidden`).
+- While a draw request is pending, leaving the gacha scene is blocked with `召唤请求处理中，请稍候。`; login/profile reset also clears stale gacha draw state.
+- Lobby summon copy now reflects the current stage: backend pool state can open real draw, while exchange and reissue stay closed.
+- Backend replay hardening:
+  - `requestId` is capped at `128` characters;
+  - same-`requestId` replay must match `poolCode`, `drawCount`, and `useTicket`, otherwise it returns `重复抽卡请求参数不一致`.
+- Added low-balance draw smoke in `D:\project\LootChain\scripts\smoke-cocos-gacha-draw-guard.ps1`, proving failed real draw creates no draw/result/reward/currency/hero/pity writes and does not leave the request stuck in processing.
+- Verification passed: Cocos `check:layout`, directed Cocos TypeScript no-emit, Cocos `check:preview`, backend economy guard, targeted Maven tests, and low-balance smoke.
+- Preview note: if `http://127.0.0.1:7456` serves stale chunks again after later edits, refresh/reimport in Creator or reopen Preview, then rerun `npm.cmd run check:preview`.
+- Still closed: EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress writes, and any new economy write endpoint.
+
+## 2026-06-10 Normal Summon R/SR-Only And Box Summon Center
+
+- `普通召唤` / `BASIC_CONTRACT_PREVIEW` is now R/SR-only:
+  - active rates are `R=0.600000` and `SR=0.400000`;
+  - active SSR/UR rates, reward items, and duplicate configs are disabled.
+- The normal summon center presentation now uses `assets/resources/spine/gacha/box_summon/boxman_text`.
+- The source `252.spine` file is archived under `docs/spine-source-archive/gacha/box_summon/252.spine`; runtime resources under `assets/resources/spine` keep only Cocos-importable JSON/atlas/PNG files.
+- `GachaSceneRenderer` gives `box_summon` a small scale multiplier so its visible size is close to the limited and hero summon center Spine presentations.
+- `概率保底` now uses backend rate/guarantee notes and filters fallback pity rows by active rate rarity, so normal summon does not show inactive SSR/UR pity.
+- Browser Preview verification confirmed:
+  - selecting `普通召唤` renders `box_summon`;
+  - the probability panel shows R/SR-only copy and no SSR/UR pity rows;
+  - `奖池内容` lists only `R_PATROL_01`, `R_ACOLY_02`, `SR_PRIEST_01`, and `SR_WITCH_03`.
+- Verification passed: `check:layout`, directed Cocos TypeScript no-emit, `check:preview`, `.spine/.spine.meta` scan, backend economy guard, three-pool low-balance smoke, and targeted Maven suite with `35 tests, 0 failures`.
+- No summon button was clicked during this visual verification; no recharge or successful paid draw was performed.
+- Still closed: EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress writes, and any new economy write endpoint.
+
+## 2026-06-17 Visual Battle Stage 9 Adaptive Performance
+
+- Stage 9 adds viewport adaptation and low-performance degradation for the Cocos battle presentation.
+- New helper: `assets/scripts/scenes/lobby/LobbyBattleAdaptivePerformance.ts`.
+- `390x340` uses `minimal`: timeline rail, battle log, Stage 8 side panel, recovery banner, assist auras, projectiles, floating text, and skill bar are disabled so the field and buttons do not overlap or overflow.
+- `1280x720` uses `balanced`: standard HUD, timeline, log, projectiles, and floating text remain visible.
+- `1920x1080` uses `cinematic`: full Stage 1-8 battle presentation remains visible, including Stage 8 settlement panel and recovery cue.
+- `LobbyBattlePreviewPanelRenderer` now consumes `resolveBattleAdaptivePerformanceProfile()` and applies `motionScale`, `showTimelineRail`, `showBattleLog`, `showStage8Panel`, `showAssistAuras`, `showProjectiles`, `showFloatingText`, and `showSkillBar`.
+- New guard: `npm.cmd run check:battle-stage9`.
+- Boundary unchanged: no backend API, SQL, battle simulation authority, reward/stamina/progress write, bag write, hero growth write, offline settlement, re-settlement, or new economy write endpoint was opened.
+
+## 2026-06-17 Visual Battle Stage 10 Full Chain Acceptance
+
+- Stage 10 closes the Cocos visual battle V1 route: adventure -> formation -> battle -> settlement -> lobby readonly refresh.
+- New guard: `npm.cmd run check:battle-stage10`.
+- The guard runs Stage 1-9 guards plus layout, and checks the code hooks from `LobbyAdventurePanelRenderer` to `LobbyFormationPanelRenderer`, `LobbyBattleFlow`, `LobbyBattlePreviewPanelRenderer`, and `LootChainGameRoot.refreshLobbyReadonlyStateAfterBattle()`.
+- New doc: `docs/battle/stage10-full-chain-acceptance.md`.
+
+## 2026-06-17 Visual Battle Stage 11 Audio Runtime
+
+- Stage 11 connects the Stage 2 battle BGM/SFX resources to the Cocos battle presentation runtime.
+- New helper: `assets/scripts/scenes/lobby/LobbyBattleAudioRuntime.ts`.
+- `LobbyBattlePreviewPanelRenderer` now creates `LobbyBattleStage11AudioRuntime`, plays low-volume looping battle BGM, and triggers one-shot cues for battle start, action/assist events, hit feedback, and win/lose settlement receipts.
+- New guard: `npm.cmd run check:battle-stage11`.
+- New doc: `docs/battle/stage11-audio-runtime.md`.
+- Boundary unchanged: no backend API, SQL, battle authority, reward/stamina/progress write, bag write, hero growth write, offline settlement, re-settlement, or new economy write endpoint was opened.
+- This is a read-only acceptance pass: no start/settle click is performed during automated/browser verification.
+- Boundary unchanged: no backend API, SQL, battle simulation authority, reward/stamina/progress write, bag write, hero growth write, offline settlement, re-settlement, or new economy write endpoint was opened.
+
+## 2026-06-17 Visual Battle Stage 12 Battle Scene Redesign
+
+- Stage 12 重做 Cocos 战斗场景表现，新增 `LobbyBattleStage12HeroCardDeck`、`LobbyBattleStage12EnemyPlaceholder`、`LobbyBattleStage12VictoryOverlay` 和 `LobbyBattleStage12RewardSlot`。
+- 英雄战斗 Spine 对 `portrait_asset=act_*` 采用 act 骨骼优先，确保 R/SR 可播放 `run/skill0/skill1` 等战斗动作；`spine_asset/npc_*` 保留为非 act 资源或缺失 act 时的兜底。兼容 R/SR 旧 `skill*` 动画名和 SSR/UR 英文 `idle/atk/skill1/ult/hit` 动画名，并通过 `BATTLE_STAGE12_SPINE_PROFILE_BY_RARITY` 限制角色缩放。
+- 2026-06-21 SR/R 返修：战斗时间线第一个我方行动优先选择前排 R/SR `portrait_asset=act_*` 英雄，动作节奏改为先 `run` 接敌、再留出可见 `skill0` 普攻窗口、随后触发伤害飘字/受击；`screenshot:battle-center` 会强制 SR/R 阵容并验收 `run/skill0/skill1` cue。
+- Stage 12 返修后，`BattleApi` 会保留 battle start 回执里的 `portraitAsset/spineAsset/spineUuid/scaleProfile`，主战场只渲染真实参战单位，不再把补位空格画成胶囊。
+- 当前攻击、技能、受击和辅助 cue 会在单位头顶显示动作提示；无怪物骨骼时使用暗红怪物剪影占位，无主角骨骼时使用主角立绘兜底。
+- 桌面/横屏战斗站位从旧等间距竖排改为 Stage 12 阵型偏移：前排靠近交战中心，后排退到侧后方，敌方镜像占位。
+- 编队变更后会清掉本地旧 battle start 快照，下一次进入战斗预演必须按当前 `heroIds` 重新创建会话。
+- 战斗音频运行时增加渲染代次和 `isBattleAudioSourceNodeValid()` 守卫，避免重绘后旧异步回调访问已销毁节点。
+- 后端仅预留敌方/Boss 骨骼目录字段，不改变 battle start/settle 契约。
+- 新增守卫：`npm.cmd run check:battle-stage12`。
+- 新增文档：`docs/battle/stage12-battle-scene-redesign.md`。
+- Verified on 2026-06-17: Cocos TypeScript no-emit, `check:battle-stage10`, `check:battle-stage12`, `check:layout`, `check:preview`, `.spine/.spine.meta` scan `0`, backend targeted Maven tests `50 tests, 0 failures`, local SQL 65 import, and both-repo `git diff --check` passed.
+- Browser Preview accepted after refresh/login: selected `heroIds=[5,11,9,10]`, battle start request body matched the current formation, hero Spine rendered on the left, enemy placeholders remained on the right, and old debug/status panels were hidden.
+- Boundary unchanged: no real battle settlement is triggered, no economy write entry is added, and reward/stamina/progress/power/drop/ranking/USDT/fund-pool/EX/bag/hero-growth writes remain closed.
+
+## 2026-06-19 Battle Scene Takeover Fix
+
+- 接手前序 AI 的战斗场景返修，重点修复旧 Preview chunk、挑战弹框入口、英雄详情空节点崩溃、旧 Stage 13 结果层残留、以及战斗页误导性的结算入口。
+- 冒险关卡、紧凑挑战入口、详情挑战按钮现在都会先打开挑战弹框；弹框中的 `布阵` 进入编队，`挑战` 进入战斗预览。
+- 从冒险挑战弹框直接点 `挑战` 时，会自动补齐默认 5 人阵容后再创建 battle session；从编队页进入战斗时仍保留玩家手动阵容选择。
+- 当前视觉战斗只验收可视化播放闭环：允许创建 battle session，播放英雄 Spine/敌方占位/伤害漂浮/结果表现，演出完成后返回大厅。
+- 当前 UI 不触发 `/api/player/battles/{battleNo}/settle`；后端 settle 契约仍保留给后续真实结算阶段，未经用户明确批准不要打开结算、奖励、体力或主线进度写入。
+- 验收脚本已同步：`check:battle-stage8` 现在要求演出完成后的 `settle_idempotent.active=false`、标签为 `结算预留`，主动作返回大厅。
+- `check:preview` 已增加 `fillLobbyFormationWithDefaultHeroes` / `fillDefaultFormationForDirectChallenge` token，避免 Cocos Preview 继续服务旧 chunk。
+
+## 2026-06-19 Battle Scene Takeover Second Pass
+
+- 布阵页改成战场式结构：左侧 `LobbyFormationBattlefieldScene` 显示出战英雄骨骼占位/名牌，右侧 `LobbyFormationHeroPicker` 显示可出战英雄列表。
+- 布阵页左侧现在会优先加载出战英雄 Spine 作为 `LobbyFormationActorSpinePreview`，资源缺失或不兼容时才回退为占位剪影。
+- 挑战弹框的我方阵容现在优先读取当前临时编队；奖励区改为 `奖励预览`，明确本轮不发放、不扣体力。
+- 战斗页近战移动改为按攻击者/目标锚点推进到中场附近；目标区新增 `LobbyBattleActionTargetSpineEffectLayer`，可播放 `skill*_kz` 动画，缺失时显示本地法阵兜底。
+- 演出完成后即显示视觉胜利覆盖层；无真实 settlement 时奖励文案为预览不发放。
+- 视觉胜利现在也会播放一次 `resultWin` 音效，使用 `visualVictory` 本地 play key，不代表真实结算回执。
+- 冒险详情旧的真实结算引导文案已改为视觉演出边界说明：本轮只播放战斗演出，不提交结算。
+- 大厅 `战役` 热点、挑战卡和紧凑 `挑战` 入口现在进入同一主线关卡地图，不再停留在“副本占位”提示。
+- 资源审计结论：英雄 Spine 路径齐全，但部分源资源不具备用户要求的严格动画名，当前运行时以兼容映射兜底；后续如要硬性验收严格命名，需要重导出或重命名资源。
+- Browser Preview 已验收：大厅 -> 冒险 -> 挑战弹框 -> 布阵 -> 战斗 -> 视觉胜利；请求只有 `/api/player/battles/recent` 和 `/api/player/battles/start`，没有 `/settle`。
+- 守卫已补：`check-layout`、`check-preview`、`check:battle-stage6`、`check:battle-stage12` 均覆盖本轮新 token。
+- 边界不变：当前 UI 不触发 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-20 Battle Formation Spine Runtime Patch
+
+- 布阵页英雄骨骼预览继续加固：`LobbyFormationActorSpinePreview` 现在优先按 `spineUuid` 加载，失败后再按 `spine/hero/{spineAsset}/{spineAsset}` 兜底，并在 Spine runtime 数据暂未就绪时按 `[180, 420, 900]ms` 重试。
+- 失败时会输出 `[Formation]` 资源路径、uuid 和具体原因；只有重试耗尽后才回退 `LobbyFormationActorFallbackSilhouette`，避免资源存在但 Preview 偶发解析慢时永久显示占位。
+- `check-layout` 新增 Cocos AssetDB 脏索引守卫：如果 `library/.assets-data.json` 仍索引 `db://assets/resources/spine/**/*.spine`，检查会失败并要求刷新 AssetDB。
+- 本轮已清理本地旧 AssetDB/Preview targets 并重启 Cocos Preview；重建后 `.spine` 脏索引为 `0`，`check:preview` 已确认新 chunk 生效。
+- 边界不变：当前战斗仍是视觉演出闭环，不触发 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-20 Battle Default Formation Closure Patch
+
+- 修复挑战弹框/布阵/战斗开始三处阵容不一致：空阵容不再被 `normalizeLobbyFormationHeroIds([])` 误判成“主角 1 人阵容”，而是统一通过 `resolveDefaultFilledLobbyFormationHeroIds()` 补齐默认 top-5。
+- 当前默认队伍会在弹框显示 `出战 5/5`，布阵页显示 `已确认 5/5`，`battle start` 发送同一组 `heroIds`。
+- 本地浏览器验收结果：`heroIds=[5,11,9,10,63]`、`leaderHeroId=5`、0 次 `/settle`、0 console error；截图保存在 `artifacts/battle-takeover-20260620-r4-*`。
+- 边界不变：当前战斗仍只做可视化演出，不开放真实结算、发奖、扣体力或主线进度写入。
+
+## 2026-06-20 Battle Takeover Repair R6
+
+- 战斗演出节奏从 4 步/约 3 秒调整为 24 步/约 12 秒，开场、接敌、命中、反击、支援、终结和视觉胜利都能被独立截图验收。
+- 命中层不再用首个伤害事件常驻兜底，只在当前 `damage_float` / `hit_float` / 当前命中事件显示，避免开局就看到伤害数字。
+- 战斗页英雄 Spine 改为有 `spineUuid` 时优先 UUID 加载，失败后再回退 resource path；成功应用后会移除敌我双方 fallback silhouette。
+- `LobbyHeroDetailPanelRenderer`、`LobbyBattlePreviewPanelRenderer`、`UiSpriteFrameCache` 已补异步 `node.isValid` 防护，降低页面切换后旧回调触发空节点崩溃的风险。
+- 新增 `check:battle-stage13d`、`check:battle-stage13g` 并纳入 `check:battle-stage13i`，守卫稀有度动画映射和战斗音频运行时真实接入。
+- r6 浏览器验收：`POST /api/player/battles/start` 1 次，`/settle` 0 次，Cocos 错误遮罩 false，过滤截图 `ReadPixels` 性能警告后 console error 0；截图保存在 `artifacts/battle-takeover-20260620-r6-*`。
+- 边界不变：当前战斗仍只做可视化演出，不开放真实结算、发奖、扣体力或主线进度写入。
+
+## 2026-06-20 Battle Opening Convergence Patch
+
+- 战斗开场新增前置汇合阶段：`LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 2`，双方在 `battle_start` 后先播放 `move/run` 向中场推进，汇合窗口结束后才开始读取行动时间线。
+- 开场汇合期间 `currentActionCue/currentAssistCue` 被置空，`visibleDamagePreviewEvent/visibleBuffPreviewEvent` 回退到 `battle_start`，不会提前触发普攻、技能、命中层、伤害飘字、Buff 预览或辅助飘字。
+- `resolveVisibleTimelineEvent()` 已把战斗时间线整体延后，前置阶段只显示 `battle_start`；第一个真实行动从汇合结束后的播放步开始。
+- 新增 `check:battle-stage13j` 并纳入 `check:battle-stage13i`，守卫开场汇合常量、动作/辅助 cue 抑制、双方偏移、`move/run` 动画 cue 和 Preview freshness token。
+- 边界不变：当前战斗仍只做可视化演出，不开放 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-25 Battle C1812 Reference Melee Fix
+
+- 按参考视频 `C:\Users\axian\Desktop\C1812-1\video_2026-06-20_14-45-06.mp4` 返修战斗演出：近战初始跑入交锋区后持续围绕目标攻击，不再每次命中从出生点瞬移到目标再回原位。
+- `LobbyBattlePreviewPanelRenderer.ts` 调整 root motion：当前 `damage_float` 命中帧拥有最高优先级，命中瞬间锁在目标前；跑动/接敌阶段仍走平滑移动。近战判断改用渲染单位 `unit.role`，避免前排 SR/R 因 cue 角色数据异常被当作后排而停在原位。
+- 已撤销会把所有单位拉到同一点的目标当前位置追踪实验，保留 lane-based duel anchors；后排 SR/R 法系/辅助不再纳入近战 home-snap 验收。
+- `scripts/repair-preview-stage14-real-combat.mjs` 和 `scripts/screenshot-battle-center-convergence.cjs` 已同步：旧 Preview chunk 会被修到当前命中帧优先级，截图验收继续检查近战接触、HP 扣减、死亡后不再受击、0 settle 请求。
+- 已验收：
+  - `npm.cmd run screenshot:battle-center`：SR/R 强制阵容通过，1 battle start、0 settle、0 page errors、0 console errors。
+  - `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`：UR/SSR/SR 混合阵容通过，1 battle start、0 settle、0 page errors、0 console errors。
+  - `npm.cmd run check:battle-stage14-real-combat`、`npm.cmd run check:battle-stage13i`、`npm.cmd run check:layout`、`npm.cmd run check:preview`、定向 TypeScript no-emit、`git diff --check` 均通过；`git diff --check` 仅有 LF/CRLF warning。
+- 边界不变：仍只做战斗表现和既有 battle start，不开放 settle、发奖、扣体力、主线推进或任何经济写入口。
+
+## 2026-06-20 Battle Opening Convergence Completion Guard Patch
+
+- 战斗完成态不再走同场景增量刷新：`LootChainGameRoot` 和 `LobbyBattlePreviewPanelRenderer` 都会在 `presentationComplete / settling / settlement` 时强制完整重绘，避免视觉胜利阶段变黑屏。
+- 开场汇合逻辑保持：前 2 个播放步双方先向中场推进，期间不触发行动 cue、辅助 cue、伤害飘字或 Buff 飘字；汇合后才进入真实行动时间线。
+- 新增 `check:battle-stage13k`，并纳入 `check:battle-stage13i`，守卫根节点完成态门禁、渲染器完成态门禁、增量播放节点缓存、开场汇合抑制和战斗时间线延后。
+- 本地浏览器验收：0.6s/1.3s 为 `开场汇合` 且无伤害，2.2s 后出现首次伤害，5.4s 出现治疗/护盾/受击反馈，13.9s 显示视觉胜利结果层且无黑屏；截图保存在 `artifacts/battle-stage13k-*`。
+- 已通过：Cocos TypeScript no-emit、`check:battle-stage13k`、`check:battle-stage13i`、`check:layout`、浏览器新错误 0。
+- 当前 `check:preview` 仍受运行中的 Creator Preview 旧 chunk 影响，在 7456/7457 都报告多模块 stale；需要重建/刷新 Preview 后再作为 freshness 绿灯依据。
+- 边界不变：当前战斗仍只做可视化演出，不开放 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-20 Battle Opening Convergence Strict Gate Patch
+
+- 战斗开场汇合改为严格门禁：`LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 4`，配合 48 步、250ms 的播放节奏，双方先用约 1 秒播放 `move/run` 向中场推进，之后才释放首个行动事件。
+- 开场阶段只显示 `battle_start / 开场汇合`，不触发行动 cue、辅助 cue、伤害飘字、Buff 飘字或命中层；第一个真实行动从汇合窗口结束后开始。
+- 战斗演员现在缓存“汇合后的战斗原位”，普攻/技能冲刺结束后返回该位置，不再退回原始左右列；视觉缩放脉冲移动到 `LobbyBattleActorVisualRoot`，避免被位置 tween 停掉。
+- 时间线读取改为先过滤 combat event queue，避免渲染器按比例采样时从开场直接跳到后段伤害。
+- 已补 `check:battle-stage13l` 并纳入 `check:battle-stage13i`；`check:preview` freshness tokens 也同步到新渲染 token。
+- 本地预览截图保存在 `artifacts/battle-stage13l-action-frames/` 和 `artifacts/battle-stage13l-flow/`：3.0s 为开场汇合无伤害，3.5s 后出现首个受击/伤害，5.0s 出现治疗、护盾/加攻、受击和伤害分步反馈。
+- 已通过：Cocos TypeScript no-emit、`check:battle-stage13l`、`check:battle-stage13k`、`check:battle-stage13i`、`check:layout`、`check:preview`、`.spine/.spine.meta` scan `0`、`git diff --check`。
+- 边界不变：当前战斗仍只做可视化演出，不开放 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-20 Battle Opening Center Meet-Up R2
+
+- 按最新验收要求，战斗开始后左侧英雄与右侧怪物/BOSS 必须先向中心区域移动，双方汇合后才允许进入第一轮攻击/技能。
+- 开场门禁调整为 `LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 6` + `LOBBY_BATTLE_OPENING_COMBAT_DELAY_STEP_COUNT = 1`：约 1.5 秒跑动到中场，再停顿 0.25 秒，之后才释放 `action_start/damage_preview/buff_preview/hit_react` 等战斗表现。
+- 新增 `LOBBY_BATTLE_COMBAT_START_STEP` 作为统一战斗解锁点；渲染层在该点之前始终压制 action/assist cue、弹道、目标 Spine 特效、伤害飘字、治疗/护盾/Buff 飘字和受击反馈。
+- 开场跑动和近战推进 cue 显式使用 `run`，不再在调用层传 `move`；动画解析层仍保留 `move/walk` 兼容兜底。
+- 守卫同步：`check:battle-stage13j`、`check:battle-stage13k`、`check:battle-stage13l` 和 `check:preview` freshness token 均检查新的门禁和 `run` cue。
+- 已验证：Cocos 定向 TypeScript no-emit、`check:battle-stage13j`、`check:battle-stage13k`、`check:battle-stage13l`、`check:battle-stage13i`、`check:layout`、`.spine/.spine.meta` scan `0`、`git diff --check` 通过且仅有 LF/CRLF warning。
+- 当前 Preview 状态：`npm.cmd run check:preview` 仍失败于运行中的 Cocos Preview 旧 chunk；本机 7456/7457 分别由两个 Cocos Creator 项目进程监听，服务端 chunk 仍缺少 `LOBBY_BATTLE_COMBAT_START_STEP`、`opening-run` 和 `animationName: 'run'`。需要重启/刷新 Cocos Creator Preview 后再做运行时视觉验收。
+- 边界不变：当前战斗仍只做可视化演出，不开放 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-20 Battle Opening Center Meet-Up R3
+
+- 开场汇合继续作为硬门禁：双方未完成中场汇合前，不释放 action/assist cue、弹道、目标特效、伤害飘字、治疗/护盾/Buff 飘字或受击反馈。
+- `BattleOpeningConvergenceState` 已拆分为 `active` 与 `moving`：`active` 用于禁止战斗表现，`moving` 才播放 `run`；双方到达中场后的 0.25 秒停顿会切回 `idle`，不再原地跑。
+- Spine 动画解析补 `idle/stand`，并让 `run/move/walk` 在移动期间循环播放。
+- 新增 `check:battle-stage13n` 并纳入 `check:battle-stage13i`；`check:battle-stage13j` 与 `check:preview` 已同步新 token。
+- 新增 Preview temp 修复脚本：`repair:preview-cc` 修 Cocos 内部 cc chunk 依赖错配，`repair:preview-battle` 修 Creator 未刷新时的战斗 renderer 旧 chunk。
+- 已验证：Cocos 定向 TypeScript no-emit、`check:battle-stage13j`、`check:battle-stage13m`、`check:battle-stage13n`、`check:battle-stage13i`、`check:layout`、`check:preview`、`scripts/screenshot-stage13.mjs`、`.spine/.spine.meta` scan `0`；Headless 预览截图无白屏，console errors `0`。
+- 边界不变：本轮未点击挑战/开始战斗/结算；当前战斗仍不开放 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包或英雄写入口。
+
+## 2026-06-20 Battle Opening Center Meet-Up R4
+
+- 按最新要求继续收紧开场汇合：`resolveOpeningConvergenceOffset()` 不再使用旧的 `58%` 浅推进，改为 `BATTLE_OPENING_CENTER_CONVERGENCE_RATIO = 0.82`，并用 `BATTLE_OPENING_CENTER_STOP_GAP_RATIO = 0.18` 防止穿过中心线。
+- 开场跑动后，典型桌面/紧凑站位都会停在中场交战区；后续攻击/技能的 home 仍是汇合后的中场位置，不回退到初始左右列。
+- `check:battle-stage13n` 已增加中心停点计算守卫，要求旧 `0.58 / 1.72` 公式消失，并断言典型敌我站位最终落在中场范围。
+- `check:preview` freshness token 已同步新中心汇合常量；`repair:preview-battle` 已支持只修补本轮中心公式，避免 Creator 继续服务旧战斗 chunk。
+- 新增 `npm.cmd run screenshot:battle-center`，自动走登录 -> 大厅 -> 主线地图 -> 挑战弹框 -> 战斗截图；本轮输出 `artifacts/battle-center-convergence-current/`。
+- Browser Preview 验收：`05-battle-0300ms.png` 双方仍在两侧起步；`06-opening-run-1000ms.png` 双方已推进到中场且无伤害飘字；`07/08/09` 才出现治疗、护盾、伤害和受击反馈。网络记录为 `/api/player/battles/start` 1 次、`/settle` 0 次，页面错误 0、console error 0。
+- 已验证：`check:battle-stage13i`、`check:layout`、`check:preview`、Cocos TypeScript no-emit、`.spine/.spine.meta` scan `0`、`git diff --check` 通过；`git diff --check` 仅有既有 LF/CRLF warning。
+- 边界不变：当前视觉战斗只允许既有 `POST /api/player/battles/start`；不点击或开放 `/api/player/battles/{battleNo}/settle`，不新增奖励、体力、进度、货币、背包、英雄成长或其它经济写入口。
+
+## 2026-06-24 Battle Replay Full HP Loop R18
+
+- 战斗回放改为本地完整视觉循环：`LobbyBattleReplayModel.ts` 不再只按旧 `action_start` 数量播放，而是合成行动直到一方死亡；首轮保证所选英雄参与，敌方每两次我方行动后穿插反击。
+- HP 表现闭环：命中事件携带 `hpBefore/hpAfter/timeMs`，单位血条和敌方总血条按命中帧下降，敌方全灭后才进入视觉胜利。
+- 近战接触修正：近战命中延后到接触点，战线前推距离调整为 `BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 240`，避免英雄站在原地或隔空攻击。
+- 新增 Preview 缓存修复脚本：`repair:preview-battle-replay-loop` 和 `repair:preview-battle-contact-spacing`；`check:preview` 会拦截旧 `actionStarts` chunk 和旧接触距离。
+- 浏览器验收：`npm.cmd run screenshot:battle-center` 通过，`/api/player/battles/start` 1 次、`/settle` 0 次、页面错误 0、console error 0；遥测为 `allMeleeBasicAttackMissCount=0`、`enemyHpRatioMin=0`、`allyHpRatioMin=0.0649`、`damageFloatSampleCount=7`、`deadUnitHitSampleCount=0`。
+- 边界不变：仍只开放战斗演出和既有 battle start，不开放结算、发奖、扣体力、主线推进或其它经济写入口。
+
+## 2026-06-25 Battle Real Combat Replay Stage14
+
+- 战斗回放升级为真实属性数值模型：按单位 `power / level / rarity / role / side` 和关卡阶段推导 `maxHp / attack / defense / evasionRate / damageReduction / critRate / critDamage`，敌方额外叠加 `monsterDurabilityMultiplier`，避免低血怪一击清场。
+- 命中事件现在带 `hitKey / hpBefore / hpAfter / evaded / critical / killed`；HP 条只按命中事件变化，死亡目标不再参与后续选敌。
+- 表现层同步：`damage_float` 携带 `hitKey/eventSeq`，受击 cue 延后 320ms，保证伤害飘字、Slash VFX、Hit Stop、暴击震屏和 HP 扣减在命中帧同窗出现。
+- 近战接触继续作为硬验收：禁用 sticky 旧接触缓存，改用近距离 lane gap；允许行动者冲刺路径的瞬时穿越，但禁止非行动站位堆叠、打空气、死亡后继续受击。
+- 新增验证脚本：
+  - `npm.cmd run check:battle-stage14-real-combat`
+  - `npm.cmd run repair:preview-stage14-real-combat`
+  - `npm.cmd run screenshot:battle-center`
+- 已验收：
+  - SR/R 阵容截图与 telemetry：`artifacts/battle-center-convergence-srr-stage14/`
+  - mixed 阵容截图与 telemetry：`artifacts/battle-center-convergence-mixed-stage14/`
+  - 两组均为 1 次 battle start、0 次 settle、0 page errors、0 console errors。
+- 已通过：战斗模块定向 TypeScript no-emit、`check:battle-stage13i`、`check:preview`、`git diff --check`（仅 LF/CRLF warning）。
+- 边界不变：仍只开放战斗演出和既有 battle start，不开放结算、发奖、扣体力、主线推进或其它经济写入口。
+
+## 2026-06-25 Battle Sustained Clash Retune R19
+
+- 根据用户录屏 `C:\Users\axian\Videos\Captures\Cocos Creator - lootchain-cocos - Google Chrome 2026-06-25 10-34-44.mp4` 继续返修：旧表现仍偏回合制，前线离中线过远，并且 stale Preview repair 可能把旧目标锚点跳点逻辑写回。
+- 战斗前排改为持续交锋线模型：`BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 240`、`BATTLE_ACTOR_FRONT_CHARGE_CLASH_HALF_GAP = 132`，单位开场先靠近中线，之后围绕交锋线短前冲，不再按目标原始锚点大跳。
+- 近战动作改用 `resolveActorClashLungeOffset()`：`melee_move/basic_attack/damage_float` 分别使用 `108/88/82` 的前冲保持距离，替代旧 `effectiveAdvanceRatio` 和 `duelFrame.actorDuelPosition` 位移。
+- 战斗播放期隐藏单位姓名牌，保留 HP 条、伤害飘字、命中特效和底部技能框，降低画面遮挡和报表感。
+- `repair:preview-stage14-real-combat` 已同步 stale chunk 变量声明、常量、姓名牌规则和旧分支清理；`check:preview`、`check:battle-stage13k`、`check:battle-stage13z2`、`check:battle-stage14-real-combat` 已同步新守卫。
+- 已验收：SR/R 强制阵容与 mixed UR/SSR/SR 阵容均通过 `npm.cmd run screenshot:battle-center`，两组都是 1 次 `battle start`、0 次 `settle`、0 page errors、0 console errors。
+- 边界不变：仍只开放战斗演出和既有 battle start，不开放结算、发奖、扣体力、主线推进或其它经济写入口。
+
+## 2026-06-25 Battle Continuous Clash Retune R20
+
+- 继续针对 `C:\Users\axian\Videos\Captures\Cocos Creator - lootchain-cocos - Google Chrome 2026-06-25 10-34-44.mp4` 修正“看起来像回合制”的问题：战斗 HUD 去掉回合文案，改成 `交战中 / 双方接战 / 阵线推进`。
+- 前线接战改为更近的持续交锋线：`BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 300`、`BATTLE_ACTOR_FRONT_CHARGE_CLASH_HALF_GAP = 112`，前排单位开场后持续压在中线附近。
+- 近战 root motion 改为“命中后回当前交锋位”，不回出生侧原位；新增 `resolveBattleActorClashIdleOffset()` 做小幅交锋微动，避免画面重新读成左右静态列。
+- 自动验收补强：`screenshot:battle-center` 新增 `finalFrontLineGapMedian` 和 `postDamageFrontHoldMissCount`，会拦截前线过远、过近或命中后退回原位的回归。
+- 已验收：
+  - SR/R 强制阵容：`npm.cmd run screenshot:battle-center` 通过，1 次 `battle start`、0 次 `settle`、0 page errors、0 console errors，`finalFrontLineGapMedian=302.43`、`postDamageFrontHoldMissCount=0`、`enemyLastHpRatioMax=0`。
+  - mixed UR/SSR/SR 阵容：`$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center` 通过，1 次 `battle start`、0 次 `settle`、0 page errors、0 console errors，`finalFrontLineGapMedian=308.54`、`postDamageFrontHoldMissCount=0`、`enemyLastHpRatioMax=0`。
+  - `check:battle-stage14-real-combat`、`check:battle-stage13z2`、`check:battle-stage13i`、`check:layout`、`check:preview`、Cocos 定向 TypeScript no-emit、`.spine/.spine.meta` scan `0`、`git diff --check` 均通过；`git diff --check` 仅有 LF/CRLF warning。
+- 边界不变：仍只开放战斗演出和既有 `POST /api/player/battles/start`，不开放 `/api/player/battles/{battleNo}/settle`、发奖、扣体力、主线推进或其它经济写入口。

@@ -231,6 +231,17 @@ const required = [
   'assets/resources/ui/gacha/logo_normal.png.meta',
   'assets/resources/ui/gacha/logo_locked.png',
   'assets/resources/ui/gacha/logo_locked.png.meta',
+  'assets/resources/ui/gacha/c1812.meta',
+  'assets/resources/ui/gacha/c1812/summon_floor.png',
+  'assets/resources/ui/gacha/c1812/summon_floor.png.meta',
+  'assets/resources/ui/gacha/c1812/summon_magic_circle.png',
+  'assets/resources/ui/gacha/c1812/summon_magic_circle.png.meta',
+  'assets/resources/ui/gacha/c1812/summon_reward_slot.png',
+  'assets/resources/ui/gacha/c1812/summon_reward_slot.png.meta',
+  'assets/resources/ui/gacha/c1812/summon_case_frame.png',
+  'assets/resources/ui/gacha/c1812/summon_case_frame.png.meta',
+  'assets/resources/ui/gacha/c1812/currency_gold.png',
+  'assets/resources/ui/gacha/c1812/currency_gold.png.meta',
   'assets/resources/video.meta',
   'assets/resources/video/gacha.meta',
   'assets/resources/video/gacha/call1.mp4',
@@ -252,6 +263,17 @@ const required = [
   'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong.png.meta',
   'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong2.png',
   'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong2.png.meta',
+  'assets/resources/spine/gacha/box_summon.meta',
+  'assets/resources/spine/gacha/box_summon/boxman_text.json',
+  'assets/resources/spine/gacha/box_summon/boxman_text.json.meta',
+  'assets/resources/spine/gacha/box_summon/boxman_text.atlas',
+  'assets/resources/spine/gacha/box_summon/boxman_text.atlas.meta',
+  'assets/resources/spine/gacha/box_summon/boxman_text.png',
+  'assets/resources/spine/gacha/box_summon/boxman_text.png.meta',
+  'assets/resources/spine/gacha/box_summon/boxman_text2.png',
+  'assets/resources/spine/gacha/box_summon/boxman_text2.png.meta',
+  'assets/resources/spine/gacha/box_summon/boxman_text3.png',
+  'assets/resources/spine/gacha/box_summon/boxman_text3.png.meta',
   'assets/resources/spine/gacha/Lord of the Dark Abyss/1605.json',
   'assets/resources/spine/gacha/Lord of the Dark Abyss/1605.json.meta',
   'assets/resources/spine/gacha/Lord of the Dark Abyss/1605.atlas',
@@ -301,6 +323,25 @@ for (const file of required) {
   }
 }
 
+const c1812GachaPngSizes = {
+  'assets/resources/ui/gacha/c1812/summon_floor.png': { width: 1024, height: 356 },
+  'assets/resources/ui/gacha/c1812/summon_magic_circle.png': { width: 240, height: 240 },
+  'assets/resources/ui/gacha/c1812/summon_reward_slot.png': { width: 138, height: 140 },
+  'assets/resources/ui/gacha/c1812/summon_case_frame.png': { width: 165, height: 165 },
+  'assets/resources/ui/gacha/c1812/currency_gold.png': { width: 59, height: 66 },
+};
+
+for (const [file, expected] of Object.entries(c1812GachaPngSizes)) {
+  if (!existsSync(file)) {
+    continue;
+  }
+  const actual = readPngSize(file);
+  if (!actual || actual.width !== expected.width || actual.height !== expected.height) {
+    console.error(`unexpected C1812 gacha PNG size for ${file}: expected ${expected.width}x${expected.height}, got ${actual ? `${actual.width}x${actual.height}` : '<invalid png>'}`);
+    ok = false;
+  }
+}
+
 const forbiddenLegacySummonResources = [
   'assets/resources/ui/gacha/summon.meta',
   'assets/resources/ui/gacha/summon',
@@ -320,6 +361,8 @@ const forbiddenResourceSpineFiles = [
   'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong.skel.meta',
   'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong.spine',
   'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong.spine.meta',
+  'assets/resources/spine/gacha/box_summon/252.spine',
+  'assets/resources/spine/gacha/box_summon/252.spine.meta',
   'assets/resources/spine/hero/npc_1001/npc_1001.spine',
   'assets/resources/spine/hero/npc_1001/npc_1001.spine.meta',
   'assets/resources/spine/hero/act_1001/act_1001.spine',
@@ -340,6 +383,21 @@ for (const file of forbiddenResourceSpineFiles) {
 for (const file of collectFiles('assets/resources/spine')) {
   if (file.endsWith('.spine') || file.endsWith('.spine.meta')) {
     console.error(`spine source file must stay outside assets/resources: ${file}`);
+    ok = false;
+  }
+}
+
+const cocosAssetDbPath = 'library/.assets-data.json';
+if (existsSync(cocosAssetDbPath)) {
+  const assetDbText = readFileSync(cocosAssetDbPath, 'utf8');
+  const staleResourceSpineUrls = Array.from(assetDbText.matchAll(/"url"\s*:\s*"db:\/\/assets\/resources\/spine\/[^"]+\.spine(?:\.meta)?"/g))
+    .map((match) => match[0].replace(/^"url"\s*:\s*"/, '').replace(/"$/, ''));
+  if (staleResourceSpineUrls.length > 0) {
+    console.error(`${cocosAssetDbPath} still indexes forbidden assets/resources Spine source files; refresh Cocos AssetDB before Preview.`);
+    staleResourceSpineUrls.slice(0, 12).forEach((url) => console.error(`  stale asset-db url: ${url}`));
+    if (staleResourceSpineUrls.length > 12) {
+      console.error(`  ... and ${staleResourceSpineUrls.length - 12} more stale asset-db urls`);
+    }
     ok = false;
   }
 }
@@ -476,6 +534,7 @@ const lobbyProfileDialogPath = 'assets/scripts/scenes/lobby/LobbyProfileDialogRe
 const lobbyProfileLoaderPath = 'assets/scripts/scenes/lobby/LobbyProfileLoader.ts';
 const lobbyProfileStatePath = 'assets/scripts/scenes/lobby/LobbyProfileState.ts';
 const lobbyResourceLoaderPath = 'assets/scripts/scenes/lobby/LobbyResourceLoader.ts';
+const gachaTypesPath = 'assets/scripts/types/GachaTypes.ts';
 const gachaSceneConfigPath = 'assets/scripts/scenes/gacha/GachaSceneConfig.ts';
 const gachaSceneRendererPath = 'assets/scripts/scenes/gacha/GachaSceneRenderer.ts';
 const authApiPath = 'assets/scripts/api/PlayerAuthApi.ts';
@@ -554,6 +613,7 @@ const lobbyProfileDialog = readFileSync(lobbyProfileDialogPath, 'utf8');
 const lobbyProfileLoader = readFileSync(lobbyProfileLoaderPath, 'utf8');
 const lobbyProfileState = readFileSync(lobbyProfileStatePath, 'utf8');
 const lobbyResourceLoader = readFileSync(lobbyResourceLoaderPath, 'utf8');
+const gachaTypes = readFileSync(gachaTypesPath, 'utf8');
 const gachaSceneConfig = readFileSync(gachaSceneConfigPath, 'utf8');
 const gachaSceneRenderer = readFileSync(gachaSceneRendererPath, 'utf8');
 const authApi = readFileSync(authApiPath, 'utf8');
@@ -599,6 +659,17 @@ function collectFiles(dir) {
     }
   }
   return files;
+}
+
+function readPngSize(path) {
+  const buffer = readFileSync(path);
+  if (buffer.length < 24 || buffer.toString('ascii', 1, 4) !== 'PNG') {
+    return null;
+  }
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
 }
 
 function sourceEntry(path) {
@@ -701,7 +772,6 @@ try {
 
 const forbiddenLoginRootTokens = [
   '/api/player/heroes/',
-  '/api/player/bag/use',
   '/api/player/bag/batch-use',
   '/api/player/bag/sell',
   '/claim',
@@ -713,7 +783,6 @@ const forbiddenLoginRootTokens = [
   '/api/v1/ex',
   'fund-pool',
   'fundPool',
-      'USDT',
       'lootChainApi.hero',
       'new HeroApi',
       'this.api.http',
@@ -755,7 +824,7 @@ const requiredLoginRootTokens = [
   "import { LobbyBattlePreviewPanelRenderer, type LobbyBattlePreviewPanelHost } from './lobby/LobbyBattlePreviewPanelRenderer';",
   "import { LobbyCodexLoader, type LobbyCodexLoaderHost } from './lobby/LobbyCodexLoader';",
   "import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/LobbyCodexPanelRenderer';",
-  "import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost } from './lobby/LobbyFormationPanelRenderer';",
+  "import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFormationPowerSnapshot } from './lobby/LobbyFormationPanelRenderer';",
   "import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';",
   "import { LobbyHeroRosterLoader, type LobbyHeroRosterLoaderHost } from './lobby/LobbyHeroRosterLoader';",
   "import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';",
@@ -893,13 +962,17 @@ const requiredLoginRootTokens = [
   'private currentLobbyCodexState(): LobbyCodexPanelState',
   'private async loadLobbyCodex(force = false): Promise<void>',
       'private renderLobbyFormationPanel(layout: UiLayout): void',
-      'private openLobbyFormationPanel(stageCode?: string): void',
+      'private openLobbyFormationPanel(stageCode?: string, origin?: string): void',
     'private currentLobbySelectedStageCode(): string',
       'private selectLobbyAdventureStage(stageCode: string): void',
       'private previewLockedLobbyAdventureStage(stageCode: string): void',
     'private currentLobbyFormationHeroIds(): number[]',
     'private toggleLobbyFormationHero(heroId: number): void',
     'private reconcileLobbyFormationSelection(): boolean',
+    'resolveDefaultFilledLobbyFormationHeroIds',
+    'const selected = this.normalizeLobbyFormationHeroIds(this.selectedLobbyFormationHeroIds);',
+    'return selected.length > 0 ? selected : this.defaultLobbyFormationHeroIds();',
+    'this.selectedLobbyFormationHeroIds.length > 0',
       'private resolveLobbyStageCode(stageCode?: string | null): string | null',
     '/^MAIN_\\d+_\\d+$/.test(value)',
       '防止未来 UI 误把锁定关卡传进来',
@@ -962,6 +1035,7 @@ const requiredLoginRootTokens = [
   'private closeGachaMockRevealScene(): void',
   'private openGachaMockResultScene(mode: GachaPreviewResultMode): void',
   'private closeGachaMockResultScene(): void',
+  'private closeGachaScene(): void',
   'private renderLobbyScenePage(): void',
   'private renderLobbyWorldBase(): UiLayout',
   'this.contentRootController.clearExcept(LOBBY_BACKGROUND_NODE_NAMES);',
@@ -1242,12 +1316,22 @@ for (const token of [
   'export class BattleApi',
   "this.http.post<unknown>('/api/player/battles/start'",
   '`/api/player/battles/${encodeURIComponent(safeBattleNo)}/settle`',
-  'data.rewardGranted === true || data.readonlyEconomy !== true',
+  "settlementMode === 'NO_REWARD'",
+  'ANNUAL_MAINLINE_TOTAL_STAGES = 393',
+  'FIRST_CHAPTER_STAGE_COUNT = 9',
+  'STAGES_PER_CHAPTER_AFTER_FIRST = 16',
+  'REAL_MAINLINE_MODE_PREFIX',
+  'annualMainlineStageOrder(stageCode',
+  'MAIN_25_16',
+  'REAL_MAINLINE_R',
+  'assertSafeMainlineRewards',
+  '真实首通结算响应奖励不在年度主线安全集合内',
   "rarity.toUpperCase() === 'EX'",
   'normalizeStartDTO(dto: PlayerBattleStartDTO)',
   'validateBattleStart(data, request.stageCode)',
   'stageCode !== expectedStageCode',
   'normalizeMainStageCode(stageCode: string)',
+  '年度主线 MAIN_1_1 至 MAIN_25_16',
   '不允许默认兜底',
 ]) {
   if (!battleApi.includes(token)) {
@@ -1260,6 +1344,8 @@ for (const token of [
   'export interface PlayerBattleStartDTO',
   'export interface PlayerBattleSettlementVO',
   'rewardGranted: boolean;',
+  'settlementMode:',
+  'settlementMode: string;',
   'readonlyEconomy: boolean;',
 ]) {
   if (!battleTypes.includes(token)) {
@@ -1268,12 +1354,32 @@ for (const token of [
   }
 }
 
+for (const { path, text, tokens } of [
+  {
+    path: battleApiPath,
+    text: battleApi,
+    tokens: ['REAL_MAINLINE_R394', 'BATTLE_MAINLINE_R394', 'PHASE6_REAL_BATTLE_R394', 'R394_MAIN_25_17', 'MAIN_25_17:'],
+  },
+  {
+    path: battleTypesPath,
+    text: battleTypes,
+    tokens: ["'REAL_MAINLINE_R394'", 'REAL_MAINLINE_R394'],
+  },
+]) {
+  for (const token of tokens) {
+    if (text.includes(token)) {
+      console.error(`forbidden out-of-range battle entry token in ${path}: ${token}`);
+      ok = false;
+    }
+  }
+}
+
 for (const token of [
   'export class LobbyBattleFlow',
   'prepare(stageCode: string): void',
   'this.battleApi.startBattle(dto)',
   'this.battleApi.settleBattle(currentStart.battleNo, dto)',
-  "result: 'WIN'",
+  'result: this.resolveBattleOutcome()',
   'createRequestId',
   "hero.rarity.toUpperCase() !== 'EX'",
   'schedulePresentationTicks',
@@ -1335,7 +1441,9 @@ for (const token of [
   'leadEnemyHp',
   'settlementReceiptLines',
   '目标关卡：',
-  'rewardGranted=false',
+  'isAnnualMainlineSettlementMode',
+  'REAL_MAINLINE_R',
+  'order >= 1 && order <= 393',
   '下一步：返回大厅',
 ]) {
   if (!lobbyBattlePresentationState.includes(token)) {
@@ -1352,6 +1460,9 @@ for (const token of [
   'normalizeMainStageCode(readText(item',
   'filter((stage): stage is LobbyAdventureStageVO => stage !== null)',
   "value.toUpperCase().includes('EX_')",
+  'nextGuidanceTitle',
+  'growthSourceStatus',
+  'repeatableExpAvailable',
 ]) {
   if (!lobbyAdventureApi.includes(token)) {
     console.error(`missing lobby adventure API guard in ${lobbyAdventureApiPath}: ${token}`);
@@ -1382,14 +1493,30 @@ for (const token of [
   'LobbyAdventureBoundaryNote',
   'openLobbyFormationPanel(stageCode?: string)',
     'this.host.openLobbyFormationPanel(stage.stageCode)',
-    'this.host.openLobbyFormationPanel(recommended.stageCode)',
+    'this.host.openLobbyFormationPanel(stageCode)',
   'selectLobbyAdventureStage(stage.stageCode)',
     'previewLockedLobbyAdventureStage(stage.stageCode)',
+    'ANNUAL_MAINLINE_TOTAL_STAGES = 393',
+    'isAnnualMainlineStage(stage.stageCode)',
+    'canOpenBattleEntryStage(stage',
+    'isReadonlyRecommendedStage(recommended)',
+    'stages.find((stage) => this.canOpenBattleEntryStage(stage))',
     'currentLobbySelectedStageCode(): string',
     'LobbyAdventureStageLockBadge',
     '锁定 ',
     'LobbyAdventureRecentBattleSummaryCard',
-    '只读经济通过',
+    '首通奖励已结算',
+    'unlockHint',
+    'stageNextGuidanceText',
+    'stageRewardTitle(stage',
+    'stageActionLabel(stage',
+    'FIRST_CLEAR_USED_UP',
+    'NEXT_STAGE_READONLY',
+    'PHASE_LOCKED',
+    'visibleStageWindow',
+    'visibleChapterWindow',
+    'stages.find((stage) => stage.stageCode === adventure.recommendedStageCode)',
+    '暂无重复经验入口',
     'reloadLobbyAdventure()',
   'closeLobbyAdventurePanel()',
   'LobbyAdventureBackButton',
@@ -1397,10 +1524,26 @@ for (const token of [
   'LobbyAdventureStageMap',
   'LobbyAdventureFormationButton',
   'LobbyAdventureCompactFormationButton',
-  '关卡配置预览（当前不发放）',
+  '首通奖励（胜利结算后发放）',
+  '奖励预览（首通结算后发放）',
+  '年度主线 MAIN_1_1 至 MAIN_25_16',
+  '仅预览',
 ]) {
   if (!lobbyAdventurePanel.includes(token)) {
     console.error(`missing lobby adventure panel guard in ${lobbyAdventurePanelPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'ANNUAL_MAINLINE_TOTAL_STAGES = 393',
+  'isAnnualMainlineStage(stage.stageCode)',
+  'canOpenLobbyBattleEntryStage(stage',
+  'canOpenLobbyBattleEntryStage(stage)',
+  'this.previewLockedLobbyAdventureStage(this.selectedLobbyStageCode)',
+]) {
+  if (!gameRoot.includes(token)) {
+    console.error(`missing lobby battle entry allowlist guard in ${gameRootPath}: ${token}`);
     ok = false;
   }
 }
@@ -1422,7 +1565,23 @@ for (const token of [
     'this.host.openLobbyBattlePreviewPanel(stageCode)',
     'private canOpenBattlePreview(state: LobbyHeroRosterPanelState, stageCode: string): boolean',
     'buttonComponent.interactable = enabled;',
-    "state.loading ? '读取中' : '不可出战'",
+    "previewEnabled ? '挑战' : state.loading ? '读取中' : '不可出战'",
+    'LobbyFormationBattlefieldScene',
+    'LobbyFormationHeroPicker',
+    'LobbyFormationActorStand_',
+    'LobbyFormationActorSpinePreview',
+    'LobbyFormationActorFallbackSilhouette',
+    'LobbyFormationHeroPickerRow_',
+    'renderFormationBattlefield',
+    'renderFormationHeroPicker',
+    'renderFormationHeroSpinePreview',
+    'loadFormationSpineData',
+    'applyFormationSpineDataWithRetry',
+    'applyFormationSpineData',
+    'FORMATION_SPINE_RUNTIME_RETRY_DELAYS_MS',
+    'spine runtime retry',
+    'toFormationBattleUnit(hero)',
+    'resolveBattleUnitSpineResource(unit)',
     'LobbyFormationSlot_',
     'LobbyFormationCandidateButton_',
     '点击候选英雄调整本次出战',
@@ -1447,7 +1606,6 @@ for (const token of [
   'panelGroup.addComponent(BlockInputEvents);',
   'LobbyBattlePreviewBoundaryNote',
   'LobbyBattleSettleDisabled',
-  'LobbyBattleSettlementButton',
   'LobbyBattleReturnLobbyButton',
   'currentLobbyBattleState()',
   'settleLobbyBattleSession()',
@@ -1456,7 +1614,10 @@ for (const token of [
   'LobbyBattlePreviewField',
   'LobbyBattleCinematicBackdrop',
   'LobbyBattleActor_',
-  'LobbyBattleEffectLayer',
+  'LobbyBattleImpactSlashLayer',
+  'renderActionTargetSpineEffectLayer',
+  'LobbyBattleActionTargetSpineEffectLayer',
+  'resolveBattleUnitTargetSpineEffectAnimation',
   'LobbyBattleBoundaryBadge',
   'LobbyBattleSettlementReceipt',
   'resolveBattlePresentationLayout',
@@ -1534,7 +1695,8 @@ for (const token of [
   "rarity.toUpperCase() === 'EX'",
   "heroCode.toUpperCase().startsWith('EX_')",
   'if (id <= 0)',
-  'Number(b.protagonist) - Number(a.protagonist)',
+  'isHiddenProtagonistHero(item)',
+  '!isHiddenProtagonistHero(item)',
 ]) {
   if (!lobbyHeroApi.includes(token)) {
     console.error(`missing lobby hero API guard in ${lobbyHeroApiPath}: ${token}`);
@@ -1626,7 +1788,8 @@ for (const token of [
   'LobbyBagSourceButton',
   'reloadLobbyBagItemSource',
   'LobbyBagDisabledAction',
-  '使用/出售关闭',
+  '金币 · 未开放',
+  'disabledButton.interactable = false',
   'LobbyBagBoundaryNote',
   '不提供使用、出售、兑换、领取或资源变更入口',
 ]) {
@@ -1702,6 +1865,7 @@ for (const token of [
   '请导出 4.2.x 或 3.8.x',
   'bindHeroSpineAudioEvents',
   'playHeroSpineAudioEvent',
+  'isHeroSpineAudioSourceNodeValid',
   'event.data?.audioPath',
   'resources.load(path, AudioClip',
   'hero spine audio missing',
@@ -1757,8 +1921,13 @@ for (const token of [
   'LobbyHeroDetailBackButton',
   'renderSceneBackButton(this.host, panelGroup, layout',
   'backToLobbyHeroRosterPanel()',
+  'levelUpLobbyHero(heroId: number): void',
+  'LobbyHeroDetailLevelUpButton',
   'closeLobbyHeroDetailPanel()',
-  '不提供升级、升星、觉醒、装备、抽卡、领取或资源变更入口',
+  'renderLevelUpDock',
+  '当前材料约可一键升至',
+  'renderDetailNav',
+  'renderWearablePanel',
 ]) {
   if (!lobbyHeroDetailPanel.includes(token)) {
     console.error(`missing lobby hero detail panel guard in ${lobbyHeroDetailPanelPath}: ${token}`);
@@ -1780,9 +1949,10 @@ for (const token of [
   'rgba(0, 0, 0, 58)',
   'height * 0.34',
   '-width / 2 + 54 * scale, height / 2 - 46 * scale',
+  'audioSource.node.isValid',
 ]) {
   if (lobbyHeroDetailPanel.includes(token)) {
-    console.error(`forbidden lobby hero detail red-circle/aura token in ${lobbyHeroDetailPanelPath}: ${token}`);
+    console.error(`forbidden lobby hero detail token in ${lobbyHeroDetailPanelPath}: ${token}`);
     ok = false;
   }
 }
@@ -1906,9 +2076,9 @@ for (const token of [
   'HERO_ROSTER_CARD_BACKGROUND_NUU_VISIBLE_HEIGHT_RATIO = 0.5',
   'HERO_ROSTER_CARD_BACKGROUND_MATCHED_VISIBLE_HEIGHT_RATIO = 0.58',
   'HERO_ROSTER_CARD_BACKGROUND_NPC_PREFIX',
-  'HERO_ROSTER_CARD_BACKGROUND_NPC_VISIBLE_HEIGHT_RATIO = 0.42',
-  'HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_HEIGHT_RATIO = 0.56',
-  'HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_WIDTH_RATIO = 0.82',
+  'HERO_ROSTER_CARD_BACKGROUND_NPC_VISIBLE_HEIGHT_RATIO = 0.58',
+  'HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_HEIGHT_RATIO = 0.74',
+  'HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_WIDTH_RATIO = 0.96',
   'HERO_ROSTER_CARD_BACKGROUND_VISIBLE_HEIGHT_RATIOS',
   'HERO_ROSTER_CARD_BACKGROUND_FOCUS_X_RATIOS',
   'isNpcHeroCardBackgroundAssetPath',
@@ -1966,8 +2136,8 @@ for (const token of [
   'graphics.lineTo(width * 0.18, -height * 0.26)',
   'LobbyHeroRosterAbyssDust',
   'resolveHeroRosterPortraitAsset',
-  'LobbyHeroRosterUpgradeButtonDisabled',
-  '养成入口未开放',
+  'LobbyHeroRosterFormationButton',
+  'renderUpgradeDock',
   'hero.protagonist',
 ]) {
   if (!lobbyHeroRosterPanel.includes(token)) {
@@ -2377,7 +2547,7 @@ const requiredUiSceneBackButtonTokens = [
   'addChildLabel?',
   'export function renderSceneBackButton(',
   "titleText = ''",
-  'layout.stageLeft + 58 * buttonScale',
+  'layout.stageRight - 58 * buttonScale',
   'layout.stageTop - 42 * buttonScale',
   '96 * buttonScale',
   '46 * buttonScale',
@@ -2385,7 +2555,7 @@ const requiredUiSceneBackButtonTokens = [
   'host.applyImageButtonFeedback(button, 1.04, 0.96)',
   'SceneBackButtonArt',
   'SceneBackTitle',
-  'renderBackTitle(host, parent, layout, buttonScale, titleText)',
+  'renderBackTitle(host, parent, layout, buttonScale, titleText, helpText)',
   'drawFallbackBackButton(button, buttonWidth, buttonHeight, buttonScale)',
   'HorizontalTextAlignment.LEFT',
   'rgba(250, 222, 158)',
@@ -2733,11 +2903,14 @@ const requiredProtagonistFlowTokens = [
   'loadLobbyProfileAfterLogin(userId: number): void;',
   'setNameInput(input: EditBox | null): void',
   'async handleLoginSuccess(userId: number, tokenName: string): Promise<void>',
+  'HIDDEN_PROTAGONIST_CREATE_REQUEST',
   'const serverState = await this.protagonistApi.state();',
   'serverState.created && serverState.profile',
   'this.state.rememberServerProfile(serverState.profile);',
   'this.state.beginCreate(userId);',
-  'this.host.showProtagonistCreateView();',
+  'this.ensureHiddenProtagonistReady(ticket)',
+  'private async ensureHiddenProtagonistReady(ticket: number): Promise<void>',
+  '玩家档案初始化完成。',
   'selectGender(gender: ProtagonistGender): void',
   'previewForm(form: ProtagonistForm): void',
   "form === 'attack'",
@@ -2851,7 +3024,7 @@ if (!executeGachaDrawBody) {
   ok = false;
 } else {
   for (const token of [
-    'void this.api.gacha.draw({ poolCode: pending.poolCode, drawCount: pending.drawCount, requestId: pending.requestId })',
+    "void this.api.gacha.draw({ poolCode: pending.poolCode, drawCount: pending.drawCount, requestId: pending.requestId, paymentMode: 'AUTO' })",
     'pending.result = result;',
     'pending.highestRarity = this.resolveGachaDrawResultHighestRarity(result);',
     'this.presentPendingGachaDrawVideo(ticket);',
@@ -2949,6 +3122,109 @@ if (presentGachaDrawFailureBody) {
 }
 
 for (const token of [
+  "paymentMode?: 'AUTO' | 'TICKET' | 'CURRENCY';",
+  'primaryCostType?: string | null;',
+  'backupCostCode?: string | null;',
+]) {
+  if (!gachaTypes.includes(token)) {
+    console.error(`gacha types must expose AUTO payment and primary/backup cost fields: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'primaryCostType: pool.primaryCostType ?? null,',
+  'backupCostCode: pool.backupCostCode ?? null,',
+]) {
+  if (!gameRoot.includes(token)) {
+    console.error(`gacha pool mapper must keep backend primary/backup cost fields in ${gameRootPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'resolveSummonCostText(selectedPool',
+  "return `${primaryCost} / ${backupCost}`;",
+  "if (code === 'BOUND_DIAMOND')",
+  "return '绑钻';",
+]) {
+  if (!gachaSceneRenderer.includes(token)) {
+    console.error(`gacha renderer must show ticket-first and fallback-currency costs in ${gachaSceneRendererPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'private isSelectedPool(pool: GachaPreviewPool, selectedPoolCode: string | null): boolean',
+  'this.isSelectedPool(pool, state.selectedPoolCode)',
+  'return pool.active === true;',
+]) {
+  if (!gachaSceneRenderer.includes(token)) {
+    console.error(`gacha renderer must derive tab selection from selectedPoolCode and only use active as initial fallback in ${gachaSceneRendererPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'pool.poolCode === state.selectedPoolCode || pool.id === state.selectedPoolCode || pool.active',
+  'pool.poolCode === state.selectedPoolCode || pool.id === state.selectedPoolCode || pool.active;',
+]) {
+  if (gachaSceneRenderer.includes(token)) {
+    console.error(`gacha renderer must not keep stale pool.active selected after the user clicks another pool in ${gachaSceneRendererPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'private readonly configuredSpineDataCache = new Map<string, sp.SkeletonData>();',
+  'private readonly configuredSpineLoadingKeys = new Set<string>();',
+  'private readonly configuredSpineLoadCallbacks = new Map<string, Array<(data: sp.SkeletonData) => void>>();',
+  'const cacheKey = uuid ? `uuid:${uuid}` : `path:${resource}`;',
+  'this.configuredSpineDataCache.set(cacheKey, data);',
+]) {
+  if (!gachaSceneRenderer.includes(token)) {
+    console.error(`gacha renderer must cache configured pool spine data so box_summon does not reload on each tab click in ${gachaSceneRendererPath}: ${token}`);
+    ok = false;
+  }
+}
+
+const closeGachaSceneBody = extractMethodBody(gameRoot, 'closeGachaScene(): void');
+if (!closeGachaSceneBody) {
+  console.error(`missing closeGachaScene pending guard in ${gameRootPath}`);
+  ok = false;
+} else {
+  for (const token of [
+    "if (this.currentView === 'gachaSummon')",
+    'if (this.gachaSceneState.drawing || this.pendingGachaDraw)',
+    "this.setStatus('召唤请求处理中，请稍候。');",
+  ]) {
+    if (!closeGachaSceneBody.includes(token)) {
+      console.error(`closeGachaScene must block leaving while a draw is pending in ${gameRootPath}: ${token}`);
+      ok = false;
+    }
+  }
+}
+
+const resetLobbyProfileForLoginBody = extractMethodBody(gameRoot, 'resetLobbyProfileForLogin(userId: number): void');
+if (!resetLobbyProfileForLoginBody) {
+  console.error(`missing resetLobbyProfileForLogin gacha reset guard in ${gameRootPath}`);
+  ok = false;
+} else {
+  for (const token of [
+    'this.gachaSceneState = {',
+    'drawing: false,',
+    'error: null,',
+    'lastDrawResult: null,',
+    'activeAction: null,',
+  ]) {
+    if (!resetLobbyProfileForLoginBody.includes(token)) {
+      console.error(`resetLobbyProfileForLogin must clear gacha draw state in ${gameRootPath}: ${token}`);
+      ok = false;
+    }
+  }
+}
+
+for (const token of [
   'private gachaPreviewSummonRarity: GachaRarity | null = null;',
   'openGachaRarityPreviewScene',
   'closeGachaRarityPreviewScene',
@@ -3013,9 +3289,16 @@ for (const token of requiredBagApiTokens) {
   }
 }
 
-for (const token of ['.post<', '.put<', '.patch<', '.delete<', '/api/player/bag/use', '/api/player/bag/batch-use', '/api/player/bag/sell']) {
+// 2026-07-24 背包写入口重协商:用户开放"使用/合成"两个入口;批量使用/出售仍然关闭。
+for (const token of ['.put<', '.patch<', '.delete<', '/api/player/bag/batch-use', '/api/player/bag/sell']) {
   if (bagApi.includes(token)) {
-    console.error(`bag API must stay readonly in ${bagApiPath}: ${token}`);
+    console.error(`bag API write surface exceeded in ${bagApiPath}: ${token}`);
+    ok = false;
+  }
+}
+for (const token of ["'/api/player/bag/use'", "'/api/player/bag/compose'"]) {
+  if (!bagApi.includes(token)) {
+    console.error(`bag API missing opened endpoint in ${bagApiPath}: ${token}`);
     ok = false;
   }
 }
@@ -3037,6 +3320,16 @@ for (const token of [
 const requiredGachaConfigTokens = [
   'GACHA_BACKGROUND_ASSET',
   'ui/gacha/gacha_bg_abyss_ring/spriteFrame',
+  'GACHA_C1812_SUMMON_FLOOR_ASSET',
+  'ui/gacha/c1812/summon_floor/spriteFrame',
+  'GACHA_C1812_SUMMON_MAGIC_CIRCLE_ASSET',
+  'ui/gacha/c1812/summon_magic_circle/spriteFrame',
+  'GACHA_C1812_SUMMON_REWARD_SLOT_ASSET',
+  'ui/gacha/c1812/summon_reward_slot/spriteFrame',
+  'GACHA_C1812_SUMMON_CASE_FRAME_ASSET',
+  'ui/gacha/c1812/summon_case_frame/spriteFrame',
+  'GACHA_C1812_CURRENCY_GOLD_ASSET',
+  'ui/gacha/c1812/currency_gold/spriteFrame',
   'GACHA_ABYSS_SPINE_RESOURCE',
   'spine/gacha/huangfengjiaozong/huangfengjiaozong',
   'GACHA_ABYSS_SPINE_UUID',
@@ -3098,7 +3391,7 @@ for (const token of [
   }
 }
 
-for (const token of ['ui/gacha/gacha_bg_cathedral/spriteFrame', 'ui/hero-detail/hero_detail_backdrop/spriteFrame']) {
+for (const token of ['ui/gacha/gacha_bg_cathedral/spriteFrame', 'ui/hero/ai/hero_detail_bg/spriteFrame']) {
   if (gachaSceneConfig.includes(token)) {
     console.error(`gacha scene must use the generated abyss ring backdrop in ${gachaSceneConfigPath}: ${token}`);
     ok = false;
@@ -3107,6 +3400,8 @@ for (const token of ['ui/gacha/gacha_bg_cathedral/spriteFrame', 'ui/hero-detail/
 
 const huangfengJsonPath = 'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong.json';
 const huangfengAtlasPath = 'assets/resources/spine/gacha/huangfengjiaozong/huangfengjiaozong.atlas';
+const boxSummonJsonPath = 'assets/resources/spine/gacha/box_summon/boxman_text.json';
+const boxSummonAtlasPath = 'assets/resources/spine/gacha/box_summon/boxman_text.atlas';
 const heroSpineMetaPath = 'assets/resources/spine/hero/npc_1001/npc_1001.skel.meta';
 const heroSpineAtlasPath = 'assets/resources/spine/hero/npc_1001/npc_1001.atlas';
 const heroRosterUrBorderAtlasPath = 'assets/resources/spine/ui/hero-roster/goods_1_border/goods_1.atlas';
@@ -3151,6 +3446,44 @@ try {
   }
 } catch (error) {
   console.error(`failed to read huangfengjiaozong atlas: ${error.message}`);
+  ok = false;
+}
+
+try {
+  const boxSummonData = JSON.parse(readFileSync(boxSummonJsonPath, 'utf8'));
+  const spineVersion = String(boxSummonData.skeleton?.spine ?? '');
+  if (!spineVersion.startsWith('3.8.')) {
+    console.error(`box_summon must be exported as Spine 3.8.x JSON for Cocos 3.8: ${spineVersion || '<missing>'}`);
+    ok = false;
+  }
+  if (!boxSummonData.animations?.idle) {
+    console.error('box_summon JSON must contain idle animation for the normal summon center preview');
+    ok = false;
+  }
+  const skinNames = Array.isArray(boxSummonData.skins)
+    ? boxSummonData.skins.map((skin) => skin?.name).filter(Boolean)
+    : Object.keys(boxSummonData.skins ?? {});
+  if (!skinNames.includes('default')) {
+    console.error('box_summon JSON must contain default skin for the normal summon center preview');
+    ok = false;
+  }
+} catch (error) {
+  console.error(`failed to read box_summon JSON: ${error.message}`);
+  ok = false;
+}
+
+try {
+  const atlasText = readFileSync(boxSummonAtlasPath, 'utf8');
+  const atlasPages = Array.from(atlasText.matchAll(/^(\S+\.png)$/gm), (match) => match[1]);
+  for (const page of atlasPages) {
+    const pagePath = `assets/resources/spine/gacha/box_summon/${page}`;
+    if (!existsSync(pagePath)) {
+      console.error(`box_summon atlas page missing: ${pagePath}`);
+      ok = false;
+    }
+  }
+} catch (error) {
+  console.error(`failed to read box_summon atlas: ${error.message}`);
   ok = false;
 }
 
@@ -3271,13 +3604,39 @@ for (const token of [
 
 for (const token of [
   'isVisibleGachaPool(pool: GachaPreviewPool)',
-  "poolCode !== 'SEALED_LIGHT_DARK'",
-  "displayType !== 'LOCKED'",
-  "theme !== 'locked'",
+  "displayType !== 'HIDDEN'",
+  "theme !== 'hidden'",
+  'drawEnabled: pool.drawEnabled === true && !pool.previewOnly && pool.status === 1,',
+  'pool.drawEnabled === true)?.poolCode',
+  'pool.drawEnabled !== true',
   'await this.loadLobbyHeroRoster(true);',
 ]) {
   if (!gameRoot.includes(token)) {
     console.error(`missing gacha pool visibility/readonly refresh guard in ${gameRootPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  "poolCode !== 'SEALED_LIGHT_DARK'",
+  "displayType !== 'LOCKED'",
+  "theme !== 'locked'",
+]) {
+  if (gameRoot.includes(token)) {
+    console.error(`SEALED_LIGHT_DARK must remain visible as locked/display-only instead of being filtered out in ${gameRootPath}: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  'drawEnabled !== false',
+  '!selectedPool.drawEnabled',
+  '!pool.drawEnabled',
+  'pool?.drawEnabled !== false',
+  'pool.drawEnabled === false',
+]) {
+  if (gameRoot.includes(token) || gachaSceneRenderer.includes(token)) {
+    console.error(`gacha draw gate must fail closed on missing drawEnabled in Cocos source: ${token}`);
     ok = false;
   }
 }
@@ -3287,6 +3646,8 @@ const requiredGachaRendererTokens = [
   'GACHA_MOCK_RESULT_ONCE',
   'GACHA_MOCK_RESULT_TEN',
   'GACHA_REVEAL_STEPS',
+  'selectedPool.drawEnabled === true',
+  'selectedPool.drawEnabled !== true',
   'renderRevealScene(layout: UiLayout, mode: GachaPreviewResultMode): void',
   'renderResultScene(layout: UiLayout, mode: GachaPreviewResultMode, state: GachaSceneState): void',
   'VideoClip',
@@ -3335,7 +3696,17 @@ const requiredGachaRendererTokens = [
   'resolveActionPanelFrame(layout, scale, action, rows.length)',
   'private resolveActionPanelFrame(layout: UiLayout, scale: number, action: GachaActionKey, rowCount: number): { width: number; height: number; y: number }',
   'const bodyOuterHeight = Math.max(96 * scale, height - 138 * scale - footerReserve)',
-  '-bodyOuterHeight / 2 + 18 * scale',
+  'const activeRateRarities = new Set(detail.rates.filter((rate) => rate.status === 1)',
+  'formatPercentValue(rate.rate)',
+  'activeRateRarities.has(safeText(pity.rarity))',
+  'function formatPercentValue',
+  'viewport.addComponent(Mask)',
+  'viewport.addComponent(ScrollView)',
+  'scrollView.content = content',
+  'GachaActionRowsViewport_',
+  'GachaActionRowsContent_',
+  'GachaActionRowsScrollHint',
+  '拖动查看完整列表',
   'openGachaActionScene(key)',
   'currentLobbyProfile(): PlayerLobbyProfileVO',
   '概率保底',
@@ -3352,18 +3723,34 @@ const requiredGachaRendererTokens = [
   'startGachaDraw(mode)',
   'closeGachaMockRevealScene()',
   'GachaAbyssSpineStage',
+  'renderC1812SummonStageDecor(stage, stageWidth, stageHeight, scale, spineGroundY, selectedPool)',
+  'GachaC1812SummonFloor',
+  'GachaC1812SummonMagicCircle',
+  'GachaC1812RevealCaseFrame',
+  'GachaC1812ResultRewardSlot',
+  'GACHA_C1812_SUMMON_FLOOR_ASSET',
+  'GACHA_C1812_SUMMON_MAGIC_CIRCLE_ASSET',
+  'GACHA_C1812_SUMMON_CASE_FRAME_ASSET',
+  'GACHA_C1812_SUMMON_REWARD_SLOT_ASSET',
+  "safeText(selectedPool.title) || '召唤'",
   'GachaAbyssSpineNode',
   'GACHA_SPINE_GROUND_Y_RATIO = -0.55',
   'GACHA_HERO_POOL_SPINE_GROUND_Y_EXTRA_RATIO = -0.075',
+  'GACHA_BOX_SUMMON_SPINE_SCALE_MULTIPLIER = 1.18',
+  'GACHA_BOX_SUMMON_SPINE_GROUND_Y_EXTRA_RATIO = -0.045',
   'resolveGachaSpineGroundY(stageHeight, selectedPool)',
+  'isBoxSummonGachaPool(selectedPool)',
   'isHeroGachaPool(selectedPool)',
+  'GACHA_BOX_SUMMON_SPINE_GROUND_Y_EXTRA_RATIO',
   "displayType === 'LIMITED'",
   "poolCode.includes('LIMITED')",
   "poolCode === 'NORMAL_HERO'",
   "displayType === 'HERO'",
   'graphics.ellipse(0, spineGroundY - 22 * scale',
   "addChildPlainNode(stage, 'GachaAbyssSpineNode', 0, spineGroundY",
-  'return 0.43 * scale * stageFactor',
+  'resolveAbyssSpineScale(layout, scale, resource)',
+  "resource.includes('/box_summon/')",
+  'return 0.43 * scale * stageFactor * poolMultiplier',
   'GACHA_ABYSS_SPINE_RESOURCE',
   'resources.load(GACHA_ABYSS_SPINE_RESOURCE, sp.SkeletonData',
   'GACHA_ABYSS_SPINE_UUID',
@@ -3398,13 +3785,14 @@ const requiredGachaRendererTokens = [
   'GachaResultBackButton',
   'GachaResultScenePanel',
   'GachaResultSceneNoWriteNote',
-  'GachaResultSceneConfirmButton',
+  'GachaResultSceneReturnButton',
+  'GachaResultSceneTenButton',
   "this.renderTopBar(root, layout, scale, 'GachaResultBackButton', () => this.host.closeGachaMockResultScene(), '召唤结果');",
   '真实 drawNo：${drawResult.drawNo}',
   '视觉演出阶段：不扣资源、不生成 drawNo、不写记录、不更新保底。',
   '兑换和补发入口仍未开放',
   'root.addComponent(BlockInputEvents);',
-  '本结果为本地 mock：未扣资源、未写入抽卡记录、未发放英雄、未更新保底',
+  '本结果为本地 mock：未扣资源、未写入记录、未更新保底',
 ];
 
 for (const token of requiredGachaRendererTokens) {
@@ -3485,6 +3873,9 @@ const forbiddenGachaRendererTokens = [
   'RecruitBG',
   'PrivateEquip_MagicCircle',
   'videoPlayer.keepAspectRatio = false;',
+  '后续补滚动列表',
+  'GachaActionRowsMore',
+  '.slice(0, 22)',
 ];
 
 for (const token of forbiddenGachaRendererTokens) {
@@ -3559,7 +3950,7 @@ const requiredLobbyBackgroundTokens = [
   'export interface LobbyBackgroundHost',
   "export const LOBBY_VIDEO_PATH = 'lobby/lobby_bg_loop';",
   "export const LOBBY_POSTER_PATH = 'lobby/lobby_bg_poster';",
-  'export const USE_LOBBY_NATIVE_VIDEO_BACKGROUND = true;',
+  'export const USE_LOBBY_NATIVE_VIDEO_BACKGROUND = false;',
   'const LOBBY_POSTER_FADE_DURATION = 0.4;',
   'setResources(posterFrame: SpriteFrame | null, videoClip: VideoClip | null): void',
   'render(layout: UiLayout): void',
@@ -3645,14 +4036,18 @@ const requiredLobbyHudTokens = [
   'private openLobbyNoticePanel(): void',
   'private openLobbyHeroRosterPanel(): void',
   'private openLobbyAdventurePanel(): void',
+  'private openLobbyBattleMapFromDungeonEntry(source: string): void',
+  '已进入关卡地图；战斗胜利后自动提交结算',
   "this.showUnopenedFeature('世界聊天'",
   'private resolveLobbyPlayerInfoLayout(layout: UiLayout): LobbyPlayerInfoLayout',
   'private addLobbyHotspotHitArea(parent: Node, label: string',
   'private addLobbyHotspotPlaque(parent: Node, label: string',
   'private traceLobbyPlaque(graphics: Graphics',
   'private activateLobbyHotspot(parent: Node, label: string',
+  "if (label === '战役')",
   'private playLobbyClickEffect(parent: Node, x: number',
   'private addLobbyChallengeCard(parent: Node, title: string',
+  'this.openLobbyBattleMapFromDungeonEntry(title)',
   'private drawLobbyChallengeRailTrack(graphics: Graphics',
   'private traceLobbyChallengeCard(graphics: Graphics',
   'private addLobbyAdventureButton(parent: Node, x: number',
@@ -3683,12 +4078,17 @@ const requiredLobbyHudTokens = [
   'LobbyCompactActionEntrances',
   'LobbyCompactAction_${label}',
   'private renderCompactActionEntrances(layout: UiLayout): void',
+  'resolveLobbyHudModeSize',
+  'private hudMode(layout: UiLayout): LobbyHudModeSize',
+  "{ label: '背包', detail: '', bag: true }",
   'private compactActionEntries(): Array<{ label: string; detail: string; notice?: boolean; codex?: boolean; heroRoster?: boolean; bag?: boolean; adventure?: boolean; gacha?: boolean }>',
   'private filterCompactActionEntries(',
   'private drawCompactActionPanel(graphics: Graphics',
   'private addCompactActionEntrance(parent: Node, label: string',
   'this.openLobbyHeroRosterPanel();',
   'this.openLobbyAdventurePanel();',
+  "label: '挑战'",
+  '自动提交结算并发放奖励',
   'private drawLobbyBottomPlatform(graphics: Graphics, width: number, height: number, scale: number): void',
   'private drawLobbyBottomPlatformStep(graphics: Graphics',
   'private drawLobbyNavSlot(graphics: Graphics, width: number, height: number, scale: number, hot: boolean): void',
@@ -3711,6 +4111,7 @@ const requiredLobbyTopHudTokens = [
   "from './LobbyHudTypes';",
   'private renderPlayerInfo(layout: UiLayout): void',
   'private renderResourceBar(layout: UiLayout): void',
+  'resolveLobbyHudModeSize(layout).width',
   'private renderSystemIcons(layout: UiLayout): void',
   'private openLobbyPlaceholderDialog(title: string, detail?: string): void',
   'private systemIconTitle(key: LobbySystemIconKey): string',
@@ -3769,6 +4170,8 @@ for (const token of forbiddenLobbyHudTopRendererTokens) {
 const requiredLobbyHudLayoutTokens = [
   'export function lobbyHudScale(layout: UiLayout): number',
   'export function lobbyHudEdgeInset(layout: UiLayout, axis: LobbyHudEdgeAxis, scale: number): number',
+  'export function resolveLobbyHudModeSize(layout: UiLayout): LobbyHudModeSize',
+  'width: Math.min(layout.stageWidth, layout.viewportWidth)',
   'export function resolveLobbyPlayerInfoLayout(layout: UiLayout): LobbyPlayerInfoLayout',
   'return clamp(layout.uiScale, 0.62, 1);',
   'return clamp(safeInset * 0.38, minInset, maxInset);',
@@ -3836,7 +4239,7 @@ function assertClickContract(sourcePath, sourceText, allowedExceptions) {
   }
 }
 
-assertClickContract(lobbyHudPath, lobbyHud, ['activateLobbyHotspot', 'activateLobbyNextGoal', 'openLobbyNoticePanel', 'openLobbyCodexPanel', 'openLobbyHeroRosterPanel', 'openLobbyBagPanel', 'openLobbyAdventurePanel', 'openLobbyGachaScene', 'openPlayerProfileDialog']);
+assertClickContract(lobbyHudPath, lobbyHud, ['activateLobbyHotspot', 'activateLobbyNextGoal', 'openLobbyNoticePanel', 'openLobbyCodexPanel', 'openLobbyHeroRosterPanel', 'openLobbyBagPanel', 'openLobbyAdventurePanel', 'openLobbyBattleMapFromDungeonEntry', 'openLobbyGachaScene', 'openPlayerProfileDialog']);
 assertClickContract(lobbyTopHudPath, lobbyTopHud, ['openPlayerProfileDialog', 'openLobbySettingsPanel']);
 
 function assertMethodExcludes(sourcePath, sourceText, signature, forbiddenTokens, reason) {
@@ -4108,6 +4511,7 @@ const requiredLobbyHudModuleTokens = [
   "export const LOBBY_PLAYER_INFO_PANEL_ASSET = 'ui/lobby/lobby_player_info_panel/spriteFrame';",
   'export const LOBBY_SYSTEM_ICONS',
   'export const LOBBY_ACTIVITY_ITEMS',
+  '真实召唤',
   'export const LOBBY_SCENE_HOTSPOTS',
   'export const LOBBY_CHALLENGE_ITEMS',
   'export const LOBBY_NAV_ITEMS',
@@ -4139,11 +4543,21 @@ const requiredLobbyHudModuleTokens = [
   '背包只读展示道具和来源',
   'this.openLobbyBagPanel();',
   'adventure?: boolean',
+  '召唤祭坛按后端卡池状态开放真实召唤；当前仅开放 draw，兑换和补发关闭。',
 ];
 
 for (const token of requiredLobbyHudModuleTokens) {
   if (!lobbyHudModule.includes(token)) {
     console.error(`missing lobby HUD module token: ${token}`);
+    ok = false;
+  }
+}
+
+for (const token of [
+  '召唤祭坛只做视觉预览；当前不会扣资源、发奖或更新保底。',
+]) {
+  if (lobbyHudModule.includes(token) || i18n.includes(token)) {
+    console.error(`current lobby summon entry must not use obsolete no-write wording: ${token}`);
     ok = false;
   }
 }
@@ -4671,6 +5085,13 @@ function resolveAdaptiveLayout(visibleWidth, visibleHeight, stageSize, stageScal
   };
 }
 
+function resolveLobbyHudModeSize(layout) {
+  return {
+    width: Math.min(layout.stageWidth, layout.viewportWidth),
+    height: Math.min(layout.stageHeight, layout.viewportHeight),
+  };
+}
+
 function parseObjectArrayBlock(sourceText, exportName) {
   const marker = `export const ${exportName}`;
   const start = sourceText.indexOf(marker);
@@ -5002,12 +5423,14 @@ function assertLobbyOverlayBounds(layout, name) {
   const systemLeft = systemRight - systemWidth;
   const systemTop = layout.stageTop - hudInsetY;
   const systemBottom = systemTop - systemIconSize;
-  const systemVisible = layout.stageWidth >= 720 && systemLeft >= playerRight + 14 * baseHudScale;
+  const hudModeWidth = resolveLobbyHudModeSize(layout).width;
+  const hudModeHeight = resolveLobbyHudModeSize(layout).height;
+  const systemVisible = hudModeWidth >= 720 && systemLeft >= playerRight + 14 * baseHudScale;
   if (systemVisible) {
     assertInsideStage(`${name}:LobbySystemIcons`, systemLeft, systemRight, systemTop, systemBottom, stage);
   }
 
-  let resourceCount = layout.stageWidth < 720 ? 1 : layout.stageWidth < 840 ? 2 : layout.stageWidth < 1180 ? 3 : 4;
+  let resourceCount = hudModeWidth < 720 ? 1 : hudModeWidth < 840 ? 2 : hudModeWidth < 1180 ? 3 : 4;
   let resourceWidths = [128, 122, 112, 112].slice(0, resourceCount).map((width) => width * baseHudScale);
   const resourceGap = 14 * baseHudScale;
   const resourceHeight = 34 * baseHudScale;
@@ -5044,7 +5467,7 @@ function assertLobbyOverlayBounds(layout, name) {
     }
   }
 
-  if (layout.stageWidth >= 900 && layout.stageHeight >= 520) {
+  if (hudModeWidth >= 900 && hudModeHeight >= 520) {
     const activityWidth = Math.min(206 * baseHudScale, layout.stageWidth * 0.18);
     const activityHeight = 68 * baseHudScale;
     const activityGap = 6 * baseHudScale;
@@ -5066,7 +5489,7 @@ function assertLobbyOverlayBounds(layout, name) {
     }
   }
 
-  if (layout.stageWidth >= 900 && layout.stageHeight >= 560) {
+  if (hudModeWidth >= 900 && hudModeHeight >= 560) {
     const plaqueHeight = 32 * baseHudScale;
     for (const [index, hotspotText] of hotspotObjects.entries()) {
       const x = layout.stageLeft + layout.stageWidth * parseNumberField(hotspotText, 'x');
@@ -5080,7 +5503,7 @@ function assertLobbyOverlayBounds(layout, name) {
       assertInsideStage(`${name}:LobbyHotspotHitArea${index + 1}`, hitX - hitWidth / 2, hitX + hitWidth / 2, hitY + hitHeight / 2, hitY - hitHeight / 2, stage);
     }
   } else if (layout.stageHeight >= 260) {
-    const columns = layout.stageWidth >= 720 ? 4 : 2;
+    const columns = hudModeWidth >= 720 ? 4 : 2;
     const rows = Math.ceil(hotspotObjects.length / columns);
     const compactWidth = Math.min(layout.stageWidth - hudInsetX * 2, columns * 110 * baseHudScale + 22 * baseHudScale);
     const compactHeight = rows * 34 * baseHudScale + 18 * baseHudScale;
@@ -5092,14 +5515,11 @@ function assertLobbyOverlayBounds(layout, name) {
   }
 
   if (layout.stageWidth >= 1180 && layout.stageHeight >= 620) {
+    // 目标卡改挂右侧中间(镜像 LobbyHudRenderer.renderLobbyGoalTracker 的定位公式)。
     const goalWidth = Math.min(410 * baseHudScale, Math.max(330 * baseHudScale, layout.stageWidth * 0.24));
     const goalHeight = 126 * baseHudScale;
-    const leftRailReserve = Math.min(206 * baseHudScale, layout.stageWidth * 0.18) + 18 * baseHudScale;
-    const rightRailReserve = Math.min(184 * baseHudScale, layout.stageWidth * 0.16) + 18 * baseHudScale;
-    const goalMinX = layout.stageLeft + hudInsetX + leftRailReserve + goalWidth / 2;
-    const goalMaxX = layout.stageRight - hudInsetX - rightRailReserve - goalWidth / 2;
-    const goalX = goalMinX <= goalMaxX ? clamp(layout.stageLeft + layout.stageWidth * 0.34, goalMinX, goalMaxX) : (layout.stageLeft + layout.stageRight) / 2;
-    const goalY = layout.stageBottom + 96 * baseHudScale + goalHeight / 2 + 12 * baseHudScale;
+    const goalX = layout.stageRight - hudInsetX - goalWidth / 2 - 6 * baseHudScale;
+    const goalY = (layout.stageTop + layout.stageBottom) / 2 + 24 * baseHudScale;
     const goalRect = localRect(goalX, goalY, goalWidth, goalHeight);
     assertInsideStage(`${name}:LobbyGoalTracker`, goalRect.left, goalRect.right, goalRect.top, goalRect.bottom, stage);
     if (goalRect.bottom < layout.stageBottom + 96 * baseHudScale) {
@@ -5107,7 +5527,7 @@ function assertLobbyOverlayBounds(layout, name) {
       ok = false;
     }
   } else if (layout.viewportWidth >= 640 && layout.viewportHeight >= 420 && layout.stageHeight >= 360) {
-    const bottomHudVisibleForGoal = layout.stageWidth >= 900 && layout.stageHeight >= 500;
+    const bottomHudVisibleForGoal = hudModeWidth >= 900 && hudModeHeight >= 500;
     const goalWidth = bottomHudVisibleForGoal
       ? Math.min(330 * baseHudScale, Math.max(270 * baseHudScale, layout.stageWidth * 0.34))
       : Math.min(300 * baseHudScale, Math.max(230 * baseHudScale, layout.stageWidth * 0.32));
@@ -5115,7 +5535,7 @@ function assertLobbyOverlayBounds(layout, name) {
     let goalX;
     let goalY;
     if (bottomHudVisibleForGoal) {
-      const leftRailReserve = layout.stageWidth >= 900 && layout.stageHeight >= 520 ? Math.min(206 * baseHudScale, layout.stageWidth * 0.18) + 18 * baseHudScale : 0;
+      const leftRailReserve = hudModeWidth >= 900 && hudModeHeight >= 520 ? Math.min(206 * baseHudScale, layout.stageWidth * 0.18) + 18 * baseHudScale : 0;
       const goalMinX = layout.stageLeft + hudInsetX + leftRailReserve + goalWidth / 2;
       const goalMaxX = layout.stageRight - hudInsetX - goalWidth / 2;
       goalX = goalMinX <= goalMaxX ? clamp(layout.stageLeft + layout.stageWidth * 0.34, goalMinX, goalMaxX) : (layout.stageLeft + layout.stageRight) / 2;
@@ -5132,11 +5552,11 @@ function assertLobbyOverlayBounds(layout, name) {
     }
   }
 
-  const sideRailsVisible = layout.stageWidth >= 1000 && layout.stageHeight >= 520;
-  const bottomHudVisible = layout.stageWidth >= 900 && layout.stageHeight >= 500;
+  const sideRailsVisible = hudModeWidth >= 1000 && hudModeHeight >= 520;
+  const bottomHudVisible = hudModeWidth >= 900 && hudModeHeight >= 500;
   if (!(sideRailsVisible && bottomHudVisible) && layout.stageHeight >= 220) {
     const compactActionEntryCount = layout.stageHeight < 300 ? 4 : 9;
-    const compactActionColumns = layout.stageWidth >= 720 && compactActionEntryCount > 2 ? 4 : 2;
+    const compactActionColumns = hudModeWidth >= 720 && compactActionEntryCount > 2 ? 4 : 2;
     const compactActionRows = Math.ceil(compactActionEntryCount / compactActionColumns);
     const compactActionWidth = Math.min(layout.stageWidth - hudInsetX * 2, compactActionColumns * 116 * baseHudScale + 20 * baseHudScale);
     const compactActionItemHeight = (layout.stageHeight < 300 ? 30 : 32) * baseHudScale;
@@ -5162,7 +5582,7 @@ function assertLobbyOverlayBounds(layout, name) {
     }
   }
 
-  if (layout.stageWidth >= 1000 && layout.stageHeight >= 520) {
+  if (hudModeWidth >= 1000 && hudModeHeight >= 520) {
     const cardWidth = Math.min(184 * baseHudScale, layout.stageWidth * 0.16);
     const cardHeight = 94 * baseHudScale;
     const cardGap = 8 * baseHudScale;
@@ -5177,7 +5597,7 @@ function assertLobbyOverlayBounds(layout, name) {
     }
   }
 
-  if (layout.stageWidth >= 900 && layout.stageHeight >= 500) {
+  if (hudModeWidth >= 900 && hudModeHeight >= 500) {
     const bottomHeight = 96 * baseHudScale;
     assertInsideStage(`${name}:LobbyBottomHud`, layout.stageLeft, layout.stageRight, layout.stageBottom + bottomHeight, layout.stageBottom, stage);
   }
@@ -5510,6 +5930,7 @@ if (scene) {
       { name: 'compact-floor-360x240', width: 360, height: 240 },
       { name: 'preview-design-1920x1080-physical-390x300', width: 1920, height: 1080, runtimeWidth: 390, runtimeHeight: 300 },
       { name: 'preview-design-1920x1080-physical-390x340', width: 1920, height: 1080, runtimeWidth: 390, runtimeHeight: 340 },
+      { name: 'preview-design-1920x1080-physical-720x1280', width: 1920, height: 1080, runtimeWidth: 720, runtimeHeight: 1280 },
       { name: 'minimum-320x180', width: 320, height: 180 },
     ];
 

@@ -1,0 +1,13 @@
+{
+  "errors": [],
+  "requests": [
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/battles/recent"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/battles/start"
+    }
+  ]
+}

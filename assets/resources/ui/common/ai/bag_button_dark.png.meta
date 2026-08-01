@@ -1,0 +1,134 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "f1d5b134-ff17-4acd-a8de-070ae7ed6e4f",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "f1d5b134-ff17-4acd-a8de-070ae7ed6e4f@f9941",
+      "displayName": "bag_button_dark",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": 0,
+        "offsetY": 0,
+        "trimX": 0,
+        "trimY": 0,
+        "width": 512,
+        "height": 158,
+        "rawWidth": 512,
+        "rawHeight": 158,
+        "borderTop": 16,
+        "borderBottom": 16,
+        "borderLeft": 44,
+        "borderRight": 44,
+        "packable": false,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "f1d5b134-ff17-4acd-a8de-070ae7ed6e4f@6c48a",
+        "atlasUuid": "",
+        "trimType": "none",
+        "vertices": {
+          "rawPosition": [
+            -256,
+            -79,
+            0,
+            256,
+            -79,
+            0,
+            -256,
+            79,
+            0,
+            256,
+            79,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            0,
+            158,
+            512,
+            158,
+            0,
+            0,
+            512,
+            0
+          ],
+          "nuv": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "minPos": [
+            -256,
+            -79,
+            0
+          ],
+          "maxPos": [
+            256,
+            79,
+            0
+          ]
+        }
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "f1d5b134-ff17-4acd-a8de-070ae7ed6e4f@6c48a",
+      "displayName": "bag_button_dark",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "f1d5b134-ff17-4acd-a8de-070ae7ed6e4f",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": true,
+    "hasAlpha": true,
+    "redirect": "f1d5b134-ff17-4acd-a8de-070ae7ed6e4f@6c48a"
+  }
+}

@@ -1,39 +1,496 @@
 # LootChain Cocos 当前聊天窗口交接上下文
 
-更新时间：2026-06-09
+更新时间：2026-07-08
 
 本文用于其他 Codex 窗口快速接手当前阶段。先读本文件，再按 LootChain 规则读取服务端 `D:\project\LootChain` 下的 `README.md`、`AGENTS.md`、`AI_RULE.md`、`PROJECT_CONTEXT1.md`、`PROJECT_CONTEXT2.md`、`docs/`、`sql/`、`team-history/CURRENT_PROGRESS.md`。
 
 ## 当前目标
 
+- 2026-07-08 最新：**大厅编队改为服务端持久化**，解除旧「编队仅本地一次性、不持久化」边界。新增后端 `game/team` 模块与表 `user_team`（`sql/67_team_formation_persist.sql`），接口 `GET /api/player/lobby/team`（登录还原）、`POST /api/player/lobby/team/save`（编队后保存），已加入 `PlayerApiPhaseGate` 白名单+单测。客户端新增 `LobbyTeamApi`（`api.lobbyTeam`）：登录本会话首次在名单加载后拉一次还原到 `selectedLobbyFormationHeroIds`（默认填充前，触发挂机演出重绘），此后每次上/下阵后回写。保存校验与战斗 start 同口径（拥有+`status=1`、去重、最多 5、队长须在阵容内）。E2E（dev 库 user 1，curl）全绿。纯玩法配置，不发奖励、不改经济。
+- 2026-07-09 最新：**数值体系 ÷10 重设计 + 伤害改攻击力驱动**。解决"1级英雄打怪几千上万、养成后过亿"。战斗大数字来自**3 条独立 stat 路径,已全部同步 ÷10**:①后端战力/门槛：`hero_template` 基础属性 ÷10(sql/68)→ power ÷10 → `user_hero.power` ÷10 + `battle_stage_config.recommended_power` ÷10 + Java `MainlineStageRules.LEGACY_RECOMMENDED_POWERS`/公式常量 + `MAINLINE_ENEMIES` ÷10；②基础伤害飘字：`LobbyBattlePresentationTimeline` 改攻击力驱动(`attack × 回合 × 减伤 × 暴击`),有效攻击后端下发(`PlayerBattleLineupHeroVO.attack = base_attack×等级×星`,toLineup 接 HeroTemplateMapper;客户端 BattleApi/snapshot 加 `attack`);③回放 sim `LobbyBattleReplayModel`(HP百分比+大招 `replay.attack×2.6`)maxHp/attack/defense 三项系数一起 ÷10(比例不变→节奏不变,量级缩10倍)+ 大招兜底 800→80。实测:门槛通过、power 均值7万→7千、伤害飘字 17~333(0 个≥1000)、大招 2661/3335→266/333、敌人正常死亡。详见记忆 [[battle-number-scale]]。后续加装备/升星在小基础上叠。
+- 2026-07-09 最新：**战斗技能卡组 60Hz 重建优化**（`LobbyBattlePreviewPanelRenderer`）。回放 tick 16ms(~60/秒)每次都把底部 5 张技能卡组销毁+全量重建，是战斗持续帧成本大头。改法：`refreshStage12HeroCardDeck` 先算内容签名（`resolveHeroCardDeckSignature`：每英雄 hp%/能量% 取整 + 出手/受击/辅助/大招/阵亡态），签名不变且无大招就绪则跳过整组重建；有大招就绪照常每帧建（保呼吸动画+点击上下文实时）。重建代码本身不动，只加跳过判断→输出零变化。`resetBattlePlaybackRuntime` 重置签名。实测重建 **60→5.4/秒(11×)**，卡面能量%/HP/高亮全对、画面正常。注意：headless 软件渲染是 fill-rate 瓶颈(每帧渲 spine)，fps 没涨——省的是主线程 55次/秒节点 churn，真机 GPU 才体现，战斗性能必须真机验。
+- 2026-07-09 最新：**战斗进场 spine 分帧构建**（`LobbyBattlePreviewPanelRenderer`，纯表现层）。战斗不适合面板复用（逐帧回放态机无稳定签名），进场卡顿另治：SkeletonData 本就缓存（`battleSpineData` 按 uuid/path），但重复进场 5 个 spine 会同帧集中 mesh 构建。改法：`renderBattleActorSpineLayer` 里 fallback 剪影立即占位，骨骼创建+load+apply 按 actor 用 `BATTLE_SPINE_BUILD_STAGGER_MS=55ms` 错峰（`tween(parent).delay().call()`，按 renderGeneration 归零），既有 load/fallback/代际守卫逻辑原样包进延迟闭包不动。实测进场峰值 216→144ms，5 spine 全建+全 animating、0 残留剪影、战斗画面正常。残余 144ms 是战斗脚手架（HP条/技能卡/buff盘同帧建，非 spine），要另做延迟建脚手架。
+- 2026-07-09 最新：**面板复用(英雄名册)** —— 根因级减卡:`UiContentRootController` 新增"可复用节点"注册表(`registerReusableNodes`),登记的顶层节点在任何销毁路径(`clear`/`clearExcept`/`removeNode`)都改为**摘下暂存(detach 不 destroy)**而非销毁;`LootChainGameRoot.renderLobbyHeroRosterPanel` 进入时算**内容签名**(几何+语言经 `makeReusableLayoutKey`,绝不能用 `this.layoutKey`——它揉进了所有面板开合/loader.version,逛一次背包就变导致永不命中 + 面板 `currentContentSignature`:筛选+每个英雄 id/lv/star/power/稀有度/职业/名/立绘),签名不变且暂存有效则 `restoreNodes` 原样挂回、跳过整棵树重建;任何不匹配(数据/筛选/resize/语言变)`dropStashed`+重建,**旧数据结构上不可能复用**;登录/加载 `invalidateReusableScenes` 清所有暂存防跨会话。**已接:英雄名册 + 背包**(各配自己 `currentContentSignature`;背包签名必含钱包 `profile.gold/diamond`,因货币栏读实时 profile,战斗/挂机后进背包不能露旧值)。实测:英雄→背包→英雄=**复用**(uuid 保持、18卡在、可交互),尖峰 202→135ms;背包→英雄→背包=**复用**,尖峰 218→65ms;筛选/resize/数据变=正确重建;背包保留筛选态复用也正确。残余尖峰是大厅演出销毁+背景重建的切页固定成本(非面板本身)。**战斗不适合复用**:它是逐帧推进的回放状态机(playbackTimelineTimeMs/presentationElapsedMs/逐帧战斗位),无稳定内容签名,暂存回来会是冻结旧回放;战斗进场卡顿(实例化敌我 spine)需另做 spine SkeletonData 预载 + 节点池化(未做)。
+- 2026-07-09 最新：**英雄界面开面板卡顿优化**（纯 Cocos 表现层，`LobbyHeroRosterPanelRenderer.ts`）。原因:每次开面板整棵树同帧重建,且每张卡各挂一个活体 spine 边框光效(18 张 = 18 spine)。优化:①R/SR 移除边框(仅保留卡框底图,不挂任何 spine/描边),活体 spine 仅 SSR/UR 保留 → spine 数 18→5;②SSR/UR 边框 spine 分帧错峰实例化(`HERO_ROSTER_BORDER_SPINE_STAGGER_SECONDS`);③卡片分帧构建:首屏一行同步(`HERO_ROSTER_CARD_INITIAL_SYNC_MIN`),其余按批 `tween(content).delay` 错峰(延迟回调用 `content.isValid` 兜底面板重建)。实测(headless 软件渲染,绝对值偏悲观):开英雄界面主线程尖峰 251ms→188ms、spine 18→5、18 卡全部落地、UR 保留火焰边框视觉无回退。剩余尖峰主要来自每卡 5 个带描边 Label + 遮罩(真机 GPU 便宜得多)。若真机仍卡,下一杠杆是面板复用(建一次隐藏而非销毁重建)。测帧法与 SwiftShader 悲观性注意见记忆 [[panel-open-perf-profiling]]。
+- 2026-07-08 最新：**稀有度配色全端统一**（纯客户端渲染色，数据库不存稀有度颜色）：R=蓝 `#5D97FF`、SR=紫 `#C86FFF`、SSR=橙 `#FFA836`、UR=炽红 `#FF5430`、未知=灰 `#605B58`。唯一真值为各渲染器 `resolveRarityColor()`（英雄名册/详情/布阵右栏/战斗卡牌/大厅挂机共用），色值明细见 `docs/ui-style-guide.md` 颜色规范。同批英雄界面调整：移除右下角「查看详情」框与中央「战场布阵」「战斗展示属性」标题、英雄详情背景换 `ui/hero/ai/hero_detail_bg`、布阵右侧选人栏美化+字体放大、从英雄界面进布阵时隐藏底部导航三键。
+- 2026-07-08 最新：**大厅/战斗友军体型逐英雄对齐 Nuu**（纯 Cocos 表现层）。`LobbyBattleUnitSpineRuntime.ts` 的 `BATTLE_COMBAT_CANVAS_COMPENSATION_BY_ASSET`（大厅挂机演出与战斗友军共用友军公式）按实测像素反解补偿系数，使各英雄渲染高度对齐 Nuu(UR_EVELYN, ≈160px)；实测法（注入阵容+冻结骨骼读 `renderData.chunk.vb`）记于记忆 `lobby-hero-size-tuning`。守卫 `check-battle-stage13w` 的 `BATTLE_SR_R_FORMATION_MAX_HEIGHT_RATIO` pin 已校准到编队统一档 `0.53`。
 - 游戏前端当前阶段是 Cocos-only 登录页 + 资源加载页 + 大厅 HUD 可见体验。
 - 不再使用 `web-vue` 作为当前验收路径；`web-vue` 仅为历史实验目录。
 - 当前验收入口是 Cocos Creator 3.8.8 的 `D:\project\lootchain-cocos\assets\main.scene`。
+- 2026-06-21 最新：主角已改为隐藏账号初始化记录。新用户 `dev-login` 后不再进入主角选择/命名页；如果服务端尚未创建主角，Cocos 会静默调用既有 `POST /api/player/protagonist` 创建默认隐藏主角，然后进入资源加载和大厅。英雄列表、英雄详情、编队、挑战弹框和战斗出战均过滤 `protagonist=true`，默认队长改为当前可见出战阵容第一名英雄。
+- 2026-06-17 最新：可视化战斗 10 阶段已启动，第 1 阶段完成规格冻结、UI/音效候选清单和只读守卫。详见 `docs/battle/stage1-visual-battle-spec.md` 与 `docs/battle/stage1-asset-audio-inventory.md`；当前尚未实现运行时战斗动画，也未导入外部 C1812 素材或音效。
+- 2026-06-17 最新追加：可视化战斗 Stage 2 已导入首批通用战斗表现资源并新增 `npm.cmd run check:battle-stage2`。导入资源包括 Boss 血条框/填充、技能目标框、4 个 Buff 图标、受击/地面冲击装饰候选，以及 10 个战斗 BGM/SFX/UI WAV。详见 `docs/battle/stage2-resource-import.md`。Stage 2 仍未实现运行时播放、未改后端接口、未新增经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 3 已新增表现快照与静态战斗场景骨架，并新增 `npm.cmd run check:battle-stage3`。新增 `LobbyBattlePresentationSnapshot.ts` 合并 battle start、只读英雄列表和敌方预览；`LobbyBattlePreviewPanelRenderer` 已消费快照渲染左右阵营、Boss 血条、目标框、命中装饰和 Buff 托盘。详见 `docs/battle/stage3-battle-scene-skeleton.md`。Stage 3 不新增后端接口、SQL、战斗 AI、技能时间轴、伤害结算或经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 4 已新增 Spine 单位站位层，并新增 `npm.cmd run check:battle-stage4`。新增 `LobbyBattleUnitSpineRuntime.ts` 处理英雄 Spine 路径、UUID、动画名、缩放和镜像；战斗页 actor 优先渲染 `LobbyBattleActorSpineNode`，无资源时回退 `LobbyBattleActorSpineFallbackSilhouette`，敌方仍使用 `LobbyBattleEnemyStandin`。详见 `docs/battle/stage4-spine-formation-layer.md`。Stage 4 不新增后端接口、SQL、战斗 AI、技能时间轴、伤害结算、音频自动播放或经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 8 已新增结算与异常表现调度，并新增 `npm.cmd run check:battle-stage8`。新增 `LobbyBattleSettlementPresentation.ts` 将现有战斗状态转换为 `start_idempotent/session_ready/playback_complete/settle_idempotent/receipt_recorded/error_recoverable`；战斗页新增 `LobbyBattleStage8SettlementFlowPanel`、`LobbyBattleStage8RecoveryBanner` 和 `LobbyBattleStage8ReceiptStatus`，用于展示 `start/settle` 幂等、断线、返回重进、失败兜底和以后端回执结算。详见 `docs/battle/stage8-settlement-and-recovery.md`。Stage 8 不新增后端接口、SQL、重结算、补发、离线结算或经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 9 已新增适配与性能表现层，并新增 `npm.cmd run check:battle-stage9`。新增 `LobbyBattleAdaptivePerformance.ts` 根据 `390x340 / 1280x720 / 1920x1080` 输出 `minimal/balanced/cinematic` 档位；战斗页按 profile 控制时间轴、日志、Stage 8 面板、恢复提示、辅助光环、飞行物、飘字、技能框和背景 `motionScale`。详见 `docs/battle/stage9-adaptive-performance.md`。Stage 9 不新增后端接口、SQL、战斗权威模拟、奖励/体力/进度写入或经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 10 已新增全链路验收守卫，并新增 `npm.cmd run check:battle-stage10`。Stage 10 验收 `冒险 -> 编队 -> 战斗 -> 结算 -> 大厅回读` 的代码 hook、Stage 1-9 守卫、布局和文档边界；详见 `docs/battle/stage10-full-chain-acceptance.md`。Stage 10 是只读聚合验收，不触发真实战斗写入，不新增后端接口、SQL 或经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 11 已新增战斗音频运行时，并新增 `npm.cmd run check:battle-stage11`。Stage 11 将 Stage 2 的 BGM/SFX 资源接入 `LobbyBattleAudioRuntime.ts` 与 `LobbyBattlePreviewPanelRenderer`，播放低音量 BGM、开战提示、动作/辅助/受击和胜负结算音效；详见 `docs/battle/stage11-audio-runtime.md`。Stage 11 是纯表现音频，不改变 start/settle 契约，不新增后端接口、SQL 或经济写入口。
+- 2026-06-17 最新追加：可视化战斗 Stage 12 已按用户反馈重做战斗场景表现，并新增 `npm.cmd run check:battle-stage12`。本阶段新增 `LobbyBattleStage12HeroCardDeck`、`LobbyBattleStage12EnemyPlaceholder`、`LobbyBattleStage12VictoryOverlay`、稀有度缩放 profile、战斗 Spine 资源解析和音频节点生命周期守卫；后端仅预留 `battle_stage_config.enemy_spine_asset` 与 `battle_boss_config.boss_spine_asset` 展示字段。详见 `docs/battle/stage12-battle-scene-redesign.md`。Stage 12 不触发真实战斗结算，不改变 start/settle 契约，不新增经济写入口。
+- 2026-06-18/21 Stage 12 返修：针对战斗页仍显示大量空位/胶囊占位、英雄骨骼不稳定显示、SR/R 像“飘过去”且攻击/技能不播放的问题，Cocos 已补强 `BattleApi` 归一化，保留 battle start 回执中的 `portraitAsset/spineAsset/spineUuid/scaleProfile`；战斗主场景新增 `resolveRenderableBattleUnits()`，只渲染真实参战英雄和有效敌方预览；英雄战斗骨骼改为 `portrait_asset=act_*` 优先使用 act 骨骼，`spineAsset/npc_*` 仅作非 act 或缺失 act 时兜底；无怪物骨骼使用暗红怪物剪影，无主角骨骼使用主角立绘兜底；当前攻击/技能/受击/辅助 cue 通过 `LobbyBattleStage12ActionCallout` 可见。边界仍为纯表现层，不自动调用 settle，不新增经济写入口。
+- 2026-06-21 Stage 13T：针对布阵页英雄大小不一和近战英雄原地攻击的问题，Cocos 修正 Spine 统一缩放 profile、命名英雄 Spine 视觉 profile（如 Nuu/Carmilla/Belladonna/Eulenspigel）与布阵页 act-aware UUID 解析；近战 action offset 改为按目标方向推进到接触距离，截图验收新增 SR/R 普攻演员接敌采样，防止回退成原地播放。新增 `scripts/repair-preview-stage13t.mjs` 只用于本地 Cocos Preview stale chunk 修复；边界仍为纯表现层，不自动调用 settle，不新增接口、SQL、奖励、体力、进度或经济写入口。
+- 2026-06-21 Stage 13T 追修：根据实机截图反馈，SR/R `act_*` 战斗 profile 上调到 `targetHeightRatio=1.18 / maxWidthRatio=2.72 / maxScale=0.68 / scaleMultiplier=2.05`，命名 SSR/UR profile 保持收敛，避免 SR 被衬得过小；近战截图验收从“普攻时发生位移”升级为“SR/R 普攻演员进入目标接触范围”。本追修仍只改 Cocos 表现层，不触发 settle，不新增经济写入口。
+- 2026-06-21 Stage 13U：根据实机截图反馈，近战位移从“按攻击者 slot 宽度推进”升级为“以目标怪物/英雄当前锚点计算正前方接触坐标”，行动者在 `melee_move` 段播放 `run` 跑到目标面前，`basic_attack` 段保持接触点并播放 `skill0/atk` 等攻击动画；布阵页使用 `FORMATION_PREVIEW` 专用 Spine 缩放 profile 并放大站位 canvas，避免 SR/R `act_*` 英雄明显偏小；战斗飘字收敛为每个动作一条主数字，命中层只保留斩击特效，辅助同事件最多显示 2 条飘字。新增 `npm.cmd run check:battle-stage13u` 与 `npm.cmd run repair:preview-stage13u`，并把截图接触阈值收紧到 `118px`。本阶段仍只改 Cocos 表现层，不触发 settle，不新增经济写入口。
+- 2026-06-21 SR/R 动作返修：`LobbyBattlePresentationTimeline` 第一个我方行动优先选择前排 R/SR `portrait_asset=act_*` 英雄；`LobbyBattleActionPresentation` 拉长近战接敌与普攻窗口，确保预览中可稳定采到 SR/R `run -> skill0 -> hurt`，辅助/技能 cue 可采到 `skill1/skill_01` 映射；`LobbyBattlePreviewPanelRenderer` 的骨骼 cue 缓存改为按 `cueKey + animationName` 区分，避免同一普攻先播 `run` 后被缓存挡住 `skill0`。`npm.cmd run screenshot:battle-center` 会强制 SR/R 阵容并验收 `run/skill0`、近战接触与无结算写入；本轮截图验收为 1 次 battle start、0 次 settle、0 页面错误、0 控制台错误，`srRBasicAttackClosestDistance=29.52`。
+- 2026-06-21/22 Stage 13X：根据实机截图继续返修战斗视觉。战斗/布阵背景切换为 C1812 `Boundary_bg_01` 裁切后的 `assets/resources/ui/battle/stage13x/boundary_battle_bg.png`；战斗布局改用 `BATTLE_STAGE13X_FORMATION_OFFSETS` 和更高 actor height ratio，减少左右堆叠。SR/R 先走 R/SR 专用 Spine profile，不再被 named SSR/UR profile 压小；布阵 stand 放大到 `430x540` 规格，SR/R `FORMATION_PREVIEW` 上限提升到 `1.46`。近战动作新增 `resolveActorMeleeDuelFrame()`，每个 melee cue 同时生成 `actorDuelPosition / defenderDuelPosition / hitPoint`，攻击者和目标都进入当前目标前沿后再播放普攻/受击，伤害数字和斩击锚到命中点；动作 callout 默认关闭，飘字/弹道/辅助特效改为 transient layer 并用 `BATTLE_FLOATING_TEXT_LIFETIME_MS` 清理。新增 `npm.cmd run check:battle-stage13x`，`screenshot:battle-center` 增加 `allMeleeBasicAttackContactMedian` 与 `maxPersistentFloatingTextLayers` 验收。本阶段仍只改 Cocos 表现层，不触发 settle，不新增接口、SQL、奖励、体力、进度或经济写入口。
+- 2026-06-17 已完成：可视化战斗 Stage 7 已新增技能与辅助表现调度，并新增 `npm.cmd run check:battle-stage7`。新增 `LobbyBattleAssistPresentation.ts` 将 `buff_preview` 转换为 `skill_cast/heal_float/shield_float/buff_float/debuff_float`；战斗页新增 `LobbyBattleAssistAuraLayer`、`LobbyBattleAssistFloatingTextLayer` 和 `LobbyBattleAssistSkillCastRing`，Spine 当前辅助 cue 优先播放 `skill_01/heal/shield/hit` 兜底动画。详见 `docs/battle/stage7-skill-and-assist.md`。Stage 7 不新增后端接口、SQL、权威治疗/护盾/Buff 结算、音频自动播放或经济写入口，不提交治疗或护盾到服务端。
+- 2026-06-17 已完成：可视化战斗 Stage 6 已新增动作与飘字表现调度，并新增 `npm.cmd run check:battle-stage6`。新增 `LobbyBattleActionPresentation.ts` 将 `action_start/damage_preview/hit_react` 转换为 `melee_move/basic_attack/ranged_projectile/damage_float/hit_float`；战斗页新增 `LobbyBattleActionProjectileLayer`、`LobbyBattleActionFloatingTextLayer` 和 `LobbyBattleMeleeAdvanceGhost`，Spine 当前 cue 优先播放 `move/attack_01/skill_01/hit` 后回到 `idle`。详见 `docs/battle/stage6-actions-and-float-text.md`。Stage 6 不新增后端接口、SQL、权威伤害结算、音频自动播放或经济写入口，不提交伤害到服务端。
+- 2026-06-17 追加：可视化战斗 Stage 5 已新增确定性本地表现时间线，并新增 `npm.cmd run check:battle-stage5`。新增 `LobbyBattlePresentationTimeline.ts` 基于 `serverSeed + battleNo + unitSnapshot` 生成 45-60 秒事件序列；战斗页新增 `LobbyBattleTimelineEventRail`，伤害飘字与 Buff 托盘读取 `damage_preview/buff_preview`。详见 `docs/battle/stage5-deterministic-timeline.md`。Stage 5 不新增后端接口、SQL、战斗 AI、权威伤害结算、音频自动播放或经济写入口。
+- 第 1 阶段新增 `npm.cmd run check:battle-stage1`，用于确认战斗规格、候选路径和经济红线仍完整；后续阶段的 UI 素材可从 `C:\Users\axian\Desktop\C1812-1` 或项目资源中筛选，音效可从 `C:\Users\axian\Desktop\C1812音效` 筛选，但必须按阶段先记录/试听/裁切/验收再接入。
+- 2026-06-17 最新例外：战斗成长链已推进到 **Stage 7：主线编队 -> 战力不足 -> 英雄升级 -> 战力刷新 -> 战斗结算闭环**。年度主线仍为 `MAIN_1_1` 至 `MAIN_25_16 / R1-R393` 一次性真实首通；Stage 7 不新增持久编队接口，不新增经济写入口，只强化 Cocos 编队/冒险/英雄详情的引导和后端 `level-up` 回执。
+- Stage 7 后端仍只走既有玩家端战斗接口 `POST /api/player/battles/start`、`POST /api/player/battles/{battleNo}/settle` 和白名单内的 `POST /api/player/heroes/{heroId}/level-up`；Cocos 战斗请求只提交 `stageCode/heroIds/leaderHeroId/requestId`，英雄升级只提交路径 `heroId`。
+- 年度推进：不限制每日真实主线首通次数，也不以体力或等级卡节奏；只要前置进度满足且出战阵容战力达到推荐战力即可继续挑战，重复挑战返回 `NO_REWARD`，不扣体力、不发奖励、不推进主线。
+- R1 固定奖励：`MAIN_1_1` 首次 `WIN` 不扣体力，发放玩家经验 `50`、`GOLD 300`、`LOW_ENHANCE_STONE x2`，结算模式 `REAL_MAINLINE_R1`，完成后推荐/解锁 `MAIN_1_2`。
+- R2 固定奖励：`MAIN_1_2` 首次 `WIN` 不扣体力，发放玩家经验 `60`、`GOLD 800`、`LOW_ENHANCE_STONE x2`、`HERO_EXP_BOOK x1`，结算模式 `REAL_MAINLINE_R2`，完成后推荐/解锁 `MAIN_1_3`。
+- R3 固定奖励：`MAIN_1_3` 首次 `WIN` 不扣体力，发放玩家经验 `80`、`GOLD 1200`、`LOW_ENHANCE_STONE x3`、`HERO_EXP_BOOK x1`，结算模式 `REAL_MAINLINE_R3`，完成后推荐/解锁 `MAIN_1_4`。
+- 6H 成长桥固定奖励：`MAIN_1_4` 至 `MAIN_1_9` 每关首次 `WIN` 均不扣体力，玩家经验依次 `60/200/250/300/350/400`，累计补足 `1560 EXP`，使 R1-R9 总经验达到 `1750` 并回写 Lv.8；金币依次 `300/400/500/600/700/800`，低风险道具仅 `LOW_ENHANCE_STONE` 与 `HERO_EXP_BOOK`。
+- 6L 当前 `MAIN_2_1` 固定奖励：首次 `WIN` 不扣体力，发放基础玩家经验 `450`、第二章预热经验 `500`、`GOLD 900`、`LOW_ENHANCE_STONE x3`、`HERO_EXP_BOOK x1`，结算模式仍为 `REAL_MAINLINE_R10`，完成后推进/推荐 `MAIN_2_2`，并把正常 R1-R10 路径补到 `Lv.10 / exp=2700`。
+- 6M 当前 `MAIN_2_2` 固定奖励：首次 `WIN` 不扣体力，发放玩家经验 `550`、`GOLD 1000`、`LOW_ENHANCE_STONE x4`、`HERO_EXP_BOOK x1`，结算模式为 `REAL_MAINLINE_R11`，完成后推进/推荐 `MAIN_2_3`，正常 R1-R11 路径达到 `Lv.11 / exp=3250`。
+- 6N 当前 `MAIN_2_3` 固定奖励：首次 `WIN` 不扣体力，发放玩家经验 `600`、`GOLD 1100`、`LOW_ENHANCE_STONE x4`、`HERO_EXP_BOOK x1`，结算模式为 `REAL_MAINLINE_R12`，完成后推进/推荐 `MAIN_2_4`，正常 R1-R12 路径达到 `Lv.12 / exp=3850`。
+- 6P 当前 `MAIN_2_4` 固定奖励：首次 `WIN` 不扣体力，发放玩家经验 `650`、`GOLD 1200`、`LOW_ENHANCE_STONE x5`、`HERO_EXP_BOOK x1`，结算模式为 `REAL_MAINLINE_R13`，完成后推进/推荐 `MAIN_2_5`，正常 R1-R13 路径达到 `Lv.13 / exp=4500`。
+- 6Q 当前 `MAIN_2_5` 固定奖励：首次 `WIN` 不扣体力，发放玩家经验 `700`、`GOLD 1300`、`LOW_ENHANCE_STONE x5`、`HERO_EXP_BOOK x1`，结算模式为 `REAL_MAINLINE_R14`，完成后推进/推荐 `MAIN_2_6`，正常 R1-R14 路径达到 `Lv.14 / exp=5200`。
+- 6R 历史 `MAIN_2_6` 固定奖励：首次 `WIN` 不扣体力，发放玩家经验 `750`、`GOLD 1400`、`LOW_ENHANCE_STONE x6`、`HERO_EXP_BOOK x1`，结算模式为 `REAL_MAINLINE_R15`，完成后推进/推荐 `MAIN_2_7`，正常 R1-R15 路径达到 `Lv.15 / exp=5950`；Stage 6S 后 `MAIN_2_7` 已升级为 `R16` 真实首通。
+- 6S 当前 `MAIN_2_7` 已作为 `R16` 真实首通开放，年度最终关为 `MAIN_25_16 / R393`；越界 `MAIN_25_17`、`MAIN_26_1` 必须被拒绝。
+- 6J 已补强 `MAIN_2_2` 运行期保护：后端单测固定强制 start `MAIN_2_2` 在冒险查询、阵容读取和 `battle_session` 创建前返回 `关卡暂未开放`；经济守卫明确要求 `MAIN_2_2` 为 `PHASE5_READONLY/status=1` 且无活跃 `battle_reward_rule`。
+- 6K 已补齐 `MAIN_2_2` 只读预热：后端区分 `LEVEL_REQUIRED` 与 `PHASE_LOCKED`，`MAIN_2_2` 奖励文案明确“预览，不发放”；Cocos 冒险页会优先展示锁定推荐关卡详情，按钮显示“仅预览/等级不足/主线未达”，不回退到旧已解锁关卡误导玩家。
+- 6L 已补齐 R10 后 Lv10 断点：`MAIN_2_1` 首通同一事务追加封顶 `PLAYER_EXP 500` 预热经验；已完成 R10 且处于 `2200 <= exp < 2700` 的本地/测试旧账号可由 `sql/56_battle_mainline_stage6l_lv10_prewarm.sql` 幂等补到 Lv10/2700。`MAIN_2_2` 仍 `PHASE_LOCKED`、不创建战斗、不发奖励。
+- R1-R393 客户端边界：Cocos 不提交奖励、掉落、体力、主线进度、货币或背包字段，只展示后端返回的权威回执；非年度范围或重复挑战保持 `NO_REWARD`/拒绝。
+- R1-R393 后端边界：不开 repeat farming/drop pools、副本、Boss、排行、扫荡、任务/成就领奖、背包 use/sell/batch-use、体力领取/购买、USDT、资金池奖励、EX V1、后台补发/重结算；英雄成长仅开放 `level-up`，升星/觉醒/精炼仍关闭。
 - 登录阶段只接入玩家 `dev-login`。
-- dev-login 成功后先检查/创建服务端主角色，再进入 Cocos 资源加载进度页，加载 `assets/resources/lobby` 下的大厅背景资源。
+- dev-login 成功后先检查/静默初始化服务端隐藏主角记录，再进入 Cocos 资源加载进度页，加载 `assets/resources/lobby` 下的大厅背景资源；玩家不再选择主角，前端也不展示主角或强制主角上阵。
 - 加载完成后切换到大厅背景界面；当前大厅已包含背景视频、左上玩家信息、只读资料场景页、顶部资源栏、右上系统图标、左侧活动、中央建筑热点、右侧挑战卡、底部导航、聊天预览、冒险按钮和统一未开放占位场景页。
-- 大厅当前开放资料、公告、图鉴、英雄队列等只读展示；其他玩法/经济入口仍是本地 placeholder。
-- 当前继续推进 `Stage 4AR：大厅功能入口全屏新场景化`，大厅内资料、公告、冒险、编队、英雄、英雄详情、图鉴、占位入口都不再浮在大厅背景/HUD 上，而是进入独立全屏逻辑场景。
-- `Stage 4AK/4AO：Gacha 本地 mock 结果展示` 当前只进入 `gachaResult` 全屏逻辑场景，展示前端固定 mock 结果，不请求真实抽卡、不扣资源、不发放英雄、不写入抽卡记录或保底。
+- 大厅当前开放资料、公告、图鉴、英雄队列等展示；召唤使用既有真实抽卡接口；战斗开放年度 R1-R393 主线首通真实结算；R10 会额外补齐 `MAIN_2_2` 预热等级经验，年度最终累计 `Lv.60 / exp=91450`，后端按 `user_level_config.need_exp` 自动回写 `game_user.player_level`，Cocos 只回读展示；英雄详情仅开放 `level-up`；其他玩法/经济入口仍是本地 placeholder。
+- Stage 6E 已补齐只读可读性：`GET /api/player/me/lobby` 返回 `levelProgress`，Cocos 左上 EXP 小牌、玩家资料页显示经验进度；`GET /api/player/lobby/adventure` 的 stage 返回 `unlockHint`，冒险详情展示 `MAIN_2_1` 等锁定原因。
+- Stage 6F 已补齐锁定关卡结构化差距：冒险 stage 返回 `lockReasonCode/levelGap/requiredLevelNeedExp/expToRequiredLevel`，Cocos 冒险详情显示“距离要求：6 级 / 1560 EXP”。
+- Stage 6G 已补齐锁定后的下一步只读说明：冒险 stage 返回 `nextGuidanceTitle/nextGuidanceText/growthSourceSummary/growthSourceStatus/growthSourceHint/repeatableExpAvailable`，Cocos 冒险详情提示“首通经验已用完；暂无重复经验入口。”。
+- Stage 6S 后，`MAIN_1_1..MAIN_25_16` 均可按年度规则真实首通一次；当前 full-chain smoke 用 `0` 体力账号验证全链路，完成后应为 `Lv.60 / exp=91450 / stamina=0`，最终进度 `MAIN_25_16:MAIN_25_16`。`MAIN_25_17` 必须被拒绝，最终关重复挑战必须为 `NO_REWARD`。
+- 当前主线推进重点是 `Stage 7：成长闭环优化`；年度 393 关已开放为基座，本阶段把冒险推荐、一次性本地编队、战力门槛、英雄升级资源持有、升级后回读和战斗预演串成闭环。
+- Gacha 结果页保留 `Stage 4AK/4AO` 的全屏逻辑场景结构；当前已按批准卡池走既有真实抽卡接口，不能再按旧 mock 口径判断召唤链路。
 - 2026-06-01 追加修复：点击主角页“进入游戏”出现“系统异常”的本地根因是 `lootchain` 库未执行 `sql/12_protagonist_module.sql`，缺少 `player_protagonist` 表；已在本机执行该 SQL，并用测试玩家复验 `POST /api/player/protagonist` 成功。
-- 不开放抽卡、英雄养成、背包使用/出售、USDT、资金池、领取、购买、结算或任何经济写入口。
+- 除已批准的真实抽卡池、年度主线 `MAIN_1_1` 至 `MAIN_25_16` 首通结算和英雄详情 `level-up` 外，不开放背包使用/出售、升星、觉醒、精炼、USDT、资金池、任务/成就领奖、体力领取/购买、重复结算或任何新经济写入口。
+
+## 2026-06-17 Stage 7：主线成长闭环优化
+
+- 产品/策划结论：Stage 7 拆为 5 个环节并已按顺序闭环：冒险推荐进入编队、编队展示当前/推荐战力并拦截不足、英雄详情只开放 `level-up`、升级后回读资源/背包/英雄/冒险、再回到编队进入战斗预演与结算。
+- 编队边界：不新增持久保存阵容接口，不新增编队表；当前仍为 Cocos 本地一次性战斗阵容，只在 `POST /api/player/battles/start` 提交 `stageCode/heroIds/leaderHeroId/requestId`。
+- 战力口径：后端 `user_hero.power` 是权威值，`HeroPowerCalculator` 已把等级成长系数调为每级 `12%`，`PlayerBattleServiceImpl` 与 Cocos 都只读/展示该值；Cocos 不本地推导属性战力。
+- 英雄升级：`POST /api/player/heroes/{heroId}/level-up` 返回 `HeroOperationResultVO(heroId/level/star/awakenStatus/power)`；成功后 Cocos 依次回读 `me/lobby`、英雄列表、背包和冒险，状态提示包含等级、战力与增量。
+- 数值调优：新增并本地导入 `D:\project\LootChain\sql\64_stage7_growth_loop_power_tuning.sql`；早期推荐战力按 R1-R15 曲线调整为 `7500/9300/10300/11000/11500/12600/12800/13700/13900/15000/16000/17500/19000/20500/22000`，确保 R1/R2 后首次升级能自然打开 R3，但后续仍持续抬高难度。
+- Cocos UI：冒险详情显示当前阵容战力、推荐战力与差距；战力不足时 CTA 切为“去升级英雄”。编队页标题区显示目标关卡、推荐战力、当前阵容战力、差距和达标状态；英雄详情显示金币与英雄经验书持有量。
+- 可复跑烟测：`D:\project\LootChain\scripts\smoke-stage7-growth-loop.ps1` 覆盖 R1/R2 首通、R3 升级前战力不足拦截、英雄 1->2 升级、profile/heroes/bag/adventure 回读、R3 start/settle、`star-up/awaken/refine` 阻断。
+- 本机验证：Stage 7 smoke 通过，测试账号 `userId=54 / heroId=62`，R3 升级前 `9432 < 10300` 被拦截，升级后 `9432 -> 10372` 并完成 `MAIN_1_3`，后续推荐 `MAIN_1_4`；后端相关 `60 tests, 0 failures`；年度守卫通过；Cocos `npm.cmd run check:layout` 通过。当前 `localhost:7456` 未启动，`npm.cmd run check:preview` 返回 `ECONNREFUSED`，打开 Cocos Creator Preview 后需复跑。
+- 红线：不开放 EX V1、gacha exchange/reissue、背包 use/sell/batch-use、升星、觉醒、精炼、奖励/体力/进度手写、补发/重结算或任何新经济写入口。
+
+## 2026-06-17 可视化战斗 Stage 8：结算与异常
+
+- 产品/策划结论：Stage 8 只补齐战斗页结算链路的可见状态和异常恢复提示，覆盖 `start/settle` 幂等、断线、返回重进、失败兜底和以后端回执结算。
+- Cocos 新增 `LobbyBattleSettlementPresentation.ts`，从现有 `LobbyBattlePanelState` 与 `LobbyBattlePresentationState` 生成 `start_idempotent/session_ready/playback_complete/settle_idempotent/receipt_recorded/error_recoverable` 步骤。
+- UI 新增 `LobbyBattleStage8SettlementFlowPanel`、`LobbyBattleStage8RecoveryBanner`、`LobbyBattleStage8ReceiptStatus` 和重复点击拦截徽标；2026-06-19 返修后，当前视觉验收流演出完成只显示 `返回大厅`，不显示可点击提交结算按钮。
+- 守卫新增 `npm.cmd run check:battle-stage8`，校验 helper、渲染接入、文档、Preview freshness tokens 和本地状态机确定性。
+- 边界：不新增后端接口、SQL、表结构、重结算、补发、离线结算、服务端战报、客户端胜负推导或任何新经济写入口；战斗写入仍只允许 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`。
+
+## 2026-06-17 可视化战斗 Stage 9：适配与性能
+
+- 产品/策划结论：Stage 9 只处理战斗页在 `390x340`、`1280x720`、`1920x1080` 下的可读性、可点击性和低性能降级；不改变胜负、难度、奖励、进度或成长。
+- Cocos 新增 `LobbyBattleAdaptivePerformance.ts`，输出 `BattleAdaptivePerformanceProfile` 与 `assertBattleAdaptivePerformanceBounds()`。
+- `390x340` 进入 `minimal`，关闭时间轴、日志、Stage 8 侧面板、恢复提示、辅助光环、飞行物、飘字和技能框，仅保留核心战场、结果与操作按钮。
+- `1280x720` 进入 `balanced`，保留标准 HUD、时间轴、日志、飞行物与飘字。
+- `1920x1080` 进入 `cinematic`，保留完整 Stage 1-8 表现。
+- 战斗页新增 `LobbyBattleStage9ViewportGuard` 与 `LobbyBattleStage9PerformanceBadge`，极窄屏显示轻量表现状态；背景氛围 Tween 受 `motionScale` 控制。
+- 守卫新增 `npm.cmd run check:battle-stage9`，校验 helper、渲染接入、文档、Preview freshness tokens 和本地 profile 行为。
+- 边界：不新增后端接口、SQL、表结构、重结算、补发、离线结算、服务端战报、客户端胜负推导或任何新经济写入口；战斗写入仍只允许 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`。
+
+## 2026-06-17 可视化战斗 Stage 10：全链路验收
+
+- 产品/策划结论：Stage 10 只做 `冒险 -> 编队 -> 战斗 -> 结算 -> 大厅回读` 的全链路只读验收，不新增战斗规则、不改变难度、不扩展经济写入。
+- 新增 `scripts/check-battle-stage10.mjs`，聚合执行 Stage 1-9 守卫和 `check:layout`，并校验冒险、编队、战斗流、战斗表现和回读刷新 hook。
+- 新增 `docs/battle/stage10-full-chain-acceptance.md`，记录产品、策划、UI、开发和测试验收口径。
+- 自动验收不点击开始战斗或提交结算，不触发真实战斗写入；如需真实 start/settle 写入验收，必须单独获得用户明确批准。
+- 边界：不新增后端接口、SQL、表结构、重结算、补发、离线结算、服务端战报、客户端胜负推导或任何新经济写入口；战斗写入仍只允许 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`。
+
+## 2026-06-17 可视化战斗 Stage 11：战斗音频运行时
+
+- 产品/策划结论：Stage 11 只把 Stage 2 已导入的 BGM/SFX 接到战斗表现运行时，不新增素材来源、不改变战斗规则、不扩展经济写入。
+- Cocos 新增 `LobbyBattleAudioRuntime.ts`，把战斗状态、当前时间线事件、动作 cue、辅助 cue 和 Stage 2 音频路径转换为 `BattleAudioRuntimePlan`。
+- `LobbyBattlePreviewPanelRenderer` 新增 `LobbyBattleStage11AudioRuntime` 与 `LobbyBattleStage11AudioStatus`，使用 `AudioSource` 播放低音量 BGM 与一次性音效。
+- 音频优先级：结算胜负音 / 开战提示优先，其次辅助 cue，再其次动作 cue，最后时间线事件 cue。
+- 守卫新增 `npm.cmd run check:battle-stage11`，校验 helper 行为、渲染接入、Preview freshness tokens、文档和 Stage 10 聚合守卫。
+- 边界：不新增后端接口、SQL、表结构、战斗权威模拟、奖励/体力/进度写入、音频回传字段或任何新经济写入口；战斗写入仍只允许 `POST /api/player/battles/start` 与 `POST /api/player/battles/{battleNo}/settle`。
+
+## 2026-06-17 Stage 6S：年度主线 25 章 / 393 关真实首通闭环
+
+- 产品/策划结论：主线内容量按至少 1 年体验设计，因此一次性设计并开放年度主线 `25` 章 `393` 关；不做每日次数、体力或等级节奏控制，玩家只要前置进度满足且出战阵容战力达到推荐战力即可连续推进。
+- 关卡结构：第 1 章 `MAIN_1_1..MAIN_1_9`，第 2-25 章每章 `MAIN_X_1..MAIN_X_16`；`R16=MAIN_2_7`，最终 `R393=MAIN_25_16`。
+- 后端契约：`MainlineStageRules` 统一生成关卡顺序、结算模式、等级/战力曲线、奖励曲线和章节文案；`PlayerBattleServiceImpl`、`PlayerLobbyAdventureServiceImpl`、后台战斗配置风险判断均使用同一规则。
+- DB/SQL：新增并本地导入 `D:\project\LootChain\sql\63_battle_mainline_year_full_open.sql`；同步 `sql/04_item_bag_module.sql`，将 `HERO_EXP_BOOK`、`LOW_ENHANCE_STONE` 长期堆叠上限提升到 `999999`。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState`、`LobbyAdventurePanelRenderer`、`LootChainGameRoot`、`LobbyAdventureApi` 改为公式识别年度范围，不再维护 R1-R15 枚举白名单；Cocos 只校验安全奖励集合，不再对 R16+ 做逐关固定金额枚举。
+- 守卫：`D:\project\LootChain\scripts\check-battle-mainline-year-config.ps1` 验证 393 个开放关卡、393 个奖励关卡、`MAIN_2_7/R16`、`MAIN_25_16/R393`、R394 缺席、危险奖励缺席、材料堆叠覆盖全年累计投放和 forbidden switch 全关关闭；旧 `check-battle-r1-economy-config.ps1` 已转调年度守卫。
+- Full-chain smoke：`D:\project\LootChain\scripts\smoke-mainline-year-full-chain.ps1` 当前使用 `0` 体力测试账号从 R1 打到 R393，测试账号 `userId=50 / heroId=58` 最终 `Lv.60 / exp=91450 / stamina=0`，最终关重复为 `NO_REWARD`，`MAIN_25_17` 被拦截。
+- 本机验证：年度 SQL 导入返回 `annual_mainline_stage_count=393`、`annual_reward_stage_count=393`、`final_stage_open_count=1`、`r394_artifact_count=0`、`unsafe_reward_rule_count=0`；年度守卫通过，含 `annual mainline stamina gate enabled count = 0`、`daily limit text active count = 0`；后端相关单测 `67 tests, 0 failures`；`lootchain-game -am -DskipTests compile` 通过；full-chain smoke 通过；Cocos `npm.cmd run check:layout` 通过；`npm.cmd run check:preview` 因 `localhost:7456` 无监听返回 `ECONNREFUSED`，需要打开 Cocos Creator Preview 后复跑。
+- 红线：不开放重复刷关经验/掉落、扫荡、随机掉落、副本、Boss、排行奖励、任务/成就领奖、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池、后台补发/重结算或任何新经济写入口。
+
+## 2026-06-17 Stage 6R：MAIN_2_6 / R15 真实首通与 MAIN_2_7 只读边界
+
+- 产品/策划结论：开放 `MAIN_2_6` 作为第二章圣堂裂隙深处的一次性真实首通，但不开放第二章全面经济、重复刷关或后续 `MAIN_2_7` 真实结算。
+- 后端契约：`MAIN_2_6` 首次 `WIN` 使用 `REAL_MAINLINE_R15`，扣体力 `6`，固定发放 `PLAYER_EXP 750`、`GOLD 1400`、`LOW_ENHANCE_STONE x6`、`HERO_EXP_BOOK x1`，推进 `MAIN_2_7`。
+- DB/SQL：新增并本地导入 `D:\project\LootChain\sql\62_battle_mainline_main26_first_clear_open.sql`；`MAIN_2_6` 为 `PHASE6_REAL_BATTLE_R15`，`MAIN_2_7` 为 `PHASE5_READONLY` 且活跃奖励规则为 `0`；`R16` 活跃 artifact 计数必须为 `0`。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState` 接受 `REAL_MAINLINE_R15`，按 `MAIN_2_6` 固定奖励做精确白名单校验；冒险页和根节点入口白名单扩展到 `MAIN_2_6`，`MAIN_2_7` 只读预热。
+- 验收口径：R1-R15 后 `recommendedStageCode=MAIN_2_7`、玩家 `Lv.15 / exp=5950`、体力 `110`；重复 `MAIN_2_6` 结算必须为 `NO_REWARD`，不再扣体力、不发奖励、不推进主线；强制 start `MAIN_2_7` 必须失败且不创建 `battle_session`。
+- 本机验证：后端相关 `60 tests, 0 failures`；导入 62 SQL 后返回 `stage6r_main26_open_count=1`、`stage6r_main26_reward_rule_count=4`、`main27_readonly_count=1`、`r16_artifact_count=0`；经济守卫通过；`smoke-stage6r-main26-first-clear.ps1` 通过，测试账号 `userId=45 / heroId=53` 完成 R1-R15 后 `Lv.15 / exp=5950 / stamina=110`，`recommendedStageCode=MAIN_2_7`，重复 `MAIN_2_6=NO_REWARD`；`smoke-battle-stage-guard.ps1 -UserId 45 -InvalidStages MAIN_2_7` 通过，前后 `battle_session=0`；Cocos `npm.cmd run check:layout` 通过；`npm.cmd run check:preview` 因 `http://localhost:7456` 无监听返回 `ECONNREFUSED`，本机未找到 `CocosCreator.exe`，需要打开 Cocos Creator Preview 后复跑。
+- 红线：不开放 `MAIN_2_7` 真实结算、`REAL_MAINLINE_R16`、`MAIN_2_8` 推进、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-17 Stage 6Q：MAIN_2_5 / R14 真实首通与 MAIN_2_6 只读边界
+
+- 产品/策划结论：开放 `MAIN_2_5` 作为第二章圣堂裂口的一次性真实首通，但不开放第二章全面经济、重复刷关或后续 `MAIN_2_6` 真实结算。
+- 后端契约：`MAIN_2_5` 首次 `WIN` 使用 `REAL_MAINLINE_R14`，扣体力 `6`，固定发放 `PLAYER_EXP 700`、`GOLD 1300`、`LOW_ENHANCE_STONE x5`、`HERO_EXP_BOOK x1`，推进 `MAIN_2_6`。
+- DB/SQL：新增 `D:\project\LootChain\sql\61_battle_mainline_main25_first_clear_open.sql`；`MAIN_2_5` 为 `PHASE6_REAL_BATTLE_R14`，`MAIN_2_6` 为 `PHASE5_READONLY` 且活跃奖励规则为 `0`。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState` 接受 `REAL_MAINLINE_R14`，按 `MAIN_2_5` 固定奖励做精确白名单校验；冒险页和根节点入口白名单扩展到 `MAIN_2_5`，`MAIN_2_6` 只读预热。
+- 验收口径：R1-R14 后 `recommendedStageCode=MAIN_2_6`、玩家 `Lv.14 / exp=5200`、体力 `116`；重复 `MAIN_2_5` 结算必须为 `NO_REWARD`，不再扣体力、不发奖励、不推进主线；强制 start `MAIN_2_6` 必须失败且不创建 `battle_session`。
+- 本机验证：后端相关 `56 tests, 0 failures`；导入 61 SQL 后经济守卫通过；`smoke-stage6q-main25-first-clear.ps1` 通过，测试账号 `userId=44 / heroId=52` 完成 R1-R14 后 `Lv.14 / exp=5200 / stamina=116`，`recommendedStageCode=MAIN_2_6`，重复 `MAIN_2_5=NO_REWARD`；`smoke-battle-stage-guard.ps1 -UserId 44 -InvalidStages MAIN_2_6` 通过，前后 `battle_session=0`；Cocos `npm.cmd run check:layout` 通过；`npm.cmd run check:preview` 因 `http://localhost:7456` 无监听返回 `ECONNREFUSED`，本机常见路径未找到 `CocosCreator.exe`，需要打开 Cocos Creator Preview 后复跑。
+- 红线：不开放 `MAIN_2_6` 真实结算、`REAL_MAINLINE_R15`、`MAIN_2_7` 推进、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-17 Stage 6P：MAIN_2_4 / R13 真实首通与 MAIN_2_5 只读边界
+
+- 产品/策划结论：开放 `MAIN_2_4` 作为第二章圣像断桥的一次性真实首通，但不开放第二章全面经济、重复刷关或后续 `MAIN_2_5` 真实结算。
+- 后端契约：`MAIN_2_4` 首次 `WIN` 使用 `REAL_MAINLINE_R13`，扣体力 `6`，固定发放 `PLAYER_EXP 650`、`GOLD 1200`、`LOW_ENHANCE_STONE x5`、`HERO_EXP_BOOK x1`，推进 `MAIN_2_5`。
+- DB/SQL：新增 `D:\project\LootChain\sql\60_battle_mainline_main24_first_clear_open.sql`；`MAIN_2_4` 为 `PHASE6_REAL_BATTLE_R13`，`MAIN_2_5` 为 `PHASE5_READONLY` 且活跃奖励规则为 `0`。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState` 接受 `REAL_MAINLINE_R13`，按 `MAIN_2_4` 固定奖励做精确白名单校验；冒险页底部边界改为 `MAIN_1_1` 至 `MAIN_2_4` 首通真实结算，`MAIN_2_5` 只读预热。
+- 验收口径：R1-R13 后 `recommendedStageCode=MAIN_2_5`、玩家 `Lv.13 / exp=4500`、体力 `122`；重复 `MAIN_2_4` 结算必须为 `NO_REWARD`，不再扣体力、不发奖励、不推进主线；强制 start `MAIN_2_5` 必须失败且不创建 `battle_session`。
+- 本机验证：后端相关 `49 tests, 0 failures`；`PlayerApiPhaseGateTest` `3 tests, 0 failures`；导入 60 SQL 后经济守卫通过；`smoke-stage6p-main24-first-clear.ps1` 通过，测试账号 `userId=43 / heroId=51` 完成 R1-R13 后 `Lv.13 / exp=4500 / stamina=122`；`smoke-battle-stage-guard.ps1 -UserId 43 -InvalidStages MAIN_2_5` 通过，前后 `battle_session=0`；Cocos `npm.cmd run check:layout` 通过；根 `tsconfig` no-emit 因 Creator `cc` 类型声明未接入失败，但本轮修复了 `LobbyAdventurePanelRenderer.ts` 中 `recommended` 可空诊断；`npm.cmd run check:preview` 因 `http://localhost:7456` 无监听返回 `ECONNREFUSED`，需要打开 Cocos Creator Preview 后复跑。
+- 红线：不开放 `MAIN_2_5` 真实结算、`REAL_MAINLINE_R14`、`MAIN_2_6` 推进、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
 - Zeno 子代理继续作为“用户视角监督 agent”，负责从玩家验收角度拦截体验断点；当前监督口径要求直到完整游玩流程打通前持续检查流程可达性、误触、文案误导和经济红线。
+
+## 2026-06-17 Stage 6O：MAIN_2_4 只读预热深化与 R13 防误开守卫
+
+- 产品/策划结论：本阶段不开放 `R13 / MAIN_2_4` 真实首通，只把 R12 后的推荐节点做成明确的只读预热边界，避免玩家误以为可挑战、可扣体力或可拿奖励。
+- 后端契约：`GET /api/player/lobby/adventure` 在 R1-R12 后仍推荐 `MAIN_2_4`，但 `unlocked=false`、`lockReasonCode=PHASE_LOCKED`、`growthSourceStatus=FIRST_CLEAR_USED_UP`、`levelGap=0`、`expToRequiredLevel=0`；引导文案明确不创建战斗会话、不扣体力、不发奖励、不推进 `MAIN_2_5`。
+- DB/SQL：新增并已本地导入 `D:\project\LootChain\sql\59_battle_mainline_main24_readonly_prewarm.sql`；`MAIN_2_4` 的 `readonly_reason` 升级为 `6O`，后台掉落预览新增 `玩家经验/金币/装备材料` 三条 no-grant 展示行，活跃 `battle_reward_rule` 仍为 `0`，`REAL_MAINLINE_R13/PHASE6_REAL_BATTLE_R13/R13_*` 活跃配置计数为 `0`。
+- Cocos 同步：冒险页新增前端真实战斗入口白名单，只允许 `MAIN_1_1` 至 `MAIN_2_3` 进入编队/战斗；即使后端误把 `MAIN_2_4.unlocked=true`，Cocos 也只展示 `仅预览`。R12 后若旧本地选择仍停在 `MAIN_2_3`，冒险详情会优先显示推荐锁定的 `MAIN_2_4`。
+- 验收口径：完成 R1-R12 后玩家仍为 `Lv.12 / exp=3850 / stamina=128`，`recommendedStageCode=MAIN_2_4`，强制 start `MAIN_2_4` 必须失败且前后 `battle_session` 计数不变；重复 `MAIN_2_3` 仍为 `NO_REWARD`。
+- 本机验证：后端相关 `45 tests, 0 failures`；`PlayerApiPhaseGateTest` `3 tests, 0 failures`；导入 59 SQL 后经济守卫通过；`smoke-stage6n-main23-first-clear.ps1` 通过，测试账号 `userId=42 / heroId=50`；`smoke-battle-stage-guard.ps1 -UserId 42 -InvalidStages MAIN_2_4` 通过，前后 `battle_session=0`；Cocos `npm.cmd run check:layout` 通过。
+- 当前环境缺口：未找到本机 Creator 3.8.8 `tsc.cmd`，定向 TypeScript no-emit 未执行；`npm.cmd run check:preview` 因 `http://localhost:7456` 无监听返回 `ECONNREFUSED`，需要打开 Cocos Creator Preview 后复跑。
+- 红线：不开放 `MAIN_2_4` 真实结算、`REAL_MAINLINE_R13`、`MAIN_2_5` 推进、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-17 Stage 6N：MAIN_2_3 / R12 真实首通与 MAIN_2_4 阶段保护闭环
+
+- 产品/策划结论：开放 `MAIN_2_3` 作为第二章灰烬回廊的一次性真实首通，但不开放第二章全面经济、重复刷关或后续 `MAIN_2_4`。
+- 后端契约：`MAIN_2_3` 首次 `WIN` 使用 `REAL_MAINLINE_R12`，扣体力 `6`，固定发放 `PLAYER_EXP 600`、`GOLD 1100`、`LOW_ENHANCE_STONE x4`、`HERO_EXP_BOOK x1`，推进 `MAIN_2_4`。
+- DB/SQL：新增并已本地导入 `D:\project\LootChain\sql\58_battle_mainline_main23_first_clear_open.sql`；`MAIN_2_3` 为 `PHASE6_REAL_BATTLE_R12`，`MAIN_2_4` 为 `PHASE5_READONLY` 且活跃奖励规则为 `0`。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState` 接受 `REAL_MAINLINE_R12`，按 `MAIN_2_3` 固定奖励做精确白名单校验；冒险页底部边界改为 `MAIN_1_1` 至 `MAIN_2_3` 首通真实结算，`MAIN_2_4` 只读预热。
+- 验收口径：R1-R12 后 `recommendedStageCode=MAIN_2_4`、玩家 `Lv.12 / exp=3850`、体力 `128`；重复 `MAIN_2_3` 结算必须为 `NO_REWARD`，不再扣体力、不发奖励、不推进主线。
+- 本机验证：后端相关 `45 tests, 0 failures`；`check-battle-r1-economy-config.ps1` 通过；`smoke-stage6n-main23-first-clear.ps1` 通过，测试账号 `userId=40 / heroId=48` 完成 R1-R12 后 `Lv.12 / exp=3850 / stamina=128`；`smoke-battle-stage-guard.ps1 -InvalidStages MAIN_2_4` 通过，前后 `battle_session` 计数为 `0`；Cocos `check:layout` 通过。
+- 当前环境缺口：未找到本机 Creator 3.8.8 `tsc.cmd`，定向 TypeScript no-emit 未执行；`npm.cmd run check:preview` 因 `http://localhost:7456` 无监听返回 `ECONNREFUSED`，需要打开 Cocos Creator Preview 后复跑。
+- 红线：不开放 `MAIN_2_4` 真实结算、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-15 Stage 6M：MAIN_2_2 / R11 真实首通与 MAIN_2_3 阶段保护闭环
+
+- 产品/策划结论：开放 `MAIN_2_2` 作为第二章断誓大厅的一次性真实首通，但不开放第二章全面经济、重复刷关或后续 `MAIN_2_3`。
+- 后端契约：`MAIN_2_2` 首次 `WIN` 使用 `REAL_MAINLINE_R11`，扣体力 `6`，固定发放 `PLAYER_EXP 550`、`GOLD 1000`、`LOW_ENHANCE_STONE x4`、`HERO_EXP_BOOK x1`，推进 `MAIN_2_3`。
+- DB/SQL：新增并已本地导入 `D:\project\LootChain\sql\57_battle_mainline_main22_first_clear_open.sql`；`MAIN_2_2` 为 `PHASE6_REAL_BATTLE_R11`，`MAIN_2_3` 为 `PHASE5_READONLY` 且活跃奖励规则为 `0`。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState` 接受 `REAL_MAINLINE_R11`，按 `MAIN_2_2` 固定奖励做精确白名单校验；冒险页底部边界改为 `MAIN_1_1` 至 `MAIN_2_2` 首通真实结算，`MAIN_2_3` 只读预热。
+- 验收口径：R1-R11 后 `recommendedStageCode=MAIN_2_3`、玩家 `Lv.11 / exp=3250`、体力 `134`；重复 `MAIN_2_2` 结算必须为 `NO_REWARD`，不再扣体力、不发奖励、不推进主线。
+- 本机验证：后端相关 48 tests 0 failures；`check-battle-r1-economy-config.ps1` 通过；`smoke-stage6m-main22-first-clear.ps1` 通过，测试账号 `userId=39 / heroId=47` 完成 R1-R11 后 `Lv.11 / exp=3250 / stamina=134`；`smoke-battle-stage-guard.ps1 -InvalidStages MAIN_2_3` 通过，前后 `battle_session` 计数为 `0`；Cocos `check:layout` 与定向 TypeScript no-emit 通过。
+- 当前 Preview 状态：`npm.cmd run check:preview` 因 `http://localhost:7456` 无监听返回 `ECONNREFUSED`；需要打开 Cocos Creator Preview 后复跑，不可把本轮标记为 Preview 通过。
+- 红线：不开放 `MAIN_2_3` 真实结算、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6L：MAIN_2_1 Lv10 预热补齐与 MAIN_2_2 阶段保护闭环
+
+- 产品/策划结论：本阶段仍不开放 R11，不把 `MAIN_2_2` 放入真实战斗白名单；只解决 R10 后距离 Lv10 还差 500 EXP 的断点。
+- 后端契约：`MAIN_2_1` 首次 `WIN` 保持 `REAL_MAINLINE_R10`，基础奖励仍有 `PLAYER_EXP 450`，同一事务追加 `第二章预热经验 PLAYER_EXP 500`，正常 R1-R10 后达到 `Lv.10 / exp=2700`。
+- DB/SQL：新增 `D:\project\LootChain\sql\56_battle_mainline_stage6l_lv10_prewarm.sql`，新增规则 `R10_MAIN_2_1_MAIN22_PREHEAT_EXP`，并对本地/测试旧账号中已完成 `MAIN_2_1` 且 `2200 <= exp < 2700` 的记录做封顶幂等补齐；`MAIN_2_2` 活跃奖励规则仍为 `0`。
+- Cocos 同步：`BattleApi` 的 R10 奖励白名单增加第二条 `PLAYER_EXP 500`，奖励校验改为多重集合匹配，允许同一资源类型分两条展示，但仍禁止钻石、体力、USDT、英雄、碎片和 EX 资源。
+- 验收口径：R1-R10 后 `recommendedStageCode=MAIN_2_2`、`main22Unlocked=false`、`main22LockReasonCode=PHASE_LOCKED`、`levelGap=0`、`expToRequiredLevel=0`；强制 start `MAIN_2_2` 不创建 `battle_session`，重复 `MAIN_2_1` 仍为 `NO_REWARD` 且不改变体力/经验/货币/背包。
+- 红线：不开放 `MAIN_2_2` 真实结算、R11、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6K：MAIN_2_2 只读预热与推荐详情闭环
+
+- 产品/策划结论：本阶段仍不开放 R11。R1-R10 完成后玩家是 `Lv.9 / exp=2200`，`MAIN_2_2` 需要 Lv.10/2700 EXP 且没有获批的重复经验来源；即使临时账号达到 Lv.10，也必须因阶段未开放返回 `PHASE_LOCKED`。
+- 后端契约：`PlayerLobbyAdventureServiceImpl` 为 `MAIN_2_2` 增加 `PHASE_LOCKED` 锁定原因，保留 `LEVEL_REQUIRED/PROGRESS_REQUIRED` 区分；奖励预览改为 `玩家经验（预览，不发放）/金币（预览，不发放）/装备材料（预览，不发放）`。
+- DB/SQL：新增并本地导入 `D:\project\LootChain\sql\55_battle_mainline_main22_readonly_prewarm.sql`；同步 `sql/43_battle_config_readonly_management.sql` 与 `sql/23_game_text_i18n.sql`，守卫要求 `MAIN_2_2` display-only/preview-only、所有经济写开关为 `0`、活跃奖励规则为 `0`。
+- Cocos 展示：`LobbyAdventurePanelRenderer` 优先展示后端推荐的锁定 `MAIN_2_2`，不再回退到旧已解锁关卡；锁定奖励标题显示 `奖励只读预览（当前不发放）`，`PHASE_LOCKED` CTA 显示 `仅预览`，底部边界文案明确 `MAIN_2_2` 只读预热、不创建战斗或奖励。
+- 本机闭环：`smoke-stage6i-main21-first-clear.ps1` 复跑后完成 R1-R10，`recommendedStageCode=MAIN_2_2`、`main22Unlocked=false`、高等级样例 `main22HighLevelLockReasonCode=PHASE_LOCKED`，强制 start 仍被阻断，重复 `MAIN_2_1` 为 `NO_REWARD`。
+- 验收：后端 `PlayerLobbyAdventureServiceImplTest,PlayerBattleServiceImplTest` 通过；经济守卫、6I smoke、`MAIN_2_2` stage guard、Cocos `check:layout`、TypeScript no-emit、`check:preview` 通过；Preview 缓存曾有旧 chunk，已同步当前 source 对应 preview cache 并硬刷新浏览器。
+- 红线：不开放 `MAIN_2_2` 真实结算、R11、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6J：运行预览与 MAIN_2_2 阶段保护补强
+
+- 产品/策划结论：本阶段不开放 `MAIN_2_2`，只把 R1-R10 后的边界锁牢，避免玩家看到推荐节点后误以为可挑战、可刷经验或可领后续奖励。
+- 后端守卫：`PlayerBattleServiceImplTest.startRejectsMain22StageProtectionBeforeCreatingSession` 覆盖强制 `MAIN_2_2` start，断言返回 `关卡暂未开放`，且不调用冒险查询、不读取英雄阵容、不创建 `battle_session`。
+- DB 守卫：`scripts/check-battle-r1-economy-config.ps1` 增加 `MAIN_2_2` 的 `status=1`、`phase_code='PHASE5_READONLY'` 校验，并要求 `owner_code='MAIN_2_2'` 的活跃 `battle_reward_rule` 数量为 `0`。
+- Preview 恢复：本机 Cocos Preview 曾出现 `targets/preview/import-map.json` 缺失、preview chunks 未完整落盘和 `scopes` 缺失 `__unresolved_*` 映射；已通过让 Cocos Creator 获得焦点并同步同轮 editor chunks/scopes 到 preview target 恢复，`check:preview` 已通过。`check-preview-freshness.mjs` 已补充 preview target、chunk 与 scoped dependency 映射诊断。
+- 本机接口保护 smoke：`scripts/smoke-battle-stage-guard.ps1 -BaseUrl http://127.0.0.1:8081 -InvalidStages MAIN_2_2` 通过；`MAIN_2_2` 返回 `关卡暂未开放`，对应 requestId 前后 `battle_session` 计数均为 `0`。
+- 验证：后端 `PlayerBattleServiceImplTest,PlayerLobbyAdventureServiceImplTest` 共 `30 tests, 0 failures`；经济守卫通过；Cocos `npm.cmd run check:layout`、`npm.cmd run check:preview` 通过；`.spine/.spine.meta` 源文件扫描为 `0`；两仓 `git diff --check` 仅 LF/CRLF warning；浏览器打开 `http://localhost:7456/` 后标题正确、无 SystemJS 错误、控制台 error 为 `0`，canvas 已挂载可见。
+- 红线：不开放 `MAIN_2_2` 真实结算、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6I：MAIN_2_1 第二章入口首通
+
+- 产品/策划结论：在 6H 已把玩家推到 Lv.8 后，开放 `MAIN_2_1` 作为第二章入口的一次性真实首通；奖励仍使用低风险成长资源，不开放重复刷关、掉落池或第二章后续关卡。
+- 后端开放范围：新增 `REAL_MAINLINE_R10`，只允许 `MAIN_2_1` 首次 `WIN` 扣体力 `6`，发放 `PLAYER_EXP 450`、`GOLD 900`、`LOW_ENHANCE_STONE x3`、`HERO_EXP_BOOK x1`，并推进 `MAIN_2_2`。
+- 冒险推荐：完成 `MAIN_2_1` 后推荐 `MAIN_2_2`，但 `MAIN_2_2.unlocked=false`、`growthSourceStatus=FIRST_CLEAR_USED_UP`、`levelGap=1`、`expToRequiredLevel=500`，仍为阶段保护展示。
+- Cocos 同步：`BattleApi`、`BattleTypes`、`LobbyBattlePresentationState` 接受 `REAL_MAINLINE_R10` 并按 `MAIN_2_1` 固定奖励校验；冒险详情底部文案更新为 `MAIN_1_1` 至 `MAIN_2_1` 首通真实结算，`MAIN_2_2` 仍受阶段保护。
+- 新增 SQL/Smoke：`D:\project\LootChain\sql\54_battle_mainline_main21_first_clear_open.sql`、`D:\project\LootChain\scripts\smoke-stage6i-main21-first-clear.ps1`；`check-battle-r1-economy-config.ps1` 已升级为 R1-R10 经济守卫。
+- 本机接口闭环：一次性玩家 `userId=29` / `heroId=37` 完成 R1-R10，经验轨迹 `0 -> 50 -> 110 -> 190 -> 250 -> 450 -> 700 -> 1000 -> 1350 -> 1750 -> 2200`，等级轨迹 `1 -> 1 -> 2 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9`，体力 `200 -> 140`；`MAIN_2_2` 启动被阻断，重复 `MAIN_2_1` 结算为 `NO_REWARD`，临时账号提升到 Lv.10 后 `MAIN_2_2` 仍 `unlocked=false`。
+- 红线：不开放 `MAIN_2_2` 真实结算、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6H：第一章成长桥到 Lv.8
+
+- 产品/策划结论：不直接改高 R1/R2/R3 已发生奖励，避免已通关账号拿不到补差；采用 `MAIN_1_4` 至 `MAIN_1_9` 一次性主线首通成长桥，让玩家从 R3 后 `Lv.2 / exp=190` 自然推进到 `Lv.8 / exp=1750`。
+- 后端开放范围：新增 `REAL_MAINLINE_R4` 至 `REAL_MAINLINE_R9`，只允许 `MAIN_1_4` 至 `MAIN_1_9` 首次 `WIN` 扣体力、发放固定低风险成长奖励并推进主线；`MAIN_2_1` 不纳入真实结算。
+- 冒险推荐：完成 `MAIN_1_3` 后推荐 `MAIN_1_4`，之后顺序推荐到 `MAIN_1_9`；完成 `MAIN_1_9` 后推荐 `MAIN_2_1`，此时 `MAIN_2_1.unlocked=true` 且 `growthSourceStatus=NEXT_STAGE_READONLY`。
+- Cocos 同步：`BattleApi` 白名单扩展到 R9 并按关卡校验奖励；`LobbyBattlePresentationState` 将 R4-R9 视为真实首通回执；`LobbyAdventurePanelRenderer` 地图改为围绕当前推荐/选中关卡开窗口，新增关卡后不会只截前 5/7 个节点。
+- 新增 SQL/守卫/smoke：`D:\project\LootChain\sql\53_battle_mainline_growth_bridge_to_lv8.sql`、`D:\project\LootChain\scripts\smoke-stage6h-growth-bridge-to-lv8.ps1`；`check-battle-r1-economy-config.ps1` 已升级为 R1-R9 经济守卫。
+- 本机接口闭环：一次性玩家 `userId=25` / `heroId=33` 完成 R1-R9，经验轨迹 `0 -> 50 -> 110 -> 190 -> 250 -> 450 -> 700 -> 1000 -> 1350 -> 1750`，等级轨迹 `1 -> 1 -> 2 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8`，体力 `200 -> 146`；`MAIN_2_1` 解锁后结算为 `NO_REWARD` 且体力仍 `146`。
+- 已验证：后端相关 `71 tests, 0 failures`；经济守卫通过；6H smoke 通过；Cocos `npm.cmd run check:layout`、focused TypeScript no-emit、`npm.cmd run check:preview` 通过；Preview 曾因旧 chunk 需要重启 Cocos Creator，当前已重建并通过。
+- 红线：不开放 `MAIN_2_1` 真实结算、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、玩家手动升级、升级奖励领取、体力领取/购买、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6G：锁定后下一步只读引导
+
+- 产品/策划结论：完成 R1/R2/R3 后推荐 `MAIN_2_1` 但仍锁定，玩家需要知道当前玩家经验来源已用完，不能被误导去重复刷经验。
+- 后端契约：`PlayerLobbyAdventureStageVO` 新增 `nextGuidanceTitle`、`nextGuidanceText`、`growthSourceSummary`、`growthSourceStatus`、`growthSourceHint`、`repeatableExpAvailable`。字段只用于只读展示，不代表可点击行动。
+- 当前样例：完成 R1/R2/R3 后，`MAIN_2_1` 返回 `growthSourceStatus=FIRST_CLEAR_USED_UP`、`repeatableExpAvailable=false`，并继续保持 `unlocked=false`、`lockReasonCode=LEVEL_REQUIRED`、`levelGap=6`、`expToRequiredLevel=1560`。
+- Cocos 展示：`LobbyAdventurePanelRenderer` 在冒险详情底部说明“首通经验已用完；暂无重复经验入口。”；锁定按钮仍显示等级不足，不进入编队或战斗。
+- 新增 smoke：`D:\project\LootChain\scripts\smoke-stage6g-adventure-next-step-readonly.ps1` 通过；一次性玩家 `userId=24`，`recommendedStageCode=MAIN_2_1`、`battleSessionRowsCreated=0`。
+- 验证：后端 `PlayerLobbyProfileServiceTest,PlayerLobbyAdventureServiceImplTest,PlayerBattleServiceImplTest` 共 `27 tests, 0 failures`；6E/6F 只读 smoke 与 6G smoke 通过；Cocos `npm.cmd run check:layout`、`npm.cmd run check:preview`、directed TypeScript no-emit 通过；经济守卫和两仓 `git diff --check` 通过，仅 LF/CRLF warning。
+- 红线：不开放玩家手动升级、升级奖励领取、体力领取/购买、`MAIN_2_1` 真实结算、重复刷关经验/掉落、任务/成就领奖、副本、Boss、排行、扫荡、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6E：等级进度与锁定原因可读性
+
+- 产品/策划结论：6D 后不应绕过 `MAIN_2_1` 的 Lv.8 门槛；新玩家 R1/R2/R3 后是 Lv.2，下一阶段应让玩家看懂经验进度和锁定原因。
+- 后端契约：`PlayerLobbyProfileVO` 新增 `levelProgress`，由 `PlayerLobbyProfileService` 按 `game_user.exp/player_level` 与 `user_level_config.need_exp` 计算；`PlayerLobbyAdventureStageVO` 新增 `unlockHint`，锁定态由服务端说明原因。
+- Cocos 展示：`LobbyTopHudRenderer` 左上 EXP 小牌显示进度百分比；`LobbyProfileDialogRenderer` 显示 `当前经验/下一级门槛`、下一级还差 EXP 和英雄等级上限；`LobbyAdventurePanelRenderer` 显示 `解锁状态` 与后端 `unlockHint`，并修正 R1/R2/R3 已开放真实首通结算后的过期“无奖励/当前不发放”文案。
+- 最新只读 smoke：`D:\project\LootChain\scripts\smoke-stage6e-level-progress-readonly.ps1` 通过；一次性玩家 `userId=19`，`playerLevel=2`、`exp=190`、`expToNextLevel=60`、`progressPercent=60`、`recommendedStageCode=MAIN_2_1`、`main21Unlocked=false`。PowerShell 输出中文有本机解码乱码，但结构断言通过。
+- 验证：后端 `PlayerLobbyProfileServiceTest,PlayerLobbyAdventureServiceImplTest,PlayerBattleServiceImplTest` 共 `26 tests, 0 failures`；Cocos `npm.cmd run check:layout` 通过；`npm.cmd run check:preview` 通过；Browser 打开 `http://localhost:7456/` 后 console error 为空。
+- 红线：不开放玩家手动升级、升级奖励领取、体力领取/购买、`MAIN_2_1` 真实结算、重复刷关掉落、副本、Boss、排行、扫荡、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6F：锁定关卡差距提示
+
+- 产品/策划结论：6E 已能说明 `MAIN_2_1` 锁定原因，但玩家还需要看懂到 Lv.8 总共差多少，而不是只看到下一级 Lv.3 的 60 EXP。
+- 后端契约：`PlayerLobbyAdventureStageVO` 新增 `lockReasonCode`、`levelGap`、`requiredLevelNeedExp`、`expToRequiredLevel`。`requiredLevelNeedExp` 来自 `user_level_config.need_exp`，配置缺失时返回 `null`，不显示 `0 EXP`。
+- 当前样例：完成 R1/R2/R3 后，玩家 `Lv.2 / exp=190`，`MAIN_2_1.requiredLevel=8`，返回 `lockReasonCode=LEVEL_REQUIRED`、`levelGap=6`、`requiredLevelNeedExp=1750`、`expToRequiredLevel=1560`。
+- Cocos 展示：`LobbyAdventurePanelRenderer` 新增“距离要求：6 级 / 1560 EXP”，继续使用 `unlockHint` 做完整说明；锁定按钮仍不可进入编队或战斗。
+- 最新 smoke：`D:\project\LootChain\scripts\smoke-stage6e-level-progress-readonly.ps1` 已升级覆盖 6F 字段并通过；一次性玩家 `userId=20`，`main21LockReasonCode=LEVEL_REQUIRED`、`main21LevelGap=6`、`main21ExpToRequiredLevel=1560`。
+- 验证：后端 `PlayerLobbyProfileServiceTest,PlayerLobbyAdventureServiceImplTest,PlayerBattleServiceImplTest` 共 `26 tests, 0 failures`；Cocos `npm.cmd run check:layout` 与 `npm.cmd run check:preview` 通过。
+- 红线：不开放 `MAIN_2_1` 真实结算、重复刷关掉落、副本、Boss、排行、扫荡、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6D：玩家等级自动成长闭环
+
+- 策划/产品结论：Stage 6C 已完成 R1/R2/R3 首通发放玩家经验，但玩家主表等级仍可能停留在 1。6D 不开放新关卡、不改奖励数值，而是把玩家经验到账后的等级成长补齐为后端结算契约。
+- 后端行为：`PlayerBattleServiceImpl` 在 R1/R2/R3 首通事务内计算 `expAfter`，同步更新 `game_user.exp`，并按 `user_level_config.need_exp <= expAfter` 的最高等级回写 `game_user.player_level`；SQL 条件包含 `ulc.level >= COALESCE(player_level, 1)`，避免已有等级被降级。
+- 当前等级阈值：Lv.1=`0`，Lv.2=`100`，Lv.3=`250`，Lv.8=`1750`。因此完整 `MAIN_1_1 + MAIN_1_2 + MAIN_1_3` 后玩家经验为 `190`，玩家等级应为 `2`，不是 `3`。
+- Cocos 影响：无需新增接口；战斗返回大厅后既有刷新会回读 `GET /api/player/me/lobby` 和 `GET /api/player/lobby/adventure`，左上角等级、资料弹窗与冒险页等级应显示 Lv.2。
+- 新增/更新验证：
+  - `PlayerBattleServiceImplTest.settleMain12FirstClearUpdatesPlayerLevelFromAccumulatedExpConfig` 用 TDD 红绿覆盖等级 SQL 回写；
+  - `D:\project\LootChain\scripts\check-battle-r1-economy-config.ps1` 增加 Stage 6D 等级阈值和 `MAIN_2_1` 锁定守卫；
+  - 新增 `D:\project\LootChain\scripts\smoke-stage6d-player-levelup.ps1`，用一次性玩家验证 R1/R2/R3 后 `playerExp 0 -> 50 -> 110 -> 190`、`playerLevel 1 -> 1 -> 2 -> 2`，并确认 `MAIN_2_1` 仍不创建 `battle_session`。
+- 红线：`MAIN_2_1` 仍 required_level=8、display-only/locked；不开放玩家手动升级、升级奖励领取、体力领取/购买、重复刷关掉落、副本、Boss、排行、扫荡、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池或任何新经济写入口。
+
+## 2026-06-14 Stage 6C：MAIN_1_3 R3 首通结算与英雄 2→3 闭环
+
+- 策划/产品结论：本轮在 Stage 6B 后继续推进一格，只开放 `MAIN_1_3` 首通真实结算，让新玩家能完成 `MAIN_1_1 -> MAIN_1_2 -> level-up 2 -> MAIN_1_3 -> level-up 3` 的最小成长闭环。
+- 后端开放范围：
+  - `MAIN_1_1 / REAL_MAINLINE_R1`：体力 `6`、玩家经验 `50`、`GOLD 300`、`LOW_ENHANCE_STONE x2`，推进 `MAIN_1_2`；
+  - `MAIN_1_2 / REAL_MAINLINE_R2`：体力 `6`、玩家经验 `60`、`GOLD 800`、`LOW_ENHANCE_STONE x2`、`HERO_EXP_BOOK x1`，推进 `MAIN_1_3`；
+  - `MAIN_1_3 / REAL_MAINLINE_R3`：体力 `6`、玩家经验 `80`、`GOLD 1200`、`LOW_ENHANCE_STONE x3`、`HERO_EXP_BOOK x1`，推进 `MAIN_2_1` 推荐展示。
+- SQL/守卫：
+  - 新增 `D:\project\LootChain\sql\52_battle_mainline_r3_levelup_open.sql`；
+  - `D:\project\LootChain\scripts\check-battle-r1-economy-config.ps1` 已升级为 R1/R2/R3 守卫；
+  - 新增可复跑 smoke `D:\project\LootChain\scripts\smoke-stage6c-r3-levelup.ps1`。
+- Cocos：
+  - `BattleApi` 只接受 `NO_REWARD`、`REAL_MAINLINE_R1`、`REAL_MAINLINE_R2`、`REAL_MAINLINE_R3`，并按关卡精确校验奖励；
+  - `LobbyBattlePresentationState` 已把 R3 视为真实首通回执，结果页展示后端权威奖励、体力和进度。
+- 本机接口闭环验收：`scripts/smoke-stage6c-r3-levelup.ps1` 已通过；最新一次性测试玩家 `userId=13` / `heroId=30` 完成 `MAIN_1_1 -> MAIN_1_2 -> level-up 2 -> MAIN_1_3 -> level-up 3`，体力 `100 -> 82`、玩家经验 `0 -> 190`、金币 `1100 -> 300 -> 1500 -> 412`、`HERO_EXP_BOOK 1 -> 0 -> 1 -> 0`、`LOW_ENHANCE_STONE=7`、英雄等级 `1 -> 2 -> 3`；`MAIN_2_1` 强行启动返回 `code=1000` 且 `battle_session` 行数 `0 -> 0`。
+- 红线：`MAIN_2_1` 仍不开放真实结算；不开放重复刷关掉落、副本、Boss、排行、扫荡、背包 use/sell/batch-use、升星、觉醒、精炼、EX V1、USDT、资金池、后台补发/重结算或其它新经济写入口。
+
+## 2026-06-14 Stage 6B：MAIN_1_2 R2 首通结算与英雄升级闭环
+
+- 策划/产品结论：本轮只推进最小成长闭环，不把 `MAIN_1_3` 同时改成真实结算。`MAIN_1_2` 首通给足一次英雄升级所需关键资源，玩家可在英雄详情执行一次后端 `level-up`。
+- 后端开放范围：
+  - `MAIN_1_1` 保持 `REAL_MAINLINE_R1`：体力 `6`、玩家经验 `50`、`GOLD 300`、`LOW_ENHANCE_STONE x2`，推进 `MAIN_1_2`；
+  - `MAIN_1_2` 新增 `REAL_MAINLINE_R2`：体力 `6`、玩家经验 `60`、`GOLD 800`、`LOW_ENHANCE_STONE x2`、`HERO_EXP_BOOK x1`，推进 `MAIN_1_3`，刚好满足英雄 1→2 的首次升级消耗；
+  - 玩家端 PhaseGate 仅额外开放 `POST /api/player/heroes/{heroId}/level-up`，`star-up/awaken/refine` 仍阻断。
+- SQL/守卫：
+  - 新增 `D:\project\LootChain\sql\51_battle_mainline_r2_levelup_open.sql`；
+  - `D:\project\LootChain\scripts\check-battle-r1-economy-config.ps1` 已升级为 R1/R2 守卫，检查 R2 关卡、奖励规则、`HERO_EXP_BOOK` 模板和非 R1/R2 关卡经济开关。
+  - 新增可复跑 smoke `D:\project\LootChain\scripts\smoke-stage6b-r2-levelup.ps1`，覆盖新玩家 `MAIN_1_1 -> MAIN_1_2 -> level-up` 闭环和 `MAIN_1_3` 启动拦截。
+- Cocos：
+  - `BattleApi` 只接受 `NO_REWARD`、`REAL_MAINLINE_R1`、`REAL_MAINLINE_R2`，并按关卡精确白名单校验奖励；
+  - 英雄详情新增 `升级` 按钮，调用 `HeroApi.levelUp(heroId)`，成功后回读玩家资料、英雄列表和背包；
+  - 英雄列表保留只读列表语义，提示进入详情页升级，不提供列表内一键养成。
+- 本机接口闭环验收：`scripts/smoke-stage6b-r2-levelup.ps1` 已通过；最新一次性测试玩家 `userId=10` / `heroId=27` 完成 `MAIN_1_1 -> MAIN_1_2 -> level-up`，体力 `100 -> 88`、玩家经验 `0 -> 110`、升级前金币 `1100 -> 300`、`HERO_EXP_BOOK 1 -> 0`、`LOW_ENHANCE_STONE=4`、英雄等级 `1 -> 2`、推荐关卡 `MAIN_1_1 -> MAIN_1_2 -> MAIN_1_3`；`star-up/awaken/refine` 仍被阻断，强行启动 `MAIN_1_3` 返回 `code=1000` 且 `battle_session` 行数 `0 -> 0`。
+- 红线：不开放 `MAIN_1_3` 真实结算，不开放背包 use/sell/batch-use，不开放升星/觉醒/精炼，不开放 EX V1、USDT、资金池、补发/重结算或任何其它经济写入口。
+
+## 2026-06-13 Stage 4HH：奖池内容弹层滚动列表修复
+
+- 用户反馈限定池 `奖池内容` 弹层只看到 2 个 SSR，UR 看不到。
+- 根因：`GachaSceneRenderer.renderActionRows()` 仍使用早期临时行数截断逻辑，最多按面板高度渲染前 14 行，并显示“已显示 14/18 条，后续补滚动列表。”；限定池真实 active 数据中的后 4 行（剩余 SSR/UR）被 UI 截断。
+- 修复：`GachaSceneRenderer` 的右侧功能弹层列表改为 Cocos 原生 `ScrollView + Mask`，所有 `detail.items.filter(status===1)` 条目都会渲染到 `GachaActionRowsContent_*`，超出面板高度后拖动查看；移除奖池内容 `.slice(0, 22)` 上限。
+- i18n 动态文案同步为“共 N 条，拖动查看完整列表。”；`check-layout.mjs` / `check-preview-freshness.mjs` 增加 `GachaActionRowsViewport_*`、`GachaActionRowsContent_*`、滚动提示 token，`check-layout` 禁止旧“后续补滚动列表”、`GachaActionRowsMore` 和 `.slice(0, 22)` 回流。
+- 只读接口复核：`GET /api/player/gacha/pools/LIMITED_ABYSS_PREVIEW/detail` 当前 active item = 18，按稀有度为 `R=6, SR=6, SSR=4, UR=2`，UR 为 `UR_ARTHAS(w=500,up=1)`、`UR_EVELYN(w=500,up=1)`。
+- 验证：`npm.cmd run check:layout` 通过；让 Cocos Creator 主窗口获得焦点后 `npm.cmd run check:preview` 通过；`git diff --check` 通过，仅 LF/CRLF warning；Playwright 打开 `http://127.0.0.1:7456/` 登录进入召唤页，打开限定池 `奖池内容` 并向下滚动后确认 4 个 SSR 与 2 个 UR 均可见。
+- 本次只改 Cocos 展示与检查脚本，不修改后端卡池配置、概率、保底、消耗、真实 draw 接口或任何经济写入口。
+
+## 2026-06-13 Stage 4HG：常驻池移除 UR，限定池保留第一版 UR 双英雄
+
+- 后端新增并本地导入 `D:\project\LootChain\sql\47_gacha_pool_item_v1_baseline.sql`。
+- 后端新增并本地导入 `D:\project\LootChain\sql\48_gacha_normal_no_ur_limited_first_ur_pair.sql`。
+- 已同步 `D:\project\LootChain\sql\07_gacha_module.sql`、`D:\project\LootChain\sql\35_gacha_rate_pity_open_normal_limited.sql`、`D:\project\LootChain\sql\37_basic_contract_rs_only_box_summon_display.sql` 与 `D:\project\LootChain\scripts\check-gacha-economy-config.ps1`。
+- 当前三池只保留 active `config_version=1`；历史 `BASIC_CONTRACT_PREVIEW config_version=2` 和非 v1 rate/item/duplicate/ticket 子配置已禁用，避免后端最高 active 版本误选。
+- 当前 `BASIC_CONTRACT_PREVIEW` 奖池内容：6 个 active R + 6 个 active SR，权重均 `100`，无 active SSR/UR。
+- 当前 `NORMAL_HERO` 奖池内容：6R + 6SR + 4SSR，权重均 `100`，无 active UR rate/item/duplicate/pity；概率为 `R=0.576000`、`SR=0.384000`、`SSR=0.040000`。
+- 当前 `NORMAL_HERO` 使用 `HERO_PERMANENT_SSR_ONLY`，只保留 `SSR=80` 保底，不触发 UR 保底。
+- 当前 `LIMITED_ABYSS_PREVIEW` 奖池内容：6R + 6SR + 4SSR + 2UR；UR 只保留第一版双英雄 `UR_ARTHAS` 和 `UR_EVELYN`，二者权重均 `500` 且 `up_flag=1`。
+- `SEALED_LIGHT_DARK` 继续可见 locked/display-only，不参与真实抽卡。
+- 对 Cocos 的影响：`奖池内容`、`概率保底` 和真实抽卡都读取后端当前配置；普通召唤不应再只显示旧的 2R+2SR，而应显示 6R+6SR。
+- 验证：
+  - 经济守卫先在旧配置上失败；
+  - 串行重导 `07/17/23/35/37/47/48` 后，`scripts/check-gacha-economy-config.ps1` 通过；
+  - 玩家 API detail 回查：`LIMITED_ABYSS_PREVIEW` active UR 只返回 `UR_ARTHAS/UR_EVELYN`，`NORMAL_HERO` active UR 返回空；
+  - targeted Maven gacha suite `25 tests, 0 failures`；
+  - `scripts/smoke-cocos-gacha-draw-guard.ps1 -BaseUrl http://127.0.0.1:8081 -UserId 4` 低余额三池通过，无 draw/result/reward/currency 写入；
+  - Cocos `npm.cmd run check:layout`、`npm.cmd run check:preview` 通过；
+  - Browser Preview `http://localhost:7456/` 打开，控制台无 error；截图接口超时，但 `GameCanvas` 尺寸正常。
+  - 两仓 `git diff --check` 通过，仅 LF/CRLF warning。
+  - 不要并行导入这些写同表的 SQL，MySQL 可能 deadlock。
+- 红线不变：未充值、未做新的成功真实抽卡；不开放 EX V1、exchange/reissue、bag use/sell/batch-use、hero growth、reward/stamina/progress write 或任何新增经济写入口。
+
+## 2026-06-12 Stage 6A：MAIN_1_1 R1 首通真实结算
+
+- 后端新增 R1 主线首通结算落点：`user_mainline_progress`、`user_stamina_log`、`battle_reward_rule`，并扩展 `battle_settlement` 回执字段：`progress_applied`、`stamina_cost/before/after`、`reward_summary_json`、`progress_*_json`、`server_verdict_detail`、`config_version`。
+- 新增增量 SQL：`D:\project\LootChain\sql\45_battle_real_mainline_r1.sql`；本机已导入，末尾校验返回 `r1_stage_open_count=1`、`r1_reward_rule_count=3`、`unsafe_stage_open_count=0`、`unsafe_reward_rule_count=0`。
+- 新增守卫脚本：`D:\project\LootChain\scripts\check-battle-r1-economy-config.ps1`，检查只打开 `MAIN_1_1`、奖励只包含 `PLAYER_EXP/GOLD/LOW_ENHANCE_STONE`，且非 R1 关卡/掉落/奖励规则无经济开关。
+- 新增真实接口 smoke：`D:\project\LootChain\scripts\smoke-battle-r1-mainline-settlement.ps1`；本机已用一次性测试玩家 `userId=5` 完成 `MAIN_1_1` 首通，`battleNo=B15272fbcf21a441ab9a5a7c17adc12ab`、`settlementNo=Sbf5d597a9dff4b1b824db1fdd0237fcb`，体力 `100 -> 94`、经验 `0 -> 50`、金币 `300`、`LOW_ENHANCE_STONE=2`、冒险推荐 `MAIN_1_2`，同一 settle requestId 重放返回原结算。
+- 后端 `PlayerBattleServiceImpl` 仅在 `MAIN_1_1 + WIN + 未首通` 时扣体力、发放低风险奖励并推进 `MAIN_1_2`；首通判断已移到玩家行锁之后，并用主线进度 `FOR UPDATE` 读取，避免同一玩家两个 battle 并发首通重复发奖；重复结算返回原 R1 回执，不再次扣体力或发奖励。
+- Cocos `BattleApi` 现在只接受 `NO_REWARD` 或 `REAL_MAINLINE_R1` 两类回执，并精确白名单校验 R1 奖励必须为 `PLAYER_EXP 50`、`GOLD 300`、`LOW_ENHANCE_STONE x2`，同时拦截 `USDT/HERO/HERO_FRAGMENT/DIAMOND/BOUND_DIAMOND/STAMINA/EX_*` 等未开放奖励资源。
+- Cocos 战斗结算页会展示 R1 奖励、体力变化和主线进度回执；回大厅后会刷新资料、冒险、最近战斗和背包只读数据。
+- 当前不为了验收擅自充值、补体力或重置玩家首通进度；如需成功真实接口烟测，应使用一次性测试账号并明确记录会扣体力、写结算、发奖励。
+
+## 2026-06-11 第二轮：窄屏大厅 HUD 模式修复 + 微型栏补全
+
+- 根因：Cocos 设计舞台仍为 1920×1080，但浏览器视口 720×1280 时 `stageWidth` 未缩小，导致仍渲染完整底栏并被裁切；同时 `renderMicroActionBar` 把 `adventure` 误传到 `bag` 参数位。
+- 新增 `resolveLobbyHudModeSize(layout)`（`LobbyHudLayout.ts`）：`width/height = min(stage, viewport)`，用于侧栏/底栏/紧凑入口显隐判断。
+- `LobbyHudRenderer` 全部 `stageWidth>=900` 类阈值改为 `hudMode.width/height`；微型底栏补全 **背包/召唤**，并修正 `addCompactActionEntrance` 布尔参数顺序。
+- `LobbyTopHudRenderer` 资源栏数量与系统图标显隐同样改用 `resolveLobbyHudModeSize`。
+- `check-layout.mjs` 镜像上述公式，并新增视口 `preview-design-1920x1080-physical-720x1280`。
+- 验证：`check:layout`、`check:preview` 通过；720×1280 截图可见 `LobbyCompactSceneEntrances` + `LobbyCompactActionEntrances`（含英雄/背包）。
+- 下一轮建议：~~编队/图鉴/召唤页 C1812 标题横幅与按钮统一；战斗预演技能框；大厅底部导航图标切图~~ → **2026-06-11 第三轮已完成**（见下节）。
+
+## 2026-06-11 第三轮：C1812 标题横幅/按钮/导航/技能框/英雄 Tab
+
+- 新增 `assets/scripts/scenes/C1812CommonUiAssets.ts` 集中导出跨面板复用路径：`title_banner`、`button_primary`、`button_danger`、`tab_selected`、`skill_frame`、`skill_frame_active`、大厅 7 项底部导航图标。
+- **1) 编队 / 图鉴 / 召唤页**：`LobbyFormationPanelRenderer`、`LobbyCodexPanelRenderer` 标题区接 `title_banner`，页脚按钮接 `button_primary`；`GachaSceneRenderer` 单抽/十连分别用 `button_primary` / `button_danger`，结果页标题横幅 + 返回按钮，召唤记录/概率等 Action 弹层补标题横幅。
+- **2) 大厅底部导航**：`LobbyHudRenderer.addLobbyNavIcon` 优先 `LOBBY_C1812_NAV_ICON_ASSETS` 切图，缺图回退原矢量图标。
+- **3) 战斗预演**：`LobbyBattlePreviewPanelRenderer` 在 `roundPlaying/resultRecording/resultRecorded` 阶段底部渲染 3 格技能框（`skill_frame` / `skill_frame_active`）；页脚可操作按钮接 `button_primary`。
+- **4) 英雄列表**：`LobbyHeroRosterPanelRenderer.renderFilterTab` 选中态优先 `tab_selected` 九宫格底，缺图回退原斜角 Graphics。
+- `UiSpriteFrameCache.preload` 已预加载上述全部新资源路径。
+- 验证：`npm run check:layout`、`npm run check:preview`、`git diff --check` 通过。
+
+## 2026-06-11 C1812 全界面 UI 切图整合（大厅/背包/英雄/冒险/战斗）
+
+- 本轮继续 Cocos-only UI/视觉资源整合，素材来源 `C:\Users\axian\Desktop\C1812-1`（只读，不修改原始素材），按界面分目录接入 `assets/resources/ui/*/c1812`。
+- 新接入并已真实渲染的切图（全部带 sprite-frame meta，部分带九宫格边距）：
+  - `ui/lobby/c1812`: `currency_stamina`、`currency_gold`、`currency_diamond` → 顶部资源栏货币图标（`LobbyTopHudRenderer.addResourceGlyph`，缺图回退矢量图形）；未开放资源位用 `ui/common/c1812/icon_lock`。
+  - `ui/common/c1812`: `item_slot`(96x96, 边距18)、`item_slot_highlight`(边距16)、`button_primary`(240x84)、`divider_gold`、`title_banner`(410x86)、`modal_frame`(248x440, 边距 L52/R52/T60/B60)。
+  - `ui/bag/c1812`: `item_ticket/fragment/chest/material/equipment/consumable` 六类道具类型图标 → 背包列表与详情。
+  - `ui/adventure/c1812`: `stage_node`、`stage_node_boss`、`stage_node_clear`、`chapter_icon` → 关卡节点/章节行；锁定关卡用 `icon_lock` 替换文字“锁”徽章。
+  - `ui/battle/c1812`: `hp_bar_frame`、`hp_bar_fill`（九宫格 SLICED）、`banner_victory`、`banner_defeat` → 战斗预演血条与结算横幅。
+  - `ui/hero/c1812`: `star_filled`、`star_empty`、`grade_crest_r/sr/ssr/ur` → 英雄详情星级行（替换 ★☆ 文字）与品阶纹章（缺图回退文字徽章）。
+- 渲染改动文件：`LobbyHudTypes.ts`、`LobbyTopHudRenderer.ts`、`LobbyBagPanelRenderer.ts`、`LobbyAdventurePanelRenderer.ts`、`LobbyBattlePreviewPanelRenderer.ts`、`LobbyHeroDetailPanelRenderer.ts`、`UiSpriteFrameCache.ts`（统一预加载新资源）。
+- 关键经验：
+  - 编辑器开着时改 TS/资源不会自动进 Preview chunk；需让 Cocos Creator 窗口获得前台焦点触发 asset-db 重新导入，之后 `check:preview` 通过、import-map chunk 即包含新 token。
+  - `button_primary` 上下九宫格边距(32+32)大于目标按钮高(34~36)，SLICED 会压扁；小尺寸按钮改用 SIMPLE 整图缩放（素材长宽比与按钮接近）。
+  - 背包详情 `modal_frame` 仅在详情高度 >= 150*scale 时渲染，窄屏低详情跳过避免边框压扁。
+- 曾暂删未渲染切图（`button_danger`、`tab_selected`、`skill_frame` 等）已在 **2026-06-11 第三轮** 重新从 C1812-1 裁切并接入；`button_secondary`、`icon_close`、`panel_frame_gold` 仍待后续界面真做时再接入。
+- 验证：`npm.cmd run check:layout`、`npm.cmd run check:preview`、`git diff --check` 全部通过；Playwright 截图验收 1920x1080 大厅/背包/英雄详情/冒险 + 1280x720 背包 + 720x1280 窄屏大厅。
+- ~~已知遗留：720 宽窄屏裁切~~ → **2026-06-11 第二轮已修复**（见下节）。
+- 红线不变：未新增任何经济写入口，背包仍只读，抽卡仍只走 `POST /api/player/gacha/draw`。
+
+## 2026-06-11 Gacha Price Model, BASIC Pity Guard, And C1812 Summon UI
+
+- 本轮继续用户批准的抽卡经济与 UI 阶段，仍是 Cocos-only，不回 `web-vue`。
+- 当前真实开放池价格：
+  - `LIMITED_ABYSS_PREVIEW`: `LIMITED_CONTRACT_TICKET` 1/10 优先，不足 fallback `DIAMOND` 300/3000；
+  - `NORMAL_HERO`: `HERO_CONTRACT_TICKET` 1/10 优先，不足 fallback `DIAMOND` 280/2800；
+  - `BASIC_CONTRACT_PREVIEW`: `NORMAL_CONTRACT_TICKET` 1/10 优先，不足 fallback `BOUND_DIAMOND` 80/800。
+- Cocos 当前 draw 请求使用 `paymentMode='AUTO'`，仍只调用现有 `POST /api/player/gacha/draw`；未新增任何玩家侧经济写入口。
+- `BASIC_CONTRACT_PREVIEW` 已从 `HERO_BASE` 切到 `BASIC_RS_ONLY` 空保底组，避免 R/SR-only 普通池在 80/180 抽被 `HERO_BASE` 强制 SSR/UR 后找不到奖励项。
+- 后端守卫 `scripts/check-gacha-economy-config.ps1` 现在检查：
+  - 三池价格、票券、展示 gate；
+  - `BASIC_CONTRACT_PREVIEW.pity_group_code=BASIC_RS_ONLY`；
+  - 每个活跃 pity 稀有度必须同时存在活跃 rate 和 active item；
+  - 普通池无活跃 SSR/UR rate、item、duplicate、pity。
+- Cocos 新增并接入 `assets/resources/ui/gacha/c1812`：
+  - `summon_floor` 和 `summon_magic_circle` 用于召唤中心舞台；
+  - `summon_reward_slot` 用于结果卡；
+  - `summon_case_frame` 用于揭示卡背；
+  - `currency_gold` 作为后续货币 UI 资源预留。
+- 已扫描来源目录 `C:\Users\axian\Desktop\C1812-1`，选择召唤页最适合的 UI 切图接入，未替换当前全屏召唤背景。
+- 本轮本地重启后恢复了 Docker Desktop、`lootchain-redis`、`lootchain-rabbitmq`，并启动后端 `http://localhost:8081`。
+- 已验证：
+  - 本地导入 `D:\project\LootChain\sql\38_gacha_currency_ticket_price_model.sql` 成功；
+  - 后端经济守卫通过；
+  - gacha focused Maven 测试 `25 tests, 0 failures`；
+  - `scripts/smoke-cocos-gacha-draw-guard.ps1` 以 `paymentMode=AUTO` 覆盖三池低余额失败，无 draw/result/reward/currency/pity 写入；
+  - `/api/player/gacha/pools` 返回三池 `primaryCost*` 票券和 `backupCost*` 货币字段，`SEALED_LIGHT_DARK` 仍 locked/display-only；
+  - Cocos `npm.cmd run check:layout` 通过；
+  - directed Cocos Creator TypeScript no-emit 通过。
+- 当前 Preview 状态：
+  - `npm.cmd run check:preview` 明确失败于 `http://localhost:7456/scripting/x/import-map.json failed: ECONNREFUSED`；
+  - Cocos Preview 未在 7456 启动，无法完成浏览器画面自预览；
+  - 需要在 Cocos Creator 内启动/刷新 Preview 后复验召唤页 C1812 地台/法阵、普通池 `box_summon`、按钮价格文案。
+- 红线不变：不开放 EX V1、exchange/reissue、bag use/sell/batch-use、hero growth、reward/stamina/progress writes，不充值，不做新的成功真实抽卡。
+
+## 2026-06-10 R/SR NPC Hero Card Scale Rebalance
+
+- 用户换电脑后反馈英雄队列中 R/SR 英雄卡牌背景人物显示得很小。
+- 复查确认 `ui/hero-roster/card_background/npc_*` 源图自身没有异常透明留白，当前运行 Preview 也通过 freshness 检查，问题来自 2026-06-08 的 NPC compact profile 压缩过度。
+- Cocos 侧仅调整 `LobbyHeroRosterPanelRenderer` 中 NPC 卡牌背景显示比例：
+  - `HERO_ROSTER_CARD_BACKGROUND_NPC_VISIBLE_HEIGHT_RATIO` 从 `0.42` 调整为 `0.58`；
+  - `HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_HEIGHT_RATIO` 从 `0.56` 调整为 `0.74`；
+  - `HERO_ROSTER_CARD_BACKGROUND_NPC_MAX_DISPLAY_WIDTH_RATIO` 从 `0.82` 调整为 `0.96`。
+- 该调整只影响 `ui/hero-roster/card_background/npc_*` 的 R/SR 只读卡面展示；Nuu 和 UR/SSR `*_Illust` 卡面匹配逻辑不变，卡牌稀有度、名称、星级、等级、职业角标和边框特效仍在上层。
+- 新电脑本地 `profiles/v2/packages/engine.json` 只有版本号，导致 `check:layout` 的 Spine baseline 守卫失败；已按项目要求从 `settings/v2/packages/engine.json` 同步本地 profile，使 Preview/检查保持 `spine-3.8`。
+- 已验证：`npm.cmd run check:layout` 通过；focused Cocos Creator 3.8.8 TypeScript no-emit 通过；`assets/resources/spine` 下 `.spine/.spine.meta` 扫描为 `0`；`git diff --check` 通过且仅 LF/CRLF warning。
+- 当前运行中的 Preview 已刷新到最新 `LobbyHeroRosterPanelRenderer` chunk，`npm.cmd run check:preview` 已通过。
+- 边界不变：未修改后端、SQL、接口契约、抽卡概率、保底、消耗、奖励、EX V1、兑换/补发、背包写入口、英雄养成或任何经济写入口。
+
+## 2026-06-10 Controlled Normal Hero Real Draw Closure
+
+- 按用户要求开始当前推进顺序的闭环验收，并以一次性测试账号执行真实 `NORMAL_HERO` 单抽。
+- 测试账号：`userId=4 / codex_cocos_draw_20260610140143`；该账号只用于本次 Cocos 真实抽卡闭环。
+- 测试前精确写入该测试账号 `DIAMOND=280`，未修改 `userId=1` 或长期联调账号余额。
+- 真实请求：
+  - `POST /api/player/gacha/draw`;
+  - `poolCode=NORMAL_HERO`;
+  - `drawCount=1`;
+  - `requestId=codex-cocos-normal-draw-20260610140143`;
+  - `useTicket=false`。
+- 返回成功：`drawNo=GACHA96a43b72b1734a69a71a613021717f8d`，命中 `SR_WITCH_03 / 契约魔女 / SR`，`grantNo=RWDc334bcee86e34bca953807914ca29c98-19875bc0`。
+- 幂等重放同一 requestId 返回同一 `drawNo` 和同一 `grantNo`，未二次扣费。
+- DB 核对：
+  - `user_currency.DIAMOND` 从 `280.000000` 扣到 `0.000000`；
+  - `user_currency_log` 仅 1 条本次 requestId 扣费流水；
+  - `gacha_draw_log` 仅 1 条本次 requestId 主日志；
+  - `gacha_draw_result` 仅 1 条本次 drawNo 结果；
+  - `reward_grant_log` 1 条 HERO 发放日志，`status=1`、`audit_required=0`；
+  - `user_hero` 包含主角和本次 `SR_WITCH_03`，`user_hero_attr` 共 6 条词条，无碎片发放；
+  - `gacha_event_outbox` 写入 `GACHA_DRAW_COMPLETED` 和 `GACHA_HERO_OBTAINED`；
+  - `reward_event_outbox` 写入 1 条奖励事件；
+  - `user_operation_log` 写入 1 条 `GACHA_DRAW` 操作日志，当前设计不填 `request_id`。
+- 保底接口从 `UR/SSR counter=0,totalCount=0` 更新为 `counter=1,totalCount=1`。
+- 红线复核：`gacha exchange/reissue`、背包 `use/batch-use/sell`、英雄 `level-up/star-up/awaken/refine` 均仍返回阶段未开放，未开放 EX V1、兑换/补发、背包写入口、英雄养成、奖励/体力/进度写入或任何新经济写入口。
 
 ## 2026-06-09 Gacha Summon Animation Visual Fix
 
 - 用户反馈召唤演出页出现无意义红色大圆、背景像小方块且 SSR/UR 金光不便直接查看。
 - Cocos 侧已移除 `GachaSummonAnimationVeil` 的红色圆形遮罩；演出背景改用 `GachaSummonFullScreenBackground` + `GACHA_SUMMON_COVER_OVERSCAN_RATIO` 按全屏 cover 扩张，`RecruitBG` 只保留低透明度叠加。
-- 追加调整：召唤演出背景不再使用 `Summon_Normal_BG`；普通/R/SR/未返回稀有度时使用 `RecruitBG.png` 全屏背景，SSR/UR 时使用 `Headhunting_bg.png` 全屏背景。
-- `Headhunting_bg.png` 已从 `C:\Users\Ethan\Desktop\C1812-1\素材切图\Assets\Data\Prefab\UI\Popup\Summon\Headhunting_bg.png` 导入到 `assets/resources/ui/gacha/summon/Headhunting_bg.png`，并新增 texture-only Cocos meta。
-- `GachaSceneConfig.ts` 新增 `headhuntingBg: 'ui/gacha/summon/Headhunting_bg'`；`GachaSceneRenderer.ts` 通过 `resolveSummonBackgroundAsset()` / `resolveSummonBackgroundAspect()` 按最高稀有度选择全屏背景。
-- `Recruit_take4` Spine atlas 中自带 `BG` 背景槽位；现在播放前后会通过 `hideSummonSpineSquareBackground()` 和 `scheduleSummonSpineBackgroundHideRetries()` 多次隐藏背景附件，避免动画重置后露出方块舞台。
-- Spine 舞台尺寸改为按 `GACHA_SUMMON_SPINE_STAGE_WIDTH_RATIO` / `GACHA_SUMMON_SPINE_STAGE_HEIGHT_RATIO` 覆盖整屏语境，角色演出仍使用 `spine/gacha/summon/recruit_take4/Recruit_take4` 的 `take4` 动画。
-- 召唤页底部新增 `SSR` / `UR` 两个本地演出预览按钮，入口为 `openGachaRarityPreviewScene(rarity)`；该预览只设置 Cocos 本地 `gachaPreviewSummonRarity` 并进入 `gachaSummon` 视图，不创建 requestId、不调用 `/api/player/gacha/draw`、不扣资源、不写 draw log、不发放英雄/碎片、不更新保底。
-- 真实抽卡仍只由原来的 `startGachaDraw(mode)` 触发；SSR/UR 真结果的金光仍由后端 draw 返回的最高稀有度驱动，未改概率、权重、保底、消耗、奖励或重复转碎片规则。
+- 当前 active 召唤演出已切换为结果驱动全屏视频：普通/R/SR 播放 `assets/resources/video/gacha/call1.mp4`，SSR/UR 播放 `assets/resources/video/gacha/call2.mp4`。
+- Cocos 先通过原来的 `startGachaDraw(mode)` 提交真实 draw，成功返回后按结果最高稀有度进入 summon video 视图；失败或余额不足不会播放结果视频。
+- `VideoPlayer.keepAspectRatio=true`，按 1680x720 视频比例做 cover 适配，避免 1920x1080 Preview 中圆形/法阵被拉伸变形。
+- 旧的本地 `SSR` / `UR` 演出预览按钮不是当前 active 验收路径，相关 legacy token 被 check 脚本禁止回流；SSR/UR 视觉应通过 `call2` 资源或受控真实结果验收。
+- 真实抽卡流程未改概率、权重、保底、消耗、奖励或重复转碎片规则。
 - 顺手清理 `LobbyHeroApi.ts` 与 `LobbyCodexApi.ts` 中旧的重复 `R_PATROL_01` fallback，仅保留带 `cardBackgroundAsset` 的只读展示兜底，避免 Cocos TypeScript no-emit 被重复对象 key 阻断。
-- 已更新 `scripts/check-layout.mjs` 和 `scripts/check-preview-freshness.mjs`：新增红圈回退禁用、按稀有度切换 `RecruitBG`/`Headhunting_bg` 全屏背景、Spine 背景隐藏重试、SSR/UR 本地预览按钮和 Root 预览状态 token。
-- 验证结果：`npm.cmd run check:layout` 通过；Cocos Creator 3.8.8 TypeScript no-emit 通过；`Headhunting_bg.png.meta` / `RecruitBG.png.meta` JSON 校验通过；`assets/resources/spine` 下 `.spine/.spine.meta` 扫描为 `0`；`git diff --check` 通过且仅 LF/CRLF warning。
-- `npm.cmd run check:preview` 当前失败原因是运行中的 Cocos Preview 仍在服务旧 chunk，缺少 `ui/gacha/summon/Headhunting_bg`、`resolveSummonBackgroundAsset()`、`GACHA_SUMMON_HEADHUNTING_BACKGROUND_ASPECT` 等新 token；需要重启/刷新 Cocos Preview 后再做可视化验收。
+- 已更新 `scripts/check-layout.mjs` 和 `scripts/check-preview-freshness.mjs`：守卫结果驱动 summon video、`call1/call2` 资源、视频比例 cover、音频资源和 legacy 本地预览 token 禁止回流。
+- 验证结果：`npm.cmd run check:layout` 通过；Cocos Creator 3.8.8 TypeScript no-emit 通过；`assets/resources/spine` 下 `.spine/.spine.meta` 扫描为 `0`；`npm.cmd run check:preview` 通过；`git diff --check` 通过且仅 LF/CRLF warning。
 - 本次未修改后端、SQL、接口契约、卡池条目、经济规则、EX V1、兑换/补发或背包写入口。
 
 ## 2026-06-05 Hero Roster Class Filter Match Fix
@@ -4299,11 +4756,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-player-f
   - the top-right badge remains `主` for the protagonist and otherwise shows a one-character class abbreviation, with `英` fallback when `heroClass` is missing.
 - Gacha update:
   - local fallback `GACHA_PREVIEW_POOLS` no longer includes the sealed/light-dark pool;
-  - runtime backend pools are filtered by `poolCode !== 'SEALED_LIGHT_DARK'`, `displayType !== 'LOCKED'`, and `themeColor !== 'locked'`;
+  - current runtime backend pool visibility filters only explicit hidden rows (`displayType=HIDDEN` or `themeColor=hidden`); `SEALED_LIGHT_DARK` remains visible as locked/display-only after the 2026-06-10 guard pass;
   - draw buttons remain enabled only when backend data says `drawEnabled=true`, `previewOnly=false`, and `locked=false`;
   - successful real draw refreshes readonly lobby profile and hero roster data, so newly granted heroes can appear in the hero list.
 - Guards updated:
-  - `scripts/check-layout.mjs` now requires the scroll nodes, class-filter helpers, per-card power label, gacha pool metadata, light/dark filtering, and post-draw readonly roster refresh;
+  - `scripts/check-layout.mjs` now requires the scroll nodes, class-filter helpers, per-card power label, gacha pool metadata, display-only light/dark visibility, and post-draw readonly roster refresh;
   - legacy SSR sequence folders, old `card_*` images, exchange/reissue, bag writes, and old visual regressions remain forbidden.
 - Verification passed:
   - `npm.cmd run check:layout`;
@@ -6144,8 +6601,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-player-f
   - added read-only guard script `D:\project\LootChain\scripts\check-gacha-economy-config.ps1`.
 - Real-open pools:
   - `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW` are active real economy pools;
-  - each is `locked=false`, `drawEnabled=true`, `previewOnly=false`, cost `DIAMOND 280/2800`;
-  - each uses `HERO_BASE` pity;
+  - each is `locked=false`, `drawEnabled=true`, `previewOnly=false`;
+  - `LIMITED_ABYSS_PREVIEW` uses `LIMITED_CONTRACT_TICKET` 1/10 first, fallback `DIAMOND` 300/3000;
+  - `NORMAL_HERO` uses `HERO_CONTRACT_TICKET` 1/10 first, fallback `DIAMOND` 280/2800;
+  - `BASIC_CONTRACT_PREVIEW` uses `NORMAL_CONTRACT_TICKET` 1/10 first, fallback `BOUND_DIAMOND` 80/800;
+  - limited/hero use `HERO_BASE` pity; basic uses `BASIC_RS_ONLY` with no SSR/UR pity;
   - `SEALED_LIGHT_DARK` remains locked/display-only.
 - Reward item scope:
   - the new limited/basic real pools copy the existing active `NORMAL_HERO` reward entries and weights;
@@ -6177,3 +6637,1582 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-player-f
   - no hero growth, reward/stamina/progress write path opened;
   - no new economy write endpoint was added;
   - no successful real draw was forced because no current account had enough DIAMOND for a paid draw.
+
+## 2026-06-10 Stage 4HA Gacha Draw Guard And Display-Only Pool Closure
+
+- Multi-role review findings:
+  - frontend review confirmed the video summon path works for success/failure, but found a race where the player could leave while a draw request was still pending;
+  - backend review confirmed Redis/backend were reachable and the low-balance draw path stayed write-clean, but found same-`requestId` replay did not compare payload fields;
+  - redline review found the docs/client had drifted from the current `SEALED_LIGHT_DARK` locked/display-only requirement.
+- Cocos guard changes:
+  - gacha pool drawability now fails closed on `drawEnabled === true`; missing `drawEnabled` no longer means open;
+  - `startGachaDraw()`, selected-pool pity loading, and gacha action buttons use the same explicit gate;
+  - `closeGachaScene()` blocks return while `gachaSceneState.drawing` or `pendingGachaDraw` is active and shows `召唤请求处理中，请稍候。`;
+  - `resetLobbyProfileForLogin()` clears `drawing`, `error`, `lastDrawResult`, and `activeAction` to avoid stale summon state on account switch;
+  - `SEALED_LIGHT_DARK` is no longer hidden by `poolCode/displayType=LOCKED/themeColor=locked`; only `displayType=HIDDEN` or `themeColor=hidden` is filtered, so the pool can remain visible as locked/display-only.
+- Cocos copy/guard sync:
+  - lobby summon copy now says real draw is opened by backend pool state and only `draw` is open; exchange/reissue remain closed;
+  - `scripts/check-layout.mjs` now rejects fail-open draw gates, obsolete no-cost summon copy, and the old light/dark hidden filter;
+  - `scripts/check-preview-freshness.mjs` checks the same runtime chunk tokens.
+- Backend guard changes:
+  - `PlayerGachaDrawDTO.requestId` now has `@Size(max=128)`;
+  - same-`requestId` replay now compares `poolCode`, `drawCount`, and `useTicket`; mismatches fail with `重复抽卡请求参数不一致`;
+  - `PlayerApiPhaseGateTest` explicitly keeps hero `awaken` and `refine` blocked;
+  - `scripts/check-gacha-economy-config.ps1` verifies `SEALED_LIGHT_DARK` has no real-open display gate and exactly one locked/display-only gate;
+  - added `D:\project\LootChain\scripts\smoke-cocos-gacha-draw-guard.ps1` for low-balance failed draw smoke without persistence.
+- Current self-preview status:
+  - `npm.cmd run check:layout` passes;
+  - directed Cocos Creator TypeScript no-emit passes;
+  - running Preview on `http://127.0.0.1:7456` refreshed and `npm.cmd run check:preview` passes;
+  - if Preview stale chunks recur, non-destructive repo inspection found no npm/CLI command that can refresh them from outside Creator; use Creator `Reimport Asset` on the changed scripts plus `Project -> Refresh Device`, or close/reopen Preview, then rerun `npm.cmd run check:preview`.
+- Backend verification status:
+  - targeted Maven tests pass for gacha draw replay/PhaseGate/requestId guard;
+  - economy guard passes, including `SEALED_LIGHT_DARK locked display-only gate = 1`;
+  - low-balance smoke for `NORMAL_HERO` passes with `drawLogs=0`, `drawResults=0`, `rewardGrantLogs=0`, and `currencyLogs=0`.
+- Boundary unchanged:
+  - Cocos still uses only existing `POST /api/player/gacha/draw` for gacha writes;
+  - no EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress write, or new economy write endpoint was opened;
+  - no recharge or successful new draw was performed in this pass.
+
+## 2026-06-10 Stage 4HB Multi-Pool Low-Balance Draw Guard Closure
+
+- Multi-role review findings:
+  - frontend review confirmed the 4HA Cocos draw gate already fails closed and low-balance failures do not enter summon video;
+  - backend/API review found the remaining repeatable验收 gap was that the low-balance draw smoke defaulted to `NORMAL_HERO` while three pools are now real-open;
+  - redline review found old documentation still implied Cocos抽卡完全关闭, which is no longer the current staged boundary.
+- Backend smoke update:
+  - `D:\project\LootChain\scripts\smoke-cocos-gacha-draw-guard.ps1` now accepts `-PoolCode` as a string array, with alias `-PoolCodes`;
+  - default pool list is `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW`;
+  - the script logs in once, reads pool gates once, then runs the same low-balance failed draw guard for each target pool;
+  - for each pool it aborts if the account can afford a successful single draw, calls existing `POST /api/player/gacha/draw` twice with the same request id, and verifies no draw/result/reward/currency/hero/fragment/pity state changed.
+- Scope:
+  - no Cocos code path was changed in this stage;
+  - `SEALED_LIGHT_DARK` remains visible locked/display-only and is not included in real-open failure smoke;
+  - no recharge, successful new draw, new API route, or new economy write endpoint was added.
+- Stage 4HB verification passed:
+  - Redis `127.0.0.1:6379` was reachable and backend `http://localhost:8081/v3/api-docs` exposed `/api/player/gacha/draw`;
+  - backend multi-pool smoke passed for `userId=4` on `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW`;
+  - each pool reported `balance=0.000000 < 280.00`, failed twice with business code `1000`, and ended with `drawLogs=0`, `drawResults=0`, `rewardGrantLogs=0`, and `currencyLogs=0`;
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-gacha-economy-config.ps1` passed;
+  - `mvn.cmd --no-transfer-progress -pl lootchain-core "-Dtest=PlayerApiPhaseGateTest,GachaPoolServiceImplTest,GachaDrawServiceImplTest,GachaRewardServiceImplTest,PlayerBattleServiceImplTest,PlayerGachaDrawDTOTest" test` passed with `35 tests, 0 failures`;
+  - Cocos `npm.cmd run check:layout`, directed TypeScript no-emit, `npm.cmd run check:preview`, and `.spine/.spine.meta` scan passed;
+  - Browser self-preview opened `http://127.0.0.1:7456`, logged in as `userId=4`, reached lobby, opened `召唤祭坛`, and visually confirmed the three real-open pools plus visible locked/display-only `光暗召唤`; no browser console errors appeared and no single/ten draw button was clicked;
+  - `git diff --check` passed in both repos with only LF/CRLF warnings.
+
+## 2026-06-10 Stage 4HC Hero Summon Center Spine Display Fix
+
+- User reported that clicking `英雄召唤` still showed the limited summon center skeleton.
+- Reproduction:
+  - Browser Preview `http://127.0.0.1:7456` logged in as `userId=4`;
+  - opened `召唤祭坛`;
+  - clicked `英雄召唤`;
+  - left rail highlighted hero pool, but the center still rendered the limited-pool `huangfengjiaozong` skeleton.
+- Root cause:
+  - `NORMAL_HERO` runtime display row `gacha_pool_display_config(pool_code='NORMAL_HERO', config_version=1)` had `center_spine_resource='spine/gacha/huangfengjiaozong/huangfengjiaozong'`;
+  - this matched `LIMITED_ABYSS_PREVIEW`, so Cocos correctly followed backend data but displayed the wrong pool presentation.
+- Fix:
+  - added and locally sourced `D:\project\LootChain\sql\36_gacha_hero_center_spine_display_sync.sql`;
+  - updated `NORMAL_HERO` center Spine to `spine/gacha/hunka_nima/hunka_nima`;
+  - updated UUID to `cd644c64-da4a-4397-8f3b-cdb3ffcbd3c5`;
+  - synchronized fresh SQL `D:\project\LootChain\sql\17_gacha_pool_display_config.sql` and incremental economy-opening SQL `D:\project\LootChain\sql\35_gacha_rate_pity_open_normal_limited.sql`;
+  - extended `D:\project\LootChain\scripts\check-gacha-economy-config.ps1` to require this mapping and assert `NORMAL_HERO` does not reuse `LIMITED_ABYSS_PREVIEW` center Spine.
+- Verification:
+  - red test: updated economy/display guard failed before SQL import with `NORMAL_HERO center spine resource expected [spine/gacha/hunka_nima/hunka_nima], got [spine/gacha/huangfengjiaozong/huangfengjiaozong]`;
+  - after SQL import, DB readback and `GET /api/player/gacha/pools` returned `NORMAL_HERO centerSpineResource=spine/gacha/hunka_nima/hunka_nima`;
+  - Browser self-preview after refresh/login showed `英雄召唤` center as the `hunka_nima` white-haired seated skeleton, not the limited-pool `huangfengjiaozong`;
+  - no single/ten draw button was clicked during preview;
+  - `scripts/check-gacha-economy-config.ps1` passed;
+  - three-pool low-balance smoke passed for `userId=4` and kept `drawLogs=0`, `drawResults=0`, `rewardGrantLogs=0`, and `currencyLogs=0` for each pool;
+  - targeted Maven suite passed with `35 tests, 0 failures`;
+  - Cocos `npm.cmd run check:layout`, directed TypeScript no-emit, `npm.cmd run check:preview`, `.spine/.spine.meta` scan, and both repo `git diff --check` passed.
+- Boundary unchanged:
+  - display metadata only; no probability, weight, pity, cost, reward, draw path, EX V1, exchange/reissue, bag write, hero growth, reward/stamina/progress write, or new economy endpoint changed.
+
+## 2026-06-10 Stage 4HD Normal Summon R/SR Only And Box Summon Center Spine
+
+- User request:
+  - remove SSR/UR heroes from `普通召唤`;
+  - use `D:\project\lootchain-cocos\assets\resources\spine\gacha\box_summon` for the summon page center Spine;
+  - keep its center size consistent with the other real-open summon presentations.
+- Economy/display update:
+  - added and locally sourced `D:\project\LootChain\sql\37_basic_contract_rs_only_box_summon_display.sql`;
+  - synchronized `D:\project\LootChain\sql\07_gacha_module.sql`;
+  - synchronized `D:\project\LootChain\sql\17_gacha_pool_display_config.sql`;
+  - synchronized `D:\project\LootChain\sql\23_game_text_i18n.sql`;
+  - synchronized `D:\project\LootChain\sql\35_gacha_rate_pity_open_normal_limited.sql`.
+- Current active rates:
+  - `LIMITED_ABYSS_PREVIEW` and `NORMAL_HERO`: `R=0.576000`, `SR=0.384000`, `SSR=0.036000`, `UR=0.004000`;
+  - `BASIC_CONTRACT_PREVIEW`: `R=0.600000`, `SR=0.400000`, no active `SSR` or `UR` rate row.
+- Current `BASIC_CONTRACT_PREVIEW` reward scope:
+  - active reward item rarities are only `R` and `SR`;
+  - active SSR/UR reward item count is `0`;
+  - active SSR/UR duplicate config count is `0`.
+- Current `BASIC_CONTRACT_PREVIEW` display mapping:
+  - `center_spine_resource=spine/gacha/box_summon/boxman_text`;
+  - `center_spine_uuid=3a0e1b57-8392-4f08-83ce-31ce91d26481`;
+  - `center_spine_skin=default`;
+  - `center_intro_animation=idle`;
+  - `center_idle_animation=idle`.
+- Cocos resource sync:
+  - generated Cocos meta files for `assets/resources/spine/gacha/box_summon`;
+  - moved source file `assets/resources/spine/gacha/box_summon/252.spine` to `docs/spine-source-archive/gacha/box_summon/252.spine`;
+  - `scripts/check-layout.mjs` now requires the box summon runtime files and rejects `box_summon/252.spine` returning under `assets/resources/spine`.
+- Cocos display update:
+  - `GachaSceneRenderer` gives `box_summon` a small pool-specific scale multiplier so the normal summon center Spine matches the other two real-open presentations more closely;
+  - the `概率保底` panel now uses backend `rateNote` and `guaranteeNote` when present;
+  - fallback rows are filtered by active rate rarities, so normal summon no longer shows inactive SSR/UR pity rows;
+  - decimal rate fallback now formats `0.6` as `60%`, not `0.6%`.
+- Guard update:
+  - `D:\project\LootChain\scripts\check-gacha-economy-config.ps1` now expects `BASIC_CONTRACT_PREVIEW` to have exactly two active rate rarities, no active SSR/UR items or duplicate configs, and its own `box_summon` center Spine distinct from limited/hero.
+- Verification:
+  - `GET /api/player/gacha/pools` returned `BASIC_CONTRACT_PREVIEW.drawEnabled=true`, `previewOnly=false`, `locked=false`, `centerSpineResource=spine/gacha/box_summon/boxman_text`, and rate/guarantee notes that describe R/SR-only normal summon;
+  - three-pool low-balance smoke passed for `userId=4` without draw/result/reward/currency writes;
+  - targeted Maven suite passed with `35 tests, 0 failures`;
+  - Cocos `npm.cmd run check:layout`, directed Cocos TypeScript no-emit, `npm.cmd run check:preview`, and `.spine/.spine.meta` scan passed;
+  - Browser Preview opened `http://127.0.0.1:7456`, logged in, reached `召唤祭坛`, confirmed `普通召唤` renders `box_summon`, confirmed `概率保底` shows R/SR-only copy with no SSR/UR pity rows, and confirmed `奖池内容` lists only two R rows and two SR rows;
+  - no single/ten draw button was clicked during visual verification.
+- Boundary unchanged:
+  - Cocos still uses only existing `POST /api/player/gacha/draw`;
+  - no EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress write, or new economy endpoint opened;
+  - no recharge or successful paid draw was performed for this stage.
+
+## 2026-06-17 Visual Battle Stage 12 Final Verification Note
+
+- Stage 12 battle scene redesign implementation is in the Cocos source tree and backend schema/API shape:
+  - `LobbyBattlePreviewPanelRenderer.ts` contains the Stage 12 hero card deck, renderable-unit filtering, enemy placeholder, action callout, victory overlay, and audio stale-callback guard;
+  - `BattleApi.ts` preserves `portraitAsset/spineAsset/spineUuid/scaleProfile` from battle start normalization so battle rendering does not lose backend resource fields;
+  - `LobbyBattleUnitSpineRuntime.ts` contains `portrait_asset=act_*` first battle Spine mapping, `spine_asset/npc_*` fallback, R/SR and SSR/UR animation fallback names, and rarity-based scale profiles;
+  - `LobbyBattlePresentationLayout.ts` uses Stage 12 battlefield formation offsets for desktop/horizontal Preview instead of the old equal-spaced vertical list;
+  - `LootChainGameRoot.ts` invalidates the local battle start snapshot when formation changes, so the next battle preview creates a fresh start request with the current `heroIds`;
+  - backend battle enemy/config models expose `spineAsset`, `enemy_spine_asset`, and `boss_spine_asset`.
+- Verified on 2026-06-17:
+  - Cocos Creator 3.8.8 TypeScript no-emit passed with generated Cocos declarations;
+  - `npm.cmd run check:battle-stage10` passed;
+  - `npm.cmd run check:battle-stage12` passed;
+  - `npm.cmd run check:layout` passed;
+  - `npm.cmd run check:preview` passed after focusing Cocos Creator and refreshing the Preview target;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - backend SQL `sql/65_battle_visual_spine_fields.sql` was sourced locally and returned both new columns present;
+  - backend targeted Maven suite `BattleConfigAdminServiceImplTest,PlayerBattleServiceImplTest` passed with `50 tests, 0 failures`;
+  - both repositories `git diff --check` passed with only LF/CRLF warnings.
+- Browser Preview result:
+  - logged in through existing `dev-login`, opened adventure -> formation -> battle preview;
+  - after selecting `heroIds=[5,11,9,10]`, intercepted `/api/player/battles/start` request body confirmed those ids were submitted;
+  - battle page rendered actual hero Spine for the configured heroes and mirrored enemy placeholders; old right-side settlement strategy table, BGM status strip, battle log, and performance badge were hidden from the main battlefield;
+  - only the existing battle start session was created by the current battle flow; no `POST /api/player/battles/{battleNo}/settle` was clicked or called.
+- Boundary unchanged:
+  - no battle settlement, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry was opened.
+
+## 2026-06-18 Hero Detail Spine Audio Callback Guard
+
+- User reported the hero detail page crashed with `Cannot read properties of null (reading 'isValid')`.
+- Root cause:
+  - `LobbyHeroDetailPanelRenderer.playHeroSpineAudioEvent()` loaded Spine event audio asynchronously;
+  - after returning, switching, or rerendering the hero detail page, the old `AudioSource.node` could already be `null`;
+  - the old callback still read `audioSource.node.isValid`, which raised the Cocos error overlay.
+- Fix:
+  - added `isNodeAlive()` and `isHeroSpineAudioSourceNodeValid()` in `LobbyHeroDetailPanelRenderer.ts`;
+  - guarded both the Spine event-listener entry and the delayed audio-load callback;
+  - replaced the direct `audioSource.node.isValid` access.
+- Guardrails:
+  - `scripts/check-layout.mjs` now requires the hero-detail audio source node guard and rejects direct `audioSource.node.isValid`;
+  - `scripts/check-preview-freshness.mjs` now requires the new guard token in the active Preview chunk.
+- Verification:
+  - `npm.cmd run check:layout` failed before the production fix with the expected missing guard/direct-access messages, then passed after the fix;
+  - directed Cocos TypeScript no-emit passed;
+  - `npm.cmd run check:preview` passed after focusing Cocos Creator and letting Preview rebuild;
+  - Browser Preview logged in, opened the hero list, opened SR `见习圣骑士` detail, and confirmed no `Cannot read properties of null` overlay and no page error logs;
+  - quick back/reopen stress path also produced no page errors.
+
+## 2026-06-19 Battle Scene Takeover Fix And Visual-Only Acceptance
+
+- User rejected the prior AI battle scene result because the battlefield still looked like the old rough version, hero Spine was missing in some paths, and Preview could throw Cocos runtime errors.
+- Scope handled in Cocos-only frontend:
+  - removed the accidental duplicate `assets/scripts/sc` / `assets/scripts/sc.meta` import source that could pollute Cocos Preview chunks;
+  - closed the stale Preview chunk issue by reopening Cocos Creator after old generated preview targets kept serving removed `renderStage13ResultEnhancement` / `displayName.slice` code;
+  - fixed `BattleChallengeDialogRenderer` so the adventure challenge dialog returns its root node, uses real layout width/height for the modal dim layer, and exposes close/formation/challenge actions cleanly;
+  - routed adventure map nodes, compact challenge entry, and detail CTA through the challenge dialog first; `挑战` now closes the dialog and opens `openLobbyBattlePreviewPanel(stageCode)`, while `布阵` opens formation;
+  - removed the obsolete Stage 13 result enhancement overlay from `LobbyBattlePreviewPanelRenderer` so it does not compete with the Stage 12/C1812 victory result layer;
+  - disabled the legacy Stage 13 insertion script so rerunning it cannot reintroduce stale result-banner code;
+  - updated battle animation cue mapping for SSR/UR (`atk/hit/dead/skill1/skill2/skill3/ult/victory`) and SR/R (`skill0/skill1/skill2/skill4/hurt/die/win_1/win_2`) fallback names;
+  - changed the current visual battle flow so演出完成后主按钮为 `返回大厅`，结算链路显示 `结算预留/视觉回放`，不在 UI 上触发 `/settle`;
+  - hardened hero-detail Spine audio and battle hero-card labels against async null-node / missing-name crashes.
+- 2026-06-19 additional fix:
+  - direct `挑战` from the adventure challenge dialog previously reused a stale local formation containing only the protagonist, so `POST /api/player/battles/start` sent `heroIds=[5]` while the dialog showed `出战 5/5`;
+  - `LootChainGameRoot.openLobbyBattlePreviewPanel()` now fills the default top-5 lineup before battle start when entering directly from adventure, while preserving manual choices when entering from the formation page;
+  - `scripts/check-preview-freshness.mjs` now requires `fillLobbyFormationWithDefaultHeroes` and `fillDefaultFormationForDirectChallenge` in the active Preview chunk to catch this stale-build failure mode.
+- Runtime boundary:
+  - current Preview acceptance may call `GET /api/player/battles/recent` and `POST /api/player/battles/start`;
+  - do not click or enable `POST /api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+- Browser evidence:
+  - final challenge dialog screenshot: `artifacts/battle-takeover-final5-01-challenge-dialog.png`;
+  - final battle preview screenshot: `artifacts/battle-takeover-final5-02-battle-preview.png`;
+  - final after-wait screenshot: `artifacts/battle-takeover-final5-03-after-wait.png`;
+  - final network trace contained `GET /api/player/battles/recent` and `POST /api/player/battles/start`, no `/settle` request, `heroIds=[5,11,9,10,63]`, and battle start response `lineup.length=5`.
+
+## 2026-06-19 Battle Scene Takeover Second Pass
+
+- User reported the Zhipu-generated battle scene still looked rough and errored; current pass continued the Cocos-only battle takeover without changing backend economy or settlement authority.
+- Product/UI fixes:
+  - `LobbyFormationPanelRenderer.ts` now presents formation as a battle scene: left `LobbyFormationBattlefieldScene` with 5 hero stand-ins/nameplates, right `LobbyFormationHeroPicker` with selectable owned heroes;
+  - `BattleChallengeDialogRenderer.ts` now labels rewards as `奖励预览` and explicitly states this round does not grant rewards or consume stamina;
+  - `LobbyAdventurePanelRenderer.ts` now builds the challenge dialog ally lineup from `currentLobbyFormationHeroIds()` first, falling back to default top-5 only when there is no manual formation.
+- Battle playback fixes:
+  - melee movement now advances by actor/target anchor distance rather than a small fixed slot-width nudge, so heroes and monsters move toward the center combat area;
+  - `LobbyBattleActionTargetSpineEffectLayer` consumes `skill1Kz/skill2Kz/skill3Kz/skill4Kz` from the actor Spine runtime and plays target-area skill effects when available, with a local magic-circle fallback;
+  - visual playback completion now shows `LobbyBattleStage12VictoryOverlay` even without a real settlement receipt, and the reward line says rewards are preview-only/not granted.
+- Guard/docs updates:
+  - `check-preview-freshness.mjs`, `check-layout.mjs`, `check-battle-stage6.mjs`, and `check-battle-stage12.mjs` now require the new target-effect, formation-layout, and visual-victory tokens;
+  - `docs/battle/stage6-actions-and-float-text.md` and `docs/battle/stage12-battle-scene-redesign.md` have the 2026-06-19返修 notes.
+- Boundary unchanged:
+  - current flow may create battle sessions with existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+- Final acceptance update:
+  - `LobbyAdventurePanelRenderer.ts` no longer shows the old “首通胜利按服务端白名单结算” copy in the current visual-only adventure guidance; it now states this pass only plays the battle presentation and does not submit settlement;
+  - Browser Preview path passed: login -> lobby -> adventure -> challenge dialog -> formation -> challenge -> battle presentation -> visual victory;
+  - evidence screenshots:
+    - `artifacts/battle-takeover-secondpass-06-challenge-dialog.png`;
+    - `artifacts/battle-takeover-secondpass-07-formation.png`;
+    - `artifacts/battle-takeover-secondpass-08b-battle-early.png`;
+    - `artifacts/battle-takeover-secondpass-09b-battle-victory.png`;
+  - intercepted battle requests were only `GET /api/player/battles/recent` and `POST /api/player/battles/start`;
+  - the start request used `stageCode=MAIN_1_2`, `heroIds=[5,11,9,10,63]`, `leaderHeroId=5`;
+  - no `/api/player/battles/{battleNo}/settle` request was emitted.
+
+## 2026-06-19 Battle Visual Victory Audio Patch
+
+- Completion audit found that C1812 battle audio resources and action SFX were connected, but visual-only victory had no settlement receipt and therefore did not trigger the existing `resultWin` cue.
+- `LobbyBattleAudioRuntime.ts` now maps `roundPlaying + presentationComplete + start + no settlement` to a one-shot `resultWin` cue with a `visualVictory` play key.
+- `scripts/check-battle-stage11.mjs` now probes this exact visual-only state and verifies the `resultWin` resource path and visual-only play key.
+- `scripts/check-preview-freshness.mjs` now requires the `visualVictory` token so Preview cannot silently serve the older audio runtime.
+- Boundary unchanged:
+  - visual victory audio is local-only feedback;
+  - it does not submit `/api/player/battles/{battleNo}/settle`;
+  - it does not grant rewards, consume stamina, progress mainline, mutate currency/bag/heroes, or open a new economy write entry.
+
+## 2026-06-19 Battle Flow Completion Audit Patch
+
+- Product/technical audit found two remaining frontend gaps against the user battle-flow objective:
+  - dungeon/challenge-style lobby entries still showed a placeholder instead of entering the stage map;
+  - the formation battlefield used silhouettes/nameplates instead of attempting real hero Spine previews.
+- Cocos updates:
+  - `LobbyHudRenderer.ts` now routes the `战役` hotspot, right-side challenge cards, and compact `挑战` entrance to the same mainline stage map through `openLobbyBattleMapFromDungeonEntry()`;
+  - this route only opens the map and status copy, and still requires the challenge dialog/formation/battle-start flow before any battle session can be created;
+  - `LobbyFormationPanelRenderer.ts` now tries to render `LobbyFormationActorSpinePreview` from each selected hero's `spineAsset/spineUuid`, reusing the battle Spine runtime mapping and rarity scale profile; missing or incompatible resources still fall back to `LobbyFormationActorFallbackSilhouette`.
+- Resource audit notes:
+  - backend/DB currently has 22 enabled heroes with `portrait_asset/spine_asset/spine_uuid` present, and all referenced Cocos hero Spine directories exist;
+  - not every imported hero resource exposes the strict requested animation names. Current runtime therefore keeps compatibility fallback mapping for R/SR and SSR/UR instead of pretending all source assets are strictly renamed;
+  - `R_ACOLY_02 / npc_1012` has a DB UUID mismatch risk, but current runtime loads by resource path first, so gameplay preview remains covered while DB sync can be handled separately.
+- Guard updates:
+  - `check-layout.mjs` and `check-preview-freshness.mjs` now require dungeon-entry-to-map tokens and formation Spine preview tokens.
+- Boundary unchanged:
+  - no `/api/player/battles/{battleNo}/settle` exposure;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Formation Spine Runtime Patch
+
+- Follow-up audit found that formation `LobbyFormationActorSpinePreview` could still fall back to silhouettes even when hero `.skel/.atlas/.png` resources existed.
+- Root cause was twofold:
+  - formation preview applied `SkeletonData` once and immediately fell back if Cocos Spine runtime data was not ready yet;
+  - local Cocos `library/.assets-data.json` still indexed archived `.spine` source files under `assets/resources/spine`, so Preview could keep serving stale resource metadata after the physical files were removed.
+- Cocos updates:
+  - `LobbyFormationPanelRenderer.ts` now mirrors the hero-detail stable loading path: UUID first when present, resource path fallback, runtime-data retry delays `[180, 420, 900]`, explicit `[Formation]` failure reasons, and final silhouette fallback only after retry exhaustion;
+  - `scripts/check-layout.mjs` now scans `library/.assets-data.json` when present and fails if it still indexes `db://assets/resources/spine/**/*.spine`;
+  - `scripts/check-preview-freshness.mjs` now requires the formation retry tokens so Preview cannot silently serve the older direct-fallback chunk.
+- Local recovery performed:
+  - removed stale generated `library/.assets-data.json` and Preview targets;
+  - restarted Cocos Creator for `D:\project\lootchain-cocos`;
+  - verified the rebuilt AssetDB has `0` forbidden `.spine` source refs and `check:preview` serves the updated chunk.
+- Boundary unchanged:
+  - no `/api/player/battles/{battleNo}/settle` exposure;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Default Formation Closure Patch
+
+- Browser acceptance after the Spine runtime patch exposed a separate lineup bug:
+  - challenge dialog and `battle start` still used `heroIds=[5]`;
+  - `normalizeLobbyFormationHeroIds([])` auto-added the protagonist, causing `resolveLobbyFormationHeroIds()` to treat an empty local selection as a valid 1-person lineup.
+- `LootChainGameRoot.ts` now resolves all formation consumers through `resolveDefaultFilledLobbyFormationHeroIds()`:
+  - empty or underfilled local selection is filled from the current default top-5 selectable heroes;
+  - manual selections are still normalized, capped at 5, and keep the protagonist leader.
+- Guard updates:
+  - `check-layout.mjs` and `check-preview-freshness.mjs` require the new default-filled formation helper tokens.
+- Verified browser path after Preview rebuild:
+  - lobby -> adventure map -> challenge dialog shows `出战 5/5`;
+  - formation page shows `已确认 5/5` and renders non-protagonist hero Spine actors;
+  - battle start request body uses `heroIds=[5,11,9,10,63]`, `leaderHeroId=5`;
+  - battle page shows left-side 5-person team, right-side monster placeholders, damage float/victory overlay;
+  - network trace has `POST /api/player/battles/start` and no `/settle`;
+  - evidence files: `artifacts/battle-takeover-20260620-r4-03-challenge-dialog.png`, `artifacts/battle-takeover-20260620-r4-04-formation.png`, `artifacts/battle-takeover-20260620-r4-05-battle-early.png`, `artifacts/battle-takeover-20260620-r4-06-battle-late.png`, `artifacts/battle-takeover-20260620-r4-summary.json`.
+- Boundary unchanged:
+  - no `/api/player/battles/{battleNo}/settle` exposure;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Takeover Repair R6
+
+- Took over after the external AI battle-scene pass still looked like a placeholder and could show `Cannot read properties of null (reading 'isValid')`.
+- Root-cause findings:
+  - the battle timeline had 45-60 seconds of events, but `LobbyBattleFlow.ts` compressed it into 4 ticks over 3 seconds;
+  - the renderer mapped `presentationStep / 4`, so early screenshots could jump straight to damage or victory;
+  - async UI/Spine/audio callbacks could still read `node.isValid` after the node owner was destroyed;
+  - battle actor Spine loading tried resource path before UUID, which could miss or misapply existing hero Spine data.
+- Cocos updates:
+  - `LobbyBattleState.ts` now defines `LOBBY_BATTLE_PRESENTATION_STEP_COUNT = 24` and `LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS = 500`;
+  - `LobbyBattleFlow.ts`, `LobbyBattlePresentationState.ts`, and `LobbyBattlePreviewPanelRenderer.ts` now use that shared 24-step cadence so approach, hit, counter, assist, finish, and visual victory are visible;
+  - `renderImpactLayer()` now only shows hit/damage effects for the current hit/damage cue instead of falling back to a global first damage event;
+  - `LobbyBattlePreviewPanelRenderer.ts` now loads hero battle Spine by UUID first when available, falls back to resource path only after UUID failure, and destroys the fallback silhouette for both ally and enemy when Spine applies;
+  - `LobbyHeroDetailPanelRenderer.ts`, `LobbyBattlePreviewPanelRenderer.ts`, and `UiSpriteFrameCache.ts` now guard stale async callbacks with safe `node.isValid` checks;
+  - added `check:battle-stage13d` and `check:battle-stage13g`, and included both in `check:battle-stage13i`, so strict rarity animation mapping and audio runtime integration are guarded rather than only module-existence checked.
+- Browser Preview acceptance evidence:
+  - `artifacts/battle-takeover-20260620-r6-01-challenge-dialog.png`;
+  - `artifacts/battle-takeover-20260620-r6-02-formation.png`;
+  - `artifacts/battle-takeover-20260620-r6-03-battle-start-0p1s.png`;
+  - `artifacts/battle-takeover-20260620-r6-04-battle-approach-0p7s.png`;
+  - `artifacts/battle-takeover-20260620-r6-05-battle-hit-1p5s.png`;
+  - `artifacts/battle-takeover-20260620-r6-08-battle-victory-12p8s.png`;
+  - `artifacts/battle-takeover-20260620-r6-summary.json`.
+- r6 network evidence:
+  - `POST /api/player/battles/start` exactly once;
+  - request body used `stageCode=MAIN_1_2`, `heroIds=[5,11,9,10,63]`, `leaderHeroId=5`;
+  - no `/api/player/battles/{battleNo}/settle` request;
+  - no Cocos error overlay; filtered console errors were 0 after excluding Chromium screenshot `ReadPixels` performance warnings.
+- Boundary unchanged:
+  - visual battle still does not submit settle;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Convergence Patch
+
+- User requirement: left heroes and right monsters/BOSS must first move toward the center after battle start; combat actions can only begin after both sides have converged.
+- Cocos updates:
+  - `LobbyBattleState.ts` now defines `LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 2`;
+  - `LobbyBattlePresentationState.ts` shows `开场汇合 / 接敌前进` copy during the opening window and keeps `damageText` empty;
+  - `LobbyBattlePreviewPanelRenderer.ts` now resolves `BattleOpeningConvergenceState`, suppresses action/assist cues while active, returns only the timeline `battle_start` event during the opening window, and delays the combat timeline by the convergence step count;
+  - opening convergence now also gates `visibleDamagePreviewEvent/visibleBuffPreviewEvent` and skips the floating text layer while active, so damage numbers and buff/assist floats cannot appear before the meet-up ends;
+  - all renderable ally/enemy actors tween toward the center during the opening window and pass `move` as the action animation cue, allowing the Spine runtime to pick `run` when available;
+  - `renderBattleOpeningConvergenceCue()` adds a lightweight center cue so screenshots show the opening meet-up state distinctly.
+- Guard updates:
+  - added `npm.cmd run check:battle-stage13j`;
+  - `check:battle-stage13i` now includes `13J`;
+  - `check:preview` freshness tokens now include the opening convergence renderer hooks.
+- Boundary unchanged:
+  - visual battle still does not submit settle;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Convergence Completion Guard Patch
+
+- Follow-up acceptance found the opening convergence worked, but the battle-complete refresh could still be intercepted by the renderer's same-scene incremental path, producing a black screen after the visual timeline ended.
+- Cocos updates:
+  - `LootChainGameRoot.refreshLobbyBattlePreviewPanel()` keeps incremental playback only while `start && !presentationComplete && canRefreshPlayback()`;
+  - `LobbyBattlePreviewPanelRenderer.canRefreshPlayback()` now also blocks incremental playback when `presentationComplete`, `settling`, or `settlement` is present;
+  - `LobbyBattlePreviewPanelRenderer.render()` now bypasses the same-scene `refreshPlayback()` path for those full-render states, so the visual victory/result layer can be rebuilt normally;
+  - opening convergence behavior remains unchanged: steps 1-2 show `开场汇合`, both sides play `move/run` toward the center, and action/assist/floating text are suppressed until the convergence window ends.
+- Guard updates:
+  - `check:battle-stage13k` now asserts the renderer-side full-render guard as well as the root-side completion guard;
+  - `check:battle-stage13i` continues to aggregate Stage 13A-H/J/K plus layout.
+- Browser Preview evidence on `http://localhost:7456/`:
+  - `artifacts/battle-stage13k-opening-0600ms.png`: opening meet-up, no damage text;
+  - `artifacts/battle-stage13k-opening-1300ms.png`: both teams closer to center, no damage text;
+  - `artifacts/battle-stage13k-first-action-2200ms.png`: first damage appears only after convergence;
+  - `artifacts/battle-stage13k-mid-combat-5400ms.png`: damage/heal/shield/受击 feedback appears during combat;
+  - `artifacts/battle-stage13k-complete-13900ms.png`: visual victory/result panel renders, no black screen.
+- Verification status:
+  - directed Cocos TypeScript no-emit passed;
+  - `npm.cmd run check:battle-stage13k`, `check:battle-stage13i`, and `check:layout` passed;
+  - browser console errors after the 2026-06-20T07:10:23.469Z baseline were 0;
+  - `check:preview` still reports stale chunks for multiple non-battle modules on both 7456/7457, so Creator Preview should be rebuilt/refocused before treating freshness as green.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-24 Battle Replay Full HP Loop R18
+
+- User feedback focus from actual recording: only one hero seemed to fight, some heroes appeared to teleport, damage floating text was missing, monster HP stayed full, and victory appeared before monsters were visually defeated.
+- Root cause confirmed:
+  - Cocos Preview was still serving a stale `LobbyBattleReplayModel` chunk that limited actions to the old `action_start` events;
+  - enemy counter actions were scheduled too late, so enemies could die before damaging allies;
+  - melee damage timing happened before several actors reached target-front contact, making some hits read as air attacks.
+- Cocos/source updates:
+  - `LobbyBattleReplayModel.ts` now generates a full local visual replay loop with synthetic combat actions until one side is defeated; first ally cycle still ensures all selected heroes can participate, while enemy counters are interleaved after every two ally actions;
+  - replay hits now carry `hpBefore/hpAfter/timeMs`, and existing `LobbyBattlePresentationHp.ts` consumes those hit frames so unit HP and enemy total HP decrease at the same time as damage cues;
+  - melee hit delay is extended to contact timing, and `LobbyBattlePreviewPanelRenderer.ts` increases front-line charge distance to `240` so actors fight at target-front contact rather than in separated columns;
+  - added `scripts/repair-preview-battle-replay-loop.mjs` and `scripts/repair-preview-battle-contact-spacing.mjs` for stale Creator Preview chunks only;
+  - `scripts/check-battle-stage13z2.mjs` and `scripts/check-preview-freshness.mjs` now guard the full replay loop, enemy counter scheduling, stale `actionStarts` chunks, and contact spacing.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - latest telemetry recorded `allMeleeBasicAttackMissCount=0`, `allMeleeBasicAttackContactMedian=40.31`, `enemyHpRatioMin=0`, `allyHpRatioMin=0.0649`, `damageFloatSampleCount=7`, `hitVfxAssetSampleCount=7`, `deadUnitHitSampleCount=0`, `srRRunCueCount=18`, and `srRAttackCueCount=7`;
+  - screenshots were refreshed under `artifacts/battle-center-convergence-current/`.
+- Verification passed:
+  - `npm.cmd run repair:preview-battle-replay-loop`;
+  - `npm.cmd run repair:preview-battle-contact-spacing`;
+  - `npm.cmd run check:battle-stage13z2`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run screenshot:battle-center`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-24 Battle Replay Director Stage13Z
+
+- User feedback focus: current battle process still felt architecturally wrong. Monsters could move to a ranged hero while melee heroes attacked empty space, and HP bars must strictly decrease according to actual hit values rather than loose time-based inference.
+- Architecture decision:
+  - stop expanding ad-hoc battle movement/HP inference inside `LobbyBattlePreviewPanelRenderer`;
+  - introduce a pure replay model first, then let action cues and HP presentation consume that replay;
+  - keep backend protocol and settlement flow unchanged.
+- Cocos/source updates:
+  - added `docs/superpowers/plans/2026-06-24-battle-replay-director-stage13z.md` as the implementation plan;
+  - added `LobbyBattleReplayModel.ts`, which converts `BattlePresentationSnapshot + BattlePresentationTimeline` into ordered `BattleReplayAction` records;
+  - each `BattleReplayHitEvent` carries `hpBefore / hpAfter`, `amount`, `critical`, `killed`, `actorKey`, and `targetKey`;
+  - `LobbyBattleActionPresentation.ts` now builds `melee_move / basic_attack / ranged_projectile / damage_float / hit_float` cues from replay actions instead of directly scanning raw timeline events first;
+  - `LobbyBattlePresentationHp.ts` now applies replay hit events and sets `currentHp = hit.hpAfter`, so HP bars are tied to the same hit event that generates damage text;
+  - `LobbyBattlePreviewPanelRenderer.ts` adds `BATTLE_ENABLE_IDLE_CLASH_COMBAT = false`, preventing non-current units from looping attack animations against empty space;
+  - `LobbyBattlePreviewPanelRenderer.ts` adds `BATTLE_USE_STICKY_CONTACT_POSITIONS = false`, preserving the old sticky cache for compatibility while no longer using old contact points as the next home position.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - latest telemetry recorded `telemetry samples=1704`, `telemetryHpSamples=160`, `enemyHpMin=0.2644`, `allyHpMin=0.4111`, `telemetryFloatingTextSamples=7`, `telemetryHitVfxAssetSamples=6`, and `telemetryDeadUnitHitSamples=0`;
+  - visual self-preview checked `artifacts/battle-center-convergence-current/10-basic-impact-3900ms.png` and `13-visual-result-17100ms.png`;
+  - remaining visual gap: lane/collision separation is still not final; several units can visually crowd around the same target region. Next stage should build lane reservation/contact slots in the replay director.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13z`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run screenshot:battle-center`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-24 Battle HP/VFX Sync Stage 13Y
+
+- User feedback focus: latest battle recording showed no attack/hit floating damage numbers, and hero/enemy HP bars stayed full through the whole fight.
+- Root cause confirmed:
+  - `LobbyBattlePreviewPanelRenderer.ts` already generated action cues, hit effects, and actor positions, but the partial `refreshPlayback()` path updated only positions/spine/effects;
+  - per-unit HP bars and top boss gauge were created by full render, then not refreshed as `damage_preview` cues landed;
+  - stale Cocos Preview chunks could keep the old partial refresh path after source edits, so local browser acceptance needed a targeted Preview repair without forcing full rerender.
+- Cocos/source updates:
+  - added `LobbyBattlePresentationHp.ts` to compute presentation-only HP state from battle timeline cues; it applies landed `damage_preview` and ally-side numeric heal `buff_preview`, tracks dead unit keys, and forces enemy HP to zero only in result phase;
+  - `LobbyBattlePreviewPanelRenderer.ts` now feeds HP state into top boss gauge and per-unit HP bars during both full render and partial playback refresh;
+  - dead units switch to configured death animation (`dead/die`) or fade and are excluded from continued hit-feedback telemetry;
+  - imported real hit effect textures from `C:\Users\axian\Desktop\C1812-1` into `assets/resources/ui/battle/c1812/effects/`: `hit_slash`, `hit_burst`, `hit_ring`, `hit_spark`;
+  - `C1812CommonUiAssets.ts` and `UiSpriteFrameCache.ts` now expose/preload those hit assets, while the old `blood_deco` constant remains only as backward-compatible guard data;
+  - added `scripts/check-battle-stage13y.mjs`, included it in `check:battle-stage13i`, and extended `scripts/screenshot-battle-center-convergence.cjs` to fail if HP never decreases, hit VFX assets are missing, damage floats are absent, or dead units continue taking hit feedback;
+  - added `scripts/repair-preview-battle-hp-vfx.mjs` plus `npm.cmd run repair:preview-battle-hp-vfx` to patch stale Preview chunks without disabling partial refresh.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - latest telemetry recorded `telemetry samples=1376`, `telemetryHpSamples=160`, `enemyHpRatioMin=0.2647`, `allyHpRatioMin=0.4118`, `telemetryFloatingTextSamples=7`, `telemetryHitVfxAssetSamples=6`, and `telemetryDeadUnitHitSamples=0`;
+  - visual self-preview checked `artifacts/battle-center-convergence-current/10-basic-impact-3900ms.png` and `13-visual-result-17100ms.png`; actor HP bars and top boss HP visibly decrease, with real slash/burst/ring/spark hit layers present.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13y`;
+  - `npm.cmd run repair:preview-battle-hp-vfx`;
+  - `npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Verification note:
+  - directed TypeScript no-emit was not available in this workspace because `typescript` / `node_modules/.bin/tsc.cmd` is missing; use the Cocos Creator compiler or install the project compiler before claiming TS no-emit.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Formation Visual Scale Unification R14
+
+- User feedback focus: formation page actors were still visually inconsistent even when numeric scale caps looked close; the requirement is visual parity, not identical bbox height.
+- Root cause confirmed:
+  - SSR/UR named Spine assets such as `Eulenspigel` and `Nuu` have long-body / long-hair silhouettes, so equal bbox height makes them visually dominate Q-style `act_*` SR/R heroes;
+  - the previous formation positions used a perspective-like front/back layout, making whichever hero landed near the center/front look oversized;
+  - the acceptance script still used a single global bbox-height ratio, which incorrectly rejected the intentional visual compensation needed across different art styles.
+- Cocos/source updates:
+  - `LobbyFormationPanelRenderer.ts` now uses a flatter 3+2 formation layout instead of the previous perspective-heavy positions, reducing apparent foreground dominance;
+  - `LobbyBattleUnitSpineRuntime.ts` now applies formation-specific visual caps: `Eulenspigel=0.39`, `Nuu=0.43`, other named SSR/UR default `0.48`, SR/R `act_*` preview `0.56`;
+  - `scripts/screenshot-formation-switch.cjs` now validates formation visual size by art family: named/realistic actors use a lower bbox range, while SR/R `act_*` actors use a higher bbox range to look visually comparable;
+  - `scripts/repair-preview-stage13v.mjs`, `check-battle-stage13v.mjs`, `check-battle-stage13w.mjs`, and `check-preview-freshness.mjs` were synced to the same formation visual compensation values.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 4 after bench, 5 after add, 0 battle start requests, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - latest formation telemetry: stylized SR/R `min=240.8 / median=240.8 / max=240.8 / ratio=1`, realistic named actors `min=167.7 / median=184.9 / max=206.4 / ratio=1.23`;
+  - visual self-preview checked `artifacts/formation-switch-current/04-formation-open.png` and `artifacts/formation-switch-current/06-after-add-other.png`; black long-body hero no longer visually overwhelms the SR/R actors.
+- Boundary unchanged:
+  - formation screenshot flow must not call battle start or settle;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Formation Eulenspigel and Nameplate Readability R15
+
+- User feedback focus: `灰烬猎手·罗恩` still looked larger than the other formation heroes, and every formation actor nameplate was too small to read comfortably.
+- Root cause confirmed:
+  - `Eulenspigel` has a long-body silhouette and high visual mass even after the first named-Spine compensation, so it needs its own lower formation preview cap;
+  - the previous formation actor name font was `12 * scale` and metadata was `8 * scale`, which became hard to read once the battlefield view was zoomed out.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` lowers `Eulenspigel` formation preview cap from `0.39` to `0.34`;
+  - `LobbyFormationPanelRenderer.ts` increases formation actor name font to `13.8 * scale` and metadata font to `9.2 * scale` (15% larger), with a wider/taller nameplate (`152 * scale` max width, `32 * scale` height);
+  - `scripts/screenshot-formation-switch.cjs` now validates `Eulenspigel` separately (`135..150` visual height) while keeping regular named-Spine and SR/R `act_*` checks separate;
+  - `scripts/repair-preview-stage13v.mjs`, `check-battle-stage13v.mjs`, and `check-preview-freshness.mjs` were synced so stale Preview chunks and static guards use the same values.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 4 after bench, 5 after add, 0 battle start requests, 0 settle requests, 0 page errors, and 0 console errors;
+  - latest telemetry: `Eulenspigel estimatedHeight=146.2`, `Nuu=184.9`, `Carmilla=206.4`, SR/R stylized actors `240.8`;
+  - visual self-preview checked `artifacts/formation-switch-current/06-after-add-other.png`; `灰烬猎手·罗恩` no longer dominates the formation, and actor nameplates are more readable.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run check:battle-stage13w`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - Creator directed TypeScript no-emit for `LobbyBattleUnitSpineRuntime.ts` and `LobbyFormationPanelRenderer.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - formation screenshot flow must not call battle start or settle;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Formation Nameplate Readability R16
+
+- User feedback focus: the actor nameplate text under formation heroes was still too small, including hero name, rarity, and hero level.
+- Cocos/source updates:
+  - `LobbyFormationPanelRenderer.ts` raises formation actor name font from `13.8 * scale` to `16 * scale`;
+  - formation actor rarity/level metadata font is raised from `9.2 * scale` to `11.5 * scale`;
+  - the actor nameplate width/height is increased from `152 * scale / 32 * scale` to `176 * scale / 40 * scale`, with larger text bounds so long names do not immediately shrink back down;
+  - `scripts/repair-preview-stage13v.mjs` patches both old `12/8` nameplates and the previous `13.8/9.2` nameplates to the new readable values in stale Preview chunks;
+  - `scripts/check-battle-stage13v.mjs` now guards the new `16 * scale` and `11.5 * scale` values.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 4 after bench, 5 after add, 0 battle start requests, 0 settle requests, 0 page errors, and 0 console errors;
+  - visual self-preview checked `artifacts/formation-switch-current/06-after-add-other.png`; lower hero names and `rarity · Lv` lines are larger and more readable.
+- Boundary unchanged:
+  - formation screenshot flow must not call battle start or settle;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle Mixed Spine Combat Scale R15
+
+- User feedback focus: battle scene still showed inconsistent hero sizes in a mixed lineup, even after formation preview size was normalized.
+- Root cause confirmed:
+  - previous `screenshot:battle-center` forced an SR/R-only lineup, so it could prove SR/R consistency but did not cover real mixed combat lineups with SSR/UR named Spine packages plus SR/R `act_*` packages;
+  - SSR named assets were capped by `maxScale=0.24`, leaving examples such as `SSR_LIVIA`/`SSR_KANE` around `181-195px` visual height in combat;
+  - SR/R combat actors were capped at `slotHeight * 0.92`, keeping them around `301px`, so mixed battle lines looked uneven even when each family passed its own guard.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` raises the named SSR/UR profile to `targetHeightRatio=0.82`, `maxScale=0.32`, `scaleMultiplier=0.94`;
+  - SR/R combat cap is reduced from `BATTLE_SR_R_COMBAT_MAX_HEIGHT_RATIO=0.92` to `0.84`, keeping SR/R readable without overpowering named SSR/UR units;
+  - `screenshot-battle-center-convergence.cjs` now supports `BATTLE_ACCEPTANCE_FORMATION=mixed`, forcing a lineup with both named Spine heroes and SR/R `act_*` heroes;
+  - the same screenshot script now records and validates all ally battle visual height/width metrics (`allySpineVisualHeight*`, `allySpineVisualWidth*`), not only SR/R height;
+  - `repair-preview-stage13v.mjs`, `check-preview-freshness.mjs`, and `check:battle-stage13v` were updated so stale Preview repair and static guards keep the same mixed combat scale.
+- Runtime acceptance on `http://localhost:7456/`:
+  - RED before runtime fix: `BATTLE_ACCEPTANCE_FORMATION=mixed npm.cmd run screenshot:battle-center` failed with mixed lineup `UR_EVELYN/SSR_KANE/SSR_LIVIA/SR_PALADIN_02/SR_PRIEST_01`, because `allySpineVisualHeightMin=181.22`;
+  - GREEN after runtime fix and Preview repair: mixed lineup passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - latest mixed scale telemetry: `allySpineVisualHeightMin=241.62`, `allySpineVisualHeightMedian=260.96`, `allySpineVisualHeightMax=275.52`, `allySpineVisualHeightRatio=1.14`, `allySpineVisualWidthMax=505.32`, `allySpineVisualWidthRatio=1.94`;
+  - default SR/R acceptance also passed after the cap reduction, with `srRSpineVisualHeightMedian=275.53`, `srRSpineVisualHeightRatio=1`, and `allMeleeBasicAttackMissCount=0`.
+- Verification passed:
+  - `npm.cmd run repair:preview-stage13v`;
+  - `BATTLE_ACCEPTANCE_FORMATION=mixed npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run check:battle-stage13w`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run check:layout`;
+  - directed Creator TypeScript no-emit on `LobbyBattleUnitSpineRuntime.ts` and `LobbyBattlePreviewPanelRenderer.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle Formation Hero Visual Scale R14
+
+- User feedback focus: formation screenshot showed some heroes extremely large while others were tiny, even when all 5 selected heroes should occupy comparable readable board space.
+- Root cause confirmed:
+  - SSR/UR named Spine packages such as `Nuu`, `Eulenspigel`, `Carmilla` and SR/R `act_*` packages have very different raw bounds, whitespace and art style proportions;
+  - the previous formation scale guard trusted raw skeleton bounds too much, so long named skeletons could dominate the board while smaller SR/R assets appeared visually weaker;
+  - `screenshot:formation-switch` only asserted a narrow SR/R sample before this pass, so a mixed 5-hero team could still pass while visually inconsistent.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` now uses asset-specific formation caps for oversized named assets (`Eulenspigel=0.56`, `Nuu=0.58`), a default named-asset cap of `0.62`, and an SR/R formation cap of `0.74`;
+  - combat SR/R scale remains separate from formation (`BATTLE_SR_R_COMBAT_MAX_HEIGHT_RATIO=0.92`) so the battle-side readable SR/R size is not reduced by this formation fix;
+  - `LobbyFormationPanelRenderer.ts` records `primaryAsset` in formation visual telemetry, making future screenshot failures explain which Spine package caused the size drift;
+  - `screenshot-formation-switch.cjs` now validates all selected actor heights, not only SR/R samples, and reports min/median/max/ratio plus hero primary asset;
+  - `LobbyBattlePreviewPanelRenderer.ts` prefers the C1812 skill target frame sprite before falling back to the old procedural ellipse;
+  - `repair-preview-stage13v.mjs`, `check-preview-freshness.mjs`, `check:battle-stage13v`, and `check:battle-stage13w` were updated to keep stale Cocos Preview chunks aligned with the same formation scale constants and target-frame behavior.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 0 battle start requests, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - latest formation telemetry recorded `min=240.8`, `median=266.6`, `max=318.2`, `ratio=1.32`;
+  - sampled heroes: `UR_EVELYN/Nuu=249.4`, `SSR_LIVIA/Carmilla=266.6`, `SSR_RON/Eulenspigel=240.8`, `SR_PALADIN_02/act_1002=318.2`, `SR_PRIEST_01/act_21006=318.2`;
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors, confirming the battle flow still keeps movement/attack checks intact after the formation-only cap change.
+- Verification passed:
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run check:battle-stage13w`;
+  - directed Creator TypeScript no-emit on `LobbyBattleUnitSpineRuntime.ts`, `LobbyFormationPanelRenderer.ts`, and `LobbyBattlePreviewPanelRenderer.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Verification note:
+  - full-project direct `tsc -p tsconfig.json --noEmit` still fails in the shell because the current TypeScript environment cannot resolve Cocos `cc` declarations across the project; touched-file directed no-emit passed with `--types temp/declarations/cc`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale, Target-Front Melee, and Background R14
+
+- User feedback focus: screenshot still showed SR/R actors looking out of scale, and melee heroes must run to the monster/Boss before attacking rather than attacking from the original position.
+- Root cause confirmed:
+  - SR/R `act_*` combat skeletons include inflated raw bounds, so battle needed a stricter visual-height cap while formation needed a separate readable cap;
+  - stale Cocos Preview chunks could keep old background constants and old SR/R runtime scale literals even when TypeScript source had already changed;
+  - newly copied `stage13z`/`stage13y` resources were not yet imported into Cocos library, so direct `resources.load()` failed in Preview.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` now caps SR/R combat actors with `BATTLE_SR_R_COMBAT_MAX_HEIGHT_RATIO = 0.92` and formation actors with `BATTLE_SR_R_FORMATION_MAX_HEIGHT_RATIO = 1.02`;
+  - `LobbyBattlePreviewPanelRenderer.ts` keeps melee target-front duel contact and raises defender meet-up to `BATTLE_MELEE_DUEL_DEFENDER_STEP_RATIO = 0.1`, with combat nameplates hidden during normal round playback to reduce clutter;
+  - assist floating text was reduced to one primary cue per assist event, so heal/shield/buff numbers no longer dump in one stack;
+  - `battle_scene_cathedral.png` keeps the already-imported resource UUID but its source image is replaced by `bgState2.png` from `C:\Users\axian\Desktop\决胜之心3.8.99\UI\图标`, giving Preview a real image-backed desert battle scene without waiting for a new resource directory import;
+  - `repair-preview-stage13v.mjs`, `check-preview-freshness.mjs`, `check:battle-stage13v`, `check:battle-stage13w`, and `screenshot:battle-center` now guard this scale/background behavior for stale Preview chunks.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - latest battle telemetry: `sampleCount=750`, `srRRunCueCount=15`, `srRAttackCueCount=4`, `srRSkillCueCount=1`, `srRBasicAttackMedianDistance=40.31`, `allMeleeBasicAttackMissCount=0`, `backgroundSource=asset/backgroundLoaded=true`, `srRSpineVisualHeightMedian=301.75`, `srRSpineVisualHeightRatio=1`;
+  - `npm.cmd run screenshot:formation-switch` passed with SR/R formation height `438.6` for both sampled heroes, 0 battle start requests, 0 settle requests, 0 page errors, and 0 filtered console errors.
+- Verification passed:
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run check:battle-stage7`;
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run check:battle-stage13w`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Target-Front Melee Contact R14
+
+- User feedback focus: SR heroes in battle/formation still read too small compared with other heroes, and melee heroes must close to the monster before playing their normal attack or skill instead of attacking from the home slot.
+- Root cause confirmed:
+  - SR/R `act_*` skeletons and SSR/UR skeletons have different raw bounds, so SR/R needed a stronger normalized visual-height profile rather than the previous conservative cap;
+  - `basic_attack` was still able to start while the displayed root-motion position was smoothing toward the target-front point, so later melee actors could visibly attack before reaching close range;
+  - stale Cocos Preview chunks rendered the cathedral background but left background telemetry at the reset default `asset/false`, which made screenshot verification fail even after the scene was visible.
+- Current effective source behavior:
+  - `LobbyBattleUnitSpineRuntime.ts` sets R/SR battle scale to `targetHeightRatio=1.58`, `maxWidthRatio=3.05`, `maxScale=2.9`, `scaleMultiplier=2.72`; formation preview uses `targetHeightRatio=1.42`, `maxScale=2.72`, `scaleMultiplier=2.62`;
+  - `LobbyBattlePreviewPanelRenderer.ts` keeps root motion owned by `melee_move` only; `basic_attack` no longer owns root motion, and after target-front contact SR/R plays `skill0` while SSR/UR plays `atk`;
+  - melee target-front gap is clamped at `58-104 * scale`, and root-motion display smoothing allows enough frame movement to reach contact without snapping;
+  - `LobbyBattleActionPresentation.ts` moves `basic_attack` from `940ms` to `1420ms`, so run/contact resolves before the attack animation and damage feedback;
+  - battle background fallback now upgrades to the real `resources.load(LOBBY_BATTLE_SCENE_BG_ASSET, SpriteFrame)` frame when it loads, and the Preview repair script only records `asset/true` when `host.addSprite()` returns a real Sprite.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - forced SR/R formation remained active (`SR_PALADIN_02`, `SR_ABYSS_06`);
+  - latest battle telemetry: `srRSpineVisualHeightMin=564.14`, `srRSpineVisualHeightMedian=564.16`, `srRSpineVisualHeightMax=564.17`, `srRSpineVisualHeightRatio=1`, `srRarityHeightRatio=1`, `srRBasicAttackClosestDistance=122.57`, `srRBasicAttackMedianDistance=129.45`, `allMeleeBasicAttackContactMedian=113.29`, `allMeleeBasicAttackMissCount=0`, `basicAttackRootMotionSampleCount=0`, `backgroundSource=asset/backgroundLoaded=true`;
+  - `npm.cmd run screenshot:formation-switch` passed with selected count `5 -> 4 -> 5`, 0 battle start requests, 0 settle requests, 0 page errors, and 0 filtered console errors.
+- Verification passed:
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run check:battle-stage13w`;
+  - `npm.cmd run check:battle-stage13x`;
+  - `npm.cmd run repair:preview-stage13v`;
+  - `node --check scripts/repair-preview-stage13v.mjs`;
+  - `node --check scripts/check-battle-stage13v.mjs`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Melee Contact R12
+
+- User feedback focus: the latest screenshot still showed SR actors visually inconsistent, and melee units had to clearly approach monsters before attacking instead of attacking from the home slot.
+- Root cause confirmed:
+  - R/SR profile was previously pushed too high while fixing the tiny-SR issue, which made some `act_*` actors large enough to crowd the formation/battle field;
+  - `basic_attack` root motion could still begin from the home interpolation instead of the already reached target-front point, making some hits read as home-position attacks;
+  - the running Cocos Preview may still serve an old compiled battle chunk without the newer background loader, so the fallback scene must remain readable instead of near-black.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` now uses a tighter R/SR battle profile (`targetHeightRatio=1.12`, `maxWidthRatio=2.42`, `maxScale=1.5`) and a formation SR/R cap of `0.66`, keeping SR/R readable without covering the board;
+  - `LobbyBattleActionPresentation.ts` delays `basic_attack` to `timeOffsetMs: 1280`, giving `melee_move` a visible run/approach window first;
+  - `LobbyBattlePreviewPanelRenderer.ts` sets `BATTLE_ACTOR_BASIC_ATTACK_MOTION_PREWARM_MS=520`, tightens the duel contact gap to `0.12`, strengthens defender meet-up to `0.34`, and uses a brighter cold-color fallback battlefield while keeping Stage13Y PNG asset paths preferred;
+  - `check:battle-stage13v`, `check:battle-stage13w`, `check:battle-stage13x`, `check-preview-freshness`, and `repair-preview-stage13v.mjs` were synchronized with the same SR/R scale and target-front contact contract.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 4 after bench, 5 after add, 0 battle start requests, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, 0 filtered console errors, and 849 telemetry samples;
+  - latest battle telemetry: `srRRunCueCount=15`, `srRAttackCueCount=1`, `srRSkillCueCount=2`, `srRMeleeApproachSampleCount=7`, `srRBasicAttackAdvanceMedian=118.09`, `srRBasicAttackMedianDistance=104`, `allMeleeBasicAttackContactMedian=104`, `allMeleeBasicAttackMissCount=0`;
+  - latest SR/R height telemetry: `srRSpineVisualHeightMin=398.82`, `srRSpineVisualHeightMedian=425.57`, `srRSpineVisualHeightMax=425.63`, `srRSpineVisualHeightRatio=1.07`, `formationSrRVisualHeightOk=true`.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run repair:preview-stage13v` patched the current local Preview chunk where needed before screenshot verification.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-21 Battle SR/R Scale and Melee Contact Fix R8
+
+- User feedback focus:
+  - battle screenshot still showed SR/R actors as very small compared with other heroes;
+  - melee actors still appeared to attack from their original side instead of clearly running to the target-front contact area first;
+  - formation preview also exposed inconsistent actor sizes after the battle scale changes.
+- Root cause:
+  - several SR/R `act_*` Spine runtime bounds are inflated by attack effects or very wide animation extents, so using raw `runtimeData.width/height` made the actual character body look tiny;
+  - current local Cocos Preview was serving stale Formation chunks where `scaleProfile` was still `hero.rarity`, so formation-specific scale caps did not apply until the temp chunk was patched;
+  - the action timeline could enter `basic_attack` too quickly after opening convergence, making the preceding `melee_move/run` hard to read.
+- Cocos updates:
+  - `LobbyBattleUnitSpineRuntime.ts` now normalizes inflated SR/R `act_*` bounds before fitting scale; normal small-bound `act_*` assets such as `act_1002` and `act_1036` are left on their real runtime bounds;
+  - `resolveBattleUnitSpineTelemetryVisualHeight()` reports normalized visual height for screenshot validation, so oversized raw Spine bounds no longer hide actual character-size regressions;
+  - battle SR/R max visual height remains `slotHeight * 1.25`, while formation preview uses a separate max-height ratio resolved by `resolveBattleUnitFormationPreviewMaxHeightRatio()`;
+  - formation actors now always pass `scaleProfile: 'FORMATION_PREVIEW'`;
+  - `Eulenspigel` / `SSR_RON` has a formation-only height override `0.55` so it no longer dominates the formation board;
+  - melee timing remains opening convergence -> post-convergence delay `3` steps -> `melee_move` `1880ms` using `run` -> `basic_attack` after `1760ms` using `skill0/atk` -> hold at target-front -> return `1680ms`;
+  - nonblack fallback landscape remains in battle field for Preview sessions where `ui/battle/stage13v/forest_battle_bg` has not been imported yet.
+- Guard/tooling updates:
+  - `check:battle-stage13v` now checks inflated `act_*` bounds normalization, normalized telemetry height, formation `scaleProfile: 'FORMATION_PREVIEW'`, Eulenspigel formation override, and Preview repair coverage;
+  - `repair-preview-stage13v.mjs` now patches stale Preview chunks for runtime scale normalization, formation `scaleProfile`, Eulenspigel formation override, battle fallback landscape, melee timing, and old cathedral/old root-motion leftovers;
+  - `screenshot-battle-center-convergence.cjs` now recomputes SR/R visual height from normalized bounds when Preview telemetry still comes from an old chunk.
+- Runtime acceptance:
+  - `npm.cmd run screenshot:battle-center` produced refreshed screenshots in `artifacts/battle-center-convergence-current/`;
+  - latest run recorded one `POST /api/player/battles/start`, zero `/settle`, zero page errors, zero filtered console errors, and `1073` telemetry samples;
+  - visual spot-check: `09-mid-combat-5100ms.png` shows SR/R actors at readable battle size and melee units in the contact area instead of original left-side columns;
+  - `npm.cmd run screenshot:formation-switch` produced refreshed screenshots in `artifacts/formation-switch-current/`; formation switch still preserved `5/5 -> 4/5 -> 5/5`, with zero battle start requests, zero settle requests, zero page errors, and zero filtered console errors.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-21 Stage 13V Close-Combat Visual Correction
+
+- User feedback focus:
+  - SR/R heroes in formation and battle looked much smaller than SSR/UR heroes;
+  - melee heroes still appeared to attack in place instead of running to the monster front;
+  - floating damage numbers were too cluttered and should come from each action timing, not from a batch overlay;
+  - battle background should move closer to the side-scrolling RPG reference instead of the dark report-like combat screen.
+- Cocos updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now builds `createBattleFrameAnchorMap()` from each unit's current frame position; projectile, impact, assist aura, and floating text layers use current frame anchors instead of stale home anchors;
+  - actors are rendered through `renderUnitActorsByDepth()`, so the active melee attacker and target draw in the foreground while they meet at the target front;
+  - melee actions now use `resolveActorTargetMeetOffset()` and `resolveActorDefenderMeetOffset()`: the attacker moves to the target-front contact point and the defender steps forward during `melee_move` / `basic_attack`;
+  - root motion and Spine animation share the same `rootMotionCue`; SR/R `run` and `skill0` playback no longer desync during approach/strike;
+  - action floating text is one short-lived value per current hit, anchored to the current target frame; assist floating text uses one staged cue and no longer renders caption spam;
+  - removed the old `LobbyBattleStage12SceneGuide` report-like guide overlay;
+  - added forest side-scrolling battle resources from `C:\Users\axian\Desktop\决胜之心3.8.99\UI\图标\F (2).png`, `ground1.png`, and `ground1_3.png` into `assets/resources/ui/battle/stage13v/`, with background, ground, and foreground layers rendered under the fight;
+  - `LobbyFormationPanelRenderer.ts` enlarges the actual visual box passed to `resolveBattleUnitSpineScale()` (`visualWidth = width * 1.62`, `visualHeight = height * 1.34`) so SR/R formation previews are genuinely larger instead of only enlarging the node canvas;
+  - `LobbyBattleUnitSpineRuntime.ts` raises the `FORMATION_PREVIEW` max scale and lets SR/R rarity profile normalize formation preview size.
+- Guard/tooling updates:
+  - added `npm.cmd run check:battle-stage13v`;
+  - `screenshot-battle-center-convergence.cjs` now checks target meet samples and action floating-text density through runtime telemetry;
+  - formation debug records SR/R visual box telemetry for preview acceptance.
+- 2026-06-21 Stage 13V/13W 实机返修：根据截图反馈，战斗开场收敛从压到中线改为保留左右战线间距（`0.48 / 1.08 / 1.36`，窄屏最小推进 `0.46 slotWidth`），近战接触点收紧到目标正前方 `source.width * 0.18 / target.width * 0.14 / 32 * scale`；SR/R `act_*` 战斗 profile 上调到 `targetHeightRatio=1.42 / maxWidthRatio=3.08 / maxScale=1.08 / scaleMultiplier=2.72`，布阵 `FORMATION_PREVIEW` 上调到 `1.28 / 2.88 / 0.94 / 1.52` 并合并 SR/R `maxScale`；截图验收新增 SR/R 实际 Spine 高度、战线间距、近战推进中位数和贴近帧距离，`screenshot:battle-center` 最新为 1 次 battle start、0 settle、0 页面/控制台错误，`srRBasicAttackMedianDistance=73.8`、`srRBasicAttackAdvanceMedian=472.36`、`srRSpineVisualHeightMin=287.15`。本轮仍只改 Cocos 表现层，不触发 settle，不新增经济写入口。
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-21 Battle SR/R Spine Cue and Target Effect Cleanup R8
+
+- User feedback focus: SR heroes appeared to slide instead of using `run`, did not visibly use attack/skill animations, and the `blood_deco.png`/large target halo made the battle screen look cluttered.
+- Root cause:
+  - most R/SR hero resources are binary `.skel`; the previous battle runtime only read `_skeletonJson` and `runtimeData.animations`, so some binary resources could expose no animation names during Cocos Preview and fall back to setup/idle pose;
+  - action/assist cue generation still emitted old generic `attack_01` / `skill_01` names instead of rarity-aware battle contract names;
+  - impact rendering still used the C1812 `blood_deco` hit burst sprite, and the target fallback/selection frame was too large for side-scrolling combat.
+- Cocos updates:
+  - `LobbyBattleUnitSpineRuntime.ts` now also reads animation names from Cocos `getAnimsEnum()` before patching enums, and if binary runtime names are hidden it tries the strict canonical contract (`run`, `skill0`, `skill1`, etc.) instead of silently giving up;
+  - `LobbyBattleActionPresentation.ts` now emits SR/R front attacks as `skill0`, SR/R skill/ranged cues as `skill1`, and SSR/UR attacks as `atk`;
+  - `LobbyBattleAssistPresentation.ts` now emits SR/R assist casts/buffs as `skill1`;
+  - `LobbyBattlePreviewPanelRenderer.ts` records requested/applied Spine cue names in `globalThis.__lootchainBattlePlaybackTelemetry.spineCues` when the rebuilt source chunk is served;
+  - removed `LobbyBattleHitBurstSprite` / `snapshot.stage2UiAssets.hitBurst` from the active battle renderer; hit feedback now uses `LobbyBattleImpactSlashLayer`;
+  - target selection and fallback effects were reduced: `LobbyBattleSkillTargetFrame` is smaller, and the old filled ellipse `LobbyBattleActionTargetEffectFallback` was replaced by compact `LobbyBattleActionTargetSlashFallback`.
+- Guard/tooling updates:
+  - added `npm.cmd run check:battle-stage13r` and included it in `check:battle-stage13i`;
+  - `check:preview` now forbids stale `LobbyBattleHitBurstSprite` / `snapshot.stage2UiAssets.hitBurst` in the actual served chunk, not in sourcemap text;
+  - `screenshot-battle-center-convergence.cjs` now records SR/R spine cue telemetry summaries when the rebuilt renderer chunk is served;
+  - added `scripts/repair-preview-stage13r.mjs` to hot-patch current stale Preview chunks for local browser acceptance when Creator has not rebuilt yet.
+- Runtime acceptance:
+  - `npm.cmd run screenshot:battle-center` produced refreshed screenshots in `artifacts/battle-center-convergence-current/`;
+  - latest run recorded one `POST /api/player/battles/start`, zero `/settle`, zero page errors, zero filtered console errors, and `752` telemetry samples;
+  - telemetry summary: `allyMovingTowardCenter=5`, `enemyMovingTowardCenter=3`, `allyHoldingCenter=5`, `enemyHoldingCenter=3`, `maxFrameSpeed=1.327px/ms`;
+  - visual spot-check: `08-first-action-2500ms.png` no longer shows the `blood_deco` gold burst; target feedback is small slash/marker style instead of a large UI halo.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13r`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:preview` after `node .\scripts\repair-preview-stage13r.mjs` patched stale current Preview chunks;
+  - directed TypeScript no-emit for `LobbyBattlePreviewPanelRenderer.ts`, `LobbyBattleUnitSpineRuntime.ts`, `LobbyBattleActionPresentation.ts`, and `LobbyBattleAssistPresentation.ts`.
+- Preview note:
+  - Source files are updated. If Cocos Creator has not rebuilt `temp/programming/packer-driver/targets/preview`, run `node .\scripts\repair-preview-stage13r.mjs` for the current local preview or focus/restart Creator Preview to serve rebuilt chunks.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Formation and Visual Cleanup R7
+
+- User feedback:
+  - formation could not reliably switch heroes and appeared unable to bench selected heroes;
+  - battle scene looked cluttered, SR/R actors were too large, and unexplained halo UI made the scene noisy;
+  - battle start must continue to show both camps moving toward the center before combat begins.
+- Cocos updates:
+  - `LootChainGameRoot.ts` now treats manual formation as explicit state: once the player benches a hero, `currentLobbyFormationHeroIds()` normalizes the selected IDs without default-filling back to 5;
+  - full formation no longer silently replaces the first non-protagonist slot when clicking a new hero; it now shows `阵容已满，请先点击已上阵英雄下阵，再选择新英雄。`;
+  - `LobbyFormationPanelRenderer.ts` now explains `点击已上阵英雄可下阵` and shows `点击下阵` on non-protagonist actor stands;
+  - `LobbyBattleUnitSpineRuntime.ts` aligns R/SR visual scale with the higher-rarity battle profile (`targetHeightRatio = 0.68`, `maxScale = 0.25`) so SR/R no longer dominate the screen;
+  - `LobbyBattlePreviewPanelRenderer.ts` removed the old left/right camp halo calls, made actor rings contextual only for active/target units, and turned the opening convergence cue into a no-op so the run-in is shown by character motion instead of a large gold halo.
+- Guard/tooling updates:
+  - added `check:battle-stage13o` for manual formation underfill and no silent full-team replacement;
+  - added `check:battle-stage13p` for R/SR scale caps and no permanent battle halos;
+  - `check:battle-stage13i` now runs 13A-13P plus `check:layout`;
+  - `check:layout` now accepts explicit underfilled formation state instead of requiring default fill;
+  - `repair:preview-battle` can also patch stale Preview battle chunks for visual cleanup when Creator has not rebuilt yet.
+- Runtime acceptance:
+  - `npm.cmd run screenshot:battle-center` produced fresh screenshots in `artifacts/battle-center-convergence-current/`;
+  - battle preview recorded one `POST /api/player/battles/start`, zero `/settle`, zero page errors, zero filtered console errors, and `840` telemetry samples;
+  - latest `06-opening-run-1000ms.png` shows both camps moving/holding in the center with no old camp halos or opening gold halo;
+  - latest `08-first-action-2500ms.png` shows damage feedback only after the meet-up;
+  - formation screenshots in `artifacts/formation-current/` show the new down-hint copy, and `formation-after-row-down.png` shows the roster staying at `4/5` after benching instead of auto-refilling to 5.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:preview`;
+  - directed TypeScript transpile for `LootChainGameRoot.ts`, `LobbyFormationPanelRenderer.ts`, `LobbyBattlePreviewPanelRenderer.ts`, and `LobbyBattleUnitSpineRuntime.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Center Meet-Up R5
+
+- Follow-up requirement: left-side heroes and right-side monsters/BOSS must first move into the central combat area; damage, skills, projectiles, heal/shield/buff floats, and hit feedback may start only after both sides have converged.
+- Cocos updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` added `playBattleOpeningActorMotion()`, so opening run-in is now a continuous Cocos tween from the starting lane to the converged combat home instead of frame-by-frame layout jumps;
+  - opening movement requests `run`; the post-convergence hold requests `idle`, and combat cues remain gated until the opening phase is inactive;
+  - `playBattleActorCueOnce()` now respects a short root-motion lock, preventing the first `basic_attack` cue from interrupting the opening run tween on the same actor;
+  - center stop positions now use per-lane `BATTLE_OPENING_LANE_STOP_GAP_RATIOS`, keeping 3-5 units near the center while avoiding a single stacked line;
+  - `LobbyBattlePreviewPanelRenderer.canRefreshPlayback()` now requires `battleSceneRoot` and `battleFieldNode` to still be mounted in the UI tree;
+  - `LootChainGameRoot.refreshLobbyBattlePresentationPlayback()` falls back to `renderBattleScene()` when partial playback refresh is unavailable, fixing the battle scene black-screen refresh path after root nodes are cleared.
+- Preview/runtime tooling:
+  - `repair-preview-battle-runtime.mjs` now patches stale Creator Preview chunks with the same opening tween, motion lock, mounted-node checks, and center-stop formula;
+  - `check-preview-freshness.mjs`, `check:battle-stage13n`, and `check:battle-stage13i` assert the updated opening run/idle tokens and black-screen refresh fallback.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13n`;
+  - `npm.cmd run check:battle-stage13i`;
+  - directed Cocos TypeScript transpile for `LootChainGameRoot.ts`, `LobbyBattlePreviewPanelRenderer.ts`, and `LobbyBattlePresentationState.ts`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run repair:preview-battle`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run screenshot:battle-center` with exactly one `POST /api/player/battles/start`, zero `/settle`, zero page errors, and zero filtered console errors;
+  - in-app browser visual QA at 0.3s / 1.0s / 1.65s / 2.5s showed no black screen, no damage before convergence, and combat feedback only after meet-up;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Convergence Strict Gate Patch
+
+- User follow-up requirement: at battle start, left-side heroes and right-side monsters/BOSS must first move toward the center; only after both sides meet can the combat action timeline begin.
+- Cocos updates:
+  - `LobbyBattleState.ts` now sets `LOBBY_BATTLE_PRESENTATION_STEP_COUNT = 48`, `LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS = 250`, and `LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 4`, giving the opening meet-up about 1 second before combat cues are released;
+  - `LobbyBattlePresentationState.ts` now treats `presentationStep < LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT` as strict opening state, keeps `damageText` empty, and shows `开场汇合 / 接敌前进` copy;
+  - `LobbyBattlePreviewPanelRenderer.ts` now caches each actor's converged home position, plays a continuous opening tween toward center, applies `move/run` once during opening, and returns later attack cues to the converged home instead of the original left/right columns;
+  - the renderer now uses a filtered combat event queue after the opening gate, so the view cannot jump directly from `battle_start` to a later damage event;
+  - actor scale pulse was moved under `LobbyBattleActorVisualRoot`, so movement tweens and action cue tweens no longer stop the visual idle pulse or leave actors at a partial scale;
+  - projectile, floating damage, assist aura, and assist floating text now use independent cue keys, so one disabled branch cannot swallow a later visible effect.
+- Guard updates:
+  - added `npm.cmd run check:battle-stage13l`;
+  - `check:battle-stage13i` now includes Stage 13L and asserts the strict `< LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT` opening gate;
+  - `check:preview` freshness tokens now include `LobbyBattleActorVisualRoot`, `resolveVisibleCombatTimelineEvents`, and independent battle effect cue keys.
+- Browser Preview evidence on `http://localhost:7456/`:
+  - `artifacts/battle-stage13l-action-frames/battle-03000ms.png`: `开场汇合` state, both sides have advanced toward the center, no damage float yet;
+  - `artifacts/battle-stage13l-action-frames/battle-03500ms.png`: first hit/damage appears after the opening meet-up;
+  - `artifacts/battle-stage13l-action-frames/battle-05000ms.png`: later timeline shows healing, shield/ATK buff, projectile/受击, and damage floats as separate combat feedback;
+  - `artifacts/battle-stage13l-flow/11-battle-end.png`: visual victory/result state renders without clicking settlement.
+- Verification status:
+  - directed Cocos TypeScript no-emit passed;
+  - `npm.cmd run check:battle-stage13l`, `check:battle-stage13k`, `check:battle-stage13i`, `check:layout`, and `check:preview` passed after Creator Preview refreshed the new chunks;
+  - `.spine/.spine.meta` source scan under `assets/resources/spine` returned 0;
+  - `git diff --check` passed with only LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle` was clicked or exposed;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Center Meet-Up R2
+
+- User requirement: battle start must first show left-side heroes and right-side monsters/BOSS moving toward the center; only after both sides meet may the combat timeline start.
+- Cocos updates:
+  - `LobbyBattleState.ts` now uses `LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 6` plus `LOBBY_BATTLE_OPENING_COMBAT_DELAY_STEP_COUNT = 1`, so actors run toward center for about 1.5s and hold for one 250ms beat before combat cues unlock;
+  - `LOBBY_BATTLE_COMBAT_START_STEP` is the single gate for combat event selection, presentation copy, action cue selection, assist cue selection, projectiles, target effects, floating damage, Buff/heal/shield floats, and hit feedback;
+  - opening actors now explicitly request the `run` cue through `applyBattleActorSpineCueOnce('opening-run', actor, unit, 'run')`; melee movement cue generation also uses `animationName: 'run'`;
+  - opening copy keeps `damageText` empty and distinguishes the run-in phase from the one-beat center hold.
+- Guard updates:
+  - `check:battle-stage13j`, `check:battle-stage13k`, `check:battle-stage13l`, and `check:preview` freshness tokens now assert `LOBBY_BATTLE_COMBAT_START_STEP` and explicit `run` cues.
+- Verified so far:
+  - directed Cocos TypeScript no-emit passed;
+  - `npm.cmd run check:battle-stage13j`, `check:battle-stage13k`, `check:battle-stage13l`, `check:battle-stage13i`, and `check:layout` passed;
+  - `.spine/.spine.meta` source scan under `assets/resources/spine` returned 0;
+  - `git diff --check` passed with only LF/CRLF warnings;
+  - `npm.cmd run check:preview` is currently blocked by stale running Cocos Preview chunks: port 7456/7457 are served by two Cocos Creator project processes, and the served chunks still miss `LOBBY_BATTLE_COMBAT_START_STEP`, `opening-run`, and `animationName: 'run'`. Restart or refresh Cocos Creator Preview before runtime visual acceptance.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Center Meet-Up R3
+
+- Follow-up requirement: battle start must play both camps moving toward the center first; combat can start only after both sides have met.
+- Cocos updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now separates `BattleOpeningConvergenceState.active` from `moving`;
+  - opening `active` still blocks action/assist cues, projectiles, target effects, damage floats, heal/shield/buff floats, and hit feedback;
+  - opening `moving` alone drives `run`, so the 0.25s post-convergence hold switches to `idle` instead of running in place;
+  - Spine cue mapping now supports explicit `idle/stand`, and `run/move/walk` cues loop while movement is active;
+  - actors continue to cache and return to the converged combat home, not the original left/right columns.
+- Guard updates:
+  - added `npm.cmd run check:battle-stage13n` and included it in `check:battle-stage13i`;
+  - `check:battle-stage13j` and `check:preview` freshness tokens now assert `openingConvergence.moving ? 'run' : 'idle'`, `opening-hold`, and idle cue mapping.
+- Preview runtime repair:
+  - added `npm.cmd run repair:preview-cc` for the local Cocos Preview `cce:/internal/x/cc` temp chunk mismatch;
+  - added `npm.cmd run repair:preview-battle` for cases where Creator keeps serving stale battle renderer chunks after source changes;
+  - after both repairs, `check:preview` and `scripts/screenshot-stage13.mjs` passed with console errors `0`.
+- Boundary unchanged:
+  - this pass did not click battle start/challenge or settlement;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Opening Center Meet-Up R4
+
+- User requirement: left-side heroes and right-side monsters/BOSS must visibly move into the center area at battle start; combat may begin only after both sides have met.
+- Cocos updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now replaces the old shallow `58%` opening offset with `BATTLE_OPENING_CENTER_CONVERGENCE_RATIO = 0.82`;
+  - `BATTLE_OPENING_CENTER_STOP_GAP_RATIO = 0.18` prevents actors from crossing the center line while still stopping both camps in the central combat zone;
+  - `BATTLE_OPENING_CENTER_MAX_DISTANCE_RATIO = 2.18` keeps far desktop lanes able to reach the center area;
+  - converged combat homes remain the post-opening center positions, so melee/skill movement returns to the meet-up line instead of the original left/right columns.
+- Guard updates:
+  - `check:battle-stage13n` now rejects the old `Math.abs(towardCenter) * 0.58` / `slot.width * 1.72` formula and runs sample center-stop calculations for desktop and compact ally/enemy slots;
+  - `check:preview` freshness tokens now require the new center convergence constants and `maxDistanceBeforeCenter`;
+  - `repair:preview-battle` can patch only the center convergence formula when a running Creator Preview already has the older opening moving/idle runtime but not the new center formula.
+- Runtime acceptance on `http://localhost:7456/`:
+  - added `npm.cmd run screenshot:battle-center`;
+  - latest screenshots are under `artifacts/battle-center-convergence-current/`;
+  - `05-battle-0300ms.png` shows both camps still starting from their left/right sides;
+  - `06-opening-run-1000ms.png` shows both camps converged near center with no damage float;
+  - `07-opening-hold-1650ms.png`, `08-first-action-2500ms.png`, and `09-mid-combat-5100ms.png` show combat feedback only after the meet-up;
+  - `preview-result.json` recorded exactly one `POST /api/player/battles/start`, zero `/settle`, zero page errors, zero filtered console errors, and no Cocos error overlay.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13n`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - Cocos TypeScript no-emit with generated `cc` declarations;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Playback Smoothness R6
+
+- User feedback: battle playback and opening movement were visibly stuttering; after both camps moved toward the center, combat start appeared to snap actors back toward their original positions. User asked to follow the reference side-scrolling RPG battle layout more closely, including smoother motion and cleaner UI layout.
+- Root cause:
+  - opening root motion used a one-shot tween while playback refresh still recomputed actor state every frame;
+  - combat motion mixed tween locks with frame refresh, so `basic_attack` could visually compete with the preceding `melee_move`;
+  - action anchors could be derived through `resolveActorCombatBasePosition()`, leaving too much room for opening/combat phase state to disagree;
+  - active battle HUD still kept large title/status/guide elements, making the screen feel like a debug/report view rather than a combat scene.
+- Cocos updates:
+  - `LOBBY_BATTLE_PRESENTATION_FRAME_INTERVAL_MS` is now `16`, so local playback targets roughly 60fps;
+  - `LobbyBattlePreviewPanelRenderer.ts` now resolves actor root position through `resolveBattleActorFramePosition()` every frame;
+  - opening movement, melee approach, ranged nudge, attack hold, and return motion are all deterministic functions of `presentationElapsedMs` / `playbackTimelineTimeMs`;
+  - removed old root-motion tween helpers and `battleActorMotionLocks`, so refresh no longer fights a tween on the same actor node;
+  - `createBattleActionAnchorMap()` now always anchors actions to `resolveActorConvergedCombatPosition()`;
+  - `basic_attack` uses an `effectiveAdvanceRatio` that preserves melee contact distance, preventing the run-to-atk transition from pulling the actor backward;
+  - code review found that `basic_attack` still used the default root-motion branch; it now shares the same approach/hold/return interpolation as `melee_move`;
+  - root-motion elapsed time now uses `resolveBattleTimelineToPresentationRatio()`, converting compressed battle timeline time back to visual presentation time so actor movement does not over-accelerate;
+  - center convergence now uses `BATTLE_OPENING_CENTER_CONVERGENCE_RATIO = 0.82`, `BATTLE_OPENING_CENTER_STOP_GAP_RATIO = 0.42`, and per-lane stop gaps `[0.48, 0.78, 0.62, 0.9, 1.02]`;
+  - battle-in-progress header/status/scene guide are hidden, and the top HUD is reduced to left time, center stage, right speed pills plus the existing boss gauge;
+  - renderer writes a small `globalThis.__lootchainBattlePlaybackTelemetry` sample buffer for automated preview validation only; it is not visible in UI and does not call any API.
+- Tooling updates:
+  - `check:battle-stage13k/l/m/n` and `check:preview` freshness tokens now assert the frame-position model, 16ms frame interval, removed tween/lock path, anti-snap `effectiveAdvanceRatio`, and top HUD pills;
+  - `repair-preview-battle-runtime.mjs` is now conservative: it verifies that Preview is serving the new battle runtime and fails with a restart/refresh message if the chunk is stale, instead of hot-patching old tween code;
+  - `screenshot-battle-center-convergence.cjs` now reads playback telemetry and fails if at least two allies/enemies do not move toward center, appear to return to original columns after convergence, or exceed the frame-time-normalized movement speed threshold.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview` after focusing Cocos Creator and waiting for Preview rebuild;
+  - directed TypeScript transpile via local TypeScript library for `LobbyBattleState.ts`, `LobbyBattlePreviewPanelRenderer.ts`, `LobbyBattlePresentationLayout.ts`, and `LootChainGameRoot.ts`;
+  - code review completed; the Important issue about `basic_attack` default-branch snap was fixed before final acceptance;
+  - `npm.cmd run screenshot:battle-center`: produced screenshots in `artifacts/battle-center-convergence-current`, recorded one battle start request, zero settle requests, zero page errors, zero filtered console errors, and `728` telemetry samples; telemetry summary was `allyMovingTowardCenter=5`, `enemyMovingTowardCenter=3`, `allyHoldingCenter=5`, `enemyHoldingCenter=3`, `maxFrameSpeed=1.722px/ms`;
+  - `npm.cmd run repair:preview-battle`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-20 Battle Formation Switch and Combat UI Cleanup R7
+
+- User feedback focus: formation must support real bench/switch flow, and active combat should not look like a debug/report page while both camps run to the center and fight.
+- Cocos updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now hides the footer boundary note and footer buttons for the whole `roundPlaying` phase, not only the pre-action opening window; battle-in-progress no longer shows bottom debug settlement controls or explanatory boundary copy;
+  - `LobbyFormationPanelRenderer.ts` writes `globalThis.__lootchainFormationDebug` during formation render for automated browser acceptance only; it records current stage, selected ids, selected names, selected count, loading/error, and timestamp without changing gameplay state;
+  - `LobbyBattlePreviewPanelRenderer.ts` also removed a redundant impossible `presentation.phase !== 'resultRecorded'` condition in the already-filtered header branch, fixing strict directed TypeScript no-emit for the touched renderer.
+- Guard/tooling updates:
+  - added `npm.cmd run check:battle-stage13q` and included it in `check:battle-stage13i`;
+  - added `npm.cmd run screenshot:formation-switch`, which opens Preview, enters stage map -> challenge dialog -> formation, verifies `5/5 -> 4/5 -> 5/5` after benching and adding another hero, asserts the 4 benched-state heroes are preserved with exactly one new different hero, and asserts no battle start or settle request occurs;
+  - `check:preview` freshness tokens now require `recordFormationDebugSnapshot` and `__lootchainFormationDebug` in the served formation chunk.
+- Runtime acceptance:
+  - `npm.cmd run screenshot:formation-switch` produced screenshots in `artifacts/formation-switch-current/`;
+  - `formation-switch-result.json` recorded initial selected ids `[5,11,9,10,63]`, after bench `[5,9,10,63]`, and after adding another hero `[5,9,10,63,17]`; battle start requests `0`, settle requests `0`, page errors `0`, filtered console errors `0`;
+  - `npm.cmd run screenshot:battle-center` produced refreshed screenshots in `artifacts/battle-center-convergence-current/`;
+  - latest battle runtime recorded one `POST /api/player/battles/start`, zero `/settle`, zero page errors, zero filtered console errors, and `872` telemetry samples;
+  - telemetry summary: `allyMovingTowardCenter=5`, `enemyMovingTowardCenter=3`, `allyHoldingCenter=5`, `enemyHoldingCenter=3`, `maxFrameSpeed=1.084px/ms`;
+  - visual spot-check: `08-first-action-2500ms.png` no longer shows the bottom boundary note/footer buttons during combat; damage and hit feedback appear only after the opening meet-up.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13q`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview` after patching stale local Preview temp chunks for the current browser acceptance run;
+  - directed TypeScript no-emit for `LootChainGameRoot.ts`, `LobbyBattlePreviewPanelRenderer.ts`, and `LobbyFormationPanelRenderer.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Preview note:
+  - Source files are updated, but Cocos Creator may keep serving stale `temp/programming/packer-driver/targets/preview` chunks until Creator focuses/rebuilds Preview. This run patched the local stale Formation/Battle preview chunks only for self-preview evidence; restart/focus Preview if the browser shows old footer controls or lacks formation debug acceptance state.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Melee Contact R8
+
+- User feedback focus: SR heroes in formation/combat looked much smaller than SSR/UR actors, and melee actors still looked like they were attacking from their original/home position instead of approaching the target.
+- Root cause:
+  - SR/R `act*` Spine assets use a different raw skeleton size from SSR/UR, but the runtime profile and formation cap still suppressed their visual height;
+  - `resolveVisibleBattleActionPresentationCue()` could fall back to the current `action_start` event after the explicit cue window ended, so stale `basic_attack` cues could be treated as active at the home position.
+- Cocos updates:
+  - `LobbyBattleUnitSpineRuntime.ts` raises R/SR battle profile height/width/scale multipliers and keeps a separate `FORMATION_PREVIEW` profile so formation actors normalize closer to SSR/UR size;
+  - `LobbyFormationPanelRenderer.ts` enlarges formation stand bounds and keeps formation actors on `FORMATION_PREVIEW`;
+  - `LobbyBattleActionPresentation.ts` now uses explicit cue visible windows and no longer falls back to stale `action_start` cues when no cue is actually active;
+  - `LobbyBattlePreviewPanelRenderer.ts` lengthens melee approach timing and delays `basic_attack` so melee actors stay close to the target before attack/hit feedback appears;
+  - battle background image layers are now preloaded together and a cached battle scene is rebuilt once if the image Sprite nodes were missing during the first render; current self-preview acceptance for this pass still focuses on SR/R scale and melee contact, because the running Preview screenshot can still show the green fallback until Creator fully rebuilds the stage chunks;
+  - `repair-preview-stage13v.mjs`, `check-preview-freshness.mjs`, `check:battle-stage13v`, and `screenshot:battle-center` were updated to guard this behavior in both source and running Cocos Preview chunks.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` forces an SR/R-heavy formation including `SR_PALADIN_02` and `SR_ABYSS_06`;
+  - latest telemetry recorded `srRBasicAttackClosestDistance=44.28`, `srRBasicAttackAdvanceMedian=279.27`, and SR/R visual height around `417px`;
+  - the screenshot gate now fails if SR/R height is below `320px` or if an SR/R basic attack does not reach contact range.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Target-Front Contact R9
+
+- User feedback focus: the current battle screenshot still showed SR heroes too small compared with other heroes, and melee heroes looked like they attacked in place instead of moving to the monster before attacking.
+- Root cause confirmed:
+  - `resolveActorMeleeContactPosition()` was named like an absolute target-front point but previously behaved like an offset in older Preview chunks, so actor position telemetry could still read as home-position attack when Preview served stale code;
+  - SR/R `act_*` skeletons have inflated or different raw bounds, so their formation/combat cap needed a rarity-aware visual-height cap instead of a shared cap tuned around SSR/UR assets.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now returns absolute target-front coordinates from `resolveActorMeleeContactPosition()` and converts to actor offset only at the caller;
+  - `LobbyBattleUnitSpineRuntime.ts` raises SR/R battle visual cap to `slotHeight * 1.72` and uses `resolveBattleUnitFormationPreviewMaxHeightRatio(unit, tier)`, allowing SR/R formation actors to scale with a `1.18` cap while keeping oversized SSR/UR overrides;
+  - `recordBattleActorFrameTelemetry()` now records both `currentActionKind` and `rootMotionKind`, so screenshot acceptance can distinguish the visible cue from the actual root-motion cue;
+  - `repair-preview-stage13v.mjs` patches stale Cocos Preview chunks with the same SR/R cap, formation cap, target-front contact point, and clean root-motion telemetry fields;
+  - `screenshot-battle-center-convergence.cjs` still strictly validates embedded background telemetry when the running Preview reports it, but does not fail this SR/R/contact acceptance when an old Preview chunk has no background telemetry at all.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` recorded one `POST /api/player/battles/start`, zero `/settle`, zero page errors, zero filtered console errors, and no telemetry errors;
+  - forced SR/R formation remained active (`SR_PALADIN_02`, `SR_ABYSS_06`);
+  - latest telemetry: `srRSpineVisualHeightMin=420.09`, `srRSpineVisualHeightMedian=485.03`, `srRSpineVisualHeightMax=485.03`, `srRSpineVisualHeightRatio=1.15`;
+  - latest melee evidence: `srRRunCueCount=17`, `srRAttackCueCount=3`, `srRSkillCueCount=1`, `srRBasicAttackAdvanceMedian=209.79`, `srRBasicAttackClosestDistance=44.28`, `srRBasicAttackMedianDistance=44.28`.
+- Preview note:
+  - if the browser still shows the flat green fallback background, that is stale Cocos Preview/background chunk state, not this SR/R/contact fix. Focus/rebuild Cocos Creator Preview to serve the embedded battle background source.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle Stage13X Dark Fallback and Melee Acceptance R10
+
+- User feedback focus: screenshot still showed SR heroes too small and melee attacks visually starting from the home side; the visible battle fallback also still looked like the old green map when the C1812 background was not yet applied.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` keeps the existing battle background asset path, but the procedural fallback now delegates to `drawStage13XBattleFallbackLandscape()` and draws a dark ruined battlefield with red moon, distant spires, cracked floor and team shadow pads instead of the old teal/green forest colors;
+  - `scripts/check-battle-stage13x.mjs` now fails if the renderer regresses to the old green fallback colors or loses the Stage13X fallback function token;
+  - existing Stage13X melee duel logic remains active: every melee cue resolves `actorDuelPosition / defenderDuelPosition / hitPoint`, so melee units attack at the current target front rather than at their original slot.
+- Acceptance target:
+  - `npm.cmd run screenshot:battle-center` must continue to show SR/R visual height above the guard threshold, all melee basic attacks reaching target-front contact, zero settle requests, and no accumulated persistent floating text layers;
+  - visual review should confirm the immediate fallback scene is dark/gothic even before the embedded background image finishes loading.
+- Runtime acceptance:
+  - final `npm.cmd run screenshot:battle-center` produced refreshed screenshots under `artifacts/battle-center-convergence-current/`, with 1 `POST /api/player/battles/start`, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - telemetry recorded `srRRunCueCount=17`, `srRAttackCueCount=3`, `srRMeleeApproachSampleCount=12`, `srRBasicAttackAdvanceMedian=143.57`, `allMeleeBasicAttackContactMedian=40`, `allMeleeBasicAttackMissCount=0`;
+  - SR/R visual height telemetry recorded `srRSpineVisualHeightMin=420.09`, `srRSpineVisualHeightMedian=578.09`, `srRSpineVisualHeightRatio=1.38`, and `formationSrRVisualHeightOk=true`;
+  - `scripts/repair-preview-stage13v.mjs` now also patches stale Preview chunks for Stage13X fallback colors and `resolveActorMeleeDuelFrame()` so self-preview does not regress after local stale chunk repair.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Formation Bounds R11
+
+- User feedback focus: SR hero actors still looked too small/inconsistent in formation, and melee heroes must approach monsters before attacking instead of attacking from their home slot.
+- Root cause confirmed:
+  - battle `basic_attack` visible cue timing could still show `skill0` after the contact window, making the attack look like it happened from home;
+  - formation preview passed `visualWidth/visualHeight` (`height * 2.08`) into `resolveBattleUnitSpineScale()`, so the scale cap used oversized render bounds rather than the actual actor stand bounds;
+  - SR/R `act_*` skeletons and SSR/UR named skeletons need different formation caps: SR/R need readable enlargement, while long SSR/UR skeletons need a tighter cap to avoid covering the board.
+- Cocos/source updates:
+  - `LobbyBattleActionPresentation.ts` moves basic attack damage cue to `timeOffsetMs: 420` and keeps started cues sorted by recency before distance;
+  - `LobbyBattlePreviewPanelRenderer.ts` adds basic-attack motion/animation prewarm so melee actors are already at target-front contact when `skill0`/damage feedback appears;
+  - `LobbyBattleUnitSpineRuntime.ts` sets battle SR/R profile to `targetHeightRatio=1.28`, `maxWidthRatio=2.65`, `maxScale=1.78`, with `slotHeight * 1.28` cap; formation keeps SR/R at `0.68` while default SSR/UR named formation actors are capped around `0.43`;
+  - `LobbyFormationPanelRenderer.ts` now keeps large visual bounds for drawing, but passes actor stand `width/height` into `applyFormationSpineDataWithRetry()` so scale is computed from the actual slot;
+  - `repair-preview-stage13v.mjs`, `check-preview-freshness.mjs`, `check:battle-stage13v`, and `check:battle-stage13w` were updated to patch/guard stale Preview chunks for the same scale and cue behavior.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 4 after bench, 5 after add, 0 battle start requests, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - final formation screenshot no longer shows SSR/UR legs covering the board, and SR `见习圣骑士` is readable rather than tiny;
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - latest battle telemetry: `srRRunCueCount=14`, `srRAttackCueCount=3`, `srRSkillCueCount=1`, `srRBasicAttackMedianDistance=136`, `allMeleeBasicAttackMissCount=0`, `srRSpineVisualHeightMedian=486.39`, `srRSpineVisualHeightRatio=1.03`.
+- Verification passed:
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:protagonist-hidden`;
+  - focused `node --check` on `LobbyBattlePreviewPanelRenderer.ts`, `LobbyBattleActionPresentation.ts`, `LobbyFormationPanelRenderer.ts`, and `LobbyBattleUnitSpineRuntime.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Verification note:
+  - direct `tsc -p tsconfig.json --noEmit` with the located Creator 3.8.8 `tsc.cmd` still fails because the current shell TypeScript environment cannot resolve Cocos `cc` module declarations across the project. This appears to be an environment/type-path issue, not a new syntax failure in the touched files.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Melee Approach Smoothing R12
+
+- User feedback focus: the latest battle screenshot still made SR actors look inconsistent with other heroes, and melee actors must visibly move to the monster before attacking instead of attacking from their original slot.
+- Root cause confirmed:
+  - SR/R `act_*` battle profile needed to stay on the newer normalized cap (`slotHeight * 1.14`) instead of the older oversized/undersized profiles, keeping SR/R visual height consistent at about `433px`;
+  - after repairing Preview chunks, the first failing runtime evidence was an enemy melee actor jumping `290px` between `melee_move` and `damage_float`; this came from the approach window being too short for the compressed presentation timeline, not from a missing attack animation.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` extends `BATTLE_ACTOR_MELEE_APPROACH_MS` from `820` to `980`, so melee run-in is spread over more frames before the hit/damage feedback window;
+  - `LobbyBattleActionPresentation.ts` keeps `basic_attack` at `timeOffsetMs: 940` and a `1120ms` visible window, so SR/R `skill0` still plays after contact instead of hiding behind the damage float;
+  - `LobbyBattlePreviewPanelRenderer.ts` keeps the reversed hit-duel root-motion path, so `hit_float` does not snap the attacker back home while damage is visible;
+  - `scripts/check-battle-stage13v.mjs` and `scripts/repair-preview-stage13v.mjs` now guard/patch the `980ms` approach window for stale Cocos Preview chunks.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed after Preview repair, with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - forced SR/R formation remained active (`SR_PALADIN_02`, `SR_ABYSS_06`);
+  - latest battle telemetry: `srRSpineVisualHeightMin=433.19`, `srRSpineVisualHeightMedian=433.20`, `srRSpineVisualHeightMax=433.22`, `srRSpineVisualHeightRatio=1`, `srRRunCueCount=15`, `srRAttackCueCount=3`, `srRSkillCueCount=1`, `srRBasicAttackMedianDistance=104`, `allMeleeBasicAttackMissCount=0`, `maxFrameDelta=247.53`.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:preview`;
+  - `npm.cmd run screenshot:formation-switch`;
+  - `npm.cmd run check:protagonist-hidden`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle SR/R Scale and Midfield Melee Contact R13
+
+- User feedback focus: battle/formation screenshots still showed SR actors smaller than the rest, and melee actors must move to the monster/Boss before attacking rather than attacking from the home slot.
+- Root cause confirmed:
+  - SR/R `act_*` skeleton bounds differ from SSR/UR named skeletons, so battle and formation need separate caps instead of one shared scale profile;
+  - old melee duel logic put the defender only slightly forward from its home anchor, so the attacker could still be far from the target on compressed timelines;
+  - Preview telemetry could join samples across full scene rebuilds, causing false large-delta failures, and the stale Preview repair script could miss already-patched function signatures.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` keeps SR/R battle visual height normalized around `420px` and raises formation SR/R caps while keeping oversized named SSR/UR profiles bounded;
+  - `LobbyFormationPanelRenderer.ts` and `LobbyBattlePresentationLayout.ts` use larger but bounded actor stands, so SR/R heroes are readable and team slots do not collapse into one pile;
+  - `LobbyBattlePreviewPanelRenderer.ts` now resolves melee contact by midpoint duel: attacker and defender both move toward the center contact lane, hit effects and damage text anchor to `hitPoint`, and basic attack keeps `run` only during the short approach prewarm before switching to the configured attack animation;
+  - `scripts/screenshot-battle-center-convergence.cjs` now validates the actual hit window across `basic_attack` root motion, not only the earliest pre-swing frame;
+  - `scripts/repair-preview-stage13v.mjs` now patches stale Preview chunks for midpoint duel, frame smoothing, background telemetry, and existing patched function signatures.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - forced SR/R formation remained active (`SR_PALADIN_02`, `SR_ABYSS_06`);
+  - latest battle telemetry recorded `telemetry samples=799`, `srRRunCueCount=16`, `srRAttackCueCount=3`, `srRSkillCueCount=1`, `srRBasicAttackClosestDistance=77.84`, `allMeleeBasicAttackMissCount=0`, `backgroundSource=asset/backgroundLoaded=true`, and `srRSpineVisualHeightMedian≈419.84`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-22 Battle Melee Contact Hold R14
+
+- User feedback focus: melee heroes visually looked like they snapped to the monster, snapped back home, and then played attack/skill from the original slot. The required behavior is horizontal RPG timing: run to target front, attack/skill at target front, show damage/hit feedback, then return.
+- Root cause confirmed:
+  - source already had a `basic_attack` root-motion position function, but `resolveBattleActorRootMotionCue()` excluded `basic_attack`, so the attack phase depended on the previous `melee_move` cue and could desync from the actual action animation;
+  - screenshot and Preview freshness guards still treated `basic_attack` root motion as forbidden, which let the old visual rule pass acceptance;
+  - stale Preview repair could also remove `basic_attack` from playback branches, so a refreshed browser could keep showing old behavior.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now lets `basic_attack` own the target-front contact root motion after `melee_move` reaches the enemy, keeps attacker/defender in the same duel frame through damage/hit windows via `BATTLE_ACTOR_BASIC_ATTACK_CONTACT_HOLD_MS = 2520`, then returns after the hold window;
+  - animation dispatch now applies cue playback for `melee_move | basic_attack | ranged_projectile`, so SR/R `skill0` and SSR/UR `atk` play while the actor is still at target-front contact;
+  - `scripts/screenshot-battle-center-convergence.cjs` now fails if SR/R `basic_attack` snaps near home, if damage float happens after the attacker left contact, or if contact distance is outside melee range;
+  - screenshot sampling now includes `09-basic-contact-3200ms.png`, `10-basic-impact-3900ms.png`, and `11-damage-hold-4600ms.png`; the artifact directory is reset before each run to avoid stale screenshots;
+  - `scripts/repair-preview-stage13v.mjs` is now idempotent for contact-hold constants and patches stale Preview chunks to keep `basic_attack` in root motion/playback branches;
+  - `scripts/check-preview-freshness.mjs`, `check-battle-stage13v.mjs`, and `check-battle-stage13x.mjs` were updated to the new rule.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 filtered console errors;
+  - current visual frame `artifacts/battle-center-convergence-current/09-basic-contact-3200ms.png` shows the SR/R melee actor in front of the monster instead of at the home slot;
+  - latest telemetry recorded `basicAttackRootMotionSampleCount=130`, `srRBasicAttackHomeSnapCount=0`, `srRDamageContactHoldSampleCount=2`, `srRBasicAttackMedianDistance=40.31`, `allMeleeBasicAttackMissCount=0`, and `backgroundSource=asset/backgroundLoaded=true`.
+- Verification passed:
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run check:battle-stage13w`;
+  - `npm.cmd run check:battle-stage13x`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - directed Cocos TypeScript no-emit for `LobbyBattlePreviewPanelRenderer.ts` and `LobbyBattleActionPresentation.ts`;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-23 Formation Contract Witch Visual Scale R15
+
+- User feedback focus: formation view showed `契约魔女` (`SR_WITCH_03`, `portraitAsset=act_1028`) much smaller than the other selected heroes.
+- Root cause confirmed:
+  - `SR_WITCH_03` correctly uses `portrait_asset=act_1028`; the issue was not a wrong hero asset fallback;
+  - runtime telemetry showed `act_1028` raw bounds around `1890 x 810`, which include very wide effect/empty bounds;
+  - the generic SR/R formation cap treated those inflated bounds as the visible body, so actual on-screen character height was compressed.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` adds an asset-level formation height cap for `act_1028: 1.32`, applied before the generic SR/R cap;
+  - existing special caps for `Eulenspigel` and `Nuu` remain unchanged, so oversized SSR/UR named skeletons still stay bounded;
+  - `scripts/screenshot-formation-switch.cjs` now forces `契约魔女` into the checked formation and fails if her resolved scale remains below the visual threshold;
+  - `scripts/repair-preview-stage13v.mjs` now patches stale Preview chunks for the `act_1028` rule without replacing unrelated runtime functions.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 5 selected heroes, 4 after bench, 5 after add, 0 battle start requests, 0 settle requests, 0 page errors, and 0 console errors;
+  - final formation screenshot includes `契约魔女` with `resolvedScale=0.7883` and visual height `567.6`, no longer appearing as a tiny character;
+  - Preview chunk was restored from the clean editor target and re-patched after the stale repair script was narrowed, keeping `patchBattleUnitSpineRuntimeEnums`, skin resolution, and visual profile functions intact.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-23 Formation Ron/Kane Visual Retune R16
+
+- User feedback focus: formation view should make `灰烬猎手·罗恩` smaller and `白银圣枪·凯恩` larger.
+- Cocos/source updates:
+  - `LobbyBattleUnitSpineRuntime.ts` changes `Eulenspigel` formation-only cap from `0.34` to `0.272`, reducing `SSR_RON` visual height by 20%;
+  - `LobbyBattleUnitSpineRuntime.ts` adds `Ishmael: 0.528`, enlarging `SSR_KANE` from the default named cap by 10%;
+  - `scripts/screenshot-formation-switch.cjs` now validates `SSR_KANE / Ishmael` from the initial formation view and `SSR_RON / Eulenspigel` across the accepted visual samples;
+  - `scripts/repair-preview-stage13v.mjs` and `scripts/check-preview-freshness.mjs` now carry the same stale Preview patch/guard values.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:formation-switch` passed with 0 battle start requests, 0 settle requests, 0 page errors, and 0 console errors;
+  - `SSR_RON / Eulenspigel` changed from the prior `estimatedHeight=146.2` to `116.96`;
+  - `SSR_KANE / Ishmael` changed from the prior `estimatedHeight=206.4` to `227.04`;
+  - visual self-preview checked `artifacts/formation-switch-current/04-formation-open.png` and `06-after-add-other.png`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-23 Battle Phase A Impact Upgrade
+
+- User approved Phase A implementation for battle impact: melee must reach contact before attack; hit frame must synchronize attacker dash/contact, defender recoil, Hit Stop, Slash VFX, floating damage text, and critical Screen Shake.
+- Cocos/source updates:
+  - added `LobbyBattleImpactDirector.ts` as a pure presentation module for `hitStopMs`, `screenShake`, `defenderRecoil`, `slash`, and `floatingText`;
+  - `LobbyBattlePresentationTimeline.ts` now carries local presentation-only `critical` flags on `damage_preview`; first ally damage provides a stable critical acceptance sample;
+  - `LobbyBattleActionPresentation.ts` carries `isCritical` into `damage_float` cue;
+  - `LobbyBattlePreviewPanelRenderer.ts` consumes the impact profile, strengthens target recoil on `damage_float`, renders `LobbyBattleImpactHitStopLayer`, stronger `LobbyBattleImpactSlashLayer`, critical-sized red/gold floating text, and critical screen shake;
+  - added runtime `impactSamples` telemetry for Playwright acceptance;
+  - added `scripts/check-battle-phase-a-impact.mjs` and included it in the Stage13 aggregate guard;
+  - added `scripts/repair-preview-phase-a-impact.mjs` for stale Cocos Preview chunks only.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - telemetry recorded `impactSampleCount=13`, `criticalImpactSampleCount=4`, `hitStopSampleCount=4`, `screenShakeSampleCount=1`, `slashSampleCount=4`, `criticalFloatingTextSampleCount=1`, and `damageFloatImpactSyncMaxDelta=3`;
+  - melee contact remained valid: `srRBasicAttackMedianDistance=40.31`, `allMeleeBasicAttackContactMedian=40.31`, `maxActionFloatingTextsPerFrame=1`, `maxPersistentFloatingTextLayers=1`.
+- Verification passed:
+  - `npm.cmd run check:battle-phase-a-impact`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - focused Cocos Creator 3.8.8 TypeScript no-emit for `LobbyBattleImpactDirector.ts`, `LobbyBattleActionPresentation.ts`, `LobbyBattlePresentationTimeline.ts`, and `LobbyBattlePreviewPanelRenderer.ts`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-23 Battle Melee Sticky Contact R17
+
+- User feedback focus: melee heroes must run to the monster before attacking and must not snap back to the original home slot before/after the hit.
+- Root cause confirmed:
+  - `melee_move` and `basic_attack` could overlap, and the older root-motion priority sometimes let the attack phase stop following the long melee approach cue;
+  - after the hit window ended, a frame without root motion still resolved the actor back to the original converged home slot, so the visual could look like a teleport-back before the next attack/skill frame.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now keeps `melee_move` root motion active through the linked duel window and lets `basic_attack` approach then hold at target-front contact;
+  - added `battleActorStickyCombatPositions`, so a melee actor that reaches target-front contact keeps that contact position as its combat position instead of returning to the original slot; later actions move from the current contact position;
+  - `scripts/screenshot-battle-center-convergence.cjs` now fails if SR/R basic attack or damage float snaps near home, and all-melee contact validation uses the effective closest hit/damage contact rather than early run-up samples only;
+  - added `scripts/repair-preview-melee-contact-root-motion.mjs` plus `npm.cmd run repair:preview-melee-contact-root-motion` for stale Creator Preview chunks;
+  - `scripts/check-battle-stage13v.mjs` now guards the sticky contact cache, Preview repair tokens, SR/R damage home-snap metric, and all-melee damage contact metric.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - latest telemetry recorded `telemetry samples=680`, `srRBasicAttackClosestDistance=40.31`, `srRBasicAttackMedianDistance=40.31`, `allMeleeBasicAttackContactMedian=40.31`, `allMeleeBasicAttackMissCount=0`, `srRBasicAttackHomeSnapCount=0`, `srRDamageHomeSnapCount=0`, `srRDamageContactHoldSampleCount=1`, `srRRunCueCount=15`, `srRAttackCueCount=4`, `criticalImpactSampleCount=8`, `screenShakeSampleCount=2`, and `damageFloatImpactSyncMaxDelta=2`;
+  - refreshed Phase A videos were generated under `artifacts/battle-phase-a-acceptance-current/` with `normal-attack.webm` and `critical-hit.webm`; report recorded `criticalDamageCueCount=2`, `criticalShakeCueCount=2`, `allCriticalDamageCuesHaveShake=true`, `rafFps=12.8` during headless video capture, `drawCall=86`, and `usedJSHeapMB=110.5`.
+- Verification passed:
+  - `npm.cmd run repair:preview-phase-a-impact`;
+  - `npm.cmd run repair:preview-melee-contact-root-motion`;
+  - `npm.cmd run check:battle-stage13v`;
+  - `npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run record:battle-phase-a-acceptance`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `git diff --check` passed with only Git LF/CRLF warnings;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle Real Combat Replay Stage14
+
+- User focus: battle must be real numeric combat, not fake playback. Damage must come from hero/enemy attributes; HP bars must drop with each hit; dead enemies must stop receiving hits; melee must reach target-front contact before hit; SR/R and SSR/UR animation cues must remain visible.
+- Product/planning decision:
+  - keep backend protocol unchanged and still call only existing `POST /api/player/battles/start`;
+  - do not call/open battle settle, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy writes;
+  - local Cocos replay now derives visual combat from unit attributes and stage context only.
+- Cocos/source updates:
+  - `LobbyBattleReplayModel.ts` adds `BattleReplayDerivedAttributes` and derives `maxHp / attack / defense / evasionRate / damageReduction / critRate / critDamage` from hero/enemy power, level, rarity, role, side, and stage rank;
+  - enemies now receive `monsterDurabilityMultiplier`, defense, evasion, and damage reduction so low-stage fights do not end in one fake one-shot;
+  - `resolveBattleReplayDamageResult()` calculates evade, crit, defense mitigation, reduction, variance, per-hit caps, low-HP finish logic, `hpBefore/hpAfter`, and removes dead targets from later action selection;
+  - `BattleReplayHitEvent` now carries `hitKey` and `evaded`; HP presentation tracks `appliedHitKeys` and applies HP only from replay hit events;
+  - `LobbyBattleActionPresentation.ts` carries `hitKey/evaded` into `damage_float` and `hit_float`; hit reaction starts 320ms after damage to keep damage number and HP drop on the hit frame;
+  - `LobbyBattlePreviewPanelRenderer.ts` disables sticky contact (`BATTLE_USE_STICKY_CONTACT_POSITIONS = false`), uses close-contact lane gaps (`BATTLE_ACTOR_FRONT_CHARGE_CLASH_HALF_GAP = 148`, `BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 118`), keeps dead actors visible for 420ms for death/dissolve evidence, and emits `hitKey/eventSeq/deadAtMs` telemetry;
+  - `scripts/screenshot-battle-center-convergence.cjs` now validates `maxLiveActorOverlapPairs`, `perActionMeleeContactMissCount`, `deadActorVisibleAfterDeadMsMax`, `deadTargetSelectedActionCount`, and `hpDropCueMismatchCount`;
+  - added `scripts/check-battle-stage14-real-combat.mjs` and `scripts/repair-preview-stage14-real-combat.mjs`, and included Stage14 in `check:battle-stage13i`.
+- Runtime Preview acceptance on `http://localhost:7456/`:
+  - SR/R forced formation passed: `npm.cmd run screenshot:battle-center`; 1 battle start request, 0 settle requests, 0 page errors, 0 console errors; artifacts copied to `artifacts/battle-center-convergence-srr-stage14/`;
+  - mixed formation passed: `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`; 1 battle start request, 0 settle requests, 0 page errors, 0 console errors; artifacts copied to `artifacts/battle-center-convergence-mixed-stage14/`;
+  - mixed telemetry included `namedAtkCueCount=2`, `namedSkillCueCount=5`, `srRRunCueCount=9`, `srRAttackCueCount=2`, `damageFloatSampleCount=14`, `hitVfxAssetSampleCount=14`, `hpDropCueMismatchCount=0`, `deadTargetSelectedActionCount=0`, `perActionMeleeContactMissCount=0`, and `enemyLastHpRatioMax=0`.
+- Verification passed:
+  - focused Cocos Creator TypeScript no-emit for battle replay/action/HP/impact/spine/renderer modules;
+  - `npm.cmd run check:battle-stage14-real-combat`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:preview`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - do not call or expose `/api/player/battles/{battleNo}/settle` without explicit user approval;
+  - no reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle C1812 Reference Melee Fix
+
+- User supplied `C:\Users\axian\Desktop\C1812-1\video_2026-06-20_14-45-06.mp4` as the target combat feel: melee units enter the battlefield, run into the clash area, then keep fighting around the enemy instead of teleporting to/from the original home slot.
+- Source/runtime fixes:
+  - `LobbyBattlePreviewPanelRenderer.ts` now lets the current `damage_float` cue drive the attacker root motion with highest priority on the same `eventSeq`, so the hit frame is held at target-front contact;
+  - `damage_float` actor positioning now uses the rendered `unit.role` instead of stale cue role data, preventing front SR/R heroes from being treated like backline casters and staying at home during hit frames;
+  - removed the broad target-current-position tracking experiment because it pulled all melee units into one pile; the stable model keeps lane-based duel anchors and only locks the active hit frame;
+  - `damage_float` bypasses per-frame position smoothing only for the hit frame, while run/approach still uses visible movement;
+  - `scripts/screenshot-battle-center-convergence.cjs` now excludes true backline SR/R casters from melee home-snap validation.
+- Preview repair:
+  - `scripts/repair-preview-stage14-real-combat.mjs` mirrors the runtime fixes for stale Cocos Preview chunks, including current damage cue priority, `unit.role` melee detection, and removal of old target-tracking residue.
+- Runtime acceptance on `http://localhost:7456/`:
+  - SR/R forced formation passed `npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors;
+  - mixed formation passed `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors;
+  - latest screenshots remain in `artifacts/battle-center-convergence-current/`.
+- Verification passed:
+  - `npm.cmd run repair:preview-stage14-real-combat`;
+  - `npm.cmd run check:battle-stage14-real-combat`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - focused Cocos Creator TypeScript no-emit for battle replay/action/HP/snapshot/impact/renderer modules;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-26 Battle SoonFx Root Motion R23
+
+- User asked to stop patching the battle scene blindly and use a mature idle-RPG battle model idea. Chosen direction: keep the current LootChain/Cocos codebase, but apply a SoonFx-style event ownership model locally: one replay model owns action/hit/HP/death events, while the renderer only consumes cue timing and continuous positions.
+- Cocos/source fixes:
+  - `LobbyBattleReplayModel.ts` now makes melee target selection slot-aware: front targets near the actor are preferred, finishing targets are sorted by slot distance before HP ratio, and melee actors no longer randomly choose far cross-lane targets;
+  - `LobbyBattleActionPresentation.ts` adds `actionSeq` to action/damage/hit cues so renderer root motion is tied to the exact action, not any nearby hit in the compressed timeline;
+  - `LobbyBattlePreviewPanelRenderer.ts` allows the target of a `melee_move` cue to run into the contact point with the attacker, keeps root motion smoothed at `56 * scale`, and uses stable post-contact lanes based on `unitKey` to prevent same-side piling;
+  - old idle-clash/front-charge fake loops remain disabled; combat pressure comes from real action windows, hit frames, HP updates, slash/hit-stop/screen-shake telemetry, and persistent contact hold.
+- Preview/acceptance scripts:
+  - added `scripts/check-battle-soonfx-model.mjs` and `npm.cmd run check:battle-soonfx-model`;
+  - added `scripts/repair-preview-battle-soonfx-root-motion.mjs` and `npm.cmd run repair:preview-battle-soonfx-root-motion` for stale Cocos Preview chunks;
+  - `scripts/screenshot-battle-center-convergence.cjs` now counts both attacker and pulled target as root-motion participants, and excludes actual root-motion frames from static same-side overlap checks;
+  - `scripts/check-battle-stage14-real-combat.mjs` was updated from the old `targetMeetMotion=false` assumption to the new target-meet motion token.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed with 1 battle start request, 0 settle requests, 0 page errors, 0 console errors, and forced SR/R formation;
+  - latest telemetry: `sampleCount=1821`, `maxContinuousFrameDelta=56.01`, `maxContinuousFrameSpeed=0.918`, `battlefieldOutOfBoundsSampleCount=0`, `allMeleeBasicAttackContactMedian=16.35`, `allMeleeBasicAttackMissCount=0`, `allMeleeDamageContactSampleCount=9`, `enemyLastHpRatioMax=0`, `deadTargetSelectedActionCount=0`, `hpDropCueMismatchCount=0`, `maxLiveActorOverlapPairs=0`, `maxSimultaneousRootMotionActors=2`, `bothSidesRootMotionWindowCount=125`, `damageFloatImpactSyncMaxDelta=3`, `screenShakeSampleCount=4`, `slashSampleCount=42`.
+- Verification passed:
+  - `node --check .\scripts\repair-preview-battle-soonfx-root-motion.mjs`;
+  - `node --check .\scripts\screenshot-battle-center-convergence.cjs`;
+  - `npm.cmd run check:battle-soonfx-model`;
+  - `npm.cmd run repair:preview-battle-soonfx-root-motion`;
+  - `npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run check:battle-stage14-real-combat`;
+  - `npm.cmd run check:battle-phase-a-impact`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle No-Teleport Runtime Sampling R23
+
+- User reported the R22 result still looked like teleporting. This pass used actual Cocos actor node sampling instead of only battle event telemetry.
+- Root cause:
+  - R22's `BATTLE_ACTOR_FRAME_MAX_DELTA` limiter prevented large visual jumps, but it also clipped root-motion target updates to about `42px` per render refresh;
+  - because Preview render refresh cadence can be much lower than RAF, the attacker could still be far from the target when the damage cue arrived, making the attack read as "not really running to the monster";
+  - the existing screenshot telemetry checked resolved frame positions, while the user's complaint was about real rendered nodes.
+- Cocos/source fixes:
+  - root-motion cues now bypass the frame-delta limiter and use the time-based root-motion target directly;
+  - `setBattleActorFramePosition()` no longer snaps long distances after the first node placement; initialized actors tween by distance with `clamp(distance / 760, 0.045, 0.95)`;
+  - first placement is still direct to avoid actors tweening from `(0,0)` when the scene is created;
+  - kill-frame handling now treats the current cue as valid when it matches the target `deadAtMs` window, so the last hit does not get misreported as "dead unit still received hit feedback";
+  - `scripts/repair-preview-battle-motion-r22.mjs` was synced with the new root-motion/tween/death-window logic for stale Preview chunks and verified idempotent by running it twice.
+- New diagnostic:
+  - added `scripts/diagnose-battle-visual-teleport.cjs`;
+  - added `npm.cmd run diagnose:battle-visual-teleport`;
+  - the script samples real `LobbyBattleActor_*` node positions every `requestAnimationFrame` and fails on visible node jumps, producing JSON/PNG/WebM under `artifacts/battle-visual-teleport-current/`.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run diagnose:battle-visual-teleport` passed with `frames=146`, `actor nodes=8`, `visual jumps=0`;
+  - mixed UR/SSR/SR formation passed `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors, `telemetry samples=1820`;
+  - default SR/R formation passed `npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors, `telemetry samples=1941`;
+  - visual self-check used `09-basic-contact-3200ms.png` and `10-basic-impact-3900ms.png`; melee actors are now in the central contact area during hit frames, with slash VFX and floating damage visible.
+- Verification passed:
+  - `node --check scripts\repair-preview-battle-motion-r22.mjs`;
+  - focused Cocos Creator TypeScript no-emit for `assets/scripts/scenes/lobby/LobbyBattlePreviewPanelRenderer.ts`;
+  - `npm.cmd run repair:preview-battle-motion-r22`;
+  - `npm.cmd run diagnose:battle-visual-teleport`;
+  - `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run screenshot:battle-center`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle Sustained Clash Retune R19
+
+- User supplied `C:\Users\axian\Videos\Captures\Cocos Creator - lootchain-cocos - Google Chrome 2026-06-25 10-34-44.mp4`; review showed the battle still felt turn-based because front units stayed too far from the center line and stale Preview chunks could reintroduce target-anchor jumps.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now uses a sustained clash-line model: front units charge closer to the center with `BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 240` and `BATTLE_ACTOR_FRONT_CHARGE_CLASH_HALF_GAP = 132`;
+  - per-action melee root motion no longer uses `effectiveAdvanceRatio` or `duelFrame.actorDuelPosition`; it uses `resolveActorClashLungeOffset()` with `BATTLE_ACTOR_CLASH_APPROACH_LUNGE_X = 108`, `BATTLE_ACTOR_CLASH_ATTACK_LUNGE_X = 88`, and `BATTLE_ACTOR_CLASH_HIT_HOLD_LUNGE_X = 82`;
+  - combat playback hides actor nameplates during `roundPlaying/resultRecording/resultRecorded`, leaving HP bars, VFX, and floating numbers readable;
+  - `scripts/repair-preview-stage14-real-combat.mjs` now patches stale Preview variable declarations and removes old `slot.width * 0.52` / target-anchor actor branches;
+  - `check:preview`, `check-battle-stage13k`, `check-battle-stage13z2`, and `check-battle-stage14-real-combat` now guard the sustained-clash tokens.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed for forced SR/R formation with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center` passed for mixed UR/SSR/SR formation with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - visual self-check used `09-basic-contact-3200ms.png`, `10-basic-impact-3900ms.png`, and `12-mid-combat-5100ms.png`; units now stay around the midline clash area instead of jumping to/from the original side columns.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle Continuous Clash Retune R20
+
+- User supplied `C:\Users\axian\Videos\Captures\Cocos Creator - lootchain-cocos - Google Chrome 2026-06-25 10-34-44.mp4`; after R19 the battle still read too turn-based in places because the visible HUD still used round wording and front actors could visually settle too far from the enemy line.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now pushes the front clash closer with `BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 300` and `BATTLE_ACTOR_FRONT_CHARGE_CLASH_HALF_GAP = 112`;
+  - front actors now resolve a persistent combat home position after the opening charge, then apply small clash-idle sway through `resolveBattleActorClashIdleOffset()` so they keep pressure near the center instead of reading as static columns;
+  - melee `melee_move/basic_attack/damage_float` root motion holds contact through the hit window and returns only to the current clash position, not the original side slot;
+  - visible HUD copy was changed from round labels to `交战中`, `双方接战`, and `阵线推进`, reducing the old turn-based/readout feel;
+  - `scripts/screenshot-battle-center-convergence.cjs` now validates `finalFrontLineGapMedian` and `postDamageFrontHoldMissCount`, so a regression that retreats to home or leaves the front too far apart fails automatically;
+  - `check:preview`, `check-battle-stage13z2`, `check-battle-stage14-real-combat`, and `repair:preview-stage14-real-combat` were synced to the new sustained-clash tokens.
+- Runtime acceptance on `http://localhost:7456/`:
+  - SR/R forced formation passed `npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors; telemetry included `finalFrontLineGapMedian=302.43`, `postDamageFrontHoldMissCount=0`, `enemyLastHpRatioMax=0`, and `damageFloatImpactSyncMaxDelta=4`;
+  - mixed UR/SSR/SR formation passed `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors; telemetry included `finalFrontLineGapMedian=308.54`, `postDamageFrontHoldMissCount=0`, `enemyLastHpRatioMax=0`, `damageFloatImpactSyncMaxDelta=2`, `namedAtkCueCount=35`, and `namedSkillCueCount=37`;
+  - visual self-check used `06-opening-run-1000ms.png`, `09-basic-contact-3200ms.png`, `10-basic-impact-3900ms.png`, and `12-mid-combat-5100ms.png`; the fight now keeps a sustained midline clash instead of one unit stepping out like a turn.
+- Verification passed:
+  - `npm.cmd run check:battle-stage14-real-combat`;
+  - `npm.cmd run check:battle-stage13z2`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - focused Cocos Creator TypeScript no-emit for battle renderer/timeline/state/replay/action/HP modules;
+  - `assets/resources/spine` `.spine/.spine.meta` scan returned `0`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle Phase A Contact Hold R21
+
+- User confirmed the next correction after the R20 visual pass: melee actors must not teleport to the monster, snap back, then attack. The attacker should visibly move to the target contact area, hold that contact through the hit frame, and only fall back into the current clash line instead of the original home column.
+- Cocos/source updates:
+  - `LobbyBattlePreviewPanelRenderer.ts` now keeps root motion limited to `melee_move` and `ranged_projectile`; `basic_attack` no longer owns long-distance movement, so the attack frame cannot create a fake teleport-return cycle;
+  - `damage_float` records the actor's current rendered contact position into `battleActorStickyCombatHoldUntilMs` and holds it for about 2.4 seconds, keeping melee actors visually near their target during damage, hit stop, slash VFX, and hit reaction;
+  - sticky contact, damage target, and clash-idle offsets were widened per lane so multiple heroes and monsters do not stack into one unreadable pile while still staying in the central battle area;
+  - debug HUD and skill-bar placeholders are hidden for normal preview, reducing report-like clutter in the combat scene;
+  - `LobbyBattleImpactDirector.ts` increases defender recoil distance and lift for stronger ordinary/critical hit impact.
+- Preview/acceptance scripts:
+  - `scripts/repair-preview-melee-contact-root-motion.mjs` and `scripts/repair-preview-phase-a-impact.mjs` were synced with the source model so stale Cocos Preview chunks receive the same contact-hold and recoil logic;
+  - `scripts/screenshot-battle-center-convergence.cjs` now ignores transient damage/hit frames for static overlap checks and verifies no settle request is made during visual acceptance;
+  - `scripts/check-preview-freshness.mjs` and `scripts/check-battle-stage14-real-combat.mjs` now guard the R21 root-motion/contact tokens.
+- Runtime acceptance on `http://localhost:7456/`:
+  - `npm.cmd run screenshot:battle-center` passed for forced SR/R formation with 1 battle start request, 0 settle requests, 0 page errors, and 0 console errors;
+  - latest screenshots remain in `artifacts/battle-center-convergence-current/`.
+- Verification passed:
+  - `npm.cmd run repair:preview-phase-a-impact`;
+  - `npm.cmd run repair:preview-melee-contact-root-motion`;
+  - `npm.cmd run check:battle-stage13i`;
+  - focused Cocos Creator TypeScript no-emit for battle renderer/timeline/state/replay/action/HP modules;
+  - `npm.cmd run check:preview`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-06-25 Battle No-Teleport Contact Path R22
+
+- User rejected the remaining battle motion quality: attacks must not teleport, actors must not run outside the scene, and the effect should match the reference side-scrolling RPG flow where melee units run into target contact before attacking.
+- Root cause:
+  - `LobbyBattlePreviewPanelRenderer.ts` had several coordinate sources competing in the same frame: stable action anchors, rendered frame anchors, sticky contact positions, clash idle offsets, and root-motion positions;
+  - melee root motion target positions were inheriting the actor's own idle/separation offset, so a runner could arrive beside the target-front point or lag behind the hit frame;
+  - stale Cocos Preview repair scripts could still reintroduce older wide frame deltas and contact offsets.
+- Cocos/source fixes:
+  - `BATTLE_ACTOR_FRAME_MAX_DELTA` was tightened to `58`, adding a stricter visual no-teleport cap for compressed timeline playback;
+  - all resolved actor positions now pass through `clampBattleActorFramePosition()` with safe battlefield bounds (`x <= 820 * scale`, `-340..340 * scale` on y) before rendering/telemetry;
+  - `melee_move` root motion now targets the absolute `resolveActorMeleeContactPosition()` for the action, instead of `baseMotionHomePosition + actionOffset`, so the runner visibly travels from its current combat home to the enemy-front contact point;
+  - persistent lane separation is only applied to non-root-motion hold positions; active attack root motion returns the raw clamped path position so it is not pushed away from the target;
+  - lane/contact offsets were retuned to keep multiple actors readable in the clash area without pushing them outside the field.
+- Preview/acceptance scripts:
+  - added `scripts/repair-preview-battle-motion-r22.mjs` and `npm.cmd run repair:preview-battle-motion-r22` for stale Preview chunks; do not use the older `repair:preview-melee-contact-root-motion` after this step because it can reintroduce the previous broad smoothing values;
+  - `scripts/screenshot-battle-center-convergence.cjs` now validates continuous frame delta/speed, battlefield out-of-bounds samples, per-action melee contact misses, same-side live actor overlap, and keeps telemetry snapshots at every key screenshot so early-ending mixed teams are still analyzable;
+  - `scripts/check-battle-stage13v.mjs` now guards the stricter `BATTLE_ACTOR_FRAME_MAX_DELTA = 58` threshold.
+- Runtime acceptance on `http://localhost:7456/`:
+  - SR/R forced formation passed `npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors, `sampleCount=1845`, `maxContinuousFrameDelta=58.01`, `battlefieldOutOfBoundsSampleCount=0`, `allMeleeBasicAttackContactMedian=65.32`, `perActionMeleeContactMissCount=0`, `maxLiveActorOverlapPairs=0`;
+  - mixed UR/SSR/SR formation passed `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`: 1 battle start request, 0 settle requests, 0 page errors, 0 console errors, `sampleCount=1954`;
+  - visual self-check used `06-opening-run-1000ms.png`, `09-basic-contact-3200ms.png`, and `10-basic-impact-3900ms.png` in `artifacts/battle-center-convergence-current/`; no actor was observed teleporting back to a side column or leaving the visible battlefield.
+- Verification passed:
+  - `npm.cmd run repair:preview-battle-motion-r22`;
+  - `npm.cmd run screenshot:battle-center`;
+  - `$env:BATTLE_ACCEPTANCE_FORMATION='mixed'; npm.cmd run screenshot:battle-center`;
+  - focused Cocos Creator TypeScript no-emit for `LobbyBattlePreviewPanelRenderer.ts` using `--moduleResolution node`;
+  - `npm.cmd run check:battle-stage13i`;
+  - `npm.cmd run check:layout`;
+  - `npm.cmd run check:preview`;
+  - `git diff --check` passed with only Git LF/CRLF warnings.
+- Boundary unchanged:
+  - current visual battle may call existing `POST /api/player/battles/start`;
+  - no `/api/player/battles/{battleNo}/settle`, reward, stamina, progress, currency, bag, hero growth, ranking, USDT, fund-pool, EX, exchange/reissue, or new economy write entry is opened.
+
+## 2026-07-09 战斗特殊属性系统（RPG 化，表现层）
+
+详细规格见 `docs/battle/stage13-combat-special-properties.md`；后端表与口径见 `D:\project\LootChain\docs\24-战斗可视化与战斗系统.md` + `22-数据库设计.md`。
+
+- 策划定稿：特殊属性只来自技能/装备/宝石，职业不触发（职业克制环例外）；连击/斩杀走装备/宝石（sim 机制保留，当前单发）；英雄技能特殊属性=概率触发（`baseChance×稀有度系数`）；能量护盾=按稀有度缩放的百分比属性；暴击/减伤/闪避等百分比已按稀有度缩放。
+- 数据源：后端新表 `hero_battle_skill_config`（`sql/69_hero_battle_skill_config.sql`，按 `hero_code` 存 `energy_shield_scope`+`effects_json`，已落库 17 行）。客户端 `LobbyBattleHeroSkillConfig.ts` 占位镜像，待 `battle start` 回执下发替换。
+- 已实装（客户端 sim + 表现，`LobbyBattleReplayModel` / `LobbyBattlePresentationHp` / `LobbyBattleActionPresentation` / `LobbyBattleImpactDirector` / `LobbyBattlePreviewPanelRenderer`）：能量护盾（先扣盾再扣血 + 半透明护盾层）、真伤穿透（无视防御 + 紫色飘字）、吸血（回攻击者血 + 绿色飘字）、反弹（反伤攻击者 + 红色飘字）、显眼飘字（穿透紫/暴击红/克制金/连击青/闪避灰）。
+- 待实装：冻结/眩晕（动回合生成）、溅射（多目标）——配置已登记 sim no-op；连击/斩杀随装备/宝石；`battle start` 下发管线。
+- 2026-07-09 下发管线已打通：battle start 回执 `lineup[]` 带 `energyShieldScope`+`effectsJson`（后端 `hero_battle_skill_config` + `HeroBattleSkillConfigMapper`），客户端优先用下发、缺省回退占位；实测返回正确。
+- 2026-07-10 冻结/眩晕已实装：createSynthetic roll→目标 `frozenUntilMs`，`selectBattleReplayActor(nowMs)` 排除被控单位（跳过出手），不叠控/不控尸，全员被控推进时间+连续空过>10 收尾（real-combat/状态机守卫验证不 stall），冻结冰蓝/眩晕晕黄飘字。
+- 2026-07-10 溅射已实装：主动作 roll 一次（不进 createSynthetic 防递归）→ `pickBattleReplaySplashTarget` 最近另一敌人追加 magnitude 比例 hit（`isSplash`），"溅射" 橙飘字。至此 A 档概率技能（穿透/吸血/反弹/冻结/眩晕/溅射）全部落地。
+- 2026-07-10 硬控持续图标已实装：`hit.frozeUntilMs`→`BattlePresentationHpUnitState.frozenUntilMs`，HP 状态层按播放时间算 `frozen`，`renderHpBar(ccKind)` 被控期间在血条上方挂 `buff_stun` 染色图标（冰蓝/晕黄）直到解控，逐帧重建无 tween。
+- 2026-07-10 战斗/大厅微调：① 职业克制增伤 +30%→+10%（`BATTLE_REPLAY_COUNTER_BONUS=1.1`），且飘字区分方向——我方克敌"克制"（金）/ 敌方克我方"被克制"（红），`resolveBattleHitDisplayValue(hit, actorSide)`；② 大厅顶部"深渊爬塔·第N层"改用**已通关最高关**（后端 `PlayerLobbyAdventureVO.maxCompletedStageCode`←`user_mainline_progress.max_completed_stage_code`；客户端 `LobbyAdventureApi` 解析、`LobbyHudRenderer.resolveIdleTowerStageCode` 优先用它），不再显示"下一关"（会多 1 层）。
+- 2026-07-10 玩家英雄详情"技能预览"接入真实技能特性：`LobbyHeroDetailPanelRenderer.resolveHeroSpecialSkills` 展示能量护盾 + 概率技能（吸血/穿透/冻结/眩晕/溅射/反弹），触发% 按该英雄稀有度实算；无配置英雄提示"连击/斩杀由装备/宝石提供"。
+- 2026-07-10 战败路径修复（之前只测过胜利，战败路径有多处 bug）：
+  1) 死亡英雄复活/续放技能：`isBattleActorVisiblyDead` 原来只隐藏死亡**敌人**（`!enemy` 门槛），死亡我方永不消失→逐帧重渲染成"站起来续放"。改为**敌我死亡单位播完倒地动画都消失**。
+  2) 战败不收口：`resolveLobbyBattleVisualCompletionDurationMs` 原来只在"敌全灭"完成，战败返回 MAX 92 秒→死亡英雄久留。改为**一方全灭即收口**（新增 `sideAllDeadMs` + `resolveBattleVisualOutcome` 判胜负）。
+  3) 结算恒提交 WIN：`LobbyBattleFlow.settle` 原硬编码 `result:'WIN'`，改为 `resolveBattleOutcome()`（sim 敌全灭=WIN、我全灭=LOSE）。后端 `RESULT_ALLOWLIST` 已含 LOSE，实测 LOSE 结算返回"不发奖不推进"。
+  4) 战败结算框 + 重新挑战：`renderStage12VictoryOverlay` 本就支持"战斗失败"（读 settlement.result），现在战败也会触发；战败按钮把"下一关"换成 **"重新挑战"**（重开本关）。结算回执未到时用视觉 sim 结果兜底，避免战败先闪"战斗胜利"。
+  5) 更新 4 个因上述改动而过时的守卫 token（check-layout/13z3/visual-state-machine/stage8）。战斗软件渲染，战败全流程观感需真机验证。
+- 2026-07-10 批次(继续)：
+  1) 战力不足也可挑战：移除 3 处门槛——`LobbyAdventurePanelRenderer`(dialog canChallenge 去掉 power.enough + 去掉"战力不足"提示行)、`BattleFormationSceneRenderer`(canChallenge=filled>0，按钮"请上阵英雄")、后端 `PlayerBattleServiceImpl.assertLineupPowerEnough` 改 no-op（不再按推荐战力 throw）。
+  2) 爬塔层数按真实累计关卡数：`LobbyHudRenderer.resolveIdleTowerFloor` 用 adventure 章节里该关的累计序号（每关=1层，非每章16），传给 `LobbyIdleStageRenderer.render(...,towerFloor)`；解决"每章不满16关时层数虚高"。
+  3) 硬控持续图标做显眼：`renderHpBar` 的 CC 图标加大(min30*scale)+深色底衬圆+高亮描边+抬高位置，`buff_stun` 染色（冻结冰蓝/眩晕晕黄），缺素材用"冻/晕"字兜底。注：CC 触发频率取决于阵容里有几个 freeze/stun 英雄（仅 SSR_LIVIA/UR_EVELYN/UR_ARTHAS 配了），单个英雄约 1 次/场。
+  4) 英雄详情技能改**后端下发**：后端 `PlayerLobbyHeroItemVO` 加 `energyShieldScope`+`effectsJson`（`PlayerLobbyHeroServiceImpl.loadSkillConfigs` 读 `hero_battle_skill_config`），客户端 `LobbyHeroApi.parseBattleSkillConfig`(从 BattleApi 导出复用)→`LobbyHeroItemVO.skillConfig`→详情 `resolveHeroSpecialSkills` 优先用下发、缺省回退占位。
+- 验证：`tsc` 六文件全过；`npm.cmd run check:battle-stage13i` 战斗 sim 守卫全过（stage13k/o/v 为既有 formation/场景根守卫失败，非本轮文件）。战斗软件渲染，观感需真机验证。
+- 边界不变：仍只用既有 `POST /api/player/battles/start`；`hero_battle_skill_config` 仅表现配置，不承载经济/结算。

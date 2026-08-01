@@ -1,0 +1,156 @@
+{
+  "files": [
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-00-title.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-01-login-form.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-02-lobby.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-03-map.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-04-dialog.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-05-battle-open-0p1s.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-06-opening-converge-0p9s.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-07-first-action-2p0s.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-r4-08-late-6p0s.png"
+  ],
+  "requests": [
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/auth/dev-login",
+      "postData": "{\"userId\":1}"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/protagonist/state",
+      "postData": null
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/me/lobby",
+      "postData": null
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/lobby/notices",
+      "postData": null
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/lobby/adventure",
+      "postData": null
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/battles/recent",
+      "postData": null
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/lobby/heroes",
+      "postData": null
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/lobby/heroes/filter-options",
+      "postData": null
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/battles/start",
+      "postData": "{\"requestId\":\"battle-start-1781933013460-176963\",\"stageCode\":\"MAIN_1_2\",\"heroIds\":[5,11,9,10,63],\"leaderHeroId\":5,\"clientVersion\":\"cocos-lobby-stage-4o\"}"
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/auth/dev-login",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"tokenName\":\"satoken\",\"tokenValue\":\"4bec048d-f3b2-4c4d-9208-19bd346602e7\"}}"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/protagonist/state",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"created\":true,\"profile\":{\"userId\":1,\"protagonistNo\":\"PG156d1b5e8f734b23a75d5d66758b422c\",\"gender\":\"male\",\"protagonistName\":\"圣契1\",\"rarity\":\"SSR\",\"currentForm\":\"attack\",\"attackUnlocked\":true,\"defenseUnlocked\":false,\"supportUnlocked\":false,\"userHeroId\":5,\"heroCode\":\"PROTAGONIST_MALE_ATTACK\",\"power\":9432}}}"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/me/lobby",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"userId\":1,\"displayName\":\"圣契1\",\"protagonistName\":\"圣契1\",\"username\":\"codex_player\",\"nickname\":\"Codex联调玩家\",\"avatar\":null,\"playerLevel\":1,\"exp\":50,\"levelProgress\":{\"currentLevel\":1,\"currentExp\":50,\"currentLevelNeedExp\":0,\"nextLevel\":2,\"nextLevelNeedExp\":100,\"expIntoLevel\":50,\"expToNextLevel\":50,\"progressPercent\":50,\"maxHeroLevel\":11,\"nextUnlockDesc\":null},\"stamina\":94,\"maxStamina\":120,\"gold\":1403.000000,\"diamond\":9970340.000000,\"combatPower\":122875,\"status\":1,\"accountStatus\":\"正常\",\"walletBound\":true,\"walletAddress\":\"TTESTCODEX000000000000000000000000\",\"loginMethod\":\"dev-login\"}}"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/lobby/notices",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":[{\"noticeNo\":\"NTC_ADMIN_NOTICE_STAGE1\",\"noticeType\":\"HOME\",\"title\":\"公告后台联调公告\",\"content\":\"本公告由后台公告管理阶段生成，仅用于 Cocos 大厅只读展示验收，不包含奖励、邮件附件或活动领取。\",\"priority\":10,\"startTime\":null,\"endTime\":null,\"publishTime\":\"2026-06-12T09:23:38\"}]}"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/battles/recent",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":[{\"battleNo\":\"B6e71becb1577445d87c8292ffb918894\",\"settlementNo\":\"S2d55bf4c00d24e4f9a343d325149ffe8\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"NO_REWARD\",\"rewardGranted\":false,\"readonlyEconomy\":true,\"economyApplied\":false,\"recordedTime\":\"2026-06-14T15:50:25\",\"message\":\"战斗结果已记录；未达主线首通胜利条件，不发放奖励、不扣体力、不推进主线进度\",\"guardrails\":[\"不扣体力\",\"不写主线进度\",\"不发放奖励\",\"不写背包/货币/USDT/资金池\",\"不开放 EX V1\"]},{\"battleNo\":\"Bcb1c2c61e2b24f869991bf00161561c1\",\"settlementNo\":\"Sa80f623ffa8c4afba41e47534bce58ed\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"REAL_MAINLINE_R1\",\"rewardGranted\":true,\"readonlyEconomy\":false,\"economyApplied\":true,\"recordedTime\":\"2026-06-14T12:51:40\",\"message\":\"MAIN_1_1 首通结算完成：扣体力6，发放首通奖励，推进 MAIN_1_2\",\"guardrails\":[\"仅 MAIN_1_1 首通胜利开放真实结算\",\"客户端不得提交奖励、体力、进度或货币字段\",\"不开放重复刷关掉落\",\"不开放 USDT、资金池、EX V1、后台补发或重结算\"]},{\"battleNo\":\"B6bb41e1f914b4b3ca2e7ceddbc308d74\",\"settlementNo\":\"Se71e603a655540e3a2c2c045f0887af3\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"NO_REWARD\",\"rewardGranted\":false,\"readonlyEconomy\":true,\"economyApplied\":false,\"recordedTime\":\"2026-06-11T18:11:10\",\"message\":\"战斗结果已记录；当前阶段不发放奖励、不扣体力、不推进主线进度\",\"guardrails\":[\"不扣体力\",\"不写主线进度\",\"不发放奖励\",\"不写背包/货币/USDT/资金池\",\"不开放 EX V1\"]},{\"battleNo\":\"B81c288bd70da4c539d5393b108ba4d77\",\"settlementNo\":\"S0b39dc9ae9ec4abd8480c000e5dd2a42\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"NO_REWARD\",\"rewardGranted\":false,\"readonlyEconomy\":true,\"economyApplied\":false,\"recordedTime\":\"2026-"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/lobby/heroes/filter-options",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"heroClasses\":[\"战士\",\"辅助\",\"刺客\",\"法师\",\"射手\",\"坦克\"]}}"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/lobby/heroes",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":[{\"id\":5,\"heroCode\":\"PROTAGONIST_MALE_ATTACK\",\"heroName\":\"深渊誓刃\",\"rarity\":\"SSR\",\"faction\":\"深渊议会\",\"heroClass\":\"战士\",\"level\":1,\"star\":1,\"power\":9432,\"protagonist\":true,\"sourceType\":\"PROTAGONIST\",\"currentForm\":\"attack\",\"portraitAsset\":null,\"cardBackgroundAsset\":null,\"spineAsset\":null,\"spineUuid\":null,\"formLabel\":\"攻击形态\"},{\"id\":11,\"heroCode\":\"UR_EVELYN\",\"heroName\":\"深渊魔女·伊芙琳\",\"rarity\":\"UR\",\"faction\":\"深渊议会\",\"heroClass\":\"法师\",\"level\":1,\"star\":1,\"power\":15067,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\",\"currentForm\":\"\",\"portraitAsset\":\"Nuu\",\"cardBackgroundAsset\":\"ui/hero-roster/card_background/Nuu_Illust\",\"spineAsset\":\"Nuu\",\"spineUuid\":\"a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a\",\"formLabel\":\"英雄\"},{\"id\":9,\"heroCode\":\"SSR_KANE\",\"heroName\":\"白银圣枪·凯恩\",\"rarity\":\"SSR\",\"faction\":\"圣辉帝国\",\"heroClass\":\"坦克\",\"level\":1,\"star\":1,\"power\":13229,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\",\"currentForm\":\"\",\"portraitAsset\":\"Ishmael\",\"cardBackgroundAsset\":\"ui/hero-roster/card_background/Ishmael_center\",\"spineAsset\":\"Ishmael\",\"spineUuid\":\"a4f0537a-ff0e-4ab6-8be3-c19073c8c475\",\"formLabel\":\"英雄\"},{\"id\":10,\"heroCode\":\"SSR_LIVIA\",\"heroName\":\"夜烬女王·莉维娅\",\"rarity\":\"SSR\",\"faction\":\"深渊议会\",\"heroClass\":\"法师\",\"level\":1,\"star\":1,\"power\":12568,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\",\"currentForm\":\"\",\"portraitAsset\":\"Carmilla\",\"cardBackgroundAsset\":\"ui/hero-roster/card_background/Carmilla_center\",\"spineAsset\":\"Carmilla\",\"spineUuid\":\"2b7cc014-e9c5-47b4-8f45-73dbaa62f268\",\"formLabel\":\"英"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/lobby/adventure",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"mode\":\"mainline\",\"readonly\":false,\"playerLevel\":1,\"playerPower\":122875,\"currentChapterCode\":\"CHAPTER_01\",\"currentChapterName\":\"暗影之堡\",\"recommendedStageCode\":\"MAIN_1_2\",\"recommendedStageName\":\"裂隙回廊\",\"recommendationText\":\"继续主线 1-2，MAIN_1_2 首通真实结算；年度主线开放 MAIN_1_1 至 MAIN_25_16，战力足够即可连续推进。\",\"guardrails\":[\"年度主线 MAIN_1_1 至 MAIN_25_16 首通胜利开放真实结算\",\"不限制每日首通次数；前置进度满足且阵容战力达到推荐战力即可继续挑战\",\"客户端不提交奖励、体力、进度或货币字段\",\"重复挑战不发放奖励；不开放扫荡、随机掉落、USDT、资金池、排行、EX V1 或后台补发\"],\"chapters\":[{\"chapterCode\":\"CHAPTER_01\",\"chapterName\":\"暗影之堡\",\"subtitle\":\"第一章\",\"summary\":\"从破碎城门进入深渊边境，确认第一条主线推进路径。\",\"unlocked\":true,\"stages\":[{\"stageCode\":\"MAIN_1_1\",\"stageName\":\"暗影城门\",\"orderNo\":1,\"unlocked\":true,\"recommended\":false,\"requiredLevel\":1,\"recommendedPower\":7500,\"enemySummary\":\"黑甲守卫 x3 / 裂隙侍从 x2\",\"rewardPreview\":[\"玩家经验\",\"金币\",\"低阶强化石\"],\"statusLabel\":\"可预览\",\"unlockHint\":\"已达成进入条件\",\"lockReasonCode\":\"NONE\",\"levelGap\":0,\"requiredLevelNeedExp\":0,\"expToRequiredLevel\":0,\"nextGuidanceTitle\":\"已开放主线 1-1\",\"nextGuidanceText\":\"MAIN_1_1 已首通；可重复挑战但只记录战斗结果，不再发放奖励或扣体力。\",\"growthSourceSummary\":\"当前阶段玩家经验来自年度主线 MAIN_1_1 至 MAIN_25_16 的一次性首通奖励；重复挑战不发放玩家经验。\",\"growthSourceStatus\":\"FIRST_CLEAR_USED_UP\",\"growthSourceHint\":\"该关首通奖励已结算；重复挑战返回 NO_REWARD，不发放额外经验。\",\"repeatableExpAvailable\":false},{\"stageCode\":\"MAIN_1_2\",\"stageName\":\"裂隙回廊\",\"orderNo\":2,\"unlocked\":true,\"recommended\":true,\"requiredLevel\":1,\"recommendedPower\":9300,\"enemySummary\":\"裂隙法师 x2 / 黑石弩手 x3\",\"rewardPreview\":[\"玩家经验\",\"金币\",\"低阶强化石\",\"英雄经验书\"],\"statusLabel\":\"推荐\",\"unlo"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/battles/start",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"battleNo\":\"Bd092e2d5121541cf8e9880ed7e8ab64b\",\"stageCode\":\"MAIN_1_2\",\"status\":\"STARTED\",\"serverSeed\":\"SEED6403e645f98f4db782b9138479ea4cc5\",\"lineup\":[{\"heroId\":5,\"heroCode\":\"PROTAGONIST_MALE_ATTACK\",\"heroName\":\"圣契1\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":9432,\"leader\":true,\"protagonist\":true,\"sourceType\":\"PROTAGONIST\"},{\"heroId\":11,\"heroCode\":\"UR_EVELYN\",\"heroName\":\"深渊魔女·伊芙琳\",\"rarity\":\"UR\",\"level\":1,\"star\":1,\"power\":15067,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"},{\"heroId\":9,\"heroCode\":\"SSR_KANE\",\"heroName\":\"白银圣枪·凯恩\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":13229,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"},{\"heroId\":10,\"heroCode\":\"SSR_LIVIA\",\"heroName\":\"夜烬女王·莉维娅\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":12568,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"},{\"heroId\":63,\"heroCode\":\"SSR_RON\",\"heroName\":\"灰烬猎手·罗恩\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":12430,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"}],\"enemyPreview\":[{\"enemyCode\":\"RIFT_SQUIRE\",\"enemyName\":\"裂隙侍从\",\"level\":1,\"power\":2100,\"role\":\"前排\",\"spineAsset\":\"\"},{\"enemyCode\":\"BLACK_GUARD\",\"enemyName\":\"黑甲守卫\",\"level\":1,\"power\":2900,\"role\":\"守卫\",\"spineAsset\":\"\"},{\"enemyCode\":\"RIFT_MAGE\",\"enemyName\":\"裂隙法师\",\"level\":1,\"power\":2400,\"role\":\"后排\",\"spineAsset\":\"\"}],\"expireTime\":\"2026-06-20T14:53:33.8432798\",\"readonlyEconomy\":false,\"guardrails\":[\"仅 MAIN_1_2 首通胜利开放 R2 真实结算\",\"客户端不得提交奖励、体力、进度或货币字段\",\"英雄升级仅开放 level-up，升星/觉醒/洗练"
+    }
+  ],
+  "battleStartRequests": [
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/battles/start",
+      "postData": "{\"requestId\":\"battle-start-1781933013460-176963\",\"stageCode\":\"MAIN_1_2\",\"heroIds\":[5,11,9,10,63],\"leaderHeroId\":5,\"clientVersion\":\"cocos-lobby-stage-4o\"}"
+    }
+  ],
+  "settleRequests": [],
+  "consoleLines": [
+    {
+      "type": "timeEnd",
+      "text": "Init Base: 0.346923828125 ms"
+    },
+    {
+      "type": "timeEnd",
+      "text": "Init Infrastructure: 41.68994140625 ms"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x52ec001dda00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "timeEnd",
+      "text": "Init SubSystem: 231.711181640625 ms"
+    },
+    {
+      "type": "timeEnd",
+      "text": "Init Project: 386.89990234375 ms"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x52ec001dda00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x52ec001dda00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x52ec001dda00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    }
+  ],
+  "filteredConsole": [],
+  "bodyState": {
+    "hasCocosErrorOverlay": false,
+    "canvasCount": 1,
+    "text": "设计分辨率 (1920X1080)\nRotate\nDebug Mode:\nNone\nVerbose\nInfo\nWarn\nError\nInfo For Web Page\nWarn For Web Page\nError For Web Page\nShow FPS\nFPS:\nPause"
+  },
+  "url": "http://localhost:7456/?r=stage13j-opening-r4-1781932989666"
+}

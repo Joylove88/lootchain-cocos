@@ -4,6 +4,23 @@
 
 本文从产品视角拆解参考大厅的可见功能点，用于后续规划 LootChain Cocos 大厅。当前阶段只做产品拆解与交互定义，不开放抽卡、英雄、背包、USDT、资金池或任何经济写入口。
 
+## 2026-06-14 当前落地补充
+
+- 当前 Cocos 大厅左上玩家等级只读展示来自 `GET /api/player/me/lobby.playerLevel`。
+- Stage 6S 后，年度主线 R1-R393 首通获得的玩家经验会由后端按 `user_level_config.need_exp` 自动回写 `game_user.player_level`；Cocos 只回读展示，不提供玩家手动升级或领取升级奖励入口。
+- 完整 R1/R2/R3 后累计玩家经验为 `190`，当前等级阈值下应显示 Lv.2，并继续推荐 `MAIN_1_4`；完整 R1-R9 后累计玩家经验为 `1750`，应显示 Lv.8 并解锁 `MAIN_2_1`；Stage 6R 后完整 R1-R15 应累计到 `5950`，显示 Lv.15 并推荐阶段保护的 `MAIN_2_7`。
+- `MAIN_2_1` 在 Stage 6I 已开放一次性真实首通；`MAIN_2_2` 在 Stage 6M 已开放一次性真实首通；`MAIN_2_3` 在 Stage 6N 已开放一次性真实首通；`MAIN_2_4` 在 Stage 6P 已开放一次性真实首通；`MAIN_2_5` 在 Stage 6Q 已开放一次性真实首通；`MAIN_2_6` 在 Stage 6R 已开放一次性真实首通；Stage 6S 后主线扩展为 `MAIN_1_1` 至 `MAIN_25_16` 的年度真实首通链路，`MAIN_2_7` 是 `R16`，最终 `MAIN_25_16` 是 `R393`。
+- Stage 6E 后，`GET /api/player/me/lobby.levelProgress` 提供经验进度，左上 EXP 小牌显示百分比，资料页显示 `当前经验/下一级门槛`、下一级差距和英雄等级上限。
+- 冒险 stage 新增 `unlockHint`，冒险详情在锁定态直接展示后端锁定原因，例如完成 R3 后 `MAIN_2_1` 显示需要 Lv.8、当前 Lv.2。
+- Stage 6F 后，冒险 stage 进一步提供 `lockReasonCode/levelGap/requiredLevelNeedExp/expToRequiredLevel`，`MAIN_2_1` 在 Lv.2、190 EXP 下展示还差 6 级 / 1560 EXP。
+- Stage 6G 后，冒险 stage 进一步提供 `nextGuidanceTitle/nextGuidanceText/growthSourceSummary/growthSourceStatus/growthSourceHint/repeatableExpAvailable`，锁定态明确提示首通经验已用完、暂无重复经验入口，避免误导玩家刷关。
+- Stage 6H 后，`MAIN_1_4` 至 `MAIN_1_9` 作为第一章成长桥开放真实首通结算；冒险地图围绕当前推荐/选中关卡显示，新增关卡后不会只显示早期节点。
+- Stage 6I 后，`MAIN_2_1` 作为第二章入口开放真实首通结算；Stage 6L 后该首通会追加 `第二章预热经验 500`；Stage 6M 后 `MAIN_2_2` 作为断誓大厅开放真实首通结算；Stage 6N 后 `MAIN_2_3` 作为灰烬回廊开放真实首通结算；Stage 6P 后 `MAIN_2_4` 作为圣像断桥开放真实首通结算；Stage 6Q 后 `MAIN_2_5` 作为圣堂裂口开放真实首通结算；Stage 6R 后 `MAIN_2_6` 作为圣堂裂隙深处开放真实首通结算；Stage 6S 后年度主线继续开放到 `MAIN_25_16`，不限制每日首通次数，重复挑战仍不能刷经验或掉落。
+- Stage 6J 后，`MAIN_2_2` 的运行期保护和 DB 守卫已补强：强制 start 不写 `battle_session`，活跃奖励规则必须为 `0`，Preview freshness 可明确诊断 target/chunk 缺失并已在本机恢复通过。
+- Stage 6K 后，`MAIN_2_2` 成为只读预热详情：冒险页优先显示该推荐锁定关卡，奖励标题为“奖励只读预览（当前不发放）”，`PHASE_LOCKED` 按钮为“仅预览”，并继续禁止战斗会话、体力、奖励和主线推进写入。
+- Stage 6S 后，冒险页按年度公式开放 `MAIN_1_1..MAIN_25_16` 的编队/战斗入口，并通过前置进度与出战阵容推荐战力控制推进；Cocos 仍拦截 `MAIN_25_17`、`MAIN_26_1` 等越界关卡，只切换预览或提示不可用。
+- Stage 7 后，冒险、编队和英雄详情形成完整成长引导：冒险详情显示当前阵容战力与差距，战力不足时引导去英雄详情升级；编队页展示目标关卡、推荐战力、当前阵容战力、差距和达标状态；英雄详情显示金币/英雄经验书持有量，`level-up` 成功后回读资料、英雄、背包和冒险再返回挑战。
+
 ## 整体结构
 
 大厅采用“全景场景地图 + 固定 HUD”的结构：
@@ -203,6 +220,9 @@
 
 - 本文仅做产品拆解，不代表当前阶段已开放这些功能。
 - 当前 Cocos 阶段仍以登录页、资源加载页、大厅背景页为准。
+- 2026-06-12 当前战斗仅开放 R1 主线首通真实结算：`MAIN_1_1` 首次胜利可通过既有战斗 start/settle 接口扣体力 `6`、发放 `玩家经验50/GOLD300/LOW_ENHANCE_STONE x2` 并推进 `MAIN_1_2`。
+- R1 不等于全面战斗经济开放：重复刷关掉落、副本、Boss、排行、扫荡、资金池奖励、USDT、EX V1、后台补发/重结算、背包 use/sell/batch-use 和英雄养成仍关闭。
+- Cocos 客户端不提交奖励、体力、进度、货币或背包字段，只展示后端权威结算回执。
 - 不开放 EX V1。
 - 不新增任何经济写入口。
 - 不改变概率、消耗、保底、奖励、USDT 审核、资金池释放等经济规则。
@@ -828,7 +848,7 @@
   - `LobbyBattleState.ts` 增加 `presentationStep` 和 `presentationComplete`。
   - `LobbyBattleFlow.ts` 在 battle session 创建成功后启动本地计时器，推进 4 个演出阶段。
   - 演出中主按钮为 `LobbyBattlePlaybackPending`，禁用 settlement。
-  - 演出完成后才出现 `LobbyBattleSettlementButton`。
+  - 历史版本演出完成后才出现 `LobbyBattleSettlementButton`；2026-06-19 返修后当前视觉验收流改为 `LobbyBattleReturnLobbyButton`，不主动提交结算。
   - `LobbyBattlePresentationState.ts` 根据 step 输出回合文字、日志、伤害浮字和敌方 HP 展示。
 - 验收：
   - `npm.cmd run check:layout` -> passed。
@@ -2953,6 +2973,28 @@
 - Boundary unchanged:
   - readonly card presentation only; no SQL, backend API, economy rule, gacha pool item, probability, weight, pity, cost, reward, duplicate conversion, EX V1, exchange/reissue, bag write, hero growth, reward/stamina/progress write, or new economy endpoint changed.
 
+## 2026-06-10 R/SR NPC Card Background Scale Rebalance QA Note
+
+- Product issue:
+  - after switching machines, R/SR `npc_*` card background figures looked too small in the hero roster.
+- Diagnosis:
+  - the 12 `npc_*.png` card backgrounds have near-full alpha bounds, so the issue is not caused by newly introduced transparent padding;
+  - the previous compact profile used `0.42` target visible height plus `0.82` width cap, which left too much empty card art area.
+- UI acceptance:
+  - R/SR NPC figures should read as character card art rather than small icons;
+  - artwork must still stay inside `LobbyHeroRosterCardBackgroundMask`;
+  - rarity/name/star/level/class badge/border effects must remain above the art layer.
+- Implementation:
+  - NPC target visible height is now `0.58`;
+  - NPC max display height is now `0.74`;
+  - NPC max display width is now `0.96`;
+  - UR/SSR and Nuu card-art profiles are unchanged.
+- Review result:
+  - `check:layout`, focused Cocos TypeScript no-emit, `.spine/.spine.meta` scan, and `git diff --check` passed;
+  - running Preview is stale for `LobbyHeroRosterPanelRenderer`, so refresh/restart Preview before visual acceptance.
+- Boundary unchanged:
+  - readonly card presentation only; no SQL, backend API, economy rule, gacha pool item, probability, weight, pity, cost, reward, duplicate conversion, EX V1, exchange/reissue, bag write, hero growth, reward/stamina/progress write, or new economy endpoint changed.
+
 ## 2026-06-09 Gacha Summon Animation QA Note
 
 - Product decision:
@@ -3130,7 +3172,7 @@
   - after explicit user approval, SSR/UR rates and pity are adjusted and ordinary/limited real draw pools are opened.
 - Expected gacha pool state:
   - `LIMITED_ABYSS_PREVIEW`, `NORMAL_HERO`, and `BASIC_CONTRACT_PREVIEW` should be selectable and drawable when backend returns `locked=false`, `drawEnabled=true`, and `previewOnly=false`;
-  - `SEALED_LIGHT_DARK` should remain unavailable.
+  - `SEALED_LIGHT_DARK` should remain locked/display-only and non-drawable.
 - Expected rate/pity display:
   - `R=57.6%`;
   - `SR=38.4%`;
@@ -3148,3 +3190,191 @@
   - Cocos `check:layout`, directed TypeScript no-emit, `check:preview`, `.spine/.spine.meta` scan, and `git diff --check` passed.
 - Still closed:
   - EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress writes, and any new economy write endpoint.
+
+## 2026-06-10 Controlled Real Draw Closure QA Note
+
+- QA target:
+  - complete one current-stage real draw through the same Cocos-approved backend write path, without opening any additional economy surface.
+- Runtime setup:
+  - created one-off test account `userId=4 / codex_cocos_draw_20260610140143`;
+  - assigned exactly `DIAMOND=280` to that test account only;
+  - left `userId=1` and long-running accounts untouched.
+- Flow verified:
+  - `dev-login` succeeded;
+  - protagonist state returned `created=false`, then protagonist creation succeeded for the test account;
+  - `GET /api/player/me/lobby` returned the test profile and `DIAMOND=280`;
+  - `GET /api/player/gacha/pools` exposed `NORMAL_HERO` as `locked=false`, `drawEnabled=true`, `previewOnly=false`;
+  - `GET /api/player/gacha/pity/NORMAL_HERO` returned `UR/SSR counter=0,totalCount=0` before draw.
+- Real draw result:
+  - request `codex-cocos-normal-draw-20260610140143`;
+  - `drawNo=GACHA96a43b72b1734a69a71a613021717f8d`;
+  - reward `SR_WITCH_03 / 契约魔女 / SR`;
+  - `grantNo=RWDc334bcee86e34bca953807914ca29c98-19875bc0`.
+- Persistence verified:
+  - diamond balance `280 -> 0`;
+  - exactly one currency deduction log, one draw log, one draw result, and one successful HERO reward grant;
+  - same request replay returned the same draw/grant and did not double charge;
+  - pity counters became `counter=1,totalCount=1`;
+  - gacha/reward outbox rows and one `GACHA_DRAW` operation log were present;
+  - generated hero attributes were present for the granted hero.
+- Red-line check:
+  - `gacha exchange/reissue`, bag `use/batch-use/sell`, and hero `level-up/star-up/awaken/refine` still return the Cocos phase gate message;
+  - no EX V1, exchange/reissue, bag write, hero growth, reward/stamina/progress write, or new economy endpoint was opened.
+
+## 2026-06-10 Gacha Draw Guard And Display-Only Pool QA Note
+
+- Product issue:
+  - current real draw is open, so the client must not treat missing/undefined `drawEnabled` as drawable;
+  - the light/dark pool should remain visible as locked/display-only instead of disappearing from the summon rail;
+  - draw request pending state must not allow the user to leave and later reopen stale summon/result state.
+- UI/flow acceptance:
+  - summon buttons enable only on `drawEnabled === true`, `previewOnly=false`, `locked=false`, and active pool status;
+  - `SEALED_LIGHT_DARK` appears as locked/display-only and cannot draw;
+  - closing the gacha page while a draw request is pending shows `召唤请求处理中，请稍候。`;
+  - account/login reset clears stale `drawing`, `error`, `lastDrawResult`, and `activeAction`;
+  - lobby copy says real draw is backend-gated and only `draw` is open; exchange/reissue are closed.
+- Backend acceptance:
+  - same `requestId` replay returns existing result only for the same `poolCode`, `drawCount`, and `useTicket`;
+  - mismatched replay returns `重复抽卡请求参数不一致`;
+  - request id length is guarded at `128`;
+  - `SEALED_LIGHT_DARK` display config is verified as locked/display-only, not real-open.
+- Review result:
+  - Cocos `check:layout` passed;
+  - directed Cocos TypeScript no-emit passed;
+  - Cocos `check:preview` passed after Preview refreshed the changed chunks;
+  - backend economy guard passed;
+  - targeted Maven tests passed;
+  - low-balance gacha draw smoke passed with no draw/result/reward/currency writes.
+- Preview status:
+  - current `http://127.0.0.1:7456` Preview now serves the changed Cocos scripts;
+  - if stale chunks recur after later edits, no repository script can non-destructively refresh those chunks from outside Creator;
+  - run Creator-side `Reimport Asset` for the changed scripts plus `Project -> Refresh Device`, or reopen Preview, then rerun `npm.cmd run check:preview`.
+- Boundary unchanged:
+  - same existing `POST /api/player/gacha/draw` gacha write only;
+  - no EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress write, or new economy endpoint was opened;
+  - no new successful draw or recharge was performed in this pass.
+
+## 2026-06-10 Multi-Pool Low-Balance Draw Guard QA Note
+
+- QA target:
+  - close the remaining validation gap between the three real-open pools and the previous single-pool low-balance smoke.
+- Expected pool scope:
+  - `LIMITED_ABYSS_PREVIEW`;
+  - `NORMAL_HERO`;
+  - `BASIC_CONTRACT_PREVIEW`.
+- Expected failure behavior:
+  - each target pool must be returned by `GET /api/player/gacha/pools` with `locked=false`, `drawEnabled=true`, and `previewOnly=false`;
+  - the low-balance test account must have balance below the pool single-draw cost, otherwise the smoke must abort before calling draw;
+  - the same request id is submitted twice to existing `POST /api/player/gacha/draw`;
+  - both calls must fail without getting stuck in `抽卡请求处理中`;
+  - no draw log/result, reward grant, currency log, hero, fragment, or pity state may change for the failed request.
+- Locked-pool behavior:
+  - `SEALED_LIGHT_DARK` remains visible locked/display-only and non-drawable;
+  - it is intentionally excluded from the real-open low-balance smoke.
+- Review result:
+  - three-pool low-balance smoke passed for `userId=4`;
+  - each real-open pool stayed write-clean with `drawLogs=0`, `drawResults=0`, `rewardGrantLogs=0`, and `currencyLogs=0`;
+  - backend economy guard and targeted Maven tests passed;
+  - Cocos `check:layout`, directed TypeScript no-emit, `check:preview`, `.spine/.spine.meta` scan, and `git diff --check` passed.
+  - Browser self-preview reached lobby as `userId=4` and opened `召唤祭坛`; the three real-open pools and visible locked/display-only `光暗召唤` were present, with no console errors and no draw button click.
+- Boundary unchanged:
+  - no Cocos write entry was added;
+  - no successful draw or recharge is part of this QA pass;
+  - EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress writes, and any new economy endpoint remain closed.
+
+## 2026-06-10 Hero Summon Center Spine QA Note
+
+- Product issue:
+  - selecting `英雄召唤` still displayed the limited summon center skeleton.
+- Root cause:
+  - the active `NORMAL_HERO` display config row used the same `center_spine_resource` and UUID as `LIMITED_ABYSS_PREVIEW`;
+  - Cocos was following backend display data correctly, but the data pointed to the wrong center Spine.
+- Expected display:
+  - `LIMITED_ABYSS_PREVIEW` keeps `spine/gacha/huangfengjiaozong/huangfengjiaozong`;
+  - `NORMAL_HERO` uses `spine/gacha/hunka_nima/hunka_nima`;
+  - `NORMAL_HERO` must not reuse the limited center Spine.
+- Review result:
+  - added SQL `D:\project\LootChain\sql\36_gacha_hero_center_spine_display_sync.sql`;
+  - updated fresh display SQL and the gacha rate/pity opening SQL to keep the mapping stable;
+  - economy/display guard now catches any regression where hero summon points back to limited summon;
+  - Browser self-preview after refresh/login confirmed `英雄召唤` center renders the `hunka_nima` white-haired seated skeleton and no draw button was clicked.
+- Boundary unchanged:
+  - display metadata only; no gacha probability, weight, pity, cost, reward, write route, EX V1, exchange/reissue, bag write, hero growth, reward/stamina/progress write, or new economy endpoint changed.
+
+## 2026-06-10 Normal Summon R/SR-Only And Box Summon Center QA Note
+
+- Product request:
+  - `普通召唤` must remove SSR/UR heroes from the active pool;
+  - the center summon Spine should use `assets/resources/spine/gacha/box_summon`;
+  - the center Spine sizing should remain consistent with the other real-open pool presentation.
+- Expected economy/display result:
+  - `BASIC_CONTRACT_PREVIEW` stays real-open only through the existing draw gate fields;
+  - active rates are `R=0.600000` and `SR=0.400000`;
+  - active SSR/UR rates, reward items, and duplicate configs are `0`;
+  - pity group is `BASIC_RS_ONLY`, with no active SSR/UR pity;
+  - `center_spine_resource=spine/gacha/box_summon/boxman_text`;
+  - `center_spine_uuid=3a0e1b57-8392-4f08-83ce-31ce91d26481`.
+- Cocos resource handling:
+  - `box_summon` now has Cocos meta files for `boxman_text.json`, `boxman_text.atlas`, and atlas page PNGs;
+  - original `252.spine` source was moved to `docs/spine-source-archive/gacha/box_summon/252.spine`;
+  - layout guard checks the `box_summon` Spine JSON version, default skin, idle animation, atlas pages, and bans `.spine` source files from `assets/resources/spine`.
+- Review target:
+  - selecting `普通召唤` should render `box_summon`, not limited summon or hero summon;
+  - `box_summon` should use the normal summon scale multiplier so it is visually close to the limited and hero center Spine sizes;
+  - `概率保底` should show the R/SR-only rate/guarantee notes and must not show inactive SSR/UR pity rows;
+  - `奖池内容` should list only active R/SR reward rows;
+  - no draw button should be clicked during visual verification unless the user explicitly approves a paid successful draw;
+  - failure smoke remains low-balance/write-clean only.
+- Review result:
+  - Browser Preview selected `普通召唤` and displayed `box_summon`;
+  - `概率保底` showed `R 60% / SR 40%` and the R/SR-only no-SSR/UR-pity note;
+  - 当时 `奖池内容` 只显示旧的 2R+2SR；该结果已被 2026-06-13 V1 卡池条目基线覆盖，普通召唤当前应显示 6R+6SR；
+  - no single/ten draw button was clicked.
+- Boundary unchanged:
+  - Cocos still uses only existing `POST /api/player/gacha/draw`;
+  - no EX V1, exchange/reissue, bag use/sell/batch-use, hero growth, reward/stamina/progress write, or new economy endpoint is opened.
+
+## 2026-06-13 Gacha Pool Item V1 Baseline QA Note
+
+- Product/design result:
+  - `普通召唤` is the early daily R/SR pool;
+  - `英雄召唤` is the permanent full regular hero pool;
+  - `限定召唤` keeps the same rarity rates as the permanent pool but uses abyss-themed internal weights.
+- Backend configuration result:
+  - `BASIC_CONTRACT_PREVIEW`: 6 active R + 6 active SR, all weight `100`, no active SSR/UR;
+  - `NORMAL_HERO`: 6R + 6SR + 4SSR, all weight `100`, no active UR;
+  - `LIMITED_ABYSS_PREVIEW`: 6R + 6SR + 4SSR + first-version UR pair `UR_ARTHAS`/`UR_EVELYN`, with both UR heroes weighted `500`.
+- Cocos review target:
+  - `奖池内容` must read backend active items and show the expanded V1 roster;
+  - normal summon must no longer show only the historical `R_PATROL_01/R_ACOLY_02/SR_PRIEST_01/SR_WITCH_03` subset;
+  - normal summon must still hide SSR/UR and must not show SSR/UR pity rows;
+  - hero summon must not show UR rows or UR pity;
+  - limited summon must show only `UR_ARTHAS` and `UR_EVELYN` in the UR tier.
+- Guard result:
+  - `check-gacha-economy-config.ps1` now checks exact item counts, weights, UP flags, active version, duplicate active rows, disabled/EX/protagonist hero leakage, and `SEALED_LIGHT_DARK` locked display-only state.
+- Boundary unchanged:
+  - this is backend configuration and Cocos-readonly presentation data only;
+  - no successful draw, recharge, EX V1, exchange/reissue, bag write, hero growth, reward/stamina/progress write, or new economy endpoint is opened.
+
+## 2026-06-11 Gacha Price And C1812 Summon UI QA Note
+
+- Product pricing:
+  - limited summon uses limited tickets first, then diamonds 300/3000;
+  - hero summon uses hero tickets first, then diamonds 280/2800;
+  - normal summon uses normal tickets first, then bound diamonds 80/800.
+- Cocos request:
+  - draw remains `POST /api/player/gacha/draw`;
+  - current request body uses `paymentMode=AUTO`.
+- UI resource decision:
+  - scanned `C:\Users\axian\Desktop\C1812-1`;
+  - selected summon floor, magic circle, reward slot, case frame, and gold currency icon;
+  - imported them under `assets/resources/ui/gacha/c1812`;
+  - used the floor and magic circle under the center Spine, and the frame/slot on reveal/result cards.
+- QA result:
+  - backend economy guard passed;
+  - targeted gacha Maven tests passed with `25 tests, 0 failures`;
+  - AUTO low-balance smoke passed for all three real pools without persistence writes;
+  - Cocos `check:layout` and directed TypeScript no-emit passed.
+- Visual acceptance status:
+  - Cocos Preview is not currently serving `localhost:7456` after reboot, so browser preview is blocked by `ECONNREFUSED`;
+  - start or refresh Creator Preview before judging the final summon page visuals.

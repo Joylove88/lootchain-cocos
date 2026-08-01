@@ -1,0 +1,45 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/auth/dev-login",
+      "postData": "{\"userId\":1}"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:8081/api/player/battles/recent",
+      "postData": null
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/battles/start",
+      "postData": "{\"requestId\":\"battle-start-1781926229537-885979\",\"stageCode\":\"MAIN_1_2\",\"heroIds\":[5,11,9,10,63],\"leaderHeroId\":5,\"clientVersion\":\"cocos-lobby-stage-4o\"}"
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/auth/dev-login",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"tokenName\":\"satoken\",\"tokenValue\":\"4bec048d-f3b2-4c4d-9208-19bd346602e7\"}}"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/battles/recent",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":[{\"battleNo\":\"B6e71becb1577445d87c8292ffb918894\",\"settlementNo\":\"S2d55bf4c00d24e4f9a343d325149ffe8\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"NO_REWARD\",\"rewardGranted\":false,\"readonlyEconomy\":true,\"economyApplied\":false,\"recordedTime\":\"2026-06-14T15:50:25\",\"message\":\"战斗结果已记录；未达主线首通胜利条件，不发放奖励、不扣体力、不推进主线进度\",\"guardrails\":[\"不扣体力\",\"不写主线进度\",\"不发放奖励\",\"不写背包/货币/USDT/资金池\",\"不开放 EX V1\"]},{\"battleNo\":\"Bcb1c2c61e2b24f869991bf00161561c1\",\"settlementNo\":\"Sa80f623ffa8c4afba41e47534bce58ed\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"REAL_MAINLINE_R1\",\"rewardGranted\":true,\"readonlyEconomy\":false,\"economyApplied\":true,\"recordedTime\":\"2026-06-14T12:51:40\",\"message\":\"MAIN_1_1 首通结算完成：扣体力6，发放首通奖励，推进 MAIN_1_2\",\"guardrails\":[\"仅 MAIN_1_1 首通胜利开放真实结算\",\"客户端不得提交奖励、体力、进度或货币字段\",\"不开放重复刷关掉落\",\"不开放 USDT、资金池、EX V1、后台补发或重结算\"]},{\"battleNo\":\"B6bb41e1f914b4b3ca2e7ceddbc308d74\",\"settlementNo\":\"Se71e603a655540e3a2c2c045f0887af3\",\"stageCode\":\"MAIN_1_1\",\"result\":\"WIN\",\"settlementMode\":\"NO_REWARD\",\"rewardGranted\":false,\"readonlyEconomy\":true,\"economyApplied\":false,\"recordedTime\":\"2026-06-11T18:11:10\",\"message\":\"战斗结果已记录；当前阶段不发放奖励、不扣体力、不推进主线进度\",\"guardrails\":[\"不扣体力\",\"不写主线"
+    },
+    {
+      "status": 200,
+      "url": "http://localhost:8081/api/player/battles/start",
+      "body": "{\"code\":0,\"msg\":\"success\",\"data\":{\"battleNo\":\"B31439be5f7714b208b202d7e04bdb8ad\",\"stageCode\":\"MAIN_1_2\",\"status\":\"STARTED\",\"serverSeed\":\"SEED09220d279ec14342a7cbb4b528d7b634\",\"lineup\":[{\"heroId\":5,\"heroCode\":\"PROTAGONIST_MALE_ATTACK\",\"heroName\":\"圣契1\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":9432,\"leader\":true,\"protagonist\":true,\"sourceType\":\"PROTAGONIST\"},{\"heroId\":11,\"heroCode\":\"UR_EVELYN\",\"heroName\":\"深渊魔女·伊芙琳\",\"rarity\":\"UR\",\"level\":1,\"star\":1,\"power\":15067,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"},{\"heroId\":9,\"heroCode\":\"SSR_KANE\",\"heroName\":\"白银圣枪·凯恩\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":13229,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"},{\"heroId\":10,\"heroCode\":\"SSR_LIVIA\",\"heroName\":\"夜烬女王·莉维娅\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":12568,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"},{\"heroId\":63,\"heroCode\":\"SSR_RON\",\"heroName\":\"灰烬猎手·罗恩\",\"rarity\":\"SSR\",\"level\":1,\"star\":1,\"power\":12430,\"leader\":false,\"protagonist\":false,\"sourceType\":\"REWARD_GRANT\"}],\"enemyPreview\":[{\"enemyCode\":\"RIFT_SQUIRE\",\"enemyName\":\"裂隙侍从\",\"level\":1,\"power\":2100,\"role\":\"前排\",\"spineAsset\":\"\"},{\"enemyCode\":\"BLACK_GUARD\",\"enemyName\":\"黑甲守卫\",\"level\""
+    }
+  ],
+  "settleRequests": [],
+  "battleStartRequests": [
+    {
+      "method": "POST",
+      "url": "http://localhost:8081/api/player/battles/start",
+      "postData": "{\"requestId\":\"battle-start-1781926229537-885979\",\"stageCode\":\"MAIN_1_2\",\"heroIds\":[5,11,9,10,63],\"leaderHeroId\":5,\"clientVersion\":\"cocos-lobby-stage-4o\"}"
+    }
+  ],
+  "consoleLines": []
+}

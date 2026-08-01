@@ -7,9 +7,11 @@ import {
   Label,
   Node,
   Size,
+  Sprite,
   UITransform,
   Vec3,
 } from 'cc';
+import { C1812_BUTTON_PRIMARY_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
 import type { LobbyCodexItemVO, LobbyCodexPanelState } from '../../types/LobbyCodexTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
@@ -35,6 +37,7 @@ export interface LobbyCodexPanelHost {
     horizontalAlign?: HorizontalTextAlignment,
   ): Label;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
+  addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
 }
 
 /** 英雄图鉴只读预览面板。 */
@@ -87,18 +90,7 @@ export class LobbyCodexPanelRenderer {
   }
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    const title = this.host.addChildLabel(
-      parent,
-      'LobbyCodexTitle',
-      '英雄图鉴',
-      0,
-      height / 2 - 43 * scale,
-      27 * scale,
-      rgba(250, 222, 156),
-      new Size(width - 96 * scale, 38 * scale),
-    );
-    title.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(title, scale, true);
+    // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
 
     const statusText = state.loading ? '正在读取只读图鉴...' : state.error ? '服务端图鉴暂不可用，已显示空状态' : state.loaded ? '只读英雄图鉴' : '等待图鉴数据';
     const status = this.host.addChildLabel(
@@ -106,8 +98,7 @@ export class LobbyCodexPanelRenderer {
       'LobbyCodexStatus',
       statusText,
       0,
-      height / 2 - 76 * scale,
-      17 * scale,
+      height / 2 - 76 * scale, 19 * scale,
       rgba(198, 164, 91),
       new Size(width - 104 * scale, 27 * scale),
     );
@@ -128,7 +119,7 @@ export class LobbyCodexPanelRenderer {
     graphics.fill();
     graphics.strokeColor = rgba(157, 118, 60, 160);
     graphics.stroke();
-    const label = this.host.addChildLabel(chip, `${name}Label`, text, 0, 0, 14 * scale, rgba(224, 190, 118), new Size(width - 10 * scale, 23 * scale));
+    const label = this.host.addChildLabel(chip, `${name}Label`, text, 0, 0, 16 * scale, rgba(224, 190, 118), new Size(width - 10 * scale, 23 * scale));
     label.overflow = Label.Overflow.SHRINK;
   }
 
@@ -174,7 +165,7 @@ export class LobbyCodexPanelRenderer {
     graphics.fill();
     graphics.strokeColor = rgba(148, 110, 56, 118);
     graphics.stroke();
-    const label = this.host.addChildLabel(box, 'LobbyCodexEmptyText', text, 0, 0, 19 * scale, rgba(213, 193, 151), new Size(width - 128 * scale, 48 * scale));
+    const label = this.host.addChildLabel(box, 'LobbyCodexEmptyText', text, 0, 0, 20 * scale, rgba(213, 193, 151), new Size(width - 128 * scale, 48 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
   }
@@ -184,23 +175,23 @@ export class LobbyCodexPanelRenderer {
     const graphics = card.addComponent(Graphics);
     this.drawCodexCard(graphics, width, height, scale, item);
 
-    const rarity = this.host.addChildLabel(card, 'LobbyCodexRarity', safeText(item.rarity || 'R'), -width / 2 + 25 * scale, height / 2 - 18 * scale, 15 * scale, this.rarityColor(item.rarity), new Size(46 * scale, 22 * scale));
+    const rarity = this.host.addChildLabel(card, 'LobbyCodexRarity', safeText(item.rarity || 'R'), -width / 2 + 25 * scale, height / 2 - 18 * scale, 17 * scale, this.rarityColor(item.rarity), new Size(46 * scale, 22 * scale));
     rarity.overflow = Label.Overflow.SHRINK;
     this.applyOutline(rarity, scale, true);
 
-    const name = this.host.addChildLabel(card, 'LobbyCodexHeroName', safeText(item.heroName), -width / 2 + 55 * scale, height / 2 - 18 * scale, 18 * scale, rgba(244, 219, 163), new Size(width - 68 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+    const name = this.host.addChildLabel(card, 'LobbyCodexHeroName', safeText(item.heroName), -width / 2 + 55 * scale, height / 2 - 18 * scale, 20 * scale, rgba(244, 219, 163), new Size(width - 68 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
 
     const metaText = `${safeText(item.faction)} / ${safeText(item.heroClass)}`;
-    const meta = this.host.addChildLabel(card, 'LobbyCodexMeta', metaText, -width / 2 + 16 * scale, 4 * scale, 14 * scale, rgba(182, 166, 131), new Size(width - 32 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
+    const meta = this.host.addChildLabel(card, 'LobbyCodexMeta', metaText, -width / 2 + 16 * scale, 4 * scale, 16 * scale, rgba(182, 166, 131), new Size(width - 32 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
     meta.overflow = Label.Overflow.SHRINK;
 
-    const role = this.host.addChildLabel(card, 'LobbyCodexRole', safeText(item.roleDesc || '定位待补充'), -width / 2 + 16 * scale, -17 * scale, 13 * scale, rgba(144, 132, 105), new Size(width - 32 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
+    const role = this.host.addChildLabel(card, 'LobbyCodexRole', safeText(item.roleDesc || '定位待补充'), -width / 2 + 16 * scale, -17 * scale, 15 * scale, rgba(144, 132, 105), new Size(width - 32 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
     role.overflow = Label.Overflow.SHRINK;
 
     const ownedText = item.owned ? `已拥有 x${Math.max(1, item.ownedCount)}` : '未收集';
-    const owned = this.host.addChildLabel(card, 'LobbyCodexOwnedState', ownedText, width / 2 - 54 * scale, -height / 2 + 15 * scale, 13 * scale, item.owned ? rgba(124, 220, 151) : rgba(151, 127, 96), new Size(96 * scale, 20 * scale), HorizontalTextAlignment.RIGHT);
+    const owned = this.host.addChildLabel(card, 'LobbyCodexOwnedState', ownedText, width / 2 - 54 * scale, -height / 2 + 15 * scale, 15 * scale, item.owned ? rgba(124, 220, 151) : rgba(151, 127, 96), new Size(96 * scale, 20 * scale), HorizontalTextAlignment.RIGHT);
     owned.overflow = Label.Overflow.SHRINK;
   }
 
@@ -231,8 +222,7 @@ export class LobbyCodexPanelRenderer {
       'LobbyCodexBoundaryNote',
       '当前面板只读取图鉴基础信息，不提供升级、升星、获取或资源变更入口。',
       0,
-      -height / 2 + 62 * scale,
-      15 * scale,
+      -height / 2 + 62 * scale, 17 * scale,
       rgba(167, 146, 105),
       new Size(width - 110 * scale, 24 * scale),
     );
@@ -244,17 +234,22 @@ export class LobbyCodexPanelRenderer {
 
   private addFooterButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number): Node {
     const button = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const graphics = button.addComponent(Graphics);
-    graphics.fillColor = rgba(22, 18, 17, 222);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.strokeColor = rgba(184, 138, 62, 210);
-    graphics.stroke();
+    const art = this.host.addSprite(`${name}Art`, C1812_BUTTON_PRIMARY_ASSET, 0, 0, width, height, button);
+    if (!art) {
+      const graphics = button.addComponent(Graphics);
+      graphics.fillColor = rgba(22, 18, 17, 222);
+      graphics.rect(-width / 2, -height / 2, width, height);
+      graphics.fill();
+      graphics.strokeColor = rgba(184, 138, 62, 210);
+      graphics.stroke();
+    }
     button.addComponent(Button);
     this.host.applyImageButtonFeedback(button, 1.025, 0.97);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18 * scale, rgba(242, 207, 122), new Size(width, height));
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 20 * scale, art ? rgba(255, 240, 200) : rgba(242, 207, 122), new Size(width, height));
     label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, false);
+    if (!art) {
+      this.applyOutline(label, scale, false);
+    }
     return button;
   }
 
@@ -274,6 +269,18 @@ export class LobbyCodexPanelRenderer {
 
   private rarityColor(rarity: string): Color {
     const key = rarity.toUpperCase();
+    if (key === 'UR') {
+      return rgba(255, 84, 48);
+    }
+    if (key === 'SSR') {
+      return rgba(255, 168, 54);
+    }
+    if (key === 'SR') {
+      return rgba(200, 111, 255);
+    }
+    if (key === 'R') {
+      return rgba(93, 151, 255);
+    }
     if (key === 'SSS') {
       return rgba(255, 188, 103);
     }

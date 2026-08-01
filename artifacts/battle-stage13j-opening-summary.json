@@ -1,0 +1,57 @@
+{
+  "files": [
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-00-login.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-01-lobby.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-02-map.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-03-dialog.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-04-battle-open-0p1s.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-05-opening-converge-0p9s.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-06-first-action-2p0s.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\battle-stage13j-opening-07-late-6p0s.png"
+  ],
+  "requests": [],
+  "responses": [],
+  "battleStartRequests": [],
+  "settleRequests": [],
+  "consoleLines": [
+    {
+      "type": "timeEnd",
+      "text": "Init Base: 0.6318359375 ms"
+    },
+    {
+      "type": "timeEnd",
+      "text": "Init Infrastructure: 56.160888671875 ms"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x6754001d0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "timeEnd",
+      "text": "Init SubSystem: 323.076904296875 ms"
+    },
+    {
+      "type": "timeEnd",
+      "text": "Init Project: 555.398193359375 ms"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x6754001d0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x6754001d0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x6754001d0e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    }
+  ],
+  "filteredConsole": [],
+  "bodyState": {
+    "hasCocosErrorOverlay": false,
+    "canvasCount": 1,
+    "text": "设计分辨率 (1920X1080)\nRotate\nDebug Mode:\nNone\nVerbose\nInfo\nWarn\nError\nInfo For Web Page\nWarn For Web Page\nError For Web Page\nShow FPS\nFPS:\nPause"
+  },
+  "url": "http://localhost:7456/?r=stage13j-opening-1781931824904"
+}

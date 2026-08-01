@@ -82,6 +82,22 @@ export class LobbyBagState {
     this.revision += 1;
   }
 
+  /** 清除选中(关闭详情弹窗):复用签名含 selectedItemCode,必须走状态而非只销毁节点,否则同物品二次点击命中复用不再弹框。 */
+  clearSelection(): boolean {
+    if (this.panelState.selectedItemCode == null) {
+      return false;
+    }
+    this.panelState = {
+      ...this.panelState,
+      selectedItemCode: null,
+      sourceItemCode: null,
+      sourceLoading: false,
+      sourceDesc: '',
+      sourceError: '',
+    };
+    return true;
+  }
+
   selectItem(itemCode: string): boolean {
     const safeCode = itemCode.trim();
     const itemExists = flatItems(this.panelState.groups).some((item) => item.itemCode === safeCode);

@@ -1,0 +1,74 @@
+{
+  "files": [
+    "D:\\project\\lootchain-cocos\\artifacts\\hero-detail-isvalid-r1-01-roster.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\hero-detail-isvalid-r1-02-detail.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\hero-detail-isvalid-r1-03-detail-wait.png"
+  ],
+  "consoleLines": [
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x67fc00408e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x67fc00408e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x67fc00408e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x67fc00408e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    }
+  ],
+  "filteredConsole": [
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    },
+    {
+      "type": "warning",
+      "text": "[HeroDetail] hero spine load start: hero=UR_EVELYN, resource=spine/hero/Nuu/Nuu, uuid=a47845b1-08e7-4ffc-a0e6-4557b0ad5d8a"
+    }
+  ],
+  "bodyState": {
+    "hasCocosErrorOverlay": false,
+    "hasIsValidText": false,
+    "canvasCount": 1,
+    "text": "设计分辨率 (1920X1080)\nRotate\nDebug Mode:\nNone\nVerbose\nInfo\nWarn\nError\nInfo For Web Page\nWarn For Web Page\nError For Web Page\nShow FPS\nFPS:\nPause"
+  },
+  "url": "http://localhost:7456/?r=hero-detail-r1"
+}

@@ -1,5 +1,6 @@
 import { HttpClient } from '../net/HttpClient';
-import type { LobbyHeroFilterOptionsVO, LobbyHeroItemVO } from '../types/LobbyHeroTypes';
+import { parseBattleSkillConfig } from './BattleApi';
+import type { LobbyHeroAffixVO, LobbyHeroFilterOptionsVO, LobbyHeroItemVO } from '../types/LobbyHeroTypes';
 
 type UnknownRecord = Record<string, unknown>;
 interface HeroAssetFallback {
@@ -76,7 +77,7 @@ export class LobbyHeroApi {
   constructor(private readonly http: HttpClient) {}
 
   lobbyHeroes(): Promise<LobbyHeroItemVO[]> {
-    // 英雄队列当前只用于验证主角入库和置顶展示，不提供升级、升星、觉醒或洗练动作。
+    // 英雄队列接口仍只读；成长写入只允许通过 HeroApi.levelUp，不提供升星、觉醒或洗练动作。
     return this.http.get<unknown>('/api/player/lobby/heroes').then(validateLobbyHeroes);
   }
 
@@ -94,8 +95,12 @@ function validateLobbyHeroes(data: unknown): LobbyHeroItemVO[] {
   }
   return data
     .map((item, index) => normalizeHeroItem(item, index))
-    .filter((item): item is LobbyHeroItemVO => item !== null)
-    .sort((a, b) => Number(b.protagonist) - Number(a.protagonist) || b.power - a.power);
+    .filter((item): item is LobbyHeroItemVO => item !== null && !isHiddenProtagonistHero(item))
+    .sort((a, b) => b.power - a.power);
+}
+
+function isHiddenProtagonistHero(item: LobbyHeroItemVO): boolean {
+  return item.protagonist === true;
 }
 
 function normalizeHeroItem(item: unknown, index: number): LobbyHeroItemVO | null {
@@ -137,7 +142,59 @@ function normalizeHeroItem(item: unknown, index: number): LobbyHeroItemVO | null
     spineUuid,
     currentForm: readOptionalText(item, 'currentForm', 32),
     formLabel: readOptionalText(item, 'formLabel', 32),
+    attrHp: readOptionalStat(item.attrHp),
+    attrAttack: readOptionalStat(item.attrAttack),
+    attrDefense: readOptionalStat(item.attrDefense),
+    attrSpeed: readOptionalStat(item.attrSpeed),
+    attrCrit: readOptionalStat(item.attrCrit),
+    skillConfig: parseBattleSkillConfig(item),
+    affixes: parseHeroAffixes(item.affixes),
+    luckValue: readOptionalStat(item.luckValue),
+    awakenStatus: readOptionalStat(item.awakenStatus),
+    ultimateSkillLevel: readOptionalStat(item.ultimateSkillLevel),
   };
+}
+
+// 词条数组解析(后端 user_hero_attr 下发,可空);非法项跳过,最多取 12 条防御异常数据。
+function parseHeroAffixes(raw: unknown): LobbyHeroAffixVO[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const affixes: LobbyHeroAffixVO[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const record = entry as UnknownRecord;
+    const code = readOptionalText(record, 'code', 32);
+    const name = readOptionalText(record, 'name', 32);
+    if (!code && !name) {
+      continue;
+    }
+    const value = typeof record.value === 'number' ? record.value : Number(record.value);
+    const affixId = typeof record.id === 'number' ? record.id : Number(record.id);
+    affixes.push({
+      id: Number.isFinite(affixId) && affixId > 0 ? Math.trunc(affixId) : 0,
+      code: code ?? '',
+      name: name ?? (code ?? ''),
+      value: Number.isFinite(value) ? value : 0,
+      quality: (readOptionalText(record, 'quality', 8) ?? '').toUpperCase(),
+      type: readOptionalText(record, 'type', 16),
+    });
+    if (affixes.length >= 12) {
+      break;
+    }
+  }
+  return affixes;
+}
+
+// 有效属性字段(后端下发,可空);非数字返回 null,面板据此回退旧估算。
+function readOptionalStat(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.max(0, Math.round(numeric));
 }
 
 function validateHeroFilterOptions(data: unknown): LobbyHeroFilterOptionsVO {

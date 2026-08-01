@@ -8,12 +8,12 @@ import {
 } from './LobbyHudTypes';
 
 // 大厅 HUD 的可调配置集中放在这里，后续调坐标、热区或入口文案优先改本文件。
-// 当前所有入口都只是本地占位，不能在这里新增任何玩法或经济写入逻辑。
+// 当前大厅入口以只读/受控开放为主；不能在这里新增新的玩法或经济写入逻辑。
 export const LOBBY_SYSTEM_ICONS: LobbySystemIconKey[] = ['friends', 'mail', 'settings', 'menu'];
 
 export const LOBBY_ACTIVITY_ITEMS: LobbyActivityItemConfig[] = [
-  { icon: 'event', title: '活动', subline: '预览中', hot: false },
-  { icon: 'summon', title: '深渊召唤', subline: '未开放', hot: false },
+  { icon: 'event', title: '限时副本', subline: '每日轮换', hot: false },
+  { icon: 'summon', title: '深渊召唤', subline: '真实召唤', hot: false },
   { icon: 'contract', title: '圣契之路', subline: '预览中', hot: false },
   { icon: 'market', title: '黑市', subline: '占位展示', hot: false },
   { icon: 'gift', title: '首充礼包', subline: '暂未开放', hot: false },

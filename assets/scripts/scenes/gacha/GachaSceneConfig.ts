@@ -1,4 +1,6 @@
 import { Color } from 'cc';
+import { equipQualityColorByCode } from '../lobby/EquipIconAssets';
+import type { HeroCardArtProfile } from '../lobby/HeroCardArtAssets';
 
 export type GachaRarity = 'R' | 'SR' | 'SSR' | 'UR';
 
@@ -35,6 +37,14 @@ export interface GachaPreviewPool {
   singleCost?: string | number | null;
   tenCost?: string | number | null;
   costCode?: string | null;
+  primaryCostType?: string | null;
+  primaryCostCode?: string | null;
+  primarySingleCost?: string | number | null;
+  primaryTenCost?: string | number | null;
+  backupCostType?: string | null;
+  backupCostCode?: string | null;
+  backupSingleCost?: string | number | null;
+  backupTenCost?: string | number | null;
 }
 
 export interface GachaPreviewCard {
@@ -46,8 +56,22 @@ export interface GachaPreviewCard {
 }
 
 export interface GachaMockResultItem extends GachaPreviewCard {
+  /** 装备奖励编码(rewardType=EQUIP):结果卡显示装备真图。 */
+  equipCode?: string | null;
   kind: 'hero' | 'shard' | 'material';
   featured: boolean;
+  /** 结果卡框色(五色稀有度框);缺省按 rarity 推导。 */
+  frameColor?: GachaFrameColor;
+  /** 材料/碎片中央图标(背包同款解析);无图走奖励槽底+剪影。 */
+  iconAsset?: string | null;
+  /** 英雄立绘显示档案(HeroCardArtAssets 镜像);未配立绘走剪影。 */
+  heroArt?: HeroCardArtProfile | null;
+  /** 后端奖励编码(详情弹窗查已拥有用):英雄=heroCode/材料=itemCode。 */
+  rewardCode?: string | null;
+  /** 本次获得数量(材料按稀有度多发)。 */
+  obtainCount?: number;
+  /** 英雄重复获得(已转碎片)。 */
+  duplicate?: boolean;
 }
 
 export interface GachaActionItem {
@@ -72,7 +96,13 @@ export interface GachaRarityTone {
 }
 
 export const GACHA_BACKGROUND_ASSET = 'ui/gacha/gacha_bg_abyss_ring/spriteFrame';
-export const GACHA_MODAL_CLOSE_BUTTON_ASSET = 'ui/common/modal_close_button/spriteFrame';
+// 弹框关闭钮统一走 AI 套件圆形金 X。
+export const GACHA_MODAL_CLOSE_BUTTON_ASSET = 'ui/common/ai/button_close/spriteFrame';
+export const GACHA_C1812_SUMMON_FLOOR_ASSET = 'ui/gacha/c1812/summon_floor/spriteFrame';
+export const GACHA_C1812_SUMMON_MAGIC_CIRCLE_ASSET = 'ui/gacha/c1812/summon_magic_circle/spriteFrame';
+export const GACHA_C1812_SUMMON_REWARD_SLOT_ASSET = 'ui/gacha/c1812/summon_reward_slot/spriteFrame';
+export const GACHA_C1812_SUMMON_CASE_FRAME_ASSET = 'ui/gacha/c1812/summon_case_frame/spriteFrame';
+export const GACHA_C1812_CURRENCY_GOLD_ASSET = 'ui/gacha/c1812/currency_gold/spriteFrame';
 export const GACHA_POOL_LOGO_ASSETS = [
   'ui/gacha/logo_limited/spriteFrame',
   'ui/gacha/logo_hero/spriteFrame',
@@ -142,6 +172,143 @@ export const GACHA_REVEAL_STEPS: GachaRevealStep[] = [
   { title: '裂隙', detail: '召唤阵打开本地预览', progress: 0.68 },
   { title: '显影', detail: '即将展示 mock 结果', progress: 1 },
 ];
+
+// 召唤页签套件(2026-07-22):item_action_button 罗盘暗板(圆心在左端 18.2% 宽处,圆径≈板高)+ 池徽章(自带圆环,置于板圆之上)。
+export const GACHA_TAB_PLATE_ASSET = 'ui/common/ai/item_action_button/spriteFrame';
+export const GACHA_TAB_PLATE_ASPECT = 220 / 68;
+export const GACHA_TAB_CIRCLE_CX_RATIO = 40 / 220;
+export type GachaPoolTabIconKey = 'LIMITED' | 'HERO' | 'EQUIP' | 'NORMAL' | 'LIGHTDARK';
+export const GACHA_POOL_TAB_ICON_ASSETS: Record<GachaPoolTabIconKey, string> = {
+  LIMITED: 'ui/gacha/ai/icon_pool_limited/spriteFrame',
+  HERO: 'ui/gacha/ai/icon_pool_hero/spriteFrame',
+  EQUIP: 'ui/gacha/ai/icon_pool_equip/spriteFrame',
+  NORMAL: 'ui/gacha/ai/icon_pool_normal/spriteFrame',
+  LIGHTDARK: 'ui/gacha/ai/icon_pool_lightdark/spriteFrame',
+};
+// 池 → 徽章:poolCode 关键词优先,displayType 兜底。
+export function gachaPoolTabIconAsset(poolCode: string | null | undefined, displayType: string | null | undefined, previewId: string | null | undefined): string {
+  const code = (poolCode || '').toUpperCase();
+  const type = (displayType || '').toUpperCase();
+  const id = (previewId || '').toLowerCase();
+  if (code.includes('EQUIP')) {
+    return GACHA_POOL_TAB_ICON_ASSETS.EQUIP;
+  }
+  if (code.includes('LIGHT') || code.includes('SEALED') || type === 'LOCKED') {
+    return GACHA_POOL_TAB_ICON_ASSETS.LIGHTDARK;
+  }
+  if (type === 'LIMITED' || id === 'limited') {
+    return GACHA_POOL_TAB_ICON_ASSETS.LIMITED;
+  }
+  if (type === 'HERO' || code === 'NORMAL_HERO' || id === 'hero') {
+    return GACHA_POOL_TAB_ICON_ASSETS.HERO;
+  }
+  return GACHA_POOL_TAB_ICON_ASSETS.NORMAL;
+}
+// 右栏功能图标 + 消耗行/锁定图标(ui/common/ai,原中文名已改英文)。
+export const GACHA_ACTION_ICON_ASSETS: Record<GachaActionKey, string> = {
+  info: 'ui/common/ai/ic_gacha_rate/spriteFrame',
+  record: 'ui/common/ai/ic_gacha_record/spriteFrame',
+  exchange: 'ui/common/ai/ic_gacha_exchange/spriteFrame',
+  pool: 'ui/common/ai/ic_gacha_pool/spriteFrame',
+};
+export const GACHA_COST_TICKET_ICON_ASSET = 'ui/common/ai/ic_ticket_gacha/spriteFrame';
+export const GACHA_COST_DIAMOND_ICON_ASSET = 'ui/common/ai/ic_diamond_gem/spriteFrame';
+export const GACHA_COST_GOLD_ICON_ASSET = 'ui/bag/ai/icon_gold/spriteFrame';
+export const GACHA_LOCK_ICON_ASSET = 'ui/common/ai/ic_lock/spriteFrame';
+
+// 召唤结果新套件(ui/gacha/ai,2026-07-21):summon_result 整框 + 五色卡框 + drawNo 行菱形装饰线。
+export const GACHA_RESULT_PANEL_ASSET = 'ui/gacha/ai/summon_result/spriteFrame';
+export const GACHA_RESULT_PANEL_ASPECT = 1672 / 941;
+export const GACHA_RESULT_DIVIDER_LEFT_ASSET = 'ui/gacha/ai/summon_divider_l/spriteFrame';
+export const GACHA_RESULT_DIVIDER_RIGHT_ASSET = 'ui/gacha/ai/summon_divider_r/spriteFrame';
+export type GachaFrameColor = 'green' | 'blue' | 'purple' | 'orange' | 'red';
+export const GACHA_RESULT_FRAME_ASSETS: Record<GachaFrameColor, string> = {
+  green: 'ui/gacha/ai/green/spriteFrame',
+  blue: 'ui/gacha/ai/blue/spriteFrame',
+  purple: 'ui/gacha/ai/purple/spriteFrame',
+  orange: 'ui/gacha/ai/orange/spriteFrame',
+  red: 'ui/gacha/ai/red/spriteFrame',
+};
+export const GACHA_RESULT_STAR_ASSETS: Record<GachaFrameColor, string> = {
+  green: 'ui/common/ai/star_green/spriteFrame',
+  blue: 'ui/common/ai/star_blue/spriteFrame',
+  purple: 'ui/common/ai/star_purple/spriteFrame',
+  orange: 'ui/common/ai/star_orange/spriteFrame',
+  red: 'ui/common/ai/star_red/spriteFrame',
+};
+// 框色文字调:左上稀有度字与星星同框色系。
+export function gachaFrameTextColor(color: GachaFrameColor): Color {
+  if (color === 'green') {
+    return new Color(158, 232, 122, 255);
+  }
+  if (color === 'blue') {
+    return new Color(126, 184, 255, 255);
+  }
+  if (color === 'purple') {
+    return new Color(210, 146, 255, 255);
+  }
+  if (color === 'orange') {
+    return new Color(255, 190, 92, 255);
+  }
+  return new Color(255, 112, 88, 255);
+}
+// 奖励框色设计定稿(docs/26):装备/英雄/碎片按自身品质 N绿/R蓝/SR紫/SSR橙/UR·EX红;
+// 材料按固定表:经验书绿、低阶强化石蓝、高阶强化石/洗练石/重铸石/祝福石/守护符紫、觉醒石/BOSS印记橙。
+export const GACHA_MATERIAL_FRAME_COLORS: Record<string, GachaFrameColor> = {
+  HERO_EXP_BOOK: 'green',
+  ENHANCE_STONE: 'blue',
+  LOW_ENHANCE_STONE: 'blue',
+  ENHANCE_STONE_HIGH: 'purple',
+  HIGH_ENHANCE_STONE: 'purple',
+  EQUIP_REROLL_STONE: 'purple',
+  DEEP_REFORGE_STONE: 'purple',
+  ENHANCE_BLESS_STONE: 'purple',
+  ENHANCE_GUARD_RUNE: 'purple',
+  AWAKEN_STONE: 'orange',
+  BOSS_MARK: 'orange',
+};
+export function gachaFrameColorByRarity(rarity: string | null | undefined): GachaFrameColor {
+  const value = (rarity || '').toUpperCase();
+  if (value === 'UR' || value === 'EX') {
+    return 'red';
+  }
+  if (value === 'SSR') {
+    return 'orange';
+  }
+  if (value === 'SR') {
+    return 'purple';
+  }
+  if (value === 'N') {
+    return 'green';
+  }
+  return 'blue';
+}
+export function gachaResultFrameColor(rewardType: string | null | undefined, rewardCode: string | null | undefined, rarity: string | null | undefined): GachaFrameColor {
+  const type = (rewardType || '').toUpperCase();
+  if (type === 'EQUIP') {
+    // 装备按真实品质定色(编码后缀是历史名,不可用;白装并入绿档):抽卡 rarity 字段只作兜底。
+    const quality = equipQualityColorByCode(rewardCode);
+    if (quality) {
+      return quality === 'white' ? 'green' : quality;
+    }
+  }
+  if (type !== 'HERO' && type !== 'HERO_FRAGMENT' && type !== 'EQUIP') {
+    const exact = GACHA_MATERIAL_FRAME_COLORS[(rewardCode || '').toUpperCase()];
+    if (exact) {
+      return exact;
+    }
+  }
+  return gachaFrameColorByRarity(rarity);
+}
+
+// 框色 → 结果卡星数(参考图口径):绿2/蓝3/紫4/橙5/红7。
+export const GACHA_FRAME_STAR_COUNTS: Record<GachaFrameColor, number> = {
+  green: 2,
+  blue: 3,
+  purple: 4,
+  orange: 5,
+  red: 7,
+};
 
 export function gachaRarityTone(rarity: GachaRarity): GachaRarityTone {
   if (rarity === 'UR') {

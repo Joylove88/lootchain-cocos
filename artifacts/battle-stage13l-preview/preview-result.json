@@ -1,0 +1,15 @@
+{
+  "info": {
+    "url": "http://localhost:7456/",
+    "text": "设计分辨率 (1920X1080)\nRotate\nDebug Mode:\nNone\nVerbose\nInfo\nWarn\nError\nInfo For Web Page\nWarn For Web Page\nError For Web Page\nShow FPS\nFPS:\nPause",
+    "canvas": [
+      {
+        "width": 1920,
+        "height": 685,
+        "clientWidth": 1920,
+        "clientHeight": 685
+      }
+    ]
+  },
+  "errors": []
+}

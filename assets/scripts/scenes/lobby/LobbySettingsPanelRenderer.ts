@@ -7,6 +7,7 @@ import {
   Label,
   Node,
   Size,
+  Sprite,
   UITransform,
   Vec3,
 } from 'cc';
@@ -16,6 +17,7 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
 
 export interface LobbySettingsPanelHost {
   createUiNode(name: string): Node;
+  addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   closeLobbySettingsPanel(): void;
   setLobbyLanguage(language: LootChainLanguage): void;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -83,26 +85,14 @@ export class LobbySettingsPanelRenderer {
   }
 
   private renderHeader(parent: Node, width: number, height: number, scale: number): void {
-    const title = this.host.addChildLabel(
-      parent,
-      'LobbySettingsTitle',
-      lootChainI18n.t('settings.title'),
-      0,
-      height / 2 - 54 * scale,
-      30 * scale,
-      rgba(250, 224, 162),
-      new Size(width - 96 * scale, 42 * scale),
-    );
-    title.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(title, scale, true);
+    // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
 
     const subtitle = this.host.addChildLabel(
       parent,
       'LobbySettingsSubtitle',
       lootChainI18n.t('settings.languageDetail'),
       0,
-      height / 2 - 91 * scale,
-      17 * scale,
+      height / 2 - 91 * scale, 19 * scale,
       rgba(198, 168, 104),
       new Size(width - 118 * scale, 28 * scale),
     );
@@ -145,8 +135,7 @@ export class LobbySettingsPanelRenderer {
       'LobbySettingsCurrentLanguage',
       `${lootChainI18n.t('language.current')}  ${lootChainI18n.languageLabel()}`,
       -sectionWidth / 2 + 30 * scale,
-      sectionHeight / 2 - 75 * scale,
-      16 * scale,
+      sectionHeight / 2 - 75 * scale, 18 * scale,
       rgba(184, 163, 118),
       new Size(sectionWidth - 60 * scale, 26 * scale),
       HorizontalTextAlignment.LEFT,
@@ -179,7 +168,7 @@ export class LobbySettingsPanelRenderer {
     graphics.stroke();
 
     const text = language === 'zh-CN' ? lootChainI18n.t('language.simplifiedChinese') : lootChainI18n.t('language.english');
-    const label = this.host.addChildLabel(button, 'LobbySettingsLanguageButtonLabel', text, 0, 0, 18 * scale, active ? rgba(255, 231, 166) : rgba(219, 196, 145), new Size(width - 28 * scale, height));
+    const label = this.host.addChildLabel(button, 'LobbySettingsLanguageButtonLabel', text, 0, 0, 20 * scale, active ? rgba(255, 231, 166) : rgba(219, 196, 145), new Size(width - 28 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, active);
   }

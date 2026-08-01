@@ -4,6 +4,11 @@ import { ApiError } from '../../net/HttpClient';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../../types/ProtagonistTypes';
 import { ProtagonistCreateState } from './ProtagonistCreateState';
 
+const HIDDEN_PROTAGONIST_CREATE_REQUEST = {
+  gender: 'male' as ProtagonistGender,
+  protagonistName: '圣契档案',
+};
+
 export interface ProtagonistCreateFlowHost {
   showProtagonistCreateView(): void;
   startLobbyLoading(tokenName: string): void;
@@ -53,22 +58,19 @@ export class ProtagonistCreateFlow {
         this.enterLobbyAfterProtagonistReady();
         return;
       }
-      this.host.setStatus('请先创建你的圣契主角。');
-      this.host.showProtagonistCreateView();
+      await this.ensureHiddenProtagonistReady(ticket);
     } catch (error) {
       if (!this.isCurrent(ticket)) {
         return;
       }
-      const message = this.formatApiError(error, '主角色状态读取失败');
+      const message = this.formatApiError(error, '玩家档案初始化失败');
       this.state.setError(message);
       this.host.setStatus(message);
-      this.host.showProtagonistCreateView();
     }
   }
 
   selectGender(gender: ProtagonistGender): void {
     this.state.setGender(gender);
-    this.host.showProtagonistCreateView();
   }
 
   previewForm(form: ProtagonistForm): void {
@@ -92,12 +94,10 @@ export class ProtagonistCreateFlow {
     if (error) {
       this.state.setError(error);
       this.host.setStatus(error);
-      this.host.showProtagonistCreateView();
       return;
     }
 
     this.state.startCreating();
-    this.host.showProtagonistCreateView();
     const ticket = this.nextTicket();
     try {
       const profile = await this.protagonistApi.create({
@@ -117,7 +117,6 @@ export class ProtagonistCreateFlow {
       const message = this.formatApiError(error, '主角色创建失败');
       this.state.setError(message);
       this.host.setStatus(message);
-      this.host.showProtagonistCreateView();
     }
   }
 
@@ -130,6 +129,25 @@ export class ProtagonistCreateFlow {
   private enterLobbyAfterProtagonistReady(): void {
     this.host.startLobbyLoading(this.currentTokenName);
     this.host.loadLobbyProfileAfterLogin(this.currentUserId);
+  }
+
+  private async ensureHiddenProtagonistReady(ticket: number): Promise<void> {
+    this.host.setStatus('正在初始化玩家档案...');
+    const profile = await this.protagonistApi.create({
+      ...HIDDEN_PROTAGONIST_CREATE_REQUEST,
+      protagonistName: this.resolveHiddenProtagonistName(this.currentUserId),
+    });
+    if (!this.isCurrent(ticket)) {
+      return;
+    }
+    this.state.rememberServerProfile(profile);
+    this.host.setStatus('玩家档案初始化完成。');
+    this.enterLobbyAfterProtagonistReady();
+  }
+
+  private resolveHiddenProtagonistName(userId: number): string {
+    const suffix = Math.max(1, Math.trunc(userId || 1)).toString();
+    return `圣契${suffix}`.slice(0, 12);
   }
 
   private nextTicket(): number {

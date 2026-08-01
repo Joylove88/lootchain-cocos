@@ -1,0 +1,460 @@
+{
+  "files": [
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\00-title.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\01-lobby.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\02-stage-map.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\03-challenge-dialog.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\04-formation-open.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\05-after-bench.png",
+    "D:\\project\\lootchain-cocos\\artifacts\\formation-switch-current\\06-after-add-other.png"
+  ],
+  "openDebug": {
+    "stageCode": "MAIN_1_2",
+    "selectedHeroIds": [
+      11,
+      9,
+      10,
+      63,
+      17
+    ],
+    "selectedHeroNames": [
+      "深渊魔女·伊芙琳",
+      "白银圣枪·凯恩",
+      "夜烬女王·莉维娅",
+      "灰烬猎手·罗恩",
+      "见习圣骑士"
+    ],
+    "selectedCount": 5,
+    "loading": false,
+    "error": null,
+    "srRVisuals": [
+      {
+        "heroCode": "UR_EVELYN",
+        "rarity": "UR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Nuu",
+        "rawWidth": 0,
+        "rawHeight": 0,
+        "resolvedScale": 0.2568,
+        "estimatedHeight": 184.9
+      },
+      {
+        "heroCode": "SSR_KANE",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Ishmael",
+        "rawWidth": 979.78,
+        "rawHeight": 755.07,
+        "resolvedScale": 0.3007,
+        "estimatedHeight": 227.04
+      },
+      {
+        "heroCode": "SSR_LIVIA",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Carmilla",
+        "rawWidth": 1626.72,
+        "rawHeight": 813.89,
+        "resolvedScale": 0.2867,
+        "estimatedHeight": 206.4
+      },
+      {
+        "heroCode": "SSR_RON",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Eulenspigel",
+        "rawWidth": 2361.25,
+        "rawHeight": 1667.62,
+        "resolvedScale": 0.1624,
+        "estimatedHeight": 116.96
+      },
+      {
+        "heroCode": "SR_PALADIN_02",
+        "rarity": "SR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "act_1002",
+        "rawWidth": 206.27,
+        "rawHeight": 272.45,
+        "resolvedScale": 0.8838,
+        "estimatedHeight": 240.8
+      }
+    ],
+    "at": 1782183442683
+  },
+  "afterBenchDebug": {
+    "stageCode": "MAIN_1_2",
+    "selectedHeroIds": [
+      11,
+      10,
+      63,
+      17
+    ],
+    "selectedHeroNames": [
+      "深渊魔女·伊芙琳",
+      "夜烬女王·莉维娅",
+      "灰烬猎手·罗恩",
+      "见习圣骑士"
+    ],
+    "selectedCount": 4,
+    "loading": false,
+    "error": null,
+    "srRVisuals": [
+      {
+        "heroCode": "UR_EVELYN",
+        "rarity": "UR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Nuu",
+        "rawWidth": 0,
+        "rawHeight": 0,
+        "resolvedScale": 0.2568,
+        "estimatedHeight": 184.9
+      },
+      {
+        "heroCode": "SSR_LIVIA",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Carmilla",
+        "rawWidth": 1626.72,
+        "rawHeight": 813.89,
+        "resolvedScale": 0.2867,
+        "estimatedHeight": 206.4
+      },
+      {
+        "heroCode": "SSR_RON",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Eulenspigel",
+        "rawWidth": 2361.25,
+        "rawHeight": 1667.62,
+        "resolvedScale": 0.1624,
+        "estimatedHeight": 116.96
+      },
+      {
+        "heroCode": "SR_PALADIN_02",
+        "rarity": "SR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "act_1002",
+        "rawWidth": 206.27,
+        "rawHeight": 272.45,
+        "resolvedScale": 0.8838,
+        "estimatedHeight": 240.8
+      }
+    ],
+    "at": 1782183445819
+  },
+  "afterAddDebug": {
+    "stageCode": "MAIN_1_2",
+    "selectedHeroIds": [
+      11,
+      10,
+      63,
+      17,
+      7
+    ],
+    "selectedHeroNames": [
+      "深渊魔女·伊芙琳",
+      "夜烬女王·莉维娅",
+      "灰烬猎手·罗恩",
+      "见习圣骑士",
+      "契约魔女"
+    ],
+    "selectedCount": 5,
+    "loading": false,
+    "error": null,
+    "srRVisuals": [
+      {
+        "heroCode": "UR_EVELYN",
+        "rarity": "UR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Nuu",
+        "rawWidth": 0,
+        "rawHeight": 0,
+        "resolvedScale": 0.2568,
+        "estimatedHeight": 184.9
+      },
+      {
+        "heroCode": "SSR_LIVIA",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Carmilla",
+        "rawWidth": 1626.72,
+        "rawHeight": 813.89,
+        "resolvedScale": 0.2867,
+        "estimatedHeight": 206.4
+      },
+      {
+        "heroCode": "SSR_RON",
+        "rarity": "SSR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "Eulenspigel",
+        "rawWidth": 2361.25,
+        "rawHeight": 1667.62,
+        "resolvedScale": 0.1624,
+        "estimatedHeight": 116.96
+      },
+      {
+        "heroCode": "SR_PALADIN_02",
+        "rarity": "SR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "act_1002",
+        "rawWidth": 206.27,
+        "rawHeight": 272.45,
+        "resolvedScale": 0.8838,
+        "estimatedHeight": 240.8
+      },
+      {
+        "heroCode": "SR_WITCH_03",
+        "rarity": "SR",
+        "width": 330,
+        "height": 430,
+        "visualWidth": 778.8,
+        "visualHeight": 980.4,
+        "primaryAsset": "act_1028",
+        "rawWidth": 1890,
+        "rawHeight": 810,
+        "resolvedScale": 0.7883,
+        "estimatedHeight": 567.6
+      }
+    ],
+    "at": 1782183448061
+  },
+  "openVisualAnalysis": {
+    "count": 5,
+    "min": 116.96,
+    "median": 206.4,
+    "max": 240.8,
+    "ratio": 2.06,
+    "stylized": {
+      "count": 1,
+      "min": 240.8,
+      "median": 240.8,
+      "max": 240.8,
+      "ratio": 1
+    },
+    "regularStylized": {
+      "count": 1,
+      "min": 240.8,
+      "median": 240.8,
+      "max": 240.8,
+      "ratio": 1
+    },
+    "realistic": {
+      "count": 4,
+      "min": 116.96,
+      "median": 195.65,
+      "max": 227.04,
+      "ratio": 1.94
+    },
+    "heroes": [
+      {
+        "heroCode": "UR_EVELYN",
+        "rarity": "UR",
+        "primaryAsset": "Nuu",
+        "estimatedHeight": 184.9,
+        "resolvedScale": 0.2568
+      },
+      {
+        "heroCode": "SSR_KANE",
+        "rarity": "SSR",
+        "primaryAsset": "Ishmael",
+        "estimatedHeight": 227.04,
+        "resolvedScale": 0.3007
+      },
+      {
+        "heroCode": "SSR_LIVIA",
+        "rarity": "SSR",
+        "primaryAsset": "Carmilla",
+        "estimatedHeight": 206.4,
+        "resolvedScale": 0.2867
+      },
+      {
+        "heroCode": "SSR_RON",
+        "rarity": "SSR",
+        "primaryAsset": "Eulenspigel",
+        "estimatedHeight": 116.96,
+        "resolvedScale": 0.1624
+      },
+      {
+        "heroCode": "SR_PALADIN_02",
+        "rarity": "SR",
+        "primaryAsset": "act_1002",
+        "estimatedHeight": 240.8,
+        "resolvedScale": 0.8838
+      }
+    ]
+  },
+  "afterAddVisualAnalysis": {
+    "count": 5,
+    "min": 116.96,
+    "median": 206.4,
+    "max": 567.6,
+    "ratio": 4.85,
+    "stylized": {
+      "count": 2,
+      "min": 240.8,
+      "median": 404.2,
+      "max": 567.6,
+      "ratio": 2.36
+    },
+    "regularStylized": {
+      "count": 1,
+      "min": 240.8,
+      "median": 240.8,
+      "max": 240.8,
+      "ratio": 1
+    },
+    "realistic": {
+      "count": 3,
+      "min": 116.96,
+      "median": 184.9,
+      "max": 206.4,
+      "ratio": 1.76
+    },
+    "heroes": [
+      {
+        "heroCode": "UR_EVELYN",
+        "rarity": "UR",
+        "primaryAsset": "Nuu",
+        "estimatedHeight": 184.9,
+        "resolvedScale": 0.2568
+      },
+      {
+        "heroCode": "SSR_LIVIA",
+        "rarity": "SSR",
+        "primaryAsset": "Carmilla",
+        "estimatedHeight": 206.4,
+        "resolvedScale": 0.2867
+      },
+      {
+        "heroCode": "SSR_RON",
+        "rarity": "SSR",
+        "primaryAsset": "Eulenspigel",
+        "estimatedHeight": 116.96,
+        "resolvedScale": 0.1624
+      },
+      {
+        "heroCode": "SR_PALADIN_02",
+        "rarity": "SR",
+        "primaryAsset": "act_1002",
+        "estimatedHeight": 240.8,
+        "resolvedScale": 0.8838
+      },
+      {
+        "heroCode": "SR_WITCH_03",
+        "rarity": "SR",
+        "primaryAsset": "act_1028",
+        "estimatedHeight": 567.6,
+        "resolvedScale": 0.7883
+      }
+    ]
+  },
+  "acceptedVisualAnalysis": {
+    "count": 5,
+    "min": 116.96,
+    "median": 206.4,
+    "max": 567.6,
+    "ratio": 4.85,
+    "stylized": {
+      "count": 2,
+      "min": 240.8,
+      "median": 404.2,
+      "max": 567.6,
+      "ratio": 2.36
+    },
+    "regularStylized": {
+      "count": 1,
+      "min": 240.8,
+      "median": 240.8,
+      "max": 240.8,
+      "ratio": 1
+    },
+    "realistic": {
+      "count": 3,
+      "min": 116.96,
+      "median": 184.9,
+      "max": 206.4,
+      "ratio": 1.76
+    },
+    "heroes": [
+      {
+        "heroCode": "UR_EVELYN",
+        "rarity": "UR",
+        "primaryAsset": "Nuu",
+        "estimatedHeight": 184.9,
+        "resolvedScale": 0.2568
+      },
+      {
+        "heroCode": "SSR_LIVIA",
+        "rarity": "SSR",
+        "primaryAsset": "Carmilla",
+        "estimatedHeight": 206.4,
+        "resolvedScale": 0.2867
+      },
+      {
+        "heroCode": "SSR_RON",
+        "rarity": "SSR",
+        "primaryAsset": "Eulenspigel",
+        "estimatedHeight": 116.96,
+        "resolvedScale": 0.1624
+      },
+      {
+        "heroCode": "SR_PALADIN_02",
+        "rarity": "SR",
+        "primaryAsset": "act_1002",
+        "estimatedHeight": 240.8,
+        "resolvedScale": 0.8838
+      },
+      {
+        "heroCode": "SR_WITCH_03",
+        "rarity": "SR",
+        "primaryAsset": "act_1028",
+        "estimatedHeight": 567.6,
+        "resolvedScale": 0.7883
+      }
+    ]
+  },
+  "battleStartRequests": [],
+  "settleRequests": [],
+  "pageErrors": [],
+  "filteredConsole": [],
+  "errors": []
+}

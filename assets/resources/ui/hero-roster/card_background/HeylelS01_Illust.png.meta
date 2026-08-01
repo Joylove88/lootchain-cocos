@@ -8,6 +8,98 @@
     ".png"
   ],
   "subMetas": {
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "5a77d24b-309e-44a4-a92e-7d79109466b3@f9941",
+      "displayName": "HeylelS01_Illust",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": 0,
+        "offsetY": 0,
+        "trimX": 0,
+        "trimY": 0,
+        "width": 1024,
+        "height": 1024,
+        "rawWidth": 1024,
+        "rawHeight": 1024,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": false,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "5a77d24b-309e-44a4-a92e-7d79109466b3@6c48a",
+        "atlasUuid": "",
+        "trimType": "none",
+        "vertices": {
+          "rawPosition": [
+            -512,
+            -512,
+            0,
+            512,
+            -512,
+            0,
+            -512,
+            512,
+            0,
+            512,
+            512,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            0,
+            1024,
+            1024,
+            1024,
+            0,
+            0,
+            1024,
+            0
+          ],
+          "nuv": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "minPos": [
+            -512,
+            -512,
+            0
+          ],
+          "maxPos": [
+            512,
+            512,
+            0
+          ]
+        }
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
     "6c48a": {
       "importer": "texture",
       "uuid": "5a77d24b-309e-44a4-a92e-7d79109466b3@6c48a",
@@ -34,7 +126,7 @@
     }
   },
   "userData": {
-    "type": "texture",
+    "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
     "redirect": "5a77d24b-309e-44a4-a92e-7d79109466b3@6c48a"

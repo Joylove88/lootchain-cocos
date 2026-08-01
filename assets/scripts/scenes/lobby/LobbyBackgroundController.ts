@@ -15,7 +15,8 @@ import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 
 export const LOBBY_VIDEO_PATH = 'lobby/lobby_bg_loop';
 export const LOBBY_POSTER_PATH = 'lobby/lobby_bg_poster';
-export const USE_LOBBY_NATIVE_VIDEO_BACKGROUND = true;
+// 大厅改为静态王座大厅图(挂机演出层叠加其上),旧循环视频停用。
+export const USE_LOBBY_NATIVE_VIDEO_BACKGROUND = false;
 const LOBBY_POSTER_FADE_DURATION = 0.4;
 
 export interface LobbyBackgroundHost {

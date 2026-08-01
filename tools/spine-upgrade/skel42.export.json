@@ -1,0 +1,13 @@
+{
+"class": "export-binary",
+"name": "Binary",
+"open": false,
+"extension": ".skel",
+"format": "Binary",
+"nonessential": false,
+"cleanUp": true,
+"warnings": true,
+"exportAll": false,
+"packAtlas": null,
+"version": null
+}

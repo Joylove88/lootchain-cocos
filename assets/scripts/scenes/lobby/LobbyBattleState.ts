@@ -1,5 +1,12 @@
 import type { PlayerBattleRecentVO, PlayerBattleSettlementVO, PlayerBattleStartVO } from '../../types/BattleTypes';
 
+export const LOBBY_BATTLE_PRESENTATION_STEP_COUNT = 369;
+export const LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS = 250;
+export const LOBBY_BATTLE_PRESENTATION_FRAME_INTERVAL_MS = 16;
+export const LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT = 6;
+export const LOBBY_BATTLE_OPENING_COMBAT_DELAY_STEP_COUNT = 3;
+export const LOBBY_BATTLE_COMBAT_START_STEP = LOBBY_BATTLE_OPENING_CONVERGENCE_STEP_COUNT + LOBBY_BATTLE_OPENING_COMBAT_DELAY_STEP_COUNT;
+
 /** 大厅战斗面板状态。当前战斗闭环只记录无奖励结算。 */
 export interface LobbyBattlePanelState {
   starting: boolean;
@@ -9,6 +16,8 @@ export interface LobbyBattlePanelState {
   start: PlayerBattleStartVO | null;
   settlement: PlayerBattleSettlementVO | null;
   presentationStep: number;
+  presentationElapsedMs: number;
+  presentationStartedAtMs: number;
   presentationComplete: boolean;
   recentLoading: boolean;
   recentError: string;
@@ -25,6 +34,8 @@ export function createLobbyBattlePanelState(): LobbyBattlePanelState {
     start: null,
     settlement: null,
     presentationStep: 0,
+    presentationElapsedMs: 0,
+    presentationStartedAtMs: 0,
     presentationComplete: false,
     recentLoading: false,
     recentError: '',

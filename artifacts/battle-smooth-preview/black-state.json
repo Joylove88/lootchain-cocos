@@ -1,0 +1,87 @@
+{
+  "canvasInfo": {
+    "bodyText": "设计分辨率 (1920X1080)\nRotate\nDebug Mode:\nNone\nVerbose\nInfo\nWarn\nError\nInfo For Web Page\nWarn For Web Page\nError For Web Page\nShow FPS\nFPS:\nPause",
+    "canvas": {
+      "clientHeight": 681,
+      "clientWidth": 1920,
+      "height": 1362,
+      "width": 3840
+    },
+    "href": "http://localhost:7456/",
+    "title": "Cocos Creator - lootchain-cocos"
+  },
+  "logs": [
+    {
+      "level": "log",
+      "message": "Init Base: 1.10400390625 ms",
+      "timestamp": "2026-06-20T08:45:35.518Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Infrastructure: 67.64599609375 ms",
+      "timestamp": "2026-06-20T08:45:35.518Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init SubSystem: 802248.4208984375 ms",
+      "timestamp": "2026-06-20T08:45:35.866Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Project: 459.998046875 ms",
+      "timestamp": "2026-06-20T08:45:36.330Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Base: 0.342041015625 ms",
+      "timestamp": "2026-06-20T08:46:05.627Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Infrastructure: 59.51708984375 ms",
+      "timestamp": "2026-06-20T08:46:05.686Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init SubSystem: 253.711181640625 ms",
+      "timestamp": "2026-06-20T08:46:05.990Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Project: 388.217041015625 ms",
+      "timestamp": "2026-06-20T08:46:06.380Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Base: 0.1201171875 ms",
+      "timestamp": "2026-06-20T08:46:29.707Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Infrastructure: 27.791015625 ms",
+      "timestamp": "2026-06-20T08:46:29.736Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init SubSystem: 188.16796875 ms",
+      "timestamp": "2026-06-20T08:46:29.956Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    },
+    {
+      "level": "log",
+      "message": "Init Project: 235.3330078125 ms",
+      "timestamp": "2026-06-20T08:46:30.191Z",
+      "url": "http://localhost:7456/scripting/engine/bin/.cache/dev/preview/bundled/index.js"
+    }
+  ]
+}

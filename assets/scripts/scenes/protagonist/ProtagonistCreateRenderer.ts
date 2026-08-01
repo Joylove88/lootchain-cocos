@@ -162,11 +162,11 @@ export class ProtagonistCreateRenderer {
     }
     const genderLabel = this.host.addChildLabel(card, 'ProtagonistGenderLabel', label, 0, -height / 2 + 46 * scale, 30 * scale, rgba(246, 220, 155), new Size(width * 0.8, 42 * scale));
     this.applyOutline(genderLabel, scale, true);
-    const epithetLabel = this.host.addChildLabel(card, 'ProtagonistEpithet', epithet, 0, -height / 2 + 18 * scale, 16 * scale, rgba(190, 156, 92), new Size(width * 0.86, 24 * scale));
+    const epithetLabel = this.host.addChildLabel(card, 'ProtagonistEpithet', epithet, 0, -height / 2 + 18 * scale, 18 * scale, rgba(190, 156, 92), new Size(width * 0.86, 24 * scale));
     epithetLabel.overflow = Label.Overflow.SHRINK;
     const symbolLabel = this.host.addChildLabel(card, 'ProtagonistGenderSymbol', symbol, -width / 2 + 42 * scale, height / 2 - 52 * scale, 34 * scale, selected ? rgba(242, 92, 70) : rgba(148, 118, 70), new Size(56 * scale, 56 * scale));
     this.applyOutline(symbolLabel, scale, true);
-    const badge = this.host.addChildLabel(card, 'ProtagonistSsrBadge', 'SSR 主角', width / 2 - 74 * scale, height / 2 - 34 * scale, 15 * scale, rgba(250, 221, 150), new Size(112 * scale, 26 * scale));
+    const badge = this.host.addChildLabel(card, 'ProtagonistSsrBadge', 'SSR 主角', width / 2 - 74 * scale, height / 2 - 34 * scale, 17 * scale, rgba(250, 221, 150), new Size(112 * scale, 26 * scale));
     badge.overflow = Label.Overflow.SHRINK;
   }
 
@@ -240,11 +240,11 @@ export class ProtagonistCreateRenderer {
     chip.on(Button.EventType.CLICK, () => this.host.previewProtagonistForm(form), this);
     this.host.applyImageButtonFeedback(chip, 1.014, 0.986);
     const icon = form === 'attack' ? '剑' : form === 'defense' ? '盾' : '契';
-    this.host.addChildLabel(chip, 'ProtagonistFormIcon', icon, -width / 2 + 30 * scale, 0, 18 * scale, unlocked ? rgba(242, 210, 140) : rgba(132, 118, 92), new Size(42 * scale, height));
+    this.host.addChildLabel(chip, 'ProtagonistFormIcon', icon, -width / 2 + 30 * scale, 0, 20 * scale, unlocked ? rgba(242, 210, 140) : rgba(132, 118, 92), new Size(42 * scale, height));
     const text = unlocked ? label : `${label}  锁定`;
-    const title = this.host.addChildLabel(chip, 'ProtagonistFormLabel', text, -width / 2 + 58 * scale, 7 * scale, 16 * scale, unlocked ? rgba(242, 214, 156) : rgba(144, 132, 108), new Size(width - 70 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.host.addChildLabel(chip, 'ProtagonistFormLabel', text, -width / 2 + 58 * scale, 7 * scale, 18 * scale, unlocked ? rgba(242, 214, 156) : rgba(144, 132, 108), new Size(width - 70 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
-    const detailLabel = this.host.addChildLabel(chip, 'ProtagonistFormDetail', detail, -width / 2 + 58 * scale, -10 * scale, 12 * scale, rgba(159, 135, 92), new Size(width - 72 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    const detailLabel = this.host.addChildLabel(chip, 'ProtagonistFormDetail', detail, -width / 2 + 58 * scale, -10 * scale, 14 * scale, rgba(159, 135, 92), new Size(width - 72 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
     detailLabel.overflow = Label.Overflow.SHRINK;
   }
 
