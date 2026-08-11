@@ -32,6 +32,7 @@ import {
   resolveBattleUnitSpineLoadUuid,
   resolveBattleUnitSpineTelemetryVisualHeight,
 } from './LobbyBattleUnitSpineRuntime';
+import { loadSharedSpineData } from './SpineDataStore';
 import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 
 const FORMATION_SPINE_RUNTIME_RETRY_DELAYS_MS = [180, 420, 900];
@@ -45,6 +46,7 @@ export interface LobbyFormationPanelHost {
   currentLobbyFormationHeroIds(): number[];
   currentLobbyFormationPowerSnapshot(stageCode?: string): LobbyFormationPowerSnapshot;
   toggleLobbyFormationHero(heroId: number): void;
+  saveLobbyFormationNow?(): void;
   isLobbyFormationFooterHidden?(): boolean;
   openLobbyHeroRosterPanel(): void;
   openLobbyBattlePreviewPanel(stageCode: string): void;
@@ -79,8 +81,10 @@ export interface LobbyFormationPowerSnapshot {
 
 /** 编队确认面板；只确认本次 battle start 阵容，不保存长期队伍，也不触发经济写入。 */
 export class LobbyFormationPanelRenderer {
-  private readonly formationSpineData = new Map<string, sp.SkeletonData>();
-  private readonly formationSpineLoadCallbacks = new Map<string, Array<(data: sp.SkeletonData | null) => void>>();
+  // 骨骼数据缓存已收敛到全局 SpineDataStore(2026-08-04),不再各页私有。
+  // 右栏稀有度过滤(2026-08-05 参考图改版):跨重渲存活;页签点击只局部重建右栏。
+  private pickerRarityFilter: 'ALL' | 'UR' | 'SSR' | 'SR' | 'R' = 'ALL';
+  private rebuildHeroPicker: (() => void) | null = null;
   private lastFormationSpineFailureReason = '资源解析失败';
 
   constructor(private readonly host: LobbyFormationPanelHost) {}
@@ -223,30 +227,66 @@ export class LobbyFormationPanelRenderer {
   }
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyHeroRosterPanelState, stageCode: string, selectedHeroIds: number[]): void {
-    // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
+    // 2026-08-05 参考图改版:中央战力金横幅(深底胶囊+金描边+左右饰线,数字大号亮金),
+    // 推荐战力压缩为横幅下副行;确认状态行下移一档。
     const selectedCount = this.resolveSelectedSlots(state.heroes, selectedHeroIds).filter((hero) => hero !== null).length;
     const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
+    const footerHidden = this.host.isLobbyFormationFooterHidden?.() ?? false;
+    const bannerWidth = Math.min(400 * scale, width * 0.46);
+    const bannerHeight = 44 * scale;
+    const bannerY = height / 2 - 56 * scale;
+    const banner = this.host.addChildPlainNode(parent, 'LobbyFormationPowerBanner', 0, bannerY, bannerWidth, bannerHeight);
+    const bannerGraphics = banner.addComponent(Graphics);
+    bannerGraphics.fillColor = rgba(14, 9, 6, 228);
+    bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, bannerHeight / 2);
+    bannerGraphics.fill();
+    bannerGraphics.strokeColor = rgba(216, 170, 84, 235);
+    bannerGraphics.lineWidth = Math.max(1, 1.5 * scale);
+    bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, bannerHeight / 2);
+    bannerGraphics.stroke();
+    // 左右延伸饰线(渐弱双段)+ 端头菱形,呼应参考图的双翼横幅构图。
+    const flourish = (direction: number): void => {
+      bannerGraphics.strokeColor = rgba(216, 170, 84, 150);
+      bannerGraphics.lineWidth = Math.max(1, 1.2 * scale);
+      bannerGraphics.moveTo(direction * (bannerWidth / 2 + 10 * scale), 0);
+      bannerGraphics.lineTo(direction * (bannerWidth / 2 + 58 * scale), 0);
+      bannerGraphics.stroke();
+      bannerGraphics.fillColor = rgba(230, 186, 96, 210);
+      const tipX = direction * (bannerWidth / 2 + 64 * scale);
+      bannerGraphics.moveTo(tipX, 0);
+      bannerGraphics.lineTo(tipX - direction * 7 * scale, 4 * scale);
+      bannerGraphics.lineTo(tipX - direction * 7 * scale, -4 * scale);
+      bannerGraphics.close();
+      bannerGraphics.fill();
+    };
+    flourish(-1);
+    flourish(1);
+    const powerReady = power.rosterLoaded;
+    const bannerLabel = this.host.addChildLabel(banner, 'LobbyFormationPowerBannerLabel', '当前阵容战力', -bannerWidth * 0.16, 0, 17 * scale, rgba(228, 198, 134), new Size(bannerWidth * 0.5, 22 * scale));
+    bannerLabel.overflow = Label.Overflow.SHRINK;
+    const numberColor = !powerReady ? rgba(180, 162, 124, 255) : footerHidden || power.enough || power.recommendedPower <= 0 ? rgba(255, 216, 112, 255) : rgba(255, 172, 96, 255);
+    const bannerNumber = this.host.addChildLabel(banner, 'LobbyFormationPowerBannerNumber', powerReady ? formatInteger(power.currentPower) : '—', bannerWidth * 0.2, 0, 26 * scale, numberColor, new Size(bannerWidth * 0.42, 32 * scale));
+    bannerNumber.overflow = Label.Overflow.SHRINK;
+    // 副行:推荐战力(挑战布阵才有意义;纯布阵/未就绪时省略或给读取提示)。
+    const subText = !powerReady
+      ? '英雄队列读取中，阵容战力稍后刷新。'
+      : !footerHidden && power.recommendedPower > 0
+        ? power.enough
+          ? `推荐战力 ${formatInteger(power.recommendedPower)}，已达标。`
+          : `推荐战力 ${formatInteger(power.recommendedPower)}，还差 ${formatInteger(power.powerGap)}。`
+        : '';
+    if (subText) {
+      const subColor = !powerReady ? rgba(170, 152, 116) : power.enough ? rgba(186, 225, 173) : rgba(255, 181, 116);
+      const sub = this.host.addChildLabel(parent, 'LobbyFormationPowerStatus', subText, 0, bannerY - 32 * scale, 15 * scale, subColor, new Size(width - 112 * scale, 20 * scale));
+      sub.overflow = Label.Overflow.SHRINK;
+    }
     const statusText = state.loading
       ? '正在读取可上阵英雄...'
       : state.error
         ? '英雄队列暂不可用，当前不能进入战斗。'
         : `已确认 ${selectedCount}/5 名出战英雄：目标 ${stageCode}；点击已上阵英雄可下阵。`;
-    const status = this.host.addChildLabel(parent, 'LobbyFormationStatus', statusText, 0, height / 2 - 78 * scale, 19 * scale, rgba(204, 167, 88), new Size(width - 112 * scale, 28 * scale));
+    const status = this.host.addChildLabel(parent, 'LobbyFormationStatus', statusText, 0, height / 2 - 112 * scale, 16 * scale, rgba(204, 167, 88), new Size(width - 112 * scale, 24 * scale));
     status.overflow = Label.Overflow.SHRINK;
-    // 从英雄界面进入=纯布阵场景:只展示阵容战力,不带"推荐/还差"(推荐战力只在深渊挑战布阵里有意义)。
-    const footerHidden = this.host.isLobbyFormationFooterHidden?.() ?? false;
-    const powerText = !power.rosterLoaded
-      ? '英雄队列读取中，阵容战力稍后刷新。'
-      : footerHidden
-        ? `当前阵容战力 ${formatInteger(power.currentPower)}。`
-        : power.recommendedPower > 0
-          ? power.enough
-            ? `当前阵容战力 ${formatInteger(power.currentPower)} / 推荐 ${formatInteger(power.recommendedPower)}，战力达标。`
-            : `当前阵容战力 ${formatInteger(power.currentPower)} / 推荐 ${formatInteger(power.recommendedPower)}，还差 ${formatInteger(power.powerGap)}。`
-          : `当前阵容战力 ${formatInteger(power.currentPower)}；推荐战力读取中。`;
-    const powerColor = footerHidden || !power.rosterLoaded || power.enough ? rgba(186, 225, 173) : rgba(255, 181, 116);
-    const powerLabel = this.host.addChildLabel(parent, 'LobbyFormationPowerStatus', powerText, 0, height / 2 - 102 * scale, 18 * scale, powerColor, new Size(width - 112 * scale, 26 * scale));
-    powerLabel.overflow = Label.Overflow.SHRINK;
   }
 
   private renderBody(parent: Node, width: number, height: number, scale: number, state: LobbyHeroRosterPanelState, selectedHeroIds: number[]): void {
@@ -335,9 +375,15 @@ export class LobbyFormationPanelRenderer {
     graphics.fillColor = rgba(0, 0, 0, 104);
     graphics.ellipse(0, -height * 0.42, width * 0.34, Math.max(6 * scale, height * 0.045));
     graphics.fill();
-    // 站位光圈:上阵位双圈(稀有度外圈 + 金色内亮圈),空位淡圈——一眼分清有人/没人。
-    graphics.strokeColor = hero ? (hero.protagonist ? rgba(244, 194, 86, 232) : this.resolveRarityColor(hero.rarity, 226)) : rgba(105, 91, 68, 112);
-    graphics.lineWidth = Math.max(1, hero ? 2 * scale : scale);
+    // 站位光圈(2026-08-05 参考图强化):上阵位=稀有度色淡填充+粗外圈+金内圈的发光魔法阵观感。
+    if (hero) {
+      const glow = hero.protagonist ? rgba(244, 194, 86, 40) : this.resolveRarityColor(hero.rarity, 44);
+      graphics.fillColor = glow;
+      graphics.ellipse(0, -height * 0.42, width * 0.38, Math.max(8 * scale, height * 0.054));
+      graphics.fill();
+    }
+    graphics.strokeColor = hero ? (hero.protagonist ? rgba(244, 194, 86, 232) : this.resolveRarityColor(hero.rarity, 236)) : rgba(105, 91, 68, 112);
+    graphics.lineWidth = Math.max(1, hero ? 2.6 * scale : scale);
     graphics.ellipse(0, -height * 0.42, width * 0.38, Math.max(8 * scale, height * 0.054));
     graphics.stroke();
     if (hero) {
@@ -478,45 +524,8 @@ export class LobbyFormationPanelRenderer {
   }
 
   private loadFormationSpineData(resourcePath: string, uuid: string | null, onLoaded: (data: sp.SkeletonData | null) => void): void {
-    const cacheKey = uuid ? `uuid:${uuid}|${resourcePath}` : resourcePath;
-    const cached = this.formationSpineData.get(cacheKey);
-    if (cached) {
-      onLoaded(cached);
-      return;
-    }
-    const pending = this.formationSpineLoadCallbacks.get(cacheKey);
-    if (pending) {
-      pending.push(onLoaded);
-      return;
-    }
-    this.formationSpineLoadCallbacks.set(cacheKey, [onLoaded]);
-    const finish = (data: sp.SkeletonData | null): void => {
-      const callbacks = this.formationSpineLoadCallbacks.get(cacheKey) ?? [];
-      Reflect.apply(Map.prototype.delete, this.formationSpineLoadCallbacks, [cacheKey]);
-      if (data) {
-        this.formationSpineData.set(cacheKey, data);
-      }
-      callbacks.forEach((callback) => callback(data));
-    };
-    if (uuid) {
-      assetManager.loadAny({ uuid, type: sp.SkeletonData }, (error: Error | null, asset: unknown) => {
-        if (!error && isBattleUnitSpineDataAsset(asset)) {
-          finish(asset);
-          return;
-        }
-        console.warn(`[Formation] spine uuid load failed: ${uuid}, ${resourcePath}`, error);
-        finish(null);
-      });
-      return;
-    }
-    resources.load(resourcePath, sp.SkeletonData, (error: Error | null, data: sp.SkeletonData | null) => {
-      if (error || !isBattleUnitSpineDataAsset(data)) {
-        console.warn(`[Formation] spine resource load failed: ${resourcePath}`, error);
-        finish(null);
-        return;
-      }
-      finish(data);
-    });
+    // 2026-08-04 复用重构:改走全局 SpineDataStore,与战斗/详情/大厅共享缓存。
+    loadSharedSpineData(resourcePath, uuid, 'Formation', onLoaded);
   }
 
   private applyFormationSpineData(
@@ -644,6 +653,17 @@ export class LobbyFormationPanelRenderer {
   }
 
   private renderFormationHeroPicker(parent: Node, heroes: LobbyHeroItemVO[], selectedHeroIds: number[], x: number, y: number, width: number, height: number, scale: number): void {
+    // 页签点击只重建右栏,不整页重渲;整页重渲时闭包被新一轮覆盖。
+    this.rebuildHeroPicker = () => {
+      if (!parent.isValid) {
+        return;
+      }
+      const stale = parent.getChildByName('LobbyFormationHeroPicker');
+      if (stale && stale.isValid) {
+        stale.destroy();
+      }
+      this.renderFormationHeroPicker(parent, heroes, selectedHeroIds, x, y, width, height, scale);
+    };
     const panel = this.host.addChildPlainNode(parent, 'LobbyFormationHeroPicker', x, y, width, height);
     const graphics = panel.addComponent(Graphics);
     graphics.fillColor = rgba(7, 6, 8, 214);
@@ -655,7 +675,7 @@ export class LobbyFormationPanelRenderer {
     graphics.fillColor = rgba(111, 31, 28, 82);
     graphics.rect(-width / 2 + 10 * scale, height / 2 - 52 * scale, width - 20 * scale, 34 * scale);
     graphics.fill();
-    const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', -width / 2 + 18 * scale, height / 2 - 32 * scale, 18 * scale, rgba(231, 205, 142), new Size(width - 36 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, height / 2 - 32 * scale, 18 * scale, rgba(231, 205, 142), new Size(width - 36 * scale, 24 * scale));
     title.overflow = Label.Overflow.SHRINK;
     // 金色分隔线(Graphics 渐淡双线):divider 素材是粗雕花图,压到 14px 高会失真,改手绘。
     graphics.strokeColor = rgba(206, 160, 82, 190);
@@ -663,17 +683,75 @@ export class LobbyFormationPanelRenderer {
     graphics.moveTo(-width / 2 + 16 * scale, height / 2 - 56 * scale);
     graphics.lineTo(width / 2 - 16 * scale, height / 2 - 56 * scale);
     graphics.stroke();
-    graphics.strokeColor = rgba(206, 160, 82, 70);
-    graphics.moveTo(-width / 2 + 30 * scale, height / 2 - 59.5 * scale);
-    graphics.lineTo(width / 2 - 30 * scale, height / 2 - 59.5 * scale);
-    graphics.stroke();
+    // 稀有度过滤页签(2026-08-05 参考图):全部/UR/SSR/SR/R 胶囊,选中金框亮字。
+    const tabs: Array<{ key: 'ALL' | 'UR' | 'SSR' | 'SR' | 'R'; label: string }> = [
+      { key: 'ALL', label: '全部' },
+      { key: 'UR', label: 'UR' },
+      { key: 'SSR', label: 'SSR' },
+      { key: 'SR', label: 'SR' },
+      { key: 'R', label: 'R' },
+    ];
+    const tabRowY = height / 2 - 74 * scale;
+    const tabGap = 6 * scale;
+    const tabWidth = (width - 28 * scale - tabGap * (tabs.length - 1)) / tabs.length;
+    const tabHeight = 24 * scale;
+    tabs.forEach((tab, tabIndex) => {
+      const tabX = -width / 2 + 14 * scale + tabWidth / 2 + tabIndex * (tabWidth + tabGap);
+      const active = this.pickerRarityFilter === tab.key;
+      const tabNode = this.host.addChildPlainNode(panel, `LobbyFormationRarityTab_${tab.key}`, tabX, tabRowY, tabWidth, tabHeight);
+      const tg = tabNode.addComponent(Graphics);
+      tg.fillColor = active ? rgba(120, 78, 26, 235) : rgba(16, 14, 15, 205);
+      tg.roundRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, tabHeight / 2);
+      tg.fill();
+      tg.strokeColor = active ? rgba(248, 202, 108, 240) : rgba(110, 92, 58, 150);
+      tg.lineWidth = Math.max(1, active ? 1.4 * scale : scale);
+      tg.roundRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, tabHeight / 2);
+      tg.stroke();
+      const tabLabel = this.host.addChildLabel(tabNode, 'Label', tab.label, 0, 0, 13 * scale, active ? rgba(255, 236, 178) : rgba(196, 178, 138), new Size(tabWidth - 6 * scale, 16 * scale));
+      tabLabel.overflow = Label.Overflow.SHRINK;
+      tabNode.addComponent(Button);
+      tabNode.on(Button.EventType.CLICK, () => {
+        if (this.pickerRarityFilter !== tab.key) {
+          this.pickerRarityFilter = tab.key;
+          this.rebuildHeroPicker?.();
+        }
+      }, this);
+      this.host.applyImageButtonFeedback(tabNode, 1.04, 0.96);
+    });
     const selectedSet = new Set(selectedHeroIds);
-    const visible = this.visibleHeroes(heroes);
-    // 两列网格:全部可出战英雄一屏放下(18 个 → 2×9),行高按数量自适应。
+    const allVisible = this.visibleHeroes(heroes);
+    const visible = this.pickerRarityFilter === 'ALL'
+      ? allVisible
+      : allVisible.filter((hero) => safeText(hero.rarity).toUpperCase() === this.pickerRarityFilter);
+    // 底部保存阵容按钮(阵容变更本就自动回写,按钮提供显式确认)。
+    const saveHeight = 40 * scale;
+    const saveWidth = Math.min(width - 36 * scale, 230 * scale);
+    const saveY = -height / 2 + 14 * scale + saveHeight / 2;
+    const saveButton = this.host.addChildPlainNode(panel, 'LobbyFormationSaveButton', 0, saveY, saveWidth, saveHeight);
+    const sg = saveButton.addComponent(Graphics);
+    sg.fillColor = rgba(122, 32, 24, 240);
+    sg.roundRect(-saveWidth / 2, -saveHeight / 2, saveWidth, saveHeight, 9 * scale);
+    sg.fill();
+    sg.strokeColor = rgba(242, 190, 98, 235);
+    sg.lineWidth = Math.max(1, 1.5 * scale);
+    sg.roundRect(-saveWidth / 2, -saveHeight / 2, saveWidth, saveHeight, 9 * scale);
+    sg.stroke();
+    const saveLabel = this.host.addChildLabel(saveButton, 'Label', '保存阵容', 0, 0, 18 * scale, rgba(255, 230, 168), new Size(saveWidth - 16 * scale, 24 * scale));
+    saveLabel.overflow = Label.Overflow.SHRINK;
+    saveButton.addComponent(Button);
+    saveButton.on(Button.EventType.CLICK, () => this.host.saveLobbyFormationNow?.(), this);
+    this.host.applyImageButtonFeedback(saveButton);
+    if (visible.length === 0) {
+      const empty = this.host.addChildLabel(panel, 'LobbyFormationPickerEmpty', '该稀有度暂无可出战英雄。', 0, 0, 15 * scale, rgba(170, 152, 116), new Size(width - 36 * scale, 22 * scale));
+      empty.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    // 列表区:页签之下、保存按钮之上;行高按数量自适应,>8 人两列。
     const columns = visible.length > 8 ? 2 : 1;
     const rowsPerColumn = Math.max(1, Math.ceil(visible.length / columns));
-    const rowTop = height / 2 - 86 * scale;
-    const rowHeight = Math.max(34 * scale, Math.min(58 * scale, (height - 104 * scale) / rowsPerColumn));
+    const rowTop = height / 2 - 96 * scale;
+    const listBottom = saveY + saveHeight / 2 + 10 * scale;
+    const rowHeight = Math.max(34 * scale, Math.min(58 * scale, (rowTop - listBottom) / rowsPerColumn));
     const columnWidth = (width - 24 * scale - (columns - 1) * 8 * scale) / columns;
     visible.forEach((hero, index) => {
       const col = index % columns;
@@ -709,32 +787,33 @@ export class LobbyFormationPanelRenderer {
     crestGraphics.stroke();
     const tag = this.host.addChildLabel(crest, 'LobbyFormationHeroPickerRarityText', safeText(hero.rarity).slice(0, 3), 0, 0, 10 * scale, rgba(255, 246, 210), new Size(24 * scale, 12 * scale));
     tag.overflow = Label.Overflow.SHRINK;
+    // 出战标记(2026-08-05 参考图):行尾金圆✓,替代旧"出战中"胶囊/小圆点。
+    const drawCheckMark = (): void => {
+      const markX = width / 2 - 15 * scale;
+      graphics.fillColor = rgba(232, 176, 64, 240);
+      graphics.circle(markX, 0, 9 * scale);
+      graphics.fill();
+      graphics.strokeColor = rgba(255, 240, 196, 245);
+      graphics.lineWidth = Math.max(1.4, 2 * scale);
+      graphics.moveTo(markX - 4.2 * scale, 0.4 * scale);
+      graphics.lineTo(markX - 1.2 * scale, -3.2 * scale);
+      graphics.lineTo(markX + 4.6 * scale, 3.6 * scale);
+      graphics.stroke();
+    };
+    const markWidth = selected ? 26 * scale : 0;
     if (compact) {
-      const dotWidth = selected ? 14 * scale : 0;
-      const name = this.host.addChildLabel(row, 'LobbyFormationHeroPickerName', `${safeText(hero.heroName)} Lv.${hero.level}`, -width / 2 + 40 * scale, 0, 17 * scale, selected ? rgba(255, 232, 166) : rgba(218, 198, 151), new Size(width - 54 * scale - dotWidth, 20 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(row, 'LobbyFormationHeroPickerName', `${safeText(hero.heroName)} Lv.${hero.level}`, -width / 2 + 40 * scale, 0, 17 * scale, selected ? rgba(255, 232, 166) : rgba(218, 198, 151), new Size(width - 54 * scale - markWidth, 20 * scale), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      if (selected) {
-        graphics.fillColor = rgba(232, 176, 64, 235);
-        graphics.circle(width / 2 - 12 * scale, 0, 5 * scale);
-        graphics.fill();
-      }
     } else {
-      const chipWidth = selected ? 64 * scale : 0;
-      const name = this.host.addChildLabel(row, 'LobbyFormationHeroPickerName', `${safeText(hero.heroName)}${hero.protagonist ? '  队长' : ''}`, -width / 2 + 45 * scale, 9 * scale, 19 * scale, selected ? rgba(255, 232, 166) : rgba(218, 198, 151), new Size(width - 130 * scale - chipWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(row, 'LobbyFormationHeroPickerName', `${safeText(hero.heroName)}${hero.protagonist ? '  队长' : ''}`, -width / 2 + 45 * scale, 9 * scale, 19 * scale, selected ? rgba(255, 232, 166) : rgba(218, 198, 151), new Size(width - 130 * scale - markWidth, 22 * scale), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const meta = this.host.addChildLabel(row, 'LobbyFormationHeroPickerMeta', `${safeText(hero.heroClass || '未分类')} · Lv.${hero.level}`, -width / 2 + 45 * scale, -10 * scale, 15 * scale, rgba(170, 151, 108), new Size(width - 130 * scale - chipWidth, 17 * scale), HorizontalTextAlignment.LEFT);
+      const meta = this.host.addChildLabel(row, 'LobbyFormationHeroPickerMeta', `${safeText(hero.heroClass || '未分类')} · Lv.${hero.level}`, -width / 2 + 45 * scale, -10 * scale, 15 * scale, rgba(170, 151, 108), new Size(width - 130 * scale - markWidth, 17 * scale), HorizontalTextAlignment.LEFT);
       meta.overflow = Label.Overflow.SHRINK;
-      const power = this.host.addChildLabel(row, 'LobbyFormationHeroPickerPower', `战力 ${formatInteger(hero.power)}`, width / 2 - 62 * scale - (chipWidth ? chipWidth + 8 * scale : 0), -10 * scale, 14 * scale, rgba(214, 190, 138), new Size(100 * scale, 16 * scale), HorizontalTextAlignment.RIGHT);
+      const power = this.host.addChildLabel(row, 'LobbyFormationHeroPickerPower', `战力 ${formatInteger(hero.power)}`, width / 2 - 62 * scale - markWidth, -10 * scale, 14 * scale, rgba(214, 190, 138), new Size(100 * scale, 16 * scale), HorizontalTextAlignment.RIGHT);
       power.overflow = Label.Overflow.SHRINK;
-      if (selected) {
-        const chip = this.host.addChildPlainNode(row, 'LobbyFormationHeroPickerChip', width / 2 - chipWidth / 2 - 10 * scale, 8 * scale, chipWidth, 20 * scale);
-        const chipGraphics = chip.addComponent(Graphics);
-        chipGraphics.fillColor = rgba(186, 138, 48, 226);
-        chipGraphics.roundRect(-chipWidth / 2, -10 * scale, chipWidth, 20 * scale, 9 * scale);
-        chipGraphics.fill();
-        const chipLabel = this.host.addChildLabel(chip, 'LobbyFormationHeroPickerChipLabel', '出战中', 0, 0, 13 * scale, rgba(24, 14, 6), new Size(chipWidth - 6 * scale, 15 * scale));
-        chipLabel.overflow = Label.Overflow.SHRINK;
-      }
+    }
+    if (selected) {
+      drawCheckMark();
     }
     row.addComponent(Button);
     row.on(Button.EventType.CLICK, () => this.host.toggleLobbyFormationHero(hero.id), this);

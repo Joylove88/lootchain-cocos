@@ -134,7 +134,13 @@ function renderHelpButton(host: SceneBackButtonHost, parent: Node, layout: UiLay
   host.applyImageButtonFeedback(btn, 1.06, 0.94);
 }
 
-// 说明浮层:半透明遮罩 + 深色金框面板;即建即显,点击关闭,整页重绘时随父节点销毁。
+// 说明浮层底板:通用大弹窗雕花框(926×543,等比使用);缺失时回退程序画金框。
+const SCENE_HELP_PANEL_ASSET = 'ui/common/ai/popup_frame_large/spriteFrame';
+const SCENE_HELP_PANEL_ASPECT = 543 / 926;
+
+// 说明浮层(2026-08-05 重排版):popup_frame_large 素材底;正文按空行拆段逐段渲染
+// (单个大 Label 长文本在 SHRINK 下对齐/溢出不可控,分段小块 LEFT 对齐稳定),
+// 段落间距呼吸;即建即显,点击关闭,整页重绘时随父节点销毁。
 function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiLayout, scale: number, titleText: string, helpText: string): void {
   if (!host.addChildLabel) {
     return;
@@ -142,32 +148,43 @@ function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiL
   const overlay = host.addChildPlainNode(parent, 'SceneHelpOverlay', 0, 0, 4000, 4000);
   overlay.addComponent(BlockInputEvents);
   const og = overlay.addComponent(Graphics);
-  og.fillColor = rgba(0, 0, 0, 150);
+  og.fillColor = rgba(0, 0, 0, 168);
   og.rect(-2000, -2000, 4000, 4000);
   og.fill();
-  const w = Math.min(600 * scale, (layout.stageRight - layout.stageLeft) * 0.82);
-  const h = 330 * scale;
+  const w = Math.min(640 * scale, (layout.stageRight - layout.stageLeft) * 0.84);
+  const h = w * SCENE_HELP_PANEL_ASPECT;
   const panel = host.addChildPlainNode(overlay, 'SceneHelpPanel', 0, 0, w, h);
-  const g = panel.addComponent(Graphics);
-  g.fillColor = rgba(12, 10, 9, 248);
-  g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
-  g.fill();
-  g.strokeColor = rgba(214, 168, 82, 225);
-  g.lineWidth = 2 * scale;
-  g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
-  g.stroke();
-  g.strokeColor = rgba(150, 112, 58, 150);
-  g.lineWidth = 1.1 * scale;
-  g.roundRect(-w / 2 + 5 * scale, -h / 2 + 5 * scale, w - 10 * scale, h - 10 * scale, 8 * scale);
-  g.stroke();
-  const title = host.addChildLabel(panel, 'SceneHelpTitle', titleText + ' · 说明', 0, h / 2 - 32 * scale, 22 * scale, rgba(240, 210, 140), new Size(w - 48 * scale, 30 * scale));
+  if (!host.addSprite?.('SceneHelpPanelArt', SCENE_HELP_PANEL_ASSET, 0, 0, w, h, panel)) {
+    const g = panel.addComponent(Graphics);
+    g.fillColor = rgba(12, 10, 9, 248);
+    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 82, 225);
+    g.lineWidth = 2 * scale;
+    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
+    g.stroke();
+  }
+  const title = host.addChildLabel(panel, 'SceneHelpTitle', titleText + ' · 说明', 0, h / 2 - 46 * scale, 22 * scale, rgba(240, 210, 140), new Size(w - 96 * scale, 30 * scale));
   title.overflow = Label.Overflow.SHRINK;
   title.enableOutline = true;
   title.outlineColor = rgba(0, 0, 0, 220);
   title.outlineWidth = Math.max(1, 1.4 * scale);
-  const body = host.addChildLabel(panel, 'SceneHelpBody', helpText, 0, 8 * scale, 19 * scale, rgba(222, 208, 178), new Size(w - 64 * scale, h - 128 * scale), HorizontalTextAlignment.LEFT);
-  body.overflow = Label.Overflow.SHRINK;
-  const hint = host.addChildLabel(panel, 'SceneHelpHint', '点击任意处关闭', 0, -h / 2 + 26 * scale, 16 * scale, rgba(160, 146, 120), new Size(w - 48 * scale, 22 * scale));
+  const paddingX = 60 * scale;
+  const textWidth = w - paddingX * 2;
+  const fontSize = 16 * scale;
+  const lineHeight = 23 * scale;
+  const paragraphs = helpText.split(/\n{2,}/).map((part) => part.replace(/\n/g, '')).filter(Boolean);
+  const charsPerLine = Math.max(8, Math.floor(textWidth / fontSize));
+  let cursorY = h / 2 - 76 * scale;
+  paragraphs.forEach((text, index) => {
+    const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+    const blockHeight = lines * lineHeight;
+    const paragraph = host.addChildLabel!(panel, `SceneHelpBody_${index}`, text, 0, cursorY - blockHeight / 2, fontSize, rgba(222, 208, 178), new Size(textWidth, blockHeight), HorizontalTextAlignment.LEFT);
+    paragraph.lineHeight = lineHeight;
+    paragraph.overflow = Label.Overflow.SHRINK;
+    cursorY -= blockHeight + 9 * scale;
+  });
+  const hint = host.addChildLabel(panel, 'SceneHelpHint', '点击任意处关闭', 0, -h / 2 + 32 * scale, 15 * scale, rgba(160, 146, 120), new Size(w - 96 * scale, 20 * scale));
   hint.overflow = Label.Overflow.SHRINK;
   overlay.addComponent(Button);
   overlay.on(Button.EventType.CLICK, () => {
