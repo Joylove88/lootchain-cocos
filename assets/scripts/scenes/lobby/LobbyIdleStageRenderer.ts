@@ -28,7 +28,9 @@ import {
   resolveBattleUnitSpineRuntimeData,
   resolveBattleUnitSpineScale,
   resolveBattleUnitSpineSkinName,
+  type BattleUnitSpineAnimationNames,
 } from './LobbyBattleUnitSpineRuntime';
+import { loadSharedSpineData } from './SpineDataStore';
 import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 
 export interface LobbyIdleStageHost {
@@ -63,14 +65,18 @@ const IDLE_MONSTER_PORTRAITS = [
   'ui/battle/ai/monster_grunt_3/spriteFrame',
 ];
 
+// 大厅小怪骨骼(与战斗同源 S196 怪物包);height=目标显示高(px×uiScale)。
+const IDLE_MONSTER_SPINES = [
+  { resource: 'spine/monster/medium_dog/medium_base_001', height: 104 },
+  { resource: 'spine/monster/small_spider/small_base_001', height: 78 },
+];
+
 /**
  * 大厅挂机演出(第一期,纯本地表现):
  * 上阵英雄站魔法阵 idle/attack 循环,小怪波次淡入受击倒下重生,金币飘字标注"预览"。
  * 不调用任何写接口;挂机收益/层数推进由服务端结算接口就绪后接入(第二期)。
  */
 export class LobbyIdleStageRenderer {
-  private readonly spineCache = new Map<string, sp.SkeletonData>();
-
   constructor(private readonly host: LobbyIdleStageHost) {}
 
   render(parent: Node, layout: UiLayout, towerStageCode: string, towerFloor = 0): void {
@@ -240,51 +246,174 @@ export class LobbyIdleStageRenderer {
     label.overflow = Label.Overflow.SHRINK;
   }
 
-  // 两只小怪错峰循环:右侧淡入 → 被打受击闪烁 → 倒下淡出 + 金币飘字 → 重生。
+  // 两只小怪错峰循环(P8c 骨骼化):右侧跑入 → 站定挨打 → 死亡动画 → 淡出 + 金币飘字 → 重生。
+  // 骨骼与战斗同源(S196 怪物包);加载失败回退旧静态小怪图(倒下改用倾倒旧动效)。
   private renderIdleMonsters(parent: Node, width: number, height: number, scale: number): void {
     // 与英雄圆心站位同一地面带,交战线水平可读。
     const baseY = -height * 0.29;
-    [0, 1].forEach((slot) => {
-      const portrait = IDLE_MONSTER_PORTRAITS[slot % IDLE_MONSTER_PORTRAITS.length];
+    IDLE_MONSTER_SPINES.forEach((config, slot) => {
       const homeX = width * (0.27 + slot * 0.075);
-      const size = (slot === 0 ? 120 : 104) * scale;
-      const monster = this.host.addChildPlainNode(parent, `LobbyIdleMonster_${slot}`, homeX + width * 0.2, baseY + (slot === 0 ? 0 : -18 * scale), size, size);
+      const slotHeight = config.height * scale;
+      const slotWidth = 150 * scale;
+      const groundY = baseY + (slot === 0 ? 0 : -18 * scale);
+      const monster = this.host.addChildPlainNode(parent, `LobbyIdleMonster_${slot}`, homeX + width * 0.2, groundY, slotWidth, slotHeight);
       const opacity = monster.addComponent(UIOpacity);
       opacity.opacity = 0;
-      this.host.addSprite(`LobbyIdleMonsterArt_${slot}`, portrait, 0, 0, size * 1.05, size, monster);
-      const cycle = (): void => {
-        if (!monster.isValid) {
+      const unit = this.toIdleMonsterUnit(slot, config.resource);
+      const spineNode = this.host.addChildPlainNode(monster, 'LobbyIdleMonsterSpine', 0, -slotHeight / 2, slotWidth * 2, slotHeight * 2.4);
+      const skeleton = spineNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.timeScale = 0.9;
+      this.loadSpineData(config.resource, (data) => {
+        if (!monster.isValid || !spineNode.isValid) {
           return;
         }
-        monster.setPosition(homeX + width * 0.2, monster.position.y, 0);
-        opacity.opacity = 0;
-        tween(monster)
-          .delay(slot * 1.4 + 0.4)
-          .to(0.9, { position: new Vec3(homeX, monster.position.y, 0) })
-          .delay(3.4 + Math.random() * 2)
-          .call(() => {
-            if (monster.isValid) {
-              this.spawnIdleLoot(parent, homeX, baseY + 40 * scale, scale);
+        const applyOnce = (): BattleUnitSpineAnimationNames | null => {
+          try {
+            const runtimeData = resolveBattleUnitSpineRuntimeData(data as sp.SkeletonData);
+            if (!runtimeData || (runtimeData.animations ?? []).length === 0) {
+              // 失败原因必须可见:runtimeData null=wasm 解析失败;anims=0=解析出空骨架。
+              console.warn(`[IdleStage] monster spine runtime not ready: ${config.resource}, ${runtimeData ? `anims=${(runtimeData.animations ?? []).length},skins=${(runtimeData.skins ?? []).length}` : 'runtimeData=null'}`);
+              return null;
             }
-          })
-          .to(0.5, { angle: -78 })
-          .call(() => {
-            if (!monster.isValid) {
-              return;
+            patchBattleUnitSpineRuntimeEnums(data as sp.SkeletonData, runtimeData);
+            skeleton.skeletonData = data as sp.SkeletonData;
+            const skin = resolveBattleUnitSpineSkinName(data as sp.SkeletonData, runtimeData);
+            if (skin) {
+              skeleton.setSkin(skin);
+              skeleton.setSlotsToSetupPose();
             }
-            monster.angle = 0;
-            cycle();
-          })
-          .start();
-        tween(opacity)
-          .delay(slot * 1.4 + 0.4)
-          .to(0.9, { opacity: 255 })
-          .delay(3.9 + Math.random() * 2)
-          .to(0.5, { opacity: 0 })
-          .start();
-      };
-      cycle();
+            // 目标显示高/骨骼 AABB 高;素材原点=脚底中心,spineNode 已挂在地面线,原朝右 → 镜像面向英雄。
+            const safeHeight = Math.max(1, runtimeData.height || slotHeight);
+            const spineScale = Math.max(0.02, slotHeight / safeHeight);
+            spineNode.setScale(resolveBattleUnitSpineMirrorScaleX(spineScale, true), spineScale, 1);
+            const names = resolveBattleUnitSpineAnimationNames(data as sp.SkeletonData, unit);
+            if (names.idle) {
+              skeleton.setAnimation(0, names.idle, true);
+            }
+            return names;
+          } catch (error) {
+            console.warn('[IdleStage] monster spine apply failed', config.resource, error);
+            return null;
+          }
+        };
+        const fallbackToPortrait = (): void => {
+          if (spineNode.isValid) {
+            spineNode.destroy();
+          }
+          const portrait = IDLE_MONSTER_PORTRAITS[slot % IDLE_MONSTER_PORTRAITS.length];
+          this.host.addSprite(`LobbyIdleMonsterArt_${slot}`, portrait, 0, 0, slotWidth * 0.8, slotHeight, monster);
+          this.startIdleMonsterCycle(parent, monster, opacity, skeleton, null, homeX, groundY, slotHeight, slot, width, scale);
+        };
+        // wasm 运行时解析在本项目有已知偶发失败(编队/详情页同款重试);
+        // 大厅同帧建 5 英雄+2 小怪更易触发,失败后延迟重试两轮再回退静态图。
+        const attemptApply = (round: number): void => {
+          if (!monster.isValid || !spineNode.isValid) {
+            return;
+          }
+          const names = applyOnce();
+          if (names) {
+            this.startIdleMonsterCycle(parent, monster, opacity, skeleton, names, homeX, groundY, slotHeight, slot, width, scale);
+            return;
+          }
+          if (round < 2) {
+            setTimeout(() => attemptApply(round + 1), 320 * (round + 1));
+            return;
+          }
+          fallbackToPortrait();
+        };
+        if (!data) {
+          fallbackToPortrait();
+          return;
+        }
+        attemptApply(0);
+      });
     });
+  }
+
+  private startIdleMonsterCycle(
+    stage: Node,
+    monster: Node,
+    opacity: UIOpacity,
+    skeleton: sp.Skeleton,
+    names: BattleUnitSpineAnimationNames | null,
+    homeX: number,
+    groundY: number,
+    slotHeight: number,
+    slot: number,
+    width: number,
+    scale: number,
+  ): void {
+    const playAnimation = (name: string | null | undefined, loop: boolean): void => {
+      if (!names || !name || !skeleton.isValid) {
+        return;
+      }
+      try {
+        skeleton.setAnimation(0, name, loop);
+      } catch {
+        // 个别动画缺失时保持当前姿势即可。
+      }
+    };
+    const fadeTo = (value: number, duration: number): void => {
+      tween(opacity).to(duration, { opacity: value }).start();
+    };
+    const cycle = (): void => {
+      if (!monster.isValid) {
+        return;
+      }
+      monster.setPosition(homeX + width * 0.2, groundY, 0);
+      monster.angle = 0;
+      opacity.opacity = 0;
+      tween(monster)
+        .delay(slot * 1.4 + 0.4)
+        .call(() => {
+          playAnimation(names?.move ?? names?.idle, true);
+          fadeTo(255, 0.7);
+        })
+        .to(0.9, { position: new Vec3(homeX, groundY, 0) })
+        .call(() => playAnimation(names?.idle, true))
+        .delay(3.4 + Math.random() * 2)
+        .call(() => {
+          if (!monster.isValid) {
+            return;
+          }
+          this.spawnIdleLoot(stage, homeX, groundY + 40 * scale, scale);
+          if (names?.death) {
+            playAnimation(names.death, false);
+          } else {
+            // 静态图回退:沿用旧倾倒动效。
+            tween(monster).to(0.4, { angle: -78 }).start();
+          }
+        })
+        .delay(1.05)
+        .call(() => fadeTo(0, 0.45))
+        .delay(0.55)
+        .call(() => cycle())
+        .start();
+    };
+    cycle();
+  }
+
+  private toIdleMonsterUnit(slot: number, resource: string): BattlePresentationUnitSnapshot {
+    return {
+      unitKey: `idle-monster:${slot}`,
+      side: 'enemy',
+      slot,
+      displayName: '小怪',
+      subline: '',
+      rarity: 'ENEMY',
+      level: 1,
+      power: 0,
+      role: 'front',
+      leader: false,
+      hpRatio: 1,
+      sourceHeroId: 0,
+      heroCode: '',
+      heroClass: null,
+      portraitAsset: null,
+      spineAsset: resource,
+      spineUuid: null,
+    };
   }
 
   // 掉落飘字(预览数值,不写资源)。
@@ -432,19 +561,8 @@ export class LobbyIdleStageRenderer {
   }
 
   private loadSpineData(resourcePath: string, callback: (data: sp.SkeletonData | null) => void): void {
-    const cached = this.spineCache.get(resourcePath);
-    if (cached) {
-      callback(cached);
-      return;
-    }
-    resources.load(resourcePath, sp.SkeletonData, (error, data) => {
-      if (error || !isBattleUnitSpineDataAsset(data)) {
-        callback(null);
-        return;
-      }
-      this.spineCache.set(resourcePath, data);
-      callback(data);
-    });
+    // 2026-08-04 复用重构:改走全局 SpineDataStore(顺带补上此前缺失的在途去重)。
+    loadSharedSpineData(resourcePath, null, 'IdleStage', callback);
   }
 
   private toIdleBattleUnit(hero: LobbyHeroItemVO): BattlePresentationUnitSnapshot {

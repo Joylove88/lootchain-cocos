@@ -31,6 +31,8 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, starBandAssetOf, starBandTextRgbOf, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
+import { patchBattleUnitSpineRuntimeEnums, type BattleUnitSpineRuntimeData } from './LobbyBattleUnitSpineRuntime';
+import { loadSharedSpineData } from './SpineDataStore';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -251,8 +253,7 @@ export interface LobbyHeroDetailPanelHost {
 
 /** 英雄详情面板：展示英雄信息、形态、技能与战斗展示属性；当前只开放后端白名单内的 level-up。 */
 export class LobbyHeroDetailPanelRenderer {
-  private readonly heroSpineData = new Map<string, sp.SkeletonData>();
-  private readonly heroSpineLoadCallbacks = new Map<string, Array<(data: sp.SkeletonData | null) => void>>();
+  // 骨骼数据缓存已收敛到全局 SpineDataStore(2026-08-04),不再各页私有。
   private readonly heroSpineAudioClips = new Map<string, AudioClip>();
   private readonly heroSpineAudioLoadCallbacks = new Map<string, Array<(clip: AudioClip | null) => void>>();
   private readonly missingHeroSpineAudioLogs = new Set<string>();
@@ -1355,69 +1356,12 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   private loadHeroSpineData(path: string, onLoaded: (data: sp.SkeletonData | null) => void): void {
-    const cacheKey = path;
-    const cached = this.heroSpineData.get(cacheKey);
-    if (cached) {
-      onLoaded(cached);
-      return;
-    }
-    const pending = this.heroSpineLoadCallbacks.get(cacheKey);
-    if (pending) {
-      pending.push(onLoaded);
-      return;
-    }
-    this.heroSpineLoadCallbacks.set(cacheKey, [onLoaded]);
-    const finish = (data: sp.SkeletonData | null): void => {
-      const callbacks = this.heroSpineLoadCallbacks.get(cacheKey) ?? [];
-      this.heroSpineLoadCallbacks['delete'](cacheKey);
-      if (data) {
-        this.heroSpineData.set(cacheKey, data);
-      }
-      callbacks.forEach((callback) => callback(data));
-    };
-    resources.load(path, sp.SkeletonData, (error: Error | null, data: sp.SkeletonData | null) => {
-      if (error || !this.isHeroSpineDataAsset(data)) {
-        console.warn(`[HeroDetail] hero spine resource path load failed or returned non-SkeletonData: ${path}`, error);
-        finish(null);
-        return;
-      }
-      finish(data);
-    });
+    // 2026-08-04 复用重构:改走全局 SpineDataStore,与战斗/编队/大厅共享缓存。
+    loadSharedSpineData(path, null, 'HeroDetail', onLoaded);
   }
 
   private loadHeroSpineUuidData(uuid: string, onLoaded: (data: sp.SkeletonData | null) => void): void {
-    const cacheKey = `uuid:${uuid}`;
-    const cached = this.heroSpineData.get(cacheKey);
-    if (cached) {
-      onLoaded(cached);
-      return;
-    }
-    const pending = this.heroSpineLoadCallbacks.get(cacheKey);
-    if (pending) {
-      pending.push(onLoaded);
-      return;
-    }
-    this.heroSpineLoadCallbacks.set(cacheKey, [onLoaded]);
-    const finish = (data: sp.SkeletonData | null): void => {
-      const callbacks = this.heroSpineLoadCallbacks.get(cacheKey) ?? [];
-      this.heroSpineLoadCallbacks['delete'](cacheKey);
-      if (data) {
-        this.heroSpineData.set(cacheKey, data);
-      }
-      callbacks.forEach((callback) => callback(data));
-    };
-    assetManager.loadAny({ uuid, type: sp.SkeletonData }, (error: Error | null, asset: unknown) => {
-      if (!error && this.isHeroSpineDataAsset(asset)) {
-        finish(asset);
-        return;
-      }
-      console.warn(`[HeroDetail] hero spine uuid load failed or returned non-SkeletonData: ${uuid}`, error);
-      finish(null);
-    });
-  }
-
-  private isHeroSpineDataAsset(asset: unknown): asset is sp.SkeletonData {
-    return asset instanceof sp.SkeletonData || (typeof asset === 'object' && asset !== null && typeof (asset as sp.SkeletonData).getRuntimeData === 'function');
+    loadSharedSpineData(null, uuid, 'HeroDetail', onLoaded);
   }
 
   private resolveHeroSpinePremultipliedAlpha(data: sp.SkeletonData): boolean {
@@ -1492,7 +1436,9 @@ export class LobbyHeroDetailPanelRenderer {
         console.warn(`[HeroDetail] hero spine runtime data missing: ${resourcePath}`);
         return false;
       }
-      this.patchHeroSpineRuntimeEnums(data, runtimeData);
+      // 2026-08-04:改用共享 patch——两套实现写同一份 SkeletonData 的 getSkinsEnum/getAnimsEnum,
+      // 详情页与战斗页互相覆盖枚举表;统一后幂等。
+      patchBattleUnitSpineRuntimeEnums(data, runtimeData as unknown as BattleUnitSpineRuntimeData);
       skeleton.premultipliedAlpha = this.resolveHeroSpinePremultipliedAlpha(data);
       skeleton.skeletonData = data;
       const skinName = this.resolveHeroSpineSkinName(data, runtimeData);
@@ -1592,32 +1538,6 @@ export class LobbyHeroDetailPanelRenderer {
   private resolveHeroSpineDisplayProfile(hero: LobbyHeroItemVO): HeroSpineDisplayProfile {
     const asset = safeText(hero.spineAsset || hero.portraitAsset || '').trim();
     return HERO_DETAIL_SPINE_DISPLAY_PROFILES[asset] ?? {};
-  }
-
-  private patchHeroSpineRuntimeEnums(data: sp.SkeletonData, runtimeData: HeroSpineRuntimeData): void {
-    const skinNames = this.resolveHeroSpineSkinNames(data, runtimeData);
-    const animationNames = this.resolveHeroSpineAnimationNameList(data, runtimeData);
-    const mutableData = data as unknown as {
-      getSkinsEnum?: () => { [key: string]: number } | null;
-      getAnimsEnum?: () => { [key: string]: number } | null;
-    };
-    mutableData.getSkinsEnum = () => this.createHeroSpineEnumMap(skinNames.length > 0 ? skinNames : ['default'], 0) as { [key: string]: number };
-    mutableData.getAnimsEnum = () => {
-      const enumMap = this.createHeroSpineEnumMap(animationNames, 1);
-      enumMap['<None>'] = 0;
-      enumMap[0] = '<None>';
-      return enumMap as { [key: string]: number };
-    };
-  }
-
-  private createHeroSpineEnumMap(names: string[], startIndex: number): HeroSpineEnumMap {
-    const enumMap: HeroSpineEnumMap = {};
-    names.filter(Boolean).forEach((name, index) => {
-      const value = startIndex + index;
-      enumMap[name] = value;
-      enumMap[value] = name;
-    });
-    return enumMap;
   }
 
   private resolveHeroSpineSkinNames(data: sp.SkeletonData, runtimeData: HeroSpineRuntimeData): string[] {
@@ -2621,7 +2541,7 @@ export class LobbyHeroDetailPanelRenderer {
     const shownCount = Math.min(skills.length, 5);
     const rowGap = 7 * scale;
     // 大招行独立加高(两行描述不贴边),其余行均分;行位按累计高度排布。
-    const ultimateExtra = 16 * scale;
+    const ultimateExtra = 22 * scale;
     const baseRowHeight = Math.min(62 * scale, Math.max(38 * scale, (listHeight - 16 * scale - rowGap * (shownCount - 1) - ultimateExtra) / shownCount));
     let rowCursorY = listHeight / 2 - 8 * scale;
     skills.slice(0, shownCount).forEach((skill, index) => {
@@ -2694,7 +2614,8 @@ export class LobbyHeroDetailPanelRenderer {
         upBtn.on(Button.EventType.CLICK, () => this.host.openLobbyHeroUltimateDialog(), this);
         this.host.applyImageButtonFeedback(upBtn);
       }
-      desc.lineHeight = 16 * scale;
+      // 15px 字配 16px 行距过密是"挤"感主因,放宽到 19px;描述已压回两行内。
+      desc.lineHeight = 19 * scale;
       desc.overflow = Label.Overflow.SHRINK;
       // 技能行可选中:金框高亮,点击互斥切换(不整页重绘)。
       const selBox = this.host.addChildPlainNode(row, 'SkillRowSelect', 0, 0, rowW, rowHeight);
@@ -3481,7 +3402,7 @@ function resolveUltimateSkillName(heroCode: string | null | undefined): string {
 export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   if (hero.protagonist) {
     return [
-      { name: '终极技能 · 圣契裁决', tag: '大招 · 默认', description: '战斗中能量满可手动释放的核心技能,默认解锁。', kind: 'ultimate' },
+      { name: '圣契裁决', tag: '大招 · 默认', description: '能量集满后手动释放的核心技能,默认解锁。', kind: 'ultimate' },
       { name: '圣契斩击', tag: '普攻', description: '攻击形态默认开放，对单体目标造成暗金斩击伤害。' },
       { name: '誓约战意', tag: '被动', description: '主角在队首时提升本次预演的压制感与生存展示。' },
       { name: '守御/祷言形态', tag: '锁定', description: '防御形态与辅助形态后续通过主线剧情道具解锁。', locked: true },
@@ -3491,10 +3412,16 @@ export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   // 1) 终极技能(大招):拥有即默认解锁 Lv1,战斗可手动释放;觉醒提升等级上限。
   const ultLevel = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
   const ultName = resolveUltimateSkillName(hero.heroCode);
+  // 文案口径(2026-08-05 优化):标题只留技能名(标签已有"大招");倍率写实际百分点
+  // 增量(基础 260% 的每级 15% = +39 个百分点,直接展示 +39%)。
+  // 上限并入等级标签(Lv5/5),觉醒细节由升级弹窗承载——卡片描述压回两行内不挤。
+  const ultAwakened = hero.awakenStatus === 1;
+  const ultPct = Math.round(260 * ultimateDamageScale(ultLevel));
+  const ultStepPct = Math.round(260 * ultimateDamageScale(2)) - Math.round(260 * ultimateDamageScale(1));
   kit.push({
-    name: `终极技能 · ${ultName}`,
-    tag: `大招 · Lv${ultLevel}`,
-    description: `战斗中积攒能量,满能量可手动释放;当前伤害倍率 ${Math.round(260 * ultimateDamageScale(ultLevel))}%(每级 +15%),未觉醒上限 Lv.5,觉醒后 Lv.10。`,
+    name: ultName,
+    tag: `大招 · Lv${ultLevel}/${ultimateCap(ultAwakened)}`,
+    description: `能量集满后手动释放,造成 ${ultPct}% 攻击伤害,每升 1 级 +${ultStepPct}%。`,
     kind: 'ultimate',
   });
   // 2) 被动技能:按稀有度定条数(R/SR 2 条 / SSR/UR 4 条),按升星阶梯逐条解锁。
