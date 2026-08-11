@@ -82,6 +82,7 @@ import type { LobbyBagPanelState } from '../types/BagTypes';
 import type { LobbyBattlePanelState } from './lobby/LobbyBattleState';
 import type { LobbyCodexPanelState } from '../types/LobbyCodexTypes';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../types/LobbyHeroTypes';
+import type { PlayerBattleStartVO } from '../types/BattleTypes';
 import type { LobbyNoticePanelState } from '../types/LobbyNoticeTypes';
 import type { GachaDrawResultVO, GachaPoolVO } from '../types/GachaTypes';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../types/ProtagonistTypes';
@@ -1818,6 +1819,7 @@ export class LootChainGameRoot extends Component {
     this.removeLobbyBattlePreviewPanel();
     this.currentView = 'battle';
     this.renderBattleScene();
+    this.prefetchLobbyBattleFormationSpineAssets();
     const startStageCode = resolvedStageCode;
     if (reuseExistingBattleState) {
       return;
@@ -2979,6 +2981,13 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  // 布阵页"保存阵容"显式入口(2026-08-05 参考图改版):立即触发服务端持久化并给确认提示。
+  // 阵容变更本就自动回写,此按钮提供玩家可感知的确定感。
+  saveLobbyFormationNow(): void {
+    this.persistLobbyFormationToServer();
+    this.setStatus('阵容已保存。');
+  }
+
   // 回写当前阵容到服务端;并发请求合并(最后一次为准),失败静默(下次变更或登录再对齐)。
   private persistLobbyFormationToServer(): void {
     if (this.lobbyFormationSaveInFlight) {
@@ -3021,6 +3030,11 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbyDailySceneContent');
   }
 
+  private refreshLobbyDailyDungeonPanel(): void {
+    // 难度选中态存在渲染器实例里(不进 state),整页重绘即可刷新行高亮与卡底按钮。
+    this.renderCurrentLobbyScenePage();
+  }
+
   private openLobbyDailyDungeonPanel(): void {
     this.lobbyDailyDungeonPanelOpen = true;
     this.lobbyAdventurePanelOpen = false;
@@ -3038,6 +3052,8 @@ export class LootChainGameRoot extends Component {
     this.currentView = 'dailyDungeon';
     this.renderCurrentView();
     void this.loadLobbyDailyDungeonSummary(true);
+    // 奖励详情弹框依赖背包配置数据(useDesc/稀有度/已拥有),非强制预热,已加载则直接命中。
+    void this.loadLobbyBag();
   }
 
   private closeLobbyDailyDungeonPanel(): void {
@@ -4526,6 +4542,52 @@ export class LootChainGameRoot extends Component {
       ? this.normalizeLobbyFormationHeroIds(this.selectedLobbyFormationHeroIds)
       : this.resolveDefaultFilledLobbyFormationHeroIds(this.selectedLobbyFormationHeroIds);
     return before !== this.selectedLobbyFormationHeroIds.join(',');
+  }
+
+  // 本场我方单位(主角+当前/默认阵容)的骨骼预取描述,供面板打开预热与进战加载门共用。
+  private resolveLobbyBattleAllySpinePrefetchUnits(): Array<{ side: 'ally'; portraitAsset: string | null; spineAsset: string | null; spineUuid: string | null; monsterSkinAsset: null }> {
+    const rosterHeroes = this.lobbyHeroRosterLoader.currentState().heroes;
+    if (rosterHeroes.length === 0) {
+      return [];
+    }
+    const heroById = new Map(rosterHeroes.map((hero) => [hero.id, hero]));
+    const formationIds = this.resolveLobbyFormationHeroIds();
+    const pickedIds = formationIds.length > 0 ? formationIds : this.defaultLobbyFormationHeroIds();
+    const targets = [
+      ...rosterHeroes.filter((hero) => hero.protagonist),
+      ...pickedIds.map((heroId) => heroById.get(heroId)).filter((hero): hero is LobbyHeroItemVO => !!hero),
+    ];
+    return targets.map((hero) => ({
+      side: 'ally' as const,
+      portraitAsset: hero.portraitAsset ?? null,
+      spineAsset: hero.spineAsset ?? null,
+      spineUuid: hero.spineUuid ?? null,
+      monsterSkinAsset: null,
+    }));
+  }
+
+  // 点击挑战瞬间预热本场我方单位骨骼资源:与 roster 拉取、开战请求两次网络往返并行。
+  private prefetchLobbyBattleFormationSpineAssets(): void {
+    const units = this.resolveLobbyBattleAllySpinePrefetchUnits();
+    if (units.length > 0) {
+      this.lobbyBattlePreviewPanelRenderer.prefetchBattleUnitSpineAssets(units);
+    }
+  }
+
+  // LobbyBattleFlow 进战资产加载门:开战响应到达后加载本场全部单位骨骼+敌怪立绘,
+  // 渲染层同时显示加载界面;完成后战斗流才启动演出计时。
+  preloadBattleSessionAssets(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void> {
+    const units = [
+      ...this.resolveLobbyBattleAllySpinePrefetchUnits(),
+      ...start.enemyPreview.map((enemy) => ({
+        side: 'enemy' as const,
+        portraitAsset: null,
+        spineAsset: enemy.spineAsset ?? null,
+        spineUuid: null,
+        monsterSkinAsset: enemy.skinAsset ?? null,
+      })),
+    ];
+    return this.lobbyBattlePreviewPanelRenderer.preloadBattleSessionAssets(units, onProgress);
   }
 
   private fillLobbyFormationWithDefaultHeroes(): void {
