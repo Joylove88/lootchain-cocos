@@ -125,6 +125,12 @@ const BATTLE_STAGE12_COMBAT_SCALE_MULTIPLIER_BY_ASSET: Record<string, number> = 
   act_1002: 0.85,
 };
 
+// 战斗/大厅侧(不含布阵)在共用 ACT 补偿之上的额外体型修正:
+// Nuu(深渊魔女)布阵观感正常但大厅/战斗仍明显偏小(2026-08-02 用户比对截图),仅这两个场景再放大。
+const BATTLE_COMBAT_EXTRA_SCALE_BY_ASSET: Record<string, number> = {
+  Nuu: 1.45,
+};
+
 // 编队预览按资源体型修正:部分 act 骨骼 bounds 与实际画面不符,同稀有度站台大小悬殊。
 // 礼拜堂侍僧(act_1012) bounds 偏大显示过小 → 放大;低语教徒(act_1008) bounds 偏小显示过大 → 缩小。
 // act 系画布补偿(编队/战斗/大厅共用):act 骨骼画布内角色占比参差,该表由编队站台人工调优得出,
@@ -144,7 +150,8 @@ const BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET: Record<string, number> = {
   act_21006: 0.7,
   Eulenspigel: 1.2,
   Carmilla: 1.2,
-  Nuu: 1.1,
+  // Nuu 专属站台比例(0.43)偏低,战斗/大厅统一用本表后需要更高补偿维持旧观感(旧战斗表 1.5)。
+  Nuu: 1.35,
   Ishmael: 1.2,
   IshmaelA: 1.3,
 };
@@ -314,13 +321,67 @@ function resolveEnemySpineAnimationNames(names: string[]): BattleUnitSpineAnimat
   const pool = mainNames.length > 0 ? mainNames : names;
   const idle = resolvePreferredBattleUnitSpineName(pool, 'idle', ['daiji', 'daji', 'stand', 'wait', '待机']);
   const move = resolvePreferredBattleUnitSpineName(pool, 'run_h', ['run', 'move', 'walk', 'zou', '移动']);
-  const attack = resolvePreferredBattleUnitSpineName(pool, 'attack', ['atk', 'attack_01', 'gongji', 'gj', '普攻']);
+  const attack = resolveEnemyAttackSpineName(pool);
   const hit = resolvePreferredBattleUnitSpineName(pool, 'hit', ['hurt', 'beaten_slash_start', 'beaten', 'shouji', 'damage', '受击']);
   const death = resolvePreferredBattleUnitSpineName(pool, 'dead', ['death', 'die', 'down_start', '死亡']);
   return {
     idle, move, attack, skill1: null, skill2: null, skill3: null, ult: null, hit, death, victory: null,
     skill1Kz: null, skill2Kz: null, skill3Kz: null, skill4Kz: null, skill: null,
   };
+}
+
+// S196 怪物攻击命名为 p{N}_动作(普攻在 p1,如 p1_attack_slash / p1_shot / p1_strike_01)
+// 或 basic_normal_attack_01;旧 hints('atk'/'attack_01')全匹配不上 → 站桩放 idle。
+// 选择规则:主池 = p 系进攻动作 + 任何含 attack 的名字(剔除 buff/summon/dodge 等非进攻);
+// 主池空则退 p 系召唤/增益当伪攻击(召唤怪/增益怪的"出手")。p 序号小者优先,
+// 分段动画取释放段(_fire)、退循环段(_loop),避免只播起手(_start)/收招(_end/_reload)。
+const ENEMY_ATTACK_NON_OFFENSE_HINTS = ['buff', 'debuff', 'summon', 'spawn', 'dodge', 'heal', 'revive', 'teleport', 'phase', 'cry', 'stun', 'beaten', 'death', 'dead', 'appear', 'stuck'];
+
+function resolveEnemyAttackSpineName(pool: string[]): string | null {
+  const exact = pool.find((name) => name.toLowerCase() === 'attack');
+  if (exact) {
+    return exact;
+  }
+  const isPhaseName = (lower: string): boolean => /(?:^|_)p\d+_/.test(lower);
+  const hasAttackWord = (lower: string): boolean => lower.includes('attack') || lower.includes('atk') || lower.includes('gongji') || lower.includes('普攻');
+  const nonOffense = (lower: string): boolean => ENEMY_ATTACK_NON_OFFENSE_HINTS.some((hint) => lower.includes(hint));
+  let candidates = pool.filter((name) => {
+    const lower = name.toLowerCase();
+    return hasAttackWord(lower) || (isPhaseName(lower) && !nonOffense(lower));
+  });
+  if (candidates.length === 0) {
+    // 召唤/增益型怪(如枯木行者 p1_summon、孢子兽 p1_buff)没有进攻动作,用其 p 系动作当出手。
+    candidates = pool.filter((name) => {
+      const lower = name.toLowerCase();
+      return isPhaseName(lower) && !lower.includes('spawn') && !lower.includes('phase');
+    });
+  }
+  if (candidates.length === 0) {
+    return null;
+  }
+  const score = (name: string): number => {
+    const lower = name.toLowerCase();
+    const phase = /(?:^|_)p(\d+)_/.exec(lower);
+    let value = 150;
+    if (phase) {
+      value = Number(phase[1]) * 100;
+    } else if (lower.includes('basic') || lower.includes('normal')) {
+      value = 0;
+    }
+    if (lower.includes('backdash')) {
+      value += 70;
+    } else if (lower.endsWith('_end') || lower.endsWith('_reload')) {
+      value += 60;
+    } else if (lower.endsWith('_start')) {
+      value += 50;
+    } else if (lower.endsWith('_loop')) {
+      value += 30;
+    } else if (lower.endsWith('_fire')) {
+      value += 10;
+    }
+    return value;
+  };
+  return [...candidates].sort((a, b) => score(a) - score(b) || a.localeCompare(b))[0];
 }
 
 // DEFAULT：旧宽松映射，兼容未提供稀有度的单位，避免回归。
@@ -363,11 +424,12 @@ export function resolveBattleUnitSpineScale(
   const fit = Math.min(targetHeight / safeHeight, maxWidth / safeWidth) * profile.scaleMultiplier;
   const baseScale = clamp(fit, profile.minScale * uiScale, profile.maxScale * uiScale);
   const tier = unit ? resolveBattleUnitSpineRarityTier(unit) : 'DEFAULT';
-  // P8 敌方怪物:目标视高与立绘规则一致(站位高 0.9 × 模板 display_scale);
-  // bounds 修复后画布高=真实 AABB,scale=目标高/画布高即可与立绘怪同高,不吃英雄补偿表。
+  // P8 敌方怪物:目标视高对齐立绘 standin 盒(min(170×ui, 格高×0.9))× 模板 display_scale。
+  // S196 的 bounds 常被特效附件(投射物/冲锋轨迹)拉大 → 按它算会偏小,统一交给后台 display_scale 校准。
   if (unit && unit.side === 'enemy') {
-    const monsterScale = Math.max(0.5, Math.min(2, unit.monsterDisplayScale ?? 1));
-    return clamp((slotHeight * 0.9 * monsterScale) / safeHeight, 0.02 * uiScale, 6 * uiScale);
+    const monsterScale = Math.max(0.5, Math.min(2.5, unit.monsterDisplayScale ?? 1));
+    const standinHeight = Math.min(170 * uiScale, slotHeight * 0.9);
+    return clamp((standinHeight * monsterScale) / safeHeight, 0.02 * uiScale, 6 * uiScale);
   }
   if (unit?.scaleProfile === 'FORMATION_PREVIEW') {
     // 站台统一体型:按"统一目标高/有效原高"定缩放(不受 baseScale 封顶),画布差用共用补偿表精确抵消。
@@ -384,7 +446,8 @@ export function resolveBattleUnitSpineScale(
     // 2026-08-01:补偿表与布阵统一为 ACT 表——两页相对比例永远一致,体型只需调一张表;
     // 整体大小仍由 BATTLE_COMBAT_SIZE_SCALE 控制。(旧 COMBAT 表弃用保留作参考。)
     return ((slotHeight * allyRatio * BATTLE_COMBAT_SIZE_SCALE) / safeHeight)
-      * resolveCanvasCompensation(allyAsset, BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET);
+      * resolveCanvasCompensation(allyAsset, BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET)
+      * ((allyAsset ? BATTLE_COMBAT_EXTRA_SCALE_BY_ASSET[allyAsset] : undefined) ?? 1);
   }
   // 战斗中按资源缩放微调（仅战斗，不影响编队预览）。
   const primaryAsset = unit ? resolveBattleUnitSpinePrimaryAsset(unit) : null;
@@ -415,6 +478,11 @@ export function resolveBattleUnitSpineNodePosition(
   const rawY = inflated ? 0 : normalizeRawSpineOffset(runtimeData.y, 0);
   const centerX = rawX + effectiveRawSize.width / 2;
   const targetFootY = -slotHeight * 0.42;
+  // S196 敌怪 bounds 被特效附件拉偏(x/y 大幅为正),中心补偿会把画面推出屏;
+  // 素材原点即脚底中心,敌怪直接原点对地、不做 bounds 偏移补偿。
+  if (enemy && (unit.monsterSkinAsset || unit.monsterDisplayScale != null)) {
+    return { x: 0, y: targetFootY };
+  }
   return {
     x: (enemy ? 1 : -1) * centerX * resolvedScale,
     y: targetFootY - rawY * resolvedScale,

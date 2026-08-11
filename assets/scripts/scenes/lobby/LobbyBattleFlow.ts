@@ -1,6 +1,6 @@
 import type { BattleApi } from '../../api/BattleApi';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
-import type { PlayerBattleSettleDTO, PlayerBattleStartDTO } from '../../types/BattleTypes';
+import type { PlayerBattleSettleDTO, PlayerBattleStartDTO, PlayerBattleStartVO } from '../../types/BattleTypes';
 import {
   createLobbyBattlePanelState,
   LOBBY_BATTLE_PRESENTATION_FRAME_INTERVAL_MS,
@@ -23,7 +23,12 @@ export interface LobbyBattleFlowHost {
   refreshLobbyOverlay(): void;
   setStatus(message: string): void;
   onBattleSettlementRecorded?(): void;
+  // 进战资产加载门:实现方负责加载本场全部单位骨骼/立绘并回报进度;缺省则跳过门直接开演。
+  preloadBattleSessionAssets?(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void>;
 }
+
+// 加载界面至少展示这么久:资产全命中缓存时避免一帧闪烁,节奏与市面进战转场一致。
+const MIN_BATTLE_ASSET_LOADING_SCREEN_MS = 450;
 
 /** 战斗流程控制器。客户端只调用 battle start/settle，奖励、体力和进度全部以后端结算为准。 */
 export class LobbyBattleFlow {
@@ -54,6 +59,9 @@ export class LobbyBattleFlow {
     this.state.presentationElapsedMs = 0;
     this.state.presentationStartedAtMs = 0;
     this.state.presentationComplete = false;
+    this.state.assetsLoading = false;
+    this.state.assetsLoadedCount = 0;
+    this.state.assetsTotalCount = 0;
     this.state.recentLoading = false;
     this.state.recentError = '';
     this.state.recentBattles = [];
@@ -76,6 +84,9 @@ export class LobbyBattleFlow {
       this.state.presentationElapsedMs = 0;
       this.state.presentationStartedAtMs = 0;
       this.state.presentationComplete = false;
+      this.state.assetsLoading = false;
+      this.state.assetsLoadedCount = 0;
+      this.state.assetsTotalCount = 0;
       this.bump();
     }
   }
@@ -95,6 +106,9 @@ export class LobbyBattleFlow {
     this.state.presentationElapsedMs = 0;
     this.state.presentationStartedAtMs = 0;
     this.state.presentationComplete = false;
+    this.state.assetsLoading = false;
+    this.state.assetsLoadedCount = 0;
+    this.state.assetsTotalCount = 0;
     if (!selectedStageCode) {
       this.state.error = '关卡选择已失效，请重新选择主线关卡。';
       this.host.setStatus(this.state.error);
@@ -148,8 +162,38 @@ export class LobbyBattleFlow {
       this.state.starting = false;
       this.state.presentationStep = 0;
       this.state.presentationElapsedMs = 0;
-      this.state.presentationStartedAtMs = Date.now();
+      this.state.presentationStartedAtMs = 0;
       this.state.presentationComplete = false;
+      // 资产加载门:先把本场全部单位骨骼/立绘装进缓存(渲染层显示加载界面),
+      // 就绪后才启动演出计时;加载失败/超时由实现方兜底 resolve,不阻塞进战。
+      if (this.host.preloadBattleSessionAssets) {
+        const loadingStartedAtMs = Date.now();
+        this.state.assetsLoading = true;
+        this.state.assetsLoadedCount = 0;
+        this.state.assetsTotalCount = 0;
+        this.bump();
+        try {
+          await this.host.preloadBattleSessionAssets(start, (loaded, total) => {
+            if (!this.isCurrent(currentTicket)) {
+              return;
+            }
+            this.state.assetsLoadedCount = loaded;
+            this.state.assetsTotalCount = total;
+            this.bump();
+          });
+        } catch {
+          // 预载异常不阻塞进战,单位按原有占位/回退渲染。
+        }
+        const remainingMs = MIN_BATTLE_ASSET_LOADING_SCREEN_MS - (Date.now() - loadingStartedAtMs);
+        if (remainingMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        }
+        if (!this.isCurrent(currentTicket)) {
+          return;
+        }
+        this.state.assetsLoading = false;
+      }
+      this.state.presentationStartedAtMs = Date.now();
       this.host.setStatus(`战斗会话已创建：${start.stageCode}`);
       this.bump();
       this.schedulePresentationTicks(currentTicket);

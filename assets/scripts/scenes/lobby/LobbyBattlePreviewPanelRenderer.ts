@@ -98,6 +98,7 @@ import {
   resolveBattleUnitSpineSkinName,
   resolveBattleUnitSpineTelemetryVisualHeight,
 } from './LobbyBattleUnitSpineRuntime';
+import { loadSharedSpineData } from './SpineDataStore';
 import {
   BATTLE_C1812_SKILL_FRAME_ACTIVE_ASSET,
   BATTLE_C1812_SKILL_FRAME_ASSET,
@@ -151,6 +152,14 @@ function resolveBattleResultPortraitPath(unit: { spineAsset?: string | null; por
 const BATTLE_OPENING_ENTRY_DISTANCE_RATIO = 0.96;
 // 进场 spine 逐 actor 错峰步长(毫秒):第 0 个立即建,其余每个顺延一步,摊平进场骨骼构建尖峰。
 const BATTLE_SPINE_BUILD_STAGGER_MS = 55;
+// 进战资产加载门:全部任务落定或超时即放行(单个资源卡死不阻塞进战)。
+const BATTLE_ASSET_PRELOAD_TIMEOUT_MS = 10_000;
+const BATTLE_ASSET_LOADING_TIPS = [
+  '提示：克制敌方职业可以打出更高伤害',
+  '提示：大招就绪后点击底部技能卡立即释放',
+  '提示：每日副本难度越高，材料产出越丰厚',
+  '提示：战力不足时，先强化装备或升级英雄',
+];
 const BATTLE_OPENING_ENTRY_MIN_DISTANCE_RATIO = 0.76;
 const BATTLE_OPENING_ENTRY_MAX_DISTANCE_RATIO = 1.28;
 const BATTLE_OPENING_LANE_ENTRY_RATIOS = [0.94, 1.08, 1.0, 1.18, 1.24] as const;
@@ -316,8 +325,12 @@ export interface LobbyBattlePreviewPanelHost {
 /** 战斗表现面板。只展示 battle start/settle 的后端权威回执，不在客户端发奖。
  * 当前视觉验收动作节点包括 LobbyBattleStartButton、LobbyBattlePlaybackPending、LobbyBattleReturnLobbyButton。 */
 export class LobbyBattlePreviewPanelRenderer {
-  private readonly battleSpineData = new Map<string, sp.SkeletonData>();
-  private readonly battleSpineLoadCallbacks = new Map<string, Array<(data: sp.SkeletonData | null) => void>>();
+  // 骨骼数据缓存已收敛到全局 SpineDataStore(2026-08-04),不再各页私有。
+  // 进战加载界面进度条就地更新引用(全量重建太重,进度 tick 只改这两个节点)。
+  private battleLoadingFillNode: Node | null = null;
+  private battleLoadingPercentLabel: Label | null = null;
+  private battleLoadingBarWidth = 0;
+  private battleLoadingBarHeight = 0;
   private readonly battleAudioClipCache = new Map<string, AudioClip>();
   private readonly battleAudioLoadCallbacks = new Map<string, Array<(clip: AudioClip | null) => void>>();
   private readonly battleAudioPlayedKeys = new Set<string>();
@@ -459,6 +472,15 @@ export class LobbyBattlePreviewPanelRenderer {
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroState.heroes);
     const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
     const sceneKey = this.resolveBattleSceneKey(battleState);
+    // 加载门期间进度 tick 高频到达:加载界面已挂载时只就地更新进度条,不整场重建。
+    if (
+      this.isBattleAssetLoadingPhase(battleState)
+      && sceneKey === this.lastBattleSceneKey
+      && this.isNodeMounted(this.battleSceneRoot)
+    ) {
+      this.updateBattleAssetLoadingProgress(battleState);
+      return;
+    }
     const requiresFullBattleSceneRender = this.requiresFullBattleSceneRender(battleState);
     if (
       !requiresFullBattleSceneRender
@@ -510,6 +532,12 @@ export class LobbyBattlePreviewPanelRenderer {
     void bg;
     this.renderBattleSceneEnvironmentLayers(sceneRoot, sceneWidth, sceneHeight, scale);
     this.drawBattleSceneAtmosphere(sceneRoot, sceneWidth, sceneHeight, scale, presentation, performanceProfile);
+    // 进战资产加载门:从点开面板到骨骼/立绘就绪前只展示加载界面(战场背景+关卡名+进度条),
+    // 演出计时由 LobbyBattleFlow 在预载完成后才启动,揭幕即整装开打。
+    if (this.isBattleAssetLoadingPhase(battleState)) {
+      this.renderBattleAssetLoadingScreen(sceneRoot, sceneWidth, sceneHeight, scale, battleState);
+      return;
+    }
     const panelWidth = frameWidth;
     const panelHeight = frameHeight;
     const panelGroup = this.host.addChildPlainNode(sceneRoot, 'LobbyBattlePreviewPanel', 0, 0, panelWidth, panelHeight);
@@ -3791,7 +3819,22 @@ export class LobbyBattlePreviewPanelRenderer {
       ?? null;
   }
 
+  // 点开面板(ready)→请求中(starting)→资产预载(assetsLoading)全程都算加载相位:
+  // 面板第一帧就是加载界面,不闪空战场;三个子相位共用同一 sceneKey,进度 tick 就地更新。
+  private isBattleAssetLoadingPhase(state: LobbyBattlePanelState): boolean {
+    if (state.settlement || state.settling || state.error) {
+      return false;
+    }
+    if (state.assetsLoading) {
+      return true;
+    }
+    return !state.start && !!state.stageCode;
+  }
+
   private resolveBattleSceneKey(state: LobbyBattlePanelState): string {
+    if (this.isBattleAssetLoadingPhase(state)) {
+      return `assets-loading:${state.stageCode || 'none'}`;
+    }
     const sessionKey = state.start?.battleNo || state.settlement?.battleNo || state.stageCode || 'none';
     const receiptKey = state.settlement?.settlementNo || 'no-settlement';
     const phaseKey = state.start ? 'started' : state.starting ? 'starting' : state.settlement ? 'settlement' : state.error ? 'error' : 'ready';
@@ -4445,7 +4488,10 @@ export class LobbyBattlePreviewPanelRenderer {
       return;
     }
     const fallback = this.renderBattleActorSpineFallbackSilhouette(parent, width, height, scale, unit, enemy, active, 'LobbyBattleActorSpineFallbackSilhouette');
-    // 进场分帧:fallback 剪影立即占位;骨骼节点创建+数据加载+mesh 构建按 actor 错峰,
+    // 资源加载立即发起(全 actor 并行,Map 去重):否则末位 actor 的下载要等自己的错峰槽位
+    // 才开始,进场空窗被人为拉长;错峰只负责摊平骨骼节点创建/mesh 构建的主线程尖峰。
+    this.loadBattleUnitSpineData(resourcePath, spineUuid, () => {});
+    // 进场分帧:fallback 剪影立即占位;骨骼节点创建+mesh 构建按 actor 错峰,
     // 摊平"多个 spine 同帧构建"的进场尖峰(尤其数据已缓存的重复进场会同步集中构建)。
     const staggerDelayMs = this.nextBattleSpineBuildStaggerDelayMs(renderGeneration);
     const buildSpine = (): void => {
@@ -4800,49 +4846,153 @@ export class LobbyBattlePreviewPanelRenderer {
     }
   }
 
-  private loadBattleUnitSpineData(resourcePath: string, uuid: string | null, onLoaded: (data: sp.SkeletonData | null) => void): void {
-    const cacheKey = uuid ? `uuid:${uuid}|${resourcePath}` : resourcePath;
-    const cached = this.battleSpineData.get(cacheKey);
-    if (cached) {
-      onLoaded(cached);
-      return;
-    }
-    const pending = this.battleSpineLoadCallbacks.get(cacheKey);
-    if (pending) {
-      pending.push(onLoaded);
-      return;
-    }
-    this.battleSpineLoadCallbacks.set(cacheKey, [onLoaded]);
-    const finish = (data: sp.SkeletonData | null): void => {
-      const callbacks = this.battleSpineLoadCallbacks.get(cacheKey) ?? [];
-      this.battleSpineLoadCallbacks['delete'](cacheKey);
-      if (data) {
-        this.battleSpineData.set(cacheKey, data);
+  // 进战前预热单位骨骼资源:阵容本地已知时(打开战斗面板瞬间)提前加载,
+  // 与 roster 拉取/开战请求的网络往返并行,压缩进场"单位迟到"空窗。
+  // 走同一份 battleSpineData 缓存/去重管线,重复调用零成本。
+  prefetchBattleUnitSpineAssets(units: Array<Pick<BattlePresentationUnitSnapshot, 'side' | 'portraitAsset' | 'spineAsset' | 'spineUuid'>>): void {
+    units.forEach((unitLike) => {
+      const unit = unitLike as BattlePresentationUnitSnapshot;
+      const resourcePath = resolveBattleUnitSpineResource(unit);
+      if (!resourcePath) {
+        return;
       }
-      callbacks.forEach((callback) => callback(data));
+      this.loadBattleUnitSpineData(resourcePath, resolveBattleUnitSpineLoadUuid(unit), () => {});
+    });
+  }
+
+  // 进战资产加载门实现:并行加载本场全部单位骨骼(顺带完成 4.2 wasm 解析预热)与敌怪立绘,
+  // 全部落定或超时后 resolve;LobbyBattleFlow 在启动演出计时前 await 本方法。
+  preloadBattleSessionAssets(
+    units: Array<Pick<BattlePresentationUnitSnapshot, 'side' | 'portraitAsset' | 'spineAsset' | 'spineUuid' | 'monsterSkinAsset'>>,
+    onProgress: (loaded: number, total: number) => void,
+  ): Promise<void> {
+    const seen = new Set<string>();
+    const runs: Array<(done: () => void) => void> = [];
+    const track = (key: string, run: (done: () => void) => void): void => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      runs.push(run);
     };
-    const loadByResourcePath = (): void => {
-      resources.load(resourcePath, sp.SkeletonData, (error: Error | null, data: sp.SkeletonData | null) => {
-        if (error || !isBattleUnitSpineDataAsset(data)) {
-          console.warn(`[BattleStage4] battle spine resource load failed: ${resourcePath}`, error);
-          finish(null);
+    units.forEach((unitLike) => {
+      const unit = unitLike as BattlePresentationUnitSnapshot;
+      const resourcePath = resolveBattleUnitSpineResource(unit);
+      if (resourcePath) {
+        const uuid = resolveBattleUnitSpineLoadUuid(unit);
+        track(`spine:${uuid || ''}:${resourcePath}`, (done) => {
+          this.loadBattleUnitSpineData(resourcePath, uuid, (data) => {
+            if (data) {
+              // 加载屏内顺带完成 wasm 解析,进场应用骨骼时零解析尖峰。
+              try {
+                resolveBattleUnitSpineRuntimeData(data);
+              } catch {
+                // 解析失败由进场 apply 流程按占位回退兜底。
+              }
+            }
+            done();
+          });
+        });
+      }
+      const skinAsset = (unit.monsterSkinAsset || '').trim();
+      if (skinAsset) {
+        track(`sprite:${skinAsset}`, (done) => {
+          resources.load(`${skinAsset}/spriteFrame`, SpriteFrame, () => done());
+        });
+      }
+    });
+    const total = runs.length;
+    if (total === 0) {
+      onProgress(0, 0);
+      return Promise.resolve();
+    }
+    let loaded = 0;
+    onProgress(0, total);
+    const tasks = runs.map((run) => new Promise<void>((resolve) => {
+      let settled = false;
+      run(() => {
+        if (settled) {
           return;
         }
-        finish(data);
+        settled = true;
+        loaded += 1;
+        onProgress(loaded, total);
+        resolve();
       });
-    };
-    if (uuid) {
-      assetManager.loadAny({ uuid, type: sp.SkeletonData }, (error: Error | null, asset: unknown) => {
-        if (!error && isBattleUnitSpineDataAsset(asset)) {
-          finish(asset);
-          return;
-        }
-        console.warn(`[BattleStage4] battle spine uuid load failed: ${uuid}, ${resourcePath}`, error);
-        finish(null);
-      });
+    }));
+    const timeout = new Promise<void>((resolve) => {
+      setTimeout(resolve, BATTLE_ASSET_PRELOAD_TIMEOUT_MS);
+    });
+    return Promise.race([Promise.all(tasks).then(() => undefined), timeout]);
+  }
+
+  // 进战加载界面:战场背景之上盖暗幕+关卡名+进度条+提示,参考市面进战转场;
+  // 进度 tick 由 render() 的就地更新分支消化,不整场重建。
+  private renderBattleAssetLoadingScreen(parent: Node, width: number, height: number, scale: number, state: LobbyBattlePanelState): void {
+    const overlay = this.host.addChildPlainNode(parent, 'LobbyBattleAssetLoadingScreen', 0, 0, width, height);
+    const veil = overlay.addComponent(Graphics);
+    veil.fillColor = rgba(8, 6, 10, 172);
+    veil.rect(-width / 2, -height / 2, width, height);
+    veil.fill();
+    const stageName = formatBattleStageDisplayName(state.stageCode) || '战斗';
+    const title = this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingTitle', stageName, 0, height * 0.11, 34 * scale, rgba(244, 226, 186), new Size(width * 0.8, 48 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(title, scale, true);
+    const subtitle = this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingSubtitle', '战场部署中…', 0, height * 0.11 - 42 * scale, 16 * scale, rgba(214, 198, 170), new Size(width * 0.6, 22 * scale));
+    this.applyOutline(subtitle, scale, false);
+    const barWidth = Math.min(460 * scale, width * 0.56);
+    const barHeight = 12 * scale;
+    const barY = -height * 0.05;
+    const barNode = this.host.addChildPlainNode(overlay, 'LobbyBattleAssetLoadingBar', 0, barY, barWidth, barHeight);
+    const barBackground = barNode.addComponent(Graphics);
+    barBackground.fillColor = rgba(0, 0, 0, 158);
+    barBackground.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+    barBackground.fill();
+    barBackground.strokeColor = rgba(214, 178, 110, 196);
+    barBackground.lineWidth = Math.max(1, 1.4 * scale);
+    barBackground.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+    barBackground.stroke();
+    const fillNode = this.host.addChildPlainNode(barNode, 'LobbyBattleAssetLoadingBarFill', 0, 0, barWidth, barHeight);
+    fillNode.addComponent(Graphics);
+    const percentLabel = this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingPercent', '0%', 0, barY - 26 * scale, 14 * scale, rgba(230, 214, 182), new Size(width * 0.4, 20 * scale));
+    const tipIndex = Math.abs([...(state.stageCode || 'battle')].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) | 0, 7)) % BATTLE_ASSET_LOADING_TIPS.length;
+    this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingTip', BATTLE_ASSET_LOADING_TIPS[tipIndex], 0, barY - 58 * scale, 13 * scale, rgba(176, 164, 148), new Size(width * 0.76, 18 * scale));
+    this.battleLoadingFillNode = fillNode;
+    this.battleLoadingPercentLabel = percentLabel;
+    this.battleLoadingBarWidth = barWidth;
+    this.battleLoadingBarHeight = barHeight;
+    this.updateBattleAssetLoadingProgress(state);
+  }
+
+  private updateBattleAssetLoadingProgress(state: LobbyBattlePanelState): void {
+    const fillNode = this.battleLoadingFillNode;
+    const percentLabel = this.battleLoadingPercentLabel;
+    if (!this.isNodeAlive(fillNode) || !percentLabel || !this.isNodeAlive(percentLabel.node)) {
       return;
     }
-    loadByResourcePath();
+    const graphics = fillNode.getComponent(Graphics);
+    if (!graphics) {
+      return;
+    }
+    const total = Math.max(1, state.assetsTotalCount);
+    const ratio = Math.max(0, Math.min(1, state.assetsLoadedCount / total));
+    const barWidth = this.battleLoadingBarWidth;
+    const barHeight = this.battleLoadingBarHeight;
+    const inset = Math.max(1, barHeight * 0.2);
+    const fillHeight = barHeight - inset * 2;
+    const fillWidth = (barWidth - inset * 2) * ratio;
+    graphics.clear();
+    if (fillWidth > fillHeight) {
+      graphics.fillColor = rgba(226, 176, 92, 235);
+      graphics.roundRect(-barWidth / 2 + inset, -fillHeight / 2, fillWidth, fillHeight, fillHeight / 2);
+      graphics.fill();
+    }
+    percentLabel.string = `${Math.round(ratio * 100)}%`;
+  }
+
+  private loadBattleUnitSpineData(resourcePath: string, uuid: string | null, onLoaded: (data: sp.SkeletonData | null) => void): void {
+    // 2026-08-04 复用重构:改走全局 SpineDataStore,与编队/详情/大厅共享缓存,预热全局生效。
+    loadSharedSpineData(resourcePath, uuid, 'BattleStage4', onLoaded);
   }
 
   private applyBattleUnitSpineData(
@@ -4884,7 +5034,7 @@ export class LobbyBattlePreviewPanelRenderer {
       const nodePosition = resolveBattleUnitSpineNodePosition(runtimeData, spineScale, height, unit, enemy);
       if (enemy) {
         // P8c 排障:敌怪 spine 视觉与血条/脚圈错位的定位数据(问题定位后移除)。
-        console.debug(`[MonsterSpine] ${unit.unitKey} rd=(${runtimeData.x},${runtimeData.y},${runtimeData.width}x${runtimeData.height}) scale=${spineScale.toFixed(3)} node=(${nodePosition.x.toFixed(1)},${nodePosition.y.toFixed(1)}) slot=${width.toFixed(0)}x${height.toFixed(0)}`);
+        console.log(`[MonsterSpine] ${unit.unitKey} rd=(${runtimeData.x},${runtimeData.y},${runtimeData.width}x${runtimeData.height}) scale=${spineScale.toFixed(3)} node=(${nodePosition.x.toFixed(1)},${nodePosition.y.toFixed(1)}) slot=${width.toFixed(0)}x${height.toFixed(0)}`);
       }
       spineNode.setPosition(new Vec3(nodePosition.x, nodePosition.y, 0));
       spineNode.setScale(new Vec3(resolveBattleUnitSpineMirrorScaleX(spineScale, enemy), spineScale, 1));

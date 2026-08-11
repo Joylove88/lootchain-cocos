@@ -19,6 +19,11 @@ export interface LobbyBattlePanelState {
   presentationElapsedMs: number;
   presentationStartedAtMs: number;
   presentationComplete: boolean;
+  // 进战资产加载门:开战响应到达后先加载本场全部单位骨骼/立绘(渲染层显示加载界面),
+  // 就绪(或超时)才启动演出计时,杜绝"战斗开打了单位还没出现"。
+  assetsLoading: boolean;
+  assetsLoadedCount: number;
+  assetsTotalCount: number;
   recentLoading: boolean;
   recentError: string;
   recentBattles: PlayerBattleRecentVO[];
@@ -37,6 +42,9 @@ export function createLobbyBattlePanelState(): LobbyBattlePanelState {
     presentationElapsedMs: 0,
     presentationStartedAtMs: 0,
     presentationComplete: false,
+    assetsLoading: false,
+    assetsLoadedCount: 0,
+    assetsTotalCount: 0,
     recentLoading: false,
     recentError: '',
     recentBattles: [],

@@ -43,7 +43,19 @@ const MIN_TIMELINE_DURATION_MS = 45_000;
 const MAX_TIMELINE_DURATION_MS = 60_000;
 const TIMELINE_ROUNDS = 3;
 
+// 2026-08-04:单槽引用 memo——snapshot 命中 memo 时引用相同,时间轴无需重算(确定性纯函数)。
+let timelineMemo: { snapshot: BattlePresentationSnapshot; result: BattlePresentationTimeline } | null = null;
+
 export function resolveLobbyBattlePresentationTimeline(snapshot: BattlePresentationSnapshot): BattlePresentationTimeline {
+  if (timelineMemo && timelineMemo.snapshot === snapshot) {
+    return timelineMemo.result;
+  }
+  const result = buildLobbyBattlePresentationTimeline(snapshot);
+  timelineMemo = { snapshot, result };
+  return result;
+}
+
+function buildLobbyBattlePresentationTimeline(snapshot: BattlePresentationSnapshot): BattlePresentationTimeline {
   const seed = createTimelineSeed(snapshot.unitSnapshotKey);
   const random = nextDeterministicTimelineFloat(seed);
   const events: BattlePresentationTimelineEvent[] = [];

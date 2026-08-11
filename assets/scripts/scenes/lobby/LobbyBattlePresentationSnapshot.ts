@@ -168,7 +168,26 @@ const EMPTY_ENEMY: BattlePresentationUnitSnapshot = {
  * `serverSeed + battleNo + unitSnapshot` 可在后续阶段生成确定性本地时间轴，但本文件不提交奖励、
  * 体力、主线进度、货币、背包、英雄属性或战力。
  */
+// 2026-08-04 复用重构:60Hz 演出帧驱动下本函数每帧被调用多次且调用方无缓存;
+// 输出只依赖 state.start/stageCode 与 heroes(演出 tick 不改它们),单槽引用 memo 让
+// 整场战斗命中同一对象,下游 timeline/replay 的引用 memo 因此连锁命中。
+let snapshotMemo: {
+  start: LobbyBattlePanelState['start'];
+  stageCode: string;
+  heroes: LobbyHeroItemVO[];
+  result: BattlePresentationSnapshot;
+} | null = null;
+
 export function resolveLobbyBattlePresentationSnapshot(state: LobbyBattlePanelState, heroes: LobbyHeroItemVO[]): BattlePresentationSnapshot {
+  if (snapshotMemo && snapshotMemo.start === state.start && snapshotMemo.stageCode === state.stageCode && snapshotMemo.heroes === heroes) {
+    return snapshotMemo.result;
+  }
+  const result = buildLobbyBattlePresentationSnapshot(state, heroes);
+  snapshotMemo = { start: state.start, stageCode: state.stageCode, heroes, result };
+  return result;
+}
+
+function buildLobbyBattlePresentationSnapshot(state: LobbyBattlePanelState, heroes: LobbyHeroItemVO[]): BattlePresentationSnapshot {
   const start = state.start;
   const rosterById = new Map(heroes.map((hero) => [hero.id, hero]));
   const allies = fillUnits(resolveAllies(start, heroes, rosterById), 'ally');

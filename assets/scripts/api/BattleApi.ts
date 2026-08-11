@@ -426,6 +426,8 @@ function normalizeLineupHero(item: unknown): PlayerBattleLineupHeroVO {
     spineUuid: readOptionalText(item, 'spineUuid', 64),
     skillConfig: parseBattleSkillConfig(item),
     equipEffects: parseBattleEquipEffects(item),
+    // P6 终极技能等级:漏读会让快照恒回退 1 → 手动大招伤害倍率永远是 Lv.1(2026-08-04 审计发现)。
+    ultimateSkillLevel: readInteger(item.ultimateSkillLevel, 1, 99),
   };
 }
 

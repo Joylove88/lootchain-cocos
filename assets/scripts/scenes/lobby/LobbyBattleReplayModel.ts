@@ -187,7 +187,20 @@ const BATTLE_REPLAY_RANGED_RECOVER_MS = 460;
 const BATTLE_REPLAY_RESULT_PADDING_MS = 1_220;
 const BATTLE_REPLAY_SYNTHETIC_EVENT_SEQ_BASE = 20_000;
 
+// 2026-08-04:单槽引用 memo——本函数是完整确定性战斗 sim,此前每帧被 VisualCompletion/
+// ActionPresentation/Hp 各自调用至少 3 次;snapshot/timeline 引用不变即直接复用结果。
+let replayMemo: { snapshot: BattlePresentationSnapshot; timeline: BattlePresentationTimeline; result: BattleReplay } | null = null;
+
 export function resolveBattleReplay(snapshot: BattlePresentationSnapshot, timeline: BattlePresentationTimeline): BattleReplay {
+  if (replayMemo && replayMemo.snapshot === snapshot && replayMemo.timeline === timeline) {
+    return replayMemo.result;
+  }
+  const result = buildBattleReplay(snapshot, timeline);
+  replayMemo = { snapshot, timeline, result };
+  return result;
+}
+
+function buildBattleReplay(snapshot: BattlePresentationSnapshot, timeline: BattlePresentationTimeline): BattleReplay {
   const unitByKey = createBattleReplayUnitMap(snapshot);
   const statContext = resolveBattleReplayStatContext(snapshot, unitByKey);
   const units = createBattleReplayInitialUnitStates(unitByKey, statContext);
