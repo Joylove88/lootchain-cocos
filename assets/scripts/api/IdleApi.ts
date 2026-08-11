@@ -1,7 +1,6 @@
 import { HttpClient } from '../net/HttpClient';
 import type { PlayerIdleClaimVO, PlayerIdleSummaryVO } from '../types/IdleTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord, readInteger, readNumber, readText } from './ApiValueGuards';
 
 const MAX_FLOOR = 393;
 const MAX_SECONDS = 24 * 3600;
@@ -55,28 +54,3 @@ function validateClaim(data: unknown): PlayerIdleClaimVO {
   };
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readInteger(value: unknown, min: number, max: number): number {
-  const parsed = Math.trunc(Number(value));
-  if (!Number.isFinite(parsed)) {
-    return min;
-  }
-  return Math.min(max, Math.max(min, parsed));
-}
-
-function readNumber(value: unknown, min: number, max: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return min;
-  }
-  return Math.min(max, Math.max(min, parsed));
-}
-
-function readText(data: UnknownRecord, key: string, maxLength: number): string {
-  const raw = data[key];
-  const text = typeof raw === 'string' ? raw.trim() : '';
-  return text.slice(0, maxLength);
-}

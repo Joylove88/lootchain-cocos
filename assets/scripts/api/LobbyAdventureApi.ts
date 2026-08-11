@@ -1,7 +1,6 @@
 import { HttpClient } from '../net/HttpClient';
 import type { LobbyAdventureChapterVO, LobbyAdventureStageVO, LobbyAdventureVO } from '../types/LobbyAdventureTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord, readArray, readInteger, readText } from './ApiValueGuards';
 
 const MAX_CHAPTER_COUNT = 25;
 const MAX_STAGE_COUNT = 393;
@@ -122,31 +121,3 @@ function annualMainlineStageOrder(stageCode: string): number {
   return FIRST_CHAPTER_STAGE_COUNT + (chapter - 2) * STAGES_PER_CHAPTER_AFTER_FIRST + stage;
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readArray(record: UnknownRecord, key: string, maxLength: number): unknown[] {
-  const value = record[key];
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.slice(0, maxLength);
-}
-
-function readText(record: UnknownRecord, key: string, maxLength: number, fallback: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxLength) : fallback;
-}
-
-function readInteger(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.trunc(numeric)));
-}

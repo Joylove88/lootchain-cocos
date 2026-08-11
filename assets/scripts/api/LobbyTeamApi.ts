@@ -1,6 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord } from './ApiValueGuards';
 
 const MAX_LINEUP = 5;
 const MAX_HERO_ID = Number.MAX_SAFE_INTEGER;
@@ -61,10 +60,7 @@ function normalizeLeader(leaderHeroId: number | null, heroIds: number[]): number
   return heroIds.length > 0 ? heroIds[0] : null;
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
+// 领域规则:英雄ID必须为正整数,非法/非正一律 null(与共享 readNullableInteger 的夹取语义不同,保留本地)。
 function readOptionalInteger(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) {

@@ -1,8 +1,7 @@
 import { HttpClient } from '../net/HttpClient';
 import { parseBattleSkillConfig } from './BattleApi';
 import type { LobbyHeroAffixVO, LobbyHeroFilterOptionsVO, LobbyHeroItemVO } from '../types/LobbyHeroTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord, readInteger, readOptionalStat, readOptionalText, readText, type UnknownRecord } from './ApiValueGuards';
 interface HeroAssetFallback {
   portraitAsset: string;
   spineAsset: string;
@@ -188,15 +187,6 @@ function parseHeroAffixes(raw: unknown): LobbyHeroAffixVO[] {
   return affixes;
 }
 
-// 有效属性字段(后端下发,可空);非数字返回 null,面板据此回退旧估算。
-function readOptionalStat(value: unknown): number | null {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return null;
-  }
-  return Math.max(0, Math.round(numeric));
-}
-
 function validateHeroFilterOptions(data: unknown): LobbyHeroFilterOptionsVO {
   if (!isRecord(data)) {
     throw new Error('invalid lobby hero filter options response');
@@ -207,28 +197,6 @@ function validateHeroFilterOptions(data: unknown): LobbyHeroFilterOptionsVO {
     .filter((item, index, list) => item.length > 0 && item.length <= 32 && list.indexOf(item) === index)
     .slice(0, 16);
   return { heroClasses };
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readText(record: UnknownRecord, key: string, maxLength: number, fallback: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxLength) : fallback;
-}
-
-function readOptionalText(record: UnknownRecord, key: string, maxLength: number): string | null {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxLength) : null;
 }
 
 function deriveSpineAssetFromPortrait(portraitAsset: string | null): string | null {
@@ -245,12 +213,4 @@ function resolveHeroAssetFallback(heroCode: string): HeroAssetFallback | null {
 
 function resolveHeroClassFallback(heroCode: string): string | null {
   return HERO_CLASS_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
-}
-
-function readInteger(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.trunc(numeric)));
 }

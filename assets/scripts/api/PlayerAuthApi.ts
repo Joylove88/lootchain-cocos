@@ -1,6 +1,7 @@
 import { HttpClient } from '../net/HttpClient';
 import { TokenStore } from '../store/TokenStore';
 import type { PlayerTokenVO } from '../types/AuthTypes';
+import { expectRecord } from './ApiValueGuards';
 
 export class PlayerAuthApi {
   constructor(
@@ -10,7 +11,7 @@ export class PlayerAuthApi {
 
   async devLogin(userId: number): Promise<PlayerTokenVO> {
     // 当前 Cocos 阶段只开放开发登录；token 保存由 LoginFlow 在竞态校验后执行。
-    return await this.http.post<PlayerTokenVO>('/api/player/auth/dev-login', { userId });
+    return await this.http.post<unknown>('/api/player/auth/dev-login', { userId }).then(expectRecord<PlayerTokenVO>('登录令牌'));
   }
 
   saveToken(token: PlayerTokenVO): void {

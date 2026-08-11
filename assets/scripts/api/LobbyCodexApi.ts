@@ -1,7 +1,6 @@
 import { HttpClient } from '../net/HttpClient';
 import type { LobbyCodexItemVO } from '../types/LobbyCodexTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord, readInteger, readOptionalText, readText } from './ApiValueGuards';
 
 const MAX_CODEX_COUNT = 96;
 const MAX_TEXT_LENGTH = 96;
@@ -76,31 +75,6 @@ function normalizeCodexItem(item: unknown, index: number): LobbyCodexItemVO | nu
   };
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readText(record: UnknownRecord, key: string, maxLength: number, fallback: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return fallback;
-  }
-  return trimmed.slice(0, maxLength);
-}
-
-function readOptionalText(record: UnknownRecord, key: string, maxLength: number): string | null {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxLength) : null;
-}
-
 function deriveSpineAssetFromPortrait(portraitAsset: string | null): string | null {
   const normalized = (portraitAsset ?? '').replace(/\.(png|jpg|jpeg|webp)$/i, '').trim();
   if (!/^act_[A-Za-z0-9_-]+$/i.test(normalized)) {
@@ -113,10 +87,3 @@ function resolveHeroAssetFallback(heroCode: string): { portraitAsset: string; sp
   return HERO_ASSET_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
 }
 
-function readInteger(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.trunc(numeric)));
-}

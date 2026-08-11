@@ -1,7 +1,6 @@
 import { HttpClient } from '../net/HttpClient';
 import type { LobbyNoticeVO } from '../types/LobbyNoticeTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord, readDateText, readInteger, readText } from './ApiValueGuards';
 
 const MAX_NOTICE_COUNT = 12;
 const MAX_TITLE_LENGTH = 80;
@@ -43,36 +42,3 @@ function normalizeNotice(item: unknown, index: number): LobbyNoticeVO {
   };
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readText(record: UnknownRecord, key: string, maxLength: number, fallback: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return fallback;
-  }
-  return trimmed.slice(0, maxLength);
-}
-
-function readInteger(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.trunc(numeric)));
-}
-
-function readDateText(value: unknown): string | null {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-  if (typeof value === 'string') {
-    return value.slice(0, 32);
-  }
-  return null;
-}

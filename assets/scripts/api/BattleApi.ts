@@ -15,8 +15,19 @@ import type {
   PlayerBattleStartVO,
 } from '../types/BattleTypes';
 import type { DailyDungeonRewardVO, DailyDungeonSummaryVO, DailyDungeonThemeVO, DailyDungeonTierVO } from '../types/DailyDungeonTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import {
+  isRecord,
+  readArray,
+  readInteger,
+  readNullableInteger,
+  readNullableNumber,
+  readNumber,
+  readOptionalStat,
+  readOptionalText,
+  readRequiredText,
+  readText,
+  type UnknownRecord,
+} from './ApiValueGuards';
 
 const MAX_LINEUP = 5;
 const MAX_ENEMIES = 8;
@@ -519,9 +530,9 @@ function normalizeEnemy(item: unknown): PlayerBattleEnemyVO {
     role: readText(item, 'role', 32, ''),
     spineAsset: readOptionalText(item, 'spineAsset', MAX_TEXT),
     scaleProfile: readOptionalText(item, 'scaleProfile', 32),
-    baseHp: readOptionalEnemyStat(item.baseHp),
-    baseAttack: readOptionalEnemyStat(item.baseAttack),
-    baseDefense: readOptionalEnemyStat(item.baseDefense),
+    baseHp: readOptionalStat(item.baseHp),
+    baseAttack: readOptionalStat(item.baseAttack),
+    baseDefense: readOptionalStat(item.baseDefense),
     monsterType: readOptionalText(item, 'monsterType', 16),
     boss: item.boss === true,
     avatarAsset: readOptionalText(item, 'avatarAsset', MAX_TEXT),
@@ -532,27 +543,8 @@ function normalizeEnemy(item: unknown): PlayerBattleEnemyVO {
 }
 
 // 敌人独立数值:后端可空,非数字/缺省返回 null(客户端据此决定用配置值还是按 power 派生)。
-function readOptionalEnemyStat(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return null;
-  }
-  return Math.max(0, Math.trunc(value));
-}
-
 function readStageCode(record: UnknownRecord, key: string): string {
   return normalizeMainStageCode(readText(record, key, MAX_TEXT, ''));
-}
-
-function readOptionalText(record: UnknownRecord, key: string, maxLength: number): string | null {
-  const value = record[key];
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim().slice(0, maxLength);
-  return trimmed || null;
 }
 
 function normalizeMainStageCode(stageCode: string): string {
@@ -576,58 +568,3 @@ function sanitizeTextArray(values: unknown[], maxLength: number): string[] {
     .filter((value) => value && !value.toUpperCase().includes('EX_'));
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readArray(record: UnknownRecord, key: string, maxLength: number): unknown[] {
-  const value = record[key];
-  return Array.isArray(value) ? value.slice(0, maxLength) : [];
-}
-
-function readText(record: UnknownRecord, key: string, maxLength: number, fallback: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxLength) : fallback;
-}
-
-function readRequiredText(record: UnknownRecord, key: string, maxLength: number, errorMessage: string): string {
-  const value = readText(record, key, maxLength, '');
-  if (!value) {
-    throw new Error(errorMessage);
-  }
-  return value;
-}
-
-function readInteger(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.trunc(numeric)));
-}
-
-function readNullableInteger(value: unknown, min: number, max: number): number | null {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-  return readInteger(value, min, max);
-}
-
-function readNumber(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, numeric));
-}
-
-function readNullableNumber(value: unknown, min: number, max: number): number | null {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-  return readNumber(value, min, max);
-}

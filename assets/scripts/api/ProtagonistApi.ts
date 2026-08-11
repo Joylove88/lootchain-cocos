@@ -5,8 +5,7 @@ import type {
   ProtagonistServerProfile,
   ProtagonistServerState,
 } from '../types/ProtagonistTypes';
-
-type UnknownRecord = Record<string, unknown>;
+import { isRecord, readInteger, readText } from './ApiValueGuards';
 
 export interface ProtagonistCreateRequest {
   gender: ProtagonistGender;
@@ -77,23 +76,3 @@ function readForm(value: unknown): ProtagonistForm {
   return value === 'defense' || value === 'support' ? value : 'attack';
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readText(record: UnknownRecord, key: string, maxLength: number, fallback: string): string {
-  const value = record[key];
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxLength) : fallback;
-}
-
-function readInteger(value: unknown, min: number, max: number): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.trunc(numeric)));
-}
