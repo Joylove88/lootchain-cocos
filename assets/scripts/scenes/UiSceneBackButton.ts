@@ -207,8 +207,10 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
   if (!host.addChildLabel || !host.addSprite) {
     return;
   }
-  const capWidth = 196 * scale;
-  const capHeight = capWidth * (91 / 400);
+  // 2026-08-12 定标:先放大 15%(196→225)后缩短 30%(→158);
+  // 缩短走素材层——bag_currency_bar 中段裁去 120px(400→280),左右饰件原比例,高度不变。
+  const capWidth = 158 * scale;
+  const capHeight = capWidth * (91 / 280);
   const gap = 18 * scale;
   const barY = topY - 40 * scale;
   let cursorX = rightX - rightInset * scale - capWidth / 2;
@@ -223,9 +225,10 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
       graphics.strokeColor = rgba(157, 118, 60, 170);
       graphics.stroke();
     }
-    // 图标嵌胶囊左端圆槽(源图圆槽中心约在宽 12% 处)。
-    host.addSprite(`TopCurrencyIcon_${entry.key}`, entry.icon, -capWidth / 2 + capWidth * 0.12, 0, capHeight * 0.78, capHeight * 0.78, chip);
-    const value = host.addChildLabel(chip, `TopCurrencyValue_${entry.key}`, entry.value, capWidth * 0.02, 0, 18 * scale, rgba(245, 222, 168), new Size(capWidth * 0.56, 22 * scale));
+    // 图标嵌胶囊左端圆槽(裁短后槽心在源图 48px≈宽 17.1% 处;+7px 微调,图标高=胶囊高 56%)。
+    const iconSize = capHeight * 0.56;
+    host.addSprite(`TopCurrencyIcon_${entry.key}`, entry.icon, -capWidth / 2 + capWidth * 0.171 + 7 * scale, 0, iconSize, iconSize, chip);
+    const value = host.addChildLabel(chip, `TopCurrencyValue_${entry.key}`, entry.value, capWidth * 0.05, 0, 18 * scale, rgba(245, 222, 168), new Size(capWidth * 0.5, 22 * scale));
     value.overflow = Label.Overflow.SHRINK;
     value.enableOutline = true;
     value.outlineColor = rgba(0, 0, 0, 220);

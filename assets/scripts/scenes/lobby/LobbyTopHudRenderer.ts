@@ -11,6 +11,7 @@ import {
   Vec3,
 } from 'cc';
 import { lootChainI18n } from '../../i18n/LootChainI18n';
+import { SCENE_CURRENCY_BAR_ASSET } from '../UiSceneBackButton';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { LOBBY_SYSTEM_ICONS } from './LobbyHudConfig';
 import { lobbyHudEdgeInset, lobbyHudScale, resolveLobbyHudModeSize, resolveLobbyPlayerInfoLayout } from './LobbyHudLayout';
@@ -194,8 +195,9 @@ export class LobbyTopHudRenderer {
     const scale = lobbyHudScale(layout);
     const hudInsetX = lobbyHudEdgeInset(layout, 'x', scale);
     const hudInsetY = lobbyHudEdgeInset(layout, 'y', scale);
-    const itemHeight = 34 * scale;
-    const gap = 14 * scale;
+    // 行高=胶囊素材等比高(158×91/280≈51),与模块页同大;间距同组件的 18。
+    const itemHeight = 158 * (91 / 280) * scale;
+    const gap = 18 * scale;
     const modeWidth = resolveLobbyHudModeSize(layout).width;
     let items = this.resourceItems(profile);
     if (modeWidth < 720) {
@@ -344,13 +346,9 @@ export class LobbyTopHudRenderer {
   }
 
   private resourceItemWidth(key: LobbyResourceItem['key'], scale: number): number {
-    if (key === 'stamina') {
-      return 128 * scale;
-    }
-    if (key === 'coin') {
-      return 122 * scale;
-    }
-    return 112 * scale;
+    // 与各模块页右上胶囊(renderTopCurrencyBar,基宽 158,素材已裁短)完全同尺寸;空间不足仍走自适应裁项。
+    void key;
+    return 158 * scale;
   }
 
   private sumWithGaps(values: number[], gap: number): number {
@@ -447,27 +445,27 @@ export class LobbyTopHudRenderer {
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.showUnopenedFeature(`资源：${item.label}`, this.resourcePlaceholderDetail(item)), this);
     this.applyImageButtonFeedback(node, 1.018, 0.985);
-    const graphics = node.addComponent(Graphics);
-    this.drawResourceCapsule(graphics, width, height, scale);
-
-    const glyphSize = 22 * scale;
-    this.addResourceGlyph(node, item.key, -width / 2 + 16 * scale, 0, glyphSize, item.tint, scale);
-    const textX = -width / 2 + 37 * scale;
-    const textWidth = Math.max(28 * scale, width - 66 * scale);
+    // 2026-08-12 与背包顶部货币胶囊统一:bag_currency_bar 素材底(已裁短,自带右端+钮),
+    // 图标/数值排版按 renderTopCurrencyBar 同比例(槽心 17.1%+6px、图标高=胶囊高 56%);缺图回退旧手绘框。
+    const capHeight = width * (91 / 280);
+    if (!this.addSprite(`LobbyResourceCapsule_${item.key}`, SCENE_CURRENCY_BAR_ASSET, 0, 0, width, capHeight, node)) {
+      const graphics = node.addComponent(Graphics);
+      this.drawResourceCapsule(graphics, width, height, scale);
+    }
+    // addResourceGlyph 内部按 size×1.18 出图,这里换算回目标高(胶囊高 56%)。
+    this.addResourceGlyph(node, item.key, -width / 2 + width * 0.171 + 7 * scale, 0, capHeight * 0.56 / 1.18, item.tint, scale);
     const value = this.addChildLabel(
       node,
       `LobbyResourceValue_${item.key}`,
       item.value,
-      textX,
+      width * 0.05,
       0,
-      21 * scale,
+      18 * scale,
       rgba(245, 222, 168),
-      new Size(textWidth, 28 * scale),
-      HorizontalTextAlignment.LEFT,
+      new Size(width * 0.5, 22 * scale),
     );
     value.overflow = Label.Overflow.SHRINK;
     this.applyTopTextStyle(value, scale, true);
-    this.addDisabledPlus(node, width / 2 - 15 * scale, 0, 16 * scale, scale);
   }
 
   private drawResourceCapsule(graphics: Graphics, width: number, height: number, scale: number): void {
@@ -684,26 +682,6 @@ export class LobbyTopHudRenderer {
       return '设置';
     }
     return '更多菜单';
-  }
-
-  private addDisabledPlus(parent: Node, x: number, y: number, size: number, scale: number): void {
-    const node = this.addChildPlainNode(parent, 'LobbyResourceDisabledPlus', x, y, size, size);
-    const graphics = node.addComponent(Graphics);
-    // 资源加号当前是禁用艺术标记，用低透明圆章避免被误读成充值/购买入口。
-    graphics.fillColor = rgba(7, 6, 7, 82);
-    graphics.circle(0, 0, size * 0.56);
-    graphics.fill();
-    graphics.strokeColor = rgba(177, 135, 84, 110);
-    graphics.lineWidth = Math.max(1, 1.4 * scale);
-    graphics.circle(0, 0, size * 0.56);
-    graphics.stroke();
-    graphics.strokeColor = rgba(177, 135, 84, 118);
-    graphics.lineWidth = Math.max(1, 1.5 * scale);
-    graphics.moveTo(-size * 0.35, 0);
-    graphics.lineTo(size * 0.35, 0);
-    graphics.moveTo(0, -size * 0.35);
-    graphics.lineTo(0, size * 0.35);
-    graphics.stroke();
   }
 
   private addRedDot(parent: Node, x: number, y: number, size: number, visible: boolean): void {
