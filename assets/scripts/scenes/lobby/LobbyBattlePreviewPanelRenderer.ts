@@ -6317,22 +6317,24 @@ export class LobbyBattlePreviewPanelRenderer {
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
 
-    // 副标题精简:与底部"奖励仅预览"文案重复,只在真有战队经验时显示一行。
+    // 玩家经验做成框顶横幅(A 方案 2026-08-12):经验不进物品格(避免空图标+×号),用后端 resourceName
+    // 统一术语并用 +号;横幅下移到黑曜石面板顶(overlayHeight/2-118),避让顶部恶魔火纹章冠。
     const expLine = state.settlement?.rewardItems?.find((item) => item.resourceCode === 'PLAYER_EXP');
     if (expLine) {
-      const expLabel = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryExp', `战队经验 +${expLine.amount}`, 0, overlayHeight / 2 - 74 * scale, 20 * scale, rgba(211, 232, 164), new Size(overlayWidth - 210 * scale, 24 * scale));
+      const expLabel = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryExp', `${expLine.resourceName} +${expLine.amount}`, 0, overlayHeight / 2 - 118 * scale, 20 * scale, rgba(211, 232, 164), new Size(overlayWidth - 210 * scale, 24 * scale));
       expLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(expLabel, scale, false);
     }
 
-    // 结算框只展示获得的奖励:阵容头像行已按需求移除(阵容信息战斗页/编队页可见)。
-
-    const rewards = state.settlement?.rewardItems?.length ? state.settlement.rewardItems : [];
+    // 结算框物品格只展示真实道具:PLAYER_EXP 已在顶部横幅呈现,从网格排除(A 方案)。
+    const rewards = (state.settlement?.rewardItems ?? []).filter((item) => item.resourceCode !== 'PLAYER_EXP');
     const dailyDungeon = isDailyDungeonStageCode(snapshot.stageCode);
     const dailyCounts = dailyDungeon && state.settlement ? /今日 (\d+)\/(\d+) 次/.exec(state.settlement.message || '') : null;
     const dailyCanRetry = !!dailyCounts && Number(dailyCounts[1]) < Number(dailyCounts[2]);
     // 奖励区:图标格加大+道具图标+名字/数量,材料产出必须一眼可读(每日副本的核心反馈)。
-    const rewardY = 22 * scale;
+    // C 方案 2026-08-12:奖励行下移到黑曜石面板垂直中心(冠下 ~118 到面板底的中点,约 -26),
+    // 消除原先奖励挤上半、下方大片空黑的失衡;名称标签在格下,略上抬留出其空间。
+    const rewardY = -26 * scale;
     const slotSize = Math.min(88 * scale, overlayWidth / 7);
     const slotGap = 22 * scale;
     const shownRewards = rewards.slice(0, 5);

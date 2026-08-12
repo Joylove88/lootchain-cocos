@@ -132,9 +132,14 @@ export class BattleStageMapRenderer {
     this.drawDottedPath(graphics, positions, scale);
 
     // 再画节点
-    positions.forEach((pos) => {
-      this.renderStageNode(map, pos, scale, pos.stage.stageCode === selectedStageCode);
-    });
+    const nodes = positions.map((pos) => ({
+      pos,
+      node: this.renderStageNode(map, pos, scale, pos.stage.stageCode === selectedStageCode),
+    }));
+    // 选中/推荐节点提到最前:其顶部悬浮标(熔岩匕首)是节点子物体,否则会被后序号节点的徽章盖住。
+    nodes
+      .filter(({ pos }) => pos.stage.stageCode === selectedStageCode || pos.stage.recommended)
+      .forEach(({ node }) => node?.setSiblingIndex(map.children.length - 1));
   }
 
   private resolveNodePositions(stages: LobbyAdventureStageVO[], width: number, height: number, scale: number): MapNodePosition[] {
@@ -205,7 +210,7 @@ export class BattleStageMapRenderer {
     graphics.stroke();
   }
 
-  private renderStageNode(parent: Node, pos: MapNodePosition, scale: number, selected: boolean): void {
+  private renderStageNode(parent: Node, pos: MapNodePosition, scale: number, selected: boolean): Node {
     const size = pos.boss ? 104 * scale : 82 * scale;
     const node = this.host.addChildPlainNode(parent, `BattleStageMapNode_${pos.index}`, pos.x, pos.y, size, size);
     const graphics = node.addComponent(Graphics);
@@ -294,5 +299,6 @@ export class BattleStageMapRenderer {
       name.outlineColor = rgba(0, 0, 0, 226);
       name.outlineWidth = Math.max(1, 1.4 * scale);
     }
+    return node;
   }
 }
