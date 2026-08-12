@@ -6335,13 +6335,25 @@ export class LobbyBattlePreviewPanelRenderer {
     // C 方案 2026-08-12:奖励行下移到黑曜石面板垂直中心(冠下 ~118 到面板底的中点,约 -26),
     // 消除原先奖励挤上半、下方大片空黑的失衡;名称标签在格下,略上抬留出其空间。
     const rewardY = -26 * scale;
-    const slotSize = Math.min(88 * scale, overlayWidth / 7);
-    const slotGap = 22 * scale;
-    const shownRewards = rewards.slice(0, 5);
-    const rewardTotal = Math.max(1, shownRewards.length) * (slotSize + slotGap) - slotGap;
-    shownRewards.forEach((reward, index) => {
-      const x = -rewardTotal / 2 + slotSize / 2 + index * (slotSize + slotGap);
-      const slot = this.host.addChildPlainNode(overlay, `LobbyBattleStage12RewardSlot_${index}`, x, rewardY, slotSize + 26 * scale, slotSize + 24 * scale);
+    // 首通奖励可达 7-8 种(金币+装备/宝石/材料/技能觉醒道具):>4 时折成两排全部展示,不再 slice(0,5) 截断——
+    // 否则玩家看不到宝石/觉醒石/BOSS印记等真实到手的奖励,与"看不到本次奖励"的体验痛点同源。
+    const rewardCount = Math.max(1, rewards.length);
+    const rowCount = rewardCount <= 4 ? 1 : 2;
+    const perRow = Math.ceil(rewardCount / rowCount);
+    const sideMargin = 44 * scale;
+    const gapRatio = 0.26;
+    const slotSize = Math.max(40 * scale, Math.min((rowCount === 1 ? 88 : 72) * scale, (overlayWidth - sideMargin * 2) / perRow / (1 + gapRatio)));
+    const slotGap = slotSize * gapRatio;
+    const rowPitch = slotSize + 40 * scale; // 格 + 名称行 + 行距
+    const firstRowY = rewardY + (rowCount - 1) * rowPitch / 2; // 整块以 rewardY 垂直居中
+    rewards.forEach((reward, index) => {
+      const row = Math.floor(index / perRow);
+      const col = index % perRow;
+      const itemsThisRow = Math.min(perRow, rewards.length - row * perRow);
+      const rowWidth = itemsThisRow * slotSize + (itemsThisRow - 1) * slotGap;
+      const x = -rowWidth / 2 + slotSize / 2 + col * (slotSize + slotGap);
+      const y = firstRowY - row * rowPitch;
+      const slot = this.host.addChildPlainNode(overlay, `LobbyBattleStage12RewardSlot_${index}`, x, y, slotSize + 26 * scale, slotSize + 24 * scale);
       const ornate = this.host.addSprite(`LobbyBattleStage12RewardSlotOrnate_${index}`, BATTLE_C1812_REWARD_SLOT_ORNATE_ASSET, 0, 10 * scale, slotSize, slotSize, slot);
       if (!ornate) {
         const slotGraphics = slot.addComponent(Graphics);
@@ -6364,7 +6376,7 @@ export class LobbyBattlePreviewPanelRenderer {
       const amountLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotAmount', `×${reward.amount}`, slotSize / 2 - 18 * scale, 10 * scale - slotSize / 2 + 13 * scale, 16 * scale, rgba(255, 236, 176), new Size(slotSize * 0.7, 20 * scale), HorizontalTextAlignment.RIGHT);
       amountLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(amountLabel, scale, false);
-      const nameLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotName', reward.resourceName, 0, 10 * scale - slotSize / 2 - 16 * scale, 15 * scale, rgba(214, 196, 156, 235), new Size(slotSize + 40 * scale, 20 * scale));
+      const nameLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotName', reward.resourceName, 0, 10 * scale - slotSize / 2 - 16 * scale, 15 * scale, rgba(214, 196, 156, 235), new Size(slotSize + slotGap, 20 * scale));
       nameLabel.overflow = Label.Overflow.SHRINK;
     });
     if (rewards.length === 0) {

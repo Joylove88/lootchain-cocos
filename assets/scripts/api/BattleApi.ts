@@ -126,36 +126,31 @@ function validateCrystalRankSummary(data: unknown): CrystalRankSummaryVO {
   };
 }
 
-// 每日材料副本(P7b):关卡码 DAILY_{THEME}_{TIER};结算模式 DAILY_DUNGEON,奖励限材料白名单。
+// 每日材料副本(P7b):关卡码 DAILY_{THEME}_{TIER};结算模式 DAILY_DUNGEON。
 const DAILY_STAGE_PATTERN = /^DAILY_(AWAKEN|FORGE|ARCANE|ABYSS)_[1-3]$/;
 const DAILY_SETTLEMENT_MODE = 'DAILY_DUNGEON';
-const DAILY_SAFE_ITEM_CODES = new Set([
-  'ENHANCE_STONE',
-  'ENHANCE_STONE_HIGH',
-  'DEEP_REFORGE_STONE',
-  'FUSION_LUCK_STONE',
-  'EQUIP_REROLL_STONE',
-  'ULT_SCROLL',
-  'ABYSS_CRYSTAL',
-  'BOSS_MARK',
-  'GEM_HP_1',
-  'GEM_ATK_1',
-  'GEM_DEF_1',
-]);
+
+// 结算奖励安全边界采用「黑名单」而非白名单:只拦支付(钻石/USDT)、链上/未开放的 EX 代币、直发英雄/碎片——
+// 这些当前阶段绝不该经战斗结算下发,出现即视为后端配置错误。其余(金币/装备/宝石/材料/技能与觉醒道具/圣晶等
+// 已开放内容)一律放行。白名单模式每上线一个新掉落就会误杀整单结算(装备/宝石/觉醒石都曾被挡),体验极差。
+const BLOCKED_SETTLEMENT_TYPES = new Set(['USDT', 'HERO', 'HERO_FRAGMENT']);
+const BLOCKED_SETTLEMENT_CODES = new Set(['USDT', 'DIAMOND', 'BOUND_DIAMOND', 'STAMINA', 'EX_CORE_SHARD']);
+function isBlockedSettlementResource(type: string, code: string): boolean {
+  return BLOCKED_SETTLEMENT_TYPES.has(type) || BLOCKED_SETTLEMENT_CODES.has(code) || code.startsWith('EX_');
+}
 
 export function isDailyDungeonStageCode(stageCode: string): boolean {
   return DAILY_STAGE_PATTERN.test((stageCode || '').trim().toUpperCase());
 }
 
 function assertSafeDailyRewards(rewardItems: PlayerBattleRewardItemVO[]): void {
+  // 黑名单守卫:金币/材料/宝石/圣晶(SACRED_CRYSTAL,P金-1a 服务端三闸门管控)等已开放奖励一律放行,
+  // 只拦支付/链上/EX/直发英雄这类不该出现的资源;数量必须为正。
   for (const item of rewardItems) {
     const type = item.resourceType.toUpperCase();
     const code = item.resourceCode.toUpperCase();
-    // SACRED_CRYSTAL=圣晶掉落(P金-1a,docs/27),服务端三闸门管控。
-    const safe = (type === 'CURRENCY' && (code === 'GOLD' || code === 'SACRED_CRYSTAL'))
-      || (type === 'ITEM' && DAILY_SAFE_ITEM_CODES.has(code));
-    if (!safe || item.amount <= 0) {
-      throw new Error('每日副本结算响应奖励不在材料白名单内');
+    if (isBlockedSettlementResource(type, code) || item.amount <= 0) {
+      throw new Error('每日副本结算响应包含未开放奖励资源');
     }
   }
 }
@@ -296,7 +291,8 @@ function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
   const economyApplied = data.economyApplied === true;
   const progressApplied = data.progressApplied === true;
   const stageCode = readStageCode(data, 'stageCode');
-  const rewardItems = readArray(data, 'rewardItems', 8).map(normalizeRewardItem);
+  // 上限放宽到 16:高层关卡首通=配置奖励(可达 8)+ 圣晶里程碑等追加行,避免 slice 静默截掉玩家真拿到的奖励。
+  const rewardItems = readArray(data, 'rewardItems', 16).map(normalizeRewardItem);
   const currencyChanges = readArray(data, 'currencyChanges', 4).map(normalizeCurrencyChange);
   const mainlineProgress = normalizeMainlineProgress(data.mainlineProgress);
   if (settlementMode === 'NO_REWARD') {
@@ -435,20 +431,18 @@ function assertSafeMainlineRewards(stageCode: string, rewardItems: PlayerBattleR
   if (!config) {
     throw new Error('真实首通结算响应关卡未开放');
   }
-  const blockedTypes = new Set(['USDT', 'HERO', 'HERO_FRAGMENT']);
-  const blockedCodes = new Set(['USDT', 'DIAMOND', 'BOUND_DIAMOND', 'STAMINA', 'EX_CORE_SHARD']);
-  // CURRENCY:SACRED_CRYSTAL=爬塔里程碑一次性圣晶(P金-1a,docs/27,幂等 requestId=MS:层序)。
-  const safePairs = new Set(['PLAYER_EXP:PLAYER_EXP', 'CURRENCY:GOLD', 'CURRENCY:SACRED_CRYSTAL', 'ITEM:LOW_ENHANCE_STONE', 'ITEM:HERO_EXP_BOOK']);
+  // 黑名单守卫:主线首通发放金币/装备/宝石/技能与觉醒道具等已开放内容,一律放行;只拦支付/链上/EX/直发英雄。
+  // 经验+金币是每关首通的稳定基线,缺失即视为异常结算。
   let hasPlayerExp = false;
   let hasGold = false;
   for (const item of rewardItems) {
     const type = item.resourceType.toUpperCase();
     const code = item.resourceCode.toUpperCase();
-    if (blockedTypes.has(type) || blockedCodes.has(code) || code.startsWith('EX_')) {
+    if (isBlockedSettlementResource(type, code)) {
       throw new Error('真实首通结算响应包含未开放奖励资源');
     }
-    if (!safePairs.has(`${type}:${code}`) || item.amount <= 0) {
-      throw new Error('真实首通结算响应奖励不在年度主线安全集合内');
+    if (item.amount <= 0) {
+      throw new Error('真实首通结算响应奖励数量非法');
     }
     hasPlayerExp = hasPlayerExp || (type === 'PLAYER_EXP' && code === 'PLAYER_EXP');
     hasGold = hasGold || (type === 'CURRENCY' && code === 'GOLD');
