@@ -6368,7 +6368,8 @@ export class LobbyBattlePreviewPanelRenderer {
       nameLabel.overflow = Label.Overflow.SHRINK;
     });
     if (rewards.length === 0) {
-      // 闭环后奖励为真发:回执未到显示提交中;回执已到但无奖励行=主线重复通关/每日战败。
+      // 闭环后奖励为真发:回执未到=提交中;回执已到但无奖励行=主线重复通关/每日战败;settle 报错=提交失败(给下方重试)。
+      const settleFailed = !state.settlement && !!state.error;
       const emptyText = state.settlement
         ? dailyDungeon
           ? win
@@ -6377,9 +6378,12 @@ export class LobbyBattlePreviewPanelRenderer {
           : win
             ? '本关已首通，重复挑战不再发放奖励'
             : '挑战失败：不发放奖励、不扣体力、不推进进度，可调整阵容再战'
-        : '结算提交中，奖励以回执为准…';
-      const empty = this.host.addChildLabel(overlay, 'LobbyBattleStage12RewardSlotEmpty', emptyText, 0, rewardY, 18 * scale, rgba(196, 181, 136), new Size(overlayWidth - 80 * scale, 26 * scale));
+        : settleFailed
+          ? `结算提交失败：${state.error}\n请点下方“重新结算”，勿直接下一关(会跳过本次奖励)`
+          : '结算提交中，奖励以回执为准…';
+      const empty = this.host.addChildLabel(overlay, 'LobbyBattleStage12RewardSlotEmpty', emptyText, 0, rewardY, 18 * scale, settleFailed ? rgba(240, 176, 132) : rgba(196, 181, 136), new Size(overlayWidth - 80 * scale, settleFailed ? 52 * scale : 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
+      empty.enableWrapText = true;
       this.applyOutline(empty, scale, false);
     }
     if (dailyDungeon && state.settlement && win) {
@@ -6397,28 +6401,45 @@ export class LobbyBattlePreviewPanelRenderer {
     const buttonHeight = 72 * scale;
     const buttonY = -overlayHeight / 2 - buttonHeight / 2 - 14 * scale;
     const nextStageCode = win ? this.resolveNextStageCode(snapshot.stageCode) : null;
-    const buildOverlayButton = (name: string, text: string, x: number, onClick: () => void, asset: string = C1812_BUTTON_PRIMARY_ASSET): void => {
+    const buildOverlayButton = (name: string, text: string, x: number, onClick: () => void, asset: string = C1812_BUTTON_PRIMARY_ASSET, disabled = false): void => {
       const button = this.host.addChildPlainNode(overlay, name, x, buttonY, buttonWidth, buttonHeight);
       const sprite = this.host.addSprite(`${name}Art`, asset, 0, 0, buttonWidth, buttonHeight, button);
       if (sprite) {
         sprite.type = Sprite.Type.SLICED;
+        if (disabled) {
+          sprite.color = rgba(150, 150, 150, 210);
+        }
       } else {
         const buttonGraphics = button.addComponent(Graphics);
-        buttonGraphics.fillColor = rgba(150, 102, 34, 240);
+        buttonGraphics.fillColor = disabled ? rgba(96, 96, 96, 220) : rgba(150, 102, 34, 240);
         buttonGraphics.roundRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, 8 * scale);
         buttonGraphics.fill();
         buttonGraphics.strokeColor = rgba(255, 214, 120, 220);
         buttonGraphics.stroke();
       }
       // 文字右移让开按钮左侧宝石装饰区。
-      const label = this.host.addChildLabel(button, `${name}Label`, text, 14 * scale, 0, 21 * scale, rgba(255, 240, 198), new Size(buttonWidth - 74 * scale, 30 * scale));
+      const label = this.host.addChildLabel(button, `${name}Label`, text, 14 * scale, 0, 21 * scale, disabled ? rgba(210, 210, 210) : rgba(255, 240, 198), new Size(buttonWidth - 74 * scale, 30 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, true);
+      if (disabled) {
+        // 结算回执在途:占住"下一关"位但不可点,避免抢先跳关错过本次奖励;回执一到全量重绘换回可点按钮。
+        return;
+      }
       button.addComponent(Button);
       this.host.applyImageButtonFeedback(button, 1.05, 0.95);
       button.on(Button.EventType.CLICK, onClick, this);
     };
-    if (nextStageCode) {
+    const settleFailedForButtons = !state.settlement && !!state.error;
+    const settlePendingForButtons = win && !state.settlement && !state.error;
+    if (settleFailedForButtons) {
+      // 结算回执失败:优先给"重新结算"入口(点下一关会丢弃本次结算,拿不到奖励)。settleLobbyBattleSession 会重投 settle。
+      buildOverlayButton('LobbyBattleVictoryReturnButton', '返回大厅', -buttonWidth / 2 - 14 * scale, () => this.host.returnToLobbyFromBattlePreview(), C1812_BUTTON_RETURN_ASSET);
+      buildOverlayButton('LobbyBattleResettleButton', '重新结算', buttonWidth / 2 + 14 * scale, () => this.host.settleLobbyBattleSession());
+    } else if (settlePendingForButtons) {
+      // 胜利但结算回执在途:先禁用"下一关",避免玩家抢先跳关后看不到本次奖励。回执到达触发全量重绘换回可点按钮。
+      buildOverlayButton('LobbyBattleVictoryReturnButton', '返回大厅', -buttonWidth / 2 - 14 * scale, () => this.host.returnToLobbyFromBattlePreview(), C1812_BUTTON_RETURN_ASSET);
+      buildOverlayButton('LobbyBattleSettlingButton', '结算中…', buttonWidth / 2 + 14 * scale, () => undefined, C1812_BUTTON_PRIMARY_ASSET, true);
+    } else if (nextStageCode) {
       buildOverlayButton('LobbyBattleVictoryReturnButton', '返回大厅', -buttonWidth / 2 - 14 * scale, () => this.host.returnToLobbyFromBattlePreview(), C1812_BUTTON_RETURN_ASSET);
       buildOverlayButton('LobbyBattleVictoryNextButton', '下一关', buttonWidth / 2 + 14 * scale, () => this.host.openLobbyBattlePreviewPanel(nextStageCode));
     } else if (win && dailyCanRetry) {
