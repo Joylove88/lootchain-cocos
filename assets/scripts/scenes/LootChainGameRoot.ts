@@ -51,25 +51,26 @@ import {
   LobbyBackgroundController,
   type LobbyBackgroundHost,
 } from './lobby/LobbyBackgroundController';
-import { LobbyAdventureLoader, type LobbyAdventureLoaderHost } from './lobby/LobbyAdventureLoader';
+import { LobbyAdventureState } from './lobby/LobbyAdventureState';
 import { LobbyAdventurePanelRenderer, type LobbyAdventurePanelHost } from './lobby/LobbyAdventurePanelRenderer';
 import { LobbyAvatarRenderer, type LobbyAvatarHost } from './lobby/LobbyAvatarRenderer';
 import { LobbyBagLoader, type LobbyBagLoaderHost } from './lobby/LobbyBagLoader';
 import { LobbyBagPanelRenderer, type LobbyBagPanelHost } from './lobby/LobbyBagPanelRenderer';
 import { LobbyBattleFlow, type LobbyBattleFlowHost } from './lobby/LobbyBattleFlow';
 import { LobbyBattlePreviewPanelRenderer, type LobbyBattlePreviewPanelHost } from './lobby/LobbyBattlePreviewPanelRenderer';
-import { LobbyCodexLoader, type LobbyCodexLoaderHost } from './lobby/LobbyCodexLoader';
+import { LobbyCodexState } from './lobby/LobbyCodexState';
 import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/LobbyCodexPanelRenderer';
 import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/LobbyForgePanelRenderer';
 import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFormationPowerSnapshot } from './lobby/LobbyFormationPanelRenderer';
 import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
-import { LobbyHeroRosterLoader, type LobbyHeroRosterLoaderHost } from './lobby/LobbyHeroRosterLoader';
+import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
 import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
-import { LobbyNoticeLoader, type LobbyNoticeLoaderHost } from './lobby/LobbyNoticeLoader';
+import { LobbyNoticeState } from './lobby/LobbyNoticeState';
+import { LobbyPanelLoader, type LobbyPanelLoaderHost } from './lobby/LobbyPanelLoader';
 import { LobbyNoticePanelRenderer, type LobbyNoticePanelHost } from './lobby/LobbyNoticePanelRenderer';
 import { LobbyDailyDungeonPanelRenderer, type LobbyDailyDungeonPanelHost } from './lobby/LobbyDailyDungeonPanelRenderer';
 import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
@@ -205,7 +206,14 @@ export class LootChainGameRoot extends Component {
   private readonly protagonistCreateFlow = new ProtagonistCreateFlow(this.api.protagonist, this as unknown as ProtagonistCreateFlowHost);
   private readonly protagonistCreateRenderer = new ProtagonistCreateRenderer(this as unknown as ProtagonistCreateRendererHost);
   private readonly lobbyBackgroundController = new LobbyBackgroundController(this as unknown as LobbyBackgroundHost);
-  private readonly lobbyAdventureLoader = new LobbyAdventureLoader(this.api.lobbyAdventure, this as unknown as LobbyAdventureLoaderHost);
+  private readonly lobbyAdventureState = new LobbyAdventureState();
+  private readonly lobbyAdventureLoader = new LobbyPanelLoader(
+    this.lobbyAdventureState,
+    () => this.api.lobbyAdventure.lobbyAdventure(),
+    (adventure) => this.lobbyAdventureState.applyLoaded(adventure),
+    this as unknown as LobbyPanelLoaderHost,
+    'lobby adventure',
+  );
   private readonly lobbyAdventurePanelRenderer = new LobbyAdventurePanelRenderer(this as unknown as LobbyAdventurePanelHost);
   private readonly lobbyAvatarRenderer = new LobbyAvatarRenderer(this as unknown as LobbyAvatarHost);
   private readonly lobbyBagLoader = new LobbyBagLoader(this.api.bag, this.api.hero, this.api.equipment, this as unknown as LobbyBagLoaderHost);
@@ -220,14 +228,45 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
-  private readonly lobbyCodexLoader = new LobbyCodexLoader(this.api.lobbyCodex, this as unknown as LobbyCodexLoaderHost);
+  private readonly lobbyCodexState = new LobbyCodexState();
+  private readonly lobbyCodexLoader = new LobbyPanelLoader(
+    this.lobbyCodexState,
+    () => this.api.lobbyCodex.lobbyCodex(),
+    (items) => this.lobbyCodexState.applyLoaded(items),
+    this as unknown as LobbyPanelLoaderHost,
+    'lobby codex',
+  );
   private readonly lobbyCodexPanelRenderer = new LobbyCodexPanelRenderer(this as unknown as LobbyCodexPanelHost);
   private readonly lobbyForgePanelRenderer = new LobbyForgePanelRenderer(this as unknown as LobbyForgePanelHost);
   private readonly lobbyFormationPanelRenderer = new LobbyFormationPanelRenderer(this as unknown as LobbyFormationPanelHost);
   private readonly lobbyHeroDetailPanelRenderer = new LobbyHeroDetailPanelRenderer(this as unknown as LobbyHeroDetailPanelHost);
-  private readonly lobbyHeroRosterLoader = new LobbyHeroRosterLoader(this.api.lobbyHero, this as unknown as LobbyHeroRosterLoaderHost);
+  private readonly lobbyHeroRosterState = new LobbyHeroRosterState();
+  private readonly lobbyHeroRosterLoader = new LobbyPanelLoader(
+    this.lobbyHeroRosterState,
+    async () => {
+      // 职业筛选项失败不阻塞名单主体(与旧 LobbyHeroRosterLoader 同口径)。
+      const [heroes, filterOptions] = await Promise.all([
+        this.api.lobbyHero.lobbyHeroes(),
+        this.api.lobbyHero.lobbyHeroFilterOptions().catch((error) => {
+          console.warn('[LootChain] lobby hero class filter options load failed:', error);
+          return { heroClasses: [] as string[] };
+        }),
+      ]);
+      return { heroes, heroClasses: filterOptions.heroClasses };
+    },
+    (data) => this.lobbyHeroRosterState.applyLoaded(data.heroes, data.heroClasses),
+    this as unknown as LobbyPanelLoaderHost,
+    'lobby hero roster',
+  );
   private readonly lobbyHeroRosterPanelRenderer = new LobbyHeroRosterPanelRenderer(this as unknown as LobbyHeroRosterPanelHost);
-  private readonly lobbyNoticeLoader = new LobbyNoticeLoader(this.api.lobbyNotice, this as unknown as LobbyNoticeLoaderHost);
+  private readonly lobbyNoticeState = new LobbyNoticeState();
+  private readonly lobbyNoticeLoader = new LobbyPanelLoader(
+    this.lobbyNoticeState,
+    () => this.api.lobbyNotice.lobbyNotices(),
+    (notices) => this.lobbyNoticeState.applyLoaded(notices),
+    this as unknown as LobbyPanelLoaderHost,
+    'lobby notices',
+  );
   private readonly lobbyNoticePanelRenderer = new LobbyNoticePanelRenderer(this as unknown as LobbyNoticePanelHost);
   private readonly lobbyDailyDungeonPanelRenderer = new LobbyDailyDungeonPanelRenderer(this as unknown as LobbyDailyDungeonPanelHost);
   private lobbyDailyDungeonState: LobbyDailyDungeonPanelState = { loading: false, error: '', summary: null, version: 0 };

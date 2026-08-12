@@ -4,40 +4,67 @@ import type { HeroApi } from '../../api/HeroApi';
 import type { BagItemEntryVO, ItemTypeBagGroupVO, LobbyBagPanelState } from '../../types/BagTypes';
 import type { UserHeroFragmentVO } from '../../types/HeroTypes';
 import { LobbyBagState } from './LobbyBagState';
+import { LobbyPanelLoader, type LobbyPanelLoaderHost } from './LobbyPanelLoader';
 
-export interface LobbyBagLoaderHost {
-  isLobbyViewActive(): boolean;
-  refreshLobbyOverlay(): void;
-}
+export type LobbyBagLoaderHost = LobbyPanelLoaderHost;
 
-/** 大厅背包只读加载器。 */
+/** 大厅背包只读加载器:主加载走通用 LobbyPanelLoader,来源查询/选中态等领域逻辑留在本类。 */
 export class LobbyBagLoader {
   private readonly bagState = new LobbyBagState();
-  private loadTicket = 0;
+  private readonly core: LobbyPanelLoader<LobbyBagPanelState, ItemTypeBagGroupVO[]>;
   private sourceTicket = 0;
 
   constructor(
     private readonly bagApi: BagApi,
-    private readonly heroApi: HeroApi,
-    private readonly equipmentApi: EquipmentApi,
+    heroApi: HeroApi,
+    equipmentApi: EquipmentApi,
     private readonly host: LobbyBagLoaderHost,
-  ) {}
+  ) {
+    this.core = new LobbyPanelLoader(
+      this.bagState,
+      async () => {
+        const [bag, fragments, equipments] = await Promise.all([
+          this.bagApi.myBag(),
+          heroApi.fragments().catch((error) => {
+            console.warn('[LootChain] hero fragments load failed while composing bag:', error);
+            return [] as UserHeroFragmentVO[];
+          }),
+          // 装备存 user_equipment 独立表(非 user_bag),背包页把它合成为 EQUIPMENT 分组展示(只读;穿戴入口在英雄详情)。
+          equipmentApi.list().catch((error) => {
+            console.warn('[LootChain] equipment load failed while composing bag:', error);
+            return [] as EquipmentItemVO[];
+          }),
+        ]);
+        return mergeBagGroupsWithEquipments(mergeBagGroupsWithFragments(bag.groups ?? [], fragments), equipments);
+      },
+      (groups) => this.bagState.applyLoaded(groups),
+      host,
+      'lobby bag',
+      () => {
+        // 重载完成且选中项仍在:联动刷新其来源文案。
+        const selectedItemCode = this.bagState.snapshot().selectedItemCode;
+        if (selectedItemCode) {
+          void this.loadSource(selectedItemCode, true);
+        }
+      },
+    );
+  }
 
   get loading(): boolean {
-    return this.bagState.snapshot().loading;
+    return this.core.loading;
   }
 
   get loaded(): boolean {
-    return this.bagState.snapshot().loaded;
+    return this.core.loaded;
   }
 
   get version(): number {
-    return this.bagState.version;
+    return this.core.version;
   }
 
   cancel(): void {
     // 销毁场景或重新登录时让旧请求失效，防止慢响应覆盖新玩家背包。
-    this.loadTicket += 1;
+    this.core.cancel();
     this.sourceTicket += 1;
   }
 
@@ -64,48 +91,8 @@ export class LobbyBagLoader {
     return changed;
   }
 
-  async load(force = false): Promise<void> {
-    if (this.loading) {
-      return;
-    }
-    if (this.loaded && !force) {
-      return;
-    }
-    const ticket = this.nextLoadTicket();
-    this.bagState.startLoading();
-    this.refreshIfActive();
-    try {
-      const [bag, fragments, equipments] = await Promise.all([
-        this.bagApi.myBag(),
-        this.heroApi.fragments().catch((error) => {
-          console.warn('[LootChain] hero fragments load failed while composing bag:', error);
-          return [] as UserHeroFragmentVO[];
-        }),
-        // 装备存 user_equipment 独立表(非 user_bag),背包页把它合成为 EQUIPMENT 分组展示(只读;穿戴入口在英雄详情)。
-        this.equipmentApi.list().catch((error) => {
-          console.warn('[LootChain] equipment load failed while composing bag:', error);
-          return [] as EquipmentItemVO[];
-        }),
-      ]);
-      if (!this.isCurrentLoad(ticket)) {
-        return;
-      }
-      this.bagState.applyLoaded(mergeBagGroupsWithEquipments(mergeBagGroupsWithFragments(bag.groups ?? [], fragments), equipments));
-      const selectedItemCode = this.bagState.snapshot().selectedItemCode;
-      if (selectedItemCode) {
-        void this.loadSource(selectedItemCode, true);
-      }
-    } catch (error) {
-      if (!this.isCurrentLoad(ticket)) {
-        return;
-      }
-      this.bagState.applyError(error);
-      console.warn('[LootChain] lobby bag load failed:', error);
-    } finally {
-      if (this.isCurrentLoad(ticket)) {
-        this.refreshIfActive();
-      }
-    }
+  load(force = false): Promise<void> {
+    return this.core.load(force);
   }
 
   async loadSource(itemCode: string, force = false): Promise<void> {
@@ -151,18 +138,9 @@ export class LobbyBagLoader {
     }
   }
 
-  private nextLoadTicket(): number {
-    this.loadTicket += 1;
-    return this.loadTicket;
-  }
-
   private nextSourceTicket(): number {
     this.sourceTicket += 1;
     return this.sourceTicket;
-  }
-
-  private isCurrentLoad(ticket: number): boolean {
-    return ticket === this.loadTicket;
   }
 
   private isCurrentSource(ticket: number): boolean {
