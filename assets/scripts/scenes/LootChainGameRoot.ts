@@ -1003,19 +1003,29 @@ export class LootChainGameRoot extends Component {
       || view === 'placeholder';
   }
 
-  private returnToLobbyFromScenePage(): void {
-    this.lobbyProfileOpen = false;
+  /**
+   * 统一重置集(2026-08-12 批5):关闭全部大厅功能页/弹窗标志,openXxx 一律先清再立自己的标志。
+   * 刻意不含 lobbyDailyDungeonPanelOpen——它要跨战斗预演存活(结算后据此回到限时副本面板),
+   * 只在 openLobbyDailyDungeonPanel 自立、returnToLobbyFromScenePage 显式清除。
+   */
+  private closeAllLobbyScenePanelFlags(): void {
     this.lobbyAdventurePanelOpen = false;
     this.lobbyBagPanelOpen = false;
     this.lobbyForgePanelOpen = false;
+    this.lobbyBattlePreviewPanelOpen = false;
     this.lobbyCodexPanelOpen = false;
     this.lobbyFormationPanelOpen = false;
     this.lobbyHeroDetailHeroId = null;
     this.lobbyHeroRosterPanelOpen = false;
     this.lobbyNoticePanelOpen = false;
-    this.lobbyDailyDungeonPanelOpen = false;
+    this.lobbyProfileOpen = false;
     this.lobbySettingsPanelOpen = false;
     this.lobbyPlaceholderDialog = null;
+  }
+
+  private returnToLobbyFromScenePage(): void {
+    this.closeAllLobbyScenePanelFlags();
+    this.lobbyDailyDungeonPanelOpen = false;
     this.currentView = 'lobby';
     this.renderCurrentView();
   }
@@ -1059,18 +1069,8 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyProfileOpen && this.currentView === 'profile') {
       return;
     }
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyProfileOpen = true;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'profile';
     this.renderCurrentView();
   }
@@ -1090,18 +1090,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyAdventurePanel(): void {
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyAdventurePanelOpen = true;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'adventure';
     this.renderCurrentView();
     void this.loadLobbyAdventure();
@@ -1132,18 +1122,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyBagPanel(): void {
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyBagPanelOpen = true;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'bag';
     this.renderCurrentView();
     void this.loadLobbyBag();
@@ -1178,18 +1158,8 @@ export class LootChainGameRoot extends Component {
   // ===== 锻造工坊(导航栏"锻造",装备养成集中页) =====
   // 强化/合成走英雄详情同源 mutation;分解/合成支持按具体装备 id 批量提交;本页无英雄上下文,穿卸仍走英雄详情。
   private openLobbyForgePanel(): void {
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyForgePanelOpen = true;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     // 清掉英雄详情装备弹窗残留状态,锻造页从干净状态进入(默认强化页签)。
     this.lobbyHeroEquipDialogOpen = false;
     this.lobbyHeroEquipSelectedSlot = null;
@@ -1833,18 +1803,8 @@ export class LootChainGameRoot extends Component {
     if (!reuseExistingBattleState) {
       this.lobbyBattleFlow.prepare(this.selectedLobbyStageCode);
     }
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyBattlePreviewPanelOpen = true;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.removePlayerProfileDialog();
     this.removeLobbyAdventurePanel();
     this.removeLobbyBagPanel();
@@ -1969,18 +1929,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyCodexPanel(): void {
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyCodexPanelOpen = true;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'codex';
     this.renderCurrentView();
     void this.loadLobbyCodex();
@@ -2015,18 +1965,8 @@ export class LootChainGameRoot extends Component {
     }
     // 编队入口也重复校验 unlock，防止未来 UI 误把锁定关卡传进来。
     this.selectedLobbyStageCode = resolvedStageCode;
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyFormationPanelOpen = true;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'formation';
     this.renderCurrentView();
     void this.loadLobbyHeroRoster();
@@ -2067,18 +2007,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyHeroRosterPanel(): void {
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyHeroRosterPanelOpen = true;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'heroes';
     this.renderCurrentView();
     void this.loadLobbyHeroRoster();
@@ -3075,19 +3005,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyDailyDungeonPanel(): void {
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyDailyDungeonPanelOpen = true;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'dailyDungeon';
     this.renderCurrentView();
     void this.loadLobbyDailyDungeonSummary(true);
@@ -3142,36 +3061,15 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyNoticePanel(): void {
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyNoticePanelOpen = true;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyProfileOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'notice';
     this.renderCurrentView();
     void this.loadLobbyNotices();
   }
 
   private openLobbyGachaScene(): void {
-    this.lobbyProfileOpen = false;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
+    this.closeAllLobbyScenePanelFlags();
     this.gachaResultMode = null;
     this.pendingGachaDraw = null;
     this.gachaSummonRarity = null;
@@ -3657,18 +3555,8 @@ export class LootChainGameRoot extends Component {
     if (this.lobbySettingsPanelOpen && this.currentView === 'settings') {
       return;
     }
+    this.closeAllLobbyScenePanelFlags();
     this.lobbySettingsPanelOpen = true;
-    this.lobbyProfileOpen = false;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
     this.currentView = 'settings';
     this.renderCurrentView();
   }
@@ -3711,21 +3599,12 @@ export class LootChainGameRoot extends Component {
   private openLobbyPlaceholderDialog(title: string, detail?: string): void {
     const safeTitle = this.trimText(title || '大厅入口');
     const safeDetail = this.trimText(detail || '当前阶段仅开放登录、大厅只读展示和玩家资料查看。该入口暂不连接玩法或经济写接口。');
+    // 先统一清面板标志,再立占位弹窗(closeAll 会把 placeholder 置空,顺序不能反)。
+    this.closeAllLobbyScenePanelFlags();
     this.lobbyPlaceholderDialog = {
       title: safeTitle,
       detail: safeDetail,
     };
-    this.lobbyProfileOpen = false;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbySettingsPanelOpen = false;
     this.setStatus(`${safeTitle} 暂未开放。`);
     this.currentView = 'placeholder';
     this.renderCurrentView();
@@ -4217,18 +4096,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyNoticeLoader.resetForLogin();
     this.selectedLobbyStageCode = null;
     this.selectedLobbyFormationHeroIds = [];
-    this.lobbyProfileOpen = false;
-    this.lobbyAdventurePanelOpen = false;
-    this.lobbyBagPanelOpen = false;
-    this.lobbyForgePanelOpen = false;
-    this.lobbyBattlePreviewPanelOpen = false;
-    this.lobbyCodexPanelOpen = false;
-    this.lobbyFormationPanelOpen = false;
-    this.lobbyHeroDetailHeroId = null;
-    this.lobbyHeroRosterPanelOpen = false;
-    this.lobbyNoticePanelOpen = false;
-    this.lobbySettingsPanelOpen = false;
-    this.lobbyPlaceholderDialog = null;
+    this.closeAllLobbyScenePanelFlags();
     this.gachaResultMode = null;
     this.pendingGachaDraw = null;
     this.gachaSummonRarity = null;
