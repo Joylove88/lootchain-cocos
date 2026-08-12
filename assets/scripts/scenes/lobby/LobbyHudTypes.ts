@@ -168,7 +168,8 @@ export const LOBBY_C1812_RESOURCE_ICON_ASSETS: Record<LobbyResourceItem['key'], 
   stamina: { path: 'ui/bag/ai/icon_stamina/spriteFrame', aspect: 1 },
   coin: { path: 'ui/bag/ai/icon_gold/spriteFrame', aspect: 1 },
   ruby: { path: 'ui/bag/ai/icon_diamond/spriteFrame', aspect: 1 },
-  crystal: { path: COMMON_C1812_ICON_LOCK_ASSET, aspect: 56 / 66 },
+  // 圣晶(P金-1c 转正):暂用宝石图标,正式圣晶图标待出(遗留项)。
+  crystal: { path: 'ui/common/ai/ic_diamond_gem/spriteFrame', aspect: 1 },
 };
 
 export function rgba(red: number, green: number, blue: number, alpha = 255): Color {

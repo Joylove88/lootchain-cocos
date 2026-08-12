@@ -25,10 +25,62 @@ export interface DailyDungeonThemeVO {
   tiers: DailyDungeonTierVO[];
 }
 
+/** 圣晶矿脉状态(P金-1a):旧服务端无此字段时为 null。 */
+export interface CrystalMineVO {
+  unlocked: boolean;
+  dailyBudgetTotal: number;
+  dailyUsedTotal: number;
+  myTodayDrop: number;
+  myDailyCap: number;
+}
+
 export interface DailyDungeonSummaryVO {
   todayDayOfWeek: number;
   staminaCost: number;
   themes: DailyDungeonThemeVO[];
+  crystalMine: CrystalMineVO | null;
+}
+
+// ── 圣晶输出周榜(P金-1b) ──
+
+export interface CrystalRankEntryVO {
+  rank: number;
+  userId: number;
+  displayName: string;
+  score: number;
+}
+
+export interface CrystalRankTierVO {
+  rankFrom: number;
+  rankTo: number;
+  crystalAmount: number;
+  rewardsDesc: string;
+}
+
+export interface CrystalRankLastWeekVO {
+  weekKey: string;
+  myRank: number;
+  myScore: number;
+  crystalAmount: number;
+  rewardsDesc: string;
+}
+
+export interface CrystalRankSummaryVO {
+  weekKey: string;
+  secondsToWeekEnd: number;
+  myTodayScore: number;
+  myWeekScore: number;
+  myRank: number;
+  topList: CrystalRankEntryVO[];
+  rewardTiers: CrystalRankTierVO[];
+  lastWeek: CrystalRankLastWeekVO | null;
+}
+
+export interface LobbyCrystalRankState {
+  loading: boolean;
+  error: string;
+  summary: CrystalRankSummaryVO | null;
+  version: number;
 }
 
 export interface LobbyDailyDungeonPanelState {

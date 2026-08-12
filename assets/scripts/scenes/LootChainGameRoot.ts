@@ -271,6 +271,9 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyDailyDungeonPanelRenderer = new LobbyDailyDungeonPanelRenderer(this as unknown as LobbyDailyDungeonPanelHost);
   private lobbyDailyDungeonState: LobbyDailyDungeonPanelState = { loading: false, error: '', summary: null, version: 0 };
   private lobbyDailyDungeonTicket = 0;
+  // 圣晶输出周榜(P金-1c):面板内弹窗按需拉取。
+  private lobbyCrystalRankState: import('../types/DailyDungeonTypes').LobbyCrystalRankState = { loading: false, error: '', summary: null, version: 0 };
+  private lobbyCrystalRankTicket = 0;
   private readonly lobbyProfileDialogRenderer = new LobbyProfileDialogRenderer(this as unknown as LobbyProfileDialogHost);
   private readonly lobbyProfileLoader = new LobbyProfileLoader(this.api.profile, AppConfig.defaultDevUserId, this as unknown as LobbyProfileLoaderHost);
   private readonly lobbySettingsPanelRenderer = new LobbySettingsPanelRenderer(this as unknown as LobbySettingsPanelHost);
@@ -3001,6 +3004,40 @@ export class LootChainGameRoot extends Component {
 
   private refreshLobbyDailyDungeonPanel(): void {
     // 难度选中态存在渲染器实例里(不进 state),整页重绘即可刷新行高亮与卡底按钮。
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private currentLobbyCrystalRankState(): import('../types/DailyDungeonTypes').LobbyCrystalRankState {
+    return this.lobbyCrystalRankState;
+  }
+
+  private loadLobbyCrystalRankSummary(force = false): void {
+    void this.doLoadLobbyCrystalRankSummary(force);
+  }
+
+  private async doLoadLobbyCrystalRankSummary(force: boolean): Promise<void> {
+    if (this.lobbyCrystalRankState.loading) {
+      return;
+    }
+    if (!force && this.lobbyCrystalRankState.summary) {
+      return;
+    }
+    const ticket = ++this.lobbyCrystalRankTicket;
+    this.lobbyCrystalRankState = { ...this.lobbyCrystalRankState, loading: true, error: '', version: this.lobbyCrystalRankState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    try {
+      const summary = await this.api.battle.crystalRankSummary();
+      if (ticket !== this.lobbyCrystalRankTicket) {
+        return;
+      }
+      this.lobbyCrystalRankState = { loading: false, error: '', summary, version: this.lobbyCrystalRankState.version + 1 };
+    } catch (error) {
+      if (ticket !== this.lobbyCrystalRankTicket) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyCrystalRankState = { ...this.lobbyCrystalRankState, loading: false, error: message, version: this.lobbyCrystalRankState.version + 1 };
+    }
     this.renderCurrentLobbyScenePage();
   }
 

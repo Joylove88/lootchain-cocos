@@ -28,6 +28,8 @@ export interface PlayerLobbyProfileVO {
   maxStamina: number;
   gold?: DecimalValue | null;
   diamond?: DecimalValue | null;
+  /** 圣晶(打金结算积分,docs/27 P金-1a)。 */
+  sacredCrystal?: DecimalValue | null;
   combatPower: number;
   status?: number | null;
   accountStatus: string;

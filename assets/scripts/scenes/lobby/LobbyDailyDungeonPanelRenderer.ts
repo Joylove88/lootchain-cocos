@@ -14,7 +14,14 @@ import {
   Vec3,
 } from 'cc';
 import type { BagItemEntryVO, LobbyBagPanelState } from '../../types/BagTypes';
-import type { DailyDungeonRewardVO, DailyDungeonThemeVO, DailyDungeonTierVO, LobbyDailyDungeonPanelState } from '../../types/DailyDungeonTypes';
+import type {
+  CrystalMineVO,
+  DailyDungeonRewardVO,
+  DailyDungeonThemeVO,
+  DailyDungeonTierVO,
+  LobbyCrystalRankState,
+  LobbyDailyDungeonPanelState,
+} from '../../types/DailyDungeonTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
@@ -33,6 +40,9 @@ export interface LobbyDailyDungeonPanelHost {
   refreshLobbyDailyDungeonPanel(): void;
   /** 奖励详情弹框读背包配置(useDesc/稀有度/已拥有);未加载时降级为客户端兜底文案。 */
   currentLobbyBagState?(): LobbyBagPanelState;
+  /** 圣晶输出周榜(P金-1c):弹窗按需拉取。 */
+  currentLobbyCrystalRankState?(): LobbyCrystalRankState;
+  loadLobbyCrystalRankSummary?(force?: boolean): void;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -94,6 +104,8 @@ export class LobbyDailyDungeonPanelRenderer {
   private panelNode: Node | null = null;
   private rewardTooltipNode: Node | null = null;
   private rewardTooltipSticky = false;
+  /** 输出榜弹窗开关(实例态,整页重绘保留)。 */
+  private rankPopupOpen = false;
 
   constructor(private readonly host: LobbyDailyDungeonPanelHost) {}
 
@@ -143,7 +155,11 @@ export class LobbyDailyDungeonPanelRenderer {
       this.renderRetryButton(panel, scale);
     } else if (state.summary) {
       this.renderThemeCards(panel, panelWidth, panelHeight, scale, state);
-      this.renderFooterBar(panel, panelWidth, panelHeight, scale);
+      this.renderFooterBar(panel, panelWidth, panelHeight, scale, state.summary.crystalMine);
+      this.renderRankEntryButton(panel, panelWidth, panelHeight, scale);
+      if (this.rankPopupOpen) {
+        this.renderCrystalRankPopup(panel, panelWidth, panelHeight, scale);
+      }
     }
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本');
   }
@@ -647,8 +663,8 @@ export class LobbyDailyDungeonPanelRenderer {
     this.host.applyImageButtonFeedback(block, 1.01, 0.99);
   }
 
-  // 底部信息条:素材横条+感叹号+提示文案(参考图;奖励预览入口按需求移除)。
-  private renderFooterBar(parent: Node, width: number, height: number, scale: number): void {
+  // 底部信息条:素材横条+感叹号;圣晶矿脉数据就位后展示矿脉余量,否则回落原提示文案。
+  private renderFooterBar(parent: Node, width: number, height: number, scale: number, mine: CrystalMineVO | null): void {
     const barWidth = Math.min(width * 0.6, 760 * scale);
     const barHeight = barWidth * (133 / 1227);
     const bar = this.host.addChildPlainNode(parent, 'LobbyDailyFooterBar', 0, -height / 2 + 36 * scale, barWidth, barHeight);
@@ -660,17 +676,169 @@ export class LobbyDailyDungeonPanelRenderer {
     }
     const iconSize = barHeight * 0.5;
     this.host.addSprite('LobbyDailyFooterIcon', DAILY_IC_NOTICE_ASSET, -barWidth / 2 + iconSize / 2 + barWidth * 0.06, 0, iconSize * (87 / 83), iconSize, bar);
+    // 矿脉文案(P金-1c,docs/27):余量=全服分池预算合计-已产出;未解锁提示门槛。
+    let footerText = '限时副本奖励丰厚，每日轮换不同主题，挑战更高难度可获得更稀有奖励！';
+    let footerColor = rgba(224, 202, 158, 240);
+    if (mine) {
+      if (!mine.unlocked) {
+        footerText = '圣晶矿脉:通关 MAIN_3_1 后,副本胜利有几率掉落圣晶(打金结算积分)。';
+        footerColor = rgba(196, 182, 158, 235);
+      } else {
+        const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);
+        footerText = `今日矿脉余量 ${remain}/${mine.dailyBudgetTotal} · 我的圣晶掉落 ${mine.myTodayDrop}/${mine.myDailyCap}`;
+        footerColor = rgba(186, 226, 255, 245);
+      }
+    }
     const text = this.host.addChildLabel(
       bar,
       'LobbyDailyFooterText',
-      '限时副本奖励丰厚，每日轮换不同主题，挑战更高难度可获得更稀有奖励！',
+      footerText,
       iconSize * 0.5,
       0,
       15 * scale,
-      rgba(224, 202, 158, 240),
+      footerColor,
       new Size(barWidth * 0.8, 22 * scale),
     );
     text.overflow = Label.Overflow.SHRINK;
+  }
+
+  // 输出榜入口按钮(P金-1c):右上货币胶囊下方。
+  private renderRankEntryButton(parent: Node, width: number, height: number, scale: number): void {
+    const buttonWidth = 120 * scale;
+    const buttonHeight = buttonWidth * (211 / 740) * 1.1;
+    const button = this.host.addChildPlainNode(parent, 'LobbyDailyRankButton', width / 2 - 110 * scale, height / 2 - 82 * scale, buttonWidth, buttonHeight);
+    if (!this.host.addSprite('LobbyDailyRankButtonBg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, buttonWidth, buttonHeight, button)) {
+      const g = button.addComponent(Graphics);
+      g.fillColor = rgba(122, 32, 26, 235);
+      g.roundRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, 5 * scale);
+      g.fill();
+    }
+    const label = this.host.addChildLabel(button, 'LobbyDailyRankButtonLabel', '输出榜', 0, 0, 15 * scale, rgba(255, 240, 205, 255), new Size(buttonWidth - 16 * scale, 20 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    button.addComponent(Button);
+    button.on(Button.EventType.CLICK, () => {
+      this.rankPopupOpen = true;
+      this.host.loadLobbyCrystalRankSummary?.();
+      this.host.refreshLobbyDailyDungeonPanel();
+    }, this);
+    this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+  }
+
+  // 输出周榜弹窗(P金-1c,docs/27):我的分数/排名+榜单前列+阶梯表+上周结果。
+  private renderCrystalRankPopup(parent: Node, panelWidth: number, panelHeight: number, scale: number): void {
+    const overlay = this.host.addChildPlainNode(parent, 'LobbyDailyRankOverlay', 0, 0, panelWidth * 2, panelHeight * 2);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(0, 0, 0, 165);
+    og.rect(-panelWidth, -panelHeight, panelWidth * 2, panelHeight * 2);
+    og.fill();
+    overlay.addComponent(Button);
+    overlay.on(Button.EventType.CLICK, () => {
+      this.rankPopupOpen = false;
+      this.host.refreshLobbyDailyDungeonPanel();
+    }, this);
+
+    const w = Math.min(560 * scale, panelWidth * 0.66);
+    const h = Math.min(520 * scale, panelHeight * 0.92);
+    const card = this.host.addChildPlainNode(overlay, 'LobbyDailyRankCard', 0, 0, w, h);
+    card.addComponent(BlockInputEvents);
+    const g = card.addComponent(Graphics);
+    g.fillColor = rgba(11, 9, 10, 250);
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 235);
+    g.lineWidth = 2 * scale;
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.stroke();
+
+    const rankState = this.host.currentLobbyCrystalRankState?.();
+    const summary = rankState?.summary ?? null;
+    const title = this.host.addChildLabel(card, 'RankTitle', summary ? `输出周榜 · ${summary.weekKey}` : '输出周榜', 0, h / 2 - 30 * scale, 21 * scale, rgba(244, 220, 166, 255), new Size(w - 60 * scale, 28 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+
+    if (!rankState || rankState.loading) {
+      const hint = this.host.addChildLabel(card, 'RankLoading', '正在读取周榜…', 0, 0, 16 * scale, rgba(214, 196, 156, 235), new Size(w - 80 * scale, 24 * scale));
+      hint.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    if (rankState.error && !summary) {
+      const hint = this.host.addChildLabel(card, 'RankError', `读取失败：${rankState.error}`, 0, 0, 15 * scale, rgba(255, 150, 130, 235), new Size(w - 80 * scale, 40 * scale));
+      hint.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    if (!summary) {
+      return;
+    }
+
+    const left = -w / 2 + 30 * scale;
+    const lineWidth = w - 60 * scale;
+    const days = Math.floor(summary.secondsToWeekEnd / 86400);
+    const hours = Math.floor((summary.secondsToWeekEnd % 86400) / 3600);
+    const sub = this.host.addChildLabel(card, 'RankSub', `周一 0 点结算 · 距结算 ${days} 天 ${hours} 小时`, 0, h / 2 - 56 * scale, 13 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 18 * scale));
+    sub.overflow = Label.Overflow.SHRINK;
+    const mineLine = this.host.addChildLabel(
+      card,
+      'RankMine',
+      `我的：今日 ${summary.myTodayScore} · 本周 ${summary.myWeekScore} · 排名 ${summary.myRank > 0 ? `第${summary.myRank}名` : '未上榜'}`,
+      left,
+      h / 2 - 82 * scale,
+      15 * scale,
+      rgba(250, 226, 160, 250),
+      new Size(lineWidth, 20 * scale),
+      HorizontalTextAlignment.LEFT,
+    );
+    mineLine.overflow = Label.Overflow.SHRINK;
+
+    // 榜单前列(前 8):我的行金色高亮。
+    let cursor = h / 2 - 110 * scale;
+    const topRows = summary.topList.slice(0, 8);
+    if (topRows.length === 0) {
+      const empty = this.host.addChildLabel(card, 'RankEmpty', '本周暂无人上榜——打一场难度Ⅲ抢头名!', left, cursor, 14 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 20 * scale), HorizontalTextAlignment.LEFT);
+      empty.overflow = Label.Overflow.SHRINK;
+      cursor -= 26 * scale;
+    }
+    topRows.forEach((entry, index) => {
+      const mineRow = summary.myRank === entry.rank;
+      const rowColor = mineRow ? rgba(255, 226, 144, 255) : rgba(224, 210, 182, 240);
+      const row = this.host.addChildLabel(card, `RankRow_${index}`, `${entry.rank}. ${entry.displayName}`, left, cursor, 14 * scale, rowColor, new Size(lineWidth * 0.62, 18 * scale), HorizontalTextAlignment.LEFT);
+      row.overflow = Label.Overflow.SHRINK;
+      const scoreLabel = this.host.addChildLabel(card, `RankRowScore_${index}`, `${entry.score}`, left + lineWidth, cursor, 14 * scale, rowColor, new Size(lineWidth * 0.34, 18 * scale), HorizontalTextAlignment.RIGHT);
+      scoreLabel.overflow = Label.Overflow.SHRINK;
+      cursor -= 22 * scale;
+    });
+
+    // 阶梯奖励表。
+    cursor -= 8 * scale;
+    const tiersTitle = this.host.addChildLabel(card, 'RankTiersTitle', '周榜阶梯奖励', left, cursor, 14 * scale, rgba(238, 210, 148, 250), new Size(lineWidth, 18 * scale), HorizontalTextAlignment.LEFT);
+    tiersTitle.overflow = Label.Overflow.SHRINK;
+    cursor -= 22 * scale;
+    summary.rewardTiers.slice(0, 6).forEach((tier, index) => {
+      const rangeText = tier.rankFrom === tier.rankTo ? `第${tier.rankFrom}名` : `第${tier.rankFrom}~${tier.rankTo}名`;
+      const tierLine = this.host.addChildLabel(
+        card,
+        `RankTier_${index}`,
+        `${rangeText}：圣晶${tier.crystalAmount}${tier.rewardsDesc ? ` + ${tier.rewardsDesc}` : ''}`,
+        left,
+        cursor,
+        12.5 * scale,
+        rgba(198, 184, 152, 235),
+        new Size(lineWidth, 16 * scale),
+        HorizontalTextAlignment.LEFT,
+      );
+      tierLine.overflow = Label.Overflow.SHRINK;
+      cursor -= 19 * scale;
+    });
+
+    // 上周结果。
+    cursor -= 6 * scale;
+    const lastWeekText = summary.lastWeek
+      ? `上周(${summary.lastWeek.weekKey})第${summary.lastWeek.myRank}名：圣晶${summary.lastWeek.crystalAmount}${summary.lastWeek.rewardsDesc ? ` + ${summary.lastWeek.rewardsDesc}` : ''},已发放。`
+      : '上周未上榜。';
+    const lastWeekLine = this.host.addChildLabel(card, 'RankLastWeek', lastWeekText, left, cursor, 13 * scale, rgba(168, 216, 168, 240), new Size(lineWidth, 34 * scale), HorizontalTextAlignment.LEFT);
+    lastWeekLine.overflow = Label.Overflow.SHRINK;
+
+    const closeHint = this.host.addChildLabel(card, 'RankCloseHint', '点击空白处关闭', 0, -h / 2 + 20 * scale, 12 * scale, rgba(150, 140, 122, 200), new Size(lineWidth, 16 * scale));
+    closeHint.overflow = Label.Overflow.SHRINK;
   }
 
   private renderRetryButton(parent: Node, scale: number): void {

@@ -14,7 +14,17 @@ import type {
   PlayerBattleStartDTO,
   PlayerBattleStartVO,
 } from '../types/BattleTypes';
-import type { DailyDungeonRewardVO, DailyDungeonSummaryVO, DailyDungeonThemeVO, DailyDungeonTierVO } from '../types/DailyDungeonTypes';
+import type {
+  CrystalMineVO,
+  CrystalRankEntryVO,
+  CrystalRankLastWeekVO,
+  CrystalRankSummaryVO,
+  CrystalRankTierVO,
+  DailyDungeonRewardVO,
+  DailyDungeonSummaryVO,
+  DailyDungeonThemeVO,
+  DailyDungeonTierVO,
+} from '../types/DailyDungeonTypes';
 import {
   isRecord,
   readArray,
@@ -61,6 +71,59 @@ export class BattleApi {
   dailyDungeonSummary(): Promise<DailyDungeonSummaryVO> {
     return this.http.get<unknown>('/api/player/daily-dungeon/summary').then(validateDailyDungeonSummary);
   }
+
+  /** 圣晶输出周榜摘要(P金-1b):只读;计分由服务端结算自动记录。 */
+  crystalRankSummary(): Promise<CrystalRankSummaryVO> {
+    return this.http.get<unknown>('/api/player/crystal-rank/summary').then(validateCrystalRankSummary);
+  }
+}
+
+function validateCrystalRankSummary(data: unknown): CrystalRankSummaryVO {
+  if (!isRecord(data)) {
+    throw new Error('圣晶周榜响应格式错误：data 不是对象');
+  }
+  const topList = readArray(data, 'topList', 100).map((item): CrystalRankEntryVO => {
+    if (!isRecord(item)) {
+      throw new Error('圣晶周榜响应格式错误：榜单条目不是对象');
+    }
+    return {
+      rank: readInteger(item.rank, 0, 100000),
+      userId: readInteger(item.userId, 0, Number.MAX_SAFE_INTEGER),
+      displayName: readText(item, 'displayName', 32, `Player${readInteger(item.userId, 0, Number.MAX_SAFE_INTEGER)}`),
+      score: readInteger(item.score, 0, Number.MAX_SAFE_INTEGER),
+    };
+  });
+  const rewardTiers = readArray(data, 'rewardTiers', 16).map((item): CrystalRankTierVO => {
+    if (!isRecord(item)) {
+      throw new Error('圣晶周榜响应格式错误：阶梯档不是对象');
+    }
+    return {
+      rankFrom: readInteger(item.rankFrom, 0, 100000),
+      rankTo: readInteger(item.rankTo, 0, 100000),
+      crystalAmount: readInteger(item.crystalAmount, 0, 1_000_000),
+      rewardsDesc: readText(item, 'rewardsDesc', 200, ''),
+    };
+  });
+  const lastWeekRaw = data.lastWeek;
+  const lastWeek: CrystalRankLastWeekVO | null = isRecord(lastWeekRaw)
+    ? {
+        weekKey: readText(lastWeekRaw, 'weekKey', 16, ''),
+        myRank: readInteger(lastWeekRaw.myRank, 0, 100000),
+        myScore: readInteger(lastWeekRaw.myScore, 0, Number.MAX_SAFE_INTEGER),
+        crystalAmount: readInteger(lastWeekRaw.crystalAmount, 0, 1_000_000),
+        rewardsDesc: readText(lastWeekRaw, 'rewardsDesc', 200, ''),
+      }
+    : null;
+  return {
+    weekKey: readText(data, 'weekKey', 16, ''),
+    secondsToWeekEnd: readInteger(data.secondsToWeekEnd, 0, 8 * 24 * 3600),
+    myTodayScore: readInteger(data.myTodayScore, 0, Number.MAX_SAFE_INTEGER),
+    myWeekScore: readInteger(data.myWeekScore, 0, Number.MAX_SAFE_INTEGER),
+    myRank: readInteger(data.myRank, 0, 100000),
+    topList,
+    rewardTiers,
+    lastWeek,
+  };
 }
 
 // 每日材料副本(P7b):关卡码 DAILY_{THEME}_{TIER};结算模式 DAILY_DUNGEON,奖励限材料白名单。
@@ -88,7 +151,9 @@ function assertSafeDailyRewards(rewardItems: PlayerBattleRewardItemVO[]): void {
   for (const item of rewardItems) {
     const type = item.resourceType.toUpperCase();
     const code = item.resourceCode.toUpperCase();
-    const safe = (type === 'CURRENCY' && code === 'GOLD') || (type === 'ITEM' && DAILY_SAFE_ITEM_CODES.has(code));
+    // SACRED_CRYSTAL=圣晶掉落(P金-1a,docs/27),服务端三闸门管控。
+    const safe = (type === 'CURRENCY' && (code === 'GOLD' || code === 'SACRED_CRYSTAL'))
+      || (type === 'ITEM' && DAILY_SAFE_ITEM_CODES.has(code));
     if (!safe || item.amount <= 0) {
       throw new Error('每日副本结算响应奖励不在材料白名单内');
     }
@@ -104,6 +169,21 @@ function validateDailyDungeonSummary(data: unknown): DailyDungeonSummaryVO {
     todayDayOfWeek: readInteger(data.todayDayOfWeek, 0, 7),
     staminaCost: readInteger(data.staminaCost, 0, 999),
     themes,
+    crystalMine: normalizeCrystalMine(data.crystalMine),
+  };
+}
+
+// 圣晶矿脉(P金-1a):缺失(旧服务端)返回 null,面板隐藏矿脉条。
+function normalizeCrystalMine(value: unknown): CrystalMineVO | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    unlocked: value.unlocked === true,
+    dailyBudgetTotal: readInteger(value.dailyBudgetTotal, 0, 10_000_000),
+    dailyUsedTotal: readInteger(value.dailyUsedTotal, 0, 10_000_000),
+    myTodayDrop: readInteger(value.myTodayDrop, 0, 1_000_000),
+    myDailyCap: readInteger(value.myDailyCap, 0, 1_000_000),
   };
 }
 
@@ -357,7 +437,8 @@ function assertSafeMainlineRewards(stageCode: string, rewardItems: PlayerBattleR
   }
   const blockedTypes = new Set(['USDT', 'HERO', 'HERO_FRAGMENT']);
   const blockedCodes = new Set(['USDT', 'DIAMOND', 'BOUND_DIAMOND', 'STAMINA', 'EX_CORE_SHARD']);
-  const safePairs = new Set(['PLAYER_EXP:PLAYER_EXP', 'CURRENCY:GOLD', 'ITEM:LOW_ENHANCE_STONE', 'ITEM:HERO_EXP_BOOK']);
+  // CURRENCY:SACRED_CRYSTAL=爬塔里程碑一次性圣晶(P金-1a,docs/27,幂等 requestId=MS:层序)。
+  const safePairs = new Set(['PLAYER_EXP:PLAYER_EXP', 'CURRENCY:GOLD', 'CURRENCY:SACRED_CRYSTAL', 'ITEM:LOW_ENHANCE_STONE', 'ITEM:HERO_EXP_BOOK']);
   let hasPlayerExp = false;
   let hasGold = false;
   for (const item of rewardItems) {
