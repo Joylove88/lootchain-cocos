@@ -6364,7 +6364,9 @@ export class LobbyBattlePreviewPanelRenderer {
     const sideMargin = 44 * scale;
     const gapRatio = 0.26;
     const slotSize = Math.max(40 * scale, Math.min((rowCount === 1 ? 104 : 82) * scale, (overlayWidth - sideMargin * 2) / perRow / (1 + gapRatio)));
-    const slotGap = slotSize * gapRatio;
+    // 奖励行横向铺开到面板下半 ~60% 宽(避免几格挤中央、两侧大片空黑);间距撑到目标行宽但不超过 0.9 格避免过散。
+    const spreadGap = perRow > 1 ? (overlayWidth * 0.6 - perRow * slotSize) / (perRow - 1) : slotSize * gapRatio;
+    const slotGap = Math.max(slotSize * gapRatio, Math.min(spreadGap, slotSize * 0.9));
     const rowPitch = slotSize + 40 * scale; // 格 + 名称行 + 行距
     const firstRowY = rewardY + (rowCount - 1) * rowPitch / 2; // 整块以 rewardY 垂直居中
     rewards.forEach((reward, index) => {
@@ -6375,24 +6377,25 @@ export class LobbyBattlePreviewPanelRenderer {
       const x = -rowWidth / 2 + slotSize / 2 + col * (slotSize + slotGap);
       const y = firstRowY - row * rowPitch;
       const slot = this.host.addChildPlainNode(overlay, `LobbyBattleStage12RewardSlot_${index}`, x, y, slotSize + 26 * scale, slotSize + 24 * scale);
-      const ornate = this.host.addSprite(`LobbyBattleStage12RewardSlotOrnate_${index}`, BATTLE_C1812_REWARD_SLOT_ORNATE_ASSET, 0, 10 * scale, slotSize, slotSize, slot);
-      if (!ornate) {
-        const slotGraphics = slot.addComponent(Graphics);
-        slotGraphics.fillColor = rgba(25, 18, 13, 230);
-        slotGraphics.rect(-slotSize / 2, 10 * scale - slotSize / 2, slotSize, slotSize);
-        slotGraphics.fill();
-        slotGraphics.strokeColor = rgba(211, 157, 72, 180);
-        slotGraphics.stroke();
-      }
-      // 格底描边提亮:雕花底素材偏暗,金边让格子从框底里跳出来。
-      const slotFrame = slot.getComponent(Graphics) ?? slot.addComponent(Graphics);
-      slotFrame.strokeColor = rgba(211, 157, 72, 190);
-      slotFrame.lineWidth = Math.max(1, 1.4 * scale);
-      slotFrame.roundRect(-slotSize / 2, 10 * scale - slotSize / 2, slotSize, slotSize, 4 * scale);
-      slotFrame.stroke();
+      // 干净精致格:黑曜石底 + 外粗内细双层金边(原雕花竖版素材 256×338 被压成正方形会挤扁花纹+内窗小于图标致溢出,弃用)。
+      const slotY = 10 * scale;
+      const g = slot.addComponent(Graphics);
+      g.fillColor = rgba(16, 13, 11, 242);
+      g.roundRect(-slotSize / 2, slotY - slotSize / 2, slotSize, slotSize, 9 * scale);
+      g.fill();
+      g.strokeColor = rgba(201, 160, 92, 240);
+      g.lineWidth = Math.max(1.5, 2.4 * scale);
+      g.roundRect(-slotSize / 2, slotY - slotSize / 2, slotSize, slotSize, 9 * scale);
+      g.stroke();
+      const inset = 5 * scale;
+      g.strokeColor = rgba(122, 94, 48, 195);
+      g.lineWidth = Math.max(1, scale);
+      g.roundRect(-slotSize / 2 + inset, slotY - slotSize / 2 + inset, slotSize - inset * 2, slotSize - inset * 2, 6 * scale);
+      g.stroke();
       const iconAsset = resolveBagStyleItemIconAsset(reward.resourceCode, reward.resourceType);
       if (iconAsset) {
-        this.host.addSprite(`LobbyBattleStage12RewardSlotIcon_${index}`, iconAsset, 0, 10 * scale, slotSize - 20 * scale, slotSize - 20 * scale, slot);
+        const iconSize = slotSize * 0.76;
+        this.host.addSprite(`LobbyBattleStage12RewardSlotIcon_${index}`, iconAsset, 0, slotY, iconSize, iconSize, slot);
       }
       const amountLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotAmount', `×${reward.amount}`, slotSize / 2 - 18 * scale, 10 * scale - slotSize / 2 + 13 * scale, 16 * scale, rgba(255, 236, 176), new Size(slotSize * 0.7, 20 * scale), HorizontalTextAlignment.RIGHT);
       amountLabel.overflow = Label.Overflow.SHRINK;
