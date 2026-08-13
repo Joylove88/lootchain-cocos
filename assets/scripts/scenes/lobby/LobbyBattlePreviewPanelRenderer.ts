@@ -200,6 +200,8 @@ const BATTLE_ACTOR_FRONT_CHARGE_DISTANCE = 300;
 const BATTLE_ACTOR_CLASH_ATTACK_CYCLE_MS = 1500;
 // 战斗倒计时：90 秒上限，从首个战斗动作起倒数;数值推演提前打完则倒计时随 playback 冻结在剩余值。
 const BATTLE_COMBAT_COUNTDOWN_MS = 90_000;
+// 输出试炼「层数血条」:把 BOSS 巨血视觉切成 N 层,清空一层=×N 计数-1+换色。层数越多、单层越薄、翻动越快。可调。
+const TRIAL_BOSS_LAYERS = 60;
 const BATTLE_ACTOR_CLASH_IDLE_SWAY_X = 18;
 const BATTLE_ACTOR_CLASH_IDLE_SWAY_Y = 5;
 const BATTLE_ENABLE_FRONT_CLASH_CHARGE = false;
@@ -998,19 +1000,33 @@ export class LobbyBattlePreviewPanelRenderer {
     const ratio = hpState.enemyTotalHpRatio;
     const trial = isDailyTrialStageCode(snapshot.stageCode);
     if (trial) {
-      // 输出试炼:居中置顶、又厚又长的 BOSS 血条,Graphics 直画保证醒目(素材条太细看不清);
-      // 填充=剩余血(ratio),掉多少≈你的相对输出;名称+已击出% 居中压在条上。
+      // 输出试炼「层数血条」(2026-08-13,用户设计):BOSS 默认 ×999 层,当前层血条满→清空→换色→计数-1;
+      // 拼输出=清了多少层(清空一层=正常一管血)。比"单条已击出%"直观:血条掉=打伤害,层数=你的输出。
+      const bossUnit = hpState.units.get(snapshot.leadEnemy.unitKey);
+      const bossMaxHp = Math.max(1, bossUnit?.maxHp ?? 1);
+      const bossRatio = clamp(bossUnit?.hpRatio ?? 1, 0, 1);
+      const dealt = bossMaxHp * (1 - bossRatio);
+      const perLayer = bossMaxHp / TRIAL_BOSS_LAYERS; // BOSS 巨血分成 TRIAL_BOSS_LAYERS 层视觉
+      const layersCleared = Math.max(0, Math.floor(dealt / perLayer));
+      const layerRemain = perLayer > 0 ? clamp(1 - (dealt % perLayer) / perLayer, 0, 1) : 1;
+      const counter = Math.max(1, 999 - layersCleared);
+      const layerColors = [
+        rgba(206, 46, 42, 245), rgba(226, 122, 38, 245), rgba(210, 168, 44, 245),
+        rgba(96, 176, 72, 245), rgba(58, 150, 206, 245), rgba(150, 92, 208, 245),
+      ];
+      const barColor = layerColors[layersCleared % layerColors.length];
+
       const gw = Math.min(700 * scale, width * 0.6);
-      const gh = 32 * scale;
-      const gy = height / 2 - 52 * scale;
+      const gh = 30 * scale;
+      const gy = height / 2 - 92 * scale; // 下移,避免压住顶部副本名称
       const gauge = this.host.addChildPlainNode(parent, 'LobbyBattleBossGauge', 0, gy, gw, gh);
       const g = gauge.addComponent(Graphics);
       g.fillColor = rgba(9, 6, 7, 240);
       g.roundRect(-gw / 2, -gh / 2, gw, gh, gh / 2);
       g.fill();
-      const fw = Math.max(0, (gw - 8 * scale) * ratio);
+      const fw = Math.max(0, (gw - 8 * scale) * layerRemain);
       if (fw > 1) {
-        g.fillColor = rgba(206, 46, 42, 245);
+        g.fillColor = barColor;
         g.roundRect(-gw / 2 + 4 * scale, -gh / 2 + 4 * scale, fw, gh - 8 * scale, (gh - 8 * scale) / 2);
         g.fill();
       }
@@ -1018,10 +1034,15 @@ export class LobbyBattlePreviewPanelRenderer {
       g.lineWidth = Math.max(1.5, 2.4 * scale);
       g.roundRect(-gw / 2, -gh / 2, gw, gh, gh / 2);
       g.stroke();
-      const drainPct = Math.max(0, Math.min(100, Math.round((1 - ratio) * 100)));
-      const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', `${snapshot.leadEnemy.displayName} · 已击出 ${drainPct}%`, 0, 0, 15 * scale, rgba(255, 234, 174), new Size(gw - 24 * scale, 22 * scale));
+      // 名称压条左中;右端"×N"层数(默认999,每清一层-1),下方小字提示已破层数。
+      const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, -18 * scale, 0, 15 * scale, rgba(255, 234, 174), new Size(gw * 0.52, 22 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, true);
+      const mult = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeMult', `×${counter}`, gw / 2 - 52 * scale, 0, 18 * scale, rgba(255, 238, 156), new Size(96 * scale, 24 * scale), HorizontalTextAlignment.RIGHT);
+      mult.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(mult, scale, true);
+      const tip = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeTip', `已击破 ${layersCleared} 层`, 0, -gh / 2 - 12 * scale, 12 * scale, rgba(214, 196, 156, 220), new Size(gw, 16 * scale));
+      tip.overflow = Label.Overflow.SHRINK;
       return;
     }
     const gaugeWidth = Math.min(360 * scale, width * 0.36);
