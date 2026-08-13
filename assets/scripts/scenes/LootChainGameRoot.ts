@@ -274,6 +274,13 @@ export class LootChainGameRoot extends Component {
   // 圣晶输出周榜(P金-1c):面板内弹窗按需拉取。
   private lobbyCrystalRankState: import('../types/DailyDungeonTypes').LobbyCrystalRankState = { loading: false, error: '', summary: null, version: 0 };
   private lobbyCrystalRankTicket = 0;
+  // 圣晶熔炉(P金-2b):圣晶兑代币弹窗。表单态(链/地址/档位/自定义额)存 host,面板重建回种,避免输入丢失。
+  private lobbyTokenFurnaceState: import('../types/DailyDungeonTypes').LobbyTokenFurnaceState = {
+    open: false, loading: false, error: '', summary: null, version: 0,
+    bindOpen: false, bindChain: 'BSC', bindAddress: '',
+    selectedCrystal: null, customCrystal: '', submitting: false, actionMessage: '', actionError: false,
+  };
+  private lobbyTokenFurnaceTicket = 0;
   private readonly lobbyProfileDialogRenderer = new LobbyProfileDialogRenderer(this as unknown as LobbyProfileDialogHost);
   private readonly lobbyProfileLoader = new LobbyProfileLoader(this.api.profile, AppConfig.defaultDevUserId, this as unknown as LobbyProfileLoaderHost);
   private readonly lobbySettingsPanelRenderer = new LobbySettingsPanelRenderer(this as unknown as LobbySettingsPanelHost);
@@ -3037,6 +3044,128 @@ export class LootChainGameRoot extends Component {
       }
       const message = error instanceof Error ? error.message : String(error);
       this.lobbyCrystalRankState = { ...this.lobbyCrystalRankState, loading: false, error: message, version: this.lobbyCrystalRankState.version + 1 };
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  // ── 圣晶熔炉(P金-2b):圣晶兑代币弹窗 ──
+
+  private currentLobbyTokenFurnaceState(): import('../types/DailyDungeonTypes').LobbyTokenFurnaceState {
+    return this.lobbyTokenFurnaceState;
+  }
+
+  private openLobbyTokenFurnace(): void {
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, open: true, actionMessage: '', actionError: false };
+    this.loadLobbyTokenFurnaceSummary(true);
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private closeLobbyTokenFurnace(): void {
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, open: false, bindOpen: false };
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private setLobbyTokenFurnaceForm(patch: Partial<import('../types/DailyDungeonTypes').LobbyTokenFurnaceState>): void {
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, ...patch };
+    this.renderCurrentLobbyScenePage();
+  }
+
+  // 静默写入(不重绘):EditBox 输入中途若整页重建会丢焦点,故文本只在提交时读取。
+  private setLobbyTokenFurnaceBindAddress(text: string): void {
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, bindAddress: text };
+  }
+
+  private setLobbyTokenFurnaceCustomAmount(text: string): void {
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, customCrystal: text };
+  }
+
+  private loadLobbyTokenFurnaceSummary(force = false): void {
+    void this.doLoadLobbyTokenFurnaceSummary(force);
+  }
+
+  private async doLoadLobbyTokenFurnaceSummary(force: boolean): Promise<void> {
+    if (this.lobbyTokenFurnaceState.loading) {
+      return;
+    }
+    if (!force && this.lobbyTokenFurnaceState.summary) {
+      return;
+    }
+    const ticket = ++this.lobbyTokenFurnaceTicket;
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, loading: true, error: '', version: this.lobbyTokenFurnaceState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    try {
+      const summary = await this.api.token.exchangeSummary();
+      if (ticket !== this.lobbyTokenFurnaceTicket) {
+        return;
+      }
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, loading: false, error: '', summary, version: this.lobbyTokenFurnaceState.version + 1 };
+    } catch (error) {
+      if (ticket !== this.lobbyTokenFurnaceTicket) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, loading: false, error: message, version: this.lobbyTokenFurnaceState.version + 1 };
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private bindLobbyTokenWallet(chain: string, address: string): void {
+    void this.doBindLobbyTokenWallet(chain, address);
+  }
+
+  private async doBindLobbyTokenWallet(chain: string, address: string): Promise<void> {
+    if (this.lobbyTokenFurnaceState.submitting) {
+      return;
+    }
+    const addr = (address || '').trim();
+    if (!addr) {
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, actionMessage: '请输入钱包地址', actionError: true };
+      this.renderCurrentLobbyScenePage();
+      return;
+    }
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, submitting: true, actionMessage: '', actionError: false };
+    this.renderCurrentLobbyScenePage();
+    try {
+      await this.api.token.bindWallet(chain, addr);
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, submitting: false, bindOpen: false, actionMessage: '钱包绑定成功', actionError: false };
+      this.loadLobbyTokenFurnaceSummary(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, submitting: false, actionMessage: message, actionError: true };
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private submitLobbyTokenExchange(crystalAmount: number): void {
+    void this.doSubmitLobbyTokenExchange(crystalAmount);
+  }
+
+  private async doSubmitLobbyTokenExchange(crystalAmount: number): Promise<void> {
+    if (this.lobbyTokenFurnaceState.submitting) {
+      return;
+    }
+    const crystal = Math.floor(crystalAmount);
+    if (!Number.isFinite(crystal) || crystal <= 0) {
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, actionMessage: '请选择档位或输入兑换圣晶数量', actionError: true };
+      this.renderCurrentLobbyScenePage();
+      return;
+    }
+    this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, submitting: true, actionMessage: '', actionError: false };
+    this.renderCurrentLobbyScenePage();
+    try {
+      const order = await this.api.token.submitExchange(crystal);
+      this.lobbyTokenFurnaceState = {
+        ...this.lobbyTokenFurnaceState,
+        submitting: false,
+        selectedCrystal: null,
+        customCrystal: '',
+        actionMessage: `已提交:${order.crystalAmount} 圣晶 → ${order.tokenAmount} 代币(${order.statusLabel})`,
+        actionError: false,
+      };
+      this.loadLobbyTokenFurnaceSummary(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, submitting: false, actionMessage: message, actionError: true };
     }
     this.renderCurrentLobbyScenePage();
   }

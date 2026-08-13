@@ -89,3 +89,57 @@ export interface LobbyDailyDungeonPanelState {
   summary: DailyDungeonSummaryVO | null;
   version: number;
 }
+
+// ── 圣晶熔炉:圣晶兑代币(P金-2,链下账本;链上发放留 P金-3) ──
+
+export interface TokenWalletVO {
+  id: number | null;
+  chainType: string;
+  walletAddress: string;
+  bindStatus: number;
+}
+
+export interface TokenWithdrawOrderVO {
+  orderNo: string;
+  crystalAmount: number;
+  feeAmount: number;
+  tokenAmount: number;
+  chainType: string;
+  walletAddress: string;
+  status: number;
+  statusLabel: string;
+  chainTxHash: string | null;
+  createTime: string;
+}
+
+export interface TokenExchangeSummaryVO {
+  tokenSymbol: string;
+  crystalPerToken: number;
+  feeRate: number;
+  minCrystal: number;
+  sacredCrystal: number;
+  eligible: boolean;
+  ineligibleReason: string | null;
+  walletBound: boolean;
+  todayExchangedToken: number;
+  dailyTokenCap: number;
+  autoPassToken: number;
+  recentOrders: TokenWithdrawOrderVO[];
+}
+
+// 熔炉弹窗状态:表单值(链/地址/选中档位/自定义额)存于此,面板重建时回种,避免输入丢失。
+export interface LobbyTokenFurnaceState {
+  open: boolean;
+  loading: boolean;
+  error: string;
+  summary: TokenExchangeSummaryVO | null;
+  version: number;
+  bindOpen: boolean;
+  bindChain: 'TRON' | 'BSC';
+  bindAddress: string;
+  selectedCrystal: number | null;
+  customCrystal: string;
+  submitting: boolean;
+  actionMessage: string;
+  actionError: boolean;
+}

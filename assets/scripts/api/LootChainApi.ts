@@ -15,6 +15,7 @@ import { LobbyNoticeApi } from './LobbyNoticeApi';
 import { PlayerAuthApi } from './PlayerAuthApi';
 import { PlayerProfileApi } from './PlayerProfileApi';
 import { ProtagonistApi } from './ProtagonistApi';
+import { TokenApi } from './TokenApi';
 
 /**
  * 前端 API 聚合入口。
@@ -39,6 +40,7 @@ export class LootChainApi {
   readonly bag = new BagApi(this.http);
   readonly equipment = new EquipmentApi(this.http);
   readonly idle = new IdleApi(this.http);
+  readonly token = new TokenApi(this.http);
 
   setApiBaseUrl(baseUrl: string): void {
     this.http.setBaseUrl(baseUrl);

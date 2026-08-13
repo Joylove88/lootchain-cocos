@@ -2,6 +2,7 @@ import {
   BlockInputEvents,
   Button,
   Color,
+  EditBox,
   Graphics,
   HorizontalTextAlignment,
   Label,
@@ -21,6 +22,9 @@ import type {
   DailyDungeonTierVO,
   LobbyCrystalRankState,
   LobbyDailyDungeonPanelState,
+  LobbyTokenFurnaceState,
+  TokenExchangeSummaryVO,
+  TokenWithdrawOrderVO,
 } from '../../types/DailyDungeonTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
@@ -43,6 +47,20 @@ export interface LobbyDailyDungeonPanelHost {
   /** 圣晶输出周榜(P金-1c):弹窗按需拉取。 */
   currentLobbyCrystalRankState?(): LobbyCrystalRankState;
   loadLobbyCrystalRankSummary?(force?: boolean): void;
+  /** 圣晶熔炉(P金-2b):圣晶兑代币。弹窗开关+表单态存于 host,面板重建时回种。 */
+  currentLobbyTokenFurnaceState?(): LobbyTokenFurnaceState;
+  openLobbyTokenFurnace?(): void;
+  closeLobbyTokenFurnace?(): void;
+  loadLobbyTokenFurnaceSummary?(force?: boolean): void;
+  /** 表单态变更并整页重绘(切链/选档位/开关绑定表单)。 */
+  setLobbyTokenFurnaceForm?(patch: Partial<LobbyTokenFurnaceState>): void;
+  /** EditBox 静默写入(不重绘,避免输入中途面板重建丢焦点)。 */
+  setLobbyTokenFurnaceBindAddress?(text: string): void;
+  setLobbyTokenFurnaceCustomAmount?(text: string): void;
+  bindLobbyTokenWallet?(chain: string, address: string): void;
+  submitLobbyTokenExchange?(crystalAmount: number): void;
+  /** 创建 EditBox(需调用方 addChild 到父节点并定位);复用登录/创角同一工厂。 */
+  addEditBox?(initialText: string, x: number, y: number, width: number): EditBox;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -63,6 +81,14 @@ export interface LobbyDailyDungeonPanelHost {
 
 const WEEKDAY_TEXT = ['', '一', '二', '三', '四', '五', '六', '日'];
 const TIER_ROMAN = ['', 'Ⅰ', 'Ⅱ', 'Ⅲ'];
+
+// 数字去尾零显示:5.0→"5",0.15→"0.15"(代币/额度用小数,避免长尾)。
+function trimNum(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0';
+  }
+  return Number(value.toFixed(4)).toString();
+}
 
 // 2026-08-05 界面素材(ui/daily/ai,用户出图;原图备份于 素材原始备份/daily_20260805)。
 const DAILY_CARD_FRAME_NORMAL = 'ui/daily/ai/card_frame_normal/spriteFrame';   // 467×674
@@ -157,8 +183,12 @@ export class LobbyDailyDungeonPanelRenderer {
       this.renderThemeCards(panel, panelWidth, panelHeight, scale, state);
       this.renderFooterBar(panel, panelWidth, panelHeight, scale, state.summary.crystalMine);
       this.renderRankEntryButton(panel, panelWidth, panelHeight, scale);
+      this.renderFurnaceEntryButton(panel, panelWidth, panelHeight, scale);
       if (this.rankPopupOpen) {
         this.renderCrystalRankPopup(panel, panelWidth, panelHeight, scale);
+      }
+      if (this.host.currentLobbyTokenFurnaceState?.().open) {
+        this.renderTokenFurnacePopup(panel, panelWidth, panelHeight, scale);
       }
     }
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本');
@@ -839,6 +869,313 @@ export class LobbyDailyDungeonPanelRenderer {
 
     const closeHint = this.host.addChildLabel(card, 'RankCloseHint', '点击空白处关闭', 0, -h / 2 + 20 * scale, 12 * scale, rgba(150, 140, 122, 200), new Size(lineWidth, 16 * scale));
     closeHint.overflow = Label.Overflow.SHRINK;
+  }
+
+  // ── 圣晶熔炉(P金-2b):圣晶兑代币入口 + 弹窗(绑钱包/预设档位+自定义兑换/近期单) ──
+
+  private renderFurnaceEntryButton(parent: Node, width: number, height: number, scale: number): void {
+    const buttonWidth = 120 * scale;
+    const buttonHeight = buttonWidth * (211 / 740) * 1.1;
+    const button = this.host.addChildPlainNode(parent, 'LobbyDailyFurnaceButton', width / 2 - 240 * scale, height / 2 - 82 * scale, buttonWidth, buttonHeight);
+    if (!this.host.addSprite('LobbyDailyFurnaceButtonBg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, buttonWidth, buttonHeight, button)) {
+      const g = button.addComponent(Graphics);
+      g.fillColor = rgba(140, 78, 24, 235);
+      g.roundRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, 5 * scale);
+      g.fill();
+    }
+    const label = this.host.addChildLabel(button, 'LobbyDailyFurnaceButtonLabel', '圣晶熔炉', 0, 0, 15 * scale, rgba(255, 240, 205, 255), new Size(buttonWidth - 16 * scale, 20 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    button.addComponent(Button);
+    button.on(Button.EventType.CLICK, () => this.host.openLobbyTokenFurnace?.(), this);
+    this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+  }
+
+  private furnaceButton(
+    parent: Node,
+    name: string,
+    text: string,
+    x: number,
+    y: number,
+    w: number,
+    hgt: number,
+    scale: number,
+    active: boolean,
+    enabled: boolean,
+    onClick: () => void,
+  ): void {
+    const button = this.host.addChildPlainNode(parent, name, x, y, w, hgt);
+    const g = button.addComponent(Graphics);
+    g.fillColor = !enabled ? rgba(58, 54, 50, 235) : active ? rgba(150, 102, 34, 245) : rgba(40, 34, 28, 240);
+    g.roundRect(-w / 2, -hgt / 2, w, hgt, 6 * scale);
+    g.fill();
+    g.strokeColor = active ? rgba(255, 214, 120, 235) : rgba(150, 122, 78, 200);
+    g.lineWidth = Math.max(1, 1.4 * scale);
+    g.roundRect(-w / 2, -hgt / 2, w, hgt, 6 * scale);
+    g.stroke();
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 14 * scale, enabled ? rgba(255, 240, 205, 255) : rgba(150, 144, 134, 235), new Size(w - 12 * scale, hgt - 6 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    if (enabled) {
+      button.addComponent(Button);
+      button.on(Button.EventType.CLICK, onClick, this);
+      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+    }
+  }
+
+  // 工厂 EditBox 无背景,在暗底卡上不可见;在输入框位置垫一层圆角深底+金边,让输入区可辨识。
+  private furnaceInputBg(parent: Node, name: string, x: number, y: number, w: number, hgt: number, scale: number): void {
+    const bg = this.host.addChildPlainNode(parent, name, x, y, w, hgt);
+    const g = bg.addComponent(Graphics);
+    g.fillColor = rgba(6, 5, 5, 245);
+    g.roundRect(-w / 2, -hgt / 2, w, hgt, 5 * scale);
+    g.fill();
+    g.strokeColor = rgba(150, 122, 78, 210);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    g.roundRect(-w / 2, -hgt / 2, w, hgt, 5 * scale);
+    g.stroke();
+  }
+
+  private resolveFurnaceCrystal(state: LobbyTokenFurnaceState): number {
+    const custom = parseInt((state.customCrystal || '').trim(), 10);
+    if (Number.isFinite(custom) && custom > 0) {
+      return custom;
+    }
+    return state.selectedCrystal ?? 0;
+  }
+
+  private renderTokenFurnacePopup(parent: Node, panelWidth: number, panelHeight: number, scale: number): void {
+    const state = this.host.currentLobbyTokenFurnaceState?.();
+    if (!state) {
+      return;
+    }
+    const overlay = this.host.addChildPlainNode(parent, 'LobbyTokenFurnaceOverlay', 0, 0, panelWidth * 2, panelHeight * 2);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(0, 0, 0, 170);
+    og.rect(-panelWidth, -panelHeight, panelWidth * 2, panelHeight * 2);
+    og.fill();
+    overlay.addComponent(Button);
+    overlay.on(Button.EventType.CLICK, () => this.host.closeLobbyTokenFurnace?.(), this);
+
+    const w = Math.min(620 * scale, panelWidth * 0.74);
+    const h = Math.min(600 * scale, panelHeight * 0.96);
+    const card = this.host.addChildPlainNode(overlay, 'LobbyTokenFurnaceCard', 0, 0, w, h);
+    card.addComponent(BlockInputEvents);
+    card.addComponent(Button); // 吞掉卡内点击,避免冒泡到遮罩关闭
+    const g = card.addComponent(Graphics);
+    g.fillColor = rgba(11, 9, 10, 250);
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 235);
+    g.lineWidth = 2 * scale;
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.stroke();
+
+    const left = -w / 2 + 28 * scale;
+    const lineW = w - 56 * scale;
+    const title = this.host.addChildLabel(card, 'FurnaceTitle', '圣晶熔炉 · 圣晶兑代币', 0, h / 2 - 28 * scale, 20 * scale, rgba(244, 220, 166, 255), new Size(lineW, 26 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+
+    const summary = state.summary;
+    if ((state.loading && !summary)) {
+      const hint = this.host.addChildLabel(card, 'FurnaceLoading', '正在读取熔炉…', 0, 0, 16 * scale, rgba(214, 196, 156, 235), new Size(lineW, 24 * scale));
+      hint.overflow = Label.Overflow.SHRINK;
+      this.renderFurnaceCloseButton(card, w, h, scale);
+      return;
+    }
+    if (state.error && !summary) {
+      const hint = this.host.addChildLabel(card, 'FurnaceError', `读取失败：${state.error}`, 0, 0, 15 * scale, rgba(255, 150, 130, 235), new Size(lineW, 40 * scale));
+      hint.overflow = Label.Overflow.SHRINK;
+      this.renderFurnaceCloseButton(card, w, h, scale);
+      return;
+    }
+    if (!summary) {
+      this.renderFurnaceCloseButton(card, w, h, scale);
+      return;
+    }
+
+    const feePct = Math.round(summary.feeRate * 100);
+    let cursor = h / 2 - 58 * scale;
+    const ruleLine = this.host.addChildLabel(
+      card,
+      'FurnaceRule',
+      `我的圣晶 ${Math.floor(summary.sacredCrystal)} · ${summary.crystalPerToken}圣晶=1${summary.tokenSymbol} · 手续费${feePct}%`,
+      left,
+      cursor,
+      14 * scale,
+      rgba(250, 226, 160, 250),
+      new Size(lineW, 20 * scale),
+      HorizontalTextAlignment.LEFT,
+    );
+    ruleLine.overflow = Label.Overflow.SHRINK;
+    cursor -= 26 * scale;
+
+    // 门槛提示。
+    const gateText = summary.eligible ? '✓ 已满足兑换门槛(注册7天 + 通关MAIN_5_1 + 已绑钱包)' : `✗ ${summary.ineligibleReason ?? '暂不可兑换'}`;
+    const gate = this.host.addChildLabel(card, 'FurnaceGate', gateText, left, cursor, 13 * scale, summary.eligible ? rgba(168, 216, 168, 240) : rgba(255, 176, 132, 245), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+    gate.overflow = Label.Overflow.SHRINK;
+    cursor -= 26 * scale;
+
+    // 钱包行 + 绑定/换绑入口。
+    const walletText = summary.walletBound ? '钱包:已绑定' : '钱包:未绑定';
+    const walletLabel = this.host.addChildLabel(card, 'FurnaceWallet', walletText, left, cursor, 13.5 * scale, rgba(214, 196, 156, 235), new Size(lineW * 0.5, 18 * scale), HorizontalTextAlignment.LEFT);
+    walletLabel.overflow = Label.Overflow.SHRINK;
+    this.furnaceButton(card, 'FurnaceBindToggle', state.bindOpen ? '收起' : (summary.walletBound ? '换绑' : '去绑定'), w / 2 - 78 * scale, cursor, 96 * scale, 30 * scale, scale, state.bindOpen, true, () => {
+      this.host.setLobbyTokenFurnaceForm?.({ bindOpen: !state.bindOpen, actionMessage: '', actionError: false });
+    });
+    cursor -= 30 * scale;
+
+    if (state.bindOpen) {
+      cursor = this.renderFurnaceBindForm(card, state, left, lineW, cursor, scale);
+    } else {
+      cursor = this.renderFurnaceExchangeForm(card, summary, state, left, lineW, cursor, scale);
+    }
+
+    // 操作反馈。
+    if (state.actionMessage) {
+      const msg = this.host.addChildLabel(card, 'FurnaceActionMsg', state.actionMessage, left, cursor, 13 * scale, state.actionError ? rgba(255, 150, 130, 240) : rgba(168, 216, 168, 245), new Size(lineW, 32 * scale), HorizontalTextAlignment.LEFT);
+      msg.overflow = Label.Overflow.SHRINK;
+      msg.enableWrapText = true;
+      cursor -= 34 * scale;
+    }
+
+    // 近期兑换单。
+    cursor -= 4 * scale;
+    const ordersTitle = this.host.addChildLabel(card, 'FurnaceOrdersTitle', '近期兑换单', left, cursor, 13.5 * scale, rgba(238, 210, 148, 250), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+    ordersTitle.overflow = Label.Overflow.SHRINK;
+    cursor -= 20 * scale;
+    const orders = summary.recentOrders.slice(0, 4);
+    if (orders.length === 0) {
+      const empty = this.host.addChildLabel(card, 'FurnaceOrdersEmpty', '暂无兑换记录', left, cursor, 12.5 * scale, rgba(170, 158, 138, 230), new Size(lineW, 16 * scale), HorizontalTextAlignment.LEFT);
+      empty.overflow = Label.Overflow.SHRINK;
+    } else {
+      orders.forEach((order, index) => {
+        this.renderFurnaceOrderRow(card, order, summary.tokenSymbol, left, lineW, cursor, scale, index);
+        cursor -= 20 * scale;
+      });
+    }
+
+    this.renderFurnaceCloseButton(card, w, h, scale);
+  }
+
+  private renderFurnaceBindForm(card: Node, state: LobbyTokenFurnaceState, left: number, lineW: number, startY: number, scale: number): number {
+    let cursor = startY - 4 * scale;
+    const chainLabel = this.host.addChildLabel(card, 'FurnaceChainLabel', '选择公链', left, cursor, 13 * scale, rgba(214, 196, 156, 235), new Size(lineW * 0.4, 18 * scale), HorizontalTextAlignment.LEFT);
+    chainLabel.overflow = Label.Overflow.SHRINK;
+    this.furnaceButton(card, 'FurnaceChainBsc', 'BSC', left + lineW * 0.5, cursor, 78 * scale, 30 * scale, scale, state.bindChain === 'BSC', true, () => this.host.setLobbyTokenFurnaceForm?.({ bindChain: 'BSC' }));
+    this.furnaceButton(card, 'FurnaceChainTron', 'TRON', left + lineW * 0.5 + 90 * scale, cursor, 78 * scale, 30 * scale, scale, state.bindChain === 'TRON', true, () => this.host.setLobbyTokenFurnaceForm?.({ bindChain: 'TRON' }));
+    cursor -= 34 * scale;
+
+    // 地址输入框(EditBox 静默写入,避免每次输入触发面板重建丢焦点)。
+    this.furnaceInputBg(card, 'FurnaceBindAddrBg', left + lineW / 2, cursor, lineW, 32 * scale, scale);
+    const box = this.host.addEditBox?.(state.bindAddress, left + lineW / 2, cursor, lineW);
+    if (box) {
+      box.placeholder = state.bindChain === 'TRON' ? 'T 开头 34 位 TRON 地址' : '0x 开头 42 位 BSC 地址';
+      box.maxLength = 64;
+      card.addChild(box.node);
+      box.node.on(EditBox.EventType.TEXT_CHANGED, () => this.host.setLobbyTokenFurnaceBindAddress?.(box.string), this);
+    }
+    cursor -= 34 * scale;
+
+    this.furnaceButton(card, 'FurnaceBindConfirm', state.submitting ? '绑定中…' : '确认绑定', left + lineW / 2, cursor, 160 * scale, 34 * scale, scale, true, !state.submitting, () => {
+      const fresh = this.host.currentLobbyTokenFurnaceState?.();
+      if (fresh) {
+        this.host.bindLobbyTokenWallet?.(fresh.bindChain, fresh.bindAddress);
+      }
+    });
+    cursor -= 40 * scale;
+    return cursor;
+  }
+
+  private renderFurnaceExchangeForm(card: Node, summary: TokenExchangeSummaryVO, state: LobbyTokenFurnaceState, left: number, lineW: number, startY: number, scale: number): number {
+    let cursor = startY - 2 * scale;
+    if (!summary.eligible) {
+      const hint = this.host.addChildLabel(card, 'FurnaceExchangeLocked', '满足上方门槛后即可兑换。', left, cursor, 13 * scale, rgba(200, 186, 156, 235), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+      hint.overflow = Label.Overflow.SHRINK;
+      return cursor - 24 * scale;
+    }
+
+    // 预设档位(全部=按余额与日额度取整到 100)。
+    const balanceMax = Math.floor(summary.sacredCrystal / summary.crystalPerToken) * summary.crystalPerToken;
+    const capRemainToken = Math.max(0, summary.dailyTokenCap - summary.todayExchangedToken);
+    const capMaxCrystal = Math.floor(capRemainToken) * summary.crystalPerToken;
+    const allCrystal = Math.min(balanceMax, capMaxCrystal);
+    const presets: Array<{ label: string; value: number }> = [
+      { label: '500', value: 500 },
+      { label: '1000', value: 1000 },
+      { label: '2000', value: 2000 },
+      { label: '全部', value: allCrystal },
+    ];
+    const tierW = (lineW - 3 * 10 * scale) / 4;
+    presets.forEach((preset, index) => {
+      const enabled = preset.value >= summary.minCrystal && preset.value <= balanceMax;
+      const active = !state.customCrystal && state.selectedCrystal === preset.value && preset.value > 0;
+      this.furnaceButton(card, `FurnaceTier_${index}`, preset.label, left + tierW / 2 + index * (tierW + 10 * scale), cursor, tierW, 32 * scale, scale, active, enabled, () => {
+        this.host.setLobbyTokenFurnaceForm?.({ selectedCrystal: preset.value, customCrystal: '', actionMessage: '', actionError: false });
+      });
+    });
+    cursor -= 40 * scale;
+
+    // 自定义圣晶输入。
+    const custLabel = this.host.addChildLabel(card, 'FurnaceCustomLabel', '自定义', left, cursor, 13 * scale, rgba(214, 196, 156, 235), new Size(66 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    custLabel.overflow = Label.Overflow.SHRINK;
+    this.furnaceInputBg(card, 'FurnaceCustomBg', left + 70 * scale + (lineW - 70 * scale) / 2, cursor, lineW - 70 * scale, 32 * scale, scale);
+    const box = this.host.addEditBox?.(state.customCrystal, left + 70 * scale + (lineW - 70 * scale) / 2, cursor, lineW - 70 * scale);
+    if (box) {
+      box.placeholder = `圣晶数量(≥${summary.minCrystal},${summary.crystalPerToken}整数倍)`;
+      box.inputMode = EditBox.InputMode.NUMERIC;
+      box.maxLength = 12;
+      card.addChild(box.node);
+      box.node.on(EditBox.EventType.TEXT_CHANGED, () => this.host.setLobbyTokenFurnaceCustomAmount?.(box.string), this);
+    }
+    cursor -= 32 * scale;
+
+    // 预览:本次圣晶 → 代币 + 手续费。
+    const crystal = this.resolveFurnaceCrystal(state);
+    const token = crystal / summary.crystalPerToken;
+    const fee = Math.ceil(crystal * summary.feeRate);
+    const previewText = crystal > 0
+      ? `本次 ${crystal} 圣晶 → ${trimNum(token)} ${summary.tokenSymbol} · 手续费 ${fee} 圣晶 · 合计扣 ${crystal + fee}`
+      : '选择档位或输入圣晶数量';
+    const preview = this.host.addChildLabel(card, 'FurnacePreview', previewText, left, cursor, 13 * scale, rgba(250, 226, 160, 245), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+    preview.overflow = Label.Overflow.SHRINK;
+    cursor -= 22 * scale;
+
+    const capLine = this.host.addChildLabel(
+      card,
+      'FurnaceCap',
+      `今日已兑 ${trimNum(summary.todayExchangedToken)}/${trimNum(summary.dailyTokenCap)} ${summary.tokenSymbol} · ≤${trimNum(summary.autoPassToken)} 自动过审,超额人工审核`,
+      left,
+      cursor,
+      12 * scale,
+      rgba(190, 178, 150, 235),
+      new Size(lineW, 16 * scale),
+      HorizontalTextAlignment.LEFT,
+    );
+    capLine.overflow = Label.Overflow.SHRINK;
+    cursor -= 28 * scale;
+
+    this.furnaceButton(card, 'FurnaceExchangeConfirm', state.submitting ? '提交中…' : '确认兑换', left + lineW / 2, cursor, 180 * scale, 36 * scale, scale, true, !state.submitting, () => {
+      const fresh = this.host.currentLobbyTokenFurnaceState?.();
+      if (fresh) {
+        this.host.submitLobbyTokenExchange?.(this.resolveFurnaceCrystal(fresh));
+      }
+    });
+    cursor -= 42 * scale;
+    return cursor;
+  }
+
+  private renderFurnaceOrderRow(card: Node, order: TokenWithdrawOrderVO, symbol: string, left: number, lineW: number, y: number, scale: number, index: number): void {
+    const day = (order.createTime || '').replace('T', ' ').slice(5, 16);
+    const rowText = `${day} · ${order.crystalAmount}圣晶 → ${trimNum(order.tokenAmount)}${symbol}`;
+    const row = this.host.addChildLabel(card, `FurnaceOrder_${index}`, rowText, left, y, 12.5 * scale, rgba(216, 204, 178, 240), new Size(lineW * 0.66, 16 * scale), HorizontalTextAlignment.LEFT);
+    row.overflow = Label.Overflow.SHRINK;
+    const statusColor = order.status === 2 ? rgba(255, 168, 140, 240) : order.status === 3 ? rgba(168, 216, 168, 240) : rgba(238, 210, 148, 240);
+    const status = this.host.addChildLabel(card, `FurnaceOrderStatus_${index}`, order.statusLabel, left + lineW, y, 12.5 * scale, statusColor, new Size(lineW * 0.32, 16 * scale), HorizontalTextAlignment.RIGHT);
+    status.overflow = Label.Overflow.SHRINK;
+  }
+
+  private renderFurnaceCloseButton(card: Node, w: number, h: number, scale: number): void {
+    this.furnaceButton(card, 'FurnaceClose', '关闭', 0, -h / 2 + 26 * scale, 120 * scale, 34 * scale, scale, false, true, () => this.host.closeLobbyTokenFurnace?.());
   }
 
   private renderRetryButton(parent: Node, scale: number): void {
