@@ -6331,7 +6331,7 @@ export class LobbyBattlePreviewPanelRenderer {
     // 统一术语并用 +号;横幅下移到黑曜石面板顶(overlayHeight/2-118),避让顶部恶魔火纹章冠。
     const expLine = state.settlement?.rewardItems?.find((item) => item.resourceCode === 'PLAYER_EXP');
     if (expLine) {
-      const expLabel = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryExp', `${expLine.resourceName} +${expLine.amount}`, 0, overlayHeight / 2 - 118 * scale, 20 * scale, rgba(211, 232, 164), new Size(overlayWidth - 210 * scale, 24 * scale));
+      const expLabel = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryExp', `${expLine.resourceName} +${expLine.amount}`, 0, overlayHeight / 2 - 150 * scale, 21 * scale, rgba(214, 234, 168), new Size(overlayWidth - 210 * scale, 26 * scale));
       expLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(expLabel, scale, false);
     }
@@ -6341,10 +6341,21 @@ export class LobbyBattlePreviewPanelRenderer {
     const dailyDungeon = isDailyDungeonStageCode(snapshot.stageCode);
     const dailyCounts = dailyDungeon && state.settlement ? /今日 (\d+)\/(\d+) 次/.exec(state.settlement.message || '') : null;
     const dailyCanRetry = !!dailyCounts && Number(dailyCounts[1]) < Number(dailyCounts[2]);
-    // 奖励区:图标格加大+道具图标+名字/数量,材料产出必须一眼可读(每日副本的核心反馈)。
-    // C 方案 2026-08-12:奖励行下移到黑曜石面板垂直中心(冠下 ~118 到面板底的中点,约 -26),
-    // 消除原先奖励挤上半、下方大片空黑的失衡;名称标签在格下,略上抬留出其空间。
-    const rewardY = -26 * scale;
+    // 收益区重设计(2026-08-13):经验横幅下 → 细金分割线 → "获得奖励"小标 → 奖励格,建立清晰纵向层次。
+    if (rewards.length > 0) {
+      const divider = this.host.addChildPlainNode(overlay, 'LobbyBattleStage12VictoryDivider', 0, overlayHeight / 2 - 176 * scale, overlayWidth * 0.46, 3 * scale);
+      const dg = divider.addComponent(Graphics);
+      dg.strokeColor = rgba(206, 168, 96, 155);
+      dg.lineWidth = Math.max(1, 1.4 * scale);
+      dg.moveTo(-overlayWidth * 0.23, 0);
+      dg.lineTo(overlayWidth * 0.23, 0);
+      dg.stroke();
+      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, overlayHeight / 2 - 202 * scale, 16 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 20 * scale));
+      rewardTitle.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(rewardTitle, scale, false);
+    }
+    // 奖励区:图标格加大+道具图标+名字/数量。奖励块整体下移居中到"获得奖励"标下方的面板下半(消除原先挤上半、下方大片空黑的失衡)。
+    const rewardY = -84 * scale;
     // 首通奖励可达 7-8 种(金币+装备/宝石/材料/技能觉醒道具):>4 时折成两排全部展示,不再 slice(0,5) 截断——
     // 否则玩家看不到宝石/觉醒石/BOSS印记等真实到手的奖励,与"看不到本次奖励"的体验痛点同源。
     const rewardCount = Math.max(1, rewards.length);
@@ -6352,7 +6363,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const perRow = Math.ceil(rewardCount / rowCount);
     const sideMargin = 44 * scale;
     const gapRatio = 0.26;
-    const slotSize = Math.max(40 * scale, Math.min((rowCount === 1 ? 88 : 72) * scale, (overlayWidth - sideMargin * 2) / perRow / (1 + gapRatio)));
+    const slotSize = Math.max(40 * scale, Math.min((rowCount === 1 ? 104 : 82) * scale, (overlayWidth - sideMargin * 2) / perRow / (1 + gapRatio)));
     const slotGap = slotSize * gapRatio;
     const rowPitch = slotSize + 40 * scale; // 格 + 名称行 + 行距
     const firstRowY = rewardY + (rowCount - 1) * rowPitch / 2; // 整块以 rewardY 垂直居中
