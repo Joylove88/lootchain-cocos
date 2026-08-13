@@ -337,6 +337,8 @@ export class LobbyBattlePreviewPanelRenderer {
   private lastBattleSceneKey = '';
   private battleSceneRoot: Node | null = null;
   private battleFieldNode: Node | null = null;
+  // 输出试炼(难度Ⅲ):当前战斗是否试炼。用于隐藏巨型BOSS的头顶血条(改用顶部厚血条),每帧解析快照时刷新。
+  private battleIsTrial = false;
   private readonly battlePlaybackNodes = new Map<string, Node>();
   private readonly battleActorFramePositions = new Map<string, Vec3>();
   private readonly battleActorStickyCombatPositions = new Map<string, Vec3>();
@@ -412,6 +414,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const battleState = this.host.currentLobbyBattleState();
     const presentation = resolveLobbyBattlePresentationState(battleState);
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroState.heroes);
+    this.battleIsTrial = isDailyTrialStageCode(snapshot.stageCode);
     const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
     const scale = Math.max(0.62, Math.min(1, layout.uiScale));
     const frameWidth = Math.min(layout.stageWidth, Math.max(320 * scale, layout.width));
@@ -473,6 +476,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const presentation = resolveLobbyBattlePresentationState(battleState);
     const settlementView = resolveBattleSettlementPresentationView(battleState, presentation);
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroState.heroes);
+    this.battleIsTrial = isDailyTrialStageCode(snapshot.stageCode);
     const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
     const sceneKey = this.resolveBattleSceneKey(battleState);
     // 加载门期间进度 tick 高频到达:加载界面已挂载时只就地更新进度条,不整场重建。
@@ -991,16 +995,41 @@ export class LobbyBattlePreviewPanelRenderer {
     if (presentation.phase === 'ready' || presentation.phase === 'creatingSession' || width < 520 * scale) {
       return;
     }
-    // 输出试炼:BOSS 巨兽血条又厚又长、居中置顶,拼输出主视觉;常规副本(若启用)沿用右上小条。
+    const ratio = hpState.enemyTotalHpRatio;
     const trial = isDailyTrialStageCode(snapshot.stageCode);
-    const gaugeWidth = trial ? Math.min(600 * scale, width * 0.66) : Math.min(360 * scale, width * 0.36);
-    const gaugeHeight = trial ? 54 * scale : 38 * scale;
-    const gaugeX = trial ? 0 : width / 2 - gaugeWidth / 2 - 24 * scale;
-    const gaugeY = height / 2 - (trial ? 46 : 58) * scale;
+    if (trial) {
+      // 输出试炼:居中置顶、又厚又长的 BOSS 血条,Graphics 直画保证醒目(素材条太细看不清);
+      // 填充=剩余血(ratio),掉多少≈你的相对输出;名称+已击出% 居中压在条上。
+      const gw = Math.min(700 * scale, width * 0.6);
+      const gh = 32 * scale;
+      const gy = height / 2 - 52 * scale;
+      const gauge = this.host.addChildPlainNode(parent, 'LobbyBattleBossGauge', 0, gy, gw, gh);
+      const g = gauge.addComponent(Graphics);
+      g.fillColor = rgba(9, 6, 7, 240);
+      g.roundRect(-gw / 2, -gh / 2, gw, gh, gh / 2);
+      g.fill();
+      const fw = Math.max(0, (gw - 8 * scale) * ratio);
+      if (fw > 1) {
+        g.fillColor = rgba(206, 46, 42, 245);
+        g.roundRect(-gw / 2 + 4 * scale, -gh / 2 + 4 * scale, fw, gh - 8 * scale, (gh - 8 * scale) / 2);
+        g.fill();
+      }
+      g.strokeColor = rgba(230, 186, 100, 228);
+      g.lineWidth = Math.max(1.5, 2.4 * scale);
+      g.roundRect(-gw / 2, -gh / 2, gw, gh, gh / 2);
+      g.stroke();
+      const drainPct = Math.max(0, Math.min(100, Math.round((1 - ratio) * 100)));
+      const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', `${snapshot.leadEnemy.displayName} · 已击出 ${drainPct}%`, 0, 0, 15 * scale, rgba(255, 234, 174), new Size(gw - 24 * scale, 22 * scale));
+      label.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(label, scale, true);
+      return;
+    }
+    const gaugeWidth = Math.min(360 * scale, width * 0.36);
+    const gaugeHeight = 38 * scale;
+    const gaugeX = width / 2 - gaugeWidth / 2 - 24 * scale;
+    const gaugeY = height / 2 - 58 * scale;
     const gauge = this.host.addChildPlainNode(parent, 'LobbyBattleBossGauge', gaugeX, gaugeY, gaugeWidth, gaugeHeight);
     const frame = this.host.addSprite('LobbyBattleBossGaugeFrame', snapshot.stage2UiAssets.bossGaugeFrame, 0, 0, gaugeWidth, gaugeHeight, gauge);
-    // boss 血条同样随实际受击逐次扣减：开满 → 逐格掉 → 见底。
-    const ratio = hpState.enemyTotalHpRatio;
     if (frame) {
       frame.type = Sprite.Type.SLICED;
       if (ratio > 0.005) {
@@ -1011,21 +1040,8 @@ export class LobbyBattlePreviewPanelRenderer {
           fill.color = snapshot.boss ? rgba(245, 72, 63) : rgba(232, 111, 82);
         }
       }
-    } else {
-      const graphics = gauge.addComponent(Graphics);
-      graphics.fillColor = rgba(12, 6, 8, 226);
-      graphics.rect(-gaugeWidth / 2, -gaugeHeight / 2, gaugeWidth, gaugeHeight);
-      graphics.fill();
-      graphics.fillColor = rgba(174, 42, 38, 230);
-      graphics.rect(-gaugeWidth / 2 + 12 * scale, -5 * scale, (gaugeWidth - 24 * scale) * ratio, 10 * scale);
-      graphics.fill();
-      graphics.strokeColor = rgba(226, 174, 88, 178);
-      graphics.stroke();
     }
-    // 输出试炼:标题显示 BOSS 名 + 已打出输出百分比(=血条掉了多少),直观"体现输出"。
-    const drainPct = Math.max(0, Math.min(100, Math.round((1 - ratio) * 100)));
-    const labelText = trial ? `${snapshot.leadEnemy.displayName} · 已击出 ${drainPct}%` : snapshot.leadEnemy.displayName;
-    const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', labelText, 0, trial ? 6 * scale : 4 * scale, (trial ? 16 : 15) * scale, rgba(255, 225, 157), new Size(gaugeWidth - 62 * scale, 22 * scale));
+    const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, 0, 4 * scale, 15 * scale, rgba(255, 225, 157), new Size(gaugeWidth - 62 * scale, 22 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
   }
@@ -1413,7 +1429,10 @@ export class LobbyBattlePreviewPanelRenderer {
       this.renderBattleActorNameplate(visualRoot, slot.width, slot.height, scale, unit, enemy, active);
     }
     const hpRatio = hpUnit?.hpRatio ?? this.resolveBattleActorDisplayHp(unit, enemy, hpState);
-    this.renderHpBar(visualRoot, -slot.width * 0.34, slot.height * 0.27, slot.width * 0.68, 15 * scale, hpRatio, scale, enemy, (hpUnit?.maxHp ?? 0) > 0 ? clamp((hpUnit?.currentShield ?? 0) / (hpUnit?.maxHp ?? 1), 0, 1) : 0, hpUnit?.shieldKind === 'team', hpUnit?.frozen ? (hpUnit.frozenKind ?? null) : null);
+    // 输出试炼:巨型BOSS的头顶血条会落到2.4×身体中间且与顶部厚血条重复,隐藏之(BOSS血量看顶部厚条)。
+    if (!(this.battleIsTrial && unit.role === 'boss')) {
+      this.renderHpBar(visualRoot, -slot.width * 0.34, slot.height * 0.27, slot.width * 0.68, 15 * scale, hpRatio, scale, enemy, (hpUnit?.maxHp ?? 0) > 0 ? clamp((hpUnit?.currentShield ?? 0) / (hpUnit?.maxHp ?? 1), 0, 1) : 0, hpUnit?.shieldKind === 'team', hpUnit?.frozen ? (hpUnit.frozenKind ?? null) : null);
+    }
     this.recordBattleHpTelemetry(unit, enemy, hpUnit, hpState, currentActionCue, presentation.phase);
     if (openingConvergence.moving) {
       this.applyBattleActorSpineCueOnce('opening-run', actor, unit, 'run');
@@ -1569,7 +1588,10 @@ export class LobbyBattlePreviewPanelRenderer {
       .filter((child) => child.name === 'LobbyBattleActorHpBar')
       .forEach((child) => child.destroy());
     const hpRatio = hpUnit?.hpRatio ?? this.resolveBattleActorDisplayHp(unit, enemy, hpState);
-    this.renderHpBar(visualRoot, -slot.width * 0.34, slot.height * 0.27, slot.width * 0.68, 15 * scale, hpRatio, scale, enemy, (hpUnit?.maxHp ?? 0) > 0 ? clamp((hpUnit?.currentShield ?? 0) / (hpUnit?.maxHp ?? 1), 0, 1) : 0, hpUnit?.shieldKind === 'team', hpUnit?.frozen ? (hpUnit.frozenKind ?? null) : null);
+    // 输出试炼:巨型BOSS的头顶血条会落到2.4×身体中间且与顶部厚血条重复,隐藏之(BOSS血量看顶部厚条)。
+    if (!(this.battleIsTrial && unit.role === 'boss')) {
+      this.renderHpBar(visualRoot, -slot.width * 0.34, slot.height * 0.27, slot.width * 0.68, 15 * scale, hpRatio, scale, enemy, (hpUnit?.maxHp ?? 0) > 0 ? clamp((hpUnit?.currentShield ?? 0) / (hpUnit?.maxHp ?? 1), 0, 1) : 0, hpUnit?.shieldKind === 'team', hpUnit?.frozen ? (hpUnit.frozenKind ?? null) : null);
+    }
     this.recordBattleHpTelemetry(unit, enemy, hpUnit, hpState, currentActionCue, phase);
   }
 
@@ -6331,7 +6353,7 @@ export class LobbyBattlePreviewPanelRenderer {
     // 统一术语并用 +号;横幅下移到黑曜石面板顶(overlayHeight/2-118),避让顶部恶魔火纹章冠。
     const expLine = state.settlement?.rewardItems?.find((item) => item.resourceCode === 'PLAYER_EXP');
     if (expLine) {
-      const expLabel = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryExp', `${expLine.resourceName} +${expLine.amount}`, 0, overlayHeight / 2 - 150 * scale, 21 * scale, rgba(214, 234, 168), new Size(overlayWidth - 210 * scale, 26 * scale));
+      const expLabel = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryExp', `${expLine.resourceName} +${expLine.amount}`, 0, overlayHeight / 2 - 182 * scale, 21 * scale, rgba(214, 234, 168), new Size(overlayWidth - 210 * scale, 26 * scale));
       expLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(expLabel, scale, false);
     }
@@ -6343,14 +6365,14 @@ export class LobbyBattlePreviewPanelRenderer {
     const dailyCanRetry = !!dailyCounts && Number(dailyCounts[1]) < Number(dailyCounts[2]);
     // 收益区重设计(2026-08-13):经验横幅下 → 细金分割线 → "获得奖励"小标 → 奖励格,建立清晰纵向层次。
     if (rewards.length > 0) {
-      const divider = this.host.addChildPlainNode(overlay, 'LobbyBattleStage12VictoryDivider', 0, overlayHeight / 2 - 176 * scale, overlayWidth * 0.46, 3 * scale);
+      const divider = this.host.addChildPlainNode(overlay, 'LobbyBattleStage12VictoryDivider', 0, overlayHeight / 2 - 206 * scale, overlayWidth * 0.46, 3 * scale);
       const dg = divider.addComponent(Graphics);
       dg.strokeColor = rgba(206, 168, 96, 155);
       dg.lineWidth = Math.max(1, 1.4 * scale);
       dg.moveTo(-overlayWidth * 0.23, 0);
       dg.lineTo(overlayWidth * 0.23, 0);
       dg.stroke();
-      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, overlayHeight / 2 - 202 * scale, 16 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 20 * scale));
+      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, overlayHeight / 2 - 230 * scale, 16 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 20 * scale));
       rewardTitle.overflow = Label.Overflow.SHRINK;
       this.applyOutline(rewardTitle, scale, false);
     }
@@ -6402,6 +6424,11 @@ export class LobbyBattlePreviewPanelRenderer {
       this.applyOutline(amountLabel, scale, false);
       const nameLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotName', reward.resourceName, 0, 10 * scale - slotSize / 2 - 16 * scale, 15 * scale, rgba(214, 196, 156, 235), new Size(slotSize + slotGap, 20 * scale));
       nameLabel.overflow = Label.Overflow.SHRINK;
+      // 奖励悬浮/点击看详情(名称/类型/数量/用途)。Button 吞点击不误触下方按钮。
+      slot.addComponent(Button);
+      slot.on(Button.EventType.CLICK, () => this.showVictoryRewardDetail(overlay, reward, x, y, slotSize, scale), this);
+      slot.on(Node.EventType.MOUSE_ENTER, () => this.showVictoryRewardDetail(overlay, reward, x, y, slotSize, scale), this);
+      slot.on(Node.EventType.MOUSE_LEAVE, () => this.hideVictoryRewardDetail(overlay), this);
     });
     if (rewards.length === 0) {
       // 闭环后奖励为真发:回执未到=提交中;回执已到但无奖励行=主线重复通关/每日战败;settle 报错=提交失败(给下方重试)。
@@ -6489,6 +6516,91 @@ export class LobbyBattlePreviewPanelRenderer {
     } else {
       buildOverlayButton('LobbyBattleVictoryReturnButton', '返回大厅', 0, () => this.host.returnToLobbyFromBattlePreview(), C1812_BUTTON_RETURN_ASSET);
     }
+  }
+
+  // 结算奖励详情卡:悬浮/点击某格弹出(名称/类型/数量/用途),置于格上方并 clamp 在弹框内。
+  private showVictoryRewardDetail(
+    overlay: Node,
+    reward: { resourceType: string; resourceCode: string; resourceName: string; amount: number },
+    slotX: number,
+    slotY: number,
+    slotSize: number,
+    scale: number,
+  ): void {
+    this.hideVictoryRewardDetail(overlay);
+    const cw = 236 * scale;
+    const ch = 104 * scale;
+    const halfW = (overlay.getComponent(UITransform)?.width ?? 900 * scale) / 2;
+    const cx = Math.max(-halfW + cw / 2 + 10 * scale, Math.min(halfW - cw / 2 - 10 * scale, slotX));
+    const cy = slotY + slotSize / 2 + ch / 2 + 16 * scale;
+    const card = this.host.addChildPlainNode(overlay, 'LobbyBattleStage12RewardDetail', cx, cy, cw, ch);
+    card.setSiblingIndex(overlay.children.length - 1);
+    const g = card.addComponent(Graphics);
+    g.fillColor = rgba(12, 10, 9, 251);
+    g.roundRect(-cw / 2, -ch / 2, cw, ch, 9 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 238);
+    g.lineWidth = Math.max(1, 1.7 * scale);
+    g.roundRect(-cw / 2, -ch / 2, cw, ch, 9 * scale);
+    g.stroke();
+    const name = this.host.addChildLabel(card, 'RewardDetailName', reward.resourceName, 0, ch / 2 - 20 * scale, 16 * scale, rgba(255, 234, 176), new Size(cw - 22 * scale, 22 * scale));
+    name.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(name, scale, false);
+    const meta = this.host.addChildLabel(card, 'RewardDetailMeta', `${this.victoryRewardTypeLabel(reward.resourceType)} · 数量 ×${reward.amount}`, 0, ch / 2 - 44 * scale, 13 * scale, rgba(210, 196, 160, 238), new Size(cw - 22 * scale, 18 * scale));
+    meta.overflow = Label.Overflow.SHRINK;
+    const desc = this.host.addChildLabel(card, 'RewardDetailDesc', this.victoryRewardDescLine(reward.resourceCode), 0, -ch / 2 + 22 * scale, 12 * scale, rgba(182, 172, 150, 232), new Size(cw - 24 * scale, 34 * scale));
+    desc.overflow = Label.Overflow.SHRINK;
+    desc.enableWrapText = true;
+  }
+
+  private hideVictoryRewardDetail(overlay: Node): void {
+    overlay.children.filter((child) => child.name === 'LobbyBattleStage12RewardDetail').forEach((child) => child.destroy());
+  }
+
+  private victoryRewardTypeLabel(type: string): string {
+    const t = (type || '').toUpperCase();
+    if (t === 'CURRENCY') {
+      return '货币';
+    }
+    if (t === 'EQUIP') {
+      return '装备';
+    }
+    if (t === 'HERO_FRAGMENT') {
+      return '英雄碎片';
+    }
+    return '材料/道具';
+  }
+
+  private victoryRewardDescLine(resourceCode: string): string {
+    const code = (resourceCode || '').toUpperCase();
+    if (code === 'GOLD') {
+      return '通用货币,用于英雄升级、锻造与商店。';
+    }
+    if (code === 'SACRED_CRYSTAL') {
+      return '圣晶(打金核心),可在圣晶熔炉兑换游戏代币。';
+    }
+    if (code === 'HERO_EXP_BOOK') {
+      return '英雄经验书,用于提升英雄等级。';
+    }
+    if (code.includes('ENHANCE_STONE')) {
+      return '强化石,用于装备强化。';
+    }
+    if (code === 'AWAKEN_STONE') {
+      return '觉醒石,用于英雄觉醒。';
+    }
+    if (code === 'ULT_SCROLL') {
+      return '终极技能卷轴,用于升级大招。';
+    }
+    if (code === 'BOSS_MARK') {
+      return 'BOSS印记,用于英雄觉醒等高阶养成。';
+    }
+    if (code.startsWith('GEM_')) {
+      return '宝石,镶嵌到装备提升属性。';
+    }
+    if (code.startsWith('EQ_')) {
+      return '装备,穿戴提升战力。';
+    }
+    return '战斗产出道具,详情可在背包查看。';
   }
 
   // 下一关号推导:MAIN_a_b → MAIN_a_(b+1)。是否解锁由 openLobbyBattlePreviewPanel 内部校验,未解锁会回爬塔面板提示。

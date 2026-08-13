@@ -226,8 +226,9 @@ function buildBattleReplay(snapshot: BattlePresentationSnapshot, timeline: Battl
     replayKey: `${trial ? 'trial:' : ''}${timeline.timelineKey}:${snapshot.unitSnapshotKey}`,
     durationMs: battleEndMs,
     battleEndMs,
-    // 输出试炼:时间到即成功=我方存活即胜(BOSS 是否存活不影响);常规=敌全灭且我方存活。
-    victory: trial ? hasLivingSide(units, 'ally') : hasLivingSide(units, 'ally') && !hasLivingSide(units, 'enemy'),
+    // 输出试炼=拼输出,永远算成功(时间到/全灭都算完成),死亡也计入输出榜、按输出分发档位奖励;
+    // 常规副本=敌全灭且我方存活才胜。
+    victory: trial ? true : hasLivingSide(units, 'ally') && !hasLivingSide(units, 'enemy'),
     units,
     actions,
     trial,
