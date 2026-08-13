@@ -218,6 +218,22 @@ function validateDailyTier(item: unknown): DailyDungeonTierVO {
     unlocked: item.unlocked === true,
     unlockStageCode: readText(item, 'unlockStageCode', 32, ''),
     rewards: readArray(item, 'rewards', 8).map(validateDailyReward),
+    outputTiers: readArray(item, 'outputTiers', 8).map(validateTrialTier),
+  };
+}
+
+function validateTrialTier(item: unknown): DailyDungeonTierVO['outputTiers'][number] {
+  if (!isRecord(item)) {
+    throw new Error('输出试炼档位格式错误');
+  }
+  return {
+    tierCode: readText(item, 'tierCode', 8, ''),
+    tierName: readText(item, 'tierName', 32, ''),
+    minScore: readNumber(item.minScore, 0, Number.MAX_SAFE_INTEGER),
+    crystalAmount: readInteger(item.crystalAmount, 0, 1_000_000),
+    bonusCode: readOptionalText(item, 'bonusCode', MAX_TEXT),
+    bonusName: readOptionalText(item, 'bonusName', MAX_TEXT),
+    bonusAmount: readNullableNumber(item.bonusAmount, 0, Number.MAX_SAFE_INTEGER),
   };
 }
 

@@ -25,6 +25,7 @@ import type {
   LobbyTokenFurnaceState,
   TokenExchangeSummaryVO,
   TokenWithdrawOrderVO,
+  TrialTierVO,
 } from '../../types/DailyDungeonTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
@@ -132,6 +133,8 @@ export class LobbyDailyDungeonPanelRenderer {
   private rewardTooltipSticky = false;
   /** 输出榜弹窗开关(实例态,整页重绘保留)。 */
   private rankPopupOpen = false;
+  // 输出试炼档位阶梯弹窗:非空即展示(点难度Ⅲ奖励区打开)。
+  private trialLadderPopupTiers: TrialTierVO[] | null = null;
 
   constructor(private readonly host: LobbyDailyDungeonPanelHost) {}
 
@@ -186,6 +189,9 @@ export class LobbyDailyDungeonPanelRenderer {
       this.renderFurnaceEntryButton(panel, panelWidth, panelHeight, scale);
       if (this.rankPopupOpen) {
         this.renderCrystalRankPopup(panel, panelWidth, panelHeight, scale);
+      }
+      if (this.trialLadderPopupTiers && this.trialLadderPopupTiers.length > 0) {
+        this.renderTrialLadderPopup(panel, panelWidth, panelHeight, scale, this.trialLadderPopupTiers);
       }
       if (this.host.currentLobbyTokenFurnaceState?.().open) {
         this.renderTokenFurnacePopup(panel, panelWidth, panelHeight, scale);
@@ -625,12 +631,52 @@ export class LobbyDailyDungeonPanelRenderer {
       name.overflow = Label.Overflow.SHRINK;
     }
 
-    // 奖励改版(2026-08-11):固定四格网格、不足项居中,图标+右下角数量;
-    // 格宽/图标/字号不再随项数变化,2/3/4 项的行横向观感一致(名称文字是各行大小不一的根源,撤掉)。
-    const rewards = tier.rewards.slice(0, 4);
+    // 奖励改版(2026-08-11):固定四格网格、不足项居中,图标+右下角数量。
+    // 输出试炼(难度Ⅲ,docs/27 v3):不是固定材料,改显"圣晶按输出档"摘要,点击看完整档位阶梯。
     const rewardLeft = badgeX + badgeWidth / 2 + 8 * scale;
     const rewardRight = width / 2 - 8 * scale;
     const rewardAreaWidth = Math.max(30 * scale, rewardRight - rewardLeft);
+    const trialTiers = tier.tier === 3 ? (tier.outputTiers ?? []) : [];
+    if (trialTiers.length > 0) {
+      const centerX = (rewardLeft + rewardRight) / 2;
+      const iconSize = Math.max(24 * scale, Math.min(contentHeight * 0.58, 44 * scale));
+      const crystals = trialTiers.map((t) => t.crystalAmount);
+      const minC = Math.min(...crystals);
+      const maxC = Math.max(...crystals);
+      const iconX = rewardLeft + iconSize / 2 + 2 * scale;
+      const crystalIcon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
+      if (crystalIcon) {
+        this.host.addSprite('TierTrialCrystalIcon', crystalIcon, iconX, contentCenterY, iconSize, iconSize, block);
+      }
+      const textLeft = iconX + iconSize / 2 + 8 * scale;
+      const textW = Math.max(40 * scale, rewardRight - textLeft);
+      const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 圣晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 9 * scale, 14 * scale, rgba(250, 226, 160, 250), new Size(textW, 18 * scale));
+      l1.overflow = Label.Overflow.SHRINK;
+      const l2 = this.host.addChildLabel(block, 'TierTrialLine2', '限时拼输出，档位越高越多 ›', textLeft + textW / 2, contentCenterY - 10 * scale, 12 * scale, rgba(196, 182, 152, 235), new Size(textW, 16 * scale));
+      l2.overflow = Label.Overflow.SHRINK;
+      if (!available) {
+        const dim = block.getComponent(UIOpacity) ?? block.addComponent(UIOpacity);
+        void dim; // 不整块降透明以免压掉选中高亮;文字已足够区分
+      }
+      // 点击奖励区看完整档位阶梯(自带 Button 吞点击,不连带触发整行选中)。
+      const hit = this.host.addChildPlainNode(block, 'TierTrialHit', centerX, contentCenterY, rewardAreaWidth, contentHeight);
+      hit.addComponent(Button);
+      hit.on(Button.EventType.CLICK, () => {
+        this.trialLadderPopupTiers = trialTiers;
+        this.host.refreshLobbyDailyDungeonPanel();
+      }, this);
+      // 整行(奖励区外)点击=选中该难度,与 Ⅰ/Ⅱ 一致。
+      block.addComponent(Button);
+      block.on(Button.EventType.CLICK, () => {
+        if (this.resolveSelectedTier(theme) !== tier.tier) {
+          this.selectedTierByTheme.set(theme.code, tier.tier);
+          this.host.refreshLobbyDailyDungeonPanel();
+        }
+      }, this);
+      this.host.applyImageButtonFeedback(block, 1.01, 0.99);
+      return;
+    }
+    const rewards = tier.rewards.slice(0, 4);
     if (rewards.length === 0) {
       const hint = this.host.addChildLabel(block, 'TierRewardsEmpty', '产出配置读取中', (rewardLeft + rewardRight) / 2, contentCenterY, 14 * scale, rgba(158, 148, 130, 205), new Size(rewardAreaWidth, 20 * scale));
       hint.overflow = Label.Overflow.SHRINK;
@@ -1176,6 +1222,71 @@ export class LobbyDailyDungeonPanelRenderer {
 
   private renderFurnaceCloseButton(card: Node, w: number, h: number, scale: number): void {
     this.furnaceButton(card, 'FurnaceClose', '关闭', 0, -h / 2 + 26 * scale, 120 * scale, 34 * scale, scale, false, true, () => this.host.closeLobbyTokenFurnace?.());
+  }
+
+  // 输出试炼档位阶梯弹窗:限时打BOSS拼输出,时间到即成功,按输出分发圣晶+材料。
+  private renderTrialLadderPopup(parent: Node, panelWidth: number, panelHeight: number, scale: number, tiers: TrialTierVO[]): void {
+    const overlay = this.host.addChildPlainNode(parent, 'LobbyTrialLadderOverlay', 0, 0, panelWidth * 2, panelHeight * 2);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(0, 0, 0, 168);
+    og.rect(-panelWidth, -panelHeight, panelWidth * 2, panelHeight * 2);
+    og.fill();
+    overlay.addComponent(Button);
+    overlay.on(Button.EventType.CLICK, () => {
+      this.trialLadderPopupTiers = null;
+      this.host.refreshLobbyDailyDungeonPanel();
+    }, this);
+
+    const w = Math.min(540 * scale, panelWidth * 0.66);
+    const h = Math.min(470 * scale, panelHeight * 0.9);
+    const card = this.host.addChildPlainNode(overlay, 'LobbyTrialLadderCard', 0, 0, w, h);
+    card.addComponent(BlockInputEvents);
+    card.addComponent(Button);
+    const g = card.addComponent(Graphics);
+    g.fillColor = rgba(11, 9, 10, 250);
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 235);
+    g.lineWidth = 2 * scale;
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.stroke();
+
+    const left = -w / 2 + 28 * scale;
+    const lineW = w - 56 * scale;
+    const title = this.host.addChildLabel(card, 'TrialTitle', '输出试炼 · 奖励档位', 0, h / 2 - 30 * scale, 20 * scale, rgba(244, 220, 166, 255), new Size(lineW, 26 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+    const sub = this.host.addChildLabel(card, 'TrialSub', '限时 90 秒拼总输出,时间到即成功;输出越高档位越高。', 0, h / 2 - 56 * scale, 13 * scale, rgba(196, 182, 152, 235), new Size(lineW, 18 * scale));
+    sub.overflow = Label.Overflow.SHRINK;
+
+    const crystalIcon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
+    let cursor = h / 2 - 92 * scale;
+    const rowH = 44 * scale;
+    tiers.forEach((tier, index) => {
+      const row = this.host.addChildPlainNode(card, `TrialRow_${index}`, 0, cursor, lineW, rowH - 6 * scale);
+      const rg = row.addComponent(Graphics);
+      rg.fillColor = index === 0 ? rgba(60, 44, 20, 235) : rgba(28, 24, 20, 220);
+      rg.roundRect(-lineW / 2, -(rowH - 6 * scale) / 2, lineW, rowH - 6 * scale, 6 * scale);
+      rg.fill();
+      rg.strokeColor = rgba(150, 122, 78, 190);
+      rg.lineWidth = Math.max(1, scale);
+      rg.roundRect(-lineW / 2, -(rowH - 6 * scale) / 2, lineW, rowH - 6 * scale, 6 * scale);
+      rg.stroke();
+      const nameLabel = this.host.addChildLabel(row, 'TrialRowName', `${tier.tierName}（${tier.tierCode}）`, -lineW / 2 + 12 * scale, 6 * scale, 15 * scale, rgba(250, 226, 160, 250), new Size(lineW * 0.34, 18 * scale), HorizontalTextAlignment.LEFT);
+      nameLabel.overflow = Label.Overflow.SHRINK;
+      const condLabel = this.host.addChildLabel(row, 'TrialRowCond', `输出 ≥ ${tier.minScore}`, -lineW / 2 + 12 * scale, -10 * scale, 12 * scale, rgba(190, 178, 150, 235), new Size(lineW * 0.34, 16 * scale), HorizontalTextAlignment.LEFT);
+      condLabel.overflow = Label.Overflow.SHRINK;
+      if (crystalIcon) {
+        this.host.addSprite(`TrialRowCrystal_${index}`, crystalIcon, lineW * 0.08, 0, 26 * scale, 26 * scale, row);
+      }
+      const bonusText = tier.bonusName && tier.bonusAmount ? ` + ${tier.bonusName}×${formatAmount(tier.bonusAmount)}` : '';
+      const rewardLabel = this.host.addChildLabel(row, 'TrialRowReward', `圣晶 ${tier.crystalAmount}${bonusText}`, lineW / 2 - 6 * scale, 0, 14 * scale, rgba(255, 240, 205, 255), new Size(lineW * 0.5, 18 * scale), HorizontalTextAlignment.RIGHT);
+      rewardLabel.overflow = Label.Overflow.SHRINK;
+      cursor -= rowH;
+    });
+
+    const closeHint = this.host.addChildLabel(card, 'TrialCloseHint', '点击空白处关闭', 0, -h / 2 + 20 * scale, 12 * scale, rgba(150, 140, 122, 200), new Size(lineW, 16 * scale));
+    closeHint.overflow = Label.Overflow.SHRINK;
   }
 
   private renderRetryButton(parent: Node, scale: number): void {

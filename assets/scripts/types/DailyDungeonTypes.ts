@@ -6,12 +6,25 @@ export interface DailyDungeonRewardVO {
   amount: number;
 }
 
+/** 输出试炼档位(难度Ⅲ,docs/27 v3):输出分→圣晶+材料。 */
+export interface TrialTierVO {
+  tierCode: string;
+  tierName: string;
+  minScore: number;
+  crystalAmount: number;
+  bonusCode: string | null;
+  bonusName: string | null;
+  bonusAmount: number | null;
+}
+
 export interface DailyDungeonTierVO {
   tier: number;
   stageCode: string;
   unlocked: boolean;
   unlockStageCode: string;
   rewards: DailyDungeonRewardVO[];
+  /** 难度Ⅲ=输出试炼非空:输出分→圣晶+材料阶梯;Ⅰ/Ⅱ 为空。 */
+  outputTiers: TrialTierVO[];
 }
 
 export interface DailyDungeonThemeVO {
