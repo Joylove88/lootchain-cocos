@@ -96,7 +96,17 @@ export interface BattleReplay {
   victory: boolean;
   units: Map<string, BattleReplayUnitState>;
   actions: BattleReplayAction[];
+  /** 输出试炼(限时副本难度Ⅲ):BOSS 巨血打不死,时间到即成功=我方存活即胜;演出用厚血条+伤害累计。 */
+  trial: boolean;
 }
+
+// 输出试炼关卡:DAILY_{THEME}_3(docs/27 v3)。BOSS 拼输出,时间到即成功。
+export function isDailyTrialStageCode(stageCode: string): boolean {
+  return /^DAILY_[A-Z]+_3$/i.test((stageCode || '').trim());
+}
+
+// 输出试炼 BOSS 血量放大倍数:让 BOSS 在整段演出内基本打不死,血条掉多少≈你的相对输出。
+const TRIAL_BOSS_HP_FACTOR = 8;
 
 interface BattleReplayStatContext {
   allyTotalPower: number;
@@ -201,20 +211,65 @@ export function resolveBattleReplay(snapshot: BattlePresentationSnapshot, timeli
 }
 
 function buildBattleReplay(snapshot: BattlePresentationSnapshot, timeline: BattlePresentationTimeline): BattleReplay {
+  const trial = isDailyTrialStageCode(snapshot.stageCode);
   const unitByKey = createBattleReplayUnitMap(snapshot);
   const statContext = resolveBattleReplayStatContext(snapshot, unitByKey);
   const units = createBattleReplayInitialUnitStates(unitByKey, statContext);
+  if (trial) {
+    // 输出试炼:把敌方 BOSS 血量放大到基本打不死,整段演出拼总输出;血条掉多少≈相对输出。
+    inflateTrialBossHp(unitByKey, units);
+  }
   const actions = resolveBattleReplayCombatActions(snapshot, timeline, unitByKey, units);
   const battleEndMs = resolveBattleReplayBattleEndMs(timeline, actions);
 
   return {
-    replayKey: `${timeline.timelineKey}:${snapshot.unitSnapshotKey}`,
+    replayKey: `${trial ? 'trial:' : ''}${timeline.timelineKey}:${snapshot.unitSnapshotKey}`,
     durationMs: battleEndMs,
     battleEndMs,
-    victory: hasLivingSide(units, 'ally') && !hasLivingSide(units, 'enemy'),
+    // 输出试炼:时间到即成功=我方存活即胜(BOSS 是否存活不影响);常规=敌全灭且我方存活。
+    victory: trial ? hasLivingSide(units, 'ally') : hasLivingSide(units, 'ally') && !hasLivingSide(units, 'enemy'),
     units,
     actions,
+    trial,
   };
+}
+
+// 输出试炼:把敌方 BOSS(role='boss',无则取血最厚的敌人)血量×factor,并同步 initial/current,让其在整段演出内存活。
+function inflateTrialBossHp(
+  unitByKey: Map<string, BattlePresentationUnitSnapshot>,
+  units: Map<string, BattleReplayUnitState>,
+): void {
+  let bossKey: string | null = null;
+  unitByKey.forEach((snap, key) => {
+    if (snap.side !== 'enemy') {
+      return;
+    }
+    if (snap.role === 'boss') {
+      bossKey = key;
+    }
+  });
+  if (!bossKey) {
+    // 无显式 BOSS:取血量最厚的敌人当 BOSS。
+    let best = -1;
+    units.forEach((state, key) => {
+      const snap = unitByKey.get(key);
+      if (snap?.side === 'enemy' && state.maxHp > best) {
+        best = state.maxHp;
+        bossKey = key;
+      }
+    });
+  }
+  if (!bossKey) {
+    return;
+  }
+  const boss = units.get(bossKey);
+  if (!boss) {
+    return;
+  }
+  const inflated = Math.max(1, Math.round(boss.maxHp * TRIAL_BOSS_HP_FACTOR));
+  boss.maxHp = inflated;
+  boss.initialHp = inflated;
+  boss.currentHp = inflated;
 }
 
 function createBattleReplayUnitMap(snapshot: BattlePresentationSnapshot): Map<string, BattlePresentationUnitSnapshot> {

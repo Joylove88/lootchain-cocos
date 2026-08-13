@@ -115,7 +115,7 @@ import {
 } from '../C1812CommonUiAssets';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { LOBBY_BATTLE_EMBEDDED_BG_DATA_URL } from './LobbyBattleEmbeddedBackground';
-import { resolveBattleReplay, resolveBattleReplayCounterMultiplier } from './LobbyBattleReplayModel';
+import { isDailyTrialStageCode, resolveBattleReplay, resolveBattleReplayCounterMultiplier } from './LobbyBattleReplayModel';
 import { ultimateDamageScale } from './LobbyBattleHeroSkillConfig';
 
 // 复用已导入的 battle_scene_cathedral UUID 槽位，实际源图已替换为横版沙漠战场，避免 Preview 等待新目录导入。
@@ -448,7 +448,10 @@ export class LobbyBattlePreviewPanelRenderer {
     }
 
     this.refreshBattleCombatHud(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, presentation, currentTimelineEvent, timeline, playbackTimelineTimeMs);
-    // 右上敌方总血条已按用户要求移除:与逐怪血条信息重复且胜负瞬间有表现残留。
+    // 输出试炼(难度Ⅲ):顶部厚血条=BOSS巨兽血量(掉多少≈相对输出);常规副本仍不显示(与逐怪血条重复)。
+    if (isDailyTrialStageCode(snapshot.stageCode)) {
+      this.refreshBattleBossGaugePlayback(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, presentation, hpState);
+    }
     allyActors.forEach((actor, index) => this.updateBattleActorPlayback(actor, index, false, scale, presentation, snapshot, actionCues, currentActionCue, currentAssistCue, actionAnchors, openingConvergence, playbackTimelineTimeMs, timelineToPresentationRatio, hpState));
     enemyActors.forEach((actor, index) => this.updateBattleActorPlayback(actor, index, true, scale, presentation, snapshot, actionCues, currentActionCue, currentAssistCue, actionAnchors, openingConvergence, playbackTimelineTimeMs, timelineToPresentationRatio, hpState));
     this.refreshStage12HeroCardDeck(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, presentation, currentActionCue, currentAssistCue, hpState, timeline, playbackTimelineTimeMs);
@@ -902,8 +905,10 @@ export class LobbyBattlePreviewPanelRenderer {
     const firstActionTimeMs = timeline.events.find((event) => event.type === 'action_start')?.timeMs ?? 0;
     const combatElapsedTimelineMs = Math.max(0, playbackTimelineTimeMs - firstActionTimeMs);
     const countdownRemainMs = Math.max(0, BATTLE_COMBAT_COUNTDOWN_MS - combatElapsedTimelineMs);
+    // 输出试炼:倒计时后缀"时间到即胜",强调不需击杀、拼满时长即成功。
+    const trialHud = isDailyTrialStageCode(snapshot.stageCode);
     const leftText = presentation.phase === 'roundPlaying'
-      ? `倒计时 ${formatBattleHudClock(countdownRemainMs)}`
+      ? `倒计时 ${formatBattleHudClock(countdownRemainMs)}${trialHud ? ' · 时间到即胜' : ''}`
       : '战斗';
     const left = this.host.addChildLabel(leftHud, 'LobbyBattleCombatHudLeft', leftText, 0, 0, 16 * scale, rgba(248, 226, 168), new Size(leftWidth - 16 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     left.overflow = Label.Overflow.SHRINK;
@@ -919,7 +924,7 @@ export class LobbyBattlePreviewPanelRenderer {
     stage.overflow = Label.Overflow.SHRINK;
     this.applyOutline(stage, scale, true);
     // 横版 RPG 化：右侧由自动战斗的“x2 倍速”改为敌方威胁标签（BOSS/精英），消除倍速控制误读。
-    const rightText = currentEvent.type === 'battle_end' ? '胜利' : snapshot.boss ? 'BOSS' : '精英';
+    const rightText = currentEvent.type === 'battle_end' ? '胜利' : trialHud ? '输出试炼' : snapshot.boss ? 'BOSS' : '精英';
     const rightHud = this.host.addChildPlainNode(parent, 'LobbyBattleCombatHudRightPill', width / 2 - rightWidth / 2 - 20 * scale, topY, rightWidth, 30 * scale);
     const rightGraphics = rightHud.addComponent(Graphics);
     rightGraphics.fillColor = rgba(4, 4, 6, 132);
@@ -986,10 +991,12 @@ export class LobbyBattlePreviewPanelRenderer {
     if (presentation.phase === 'ready' || presentation.phase === 'creatingSession' || width < 520 * scale) {
       return;
     }
-    const gaugeWidth = Math.min(360 * scale, width * 0.36);
-    const gaugeHeight = 38 * scale;
-    const gaugeX = width / 2 - gaugeWidth / 2 - 24 * scale;
-    const gaugeY = height / 2 - 58 * scale;
+    // 输出试炼:BOSS 巨兽血条又厚又长、居中置顶,拼输出主视觉;常规副本(若启用)沿用右上小条。
+    const trial = isDailyTrialStageCode(snapshot.stageCode);
+    const gaugeWidth = trial ? Math.min(600 * scale, width * 0.66) : Math.min(360 * scale, width * 0.36);
+    const gaugeHeight = trial ? 54 * scale : 38 * scale;
+    const gaugeX = trial ? 0 : width / 2 - gaugeWidth / 2 - 24 * scale;
+    const gaugeY = height / 2 - (trial ? 46 : 58) * scale;
     const gauge = this.host.addChildPlainNode(parent, 'LobbyBattleBossGauge', gaugeX, gaugeY, gaugeWidth, gaugeHeight);
     const frame = this.host.addSprite('LobbyBattleBossGaugeFrame', snapshot.stage2UiAssets.bossGaugeFrame, 0, 0, gaugeWidth, gaugeHeight, gauge);
     // boss 血条同样随实际受击逐次扣减：开满 → 逐格掉 → 见底。
@@ -1015,7 +1022,10 @@ export class LobbyBattlePreviewPanelRenderer {
       graphics.strokeColor = rgba(226, 174, 88, 178);
       graphics.stroke();
     }
-    const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, 0, 4 * scale, 15 * scale, rgba(255, 225, 157), new Size(gaugeWidth - 62 * scale, 20 * scale));
+    // 输出试炼:标题显示 BOSS 名 + 已打出输出百分比(=血条掉了多少),直观"体现输出"。
+    const drainPct = Math.max(0, Math.min(100, Math.round((1 - ratio) * 100)));
+    const labelText = trial ? `${snapshot.leadEnemy.displayName} · 已击出 ${drainPct}%` : snapshot.leadEnemy.displayName;
+    const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', labelText, 0, trial ? 6 * scale : 4 * scale, (trial ? 16 : 15) * scale, rgba(255, 225, 157), new Size(gaugeWidth - 62 * scale, 22 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
   }
