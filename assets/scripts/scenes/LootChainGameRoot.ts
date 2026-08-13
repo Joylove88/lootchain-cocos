@@ -11,6 +11,7 @@ import {
   Label,
   Node,
   input,
+  profiler,
   Size,
   Sprite,
   SpriteFrame,
@@ -385,6 +386,8 @@ export class LootChainGameRoot extends Component {
   private reusableScenesRegistered = false;
 
   start(): void {
+    // 隐藏引擎自带性能浮层(FPS/DrawCall 等左上角数字):开发调试层,正式游戏不该出现。
+    profiler.hideStats();
     // 登录验收必须从真实点击开始，避免历史 token 让预览直接进入通过态。
     this.api.auth.logout();
     this.currentView = 'login';
