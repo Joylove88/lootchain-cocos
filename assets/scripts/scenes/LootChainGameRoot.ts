@@ -23,6 +23,7 @@ import {
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
+import { PlayerWsClient } from '../net/PlayerWsClient';
 import type { EquipmentItemVO } from '../api/EquipmentApi';
 import { lootChainI18n, type LootChainLanguage } from '../i18n/LootChainI18n';
 import type { PlayerLobbyProfileVO } from '../types/PlayerTypes';
@@ -220,6 +221,15 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyBagLoader = new LobbyBagLoader(this.api.bag, this.api.hero, this.api.equipment, this as unknown as LobbyBagLoaderHost);
   private readonly lobbyBagPanelRenderer = new LobbyBagPanelRenderer(this as unknown as LobbyBagPanelHost);
   private readonly lobbyBattleFlow = new LobbyBattleFlow(this.api.battle, this as unknown as LobbyBattleFlowHost);
+  // 长连接通知通道(docs/27):只收推送,游戏行为仍走 REST;进大厅连,token 变化自动重握手。
+  private readonly playerWsClient = new PlayerWsClient(() => {
+    const token = this.api.tokenStore.tokenValue();
+    if (!token) {
+      return null;
+    }
+    const wsBase = AppConfig.apiBaseUrl.replace(/^http/, 'ws');
+    return `${wsBase}/ws/player?satoken=${encodeURIComponent(token)}`;
+  });
   // 挂机收益(服务端权威):汇总快照 + 领取中标记 + 自动挑战开关(本地会话内)。
   private idleSummary: PlayerIdleSummaryVO | null = null;
   private idleSummaryLoading = false;
@@ -388,8 +398,10 @@ export class LootChainGameRoot extends Component {
   start(): void {
     // 隐藏引擎自带性能浮层(FPS/DrawCall 等左上角数字):开发调试层,正式游戏不该出现。
     profiler.hideStats();
+    this.registerPlayerWsHandlers();
     // 登录验收必须从真实点击开始，避免历史 token 让预览直接进入通过态。
     this.api.auth.logout();
+    this.playerWsClient.disconnect();
     this.currentView = 'login';
     this.preloadUiSprites();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
@@ -4170,6 +4182,31 @@ export class LootChainGameRoot extends Component {
     this.currentView = 'lobby';
     this.renderLobby();
     void this.loadIdleSummary();
+    // 登录态就绪后建立通知长连接(幂等;断线自动重连)。
+    this.playerWsClient.connect();
+  }
+
+  // 通知长连接的推送处理:全部只做"提示+刷新对应面板",不承载游戏行为。
+  private registerPlayerWsHandlers(): void {
+    this.playerWsClient.on('TOKEN_AUDIT', (data) => {
+      const label = typeof data.statusLabel === 'string' ? data.statusLabel : '审核有更新';
+      const refund = typeof data.crystalRefund === 'number' && data.crystalRefund > 0 ? `,圣晶已退回 ${data.crystalRefund}` : '';
+      this.setStatus(`圣晶兑换审核:${label}${refund}`);
+      if (this.lobbyTokenFurnaceState.open) {
+        this.loadLobbyTokenFurnaceSummary(true);
+      }
+    });
+    this.playerWsClient.on('RANK_CHANGED', () => {
+      // 只有开着限时副本面板(可能看着输出榜)才刷新,避免无谓请求。
+      if (this.lobbyDailyDungeonPanelOpen) {
+        this.loadLobbyCrystalRankSummary(true);
+      }
+    });
+    this.playerWsClient.on('MINE_CHANGED', () => {
+      if (this.lobbyDailyDungeonPanelOpen) {
+        this.reloadLobbyDailyDungeonSummary();
+      }
+    });
   }
 
   private addLobbyAvatar(parent: Node, x: number, y: number, size: number, displayName: string): void {
