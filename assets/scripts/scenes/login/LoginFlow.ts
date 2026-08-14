@@ -73,6 +73,8 @@ export class LoginFlow {
         return;
       }
       this.authApi.saveToken(token);
+      // 会话恢复(7 天免重登):记录 userId,下次启动用 token+userId 自动进大厅。
+      this.authApi.saveUserId?.(userId);
       this.tokenName = token.tokenName;
       // 登录成功后先重置本地资料态，再交给主角创建/大厅入口流程，避免大厅短暂显示上一个用户。
       this.host.resetLobbyProfileForLogin(userId);

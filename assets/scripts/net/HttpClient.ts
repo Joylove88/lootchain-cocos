@@ -22,6 +22,8 @@ export class ApiError extends Error {
  */
 export class HttpClient {
   private baseUrl: string;
+  /** 登录态失效(业务 code=401)时的集中回调:宿主(游戏根)清 token 并回登录页。 */
+  onAuthExpired: (() => void) | null = null;
 
   constructor(
     baseUrl: string,
@@ -72,6 +74,10 @@ export class HttpClient {
         try {
           const result = JSON.parse(xhr.responseText || '{}') as ApiResult<T>;
           if (result.code !== 0) {
+            if (result.code === 401) {
+              // 登录态失效(token 过期/被踢):集中回调一次,由宿主清 token 回登录页;仍向调用方抛错。
+              this.onAuthExpired?.();
+            }
             reject(new ApiError(result.code, result.msg || '业务请求失败', url));
             return;
           }

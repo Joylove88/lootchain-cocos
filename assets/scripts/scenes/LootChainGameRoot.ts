@@ -399,14 +399,49 @@ export class LootChainGameRoot extends Component {
     // 隐藏引擎自带性能浮层(FPS/DrawCall 等左上角数字):开发调试层,正式游戏不该出现。
     profiler.hideStats();
     this.registerPlayerWsHandlers();
-    // 登录验收必须从真实点击开始，避免历史 token 让预览直接进入通过态。
-    this.api.auth.logout();
-    this.playerWsClient.disconnect();
+    // 任意请求 401(token 过期/被踢)→集中清会话回登录页,玩家只在失效时才需要重登。
+    this.api.http.onAuthExpired = () => this.handleAuthExpired();
     this.currentView = 'login';
     this.preloadUiSprites();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.on(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
     this.renderCurrentView();
+    // 会话持久化(token 7 天):本地有 token+userId 就自动恢复登录,免每次重登;失败清态留在登录页。
+    void this.tryResumeSession();
+  }
+
+  // 启动自动恢复会话:用 /me/lobby(已放行)探活 token,成功走与真实登录相同的入口流程。
+  private async tryResumeSession(): Promise<void> {
+    const token = this.api.tokenStore.tokenValue();
+    const tokenName = this.api.tokenStore.tokenName();
+    const userId = this.api.tokenStore.userId();
+    if (!token || !tokenName || !userId) {
+      return;
+    }
+    this.setStatus('正在恢复上次登录…');
+    try {
+      await this.api.profile.lobbyProfile();
+      this.setStatus('登录已恢复。');
+      this.resetLobbyProfileForLogin(userId);
+      this.handleLoginSuccess(userId, tokenName);
+    } catch (error) {
+      // 探活失败(过期/服务不可达):清会话留在登录页;401 分支已由 onAuthExpired 统一处理。
+      void error;
+      this.api.auth.logout();
+      this.playerWsClient.disconnect();
+      this.setStatus('登录已过期，请重新登录。');
+    }
+  }
+
+  // 登录态失效:清 token、断长连接、回登录页(避免各面板反复弹业务错误)。
+  private handleAuthExpired(): void {
+    this.api.auth.logout();
+    this.playerWsClient.disconnect();
+    if (this.currentView !== 'login' && this.currentView !== 'loginAccount') {
+      this.currentView = 'login';
+      this.renderCurrentView();
+    }
+    this.setStatus('登录已过期，请重新登录。');
   }
 
   update(deltaTime: number): void {

@@ -19,6 +19,11 @@ export class PlayerAuthApi {
     this.tokenStore.save(token);
   }
 
+  /** 会话恢复(7 天免重登):记录 token 归属玩家,启动时自动登录用。 */
+  saveUserId(userId: number): void {
+    this.tokenStore.saveUserId(userId);
+  }
+
   logout(): void {
     this.tokenStore.clear();
   }
