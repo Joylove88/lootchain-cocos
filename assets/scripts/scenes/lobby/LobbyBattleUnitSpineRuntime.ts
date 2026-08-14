@@ -427,7 +427,8 @@ export function resolveBattleUnitSpineScale(
   // P8 敌方怪物:目标视高对齐立绘 standin 盒(min(170×ui, 格高×0.9))× 模板 display_scale。
   // S196 的 bounds 常被特效附件(投射物/冲锋轨迹)拉大 → 按它算会偏小,统一交给后台 display_scale 校准。
   if (unit && unit.side === 'enemy') {
-    const monsterScale = Math.max(0.5, Math.min(2.5, unit.monsterDisplayScale ?? 1));
+    // 上限 3.5:输出试炼巨兽 BOSS(3.4)需要;DB 配置怪最大 1.45 不受影响。
+    const monsterScale = Math.max(0.5, Math.min(3.5, unit.monsterDisplayScale ?? 1));
     const standinHeight = Math.min(170 * uiScale, slotHeight * 0.9);
     return clamp((standinHeight * monsterScale) / safeHeight, 0.02 * uiScale, 6 * uiScale);
   }

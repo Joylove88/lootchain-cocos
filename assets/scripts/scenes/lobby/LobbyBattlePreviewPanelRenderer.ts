@@ -209,7 +209,8 @@ const BATTLE_ENABLE_IDLE_CLASH_COMBAT = false;
 const BATTLE_USE_STICKY_CONTACT_POSITIONS = true;
 const BATTLE_STICKY_CONTACT_HOLD_MS = 60_000;
 const BATTLE_SHOW_PREVIEW_DEBUG_HUD = false;
-const BATTLE_DEAD_ACTOR_HIDE_DELAY_MS = 0;
+// 死亡单位保留 1.2s 完整播放倒地/死亡动画后再消失(=0 时死亡帧即销毁,观感是"立马消失")。
+const BATTLE_DEAD_ACTOR_HIDE_DELAY_MS = 1200;
 const BATTLE_FLOATING_TEXT_LIFETIME_MS = 300;
 const BATTLE_FLOATING_TEXT_MIN_CUE_INTERVAL_MS = 320;
 const BATTLE_ASSIST_FLOATING_TEXT_DELAY_MS = 340;
@@ -341,6 +342,9 @@ export class LobbyBattlePreviewPanelRenderer {
   private battleFieldNode: Node | null = null;
   // 输出试炼(难度Ⅲ):当前战斗是否试炼。用于隐藏巨型BOSS的头顶血条(改用顶部厚血条),每帧解析快照时刷新。
   private battleIsTrial = false;
+  // 层数血条流动拖尾:显示中的"当前层剩余"缓降追随真实值,掉血段先亮后收,不再是瞬跳变色。
+  private trialGaugeShownRemain: number | null = null;
+  private trialGaugeLastLayers: number | null = null;
   private readonly battlePlaybackNodes = new Map<string, Node>();
   private readonly battleActorFramePositions = new Map<string, Vec3>();
   private readonly battleActorStickyCombatPositions = new Map<string, Vec3>();
@@ -461,10 +465,20 @@ export class LobbyBattlePreviewPanelRenderer {
     enemyActors.forEach((actor, index) => this.updateBattleActorPlayback(actor, index, true, scale, presentation, snapshot, actionCues, currentActionCue, currentAssistCue, actionAnchors, openingConvergence, playbackTimelineTimeMs, timelineToPresentationRatio, hpState));
     this.refreshStage12HeroCardDeck(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, presentation, currentActionCue, currentAssistCue, hpState, timeline, playbackTimelineTimeMs);
     this.renderBattleCueEffectsOnce(field, presentationLayout.field.width, presentationLayout.field.height, scale, presentation, snapshot, timeline, performanceProfile, currentTimelineEvent, currentActionCue, activeDamageCues, currentAssistCue, assistCues, actionAnchors, frameAnchors, openingConvergence, hpState);
-    // 敌方全灭即时弹出胜利结算(每帧刷新路径,只弹一次),不等 90 秒演出窗口跑满触发全量渲染。
-    if (!this.battleVictoryBannerShown && isBattleVisualResultReady(hpState, playbackTimelineTimeMs)) {
+    // 战斗终局(每帧刷新路径,只触发一次):
+    // 常规副本=敌方全灭弹胜利横幅;输出试炼=任一方全灭 或 90 秒倒计时归零,直接提交结算弹结算框
+    // (试炼永远算成功,不弹"失败"横幅;这里若不收口,试炼会卡在"打不死的BOSS"上到处等)。
+    const trialMode = isDailyTrialStageCode(snapshot.stageCode);
+    const firstActionTimeMs = timeline.events.find((event) => event.type === 'action_start')?.timeMs ?? 0;
+    const trialTimeUp = trialMode && playbackTimelineTimeMs - firstActionTimeMs >= BATTLE_COMBAT_COUNTDOWN_MS;
+    const battleEndReady = trialMode
+      ? trialTimeUp || resolveBattleVisualOutcome(hpState, playbackTimelineTimeMs) !== null
+      : isBattleVisualResultReady(hpState, playbackTimelineTimeMs);
+    if (!this.battleVictoryBannerShown && battleEndReady) {
       this.battleVictoryBannerShown = true;
-      this.renderResultBanner(field, presentationLayout.field.width, presentationLayout.field.height, scale, battleState, presentation, snapshot, hpState, playbackTimelineTimeMs);
+      if (!trialMode) {
+        this.renderResultBanner(field, presentationLayout.field.width, presentationLayout.field.height, scale, battleState, presentation, snapshot, hpState, playbackTimelineTimeMs);
+      }
       // 视觉胜负确认即提前提交结算:消除"胜利框→演出窗口跑满"的空窗,期间离场不再丢结算。
       // 用 setTimeout 移出当前渲染帧,避免 settle→bump→重渲染的同步重入。
       setTimeout(() => this.host.settleLobbyBattleSession(), 0);
@@ -1016,6 +1030,16 @@ export class LobbyBattlePreviewPanelRenderer {
       ];
       const barColor = layerColors[layersCleared % layerColors.length];
 
+      // 流动拖尾:真实值瞬落,展示值每帧向真实值缓降(约 12%/帧),掉血段以亮白色拖尾显示后收拢;
+      // 破层瞬间(层数变化)展示值重置为满,新层从满往下掉。
+      if (this.trialGaugeLastLayers !== layersCleared || this.trialGaugeShownRemain === null) {
+        this.trialGaugeShownRemain = this.trialGaugeLastLayers === null ? layerRemain : 1;
+        this.trialGaugeLastLayers = layersCleared;
+      }
+      const shown = this.trialGaugeShownRemain;
+      const eased = layerRemain + (shown - layerRemain) * 0.88;
+      this.trialGaugeShownRemain = eased < layerRemain + 0.001 ? layerRemain : eased;
+
       const gw = Math.min(700 * scale, width * 0.6);
       const gh = 30 * scale;
       const gy = height / 2 - 92 * scale; // 下移,避免压住顶部副本名称
@@ -1024,10 +1048,19 @@ export class LobbyBattlePreviewPanelRenderer {
       g.fillColor = rgba(9, 6, 7, 240);
       g.roundRect(-gw / 2, -gh / 2, gw, gh, gh / 2);
       g.fill();
-      const fw = Math.max(0, (gw - 8 * scale) * layerRemain);
+      const innerW = gw - 8 * scale;
+      const innerH = gh - 8 * scale;
+      // 亮白拖尾段:真实值→展示值之间(刚掉的血),先亮后被缓降"吃掉",形成流动感。
+      const trailW = Math.max(0, innerW * this.trialGaugeShownRemain);
+      if (trailW > 1) {
+        g.fillColor = rgba(255, 236, 200, 215);
+        g.roundRect(-gw / 2 + 4 * scale, -gh / 2 + 4 * scale, trailW, innerH, innerH / 2);
+        g.fill();
+      }
+      const fw = Math.max(0, innerW * layerRemain);
       if (fw > 1) {
         g.fillColor = barColor;
-        g.roundRect(-gw / 2 + 4 * scale, -gh / 2 + 4 * scale, fw, gh - 8 * scale, (gh - 8 * scale) / 2);
+        g.roundRect(-gw / 2 + 4 * scale, -gh / 2 + 4 * scale, fw, innerH, innerH / 2);
         g.fill();
       }
       g.strokeColor = rgba(230, 186, 100, 228);
@@ -1464,8 +1497,11 @@ export class LobbyBattlePreviewPanelRenderer {
       : assistAnimationName ?? this.resolveActionAnimationName(unit, currentActionCue, rootMotionCue, actorActive, targetActive, playbackTimelineTimeMs, timelineToPresentationRatio);
     this.renderBattleActorSpineLayer(visualRoot, slot.width, slot.height, scale, unit, enemy, active, actionAnimationName);
     if (hpUnitDead) {
+      // 死亡动画窗口内全不透明完整演出;窗口过后转半透明尸体(随后被隐藏)。
+      const deadAt = typeof hpUnit?.deadAtMs === 'number' && Number.isFinite(hpUnit.deadAtMs) ? hpUnit.deadAtMs : playbackTimelineTimeMs;
+      const withinDeathAnim = playbackTimelineTimeMs < deadAt + BATTLE_DEAD_ACTOR_HIDE_DELAY_MS;
       const opacity = visualRoot.addComponent(UIOpacity);
-      opacity.opacity = enemy ? 72 : 138;
+      opacity.opacity = withinDeathAnim ? 255 : enemy ? 72 : 138;
     }
     this.renderBattleActorActionCallout(visualRoot, slot.width, slot.height, scale, unit, enemy, currentActionCue, currentAssistCue, actorActive, targetActive, assistActorActive, assistTargetActive);
 
@@ -1727,8 +1763,37 @@ export class LobbyBattlePreviewPanelRenderer {
         }
       }
     }
-    const spent = this.battleManualUlts.filter((ult) => ult.unitKey === unitKey && ult.timeMs <= playbackTimelineTimeMs).length;
-    return clamp(energy - spent * BATTLE_MANUAL_ULT_ENERGY_MAX, 0, BATTLE_MANUAL_ULT_ENERGY_MAX);
+    // 放招=能量清零重新攒:以"上次施放时的原始能量"为基线,可用=原始-基线。
+    // 旧口径(原始-次数×100)在长局(输出试炼90秒)会积出数倍盈余→连点连放,已废弃。
+    const baseline = this.battleManualUltEnergyBaselines.get(unitKey) ?? 0;
+    return clamp(energy - baseline, 0, BATTLE_MANUAL_ULT_ENERGY_MAX);
+  }
+
+  // 上次施放大招时的原始能量基线(unitKey→raw energy);放招即抬基线=能量清零重攒。
+  private readonly battleManualUltEnergyBaselines = new Map<string, number>();
+
+  private resolveBattleActorRawUltEnergy(
+    unitKey: string,
+    snapshot: BattlePresentationSnapshot,
+    timeline: BattlePresentationTimeline,
+    playbackTimelineTimeMs: number,
+  ): number {
+    const replay = resolveBattleReplay(snapshot, timeline);
+    let energy = Math.max(0, playbackTimelineTimeMs) / 1000 * BATTLE_MANUAL_ULT_ENERGY_PER_SECOND;
+    for (const action of replay.actions) {
+      for (const hit of action.hitEvents) {
+        if (hit.timeMs > playbackTimelineTimeMs) {
+          continue;
+        }
+        if (hit.actorKey === unitKey) {
+          energy += BATTLE_MANUAL_ULT_ENERGY_PER_ACTION;
+        }
+        if (hit.targetKey === unitKey && !hit.evaded) {
+          energy += BATTLE_MANUAL_ULT_ENERGY_PER_HIT_TAKEN;
+        }
+      }
+    }
+    return energy;
   }
 
   // HP 状态包装:在回放推演之上叠加手动大招的真实扣血(可击杀,死亡时间生效→胜利判定/死亡过滤自动联动)。
@@ -1817,6 +1882,11 @@ export class LobbyBattlePreviewPanelRenderer {
     if (this.resolveBattleActorUltEnergy(unit.unitKey, snapshot, timeline, playbackTimelineTimeMs) < BATTLE_MANUAL_ULT_ENERGY_MAX) {
       return;
     }
+    // 阵亡英雄不能放大招。
+    const casterState = hpState.units.get(unit.unitKey);
+    if (!casterState || casterState.dead) {
+      return;
+    }
     const livingEnemies = snapshot.enemies.filter((enemy) => {
       const state = hpState.units.get(enemy.unitKey);
       return !!state && !state.dead && enemy.power > 0 && !enemy.unitKey.includes('empty');
@@ -1839,6 +1909,11 @@ export class LobbyBattlePreviewPanelRenderer {
       eventSeq: BATTLE_MANUAL_ULT_EVENT_SEQ_BASE + index * 3,
       actionSeq: BATTLE_MANUAL_ULT_EVENT_SEQ_BASE + index * 3,
     });
+    // 放招=能量清零重攒:把基线抬到当前原始能量,禁止盈余连放。
+    this.battleManualUltEnergyBaselines.set(
+      unit.unitKey,
+      this.resolveBattleActorRawUltEnergy(unit.unitKey, snapshot, timeline, playbackTimelineTimeMs),
+    );
     const actorNode = this.battlePlaybackNodes.get(unit.unitKey);
     if (this.isNodeAlive(actorNode)) {
       this.applyBattleActorSpineCueOnce(`manual-ult:${index}:${unit.unitKey}:anim`, actorNode, unit, 'ult');
@@ -3939,6 +4014,9 @@ export class LobbyBattlePreviewPanelRenderer {
       this.battleActorPositionScript = null;
       this.battleVictoryBannerShown = false;
       this.battleManualUlts.length = 0;
+      this.battleManualUltEnergyBaselines.clear();
+      this.trialGaugeShownRemain = null;
+      this.trialGaugeLastLayers = null;
       this.battleUltReadyHintShown = false;
       this.battleDeckClickContext = null;
       this.battleActorStickyCombatPositions.clear();
@@ -6341,7 +6419,13 @@ export class LobbyBattlePreviewPanelRenderer {
     playbackTimelineTimeMs: number,
   ): void {
     void presentation;
-    const outcome = resolveBattleVisualOutcome(hpState, playbackTimelineTimeMs);
+    // 输出试炼:BOSS 打不死→视觉"敌全灭"永远不成立,结算已到也会被 outcome 门拦住不弹框。
+    // 试炼下只要结算流程已启动(settlement/settling/演出收口)一律按胜利弹结算框(试炼永远算成功)。
+    const trialOutcome = isDailyTrialStageCode(snapshot.stageCode)
+      && (state.settlement || state.settling || state.presentationComplete)
+      ? 'victory' as const
+      : null;
+    const outcome = resolveBattleVisualOutcome(hpState, playbackTimelineTimeMs) ?? trialOutcome;
     if (!outcome) {
       return;
     }

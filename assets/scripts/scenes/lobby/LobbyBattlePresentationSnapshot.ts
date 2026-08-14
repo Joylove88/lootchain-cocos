@@ -193,11 +193,11 @@ function buildLobbyBattlePresentationSnapshot(state: LobbyBattlePanelState, hero
   const allies = fillUnits(resolveAllies(start, heroes, rosterById), 'ally');
   const enemies = fillUnits(resolveEnemies(start), 'enemy');
   const stageCode = start?.stageCode || state.stageCode || 'MAIN_1_1';
-  // 输出试炼(难度Ⅲ,docs/27 v3):BOSS 体型显著放大成"巨兽"(2.5× 渲染上限内尽量大)。
+  // 输出试炼(难度Ⅲ,docs/27 v3):BOSS 体型放大成压场"巨兽"(配合渲染上限 3.5)。
   if (/^DAILY_[A-Z]+_3$/i.test(stageCode)) {
     enemies.forEach((enemy) => {
       if (enemy.role === 'boss') {
-        enemy.monsterDisplayScale = Math.max(enemy.monsterDisplayScale ?? 1, 2.4);
+        enemy.monsterDisplayScale = Math.max(enemy.monsterDisplayScale ?? 1, 3.4);
       }
     });
   }
