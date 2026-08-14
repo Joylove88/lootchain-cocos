@@ -3732,7 +3732,11 @@ export class LobbyBattlePreviewPanelRenderer {
           shadeGraphics.roundRect(-(cardWidth - 4 * scale) / 2, -shadeHeight / 2, cardWidth - 4 * scale, shadeHeight, 4 * scale);
           shadeGraphics.fill();
         }
-        const chargePct = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardChargePct', `${Math.floor(energyRatio * 100)}%`, 0, -2 * scale, 17 * scale, rgba(255, 235, 170), new Size(cardWidth - 10 * scale, 20 * scale));
+        // "怒气"标注:能量百分比太像血量(用户实测看混),明确标出这是大招充能;底部小条才是血量。
+        const chargeTag = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardChargeTag', '怒气', 0, 14 * scale, 11 * scale, rgba(214, 196, 156, 225), new Size(cardWidth - 10 * scale, 14 * scale));
+        chargeTag.overflow = Label.Overflow.SHRINK;
+        this.applyOutline(chargeTag, scale, false);
+        const chargePct = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardChargePct', `${Math.floor(energyRatio * 100)}%`, 0, -4 * scale, 17 * scale, rgba(255, 235, 170), new Size(cardWidth - 10 * scale, 20 * scale));
         chargePct.overflow = Label.Overflow.SHRINK;
         this.applyOutline(chargePct, scale, true);
       }

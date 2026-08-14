@@ -188,6 +188,10 @@ export function resolveBattleReplayCounterMultiplier(
 }
 
 const BATTLE_REPLAY_MAX_ACTIONS = 44;
+// 输出试炼=连续战斗:动作持续生成直到打满 90 秒窗口(或我方全灭),全程无人冷场;
+// 240 为安全上限(560ms 节奏 90 秒≈160 动作)。常规副本保持 44(数值标定基于它,不能动)。
+const BATTLE_REPLAY_TRIAL_WINDOW_MS = 90_000;
+const BATTLE_REPLAY_TRIAL_MAX_ACTIONS = 240;
 const BATTLE_REPLAY_ACTION_CADENCE_MS = 560;
 const BATTLE_REPLAY_MELEE_APPROACH_MS = 980;
 const BATTLE_REPLAY_MELEE_CAST_MS = 460;
@@ -219,7 +223,7 @@ function buildBattleReplay(snapshot: BattlePresentationSnapshot, timeline: Battl
     // 输出试炼:把敌方 BOSS 血量放大到基本打不死,整段演出拼总输出;血条掉多少≈相对输出。
     inflateTrialBossHp(unitByKey, units);
   }
-  const actions = resolveBattleReplayCombatActions(snapshot, timeline, unitByKey, units);
+  const actions = resolveBattleReplayCombatActions(snapshot, timeline, unitByKey, units, trial);
   const battleEndMs = resolveBattleReplayBattleEndMs(timeline, actions);
 
   return {
@@ -374,6 +378,7 @@ function resolveBattleReplayCombatActions(
   timeline: BattlePresentationTimeline,
   unitByKey: Map<string, BattlePresentationUnitSnapshot>,
   units: Map<string, BattleReplayUnitState>,
+  trial = false,
 ): BattleReplayAction[] {
   const combatOrder = resolveBattleReplayCombatOrder(unitByKey);
   const seed = createBattleReplaySeed(`${timeline.timelineKey}:${snapshot.unitSnapshotKey}`);
@@ -391,7 +396,15 @@ function resolveBattleReplayCombatActions(
   // 硬控空过保护:被冻结/眩晕导致无人可出手时,推进时间等待解控;连续空过过多则收尾,防止死循环。
   let consecutiveSkips = 0;
 
-  while (actions.length < BATTLE_REPLAY_MAX_ACTIONS && hasLivingSide(units, 'ally') && hasLivingSide(units, 'enemy')) {
+  // 试炼=连续战斗:不设 44 动作硬限,持续出手直到打满 90 秒窗口或一方全灭——战斗全程"活的",不再是有限回放。
+  const maxActions = trial ? BATTLE_REPLAY_TRIAL_MAX_ACTIONS : BATTLE_REPLAY_MAX_ACTIONS;
+  const trialWindowEndMs = firstActionMs + BATTLE_REPLAY_TRIAL_WINDOW_MS;
+  while (
+    actions.length < maxActions
+    && (!trial || nextActionStartMs < trialWindowEndMs)
+    && hasLivingSide(units, 'ally')
+    && hasLivingSide(units, 'enemy')
+  ) {
     const side: 'ally' | 'enemy' = resolveBattleReplayActionSide(actions.length, units, firstAllyCycle);
     const actor = selectBattleReplayActor(combatOrder, units, side, cursors, side === 'ally' ? firstAllyCycle : null, nextActionStartMs);
     if (!actor) {
