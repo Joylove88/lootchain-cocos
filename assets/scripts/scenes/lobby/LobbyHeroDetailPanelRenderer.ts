@@ -3392,7 +3392,8 @@ const HERO_ULTIMATE_SKILL_NAMES: Record<string, string> = {
   R_SCOUT_03: '灰谷·暗影突袭',
 };
 
-function resolveUltimateSkillName(heroCode: string | null | undefined): string {
+// 导出:战斗大招施放的全屏名字横幅也用同一命名(单一数据源)。
+export function resolveUltimateSkillName(heroCode: string | null | undefined): string {
   const code = (heroCode || '').trim().toUpperCase();
   return HERO_ULTIMATE_SKILL_NAMES[code] ?? '终极技能';
 }
