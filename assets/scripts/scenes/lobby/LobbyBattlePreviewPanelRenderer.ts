@@ -202,6 +202,9 @@ const BATTLE_ACTOR_CLASH_ATTACK_CYCLE_MS = 1500;
 const BATTLE_COMBAT_COUNTDOWN_MS = 90_000;
 // 输出试炼「层数血条」:把 BOSS 巨血视觉切成 N 层,清空一层=×N 计数-1+换色。层数越多、单层越薄、翻动越快。可调。
 const TRIAL_BOSS_LAYERS = 60;
+// 输出试炼:回放动作打完后再留这么久(手动大招补刀窗口)就直接结算——之后没有任何新动作,
+// 干等倒计时只是"活着的英雄站桩发呆"的空转。
+const TRIAL_POST_ACTIONS_GRACE_MS = 4000;
 const BATTLE_ACTOR_CLASH_IDLE_SWAY_X = 18;
 const BATTLE_ACTOR_CLASH_IDLE_SWAY_Y = 5;
 const BATTLE_ENABLE_FRONT_CLASH_CHARGE = false;
@@ -471,8 +474,11 @@ export class LobbyBattlePreviewPanelRenderer {
     const trialMode = isDailyTrialStageCode(snapshot.stageCode);
     const firstActionTimeMs = timeline.events.find((event) => event.type === 'action_start')?.timeMs ?? 0;
     const trialTimeUp = trialMode && playbackTimelineTimeMs - firstActionTimeMs >= BATTLE_COMBAT_COUNTDOWN_MS;
+    // 回放动作打完(+缓冲)后没有任何新动作,立即结算,不再空转等倒计时。
+    const trialActionsDone = trialMode
+      && playbackTimelineTimeMs >= resolveBattleReplay(snapshot, timeline).battleEndMs + TRIAL_POST_ACTIONS_GRACE_MS;
     const battleEndReady = trialMode
-      ? trialTimeUp || resolveBattleVisualOutcome(hpState, playbackTimelineTimeMs) !== null
+      ? trialTimeUp || trialActionsDone || resolveBattleVisualOutcome(hpState, playbackTimelineTimeMs) !== null
       : isBattleVisualResultReady(hpState, playbackTimelineTimeMs);
     if (!this.battleVictoryBannerShown && battleEndReady) {
       this.battleVictoryBannerShown = true;
@@ -1592,7 +1598,26 @@ export class LobbyBattlePreviewPanelRenderer {
     this.refreshBattleActorHpBar(actor, slot, scale, unit, enemy, hpUnit, hpState, currentActionCue, presentation.phase);
 
     if (hpUnitDead) {
-      this.applyBattleActorSpineCueOnce(`dead:${this.lastBattleSceneKey}`, actor, unit, actionAnimationName);
+      // cue 键带 unitKey:原先全场共用一个键,第二个死亡单位的死亡动画会被吞。
+      this.applyBattleActorSpineCueOnce(`dead:${this.lastBattleSceneKey}:${unit.unitKey}`, actor, unit, actionAnimationName);
+      // 通用倒地+下沉淡出(每单位一次):骨骼里没有 die/dead 动画的单位也有完整死亡表现,
+      // 前 0.68s 留给骨骼死亡动画,随后 0.5s 倒地旋转+下沉+淡出,与 1.2s 隐藏窗口衔接。
+      const fallKey = `death-fall:${unit.unitKey}`;
+      if (!this.playedBattleCueKeys.has(fallKey)) {
+        this.playedBattleCueKeys.add(fallKey);
+        const deadVisualRoot = actor.getChildByName('LobbyBattleActorVisualRoot');
+        if (this.isNodeAlive(deadVisualRoot)) {
+          const fade = deadVisualRoot.getComponent(UIOpacity) ?? deadVisualRoot.addComponent(UIOpacity);
+          tween(deadVisualRoot)
+            .delay(0.68)
+            .to(0.5, {
+              angle: enemy ? 74 : -74,
+              position: new Vec3(deadVisualRoot.position.x, deadVisualRoot.position.y - 22 * scale, deadVisualRoot.position.z),
+            })
+            .start();
+          tween(fade).delay(0.68).to(0.5, { opacity: 0 }).start();
+        }
+      }
       return;
     }
 
