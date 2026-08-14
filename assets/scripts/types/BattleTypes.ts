@@ -13,6 +13,8 @@ export interface PlayerBattleSettleDTO {
   durationSeconds: number;
   roundCount: number;
   clientChecksum: string;
+  /** 输出试炼(难度Ⅲ):击破的 BOSS 层数(0~60,含手动大招伤害);非试炼关为 null。服务端封顶防作弊。 */
+  trialLayers?: number | null;
 }
 
 // 战斗特殊属性(概率触发技能):type=lifesteal/truePierce/freeze/stun/splash/reflect。来自后端 effects_json。

@@ -1924,6 +1924,11 @@ export class LootChainGameRoot extends Component {
     this.lobbyBattleFlow.completePresentationEarlyAndSettle();
   }
 
+  // 输出试炼(难度Ⅲ):结算上报击破层数,委托战斗渲染器(与层数血条同口径,含手动大招)。
+  private resolveTrialLayersCleared(): number | null {
+    return this.lobbyBattlePreviewPanelRenderer.resolveTrialLayersCleared();
+  }
+
   private returnToLobbyFromBattlePreview(): void {
     const lastBattleStageCode = this.selectedLobbyStageCode ?? '';
     // 回到大厅时结束战斗表现计时，并回读只读大厅数据，保证闭环后的 HUD 与入口状态是最新快照。

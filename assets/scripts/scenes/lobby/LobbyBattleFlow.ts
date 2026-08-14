@@ -25,6 +25,8 @@ export interface LobbyBattleFlowHost {
   onBattleSettlementRecorded?(): void;
   // 进战资产加载门:实现方负责加载本场全部单位骨骼/立绘并回报进度;缺省则跳过门直接开演。
   preloadBattleSessionAssets?(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void>;
+  // 输出试炼(难度Ⅲ):结算上报击破层数(与战斗内层数血条同口径,含手动大招);非试炼/异常返回 null。
+  resolveTrialLayersCleared?(): number | null;
 }
 
 // 加载界面至少展示这么久:资产全命中缓存时避免一帧闪烁,节奏与市面进战转场一致。
@@ -242,10 +244,12 @@ export class LobbyBattleFlow {
       const dto: PlayerBattleSettleDTO = {
         requestId: createRequestId('battle-settle'),
         // 真实胜负:客户端确定性 sim 敌全灭=WIN、我方全灭=LOSE(后端权威裁决奖励,LOSE 不发奖不推进)。
+        // 输出试炼(难度Ⅲ)sim 永远 WIN,层数即输出分。
         result: this.resolveBattleOutcome(),
         durationSeconds: 45,
         roundCount: 3,
         clientChecksum: currentStart.serverSeed.slice(0, 32),
+        trialLayers: this.host.resolveTrialLayersCleared?.() ?? null,
       };
       const settlement = await this.battleApi.settleBattle(currentStart.battleNo, dto);
       if (!this.isCurrent(currentTicket)) {

@@ -1074,6 +1074,33 @@ export class LobbyBattlePreviewPanelRenderer {
     this.renderBossGauge(parent, width, height, scale, snapshot, presentation, hpState);
   }
 
+  /**
+   * 输出试炼结算上报:击破的 BOSS 层数(0~60)。与顶部层数血条同一口径
+   * (含手动大招伤害,取演出末端 hp 态),所见即所得;非试炼关返回 null。
+   */
+  resolveTrialLayersCleared(): number | null {
+    const battleState = this.host.currentLobbyBattleState();
+    const stageCode = battleState.start?.stageCode || battleState.stageCode || '';
+    if (!isDailyTrialStageCode(stageCode)) {
+      return null;
+    }
+    try {
+      const heroes = this.host.currentLobbyHeroRosterState().heroes;
+      const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroes);
+      const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
+      // 取远超时间线末端的时刻=最终状态(hp 推演按事件时间clamp,不会越界)。
+      const hpState = this.resolveBattleHpStateWithManualUlts(snapshot, timeline, 10_000_000);
+      const boss = hpState.units.get(snapshot.leadEnemy.unitKey);
+      const ratio = clamp(boss?.hpRatio ?? 1, 0, 1);
+      // 与 renderBossGauge 相同:layers = floor((1-ratio) × TRIAL_BOSS_LAYERS)。
+      return Math.max(0, Math.min(TRIAL_BOSS_LAYERS, Math.floor((1 - ratio) * TRIAL_BOSS_LAYERS)));
+    } catch (error) {
+      // 演出数据异常不阻断结算:回退 null=服务端用阵容公式分。
+      void error;
+      return null;
+    }
+  }
+
   private renderBattleBuffTray(
     parent: Node,
     width: number,
