@@ -184,9 +184,8 @@ export class LobbyDailyDungeonPanelRenderer {
       this.renderRetryButton(panel, scale);
     } else if (state.summary) {
       this.renderThemeCards(panel, panelWidth, panelHeight, scale, state);
+      // 熔炉/输出榜入口已收进底部矿脉信息条右端(同主题聚合),不再孤悬顶部体力条下。
       this.renderFooterBar(panel, panelWidth, panelHeight, scale, state.summary.crystalMine);
-      this.renderRankEntryButton(panel, panelWidth, panelHeight, scale);
-      this.renderFurnaceEntryButton(panel, panelWidth, panelHeight, scale);
       if (this.rankPopupOpen) {
         this.renderCrystalRankPopup(panel, panelWidth, panelHeight, scale);
       }
@@ -765,39 +764,46 @@ export class LobbyDailyDungeonPanelRenderer {
         footerColor = rgba(186, 226, 255, 245);
       }
     }
+    // 文案让出右端 30% 给两个圣晶功能胶囊(熔炉/输出榜):同主题聚合在矿脉条内,不再孤悬顶部。
     const text = this.host.addChildLabel(
       bar,
       'LobbyDailyFooterText',
       footerText,
-      iconSize * 0.5,
+      -barWidth * 0.06 + iconSize * 0.5,
       0,
       15 * scale,
       footerColor,
-      new Size(barWidth * 0.8, 22 * scale),
+      new Size(barWidth * 0.56, 22 * scale),
     );
     text.overflow = Label.Overflow.SHRINK;
-  }
-
-  // 输出榜入口按钮(P金-1c):右上货币胶囊下方。
-  private renderRankEntryButton(parent: Node, width: number, height: number, scale: number): void {
-    const buttonWidth = 120 * scale;
-    const buttonHeight = buttonWidth * (211 / 740) * 1.1;
-    const button = this.host.addChildPlainNode(parent, 'LobbyDailyRankButton', width / 2 - 110 * scale, height / 2 - 82 * scale, buttonWidth, buttonHeight);
-    if (!this.host.addSprite('LobbyDailyRankButtonBg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, buttonWidth, buttonHeight, button)) {
-      const g = button.addComponent(Graphics);
-      g.fillColor = rgba(122, 32, 26, 235);
-      g.roundRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, 5 * scale);
-      g.fill();
-    }
-    const label = this.host.addChildLabel(button, 'LobbyDailyRankButtonLabel', '输出榜', 0, 0, 15 * scale, rgba(255, 240, 205, 255), new Size(buttonWidth - 16 * scale, 20 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    button.addComponent(Button);
-    button.on(Button.EventType.CLICK, () => {
+    // 右端两个紧凑胶囊按钮:圣晶熔炉 | 输出榜。
+    const pillW = barWidth * 0.125;
+    const pillH = barHeight * 0.5;
+    const pillGap = barWidth * 0.012;
+    const rightEdge = barWidth / 2 - barWidth * 0.045;
+    this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '圣晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
+    this.renderFooterPill(bar, 'LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, 0, pillW, pillH, scale, () => {
       this.rankPopupOpen = true;
       this.host.loadLobbyCrystalRankSummary?.();
       this.host.refreshLobbyDailyDungeonPanel();
-    }, this);
-    this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+    });
+  }
+
+  private renderFooterPill(parent: Node, name: string, text: string, x: number, y: number, w: number, h: number, scale: number, onClick: () => void): void {
+    const pill = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    const g = pill.addComponent(Graphics);
+    g.fillColor = rgba(38, 24, 16, 235);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 225);
+    g.lineWidth = Math.max(1, 1.3 * scale);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    g.stroke();
+    const label = this.host.addChildLabel(pill, `${name}Label`, text, 0, 0, 13.5 * scale, rgba(255, 234, 176, 255), new Size(w - 8 * scale, h - 4 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    pill.addComponent(Button);
+    pill.on(Button.EventType.CLICK, onClick, this);
+    this.host.applyImageButtonFeedback(pill, 1.06, 0.95);
   }
 
   // 输出周榜弹窗(P金-1c,docs/27):我的分数/排名+榜单前列+阶梯表+上周结果。
@@ -814,8 +820,8 @@ export class LobbyDailyDungeonPanelRenderer {
       this.host.refreshLobbyDailyDungeonPanel();
     }, this);
 
-    const w = Math.min(560 * scale, panelWidth * 0.66);
-    const h = Math.min(520 * scale, panelHeight * 0.92);
+    const w = Math.min(680 * scale, panelWidth * 0.74);
+    const h = Math.min(600 * scale, panelHeight * 0.94);
     const card = this.host.addChildPlainNode(overlay, 'LobbyDailyRankCard', 0, 0, w, h);
     card.addComponent(BlockInputEvents);
     const g = card.addComponent(Graphics);
@@ -829,11 +835,11 @@ export class LobbyDailyDungeonPanelRenderer {
 
     const rankState = this.host.currentLobbyCrystalRankState?.();
     const summary = rankState?.summary ?? null;
-    const title = this.host.addChildLabel(card, 'RankTitle', summary ? `输出周榜 · ${summary.weekKey}` : '输出周榜', 0, h / 2 - 30 * scale, 21 * scale, rgba(244, 220, 166, 255), new Size(w - 60 * scale, 28 * scale));
+    const title = this.host.addChildLabel(card, 'RankTitle', summary ? `输出周榜 · ${summary.weekKey}` : '输出周榜', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(w - 60 * scale, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
 
     if (!rankState || rankState.loading) {
-      const hint = this.host.addChildLabel(card, 'RankLoading', '正在读取周榜…', 0, 0, 16 * scale, rgba(214, 196, 156, 235), new Size(w - 80 * scale, 24 * scale));
+      const hint = this.host.addChildLabel(card, 'RankLoading', '正在读取周榜…', 0, 0, 18 * scale, rgba(214, 196, 156, 235), new Size(w - 80 * scale, 24 * scale));
       hint.overflow = Label.Overflow.SHRINK;
       return;
     }
@@ -850,15 +856,15 @@ export class LobbyDailyDungeonPanelRenderer {
     const lineWidth = w - 60 * scale;
     const days = Math.floor(summary.secondsToWeekEnd / 86400);
     const hours = Math.floor((summary.secondsToWeekEnd % 86400) / 3600);
-    const sub = this.host.addChildLabel(card, 'RankSub', `周一 0 点结算 · 距结算 ${days} 天 ${hours} 小时`, 0, h / 2 - 56 * scale, 13 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 18 * scale));
+    const sub = this.host.addChildLabel(card, 'RankSub', `周一 0 点结算 · 距结算 ${days} 天 ${hours} 小时`, 0, h / 2 - 64 * scale, 15 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 20 * scale));
     sub.overflow = Label.Overflow.SHRINK;
     const mineLine = this.host.addChildLabel(
       card,
       'RankMine',
       `我的：今日 ${summary.myTodayScore} · 本周 ${summary.myWeekScore} · 排名 ${summary.myRank > 0 ? `第${summary.myRank}名` : '未上榜'}`,
       left,
-      h / 2 - 82 * scale,
-      15 * scale,
+      h / 2 - 92 * scale,
+      17 * scale,
       rgba(250, 226, 160, 250),
       new Size(lineWidth, 20 * scale),
       HorizontalTextAlignment.LEFT,
@@ -866,28 +872,28 @@ export class LobbyDailyDungeonPanelRenderer {
     mineLine.overflow = Label.Overflow.SHRINK;
 
     // 榜单前列(前 8):我的行金色高亮。
-    let cursor = h / 2 - 110 * scale;
+    let cursor = h / 2 - 124 * scale;
     const topRows = summary.topList.slice(0, 8);
     if (topRows.length === 0) {
-      const empty = this.host.addChildLabel(card, 'RankEmpty', '本周暂无人上榜——打一场难度Ⅲ抢头名!', left, cursor, 14 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 20 * scale), HorizontalTextAlignment.LEFT);
+      const empty = this.host.addChildLabel(card, 'RankEmpty', '本周暂无人上榜——打一场难度Ⅲ抢头名!', left, cursor, 16 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 20 * scale), HorizontalTextAlignment.LEFT);
       empty.overflow = Label.Overflow.SHRINK;
       cursor -= 26 * scale;
     }
     topRows.forEach((entry, index) => {
       const mineRow = summary.myRank === entry.rank;
       const rowColor = mineRow ? rgba(255, 226, 144, 255) : rgba(224, 210, 182, 240);
-      const row = this.host.addChildLabel(card, `RankRow_${index}`, `${entry.rank}. ${entry.displayName}`, left, cursor, 14 * scale, rowColor, new Size(lineWidth * 0.62, 18 * scale), HorizontalTextAlignment.LEFT);
+      const row = this.host.addChildLabel(card, `RankRow_${index}`, `${entry.rank}. ${entry.displayName}`, left, cursor, 16 * scale, rowColor, new Size(lineWidth * 0.62, 20 * scale), HorizontalTextAlignment.LEFT);
       row.overflow = Label.Overflow.SHRINK;
-      const scoreLabel = this.host.addChildLabel(card, `RankRowScore_${index}`, `${entry.score}`, left + lineWidth, cursor, 14 * scale, rowColor, new Size(lineWidth * 0.34, 18 * scale), HorizontalTextAlignment.RIGHT);
+      const scoreLabel = this.host.addChildLabel(card, `RankRowScore_${index}`, `${entry.score}`, left + lineWidth, cursor, 16 * scale, rowColor, new Size(lineWidth * 0.34, 20 * scale), HorizontalTextAlignment.RIGHT);
       scoreLabel.overflow = Label.Overflow.SHRINK;
-      cursor -= 22 * scale;
+      cursor -= 27 * scale;
     });
 
     // 阶梯奖励表。
     cursor -= 8 * scale;
-    const tiersTitle = this.host.addChildLabel(card, 'RankTiersTitle', '周榜阶梯奖励', left, cursor, 14 * scale, rgba(238, 210, 148, 250), new Size(lineWidth, 18 * scale), HorizontalTextAlignment.LEFT);
+    const tiersTitle = this.host.addChildLabel(card, 'RankTiersTitle', '周榜阶梯奖励', left, cursor, 16 * scale, rgba(238, 210, 148, 250), new Size(lineWidth, 20 * scale), HorizontalTextAlignment.LEFT);
     tiersTitle.overflow = Label.Overflow.SHRINK;
-    cursor -= 22 * scale;
+    cursor -= 26 * scale;
     summary.rewardTiers.slice(0, 6).forEach((tier, index) => {
       const rangeText = tier.rankFrom === tier.rankTo ? `第${tier.rankFrom}名` : `第${tier.rankFrom}~${tier.rankTo}名`;
       const tierLine = this.host.addChildLabel(
@@ -896,13 +902,13 @@ export class LobbyDailyDungeonPanelRenderer {
         `${rangeText}：圣晶${tier.crystalAmount}${tier.rewardsDesc ? ` + ${tier.rewardsDesc}` : ''}`,
         left,
         cursor,
-        12.5 * scale,
+        14.5 * scale,
         rgba(198, 184, 152, 235),
-        new Size(lineWidth, 16 * scale),
+        new Size(lineWidth, 19 * scale),
         HorizontalTextAlignment.LEFT,
       );
       tierLine.overflow = Label.Overflow.SHRINK;
-      cursor -= 19 * scale;
+      cursor -= 23 * scale;
     });
 
     // 上周结果。
@@ -910,31 +916,14 @@ export class LobbyDailyDungeonPanelRenderer {
     const lastWeekText = summary.lastWeek
       ? `上周(${summary.lastWeek.weekKey})第${summary.lastWeek.myRank}名：圣晶${summary.lastWeek.crystalAmount}${summary.lastWeek.rewardsDesc ? ` + ${summary.lastWeek.rewardsDesc}` : ''},已发放。`
       : '上周未上榜。';
-    const lastWeekLine = this.host.addChildLabel(card, 'RankLastWeek', lastWeekText, left, cursor, 13 * scale, rgba(168, 216, 168, 240), new Size(lineWidth, 34 * scale), HorizontalTextAlignment.LEFT);
+    const lastWeekLine = this.host.addChildLabel(card, 'RankLastWeek', lastWeekText, left, cursor, 15 * scale, rgba(168, 216, 168, 240), new Size(lineWidth, 38 * scale), HorizontalTextAlignment.LEFT);
     lastWeekLine.overflow = Label.Overflow.SHRINK;
 
-    const closeHint = this.host.addChildLabel(card, 'RankCloseHint', '点击空白处关闭', 0, -h / 2 + 20 * scale, 12 * scale, rgba(150, 140, 122, 200), new Size(lineWidth, 16 * scale));
+    const closeHint = this.host.addChildLabel(card, 'RankCloseHint', '点击空白处关闭', 0, -h / 2 + 22 * scale, 13 * scale, rgba(150, 140, 122, 200), new Size(lineWidth, 16 * scale));
     closeHint.overflow = Label.Overflow.SHRINK;
   }
 
   // ── 圣晶熔炉(P金-2b):圣晶兑代币入口 + 弹窗(绑钱包/预设档位+自定义兑换/近期单) ──
-
-  private renderFurnaceEntryButton(parent: Node, width: number, height: number, scale: number): void {
-    const buttonWidth = 120 * scale;
-    const buttonHeight = buttonWidth * (211 / 740) * 1.1;
-    const button = this.host.addChildPlainNode(parent, 'LobbyDailyFurnaceButton', width / 2 - 240 * scale, height / 2 - 82 * scale, buttonWidth, buttonHeight);
-    if (!this.host.addSprite('LobbyDailyFurnaceButtonBg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, buttonWidth, buttonHeight, button)) {
-      const g = button.addComponent(Graphics);
-      g.fillColor = rgba(140, 78, 24, 235);
-      g.roundRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, 5 * scale);
-      g.fill();
-    }
-    const label = this.host.addChildLabel(button, 'LobbyDailyFurnaceButtonLabel', '圣晶熔炉', 0, 0, 15 * scale, rgba(255, 240, 205, 255), new Size(buttonWidth - 16 * scale, 20 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    button.addComponent(Button);
-    button.on(Button.EventType.CLICK, () => this.host.openLobbyTokenFurnace?.(), this);
-    this.host.applyImageButtonFeedback(button, 1.04, 0.96);
-  }
 
   private furnaceButton(
     parent: Node,
@@ -958,7 +947,7 @@ export class LobbyDailyDungeonPanelRenderer {
     g.lineWidth = Math.max(1, 1.4 * scale);
     g.roundRect(-w / 2, -hgt / 2, w, hgt, 6 * scale);
     g.stroke();
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 14 * scale, enabled ? rgba(255, 240, 205, 255) : rgba(150, 144, 134, 235), new Size(w - 12 * scale, hgt - 6 * scale));
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 15.5 * scale, enabled ? rgba(255, 240, 205, 255) : rgba(150, 144, 134, 235), new Size(w - 12 * scale, hgt - 6 * scale));
     label.overflow = Label.Overflow.SHRINK;
     if (enabled) {
       button.addComponent(Button);
@@ -1002,8 +991,8 @@ export class LobbyDailyDungeonPanelRenderer {
     overlay.addComponent(Button);
     overlay.on(Button.EventType.CLICK, () => this.host.closeLobbyTokenFurnace?.(), this);
 
-    const w = Math.min(620 * scale, panelWidth * 0.74);
-    const h = Math.min(600 * scale, panelHeight * 0.96);
+    const w = Math.min(760 * scale, panelWidth * 0.82);
+    const h = Math.min(680 * scale, panelHeight * 0.96);
     const card = this.host.addChildPlainNode(overlay, 'LobbyTokenFurnaceCard', 0, 0, w, h);
     card.addComponent(BlockInputEvents);
     card.addComponent(Button); // 吞掉卡内点击,避免冒泡到遮罩关闭
@@ -1016,14 +1005,14 @@ export class LobbyDailyDungeonPanelRenderer {
     g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
     g.stroke();
 
-    const left = -w / 2 + 28 * scale;
-    const lineW = w - 56 * scale;
-    const title = this.host.addChildLabel(card, 'FurnaceTitle', '圣晶熔炉 · 圣晶兑代币', 0, h / 2 - 28 * scale, 20 * scale, rgba(244, 220, 166, 255), new Size(lineW, 26 * scale));
+    const left = -w / 2 + 34 * scale;
+    const lineW = w - 68 * scale;
+    const title = this.host.addChildLabel(card, 'FurnaceTitle', '圣晶熔炉 · 圣晶兑代币', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(lineW, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
 
     const summary = state.summary;
     if ((state.loading && !summary)) {
-      const hint = this.host.addChildLabel(card, 'FurnaceLoading', '正在读取熔炉…', 0, 0, 16 * scale, rgba(214, 196, 156, 235), new Size(lineW, 24 * scale));
+      const hint = this.host.addChildLabel(card, 'FurnaceLoading', '正在读取熔炉…', 0, 0, 18 * scale, rgba(214, 196, 156, 235), new Size(lineW, 24 * scale));
       hint.overflow = Label.Overflow.SHRINK;
       this.renderFurnaceCloseButton(card, w, h, scale);
       return;
@@ -1040,35 +1029,35 @@ export class LobbyDailyDungeonPanelRenderer {
     }
 
     const feePct = Math.round(summary.feeRate * 100);
-    let cursor = h / 2 - 58 * scale;
+    let cursor = h / 2 - 72 * scale;
     const ruleLine = this.host.addChildLabel(
       card,
       'FurnaceRule',
       `我的圣晶 ${Math.floor(summary.sacredCrystal)} · ${summary.crystalPerToken}圣晶=1${summary.tokenSymbol} · 手续费${feePct}%`,
       left,
       cursor,
-      14 * scale,
+      17 * scale,
       rgba(250, 226, 160, 250),
-      new Size(lineW, 20 * scale),
+      new Size(lineW, 24 * scale),
       HorizontalTextAlignment.LEFT,
     );
     ruleLine.overflow = Label.Overflow.SHRINK;
-    cursor -= 26 * scale;
+    cursor -= 32 * scale;
 
     // 门槛提示。
     const gateText = summary.eligible ? '✓ 已满足兑换门槛(注册7天 + 通关MAIN_5_1 + 已绑钱包)' : `✗ ${summary.ineligibleReason ?? '暂不可兑换'}`;
-    const gate = this.host.addChildLabel(card, 'FurnaceGate', gateText, left, cursor, 13 * scale, summary.eligible ? rgba(168, 216, 168, 240) : rgba(255, 176, 132, 245), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+    const gate = this.host.addChildLabel(card, 'FurnaceGate', gateText, left, cursor, 15.5 * scale, summary.eligible ? rgba(168, 216, 168, 240) : rgba(255, 176, 132, 245), new Size(lineW, 22 * scale), HorizontalTextAlignment.LEFT);
     gate.overflow = Label.Overflow.SHRINK;
-    cursor -= 26 * scale;
+    cursor -= 32 * scale;
 
     // 钱包行 + 绑定/换绑入口。
     const walletText = summary.walletBound ? '钱包:已绑定' : '钱包:未绑定';
-    const walletLabel = this.host.addChildLabel(card, 'FurnaceWallet', walletText, left, cursor, 13.5 * scale, rgba(214, 196, 156, 235), new Size(lineW * 0.5, 18 * scale), HorizontalTextAlignment.LEFT);
+    const walletLabel = this.host.addChildLabel(card, 'FurnaceWallet', walletText, left, cursor, 16 * scale, rgba(214, 196, 156, 235), new Size(lineW * 0.5, 22 * scale), HorizontalTextAlignment.LEFT);
     walletLabel.overflow = Label.Overflow.SHRINK;
-    this.furnaceButton(card, 'FurnaceBindToggle', state.bindOpen ? '收起' : (summary.walletBound ? '换绑' : '去绑定'), w / 2 - 78 * scale, cursor, 96 * scale, 30 * scale, scale, state.bindOpen, true, () => {
+    this.furnaceButton(card, 'FurnaceBindToggle', state.bindOpen ? '收起' : (summary.walletBound ? '换绑' : '去绑定'), w / 2 - 92 * scale, cursor, 116 * scale, 34 * scale, scale, state.bindOpen, true, () => {
       this.host.setLobbyTokenFurnaceForm?.({ bindOpen: !state.bindOpen, actionMessage: '', actionError: false });
     });
-    cursor -= 30 * scale;
+    cursor -= 38 * scale;
 
     if (state.bindOpen) {
       cursor = this.renderFurnaceBindForm(card, state, left, lineW, cursor, scale);
@@ -1078,25 +1067,25 @@ export class LobbyDailyDungeonPanelRenderer {
 
     // 操作反馈。
     if (state.actionMessage) {
-      const msg = this.host.addChildLabel(card, 'FurnaceActionMsg', state.actionMessage, left, cursor, 13 * scale, state.actionError ? rgba(255, 150, 130, 240) : rgba(168, 216, 168, 245), new Size(lineW, 32 * scale), HorizontalTextAlignment.LEFT);
+      const msg = this.host.addChildLabel(card, 'FurnaceActionMsg', state.actionMessage, left, cursor, 15 * scale, state.actionError ? rgba(255, 150, 130, 240) : rgba(168, 216, 168, 245), new Size(lineW, 36 * scale), HorizontalTextAlignment.LEFT);
       msg.overflow = Label.Overflow.SHRINK;
       msg.enableWrapText = true;
-      cursor -= 34 * scale;
+      cursor -= 40 * scale;
     }
 
     // 近期兑换单。
     cursor -= 4 * scale;
-    const ordersTitle = this.host.addChildLabel(card, 'FurnaceOrdersTitle', '近期兑换单', left, cursor, 13.5 * scale, rgba(238, 210, 148, 250), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+    const ordersTitle = this.host.addChildLabel(card, 'FurnaceOrdersTitle', '近期兑换单', left, cursor, 16 * scale, rgba(238, 210, 148, 250), new Size(lineW, 22 * scale), HorizontalTextAlignment.LEFT);
     ordersTitle.overflow = Label.Overflow.SHRINK;
-    cursor -= 20 * scale;
+    cursor -= 26 * scale;
     const orders = summary.recentOrders.slice(0, 4);
     if (orders.length === 0) {
-      const empty = this.host.addChildLabel(card, 'FurnaceOrdersEmpty', '暂无兑换记录', left, cursor, 12.5 * scale, rgba(170, 158, 138, 230), new Size(lineW, 16 * scale), HorizontalTextAlignment.LEFT);
+      const empty = this.host.addChildLabel(card, 'FurnaceOrdersEmpty', '暂无兑换记录', left, cursor, 15 * scale, rgba(170, 158, 138, 230), new Size(lineW, 20 * scale), HorizontalTextAlignment.LEFT);
       empty.overflow = Label.Overflow.SHRINK;
     } else {
       orders.forEach((order, index) => {
         this.renderFurnaceOrderRow(card, order, summary.tokenSymbol, left, lineW, cursor, scale, index);
-        cursor -= 20 * scale;
+        cursor -= 25 * scale;
       });
     }
 
@@ -1105,14 +1094,14 @@ export class LobbyDailyDungeonPanelRenderer {
 
   private renderFurnaceBindForm(card: Node, state: LobbyTokenFurnaceState, left: number, lineW: number, startY: number, scale: number): number {
     let cursor = startY - 4 * scale;
-    const chainLabel = this.host.addChildLabel(card, 'FurnaceChainLabel', '选择公链', left, cursor, 13 * scale, rgba(214, 196, 156, 235), new Size(lineW * 0.4, 18 * scale), HorizontalTextAlignment.LEFT);
+    const chainLabel = this.host.addChildLabel(card, 'FurnaceChainLabel', '选择公链', left, cursor, 15.5 * scale, rgba(214, 196, 156, 235), new Size(lineW * 0.4, 22 * scale), HorizontalTextAlignment.LEFT);
     chainLabel.overflow = Label.Overflow.SHRINK;
-    this.furnaceButton(card, 'FurnaceChainBsc', 'BSC', left + lineW * 0.5, cursor, 78 * scale, 30 * scale, scale, state.bindChain === 'BSC', true, () => this.host.setLobbyTokenFurnaceForm?.({ bindChain: 'BSC' }));
-    this.furnaceButton(card, 'FurnaceChainTron', 'TRON', left + lineW * 0.5 + 90 * scale, cursor, 78 * scale, 30 * scale, scale, state.bindChain === 'TRON', true, () => this.host.setLobbyTokenFurnaceForm?.({ bindChain: 'TRON' }));
-    cursor -= 34 * scale;
+    this.furnaceButton(card, 'FurnaceChainBsc', 'BSC', left + lineW * 0.5, cursor, 92 * scale, 34 * scale, scale, state.bindChain === 'BSC', true, () => this.host.setLobbyTokenFurnaceForm?.({ bindChain: 'BSC' }));
+    this.furnaceButton(card, 'FurnaceChainTron', 'TRON', left + lineW * 0.5 + 106 * scale, cursor, 92 * scale, 34 * scale, scale, state.bindChain === 'TRON', true, () => this.host.setLobbyTokenFurnaceForm?.({ bindChain: 'TRON' }));
+    cursor -= 42 * scale;
 
     // 地址输入框(EditBox 静默写入,避免每次输入触发面板重建丢焦点)。
-    this.furnaceInputBg(card, 'FurnaceBindAddrBg', left + lineW / 2, cursor, lineW, 32 * scale, scale);
+    this.furnaceInputBg(card, 'FurnaceBindAddrBg', left + lineW / 2, cursor, lineW, 38 * scale, scale);
     const box = this.host.addEditBox?.(state.bindAddress, left + lineW / 2, cursor, lineW);
     if (box) {
       box.placeholder = state.bindChain === 'TRON' ? 'T 开头 34 位 TRON 地址' : '0x 开头 42 位 BSC 地址';
@@ -1120,22 +1109,22 @@ export class LobbyDailyDungeonPanelRenderer {
       card.addChild(box.node);
       box.node.on(EditBox.EventType.TEXT_CHANGED, () => this.host.setLobbyTokenFurnaceBindAddress?.(box.string), this);
     }
-    cursor -= 34 * scale;
+    cursor -= 44 * scale;
 
-    this.furnaceButton(card, 'FurnaceBindConfirm', state.submitting ? '绑定中…' : '确认绑定', left + lineW / 2, cursor, 160 * scale, 34 * scale, scale, true, !state.submitting, () => {
+    this.furnaceButton(card, 'FurnaceBindConfirm', state.submitting ? '绑定中…' : '确认绑定', left + lineW / 2, cursor, 190 * scale, 40 * scale, scale, true, !state.submitting, () => {
       const fresh = this.host.currentLobbyTokenFurnaceState?.();
       if (fresh) {
         this.host.bindLobbyTokenWallet?.(fresh.bindChain, fresh.bindAddress);
       }
     });
-    cursor -= 40 * scale;
+    cursor -= 48 * scale;
     return cursor;
   }
 
   private renderFurnaceExchangeForm(card: Node, summary: TokenExchangeSummaryVO, state: LobbyTokenFurnaceState, left: number, lineW: number, startY: number, scale: number): number {
     let cursor = startY - 2 * scale;
     if (!summary.eligible) {
-      const hint = this.host.addChildLabel(card, 'FurnaceExchangeLocked', '满足上方门槛后即可兑换。', left, cursor, 13 * scale, rgba(200, 186, 156, 235), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+      const hint = this.host.addChildLabel(card, 'FurnaceExchangeLocked', '满足上方门槛后即可兑换。', left, cursor, 15.5 * scale, rgba(200, 186, 156, 235), new Size(lineW, 22 * scale), HorizontalTextAlignment.LEFT);
       hint.overflow = Label.Overflow.SHRINK;
       return cursor - 24 * scale;
     }
@@ -1155,17 +1144,17 @@ export class LobbyDailyDungeonPanelRenderer {
     presets.forEach((preset, index) => {
       const enabled = preset.value >= summary.minCrystal && preset.value <= balanceMax;
       const active = !state.customCrystal && state.selectedCrystal === preset.value && preset.value > 0;
-      this.furnaceButton(card, `FurnaceTier_${index}`, preset.label, left + tierW / 2 + index * (tierW + 10 * scale), cursor, tierW, 32 * scale, scale, active, enabled, () => {
+      this.furnaceButton(card, `FurnaceTier_${index}`, preset.label, left + tierW / 2 + index * (tierW + 10 * scale), cursor, tierW, 38 * scale, scale, active, enabled, () => {
         this.host.setLobbyTokenFurnaceForm?.({ selectedCrystal: preset.value, customCrystal: '', actionMessage: '', actionError: false });
       });
     });
-    cursor -= 40 * scale;
+    cursor -= 48 * scale;
 
     // 自定义圣晶输入。
-    const custLabel = this.host.addChildLabel(card, 'FurnaceCustomLabel', '自定义', left, cursor, 13 * scale, rgba(214, 196, 156, 235), new Size(66 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    const custLabel = this.host.addChildLabel(card, 'FurnaceCustomLabel', '自定义', left, cursor, 15.5 * scale, rgba(214, 196, 156, 235), new Size(76 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     custLabel.overflow = Label.Overflow.SHRINK;
-    this.furnaceInputBg(card, 'FurnaceCustomBg', left + 70 * scale + (lineW - 70 * scale) / 2, cursor, lineW - 70 * scale, 32 * scale, scale);
-    const box = this.host.addEditBox?.(state.customCrystal, left + 70 * scale + (lineW - 70 * scale) / 2, cursor, lineW - 70 * scale);
+    this.furnaceInputBg(card, 'FurnaceCustomBg', left + 80 * scale + (lineW - 80 * scale) / 2, cursor, lineW - 80 * scale, 38 * scale, scale);
+    const box = this.host.addEditBox?.(state.customCrystal, left + 80 * scale + (lineW - 80 * scale) / 2, cursor, lineW - 80 * scale);
     if (box) {
       box.placeholder = `圣晶数量(≥${summary.minCrystal},${summary.crystalPerToken}整数倍)`;
       box.inputMode = EditBox.InputMode.NUMERIC;
@@ -1173,7 +1162,7 @@ export class LobbyDailyDungeonPanelRenderer {
       card.addChild(box.node);
       box.node.on(EditBox.EventType.TEXT_CHANGED, () => this.host.setLobbyTokenFurnaceCustomAmount?.(box.string), this);
     }
-    cursor -= 32 * scale;
+    cursor -= 40 * scale;
 
     // 预览:本次圣晶 → 代币 + 手续费。
     const crystal = this.resolveFurnaceCrystal(state);
@@ -1182,9 +1171,9 @@ export class LobbyDailyDungeonPanelRenderer {
     const previewText = crystal > 0
       ? `本次 ${crystal} 圣晶 → ${trimNum(token)} ${summary.tokenSymbol} · 手续费 ${fee} 圣晶 · 合计扣 ${crystal + fee}`
       : '选择档位或输入圣晶数量';
-    const preview = this.host.addChildLabel(card, 'FurnacePreview', previewText, left, cursor, 13 * scale, rgba(250, 226, 160, 245), new Size(lineW, 18 * scale), HorizontalTextAlignment.LEFT);
+    const preview = this.host.addChildLabel(card, 'FurnacePreview', previewText, left, cursor, 16 * scale, rgba(250, 226, 160, 245), new Size(lineW, 22 * scale), HorizontalTextAlignment.LEFT);
     preview.overflow = Label.Overflow.SHRINK;
-    cursor -= 22 * scale;
+    cursor -= 27 * scale;
 
     const capLine = this.host.addChildLabel(
       card,
@@ -1192,31 +1181,31 @@ export class LobbyDailyDungeonPanelRenderer {
       `今日已兑 ${trimNum(summary.todayExchangedToken)}/${trimNum(summary.dailyTokenCap)} ${summary.tokenSymbol} · ≤${trimNum(summary.autoPassToken)} 自动过审,超额人工审核`,
       left,
       cursor,
-      12 * scale,
+      14 * scale,
       rgba(190, 178, 150, 235),
-      new Size(lineW, 16 * scale),
+      new Size(lineW, 19 * scale),
       HorizontalTextAlignment.LEFT,
     );
     capLine.overflow = Label.Overflow.SHRINK;
-    cursor -= 28 * scale;
+    cursor -= 34 * scale;
 
-    this.furnaceButton(card, 'FurnaceExchangeConfirm', state.submitting ? '提交中…' : '确认兑换', left + lineW / 2, cursor, 180 * scale, 36 * scale, scale, true, !state.submitting, () => {
+    this.furnaceButton(card, 'FurnaceExchangeConfirm', state.submitting ? '提交中…' : '确认兑换', left + lineW / 2, cursor, 210 * scale, 42 * scale, scale, true, !state.submitting, () => {
       const fresh = this.host.currentLobbyTokenFurnaceState?.();
       if (fresh) {
         this.host.submitLobbyTokenExchange?.(this.resolveFurnaceCrystal(fresh));
       }
     });
-    cursor -= 42 * scale;
+    cursor -= 50 * scale;
     return cursor;
   }
 
   private renderFurnaceOrderRow(card: Node, order: TokenWithdrawOrderVO, symbol: string, left: number, lineW: number, y: number, scale: number, index: number): void {
     const day = (order.createTime || '').replace('T', ' ').slice(5, 16);
     const rowText = `${day} · ${order.crystalAmount}圣晶 → ${trimNum(order.tokenAmount)}${symbol}`;
-    const row = this.host.addChildLabel(card, `FurnaceOrder_${index}`, rowText, left, y, 12.5 * scale, rgba(216, 204, 178, 240), new Size(lineW * 0.66, 16 * scale), HorizontalTextAlignment.LEFT);
+    const row = this.host.addChildLabel(card, `FurnaceOrder_${index}`, rowText, left, y, 15 * scale, rgba(216, 204, 178, 240), new Size(lineW * 0.66, 20 * scale), HorizontalTextAlignment.LEFT);
     row.overflow = Label.Overflow.SHRINK;
     const statusColor = order.status === 2 ? rgba(255, 168, 140, 240) : order.status === 3 ? rgba(168, 216, 168, 240) : rgba(238, 210, 148, 240);
-    const status = this.host.addChildLabel(card, `FurnaceOrderStatus_${index}`, order.statusLabel, left + lineW, y, 12.5 * scale, statusColor, new Size(lineW * 0.32, 16 * scale), HorizontalTextAlignment.RIGHT);
+    const status = this.host.addChildLabel(card, `FurnaceOrderStatus_${index}`, order.statusLabel, left + lineW, y, 15 * scale, statusColor, new Size(lineW * 0.32, 20 * scale), HorizontalTextAlignment.RIGHT);
     status.overflow = Label.Overflow.SHRINK;
   }
 
@@ -1238,8 +1227,8 @@ export class LobbyDailyDungeonPanelRenderer {
       this.host.refreshLobbyDailyDungeonPanel();
     }, this);
 
-    const w = Math.min(540 * scale, panelWidth * 0.66);
-    const h = Math.min(470 * scale, panelHeight * 0.9);
+    const w = Math.min(640 * scale, panelWidth * 0.74);
+    const h = Math.min(540 * scale, panelHeight * 0.92);
     const card = this.host.addChildPlainNode(overlay, 'LobbyTrialLadderCard', 0, 0, w, h);
     card.addComponent(BlockInputEvents);
     card.addComponent(Button);
@@ -1254,14 +1243,14 @@ export class LobbyDailyDungeonPanelRenderer {
 
     const left = -w / 2 + 28 * scale;
     const lineW = w - 56 * scale;
-    const title = this.host.addChildLabel(card, 'TrialTitle', '输出试炼 · 奖励档位', 0, h / 2 - 30 * scale, 20 * scale, rgba(244, 220, 166, 255), new Size(lineW, 26 * scale));
+    const title = this.host.addChildLabel(card, 'TrialTitle', '输出试炼 · 奖励档位', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(lineW, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
-    const sub = this.host.addChildLabel(card, 'TrialSub', '限时 90 秒拼总输出,时间到即成功;输出越高档位越高。', 0, h / 2 - 56 * scale, 13 * scale, rgba(196, 182, 152, 235), new Size(lineW, 18 * scale));
+    const sub = this.host.addChildLabel(card, 'TrialSub', '限时 90 秒拼总输出,时间到即成功;输出越高档位越高。', 0, h / 2 - 66 * scale, 15.5 * scale, rgba(196, 182, 152, 235), new Size(lineW, 22 * scale));
     sub.overflow = Label.Overflow.SHRINK;
 
     const crystalIcon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
-    let cursor = h / 2 - 92 * scale;
-    const rowH = 44 * scale;
+    let cursor = h / 2 - 108 * scale;
+    const rowH = 54 * scale;
     tiers.forEach((tier, index) => {
       const row = this.host.addChildPlainNode(card, `TrialRow_${index}`, 0, cursor, lineW, rowH - 6 * scale);
       const rg = row.addComponent(Graphics);
@@ -1272,20 +1261,20 @@ export class LobbyDailyDungeonPanelRenderer {
       rg.lineWidth = Math.max(1, scale);
       rg.roundRect(-lineW / 2, -(rowH - 6 * scale) / 2, lineW, rowH - 6 * scale, 6 * scale);
       rg.stroke();
-      const nameLabel = this.host.addChildLabel(row, 'TrialRowName', `${tier.tierName}（${tier.tierCode}）`, -lineW / 2 + 12 * scale, 6 * scale, 15 * scale, rgba(250, 226, 160, 250), new Size(lineW * 0.34, 18 * scale), HorizontalTextAlignment.LEFT);
+      const nameLabel = this.host.addChildLabel(row, 'TrialRowName', `${tier.tierName}（${tier.tierCode}）`, -lineW / 2 + 14 * scale, 8 * scale, 17.5 * scale, rgba(250, 226, 160, 250), new Size(lineW * 0.34, 22 * scale), HorizontalTextAlignment.LEFT);
       nameLabel.overflow = Label.Overflow.SHRINK;
-      const condLabel = this.host.addChildLabel(row, 'TrialRowCond', `输出 ≥ ${tier.minScore}`, -lineW / 2 + 12 * scale, -10 * scale, 12 * scale, rgba(190, 178, 150, 235), new Size(lineW * 0.34, 16 * scale), HorizontalTextAlignment.LEFT);
+      const condLabel = this.host.addChildLabel(row, 'TrialRowCond', `输出 ≥ ${tier.minScore}`, -lineW / 2 + 14 * scale, -12 * scale, 14 * scale, rgba(190, 178, 150, 235), new Size(lineW * 0.34, 18 * scale), HorizontalTextAlignment.LEFT);
       condLabel.overflow = Label.Overflow.SHRINK;
       if (crystalIcon) {
-        this.host.addSprite(`TrialRowCrystal_${index}`, crystalIcon, lineW * 0.08, 0, 26 * scale, 26 * scale, row);
+        this.host.addSprite(`TrialRowCrystal_${index}`, crystalIcon, lineW * 0.08, 0, 32 * scale, 32 * scale, row);
       }
       const bonusText = tier.bonusName && tier.bonusAmount ? ` + ${tier.bonusName}×${formatAmount(tier.bonusAmount)}` : '';
-      const rewardLabel = this.host.addChildLabel(row, 'TrialRowReward', `圣晶 ${tier.crystalAmount}${bonusText}`, lineW / 2 - 6 * scale, 0, 14 * scale, rgba(255, 240, 205, 255), new Size(lineW * 0.5, 18 * scale), HorizontalTextAlignment.RIGHT);
+      const rewardLabel = this.host.addChildLabel(row, 'TrialRowReward', `圣晶 ${tier.crystalAmount}${bonusText}`, lineW / 2 - 8 * scale, 0, 16.5 * scale, rgba(255, 240, 205, 255), new Size(lineW * 0.5, 22 * scale), HorizontalTextAlignment.RIGHT);
       rewardLabel.overflow = Label.Overflow.SHRINK;
       cursor -= rowH;
     });
 
-    const closeHint = this.host.addChildLabel(card, 'TrialCloseHint', '点击空白处关闭', 0, -h / 2 + 20 * scale, 12 * scale, rgba(150, 140, 122, 200), new Size(lineW, 16 * scale));
+    const closeHint = this.host.addChildLabel(card, 'TrialCloseHint', '点击空白处关闭', 0, -h / 2 + 22 * scale, 13 * scale, rgba(150, 140, 122, 200), new Size(lineW, 16 * scale));
     closeHint.overflow = Label.Overflow.SHRINK;
   }
 
