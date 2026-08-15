@@ -365,6 +365,8 @@ export class LootChainGameRoot extends Component {
   private lobbyPlaceholderDialog: LobbyPlaceholderDialogState | null = null;
   private gachaResultMode: GachaPreviewResultMode | null = null;
   private pendingGachaDraw: PendingGachaDraw | null = null;
+  /** 抽卡发起前的装备实例 id 快照:结果卡详情用它区分"这次抽到的新实例"与背包里同编码旧装备(旧装备可能已穿戴/镶宝石)。 */
+  private gachaEquipIdsBeforeDraw: ReadonlySet<number> | null = null;
   private gachaSummonRarity: GachaRarity | null = null;
   private gachaSummonTicket = 0;
   private gachaConfigRefreshElapsed = 0;
@@ -1209,6 +1211,10 @@ export class LootChainGameRoot extends Component {
 
   private currentLobbyEquipmentItems(): EquipmentItemVO[] {
     return this.lobbyEquipmentItems;
+  }
+
+  private currentGachaEquipIdsBeforeDraw(): ReadonlySet<number> | null {
+    return this.gachaEquipIdsBeforeDraw;
   }
 
   private currentLobbyBagState(): LobbyBagPanelState {
@@ -3588,6 +3594,7 @@ export class LootChainGameRoot extends Component {
     this.gachaSummonTicket = ticket;
     const requestId = this.createGachaRequestId(pool.poolCode, drawCount);
     this.pendingGachaDraw = { ticket, mode, poolCode: pool.poolCode, drawCount, requestId, result: null, highestRarity: null };
+    this.gachaEquipIdsBeforeDraw = new Set(this.lobbyEquipmentItems.map((item) => item.id));
     this.gachaSummonRarity = null;
     this.gachaResultMode = mode;
     this.gachaSceneState = { ...this.gachaSceneState, drawing: true, lastDrawResult: null, error: null, activeAction: null };

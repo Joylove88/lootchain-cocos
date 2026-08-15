@@ -143,6 +143,8 @@ export interface GachaSceneHost {
   isGachaSkipAnimationEnabled(): boolean;
   toggleGachaSkipAnimation(): void;
   currentLobbyEquipmentItems(): EquipmentItemVO[];
+  /** 抽卡前装备 id 快照(可选):用于把结果卡定位到本次新获得的实例而不是同编码旧装备。 */
+  currentGachaEquipIdsBeforeDraw?(): ReadonlySet<number> | null;
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
   setStatus(text: string): void;
   currentLobbyProfile(): PlayerLobbyProfileVO;
@@ -158,6 +160,8 @@ const GACHA_BOX_SUMMON_SPINE_GROUND_Y_EXTRA_RATIO = -0.045;
 export class GachaSceneRenderer {
   // 结果卡详情浮层:悬浮=临时(移出即收),点击=固定(遮罩点击关闭)。
   private resultTooltipNode: Node | null = null;
+  /** 当前结果页的结果卡列表(用于同批多件同编码装备逐件对应实例)。 */
+  private currentResultItems: GachaMockResultItem[] | null = null;
   private resultTooltipSticky = false;
   private abyssSpineData: sp.SkeletonData | null = null;
   private abyssSpineLoading = false;
@@ -1866,6 +1870,7 @@ export class GachaSceneRenderer {
 
   private renderMockResultSceneContent(parent: Node, layout: UiLayout, scale: number, mode: GachaPreviewResultMode, drawResult: GachaDrawResultVO | null): void {
     const results = drawResult ? this.toResultPreviewItems(drawResult.items) : (mode === 'once' ? GACHA_MOCK_RESULT_ONCE : GACHA_MOCK_RESULT_TEN);
+    this.currentResultItems = results;
     const backdropNode = this.host.addChildPlainNode(parent, 'GachaResultSceneBackdrop', 0, 0, layout.width, layout.height);
     const backdrop = backdropNode.addComponent(Graphics);
     backdrop.fillColor = rgba(0, 0, 0, 196);
@@ -2111,7 +2116,7 @@ export class GachaSceneRenderer {
     }
     let content: Node | null = null;
     if (item.equipCode) {
-      const equip = this.host.currentLobbyEquipmentItems().find((entry) => (entry.equipCode || '').toUpperCase() === (item.equipCode || '').toUpperCase()) ?? null;
+      const equip = this.resolveResultEquipInstance(item);
       if (equip) {
         content = renderEquipDetailCard(this.host, holder, equip, 0, 0, scale * 0.88, !sticky);
       }
@@ -2123,6 +2128,44 @@ export class GachaSceneRenderer {
     }
     this.resultTooltipNode = sticky ? holder : content;
     this.resultTooltipSticky = sticky;
+  }
+
+  // 结果卡 → 装备实例:后端抽卡结果只给编码,背包里可能已有同编码旧装备(已穿戴/已强化/镶了宝石)。
+  // 优先取"抽卡前快照里没有的新实例";同批多件同编码按结果卡顺序依次分配;无快照时退化为
+  // 未穿戴/未强化/未镶嵌且 id 最新的那件,避免把旧装备的穿戴与宝石信息当成新装备展示。
+  private resolveResultEquipInstance(item: GachaMockResultItem): EquipmentItemVO | null {
+    const code = (item.equipCode || '').toUpperCase();
+    const sameCode = this.host.currentLobbyEquipmentItems()
+      .filter((entry) => (entry.equipCode || '').toUpperCase() === code)
+      .sort((a, b) => b.id - a.id);
+    if (sameCode.length === 0) {
+      return null;
+    }
+    const before = this.host.currentGachaEquipIdsBeforeDraw?.() ?? null;
+    const fresh = before ? sameCode.filter((entry) => !before.has(entry.id)) : [];
+    if (fresh.length > 0) {
+      // 同批同编码多件:第 n 张结果卡对应第 n 件新实例(按 id 升序即获得顺序)
+      const ordinal = this.resultEquipOrdinal(item);
+      const ascending = [...fresh].sort((a, b) => a.id - b.id);
+      return ascending[Math.min(ordinal, ascending.length - 1)] ?? ascending[0];
+    }
+    const pristine = sameCode.find((entry) => entry.heroId == null && (entry.enhanceLevel ?? 0) === 0 && !(entry.gems ?? []).some((gem) => !!gem));
+    return pristine ?? sameCode[0];
+  }
+
+  /** 该结果卡在当前结果列表中、同编码装备里的序号(第几件),用于同批多件同编码时逐件对应实例。 */
+  private resultEquipOrdinal(item: GachaMockResultItem): number {
+    const results = this.currentResultItems ?? [];
+    let ordinal = 0;
+    for (const entry of results) {
+      if (entry === item) {
+        return ordinal;
+      }
+      if (entry.equipCode && (entry.equipCode || '').toUpperCase() === (item.equipCode || '').toUpperCase()) {
+        ordinal += 1;
+      }
+    }
+    return 0;
   }
 
   // 英雄详情卡(结果页):名称/等级星级战力行 + 属性双列(与英雄详情属性栏同数据源)+ 技能列表。
