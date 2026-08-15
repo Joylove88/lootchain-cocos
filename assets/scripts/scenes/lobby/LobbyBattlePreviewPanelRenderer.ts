@@ -379,6 +379,8 @@ export class LobbyBattlePreviewPanelRenderer {
     deckWidth: number;
   } | null = null;
   // 回放驱动位置脚本缓存(按 replayKey+scale)：战斗期单位位置的唯一事实来源。
+  /** 各单位当前硬控种类(每帧重建时刷新);骨骼节点异步建成时据此定格/放慢动画。 */
+  private battleActorCcKinds = new Map<string, 'freeze' | 'stun' | null>();
   private battleActorPositionScript: {
     key: string;
     segments: Map<string, BattleActorScriptSegment[]>;
@@ -1511,6 +1513,13 @@ export class LobbyBattlePreviewPanelRenderer {
       opacity.opacity = withinDeathAnim ? 255 : enemy ? 72 : 138;
     }
     this.renderBattleActorActionCallout(visualRoot, slot.width, slot.height, scale, unit, enemy, currentActionCue, currentAssistCue, actorActive, targetActive, assistActorActive, assistTargetActive);
+    // 硬控身体级表现:冻结=冰霜罩层+冰晶+动作定格;眩晕=头顶绕星+动作放慢;都带头顶状态牌(试炼BOSS无头顶血条也能看见)。
+    const ccKind: 'freeze' | 'stun' | null = !hpUnitDead && hpUnit?.frozen ? (hpUnit.frozenKind ?? 'stun') : null;
+    this.battleActorCcKinds.set(unit.unitKey, ccKind);
+    if (ccKind) {
+      this.renderBattleActorCcBodyEffect(visualRoot, slot.width, slot.height, scale, unit, ccKind, playbackTimelineTimeMs);
+      this.applyBattleActorCcSkeletonTimeScale(visualRoot, ccKind);
+    }
 
     const combatPlaybackActive = presentation.phase === 'roundPlaying'
       || presentation.phase === 'resultRecording'
@@ -2154,11 +2163,15 @@ export class LobbyBattlePreviewPanelRenderer {
     const positions = new Map<string, { x: number; y: number }>();
     const initial = new Map<string, { x: number; y: number }>();
     const unitSides = new Map<string, 'ally' | 'enemy'>();
+    // 单位体型倍率(怪物 display_scale;英雄=1):席位几何要按体型放大,否则大体型 BOSS(输出试炼 3.4×)
+    // 面前的席位全落在其立绘内部,五个英雄叠成一摞。
+    const unitScales = new Map<string, number>();
     renderActors.forEach(({ unit, slot, enemy }) => {
       const home = this.resolveActorConvergedCombatPosition(slot, enemy, scale);
       positions.set(unit.unitKey, { x: home.x, y: home.y });
       initial.set(unit.unitKey, { x: home.x, y: home.y });
       unitSides.set(unit.unitKey, unit.side);
+      unitScales.set(unit.unitKey, Math.max(1, Math.min(3.5, unit.monsterDisplayScale ?? 1)));
     });
     // 跨交战组防重叠:配对交战下不同组的席位可能撞在一起,与同侧其他单位记账位
     // 距离过近时纵向错开。阈值必须随 scale 缩放(记账坐标已缩放),否则小尺度下冲突误报、
@@ -2193,6 +2206,19 @@ export class LobbyBattlePreviewPanelRenderer {
     const engageSeats = new Map<string, Map<string, number>>();
     const seatXOffsets = [0, 96, 96, -158, -158];
     const seatYOffsets = [0, 72, -72, 44, -44];
+    // 大体型目标(≥1.8×,输出试炼 BOSS):席位全部排在目标正面扇形,不再有绕后席(-158 会站到立绘中央),
+    // 贴脸基准距离随双方体型加长,X 错位加大到能把 ~250px 宽的英雄立绘错开。
+    const bigSeatXOffsets = [0, 92, 92, 184, 184];
+    const bigSeatYOffsets = [0, 96, -96, 48, -48];
+    const resolveSeatGeometry = (actorKey: string, targetKey: string, seat: number): { dx: number; dy: number } => {
+      const targetScale = unitScales.get(targetKey) ?? 1;
+      const actorScale = unitScales.get(actorKey) ?? 1;
+      const big = targetScale >= 1.8 || actorScale >= 1.8;
+      const baseX = 150 + Math.max(0, targetScale - 1) * 105 + Math.max(0, actorScale - 1) * 105;
+      const xs = big ? bigSeatXOffsets : seatXOffsets;
+      const ys = big ? bigSeatYOffsets : seatYOffsets;
+      return { dx: baseX + xs[seat % xs.length], dy: ys[seat % ys.length] };
+    };
     const segments = new Map<string, BattleActorScriptSegment[]>();
     for (const action of replay.actions) {
       const actorKey = action.actor.unitKey;
@@ -2213,9 +2239,10 @@ export class LobbyBattlePreviewPanelRenderer {
         // 若继续叠加会逐回合向地面带顶部复利漂移,大体型英雄(白银圣枪等)被顶到半空。
         const targetLaneY = initial.get(action.primaryTarget.unitKey)?.y ?? targetPos.y;
         // 站在目标"面前"而非身上:贴脸基准距离 150,敌怪立绘宽(含烟雾),本体完全错开。
+        const seatGeo = resolveSeatGeometry(actorKey, action.primaryTarget.unitKey, seat);
         const clamped = this.clampBattleActorFramePosition(new Vec3(
-          targetPos.x + facing * (150 + seatXOffsets[seat % seatXOffsets.length]) * scale,
-          targetLaneY + seatYOffsets[seat % seatYOffsets.length] * scale,
+          targetPos.x + facing * seatGeo.dx * scale,
+          targetLaneY + seatGeo.dy * scale,
           0,
         ), scale);
         duelX = clamped.x;
@@ -3507,6 +3534,116 @@ export class LobbyBattlePreviewPanelRenderer {
     return Boolean(unit.sourceHeroId && unit.displayName.trim() && unit.displayName !== '空位');
   }
 
+  // 硬控身体级表现。所有几何随单位体型倍率(怪物 display_scale)放大,试炼 3.4× BOSS 也罩得住。
+  // 每帧重建,动画全部用播放时间驱动(绕星相位/冰晶闪烁),不用 tween 以免重建抖动。
+  private renderBattleActorCcBodyEffect(
+    parent: Node,
+    width: number,
+    height: number,
+    scale: number,
+    unit: BattlePresentationUnitSnapshot,
+    ccKind: 'freeze' | 'stun',
+    playbackTimelineTimeMs: number,
+  ): void {
+    const bodyScale = Math.max(1, Math.min(3.5, unit.monsterDisplayScale ?? 1));
+    const bodyW = width * 0.62 * bodyScale;
+    const footY = -height * 0.42;
+    const bodyH = height * (0.78 + 0.1 * (bodyScale - 1)) * bodyScale;
+    const centerY = footY + bodyH * 0.5;
+    const headY = footY + bodyH;
+    const layer = this.host.addChildPlainNode(parent, 'LobbyBattleActorCcBody', 0, 0, width, height);
+    const g = layer.addComponent(Graphics);
+    const t = playbackTimelineTimeMs / 1000;
+    if (ccKind === 'freeze') {
+      // 冰霜罩层:椭圆冰罩(淡蓝半透)+高光边 + 脚下冰晶三角簇 + 飘浮冰晶闪烁
+      g.fillColor = rgba(150, 214, 255, 82);
+      g.ellipse(0, centerY, bodyW * 0.56, bodyH * 0.54);
+      g.fill();
+      g.strokeColor = rgba(214, 240, 255, 190);
+      g.lineWidth = Math.max(1.5, 2 * scale);
+      g.ellipse(0, centerY, bodyW * 0.56, bodyH * 0.54);
+      g.stroke();
+      const shard = (x: number, w: number, h: number, alpha: number): void => {
+        g.fillColor = rgba(196, 234, 255, alpha);
+        g.moveTo(x - w / 2, footY);
+        g.lineTo(x, footY + h);
+        g.lineTo(x + w / 2, footY);
+        g.close();
+        g.fill();
+        g.strokeColor = rgba(240, 250, 255, 220);
+        g.lineWidth = Math.max(1, 1.2 * scale);
+        g.moveTo(x - w / 2, footY);
+        g.lineTo(x, footY + h);
+        g.lineTo(x + w / 2, footY);
+        g.close();
+        g.stroke();
+      };
+      const shardW = 16 * scale * bodyScale;
+      shard(-bodyW * 0.36, shardW, bodyH * 0.34, 210);
+      shard(-bodyW * 0.14, shardW * 1.2, bodyH * 0.46, 225);
+      shard(bodyW * 0.1, shardW, bodyH * 0.38, 210);
+      shard(bodyW * 0.32, shardW * 0.9, bodyH * 0.28, 200);
+      const flakes: Array<[number, number]> = [[-bodyW * 0.42, centerY + bodyH * 0.28], [bodyW * 0.4, centerY + bodyH * 0.12], [0, headY + 12 * scale * bodyScale]];
+      flakes.forEach(([fx, fy], i) => {
+        const pulse = 0.55 + 0.45 * Math.abs(Math.sin(t * 2.2 + i * 1.3));
+        const label = this.host.addChildLabel(layer, `LobbyBattleActorCcFlake_${i}`, '\u2744', fx, fy, (18 + 6 * i) * scale * Math.min(2, bodyScale), rgba(226, 246, 255, Math.round(255 * pulse)), new Size(48 * scale * bodyScale, 48 * scale * bodyScale));
+        label.overflow = Label.Overflow.SHRINK;
+      });
+    } else {
+      // 眩晕:头顶三颗金星绕椭圆轨道旋转 + 身体淡黄罩层
+      g.fillColor = rgba(255, 220, 110, 42);
+      g.ellipse(0, centerY, bodyW * 0.5, bodyH * 0.5);
+      g.fill();
+      const orbitY = headY + 10 * scale * bodyScale;
+      const orbitRx = Math.max(26 * scale, bodyW * 0.34);
+      const orbitRy = Math.max(7 * scale, orbitRx * 0.28);
+      g.strokeColor = rgba(255, 232, 150, 120);
+      g.lineWidth = Math.max(1, 1.2 * scale);
+      g.ellipse(0, orbitY, orbitRx, orbitRy);
+      g.stroke();
+      for (let i = 0; i < 3; i += 1) {
+        const angle = t * 4.2 + (i * Math.PI * 2) / 3;
+        const sx = Math.cos(angle) * orbitRx;
+        const sy = orbitY + Math.sin(angle) * orbitRy;
+        const front = Math.sin(angle) < 0;
+        const star = this.host.addChildLabel(layer, `LobbyBattleActorCcStar_${i}`, '\u2605', sx, sy, (front ? 22 : 17) * scale * Math.min(2, bodyScale), rgba(255, 226, 96, front ? 255 : 190), new Size(40 * scale * bodyScale, 40 * scale * bodyScale));
+        star.overflow = Label.Overflow.SHRINK;
+        this.applyOutline(star, scale, true);
+      }
+    }
+    // 头顶状态牌:黑底彩边胶囊 + 图标 + 文案,BOSS 没头顶血条也看得见
+    const badgeH = 24 * scale * Math.min(1.8, bodyScale);
+    const badgeW = badgeH * 3.4;
+    const badgeY = headY + (ccKind === 'stun' ? 30 : 34) * scale * bodyScale;
+    const badgeColor = ccKind === 'freeze' ? rgba(150, 224, 255) : rgba(255, 226, 120);
+    const badge = this.host.addChildPlainNode(layer, 'LobbyBattleActorCcBadge', 0, badgeY, badgeW, badgeH);
+    const bg = badge.addComponent(Graphics);
+    bg.fillColor = rgba(12, 12, 16, 214);
+    bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, badgeH / 2);
+    bg.fill();
+    bg.strokeColor = badgeColor;
+    bg.lineWidth = Math.max(1.2, 1.6 * scale);
+    bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, badgeH / 2);
+    bg.stroke();
+    const icon = this.host.addSprite('LobbyBattleActorCcBadgeIcon', BATTLE_C1812_BUFF_STUN_ASSET, -badgeW / 2 + badgeH * 0.62, 0, badgeH * 0.8, badgeH * 0.8, badge);
+    if (icon) {
+      icon.color = badgeColor;
+    }
+    const text = this.host.addChildLabel(badge, 'LobbyBattleActorCcBadgeText', ccKind === 'freeze' ? '冻结中' : '眩晕中', badgeH * 0.34, 0, badgeH * 0.62, badgeColor, new Size(badgeW - badgeH * 1.3, badgeH));
+    text.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(text, scale, true);
+  }
+
+  // 已建成的骨骼按硬控定格(冻结)/放慢(眩晕);未建成的由 buildSpine 读 battleActorCcKinds 处理。
+  private applyBattleActorCcSkeletonTimeScale(root: Node, ccKind: 'freeze' | 'stun'): void {
+    const skeletons = root.getComponentsInChildren(sp.Skeleton);
+    for (const skeleton of skeletons) {
+      if (skeleton.node.name === 'LobbyBattleActorSpineNode') {
+        skeleton.timeScale = ccKind === 'freeze' ? 0.02 : 0.3;
+      }
+    }
+  }
+
   private renderBattleActorActionCallout(
     parent: Node,
     width: number,
@@ -4754,7 +4891,8 @@ export class LobbyBattlePreviewPanelRenderer {
       const spineNode = this.host.addChildPlainNode(parent, 'LobbyBattleActorSpineNode', spineX, spineY, Math.min(width * 0.96, 220 * scale), height * 1.04);
       const skeleton = spineNode.addComponent(sp.Skeleton);
       skeleton.premultipliedAlpha = false;
-      skeleton.timeScale = active ? 0.96 : 0.72;
+      const buildCc = this.battleActorCcKinds.get(unit.unitKey) ?? null;
+      skeleton.timeScale = buildCc === 'freeze' ? 0.02 : buildCc === 'stun' ? 0.3 : active ? 0.96 : 0.72;
       const destroyFallback = (): void => {
         if (this.isNodeAlive(fallback)) {
           fallback.destroy();
