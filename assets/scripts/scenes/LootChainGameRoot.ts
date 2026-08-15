@@ -282,10 +282,10 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyDailyDungeonPanelRenderer = new LobbyDailyDungeonPanelRenderer(this as unknown as LobbyDailyDungeonPanelHost);
   private lobbyDailyDungeonState: LobbyDailyDungeonPanelState = { loading: false, error: '', summary: null, version: 0 };
   private lobbyDailyDungeonTicket = 0;
-  // 圣晶输出周榜(P金-1c):面板内弹窗按需拉取。
+  // 矿晶输出周榜(P金-1c):面板内弹窗按需拉取。
   private lobbyCrystalRankState: import('../types/DailyDungeonTypes').LobbyCrystalRankState = { loading: false, error: '', summary: null, version: 0 };
   private lobbyCrystalRankTicket = 0;
-  // 圣晶熔炉(P金-2b):圣晶兑代币弹窗。表单态(链/地址/档位/自定义额)存 host,面板重建回种,避免输入丢失。
+  // 矿晶熔炉(P金-2b):矿晶兑代币弹窗。表单态(链/地址/档位/自定义额)存 host,面板重建回种,避免输入丢失。
   private lobbyTokenFurnaceState: import('../types/DailyDungeonTypes').LobbyTokenFurnaceState = {
     open: false, loading: false, error: '', summary: null, version: 0,
     bindOpen: false, bindChain: 'BSC', bindAddress: '',
@@ -3103,7 +3103,7 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentLobbyScenePage();
   }
 
-  // ── 圣晶熔炉(P金-2b):圣晶兑代币弹窗 ──
+  // ── 矿晶熔炉(P金-2b):矿晶兑代币弹窗 ──
 
   private currentLobbyTokenFurnaceState(): import('../types/DailyDungeonTypes').LobbyTokenFurnaceState {
     return this.lobbyTokenFurnaceState;
@@ -3201,7 +3201,7 @@ export class LootChainGameRoot extends Component {
     }
     const crystal = Math.floor(crystalAmount);
     if (!Number.isFinite(crystal) || crystal <= 0) {
-      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, actionMessage: '请选择档位或输入兑换圣晶数量', actionError: true };
+      this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, actionMessage: '请选择档位或输入兑换矿晶数量', actionError: true };
       this.renderCurrentLobbyScenePage();
       return;
     }
@@ -3214,7 +3214,7 @@ export class LootChainGameRoot extends Component {
         submitting: false,
         selectedCrystal: null,
         customCrystal: '',
-        actionMessage: `已提交:${order.crystalAmount} 圣晶 → ${order.tokenAmount} 代币(${order.statusLabel})`,
+        actionMessage: `已提交:${order.crystalAmount} 矿晶 → ${order.tokenAmount} 代币(${order.statusLabel})`,
         actionError: false,
       };
       this.loadLobbyTokenFurnaceSummary(true);
@@ -4225,8 +4225,8 @@ export class LootChainGameRoot extends Component {
   private registerPlayerWsHandlers(): void {
     this.playerWsClient.on('TOKEN_AUDIT', (data) => {
       const label = typeof data.statusLabel === 'string' ? data.statusLabel : '审核有更新';
-      const refund = typeof data.crystalRefund === 'number' && data.crystalRefund > 0 ? `,圣晶已退回 ${data.crystalRefund}` : '';
-      this.setStatus(`圣晶兑换审核:${label}${refund}`);
+      const refund = typeof data.crystalRefund === 'number' && data.crystalRefund > 0 ? `,矿晶已退回 ${data.crystalRefund}` : '';
+      this.setStatus(`矿晶兑换审核:${label}${refund}`);
       if (this.lobbyTokenFurnaceState.open) {
         this.loadLobbyTokenFurnaceSummary(true);
       }

@@ -17,7 +17,7 @@ import {
 const MAX_TEXT = 128;
 const MAX_ORDERS = 10;
 
-/** 圣晶兑代币 API(P金-2 链下):钱包绑定 + 兑换申请 + 摘要。链上发放在 P金-3。 */
+/** 矿晶兑代币 API(P金-2 链下):钱包绑定 + 兑换申请 + 摘要。链上发放在 P金-3。 */
 export class TokenApi {
   constructor(private readonly http: HttpClient) {}
 
@@ -43,7 +43,7 @@ export class TokenApi {
     return this.http.get<unknown>('/api/player/token/exchange/summary').then(validateExchangeSummary);
   }
 
-  /** 提交圣晶兑代币申请(crystal 圣晶本金,≥minCrystal 且为 100 的整数倍)。 */
+  /** 提交矿晶兑代币申请(crystal 矿晶本金,≥minCrystal 且为 100 的整数倍)。 */
   submitExchange(crystalAmount: number): Promise<TokenWithdrawOrderVO> {
     const body = { crystalAmount: Math.max(0, Math.floor(crystalAmount)) };
     return this.http.post<unknown>('/api/player/token/exchange', body).then(validateOrder);
@@ -97,7 +97,7 @@ function normalizeOrder(record: UnknownRecord): TokenWithdrawOrderVO {
 
 function validateExchangeSummary(data: unknown): TokenExchangeSummaryVO {
   if (!isRecord(data)) {
-    throw new Error('圣晶兑代币摘要响应格式错误:data 不是对象');
+    throw new Error('矿晶兑代币摘要响应格式错误:data 不是对象');
   }
   const orders = readArray(data, 'recentOrders', MAX_ORDERS)
     .filter(isRecord)

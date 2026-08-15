@@ -6802,7 +6802,7 @@ export class LobbyBattlePreviewPanelRenderer {
       return '通用货币,用于英雄升级、锻造与商店。';
     }
     if (code === 'SACRED_CRYSTAL') {
-      return '圣晶(打金核心),可在圣晶熔炉兑换游戏代币。';
+      return '矿晶(打金核心),可在矿晶熔炉兑换游戏代币。';
     }
     if (code === 'HERO_EXP_BOOK') {
       return '英雄经验书,用于提升英雄等级。';

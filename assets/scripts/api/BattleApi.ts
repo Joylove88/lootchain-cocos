@@ -72,7 +72,7 @@ export class BattleApi {
     return this.http.get<unknown>('/api/player/daily-dungeon/summary').then(validateDailyDungeonSummary);
   }
 
-  /** 圣晶输出周榜摘要(P金-1b):只读;计分由服务端结算自动记录。 */
+  /** 矿晶输出周榜摘要(P金-1b):只读;计分由服务端结算自动记录。 */
   crystalRankSummary(): Promise<CrystalRankSummaryVO> {
     return this.http.get<unknown>('/api/player/crystal-rank/summary').then(validateCrystalRankSummary);
   }
@@ -80,11 +80,11 @@ export class BattleApi {
 
 function validateCrystalRankSummary(data: unknown): CrystalRankSummaryVO {
   if (!isRecord(data)) {
-    throw new Error('圣晶周榜响应格式错误：data 不是对象');
+    throw new Error('矿晶周榜响应格式错误：data 不是对象');
   }
   const topList = readArray(data, 'topList', 100).map((item): CrystalRankEntryVO => {
     if (!isRecord(item)) {
-      throw new Error('圣晶周榜响应格式错误：榜单条目不是对象');
+      throw new Error('矿晶周榜响应格式错误：榜单条目不是对象');
     }
     return {
       rank: readInteger(item.rank, 0, 100000),
@@ -95,7 +95,7 @@ function validateCrystalRankSummary(data: unknown): CrystalRankSummaryVO {
   });
   const rewardTiers = readArray(data, 'rewardTiers', 16).map((item): CrystalRankTierVO => {
     if (!isRecord(item)) {
-      throw new Error('圣晶周榜响应格式错误：阶梯档不是对象');
+      throw new Error('矿晶周榜响应格式错误：阶梯档不是对象');
     }
     return {
       rankFrom: readInteger(item.rankFrom, 0, 100000),
@@ -131,7 +131,7 @@ const DAILY_STAGE_PATTERN = /^DAILY_(AWAKEN|FORGE|ARCANE|ABYSS)_[1-3]$/;
 const DAILY_SETTLEMENT_MODE = 'DAILY_DUNGEON';
 
 // 结算奖励安全边界采用「黑名单」而非白名单:只拦支付(钻石/USDT)、链上/未开放的 EX 代币、直发英雄/碎片——
-// 这些当前阶段绝不该经战斗结算下发,出现即视为后端配置错误。其余(金币/装备/宝石/材料/技能与觉醒道具/圣晶等
+// 这些当前阶段绝不该经战斗结算下发,出现即视为后端配置错误。其余(金币/装备/宝石/材料/技能与觉醒道具/矿晶等
 // 已开放内容)一律放行。白名单模式每上线一个新掉落就会误杀整单结算(装备/宝石/觉醒石都曾被挡),体验极差。
 const BLOCKED_SETTLEMENT_TYPES = new Set(['USDT', 'HERO', 'HERO_FRAGMENT']);
 const BLOCKED_SETTLEMENT_CODES = new Set(['USDT', 'DIAMOND', 'BOUND_DIAMOND', 'STAMINA', 'EX_CORE_SHARD']);
@@ -144,7 +144,7 @@ export function isDailyDungeonStageCode(stageCode: string): boolean {
 }
 
 function assertSafeDailyRewards(rewardItems: PlayerBattleRewardItemVO[]): void {
-  // 黑名单守卫:金币/材料/宝石/圣晶(SACRED_CRYSTAL,P金-1a 服务端三闸门管控)等已开放奖励一律放行,
+  // 黑名单守卫:金币/材料/宝石/矿晶(SACRED_CRYSTAL,P金-1a 服务端三闸门管控)等已开放奖励一律放行,
   // 只拦支付/链上/EX/直发英雄这类不该出现的资源;数量必须为正。
   for (const item of rewardItems) {
     const type = item.resourceType.toUpperCase();
@@ -168,7 +168,7 @@ function validateDailyDungeonSummary(data: unknown): DailyDungeonSummaryVO {
   };
 }
 
-// 圣晶矿脉(P金-1a):缺失(旧服务端)返回 null,面板隐藏矿脉条。
+// 矿晶矿脉(P金-1a):缺失(旧服务端)返回 null,面板隐藏矿脉条。
 function normalizeCrystalMine(value: unknown): CrystalMineVO | null {
   if (!isRecord(value)) {
     return null;
@@ -307,7 +307,7 @@ function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
   const economyApplied = data.economyApplied === true;
   const progressApplied = data.progressApplied === true;
   const stageCode = readStageCode(data, 'stageCode');
-  // 上限放宽到 16:高层关卡首通=配置奖励(可达 8)+ 圣晶里程碑等追加行,避免 slice 静默截掉玩家真拿到的奖励。
+  // 上限放宽到 16:高层关卡首通=配置奖励(可达 8)+ 矿晶里程碑等追加行,避免 slice 静默截掉玩家真拿到的奖励。
   const rewardItems = readArray(data, 'rewardItems', 16).map(normalizeRewardItem);
   const currencyChanges = readArray(data, 'currencyChanges', 4).map(normalizeCurrencyChange);
   const mainlineProgress = normalizeMainlineProgress(data.mainlineProgress);

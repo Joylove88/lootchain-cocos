@@ -45,10 +45,10 @@ export interface LobbyDailyDungeonPanelHost {
   refreshLobbyDailyDungeonPanel(): void;
   /** 奖励详情弹框读背包配置(useDesc/稀有度/已拥有);未加载时降级为客户端兜底文案。 */
   currentLobbyBagState?(): LobbyBagPanelState;
-  /** 圣晶输出周榜(P金-1c):弹窗按需拉取。 */
+  /** 矿晶输出周榜(P金-1c):弹窗按需拉取。 */
   currentLobbyCrystalRankState?(): LobbyCrystalRankState;
   loadLobbyCrystalRankSummary?(force?: boolean): void;
-  /** 圣晶熔炉(P金-2b):圣晶兑代币。弹窗开关+表单态存于 host,面板重建时回种。 */
+  /** 矿晶熔炉(P金-2b):矿晶兑代币。弹窗开关+表单态存于 host,面板重建时回种。 */
   currentLobbyTokenFurnaceState?(): LobbyTokenFurnaceState;
   openLobbyTokenFurnace?(): void;
   closeLobbyTokenFurnace?(): void;
@@ -631,7 +631,7 @@ export class LobbyDailyDungeonPanelRenderer {
     }
 
     // 奖励改版(2026-08-11):固定四格网格、不足项居中,图标+右下角数量。
-    // 输出试炼(难度Ⅲ,docs/27 v3):不是固定材料,改显"圣晶按输出档"摘要,点击看完整档位阶梯。
+    // 输出试炼(难度Ⅲ,docs/27 v3):不是固定材料,改显"矿晶按输出档"摘要,点击看完整档位阶梯。
     const rewardLeft = badgeX + badgeWidth / 2 + 8 * scale;
     const rewardRight = width / 2 - 8 * scale;
     const rewardAreaWidth = Math.max(30 * scale, rewardRight - rewardLeft);
@@ -649,7 +649,7 @@ export class LobbyDailyDungeonPanelRenderer {
       }
       const textLeft = iconX + iconSize / 2 + 8 * scale;
       const textW = Math.max(40 * scale, rewardRight - textLeft);
-      const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 圣晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 9 * scale, 14 * scale, rgba(250, 226, 160, 250), new Size(textW, 18 * scale));
+      const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 矿晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 9 * scale, 14 * scale, rgba(250, 226, 160, 250), new Size(textW, 18 * scale));
       l1.overflow = Label.Overflow.SHRINK;
       const l2 = this.host.addChildLabel(block, 'TierTrialLine2', '限时拼输出，档位越高越多 ›', textLeft + textW / 2, contentCenterY - 10 * scale, 12 * scale, rgba(196, 182, 152, 235), new Size(textW, 16 * scale));
       l2.overflow = Label.Overflow.SHRINK;
@@ -738,7 +738,7 @@ export class LobbyDailyDungeonPanelRenderer {
     this.host.applyImageButtonFeedback(block, 1.01, 0.99);
   }
 
-  // 底部信息条:素材横条+感叹号;圣晶矿脉数据就位后展示矿脉余量,否则回落原提示文案。
+  // 底部信息条:素材横条+感叹号;矿晶矿脉数据就位后展示矿脉余量,否则回落原提示文案。
   private renderFooterBar(parent: Node, width: number, height: number, scale: number, mine: CrystalMineVO | null): void {
     const barWidth = Math.min(width * 0.6, 760 * scale);
     const barHeight = barWidth * (133 / 1227);
@@ -756,15 +756,15 @@ export class LobbyDailyDungeonPanelRenderer {
     let footerColor = rgba(224, 202, 158, 240);
     if (mine) {
       if (!mine.unlocked) {
-        footerText = '圣晶矿脉:通关 MAIN_3_1 后,副本胜利有几率掉落圣晶(打金结算积分)。';
+        footerText = '矿晶矿脉:通关 MAIN_3_1 后,副本胜利有几率掉落矿晶(打金结算积分)。';
         footerColor = rgba(196, 182, 158, 235);
       } else {
         const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);
-        footerText = `今日矿脉余量 ${remain}/${mine.dailyBudgetTotal} · 我的圣晶掉落 ${mine.myTodayDrop}/${mine.myDailyCap}`;
+        footerText = `今日矿脉余量 ${remain}/${mine.dailyBudgetTotal} · 我的矿晶掉落 ${mine.myTodayDrop}/${mine.myDailyCap}`;
         footerColor = rgba(186, 226, 255, 245);
       }
     }
-    // 文案让出右端 30% 给两个圣晶功能胶囊(熔炉/输出榜):同主题聚合在矿脉条内,不再孤悬顶部。
+    // 文案让出右端 30% 给两个矿晶功能胶囊(熔炉/输出榜):同主题聚合在矿脉条内,不再孤悬顶部。
     const text = this.host.addChildLabel(
       bar,
       'LobbyDailyFooterText',
@@ -776,12 +776,12 @@ export class LobbyDailyDungeonPanelRenderer {
       new Size(barWidth * 0.56, 22 * scale),
     );
     text.overflow = Label.Overflow.SHRINK;
-    // 右端两个紧凑胶囊按钮:圣晶熔炉 | 输出榜。
+    // 右端两个紧凑胶囊按钮:矿晶熔炉 | 输出榜。
     const pillW = barWidth * 0.125;
     const pillH = barHeight * 0.5;
     const pillGap = barWidth * 0.012;
     const rightEdge = barWidth / 2 - barWidth * 0.045;
-    this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '圣晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
+    this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
     this.renderFooterPill(bar, 'LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, 0, pillW, pillH, scale, () => {
       this.rankPopupOpen = true;
       this.host.loadLobbyCrystalRankSummary?.();
@@ -899,7 +899,7 @@ export class LobbyDailyDungeonPanelRenderer {
       const tierLine = this.host.addChildLabel(
         card,
         `RankTier_${index}`,
-        `${rangeText}：圣晶${tier.crystalAmount}${tier.rewardsDesc ? ` + ${tier.rewardsDesc}` : ''}`,
+        `${rangeText}：矿晶${tier.crystalAmount}${tier.rewardsDesc ? ` + ${tier.rewardsDesc}` : ''}`,
         left,
         cursor,
         14.5 * scale,
@@ -914,7 +914,7 @@ export class LobbyDailyDungeonPanelRenderer {
     // 上周结果。
     cursor -= 6 * scale;
     const lastWeekText = summary.lastWeek
-      ? `上周(${summary.lastWeek.weekKey})第${summary.lastWeek.myRank}名：圣晶${summary.lastWeek.crystalAmount}${summary.lastWeek.rewardsDesc ? ` + ${summary.lastWeek.rewardsDesc}` : ''},已发放。`
+      ? `上周(${summary.lastWeek.weekKey})第${summary.lastWeek.myRank}名：矿晶${summary.lastWeek.crystalAmount}${summary.lastWeek.rewardsDesc ? ` + ${summary.lastWeek.rewardsDesc}` : ''},已发放。`
       : '上周未上榜。';
     const lastWeekLine = this.host.addChildLabel(card, 'RankLastWeek', lastWeekText, left, cursor, 15 * scale, rgba(168, 216, 168, 240), new Size(lineWidth, 38 * scale), HorizontalTextAlignment.LEFT);
     lastWeekLine.overflow = Label.Overflow.SHRINK;
@@ -923,7 +923,7 @@ export class LobbyDailyDungeonPanelRenderer {
     closeHint.overflow = Label.Overflow.SHRINK;
   }
 
-  // ── 圣晶熔炉(P金-2b):圣晶兑代币入口 + 弹窗(绑钱包/预设档位+自定义兑换/近期单) ──
+  // ── 矿晶熔炉(P金-2b):矿晶兑代币入口 + 弹窗(绑钱包/预设档位+自定义兑换/近期单) ──
 
   private furnaceButton(
     parent: Node,
@@ -1007,7 +1007,7 @@ export class LobbyDailyDungeonPanelRenderer {
 
     const left = -w / 2 + 34 * scale;
     const lineW = w - 68 * scale;
-    const title = this.host.addChildLabel(card, 'FurnaceTitle', '圣晶熔炉 · 圣晶兑代币', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(lineW, 34 * scale));
+    const title = this.host.addChildLabel(card, 'FurnaceTitle', '矿晶熔炉 · 矿晶兑代币', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(lineW, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
 
     const summary = state.summary;
@@ -1033,7 +1033,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const ruleLine = this.host.addChildLabel(
       card,
       'FurnaceRule',
-      `我的圣晶 ${Math.floor(summary.sacredCrystal)} · ${summary.crystalPerToken}圣晶=1${summary.tokenSymbol} · 手续费${feePct}%`,
+      `我的矿晶 ${Math.floor(summary.sacredCrystal)} · ${summary.crystalPerToken}矿晶=1${summary.tokenSymbol} · 手续费${feePct}%`,
       left,
       cursor,
       17 * scale,
@@ -1150,13 +1150,13 @@ export class LobbyDailyDungeonPanelRenderer {
     });
     cursor -= 48 * scale;
 
-    // 自定义圣晶输入。
+    // 自定义矿晶输入。
     const custLabel = this.host.addChildLabel(card, 'FurnaceCustomLabel', '自定义', left, cursor, 15.5 * scale, rgba(214, 196, 156, 235), new Size(76 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     custLabel.overflow = Label.Overflow.SHRINK;
     this.furnaceInputBg(card, 'FurnaceCustomBg', left + 80 * scale + (lineW - 80 * scale) / 2, cursor, lineW - 80 * scale, 38 * scale, scale);
     const box = this.host.addEditBox?.(state.customCrystal, left + 80 * scale + (lineW - 80 * scale) / 2, cursor, lineW - 80 * scale);
     if (box) {
-      box.placeholder = `圣晶数量(≥${summary.minCrystal},${summary.crystalPerToken}整数倍)`;
+      box.placeholder = `矿晶数量(≥${summary.minCrystal},${summary.crystalPerToken}整数倍)`;
       box.inputMode = EditBox.InputMode.NUMERIC;
       box.maxLength = 12;
       card.addChild(box.node);
@@ -1164,13 +1164,13 @@ export class LobbyDailyDungeonPanelRenderer {
     }
     cursor -= 40 * scale;
 
-    // 预览:本次圣晶 → 代币 + 手续费。
+    // 预览:本次矿晶 → 代币 + 手续费。
     const crystal = this.resolveFurnaceCrystal(state);
     const token = crystal / summary.crystalPerToken;
     const fee = Math.ceil(crystal * summary.feeRate);
     const previewText = crystal > 0
-      ? `本次 ${crystal} 圣晶 → ${trimNum(token)} ${summary.tokenSymbol} · 手续费 ${fee} 圣晶 · 合计扣 ${crystal + fee}`
-      : '选择档位或输入圣晶数量';
+      ? `本次 ${crystal} 矿晶 → ${trimNum(token)} ${summary.tokenSymbol} · 手续费 ${fee} 矿晶 · 合计扣 ${crystal + fee}`
+      : '选择档位或输入矿晶数量';
     const preview = this.host.addChildLabel(card, 'FurnacePreview', previewText, left, cursor, 16 * scale, rgba(250, 226, 160, 245), new Size(lineW, 22 * scale), HorizontalTextAlignment.LEFT);
     preview.overflow = Label.Overflow.SHRINK;
     cursor -= 27 * scale;
@@ -1201,7 +1201,7 @@ export class LobbyDailyDungeonPanelRenderer {
 
   private renderFurnaceOrderRow(card: Node, order: TokenWithdrawOrderVO, symbol: string, left: number, lineW: number, y: number, scale: number, index: number): void {
     const day = (order.createTime || '').replace('T', ' ').slice(5, 16);
-    const rowText = `${day} · ${order.crystalAmount}圣晶 → ${trimNum(order.tokenAmount)}${symbol}`;
+    const rowText = `${day} · ${order.crystalAmount}矿晶 → ${trimNum(order.tokenAmount)}${symbol}`;
     const row = this.host.addChildLabel(card, `FurnaceOrder_${index}`, rowText, left, y, 15 * scale, rgba(216, 204, 178, 240), new Size(lineW * 0.66, 20 * scale), HorizontalTextAlignment.LEFT);
     row.overflow = Label.Overflow.SHRINK;
     const statusColor = order.status === 2 ? rgba(255, 168, 140, 240) : order.status === 3 ? rgba(168, 216, 168, 240) : rgba(238, 210, 148, 240);
@@ -1213,7 +1213,7 @@ export class LobbyDailyDungeonPanelRenderer {
     this.furnaceButton(card, 'FurnaceClose', '关闭', 0, -h / 2 + 26 * scale, 120 * scale, 34 * scale, scale, false, true, () => this.host.closeLobbyTokenFurnace?.());
   }
 
-  // 输出试炼档位阶梯弹窗:限时打BOSS拼输出,时间到即成功,按输出分发圣晶+材料。
+  // 输出试炼档位阶梯弹窗:限时打BOSS拼输出,时间到即成功,按输出分发矿晶+材料。
   private renderTrialLadderPopup(parent: Node, panelWidth: number, panelHeight: number, scale: number, tiers: TrialTierVO[]): void {
     const overlay = this.host.addChildPlainNode(parent, 'LobbyTrialLadderOverlay', 0, 0, panelWidth * 2, panelHeight * 2);
     overlay.addComponent(BlockInputEvents);
@@ -1269,7 +1269,7 @@ export class LobbyDailyDungeonPanelRenderer {
         this.host.addSprite(`TrialRowCrystal_${index}`, crystalIcon, lineW * 0.08, 0, 32 * scale, 32 * scale, row);
       }
       const bonusText = tier.bonusName && tier.bonusAmount ? ` + ${tier.bonusName}×${formatAmount(tier.bonusAmount)}` : '';
-      const rewardLabel = this.host.addChildLabel(row, 'TrialRowReward', `圣晶 ${tier.crystalAmount}${bonusText}`, lineW / 2 - 8 * scale, 0, 16.5 * scale, rgba(255, 240, 205, 255), new Size(lineW * 0.5, 22 * scale), HorizontalTextAlignment.RIGHT);
+      const rewardLabel = this.host.addChildLabel(row, 'TrialRowReward', `矿晶 ${tier.crystalAmount}${bonusText}`, lineW / 2 - 8 * scale, 0, 16.5 * scale, rgba(255, 240, 205, 255), new Size(lineW * 0.5, 22 * scale), HorizontalTextAlignment.RIGHT);
       rewardLabel.overflow = Label.Overflow.SHRINK;
       cursor -= rowH;
     });

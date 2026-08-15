@@ -70,7 +70,7 @@ export const BAG_AI_ITEM_ICON_ASSETS: Record<string, string> = {
   DIAMOND: 'ui/bag/ai/icon_diamond/spriteFrame',
   BOUND_DIAMOND: 'ui/bag/ai/icon_bound_diamond/spriteFrame',
   STAMINA: 'ui/bag/ai/icon_stamina/spriteFrame',
-  // 圣晶(P金-1c,docs/27):暂用宝石图标,正式图标待出(遗留项)。
+  // 矿晶(P金-1c,docs/27):暂用宝石图标,正式图标待出(遗留项)。
   SACRED_CRYSTAL: 'ui/common/ai/ic_diamond_gem/spriteFrame',
   LOW_ENHANCE_STONE: 'ui/bag/ai/icon_enhance_low/spriteFrame',
   HIGH_ENHANCE_STONE: 'ui/bag/ai/icon_enhance_high/spriteFrame',

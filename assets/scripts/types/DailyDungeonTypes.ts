@@ -6,7 +6,7 @@ export interface DailyDungeonRewardVO {
   amount: number;
 }
 
-/** 输出试炼档位(难度Ⅲ,docs/27 v3):输出分→圣晶+材料。 */
+/** 输出试炼档位(难度Ⅲ,docs/27 v3):输出分→矿晶+材料。 */
 export interface TrialTierVO {
   tierCode: string;
   tierName: string;
@@ -23,7 +23,7 @@ export interface DailyDungeonTierVO {
   unlocked: boolean;
   unlockStageCode: string;
   rewards: DailyDungeonRewardVO[];
-  /** 难度Ⅲ=输出试炼非空:输出分→圣晶+材料阶梯;Ⅰ/Ⅱ 为空。 */
+  /** 难度Ⅲ=输出试炼非空:输出分→矿晶+材料阶梯;Ⅰ/Ⅱ 为空。 */
   outputTiers: TrialTierVO[];
 }
 
@@ -38,7 +38,7 @@ export interface DailyDungeonThemeVO {
   tiers: DailyDungeonTierVO[];
 }
 
-/** 圣晶矿脉状态(P金-1a):旧服务端无此字段时为 null。 */
+/** 矿晶矿脉状态(P金-1a):旧服务端无此字段时为 null。 */
 export interface CrystalMineVO {
   unlocked: boolean;
   dailyBudgetTotal: number;
@@ -54,7 +54,7 @@ export interface DailyDungeonSummaryVO {
   crystalMine: CrystalMineVO | null;
 }
 
-// ── 圣晶输出周榜(P金-1b) ──
+// ── 矿晶输出周榜(P金-1b) ──
 
 export interface CrystalRankEntryVO {
   rank: number;
@@ -103,7 +103,7 @@ export interface LobbyDailyDungeonPanelState {
   version: number;
 }
 
-// ── 圣晶熔炉:圣晶兑代币(P金-2,链下账本;链上发放留 P金-3) ──
+// ── 矿晶熔炉:矿晶兑代币(P金-2,链下账本;链上发放留 P金-3) ──
 
 export interface TokenWalletVO {
   id: number | null;
