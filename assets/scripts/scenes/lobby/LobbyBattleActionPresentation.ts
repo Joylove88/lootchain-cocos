@@ -63,6 +63,10 @@ export function resolveBattleActionPresentationCues(
   const replay = resolveBattleReplay(snapshot, timeline);
   const replayCues: BattleActionPresentationCue[] = [];
   replay.actions.forEach((action) => {
+    // BOSS 读条动作(doc 28):不出接敌/弹道 cue,读条条/蓄力伤害/打断由渲染层按 replay.bossCasts 直接驱动。
+    if (action.bossCast) {
+      return;
+    }
     if (action.movementKind === 'approach') {
       replayCues.push(createActionCueFromReplayAction('melee_move', action, action.startMs, action.approachMs, 'run', 0.44, 0.08));
       replayCues.push(createActionCueFromReplayAction(
@@ -208,6 +212,9 @@ function resolveBattleHitDisplayValue(hit: BattleReplayHitEvent, actorSide: 'all
   }
   if (hit.executed) {
     return `斩杀 ${base}`;
+  }
+  if (hit.breakBonus) {
+    return `破防 ${base}`;
   }
   if (hit.splashHit) {
     return `溅射 ${base}`;

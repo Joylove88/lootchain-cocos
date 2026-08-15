@@ -115,7 +115,18 @@ import {
 } from '../C1812CommonUiAssets';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { LOBBY_BATTLE_EMBEDDED_BG_DATA_URL } from './LobbyBattleEmbeddedBackground';
-import { isDailyTrialStageCode, resolveBattleReplay, resolveBattleReplayCounterMultiplier } from './LobbyBattleReplayModel';
+import {
+  BATTLE_INTERRUPT_BREAK_MS,
+  BATTLE_ULT_CHAIN_MULTIPLIER,
+  BATTLE_ULT_CHAIN_WINDOW_MS,
+  BATTLE_BREAK_DAMAGE_MULTIPLIER,
+  isBattleReplayBossBrokenAt,
+  isDailyTrialStageCode,
+  resolveBattleReplay,
+  resolveBattleReplayCounterMultiplier,
+  type BattleReplay,
+  type BattleReplayBossCast,
+} from './LobbyBattleReplayModel';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { ultimateDamageScale } from './LobbyBattleHeroSkillConfig';
 
@@ -284,6 +295,20 @@ interface BattleManualUltRecord {
   hitKey: string;
   eventSeq: number;
   actionSeq: number;
+  /** doc 28:合击连锁(前一名不同英雄大招 ≤1.5s 内)×1.5。 */
+  chained: boolean;
+  /** doc 28:命中破防中的 BOSS ×2。 */
+  breakBonus: boolean;
+  /** doc 28:本次大招打断了 BOSS 读条(actionSeq)。 */
+  interruptedCastSeq: number | null;
+}
+
+/** doc 28:打断记录——BOSS 读条被大招打断,自打断时刻起 BOSS 破防 BATTLE_INTERRUPT_BREAK_MS。 */
+interface BattleBossInterruptRecord {
+  castSeq: number;
+  bossKey: string;
+  timeMs: number;
+  byUnitKey: string;
 }
 
 const BATTLE_MANUAL_ULT_ENERGY_MAX = 100;
@@ -292,6 +317,7 @@ const BATTLE_MANUAL_ULT_ENERGY_PER_HIT_TAKEN = 15;
 const BATTLE_MANUAL_ULT_ENERGY_PER_SECOND = 4;
 const BATTLE_MANUAL_ULT_DAMAGE_ATTACK_SCALE = 2.6;
 const BATTLE_MANUAL_ULT_EVENT_SEQ_BASE = 90_000;
+const BATTLE_BOSS_CAST_EVENT_SEQ_BASE = 95_000;
 
 interface BattleOpeningConvergenceState {
   active: boolean;
@@ -363,6 +389,12 @@ export class LobbyBattlePreviewPanelRenderer {
   private battleVictoryBannerShown = false;
   // 手动大招释放记录(运行时账本),叠加进 HP 状态与伤害 cue 链。
   private readonly battleManualUlts: BattleManualUltRecord[] = [];
+  private readonly battleBossInterrupts: BattleBossInterruptRecord[] = [];
+  /** doc 28:当前帧 BOSS 是否正在读条(供技能卡'打断'提示)/是否破防(供 BOSS 本体状态牌)。 */
+  private battleRhythmCastActive = false;
+  private battleRhythmBossBroken = false;
+  /** doc 28:BOSS 蓄力 AoE 各目标实际扣血(首帧结算后固定,供飘字复用)。 */
+  private readonly battleBossCastDamageCache = new Map<number, Map<string, number>>();
   // 大招引导横幅每场战斗只弹一次。
   private battleUltReadyHintShown = false;
   // 大招点击走常驻点击层:技能卡组每个回放刷新步都会销毁重建,挂在卡上的 Button 会在
@@ -467,6 +499,8 @@ export class LobbyBattlePreviewPanelRenderer {
     if (isDailyTrialStageCode(snapshot.stageCode)) {
       this.refreshBattleBossGaugePlayback(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, presentation, hpState);
     }
+    // doc 28 战斗节奏点 HUD:BOSS 读条条 / 破防状态 / 蓄力命中与破防开窗的一次性演出。
+    this.refreshBattleRhythmHud(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, timeline, presentation, hpState, playbackTimelineTimeMs);
     allyActors.forEach((actor, index) => this.updateBattleActorPlayback(actor, index, false, scale, presentation, snapshot, actionCues, currentActionCue, currentAssistCue, actionAnchors, openingConvergence, playbackTimelineTimeMs, timelineToPresentationRatio, hpState));
     enemyActors.forEach((actor, index) => this.updateBattleActorPlayback(actor, index, true, scale, presentation, snapshot, actionCues, currentActionCue, currentAssistCue, actionAnchors, openingConvergence, playbackTimelineTimeMs, timelineToPresentationRatio, hpState));
     this.refreshStage12HeroCardDeck(field, presentationLayout.field.width, presentationLayout.field.height, scale, snapshot, presentation, currentActionCue, currentAssistCue, hpState, timeline, playbackTimelineTimeMs);
@@ -1109,6 +1143,193 @@ export class LobbyBattlePreviewPanelRenderer {
     this.applyOutline(label, scale, false);
   }
 
+  // doc 28 战斗节奏点 HUD(每帧重建 'LobbyBattleRhythmHud'):
+  //  · BOSS 读条:顶部红色读条 + "灭世咆哮 — 大招可打断!"(能量满时提示更亮);
+  //  · 破防中:金色胶囊"破防 ×2 · 剩 x.xs";
+  //  · 一次性:读条开始 BOSS 播 skill / 读满未打断 红闪+震屏+大字 / 打断 BOSS 播 hit / 破防开窗大字。
+  private refreshBattleRhythmHud(
+    parent: Node,
+    width: number,
+    height: number,
+    scale: number,
+    snapshot: BattlePresentationSnapshot,
+    timeline: BattlePresentationTimeline,
+    presentation: LobbyBattlePresentationState,
+    hpState: BattlePresentationHpState,
+    playbackTimelineTimeMs: number,
+  ): void {
+    parent.children.filter((child) => child.name === 'LobbyBattleRhythmHud').forEach((child) => child.destroy());
+    this.battleRhythmCastActive = false;
+    this.battleRhythmBossBroken = false;
+    const replay = resolveBattleReplay(snapshot, timeline);
+    const bossKey = replay.bossKey;
+    if (!bossKey || (presentation.phase !== 'roundPlaying' && presentation.phase !== 'resultRecording')) {
+      return;
+    }
+    const bossHp = hpState.units.get(bossKey);
+    if (!bossHp || bossHp.dead) {
+      return;
+    }
+    const bossUnit = this.resolveBattleSnapshotUnit(snapshot, bossKey);
+    const bossNode = this.battlePlaybackNodes.get(bossKey);
+    const t = playbackTimelineTimeMs;
+    const hud = this.host.addChildPlainNode(parent, 'LobbyBattleRhythmHud', 0, 0, width, height);
+    const trial = isDailyTrialStageCode(snapshot.stageCode);
+    const barY = height / 2 - (trial ? 168 : 112) * scale;
+    const interrupted = this.resolveInterruptedCastSeqs();
+
+    // ── 读条 ──
+    const activeCast = this.resolveActiveBossCast(replay, t);
+    if (activeCast) {
+      this.battleRhythmCastActive = true;
+      const startKey = `rhythm:cast-start:${activeCast.actionSeq}`;
+      if (!this.playedBattleCueKeys.has(startKey)) {
+        this.playedBattleCueKeys.add(startKey);
+        if (bossUnit && this.isNodeAlive(bossNode)) {
+          this.applyBattleActorSpineCueOnce(startKey, bossNode, bossUnit, 'skill');
+        }
+      }
+      const progress = clamp((t - activeCast.startMs) / Math.max(1, activeCast.hitMs - activeCast.startMs), 0, 1);
+      const barW = Math.min(520 * scale, width * 0.5);
+      const barH = 22 * scale;
+      const bar = this.host.addChildPlainNode(hud, 'RhythmCastBar', 0, barY, barW, barH);
+      const g = bar.addComponent(Graphics);
+      g.fillColor = rgba(14, 8, 8, 226);
+      g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
+      g.fill();
+      // 进度:暗红→亮红,越满越亮
+      const fillW = Math.max(barH, barW * progress);
+      g.fillColor = rgba(200 + Math.round(55 * progress), 40 + Math.round(30 * progress), 30, 240);
+      g.roundRect(-barW / 2, -barH / 2, fillW, barH, barH / 2);
+      g.fill();
+      // 刻度(读满点)
+      g.strokeColor = rgba(255, 210, 160, 235);
+      g.lineWidth = Math.max(1.5, 2 * scale);
+      g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
+      g.stroke();
+      const anyUltReady = snapshot.allies.some((ally) => {
+        const state = hpState.units.get(ally.unitKey);
+        return !!state && !state.dead && ally.power > 0 && !ally.unitKey.includes('empty')
+          && this.resolveBattleActorUltEnergy(ally.unitKey, snapshot, timeline, t) >= BATTLE_MANUAL_ULT_ENERGY_MAX;
+      });
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(t / 160));
+      const barText = this.host.addChildLabel(bar, 'RhythmCastBarText', `BOSS 蓄力 · ${activeCast.skillName}`, 0, 0, 14 * scale, rgba(255, 240, 220), new Size(barW - 16 * scale, barH));
+      barText.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(barText, scale, true);
+      const hintText = anyUltReady ? '▶ 点击发光技能卡释放大招 · 打断!' : '大招命中可打断 · 读满全队掉血 40%';
+      const hint = this.host.addChildLabel(hud, 'RhythmCastHint', hintText, 0, barY - 22 * scale, (anyUltReady ? 16 : 13) * scale, anyUltReady ? rgba(255, 236, 140, Math.round(255 * pulse)) : rgba(255, 190, 170, 235), new Size(barW + 80 * scale, 22 * scale));
+      hint.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(hint, scale, true);
+      // 读条中 BOSS 头顶红色叹号(试炼 BOSS 无头顶血条也看得见)
+      if (this.isNodeAlive(bossNode) && bossUnit) {
+        const bodyScale = Math.max(1, Math.min(3.5, bossUnit.monsterDisplayScale ?? 1));
+        const bossPos = bossNode.position;
+        const markY = bossPos.y + (60 + 120 * bodyScale) * scale * 0.5;
+        const mark = this.host.addChildLabel(hud, 'RhythmCastMark', '!', bossPos.x, markY, (30 + 10 * Math.min(2, bodyScale)) * scale, rgba(255, 90 + Math.round(60 * pulse), 60), new Size(60 * scale, 60 * scale));
+        mark.overflow = Label.Overflow.SHRINK;
+        this.applyOutline(mark, scale, true);
+      }
+    }
+
+    // ── 读满命中(未打断)一次性:红闪+震屏+大字+BOSS skill ──
+    for (const cast of replay.bossCasts) {
+      if (interrupted.has(cast.actionSeq) || t < cast.hitMs || t > cast.hitMs + 400) {
+        continue;
+      }
+      const hitKey = `rhythm:cast-hit:${cast.actionSeq}`;
+      if (this.playedBattleCueKeys.has(hitKey)) {
+        continue;
+      }
+      this.playedBattleCueKeys.add(hitKey);
+      if (bossUnit && this.isNodeAlive(bossNode)) {
+        this.applyBattleActorSpineCueOnce(hitKey, bossNode, bossUnit, 'skill');
+      }
+      this.renderBattleRhythmCallout(parent, `${cast.skillName} !`, rgba(255, 210, 200), rgba(230, 60, 40), 'boss-cast');
+      const field = this.battleFieldNode;
+      if (this.isNodeAlive(field)) {
+        const base = new Vec3(field.position.x, field.position.y, field.position.z);
+        tween(field)
+          .to(0.05, { position: new Vec3(base.x - 12, base.y + 6, base.z) })
+          .to(0.06, { position: new Vec3(base.x + 9, base.y - 5, base.z) })
+          .to(0.05, { position: new Vec3(base.x - 4, base.y + 2, base.z) })
+          .to(0.05, { position: base })
+          .start();
+      }
+    }
+
+    // ── 打断反馈一次性:BOSS 播 hit + 踉跄 ──
+    for (const record of this.battleBossInterrupts) {
+      const key = `rhythm:interrupt:${record.castSeq}`;
+      if (this.playedBattleCueKeys.has(key)) {
+        continue;
+      }
+      this.playedBattleCueKeys.add(key);
+      if (bossUnit && this.isNodeAlive(bossNode)) {
+        this.applyBattleActorSpineCueOnce(key, bossNode, bossUnit, 'hit');
+        const visual = bossNode.getChildByName('LobbyBattleActorVisualRoot');
+        if (this.isNodeAlive(visual)) {
+          tween(visual)
+            .to(0.06, { position: new Vec3(14 * scale, 0, 0) })
+            .to(0.08, { position: new Vec3(-8 * scale, 0, 0) })
+            .to(0.08, { position: new Vec3(0, 0, 0) })
+            .start();
+        }
+      }
+    }
+
+    // ── 破防窗口 ──
+    const broken = this.isBossBrokenAt(replay, t);
+    this.battleRhythmBossBroken = broken;
+    if (broken) {
+      // 剩余时间:取覆盖当前时刻的所有窗口的最晚结束
+      let endMs = t;
+      for (const window of replay.breakWindows) {
+        if (t >= window.startMs && t < window.endMs) {
+          endMs = Math.max(endMs, window.endMs);
+        }
+      }
+      for (const record of this.battleBossInterrupts) {
+        if (record.bossKey === bossKey && t >= record.timeMs && t < record.timeMs + BATTLE_INTERRUPT_BREAK_MS) {
+          endMs = Math.max(endMs, record.timeMs + BATTLE_INTERRUPT_BREAK_MS);
+        }
+      }
+      const remain = Math.max(0, (endMs - t) / 1000);
+      const pillW = Math.min(300 * scale, width * 0.32);
+      const pillH = 26 * scale;
+      const pillY = barY - (activeCast ? 52 : 0) * scale;
+      const pill = this.host.addChildPlainNode(hud, 'RhythmBreakPill', 0, pillY, pillW, pillH);
+      const pg = pill.addComponent(Graphics);
+      pg.fillColor = rgba(40, 28, 8, 230);
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+      pg.fill();
+      pg.strokeColor = rgba(255, 214, 92, 240);
+      pg.lineWidth = Math.max(1.5, 2 * scale);
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+      pg.stroke();
+      // 剩余进度条(金色,随时间缩短)
+      const totalMs = BATTLE_INTERRUPT_BREAK_MS;
+      const frac = clamp(remain * 1000 / totalMs, 0, 1);
+      pg.fillColor = rgba(255, 214, 92, 70);
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW * frac, pillH, pillH / 2);
+      pg.fill();
+      const pillText = this.host.addChildLabel(pill, 'RhythmBreakText', `破防中 · 伤害 ×${BATTLE_BREAK_DAMAGE_MULTIPLIER} · ${remain.toFixed(1)}s`, 0, 0, 15 * scale, rgba(255, 234, 150), new Size(pillW - 14 * scale, pillH));
+      pillText.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(pillText, scale, true);
+    }
+    // 节奏性破防开窗一次性大字(打断触发的窗口已由"打断!"大字覆盖)
+    for (const window of replay.breakWindows) {
+      if (t < window.startMs || t > window.startMs + 400) {
+        continue;
+      }
+      const key = `rhythm:break-open:${window.startMs}`;
+      if (this.playedBattleCueKeys.has(key)) {
+        continue;
+      }
+      this.playedBattleCueKeys.add(key);
+      this.renderBattleRhythmCallout(parent, '破 防 !', rgba(255, 240, 180), rgba(255, 190, 40), 'break');
+    }
+  }
+
   private refreshBattleBossGaugePlayback(parent: Node, width: number, height: number, scale: number, snapshot: BattlePresentationSnapshot, presentation: LobbyBattlePresentationState, hpState: BattlePresentationHpState): void {
     parent.children
       .filter((child) => child.name === 'LobbyBattleBossGauge')
@@ -1520,6 +1741,10 @@ export class LobbyBattlePreviewPanelRenderer {
       this.renderBattleActorCcBodyEffect(visualRoot, slot.width, slot.height, scale, unit, ccKind, playbackTimelineTimeMs);
       this.applyBattleActorCcSkeletonTimeScale(visualRoot, ccKind);
     }
+    // doc 28:BOSS 破防中——本体裂甲纹 + 头顶"破防 ×2"金牌(每帧重建,相位随播放时间)。
+    if (!hpUnitDead && this.battleRhythmBossBroken && enemy && resolveBattleReplay(snapshot, resolveLobbyBattlePresentationTimeline(snapshot)).bossKey === unit.unitKey) {
+      this.renderBattleActorBreakEffect(visualRoot, slot.width, slot.height, scale, unit, playbackTimelineTimeMs);
+    }
 
     const combatPlaybackActive = presentation.phase === 'roundPlaying'
       || presentation.phase === 'resultRecording'
@@ -1606,6 +1831,8 @@ export class LobbyBattlePreviewPanelRenderer {
       this.refreshBattleActorCombatFeedback(actor, slot, scale, unit, enemy, snapshot, actorActive, targetActive, assistActorActive, assistTargetActive, openingConvergence.active || actorActive || targetActive || assistActorActive || assistTargetActive || fallbackActive);
     }
     this.refreshBattleActorHpBar(actor, slot, scale, unit, enemy, hpUnit, hpState, currentActionCue, presentation.phase);
+    // 每帧刷新路径:硬控身体级表现 + BOSS 破防本体表现(与整场重建路径同一套绘制函数,先清后画)。
+    this.refreshBattleActorRhythmOverlays(actor, slot, scale, unit, enemy, hpUnit, hpUnitDead, snapshot, playbackTimelineTimeMs);
 
     if (hpUnitDead) {
       // cue 键带 unitKey:原先全场共用一个键,第二个死亡单位的死亡动画会被吞。
@@ -1674,6 +1901,47 @@ export class LobbyBattlePreviewPanelRenderer {
     if ((targetActive && currentActionCue) || (assistActorActive || assistTargetActive) || fallbackActive) {
       const cueKey = currentActionCue?.cueKey ?? currentAssistCue?.cueKey ?? `idle:${unit.unitKey}:${this.lastBattleSceneKey}`;
       this.applyBattleActorSpineCueOnce(this.resolveBattleSpineCuePlaybackKey(cueKey, actionAnimationName), actor, unit, actionAnimationName);
+    }
+  }
+
+  // 每帧:清掉上一帧的硬控/破防表现层再按当前状态重画;骨骼 timeScale 同步(冻结定格/眩晕放慢/解控恢复)。
+  private refreshBattleActorRhythmOverlays(
+    actor: Node,
+    slot: BattlePresentationSlot,
+    scale: number,
+    unit: BattlePresentationUnitSnapshot,
+    enemy: boolean,
+    hpUnit: { frozen?: boolean; frozenKind?: 'freeze' | 'stun' | null } | undefined,
+    hpUnitDead: boolean,
+    snapshot: BattlePresentationSnapshot,
+    playbackTimelineTimeMs: number,
+  ): void {
+    const visualRoot = actor.children.find((child) => child.name === 'LobbyBattleActorVisualRoot');
+    if (!visualRoot || !this.isNodeAlive(visualRoot)) {
+      return;
+    }
+    visualRoot.children
+      .filter((child) => child.name === 'LobbyBattleActorCcBody' || child.name === 'LobbyBattleActorBreakBody')
+      .forEach((child) => child.destroy());
+    const ccKind: 'freeze' | 'stun' | null = !hpUnitDead && hpUnit?.frozen ? (hpUnit.frozenKind ?? 'stun') : null;
+    const previousCc = this.battleActorCcKinds.get(unit.unitKey) ?? null;
+    this.battleActorCcKinds.set(unit.unitKey, ccKind);
+    if (ccKind) {
+      this.renderBattleActorCcBodyEffect(visualRoot, slot.width, slot.height, scale, unit, ccKind, playbackTimelineTimeMs);
+      this.applyBattleActorCcSkeletonTimeScale(visualRoot, ccKind);
+    } else if (previousCc) {
+      // 解控:恢复骨骼正常速度
+      for (const skeleton of visualRoot.getComponentsInChildren(sp.Skeleton)) {
+        if (skeleton.node.name === 'LobbyBattleActorSpineNode') {
+          skeleton.timeScale = 0.96;
+        }
+      }
+    }
+    if (!hpUnitDead && enemy && this.battleRhythmBossBroken) {
+      const replay = resolveBattleReplay(snapshot, resolveLobbyBattlePresentationTimeline(snapshot));
+      if (replay.bossKey === unit.unitKey) {
+        this.renderBattleActorBreakEffect(visualRoot, slot.width, slot.height, scale, unit, playbackTimelineTimeMs);
+      }
     }
   }
 
@@ -1831,40 +2099,124 @@ export class LobbyBattlePreviewPanelRenderer {
     return energy;
   }
 
-  // HP 状态包装:在回放推演之上叠加手动大招的真实扣血(可击杀,死亡时间生效→胜利判定/死亡过滤自动联动)。
+  // doc 28:打断触发的破防窗口(表现层叠加,与 sim 节奏性窗口并存)。
+  private isBossBrokenByInterruptAt(bossKey: string, timeMs: number): boolean {
+    return this.battleBossInterrupts.some((record) => record.bossKey === bossKey && timeMs >= record.timeMs && timeMs < record.timeMs + BATTLE_INTERRUPT_BREAK_MS);
+  }
+
+  private isBossBrokenAt(replay: BattleReplay, timeMs: number): boolean {
+    if (!replay.bossKey) {
+      return false;
+    }
+    return isBattleReplayBossBrokenAt(replay, timeMs) || this.isBossBrokenByInterruptAt(replay.bossKey, timeMs);
+  }
+
+  private resolveInterruptedCastSeqs(): Set<number> {
+    return new Set(this.battleBossInterrupts.map((record) => record.castSeq));
+  }
+
+  // 当前时刻正在读条(未被打断)的 BOSS 读条。
+  private resolveActiveBossCast(replay: BattleReplay, timeMs: number): BattleReplayBossCast | null {
+    const interrupted = this.resolveInterruptedCastSeqs();
+    return replay.bossCasts.find((cast) => !interrupted.has(cast.actionSeq) && timeMs >= cast.startMs && timeMs < cast.hitMs) ?? null;
+  }
+
+  // HP 状态包装:在回放推演之上叠加表现层事件(全部只做减法,与 sim 死亡判定一致):
+  //  · 手动大招真实扣血(可击杀,死亡时间生效→胜利判定/死亡过滤自动联动);
+  //  · BOSS 蓄力 AoE(读满未被打断):各存活我方损失当前生命 40%,非致命;
+  //  · 打断破防窗口内回放命中 BOSS 的额外 +100%(节奏性窗口已在 sim 内 ×2,不重复)。
   private resolveBattleHpStateWithManualUlts(
     snapshot: BattlePresentationSnapshot,
     timeline: BattlePresentationTimeline,
     playbackTimelineTimeMs: number,
   ): BattlePresentationHpState {
     const hpState = resolveBattlePresentationHpState(snapshot, timeline, playbackTimelineTimeMs);
-    for (const ult of [...this.battleManualUlts].sort((a, b) => a.timeMs - b.timeMs)) {
-      if (ult.timeMs > playbackTimelineTimeMs) {
-        continue;
+    const replay = resolveBattleReplay(snapshot, timeline);
+    type OverlayEvent =
+      | { kind: 'ult'; timeMs: number; ult: BattleManualUltRecord }
+      | { kind: 'cast'; timeMs: number; cast: BattleReplayBossCast }
+      | { kind: 'bonus'; timeMs: number; targetKey: string; amount: number; hitKey: string; eventSeq: number };
+    const events: OverlayEvent[] = [];
+    for (const ult of this.battleManualUlts) {
+      if (ult.timeMs <= playbackTimelineTimeMs) {
+        events.push({ kind: 'ult', timeMs: ult.timeMs, ult });
       }
-      const target = hpState.units.get(ult.targetKey);
-      if (!target || (target.dead && (target.deadAtMs ?? 0) < ult.timeMs)) {
-        continue;
+    }
+    const interrupted = this.resolveInterruptedCastSeqs();
+    for (const cast of replay.bossCasts) {
+      if (!interrupted.has(cast.actionSeq) && cast.hitMs <= playbackTimelineTimeMs) {
+        events.push({ kind: 'cast', timeMs: cast.hitMs, cast });
       }
-      const damage = Math.min(target.currentHp, ult.amount);
+    }
+    if (replay.bossKey && this.battleBossInterrupts.length > 0) {
+      const bossKey = replay.bossKey;
+      for (const action of replay.actions) {
+        for (const hit of action.hitEvents) {
+          if (hit.targetKey !== bossKey || hit.evaded || hit.amount <= 0 || hit.breakBonus || hit.timeMs > playbackTimelineTimeMs) {
+            continue;
+          }
+          if (this.isBossBrokenByInterruptAt(bossKey, hit.timeMs)) {
+            events.push({ kind: 'bonus', timeMs: hit.timeMs, targetKey: bossKey, amount: Math.round(hit.amount * (BATTLE_BREAK_DAMAGE_MULTIPLIER - 1)), hitKey: `${hit.hitKey}:break`, eventSeq: hit.eventSeq });
+          }
+        }
+      }
+    }
+    events.sort((a, b) => a.timeMs - b.timeMs);
+    const applyDamage = (targetKey: string, amount: number, hitKey: string, eventSeq: number, timeMs: number, lethal: boolean): number => {
+      const target = hpState.units.get(targetKey);
+      if (!target || amount <= 0 || (target.dead && (target.deadAtMs ?? 0) < timeMs)) {
+        return 0;
+      }
+      const cap = lethal ? target.currentHp : Math.max(0, target.currentHp - 1);
+      const damage = Math.min(cap, amount);
+      if (damage <= 0) {
+        return 0;
+      }
       target.currentHp = Math.max(0, target.currentHp - damage);
       target.damaged += damage;
       target.hpRatio = clamp(target.currentHp / Math.max(1, target.maxHp), 0, 1);
-      target.lastDamageHitKey = ult.hitKey;
-      target.lastDamageEventSeq = ult.eventSeq;
-      target.lastDamageAtMs = ult.timeMs;
+      target.lastDamageHitKey = hitKey;
+      target.lastDamageEventSeq = eventSeq;
+      target.lastDamageAtMs = timeMs;
       if (target.currentHp <= 0 && !target.dead) {
         target.dead = true;
-        target.deadAtMs = target.deadAtMs ?? ult.timeMs;
+        target.deadAtMs = target.deadAtMs ?? timeMs;
         hpState.deadUnitKeys.add(target.unitKey);
       }
-      hpState.appliedHitKeys.add(ult.hitKey);
-      hpState.appliedEventSeqs.add(ult.eventSeq);
+      hpState.appliedHitKeys.add(hitKey);
+      hpState.appliedEventSeqs.add(eventSeq);
+      return damage;
+    };
+    for (const event of events) {
+      if (event.kind === 'ult') {
+        applyDamage(event.ult.targetKey, event.ult.amount, event.ult.hitKey, event.ult.eventSeq, event.ult.timeMs, true);
+      } else if (event.kind === 'bonus') {
+        applyDamage(event.targetKey, event.amount, event.hitKey, event.eventSeq, event.timeMs, true);
+      } else {
+        const cast = event.cast;
+        let cache = this.battleBossCastDamageCache.get(cast.actionSeq);
+        if (!cache) {
+          cache = new Map<string, number>();
+          this.battleBossCastDamageCache.set(cast.actionSeq, cache);
+        }
+        for (const targetKey of cast.targetKeys) {
+          const target = hpState.units.get(targetKey);
+          if (!target || target.dead) {
+            continue;
+          }
+          const amount = cache.get(targetKey) ?? Math.max(1, Math.round(target.currentHp * cast.hpRatio));
+          const dealt = applyDamage(targetKey, amount, `boss-cast:${cast.actionSeq}:${targetKey}`, BATTLE_BOSS_CAST_EVENT_SEQ_BASE + cast.actionSeq * 8, cast.hitMs, false);
+          if (!cache.has(targetKey)) {
+            cache.set(targetKey, dealt);
+          }
+        }
+      }
     }
     return hpState;
   }
 
   // 手动大招的合成伤害 cue:走与回放伤害完全相同的展示/遥测链(飘字/受击反馈/死亡过滤对齐)。
+  // doc 28:同时产出 BOSS 蓄力 AoE(未打断)对各我方的扣血飘字。
   private resolveManualUltDamageCues(snapshot: BattlePresentationSnapshot, playbackTimelineTimeMs: number): BattleActionPresentationCue[] {
     const cues: BattleActionPresentationCue[] = [];
     for (const ult of this.battleManualUlts) {
@@ -1876,6 +2228,7 @@ export class LobbyBattlePreviewPanelRenderer {
       if (!actor || !target) {
         continue;
       }
+      const prefix = ult.chained && ult.breakBonus ? '合击·破防' : ult.chained ? '合击' : ult.breakBonus ? '破防大招' : '大招';
       cues.push({
         cueKey: `manual:${ult.hitKey}`,
         kind: 'damage_float',
@@ -1892,15 +2245,61 @@ export class LobbyBattlePreviewPanelRenderer {
         targetName: target.displayName,
         targetRole: target.role,
         targetSide: target.side,
-        displayValue: `大招 -${ult.amount.toLocaleString('en-US')}`,
+        displayValue: `${prefix} -${ult.amount.toLocaleString('en-US')}`,
         label: `${actor.displayName} 释放大招`,
         animationName: 'ult',
         audioCue: 'heroSkill',
         advanceRatio: 0,
         arcRatio: 0.2,
-        isCritical: false,
+        isCritical: ult.chained || ult.breakBonus,
         hitKey: ult.hitKey,
         evaded: false,
+      });
+    }
+    const timeline = resolveLobbyBattlePresentationTimeline(snapshot);
+    const replay = resolveBattleReplay(snapshot, timeline);
+    const interrupted = this.resolveInterruptedCastSeqs();
+    for (const cast of replay.bossCasts) {
+      if (interrupted.has(cast.actionSeq) || cast.hitMs > playbackTimelineTimeMs || playbackTimelineTimeMs > cast.hitMs + 620) {
+        continue;
+      }
+      const boss = this.resolveBattleSnapshotUnit(snapshot, cast.bossKey);
+      if (!boss) {
+        continue;
+      }
+      const cache = this.battleBossCastDamageCache.get(cast.actionSeq);
+      cast.targetKeys.forEach((targetKey, index) => {
+        const target = this.resolveBattleSnapshotUnit(snapshot, targetKey);
+        const amount = cache?.get(targetKey) ?? 0;
+        if (!target || amount <= 0) {
+          return;
+        }
+        cues.push({
+          cueKey: `boss-cast:${cast.actionSeq}:${targetKey}`,
+          kind: 'damage_float',
+          eventSeq: BATTLE_BOSS_CAST_EVENT_SEQ_BASE + cast.actionSeq * 8 + index,
+          actionSeq: cast.actionSeq,
+          timeMs: cast.hitMs,
+          durationMs: 560,
+          round: 0,
+          actorKey: boss.unitKey,
+          actorName: boss.displayName,
+          actorRole: boss.role,
+          actorSide: boss.side,
+          targetKey: target.unitKey,
+          targetName: target.displayName,
+          targetRole: target.role,
+          targetSide: target.side,
+          displayValue: `${cast.skillName} -${amount.toLocaleString('en-US')}`,
+          label: `${boss.displayName} ${cast.skillName}`,
+          animationName: 'skill',
+          audioCue: 'heroSkill',
+          advanceRatio: 0,
+          arcRatio: 0.2,
+          isCritical: true,
+          hitKey: `boss-cast:${cast.actionSeq}:${targetKey}`,
+          evaded: false,
+        });
       });
     }
     return cues;
@@ -1929,11 +2328,24 @@ export class LobbyBattlePreviewPanelRenderer {
     if (livingEnemies.length === 0) {
       return;
     }
-    const target = [...livingEnemies].sort((a, b) => Math.abs(a.slot - unit.slot) - Math.abs(b.slot - unit.slot))[0];
     const replay = resolveBattleReplay(snapshot, timeline);
+    // doc 28:BOSS 正在读条 → 大招自动改打 BOSS 并打断读条(读条取消、无伤、破防 4s)。
+    const activeCast = this.resolveActiveBossCast(replay, playbackTimelineTimeMs);
+    const bossUnit = activeCast ? livingEnemies.find((enemy) => enemy.unitKey === activeCast.bossKey) ?? null : null;
+    const target = bossUnit ?? [...livingEnemies].sort((a, b) => Math.abs(a.slot - unit.slot) - Math.abs(b.slot - unit.slot))[0];
     const attack = replay.units.get(unit.unitKey)?.stats.attack ?? 80;
+    if (activeCast && bossUnit) {
+      this.battleBossInterrupts.push({ castSeq: activeCast.actionSeq, bossKey: activeCast.bossKey, timeMs: playbackTimelineTimeMs, byUnitKey: unit.unitKey });
+    }
+    // doc 28:破防 ×2(节奏性窗口或打断窗口);合击连锁:前一名不同英雄大招 ≤1.5s 内 ×1.5。
+    const breakBonus = target.unitKey === replay.bossKey && this.isBossBrokenAt(replay, playbackTimelineTimeMs);
+    const lastUlt = this.battleManualUlts[this.battleManualUlts.length - 1] ?? null;
+    const chained = !!lastUlt && lastUlt.unitKey !== unit.unitKey && playbackTimelineTimeMs - lastUlt.timeMs <= BATTLE_ULT_CHAIN_WINDOW_MS && playbackTimelineTimeMs >= lastUlt.timeMs;
     // P6:大招伤害随终极技能等级 ×(1+0.15×(Lv-1))。
-    const amount = Math.max(1, Math.round(attack * BATTLE_MANUAL_ULT_DAMAGE_ATTACK_SCALE * ultimateDamageScale(unit.ultimateSkillLevel) * resolveBattleReplayCounterMultiplier(unit, target)));
+    const amount = Math.max(1, Math.round(
+      attack * BATTLE_MANUAL_ULT_DAMAGE_ATTACK_SCALE * ultimateDamageScale(unit.ultimateSkillLevel) * resolveBattleReplayCounterMultiplier(unit, target)
+      * (breakBonus ? BATTLE_BREAK_DAMAGE_MULTIPLIER : 1) * (chained ? BATTLE_ULT_CHAIN_MULTIPLIER : 1),
+    ));
     const index = this.battleManualUlts.length;
     this.battleManualUlts.push({
       unitKey: unit.unitKey,
@@ -1943,6 +2355,9 @@ export class LobbyBattlePreviewPanelRenderer {
       hitKey: `manual-ult:${index}:${unit.unitKey}`,
       eventSeq: BATTLE_MANUAL_ULT_EVENT_SEQ_BASE + index * 3,
       actionSeq: BATTLE_MANUAL_ULT_EVENT_SEQ_BASE + index * 3,
+      chained,
+      breakBonus,
+      interruptedCastSeq: activeCast && bossUnit ? activeCast.actionSeq : null,
     });
     // 放招=能量清零重攒:把基线抬到当前原始能量,禁止盈余连放。
     this.battleManualUltEnergyBaselines.set(
@@ -1971,7 +2386,55 @@ export class LobbyBattlePreviewPanelRenderer {
         .start();
       // 全屏大招名字切入演出(压暗+电影黑边+大字冲屏)。
       this.renderManualUltCutIn(field, unit);
+      // doc 28:打断 / 合击 的醒目提示(顶部大字 + 白闪),让操作反馈一眼可见。
+      const lastRecord = this.battleManualUlts[this.battleManualUlts.length - 1];
+      if (lastRecord?.interruptedCastSeq != null) {
+        this.renderBattleRhythmCallout(field, '打 断 !', rgba(255, 246, 200), rgba(255, 120, 80), 'interrupt');
+      } else if (lastRecord?.chained) {
+        this.renderBattleRhythmCallout(field, '合 击 连 锁 !', rgba(255, 236, 160), rgba(255, 190, 60), 'chain');
+      }
     }
+  }
+
+  // doc 28:节奏点大字提示(打断/合击/破防):顶部下方 1/3 处大字冲屏 + 全屏白闪,约 0.9s 自毁,纯表现。
+  private renderBattleRhythmCallout(field: Node, text: string, color: Color, glow: Color, tag: string): void {
+    field.getChildByName(`LobbyBattleRhythmCallout_${tag}`)?.destroy();
+    const fieldSize = field.getComponent(UITransform);
+    const width = fieldSize?.width ?? 1200;
+    const height = fieldSize?.height ?? 640;
+    const root = this.host.addChildPlainNode(field, `LobbyBattleRhythmCallout_${tag}`, 0, 0, width, height);
+    root.setSiblingIndex(field.children.length - 1);
+    this.markBattleTransientEffectLayer(root);
+    const flash = this.host.addChildPlainNode(root, 'Flash', 0, 0, width, height);
+    const fg = flash.addComponent(Graphics);
+    fg.fillColor = rgba(255, 255, 255, 120);
+    fg.rect(-width / 2, -height / 2, width, height);
+    fg.fill();
+    const flashOpacity = flash.addComponent(UIOpacity);
+    flashOpacity.opacity = 255;
+    tween(flashOpacity).to(0.18, { opacity: 0 }).start();
+    const y = height * 0.16;
+    const glowLabel = this.host.addChildLabel(root, 'Glow', text, 0, y, 58, glow, new Size(width * 0.8, 90));
+    glowLabel.overflow = Label.Overflow.SHRINK;
+    glowLabel.enableOutline = true;
+    glowLabel.outlineColor = glow;
+    glowLabel.outlineWidth = 6;
+    const label = this.host.addChildLabel(root, 'Text', text, 0, y, 58, color, new Size(width * 0.8, 90));
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableOutline = true;
+    label.outlineColor = rgba(40, 20, 10, 255);
+    label.outlineWidth = 3;
+    root.setScale(0.6, 0.6, 1);
+    tween(root)
+      .to(0.1, { scale: new Vec3(1.15, 1.15, 1) })
+      .to(0.1, { scale: Vec3.ONE })
+      .delay(0.55)
+      .to(0.18, { scale: new Vec3(1.08, 1.08, 1) })
+      .call(() => { if (this.isNodeAlive(root)) { root.destroy(); } })
+      .start();
+    const rootOpacity = root.addComponent(UIOpacity);
+    rootOpacity.opacity = 255;
+    tween(rootOpacity).delay(0.72).to(0.2, { opacity: 0 }).start();
   }
 
   // 大招施放全屏切入:压暗遮罩+上下电影黑边+英雄名/大招名大字冲屏,约 1.2s 自毁,纯表现。
@@ -3534,6 +3997,61 @@ export class LobbyBattlePreviewPanelRenderer {
     return Boolean(unit.sourceHeroId && unit.displayName.trim() && unit.displayName !== '空位');
   }
 
+  // doc 28:BOSS 破防本体表现——金色裂甲纹(闪烁)+ 头顶"破防 ×2"金牌;几何随体型倍率放大。
+  private renderBattleActorBreakEffect(parent: Node, width: number, height: number, scale: number, unit: BattlePresentationUnitSnapshot, playbackTimelineTimeMs: number): void {
+    const bodyScale = Math.max(1, Math.min(3.5, unit.monsterDisplayScale ?? 1));
+    const bodyW = width * 0.62 * bodyScale;
+    const footY = -height * 0.42;
+    const bodyH = height * (0.78 + 0.1 * (bodyScale - 1)) * bodyScale;
+    const centerY = footY + bodyH * 0.5;
+    const headY = footY + bodyH;
+    const layer = this.host.addChildPlainNode(parent, 'LobbyBattleActorBreakBody', 0, 0, width, height);
+    const g = layer.addComponent(Graphics);
+    const t = playbackTimelineTimeMs / 1000;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(t * 5));
+    // 裂纹:从胸口向外的折线,金色带脉冲
+    g.strokeColor = rgba(255, 214, 92, Math.round(150 + 100 * pulse));
+    g.lineWidth = Math.max(2, 2.6 * scale * Math.min(2, bodyScale));
+    const cracks: Array<Array<[number, number]>> = [
+      [[0, 0], [-0.18, 0.12], [-0.3, 0.05], [-0.42, 0.2]],
+      [[0, 0], [0.16, -0.1], [0.28, -0.02], [0.4, -0.16]],
+      [[0, 0], [-0.08, -0.2], [-0.02, -0.34], [-0.14, -0.46]],
+      [[0, 0], [0.1, 0.22], [0.04, 0.36], [0.16, 0.48]],
+    ];
+    for (const crack of cracks) {
+      crack.forEach(([px, py], i) => {
+        const x = px * bodyW;
+        const y = centerY + py * bodyH * 0.9;
+        if (i === 0) {
+          g.moveTo(x, y);
+        } else {
+          g.lineTo(x, y);
+        }
+      });
+      g.stroke();
+    }
+    // 中心亮点
+    g.fillColor = rgba(255, 240, 170, Math.round(120 + 100 * pulse));
+    g.circle(0, centerY, 6 * scale * Math.min(2, bodyScale));
+    g.fill();
+    // 头顶金牌
+    const badgeH = 24 * scale * Math.min(1.8, bodyScale);
+    const badgeW = badgeH * 3.6;
+    const badgeY = headY + 34 * scale * bodyScale;
+    const badge = this.host.addChildPlainNode(layer, 'LobbyBattleActorBreakBadge', 0, badgeY, badgeW, badgeH);
+    const bg = badge.addComponent(Graphics);
+    bg.fillColor = rgba(40, 28, 8, 220);
+    bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, badgeH / 2);
+    bg.fill();
+    bg.strokeColor = rgba(255, 214, 92, 240);
+    bg.lineWidth = Math.max(1.2, 1.6 * scale);
+    bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, badgeH / 2);
+    bg.stroke();
+    const text = this.host.addChildLabel(badge, 'LobbyBattleActorBreakBadgeText', `破防 ×${BATTLE_BREAK_DAMAGE_MULTIPLIER}`, 0, 0, badgeH * 0.62, rgba(255, 234, 150), new Size(badgeW - 8 * scale, badgeH));
+    text.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(text, scale, true);
+  }
+
   // 硬控身体级表现。所有几何随单位体型倍率(怪物 display_scale)放大,试炼 3.4× BOSS 也罩得住。
   // 每帧重建,动画全部用播放时间驱动(绕星相位/冰晶闪烁),不用 tween 以免重建抖动。
   private renderBattleActorCcBodyEffect(
@@ -3946,7 +4464,8 @@ export class LobbyBattlePreviewPanelRenderer {
         graphics.lineWidth = Math.max(1.4, 1.8 * scale);
         graphics.roundRect(-cardWidth / 2 + 2 * scale, -cardHeight / 2 + 2 * scale, cardWidth - 4 * scale, cardHeight - 4 * scale, 6 * scale);
         graphics.stroke();
-        const ultHint = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardUltHint', '大招!', 0, -cardHeight / 2 + 44 * scale, 15 * scale, rgba(255, 226, 128), new Size(cardWidth - 8 * scale, 18 * scale));
+        // doc 28:BOSS 读条中 → 提示改为红色"打断!",告诉玩家现在放大招能打断。
+        const ultHint = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardUltHint', this.battleRhythmCastActive ? '打断!' : '大招!', 0, -cardHeight / 2 + 44 * scale, 15 * scale, this.battleRhythmCastActive ? rgba(255, 120, 96) : rgba(255, 226, 128), new Size(cardWidth - 8 * scale, 18 * scale));
         ultHint.overflow = Label.Overflow.SHRINK;
         this.applyOutline(ultHint, scale, true);
         // 点击由常驻点击层处理(见 ensureBattleDeckClickLayer),卡节点本身每步重建不能挂 Button。
@@ -4245,6 +4764,8 @@ export class LobbyBattlePreviewPanelRenderer {
       this.battleVictoryBannerShown = false;
       this.battleManualUlts.length = 0;
       this.battleManualUltEnergyBaselines.clear();
+      this.battleBossInterrupts.length = 0;
+      this.battleBossCastDamageCache.clear();
       this.trialGaugeShownRemain = null;
       this.trialGaugeLastLayers = null;
       this.battleUltReadyHintShown = false;

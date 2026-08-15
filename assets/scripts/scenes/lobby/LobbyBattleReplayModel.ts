@@ -69,6 +69,8 @@ export interface BattleReplayHitEvent {
   splashHit: boolean;
   // 斩杀(装备特级词条 execute):目标血量落入处决线以下时本次命中直接击杀,表现层显示"斩杀"飘字。
   executed: boolean;
+  // 破防加伤(doc 28):本次命中落在 BOSS 节奏性破防窗口内,伤害已 ×2,表现层飘"破防"。
+  breakBonus: boolean;
 }
 
 export interface BattleReplayAction {
@@ -87,6 +89,25 @@ export interface BattleReplayAction {
   approachMs: number;
   recoverMs: number;
   hitEvents: BattleReplayHitEvent[];
+  // BOSS 读条动作(doc 28):无 hitEvents,蓄力伤害由表现层叠加(便于"被打断即无伤")。
+  bossCast?: boolean;
+}
+
+// BOSS 读条(doc 28):startMs 起读条,hitMs 读满放招;targetKeys=读满时刻存活的我方;hpRatio=各目标当前生命损失比例。
+export interface BattleReplayBossCast {
+  actionSeq: number;
+  bossKey: string;
+  startMs: number;
+  hitMs: number;
+  targetKeys: string[];
+  hpRatio: number;
+  skillName: string;
+}
+
+// BOSS 节奏性破防窗口(doc 28):窗口内对 BOSS 的命中 ×2(sim 内结算)。
+export interface BattleReplayBreakWindow {
+  startMs: number;
+  endMs: number;
 }
 
 export interface BattleReplay {
@@ -98,6 +119,30 @@ export interface BattleReplay {
   actions: BattleReplayAction[];
   /** 输出试炼(限时副本难度Ⅲ):BOSS 巨血打不死,时间到即成功=我方存活即胜;演出用厚血条+伤害累计。 */
   trial: boolean;
+  /** 战斗节奏点(doc 28):BOSS 单位 key(无 BOSS 为 null)、读条列表、节奏性破防窗口。 */
+  bossKey: string | null;
+  bossCasts: BattleReplayBossCast[];
+  breakWindows: BattleReplayBreakWindow[];
+}
+
+// 战斗节奏点常量(doc 28)
+export const BATTLE_BOSS_CAST_FIRST_DELAY_MS = 7_000;
+export const BATTLE_BOSS_CAST_INTERVAL_MS = 12_000;
+export const BATTLE_BOSS_CAST_MS = 2_400;
+export const BATTLE_BOSS_CAST_HP_RATIO = 0.4;
+export const BATTLE_BOSS_CAST_SKILL_NAME = '灭世咆哮';
+export const BATTLE_BREAK_FIRST_DELAY_MS = 15_000;
+export const BATTLE_BREAK_INTERVAL_MS = 20_000;
+export const BATTLE_BREAK_WINDOW_MS = 3_500;
+export const BATTLE_BREAK_DAMAGE_MULTIPLIER = 2;
+/** 打断触发的破防时长(表现层叠加)。 */
+export const BATTLE_INTERRUPT_BREAK_MS = 4_000;
+/** 合击连锁:两名不同英雄大招间隔 ≤ 该值,第二发 ×1.5。 */
+export const BATTLE_ULT_CHAIN_WINDOW_MS = 1_500;
+export const BATTLE_ULT_CHAIN_MULTIPLIER = 1.5;
+
+export function isBattleReplayBossBrokenAt(replay: BattleReplay, timeMs: number): boolean {
+  return replay.breakWindows.some((window) => timeMs >= window.startMs && timeMs < window.endMs);
 }
 
 // 输出试炼关卡:DAILY_{THEME}_3(docs/27 v3)。BOSS 拼输出,时间到即成功。
@@ -223,7 +268,18 @@ function buildBattleReplay(snapshot: BattlePresentationSnapshot, timeline: Battl
     // 输出试炼:把敌方 BOSS 血量放大到基本打不死,整段演出拼总输出;血条掉多少≈相对输出。
     inflateTrialBossHp(unitByKey, units);
   }
-  const actions = resolveBattleReplayCombatActions(snapshot, timeline, unitByKey, units, trial);
+  // 战斗节奏点(doc 28):BOSS(试炼=BOSS或血最厚敌人;常规=显式 role boss)读条 + 节奏性破防窗口。
+  const bossKey = resolveBattleReplayBossKey(unitByKey, units, trial);
+  const firstActionMs = resolveBattleReplayFirstActionMs(timeline);
+  const breakWindows: BattleReplayBreakWindow[] = [];
+  if (bossKey) {
+    const horizonMs = firstActionMs + (trial ? BATTLE_REPLAY_TRIAL_WINDOW_MS : 60_000);
+    for (let start = firstActionMs + BATTLE_BREAK_FIRST_DELAY_MS; start < horizonMs; start += BATTLE_BREAK_INTERVAL_MS) {
+      breakWindows.push({ startMs: start, endMs: start + BATTLE_BREAK_WINDOW_MS });
+    }
+  }
+  const bossCasts: BattleReplayBossCast[] = [];
+  const actions = resolveBattleReplayCombatActions(snapshot, timeline, unitByKey, units, trial, bossKey, breakWindows, bossCasts);
   const battleEndMs = resolveBattleReplayBattleEndMs(timeline, actions);
 
   return {
@@ -236,7 +292,35 @@ function buildBattleReplay(snapshot: BattlePresentationSnapshot, timeline: Battl
     units,
     actions,
     trial,
+    bossKey,
+    bossCasts,
+    breakWindows,
   };
+}
+
+// BOSS 单位:显式 role='boss';输出试炼无显式 BOSS 时取血最厚敌人(与 inflateTrialBossHp 同口径)。
+function resolveBattleReplayBossKey(
+  unitByKey: Map<string, BattlePresentationUnitSnapshot>,
+  units: Map<string, BattleReplayUnitState>,
+  trial: boolean,
+): string | null {
+  let bossKey: string | null = null;
+  unitByKey.forEach((snap, key) => {
+    if (snap.side === 'enemy' && snap.role === 'boss') {
+      bossKey = key;
+    }
+  });
+  if (!bossKey && trial) {
+    let best = -1;
+    units.forEach((state, key) => {
+      const snap = unitByKey.get(key);
+      if (snap?.side === 'enemy' && state.maxHp > best) {
+        best = state.maxHp;
+        bossKey = key;
+      }
+    });
+  }
+  return bossKey;
 }
 
 // 输出试炼:把敌方 BOSS(role='boss',无则取血最厚的敌人)血量×factor,并同步 initial/current,让其在整段演出内存活。
@@ -379,8 +463,13 @@ function resolveBattleReplayCombatActions(
   unitByKey: Map<string, BattlePresentationUnitSnapshot>,
   units: Map<string, BattleReplayUnitState>,
   trial = false,
+  bossKey: string | null = null,
+  breakWindows: BattleReplayBreakWindow[] = [],
+  bossCasts: BattleReplayBossCast[] = [],
 ): BattleReplayAction[] {
   const combatOrder = resolveBattleReplayCombatOrder(unitByKey);
+  const isBrokenAt = (timeMs: number): boolean => breakWindows.some((window) => timeMs >= window.startMs && timeMs < window.endMs);
+  let nextBossCastMs = bossKey ? resolveBattleReplayFirstActionMs(timeline) + BATTLE_BOSS_CAST_FIRST_DELAY_MS : Number.POSITIVE_INFINITY;
   const seed = createBattleReplaySeed(`${timeline.timelineKey}:${snapshot.unitSnapshotKey}`);
   const random = nextBattleReplayRandom(seed);
   const firstActionMs = resolveBattleReplayFirstActionMs(timeline);
@@ -419,6 +508,46 @@ function resolveBattleReplayCombatActions(
     }
     consecutiveSkips = 0;
     const actionIndex = actions.length;
+    // BOSS 读条(doc 28):到点且 BOSS 轮到出手 → 生成读条动作(无命中,蓄力伤害由表现层叠加,可被大招打断)。
+    if (bossKey && actor.unitKey === bossKey && nextActionStartMs >= nextBossCastMs) {
+      const startMs = nextActionStartMs;
+      const hitMs = startMs + BATTLE_BOSS_CAST_MS;
+      const eventSeq = BATTLE_REPLAY_SYNTHETIC_EVENT_SEQ_BASE + actionIndex * 3;
+      const livingAllies = combatOrder.filter((unit) => unit.side === 'ally' && isBattleReplayUnitAlive(units, unit.unitKey));
+      const castTarget = livingAllies[0] ?? null;
+      if (castTarget) {
+        actions.push({
+          seq: actionIndex,
+          sourceEventSeq: eventSeq,
+          round: Math.floor(actionIndex / Math.max(1, snapshot.allies.length)) + 1,
+          startMs,
+          hitMs,
+          endMs: hitMs + 600,
+          actor,
+          primaryTarget: castTarget,
+          targetKeys: livingAllies.map((unit) => unit.unitKey),
+          actionKind: 'ranged',
+          movementKind: 'stay',
+          castMs: BATTLE_BOSS_CAST_MS,
+          approachMs: 0,
+          recoverMs: 600,
+          hitEvents: [],
+          bossCast: true,
+        });
+        bossCasts.push({
+          actionSeq: actionIndex,
+          bossKey,
+          startMs,
+          hitMs,
+          targetKeys: livingAllies.map((unit) => unit.unitKey),
+          hpRatio: BATTLE_BOSS_CAST_HP_RATIO,
+          skillName: BATTLE_BOSS_CAST_SKILL_NAME,
+        });
+        nextBossCastMs = startMs + BATTLE_BOSS_CAST_INTERVAL_MS;
+        nextActionStartMs = hitMs + 400;
+        continue;
+      }
+    }
     const target = selectBattleReplayTarget(actor, combatOrder, units, random, actionIndex, pairAssignments);
     if (!target) {
       break;
@@ -436,19 +565,23 @@ function resolveBattleReplayCombatActions(
     const combo = resolveBattleReplayComboProfile(actor);
     const hitEvents: BattleReplayHitEvent[] = [];
     for (let ci = 0; ci < combo.count; ci += 1) {
+      const comboHitMs = hitMs + ci * BATTLE_REPLAY_COMBO_STEP_MS;
+      // 节奏性破防窗口(doc 28):命中 BOSS 时伤害 ×2 并打标,表现层飘"破防"。
+      const breakBonus = !!bossKey && target.unitKey === bossKey && actor.side === 'ally' && isBrokenAt(comboHitMs);
       const comboHit = createSyntheticBattleReplayHit(
         actionIndex,
         eventSeq + ci,
-        hitMs + ci * BATTLE_REPLAY_COMBO_STEP_MS,
+        comboHitMs,
         actor,
         target,
         units,
         random,
         firstAllyCycle,
-        combo.perHitScale,
+        combo.perHitScale * (breakBonus ? BATTLE_BREAK_DAMAGE_MULTIPLIER : 1),
         ci,
         combo.count,
       );
+      comboHit.breakBonus = breakBonus && !comboHit.evaded && comboHit.amount > 0;
       hitEvents.push(comboHit);
     }
     // 溅射(概率触发,攻击者技能):只在主动作 roll 一次(不放 createSynthetic 内,避免溅射递归),
@@ -747,6 +880,7 @@ function createSyntheticBattleReplayHit(
       frozeUntilMs: 0,
       splashHit: isSplash,
       executed: false,
+      breakBonus: false,
     };
   }
   const hpBefore = targetState.currentHp;
@@ -831,6 +965,7 @@ function createSyntheticBattleReplayHit(
     frozeUntilMs: frozeTarget ? targetState.frozenUntilMs : 0,
     splashHit: isSplash,
     executed,
+    breakBonus: false,
   };
 }
 
