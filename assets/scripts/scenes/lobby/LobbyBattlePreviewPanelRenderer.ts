@@ -1974,56 +1974,36 @@ export class LobbyBattlePreviewPanelRenderer {
     const root = this.host.addChildPlainNode(field, 'LobbyBattleUltCutIn', 0, 0, width, height);
     root.setSiblingIndex(field.children.length - 1);
 
-    // 压暗遮罩:瞬入缓出。
-    const dim = this.host.addChildPlainNode(root, 'UltCutInDim', 0, 0, width, height);
-    const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 255);
-    dimGraphics.rect(-width / 2, -height / 2, width, height);
-    dimGraphics.fill();
-    const dimOpacity = dim.addComponent(UIOpacity);
-    dimOpacity.opacity = 0;
-    tween(dimOpacity).to(0.08, { opacity: 132 }).delay(0.62).to(0.32, { opacity: 0 }).start();
-
-    // 上下电影黑边:从屏外滑入再退场。
-    const barHeight = height * 0.11;
-    const buildBar = (top: boolean): void => {
-      const bar = this.host.addChildPlainNode(root, top ? 'UltCutInBarTop' : 'UltCutInBarBottom', 0, top ? height / 2 + barHeight / 2 : -height / 2 - barHeight / 2, width, barHeight);
-      const barGraphics = bar.addComponent(Graphics);
-      barGraphics.fillColor = rgba(4, 3, 4, 235);
-      barGraphics.rect(-width / 2, -barHeight / 2, width, barHeight);
-      barGraphics.fill();
-      const targetY = top ? height / 2 - barHeight / 2 : -height / 2 + barHeight / 2;
-      const exitY = top ? height / 2 + barHeight / 2 : -height / 2 - barHeight / 2;
-      tween(bar)
-        .to(0.1, { position: new Vec3(0, targetY, 0) })
-        .delay(0.68)
-        .to(0.22, { position: new Vec3(0, exitY, 0) })
-        .start();
-    };
-    buildBar(true);
-    buildBar(false);
-
-    // 金色衬带:大字后面一条横贯光带,弱透明,烘托而不遮字。
-    const band = this.host.addChildPlainNode(root, 'UltCutInBand', 0, height * 0.06, width, height * 0.16);
+    // 不压暗、不加黑边:大招时最该看清英雄出手与 BOSS 中招,遮罩会把战场糊掉(用户反馈)。
+    // 只在顶部区域放一条半透明名字牌,不遮任何单位。
+    const bandY = height * 0.30;
+    const bandH = height * 0.13;
+    const band = this.host.addChildPlainNode(root, 'UltCutInBand', 0, bandY, width, bandH);
     const bandGraphics = band.addComponent(Graphics);
-    bandGraphics.fillColor = rgba(120, 26, 22, 168);
-    bandGraphics.rect(-width / 2, -height * 0.08, width, height * 0.16);
+    // 中间深、两端渐消的横带:用三段矩形近似,不糊背景。
+    bandGraphics.fillColor = rgba(60, 12, 10, 150);
+    bandGraphics.rect(-width * 0.34, -bandH / 2, width * 0.68, bandH);
     bandGraphics.fill();
-    bandGraphics.fillColor = rgba(214, 168, 92, 92);
-    bandGraphics.rect(-width / 2, -height * 0.012, width, height * 0.024);
+    bandGraphics.fillColor = rgba(60, 12, 10, 70);
+    bandGraphics.rect(-width * 0.5, -bandH / 2, width * 0.16, bandH);
+    bandGraphics.rect(width * 0.34, -bandH / 2, width * 0.16, bandH);
+    bandGraphics.fill();
+    bandGraphics.fillColor = rgba(230, 186, 100, 200);
+    bandGraphics.rect(-width * 0.34, bandH / 2 - 2, width * 0.68, 2);
+    bandGraphics.rect(-width * 0.34, -bandH / 2, width * 0.68, 2);
     bandGraphics.fill();
     const bandOpacity = band.addComponent(UIOpacity);
     bandOpacity.opacity = 0;
-    tween(bandOpacity).to(0.1, { opacity: 255 }).delay(0.58).to(0.28, { opacity: 0 }).start();
+    tween(bandOpacity).to(0.1, { opacity: 255 }).delay(0.62).to(0.28, { opacity: 0 }).start();
 
-    // 英雄名(小字,上) + 大招名(大字冲屏)。
-    const heroName = this.host.addChildLabel(root, 'UltCutInHero', unit.displayName || '', 0, height * 0.145, Math.max(16, height * 0.035), rgba(238, 214, 156, 245), new Size(width * 0.8, height * 0.05));
+    // 英雄名(小字,上) + 大招名(大字冲屏),都在名字牌内。
+    const heroName = this.host.addChildLabel(root, 'UltCutInHero', unit.displayName || '', 0, bandY + bandH * 0.28, Math.max(14, height * 0.03), rgba(238, 214, 156, 245), new Size(width * 0.6, height * 0.045));
     heroName.overflow = Label.Overflow.SHRINK;
     this.applyOutline(heroName, 1, false);
-    const ultName = this.host.addChildLabel(root, 'UltCutInName', resolveUltimateSkillName(unit.heroCode ?? unit.unitKey), 0, height * 0.06, Math.max(30, height * 0.085), rgba(255, 232, 150, 255), new Size(width * 0.9, height * 0.12));
+    const ultName = this.host.addChildLabel(root, 'UltCutInName', resolveUltimateSkillName(unit.heroCode ?? unit.unitKey), 0, bandY - bandH * 0.16, Math.max(26, height * 0.066), rgba(255, 232, 150, 255), new Size(width * 0.66, height * 0.09));
     ultName.overflow = Label.Overflow.SHRINK;
     this.applyOutline(ultName, 2, true);
-    root.setScale(1.55, 1.55, 1);
+    root.setScale(1.22, 1.22, 1);
     const rootOpacity = root.addComponent(UIOpacity);
     rootOpacity.opacity = 0;
     tween(rootOpacity).to(0.1, { opacity: 255 }).start();
