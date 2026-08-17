@@ -127,6 +127,15 @@ import {
   type BattleReplay,
   type BattleReplayBossCast,
 } from './LobbyBattleReplayModel';
+import {
+  BOSS_BREAK_EFFECT,
+  BOSS_CAST_BURST_EFFECT,
+  BOSS_CAST_CHARGE_EFFECT,
+  BOSS_CAST_INTERRUPT_EFFECT,
+  resolveBattleSkillEffectResource,
+  resolveHeroUltEffect,
+  type BattleSkillEffectSpec,
+} from './LobbyBattleSkillEffectConfig';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { ultimateDamageScale } from './LobbyBattleHeroSkillConfig';
 
@@ -241,6 +250,9 @@ const BATTLE_TRANSIENT_EFFECT_NODE_NAMES = new Set([
   'LobbyBattleActionTargetSpineEffectLayer',
   'LobbyBattleAssistAuraLayer',
 ]);
+// docs/29 技能特效骨骼(spine/effect):同屏在场上限(性能封顶,超出直接跳过)与 BOSS 蓄力光环节点名。
+const BATTLE_SKILL_FX_MAX_LIVE = 3;
+const BATTLE_BOSS_CHARGE_FX_NODE = 'LobbyBattleBossCastChargeFx';
 const BATTLE_PROTAGONIST_MALE_FALLBACK_ASSET = 'ui/protagonist/protagonist_male_attack/spriteFrame';
 const BATTLE_PROTAGONIST_FEMALE_FALLBACK_ASSET = 'ui/protagonist/protagonist_female_attack/spriteFrame';
 
@@ -390,6 +402,8 @@ export class LobbyBattlePreviewPanelRenderer {
   // 手动大招释放记录(运行时账本),叠加进 HP 状态与伤害 cue 链。
   private readonly battleManualUlts: BattleManualUltRecord[] = [];
   private readonly battleBossInterrupts: BattleBossInterruptRecord[] = [];
+  // docs/29:在场技能特效骨骼节点(计数封顶用;节点可能被战场重建连根销毁,取数时惰性清理)。
+  private readonly battleSkillFxLiveNodes = new Set<Node>();
   /** doc 28:当前帧 BOSS 是否正在读条(供技能卡'打断'提示)/是否破防(供 BOSS 本体状态牌)。 */
   private battleRhythmCastActive = false;
   private battleRhythmBossBroken = false;
@@ -1164,10 +1178,12 @@ export class LobbyBattlePreviewPanelRenderer {
     const replay = resolveBattleReplay(snapshot, timeline);
     const bossKey = replay.bossKey;
     if (!bossKey || (presentation.phase !== 'roundPlaying' && presentation.phase !== 'resultRecording')) {
+      this.clearBattleBossChargeFx(parent);
       return;
     }
     const bossHp = hpState.units.get(bossKey);
     if (!bossHp || bossHp.dead) {
+      this.clearBattleBossChargeFx(parent);
       return;
     }
     const bossUnit = this.resolveBattleSnapshotUnit(snapshot, bossKey);
@@ -1180,6 +1196,10 @@ export class LobbyBattlePreviewPanelRenderer {
 
     // ── 读条 ──
     const activeCast = this.resolveActiveBossCast(replay, t);
+    if (!activeCast) {
+      // 读条结束/被打断/尚未开始:撤掉循环蓄力光环(存在才操作)。
+      this.clearBattleBossChargeFx(parent);
+    }
     if (activeCast) {
       this.battleRhythmCastActive = true;
       const startKey = `rhythm:cast-start:${activeCast.actionSeq}`;
@@ -1188,6 +1208,19 @@ export class LobbyBattlePreviewPanelRenderer {
         if (bossUnit && this.isNodeAlive(bossNode)) {
           this.applyBattleActorSpineCueOnce(startKey, bossNode, bossUnit, 'skill');
         }
+      }
+      // docs/29:读条期间 BOSS 脚下循环蓄力光环(魔圈领域),挂在 parent(field)上跨帧存活,
+      // 读满/打断/BOSS 死亡由 clearBattleBossChargeFx 撤除;随 BOSS 体型倍率放大。
+      if (bossUnit && this.isNodeAlive(bossNode) && !parent.getChildByName(BATTLE_BOSS_CHARGE_FX_NODE)) {
+        const chargeBodyScale = Math.max(1, Math.min(3.5, bossUnit.monsterDisplayScale ?? 1));
+        this.spawnBattleSkillEffect(
+          parent,
+          BATTLE_BOSS_CHARGE_FX_NODE,
+          BOSS_CAST_CHARGE_EFFECT,
+          bossNode.position.x,
+          bossNode.position.y + BOSS_CAST_CHARGE_EFFECT.offsetY * scale,
+          BOSS_CAST_CHARGE_EFFECT.scale * scale * (1 + (chargeBodyScale - 1) * 0.6),
+        );
       }
       const progress = clamp((t - activeCast.startMs) / Math.max(1, activeCast.hitMs - activeCast.startMs), 0, 1);
       const barW = Math.min(520 * scale, width * 0.5);
@@ -1244,6 +1277,9 @@ export class LobbyBattlePreviewPanelRenderer {
       if (bossUnit && this.isNodeAlive(bossNode)) {
         this.applyBattleActorSpineCueOnce(hitKey, bossNode, bossUnit, 'skill');
       }
+      // docs/29:读满爆发——全屏暗红冲击波(灭世之愿),一次性播完自毁。
+      const burstPlacement = this.resolveBattleSkillEffectPlacement(BOSS_CAST_BURST_EFFECT, bossKey, bossKey, width, height, scale, bossUnit?.monsterDisplayScale ?? 1);
+      this.spawnBattleSkillEffect(parent, `LobbyBattleBossBurstFx_${cast.actionSeq}`, BOSS_CAST_BURST_EFFECT, burstPlacement.x, burstPlacement.y, burstPlacement.scale);
       this.renderBattleRhythmCallout(parent, `${cast.skillName} !`, rgba(255, 210, 200), rgba(230, 60, 40), 'boss-cast');
       const field = this.battleFieldNode;
       if (this.isNodeAlive(field)) {
@@ -1274,6 +1310,13 @@ export class LobbyBattlePreviewPanelRenderer {
             .to(0.08, { position: new Vec3(0, 0, 0) })
             .start();
         }
+        // docs/29:打断反馈——蓄力光环立撤 + 破碎爆点 + 破防裂甲金光(均一次性)。
+        this.clearBattleBossChargeFx(parent);
+        const bodyScale = bossUnit.monsterDisplayScale ?? 1;
+        const interruptPlacement = this.resolveBattleSkillEffectPlacement(BOSS_CAST_INTERRUPT_EFFECT, bossKey, bossKey, width, height, scale, bodyScale);
+        this.spawnBattleSkillEffect(parent, `LobbyBattleBossInterruptFx_${record.castSeq}`, BOSS_CAST_INTERRUPT_EFFECT, interruptPlacement.x, interruptPlacement.y, interruptPlacement.scale);
+        const breakPlacement = this.resolveBattleSkillEffectPlacement(BOSS_BREAK_EFFECT, bossKey, bossKey, width, height, scale, bodyScale);
+        this.spawnBattleSkillEffect(parent, `LobbyBattleBossBreakFx_i${record.castSeq}`, BOSS_BREAK_EFFECT, breakPlacement.x, breakPlacement.y, breakPlacement.scale);
       }
     }
 
@@ -1326,6 +1369,9 @@ export class LobbyBattlePreviewPanelRenderer {
         continue;
       }
       this.playedBattleCueKeys.add(key);
+      // docs/29:节奏性破防开窗——BOSS 身上裂甲金光(一次性;打断触发的窗口已在打断反馈里放过)。
+      const breakOpenPlacement = this.resolveBattleSkillEffectPlacement(BOSS_BREAK_EFFECT, bossKey, bossKey, width, height, scale, bossUnit?.monsterDisplayScale ?? 1);
+      this.spawnBattleSkillEffect(parent, `LobbyBattleBossBreakFx_w${window.startMs}`, BOSS_BREAK_EFFECT, breakOpenPlacement.x, breakOpenPlacement.y, breakOpenPlacement.scale);
       this.renderBattleRhythmCallout(parent, '破 防 !', rgba(255, 240, 180), rgba(255, 190, 40), 'break');
     }
   }
@@ -2393,6 +2439,22 @@ export class LobbyBattlePreviewPanelRenderer {
       } else if (lastRecord?.chained) {
         this.renderBattleRhythmCallout(field, '合 击 连 锁 !', rgba(255, 236, 160), rgba(255, 190, 60), 'chain');
       }
+      // docs/29:按 heroCode/职业取大招特效骨骼,挂目标/自身/全屏播一次自毁(BOSS 目标随体型倍率放大)。
+      const fieldTransform = field.getComponent(UITransform);
+      const fieldWidth = fieldTransform?.width ?? 1200;
+      const fieldHeight = fieldTransform?.height ?? 640;
+      const layoutScale = clamp(fieldWidth / 1280, 0.35, 1.6);
+      const ultSpec = resolveHeroUltEffect(unit.heroCode ?? unit.unitKey, unit.heroClass);
+      const placement = this.resolveBattleSkillEffectPlacement(
+        ultSpec,
+        unit.unitKey,
+        target.unitKey,
+        fieldWidth,
+        fieldHeight,
+        layoutScale,
+        target.monsterDisplayScale ?? 1,
+      );
+      this.spawnBattleSkillEffect(field, `LobbyBattleUltSkillFx_${unit.unitKey}`, ultSpec, placement.x, placement.y, placement.scale);
     }
   }
 
@@ -6469,6 +6531,122 @@ export class LobbyBattlePreviewPanelRenderer {
     } catch (error) {
       console.warn(`[BattleStage4] battle target spine effect failed: ${unit.unitKey}`, error);
       return false;
+    }
+  }
+
+  // ── docs/29 技能特效骨骼(spine/effect/<code>):英雄大招 / BOSS 蓄力·爆发·打断 / 破防金光 ──
+  // 纯表现:一次性特效播完即毁(动画完成回调 + 4.5s 兜底),循环特效(BOSS 蓄力光环)由节奏 HUD 按
+  // playbackTimelineTimeMs 生命周期管理;同屏特效骨骼数量封顶 BATTLE_SKILL_FX_MAX_LIVE,超出直接跳过。
+  private countLiveBattleSkillFx(): number {
+    for (const node of [...this.battleSkillFxLiveNodes]) {
+      if (!this.isNodeAlive(node)) {
+        this.battleSkillFxLiveNodes.delete(node);
+      }
+    }
+    return this.battleSkillFxLiveNodes.size;
+  }
+
+  private spawnBattleSkillEffect(parent: Node, nodeName: string, spec: BattleSkillEffectSpec, x: number, y: number, effectScale: number): Node | null {
+    if (!spec.loop && this.countLiveBattleSkillFx() >= BATTLE_SKILL_FX_MAX_LIVE) {
+      return null;
+    }
+    const renderGeneration = this.battleRenderGeneration;
+    const node = this.host.addChildPlainNode(parent, nodeName, x, y, 10, 10);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = false;
+    node.setScale(new Vec3(effectScale, effectScale, 1));
+    this.battleSkillFxLiveNodes.add(node);
+    let released = false;
+    const release = (): void => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.battleSkillFxLiveNodes.delete(node);
+      if (this.isNodeAlive(node)) {
+        node.destroy();
+      }
+    };
+    (node as Node & { __lootchainSkillFxRelease?: () => void }).__lootchainSkillFxRelease = release;
+    loadSharedSpineData(resolveBattleSkillEffectResource(spec), null, 'BattleSkillFx', (data) => {
+      if (!this.isBattleRenderGenerationCurrent(renderGeneration) || !this.isNodeAlive(node)) {
+        release();
+        return;
+      }
+      if (!data || !this.applyBattleSkillEffectData(skeleton, data, spec, release)) {
+        release();
+      }
+    });
+    if (!spec.loop) {
+      tween(node).delay(4.5).call(release).start();
+    }
+    return node;
+  }
+
+  private applyBattleSkillEffectData(skeleton: sp.Skeleton, data: sp.SkeletonData, spec: BattleSkillEffectSpec, onComplete: () => void): boolean {
+    try {
+      const runtimeData = resolveBattleUnitSpineRuntimeData(data);
+      if (!runtimeData || (runtimeData.animations ?? []).length === 0) {
+        return false;
+      }
+      patchBattleUnitSpineRuntimeEnums(data, runtimeData);
+      // 素材动画名大小写不统一(Skill/skill):精确 → 忽略大小写 → 含名 → 首个动画,四级回退。
+      const names = (runtimeData.animations ?? []).map((animation) => (animation?.name || '').trim()).filter(Boolean);
+      const wanted = spec.animation.trim().toLowerCase();
+      const animationName = names.find((name) => name.toLowerCase() === wanted)
+        ?? names.find((name) => name.toLowerCase().includes(wanted))
+        ?? names[0];
+      if (!animationName) {
+        return false;
+      }
+      skeleton.skeletonData = data;
+      const track = skeleton.setAnimation(0, animationName, spec.loop === true);
+      if (!track) {
+        return false;
+      }
+      if (!spec.loop) {
+        skeleton.setCompleteListener(() => onComplete());
+      }
+      return true;
+    } catch (error) {
+      console.warn(`[BattleSkillFx] apply failed: ${spec.effect}`, error);
+      return false;
+    }
+  }
+
+  // 锚点换算:self=施法者 / target=目标(随 BOSS 体型倍率放大,阻尼 0.6 防止 3.4× 试炼 BOSS 特效爆屏)/
+  // fullscreen=战场中心(按战场宽度对 1280 基准再放大)。返回 field 坐标与最终绝对缩放。
+  private resolveBattleSkillEffectPlacement(
+    spec: BattleSkillEffectSpec,
+    casterKey: string,
+    targetKey: string,
+    fieldWidth: number,
+    fieldHeight: number,
+    layoutScale: number,
+    targetBodyScale: number,
+  ): { x: number; y: number; scale: number } {
+    if (spec.anchor === 'fullscreen') {
+      return { x: 0, y: fieldHeight * 0.04, scale: spec.scale * layoutScale * Math.max(1, fieldWidth / 1280) };
+    }
+    const anchorKey = spec.anchor === 'self' ? casterKey : targetKey;
+    const anchorNode = this.battlePlaybackNodes.get(anchorKey);
+    const x = anchorNode?.position.x ?? 0;
+    const y = (anchorNode?.position.y ?? 0) + spec.offsetY * layoutScale;
+    const bodyScale = spec.anchor === 'target' ? Math.max(1, Math.min(3.5, targetBodyScale)) : 1;
+    return { x, y, scale: spec.scale * layoutScale * (1 + (bodyScale - 1) * 0.6) };
+  }
+
+  // BOSS 蓄力光环(循环)撤除:读满/打断/BOSS 死亡/读条结束都会走到这里;不存在即无操作。
+  private clearBattleBossChargeFx(parent: Node): void {
+    const node = parent.getChildByName(BATTLE_BOSS_CHARGE_FX_NODE);
+    if (!node) {
+      return;
+    }
+    const release = (node as Node & { __lootchainSkillFxRelease?: () => void }).__lootchainSkillFxRelease;
+    if (release) {
+      release();
+    } else {
+      node.destroy();
     }
   }
 
