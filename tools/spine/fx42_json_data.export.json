@@ -1,0 +1,14 @@
+{
+"class": "export-json",
+"name": "JSON",
+"open": false,
+"extension": ".json",
+"format": "JSON",
+"prettyPrint": false,
+"nonessential": false,
+"cleanUp": true,
+"warnings": true,
+"exportAll": false,
+"packAtlas": null,
+"version": null
+}
