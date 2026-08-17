@@ -1,0 +1,97 @@
+
+fx_650059_specialhit.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_70
+  rotate: false
+  xy: 1067, 159
+  size: 134, 95
+  orig: 203, 167
+  offset: 33, 46
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_71
+  rotate: false
+  xy: 2, 5
+  size: 161, 112
+  orig: 203, 167
+  offset: 19, 35
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_72
+  rotate: false
+  xy: 331, 2
+  size: 171, 119
+  orig: 203, 167
+  offset: 16, 31
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_73
+  rotate: false
+  xy: 371, 123
+  size: 176, 131
+  orig: 203, 167
+  offset: 16, 25
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_74
+  rotate: false
+  xy: 2, 119
+  size: 181, 135
+  orig: 203, 167
+  offset: 16, 22
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_75
+  rotate: false
+  xy: 185, 124
+  size: 184, 130
+  orig: 203, 167
+  offset: 15, 21
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_76
+  rotate: false
+  xy: 549, 127
+  size: 176, 127
+  orig: 203, 167
+  offset: 24, 21
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_77
+  rotate: false
+  xy: 727, 127
+  size: 175, 127
+  orig: 203, 167
+  offset: 24, 21
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_78
+  rotate: false
+  xy: 904, 129
+  size: 161, 125
+  orig: 203, 167
+  offset: 27, 19
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_79
+  rotate: false
+  xy: 904, 2
+  size: 158, 125
+  orig: 203, 167
+  offset: 28, 17
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_81
+  rotate: false
+  xy: 185, 2
+  size: 144, 120
+  orig: 203, 167
+  offset: 43, 15
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_83
+  rotate: false
+  xy: 1203, 143
+  size: 88, 111
+  orig: 203, 167
+  offset: 66, 12
+  index: -1
+fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_85
+  rotate: false
+  xy: 1293, 160
+  size: 82, 94
+  orig: 203, 167
+  offset: 71, 27
+  index: -1

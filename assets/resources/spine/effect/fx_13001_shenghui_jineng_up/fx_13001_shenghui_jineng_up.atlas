@@ -1,0 +1,370 @@
+
+fx_13001_shenghui_jineng_up.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+fx_13001_shenghui_attack/13001_attack_daoguang_00012
+  rotate: false
+  xy: 1388, 49
+  size: 89, 42
+  orig: 228, 180
+  offset: 23, 129
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00013
+  rotate: false
+  xy: 1853, 271
+  size: 181, 108
+  orig: 228, 180
+  offset: 36, 65
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00014
+  rotate: false
+  xy: 175, 198
+  size: 149, 153
+  orig: 228, 180
+  offset: 67, 20
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00015
+  rotate: false
+  xy: 175, 353
+  size: 177, 157
+  orig: 228, 180
+  offset: 39, 11
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00016
+  rotate: false
+  xy: 326, 253
+  size: 204, 95
+  orig: 228, 180
+  offset: 12, 11
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00017
+  rotate: false
+  xy: 532, 266
+  size: 203, 82
+  orig: 228, 180
+  offset: 12, 11
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00018
+  rotate: false
+  xy: 821, 10
+  size: 50, 72
+  orig: 228, 180
+  offset: 11, 23
+  index: -1
+fx_13001_shenghui_attack/13001_attack_daoguang_00019
+  rotate: false
+  xy: 873, 30
+  size: 41, 52
+  orig: 228, 180
+  offset: 13, 48
+  index: -1
+fx_13001_shenghui_skill1/13001_guangdan
+  rotate: false
+  xy: 716, 116
+  size: 122, 122
+  orig: 128, 128
+  offset: 3, 3
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian1_00027
+  rotate: false
+  xy: 1155, 68
+  size: 112, 118
+  orig: 130, 128
+  offset: 7, 3
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian1_00028
+  rotate: false
+  xy: 921, 92
+  size: 117, 111
+  orig: 130, 128
+  offset: 5, 8
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian1_00029
+  rotate: false
+  xy: 702, 2
+  size: 117, 112
+  orig: 130, 128
+  offset: 8, 14
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian1_00030
+  rotate: false
+  xy: 1269, 93
+  size: 112, 104
+  orig: 130, 128
+  offset: 5, 9
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00047
+  rotate: false
+  xy: 1476, 149
+  size: 43, 39
+  orig: 168, 161
+  offset: 67, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00048
+  rotate: false
+  xy: 840, 84
+  size: 78, 74
+  orig: 168, 161
+  offset: 67, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00049
+  rotate: false
+  xy: 1482, 190
+  size: 87, 160
+  orig: 168, 161
+  offset: 63, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00050
+  rotate: false
+  xy: 1822, 354
+  size: 24, 7
+  orig: 168, 161
+  offset: 67, 154
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00051
+  rotate: false
+  xy: 1067, 188
+  size: 135, 160
+  orig: 168, 161
+  offset: 33, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00052
+  rotate: false
+  xy: 354, 350
+  size: 168, 160
+  orig: 168, 161
+  offset: 0, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00053
+  rotate: false
+  xy: 1034, 350
+  size: 166, 160
+  orig: 168, 161
+  offset: 2, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00054
+  rotate: false
+  xy: 1853, 381
+  size: 168, 129
+  orig: 168, 161
+  offset: 0, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00055
+  rotate: false
+  xy: 524, 350
+  size: 168, 160
+  orig: 168, 161
+  offset: 0, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00056
+  rotate: false
+  xy: 694, 350
+  size: 168, 160
+  orig: 168, 161
+  offset: 0, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00057
+  rotate: false
+  xy: 176, 36
+  size: 136, 160
+  orig: 168, 161
+  offset: 32, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00058
+  rotate: false
+  xy: 864, 350
+  size: 168, 160
+  orig: 168, 161
+  offset: 0, 1
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00059
+  rotate: false
+  xy: 1383, 138
+  size: 91, 67
+  orig: 168, 161
+  offset: 0, 94
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_heishandian2_00060
+  rotate: false
+  xy: 1339, 352
+  size: 28, 7
+  orig: 168, 161
+  offset: 63, 154
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00010
+  rotate: false
+  xy: 1204, 199
+  size: 133, 160
+  orig: 157, 183
+  offset: 10, 6
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00011
+  rotate: false
+  xy: 1571, 193
+  size: 131, 161
+  orig: 157, 183
+  offset: 11, 11
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00012
+  rotate: false
+  xy: 326, 118
+  size: 136, 133
+  orig: 157, 183
+  offset: 14, 11
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00013
+  rotate: false
+  xy: 580, 147
+  size: 134, 117
+  orig: 157, 183
+  offset: 17, 12
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00014
+  rotate: false
+  xy: 580, 82
+  size: 120, 63
+  orig: 157, 183
+  offset: 18, 13
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00015
+  rotate: false
+  xy: 442, 41
+  size: 117, 50
+  orig: 157, 183
+  offset: 19, 16
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00016
+  rotate: false
+  xy: 561, 39
+  size: 117, 41
+  orig: 157, 183
+  offset: 19, 24
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00017
+  rotate: false
+  xy: 1269, 51
+  size: 117, 40
+  orig: 157, 183
+  offset: 19, 24
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_chadi_00018
+  rotate: false
+  xy: 1383, 93
+  size: 117, 43
+  orig: 157, 183
+  offset: 19, 24
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_jufeng_00025
+  rotate: false
+  xy: 737, 240
+  size: 184, 108
+  orig: 212, 194
+  offset: 18, 50
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_jufeng_00027
+  rotate: false
+  xy: 2, 334
+  size: 171, 176
+  orig: 212, 194
+  offset: 22, 10
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_jufeng_00029
+  rotate: false
+  xy: 464, 93
+  size: 114, 158
+  orig: 212, 194
+  offset: 51, 25
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_jufeng_00031
+  rotate: false
+  xy: 1040, 62
+  size: 113, 124
+  orig: 212, 194
+  offset: 19, 31
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_jufeng_00033
+  rotate: false
+  xy: 840, 160
+  size: 79, 78
+  orig: 212, 194
+  offset: 49, 46
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_jufeng_00035
+  rotate: false
+  xy: 2023, 474
+  size: 19, 36
+  orig: 212, 194
+  offset: 88, 73
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00020
+  rotate: false
+  xy: 314, 30
+  size: 126, 86
+  orig: 239, 229
+  offset: 81, 98
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00022
+  rotate: false
+  xy: 1704, 201
+  size: 116, 160
+  orig: 239, 229
+  offset: 48, 54
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00024
+  rotate: false
+  xy: 1202, 361
+  size: 169, 149
+  orig: 239, 229
+  offset: 27, 31
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00026
+  rotate: false
+  xy: 2, 2
+  size: 172, 152
+  orig: 239, 229
+  offset: 38, 34
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00028
+  rotate: false
+  xy: 2, 156
+  size: 164, 176
+  orig: 239, 229
+  offset: 29, 37
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00030
+  rotate: false
+  xy: 1373, 352
+  size: 160, 158
+  orig: 239, 229
+  offset: 32, 30
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00032
+  rotate: false
+  xy: 1692, 363
+  size: 159, 147
+  orig: 239, 229
+  offset: 48, 41
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00034
+  rotate: false
+  xy: 923, 205
+  size: 142, 143
+  orig: 239, 229
+  offset: 48, 44
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00036
+  rotate: false
+  xy: 1339, 207
+  size: 141, 143
+  orig: 239, 229
+  offset: 48, 44
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_juqiu_00037
+  rotate: false
+  xy: 1535, 356
+  size: 155, 154
+  orig: 239, 229
+  offset: 41, 39
+  index: -1

@@ -1,0 +1,193 @@
+
+fx_12601_youyingzhizhu_hit.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+affects/jieshushandian_00000
+  rotate: false
+  xy: 1802, 1519
+  size: 114, 526
+  orig: 965, 965
+  offset: 423, 219
+  index: -1
+affects/jieshushandian_00001
+  rotate: false
+  xy: 1918, 1550
+  size: 107, 495
+  orig: 965, 965
+  offset: 429, 221
+  index: -1
+affects/jieshushandian_00002
+  rotate: false
+  xy: 1404, 295
+  size: 90, 354
+  orig: 965, 965
+  offset: 433, 225
+  index: -1
+affects/leijizzz_00001
+  rotate: false
+  xy: 561, 606
+  size: 512, 756
+  orig: 965, 965
+  offset: 187, 170
+  index: -1
+affects/leijizzz_00002
+  rotate: false
+  xy: 2, 637
+  size: 557, 725
+  orig: 965, 965
+  offset: 190, 146
+  index: -1
+affects/leijizzz_00004
+  rotate: false
+  xy: 1075, 651
+  size: 513, 715
+  orig: 965, 965
+  offset: 239, 144
+  index: -1
+affects/leijizzz_00005
+  rotate: false
+  xy: 1590, 32
+  size: 450, 652
+  orig: 965, 965
+  offset: 255, 183
+  index: -1
+affects/leijizzz_00006
+  rotate: false
+  xy: 2, 216
+  size: 462, 419
+  orig: 965, 965
+  offset: 244, 185
+  index: -1
+affects/leijizzz_00009
+  rotate: false
+  xy: 2, 1364
+  size: 605, 681
+  orig: 965, 965
+  offset: 159, 186
+  index: -1
+affects/leijizzz_00010
+  rotate: false
+  xy: 609, 1368
+  size: 595, 677
+  orig: 965, 965
+  offset: 154, 180
+  index: -1
+affects/leijizzz_00011
+  rotate: false
+  xy: 1206, 1396
+  size: 594, 649
+  orig: 965, 965
+  offset: 166, 180
+  index: -1
+affects/leijizzz_00013
+  rotate: false
+  xy: 466, 186
+  size: 436, 418
+  orig: 965, 965
+  offset: 252, 186
+  index: -1
+affects/shandiandaji_00000
+  rotate: false
+  xy: 904, 195
+  size: 230, 409
+  orig: 965, 965
+  offset: 358, 501
+  index: -1
+affects/shandiandaji_00001
+  rotate: false
+  xy: 1136, 2
+  size: 266, 647
+  orig: 965, 965
+  offset: 338, 253
+  index: -1
+affects/shandiandaji_00003
+  rotate: false
+  xy: 1590, 686
+  size: 437, 708
+  orig: 965, 965
+  offset: 275, 146
+  index: -1
+
+fx_12601_youyingzhizhu_hit_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+affects/leijizzz_00000
+  rotate: false
+  xy: 527, 634
+  size: 505, 694
+  orig: 965, 965
+  offset: 189, 174
+  index: -1
+affects/leijizzz_00003
+  rotate: false
+  xy: 554, 1330
+  size: 516, 714
+  orig: 965, 965
+  offset: 240, 143
+  index: -1
+affects/leijizzz_00007
+  rotate: false
+  xy: 1493, 661
+  size: 464, 685
+  orig: 965, 965
+  offset: 241, 185
+  index: -1
+affects/leijizzz_00008
+  rotate: false
+  xy: 2, 1350
+  size: 550, 694
+  orig: 965, 965
+  offset: 153, 186
+  index: -1
+affects/leijizzz_00012
+  rotate: false
+  xy: 1493, 2
+  size: 505, 657
+  orig: 965, 965
+  offset: 243, 180
+  index: -1
+affects/leijizzz_00014
+  rotate: false
+  xy: 1034, 642
+  size: 457, 686
+  orig: 965, 965
+  offset: 245, 183
+  index: -1
+affects/leijizzz_00015
+  rotate: false
+  xy: 2, 634
+  size: 523, 714
+  orig: 965, 965
+  offset: 239, 186
+  index: -1
+affects/leijizzz_00016
+  rotate: false
+  xy: 1072, 1359
+  size: 524, 685
+  orig: 965, 965
+  offset: 241, 185
+  index: -1
+affects/shandiandaji_00002
+  rotate: false
+  xy: 1598, 1348
+  size: 360, 696
+  orig: 965, 965
+  offset: 311, 155
+  index: -1
+
+fx_12601_youyingzhizhu_hit_3.png
+size: 1024, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+affects/leijizzz_00017
+  rotate: false
+  xy: 2, 2
+  size: 521, 670
+  orig: 965, 965
+  offset: 240, 187
+  index: -1

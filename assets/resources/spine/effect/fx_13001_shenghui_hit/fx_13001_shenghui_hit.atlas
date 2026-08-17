@@ -1,0 +1,69 @@
+
+fx_13001_shenghui_hit.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/shouji/FX_ZYZJ_shouji_00
+  rotate: false
+  xy: 2, 2
+  size: 199, 186
+  orig: 338, 330
+  offset: 56, 56
+  index: -1
+images/shouji/FX_ZYZJ_shouji_01
+  rotate: false
+  xy: 1422, 192
+  size: 220, 289
+  orig: 338, 330
+  offset: 39, 22
+  index: -1
+images/shouji/FX_ZYZJ_shouji_02
+  rotate: false
+  xy: 1157, 187
+  size: 263, 294
+  orig: 338, 330
+  offset: 34, 18
+  index: -1
+images/shouji/FX_ZYZJ_shouji_03
+  rotate: false
+  xy: 2, 190
+  size: 306, 291
+  orig: 338, 330
+  offset: 0, 21
+  index: -1
+images/shouji/FX_ZYZJ_shouji_04
+  rotate: false
+  xy: 878, 193
+  size: 277, 288
+  orig: 338, 330
+  offset: 35, 24
+  index: -1
+images/shouji/FX_ZYZJ_shouji_05
+  rotate: false
+  xy: 596, 193
+  size: 280, 288
+  orig: 338, 330
+  offset: 38, 24
+  index: -1
+images/shouji/FX_ZYZJ_shouji_06
+  rotate: false
+  xy: 310, 194
+  size: 284, 287
+  orig: 338, 330
+  offset: 36, 24
+  index: -1
+images/shouji/FX_ZYZJ_shouji_07
+  rotate: false
+  xy: 1644, 197
+  size: 174, 284
+  orig: 338, 330
+  offset: 80, 26
+  index: -1
+images/shouji/FX_ZYZJ_shouji_08
+  rotate: false
+  xy: 1820, 200
+  size: 172, 281
+  orig: 338, 330
+  offset: 80, 26
+  index: -1

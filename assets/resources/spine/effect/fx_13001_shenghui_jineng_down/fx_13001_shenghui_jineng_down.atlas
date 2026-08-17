@@ -1,0 +1,286 @@
+
+fx_13001_shenghui_jineng_down.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+fx_13001_shenghui_skill1/13001_guangdan
+  rotate: false
+  xy: 1276, 757
+  size: 121, 122
+  orig: 128, 128
+  offset: 4, 3
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_cikuo_00023
+  rotate: false
+  xy: 826, 780
+  size: 224, 99
+  orig: 242, 102
+  offset: 5, 2
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuo_00045
+  rotate: false
+  xy: 267, 596
+  size: 252, 132
+  orig: 306, 166
+  offset: 29, 17
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00045
+  rotate: false
+  xy: 1943, 942
+  size: 69, 35
+  orig: 307, 165
+  offset: 119, 65
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00046
+  rotate: false
+  xy: 1403, 616
+  size: 131, 67
+  orig: 307, 165
+  offset: 88, 49
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00047
+  rotate: false
+  xy: 1042, 672
+  size: 191, 97
+  orig: 307, 165
+  offset: 58, 34
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00048
+  rotate: false
+  xy: 508, 267
+  size: 231, 119
+  orig: 307, 165
+  offset: 38, 23
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00049
+  rotate: false
+  xy: 2, 90
+  size: 273, 139
+  orig: 307, 165
+  offset: 17, 13
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00050
+  rotate: false
+  xy: 1666, 880
+  size: 275, 141
+  orig: 307, 165
+  offset: 16, 12
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00051
+  rotate: false
+  xy: 1387, 882
+  size: 277, 139
+  orig: 307, 165
+  offset: 15, 12
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00052
+  rotate: false
+  xy: 1108, 881
+  size: 277, 140
+  orig: 307, 165
+  offset: 15, 11
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00053
+  rotate: false
+  xy: 545, 880
+  size: 279, 141
+  orig: 307, 165
+  offset: 14, 10
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00054
+  rotate: false
+  xy: 826, 881
+  size: 280, 140
+  orig: 307, 165
+  offset: 14, 10
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00055
+  rotate: false
+  xy: 545, 744
+  size: 277, 134
+  orig: 307, 165
+  offset: 15, 13
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00056
+  rotate: false
+  xy: 273, 730
+  size: 259, 133
+  orig: 307, 165
+  offset: 24, 14
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_dikuoquan_00057
+  rotate: false
+  xy: 2, 2
+  size: 259, 86
+  orig: 307, 165
+  offset: 24, 39
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_fangshe_00045
+  rotate: false
+  xy: 1042, 613
+  size: 128, 57
+  orig: 154, 72
+  offset: 13, 8
+  index: -1
+fx_13001_shenghui_skill1/13001_skill1_waiguang_00045
+  rotate: false
+  xy: 1235, 669
+  size: 166, 86
+  orig: 202, 122
+  offset: 18, 18
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00046
+  rotate: false
+  xy: 408, 56
+  size: 50, 25
+  orig: 256, 128
+  offset: 102, 51
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00047
+  rotate: false
+  xy: 1943, 979
+  size: 83, 42
+  orig: 256, 128
+  offset: 85, 43
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00048
+  rotate: false
+  xy: 263, 10
+  size: 143, 71
+  orig: 256, 128
+  offset: 57, 28
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00049
+  rotate: false
+  xy: 254, 236
+  size: 222, 108
+  orig: 256, 128
+  offset: 19, 10
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00050
+  rotate: false
+  xy: 1052, 771
+  size: 222, 108
+  orig: 256, 128
+  offset: 19, 10
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00051
+  rotate: false
+  xy: 521, 504
+  size: 233, 114
+  orig: 256, 128
+  offset: 12, 7
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00052
+  rotate: false
+  xy: 515, 388
+  size: 232, 114
+  orig: 256, 128
+  offset: 13, 7
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00053
+  rotate: false
+  xy: 261, 346
+  size: 245, 122
+  orig: 256, 128
+  offset: 4, 3
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00054
+  rotate: false
+  xy: 534, 620
+  size: 244, 122
+  orig: 256, 128
+  offset: 5, 3
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_andiquan_00055
+  rotate: false
+  xy: 264, 470
+  size: 249, 124
+  orig: 256, 128
+  offset: 4, 2
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_wenli_00045
+  rotate: false
+  xy: 1399, 781
+  size: 178, 99
+  orig: 191, 110
+  offset: 6, 9
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00045
+  rotate: false
+  xy: 1579, 840
+  size: 82, 40
+  orig: 346, 209
+  offset: 186, 122
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00046
+  rotate: false
+  xy: 277, 83
+  size: 197, 151
+  orig: 346, 209
+  offset: 110, 27
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00047
+  rotate: false
+  xy: 2, 380
+  size: 257, 157
+  orig: 346, 209
+  offset: 51, 18
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00048
+  rotate: false
+  xy: 2, 862
+  size: 269, 159
+  orig: 346, 209
+  offset: 37, 16
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00049
+  rotate: false
+  xy: 273, 865
+  size: 270, 156
+  orig: 346, 209
+  offset: 34, 12
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00050
+  rotate: false
+  xy: 2, 700
+  size: 263, 160
+  orig: 346, 209
+  offset: 35, 12
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00051
+  rotate: false
+  xy: 2, 539
+  size: 260, 159
+  orig: 346, 209
+  offset: 39, 12
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00052
+  rotate: false
+  xy: 2, 231
+  size: 250, 147
+  orig: 346, 209
+  offset: 42, 18
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00053
+  rotate: false
+  xy: 824, 658
+  size: 216, 120
+  orig: 346, 209
+  offset: 55, 36
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00054
+  rotate: false
+  xy: 1403, 685
+  size: 173, 94
+  orig: 346, 209
+  offset: 67, 42
+  index: -1
+fx_13001_shenghui_skill1/13001_skill_zhuan_00055
+  rotate: false
+  xy: 264, 697
+  size: 1, 1
+  orig: 1, 1
+  offset: 0, 0
+  index: -1
