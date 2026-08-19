@@ -10,6 +10,7 @@ import {
   HorizontalTextAlignment,
   ImageAsset,
   Label,
+  Mask,
   Node,
   resources,
   Size,
@@ -252,6 +253,13 @@ const BATTLE_TRANSIENT_EFFECT_NODE_NAMES = new Set([
 ]);
 // docs/29 技能特效骨骼(spine/effect):同屏在场上限(性能封顶,超出直接跳过)与 BOSS 蓄力光环节点名。
 const BATTLE_SKILL_FX_MAX_LIVE = 3;
+const BATTLE_SKILL_FX_LAYER_NODE = 'LobbyBattleSkillFxLayer';
+// 特效骨骼包围盒测不出来时的保守名义尺寸(设计像素):按 2048 画布素材估,宁小勿大。
+const BATTLE_SKILL_FX_FALLBACK_NATIVE_SIZE = 1100;
+// 目标尺寸系数:target=目标单位高×1.4 / self=施法者高×1.3 / fullscreen=战场宽×0.9
+const BATTLE_SKILL_FX_TARGET_UNIT_RATIO = 1.4;
+const BATTLE_SKILL_FX_SELF_UNIT_RATIO = 1.3;
+const BATTLE_SKILL_FX_FULLSCREEN_WIDTH_RATIO = 0.9;
 const BATTLE_BOSS_CHARGE_FX_NODE = 'LobbyBattleBossCastChargeFx';
 const BATTLE_PROTAGONIST_MALE_FALLBACK_ASSET = 'ui/protagonist/protagonist_male_attack/spriteFrame';
 const BATTLE_PROTAGONIST_FEMALE_FALLBACK_ASSET = 'ui/protagonist/protagonist_female_attack/spriteFrame';
@@ -1191,7 +1199,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const t = playbackTimelineTimeMs;
     const hud = this.host.addChildPlainNode(parent, 'LobbyBattleRhythmHud', 0, 0, width, height);
     const trial = isDailyTrialStageCode(snapshot.stageCode);
-    const barY = height / 2 - (trial ? 168 : 112) * scale;
+    const barY = height / 2 - (trial ? 150 : 112) * scale;
     const interrupted = this.resolveInterruptedCastSeqs();
 
     // ── 读条 ──
@@ -1212,15 +1220,8 @@ export class LobbyBattlePreviewPanelRenderer {
       // docs/29:读条期间 BOSS 脚下循环蓄力光环(魔圈领域),挂在 parent(field)上跨帧存活,
       // 读满/打断/BOSS 死亡由 clearBattleBossChargeFx 撤除;随 BOSS 体型倍率放大。
       if (bossUnit && this.isNodeAlive(bossNode) && !parent.getChildByName(BATTLE_BOSS_CHARGE_FX_NODE)) {
-        const chargeBodyScale = Math.max(1, Math.min(3.5, bossUnit.monsterDisplayScale ?? 1));
-        this.spawnBattleSkillEffect(
-          parent,
-          BATTLE_BOSS_CHARGE_FX_NODE,
-          BOSS_CAST_CHARGE_EFFECT,
-          bossNode.position.x,
-          bossNode.position.y + BOSS_CAST_CHARGE_EFFECT.offsetY * scale,
-          BOSS_CAST_CHARGE_EFFECT.scale * scale * (1 + (chargeBodyScale - 1) * 0.6),
-        );
+        const chargePlacement = this.resolveBattleSkillEffectPlacement(BOSS_CAST_CHARGE_EFFECT, bossKey, bossKey, width, height, scale, bossUnit.monsterDisplayScale ?? 1);
+        this.spawnBattleSkillEffect(parent, BATTLE_BOSS_CHARGE_FX_NODE, BOSS_CAST_CHARGE_EFFECT, chargePlacement.x, chargePlacement.y, chargePlacement.size);
       }
       const progress = clamp((t - activeCast.startMs) / Math.max(1, activeCast.hitMs - activeCast.startMs), 0, 1);
       const barW = Math.min(520 * scale, width * 0.5);
@@ -1279,7 +1280,7 @@ export class LobbyBattlePreviewPanelRenderer {
       }
       // docs/29:读满爆发——全屏暗红冲击波(灭世之愿),一次性播完自毁。
       const burstPlacement = this.resolveBattleSkillEffectPlacement(BOSS_CAST_BURST_EFFECT, bossKey, bossKey, width, height, scale, bossUnit?.monsterDisplayScale ?? 1);
-      this.spawnBattleSkillEffect(parent, `LobbyBattleBossBurstFx_${cast.actionSeq}`, BOSS_CAST_BURST_EFFECT, burstPlacement.x, burstPlacement.y, burstPlacement.scale);
+      this.spawnBattleSkillEffect(parent, `LobbyBattleBossBurstFx_${cast.actionSeq}`, BOSS_CAST_BURST_EFFECT, burstPlacement.x, burstPlacement.y, burstPlacement.size);
       this.renderBattleRhythmCallout(parent, `${cast.skillName} !`, rgba(255, 210, 200), rgba(230, 60, 40), 'boss-cast');
       const field = this.battleFieldNode;
       if (this.isNodeAlive(field)) {
@@ -1314,9 +1315,9 @@ export class LobbyBattlePreviewPanelRenderer {
         this.clearBattleBossChargeFx(parent);
         const bodyScale = bossUnit.monsterDisplayScale ?? 1;
         const interruptPlacement = this.resolveBattleSkillEffectPlacement(BOSS_CAST_INTERRUPT_EFFECT, bossKey, bossKey, width, height, scale, bodyScale);
-        this.spawnBattleSkillEffect(parent, `LobbyBattleBossInterruptFx_${record.castSeq}`, BOSS_CAST_INTERRUPT_EFFECT, interruptPlacement.x, interruptPlacement.y, interruptPlacement.scale);
+        this.spawnBattleSkillEffect(parent, `LobbyBattleBossInterruptFx_${record.castSeq}`, BOSS_CAST_INTERRUPT_EFFECT, interruptPlacement.x, interruptPlacement.y, interruptPlacement.size);
         const breakPlacement = this.resolveBattleSkillEffectPlacement(BOSS_BREAK_EFFECT, bossKey, bossKey, width, height, scale, bodyScale);
-        this.spawnBattleSkillEffect(parent, `LobbyBattleBossBreakFx_i${record.castSeq}`, BOSS_BREAK_EFFECT, breakPlacement.x, breakPlacement.y, breakPlacement.scale);
+        this.spawnBattleSkillEffect(parent, `LobbyBattleBossBreakFx_i${record.castSeq}`, BOSS_BREAK_EFFECT, breakPlacement.x, breakPlacement.y, breakPlacement.size);
       }
     }
 
@@ -1339,8 +1340,10 @@ export class LobbyBattlePreviewPanelRenderer {
       const remain = Math.max(0, (endMs - t) / 1000);
       const pillW = Math.min(300 * scale, width * 0.32);
       const pillH = 26 * scale;
-      const pillY = barY - (activeCast ? 52 : 0) * scale;
-      const pill = this.host.addChildPlainNode(hud, 'RhythmBreakPill', 0, pillY, pillW, pillH);
+      // 读条中时胶囊挪到读条右侧同排,不再压在名字牌上;未读条时居中在读条位。
+      const barWForPill = Math.min(520 * scale, width * 0.5);
+      const pillX = activeCast ? barWForPill / 2 + pillW / 2 + 14 * scale : 0;
+      const pill = this.host.addChildPlainNode(hud, 'RhythmBreakPill', pillX, barY, pillW, pillH);
       const pg = pill.addComponent(Graphics);
       pg.fillColor = rgba(40, 28, 8, 230);
       pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
@@ -1371,7 +1374,7 @@ export class LobbyBattlePreviewPanelRenderer {
       this.playedBattleCueKeys.add(key);
       // docs/29:节奏性破防开窗——BOSS 身上裂甲金光(一次性;打断触发的窗口已在打断反馈里放过)。
       const breakOpenPlacement = this.resolveBattleSkillEffectPlacement(BOSS_BREAK_EFFECT, bossKey, bossKey, width, height, scale, bossUnit?.monsterDisplayScale ?? 1);
-      this.spawnBattleSkillEffect(parent, `LobbyBattleBossBreakFx_w${window.startMs}`, BOSS_BREAK_EFFECT, breakOpenPlacement.x, breakOpenPlacement.y, breakOpenPlacement.scale);
+      this.spawnBattleSkillEffect(parent, `LobbyBattleBossBreakFx_w${window.startMs}`, BOSS_BREAK_EFFECT, breakOpenPlacement.x, breakOpenPlacement.y, breakOpenPlacement.size);
       this.renderBattleRhythmCallout(parent, '破 防 !', rgba(255, 240, 180), rgba(255, 190, 40), 'break');
     }
   }
@@ -2454,7 +2457,7 @@ export class LobbyBattlePreviewPanelRenderer {
         layoutScale,
         target.monsterDisplayScale ?? 1,
       );
-      this.spawnBattleSkillEffect(field, `LobbyBattleUltSkillFx_${unit.unitKey}`, ultSpec, placement.x, placement.y, placement.scale);
+      this.spawnBattleSkillEffect(field, `LobbyBattleUltSkillFx_${unit.unitKey}`, ultSpec, placement.x, placement.y, placement.size);
     }
   }
 
@@ -2467,21 +2470,25 @@ export class LobbyBattlePreviewPanelRenderer {
     const root = this.host.addChildPlainNode(field, `LobbyBattleRhythmCallout_${tag}`, 0, 0, width, height);
     root.setSiblingIndex(field.children.length - 1);
     this.markBattleTransientEffectLayer(root);
-    const flash = this.host.addChildPlainNode(root, 'Flash', 0, 0, width, height);
-    const fg = flash.addComponent(Graphics);
-    fg.fillColor = rgba(255, 255, 255, 120);
-    fg.rect(-width / 2, -height / 2, width, height);
-    fg.fill();
-    const flashOpacity = flash.addComponent(UIOpacity);
-    flashOpacity.opacity = 255;
-    tween(flashOpacity).to(0.18, { opacity: 0 }).start();
-    const y = height * 0.16;
-    const glowLabel = this.host.addChildLabel(root, 'Glow', text, 0, y, 58, glow, new Size(width * 0.8, 90));
+    // 白闪只给"打断"和"BOSS 蓄力命中"(强反馈),合击/破防不闪;强度减半(视频里每隔两三秒白一下画面发灰)。
+    if (tag === 'interrupt' || tag === 'boss-cast') {
+      const flash = this.host.addChildPlainNode(root, 'Flash', 0, 0, width, height);
+      const fg = flash.addComponent(Graphics);
+      fg.fillColor = tag === 'boss-cast' ? rgba(255, 120, 90, 70) : rgba(255, 255, 255, 60);
+      fg.rect(-width / 2, -height / 2, width, height);
+      fg.fill();
+      const flashOpacity = flash.addComponent(UIOpacity);
+      flashOpacity.opacity = 255;
+      tween(flashOpacity).to(0.14, { opacity: 0 }).start();
+    }
+    // 大字放在单位头顶上方一带(战场上 ~6%),不再与顶部名字牌/读条同高。
+    const y = height * 0.06;
+    const glowLabel = this.host.addChildLabel(root, 'Glow', text, 0, y, 50, glow, new Size(width * 0.8, 80));
     glowLabel.overflow = Label.Overflow.SHRINK;
     glowLabel.enableOutline = true;
     glowLabel.outlineColor = glow;
     glowLabel.outlineWidth = 6;
-    const label = this.host.addChildLabel(root, 'Text', text, 0, y, 58, color, new Size(width * 0.8, 90));
+    const label = this.host.addChildLabel(root, 'Text', text, 0, y, 50, color, new Size(width * 0.8, 80));
     label.overflow = Label.Overflow.SHRINK;
     label.enableOutline = true;
     label.outlineColor = rgba(40, 20, 10, 255);
@@ -2510,8 +2517,9 @@ export class LobbyBattlePreviewPanelRenderer {
 
     // 不压暗、不加黑边:大招时最该看清英雄出手与 BOSS 中招,遮罩会把战场糊掉(用户反馈)。
     // 只在顶部区域放一条半透明名字牌,不遮任何单位。
-    const bandY = height * 0.30;
-    const bandH = height * 0.13;
+    // 顶部 HUD 分区(视频验收 2026-08-19):血条/读条占 h/2-90~-190,名字牌下移到战场上 1/5 且压扁,避免与读条/破防胶囊压字。
+    const bandY = height * 0.17;
+    const bandH = height * 0.10;
     const band = this.host.addChildPlainNode(root, 'UltCutInBand', 0, bandY, width, bandH);
     const bandGraphics = band.addComponent(Graphics);
     // 中间深、两端渐消的横带:用三段矩形近似,不糊背景。
@@ -2531,10 +2539,10 @@ export class LobbyBattlePreviewPanelRenderer {
     tween(bandOpacity).to(0.1, { opacity: 255 }).delay(0.62).to(0.28, { opacity: 0 }).start();
 
     // 英雄名(小字,上) + 大招名(大字冲屏),都在名字牌内。
-    const heroName = this.host.addChildLabel(root, 'UltCutInHero', unit.displayName || '', 0, bandY + bandH * 0.28, Math.max(14, height * 0.03), rgba(238, 214, 156, 245), new Size(width * 0.6, height * 0.045));
+    const heroName = this.host.addChildLabel(root, 'UltCutInHero', unit.displayName || '', 0, bandY + bandH * 0.30, Math.max(12, height * 0.026), rgba(238, 214, 156, 245), new Size(width * 0.6, height * 0.04));
     heroName.overflow = Label.Overflow.SHRINK;
     this.applyOutline(heroName, 1, false);
-    const ultName = this.host.addChildLabel(root, 'UltCutInName', resolveUltimateSkillName(unit.heroCode ?? unit.unitKey), 0, bandY - bandH * 0.16, Math.max(26, height * 0.066), rgba(255, 232, 150, 255), new Size(width * 0.66, height * 0.09));
+    const ultName = this.host.addChildLabel(root, 'UltCutInName', resolveUltimateSkillName(unit.heroCode ?? unit.unitKey), 0, bandY - bandH * 0.18, Math.max(22, height * 0.052), rgba(255, 232, 150, 255), new Size(width * 0.66, height * 0.07));
     ultName.overflow = Label.Overflow.SHRINK;
     this.applyOutline(ultName, 2, true);
     root.setScale(1.22, 1.22, 1);
@@ -2708,13 +2716,13 @@ export class LobbyBattlePreviewPanelRenderer {
       for (let attempt = 0; attempt <= 6; attempt += 1) {
         const candidateY = attempt === 0
           ? y
-          : y + (attempt % 2 === 1 ? preferredSign : -preferredSign) * Math.ceil(attempt / 2) * 78 * scale;
+          : y + (attempt % 2 === 1 ? preferredSign : -preferredSign) * Math.ceil(attempt / 2) * 88 * scale;
         let conflict = false;
         for (const [otherKey, pos] of positions) {
           if (otherKey === actorKey || unitSides.get(otherKey) !== side) {
             continue;
           }
-          if (Math.abs(pos.x - x) <= 66 * scale && Math.abs(pos.y - candidateY) <= 72 * scale) {
+          if (Math.abs(pos.x - x) <= 100 * scale && Math.abs(pos.y - candidateY) <= 80 * scale) {
             conflict = true;
             break;
           }
@@ -2729,8 +2737,8 @@ export class LobbyBattlePreviewPanelRenderer {
     // X 扇形必须比大体型立绘(~250px)错得开:旧值 36 让第 1/2 席与 0 席叠成一摞;
     // Y 收窄(±72/±44)避免大体型英雄被席位顶上车道上方读作"悬空"。
     const engageSeats = new Map<string, Map<string, number>>();
-    const seatXOffsets = [0, 96, 96, -158, -158];
-    const seatYOffsets = [0, 72, -72, 44, -44];
+    const seatXOffsets = [0, 118, 118, -170, -170];
+    const seatYOffsets = [0, 84, -84, 52, -52];
     // 大体型目标(≥1.8×,输出试炼 BOSS):席位全部排在目标正面扇形,不再有绕后席(-158 会站到立绘中央),
     // 贴脸基准距离随双方体型加长,X 错位加大到能把 ~250px 宽的英雄立绘错开。
     const bigSeatXOffsets = [0, 92, 92, 184, 184];
@@ -4551,7 +4559,8 @@ export class LobbyBattlePreviewPanelRenderer {
       this.battleUltReadyHintShown = true;
       const bannerWidth = Math.min(430 * scale, width * 0.5);
       const bannerHeight = 40 * scale;
-      const banner = this.host.addChildPlainNode(parent, 'LobbyBattleUltReadyHintBanner', 0, height / 2 - 132 * scale, bannerWidth, bannerHeight);
+      // 移出顶部 HUD 带(那里有血条/读条/名字牌),放到战场左上角空区。
+      const banner = this.host.addChildPlainNode(parent, 'LobbyBattleUltReadyHintBanner', -width / 2 + bannerWidth / 2 + 24 * scale, height / 2 - 210 * scale, bannerWidth, bannerHeight);
       const bannerGraphics = banner.addComponent(Graphics);
       bannerGraphics.fillColor = rgba(8, 6, 4, 196);
       bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, 9 * scale);
@@ -4895,10 +4904,11 @@ export class LobbyBattlePreviewPanelRenderer {
     void sideColumnX;
     const laneIndex = Math.max(0, Math.min(4, slot.lane));
     // Y 带压缩后横向拉宽交战线(中位控制在守卫 420 间距内),避免配对各组挤成一条竖列。
-    const faceLineOffset = laneIndex <= 2 ? laneIndex * 32 : 100 + (laneIndex - 3) * 28;
-    const faceLineX = clamp((120 + faceLineOffset) * scale, 110 * scale, 300 * scale);
+    // 视频验收(2026-08-19):5v5 全挤在中心 300px 内看不清谁打谁 → 车道 X 错位 ×1.5、上限 300→380。
+    const faceLineOffset = laneIndex <= 2 ? laneIndex * 48 : 140 + (laneIndex - 3) * 42;
+    const faceLineX = clamp((120 + faceLineOffset) * scale, 110 * scale, 380 * scale);
     const x = side * faceLineX;
-    const laneYCompression = slot.lane <= 2 ? 0.98 : 1.04;
+    const laneYCompression = slot.lane <= 2 ? 1.12 : 1.18;
     // 车道 Y 重映射进地面带:0.72 压缩保持车道间距比例,-160 整体下移到实景地面。
     return {
       x,
@@ -6546,15 +6556,50 @@ export class LobbyBattlePreviewPanelRenderer {
     return this.battleSkillFxLiveNodes.size;
   }
 
-  private spawnBattleSkillEffect(parent: Node, nodeName: string, spec: BattleSkillEffectSpec, x: number, y: number, effectScale: number): Node | null {
+  // 技能特效统一挂到 field 下的专用层(紧贴单位层之上、所有 HUD 之下)并用 Mask 裁到战场矩形:
+  // 特效再大也不会盖住顶部血条/读条/名字牌/技能卡,也不会溢出到战场框外。
+  private ensureBattleSkillFxLayer(field: Node): Node {
+    let layer = field.getChildByName(BATTLE_SKILL_FX_LAYER_NODE);
+    const fieldTransform = field.getComponent(UITransform);
+    const width = fieldTransform?.width ?? 1200;
+    const height = fieldTransform?.height ?? 640;
+    if (!layer || !this.isNodeAlive(layer)) {
+      layer = this.host.addChildPlainNode(field, BATTLE_SKILL_FX_LAYER_NODE, 0, 0, width, height);
+      const mask = layer.addComponent(Mask);
+      mask.type = Mask.Type.GRAPHICS_RECT;
+    } else {
+      layer.getComponent(UITransform)?.setContentSize(new Size(width, height));
+    }
+    // 置于最后一个单位节点之后(单位之上、HUD 之下);HUD 节点每帧重建自然在更上层。
+    let lastActorIndex = -1;
+    field.children.forEach((child, index) => {
+      if (child.name.startsWith('LobbyBattleActor_')) {
+        lastActorIndex = index;
+      }
+    });
+    const desiredIndex = Math.min(field.children.length - 1, lastActorIndex + 1);
+    if (desiredIndex >= 0 && layer.getSiblingIndex() !== desiredIndex) {
+      layer.setSiblingIndex(desiredIndex);
+    }
+    return layer;
+  }
+
+  /**
+   * 挂一个技能特效骨骼:desiredSize=期望显示尺寸(field 像素,取包围盒长边),加载后按实测包围盒自动适配;
+   * 配置 spec.scale 为相对倍率。坐标 (x,y) 为 field 空间的锚点,实测后按包围盒中心回正。
+   */
+  private spawnBattleSkillEffect(parent: Node, nodeName: string, spec: BattleSkillEffectSpec, x: number, y: number, desiredSize: number): Node | null {
     if (!spec.loop && this.countLiveBattleSkillFx() >= BATTLE_SKILL_FX_MAX_LIVE) {
       return null;
     }
     const renderGeneration = this.battleRenderGeneration;
-    const node = this.host.addChildPlainNode(parent, nodeName, x, y, 10, 10);
+    const layer = this.ensureBattleSkillFxLayer(parent);
+    const node = this.host.addChildPlainNode(layer, nodeName, x, y, 10, 10);
     const skeleton = node.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
-    node.setScale(new Vec3(effectScale, effectScale, 1));
+    // 先按保守名义尺寸给初始缩放,数据到了再按实测包围盒修正(避免首帧爆屏)。
+    const provisional = (desiredSize / BATTLE_SKILL_FX_FALLBACK_NATIVE_SIZE) * (spec.scale || 1);
+    node.setScale(new Vec3(provisional, provisional, 1));
     this.battleSkillFxLiveNodes.add(node);
     let released = false;
     const release = (): void => {
@@ -6573,7 +6618,7 @@ export class LobbyBattlePreviewPanelRenderer {
         release();
         return;
       }
-      if (!data || !this.applyBattleSkillEffectData(skeleton, data, spec, release)) {
+      if (!data || !this.applyBattleSkillEffectData(node, skeleton, data, spec, x, y, desiredSize, release)) {
         release();
       }
     });
@@ -6583,7 +6628,97 @@ export class LobbyBattlePreviewPanelRenderer {
     return node;
   }
 
-  private applyBattleSkillEffectData(skeleton: sp.Skeleton, data: sp.SkeletonData, spec: BattleSkillEffectSpec, onComplete: () => void): boolean {
+  // 实测特效包围盒缓存(effect:animation → {w,h,cx,cy},骨骼单位);同一套特效只测一次。
+  private readonly battleSkillFxBoundsCache = new Map<string, { w: number; h: number; cx: number; cy: number } | null>();
+
+  /**
+   * 采样动画若干时刻,遍历 slots 的 Region/Mesh 附件算世界顶点 AABB(并集)。
+   * 技能特效 setup pose 通常无可见附件(skel 头 w/h=0),只能这样测;任何异常返回 null 走兜底。
+   */
+  private measureBattleSkillEffectBounds(skeleton: sp.Skeleton, animationName: string, cacheKey: string): { w: number; h: number; cx: number; cy: number } | null {
+    if (this.battleSkillFxBoundsCache.has(cacheKey)) {
+      return this.battleSkillFxBoundsCache.get(cacheKey) ?? null;
+    }
+    let result: { w: number; h: number; cx: number; cy: number } | null = null;
+    try {
+      const raw = (skeleton as unknown as { _skeleton?: unknown })._skeleton as {
+        slots?: Array<{ getAttachment?: () => unknown; bone?: unknown }>;
+        updateWorldTransform?: () => void;
+      } | undefined;
+      const state = skeleton.getState() as { update?: (dt: number) => void; apply?: (skeleton: unknown) => void } | undefined;
+      const duration = Math.max(0.2, skeleton.findAnimation(animationName)?.duration ?? 1);
+      if (raw && raw.slots) {
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        const samples = [0.12, 0.3, 0.5, 0.7, 0.88];
+        let lastTime = 0;
+        for (const ratio of samples) {
+          const targetTime = duration * ratio;
+          const dt = Math.max(0, targetTime - lastTime);
+          lastTime = targetTime;
+          // 组件级推进:state.update+apply+updateWorldTransform(wasm 实例内同步)。
+          skeleton.updateAnimation(dt);
+          raw.updateWorldTransform?.();
+          const slots = raw.slots ?? [];
+          for (const slot of slots) {
+            const attachment = slot.getAttachment?.() as {
+              computeWorldVertices?: (...args: unknown[]) => void;
+              width?: number;
+              worldVerticesLength?: number;
+            } | null | undefined;
+            if (!attachment || typeof attachment.computeWorldVertices !== 'function') {
+              continue;
+            }
+            let verts: number[] | null = null;
+            if (typeof attachment.width === 'number') {
+              verts = new Array<number>(8).fill(0);
+              attachment.computeWorldVertices(slot.bone, verts, 0, 2);
+            } else if (typeof attachment.worldVerticesLength === 'number' && attachment.worldVerticesLength > 0) {
+              const count = attachment.worldVerticesLength;
+              verts = new Array<number>(count).fill(0);
+              attachment.computeWorldVertices(slot, 0, count, verts, 0, 2);
+            }
+            if (!verts) {
+              continue;
+            }
+            for (let i = 0; i + 1 < verts.length; i += 2) {
+              const vx = verts[i];
+              const vy = verts[i + 1];
+              if (!Number.isFinite(vx) || !Number.isFinite(vy)) {
+                continue;
+              }
+              minX = Math.min(minX, vx);
+              maxX = Math.max(maxX, vx);
+              minY = Math.min(minY, vy);
+              maxY = Math.max(maxY, vy);
+            }
+          }
+        }
+        void state;
+        if (Number.isFinite(minX) && Number.isFinite(maxX) && maxX - minX > 8 && maxY - minY > 8) {
+          result = { w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+        }
+      }
+    } catch (error) {
+      console.warn(`[BattleSkillFx] measure failed: ${cacheKey}`, error);
+      result = null;
+    }
+    this.battleSkillFxBoundsCache.set(cacheKey, result);
+    return result;
+  }
+
+  private applyBattleSkillEffectData(
+    node: Node,
+    skeleton: sp.Skeleton,
+    data: sp.SkeletonData,
+    spec: BattleSkillEffectSpec,
+    anchorX: number,
+    anchorY: number,
+    desiredSize: number,
+    onComplete: () => void,
+  ): boolean {
     try {
       const runtimeData = resolveBattleUnitSpineRuntimeData(data);
       if (!runtimeData || (runtimeData.animations ?? []).length === 0) {
@@ -6600,6 +6735,21 @@ export class LobbyBattlePreviewPanelRenderer {
         return false;
       }
       skeleton.skeletonData = data;
+      // 先以测量为目的播一遍(非循环),测包围盒;再正式 setAnimation 从 0 开始播。
+      skeleton.setAnimation(0, animationName, false);
+      const bounds = this.measureBattleSkillEffectBounds(skeleton, animationName, `${spec.effect}:${animationName}`);
+      const relative = spec.scale || 1;
+      if (bounds) {
+        const extent = Math.max(bounds.w, bounds.h);
+        const fit = (desiredSize / Math.max(8, extent)) * relative;
+        node.setScale(new Vec3(fit, fit, 1));
+        // 包围盒中心回正到锚点:特效画在原点上方/一侧时也能对准目标。
+        node.setPosition(anchorX - bounds.cx * fit, anchorY - bounds.cy * fit, 0);
+      } else {
+        const fit = (desiredSize / BATTLE_SKILL_FX_FALLBACK_NATIVE_SIZE) * relative;
+        node.setScale(new Vec3(fit, fit, 1));
+        node.setPosition(anchorX, anchorY, 0);
+      }
       const track = skeleton.setAnimation(0, animationName, spec.loop === true);
       if (!track) {
         return false;
@@ -6614,8 +6764,8 @@ export class LobbyBattlePreviewPanelRenderer {
     }
   }
 
-  // 锚点换算:self=施法者 / target=目标(随 BOSS 体型倍率放大,阻尼 0.6 防止 3.4× 试炼 BOSS 特效爆屏)/
-  // fullscreen=战场中心(按战场宽度对 1280 基准再放大)。返回 field 坐标与最终绝对缩放。
+  // 锚点换算:self=施法者 / target=目标 / fullscreen=战场中心。返回 field 坐标与期望显示尺寸(像素):
+  // target/self 按锚点单位节点高度(含 BOSS 体型倍率,阻尼 0.6 防 3.4× 试炼 BOSS 爆屏)×系数;fullscreen 按战场宽。
   private resolveBattleSkillEffectPlacement(
     spec: BattleSkillEffectSpec,
     casterKey: string,
@@ -6624,16 +6774,19 @@ export class LobbyBattlePreviewPanelRenderer {
     fieldHeight: number,
     layoutScale: number,
     targetBodyScale: number,
-  ): { x: number; y: number; scale: number } {
+  ): { x: number; y: number; size: number } {
     if (spec.anchor === 'fullscreen') {
-      return { x: 0, y: fieldHeight * 0.04, scale: spec.scale * layoutScale * Math.max(1, fieldWidth / 1280) };
+      return { x: 0, y: fieldHeight * 0.02, size: fieldWidth * BATTLE_SKILL_FX_FULLSCREEN_WIDTH_RATIO };
     }
     const anchorKey = spec.anchor === 'self' ? casterKey : targetKey;
     const anchorNode = this.battlePlaybackNodes.get(anchorKey);
-    const x = anchorNode?.position.x ?? 0;
-    const y = (anchorNode?.position.y ?? 0) + spec.offsetY * layoutScale;
+    const unitHeight = anchorNode?.getComponent(UITransform)?.height ?? 220 * layoutScale;
     const bodyScale = spec.anchor === 'target' ? Math.max(1, Math.min(3.5, targetBodyScale)) : 1;
-    return { x, y, scale: spec.scale * layoutScale * (1 + (bodyScale - 1) * 0.6) };
+    const ratio = spec.anchor === 'self' ? BATTLE_SKILL_FX_SELF_UNIT_RATIO : BATTLE_SKILL_FX_TARGET_UNIT_RATIO;
+    const x = anchorNode?.position.x ?? 0;
+    // 单位节点锚点在脚底偏上(slot 中心);特效中心抬到躯干:+unitHeight*0.12 + 配置偏移
+    const y = (anchorNode?.position.y ?? 0) + unitHeight * 0.12 + spec.offsetY * layoutScale;
+    return { x, y, size: unitHeight * ratio * (1 + (bodyScale - 1) * 0.6) };
   }
 
   // BOSS 蓄力光环(循环)撤除:读满/打断/BOSS 死亡/读条结束都会走到这里;不存在即无操作。
@@ -7030,7 +7183,8 @@ export class LobbyBattlePreviewPanelRenderer {
     currentActionCue: BattleActionPresentationCue,
     impactProfile: BattleImpactProfile,
   ): void {
-    const hitStopKey = `effect:impact:hitStop:${currentActionCue.cueKey}`;
+    // 同一动作的连击各段共用一个键:连击 x2/x3 不再叠 2~3 层把画面洗白。
+    const hitStopKey = `effect:impact:hitStop:${currentActionCue.actionSeq}:${currentActionCue.actorKey}`;
     if (this.playedBattleCueKeys.has(hitStopKey)) {
       return;
     }
@@ -7039,11 +7193,11 @@ export class LobbyBattlePreviewPanelRenderer {
     const layer = this.host.addChildPlainNode(parent, BATTLE_IMPACT_HIT_STOP_LAYER_NAME, 0, 0, width, height);
     this.markBattleTransientEffectLayer(layer);
     const graphics = layer.addComponent(Graphics);
-    graphics.fillColor = impactProfile.isCritical ? rgba(255, 246, 196, 42) : rgba(255, 255, 255, 18);
+    graphics.fillColor = impactProfile.isCritical ? rgba(255, 246, 196, 22) : rgba(255, 255, 255, 10);
     graphics.rect(-width / 2, -height / 2, width, height);
     graphics.fill();
     const opacity = layer.addComponent(UIOpacity);
-    opacity.opacity = impactProfile.isCritical ? 118 : 72;
+    opacity.opacity = impactProfile.isCritical ? 64 : 40;
     const holdSeconds = Math.max(0.04, impactProfile.hitStopMs / 1000);
     tween(opacity)
       .delay(holdSeconds)

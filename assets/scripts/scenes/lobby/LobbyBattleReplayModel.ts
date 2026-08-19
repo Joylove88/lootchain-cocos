@@ -128,6 +128,9 @@ export interface BattleReplay {
 // 战斗节奏点常量(doc 28)
 export const BATTLE_BOSS_CAST_FIRST_DELAY_MS = 7_000;
 export const BATTLE_BOSS_CAST_INTERVAL_MS = 12_000;
+// 输出试炼节奏更密(视频验收:弱队 14s 全灭只体验到一次读条):首次 5s、间隔 10s。
+export const BATTLE_TRIAL_BOSS_CAST_FIRST_DELAY_MS = 5_000;
+export const BATTLE_TRIAL_BOSS_CAST_INTERVAL_MS = 10_000;
 export const BATTLE_BOSS_CAST_MS = 2_400;
 export const BATTLE_BOSS_CAST_HP_RATIO = 0.4;
 export const BATTLE_BOSS_CAST_SKILL_NAME = '灭世咆哮';
@@ -469,7 +472,9 @@ function resolveBattleReplayCombatActions(
 ): BattleReplayAction[] {
   const combatOrder = resolveBattleReplayCombatOrder(unitByKey);
   const isBrokenAt = (timeMs: number): boolean => breakWindows.some((window) => timeMs >= window.startMs && timeMs < window.endMs);
-  let nextBossCastMs = bossKey ? resolveBattleReplayFirstActionMs(timeline) + BATTLE_BOSS_CAST_FIRST_DELAY_MS : Number.POSITIVE_INFINITY;
+  const bossCastFirstDelayMs = trial ? BATTLE_TRIAL_BOSS_CAST_FIRST_DELAY_MS : BATTLE_BOSS_CAST_FIRST_DELAY_MS;
+  const bossCastIntervalMs = trial ? BATTLE_TRIAL_BOSS_CAST_INTERVAL_MS : BATTLE_BOSS_CAST_INTERVAL_MS;
+  let nextBossCastMs = bossKey ? resolveBattleReplayFirstActionMs(timeline) + bossCastFirstDelayMs : Number.POSITIVE_INFINITY;
   const seed = createBattleReplaySeed(`${timeline.timelineKey}:${snapshot.unitSnapshotKey}`);
   const random = nextBattleReplayRandom(seed);
   const firstActionMs = resolveBattleReplayFirstActionMs(timeline);
@@ -543,7 +548,7 @@ function resolveBattleReplayCombatActions(
           hpRatio: BATTLE_BOSS_CAST_HP_RATIO,
           skillName: BATTLE_BOSS_CAST_SKILL_NAME,
         });
-        nextBossCastMs = startMs + BATTLE_BOSS_CAST_INTERVAL_MS;
+        nextBossCastMs = startMs + bossCastIntervalMs;
         nextActionStartMs = hitMs + 400;
         continue;
       }
