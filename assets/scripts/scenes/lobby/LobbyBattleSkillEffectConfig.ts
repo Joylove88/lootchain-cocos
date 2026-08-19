@@ -1,7 +1,8 @@
 // 战斗技能特效配置(2026-08-17,doc 28 / docs/29):英雄大招特效映射 + BOSS 读条三段特效 + 破防金光。
 // 资源目录 assets/resources/spine/effect/<effect>/<effect>.skel(Spine 4.2.43 二进制,代码侧 premultipliedAlpha=false)。
-// 注意:技能特效骨骼 setup pose 通常无可见附件 → skeleton bounds 为 0,无法按包围盒适配,
-// 因此 scale 是**绝对节点缩放**(基数按 720p 战场,渲染时再乘布局 scale 与 BOSS 体型倍率)。
+// 注意:技能特效骨骼 setup pose 通常无可见附件 → skel 头 bounds 为 0;渲染层在加载后采样动画实测包围盒,
+// 自动把特效适配到目标尺寸(target=目标单位高×1.4 / self=施法者高×1.3 / fullscreen=战场宽×0.9),
+// 因此这里的 scale 是**相对倍率**(1=标准尺寸;弱版 0.56~0.72 更小),不再是绝对缩放(2026-08-19 视频验收改)。
 // 纯表现配置:不碰结算、不改数值、不新增玩家 API(doc 24 安全边界)。
 
 export type BattleSkillEffectAnchor = 'target' | 'self' | 'fullscreen';
@@ -13,9 +14,9 @@ export interface BattleSkillEffectSpec {
   animation: string;
   /** target=挂目标位置;self=挂施法者;fullscreen=战场中心全屏。 */
   anchor: BattleSkillEffectAnchor;
-  /** 绝对缩放(乘布局 scale;BOSS 目标再乘体型倍率)。 */
+  /** 相对倍率(1=按锚点自动适配的标准尺寸;渲染层按实测包围盒适配后再乘此值)。 */
   scale: number;
-  /** 相对锚点的 Y 偏移(设计像素,乘布局 scale)。 */
+  /** 相对锚点的 Y 偏移(设计像素,乘布局 scale;锚点已抬到躯干中心,一般 0~20)。 */
   offsetY: number;
   /** 循环播放(仅 BOSS 蓄力光环等持续型;一次性特效不填)。 */
   loop?: boolean;
