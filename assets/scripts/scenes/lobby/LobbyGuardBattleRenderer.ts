@@ -76,7 +76,7 @@ function rgba(r: number, g: number, b: number, a = 255): Color {
 
 const TICK_MS = 50;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
-const GUARD_BASE_ATTACK_SCALE = 0.25;
+const GUARD_BASE_ATTACK_SCALE = 1.0;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
 const GUARD_ROLE_COLOR: Record<string, Color> = {
   melee: new Color(232, 150, 92),
@@ -108,6 +108,8 @@ export class LobbyGuardBattleRenderer {
   private overlayShown = false;
   private dragFromCell: number | null = null;
   private dragGhost: Node | null = null;
+  /** 墙钟累积器:后台/节流环境 setInterval 触发率不可靠,按真实流逝补跑固定步长子 tick。 */
+  private lastTickWallMs = 0;
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -212,6 +214,7 @@ export class LobbyGuardBattleRenderer {
     this.renderSummonButton();
     this.renderExitButton(root, layout.width, layout.height);
     this.host.setStatus('矿境守卫:召唤英雄,守住矿晶水晶!');
+    this.lastTickWallMs = Date.now();
     this.tickTimer = setInterval(() => this.step(), TICK_MS);
   }
 
@@ -426,7 +429,14 @@ export class LobbyGuardBattleRenderer {
     if (!sim || !this.isMounted()) {
       return;
     }
-    const phase = guardTick(sim, TICK_MS);
+    // 固定步长累积器:一次回调补跑 (真实流逝/TICK_MS) 个子 tick,单次上限 1s 防挂起后雪崩。
+    const now = Date.now();
+    const elapsed = Math.min(1000, Math.max(TICK_MS, now - this.lastTickWallMs));
+    this.lastTickWallMs = now;
+    let phase = sim.phase;
+    for (let spent = 0; spent < elapsed && phase !== 'victory' && phase !== 'defeat'; spent += TICK_MS) {
+      phase = guardTick(sim, TICK_MS);
+    }
     this.consumeEvents();
     this.syncHeroes();
     this.syncMonsters();
