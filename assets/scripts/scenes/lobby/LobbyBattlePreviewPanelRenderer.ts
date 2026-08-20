@@ -543,10 +543,15 @@ export class LobbyBattlePreviewPanelRenderer {
       this.battleVictoryBannerShown = true;
       if (!trialMode) {
         this.renderResultBanner(field, presentationLayout.field.width, presentationLayout.field.height, scale, battleState, presentation, snapshot, hpState, playbackTimelineTimeMs);
+        // 视觉胜负确认即提前提交结算:消除"胜利框→演出窗口跑满"的空窗,期间离场不再丢结算。
+        // 用 setTimeout 移出当前渲染帧,避免 settle→bump→重渲染的同步重入。
+        setTimeout(() => this.host.settleLobbyBattleSession(), 0);
+      } else {
+        // 试炼收尾节拍(2026-08-20 视频:战斗中 0.5s 直接跳结算框太突兀):先弹"试炼完成!"大字,
+        // 700ms 后再提交结算;弹框到达时玩家已有"结束了"的预期。
+        this.renderBattleRhythmCallout(field, '试 炼 完 成 !', rgba(255, 240, 190), rgba(255, 200, 80), 'trial-end');
+        setTimeout(() => this.host.settleLobbyBattleSession(), 700);
       }
-      // 视觉胜负确认即提前提交结算:消除"胜利框→演出窗口跑满"的空窗,期间离场不再丢结算。
-      // 用 setTimeout 移出当前渲染帧,避免 settle→bump→重渲染的同步重入。
-      setTimeout(() => this.host.settleLobbyBattleSession(), 0);
     }
   }
 
@@ -1219,7 +1224,7 @@ export class LobbyBattlePreviewPanelRenderer {
       }
       // docs/29:读条期间 BOSS 脚下循环蓄力光环(魔圈领域),挂在 parent(field)上跨帧存活,
       // 读满/打断/BOSS 死亡由 clearBattleBossChargeFx 撤除;随 BOSS 体型倍率放大。
-      if (bossUnit && this.isNodeAlive(bossNode) && !parent.getChildByName(BATTLE_BOSS_CHARGE_FX_NODE)) {
+      if (bossUnit && this.isNodeAlive(bossNode) && !this.findBattleSkillFxNode(parent, BATTLE_BOSS_CHARGE_FX_NODE)) {
         const chargePlacement = this.resolveBattleSkillEffectPlacement(BOSS_CAST_CHARGE_EFFECT, bossKey, bossKey, width, height, scale, bossUnit.monsterDisplayScale ?? 1);
         this.spawnBattleSkillEffect(parent, BATTLE_BOSS_CHARGE_FX_NODE, BOSS_CAST_CHARGE_EFFECT, chargePlacement.x, chargePlacement.y, chargePlacement.size);
       }
@@ -2481,14 +2486,14 @@ export class LobbyBattlePreviewPanelRenderer {
       flashOpacity.opacity = 255;
       tween(flashOpacity).to(0.14, { opacity: 0 }).start();
     }
-    // 大字放在单位头顶上方一带(战场上 ~6%),不再与顶部名字牌/读条同高。
-    const y = height * 0.06;
-    const glowLabel = this.host.addChildLabel(root, 'Glow', text, 0, y, 50, glow, new Size(width * 0.8, 80));
+    // 大字放在名字牌与单位区之间(战场上 ~11.5%):再高压名字牌,再低与伤害飘字同位叠字(2026-08-20 视频)。
+    const y = height * 0.115;
+    const glowLabel = this.host.addChildLabel(root, 'Glow', text, 0, y, 44, glow, new Size(width * 0.8, 72));
     glowLabel.overflow = Label.Overflow.SHRINK;
     glowLabel.enableOutline = true;
     glowLabel.outlineColor = glow;
     glowLabel.outlineWidth = 6;
-    const label = this.host.addChildLabel(root, 'Text', text, 0, y, 50, color, new Size(width * 0.8, 80));
+    const label = this.host.addChildLabel(root, 'Text', text, 0, y, 44, color, new Size(width * 0.8, 72));
     label.overflow = Label.Overflow.SHRINK;
     label.enableOutline = true;
     label.outlineColor = rgba(40, 20, 10, 255);
@@ -4912,7 +4917,8 @@ export class LobbyBattlePreviewPanelRenderer {
     // 车道 Y 重映射进地面带:0.72 压缩保持车道间距比例,-160 整体下移到实景地面。
     return {
       x,
-      y: clamp(slot.y * laneYCompression * BATTLE_GROUND_CONVERGED_Y_SCALE * 0.85 - 150 * scale, BATTLE_GROUND_MIN_Y * scale, BATTLE_GROUND_MAX_Y * scale),
+      // 敌方下界抬高到 -300:右下角车道的敌人不再站进底部技能卡区(2026-08-20 视频"矿脉卫工被卡组遮住")。
+      y: clamp(slot.y * laneYCompression * BATTLE_GROUND_CONVERGED_Y_SCALE * 0.85 - 150 * scale, (enemy ? -300 : BATTLE_GROUND_MIN_Y) * scale, BATTLE_GROUND_MAX_Y * scale),
     };
   }
 
@@ -5556,6 +5562,8 @@ export class LobbyBattlePreviewPanelRenderer {
     const nodeName = enemy ? 'LobbyBattleEnemyStandin' : name;
     const x = 0;
     const y = -height / 2 + Math.max(46 * scale, height * 0.23);
+    // 占位剪影延迟淡入:骨骼通常 <1s 加载完,开场不再闪一排"蓝色假人"(2026-08-20 视频);
+    // 真加载慢时 0.9s 后淡入,仍保住占位功能。
     const standinWidth = Math.min(enemy ? 132 * scale : 120 * scale, width * (enemy ? 0.54 : 0.56));
     const standinHeight = Math.min(enemy ? 170 * scale : 164 * scale, height * 0.9);
     const standin = this.host.addChildPlainNode(parent, nodeName, x, y, standinWidth, standinHeight);
@@ -5566,6 +5574,10 @@ export class LobbyBattlePreviewPanelRenderer {
       }
     } else if (!this.renderBattleProtagonistFallbackSprite(standin, standinWidth, standinHeight, scale, unit, active)) {
       this.renderStage12HeroFallbackStandin(standin, standinWidth, standinHeight, scale, unit, active);
+      // 只延迟"英雄占位假人"(怪物 AI 立绘与主角立绘是正式美术,立即显示)。
+      const fade = standin.getComponent(UIOpacity) ?? standin.addComponent(UIOpacity);
+      fade.opacity = 0;
+      tween(fade).delay(0.9).to(0.3, { opacity: 255 }).start();
     }
     return standin;
   }
@@ -6623,7 +6635,8 @@ export class LobbyBattlePreviewPanelRenderer {
       }
     });
     if (!spec.loop) {
-      tween(node).delay(4.5).call(release).start();
+      // 兜底寿命 2.4s:打断/破防/爆点类特效不该赖着(部分素材动画尾巴长达 4s,视频里读作"不消散")。
+      tween(node).delay(2.4).call(release).start();
     }
     return node;
   }
@@ -6781,17 +6794,27 @@ export class LobbyBattlePreviewPanelRenderer {
     const anchorKey = spec.anchor === 'self' ? casterKey : targetKey;
     const anchorNode = this.battlePlaybackNodes.get(anchorKey);
     const unitHeight = anchorNode?.getComponent(UITransform)?.height ?? 220 * layoutScale;
-    const bodyScale = spec.anchor === 'target' ? Math.max(1, Math.min(3.5, targetBodyScale)) : 1;
-    const ratio = spec.anchor === 'self' ? BATTLE_SKILL_FX_SELF_UNIT_RATIO : BATTLE_SKILL_FX_TARGET_UNIT_RATIO;
+    const bodyScale = spec.anchor === 'target' || spec.placeAtFeet ? Math.max(1, Math.min(3.5, targetBodyScale)) : 1;
+    const ratio = spec.anchor === 'self' && !spec.placeAtFeet ? BATTLE_SKILL_FX_SELF_UNIT_RATIO : BATTLE_SKILL_FX_TARGET_UNIT_RATIO;
     const x = anchorNode?.position.x ?? 0;
-    // 单位节点锚点在脚底偏上(slot 中心);特效中心抬到躯干:+unitHeight*0.12 + 配置偏移
-    const y = (anchorNode?.position.y ?? 0) + unitHeight * 0.12 + spec.offsetY * layoutScale;
+    // 单位节点锚点在脚底偏上(slot 中心);默认特效中心抬到躯干,脚下型(蓄力魔圈)压到脚底。
+    const y = (anchorNode?.position.y ?? 0)
+      + (spec.placeAtFeet ? -unitHeight * 0.38 : unitHeight * 0.12)
+      + spec.offsetY * layoutScale;
     return { x, y, size: unitHeight * ratio * (1 + (bodyScale - 1) * 0.6) };
   }
 
   // BOSS 蓄力光环(循环)撤除:读满/打断/BOSS 死亡/读条结束都会走到这里;不存在即无操作。
+  // 特效节点在专用裁剪层内查找(2026-08-20 视频回归:spawn 挂到 fx layer 后,直接在 field 下找恒为 null,
+  // 蓄力光环每帧重复生成且永远撤不掉,叠加到刺眼、直到结算才随场销毁)。
+  private findBattleSkillFxNode(field: Node, nodeName: string): Node | null {
+    return field.getChildByName(BATTLE_SKILL_FX_LAYER_NODE)?.getChildByName(nodeName)
+      ?? field.getChildByName(nodeName)
+      ?? null;
+  }
+
   private clearBattleBossChargeFx(parent: Node): void {
-    const node = parent.getChildByName(BATTLE_BOSS_CHARGE_FX_NODE);
+    const node = this.findBattleSkillFxNode(parent, BATTLE_BOSS_CHARGE_FX_NODE);
     if (!node) {
       return;
     }
@@ -7184,6 +7207,10 @@ export class LobbyBattlePreviewPanelRenderer {
     impactProfile: BattleImpactProfile,
   ): void {
     // 同一动作的连击各段共用一个键:连击 x2/x3 不再叠 2~3 层把画面洗白。
+    // 2026-08-20 视频验收:普攻的整屏灰罩(即便减半)仍让画面周期性发灰且罩边界可见 → 只保留暴击一闪。
+    if (!impactProfile.isCritical) {
+      return;
+    }
     const hitStopKey = `effect:impact:hitStop:${currentActionCue.actionSeq}:${currentActionCue.actorKey}`;
     if (this.playedBattleCueKeys.has(hitStopKey)) {
       return;
@@ -7193,11 +7220,11 @@ export class LobbyBattlePreviewPanelRenderer {
     const layer = this.host.addChildPlainNode(parent, BATTLE_IMPACT_HIT_STOP_LAYER_NAME, 0, 0, width, height);
     this.markBattleTransientEffectLayer(layer);
     const graphics = layer.addComponent(Graphics);
-    graphics.fillColor = impactProfile.isCritical ? rgba(255, 246, 196, 22) : rgba(255, 255, 255, 10);
-    graphics.rect(-width / 2, -height / 2, width, height);
+    graphics.fillColor = rgba(255, 246, 196, 16);
+    graphics.rect(-width, -height, width * 2, height * 2);
     graphics.fill();
     const opacity = layer.addComponent(UIOpacity);
-    opacity.opacity = impactProfile.isCritical ? 64 : 40;
+    opacity.opacity = 52;
     const holdSeconds = Math.max(0.04, impactProfile.hitStopMs / 1000);
     tween(opacity)
       .delay(holdSeconds)

@@ -20,6 +20,8 @@ export interface BattleSkillEffectSpec {
   offsetY: number;
   /** 循环播放(仅 BOSS 蓄力光环等持续型;一次性特效不填)。 */
   loop?: boolean;
+  /** 贴脚底(地面魔圈类):锚点压到单位脚下且随目标体型放大。 */
+  placeAtFeet?: boolean;
 }
 
 // ── 英雄大招特效(heroCode → spec)──
@@ -84,10 +86,10 @@ export function resolveHeroUltEffect(heroCode: string | null | undefined, heroCl
 // burst:读满全屏暗红冲击(灭世之愿,契合"灭世咆哮");
 // interrupt:被打断的破碎反馈(特殊受击爆点);
 // break:破防窗口开启的裂甲金光。
-export const BOSS_CAST_CHARGE_EFFECT: BattleSkillEffectSpec = { effect: 'fx_6602_moquanlingyu', animation: 'xia', anchor: 'self', scale: 1.0, offsetY: -8, loop: true }; // 魔圈领域(xia=脚下层):暗红蓄力光环
+export const BOSS_CAST_CHARGE_EFFECT: BattleSkillEffectSpec = { effect: 'fx_6602_moquanlingyu', animation: 'xia', anchor: 'self', scale: 0.9, offsetY: 0, loop: true, placeAtFeet: true }; // 魔圈领域(xia=脚下层):暗红蓄力光环
 export const BOSS_CAST_BURST_EFFECT: BattleSkillEffectSpec = { effect: 'fx_650079_mieshizhiyuan_texiao', animation: 'skill', anchor: 'fullscreen', scale: 1.1, offsetY: 0 }; // 灭世之愿:全屏暗红爆发
-export const BOSS_CAST_INTERRUPT_EFFECT: BattleSkillEffectSpec = { effect: 'fx_650059_specialhit', animation: 'hit', anchor: 'target', scale: 1.0, offsetY: 20 }; // 特殊受击:打断破碎反馈
-export const BOSS_BREAK_EFFECT: BattleSkillEffectSpec = { effect: 'fx_63001_yanguang_texiao', animation: 'skill1', anchor: 'target', scale: 1.0, offsetY: 16 }; // 焰光:破防裂甲金光
+export const BOSS_CAST_INTERRUPT_EFFECT: BattleSkillEffectSpec = { effect: 'fx_650059_specialhit', animation: 'hit', anchor: 'target', scale: 0.78, offsetY: 20 }; // 特殊受击:打断破碎反馈
+export const BOSS_BREAK_EFFECT: BattleSkillEffectSpec = { effect: 'fx_63001_yanguang_texiao', animation: 'skill1', anchor: 'target', scale: 0.62, offsetY: 16 }; // 焰光:破防裂甲金光
 
 /** 资源路径:assets/resources/spine/effect/<effect>/<effect>(与 SpineDataStore.loadSharedSpineData 直接对接)。 */
 export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): string {
