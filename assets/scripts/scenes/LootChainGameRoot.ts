@@ -60,6 +60,7 @@ import { LobbyBagLoader, type LobbyBagLoaderHost } from './lobby/LobbyBagLoader'
 import { LobbyBagPanelRenderer, type LobbyBagPanelHost } from './lobby/LobbyBagPanelRenderer';
 import { LobbyBattleFlow, type LobbyBattleFlowHost } from './lobby/LobbyBattleFlow';
 import { LobbyBattlePreviewPanelRenderer, type LobbyBattlePreviewPanelHost } from './lobby/LobbyBattlePreviewPanelRenderer';
+import { LobbyGuardBattleRenderer, type LobbyGuardBattleHost } from './lobby/LobbyGuardBattleRenderer';
 import { LobbyCodexState } from './lobby/LobbyCodexState';
 import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/LobbyCodexPanelRenderer';
 import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/LobbyForgePanelRenderer';
@@ -236,6 +237,8 @@ export class LootChainGameRoot extends Component {
   private idleClaiming = false;
   private autoChallengeEnabled = false;
   private readonly lobbyBattlePreviewPanelRenderer = new LobbyBattlePreviewPanelRenderer(this as unknown as LobbyBattlePreviewPanelHost);
+  // 矿境守卫(docs/30 P1 原型):限时副本难度Ⅰ切新玩法,其余关卡仍走旧回放。
+  private readonly lobbyGuardBattleRenderer = new LobbyGuardBattleRenderer(this as unknown as LobbyGuardBattleHost);
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
@@ -694,9 +697,31 @@ export class LootChainGameRoot extends Component {
     this.renderLobbyHud(layout);
   }
 
+  // 矿境守卫启用面:P1=限时副本难度Ⅰ(DAILY_*_1);后续 P3 扩三难度、P5 扩主线。
+  private isGuardBattleStage(stageCode: string | null | undefined): boolean {
+    return /^DAILY_[A-Z]+_1$/i.test((stageCode || '').trim());
+  }
+
+  private isGuardBattleActive(): boolean {
+    const battleState = this.currentLobbyBattleState();
+    return this.isGuardBattleStage(battleState.start?.stageCode || battleState.stageCode || this.selectedLobbyStageCode);
+  }
+
+  // 矿境守卫胜负(LobbyBattleFlow 结算口径);守卫局进行中返回 PENDING(禁自动结算),非守卫模式 null。
+  private resolveGuardBattleOutcome(): 'WIN' | 'LOSE' | 'PENDING' | null {
+    if (!this.isGuardBattleActive()) {
+      return null;
+    }
+    return this.lobbyGuardBattleRenderer.resolveOutcome() ?? 'PENDING';
+  }
+
   private renderBattleScene(): void {
     this.currentView = 'battle';
     const layout = this.renderBase();
+    if (this.isGuardBattleActive()) {
+      this.lobbyGuardBattleRenderer.render(layout);
+      return;
+    }
     // 战斗从大厅弹框升级为全屏逻辑视图，但仍复用现有 no-reward battle flow。
     this.renderLobbyBattlePreviewPanel(layout);
   }
@@ -1920,6 +1945,20 @@ export class LootChainGameRoot extends Component {
     if (!this.lobbyBattlePreviewPanelOpen) {
       return;
     }
+    if (this.currentView === 'battle' && this.isGuardBattleActive()) {
+      // 守卫模式自带 tick 循环;flow bump 只用于开战回执/结算回执到达时的界面推进。
+      const layout = this.resolveLayout();
+      if (this.lobbyGuardBattleRenderer.isMounted()) {
+        this.lobbyGuardBattleRenderer.onBattleStateBump();
+        const battleState = this.currentLobbyBattleState();
+        if (!battleState.start || battleState.assetsLoading) {
+          this.lobbyGuardBattleRenderer.render(layout);
+        }
+      } else {
+        this.lobbyGuardBattleRenderer.render(layout);
+      }
+      return;
+    }
     if (this.currentView === 'battle') {
       const battleState = this.currentLobbyBattleState();
       if (battleState.start && !battleState.presentationComplete && this.lobbyBattlePreviewPanelRenderer.canRefreshPlayback()) {
@@ -1939,6 +1978,9 @@ export class LootChainGameRoot extends Component {
 
   private refreshLobbyBattlePresentationPlayback(): void {
     if (!this.lobbyBattlePreviewPanelOpen || this.currentView !== 'battle') {
+      return;
+    }
+    if (this.isGuardBattleActive()) {
       return;
     }
     const battleState = this.currentLobbyBattleState();
@@ -1988,6 +2030,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyBattlePreviewPanelOpen = false;
     this.lobbyFormationPanelOpen = false;
     this.lobbyBattleFlow.cancel(true);
+    this.lobbyGuardBattleRenderer.unmount();
     this.currentView = 'lobby';
     this.removeLobbyBattlePreviewPanel();
     this.removeLobbyFormationPanel();

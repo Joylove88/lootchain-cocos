@@ -27,6 +27,9 @@ export interface LobbyBattleFlowHost {
   preloadBattleSessionAssets?(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void>;
   // 输出试炼(难度Ⅲ):结算上报击破层数(与战斗内层数血条同口径,含手动大招);非试炼/异常返回 null。
   resolveTrialLayersCleared?(): number | null;
+  // 矿境守卫(docs/30):守卫模式激活时由守卫 sim 提供胜负;'PENDING'=守卫局仍在进行(禁止演出计时器自动结算);
+  // null=非守卫模式(回退旧回放口径)。
+  resolveGuardBattleOutcome?(): 'WIN' | 'LOSE' | 'PENDING' | null;
 }
 
 // 加载界面至少展示这么久:资产全命中缓存时避免一帧闪烁,节奏与市面进战转场一致。
@@ -377,6 +380,13 @@ export class LobbyBattleFlow {
       );
       this.state.presentationComplete = elapsedMs >= totalDurationMs;
       if (this.state.presentationComplete) {
+        // 矿境守卫:实时局没有固定演出时长,sim 未分出胜负前不许计时器自动结算(守卫渲染层终局时主动 settle)。
+        if (this.host.resolveGuardBattleOutcome?.() === 'PENDING') {
+          this.state.presentationComplete = false;
+          const waitTimer = setTimeout(tick, 500);
+          this.presentationTimers.push(waitTimer);
+          return;
+        }
         this.host.setStatus('战斗演出完成，正在提交后端结算…');
         this.bump();
         void this.settle();
@@ -408,6 +418,10 @@ export class LobbyBattleFlow {
   private resolveBattleOutcome(): PlayerBattleSettleDTO['result'] {
     if (!this.state.start) {
       return 'WIN';
+    }
+    const guardOutcome = this.host.resolveGuardBattleOutcome?.() ?? null;
+    if (guardOutcome === 'WIN' || guardOutcome === 'LOSE') {
+      return guardOutcome;
     }
     try {
       const snapshot = resolveLobbyBattlePresentationSnapshot(this.state, this.host.currentLobbyHeroRosterState().heroes);
