@@ -1,10 +1,11 @@
-// 矿境守卫(docs/30 守卫-P1)纯逻辑 sim:召唤/合成/波次/车道行进/啃水晶/胜负。
+// 矿境守卫(docs/30 守卫-P1/P2)纯逻辑 sim:召唤/合成/波次/车道行进/啃水晶/胜负 +
+// P2:宝箱跳奖/局内升级三选一(跳过·刷新·放逐)/强化线/BOSS 读条集火打断/飞行·远程怪/水晶技能/波次预告。
 // 无 cc 依赖(可 node 离线验证);渲染层每 tick 读状态绘制。确定性:全部随机走 seeded RNG
 // (serverSeed 派生),同 seed+同操作序列 → 同结果,为 P3 服务端复演留口。
 // 纯表现+现有结算通道:不新增经济写入口,胜负经 LobbyBattleFlow.settle 由后端权威裁决。
 
 export type GuardHeroRole = 'melee' | 'ranged' | 'support' | 'control';
-export type GuardMonsterKind = 'normal' | 'fast' | 'tank' | 'elite' | 'boss';
+export type GuardMonsterKind = 'normal' | 'fast' | 'tank' | 'flying' | 'shooter' | 'elite' | 'boss';
 export type GuardPhase = 'prep' | 'wave' | 'victory' | 'defeat';
 
 /** 上阵英雄(召唤池条目):由 battle start 回执 lineup 折算。 */
@@ -36,7 +37,7 @@ export interface GuardMonster {
   monsterId: number;
   kind: GuardMonsterKind;
   lane: number;
-  /** 距水晶的路程(格),SPAWN_X 起向 0 走;≤CRYSTAL_REACH_X 停下啃水晶。 */
+  /** 距水晶的路程(格),SPAWN_X 起向 0 走;≤CRYSTAL_REACH_X(shooter 为 SHOOTER_STAND_X)停下攻击水晶。 */
   x: number;
   hp: number;
   maxHp: number;
@@ -44,6 +45,8 @@ export interface GuardMonster {
   crystalDamage: number;
   attackCooldownMs: number;
   slowUntilMs: number;
+  /** BOSS 读条被打断后的踉跄(不移动不读条)。 */
+  stunnedUntilMs: number;
   spawnedWave: number;
   /** 渲染层骨骼资源名(spine/monster/<code>)。 */
   spineCode: string;
@@ -51,8 +54,47 @@ export interface GuardMonster {
   diedAtMs: number;
 }
 
+/** 精英掉落宝箱(点击开箱→跳奖)。 */
+export interface GuardChest {
+  chestId: number;
+  x: number;
+  lane: number;
+  droppedAtMs: number;
+}
+
+/** 三选一选项(P2 白池=通用属性;蓝/金留 P4)。 */
+export interface GuardChoiceOption {
+  id: string;
+  title: string;
+  detail: string;
+}
+
+export interface GuardMods {
+  /** 全队攻击 +%(词条与强化线合并计入)。 */
+  teamAtkPct: number;
+  /** 攻速 +%(缩短出手间隔)。 */
+  atkSpeedPct: number;
+  /** 金币获取 +%。 */
+  goldGainPct: number;
+  /** 召唤费直减。 */
+  summonDiscount: number;
+  /** 水晶荆棘 +%。 */
+  thornsPct: number;
+}
+
+export interface GuardBossCast {
+  monsterId: number;
+  startMs: number;
+  hitMs: number;
+  /** 读条期间对 BOSS 造成的伤害;≥threshold 即打断。 */
+  damageTaken: number;
+  threshold: number;
+}
+
 export interface GuardEvent {
-  type: 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack';
+  type:
+    | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
+    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -60,6 +102,9 @@ export interface GuardEvent {
   monsterId?: number;
   wave?: number;
   amount?: number;
+  chestId?: number;
+  /** chestOpen:跳奖档位(1/3/5)。 */
+  tier?: number;
 }
 
 export interface GuardBattleState {
@@ -67,10 +112,14 @@ export interface GuardBattleState {
   rng: () => number;
   timeMs: number;
   phase: GuardPhase;
+  /** 覆盖层(开箱/三选一)打开时暂停 sim(时间不前进)。 */
+  paused: boolean;
   wave: number;
   maxWave: number;
   /** 本波剩余待刷 + 刷怪计时。 */
   pendingSpawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }>;
+  /** 下一波构成(prep 期生成,供预告条;startWave 消费)。 */
+  nextWaveSpawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> | null;
   waveStartedAtMs: number;
   gold: number;
   summonCost: number;
@@ -79,11 +128,27 @@ export interface GuardBattleState {
   crystalMaxHp: number;
   heroes: GuardHeroUnit[];
   monsters: GuardMonster[];
+  chests: GuardChest[];
   pool: GuardPoolHero[];
   killCount: number;
   xp: number;
+  level: number;
+  xpIntoLevel: number;
+  /** 待处理三选一(存在即暂停;由 guardChooseOption/Skip/Reroll/Banish 消费)。 */
+  pendingChoice: GuardChoiceOption[] | null;
+  rerollLeft: number;
+  banishLeft: number;
+  banished: string[];
+  mods: GuardMods;
+  enhanceLevel: number;
+  enhanceCost: number;
+  crystalSkillReadyMs: number;
+  bossCast: GuardBossCast | null;
+  nextBossCastMs: number;
+  chestOpenedCount: number;
   nextUnitId: number;
   nextMonsterId: number;
+  nextChestId: number;
   /** 渲染层逐帧消费后清空(飘字/特效一次性事件)。 */
   events: GuardEvent[];
   bossKilled: boolean;
@@ -95,6 +160,8 @@ export const GUARD_GRID_COLS = 4;
 export const GUARD_GRID_CELLS = GUARD_GRID_ROWS * GUARD_GRID_COLS;
 export const GUARD_SPAWN_X = 10;
 export const GUARD_CRYSTAL_REACH_X = 0.6;
+/** 远程怪站桩位:射程外啃水晶,逼玩家配远程/控制。 */
+export const GUARD_SHOOTER_STAND_X = 3.2;
 /** 格列→路程 x 坐标(col3 最靠前)。 */
 export function guardCellX(cell: number): number {
   return 1.5 + (cell % GUARD_GRID_COLS);
@@ -107,6 +174,7 @@ export const GUARD_START_GOLD = 240;
 export const GUARD_SUMMON_BASE_COST = 60;
 export const GUARD_SUMMON_COST_STEP = 10;
 export const GUARD_SUMMON_COST_CAP = 300;
+export const GUARD_SUMMON_COST_MIN = 30;
 export const GUARD_SUPER_MERGE_CHANCE = 0.1;
 export const GUARD_MAX_STAR = 5;
 /** 星级攻击倍率:atk = base × 2.2^(star-1)。 */
@@ -126,12 +194,33 @@ export const GUARD_SUPPORT_CRYSTAL_HEAL_RATIO = 0.025;
 export const GUARD_CRYSTAL_THORNS_BASE = 6;
 export const GUARD_CRYSTAL_THORNS_PER_WAVE = 3;
 
-export const GUARD_KILL_GOLD: Record<GuardMonsterKind, number> = { normal: 8, fast: 6, tank: 14, elite: 60, boss: 200 };
-export const GUARD_KILL_XP: Record<GuardMonsterKind, number> = { normal: 1, fast: 1, tank: 2, elite: 10, boss: 30 };
+// P2:强化线(全队攻击等级)/宝箱跳奖/三选一/BOSS 读条/水晶技能
+export const GUARD_ENHANCE_BASE_COST = 40;
+export const GUARD_ENHANCE_COST_STEP = 20;
+export const GUARD_ENHANCE_ATK_PCT = 8;
+export const GUARD_CHEST_TIER5_CHANCE = 0.03;
+export const GUARD_CHEST_TIER3_CHANCE = 0.1;
+export const GUARD_BOSS_CAST_INTERVAL_MS = 12_000;
+export const GUARD_BOSS_CAST_DURATION_MS = 5_000;
+/** 读条期间打掉 BOSS 最大生命的这个比例即打断。 */
+export const GUARD_BOSS_CAST_INTERRUPT_HP_RATIO = 0.06;
+/** 读满轰击:水晶损失最大生命比例。 */
+export const GUARD_BOSS_CAST_CRYSTAL_RATIO = 0.15;
+export const GUARD_BOSS_STUN_MS = 2_500;
+export const GUARD_CRYSTAL_SKILL_CD_MS = 45_000;
+export const GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS = 1.2;
+export function guardCrystalSkillDamage(wave: number): number {
+  return 60 + 25 * Math.max(1, wave);
+}
+
+export const GUARD_KILL_GOLD: Record<GuardMonsterKind, number> = { normal: 8, fast: 6, tank: 14, flying: 8, shooter: 12, elite: 60, boss: 200 };
+export const GUARD_KILL_XP: Record<GuardMonsterKind, number> = { normal: 1, fast: 1, tank: 2, flying: 1, shooter: 2, elite: 10, boss: 30 };
 const MONSTER_PROFILE: Record<GuardMonsterKind, { hpMult: number; speed: number; dmgMult: number; spineCodes: string[] }> = {
   normal: { hpMult: 1, speed: 0.55, dmgMult: 1, spineCodes: ['mutant_male', 'infected_male', 'goathead_blade'] },
   fast: { hpMult: 0.6, speed: 0.95, dmgMult: 0.7, spineCodes: ['medium_dog', 'medium_rat', 'small_spider'] },
   tank: { hpMult: 2.4, speed: 0.4, dmgMult: 1.2, spineCodes: ['large_bear', 'hammer_tanker', 'mutant_fatman'] },
+  flying: { hpMult: 0.7, speed: 0.7, dmgMult: 0.8, spineCodes: ['small_bat', 'small_raven', 'crow_reaper'] },
+  shooter: { hpMult: 0.9, speed: 0.5, dmgMult: 0.9, spineCodes: ['crossbow_male', 'bow_male', 'cursed_caster'] },
   elite: { hpMult: 8, speed: 0.45, dmgMult: 2.2, spineCodes: ['abyss_jailer', 'forge_overseer', 'gargoyle'] },
   boss: { hpMult: 40, speed: 0.28, dmgMult: 8, spineCodes: ['rock_golem', 'abyss_devilman', 'grand_magus'] },
 };
@@ -145,14 +234,27 @@ export const GUARD_TIME_LIMIT_MS = 15 * 60 * 1000;
 const WAVE_SPAWN_WINDOW_MS = 18000;
 export const GUARD_WAVE_WAGE_BASE = 40;
 
-/** 难度Ⅰ:10 波;第 5 波精英,第 10 波 BOSS。 */
+/** 难度Ⅰ:10 波;第 5 波精英,第 10 波 BOSS;飞行怪 4 波起、远程怪 6 波起(阵容检查器)。 */
 export function guardWaveComposition(wave: number, rng: () => number): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
   const spawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> = [];
   // 前两波只出普通怪且量少:开局站位/召唤还没成型,别让坏运气第 1 波就翻车。
   const count = (wave <= 2 ? 4 : 6) + wave * 2;
   for (let i = 0; i < count; i += 1) {
     const roll = rng();
-    const kind: GuardMonsterKind = wave <= 2 ? 'normal' : roll < 0.62 ? 'normal' : roll < 0.85 ? 'fast' : 'tank';
+    let kind: GuardMonsterKind;
+    if (wave <= 2) {
+      kind = 'normal';
+    } else if (wave >= 6 && roll > 0.9) {
+      kind = 'shooter';
+    } else if (wave >= 4 && roll > 0.8) {
+      kind = 'flying';
+    } else if (roll > 0.78) {
+      kind = 'tank';
+    } else if (roll > 0.55) {
+      kind = 'fast';
+    } else {
+      kind = 'normal';
+    }
     spawns.push({ kind, lane: Math.floor(rng() * GUARD_GRID_ROWS), atMs: Math.round((i / count) * WAVE_SPAWN_WINDOW_MS) });
   }
   if (wave === 5) {
@@ -162,6 +264,15 @@ export function guardWaveComposition(wave: number, rng: () => number): Array<{ k
     spawns.push({ kind: 'boss', lane: 1, atMs: 2000 });
   }
   return spawns;
+}
+
+/** 波次预告汇总(渲染层直接展示)。 */
+export function guardSummarizeSpawns(spawns: Array<{ kind: GuardMonsterKind }> | null): Partial<Record<GuardMonsterKind, number>> {
+  const summary: Partial<Record<GuardMonsterKind, number>> = {};
+  for (const spawn of spawns ?? []) {
+    summary[spawn.kind] = (summary[spawn.kind] ?? 0) + 1;
+  }
+  return summary;
 }
 
 // ── RNG(mulberry32,seed 由 serverSeed 字符串散列)──
@@ -212,9 +323,11 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     rng,
     timeMs: 0,
     phase: 'prep',
+    paused: false,
     wave: 0,
     maxWave,
     pendingSpawns: [],
+    nextWaveSpawns: null,
     waveStartedAtMs: 0,
     gold: GUARD_START_GOLD,
     summonCost: GUARD_SUMMON_BASE_COST,
@@ -223,11 +336,26 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     crystalMaxHp: GUARD_CRYSTAL_MAX_HP,
     heroes: [],
     monsters: [],
+    chests: [],
     pool,
     killCount: 0,
     xp: 0,
+    level: 1,
+    xpIntoLevel: 0,
+    pendingChoice: null,
+    rerollLeft: 1,
+    banishLeft: 1,
+    banished: [],
+    mods: { teamAtkPct: 0, atkSpeedPct: 0, goldGainPct: 0, summonDiscount: 0, thornsPct: 0 },
+    enhanceLevel: 0,
+    enhanceCost: GUARD_ENHANCE_BASE_COST,
+    crystalSkillReadyMs: 0,
+    bossCast: null,
+    nextBossCastMs: 0,
+    chestOpenedCount: 0,
     nextUnitId: 1,
     nextMonsterId: 1,
+    nextChestId: 1,
     events: [],
     bossKilled: false,
   };
@@ -248,18 +376,25 @@ function guardEmptyCells(state: GuardBattleState): number[] {
   return cells;
 }
 
-/** 召唤:金币够+有空格 → 随机池英雄 1 星放随机空格,费用递增。 */
-export function guardSummon(state: GuardBattleState): GuardHeroUnit | null {
+export function guardCurrentSummonCost(state: GuardBattleState): number {
+  return Math.max(GUARD_SUMMON_COST_MIN, state.summonCost - state.mods.summonDiscount);
+}
+
+/** 召唤:金币够+有空格 → 随机池英雄 1 星放随机空格,费用递增。free=宝箱奖励召唤(不扣费不涨价)。 */
+export function guardSummon(state: GuardBattleState, free = false): GuardHeroUnit | null {
   if (state.phase === 'victory' || state.phase === 'defeat') {
     return null;
   }
   const cells = guardEmptyCells(state);
-  if (cells.length === 0 || state.gold < state.summonCost || state.pool.length === 0) {
+  const cost = guardCurrentSummonCost(state);
+  if (cells.length === 0 || state.pool.length === 0 || (!free && state.gold < cost)) {
     return null;
   }
-  state.gold -= state.summonCost;
-  state.summonCount += 1;
-  state.summonCost = Math.min(GUARD_SUMMON_COST_CAP, GUARD_SUMMON_BASE_COST + state.summonCount * GUARD_SUMMON_COST_STEP);
+  if (!free) {
+    state.gold -= cost;
+    state.summonCount += 1;
+    state.summonCost = Math.min(GUARD_SUMMON_COST_CAP, GUARD_SUMMON_BASE_COST + state.summonCount * GUARD_SUMMON_COST_STEP);
+  }
   const pick = state.pool[Math.floor(state.rng() * state.pool.length)];
   const cell = cells[Math.floor(state.rng() * cells.length)];
   const unit: GuardHeroUnit = {
@@ -275,6 +410,18 @@ export function guardSummon(state: GuardBattleState): GuardHeroUnit | null {
   state.heroes.push(unit);
   state.events.push({ type: 'summon', timeMs: state.timeMs, heroCode: unit.heroCode, star: 1, cell });
   return unit;
+}
+
+/** 强化线:花金币升全队攻击等级(每级 +8%),费用递增——与召唤争夺同一份金币。 */
+export function guardEnhance(state: GuardBattleState): boolean {
+  if (state.phase === 'victory' || state.phase === 'defeat' || state.gold < state.enhanceCost) {
+    return false;
+  }
+  state.gold -= state.enhanceCost;
+  state.enhanceLevel += 1;
+  state.enhanceCost = GUARD_ENHANCE_BASE_COST + state.enhanceLevel * GUARD_ENHANCE_COST_STEP;
+  state.events.push({ type: 'enhance', timeMs: state.timeMs, amount: state.enhanceLevel });
+  return true;
 }
 
 /** 拖拽:目标空格=换位;同名同星=合成(10% 超阶 +2 星);其余无操作。返回操作类型。 */
@@ -305,14 +452,233 @@ export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUni
   const pool = state.pool.find((entry) => entry.heroCode === hero.heroCode);
   const base = pool?.baseAttack ?? 40;
   const profile = GUARD_ROLE_PROFILE[hero.role];
-  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1)));
+  const teamPct = state.mods.teamAtkPct + state.enhanceLevel * GUARD_ENHANCE_ATK_PCT;
+  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100)));
+}
+
+// ── P2:XP/三选一 ──
+function xpThreshold(level: number): number {
+  // VS 分段线性:首级 5,每级 +10,21 级起 +13。
+  return level <= 20 ? 5 + 10 * (level - 1) : 205 + 13 * (level - 20);
+}
+
+const CHOICE_POOL: GuardChoiceOption[] = [
+  { id: 'atk10', title: '全队攻击 +10%', detail: '立即生效,可叠加' },
+  { id: 'speed8', title: '全队攻速 +8%', detail: '缩短出手间隔,可叠加' },
+  { id: 'gold10', title: '金币获取 +10%', detail: '击杀金币加成,可叠加' },
+  { id: 'summon-10', title: '召唤费 -10', detail: '召唤更便宜(下限 30)' },
+  { id: 'heal25', title: '水晶修复 25%', detail: '立即回复水晶生命' },
+  { id: 'thorns50', title: '水晶荆棘 +50%', detail: '啃水晶的怪反伤更痛,可叠加' },
+];
+
+function rollChoices(state: GuardBattleState): GuardChoiceOption[] {
+  const pool = CHOICE_POOL.filter((option) => !state.banished.includes(option.id));
+  const picked: GuardChoiceOption[] = [];
+  const candidates = [...pool];
+  while (picked.length < 3 && candidates.length > 0) {
+    const index = Math.floor(state.rng() * candidates.length);
+    picked.push(candidates.splice(index, 1)[0]);
+  }
+  return picked;
+}
+
+function grantXp(state: GuardBattleState, amount: number): void {
+  state.xp += amount;
+  state.xpIntoLevel += amount;
+  // 一次只弹一个三选一;溢出经验保留,选完继续判级。
+  if (!state.pendingChoice && state.xpIntoLevel >= xpThreshold(state.level)) {
+    state.xpIntoLevel -= xpThreshold(state.level);
+    state.level += 1;
+    state.pendingChoice = rollChoices(state);
+    state.events.push({ type: 'levelUp', timeMs: state.timeMs, amount: state.level });
+  }
+}
+
+function applyChoice(state: GuardBattleState, option: GuardChoiceOption): void {
+  switch (option.id) {
+    case 'atk10': state.mods.teamAtkPct += 10; break;
+    case 'speed8': state.mods.atkSpeedPct = Math.min(50, state.mods.atkSpeedPct + 8); break;
+    case 'gold10': state.mods.goldGainPct += 10; break;
+    case 'summon-10': state.mods.summonDiscount += 10; break;
+    case 'heal25': state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.25)); break;
+    case 'thorns50': state.mods.thornsPct += 50; break;
+    default: break;
+  }
+}
+
+function afterChoiceResolved(state: GuardBattleState): void {
+  state.pendingChoice = null;
+  // 溢出经验可能直接再升一级。
+  if (state.xpIntoLevel >= xpThreshold(state.level)) {
+    state.xpIntoLevel -= xpThreshold(state.level);
+    state.level += 1;
+    state.pendingChoice = rollChoices(state);
+    state.events.push({ type: 'levelUp', timeMs: state.timeMs, amount: state.level });
+  }
+}
+
+export function guardChooseOption(state: GuardBattleState, index: number): boolean {
+  const option = state.pendingChoice?.[index];
+  if (!option) {
+    return false;
+  }
+  applyChoice(state, option);
+  afterChoiceResolved(state);
+  return true;
+}
+
+/** 跳过=换 50 金币。 */
+export function guardSkipChoice(state: GuardBattleState): boolean {
+  if (!state.pendingChoice) {
+    return false;
+  }
+  state.gold += 50;
+  afterChoiceResolved(state);
+  return true;
+}
+
+export function guardRerollChoice(state: GuardBattleState): boolean {
+  if (!state.pendingChoice || state.rerollLeft <= 0) {
+    return false;
+  }
+  state.rerollLeft -= 1;
+  state.pendingChoice = rollChoices(state);
+  return true;
+}
+
+/** 放逐:把某选项本局踢出池并立刻重摇(不耗刷新次数)。 */
+export function guardBanishChoice(state: GuardBattleState, index: number): boolean {
+  const option = state.pendingChoice?.[index];
+  if (!option || state.banishLeft <= 0) {
+    return false;
+  }
+  state.banishLeft -= 1;
+  state.banished.push(option.id);
+  state.pendingChoice = rollChoices(state);
+  return true;
+}
+
+// ── P2:宝箱跳奖 ──
+export interface GuardChestReward {
+  kind: 'gold' | 'summon' | 'teamAtk';
+  amount: number;
+  label: string;
+}
+
+/**
+ * 开箱:跳奖档位 3%→5连 / 10%→3连 / 其余 1连(账号前 3 箱由渲染层传 scriptTier 固定 1-3-5)。
+ * 返回逐件奖励(渲染层轮盘演出逐件揭示);奖励立即入账。
+ */
+export function guardOpenChest(state: GuardBattleState, chestId: number, scriptTier?: 1 | 3 | 5): { tier: number; rewards: GuardChestReward[] } | null {
+  const chestIndex = state.chests.findIndex((chest) => chest.chestId === chestId);
+  if (chestIndex < 0) {
+    return null;
+  }
+  state.chests.splice(chestIndex, 1);
+  state.chestOpenedCount += 1;
+  let tier: number;
+  if (scriptTier) {
+    tier = scriptTier;
+  } else {
+    const roll = state.rng();
+    tier = roll < GUARD_CHEST_TIER5_CHANCE ? 5 : roll < GUARD_CHEST_TIER5_CHANCE + GUARD_CHEST_TIER3_CHANCE ? 3 : 1;
+  }
+  const rewards: GuardChestReward[] = [];
+  for (let i = 0; i < tier; i += 1) {
+    const roll = state.rng();
+    if (roll < 0.45) {
+      const amount = Math.round(150 * (1 + state.mods.goldGainPct / 100));
+      state.gold += amount;
+      rewards.push({ kind: 'gold', amount, label: `战斗金币 +${amount}` });
+    } else if (roll < 0.75) {
+      const unit = guardSummon(state, true);
+      rewards.push(unit
+        ? { kind: 'summon', amount: 1, label: `免费召唤:${unit.heroCode}` }
+        : { kind: 'gold', amount: 100, label: '阵地已满 → 金币 +100' });
+      if (!unit) {
+        state.gold += 100;
+      }
+    } else {
+      state.mods.teamAtkPct += 8;
+      rewards.push({ kind: 'teamAtk', amount: 8, label: '全队攻击 +8%' });
+    }
+  }
+  state.events.push({ type: 'chestOpen', timeMs: state.timeMs, chestId, tier });
+  return { tier, rewards };
+}
+
+// ── P2:水晶技能(矿晶震荡) ──
+export function guardCrystalSkillReady(state: GuardBattleState): boolean {
+  return state.timeMs >= state.crystalSkillReadyMs;
+}
+
+export function guardUseCrystalSkill(state: GuardBattleState): boolean {
+  if (!guardCrystalSkillReady(state) || state.phase === 'victory' || state.phase === 'defeat') {
+    return false;
+  }
+  state.crystalSkillReadyMs = state.timeMs + GUARD_CRYSTAL_SKILL_CD_MS;
+  const damage = guardCrystalSkillDamage(state.wave);
+  for (const monster of state.monsters) {
+    if (monster.dead) {
+      continue;
+    }
+    monster.x = Math.min(GUARD_SPAWN_X, monster.x + GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS);
+    damageMonster(state, monster, damage, null);
+  }
+  state.events.push({ type: 'crystalSkill', timeMs: state.timeMs, amount: damage });
+  return true;
+}
+
+// ── 击杀/伤害统一入口 ──
+function killMonster(state: GuardBattleState, monster: GuardMonster): void {
+  monster.dead = true;
+  monster.diedAtMs = state.timeMs;
+  state.killCount += 1;
+  const gold = Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + state.mods.goldGainPct / 100));
+  state.gold += gold;
+  grantXp(state, GUARD_KILL_XP[monster.kind]);
+  if (monster.kind === 'boss') {
+    state.bossKilled = true;
+    if (state.bossCast?.monsterId === monster.monsterId) {
+      state.bossCast = null;
+    }
+  }
+  if (monster.kind === 'elite') {
+    const chest: GuardChest = { chestId: state.nextChestId++, x: monster.x, lane: monster.lane, droppedAtMs: state.timeMs };
+    state.chests.push(chest);
+    state.events.push({ type: 'chestDrop', timeMs: state.timeMs, chestId: chest.chestId });
+  }
+  state.events.push({ type: 'kill', timeMs: state.timeMs, monsterId: monster.monsterId, amount: gold });
+}
+
+function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: number, byHero: GuardHeroUnit | null): void {
+  if (monster.dead) {
+    return;
+  }
+  monster.hp -= damage;
+  // BOSS 读条集火:读条期间受到的伤害计入打断阈值。
+  if (state.bossCast && state.bossCast.monsterId === monster.monsterId) {
+    state.bossCast.damageTaken += damage;
+    if (state.bossCast.damageTaken >= state.bossCast.threshold) {
+      monster.stunnedUntilMs = state.timeMs + GUARD_BOSS_STUN_MS;
+      state.events.push({ type: 'bossCastInterrupt', timeMs: state.timeMs, monsterId: monster.monsterId });
+      state.bossCast = null;
+      state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
+    }
+  }
+  void byHero;
+  if (monster.hp <= 0) {
+    killMonster(state, monster);
+  }
 }
 
 function startWave(state: GuardBattleState): void {
   state.wave += 1;
   state.phase = 'wave';
   state.waveStartedAtMs = state.timeMs;
-  state.pendingSpawns = guardWaveComposition(state.wave, state.rng).map((spawn) => ({ ...spawn, atMs: spawn.atMs + state.timeMs }));
+  const spawns = state.nextWaveSpawns ?? guardWaveComposition(state.wave, state.rng);
+  state.nextWaveSpawns = null;
+  state.pendingSpawns = spawns.map((spawn) => ({ ...spawn, atMs: spawn.atMs + state.timeMs }));
   state.gold += GUARD_WAVE_WAGE_BASE + state.wave * 10;
   state.events.push({ type: 'waveStart', timeMs: state.timeMs, wave: state.wave });
 }
@@ -320,7 +686,7 @@ function startWave(state: GuardBattleState): void {
 function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: number): void {
   const profile = MONSTER_PROFILE[kind];
   const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(state.wave, MONSTER_HP_WAVE_EXP)));
-  state.monsters.push({
+  const monster: GuardMonster = {
     monsterId: state.nextMonsterId++,
     kind,
     lane,
@@ -331,11 +697,16 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(state.wave, 0.95))),
     attackCooldownMs: 0,
     slowUntilMs: 0,
+    stunnedUntilMs: 0,
     spawnedWave: state.wave,
     spineCode: profile.spineCodes[Math.floor(state.rng() * profile.spineCodes.length)],
     dead: false,
     diedAtMs: 0,
-  });
+  };
+  state.monsters.push(monster);
+  if (kind === 'boss') {
+    state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
+  }
 }
 
 function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): void {
@@ -344,9 +715,10 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   if (hero.attackCooldownMs > 0) {
     return;
   }
+  const interval = profile.intervalMs * (1 - Math.min(50, state.mods.atkSpeedPct) / 100);
   if (hero.role === 'support') {
-    // 辅助:周期治疗水晶(P2 再加金币光环)。
-    hero.attackCooldownMs = profile.intervalMs;
+    // 辅助:周期治疗水晶。
+    hero.attackCooldownMs = interval;
     hero.lastAttackAtMs = state.timeMs;
     state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * GUARD_SUPPORT_CRYSTAL_HEAL_RATIO));
     return;
@@ -357,6 +729,10 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const monster of state.monsters) {
     if (monster.dead) {
+      continue;
+    }
+    // 飞行怪无视近战格挡(阵容检查器):只能被远程/控制打。
+    if (monster.kind === 'flying' && hero.role === 'melee') {
       continue;
     }
     if (profile.laneLocked && monster.lane !== heroLane) {
@@ -371,31 +747,23 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   if (!target) {
     return;
   }
-  hero.attackCooldownMs = profile.intervalMs;
+  hero.attackCooldownMs = interval;
   hero.lastAttackAtMs = state.timeMs;
   hero.lastTargetId = target.monsterId;
   const damage = guardHeroAttackValue(state, hero);
-  target.hp -= damage;
   if (hero.role === 'control') {
     target.slowUntilMs = state.timeMs + GUARD_CONTROL_SLOW_MS;
   }
   state.events.push({ type: 'heroAttack', timeMs: state.timeMs, heroCode: hero.heroCode, monsterId: target.monsterId, amount: damage, cell: hero.cell });
-  if (target.hp <= 0) {
-    target.dead = true;
-    target.diedAtMs = state.timeMs;
-    state.killCount += 1;
-    state.gold += GUARD_KILL_GOLD[target.kind];
-    state.xp += GUARD_KILL_XP[target.kind];
-    if (target.kind === 'boss') {
-      state.bossKilled = true;
-    }
-    state.events.push({ type: 'kill', timeMs: state.timeMs, monsterId: target.monsterId, amount: GUARD_KILL_GOLD[target.kind] });
-  }
+  damageMonster(state, target, damage, hero);
 }
 
-/** 前进一个 tick。dtMs 建议 50;返回 phase 便于调用方判断结束。 */
+/** 前进一个 tick。dtMs 建议 50;返回 phase 便于调用方判断结束。paused/三选一悬挂时时间不前进。 */
 export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   if (state.phase === 'victory' || state.phase === 'defeat') {
+    return state.phase;
+  }
+  if (state.paused || state.pendingChoice) {
     return state.phase;
   }
   state.timeMs += dtMs;
@@ -406,6 +774,10 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   }
   // 波次推进:prep(波间窗口)→ wave;首波在 GUARD_WAVE_INTERMISSION_MS 后开。
   if (state.phase === 'prep') {
+    if (!state.nextWaveSpawns) {
+      // prep 期生成下一波构成(供预告条;startWave 消费,保持确定性)。
+      state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng);
+    }
     const readyAtMs = state.wave === 0 ? GUARD_WAVE_INTERMISSION_MS : state.waveStartedAtMs + GUARD_WAVE_INTERMISSION_MS;
     if (state.timeMs >= readyAtMs) {
       startWave(state);
@@ -428,15 +800,47 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       state.waveStartedAtMs = state.timeMs;
     }
   }
-  // 怪物:行进/啃水晶。
+  // BOSS 读条:存活 BOSS 到点起手(踉跄中顺延);读满轰水晶。
+  const boss = state.monsters.find((monster) => monster.kind === 'boss' && !monster.dead) ?? null;
+  if (boss) {
+    if (!state.bossCast && state.timeMs >= state.nextBossCastMs && boss.stunnedUntilMs <= state.timeMs && boss.x < GUARD_SPAWN_X - 0.5) {
+      state.bossCast = {
+        monsterId: boss.monsterId,
+        startMs: state.timeMs,
+        hitMs: state.timeMs + GUARD_BOSS_CAST_DURATION_MS,
+        damageTaken: 0,
+        threshold: Math.max(1, Math.round(boss.maxHp * GUARD_BOSS_CAST_INTERRUPT_HP_RATIO)),
+      };
+      state.events.push({ type: 'bossCastStart', timeMs: state.timeMs, monsterId: boss.monsterId });
+    }
+    if (state.bossCast && state.timeMs >= state.bossCast.hitMs) {
+      const damage = Math.round(state.crystalMaxHp * GUARD_BOSS_CAST_CRYSTAL_RATIO);
+      state.crystalHp = Math.max(0, state.crystalHp - damage);
+      state.events.push({ type: 'bossCastHit', timeMs: state.timeMs, monsterId: state.bossCast.monsterId, amount: damage });
+      state.bossCast = null;
+      state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
+      if (state.crystalHp <= 0) {
+        state.phase = 'defeat';
+        state.events.push({ type: 'defeat', timeMs: state.timeMs });
+        return state.phase;
+      }
+    }
+  } else {
+    state.bossCast = null;
+  }
+  // 怪物:行进/啃水晶(shooter 站远程位;BOSS 读条或踉跄中不移动)。
+  const thornsPerSec = (GUARD_CRYSTAL_THORNS_BASE + GUARD_CRYSTAL_THORNS_PER_WAVE * state.wave) * (1 + state.mods.thornsPct / 100);
   for (const monster of state.monsters) {
     if (monster.dead) {
       continue;
     }
-    if (monster.x > GUARD_CRYSTAL_REACH_X) {
+    const standX = monster.kind === 'shooter' ? GUARD_SHOOTER_STAND_X : GUARD_CRYSTAL_REACH_X;
+    const casting = state.bossCast?.monsterId === monster.monsterId;
+    const stunned = monster.stunnedUntilMs > state.timeMs;
+    if (monster.x > standX && !casting && !stunned) {
       const slowFactor = monster.slowUntilMs > state.timeMs ? 1 - GUARD_CONTROL_SLOW_RATIO : 1;
-      monster.x = Math.max(GUARD_CRYSTAL_REACH_X, monster.x - monster.speedCellsPerSec * slowFactor * (dtMs / 1000));
-    } else {
+      monster.x = Math.max(standX, monster.x - monster.speedCellsPerSec * slowFactor * (dtMs / 1000));
+    } else if (monster.x <= standX && !casting && !stunned) {
       monster.attackCooldownMs -= dtMs;
       if (monster.attackCooldownMs <= 0) {
         monster.attackCooldownMs = MONSTER_ATTACK_INTERVAL_MS;
@@ -448,18 +852,12 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
           return state.phase;
         }
       }
-      // 水晶荆棘反伤(按 tick 折算)。
-      monster.hp -= (GUARD_CRYSTAL_THORNS_BASE + GUARD_CRYSTAL_THORNS_PER_WAVE * state.wave) * (dtMs / 1000);
-      if (monster.hp <= 0) {
-        monster.dead = true;
-        monster.diedAtMs = state.timeMs;
-        state.killCount += 1;
-        state.gold += GUARD_KILL_GOLD[monster.kind];
-        state.xp += GUARD_KILL_XP[monster.kind];
-        if (monster.kind === 'boss') {
-          state.bossKilled = true;
+      // 水晶荆棘反伤(按 tick 折算;shooter 站远程位不吃荆棘——用远程/控制处理它)。
+      if (monster.kind !== 'shooter') {
+        monster.hp -= thornsPerSec * (dtMs / 1000);
+        if (monster.hp <= 0) {
+          killMonster(state, monster);
         }
-        state.events.push({ type: 'kill', timeMs: state.timeMs, monsterId: monster.monsterId, amount: GUARD_KILL_GOLD[monster.kind] });
       }
     }
   }

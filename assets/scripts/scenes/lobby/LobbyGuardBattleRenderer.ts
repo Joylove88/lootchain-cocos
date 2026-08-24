@@ -20,20 +20,32 @@ import type { LobbyBattlePanelState } from './LobbyBattleState';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
 import {
   createGuardBattle,
+  guardBanishChoice,
   guardCellLane,
   guardCellX,
+  guardChooseOption,
+  guardCrystalSkillReady,
+  guardCurrentSummonCost,
   guardDragTo,
+  guardEnhance,
   guardFindHeroAt,
   guardHeroAttackValue,
+  guardOpenChest,
+  guardRerollChoice,
+  guardSkipChoice,
+  guardSummarizeSpawns,
   guardSummon,
   guardTick,
+  guardUseCrystalSkill,
   GUARD_CRYSTAL_REACH_X,
+  GUARD_CRYSTAL_SKILL_CD_MS,
   GUARD_GRID_CELLS,
   GUARD_GRID_COLS,
   GUARD_GRID_ROWS,
   GUARD_SPAWN_X,
   resolveGuardRole,
   type GuardBattleState,
+  type GuardChestReward,
   type GuardHeroUnit,
   type GuardMonster,
   type GuardPoolHero,
@@ -110,6 +122,9 @@ export class LobbyGuardBattleRenderer {
   private dragGhost: Node | null = null;
   /** 墙钟累积器:后台/节流环境 setInterval 触发率不可靠,按真实流逝补跑固定步长子 tick。 */
   private lastTickWallMs = 0;
+  private chestViews = new Map<number, Node>();
+  private choiceOverlayLevel = 0;
+  private wheelOverlayOpen = false;
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -142,6 +157,9 @@ export class LobbyGuardBattleRenderer {
     this.overlayShown = false;
     this.dragFromCell = null;
     this.dragGhost = null;
+    this.chestViews.clear();
+    this.choiceOverlayLevel = 0;
+    this.wheelOverlayOpen = false;
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -212,6 +230,8 @@ export class LobbyGuardBattleRenderer {
     this.renderCrystal();
     this.renderHud();
     this.renderSummonButton();
+    this.renderEnhanceButton();
+    this.renderCrystalSkillButton();
     this.renderExitButton(root, layout.width, layout.height);
     this.host.setStatus('矿境守卫:召唤英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
@@ -327,6 +347,8 @@ export class LobbyGuardBattleRenderer {
     this.host.addChildLabel(hud, 'GuardWaveText', '', 0, height / 2 - 42, 20, rgba(255, 232, 160), new Size(width * 0.3, 26));
     this.host.addChildLabel(hud, 'GuardGoldText', '', width / 2 - 170, height / 2 - 42, 20, rgba(255, 214, 92), new Size(240, 26));
     this.host.addChildLabel(hud, 'GuardHintText', '拖动两个相同英雄合成升星 · 同星同名 10% 矿脉共鸣直升 2 星', 0, -height / 2 + 26, 13, rgba(196, 180, 150, 220), new Size(width * 0.7, 18));
+    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 120, height / 2 - 66, 13, rgba(150, 230, 190, 230), new Size(240, 18), HorizontalTextAlignment.LEFT);
+    this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 66, 13, rgba(255, 190, 150, 235), new Size(430, 18), HorizontalTextAlignment.RIGHT);
   }
 
   private refreshHud(): void {
@@ -373,8 +395,125 @@ export class LobbyGuardBattleRenderer {
     }
     const summonLabel = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonLabel')?.getComponent(Label);
     if (summonLabel) {
-      summonLabel.string = `召唤 ${sim.summonCost}`;
+      summonLabel.string = `召唤 ${guardCurrentSummonCost(sim)}`;
     }
+    const xpText = hud.getChildByName('GuardXpText')?.getComponent(Label);
+    if (xpText) {
+      xpText.string = `等级 ${sim.level} · 击杀 ${sim.killCount}`;
+    }
+    const previewText = hud.getChildByName('GuardPreviewText')?.getComponent(Label);
+    if (previewText) {
+      if (sim.phase === 'prep' && sim.nextWaveSpawns) {
+        const names: Record<string, string> = { normal: '小怪', fast: '快速', tank: '肉盾', flying: '飞行', shooter: '远程', elite: '精英', boss: 'BOSS' };
+        const summary = guardSummarizeSpawns(sim.nextWaveSpawns);
+        previewText.string = '下一波: ' + Object.entries(summary).map(([kind, count]) => `${names[kind] ?? kind}×${count}`).join(' ');
+      } else {
+        previewText.string = '';
+      }
+    }
+    const enhanceLabel = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceLabel')?.getComponent(Label);
+    if (enhanceLabel) {
+      enhanceLabel.string = `强化 Lv${sim.enhanceLevel} · ${sim.enhanceCost}`;
+    }
+    this.refreshCrystalSkillButton();
+  }
+
+  // ── P2:强化按钮(与召唤争夺金币) ──
+  private renderEnhanceButton(): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const buttonW = Math.min(210, width * 0.17);
+    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(240, width * 0.2) - 18, -height / 2 + 64, buttonW, 56);
+    const g = button.addComponent(Graphics);
+    g.fillColor = rgba(52, 44, 70, 245);
+    g.roundRect(-buttonW / 2, -28, buttonW, 56, 12);
+    g.fill();
+    g.strokeColor = rgba(190, 150, 255, 235);
+    g.lineWidth = 2;
+    g.roundRect(-buttonW / 2, -28, buttonW, 56, 12);
+    g.stroke();
+    this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 18, rgba(230, 214, 255), new Size(buttonW - 10, 24));
+    this.host.applyImageButtonFeedback(button);
+    button.on(Node.EventType.TOUCH_END, () => {
+      const sim = this.sim;
+      if (!sim) {
+        return;
+      }
+      if (!guardEnhance(sim)) {
+        this.host.setStatus('战斗金币不足,无法强化。');
+      } else {
+        this.host.setStatus(`全队攻击强化至 Lv${sim.enhanceLevel}(+${sim.enhanceLevel * 8}%)`);
+      }
+    }, this);
+  }
+
+  // ── P2:水晶技能(矿晶震荡,CD 45s) ──
+  private renderCrystalSkillButton(): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    const height = this.layoutHeight;
+    const button = this.host.addChildPlainNode(root, 'GuardCrystalSkillButton', -this.layoutWidth / 2 + 70, -height / 2 + 70, 88, 88);
+    button.addComponent(Graphics);
+    this.host.addChildLabel(button, 'GuardCrystalSkillLabel', '矿晶\n震荡', 0, 0, 16, rgba(190, 230, 255), new Size(80, 44));
+    this.host.applyImageButtonFeedback(button);
+    button.on(Node.EventType.TOUCH_END, () => {
+      const sim = this.sim;
+      if (!sim) {
+        return;
+      }
+      if (!guardUseCrystalSkill(sim)) {
+        this.host.setStatus('矿晶震荡冷却中…');
+      } else {
+        this.shakeField(10);
+      }
+    }, this);
+    this.refreshCrystalSkillButton();
+  }
+
+  private refreshCrystalSkillButton(): void {
+    const sim = this.sim;
+    const button = this.root?.getChildByName('GuardCrystalSkillButton');
+    const g = button?.getComponent(Graphics);
+    if (!sim || !button || !g) {
+      return;
+    }
+    const ready = guardCrystalSkillReady(sim);
+    const remain = Math.max(0, sim.crystalSkillReadyMs - sim.timeMs);
+    const frac = ready ? 1 : 1 - remain / GUARD_CRYSTAL_SKILL_CD_MS;
+    g.clear();
+    g.fillColor = ready ? rgba(30, 60, 96, 245) : rgba(22, 26, 34, 235);
+    g.circle(0, 0, 42);
+    g.fill();
+    g.strokeColor = ready ? rgba(140, 220, 255, 250) : rgba(90, 110, 130, 200);
+    g.lineWidth = 3;
+    g.circle(0, 0, 42);
+    g.stroke();
+    if (!ready) {
+      // CD 弧
+      g.strokeColor = rgba(140, 220, 255, 200);
+      g.lineWidth = 4;
+      g.arc(0, 0, 36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac, true);
+      g.stroke();
+    }
+  }
+
+  private shakeField(amplitude: number): void {
+    const field = this.fieldNode;
+    if (!field || !field.isValid) {
+      return;
+    }
+    const base = new Vec3(field.position.x, field.position.y, field.position.z);
+    tween(field)
+      .to(0.05, { position: new Vec3(base.x + amplitude, base.y - amplitude * 0.5, base.z) })
+      .to(0.06, { position: new Vec3(base.x - amplitude * 0.7, base.y + amplitude * 0.4, base.z) })
+      .to(0.05, { position: base })
+      .start();
   }
 
   private renderSummonButton(): void {
@@ -440,6 +579,9 @@ export class LobbyGuardBattleRenderer {
     this.consumeEvents();
     this.syncHeroes();
     this.syncMonsters();
+    this.syncChests();
+    this.syncBossCastBar();
+    this.syncChoiceOverlay();
     this.refreshHud();
     if (phase === 'victory' || phase === 'defeat') {
       if (this.tickTimer !== null) {
@@ -476,9 +618,314 @@ export class LobbyGuardBattleRenderer {
         }
       } else if (event.type === 'waveStart') {
         this.host.setStatus(`第 ${event.wave} 波来袭!`);
+      } else if (event.type === 'chestDrop') {
+        this.host.setStatus('精英宝箱掉落!点击开箱!');
+      } else if (event.type === 'bossCastStart') {
+        this.host.setStatus('BOSS 蓄力轰击水晶!集火打断!');
+      } else if (event.type === 'bossCastInterrupt') {
+        this.spawnFloater(this.xToPx(5), this.laneToPy(1) + this.layoutHeight * 0.12, '打断!', rgba(255, 240, 160));
+        this.shakeField(8);
+      } else if (event.type === 'bossCastHit') {
+        this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.16, `灭世轰击 -${event.amount ?? 0}`, rgba(255, 110, 90));
+        this.shakeField(14);
+      } else if (event.type === 'crystalSkill') {
+        this.spawnFloater(this.xToPx(2), this.laneToPy(1), `矿晶震荡 ${event.amount ?? 0}`, rgba(150, 220, 255));
       }
     }
     sim.events.length = 0;
+  }
+
+  // ── P2:宝箱(点击→开箱轮盘) ──
+  private syncChests(): void {
+    const sim = this.sim;
+    const field = this.fieldNode;
+    if (!sim || !field) {
+      return;
+    }
+    const liveIds = new Set(sim.chests.map((chest) => chest.chestId));
+    for (const [chestId, node] of [...this.chestViews]) {
+      if (!liveIds.has(chestId)) {
+        if (node.isValid) {
+          node.destroy();
+        }
+        this.chestViews.delete(chestId);
+      }
+    }
+    for (const chest of sim.chests) {
+      if (this.chestViews.has(chest.chestId)) {
+        continue;
+      }
+      const size = this.unitSize() * 0.7;
+      const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, this.xToPx(chest.x), this.laneToPy(chest.lane) - size * 0.2, size, size);
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(140, 96, 40, 250);
+      g.roundRect(-size * 0.4, -size * 0.3, size * 0.8, size * 0.55, 6);
+      g.fill();
+      g.strokeColor = rgba(255, 214, 110, 250);
+      g.lineWidth = 2.4;
+      g.roundRect(-size * 0.4, -size * 0.3, size * 0.8, size * 0.55, 6);
+      g.stroke();
+      g.moveTo(-size * 0.4, 0);
+      g.lineTo(size * 0.4, 0);
+      g.stroke();
+      const hint = this.host.addChildLabel(node, 'GuardChestHint', '点击开箱', 0, size * 0.48, 12, rgba(255, 232, 150), new Size(size * 1.6, 16));
+      hint.enableOutline = true;
+      hint.outlineColor = rgba(40, 24, 10, 255);
+      hint.outlineWidth = 2;
+      tween(node)
+        .repeatForever(tween().to(0.4, { scale: new Vec3(1.08, 1.08, 1) }).to(0.4, { scale: Vec3.ONE }))
+        .start();
+      this.host.applyImageButtonFeedback(node);
+      node.on(Node.EventType.TOUCH_END, () => this.openChestWithWheel(chest.chestId), this);
+      this.chestViews.set(chest.chestId, node);
+    }
+  }
+
+  /** 账号前 3 箱固定 1-3-5 连(localStorage 计数;不可用则跳过脚本)。 */
+  private nextChestScriptTier(): 1 | 3 | 5 | undefined {
+    try {
+      const store = (globalThis as { localStorage?: Storage }).localStorage;
+      if (!store) {
+        return undefined;
+      }
+      const opened = Number(store.getItem('lootchainGuardChestScript') ?? '0');
+      if (opened >= 3) {
+        return undefined;
+      }
+      store.setItem('lootchainGuardChestScript', String(opened + 1));
+      return opened === 0 ? 1 : opened === 1 ? 3 : 5;
+    } catch (error) {
+      void error;
+      return undefined;
+    }
+  }
+
+  private openChestWithWheel(chestId: number): void {
+    const sim = this.sim;
+    const root = this.root;
+    if (!sim || !root || this.wheelOverlayOpen) {
+      return;
+    }
+    const result = guardOpenChest(sim, chestId, this.nextChestScriptTier());
+    if (!result) {
+      return;
+    }
+    this.wheelOverlayOpen = true;
+    sim.paused = true;
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const overlay = this.host.addChildPlainNode(root, 'GuardWheelOverlay', 0, 0, width, height);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(8, 6, 6, 190);
+    og.rect(-width / 2, -height / 2, width, height);
+    og.fill();
+    this.host.addChildLabel(overlay, 'GuardWheelTitle', '矿脉宝箱', 0, height * 0.3, 30, rgba(255, 232, 150), new Size(width * 0.6, 40));
+    // 轮盘:程序绘制 8 段圆环 + 指针旋转 2.2s 减速停格
+    const wheel = this.host.addChildPlainNode(overlay, 'GuardWheel', 0, height * 0.02, 300, 300);
+    const wg = wheel.addComponent(Graphics);
+    for (let i = 0; i < 8; i += 1) {
+      const a0 = (i / 8) * Math.PI * 2;
+      const a1 = ((i + 1) / 8) * Math.PI * 2;
+      wg.fillColor = i % 2 === 0 ? rgba(52, 38, 26, 250) : rgba(34, 26, 20, 250);
+      wg.moveTo(0, 0);
+      wg.arc(0, 0, 140, a0, a1, false);
+      wg.close();
+      wg.fill();
+    }
+    wg.strokeColor = rgba(255, 200, 110, 250);
+    wg.lineWidth = 4;
+    wg.circle(0, 0, 140);
+    wg.stroke();
+    const pointer = this.host.addChildLabel(overlay, 'GuardWheelPointer', '▼', 0, height * 0.02 + 158, 26, rgba(255, 214, 92), new Size(40, 32));
+    void pointer;
+    // 指针不动转盘转:2.2s 缓停(圈数+随机相位由 tier 决定视觉落点,纯演出)
+    const turns = 4 + result.tier;
+    tween(wheel)
+      .to(2.2, { angle: -360 * turns - 45 }, { easing: 'quartOut' })
+      .call(() => this.revealChestRewards(overlay, result.tier, result.rewards))
+      .start();
+  }
+
+  private revealChestRewards(overlay: Node, tier: number, rewards: GuardChestReward[]): void {
+    if (!overlay.isValid) {
+      return;
+    }
+    const height = this.layoutHeight;
+    const tierLabel = this.host.addChildLabel(overlay, 'GuardWheelTier', tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励', 0, -height * 0.16, tier >= 5 ? 34 : 24, tier >= 5 ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(this.layoutWidth * 0.6, 44));
+    tierLabel.enableOutline = true;
+    tierLabel.outlineColor = rgba(60, 30, 10, 255);
+    tierLabel.outlineWidth = 3;
+    if (tier >= 5) {
+      this.shakeField(12);
+    }
+    rewards.forEach((reward, index) => {
+      const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, 0, -height * 0.16 - 34 - index * 26, 17, rgba(236, 224, 196), new Size(this.layoutWidth * 0.6, 22));
+      const opacity = label.node.addComponent(UIOpacity);
+      opacity.opacity = 0;
+      tween(opacity).delay(0.18 * index).to(0.2, { opacity: 255 }).start();
+    });
+    const close = this.host.addChildPlainNode(overlay, 'GuardWheelClose', 0, -height * 0.34, 200, 52);
+    const g = close.addComponent(Graphics);
+    g.fillColor = rgba(122, 62, 30, 245);
+    g.roundRect(-100, -26, 200, 52, 12);
+    g.fill();
+    g.strokeColor = rgba(255, 200, 110, 240);
+    g.lineWidth = 2;
+    g.roundRect(-100, -26, 200, 52, 12);
+    g.stroke();
+    this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, 19, rgba(255, 238, 190), new Size(180, 24));
+    this.host.applyImageButtonFeedback(close);
+    close.on(Node.EventType.TOUCH_END, () => {
+      if (overlay.isValid) {
+        overlay.destroy();
+      }
+      this.wheelOverlayOpen = false;
+      if (this.sim) {
+        this.sim.paused = false;
+      }
+      this.lastTickWallMs = Date.now();
+    }, this);
+  }
+
+  // ── P2:升级三选一(pendingChoice 即暂停) ──
+  private syncChoiceOverlay(): void {
+    const sim = this.sim;
+    const root = this.root;
+    if (!sim || !root) {
+      return;
+    }
+    const existing = root.getChildByName('GuardChoiceOverlay');
+    if (!sim.pendingChoice) {
+      if (existing) {
+        existing.destroy();
+        this.choiceOverlayLevel = 0;
+        this.lastTickWallMs = Date.now();
+      }
+      return;
+    }
+    if (existing && this.choiceOverlayLevel === sim.level) {
+      return;
+    }
+    existing?.destroy();
+    this.choiceOverlayLevel = sim.level;
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const overlay = this.host.addChildPlainNode(root, 'GuardChoiceOverlay', 0, 0, width, height);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(8, 6, 6, 190);
+    og.rect(-width / 2, -height / 2, width, height);
+    og.fill();
+    this.host.addChildLabel(overlay, 'GuardChoiceTitle', `等级提升!Lv${sim.level} · 三选一`, 0, height * 0.28, 28, rgba(255, 232, 150), new Size(width * 0.7, 38));
+    const cardW = Math.min(230, width * 0.2);
+    const cardH = 190;
+    sim.pendingChoice.forEach((option, index) => {
+      const x = (index - 1) * (cardW + 26);
+      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, height * 0.02, cardW, cardH);
+      const g = card.addComponent(Graphics);
+      g.fillColor = rgba(30, 24, 20, 250);
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      g.fill();
+      g.strokeColor = rgba(214, 200, 176, 235);
+      g.lineWidth = 2;
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      g.stroke();
+      const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH * 0.22, 18, rgba(255, 240, 200), new Size(cardW - 16, 48));
+      title.overflow = Label.Overflow.SHRINK;
+      const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, -cardH * 0.08, 13, rgba(196, 184, 160, 230), new Size(cardW - 20, 40));
+      detail.overflow = Label.Overflow.SHRINK;
+      const banish = this.host.addChildLabel(card, 'Banish', sim.banishLeft > 0 ? '✕ 放逐' : '', 0, -cardH * 0.36, 12, rgba(255, 140, 120, 220), new Size(cardW - 20, 16));
+      this.host.applyImageButtonFeedback(card);
+      card.on(Node.EventType.TOUCH_END, (event: { getUILocation?: () => { y: number } }) => {
+        // 底部 1/4 点击=放逐;其余=选择。
+        const uiY = event.getUILocation ? event.getUILocation().y : Number.NaN;
+        void uiY;
+        guardChooseOption(sim, index);
+      }, this);
+      banish.node.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
+        if (sim.banishLeft > 0) {
+          guardBanishChoice(sim, index);
+          this.choiceOverlayLevel = 0;
+        }
+        if (event) {
+          event.propagationStopped = true;
+        }
+      }, this);
+    });
+    // 跳过 / 刷新
+    const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
+      const button = this.host.addChildPlainNode(overlay, name, x, -height * 0.24, 170, 46);
+      const g = button.addComponent(Graphics);
+      g.fillColor = rgba(40, 34, 30, 245);
+      g.roundRect(-85, -23, 170, 46, 10);
+      g.fill();
+      g.strokeColor = rgba(196, 168, 120, 220);
+      g.lineWidth = 1.6;
+      g.roundRect(-85, -23, 170, 46, 10);
+      g.stroke();
+      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 15, rgba(230, 216, 186), new Size(160, 20));
+      this.host.applyImageButtonFeedback(button);
+      button.on(Node.EventType.TOUCH_END, onTap, this);
+    };
+    makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -100, () => {
+      guardSkipChoice(sim);
+    });
+    makeSmall('GuardChoiceReroll', `刷新(剩 ${sim.rerollLeft})`, 100, () => {
+      if (guardRerollChoice(sim)) {
+        this.choiceOverlayLevel = 0;
+      } else {
+        this.host.setStatus('刷新次数已用完。');
+      }
+    });
+  }
+
+  // ── P2:BOSS 读条条(集火打断) ──
+  private syncBossCastBar(): void {
+    const sim = this.sim;
+    const field = this.fieldNode;
+    if (!sim || !field) {
+      return;
+    }
+    const existing = field.getChildByName('GuardBossCastBar');
+    if (!sim.bossCast) {
+      existing?.destroy();
+      return;
+    }
+    const boss = sim.monsters.find((monster) => monster.monsterId === sim.bossCast?.monsterId && !monster.dead);
+    if (!boss) {
+      existing?.destroy();
+      return;
+    }
+    const barW = 200;
+    const barH = 14;
+    const x = this.xToPx(boss.x);
+    const y = this.laneToPy(boss.lane) + this.unitSize() * (boss.kind === 'boss' ? 1.6 : 1);
+    let bar = existing;
+    if (!bar) {
+      bar = this.host.addChildPlainNode(field, 'GuardBossCastBar', x, y, barW, barH + 22);
+      bar.addComponent(Graphics);
+      this.host.addChildLabel(bar, 'GuardBossCastText', '', 0, barH + 4, 12, rgba(255, 180, 150), new Size(barW + 80, 16));
+    }
+    bar.setPosition(x, y, 0);
+    const g = bar.getComponent(Graphics);
+    if (g) {
+      const progress = Math.min(1, (sim.timeMs - sim.bossCast.startMs) / Math.max(1, sim.bossCast.hitMs - sim.bossCast.startMs));
+      g.clear();
+      g.fillColor = rgba(10, 8, 8, 220);
+      g.roundRect(-barW / 2, -barH / 2, barW, barH, 6);
+      g.fill();
+      g.fillColor = rgba(235, 70, 50, 245);
+      g.roundRect(-barW / 2, -barH / 2, Math.max(4, barW * progress), barH, 6);
+      g.fill();
+      g.strokeColor = rgba(255, 210, 160, 235);
+      g.lineWidth = 1.6;
+      g.roundRect(-barW / 2, -barH / 2, barW, barH, 6);
+      g.stroke();
+    }
+    const text = bar.getChildByName('GuardBossCastText')?.getComponent(Label);
+    if (text) {
+      const pct = Math.round((sim.bossCast.damageTaken / Math.max(1, sim.bossCast.threshold)) * 100);
+      text.string = `灭世轰击蓄力中 · 集火打断 ${Math.min(100, pct)}%`;
+    }
   }
 
   private spawnFloater(x: number, y: number, text: string, color: Color): void {
@@ -675,7 +1122,8 @@ export class LobbyGuardBattleRenderer {
       if (!view.node.isValid) {
         continue;
       }
-      view.node.setPosition(this.xToPx(monster.x), this.laneToPy(monster.lane), 0);
+      const flyLift = monster.kind === 'flying' ? this.unitSize() * 0.45 : 0;
+      view.node.setPosition(this.xToPx(monster.x), this.laneToPy(monster.lane) + flyLift, 0);
       if (monster.dead) {
         // 死亡:淡出下沉一次
         if (view.lastAnimKey !== 'dead') {
