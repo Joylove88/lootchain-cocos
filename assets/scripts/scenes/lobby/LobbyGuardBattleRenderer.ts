@@ -7,6 +7,7 @@ import {
   HorizontalTextAlignment,
   Label,
   Node,
+  resources,
   Size,
   sp,
   Sprite,
@@ -1137,7 +1138,13 @@ export class LobbyGuardBattleRenderer {
     const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, -size * 0.36, size, size * 1.1);
     const skeleton = spineNode.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
-    loadSharedSpineData(resource, null, 'GuardBattle', (data) => {
+    // 兜底直载:共享缓存层的在途合并队列若丢回调(极端环境观测到过)会永久悬空——4s 未回来就绕过缓存直载一次。
+    let delivered = false;
+    const applyData = (data: sp.SkeletonData | null): void => {
+      if (delivered) {
+        return;
+      }
+      delivered = true;
       if (!node.isValid || !spineNode.isValid) {
         return;
       }
@@ -1170,7 +1177,17 @@ export class LobbyGuardBattleRenderer {
       } catch (error) {
         console.warn('[GuardBattle] spine attach failed', resource, error);
       }
-    });
+    };
+    loadSharedSpineData(resource, null, 'GuardBattle', applyData);
+    setTimeout(() => {
+      if (!delivered && node.isValid) {
+        resources.load(resource, sp.SkeletonData, (error: Error | null, data: sp.SkeletonData | null) => {
+          if (!error && data) {
+            applyData(data);
+          }
+        });
+      }
+    }, 4000);
   }
 
   /** 攻击动画:播一次 attack 再接回 idle(骨骼未就绪时静默跳过)。 */
