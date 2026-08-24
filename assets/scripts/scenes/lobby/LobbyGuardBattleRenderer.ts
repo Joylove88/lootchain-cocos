@@ -37,11 +37,14 @@ import {
   guardSummon,
   guardTick,
   guardUseCrystalSkill,
+  guardMonsterSpineResource,
   GUARD_CRYSTAL_REACH_X,
   GUARD_CRYSTAL_SKILL_CD_MS,
   GUARD_GRID_CELLS,
   GUARD_GRID_COLS,
   GUARD_GRID_ROWS,
+  GUARD_MONSTER_DISPLAY_SCALE,
+  GUARD_ROLE_PROFILE,
   GUARD_SPAWN_X,
   resolveGuardRole,
   type GuardBattleState,
@@ -58,6 +61,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
+import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 
 export interface LobbyGuardBattleHost {
   node: Node;
@@ -101,6 +105,9 @@ interface GuardUnitView {
   node: Node;
   spineReady: boolean;
   lastAnimKey: string;
+  skeleton: sp.Skeleton | null;
+  idleAnim: string;
+  attackAnim: string;
 }
 
 export class LobbyGuardBattleRenderer {
@@ -125,6 +132,11 @@ export class LobbyGuardBattleRenderer {
   private chestViews = new Map<number, Node>();
   private choiceOverlayLevel = 0;
   private wheelOverlayOpen = false;
+  /** 点击英雄显示攻击范围(unitId;拖拽结束/再点空白清除)。 */
+  private rangeShownUnitId: number | null = null;
+  /** 技能特效包围盒缓存(effect:anim → 长边),与在场技能特效计数。 */
+  private readonly guardFxBoundsCache = new Map<string, number | null>();
+  private guardFxLiveCount = 0;
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -160,6 +172,8 @@ export class LobbyGuardBattleRenderer {
     this.chestViews.clear();
     this.choiceOverlayLevel = 0;
     this.wheelOverlayOpen = false;
+    this.rangeShownUnitId = null;
+    this.guardFxLiveCount = 0;
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -245,21 +259,31 @@ export class LobbyGuardBattleRenderer {
     g.fill();
   }
 
-  // ── 几何:sim 路程 x(0..10)→ 屏幕像素 ──
+  // ── 几何(参考图 2026-08-21):水晶+3×3 格占左 1/3,怪物跑道占右 2/3 ──
+  // 分段线性映射:sim x∈[0,5](英雄区)→ [-0.44W,-0.167W];x∈[5,10](跑道)→ [-0.167W,+0.47W]。
+  // 格子与怪物共用同一映射,射程像素与 sim 判定天然对齐。
+  private static readonly HERO_ZONE_SIM_END = 5;
+  private xToPx(x: number): number {
+    const width = this.layoutWidth;
+    const heroLeft = -width * 0.44;
+    const heroRight = -width * 0.167;
+    const runwayRight = width * 0.47;
+    if (x <= LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) {
+      return heroLeft + (x / LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) * (heroRight - heroLeft);
+    }
+    return heroRight + ((x - LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) / (GUARD_SPAWN_X - LobbyGuardBattleRenderer.HERO_ZONE_SIM_END)) * (runwayRight - heroRight);
+  }
   private pathLeftPx(): number {
-    return -this.layoutWidth * 0.34;
+    return this.xToPx(0);
   }
   private pathRightPx(): number {
-    return this.layoutWidth * 0.46;
-  }
-  private xToPx(x: number): number {
-    return this.pathLeftPx() + (x / GUARD_SPAWN_X) * (this.pathRightPx() - this.pathLeftPx());
+    return this.xToPx(GUARD_SPAWN_X);
   }
   private laneToPy(lane: number): number {
-    return this.layoutHeight * 0.12 - lane * this.layoutHeight * 0.17;
+    return this.layoutHeight * 0.12 - lane * this.layoutHeight * 0.19;
   }
   private unitSize(): number {
-    return this.layoutHeight * 0.15;
+    return this.layoutHeight * 0.16;
   }
   private cellCenter(cell: number): { x: number; y: number } {
     return { x: this.xToPx(guardCellX(cell)), y: this.laneToPy(guardCellLane(cell)) };
@@ -284,25 +308,23 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const g = field.addComponent(Graphics);
-    const laneHeight = this.layoutHeight * 0.155;
+    const laneHeight = this.layoutHeight * 0.185;
     for (let lane = 0; lane < GUARD_GRID_ROWS; lane += 1) {
       const y = this.laneToPy(lane);
-      g.fillColor = lane % 2 === 0 ? rgba(30, 23, 19, 210) : rgba(25, 19, 16, 210);
-      g.rect(this.pathLeftPx() - this.layoutWidth * 0.04, y - laneHeight / 2, this.pathRightPx() - this.pathLeftPx() + this.layoutWidth * 0.1, laneHeight);
+      g.fillColor = lane % 2 === 0 ? rgba(30, 23, 19, 200) : rgba(25, 19, 16, 200);
+      g.rect(this.pathLeftPx() - this.layoutWidth * 0.05, y - laneHeight / 2, this.pathRightPx() - this.pathLeftPx() + this.layoutWidth * 0.12, laneHeight);
       g.fill();
-      g.strokeColor = rgba(90, 70, 48, 160);
-      g.lineWidth = 1.4;
-      g.moveTo(this.pathLeftPx() - this.layoutWidth * 0.04, y - laneHeight / 2);
-      g.lineTo(this.pathRightPx() + this.layoutWidth * 0.06, y - laneHeight / 2);
-      g.stroke();
     }
-    // 召唤格(列=前中后排)
+    // 3×3 大召唤格(参考图卡片式:暗底+金边圆角)
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const center = this.cellCenter(cell);
-      const size = this.unitSize() * 0.82;
-      g.strokeColor = rgba(150, 118, 70, 130);
-      g.lineWidth = 1.6;
-      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 8);
+      const size = this.unitSize() * 1.05;
+      g.fillColor = rgba(16, 13, 12, 200);
+      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 10);
+      g.fill();
+      g.strokeColor = rgba(150, 118, 70, 170);
+      g.lineWidth = 1.8;
+      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 10);
       g.stroke();
     }
   }
@@ -312,7 +334,7 @@ export class LobbyGuardBattleRenderer {
     if (!field) {
       return;
     }
-    const x = this.xToPx(0) - this.layoutWidth * 0.045;
+    const x = this.xToPx(0) - this.layoutWidth * 0.035;
     const size = this.layoutHeight * 0.24;
     const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, this.laneToPy(1), size, size);
     const icon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
@@ -349,6 +371,52 @@ export class LobbyGuardBattleRenderer {
     this.host.addChildLabel(hud, 'GuardHintText', '拖动两个相同英雄合成升星 · 同星同名 10% 矿脉共鸣直升 2 星', 0, -height / 2 + 26, 13, rgba(196, 180, 150, 220), new Size(width * 0.7, 18));
     this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 120, height / 2 - 66, 13, rgba(150, 230, 190, 230), new Size(240, 18), HorizontalTextAlignment.LEFT);
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 66, 13, rgba(255, 190, 150, 235), new Size(430, 18), HorizontalTextAlignment.RIGHT);
+    // 波次进度轨道(参考图:圆点连线,精英/BOSS 波标骷髅色)
+    const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 66, 320, 16);
+    track.addComponent(Graphics);
+    // 场上定位计数(左侧竖排)
+    const roles: Array<[string, string]> = [['melee', '近战'], ['ranged', '远程'], ['support', '辅助'], ['control', '控制']];
+    roles.forEach(([role, label], index) => {
+      const row = this.host.addChildPlainNode(hud, `GuardRoleCount_${role}`, -width / 2 + 74, height / 2 - 110 - index * 26, 130, 22);
+      const color = GUARD_ROLE_COLOR[role] ?? rgba(220, 220, 220);
+      const dot = row.addComponent(Graphics);
+      dot.fillColor = rgba(color.r, color.g, color.b, 235);
+      dot.circle(-56, 0, 6);
+      dot.fill();
+      this.host.addChildLabel(row, 'Text', `${label} 0`, 10, 0, 13, rgba(226, 214, 188, 235), new Size(110, 18), HorizontalTextAlignment.LEFT);
+    });
+  }
+
+  private refreshWaveTrack(): void {
+    const sim = this.sim;
+    const hud = this.root?.getChildByName('GuardHud');
+    const track = hud?.getChildByName('GuardWaveTrack');
+    const g = track?.getComponent(Graphics);
+    if (!sim || !track || !g) {
+      return;
+    }
+    const trackW = 320;
+    const step = trackW / (sim.maxWave - 1);
+    g.clear();
+    g.strokeColor = rgba(120, 96, 60, 200);
+    g.lineWidth = 2;
+    g.moveTo(-trackW / 2, 0);
+    g.lineTo(trackW / 2, 0);
+    g.stroke();
+    for (let wave = 1; wave <= sim.maxWave; wave += 1) {
+      const x = -trackW / 2 + (wave - 1) * step;
+      const isElite = wave % 5 === 0 && wave % 10 !== 0;
+      const isBoss = wave % 10 === 0;
+      const reached = sim.wave >= wave;
+      const radius = isBoss ? 7 : isElite ? 6 : 4;
+      g.fillColor = isBoss
+        ? (reached ? rgba(240, 80, 60, 255) : rgba(120, 46, 40, 235))
+        : isElite
+          ? (reached ? rgba(255, 170, 80, 255) : rgba(120, 86, 46, 235))
+          : (reached ? rgba(255, 214, 110, 255) : rgba(70, 58, 44, 235));
+      g.circle(x, 0, radius);
+      g.fill();
+    }
   }
 
   private refreshHud(): void {
@@ -397,6 +465,25 @@ export class LobbyGuardBattleRenderer {
     if (summonLabel) {
       summonLabel.string = `召唤 ${guardCurrentSummonCost(sim)}`;
     }
+    const summonNext = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonNext')?.getComponent(Label);
+    if (summonNext) {
+      summonNext.string = `下次 ${Math.min(300, guardCurrentSummonCost(sim) + 10)}`;
+    }
+    this.refreshWaveTrack();
+    const hudNode = this.root?.getChildByName('GuardHud');
+    if (hudNode) {
+      const counts: Record<string, number> = { melee: 0, ranged: 0, support: 0, control: 0 };
+      for (const hero of sim.heroes) {
+        counts[hero.role] = (counts[hero.role] ?? 0) + 1;
+      }
+      const names: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
+      for (const role of Object.keys(counts)) {
+        const label = hudNode.getChildByName(`GuardRoleCount_${role}`)?.getChildByName('Text')?.getComponent(Label);
+        if (label) {
+          label.string = `${names[role]} ${counts[role]}`;
+        }
+      }
+    }
     const xpText = hud.getChildByName('GuardXpText')?.getComponent(Label);
     if (xpText) {
       xpText.string = `等级 ${sim.level} · 击杀 ${sim.killCount}`;
@@ -413,7 +500,7 @@ export class LobbyGuardBattleRenderer {
     }
     const enhanceLabel = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceLabel')?.getComponent(Label);
     if (enhanceLabel) {
-      enhanceLabel.string = `强化 Lv${sim.enhanceLevel} · ${sim.enhanceCost}`;
+      enhanceLabel.string = `强化 全队攻击+${sim.enhanceLevel * 8}% · ${sim.enhanceCost}`;
     }
     this.refreshCrystalSkillButton();
   }
@@ -533,7 +620,8 @@ export class LobbyGuardBattleRenderer {
     g.lineWidth = 2.2;
     g.roundRect(-buttonW / 2, -32, buttonW, 64, 14);
     g.stroke();
-    this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 0, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
+    this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 8, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
+    this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -16, 12, rgba(214, 190, 150, 220), new Size(buttonW - 12, 15));
     this.host.applyImageButtonFeedback(button);
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
@@ -630,6 +718,22 @@ export class LobbyGuardBattleRenderer {
         this.shakeField(14);
       } else if (event.type === 'crystalSkill') {
         this.spawnFloater(this.xToPx(2), this.laneToPy(1), `矿晶震荡 ${event.amount ?? 0}`, rgba(150, 220, 255));
+      } else if (event.type === 'heroAttack') {
+        // 攻击动画:怪进入范围出手时播 attack(用户 2026-08-21);技能击追加专属技能特效打在目标身上。
+        const hero = sim.heroes.find((entry) => entry.heroCode === event.heroCode && entry.cell === event.cell);
+        if (hero) {
+          this.playUnitAttack(this.heroViews.get(hero.unitId));
+        }
+        if (event.skillProc && typeof event.monsterId === 'number') {
+          const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
+          if (target && event.heroCode) {
+            this.spawnGuardSkillFx(event.heroCode, target);
+            const targetView = this.monsterViews.get(target.monsterId);
+            if (targetView && targetView.node.isValid) {
+              this.spawnFloater(targetView.node.position.x, targetView.node.position.y + this.unitSize() * 0.6, `技能击 -${event.amount ?? 0}`, rgba(190, 150, 255));
+            }
+          }
+        }
       }
     }
     sim.events.length = 0;
@@ -978,6 +1082,9 @@ export class LobbyGuardBattleRenderer {
       if (starLabel) {
         starLabel.string = '★'.repeat(hero.star);
       }
+      if (this.rangeShownUnitId === hero.unitId) {
+        this.drawRangeIndicator(hero);
+      }
       const attackLabel = view.node.getChildByName('GuardHeroAtk')?.getComponent(Label);
       if (attackLabel) {
         attackLabel.string = `${guardHeroAttackValue(sim, hero)}`;
@@ -1005,7 +1112,8 @@ export class LobbyGuardBattleRenderer {
     fg.fillColor = rgba(roleColor.r, roleColor.g, roleColor.b, 130);
     fg.roundRect(-size * 0.31, -size * 0.4, size * 0.62, size * 0.8, 8);
     fg.fill();
-    this.attachUnitSpine(node, fallback, ally, size, false);
+    const pendingView: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '' };
+    this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
     this.host.addChildLabel(node, 'GuardHeroName', `${pool?.displayName ?? hero.heroCode}·${GUARD_ROLE_LABEL[hero.role] ?? ''}`, 0, size * 0.56, 11, rgba(236, 224, 196), new Size(size * 1.4, 14));
     const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.44, 12, rgba(255, 220, 110), new Size(size * 1.2, 14));
     star.enableOutline = true;
@@ -1013,19 +1121,19 @@ export class LobbyGuardBattleRenderer {
     star.outlineWidth = 2;
     this.host.addChildLabel(node, 'GuardHeroAtk', '', 0, -size * 0.55, 11, rgba(214, 196, 156, 220), new Size(size, 13));
     this.bindHeroDrag(node, hero.unitId);
-    return { node, spineReady: false, lastAnimKey: '' };
+    return pendingView;
   }
 
   /** 骨骼挂载(英雄用 snapshot ally 解析;怪物用 spine/monster/<code> 直连);失败保留回退色块。 */
-  private attachUnitSpine(node: Node, fallback: Node, ally: BattlePresentationUnitSnapshot | null, size: number, mirror: boolean): void {
+  private attachUnitSpine(node: Node, fallback: Node, ally: BattlePresentationUnitSnapshot | null, size: number, mirror: boolean, view?: GuardUnitView): void {
     const resource = ally ? resolveBattleUnitSpineResource(ally) : null;
     if (!resource) {
       return;
     }
-    this.loadSpineInto(node, fallback, resource, size, mirror);
+    this.loadSpineInto(node, fallback, resource, size, mirror, view);
   }
 
-  private loadSpineInto(node: Node, fallback: Node, resource: string, size: number, mirror: boolean): void {
+  private loadSpineInto(node: Node, fallback: Node, resource: string, size: number, mirror: boolean, view?: GuardUnitView): void {
     const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, -size * 0.36, size, size * 1.1);
     const skeleton = spineNode.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
@@ -1046,9 +1154,16 @@ export class LobbyGuardBattleRenderer {
         skeleton.skeletonData = data;
         const idle = names.find((name) => /idle|stand|daiji|wait/i.test(name)) ?? names[0];
         skeleton.setAnimation(0, idle, true);
-        const rawHeight = Math.max(60, Number(runtimeData.height) || 300);
+        // act 系骨骼 bounds 常虚标(截图验收:断刃佣兵缩成小人)——rawHeight 钳到 [140,1200] 再 fit。
+        const rawHeight = Math.min(1200, Math.max(140, Number(runtimeData.height) || 300));
         const fit = (size * 1.05) / rawHeight;
         spineNode.setScale(mirror ? -fit : fit, fit, 1);
+        if (view) {
+          view.skeleton = skeleton;
+          view.idleAnim = idle;
+          view.attackAnim = names.find((name) => /atk|attack|gongji|skill|普攻/i.test(name) && !/hit|hurt|dead|die/i.test(name)) ?? idle;
+          view.spineReady = true;
+        }
         if (fallback.isValid) {
           fallback.destroy();
         }
@@ -1058,12 +1173,200 @@ export class LobbyGuardBattleRenderer {
     });
   }
 
+  /** 攻击动画:播一次 attack 再接回 idle(骨骼未就绪时静默跳过)。 */
+  private playUnitAttack(view: GuardUnitView | undefined): void {
+    if (!view || !view.spineReady || !view.skeleton || !view.skeleton.isValid || view.attackAnim === view.idleAnim) {
+      return;
+    }
+    try {
+      view.skeleton.setAnimation(0, view.attackAnim, false);
+      view.skeleton.addAnimation(0, view.idleAnim, true, 0);
+    } catch (error) {
+      void error;
+    }
+  }
+
+  // ── 点击英雄显示攻击范围(近战=本车道段,远程/控制/辅助=全车道横带)──
+  private drawRangeIndicator(hero: GuardHeroUnit): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    field.getChildByName('GuardRangeIndicator')?.destroy();
+    const profile = GUARD_ROLE_PROFILE[hero.role];
+    const heroX = guardCellX(hero.cell);
+    const left = this.xToPx(Math.max(0, heroX - profile.rangeCells));
+    const right = this.xToPx(Math.min(GUARD_SPAWN_X, heroX + profile.rangeCells));
+    const laneHeight = this.layoutHeight * 0.185;
+    const layer = this.host.addChildPlainNode(field, 'GuardRangeIndicator', 0, 0, 10, 10);
+    layer.setSiblingIndex(1);
+    const g = layer.addComponent(Graphics);
+    const bandTop = profile.laneLocked ? this.laneToPy(guardCellLane(hero.cell)) + laneHeight / 2 : this.laneToPy(0) + laneHeight / 2;
+    const bandBottom = profile.laneLocked ? this.laneToPy(guardCellLane(hero.cell)) - laneHeight / 2 : this.laneToPy(GUARD_GRID_ROWS - 1) - laneHeight / 2;
+    g.fillColor = rgba(120, 230, 110, 44);
+    g.roundRect(left, bandBottom, right - left, bandTop - bandBottom, 10);
+    g.fill();
+    g.strokeColor = rgba(150, 240, 130, 190);
+    g.lineWidth = 2;
+    g.roundRect(left, bandBottom, right - left, bandTop - bandBottom, 10);
+    g.stroke();
+    // 选中格绿色高亮(参考图)
+    const center = this.cellCenter(hero.cell);
+    const cellSize = this.unitSize() * 1.05;
+    g.strokeColor = rgba(150, 240, 110, 240);
+    g.lineWidth = 3;
+    g.roundRect(center.x - cellSize / 2, center.y - cellSize / 2, cellSize, cellSize, 10);
+    g.stroke();
+  }
+
+  private clearRangeIndicator(): void {
+    this.rangeShownUnitId = null;
+    this.fieldNode?.getChildByName('GuardRangeIndicator')?.destroy();
+  }
+
+  // ── 技能击特效:该英雄专属技能特效打在目标怪身上(包围盒实测适配,缓存;同屏≤3)──
+  private spawnGuardSkillFx(heroCode: string, monster: GuardMonster): void {
+    const field = this.fieldNode;
+    if (!field || this.guardFxLiveCount >= 3) {
+      return;
+    }
+    const pool = this.sim?.pool.find((entry) => entry.heroCode === heroCode);
+    const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
+    const spec: BattleSkillEffectSpec = resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
+    const monsterScale = GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1;
+    const desired = this.unitSize() * Math.min(3, Math.max(1, monsterScale)) * 1.3;
+    const x = this.xToPx(monster.x);
+    const y = this.laneToPy(monster.lane) + this.monsterJitterY(monster) + this.unitSize() * 0.1;
+    const node = this.host.addChildPlainNode(field, 'GuardSkillFx', x, y, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = false;
+    this.guardFxLiveCount += 1;
+    let released = false;
+    const release = (): void => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.guardFxLiveCount = Math.max(0, this.guardFxLiveCount - 1);
+      if (node.isValid) {
+        node.destroy();
+      }
+    };
+    loadSharedSpineData(resolveBattleSkillEffectResource(spec), null, 'GuardSkillFx', (data) => {
+      if (!node.isValid || !data) {
+        release();
+        return;
+      }
+      try {
+        const runtimeData = resolveBattleUnitSpineRuntimeData(data);
+        const names = (runtimeData?.animations ?? []).map((animation) => (animation?.name || '').trim()).filter(Boolean);
+        if (!runtimeData || names.length === 0) {
+          release();
+          return;
+        }
+        patchBattleUnitSpineRuntimeEnums(data, runtimeData);
+        const wanted = spec.animation.trim().toLowerCase();
+        const animationName = names.find((name) => name.toLowerCase() === wanted)
+          ?? names.find((name) => name.toLowerCase().includes(wanted))
+          ?? names[0];
+        skeleton.skeletonData = data;
+        const extent = this.measureGuardFxExtent(skeleton, animationName, `${spec.effect}:${animationName}`);
+        const fit = (desired / Math.max(8, extent ?? 1100)) * (spec.scale || 1);
+        node.setScale(fit, fit, 1);
+        skeleton.setAnimation(0, animationName, false);
+        skeleton.setCompleteListener(() => release());
+      } catch (error) {
+        void error;
+        release();
+      }
+    });
+    tween(node).delay(2.2).call(release).start();
+  }
+
+  /** 采样动画 3 时刻,遍历 Region/Mesh 附件求 AABB 长边(按套缓存;测不出返回 null 走 1100 兜底)。 */
+  private measureGuardFxExtent(skeleton: sp.Skeleton, animationName: string, cacheKey: string): number | null {
+    if (this.guardFxBoundsCache.has(cacheKey)) {
+      return this.guardFxBoundsCache.get(cacheKey) ?? null;
+    }
+    let extent: number | null = null;
+    try {
+      skeleton.setAnimation(0, animationName, false);
+      const raw = (skeleton as unknown as { _skeleton?: unknown })._skeleton as {
+        slots?: Array<{ getAttachment?: () => unknown; bone?: unknown }>;
+        updateWorldTransform?: () => void;
+      } | undefined;
+      const duration = Math.max(0.2, skeleton.findAnimation(animationName)?.duration ?? 1);
+      if (raw && raw.slots) {
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        let lastTime = 0;
+        for (const ratio of [0.25, 0.5, 0.8]) {
+          const targetTime = duration * ratio;
+          skeleton.updateAnimation(Math.max(0, targetTime - lastTime));
+          lastTime = targetTime;
+          raw.updateWorldTransform?.();
+          for (const slot of raw.slots ?? []) {
+            const attachment = slot.getAttachment?.() as {
+              computeWorldVertices?: (...args: unknown[]) => void;
+              width?: number;
+              worldVerticesLength?: number;
+            } | null | undefined;
+            if (!attachment || typeof attachment.computeWorldVertices !== 'function') {
+              continue;
+            }
+            let verts: number[] | null = null;
+            if (typeof attachment.width === 'number') {
+              verts = new Array<number>(8).fill(0);
+              attachment.computeWorldVertices(slot.bone, verts, 0, 2);
+            } else if (typeof attachment.worldVerticesLength === 'number' && attachment.worldVerticesLength > 0) {
+              const count = attachment.worldVerticesLength;
+              verts = new Array<number>(count).fill(0);
+              attachment.computeWorldVertices(slot, 0, count, verts, 0, 2);
+            }
+            if (!verts) {
+              continue;
+            }
+            for (let i = 0; i + 1 < verts.length; i += 2) {
+              if (!Number.isFinite(verts[i]) || !Number.isFinite(verts[i + 1])) {
+                continue;
+              }
+              minX = Math.min(minX, verts[i]);
+              maxX = Math.max(maxX, verts[i]);
+              minY = Math.min(minY, verts[i + 1]);
+              maxY = Math.max(maxY, verts[i + 1]);
+            }
+          }
+        }
+        if (Number.isFinite(minX) && maxX - minX > 8 && maxY - minY > 8) {
+          extent = Math.max(maxX - minX, maxY - minY);
+        }
+      }
+    } catch (error) {
+      void error;
+      extent = null;
+    }
+    this.guardFxBoundsCache.set(cacheKey, extent);
+    return extent;
+  }
+
+  /** 怪物散布抖动(monsterId 哈希,确定性,不耗 rng):同车道内 ±0.32 车道高,摆脱"一条直线"。 */
+  private monsterJitterY(monster: GuardMonster): number {
+    const hash = (monster.monsterId * 2654435761) >>> 0;
+    return (((hash % 1000) / 1000) - 0.5) * this.layoutHeight * 0.185 * 0.64;
+  }
+
   private bindHeroDrag(node: Node, unitId: number): void {
     node.on(Node.EventType.TOUCH_START, () => {
       const hero = this.sim?.heroes.find((entry) => entry.unitId === unitId);
       if (hero) {
         this.dragFromCell = hero.cell;
         node.setSiblingIndex((this.fieldNode?.children.length ?? 2) - 1);
+        // 点击英雄显示攻击范围(用户 2026-08-21);拖走或点别人时刷新/清除。
+        this.rangeShownUnitId = unitId;
+        this.drawRangeIndicator(hero);
       }
     }, this);
     node.on(Node.EventType.TOUCH_MOVE, (event: { getUIDelta?: () => { x: number; y: number }; getDeltaX?: () => number; getDeltaY?: () => number }) => {
@@ -1090,6 +1393,15 @@ export class LobbyGuardBattleRenderer {
         if (action === 'none' && guardFindHeroAt(sim, targetCell)) {
           this.host.setStatus('只有同名同星英雄才能合成。');
         }
+        if (action !== 'none') {
+          this.clearRangeIndicator();
+        }
+      }
+      const stillThere = sim.heroes.find((entry) => entry.unitId === unitId);
+      if (this.rangeShownUnitId === unitId && stillThere) {
+        this.drawRangeIndicator(stillThere);
+      } else if (this.rangeShownUnitId === unitId) {
+        this.clearRangeIndicator();
       }
       this.syncHeroes();
     };
@@ -1123,7 +1435,9 @@ export class LobbyGuardBattleRenderer {
         continue;
       }
       const flyLift = monster.kind === 'flying' ? this.unitSize() * 0.45 : 0;
-      view.node.setPosition(this.xToPx(monster.x), this.laneToPy(monster.lane) + flyLift, 0);
+      // 区域化散布:同车道内确定性 y 抖动(±0.32 车道高)+ sim 侧速度抖动,怪群成片不成线。
+      const jitterY = monster.kind === 'boss' ? 0 : this.monsterJitterY(monster);
+      view.node.setPosition(this.xToPx(monster.x), this.laneToPy(monster.lane) + jitterY + flyLift, 0);
       if (monster.dead) {
         // 死亡:淡出下沉一次
         if (view.lastAnimKey !== 'dead') {
@@ -1144,7 +1458,7 @@ export class LobbyGuardBattleRenderer {
         hpGraphics.fillColor = rgba(8, 8, 10, 210);
         hpGraphics.rect(-barW / 2, -3, barW, 6);
         hpGraphics.fill();
-        hpGraphics.fillColor = monster.kind === 'boss' ? rgba(240, 90, 70, 240) : monster.kind === 'elite' ? rgba(255, 170, 80, 235) : rgba(150, 220, 120, 225);
+        hpGraphics.fillColor = monster.kind === 'boss' ? rgba(235, 60, 45, 250) : monster.kind === 'elite' ? rgba(255, 150, 60, 240) : rgba(224, 82, 64, 230);
         hpGraphics.rect(-barW / 2, -3, Math.max(1, barW * ratio), 6);
         hpGraphics.fill();
       }
@@ -1153,18 +1467,19 @@ export class LobbyGuardBattleRenderer {
 
   private createMonsterView(monster: GuardMonster): GuardUnitView {
     const field = this.fieldNode;
-    const baseSize = this.unitSize() * (monster.kind === 'boss' ? 2.6 : monster.kind === 'elite' ? 1.6 : monster.kind === 'tank' ? 1.15 : 1);
+    const baseSize = this.unitSize() * (GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1);
     const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardMonster_${monster.monsterId}`, this.xToPx(monster.x), this.laneToPy(monster.lane), baseSize, baseSize);
     const fallback = this.host.addChildPlainNode(node, 'GuardMonsterFallback', 0, 0, baseSize * 0.6, baseSize * 0.7);
     const g = fallback.addComponent(Graphics);
     g.fillColor = monster.kind === 'boss' ? rgba(190, 70, 60, 200) : monster.kind === 'elite' ? rgba(200, 130, 60, 190) : rgba(120, 96, 88, 180);
     g.roundRect(-baseSize * 0.3, -baseSize * 0.35, baseSize * 0.6, baseSize * 0.7, 8);
     g.fill();
-    // 怪物朝左走:素材原始朝右为主,镜像面向水晶。
-    this.loadSpineInto(node, fallback, `spine/monster/${monster.spineCode}/${monster.spineCode}`, baseSize, true);
-    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, baseSize * 0.52, Math.min(baseSize * 0.9, 110), 6);
+    // 怪物朝左走:素材原始朝右为主,镜像面向水晶。目录名≠文件基名,走映射表。
+    const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '' };
+    this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view);
+    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, baseSize * 0.52, Math.min(baseSize * 0.9, monster.kind === 'boss' ? 220 : 110), 6);
     hpBar.addComponent(Graphics);
-    return { node, spineReady: false, lastAnimKey: '' };
+    return view;
   }
 
   // ── 终局覆盖层与结算 ──

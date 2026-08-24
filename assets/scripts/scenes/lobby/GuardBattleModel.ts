@@ -31,6 +31,8 @@ export interface GuardHeroUnit {
   /** 最近一次出手时间(渲染层放攻击动画用)。 */
   lastAttackAtMs: number;
   lastTargetId: number | null;
+  /** 出手计数:star≥2 每第 4 次为技能击(×1.6,渲染层播专属技能特效)。 */
+  attackCount: number;
 }
 
 export interface GuardMonster {
@@ -105,6 +107,8 @@ export interface GuardEvent {
   chestId?: number;
   /** chestOpen:跳奖档位(1/3/5)。 */
   tier?: number;
+  /** heroAttack:本次为技能击(2星解锁,每第 4 次出手),渲染层播专属技能特效。 */
+  skillProc?: boolean;
 }
 
 export interface GuardBattleState {
@@ -156,12 +160,12 @@ export interface GuardBattleState {
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
 export const GUARD_GRID_ROWS = 3;
-export const GUARD_GRID_COLS = 4;
+export const GUARD_GRID_COLS = 3;
 export const GUARD_GRID_CELLS = GUARD_GRID_ROWS * GUARD_GRID_COLS;
 export const GUARD_SPAWN_X = 10;
 export const GUARD_CRYSTAL_REACH_X = 0.6;
 /** 远程怪站桩位:射程外啃水晶,逼玩家配远程/控制。 */
-export const GUARD_SHOOTER_STAND_X = 3.2;
+export const GUARD_SHOOTER_STAND_X = 4.8;
 /** 格列→路程 x 坐标(col3 最靠前)。 */
 export function guardCellX(cell: number): number {
   return 1.5 + (cell % GUARD_GRID_COLS);
@@ -224,6 +228,38 @@ const MONSTER_PROFILE: Record<GuardMonsterKind, { hpMult: number; speed: number;
   elite: { hpMult: 8, speed: 0.45, dmgMult: 2.2, spineCodes: ['abyss_jailer', 'forge_overseer', 'gargoyle'] },
   boss: { hpMult: 40, speed: 0.28, dmgMult: 8, spineCodes: ['rock_golem', 'abyss_devilman', 'grand_magus'] },
 };
+/** 怪物骨骼资源:目录名≠数据文件基名(如 rock_golem/golem_001.json),按实际文件名映射。 */
+export const GUARD_MONSTER_SPINE_FILE: Record<string, string> = {
+  abyss_devilman: 'twohand_spear_001',
+  abyss_jailer: 'jailer_001',
+  bow_male: 'bow_001',
+  crossbow_male: 'crossbow_001',
+  crow_reaper: 'twohand_spear_001',
+  cursed_caster: 'staff_001',
+  forge_overseer: 'hammer_001',
+  gargoyle: 'twohand_spear_001',
+  goathead_blade: 'sword_001',
+  grand_magus: 'wand_warlock_001',
+  hammer_tanker: 'hammer_shield_001',
+  infected_male: 'infected_bishop_001',
+  large_bear: 'large_001',
+  medium_dog: 'medium_base_001',
+  medium_rat: 'medium_001',
+  mutant_fatman: 'mutant_001',
+  mutant_male: 'knuckle_002_darkness',
+  rock_golem: 'golem_001',
+  small_bat: 'small_base_001',
+  small_raven: 'small_base_001',
+  small_spider: 'small_base_001',
+};
+export function guardMonsterSpineResource(spineCode: string): string {
+  const file = GUARD_MONSTER_SPINE_FILE[spineCode] ?? spineCode;
+  return `spine/monster/${spineCode}/${file}`;
+}
+
+/** 视觉体型倍率(用户拍板 2026-08-21:精英×2,BOSS×6)。 */
+export const GUARD_MONSTER_DISPLAY_SCALE: Record<GuardMonsterKind, number> = { normal: 1, fast: 0.85, tank: 1.3, flying: 0.9, shooter: 1, elite: 2, boss: 6 };
+
 const MONSTER_BASE_HP = 34;
 const MONSTER_HP_WAVE_EXP = 1.08;
 const MONSTER_BASE_CRYSTAL_DMG = 5;
@@ -406,6 +442,7 @@ export function guardSummon(state: GuardBattleState, free = false): GuardHeroUni
     attackCooldownMs: 0,
     lastAttackAtMs: -10000,
     lastTargetId: null,
+    attackCount: 0,
   };
   state.heroes.push(unit);
   state.events.push({ type: 'summon', timeMs: state.timeMs, heroCode: unit.heroCode, star: 1, cell });
@@ -693,7 +730,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     x: GUARD_SPAWN_X,
     hp,
     maxHp: hp,
-    speedCellsPerSec: profile.speed,
+    speedCellsPerSec: profile.speed * (0.88 + state.rng() * 0.24),
     crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(state.wave, 0.95))),
     attackCooldownMs: 0,
     slowUntilMs: 0,
@@ -750,11 +787,14 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   hero.attackCooldownMs = interval;
   hero.lastAttackAtMs = state.timeMs;
   hero.lastTargetId = target.monsterId;
-  const damage = guardHeroAttackValue(state, hero);
+  hero.attackCount += 1;
+  // 技能击(用户 2026-08-21:解锁技能词条要播技能动画且打在怪身上):2星起每第 4 次出手 ×1.6。
+  const skillProc = hero.star >= 2 && hero.attackCount % 4 === 0;
+  const damage = Math.round(guardHeroAttackValue(state, hero) * (skillProc ? 1.6 : 1));
   if (hero.role === 'control') {
     target.slowUntilMs = state.timeMs + GUARD_CONTROL_SLOW_MS;
   }
-  state.events.push({ type: 'heroAttack', timeMs: state.timeMs, heroCode: hero.heroCode, monsterId: target.monsterId, amount: damage, cell: hero.cell });
+  state.events.push({ type: 'heroAttack', timeMs: state.timeMs, heroCode: hero.heroCode, monsterId: target.monsterId, amount: damage, cell: hero.cell, skillProc });
   damageMonster(state, target, damage, hero);
 }
 
