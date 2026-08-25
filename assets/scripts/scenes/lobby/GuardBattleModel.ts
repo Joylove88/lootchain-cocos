@@ -180,9 +180,9 @@ export const GUARD_SPAWN_X = 10;
 export const GUARD_CRYSTAL_REACH_X = 0.6;
 /** 远程怪站桩位:任意列远程(后列 1.0+3.5=4.5)与中前列控制都够得着,前列近战可补刀;严格阵容检查交给飞行怪。 */
 export const GUARD_SHOOTER_STAND_X = 4.5;
-/** 格列→路程 x 坐标(col4 最靠前)。起点 0.95 给水晶塔让位、列距 1.3,4 列铺满英雄区(2026-08-25 视觉重做)。 */
+/** 格列→路程 x 坐标(col4 最靠前)。起点 1.45 给水晶塔让位(2026-08-25 用户验收:格子不许盖水晶)、列距 1.18。 */
 export function guardCellX(cell: number): number {
-  return 0.95 + (cell % GUARD_GRID_COLS) * 1.3;
+  return 1.45 + (cell % GUARD_GRID_COLS) * 1.18;
 }
 export function guardCellLane(cell: number): number {
   return Math.floor(cell / GUARD_GRID_COLS);
@@ -352,13 +352,11 @@ export function guardTrialLayers(state: GuardBattleState): number {
   return state.bossKills + state.wave;
 }
 
-/** 波次构成:精英每 5 波(rush 恒有;standard 的 10 倍数波让位给 BOSS),BOSS 每 10 波+末波;飞行 4 波起、远程 6 波起。 */
+/** 波次节奏(2026-08-25 用户拍板):前 3 波正常量热身,第 4 波起怪量陡增成势;精英第 4/8 波(每 10 波循环),BOSS 第 10 波/末波。 */
 export function guardWaveComposition(wave: number, rng: () => number, maxWave = 10, mode: GuardMode = 'standard'): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
   const spawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> = [];
-  // 前两波只出普通怪且量少:开局站位/召唤还没成型,别让坏运气第 1 波就翻车。
-  // 11 波起怪量增速减半(总强度转由 hp 曲线扛):20 波局后期不至于怪海碾压经济。
-  const countGrowth = wave <= 10 ? wave * 2 : 20 + (wave - 10);
-  const count = (wave <= 2 ? 4 : 6) + countGrowth;
+  // 热身 6/8/10 只;第 4 波起 6+3×波(18/21/24…),上限 40(同屏性能护栏)。
+  const count = Math.min(40, wave <= 3 ? 4 + wave * 2 : 6 + wave * 3);
   for (let i = 0; i < count; i += 1) {
     const roll = rng();
     let kind: GuardMonsterKind;
@@ -377,7 +375,8 @@ export function guardWaveComposition(wave: number, rng: () => number, maxWave = 
     }
     spawns.push({ kind, lane: Math.floor(rng() * GUARD_GRID_ROWS), atMs: Math.round((i / count) * WAVE_SPAWN_WINDOW_MS) });
   }
-  const isEliteWave = mode === 'rush' ? wave % 5 === 0 : wave % 5 === 0 && wave % 10 !== 0 && wave !== maxWave;
+  const waveInCycle = ((wave - 1) % 10) + 1;
+  const isEliteWave = mode === 'rush' ? wave % 4 === 0 : waveInCycle === 4 || waveInCycle === 8;
   if (isEliteWave) {
     spawns.push({ kind: 'elite', lane: Math.floor(rng() * GUARD_GRID_ROWS), atMs: 4000 });
   }
@@ -740,8 +739,9 @@ export function guardOpenChest(state: GuardBattleState, chestId: number, scriptT
       rewards.push({ kind: 'gold', amount, label: `战斗金币 +${amount}` });
     } else if (roll < 0.75) {
       const unit = guardSummon(state, true);
+      const unitName = unit ? state.pool.find((entry) => entry.heroCode === unit.heroCode)?.displayName ?? unit.heroCode : '';
       rewards.push(unit
-        ? { kind: 'summon', amount: 1, label: `免费召唤:${unit.heroCode}` }
+        ? { kind: 'summon', amount: 1, label: `免费召唤:${unitName}` }
         : { kind: 'gold', amount: 100, label: '阵地已满 → 金币 +100' });
       if (!unit) {
         state.gold += 100;
