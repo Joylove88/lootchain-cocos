@@ -63,8 +63,10 @@ import { resolveLobbyBattlePresentationSnapshot, type BattlePresentationSnapshot
 import {
   patchBattleUnitSpineRuntimeEnums,
   resolveBattleUnitSpineAnimationNames,
+  resolveBattleUnitSpineNodePosition,
   resolveBattleUnitSpineResource,
   resolveBattleUnitSpineRuntimeData,
+  resolveBattleUnitSpineScale,
   resolveBattleUnitSpineSkinName,
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
@@ -141,14 +143,15 @@ export class LobbyGuardBattleRenderer {
   private wheelOverlayOpen = false;
   /** 点击英雄显示攻击范围(unitId;拖拽结束/再点空白清除)。 */
   private rangeShownUnitId: number | null = null;
-  /** 技能特效包围盒缓存(effect:anim → 宽高),与在场技能特效计数。 */
-  private readonly guardFxBoundsCache = new Map<string, { w: number; h: number } | null>();
+  /** 技能特效包围盒缓存(effect:anim → 宽高+原点偏移),与在场技能特效计数。 */
+  private readonly guardFxBoundsCache = new Map<string, { w: number; h: number; cx: number; cy: number } | null>();
   private guardFxLiveCount = 0;
   /** 在场技能特效瞄准器(step 逐帧驱动:锁定目标方向,目标死亡自动转向最近怪物)。 */
   private readonly guardFxAimers = new Map<Node, () => void>();
   /** 车道/格子底图(解锁新列时整层重画)。 */
   private fieldBaseG: Graphics | null = null;
   private paintedCols = 0;
+  private layoutUiScale = 1;
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -206,6 +209,7 @@ export class LobbyGuardBattleRenderer {
   render(layout: UiLayout): void {
     this.layoutWidth = layout.width;
     this.layoutHeight = layout.height;
+    this.layoutUiScale = layout.uiScale;
     const battleState = this.host.currentLobbyBattleState();
     const battleNo = battleState.start?.battleNo ?? '';
     if (!battleState.start) {
@@ -300,6 +304,15 @@ export class LobbyGuardBattleRenderer {
       sprite.spriteFrame = frame;
       node.getComponent(UITransform)?.setContentSize(width, height);
     });
+  }
+
+  /** 红金主按钮(素材=英雄升级按钮同款 button_primary 740×211,2026-08-25 用户拍板统一);标签由调用方叠加。 */
+  private mountPrimaryButton(parent: Node, name: string, x: number, y: number, w: number): Node {
+    const h = w * (211 / 740);
+    const button = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    this.mountSprite(button, `${name}Art`, 'ui/common/ai/button_primary/spriteFrame', 0, 0, w, h);
+    this.host.applyImageButtonFeedback(button);
+    return button;
   }
 
   /** 弹框面板底:现有素材 popup_frame_large(926×543 金雕花黑石板,2026-08-25 用户拍板改素材);miss 时直载补图。 */
@@ -619,18 +632,9 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const buttonW = Math.min(210, width * 0.17);
-    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(240, width * 0.2) - 18, -height / 2 + 64, buttonW, 56);
-    const g = button.addComponent(Graphics);
-    g.fillColor = rgba(52, 44, 70, 245);
-    g.roundRect(-buttonW / 2, -28, buttonW, 56, 12);
-    g.fill();
-    g.strokeColor = rgba(190, 150, 255, 235);
-    g.lineWidth = 2;
-    g.roundRect(-buttonW / 2, -28, buttonW, 56, 12);
-    g.stroke();
-    this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 18, rgba(230, 214, 255), new Size(buttonW - 10, 24));
-    this.host.applyImageButtonFeedback(button);
+    const buttonW = Math.min(230, width * 0.17);
+    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(264, width * 0.2) - 22, -height / 2 + 66, buttonW);
+    this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 19, rgba(255, 238, 190), new Size(buttonW - 12, 24));
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -716,19 +720,10 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const buttonW = Math.min(240, width * 0.2);
-    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 64, buttonW, 64);
-    const g = button.addComponent(Graphics);
-    g.fillColor = rgba(122, 62, 30, 245);
-    g.roundRect(-buttonW / 2, -32, buttonW, 64, 14);
-    g.fill();
-    g.strokeColor = rgba(255, 200, 110, 240);
-    g.lineWidth = 2.2;
-    g.roundRect(-buttonW / 2, -32, buttonW, 64, 14);
-    g.stroke();
-    this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 8, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
-    this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -16, 12, rgba(214, 190, 150, 220), new Size(buttonW - 12, 15));
-    this.host.applyImageButtonFeedback(button);
+    const buttonW = Math.min(264, width * 0.2);
+    const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 66, buttonW);
+    this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 9, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
+    this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -18, 13, rgba(240, 214, 170, 230), new Size(buttonW - 12, 16));
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -1035,17 +1030,8 @@ export class LobbyGuardBattleRenderer {
       opacity.opacity = 0;
       tween(opacity).delay(0.18 * index).to(0.2, { opacity: 255 }).start();
     });
-    const close = this.host.addChildPlainNode(overlay, 'GuardWheelClose', colX, -panelH / 2 + 98, 230, 60);
-    const g = close.addComponent(Graphics);
-    g.fillColor = rgba(122, 62, 30, 245);
-    g.roundRect(-115, -30, 230, 60, 14);
-    g.fill();
-    g.strokeColor = rgba(255, 200, 110, 240);
-    g.lineWidth = 2.4;
-    g.roundRect(-115, -30, 230, 60, 14);
-    g.stroke();
+    const close = this.mountPrimaryButton(overlay, 'GuardWheelClose', colX, -panelH / 2 + 100, 236);
     this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, 22, rgba(255, 238, 190), new Size(200, 28));
-    this.host.applyImageButtonFeedback(close);
     close.on(Node.EventType.TOUCH_END, () => {
       if (overlay.isValid) {
         overlay.destroy();
@@ -1130,17 +1116,8 @@ export class LobbyGuardBattleRenderer {
     });
     // 跳过 / 刷新
     const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
-      const button = this.host.addChildPlainNode(overlay, name, x, -panelH / 2 + 94, 210, 56);
-      const g = button.addComponent(Graphics);
-      g.fillColor = rgba(52, 42, 34, 250);
-      g.roundRect(-105, -28, 210, 56, 12);
-      g.fill();
-      g.strokeColor = rgba(214, 178, 120, 235);
-      g.lineWidth = 2;
-      g.roundRect(-105, -28, 210, 56, 12);
-      g.stroke();
-      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(236, 222, 190), new Size(200, 24));
-      this.host.applyImageButtonFeedback(button);
+      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 94, 216);
+      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(206, 24));
       button.on(Node.EventType.TOUCH_END, onTap, this);
     };
     makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -100, () => {
@@ -1300,10 +1277,11 @@ export class LobbyGuardBattleRenderer {
   /** 骨骼挂载(英雄用 snapshot ally 解析;怪物用 spine/monster/<code> 直连);失败保留回退色块。 */
   private attachUnitSpine(node: Node, fallback: Node, ally: BattlePresentationUnitSnapshot | null, size: number, mirror: boolean, view?: GuardUnitView): void {
     const resource = ally ? resolveBattleUnitSpineResource(ally) : null;
-    if (!resource) {
+    if (!resource || !ally) {
       return;
     }
-    this.loadSpineInto(node, fallback, resource, size, mirror, view);
+    // 英雄体型走主战斗统一公式(布阵补偿表):act 系 bounds 虚标(断刃佣兵缩成小人)由逐资源表校准。
+    this.loadSpineInto(node, fallback, resource, size, mirror, view, { allyUnit: ally });
   }
 
   private loadSpineInto(
@@ -1322,6 +1300,8 @@ export class LobbyGuardBattleRenderer {
       preferAnim?: RegExp;
       /** 怪物:动画名走稀有度映射(原始名单会命中 *_turn_/*_link_ 过渡段)。 */
       enemyAnimNames?: boolean;
+      /** 英雄:走主战斗统一体型公式(资源补偿表,修 act 系 bounds 虚标导致的体型忽大忽小)。 */
+      allyUnit?: BattlePresentationUnitSnapshot;
     },
   ): void {
     const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, opts?.footY ?? -size * 0.36, size, size * 1.1);
@@ -1367,10 +1347,13 @@ export class LobbyGuardBattleRenderer {
           attack = rawNames.find((name) => /atk|attack|gongji|skill|普攻/i.test(name) && !/hit|hurt|dead|die/i.test(name)) ?? idle;
         }
         let fit: number;
-        if (opts?.calibratedScale) {
+        if (opts?.allyUnit) {
+          fit = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, size, size, this.layoutUiScale, false, opts.allyUnit);
+          const pos = resolveBattleUnitSpineNodePosition(runtimeData, fit, size, opts.allyUnit, false);
+          spineNode.setPosition(pos.x, pos.y, 0);
+        } else if (opts?.calibratedScale) {
           fit = opts.calibratedScale(Math.max(1, Number(runtimeData.height) || 300));
         } else {
-          // act 系骨骼 bounds 常虚标(截图验收:断刃佣兵缩成小人)——rawHeight 钳到 [140,1200] 再 fit。
           const rawHeight = Math.min(1200, Math.max(140, Number(runtimeData.height) || 300));
           fit = (size * 1.05) / rawHeight;
         }
@@ -1426,9 +1409,9 @@ export class LobbyGuardBattleRenderer {
     }
     field.getChildByName('GuardRangeIndicator')?.destroy();
     const profile = GUARD_ROLE_PROFILE[hero.role];
-    const heroX = guardCellX(hero.cell);
-    const left = this.xToPx(Math.max(0, heroX - profile.rangeCells));
-    const right = this.xToPx(Math.min(GUARD_SPAWN_X, heroX + profile.rangeCells));
+    // 覆盖范围从水晶起算(2026-08-25 拍板:与所站格子无关)——同类型英雄范围永远一样大。
+    const left = this.xToPx(0);
+    const right = this.xToPx(Math.min(GUARD_SPAWN_X, profile.rangeCells));
     const laneHeight = this.layoutHeight * 0.155;
     const layer = this.host.addChildPlainNode(field, 'GuardRangeIndicator', 0, 0, 10, 10);
     layer.setSiblingIndex(1);
@@ -1469,7 +1452,7 @@ export class LobbyGuardBattleRenderer {
     this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 34, 20, rgba(255, 234, 180), new Size(w - 40, 26));
     this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 62, 18, rgba(255, 220, 110), new Size(w - 20, 22));
     const roleName = GUARD_ROLE_LABEL[hero.role] ?? hero.role;
-    this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 射程 ${profile.rangeCells} 格`, 0, h / 2 - 92, 16, rgba(226, 214, 188), new Size(w - 20, 20));
+    this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格`, 0, h / 2 - 92, 16, rgba(226, 214, 188), new Size(w - 20, 20));
     this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)}`, 0, h / 2 - 122, 16, rgba(255, 200, 150), new Size(w - 20, 20));
     this.host.addChildLabel(panel, 'Spd', `攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)} 次/秒${hero.star >= 2 ? ' · 已解锁技能击' : ' · 2★ 解锁技能击'}`, 0, h / 2 - 152, 14, rgba(196, 184, 160), new Size(w - 20, 18));
   }
@@ -1496,7 +1479,7 @@ export class LobbyGuardBattleRenderer {
     const origin = this.cellCenter(heroCell);
     const muzzleX = origin.x + this.unitSize() * 0.45;
     const muzzleY = origin.y + this.unitSize() * 0.02;
-    const rangePx = Math.max(this.unitSize() * 1.5, this.xToPx(Math.min(GUARD_SPAWN_X, guardCellX(heroCell) + GUARD_ROLE_PROFILE[role].rangeCells)) - muzzleX);
+    const rangePx = Math.max(this.unitSize() * 1.5, this.xToPx(Math.min(GUARD_SPAWN_X, GUARD_ROLE_PROFILE[role].rangeCells)) - muzzleX);
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
     const skeleton = node.addComponent(sp.Skeleton);
@@ -1535,17 +1518,22 @@ export class LobbyGuardBattleRenderer {
         const bounds = this.measureGuardFxExtent(skeleton, animationName, `${spec.effect}:${animationName}`);
         const extentW = Math.max(8, bounds?.w ?? 1100);
         const extentH = Math.max(8, bounds?.h ?? 1100);
-        // 横长 ≥1.5× 视为束状(火柱/斩击线):锚英雄身前、按目标距离拉长;否则为爆点:贴目标、随目标走。
+        const centerX = bounds?.cx ?? 0;
+        const centerY = bounds?.cy ?? 0;
+        // 横长 ≥1.5× 视为束状(火柱/斩击线):锚英雄身前沿目标方向喷射;其余为弹道:从身前飞到怪物身上再爆(上一版用户认可方案)。
         const beam = extentW >= extentH * 1.5;
         const burstFit = (this.unitSize() * 1.7 / Math.max(extentW, extentH)) * (spec.scale || 1);
         let currentTargetId = monster.monsterId;
-        const aim = (): void => {
-          if (!node.isValid || !this.sim) {
-            return;
+        let flying = !beam;
+        let flyX = muzzleX;
+        let flyY = muzzleY;
+        const resolveTarget = (): GuardMonster | null => {
+          if (!this.sim) {
+            return null;
           }
           let target = this.sim.monsters.find((entry) => entry.monsterId === currentTargetId && !entry.dead) ?? null;
           if (!target) {
-            // 目标死亡:转向离英雄最近的存活怪;全场无怪保持朝向。
+            // 目标死亡:自动转向离英雄最近的存活怪。
             let bestDist = Number.POSITIVE_INFINITY;
             for (const candidate of this.sim.monsters) {
               if (candidate.dead) {
@@ -1557,46 +1545,93 @@ export class LobbyGuardBattleRenderer {
                 target = candidate;
               }
             }
-            if (!target) {
-              return;
+            if (target) {
+              currentTargetId = target.monsterId;
             }
-            currentTargetId = target.monsterId;
+          }
+          return target;
+        };
+        const aim = (): void => {
+          if (!node.isValid) {
+            return;
+          }
+          const target = resolveTarget();
+          if (!target) {
+            return;
           }
           const tx = this.xToPx(target.x);
           const ty = this.laneToPy(target.lane) + this.monsterJitterY(target) + this.unitSize() * 0.1;
-          const dx = tx - muzzleX;
-          const dy = ty - muzzleY;
-          const dist = Math.max(this.unitSize(), Math.hypot(dx, dy));
-          const ux = dx / dist;
-          const uy = dy / dist;
-          node.angle = Math.atan2(dy, dx) * (180 / Math.PI);
           if (beam) {
+            const dx = tx - muzzleX;
+            const dy = ty - muzzleY;
+            const dist = Math.max(this.unitSize(), Math.hypot(dx, dy));
+            const ux = dx / dist;
+            const uy = dy / dist;
+            const angleRad = Math.atan2(dy, dx);
+            node.angle = angleRad * (180 / Math.PI);
             const len = Math.min(Math.max(dist, this.unitSize() * 1.5), rangePx);
-            const fit = (len / extentW) * (spec.scale || 1);
-            node.setScale(fit, Math.min(fit, (this.unitSize() * 2.2) / extentH), 1);
-            node.setPosition(muzzleX + ux * len * 0.5, muzzleY + uy * len * 0.5, 0);
-          } else {
+            const fitX = (len / extentW) * (spec.scale || 1);
+            const fitY = Math.min(fitX, (this.unitSize() * 2.2) / extentH);
+            node.setScale(fitX, fitY, 1);
+            // 内容 AABB 左缘对齐炮口:先算内容中心的本地偏移,再随角度旋转补偿——火柱从身前喷出,不再悬空。
+            const localCx = centerX * fitX;
+            const localCy = centerY * fitY;
+            const cos = Math.cos(angleRad);
+            const sin = Math.sin(angleRad);
+            const worldCx = localCx * cos - localCy * sin;
+            const worldCy = localCx * sin + localCy * cos;
+            node.setPosition(muzzleX + ux * len * 0.5 - worldCx, muzzleY + uy * len * 0.5 - worldCy, 0);
+          } else if (flying) {
+            // 弹道:每 tick 朝当前目标位置推进,到位后转命中段
+            const dx = tx - flyX;
+            const dy = ty - flyY;
+            const dist = Math.hypot(dx, dy);
+            const stepLen = 150;
+            if (dist <= stepLen) {
+              flying = false;
+              flyX = tx;
+              flyY = ty;
+              try {
+                skeleton.setAnimation(0, animationName, false);
+                skeleton.setCompleteListener(() => release());
+              } catch (error) {
+                void error;
+                release();
+              }
+            } else {
+              flyX += (dx / dist) * stepLen;
+              flyY += (dy / dist) * stepLen;
+              node.angle = Math.atan2(dy, dx) * (180 / Math.PI);
+            }
             node.setScale(burstFit, burstFit, 1);
-            node.setPosition(tx, ty, 0);
+            node.setPosition(flyX - centerX * burstFit, flyY - centerY * burstFit, 0);
+          } else {
+            // 命中段:贴住目标(目标死了由 resolveTarget 换最近怪)
+            node.setPosition(tx - centerX * burstFit, ty - centerY * burstFit, 0);
           }
         };
         aim();
         this.guardFxAimers.set(node, aim);
-        let plays = 0;
-        skeleton.setAnimation(0, animationName, false);
-        skeleton.setCompleteListener(() => {
-          plays += 1;
-          if (plays >= 2 || spec.loop) {
-            release();
-            return;
-          }
-          try {
-            skeleton.setAnimation(0, animationName, false);
-          } catch (error) {
-            void error;
-            release();
-          }
-        });
+        if (beam) {
+          let plays = 0;
+          skeleton.setAnimation(0, animationName, false);
+          skeleton.setCompleteListener(() => {
+            plays += 1;
+            if (plays >= 2 || spec.loop) {
+              release();
+              return;
+            }
+            try {
+              skeleton.setAnimation(0, animationName, false);
+            } catch (error) {
+              void error;
+              release();
+            }
+          });
+        } else {
+          // 飞行段循环播放,命中时重播一次(aim 内切换)
+          skeleton.setAnimation(0, animationName, true);
+        }
       } catch (error) {
         void error;
         release();
@@ -1605,12 +1640,12 @@ export class LobbyGuardBattleRenderer {
     tween(node).delay(3.4).call(release).start();
   }
 
-  /** 采样动画 3 时刻,遍历 Region/Mesh 附件求 AABB 宽高(按套缓存;测不出返回 null 走 1100 兜底)。 */
-  private measureGuardFxExtent(skeleton: sp.Skeleton, animationName: string, cacheKey: string): { w: number; h: number } | null {
+  /** 采样动画 3 时刻,遍历 Region/Mesh 附件求 AABB 宽高与原点偏移(按套缓存;测不出返回 null 走兜底)。 */
+  private measureGuardFxExtent(skeleton: sp.Skeleton, animationName: string, cacheKey: string): { w: number; h: number; cx: number; cy: number } | null {
     if (this.guardFxBoundsCache.has(cacheKey)) {
       return this.guardFxBoundsCache.get(cacheKey) ?? null;
     }
-    let extent: { w: number; h: number } | null = null;
+    let extent: { w: number; h: number; cx: number; cy: number } | null = null;
     try {
       skeleton.setAnimation(0, animationName, false);
       const raw = (skeleton as unknown as { _skeleton?: unknown })._skeleton as {
@@ -1662,7 +1697,7 @@ export class LobbyGuardBattleRenderer {
           }
         }
         if (Number.isFinite(minX) && maxX - minX > 8 && maxY - minY > 8) {
-          extent = { w: maxX - minX, h: maxY - minY };
+          extent = { w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
         }
       }
     } catch (error) {
@@ -1948,17 +1983,8 @@ export class LobbyGuardBattleRenderer {
     if (rewards) {
       this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05, 19, rgba(255, 226, 150), new Size(this.layoutWidth * 0.7, 26));
     }
-    const back = this.host.addChildPlainNode(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 250, 62);
-    const g = back.addComponent(Graphics);
-    g.fillColor = rgba(122, 62, 30, 245);
-    g.roundRect(-125, -31, 250, 62, 14);
-    g.fill();
-    g.strokeColor = rgba(255, 200, 110, 240);
-    g.lineWidth = 2.4;
-    g.roundRect(-125, -31, 250, 62, 14);
-    g.stroke();
+    const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 256);
     this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
-    this.host.applyImageButtonFeedback(back);
     back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
   }
 }

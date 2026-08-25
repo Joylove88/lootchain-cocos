@@ -199,12 +199,13 @@ export const GUARD_MAX_STAR = 5;
 export const GUARD_STAR_ATTACK_MULT = 2.2;
 export const GUARD_CRYSTAL_MAX_HP = 1600;
 
-// 射程(2026-08-25 用户拍板:近战扩大一倍、远程扩大两倍——覆盖大半跑道,站位影响弱化)
+// 覆盖范围(2026-08-25 用户拍板:同类型英雄攻击范围与所站格子无关)——rangeCells=从水晶起算的覆盖距离,
+// 怪物走进 [0, rangeCells] 即可被打;近战仍锁本车道。近战 6 / 远程 10(全跑道)/ 控制 8。
 export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; intervalMs: number; damageScale: number; laneLocked: boolean }> = {
-  melee: { rangeCells: 3.0, intervalMs: 800, damageScale: 1.6, laneLocked: true },
-  ranged: { rangeCells: 7.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
+  melee: { rangeCells: 6.0, intervalMs: 800, damageScale: 1.6, laneLocked: true },
+  ranged: { rangeCells: 10.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
   support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
-  control: { rangeCells: 4.5, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
+  control: { rangeCells: 8.0, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
 };
 export const GUARD_CONTROL_SLOW_RATIO = 0.4;
 export const GUARD_CONTROL_SLOW_MS = 1500;
@@ -877,7 +878,6 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * GUARD_SUPPORT_CRYSTAL_HEAL_RATIO));
     return;
   }
-  const heroX = guardCellX(hero.cell);
   const heroLane = guardCellLane(hero.cell);
   let target: GuardMonster | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -892,9 +892,9 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     if (profile.laneLocked && monster.lane !== heroLane) {
       continue;
     }
-    const distance = Math.abs(monster.x - heroX);
-    if (distance <= profile.rangeCells && distance < bestDistance) {
-      bestDistance = distance;
+    // 覆盖范围从水晶起算(与站位无关);优先打离水晶最近(最紧迫)的怪。
+    if (monster.x <= profile.rangeCells && monster.x < bestDistance) {
+      bestDistance = monster.x;
       target = monster;
     }
   }
