@@ -41,6 +41,7 @@ import {
   guardTrialLayers,
   guardUseCrystalSkill,
   guardMonsterSpineResource,
+  GUARD_COL4_UNLOCK_SUMMONS,
   GUARD_CRYSTAL_REACH_X,
   GUARD_CRYSTAL_SKILL_CD_MS,
   GUARD_GRID_CELLS,
@@ -61,8 +62,10 @@ import {
 import { resolveLobbyBattlePresentationSnapshot, type BattlePresentationSnapshot, type BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 import {
   patchBattleUnitSpineRuntimeEnums,
+  resolveBattleUnitSpineAnimationNames,
   resolveBattleUnitSpineResource,
   resolveBattleUnitSpineRuntimeData,
+  resolveBattleUnitSpineSkinName,
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
@@ -141,6 +144,9 @@ export class LobbyGuardBattleRenderer {
   /** 技能特效包围盒缓存(effect:anim → 长边),与在场技能特效计数。 */
   private readonly guardFxBoundsCache = new Map<string, number | null>();
   private guardFxLiveCount = 0;
+  /** 车道/格子底图(解锁新列时整层重画)。 */
+  private fieldBaseG: Graphics | null = null;
+  private paintedCols = 0;
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -183,6 +189,8 @@ export class LobbyGuardBattleRenderer {
     this.wheelOverlayOpen = false;
     this.rangeShownUnitId = null;
     this.guardFxLiveCount = 0;
+    this.fieldBaseG = null;
+    this.paintedCols = 0;
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -291,6 +299,27 @@ export class LobbyGuardBattleRenderer {
     });
   }
 
+  /** 弹框面板底(2026-08-25 用户拍板"弹框要有 UI 设计"):深棕底+双层金边+顶部标题带。 */
+  private paintOverlayPanel(parent: Node, w: number, h: number, y: number): Node {
+    const panel = this.host.addChildPlainNode(parent, 'GuardOverlayPanel', 0, y, w, h);
+    const g = panel.addComponent(Graphics);
+    g.fillColor = rgba(26, 19, 14, 246);
+    g.roundRect(-w / 2, -h / 2, w, h, 18);
+    g.fill();
+    g.strokeColor = rgba(214, 172, 100, 250);
+    g.lineWidth = 3;
+    g.roundRect(-w / 2, -h / 2, w, h, 18);
+    g.stroke();
+    g.strokeColor = rgba(120, 92, 54, 220);
+    g.lineWidth = 1.4;
+    g.roundRect(-w / 2 + 6, -h / 2 + 6, w - 12, h - 12, 14);
+    g.stroke();
+    g.fillColor = rgba(74, 50, 26, 240);
+    g.roundRect(-w / 2 + 8, h / 2 - 72, w - 16, 64, 12);
+    g.fill();
+    return panel;
+  }
+
   /** 战场背景(矿洞图 1536×1024):cover 等比铺满,裁洞顶保地面;顶部再压一条渐暗带保 HUD 可读。 */
   private mountBackground(root: Node): void {
     const width = this.layoutWidth;
@@ -326,8 +355,9 @@ export class LobbyGuardBattleRenderer {
   private pathRightPx(): number {
     return this.xToPx(GUARD_SPAWN_X);
   }
+  /** 车道 y:整体压到背景图地面带上(2026-08-25 用户验收:格子不能站在墙上),行距 0.155H。 */
   private laneToPy(lane: number): number {
-    return this.layoutHeight * 0.12 - lane * this.layoutHeight * 0.19;
+    return -this.layoutHeight * 0.015 - lane * this.layoutHeight * 0.155;
   }
   private unitSize(): number {
     return this.layoutHeight * 0.16;
@@ -359,8 +389,21 @@ export class LobbyGuardBattleRenderer {
     if (!field) {
       return;
     }
-    const g = field.addComponent(Graphics);
-    const laneHeight = this.layoutHeight * 0.185;
+    this.fieldBaseG = field.getComponent(Graphics) ?? field.addComponent(Graphics);
+    this.repaintFieldBase();
+  }
+
+  /** 车道+格子底图(解锁新列时重画;锁定列画暗卡+解锁提示)。 */
+  private repaintFieldBase(): void {
+    const g = this.fieldBaseG;
+    const field = this.fieldNode;
+    const sim = this.sim;
+    if (!g || !field || !sim) {
+      return;
+    }
+    this.paintedCols = sim.unlockedCols;
+    g.clear();
+    const laneHeight = this.layoutHeight * 0.155;
     // 车道:背景图上只压低透明暗带+发丝金线分隔,别把地面盖回黑
     for (let lane = 0; lane < GUARD_GRID_ROWS; lane += 1) {
       const y = this.laneToPy(lane);
@@ -373,17 +416,26 @@ export class LobbyGuardBattleRenderer {
       g.lineTo(this.pathRightPx() + this.layoutWidth * 0.05, y - laneHeight / 2);
       g.stroke();
     }
-    // 3×3 正方大卡:边长=列距×0.92(列距=1.5 sim 单位映射像素),暖棕底+金边——任何宽高比都不互叠
+    // 3×4 正方大卡:边长=列距×0.92——任何宽高比都不互叠;锁定列暗卡,累计召唤达标解锁
     const size = this.cellPitchPx() * 0.92;
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const center = this.cellCenter(cell);
-      g.fillColor = rgba(34, 24, 18, 150);
+      const locked = cell % GUARD_GRID_COLS >= sim.unlockedCols;
+      g.fillColor = locked ? rgba(14, 11, 9, 120) : rgba(34, 24, 18, 150);
       g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.fill();
-      g.strokeColor = rgba(190, 150, 92, 185);
-      g.lineWidth = 2;
+      g.strokeColor = locked ? rgba(110, 96, 78, 130) : rgba(190, 150, 92, 185);
+      g.lineWidth = locked ? 1.4 : 2;
       g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.stroke();
+    }
+    field.getChildByName('GuardLockHint')?.destroy();
+    if (sim.unlockedCols < GUARD_GRID_COLS) {
+      const center = this.cellCenter(GUARD_GRID_COLS + (GUARD_GRID_COLS - 1));
+      const hint = this.host.addChildLabel(field, 'GuardLockHint', `累计召唤 ${GUARD_COL4_UNLOCK_SUMMONS} 次\n解锁整列`, center.x, center.y, 16, rgba(220, 202, 168, 220), new Size(size, 46));
+      hint.enableOutline = true;
+      hint.outlineColor = rgba(20, 12, 6, 255);
+      hint.outlineWidth = 2;
     }
   }
 
@@ -396,7 +448,8 @@ export class LobbyGuardBattleRenderer {
     const height = this.layoutHeight * 0.4;
     const width = height * (1024 / 1536);
     const x = Math.max(this.xToPx(0) - this.layoutWidth * 0.028, -this.layoutWidth / 2 + width * 0.52);
-    const y = this.laneToPy(1) - this.layoutHeight * 0.035;
+    // 底座落到下车道地面(车道整体下移后同步)。
+    const y = -this.layoutHeight * 0.187;
     const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, y, width, height);
     this.mountSprite(holder, 'GuardCrystalIcon', 'ui/guard/crystal_tower/spriteFrame', 0, 0, width, height);
     tween(holder)
@@ -416,12 +469,12 @@ export class LobbyGuardBattleRenderer {
     const barW = Math.min(420, width * 0.4);
     const bar = this.host.addChildPlainNode(hud, 'GuardCrystalHpBar', -width / 2 + barW / 2 + 28, height / 2 - 42, barW, 20);
     bar.addComponent(Graphics);
-    this.host.addChildLabel(hud, 'GuardCrystalHpText', '', -width / 2 + barW / 2 + 28, height / 2 - 42, 13, rgba(255, 245, 220), new Size(barW, 18));
-    this.host.addChildLabel(hud, 'GuardWaveText', '', 0, height / 2 - 42, 20, rgba(255, 232, 160), new Size(width * 0.3, 26));
-    this.host.addChildLabel(hud, 'GuardGoldText', '', width / 2 - 170, height / 2 - 42, 20, rgba(255, 214, 92), new Size(240, 26));
-    this.host.addChildLabel(hud, 'GuardHintText', '拖动两个相同英雄合成升星 · 同星同名 10% 矿脉共鸣直升 2 星', 0, -height / 2 + 26, 13, rgba(196, 180, 150, 220), new Size(width * 0.7, 18));
-    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 120, height / 2 - 66, 13, rgba(150, 230, 190, 230), new Size(240, 18), HorizontalTextAlignment.LEFT);
-    this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 66, 13, rgba(255, 190, 150, 235), new Size(430, 18), HorizontalTextAlignment.RIGHT);
+    this.host.addChildLabel(hud, 'GuardCrystalHpText', '', -width / 2 + barW / 2 + 28, height / 2 - 42, 16, rgba(255, 245, 220), new Size(barW, 22));
+    this.host.addChildLabel(hud, 'GuardWaveText', '', 0, height / 2 - 42, 24, rgba(255, 232, 160), new Size(width * 0.34, 30));
+    this.host.addChildLabel(hud, 'GuardGoldText', '', width / 2 - 180, height / 2 - 42, 24, rgba(255, 214, 92), new Size(260, 30));
+    this.host.addChildLabel(hud, 'GuardHintText', '拖动两个相同英雄合成升星 · 同星同名 10% 矿脉共鸣直升 2 星', 0, -height / 2 + 28, 16, rgba(196, 180, 150, 230), new Size(width * 0.7, 22));
+    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 130, height / 2 - 70, 16, rgba(150, 230, 190, 235), new Size(260, 22), HorizontalTextAlignment.LEFT);
+    this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 260, height / 2 - 70, 16, rgba(255, 190, 150, 240), new Size(460, 22), HorizontalTextAlignment.RIGHT);
     // 波次进度轨道(参考图:圆点连线,精英/BOSS 波标骷髅色)
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 66, 320, 16);
     track.addComponent(Graphics);
@@ -434,7 +487,7 @@ export class LobbyGuardBattleRenderer {
       dot.fillColor = rgba(color.r, color.g, color.b, 235);
       dot.circle(-56, 0, 6);
       dot.fill();
-      this.host.addChildLabel(row, 'Text', `${label} 0`, 10, 0, 13, rgba(226, 214, 188, 235), new Size(110, 18), HorizontalTextAlignment.LEFT);
+      this.host.addChildLabel(row, 'Text', `${label} 0`, 10, 0, 16, rgba(226, 214, 188, 240), new Size(130, 22), HorizontalTextAlignment.LEFT);
     });
   }
 
@@ -484,6 +537,9 @@ export class LobbyGuardBattleRenderer {
     const hud = root.getChildByName('GuardHud');
     if (!hud) {
       return;
+    }
+    if (sim.unlockedCols !== this.paintedCols) {
+      this.repaintFieldBase();
     }
     const bar = hud.getChildByName('GuardCrystalHpBar');
     const barTransform = bar?.getComponent(UITransform);
@@ -759,12 +815,21 @@ export class LobbyGuardBattleRenderer {
         }
       } else if (event.type === 'crystalHit') {
         this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
-      } else if (event.type === 'superMerge') {
-        this.host.setStatus('矿脉共鸣!直升 2 星!');
-        if (typeof event.cell === 'number') {
-          const center = this.cellCenter(event.cell);
-          this.spawnFloater(center.x, center.y + this.unitSize() * 0.6, '矿脉共鸣 +2★', rgba(255, 240, 160));
+      } else if (event.type === 'superMerge' || event.type === 'merge') {
+        if (event.type === 'superMerge') {
+          this.host.setStatus('矿脉共鸣!直升 2 星!');
+          if (typeof event.cell === 'number') {
+            const center = this.cellCenter(event.cell);
+            this.spawnFloater(center.x, center.y + this.unitSize() * 0.6, '矿脉共鸣 +2★', rgba(255, 240, 160));
+          }
         }
+        // 首次跨过 2 星=解锁专属技能:横幅点明"解锁了什么"(2026-08-25 用户拍板)。
+        if (event.skillUnlocked && typeof event.cell === 'number') {
+          this.showSkillUnlockBanner(event.cell, event.heroCode ?? '');
+        }
+      } else if (event.type === 'cellsUnlock') {
+        this.host.setStatus('阵地扩建!解锁一列新召唤格!');
+        this.spawnFloater(this.xToPx(guardCellX(GUARD_GRID_COLS - 1)), this.laneToPy(1), '新格解锁!', rgba(150, 240, 160));
       } else if (event.type === 'waveStart') {
         this.host.setStatus(`第 ${event.wave} 波来袭!`);
       } else if (event.type === 'chestDrop') {
@@ -788,7 +853,7 @@ export class LobbyGuardBattleRenderer {
         if (event.skillProc && typeof event.monsterId === 'number') {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
           if (target && event.heroCode) {
-            this.spawnGuardSkillFx(event.heroCode, target);
+            this.spawnGuardSkillFx(event.heroCode, hero?.cell ?? null, target);
             const targetView = this.monsterViews.get(target.monsterId);
             if (targetView && targetView.node.isValid) {
               this.spawnFloater(targetView.node.position.x, targetView.node.position.y + this.unitSize() * 0.6, `技能击 -${event.amount ?? 0}`, rgba(190, 150, 255));
@@ -833,7 +898,7 @@ export class LobbyGuardBattleRenderer {
       g.moveTo(-size * 0.4, 0);
       g.lineTo(size * 0.4, 0);
       g.stroke();
-      const hint = this.host.addChildLabel(node, 'GuardChestHint', '点击开箱', 0, size * 0.48, 12, rgba(255, 232, 150), new Size(size * 1.6, 16));
+      const hint = this.host.addChildLabel(node, 'GuardChestHint', '点击开箱', 0, size * 0.48, 15, rgba(255, 232, 150), new Size(size * 1.8, 20));
       hint.enableOutline = true;
       hint.outlineColor = rgba(40, 24, 10, 255);
       hint.outlineWidth = 2;
@@ -884,7 +949,9 @@ export class LobbyGuardBattleRenderer {
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    this.host.addChildLabel(overlay, 'GuardWheelTitle', '矿脉宝箱', 0, height * 0.3, 30, rgba(255, 232, 150), new Size(width * 0.6, 40));
+    const wheelPanelH = height * 0.84;
+    this.paintOverlayPanel(overlay, 720, wheelPanelH, -height * 0.01);
+    this.host.addChildLabel(overlay, 'GuardWheelTitle', '矿脉宝箱', 0, -height * 0.01 + wheelPanelH / 2 - 40, 32, rgba(255, 232, 150), new Size(width * 0.6, 42));
     // 轮盘:程序绘制 8 段圆环 + 指针旋转 2.2s 减速停格
     const wheel = this.host.addChildPlainNode(overlay, 'GuardWheel', 0, height * 0.02, 300, 300);
     const wg = wheel.addComponent(Graphics);
@@ -924,21 +991,21 @@ export class LobbyGuardBattleRenderer {
       this.shakeField(12);
     }
     rewards.forEach((reward, index) => {
-      const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, 0, -height * 0.16 - 34 - index * 26, 17, rgba(236, 224, 196), new Size(this.layoutWidth * 0.6, 22));
+      const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, 0, -height * 0.16 - 36 - index * 30, 20, rgba(236, 224, 196), new Size(this.layoutWidth * 0.6, 26));
       const opacity = label.node.addComponent(UIOpacity);
       opacity.opacity = 0;
       tween(opacity).delay(0.18 * index).to(0.2, { opacity: 255 }).start();
     });
-    const close = this.host.addChildPlainNode(overlay, 'GuardWheelClose', 0, -height * 0.34, 200, 52);
+    const close = this.host.addChildPlainNode(overlay, 'GuardWheelClose', 0, -height * 0.35, 230, 60);
     const g = close.addComponent(Graphics);
     g.fillColor = rgba(122, 62, 30, 245);
-    g.roundRect(-100, -26, 200, 52, 12);
+    g.roundRect(-115, -30, 230, 60, 14);
     g.fill();
     g.strokeColor = rgba(255, 200, 110, 240);
-    g.lineWidth = 2;
-    g.roundRect(-100, -26, 200, 52, 12);
+    g.lineWidth = 2.4;
+    g.roundRect(-115, -30, 230, 60, 14);
     g.stroke();
-    this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, 19, rgba(255, 238, 190), new Size(180, 24));
+    this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, 22, rgba(255, 238, 190), new Size(200, 28));
     this.host.applyImageButtonFeedback(close);
     close.on(Node.EventType.TOUCH_END, () => {
       if (overlay.isValid) {
@@ -980,25 +1047,30 @@ export class LobbyGuardBattleRenderer {
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    this.host.addChildLabel(overlay, 'GuardChoiceTitle', `等级提升!Lv${sim.level} · 三选一`, 0, height * 0.28, 28, rgba(255, 232, 150), new Size(width * 0.7, 38));
-    const cardW = Math.min(230, width * 0.2);
-    const cardH = 190;
+    const panelH = height * 0.66;
+    this.paintOverlayPanel(overlay, Math.min(960, width * 0.66), panelH, 0);
+    this.host.addChildLabel(overlay, 'GuardChoiceTitle', `等级提升!Lv${sim.level} · 三选一`, 0, panelH / 2 - 40, 30, rgba(255, 232, 150), new Size(width * 0.7, 40));
+    const cardW = Math.min(262, width * 0.22);
+    const cardH = 232;
     sim.pendingChoice.forEach((option, index) => {
-      const x = (index - 1) * (cardW + 26);
-      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, height * 0.02, cardW, cardH);
+      const x = (index - 1) * (cardW + 32);
+      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, height * 0.015, cardW, cardH);
       const g = card.addComponent(Graphics);
-      g.fillColor = rgba(30, 24, 20, 250);
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      g.fillColor = rgba(38, 29, 22, 252);
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
       g.fill();
-      g.strokeColor = rgba(214, 200, 176, 235);
-      g.lineWidth = 2;
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      g.strokeColor = rgba(224, 190, 130, 245);
+      g.lineWidth = 2.4;
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
       g.stroke();
-      const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH * 0.22, 18, rgba(255, 240, 200), new Size(cardW - 16, 48));
+      g.fillColor = rgba(80, 56, 30, 235);
+      g.roundRect(-cardW / 2 + 5, cardH / 2 - 52, cardW - 10, 46, 10);
+      g.fill();
+      const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH * 0.28, 22, rgba(255, 240, 200), new Size(cardW - 18, 52));
       title.overflow = Label.Overflow.SHRINK;
-      const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, -cardH * 0.08, 13, rgba(196, 184, 160, 230), new Size(cardW - 20, 40));
+      const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, -cardH * 0.06, 16, rgba(212, 200, 176, 240), new Size(cardW - 24, 56));
       detail.overflow = Label.Overflow.SHRINK;
-      const banish = this.host.addChildLabel(card, 'Banish', sim.banishLeft > 0 ? '✕ 放逐' : '', 0, -cardH * 0.36, 12, rgba(255, 140, 120, 220), new Size(cardW - 20, 16));
+      const banish = this.host.addChildLabel(card, 'Banish', sim.banishLeft > 0 ? '✕ 放逐' : '', 0, -cardH * 0.37, 15, rgba(255, 140, 120, 230), new Size(cardW - 20, 20));
       this.host.applyImageButtonFeedback(card);
       card.on(Node.EventType.TOUCH_END, (event: { getUILocation?: () => { y: number } }) => {
         // 底部 1/4 点击=放逐;其余=选择。
@@ -1018,16 +1090,16 @@ export class LobbyGuardBattleRenderer {
     });
     // 跳过 / 刷新
     const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
-      const button = this.host.addChildPlainNode(overlay, name, x, -height * 0.24, 170, 46);
+      const button = this.host.addChildPlainNode(overlay, name, x, -height * 0.25, 210, 56);
       const g = button.addComponent(Graphics);
-      g.fillColor = rgba(40, 34, 30, 245);
-      g.roundRect(-85, -23, 170, 46, 10);
+      g.fillColor = rgba(52, 42, 34, 250);
+      g.roundRect(-105, -28, 210, 56, 12);
       g.fill();
-      g.strokeColor = rgba(196, 168, 120, 220);
-      g.lineWidth = 1.6;
-      g.roundRect(-85, -23, 170, 46, 10);
+      g.strokeColor = rgba(214, 178, 120, 235);
+      g.lineWidth = 2;
+      g.roundRect(-105, -28, 210, 56, 12);
       g.stroke();
-      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 15, rgba(230, 216, 186), new Size(160, 20));
+      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(236, 222, 190), new Size(200, 24));
       this.host.applyImageButtonFeedback(button);
       button.on(Node.EventType.TOUCH_END, onTap, this);
     };
@@ -1175,12 +1247,12 @@ export class LobbyGuardBattleRenderer {
     fg.fill();
     const pendingView: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '' };
     this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
-    this.host.addChildLabel(node, 'GuardHeroName', `${pool?.displayName ?? hero.heroCode}·${GUARD_ROLE_LABEL[hero.role] ?? ''}`, 0, size * 0.56, 11, rgba(236, 224, 196), new Size(size * 1.4, 14));
-    const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.44, 12, rgba(255, 220, 110), new Size(size * 1.2, 14));
+    this.host.addChildLabel(node, 'GuardHeroName', `${pool?.displayName ?? hero.heroCode}·${GUARD_ROLE_LABEL[hero.role] ?? ''}`, 0, size * 0.6, 15, rgba(236, 224, 196), new Size(size * 1.8, 20));
+    const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.46, 16, rgba(255, 220, 110), new Size(size * 1.4, 20));
     star.enableOutline = true;
     star.outlineColor = rgba(40, 24, 10, 255);
     star.outlineWidth = 2;
-    this.host.addChildLabel(node, 'GuardHeroAtk', '', 0, -size * 0.55, 11, rgba(214, 196, 156, 220), new Size(size, 13));
+    this.host.addChildLabel(node, 'GuardHeroAtk', '', 0, -size * 0.58, 14, rgba(214, 196, 156, 230), new Size(size * 1.2, 18));
     this.bindHeroDrag(node, hero.unitId);
     return pendingView;
   }
@@ -1208,6 +1280,8 @@ export class LobbyGuardBattleRenderer {
       footY?: number;
       /** 循环动画优先级(怪物行进优先 walk/run/move)。 */
       preferAnim?: RegExp;
+      /** 怪物:动画名走稀有度映射(原始名单会命中 *_turn_/*_link_ 过渡段)。 */
+      enemyAnimNames?: boolean;
     },
   ): void {
     const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, opts?.footY ?? -size * 0.36, size, size * 1.1);
@@ -1228,16 +1302,30 @@ export class LobbyGuardBattleRenderer {
       }
       try {
         const runtimeData = resolveBattleUnitSpineRuntimeData(data);
-        const names = (runtimeData?.animations ?? []).map((animation) => (animation?.name || '').trim()).filter(Boolean);
-        if (!runtimeData || names.length === 0) {
+        const rawNames = (runtimeData?.animations ?? []).map((animation) => (animation?.name || '').trim()).filter(Boolean);
+        if (!runtimeData || rawNames.length === 0) {
           return;
         }
         patchBattleUnitSpineRuntimeEnums(data, runtimeData);
         skeleton.skeletonData = data;
-        const idle = (opts?.preferAnim ? names.find((name) => opts.preferAnim!.test(name)) : undefined)
-          ?? names.find((name) => /idle|stand|daiji|wait/i.test(name))
-          ?? names[0];
-        skeleton.setAnimation(0, idle, true);
+        // S196 怪物骨骼没有 default 皮肤,全部附件挂在具名皮肤里——不 setSkin 就一个附件都不画(怪物隐形根因,2026-08-25)。
+        const skin = resolveBattleUnitSpineSkinName(data, runtimeData);
+        if (skin) {
+          skeleton.setSkin(skin);
+          skeleton.setSlotsToSetupPose();
+        }
+        let idle: string;
+        let attack: string;
+        if (opts?.enemyAnimNames) {
+          const mapped = resolveBattleUnitSpineAnimationNames(data, this.toGuardEnemyUnit(resource));
+          idle = mapped.move ?? mapped.idle ?? rawNames[0];
+          attack = mapped.attack ?? idle;
+        } else {
+          idle = (opts?.preferAnim ? rawNames.find((name) => opts.preferAnim!.test(name)) : undefined)
+            ?? rawNames.find((name) => /idle|stand|daiji|wait/i.test(name))
+            ?? rawNames[0];
+          attack = rawNames.find((name) => /atk|attack|gongji|skill|普攻/i.test(name) && !/hit|hurt|dead|die/i.test(name)) ?? idle;
+        }
         let fit: number;
         if (opts?.calibratedScale) {
           fit = opts.calibratedScale(Math.max(1, Number(runtimeData.height) || 300));
@@ -1247,10 +1335,15 @@ export class LobbyGuardBattleRenderer {
           fit = (size * 1.05) / rawHeight;
         }
         spineNode.setScale(mirror ? -fit : fit, fit, 1);
+        const track = skeleton.setAnimation(0, idle, true);
+        if (!track) {
+          // 动画起不来按失败处理:保留回退块,别销毁。
+          return;
+        }
         if (view) {
           view.skeleton = skeleton;
           view.idleAnim = idle;
-          view.attackAnim = names.find((name) => /atk|attack|gongji|skill|普攻/i.test(name) && !/hit|hurt|dead|die/i.test(name)) ?? idle;
+          view.attackAnim = attack;
           view.spineReady = true;
         }
         if (fallback.isValid) {
@@ -1296,7 +1389,7 @@ export class LobbyGuardBattleRenderer {
     const heroX = guardCellX(hero.cell);
     const left = this.xToPx(Math.max(0, heroX - profile.rangeCells));
     const right = this.xToPx(Math.min(GUARD_SPAWN_X, heroX + profile.rangeCells));
-    const laneHeight = this.layoutHeight * 0.185;
+    const laneHeight = this.layoutHeight * 0.155;
     const layer = this.host.addChildPlainNode(field, 'GuardRangeIndicator', 0, 0, 10, 10);
     layer.setSiblingIndex(1);
     const g = layer.addComponent(Graphics);
@@ -1311,20 +1404,54 @@ export class LobbyGuardBattleRenderer {
     g.stroke();
     // 选中格绿色高亮(参考图)
     const center = this.cellCenter(hero.cell);
-    const cellSize = this.unitSize() * 1.05;
+    const cellSize = this.cellPitchPx() * 0.92;
     g.strokeColor = rgba(150, 240, 110, 240);
     g.lineWidth = 3;
-    g.roundRect(center.x - cellSize / 2, center.y - cellSize / 2, cellSize, cellSize, 10);
+    g.roundRect(center.x - cellSize / 2, center.y - cellSize / 2, cellSize, cellSize, 12);
     g.stroke();
+    this.showHeroInfo(hero);
+  }
+
+  /** 选中英雄信息卡(2026-08-25 用户拍板:点击展示信息,再点消失):名/星/定位/攻击/攻速/射程。 */
+  private showHeroInfo(hero: GuardHeroUnit): void {
+    const root = this.root;
+    const sim = this.sim;
+    if (!root || !sim) {
+      return;
+    }
+    root.getChildByName('GuardHeroInfoPanel')?.destroy();
+    const pool = sim.pool.find((entry) => entry.heroCode === hero.heroCode);
+    const profile = GUARD_ROLE_PROFILE[hero.role];
+    const w = 320;
+    const h = 190;
+    const panel = this.host.addChildPlainNode(root, 'GuardHeroInfoPanel', -this.layoutWidth / 2 + 88 + w / 2, this.layoutHeight / 2 - 236 - h / 2, w, h);
+    const g = panel.addComponent(Graphics);
+    g.fillColor = rgba(24, 18, 13, 240);
+    g.roundRect(-w / 2, -h / 2, w, h, 14);
+    g.fill();
+    g.strokeColor = rgba(214, 178, 110, 240);
+    g.lineWidth = 2.4;
+    g.roundRect(-w / 2, -h / 2, w, h, 14);
+    g.stroke();
+    g.fillColor = rgba(66, 46, 26, 235);
+    g.roundRect(-w / 2 + 4, h / 2 - 46, w - 8, 42, 10);
+    g.fill();
+    this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 25, 20, rgba(255, 234, 180), new Size(w - 20, 26));
+    this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 62, 18, rgba(255, 220, 110), new Size(w - 20, 22));
+    const roleName = GUARD_ROLE_LABEL[hero.role] ?? hero.role;
+    this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 射程 ${profile.rangeCells} 格`, 0, h / 2 - 92, 16, rgba(226, 214, 188), new Size(w - 20, 20));
+    this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)}`, 0, h / 2 - 122, 16, rgba(255, 200, 150), new Size(w - 20, 20));
+    this.host.addChildLabel(panel, 'Spd', `攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)} 次/秒${hero.star >= 2 ? ' · 已解锁技能击' : ' · 2★ 解锁技能击'}`, 0, h / 2 - 152, 14, rgba(196, 184, 160), new Size(w - 20, 18));
   }
 
   private clearRangeIndicator(): void {
     this.rangeShownUnitId = null;
     this.fieldNode?.getChildByName('GuardRangeIndicator')?.destroy();
+    this.root?.getChildByName('GuardHeroInfoPanel')?.destroy();
   }
 
-  // ── 技能击特效:该英雄专属技能特效打在目标怪身上(包围盒实测适配,缓存;同屏≤3)──
-  private spawnGuardSkillFx(heroCode: string, monster: GuardMonster): void {
+  // ── 技能击特效:从英雄身前起手、弹道飞向目标怪、到位重播命中(2026-08-25 用户拍板:技能要有归属与连贯性)──
+  private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster): void {
     const field = this.fieldNode;
     if (!field || this.guardFxLiveCount >= 3) {
       return;
@@ -1334,8 +1461,12 @@ export class LobbyGuardBattleRenderer {
     const spec: BattleSkillEffectSpec = resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
     const monsterScale = GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1;
     const desired = this.unitSize() * Math.min(3, Math.max(1, monsterScale)) * 1.3;
-    const x = this.xToPx(monster.x);
-    const y = this.laneToPy(monster.lane) + this.monsterJitterY(monster) + this.unitSize() * 0.1;
+    const targetX = this.xToPx(monster.x);
+    const targetY = this.laneToPy(monster.lane) + this.monsterJitterY(monster) + this.unitSize() * 0.1;
+    // 起点=英雄身前(可归属);无英雄位(理论不发生)退化为目标位。
+    const origin = heroCell !== null ? this.cellCenter(heroCell) : null;
+    const x = origin ? origin.x + this.unitSize() * 0.55 : targetX;
+    const y = origin ? origin.y : targetY;
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', x, y, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
     const skeleton = node.addComponent(sp.Skeleton);
@@ -1374,13 +1505,27 @@ export class LobbyGuardBattleRenderer {
         const fit = (desired / Math.max(8, extent ?? 1100)) * (spec.scale || 1);
         node.setScale(fit, fit, 1);
         skeleton.setAnimation(0, animationName, false);
-        skeleton.setCompleteListener(() => release());
+        // 弹道:0.3s 飞到目标怪身上,到位重播一次=命中爆点(技能有出处、有落点)。
+        tween(node)
+          .to(0.3, { position: new Vec3(targetX, targetY, 0) }, { easing: 'quadIn' })
+          .call(() => {
+            try {
+              if (node.isValid) {
+                skeleton.setAnimation(0, animationName, false);
+                skeleton.setCompleteListener(() => release());
+              }
+            } catch (error) {
+              void error;
+              release();
+            }
+          })
+          .start();
       } catch (error) {
         void error;
         release();
       }
     });
-    tween(node).delay(2.2).call(release).start();
+    tween(node).delay(3.2).call(release).start();
   }
 
   /** 采样动画 3 时刻,遍历 Region/Mesh 附件求 AABB 长边(按套缓存;测不出返回 null 走 1100 兜底)。 */
@@ -1451,21 +1596,74 @@ export class LobbyGuardBattleRenderer {
     return extent;
   }
 
+  /** 合成解锁专属技能横幅:点明解锁了什么(2 星=专属技能),2.2s 上浮淡出。 */
+  private showSkillUnlockBanner(cell: number, heroCode: string): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    const pool = this.sim?.pool.find((entry) => entry.heroCode === heroCode);
+    const name = pool?.displayName ?? heroCode;
+    const center = this.cellCenter(cell);
+    const w = 380;
+    const h = 96;
+    const banner = this.host.addChildPlainNode(root, 'GuardSkillUnlockBanner', center.x + w * 0.2, center.y + this.unitSize() * 1.1 - this.layoutHeight * 0.03, w, h);
+    const g = banner.addComponent(Graphics);
+    g.fillColor = rgba(30, 22, 14, 235);
+    g.roundRect(-w / 2, -h / 2, w, h, 14);
+    g.fill();
+    g.strokeColor = rgba(255, 210, 110, 250);
+    g.lineWidth = 3;
+    g.roundRect(-w / 2, -h / 2, w, h, 14);
+    g.stroke();
+    const title = this.host.addChildLabel(banner, 'Title', '⚡ 技能解锁!', 0, h * 0.18, 24, rgba(255, 226, 130), new Size(w - 20, 30));
+    title.enableOutline = true;
+    title.outlineColor = rgba(60, 30, 10, 255);
+    title.outlineWidth = 2;
+    this.host.addChildLabel(banner, 'Detail', `${name} 2★ 专属技能:每第 4 次出手造成 160% 技能击`, 0, -h * 0.2, 15, rgba(236, 224, 196), new Size(w - 24, 20));
+    const opacity = banner.addComponent(UIOpacity);
+    tween(banner).by(2.2, { position: new Vec3(0, 46, 0) }).start();
+    tween(opacity).delay(1.4).to(0.8, { opacity: 0 }).call(() => { if (banner.isValid) { banner.destroy(); } }).start();
+  }
+
+  /** 怪物动画名解析用的敌方单位壳(resolveBattleUnitSpineAnimationNames 需要 side/rarity 上下文,抄 LobbyIdleStageRenderer)。 */
+  private toGuardEnemyUnit(resource: string): BattlePresentationUnitSnapshot {
+    return {
+      unitKey: `guard-monster:${resource}`,
+      side: 'enemy',
+      slot: 0,
+      displayName: '怪物',
+      subline: '',
+      rarity: 'ENEMY',
+      level: 1,
+      power: 0,
+      role: 'front',
+      leader: false,
+      hpRatio: 1,
+      sourceHeroId: 0,
+      heroCode: '',
+      heroClass: null,
+      portraitAsset: null,
+      spineAsset: resource,
+      spineUuid: null,
+    };
+  }
+
   /** 怪物散布抖动(monsterId 哈希,确定性,不耗 rng):同车道内 ±0.32 车道高,摆脱"一条直线"。 */
   private monsterJitterY(monster: GuardMonster): number {
     const hash = (monster.monsterId * 2654435761) >>> 0;
-    return (((hash % 1000) / 1000) - 0.5) * this.layoutHeight * 0.185 * 0.64;
+    return (((hash % 1000) / 1000) - 0.5) * this.layoutHeight * 0.155 * 0.64;
   }
 
   private bindHeroDrag(node: Node, unitId: number): void {
+    // 点选与拖拽共存:位移 <10px 视为点击(选中/再点收起,2026-08-25 用户拍板);≥10px 走拖拽合成/换位。
+    let movedPx = 0;
     node.on(Node.EventType.TOUCH_START, () => {
       const hero = this.sim?.heroes.find((entry) => entry.unitId === unitId);
       if (hero) {
+        movedPx = 0;
         this.dragFromCell = hero.cell;
         node.setSiblingIndex((this.fieldNode?.children.length ?? 2) - 1);
-        // 点击英雄显示攻击范围(用户 2026-08-21);拖走或点别人时刷新/清除。
-        this.rangeShownUnitId = unitId;
-        this.drawRangeIndicator(hero);
       }
     }, this);
     node.on(Node.EventType.TOUCH_MOVE, (event: { getUIDelta?: () => { x: number; y: number }; getDeltaX?: () => number; getDeltaY?: () => number }) => {
@@ -1474,6 +1672,7 @@ export class LobbyGuardBattleRenderer {
       }
       const deltaX = event.getUIDelta ? event.getUIDelta().x : event.getDeltaX ? event.getDeltaX() : 0;
       const deltaY = event.getUIDelta ? event.getUIDelta().y : event.getDeltaY ? event.getDeltaY() : 0;
+      movedPx += Math.abs(deltaX) + Math.abs(deltaY);
       node.setPosition(node.position.x + deltaX, node.position.y + deltaY, 0);
     }, this);
     const finishDrag = () => {
@@ -1484,6 +1683,20 @@ export class LobbyGuardBattleRenderer {
       const fromCell = this.dragFromCell;
       this.dragFromCell = null;
       if (!node.isValid) {
+        return;
+      }
+      if (movedPx < 10) {
+        // 点击:选中显示范围+信息卡;再点同一英雄收起。
+        if (this.rangeShownUnitId === unitId) {
+          this.clearRangeIndicator();
+        } else {
+          const hero = sim.heroes.find((entry) => entry.unitId === unitId);
+          if (hero) {
+            this.rangeShownUnitId = unitId;
+            this.drawRangeIndicator(hero);
+          }
+        }
+        this.syncHeroes();
         return;
       }
       const targetCell = this.cellAtPosition(node.position.x, node.position.y);
@@ -1589,7 +1802,7 @@ export class LobbyGuardBattleRenderer {
     this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view, {
       calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
       footY: -unit * 0.45,
-      preferAnim: /walk|run|move/i,
+      enemyAnimNames: true,
     });
     const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, Math.min(baseSize * 0.58, this.layoutHeight * 0.4), Math.min(baseSize * 0.9, monster.kind === 'boss' ? 220 : 110), 6);
     hpBar.addComponent(Graphics);
@@ -1611,15 +1824,17 @@ export class LobbyGuardBattleRenderer {
     g.fill();
     const sim = this.sim;
     const rush = sim?.mode === 'rush';
+    const panelH = height * 0.62;
+    this.paintOverlayPanel(overlay, 800, panelH, -height * 0.02);
     const title = rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
     const detail = sim
       ? rush
         ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
         : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
       : '';
-    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, height * 0.12, 40, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 52));
-    this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.045, 17, rgba(226, 210, 180), new Size(width * 0.8, 24));
-    this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, -height * 0.03, 15, rgba(196, 182, 152), new Size(width * 0.7, 20));
+    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, -height * 0.02 + panelH / 2 - 40, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 46));
+    this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
+    this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04, 18, rgba(196, 182, 152), new Size(width * 0.7, 24));
   }
 
   /** 结算回执到达:更新覆盖层为奖励与返回按钮。 */
@@ -1650,18 +1865,18 @@ export class LobbyGuardBattleRenderer {
     }
     const rewards = (settlement.rewardItems ?? []).slice(0, 6).map((item) => `${item.resourceName ?? item.resourceCode} ×${item.amount}`).join('  ');
     if (rewards) {
-      this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.09, 16, rgba(255, 226, 150), new Size(this.layoutWidth * 0.8, 22));
+      this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05, 19, rgba(255, 226, 150), new Size(this.layoutWidth * 0.7, 26));
     }
-    const back = this.host.addChildPlainNode(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.18, 220, 56);
+    const back = this.host.addChildPlainNode(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 250, 62);
     const g = back.addComponent(Graphics);
     g.fillColor = rgba(122, 62, 30, 245);
-    g.roundRect(-110, -28, 220, 56, 12);
+    g.roundRect(-125, -31, 250, 62, 14);
     g.fill();
     g.strokeColor = rgba(255, 200, 110, 240);
-    g.lineWidth = 2;
-    g.roundRect(-110, -28, 220, 56, 12);
+    g.lineWidth = 2.4;
+    g.roundRect(-125, -31, 250, 62, 14);
     g.stroke();
-    this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 20, rgba(255, 238, 190), new Size(200, 26));
+    this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
     this.host.applyImageButtonFeedback(back);
     back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
   }

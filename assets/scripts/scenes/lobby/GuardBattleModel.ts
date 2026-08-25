@@ -98,7 +98,7 @@ export interface GuardBossCast {
 export interface GuardEvent {
   type:
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
-    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance';
+    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -111,6 +111,8 @@ export interface GuardEvent {
   tier?: number;
   /** heroAttack:本次为技能击(2星解锁,每第 4 次出手),渲染层播专属技能特效。 */
   skillProc?: boolean;
+  /** merge/superMerge:本次合成首次跨过 2 星=解锁专属技能(渲染层播"技能解锁"横幅)。 */
+  skillUnlocked?: boolean;
 }
 
 export interface GuardBattleState {
@@ -159,6 +161,8 @@ export interface GuardBattleState {
   events: GuardEvent[];
   bossKilled: boolean;
   mode: GuardMode;
+  /** 已解锁列数(3 起步,累计召唤达标解锁第 4 列)。 */
+  unlockedCols: number;
   /** 车轮战累计击杀 BOSS 数(层数 = bossKills + wave,docs/30 口径)。 */
   bossKills: number;
   /** 车轮战下一只 BOSS 入场时刻(击杀后短暂间隔,下一只更强的入场)。 */
@@ -167,15 +171,18 @@ export interface GuardBattleState {
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
 export const GUARD_GRID_ROWS = 3;
-export const GUARD_GRID_COLS = 3;
+/** 总列数 4(12 格):开局解锁 3 列,累计召唤 GUARD_COL4_UNLOCK_SUMMONS 次解锁第 4 列(参考 Lucky Defense 渐进解锁,2026-08-25 用户拍板)。 */
+export const GUARD_GRID_COLS = 4;
 export const GUARD_GRID_CELLS = GUARD_GRID_ROWS * GUARD_GRID_COLS;
+export const GUARD_START_COLS = 3;
+export const GUARD_COL4_UNLOCK_SUMMONS = 10;
 export const GUARD_SPAWN_X = 10;
 export const GUARD_CRYSTAL_REACH_X = 0.6;
 /** 远程怪站桩位:任意列远程(后列 1.0+3.5=4.5)与中前列控制都够得着,前列近战可补刀;严格阵容检查交给飞行怪。 */
 export const GUARD_SHOOTER_STAND_X = 4.5;
-/** 格列→路程 x 坐标(col3 最靠前)。起点 1.9 给水晶塔让位、列距 1.4 保正方大卡(2026-08-25 视觉重做)。 */
+/** 格列→路程 x 坐标(col4 最靠前)。起点 0.95 给水晶塔让位、列距 1.3,4 列铺满英雄区(2026-08-25 视觉重做)。 */
 export function guardCellX(cell: number): number {
-  return 1.9 + (cell % GUARD_GRID_COLS) * 1.4;
+  return 0.95 + (cell % GUARD_GRID_COLS) * 1.3;
 }
 export function guardCellLane(cell: number): number {
   return Math.floor(cell / GUARD_GRID_COLS);
@@ -192,11 +199,12 @@ export const GUARD_MAX_STAR = 5;
 export const GUARD_STAR_ATTACK_MULT = 2.2;
 export const GUARD_CRYSTAL_MAX_HP = 1600;
 
+// 射程(2026-08-25 用户拍板:近战扩大一倍、远程扩大两倍——覆盖大半跑道,站位影响弱化)
 export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; intervalMs: number; damageScale: number; laneLocked: boolean }> = {
-  melee: { rangeCells: 1.5, intervalMs: 800, damageScale: 1.6, laneLocked: true },
-  ranged: { rangeCells: 3.5, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
+  melee: { rangeCells: 3.0, intervalMs: 800, damageScale: 1.6, laneLocked: true },
+  ranged: { rangeCells: 7.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
   support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
-  control: { rangeCells: 2.5, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
+  control: { rangeCells: 4.5, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
 };
 export const GUARD_CONTROL_SLOW_RATIO = 0.4;
 export const GUARD_CONTROL_SLOW_MS = 1500;
@@ -266,6 +274,30 @@ export function guardMonsterSpineResource(spineCode: string): string {
 
 /** 视觉体型倍率(用户拍板 2026-08-21:精英×2,BOSS×6)。 */
 export const GUARD_MONSTER_DISPLAY_SCALE: Record<GuardMonsterKind, number> = { normal: 1, fast: 0.85, tank: 1.3, flying: 0.9, shooter: 1, elite: 2, boss: 6 };
+/** 逐皮肤 spine 皮肤名(源=DB monster_template.spine_skin):S196 怪物骨骼默认皮肤为空,不 setSkin 就渲染空白——怪物隐形的根因。 */
+export const GUARD_MONSTER_SPINE_SKIN: Record<string, string> = {
+  abyss_devilman: 'nude_001',
+  abyss_jailer: 'largeman_cloth_002',
+  bow_male: 'bow_001',
+  crossbow_male: 'plate001_common_common',
+  crow_reaper: 'nude_default',
+  cursed_caster: 'cloth006_common_common',
+  forge_overseer: 'cloth001_common_common',
+  gargoyle: 'nude_001',
+  goathead_blade: 'nude_default',
+  grand_magus: 'cloth025_common_common',
+  hammer_tanker: 'nude_default',
+  infected_male: 'cloth001_common_common',
+  large_bear: 'large_001',
+  medium_dog: 'medium_base_001',
+  medium_rat: 'medium_001',
+  mutant_fatman: 'darkness_001',
+  mutant_male: 'nude_001',
+  rock_golem: 'larc_golem_001',
+  small_bat: 'small_base_001',
+  small_raven: 'small_base_001',
+  small_spider: 'small_base_001',
+};
 /** 逐皮肤体型校准(源=DB monster_template.display_scale,与旧战斗渲染同一套标定;S196 bounds 虚标由它补偿)。 */
 export const GUARD_MONSTER_DB_SCALE: Record<string, number> = {
   abyss_devilman: 1.45,
@@ -292,7 +324,8 @@ export const GUARD_MONSTER_DB_SCALE: Record<string, number> = {
 };
 
 const MONSTER_BASE_HP = 34;
-const MONSTER_HP_WAVE_EXP = 1.08;
+// 1.08→1.14(2026-08-25):射程翻倍+12 格后英雄 DPS 上台阶,血量曲线同步抬升保持后期张力。
+const MONSTER_HP_WAVE_EXP = 1.18;
 const MONSTER_BASE_CRYSTAL_DMG = 5;
 const MONSTER_ATTACK_INTERVAL_MS = 1200;
 export const GUARD_WAVE_INTERMISSION_MS = 5000;
@@ -450,6 +483,7 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     events: [],
     bossKilled: false,
     mode,
+    unlockedCols: GUARD_START_COLS,
     bossKills: 0,
     nextRushBossAtMs: GUARD_RUSH_FIRST_BOSS_DELAY_MS,
   };
@@ -459,11 +493,15 @@ export function guardFindHeroAt(state: GuardBattleState, cell: number): GuardHer
   return state.heroes.find((hero) => hero.cell === cell) ?? null;
 }
 
+export function guardCellUnlocked(state: GuardBattleState, cell: number): boolean {
+  return cell % GUARD_GRID_COLS < state.unlockedCols;
+}
+
 function guardEmptyCells(state: GuardBattleState): number[] {
   const used = new Set(state.heroes.map((hero) => hero.cell));
   const cells: number[] = [];
   for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
-    if (!used.has(cell)) {
+    if (!used.has(cell) && guardCellUnlocked(state, cell)) {
       cells.push(cell);
     }
   }
@@ -488,6 +526,10 @@ export function guardSummon(state: GuardBattleState, free = false): GuardHeroUni
     state.gold -= cost;
     state.summonCount += 1;
     state.summonCost = Math.min(GUARD_SUMMON_COST_CAP, GUARD_SUMMON_BASE_COST + state.summonCount * GUARD_SUMMON_COST_STEP);
+  }
+  if (state.unlockedCols < GUARD_GRID_COLS && state.summonCount >= GUARD_COL4_UNLOCK_SUMMONS) {
+    state.unlockedCols = GUARD_GRID_COLS;
+    state.events.push({ type: 'cellsUnlock', timeMs: state.timeMs, amount: GUARD_GRID_ROWS });
   }
   const pick = state.pool[Math.floor(state.rng() * state.pool.length)];
   const cell = cells[Math.floor(state.rng() * cells.length)];
@@ -530,6 +572,9 @@ export function guardDragTo(state: GuardBattleState, fromCell: number, toCell: n
   }
   const to = guardFindHeroAt(state, toCell);
   if (!to) {
+    if (!guardCellUnlocked(state, toCell)) {
+      return 'none';
+    }
     from.cell = toCell;
     return 'move';
   }
@@ -537,9 +582,17 @@ export function guardDragTo(state: GuardBattleState, fromCell: number, toCell: n
     return 'none';
   }
   const superMerge = state.rng() < GUARD_SUPER_MERGE_CHANCE;
+  const starBefore = to.star;
   to.star = Math.min(GUARD_MAX_STAR, to.star + (superMerge ? 2 : 1));
   state.heroes = state.heroes.filter((hero) => hero.unitId !== from.unitId);
-  state.events.push({ type: superMerge ? 'superMerge' : 'merge', timeMs: state.timeMs, heroCode: to.heroCode, star: to.star, cell: toCell });
+  state.events.push({
+    type: superMerge ? 'superMerge' : 'merge',
+    timeMs: state.timeMs,
+    heroCode: to.heroCode,
+    star: to.star,
+    cell: toCell,
+    skillUnlocked: starBefore < 2 && to.star >= 2,
+  });
   return superMerge ? 'superMerge' : 'merge';
 }
 
