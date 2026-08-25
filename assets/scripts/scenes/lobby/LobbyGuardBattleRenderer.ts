@@ -37,6 +37,7 @@ import {
   guardSummarizeSpawns,
   guardSummon,
   guardTick,
+  guardTrialLayers,
   guardUseCrystalSkill,
   guardMonsterSpineResource,
   GUARD_CRYSTAL_REACH_X,
@@ -46,6 +47,7 @@ import {
   GUARD_GRID_ROWS,
   GUARD_MONSTER_DISPLAY_SCALE,
   GUARD_ROLE_PROFILE,
+  GUARD_RUSH_TIME_LIMIT_MS,
   GUARD_SPAWN_X,
   resolveGuardRole,
   type GuardBattleState,
@@ -151,6 +153,11 @@ export class LobbyGuardBattleRenderer {
     return this.sim.phase === 'victory' ? 'WIN' : this.sim.phase === 'defeat' ? 'LOSE' : null;
   }
 
+  /** 难度Ⅲ(车轮战)层数 = BOSS 击杀 + 波次,走现有 trialLayers 结算通道;非试炼模式 null。 */
+  resolveTrialLayers(): number | null {
+    return this.sim && this.sim.mode === 'rush' ? guardTrialLayers(this.sim) : null;
+  }
+
   unmount(): void {
     if (this.tickTimer !== null) {
       clearInterval(this.tickTimer);
@@ -232,7 +239,15 @@ export class LobbyGuardBattleRenderer {
         baseAttack: Math.max(10, Math.round((ally.attack ?? 40) * GUARD_BASE_ATTACK_SCALE)),
         sourceIndex: index,
       }));
-    this.sim = createGuardBattle(pool, `${battleState.start?.serverSeed ?? ''}:${battleState.start?.battleNo ?? ''}`, 10);
+    // 难度从 stageCode 后缀取:Ⅰ=10 波,Ⅱ=20 波(第10波节拍BOSS+末波终盘BOSS),Ⅲ=BOSS 车轮战无尽(层数结算)。
+    const stageCode = (battleState.start?.stageCode ?? '').toUpperCase();
+    const rushMode = stageCode.endsWith('_3');
+    this.sim = createGuardBattle(
+      pool,
+      `${battleState.start?.serverSeed ?? ''}:${battleState.start?.battleNo ?? ''}`,
+      rushMode ? 999 : stageCode.endsWith('_2') ? 20 : 10,
+      rushMode ? 'rush' : 'standard',
+    );
     this.simBattleNo = battleState.start?.battleNo ?? '';
     this.settleRequested = false;
     this.overlayShown = false;
@@ -248,7 +263,7 @@ export class LobbyGuardBattleRenderer {
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
     this.renderExitButton(root, layout.width, layout.height);
-    this.host.setStatus('矿境守卫:召唤英雄,守住矿晶水晶!');
+    this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
     this.tickTimer = setInterval(() => this.step(), TICK_MS);
   }
@@ -397,6 +412,11 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const trackW = 320;
+    // rush(车轮战)无固定波数,轨道让位给层数文案。
+    if (sim.mode === 'rush') {
+      g.clear();
+      return;
+    }
     const step = trackW / (sim.maxWave - 1);
     g.clear();
     g.strokeColor = rgba(120, 96, 60, 200);
@@ -454,9 +474,14 @@ export class LobbyGuardBattleRenderer {
     }
     const waveText = hud.getChildByName('GuardWaveText')?.getComponent(Label);
     if (waveText) {
-      waveText.string = sim.phase === 'prep'
-        ? (sim.wave === 0 ? '首波来袭倒计时…' : `第 ${sim.wave}/${sim.maxWave} 波已清 · 备战中`)
-        : `第 ${sim.wave}/${sim.maxWave} 波${sim.wave === sim.maxWave ? ' · BOSS!' : ''}`;
+      if (sim.mode === 'rush') {
+        const leftSec = Math.max(0, Math.ceil((GUARD_RUSH_TIME_LIMIT_MS - sim.timeMs) / 1000));
+        waveText.string = `车轮战 层数 ${guardTrialLayers(sim)} · BOSS×${sim.bossKills} · 剩 ${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
+      } else {
+        waveText.string = sim.phase === 'prep'
+          ? (sim.wave === 0 ? '首波来袭倒计时…' : `第 ${sim.wave}/${sim.maxWave} 波已清 · 备战中`)
+          : `第 ${sim.wave}/${sim.maxWave} 波${sim.wave === sim.maxWave ? ' · BOSS!' : sim.wave % 10 === 0 ? ' · BOSS 节拍!' : ''}`;
+      }
     }
     const goldText = hud.getChildByName('GuardGoldText')?.getComponent(Label);
     if (goldText) {
@@ -1513,9 +1538,14 @@ export class LobbyGuardBattleRenderer {
     g.rect(-width / 2, -height / 2, width, height);
     g.fill();
     const sim = this.sim;
-    const title = victory ? '守卫成功!' : '水晶破碎…';
-    const detail = sim ? `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒` : '';
-    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, height * 0.12, 40, victory ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 52));
+    const rush = sim?.mode === 'rush';
+    const title = rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
+    const detail = sim
+      ? rush
+        ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+        : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+      : '';
+    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, height * 0.12, 40, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 52));
     this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.045, 17, rgba(226, 210, 180), new Size(width * 0.8, 24));
     this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, -height * 0.03, 15, rgba(196, 182, 152), new Size(width * 0.7, 20));
   }

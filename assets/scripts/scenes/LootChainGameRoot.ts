@@ -697,9 +697,9 @@ export class LootChainGameRoot extends Component {
     this.renderLobbyHud(layout);
   }
 
-  // 矿境守卫启用面:P1=限时副本难度Ⅰ(DAILY_*_1);后续 P3 扩三难度、P5 扩主线。
+  // 矿境守卫启用面:限时副本三难度全量(Ⅰ=10波/Ⅱ=20波/Ⅲ=BOSS车轮战);P5 扩主线。
   private isGuardBattleStage(stageCode: string | null | undefined): boolean {
-    return /^DAILY_[A-Z]+_1$/i.test((stageCode || '').trim());
+    return /^DAILY_[A-Z]+_[123]$/i.test((stageCode || '').trim());
   }
 
   private isGuardBattleActive(): boolean {
@@ -2021,6 +2021,10 @@ export class LootChainGameRoot extends Component {
 
   // 输出试炼(难度Ⅲ):结算上报击破层数,委托战斗渲染器(与层数血条同口径,含手动大招)。
   private resolveTrialLayersCleared(): number | null {
+    // 守卫模式(难度Ⅲ车轮战)层数从守卫 sim 取;其余沿用旧回放口径。
+    if (this.isGuardBattleActive()) {
+      return this.lobbyGuardBattleRenderer.resolveTrialLayers();
+    }
     return this.lobbyBattlePreviewPanelRenderer.resolveTrialLayersCleared();
   }
 

@@ -7,6 +7,8 @@
 export type GuardHeroRole = 'melee' | 'ranged' | 'support' | 'control';
 export type GuardMonsterKind = 'normal' | 'fast' | 'tank' | 'flying' | 'shooter' | 'elite' | 'boss';
 export type GuardPhase = 'prep' | 'wave' | 'victory' | 'defeat';
+/** standard=波次通关(难度Ⅰ 10 波/Ⅱ 20 波);rush=难度Ⅲ BOSS 车轮战(无尽,水晶碎即结算层数,不判负)。 */
+export type GuardMode = 'standard' | 'rush';
 
 /** 上阵英雄(召唤池条目):由 battle start 回执 lineup 折算。 */
 export interface GuardPoolHero {
@@ -156,6 +158,11 @@ export interface GuardBattleState {
   /** 渲染层逐帧消费后清空(飘字/特效一次性事件)。 */
   events: GuardEvent[];
   bossKilled: boolean;
+  mode: GuardMode;
+  /** 车轮战累计击杀 BOSS 数(层数 = bossKills + wave,docs/30 口径)。 */
+  bossKills: number;
+  /** 车轮战下一只 BOSS 入场时刻(击杀后短暂间隔,下一只更强的入场)。 */
+  nextRushBossAtMs: number;
 }
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
@@ -270,11 +277,31 @@ export const GUARD_TIME_LIMIT_MS = 15 * 60 * 1000;
 const WAVE_SPAWN_WINDOW_MS = 18000;
 export const GUARD_WAVE_WAGE_BASE = 40;
 
-/** 难度Ⅰ:10 波;第 5 波精英,第 10 波 BOSS;飞行怪 4 波起、远程怪 6 波起(阵容检查器)。 */
-export function guardWaveComposition(wave: number, rng: () => number): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
+// 难度Ⅲ(输出试炼)BOSS 车轮战:开局即出 BOSS 极慢速压进(全程 ~2.4 分钟),击杀后更强的下一只入场;
+// 小怪波照常无尽刷;水晶碎/超时 = 结算层数(永远算完成,层数走 trialLayers 换输出分)。
+export const GUARD_RUSH_FIRST_BOSS_DELAY_MS = 6000;
+export const GUARD_RUSH_BOSS_RESPAWN_MS = 2500;
+export const GUARD_RUSH_BOSS_SPEED = 0.07;
+/** 车轮 BOSS 走进该 x(前列远程射程边缘)才允许读条:远处轰水晶无人能打断=不可交互的必死倒计时。 */
+export const GUARD_RUSH_BOSS_CAST_MAX_X = 7;
+/** rush 单独时限:输出试炼是刷分局,10 分钟收口(层数即成绩),别拖成马拉松。 */
+export const GUARD_RUSH_TIME_LIMIT_MS = 10 * 60 * 1000;
+/** 第 n+1 只车轮 BOSS 的强度参考波次(hp/啃咬按此波次代入曲线);递增要陡于英雄成长,保证必然收敛。 */
+export function guardRushBossRefWave(bossKills: number): number {
+  return 6 + 6 * bossKills;
+}
+/** 难度Ⅲ层数(docs/30:层数 = 击杀 BOSS 数 + 当前波次进度)。 */
+export function guardTrialLayers(state: GuardBattleState): number {
+  return state.bossKills + state.wave;
+}
+
+/** 波次构成:精英每 5 波(rush 恒有;standard 的 10 倍数波让位给 BOSS),BOSS 每 10 波+末波;飞行 4 波起、远程 6 波起。 */
+export function guardWaveComposition(wave: number, rng: () => number, maxWave = 10, mode: GuardMode = 'standard'): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
   const spawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> = [];
   // 前两波只出普通怪且量少:开局站位/召唤还没成型,别让坏运气第 1 波就翻车。
-  const count = (wave <= 2 ? 4 : 6) + wave * 2;
+  // 11 波起怪量增速减半(总强度转由 hp 曲线扛):20 波局后期不至于怪海碾压经济。
+  const countGrowth = wave <= 10 ? wave * 2 : 20 + (wave - 10);
+  const count = (wave <= 2 ? 4 : 6) + countGrowth;
   for (let i = 0; i < count; i += 1) {
     const roll = rng();
     let kind: GuardMonsterKind;
@@ -293,10 +320,12 @@ export function guardWaveComposition(wave: number, rng: () => number): Array<{ k
     }
     spawns.push({ kind, lane: Math.floor(rng() * GUARD_GRID_ROWS), atMs: Math.round((i / count) * WAVE_SPAWN_WINDOW_MS) });
   }
-  if (wave === 5) {
+  const isEliteWave = mode === 'rush' ? wave % 5 === 0 : wave % 5 === 0 && wave % 10 !== 0 && wave !== maxWave;
+  if (isEliteWave) {
     spawns.push({ kind: 'elite', lane: Math.floor(rng() * GUARD_GRID_ROWS), atMs: 4000 });
   }
-  if (wave === 10) {
+  // rush 的 BOSS 走车轮机制(guardTick),波次里不再脚本化。
+  if (mode === 'standard' && (wave % 10 === 0 || wave === maxWave)) {
     spawns.push({ kind: 'boss', lane: 1, atMs: 2000 });
   }
   return spawns;
@@ -351,9 +380,11 @@ export function resolveGuardRole(heroCode: string, heroClass: string | null | un
   return 'melee';
 }
 
-export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWave = 10): GuardBattleState {
+export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWave = 10, mode: GuardMode = 'standard'): GuardBattleState {
   const seed = guardHashSeed(seedText || 'guard');
   const rng = createGuardRng(seed);
+  // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
+  const crystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   return {
     seed,
     rng,
@@ -368,8 +399,8 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     gold: GUARD_START_GOLD,
     summonCost: GUARD_SUMMON_BASE_COST,
     summonCount: 0,
-    crystalHp: GUARD_CRYSTAL_MAX_HP,
-    crystalMaxHp: GUARD_CRYSTAL_MAX_HP,
+    crystalHp,
+    crystalMaxHp: crystalHp,
     heroes: [],
     monsters: [],
     chests: [],
@@ -394,6 +425,9 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     nextChestId: 1,
     events: [],
     bossKilled: false,
+    mode,
+    bossKills: 0,
+    nextRushBossAtMs: GUARD_RUSH_FIRST_BOSS_DELAY_MS,
   };
 }
 
@@ -671,11 +705,16 @@ function killMonster(state: GuardBattleState, monster: GuardMonster): void {
   monster.dead = true;
   monster.diedAtMs = state.timeMs;
   state.killCount += 1;
-  const gold = Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + state.mods.goldGainPct / 100));
+  // 击杀金币随怪物所属波次成长(+6%/波):怪血 wave^1.08 超线性,经济不同步涨则 15 波后必然入不敷出。
+  const gold = Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100));
   state.gold += gold;
   grantXp(state, GUARD_KILL_XP[monster.kind]);
   if (monster.kind === 'boss') {
     state.bossKilled = true;
+    state.bossKills += 1;
+    if (state.mode === 'rush') {
+      state.nextRushBossAtMs = state.timeMs + GUARD_RUSH_BOSS_RESPAWN_MS;
+    }
     if (state.bossCast?.monsterId === monster.monsterId) {
       state.bossCast = null;
     }
@@ -713,16 +752,17 @@ function startWave(state: GuardBattleState): void {
   state.wave += 1;
   state.phase = 'wave';
   state.waveStartedAtMs = state.timeMs;
-  const spawns = state.nextWaveSpawns ?? guardWaveComposition(state.wave, state.rng);
+  const spawns = state.nextWaveSpawns ?? guardWaveComposition(state.wave, state.rng, state.maxWave, state.mode);
   state.nextWaveSpawns = null;
   state.pendingSpawns = spawns.map((spawn) => ({ ...spawn, atMs: spawn.atMs + state.timeMs }));
   state.gold += GUARD_WAVE_WAGE_BASE + state.wave * 10;
   state.events.push({ type: 'waveStart', timeMs: state.timeMs, wave: state.wave });
 }
 
-function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: number): void {
+function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: number, opts?: { refWave?: number; speed?: number }): void {
   const profile = MONSTER_PROFILE[kind];
-  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(state.wave, MONSTER_HP_WAVE_EXP)));
+  const refWave = Math.max(1, opts?.refWave ?? state.wave);
+  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP)));
   const monster: GuardMonster = {
     monsterId: state.nextMonsterId++,
     kind,
@@ -730,8 +770,8 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     x: GUARD_SPAWN_X,
     hp,
     maxHp: hp,
-    speedCellsPerSec: profile.speed * (0.88 + state.rng() * 0.24),
-    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(state.wave, 0.95))),
+    speedCellsPerSec: opts?.speed ?? profile.speed * (0.88 + state.rng() * 0.24),
+    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95))),
     attackCooldownMs: 0,
     slowUntilMs: 0,
     stunnedUntilMs: 0,
@@ -807,16 +847,17 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     return state.phase;
   }
   state.timeMs += dtMs;
-  if (state.timeMs >= GUARD_TIME_LIMIT_MS) {
-    state.phase = 'defeat';
-    state.events.push({ type: 'defeat', timeMs: state.timeMs });
+  if (state.timeMs >= (state.mode === 'rush' ? GUARD_RUSH_TIME_LIMIT_MS : GUARD_TIME_LIMIT_MS)) {
+    // rush(输出试炼)没有失败:到时按完成收口,层数即成绩。
+    state.phase = state.mode === 'rush' ? 'victory' : 'defeat';
+    state.events.push({ type: state.mode === 'rush' ? 'victory' : 'defeat', timeMs: state.timeMs });
     return state.phase;
   }
   // 波次推进:prep(波间窗口)→ wave;首波在 GUARD_WAVE_INTERMISSION_MS 后开。
   if (state.phase === 'prep') {
     if (!state.nextWaveSpawns) {
       // prep 期生成下一波构成(供预告条;startWave 消费,保持确定性)。
-      state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng);
+      state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng, state.maxWave, state.mode);
     }
     const readyAtMs = state.wave === 0 ? GUARD_WAVE_INTERMISSION_MS : state.waveStartedAtMs + GUARD_WAVE_INTERMISSION_MS;
     if (state.timeMs >= readyAtMs) {
@@ -829,9 +870,10 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         spawnMonster(state, spawn.kind, spawn.lane);
       }
     }
-    const anyAlive = state.monsters.some((monster) => !monster.dead);
+    // rush:车轮 BOSS 常驻,不阻塞小怪波推进。
+    const anyAlive = state.monsters.some((monster) => !monster.dead && (state.mode !== 'rush' || monster.kind !== 'boss'));
     if (state.pendingSpawns.length === 0 && !anyAlive) {
-      if (state.wave >= state.maxWave) {
+      if (state.mode !== 'rush' && state.wave >= state.maxWave) {
         state.phase = 'victory';
         state.events.push({ type: 'victory', timeMs: state.timeMs });
         return state.phase;
@@ -840,10 +882,18 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       state.waveStartedAtMs = state.timeMs;
     }
   }
+  // 车轮战:场上始终一只 BOSS——开局 6s 首只入场,击杀后 2.5s 换更强的下一只(强度参考波次递增,速度极慢压迫感)。
+  if (state.mode === 'rush') {
+    const bossAlive = state.monsters.some((monster) => monster.kind === 'boss' && !monster.dead);
+    if (!bossAlive && state.timeMs >= state.nextRushBossAtMs) {
+      spawnMonster(state, 'boss', 1, { refWave: guardRushBossRefWave(state.bossKills), speed: GUARD_RUSH_BOSS_SPEED });
+    }
+  }
   // BOSS 读条:存活 BOSS 到点起手(踉跄中顺延);读满轰水晶。
   const boss = state.monsters.find((monster) => monster.kind === 'boss' && !monster.dead) ?? null;
   if (boss) {
-    if (!state.bossCast && state.timeMs >= state.nextBossCastMs && boss.stunnedUntilMs <= state.timeMs && boss.x < GUARD_SPAWN_X - 0.5) {
+    const castReachable = state.mode !== 'rush' || boss.x <= GUARD_RUSH_BOSS_CAST_MAX_X;
+    if (!state.bossCast && state.timeMs >= state.nextBossCastMs && boss.stunnedUntilMs <= state.timeMs && boss.x < GUARD_SPAWN_X - 0.5 && castReachable) {
       state.bossCast = {
         monsterId: boss.monsterId,
         startMs: state.timeMs,
@@ -860,8 +910,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       state.bossCast = null;
       state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
       if (state.crystalHp <= 0) {
-        state.phase = 'defeat';
-        state.events.push({ type: 'defeat', timeMs: state.timeMs });
+        state.phase = state.mode === 'rush' ? 'victory' : 'defeat';
+        state.events.push({ type: state.mode === 'rush' ? 'victory' : 'defeat', timeMs: state.timeMs });
         return state.phase;
       }
     }
@@ -887,8 +937,9 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         state.crystalHp = Math.max(0, state.crystalHp - monster.crystalDamage);
         state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: monster.crystalDamage });
         if (state.crystalHp <= 0) {
-          state.phase = 'defeat';
-          state.events.push({ type: 'defeat', timeMs: state.timeMs });
+          // rush(输出试炼):水晶碎 = 结算当前层数,不判负(docs/30)。
+          state.phase = state.mode === 'rush' ? 'victory' : 'defeat';
+          state.events.push({ type: state.mode === 'rush' ? 'victory' : 'defeat', timeMs: state.timeMs });
           return state.phase;
         }
       }
