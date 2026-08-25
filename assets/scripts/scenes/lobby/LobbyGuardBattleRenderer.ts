@@ -11,6 +11,7 @@ import {
   Size,
   sp,
   Sprite,
+  SpriteFrame,
   UIOpacity,
   UITransform,
   Vec3,
@@ -45,6 +46,7 @@ import {
   GUARD_GRID_CELLS,
   GUARD_GRID_COLS,
   GUARD_GRID_ROWS,
+  GUARD_MONSTER_DB_SCALE,
   GUARD_MONSTER_DISPLAY_SCALE,
   GUARD_ROLE_PROFILE,
   GUARD_RUSH_TIME_LIMIT_MS,
@@ -63,7 +65,6 @@ import {
   resolveBattleUnitSpineRuntimeData,
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
-import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 
 export interface LobbyGuardBattleHost {
@@ -255,6 +256,7 @@ export class LobbyGuardBattleRenderer {
     const root = this.host.addChildPlainNode(this.host.node, 'LobbyGuardBattleRoot', 0, 0, layout.width, layout.height);
     this.root = root;
     this.paintBackdrop(root, layout.width, layout.height);
+    this.mountBackground(root);
     this.fieldNode = this.host.addChildPlainNode(root, 'GuardField', 0, -layout.height * 0.03, layout.width, layout.height);
     this.paintLanesAndGrid();
     this.renderCrystal();
@@ -272,6 +274,35 @@ export class LobbyGuardBattleRenderer {
     const g = root.addComponent(Graphics);
     g.fillColor = rgba(16, 12, 11, 255);
     g.rect(-width / 2, -height / 2, width, height);
+    g.fill();
+  }
+
+  /** 贴图挂载:同步建占位节点锁定兄弟序(异步补挂会排到末尾、盖住整场),资源到位只填 spriteFrame。 */
+  private mountSprite(parent: Node, name: string, path: string, x: number, y: number, width: number, height: number): void {
+    const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
+    resources.load(path, SpriteFrame, (error: Error | null, frame: SpriteFrame | null) => {
+      if (error || !frame || !node.isValid) {
+        return;
+      }
+      const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      sprite.spriteFrame = frame;
+      node.getComponent(UITransform)?.setContentSize(width, height);
+    });
+  }
+
+  /** 战场背景(矿洞图 1536×1024):cover 等比铺满,裁洞顶保地面;顶部再压一条渐暗带保 HUD 可读。 */
+  private mountBackground(root: Node): void {
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const cover = Math.max(width / 1536, height / 1024);
+    const bgW = 1536 * cover;
+    const bgH = 1024 * cover;
+    this.mountSprite(root, 'GuardSceneBg', 'ui/battle/battle_scene_guard_mine/spriteFrame', 0, (bgH - height) / 2, bgW, bgH);
+    const shade = this.host.addChildPlainNode(root, 'GuardTopShade', 0, height / 2 - height * 0.08, width, height * 0.16);
+    const g = shade.addComponent(Graphics);
+    g.fillColor = rgba(10, 8, 8, 118);
+    g.rect(-width / 2, -height * 0.08, width, height * 0.16);
     g.fill();
   }
 
@@ -318,6 +349,11 @@ export class LobbyGuardBattleRenderer {
     return bestDist <= this.unitSize() * 0.9 ? best : null;
   }
 
+  /** 相邻格列的像素间距(格子边长基准:边长必须 ≤ 列距才不互叠——2026-08-25 修结构性重叠)。 */
+  private cellPitchPx(): number {
+    return this.xToPx(guardCellX(1)) - this.xToPx(guardCellX(0));
+  }
+
   private paintLanesAndGrid(): void {
     const field = this.fieldNode;
     if (!field) {
@@ -325,22 +361,28 @@ export class LobbyGuardBattleRenderer {
     }
     const g = field.addComponent(Graphics);
     const laneHeight = this.layoutHeight * 0.185;
+    // 车道:背景图上只压低透明暗带+发丝金线分隔,别把地面盖回黑
     for (let lane = 0; lane < GUARD_GRID_ROWS; lane += 1) {
       const y = this.laneToPy(lane);
-      g.fillColor = lane % 2 === 0 ? rgba(30, 23, 19, 200) : rgba(25, 19, 16, 200);
-      g.rect(this.pathLeftPx() - this.layoutWidth * 0.05, y - laneHeight / 2, this.pathRightPx() - this.pathLeftPx() + this.layoutWidth * 0.12, laneHeight);
+      g.fillColor = rgba(12, 8, 6, lane % 2 === 0 ? 44 : 26);
+      g.rect(this.pathLeftPx() - this.layoutWidth * 0.05, y - laneHeight / 2, this.pathRightPx() - this.pathLeftPx() + this.layoutWidth * 0.1, laneHeight);
       g.fill();
+      g.strokeColor = rgba(214, 178, 110, 40);
+      g.lineWidth = 1;
+      g.moveTo(this.pathLeftPx() - this.layoutWidth * 0.05, y - laneHeight / 2);
+      g.lineTo(this.pathRightPx() + this.layoutWidth * 0.05, y - laneHeight / 2);
+      g.stroke();
     }
-    // 3×3 大召唤格(参考图卡片式:暗底+金边圆角)
+    // 3×3 正方大卡:边长=列距×0.92(列距=1.5 sim 单位映射像素),暖棕底+金边——任何宽高比都不互叠
+    const size = this.cellPitchPx() * 0.92;
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const center = this.cellCenter(cell);
-      const size = this.unitSize() * 1.05;
-      g.fillColor = rgba(16, 13, 12, 200);
-      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 10);
+      g.fillColor = rgba(34, 24, 18, 150);
+      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.fill();
-      g.strokeColor = rgba(150, 118, 70, 170);
-      g.lineWidth = 1.8;
-      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 10);
+      g.strokeColor = rgba(190, 150, 92, 185);
+      g.lineWidth = 2;
+      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.stroke();
     }
   }
@@ -350,22 +392,15 @@ export class LobbyGuardBattleRenderer {
     if (!field) {
       return;
     }
-    const x = this.xToPx(0) - this.layoutWidth * 0.035;
-    const size = this.layoutHeight * 0.24;
-    const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, this.laneToPy(1), size, size);
-    const icon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
-    if (!icon || !this.host.addSprite('GuardCrystalIcon', icon, 0, 0, size, size, holder)) {
-      const g = holder.addComponent(Graphics);
-      g.fillColor = rgba(110, 170, 255, 240);
-      g.moveTo(0, size * 0.5);
-      g.lineTo(size * 0.32, 0);
-      g.lineTo(0, -size * 0.5);
-      g.lineTo(-size * 0.32, 0);
-      g.close();
-      g.fill();
-    }
+    // 场景化水晶塔(ui/guard/crystal_tower,1024×1536 透明底):立在格子区左侧,整体收进屏内,底座落到下车道地面。
+    const height = this.layoutHeight * 0.4;
+    const width = height * (1024 / 1536);
+    const x = Math.max(this.xToPx(0) - this.layoutWidth * 0.028, -this.layoutWidth / 2 + width * 0.52);
+    const y = this.laneToPy(1) - this.layoutHeight * 0.035;
+    const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, y, width, height);
+    this.mountSprite(holder, 'GuardCrystalIcon', 'ui/guard/crystal_tower/spriteFrame', 0, 0, width, height);
     tween(holder)
-      .repeatForever(tween().to(1.2, { scale: new Vec3(1.05, 1.05, 1) }).to(1.2, { scale: Vec3.ONE }))
+      .repeatForever(tween().to(1.4, { scale: new Vec3(1.035, 1.035, 1) }).to(1.4, { scale: Vec3.ONE }))
       .start();
   }
 
@@ -1159,8 +1194,23 @@ export class LobbyGuardBattleRenderer {
     this.loadSpineInto(node, fallback, resource, size, mirror, view);
   }
 
-  private loadSpineInto(node: Node, fallback: Node, resource: string, size: number, mirror: boolean, view?: GuardUnitView): void {
-    const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, -size * 0.36, size, size * 1.1);
+  private loadSpineInto(
+    node: Node,
+    fallback: Node,
+    resource: string,
+    size: number,
+    mirror: boolean,
+    view?: GuardUnitView,
+    opts?: {
+      /** S196 怪物:体型按 标定视高/bounds高 算(bounds 虚标由 DB 校准表补偿,同旧战斗渲染公式),不走英雄的钳制路径。 */
+      calibratedScale?: (rawBoundsHeight: number) => number;
+      /** S196 素材原点=脚底中心:骨骼节点直接放地面线,不做 bounds 偏移补偿。 */
+      footY?: number;
+      /** 循环动画优先级(怪物行进优先 walk/run/move)。 */
+      preferAnim?: RegExp;
+    },
+  ): void {
+    const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, opts?.footY ?? -size * 0.36, size, size * 1.1);
     const skeleton = spineNode.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
     // 兜底直载:共享缓存层的在途合并队列若丢回调(极端环境观测到过)会永久悬空——4s 未回来就绕过缓存直载一次。
@@ -1184,11 +1234,18 @@ export class LobbyGuardBattleRenderer {
         }
         patchBattleUnitSpineRuntimeEnums(data, runtimeData);
         skeleton.skeletonData = data;
-        const idle = names.find((name) => /idle|stand|daiji|wait/i.test(name)) ?? names[0];
+        const idle = (opts?.preferAnim ? names.find((name) => opts.preferAnim!.test(name)) : undefined)
+          ?? names.find((name) => /idle|stand|daiji|wait/i.test(name))
+          ?? names[0];
         skeleton.setAnimation(0, idle, true);
-        // act 系骨骼 bounds 常虚标(截图验收:断刃佣兵缩成小人)——rawHeight 钳到 [140,1200] 再 fit。
-        const rawHeight = Math.min(1200, Math.max(140, Number(runtimeData.height) || 300));
-        const fit = (size * 1.05) / rawHeight;
+        let fit: number;
+        if (opts?.calibratedScale) {
+          fit = opts.calibratedScale(Math.max(1, Number(runtimeData.height) || 300));
+        } else {
+          // act 系骨骼 bounds 常虚标(截图验收:断刃佣兵缩成小人)——rawHeight 钳到 [140,1200] 再 fit。
+          const rawHeight = Math.min(1200, Math.max(140, Number(runtimeData.height) || 300));
+          fit = (size * 1.05) / rawHeight;
+        }
         spineNode.setScale(mirror ? -fit : fit, fit, 1);
         if (view) {
           view.skeleton = skeleton;
@@ -1509,17 +1566,32 @@ export class LobbyGuardBattleRenderer {
 
   private createMonsterView(monster: GuardMonster): GuardUnitView {
     const field = this.fieldNode;
-    const baseSize = this.unitSize() * (GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1);
+    const unit = this.unitSize();
+    const kindMult = GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1;
+    const baseSize = unit * kindMult;
     const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardMonster_${monster.monsterId}`, this.xToPx(monster.x), this.laneToPy(monster.lane), baseSize, baseSize);
+    // 地面阴影:近黑素材在暖色地面上的剪影分离
+    const shadow = node.addComponent(Graphics);
+    shadow.fillColor = rgba(8, 5, 3, 105);
+    shadow.ellipse(0, -unit * 0.45, Math.min(baseSize, unit * 2.4) * 0.34, unit * 0.065);
+    shadow.fill();
     const fallback = this.host.addChildPlainNode(node, 'GuardMonsterFallback', 0, 0, baseSize * 0.6, baseSize * 0.7);
     const g = fallback.addComponent(Graphics);
     g.fillColor = monster.kind === 'boss' ? rgba(190, 70, 60, 200) : monster.kind === 'elite' ? rgba(200, 130, 60, 190) : rgba(120, 96, 88, 180);
     g.roundRect(-baseSize * 0.3, -baseSize * 0.35, baseSize * 0.6, baseSize * 0.7, 8);
     g.fill();
     // 怪物朝左走:素材原始朝右为主,镜像面向水晶。目录名≠文件基名,走映射表。
+    // 体型 = 标定视高(unit×体型倍率×DB逐皮肤校准,BOSS 钳 0.72 屏高)/ bounds 高——与旧战斗渲染同一公式;
+    // S196 素材原点=脚底中心,直接脚踩地面线,不吃 bounds 偏移。
+    const dbScale = GUARD_MONSTER_DB_SCALE[monster.spineCode] ?? 1;
+    const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * 0.72);
     const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '' };
-    this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view);
-    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, baseSize * 0.52, Math.min(baseSize * 0.9, monster.kind === 'boss' ? 220 : 110), 6);
+    this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view, {
+      calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
+      footY: -unit * 0.45,
+      preferAnim: /walk|run|move/i,
+    });
+    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, Math.min(baseSize * 0.58, this.layoutHeight * 0.4), Math.min(baseSize * 0.9, monster.kind === 'boss' ? 220 : 110), 6);
     hpBar.addComponent(Graphics);
     return view;
   }

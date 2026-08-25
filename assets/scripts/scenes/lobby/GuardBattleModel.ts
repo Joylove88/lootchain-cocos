@@ -171,11 +171,11 @@ export const GUARD_GRID_COLS = 3;
 export const GUARD_GRID_CELLS = GUARD_GRID_ROWS * GUARD_GRID_COLS;
 export const GUARD_SPAWN_X = 10;
 export const GUARD_CRYSTAL_REACH_X = 0.6;
-/** 远程怪站桩位:射程外啃水晶,逼玩家配远程/控制。 */
-export const GUARD_SHOOTER_STAND_X = 4.8;
-/** 格列→路程 x 坐标(col3 最靠前)。 */
+/** 远程怪站桩位:任意列远程(后列 1.0+3.5=4.5)与中前列控制都够得着,前列近战可补刀;严格阵容检查交给飞行怪。 */
+export const GUARD_SHOOTER_STAND_X = 4.5;
+/** 格列→路程 x 坐标(col3 最靠前)。起点 1.9 给水晶塔让位、列距 1.4 保正方大卡(2026-08-25 视觉重做)。 */
 export function guardCellX(cell: number): number {
-  return 1.5 + (cell % GUARD_GRID_COLS);
+  return 1.9 + (cell % GUARD_GRID_COLS) * 1.4;
 }
 export function guardCellLane(cell: number): number {
   return Math.floor(cell / GUARD_GRID_COLS);
@@ -193,7 +193,7 @@ export const GUARD_STAR_ATTACK_MULT = 2.2;
 export const GUARD_CRYSTAL_MAX_HP = 1600;
 
 export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; intervalMs: number; damageScale: number; laneLocked: boolean }> = {
-  melee: { rangeCells: 1.2, intervalMs: 800, damageScale: 1.6, laneLocked: true },
+  melee: { rangeCells: 1.5, intervalMs: 800, damageScale: 1.6, laneLocked: true },
   ranged: { rangeCells: 3.5, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
   support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
   control: { rangeCells: 2.5, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
@@ -266,6 +266,30 @@ export function guardMonsterSpineResource(spineCode: string): string {
 
 /** 视觉体型倍率(用户拍板 2026-08-21:精英×2,BOSS×6)。 */
 export const GUARD_MONSTER_DISPLAY_SCALE: Record<GuardMonsterKind, number> = { normal: 1, fast: 0.85, tank: 1.3, flying: 0.9, shooter: 1, elite: 2, boss: 6 };
+/** 逐皮肤体型校准(源=DB monster_template.display_scale,与旧战斗渲染同一套标定;S196 bounds 虚标由它补偿)。 */
+export const GUARD_MONSTER_DB_SCALE: Record<string, number> = {
+  abyss_devilman: 1.45,
+  abyss_jailer: 1.05,
+  bow_male: 1.0,
+  crossbow_male: 1.0,
+  crow_reaper: 1.4,
+  cursed_caster: 1.0,
+  forge_overseer: 1.0,
+  gargoyle: 1.2,
+  goathead_blade: 1.35,
+  grand_magus: 1.3,
+  hammer_tanker: 1.2,
+  infected_male: 1.0,
+  large_bear: 1.35,
+  medium_dog: 1.0,
+  medium_rat: 1.0,
+  mutant_fatman: 1.4,
+  mutant_male: 1.05,
+  rock_golem: 1.45,
+  small_bat: 0.85,
+  small_raven: 0.85,
+  small_spider: 0.85,
+};
 
 const MONSTER_BASE_HP = 34;
 const MONSTER_HP_WAVE_EXP = 1.08;
