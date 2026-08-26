@@ -35,6 +35,25 @@ export interface GuardHeroUnit {
   lastTargetId: number | null;
   /** 出手计数:star≥2 每第 4 次为技能击(×1.6,渲染层播专属技能特效)。 */
   attackCount: number;
+  /** 主动技能就绪时刻(2★ 解锁,自动施放;参考蔚蓝星球主动技,2026-08-26)。 */
+  skillReadyMs: number;
+}
+
+/** 持续区域(灼烧区/旋风):确定性推进与跳伤,渲染层按 state.zones 绘制。 */
+export interface GuardZone {
+  zoneId: number;
+  kind: 'burn' | 'cyclone';
+  x: number;
+  radiusCells: number;
+  /** 每跳伤害(施放时按施放者攻击折算固定)。 */
+  tickDamage: number;
+  tickMs: number;
+  nextTickAtMs: number;
+  untilMs: number;
+  /** cyclone:向刷怪口推进的速度;burn 为 0。 */
+  speedCellsPerSec: number;
+  /** cyclone:命中附带减速时长。 */
+  slowMs: number;
 }
 
 export interface GuardMonster {
@@ -98,7 +117,7 @@ export interface GuardBossCast {
 export interface GuardEvent {
   type:
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
-    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock';
+    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -113,6 +132,9 @@ export interface GuardEvent {
   skillProc?: boolean;
   /** merge/superMerge:本次合成首次跨过 2 星=解锁专属技能(渲染层播"技能解锁"横幅)。 */
   skillUnlocked?: boolean;
+  /** heroSkill:技能名(渲染层飘字)与产生的区域 id(如有)。 */
+  skillName?: string;
+  zoneId?: number;
 }
 
 export interface GuardBattleState {
@@ -161,6 +183,11 @@ export interface GuardBattleState {
   events: GuardEvent[];
   bossKilled: boolean;
   mode: GuardMode;
+  /** 持续区域(灼烧/旋风)与自增 id。 */
+  zones: GuardZone[];
+  nextZoneId: number;
+  /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
+  supportSurgeUntilMs: number;
   /** 已解锁列数(3 起步,累计召唤达标解锁第 4 列)。 */
   unlockedCols: number;
   /** 车轮战累计击杀 BOSS 数(层数 = bossKills + wave,docs/30 口径)。 */
@@ -207,6 +234,18 @@ export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; int
   support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
   control: { rangeCells: 8.0, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
 };
+/** 主动技能(2★ 解锁,自动施放;参考蔚蓝星球主动技,2026-08-26 用户拍板"参考此图按横板做")。 */
+export const GUARD_HERO_SKILL: Record<GuardHeroRole, { name: string; cdMs: number; desc: string }> = {
+  melee: { name: '裂地横扫', cdMs: 12_000, desc: '对本车道覆盖范围内所有敌人造成 200% 攻击,并击退 0.35 格' },
+  ranged: { name: '烈焰领域', cdMs: 15_000, desc: '在最前方敌人脚下生成灼烧区,4 秒内每 0.5 秒造成 50% 攻击' },
+  control: { name: '飓风呼啸', cdMs: 18_000, desc: '召唤缓慢推进的旋风,5 秒内每 0.5 秒对触及敌人造成 60% 攻击并减速' },
+  support: { name: '圣辉涌泉', cdMs: 20_000, desc: '水晶回复 6% 生命,全队攻速 +20% 持续 4 秒' },
+};
+/** 首个主动技能的开场预热(召唤后 6s 才可首放)。 */
+export const GUARD_HERO_SKILL_WARMUP_MS = 6_000;
+export const GUARD_SUPPORT_SURGE_MS = 4_000;
+export const GUARD_SUPPORT_SURGE_ATKSPD = 1.2;
+
 export const GUARD_CONTROL_SLOW_RATIO = 0.4;
 export const GUARD_CONTROL_SLOW_MS = 1500;
 export const GUARD_SUPPORT_CRYSTAL_HEAL_RATIO = 0.025;
@@ -326,7 +365,7 @@ export const GUARD_MONSTER_DB_SCALE: Record<string, number> = {
 
 const MONSTER_BASE_HP = 34;
 // 1.08→1.14(2026-08-25):射程翻倍+12 格后英雄 DPS 上台阶,血量曲线同步抬升保持后期张力。
-const MONSTER_HP_WAVE_EXP = 1.18;
+const MONSTER_HP_WAVE_EXP = 1.26;
 const MONSTER_BASE_CRYSTAL_DMG = 5;
 const MONSTER_ATTACK_INTERVAL_MS = 1200;
 export const GUARD_WAVE_INTERMISSION_MS = 5000;
@@ -483,6 +522,9 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     events: [],
     bossKilled: false,
     mode,
+    zones: [],
+    nextZoneId: 1,
+    supportSurgeUntilMs: 0,
     unlockedCols: GUARD_START_COLS,
     bossKills: 0,
     nextRushBossAtMs: GUARD_RUSH_FIRST_BOSS_DELAY_MS,
@@ -543,6 +585,7 @@ export function guardSummon(state: GuardBattleState, free = false): GuardHeroUni
     lastAttackAtMs: -10000,
     lastTargetId: null,
     attackCount: 0,
+    skillReadyMs: state.timeMs + GUARD_HERO_SKILL_WARMUP_MS,
   };
   state.heroes.push(unit);
   state.events.push({ type: 'summon', timeMs: state.timeMs, heroCode: unit.heroCode, star: 1, cell });
@@ -864,13 +907,97 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
   }
 }
 
+/** 主动技能施放(2★,冷却制,自动):近战横扫/远程灼烧区/控制旋风/辅助圣辉。返回是否成功施放。 */
+function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
+  const profile = GUARD_ROLE_PROFILE[hero.role];
+  const attack = guardHeroAttackValue(state, hero);
+  const skill = GUARD_HERO_SKILL[hero.role];
+  if (hero.role === 'melee') {
+    const heroLane = guardCellLane(hero.cell);
+    const targets = state.monsters.filter((monster) => !monster.dead && monster.lane === heroLane && monster.kind !== 'flying' && monster.x <= profile.rangeCells);
+    if (targets.length === 0) {
+      return false;
+    }
+    const damage = Math.round(attack * 2.0);
+    let firstId: number | null = null;
+    for (const monster of targets) {
+      monster.x = Math.min(GUARD_SPAWN_X, monster.x + 0.35);
+      if (firstId === null) {
+        firstId = monster.monsterId;
+      }
+      damageMonster(state, monster, damage, hero);
+    }
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: firstId ?? undefined });
+    return true;
+  }
+  if (hero.role === 'ranged') {
+    let front: GuardMonster | null = null;
+    for (const monster of state.monsters) {
+      if (!monster.dead && monster.x <= profile.rangeCells && (!front || monster.x < front.x)) {
+        front = monster;
+      }
+    }
+    if (!front) {
+      return false;
+    }
+    const zone: GuardZone = {
+      zoneId: state.nextZoneId++,
+      kind: 'burn',
+      x: front.x,
+      radiusCells: 1.2,
+      tickDamage: Math.max(1, Math.round(attack * 0.5)),
+      tickMs: 500,
+      nextTickAtMs: state.timeMs + 250,
+      untilMs: state.timeMs + 4000,
+      speedCellsPerSec: 0,
+      slowMs: 0,
+    };
+    state.zones.push(zone);
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId, monsterId: front.monsterId });
+    return true;
+  }
+  if (hero.role === 'control') {
+    if (!state.monsters.some((monster) => !monster.dead)) {
+      return false;
+    }
+    const zone: GuardZone = {
+      zoneId: state.nextZoneId++,
+      kind: 'cyclone',
+      x: 1.2,
+      radiusCells: 1.0,
+      tickDamage: Math.max(1, Math.round(attack * 0.6)),
+      tickMs: 500,
+      nextTickAtMs: state.timeMs + 250,
+      untilMs: state.timeMs + 5000,
+      speedCellsPerSec: 0.9,
+      slowMs: 1000,
+    };
+    state.zones.push(zone);
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId });
+    return true;
+  }
+  // support:有怪压场才放(空场省冷却)
+  if (!state.monsters.some((monster) => !monster.dead)) {
+    return false;
+  }
+  state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.06));
+  state.supportSurgeUntilMs = state.timeMs + GUARD_SUPPORT_SURGE_MS;
+  state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name });
+  return true;
+}
+
 function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): void {
   const profile = GUARD_ROLE_PROFILE[hero.role];
+  // 主动技能:2★ 解锁,冷却就绪且有合法目标时自动施放
+  if (hero.star >= 2 && state.timeMs >= hero.skillReadyMs && castHeroSkill(state, hero)) {
+    hero.skillReadyMs = state.timeMs + GUARD_HERO_SKILL[hero.role].cdMs;
+  }
   hero.attackCooldownMs -= dtMs;
   if (hero.attackCooldownMs > 0) {
     return;
   }
-  const interval = profile.intervalMs * (1 - Math.min(50, state.mods.atkSpeedPct) / 100);
+  const surgeDiv = state.supportSurgeUntilMs > state.timeMs ? GUARD_SUPPORT_SURGE_ATKSPD : 1;
+  const interval = (profile.intervalMs * (1 - Math.min(50, state.mods.atkSpeedPct) / 100)) / surgeDiv;
   if (hero.role === 'support') {
     // 辅助:周期治疗水晶。
     hero.attackCooldownMs = interval;
@@ -1029,6 +1156,25 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       }
     }
   }
+  // 持续区域(灼烧区/旋风):推进与跳伤(确定性,无 rng;旋风附带减速)。
+  for (const zone of state.zones) {
+    if (zone.speedCellsPerSec > 0) {
+      zone.x = Math.min(GUARD_SPAWN_X, zone.x + zone.speedCellsPerSec * (dtMs / 1000));
+    }
+    while (state.timeMs >= zone.nextTickAtMs && zone.nextTickAtMs <= zone.untilMs) {
+      zone.nextTickAtMs += zone.tickMs;
+      for (const monster of state.monsters) {
+        if (monster.dead || Math.abs(monster.x - zone.x) > zone.radiusCells) {
+          continue;
+        }
+        if (zone.slowMs > 0) {
+          monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + zone.slowMs);
+        }
+        damageMonster(state, monster, zone.tickDamage, null);
+      }
+    }
+  }
+  state.zones = state.zones.filter((zone) => state.timeMs < zone.untilMs);
   // 英雄出手。
   for (const hero of state.heroes) {
     heroTick(state, hero, dtMs);
