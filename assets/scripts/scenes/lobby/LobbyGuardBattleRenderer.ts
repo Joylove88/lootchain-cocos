@@ -125,7 +125,23 @@ interface GuardUnitView {
   skeleton: sp.Skeleton | null;
   idleAnim: string;
   attackAnim: string;
+  /** 死亡动画名(怪物,有则死亡时播放)。 */
+  deathAnim: string;
+  /** 受击红闪截止时刻(打击感,2026-08-26)。 */
+  hitFlashUntil: number;
 }
+
+/** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。 */
+interface GuardProjectile {
+  node: Node;
+  targetId: number;
+  x: number;
+  y: number;
+  amount: number;
+  color: Color;
+}
+const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
+const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 
 export class LobbyGuardBattleRenderer {
   constructor(private readonly host: LobbyGuardBattleHost) {}
@@ -165,6 +181,8 @@ export class LobbyGuardBattleRenderer {
   private goldCoinLive = 0;
   /** 持续区域(灼烧/旋风)视图。 */
   private readonly zoneViews = new Map<number, Node>();
+  /** 普攻弹幕(远程/控制;打击感系统 2026-08-26)。 */
+  private readonly projectiles: GuardProjectile[] = [];
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -213,6 +231,7 @@ export class LobbyGuardBattleRenderer {
     this.displayedGold = -1;
     this.goldCoinLive = 0;
     this.zoneViews.clear();
+    this.projectiles.length = 0;
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -817,6 +836,7 @@ export class LobbyGuardBattleRenderer {
       phase = guardTick(sim, TICK_MS);
     }
     this.consumeEvents();
+    this.updateProjectiles();
     for (const aim of this.guardFxAimers.values()) {
       aim();
     }
@@ -855,6 +875,16 @@ export class LobbyGuardBattleRenderer {
         }
       } else if (event.type === 'crystalHit') {
         this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
+        // 水晶受击红闪(打击感)
+        const crystalSprite = field.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
+        if (crystalSprite && crystalSprite.isValid) {
+          crystalSprite.color = rgba(255, 130, 110, 255);
+          setTimeout(() => {
+            if (crystalSprite.isValid) {
+              crystalSprite.color = rgba(255, 255, 255, 255);
+            }
+          }, 130);
+        }
       } else if (event.type === 'superMerge' || event.type === 'merge') {
         if (event.type === 'superMerge') {
           this.host.setStatus('矿脉共鸣!直升 2 星!');
@@ -909,7 +939,7 @@ export class LobbyGuardBattleRenderer {
         if (hero) {
           this.playUnitAttack(this.heroViews.get(hero.unitId));
         }
-        // 全部攻击伤害都要可见(2026-08-25 用户拍板):普攻小号白字,技能击紫色大字。
+        // 打击感(2026-08-26):远程/控制普攻发弹幕(命中才结算表现);近战刀光斩闪;技能击照旧专属特效。
         if (typeof event.monsterId === 'number') {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
           const targetView = target ? this.monsterViews.get(target.monsterId) : null;
@@ -918,8 +948,15 @@ export class LobbyGuardBattleRenderer {
             if (event.skillProc && event.heroCode) {
               this.spawnGuardSkillFx(event.heroCode, hero?.cell ?? null, target);
               this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.6, `技能击 -${event.amount ?? 0}`, rgba(190, 150, 255), 19);
+              this.flashMonster(target.monsterId);
+            } else if (hero && (hero.role === 'ranged' || hero.role === 'control')) {
+              const origin = this.cellCenter(hero.cell);
+              const color = GUARD_ROLE_COLOR[hero.role] ?? rgba(255, 220, 150);
+              this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, color);
             } else {
+              this.spawnSlashArc(targetView.node.position.x + jitterX * 0.4, targetView.node.position.y + this.unitSize() * 0.16);
               this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.42, `-${event.amount ?? 0}`, rgba(255, 240, 214, 235), 15);
+              this.flashMonster(target.monsterId);
             }
           }
         }
@@ -1260,6 +1297,147 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
+  // ── 打击感系统(2026-08-26 用户拍板:弹幕射击+受击反馈)──
+  /** 普攻弹幕:发光弹体从英雄身前归巢飞向目标,命中才结算飘字+爆闪+受击红闪。 */
+  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    if (this.projectiles.length >= 40) {
+      // 弹体满载:直接结算命中(伤害表现不丢)
+      this.resolveProjectileHit(this.xToPx(monster.x), this.laneToPy(monster.lane) + this.monsterJitterY(monster), monster.monsterId, amount, color);
+      return;
+    }
+    const node = this.host.addChildPlainNode(field, 'GuardProjectile', fromX, fromY, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    const g = node.addComponent(Graphics);
+    // 弹体:亮核+外辉+尾迹(朝右绘制,飞行时整体旋转)
+    g.strokeColor = rgba(color.r, color.g, color.b, 130);
+    g.lineWidth = 5;
+    g.moveTo(-30, 0);
+    g.lineTo(-8, 0);
+    g.stroke();
+    g.fillColor = rgba(color.r, color.g, color.b, 120);
+    g.ellipse(0, 0, 13, 7);
+    g.fill();
+    g.fillColor = rgba(255, 250, 235, 245);
+    g.ellipse(1, 0, 8, 4);
+    g.fill();
+    this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color });
+  }
+
+  /** 每 tick 推进弹幕(归巢;目标死亡转向最近怪;命中=爆闪+飘字+受击红闪)。 */
+  private updateProjectiles(): void {
+    const sim = this.sim;
+    if (!sim || this.projectiles.length === 0) {
+      return;
+    }
+    const speed = 90; // px / tick(50ms)≈ 1800px/s
+    for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
+      const proj = this.projectiles[i];
+      if (!proj.node.isValid) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+      let target = sim.monsters.find((entry) => entry.monsterId === proj.targetId && !entry.dead) ?? null;
+      if (!target) {
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (const candidate of sim.monsters) {
+          if (candidate.dead) {
+            continue;
+          }
+          const dist = Math.abs(this.xToPx(candidate.x) - proj.x);
+          if (dist < bestDist) {
+            bestDist = dist;
+            target = candidate;
+          }
+        }
+        if (target) {
+          proj.targetId = target.monsterId;
+        }
+      }
+      const tx = target ? this.xToPx(target.x) : proj.x + speed;
+      const ty = target ? this.laneToPy(target.lane) + this.monsterJitterY(target) + this.unitSize() * 0.12 : proj.y;
+      const dx = tx - proj.x;
+      const dy = ty - proj.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= speed || !target) {
+        this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color);
+        proj.node.destroy();
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+      proj.x += (dx / dist) * speed;
+      proj.y += (dy / dist) * speed;
+      proj.node.setPosition(proj.x, proj.y, 0);
+      proj.node.angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    }
+  }
+
+  /** 命中结算:爆闪+伤害飘字+目标受击红闪。 */
+  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color): void {
+    this.spawnImpactFlash(x, y, color);
+    this.spawnFloater(x, y + this.unitSize() * 0.34, `-${amount}`, rgba(255, 240, 214, 235), 15);
+    this.flashMonster(targetId);
+  }
+
+  /** 命中爆闪:小十字星芒 0.18s。 */
+  private spawnImpactFlash(x: number, y: number, color: Color): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(field, 'GuardImpact', x, y, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(255, 248, 230, 235);
+    g.circle(0, 0, 9);
+    g.fill();
+    g.strokeColor = rgba(color.r, color.g, color.b, 220);
+    g.lineWidth = 3;
+    for (let i = 0; i < 4; i += 1) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      g.moveTo(Math.cos(a) * 6, Math.sin(a) * 6);
+      g.lineTo(Math.cos(a) * 20, Math.sin(a) * 20);
+    }
+    g.stroke();
+    const opacity = node.addComponent(UIOpacity);
+    tween(node).to(0.18, { scale: new Vec3(1.7, 1.7, 1) }).start();
+    tween(opacity).to(0.2, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  /** 近战刀光:目标处双弧斩闪 0.16s。 */
+  private spawnSlashArc(x: number, y: number): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(field, 'GuardSlash', x, y, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    node.angle = ((this.floaterCycle % 3) - 1) * 26;
+    const g = node.addComponent(Graphics);
+    g.strokeColor = rgba(255, 244, 214, 235);
+    g.lineWidth = 5;
+    g.arc(0, 0, 34, -Math.PI * 0.42, Math.PI * 0.42, false);
+    g.stroke();
+    g.strokeColor = rgba(255, 190, 120, 200);
+    g.lineWidth = 3;
+    g.arc(0, 0, 46, -Math.PI * 0.3, Math.PI * 0.3, false);
+    g.stroke();
+    const opacity = node.addComponent(UIOpacity);
+    tween(node).to(0.16, { scale: new Vec3(1.45, 1.45, 1) }).start();
+    tween(opacity).to(0.18, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  /** 受击红闪(spine 染色 90ms,syncMonsters 每帧恢复)。 */
+  private flashMonster(monsterId: number): void {
+    const view = this.monsterViews.get(monsterId);
+    if (view) {
+      view.hitFlashUntil = Date.now() + 90;
+    }
+  }
+
   /** 飘字槽位轮转:连续飘字横向 3 槽×纵向 2 层错开,不再叠成一团(2026-08-26 用户验收)。 */
   private floaterCycle = 0;
 
@@ -1438,7 +1616,7 @@ export class LobbyGuardBattleRenderer {
     fg.fillColor = rgba(roleColor.r, roleColor.g, roleColor.b, 130);
     fg.roundRect(-size * 0.31, -size * 0.4, size * 0.62, size * 0.8, 8);
     fg.fill();
-    const pendingView: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '' };
+    const pendingView: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
     this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
     this.host.addChildLabel(node, 'GuardHeroName', `${pool?.displayName ?? hero.heroCode}·${GUARD_ROLE_LABEL[hero.role] ?? ''}`, 0, size * 0.6, 15, rgba(236, 224, 196), new Size(size * 1.8, 20));
     const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.46, 16, rgba(255, 220, 110), new Size(size * 1.4, 20));
@@ -1543,6 +1721,10 @@ export class LobbyGuardBattleRenderer {
           view.skeleton = skeleton;
           view.idleAnim = idle;
           view.attackAnim = attack;
+          if (opts?.enemyAnimNames) {
+            const mappedNames = resolveBattleUnitSpineAnimationNames(data, this.toGuardEnemyUnit(resource));
+            view.deathAnim = mappedNames.death ?? '';
+          }
           view.spineReady = true;
         }
         if (fallback.isValid) {
@@ -2143,14 +2325,30 @@ export class LobbyGuardBattleRenderer {
       const jitterY = monster.kind === 'boss' ? 0 : this.monsterJitterY(monster);
       view.node.setPosition(this.xToPx(monster.x), this.laneToPy(monster.lane) + jitterY + flyLift, 0);
       if (monster.dead) {
-        // 死亡:淡出下沉一次
+        // 死亡演出:有死亡动画播动画后淡出,否则淡出下沉(打击感 2026-08-26)
         if (view.lastAnimKey !== 'dead') {
           view.lastAnimKey = 'dead';
           const opacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
-          tween(opacity).to(0.5, { opacity: 0 }).start();
-          tween(view.node).by(0.5, { position: new Vec3(0, -12, 0) }).start();
+          if (view.skeleton && view.skeleton.isValid) {
+            view.skeleton.color = GUARD_SPINE_WHITE;
+          }
+          if (view.skeleton && view.skeleton.isValid && view.deathAnim) {
+            try {
+              view.skeleton.setAnimation(0, view.deathAnim, false);
+            } catch (error) {
+              void error;
+            }
+            tween(opacity).delay(0.7).to(0.5, { opacity: 0 }).start();
+          } else {
+            tween(opacity).to(0.5, { opacity: 0 }).start();
+            tween(view.node).by(0.5, { position: new Vec3(0, -14, 0) }).start();
+          }
         }
         continue;
+      }
+      // 受击红闪恢复(flashMonster 置起点,这里逐帧收敛)
+      if (view.skeleton && view.skeleton.isValid) {
+        view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : GUARD_SPINE_WHITE;
       }
       const hpBar = view.node.getChildByName('GuardMonsterHp');
       const hpGraphics = hpBar?.getComponent(Graphics);
@@ -2190,7 +2388,7 @@ export class LobbyGuardBattleRenderer {
     // S196 素材原点=脚底中心,直接脚踩地面线,不吃 bounds 偏移。
     const dbScale = GUARD_MONSTER_DB_SCALE[monster.spineCode] ?? 1;
     const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * 0.72);
-    const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '' };
+    const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
     this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view, {
       calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
       footY: -unit * 0.45,
