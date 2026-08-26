@@ -35,6 +35,7 @@ import {
   guardOpenChest,
   guardRerollChoice,
   guardSkipChoice,
+  guardSellHero,
   guardSummarizeSpawns,
   guardSummon,
   guardTick,
@@ -506,7 +507,7 @@ export class LobbyGuardBattleRenderer {
     this.host.addChildLabel(hud, 'GuardCrystalHpText', '', -width / 2 + barW / 2 + 28, height / 2 - 42, 16, rgba(255, 245, 220), new Size(barW, 22));
     this.host.addChildLabel(hud, 'GuardWaveText', '', 0, height / 2 - 42, 24, rgba(255, 232, 160), new Size(width * 0.34, 30));
     this.host.addChildLabel(hud, 'GuardGoldText', '', width / 2 - 180, height / 2 - 42, 24, rgba(255, 214, 92), new Size(260, 30));
-    this.host.addChildLabel(hud, 'GuardHintText', '拖动两个相同英雄合成升星 · 同星同名 10% 矿脉共鸣直升 2 星', 0, -height / 2 + 28, 16, rgba(196, 180, 150, 230), new Size(width * 0.7, 22));
+    this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★,10% 矿脉共鸣+2★)· 拖到水晶出售回金', 0, -height / 2 + 28, 16, rgba(196, 180, 150, 230), new Size(width * 0.75, 22));
     this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 130, height / 2 - 70, 16, rgba(150, 230, 190, 235), new Size(260, 22), HorizontalTextAlignment.LEFT);
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 260, height / 2 - 70, 16, rgba(255, 190, 150, 240), new Size(460, 22), HorizontalTextAlignment.RIGHT);
     // 波次进度轨道(参考图:圆点连线,精英/BOSS 波标骷髅色)
@@ -916,9 +917,9 @@ export class LobbyGuardBattleRenderer {
             const jitterX = ((event.timeMs % 48) - 24);
             if (event.skillProc && event.heroCode) {
               this.spawnGuardSkillFx(event.heroCode, hero?.cell ?? null, target);
-              this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.6, `技能击 -${event.amount ?? 0}`, rgba(190, 150, 255));
+              this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.6, `技能击 -${event.amount ?? 0}`, rgba(190, 150, 255), 19);
             } else {
-              this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.42, `-${event.amount ?? 0}`, rgba(255, 240, 214, 235));
+              this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.42, `-${event.amount ?? 0}`, rgba(255, 240, 214, 235), 15);
             }
           }
         }
@@ -1259,17 +1260,26 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  private spawnFloater(x: number, y: number, text: string, color: Color): void {
+  /** 飘字槽位轮转:连续飘字横向 3 槽×纵向 2 层错开,不再叠成一团(2026-08-26 用户验收)。 */
+  private floaterCycle = 0;
+
+  private spawnFloater(x: number, y: number, text: string, color: Color, fontSize = 16): void {
     const field = this.fieldNode;
     if (!field) {
       return;
     }
-    const label = this.host.addChildLabel(field, 'GuardFloater', text, x, y, 16, color, new Size(160, 22));
+    this.floaterCycle = (this.floaterCycle + 1) % 6;
+    const ox = ((this.floaterCycle % 3) - 1) * 38;
+    const oy = Math.floor(this.floaterCycle / 3) * 26;
+    const label = this.host.addChildLabel(field, 'GuardFloater', text, x + ox, y + oy, fontSize, color, new Size(190, fontSize + 8));
+    label.enableOutline = true;
+    label.outlineColor = rgba(20, 12, 8, 255);
+    label.outlineWidth = 2;
     label.node.setSiblingIndex(field.children.length - 1);
     const opacity = label.node.addComponent(UIOpacity);
-    opacity.opacity = 235;
-    tween(label.node).by(0.7, { position: new Vec3(0, 26, 0) }).start();
-    tween(opacity).delay(0.35).to(0.35, { opacity: 0 }).call(() => {
+    opacity.opacity = 240;
+    tween(label.node).by(0.8, { position: new Vec3(0, 34, 0) }).start();
+    tween(opacity).delay(0.4).to(0.35, { opacity: 0 }).call(() => {
       if (label.node.isValid) {
         label.node.destroy();
       }
@@ -1665,6 +1675,15 @@ export class LobbyGuardBattleRenderer {
     const muzzleX = origin.x + this.unitSize() * 0.45;
     const muzzleY = origin.y + this.unitSize() * 0.02;
     const rangePx = Math.max(this.unitSize() * 1.5, this.xToPx(Math.min(GUARD_SPAWN_X, GUARD_ROLE_PROFILE[role].rangeCells)) - muzzleX);
+    // 出手闪光:一眼看清技能从谁身前发出(2026-08-26 用户验收)。
+    const flash = this.host.addChildPlainNode(field, 'GuardMuzzleFlash', muzzleX, muzzleY, 10, 10);
+    const flashG = flash.addComponent(Graphics);
+    flashG.fillColor = rgba(255, 230, 150, 210);
+    flashG.circle(0, 0, 16);
+    flashG.fill();
+    const flashOpacity = flash.addComponent(UIOpacity);
+    tween(flash).to(0.2, { scale: new Vec3(2.4, 2.4, 1) }).start();
+    tween(flashOpacity).to(0.24, { opacity: 0 }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
     const skeleton = node.addComponent(sp.Skeleton);
@@ -1710,7 +1729,8 @@ export class LobbyGuardBattleRenderer {
         const beam = GUARD_BEAM_EFFECT_CODES.has(spec.effect) || vertical || extentW >= extentH * 1.5;
         const beamExtent = vertical ? extentH : extentW;
         const beamThickExtent = vertical ? extentW : extentH;
-        const burstFit = (this.unitSize() * 1.7 / Math.max(extentW, extentH)) * (spec.scale || 1);
+        // 放大上限 1.5×:超采样必糊(高星大目标不再无限放大)。
+        const burstFit = Math.min(1.5, (this.unitSize() * 1.7 / Math.max(extentW, extentH)) * (spec.scale || 1));
         let currentTargetId = monster.monsterId;
         let flying = !beam;
         let flyX = muzzleX;
@@ -1757,9 +1777,10 @@ export class LobbyGuardBattleRenderer {
             const aimAngle = Math.max(-45, Math.min(45, Math.atan2(dy, dx) * (180 / Math.PI)));
             node.angle = aimAngle + (vertical ? -90 : 0);
             const len = Math.min(Math.max(dist, this.unitSize() * 1.5), rangePx);
-            // 长度不乘 spec.scale:柱尖必须正好够到目标;粗细单独钳制。
-            const fitLen = len / beamExtent;
-            const fitThick = Math.min(fitLen * (spec.scale || 1), (this.unitSize() * 2.2) / beamThickExtent);
+            // 拉伸上限 2.2× 可读基准:巨幅放大必糊(2026-08-26 用户验收);柱身锚身前指向目标,尖端尽力延伸。
+            const naturalFit = (this.unitSize() * 2.0) / Math.max(extentW, extentH);
+            const fitLen = Math.min(len / beamExtent, naturalFit * 2.2);
+            const fitThick = Math.min(fitLen * (spec.scale || 1), (this.unitSize() * 2.2) / beamThickExtent, naturalFit * 2.0);
             // 竖版素材长度轴=本地 Y(旋转 -90° 后指向目标),横版=本地 X。
             if (vertical) {
               node.setScale(fitThick, fitLen, 1);
@@ -2052,6 +2073,17 @@ export class LobbyGuardBattleRenderer {
         }
         this.syncHeroes();
         return;
+      }
+      // 拖到水晶区=出售(格满且无可合成的死局解法,2026-08-26)
+      if (node.position.x < this.xToPx(0.45)) {
+        const value = guardSellHero(sim, fromCell);
+        if (value !== null) {
+          this.clearRangeIndicator();
+          this.host.setStatus(`已出售,回收 ${value} 金币。`);
+          this.spawnFloater(this.xToPx(0.4), this.laneToPy(1) + this.unitSize() * 0.9, `出售 +${value}`, rgba(255, 214, 92), 18);
+          this.syncHeroes();
+          return;
+        }
       }
       const targetCell = this.cellAtPosition(node.position.x, node.position.y);
       if (targetCell !== null) {

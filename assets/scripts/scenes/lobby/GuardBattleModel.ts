@@ -117,7 +117,7 @@ export interface GuardBossCast {
 export interface GuardEvent {
   type:
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
-    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill';
+    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -614,6 +614,23 @@ export function guardEnhance(state: GuardBattleState): boolean {
   state.enhanceCost = GUARD_ENHANCE_BASE_COST + state.enhanceLevel * GUARD_ENHANCE_COST_STEP;
   state.events.push({ type: 'enhance', timeMs: state.timeMs, amount: state.enhanceLevel });
   return true;
+}
+
+/** 出售英雄(2026-08-26:格满且无可合成的死局解法——拖到水晶出售回金)。返回回收金币,不可售返回 null。
+ *  回收价 = 当前召唤费 × 40% × 2^(星级-1)(近似投入成本的四成)。 */
+export function guardSellHero(state: GuardBattleState, cell: number): number | null {
+  if (state.phase === 'victory' || state.phase === 'defeat') {
+    return null;
+  }
+  const hero = guardFindHeroAt(state, cell);
+  if (!hero) {
+    return null;
+  }
+  const value = Math.max(10, Math.round(guardCurrentSummonCost(state) * 0.4 * Math.pow(2, hero.star - 1)));
+  state.heroes = state.heroes.filter((entry) => entry.unitId !== hero.unitId);
+  state.gold += value;
+  state.events.push({ type: 'sellHero', timeMs: state.timeMs, heroCode: hero.heroCode, star: hero.star, cell, amount: value });
+  return value;
 }
 
 /** 拖拽:目标空格=换位;同名同星=合成(10% 超阶 +2 星);其余无操作。返回操作类型。 */
