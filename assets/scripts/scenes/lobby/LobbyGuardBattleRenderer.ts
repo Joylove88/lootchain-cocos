@@ -102,6 +102,8 @@ function rgba(r: number, g: number, b: number, a = 255): Color {
 }
 
 const TICK_MS = 50;
+/** 显式束状特效名单(包围盒宽高比判不准的,如凤凰焚世=大花瓣包裹的火柱):必须锚英雄身前沿目标方向喷射。 */
+const GUARD_BEAM_EFFECT_CODES = new Set(['fx_5601_fenghuang_skill']);
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
@@ -1668,9 +1670,9 @@ export class LobbyGuardBattleRenderer {
         const extentH = Math.max(8, bounds?.h ?? 1100);
         const centerX = bounds?.cx ?? 0;
         const centerY = bounds?.cy ?? 0;
-        // 束状判定:横长或竖长 ≥1.5× 都算(紫色火柱是竖版素材,2026-08-26 用户验收补漏);其余为弹道。
+        // 束状判定:显式名单优先(近方形包围盒判不准),再看横长/竖长 ≥1.5×;其余为弹道。
         const vertical = extentH >= extentW * 1.5;
-        const beam = vertical || extentW >= extentH * 1.5;
+        const beam = GUARD_BEAM_EFFECT_CODES.has(spec.effect) || vertical || extentW >= extentH * 1.5;
         const beamExtent = vertical ? extentH : extentW;
         const beamThickExtent = vertical ? extentW : extentH;
         const burstFit = (this.unitSize() * 1.7 / Math.max(extentW, extentH)) * (spec.scale || 1);
@@ -1720,8 +1722,9 @@ export class LobbyGuardBattleRenderer {
             const aimAngle = Math.max(-45, Math.min(45, Math.atan2(dy, dx) * (180 / Math.PI)));
             node.angle = aimAngle + (vertical ? -90 : 0);
             const len = Math.min(Math.max(dist, this.unitSize() * 1.5), rangePx);
-            const fitLen = (len / beamExtent) * (spec.scale || 1);
-            const fitThick = Math.min(fitLen, (this.unitSize() * 2.2) / beamThickExtent);
+            // 长度不乘 spec.scale:柱尖必须正好够到目标;粗细单独钳制。
+            const fitLen = len / beamExtent;
+            const fitThick = Math.min(fitLen * (spec.scale || 1), (this.unitSize() * 2.2) / beamThickExtent);
             // 竖版素材长度轴=本地 Y(旋转 -90° 后指向目标),横版=本地 X。
             if (vertical) {
               node.setScale(fitThick, fitLen, 1);
