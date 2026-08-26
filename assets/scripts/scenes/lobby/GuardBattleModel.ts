@@ -188,8 +188,8 @@ export interface GuardBattleState {
   nextZoneId: number;
   /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
   supportSurgeUntilMs: number;
-  /** 已解锁列数(3 起步,累计召唤达标解锁第 4 列)。 */
-  unlockedCols: number;
+  /** 已解锁格数(6 起步,每累计召唤 GUARD_CELL_UNLOCK_EVERY 次 +1,按 rank 顺序开格)。 */
+  unlockedCells: number;
   /** 车轮战累计击杀 BOSS 数(层数 = bossKills + wave,docs/30 口径)。 */
   bossKills: number;
   /** 车轮战下一只 BOSS 入场时刻(击杀后短暂间隔,下一只更强的入场)。 */
@@ -198,11 +198,21 @@ export interface GuardBattleState {
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
 export const GUARD_GRID_ROWS = 3;
-/** 总列数 4(12 格):开局解锁 3 列,累计召唤 GUARD_COL4_UNLOCK_SUMMONS 次解锁第 4 列(参考 Lucky Defense 渐进解锁,2026-08-25 用户拍板)。 */
+/** 总 12 格:开局开 6 格,之后每累计召唤 GUARD_CELL_UNLOCK_EVERY 次解锁 1 格(2026-08-26 用户拍板:逐格解锁)。 */
 export const GUARD_GRID_COLS = 4;
 export const GUARD_GRID_CELLS = GUARD_GRID_ROWS * GUARD_GRID_COLS;
-export const GUARD_START_COLS = 3;
-export const GUARD_COL4_UNLOCK_SUMMONS = 10;
+export const GUARD_START_CELLS = 6;
+export const GUARD_CELL_UNLOCK_EVERY = 4;
+/** 解锁顺序=按列从左到右、列内从上到下:rank = col×行数 + row。 */
+export function guardCellUnlockRank(cell: number): number {
+  return (cell % GUARD_GRID_COLS) * GUARD_GRID_ROWS + Math.floor(cell / GUARD_GRID_COLS);
+}
+/** rank → cell(渲染层定位"下一个待解锁格")。 */
+export function guardCellFromUnlockRank(rank: number): number {
+  const col = Math.floor(rank / GUARD_GRID_ROWS);
+  const row = rank % GUARD_GRID_ROWS;
+  return row * GUARD_GRID_COLS + col;
+}
 export const GUARD_SPAWN_X = 10;
 export const GUARD_CRYSTAL_REACH_X = 0.6;
 /** 远程怪站桩位:任意列远程(后列 1.0+3.5=4.5)与中前列控制都够得着,前列近战可补刀;严格阵容检查交给飞行怪。 */
@@ -274,14 +284,15 @@ export function guardCrystalSkillDamage(wave: number): number {
 
 export const GUARD_KILL_GOLD: Record<GuardMonsterKind, number> = { normal: 8, fast: 6, tank: 14, flying: 8, shooter: 12, elite: 60, boss: 200 };
 export const GUARD_KILL_XP: Record<GuardMonsterKind, number> = { normal: 1, fast: 1, tank: 2, flying: 1, shooter: 2, elite: 10, boss: 30 };
+// 速度整体 ×0.5(2026-08-26 用户拍板:怪物移动过快)。
 const MONSTER_PROFILE: Record<GuardMonsterKind, { hpMult: number; speed: number; dmgMult: number; spineCodes: string[] }> = {
-  normal: { hpMult: 1, speed: 0.55, dmgMult: 1, spineCodes: ['mutant_male', 'infected_male', 'goathead_blade'] },
-  fast: { hpMult: 0.6, speed: 0.95, dmgMult: 0.7, spineCodes: ['medium_dog', 'medium_rat', 'small_spider'] },
-  tank: { hpMult: 2.4, speed: 0.4, dmgMult: 1.2, spineCodes: ['large_bear', 'hammer_tanker', 'mutant_fatman'] },
-  flying: { hpMult: 0.7, speed: 0.7, dmgMult: 0.8, spineCodes: ['small_bat', 'small_raven', 'crow_reaper'] },
-  shooter: { hpMult: 0.9, speed: 0.5, dmgMult: 0.9, spineCodes: ['crossbow_male', 'bow_male', 'cursed_caster'] },
-  elite: { hpMult: 8, speed: 0.45, dmgMult: 2.2, spineCodes: ['abyss_jailer', 'forge_overseer', 'gargoyle'] },
-  boss: { hpMult: 40, speed: 0.28, dmgMult: 8, spineCodes: ['rock_golem', 'abyss_devilman', 'grand_magus'] },
+  normal: { hpMult: 1, speed: 0.28, dmgMult: 1, spineCodes: ['mutant_male', 'infected_male', 'goathead_blade'] },
+  fast: { hpMult: 0.6, speed: 0.48, dmgMult: 0.7, spineCodes: ['medium_dog', 'medium_rat', 'small_spider'] },
+  tank: { hpMult: 2.4, speed: 0.2, dmgMult: 1.2, spineCodes: ['large_bear', 'hammer_tanker', 'mutant_fatman'] },
+  flying: { hpMult: 0.7, speed: 0.35, dmgMult: 0.8, spineCodes: ['small_bat', 'small_raven', 'crow_reaper'] },
+  shooter: { hpMult: 0.9, speed: 0.25, dmgMult: 0.9, spineCodes: ['crossbow_male', 'bow_male', 'cursed_caster'] },
+  elite: { hpMult: 8, speed: 0.22, dmgMult: 2.2, spineCodes: ['abyss_jailer', 'forge_overseer', 'gargoyle'] },
+  boss: { hpMult: 40, speed: 0.14, dmgMult: 8, spineCodes: ['rock_golem', 'abyss_devilman', 'grand_magus'] },
 };
 /** 怪物骨骼资源:目录名≠数据文件基名(如 rock_golem/golem_001.json),按实际文件名映射。 */
 export const GUARD_MONSTER_SPINE_FILE: Record<string, string> = {
@@ -525,7 +536,7 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     zones: [],
     nextZoneId: 1,
     supportSurgeUntilMs: 0,
-    unlockedCols: GUARD_START_COLS,
+    unlockedCells: GUARD_START_CELLS,
     bossKills: 0,
     nextRushBossAtMs: GUARD_RUSH_FIRST_BOSS_DELAY_MS,
   };
@@ -536,7 +547,7 @@ export function guardFindHeroAt(state: GuardBattleState, cell: number): GuardHer
 }
 
 export function guardCellUnlocked(state: GuardBattleState, cell: number): boolean {
-  return cell % GUARD_GRID_COLS < state.unlockedCols;
+  return guardCellUnlockRank(cell) < state.unlockedCells;
 }
 
 function guardEmptyCells(state: GuardBattleState): number[] {
@@ -569,9 +580,10 @@ export function guardSummon(state: GuardBattleState, free = false): GuardHeroUni
     state.summonCount += 1;
     state.summonCost = Math.min(GUARD_SUMMON_COST_CAP, GUARD_SUMMON_BASE_COST + state.summonCount * GUARD_SUMMON_COST_STEP);
   }
-  if (state.unlockedCols < GUARD_GRID_COLS && state.summonCount >= GUARD_COL4_UNLOCK_SUMMONS) {
-    state.unlockedCols = GUARD_GRID_COLS;
-    state.events.push({ type: 'cellsUnlock', timeMs: state.timeMs, amount: GUARD_GRID_ROWS });
+  const unlockTarget = Math.min(GUARD_GRID_CELLS, GUARD_START_CELLS + Math.floor(state.summonCount / GUARD_CELL_UNLOCK_EVERY));
+  if (unlockTarget > state.unlockedCells) {
+    state.unlockedCells = unlockTarget;
+    state.events.push({ type: 'cellsUnlock', timeMs: state.timeMs, amount: 1, cell: guardCellFromUnlockRank(unlockTarget - 1) });
   }
   const pick = state.pool[Math.floor(state.rng() * state.pool.length)];
   const cell = cells[Math.floor(state.rng() * cells.length)];

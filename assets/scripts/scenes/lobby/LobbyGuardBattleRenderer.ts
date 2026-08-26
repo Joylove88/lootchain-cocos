@@ -41,7 +41,10 @@ import {
   guardTrialLayers,
   guardUseCrystalSkill,
   guardMonsterSpineResource,
-  GUARD_COL4_UNLOCK_SUMMONS,
+  GUARD_CELL_UNLOCK_EVERY,
+  GUARD_START_CELLS,
+  guardCellFromUnlockRank,
+  guardCellUnlockRank,
   GUARD_CRYSTAL_REACH_X,
   GUARD_CRYSTAL_SKILL_CD_MS,
   GUARD_GRID_CELLS,
@@ -152,9 +155,9 @@ export class LobbyGuardBattleRenderer {
   private guardFxLiveCount = 0;
   /** 在场技能特效瞄准器(step 逐帧驱动:锁定目标方向,目标死亡自动转向最近怪物)。 */
   private readonly guardFxAimers = new Map<Node, () => void>();
-  /** 车道/格子底图(解锁新列时整层重画)。 */
+  /** 车道/格子底图(解锁进度变化时整层重画;key=已解锁格数:提示倒数)。 */
   private fieldBaseG: Graphics | null = null;
-  private paintedCols = 0;
+  private paintedCellsKey = '';
   private layoutUiScale = 1;
   /** 金币 HUD 滚动显示值(-1=未初始化)与在场飞行金币计数。 */
   private displayedGold = -1;
@@ -205,7 +208,7 @@ export class LobbyGuardBattleRenderer {
     this.guardFxLiveCount = 0;
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
-    this.paintedCols = 0;
+    this.paintedCellsKey = '';
     this.displayedGold = -1;
     this.goldCoinLive = 0;
     this.zoneViews.clear();
@@ -256,9 +259,10 @@ export class LobbyGuardBattleRenderer {
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroes);
     this.snapshot = snapshot;
+    // 上阵 4 英雄(2026-08-26 用户拍板:5→4,同名副本更聚焦,高星可成)。
     const pool: GuardPoolHero[] = snapshot.allies
       .filter((ally) => ally.power > 0 && !ally.unitKey.includes('empty'))
-      .slice(0, 5)
+      .slice(0, 4)
       .map((ally, index) => ({
         heroCode: (ally.heroCode ?? ally.unitKey).toUpperCase(),
         displayName: ally.displayName,
@@ -282,6 +286,12 @@ export class LobbyGuardBattleRenderer {
 
     const root = this.host.addChildPlainNode(this.host.node, 'LobbyGuardBattleRoot', 0, 0, layout.width, layout.height);
     this.root = root;
+    // 点空白处关闭范围显示与英雄详情(英雄节点会拦截冒泡,2026-08-26 用户拍板)。
+    root.on(Node.EventType.TOUCH_END, () => {
+      if (this.rangeShownUnitId !== null) {
+        this.clearRangeIndicator();
+      }
+    }, this);
     this.paintBackdrop(root, layout.width, layout.height);
     this.mountBackground(root);
     this.fieldNode = this.host.addChildPlainNode(root, 'GuardField', 0, -layout.height * 0.03, layout.width, layout.height);
@@ -318,11 +328,11 @@ export class LobbyGuardBattleRenderer {
     });
   }
 
-  /** 红金主按钮(素材=英雄升级按钮同款 button_primary 740×211,2026-08-25 用户拍板统一);标签由调用方叠加。 */
+  /** 主按钮(素材=英雄详情升级按钮 btn_star_up 431×100,2026-08-26 用户拍板);标签由调用方叠加。 */
   private mountPrimaryButton(parent: Node, name: string, x: number, y: number, w: number): Node {
-    const h = w * (211 / 740);
+    const h = w * (100 / 431);
     const button = this.host.addChildPlainNode(parent, name, x, y, w, h);
-    this.mountSprite(button, `${name}Art`, 'ui/common/ai/button_primary/spriteFrame', 0, 0, w, h);
+    this.mountSprite(button, `${name}Art`, 'ui/hero/ai/btn_star_up/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     return button;
   }
@@ -407,7 +417,16 @@ export class LobbyGuardBattleRenderer {
     this.repaintFieldBase();
   }
 
-  /** 车道+格子底图(解锁新列时重画;锁定列画暗卡+解锁提示)。 */
+  /** 下一格解锁还差几次召唤(全开返回 0)。 */
+  private nextCellUnlockNeed(sim: GuardBattleState): number {
+    if (sim.unlockedCells >= GUARD_GRID_CELLS) {
+      return 0;
+    }
+    const nextAt = (sim.unlockedCells - GUARD_START_CELLS + 1) * GUARD_CELL_UNLOCK_EVERY;
+    return Math.max(1, nextAt - sim.summonCount);
+  }
+
+  /** 车道+格子底图(解锁进度变化时重画;锁定格画暗卡,下一个待解锁格标倒数)。 */
   private repaintFieldBase(): void {
     const g = this.fieldBaseG;
     const field = this.fieldNode;
@@ -415,7 +434,7 @@ export class LobbyGuardBattleRenderer {
     if (!g || !field || !sim) {
       return;
     }
-    this.paintedCols = sim.unlockedCols;
+    this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
     g.clear();
     const laneHeight = this.layoutHeight * 0.155;
     // 车道:背景图上只压低透明暗带+发丝金线分隔,别把地面盖回黑
@@ -430,11 +449,11 @@ export class LobbyGuardBattleRenderer {
       g.lineTo(this.pathRightPx() + this.layoutWidth * 0.05, y - laneHeight / 2);
       g.stroke();
     }
-    // 3×4 正方大卡:边长=列距×0.92——任何宽高比都不互叠;锁定列暗卡,累计召唤达标解锁
+    // 3×4 正方大卡:边长=列距×0.92——任何宽高比都不互叠;锁定格暗卡,下一个待解锁格标倒数
     const size = this.cellPitchPx() * 0.92;
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const center = this.cellCenter(cell);
-      const locked = cell % GUARD_GRID_COLS >= sim.unlockedCols;
+      const locked = guardCellUnlockRank(cell) >= sim.unlockedCells;
       g.fillColor = locked ? rgba(14, 11, 9, 120) : rgba(34, 24, 18, 150);
       g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.fill();
@@ -444,9 +463,10 @@ export class LobbyGuardBattleRenderer {
       g.stroke();
     }
     field.getChildByName('GuardLockHint')?.destroy();
-    if (sim.unlockedCols < GUARD_GRID_COLS) {
-      const center = this.cellCenter(GUARD_GRID_COLS + (GUARD_GRID_COLS - 1));
-      const hint = this.host.addChildLabel(field, 'GuardLockHint', `累计召唤 ${GUARD_COL4_UNLOCK_SUMMONS} 次\n解锁整列`, center.x, center.y, 16, rgba(220, 202, 168, 220), new Size(size, 46));
+    if (sim.unlockedCells < GUARD_GRID_CELLS) {
+      const nextCell = guardCellFromUnlockRank(sim.unlockedCells);
+      const center = this.cellCenter(nextCell);
+      const hint = this.host.addChildLabel(field, 'GuardLockHint', `再召唤 ${this.nextCellUnlockNeed(sim)} 次\n解锁此格`, center.x, center.y, 15, rgba(220, 202, 168, 225), new Size(size, 44));
       hint.enableOutline = true;
       hint.outlineColor = rgba(20, 12, 6, 255);
       hint.outlineWidth = 2;
@@ -554,7 +574,7 @@ export class LobbyGuardBattleRenderer {
     if (!hud) {
       return;
     }
-    if (sim.unlockedCols !== this.paintedCols) {
+    if (this.paintedCellsKey !== `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`) {
       this.repaintFieldBase();
     }
     const bar = hud.getChildByName('GuardCrystalHpBar');
@@ -863,8 +883,11 @@ export class LobbyGuardBattleRenderer {
           }
         }
       } else if (event.type === 'cellsUnlock') {
-        this.host.setStatus('阵地扩建!解锁一列新召唤格!');
-        this.spawnFloater(this.xToPx(guardCellX(GUARD_GRID_COLS - 1)), this.laneToPy(1), '新格解锁!', rgba(150, 240, 160));
+        this.host.setStatus('阵地扩建!解锁 1 个新召唤格!');
+        if (typeof event.cell === 'number') {
+          const center = this.cellCenter(event.cell);
+          this.spawnFloater(center.x, center.y + this.unitSize() * 0.4, '新格解锁!', rgba(150, 240, 160));
+        }
       } else if (event.type === 'waveStart') {
         this.host.setStatus(`第 ${event.wave} 波来袭!`);
       } else if (event.type === 'chestDrop') {
@@ -1559,14 +1582,26 @@ export class LobbyGuardBattleRenderer {
     const layer = this.host.addChildPlainNode(field, 'GuardRangeIndicator', 0, 0, 10, 10);
     layer.setSiblingIndex(1);
     const g = layer.addComponent(Graphics);
-    const bandTop = profile.laneLocked ? this.laneToPy(guardCellLane(hero.cell)) + laneHeight / 2 : this.laneToPy(0) + laneHeight / 2;
-    const bandBottom = profile.laneLocked ? this.laneToPy(guardCellLane(hero.cell)) - laneHeight / 2 : this.laneToPy(GUARD_GRID_ROWS - 1) - laneHeight / 2;
-    g.fillColor = rgba(120, 230, 110, 44);
-    g.roundRect(left, bandBottom, right - left, bandTop - bandBottom, 10);
-    g.fill();
-    g.strokeColor = rgba(150, 240, 130, 190);
-    g.lineWidth = 2;
-    g.roundRect(left, bandBottom, right - left, bandTop - bandBottom, 10);
+    // 低调化(2026-08-26 用户验收:整条路全绿太糊):每车道一条细地带+方向刻度,覆盖终点画竖线,不再整面铺色。
+    const lanes = profile.laneLocked ? [guardCellLane(hero.cell)] : [0, 1, 2];
+    for (const lane of lanes) {
+      const y = this.laneToPy(lane) - laneHeight * 0.34;
+      g.fillColor = rgba(120, 230, 110, 46);
+      g.roundRect(left, y - 8, right - left, 16, 8);
+      g.fill();
+      g.fillColor = rgba(150, 240, 130, 150);
+      for (let x = left + 70; x < right - 40; x += 160) {
+        g.moveTo(x, y + 8);
+        g.lineTo(x + 16, y);
+        g.lineTo(x, y - 8);
+        g.close();
+      }
+      g.fill();
+    }
+    g.strokeColor = rgba(150, 240, 130, 210);
+    g.lineWidth = 3;
+    g.moveTo(right, this.laneToPy(Math.min(...lanes)) + laneHeight * 0.42);
+    g.lineTo(right, this.laneToPy(Math.max(...lanes)) - laneHeight * 0.42);
     g.stroke();
     // 选中格绿色高亮(参考图)
     const center = this.cellCenter(hero.cell);
@@ -1974,7 +2009,10 @@ export class LobbyGuardBattleRenderer {
   private bindHeroDrag(node: Node, unitId: number): void {
     // 点选与拖拽共存:位移 <10px 视为点击(选中/再点收起,2026-08-25 用户拍板);≥10px 走拖拽合成/换位。
     let movedPx = 0;
-    node.on(Node.EventType.TOUCH_START, () => {
+    node.on(Node.EventType.TOUCH_START, (event: { propagationStopped?: boolean }) => {
+      if (event) {
+        event.propagationStopped = true;
+      }
       const hero = this.sim?.heroes.find((entry) => entry.unitId === unitId);
       if (hero) {
         movedPx = 0;
@@ -2033,7 +2071,13 @@ export class LobbyGuardBattleRenderer {
       }
       this.syncHeroes();
     };
-    node.on(Node.EventType.TOUCH_END, finishDrag, this);
+    // 冒泡拦截:英雄自己的点击不触发根节点"点空白关闭选中"
+    node.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
+      if (event) {
+        event.propagationStopped = true;
+      }
+      finishDrag();
+    }, this);
     node.on(Node.EventType.TOUCH_CANCEL, finishDrag, this);
   }
 
