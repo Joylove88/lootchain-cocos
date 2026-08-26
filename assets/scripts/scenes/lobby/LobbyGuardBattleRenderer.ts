@@ -152,6 +152,9 @@ export class LobbyGuardBattleRenderer {
   private fieldBaseG: Graphics | null = null;
   private paintedCols = 0;
   private layoutUiScale = 1;
+  /** 金币 HUD 滚动显示值(-1=未初始化)与在场飞行金币计数。 */
+  private displayedGold = -1;
+  private goldCoinLive = 0;
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -197,6 +200,8 @@ export class LobbyGuardBattleRenderer {
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
     this.paintedCols = 0;
+    this.displayedGold = -1;
+    this.goldCoinLive = 0;
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -578,7 +583,16 @@ export class LobbyGuardBattleRenderer {
     }
     const goldText = hud.getChildByName('GuardGoldText')?.getComponent(Label);
     if (goldText) {
-      goldText.string = `战斗金币 ${sim.gold}`;
+      // 计数滚动:显示值逐帧追真值(涨/跌都滚),配合金币飞行动效
+      if (this.displayedGold < 0) {
+        this.displayedGold = sim.gold;
+      }
+      const diff = sim.gold - this.displayedGold;
+      if (diff !== 0) {
+        const step = Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.18));
+        this.displayedGold = Math.abs(step) >= Math.abs(diff) ? sim.gold : this.displayedGold + step;
+      }
+      goldText.string = `战斗金币 ${this.displayedGold}`;
     }
     const summonLabel = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonLabel')?.getComponent(Label);
     if (summonLabel) {
@@ -799,6 +813,7 @@ export class LobbyGuardBattleRenderer {
         const view = this.monsterViews.get(event.monsterId);
         if (view && view.node.isValid) {
           this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.5, `+${event.amount ?? 0}`, rgba(255, 214, 92));
+          this.spawnGoldCoin(view.node.position.x, view.node.position.y);
         }
       } else if (event.type === 'crystalHit') {
         this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
@@ -1022,6 +1037,12 @@ export class LobbyGuardBattleRenderer {
     tierLabel.outlineWidth = 3;
     if (tier >= 5) {
       this.shakeField(12);
+    }
+    // 免费召唤是"开箱瞬间直接上阵到随机空格"(不涨召唤费):给新英雄头上飘绿字点明
+    if (rewards.some((reward) => reward.kind === 'summon') && this.sim && this.sim.heroes.length > 0) {
+      const newest = this.sim.heroes.reduce((latest, hero) => (hero.unitId > latest.unitId ? hero : latest), this.sim.heroes[0]);
+      const center = this.cellCenter(newest.cell);
+      this.spawnFloater(center.x, center.y + this.unitSize() * 0.75, '免费召唤!已上阵', rgba(150, 240, 160));
     }
     rewards.forEach((reward, index) => {
       const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, colX, panelH / 2 - 176 - index * 34, 19, rgba(236, 224, 196), new Size(panelH * 0.82, 26));
@@ -1520,8 +1541,11 @@ export class LobbyGuardBattleRenderer {
         const extentH = Math.max(8, bounds?.h ?? 1100);
         const centerX = bounds?.cx ?? 0;
         const centerY = bounds?.cy ?? 0;
-        // 横长 ≥1.5× 视为束状(火柱/斩击线):锚英雄身前沿目标方向喷射;其余为弹道:从身前飞到怪物身上再爆(上一版用户认可方案)。
-        const beam = extentW >= extentH * 1.5;
+        // 束状判定:横长或竖长 ≥1.5× 都算(紫色火柱是竖版素材,2026-08-26 用户验收补漏);其余为弹道。
+        const vertical = extentH >= extentW * 1.5;
+        const beam = vertical || extentW >= extentH * 1.5;
+        const beamExtent = vertical ? extentH : extentW;
+        const beamThickExtent = vertical ? extentW : extentH;
         const burstFit = (this.unitSize() * 1.7 / Math.max(extentW, extentH)) * (spec.scale || 1);
         let currentTargetId = monster.monsterId;
         let flying = !beam;
@@ -1565,22 +1589,25 @@ export class LobbyGuardBattleRenderer {
             const dx = tx - muzzleX;
             const dy = ty - muzzleY;
             const dist = Math.max(this.unitSize(), Math.hypot(dx, dy));
-            const ux = dx / dist;
-            const uy = dy / dist;
-            const angleRad = Math.atan2(dy, dx);
-            node.angle = angleRad * (180 / Math.PI);
+            // 角度钳制:以英雄前方(朝右)为基准上下各 45°,火柱不乱转(2026-08-26 用户拍板)。
+            const aimAngle = Math.max(-45, Math.min(45, Math.atan2(dy, dx) * (180 / Math.PI)));
+            node.angle = aimAngle + (vertical ? -90 : 0);
             const len = Math.min(Math.max(dist, this.unitSize() * 1.5), rangePx);
-            const fitX = (len / extentW) * (spec.scale || 1);
-            const fitY = Math.min(fitX, (this.unitSize() * 2.2) / extentH);
-            node.setScale(fitX, fitY, 1);
-            // 内容 AABB 左缘对齐炮口:先算内容中心的本地偏移,再随角度旋转补偿——火柱从身前喷出,不再悬空。
-            const localCx = centerX * fitX;
-            const localCy = centerY * fitY;
-            const cos = Math.cos(angleRad);
-            const sin = Math.sin(angleRad);
-            const worldCx = localCx * cos - localCy * sin;
-            const worldCy = localCx * sin + localCy * cos;
-            node.setPosition(muzzleX + ux * len * 0.5 - worldCx, muzzleY + uy * len * 0.5 - worldCy, 0);
+            const fitLen = (len / beamExtent) * (spec.scale || 1);
+            const fitThick = Math.min(fitLen, (this.unitSize() * 2.2) / beamThickExtent);
+            // 竖版素材长度轴=本地 Y(旋转 -90° 后指向目标),横版=本地 X。
+            if (vertical) {
+              node.setScale(fitThick, fitLen, 1);
+            } else {
+              node.setScale(fitLen, fitThick, 1);
+            }
+            // 根部贴炮口:内容"根部"(长度轴负端)的本地点经缩放+最终旋转后补偿——火柱从英雄身前喷出。
+            const rootLx = vertical ? centerX * fitThick : (centerX - extentW / 2) * fitLen;
+            const rootLy = vertical ? (centerY - extentH / 2) * fitLen : centerY * fitThick;
+            const nodeRad = node.angle * (Math.PI / 180);
+            const cos = Math.cos(nodeRad);
+            const sin = Math.sin(nodeRad);
+            node.setPosition(muzzleX - (rootLx * cos - rootLy * sin), muzzleY - (rootLx * sin + rootLy * cos), 0);
           } else if (flying) {
             // 弹道:每 tick 朝当前目标位置推进,到位后转命中段
             const dx = tx - flyX;
@@ -1601,7 +1628,8 @@ export class LobbyGuardBattleRenderer {
             } else {
               flyX += (dx / dist) * stepLen;
               flyY += (dy / dist) * stepLen;
-              node.angle = Math.atan2(dy, dx) * (180 / Math.PI);
+              // 弹道朝向也钳在前向 ±75°,不向后翻转
+              node.angle = Math.max(-75, Math.min(75, Math.atan2(dy, dx) * (180 / Math.PI)));
             }
             node.setScale(burstFit, burstFit, 1);
             node.setPosition(flyX - centerX * burstFit, flyY - centerY * burstFit, 0);
@@ -1740,6 +1768,46 @@ export class LobbyGuardBattleRenderer {
     const opacity = banner.addComponent(UIOpacity);
     tween(banner).by(2.4, { position: new Vec3(0, 40, 0) }).start();
     tween(opacity).delay(1.6).to(0.8, { opacity: 0 }).call(() => { if (banner.isValid) { banner.destroy(); } }).start();
+  }
+
+  /** 击杀掉金币:原地落地小弹跳 → 飞向右上角战斗金币 → 计数滚动+金币栏脉冲(2026-08-26 用户拍板)。 */
+  private spawnGoldCoin(fieldX: number, fieldY: number): void {
+    const root = this.root;
+    if (!root || this.goldCoinLive >= 12) {
+      return;
+    }
+    this.goldCoinLive += 1;
+    const yOffset = -this.layoutHeight * 0.03;
+    const size = 40;
+    const coin = this.host.addChildPlainNode(root, 'GuardGoldCoin', fieldX, fieldY + yOffset, size, size);
+    this.mountSprite(coin, 'Img', 'ui/guard/coin_gold/spriteFrame', 0, 0, size, size);
+    const groundY = fieldY + yOffset - this.unitSize() * 0.35;
+    const targetX = this.layoutWidth / 2 - 180;
+    const targetY = this.layoutHeight / 2 - 42;
+    let released = false;
+    const done = (): void => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.goldCoinLive = Math.max(0, this.goldCoinLive - 1);
+      if (coin.isValid) {
+        coin.destroy();
+      }
+      const goldText = root.getChildByName('GuardHud')?.getChildByName('GuardGoldText');
+      if (goldText && goldText.isValid) {
+        tween(goldText).to(0.08, { scale: new Vec3(1.22, 1.22, 1) }).to(0.12, { scale: Vec3.ONE }).start();
+      }
+    };
+    tween(coin)
+      .to(0.16, { position: new Vec3(fieldX, groundY, 0) }, { easing: 'quadIn' })
+      .to(0.1, { position: new Vec3(fieldX, groundY + 16, 0) }, { easing: 'quadOut' })
+      .to(0.08, { position: new Vec3(fieldX, groundY, 0) }, { easing: 'quadIn' })
+      .delay(0.12)
+      .to(0.45, { position: new Vec3(targetX, targetY, 0), scale: new Vec3(0.6, 0.6, 1) }, { easing: 'quadIn' })
+      .call(done)
+      .start();
+    tween(coin).delay(1.6).call(done).start();
   }
 
   /** 怪物动画名解析用的敌方单位壳(resolveBattleUnitSpineAnimationNames 需要 side/rarity 上下文,抄 LobbyIdleStageRenderer)。 */
