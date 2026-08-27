@@ -239,7 +239,7 @@ export const GUARD_CRYSTAL_MAX_HP = 1600;
 // 覆盖范围(2026-08-25 用户拍板:同类型英雄攻击范围与所站格子无关)——rangeCells=从水晶起算的覆盖距离,
 // 怪物走进 [0, rangeCells] 即可被打;近战仍锁本车道。近战 6 / 远程 10(全跑道)/ 控制 8。
 export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; intervalMs: number; damageScale: number; laneLocked: boolean }> = {
-  melee: { rangeCells: 6.0, intervalMs: 800, damageScale: 1.6, laneLocked: true },
+  melee: { rangeCells: 9.0, intervalMs: 800, damageScale: 1.6, laneLocked: true },
   ranged: { rangeCells: 10.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
   support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
   control: { rangeCells: 8.0, intervalMs: 1500, damageScale: 0.7, laneLocked: false },

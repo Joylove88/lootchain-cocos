@@ -179,6 +179,7 @@ export class LobbyGuardBattleRenderer {
   /** 同英雄特效上次触发时刻(表现冷却)与束状同屏计数(≤1)。 */
   private readonly heroFxLastAt = new Map<string, number>();
   private beamFxLive = 0;
+  private lastSkillShakeAt = 0;
   /** 车道/格子底图(解锁进度变化时整层重画;key=已解锁格数:提示倒数)。 */
   private fieldBaseG: Graphics | null = null;
   private paintedCellsKey = '';
@@ -411,7 +412,8 @@ export class LobbyGuardBattleRenderer {
   }
   /** 车道 y:整体压到背景图地面带上(2026-08-25 用户验收:格子不能站在墙上),行距 0.155H。 */
   private laneToPy(lane: number): number {
-    return -this.layoutHeight * 0.015 - lane * this.layoutHeight * 0.155;
+    // 地面版背景(2026-08-27):地面占下 65%,车道整体上移+拉开,吃满新地面纵深
+    return this.layoutHeight * 0.055 - lane * this.layoutHeight * 0.175;
   }
   private unitSize(): number {
     return this.layoutHeight * 0.16;
@@ -481,16 +483,24 @@ export class LobbyGuardBattleRenderer {
     }
     // 3×4 正方大卡:边长=列距×0.92——任何宽高比都不互叠;锁定格暗卡,下一个待解锁格标倒数
     const size = this.cellPitchPx() * 0.92;
+    for (const stale of field.children.filter((child) => child.name === 'GuardLockIcon')) {
+      stale.destroy();
+    }
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const center = this.cellCenter(cell);
       const locked = guardCellUnlockRank(cell) >= sim.unlockedCells;
-      g.fillColor = locked ? rgba(14, 11, 9, 120) : rgba(34, 24, 18, 150);
+      // 锁定格强区分(2026-08-27 用户验收:锁定/解锁看不出区别):重黑底+暗边+锁图标
+      g.fillColor = locked ? rgba(6, 5, 4, 205) : rgba(34, 24, 18, 150);
       g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.fill();
-      g.strokeColor = locked ? rgba(110, 96, 78, 130) : rgba(190, 150, 92, 185);
+      g.strokeColor = locked ? rgba(90, 76, 60, 160) : rgba(190, 150, 92, 185);
       g.lineWidth = locked ? 1.4 : 2;
       g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
       g.stroke();
+      if (locked) {
+        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', center.x, center.y + size * 0.14, 40, 40);
+        this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 40, 40);
+      }
     }
     field.getChildByName('GuardLockHint')?.destroy();
     if (sim.unlockedCells < GUARD_GRID_CELLS) {
@@ -730,8 +740,8 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const buttonW = Math.min(230, width * 0.17);
-    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(264, width * 0.2) - 22, -height / 2 + 52, buttonW);
+    const buttonW = Math.min(248, width * 0.19);
+    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(248, width * 0.19) - 22, -height / 2 + 52, buttonW);
     this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 19, rgba(255, 238, 190), new Size(buttonW - 12, 24));
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
@@ -818,7 +828,8 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const buttonW = Math.min(264, width * 0.2);
+    // 按钮统一尺寸(2026-08-27 用户验收:大小不一)
+    const buttonW = Math.min(248, width * 0.19);
     const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 52, buttonW);
     this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 9, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
     this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -18, 13, rgba(240, 214, 170, 230), new Size(buttonW - 12, 16));
@@ -901,6 +912,8 @@ export class LobbyGuardBattleRenderer {
         if (view && view.node.isValid) {
           this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.5, `+${event.amount ?? 0}`, rgba(255, 214, 92));
           this.spawnGoldCoin(view.node.position.x, view.node.position.y);
+          // 击杀迸发(打击感):小金环炸开
+          this.spawnCellBurst(view.node.position.x, view.node.position.y - this.unitSize() * 0.2, rgba(255, 190, 90), false);
         }
       } else if (event.type === 'crystalHit') {
         this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
@@ -914,7 +927,18 @@ export class LobbyGuardBattleRenderer {
             }
           }, 130);
         }
+      } else if (event.type === 'summon') {
+        // 召唤落位爆闪(2026-08-27 用户拍板)
+        if (typeof event.cell === 'number') {
+          const center = this.cellCenter(event.cell);
+          this.spawnCellBurst(center.x, center.y - this.unitSize() * 0.3, rgba(150, 220, 255), false);
+        }
       } else if (event.type === 'superMerge' || event.type === 'merge') {
+        // 合成爆闪(超阶更大+金色)
+        if (typeof event.cell === 'number') {
+          const center = this.cellCenter(event.cell);
+          this.spawnCellBurst(center.x, center.y - this.unitSize() * 0.3, event.type === 'superMerge' ? rgba(255, 214, 90) : rgba(255, 236, 170), true);
+        }
         if (event.type === 'superMerge') {
           this.host.setStatus('矿脉共鸣!直升 2 星!');
           if (typeof event.cell === 'number') {
@@ -933,8 +957,8 @@ export class LobbyGuardBattleRenderer {
           this.playUnitAttack(this.heroViews.get(caster.unitId));
         }
         if (typeof event.cell === 'number') {
-          const center = this.cellCenter(event.cell);
-          this.spawnFloater(center.x, center.y + this.unitSize() * 0.9, `${event.skillName ?? '技能'}!`, rgba(150, 220, 255));
+          // 施放者亮相:脚下金圈+弹跳+技能名喊话(归属一眼可辨,2026-08-27)
+          this.highlightCaster(event.cell, `${event.skillName ?? '技能'}!`);
         }
         if (typeof event.monsterId === 'number' && event.heroCode) {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
@@ -976,8 +1000,17 @@ export class LobbyGuardBattleRenderer {
             const jitterX = ((event.timeMs % 48) - 24);
             if (event.skillProc && event.heroCode) {
               this.spawnGuardSkillFx(event.heroCode, hero?.cell ?? null, target);
+              if (hero) {
+                this.highlightCaster(hero.cell, '技能击!');
+              }
               this.queueDamage(target.monsterId, event.amount ?? 0, true, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
+              // 节流震屏:技能命中的重量感(≥1.2s 一次)
+              const now = Date.now();
+              if (now - this.lastSkillShakeAt > 1200) {
+                this.lastSkillShakeAt = now;
+                this.shakeField(4);
+              }
             } else if (hero && (hero.role === 'ranged' || hero.role === 'control')) {
               const origin = this.cellCenter(hero.cell);
               const color = GUARD_ROLE_COLOR[hero.role] ?? rgba(255, 220, 150);
@@ -1260,8 +1293,8 @@ export class LobbyGuardBattleRenderer {
     });
     // 跳过 / 刷新
     const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
-      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 94, 216);
-      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(206, 24));
+      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 94, 236);
+      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(220, 24));
       button.on(Node.EventType.TOUCH_END, onTap, this);
     };
     makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -100, () => {
@@ -1469,6 +1502,46 @@ export class LobbyGuardBattleRenderer {
     const opacity = node.addComponent(UIOpacity);
     tween(node).to(0.18, { scale: new Vec3(1.7, 1.7, 1) }).start();
     tween(opacity).to(0.2, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  /** 格位爆闪(召唤/合成/击杀通用):扩散金环+星芒,big=合成/超阶加倍。 */
+  private spawnCellBurst(x: number, y: number, color: Color, big: boolean): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(field, 'GuardCellBurst', x, y, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    const g = node.addComponent(Graphics);
+    g.strokeColor = rgba(color.r, color.g, color.b, 235);
+    g.lineWidth = big ? 6 : 4;
+    g.circle(0, 0, big ? 46 : 32);
+    g.stroke();
+    g.strokeColor = rgba(255, 248, 224, 220);
+    g.lineWidth = 3;
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      g.moveTo(Math.cos(a) * (big ? 30 : 20), Math.sin(a) * (big ? 30 : 20));
+      g.lineTo(Math.cos(a) * (big ? 62 : 44), Math.sin(a) * (big ? 62 : 44));
+    }
+    g.stroke();
+    const opacity = node.addComponent(UIOpacity);
+    tween(node).to(big ? 0.34 : 0.26, { scale: new Vec3(big ? 2.0 : 1.6, big ? 2.0 : 1.6, 1) }, { easing: 'quadOut' }).start();
+    tween(opacity).to(big ? 0.36 : 0.28, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  /** 施放者亮相:英雄脚下金圈扩散+身形弹跳,一眼看清技能是谁放的(2026-08-27 用户验收)。 */
+  private highlightCaster(cell: number, label: string): void {
+    const center = this.cellCenter(cell);
+    this.spawnCellBurst(center.x, center.y - this.unitSize() * 0.38, rgba(255, 214, 110), false);
+    const hero = this.sim?.heroes.find((entry) => entry.cell === cell);
+    const view = hero ? this.heroViews.get(hero.unitId) : null;
+    if (view && view.node.isValid) {
+      tween(view.node).to(0.1, { scale: new Vec3(1.12, 1.12, 1) }).to(0.14, { scale: Vec3.ONE }).start();
+    }
+    if (label) {
+      this.spawnFloater(center.x, center.y + this.unitSize() * 0.95, label, rgba(255, 226, 130), 18);
+    }
   }
 
   /** 近战刀光:目标处双弧斩闪 0.16s。 */
@@ -1993,9 +2066,9 @@ export class LobbyGuardBattleRenderer {
         const extentH = Math.max(8, bounds?.h ?? 1100);
         const centerX = bounds?.cx ?? 0;
         const centerY = bounds?.cy ?? 0;
-        // 束状判定:显式名单优先(近方形包围盒判不准),再看横长/竖长 ≥1.5×;其余为弹道。
+        // 束状=仅显式名单(2026-08-27 用户拍板:除凤凰束外全部走"英雄飞向怪物"弹道表现)。
         const vertical = extentH >= extentW * 1.5;
-        const beam = GUARD_BEAM_EFFECT_CODES.has(spec.effect) || vertical || extentW >= extentH * 1.5;
+        const beam = GUARD_BEAM_EFFECT_CODES.has(spec.effect);
         // 束状同屏 ≤1(含宽高比判入的):抢不到名额直接放弃本次表现
         if (beam && !markBeamLive()) {
           release();
@@ -2416,11 +2489,16 @@ export class LobbyGuardBattleRenderer {
       const flyLift = monster.kind === 'flying' ? this.unitSize() * 0.45 : 0;
       // 区域化散布:同车道内确定性 y 抖动(±0.32 车道高)+ sim 侧速度抖动,怪群成片不成线。
       const jitterY = monster.kind === 'boss' ? 0 : this.monsterJitterY(monster);
-      view.node.setPosition(this.xToPx(monster.x), this.laneToPy(monster.lane) + jitterY + flyLift, 0);
+      // 受击顶退(打击感):红闪期间向后小位移,随时间衰减
+      const flashLeft = view.hitFlashUntil - Date.now();
+      const hitJiggle = !monster.dead && flashLeft > 0 ? (flashLeft / 90) * 7 : 0;
+      view.node.setPosition(this.xToPx(monster.x) + hitJiggle, this.laneToPy(monster.lane) + jitterY + flyLift, 0);
       if (monster.dead) {
         // 死亡演出:有死亡动画播动画后淡出,否则淡出下沉(打击感 2026-08-26)
         if (view.lastAnimKey !== 'dead') {
           view.lastAnimKey = 'dead';
+          // 死亡瞬间清掉血条(视频验收:'血没空就死'的错觉=死时血条残留旧值)
+          view.node.getChildByName('GuardMonsterHp')?.getComponent(Graphics)?.clear();
           const opacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
           if (view.skeleton && view.skeleton.isValid) {
             view.skeleton.color = GUARD_SPINE_WHITE;
@@ -2585,7 +2663,7 @@ export class LobbyGuardBattleRenderer {
     if (rewards) {
       this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05, 19, rgba(255, 226, 150), new Size(this.layoutWidth * 0.7, 26));
     }
-    const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 256);
+    const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 236);
     this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
     back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
   }
