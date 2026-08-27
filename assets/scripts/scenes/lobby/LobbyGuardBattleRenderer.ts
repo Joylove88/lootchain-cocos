@@ -108,6 +108,10 @@ function rgba(r: number, g: number, b: number, a = 255): Color {
 const TICK_MS = 50;
 /** 显式束状特效名单(包围盒宽高比判不准的,如凤凰焚世=大花瓣包裹的火柱):必须锚英雄身前沿目标方向喷射。 */
 const GUARD_BEAM_EFFECT_CODES = new Set(['fx_5601_fenghuang_skill']);
+/** 束状根部视觉内缩(素材 AABB 左缘外圈是淡出羽尾,亮部起点在盒内一段;按比例内缩让亮部贴炮口)。逐特效标定。 */
+const GUARD_BEAM_ROOT_INSET: Record<string, number> = { fx_5601_fenghuang_skill: 0.2 };
+/** 同英雄技能特效表现冷却(视频验收:束状几乎常驻屏幕,视觉疲劳)。 */
+const GUARD_HERO_FX_COOLDOWN_MS = 2500;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
@@ -172,6 +176,9 @@ export class LobbyGuardBattleRenderer {
   private guardFxLiveCount = 0;
   /** 在场技能特效瞄准器(step 逐帧驱动:锁定目标方向,目标死亡自动转向最近怪物)。 */
   private readonly guardFxAimers = new Map<Node, () => void>();
+  /** 同英雄特效上次触发时刻(表现冷却)与束状同屏计数(≤1)。 */
+  private readonly heroFxLastAt = new Map<string, number>();
+  private beamFxLive = 0;
   /** 车道/格子底图(解锁进度变化时整层重画;key=已解锁格数:提示倒数)。 */
   private fieldBaseG: Graphics | null = null;
   private paintedCellsKey = '';
@@ -232,6 +239,9 @@ export class LobbyGuardBattleRenderer {
     this.goldCoinLive = 0;
     this.zoneViews.clear();
     this.projectiles.length = 0;
+    this.heroFxLastAt.clear();
+    this.beamFxLive = 0;
+    this.pendingDamage.clear();
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -526,12 +536,30 @@ export class LobbyGuardBattleRenderer {
     this.host.addChildLabel(hud, 'GuardCrystalHpText', '', -width / 2 + barW / 2 + 28, height / 2 - 42, 16, rgba(255, 245, 220), new Size(barW, 22));
     this.host.addChildLabel(hud, 'GuardWaveText', '', 0, height / 2 - 42, 24, rgba(255, 232, 160), new Size(width * 0.34, 30));
     this.host.addChildLabel(hud, 'GuardGoldText', '', width / 2 - 180, height / 2 - 42, 24, rgba(255, 214, 92), new Size(260, 30));
+    // 底部 UI 带:按钮/提示区与跑道分离(视频验收:按钮压在第三车道上,怪从按钮底下穿行)
+    const bottomBand = this.host.addChildPlainNode(hud, 'GuardBottomBand', 0, -height / 2 + height * 0.045, width, height * 0.09);
+    const bandG = bottomBand.addComponent(Graphics);
+    bandG.fillColor = rgba(12, 9, 7, 150);
+    bandG.rect(-width / 2, -height * 0.045, width, height * 0.09);
+    bandG.fill();
+    bandG.strokeColor = rgba(214, 178, 110, 60);
+    bandG.lineWidth = 1;
+    bandG.moveTo(-width / 2, height * 0.045);
+    bandG.lineTo(width / 2, height * 0.045);
+    bandG.stroke();
     this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★,10% 矿脉共鸣+2★)· 拖到水晶出售回金', 0, -height / 2 + 28, 16, rgba(196, 180, 150, 230), new Size(width * 0.75, 22));
     this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 130, height / 2 - 70, 16, rgba(150, 230, 190, 235), new Size(260, 22), HorizontalTextAlignment.LEFT);
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 260, height / 2 - 70, 16, rgba(255, 190, 150, 240), new Size(460, 22), HorizontalTextAlignment.RIGHT);
     // 波次进度轨道(参考图:圆点连线,精英/BOSS 波标骷髅色)
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 66, 320, 16);
     track.addComponent(Graphics);
+    // BOSS 顶部大血条(有存活 BOSS 时显示)
+    const bossBar = this.host.addChildPlainNode(hud, 'GuardBossTopBar', 0, height / 2 - 100, 460, 26);
+    bossBar.addComponent(Graphics);
+    const bossText = this.host.addChildLabel(bossBar, 'GuardBossTopBarText', '', 0, 0, 15, rgba(255, 236, 210), new Size(440, 20));
+    bossText.enableOutline = true;
+    bossText.outlineColor = rgba(40, 16, 10, 255);
+    bossText.outlineWidth = 2;
     // 全队攻击力(参考蔚蓝星球顶部 ⚔ 总攻显示)
     this.host.addChildLabel(hud, 'GuardTeamAtkText', '', -width / 2 + 96, height / 2 - 216, 17, rgba(255, 214, 130, 245), new Size(240, 22), HorizontalTextAlignment.LEFT);
     // 场上定位计数(左侧竖排)
@@ -703,7 +731,7 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const buttonW = Math.min(230, width * 0.17);
-    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(264, width * 0.2) - 22, -height / 2 + 66, buttonW);
+    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(264, width * 0.2) - 22, -height / 2 + 52, buttonW);
     this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 19, rgba(255, 238, 190), new Size(buttonW - 12, 24));
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
@@ -791,7 +819,7 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const buttonW = Math.min(264, width * 0.2);
-    const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 66, buttonW);
+    const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 52, buttonW);
     this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 9, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
     this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -18, 13, rgba(240, 214, 170, 230), new Size(buttonW - 12, 16));
     button.on(Node.EventType.TOUCH_END, () => {
@@ -837,6 +865,7 @@ export class LobbyGuardBattleRenderer {
     }
     this.consumeEvents();
     this.updateProjectiles();
+    this.flushDamageFloaters();
     for (const aim of this.guardFxAimers.values()) {
       aim();
     }
@@ -947,7 +976,7 @@ export class LobbyGuardBattleRenderer {
             const jitterX = ((event.timeMs % 48) - 24);
             if (event.skillProc && event.heroCode) {
               this.spawnGuardSkillFx(event.heroCode, hero?.cell ?? null, target);
-              this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.6, `技能击 -${event.amount ?? 0}`, rgba(190, 150, 255), 19);
+              this.queueDamage(target.monsterId, event.amount ?? 0, true, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
             } else if (hero && (hero.role === 'ranged' || hero.role === 'control')) {
               const origin = this.cellCenter(hero.cell);
@@ -955,7 +984,7 @@ export class LobbyGuardBattleRenderer {
               this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, color);
             } else {
               this.spawnSlashArc(targetView.node.position.x + jitterX * 0.4, targetView.node.position.y + this.unitSize() * 0.16);
-              this.spawnFloater(targetView.node.position.x + jitterX, targetView.node.position.y + this.unitSize() * 0.42, `-${event.amount ?? 0}`, rgba(255, 240, 214, 235), 15);
+              this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
             }
           }
@@ -1375,10 +1404,45 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  /** 命中结算:爆闪+伤害飘字+目标受击红闪。 */
+  /** 同目标伤害聚合窗(视频验收:BOSS 身上数字糊成一团)——0.3s 内合并为一条"-总量 ×N"。 */
+  private readonly pendingDamage = new Map<number, { sum: number; count: number; skill: boolean; x: number; y: number; flushAt: number }>();
+
+  private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
+    const entry = this.pendingDamage.get(targetId);
+    if (entry) {
+      entry.sum += amount;
+      entry.count += 1;
+      entry.skill = entry.skill || skill;
+      entry.x = x;
+      entry.y = y;
+      return;
+    }
+    this.pendingDamage.set(targetId, { sum: amount, count: 1, skill, x, y, flushAt: Date.now() + 300 });
+  }
+
+  private flushDamageFloaters(): void {
+    if (this.pendingDamage.size === 0) {
+      return;
+    }
+    const now = Date.now();
+    for (const [targetId, entry] of [...this.pendingDamage]) {
+      if (now < entry.flushAt) {
+        continue;
+      }
+      this.pendingDamage.delete(targetId);
+      const suffix = entry.count > 1 ? ` ×${entry.count}` : '';
+      if (entry.skill) {
+        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.6, `技能击 -${entry.sum}${suffix}`, rgba(190, 150, 255), 20);
+      } else {
+        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.4, `-${entry.sum}${suffix}`, entry.count > 1 ? rgba(255, 226, 150, 245) : rgba(255, 240, 214, 235), entry.count > 1 ? 18 : 15);
+      }
+    }
+  }
+
+  /** 命中结算:爆闪+伤害入聚合窗+目标受击红闪。 */
   private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color): void {
     this.spawnImpactFlash(x, y, color);
-    this.spawnFloater(x, y + this.unitSize() * 0.34, `-${amount}`, rgba(255, 240, 214, 235), 15);
+    this.queueDamage(targetId, amount, false, x, y);
     this.flashMonster(targetId);
   }
 
@@ -1618,7 +1682,9 @@ export class LobbyGuardBattleRenderer {
     fg.fill();
     const pendingView: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
     this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
-    this.host.addChildLabel(node, 'GuardHeroName', `${pool?.displayName ?? hero.heroCode}·${GUARD_ROLE_LABEL[hero.role] ?? ''}`, 0, size * 0.6, 15, rgba(236, 224, 196), new Size(size * 1.8, 20));
+    // 名字宽度钳到格距内+SHRINK(视频验收:相邻列名字连成乱串);定位词收进详情卡,不再挤标签
+    const nameLabel = this.host.addChildLabel(node, 'GuardHeroName', pool?.displayName ?? hero.heroCode, 0, size * 0.6, 15, rgba(236, 224, 196), new Size(this.cellPitchPx() * 0.94, 20));
+    nameLabel.overflow = Label.Overflow.SHRINK;
     const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.46, 16, rgba(255, 220, 110), new Size(size * 1.4, 20));
     star.enableOutline = true;
     star.outlineColor = rgba(40, 24, 10, 255);
@@ -1851,6 +1917,15 @@ export class LobbyGuardBattleRenderer {
     const pool = sim.pool.find((entry) => entry.heroCode === heroCode);
     const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
     const spec: BattleSkillEffectSpec = resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
+    // 表现限流(视频验收):同英雄 2.5s 内只放一次特效;束状(显式名单)同屏最多 1 条。伤害结算不受影响。
+    const now = Date.now();
+    if (now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
+      return;
+    }
+    if (GUARD_BEAM_EFFECT_CODES.has(spec.effect) && this.beamFxLive >= 1) {
+      return;
+    }
+    this.heroFxLastAt.set(heroCode, now);
     const hero = sim.heroes.find((entry) => entry.cell === heroCell);
     const role = hero?.role ?? 'ranged';
     const origin = this.cellCenter(heroCell);
@@ -1872,16 +1947,28 @@ export class LobbyGuardBattleRenderer {
     skeleton.premultipliedAlpha = false;
     this.guardFxLiveCount += 1;
     let released = false;
+    let beamCounted = false;
     const release = (): void => {
       if (released) {
         return;
       }
       released = true;
+      if (beamCounted) {
+        this.beamFxLive = Math.max(0, this.beamFxLive - 1);
+      }
       this.guardFxAimers.delete(node);
       this.guardFxLiveCount = Math.max(0, this.guardFxLiveCount - 1);
       if (node.isValid) {
         node.destroy();
       }
+    };
+    const markBeamLive = (): boolean => {
+      if (this.beamFxLive >= 1) {
+        return false;
+      }
+      this.beamFxLive += 1;
+      beamCounted = true;
+      return true;
     };
     loadSharedSpineData(resolveBattleSkillEffectResource(spec), null, 'GuardSkillFx', (data) => {
       if (!node.isValid || !data) {
@@ -1909,6 +1996,11 @@ export class LobbyGuardBattleRenderer {
         // 束状判定:显式名单优先(近方形包围盒判不准),再看横长/竖长 ≥1.5×;其余为弹道。
         const vertical = extentH >= extentW * 1.5;
         const beam = GUARD_BEAM_EFFECT_CODES.has(spec.effect) || vertical || extentW >= extentH * 1.5;
+        // 束状同屏 ≤1(含宽高比判入的):抢不到名额直接放弃本次表现
+        if (beam && !markBeamLive()) {
+          release();
+          return;
+        }
         const beamExtent = vertical ? extentH : extentW;
         const beamThickExtent = vertical ? extentW : extentH;
         // 放大上限 1.5×:超采样必糊(高星大目标不再无限放大)。
@@ -1959,19 +2051,20 @@ export class LobbyGuardBattleRenderer {
             const aimAngle = Math.max(-45, Math.min(45, Math.atan2(dy, dx) * (180 / Math.PI)));
             node.angle = aimAngle + (vertical ? -90 : 0);
             const len = Math.min(Math.max(dist, this.unitSize() * 1.5), rangePx);
-            // 拉伸上限 2.2× 可读基准:巨幅放大必糊(2026-08-26 用户验收);柱身锚身前指向目标,尖端尽力延伸。
+            // 拉伸上限 1.5× 可读基准(视频验收 2.2× 仍占屏 1/3 且糊):柱身锚身前指向目标,尖端尽力延伸。
             const naturalFit = (this.unitSize() * 2.0) / Math.max(extentW, extentH);
-            const fitLen = Math.min(len / beamExtent, naturalFit * 2.2);
-            const fitThick = Math.min(fitLen * (spec.scale || 1), (this.unitSize() * 2.2) / beamThickExtent, naturalFit * 2.0);
+            const fitLen = Math.min(len / beamExtent, naturalFit * 1.5);
+            const fitThick = Math.min(fitLen * (spec.scale || 1), (this.unitSize() * 1.8) / beamThickExtent, naturalFit * 1.6);
             // 竖版素材长度轴=本地 Y(旋转 -90° 后指向目标),横版=本地 X。
             if (vertical) {
               node.setScale(fitThick, fitLen, 1);
             } else {
               node.setScale(fitLen, fitThick, 1);
             }
-            // 根部贴炮口:内容"根部"(长度轴负端)的本地点经缩放+最终旋转后补偿——火柱从英雄身前喷出。
-            const rootLx = vertical ? centerX * fitThick : (centerX - extentW / 2) * fitLen;
-            const rootLy = vertical ? (centerY - extentH / 2) * fitLen : centerY * fitThick;
+            // 根部贴炮口:内容"根部"(长度轴负端+视觉内缩标定)经缩放+最终旋转后补偿——亮部从英雄身前喷出。
+            const inset = (GUARD_BEAM_ROOT_INSET[spec.effect] ?? 0) * beamExtent;
+            const rootLx = vertical ? centerX * fitThick : (centerX - extentW / 2 + inset) * fitLen;
+            const rootLy = vertical ? (centerY - extentH / 2 + inset) * fitLen : centerY * fitThick;
             const nodeRad = node.angle * (Math.PI / 180);
             const cos = Math.cos(nodeRad);
             const sin = Math.sin(nodeRad);
@@ -2354,17 +2447,52 @@ export class LobbyGuardBattleRenderer {
       const hpGraphics = hpBar?.getComponent(Graphics);
       const hpTransform = hpBar?.getComponent(UITransform);
       if (hpBar && hpGraphics && hpTransform) {
-        const barW = hpTransform.width;
         const ratio = Math.max(0, monster.hp / monster.maxHp);
         hpGraphics.clear();
-        hpGraphics.fillColor = rgba(8, 8, 10, 210);
-        hpGraphics.rect(-barW / 2, -3, barW, 6);
-        hpGraphics.fill();
-        hpGraphics.fillColor = monster.kind === 'boss' ? rgba(235, 60, 45, 250) : monster.kind === 'elite' ? rgba(255, 150, 60, 240) : rgba(224, 82, 64, 230);
-        hpGraphics.rect(-barW / 2, -3, Math.max(1, barW * ratio), 6);
-        hpGraphics.fill();
+        // 满血不显示血条(视频验收:入场怪扎堆时几十条红条叠成噪声);BOSS 走顶部大血条
+        if (ratio < 1 && monster.kind !== 'boss') {
+          const barW = hpTransform.width;
+          hpGraphics.fillColor = rgba(8, 8, 10, 210);
+          hpGraphics.rect(-barW / 2, -3, barW, 6);
+          hpGraphics.fill();
+          hpGraphics.fillColor = monster.kind === 'elite' ? rgba(255, 150, 60, 240) : rgba(224, 82, 64, 230);
+          hpGraphics.rect(-barW / 2, -3, Math.max(1, barW * ratio), 6);
+          hpGraphics.fill();
+        }
       }
     }
+    this.refreshBossTopBar();
+  }
+
+  /** BOSS 顶部大血条(视频验收:×6 体型配 220px 小条看不见):取当前存活最强 BOSS,画在波次标题下方。 */
+  private refreshBossTopBar(): void {
+    const sim = this.sim;
+    const hud = this.root?.getChildByName('GuardHud');
+    const bar = hud?.getChildByName('GuardBossTopBar');
+    const g = bar?.getComponent(Graphics);
+    const label = bar?.getChildByName('GuardBossTopBarText')?.getComponent(Label);
+    if (!sim || !bar || !g || !label) {
+      return;
+    }
+    const boss = sim.monsters.find((entry) => entry.kind === 'boss' && !entry.dead) ?? null;
+    g.clear();
+    if (!boss) {
+      label.string = '';
+      return;
+    }
+    const barW = 460;
+    const ratio = Math.max(0, boss.hp / boss.maxHp);
+    g.fillColor = rgba(10, 8, 8, 225);
+    g.roundRect(-barW / 2, -11, barW, 22, 10);
+    g.fill();
+    g.fillColor = ratio > 0.35 ? rgba(235, 60, 45, 250) : rgba(255, 140, 60, 250);
+    g.roundRect(-barW / 2, -11, Math.max(8, barW * ratio), 22, 10);
+    g.fill();
+    g.strokeColor = rgba(255, 200, 120, 235);
+    g.lineWidth = 2;
+    g.roundRect(-barW / 2, -11, barW, 22, 10);
+    g.stroke();
+    label.string = `BOSS  ${Math.ceil(boss.hp)} / ${boss.maxHp}`;
   }
 
   private createMonsterView(monster: GuardMonster): GuardUnitView {
