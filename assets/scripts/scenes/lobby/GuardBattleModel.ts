@@ -73,6 +73,8 @@ export interface GuardMonster {
   spawnedWave: number;
   /** 渲染层骨骼资源名(spine/monster/<code>)。 */
   spineCode: string;
+  /** BOSS 技能就绪时刻(2026-08-28:BOSS 进入自身攻击范围后冷却制放技能;非 BOSS 恒 0)。 */
+  skillReadyMs: number;
   dead: boolean;
   diedAtMs: number;
 }
@@ -117,7 +119,7 @@ export interface GuardBossCast {
 export interface GuardEvent {
   type:
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
-    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero';
+    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero' | 'bossSkill';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -134,6 +136,8 @@ export interface GuardEvent {
   skillUnlocked?: boolean;
   /** heroSkill:技能名(渲染层飘字)与产生的区域 id(如有)。 */
   skillName?: string;
+  /** bossSkill:smash=近战重踏,volley=远程投射(渲染层分表现)。 */
+  skillKind?: GuardBossSkillKind;
   zoneId?: number;
 }
 
@@ -392,6 +396,23 @@ export const GUARD_RUSH_BOSS_RESPAWN_MS = 2500;
 export const GUARD_RUSH_BOSS_SPEED = 0.07;
 /** 车轮 BOSS 走进该 x(前列远程射程边缘)才允许读条:远处轰水晶无人能打断=不可交互的必死倒计时。 */
 export const GUARD_RUSH_BOSS_CAST_MAX_X = 7;
+// BOSS 技能(2026-08-28 用户拍板:BOSS 分近战/远程攻击范围,进入范围冷却制放技能):
+// smash=近战重踏(进 3 格,水晶 4%/次),volley=远程投射(进 7 格,暗弹飞向水晶 3%/次);读条/踉跄期间不放。
+export type GuardBossSkillKind = 'smash' | 'volley';
+export const GUARD_BOSS_SKILL: Record<GuardBossSkillKind, { name: string; rangeCells: number; cdMs: number; crystalPct: number }> = {
+  smash: { name: '裂地重踏', rangeCells: 3.0, cdMs: 9000, crystalPct: 0.04 },
+  volley: { name: '暗焰投射', rangeCells: 7.0, cdMs: 8000, crystalPct: 0.03 },
+};
+/** BOSS 皮肤→技能类型(法系投射,武斗重踏)。 */
+export const GUARD_BOSS_SKILL_TYPE: Record<string, GuardBossSkillKind> = {
+  rock_golem: 'smash',
+  abyss_devilman: 'smash',
+  grand_magus: 'volley',
+};
+export function guardBossSkillKind(spineCode: string): GuardBossSkillKind {
+  return GUARD_BOSS_SKILL_TYPE[spineCode] ?? 'smash';
+}
+
 /** rush 单独时限:输出试炼是刷分局,10 分钟收口(层数即成绩),别拖成马拉松。 */
 export const GUARD_RUSH_TIME_LIMIT_MS = 10 * 60 * 1000;
 /** 第 n+1 只车轮 BOSS 的强度参考波次(hp/啃咬按此波次代入曲线);递增要陡于英雄成长,保证必然收敛。 */
@@ -927,6 +948,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     stunnedUntilMs: 0,
     spawnedWave: state.wave,
     spineCode: profile.spineCodes[Math.floor(state.rng() * profile.spineCodes.length)],
+    skillReadyMs: kind === 'boss' ? state.timeMs + 5000 : 0,
     dead: false,
     diedAtMs: 0,
   };
@@ -1150,6 +1172,27 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     }
   } else {
     state.bossCast = null;
+  }
+  // BOSS 技能(2026-08-28):进入自身攻击范围(近战3格/远程7格)后冷却制施放,轰水晶;读条/踉跄中不放。
+  for (const bossMonster of state.monsters) {
+    if (bossMonster.kind !== 'boss' || bossMonster.dead) {
+      continue;
+    }
+    const skillKind = guardBossSkillKind(bossMonster.spineCode);
+    const skillSpec = GUARD_BOSS_SKILL[skillKind];
+    const casting = state.bossCast?.monsterId === bossMonster.monsterId;
+    const bossStunned = bossMonster.stunnedUntilMs > state.timeMs;
+    if (!casting && !bossStunned && bossMonster.x <= skillSpec.rangeCells && state.timeMs >= bossMonster.skillReadyMs) {
+      bossMonster.skillReadyMs = state.timeMs + skillSpec.cdMs;
+      const damage = Math.max(1, Math.round(state.crystalMaxHp * skillSpec.crystalPct));
+      state.crystalHp = Math.max(0, state.crystalHp - damage);
+      state.events.push({ type: 'bossSkill', timeMs: state.timeMs, monsterId: bossMonster.monsterId, amount: damage, skillName: skillSpec.name, skillKind });
+      if (state.crystalHp <= 0) {
+        state.phase = state.mode === 'rush' ? 'victory' : 'defeat';
+        state.events.push({ type: state.mode === 'rush' ? 'victory' : 'defeat', timeMs: state.timeMs });
+        return state.phase;
+      }
+    }
   }
   // 怪物:行进/啃水晶(shooter 站远程位;BOSS 读条或踉跄中不移动)。
   const thornsPerSec = (GUARD_CRYSTAL_THORNS_BASE + GUARD_CRYSTAL_THORNS_PER_WAVE * state.wave) * (1 + state.mods.thornsPct / 100);

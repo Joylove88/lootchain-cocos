@@ -135,7 +135,7 @@ interface GuardUnitView {
   hitFlashUntil: number;
 }
 
-/** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。 */
+/** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹,飞向水晶。 */
 interface GuardProjectile {
   node: Node;
   targetId: number;
@@ -143,6 +143,7 @@ interface GuardProjectile {
   y: number;
   amount: number;
   color: Color;
+  crystalTarget?: boolean;
 }
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
@@ -171,6 +172,8 @@ export class LobbyGuardBattleRenderer {
   private wheelOverlayOpen = false;
   /** 点击英雄显示攻击范围(unitId;拖拽结束/再点空白清除)。 */
   private rangeShownUnitId: number | null = null;
+  /** 已绘制选中层对应的格位:仅换人/换格时整层重建(每 tick 重建=详情框闪烁,2026-08-28 用户验收)。 */
+  private rangeShownDrawnCell = -1;
   /** 技能特效包围盒缓存(effect:anim → 宽高+原点偏移),与在场技能特效计数。 */
   private readonly guardFxBoundsCache = new Map<string, { w: number; h: number; cx: number; cy: number } | null>();
   private guardFxLiveCount = 0;
@@ -468,19 +471,7 @@ export class LobbyGuardBattleRenderer {
     }
     this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
     g.clear();
-    const laneHeight = this.layoutHeight * 0.155;
-    // 车道:背景图上只压低透明暗带+发丝金线分隔,别把地面盖回黑
-    for (let lane = 0; lane < GUARD_GRID_ROWS; lane += 1) {
-      const y = this.laneToPy(lane);
-      g.fillColor = rgba(12, 8, 6, lane % 2 === 0 ? 44 : 26);
-      g.rect(this.pathLeftPx() - this.layoutWidth * 0.05, y - laneHeight / 2, this.pathRightPx() - this.pathLeftPx() + this.layoutWidth * 0.1, laneHeight);
-      g.fill();
-      g.strokeColor = rgba(214, 178, 110, 40);
-      g.lineWidth = 1;
-      g.moveTo(this.pathLeftPx() - this.layoutWidth * 0.05, y - laneHeight / 2);
-      g.lineTo(this.pathRightPx() + this.layoutWidth * 0.05, y - laneHeight / 2);
-      g.stroke();
-    }
+    // 车道透明横带已删(2026-08-28 用户验收:不要三条横线的透明框)——地面纹理即车道。
     // 3×4 正方大卡:边长=列距×0.92——任何宽高比都不互叠;锁定格暗卡,下一个待解锁格标倒数
     const size = this.cellPitchPx() * 0.92;
     for (const stale of field.children.filter((child) => child.name === 'GuardLockIcon')) {
@@ -950,6 +941,33 @@ export class LobbyGuardBattleRenderer {
         if (event.skillUnlocked && typeof event.cell === 'number') {
           this.showSkillUnlockBanner(event.cell, event.heroCode ?? '');
         }
+      } else if (event.type === 'bossSkill') {
+        // BOSS 技能(2026-08-28):重踏=脚下冲击环+大震屏+水晶掉血;投射=暗弹从 BOSS 飞向水晶
+        const bossView = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : null;
+        const bx = bossView?.node.isValid ? bossView.node.position.x : this.xToPx(5);
+        const by = bossView?.node.isValid ? bossView.node.position.y : this.laneToPy(1);
+        this.spawnFloater(bx, by + this.unitSize() * 1.1, `${event.skillName ?? 'BOSS技能'}!`, rgba(255, 140, 90), 20);
+        if (event.skillKind === 'volley') {
+          const field2 = this.fieldNode;
+          if (field2) {
+            const node = this.host.addChildPlainNode(field2, 'GuardBossBolt', bx - this.unitSize() * 0.4, by, 10, 10);
+            node.setSiblingIndex(field2.children.length - 1);
+            const g = node.addComponent(Graphics);
+            g.fillColor = rgba(180, 90, 255, 150);
+            g.ellipse(0, 0, 16, 9);
+            g.fill();
+            g.fillColor = rgba(255, 120, 200, 245);
+            g.ellipse(1, 0, 9, 5);
+            g.fill();
+            this.projectiles.push({ node, targetId: -1, x: bx - this.unitSize() * 0.4, y: by, amount: event.amount ?? 0, color: rgba(200, 110, 255), crystalTarget: true });
+          }
+        } else {
+          // 重踏:BOSS 脚下冲击环+全场震屏,水晶伤害即时结算(sim 已扣),水晶处红闪+飘字
+          this.spawnCellBurst(bx, by - this.unitSize() * 0.5, rgba(255, 130, 70), true);
+          this.shakeField(11);
+          const cx = this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5;
+          this.spawnFloater(cx, this.laneToPy(1) + this.layoutHeight * 0.1, `-${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 120, 100), 20);
+        }
       } else if (event.type === 'heroSkill') {
         // 主动技能(2★ 冷却制):施法动画+技能名飘字;近战/远程附专属特效打向首个目标
         const caster = sim.heroes.find((entry) => entry.heroCode === event.heroCode && entry.cell === event.cell);
@@ -1049,6 +1067,27 @@ export class LobbyGuardBattleRenderer {
       }
       const size = this.unitSize() * 0.8;
       const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, this.xToPx(chest.x), this.laneToPy(chest.lane) - size * 0.15, size, size);
+      // 呼吸光晕(2026-08-28 用户验收:掉在地上不明显):金色双环随缩放呼吸,画在宝箱图之下
+      const glow = this.host.addChildPlainNode(node, 'GuardChestGlow', 0, -size * 0.06, size, size);
+      const glowG = glow.addComponent(Graphics);
+      glowG.fillColor = rgba(255, 214, 110, 56);
+      glowG.circle(0, 0, size * 0.56);
+      glowG.fill();
+      glowG.strokeColor = rgba(255, 226, 130, 190);
+      glowG.lineWidth = 4;
+      glowG.circle(0, 0, size * 0.56);
+      glowG.stroke();
+      glowG.strokeColor = rgba(255, 240, 180, 120);
+      glowG.lineWidth = 2;
+      glowG.circle(0, 0, size * 0.72);
+      glowG.stroke();
+      const glowOpacity = glow.addComponent(UIOpacity);
+      tween(glow)
+        .repeatForever(tween().to(0.7, { scale: new Vec3(1.22, 1.22, 1) }).to(0.7, { scale: new Vec3(0.92, 0.92, 1) }))
+        .start();
+      tween(glowOpacity)
+        .repeatForever(tween().to(0.7, { opacity: 255 }).to(0.7, { opacity: 140 }))
+        .start();
       // 场上宝箱用素材(2026-08-25:程序画的方块太素)。
       this.mountSprite(node, 'Img', 'ui/guard/chest_closed/spriteFrame', 0, 0, size, size);
       const hint = this.host.addChildLabel(node, 'GuardChestHint', '点击开箱', 0, size * 0.48, 15, rgba(255, 232, 150), new Size(size * 1.8, 20));
@@ -1402,6 +1441,36 @@ export class LobbyGuardBattleRenderer {
         this.projectiles.splice(i, 1);
         continue;
       }
+      if (proj.crystalTarget) {
+        // BOSS 暗弹:飞向水晶,命中=水晶红闪+飘字+小震屏
+        const tx = this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5;
+        const ty = this.laneToPy(1) - this.layoutHeight * 0.04;
+        const dx = tx - proj.x;
+        const dy = ty - proj.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= speed) {
+          this.spawnImpactFlash(tx, ty, proj.color);
+          this.spawnFloater(tx, ty + this.unitSize() * 0.4, `-${this.formatDamageValue(proj.amount)}`, rgba(255, 120, 100), 20);
+          this.shakeField(5);
+          const crystalSprite = this.fieldNode?.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
+          if (crystalSprite && crystalSprite.isValid) {
+            crystalSprite.color = rgba(255, 130, 110, 255);
+            setTimeout(() => {
+              if (crystalSprite.isValid) {
+                crystalSprite.color = rgba(255, 255, 255, 255);
+              }
+            }, 130);
+          }
+          proj.node.destroy();
+          this.projectiles.splice(i, 1);
+        } else {
+          proj.x += (dx / dist) * speed;
+          proj.y += (dy / dist) * speed;
+          proj.node.setPosition(proj.x, proj.y, 0);
+          proj.node.angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        }
+        continue;
+      }
       let target = sim.monsters.find((entry) => entry.monsterId === proj.targetId && !entry.dead) ?? null;
       if (!target) {
         let bestDist = Number.POSITIVE_INFINITY;
@@ -1437,6 +1506,22 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
+  /** 伤害数字缩写阶梯(2026-08-28 用户拍板):千=K,百万=M,十亿=B;再往上 T/Qa/Qi(放置游戏惯例)。 */
+  private formatDamageValue(n: number): string {
+    if (n < 1000) {
+      return `${n}`;
+    }
+    const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi'];
+    let value = n;
+    let idx = -1;
+    while (value >= 1000 && idx < units.length - 1) {
+      value /= 1000;
+      idx += 1;
+    }
+    const text = value >= 100 ? value.toFixed(0) : value.toFixed(1).replace(/\.0$/, '');
+    return `${text}${units[idx]}`;
+  }
+
   /** 同目标伤害聚合窗(视频验收:BOSS 身上数字糊成一团)——0.3s 内合并为一条"-总量 ×N"。 */
   private readonly pendingDamage = new Map<number, { sum: number; count: number; skill: boolean; x: number; y: number; flushAt: number }>();
 
@@ -1463,11 +1548,15 @@ export class LobbyGuardBattleRenderer {
         continue;
       }
       this.pendingDamage.delete(targetId);
+      // 参考图样式(2026-08-28):大额红色带▶箭头,技能击紫色大字,普通白字;≥10000 用 K 缩写
       const suffix = entry.count > 1 ? ` ×${entry.count}` : '';
+      const valueText = this.formatDamageValue(entry.sum);
       if (entry.skill) {
-        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.6, `技能击 -${entry.sum}${suffix}`, rgba(190, 150, 255), 20);
+        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.6, `技能击 -${valueText}${suffix}`, rgba(200, 150, 255), 22);
+      } else if (entry.count > 1 || entry.sum >= 1000) {
+        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.44, `▶ -${valueText}${suffix}`, rgba(255, 110, 80, 250), 21);
       } else {
-        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.4, `-${entry.sum}${suffix}`, entry.count > 1 ? rgba(255, 226, 150, 245) : rgba(255, 240, 214, 235), entry.count > 1 ? 18 : 15);
+        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.4, `-${valueText}`, rgba(255, 244, 224, 240), 16);
       }
     }
   }
@@ -1589,7 +1678,8 @@ export class LobbyGuardBattleRenderer {
     const label = this.host.addChildLabel(field, 'GuardFloater', text, x + ox, y + oy, fontSize, color, new Size(190, fontSize + 8));
     label.enableOutline = true;
     label.outlineColor = rgba(20, 12, 8, 255);
-    label.outlineWidth = 2;
+    label.outlineWidth = fontSize >= 20 ? 3 : 2;
+    label.isBold = true;
     label.node.setSiblingIndex(field.children.length - 1);
     const opacity = label.node.addComponent(UIOpacity);
     opacity.opacity = 240;
@@ -1635,7 +1725,12 @@ export class LobbyGuardBattleRenderer {
         starLabel.string = '★'.repeat(hero.star);
       }
       if (this.rangeShownUnitId === hero.unitId) {
-        this.drawRangeIndicator(hero);
+        // 只在换格时整层重建;冷却/攻击文字逐帧轻量刷新(整层每 tick 重建会闪)
+        if (this.rangeShownDrawnCell !== hero.cell) {
+          this.drawRangeIndicator(hero);
+        } else {
+          this.refreshHeroInfoLive(hero);
+        }
       }
       const attackLabel = view.node.getChildByName('GuardHeroAtk')?.getComponent(Label);
       if (attackLabel) {
@@ -1701,18 +1796,21 @@ export class LobbyGuardBattleRenderer {
       g.clear();
       if (zone.kind === 'burn') {
         node.angle = 0;
-        const spanTop = this.laneToPy(0) - this.laneToPy(1) + this.layoutHeight * 0.085;
-        const spanBottom = this.laneToPy(GUARD_GRID_ROWS - 1) - this.laneToPy(1) - this.layoutHeight * 0.085;
-        g.fillColor = rgba(255, 120, 40, 52);
-        g.roundRect(-radiusPx, spanBottom, radiusPx * 2, spanTop - spanBottom, 18);
-        g.fill();
-        g.strokeColor = rgba(255, 160, 70, 175);
-        g.lineWidth = 2.4;
-        g.roundRect(-radiusPx, spanBottom, radiusPx * 2, spanTop - spanBottom, 18);
-        g.stroke();
-        g.fillColor = rgba(255, 200, 90, 150);
+        // 无边框火海(2026-08-28 用户验收:黄色边框不要):各车道地面椭圆火光+跳动余烬
+        const pulse = 0.85 + 0.15 * Math.sin(sim.timeMs / 140);
+        for (let lane = 0; lane < GUARD_GRID_ROWS; lane += 1) {
+          const y = this.laneToPy(lane) - this.laneToPy(1) - this.unitSize() * 0.42;
+          g.fillColor = rgba(255, 120, 40, 62);
+          g.ellipse(0, y, radiusPx * 0.95 * pulse, this.unitSize() * 0.15);
+          g.fill();
+          g.fillColor = rgba(255, 190, 80, 105);
+          g.ellipse(0, y, radiusPx * 0.55 * pulse, this.unitSize() * 0.09);
+          g.fill();
+        }
+        g.fillColor = rgba(255, 210, 100, 175);
         for (let i = -2; i <= 2; i += 1) {
-          g.circle(i * radiusPx * 0.38, spanBottom + 20 + ((i + 2) % 3) * 18, 7);
+          const flickY = this.laneToPy((i + 3) % 3) - this.laneToPy(1) - this.unitSize() * (0.18 + 0.14 * Math.sin(sim.timeMs / 170 + i * 1.7));
+          g.circle(i * radiusPx * 0.36, flickY, 6);
         }
         g.fill();
       } else {
@@ -1898,43 +1996,48 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  // ── 点击英雄显示攻击范围(近战=本车道段,远程/控制/辅助=全车道横带)──
+  // ── 点击英雄显示攻击范围(2026-08-28 用户拍板:区域制,参考蔚蓝星球——远程=大区域+远端弧形边界,近战=本车道矩形块)──
   private drawRangeIndicator(hero: GuardHeroUnit): void {
     const field = this.fieldNode;
     if (!field) {
       return;
     }
+    this.rangeShownDrawnCell = hero.cell;
     field.getChildByName('GuardRangeIndicator')?.destroy();
     const profile = GUARD_ROLE_PROFILE[hero.role];
-    // 覆盖范围从水晶起算(2026-08-25 拍板:与所站格子无关)——同类型英雄范围永远一样大。
+    // 覆盖范围从水晶起算(与所站格子无关)——同类型英雄范围永远一样大。
     const left = this.xToPx(0);
     const right = this.xToPx(Math.min(GUARD_SPAWN_X, profile.rangeCells));
-    const laneHeight = this.layoutHeight * 0.155;
     const layer = this.host.addChildPlainNode(field, 'GuardRangeIndicator', 0, 0, 10, 10);
     layer.setSiblingIndex(1);
     const g = layer.addComponent(Graphics);
-    // 低调化(2026-08-26 用户验收:整条路全绿太糊):每车道一条细地带+方向刻度,覆盖终点画竖线,不再整面铺色。
-    const lanes = profile.laneLocked ? [guardCellLane(hero.cell)] : [0, 1, 2];
-    for (const lane of lanes) {
-      const y = this.laneToPy(lane) - laneHeight * 0.34;
-      g.fillColor = rgba(120, 230, 110, 46);
-      g.roundRect(left, y - 8, right - left, 16, 8);
+    if (profile.laneLocked) {
+      // 近战:本车道一整块矩形区域(参考图4)
+      const y = this.laneToPy(guardCellLane(hero.cell));
+      const halfH = this.layoutHeight * 0.0875;
+      g.fillColor = rgba(120, 230, 110, 44);
+      g.roundRect(left, y - halfH, right - left, halfH * 2, 16);
       g.fill();
-      g.fillColor = rgba(150, 240, 130, 150);
-      for (let x = left + 70; x < right - 40; x += 160) {
-        g.moveTo(x, y + 8);
-        g.lineTo(x + 16, y);
-        g.lineTo(x, y - 8);
-        g.close();
-      }
+      g.strokeColor = rgba(160, 240, 130, 215);
+      g.lineWidth = 3.5;
+      g.roundRect(left, y - halfH, right - left, halfH * 2, 16);
+      g.stroke();
+    } else {
+      // 远程/控制/辅助:全车道大区域,远端画以水晶为圆心的弧形边界(参考图1的金弧)
+      const top = this.laneToPy(0) + this.layoutHeight * 0.1;
+      const bottom = this.laneToPy(GUARD_GRID_ROWS - 1) - this.layoutHeight * 0.1;
+      g.fillColor = rgba(120, 230, 110, 22);
+      g.roundRect(left, bottom, right - left, top - bottom, 18);
       g.fill();
+      const cy = (top + bottom) / 2;
+      const radius = Math.max(60, right - left);
+      const halfSpan = Math.atan2((top - bottom) / 2, radius);
+      g.strokeColor = rgba(190, 240, 130, 225);
+      g.lineWidth = 6;
+      g.arc(left, cy, radius, -halfSpan, halfSpan, false);
+      g.stroke();
     }
-    g.strokeColor = rgba(150, 240, 130, 210);
-    g.lineWidth = 3;
-    g.moveTo(right, this.laneToPy(Math.min(...lanes)) + laneHeight * 0.42);
-    g.lineTo(right, this.laneToPy(Math.max(...lanes)) - laneHeight * 0.42);
-    g.stroke();
-    // 选中格绿色高亮(参考图)
+    // 选中格绿色高亮
     const center = this.cellCenter(hero.cell);
     const cellSize = this.cellPitchPx() * 0.92;
     g.strokeColor = rgba(150, 240, 110, 240);
@@ -1973,8 +2076,34 @@ export class LobbyGuardBattleRenderer {
     desc.overflow = Label.Overflow.SHRINK;
   }
 
+  /** 信息卡逐帧轻量刷新:只改冷却/攻击文字,不重建节点。 */
+  private refreshHeroInfoLive(hero: GuardHeroUnit): void {
+    const sim = this.sim;
+    const panel = this.root?.getChildByName('GuardHeroInfoPanel');
+    if (!sim || !panel || !panel.isValid) {
+      return;
+    }
+    const skill = GUARD_HERO_SKILL[hero.role];
+    const skillLabel = panel.getChildByName('SkillName')?.getComponent(Label);
+    if (skillLabel) {
+      const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
+      const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
+      skillLabel.string = `⚡ ${skill.name} · ${skillState}`;
+    }
+    const atkLabel = panel.getChildByName('Atk')?.getComponent(Label);
+    if (atkLabel) {
+      const profile = GUARD_ROLE_PROFILE[hero.role];
+      atkLabel.string = `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`;
+    }
+    const starLabel = panel.getChildByName('Star')?.getComponent(Label);
+    if (starLabel) {
+      starLabel.string = '★'.repeat(hero.star);
+    }
+  }
+
   private clearRangeIndicator(): void {
     this.rangeShownUnitId = null;
+    this.rangeShownDrawnCell = -1;
     this.fieldNode?.getChildByName('GuardRangeIndicator')?.destroy();
     this.root?.getChildByName('GuardHeroInfoPanel')?.destroy();
   }
