@@ -48,6 +48,8 @@ import {
   guardCellUnlockRank,
   GUARD_CRYSTAL_REACH_X,
   GUARD_CRYSTAL_SKILL_CD_MS,
+  GUARD_ENHANCE_ATK_PCT,
+  GUARD_MAX_STAR,
   GUARD_GRID_CELLS,
   GUARD_GRID_COLS,
   GUARD_GRID_ROWS,
@@ -382,9 +384,12 @@ export class LobbyGuardBattleRenderer {
   private mountBackground(root: Node): void {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const cover = Math.max(width / 1536, height / 1024);
-    const bgW = 1536 * cover;
-    const bgH = 1024 * cover;
+    // 背景源图 3072×2048(1536 生成后 2× Lanczos+锐化,2026-08-28 修"还是糊")
+    const bgSrcW = 3072;
+    const bgSrcH = 2048;
+    const cover = Math.max(width / bgSrcW, height / bgSrcH);
+    const bgW = bgSrcW * cover;
+    const bgH = bgSrcH * cover;
     this.mountSprite(root, 'GuardSceneBg', 'ui/battle/battle_scene_guard_mine/spriteFrame', 0, (bgH - height) / 2, bgW, bgH);
     const shade = this.host.addChildPlainNode(root, 'GuardTopShade', 0, height / 2 - height * 0.08, width, height * 0.16);
     const g = shade.addComponent(Graphics);
@@ -718,7 +723,7 @@ export class LobbyGuardBattleRenderer {
     }
     const enhanceLabel = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceLabel')?.getComponent(Label);
     if (enhanceLabel) {
-      enhanceLabel.string = `强化 全队攻击+${sim.enhanceLevel * 8}% · ${sim.enhanceCost}`;
+      enhanceLabel.string = `强化 全队攻击+${sim.enhanceLevel * GUARD_ENHANCE_ATK_PCT}% · ${sim.enhanceCost}`;
     }
     this.refreshCrystalSkillButton();
   }
@@ -731,9 +736,10 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const buttonW = Math.min(248, width * 0.19);
-    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(248, width * 0.19) - 22, -height / 2 + 52, buttonW);
-    this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 19, rgba(255, 238, 190), new Size(buttonW - 12, 24));
+    const buttonW = Math.min(292, width * 0.22);
+    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(292, width * 0.22) - 24, -height / 2 + 56, buttonW);
+    const enhanceLabel = this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 19, rgba(255, 238, 190), new Size(buttonW - 60, 24));
+    enhanceLabel.overflow = Label.Overflow.SHRINK;
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -820,10 +826,12 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     // 按钮统一尺寸(2026-08-27 用户验收:大小不一)
-    const buttonW = Math.min(248, width * 0.19);
-    const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 52, buttonW);
-    this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 9, 24, rgba(255, 238, 190), new Size(buttonW - 12, 30));
-    this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -18, 13, rgba(240, 214, 170, 230), new Size(buttonW - 12, 16));
+    const buttonW = Math.min(292, width * 0.22);
+    const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 56, buttonW);
+    const summonMainLabel = this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 10, 24, rgba(255, 238, 190), new Size(buttonW - 56, 30));
+    summonMainLabel.overflow = Label.Overflow.SHRINK;
+    const summonNextLabel = this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -19, 14, rgba(240, 214, 170, 230), new Size(buttonW - 56, 18));
+    summonNextLabel.overflow = Label.Overflow.SHRINK;
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -922,13 +930,13 @@ export class LobbyGuardBattleRenderer {
         // 召唤落位爆闪(2026-08-27 用户拍板)
         if (typeof event.cell === 'number') {
           const center = this.cellCenter(event.cell);
-          this.spawnCellBurst(center.x, center.y - this.unitSize() * 0.3, rgba(150, 220, 255), false);
+          this.spawnCastFlash(center.x, center.y - this.unitSize() * 0.2, this.unitSize() * 1.05);
         }
       } else if (event.type === 'superMerge' || event.type === 'merge') {
         // 合成爆闪(超阶更大+金色)
         if (typeof event.cell === 'number') {
           const center = this.cellCenter(event.cell);
-          this.spawnCellBurst(center.x, center.y - this.unitSize() * 0.3, event.type === 'superMerge' ? rgba(255, 214, 90) : rgba(255, 236, 170), true);
+          this.spawnCastFlash(center.x, center.y - this.unitSize() * 0.2, this.unitSize() * (event.type === 'superMerge' ? 1.9 : 1.5));
         }
         if (event.type === 'superMerge') {
           this.host.setStatus('矿脉共鸣!直升 2 星!');
@@ -1290,22 +1298,41 @@ export class LobbyGuardBattleRenderer {
     og.fill();
     const panelH = height * 0.6;
     this.paintOverlayPanel(overlay, Math.min(width * 0.9, panelH * 1.62), panelH, 0);
-    this.host.addChildLabel(overlay, 'GuardChoiceTitle', `等级提升!Lv${sim.level} · 三选一`, 0, panelH / 2 - 78, 30, rgba(255, 232, 150), new Size(width * 0.7, 40));
+    // 标题下移 15px(2026-08-28 用户验收)
+    this.host.addChildLabel(overlay, 'GuardChoiceTitle', `等级提升!Lv${sim.level} · 三选一`, 0, panelH / 2 - 93, 30, rgba(255, 232, 150), new Size(width * 0.7, 40));
     const cardW = Math.min(262, width * 0.22);
     const cardH = 232;
     sim.pendingChoice.forEach((option, index) => {
       const x = (index - 1) * (cardW + 32);
       const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, height * 0.015, cardW, cardH);
+      // 词条卡美化(2026-08-28):双层描边+上半高光渐层+四角金饰角+头带
       const g = card.addComponent(Graphics);
-      g.fillColor = rgba(38, 29, 22, 252);
+      g.fillColor = rgba(30, 22, 17, 252);
       g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
       g.fill();
-      g.strokeColor = rgba(224, 190, 130, 245);
-      g.lineWidth = 2.4;
+      g.fillColor = rgba(56, 40, 28, 130);
+      g.roundRect(-cardW / 2 + 4, 0, cardW - 8, cardH / 2 - 4, 12);
+      g.fill();
+      g.strokeColor = rgba(230, 196, 132, 250);
+      g.lineWidth = 2.6;
       g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
       g.stroke();
-      g.fillColor = rgba(80, 56, 30, 235);
-      g.roundRect(-cardW / 2 + 5, cardH / 2 - 52, cardW - 10, 46, 10);
+      g.strokeColor = rgba(120, 92, 56, 200);
+      g.lineWidth = 1.2;
+      g.roundRect(-cardW / 2 + 5, -cardH / 2 + 5, cardW - 10, cardH - 10, 11);
+      g.stroke();
+      // 四角金饰角
+      g.strokeColor = rgba(255, 214, 130, 240);
+      g.lineWidth = 3;
+      const tick = 16;
+      for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]] as Array<[number, number]>) {
+        g.moveTo(sx * (cardW / 2 - 3) - sx * tick, sy * (cardH / 2 - 3));
+        g.lineTo(sx * (cardW / 2 - 3), sy * (cardH / 2 - 3));
+        g.lineTo(sx * (cardW / 2 - 3), sy * (cardH / 2 - 3) - sy * tick);
+      }
+      g.stroke();
+      g.fillColor = rgba(84, 58, 32, 240);
+      g.roundRect(-cardW / 2 + 6, cardH / 2 - 52, cardW - 12, 44, 10);
       g.fill();
       // 标题进头带(2026-08-25 用户验收:头带空着、标题飘在下面)。
       const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH / 2 - 29, 21, rgba(255, 240, 200), new Size(cardW - 22, 40));
@@ -1332,14 +1359,16 @@ export class LobbyGuardBattleRenderer {
     });
     // 跳过 / 刷新
     const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
-      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 94, 236);
-      this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(220, 24));
+      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 94, 252);
+      const smallLabel = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(196, 24));
+      smallLabel.overflow = Label.Overflow.SHRINK;
       button.on(Node.EventType.TOUCH_END, onTap, this);
     };
-    makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -100, () => {
+    // 按钮间距加大(2026-08-28 用户验收)
+    makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -160, () => {
       guardSkipChoice(sim);
     });
-    makeSmall('GuardChoiceReroll', `刷新(剩 ${sim.rerollLeft})`, 100, () => {
+    makeSmall('GuardChoiceReroll', `刷新(剩 ${sim.rerollLeft})`, 160, () => {
       if (guardRerollChoice(sim)) {
         this.choiceOverlayLevel = 0;
       } else {
@@ -1619,10 +1648,25 @@ export class LobbyGuardBattleRenderer {
     tween(opacity).to(big ? 0.36 : 0.28, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
   }
 
-  /** 施放者亮相:英雄脚下金圈扩散+身形弹跳,一眼看清技能是谁放的(2026-08-27 用户验收)。 */
+  /** 出手金色爆闪(素材版 cast_flash,2026-08-28 用户验收:程序画的圆圈不好看)。 */
+  private spawnCastFlash(x: number, y: number, sizePx: number): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(field, 'GuardCastFlash', x, y, sizePx, sizePx);
+    node.setSiblingIndex(field.children.length - 1);
+    this.mountSprite(node, 'Img', 'ui/guard/cast_flash/spriteFrame', 0, 0, sizePx, sizePx);
+    const opacity = node.addComponent(UIOpacity);
+    node.setScale(0.55, 0.55, 1);
+    tween(node).to(0.22, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'quadOut' }).start();
+    tween(opacity).delay(0.12).to(0.28, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  /** 施放者亮相:英雄脚下金色爆闪+身形弹跳,一眼看清技能是谁放的(2026-08-27 用户验收)。 */
   private highlightCaster(cell: number, label: string): void {
     const center = this.cellCenter(cell);
-    this.spawnCellBurst(center.x, center.y - this.unitSize() * 0.38, rgba(255, 214, 110), false);
+    this.spawnCastFlash(center.x, center.y - this.unitSize() * 0.24, this.unitSize() * 1.2);
     const hero = this.sim?.heroes.find((entry) => entry.cell === cell);
     const view = hero ? this.heroViews.get(hero.unitId) : null;
     if (view && view.node.isValid) {
@@ -1731,6 +1775,31 @@ export class LobbyGuardBattleRenderer {
         } else {
           this.refreshHeroInfoLive(hero);
         }
+      }
+      // 选中态合成指引(2026-08-28 用户拍板):可合成同名同星高亮+绿圈脉动,其余变暗
+      const heroOpacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
+      if (this.rangeShownUnitId !== null) {
+        const selectedHero = sim.heroes.find((entry) => entry.unitId === this.rangeShownUnitId);
+        const mergeable = !!selectedHero && selectedHero.unitId !== hero.unitId
+          && selectedHero.heroCode === hero.heroCode && selectedHero.star === hero.star && hero.star < GUARD_MAX_STAR;
+        heroOpacity.opacity = hero.unitId === this.rangeShownUnitId || mergeable ? 255 : 120;
+        let mergeHint = view.node.getChildByName('GuardMergeHint');
+        if (mergeable) {
+          if (!mergeHint) {
+            mergeHint = this.host.addChildPlainNode(view.node, 'GuardMergeHint', 0, -this.unitSize() * 0.42, 10, 10);
+            const hintG = mergeHint.addComponent(Graphics);
+            hintG.strokeColor = rgba(120, 255, 130, 235);
+            hintG.lineWidth = 4;
+            hintG.ellipse(0, 0, this.unitSize() * 0.42, this.unitSize() * 0.12);
+            hintG.stroke();
+            tween(mergeHint).repeatForever(tween().to(0.5, { scale: new Vec3(1.15, 1.15, 1) }).to(0.5, { scale: Vec3.ONE })).start();
+          }
+        } else if (mergeHint) {
+          mergeHint.destroy();
+        }
+      } else {
+        heroOpacity.opacity = 255;
+        view.node.getChildByName('GuardMergeHint')?.destroy();
       }
       const attackLabel = view.node.getChildByName('GuardHeroAtk')?.getComponent(Label);
       if (attackLabel) {
@@ -2058,21 +2127,23 @@ export class LobbyGuardBattleRenderer {
     const pool = sim.pool.find((entry) => entry.heroCode === hero.heroCode);
     const profile = GUARD_ROLE_PROFILE[hero.role];
     const skill = GUARD_HERO_SKILL[hero.role];
-    const w = 356;
-    const h = 272;
+    // 放大+内容整体下移进框(2026-08-28 用户验收:名字盖住框顶)
+    const w = 404;
+    const h = 312;
     const panel = this.host.addChildPlainNode(root, 'GuardHeroInfoPanel', -this.layoutWidth / 2 + 88 + w / 2, this.layoutHeight / 2 - 226 - h / 2, w, h);
     this.mountSprite(panel, 'Frame', 'ui/common/ai/popup_frame_small/spriteFrame', 0, 0, w, h);
-    this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 36, 20, rgba(255, 234, 180), new Size(w - 44, 26));
-    this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 64, 18, rgba(255, 220, 110), new Size(w - 24, 22));
+    const nameLabel = this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 58, 21, rgba(255, 234, 180), new Size(w - 96, 26));
+    nameLabel.overflow = Label.Overflow.SHRINK;
+    this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 88, 18, rgba(255, 220, 110), new Size(w - 60, 22));
     const roleName = GUARD_ROLE_LABEL[hero.role] ?? hero.role;
-    this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格`, 0, h / 2 - 92, 16, rgba(226, 214, 188), new Size(w - 24, 20));
-    this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`, 0, h / 2 - 120, 15, rgba(255, 200, 150), new Size(w - 24, 20));
+    this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格`, 0, h / 2 - 118, 16, rgba(226, 214, 188), new Size(w - 60, 20));
+    this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`, 0, h / 2 - 148, 15, rgba(255, 200, 150), new Size(w - 60, 20));
     // 主动技能卡(参考蔚蓝星球:技能名+冷却+描述)
     const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
     const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${skill.name} · ${skillState}`, 0, h / 2 - 152, 17, rgba(150, 220, 255), new Size(w - 28, 22));
+    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${skill.name} · ${skillState}`, 0, h / 2 - 182, 17, rgba(150, 220, 255), new Size(w - 64, 22));
     skillTitle.overflow = Label.Overflow.SHRINK;
-    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 192, 13, rgba(206, 196, 172), new Size(w - 40, 44));
+    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 226, 13, rgba(206, 196, 172), new Size(w - 76, 46));
     desc.overflow = Label.Overflow.SHRINK;
   }
 

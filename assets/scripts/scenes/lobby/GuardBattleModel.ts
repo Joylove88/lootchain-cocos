@@ -237,13 +237,15 @@ export const GUARD_SUMMON_COST_MIN = 30;
 export const GUARD_SUPER_MERGE_CHANCE = 0.1;
 export const GUARD_MAX_STAR = 5;
 /** 星级攻击倍率:atk = base × 2.2^(star-1)。 */
-export const GUARD_STAR_ATTACK_MULT = 2.2;
+// 2.2→1.75(2026-08-28 用户拍板:合成升星攻击翻倍太多):5★≈9.4×(原 23×)。
+export const GUARD_STAR_ATTACK_MULT = 1.75;
 export const GUARD_CRYSTAL_MAX_HP = 1600;
 
 // 覆盖范围(2026-08-25 用户拍板:同类型英雄攻击范围与所站格子无关)——rangeCells=从水晶起算的覆盖距离,
 // 怪物走进 [0, rangeCells] 即可被打;近战仍锁本车道。近战 6 / 远程 10(全跑道)/ 控制 8。
 export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; intervalMs: number; damageScale: number; laneLocked: boolean }> = {
-  melee: { rangeCells: 9.0, intervalMs: 800, damageScale: 1.6, laneLocked: true },
+  // 2026-08-28 用户拍板:近战覆盖 -30%(9→6.3)且不再锁单车道——打全车道,只是够不远;飞行怪仍免疫近战。
+  melee: { rangeCells: 6.3, intervalMs: 800, damageScale: 1.6, laneLocked: false },
   ranged: { rangeCells: 10.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
   support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
   control: { rangeCells: 8.0, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
@@ -270,7 +272,8 @@ export const GUARD_CRYSTAL_THORNS_PER_WAVE = 3;
 // P2:强化线(全队攻击等级)/宝箱跳奖/三选一/BOSS 读条/水晶技能
 export const GUARD_ENHANCE_BASE_COST = 40;
 export const GUARD_ENHANCE_COST_STEP = 20;
-export const GUARD_ENHANCE_ATK_PCT = 8;
+// 8→5(2026-08-28 用户拍板:强化全队攻击加成削弱)。
+export const GUARD_ENHANCE_ATK_PCT = 5;
 export const GUARD_CHEST_TIER5_CHANCE = 0.03;
 export const GUARD_CHEST_TIER3_CHANCE = 0.1;
 export const GUARD_BOSS_CAST_INTERVAL_MS = 12_000;
