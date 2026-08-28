@@ -384,9 +384,9 @@ export class LobbyGuardBattleRenderer {
   private mountBackground(root: Node): void {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    // 背景源图 3072×2048(1536 生成后 2× Lanczos+锐化,2026-08-28 修"还是糊")
-    const bgSrcW = 3072;
-    const bgSrcH = 2048;
+    // 背景源图 2048×1152(gpt-image-2 原生 16:9 直出,零放大,2026-08-28 终版)
+    const bgSrcW = 2048;
+    const bgSrcH = 1152;
     const cover = Math.max(width / bgSrcW, height / bgSrcH);
     const bgW = bgSrcW * cover;
     const bgH = bgSrcH * cover;
@@ -1577,17 +1577,40 @@ export class LobbyGuardBattleRenderer {
         continue;
       }
       this.pendingDamage.delete(targetId);
-      // 参考图样式(2026-08-28):大额红色带▶箭头,技能击紫色大字,普通白字;≥10000 用 K 缩写
+      // 参考图样式:大额=火焰箭头图标+红色大字(▶文字三角已换 image2 素材,2026-08-28),技能击紫色大字,普通白字;K/M/B 缩写
       const suffix = entry.count > 1 ? ` ×${entry.count}` : '';
       const valueText = this.formatDamageValue(entry.sum);
       if (entry.skill) {
         this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.6, `技能击 -${valueText}${suffix}`, rgba(200, 150, 255), 22);
       } else if (entry.count > 1 || entry.sum >= 1000) {
-        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.44, `▶ -${valueText}${suffix}`, rgba(255, 110, 80, 250), 21);
+        this.spawnCritFloater(entry.x, entry.y + this.unitSize() * 0.44, `-${valueText}${suffix}`);
       } else {
         this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.4, `-${valueText}`, rgba(255, 244, 224, 240), 16);
       }
     }
+  }
+
+  /** 暴击/多段命中飘字:image2 火焰箭头素材+红色大字(替代文字▶三角)。 */
+  private spawnCritFloater(x: number, y: number, text: string): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    this.floaterCycle = (this.floaterCycle + 1) % 6;
+    const ox = ((this.floaterCycle % 3) - 1) * 38;
+    const oy = Math.floor(this.floaterCycle / 3) * 26;
+    const node = this.host.addChildPlainNode(field, 'GuardCritFloater', x + ox, y + oy, 220, 32);
+    node.setSiblingIndex(field.children.length - 1);
+    this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -80, 0, 36, 36);
+    const label = this.host.addChildLabel(node, 'Text', text, 14, 0, 21, rgba(255, 110, 80, 250), new Size(164, 28));
+    label.enableOutline = true;
+    label.outlineColor = rgba(40, 10, 6, 255);
+    label.outlineWidth = 3;
+    label.isBold = true;
+    const opacity = node.addComponent(UIOpacity);
+    opacity.opacity = 245;
+    tween(node).by(0.8, { position: new Vec3(0, 36, 0) }).start();
+    tween(opacity).delay(0.45).to(0.35, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
   }
 
   /** 命中结算:爆闪+伤害入聚合窗+目标受击红闪。 */
@@ -2010,7 +2033,8 @@ export class LobbyGuardBattleRenderer {
         if (opts?.allyUnit) {
           fit = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, size, size, this.layoutUiScale, false, opts.allyUnit);
           const pos = resolveBattleUnitSpineNodePosition(runtimeData, fit, size, opts.allyUnit, false);
-          spineNode.setPosition(pos.x, pos.y, 0);
+          // 横向偏移钳制(2026-08-28 用户验收:深渊魔女站到格子外):bounds 偏移补偿再大也不许把立绘推出卡位
+          spineNode.setPosition(Math.max(-size * 0.3, Math.min(size * 0.3, pos.x)), pos.y, 0);
         } else if (opts?.calibratedScale) {
           fit = opts.calibratedScale(Math.max(1, Number(runtimeData.height) || 300));
         } else {
