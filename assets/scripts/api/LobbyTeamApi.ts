@@ -1,7 +1,7 @@
 import { HttpClient } from '../net/HttpClient';
 import { isRecord } from './ApiValueGuards';
 
-const MAX_LINEUP = 5;
+const MAX_LINEUP = 4;
 const MAX_HERO_ID = Number.MAX_SAFE_INTEGER;
 
 export interface LobbyTeamFormationVO {

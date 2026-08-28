@@ -706,7 +706,7 @@ export class LobbyAdventurePanelRenderer {
     const formation = (selectedIds.length > 0
       ? selectedIds.map((heroId) => heroById.get(heroId)).filter((hero): hero is (typeof visibleHeroes)[number] => !!hero)
       : visibleHeroes.sort((a, b) => b.power - a.power)
-    ).slice(0, 5);
+    ).slice(0, 4);
     const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
     // 战力不足也允许挑战(策划 2026-07-10):不再用 power.enough 拦截,只要关卡开放+英雄队列已加载即可挑战。
     const canChallenge = this.canOpenBattleEntryStage(stage) && power.rosterLoaded;

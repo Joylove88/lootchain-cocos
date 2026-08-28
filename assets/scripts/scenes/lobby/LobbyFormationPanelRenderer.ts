@@ -284,7 +284,7 @@ export class LobbyFormationPanelRenderer {
       ? '正在读取可上阵英雄...'
       : state.error
         ? '英雄队列暂不可用，当前不能进入战斗。'
-        : `已确认 ${selectedCount}/5 名出战英雄：目标 ${stageCode}；点击已上阵英雄可下阵。`;
+        : `已确认 ${selectedCount}/4 名出战英雄：目标 ${stageCode}；点击已上阵英雄可下阵。`;
     const status = this.host.addChildLabel(parent, 'LobbyFormationStatus', statusText, 0, height / 2 - 112 * scale, 16 * scale, rgba(204, 167, 88), new Size(width - 112 * scale, 24 * scale));
     status.overflow = Label.Overflow.SHRINK;
   }
@@ -943,14 +943,14 @@ export class LobbyFormationPanelRenderer {
       : this.defaultLineup(visible);
     const slots: Array<LobbyHeroItemVO | null> = [];
     for (const hero of ordered) {
-      if (slots.length >= 5) {
+      if (slots.length >= 4) {
         break;
       }
       if (!slots.some((slot) => slot?.id === hero.id)) {
         slots.push(hero);
       }
     }
-    while (slots.length < 5) {
+    while (slots.length < 4) {
       slots.push(null);
     }
     return slots;
@@ -961,7 +961,7 @@ export class LobbyFormationPanelRenderer {
   }
 
   private defaultLineup(heroes: LobbyHeroItemVO[]): LobbyHeroItemVO[] {
-    return this.visibleHeroes(heroes).sort((a, b) => b.power - a.power).slice(0, 5);
+    return this.visibleHeroes(heroes).sort((a, b) => b.power - a.power).slice(0, 4);
   }
 
   private renderEmpty(parent: Node, width: number, bodyHeight: number, scale: number, text: string): void {

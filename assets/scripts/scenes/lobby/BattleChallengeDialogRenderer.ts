@@ -84,7 +84,7 @@ export class BattleChallengeDialogRenderer {
     const g = section.addComponent(Graphics); g.fillColor = rgba(8, 10, 13, 180); g.roundRect(-width / 2, -height / 2, width, height, 8 * scale); g.fill(); g.strokeColor = rgba(142, 106, 55, 150); g.stroke();
     const title = this.host.addChildLabel(section, 'BattleChallengeDialogAllyTitle', '我方阵容', 0, height / 2 - 20 * scale, 18 * scale, rgba(231, 205, 142), new Size(width - 20 * scale, 24 * scale)); title.overflow = Label.Overflow.SHRINK;
     const count = formation.length;
-    const heroes = formation.slice(0, 5).map((h) => safeText(h.heroName)).join('、') || '点击布阵选择英雄';
+    const heroes = formation.slice(0, 4).map((h) => safeText(h.heroName)).join('、') || '点击布阵选择英雄';
     const ally = this.host.addChildLabel(section, 'BattleChallengeDialogAllyText', '出战 ' + count + '/5：' + heroes, 0, -4 * scale, 16 * scale, rgba(210, 190, 150), new Size(width - 24 * scale, height - 40 * scale)); ally.overflow = Label.Overflow.SHRINK;
   }
   private renderButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean): Node {

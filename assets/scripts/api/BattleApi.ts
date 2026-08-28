@@ -39,7 +39,7 @@ import {
   type UnknownRecord,
 } from './ApiValueGuards';
 
-const MAX_LINEUP = 5;
+const MAX_LINEUP = 4;
 const MAX_ENEMIES = 8;
 const MAX_TEXT = 128;
 const ANNUAL_MAINLINE_TOTAL_STAGES = 393;

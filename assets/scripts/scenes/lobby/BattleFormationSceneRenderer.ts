@@ -51,7 +51,7 @@ export class BattleFormationSceneRenderer {
     const rightWidth = width * 0.4;
     this.renderHeroList(width / 2 - rightWidth / 2 - 10 * scale, 10 * scale, rightWidth, height - 100 * scale, scale, state, selectedIds);
     const footerY = -height / 2 + 36 * scale;
-    const powerText = '总战力 ' + totalPower.toLocaleString('en-US') + ' / 推荐 ' + recommendedPower.toLocaleString('en-US') + ' · 上阵 ' + filled.length + '/5'
+    const powerText = '总战力 ' + totalPower.toLocaleString('en-US') + ' / 推荐 ' + recommendedPower.toLocaleString('en-US') + ' · 上阵 ' + filled.length + '/4'
       + (canChallenge && !powerEnough ? ' · 战力不足，仍可挑战' : '');
     const powerLabel = this.host.addChildLabel(this.host.node, 'BattleFormationPower', powerText, -60 * scale, footerY, 18 * scale, !canChallenge || powerEnough ? rgba(186, 225, 173) : rgba(255, 96, 96), new Size(width * 0.6, 28 * scale));
     powerLabel.overflow = Label.Overflow.SHRINK;
@@ -164,7 +164,7 @@ export class BattleFormationSceneRenderer {
   private resolveSlots(heroes: LobbyHeroItemVO[], selectedIds: number[]): Array<LobbyHeroItemVO | null> {
     const visible = this.visibleHeroes(heroes);
     const byId = new Map(visible.map((h) => [h.id, h]));
-    const ordered = selectedIds.length > 0 ? selectedIds.map((id) => byId.get(id)).filter((h): h is LobbyHeroItemVO => !!h) : [...visible].sort((a, b) => b.power - a.power).slice(0, 5);
+    const ordered = selectedIds.length > 0 ? selectedIds.map((id) => byId.get(id)).filter((h): h is LobbyHeroItemVO => !!h) : [...visible].sort((a, b) => b.power - a.power).slice(0, 4);
     const slots: Array<LobbyHeroItemVO | null> = [];
     for (const h of ordered) { if (slots.length >= 9) break; if (!slots.some((s) => s?.id === h.id)) slots.push(h); }
     while (slots.length < 9) slots.push(null);

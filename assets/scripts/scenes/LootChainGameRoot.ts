@@ -3033,8 +3033,8 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`${hero.heroName} 已移出本次阵容。`);
     } else {
       const next = [...current];
-      if (next.length >= 5) {
-        this.setStatus('阵容已满，请先点击已上阵英雄下阵，再选择新英雄。');
+      if (next.length >= 4) {
+        this.setStatus('阵容已满(上限 4 人)，请先点击已上阵英雄下阵，再选择新英雄。');
         return;
       } else {
         next.push(hero.id);
@@ -4724,7 +4724,7 @@ export class LootChainGameRoot extends Component {
   private defaultLobbyFormationHeroIds(): number[] {
     return [...this.selectableLobbyHeroes()]
       .sort((a, b) => b.power - a.power)
-      .slice(0, 5)
+      .slice(0, 4)
       .map((hero) => hero.id);
   }
 
@@ -4733,14 +4733,14 @@ export class LootChainGameRoot extends Component {
     const byId = new Map(heroes.map((hero) => [hero.id, hero]));
     const normalized: number[] = [];
     for (const heroId of heroIds) {
-      if (normalized.length >= 5) {
+      if (normalized.length >= 4) {
         break;
       }
       if (byId.has(heroId) && !normalized.includes(heroId)) {
         normalized.push(heroId);
       }
     }
-    return normalized.slice(0, 5);
+    return normalized.slice(0, 4);
   }
 
   private reconcileLobbyFormationSelection(): boolean {

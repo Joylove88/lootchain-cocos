@@ -334,7 +334,7 @@ export class LobbyBattleFlow {
     const byId = new Map(selectable.map((hero) => [hero.id, hero]));
     if (selectedHeroIds.length > 0) {
       // 战斗请求只提交玩家当前确认的本地阵容 ID；属性、奖励、消耗仍由后端掌控。
-      const selected = selectedHeroIds.map((heroId) => byId.get(heroId)).filter((hero): hero is LobbyHeroItemVO => !!hero).slice(0, 5);
+      const selected = selectedHeroIds.map((heroId) => byId.get(heroId)).filter((hero): hero is LobbyHeroItemVO => !!hero).slice(0, 4);
       if (selected.length > 0) {
         return selected;
       }
@@ -342,7 +342,7 @@ export class LobbyBattleFlow {
     }
     return selectable
       .sort((a, b) => b.power - a.power)
-      .slice(0, 5);
+      .slice(0, 4);
   }
 
   private bump(): void {
