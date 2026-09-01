@@ -247,7 +247,8 @@ export class LobbyGuardBattleRenderer {
     this.projectiles.length = 0;
     this.heroFxLastAt.clear();
     this.beamFxLive = 0;
-    this.pendingDamage.clear();
+    this.damageSlot = 0;
+    this.liveDamageFloaters = 0;
   }
 
   /** 战斗状态 bump(结算回执到达等):只刷新结算覆盖层,不整场重建。 */
@@ -875,7 +876,6 @@ export class LobbyGuardBattleRenderer {
     }
     this.consumeEvents();
     this.updateProjectiles();
-    this.flushDamageFloaters();
     for (const aim of this.guardFxAimers.values()) {
       aim();
     }
@@ -1551,66 +1551,62 @@ export class LobbyGuardBattleRenderer {
     return `${text}${units[idx]}`;
   }
 
-  /** 同目标伤害聚合窗(视频验收:BOSS 身上数字糊成一团)——0.3s 内合并为一条"-总量 ×N"。 */
-  private readonly pendingDamage = new Map<number, { sum: number; count: number; skill: boolean; x: number; y: number; flushAt: number }>();
+  /** 伤害数字(2026-08-28 参考图重做):每次命中各自弹一个数字、环形四散,不再合并 ×N;
+   *  小额白字 / 大额与技能击红字带火焰箭头;同屏上限保性能(超限时小字让位给大字)。 */
+  private damageSlot = 0;
+  private liveDamageFloaters = 0;
 
   private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
-    const entry = this.pendingDamage.get(targetId);
-    if (entry) {
-      entry.sum += amount;
-      entry.count += 1;
-      entry.skill = entry.skill || skill;
-      entry.x = x;
-      entry.y = y;
+    void targetId;
+    const big = skill || amount >= 1000;
+    if (this.liveDamageFloaters >= (big ? 46 : 30)) {
       return;
     }
-    this.pendingDamage.set(targetId, { sum: amount, count: 1, skill, x, y, flushAt: Date.now() + 300 });
-  }
-
-  private flushDamageFloaters(): void {
-    if (this.pendingDamage.size === 0) {
-      return;
-    }
-    const now = Date.now();
-    for (const [targetId, entry] of [...this.pendingDamage]) {
-      if (now < entry.flushAt) {
-        continue;
-      }
-      this.pendingDamage.delete(targetId);
-      // 参考图样式:大额=火焰箭头图标+红色大字(▶文字三角已换 image2 素材,2026-08-28),技能击紫色大字,普通白字;K/M/B 缩写
-      const suffix = entry.count > 1 ? ` ×${entry.count}` : '';
-      const valueText = this.formatDamageValue(entry.sum);
-      if (entry.skill) {
-        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.6, `技能击 -${valueText}${suffix}`, rgba(200, 150, 255), 22);
-      } else if (entry.count > 1 || entry.sum >= 1000) {
-        this.spawnCritFloater(entry.x, entry.y + this.unitSize() * 0.44, `-${valueText}${suffix}`);
-      } else {
-        this.spawnFloater(entry.x, entry.y + this.unitSize() * 0.4, `-${valueText}`, rgba(255, 244, 224, 240), 16);
-      }
-    }
-  }
-
-  /** 暴击/多段命中飘字:image2 火焰箭头素材+红色大字(替代文字▶三角)。 */
-  private spawnCritFloater(x: number, y: number, text: string): void {
     const field = this.fieldNode;
     if (!field) {
       return;
     }
-    this.floaterCycle = (this.floaterCycle + 1) % 6;
-    const ox = ((this.floaterCycle % 3) - 1) * 38;
-    const oy = Math.floor(this.floaterCycle / 3) * 26;
-    const node = this.host.addChildPlainNode(field, 'GuardCritFloater', x + ox, y + oy, 220, 32);
+    this.damageSlot = (this.damageSlot + 1) % 12;
+    const slot = this.damageSlot;
+    // 12 方位角错开 + 半径分档:同一目标连续挨打时数字铺成一片,不叠在一个点上
+    const angle = (slot / 12) * Math.PI * 2 + (slot % 3) * 0.26;
+    const radius = this.unitSize() * (0.3 + (slot % 4) * 0.12);
+    const px = x + Math.cos(angle) * radius * 1.5;
+    const py = y + this.unitSize() * 0.32 + Math.sin(angle) * radius * 0.8;
+    const valueText = this.formatDamageValue(amount);
+
+    const node = this.host.addChildPlainNode(field, 'GuardDamageNum', px, py, big ? 200 : 120, 32);
     node.setSiblingIndex(field.children.length - 1);
-    this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -80, 0, 36, 36);
-    const label = this.host.addChildLabel(node, 'Text', text, 14, 0, 21, rgba(255, 110, 80, 250), new Size(164, 28));
+    this.liveDamageFloaters += 1;
+    let labelX = 0;
+    if (big) {
+      // 大额/技能击:火焰箭头素材 + 红色粗体大字(参考图)
+      this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -46, -2, 34, 34);
+      labelX = 26;
+    }
+    const size = skill ? 24 : big ? 22 : 16;
+    const color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rgba(255, 248, 236, 240);
+    const label = this.host.addChildLabel(node, 'Text', `-${valueText}`, labelX, 0, size, color, new Size(big ? 140 : 116, size + 10));
     label.enableOutline = true;
-    label.outlineColor = rgba(40, 10, 6, 255);
-    label.outlineWidth = 3;
+    label.outlineColor = rgba(40, 12, 6, 255);
+    label.outlineWidth = big ? 3 : 2;
     label.isBold = true;
+
     const opacity = node.addComponent(UIOpacity);
-    opacity.opacity = 245;
-    tween(node).by(0.8, { position: new Vec3(0, 36, 0) }).start();
-    tween(opacity).delay(0.45).to(0.35, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+    opacity.opacity = 250;
+    // 弹出:先小幅弹大再回落,升幅按槽位错开,整片数字有层次不齐步走
+    node.setScale(big ? 0.6 : 0.8, big ? 0.6 : 0.8, 1);
+    tween(node).to(0.09, { scale: new Vec3(big ? 1.18 : 1.06, big ? 1.18 : 1.06, 1) }, { easing: 'backOut' })
+      .to(0.1, { scale: Vec3.ONE }).start();
+    const rise = 30 + (slot % 4) * 9;
+    const life = big ? 0.95 : 0.78;
+    tween(node).by(life, { position: new Vec3(0, rise, 0) }, { easing: 'quadOut' }).start();
+    tween(opacity).delay(life * 0.5).to(life * 0.45, { opacity: 0 }).call(() => {
+      this.liveDamageFloaters = Math.max(0, this.liveDamageFloaters - 1);
+      if (node.isValid) {
+        node.destroy();
+      }
+    }).start();
   }
 
   /** 命中结算:爆闪+伤害入聚合窗+目标受击红闪。 */
