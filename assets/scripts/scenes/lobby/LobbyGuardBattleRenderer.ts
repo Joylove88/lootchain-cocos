@@ -12,6 +12,7 @@ import {
   sp,
   Sprite,
   SpriteFrame,
+  Texture2D,
   UIOpacity,
   UITransform,
   Vec3,
@@ -338,7 +339,6 @@ export class LobbyGuardBattleRenderer {
     this.renderSummonButton();
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
-    this.renderExitButton(root, layout.width, layout.height);
     this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
     this.tickTimer = setInterval(() => this.step(), TICK_MS);
@@ -354,14 +354,29 @@ export class LobbyGuardBattleRenderer {
   /** 贴图挂载:同步建占位节点锁定兄弟序(异步补挂会排到末尾、盖住整场),资源到位只填 spriteFrame。 */
   private mountSprite(parent: Node, name: string, path: string, x: number, y: number, width: number, height: number): void {
     const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    resources.load(path, SpriteFrame, (error: Error | null, frame: SpriteFrame | null) => {
-      if (error || !frame || !node.isValid) {
+    const apply = (frame: SpriteFrame): void => {
+      if (!node.isValid) {
         return;
       }
       const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
       sprite.spriteFrame = frame;
       node.getComponent(UITransform)?.setContentSize(width, height);
+    };
+    resources.load(path, SpriteFrame, (error: Error | null, frame: SpriteFrame | null) => {
+      if (!error && frame) {
+        apply(frame);
+        return;
+      }
+      // 兜底:spriteFrame 子资源未导出时(meta 尚未翻 sprite-frame),直接取 texture 运行时包一层
+      resources.load(path.replace(/\/spriteFrame$/, '/texture'), Texture2D, (err2: Error | null, tex: Texture2D | null) => {
+        if (err2 || !tex) {
+          return;
+        }
+        const wrapped = new SpriteFrame();
+        wrapped.texture = tex;
+        apply(wrapped);
+      });
     });
   }
 
@@ -477,33 +492,31 @@ export class LobbyGuardBattleRenderer {
     }
     this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
     g.clear();
-    // 车道透明横带已删(2026-08-28 用户验收:不要三条横线的透明框)——地面纹理即车道。
-    // 3×4 正方大卡:边长=列距×0.92——任何宽高比都不互叠;锁定格暗卡,下一个待解锁格标倒数
+    // 1:1 复刻(2026-08-28 用户提供整套 HUD 素材):英雄格用 ghud_cell_card 素材,锁定格同卡压暗+锁图标
     const size = this.cellPitchPx() * 0.92;
-    for (const stale of field.children.filter((child) => child.name === 'GuardLockIcon')) {
+    const cardH = size * (232 / 213);
+    for (const stale of field.children.filter((child) => child.name === 'GuardLockIcon' || child.name === 'GuardCellCard')) {
       stale.destroy();
     }
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const center = this.cellCenter(cell);
       const locked = guardCellUnlockRank(cell) >= sim.unlockedCells;
-      // 锁定格强区分(2026-08-27 用户验收:锁定/解锁看不出区别):重黑底+暗边+锁图标
-      g.fillColor = locked ? rgba(6, 5, 4, 205) : rgba(34, 24, 18, 150);
-      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
-      g.fill();
-      g.strokeColor = locked ? rgba(90, 76, 60, 160) : rgba(190, 150, 92, 185);
-      g.lineWidth = locked ? 1.4 : 2;
-      g.roundRect(center.x - size / 2, center.y - size / 2, size, size, 12);
-      g.stroke();
+      const card = this.host.addChildPlainNode(field, 'GuardCellCard', center.x, center.y, size, cardH);
+      card.setSiblingIndex(1);
+      this.mountSprite(card, 'Img', 'ui/battle/ai/ghud_cell_card/spriteFrame', 0, 0, size, cardH);
+      const cardOpacity = card.addComponent(UIOpacity);
+      cardOpacity.opacity = locked ? 110 : 235;
       if (locked) {
-        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', center.x, center.y + size * 0.14, 40, 40);
-        this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 40, 40);
+        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', center.x, center.y + size * 0.1, 38, 38);
+        this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 38, 38);
       }
     }
     field.getChildByName('GuardLockHint')?.destroy();
     if (sim.unlockedCells < GUARD_GRID_CELLS) {
       const nextCell = guardCellFromUnlockRank(sim.unlockedCells);
       const center = this.cellCenter(nextCell);
-      const hint = this.host.addChildLabel(field, 'GuardLockHint', `再召唤 ${this.nextCellUnlockNeed(sim)} 次\n解锁此格`, center.x, center.y, 15, rgba(220, 202, 168, 225), new Size(size, 44));
+      const hint = this.host.addChildLabel(field, 'GuardLockHint', `再召唤 ${this.nextCellUnlockNeed(sim)} 次
+解锁此格`, center.x, center.y, 15, rgba(220, 202, 168, 225), new Size(size, 44));
       hint.enableOutline = true;
       hint.outlineColor = rgba(20, 12, 6, 255);
       hint.outlineWidth = 2;
@@ -515,20 +528,19 @@ export class LobbyGuardBattleRenderer {
     if (!field) {
       return;
     }
-    // 场景化水晶塔(ui/guard/crystal_tower,1024×1536 透明底):立在格子区左侧,整体收进屏内,底座落到下车道地面。
-    const height = this.layoutHeight * 0.4;
-    const width = height * (1024 / 1536);
-    const x = Math.max(this.xToPx(0) - this.layoutWidth * 0.028, -this.layoutWidth / 2 + width * 0.52);
-    // 底座落到下车道地面(车道整体下移后同步)。
-    const y = -this.layoutHeight * 0.187;
+    // 1:1 复刻:新水晶素材(ghud_cell 同批,299×652 熔岩基座蓝晶簇)
+    const height = this.layoutHeight * 0.44;
+    const width = height * (299 / 652);
+    const x = Math.max(this.xToPx(0) - this.layoutWidth * 0.028, -this.layoutWidth / 2 + width * 0.55);
+    const y = -this.layoutHeight * 0.16;
     const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, y, width, height);
-    this.mountSprite(holder, 'GuardCrystalIcon', 'ui/guard/crystal_tower/spriteFrame', 0, 0, width, height);
+    this.mountSprite(holder, 'GuardCrystalIcon', 'ui/battle/ai/ghud_crystal_tower/spriteFrame', 0, 0, width, height);
     tween(holder)
-      .repeatForever(tween().to(1.4, { scale: new Vec3(1.035, 1.035, 1) }).to(1.4, { scale: Vec3.ONE }))
+      .repeatForever(tween().to(1.4, { scale: new Vec3(1.03, 1.03, 1) }).to(1.4, { scale: Vec3.ONE }))
       .start();
   }
 
-  // ── HUD:水晶血条 / 金币 / 波次 ──
+  // ── HUD:1:1 复刻用户提供的整套素材(2026-08-28)──
   private renderHud(): void {
     const root = this.root;
     if (!root) {
@@ -537,49 +549,80 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const hud = this.host.addChildPlainNode(root, 'GuardHud', 0, 0, width, height);
-    const barW = Math.min(420, width * 0.4);
-    const bar = this.host.addChildPlainNode(hud, 'GuardCrystalHpBar', -width / 2 + barW / 2 + 28, height / 2 - 42, barW, 20);
-    bar.addComponent(Graphics);
-    this.host.addChildLabel(hud, 'GuardCrystalHpText', '', -width / 2 + barW / 2 + 28, height / 2 - 42, 16, rgba(255, 245, 220), new Size(barW, 22));
-    this.host.addChildLabel(hud, 'GuardWaveText', '', 0, height / 2 - 42, 24, rgba(255, 232, 160), new Size(width * 0.34, 30));
-    this.host.addChildLabel(hud, 'GuardGoldText', '', width / 2 - 180, height / 2 - 42, 24, rgba(255, 214, 92), new Size(260, 30));
-    // 底部 UI 带:按钮/提示区与跑道分离(视频验收:按钮压在第三车道上,怪从按钮底下穿行)
-    const bottomBand = this.host.addChildPlainNode(hud, 'GuardBottomBand', 0, -height / 2 + height * 0.045, width, height * 0.09);
-    const bandG = bottomBand.addComponent(Graphics);
-    bandG.fillColor = rgba(12, 9, 7, 150);
-    bandG.rect(-width / 2, -height * 0.045, width, height * 0.09);
-    bandG.fill();
-    bandG.strokeColor = rgba(214, 178, 110, 60);
-    bandG.lineWidth = 1;
-    bandG.moveTo(-width / 2, height * 0.045);
-    bandG.lineTo(width / 2, height * 0.045);
-    bandG.stroke();
-    this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★,10% 矿脉共鸣+2★)· 拖到水晶出售回金', 0, -height / 2 + 28, 16, rgba(196, 180, 150, 230), new Size(width * 0.75, 22));
-    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 130, height / 2 - 70, 16, rgba(150, 230, 190, 235), new Size(260, 22), HorizontalTextAlignment.LEFT);
-    this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 260, height / 2 - 70, 16, rgba(255, 190, 150, 240), new Size(460, 22), HorizontalTextAlignment.RIGHT);
-    // 波次进度轨道(参考图:圆点连线,精英/BOSS 波标骷髅色)
-    const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 66, 320, 16);
-    track.addComponent(Graphics);
-    // BOSS 顶部大血条(有存活 BOSS 时显示)
-    const bossBar = this.host.addChildPlainNode(hud, 'GuardBossTopBar', 0, height / 2 - 100, 460, 26);
-    bossBar.addComponent(Graphics);
-    const bossText = this.host.addChildLabel(bossBar, 'GuardBossTopBarText', '', 0, 0, 15, rgba(255, 236, 210), new Size(440, 20));
-    bossText.enableOutline = true;
-    bossText.outlineColor = rgba(40, 16, 10, 255);
-    bossText.outlineWidth = 2;
-    // 全队攻击力(参考蔚蓝星球顶部 ⚔ 总攻显示)
-    this.host.addChildLabel(hud, 'GuardTeamAtkText', '', -width / 2 + 96, height / 2 - 216, 17, rgba(255, 214, 130, 245), new Size(240, 22), HorizontalTextAlignment.LEFT);
-    // 场上定位计数(左侧竖排)
+    // 左上:水晶生命(素材框 632×105,内嵌蓝条)
+    const hpW = Math.min(390, width * 0.29);
+    const hpH = hpW * (105 / 632);
+    const hpBar = this.host.addChildPlainNode(hud, 'GuardCrystalHpBar', -width / 2 + hpW / 2 + 26, height / 2 - 20 - hpH / 2, hpW, hpH);
+    hpBar.addComponent(Graphics);
+    this.mountSprite(hpBar, 'Frame', 'ui/battle/ai/ghud_hp_frame/spriteFrame', 0, 0, hpW, hpH);
+    const hpText = this.host.addChildLabel(hpBar, 'GuardCrystalHpText', '', hpW * 0.05, 1, 15, rgba(255, 250, 235, 250), new Size(hpW * 0.8, 20));
+    hpText.enableOutline = true;
+    hpText.outlineColor = rgba(10, 14, 26, 255);
+    hpText.outlineWidth = 2;
+    // 左侧:职业图标竖条(素材 83×362,五格:近战/远程/辅助/控制/全队攻击)+ 右侧计数
+    const stripW = 52;
+    const stripH = stripW * (362 / 83);
+    const stripX = -width / 2 + 26 + stripW / 2;
+    const stripTop = height / 2 - 20 - hpH - 14;
+    const strip = this.host.addChildPlainNode(hud, 'GuardRoleStrip', stripX, stripTop - stripH / 2, stripW, stripH);
+    this.mountSprite(strip, 'Img', 'ui/battle/ai/ghud_role_strip/spriteFrame', 0, 0, stripW, stripH);
+    const rowStep = stripH / 5;
     const roles: Array<[string, string]> = [['melee', '近战'], ['ranged', '远程'], ['support', '辅助'], ['control', '控制']];
-    roles.forEach(([role, label], index) => {
-      const row = this.host.addChildPlainNode(hud, `GuardRoleCount_${role}`, -width / 2 + 74, height / 2 - 110 - index * 26, 130, 22);
-      const color = GUARD_ROLE_COLOR[role] ?? rgba(220, 220, 220);
-      const dot = row.addComponent(Graphics);
-      dot.fillColor = rgba(color.r, color.g, color.b, 235);
-      dot.circle(-56, 0, 6);
-      dot.fill();
-      this.host.addChildLabel(row, 'Text', `${label} 0`, 10, 0, 16, rgba(226, 214, 188, 240), new Size(130, 22), HorizontalTextAlignment.LEFT);
+    roles.forEach(([role], index) => {
+      const rowY = stripTop - rowStep * (index + 0.5);
+      const label = this.host.addChildLabel(hud, `GuardRoleCount_${role}`, '', stripX + stripW / 2 + 12 + 60, rowY, 17, rgba(236, 226, 200, 245), new Size(120, 22), HorizontalTextAlignment.LEFT);
+      label.enableOutline = true;
+      label.outlineColor = rgba(12, 8, 6, 255);
+      label.outlineWidth = 2;
     });
+    const teamAtk = this.host.addChildLabel(hud, 'GuardTeamAtkText', '', stripX + stripW / 2 + 12 + 80, stripTop - rowStep * 4.5, 16, rgba(255, 176, 130, 250), new Size(160, 22), HorizontalTextAlignment.LEFT);
+    teamAtk.enableOutline = true;
+    teamAtk.outlineColor = rgba(12, 8, 6, 255);
+    teamAtk.outlineWidth = 2;
+    // 顶部中央:标题横幅(素材 704×110)
+    const bannerW = Math.min(600, width * 0.42);
+    const bannerH = bannerW * (110 / 704);
+    const banner = this.host.addChildPlainNode(hud, 'GuardTopBanner', 0, height / 2 - 16 - bannerH / 2, bannerW, bannerH);
+    this.mountSprite(banner, 'Img', 'ui/battle/ai/ghud_top_banner/spriteFrame', 0, 0, bannerW, bannerH);
+    const waveText = this.host.addChildLabel(banner, 'GuardWaveText', '', 0, 2, 20, rgba(255, 236, 190, 252), new Size(bannerW - 60, 26));
+    waveText.overflow = Label.Overflow.SHRINK;
+    waveText.enableOutline = true;
+    waveText.outlineColor = rgba(20, 12, 6, 255);
+    waveText.outlineWidth = 2;
+    // BOSS 顶部血条:名字 + 红条(名字在条上方,数字条内)
+    const bossName = this.host.addChildLabel(hud, 'GuardBossTopName', '', 0, height / 2 - 16 - bannerH - 16, 17, rgba(255, 224, 190, 252), new Size(500, 22));
+    bossName.enableOutline = true;
+    bossName.outlineColor = rgba(30, 10, 6, 255);
+    bossName.outlineWidth = 2;
+    const bossBar = this.host.addChildPlainNode(hud, 'GuardBossTopBar', 0, height / 2 - 16 - bannerH - 40, 480, 24);
+    bossBar.addComponent(Graphics);
+    const bossText = this.host.addChildLabel(bossBar, 'GuardBossTopBarText', '', 0, 0, 14, rgba(255, 244, 230, 252), new Size(440, 18));
+    bossText.enableOutline = true;
+    bossText.outlineColor = rgba(40, 12, 8, 255);
+    bossText.outlineWidth = 2;
+    // 右上:战斗金币(素材 325×89)+ 设置 + 关闭
+    const pillW = 240;
+    const pillH = pillW * (89 / 325);
+    const goldPill = this.host.addChildPlainNode(hud, 'GuardGoldPill', width / 2 - 128 - pillW / 2, height / 2 - 20 - pillH / 2, pillW, pillH);
+    this.mountSprite(goldPill, 'Img', 'ui/battle/ai/ghud_gold_pill/spriteFrame', 0, 0, pillW, pillH);
+    const goldText = this.host.addChildLabel(goldPill, 'GuardGoldText', '', pillW * 0.08, 1, 21, rgba(255, 222, 130, 252), new Size(pillW * 0.66, 26), HorizontalTextAlignment.CENTER);
+    goldText.enableOutline = true;
+    goldText.outlineColor = rgba(24, 14, 6, 255);
+    goldText.outlineWidth = 2;
+    const settingsBtn = this.host.addChildPlainNode(hud, 'GuardSettingsButton', width / 2 - 82, height / 2 - 20 - pillH / 2, 42, 42);
+    this.mountSprite(settingsBtn, 'Img', 'ui/battle/ai/ghud_btn_settings/spriteFrame', 0, 0, 42, 42);
+    this.host.applyImageButtonFeedback(settingsBtn);
+    settingsBtn.on(Node.EventType.TOUCH_END, () => this.host.setStatus('战斗内设置即将开放。'), this);
+    const closeBtn = this.host.addChildPlainNode(hud, 'GuardCloseButton', width / 2 - 34, height / 2 - 20 - pillH / 2, 42, 42);
+    this.mountSprite(closeBtn, 'Img', 'ui/battle/ai/ghud_btn_close/spriteFrame', 0, 0, 42, 42);
+    this.host.applyImageButtonFeedback(closeBtn);
+    closeBtn.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
+    // 次级信息:等级击杀(左)/下一波预告(右)/波次轨道(标准模式)
+    this.host.addChildLabel(hud, 'GuardXpText', '', stripX + stripW / 2 + 12 + 60, stripTop - stripH - 22, 14, rgba(150, 230, 190, 230), new Size(220, 20), HorizontalTextAlignment.LEFT);
+    this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
+    const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
+    track.addComponent(Graphics);
+    this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★)· 拖到水晶出售回金', 0, -height / 2 + 16, 14, rgba(196, 180, 150, 200), new Size(width * 0.6, 18));
   }
 
   private refreshWaveTrack(): void {
@@ -632,42 +675,41 @@ export class LobbyGuardBattleRenderer {
     if (this.paintedCellsKey !== `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`) {
       this.repaintFieldBase();
     }
-    const bar = hud.getChildByName('GuardCrystalHpBar');
-    const barTransform = bar?.getComponent(UITransform);
-    const graphics = bar?.getComponent(Graphics);
-    if (bar && barTransform && graphics) {
-      const barW = barTransform.width;
+    // 水晶生命:蓝条画在素材框内(框中空区约 [-0.27w, +0.44w])
+    const hpBar = hud.getChildByName('GuardCrystalHpBar');
+    const hpTransform = hpBar?.getComponent(UITransform);
+    const hpGraphics = hpBar?.getComponent(Graphics);
+    if (hpBar && hpTransform && hpGraphics) {
+      const w = hpTransform.width;
+      const h = hpTransform.height;
       const ratio = Math.max(0, sim.crystalHp / sim.crystalMaxHp);
-      graphics.clear();
-      graphics.fillColor = rgba(8, 8, 10, 220);
-      graphics.roundRect(-barW / 2, -10, barW, 20, 9);
-      graphics.fill();
-      graphics.fillColor = ratio > 0.35 ? rgba(110, 190, 255, 240) : rgba(240, 90, 70, 245);
-      graphics.roundRect(-barW / 2, -10, Math.max(6, barW * ratio), 20, 9);
-      graphics.fill();
-      graphics.strokeColor = rgba(214, 178, 110, 220);
-      graphics.lineWidth = 1.6;
-      graphics.roundRect(-barW / 2, -10, barW, 20, 9);
-      graphics.stroke();
+      const fillL = -w * 0.27;
+      const fillW = w * 0.71;
+      hpGraphics.clear();
+      hpGraphics.fillColor = rgba(10, 14, 24, 235);
+      hpGraphics.roundRect(fillL, -h * 0.22, fillW, h * 0.44, h * 0.2);
+      hpGraphics.fill();
+      hpGraphics.fillColor = ratio > 0.35 ? rgba(90, 180, 255, 245) : rgba(240, 90, 70, 245);
+      hpGraphics.roundRect(fillL, -h * 0.22, Math.max(4, fillW * ratio), h * 0.44, h * 0.2);
+      hpGraphics.fill();
     }
-    const hpText = hud.getChildByName('GuardCrystalHpText')?.getComponent(Label);
+    const hpText = hud.getChildByName('GuardCrystalHpBar')?.getChildByName('GuardCrystalHpText')?.getComponent(Label);
     if (hpText) {
-      hpText.string = `矿晶水晶 ${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
+      hpText.string = `水晶生命 ${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
     }
-    const waveText = hud.getChildByName('GuardWaveText')?.getComponent(Label);
+    const waveText = hud.getChildByName('GuardTopBanner')?.getChildByName('GuardWaveText')?.getComponent(Label);
     if (waveText) {
       if (sim.mode === 'rush') {
         const leftSec = Math.max(0, Math.ceil((GUARD_RUSH_TIME_LIMIT_MS - sim.timeMs) / 1000));
-        waveText.string = `车轮战 层数 ${guardTrialLayers(sim)} · BOSS×${sim.bossKills} · 剩 ${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
+        waveText.string = `车轮战 层数 ${guardTrialLayers(sim)} · BOSS×${sim.bossKills} · 剩余 ${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
       } else {
         waveText.string = sim.phase === 'prep'
           ? (sim.wave === 0 ? '首波来袭倒计时…' : `第 ${sim.wave}/${sim.maxWave} 波已清 · 备战中`)
           : `第 ${sim.wave}/${sim.maxWave} 波${sim.wave === sim.maxWave ? ' · BOSS!' : sim.wave % 10 === 0 ? ' · BOSS 节拍!' : ''}`;
       }
     }
-    const goldText = hud.getChildByName('GuardGoldText')?.getComponent(Label);
+    const goldText = hud.getChildByName('GuardGoldPill')?.getChildByName('GuardGoldText')?.getComponent(Label);
     if (goldText) {
-      // 计数滚动:显示值逐帧追真值(涨/跌都滚),配合金币飞行动效
       if (this.displayedGold < 0) {
         this.displayedGold = sim.gold;
       }
@@ -676,29 +718,22 @@ export class LobbyGuardBattleRenderer {
         const step = Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.18));
         this.displayedGold = Math.abs(step) >= Math.abs(diff) ? sim.gold : this.displayedGold + step;
       }
-      goldText.string = `战斗金币 ${this.displayedGold}`;
+      goldText.string = `${this.displayedGold}`;
     }
-    const summonLabel = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonLabel')?.getComponent(Label);
-    if (summonLabel) {
-      summonLabel.string = `召唤 ${guardCurrentSummonCost(sim)}`;
-    }
-    const summonNext = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonNext')?.getComponent(Label);
-    if (summonNext) {
-      summonNext.string = `下次 ${Math.min(300, guardCurrentSummonCost(sim) + 10)}`;
+    const summonCost = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonCost')?.getComponent(Label);
+    if (summonCost) {
+      summonCost.string = `${guardCurrentSummonCost(sim)} · 下次 ${Math.min(300, guardCurrentSummonCost(sim) + 10)}`;
     }
     this.refreshWaveTrack();
-    const hudNode = this.root?.getChildByName('GuardHud');
-    if (hudNode) {
-      const counts: Record<string, number> = { melee: 0, ranged: 0, support: 0, control: 0 };
-      for (const hero of sim.heroes) {
-        counts[hero.role] = (counts[hero.role] ?? 0) + 1;
-      }
-      const names: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
-      for (const role of Object.keys(counts)) {
-        const label = hudNode.getChildByName(`GuardRoleCount_${role}`)?.getChildByName('Text')?.getComponent(Label);
-        if (label) {
-          label.string = `${names[role]} ${counts[role]}`;
-        }
+    const counts: Record<string, number> = { melee: 0, ranged: 0, support: 0, control: 0 };
+    for (const hero of sim.heroes) {
+      counts[hero.role] = (counts[hero.role] ?? 0) + 1;
+    }
+    const names: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
+    for (const role of Object.keys(counts)) {
+      const label = hud.getChildByName(`GuardRoleCount_${role}`)?.getComponent(Label);
+      if (label) {
+        label.string = `${names[role]} ${counts[role]}`;
       }
     }
     const xpText = hud.getChildByName('GuardXpText')?.getComponent(Label);
@@ -707,29 +742,32 @@ export class LobbyGuardBattleRenderer {
     }
     const teamAtkText = hud.getChildByName('GuardTeamAtkText')?.getComponent(Label);
     if (teamAtkText) {
-      const total = sim.heroes.reduce((sum, hero) => sum + guardHeroAttackValue(sim, hero), 0);
       const pct = sim.mods.teamAtkPct + sim.enhanceLevel * 8;
-      const surge = sim.supportSurgeUntilMs > sim.timeMs ? ' · 圣辉涌泉' : '';
-      teamAtkText.string = `⚔ 全队攻击 ${total}${pct > 0 ? `(+${pct}%)` : ''}${surge}`;
+      const surge = sim.supportSurgeUntilMs > sim.timeMs ? ' ·涌泉' : '';
+      teamAtkText.string = `全队攻击 +${pct}%${surge}`;
     }
     const previewText = hud.getChildByName('GuardPreviewText')?.getComponent(Label);
     if (previewText) {
       if (sim.phase === 'prep' && sim.nextWaveSpawns) {
-        const names: Record<string, string> = { normal: '小怪', fast: '快速', tank: '肉盾', flying: '飞行', shooter: '远程', elite: '精英', boss: 'BOSS' };
+        const kindNames: Record<string, string> = { normal: '小怪', fast: '快速', tank: '肉盾', flying: '飞行', shooter: '远程', elite: '精英', boss: 'BOSS' };
         const summary = guardSummarizeSpawns(sim.nextWaveSpawns);
-        previewText.string = '下一波: ' + Object.entries(summary).map(([kind, count]) => `${names[kind] ?? kind}×${count}`).join(' ');
+        previewText.string = '下一波: ' + Object.entries(summary).map(([kind, count]) => `${kindNames[kind] ?? kind}×${count}`).join(' ');
       } else {
         previewText.string = '';
       }
     }
-    const enhanceLabel = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceLabel')?.getComponent(Label);
-    if (enhanceLabel) {
-      enhanceLabel.string = `强化 全队攻击+${sim.enhanceLevel * GUARD_ENHANCE_ATK_PCT}% · ${sim.enhanceCost}`;
+    const enhanceDesc = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceDesc')?.getComponent(Label);
+    if (enhanceDesc) {
+      enhanceDesc.string = `全队攻击 +${sim.enhanceLevel * GUARD_ENHANCE_ATK_PCT}%`;
+    }
+    const enhanceCost = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceCost')?.getComponent(Label);
+    if (enhanceCost) {
+      enhanceCost.string = `${sim.enhanceCost}`;
     }
     this.refreshCrystalSkillButton();
   }
 
-  // ── P2:强化按钮(与召唤争夺金币) ──
+  // ── P2:强化按钮(素材版,与召唤争夺金币) ──
   private renderEnhanceButton(): void {
     const root = this.root;
     if (!root) {
@@ -737,10 +775,22 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const buttonW = Math.min(292, width * 0.22);
-    const button = this.mountPrimaryButton(root, 'GuardEnhanceButton', width / 2 - buttonW / 2 - 36 - Math.min(292, width * 0.22) - 24, -height / 2 + 56, buttonW);
-    const enhanceLabel = this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', 0, 0, 19, rgba(255, 238, 190), new Size(buttonW - 60, 24));
-    enhanceLabel.overflow = Label.Overflow.SHRINK;
+    const w = Math.min(268, width * 0.2);
+    const h = w * (234 / 510);
+    const summonW = Math.min(300, width * 0.22);
+    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - summonW - 18 - w / 2, -height / 2 + 20 + h / 2, w, h);
+    this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_enhance/spriteFrame', 0, 0, w, h);
+    this.host.applyImageButtonFeedback(button);
+    const title = this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', w * 0.1, h * 0.2, 22, rgba(255, 238, 190, 252), new Size(w * 0.6, 26));
+    title.enableOutline = true;
+    title.outlineColor = rgba(20, 12, 6, 255);
+    title.outlineWidth = 2;
+    const desc = this.host.addChildLabel(button, 'GuardEnhanceDesc', '', w * 0.1, -h * 0.08, 13, rgba(232, 214, 180, 240), new Size(w * 0.66, 16));
+    desc.overflow = Label.Overflow.SHRINK;
+    const cost = this.host.addChildLabel(button, 'GuardEnhanceCost', '', w * 0.1, -h * 0.3, 16, rgba(255, 214, 110, 250), new Size(w * 0.6, 20));
+    cost.enableOutline = true;
+    cost.outlineColor = rgba(24, 14, 6, 255);
+    cost.outlineWidth = 2;
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -754,24 +804,36 @@ export class LobbyGuardBattleRenderer {
     }, this);
   }
 
-  // ── P2:水晶技能(矿晶震荡,CD 45s) ──
+  // ── P2:水晶技能(素材圆钮+能量条;CD 进度映射为能量 0..300) ──
   private renderCrystalSkillButton(): void {
     const root = this.root;
     if (!root) {
       return;
     }
     const height = this.layoutHeight;
-    const button = this.host.addChildPlainNode(root, 'GuardCrystalSkillButton', -this.layoutWidth / 2 + 70, -height / 2 + 70, 88, 88);
-    button.addComponent(Graphics);
-    this.host.addChildLabel(button, 'GuardCrystalSkillLabel', '矿晶\n震荡', 0, 0, 16, rgba(190, 230, 255), new Size(80, 44));
+    const size = 96;
+    const button = this.host.addChildPlainNode(root, 'GuardCrystalSkillButton', -this.layoutWidth / 2 + 34 + size / 2, -height / 2 + 66 + size / 2, size, size);
+    this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_skill/spriteFrame', 0, 0, size, size * (271 / 273));
     this.host.applyImageButtonFeedback(button);
+    const label = this.host.addChildLabel(button, 'GuardCrystalSkillLabel', '水晶技能', 0, -size / 2 - 14, 15, rgba(200, 232, 255, 250), new Size(110, 20));
+    label.enableOutline = true;
+    label.outlineColor = rgba(10, 16, 28, 255);
+    label.outlineWidth = 2;
+    const pillW = 132;
+    const pillH = pillW * (71 / 239);
+    const pill = this.host.addChildPlainNode(root, 'GuardCrystalEnergy', -this.layoutWidth / 2 + 34 + size + 14 + pillW / 2, -height / 2 + 66 + size * 0.32, pillW, pillH);
+    this.mountSprite(pill, 'Img', 'ui/battle/ai/ghud_energy_pill/spriteFrame', 0, 0, pillW, pillH);
+    const energy = this.host.addChildLabel(pill, 'Text', '', pillW * 0.08, 1, 15, rgba(150, 214, 255, 252), new Size(pillW * 0.7, 18));
+    energy.enableOutline = true;
+    energy.outlineColor = rgba(10, 16, 28, 255);
+    energy.outlineWidth = 2;
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
         return;
       }
       if (!guardUseCrystalSkill(sim)) {
-        this.host.setStatus('矿晶震荡冷却中…');
+        this.host.setStatus('水晶能量未满…');
       } else {
         this.shakeField(10);
       }
@@ -782,27 +844,17 @@ export class LobbyGuardBattleRenderer {
   private refreshCrystalSkillButton(): void {
     const sim = this.sim;
     const button = this.root?.getChildByName('GuardCrystalSkillButton');
-    const g = button?.getComponent(Graphics);
-    if (!sim || !button || !g) {
+    if (!sim || !button) {
       return;
     }
     const ready = guardCrystalSkillReady(sim);
     const remain = Math.max(0, sim.crystalSkillReadyMs - sim.timeMs);
     const frac = ready ? 1 : 1 - remain / GUARD_CRYSTAL_SKILL_CD_MS;
-    g.clear();
-    g.fillColor = ready ? rgba(30, 60, 96, 245) : rgba(22, 26, 34, 235);
-    g.circle(0, 0, 42);
-    g.fill();
-    g.strokeColor = ready ? rgba(140, 220, 255, 250) : rgba(90, 110, 130, 200);
-    g.lineWidth = 3;
-    g.circle(0, 0, 42);
-    g.stroke();
-    if (!ready) {
-      // CD 弧
-      g.strokeColor = rgba(140, 220, 255, 200);
-      g.lineWidth = 4;
-      g.arc(0, 0, 36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac, true);
-      g.stroke();
+    const opacity = button.getComponent(UIOpacity) ?? button.addComponent(UIOpacity);
+    opacity.opacity = ready ? 255 : 150;
+    const energy = this.root?.getChildByName('GuardCrystalEnergy')?.getChildByName('Text')?.getComponent(Label);
+    if (energy) {
+      energy.string = `${Math.round(frac * 300)} / 300`;
     }
   }
 
@@ -826,13 +878,19 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    // 按钮统一尺寸(2026-08-27 用户验收:大小不一)
-    const buttonW = Math.min(292, width * 0.22);
-    const button = this.mountPrimaryButton(root, 'GuardSummonButton', width / 2 - buttonW / 2 - 36, -height / 2 + 56, buttonW);
-    const summonMainLabel = this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', 0, 10, 24, rgba(255, 238, 190), new Size(buttonW - 56, 30));
-    summonMainLabel.overflow = Label.Overflow.SHRINK;
-    const summonNextLabel = this.host.addChildLabel(button, 'GuardSummonNext', '', 0, -19, 14, rgba(240, 214, 170, 230), new Size(buttonW - 56, 18));
-    summonNextLabel.overflow = Label.Overflow.SHRINK;
+    const w = Math.min(300, width * 0.22);
+    const h = w * (236 / 560);
+    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w / 2, -height / 2 + 20 + h / 2, w, h);
+    this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_summon/spriteFrame', 0, 0, w, h);
+    this.host.applyImageButtonFeedback(button);
+    const title = this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', w * 0.08, h * 0.14, 28, rgba(255, 244, 210, 255), new Size(w * 0.6, 34));
+    title.enableOutline = true;
+    title.outlineColor = rgba(60, 26, 8, 255);
+    title.outlineWidth = 3;
+    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 15, rgba(255, 224, 140, 250), new Size(w * 0.72, 20));
+    cost.enableOutline = true;
+    cost.outlineColor = rgba(50, 22, 8, 255);
+    cost.outlineWidth = 2;
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -2126,13 +2184,12 @@ export class LobbyGuardBattleRenderer {
       g.arc(left, cy, radius, -halfSpan, halfSpan, false);
       g.stroke();
     }
-    // 选中格绿色高亮
+    // 选中格高亮:素材金光卡(1:1 复刻 2026-08-28)
     const center = this.cellCenter(hero.cell);
     const cellSize = this.cellPitchPx() * 0.92;
-    g.strokeColor = rgba(150, 240, 110, 240);
-    g.lineWidth = 3;
-    g.roundRect(center.x - cellSize / 2, center.y - cellSize / 2, cellSize, cellSize, 12);
-    g.stroke();
+    const selW = cellSize * (259 / 213);
+    const selH = cellSize * (232 / 213) * (237 / 232);
+    this.mountSprite(layer, 'SelectedCard', 'ui/battle/ai/ghud_cell_selected/spriteFrame', center.x, center.y, selW, selH);
     this.showHeroInfo(hero);
   }
 
