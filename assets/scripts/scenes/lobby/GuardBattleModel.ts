@@ -201,9 +201,10 @@ export interface GuardBattleState {
 }
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
-export const GUARD_GRID_ROWS = 3;
+/** 2026-08-28 用户拍板分区布局:上下两排各 6 格贴地面顶/底,中间整条路怪物通行。 */
+export const GUARD_GRID_ROWS = 2;
 /** 总 12 格:开局开 6 格,之后每累计召唤 GUARD_CELL_UNLOCK_EVERY 次解锁 1 格(2026-08-26 用户拍板:逐格解锁)。 */
-export const GUARD_GRID_COLS = 4;
+export const GUARD_GRID_COLS = 6;
 export const GUARD_GRID_CELLS = GUARD_GRID_ROWS * GUARD_GRID_COLS;
 export const GUARD_START_CELLS = 6;
 export const GUARD_CELL_UNLOCK_EVERY = 4;
@@ -247,7 +248,7 @@ export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; int
   // 2026-08-28 用户拍板:近战覆盖 9→6.3→6.9(2026-08-28 二调 +10%)且不再锁单车道——打全车道,只是够不远;飞行怪仍免疫近战。
   melee: { rangeCells: 6.9, intervalMs: 800, damageScale: 1.6, laneLocked: false },
   ranged: { rangeCells: 10.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
-  support: { rangeCells: 2.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
+  support: { rangeCells: 6.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
   control: { rangeCells: 8.0, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
 };
 /** 主动技能(2★ 解锁,自动施放;参考蔚蓝星球主动技,2026-08-26 用户拍板"参考此图按横板做")。 */
@@ -1053,10 +1054,25 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   const surgeDiv = state.supportSurgeUntilMs > state.timeMs ? GUARD_SUPPORT_SURGE_ATKSPD : 1;
   const interval = (profile.intervalMs * (1 - Math.min(50, state.mods.atkSpeedPct) / 100)) / surgeDiv;
   if (hero.role === 'support') {
-    // 辅助:周期治疗水晶。
+    // 辅助:周期治疗水晶,同时对覆盖内最紧迫怪物打一发轻普攻(2026-08-28 用户拍板:辅助也要有普攻)。
     hero.attackCooldownMs = interval;
     hero.lastAttackAtMs = state.timeMs;
     state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * GUARD_SUPPORT_CRYSTAL_HEAL_RATIO));
+    let healTarget: GuardMonster | null = null;
+    let healBest = Number.POSITIVE_INFINITY;
+    for (const monster of state.monsters) {
+      if (!monster.dead && monster.x <= profile.rangeCells && monster.x < healBest) {
+        healBest = monster.x;
+        healTarget = monster;
+      }
+    }
+    if (healTarget) {
+      hero.lastTargetId = healTarget.monsterId;
+      hero.attackCount += 1;
+      const supportDamage = Math.round(guardHeroAttackValue(state, hero));
+      state.events.push({ type: 'heroAttack', timeMs: state.timeMs, heroCode: hero.heroCode, monsterId: healTarget.monsterId, amount: supportDamage, cell: hero.cell, skillProc: false });
+      damageMonster(state, healTarget, supportDamage, hero);
+    }
     return;
   }
   const heroLane = guardCellLane(hero.cell);

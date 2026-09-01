@@ -25,7 +25,6 @@ import {
   createGuardBattle,
   guardBanishChoice,
   guardCellLane,
-  guardCellX,
   guardChooseOption,
   guardCrystalSkillReady,
   guardCurrentSummonCost,
@@ -150,6 +149,7 @@ interface GuardProjectile {
 }
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
+const GUARD_SLOW_TINT_COLOR = new Color(150, 200, 255, 255);
 
 export class LobbyGuardBattleRenderer {
   constructor(private readonly host: LobbyGuardBattleHost) {}
@@ -434,17 +434,49 @@ export class LobbyGuardBattleRenderer {
   private pathRightPx(): number {
     return this.xToPx(GUARD_SPAWN_X);
   }
-  /** 车道 y:整体压到背景图地面带上(2026-08-25 用户验收:格子不能站在墙上),行距 0.155H。 */
+  /** 两排格子(2026-08-28 用户拍板):row0 贴地面顶部,row1 贴地面底部,中间整条走道。 */
   private laneToPy(lane: number): number {
-    // 地面版背景(2026-08-27):地面占下 65%,车道整体上移+拉开,吃满新地面纵深
-    return this.layoutHeight * 0.055 - lane * this.layoutHeight * 0.175;
+    return this.layoutHeight * (lane === 0 ? 0.12 : -0.30);
+  }
+
+  /** 中央走道 Y(怪物通行,水晶垂直居中对准)。 */
+  private walkwayY(): number {
+    return -this.layoutHeight * 0.09;
+  }
+
+  /** 怪物 Y:跑道段(x≥5.6)上下两道散布,x∈[4.2,5.6] 平滑汇入走道,格子区只走走道——不踩英雄格。 */
+  private monsterY(lane: number, x: number): number {
+    const spreadY = this.walkwayY() + (0.5 - Math.min(1, lane)) * this.layoutHeight * 0.2;
+    if (x >= 5.6) {
+      return spreadY;
+    }
+    if (x <= 4.2) {
+      return this.walkwayY();
+    }
+    const t = (x - 4.2) / 1.4;
+    return this.walkwayY() + (spreadY - this.walkwayY()) * t;
+  }
+
+  /** 走道汇聚系数(1=跑道全散布,0.18=走道):抖动幅度随之收敛。 */
+  private monsterSpread(x: number): number {
+    if (x >= 5.6) {
+      return 1;
+    }
+    if (x <= 4.2) {
+      return 0.18;
+    }
+    return 0.18 + 0.82 * ((x - 4.2) / 1.4);
   }
   private unitSize(): number {
     return this.layoutHeight * 0.16;
   }
+  /** 两排横铺布局(2026-08-28):格位独立排布,不再挂 sim 的 guardCellX 像素映射。 */
   private cellCenter(cell: number): { x: number; y: number } {
-    return { x: this.xToPx(guardCellX(cell)), y: this.laneToPy(guardCellLane(cell)) };
+    const col = cell % GUARD_GRID_COLS;
+    const row = Math.floor(cell / GUARD_GRID_COLS);
+    return { x: this.layoutWidth * -0.305 + col * this.cellPitchPx(), y: this.laneToPy(row) };
   }
+
   private cellAtPosition(px: number, py: number): number | null {
     let best: number | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
@@ -459,9 +491,9 @@ export class LobbyGuardBattleRenderer {
     return bestDist <= this.unitSize() * 0.9 ? best : null;
   }
 
-  /** 相邻格列的像素间距(格子边长基准:边长必须 ≤ 列距才不互叠——2026-08-25 修结构性重叠)。 */
+  /** 相邻格列的像素间距(两排横铺,2026-08-28)。 */
   private cellPitchPx(): number {
-    return this.xToPx(guardCellX(1)) - this.xToPx(guardCellX(0));
+    return this.layoutWidth * 0.112;
   }
 
   private paintLanesAndGrid(): void {
@@ -532,7 +564,7 @@ export class LobbyGuardBattleRenderer {
     const height = this.layoutHeight * 0.44;
     const width = height * (299 / 652);
     const x = Math.max(this.xToPx(0) - this.layoutWidth * 0.028, -this.layoutWidth / 2 + width * 0.55);
-    const y = -this.layoutHeight * 0.16;
+    const y = -this.layoutHeight * 0.055;
     const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, y, width, height);
     this.mountSprite(holder, 'GuardCrystalIcon', 'ui/battle/ai/ghud_crystal_tower/spriteFrame', 0, 0, width, height);
     tween(holder)
@@ -549,6 +581,14 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const hud = this.host.addChildPlainNode(root, 'GuardHud', 0, 0, width, height);
+    // 左侧信息暗底板(2026-08-28 用户验收:亮背景处信息看不清)
+    const panelW = 214;
+    const panelH = height * 0.27;
+    const leftPanel = this.host.addChildPlainNode(hud, 'GuardLeftPanel', -width / 2 + 10 + panelW / 2, height / 2 - 12 - panelH / 2, panelW, panelH);
+    const lpG = leftPanel.addComponent(Graphics);
+    lpG.fillColor = rgba(8, 6, 5, 150);
+    lpG.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
+    lpG.fill();
     // 左上:水晶生命(素材框 632×105,内嵌蓝条)
     const hpW = Math.min(390, width * 0.29);
     const hpH = hpW * (105 / 632);
@@ -560,7 +600,7 @@ export class LobbyGuardBattleRenderer {
     hpText.outlineColor = rgba(10, 14, 26, 255);
     hpText.outlineWidth = 2;
     // 左侧:职业图标竖条(素材 83×362,五格:近战/远程/辅助/控制/全队攻击)+ 右侧计数
-    const stripW = 52;
+    const stripW = 40;
     const stripH = stripW * (362 / 83);
     const stripX = -width / 2 + 26 + stripW / 2;
     const stripTop = height / 2 - 20 - hpH - 14;
@@ -775,10 +815,10 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const w = Math.min(268, width * 0.2);
+    const w = Math.min(236, width * 0.18);
     const h = w * (234 / 510);
-    const summonW = Math.min(300, width * 0.22);
-    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - summonW - 18 - w / 2, -height / 2 + 20 + h / 2, w, h);
+    const summonH = Math.min(264, width * 0.2) * (236 / 560);
+    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - w / 2, -height / 2 + 16 + summonH + 10 + h / 2, w, h);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_enhance/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     const title = this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', w * 0.1, h * 0.2, 22, rgba(255, 238, 190, 252), new Size(w * 0.6, 26));
@@ -878,9 +918,10 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const w = Math.min(300, width * 0.22);
+    // 两排布局(2026-08-28):按钮上下堆叠贴右下角,给下排格子让路
+    const w = Math.min(264, width * 0.2);
     const h = w * (236 / 560);
-    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w / 2, -height / 2 + 20 + h / 2, w, h);
+    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w / 2, -height / 2 + 16 + h / 2, w, h);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_summon/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     const title = this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', w * 0.08, h * 0.14, 28, rgba(255, 244, 210, 255), new Size(w * 0.6, 34));
@@ -973,7 +1014,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnCellBurst(view.node.position.x, view.node.position.y - this.unitSize() * 0.2, rgba(255, 190, 90), false);
         }
       } else if (event.type === 'crystalHit') {
-        this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
+        this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
         // 水晶受击红闪(打击感)
         const crystalSprite = field.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
         if (crystalSprite && crystalSprite.isValid) {
@@ -1011,7 +1052,7 @@ export class LobbyGuardBattleRenderer {
         // BOSS 技能(2026-08-28):重踏=脚下冲击环+大震屏+水晶掉血;投射=暗弹从 BOSS 飞向水晶
         const bossView = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : null;
         const bx = bossView?.node.isValid ? bossView.node.position.x : this.xToPx(5);
-        const by = bossView?.node.isValid ? bossView.node.position.y : this.laneToPy(1);
+        const by = bossView?.node.isValid ? bossView.node.position.y : this.walkwayY();
         this.spawnFloater(bx, by + this.unitSize() * 1.1, `${event.skillName ?? 'BOSS技能'}!`, rgba(255, 140, 90), 20);
         if (event.skillKind === 'volley') {
           const field2 = this.fieldNode;
@@ -1032,7 +1073,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnCellBurst(bx, by - this.unitSize() * 0.5, rgba(255, 130, 70), true);
           this.shakeField(11);
           const cx = this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5;
-          this.spawnFloater(cx, this.laneToPy(1) + this.layoutHeight * 0.1, `-${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 120, 100), 20);
+          this.spawnFloater(cx, this.walkwayY() + this.layoutHeight * 0.1, `-${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 120, 100), 20);
         }
       } else if (event.type === 'heroSkill') {
         // 主动技能(2★ 冷却制):施法动画+技能名飘字;近战/远程附专属特效打向首个目标
@@ -1063,13 +1104,13 @@ export class LobbyGuardBattleRenderer {
       } else if (event.type === 'bossCastStart') {
         this.host.setStatus('BOSS 蓄力轰击水晶!集火打断!');
       } else if (event.type === 'bossCastInterrupt') {
-        this.spawnFloater(this.xToPx(5), this.laneToPy(1) + this.layoutHeight * 0.12, '打断!', rgba(255, 240, 160));
+        this.spawnFloater(this.xToPx(5), this.walkwayY() + this.layoutHeight * 0.12, '打断!', rgba(255, 240, 160));
         this.shakeField(8);
       } else if (event.type === 'bossCastHit') {
-        this.spawnFloater(this.xToPx(0), this.laneToPy(1) + this.layoutHeight * 0.16, `灭世轰击 -${event.amount ?? 0}`, rgba(255, 110, 90));
+        this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.16, `灭世轰击 -${event.amount ?? 0}`, rgba(255, 110, 90));
         this.shakeField(14);
       } else if (event.type === 'crystalSkill') {
-        this.spawnFloater(this.xToPx(2), this.laneToPy(1), `矿晶震荡 ${event.amount ?? 0}`, rgba(150, 220, 255));
+        this.spawnFloater(this.xToPx(2), this.walkwayY(), `矿晶震荡 ${event.amount ?? 0}`, rgba(150, 220, 255));
       } else if (event.type === 'heroAttack') {
         // 攻击动画:怪进入范围出手时播 attack(用户 2026-08-21);技能击追加专属技能特效打在目标身上。
         const hero = sim.heroes.find((entry) => entry.heroCode === event.heroCode && entry.cell === event.cell);
@@ -1095,7 +1136,7 @@ export class LobbyGuardBattleRenderer {
                 this.lastSkillShakeAt = now;
                 this.shakeField(4);
               }
-            } else if (hero && (hero.role === 'ranged' || hero.role === 'control')) {
+            } else if (hero && (hero.role === 'ranged' || hero.role === 'control' || hero.role === 'support')) {
               const origin = this.cellCenter(hero.cell);
               const color = GUARD_ROLE_COLOR[hero.role] ?? rgba(255, 220, 150);
               this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, color);
@@ -1132,7 +1173,7 @@ export class LobbyGuardBattleRenderer {
         continue;
       }
       const size = this.unitSize() * 0.8;
-      const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, this.xToPx(chest.x), this.laneToPy(chest.lane) - size * 0.15, size, size);
+      const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, this.xToPx(chest.x), this.monsterY(chest.lane, chest.x) - size * 0.15, size, size);
       // 呼吸光晕(2026-08-28 用户验收:掉在地上不明显):金色双环随缩放呼吸,画在宝箱图之下
       const glow = this.host.addChildPlainNode(node, 'GuardChestGlow', 0, -size * 0.06, size, size);
       const glowG = glow.addComponent(Graphics);
@@ -1494,7 +1535,7 @@ export class LobbyGuardBattleRenderer {
     }
     if (this.projectiles.length >= 40) {
       // 弹体满载:直接结算命中(伤害表现不丢)
-      this.resolveProjectileHit(this.xToPx(monster.x), this.laneToPy(monster.lane) + this.monsterJitterY(monster), monster.monsterId, amount, color);
+      this.resolveProjectileHit(this.xToPx(monster.x), this.monsterY(monster.lane, monster.x) + this.monsterJitterY(monster) * this.monsterSpread(monster.x), monster.monsterId, amount, color);
       return;
     }
     const node = this.host.addChildPlainNode(field, 'GuardProjectile', fromX, fromY, 10, 10);
@@ -1531,7 +1572,7 @@ export class LobbyGuardBattleRenderer {
       if (proj.crystalTarget) {
         // BOSS 暗弹:飞向水晶,命中=水晶红闪+飘字+小震屏
         const tx = this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5;
-        const ty = this.laneToPy(1) - this.layoutHeight * 0.04;
+        const ty = this.walkwayY() + this.layoutHeight * 0.02;
         const dx = tx - proj.x;
         const dy = ty - proj.y;
         const dist = Math.hypot(dx, dy);
@@ -1576,7 +1617,7 @@ export class LobbyGuardBattleRenderer {
         }
       }
       const tx = target ? this.xToPx(target.x) : proj.x + speed;
-      const ty = target ? this.laneToPy(target.lane) + this.monsterJitterY(target) + this.unitSize() * 0.12 : proj.y;
+      const ty = target ? this.monsterY(target.lane, target.x) + this.monsterJitterY(target) * this.monsterSpread(target.x) + this.unitSize() * 0.12 : proj.y;
       const dx = tx - proj.x;
       const dy = ty - proj.y;
       const dist = Math.hypot(dx, dy);
@@ -1925,7 +1966,7 @@ export class LobbyGuardBattleRenderer {
     for (const zone of sim.zones) {
       let node = this.zoneViews.get(zone.zoneId);
       if (!node) {
-        node = this.host.addChildPlainNode(field, `GuardZone_${zone.zoneId}`, this.xToPx(zone.x), this.laneToPy(1), 10, 10);
+        node = this.host.addChildPlainNode(field, `GuardZone_${zone.zoneId}`, this.xToPx(zone.x), this.walkwayY(), 10, 10);
         node.setSiblingIndex(1);
         node.addComponent(Graphics);
         this.zoneViews.set(zone.zoneId, node);
@@ -1933,7 +1974,7 @@ export class LobbyGuardBattleRenderer {
       if (!node.isValid) {
         continue;
       }
-      node.setPosition(this.xToPx(zone.x), this.laneToPy(1), 0);
+      node.setPosition(this.xToPx(zone.x), this.walkwayY(), 0);
       const g = node.getComponent(Graphics);
       if (!g) {
         continue;
@@ -1944,18 +1985,16 @@ export class LobbyGuardBattleRenderer {
         node.angle = 0;
         // 无边框火海(2026-08-28 用户验收:黄色边框不要):各车道地面椭圆火光+跳动余烬
         const pulse = 0.85 + 0.15 * Math.sin(sim.timeMs / 140);
-        for (let lane = 0; lane < GUARD_GRID_ROWS; lane += 1) {
-          const y = this.laneToPy(lane) - this.laneToPy(1) - this.unitSize() * 0.42;
-          g.fillColor = rgba(255, 120, 40, 62);
-          g.ellipse(0, y, radiusPx * 0.95 * pulse, this.unitSize() * 0.15);
-          g.fill();
-          g.fillColor = rgba(255, 190, 80, 105);
-          g.ellipse(0, y, radiusPx * 0.55 * pulse, this.unitSize() * 0.09);
-          g.fill();
-        }
+        // 走道单团火海(分区布局后灼烧区落在中央走道上)
+        g.fillColor = rgba(255, 120, 40, 66);
+        g.ellipse(0, -this.unitSize() * 0.4, radiusPx * 0.95 * pulse, this.unitSize() * 0.18);
+        g.fill();
+        g.fillColor = rgba(255, 190, 80, 110);
+        g.ellipse(0, -this.unitSize() * 0.4, radiusPx * 0.55 * pulse, this.unitSize() * 0.11);
+        g.fill();
         g.fillColor = rgba(255, 210, 100, 175);
         for (let i = -2; i <= 2; i += 1) {
-          const flickY = this.laneToPy((i + 3) % 3) - this.laneToPy(1) - this.unitSize() * (0.18 + 0.14 * Math.sin(sim.timeMs / 170 + i * 1.7));
+          const flickY = -this.unitSize() * (0.22 + 0.16 * Math.sin(sim.timeMs / 170 + i * 1.7));
           g.circle(i * radiusPx * 0.36, flickY, 6);
         }
         g.fill();
@@ -2158,32 +2197,19 @@ export class LobbyGuardBattleRenderer {
     const layer = this.host.addChildPlainNode(field, 'GuardRangeIndicator', 0, 0, 10, 10);
     layer.setSiblingIndex(1);
     const g = layer.addComponent(Graphics);
-    if (profile.laneLocked) {
-      // 近战:本车道一整块矩形区域(参考图4)
-      const y = this.laneToPy(guardCellLane(hero.cell));
-      const halfH = this.layoutHeight * 0.0875;
-      g.fillColor = rgba(120, 230, 110, 44);
-      g.roundRect(left, y - halfH, right - left, halfH * 2, 16);
-      g.fill();
-      g.strokeColor = rgba(160, 240, 130, 215);
-      g.lineWidth = 3.5;
-      g.roundRect(left, y - halfH, right - left, halfH * 2, 16);
-      g.stroke();
-    } else {
-      // 远程/控制/辅助:全车道大区域,远端画以水晶为圆心的弧形边界(参考图1的金弧)
-      const top = this.laneToPy(0) + this.layoutHeight * 0.1;
-      const bottom = this.laneToPy(GUARD_GRID_ROWS - 1) - this.layoutHeight * 0.1;
-      g.fillColor = rgba(120, 230, 110, 22);
-      g.roundRect(left, bottom, right - left, top - bottom, 18);
-      g.fill();
-      const cy = (top + bottom) / 2;
-      const radius = Math.max(60, right - left);
-      const halfSpan = Math.atan2((top - bottom) / 2, radius);
-      g.strokeColor = rgba(190, 240, 130, 225);
-      g.lineWidth = 6;
-      g.arc(left, cy, radius, -halfSpan, halfSpan, false);
-      g.stroke();
-    }
+    // 分区布局(2026-08-28):范围=走道打击区横带 + 以水晶为心的远端弧形边界
+    const bandTop = this.walkwayY() + this.layoutHeight * 0.15;
+    const bandBottom = this.walkwayY() - this.layoutHeight * 0.15;
+    g.fillColor = rgba(120, 230, 110, 26);
+    g.roundRect(left, bandBottom, right - left, bandTop - bandBottom, 18);
+    g.fill();
+    const cy = this.walkwayY();
+    const radius = Math.max(60, right - left);
+    const halfSpan = Math.atan2((bandTop - bandBottom) / 2, radius);
+    g.strokeColor = rgba(190, 240, 130, 225);
+    g.lineWidth = 6;
+    g.arc(left, cy, radius, -halfSpan, halfSpan, false);
+    g.stroke();
     // 选中格高亮:素材金光卡(1:1 复刻 2026-08-28)
     const center = this.cellCenter(hero.cell);
     const cellSize = this.cellPitchPx() * 0.92;
@@ -2395,7 +2421,7 @@ export class LobbyGuardBattleRenderer {
             return;
           }
           const tx = this.xToPx(target.x);
-          const ty = this.laneToPy(target.lane) + this.monsterJitterY(target) + this.unitSize() * 0.1;
+          const ty = this.monsterY(target.lane, target.x) + this.monsterJitterY(target) * this.monsterSpread(target.x) + this.unitSize() * 0.1;
           if (beam) {
             const dx = tx - muzzleX;
             const dy = ty - muzzleY;
@@ -2772,7 +2798,7 @@ export class LobbyGuardBattleRenderer {
       // 受击顶退(打击感):红闪期间向后小位移,随时间衰减
       const flashLeft = view.hitFlashUntil - Date.now();
       const hitJiggle = !monster.dead && flashLeft > 0 ? (flashLeft / 90) * 7 : 0;
-      view.node.setPosition(this.xToPx(monster.x) + hitJiggle, this.laneToPy(monster.lane) + jitterY + flyLift, 0);
+      view.node.setPosition(this.xToPx(monster.x) + hitJiggle, this.monsterY(monster.lane, monster.x) + jitterY * this.monsterSpread(monster.x) + flyLift, 0);
       if (monster.dead) {
         // 死亡演出:有死亡动画播动画后淡出,否则淡出下沉(打击感 2026-08-26)
         if (view.lastAnimKey !== 'dead') {
@@ -2797,9 +2823,36 @@ export class LobbyGuardBattleRenderer {
         }
         continue;
       }
-      // 受击红闪恢复(flashMonster 置起点,这里逐帧收敛)
+      // 状态表现(2026-08-28 用户拍板:控制类命中要体现):受击红闪 > 减速冰蓝染色+雪星 > 正常
+      const slowed = monster.slowUntilMs > sim.timeMs;
+      const stunned = monster.stunnedUntilMs > sim.timeMs;
       if (view.skeleton && view.skeleton.isValid) {
-        view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : GUARD_SPINE_WHITE;
+        view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : GUARD_SPINE_WHITE;
+      }
+      let slowMark = view.node.getChildByName('GuardSlowMark');
+      if (slowed && !slowMark) {
+        slowMark = this.host.addChildPlainNode(view.node, 'GuardSlowMark', 0, this.unitSize() * 0.34, 30, 30);
+        const sg = slowMark.addComponent(Graphics);
+        sg.strokeColor = rgba(150, 220, 255, 245);
+        sg.lineWidth = 3;
+        for (let arm = 0; arm < 3; arm += 1) {
+          const a = (arm / 3) * Math.PI;
+          sg.moveTo(Math.cos(a) * 11, Math.sin(a) * 11);
+          sg.lineTo(-Math.cos(a) * 11, -Math.sin(a) * 11);
+        }
+        sg.stroke();
+        sg.fillColor = rgba(220, 245, 255, 250);
+        sg.circle(0, 0, 3.4);
+        sg.fill();
+      } else if (!slowed && slowMark) {
+        slowMark.destroy();
+      }
+      let stunMark = view.node.getChildByName('GuardStunMark');
+      if (stunned && !stunMark) {
+        stunMark = this.host.addChildPlainNode(view.node, 'GuardStunMark', 0, this.unitSize() * 0.52, 40, 40);
+        this.mountSprite(stunMark, 'Img', 'ui/battle/ai/buff_stun/spriteFrame', 0, 0, 40, 40);
+      } else if (!stunned && stunMark) {
+        stunMark.destroy();
       }
       const hpBar = view.node.getChildByName('GuardMonsterHp');
       const hpGraphics = hpBar?.getComponent(Graphics);
@@ -2858,7 +2911,7 @@ export class LobbyGuardBattleRenderer {
     const unit = this.unitSize();
     const kindMult = GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1;
     const baseSize = unit * kindMult;
-    const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardMonster_${monster.monsterId}`, this.xToPx(monster.x), this.laneToPy(monster.lane), baseSize, baseSize);
+    const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardMonster_${monster.monsterId}`, this.xToPx(monster.x), this.monsterY(monster.lane, monster.x), baseSize, baseSize);
     // 地面阴影:近黑素材在暖色地面上的剪影分离
     const shadow = node.addComponent(Graphics);
     shadow.fillColor = rgba(8, 5, 3, 105);
