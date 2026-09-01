@@ -2151,7 +2151,10 @@ export class LobbyGuardBattleRenderer {
     const w = 404;
     const h = 312;
     const panel = this.host.addChildPlainNode(root, 'GuardHeroInfoPanel', -this.layoutWidth / 2 + 88 + w / 2, this.layoutHeight / 2 - 226 - h / 2, w, h);
-    this.mountSprite(panel, 'Frame', 'ui/common/ai/popup_frame_small/spriteFrame', 0, 0, w, h);
+    // 素净框(2026-08-28 用户验收:原框坠饰太多且全遮背景):细金线石板框 + 轻透明,背后英雄隐约可见
+    this.mountSprite(panel, 'Frame', 'ui/common/ai/bag_grid_panel/spriteFrame', 0, 0, w, h);
+    const panelOpacity = panel.addComponent(UIOpacity);
+    panelOpacity.opacity = 225;
     const nameLabel = this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 58, 21, rgba(255, 234, 180), new Size(w - 96, 26));
     nameLabel.overflow = Label.Overflow.SHRINK;
     this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 88, 18, rgba(255, 220, 110), new Size(w - 60, 22));
