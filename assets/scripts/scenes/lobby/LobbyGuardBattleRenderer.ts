@@ -208,6 +208,9 @@ export class LobbyGuardBattleRenderer {
   private readonly zoneViews = new Map<number, Node>();
   /** 区域技能起手飞行(zoneId→施放英雄位置):旋风/灼烧从英雄身上飞出落地,归属一眼可辨(2026-09-02 用户反馈像水晶放的)。 */
   private readonly zoneFlights = new Map<number, { fromX: number; fromY: number; startMs: number }>();
+  /** 输出贡献统计面板(2026-09-02 用户拍板参考图):点"统计"展开每英雄伤害排行。 */
+  private statsPanelOpen = false;
+  private lastStatsRefreshMs = 0;
   /** 普攻弹幕(远程/控制;打击感系统 2026-08-26)。 */
   private readonly projectiles: GuardProjectile[] = [];
 
@@ -599,9 +602,9 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const hud = this.host.addChildPlainNode(root, 'GuardHud', 0, 0, width, height);
-    // 左侧信息暗底板(2026-08-28 用户验收:亮背景处信息看不清)
+    // 左侧信息暗底板(2026-08-28 用户验收:亮背景处信息看不清;2026-09-02 职业计数移除后收矮)
     const panelW = 214;
-    const panelH = height * 0.27;
+    const panelH = height * 0.155;
     const leftPanel = this.host.addChildPlainNode(hud, 'GuardLeftPanel', -width / 2 + 10 + panelW / 2, height / 2 - 12 - panelH / 2, panelW, panelH);
     const lpG = leftPanel.addComponent(Graphics);
     lpG.fillColor = rgba(8, 6, 5, 150);
@@ -617,23 +620,32 @@ export class LobbyGuardBattleRenderer {
     hpText.enableOutline = true;
     hpText.outlineColor = rgba(10, 14, 26, 255);
     hpText.outlineWidth = 2;
-    // 左侧:职业图标竖条(素材 83×362,五格:近战/远程/辅助/控制/全队攻击)+ 右侧计数
-    const stripW = 40;
-    const stripH = stripW * (362 / 83);
-    const stripX = -width / 2 + 26 + stripW / 2;
+    // 左侧改版(2026-09-02 用户拍板参考图):去掉职业计数竖条,换"统计"按钮展开每英雄输出贡献
     const stripTop = height / 2 - 20 - hpH - 14;
-    const strip = this.host.addChildPlainNode(hud, 'GuardRoleStrip', stripX, stripTop - stripH / 2, stripW, stripH);
-    this.mountSprite(strip, 'Img', 'ui/battle/ai/ghud_role_strip/spriteFrame', 0, 0, stripW, stripH);
-    const rowStep = stripH / 5;
-    const roles: Array<[string, string]> = [['melee', '近战'], ['ranged', '远程'], ['support', '辅助'], ['control', '控制']];
-    roles.forEach(([role], index) => {
-      const rowY = stripTop - rowStep * (index + 0.5);
-      const label = this.host.addChildLabel(hud, `GuardRoleCount_${role}`, '', stripX + stripW / 2 + 12 + 60, rowY, 17, rgba(236, 226, 200, 245), new Size(120, 22), HorizontalTextAlignment.LEFT);
-      label.enableOutline = true;
-      label.outlineColor = rgba(12, 8, 6, 255);
-      label.outlineWidth = 2;
-    });
-    const teamAtk = this.host.addChildLabel(hud, 'GuardTeamAtkText', '', stripX + stripW / 2 + 12 + 80, stripTop - rowStep * 4.5, 16, rgba(255, 176, 130, 250), new Size(160, 22), HorizontalTextAlignment.LEFT);
+    const statsBtnW = 88;
+    const statsBtnH = 38;
+    const statsBtn = this.host.addChildPlainNode(hud, 'GuardStatsButton', -width / 2 + 24 + statsBtnW / 2, stripTop - statsBtnH / 2, statsBtnW, statsBtnH);
+    const sbG = statsBtn.addComponent(Graphics);
+    sbG.fillColor = rgba(24, 18, 12, 225);
+    sbG.roundRect(-statsBtnW / 2, -statsBtnH / 2, statsBtnW, statsBtnH, 8);
+    sbG.fill();
+    sbG.strokeColor = rgba(214, 168, 92, 220);
+    sbG.lineWidth = 1.6;
+    sbG.roundRect(-statsBtnW / 2, -statsBtnH / 2, statsBtnW, statsBtnH, 8);
+    sbG.stroke();
+    const sbLabel = this.host.addChildLabel(statsBtn, 'Text', '统计', 0, 0, 17, rgba(244, 220, 166, 252), new Size(statsBtnW - 8, 22));
+    sbLabel.enableOutline = true;
+    sbLabel.outlineColor = rgba(12, 8, 6, 255);
+    sbLabel.outlineWidth = 2;
+    statsBtn.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
+      if (event) {
+        event.propagationStopped = true;
+      }
+      this.statsPanelOpen = !this.statsPanelOpen;
+      this.refreshStatsPanel(true);
+    }, this);
+    this.host.applyImageButtonFeedback(statsBtn, 1.05, 0.95);
+    const teamAtk = this.host.addChildLabel(hud, 'GuardTeamAtkText', '', -width / 2 + 24, stripTop - statsBtnH - 20, 16, rgba(255, 176, 130, 250), new Size(190, 22), HorizontalTextAlignment.LEFT);
     teamAtk.enableOutline = true;
     teamAtk.outlineColor = rgba(12, 8, 6, 255);
     teamAtk.outlineWidth = 2;
@@ -676,11 +688,86 @@ export class LobbyGuardBattleRenderer {
     this.host.applyImageButtonFeedback(closeBtn);
     closeBtn.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
     // 次级信息:等级击杀(左)/下一波预告(右)/波次轨道(标准模式)
-    this.host.addChildLabel(hud, 'GuardXpText', '', stripX + stripW / 2 + 12 + 60, stripTop - stripH - 22, 14, rgba(150, 230, 190, 230), new Size(220, 20), HorizontalTextAlignment.LEFT);
+    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 24, stripTop - statsBtnH - 44, 14, rgba(150, 230, 190, 230), new Size(220, 20), HorizontalTextAlignment.LEFT);
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
     track.addComponent(Graphics);
     this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★)· 拖到水晶出售回金', 0, -height / 2 + 16, 14, rgba(196, 180, 150, 200), new Size(width * 0.6, 18));
+  }
+
+  /** 输出贡献统计面板:英雄伤害降序排行(名字+K/M/B 值+橙色占比条),开着时每 0.5s 重建一次。 */
+  private refreshStatsPanel(force: boolean): void {
+    const hud = this.root?.getChildByName('GuardHud');
+    const sim = this.sim;
+    if (!hud) {
+      return;
+    }
+    const existing = hud.getChildByName('GuardStatsPanel');
+    if (!this.statsPanelOpen || !sim) {
+      if (existing) {
+        existing.destroy();
+      }
+      return;
+    }
+    const now = Date.now();
+    if (!force && existing && now - this.lastStatsRefreshMs < 500) {
+      return;
+    }
+    this.lastStatsRefreshMs = now;
+    if (existing) {
+      existing.destroy();
+    }
+    const entries = Object.entries(sim.heroDamage)
+      .map(([heroCode, damage]) => ({
+        name: sim.pool.find((entry) => entry.heroCode === heroCode)?.displayName ?? heroCode,
+        damage,
+      }))
+      .sort((a, b) => b.damage - a.damage)
+      .slice(0, 8);
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const hpW = Math.min(390, width * 0.29);
+    const hpH = hpW * (105 / 632);
+    const panelTop = height / 2 - 20 - hpH - 14 - 44;
+    const rowH = 32;
+    const panelW = 300;
+    const panelH = 46 + Math.max(1, entries.length) * rowH + 10;
+    const panel = this.host.addChildPlainNode(hud, 'GuardStatsPanel', -width / 2 + 16 + panelW / 2, panelTop - panelH / 2, panelW, panelH);
+    const pg = panel.addComponent(Graphics);
+    pg.fillColor = rgba(10, 8, 7, 215);
+    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
+    pg.fill();
+    pg.strokeColor = rgba(190, 150, 84, 190);
+    pg.lineWidth = 1.4;
+    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
+    pg.stroke();
+    const title = this.host.addChildLabel(panel, 'Title', '我方贡献统计', 0, panelH / 2 - 22, 17, rgba(244, 220, 166, 252), new Size(panelW - 20, 22));
+    title.enableOutline = true;
+    title.outlineColor = rgba(12, 8, 6, 255);
+    title.outlineWidth = 2;
+    if (entries.length === 0) {
+      this.host.addChildLabel(panel, 'Empty', '暂无输出记录', 0, -4, 14, rgba(196, 182, 152, 220), new Size(panelW - 20, 18));
+      return;
+    }
+    const maxDamage = Math.max(1, entries[0].damage);
+    entries.forEach((entry, index) => {
+      const rowY = panelH / 2 - 46 - rowH * index - rowH / 2 + 4;
+      const name = this.host.addChildLabel(panel, `Name_${index}`, entry.name, -panelW / 2 + 14 + 78, rowY + 6, 14, rgba(236, 226, 200, 248), new Size(156, 18), HorizontalTextAlignment.LEFT);
+      name.overflow = Label.Overflow.SHRINK;
+      const value = this.host.addChildLabel(panel, `Value_${index}`, this.formatDamageValue(entry.damage), panelW / 2 - 14 - 55, rowY + 6, 15, rgba(255, 214, 120, 252), new Size(110, 20), HorizontalTextAlignment.RIGHT);
+      value.enableOutline = true;
+      value.outlineColor = rgba(12, 8, 6, 255);
+      value.outlineWidth = 2;
+      const barW = panelW - 28;
+      const bar = this.host.addChildPlainNode(panel, `Bar_${index}`, 0, rowY - 8, barW, 5);
+      const bg = bar.addComponent(Graphics);
+      bg.fillColor = rgba(50, 40, 30, 200);
+      bg.roundRect(-barW / 2, -2.5, barW, 5, 2.5);
+      bg.fill();
+      bg.fillColor = rgba(255, 158, 54, 240);
+      bg.roundRect(-barW / 2, -2.5, Math.max(4, barW * (entry.damage / maxDamage)), 5, 2.5);
+      bg.fill();
+    });
   }
 
   private refreshWaveTrack(): void {
@@ -783,17 +870,7 @@ export class LobbyGuardBattleRenderer {
       summonCost.string = `${guardCurrentSummonCost(sim)} · 下次 ${Math.min(300, guardCurrentSummonCost(sim) + 10)}`;
     }
     this.refreshWaveTrack();
-    const counts: Record<string, number> = { melee: 0, ranged: 0, support: 0, control: 0 };
-    for (const hero of sim.heroes) {
-      counts[hero.role] = (counts[hero.role] ?? 0) + 1;
-    }
-    const names: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
-    for (const role of Object.keys(counts)) {
-      const label = hud.getChildByName(`GuardRoleCount_${role}`)?.getComponent(Label);
-      if (label) {
-        label.string = `${names[role]} ${counts[role]}`;
-      }
-    }
+    this.refreshStatsPanel(false);
     const xpText = hud.getChildByName('GuardXpText')?.getComponent(Label);
     if (xpText) {
       xpText.string = `等级 ${sim.level} · 击杀 ${sim.killCount}`;

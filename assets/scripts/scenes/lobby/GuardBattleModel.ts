@@ -54,6 +54,8 @@ export interface GuardZone {
   speedCellsPerSec: number;
   /** cyclone:命中附带减速时长。 */
   slowMs: number;
+  /** 施放者(跳伤计入其输出统计)。 */
+  casterHeroCode?: string;
 }
 
 export interface GuardMonster {
@@ -190,6 +192,8 @@ export interface GuardBattleState {
   /** 持续区域(灼烧/旋风)与自增 id。 */
   zones: GuardZone[];
   nextZoneId: number;
+  /** 每英雄累计输出(heroCode→伤害;含普攻/技能/区域跳伤,2026-09-02 统计面板)。 */
+  heroDamage: Record<string, number>;
   /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
   supportSurgeUntilMs: number;
   /** 已解锁格数(6 起步,每累计召唤 GUARD_CELL_UNLOCK_EVERY 次 +1,按 rank 顺序开格)。 */
@@ -560,6 +564,7 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     mode,
     zones: [],
     nextZoneId: 1,
+    heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
     bossKills: 0,
@@ -917,7 +922,9 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
       state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
     }
   }
-  void byHero;
+  if (byHero) {
+    state.heroDamage[byHero.heroCode] = (state.heroDamage[byHero.heroCode] ?? 0) + damage;
+  }
   if (monster.hp <= 0) {
     killMonster(state, monster);
   }
@@ -1006,26 +1013,38 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       untilMs: state.timeMs + 4000,
       speedCellsPerSec: 0,
       slowMs: 0,
+      casterHeroCode: hero.heroCode,
     };
     state.zones.push(zone);
     state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId, monsterId: front.monsterId });
     return true;
   }
   if (hero.role === 'control') {
-    if (!state.monsters.some((monster) => !monster.dead)) {
+    // 旋风瞄怪(2026-09-02 用户反馈:固定刷在水晶旁像水晶放的,且推不到怪就到期):
+    // 落点=最逼近水晶的活怪,落地后向刷怪口回扫穿过怪群;跳伤延迟到落地(飞行 ~450ms)之后。
+    let front: GuardMonster | null = null;
+    for (const monster of state.monsters) {
+      if (!monster.dead && (!front || monster.x < front.x)) {
+        front = monster;
+      }
+    }
+    if (!front) {
       return false;
     }
     const zone: GuardZone = {
       zoneId: state.nextZoneId++,
       kind: 'cyclone',
-      x: 1.2,
+      x: front.x,
       radiusCells: 1.0,
       tickDamage: Math.max(1, Math.round(attack * 0.6)),
       tickMs: 500,
-      nextTickAtMs: state.timeMs + 250,
+      nextTickAtMs: state.timeMs + 600,
       untilMs: state.timeMs + 5000,
-      speedCellsPerSec: 0.9,
+      // 落地后随怪群向水晶方向漂(负速),最低漂到 0.8 格在水晶前收口——保住旧版漏斗防线价值
+      // (纯驻留/向刷怪口推进两版 harness 弱阵容都大幅回归:w17→w10、Ⅲ弱A 11→4 层)
+      speedCellsPerSec: -0.7,
       slowMs: 1000,
+      casterHeroCode: hero.heroCode,
     };
     state.zones.push(zone);
     state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId });
@@ -1249,8 +1268,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   }
   // 持续区域(灼烧区/旋风):推进与跳伤(确定性,无 rng;旋风附带减速)。
   for (const zone of state.zones) {
-    if (zone.speedCellsPerSec > 0) {
-      zone.x = Math.min(GUARD_SPAWN_X, zone.x + zone.speedCellsPerSec * (dtMs / 1000));
+    if (zone.speedCellsPerSec !== 0) {
+      zone.x = Math.min(GUARD_SPAWN_X, Math.max(0.8, zone.x + zone.speedCellsPerSec * (dtMs / 1000)));
     }
     while (state.timeMs >= zone.nextTickAtMs && zone.nextTickAtMs <= zone.untilMs) {
       zone.nextTickAtMs += zone.tickMs;
@@ -1260,6 +1279,9 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         }
         if (zone.slowMs > 0) {
           monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + zone.slowMs);
+        }
+        if (zone.casterHeroCode) {
+          state.heroDamage[zone.casterHeroCode] = (state.heroDamage[zone.casterHeroCode] ?? 0) + zone.tickDamage;
         }
         damageMonster(state, monster, zone.tickDamage, null);
       }
