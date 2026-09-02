@@ -81,9 +81,9 @@ import {
 import { loadSharedSpineData } from './SpineDataStore';
 import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 
-/** 守卫场逐英雄体型微调:布阵基准比例带进守卫格后个别英雄偏小(灰烬猎手·罗恩 2026-09-02 用户截图),只在守卫场放大,不动共享补偿表。 */
+/** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
 const GUARD_HERO_SCALE_TWEAK_BY_ASSET: Record<string, number> = {
-  Eulenspigel: 1.55,
+  Eulenspigel: 1.2,
 };
 
 export interface LobbyGuardBattleHost {
@@ -2284,6 +2284,7 @@ export class LobbyGuardBattleRenderer {
         }
         let fit: number;
         if (opts?.allyUnit) {
+          // 体型=共享公式(含 EXTRA 表:罗恩 1.55)× 守卫场微调表(罗恩再 ×1.2)
           fit = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, size, size, this.layoutUiScale, false, opts.allyUnit)
             * (GUARD_HERO_SCALE_TWEAK_BY_ASSET[resolveBattleUnitSpinePrimaryAsset(opts.allyUnit) ?? ''] ?? 1);
           const pos = resolveBattleUnitSpineNodePosition(runtimeData, fit, size, opts.allyUnit, false);
