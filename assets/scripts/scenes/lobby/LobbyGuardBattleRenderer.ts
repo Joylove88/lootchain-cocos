@@ -512,9 +512,17 @@ export class LobbyGuardBattleRenderer {
     return this.layoutWidth * 0.054;
   }
 
-  /** 英雄立绘显示尺寸(随小卡缩放,略溢出卡面)。 */
+  /** 英雄立绘显示尺寸(随格距缩放;2026-09-02 用户:战场全部英雄放大15% → 1.35×1.15)。 */
   private heroDisplaySize(): number {
-    return this.cellPitchPx() * 1.35;
+    return this.cellPitchPx() * 1.55;
+  }
+
+  /** 踏台几何(2026-09-02 用户拍板参考图:格子要在英雄脚底下,不是身后立卡):台面中心对英雄脚底线。 */
+  private cellTileRect(cell: number): { x: number; y: number; w: number; h: number } {
+    const center = this.cellCenter(cell);
+    const pitch = this.cellPitchPx();
+    const w = pitch * 1.02;
+    return { x: center.x, y: center.y - pitch * 0.6, w, h: w * 0.75 };
   }
 
   private paintLanesAndGrid(): void {
@@ -545,31 +553,32 @@ export class LobbyGuardBattleRenderer {
     }
     this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
     g.clear();
-    // 1:1 复刻(2026-08-28 用户提供整套 HUD 素材):英雄格用 ghud_cell_card 素材,锁定格同卡压暗+锁图标
-    const size = this.cellPitchPx() * 0.92;
-    const cardH = size * (232 / 213);
+    // 踏台改版(2026-09-02 用户拍板参考图):格子=英雄脚下石台(image2 生成 ghud_cell_tile),不再是身后立卡;
+    // 锁图标/解锁提示压低 sibling,不再盖到路过的怪物身上。
     for (const stale of field.children.filter((child) => child.name === 'GuardLockIcon' || child.name === 'GuardCellCard')) {
       stale.destroy();
     }
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
-      const center = this.cellCenter(cell);
+      const tile = this.cellTileRect(cell);
       const locked = guardCellUnlockRank(cell) >= sim.unlockedCells;
-      const card = this.host.addChildPlainNode(field, 'GuardCellCard', center.x, center.y, size, cardH);
+      const card = this.host.addChildPlainNode(field, 'GuardCellCard', tile.x, tile.y, tile.w, tile.h);
       card.setSiblingIndex(1);
-      this.mountSprite(card, 'Img', 'ui/battle/ai/ghud_cell_card/spriteFrame', 0, 0, size, cardH);
+      this.mountSprite(card, 'Img', 'ui/guard/ghud_cell_tile/spriteFrame', 0, 0, tile.w, tile.h);
       const cardOpacity = card.addComponent(UIOpacity);
-      cardOpacity.opacity = locked ? 110 : 235;
+      cardOpacity.opacity = locked ? 105 : 235;
       if (locked) {
-        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', center.x, center.y + size * 0.1, 26, 26);
+        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', tile.x, tile.y + tile.h * 0.06, 26, 26);
+        lockNode.setSiblingIndex(2);
         this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 26, 26);
       }
     }
     field.getChildByName('GuardLockHint')?.destroy();
     if (sim.unlockedCells < GUARD_GRID_CELLS) {
       const nextCell = guardCellFromUnlockRank(sim.unlockedCells);
-      const center = this.cellCenter(nextCell);
+      const tile = this.cellTileRect(nextCell);
       const hint = this.host.addChildLabel(field, 'GuardLockHint', `再召唤 ${this.nextCellUnlockNeed(sim)} 次
-解锁此格`, center.x, center.y, 11, rgba(220, 202, 168, 225), new Size(size, 44));
+解锁此格`, tile.x, tile.y + tile.h * 0.72, 11, rgba(220, 202, 168, 225), new Size(tile.w * 1.2, 44));
+      hint.node.setSiblingIndex(2);
       hint.enableOutline = true;
       hint.outlineColor = rgba(20, 12, 6, 255);
       hint.outlineWidth = 2;
@@ -2372,12 +2381,9 @@ export class LobbyGuardBattleRenderer {
     g.lineWidth = 6;
     g.arc(left, cy, radius, -halfSpan, halfSpan, false);
     g.stroke();
-    // 选中格高亮:素材金光卡(1:1 复刻 2026-08-28)
-    const center = this.cellCenter(hero.cell);
-    const cellSize = this.cellPitchPx() * 0.92;
-    const selW = cellSize * (259 / 213);
-    const selH = cellSize * (232 / 213) * (237 / 232);
-    this.mountSprite(layer, 'SelectedCard', 'ui/battle/ai/ghud_cell_selected/spriteFrame', center.x, center.y, selW, selH);
+    // 选中格高亮:金光踏台(踏台改版配套,2026-09-02)
+    const tile = this.cellTileRect(hero.cell);
+    this.mountSprite(layer, 'SelectedCard', 'ui/guard/ghud_cell_tile_active/spriteFrame', tile.x, tile.y, tile.w * 1.1, tile.h * 1.1);
     this.showHeroInfo(hero);
   }
 

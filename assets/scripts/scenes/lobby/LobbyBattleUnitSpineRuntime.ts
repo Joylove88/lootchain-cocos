@@ -129,8 +129,8 @@ const BATTLE_STAGE12_COMBAT_SCALE_MULTIPLIER_BY_ASSET: Record<string, number> = 
 // Nuu(深渊魔女)布阵观感正常但大厅/战斗仍明显偏小(2026-08-02 用户比对截图),仅这两个场景再放大。
 const BATTLE_COMBAT_EXTRA_SCALE_BY_ASSET: Record<string, number> = {
   Nuu: 1.45,
-  // 灰烬猎手·罗恩:站台专属比例 0.272(全表最低)带进大厅/战斗后明显偏小(2026-09-02 用户大厅+守卫两处截图),补回默认档观感。
-  Eulenspigel: 1.55,
+  // 灰烬猎手·罗恩:站台专属比例 0.272(全表最低)带进大厅/战斗后明显偏小(2026-09-02 用户大厅+守卫两处截图),补回默认档观感;二调 1.55→1.7(大厅再+10%)。
+  Eulenspigel: 1.7,
   // 契约魔女(SR_WITCH_03):站台比例 1.32 全表最高,大厅偏大,缩 15%(2026-09-02 用户)。
   act_1028: 0.85,
 };
