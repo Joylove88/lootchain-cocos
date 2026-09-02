@@ -447,25 +447,25 @@ export class LobbyGuardBattleRenderer {
   /** 怪物 Y:跑道段(x≥5.6)上下两道散布,x∈[4.2,5.6] 平滑汇入走道,格子区只走走道——不踩英雄格。 */
   private monsterY(lane: number, x: number): number {
     const spreadY = this.walkwayY() + (0.5 - Math.min(1, lane)) * this.layoutHeight * 0.2;
-    if (x >= 5.6) {
+    if (x >= 6.8) {
       return spreadY;
     }
-    if (x <= 4.2) {
+    if (x <= 5.0) {
       return this.walkwayY();
     }
-    const t = (x - 4.2) / 1.4;
+    const t = (x - 5.0) / 1.8;
     return this.walkwayY() + (spreadY - this.walkwayY()) * t;
   }
 
   /** 走道汇聚系数(1=跑道全散布,0.18=走道):抖动幅度随之收敛。 */
   private monsterSpread(x: number): number {
-    if (x >= 5.6) {
+    if (x >= 6.8) {
       return 1;
     }
-    if (x <= 4.2) {
+    if (x <= 5.0) {
       return 0.18;
     }
-    return 0.18 + 0.82 * ((x - 4.2) / 1.4);
+    return 0.18 + 0.82 * ((x - 5.0) / 1.8);
   }
   private unitSize(): number {
     return this.layoutHeight * 0.16;
@@ -474,7 +474,7 @@ export class LobbyGuardBattleRenderer {
   private cellCenter(cell: number): { x: number; y: number } {
     const col = cell % GUARD_GRID_COLS;
     const row = Math.floor(cell / GUARD_GRID_COLS);
-    return { x: this.layoutWidth * -0.305 + col * this.cellPitchPx(), y: this.laneToPy(row) };
+    return { x: this.layoutWidth * -0.41 + col * this.cellPitchPx(), y: this.laneToPy(row) };
   }
 
   private cellAtPosition(px: number, py: number): number | null {
@@ -491,9 +491,14 @@ export class LobbyGuardBattleRenderer {
     return bestDist <= this.unitSize() * 0.9 ? best : null;
   }
 
-  /** 相邻格列的像素间距(两排横铺,2026-08-28)。 */
+  /** 相邻格列的像素间距(2026-09-02 用户拍板:格子只占屏幕左 1/3)。 */
   private cellPitchPx(): number {
-    return this.layoutWidth * 0.112;
+    return this.layoutWidth * 0.047;
+  }
+
+  /** 英雄立绘显示尺寸(随小卡缩放,略溢出卡面)。 */
+  private heroDisplaySize(): number {
+    return this.cellPitchPx() * 1.35;
   }
 
   private paintLanesAndGrid(): void {
@@ -539,8 +544,8 @@ export class LobbyGuardBattleRenderer {
       const cardOpacity = card.addComponent(UIOpacity);
       cardOpacity.opacity = locked ? 110 : 235;
       if (locked) {
-        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', center.x, center.y + size * 0.1, 38, 38);
-        this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 38, 38);
+        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', center.x, center.y + size * 0.1, 26, 26);
+        this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 26, 26);
       }
     }
     field.getChildByName('GuardLockHint')?.destroy();
@@ -548,7 +553,7 @@ export class LobbyGuardBattleRenderer {
       const nextCell = guardCellFromUnlockRank(sim.unlockedCells);
       const center = this.cellCenter(nextCell);
       const hint = this.host.addChildLabel(field, 'GuardLockHint', `再召唤 ${this.nextCellUnlockNeed(sim)} 次
-解锁此格`, center.x, center.y, 15, rgba(220, 202, 168, 225), new Size(size, 44));
+解锁此格`, center.x, center.y, 11, rgba(220, 202, 168, 225), new Size(size, 44));
       hint.enableOutline = true;
       hint.outlineColor = rgba(20, 12, 6, 255);
       hint.outlineWidth = 2;
@@ -561,9 +566,9 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     // 1:1 复刻:新水晶素材(ghud_cell 同批,299×652 熔岩基座蓝晶簇)
-    const height = this.layoutHeight * 0.44;
+    const height = this.layoutHeight * 0.38;
     const width = height * (299 / 652);
-    const x = Math.max(this.xToPx(0) - this.layoutWidth * 0.028, -this.layoutWidth / 2 + width * 0.55);
+    const x = -this.layoutWidth * 0.462;
     const y = -this.layoutHeight * 0.055;
     const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, y, width, height);
     this.mountSprite(holder, 'GuardCrystalIcon', 'ui/battle/ai/ghud_crystal_tower/spriteFrame', 0, 0, width, height);
@@ -1926,7 +1931,7 @@ export class LobbyGuardBattleRenderer {
       // 主动技能冷却条(2★ 起):橙=充能中,亮蓝=就绪
       let cdNode = view.node.getChildByName('GuardHeroCd');
       if (!cdNode) {
-        cdNode = this.host.addChildPlainNode(view.node, 'GuardHeroCd', 0, -this.unitSize() * 0.7, this.unitSize() * 0.8, 6);
+        cdNode = this.host.addChildPlainNode(view.node, 'GuardHeroCd', 0, -this.heroDisplaySize() * 0.7, this.heroDisplaySize() * 0.8, 6);
         cdNode.addComponent(Graphics);
       }
       const cdG = cdNode.getComponent(Graphics);
@@ -2018,7 +2023,7 @@ export class LobbyGuardBattleRenderer {
 
   private createHeroView(hero: GuardHeroUnit): GuardUnitView {
     const field = this.fieldNode;
-    const size = this.unitSize();
+    const size = this.heroDisplaySize();
     const center = this.cellCenter(hero.cell);
     const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardHero_${hero.unitId}`, center.x, center.y, size, size);
     const pool = this.sim?.pool.find((entry) => entry.heroCode === hero.heroCode);
@@ -2926,7 +2931,7 @@ export class LobbyGuardBattleRenderer {
     // 体型 = 标定视高(unit×体型倍率×DB逐皮肤校准,BOSS 钳 0.72 屏高)/ bounds 高——与旧战斗渲染同一公式;
     // S196 素材原点=脚底中心,直接脚踩地面线,不吃 bounds 偏移。
     const dbScale = GUARD_MONSTER_DB_SCALE[monster.spineCode] ?? 1;
-    const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * 0.72);
+    const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * 0.62);
     const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
     this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view, {
       calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
