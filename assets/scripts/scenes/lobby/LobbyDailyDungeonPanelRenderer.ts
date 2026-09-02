@@ -345,10 +345,10 @@ export class LobbyDailyDungeonPanelRenderer {
       'ThemeStatus',
       statusText,
       0,
-      height / 2 - height * 0.222,
-      16 * scale,
+      height / 2 - height * 0.224,
+      19 * scale,
       open ? rgba(168, 232, 168, 255) : rgba(196, 182, 158, 245),
-      new Size(width * 0.74, 22 * scale),
+      new Size(width * 0.74, 26 * scale),
     );
     status.overflow = Label.Overflow.SHRINK;
     status.enableOutline = true;
@@ -430,9 +430,9 @@ export class LobbyDailyDungeonPanelRenderer {
       `挑战 难度${TIER_ROMAN[tier.tier] ?? tier.tier}`,
       0,
       0,
-      15 * scale,
+      20 * scale,
       rgba(255, 240, 205, 255),
-      new Size(buttonWidth - 16 * scale, 20 * scale),
+      new Size(buttonWidth - 16 * scale, 26 * scale),
     );
     label.overflow = Label.Overflow.SHRINK;
     button.addComponent(Button);
@@ -451,7 +451,7 @@ export class LobbyDailyDungeonPanelRenderer {
       g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, 6 * scale);
       g.fill();
     }
-    const lockText = this.host.addChildLabel(bar, 'ThemeLockText', text, 0, 0, 15 * scale, rgba(206, 190, 156, 240), new Size(barWidth * 0.76, 20 * scale));
+    const lockText = this.host.addChildLabel(bar, 'ThemeLockText', text, 0, 0, 19 * scale, rgba(206, 190, 156, 240), new Size(barWidth * 0.76, 24 * scale));
     lockText.overflow = Label.Overflow.SHRINK;
   }
 
@@ -649,9 +649,9 @@ export class LobbyDailyDungeonPanelRenderer {
       }
       const textLeft = iconX + iconSize / 2 + 8 * scale;
       const textW = Math.max(40 * scale, rewardRight - textLeft);
-      const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 矿晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 9 * scale, 14 * scale, rgba(250, 226, 160, 250), new Size(textW, 18 * scale));
+      const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 矿晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 11 * scale, 18 * scale, rgba(250, 226, 160, 250), new Size(textW, 24 * scale));
       l1.overflow = Label.Overflow.SHRINK;
-      const l2 = this.host.addChildLabel(block, 'TierTrialLine2', '限时拼输出，档位越高越多 ›', textLeft + textW / 2, contentCenterY - 10 * scale, 12 * scale, rgba(196, 182, 152, 235), new Size(textW, 16 * scale));
+      const l2 = this.host.addChildLabel(block, 'TierTrialLine2', '限时拼输出，档位越高越多 ›', textLeft + textW / 2, contentCenterY - 12 * scale, 15 * scale, rgba(196, 182, 152, 235), new Size(textW, 20 * scale));
       l2.overflow = Label.Overflow.SHRINK;
       if (!available) {
         const dim = block.getComponent(UIOpacity) ?? block.addComponent(UIOpacity);
