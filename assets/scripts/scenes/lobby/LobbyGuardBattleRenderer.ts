@@ -72,6 +72,7 @@ import {
   patchBattleUnitSpineRuntimeEnums,
   resolveBattleUnitSpineAnimationNames,
   resolveBattleUnitSpineNodePosition,
+  resolveBattleUnitSpinePrimaryAsset,
   resolveBattleUnitSpineResource,
   resolveBattleUnitSpineRuntimeData,
   resolveBattleUnitSpineScale,
@@ -79,6 +80,11 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+
+/** 守卫场逐英雄体型微调:布阵基准比例带进守卫格后个别英雄偏小(灰烬猎手·罗恩 2026-09-02 用户截图),只在守卫场放大,不动共享补偿表。 */
+const GUARD_HERO_SCALE_TWEAK_BY_ASSET: Record<string, number> = {
+  Eulenspigel: 1.55,
+};
 
 export interface LobbyGuardBattleHost {
   node: Node;
@@ -199,6 +205,8 @@ export class LobbyGuardBattleRenderer {
   private goldCoinLive = 0;
   /** 持续区域(灼烧/旋风)视图。 */
   private readonly zoneViews = new Map<number, Node>();
+  /** 区域技能起手飞行(zoneId→施放英雄位置):旋风/灼烧从英雄身上飞出落地,归属一眼可辨(2026-09-02 用户反馈像水晶放的)。 */
+  private readonly zoneFlights = new Map<number, { fromX: number; fromY: number; startMs: number }>();
   /** 普攻弹幕(远程/控制;打击感系统 2026-08-26)。 */
   private readonly projectiles: GuardProjectile[] = [];
 
@@ -1101,6 +1109,11 @@ export class LobbyGuardBattleRenderer {
         if (typeof event.cell === 'number') {
           // 施放者亮相:脚下金圈+弹跳+技能名喊话(归属一眼可辨,2026-08-27)
           this.highlightCaster(event.cell, `${event.skillName ?? '技能'}!`);
+        }
+        if (typeof event.zoneId === 'number' && typeof event.cell === 'number') {
+          // 区域技能(旋风/灼烧)从施放英雄身上飞出落地
+          const from = this.cellCenter(event.cell);
+          this.zoneFlights.set(event.zoneId, { fromX: from.x, fromY: from.y, startMs: sim.timeMs });
         }
         if (typeof event.monsterId === 'number' && event.heroCode) {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
@@ -2010,6 +2023,7 @@ export class LobbyGuardBattleRenderer {
           node.destroy();
         }
         this.zoneViews.delete(zoneId);
+        this.zoneFlights.delete(zoneId);
       }
     }
     for (const zone of sim.zones) {
@@ -2023,7 +2037,25 @@ export class LobbyGuardBattleRenderer {
       if (!node.isValid) {
         continue;
       }
-      node.setPosition(this.xToPx(zone.x), this.walkwayY(), 0);
+      // 起手飞行:450ms 内从施放英雄位置抛物线飞到落点,弹大成型
+      const tx = this.xToPx(zone.x);
+      const ty = this.walkwayY();
+      let px = tx;
+      let py = ty;
+      let flightScale = 1;
+      const flight = this.zoneFlights.get(zone.zoneId);
+      if (flight) {
+        const t = (sim.timeMs - flight.startMs) / 450;
+        if (t >= 1) {
+          this.zoneFlights.delete(zone.zoneId);
+        } else {
+          const eased = 1 - (1 - t) * (1 - t);
+          px = flight.fromX + (tx - flight.fromX) * eased;
+          py = flight.fromY + (ty - flight.fromY) * eased + Math.sin(Math.max(0, t) * Math.PI) * this.layoutHeight * 0.06;
+          flightScale = 0.25 + 0.75 * eased;
+        }
+      }
+      node.setPosition(px, py, 0);
       const g = node.getComponent(Graphics);
       if (!g) {
         continue;
@@ -2032,6 +2064,7 @@ export class LobbyGuardBattleRenderer {
       g.clear();
       if (zone.kind === 'burn') {
         node.angle = 0;
+        node.setScale(flightScale, flightScale, 1);
         // 无边框火海(2026-08-28 用户验收:黄色边框不要):各车道地面椭圆火光+跳动余烬
         const pulse = 0.85 + 0.15 * Math.sin(sim.timeMs / 140);
         // 走道单团火海(分区布局后灼烧区落在中央走道上)
@@ -2055,8 +2088,8 @@ export class LobbyGuardBattleRenderer {
           const d0 = radiusPx * 2.1;
           spin = this.host.addChildPlainNode(node, 'GuardZoneWindSpin', 0, 0, d0, d0);
           this.mountSprite(spin, 'Img', 'ui/guard/fx_wind_zone/spriteFrame', 0, 0, d0, d0);
-          node.setScale(1, 0.42);
         }
+        node.setScale(flightScale, 0.42 * flightScale, 1);
         const d = radiusPx * 2.1;
         spin.getComponent(UITransform)?.setContentSize(d, d);
         spin.getChildByName('Img')?.getComponent(UITransform)?.setContentSize(d, d);
@@ -2173,7 +2206,8 @@ export class LobbyGuardBattleRenderer {
         }
         let fit: number;
         if (opts?.allyUnit) {
-          fit = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, size, size, this.layoutUiScale, false, opts.allyUnit);
+          fit = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, size, size, this.layoutUiScale, false, opts.allyUnit)
+            * (GUARD_HERO_SCALE_TWEAK_BY_ASSET[resolveBattleUnitSpinePrimaryAsset(opts.allyUnit) ?? ''] ?? 1);
           const pos = resolveBattleUnitSpineNodePosition(runtimeData, fit, size, opts.allyUnit, false);
           // 横向偏移钳制 ±12%(2026-09-02 二收:±30% 仍挡不住深渊魔女的 bounds 过冲)——立绘钉在卡位中心附近
           spineNode.setPosition(Math.max(-size * 0.12, Math.min(size * 0.12, pos.x)), pos.y, 0);
@@ -2737,6 +2771,21 @@ export class LobbyGuardBattleRenderer {
     return (((hash % 1000) / 1000) - 0.5) * this.layoutHeight * 0.155 * 0.64;
   }
 
+  /** 出售落点判定:拖过 0 列左缘(格子区之外)且在水晶高度带内才算,避免合成拖拽误碰(2026-09-02)。 */
+  private isSellDropPosition(x: number, y: number): boolean {
+    const sellBoundaryX = this.cellCenter(0).x - this.cellPitchPx() * 0.55;
+    const crystalY = -this.layoutHeight * 0.055;
+    return x < sellBoundaryX && Math.abs(y - crystalY) < this.layoutHeight * 0.24;
+  }
+
+  /** 拖拽悬停出售区:水晶染红提示"松手=卖"。 */
+  private setCrystalSellHover(hover: boolean): void {
+    const icon = this.fieldNode?.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
+    if (icon && icon.isValid) {
+      icon.color = hover ? rgba(255, 140, 120, 255) : rgba(255, 255, 255, 255);
+    }
+  }
+
   private bindHeroDrag(node: Node, unitId: number): void {
     // 点选与拖拽共存:位移 <10px 视为点击(选中/再点收起,2026-08-25 用户拍板);≥10px 走拖拽合成/换位。
     let movedPx = 0;
@@ -2759,6 +2808,8 @@ export class LobbyGuardBattleRenderer {
       const deltaY = event.getUIDelta ? event.getUIDelta().y : event.getDeltaY ? event.getDeltaY() : 0;
       movedPx += Math.abs(deltaX) + Math.abs(deltaY);
       node.setPosition(node.position.x + deltaX, node.position.y + deltaY, 0);
+      // 拖到出售区时水晶染红提示,离开恢复(2026-09-02 误卖反馈配套)
+      this.setCrystalSellHover(this.isSellDropPosition(node.position.x, node.position.y));
     }, this);
     const finishDrag = () => {
       const sim = this.sim;
@@ -2784,8 +2835,10 @@ export class LobbyGuardBattleRenderer {
         this.syncHeroes();
         return;
       }
-      // 拖到水晶区=出售(格满且无可合成的死局解法,2026-08-26)
-      if (node.position.x < this.xToPx(0.45)) {
+      this.setCrystalSellHover(false);
+      // 拖到水晶本体=出售(格满且无可合成的死局解法,2026-08-26)。
+      // 判定收紧(2026-09-02 用户反馈:水晶离格子近,合成拖拽误碰被卖):必须拖过 0 列左缘且落在水晶高度带内,不再是整个左半区。
+      if (this.isSellDropPosition(node.position.x, node.position.y)) {
         const value = guardSellHero(sim, fromCell);
         if (value !== null) {
           this.clearRangeIndicator();
