@@ -159,7 +159,8 @@ interface GuardProjectile {
 }
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
-const GUARD_SLOW_TINT_COLOR = new Color(150, 200, 255, 255);
+// 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
+const GUARD_SLOW_TINT_COLOR = new Color(96, 168, 255, 255);
 
 export class LobbyGuardBattleRenderer {
   constructor(private readonly host: LobbyGuardBattleHost) {}
@@ -2932,28 +2933,15 @@ export class LobbyGuardBattleRenderer {
         }
         continue;
       }
-      // 状态表现(2026-08-28 用户拍板:控制类命中要体现):受击红闪 > 减速冰蓝染色+雪星 > 正常
+      // 状态表现:受击红闪 > 减速冰蓝染色 > 正常。
+      // 减速只染本体不加挂件(2026-09-02 用户反馈:雪星+蓝雾看着像技能,改成怪物身体变冰蓝一眼看出被减速)。
       const slowed = monster.slowUntilMs > sim.timeMs;
       const stunned = monster.stunnedUntilMs > sim.timeMs;
       if (view.skeleton && view.skeleton.isValid) {
         view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : GUARD_SPINE_WHITE;
       }
-      let slowMark = view.node.getChildByName('GuardSlowMark');
-      if (slowed && !slowMark) {
-        slowMark = this.host.addChildPlainNode(view.node, 'GuardSlowMark', 0, this.unitSize() * 0.34, 30, 30);
-        const sg = slowMark.addComponent(Graphics);
-        sg.strokeColor = rgba(150, 220, 255, 245);
-        sg.lineWidth = 3;
-        for (let arm = 0; arm < 3; arm += 1) {
-          const a = (arm / 3) * Math.PI;
-          sg.moveTo(Math.cos(a) * 11, Math.sin(a) * 11);
-          sg.lineTo(-Math.cos(a) * 11, -Math.sin(a) * 11);
-        }
-        sg.stroke();
-        sg.fillColor = rgba(220, 245, 255, 250);
-        sg.circle(0, 0, 3.4);
-        sg.fill();
-      } else if (!slowed && slowMark) {
+      const slowMark = view.node.getChildByName('GuardSlowMark');
+      if (slowMark) {
         slowMark.destroy();
       }
       let stunMark = view.node.getChildByName('GuardStunMark');
