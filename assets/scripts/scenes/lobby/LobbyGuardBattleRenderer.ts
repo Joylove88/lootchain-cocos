@@ -2048,19 +2048,19 @@ export class LobbyGuardBattleRenderer {
         }
         g.fill();
       } else {
-        node.angle = ((sim.timeMs / 1000) * 240) % 360;
-        g.strokeColor = rgba(140, 220, 255, 195);
-        g.lineWidth = 5;
-        for (let arm = 0; arm < 3; arm += 1) {
-          const base = (arm / 3) * Math.PI * 2;
-          g.moveTo(Math.cos(base) * radiusPx * 0.2, Math.sin(base) * radiusPx * 0.2);
-          g.arc(0, 0, radiusPx * (0.5 + arm * 0.18), base, base + Math.PI * 0.9, false);
+        // 旋风素材化(2026-09-02 用户拍板 image2 方向):透明漩涡贴图子节点自旋,父节点压扁成地面椭圆
+        node.angle = 0;
+        let spin = node.getChildByName('GuardZoneWindSpin');
+        if (!spin) {
+          const d0 = radiusPx * 2.1;
+          spin = this.host.addChildPlainNode(node, 'GuardZoneWindSpin', 0, 0, d0, d0);
+          this.mountSprite(spin, 'Img', 'ui/guard/fx_wind_zone/spriteFrame', 0, 0, d0, d0);
+          node.setScale(1, 0.42);
         }
-        g.stroke();
-        g.strokeColor = rgba(190, 240, 255, 120);
-        g.lineWidth = 2.4;
-        g.circle(0, 0, radiusPx * 0.92);
-        g.stroke();
+        const d = radiusPx * 2.1;
+        spin.getComponent(UITransform)?.setContentSize(d, d);
+        spin.getChildByName('Img')?.getComponent(UITransform)?.setContentSize(d, d);
+        spin.angle = ((sim.timeMs / 1000) * 200) % 360;
       }
     }
   }
