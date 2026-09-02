@@ -109,11 +109,13 @@ function rgba(r: number, g: number, b: number, a = 255): Color {
 
 const TICK_MS = 50;
 /** 显式束状特效名单(包围盒宽高比判不准的,如凤凰焚世=大花瓣包裹的火柱):必须锚英雄身前沿目标方向喷射。 */
+/** 水晶技能渲染开关(2026-09-02 用户拍板:先隐藏,机制保留)。 */
+const GUARD_CRYSTAL_SKILL_HIDDEN = true;
 const GUARD_BEAM_EFFECT_CODES = new Set(['fx_5601_fenghuang_skill']);
 /** 束状根部视觉内缩(素材 AABB 左缘外圈是淡出羽尾,亮部起点在盒内一段;按比例内缩让亮部贴炮口)。逐特效标定。 */
 const GUARD_BEAM_ROOT_INSET: Record<string, number> = { fx_5601_fenghuang_skill: 0.2 };
 /** 同英雄技能特效表现冷却(视频验收:束状几乎常驻屏幕,视觉疲劳)。 */
-const GUARD_HERO_FX_COOLDOWN_MS = 2500;
+const GUARD_HERO_FX_COOLDOWN_MS = 1600;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
@@ -137,7 +139,7 @@ interface GuardUnitView {
   hitFlashUntil: number;
 }
 
-/** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹,飞向水晶。 */
+/** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹;visualOnly=保底技能弹(命中不出飘字)。 */
 interface GuardProjectile {
   node: Node;
   targetId: number;
@@ -146,6 +148,8 @@ interface GuardProjectile {
   amount: number;
   color: Color;
   crystalTarget?: boolean;
+  visualOnly?: boolean;
+  scale?: number;
 }
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
@@ -493,7 +497,7 @@ export class LobbyGuardBattleRenderer {
 
   /** 相邻格列的像素间距(2026-09-02 用户拍板:格子只占屏幕左 1/3)。 */
   private cellPitchPx(): number {
-    return this.layoutWidth * 0.047;
+    return this.layoutWidth * 0.054;
   }
 
   /** 英雄立绘显示尺寸(随小卡缩放,略溢出卡面)。 */
@@ -822,8 +826,9 @@ export class LobbyGuardBattleRenderer {
     const height = this.layoutHeight;
     const w = Math.min(236, width * 0.18);
     const h = w * (234 / 510);
-    const summonH = Math.min(264, width * 0.2) * (236 / 560);
-    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - w / 2, -height / 2 + 16 + summonH + 10 + h / 2, w, h);
+    const summonW = Math.min(264, width * 0.2);
+    const summonH = summonW * (236 / 560);
+    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - summonW - 16 - w / 2, -height / 2 + 18 + summonH / 2, w, h);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_enhance/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     const title = this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', w * 0.1, h * 0.2, 22, rgba(255, 238, 190, 252), new Size(w * 0.6, 26));
@@ -853,6 +858,10 @@ export class LobbyGuardBattleRenderer {
   private renderCrystalSkillButton(): void {
     const root = this.root;
     if (!root) {
+      return;
+    }
+    // 2026-09-02 用户拍板:水晶技能先隐藏(机制保留,后续再放出)
+    if (GUARD_CRYSTAL_SKILL_HIDDEN) {
       return;
     }
     const height = this.layoutHeight;
@@ -887,6 +896,9 @@ export class LobbyGuardBattleRenderer {
   }
 
   private refreshCrystalSkillButton(): void {
+    if (GUARD_CRYSTAL_SKILL_HIDDEN) {
+      return;
+    }
     const sim = this.sim;
     const button = this.root?.getChildByName('GuardCrystalSkillButton');
     if (!sim || !button) {
@@ -923,10 +935,10 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    // 两排布局(2026-08-28):按钮上下堆叠贴右下角,给下排格子让路
+    // 2026-09-02 用户拍板:恢复横向摆放(格子已收左 1/3,右下无冲突)
     const w = Math.min(264, width * 0.2);
     const h = w * (236 / 560);
-    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w / 2, -height / 2 + 16 + h / 2, w, h);
+    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w / 2, -height / 2 + 18 + h / 2, w, h);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_summon/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     const title = this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', w * 0.08, h * 0.14, 28, rgba(255, 244, 210, 255), new Size(w * 0.6, 34));
@@ -1561,6 +1573,33 @@ export class LobbyGuardBattleRenderer {
     this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color });
   }
 
+  /** 保底技能弹:完整特效被限流时,从英雄身前发一颗大号发光弹(纯表现)——技能归属永远可见。 */
+  private spawnSkillBolt(heroCell: number, monster: GuardMonster): void {
+    const field = this.fieldNode;
+    if (!field || this.projectiles.length >= 40) {
+      return;
+    }
+    const origin = this.cellCenter(heroCell);
+    const fromX = origin.x + this.heroDisplaySize() * 0.5;
+    const fromY = origin.y + this.heroDisplaySize() * 0.1;
+    const node = this.host.addChildPlainNode(field, 'GuardSkillBolt', fromX, fromY, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    node.setScale(1.6, 1.6, 1);
+    const g = node.addComponent(Graphics);
+    g.strokeColor = rgba(200, 150, 255, 150);
+    g.lineWidth = 6;
+    g.moveTo(-34, 0);
+    g.lineTo(-9, 0);
+    g.stroke();
+    g.fillColor = rgba(200, 150, 255, 140);
+    g.ellipse(0, 0, 15, 8);
+    g.fill();
+    g.fillColor = rgba(255, 250, 240, 250);
+    g.ellipse(1, 0, 9, 5);
+    g.fill();
+    this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount: 0, color: rgba(200, 150, 255), visualOnly: true });
+  }
+
   /** 每 tick 推进弹幕(归巢;目标死亡转向最近怪;命中=爆闪+飘字+受击红闪)。 */
   private updateProjectiles(): void {
     const sim = this.sim;
@@ -1627,7 +1666,12 @@ export class LobbyGuardBattleRenderer {
       const dy = ty - proj.y;
       const dist = Math.hypot(dx, dy);
       if (dist <= speed || !target) {
-        this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color);
+        if (proj.visualOnly) {
+          this.spawnImpactFlash(tx, ty, proj.color);
+          this.flashMonster(proj.targetId);
+        } else {
+          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color);
+        }
         proj.node.destroy();
         this.projectiles.splice(i, 1);
         continue;
@@ -2295,18 +2339,25 @@ export class LobbyGuardBattleRenderer {
   private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster): void {
     const field = this.fieldNode;
     const sim = this.sim;
-    if (!field || !sim || this.guardFxLiveCount >= 3 || heroCell === null) {
+    if (!field || !sim || heroCell === null) {
+      return;
+    }
+    // 被限流时不再静默吞掉:保底从英雄身前发一颗大号技能弹(纯表现)——归属永远可见(2026-09-02 用户验收)
+    if (this.guardFxLiveCount >= 5) {
+      this.spawnSkillBolt(heroCell, monster);
       return;
     }
     const pool = sim.pool.find((entry) => entry.heroCode === heroCode);
     const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
     const spec: BattleSkillEffectSpec = resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
-    // 表现限流(视频验收):同英雄 2.5s 内只放一次特效;束状(显式名单)同屏最多 1 条。伤害结算不受影响。
+    // 表现限流(视频验收):同英雄 1.6s 内只放一次完整特效;束状同屏最多 1 条;被限流走保底技能弹。
     const now = Date.now();
     if (now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
+      this.spawnSkillBolt(heroCell, monster);
       return;
     }
     if (GUARD_BEAM_EFFECT_CODES.has(spec.effect) && this.beamFxLive >= 1) {
+      this.spawnSkillBolt(heroCell, monster);
       return;
     }
     this.heroFxLastAt.set(heroCode, now);
