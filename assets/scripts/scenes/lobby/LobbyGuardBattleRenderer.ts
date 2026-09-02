@@ -2175,8 +2175,8 @@ export class LobbyGuardBattleRenderer {
         if (opts?.allyUnit) {
           fit = resolveBattleUnitSpineScale(runtimeData.width, runtimeData.height, size, size, this.layoutUiScale, false, opts.allyUnit);
           const pos = resolveBattleUnitSpineNodePosition(runtimeData, fit, size, opts.allyUnit, false);
-          // 横向偏移钳制(2026-08-28 用户验收:深渊魔女站到格子外):bounds 偏移补偿再大也不许把立绘推出卡位
-          spineNode.setPosition(Math.max(-size * 0.3, Math.min(size * 0.3, pos.x)), pos.y, 0);
+          // 横向偏移钳制 ±12%(2026-09-02 二收:±30% 仍挡不住深渊魔女的 bounds 过冲)——立绘钉在卡位中心附近
+          spineNode.setPosition(Math.max(-size * 0.12, Math.min(size * 0.12, pos.x)), pos.y, 0);
         } else if (opts?.calibratedScale) {
           fit = opts.calibratedScale(Math.max(1, Number(runtimeData.height) || 300));
         } else {
