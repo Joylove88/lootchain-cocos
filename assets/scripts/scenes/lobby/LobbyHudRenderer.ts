@@ -81,7 +81,6 @@ export class LobbyHudRenderer {
       return;
     }
     this.topHudRenderer.render(layout);
-    this.renderLobbyTitleBanner(layout);
     this.renderLobbyActivityRail(layout);
     // 大厅重心改为挂机战斗演出:功能入口已收进底部导航,场景热点不再渲染(方法保留)。
     this.renderIdleStage(layout);
@@ -458,55 +457,23 @@ export class LobbyHudRenderer {
     this.applyLobbyResourceTextStyle(text, unit, true);
   }
 
-  /** 顶部中央爬塔层数横幅(2026-09-03 参考图,链条吊牌素材 657×391):文字落在下方牌面区。 */
-  private renderLobbyTitleBanner(layout: UiLayout): void {
-    const mode = this.hudMode(layout);
-    if (mode.width < 1180 || mode.height < 620) {
-      return;
-    }
-    const scale = this.lobbyHudScale(layout);
-    const width = Math.min(400 * scale, layout.stageWidth * 0.28);
-    const height = width * (391 / 657);
-    const x = (layout.stageLeft + layout.stageRight) / 2;
-    const y = layout.stageTop - height / 2 - 2 * scale;
-    const group = this.createSizedUiNode('LobbyTitleBanner', x, y, width, height);
-    if (!this.host.addSprite('LobbyTitleBannerArt', 'ui/lobby/ai/lhud_title_banner/spriteFrame', 0, 0, width, height, group)) {
-      return;
-    }
-    const label = this.addChildLabel(group, 'LobbyTitleBannerText', this.resolveLobbyTowerTitle(), 0, -height * 0.17, 25 * scale, rgba(250, 228, 172), new Size(width * 0.64, 34 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyLobbyResourceTextStyle(label, scale, true);
-  }
-
-  /** 爬塔层数=主线扁平关卡序(推荐/选中关卡在全部章节里的序号)。 */
-  private resolveLobbyTowerTitle(): string {
-    const adventure = this.host.currentLobbyAdventureState().adventure;
-    if (!adventure) {
-      return '深渊爬塔';
-    }
-    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
-    const code = this.normalizeMainStageCode(this.host.currentLobbySelectedStageCode())
-      ?? this.normalizeMainStageCode(adventure.recommendedStageCode);
-    const index = stages.findIndex((stage) => stage.stageCode === code);
-    return index >= 0 ? `深渊爬塔 · 第${index + 1}层` : '深渊爬塔';
-  }
-
   private renderLobbyGoalTracker(layout: UiLayout): void {
     if (layout.stageWidth < 1180 || layout.stageHeight < 620) {
       return;
     }
     const scale = this.lobbyHudScale(layout);
     const hudInsetX = this.lobbyHudEdgeInset(layout, 'x', scale);
-    const width = Math.min(430 * scale, Math.max(340 * scale, layout.stageWidth * 0.25));
-    // 2026-09-03 参考图:素材面板(595×400)等比,右上叠 logo,底部素材红按钮。
+    // 2026-09-03 二调:面板缩小(430→360 档),logo 收进面板内部右上角。
+    const width = Math.min(360 * scale, Math.max(300 * scale, layout.stageWidth * 0.21));
     const height = width * (400 / 595);
     const x = layout.stageRight - hudInsetX - width / 2 - 6 * scale;
     const y = (layout.stageTop + layout.stageBottom) / 2 + height * 0.34;
     const group = this.createSizedUiNode('LobbyGoalTracker', x, y, width, height);
     const goal = this.resolveLobbyNextGoalView();
     if (this.host.addSprite('LobbyGoalTrackerArt', 'ui/lobby/ai/lhud_goal_panel/spriteFrame', 0, 0, width, height, group)) {
-      const logoW = width * 0.24;
-      this.host.addSprite('LobbyGoalTrackerLogo', 'ui/lobby/ai/lhud_goal_logo/spriteFrame', width / 2 - logoW * 0.62, height / 2 - logoW * 0.42, logoW, logoW * (363 / 322), group);
+      const logoW = width * 0.18;
+      const logoH = logoW * (363 / 322);
+      this.host.addSprite('LobbyGoalTrackerLogo', 'ui/lobby/ai/lhud_goal_logo/spriteFrame', width / 2 - logoW * 0.78 - width * 0.04, height / 2 - logoH * 0.62 - height * 0.04, logoW, logoH, group);
       this.addLobbyGoalTrackerContent(group, goal, width, height, scale);
       return;
     }
@@ -561,10 +528,10 @@ export class LobbyHudRenderer {
     const stage = this.addChildLabel(parent, 'LobbyGoalTrackerStage', goal.stageLine, left + padX, top - height * 0.335, 23 * scale, rgba(248, 226, 169), new Size(width - padX * 2, 30 * scale), HorizontalTextAlignment.LEFT);
     stage.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(stage, scale, true);
-    const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + padX, top - height * 0.475, 14 * scale, rgba(205, 187, 143), new Size(width - padX * 2, 20 * scale), HorizontalTextAlignment.LEFT);
+    const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + padX, top - height * 0.475, 15 * scale, rgba(205, 187, 143), new Size(width - padX * 2, 20 * scale), HorizontalTextAlignment.LEFT);
     recent.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(recent, scale, false);
-    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + padX, top - height * 0.575, 13 * scale, rgba(151, 126, 82), new Size(width - padX * 2, 18 * scale), HorizontalTextAlignment.LEFT);
+    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + padX, top - height * 0.575, 14 * scale, rgba(151, 126, 82), new Size(width - padX * 2, 18 * scale), HorizontalTextAlignment.LEFT);
     boundary.overflow = Label.Overflow.SHRINK;
     const btnW = width * 0.56;
     const btnH = btnW * (137 / 510);
@@ -841,9 +808,10 @@ export class LobbyHudRenderer {
     const playerLayout = this.resolveLobbyPlayerInfoLayout(layout);
     const scale = this.lobbyHudScale(layout);
     const hudInsetX = this.lobbyHudEdgeInset(layout, 'x', scale);
-    const itemWidth = Math.min(206 * scale, layout.stageWidth * 0.18);
-    const itemHeight = 68 * scale;
-    const gap = 6 * scale;
+    // 2026-09-03 用户验收:五入口牌匾放大加长(206×68→252×80)。
+    const itemWidth = Math.min(252 * scale, layout.stageWidth * 0.2);
+    const itemHeight = 80 * scale;
+    const gap = 8 * scale;
     const railX = layout.stageLeft + hudInsetX + itemWidth / 2;
     const top = playerLayout.bottom - 26 * scale;
     const bottomLimit = layout.stageBottom + Math.max(96 * scale, layout.stageHeight * 0.11);
@@ -1065,10 +1033,10 @@ export class LobbyHudRenderer {
     if (plaquePath && this.host.addSprite(`LobbyActivityPlaque_${icon}`, plaquePath, -width / 2 + plaqueW / 2, 0, plaqueW, height, node)) {
       const plaqueTextX = -width / 2 + height * 1.12;
       const plaqueTextW = plaqueW - height * 1.3;
-      const plaqueTitle = this.addChildLabel(node, `LobbyActivityTitle_${icon}`, title, plaqueTextX, height * 0.16, 21 * scale, rgba(243, 218, 164), new Size(plaqueTextW, 26 * scale), HorizontalTextAlignment.LEFT);
+      const plaqueTitle = this.addChildLabel(node, `LobbyActivityTitle_${icon}`, title, plaqueTextX, height * 0.16, 24 * scale, rgba(243, 218, 164), new Size(plaqueTextW, 30 * scale), HorizontalTextAlignment.LEFT);
       plaqueTitle.overflow = Label.Overflow.SHRINK;
       this.applyLobbyResourceTextStyle(plaqueTitle, scale, true);
-      const plaqueSub = this.addChildLabel(node, `LobbyActivitySubline_${icon}`, subline, plaqueTextX, -height * 0.2, 16 * scale, rgba(199, 169, 108), new Size(plaqueTextW, 21 * scale), HorizontalTextAlignment.LEFT);
+      const plaqueSub = this.addChildLabel(node, `LobbyActivitySubline_${icon}`, subline, plaqueTextX, -height * 0.2, 18 * scale, rgba(199, 169, 108), new Size(plaqueTextW, 23 * scale), HorizontalTextAlignment.LEFT);
       plaqueSub.overflow = Label.Overflow.SHRINK;
       this.applyLobbyResourceTextStyle(plaqueSub, scale, false);
       this.addLobbyRedDot(node, -width / 2 + plaqueW - 16 * scale, height / 2 - 12 * scale, 6 * scale, hot);

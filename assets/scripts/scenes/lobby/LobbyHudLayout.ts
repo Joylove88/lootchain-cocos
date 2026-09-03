@@ -40,9 +40,8 @@ export function resolveLobbyPlayerInfoLayout(layout: UiLayout): LobbyPlayerInfoL
   const baseHudScale = lobbyHudScale(layout);
   const hudInsetX = lobbyHudEdgeInset(layout, 'x', baseHudScale);
   const hudInsetY = lobbyHudEdgeInset(layout, 'y', baseHudScale);
-  // 新面板(610×376)比旧横幅高,宽度收到 ~21% 舞台宽以贴参考图比例(2026-09-03)。
   let width = Math.min(
-    clamp(layout.stageWidth * 0.21, 340 * baseHudScale, 420 * baseHudScale),
+    clamp(layout.stageWidth * 0.28, 420 * baseHudScale, 540 * baseHudScale),
     layout.safeWidth,
     layout.stageWidth - hudInsetX * 2,
   );

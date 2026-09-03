@@ -121,27 +121,28 @@ export class LobbyTopHudRenderer {
     const panel = this.createUiNode('LobbyPlayerInfoButton');
     panel.setPosition(new Vec3(playerLayout.x, playerLayout.y, 0));
     panel.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
-    // 新素材面板是空框(lhud_avatar_panel):头像/文字/EXP 常驻叠加,几何按面板宽高比例排(2026-09-03 参考图)。
     if (!this.addSprite('LobbyPlayerInfoArt', LOBBY_PLAYER_INFO_PANEL_ASSET, 0, 0, panelWidth, panelHeight, panel)) {
       this.drawPlayerInfoFallbackFrame(panel, panelWidth, panelHeight, hudScale);
+      this.addLobbyAvatar(panel, -panelWidth / 2 + 80 * hudScale, panelHeight / 2 - 90 * hudScale, 125 * hudScale, profile.displayName);
     }
-    const avatarSize = panelHeight * 0.62;
-    this.addLobbyAvatar(panel, -panelWidth / 2 + avatarSize * 0.66, panelHeight * 0.12, avatarSize, profile.displayName);
     panel.addComponent(Button);
     panel.on(Button.EventType.CLICK, () => this.openPlayerProfileDialog(), this);
     this.applyImageButtonFeedback(panel, 1.006, 0.994);
 
-    const textX = -panelWidth / 2 + avatarSize * 1.3;
-    const textWidth = panelWidth / 2 - textX - panelWidth * 0.05;
+    const panelLeft = -panelWidth / 2;
+    const panelTop = panelHeight / 2;
+    const textX = panelLeft + 160 * hudScale;
+    // 文字区从头像右侧开始，并使用 SHRINK 防止长名字或战力压住头像框。
+    const textWidth = Math.max(190 * hudScale, Math.min(panelWidth - 178 * hudScale, 340 * hudScale));
     const levelLabel = this.addChildLabel(
       panel,
       'LobbyPlayerLevel',
       `Lv.${profile.playerLevel}`,
       textX,
-      panelHeight * 0.31,
-      panelHeight * 0.105,
+      panelTop - 52 * hudScale,
+      21 * hudScale,
       rgba(226, 201, 145),
-      new Size(textWidth, panelHeight * 0.14),
+      new Size(118 * hudScale, 30 * hudScale),
       HorizontalTextAlignment.LEFT,
     );
     levelLabel.overflow = Label.Overflow.SHRINK;
@@ -151,61 +152,41 @@ export class LobbyTopHudRenderer {
       'LobbyPlayerName',
       profile.displayName,
       textX,
-      panelHeight * 0.13,
-      panelHeight * 0.13,
+      panelTop - 86 * hudScale,
+      27 * hudScale,
       rgba(250, 226, 164),
-      new Size(textWidth, panelHeight * 0.17),
+      new Size(textWidth, 36 * hudScale),
       HorizontalTextAlignment.LEFT,
     );
     nameLabel.overflow = Label.Overflow.SHRINK;
     this.applyPlayerTextStyle(nameLabel, hudScale, true);
+    this.addNameSigil(panel, textX + Math.min(154 * hudScale, textWidth + 12 * hudScale), panelTop - 86 * hudScale, hudScale);
     const powerLabel = this.addChildLabel(
       panel,
       'LobbyPlayerPower',
       `战力 ${this.formatInteger(profile.combatPower)}`,
       textX,
-      -panelHeight * 0.07,
-      panelHeight * 0.105,
+      panelTop - 128 * hudScale,
+      22 * hudScale,
       rgba(224, 190, 112),
-      new Size(textWidth, panelHeight * 0.14),
+      new Size(textWidth, 32 * hudScale),
       HorizontalTextAlignment.LEFT,
     );
     powerLabel.overflow = Label.Overflow.SHRINK;
     this.applyPlayerTextStyle(powerLabel, hudScale, false);
-    // EXP 行:文字 + 金色进度条(参考图底部)
+    this.addPowerUnderline(panel, panelLeft + 366 * hudScale, panelTop - 150 * hudScale, 250 * hudScale, hudScale);
     const expLabel = this.addChildLabel(
       panel,
       'LobbyPlayerExpBadge',
       this.expBadgeText(profile),
-      textX,
-      -panelHeight * 0.25,
-      panelHeight * 0.085,
+      panelLeft + 80 * hudScale,
+      panelTop - 160 * hudScale,
+      17 * hudScale,
       rgba(245, 210, 122),
-      new Size(textWidth * 0.5, panelHeight * 0.12),
-      HorizontalTextAlignment.LEFT,
+      new Size(92 * hudScale, 26 * hudScale),
     );
     expLabel.overflow = Label.Overflow.SHRINK;
     this.applyPlayerTextStyle(expLabel, hudScale, false);
-    const expBarW = textWidth * 0.92;
-    const expBarNode = this.addChildPlainNode(panel, 'LobbyPlayerExpBar', textX + expBarW / 2, -panelHeight * 0.345, expBarW, panelHeight * 0.035);
-    const expG = expBarNode.addComponent(Graphics);
-    const expRatio = this.expRatio(profile);
-    const barH = panelHeight * 0.035;
-    expG.fillColor = rgba(28, 22, 16, 220);
-    expG.roundRect(-expBarW / 2, -barH / 2, expBarW, barH, barH / 2);
-    expG.fill();
-    expG.fillColor = rgba(224, 178, 90, 240);
-    expG.roundRect(-expBarW / 2, -barH / 2, Math.max(barH, expBarW * expRatio), barH, barH / 2);
-    expG.fill();
-  }
-
-  /** EXP 进度比(0..1);无数据回 0。 */
-  private expRatio(profile: PlayerLobbyProfileVO): number {
-    const percent = Number(profile.levelProgress?.progressPercent ?? 0);
-    if (!Number.isFinite(percent)) {
-      return 0;
-    }
-    return Math.max(0, Math.min(1, percent / 100));
   }
 
   private renderResourceBar(layout: UiLayout): void {
@@ -618,7 +599,8 @@ export class LobbyTopHudRenderer {
   }
 
   private systemIconSize(scale: number): number {
-    return 32 * scale;
+    // 2026-09-03 用户验收:素材钮偏小,32→44。
+    return 44 * scale;
   }
 
   private systemIconsWidth(scale: number): number {

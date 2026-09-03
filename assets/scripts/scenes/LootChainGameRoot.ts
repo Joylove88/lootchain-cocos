@@ -854,7 +854,6 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbyResourceBar');
     this.removeNodeFromContent('LobbySystemIcons');
     this.removeNodeFromContent('LobbyActivityRail');
-    this.removeNodeFromContent('LobbyTitleBanner');
     this.removeNodeFromContent('LobbySceneHotspots');
     this.removeNodeFromContent('LobbyGoalTracker');
     this.removeNodeFromContent('LobbyCompactGoalTracker');

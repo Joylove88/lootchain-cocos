@@ -153,9 +153,9 @@ export interface LobbyHudHost {
 }
 
 // 左上玩家信息面板使用固定逻辑宽高比，避免美术资源自动裁切导致文字坐标漂移。
-// 2026-09-03 用户新素材 lhud_avatar_panel(610×376,空框):头像/文字/EXP 全部由代码叠加。
-export const LOBBY_PLAYER_INFO_PANEL_ASPECT = 610 / 376;
-export const LOBBY_PLAYER_INFO_PANEL_ASSET = 'ui/lobby/ai/lhud_avatar_panel/spriteFrame';
+// 2026-09-03 用户验收:新空框面板观感乱,回退旧面板素材与尺寸(lhud_avatar_panel 暂存备用)。
+export const LOBBY_PLAYER_INFO_PANEL_ASPECT = 540 / 218;
+export const LOBBY_PLAYER_INFO_PANEL_ASSET = 'ui/lobby/lobby_player_info_panel/spriteFrame';
 
 // C1812 顶部资源栏货币图标；加载失败时回退到原 Graphics 矢量图形。
 export const LOBBY_C1812_CURRENCY_STAMINA_ASSET = 'ui/lobby/c1812/currency_stamina/spriteFrame';
