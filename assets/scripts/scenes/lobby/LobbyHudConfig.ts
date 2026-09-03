@@ -9,7 +9,8 @@ import {
 
 // 大厅 HUD 的可调配置集中放在这里，后续调坐标、热区或入口文案优先改本文件。
 // 当前大厅入口以只读/受控开放为主；不能在这里新增新的玩法或经济写入逻辑。
-export const LOBBY_SYSTEM_ICONS: LobbySystemIconKey[] = ['friends', 'mail', 'settings', 'menu'];
+// 2026-09-03 参考图:右上只保留 邮箱/设置/更多 三钮(好友入口后续再回归)。
+export const LOBBY_SYSTEM_ICONS: LobbySystemIconKey[] = ['mail', 'settings', 'menu'];
 
 export const LOBBY_ACTIVITY_ITEMS: LobbyActivityItemConfig[] = [
   { icon: 'event', title: '限时副本', subline: '每日轮换', hot: false },

@@ -81,6 +81,7 @@ export class LobbyHudRenderer {
       return;
     }
     this.topHudRenderer.render(layout);
+    this.renderLobbyTitleBanner(layout);
     this.renderLobbyActivityRail(layout);
     // 大厅重心改为挂机战斗演出:功能入口已收进底部导航,场景热点不再渲染(方法保留)。
     this.renderIdleStage(layout);
@@ -457,20 +458,59 @@ export class LobbyHudRenderer {
     this.applyLobbyResourceTextStyle(text, unit, true);
   }
 
+  /** 顶部中央爬塔层数横幅(2026-09-03 参考图,链条吊牌素材 657×391):文字落在下方牌面区。 */
+  private renderLobbyTitleBanner(layout: UiLayout): void {
+    const mode = this.hudMode(layout);
+    if (mode.width < 1180 || mode.height < 620) {
+      return;
+    }
+    const scale = this.lobbyHudScale(layout);
+    const width = Math.min(400 * scale, layout.stageWidth * 0.28);
+    const height = width * (391 / 657);
+    const x = (layout.stageLeft + layout.stageRight) / 2;
+    const y = layout.stageTop - height / 2 - 2 * scale;
+    const group = this.createSizedUiNode('LobbyTitleBanner', x, y, width, height);
+    if (!this.host.addSprite('LobbyTitleBannerArt', 'ui/lobby/ai/lhud_title_banner/spriteFrame', 0, 0, width, height, group)) {
+      return;
+    }
+    const label = this.addChildLabel(group, 'LobbyTitleBannerText', this.resolveLobbyTowerTitle(), 0, -height * 0.17, 25 * scale, rgba(250, 228, 172), new Size(width * 0.64, 34 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    this.applyLobbyResourceTextStyle(label, scale, true);
+  }
+
+  /** 爬塔层数=主线扁平关卡序(推荐/选中关卡在全部章节里的序号)。 */
+  private resolveLobbyTowerTitle(): string {
+    const adventure = this.host.currentLobbyAdventureState().adventure;
+    if (!adventure) {
+      return '深渊爬塔';
+    }
+    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
+    const code = this.normalizeMainStageCode(this.host.currentLobbySelectedStageCode())
+      ?? this.normalizeMainStageCode(adventure.recommendedStageCode);
+    const index = stages.findIndex((stage) => stage.stageCode === code);
+    return index >= 0 ? `深渊爬塔 · 第${index + 1}层` : '深渊爬塔';
+  }
+
   private renderLobbyGoalTracker(layout: UiLayout): void {
     if (layout.stageWidth < 1180 || layout.stageHeight < 620) {
       return;
     }
     const scale = this.lobbyHudScale(layout);
     const hudInsetX = this.lobbyHudEdgeInset(layout, 'x', scale);
-    const width = Math.min(410 * scale, Math.max(330 * scale, layout.stageWidth * 0.24));
-    const height = 126 * scale;
-    // 任务/目标卡挂右侧中间,给大厅挂机演出让出中下部舞台。
+    const width = Math.min(430 * scale, Math.max(340 * scale, layout.stageWidth * 0.25));
+    // 2026-09-03 参考图:素材面板(595×400)等比,右上叠 logo,底部素材红按钮。
+    const height = width * (400 / 595);
     const x = layout.stageRight - hudInsetX - width / 2 - 6 * scale;
-    const y = (layout.stageTop + layout.stageBottom) / 2 + 24 * scale;
+    const y = (layout.stageTop + layout.stageBottom) / 2 + height * 0.34;
     const group = this.createSizedUiNode('LobbyGoalTracker', x, y, width, height);
-    const graphics = group.addComponent(Graphics);
     const goal = this.resolveLobbyNextGoalView();
+    if (this.host.addSprite('LobbyGoalTrackerArt', 'ui/lobby/ai/lhud_goal_panel/spriteFrame', 0, 0, width, height, group)) {
+      const logoW = width * 0.24;
+      this.host.addSprite('LobbyGoalTrackerLogo', 'ui/lobby/ai/lhud_goal_logo/spriteFrame', width / 2 - logoW * 0.62, height / 2 - logoW * 0.42, logoW, logoW * (363 / 322), group);
+      this.addLobbyGoalTrackerContent(group, goal, width, height, scale);
+      return;
+    }
+    const graphics = group.addComponent(Graphics);
     this.drawLobbyGoalTrackerPanel(graphics, width, height, scale, goal.tone);
     this.addLobbyGoalTrackerContent(group, goal, width, height, scale);
   }
@@ -511,20 +551,24 @@ export class LobbyHudRenderer {
   }
 
   private addLobbyGoalTrackerContent(parent: Node, goal: LobbyNextGoalView, width: number, height: number, scale: number): void {
+    // 2026-09-03 参考图排版:标题小行/大号目标行/两行说明/居中素材红按钮。
     const left = -width / 2;
     const top = height / 2;
-    const title = this.addChildLabel(parent, 'LobbyGoalTrackerTitle', goal.title, left + 24 * scale, top - 24 * scale, 17 * scale, rgba(245, 213, 145), new Size(width - 150 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const padX = width * 0.09;
+    const title = this.addChildLabel(parent, 'LobbyGoalTrackerTitle', goal.title, left + padX, top - height * 0.16, 17 * scale, rgba(245, 213, 145), new Size(width - padX * 2 - width * 0.2, 24 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(title, scale, true);
-    const stage = this.addChildLabel(parent, 'LobbyGoalTrackerStage', goal.stageLine, left + 24 * scale, top - 53 * scale, 20 * scale, rgba(248, 226, 169), new Size(width - 48 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+    const stage = this.addChildLabel(parent, 'LobbyGoalTrackerStage', goal.stageLine, left + padX, top - height * 0.335, 23 * scale, rgba(248, 226, 169), new Size(width - padX * 2, 30 * scale), HorizontalTextAlignment.LEFT);
     stage.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(stage, scale, true);
-    const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + 24 * scale, top - 79 * scale, 16 * scale, rgba(205, 187, 143), new Size(width - 48 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
+    const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + padX, top - height * 0.475, 14 * scale, rgba(205, 187, 143), new Size(width - padX * 2, 20 * scale), HorizontalTextAlignment.LEFT);
     recent.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(recent, scale, false);
-    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + 24 * scale, -height / 2 + 16 * scale, 14 * scale, rgba(151, 126, 82), new Size(width - 170 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + padX, top - height * 0.575, 13 * scale, rgba(151, 126, 82), new Size(width - padX * 2, 18 * scale), HorizontalTextAlignment.LEFT);
     boundary.overflow = Label.Overflow.SHRINK;
-    this.addLobbyGoalActionButton(parent, goal, width / 2 - 62 * scale, -height / 2 + 21 * scale, 104 * scale, 32 * scale, scale);
+    const btnW = width * 0.56;
+    const btnH = btnW * (137 / 510);
+    this.addLobbyGoalActionButton(parent, goal, 0, -height / 2 + btnH / 2 + height * 0.115, btnW, btnH, scale);
   }
 
   private addLobbyCompactGoalContent(parent: Node, goal: LobbyNextGoalView, width: number, height: number, scale: number): void {
@@ -544,6 +588,17 @@ export class LobbyHudRenderer {
     if (!goal.disabled) {
       node.on(Button.EventType.CLICK, () => this.activateLobbyNextGoal(goal), this);
       this.applyImageButtonFeedback(node, 1.025, 0.975);
+    }
+    // 2026-09-03 用户素材红按钮(510×137);禁用态压暗;缺图回退六边形绘制。
+    if (this.host.addSprite('LobbyGoalTrackerButtonArt', 'ui/lobby/ai/lhud_goal_button/spriteFrame', 0, 0, width, height, node)) {
+      if (goal.disabled) {
+        const dim = node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+        dim.opacity = 140;
+      }
+      const artLabel = this.addChildLabel(node, 'LobbyGoalTrackerButtonLabel', goal.actionLabel, 0, 0, height * 0.42, goal.disabled ? rgba(190, 168, 130) : rgba(252, 226, 168), new Size(width * 0.8, height * 0.7));
+      artLabel.overflow = Label.Overflow.SHRINK;
+      this.applyLobbyResourceTextStyle(artLabel, scale, true);
+      return;
     }
     const graphics = node.addComponent(Graphics);
     graphics.fillColor = goal.disabled ? rgba(24, 20, 16, 142) : rgba(78, 12, 13, 210);
@@ -997,6 +1052,28 @@ export class LobbyHudRenderer {
       this.showUnopenedFeature(title, '活动、召唤和运营入口将在后续阶段接入；当前只保留大厅本地展示。');
     }, this);
     this.applyImageButtonFeedback(node, 1.025, 0.98);
+    // 2026-09-03 用户素材:五个入口各有专属牌匾(图标烧在图里,~495×184),文字叠加;缺图回退旗帜绘制。
+    const plaqueAsset: Partial<Record<LobbyActivityIconKey, string>> = {
+      event: 'ui/lobby/ai/lhud_menu_dungeon/spriteFrame',
+      summon: 'ui/lobby/ai/lhud_menu_summon/spriteFrame',
+      contract: 'ui/lobby/ai/lhud_menu_covenant/spriteFrame',
+      market: 'ui/lobby/ai/lhud_menu_blackmarket/spriteFrame',
+      gift: 'ui/lobby/ai/lhud_menu_firstcharge/spriteFrame',
+    };
+    const plaquePath = plaqueAsset[icon];
+    const plaqueW = height * (495 / 184);
+    if (plaquePath && this.host.addSprite(`LobbyActivityPlaque_${icon}`, plaquePath, -width / 2 + plaqueW / 2, 0, plaqueW, height, node)) {
+      const plaqueTextX = -width / 2 + height * 1.12;
+      const plaqueTextW = plaqueW - height * 1.3;
+      const plaqueTitle = this.addChildLabel(node, `LobbyActivityTitle_${icon}`, title, plaqueTextX, height * 0.16, 21 * scale, rgba(243, 218, 164), new Size(plaqueTextW, 26 * scale), HorizontalTextAlignment.LEFT);
+      plaqueTitle.overflow = Label.Overflow.SHRINK;
+      this.applyLobbyResourceTextStyle(plaqueTitle, scale, true);
+      const plaqueSub = this.addChildLabel(node, `LobbyActivitySubline_${icon}`, subline, plaqueTextX, -height * 0.2, 16 * scale, rgba(199, 169, 108), new Size(plaqueTextW, 21 * scale), HorizontalTextAlignment.LEFT);
+      plaqueSub.overflow = Label.Overflow.SHRINK;
+      this.applyLobbyResourceTextStyle(plaqueSub, scale, false);
+      this.addLobbyRedDot(node, -width / 2 + plaqueW - 16 * scale, height / 2 - 12 * scale, 6 * scale, hot);
+      return;
+    }
     const graphics = node.addComponent(Graphics);
     // 活动栏当前是本地预览态，用暗金旗帜表达“入口存在但未开放”，避免倒计时/红点误导。
     graphics.fillColor = rgba(0, 0, 0, 92);
@@ -1426,6 +1503,19 @@ export class LobbyHudRenderer {
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.openLobbyAdventurePanel(), this);
     this.applyImageButtonFeedback(node, 1.025, 0.97);
+    // 2026-09-03 用户素材(741×242,左侧魔王徽记烧在图里):等比铺满按高,文字叠红幅区;缺图回退绘制。
+    const artW = height * (741 / 242);
+    if (this.host.addSprite('LobbyAdventureArt', 'ui/lobby/ai/lhud_btn_tower/spriteFrame', width / 2 - artW / 2, 0, artW, height, node)) {
+      const textLeft = width / 2 - artW + height * 1.06;
+      const textW = artW - height * 1.28;
+      const artTitle = this.addChildLabel(node, 'LobbyAdventureTitle', '深渊爬塔 »', textLeft + textW / 2, height * 0.16, height * 0.34, rgba(252, 228, 170), new Size(textW, height * 0.42), HorizontalTextAlignment.CENTER);
+      artTitle.overflow = Label.Overflow.SHRINK;
+      this.applyLobbyResourceTextStyle(artTitle, scale, true);
+      const artChapter = this.addChildLabel(node, 'LobbyAdventureChapter', this.resolveAdventureCtaText(), textLeft + textW / 2, -height * 0.2, height * 0.2, rgba(233, 196, 148), new Size(textW, height * 0.3), HorizontalTextAlignment.CENTER);
+      artChapter.overflow = Label.Overflow.SHRINK;
+      this.applyLobbyResourceTextStyle(artChapter, scale, false);
+      return;
+    }
     const graphics = node.addComponent(Graphics);
     graphics.fillColor = rgba(72, 6, 10, 184);
     graphics.moveTo(-width / 2 + 28 * scale, height / 2);
