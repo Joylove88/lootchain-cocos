@@ -111,6 +111,10 @@ export interface LobbyHudHost {
   openLobbyNoticePanel(): void;
   /** 限时副本入口进入每日材料副本面板;挑战复用战斗接口,开放日/次数校验以后端为准。 */
   openLobbyDailyDungeonPanel(): void;
+  /** 任务/成就面板(P1,2026-09-04)。 */
+  openLobbyQuestPanel?(): void;
+  /** 邮件面板(P1,2026-09-04)。 */
+  openLobbyMailPanel?(): void;
   /** 图鉴入口走只读预览面板；该面板只读取大厅门面数据，不进入英雄养成。 */
   openLobbyCodexPanel(): void;
   /** 英雄入口走只读英雄队列；该面板只读取已拥有英雄，不提供任何养成写操作。 */

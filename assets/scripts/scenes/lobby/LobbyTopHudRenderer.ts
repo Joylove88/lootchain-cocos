@@ -659,6 +659,11 @@ export class LobbyTopHudRenderer {
       node.off(Button.EventType.CLICK);
       node.on(Button.EventType.CLICK, () => this.openLobbySettingsPanel(), this);
     }
+    if (key === 'mail') {
+      // 邮件面板(P1,2026-09-04)。
+      node.off(Button.EventType.CLICK);
+      node.on(Button.EventType.CLICK, () => this.host.openLobbyMailPanel?.(), this);
+    }
     this.applyImageButtonFeedback(node, 1.08, 0.94);
     // 2026-09-03 用户素材:邮箱/设置/更多 三钮直接用图,缺图回退原矢量绘制。
     const iconAsset: Partial<Record<LobbySystemIconKey, string>> = {

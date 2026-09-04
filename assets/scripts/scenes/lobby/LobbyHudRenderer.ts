@@ -1900,6 +1900,11 @@ export class LobbyHudRenderer {
         this.openLobbyGachaScene();
         return;
       }
+      if (key === 'quest') {
+        // 任务/成就(P1,2026-09-04)。
+        this.host.openLobbyQuestPanel?.();
+        return;
+      }
       this.showUnopenedFeature(label, '底部导航入口暂未开放；当前不会进入养成、商店或其他写入型系统。');
     }, this);
     this.applyImageButtonFeedback(node, 1.04, 0.97);

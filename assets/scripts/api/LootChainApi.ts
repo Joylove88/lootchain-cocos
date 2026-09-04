@@ -12,7 +12,9 @@ import { LobbyAdventureApi } from './LobbyAdventureApi';
 import { LobbyHeroApi } from './LobbyHeroApi';
 import { LobbyTeamApi } from './LobbyTeamApi';
 import { LobbyNoticeApi } from './LobbyNoticeApi';
+import { MailApi } from './MailApi';
 import { PlayerAuthApi } from './PlayerAuthApi';
+import { QuestApi } from './QuestApi';
 import { PlayerProfileApi } from './PlayerProfileApi';
 import { ProtagonistApi } from './ProtagonistApi';
 import { TokenApi } from './TokenApi';
@@ -41,6 +43,8 @@ export class LootChainApi {
   readonly equipment = new EquipmentApi(this.http);
   readonly idle = new IdleApi(this.http);
   readonly token = new TokenApi(this.http);
+  readonly quest = new QuestApi(this.http);
+  readonly mail = new MailApi(this.http);
 
   setApiBaseUrl(baseUrl: string): void {
     this.http.setBaseUrl(baseUrl);

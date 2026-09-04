@@ -70,6 +70,7 @@ import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './l
 import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
 import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
+import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
@@ -119,6 +120,8 @@ type ViewName =
   | 'notice'
   | 'dailyDungeon'
   | 'settings'
+  | 'quest'
+  | 'mail'
   | 'gacha'
   | 'gachaInfo'
   | 'gachaRecord'
@@ -241,6 +244,7 @@ export class LootChainGameRoot extends Component {
   // 矿境守卫(docs/30 P1 原型):限时副本难度Ⅰ切新玩法,其余关卡仍走旧回放。
   private readonly lobbyGuardBattleRenderer = new LobbyGuardBattleRenderer(this as unknown as LobbyGuardBattleHost);
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
+  private readonly lobbyQuestMailPanelRenderer = new LobbyQuestMailPanelRenderer(this as unknown as import('./lobby/LobbyQuestMailPanelRenderer').LobbyQuestMailHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
   private readonly lobbyCodexState = new LobbyCodexState();
@@ -365,6 +369,11 @@ export class LootChainGameRoot extends Component {
   private lobbyNoticePanelOpen = false;
   private lobbyDailyDungeonPanelOpen = false;
   private lobbySettingsPanelOpen = false;
+  // 任务/成就/邮件 P1(2026-09-04,docs/14/15)
+  private lobbyQuestPanelOpen = false;
+  private lobbyMailPanelOpen = false;
+  private lobbyQuestState: { loading: boolean; error: string; summary: import('../types/QuestTypes').PlayerQuestSummaryVO | null; tab: 'DAILY' | 'ACHIEVE'; claiming: string | null; version: number } = { loading: false, error: '', summary: null, tab: 'DAILY', claiming: null, version: 0 };
+  private lobbyMailState: { loading: boolean; error: string; mails: import('../types/QuestTypes').PlayerMailVO[]; claiming: number | null; version: number } = { loading: false, error: '', mails: [], claiming: null, version: 0 };
   private loginLanguageDialogOpen = false;
   private lobbyPlaceholderDialog: LobbyPlaceholderDialogState | null = null;
   private gachaResultMode: GachaPreviewResultMode | null = null;
@@ -816,6 +825,14 @@ export class LootChainGameRoot extends Component {
       this.renderLobbySettingsPanel(layout);
       return;
     }
+    if (this.currentView === 'quest') {
+      this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
+      return;
+    }
+    if (this.currentView === 'mail') {
+      this.lobbyQuestMailPanelRenderer.renderMailPanel(layout);
+      return;
+    }
     if (this.currentView === 'placeholder') {
       this.renderLobbyPlaceholderDialog(layout);
     }
@@ -878,6 +895,8 @@ export class LootChainGameRoot extends Component {
     this.removeLobbyNoticePanel();
     this.removeLobbyDailyDungeonPanel();
     this.removeLobbySettingsPanel();
+    this.removeLobbyQuestPanel();
+    this.removeLobbyMailPanel();
     this.removePlayerProfileDialog();
     this.removeLobbyPlaceholderDialog();
     this.renderLobbyHud(layout);
@@ -1092,6 +1111,8 @@ export class LootChainGameRoot extends Component {
       || view === 'notice'
       || view === 'dailyDungeon'
       || view === 'settings'
+      || view === 'quest'
+      || view === 'mail'
       || view === 'placeholder';
   }
 
@@ -1112,6 +1133,8 @@ export class LootChainGameRoot extends Component {
     this.lobbyNoticePanelOpen = false;
     this.lobbyProfileOpen = false;
     this.lobbySettingsPanelOpen = false;
+    this.lobbyQuestPanelOpen = false;
+    this.lobbyMailPanelOpen = false;
     this.lobbyPlaceholderDialog = null;
   }
 
@@ -3867,6 +3890,173 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbySettingsSceneContent');
   }
 
+  // ── 任务/成就面板(P1,2026-09-04) ──
+  private openLobbyQuestPanel(): void {
+    if (this.lobbyQuestPanelOpen && this.currentView === 'quest') {
+      return;
+    }
+    this.closeAllLobbyScenePanelFlags();
+    this.lobbyQuestPanelOpen = true;
+    this.currentView = 'quest';
+    this.renderCurrentView();
+    void this.loadLobbyQuestSummary(true);
+  }
+
+  private closeLobbyQuestPanel(): void {
+    if (!this.lobbyQuestPanelOpen) {
+      return;
+    }
+    this.returnToLobbyFromScenePage();
+  }
+
+  private removeLobbyQuestPanel(): void {
+    this.removeNodeFromContent('LobbyQuestDim');
+    this.removeNodeFromContent('LobbyQuestSceneContent');
+  }
+
+  private setLobbyQuestTab(tab: 'DAILY' | 'ACHIEVE'): void {
+    this.lobbyQuestState = { ...this.lobbyQuestState, tab, version: this.lobbyQuestState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private async loadLobbyQuestSummary(force: boolean): Promise<void> {
+    if (this.lobbyQuestState.loading) {
+      return;
+    }
+    if (!force && this.lobbyQuestState.summary) {
+      return;
+    }
+    this.lobbyQuestState = { ...this.lobbyQuestState, loading: true, error: '', version: this.lobbyQuestState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    try {
+      const summary = await this.api.quest.summary();
+      this.lobbyQuestState = { ...this.lobbyQuestState, loading: false, summary, version: this.lobbyQuestState.version + 1 };
+    } catch (error) {
+      this.lobbyQuestState = { ...this.lobbyQuestState, loading: false, error: error instanceof Error ? error.message : String(error), version: this.lobbyQuestState.version + 1 };
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private claimLobbyQuest(questCode: string): void {
+    if (this.lobbyQuestState.claiming) {
+      return;
+    }
+    this.lobbyQuestState = { ...this.lobbyQuestState, claiming: questCode, version: this.lobbyQuestState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    void this.api.quest.claim(questCode)
+      .then(async (quest) => {
+        this.setStatus(`已领取「${quest.questName}」奖励:${quest.rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
+        this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
+        await this.loadLobbyQuestSummary(true);
+        const profile = this.currentLobbyProfile();
+        void this.loadLobbyProfile(profile.userId);
+        void this.loadLobbyBag(true);
+      })
+      .catch((error) => {
+        this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
+        this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
+        this.renderCurrentLobbyScenePage();
+      });
+  }
+
+  // ── 邮件面板(P1,2026-09-04) ──
+  private openLobbyMailPanel(): void {
+    if (this.lobbyMailPanelOpen && this.currentView === 'mail') {
+      return;
+    }
+    this.closeAllLobbyScenePanelFlags();
+    this.lobbyMailPanelOpen = true;
+    this.currentView = 'mail';
+    this.renderCurrentView();
+    void this.loadLobbyMails(true);
+  }
+
+  private closeLobbyMailPanel(): void {
+    if (!this.lobbyMailPanelOpen) {
+      return;
+    }
+    this.returnToLobbyFromScenePage();
+  }
+
+  private removeLobbyMailPanel(): void {
+    this.removeNodeFromContent('LobbyMailDim');
+    this.removeNodeFromContent('LobbyMailSceneContent');
+  }
+
+  private async loadLobbyMails(force: boolean): Promise<void> {
+    if (this.lobbyMailState.loading) {
+      return;
+    }
+    if (!force && this.lobbyMailState.mails.length > 0) {
+      return;
+    }
+    this.lobbyMailState = { ...this.lobbyMailState, loading: true, error: '', version: this.lobbyMailState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    try {
+      const mails = await this.api.mail.list();
+      this.lobbyMailState = { ...this.lobbyMailState, loading: false, mails, version: this.lobbyMailState.version + 1 };
+      // 面板打开即批量标记已读(best-effort,不阻塞展示)。
+      for (const mail of mails.filter((entry) => !entry.read)) {
+        void this.api.mail.markRead(mail.mailId).catch(() => undefined);
+      }
+    } catch (error) {
+      this.lobbyMailState = { ...this.lobbyMailState, loading: false, error: error instanceof Error ? error.message : String(error), version: this.lobbyMailState.version + 1 };
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private claimLobbyMail(mailId: number): void {
+    if (this.lobbyMailState.claiming !== null) {
+      return;
+    }
+    this.lobbyMailState = { ...this.lobbyMailState, claiming: mailId, version: this.lobbyMailState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    void this.api.mail.claim(mailId)
+      .then(async (mail) => {
+        this.setStatus(`已领取邮件附件:${mail.attachments.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        await this.loadLobbyMails(true);
+        const profile = this.currentLobbyProfile();
+        void this.loadLobbyProfile(profile.userId);
+        void this.loadLobbyBag(true);
+      })
+      .catch((error) => {
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
+        this.renderCurrentLobbyScenePage();
+      });
+  }
+
+  private claimAllLobbyMails(): void {
+    if (this.lobbyMailState.claiming !== null) {
+      return;
+    }
+    this.lobbyMailState = { ...this.lobbyMailState, claiming: -1, version: this.lobbyMailState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    void this.api.mail.claimAll()
+      .then(async (count) => {
+        this.setStatus(`一键领取完成:共 ${count} 封邮件附件已入账。`);
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        await this.loadLobbyMails(true);
+        const profile = this.currentLobbyProfile();
+        void this.loadLobbyProfile(profile.userId);
+        void this.loadLobbyBag(true);
+      })
+      .catch((error) => {
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        this.setStatus(`一键领取失败:${error instanceof Error ? error.message : String(error)}`);
+        this.renderCurrentLobbyScenePage();
+      });
+  }
+
+  private currentLobbyQuestState(): { loading: boolean; error: string; summary: import('../types/QuestTypes').PlayerQuestSummaryVO | null; tab: 'DAILY' | 'ACHIEVE'; claiming: string | null } {
+    return this.lobbyQuestState;
+  }
+
+  private currentLobbyMailState(): { loading: boolean; error: string; mails: import('../types/QuestTypes').PlayerMailVO[]; claiming: number | null } {
+    return this.lobbyMailState;
+  }
+
   private setLobbyLanguage(language: LootChainLanguage): void {
     lootChainI18n.setLanguage(language);
     this.renderCurrentView();
@@ -4659,7 +4849,7 @@ export class LootChainGameRoot extends Component {
     const viewportKey = `${Math.round(layout.viewportWidth)}x${Math.round(layout.viewportHeight)}`;
     const languageKey = lootChainI18n.currentLanguage();
     const gachaOpen = this.currentView === 'gacha' || this.currentView === 'gachaReveal' || this.currentView === 'gachaSummon' || this.currentView === 'gachaResult' || this.isGachaActionSceneView(this.currentView);
-    return `${this.currentView}:${languageKey}:${layout.width}x${layout.height}:${viewportKey}:${stageKey}:${this.loginLanguageDialogOpen ? 'login-language-open' : 'login-language-closed'}:${this.loginFlow.agreementAccepted ? 'agree' : 'deny'}:${this.protagonistCreateFlow.version}:${this.lobbyProfileOpen ? 'profile-open' : 'profile-closed'}:${this.lobbyAdventurePanelOpen ? 'adventure-open' : 'adventure-closed'}:${this.lobbyAdventureLoader.version}:${this.lobbyBagPanelOpen ? 'bag-open' : 'bag-closed'}:${this.lobbyBagLoader.version}:${this.selectedLobbyStageCode}:${this.lobbyBattlePreviewPanelOpen ? 'battle-open' : 'battle-closed'}:${this.lobbyBattleFlow.currentState().version}:${this.lobbyCodexPanelOpen ? 'codex-open' : 'codex-closed'}:${this.lobbyCodexLoader.version}:${this.lobbyFormationPanelOpen ? 'formation-open' : 'formation-closed'}:${this.selectedLobbyFormationHeroIds.join(',')}:${this.lobbyHeroRosterPanelOpen ? 'heroes-open' : 'heroes-closed'}:${this.lobbyHeroDetailHeroId ?? 'detail-closed'}:${this.lobbyHeroLevelUpBusyId ?? 'hero-level-idle'}:${this.lobbyHeroRosterLoader.version}:${this.lobbyNoticePanelOpen ? 'notice-open' : 'notice-closed'}:${this.lobbyNoticeLoader.version}:${this.lobbySettingsPanelOpen ? 'settings-open' : 'settings-closed'}:${gachaOpen ? 'gacha-open' : 'gacha-closed'}:${this.gachaSceneState.activeAction ?? 'gacha-action-closed'}:${this.gachaSceneState.selectedPoolCode ?? 'gacha-pool-none'}:${this.gachaSceneState.poolDetailLoading ? 'gacha-detail-loading' : 'gacha-detail-idle'}:${this.gachaSceneState.logsLoading ? 'gacha-logs-loading' : 'gacha-logs-idle'}:${this.gachaSceneState.poolDetail?.items.length ?? 0}:${this.gachaSceneState.logs.length}:${this.gachaResultMode ?? 'gacha-result-closed'}:${this.lobbyPlaceholderDialog ? 'placeholder-open' : 'placeholder-closed'}:${this.lobbyDailyDungeonPanelOpen ? 'daily-open' : 'daily-closed'}:${this.lobbyDailyDungeonState.version}`;
+    return `${this.currentView}:${languageKey}:${layout.width}x${layout.height}:${viewportKey}:${stageKey}:${this.loginLanguageDialogOpen ? 'login-language-open' : 'login-language-closed'}:${this.loginFlow.agreementAccepted ? 'agree' : 'deny'}:${this.protagonistCreateFlow.version}:${this.lobbyProfileOpen ? 'profile-open' : 'profile-closed'}:${this.lobbyAdventurePanelOpen ? 'adventure-open' : 'adventure-closed'}:${this.lobbyAdventureLoader.version}:${this.lobbyBagPanelOpen ? 'bag-open' : 'bag-closed'}:${this.lobbyBagLoader.version}:${this.selectedLobbyStageCode}:${this.lobbyBattlePreviewPanelOpen ? 'battle-open' : 'battle-closed'}:${this.lobbyBattleFlow.currentState().version}:${this.lobbyCodexPanelOpen ? 'codex-open' : 'codex-closed'}:${this.lobbyCodexLoader.version}:${this.lobbyFormationPanelOpen ? 'formation-open' : 'formation-closed'}:${this.selectedLobbyFormationHeroIds.join(',')}:${this.lobbyHeroRosterPanelOpen ? 'heroes-open' : 'heroes-closed'}:${this.lobbyHeroDetailHeroId ?? 'detail-closed'}:${this.lobbyHeroLevelUpBusyId ?? 'hero-level-idle'}:${this.lobbyHeroRosterLoader.version}:${this.lobbyNoticePanelOpen ? 'notice-open' : 'notice-closed'}:${this.lobbyNoticeLoader.version}:${this.lobbySettingsPanelOpen ? 'settings-open' : 'settings-closed'}:${gachaOpen ? 'gacha-open' : 'gacha-closed'}:${this.gachaSceneState.activeAction ?? 'gacha-action-closed'}:${this.gachaSceneState.selectedPoolCode ?? 'gacha-pool-none'}:${this.gachaSceneState.poolDetailLoading ? 'gacha-detail-loading' : 'gacha-detail-idle'}:${this.gachaSceneState.logsLoading ? 'gacha-logs-loading' : 'gacha-logs-idle'}:${this.gachaSceneState.poolDetail?.items.length ?? 0}:${this.gachaSceneState.logs.length}:${this.gachaResultMode ?? 'gacha-result-closed'}:${this.lobbyPlaceholderDialog ? 'placeholder-open' : 'placeholder-closed'}:${this.lobbyDailyDungeonPanelOpen ? 'daily-open' : 'daily-closed'}:${this.lobbyDailyDungeonState.version}:${this.lobbyQuestPanelOpen ? 'quest-open' : 'quest-closed'}:${this.lobbyQuestState.version}:${this.lobbyMailPanelOpen ? 'mail-open' : 'mail-closed'}:${this.lobbyMailState.version}`;
   }
 
   private resolveLobbyStageCode(stageCode?: string | null): string | null {
