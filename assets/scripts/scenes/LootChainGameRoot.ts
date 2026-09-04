@@ -697,9 +697,11 @@ export class LootChainGameRoot extends Component {
     this.renderLobbyHud(layout);
   }
 
-  // 矿境守卫启用面:限时副本三难度全量(Ⅰ=10波/Ⅱ=20波/Ⅲ=BOSS车轮战);P5 扩主线。
+  // 矿境守卫启用面:限时副本三难度全量(Ⅰ=10波/Ⅱ=20波/Ⅲ=BOSS车轮战)+ 主线全量
+  // (P5,2026-09-03 用户拍板:主线=难度Ⅰ同款 10 波,怪物按关卡 recommendedPower 曲线缩放;旧回放保留给挂机战报)。
   private isGuardBattleStage(stageCode: string | null | undefined): boolean {
-    return /^DAILY_[A-Z]+_[123]$/i.test((stageCode || '').trim());
+    const code = (stageCode || '').trim();
+    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code);
   }
 
   private isGuardBattleActive(): boolean {

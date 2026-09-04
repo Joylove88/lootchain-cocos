@@ -90,6 +90,8 @@ export interface LobbyGuardBattleHost {
   node: Node;
   currentLobbyBattleState(): LobbyBattlePanelState;
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
+  /** 主线 P5 难度曲线用:取关卡 recommendedPower(缺省可不实现,难度回落基线)。 */
+  currentLobbyAdventureState?(): { adventure: { chapters: Array<{ stages: Array<{ stageCode: string; recommendedPower: number }> }> } | null };
   settleLobbyBattleSession(): void;
   returnToLobbyFromBattlePreview(): void;
   setStatus(text: string): void;
@@ -124,6 +126,9 @@ const GUARD_BEAM_ROOT_INSET: Record<string, number> = { fx_5601_fenghuang_skill:
 const GUARD_HERO_FX_COOLDOWN_MS = 1600;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
+/** 主线 P5 难度锚点:monsterScale = 关卡 recommendedPower / 本基线。2800≈MAIN_3_12(难度Ⅰ在当前验收阵容下的平衡点);
+ * 全 393 层曲线 740→12000 → 缩放 0.26→4.3,钳制 [0.25, 6]。 */
+const GUARD_MAIN_POWER_BASELINE = 2800;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
 const GUARD_ROLE_COLOR: Record<string, Color> = {
   melee: new Color(232, 150, 92),
@@ -308,6 +313,21 @@ export class LobbyGuardBattleRenderer {
     this.mount(battleState, layout);
   }
 
+  /** 主线 P5 难度曲线:monsterScale=关卡 recommendedPower/GUARD_MAIN_POWER_BASELINE;每日副本与查无关卡时恒 1。 */
+  private resolveMainMonsterScale(stageCode: string): number {
+    if (!/^MAIN_\d+_\d+$/.test(stageCode)) {
+      return 1;
+    }
+    const adventure = this.host.currentLobbyAdventureState?.().adventure;
+    const stage = adventure?.chapters
+      .flatMap((chapter) => chapter.stages)
+      .find((entry) => entry.stageCode.toUpperCase() === stageCode);
+    if (!stage || !(stage.recommendedPower > 0)) {
+      return 1;
+    }
+    return Math.max(0.25, Math.min(6, stage.recommendedPower / GUARD_MAIN_POWER_BASELINE));
+  }
+
   // ── 建场 ──
   private mount(battleState: LobbyBattlePanelState, layout: UiLayout): void {
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
@@ -325,14 +345,17 @@ export class LobbyGuardBattleRenderer {
         baseAttack: Math.max(10, Math.round((ally.attack ?? 40) * GUARD_BASE_ATTACK_SCALE)),
         sourceIndex: index,
       }));
-    // 难度从 stageCode 后缀取:Ⅰ=10 波,Ⅱ=20 波(第10波节拍BOSS+末波终盘BOSS),Ⅲ=BOSS 车轮战无尽(层数结算)。
+    // 难度从 stageCode 取:DAILY 三档后缀(Ⅰ=10 波,Ⅱ=20 波,Ⅲ=BOSS 车轮战);
+    // 主线 MAIN_*(P5,2026-09-03 用户拍板)=难度Ⅰ同款 10 波 + 关卡难度曲线缩放怪物强度。
     const stageCode = (battleState.start?.stageCode ?? '').toUpperCase();
-    const rushMode = stageCode.endsWith('_3');
+    const isDaily = stageCode.startsWith('DAILY_');
+    const rushMode = isDaily && stageCode.endsWith('_3');
     this.sim = createGuardBattle(
       pool,
       `${battleState.start?.serverSeed ?? ''}:${battleState.start?.battleNo ?? ''}`,
-      rushMode ? 999 : stageCode.endsWith('_2') ? 20 : 10,
+      rushMode ? 999 : isDaily && stageCode.endsWith('_2') ? 20 : 10,
       rushMode ? 'rush' : 'standard',
+      { monsterScale: this.resolveMainMonsterScale(stageCode) },
     );
     this.simBattleNo = battleState.start?.battleNo ?? '';
     this.settleRequested = false;

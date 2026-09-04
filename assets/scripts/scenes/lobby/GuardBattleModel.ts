@@ -192,6 +192,8 @@ export interface GuardBattleState {
   /** 持续区域(灼烧/旋风)与自增 id。 */
   zones: GuardZone[];
   nextZoneId: number;
+  /** 怪物强度缩放(主线 P5 难度曲线;每日副本恒 1)。 */
+  monsterScale: number;
   /** 每英雄累计输出(heroCode→伤害;含普攻/技能/区域跳伤,2026-09-02 统计面板)。 */
   heroDamage: Record<string, number>;
   /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
@@ -516,9 +518,19 @@ export function resolveGuardRole(heroCode: string, heroClass: string | null | un
   return 'melee';
 }
 
-export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWave = 10, mode: GuardMode = 'standard'): GuardBattleState {
+export function createGuardBattle(
+  pool: GuardPoolHero[],
+  seedText: string,
+  maxWave = 10,
+  mode: GuardMode = 'standard',
+  opts?: {
+    /** 怪物强度缩放(主线 P5:按关卡 recommended_power/基线,难度Ⅰ曲线整体乘;缺省 1=每日副本原样)。 */
+    monsterScale?: number;
+  },
+): GuardBattleState {
   const seed = guardHashSeed(seedText || 'guard');
   const rng = createGuardRng(seed);
+  const monsterScale = Math.max(0.1, Math.min(10, opts?.monsterScale ?? 1));
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
   const crystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   return {
@@ -564,6 +576,7 @@ export function createGuardBattle(pool: GuardPoolHero[], seedText: string, maxWa
     mode,
     zones: [],
     nextZoneId: 1,
+    monsterScale,
     heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
@@ -944,7 +957,8 @@ function startWave(state: GuardBattleState): void {
 function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: number, opts?: { refWave?: number; speed?: number }): void {
   const profile = MONSTER_PROFILE[kind];
   const refWave = Math.max(1, opts?.refWave ?? state.wave);
-  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP)));
+  // monsterScale:主线 P5 关卡难度曲线(HP 全乘;啃咬伤害 ^0.85 软化,低层不至于刮痧、高层不至于秒晶)。
+  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP) * state.monsterScale));
   const monster: GuardMonster = {
     monsterId: state.nextMonsterId++,
     kind,
@@ -953,7 +967,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     hp,
     maxHp: hp,
     speedCellsPerSec: opts?.speed ?? profile.speed * (0.88 + state.rng() * 0.24),
-    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95))),
+    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95) * Math.pow(state.monsterScale, 0.85))),
     attackCooldownMs: 0,
     slowUntilMs: 0,
     stunnedUntilMs: 0,
