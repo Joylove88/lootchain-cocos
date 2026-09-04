@@ -288,6 +288,10 @@ export class LobbyHudRenderer {
     const width = layout.stageWidth;
     const height = layout.stageHeight;
 
+    // 全场轻压暗(2026-09-03 用户:背景稍微暗一点点)——盖在背景之上、HUD/挂机演出之下。
+    graphics.fillColor = rgba(0, 0, 0, 30);
+    graphics.rect(left, bottom, width, height);
+    graphics.fill();
     // 用多层透明矩形模拟参考图的暗角和压边，让 HUD 文字在视频背景上更稳。
     for (let index = 0; index < 5; index += 1) {
       const ratio = index / 5;
