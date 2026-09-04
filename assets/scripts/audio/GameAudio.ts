@@ -10,7 +10,8 @@ import { AudioClip, AudioSource, Node, director, resources, sys } from 'cc';
  *   当前占位音源为程序合成 WAV,正式音源同名替换即可(设置面板开关接线随后续轮次)。
  */
 const SFX_VOLUME = 0.8;
-const BGM_VOLUME = 0.4;
+// BGM 压低(2026-09-04 用户反馈 v1 嗡嗡声;v2 已去持续低音,音量同步收敛为衬底)
+const BGM_VOLUME = 0.28;
 const SFX_KEY = 'lootchain.audio.sfx';
 const BGM_KEY = 'lootchain.audio.bgm';
 
