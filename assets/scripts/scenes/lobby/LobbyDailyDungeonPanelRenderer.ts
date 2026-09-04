@@ -856,7 +856,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const lineWidth = w - 60 * scale;
     const days = Math.floor(summary.secondsToWeekEnd / 86400);
     const hours = Math.floor((summary.secondsToWeekEnd % 86400) / 3600);
-    const sub = this.host.addChildLabel(card, 'RankSub', `周一 0 点结算 · 距结算 ${days} 天 ${hours} 小时`, 0, h / 2 - 64 * scale, 15 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 20 * scale));
+    const sub = this.host.addChildLabel(card, 'RankSub', `分=层数(BOSS+波次)×100 · 周一 0 点结算 · 距结算 ${days} 天 ${hours} 小时`, 0, h / 2 - 64 * scale, 15 * scale, rgba(196, 182, 152, 235), new Size(lineWidth, 20 * scale));
     sub.overflow = Label.Overflow.SHRINK;
     const mineLine = this.host.addChildLabel(
       card,
@@ -1419,7 +1419,8 @@ export class LobbyDailyDungeonPanelRenderer {
     const lineW = w - 56 * scale;
     const title = this.host.addChildLabel(card, 'TrialTitle', '输出试炼 · 奖励档位', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(lineW, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
-    const sub = this.host.addChildLabel(card, 'TrialSub', '限时 90 秒拼总输出,时间到即成功;输出越高档位越高。', 0, h / 2 - 66 * scale, 15.5 * scale, rgba(196, 182, 152, 235), new Size(lineW, 22 * scale));
+    // P3b 口径(2026-09-04):难度Ⅲ=10 分钟 BOSS 车轮战,层数=BOSS 击杀+波次,分=层×100。
+    const sub = this.host.addChildLabel(card, 'TrialSub', '10 分钟 BOSS 车轮战:层数=BOSS 击杀+波次,时间到或水晶碎即结算;层数越高档位越高。', 0, h / 2 - 66 * scale, 15.5 * scale, rgba(196, 182, 152, 235), new Size(lineW, 22 * scale));
     sub.overflow = Label.Overflow.SHRINK;
 
     const crystalIcon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
@@ -1437,7 +1438,7 @@ export class LobbyDailyDungeonPanelRenderer {
       rg.stroke();
       const nameLabel = this.host.addChildLabel(row, 'TrialRowName', `${tier.tierName}（${tier.tierCode}）`, -lineW / 2 + 14 * scale, 8 * scale, 17.5 * scale, rgba(250, 226, 160, 250), new Size(lineW * 0.34, 22 * scale), HorizontalTextAlignment.LEFT);
       nameLabel.overflow = Label.Overflow.SHRINK;
-      const condLabel = this.host.addChildLabel(row, 'TrialRowCond', `输出 ≥ ${tier.minScore}`, -lineW / 2 + 14 * scale, -12 * scale, 14 * scale, rgba(190, 178, 150, 235), new Size(lineW * 0.34, 18 * scale), HorizontalTextAlignment.LEFT);
+      const condLabel = this.host.addChildLabel(row, 'TrialRowCond', `≥ ${Math.ceil(tier.minScore / 100)} 层(${tier.minScore} 分)`, -lineW / 2 + 14 * scale, -12 * scale, 14 * scale, rgba(190, 178, 150, 235), new Size(lineW * 0.34, 18 * scale), HorizontalTextAlignment.LEFT);
       condLabel.overflow = Label.Overflow.SHRINK;
       if (crystalIcon) {
         this.host.addSprite(`TrialRowCrystal_${index}`, crystalIcon, lineW * 0.08, 0, 32 * scale, 32 * scale, row);

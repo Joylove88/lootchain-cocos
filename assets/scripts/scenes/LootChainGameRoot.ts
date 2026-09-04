@@ -3330,6 +3330,20 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentLobbyScenePage();
   }
 
+  /** 输出试炼档位表(P3b near-miss 提示):当前战斗关卡所属主题的难度Ⅲ阶梯;拿不到返回空数组。 */
+  private currentTrialOutputTiers(): { tierCode: string; tierName: string; minScore: number }[] {
+    const stageCode = (this.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
+    const themes = this.lobbyDailyDungeonState.summary?.themes ?? [];
+    for (const theme of themes) {
+      for (const tier of theme.tiers) {
+        if (tier.stageCode.toUpperCase() === stageCode) {
+          return (tier.outputTiers ?? []).map((entry) => ({ tierCode: entry.tierCode, tierName: entry.tierName, minScore: entry.minScore }));
+        }
+      }
+    }
+    return [];
+  }
+
   private startLobbyDailyDungeonBattle(stageCode: string): void {
     if (!isDailyDungeonStageCode(stageCode)) {
       this.setStatus('每日副本关卡码不合法，请刷新面板。');

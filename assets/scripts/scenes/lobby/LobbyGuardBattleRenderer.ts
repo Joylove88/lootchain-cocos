@@ -93,6 +93,8 @@ export interface LobbyGuardBattleHost {
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
   /** 主线 P5 难度曲线用:取关卡 recommendedPower(缺省可不实现,难度回落基线)。 */
   currentLobbyAdventureState?(): { adventure: { chapters: Array<{ stages: Array<{ stageCode: string; recommendedPower: number }> }> } | null };
+  /** 输出试炼档位表(P3b near-miss 提示,缺省=不展示)。 */
+  currentTrialOutputTiers?(): Array<{ tierCode: string; tierName: string; minScore: number }>;
   settleLobbyBattleSession(): void;
   returnToLobbyFromBattlePreview(): void;
   setStatus(text: string): void;
@@ -3186,6 +3188,28 @@ export class LobbyGuardBattleRenderer {
       : '';
     this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, -height * 0.02 + panelH / 2 - 76, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 46));
     this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
+    // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER)。
+    if (rush && sim) {
+      const layers = guardTrialLayers(sim);
+      const score = Math.min(layers, 60) * 100;
+      const tiers = (this.host.currentTrialOutputTiers?.() ?? []).slice().sort((a, b) => a.minScore - b.minScore);
+      if (tiers.length > 0) {
+        let current = tiers[0];
+        let next: { tierCode: string; tierName: string; minScore: number } | null = null;
+        for (const tier of tiers) {
+          if (score >= tier.minScore) {
+            current = tier;
+          } else {
+            next = tier;
+            break;
+          }
+        }
+        const nearMiss = next
+          ? `本场 ${current.tierName}(${current.tierCode})档 · 再多 ${Math.ceil((next.minScore - score) / 100)} 层升 ${next.tierName}(${next.tierCode})档!`
+          : `本场 ${current.tierName}(${current.tierCode})档 · 已是最高档!`;
+        this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(width * 0.72, 22));
+      }
+    }
     this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04, 18, rgba(196, 182, 152), new Size(width * 0.7, 24));
   }
 
