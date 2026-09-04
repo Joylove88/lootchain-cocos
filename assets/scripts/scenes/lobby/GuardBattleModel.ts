@@ -194,6 +194,10 @@ export interface GuardBattleState {
   nextZoneId: number;
   /** 怪物强度缩放(主线 P5 难度曲线;每日副本恒 1)。 */
   monsterScale: number;
+  /** 每波怪物数量倍率(主线 2;每日 1)。 */
+  spawnCountMult: number;
+  /** 怪物血量额外倍率(只乘 HP;主线收紧用)。 */
+  monsterHpMult: number;
   /** 每英雄累计输出(heroCode→伤害;含普攻/技能/区域跳伤,2026-09-02 统计面板)。 */
   heroDamage: Record<string, number>;
   /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
@@ -435,10 +439,12 @@ export function guardTrialLayers(state: GuardBattleState): number {
 }
 
 /** 波次节奏(2026-08-25 用户拍板):前 3 波正常量热身,第 4 波起怪量陡增成势;精英第 4/8 波(每 10 波循环),BOSS 第 10 波/末波。 */
-export function guardWaveComposition(wave: number, rng: () => number, maxWave = 10, mode: GuardMode = 'standard'): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
+export function guardWaveComposition(wave: number, rng: () => number, maxWave = 10, mode: GuardMode = 'standard', countMult = 1): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
   const spawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> = [];
   // 热身 6/8/10 只;第 4 波起 6+3×波(18/21/24…),上限 40(同屏性能护栏)。
-  const count = Math.min(40, wave <= 3 ? 4 + wave * 2 : 6 + wave * 3);
+  // countMult:主线 P5a2 怪量翻倍(2026-09-04 用户拍板);上限放宽到 64(仍留同屏护栏)。
+  const base = wave <= 3 ? 4 + wave * 2 : 6 + wave * 3;
+  const count = Math.min(countMult > 1 ? 64 : 40, Math.round(base * countMult));
   for (let i = 0; i < count; i += 1) {
     const roll = rng();
     let kind: GuardMonsterKind;
@@ -526,11 +532,17 @@ export function createGuardBattle(
   opts?: {
     /** 怪物强度缩放(主线 P5:按关卡 recommended_power/基线,难度Ⅰ曲线整体乘;缺省 1=每日副本原样)。 */
     monsterScale?: number;
+    /** 每波怪物数量倍率(主线 P5a2 翻倍;缺省 1=每日副本原样)。 */
+    spawnCountMult?: number;
+    /** 怪物血量额外倍率(只乘 HP 不乘啃咬;主线收紧用,缺省 1)。 */
+    monsterHpMult?: number;
   },
 ): GuardBattleState {
   const seed = guardHashSeed(seedText || 'guard');
   const rng = createGuardRng(seed);
   const monsterScale = Math.max(0.1, Math.min(10, opts?.monsterScale ?? 1));
+  const spawnCountMult = Math.max(1, Math.min(3, opts?.spawnCountMult ?? 1));
+  const monsterHpMult = Math.max(0.5, Math.min(10, opts?.monsterHpMult ?? 1));
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
   const crystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   return {
@@ -577,6 +589,8 @@ export function createGuardBattle(
     zones: [],
     nextZoneId: 1,
     monsterScale,
+    spawnCountMult,
+    monsterHpMult,
     heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
@@ -648,8 +662,15 @@ export function guardSummon(state: GuardBattleState, free = false): GuardHeroUni
 }
 
 /** 强化线:花金币升全队攻击等级(每级 +8%),费用递增——与召唤争夺同一份金币。 */
+/** 标准模式强化封顶(主线收紧 2026-09-04:无上限强化=局内无限成长,任何关卡磨得动,账号养成失去闸门意义;
+ *  rush 车轮战不封顶——层数爬升本来就靠它,且经济已隔离到输出分)。 */
+export const GUARD_ENHANCE_MAX_LEVEL_STANDARD = 12;
+
 export function guardEnhance(state: GuardBattleState): boolean {
   if (state.phase === 'victory' || state.phase === 'defeat' || state.gold < state.enhanceCost) {
+    return false;
+  }
+  if (state.mode === 'standard' && state.enhanceLevel >= GUARD_ENHANCE_MAX_LEVEL_STANDARD) {
     return false;
   }
   state.gold -= state.enhanceCost;
@@ -899,7 +920,8 @@ function killMonster(state: GuardBattleState, monster: GuardMonster): void {
   monster.diedAtMs = state.timeMs;
   state.killCount += 1;
   // 击杀金币随怪物所属波次成长(+6%/波):怪血 wave^1.08 超线性,经济不同步涨则 15 波后必然入不敷出。
-  const gold = Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100));
+  // ÷spawnCountMult:主线怪量翻倍后单只金币减半(总收入中性),否则怪越多经济越富、难度自抵消。
+  const gold = Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100) / state.spawnCountMult);
   state.gold += gold;
   grantXp(state, GUARD_KILL_XP[monster.kind]);
   if (monster.kind === 'boss') {
@@ -947,7 +969,7 @@ function startWave(state: GuardBattleState): void {
   state.wave += 1;
   state.phase = 'wave';
   state.waveStartedAtMs = state.timeMs;
-  const spawns = state.nextWaveSpawns ?? guardWaveComposition(state.wave, state.rng, state.maxWave, state.mode);
+  const spawns = state.nextWaveSpawns ?? guardWaveComposition(state.wave, state.rng, state.maxWave, state.mode, state.spawnCountMult);
   state.nextWaveSpawns = null;
   state.pendingSpawns = spawns.map((spawn) => ({ ...spawn, atMs: spawn.atMs + state.timeMs }));
   state.gold += GUARD_WAVE_WAGE_BASE + state.wave * 10;
@@ -958,7 +980,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
   const profile = MONSTER_PROFILE[kind];
   const refWave = Math.max(1, opts?.refWave ?? state.wave);
   // monsterScale:主线 P5 关卡难度曲线(HP 全乘;啃咬伤害 ^0.85 软化,低层不至于刮痧、高层不至于秒晶)。
-  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP) * state.monsterScale));
+  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP) * state.monsterScale * state.monsterHpMult));
   const monster: GuardMonster = {
     monsterId: state.nextMonsterId++,
     kind,
@@ -967,7 +989,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     hp,
     maxHp: hp,
     speedCellsPerSec: opts?.speed ?? profile.speed * (0.88 + state.rng() * 0.24),
-    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95) * Math.pow(state.monsterScale, 0.85))),
+    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95) * Math.pow(state.monsterScale, 0.85) * Math.pow(state.monsterHpMult, 0.5))),
     attackCooldownMs: 0,
     slowUntilMs: 0,
     stunnedUntilMs: 0,
@@ -1164,7 +1186,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   if (state.phase === 'prep') {
     if (!state.nextWaveSpawns) {
       // prep 期生成下一波构成(供预告条;startWave 消费,保持确定性)。
-      state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng, state.maxWave, state.mode);
+      state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng, state.maxWave, state.mode, state.spawnCountMult);
     }
     const readyAtMs = state.wave === 0 ? GUARD_WAVE_INTERMISSION_MS : state.waveStartedAtMs + GUARD_WAVE_INTERMISSION_MS;
     if (state.timeMs >= readyAtMs) {

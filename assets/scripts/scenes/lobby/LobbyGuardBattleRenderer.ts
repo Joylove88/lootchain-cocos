@@ -349,13 +349,20 @@ export class LobbyGuardBattleRenderer {
     // 主线 MAIN_*(P5,2026-09-03 用户拍板)=难度Ⅰ同款 10 波 + 关卡难度曲线缩放怪物强度。
     const stageCode = (battleState.start?.stageCode ?? '').toUpperCase();
     const isDaily = stageCode.startsWith('DAILY_');
+    const isMain = /^MAIN_\d+_\d+$/.test(stageCode);
     const rushMode = isDaily && stageCode.endsWith('_3');
+    // 主线难度包(P5a2,2026-09-04 用户拍板"怪量翻倍/血量翻几倍"):怪量×2(击杀金币减半保持收入中性)、
+    // 血量×3(啃咬 √3)、标准模式局内强化封顶 12 级(sim 内);每日副本三档全部原样。
     this.sim = createGuardBattle(
       pool,
       `${battleState.start?.serverSeed ?? ''}:${battleState.start?.battleNo ?? ''}`,
       rushMode ? 999 : isDaily && stageCode.endsWith('_2') ? 20 : 10,
       rushMode ? 'rush' : 'standard',
-      { monsterScale: this.resolveMainMonsterScale(stageCode) },
+      {
+        monsterScale: this.resolveMainMonsterScale(stageCode),
+        spawnCountMult: isMain ? 2 : 1,
+        monsterHpMult: isMain ? 3 : 1,
+      },
     );
     this.simBattleNo = battleState.start?.battleNo ?? '';
     this.settleRequested = false;
