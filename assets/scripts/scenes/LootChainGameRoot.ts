@@ -3987,6 +3987,8 @@ export class LootChainGameRoot extends Component {
       .then(async (result) => {
         const bookText = result.expBookCount > 0 ? `、经验书 x${result.expBookCount}` : '';
         this.setStatus(`挂机收益已领取：金币 +${result.goldAmount.toLocaleString('en-US')}${bookText}`);
+        // 领取动效:金币飞向顶部货币栏(2026-09-03 用户);随后 profile 刷新触发金额滚动。
+        this.lobbyHudRenderer.playIdleClaimCoinFx();
         await this.loadIdleSummary(true);
         const profile = this.currentLobbyProfile();
         void this.loadLobbyProfile(profile.userId);

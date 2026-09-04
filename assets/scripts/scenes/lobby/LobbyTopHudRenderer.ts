@@ -7,8 +7,10 @@ import {
   Node,
   Size,
   Sprite,
+  Tween,
   UITransform,
   Vec3,
+  tween,
 } from 'cc';
 import { lootChainI18n } from '../../i18n/LootChainI18n';
 import { SCENE_CURRENCY_BAR_ASSET } from '../UiSceneBackButton';
@@ -321,6 +323,7 @@ export class LobbyTopHudRenderer {
         label: '金币',
         value: this.compactResourceValue(profile.gold),
         tint: rgba(222, 172, 84),
+        numeric: Math.max(0, Math.floor(Number(profile.gold ?? 0))),
       },
       {
         key: 'ruby',
@@ -467,6 +470,46 @@ export class LobbyTopHudRenderer {
     );
     value.overflow = Label.Overflow.SHRINK;
     this.applyTopTextStyle(value, scale, true);
+    if (item.key === 'coin' && typeof item.numeric === 'number') {
+      this.animateGoldLabel(value, item.numeric);
+    }
+  }
+
+  /** 金币数值滚动(2026-09-03 用户:领取收益后金额滚动增加);中途重渲染会从当前滚动值续跑。 */
+  private goldShown: number | null = null;
+  private goldRollProxy: { v: number } | null = null;
+
+  private animateGoldLabel(label: Label, target: number): void {
+    const from = this.goldShown ?? target;
+    if (this.goldRollProxy) {
+      Tween.stopAllByTarget(this.goldRollProxy);
+      this.goldRollProxy = null;
+    }
+    if (from === target) {
+      this.goldShown = target;
+      label.string = this.compactResourceValue(target);
+      return;
+    }
+    const proxy = { v: from };
+    this.goldRollProxy = proxy;
+    label.string = this.compactResourceValue(Math.round(from));
+    tween(proxy)
+      .to(0.9, { v: target }, {
+        easing: 'quartOut',
+        onUpdate: () => {
+          this.goldShown = proxy.v;
+          if (label.isValid) {
+            label.string = this.compactResourceValue(Math.round(proxy.v));
+          }
+        },
+      })
+      .call(() => {
+        this.goldShown = target;
+        if (label.isValid) {
+          label.string = this.compactResourceValue(target);
+        }
+      })
+      .start();
   }
 
   private drawResourceCapsule(graphics: Graphics, width: number, height: number, scale: number): void {

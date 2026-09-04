@@ -98,6 +98,90 @@ export class LobbyHudRenderer {
     return this.host.node;
   }
 
+  /** 领取挂机收益动效(2026-09-03 用户):一串金币从领取按钮抛物线飞向顶部金币胶囊,首枚到达时胶囊弹跳;金额滚动由 TopHud 侧接手。 */
+  playIdleClaimCoinFx(): void {
+    const src = this.findLobbyNode('LobbyIdleClaimButton');
+    const dst = this.findLobbyNode('LobbyResourceItem_coin');
+    if (!src || !dst) {
+      return;
+    }
+    const layer = this.createUiNode('LobbyCoinFxLayer');
+    layer.setPosition(Vec3.ZERO);
+    const layerTf = layer.addComponent(UITransform);
+    layerTf.setContentSize(new Size(10, 10));
+    if (layer.parent) {
+      layer.setSiblingIndex(layer.parent.children.length - 1);
+    }
+    const srcLocal = layerTf.convertToNodeSpaceAR(src.worldPosition.clone());
+    const dstLocal = layerTf.convertToNodeSpaceAR(dst.worldPosition.clone());
+    const coinCount = 14;
+    let arrived = 0;
+    for (let i = 0; i < coinCount; i += 1) {
+      const size = 26 + Math.random() * 10;
+      const sx = srcLocal.x + (Math.random() - 0.5) * 130;
+      const sy = srcLocal.y + (Math.random() - 0.5) * 50;
+      const coin = this.addChildPlainNode(layer, `LobbyCoinFx_${i}`, sx, sy, size, size);
+      if (!this.host.addSprite('Img', 'ui/guard/coin_gold/spriteFrame', 0, 0, size, size, coin)) {
+        const g = coin.addComponent(Graphics);
+        g.fillColor = rgba(255, 208, 96, 245);
+        g.circle(0, 0, size / 2);
+        g.fill();
+        g.strokeColor = rgba(150, 96, 24, 255);
+        g.lineWidth = 2;
+        g.circle(0, 0, size / 2 - 1);
+        g.stroke();
+      }
+      coin.active = false;
+      const ctrlX = (sx + dstLocal.x) / 2 + (Math.random() - 0.5) * 220;
+      const ctrlY = Math.max(sy, dstLocal.y) + 90 + Math.random() * 150;
+      const proxy = { t: 0 };
+      tween(proxy)
+        .delay(0.032 * i)
+        .call(() => {
+          if (coin.isValid) {
+            coin.active = true;
+          }
+        })
+        .to(0.5 + Math.random() * 0.18, { t: 1 }, {
+          onUpdate: () => {
+            if (!coin.isValid) {
+              return;
+            }
+            const t = proxy.t;
+            const inv = 1 - t;
+            const x = inv * inv * sx + 2 * inv * t * ctrlX + t * t * dstLocal.x;
+            const y = inv * inv * sy + 2 * inv * t * ctrlY + t * t * dstLocal.y;
+            coin.setPosition(x, y, 0);
+            const shrink = 1 - 0.45 * t;
+            coin.setScale(shrink, shrink, 1);
+          },
+        })
+        .call(() => {
+          if (coin.isValid) {
+            coin.destroy();
+          }
+          arrived += 1;
+          if (arrived === 1 && dst.isValid) {
+            tween(dst).to(0.1, { scale: new Vec3(1.16, 1.16, 1) }).to(0.16, { scale: new Vec3(1, 1, 1) }).start();
+          }
+          if (arrived === coinCount && layer.isValid) {
+            layer.destroy();
+          }
+        })
+        .start();
+    }
+  }
+
+  private findLobbyNode(name: string): Node | null {
+    let found: Node | null = null;
+    this.node.walk((node) => {
+      if (!found && node.name === name) {
+        found = node;
+      }
+    });
+    return found;
+  }
+
   private renderIdleStage(layout: UiLayout): void {
     // 大厅数据(资料/阵容/关卡)分批到位会触发多次 HUD render;挂机演出带随机时序动画,旧舞台必须先拆,否则叠层。
     if (this.idleStageRoot && this.idleStageRoot.isValid) {

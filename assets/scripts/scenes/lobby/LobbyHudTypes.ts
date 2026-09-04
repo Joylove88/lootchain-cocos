@@ -56,6 +56,8 @@ export interface LobbyResourceItem {
   label: string;
   value: string;
   tint: Color;
+  /** 数值原值(金币滚动动画用;仅 coin 传)。 */
+  numeric?: number;
 }
 
 export type LobbySystemIconKey = 'friends' | 'mail' | 'settings' | 'menu';
