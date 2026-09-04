@@ -10,8 +10,22 @@ export class PlayerAuthApi {
   ) {}
 
   async devLogin(userId: number): Promise<PlayerTokenVO> {
-    // 当前 Cocos 阶段只开放开发登录；token 保存由 LoginFlow 在竞态校验后执行。
+    // 开发登录(预览/联调保留);token 保存由 LoginFlow 在竞态校验后执行。
     return await this.http.post<unknown>('/api/player/auth/dev-login', { userId }).then(expectRecord<PlayerTokenVO>('登录令牌'));
+  }
+
+  /** 自建账号注册(2026-09-04 账号体系):成功即登录,返回带 userId 的令牌。 */
+  async register(username: string, password: string, nickname?: string): Promise<PlayerTokenVO> {
+    return await this.http
+      .post<unknown>('/api/player/auth/register', { username, password, nickname: nickname ?? null })
+      .then(expectRecord<PlayerTokenVO>('注册令牌'));
+  }
+
+  /** 自建账号密码登录。 */
+  async login(username: string, password: string): Promise<PlayerTokenVO> {
+    return await this.http
+      .post<unknown>('/api/player/auth/login', { username, password })
+      .then(expectRecord<PlayerTokenVO>('登录令牌'));
   }
 
   saveToken(token: PlayerTokenVO): void {

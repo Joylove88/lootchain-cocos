@@ -85,6 +85,7 @@ export interface LoginRendererHost {
   openLoginLanguageDialog(): void;
   renderLogin(): void;
   submitLogin(): void;
+  submitRegister(): void;
   toggleLoginAgreement(): void;
   setStatus(text: string): void;
   addStatus(text: string, layout?: UiLayout, y?: number): void;
@@ -154,21 +155,24 @@ export class LoginRenderer {
     const thirdPartyY = panelY - 162 * layout.uiScale;
     const agreementY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? panelY - 226 * layout.uiScale : panelY - 164 * layout.uiScale;
     this.host.addLabel('账号登录', centerX, titleY, 30 * layout.uiScale, rgba(245, 210, 122), new Size(panelWidth - 80 * layout.uiScale, 46 * layout.uiScale));
-    this.host.addLabel('使用测试账号进入 LootChain 当前 Cocos 阶段', centerX, titleY - 38 * layout.uiScale, 16 * layout.uiScale, rgba(196, 178, 138), new Size(panelWidth - 120 * layout.uiScale, 28 * layout.uiScale));
+    this.host.addLabel('登录已有账号,或注册新账号进入 LootChain', centerX, titleY - 38 * layout.uiScale, 16 * layout.uiScale, rgba(196, 178, 138), new Size(panelWidth - 120 * layout.uiScale, 28 * layout.uiScale));
 
-    this.host.addLabel('账号 / 邮箱', centerX, accountLabelY, 17 * layout.uiScale, rgba(215, 210, 198), new Size(inputWidth, 28 * layout.uiScale));
-    const accountInput = this.host.addFramedEditBox(String(state.defaultDevUserId), centerX, accountInputY, inputWidth, layout);
-    this.host.addLabel('密码', centerX, passwordLabelY, 17 * layout.uiScale, rgba(215, 210, 198), new Size(inputWidth, 28 * layout.uiScale));
+    this.host.addLabel('账号(4~20位字母/数字/下划线)', centerX, accountLabelY, 17 * layout.uiScale, rgba(215, 210, 198), new Size(inputWidth, 28 * layout.uiScale));
+    const accountInput = this.host.addFramedEditBox('', centerX, accountInputY, inputWidth, layout);
+    this.host.addLabel('密码(6~32位)', centerX, passwordLabelY, 17 * layout.uiScale, rgba(215, 210, 198), new Size(inputWidth, 28 * layout.uiScale));
     const passwordInput = this.host.addFramedEditBox('', centerX, passwordInputY, inputWidth, layout, true);
     this.host.setLoginInputs(accountInput, passwordInput);
 
-    this.host.addGoldButton('进入游戏', centerX, enterButtonY, () => this.host.submitLogin(), layout, Math.min(360 * layout.uiScale, inputWidth), 54 * layout.uiScale);
+    // 登录/注册双钮(2026-09-04 账号体系):同一组输入,注册成功即登录。
+    const buttonW = Math.min(360 * layout.uiScale, inputWidth);
+    this.host.addGoldButton('登 录', centerX - buttonW * 0.28, enterButtonY, () => this.host.submitLogin(), layout, buttonW * 0.5, 54 * layout.uiScale);
+    this.host.addGoldButton('注 册', centerX + buttonW * 0.28, enterButtonY, () => this.host.submitRegister(), layout, buttonW * 0.5, 54 * layout.uiScale);
     if (SHOW_DIALOG_THIRD_PARTY_LOGIN) {
       this.renderThirdPartyLogin(thirdPartyY, layout, centerX);
     }
     this.renderAgreement(agreementY, layout, centerX, state.agreementAccepted);
     this.host.addButton('返回登录', centerX - panelWidth / 2 + 82 * layout.uiScale, panelY + panelHeight / 2 - 42 * layout.uiScale, () => this.host.renderLogin(), layout, 118 * layout.uiScale, 38 * layout.uiScale);
-    this.host.addStatus('当前阶段只接入 dev-login；账号为数字时作为 User ID。', layout);
+    this.host.addStatus('新玩家点「注 册」直接开号进游戏;开发预览:账号填数字ID+密码留空=模拟登录。', layout);
   }
 
   private drawAccountSceneChrome(graphics: Graphics, width: number, height: number, scale: number): void {

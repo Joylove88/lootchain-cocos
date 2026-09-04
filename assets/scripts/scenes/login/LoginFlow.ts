@@ -56,35 +56,83 @@ export class LoginFlow {
     this.acceptedAgreement = !this.acceptedAgreement;
   }
 
+  /** 正式账号登录(2026-09-04 账号体系):账号+密码走 /auth/login;密码留空且账号为数字时回退 dev-login(预览联调保留)。 */
   async login(): Promise<void> {
     if (!this.acceptedAgreement) {
-      this.host.setStatus('Please accept the user agreement and privacy policy first.');
+      this.host.setStatus('请先勾选用户协议与隐私政策。');
       return;
     }
-
-    const account = this.accountInput?.string.trim() || String(this.config.defaultDevUserId);
-    const userId = this.resolveDevUserId(account);
+    const account = this.accountInput?.string.trim() ?? '';
+    const password = this.passwordInput?.string ?? '';
     const ticket = this.nextLoginTicket();
     this.host.setApiBaseUrl(this.config.apiBaseUrl);
-    this.host.setStatus('Login request: ' + this.config.apiBaseUrl);
     try {
-      const token = await this.authApi.devLogin(userId);
-      if (!this.isCurrentLogin(ticket)) {
+      if (account && password) {
+        this.host.setStatus('登录中…');
+        const token = await this.authApi.login(account, password);
+        this.finishAuth(ticket, token);
         return;
       }
-      this.authApi.saveToken(token);
-      // 会话恢复(7 天免重登):记录 userId,下次启动用 token+userId 自动进大厅。
-      this.authApi.saveUserId?.(userId);
-      this.tokenName = token.tokenName;
-      // 登录成功后先重置本地资料态，再交给主角创建/大厅入口流程，避免大厅短暂显示上一个用户。
-      this.host.resetLobbyProfileForLogin(userId);
-      this.host.handleLoginSuccess(userId, this.tokenName);
+      // dev 回退:密码留空+数字账号=模拟登录(生产由服务端 dev-login-enabled 开关关闭)。
+      const userId = this.resolveDevUserId(account || String(this.config.defaultDevUserId));
+      this.host.setStatus('Login request: ' + this.config.apiBaseUrl);
+      const token = await this.authApi.devLogin(userId);
+      this.finishAuth(ticket, token, userId);
     } catch (error) {
       if (!this.isCurrentLogin(ticket)) {
         return;
       }
       this.host.setStatus(this.formatApiError(error, this.config.apiBaseUrl));
     }
+  }
+
+  /** 注册新账号(成功即登录进游戏)。 */
+  async register(): Promise<void> {
+    if (!this.acceptedAgreement) {
+      this.host.setStatus('请先勾选用户协议与隐私政策。');
+      return;
+    }
+    const account = this.accountInput?.string.trim() ?? '';
+    const password = this.passwordInput?.string ?? '';
+    if (!/^[A-Za-z0-9_]{4,20}$/.test(account)) {
+      this.host.setStatus('注册失败:账号需为 4~20 位字母/数字/下划线。');
+      return;
+    }
+    if (password.length < 6 || password.length > 32) {
+      this.host.setStatus('注册失败:密码需为 6~32 位。');
+      return;
+    }
+    const ticket = this.nextLoginTicket();
+    this.host.setApiBaseUrl(this.config.apiBaseUrl);
+    this.host.setStatus('注册中…');
+    try {
+      const token = await this.authApi.register(account, password);
+      this.finishAuth(ticket, token);
+    } catch (error) {
+      if (!this.isCurrentLogin(ticket)) {
+        return;
+      }
+      this.host.setStatus(this.formatApiError(error, this.config.apiBaseUrl));
+    }
+  }
+
+  /** 认证成功统一收尾:保存 token/userId → 重置本地资料 → 进主角创建/大厅流程。 */
+  private finishAuth(ticket: number, token: { tokenName: string; tokenValue: string; userId?: number | null }, fallbackUserId?: number): void {
+    if (!this.isCurrentLogin(ticket)) {
+      return;
+    }
+    const userId = Number(token.userId ?? fallbackUserId ?? 0);
+    if (!(userId > 0)) {
+      this.host.setStatus('登录响应缺少用户信息,请重试。');
+      return;
+    }
+    this.authApi.saveToken(token);
+    // 会话恢复(7 天免重登):记录 userId,下次启动用 token+userId 自动进大厅。
+    this.authApi.saveUserId?.(userId);
+    this.tokenName = token.tokenName;
+    // 登录成功后先重置本地资料态，再交给主角创建/大厅入口流程，避免大厅短暂显示上一个用户。
+    this.host.resetLobbyProfileForLogin(userId);
+    this.host.handleLoginSuccess(userId, this.tokenName);
   }
 
   cancel(): void {

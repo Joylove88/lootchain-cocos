@@ -4360,6 +4360,10 @@ export class LootChainGameRoot extends Component {
     this.run(() => this.loginFlow.login());
   }
 
+  private submitRegister(): void {
+    this.run(() => this.loginFlow.register());
+  }
+
   private toggleLoginAgreement(): void {
     this.loginFlow.toggleAgreement();
     this.renderLoginAccountScene();
