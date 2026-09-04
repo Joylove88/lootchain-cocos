@@ -22,6 +22,7 @@ import {
   VideoPlayer,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
+import { gameAudio } from '../audio/GameAudio';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
 import { PlayerWsClient } from '../net/PlayerWsClient';
 import type { EquipmentItemVO } from '../api/EquipmentApi';
@@ -695,6 +696,8 @@ export class LootChainGameRoot extends Component {
     // 大厅只保留主界面 HUD；功能入口统一进入独立逻辑场景，不再作为弹框覆盖大厅。
     this.renderLobbyBackground(layout);
     this.renderLobbyHud(layout);
+    // 大厅 BGM(音效底铺 2026-09-04):Web 自动播放被拦时,首次点击自动补播(GameAudio 内处理)。
+    gameAudio.bgm('bgm_lobby');
   }
 
   // 矿境守卫启用面:限时副本三难度全量(Ⅰ=10波/Ⅱ=20波/Ⅲ=BOSS车轮战)+ 主线全量

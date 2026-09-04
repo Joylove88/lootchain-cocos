@@ -35,6 +35,7 @@ import {
   type LobbyPlayerInfoLayout,
   type UiLayout,
 } from './LobbyHudTypes';
+import { gameAudio } from '../../audio/GameAudio';
 import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
@@ -105,6 +106,7 @@ export class LobbyHudRenderer {
     if (!src || !dst) {
       return;
     }
+    gameAudio.sfx('coin');
     const layer = this.createUiNode('LobbyCoinFxLayer');
     layer.setPosition(Vec3.ZERO);
     const layerTf = layer.addComponent(UITransform);

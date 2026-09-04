@@ -18,6 +18,7 @@ import {
   Vec3,
   tween,
 } from 'cc';
+import { gameAudio } from '../../audio/GameAudio';
 import type { UiLayout } from './LobbyHudTypes';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -1082,6 +1083,8 @@ export class LobbyGuardBattleRenderer {
       const unit = guardSummon(sim);
       if (!unit) {
         this.host.setStatus(sim.gold < sim.summonCost ? '战斗金币不足。' : '阵地已满,拖动相同英雄合成腾位。');
+      } else {
+        gameAudio.sfx('summon');
       }
     }, this);
   }
@@ -1156,6 +1159,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnCellBurst(view.node.position.x, view.node.position.y - this.unitSize() * 0.2, rgba(255, 190, 90), false);
         }
       } else if (event.type === 'crystalHit') {
+        gameAudio.sfx('crystal_hit');
         this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
         // 水晶受击红闪(打击感)
         const crystalSprite = field.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
@@ -1227,6 +1231,7 @@ export class LobbyGuardBattleRenderer {
           // 施放者亮相:脚下金圈+弹跳+技能名喊话(归属一眼可辨,2026-08-27)
           this.highlightCaster(event.cell, `${event.skillName ?? '技能'}!`);
         }
+        gameAudio.sfx('skill');
         if (typeof event.zoneId === 'number' && typeof event.cell === 'number') {
           // 区域技能(旋风/灼烧)从施放英雄身上飞出落地
           const from = this.cellCenter(event.cell);
@@ -1246,8 +1251,10 @@ export class LobbyGuardBattleRenderer {
         }
       } else if (event.type === 'waveStart') {
         this.host.setStatus(`第 ${event.wave} 波来袭!`);
+        gameAudio.sfx('wave_start');
       } else if (event.type === 'chestDrop') {
         this.host.setStatus('精英宝箱掉落!点击开箱!');
+        gameAudio.sfx('coin');
       } else if (event.type === 'bossCastStart') {
         this.host.setStatus('BOSS 蓄力轰击水晶!集火打断!');
       } else if (event.type === 'bossCastInterrupt') {
@@ -2958,6 +2965,7 @@ export class LobbyGuardBattleRenderer {
         if (value !== null) {
           this.clearRangeIndicator();
           this.host.setStatus(`已出售,回收 ${value} 金币。`);
+          gameAudio.sfx('coin');
           this.spawnFloater(this.xToPx(0.4), this.laneToPy(1) + this.unitSize() * 0.9, `出售 +${value}`, rgba(255, 214, 92), 18);
           this.syncHeroes();
           return;
@@ -2968,6 +2976,9 @@ export class LobbyGuardBattleRenderer {
         const action = guardDragTo(sim, fromCell, targetCell);
         if (action === 'none' && guardFindHeroAt(sim, targetCell)) {
           this.host.setStatus('只有同名同星英雄才能合成。');
+        }
+        if (action === 'merge' || action === 'superMerge') {
+          gameAudio.sfx('merge');
         }
         if (action !== 'none') {
           this.clearRangeIndicator();
@@ -3155,6 +3166,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     this.overlayShown = true;
+    gameAudio.sfx(victory ? 'victory' : 'defeat');
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const overlay = this.host.addChildPlainNode(this.root, 'GuardEndOverlay', 0, 0, width, height);

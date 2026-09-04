@@ -12,6 +12,7 @@ import {
   Vec3,
   VerticalTextAlignment,
 } from 'cc';
+import { gameAudio } from '../audio/GameAudio';
 import { lootChainI18n } from '../i18n/LootChainI18n';
 import { clamp, rgba, type UiLayout } from './lobby/LobbyHudTypes';
 import { trimText } from './UiTextFormatter';
@@ -387,7 +388,11 @@ export class UiPrimitiveFactory {
     node.on(Node.EventType.MOUSE_ENTER, () => node.setScale(new Vec3(hoverScale, hoverScale, 1)), this);
     node.on(Node.EventType.MOUSE_LEAVE, () => node.setScale(Vec3.ONE), this);
     node.on(Node.EventType.TOUCH_START, () => node.setScale(new Vec3(pressedScale, pressedScale, 1)), this);
-    node.on(Node.EventType.TOUCH_END, () => node.setScale(Vec3.ONE), this);
+    // 全局按钮点击音(音效底铺 2026-09-04):所有走 feedback 的交互一处接入,80ms 节流在管理器内。
+    node.on(Node.EventType.TOUCH_END, () => {
+      node.setScale(Vec3.ONE);
+      gameAudio.sfx('ui_click');
+    }, this);
     node.on(Node.EventType.TOUCH_CANCEL, () => node.setScale(Vec3.ONE), this);
   }
 
