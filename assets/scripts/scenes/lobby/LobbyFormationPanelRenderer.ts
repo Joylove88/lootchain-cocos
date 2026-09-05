@@ -11,6 +11,7 @@ import {
   Size,
   Sprite,
   sp,
+  tween,
   UIOpacity,
   UITransform,
   Vec3,
@@ -241,10 +242,10 @@ export class LobbyFormationPanelRenderer {
     const footerHidden = this.host.isLobbyFormationFooterHidden?.() ?? false;
     const bannerWidth = Math.min(400 * scale, width * 0.46);
     const bannerHeight = 44 * scale;
-    const bannerY = height / 2 - 56 * scale;
+    const bannerY = height / 2 - 48 * scale;
     const banner = this.host.addChildPlainNode(parent, 'LobbyFormationPowerBanner', 0, bannerY, bannerWidth, bannerHeight);
     // 双翼金饰横匾素材(等比 3:2,上下透明区不占视觉;文字叠中心亮区);缺图回退手绘胶囊+饰线。
-    const bannerArtWidth = Math.min(500 * scale, width * 0.56);
+    const bannerArtWidth = Math.min(430 * scale, width * 0.48);
     if (!this.host.addSprite('LobbyFormationPowerBannerArt', FORMATION_POWER_BANNER_ASSET, 0, 0, bannerArtWidth, bannerArtWidth * (1024 / 1536), banner)) {
       const bannerGraphics = banner.addComponent(Graphics);
       bannerGraphics.fillColor = rgba(14, 9, 6, 228);
@@ -278,25 +279,27 @@ export class LobbyFormationPanelRenderer {
     const numberColor = !powerReady ? rgba(180, 162, 124, 255) : footerHidden || power.enough || power.recommendedPower <= 0 ? rgba(255, 216, 112, 255) : rgba(255, 172, 96, 255);
     const bannerNumber = this.host.addChildLabel(banner, 'LobbyFormationPowerBannerNumber', powerReady ? formatInteger(power.currentPower) : '—', bannerWidth * 0.2, 0, 26 * scale, numberColor, new Size(bannerWidth * 0.42, 32 * scale));
     bannerNumber.overflow = Label.Overflow.SHRINK;
-    // 副行:推荐战力(挑战布阵才有意义;纯布阵/未就绪时省略或给读取提示)。
-    const subText = !powerReady
-      ? '英雄队列读取中，阵容战力稍后刷新。'
-      : !footerHidden && power.recommendedPower > 0
-        ? power.enough
-          ? `推荐战力 ${formatInteger(power.recommendedPower)}，已达标。`
-          : `推荐战力 ${formatInteger(power.recommendedPower)}，还差 ${formatInteger(power.powerGap)}。`
-        : '';
-    if (subText) {
-      const subColor = !powerReady ? rgba(170, 152, 116) : power.enough ? rgba(186, 225, 173) : rgba(255, 181, 116);
-      const sub = this.host.addChildLabel(parent, 'LobbyFormationPowerStatus', subText, 0, bannerY - 32 * scale, 15 * scale, subColor, new Size(width - 112 * scale, 20 * scale));
-      sub.overflow = Label.Overflow.SHRINK;
+    // 状态一行化(2026-09-05 整体美化):就位数/目标/推荐战力合并成横匾正下方一行小字,
+    // 不再与横匾翼饰重叠;"点击下阵"操作提示挪到底部边界提示行。
+    const statusParts: string[] = [];
+    if (state.loading) {
+      statusParts.push('正在读取可上阵英雄...');
+    } else if (state.error) {
+      statusParts.push('英雄队列暂不可用，当前不能进入战斗。');
+    } else {
+      statusParts.push(`已就位 ${selectedCount}/4 · 目标 ${stageCode}`);
+      if (!powerReady) {
+        statusParts.push('阵容战力刷新中');
+      } else if (!footerHidden && power.recommendedPower > 0) {
+        statusParts.push(power.enough
+          ? `推荐战力 ${formatInteger(power.recommendedPower)} 已达标`
+          : `推荐战力 ${formatInteger(power.recommendedPower)} 还差 ${formatInteger(power.powerGap)}`);
+      }
     }
-    const statusText = state.loading
-      ? '正在读取可上阵英雄...'
-      : state.error
-        ? '英雄队列暂不可用，当前不能进入战斗。'
-        : `已确认 ${selectedCount}/4 名出战英雄：目标 ${stageCode}；点击已上阵英雄可下阵。`;
-    const status = this.host.addChildLabel(parent, 'LobbyFormationStatus', statusText, 0, height / 2 - 112 * scale, 16 * scale, rgba(204, 167, 88), new Size(width - 112 * scale, 24 * scale));
+    const statusColor = state.error ? rgba(255, 150, 130, 235)
+      : powerReady && !footerHidden && power.recommendedPower > 0 && !power.enough ? rgba(255, 181, 116, 235)
+        : rgba(196, 168, 112, 225);
+    const status = this.host.addChildLabel(parent, 'LobbyFormationStatus', statusParts.join(' · '), 0, height / 2 - 118 * scale, 13.5 * scale, statusColor, new Size(width - 140 * scale, 18 * scale));
     status.overflow = Label.Overflow.SHRINK;
   }
 
@@ -357,25 +360,27 @@ export class LobbyFormationPanelRenderer {
     graphics.strokeColor = rgba(146, 108, 55, 168);
     graphics.lineWidth = Math.max(1, 1.1 * scale);
     graphics.stroke();
-    graphics.fillColor = rgba(126, 22, 26, 38);
-    graphics.ellipse(-width * 0.18, -height * 0.28, width * 0.36, height * 0.08);
+    // 底部压暗带(双段渐变感):名牌落在暗带上更可读,也让站位区与背景过渡自然。
+    graphics.fillColor = rgba(4, 4, 6, 70);
+    graphics.rect(-width / 2 + 2 * scale, -height / 2 + 2 * scale, width - 4 * scale, height * 0.34);
     graphics.fill();
-    graphics.fillColor = rgba(58, 98, 132, 24);
-    graphics.ellipse(width * 0.2, height * 0.12, width * 0.28, height * 0.07);
+    graphics.fillColor = rgba(4, 4, 6, 90);
+    graphics.rect(-width / 2 + 2 * scale, -height / 2 + 2 * scale, width - 4 * scale, height * 0.16);
     graphics.fill();
 
-    // 站位 2+2 对称菱形(2026-09-05 布阵改版):槽 0/1=前排中路靠下,槽 2/3=后排两翼靠上,错落有层次。
+    // 站位 2+2 对称菱形(2026-09-05 布阵改版):槽 0/1=前排中路靠下,槽 2/3=后排两翼靠上;
+    // 整体重心上提一档(名牌不贴底边),后排缩小 10% 做近大远小透视。
     const positions = [
-      { x: -width * 0.11, y: -height * 0.22 },
-      { x: width * 0.11, y: -height * 0.22 },
-      { x: -width * 0.32, y: -height * 0.04 },
-      { x: width * 0.32, y: -height * 0.04 },
+      { x: -width * 0.11, y: -height * 0.17, depth: 1 },
+      { x: width * 0.11, y: -height * 0.17, depth: 1 },
+      { x: -width * 0.32, y: height * 0.02, depth: 0.9 },
+      { x: width * 0.32, y: height * 0.02, depth: 0.9 },
     ];
     const standWidth = Math.min(270 * scale, width * 0.38);
     const standHeight = Math.min(350 * scale, height * 0.66);
     slots.forEach((hero, index) => {
       const pos = positions[index] ?? positions[positions.length - 1];
-      this.renderFormationActorStand(field, hero, index, pos.x, pos.y, standWidth, standHeight, scale);
+      this.renderFormationActorStand(field, hero, index, pos.x, pos.y, standWidth * pos.depth, standHeight * pos.depth, scale);
     });
   }
 
@@ -391,6 +396,14 @@ export class LobbyFormationPanelRenderer {
     if (this.host.addSprite('LobbyFormationSlotBaseArt', FORMATION_SLOT_BASE_ASSET, 0, 0, baseSize, baseSize, baseHolder)) {
       const fade = baseHolder.addComponent(UIOpacity);
       fade.opacity = hero ? 255 : 128;
+      if (hero) {
+        // 已上阵基座呼吸微光,画面不再全静止。
+        tween(fade)
+          .repeatForever(tween()
+            .to(1.1, { opacity: 205 })
+            .to(1.1, { opacity: 255 }))
+          .start();
+      }
     } else {
       if (hero) {
         const glow = hero.protagonist ? rgba(244, 194, 86, 40) : this.resolveRarityColor(hero.rarity, 44);
@@ -689,11 +702,31 @@ export class LobbyFormationPanelRenderer {
     graphics.strokeColor = rgba(142, 106, 55, 166);
     graphics.lineWidth = Math.max(1, 1.1 * scale);
     graphics.stroke();
-    graphics.fillColor = rgba(111, 31, 28, 82);
+    // 标题条(2026-09-05 美化):暗红双段渐变底+上沿金线+左右小菱形饰,标题描边提质感。
+    graphics.fillColor = rgba(96, 26, 24, 130);
     graphics.rect(-width / 2 + 10 * scale, height / 2 - 52 * scale, width - 20 * scale, 34 * scale);
     graphics.fill();
-    const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, height / 2 - 32 * scale, 18 * scale, rgba(231, 205, 142), new Size(width - 36 * scale, 24 * scale));
+    graphics.fillColor = rgba(130, 36, 30, 110);
+    graphics.rect(-width / 2 + 10 * scale, height / 2 - 35 * scale, width - 20 * scale, 17 * scale);
+    graphics.fill();
+    graphics.strokeColor = rgba(226, 176, 92, 200);
+    graphics.lineWidth = Math.max(1, 1.2 * scale);
+    graphics.moveTo(-width / 2 + 10 * scale, height / 2 - 18 * scale);
+    graphics.lineTo(width / 2 - 10 * scale, height / 2 - 18 * scale);
+    graphics.stroke();
+    for (const dir of [-1, 1]) {
+      const dx = dir * (width / 2 - 26 * scale);
+      graphics.fillColor = rgba(238, 190, 100, 220);
+      graphics.moveTo(dx, height / 2 - 30 * scale);
+      graphics.lineTo(dx + 5 * scale, height / 2 - 35 * scale);
+      graphics.lineTo(dx, height / 2 - 40 * scale);
+      graphics.lineTo(dx - 5 * scale, height / 2 - 35 * scale);
+      graphics.close();
+      graphics.fill();
+    }
+    const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, height / 2 - 34 * scale, 19 * scale, rgba(244, 216, 152), new Size(width - 76 * scale, 24 * scale));
     title.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(title, scale, true);
     // 金色分隔线(Graphics 渐淡双线):divider 素材是粗雕花图,压到 14px 高会失真,改手绘。
     graphics.strokeColor = rgba(206, 160, 82, 190);
     graphics.lineWidth = Math.max(1, 1.2 * scale);
@@ -724,7 +757,7 @@ export class LobbyFormationPanelRenderer {
       tg.lineWidth = Math.max(1, active ? 1.4 * scale : scale);
       tg.roundRect(-tabWidth / 2, -tabHeight / 2, tabWidth, tabHeight, tabHeight / 2);
       tg.stroke();
-      const tabLabel = this.host.addChildLabel(tabNode, 'Label', tab.label, 0, 0, 13 * scale, active ? rgba(255, 236, 178) : rgba(196, 178, 138), new Size(tabWidth - 6 * scale, 16 * scale));
+      const tabLabel = this.host.addChildLabel(tabNode, 'Label', tab.label, 0, 0, 13 * scale, active ? rgba(255, 236, 178) : rgba(216, 198, 158), new Size(tabWidth - 6 * scale, 16 * scale));
       tabLabel.overflow = Label.Overflow.SHRINK;
       tabNode.addComponent(Button);
       tabNode.on(Button.EventType.CLICK, () => {
@@ -740,9 +773,9 @@ export class LobbyFormationPanelRenderer {
     const visible = this.pickerRarityFilter === 'ALL'
       ? allVisible
       : allVisible.filter((hero) => safeText(hero.rarity).toUpperCase() === this.pickerRarityFilter);
-    // 底部保存阵容按钮(阵容变更本就自动回写,按钮提供显式确认)。
-    const saveHeight = 40 * scale;
-    const saveWidth = Math.min(width - 36 * scale, 230 * scale);
+    // 底部保存阵容按钮(阵容变更本就自动回写,按钮提供显式确认);加大一档更醒目。
+    const saveHeight = 46 * scale;
+    const saveWidth = Math.min(width - 36 * scale, 262 * scale);
     const saveY = -height / 2 + 14 * scale + saveHeight / 2;
     const saveButton = this.host.addChildPlainNode(panel, 'LobbyFormationSaveButton', 0, saveY, saveWidth, saveHeight);
     // 主按钮素材(与底部三按钮同款红金 button_primary);缺图回退手绘。
@@ -771,7 +804,7 @@ export class LobbyFormationPanelRenderer {
     const rowsPerColumn = Math.max(1, Math.ceil(visible.length / columns));
     const rowTop = height / 2 - 96 * scale;
     const listBottom = saveY + saveHeight / 2 + 10 * scale;
-    const rowHeight = Math.max(34 * scale, Math.min(58 * scale, (rowTop - listBottom) / rowsPerColumn));
+    const rowHeight = Math.max(34 * scale, Math.min(64 * scale, (rowTop - listBottom) / rowsPerColumn));
     const columnWidth = (width - 24 * scale - (columns - 1) * 8 * scale) / columns;
     visible.forEach((hero, index) => {
       const col = index % columns;
@@ -913,9 +946,9 @@ export class LobbyFormationPanelRenderer {
     const powerShort = !footerHidden && power.rosterLoaded && power.recommendedPower > 0 && !power.enough;
     const noteText = powerShort
       ? `战力不足（还差 ${formatInteger(power.powerGap)}），仍可挑战。`
-      : '点击候选英雄调整本次出战；阵容只用于 battle start 快照，不保存长期队伍，不改变玩家资源。';
+      : '点击候选英雄上阵，点击已上阵英雄下阵；阵容仅用于本次出战快照。';
     // 提示行上移到底部按钮上方,避免被三个按钮盖住(按钮中心 y=-h/2+38、高 60,顶到 y=-h/2+68)。
-    const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', noteText, 0, -height / 2 + 92 * scale, 17 * scale, powerShort ? rgba(255, 96, 96) : rgba(168, 146, 105), new Size(width - 110 * scale, 24 * scale));
+    const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', noteText, 0, -height / 2 + 92 * scale, 13 * scale, powerShort ? rgba(255, 110, 100, 235) : rgba(150, 132, 100, 210), new Size(width - 110 * scale, 20 * scale));
     note.overflow = Label.Overflow.SHRINK;
     if (footerHidden) {
       // 从英雄界面进入:纯布阵场景,隐藏刷新/去升级/挑战三按钮。
