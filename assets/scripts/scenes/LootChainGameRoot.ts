@@ -399,6 +399,7 @@ export class LootChainGameRoot extends Component {
     logsError: '',
     lastDrawResult: null,
     activeAction: null,
+    freeSingle: null,
   };
   private selectedLobbyStageCode: string | null = null;
   private selectedLobbyFormationHeroIds: number[] = [];
@@ -746,6 +747,7 @@ export class LootChainGameRoot extends Component {
     const layout = this.renderBase();
     // 抽奖页读取后端卡池展示配置；真实抽卡只通过已有 gacha draw 接口触发。
     this.gachaSceneRenderer.render(layout, this.gachaSceneState);
+    this.lobbyHudRenderer.mountGuideOverlay(layout, 'gacha');
   }
 
   private renderGachaRevealScene(): void {
@@ -808,10 +810,12 @@ export class LootChainGameRoot extends Component {
     }
     if (this.currentView === 'heroes') {
       this.renderLobbyHeroRosterPanel(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'heroes');
       return;
     }
     if (this.currentView === 'heroDetail') {
       this.renderLobbyHeroDetailPanel(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'heroDetail');
       return;
     }
     if (this.currentView === 'notice') {
@@ -828,6 +832,7 @@ export class LootChainGameRoot extends Component {
     }
     if (this.currentView === 'quest') {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
       return;
     }
     if (this.currentView === 'mail') {
@@ -2190,6 +2195,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus('该英雄当前不可查看详情。');
       return;
     }
+    lobbyGuide.markVisited('herocard');
     this.lobbyHeroDetailHeroId = hero.id;
     this.lobbyHeroDetailTab = 'attr';
     // 切换英雄时重置洗练/装备弹窗,避免跨英雄残留状态。
@@ -2301,6 +2307,7 @@ export class LootChainGameRoot extends Component {
       // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
       await this.loadLobbyHeroDetail(heroId);
       const powerGain = Math.max(0, result.power - beforePower);
+      lobbyGuide.markVisited('levelup');
       this.setStatus(`${heroName} 升级成功：Lv.${result.level}，战力 ${this.formatInteger(result.power)}${powerGain > 0 ? `（+${this.formatInteger(powerGain)}）` : ''}，已回读英雄、背包、资源和主线引导。`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -3407,6 +3414,52 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentView();
     this.setStatus('正在读取召唤卡池配置。');
     void this.loadGachaPools(true);
+    void this.loadGachaFreeStatus();
+  }
+
+  /** 每日免费单抽状态(2026-09-05 新手闭环):进召唤页/抽卡后刷新;best-effort,失败只是不亮"免费"。 */
+  private async loadGachaFreeStatus(): Promise<void> {
+    try {
+      const status = await this.api.gacha.freeStatus();
+      this.gachaSceneState = { ...this.gachaSceneState, freeSingle: { poolCode: status.poolCode, available: status.available } };
+      // 引导免费单抽步:自动选中免费池,玩家进页即对准"免费召唤"按钮,零多余操作。
+      if (status.available && this.isGuideDrawStepActive() && this.gachaSceneState.pools.some((pool) => pool.poolCode === status.poolCode)) {
+        this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: status.poolCode };
+      }
+      if (this.currentView === 'gacha') {
+        this.renderCurrentView();
+      }
+    } catch (error) {
+      void error;
+    }
+  }
+
+  /** 当前选中池的免费单抽是否可用(LobbyHudHost:引导 DRAW 步防锁死判定;null=状态未加载)。
+   *  必须绑定选中池:限定池被选中时若也返回 true,硬遮罩会强推玩家点 300 钻的单抽 → 没钱失败又出不去。 */
+  gachaFreeSingleAvailable(): boolean | null {
+    const free = this.gachaSceneState.freeSingle;
+    if (!free) {
+      return null;
+    }
+    if (!free.available) {
+      return false;
+    }
+    const selected = this.gachaSceneState.pools.find(
+      (pool) => pool.poolCode === this.gachaSceneState.selectedPoolCode || pool.id === this.gachaSceneState.selectedPoolCode);
+    return (selected?.poolCode ?? null) === free.poolCode;
+  }
+
+  /** 当前引导是否停在 DRAW 步(免费单抽)。 */
+  private isGuideDrawStepActive(): boolean {
+    const adventure = this.currentLobbyAdventureState().adventure;
+    if (!adventure) {
+      return false;
+    }
+    const recommended = (adventure.recommendedStageCode ?? '').toUpperCase();
+    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
+    const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended);
+    const firstBattleDone = recommended !== '' && recommended !== 'MAIN_1_1';
+    return lobbyGuide.isDrawStep(firstBattleDone, recommendedIndex >= 5);
   }
 
   private selectGachaPool(poolCode: string): void {
@@ -3474,7 +3527,12 @@ export class LootChainGameRoot extends Component {
       const pools = (await this.api.gacha.pools())
         .map((pool) => this.toGachaPreviewPool(pool))
         .filter((pool) => this.isVisibleGachaPool(pool));
-      const selectedPoolCode = pools.find((pool) => pool.poolCode === this.gachaSceneState.selectedPoolCode || pool.id === this.gachaSceneState.selectedPoolCode)?.poolCode
+      // 引导免费单抽步:pools 就位后优先选中免费池(free-status 可能先于 pools 返回,选池必须在这里兜一次)。
+      const freePoolCode = this.gachaSceneState.freeSingle?.available && this.isGuideDrawStepActive()
+        ? pools.find((pool) => pool.poolCode === this.gachaSceneState.freeSingle?.poolCode)?.poolCode ?? null
+        : null;
+      const selectedPoolCode = freePoolCode
+        ?? pools.find((pool) => pool.poolCode === this.gachaSceneState.selectedPoolCode || pool.id === this.gachaSceneState.selectedPoolCode)?.poolCode
         ?? pools.find((pool) => !pool.locked && !pool.previewOnly && pool.drawEnabled === true)?.poolCode
         ?? pools[0]?.poolCode
         ?? pools[0]?.id
@@ -3709,6 +3767,8 @@ export class LootChainGameRoot extends Component {
         const pending = this.pendingGachaDraw;
         pending.result = result;
         pending.highestRarity = this.resolveGachaDrawResultHighestRarity(result);
+        lobbyGuide.markVisited('draw');
+        void this.loadGachaFreeStatus();
         this.presentPendingGachaDrawVideo(ticket);
       })
       .catch((error) => {
@@ -3950,6 +4010,7 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentLobbyScenePage();
     void this.api.quest.claim(questCode)
       .then(async (quest) => {
+        lobbyGuide.markVisited('claim');
         this.setStatus(`已领取「${quest.questName}」奖励:${quest.rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
         this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
         await this.loadLobbyQuestSummary(true);

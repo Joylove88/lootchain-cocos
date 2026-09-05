@@ -1,16 +1,29 @@
 import { sys } from 'cc';
 
 /**
- * 新手引导 P1(上线冲刺,2026-09-05):软引导(不挡输入),步骤由真实进度推导,零后端依赖。
+ * 新手引导 P2(完整闭环,2026-09-05):硬引导链带玩家走完一整套核心体验,每一步资源都有保证:
  *
- * 步骤链:TOWER(打首战 MAIN_1_1)→ SUMMON(去召唤)→ HERO(看英雄)→ QUEST(看任务)→ DONE。
+ * TOWER(打首战)→ SUMMON(去召唤)→ DRAW(免费单抽,后端每日免费保证)
+ * → HERO(去英雄页)→ HERO_CARD(点开英雄)→ LEVEL_UP(升一级,注册送经验书+金币保证)
+ * → QUEST(去任务页)→ CLAIM(领一次奖励,登录任务必可领)→ DONE。
+ *
  * - 首战完成 = 主线推荐关卡已不是 MAIN_1_1(服务端进度权威,防本地作弊/换端丢失)。
- * - SUMMON/HERO/QUEST 以"到访过目标页"为完成(localStorage 按 userId 记 flag)。
+ * - 其余步骤以"到访/动作完成"为准(localStorage 按 userId 记 flag):
+ *   summon/hero/quest=到访目标页,draw=抽卡成功,herocard=打开英雄详情,levelup=升级成功,claim=领取成功。
  * - 老玩家豁免:主线进度已过第 5 关 → 全部视为完成,不打扰。
  */
-export type GuideStep = 'TOWER' | 'SUMMON' | 'HERO' | 'QUEST' | 'DONE';
+export type GuideStep =
+  | 'TOWER'
+  | 'SUMMON'
+  | 'DRAW'
+  | 'HERO'
+  | 'HERO_CARD'
+  | 'LEVEL_UP'
+  | 'QUEST'
+  | 'CLAIM'
+  | 'DONE';
 
-type GuideFlag = 'summon' | 'hero' | 'quest';
+type GuideFlag = 'summon' | 'draw' | 'hero' | 'herocard' | 'levelup' | 'quest' | 'claim';
 
 class LobbyGuideManager {
   private userId = 0;
@@ -42,13 +55,30 @@ class LobbyGuideManager {
     if (!this.visited('summon')) {
       return 'SUMMON';
     }
+    if (!this.visited('draw')) {
+      return 'DRAW';
+    }
     if (!this.visited('hero')) {
       return 'HERO';
+    }
+    if (!this.visited('herocard')) {
+      return 'HERO_CARD';
+    }
+    if (!this.visited('levelup')) {
+      return 'LEVEL_UP';
     }
     if (!this.visited('quest')) {
       return 'QUEST';
     }
+    if (!this.visited('claim')) {
+      return 'CLAIM';
+    }
     return 'DONE';
+  }
+
+  /** 当前是否处于免费单抽引导步(gacha 页自动选中免费池用)。 */
+  isDrawStep(firstBattleDone: boolean, veteran: boolean): boolean {
+    return this.resolveStep(firstBattleDone, veteran) === 'DRAW';
   }
 
   private visited(flag: GuideFlag): boolean {

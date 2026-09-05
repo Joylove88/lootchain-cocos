@@ -95,11 +95,16 @@ export class LobbyHudRenderer {
     this.renderCompactSceneEntrances(layout);
     this.renderCompactGoalTracker(layout);
     this.renderCompactActionEntrances(layout);
-    this.renderGuideOverlay(layout);
+    this.mountGuideOverlay(layout, 'lobby');
   }
 
-  /** 新手引导覆盖层(P1,2026-09-05):软引导——脉冲金圈+气泡指向目标按钮,不挡任何输入;步骤见 GuideManager。 */
-  private renderGuideOverlay(layout: UiLayout): void {
+  /**
+   * 新手引导覆盖层(P2 完整闭环,2026-09-05):硬引导——暗层拦输入只留目标洞,金圈+箭头+气泡指向;
+   * 按(步骤,当前视图)查表:大厅指入口按钮,面板内指向具体动作按钮(免费单抽/英雄卡/升级/领取)。
+   * 未列出的视图不打扰(玩家跑偏自己返回,主路径页面上引导自动续上)。步骤见 GuideManager。
+   */
+  mountGuideOverlay(layout: UiLayout, view: 'lobby' | 'gacha' | 'heroes' | 'heroDetail' | 'quest'): void {
+    this.findLobbyNode('LobbyGuideOverlay')?.destroy();
     const profile = this.host.currentLobbyProfile();
     lobbyGuide.bind(profile.userId);
     const adventure = this.host.currentLobbyAdventureState().adventure;
@@ -115,14 +120,30 @@ export class LobbyHudRenderer {
     if (step === 'DONE') {
       return;
     }
-    const config: Record<string, { targets: string[]; text: string }> = {
-      TOWER: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_爬塔'], text: '点这里,开始你的第一场矿境守卫战!' },
-      SUMMON: { targets: ['LobbyNavItem_contract', 'LobbyCompactAction_召唤'], text: '首胜达成!用奖励召唤新的英雄吧' },
-      HERO: { targets: ['LobbyNavItem_hero', 'LobbyCompactAction_英雄'], text: '看看你的英雄,升级培养变更强' },
-      QUEST: { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,记得领取!' },
+    const summonEntry = { targets: ['LobbyNavItem_contract', 'LobbyCompactAction_召唤'], text: '去召唤祭坛,今天有免费召唤!' };
+    const heroEntry = { targets: ['LobbyNavItem_hero', 'LobbyCompactAction_英雄'], text: '去英雄页,给英雄升级变强!' };
+    const questEntry = { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,去领取!' };
+    const heroCardEntry = { targets: ['LobbyHeroRosterCard_0'], text: '点击英雄,查看详情' };
+    const config: Record<string, Partial<Record<string, { targets: string[]; text: string }>>> = {
+      TOWER: { lobby: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_爬塔'], text: '点这里,开始你的第一场矿境守卫战!' } },
+      SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去召唤祭坛,今天有免费召唤!' } },
+      DRAW: { lobby: summonEntry, gacha: { targets: ['GachaSummonOnceButton'], text: '点击免费召唤,获得新英雄!' } },
+      HERO: { lobby: { ...heroEntry, text: '英雄到手!去看看你的队伍' } },
+      HERO_CARD: { lobby: heroEntry, heroes: heroCardEntry },
+      LEVEL_UP: {
+        lobby: heroEntry,
+        heroes: heroCardEntry,
+        heroDetail: { targets: ['LobbyHeroDetailLevelUpButton'], text: '已送你经验书和金币,点击升级!' },
+      },
+      QUEST: { lobby: questEntry },
+      CLAIM: { lobby: questEntry, quest: { targets: ['LobbyQuestClaimReady'], text: '任务完成了,点击领取奖励!' } },
     };
-    const entry = config[step];
+    const entry = config[step]?.[view];
     if (!entry) {
+      return;
+    }
+    // DRAW 步在召唤页:只有确认今日免费可用才上硬遮罩——否则玩家没资源抽卡又被暗层锁死出不去。
+    if (step === 'DRAW' && view === 'gacha' && this.host.gachaFreeSingleAvailable() !== true) {
       return;
     }
     let target: Node | null = null;

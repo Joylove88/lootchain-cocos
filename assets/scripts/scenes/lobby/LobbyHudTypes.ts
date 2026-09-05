@@ -102,6 +102,8 @@ export interface LobbyHudHost {
   node: Node;
   currentLobbyProfile(): PlayerLobbyProfileVO;
   currentLobbyAdventureState(): LobbyAdventurePanelState;
+  /** 每日免费单抽今日是否可用(true/false=已知,null=未加载);引导 DRAW 步只在确认免费时才上硬遮罩,防锁死。 */
+  gachaFreeSingleAvailable(): boolean | null;
   /** 大厅目标追踪只读取最近战斗记录，用于提示下一步；不能从这里触发奖励或进度写入。 */
   currentLobbyBattleState(): LobbyBattlePanelState;
   /** 当前选中的主线关卡仅作为 UI 提示来源，非法或锁定关卡必须回到爬塔面板校验。 */

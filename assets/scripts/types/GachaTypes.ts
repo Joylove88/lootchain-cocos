@@ -117,6 +117,12 @@ export interface GachaDrawDTO {
   paymentMode?: 'AUTO' | 'TICKET' | 'CURRENCY';
 }
 
+/** 每日免费单抽状态(2026-09-05 新手闭环):poolCode=免费适用池,available=今日尚未使用。 */
+export interface GachaFreeStatusVO {
+  poolCode: string;
+  available: boolean;
+}
+
 export interface GachaDrawItemVO {
   rewardType: string;
   rewardCode: string;

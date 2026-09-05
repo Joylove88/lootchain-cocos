@@ -126,12 +126,12 @@ export class LobbyQuestMailPanelRenderer {
     const reward = this.host.addChildLabel(row, 'Reward', rewardText, width * 0.17, 0, 13.5 * scale, rgba(255, 226, 150, 245), new Size(width * 0.24, 34 * scale));
     reward.overflow = Label.Overflow.SHRINK;
 
-    // 领取按钮
+    // 领取按钮(可领时命名 LobbyQuestClaimReady:新手引导 CLAIM 步的光圈目标,findLobbyNode 命中第一个可领行)
     const btnW = 88 * scale;
     const btnH = 36 * scale;
-    const btn = this.host.addChildPlainNode(row, 'Claim', width / 2 - btnW / 2 - 12 * scale, 0, btnW, btnH);
-    const bgB = btn.addComponent(Graphics);
     const claimable = quest.claimable && claiming === null;
+    const btn = this.host.addChildPlainNode(row, claimable ? 'LobbyQuestClaimReady' : 'Claim', width / 2 - btnW / 2 - 12 * scale, 0, btnW, btnH);
+    const bgB = btn.addComponent(Graphics);
     bgB.fillColor = quest.claimed ? rgba(30, 28, 26, 200) : claimable ? rgba(122, 32, 26, 240) : rgba(44, 38, 30, 210);
     bgB.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 6 * scale);
     bgB.fill();

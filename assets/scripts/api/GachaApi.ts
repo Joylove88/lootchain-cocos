@@ -4,6 +4,7 @@ import type {
   GachaDrawDTO,
   GachaDrawLogVO,
   GachaDrawResultVO,
+  GachaFreeStatusVO,
   GachaPityVO,
   GachaPoolDetailVO,
   GachaPoolVO,
@@ -32,6 +33,11 @@ export class GachaApi {
 
   draw(dto: GachaDrawDTO): Promise<GachaDrawResultVO> {
     return this.http.post<unknown>('/api/player/gacha/draw', dto).then(expectRecord<GachaDrawResultVO>('抽卡结果'));
+  }
+
+  /** 每日免费单抽状态(2026-09-05 新手闭环)。 */
+  freeStatus(): Promise<GachaFreeStatusVO> {
+    return this.http.get<unknown>('/api/player/gacha/free-status').then(expectRecord<GachaFreeStatusVO>('免费召唤状态'));
   }
 
   logs(pageNo = 1, pageSize = 20, poolCode?: string): Promise<PageResult<GachaDrawLogVO>> {

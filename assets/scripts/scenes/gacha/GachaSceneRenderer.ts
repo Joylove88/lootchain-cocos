@@ -109,6 +109,8 @@ export interface GachaSceneState {
   logsError: string;
   lastDrawResult: GachaDrawResultVO | null;
   activeAction: GachaActionKey | null;
+  /** 每日免费单抽(2026-09-05 新手闭环):null=未加载;选中池命中 poolCode 且 available 时单抽按钮亮"免费"。 */
+  freeSingle: { poolCode: string; available: boolean } | null;
 }
 
 export interface GachaSceneHost {
@@ -1359,9 +1361,11 @@ export class GachaSceneRenderer {
     const buttonGap = 72 * scale;
     const onceX = -(buttonWidth + buttonGap) / 2;
     const tenX = (buttonWidth + buttonGap) / 2;
-    const singleCost = this.resolveSummonCostText(selectedPool, 'once');
+    // 每日免费单抽(2026-09-05 新手闭环):选中池命中且今日未用 → 单抽按钮亮"免费召唤"。
+    const freeSingle = state.freeSingle != null && state.freeSingle.available && state.freeSingle.poolCode === selectedPool.poolCode;
+    const singleCost = freeSingle ? '今日免费 1 次' : this.resolveSummonCostText(selectedPool, 'once');
     const tenCost = this.resolveSummonCostText(selectedPool, 'ten');
-    this.renderSummonButton(parent, layout, 'once', 'GachaSummonOnceButton', selectedPool.buttonSingleText ?? '召唤1次', singleCost, onceX, y, buttonWidth, buttonHeight, scale, false, selectedPool, state);
+    this.renderSummonButton(parent, layout, 'once', 'GachaSummonOnceButton', freeSingle ? '免费召唤' : selectedPool.buttonSingleText ?? '召唤1次', singleCost, onceX, y, buttonWidth, buttonHeight, scale, false, selectedPool, state);
     this.renderSummonButton(parent, layout, 'ten', 'GachaSummonTenButton', selectedPool.buttonTenText ?? '召唤10次', tenCost, tenX, y, buttonWidth, buttonHeight, scale, true, selectedPool, state);
     this.renderSkipAnimationToggle(parent, tenX + buttonWidth / 2 + 96 * scale, y, scale);
   }
@@ -1508,6 +1512,7 @@ export class GachaSceneRenderer {
     const centers = parts.length === 2 ? [-width * 0.2, width * 0.2] : [0];
     parts.forEach((part, index) => {
       const cx = centers[index];
+      const isFreeText = part.includes('免费');
       const iconAsset = part.includes('券') ? GACHA_COST_TICKET_ICON_ASSET : part.includes('金币') ? GACHA_COST_GOLD_ICON_ASSET : GACHA_COST_DIAMOND_ICON_ASSET;
       // 估宽:CJK 全宽、数字符号半宽,用于图标贴文字左缘。
       let est = 0;
@@ -1516,8 +1521,11 @@ export class GachaSceneRenderer {
       }
       const iconH = 20 * scale;
       const iconW = iconAsset === GACHA_COST_TICKET_ICON_ASSET ? iconH * (136 / 110) : iconH;
-      this.host.addSprite(`GachaSummonCostIcon_${index}`, iconAsset, cx - est / 2 - iconW / 2 - 4 * scale, rowY, iconW, iconH, parent);
-      const label = this.host.addChildLabel(parent, `GachaSummonCostText_${index}`, part, cx, rowY, 18 * scale, enabled ? rgba(226, 210, 172) : rgba(158, 146, 120), new Size(est + 14 * scale, 24 * scale), HorizontalTextAlignment.CENTER);
+      if (!isFreeText) {
+        this.host.addSprite(`GachaSummonCostIcon_${index}`, iconAsset, cx - est / 2 - iconW / 2 - 4 * scale, rowY, iconW, iconH, parent);
+      }
+      // 免费文案不配货币图标,用亮金色突出"白给"。
+      const label = this.host.addChildLabel(parent, `GachaSummonCostText_${index}`, part, cx, rowY, 18 * scale, isFreeText ? rgba(255, 226, 120) : enabled ? rgba(226, 210, 172) : rgba(158, 146, 120), new Size(est + 14 * scale, 24 * scale), HorizontalTextAlignment.CENTER);
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, false);
     });
