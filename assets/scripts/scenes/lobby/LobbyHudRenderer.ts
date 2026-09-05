@@ -36,6 +36,7 @@ import {
   type UiLayout,
 } from './LobbyHudTypes';
 import { gameAudio } from '../../audio/GameAudio';
+import { lobbyGuide } from '../../guide/GuideManager';
 import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
@@ -93,6 +94,120 @@ export class LobbyHudRenderer {
     this.renderCompactSceneEntrances(layout);
     this.renderCompactGoalTracker(layout);
     this.renderCompactActionEntrances(layout);
+    this.renderGuideOverlay(layout);
+  }
+
+  /** 新手引导覆盖层(P1,2026-09-05):软引导——脉冲金圈+气泡指向目标按钮,不挡任何输入;步骤见 GuideManager。 */
+  private renderGuideOverlay(layout: UiLayout): void {
+    const profile = this.host.currentLobbyProfile();
+    lobbyGuide.bind(profile.userId);
+    const adventure = this.host.currentLobbyAdventureState().adventure;
+    if (!adventure) {
+      return;
+    }
+    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
+    const recommended = this.normalizeMainStageCode(adventure.recommendedStageCode) ?? '';
+    const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended.toUpperCase());
+    const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
+    const veteran = recommendedIndex >= 5;
+    const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
+    if (step === 'DONE') {
+      return;
+    }
+    const config: Record<string, { targets: string[]; text: string }> = {
+      TOWER: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_爬塔'], text: '点这里,开始你的第一场矿境守卫战!' },
+      SUMMON: { targets: ['LobbyNavItem_contract', 'LobbyCompactAction_召唤'], text: '首胜达成!用奖励召唤新的英雄吧' },
+      HERO: { targets: ['LobbyNavItem_hero', 'LobbyCompactAction_英雄'], text: '看看你的英雄,升级培养变更强' },
+      QUEST: { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,记得领取!' },
+    };
+    const entry = config[step];
+    if (!entry) {
+      return;
+    }
+    let target: Node | null = null;
+    for (const name of entry.targets) {
+      target = this.findLobbyNode(name);
+      if (target) {
+        break;
+      }
+    }
+    if (!target) {
+      return;
+    }
+    const overlay = this.createUiNode('LobbyGuideOverlay');
+    overlay.setPosition(Vec3.ZERO);
+    const overlayTf = overlay.addComponent(UITransform);
+    overlayTf.setContentSize(new Size(layout.width, layout.height));
+    if (overlay.parent) {
+      overlay.setSiblingIndex(overlay.parent.children.length - 1);
+    }
+    const local = overlayTf.convertToNodeSpaceAR(target.worldPosition.clone());
+    const targetTf = target.getComponent(UITransform);
+    const ringR = Math.max(40, Math.max(targetTf?.width ?? 60, targetTf?.height ?? 60) * 0.62);
+    const scale = this.lobbyHudScale(layout);
+    // 金色魔法光圈(image2 素材,2026-09-05 一次到位;缺图回退程序圈):呼吸+慢旋
+    const ringHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, ringR * 2.4, ringR * 2.4);
+    if (this.host.addSprite('GuideRingArt', 'ui/guide/lguide_ring/spriteFrame', 0, 0, ringR * 2.4, ringR * 2.4, ringHolder)) {
+      tween(ringHolder)
+        .repeatForever(tween()
+          .to(0.7, { scale: new Vec3(1.14, 1.14, 1), angle: 8 })
+          .to(0.7, { scale: new Vec3(1, 1, 1), angle: 0 }))
+        .start();
+    } else {
+      const ring = ringHolder.addComponent(Graphics);
+      ring.strokeColor = rgba(255, 214, 110, 235);
+      ring.lineWidth = 3.5;
+      ring.circle(0, 0, ringR);
+      ring.stroke();
+      tween(ringHolder)
+        .repeatForever(tween()
+          .to(0.65, { scale: new Vec3(1.18, 1.18, 1) })
+          .to(0.65, { scale: new Vec3(1, 1, 1) }))
+        .start();
+    }
+    // 方向:目标上方放箭头+气泡;顶部空间不足则翻到下方(箭头转 180° 指上)。
+    const pointerH = 66 * scale;
+    const pointerW = pointerH * (192 / 256);
+    const bubbleW = Math.min(400 * scale, layout.stageWidth * 0.52);
+    const bubbleH = bubbleW * (320 / 768);
+    const needed = ringR + pointerH + bubbleH + 26 * scale;
+    const above = local.y + needed < layout.stageTop - 6;
+    const dir = above ? 1 : -1;
+    // 指引箭头(image2 素材,默认朝下;翻转时角度 180):上下浮动
+    const pointerY = local.y + dir * (ringR + pointerH / 2 + 6 * scale);
+    const pointerHolder = this.addChildPlainNode(overlay, 'GuidePointer', local.x, pointerY, pointerW, pointerH);
+    pointerHolder.angle = above ? 0 : 180;
+    if (!this.host.addSprite('GuidePointerArt', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH, pointerHolder)) {
+      const pg = pointerHolder.addComponent(Graphics);
+      pg.fillColor = rgba(255, 214, 110, 240);
+      pg.moveTo(-pointerW * 0.3, pointerH * 0.3);
+      pg.lineTo(pointerW * 0.3, pointerH * 0.3);
+      pg.lineTo(0, -pointerH * 0.4);
+      pg.close();
+      pg.fill();
+    }
+    tween(pointerHolder)
+      .repeatForever(tween()
+        .to(0.55, { position: new Vec3(local.x, pointerY + dir * 10 * scale, 0) })
+        .to(0.55, { position: new Vec3(local.x, pointerY, 0) }))
+      .start();
+    // 气泡板(image2 素材,空板+叠字;缺图回退圆角矩形)
+    const bubbleY = pointerY + dir * (pointerH / 2 + bubbleH / 2 + 6 * scale);
+    const bubbleX = Math.max(layout.stageLeft + bubbleW / 2 + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
+    const bubble = this.addChildPlainNode(overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH);
+    if (!this.host.addSprite('GuideBubbleArt', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH, bubble)) {
+      const bg = bubble.addComponent(Graphics);
+      bg.fillColor = rgba(14, 11, 8, 240);
+      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 10 * scale);
+      bg.fill();
+      bg.strokeColor = rgba(240, 194, 104, 235);
+      bg.lineWidth = Math.max(1, 1.6 * scale);
+      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 10 * scale);
+      bg.stroke();
+    }
+    const text = this.addChildLabel(bubble, 'GuideText', entry.text, 0, 0, 19 * scale, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
+    text.overflow = Label.Overflow.SHRINK;
+    this.applyLobbyResourceTextStyle(text, scale, true);
   }
 
   private get node(): Node {

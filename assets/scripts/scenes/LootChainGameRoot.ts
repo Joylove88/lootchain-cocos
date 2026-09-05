@@ -23,6 +23,7 @@ import {
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { gameAudio } from '../audio/GameAudio';
+import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
 import { PlayerWsClient } from '../net/PlayerWsClient';
 import type { EquipmentItemVO } from '../api/EquipmentApi';
@@ -876,6 +877,7 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbyResourceBar');
     this.removeNodeFromContent('LobbySystemIcons');
     this.removeNodeFromContent('LobbyActivityRail');
+    this.removeNodeFromContent('LobbyGuideOverlay');
     this.removeNodeFromContent('LobbySceneHotspots');
     this.removeNodeFromContent('LobbyGoalTracker');
     this.removeNodeFromContent('LobbyCompactGoalTracker');
@@ -2153,6 +2155,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyHeroRosterPanel(): void {
+    lobbyGuide.markVisited('hero');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyHeroRosterPanelOpen = true;
     this.currentView = 'heroes';
@@ -3385,6 +3388,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyGachaScene(): void {
+    lobbyGuide.markVisited('summon');
     this.closeAllLobbyScenePanelFlags();
     this.gachaResultMode = null;
     this.pendingGachaDraw = null;
@@ -3892,6 +3896,7 @@ export class LootChainGameRoot extends Component {
 
   // ── 任务/成就面板(P1,2026-09-04) ──
   private openLobbyQuestPanel(): void {
+    lobbyGuide.markVisited('quest');
     if (this.lobbyQuestPanelOpen && this.currentView === 'quest') {
       return;
     }

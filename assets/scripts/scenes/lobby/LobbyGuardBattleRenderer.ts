@@ -389,6 +389,10 @@ export class LobbyGuardBattleRenderer {
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
     this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
+    // 新手引导(P1,2026-09-05):首战 MAIN_1_1 指向召唤按钮的强提示(image2 箭头+气泡),首次召唤后消失(step 里检测)。
+    if (stageCode === 'MAIN_1_1') {
+      this.mountFirstBattleGuide(root, layout);
+    }
     this.lastTickWallMs = Date.now();
     this.tickTimer = setInterval(() => this.step(), TICK_MS);
   }
@@ -1107,6 +1111,40 @@ export class LobbyGuardBattleRenderer {
   }
 
   // ── 主循环 ──
+  /** 首战引导:箭头+气泡指向召唤按钮(素材缺图时程序绘制兜底)。 */
+  private mountFirstBattleGuide(root: Node, layout: UiLayout): void {
+    const summonBtn = root.getChildByName('GuardSummonButton');
+    if (!summonBtn) {
+      return;
+    }
+    const holder = this.host.addChildPlainNode(root, 'GuardGuideHint', 0, 0, 10, 10);
+    const bx = summonBtn.position.x;
+    const by = summonBtn.position.y;
+    const btnTf = summonBtn.getComponent(UITransform);
+    const btnH = btnTf?.height ?? 80;
+    const pointerH = 78;
+    const pointerW = pointerH * (192 / 256);
+    const pointerY = by + btnH / 2 + pointerH / 2 + 8;
+    const pointer = this.host.addChildPlainNode(holder, 'Pointer', bx, pointerY, pointerW, pointerH);
+    this.mountSprite(pointer, 'Img', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH);
+    tween(pointer)
+      .repeatForever(tween()
+        .to(0.55, { position: new Vec3(bx, pointerY + 12, 0) })
+        .to(0.55, { position: new Vec3(bx, pointerY, 0) }))
+      .start();
+    const bubbleW = Math.min(430, layout.width * 0.4);
+    const bubbleH = bubbleW * (320 / 768);
+    const bubbleX = Math.min(layout.width / 2 - bubbleW / 2 - 10, bx);
+    const bubbleY = pointerY + pointerH / 2 + bubbleH / 2 + 6;
+    const bubble = this.host.addChildPlainNode(holder, 'Bubble', bubbleX, bubbleY, bubbleW, bubbleH);
+    this.mountSprite(bubble, 'Img', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH);
+    const text = this.host.addChildLabel(bubble, 'Text', '点击【召唤】放置英雄,守住水晶!', 0, 0, 20, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
+    text.overflow = Label.Overflow.SHRINK;
+    text.enableOutline = true;
+    text.outlineColor = rgba(12, 8, 6, 255);
+    text.outlineWidth = 2;
+  }
+
   private step(): void {
     const sim = this.sim;
     if (!sim || !this.isMounted()) {
@@ -1124,6 +1162,10 @@ export class LobbyGuardBattleRenderer {
     this.updateProjectiles();
     for (const aim of this.guardFxAimers.values()) {
       aim();
+    }
+    // 首战引导:完成第一次召唤即撤掉提示(P1,2026-09-05)。
+    if (sim.heroes.length > 0) {
+      this.root?.getChildByName('GuardGuideHint')?.destroy();
     }
     this.syncHeroes();
     this.syncMonsters();
