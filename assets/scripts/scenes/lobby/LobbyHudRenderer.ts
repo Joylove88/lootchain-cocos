@@ -1,4 +1,5 @@
 import {
+  BlockInputEvents,
   Button,
   Color,
   Graphics,
@@ -143,38 +144,63 @@ export class LobbyHudRenderer {
     }
     const local = overlayTf.convertToNodeSpaceAR(target.worldPosition.clone());
     const targetTf = target.getComponent(UITransform);
-    const ringR = Math.max(40, Math.max(targetTf?.width ?? 60, targetTf?.height ?? 60) * 0.62);
+    const targetW = Math.max(56, targetTf?.width ?? 60);
+    const targetH = Math.max(44, targetTf?.height ?? 60);
     const scale = this.lobbyHudScale(layout);
-    // 金色魔法光圈(image2 素材,2026-09-05 一次到位;缺图回退程序圈):呼吸+慢旋
-    const ringHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, ringR * 2.4, ringR * 2.4);
-    if (this.host.addSprite('GuideRingArt', 'ui/guide/lguide_ring/spriteFrame', 0, 0, ringR * 2.4, ringR * 2.4, ringHolder)) {
-      tween(ringHolder)
-        .repeatForever(tween()
-          .to(0.7, { scale: new Vec3(1.14, 1.14, 1), angle: 8 })
-          .to(0.7, { scale: new Vec3(1, 1, 1), angle: 0 }))
-        .start();
-    } else {
+    // 硬引导遮罩(2026-09-05 用户验收):全屏暗层拦输入,只留目标按钮矩形洞可点;洞外四块各自带 BlockInputEvents。
+    const holeHalfW = targetW / 2 + 10;
+    const holeHalfH = targetH / 2 + 8;
+    const dimColor = rgba(0, 0, 0, 172);
+    const halfW = layout.width / 2;
+    const halfH = layout.height / 2;
+    const holeL = local.x - holeHalfW;
+    const holeR = local.x + holeHalfW;
+    const holeB = local.y - holeHalfH;
+    const holeT = local.y + holeHalfH;
+    const blocks: Array<[string, number, number, number, number]> = [
+      ['DimTop', 0, (holeT + halfH) / 2, layout.width, Math.max(0, halfH - holeT)],
+      ['DimBottom', 0, (holeB - halfH) / 2, layout.width, Math.max(0, holeB + halfH)],
+      ['DimLeft', (holeL - halfW) / 2, local.y, Math.max(0, holeL + halfW), holeT - holeB],
+      ['DimRight', (holeR + halfW) / 2, local.y, Math.max(0, halfW - holeR), holeT - holeB],
+    ];
+    for (const [name, bx, by, bw, bh] of blocks) {
+      if (bw <= 0 || bh <= 0) {
+        continue;
+      }
+      const block = this.addChildPlainNode(overlay, `Guide${name}`, bx, by, bw, bh);
+      const bg = block.addComponent(Graphics);
+      bg.fillColor = dimColor;
+      bg.rect(-bw / 2, -bh / 2, bw, bh);
+      bg.fill();
+      block.addComponent(BlockInputEvents);
+    }
+    // 金色魔法光圈(image2 素材):按钮外形椭圆紧贴包裹(非等比拉伸),呼吸脉冲;缺图回退程序椭圆。
+    const ringW = targetW * 1.3 + 18;
+    const ringH = targetH * 1.5 + 14;
+    const ringHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, ringW, ringH);
+    if (!this.host.addSprite('GuideRingArt', 'ui/guide/lguide_ring/spriteFrame', 0, 0, ringW, ringH, ringHolder)) {
       const ring = ringHolder.addComponent(Graphics);
       ring.strokeColor = rgba(255, 214, 110, 235);
       ring.lineWidth = 3.5;
-      ring.circle(0, 0, ringR);
+      ring.ellipse(0, 0, ringW / 2 - 4, ringH / 2 - 4);
       ring.stroke();
-      tween(ringHolder)
-        .repeatForever(tween()
-          .to(0.65, { scale: new Vec3(1.18, 1.18, 1) })
-          .to(0.65, { scale: new Vec3(1, 1, 1) }))
-        .start();
     }
+    tween(ringHolder)
+      .repeatForever(tween()
+        .to(0.7, { scale: new Vec3(1.1, 1.1, 1) })
+        .to(0.7, { scale: new Vec3(1, 1, 1) }))
+      .start();
     // 方向:目标上方放箭头+气泡;顶部空间不足则翻到下方(箭头转 180° 指上)。
     const pointerH = 66 * scale;
     const pointerW = pointerH * (192 / 256);
     const bubbleW = Math.min(400 * scale, layout.stageWidth * 0.52);
     const bubbleH = bubbleW * (320 / 768);
-    const needed = ringR + pointerH + bubbleH + 26 * scale;
+    const ringHalfV = ringH / 2;
+    const needed = ringHalfV + pointerH + bubbleH + 26 * scale;
     const above = local.y + needed < layout.stageTop - 6;
     const dir = above ? 1 : -1;
     // 指引箭头(image2 素材,默认朝下;翻转时角度 180):上下浮动
-    const pointerY = local.y + dir * (ringR + pointerH / 2 + 6 * scale);
+    const pointerY = local.y + dir * (ringHalfV + pointerH / 2 + 6 * scale);
     const pointerHolder = this.addChildPlainNode(overlay, 'GuidePointer', local.x, pointerY, pointerW, pointerH);
     pointerHolder.angle = above ? 0 : 180;
     if (!this.host.addSprite('GuidePointerArt', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH, pointerHolder)) {
