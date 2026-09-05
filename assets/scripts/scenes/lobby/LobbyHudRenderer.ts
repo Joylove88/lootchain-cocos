@@ -146,6 +146,10 @@ export class LobbyHudRenderer {
     if (step === 'DRAW' && view === 'gacha' && this.host.gachaFreeSingleAvailable() !== true) {
       return;
     }
+    // LEVEL_UP 步在详情页:只有确认材料足够才上硬遮罩——材料不足时点升级只会失败,玩家会被暗层困死。
+    if (step === 'LEVEL_UP' && view === 'heroDetail' && this.host.heroDetailLevelUpAffordable() !== true) {
+      return;
+    }
     let target: Node | null = null;
     for (const name of entry.targets) {
       target = this.findLobbyNode(name);
@@ -195,28 +199,67 @@ export class LobbyHudRenderer {
       bg.fill();
       block.addComponent(BlockInputEvents);
     }
-    // 金色魔法光圈(image2 素材):按钮外形椭圆紧贴包裹(非等比拉伸),呼吸脉冲;缺图回退程序椭圆。
-    const ringW = targetW * 1.3 + 18;
-    const ringH = targetH * 1.5 + 14;
-    const ringHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, ringW, ringH);
-    if (!this.host.addSprite('GuideRingArt', 'ui/guide/lguide_ring/spriteFrame', 0, 0, ringW, ringH, ringHolder)) {
-      const ring = ringHolder.addComponent(Graphics);
-      ring.strokeColor = rgba(255, 214, 110, 235);
-      ring.lineWidth = 3.5;
-      ring.ellipse(0, 0, ringW / 2 - 4, ringH / 2 - 4);
-      ring.stroke();
+    // 高亮方式按目标体型二选一(2026-09-05 用户反馈:英雄大卡上椭圆光圈拉伸难看):
+    // 大目标(高卡片类)→ 贴合轮廓的金色描边框+四角亮角标,配合暗层聚光;小按钮 → image2 椭圆光圈。
+    const bigTarget = targetH > 220 || targetH / Math.max(1, targetW) > 1.15;
+    let ringHalfV: number;
+    if (bigTarget) {
+      const frameW = targetW + 16;
+      const frameH = targetH + 16;
+      const frameHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, frameW, frameH);
+      const g = frameHolder.addComponent(Graphics);
+      const radius = 14 * scale;
+      // 外圈柔光(粗半透)+内圈亮描边
+      g.strokeColor = rgba(255, 202, 88, 80);
+      g.lineWidth = 9 * scale;
+      g.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, radius);
+      g.stroke();
+      g.strokeColor = rgba(255, 226, 136, 240);
+      g.lineWidth = 3 * scale;
+      g.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, radius);
+      g.stroke();
+      // 四角 L 形亮角标(选中框质感)
+      const arm = Math.min(34 * scale, frameW * 0.22);
+      g.strokeColor = rgba(255, 240, 176, 255);
+      g.lineWidth = 5 * scale;
+      for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]] as Array<[number, number]>) {
+        const cx = sx * frameW / 2;
+        const cy = sy * frameH / 2;
+        g.moveTo(cx - sx * arm, cy);
+        g.lineTo(cx, cy);
+        g.lineTo(cx, cy - sy * arm);
+        g.stroke();
+      }
+      const frameFade = frameHolder.addComponent(UIOpacity);
+      tween(frameFade)
+        .repeatForever(tween()
+          .to(0.7, { opacity: 150 })
+          .to(0.7, { opacity: 255 }))
+        .start();
+      ringHalfV = frameH / 2;
+    } else {
+      const ringW = targetW * 1.3 + 18;
+      const ringH = targetH * 1.5 + 14;
+      const ringHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, ringW, ringH);
+      if (!this.host.addSprite('GuideRingArt', 'ui/guide/lguide_ring/spriteFrame', 0, 0, ringW, ringH, ringHolder)) {
+        const ring = ringHolder.addComponent(Graphics);
+        ring.strokeColor = rgba(255, 214, 110, 235);
+        ring.lineWidth = 3.5;
+        ring.ellipse(0, 0, ringW / 2 - 4, ringH / 2 - 4);
+        ring.stroke();
+      }
+      tween(ringHolder)
+        .repeatForever(tween()
+          .to(0.7, { scale: new Vec3(1.1, 1.1, 1) })
+          .to(0.7, { scale: new Vec3(1, 1, 1) }))
+        .start();
+      ringHalfV = ringH / 2;
     }
-    tween(ringHolder)
-      .repeatForever(tween()
-        .to(0.7, { scale: new Vec3(1.1, 1.1, 1) })
-        .to(0.7, { scale: new Vec3(1, 1, 1) }))
-      .start();
     // 方向:目标上方放箭头+气泡;顶部空间不足则翻到下方(箭头转 180° 指上)。
     const pointerH = 66 * scale;
     const pointerW = pointerH * (192 / 256);
     const bubbleW = Math.min(400 * scale, layout.stageWidth * 0.52);
     const bubbleH = bubbleW * (320 / 768);
-    const ringHalfV = ringH / 2;
     const needed = ringHalfV + pointerH + bubbleH + 26 * scale;
     const above = local.y + needed < layout.stageTop - 6;
     const dir = above ? 1 : -1;

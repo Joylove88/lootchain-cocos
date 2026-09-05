@@ -3449,6 +3449,31 @@ export class LootChainGameRoot extends Component {
     return (selected?.poolCode ?? null) === free.poolCode;
   }
 
+  /** 详情页英雄升级材料是否足够(LobbyHudHost:引导 LEVEL_UP 步防锁死;null=详情/背包未就绪)。 */
+  heroDetailLevelUpAffordable(): boolean | null {
+    const hero = this.currentLobbyHeroDetailHero();
+    const detail = this.currentLobbyHeroDetailInfo();
+    if (!hero || !detail || detail.id !== hero.id) {
+      return null;
+    }
+    const cap = detail.heroLevelCap ?? 0;
+    if (cap > 0 && (detail.level ?? hero.level) >= cap) {
+      return false;
+    }
+    const books = detail.nextLevelExpBookCost ?? null;
+    const gold = detail.nextLevelGoldCost ?? null;
+    if (books === null || gold === null) {
+      return null;
+    }
+    const bag = this.currentLobbyBagState();
+    if (!bag.loaded) {
+      return null;
+    }
+    const ownedBooks = bag.groups.flatMap((group) => group.items).find((item) => item.itemCode === 'HERO_EXP_BOOK')?.itemCount ?? 0;
+    const ownedGold = Number(this.currentLobbyProfile().gold) || 0;
+    return ownedBooks >= books && ownedGold >= gold;
+  }
+
   /** 当前引导是否停在 DRAW 步(免费单抽)。 */
   private isGuideDrawStepActive(): boolean {
     const adventure = this.currentLobbyAdventureState().adventure;
