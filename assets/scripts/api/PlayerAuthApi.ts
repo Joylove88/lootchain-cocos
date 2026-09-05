@@ -41,4 +41,9 @@ export class PlayerAuthApi {
   logout(): void {
     this.tokenStore.clear();
   }
+
+  /** 服务端吊销当前 token(退出登录/切换账号,2026-09-05);失败不阻断本地清理。 */
+  async logoutRemote(): Promise<void> {
+    await this.http.post<unknown>('/api/player/auth/logout', {});
+  }
 }

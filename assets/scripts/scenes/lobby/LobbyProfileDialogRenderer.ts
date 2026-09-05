@@ -41,6 +41,8 @@ export interface LobbyProfileDialogHost {
   formatInteger(value: number | null | undefined): string;
   isLobbyProfileLoading(): boolean;
   getLobbyProfileError(): string;
+  /** 退出登录/切换账号(2026-09-05):吊销 token+清本地会话+回登录页。 */
+  logoutToLoginPage(): void;
 }
 
 const LOBBY_PROFILE_SERVER_NAME = '本地开发服';
@@ -97,10 +99,28 @@ export class LobbyProfileDialogRenderer {
     this.addProfileHeader(panel, profile, panelWidth, panelHeight, dialogScale);
     this.addProfileRows(panel, profile, panelWidth, panelHeight, dialogScale);
 
+    // 退出登录/切换账号(2026-09-05):吊销 token → 清本地会话 → 回登录页(登录页可直接登其他账号)。
+    const logoutW = Math.min(280 * dialogScale, panelWidth * 0.4);
+    const logoutH = 46 * dialogScale;
+    const logoutBtn = this.host.addChildPlainNode(panel, 'LobbyProfileLogoutButton', 0, -panelHeight / 2 + 74 * dialogScale, logoutW, logoutH);
+    const lg = logoutBtn.addComponent(Graphics);
+    lg.fillColor = rgba(96, 24, 22, 238);
+    lg.roundRect(-logoutW / 2, -logoutH / 2, logoutW, logoutH, 8 * dialogScale);
+    lg.fill();
+    lg.strokeColor = rgba(214, 110, 88, 225);
+    lg.lineWidth = Math.max(1, 1.4 * dialogScale);
+    lg.roundRect(-logoutW / 2, -logoutH / 2, logoutW, logoutH, 8 * dialogScale);
+    lg.stroke();
+    const logoutLabel = this.host.addChildLabel(logoutBtn, 'Text', '退出登录 / 切换账号', 0, 0, Math.max(13, 17 * dialogScale), rgba(255, 214, 196), new Size(logoutW - 16 * dialogScale, logoutH));
+    logoutLabel.overflow = Label.Overflow.SHRINK;
+    logoutBtn.addComponent(Button);
+    logoutBtn.on(Button.EventType.CLICK, () => this.host.logoutToLoginPage(), this);
+    this.host.applyImageButtonFeedback(logoutBtn, 1.03, 0.96);
+
     const note = this.host.addChildLabel(
       panel,
       'LobbyProfileReadonlyNote',
-      '当前阶段仅展示只读资料；头像、昵称、绑定、登出等操作暂不开放。',
+      '退出后回到登录页,可直接登录或注册其他账号;头像、昵称编辑暂未开放。',
       0,
       -panelHeight / 2 + 34 * dialogScale,
       Math.max(10, 15 * dialogScale),

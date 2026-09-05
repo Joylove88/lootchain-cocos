@@ -4571,6 +4571,30 @@ export class LootChainGameRoot extends Component {
     this.run(() => this.loginFlow.register());
   }
 
+  /**
+   * 退出登录/切换账号(2026-09-05):服务端吊销 token(best-effort)→ 清本地会话 → 整页 reload 回登录页。
+   * Web/H5 首发平台用 reload 做状态清零最可靠(大厅/战斗/加载器全部归零,零残留);
+   * 非浏览器兜底走本地重置回登录视图。
+   */
+  private logoutToLoginPage(): void {
+    this.setStatus('正在退出登录…');
+    void this.api.auth.logoutRemote()
+      .catch(() => undefined)
+      .finally(() => {
+        this.api.auth.logout();
+        const w = globalThis as { location?: { reload: () => void } };
+        if (w.location && typeof w.location.reload === 'function') {
+          w.location.reload();
+          return;
+        }
+        this.lobbyBattleFlow.cancel(true);
+        this.loginFlow.cancel();
+        this.closeAllLobbyScenePanelFlags();
+        this.currentView = 'login';
+        this.renderCurrentView();
+      });
+  }
+
   private toggleLoginAgreement(): void {
     this.loginFlow.toggleAgreement();
     this.renderLoginAccountScene();
