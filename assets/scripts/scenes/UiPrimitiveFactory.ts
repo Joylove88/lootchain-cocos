@@ -108,19 +108,26 @@ export class UiPrimitiveFactory {
       editBox.inputFlag = EditBox.InputFlag.PASSWORD;
       this.applyPasswordMask(editBox, textLabel);
     }
-    this.styleNativeInputOnFocus(editBox);
+    this.rebuildAndStyleNativeInput(editBox);
     return editBox;
   }
 
   /**
-   * Web 平台 EditBox 编辑态显示的是浏览器原生 input(默认白底黑字,数字模式还带上下箭头),
-   * 与暗金 UI 严重脱节(2026-09-06 用户反馈登录页)。编辑开始时抓 activeElement 注入暗色样式。
+   * Web 平台 EditBox 两个坑(2026-09-06 用户反馈登录页,实测引擎 edit-box-impl.ts 确认):
+   * 1. DOM 元素在组件创建瞬间按当时的 inputMode(默认 ANY)固定为 <textarea>——右侧滚动条+
+   *    文字顶对齐只占上半框;后设 SINGLE_LINE 只更新 Label 不重建 DOM。必须 clear+init 强制重建成 <input>。
+   * 2. 编辑态原生元素默认白底黑字,与暗金 UI 脱节。重建后直接对元素常驻注入暗色样式
+   *    (不等聚焦——EDITING_DID_BEGAN 派发时 activeElement 未必已切换,时机不可靠)。
    */
-  private styleNativeInputOnFocus(editBox: EditBox): void {
-    editBox.node.on(EditBox.EventType.EDITING_DID_BEGAN, () => {
-      const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
-      const el = doc?.activeElement as { tagName?: string; style?: Record<string, string> } | null;
-      if (!el || !el.style || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) {
+  private rebuildAndStyleNativeInput(editBox: EditBox): void {
+    try {
+      const impl = (editBox as unknown as { _impl?: { _edTxt?: { tagName?: string; style?: Record<string, string> } | null; clear?: () => void; init?: (d: EditBox) => void } })._impl;
+      if (impl && impl._edTxt && impl._edTxt.tagName === 'TEXTAREA' && impl.clear && impl.init) {
+        impl.clear();
+        impl.init(editBox);
+      }
+      const el = impl?._edTxt;
+      if (!el || !el.style) {
         return;
       }
       el.style.background = 'rgba(8,7,9,0.94)';
@@ -130,12 +137,14 @@ export class UiPrimitiveFactory {
       el.style.outline = 'none';
       el.style.caretColor = '#f5d27a';
       el.style.paddingLeft = '10px';
-      // 清掉 number/spinner 外观(部分浏览器);textarea 兜底禁滚动/拉伸。
       el.style.appearance = 'textfield';
       el.style.webkitAppearance = 'none';
       el.style.overflow = 'hidden';
       el.style.resize = 'none';
-    }, this);
+    } catch (error) {
+      // 非 Web 平台或引擎内部结构变化:静默跳过,输入功能不受影响。
+      void error;
+    }
   }
 
   applyPasswordMask(editBox: EditBox, textLabel: Label): void {
