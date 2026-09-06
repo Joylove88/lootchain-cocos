@@ -73,6 +73,7 @@ import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
 import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
 import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer';
+import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
@@ -124,6 +125,7 @@ type ViewName =
   | 'settings'
   | 'quest'
   | 'mail'
+  | 'more'
   | 'gacha'
   | 'gachaInfo'
   | 'gachaRecord'
@@ -247,6 +249,7 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyGuardBattleRenderer = new LobbyGuardBattleRenderer(this as unknown as LobbyGuardBattleHost);
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
   private readonly lobbyQuestMailPanelRenderer = new LobbyQuestMailPanelRenderer(this as unknown as import('./lobby/LobbyQuestMailPanelRenderer').LobbyQuestMailHost);
+  private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
   private readonly lobbyCodexState = new LobbyCodexState();
@@ -374,6 +377,8 @@ export class LootChainGameRoot extends Component {
   // 任务/成就/邮件 P1(2026-09-04,docs/14/15)
   private lobbyQuestPanelOpen = false;
   private lobbyMailPanelOpen = false;
+  private lobbyMorePanelOpen = false;
+  private lobbyGiftRedeeming = false;
   private lobbyQuestState: { loading: boolean; error: string; summary: import('../types/QuestTypes').PlayerQuestSummaryVO | null; tab: 'DAILY' | 'ACHIEVE'; claiming: string | null; version: number } = { loading: false, error: '', summary: null, tab: 'DAILY', claiming: null, version: 0 };
   private lobbyMailState: { loading: boolean; error: string; mails: import('../types/QuestTypes').PlayerMailVO[]; claiming: number | null; version: number } = { loading: false, error: '', mails: [], claiming: null, version: 0 };
   private loginLanguageDialogOpen = false;
@@ -844,6 +849,10 @@ export class LootChainGameRoot extends Component {
       this.lobbyQuestMailPanelRenderer.renderMailPanel(layout);
       return;
     }
+    if (this.currentView === 'more') {
+      this.lobbyMorePanelRenderer.render(layout);
+      return;
+    }
     if (this.currentView === 'placeholder') {
       this.renderLobbyPlaceholderDialog(layout);
     }
@@ -909,6 +918,7 @@ export class LootChainGameRoot extends Component {
     this.removeLobbySettingsPanel();
     this.removeLobbyQuestPanel();
     this.removeLobbyMailPanel();
+    this.removeLobbyMorePanel();
     this.removePlayerProfileDialog();
     this.removeLobbyPlaceholderDialog();
     this.renderLobbyHud(layout);
@@ -1125,6 +1135,7 @@ export class LootChainGameRoot extends Component {
       || view === 'settings'
       || view === 'quest'
       || view === 'mail'
+      || view === 'more'
       || view === 'placeholder';
   }
 
@@ -1147,6 +1158,7 @@ export class LootChainGameRoot extends Component {
     this.lobbySettingsPanelOpen = false;
     this.lobbyQuestPanelOpen = false;
     this.lobbyMailPanelOpen = false;
+    this.lobbyMorePanelOpen = false;
     this.lobbyPlaceholderDialog = null;
   }
 
@@ -2105,7 +2117,15 @@ export class LootChainGameRoot extends Component {
     this.lobbyFormationOrigin = origin === 'roster' ? 'roster' : null;
     // 英雄面板「布阵」等无关卡上下文的入口:回落当前选中关,再回落服务端推荐/最后解锁关。
     const requestedStageCode = stageCode ?? this.selectedLobbyStageCode ?? this.resolveDefaultLobbyFormationStageCode() ?? undefined;
-    const resolvedStageCode = this.resolveLobbyStageCode(requestedStageCode);
+    let resolvedStageCode = this.resolveLobbyStageCode(requestedStageCode);
+    // 纯布阵入口(2026-09-06 用户反馈):爬塔里浏览过锁定章节会把 selectedLobbyStageCode 改到锁定关,
+    // 此时从英雄页开布阵会被下方校验踢去爬塔面板。布阵场景对目标关不敏感,直接回落默认可打关。
+    if (origin === 'roster' && resolvedStageCode) {
+      const selectedStage = this.findLobbyAdventureStage(resolvedStageCode);
+      if (!selectedStage || !this.canOpenLobbyBattleEntryStage(selectedStage)) {
+        resolvedStageCode = this.resolveLobbyStageCode(this.resolveDefaultLobbyFormationStageCode() ?? undefined);
+      }
+    }
     if (!resolvedStageCode) {
       this.rejectInvalidLobbyStageSelection();
       return;
@@ -4074,12 +4094,77 @@ export class LootChainGameRoot extends Component {
     this.returnToLobbyFromScenePage();
   }
 
+  // ── "更多"面板(2026-09-06):低频入口收纳,右上仅留一个入口 ──
+  private openLobbyMorePanel(): void {
+    if (this.lobbyMorePanelOpen && this.currentView === 'more') {
+      return;
+    }
+    this.closeAllLobbyScenePanelFlags();
+    this.lobbyMorePanelOpen = true;
+    this.currentView = 'more';
+    this.renderCurrentView();
+    // 红点/战报数据兜底刷新(不清未读)。
+    void this.loadLobbyMails(false, false);
+    void this.loadLobbyBattleRecent(false);
+  }
+
+  private closeLobbyMorePanel(): void {
+    if (!this.lobbyMorePanelOpen) {
+      return;
+    }
+    this.returnToLobbyFromScenePage();
+  }
+
+  private removeLobbyMorePanel(): void {
+    this.removeNodeFromContent('LobbyMoreDim');
+    this.removeNodeFromContent('LobbyMoreSceneContent');
+    this.removeNodeFromContent('EditBox');
+  }
+
+  /** 右上"更多"入口红点数据源(LobbyHudHost)。 */
+  lobbyMailUnreadCount(): number {
+    return this.lobbyMailState.mails.filter((mail) => !mail.read).length;
+  }
+
+  isLobbyGiftRedeeming(): boolean {
+    return this.lobbyGiftRedeeming;
+  }
+
+  /** 兑换礼包码("更多"面板,2026-09-06):成功后回读资料/背包,提示奖励清单。 */
+  private redeemLobbyGiftCode(code: string): void {
+    const trimmed = (code ?? '').trim();
+    if (!trimmed) {
+      this.setStatus('请输入兑换码。');
+      return;
+    }
+    if (this.lobbyGiftRedeeming) {
+      return;
+    }
+    this.lobbyGiftRedeeming = true;
+    this.renderCurrentLobbyScenePage();
+    void this.api.gift.redeem(trimmed)
+      .then((rewards) => {
+        this.setStatus(`兑换成功:${rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
+        const profile = this.currentLobbyProfile();
+        void this.loadLobbyProfile(profile.userId);
+        void this.loadLobbyBag(true);
+      })
+      .catch((error) => {
+        this.setStatus(`兑换失败:${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        this.lobbyGiftRedeeming = false;
+        this.renderCurrentLobbyScenePage();
+      });
+  }
+
   private removeLobbyMailPanel(): void {
     this.removeNodeFromContent('LobbyMailDim');
     this.removeNodeFromContent('LobbyMailSceneContent');
   }
 
-  private async loadLobbyMails(force: boolean): Promise<void> {
+  /** markRead=false 供大厅红点预加载:只读列表不清未读("更多"面板,2026-09-06)。 */
+  private async loadLobbyMails(force: boolean, markRead = true): Promise<void> {
     if (this.lobbyMailState.loading) {
       return;
     }
@@ -4091,9 +4176,11 @@ export class LootChainGameRoot extends Component {
     try {
       const mails = await this.api.mail.list();
       this.lobbyMailState = { ...this.lobbyMailState, loading: false, mails, version: this.lobbyMailState.version + 1 };
-      // 面板打开即批量标记已读(best-effort,不阻塞展示)。
-      for (const mail of mails.filter((entry) => !entry.read)) {
-        void this.api.mail.markRead(mail.mailId).catch(() => undefined);
+      // 面板打开即批量标记已读(best-effort,不阻塞展示);红点预加载不标。
+      if (markRead) {
+        for (const mail of mails.filter((entry) => !entry.read)) {
+          void this.api.mail.markRead(mail.mailId).catch(() => undefined);
+        }
       }
     } catch (error) {
       this.lobbyMailState = { ...this.lobbyMailState, loading: false, error: error instanceof Error ? error.message : String(error), version: this.lobbyMailState.version + 1 };
@@ -4751,6 +4838,8 @@ export class LootChainGameRoot extends Component {
     void this.loadLobbyAdventure();
     void this.loadLobbyBattleRecent();
     void this.loadLobbyHeroRoster();
+    // 邮件未读红点数据(只读不标已读,"更多"入口用)。
+    void this.loadLobbyMails(false, false);
   }
 
   private startLobbyLoading(tokenName: string): void {

@@ -1,0 +1,134 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "b93d6a23-81a7-4e74-8114-46a93345e04f",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "b93d6a23-81a7-4e74-8114-46a93345e04f@6c48a",
+      "displayName": "micon_mail",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "repeat",
+        "wrapModeT": "repeat",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "b93d6a23-81a7-4e74-8114-46a93345e04f",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "b93d6a23-81a7-4e74-8114-46a93345e04f@f9941",
+      "displayName": "micon_mail",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": -25,
+        "offsetY": -8.5,
+        "trimX": 0,
+        "trimY": 17,
+        "width": 974,
+        "height": 1007,
+        "rawWidth": 1024,
+        "rawHeight": 1024,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": true,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "vertices": {
+          "rawPosition": [
+            -487,
+            -503.5,
+            0,
+            487,
+            -503.5,
+            0,
+            -487,
+            503.5,
+            0,
+            487,
+            503.5,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            0,
+            1007,
+            974,
+            1007,
+            0,
+            0,
+            974,
+            0
+          ],
+          "nuv": [
+            0,
+            0,
+            0.951171875,
+            0,
+            0,
+            0.9833984375,
+            0.951171875,
+            0.9833984375
+          ],
+          "minPos": [
+            -487,
+            -503.5,
+            0
+          ],
+          "maxPos": [
+            487,
+            503.5,
+            0
+          ]
+        },
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "b93d6a23-81a7-4e74-8114-46a93345e04f@6c48a",
+        "atlasUuid": "",
+        "trimType": "auto"
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": false,
+    "hasAlpha": true,
+    "redirect": "b93d6a23-81a7-4e74-8114-46a93345e04f@6c48a"
+  }
+}

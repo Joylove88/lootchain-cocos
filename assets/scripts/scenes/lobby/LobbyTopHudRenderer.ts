@@ -304,8 +304,10 @@ export class LobbyTopHudRenderer {
     group.addComponent(UITransform).setContentSize(new Size(totalWidth, iconSize));
 
     let cursorX = -totalWidth / 2 + iconSize / 2;
+    const unread = this.host.lobbyMailUnreadCount?.() ?? 0;
     for (const key of LOBBY_SYSTEM_ICONS) {
-      this.addSystemIcon(group, key, cursorX, 0, iconSize, scale, key === 'menu');
+      // "更多"红点=邮件未读("更多"面板收纳邮箱后未读信号透传到唯一入口,2026-09-06)。
+      this.addSystemIcon(group, key, cursorX, 0, iconSize, scale, key === 'menu' && unread > 0);
       cursorX += iconSize + gap;
     }
   }
@@ -648,7 +650,8 @@ export class LobbyTopHudRenderer {
 
   private systemIconsWidth(scale: number): number {
     const iconSize = this.systemIconSize(scale);
-    return iconSize * 4 + 14 * scale * 3;
+    const count = Math.max(1, LOBBY_SYSTEM_ICONS.length);
+    return iconSize * count + 14 * scale * (count - 1);
   }
 
   private addSystemIcon(parent: Node, key: LobbySystemIconKey, x: number, y: number, size: number, scale: number, hot: boolean): void {
@@ -663,6 +666,11 @@ export class LobbyTopHudRenderer {
       // 邮件面板(P1,2026-09-04)。
       node.off(Button.EventType.CLICK);
       node.on(Button.EventType.CLICK, () => this.host.openLobbyMailPanel?.(), this);
+    }
+    if (key === 'menu') {
+      // "更多"面板(2026-09-06):邮件/设置/公告/战报/兑换码收纳入口。
+      node.off(Button.EventType.CLICK);
+      node.on(Button.EventType.CLICK, () => this.host.openLobbyMorePanel?.(), this);
     }
     this.applyImageButtonFeedback(node, 1.08, 0.94);
     // 2026-09-03 用户素材:邮箱/设置/更多 三钮直接用图,缺图回退原矢量绘制。

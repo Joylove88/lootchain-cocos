@@ -677,7 +677,8 @@ export class LobbyHudRenderer {
 
   private renderMicroActionBar(layout: UiLayout, unit: number): void {
     const actions = [
-      { label: '公告', detail: '', notice: true },
+      // 公告已收进"更多"(2026-09-06):微型条改挂"更多"入口(设置/邮箱在窄屏因此可达)。
+      { label: '更多', detail: '', notice: false },
       { label: '爬塔', detail: '', adventure: true },
       { label: '英雄', detail: '', heroRoster: true },
       { label: '背包', detail: '', bag: true },
@@ -1984,7 +1985,8 @@ export class LobbyHudRenderer {
   private compactActionEntries(): Array<{ label: string; detail: string; notice?: boolean; codex?: boolean; heroRoster?: boolean; bag?: boolean; adventure?: boolean; gacha?: boolean }> {
     // 小屏隐藏侧栏/底栏时，用本地快捷入口保留大厅模块的可达性。
     return [
-      { label: '活动', detail: '活动公告只读展示；当前不进入玩法或改变玩家资源。', notice: true },
+      // 公告已收进"更多"(2026-09-06):紧凑档也改挂"更多"(设置/邮箱/公告/兑换码统一可达)。
+      { label: '更多', detail: '' },
       { label: '召唤', detail: '召唤祭坛按后端卡池状态开放真实召唤；当前仅开放 draw，兑换和补发关闭。', gacha: true },
       { label: '挑战', detail: '进入关卡地图后选择关卡；胜利后自动提交结算并发放奖励。', adventure: true },
       { label: '爬塔', detail: '主线章节只读展示；当前不会进入战斗或产生进度写入。', adventure: true },
@@ -2034,6 +2036,11 @@ export class LobbyHudRenderer {
     const node = this.addChildPlainNode(parent, `LobbyCompactAction_${label}`, x, y, width, height);
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => {
+      // "更多"面板入口(2026-09-06):label 直判,免再扩一位布尔参数。
+      if (label === '更多') {
+        this.host.openLobbyMorePanel?.();
+        return;
+      }
       if (notice) {
         this.openLobbyNoticePanel();
         return;

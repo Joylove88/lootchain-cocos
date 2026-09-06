@@ -119,6 +119,10 @@ export interface LobbyHudHost {
   openLobbyQuestPanel?(): void;
   /** 邮件面板(P1,2026-09-04)。 */
   openLobbyMailPanel?(): void;
+  /** "更多"面板(2026-09-06):右上单入口收纳邮件/设置/公告/战报/兑换码。 */
+  openLobbyMorePanel?(): void;
+  /** 邮件未读数(右上"更多"红点;未加载时 0)。 */
+  lobbyMailUnreadCount?(): number;
   /** 图鉴入口走只读预览面板；该面板只读取大厅门面数据，不进入英雄养成。 */
   openLobbyCodexPanel(): void;
   /** 英雄入口走只读英雄队列；该面板只读取已拥有英雄，不提供任何养成写操作。 */

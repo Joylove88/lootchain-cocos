@@ -5,6 +5,7 @@ import { BagApi } from './BagApi';
 import { EquipmentApi } from './EquipmentApi';
 import { BattleApi } from './BattleApi';
 import { GachaApi } from './GachaApi';
+import { GiftApi } from './GiftApi';
 import { HeroApi } from './HeroApi';
 import { IdleApi } from './IdleApi';
 import { LobbyCodexApi } from './LobbyCodexApi';
@@ -45,6 +46,7 @@ export class LootChainApi {
   readonly token = new TokenApi(this.http);
   readonly quest = new QuestApi(this.http);
   readonly mail = new MailApi(this.http);
+  readonly gift = new GiftApi(this.http);
 
   setApiBaseUrl(baseUrl: string): void {
     this.http.setBaseUrl(baseUrl);
