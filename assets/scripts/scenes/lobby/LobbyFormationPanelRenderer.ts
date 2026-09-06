@@ -40,8 +40,8 @@ import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSn
 const FORMATION_SPINE_RUNTIME_RETRY_DELAYS_MS = [180, 420, 900];
 const FORMATION_BATTLE_BG_ASSET: string = 'ui/battle/battle_scene_cathedral/spriteFrame';
 const FORMATION_BATTLE_GROUND_ASSET: string = 'ui/battle/battle_scene_cathedral/spriteFrame';
-// 布阵改版素材(image2,2026-09-05):战力横幅/阵位魔法阵基座/候选行头像金环;缺图全部走程序绘制兜底。
-const FORMATION_POWER_BANNER_ASSET = 'ui/formation/fpanel_power_banner/spriteFrame';
+// 布阵改版素材(image2,2026-09-05):阵位魔法阵基座/候选行头像金环;缺图走程序绘制兜底。
+// (战力横匾素材 2026-09-06 撤下:用户反馈坠饰太花,改回程序绘制胶囊。)
 const FORMATION_SLOT_BASE_ASSET = 'ui/formation/fpanel_slot_base/spriteFrame';
 const FORMATION_HERO_RING_ASSET = 'ui/formation/fpanel_hero_ring/spriteFrame';
 // 名牌复用英雄详情现成素材(黑金铭牌)。
@@ -244,35 +244,32 @@ export class LobbyFormationPanelRenderer {
     const bannerHeight = 44 * scale;
     const bannerY = height / 2 - 48 * scale;
     const banner = this.host.addChildPlainNode(parent, 'LobbyFormationPowerBanner', 0, bannerY, bannerWidth, bannerHeight);
-    // 双翼金饰横匾素材(等比 3:2,上下透明区不占视觉;文字叠中心亮区);缺图回退手绘胶囊+饰线。
-    const bannerArtWidth = Math.min(430 * scale, width * 0.48);
-    if (!this.host.addSprite('LobbyFormationPowerBannerArt', FORMATION_POWER_BANNER_ASSET, 0, 0, bannerArtWidth, bannerArtWidth * (1024 / 1536), banner)) {
-      const bannerGraphics = banner.addComponent(Graphics);
-      bannerGraphics.fillColor = rgba(14, 9, 6, 228);
-      bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, bannerHeight / 2);
-      bannerGraphics.fill();
-      bannerGraphics.strokeColor = rgba(216, 170, 84, 235);
-      bannerGraphics.lineWidth = Math.max(1, 1.5 * scale);
-      bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, bannerHeight / 2);
+    // 战力条(2026-09-06 用户反馈:image2 双翼横匾坠饰太花,撤素材):克制的深底胶囊+金描边+左右细饰线。
+    const bannerGraphics = banner.addComponent(Graphics);
+    bannerGraphics.fillColor = rgba(14, 9, 6, 228);
+    bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, bannerHeight / 2);
+    bannerGraphics.fill();
+    bannerGraphics.strokeColor = rgba(216, 170, 84, 235);
+    bannerGraphics.lineWidth = Math.max(1, 1.5 * scale);
+    bannerGraphics.roundRect(-bannerWidth / 2, -bannerHeight / 2, bannerWidth, bannerHeight, bannerHeight / 2);
+    bannerGraphics.stroke();
+    // 左右延伸饰线(渐弱单段)+ 端头小菱形:一点仪式感即可,不做翼饰。
+    const flourish = (direction: number): void => {
+      bannerGraphics.strokeColor = rgba(216, 170, 84, 150);
+      bannerGraphics.lineWidth = Math.max(1, 1.2 * scale);
+      bannerGraphics.moveTo(direction * (bannerWidth / 2 + 10 * scale), 0);
+      bannerGraphics.lineTo(direction * (bannerWidth / 2 + 58 * scale), 0);
       bannerGraphics.stroke();
-      // 左右延伸饰线(渐弱双段)+ 端头菱形,呼应参考图的双翼横幅构图。
-      const flourish = (direction: number): void => {
-        bannerGraphics.strokeColor = rgba(216, 170, 84, 150);
-        bannerGraphics.lineWidth = Math.max(1, 1.2 * scale);
-        bannerGraphics.moveTo(direction * (bannerWidth / 2 + 10 * scale), 0);
-        bannerGraphics.lineTo(direction * (bannerWidth / 2 + 58 * scale), 0);
-        bannerGraphics.stroke();
-        bannerGraphics.fillColor = rgba(230, 186, 96, 210);
-        const tipX = direction * (bannerWidth / 2 + 64 * scale);
-        bannerGraphics.moveTo(tipX, 0);
-        bannerGraphics.lineTo(tipX - direction * 7 * scale, 4 * scale);
-        bannerGraphics.lineTo(tipX - direction * 7 * scale, -4 * scale);
-        bannerGraphics.close();
-        bannerGraphics.fill();
-      };
-      flourish(-1);
-      flourish(1);
-    }
+      bannerGraphics.fillColor = rgba(230, 186, 96, 210);
+      const tipX = direction * (bannerWidth / 2 + 64 * scale);
+      bannerGraphics.moveTo(tipX, 0);
+      bannerGraphics.lineTo(tipX - direction * 7 * scale, 4 * scale);
+      bannerGraphics.lineTo(tipX - direction * 7 * scale, -4 * scale);
+      bannerGraphics.close();
+      bannerGraphics.fill();
+    };
+    flourish(-1);
+    flourish(1);
     const powerReady = power.rosterLoaded;
     const bannerLabel = this.host.addChildLabel(banner, 'LobbyFormationPowerBannerLabel', '当前阵容战力', -bannerWidth * 0.16, 0, 17 * scale, rgba(228, 198, 134), new Size(bannerWidth * 0.5, 22 * scale));
     bannerLabel.overflow = Label.Overflow.SHRINK;
