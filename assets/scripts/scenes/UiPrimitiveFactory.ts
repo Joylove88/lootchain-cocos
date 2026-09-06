@@ -61,13 +61,15 @@ export class UiPrimitiveFactory {
   addEditBox(initialText: string, x: number, y: number, width: number, layout?: UiLayout, password = false): EditBox {
     const currentLayout = layout ?? this.host.resolveLayout();
     const node = this.host.createUiNode('EditBox');
+    // 先冻结节点(2026-09-06 四修):EditBox 的 __preload 在激活时才建 DOM——激活前把 inputMode
+    // 设成 SINGLE_LINE,引擎就会按单行建 <input>(默认 ANY 会建带滚动条/文字顶对齐的 <textarea>),
+    // 且尺寸/矩阵走官方 _syncSize 正常路径。此前 clear+init 手动重建的路径矩阵缓存不同步,已废弃。
+    node.active = false;
     node.setPosition(new Vec3(x, y, 0));
     node.addComponent(UITransform).setContentSize(new Size(width, currentLayout.inputHeight));
     const editBox = node.addComponent(EditBox);
     editBox.maxLength = 256;
     editBox.placeholder = '';
-    // 单行模式(2026-09-06 用户反馈):默认 ANY 在 Web 端创建 <textarea>——右侧带滚动条、
-    // 文字顶对齐只占上半框;SINGLE_LINE 走 <input> 单行垂直居中,两个问题一起消。
     editBox.inputMode = EditBox.InputMode.SINGLE_LINE;
     if (password) {
       editBox.inputFlag = EditBox.InputFlag.PASSWORD;
@@ -108,28 +110,16 @@ export class UiPrimitiveFactory {
       editBox.inputFlag = EditBox.InputFlag.PASSWORD;
       this.applyPasswordMask(editBox, textLabel);
     }
-    this.rebuildAndStyleNativeInput(editBox);
+    // 激活 → __preload → 引擎按 SINGLE_LINE 建 <input> 并做官方尺寸同步。
+    node.active = true;
+    this.styleNativeInput(editBox);
     return editBox;
   }
 
-  /**
-   * Web 平台 EditBox 两个坑(2026-09-06 用户反馈登录页,实测引擎 edit-box-impl.ts 确认):
-   * 1. DOM 元素在组件创建瞬间按当时的 inputMode(默认 ANY)固定为 <textarea>——右侧滚动条+
-   *    文字顶对齐只占上半框;后设 SINGLE_LINE 只更新 Label 不重建 DOM。必须 clear+init 强制重建成 <input>。
-   * 2. 编辑态原生元素默认白底黑字,与暗金 UI 脱节。重建后直接对元素常驻注入暗色样式
-   *    (不等聚焦——EDITING_DID_BEGAN 派发时 activeElement 未必已切换,时机不可靠)。
-   */
-  private rebuildAndStyleNativeInput(editBox: EditBox): void {
+  /** 编辑态原生元素默认白底黑字,与暗金 UI 脱节:激活后拿引擎元素常驻注入暗色样式(2026-09-06)。 */
+  private styleNativeInput(editBox: EditBox): void {
     try {
-      const impl = (editBox as unknown as { _impl?: { _edTxt?: { tagName?: string; style?: Record<string, string> } | null; clear?: () => void; init?: (d: EditBox) => void; _resize?: () => void } })._impl;
-      if (impl && impl._edTxt && impl._edTxt.tagName === 'TEXTAREA' && impl.clear && impl.init) {
-        impl.clear();
-        impl.init(editBox);
-        // 关键:重建出的新元素位置/尺寸靠 beforeDraw 的矩阵同步,而脏检查缓存没重置——
-        // 不强制刷新的话新 input 一直用默认样式糊满半屏(2026-09-06 三修)。_resize 置 _forceUpdate。
-        impl._resize?.();
-      }
-      const el = impl?._edTxt;
+      const el = (editBox as unknown as { _impl?: { _edTxt?: { style?: Record<string, string> } | null } })._impl?._edTxt;
       if (!el || !el.style) {
         return;
       }
@@ -140,8 +130,6 @@ export class UiPrimitiveFactory {
       el.style.outline = 'none';
       el.style.caretColor = '#f5d27a';
       el.style.paddingLeft = '10px';
-      el.style.appearance = 'textfield';
-      el.style.webkitAppearance = 'none';
       el.style.overflow = 'hidden';
       el.style.resize = 'none';
     } catch (error) {
