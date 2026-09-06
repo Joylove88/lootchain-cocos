@@ -105,7 +105,32 @@ export class UiPrimitiveFactory {
       editBox.inputFlag = EditBox.InputFlag.PASSWORD;
       this.applyPasswordMask(editBox, textLabel);
     }
+    this.styleNativeInputOnFocus(editBox);
     return editBox;
+  }
+
+  /**
+   * Web 平台 EditBox 编辑态显示的是浏览器原生 input(默认白底黑字,数字模式还带上下箭头),
+   * 与暗金 UI 严重脱节(2026-09-06 用户反馈登录页)。编辑开始时抓 activeElement 注入暗色样式。
+   */
+  private styleNativeInputOnFocus(editBox: EditBox): void {
+    editBox.node.on(EditBox.EventType.EDITING_DID_BEGAN, () => {
+      const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
+      const el = doc?.activeElement as { tagName?: string; style?: Record<string, string> } | null;
+      if (!el || !el.style || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) {
+        return;
+      }
+      el.style.background = 'rgba(8,7,9,0.94)';
+      el.style.color = '#e7e2d6';
+      el.style.border = '1px solid rgba(214,177,94,0.75)';
+      el.style.borderRadius = '6px';
+      el.style.outline = 'none';
+      el.style.caretColor = '#f5d27a';
+      el.style.paddingLeft = '10px';
+      // 清掉 number/spinner 外观(部分浏览器)。
+      el.style.appearance = 'textfield';
+      el.style.webkitAppearance = 'none';
+    }, this);
   }
 
   applyPasswordMask(editBox: EditBox, textLabel: Label): void {

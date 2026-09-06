@@ -132,63 +132,80 @@ export class LoginRenderer {
   }
 
   renderLoginAccountScene(layout: UiLayout, state: LoginRendererState): void {
+    // 2026-09-06 用户反馈重设计:表单收进居中窄面板(暗色玻璃+金描边+标题饰线),
+    // 不再让输入/按钮散落在整幅背景上;登录=主红金按钮,注册=次级描边按钮。
+    const scale = layout.uiScale;
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const pagePadding = Math.max(18 * layout.uiScale, Math.min(36 * layout.uiScale, layout.safeWidth * 0.03));
-    const panelWidth = Math.max(320 * layout.uiScale, layout.safeWidth - pagePadding * 2);
-    const panelHeight = Math.max((SHOW_DIALOG_THIRD_PARTY_LOGIN ? 560 : 430) * layout.uiScale, layout.safeHeight - pagePadding * 2);
-    const panelY = centerY;
-    const inputWidth = Math.min(430 * layout.uiScale, panelWidth - 130 * layout.uiScale);
-    const scene = this.host.addRect('LoginAccountSceneRoot', centerX, centerY, layout.width, layout.height, rgba(0, 0, 0, 118));
+    const scene = this.host.addRect('LoginAccountSceneRoot', centerX, centerY, layout.width, layout.height, rgba(0, 0, 0, 138));
     scene.node.addComponent(BlockInputEvents);
-    const panelGraphics = this.host.addRect('LoginAccountScenePanel', centerX, panelY, panelWidth, panelHeight, rgba(5, 5, 8, 146), rgba(214, 177, 94, 150), Math.max(1, 1.4 * layout.uiScale));
-    // 账号登录页是独立全屏逻辑场景，内容区阻断输入，避免穿透到底层登录入口。
-    panelGraphics.node.addComponent(BlockInputEvents);
-    this.drawAccountSceneChrome(panelGraphics, panelWidth, panelHeight, layout.uiScale);
-    // 页面内部位置集中计算，后续改第三方登录开关时不需要逐个找节点。
-    const titleY = panelY + (SHOW_DIALOG_THIRD_PARTY_LOGIN ? 210 : 168) * layout.uiScale;
-    const accountLabelY = panelY + (SHOW_DIALOG_THIRD_PARTY_LOGIN ? 138 : 102) * layout.uiScale;
-    const accountInputY = panelY + (SHOW_DIALOG_THIRD_PARTY_LOGIN ? 98 : 62) * layout.uiScale;
-    const passwordLabelY = panelY + (SHOW_DIALOG_THIRD_PARTY_LOGIN ? 48 : 12) * layout.uiScale;
-    const passwordInputY = panelY + (SHOW_DIALOG_THIRD_PARTY_LOGIN ? 8 : -28) * layout.uiScale;
-    const enterButtonY = panelY + (SHOW_DIALOG_THIRD_PARTY_LOGIN ? -70 : -96) * layout.uiScale;
-    const thirdPartyY = panelY - 162 * layout.uiScale;
-    const agreementY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? panelY - 226 * layout.uiScale : panelY - 164 * layout.uiScale;
-    this.host.addLabel('账号登录', centerX, titleY, 30 * layout.uiScale, rgba(245, 210, 122), new Size(panelWidth - 80 * layout.uiScale, 46 * layout.uiScale));
-    this.host.addLabel('登录已有账号,或注册新账号进入 LootChain', centerX, titleY - 38 * layout.uiScale, 16 * layout.uiScale, rgba(196, 178, 138), new Size(panelWidth - 120 * layout.uiScale, 28 * layout.uiScale));
 
-    this.host.addLabel('账号(4~20位字母/数字/下划线)', centerX, accountLabelY, 17 * layout.uiScale, rgba(215, 210, 198), new Size(inputWidth, 28 * layout.uiScale));
+    const formWidth = Math.min(540 * scale, Math.max(340 * scale, layout.safeWidth * 0.5));
+    const formHeight = Math.min((SHOW_DIALOG_THIRD_PARTY_LOGIN ? 620 : 500) * scale, layout.safeHeight - 24 * scale);
+    const panelY = centerY;
+    const inputWidth = formWidth - 120 * scale;
+    const form = this.host.addBeveledPanel('LoginAccountScenePanel', centerX, panelY, formWidth, formHeight, rgba(7, 6, 9, 216), rgba(206, 162, 82, 216), 16 * scale);
+    form.node.addComponent(BlockInputEvents);
+    // 顶部内衬亮边+标题左右饰线,克制的一点仪式感。
+    form.strokeColor = rgba(255, 224, 138, 66);
+    form.lineWidth = Math.max(1, scale);
+    form.moveTo(-formWidth / 2 + 20 * scale, formHeight / 2 - 6 * scale);
+    form.lineTo(formWidth / 2 - 20 * scale, formHeight / 2 - 6 * scale);
+    form.stroke();
+
+    const titleY = panelY + formHeight / 2 - 52 * scale;
+    this.host.addLabel('账号登录', centerX, titleY, 30 * scale, rgba(245, 210, 122), new Size(formWidth - 80 * scale, 46 * scale));
+    for (const dir of [-1, 1]) {
+      const lineStart = centerX + dir * 86 * scale;
+      const lineEnd = centerX + dir * (formWidth / 2 - 44 * scale);
+      form.strokeColor = rgba(214, 177, 94, 170);
+      form.lineWidth = Math.max(1, 1.2 * scale);
+      form.moveTo(lineStart - centerX, titleY - panelY);
+      form.lineTo(lineEnd - centerX, titleY - panelY);
+      form.stroke();
+      form.fillColor = rgba(238, 190, 100, 220);
+      const tip = lineEnd - centerX;
+      form.moveTo(tip + dir * 8 * scale, titleY - panelY);
+      form.lineTo(tip, titleY - panelY + 4 * scale);
+      form.lineTo(tip, titleY - panelY - 4 * scale);
+      form.close();
+      form.fill();
+    }
+    this.host.addLabel('登录已有账号,或注册新账号进入 LootChain', centerX, titleY - 34 * scale, 14 * scale, rgba(176, 158, 122, 220), new Size(formWidth - 100 * scale, 24 * scale));
+
+    // 输入区:标签左对齐贴输入框上沿,层次更清晰。
+    const accountLabelY = titleY - 78 * scale;
+    const accountInputY = accountLabelY - 34 * scale;
+    const passwordLabelY = accountInputY - 52 * scale;
+    const passwordInputY = passwordLabelY - 34 * scale;
+    const labelX = centerX - inputWidth / 2 + 4 * scale;
+    const accountTip = this.host.addLabel('账号', labelX + 24 * scale, accountLabelY, 15 * scale, rgba(224, 202, 156, 240), new Size(120 * scale, 24 * scale));
+    accountTip.horizontalAlign = HorizontalTextAlignment.LEFT;
+    const accountHint = this.host.addLabel('4~20位字母/数字/下划线', centerX + inputWidth / 2 - 110 * scale, accountLabelY, 12 * scale, rgba(140, 126, 100, 200), new Size(220 * scale, 20 * scale));
+    accountHint.horizontalAlign = HorizontalTextAlignment.RIGHT;
     const accountInput = this.host.addFramedEditBox('', centerX, accountInputY, inputWidth, layout);
-    this.host.addLabel('密码(6~32位)', centerX, passwordLabelY, 17 * layout.uiScale, rgba(215, 210, 198), new Size(inputWidth, 28 * layout.uiScale));
+    const passwordTip = this.host.addLabel('密码', labelX + 24 * scale, passwordLabelY, 15 * scale, rgba(224, 202, 156, 240), new Size(120 * scale, 24 * scale));
+    passwordTip.horizontalAlign = HorizontalTextAlignment.LEFT;
+    const passwordHint = this.host.addLabel('6~32位', centerX + inputWidth / 2 - 110 * scale, passwordLabelY, 12 * scale, rgba(140, 126, 100, 200), new Size(220 * scale, 20 * scale));
+    passwordHint.horizontalAlign = HorizontalTextAlignment.RIGHT;
     const passwordInput = this.host.addFramedEditBox('', centerX, passwordInputY, inputWidth, layout, true);
     this.host.setLoginInputs(accountInput, passwordInput);
 
-    // 登录/注册双钮(2026-09-04 账号体系):同一组输入,注册成功即登录。
-    const buttonW = Math.min(360 * layout.uiScale, inputWidth);
-    this.host.addGoldButton('登 录', centerX - buttonW * 0.28, enterButtonY, () => this.host.submitLogin(), layout, buttonW * 0.5, 54 * layout.uiScale);
-    this.host.addGoldButton('注 册', centerX + buttonW * 0.28, enterButtonY, () => this.host.submitRegister(), layout, buttonW * 0.5, 54 * layout.uiScale);
+    // 登录=主红金素材大按钮,注册=次级金描边按钮(2026-09-06 主次分明)。
+    const enterButtonY = passwordInputY - 66 * scale;
+    const loginW = inputWidth * 0.56;
+    const loginH = Math.max(48 * scale, loginW * 0.21);
+    this.host.addImageButton('AccountLoginSubmit', LOGIN_UI_ASSETS.mainButton, '登 录', centerX - inputWidth / 2 + loginW / 2, enterButtonY, () => this.host.submitLogin(), layout, loginW, loginH, 20 * scale);
+    this.host.addGoldButton('注 册', centerX + inputWidth / 2 - inputWidth * 0.19, enterButtonY, () => this.host.submitRegister(), layout, inputWidth * 0.38, loginH);
+
+    const thirdPartyY = enterButtonY - 86 * scale;
+    const agreementY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? thirdPartyY - 68 * scale : enterButtonY - 64 * scale;
     if (SHOW_DIALOG_THIRD_PARTY_LOGIN) {
       this.renderThirdPartyLogin(thirdPartyY, layout, centerX);
     }
     this.renderAgreement(agreementY, layout, centerX, state.agreementAccepted);
-    this.host.addButton('返回登录', centerX - panelWidth / 2 + 82 * layout.uiScale, panelY + panelHeight / 2 - 42 * layout.uiScale, () => this.host.renderLogin(), layout, 118 * layout.uiScale, 38 * layout.uiScale);
-    this.host.addStatus('新玩家点「注 册」直接开号进游戏;开发预览:账号填数字ID+密码留空=模拟登录。', layout);
-  }
-
-  private drawAccountSceneChrome(graphics: Graphics, width: number, height: number, scale: number): void {
-    const topBand = Math.min(92 * scale, height * 0.18);
-    const bottomBand = Math.min(88 * scale, height * 0.18);
-    graphics.fillColor = rgba(0, 0, 0, 122);
-    graphics.rect(-width / 2, height / 2 - topBand, width, topBand);
-    graphics.rect(-width / 2, -height / 2, width, bottomBand);
-    graphics.fill();
-    graphics.strokeColor = rgba(214, 177, 94, 132);
-    graphics.lineWidth = Math.max(1, 1.2 * scale);
-    graphics.moveTo(-width / 2 + 28 * scale, height / 2 - topBand);
-    graphics.lineTo(width / 2 - 28 * scale, height / 2 - topBand);
-    graphics.moveTo(-width / 2 + 28 * scale, -height / 2 + bottomBand);
-    graphics.lineTo(width / 2 - 28 * scale, -height / 2 + bottomBand);
-    graphics.stroke();
+    this.host.addButton('返回登录', layout.safeLeft + 62 * scale, layout.safeTop - 26 * scale, () => this.host.renderLogin(), layout, 118 * scale, 38 * scale);
+    this.host.addStatus('新玩家点「注 册」直接开号进游戏。', layout);
   }
 
   private renderLoginBrand(layout: UiLayout): void {
