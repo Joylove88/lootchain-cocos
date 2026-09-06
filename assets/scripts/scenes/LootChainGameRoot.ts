@@ -22,6 +22,7 @@ import {
   VideoPlayer,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
+import { syncDesignResolutionToViewport } from '../app/ScreenAdapter';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
@@ -413,6 +414,8 @@ export class LootChainGameRoot extends Component {
   private reusableScenesRegistered = false;
 
   start(): void {
+    // H5/PC 全屏适配:设计分辨率跟随视口(竖屏手机不再上下黑边),后续每帧在 update 里保持同步。
+    syncDesignResolutionToViewport();
     // 隐藏引擎自带性能浮层(FPS/DrawCall 等左上角数字):开发调试层,正式游戏不该出现。
     profiler.hideStats();
     this.registerPlayerWsHandlers();
@@ -462,6 +465,8 @@ export class LootChainGameRoot extends Component {
   }
 
   update(deltaTime: number): void {
+    // 视口变化(转屏/窗口缩放)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
+    syncDesignResolutionToViewport();
     const nextKey = this.makeLayoutKey();
     if (this.layoutKey && this.layoutKey !== nextKey) {
       this.renderCurrentView();
