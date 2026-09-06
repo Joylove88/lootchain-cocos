@@ -68,14 +68,11 @@ export class UiPrimitiveFactory {
     node.setPosition(new Vec3(x, y, 0));
     node.addComponent(UITransform).setContentSize(new Size(width, currentLayout.inputHeight));
     const editBox = node.addComponent(EditBox);
-    editBox.maxLength = 256;
-    editBox.placeholder = '';
-    editBox.inputMode = EditBox.InputMode.SINGLE_LINE;
-    if (password) {
-      editBox.inputFlag = EditBox.InputFlag.PASSWORD;
-    }
 
     // Cocos EditBox 的默认文字样式不稳定，这里显式创建文本和占位 Label 便于统一风格。
+    // 注意顺序(2026-09-06 五修):必须先把两个 Label 赋给组件,再碰 inputMode/inputFlag——
+    // 这些 setter 会触发 _updateTextLabel,若此刻组件还没有 label 引擎会自建一套
+    // 白色 40px 的默认 TEXT_LABEL/PLACEHOLDER_LABEL(占位文案就是"label")留在树上。
     const textNode = new Node('TextLabel');
     textNode.layer = node.layer;
     node.addChild(textNode);
@@ -105,11 +102,17 @@ export class UiPrimitiveFactory {
 
     editBox.textLabel = textLabel;
     editBox.placeholderLabel = placeholderLabel;
+    editBox.maxLength = 256;
+    editBox.placeholder = '';
+    editBox.inputMode = EditBox.InputMode.SINGLE_LINE;
     editBox.string = initialText;
     if (password) {
       editBox.inputFlag = EditBox.InputFlag.PASSWORD;
       this.applyPasswordMask(editBox, textLabel);
     }
+    // 双保险:万一某 setter 仍触发过默认 label 自建,清掉孤儿节点(此刻组件引用已指向我们的)。
+    node.getChildByName('TEXT_LABEL')?.destroy();
+    node.getChildByName('PLACEHOLDER_LABEL')?.destroy();
     // 激活 → __preload → 引擎按 SINGLE_LINE 建 <input> 并做官方尺寸同步。
     node.active = true;
     this.styleNativeInput(editBox);
