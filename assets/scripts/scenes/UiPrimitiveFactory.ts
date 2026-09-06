@@ -119,20 +119,24 @@ export class UiPrimitiveFactory {
     return editBox;
   }
 
-  /** 编辑态原生元素默认白底黑字,与暗金 UI 脱节:激活后拿引擎元素常驻注入暗色样式(2026-09-06)。 */
+  /**
+   * 原生输入元素在 Web 端常驻页面(非聚焦也在),任何背景/边框都会叠成"框中框"
+   * (2026-09-06 六修):正解是让它完全透明融入——外观全交给 addFramedEditBox 画的金框,
+   * 元素只保留文字颜色与金色光标,聚焦/非聚焦视觉一致。
+   */
   private styleNativeInput(editBox: EditBox): void {
     try {
       const el = (editBox as unknown as { _impl?: { _edTxt?: { style?: Record<string, string> } | null } })._impl?._edTxt;
       if (!el || !el.style) {
         return;
       }
-      el.style.background = 'rgba(8,7,9,0.94)';
-      el.style.color = '#e7e2d6';
-      el.style.border = '1px solid rgba(214,177,94,0.75)';
-      el.style.borderRadius = '6px';
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.borderRadius = '0';
       el.style.outline = 'none';
+      el.style.color = '#e7e2d6';
       el.style.caretColor = '#f5d27a';
-      el.style.paddingLeft = '10px';
+      el.style.paddingLeft = '14px';
       el.style.overflow = 'hidden';
       el.style.resize = 'none';
     } catch (error) {
