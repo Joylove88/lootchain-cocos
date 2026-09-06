@@ -121,10 +121,13 @@ export class UiPrimitiveFactory {
    */
   private rebuildAndStyleNativeInput(editBox: EditBox): void {
     try {
-      const impl = (editBox as unknown as { _impl?: { _edTxt?: { tagName?: string; style?: Record<string, string> } | null; clear?: () => void; init?: (d: EditBox) => void } })._impl;
+      const impl = (editBox as unknown as { _impl?: { _edTxt?: { tagName?: string; style?: Record<string, string> } | null; clear?: () => void; init?: (d: EditBox) => void; _resize?: () => void } })._impl;
       if (impl && impl._edTxt && impl._edTxt.tagName === 'TEXTAREA' && impl.clear && impl.init) {
         impl.clear();
         impl.init(editBox);
+        // 关键:重建出的新元素位置/尺寸靠 beforeDraw 的矩阵同步,而脏检查缓存没重置——
+        // 不强制刷新的话新 input 一直用默认样式糊满半屏(2026-09-06 三修)。_resize 置 _forceUpdate。
+        impl._resize?.();
       }
       const el = impl?._edTxt;
       if (!el || !el.style) {
