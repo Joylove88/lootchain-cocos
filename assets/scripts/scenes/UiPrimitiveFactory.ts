@@ -66,6 +66,9 @@ export class UiPrimitiveFactory {
     const editBox = node.addComponent(EditBox);
     editBox.maxLength = 256;
     editBox.placeholder = '';
+    // 单行模式(2026-09-06 用户反馈):默认 ANY 在 Web 端创建 <textarea>——右侧带滚动条、
+    // 文字顶对齐只占上半框;SINGLE_LINE 走 <input> 单行垂直居中,两个问题一起消。
+    editBox.inputMode = EditBox.InputMode.SINGLE_LINE;
     if (password) {
       editBox.inputFlag = EditBox.InputFlag.PASSWORD;
     }
@@ -127,9 +130,11 @@ export class UiPrimitiveFactory {
       el.style.outline = 'none';
       el.style.caretColor = '#f5d27a';
       el.style.paddingLeft = '10px';
-      // 清掉 number/spinner 外观(部分浏览器)。
+      // 清掉 number/spinner 外观(部分浏览器);textarea 兜底禁滚动/拉伸。
       el.style.appearance = 'textfield';
       el.style.webkitAppearance = 'none';
+      el.style.overflow = 'hidden';
+      el.style.resize = 'none';
     }, this);
   }
 
