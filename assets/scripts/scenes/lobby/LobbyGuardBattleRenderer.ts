@@ -165,6 +165,8 @@ interface GuardProjectile {
   crystalTarget?: boolean;
   visualOnly?: boolean;
   scale?: number;
+  /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
+  impactShake?: number;
 }
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
@@ -1205,16 +1207,36 @@ export class LobbyGuardBattleRenderer {
         }
       } else if (event.type === 'crystalHit') {
         gameAudio.sfx('crystal_hit');
-        this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
-        // 水晶受击红闪(打击感)
-        const crystalSprite = field.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
-        if (crystalSprite && crystalSprite.isValid) {
-          crystalSprite.color = rgba(255, 130, 110, 255);
-          setTimeout(() => {
-            if (crystalSprite.isValid) {
-              crystalSprite.color = rgba(255, 255, 255, 255);
-            }
-          }, 130);
+        // 2026-09-07 用户反馈:远程怪隔空扣血像"水晶自己掉血"——攻击者必须有出手表现。
+        const attacker = typeof event.monsterId === 'number' ? sim.monsters.find((entry) => entry.monsterId === event.monsterId) : null;
+        const attackerView = attacker ? this.monsterViews.get(attacker.monsterId) : null;
+        this.playUnitAttack(attackerView ?? undefined);
+        if (attacker?.kind === 'shooter' && attackerView && attackerView.node.isValid) {
+          // 远程怪:出手动画+暗红箭矢飞向水晶,命中时(crystalTarget 弹道到达)才出红闪+飘字。
+          const sx = attackerView.node.position.x - this.unitSize() * 0.3;
+          const sy = attackerView.node.position.y + this.unitSize() * 0.25;
+          const node = this.host.addChildPlainNode(field, 'GuardShooterBolt', sx, sy, 10, 10);
+          node.setSiblingIndex(field.children.length - 1);
+          const g = node.addComponent(Graphics);
+          g.fillColor = rgba(255, 110, 70, 160);
+          g.ellipse(0, 0, 13, 6);
+          g.fill();
+          g.fillColor = rgba(255, 190, 120, 245);
+          g.ellipse(1, 0, 7, 3);
+          g.fill();
+          this.projectiles.push({ node, targetId: -1, x: sx, y: sy, amount: event.amount ?? 0, color: rgba(255, 130, 80), crystalTarget: true, impactShake: 0 });
+        } else {
+          // 近战啃咬:水晶即时红闪+飘字(sim 已扣血)。
+          this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
+          const crystalSprite = field.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
+          if (crystalSprite && crystalSprite.isValid) {
+            crystalSprite.color = rgba(255, 130, 110, 255);
+            setTimeout(() => {
+              if (crystalSprite.isValid) {
+                crystalSprite.color = rgba(255, 255, 255, 255);
+              }
+            }, 130);
+          }
         }
       } else if (event.type === 'summon') {
         // 召唤落位爆闪(2026-08-27 用户拍板)
@@ -1244,6 +1266,7 @@ export class LobbyGuardBattleRenderer {
         const bossView = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : null;
         const bx = bossView?.node.isValid ? bossView.node.position.x : this.xToPx(5);
         const by = bossView?.node.isValid ? bossView.node.position.y : this.walkwayY();
+        this.playUnitAttack(bossView ?? undefined);
         this.spawnFloater(bx, by + this.unitSize() * 1.1, `${event.skillName ?? 'BOSS技能'}!`, rgba(255, 140, 90), 20);
         if (event.skillKind === 'volley') {
           const field2 = this.fieldNode;
@@ -1807,7 +1830,10 @@ export class LobbyGuardBattleRenderer {
         if (dist <= speed) {
           this.spawnImpactFlash(tx, ty, proj.color);
           this.spawnFloater(tx, ty + this.unitSize() * 0.4, `-${this.formatDamageValue(proj.amount)}`, rgba(255, 120, 100), 20);
-          this.shakeField(5);
+          const shake = proj.impactShake ?? 5;
+          if (shake > 0) {
+            this.shakeField(shake);
+          }
           const crystalSprite = this.fieldNode?.getChildByName('GuardCrystal')?.getChildByName('GuardCrystalIcon')?.getComponent(Sprite);
           if (crystalSprite && crystalSprite.isValid) {
             crystalSprite.color = rgba(255, 130, 110, 255);
