@@ -26,6 +26,7 @@ export { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS } from './EquipD
 import type { LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveHeroPassiveUnlockStars, ultimateCap, ultimateUpCost, ultimateDamageScale, ULTIMATE_MAX_LEVEL } from './LobbyBattleHeroSkillConfig';
+import { isGuardT0Hero } from './GuardBattleModel';
 import { equipIconAssetByCode } from './EquipIconAssets';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
@@ -3363,33 +3364,35 @@ export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] 
 }
 
 // 各英雄终极技能名(2026-07-18):按名号与职业定位设计;缺省(未来新英雄)回退"终极技能"。
+// v2(2026-09-07 专属技能体系):随专属特效换代微调 7 个名字,与特效主题强绑定更好记
+// (冰原巨浪/月神/阿努比斯/朔夜魔女/狂裂长矛/鬼剑士/T0 强化名)。
 const HERO_ULTIMATE_SKILL_NAMES: Record<string, string> = {
   // UR
   UR_ARTHAS: '永夜·龙焰审判',
   UR_ATLAS: '圣铠·不动壁垒',
   UR_AURELIA: '苍翎·万箭裂空',
-  UR_EVELYN: '深渊·湮灭领域',
+  UR_EVELYN: '深渊·冰狱湮灭',
   UR_NYX: '影刃·千夜追猎',
-  UR_SERAPHINA: '晨星·圣光庇佑',
+  UR_SERAPHINA: '晨星·月华圣辉',
   // SSR
   SSR_KANE: '白银·圣枪壁垒',
   SSR_LIVIA: '夜烬·焚世之焰',
   SSR_MICHAEL: '圣光·终极审判',
   SSR_RON: '灰烬·致命猎杀',
   // SR
-  SR_ABYSS_06: '深渊·虚空突袭',
+  SR_ABYSS_06: '深渊·冥神审判',
   SR_BLADE_04: '断刃·狂乱斩',
   SR_PALADIN_02: '圣盾·守御反击',
   SR_PRIEST_01: '银色·圣愈祷言',
-  SR_SNIPER_05: '峡谷·致命狙击',
-  SR_WITCH_03: '契约·暗蚀术',
+  SR_SNIPER_05: '峡谷·狂裂贯穿',
+  SR_WITCH_03: '契约·朔夜降临',
   // R
   R_ACOLY_02: '祈福·微光庇护',
   R_CULT_05: '低语·暗蚀诅咒',
   R_GUARD_07: '城门·坚守盾击',
-  R_PATROL_01: '巡逻·奋勇突刺',
+  R_PATROL_01: '王国·誓约剑气',
   R_RANGER_06: '荒原·疾风连射',
-  R_SCOUT_03: '灰谷·暗影突袭',
+  R_SCOUT_03: '灰谷·绝影猎杀',
 };
 
 // 导出:战斗大招施放的全屏名字横幅也用同一命名(单一数据源)。
@@ -3419,10 +3422,12 @@ export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   const ultAwakened = hero.awakenStatus === 1;
   const ultPct = Math.round(260 * ultimateDamageScale(ultLevel));
   const ultStepPct = Math.round(260 * ultimateDamageScale(2)) - Math.round(260 * ultimateDamageScale(1));
+  // T0 标识(2026-09-07 专属技能体系):每稀有度一名"档位天花板",描述里点明毕业定位。
+  const t0Suffix = isGuardT0Hero(hero.heroCode) ? ' ◆本稀有度天花板·毕业之选' : '';
   kit.push({
     name: ultName,
     tag: `大招 · Lv${ultLevel}/${ultimateCap(ultAwakened)}`,
-    description: `能量集满后手动释放,造成 ${ultPct}% 攻击伤害,每升 1 级 +${ultStepPct}%。`,
+    description: `能量集满后手动释放,造成 ${ultPct}% 攻击伤害,每升 1 级 +${ultStepPct}%。${t0Suffix}`,
     kind: 'ultimate',
   });
   // 2) 被动技能:按稀有度定条数(R/SR 2 条 / SSR/UR 4 条),按升星阶梯逐条解锁。

@@ -1,0 +1,461 @@
+
+fx_33002_kuloufashi_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_y_33002_attack_shifa_00014
+  rotate: false
+  xy: 1591, 1181
+  size: 75, 82
+  orig: 320, 250
+  offset: 34, 36
+  index: -1
+attack/New_y_33002_attack_shifa_00016
+  rotate: false
+  xy: 380, 599
+  size: 240, 156
+  orig: 320, 250
+  offset: 9, 13
+  index: -1
+attack/New_y_33002_attack_shifa_00018
+  rotate: false
+  xy: 2, 414
+  size: 308, 239
+  orig: 320, 250
+  offset: 3, 2
+  index: -1
+attack/New_y_33002_attack_shifa_00020
+  rotate: false
+  xy: 2, 179
+  size: 300, 233
+  orig: 320, 250
+  offset: 14, 11
+  index: -1
+attack/New_y_33002_attack_shifa_00022
+  rotate: false
+  xy: 423, 1410
+  size: 267, 217
+  orig: 320, 250
+  offset: 27, 23
+  index: -1
+attack/New_y_33002_attack_shifa_00024
+  rotate: false
+  xy: 893, 1054
+  size: 203, 171
+  orig: 320, 250
+  offset: 75, 58
+  index: -1
+attack/New_y_33002_attack_shifa_00026
+  rotate: false
+  xy: 905, 1683
+  size: 15, 102
+  orig: 320, 250
+  offset: 228, 118
+  index: -1
+skill/New_y_33002_skill_huiguang_00040
+  rotate: false
+  xy: 1931, 1325
+  size: 94, 95
+  orig: 100, 100
+  offset: 4, 2
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00005
+  rotate: false
+  xy: 2, 1256
+  size: 377, 204
+  orig: 426, 256
+  offset: 24, 25
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00007
+  rotate: false
+  xy: 2, 1046
+  size: 369, 208
+  orig: 426, 256
+  offset: 27, 23
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00009
+  rotate: false
+  xy: 1317, 1805
+  size: 372, 200
+  orig: 426, 256
+  offset: 24, 22
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00011
+  rotate: false
+  xy: 2, 655
+  size: 376, 193
+  orig: 426, 256
+  offset: 24, 24
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00013
+  rotate: false
+  xy: 2, 850
+  size: 372, 194
+  orig: 426, 256
+  offset: 30, 17
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00015
+  rotate: false
+  xy: 2, 9
+  size: 365, 168
+  orig: 426, 256
+  offset: 38, 20
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00017
+  rotate: false
+  xy: 530, 1629
+  size: 373, 156
+  orig: 426, 256
+  offset: 30, 22
+  index: -1
+skill/New_y_33002_skill_huoquanshang_00019
+  rotate: false
+  xy: 937, 1805
+  size: 378, 200
+  orig: 426, 256
+  offset: 24, 20
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00005
+  rotate: false
+  xy: 381, 1266
+  size: 284, 142
+  orig: 287, 150
+  offset: 2, 2
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00007
+  rotate: false
+  xy: 1690, 1567
+  size: 280, 143
+  orig: 287, 150
+  offset: 6, 5
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00009
+  rotate: false
+  xy: 1222, 1661
+  size: 281, 142
+  orig: 287, 150
+  offset: 5, 3
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00011
+  rotate: false
+  xy: 937, 1665
+  size: 283, 138
+  orig: 287, 150
+  offset: 3, 2
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00013
+  rotate: false
+  xy: 1682, 1428
+  size: 280, 137
+  orig: 287, 150
+  offset: 3, 1
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00015
+  rotate: false
+  xy: 938, 1366
+  size: 277, 100
+  orig: 287, 150
+  offset: 3, 5
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00017
+  rotate: false
+  xy: 381, 1158
+  size: 280, 106
+  orig: 287, 150
+  offset: 3, 3
+  index: -1
+skill/New_y_33002_skill_huoquanxia_00019
+  rotate: false
+  xy: 1691, 1712
+  size: 285, 137
+  orig: 287, 150
+  offset: 1, 4
+  index: -1
+skill/New_y_33002_skill_shifa_00051
+  rotate: false
+  xy: 423, 1637
+  size: 90, 63
+  orig: 580, 328
+  offset: 176, 129
+  index: -1
+skill/New_y_33002_skill_shifa_00053
+  rotate: false
+  xy: 530, 1787
+  size: 405, 218
+  orig: 580, 328
+  offset: 7, 97
+  index: -1
+skill/New_y_33002_skill_shifa_00055
+  rotate: false
+  xy: 2, 1702
+  size: 526, 303
+  orig: 580, 328
+  offset: 43, 10
+  index: -1
+skill/New_y_33002_skill_shifa_00057
+  rotate: false
+  xy: 2, 1462
+  size: 419, 238
+  orig: 580, 328
+  offset: 149, 17
+  index: -1
+skill/New_y_33002_skill_shifa_00059
+  rotate: false
+  xy: 1691, 1851
+  size: 318, 154
+  orig: 580, 328
+  offset: 162, 70
+  index: -1
+skill/New_y_33002_skill_shifa_00061
+  rotate: false
+  xy: 933, 1227
+  size: 251, 137
+  orig: 580, 328
+  offset: 214, 77
+  index: -1
+skill/New_y_33002_skill_xuli_00018
+  rotate: false
+  xy: 765, 424
+  size: 111, 124
+  orig: 229, 221
+  offset: 66, 24
+  index: -1
+skill/New_y_33002_skill_xuli_00020
+  rotate: false
+  xy: 1098, 1071
+  size: 98, 154
+  orig: 229, 221
+  offset: 71, 30
+  index: -1
+skill/New_y_33002_skill_xuli_00022
+  rotate: false
+  xy: 621, 758
+  size: 168, 148
+  orig: 229, 221
+  offset: 3, 34
+  index: -1
+skill/New_y_33002_skill_xuli_00024
+  rotate: false
+  xy: 570, 397
+  size: 193, 151
+  orig: 229, 221
+  offset: 4, 25
+  index: -1
+skill/New_y_33002_skill_xuli_00026
+  rotate: false
+  xy: 1505, 1613
+  size: 183, 190
+  orig: 229, 221
+  offset: 12, 24
+  index: -1
+skill/New_y_33002_skill_xuli_00028
+  rotate: false
+  xy: 369, 2
+  size: 196, 215
+  orig: 229, 221
+  offset: 24, 2
+  index: -1
+skill/New_y_33002_skill_xuli_00030
+  rotate: false
+  xy: 622, 550
+  size: 194, 206
+  orig: 229, 221
+  offset: 33, 7
+  index: -1
+skill/New_y_33002_skill_xuli_00032
+  rotate: false
+  xy: 567, 36
+  size: 192, 189
+  orig: 229, 221
+  offset: 33, 16
+  index: -1
+skill/New_y_33002_skill_xuli_00034
+  rotate: false
+  xy: 542, 227
+  size: 182, 168
+  orig: 229, 221
+  offset: 38, 20
+  index: -1
+skill/New_y_33002_skill_xuli_00036
+  rotate: false
+  xy: 1198, 1125
+  size: 161, 142
+  orig: 229, 221
+  offset: 47, 29
+  index: -1
+skill/New_y_33002_skill_xuli_00038
+  rotate: false
+  xy: 1455, 1146
+  size: 134, 117
+  orig: 229, 221
+  offset: 62, 35
+  index: -1
+skill/New_y_33002_skill_xuli_00040
+  rotate: false
+  xy: 1000, 924
+  size: 124, 128
+  orig: 229, 221
+  offset: 60, 21
+  index: -1
+skill/New_y_33002_skill_xuli_00042
+  rotate: false
+  xy: 1361, 1168
+  size: 92, 99
+  orig: 229, 221
+  offset: 74, 35
+  index: -1
+skill/New_y_33002_skill_xuli_00044
+  rotate: false
+  xy: 1361, 1085
+  size: 87, 81
+  orig: 229, 221
+  offset: 77, 47
+  index: -1
+skill/New_y_33002_skill_xuli_00046
+  rotate: false
+  xy: 1931, 1236
+  size: 84, 87
+  orig: 229, 221
+  offset: 76, 47
+  index: -1
+skill/New_y_33002_skill_xuli_00048
+  rotate: false
+  xy: 1964, 1493
+  size: 82, 72
+  orig: 229, 221
+  offset: 76, 60
+  index: -1
+skill/New_y_33002_skill_xuli_00050
+  rotate: false
+  xy: 1964, 1422
+  size: 72, 69
+  orig: 229, 221
+  offset: 77, 63
+  index: -1
+skill/New_y_33002_skill_xuli_00052
+  rotate: false
+  xy: 312, 602
+  size: 48, 51
+  orig: 229, 221
+  offset: 90, 69
+  index: -1
+skill/New_y_33002_skill_xuli_00054
+  rotate: false
+  xy: 381, 1435
+  size: 22, 25
+  orig: 229, 221
+  offset: 114, 74
+  index: -1
+skill/New_y_33002_skill_yanwu_00005
+  rotate: false
+  xy: 1198, 1026
+  size: 129, 97
+  orig: 275, 215
+  offset: 70, 45
+  index: -1
+skill/New_y_33002_skill_yanwu_00007
+  rotate: false
+  xy: 829, 924
+  size: 169, 128
+  orig: 275, 215
+  offset: 50, 26
+  index: -1
+skill/New_y_33002_skill_yanwu_00009
+  rotate: false
+  xy: 632, 908
+  size: 195, 149
+  orig: 275, 215
+  offset: 46, 20
+  index: -1
+skill/New_y_33002_skill_yanwu_00011
+  rotate: false
+  xy: 1461, 1265
+  size: 209, 168
+  orig: 275, 215
+  offset: 48, 19
+  index: -1
+skill/New_y_33002_skill_yanwu_00013
+  rotate: false
+  xy: 692, 1245
+  size: 239, 178
+  orig: 275, 215
+  offset: 28, 16
+  index: -1
+skill/New_y_33002_skill_yanwu_00015
+  rotate: false
+  xy: 312, 413
+  size: 256, 184
+  orig: 275, 215
+  offset: 13, 13
+  index: -1
+skill/New_y_33002_skill_yanwu_00017
+  rotate: false
+  xy: 1202, 1471
+  size: 260, 188
+  orig: 275, 215
+  offset: 9, 10
+  index: -1
+skill/New_y_33002_skill_yanwu_00019
+  rotate: false
+  xy: 938, 1468
+  size: 262, 195
+  orig: 275, 215
+  offset: 6, 7
+  index: -1
+skill/New_y_33002_skill_yanwu_00021
+  rotate: false
+  xy: 1672, 1226
+  size: 257, 200
+  orig: 275, 215
+  offset: 5, 5
+  index: -1
+skill/New_y_33002_skill_yanwu_00023
+  rotate: false
+  xy: 376, 955
+  size: 254, 201
+  orig: 275, 215
+  offset: 6, 6
+  index: -1
+skill/New_y_33002_skill_yanwu_00025
+  rotate: false
+  xy: 692, 1425
+  size: 244, 202
+  orig: 275, 215
+  offset: 10, 7
+  index: -1
+skill/New_y_33002_skill_yanwu_00027
+  rotate: false
+  xy: 1217, 1269
+  size: 242, 200
+  orig: 275, 215
+  offset: 13, 9
+  index: -1
+skill/New_y_33002_skill_yanwu_00029
+  rotate: false
+  xy: 380, 757
+  size: 239, 196
+  orig: 275, 215
+  offset: 19, 12
+  index: -1
+skill/New_y_33002_skill_yanwu_00031
+  rotate: false
+  xy: 304, 219
+  size: 236, 192
+  orig: 275, 215
+  offset: 20, 16
+  index: -1
+skill/New_y_33002_skill_yanwu_00033
+  rotate: false
+  xy: 663, 1059
+  size: 228, 184
+  orig: 275, 215
+  offset: 26, 19
+  index: -1
+skill/New_y_33002_skill_yanwu_00035
+  rotate: false
+  xy: 1464, 1435
+  size: 216, 176
+  orig: 275, 215
+  offset: 29, 24
+  index: -1

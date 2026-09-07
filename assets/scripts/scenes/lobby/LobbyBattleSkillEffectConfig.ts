@@ -25,47 +25,47 @@ export interface BattleSkillEffectSpec {
 }
 
 // ── 英雄大招特效(heroCode → spec)──
-// 选型原则(docs/29):按职业/元素对味;同职业不同稀有度用同一系列由弱到强(强=完整 skill 套,弱=hit 爆点/缩小),
-// 复用少量高质量套,不搞每人一套。
+// 选型原则 v2(2026-09-07 专属技能体系,docs/29 v2):22 名启用英雄**一人一套不共用**,
+// 职业/元素对味,稀有度越高越华丽;T0(每档天花板)配库内最顶级全套。兜底 6 套独立不与专属冲突。
 const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
-  // 刺客:暗影/多段斩击系(幽影蜘蛛 / 死神)
-  UR_NYX: { effect: 'fx_6601_sishen_skill', animation: 'skill', anchor: 'target', scale: 0.9, offsetY: 20 }, // 影刃·千夜追猎:死神暗镰
+  // ── 刺客:暗影系 ──
+  UR_NYX: { effect: 'fx_65002_luxifa_skill', animation: 'Skill_down', anchor: 'target', scale: 0.92, offsetY: 20 }, // 影刃·千夜追猎:路西法堕影
   SSR_RON: { effect: 'fx_12601_youyingzhizhu_skill', animation: 'skill', anchor: 'target', scale: 0.8, offsetY: 16 }, // 灰烬·致命猎杀:幽影突袭
-  SR_ABYSS_06: { effect: 'fx_12601_youyingzhizhu_hit', animation: 'skill_hit', anchor: 'target', scale: 0.72, offsetY: 12 }, // 深渊·虚空突袭:幽影爆点
-  R_SCOUT_03: { effect: 'fx_12601_youyingzhizhu_hit', animation: 'skill_hit', anchor: 'target', scale: 0.58, offsetY: 12 }, // 灰谷·暗影突袭:幽影爆点(弱)
-  // 法师:元素爆发系(冰=雪女 / 火=凤凰 / 暗=女法师)
-  UR_EVELYN: { effect: 'fx_14601_xuenv_skill', animation: 'skill', anchor: 'target', scale: 0.9, offsetY: 18 }, // 深渊·湮灭领域:冰霜湮灭(技能组带冻结)
-  SSR_LIVIA: { effect: 'fx_5601_fenghuang_skill', animation: 'skill', anchor: 'target', scale: 0.85, offsetY: 18 }, // 夜烬·焚世之焰:凤凰焚世
-  SR_WITCH_03: { effect: 'fx_14002_nvfashi_skill', animation: 'Skill', anchor: 'target', scale: 0.72, offsetY: 14 }, // 契约·暗蚀术
-  R_CULT_05: { effect: 'fx_14002_nvfashi_skill', animation: 'Skill', anchor: 'target', scale: 0.58, offsetY: 14 }, // 低语·暗蚀诅咒(同系列弱版)
-  // 射手:箭雨/穿刺系(艾莉娜飞箭)
+  SR_ABYSS_06: { effect: 'fx_65008_anubisi_skill', animation: 'skill_sf1_down', anchor: 'target', scale: 0.74, offsetY: 12 }, // 深渊·冥神审判:阿努比斯
+  R_SCOUT_03: { effect: 'fx_12601_youyingzhizhu_hit', animation: 'skill_hit', anchor: 'target', scale: 0.62, offsetY: 12 }, // 灰谷·绝影猎杀(R T0):幽影爆点
+  // ── 法师:元素爆发系 ──
+  UR_EVELYN: { effect: 'fx_4601_bingyuanjulang_skill', animation: 'skill', anchor: 'target', scale: 0.92, offsetY: 18 }, // 深渊·冰狱湮灭:冰原巨浪
+  SSR_LIVIA: { effect: 'fx_5601_fenghuang_skill', animation: 'skill', anchor: 'target', scale: 0.88, offsetY: 18 }, // 夜烬·焚世之焰(SSR T0):凤凰焚世
+  SR_WITCH_03: { effect: 'fx_35012_shuoyemonv_skill', animation: 'skill', anchor: 'target', scale: 0.72, offsetY: 14 }, // 契约·朔夜降临:朔夜魔女
+  R_CULT_05: { effect: 'fx_14002_nvfashi_skill', animation: 'Skill', anchor: 'target', scale: 0.58, offsetY: 14 }, // 低语·暗蚀诅咒
+  // ── 射手:箭雨/穿刺系 ──
   UR_AURELIA: { effect: 'fx_45008_ailina_skill', animation: 'skill_down', anchor: 'target', scale: 0.9, offsetY: 18 }, // 苍翎·万箭裂空(down=箭雨落点段)
-  SR_SNIPER_05: { effect: 'fx_45008_ailina_hit', animation: 'skill', anchor: 'target', scale: 0.72, offsetY: 12 }, // 峡谷·致命狙击:箭雨爆点
-  R_RANGER_06: { effect: 'fx_45008_ailina_hit', animation: 'skill', anchor: 'target', scale: 0.58, offsetY: 12 }, // 荒原·疾风连射(弱)
-  // 战士:斩击/龙焰/圣光审判系
-  UR_ARTHAS: { effect: 'fx_7601_shigujulong_skill', animation: 'skill', anchor: 'target', scale: 0.95, offsetY: 22 }, // 永夜·龙焰审判:蚀骨巨龙
+  SR_SNIPER_05: { effect: 'fx_35005_kuangliechangmao_jineng3', animation: 'Skill', anchor: 'target', scale: 0.76, offsetY: 12 }, // 峡谷·狂裂贯穿(SR T0):狂裂长矛
+  R_RANGER_06: { effect: 'fx_45008_ailina_hit', animation: 'skill', anchor: 'target', scale: 0.58, offsetY: 12 }, // 荒原·疾风连射:箭雨爆点
+  // ── 战士:龙焰/圣光/剑气系 ──
+  UR_ARTHAS: { effect: 'fx_7601_shigujulong_skill', animation: 'skill', anchor: 'target', scale: 1.0, offsetY: 22 }, // 永夜·龙焰审判(UR T0):蚀骨巨龙
   SSR_MICHAEL: { effect: 'fx_14001_shizijun_skill', animation: 'Skill', anchor: 'target', scale: 0.82, offsetY: 16 }, // 圣光·终极审判:十字军圣裁
   SR_BLADE_04: { effect: 'fx_44003_daofengzhanshi_jineng', animation: 'skill', anchor: 'target', scale: 0.72, offsetY: 14 }, // 断刃·狂乱斩:刀锋乱舞
-  R_PATROL_01: { effect: 'fx_44003_daofengzhanshi_jineng', animation: 'skill', anchor: 'target', scale: 0.58, offsetY: 14 }, // 巡逻·奋勇突刺(同系列弱版)
-  // 坦克:冲击波/盾击系(义盾骑士 / 圣骑士)
-  UR_ATLAS: { effect: 'fx_15005_yidunqishi_skill', animation: 'skill', anchor: 'self', scale: 0.9, offsetY: 12 }, // 圣铠·不动壁垒:开盾冲击(挂自身)
+  R_PATROL_01: { effect: 'fx_25013_guijianshi_skill', animation: 'Skill_down', anchor: 'target', scale: 0.6, offsetY: 14 }, // 王国·誓约剑气:鬼剑士
+  // ── 坦克:冲击波/盾击系 ──
+  UR_ATLAS: { effect: 'fx_15001_tianqiqishi_skill', animation: 'skill_01', anchor: 'self', scale: 0.92, offsetY: 12 }, // 圣铠·不动壁垒:天启骑士
   SSR_KANE: { effect: 'fx_45014_shengqishi_skill', animation: 'skill', anchor: 'target', scale: 0.82, offsetY: 14 }, // 白银·圣枪壁垒:圣骑士盾击
-  SR_PALADIN_02: { effect: 'fx_15005_yidunqishi_skill', animation: 'skill', anchor: 'self', scale: 0.7, offsetY: 10 }, // 圣盾·守御反击(同系列弱版)
-  R_GUARD_07: { effect: 'fx_15005_yidunqishi_skill', animation: 'skill', anchor: 'self', scale: 0.56, offsetY: 10 }, // 城门·坚守盾击(更弱)
-  // 辅助:治疗光环/圣光系(圣辉上下半场)
-  UR_SERAPHINA: { effect: 'fx_13001_shenghui_jineng_up', animation: 'Skill', anchor: 'self', scale: 0.9, offsetY: 14 }, // 晨星·圣光庇佑:圣辉升华(挂自身光环)
+  SR_PALADIN_02: { effect: 'fx_15005_yidunqishi_skill', animation: 'skill', anchor: 'self', scale: 0.7, offsetY: 10 }, // 圣盾·守御反击:义盾冲击
+  R_GUARD_07: { effect: 'fx_43001_shouwei_jineng', animation: 'Skill', anchor: 'self', scale: 0.58, offsetY: 10 }, // 城门·坚守盾击:守卫壁障
+  // ── 辅助:圣光/自然系 ──
+  UR_SERAPHINA: { effect: 'fx_55010_yuerennvshen_skill', animation: 'skill', anchor: 'self', scale: 0.92, offsetY: 14 }, // 晨星·月华圣辉:月神降临
   SR_PRIEST_01: { effect: 'fx_13001_shenghui_jineng_down', animation: 'Skill', anchor: 'self', scale: 0.72, offsetY: 12 }, // 银色·圣愈祷言:圣辉落光
   R_ACOLY_02: { effect: 'fx_13001_shenghui_hit', animation: 'hit', anchor: 'self', scale: 0.6, offsetY: 12 }, // 祈福·微光庇护:微光爆点
 };
 
-// 职业兜底(未登记 heroCode 的英雄,如 R_MILITIA_04/SR_TEMPLAR_07/SSR_DRACULA/主角):按职业给同系列中档特效。
+// 职业兜底(未登记 heroCode:下架英雄/主角):独立 6 套,不与任何专属特效冲突。
 const CLASS_FALLBACK_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
-  刺客: { effect: 'fx_12601_youyingzhizhu_hit', animation: 'skill_hit', anchor: 'target', scale: 0.66, offsetY: 12 },
-  法师: { effect: 'fx_14002_nvfashi_skill', animation: 'Skill', anchor: 'target', scale: 0.66, offsetY: 14 },
-  射手: { effect: 'fx_45008_ailina_hit', animation: 'skill', anchor: 'target', scale: 0.66, offsetY: 12 },
-  战士: { effect: 'fx_14001_shizijun_skill', animation: 'Skill', anchor: 'target', scale: 0.66, offsetY: 14 },
-  坦克: { effect: 'fx_15005_yidunqishi_skill', animation: 'skill', anchor: 'self', scale: 0.62, offsetY: 10 },
-  辅助: { effect: 'fx_13001_shenghui_hit', animation: 'hit', anchor: 'self', scale: 0.6, offsetY: 12 },
+  刺客: { effect: 'fx_43001_daozei_skill', animation: 'skill', anchor: 'target', scale: 0.64, offsetY: 12 },
+  法师: { effect: 'fx_33002_kuloufashi_skill', animation: 'skill', anchor: 'target', scale: 0.64, offsetY: 14 },
+  射手: { effect: 'fx_25011_paoshou_jjineng', animation: 'attack', anchor: 'target', scale: 0.64, offsetY: 12 },
+  战士: { effect: 'fx_65001_heichao_skill', animation: 'Skill_down', anchor: 'target', scale: 0.64, offsetY: 14 },
+  坦克: { effect: 'fx_450071_haibozhiyong_jineng', animation: 'skill', anchor: 'self', scale: 0.6, offsetY: 10 },
+  辅助: { effect: 'fx_35009_caolingshi_skill', animation: 'Skill', anchor: 'self', scale: 0.6, offsetY: 12 },
 };
 
 // 没有职业信息时的最终兜底(通用金色冲击)。

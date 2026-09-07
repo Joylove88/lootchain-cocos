@@ -81,6 +81,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
 const GUARD_HERO_SCALE_TWEAK_BY_ASSET: Record<string, number> = {
@@ -1272,8 +1273,9 @@ export class LobbyGuardBattleRenderer {
           this.playUnitAttack(this.heroViews.get(caster.unitId));
         }
         if (typeof event.cell === 'number') {
-          // 施放者亮相:脚下金圈+弹跳+技能名喊话(归属一眼可辨,2026-08-27)
-          this.highlightCaster(event.cell, `${event.skillName ?? '技能'}!`);
+          // 施放者亮相:脚下金圈+弹跳+技能名喊话;喊专属大招名(2026-09-07 专属技能体系),
+          // 无专属名(主角/下架英雄)回退职业机制名。
+          this.highlightCaster(event.cell, `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!`);
         }
         gameAudio.sfx('skill');
         if (typeof event.zoneId === 'number' && typeof event.cell === 'number') {
@@ -2496,10 +2498,16 @@ export class LobbyGuardBattleRenderer {
     // 主动技能卡(参考蔚蓝星球:技能名+冷却+描述)
     const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
     const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${skill.name} · ${skillState}`, 0, h / 2 - 182, 17, rgba(150, 220, 255), new Size(w - 64, 22));
+    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${this.resolveGuardSkillDisplayName(hero.heroCode, skill.name)} · ${skillState}`, 0, h / 2 - 182, 17, rgba(150, 220, 255), new Size(w - 64, 22));
     skillTitle.overflow = Label.Overflow.SHRINK;
     const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 226, 13, rgba(206, 196, 172), new Size(w - 76, 46));
     desc.overflow = Label.Overflow.SHRINK;
+  }
+
+  /** 守卫战场技能显示名(2026-09-07 专属技能体系):优先专属大招名,无专属(主角/下架)回退职业机制名。 */
+  private resolveGuardSkillDisplayName(heroCode: string | null | undefined, fallback: string | null | undefined): string {
+    const name = resolveUltimateSkillName(heroCode);
+    return name !== '终极技能' ? name : (fallback ?? '技能');
   }
 
   /** 信息卡逐帧轻量刷新:只改冷却/攻击文字,不重建节点。 */
@@ -2514,7 +2522,7 @@ export class LobbyGuardBattleRenderer {
     if (skillLabel) {
       const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
       const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-      skillLabel.string = `⚡ ${skill.name} · ${skillState}`;
+      skillLabel.string = `⚡ ${this.resolveGuardSkillDisplayName(hero.heroCode, skill.name)} · ${skillState}`;
     }
     const atkLabel = panel.getChildByName('Atk')?.getComponent(Label);
     if (atkLabel) {

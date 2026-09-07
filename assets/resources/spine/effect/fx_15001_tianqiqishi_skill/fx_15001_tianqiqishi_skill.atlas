@@ -1,0 +1,495 @@
+
+fx_15001_tianqiqishi_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/tqqs_atk_dg/tqqs_atk_dg_00022
+  rotate: false
+  xy: 1780, 1851
+  size: 241, 183
+  orig: 323, 197
+  offset: 82, 4
+  index: -1
+effect/attack/tqqs_atk_dg/tqqs_atk_dg_00024
+  rotate: false
+  xy: 357, 2
+  size: 296, 138
+  orig: 323, 197
+  offset: 1, 4
+  index: -1
+effect/attack/tqqs_atk_dg/tqqs_atk_dg_00026
+  rotate: false
+  xy: 1757, 1186
+  size: 288, 138
+  orig: 323, 197
+  offset: 3, 4
+  index: -1
+effect/skill/tqqs_skill_cx/tqqs_skill_cx_00002
+  rotate: false
+  xy: 2, 251
+  size: 357, 357
+  orig: 400, 400
+  offset: 23, 23
+  index: -1
+effect/skill/tqqs_skill_cx/tqqs_skill_cx_00004
+  rotate: false
+  xy: 734, 1499
+  size: 358, 350
+  orig: 400, 400
+  offset: 22, 23
+  index: -1
+effect/skill/tqqs_skill_cx/tqqs_skill_cx_00006
+  rotate: false
+  xy: 693, 355
+  size: 309, 328
+  orig: 400, 400
+  offset: 51, 27
+  index: -1
+effect/skill/tqqs_skill_cx/tqqs_skill_cx_00008
+  rotate: false
+  xy: 1698, 583
+  size: 304, 320
+  orig: 400, 400
+  offset: 52, 29
+  index: -1
+effect/skill/tqqs_skill_dj/tqqs_skill_dj_00000
+  rotate: false
+  xy: 382, 1007
+  size: 72, 72
+  orig: 125, 125
+  offset: 27, 27
+  index: -1
+effect/skill/tqqs_skill_dj/tqqs_skill_dj_00002
+  rotate: false
+  xy: 1940, 128
+  size: 105, 105
+  orig: 125, 125
+  offset: 9, 11
+  index: -1
+effect/skill/tqqs_skill_dj/tqqs_skill_dj_00004
+  rotate: false
+  xy: 1940, 235
+  size: 106, 106
+  orig: 125, 125
+  offset: 9, 10
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00002
+  rotate: false
+  xy: 1060, 660
+  size: 321, 316
+  orig: 400, 400
+  offset: 40, 38
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00004
+  rotate: false
+  xy: 340, 665
+  size: 324, 340
+  orig: 400, 400
+  offset: 43, 10
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00006
+  rotate: false
+  xy: 1346, 47
+  size: 284, 315
+  orig: 400, 400
+  offset: 62, 31
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00010
+  rotate: false
+  xy: 1312, 364
+  size: 248, 222
+  orig: 400, 400
+  offset: 54, 80
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00016
+  rotate: false
+  xy: 1789, 932
+  size: 254, 252
+  orig: 400, 400
+  offset: 75, 63
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00018
+  rotate: false
+  xy: 1777, 1326
+  size: 268, 245
+  orig: 400, 400
+  offset: 64, 72
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00022
+  rotate: false
+  xy: 1777, 1573
+  size: 269, 260
+  orig: 400, 400
+  offset: 65, 68
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00000
+  rotate: false
+  xy: 361, 142
+  size: 362, 186
+  orig: 721, 250
+  offset: 23, 40
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00002
+  rotate: false
+  xy: 647, 1851
+  size: 637, 183
+  orig: 721, 250
+  offset: 45, 22
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00004
+  rotate: false
+  xy: 2, 1838
+  size: 643, 196
+  orig: 721, 250
+  offset: 33, 17
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00006
+  rotate: false
+  xy: 1286, 1835
+  size: 492, 199
+  orig: 721, 250
+  offset: 171, 20
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00008
+  rotate: false
+  xy: 1074, 978
+  size: 416, 176
+  orig: 721, 250
+  offset: 253, 45
+  index: -1
+effect/skill2/tqqs_skill2_cy1
+  rotate: false
+  xy: 1492, 905
+  size: 295, 251
+  orig: 306, 261
+  offset: 6, 5
+  index: -1
+effect/skill2/tqqs_skill2_cy2
+  rotate: false
+  xy: 690, 1084
+  size: 382, 191
+  orig: 394, 201
+  offset: 6, 5
+  index: -1
+effect/skill2/tqqs_skill2_dg/tqqs_skill2_dg_00008
+  rotate: false
+  xy: 2, 1431
+  size: 431, 405
+  orig: 454, 452
+  offset: 23, 44
+  index: -1
+effect/skill2/tqqs_skill2_dg/tqqs_skill2_dg_00010
+  rotate: false
+  xy: 2, 1007
+  size: 378, 422
+  orig: 454, 452
+  offset: 71, 16
+  index: -1
+effect/skill2/tqqs_skill2_dg/tqqs_skill2_dg_00012
+  rotate: false
+  xy: 2, 610
+  size: 336, 395
+  orig: 454, 452
+  offset: 110, 12
+  index: -1
+effect/skill2/tqqs_skill2_dg/tqqs_skill2_dg_00014
+  rotate: false
+  xy: 435, 1486
+  size: 297, 350
+  orig: 454, 452
+  offset: 118, 30
+  index: -1
+effect/skill2/tqqs_skill2_dg/tqqs_skill2_dg_00018
+  rotate: false
+  xy: 1562, 382
+  size: 131, 204
+  orig: 454, 452
+  offset: 244, 131
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00000
+  rotate: false
+  xy: 725, 54
+  size: 297, 299
+  orig: 375, 375
+  offset: 41, 40
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00002
+  rotate: false
+  xy: 361, 330
+  size: 330, 333
+  orig: 375, 375
+  offset: 25, 22
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00004
+  rotate: false
+  xy: 1024, 37
+  size: 320, 323
+  orig: 375, 375
+  offset: 30, 27
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00006
+  rotate: false
+  xy: 1383, 588
+  size: 313, 315
+  orig: 375, 375
+  offset: 32, 30
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00008
+  rotate: false
+  xy: 1632, 33
+  size: 306, 308
+  orig: 375, 375
+  offset: 37, 35
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00002
+  rotate: false
+  xy: 1004, 362
+  size: 306, 296
+  orig: 400, 400
+  offset: 56, 49
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00004
+  rotate: false
+  xy: 382, 1081
+  size: 306, 348
+  orig: 400, 400
+  offset: 49, 20
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00006
+  rotate: false
+  xy: 1441, 1485
+  size: 334, 348
+  orig: 400, 400
+  offset: 42, 28
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00008
+  rotate: false
+  xy: 1094, 1490
+  size: 345, 343
+  orig: 400, 400
+  offset: 37, 25
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00010
+  rotate: false
+  xy: 1080, 1156
+  size: 341, 332
+  orig: 400, 400
+  offset: 38, 25
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00012
+  rotate: false
+  xy: 1423, 1158
+  size: 332, 325
+  orig: 400, 400
+  offset: 38, 28
+  index: -1
+effect/skill2/tqqs_skill2_yw/tqqs_skill2_yw_00000
+  rotate: false
+  xy: 690, 926
+  size: 368, 156
+  orig: 400, 249
+  offset: 32, 46
+  index: -1
+effect/skill2/tqqs_skill2_yw/tqqs_skill2_yw_00002
+  rotate: false
+  xy: 734, 1277
+  size: 344, 220
+  orig: 400, 249
+  offset: 39, 15
+  index: -1
+effect/skill2/tqqs_skill2_yw/tqqs_skill2_yw_00004
+  rotate: false
+  xy: 2, 14
+  size: 353, 235
+  orig: 400, 249
+  offset: 24, 7
+  index: -1
+effect/skill2/tqqs_skill2_yw/tqqs_skill2_yw_00006
+  rotate: false
+  xy: 1695, 343
+  size: 313, 238
+  orig: 400, 249
+  offset: 57, 6
+  index: -1
+effect/skill2/tqqs_skill2_yw/tqqs_skill2_yw_00008
+  rotate: false
+  xy: 666, 685
+  size: 321, 239
+  orig: 400, 249
+  offset: 9, 5
+  index: -1
+
+fx_15001_tianqiqishi_skill_2.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/tqqs_atk_dg/tqqs_atk_dg_00020
+  rotate: false
+  xy: 2, 13
+  size: 296, 151
+  orig: 323, 197
+  offset: 15, 42
+  index: -1
+effect/attack/tqqs_atk_dg/tqqs_atk_dg_00028
+  rotate: false
+  xy: 541, 114
+  size: 276, 123
+  orig: 323, 197
+  offset: 6, 5
+  index: -1
+effect/skill/tqqs_skill_cx/tqqs_skill_cx_00000
+  rotate: false
+  xy: 2, 444
+  size: 278, 280
+  orig: 400, 400
+  offset: 63, 61
+  index: -1
+effect/skill/tqqs_skill_cx/tqqs_skill_cx_00010
+  rotate: false
+  xy: 584, 742
+  size: 290, 280
+  orig: 400, 400
+  offset: 53, 70
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00000
+  rotate: false
+  xy: 280, 181
+  size: 259, 250
+  orig: 400, 400
+  offset: 73, 74
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00008
+  rotate: false
+  xy: 584, 485
+  size: 284, 255
+  orig: 400, 400
+  offset: 35, 63
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00012
+  rotate: false
+  xy: 801, 241
+  size: 242, 242
+  orig: 400, 400
+  offset: 81, 79
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00014
+  rotate: false
+  xy: 2, 166
+  size: 276, 276
+  orig: 400, 400
+  offset: 62, 62
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00020
+  rotate: false
+  xy: 541, 239
+  size: 258, 244
+  orig: 400, 400
+  offset: 67, 80
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00024
+  rotate: false
+  xy: 1170, 751
+  size: 283, 271
+  orig: 400, 400
+  offset: 51, 60
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00026
+  rotate: false
+  xy: 876, 745
+  size: 292, 277
+  orig: 400, 400
+  offset: 41, 55
+  index: -1
+effect/skill/tqqs_skill_xl/tqqs_skill_xl_00028
+  rotate: false
+  xy: 1455, 752
+  size: 281, 270
+  orig: 400, 400
+  offset: 54, 61
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00010
+  rotate: false
+  xy: 819, 93
+  size: 264, 146
+  orig: 721, 250
+  offset: 385, 63
+  index: -1
+effect/skill2/tqqs_skill2_c/tqqs_skill2_c_00012
+  rotate: false
+  xy: 1280, 324
+  size: 120, 85
+  orig: 721, 250
+  offset: 494, 91
+  index: -1
+effect/skill2/tqqs_skill2_cy1add
+  rotate: false
+  xy: 300, 2
+  size: 200, 177
+  orig: 229, 202
+  offset: 15, 14
+  index: -1
+effect/skill2/tqqs_skill2_cy2add
+  rotate: false
+  xy: 1170, 601
+  size: 248, 148
+  orig: 276, 175
+  offset: 15, 14
+  index: -1
+effect/skill2/tqqs_skill2_dg/tqqs_skill2_dg_00016
+  rotate: false
+  xy: 282, 433
+  size: 251, 291
+  orig: 454, 452
+  offset: 132, 60
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00010
+  rotate: false
+  xy: 292, 729
+  size: 290, 293
+  orig: 375, 375
+  offset: 45, 42
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00012
+  rotate: false
+  xy: 1738, 744
+  size: 271, 278
+  orig: 375, 375
+  offset: 54, 47
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00014
+  rotate: false
+  xy: 870, 488
+  size: 246, 252
+  orig: 375, 375
+  offset: 60, 58
+  index: -1
+effect/skill2/tqqs_skill2_rb/tqqs_skill2_rb_00016
+  rotate: false
+  xy: 1045, 252
+  size: 233, 234
+  orig: 375, 375
+  offset: 70, 73
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00014
+  rotate: false
+  xy: 2, 726
+  size: 288, 296
+  orig: 400, 400
+  offset: 40, 40
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00016
+  rotate: false
+  xy: 1085, 25
+  size: 243, 225
+  orig: 400, 400
+  offset: 64, 95
+  index: -1
+effect/skill2/tqqs_skill2_xl/tqqs_skill2_xl_00018
+  rotate: false
+  xy: 1280, 411
+  size: 199, 188
+  orig: 400, 400
+  offset: 93, 110
+  index: -1

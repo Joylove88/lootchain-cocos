@@ -732,12 +732,27 @@ export function guardDragTo(state: GuardBattleState, fromCell: number, toCell: n
   return superMerge ? 'superMerge' : 'merge';
 }
 
+/** T0 英雄守卫战力倍率(2026-09-07 专属技能体系,与 sql/110 被动增强配套):
+ *  每稀有度一名"档位天花板/毕业之选",拿到即当前阶段最强,乘在最终攻击上。 */
+const GUARD_T0_ATTACK_MULT_BY_CODE: Record<string, number> = {
+  UR_ARTHAS: 1.35,
+  SSR_LIVIA: 1.3,
+  SR_SNIPER_05: 1.25,
+  R_SCOUT_03: 1.2,
+};
+
+/** 是否 T0 英雄(详情页"毕业之选"标识与守卫战力倍率共用同一名单)。 */
+export function isGuardT0Hero(heroCode: string | null | undefined): boolean {
+  return !!GUARD_T0_ATTACK_MULT_BY_CODE[(heroCode || '').toUpperCase()];
+}
+
 export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUnit): number {
   const pool = state.pool.find((entry) => entry.heroCode === hero.heroCode);
   const base = pool?.baseAttack ?? 40;
   const profile = GUARD_ROLE_PROFILE[hero.role];
   const teamPct = state.mods.teamAtkPct + state.enhanceLevel * GUARD_ENHANCE_ATK_PCT;
-  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100)));
+  const t0Mult = GUARD_T0_ATTACK_MULT_BY_CODE[hero.heroCode.toUpperCase()] ?? 1;
+  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult));
 }
 
 // ── P2:XP/三选一 ──

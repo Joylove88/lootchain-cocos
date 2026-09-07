@@ -1,0 +1,1026 @@
+
+fx_65002_luxifa_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/dd/wl_attack_dandao_000
+  rotate: false
+  xy: 1668, 12
+  size: 93, 42
+  orig: 105, 53
+  offset: 6, 5
+  index: -1
+effect/attack/dd/wl_attack_dandao_010
+  rotate: false
+  xy: 1474, 12
+  size: 95, 42
+  orig: 105, 53
+  offset: 4, 6
+  index: -1
+effect/attack/dd/wl_attack_dandao_014
+  rotate: false
+  xy: 1571, 11
+  size: 95, 43
+  orig: 105, 53
+  offset: 5, 5
+  index: -1
+effect/attack/fz/wl_attack_fazhen_000
+  rotate: false
+  xy: 2026, 1422
+  size: 20, 30
+  orig: 63, 87
+  offset: 21, 27
+  index: -1
+effect/attack/fz/wl_attack_fazhen_002
+  rotate: false
+  xy: 1999, 831
+  size: 40, 61
+  orig: 63, 87
+  offset: 12, 12
+  index: -1
+effect/attack/fz/wl_attack_fazhen_010
+  rotate: false
+  xy: 1999, 894
+  size: 46, 69
+  orig: 63, 87
+  offset: 9, 8
+  index: -1
+effect/attack/sf_hit/wl_attack_baodian_000
+  rotate: false
+  xy: 1958, 1725
+  size: 68, 69
+  orig: 153, 132
+  offset: 43, 34
+  index: -1
+effect/attack/sf_hit/wl_attack_baodian_002
+  rotate: false
+  xy: 1088, 579
+  size: 106, 107
+  orig: 153, 132
+  offset: 24, 15
+  index: -1
+effect/attack/sf_hit/wl_attack_baodian_004
+  rotate: false
+  xy: 1852, 831
+  size: 145, 132
+  orig: 153, 132
+  offset: 3, 0
+  index: -1
+effect/attack/xl/wl_attack_xili_000
+  rotate: false
+  xy: 1763, 2
+  size: 31, 25
+  orig: 162, 108
+  offset: 16, 41
+  index: -1
+effect/attack/xl/wl_attack_xili_004
+  rotate: false
+  xy: 1958, 1796
+  size: 84, 72
+  orig: 162, 108
+  offset: 26, 14
+  index: -1
+effect/attack/xl/wl_attack_xili_006
+  rotate: false
+  xy: 1088, 517
+  size: 100, 60
+  orig: 162, 108
+  offset: 41, 26
+  index: -1
+effect/attack/xl/wl_attack_xili_008
+  rotate: false
+  xy: 1958, 1870
+  size: 82, 76
+  orig: 162, 108
+  offset: 63, 14
+  index: -1
+effect/attack/xl/wl_attack_xili_012
+  rotate: false
+  xy: 2010, 133
+  size: 23, 58
+  orig: 162, 108
+  offset: 119, 12
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_002
+  rotate: false
+  xy: 556, 188
+  size: 530, 484
+  orig: 610, 549
+  offset: 50, 10
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_004
+  rotate: false
+  xy: 654, 688
+  size: 544, 499
+  orig: 610, 549
+  offset: 57, 35
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_008
+  rotate: false
+  xy: 2, 180
+  size: 552, 492
+  orig: 610, 549
+  offset: 47, 57
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_010
+  rotate: false
+  xy: 1306, 1157
+  size: 544, 491
+  orig: 610, 549
+  offset: 51, 58
+  index: -1
+effect/skill/f_hit/wl_skill_chuxian_000
+  rotate: false
+  xy: 2004, 979
+  size: 42, 42
+  orig: 89, 88
+  offset: 25, 24
+  index: -1
+effect/skill/f_hit/wl_skill_chuxian_004
+  rotate: false
+  xy: 1958, 1654
+  size: 65, 69
+  orig: 89, 88
+  offset: 13, 9
+  index: -1
+effect/skill/f_hit/wl_skill_chuxian_006
+  rotate: false
+  xy: 2010, 80
+  size: 35, 51
+  orig: 89, 88
+  offset: 31, 8
+  index: -1
+effect/skill/f_hit/wl_skill_chuxian_008
+  rotate: false
+  xy: 1200, 1163
+  size: 24, 24
+  orig: 89, 88
+  offset: 36, 33
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_000
+  rotate: false
+  xy: 894, 177
+  size: 16, 9
+  orig: 633, 53
+  offset: 18, 24
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_002
+  rotate: false
+  xy: 894, 2
+  size: 128, 25
+  orig: 633, 53
+  offset: 13, 17
+  index: -1
+effect/skill/f_shandian/wl_skill_fumo_008
+  rotate: false
+  xy: 2004, 1023
+  size: 42, 45
+  orig: 71, 64
+  offset: 15, 8
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_006
+  rotate: false
+  xy: 894, 33
+  size: 578, 142
+  orig: 650, 573
+  offset: 72, 199
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_044
+  rotate: false
+  xy: 2, 23
+  size: 590, 155
+  orig: 650, 573
+  offset: 60, 192
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_052
+  rotate: false
+  xy: 1200, 494
+  size: 650, 308
+  orig: 650, 573
+  offset: 0, 114
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_054
+  rotate: false
+  xy: 1088, 177
+  size: 650, 315
+  orig: 650, 573
+  offset: 0, 111
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_060
+  rotate: false
+  xy: 1200, 804
+  size: 650, 351
+  orig: 650, 573
+  offset: 0, 105
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_062
+  rotate: false
+  xy: 1306, 1650
+  size: 650, 396
+  orig: 650, 573
+  offset: 0, 86
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_064
+  rotate: false
+  xy: 654, 1189
+  size: 650, 408
+  orig: 650, 573
+  offset: 0, 73
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_068
+  rotate: false
+  xy: 2, 674
+  size: 650, 440
+  orig: 650, 573
+  offset: 0, 58
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_070
+  rotate: false
+  xy: 654, 1599
+  size: 650, 447
+  orig: 650, 573
+  offset: 0, 49
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_072
+  rotate: false
+  xy: 2, 1116
+  size: 650, 455
+  orig: 650, 573
+  offset: 0, 59
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_074
+  rotate: false
+  xy: 2, 1573
+  size: 650, 473
+  orig: 650, 573
+  offset: 0, 44
+  index: -1
+effect/skill/s_hit/wl_skill_baodian_000
+  rotate: false
+  xy: 1852, 1454
+  size: 188, 194
+  orig: 412, 220
+  offset: 113, 26
+  index: -1
+effect/skill/s_hit/wl_skill_baodian_002
+  rotate: false
+  xy: 594, 2
+  size: 298, 184
+  orig: 412, 220
+  offset: 61, 26
+  index: -1
+effect/skill/s_hit/wl_skill_baodian_004
+  rotate: false
+  xy: 1474, 56
+  size: 298, 119
+  orig: 412, 220
+  offset: 47, 63
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_000
+  rotate: false
+  xy: 2, 8
+  size: 34, 13
+  orig: 329, 252
+  offset: 134, 91
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_024
+  rotate: false
+  xy: 1774, 29
+  size: 234, 162
+  orig: 329, 252
+  offset: 60, 39
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_028
+  rotate: false
+  xy: 1852, 719
+  size: 172, 110
+  orig: 329, 252
+  offset: 73, 80
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_030
+  rotate: false
+  xy: 1852, 635
+  size: 163, 82
+  orig: 329, 252
+  offset: 80, 82
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_032
+  rotate: false
+  xy: 1969, 513
+  size: 77, 55
+  orig: 329, 252
+  offset: 127, 109
+  index: -1
+effect/skill2/f_juji/wl_skill2_juqi_002
+  rotate: false
+  xy: 1969, 570
+  size: 77, 63
+  orig: 159, 152
+  offset: 53, 47
+  index: -1
+effect/skill2/f_juji/wl_skill2_juqi_004
+  rotate: false
+  xy: 1852, 511
+  size: 115, 122
+  orig: 159, 152
+  offset: 22, 13
+  index: -1
+effect/skill2/f_juji/wl_skill2_juqi_006
+  rotate: false
+  xy: 1958, 1948
+  size: 88, 98
+  orig: 159, 152
+  offset: 35, 24
+  index: -1
+effect/skill2/f_shandian/wl_skill2_shandian_008
+  rotate: false
+  xy: 2004, 1070
+  size: 42, 45
+  orig: 64, 58
+  offset: 8, 5
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_002
+  rotate: false
+  xy: 1852, 1282
+  size: 172, 170
+  orig: 258, 257
+  offset: 43, 42
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_012
+  rotate: false
+  xy: 1852, 1117
+  size: 165, 163
+  orig: 258, 257
+  offset: 48, 48
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_014
+  rotate: false
+  xy: 1852, 965
+  size: 150, 150
+  orig: 258, 257
+  offset: 54, 54
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_016
+  rotate: false
+  xy: 1740, 193
+  size: 284, 299
+  orig: 429, 413
+  offset: 78, 46
+  index: -1
+
+fx_65002_luxifa_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/dd/wl_attack_dandao_002
+  rotate: false
+  xy: 1943, 36
+  size: 89, 42
+  orig: 105, 53
+  offset: 10, 5
+  index: -1
+effect/attack/dd/wl_attack_dandao_004
+  rotate: false
+  xy: 1661, 36
+  size: 93, 42
+  orig: 105, 53
+  offset: 7, 6
+  index: -1
+effect/attack/dd/wl_attack_dandao_006
+  rotate: false
+  xy: 1897, 1780
+  size: 92, 43
+  orig: 105, 53
+  offset: 8, 5
+  index: -1
+effect/attack/dd/wl_attack_dandao_008
+  rotate: false
+  xy: 1850, 35
+  size: 91, 43
+  orig: 105, 53
+  offset: 9, 5
+  index: -1
+effect/attack/dd/wl_attack_dandao_012
+  rotate: false
+  xy: 1756, 36
+  size: 92, 42
+  orig: 105, 53
+  offset: 7, 5
+  index: -1
+effect/attack/fz/wl_attack_fazhen_004
+  rotate: false
+  xy: 1821, 1227
+  size: 43, 63
+  orig: 63, 87
+  offset: 10, 11
+  index: -1
+effect/attack/fz/wl_attack_fazhen_006
+  rotate: false
+  xy: 1866, 1226
+  size: 43, 64
+  orig: 63, 87
+  offset: 10, 10
+  index: -1
+effect/attack/fz/wl_attack_fazhen_008
+  rotate: false
+  xy: 1911, 1226
+  size: 43, 64
+  orig: 63, 87
+  offset: 10, 10
+  index: -1
+effect/attack/xl/wl_attack_xili_002
+  rotate: false
+  xy: 1738, 451
+  size: 68, 63
+  orig: 162, 108
+  offset: 15, 31
+  index: -1
+effect/attack/xl/wl_attack_xili_010
+  rotate: false
+  xy: 1823, 1758
+  size: 72, 65
+  orig: 162, 108
+  offset: 73, 27
+  index: -1
+effect/fazhen2_0
+  rotate: false
+  xy: 1538, 516
+  size: 269, 269
+  orig: 500, 500
+  offset: 115, 116
+  index: -1
+effect/fazhen_0
+  rotate: false
+  xy: 615, 2
+  size: 348, 348
+  orig: 500, 500
+  offset: 78, 75
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_006
+  rotate: false
+  xy: 2, 1550
+  size: 515, 494
+  orig: 610, 549
+  offset: 67, 55
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_012
+  rotate: false
+  xy: 2, 1128
+  size: 485, 420
+  orig: 610, 549
+  offset: 78, 72
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_014
+  rotate: false
+  xy: 2, 714
+  size: 468, 412
+  orig: 610, 549
+  offset: 70, 83
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_016
+  rotate: false
+  xy: 2, 311
+  size: 471, 401
+  orig: 610, 549
+  offset: 66, 97
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_018
+  rotate: false
+  xy: 489, 1092
+  size: 467, 402
+  orig: 610, 549
+  offset: 66, 97
+  index: -1
+effect/skill/2_bomm/wl_skill_hit02_020
+  rotate: false
+  xy: 1676, 1489
+  size: 367, 198
+  orig: 610, 549
+  offset: 144, 184
+  index: -1
+effect/skill/f_hit/wl_skill_chuxian_002
+  rotate: false
+  xy: 1823, 1689
+  size: 63, 67
+  orig: 89, 88
+  offset: 13, 11
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_004
+  rotate: false
+  xy: 1661, 80
+  size: 376, 35
+  orig: 633, 53
+  offset: 11, 12
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_006
+  rotate: false
+  xy: 1171, 1689
+  size: 611, 33
+  orig: 633, 53
+  offset: 11, 13
+  index: -1
+effect/skill/f_shandian/wl_skill_fumo_000
+  rotate: false
+  xy: 1809, 495
+  size: 41, 47
+  orig: 71, 64
+  offset: 15, 9
+  index: -1
+effect/skill/f_shandian/wl_skill_fumo_002
+  rotate: false
+  xy: 1762, 1128
+  size: 52, 42
+  orig: 71, 64
+  offset: 11, 11
+  index: -1
+effect/skill/f_shandian/wl_skill_fumo_004
+  rotate: false
+  xy: 527, 315
+  size: 49, 35
+  orig: 71, 64
+  offset: 14, 13
+  index: -1
+effect/skill/f_shandian/wl_skill_fumo_006
+  rotate: false
+  xy: 1866, 1183
+  size: 50, 41
+  orig: 71, 64
+  offset: 12, 12
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_000
+  rotate: false
+  xy: 1536, 1125
+  size: 224, 155
+  orig: 650, 573
+  offset: 77, 200
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_002
+  rotate: false
+  xy: 958, 1279
+  size: 575, 202
+  orig: 650, 573
+  offset: 75, 189
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_004
+  rotate: false
+  xy: 1098, 1483
+  size: 576, 204
+  orig: 650, 573
+  offset: 74, 192
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_046
+  rotate: false
+  xy: 958, 1091
+  size: 576, 186
+  orig: 650, 573
+  offset: 74, 175
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_048
+  rotate: false
+  xy: 519, 1496
+  size: 577, 204
+  orig: 650, 573
+  offset: 73, 169
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_050
+  rotate: false
+  xy: 2, 4
+  size: 611, 305
+  orig: 650, 573
+  offset: 39, 111
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_056
+  rotate: false
+  xy: 1171, 1724
+  size: 650, 320
+  orig: 650, 573
+  offset: 0, 120
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_058
+  rotate: false
+  xy: 519, 1702
+  size: 650, 342
+  orig: 650, 573
+  offset: 0, 105
+  index: -1
+effect/skill/sf_guangyun/glow_00010
+  rotate: false
+  xy: 965, 14
+  size: 348, 339
+  orig: 363, 346
+  offset: 11, 7
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_022
+  rotate: false
+  xy: 1752, 1292
+  size: 274, 195
+  orig: 329, 252
+  offset: 40, 16
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_026
+  rotate: false
+  xy: 1538, 387
+  size: 198, 127
+  orig: 329, 252
+  offset: 66, 73
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_034
+  rotate: false
+  xy: 1738, 395
+  size: 76, 54
+  orig: 329, 252
+  offset: 127, 109
+  index: -1
+effect/skill2/f_juji/wl_skill2_juqi_000
+  rotate: false
+  xy: 1762, 1172
+  size: 56, 55
+  orig: 159, 152
+  offset: 55, 50
+  index: -1
+effect/skill2/f_juji/wl_skill2_juqi_008
+  rotate: false
+  xy: 1762, 1229
+  size: 57, 61
+  orig: 159, 152
+  offset: 50, 45
+  index: -1
+effect/skill2/f_shandian/wl_skill2_shandian_000
+  rotate: false
+  xy: 1918, 1177
+  size: 40, 47
+  orig: 64, 58
+  offset: 8, 7
+  index: -1
+effect/skill2/f_shandian/wl_skill2_shandian_002
+  rotate: false
+  xy: 1991, 1782
+  size: 53, 41
+  orig: 64, 58
+  offset: 4, 9
+  index: -1
+effect/skill2/f_shandian/wl_skill2_shandian_004
+  rotate: false
+  xy: 475, 314
+  size: 50, 36
+  orig: 64, 58
+  offset: 7, 10
+  index: -1
+effect/skill2/f_shandian/wl_skill2_shandian_006
+  rotate: false
+  xy: 1956, 1250
+  size: 51, 40
+  orig: 64, 58
+  offset: 5, 10
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_000
+  rotate: false
+  xy: 1820, 1182
+  size: 44, 43
+  orig: 258, 257
+  offset: 107, 106
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_004
+  rotate: false
+  xy: 1823, 1825
+  size: 223, 219
+  orig: 258, 257
+  offset: 23, 23
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_008
+  rotate: false
+  xy: 1809, 544
+  size: 199, 241
+  orig: 258, 257
+  offset: 17, 11
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_000
+  rotate: false
+  xy: 1185, 723
+  size: 350, 366
+  orig: 429, 413
+  offset: 42, 22
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_002
+  rotate: false
+  xy: 828, 355
+  size: 353, 366
+  orig: 429, 413
+  offset: 42, 21
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_004
+  rotate: false
+  xy: 828, 723
+  size: 355, 366
+  orig: 429, 413
+  offset: 40, 24
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_006
+  rotate: false
+  xy: 1183, 362
+  size: 353, 359
+  orig: 429, 413
+  offset: 41, 25
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_008
+  rotate: false
+  xy: 475, 352
+  size: 351, 368
+  orig: 429, 413
+  offset: 42, 21
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_010
+  rotate: false
+  xy: 472, 722
+  size: 354, 368
+  orig: 429, 413
+  offset: 40, 21
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_012
+  rotate: false
+  xy: 1315, 3
+  size: 344, 357
+  orig: 429, 413
+  offset: 46, 26
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_014
+  rotate: false
+  xy: 1537, 787
+  size: 326, 336
+  orig: 429, 413
+  offset: 56, 39
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_018
+  rotate: false
+  xy: 1661, 117
+  size: 247, 268
+  orig: 429, 413
+  offset: 88, 55
+  index: -1
+effect/skill2/xl_x/wl_skill2_xuli_020
+  rotate: false
+  xy: 1535, 1282
+  size: 215, 199
+  orig: 429, 413
+  offset: 98, 110
+  index: -1
+
+fx_65002_luxifa_skill_3.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill/2_bomm/wl_skill_hit02_000
+  rotate: false
+  xy: 1508, 1530
+  size: 234, 235
+  orig: 610, 549
+  offset: 198, 101
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_008
+  rotate: false
+  xy: 582, 1549
+  size: 610, 34
+  orig: 633, 53
+  offset: 11, 12
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_010
+  rotate: false
+  xy: 594, 1730
+  size: 611, 35
+  orig: 633, 53
+  offset: 11, 11
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_012
+  rotate: false
+  xy: 582, 1693
+  size: 611, 35
+  orig: 633, 53
+  offset: 11, 10
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_014
+  rotate: false
+  xy: 582, 1657
+  size: 611, 34
+  orig: 633, 53
+  offset: 11, 11
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_016
+  rotate: false
+  xy: 582, 1621
+  size: 611, 34
+  orig: 633, 53
+  offset: 11, 12
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_018
+  rotate: false
+  xy: 582, 1515
+  size: 611, 32
+  orig: 633, 53
+  offset: 11, 13
+  index: -1
+effect/skill/f_jg/wl_skill_jiguang_020
+  rotate: false
+  xy: 582, 1585
+  size: 611, 34
+  orig: 633, 53
+  offset: 11, 12
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_008
+  rotate: false
+  xy: 2, 1756
+  size: 590, 126
+  orig: 650, 573
+  offset: 60, 213
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_010
+  rotate: false
+  xy: 2, 1027
+  size: 583, 115
+  orig: 650, 573
+  offset: 67, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_012
+  rotate: false
+  xy: 2, 442
+  size: 575, 115
+  orig: 650, 573
+  offset: 75, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_014
+  rotate: false
+  xy: 2, 1144
+  size: 575, 117
+  orig: 650, 573
+  offset: 75, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_016
+  rotate: false
+  xy: 2, 1263
+  size: 575, 119
+  orig: 650, 573
+  offset: 75, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_018
+  rotate: false
+  xy: 2, 1504
+  size: 578, 119
+  orig: 650, 573
+  offset: 72, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_020
+  rotate: false
+  xy: 594, 1767
+  size: 590, 115
+  orig: 650, 573
+  offset: 60, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_022
+  rotate: false
+  xy: 2, 793
+  size: 577, 115
+  orig: 650, 573
+  offset: 73, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_024
+  rotate: false
+  xy: 2, 676
+  size: 577, 115
+  orig: 650, 573
+  offset: 73, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_026
+  rotate: false
+  xy: 2, 325
+  size: 575, 115
+  orig: 650, 573
+  offset: 75, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_028
+  rotate: false
+  xy: 2, 559
+  size: 576, 115
+  orig: 650, 573
+  offset: 74, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_030
+  rotate: false
+  xy: 2, 910
+  size: 579, 115
+  orig: 650, 573
+  offset: 71, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_032
+  rotate: false
+  xy: 1186, 1767
+  size: 590, 115
+  orig: 650, 573
+  offset: 60, 212
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_034
+  rotate: false
+  xy: 2, 1384
+  size: 577, 118
+  orig: 650, 573
+  offset: 73, 211
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_040
+  rotate: false
+  xy: 2, 224
+  size: 575, 99
+  orig: 650, 573
+  offset: 75, 224
+  index: -1
+effect/skill/max_jg/wl_skill_jiguang_042
+  rotate: false
+  xy: 2, 1625
+  size: 578, 129
+  orig: 650, 573
+  offset: 72, 207
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_002
+  rotate: false
+  xy: 1744, 1422
+  size: 287, 218
+  orig: 329, 252
+  offset: 21, 18
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_004
+  rotate: false
+  xy: 2, 3
+  size: 307, 219
+  orig: 329, 252
+  offset: 22, 14
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_006
+  rotate: false
+  xy: 311, 2
+  size: 305, 220
+  orig: 329, 252
+  offset: 22, 14
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_008
+  rotate: false
+  xy: 1195, 1332
+  size: 291, 217
+  orig: 329, 252
+  offset: 23, 16
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_010
+  rotate: false
+  xy: 582, 1299
+  size: 287, 214
+  orig: 329, 252
+  offset: 21, 19
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_012
+  rotate: false
+  xy: 871, 1298
+  size: 285, 215
+  orig: 329, 252
+  offset: 20, 19
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_014
+  rotate: false
+  xy: 1719, 1205
+  size: 288, 215
+  orig: 329, 252
+  offset: 21, 19
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_016
+  rotate: false
+  xy: 581, 694
+  size: 283, 214
+  orig: 329, 252
+  offset: 25, 22
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_018
+  rotate: false
+  xy: 1207, 1551
+  size: 299, 214
+  orig: 329, 252
+  offset: 30, 14
+  index: -1
+effect/skill/sf_xl/wl_skill_xuli_020
+  rotate: false
+  xy: 1158, 1118
+  size: 287, 212
+  orig: 329, 252
+  offset: 35, 14
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_006
+  rotate: false
+  xy: 1778, 1642
+  size: 236, 240
+  orig: 258, 257
+  offset: 17, 11
+  index: -1
+effect/skill2/hit/wl_skill2_baodian_010
+  rotate: false
+  xy: 1488, 1291
+  size: 229, 237
+  orig: 258, 257
+  offset: 20, 12
+  index: -1

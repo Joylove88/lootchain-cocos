@@ -1,0 +1,412 @@
+
+fx_4601_bingyuanjulang_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_4601_bingyuanjulang_zhuazi_00020
+  rotate: false
+  xy: 1282, 2
+  size: 219, 250
+  orig: 475, 300
+  offset: 10, 3
+  index: -1
+attack/New_4601_bingyuanjulang_zhuazi_00022
+  rotate: false
+  xy: 597, 1447
+  size: 448, 207
+  orig: 475, 300
+  offset: 15, 87
+  index: -1
+attack/New_4601_bingyuanjulang_zhuazi_00024
+  rotate: false
+  xy: 597, 1253
+  size: 417, 192
+  orig: 475, 300
+  offset: 46, 86
+  index: -1
+attack/New_4601_bingyuanjulang_zhuazi_00026
+  rotate: false
+  xy: 603, 796
+  size: 387, 185
+  orig: 475, 300
+  offset: 66, 69
+  index: -1
+attack/New_4601_bingyuanjulang_zhuazi_00028
+  rotate: false
+  xy: 1395, 1523
+  size: 313, 149
+  orig: 475, 300
+  offset: 137, 85
+  index: -1
+begin+out/New_4601_bingyuanjulang_bingmian_00010
+  rotate: false
+  xy: 559, 33
+  size: 243, 66
+  orig: 243, 69
+  offset: 0, 0
+  index: -1
+begin+out/New_4601_bingyuanjulang_kuosanbo_00009
+  rotate: false
+  xy: 945, 983
+  size: 538, 110
+  orig: 580, 134
+  offset: 25, 3
+  index: -1
+begin+out/New_4601_bingyuanjulang_kuosanbo_00015
+  rotate: false
+  xy: 945, 983
+  size: 538, 110
+  orig: 580, 134
+  offset: 25, 3
+  index: -1
+begin+out/New_4601_bingyuanjulang_kuosanbo_00011
+  rotate: false
+  xy: 1016, 1312
+  size: 550, 129
+  orig: 580, 134
+  offset: 21, 1
+  index: -1
+begin+out/New_4601_bingyuanjulang_kuosanbo_00013
+  rotate: false
+  xy: 1016, 1199
+  size: 565, 111
+  orig: 580, 134
+  offset: 10, 1
+  index: -1
+begin+out/New_4601_bingyuanjulang_kuosanbo_00017
+  rotate: false
+  xy: 992, 880
+  size: 543, 101
+  orig: 580, 134
+  offset: 26, 1
+  index: -1
+begin+out/New_4601_bingyuanjulang_kuosanbo_00019
+  rotate: false
+  xy: 945, 1095
+  size: 559, 102
+  orig: 580, 134
+  offset: 12, 0
+  index: -1
+skill/New_4601_bingyuanjulang_fumo_00015
+  rotate: false
+  xy: 945, 1227
+  size: 32, 24
+  orig: 118, 75
+  offset: 86, 24
+  index: -1
+skill/New_4601_bingyuanjulang_fumo_00017
+  rotate: false
+  xy: 248, 9
+  size: 74, 52
+  orig: 118, 75
+  offset: 42, 12
+  index: -1
+skill/New_4601_bingyuanjulang_fumo_00019
+  rotate: false
+  xy: 992, 813
+  size: 95, 65
+  orig: 118, 75
+  offset: 19, 5
+  index: -1
+skill/New_4601_bingyuanjulang_fumo_00021
+  rotate: false
+  xy: 1921, 1558
+  size: 72, 69
+  orig: 118, 75
+  offset: 20, 3
+  index: -1
+skill/New_4601_bingyuanjulang_fumo_00023
+  rotate: false
+  xy: 1506, 1133
+  size: 68, 64
+  orig: 118, 75
+  offset: 11, 5
+  index: -1
+skill/New_4601_bingyuanjulang_fumo_00025
+  rotate: false
+  xy: 1995, 1564
+  size: 51, 63
+  orig: 118, 75
+  offset: 7, 6
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00098
+  rotate: false
+  xy: 1047, 1443
+  size: 281, 95
+  orig: 389, 414
+  offset: 37, 35
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00100
+  rotate: false
+  xy: 1068, 1540
+  size: 325, 135
+  orig: 389, 414
+  offset: 3, 27
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00102
+  rotate: false
+  xy: 603, 983
+  size: 340, 268
+  orig: 389, 414
+  offset: 3, 25
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00104
+  rotate: false
+  xy: 1068, 1677
+  size: 353, 367
+  orig: 389, 414
+  offset: 16, 12
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00106
+  rotate: false
+  xy: 2, 63
+  size: 320, 383
+  orig: 389, 414
+  offset: 61, 17
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00108
+  rotate: false
+  xy: 2, 1233
+  size: 340, 379
+  orig: 389, 414
+  offset: 47, 17
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00110
+  rotate: false
+  xy: 1423, 1674
+  size: 332, 370
+  orig: 389, 414
+  offset: 51, 22
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00112
+  rotate: false
+  xy: 838, 464
+  size: 252, 330
+  orig: 389, 414
+  offset: 91, 50
+  index: -1
+skill/New_4601_bingyuanjulang_skill_qitiao_00114
+  rotate: false
+  xy: 1092, 514
+  size: 97, 49
+  orig: 389, 414
+  offset: 245, 53
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00006
+  rotate: false
+  xy: 1330, 1448
+  size: 108, 25
+  orig: 298, 63
+  offset: 95, 23
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00009
+  rotate: false
+  xy: 1055, 93
+  size: 211, 43
+  orig: 298, 63
+  offset: 40, 14
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00012
+  rotate: false
+  xy: 814, 78
+  size: 239, 46
+  orig: 298, 63
+  offset: 26, 13
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00015
+  rotate: false
+  xy: 324, 31
+  size: 230, 47
+  orig: 298, 63
+  offset: 33, 11
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00018
+  rotate: false
+  xy: 2, 14
+  size: 244, 47
+  orig: 298, 63
+  offset: 22, 12
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00021
+  rotate: false
+  xy: 804, 28
+  size: 239, 48
+  orig: 298, 63
+  offset: 26, 11
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00024
+  rotate: false
+  xy: 1330, 1475
+  size: 239, 46
+  orig: 298, 63
+  offset: 26, 12
+  index: -1
+skill/New_4601_bingyuanjulang_skill_shengbo_00027
+  rotate: false
+  xy: 1055, 49
+  size: 208, 42
+  orig: 298, 63
+  offset: 41, 15
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00100
+  rotate: false
+  xy: 1691, 68
+  size: 165, 191
+  orig: 270, 405
+  offset: 17, 173
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00103
+  rotate: false
+  xy: 1503, 5
+  size: 186, 247
+  orig: 270, 405
+  offset: 6, 142
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00106
+  rotate: false
+  xy: 1717, 807
+  size: 192, 276
+  orig: 270, 405
+  offset: 16, 121
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00109
+  rotate: false
+  xy: 1717, 1085
+  size: 197, 284
+  orig: 270, 405
+  offset: 18, 110
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00112
+  rotate: false
+  xy: 1511, 261
+  size: 204, 301
+  orig: 270, 405
+  offset: 17, 94
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00115
+  rotate: false
+  xy: 1328, 564
+  size: 216, 314
+  orig: 270, 405
+  offset: 16, 80
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00118
+  rotate: false
+  xy: 814, 126
+  size: 226, 330
+  orig: 270, 405
+  offset: 15, 66
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00121
+  rotate: false
+  xy: 1042, 138
+  size: 238, 324
+  orig: 270, 405
+  offset: 12, 58
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00124
+  rotate: false
+  xy: 1092, 565
+  size: 234, 313
+  orig: 270, 405
+  offset: 23, 48
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00127
+  rotate: false
+  xy: 1282, 254
+  size: 227, 308
+  orig: 270, 405
+  offset: 21, 34
+  index: -1
+skill/New_4601_bingyuanjulang_skill_xuehualizi_00130
+  rotate: false
+  xy: 1710, 1371
+  size: 209, 256
+  orig: 270, 405
+  offset: 46, 23
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00006
+  rotate: false
+  xy: 324, 80
+  size: 233, 398
+  orig: 396, 488
+  offset: 58, 37
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00008
+  rotate: false
+  xy: 344, 1206
+  size: 251, 452
+  orig: 396, 488
+  offset: 56, 31
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00010
+  rotate: false
+  xy: 1757, 1629
+  size: 261, 415
+  orig: 396, 488
+  offset: 55, 33
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00012
+  rotate: false
+  xy: 2, 852
+  size: 335, 379
+  orig: 396, 488
+  offset: 38, 48
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00014
+  rotate: false
+  xy: 707, 1656
+  size: 359, 388
+  orig: 396, 488
+  offset: 15, 35
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00016
+  rotate: false
+  xy: 333, 1660
+  size: 372, 384
+  orig: 396, 488
+  offset: 14, 38
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00018
+  rotate: false
+  xy: 2, 1614
+  size: 329, 430
+  orig: 396, 488
+  offset: 36, 19
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00020
+  rotate: false
+  xy: 2, 448
+  size: 306, 402
+  orig: 396, 488
+  offset: 54, 28
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00022
+  rotate: false
+  xy: 559, 101
+  size: 253, 355
+  orig: 396, 488
+  offset: 55, 77
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00024
+  rotate: false
+  xy: 339, 837
+  size: 262, 367
+  orig: 396, 488
+  offset: 56, 53
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00026
+  rotate: false
+  xy: 310, 480
+  size: 267, 355
+  orig: 396, 488
+  offset: 57, 47
+  index: -1
+skill/New_4601_bingyuanjulang_xuli_00028
+  rotate: false
+  xy: 579, 458
+  size: 257, 336
+  orig: 396, 488
+  offset: 69, 33
+  index: -1

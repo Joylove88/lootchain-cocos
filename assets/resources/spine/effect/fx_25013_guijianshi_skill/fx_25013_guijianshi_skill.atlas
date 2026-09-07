@@ -1,0 +1,1202 @@
+
+fx_25013_guijianshi_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/New_Y_25013_nvguijian_Skill_daoguang_00076
+  rotate: false
+  xy: 1288, 1843
+  size: 360, 203
+  orig: 370, 209
+  offset: 7, 1
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_daoguang_00078
+  rotate: false
+  xy: 1516, 1257
+  size: 338, 206
+  orig: 370, 209
+  offset: 31, 1
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_daoguang_00080
+  rotate: false
+  xy: 1434, 293
+  size: 313, 203
+  orig: 370, 209
+  offset: 56, 5
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_daoguang_00082
+  rotate: false
+  xy: 1155, 91
+  size: 324, 192
+  orig: 370, 209
+  offset: 42, 16
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_daoguang_00084
+  rotate: false
+  xy: 1481, 109
+  size: 265, 182
+  orig: 370, 209
+  offset: 84, 20
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00075
+  rotate: false
+  xy: 1767, 957
+  size: 279, 174
+  orig: 400, 183
+  offset: 107, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00079
+  rotate: false
+  xy: 1516, 1133
+  size: 364, 122
+  orig: 400, 183
+  offset: 32, 7
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00081
+  rotate: false
+  xy: 1288, 1736
+  size: 350, 105
+  orig: 400, 183
+  offset: 31, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00089
+  rotate: false
+  xy: 1481, 2
+  size: 334, 105
+  orig: 400, 183
+  offset: 32, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00013
+  rotate: false
+  xy: 823, 694
+  size: 71, 45
+  orig: 303, 112
+  offset: 59, 35
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00019
+  rotate: false
+  xy: 2024, 1332
+  size: 16, 75
+  orig: 25, 110
+  offset: 9, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00021
+  rotate: false
+  xy: 1005, 1157
+  size: 21, 92
+  orig: 25, 110
+  offset: 4, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00023
+  rotate: false
+  xy: 2006, 1840
+  size: 23, 102
+  orig: 25, 110
+  offset: 2, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00025
+  rotate: false
+  xy: 2006, 1944
+  size: 24, 102
+  orig: 25, 110
+  offset: 1, 7
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00027
+  rotate: false
+  xy: 168, 894
+  size: 24, 97
+  orig: 25, 110
+  offset: 1, 12
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00029
+  rotate: false
+  xy: 1934, 201
+  size: 18, 77
+  orig: 25, 110
+  offset: 5, 16
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianhuo_00031
+  rotate: false
+  xy: 2031, 1872
+  size: 15, 70
+  orig: 25, 110
+  offset: 8, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianshe_00014
+  rotate: false
+  xy: 367, 1710
+  size: 324, 336
+  orig: 376, 363
+  offset: 26, 8
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianshe_00015
+  rotate: false
+  xy: 2, 1343
+  size: 360, 350
+  orig: 376, 363
+  offset: 9, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianshe_00017
+  rotate: false
+  xy: 2, 1695
+  size: 363, 351
+  orig: 376, 363
+  offset: 8, 7
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianshe_00019
+  rotate: false
+  xy: 501, 7
+  size: 226, 300
+  orig: 376, 363
+  offset: 65, 54
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianshe_00021
+  rotate: false
+  xy: 1749, 280
+  size: 224, 212
+  orig: 376, 363
+  offset: 65, 56
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqikuosan1_00014
+  rotate: false
+  xy: 1037, 1133
+  size: 362, 114
+  orig: 364, 114
+  offset: 0, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00013
+  rotate: false
+  xy: 109, 458
+  size: 105, 413
+  orig: 105, 439
+  offset: 0, 17
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00015
+  rotate: false
+  xy: 2, 450
+  size: 105, 421
+  orig: 105, 439
+  offset: 0, 10
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00017
+  rotate: false
+  xy: 2, 32
+  size: 105, 416
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00019
+  rotate: false
+  xy: 109, 43
+  size: 105, 413
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00021
+  rotate: false
+  xy: 823, 741
+  size: 105, 410
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00023
+  rotate: false
+  xy: 930, 743
+  size: 105, 408
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00025
+  rotate: false
+  xy: 1037, 723
+  size: 105, 408
+  orig: 105, 439
+  offset: 0, 17
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00027
+  rotate: false
+  xy: 1144, 724
+  size: 105, 407
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00029
+  rotate: false
+  xy: 1251, 724
+  size: 105, 407
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00031
+  rotate: false
+  xy: 1358, 726
+  size: 105, 405
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00033
+  rotate: false
+  xy: 941, 80
+  size: 105, 405
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00035
+  rotate: false
+  xy: 1048, 83
+  size: 105, 402
+  orig: 105, 439
+  offset: 0, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangadd_00037
+  rotate: false
+  xy: 863, 16
+  size: 76, 370
+  orig: 105, 439
+  offset: 16, 38
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00014
+  rotate: false
+  xy: 1856, 1259
+  size: 166, 148
+  orig: 244, 371
+  offset: 21, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00015
+  rotate: false
+  xy: 1794, 703
+  size: 202, 252
+  orig: 244, 371
+  offset: 14, 7
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00016
+  rotate: false
+  xy: 1006, 1443
+  size: 222, 336
+  orig: 244, 371
+  offset: 7, 7
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00017
+  rotate: false
+  xy: 216, 645
+  size: 223, 346
+  orig: 244, 371
+  offset: 9, 7
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00018
+  rotate: false
+  xy: 168, 993
+  size: 232, 348
+  orig: 244, 371
+  offset: 4, 8
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00019
+  rotate: false
+  xy: 216, 297
+  size: 234, 346
+  orig: 244, 371
+  offset: 2, 13
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00020
+  rotate: false
+  xy: 364, 1347
+  size: 230, 346
+  orig: 244, 371
+  offset: 2, 16
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00021
+  rotate: false
+  xy: 402, 1000
+  size: 222, 345
+  orig: 244, 371
+  offset: 1, 20
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00022
+  rotate: false
+  xy: 452, 309
+  size: 218, 342
+  orig: 244, 371
+  offset: 1, 23
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00023
+  rotate: false
+  xy: 788, 1410
+  size: 216, 342
+  orig: 244, 371
+  offset: 2, 20
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00024
+  rotate: false
+  xy: 441, 653
+  size: 208, 345
+  orig: 244, 371
+  offset: 4, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00025
+  rotate: false
+  xy: 596, 1364
+  size: 190, 344
+  orig: 244, 371
+  offset: 8, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00026
+  rotate: false
+  xy: 626, 1020
+  size: 183, 342
+  orig: 244, 371
+  offset: 13, 17
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00027
+  rotate: false
+  xy: 651, 678
+  size: 170, 340
+  orig: 244, 371
+  offset: 26, 18
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00028
+  rotate: false
+  xy: 672, 338
+  size: 142, 338
+  orig: 244, 371
+  offset: 30, 19
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00029
+  rotate: false
+  xy: 729, 2
+  size: 132, 334
+  orig: 244, 371
+  offset: 38, 22
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00030
+  rotate: false
+  xy: 816, 388
+  size: 121, 288
+  orig: 244, 371
+  offset: 40, 66
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00014
+  rotate: false
+  xy: 1882, 1409
+  size: 164, 128
+  orig: 186, 139
+  offset: 15, 2
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00018
+  rotate: false
+  xy: 1871, 1539
+  size: 175, 120
+  orig: 186, 139
+  offset: 10, 13
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00026
+  rotate: false
+  xy: 1817, 2
+  size: 135, 105
+  orig: 186, 139
+  offset: 36, 11
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacengkuosan3_00013
+  rotate: false
+  xy: 1006, 1350
+  size: 217, 91
+  orig: 224, 93
+  offset: 4, 1
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00016
+  rotate: false
+  xy: 1640, 1840
+  size: 1, 1
+  orig: 1, 1
+  offset: 0, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00025
+  rotate: false
+  xy: 1640, 1840
+  size: 1, 1
+  orig: 1, 1
+  offset: 0, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00020
+  rotate: false
+  xy: 1979, 165
+  size: 65, 204
+  orig: 92, 245
+  offset: 9, 28
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00027
+  rotate: false
+  xy: 1954, 19
+  size: 88, 144
+  orig: 92, 245
+  offset: 3, 63
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shanguang_00075
+  rotate: false
+  xy: 216, 19
+  size: 283, 276
+  orig: 299, 299
+  offset: 9, 10
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shanguang_00076
+  rotate: false
+  xy: 693, 1754
+  size: 290, 292
+  orig: 299, 299
+  offset: 4, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00047
+  rotate: false
+  xy: 939, 487
+  size: 209, 234
+  orig: 310, 278
+  offset: 63, 44
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00049
+  rotate: false
+  xy: 985, 1781
+  size: 301, 265
+  orig: 310, 278
+  offset: 4, 11
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00051
+  rotate: false
+  xy: 1465, 885
+  size: 300, 246
+  orig: 310, 278
+  offset: 5, 21
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00053
+  rotate: false
+  xy: 1230, 1480
+  size: 295, 254
+  orig: 310, 278
+  offset: 9, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00055
+  rotate: false
+  xy: 1230, 1249
+  size: 284, 229
+  orig: 310, 278
+  offset: 14, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00057
+  rotate: false
+  xy: 1150, 495
+  size: 282, 227
+  orig: 310, 278
+  offset: 16, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00059
+  rotate: false
+  xy: 1155, 285
+  size: 277, 208
+  orig: 310, 278
+  offset: 16, 2
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00061
+  rotate: false
+  xy: 1751, 494
+  size: 226, 207
+  orig: 310, 278
+  offset: 42, 2
+  index: -1
+skill/Y_25013_nvguijian_Skill_juqikuosan2_00022_00000
+  rotate: false
+  xy: 1155, 2
+  size: 232, 87
+  orig: 245, 89
+  offset: 6, 0
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_dao_00078
+  rotate: false
+  xy: 2, 873
+  size: 164, 468
+  orig: 199, 491
+  offset: 17, 9
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daoguang_00077
+  rotate: false
+  xy: 1997, 371
+  size: 49, 203
+  orig: 63, 327
+  offset: 9, 12
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daotuowei_00077
+  rotate: false
+  xy: 1979, 432
+  size: 16, 269
+  orig: 50, 394
+  offset: 18, 66
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daotuowei_00079
+  rotate: false
+  xy: 1998, 576
+  size: 46, 379
+  orig: 50, 394
+  offset: 2, 6
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daotuowei_00083
+  rotate: false
+  xy: 1975, 204
+  size: 2, 288
+  orig: 50, 394
+  offset: 26, 13
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00044
+  rotate: false
+  xy: 941, 3
+  size: 187, 75
+  orig: 238, 149
+  offset: 38, 12
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00048
+  rotate: false
+  xy: 1005, 1251
+  size: 204, 97
+  orig: 238, 149
+  offset: 14, 7
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huishou_00029
+  rotate: false
+  xy: 1527, 1665
+  size: 86, 69
+  orig: 296, 135
+  offset: 40, 36
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00017
+  rotate: false
+  xy: 1401, 1146
+  size: 108, 101
+  orig: 156, 149
+  offset: 27, 17
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00023
+  rotate: false
+  xy: 1882, 1133
+  size: 125, 124
+  orig: 156, 149
+  offset: 15, 11
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuanzhuanquan_00051
+  rotate: false
+  xy: 811, 1153
+  size: 192, 255
+  orig: 200, 323
+  offset: 3, 59
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00055
+  rotate: false
+  xy: 2009, 1198
+  size: 37, 59
+  orig: 217, 199
+  offset: 178, 28
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00063
+  rotate: false
+  xy: 1748, 109
+  size: 184, 169
+  orig: 217, 199
+  offset: 8, 17
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00067
+  rotate: false
+  xy: 1389, 4
+  size: 78, 85
+  orig: 217, 199
+  offset: 66, 52
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00013
+  rotate: false
+  xy: 1465, 705
+  size: 327, 178
+  orig: 381, 281
+  offset: 17, 16
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00015
+  rotate: false
+  xy: 1640, 1661
+  size: 374, 177
+  orig: 381, 281
+  offset: 6, 4
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00017
+  rotate: false
+  xy: 1527, 1465
+  size: 342, 194
+  orig: 381, 281
+  offset: 13, 9
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00019
+  rotate: false
+  xy: 1650, 1840
+  size: 354, 206
+  orig: 381, 281
+  offset: 19, 9
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00021
+  rotate: false
+  xy: 1434, 498
+  size: 315, 205
+  orig: 381, 281
+  offset: 53, 14
+  index: -1
+
+fx_25013_guijianshi_skill_2.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_Y_25013_nvguijian_Attack_daoyan_00025
+  rotate: false
+  xy: 1052, 320
+  size: 180, 122
+  orig: 250, 168
+  offset: 35, 34
+  index: -1
+attack/New_Y_25013_nvguijian_Attack_daoyan_00027
+  rotate: false
+  xy: 817, 406
+  size: 210, 157
+  orig: 250, 168
+  offset: 29, 7
+  index: -1
+attack/New_Y_25013_nvguijian_Attack_daoyan_00029
+  rotate: false
+  xy: 1269, 770
+  size: 214, 151
+  orig: 250, 168
+  offset: 27, 14
+  index: -1
+attack/New_Y_25013_nvguijian_Attack_daoyan_00031
+  rotate: false
+  xy: 967, 672
+  size: 192, 154
+  orig: 250, 168
+  offset: 48, 12
+  index: -1
+attack/New_Y_25013_nvguijian_Attack_daoyan_00033
+  rotate: false
+  xy: 1485, 774
+  size: 146, 147
+  orig: 250, 168
+  offset: 74, 19
+  index: -1
+attack/New_Y_25013_nvguijian_Attack_huiguang_00026add
+  rotate: false
+  xy: 1652, 657
+  size: 48, 47
+  orig: 50, 49
+  offset: 1, 1
+  index: -1
+skill/New_Y_25013_nvguijian_Attack_huiguang_00026add
+  rotate: false
+  xy: 1652, 657
+  size: 48, 47
+  orig: 50, 49
+  offset: 1, 1
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00077
+  rotate: false
+  xy: 2, 709
+  size: 335, 152
+  orig: 400, 183
+  offset: 50, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00083
+  rotate: false
+  xy: 341, 923
+  size: 336, 99
+  orig: 400, 183
+  offset: 29, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00085
+  rotate: false
+  xy: 1008, 926
+  size: 318, 96
+  orig: 400, 183
+  offset: 47, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00087
+  rotate: false
+  xy: 679, 929
+  size: 327, 93
+  orig: 400, 183
+  offset: 39, 2
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00091
+  rotate: false
+  xy: 1328, 923
+  size: 308, 99
+  orig: 400, 183
+  offset: 15, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_diquan_00093
+  rotate: false
+  xy: 1029, 828
+  size: 238, 96
+  orig: 400, 183
+  offset: 17, 3
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00015
+  rotate: false
+  xy: 1458, 646
+  size: 192, 58
+  orig: 303, 112
+  offset: 43, 21
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00017
+  rotate: false
+  xy: 1485, 706
+  size: 226, 66
+  orig: 303, 112
+  offset: 28, 15
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00019
+  rotate: false
+  xy: 679, 865
+  size: 250, 62
+  orig: 303, 112
+  offset: 18, 10
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00021
+  rotate: false
+  xy: 341, 838
+  size: 265, 83
+  orig: 303, 112
+  offset: 18, 5
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00023
+  rotate: false
+  xy: 1702, 587
+  size: 162, 97
+  orig: 303, 112
+  offset: 128, 2
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_fengquan_00025
+  rotate: false
+  xy: 1480, 311
+  size: 90, 95
+  orig: 303, 112
+  offset: 198, 10
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_guangzhao_00013
+  rotate: false
+  xy: 1633, 774
+  size: 213, 125
+  orig: 215, 130
+  offset: 1, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_jianshe_00023
+  rotate: false
+  xy: 680, 96
+  size: 184, 195
+  orig: 376, 363
+  offset: 69, 70
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00031
+  rotate: false
+  xy: 1579, 518
+  size: 121, 126
+  orig: 244, 371
+  offset: 40, 67
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqishangceng_00032
+  rotate: false
+  xy: 1234, 328
+  size: 121, 120
+  orig: 244, 371
+  offset: 40, 74
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacengguangzhu_00013
+  rotate: false
+  xy: 1203, 455
+  size: 84, 199
+  orig: 85, 200
+  offset: 1, 0
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00016
+  rotate: false
+  xy: 1029, 444
+  size: 172, 127
+  orig: 186, 139
+  offset: 11, 4
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00020
+  rotate: false
+  xy: 1052, 197
+  size: 165, 121
+  orig: 186, 139
+  offset: 14, 13
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00022
+  rotate: false
+  xy: 1040, 29
+  size: 155, 120
+  orig: 186, 139
+  offset: 18, 12
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00024
+  rotate: false
+  xy: 1704, 477
+  size: 148, 108
+  orig: 186, 139
+  offset: 27, 11
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_juqixiacenghuo_00028
+  rotate: false
+  xy: 1704, 373
+  size: 154, 102
+  orig: 186, 139
+  offset: 26, 11
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00013
+  rotate: false
+  xy: 1970, 741
+  size: 66, 160
+  orig: 92, 245
+  offset: 13, 59
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00015
+  rotate: false
+  xy: 545, 293
+  size: 81, 233
+  orig: 92, 245
+  offset: 5, 6
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00018
+  rotate: false
+  xy: 429, 65
+  size: 69, 240
+  orig: 92, 245
+  offset: 11, 2
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00022
+  rotate: false
+  xy: 1289, 450
+  size: 78, 204
+  orig: 92, 245
+  offset: 9, 23
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shandian_00024
+  rotate: false
+  xy: 1161, 664
+  size: 89, 162
+  orig: 92, 245
+  offset: 2, 49
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shanguang_00074
+  rotate: false
+  xy: 623, 581
+  size: 230, 171
+  orig: 299, 299
+  offset: 49, 63
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shanguang_00077
+  rotate: false
+  xy: 196, 54
+  size: 169, 234
+  orig: 299, 299
+  offset: 41, 53
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_shanguang_00079
+  rotate: false
+  xy: 1881, 713
+  size: 87, 64
+  orig: 299, 299
+  offset: 72, 105
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00063
+  rotate: false
+  xy: 468, 528
+  size: 153, 194
+  orig: 310, 278
+  offset: 90, 5
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00065
+  rotate: false
+  xy: 306, 528
+  size: 160, 179
+  orig: 310, 278
+  offset: 80, 12
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00067
+  rotate: false
+  xy: 1426, 408
+  size: 150, 117
+  orig: 310, 278
+  offset: 78, 49
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00069
+  rotate: false
+  xy: 879, 6
+  size: 159, 101
+  orig: 310, 278
+  offset: 76, 64
+  index: -1
+skill/New_Y_25013_nvguijian_Skill_xuli_00071
+  rotate: false
+  xy: 196, 2
+  size: 133, 50
+  orig: 310, 278
+  offset: 89, 97
+  index: -1
+skill/Y_25013_nvguijian_Skill_guangqiu_00013_00000
+  rotate: false
+  xy: 931, 829
+  size: 96, 95
+  orig: 100, 99
+  offset: 2, 2
+  index: -1
+skill/Y_25013_nvguijian_Skill_juqixiacengguangyun_00017_00000
+  rotate: false
+  xy: 819, 296
+  size: 231, 108
+  orig: 238, 116
+  offset: 4, 4
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daoguang_00075
+  rotate: false
+  xy: 367, 36
+  size: 60, 252
+  orig: 63, 327
+  offset: 3, 72
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daoguang_00076
+  rotate: false
+  xy: 1369, 418
+  size: 55, 236
+  orig: 63, 327
+  offset: 4, 4
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_daotuowei_00081
+  rotate: false
+  xy: 1968, 292
+  size: 39, 378
+  orig: 50, 394
+  offset: 7, 8
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00040
+  rotate: false
+  xy: 1881, 672
+  size: 132, 39
+  orig: 238, 149
+  offset: 49, 26
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00042
+  rotate: false
+  xy: 1039, 151
+  size: 157, 44
+  orig: 238, 149
+  offset: 48, 25
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00046
+  rotate: false
+  xy: 680, 2
+  size: 197, 92
+  orig: 238, 149
+  offset: 25, 11
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00050
+  rotate: false
+  xy: 967, 573
+  size: 186, 97
+  orig: 238, 149
+  offset: 9, 8
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00052
+  rotate: false
+  xy: 628, 293
+  size: 189, 88
+  orig: 238, 149
+  offset: 8, 16
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_fengxuanzhuan_00054
+  rotate: false
+  xy: 500, 27
+  size: 170, 64
+  orig: 238, 149
+  offset: 24, 17
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huishou_00031
+  rotate: false
+  xy: 1252, 656
+  size: 204, 112
+  orig: 296, 135
+  offset: 15, 6
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huishou_00033
+  rotate: false
+  xy: 1638, 901
+  size: 268, 121
+  orig: 296, 135
+  offset: 14, 2
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huishou_00035
+  rotate: false
+  xy: 339, 724
+  size: 254, 112
+  orig: 296, 135
+  offset: 26, 3
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huishou_00037
+  rotate: false
+  xy: 680, 754
+  size: 239, 109
+  orig: 296, 135
+  offset: 28, 3
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huishou_00039
+  rotate: false
+  xy: 1713, 686
+  size: 166, 86
+  orig: 296, 135
+  offset: 89, 15
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00013
+  rotate: false
+  xy: 1860, 442
+  size: 72, 68
+  orig: 156, 149
+  offset: 53, 22
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00015
+  rotate: false
+  xy: 1804, 283
+  size: 104, 88
+  orig: 156, 149
+  offset: 28, 21
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00019
+  rotate: false
+  xy: 1572, 290
+  size: 120, 112
+  orig: 156, 149
+  offset: 20, 16
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00021
+  rotate: false
+  xy: 1908, 903
+  size: 124, 119
+  orig: 156, 149
+  offset: 17, 12
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00025
+  rotate: false
+  xy: 1848, 779
+  size: 120, 120
+  orig: 156, 149
+  offset: 15, 14
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00027
+  rotate: false
+  xy: 1578, 404
+  size: 124, 112
+  orig: 156, 149
+  offset: 14, 20
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00029
+  rotate: false
+  xy: 1357, 302
+  size: 121, 104
+  orig: 156, 149
+  offset: 19, 31
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00031
+  rotate: false
+  xy: 1694, 273
+  size: 108, 98
+  orig: 156, 149
+  offset: 30, 36
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00033
+  rotate: false
+  xy: 1866, 583
+  size: 100, 87
+  orig: 156, 149
+  offset: 35, 44
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_huo_00035
+  rotate: false
+  xy: 1854, 512
+  size: 85, 69
+  orig: 156, 149
+  offset: 39, 54
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuanzhuanquan_00047
+  rotate: false
+  xy: 855, 565
+  size: 110, 187
+  orig: 200, 323
+  offset: 12, 15
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuanzhuanquan_00049
+  rotate: false
+  xy: 2, 37
+  size: 192, 237
+  orig: 200, 323
+  offset: 4, 24
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuanzhuanquan_00053
+  rotate: false
+  xy: 2, 276
+  size: 184, 250
+  orig: 200, 323
+  offset: 9, 61
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuanzhuanquan_00055
+  rotate: false
+  xy: 188, 290
+  size: 179, 236
+  orig: 200, 323
+  offset: 10, 72
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuanzhuanquan_00057
+  rotate: false
+  xy: 369, 307
+  size: 174, 219
+  orig: 200, 323
+  offset: 13, 77
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00057
+  rotate: false
+  xy: 500, 93
+  size: 178, 198
+  orig: 217, 199
+  offset: 34, 1
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00059
+  rotate: false
+  xy: 628, 383
+  size: 187, 196
+  orig: 217, 199
+  offset: 5, 3
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00061
+  rotate: false
+  xy: 866, 109
+  size: 171, 185
+  orig: 217, 199
+  offset: 4, 12
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuli_00065
+  rotate: false
+  xy: 1426, 527
+  size: 151, 117
+  orig: 217, 199
+  offset: 14, 47
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00023
+  rotate: false
+  xy: 2, 528
+  size: 302, 179
+  orig: 381, 281
+  offset: 40, 14
+  index: -1
+skill2/New_Y_25013_nvguijian_Skill2_xuyan_00025
+  rotate: false
+  xy: 2, 863
+  size: 337, 159
+  orig: 381, 281
+  offset: 24, 13
+  index: -1

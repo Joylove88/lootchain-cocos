@@ -1,0 +1,132 @@
+
+fx_43001_shouwei_jineng.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+jineng_1/jineng1_12
+  rotate: false
+  xy: 2, 498
+  size: 513, 254
+  orig: 520, 460
+  offset: 7, 93
+  index: -1
+jineng_1/jineng1_13
+  rotate: false
+  xy: 2, 754
+  size: 520, 255
+  orig: 520, 460
+  offset: 0, 92
+  index: -1
+jineng_1/jineng1_14
+  rotate: false
+  xy: 524, 756
+  size: 493, 253
+  orig: 520, 460
+  offset: 27, 93
+  index: -1
+jineng_1/jineng1_15
+  rotate: false
+  xy: 2, 263
+  size: 453, 233
+  orig: 520, 460
+  offset: 67, 105
+  index: -1
+jineng_1/jineng1_16
+  rotate: false
+  xy: 1019, 782
+  size: 440, 227
+  orig: 520, 460
+  offset: 80, 107
+  index: -1
+jineng_1/jineng1_17
+  rotate: false
+  xy: 2, 45
+  size: 446, 216
+  orig: 520, 460
+  offset: 74, 110
+  index: -1
+jineng_1/jineng1_19
+  rotate: false
+  xy: 1461, 838
+  size: 435, 171
+  orig: 520, 460
+  offset: 66, 146
+  index: -1
+jineng_2/技能2_09
+  rotate: false
+  xy: 450, 2
+  size: 279, 181
+  orig: 300, 300
+  offset: 13, 3
+  index: -1
+jineng_2/技能2_10
+  rotate: false
+  xy: 457, 185
+  size: 292, 188
+  orig: 300, 300
+  offset: 0, 3
+  index: -1
+jineng_2/技能2_11
+  rotate: false
+  xy: 517, 375
+  size: 295, 196
+  orig: 300, 300
+  offset: 0, 3
+  index: -1
+jineng_2/技能2_12
+  rotate: false
+  xy: 524, 573
+  size: 300, 181
+  orig: 300, 300
+  offset: 0, 3
+  index: -1
+jineng_2/技能2_13
+  rotate: false
+  xy: 751, 192
+  size: 279, 181
+  orig: 300, 300
+  offset: 13, 3
+  index: -1
+jineng_2/技能2_14
+  rotate: false
+  xy: 1032, 461
+  size: 267, 181
+  orig: 300, 300
+  offset: 25, 3
+  index: -1
+jineng_2/技能2_15
+  rotate: false
+  xy: 751, 9
+  size: 279, 181
+  orig: 300, 300
+  offset: 13, 3
+  index: -1
+pugong/pugong_07
+  rotate: false
+  xy: 1796, 546
+  size: 136, 290
+  orig: 360, 360
+  offset: 208, 48
+  index: -1
+pugong/pugong_08
+  rotate: false
+  xy: 1461, 570
+  size: 333, 266
+  orig: 360, 360
+  offset: 5, 27
+  index: -1
+pugong/pugong_09
+  rotate: false
+  xy: 1019, 644
+  size: 333, 136
+  orig: 360, 360
+  offset: 0, 41
+  index: -1
+pugong/pugong_10
+  rotate: false
+  xy: 1032, 334
+  size: 210, 125
+  orig: 360, 360
+  offset: 9, 42
+  index: -1

@@ -1,0 +1,740 @@
+
+fx_25011_paoshou_jjineng.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/da/25011skill_pen_01
+  rotate: false
+  xy: 1753, 18
+  size: 171, 157
+  orig: 473, 465
+  offset: 47, 156
+  index: -1
+images/da/25011skill_pen_03
+  rotate: false
+  xy: 785, 1682
+  size: 360, 364
+  orig: 473, 465
+  offset: 83, 59
+  index: -1
+images/da/25011skill_pen_04
+  rotate: false
+  xy: 2, 1650
+  size: 407, 396
+  orig: 473, 465
+  offset: 39, 38
+  index: -1
+images/da/25011skill_pen_05
+  rotate: false
+  xy: 2, 1256
+  size: 380, 392
+  orig: 473, 465
+  offset: 41, 38
+  index: -1
+images/da/25011skill_pen_06
+  rotate: false
+  xy: 411, 1662
+  size: 372, 384
+  orig: 473, 465
+  offset: 44, 40
+  index: -1
+images/da/25011skill_pen_07
+  rotate: false
+  xy: 2, 882
+  size: 370, 372
+  orig: 473, 465
+  offset: 45, 40
+  index: -1
+images/da/25011skill_pen_08
+  rotate: false
+  xy: 2, 193
+  size: 340, 345
+  orig: 473, 465
+  offset: 60, 54
+  index: -1
+images/da/25011skill_pen_09
+  rotate: false
+  xy: 836, 1372
+  size: 306, 308
+  orig: 473, 465
+  offset: 75, 73
+  index: -1
+images/da/25011skill_pen_10
+  rotate: false
+  xy: 1461, 1281
+  size: 70, 77
+  orig: 473, 465
+  offset: 198, 178
+  index: -1
+images/da/25011skill_sudu_01
+  rotate: false
+  xy: 352, 372
+  size: 355, 204
+  orig: 626, 248
+  offset: 22, 18
+  index: -1
+images/da/25011skill_sudu_02
+  rotate: false
+  xy: 1147, 1535
+  size: 436, 203
+  orig: 626, 248
+  offset: 168, 26
+  index: -1
+images/da/25011skill_sudu_03
+  rotate: false
+  xy: 691, 50
+  size: 324, 188
+  orig: 626, 248
+  offset: 284, 30
+  index: -1
+images/da/25011skill_xuli_12
+  rotate: false
+  xy: 1749, 742
+  size: 108, 275
+  orig: 263, 346
+  offset: 149, 14
+  index: -1
+images/da/25011skill_xuli_13
+  rotate: false
+  xy: 1960, 1586
+  size: 83, 201
+  orig: 263, 346
+  offset: 156, 6
+  index: -1
+images/da/25011skill_xuli_15
+  rotate: false
+  xy: 1075, 1038
+  size: 38, 41
+  orig: 263, 346
+  offset: 180, 51
+  index: -1
+images/da/25011skill_zhai_01
+  rotate: false
+  xy: 1794, 1027
+  size: 248, 251
+  orig: 435, 403
+  offset: 96, 72
+  index: -1
+images/da/25011skill_zhai_02
+  rotate: false
+  xy: 1461, 1019
+  size: 331, 259
+  orig: 435, 403
+  offset: 29, 70
+  index: -1
+images/da/25011skill_zhai_03
+  rotate: false
+  xy: 1540, 1751
+  size: 385, 295
+  orig: 435, 403
+  offset: 1, 63
+  index: -1
+images/da/25011skill_zhai_04
+  rotate: false
+  xy: 1147, 1740
+  size: 391, 306
+  orig: 435, 403
+  offset: 16, 52
+  index: -1
+images/da/25011skill_zhai_05
+  rotate: false
+  xy: 1585, 1441
+  size: 373, 308
+  orig: 435, 403
+  offset: 24, 48
+  index: -1
+images/da/25011skill_zhai_06
+  rotate: false
+  xy: 374, 578
+  size: 362, 316
+  orig: 435, 403
+  offset: 29, 41
+  index: -1
+images/da/25011skill_zhai_07
+  rotate: false
+  xy: 738, 574
+  size: 355, 320
+  orig: 435, 403
+  offset: 32, 39
+  index: -1
+images/da/25011skill_zhai_08
+  rotate: false
+  xy: 1424, 708
+  size: 323, 309
+  orig: 435, 403
+  offset: 62, 48
+  index: -1
+images/da/25011skill_zhai_10
+  rotate: false
+  xy: 1432, 87
+  size: 319, 302
+  orig: 435, 403
+  offset: 64, 58
+  index: -1
+images/da/25011skill_zhai_11
+  rotate: false
+  xy: 1095, 712
+  size: 327, 316
+  orig: 435, 403
+  offset: 60, 51
+  index: -1
+images/da/25011skill_zhai_12
+  rotate: false
+  xy: 1059, 244
+  size: 340, 328
+  orig: 435, 403
+  offset: 54, 45
+  index: -1
+images/da/25011skill_zhai_13
+  rotate: false
+  xy: 2, 540
+  size: 348, 340
+  orig: 435, 403
+  offset: 50, 39
+  index: -1
+images/da/25011skill_zhai_14
+  rotate: false
+  xy: 709, 240
+  size: 348, 332
+  orig: 435, 403
+  offset: 50, 42
+  index: -1
+images/da/25011skill_zhai_15
+  rotate: false
+  xy: 1122, 1030
+  size: 337, 328
+  orig: 435, 403
+  offset: 55, 44
+  index: -1
+images/da/25011skill_zhai_16
+  rotate: false
+  xy: 1401, 391
+  size: 321, 315
+  orig: 435, 403
+  offset: 61, 52
+  index: -1
+images/da/25011skill_zhai_17
+  rotate: false
+  xy: 829, 1081
+  size: 291, 289
+  orig: 435, 403
+  offset: 80, 64
+  index: -1
+images/pg/25011attack_pen_02
+  rotate: false
+  xy: 461, 14
+  size: 224, 199
+  orig: 253, 236
+  offset: 11, 12
+  index: -1
+images/pg/25011attack_pen_07
+  rotate: false
+  xy: 1926, 11
+  size: 96, 229
+  orig: 253, 236
+  offset: 28, 6
+  index: -1
+images/pg/25011attack_yan_01
+  rotate: false
+  xy: 1749, 709
+  size: 100, 31
+  orig: 354, 112
+  offset: 232, 2
+  index: -1
+images/pg/25011attack_yan_06
+  rotate: false
+  xy: 1095, 602
+  size: 287, 108
+  orig: 354, 112
+  offset: 13, 2
+  index: -1
+images/pg/25011attack_yan_09
+  rotate: false
+  xy: 1432, 18
+  size: 236, 67
+  orig: 354, 112
+  offset: 6, 2
+  index: -1
+images/xiao/25011skill2_miaozhun_01
+  rotate: false
+  xy: 1961, 1385
+  size: 75, 98
+  orig: 86, 106
+  offset: 0, 1
+  index: -1
+images/xiao/25011skill2_miaozhun_04
+  rotate: false
+  xy: 1960, 1485
+  size: 84, 99
+  orig: 86, 106
+  offset: 2, 7
+  index: -1
+images/xiao/25011skill2_miaozhun_10
+  rotate: false
+  xy: 1960, 1485
+  size: 84, 99
+  orig: 86, 106
+  offset: 2, 7
+  index: -1
+images/xiao/25011skill2_miaozhun_07
+  rotate: false
+  xy: 1961, 1285
+  size: 75, 98
+  orig: 86, 106
+  offset: 1, 0
+  index: -1
+images/xiao/25011skill2_miaozhun_12
+  rotate: false
+  xy: 1670, 13
+  size: 57, 72
+  orig: 86, 106
+  offset: 16, 19
+  index: -1
+images/xiao/25011skill2_pen_03
+  rotate: false
+  xy: 1059, 2
+  size: 258, 240
+  orig: 323, 276
+  offset: 53, 20
+  index: -1
+images/xiao/25011skill2_pen_06
+  rotate: false
+  xy: 1892, 242
+  size: 154, 257
+  orig: 323, 276
+  offset: 43, 11
+  index: -1
+images/xiao/25011skill2_pen_07
+  rotate: false
+  xy: 1859, 765
+  size: 153, 260
+  orig: 323, 276
+  offset: 42, 10
+  index: -1
+images/xiao/25011skill2_pen_08
+  rotate: false
+  xy: 1873, 501
+  size: 150, 262
+  orig: 323, 276
+  offset: 42, 8
+  index: -1
+images/xiao/25011skill2_pen_09
+  rotate: false
+  xy: 1724, 442
+  size: 147, 264
+  orig: 323, 276
+  offset: 42, 7
+  index: -1
+images/xiao/25011skill2_pen_10
+  rotate: false
+  xy: 1753, 177
+  size: 137, 263
+  orig: 323, 276
+  offset: 45, 7
+  index: -1
+images/xiao/25011skill2_pen_12
+  rotate: false
+  xy: 1927, 1789
+  size: 119, 257
+  orig: 323, 276
+  offset: 50, 11
+  index: -1
+images/xiao/25011skill2_pen_13
+  rotate: false
+  xy: 1319, 2
+  size: 111, 240
+  orig: 323, 276
+  offset: 53, 18
+  index: -1
+images/xiao/25011skill2_yan_01
+  rotate: false
+  xy: 411, 1497
+  size: 423, 163
+  orig: 476, 201
+  offset: 27, 4
+  index: -1
+images/xiao/25011skill2_yan_02
+  rotate: false
+  xy: 1144, 1360
+  size: 429, 173
+  orig: 476, 201
+  offset: 20, 1
+  index: -1
+images/xiao/25011skill2_yan_03
+  rotate: false
+  xy: 2, 4
+  size: 457, 187
+  orig: 476, 201
+  offset: 13, 2
+  index: -1
+images/xiao/25011skill2_yan_04
+  rotate: false
+  xy: 384, 1297
+  size: 443, 198
+  orig: 476, 201
+  offset: 6, 1
+  index: -1
+images/xiao/25011skill2_yan_05
+  rotate: false
+  xy: 384, 1096
+  size: 419, 199
+  orig: 476, 201
+  offset: 6, 1
+  index: -1
+images/xiao/25011skill2_yan_06
+  rotate: false
+  xy: 374, 896
+  size: 407, 198
+  orig: 476, 201
+  offset: 2, 2
+  index: -1
+images/xiao/25011skill2_yan_07
+  rotate: false
+  xy: 1575, 1280
+  size: 384, 159
+  orig: 476, 201
+  offset: 8, 1
+  index: -1
+images/xiao/25011skill2_yan_08
+  rotate: false
+  xy: 344, 215
+  size: 345, 155
+  orig: 476, 201
+  offset: 13, 2
+  index: -1
+images/xiao/25011skill2_yan_10
+  rotate: false
+  xy: 783, 921
+  size: 290, 158
+  orig: 476, 201
+  offset: 17, 2
+  index: -1
+
+fx_25011_paoshou_jjineng_2.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/da/25011skill_guang
+  rotate: false
+  xy: 1048, 500
+  size: 68, 96
+  orig: 70, 100
+  offset: 1, 2
+  index: -1
+images/da/25011skill_pen_02
+  rotate: false
+  xy: 328, 788
+  size: 259, 227
+  orig: 473, 465
+  offset: 168, 131
+  index: -1
+images/da/25011skill_xuli_01
+  rotate: false
+  xy: 879, 8
+  size: 89, 58
+  orig: 263, 346
+  offset: 43, 119
+  index: -1
+images/da/25011skill_xuli_02
+  rotate: false
+  xy: 771, 384
+  size: 121, 90
+  orig: 263, 346
+  offset: 26, 113
+  index: -1
+images/da/25011skill_xuli_03
+  rotate: false
+  xy: 644, 221
+  size: 136, 117
+  orig: 263, 346
+  offset: 15, 111
+  index: -1
+images/da/25011skill_xuli_04
+  rotate: false
+  xy: 945, 598
+  size: 143, 141
+  orig: 263, 346
+  offset: 10, 115
+  index: -1
+images/da/25011skill_xuli_05
+  rotate: false
+  xy: 771, 476
+  size: 143, 163
+  orig: 263, 346
+  offset: 7, 121
+  index: -1
+images/da/25011skill_xuli_06
+  rotate: false
+  xy: 243, 48
+  size: 139, 169
+  orig: 263, 346
+  offset: 6, 139
+  index: -1
+images/da/25011skill_xuli_07
+  rotate: false
+  xy: 782, 221
+  size: 139, 161
+  orig: 263, 346
+  offset: 9, 164
+  index: -1
+images/da/25011skill_xuli_08
+  rotate: false
+  xy: 1604, 673
+  size: 164, 141
+  orig: 263, 346
+  offset: 13, 193
+  index: -1
+images/da/25011skill_xuli_09
+  rotate: false
+  xy: 1804, 723
+  size: 186, 115
+  orig: 263, 346
+  offset: 20, 223
+  index: -1
+images/da/25011skill_xuli_10
+  rotate: false
+  xy: 725, 51
+  size: 152, 168
+  orig: 263, 346
+  offset: 79, 172
+  index: -1
+images/da/25011skill_xuli_11
+  rotate: false
+  xy: 253, 219
+  size: 110, 247
+  orig: 263, 346
+  offset: 147, 86
+  index: -1
+images/da/25011skill_xuli_14
+  rotate: false
+  xy: 916, 479
+  size: 55, 117
+  orig: 263, 346
+  offset: 169, 12
+  index: -1
+images/da/25011skill_zhai_09
+  rotate: false
+  xy: 2, 714
+  size: 324, 301
+  orig: 435, 403
+  offset: 61, 53
+  index: -1
+images/da/25011skill_zhai_18
+  rotate: false
+  xy: 1804, 840
+  size: 219, 175
+  orig: 435, 403
+  offset: 114, 120
+  index: -1
+images/da/25011skill_zhai_19
+  rotate: false
+  xy: 513, 43
+  size: 210, 169
+  orig: 435, 403
+  offset: 124, 123
+  index: -1
+images/da/25011skill_zhai_20
+  rotate: false
+  xy: 970, 6
+  size: 56, 60
+  orig: 435, 403
+  offset: 278, 139
+  index: -1
+images/pg/25011attack_pen_01
+  rotate: false
+  xy: 879, 68
+  size: 164, 151
+  orig: 253, 236
+  offset: 32, 21
+  index: -1
+images/pg/25011attack_pen_03
+  rotate: false
+  xy: 1387, 796
+  size: 215, 219
+  orig: 253, 236
+  offset: 31, 2
+  index: -1
+images/pg/25011attack_pen_04
+  rotate: false
+  xy: 2, 3
+  size: 239, 231
+  orig: 253, 236
+  offset: 12, 1
+  index: -1
+images/pg/25011attack_pen_05
+  rotate: false
+  xy: 384, 2
+  size: 127, 224
+  orig: 253, 236
+  offset: 1, 5
+  index: -1
+images/pg/25011attack_pen_06
+  rotate: false
+  xy: 644, 340
+  size: 125, 229
+  orig: 253, 236
+  offset: 1, 6
+  index: -1
+images/pg/25011attack_yan_02
+  rotate: false
+  xy: 876, 741
+  size: 147, 52
+  orig: 354, 112
+  offset: 186, 2
+  index: -1
+images/pg/25011attack_yan_03
+  rotate: false
+  xy: 270, 479
+  size: 249, 87
+  orig: 354, 112
+  offset: 100, 2
+  index: -1
+images/pg/25011attack_yan_04
+  rotate: false
+  xy: 585, 641
+  size: 280, 103
+  orig: 354, 112
+  offset: 52, 2
+  index: -1
+images/pg/25011attack_yan_05
+  rotate: false
+  xy: 270, 568
+  size: 274, 106
+  orig: 354, 112
+  offset: 39, 2
+  index: -1
+images/pg/25011attack_yan_07
+  rotate: false
+  xy: 589, 746
+  size: 285, 110
+  orig: 354, 112
+  offset: 4, 2
+  index: -1
+images/pg/25011attack_yan_08
+  rotate: false
+  xy: 328, 676
+  size: 255, 110
+  orig: 354, 112
+  offset: 5, 2
+  index: -1
+images/pg/25011attack_yan_10
+  rotate: false
+  xy: 546, 571
+  size: 215, 68
+  orig: 354, 112
+  offset: 4, 2
+  index: -1
+images/xiao/25011skill2_miao_01
+  rotate: false
+  xy: 1153, 783
+  size: 232, 232
+  orig: 256, 256
+  offset: 12, 12
+  index: -1
+images/xiao/25011skill2_miao_02
+  rotate: false
+  xy: 2, 236
+  size: 249, 230
+  orig: 256, 256
+  offset: 7, 14
+  index: -1
+images/xiao/25011skill2_miaozhun_02
+  rotate: false
+  xy: 973, 504
+  size: 73, 92
+  orig: 86, 106
+  offset: 5, 5
+  index: -1
+images/xiao/25011skill2_miaozhun_06
+  rotate: false
+  xy: 973, 504
+  size: 73, 92
+  orig: 86, 106
+  offset: 5, 5
+  index: -1
+images/xiao/25011skill2_miaozhun_08
+  rotate: false
+  xy: 973, 504
+  size: 73, 92
+  orig: 86, 106
+  offset: 5, 5
+  index: -1
+images/xiao/25011skill2_miaozhun_03
+  rotate: false
+  xy: 867, 647
+  size: 76, 92
+  orig: 86, 106
+  offset: 6, 9
+  index: -1
+images/xiao/25011skill2_miaozhun_05
+  rotate: false
+  xy: 867, 647
+  size: 76, 92
+  orig: 86, 106
+  offset: 6, 9
+  index: -1
+images/xiao/25011skill2_miaozhun_09
+  rotate: false
+  xy: 867, 647
+  size: 76, 92
+  orig: 86, 106
+  offset: 6, 9
+  index: -1
+images/xiao/25011skill2_miaozhun_11
+  rotate: false
+  xy: 521, 481
+  size: 70, 85
+  orig: 86, 106
+  offset: 9, 13
+  index: -1
+images/xiao/25011skill2_miaozhun_13
+  rotate: false
+  xy: 593, 506
+  size: 43, 63
+  orig: 86, 106
+  offset: 23, 21
+  index: -1
+images/xiao/25011skill2_pen_01
+  rotate: false
+  xy: 1604, 816
+  size: 198, 199
+  orig: 323, 276
+  offset: 119, 24
+  index: -1
+images/xiao/25011skill2_pen_02
+  rotate: false
+  xy: 908, 795
+  size: 243, 220
+  orig: 323, 276
+  offset: 4, 25
+  index: -1
+images/xiao/25011skill2_pen_04
+  rotate: false
+  xy: 2, 468
+  size: 266, 244
+  orig: 323, 276
+  offset: 51, 18
+  index: -1
+images/xiao/25011skill2_pen_05
+  rotate: false
+  xy: 365, 228
+  size: 147, 249
+  orig: 323, 276
+  offset: 49, 15
+  index: -1
+images/xiao/25011skill2_pen_11
+  rotate: false
+  xy: 514, 214
+  size: 128, 263
+  orig: 323, 276
+  offset: 48, 7
+  index: -1
+images/xiao/25011skill2_yan_09
+  rotate: false
+  xy: 589, 858
+  size: 317, 157
+  orig: 476, 201
+  offset: 20, 2
+  index: -1
