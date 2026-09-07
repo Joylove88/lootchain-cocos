@@ -257,7 +257,8 @@ export const GUARD_CRYSTAL_MAX_HP = 1600;
 export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; intervalMs: number; damageScale: number; laneLocked: boolean }> = {
   // 2026-08-28 用户拍板:近战覆盖 9→6.3→6.9(2026-08-28 二调 +10%)且不再锁单车道——打全车道,只是够不远;飞行怪仍免疫近战。
   melee: { rangeCells: 6.9, intervalMs: 800, damageScale: 1.6, laneLocked: false },
-  ranged: { rangeCells: 10.0, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
+  // 2026-09-07 用户拍板:远程覆盖 10.0→8.5(-15%)。
+  ranged: { rangeCells: 8.5, intervalMs: 1200, damageScale: 1.25, laneLocked: false },
   support: { rangeCells: 6.0, intervalMs: 3000, damageScale: 0.35, laneLocked: false },
   control: { rangeCells: 8.0, intervalMs: 1500, damageScale: 0.7, laneLocked: false },
 };

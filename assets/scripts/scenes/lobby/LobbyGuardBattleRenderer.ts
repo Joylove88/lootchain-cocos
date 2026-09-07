@@ -1324,7 +1324,8 @@ export class LobbyGuardBattleRenderer {
           if (target && targetView && targetView.node.isValid) {
             const jitterX = ((event.timeMs % 48) - 24);
             if (event.skillProc && event.heroCode) {
-              this.spawnGuardSkillFx(event.heroCode, hero?.cell ?? null, target);
+              // 2026-09-07 用户反馈:技能击(每4次普攻的强化击)不再播大招级专属特效——
+              // 专属特效只在主动技能真正释放时出现,冷却期普攻只保留飘字/震屏打击感。
               if (hero) {
                 this.highlightCaster(hero.cell, '技能击!');
               }

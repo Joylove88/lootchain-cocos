@@ -1,0 +1,628 @@
+
+fx_450101_shengnvpifu_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/tlssn_atk_dg/tlssn_atk_dg_00012
+  rotate: false
+  xy: 1898, 1307
+  size: 114, 149
+  orig: 210, 181
+  offset: 15, 20
+  index: -1
+effect/attack/tlssn_atk_dg/tlssn_atk_dg_00016
+  rotate: false
+  xy: 1804, 479
+  size: 184, 148
+  orig: 210, 181
+  offset: 10, 21
+  index: -1
+effect/skill1/tlssn_sk1_fz_00000
+  rotate: false
+  xy: 2, 1480
+  size: 564, 564
+  orig: 586, 586
+  offset: 11, 11
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00002
+  rotate: false
+  xy: 984, 1521
+  size: 391, 523
+  orig: 455, 564
+  offset: 32, 17
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00004
+  rotate: false
+  xy: 791, 1002
+  size: 378, 517
+  orig: 455, 564
+  offset: 40, 23
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00006
+  rotate: false
+  xy: 409, 430
+  size: 379, 520
+  orig: 455, 564
+  offset: 37, 18
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00008
+  rotate: false
+  xy: 1377, 1521
+  size: 386, 523
+  orig: 455, 564
+  offset: 27, 17
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00010
+  rotate: false
+  xy: 1548, 997
+  size: 348, 522
+  orig: 455, 564
+  offset: 48, 18
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00012
+  rotate: false
+  xy: 568, 1521
+  size: 414, 523
+  orig: 455, 564
+  offset: 14, 17
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00014
+  rotate: false
+  xy: 2, 430
+  size: 405, 523
+  orig: 455, 564
+  offset: 14, 17
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00016
+  rotate: false
+  xy: 422, 952
+  size: 367, 526
+  orig: 455, 564
+  offset: 35, 14
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00018
+  rotate: false
+  xy: 2, 955
+  size: 418, 523
+  orig: 455, 564
+  offset: 11, 17
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00020
+  rotate: false
+  xy: 1171, 1002
+  size: 375, 517
+  orig: 455, 564
+  offset: 33, 23
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00022
+  rotate: false
+  xy: 1107, 479
+  size: 355, 521
+  orig: 455, 564
+  offset: 47, 19
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00024
+  rotate: false
+  xy: 790, 437
+  size: 315, 513
+  orig: 455, 564
+  offset: 67, 27
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00026
+  rotate: false
+  xy: 1464, 473
+  size: 338, 522
+  orig: 455, 564
+  offset: 51, 18
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00034
+  rotate: false
+  xy: 1765, 1611
+  size: 269, 433
+  orig: 455, 564
+  offset: 99, 44
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00002
+  rotate: false
+  xy: 2, 2
+  size: 415, 426
+  orig: 500, 500
+  offset: 60, 40
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00004
+  rotate: false
+  xy: 419, 15
+  size: 453, 413
+  orig: 500, 500
+  offset: 24, 29
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00006
+  rotate: false
+  xy: 874, 32
+  size: 456, 403
+  orig: 500, 500
+  offset: 18, 32
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00008
+  rotate: false
+  xy: 1332, 79
+  size: 453, 392
+  orig: 500, 500
+  offset: 19, 33
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00002
+  rotate: false
+  xy: 1804, 629
+  size: 165, 366
+  orig: 216, 391
+  offset: 27, 3
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00034
+  rotate: false
+  xy: 1787, 111
+  size: 164, 360
+  orig: 216, 391
+  offset: 28, 15
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00000
+  rotate: false
+  xy: 1787, 2
+  size: 207, 107
+  orig: 244, 127
+  offset: 18, 9
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00020
+  rotate: false
+  xy: 1898, 1458
+  size: 148, 151
+  orig: 260, 250
+  offset: 55, 49
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00022
+  rotate: false
+  xy: 1898, 1082
+  size: 115, 105
+  orig: 260, 250
+  offset: 69, 73
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00024
+  rotate: false
+  xy: 1898, 1189
+  size: 115, 116
+  orig: 260, 250
+  offset: 73, 67
+  index: -1
+
+fx_450101_shengnvpifu_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/tlssn_atk_dg/tlssn_atk_dg_00014
+  rotate: false
+  xy: 1111, 204
+  size: 191, 144
+  orig: 210, 181
+  offset: 8, 29
+  index: -1
+effect/attack/tlssn_atk_dg/tlssn_atk_dg_00018
+  rotate: false
+  xy: 1749, 816
+  size: 165, 133
+  orig: 210, 181
+  offset: 19, 32
+  index: -1
+effect/attack/tlssn_atk_dg/tlssn_atk_dg_00020
+  rotate: false
+  xy: 956, 117
+  size: 153, 108
+  orig: 210, 181
+  offset: 24, 48
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00000
+  rotate: false
+  xy: 292, 27
+  size: 294, 173
+  orig: 455, 564
+  offset: 74, 25
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00028
+  rotate: false
+  xy: 2, 1513
+  size: 306, 509
+  orig: 455, 564
+  offset: 69, 29
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00030
+  rotate: false
+  xy: 2, 628
+  size: 307, 436
+  orig: 455, 564
+  offset: 70, 55
+  index: -1
+effect/skill1/tlssn_sk1_guangz/tlssn_sk1_guangz_00032
+  rotate: false
+  xy: 2, 1066
+  size: 304, 445
+  orig: 455, 564
+  offset: 73, 40
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00000
+  rotate: false
+  xy: 2, 233
+  size: 323, 393
+  orig: 500, 500
+  offset: 83, 84
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00010
+  rotate: false
+  xy: 310, 1656
+  size: 431, 366
+  orig: 500, 500
+  offset: 24, 42
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00012
+  rotate: false
+  xy: 743, 1692
+  size: 379, 330
+  orig: 500, 500
+  offset: 44, 70
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00014
+  rotate: false
+  xy: 310, 1380
+  size: 327, 274
+  orig: 500, 500
+  offset: 62, 102
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00016
+  rotate: false
+  xy: 2, 11
+  size: 288, 220
+  orig: 500, 500
+  offset: 86, 121
+  index: -1
+effect/skill1/tlssn_sk1_xl2/tlssn_sk1_xl2_00018
+  rotate: false
+  xy: 603, 816
+  size: 250, 230
+  orig: 500, 500
+  offset: 103, 146
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00000
+  rotate: false
+  xy: 639, 1307
+  size: 165, 347
+  orig: 216, 391
+  offset: 27, 18
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00004
+  rotate: false
+  xy: 1089, 702
+  size: 168, 344
+  orig: 216, 391
+  offset: 29, 20
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00006
+  rotate: false
+  xy: 888, 1048
+  size: 171, 351
+  orig: 216, 391
+  offset: 28, 13
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00008
+  rotate: false
+  xy: 1259, 757
+  size: 165, 347
+  orig: 216, 391
+  offset: 33, 19
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00010
+  rotate: false
+  xy: 1586, 816
+  size: 161, 342
+  orig: 216, 391
+  offset: 31, 20
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00012
+  rotate: false
+  xy: 1111, 350
+  size: 157, 350
+  orig: 216, 391
+  offset: 31, 18
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00014
+  rotate: false
+  xy: 1426, 779
+  size: 158, 346
+  orig: 216, 391
+  offset: 32, 18
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00016
+  rotate: false
+  xy: 1433, 434
+  size: 155, 343
+  orig: 216, 391
+  offset: 34, 20
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00018
+  rotate: false
+  xy: 1226, 1106
+  size: 156, 350
+  orig: 216, 391
+  offset: 33, 16
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00020
+  rotate: false
+  xy: 956, 227
+  size: 153, 351
+  orig: 216, 391
+  offset: 33, 14
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00022
+  rotate: false
+  xy: 1270, 408
+  size: 161, 347
+  orig: 216, 391
+  offset: 29, 16
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00024
+  rotate: false
+  xy: 790, 226
+  size: 164, 352
+  orig: 216, 391
+  offset: 27, 19
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00026
+  rotate: false
+  xy: 1565, 1375
+  size: 169, 340
+  orig: 216, 391
+  offset: 22, 20
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00028
+  rotate: false
+  xy: 1384, 1127
+  size: 172, 344
+  orig: 216, 391
+  offset: 21, 19
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00030
+  rotate: false
+  xy: 620, 224
+  size: 168, 356
+  orig: 216, 391
+  offset: 24, 11
+  index: -1
+effect/skill1/tlssn_sk1_xls/tlssn_sk1_xls_00032
+  rotate: false
+  xy: 1061, 1048
+  size: 163, 351
+  orig: 216, 391
+  offset: 30, 18
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00002
+  rotate: false
+  xy: 1721, 111
+  size: 208, 108
+  orig: 244, 127
+  offset: 17, 9
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00004
+  rotate: false
+  xy: 1750, 1619
+  size: 206, 103
+  orig: 244, 127
+  offset: 17, 9
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00006
+  rotate: false
+  xy: 1510, 5
+  size: 208, 105
+  orig: 244, 127
+  offset: 17, 9
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00008
+  rotate: false
+  xy: 1510, 112
+  size: 209, 107
+  orig: 244, 127
+  offset: 17, 9
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00010
+  rotate: false
+  xy: 1720, 2
+  size: 208, 107
+  orig: 244, 127
+  offset: 17, 9
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00012
+  rotate: false
+  xy: 1766, 1142
+  size: 206, 103
+  orig: 244, 127
+  offset: 17, 9
+  index: -1
+effect/skill1/tlssn_sk1_xlx/tlssn_sk1_xlx_00014
+  rotate: false
+  xy: 1304, 99
+  size: 204, 105
+  orig: 244, 127
+  offset: 18, 9
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00000
+  rotate: false
+  xy: 1749, 951
+  size: 190, 189
+  orig: 375, 375
+  offset: 94, 93
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00002
+  rotate: false
+  xy: 1124, 1707
+  size: 316, 315
+  orig: 375, 375
+  offset: 32, 30
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00004
+  rotate: false
+  xy: 1442, 1717
+  size: 306, 305
+  orig: 375, 375
+  offset: 37, 35
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00006
+  rotate: false
+  xy: 308, 1073
+  size: 306, 305
+  orig: 375, 375
+  offset: 37, 35
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00008
+  rotate: false
+  xy: 1750, 1724
+  size: 296, 298
+  orig: 375, 375
+  offset: 42, 40
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00010
+  rotate: false
+  xy: 311, 780
+  size: 290, 291
+  orig: 375, 375
+  offset: 45, 42
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00012
+  rotate: false
+  xy: 327, 489
+  size: 285, 289
+  orig: 375, 375
+  offset: 47, 41
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00014
+  rotate: false
+  xy: 327, 202
+  size: 291, 285
+  orig: 375, 375
+  offset: 46, 42
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00016
+  rotate: false
+  xy: 806, 1401
+  size: 289, 289
+  orig: 375, 375
+  offset: 49, 44
+  index: -1
+effect/skill2/tlssn_sk2_bf/tlssn_sk2_bf_00018
+  rotate: false
+  xy: 616, 1048
+  size: 270, 257
+  orig: 375, 375
+  offset: 66, 73
+  index: -1
+effect/skill2/tlssn_sk2_qq/tlssn_sk2_qq_00000
+  rotate: false
+  xy: 855, 814
+  size: 232, 232
+  orig: 280, 280
+  offset: 26, 24
+  index: -1
+effect/skill2/tlssn_sk2_qq/tlssn_sk2_qq_00002
+  rotate: false
+  xy: 614, 582
+  size: 232, 232
+  orig: 280, 280
+  offset: 26, 24
+  index: -1
+effect/skill2/tlssn_sk2_qq/tlssn_sk2_qq_00004
+  rotate: false
+  xy: 848, 580
+  size: 232, 232
+  orig: 280, 280
+  offset: 26, 24
+  index: -1
+effect/skill2/tlssn_sk2_qq/tlssn_sk2_qq_00006
+  rotate: false
+  xy: 1097, 1458
+  size: 232, 232
+  orig: 280, 280
+  offset: 26, 24
+  index: -1
+effect/skill2/tlssn_sk2_qq/tlssn_sk2_qq_00008
+  rotate: false
+  xy: 1331, 1473
+  size: 232, 232
+  orig: 280, 280
+  offset: 26, 24
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00000
+  rotate: false
+  xy: 1805, 635
+  size: 172, 179
+  orig: 260, 250
+  offset: 37, 40
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00002
+  rotate: false
+  xy: 1590, 607
+  size: 213, 207
+  orig: 260, 250
+  offset: 25, 28
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00004
+  rotate: false
+  xy: 1733, 221
+  size: 208, 198
+  orig: 260, 250
+  offset: 30, 24
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00006
+  rotate: false
+  xy: 1590, 421
+  size: 217, 184
+  orig: 260, 250
+  offset: 33, 31
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00008
+  rotate: false
+  xy: 1510, 221
+  size: 221, 198
+  orig: 260, 250
+  offset: 15, 27
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00010
+  rotate: false
+  xy: 1558, 1160
+  size: 206, 213
+  orig: 260, 250
+  offset: 15, 16
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00012
+  rotate: false
+  xy: 1304, 206
+  size: 204, 200
+  orig: 260, 250
+  offset: 34, 22
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00014
+  rotate: false
+  xy: 1736, 1441
+  size: 206, 176
+  orig: 260, 250
+  offset: 29, 38
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00016
+  rotate: false
+  xy: 1809, 475
+  size: 185, 158
+  orig: 260, 250
+  offset: 31, 41
+  index: -1
+effect/skill2/tlssn_sk2_xl/tlssn_sk2_xl_00018
+  rotate: false
+  xy: 1766, 1247
+  size: 180, 192
+  orig: 260, 250
+  offset: 33, 26
+  index: -1

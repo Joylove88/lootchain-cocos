@@ -1,0 +1,984 @@
+
+fx_25002_dutengnv_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/New_New_skill_chongjibo_00038
+  rotate: false
+  xy: 759, 833
+  size: 661, 198
+  orig: 662, 200
+  offset: 1, 0
+  index: -1
+skill/New_New_skill_diyan_00010
+  rotate: false
+  xy: 769, 356
+  size: 682, 135
+  orig: 682, 168
+  offset: 0, 0
+  index: -1
+skill/New_New_skill_fengquan_00006
+  rotate: false
+  xy: 1791, 4
+  size: 146, 39
+  orig: 288, 88
+  offset: 84, 19
+  index: -1
+skill/New_New_skill_gensui_00031
+  rotate: false
+  xy: 1903, 637
+  size: 36, 207
+  orig: 38, 249
+  offset: 1, 40
+  index: -1
+skill/New_New_skill_gensui_00033
+  rotate: false
+  xy: 1939, 339
+  size: 38, 179
+  orig: 38, 249
+  offset: 0, 23
+  index: -1
+skill/New_New_skill_gensui_00035
+  rotate: false
+  xy: 1939, 177
+  size: 38, 160
+  orig: 38, 249
+  offset: 0, 2
+  index: -1
+skill/New_New_skill_gensui_00037
+  rotate: false
+  xy: 1979, 395
+  size: 36, 123
+  orig: 38, 249
+  offset: 0, 16
+  index: -1
+skill/New_New_skill_hongcao_00017
+  rotate: false
+  xy: 1442, 1394
+  size: 89, 48
+  orig: 126, 98
+  offset: 26, 16
+  index: -1
+skill/New_New_skill_hongcao_00020
+  rotate: false
+  xy: 1941, 634
+  size: 105, 64
+  orig: 126, 98
+  offset: 14, 11
+  index: -1
+skill/New_New_skill_hongcao_00059
+  rotate: false
+  xy: 1939, 2
+  size: 103, 85
+  orig: 126, 98
+  offset: 16, 5
+  index: -1
+skill/New_New_skill_tiaodai_00017
+  rotate: false
+  xy: 1500, 10
+  size: 289, 33
+  orig: 504, 328
+  offset: 55, 285
+  index: -1
+skill/New_New_skill_xuanzhuan_00022
+  rotate: false
+  xy: 1903, 520
+  size: 123, 112
+  orig: 451, 304
+  offset: 205, 185
+  index: -1
+skill/New_skill_guangquan_00013
+  rotate: false
+  xy: 1449, 503
+  size: 452, 481
+  orig: 477, 514
+  offset: 12, 18
+  index: -1
+skill/New_skill_liuguang_00003
+  rotate: false
+  xy: 724, 1444
+  size: 819, 589
+  orig: 856, 721
+  offset: 32, 97
+  index: -1
+skill/New_skill_liuguang_00005
+  rotate: false
+  xy: 2, 814
+  size: 755, 505
+  orig: 856, 721
+  offset: 8, 161
+  index: -1
+skill/New_skill_liuguang_00007
+  rotate: false
+  xy: 759, 1033
+  size: 681, 409
+  orig: 856, 721
+  offset: 65, 191
+  index: -1
+skill/New_skill_liuguang_00009
+  rotate: false
+  xy: 1442, 986
+  size: 568, 388
+  orig: 856, 721
+  offset: 155, 184
+  index: -1
+skill/New_skill_liuguang_00011
+  rotate: false
+  xy: 2, 1321
+  size: 720, 712
+  orig: 856, 721
+  offset: 72, 1
+  index: -1
+skill/New_skill_liuguang_00013
+  rotate: false
+  xy: 1545, 1376
+  size: 464, 657
+  orig: 856, 721
+  offset: 89, 31
+  index: -1
+skill/New_skill_lizi_00004
+  rotate: false
+  xy: 1500, 45
+  size: 437, 456
+  orig: 503, 486
+  offset: 65, 1
+  index: -1
+skill/New_skill_lizi_00018
+  rotate: false
+  xy: 1979, 309
+  size: 66, 84
+  orig: 503, 486
+  offset: 187, 181
+  index: -1
+skill/New_skill_shanguang_00014
+  rotate: false
+  xy: 1941, 700
+  size: 94, 144
+  orig: 296, 281
+  offset: 112, 71
+  index: -1
+skill/New_skill_shanguang_00022
+  rotate: false
+  xy: 1903, 846
+  size: 136, 138
+  orig: 296, 281
+  offset: 73, 69
+  index: -1
+skill/New_skill_yanquan_00006
+  rotate: false
+  xy: 2, 392
+  size: 765, 420
+  orig: 786, 447
+  offset: 10, 7
+  index: -1
+skill/New_skill_yanquan_00008
+  rotate: false
+  xy: 2, 10
+  size: 748, 380
+  orig: 786, 447
+  offset: 12, 54
+  index: -1
+skill/New_skill_yanquan_00010
+  rotate: false
+  xy: 752, 20
+  size: 746, 334
+  orig: 786, 447
+  offset: 21, 98
+  index: -1
+skill/New_skill_yanquan_00014
+  rotate: false
+  xy: 769, 493
+  size: 678, 338
+  orig: 786, 447
+  offset: 49, 59
+  index: -1
+skill2/New_New_skill2_shifa01_00028
+  rotate: false
+  xy: 1939, 89
+  size: 80, 86
+  orig: 212, 126
+  offset: 44, 10
+  index: -1
+
+fx_25002_dutengnv_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/New_New_skill_chongjibo_00032
+  rotate: false
+  xy: 2, 5
+  size: 396, 160
+  orig: 662, 200
+  offset: 147, 29
+  index: -1
+skill/New_New_skill_chongjibo_00034
+  rotate: false
+  xy: 1431, 1695
+  size: 572, 188
+  orig: 662, 200
+  offset: 55, 11
+  index: -1
+skill/New_New_skill_chongjibo_00036
+  rotate: false
+  xy: 768, 1846
+  size: 658, 198
+  orig: 662, 200
+  offset: 4, 0
+  index: -1
+skill/New_New_skill_chongjibo_00040
+  rotate: false
+  xy: 768, 1680
+  size: 661, 164
+  orig: 662, 200
+  offset: 1, 10
+  index: -1
+skill/New_New_skill_chongjibo_00042
+  rotate: false
+  xy: 1382, 1421
+  size: 634, 144
+  orig: 662, 200
+  offset: 11, 15
+  index: -1
+skill/New_New_skill_diyan_00002
+  rotate: false
+  xy: 421, 545
+  size: 492, 95
+  orig: 682, 168
+  offset: 87, 13
+  index: -1
+skill/New_New_skill_diyan_00004
+  rotate: false
+  xy: 1428, 1885
+  size: 606, 159
+  orig: 682, 168
+  offset: 33, 9
+  index: -1
+skill/New_New_skill_diyan_00006
+  rotate: false
+  xy: 1431, 1567
+  size: 567, 126
+  orig: 682, 168
+  offset: 53, 11
+  index: -1
+skill/New_New_skill_diyan_00008
+  rotate: false
+  xy: 704, 1531
+  size: 653, 147
+  orig: 682, 168
+  offset: 11, 3
+  index: -1
+skill/New_New_skill_diyan_00012
+  rotate: false
+  xy: 704, 1409
+  size: 676, 120
+  orig: 682, 168
+  offset: 6, 0
+  index: -1
+skill/New_New_skill_diyan_00014
+  rotate: false
+  xy: 926, 1041
+  size: 667, 116
+  orig: 682, 168
+  offset: 4, 0
+  index: -1
+skill/New_New_skill_diyan_00016
+  rotate: false
+  xy: 1382, 1296
+  size: 663, 123
+  orig: 682, 168
+  offset: 7, 2
+  index: -1
+skill/New_New_skill_fengquan_00008
+  rotate: false
+  xy: 1860, 1084
+  size: 186, 36
+  orig: 288, 88
+  offset: 59, 12
+  index: -1
+skill/New_New_skill_fengquan_00014
+  rotate: false
+  xy: 1465, 4
+  size: 262, 80
+  orig: 288, 88
+  offset: 12, 3
+  index: -1
+skill/New_New_skill_fengquan_00016
+  rotate: false
+  xy: 1729, 2
+  size: 255, 82
+  orig: 288, 88
+  offset: 23, 0
+  index: -1
+skill/New_New_skill_fengquan_00022
+  rotate: false
+  xy: 1595, 1075
+  size: 263, 82
+  orig: 288, 88
+  offset: 16, 3
+  index: -1
+skill/New_New_skill_hongcao_00029
+  rotate: false
+  xy: 1896, 277
+  size: 123, 90
+  orig: 126, 98
+  offset: 0, 4
+  index: -1
+skill/New_New_skill_hongcao_00032
+  rotate: false
+  xy: 915, 545
+  size: 124, 89
+  orig: 126, 98
+  offset: 0, 4
+  index: -1
+skill/New_New_skill_hongcao_00035
+  rotate: false
+  xy: 1887, 369
+  size: 124, 90
+  orig: 126, 98
+  offset: 0, 4
+  index: -1
+skill/New_New_skill_hongcao_00038
+  rotate: false
+  xy: 1896, 185
+  size: 124, 90
+  orig: 126, 98
+  offset: 0, 4
+  index: -1
+skill/New_New_skill_hongcao_00041
+  rotate: false
+  xy: 1896, 93
+  size: 124, 90
+  orig: 126, 98
+  offset: 0, 3
+  index: -1
+skill/New_New_skill_hongcao_00044
+  rotate: false
+  xy: 1887, 461
+  size: 124, 91
+  orig: 126, 98
+  offset: 0, 3
+  index: -1
+skill/New_New_skill_kuosanbo_00038
+  rotate: false
+  xy: 400, 64
+  size: 364, 100
+  orig: 500, 140
+  offset: 62, 33
+  index: -1
+skill/New_New_skill_kuosanbo_00040
+  rotate: false
+  xy: 766, 44
+  size: 410, 110
+  orig: 500, 140
+  offset: 37, 20
+  index: -1
+skill/New_New_skill_kuosanbo_00042
+  rotate: false
+  xy: 1382, 1159
+  size: 500, 135
+  orig: 500, 140
+  offset: 0, 0
+  index: -1
+skill/New_New_skill_kuosanbo_00048
+  rotate: false
+  xy: 421, 642
+  size: 490, 132
+  orig: 500, 140
+  offset: 8, 4
+  index: -1
+skill/New_New_skill_lvcao_00027
+  rotate: false
+  xy: 1719, 648
+  size: 254, 175
+  orig: 256, 184
+  offset: 0, 2
+  index: -1
+skill/New_New_skill_tiaodai_00007
+  rotate: false
+  xy: 926, 1159
+  size: 454, 248
+  orig: 504, 328
+  offset: 45, 4
+  index: -1
+skill/New_New_skill_tiaodai_00009
+  rotate: false
+  xy: 437, 1084
+  size: 487, 323
+  orig: 504, 328
+  offset: 9, 3
+  index: -1
+skill/New_New_skill_tiaodai_00011
+  rotate: false
+  xy: 437, 776
+  size: 480, 306
+  orig: 504, 328
+  offset: 7, 17
+  index: -1
+skill/New_New_skill_tiaodai_00015
+  rotate: false
+  xy: 1178, 47
+  size: 285, 122
+  orig: 504, 328
+  offset: 13, 199
+  index: -1
+skill/New_New_skill_xuanzhuan_00010
+  rotate: false
+  xy: 1123, 171
+  size: 377, 169
+  orig: 451, 304
+  offset: 66, 14
+  index: -1
+skill/New_New_skill_xuanzhuan_00012
+  rotate: false
+  xy: 1502, 86
+  size: 392, 244
+  orig: 451, 304
+  offset: 51, 11
+  index: -1
+skill/New_New_skill_xuanzhuan_00014
+  rotate: false
+  xy: 1123, 342
+  size: 400, 279
+  orig: 451, 304
+  offset: 20, 7
+  index: -1
+skill/New_New_skill_xuanzhuan_00016
+  rotate: false
+  xy: 1525, 332
+  size: 360, 289
+  orig: 451, 304
+  offset: 10, 6
+  index: -1
+skill/New_skill_dibiao_00020
+  rotate: false
+  xy: 2, 1786
+  size: 764, 258
+  orig: 794, 264
+  offset: 15, 2
+  index: -1
+skill/New_skill_guangquan_00009
+  rotate: false
+  xy: 1325, 623
+  size: 392, 416
+  orig: 477, 514
+  offset: 51, 49
+  index: -1
+skill/New_skill_guangquan_00010
+  rotate: false
+  xy: 919, 636
+  size: 404, 403
+  orig: 477, 514
+  offset: 59, 57
+  index: -1
+skill/New_skill_guangquan_00012
+  rotate: false
+  xy: 2, 1019
+  size: 433, 445
+  orig: 477, 514
+  offset: 21, 54
+  index: -1
+skill/New_skill_lizi_00006
+  rotate: false
+  xy: 2, 167
+  size: 404, 424
+  orig: 503, 486
+  offset: 78, 16
+  index: -1
+skill/New_skill_lizi_00008
+  rotate: false
+  xy: 2, 593
+  size: 417, 424
+  orig: 503, 486
+  offset: 0, 50
+  index: -1
+skill/New_skill_lizi_00010
+  rotate: false
+  xy: 779, 156
+  size: 342, 387
+  orig: 503, 486
+  offset: 47, 38
+  index: -1
+skill/New_skill_lizi_00012
+  rotate: false
+  xy: 408, 166
+  size: 369, 377
+  orig: 503, 486
+  offset: 13, 35
+  index: -1
+skill/New_skill_lizi_00016
+  rotate: false
+  xy: 1884, 1122
+  size: 162, 172
+  orig: 503, 486
+  offset: 134, 135
+  index: -1
+skill/New_skill_yanquan_00012
+  rotate: false
+  xy: 2, 1466
+  size: 700, 318
+  orig: 786, 447
+  offset: 33, 96
+  index: -1
+skill2/New_New_skill2_shifa01_00029
+  rotate: false
+  xy: 1887, 554
+  size: 113, 92
+  orig: 212, 126
+  offset: 36, 10
+  index: -1
+skill2/New_New_skill2_shifa01_00038
+  rotate: false
+  xy: 437, 1433
+  size: 116, 31
+  orig: 212, 126
+  offset: 69, 37
+  index: -1
+skill2/New_New_skill2_shifa_00005
+  rotate: false
+  xy: 1719, 825
+  size: 308, 248
+  orig: 358, 276
+  offset: 40, 3
+  index: -1
+
+fx_25002_dutengnv_skill_3.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_New_attack_shifa_00015
+  rotate: false
+  xy: 472, 17
+  size: 196, 110
+  orig: 252, 184
+  offset: 27, 30
+  index: -1
+attack/New_New_attack_shifa_00017
+  rotate: false
+  xy: 348, 1041
+  size: 229, 167
+  orig: 252, 184
+  offset: 6, 14
+  index: -1
+attack/New_New_attack_shifa_00019
+  rotate: false
+  xy: 338, 860
+  size: 237, 179
+  orig: 252, 184
+  offset: 4, 4
+  index: -1
+attack/New_New_attack_shifa_00021
+  rotate: false
+  xy: 760, 1581
+  size: 246, 180
+  orig: 252, 184
+  offset: 6, 3
+  index: -1
+attack/New_New_attack_shifa_00023
+  rotate: false
+  xy: 815, 893
+  size: 233, 160
+  orig: 252, 184
+  offset: 13, 8
+  index: -1
+attack/New_New_attack_shifa_00025
+  rotate: false
+  xy: 670, 2
+  size: 171, 134
+  orig: 252, 184
+  offset: 56, 29
+  index: -1
+skill/New_New_skill_fengquan_00010
+  rotate: false
+  xy: 813, 329
+  size: 210, 67
+  orig: 288, 88
+  offset: 42, 8
+  index: -1
+skill/New_New_skill_fengquan_00012
+  rotate: false
+  xy: 231, 20
+  size: 239, 86
+  orig: 288, 88
+  offset: 25, 1
+  index: -1
+skill/New_New_skill_fengquan_00018
+  rotate: false
+  xy: 1588, 1730
+  size: 248, 75
+  orig: 288, 88
+  offset: 40, 0
+  index: -1
+skill/New_New_skill_fengquan_00020
+  rotate: false
+  xy: 815, 1055
+  size: 238, 86
+  orig: 288, 88
+  offset: 27, 1
+  index: -1
+skill/New_New_skill_fengquan_00024
+  rotate: false
+  xy: 731, 1496
+  size: 255, 83
+  orig: 288, 88
+  offset: 12, 0
+  index: -1
+skill/New_New_skill_hongcao_00023
+  rotate: false
+  xy: 988, 1503
+  size: 116, 70
+  orig: 126, 98
+  offset: 6, 6
+  index: -1
+skill/New_New_skill_hongcao_00026
+  rotate: false
+  xy: 1051, 1153
+  size: 124, 78
+  orig: 126, 98
+  offset: 0, 6
+  index: -1
+skill/New_New_skill_hongcao_00047
+  rotate: false
+  xy: 1321, 1566
+  size: 124, 90
+  orig: 126, 98
+  offset: 0, 3
+  index: -1
+skill/New_New_skill_hongcao_00050
+  rotate: false
+  xy: 1045, 1410
+  size: 112, 91
+  orig: 126, 98
+  offset: 10, 3
+  index: -1
+skill/New_New_skill_hongcao_00053
+  rotate: false
+  xy: 1045, 1320
+  size: 109, 88
+  orig: 126, 98
+  offset: 11, 5
+  index: -1
+skill/New_New_skill_hongcao_00056
+  rotate: false
+  xy: 1051, 1233
+  size: 108, 85
+  orig: 126, 98
+  offset: 11, 5
+  index: -1
+skill/New_New_skill_kuosanbo_00036
+  rotate: false
+  xy: 783, 639
+  size: 243, 75
+  orig: 500, 140
+  offset: 113, 58
+  index: -1
+skill/New_New_skill_kuosanbo_00044
+  rotate: false
+  xy: 1086, 1779
+  size: 500, 131
+  orig: 500, 140
+  offset: 0, 4
+  index: -1
+skill/New_New_skill_kuosanbo_00046
+  rotate: false
+  xy: 1086, 1912
+  size: 500, 134
+  orig: 500, 140
+  offset: 0, 1
+  index: -1
+skill/New_New_skill_kuosanbo_00050
+  rotate: false
+  xy: 1086, 1658
+  size: 412, 119
+  orig: 500, 140
+  offset: 53, 17
+  index: -1
+skill/New_New_skill_kuosanbo_00052
+  rotate: false
+  xy: 346, 1639
+  size: 412, 120
+  orig: 500, 140
+  offset: 53, 15
+  index: -1
+skill/New_New_skill_kuosanbo_00054
+  rotate: false
+  xy: 334, 1523
+  size: 395, 114
+  orig: 500, 140
+  offset: 64, 17
+  index: -1
+skill/New_New_skill_lvcao_00009
+  rotate: false
+  xy: 1106, 1503
+  size: 108, 70
+  orig: 256, 184
+  offset: 58, 34
+  index: -1
+skill/New_New_skill_lvcao_00012
+  rotate: false
+  xy: 872, 122
+  size: 182, 93
+  orig: 256, 184
+  offset: 28, 31
+  index: -1
+skill/New_New_skill_lvcao_00015
+  rotate: false
+  xy: 843, 13
+  size: 212, 107
+  orig: 256, 184
+  offset: 22, 31
+  index: -1
+skill/New_New_skill_lvcao_00018
+  rotate: false
+  xy: 577, 788
+  size: 228, 133
+  orig: 256, 184
+  offset: 20, 8
+  index: -1
+skill/New_New_skill_lvcao_00021
+  rotate: false
+  xy: 579, 923
+  size: 234, 146
+  orig: 256, 184
+  offset: 18, 6
+  index: -1
+skill/New_New_skill_lvcao_00024
+  rotate: false
+  xy: 417, 129
+  size: 234, 175
+  orig: 256, 184
+  offset: 18, 2
+  index: -1
+skill/New_New_skill_lvcao_00030
+  rotate: false
+  xy: 815, 1143
+  size: 234, 174
+  orig: 256, 184
+  offset: 18, 2
+  index: -1
+skill/New_New_skill_lvcao_00033
+  rotate: false
+  xy: 574, 1248
+  size: 233, 175
+  orig: 256, 184
+  offset: 18, 2
+  index: -1
+skill/New_New_skill_lvcao_00036
+  rotate: false
+  xy: 579, 1071
+  size: 234, 175
+  orig: 256, 184
+  offset: 18, 2
+  index: -1
+skill/New_New_skill_lvcao_00039
+  rotate: false
+  xy: 809, 1319
+  size: 234, 175
+  orig: 256, 184
+  offset: 18, 2
+  index: -1
+skill/New_New_skill_lvcao_00042
+  rotate: false
+  xy: 316, 683
+  size: 237, 175
+  orig: 256, 184
+  offset: 18, 2
+  index: -1
+skill/New_New_skill_lvcao_00045
+  rotate: false
+  xy: 807, 716
+  size: 226, 175
+  orig: 256, 184
+  offset: 16, 2
+  index: -1
+skill/New_New_skill_lvcao_00048
+  rotate: false
+  xy: 555, 612
+  size: 226, 174
+  orig: 256, 184
+  offset: 16, 2
+  index: -1
+skill/New_New_skill_lvcao_00051
+  rotate: false
+  xy: 594, 313
+  size: 217, 173
+  orig: 256, 184
+  offset: 16, 3
+  index: -1
+skill/New_New_skill_lvcao_00054
+  rotate: false
+  xy: 653, 138
+  size: 217, 173
+  orig: 256, 184
+  offset: 16, 3
+  index: -1
+skill/New_New_skill_lvcao_00057
+  rotate: false
+  xy: 1838, 1633
+  size: 208, 172
+  orig: 256, 184
+  offset: 18, 4
+  index: -1
+skill/New_New_skill_lvcao_00060
+  rotate: false
+  xy: 813, 398
+  size: 208, 171
+  orig: 256, 184
+  offset: 18, 4
+  index: -1
+skill/New_New_skill_tiaodai_00013
+  rotate: false
+  xy: 2, 924
+  size: 334, 222
+  orig: 504, 328
+  offset: 7, 103
+  index: -1
+skill/New_New_skill_xuanzhuan_00008
+  rotate: false
+  xy: 334, 1425
+  size: 311, 96
+  orig: 451, 304
+  offset: 83, 31
+  index: -1
+skill/New_New_skill_xuanzhuan_00018
+  rotate: false
+  xy: 346, 1761
+  size: 371, 285
+  orig: 451, 304
+  offset: 14, 8
+  index: -1
+skill/New_New_skill_xuanzhuan_00020
+  rotate: false
+  xy: 719, 1763
+  size: 365, 283
+  orig: 451, 304
+  offset: 12, 20
+  index: -1
+skill/New_skill_guangquan_00011
+  rotate: false
+  xy: 2, 1710
+  size: 342, 336
+  orig: 477, 514
+  offset: 91, 91
+  index: -1
+skill/New_skill_lizi_00014
+  rotate: false
+  xy: 2, 1385
+  size: 330, 323
+  orig: 503, 486
+  offset: 35, 55
+  index: -1
+skill/New_skill_shanguang_00016
+  rotate: false
+  xy: 2, 24
+  size: 227, 218
+  orig: 296, 281
+  offset: 38, 35
+  index: -1
+skill/New_skill_shanguang_00018
+  rotate: false
+  xy: 2, 244
+  size: 223, 223
+  orig: 296, 281
+  offset: 40, 32
+  index: -1
+skill/New_skill_shanguang_00020
+  rotate: false
+  xy: 348, 1210
+  size: 224, 213
+  orig: 296, 281
+  offset: 39, 40
+  index: -1
+skill2/New_New_skill2_shifa01_00030
+  rotate: false
+  xy: 872, 217
+  size: 174, 110
+  orig: 212, 126
+  offset: 28, 2
+  index: -1
+skill2/New_New_skill2_shifa01_00032
+  rotate: false
+  xy: 528, 488
+  size: 201, 122
+  orig: 212, 126
+  offset: 6, 0
+  index: -1
+skill2/New_New_skill2_shifa01_00034
+  rotate: false
+  xy: 1008, 1575
+  size: 162, 81
+  orig: 212, 126
+  offset: 43, 13
+  index: -1
+skill2/New_New_skill2_shifa01_00036
+  rotate: false
+  xy: 1172, 1577
+  size: 147, 79
+  orig: 212, 126
+  offset: 57, 14
+  index: -1
+skill2/New_New_skill2_shifa_00003
+  rotate: false
+  xy: 783, 571
+  size: 216, 66
+  orig: 358, 276
+  offset: 40, 9
+  index: -1
+skill2/New_New_skill2_shifa_00007
+  rotate: false
+  xy: 1588, 1807
+  size: 349, 239
+  orig: 358, 276
+  offset: 5, 31
+  index: -1
+skill2/New_New_skill2_shifa_00009
+  rotate: false
+  xy: 2, 1148
+  size: 344, 235
+  orig: 358, 276
+  offset: 11, 35
+  index: -1
+skill2/New_New_skill2_shifa_00011
+  rotate: false
+  xy: 2, 689
+  size: 312, 233
+  orig: 358, 276
+  offset: 16, 35
+  index: -1
+skill2/New_New_skill2_shifa_00013
+  rotate: false
+  xy: 2, 469
+  size: 299, 218
+  orig: 358, 276
+  offset: 34, 48
+  index: -1
+skill2/New_New_skill2_shifa_00015
+  rotate: false
+  xy: 303, 486
+  size: 223, 195
+  orig: 358, 276
+  offset: 93, 75
+  index: -1
+skill2/New_New_skill2_shifa_00017
+  rotate: false
+  xy: 231, 108
+  size: 184, 178
+  orig: 358, 276
+  offset: 128, 94
+  index: -1
+skill2/New_New_skill2_shifa_00019
+  rotate: false
+  xy: 227, 288
+  size: 182, 179
+  orig: 358, 276
+  offset: 128, 94
+  index: -1
+skill2/New_New_skill2_shifa_00021
+  rotate: false
+  xy: 411, 306
+  size: 181, 178
+  orig: 358, 276
+  offset: 128, 94
+  index: -1

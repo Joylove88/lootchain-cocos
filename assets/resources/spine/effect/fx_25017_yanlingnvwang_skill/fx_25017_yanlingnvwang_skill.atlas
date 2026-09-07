@@ -1,0 +1,361 @@
+
+fx_25017_yanlingnvwang_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/skill/hyq_00011
+  rotate: false
+  xy: 1813, 895
+  size: 204, 396
+  orig: 461, 477
+  offset: 214, 52
+  index: -1
+images/skill/hyq_00013
+  rotate: false
+  xy: 717, 14
+  size: 459, 464
+  orig: 461, 477
+  offset: 0, 6
+  index: -1
+images/skill/hyq_00019
+  rotate: false
+  xy: 1813, 573
+  size: 209, 320
+  orig: 461, 477
+  offset: 206, 82
+  index: -1
+images/skill/hyq_00020
+  rotate: false
+  xy: 1849, 294
+  size: 145, 277
+  orig: 461, 477
+  offset: 237, 118
+  index: -1
+images/skill/hyx_00013
+  rotate: false
+  xy: 1849, 91
+  size: 112, 201
+  orig: 164, 324
+  offset: 49, 79
+  index: -1
+images/skill/suihuo-xj_00018
+  rotate: false
+  xy: 1849, 10
+  size: 157, 79
+  orig: 327, 110
+  offset: 163, 26
+  index: -1
+images/skill/suihuo-xj_00025
+  rotate: false
+  xy: 625, 1248
+  size: 124, 40
+  orig: 327, 110
+  offset: 38, 28
+  index: -1
+images/skill2/skill2dg3_00088
+  rotate: false
+  xy: 1255, 34
+  size: 592, 491
+  orig: 806, 568
+  offset: 186, 60
+  index: -1
+images/skill2/skill2dg_00021
+  rotate: false
+  xy: 2, 2
+  size: 713, 468
+  orig: 814, 838
+  offset: 0, 28
+  index: -1
+images/skill2/skill2dg_00023
+  rotate: false
+  xy: 2, 1290
+  size: 776, 750
+  orig: 814, 838
+  offset: 16, 12
+  index: -1
+images/skill2/skill2dg_00024
+  rotate: false
+  xy: 2, 472
+  size: 621, 816
+  orig: 814, 838
+  offset: 156, 5
+  index: -1
+images/skill2/skill2dg_00025
+  rotate: false
+  xy: 780, 1245
+  size: 640, 795
+  orig: 814, 838
+  offset: 136, 8
+  index: -1
+images/skill2/skill2dg_00026
+  rotate: false
+  xy: 625, 480
+  size: 628, 763
+  orig: 814, 838
+  offset: 131, 17
+  index: -1
+images/skill2/skill2dg_00027
+  rotate: false
+  xy: 1422, 1293
+  size: 608, 747
+  orig: 814, 838
+  offset: 138, 10
+  index: -1
+images/skill2/skill2dg_00028
+  rotate: false
+  xy: 1255, 527
+  size: 556, 716
+  orig: 814, 838
+  offset: 177, 21
+  index: -1
+
+fx_25017_yanlingnvwang_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/atk/atk-dg_00026
+  rotate: false
+  xy: 1377, 431
+  size: 535, 387
+  orig: 568, 499
+  offset: 23, 29
+  index: -1
+images/atk/atk-dg_00027
+  rotate: false
+  xy: 654, 64
+  size: 531, 351
+  orig: 568, 499
+  offset: 13, 27
+  index: -1
+images/skill/hyq2_00017
+  rotate: false
+  xy: 2, 280
+  size: 650, 623
+  orig: 685, 660
+  offset: 10, 20
+  index: -1
+images/skill/hyq_00012
+  rotate: false
+  xy: 1542, 1577
+  size: 454, 460
+  orig: 461, 477
+  offset: 0, 5
+  index: -1
+images/skill/hyq_00016
+  rotate: false
+  xy: 1573, 2
+  size: 340, 427
+  orig: 461, 477
+  offset: 100, 29
+  index: -1
+images/skill/hyx_00010
+  rotate: false
+  xy: 1914, 549
+  size: 111, 123
+  orig: 164, 324
+  offset: 17, 12
+  index: -1
+images/skill/hyx_00011
+  rotate: false
+  xy: 1914, 674
+  size: 102, 144
+  orig: 164, 324
+  offset: 47, 47
+  index: -1
+images/skill/hyx_00012
+  rotate: false
+  xy: 519, 112
+  size: 110, 166
+  orig: 164, 324
+  offset: 54, 68
+  index: -1
+images/skill/suihuo-xj_00022
+  rotate: false
+  xy: 1542, 1503
+  size: 248, 72
+  orig: 327, 110
+  offset: 19, 11
+  index: -1
+images/skill/suihuo-xj_00023
+  rotate: false
+  xy: 1792, 1511
+  size: 235, 64
+  orig: 327, 110
+  offset: 20, 13
+  index: -1
+images/skill/suihuo-xj_00024
+  rotate: false
+  xy: 519, 6
+  size: 156, 56
+  orig: 327, 110
+  offset: 21, 17
+  index: -1
+images/skill2/skill2dg3_00084
+  rotate: false
+  xy: 2, 1511
+  size: 794, 526
+  orig: 806, 568
+  offset: 9, 23
+  index: -1
+images/skill2/skill2dg3_00085
+  rotate: false
+  xy: 798, 1497
+  size: 742, 540
+  orig: 806, 568
+  offset: 64, 16
+  index: -1
+images/skill2/skill2dg3_00086
+  rotate: false
+  xy: 710, 954
+  size: 704, 541
+  orig: 806, 568
+  offset: 102, 9
+  index: -1
+images/skill2/skill2dg3_00087
+  rotate: false
+  xy: 710, 417
+  size: 665, 535
+  orig: 806, 568
+  offset: 141, 22
+  index: -1
+images/skill2/skill2dg3_00090
+  rotate: false
+  xy: 1187, 36
+  size: 384, 379
+  orig: 806, 568
+  offset: 356, 157
+  index: -1
+images/skill2/skill2dg_00020
+  rotate: false
+  xy: 2, 30
+  size: 515, 248
+  orig: 814, 838
+  offset: 76, 51
+  index: -1
+images/skill2/skill2dg_00022
+  rotate: false
+  xy: 2, 905
+  size: 706, 604
+  orig: 814, 838
+  offset: 73, 4
+  index: -1
+images/skill2/skill2dg_00029
+  rotate: false
+  xy: 1416, 820
+  size: 560, 675
+  orig: 814, 838
+  offset: 155, 34
+  index: -1
+
+fx_25017_yanlingnvwang_skill_3.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/atk/atk-dg_00025
+  rotate: false
+  xy: 433, 25
+  size: 413, 444
+  orig: 568, 499
+  offset: 138, 27
+  index: -1
+images/atk/atk-dg_00028
+  rotate: false
+  xy: 524, 713
+  size: 522, 306
+  orig: 568, 499
+  offset: 23, 29
+  index: -1
+images/atk/atk-dg_00029
+  rotate: false
+  xy: 524, 471
+  size: 466, 240
+  orig: 568, 499
+  offset: 63, 42
+  index: -1
+images/atk/atk-dg_00030
+  rotate: false
+  xy: 2, 7
+  size: 379, 175
+  orig: 568, 499
+  offset: 131, 60
+  index: -1
+images/atk/atk-dg_00031
+  rotate: false
+  xy: 1830, 477
+  size: 147, 100
+  orig: 568, 499
+  offset: 114, 94
+  index: -1
+images/skill/hyq_00014
+  rotate: false
+  xy: 2, 184
+  size: 429, 457
+  orig: 461, 477
+  offset: 23, 8
+  index: -1
+images/skill/hyq_00015
+  rotate: false
+  xy: 848, 25
+  size: 395, 444
+  orig: 461, 477
+  offset: 46, 12
+  index: -1
+images/skill/hyq_00017
+  rotate: false
+  xy: 1245, 198
+  size: 311, 379
+  orig: 461, 477
+  offset: 126, 52
+  index: -1
+images/skill/hyq_00018
+  rotate: false
+  xy: 1558, 222
+  size: 270, 355
+  orig: 461, 477
+  offset: 157, 66
+  index: -1
+images/skill/suihuo-xj_00019
+  rotate: false
+  xy: 1245, 2
+  size: 260, 94
+  orig: 327, 110
+  offset: 51, 10
+  index: -1
+images/skill/suihuo-xj_00020
+  rotate: false
+  xy: 1245, 98
+  size: 277, 98
+  orig: 327, 110
+  offset: 33, 6
+  index: -1
+images/skill/suihuo-xj_00021
+  rotate: false
+  xy: 1558, 133
+  size: 259, 87
+  orig: 327, 110
+  offset: 23, 7
+  index: -1
+images/skill2/skill2dg3_00089
+  rotate: false
+  xy: 1508, 579
+  size: 440, 440
+  orig: 806, 568
+  offset: 313, 105
+  index: -1
+images/skill2/skill2dg_00030
+  rotate: false
+  xy: 2, 643
+  size: 520, 376
+  orig: 814, 838
+  offset: 160, 54
+  index: -1
+images/skill2/skill2dg_00031
+  rotate: false
+  xy: 1048, 722
+  size: 458, 297
+  orig: 814, 838
+  offset: 186, 78
+  index: -1

@@ -1,0 +1,536 @@
+
+fx_13601_menghuanfengdie_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_04
+  rotate: false
+  xy: 1344, 239
+  size: 380, 371
+  orig: 432, 432
+  offset: 29, 30
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_00
+  rotate: false
+  xy: 975, 1560
+  size: 468, 486
+  orig: 540, 540
+  offset: 32, 19
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_02
+  rotate: false
+  xy: 2, 1520
+  size: 478, 526
+  orig: 540, 540
+  offset: 22, 3
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_04
+  rotate: false
+  xy: 482, 1556
+  size: 491, 490
+  orig: 540, 540
+  offset: 10, 17
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_06
+  rotate: false
+  xy: 1445, 1580
+  size: 475, 466
+  orig: 540, 540
+  offset: 29, 64
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_08
+  rotate: false
+  xy: 489, 195
+  size: 473, 432
+  orig: 540, 540
+  offset: 32, 73
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_10
+  rotate: false
+  xy: 2, 559
+  size: 472, 464
+  orig: 540, 540
+  offset: 28, 64
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_12
+  rotate: false
+  xy: 2, 112
+  size: 485, 445
+  orig: 540, 540
+  offset: 15, 62
+  index: -1
+effect/skill1/ygmd_dz_ps/ygmd_dz_ps_14
+  rotate: false
+  xy: 2, 1025
+  size: 474, 493
+  orig: 540, 540
+  offset: 27, 37
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_02
+  rotate: false
+  xy: 1915, 656
+  size: 131, 163
+  orig: 675, 360
+  offset: 124, 96
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_10
+  rotate: false
+  xy: 1726, 2
+  size: 280, 248
+  orig: 675, 360
+  offset: 89, 66
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_14
+  rotate: false
+  xy: 1311, 18
+  size: 314, 219
+  orig: 675, 360
+  offset: 103, 89
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_18
+  rotate: false
+  xy: 969, 8
+  size: 340, 245
+  orig: 675, 360
+  offset: 91, 57
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_22
+  rotate: false
+  xy: 1494, 1320
+  size: 441, 258
+  orig: 675, 360
+  offset: 82, 57
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_26
+  rotate: false
+  xy: 482, 1297
+  size: 491, 257
+  orig: 675, 360
+  offset: 78, 57
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_28
+  rotate: false
+  xy: 1521, 821
+  size: 511, 247
+  orig: 675, 360
+  offset: 75, 56
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_30
+  rotate: false
+  xy: 1005, 1047
+  size: 514, 252
+  orig: 675, 360
+  offset: 71, 51
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_32
+  rotate: false
+  xy: 975, 1301
+  size: 517, 257
+  orig: 675, 360
+  offset: 67, 44
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_34
+  rotate: false
+  xy: 478, 1037
+  size: 525, 258
+  orig: 675, 360
+  offset: 63, 41
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_36
+  rotate: false
+  xy: 1521, 1070
+  size: 525, 248
+  orig: 675, 360
+  offset: 59, 43
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_38
+  rotate: false
+  xy: 476, 629
+  size: 477, 236
+  orig: 675, 360
+  offset: 106, 49
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_40
+  rotate: false
+  xy: 1005, 823
+  size: 479, 222
+  orig: 675, 360
+  offset: 103, 62
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_42
+  rotate: false
+  xy: 1436, 612
+  size: 477, 207
+  orig: 675, 360
+  offset: 100, 62
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_44
+  rotate: false
+  xy: 489, 21
+  size: 478, 172
+  orig: 675, 360
+  offset: 97, 97
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_46
+  rotate: false
+  xy: 955, 653
+  size: 479, 168
+  orig: 675, 360
+  offset: 94, 100
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_48
+  rotate: false
+  xy: 478, 867
+  size: 480, 168
+  orig: 675, 360
+  offset: 91, 100
+  index: -1
+effect/skill1/ygmd_dz_xl/ygmd_dz_xl_02
+  rotate: false
+  xy: 964, 255
+  size: 378, 396
+  orig: 432, 432
+  offset: 27, 6
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_02
+  rotate: false
+  xy: 2, 12
+  size: 226, 98
+  orig: 396, 396
+  offset: 75, 147
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_40
+  rotate: false
+  xy: 1726, 252
+  size: 313, 358
+  orig: 396, 396
+  offset: 37, 22
+  index: -1
+
+fx_13601_menghuanfengdie_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_00
+  rotate: false
+  xy: 1374, 881
+  size: 298, 298
+  orig: 432, 432
+  offset: 67, 67
+  index: -1
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_02
+  rotate: false
+  xy: 2, 548
+  size: 360, 354
+  orig: 432, 432
+  offset: 33, 37
+  index: -1
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_06
+  rotate: false
+  xy: 1072, 1044
+  size: 300, 325
+  orig: 432, 432
+  offset: 56, 56
+  index: -1
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_08
+  rotate: false
+  xy: 1680, 938
+  size: 284, 295
+  orig: 432, 432
+  offset: 74, 63
+  index: -1
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_10
+  rotate: false
+  xy: 1680, 1235
+  size: 288, 299
+  orig: 432, 432
+  offset: 72, 59
+  index: -1
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_12
+  rotate: false
+  xy: 1655, 403
+  size: 274, 242
+  orig: 432, 432
+  offset: 86, 114
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_04
+  rotate: false
+  xy: 298, 32
+  size: 189, 170
+  orig: 675, 360
+  offset: 120, 96
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_12
+  rotate: false
+  xy: 2, 2
+  size: 294, 219
+  orig: 675, 360
+  offset: 107, 93
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_16
+  rotate: false
+  xy: 358, 204
+  size: 322, 244
+  orig: 675, 360
+  offset: 92, 60
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_20
+  rotate: false
+  xy: 1484, 1536
+  size: 399, 253
+  orig: 675, 360
+  offset: 89, 57
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_24
+  rotate: false
+  xy: 1484, 1791
+  size: 452, 255
+  orig: 675, 360
+  offset: 77, 57
+  index: -1
+effect/skill1/ygmd_dz_xl/ygmd_dz_xl_00
+  rotate: false
+  xy: 1374, 1181
+  size: 304, 353
+  orig: 432, 432
+  offset: 86, 8
+  index: -1
+effect/skill1/ygmd_dz_xl/ygmd_dz_xl_04
+  rotate: false
+  xy: 2, 1651
+  size: 378, 395
+  orig: 432, 432
+  offset: 27, 10
+  index: -1
+effect/skill1/ygmd_dz_xl/ygmd_dz_xl_06
+  rotate: false
+  xy: 2, 1266
+  size: 370, 383
+  orig: 432, 432
+  offset: 31, 18
+  index: -1
+effect/skill1/ygmd_dz_xl/ygmd_dz_xl_08
+  rotate: false
+  xy: 2, 904
+  size: 360, 360
+  orig: 432, 432
+  offset: 36, 36
+  index: -1
+effect/skill1/ygmd_dz_xl/ygmd_dz_xl_10
+  rotate: false
+  xy: 1044, 732
+  size: 310, 310
+  orig: 432, 432
+  offset: 61, 61
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_00
+  rotate: false
+  xy: 1356, 582
+  size: 297, 297
+  orig: 405, 405
+  offset: 54, 54
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_02
+  rotate: false
+  xy: 749, 1687
+  size: 359, 359
+  orig: 405, 405
+  offset: 23, 23
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_04
+  rotate: false
+  xy: 364, 739
+  size: 340, 330
+  orig: 405, 405
+  offset: 33, 40
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_06
+  rotate: false
+  xy: 374, 1071
+  size: 348, 323
+  orig: 405, 405
+  offset: 25, 46
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_08
+  rotate: false
+  xy: 2, 223
+  size: 354, 323
+  orig: 405, 405
+  offset: 21, 50
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_10
+  rotate: false
+  xy: 749, 1371
+  size: 353, 314
+  orig: 405, 405
+  offset: 22, 50
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_12
+  rotate: false
+  xy: 724, 1051
+  size: 346, 318
+  orig: 405, 405
+  offset: 26, 47
+  index: -1
+effect/skill2/ygmd_jn_fs/ygmd_jn_fs_14
+  rotate: false
+  xy: 706, 738
+  size: 336, 311
+  orig: 405, 405
+  offset: 31, 49
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_10
+  rotate: false
+  xy: 1104, 1406
+  size: 233, 279
+  orig: 396, 396
+  offset: 78, 58
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_16
+  rotate: false
+  xy: 1620, 111
+  size: 260, 290
+  orig: 396, 396
+  offset: 67, 49
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_18
+  rotate: false
+  xy: 1674, 647
+  size: 283, 289
+  orig: 396, 396
+  offset: 55, 52
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_20
+  rotate: false
+  xy: 1302, 13
+  size: 287, 287
+  orig: 396, 396
+  offset: 51, 54
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_22
+  rotate: false
+  xy: 1321, 302
+  size: 297, 278
+  orig: 396, 396
+  offset: 37, 63
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_24
+  rotate: false
+  xy: 1013, 439
+  size: 306, 291
+  orig: 396, 396
+  offset: 31, 52
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_26
+  rotate: false
+  xy: 682, 153
+  size: 311, 294
+  orig: 396, 396
+  offset: 40, 52
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_28
+  rotate: false
+  xy: 995, 145
+  size: 305, 292
+  orig: 396, 396
+  offset: 54, 52
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_30
+  rotate: false
+  xy: 692, 449
+  size: 319, 287
+  orig: 396, 396
+  offset: 36, 53
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_32
+  rotate: false
+  xy: 364, 450
+  size: 326, 287
+  orig: 396, 396
+  offset: 29, 55
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_34
+  rotate: false
+  xy: 382, 1396
+  size: 365, 289
+  orig: 396, 396
+  offset: 11, 55
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_36
+  rotate: false
+  xy: 1110, 1708
+  size: 372, 338
+  orig: 396, 396
+  offset: 9, 36
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_38
+  rotate: false
+  xy: 382, 1687
+  size: 365, 359
+  orig: 396, 396
+  offset: 11, 24
+  index: -1
+
+fx_13601_menghuanfengdie_skill_3.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill1/ygmd_dz_bf/ygmd_dz_bf_14
+  rotate: false
+  xy: 733, 74
+  size: 226, 201
+  orig: 432, 432
+  offset: 91, 113
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_06
+  rotate: false
+  xy: 504, 11
+  size: 227, 218
+  orig: 675, 360
+  offset: 110, 96
+  index: -1
+effect/skill1/ygmd_dz_twfc/ygmd_dz_twfc_08
+  rotate: false
+  xy: 250, 11
+  size: 252, 218
+  orig: 675, 360
+  offset: 99, 96
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_04
+  rotate: false
+  xy: 2, 2
+  size: 246, 228
+  orig: 396, 396
+  offset: 76, 88
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_06
+  rotate: false
+  xy: 715, 277
+  size: 244, 229
+  orig: 396, 396
+  offset: 78, 73
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_08
+  rotate: false
+  xy: 256, 231
+  size: 240, 275
+  orig: 396, 396
+  offset: 78, 65
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_12
+  rotate: false
+  xy: 498, 231
+  size: 215, 275
+  orig: 396, 396
+  offset: 111, 63
+  index: -1
+effect/skill2/ygmd_jn_xl/ygmd_jn_xl_14
+  rotate: false
+  xy: 2, 232
+  size: 252, 274
+  orig: 396, 396
+  offset: 72, 66
+  index: -1
