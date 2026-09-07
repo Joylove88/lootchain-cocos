@@ -1,0 +1,1152 @@
+
+fx_55008_yase_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill/dg/bemt_skill_daoguang_000
+  rotate: false
+  xy: 2, 1627
+  size: 435, 419
+  orig: 535, 527
+  offset: 79, 63
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_002
+  rotate: false
+  xy: 439, 1658
+  size: 437, 388
+  orig: 535, 527
+  offset: 24, 90
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_004
+  rotate: false
+  xy: 878, 1695
+  size: 455, 351
+  orig: 535, 527
+  offset: 24, 109
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_006
+  rotate: false
+  xy: 2, 246
+  size: 422, 325
+  orig: 535, 527
+  offset: 32, 110
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_008
+  rotate: false
+  xy: 456, 1060
+  size: 401, 333
+  orig: 535, 527
+  offset: 51, 101
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_018
+  rotate: false
+  xy: 442, 884
+  size: 12, 12
+  orig: 535, 527
+  offset: 171, 345
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_008
+  rotate: false
+  xy: 883, 290
+  size: 423, 259
+  orig: 511, 327
+  offset: 60, 8
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_012
+  rotate: false
+  xy: 439, 1395
+  size: 435, 261
+  orig: 511, 327
+  offset: 49, 7
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_014
+  rotate: false
+  xy: 876, 1135
+  size: 425, 263
+  orig: 511, 327
+  offset: 58, 4
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_028
+  rotate: false
+  xy: 426, 190
+  size: 434, 259
+  orig: 511, 327
+  offset: 49, 8
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_030
+  rotate: false
+  xy: 862, 26
+  size: 425, 262
+  orig: 511, 327
+  offset: 58, 5
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_042
+  rotate: false
+  xy: 1308, 874
+  size: 425, 261
+  orig: 511, 327
+  offset: 58, 6
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_046
+  rotate: false
+  xy: 1335, 1447
+  size: 434, 254
+  orig: 511, 327
+  offset: 49, 13
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_050
+  rotate: false
+  xy: 2, 5
+  size: 388, 239
+  orig: 511, 327
+  offset: 70, 23
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_054
+  rotate: false
+  xy: 392, 27
+  size: 357, 161
+  orig: 511, 327
+  offset: 80, 53
+  index: -1
+effect/skill/huanrao/bemt_skill_huanrao_004
+  rotate: false
+  xy: 1771, 1323
+  size: 249, 142
+  orig: 334, 185
+  offset: 18, 19
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_002
+  rotate: false
+  xy: 1697, 12
+  size: 331, 288
+  orig: 472, 463
+  offset: 52, 95
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_004
+  rotate: false
+  xy: 1696, 528
+  size: 331, 344
+  orig: 472, 463
+  offset: 72, 58
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_002
+  rotate: false
+  xy: 1689, 302
+  size: 335, 224
+  orig: 401, 286
+  offset: 54, 31
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_008
+  rotate: false
+  xy: 1757, 1126
+  size: 283, 195
+  orig: 401, 286
+  offset: 57, 33
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_010
+  rotate: false
+  xy: 1735, 947
+  size: 278, 177
+  orig: 401, 286
+  offset: 62, 42
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_012
+  rotate: false
+  xy: 1771, 1467
+  size: 272, 160
+  orig: 401, 286
+  offset: 67, 59
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_000
+  rotate: false
+  xy: 392, 14
+  size: 56, 11
+  orig: 245, 95
+  offset: 97, 31
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_020
+  rotate: false
+  xy: 1322, 1645
+  size: 11, 48
+  orig: 245, 95
+  offset: 18, 19
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_000
+  rotate: false
+  xy: 1735, 874
+  size: 155, 71
+  orig: 520, 446
+  offset: 115, 233
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_012
+  rotate: false
+  xy: 456, 755
+  size: 432, 303
+  orig: 520, 446
+  offset: 47, 56
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_014
+  rotate: false
+  xy: 890, 551
+  size: 408, 265
+  orig: 520, 446
+  offset: 86, 59
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_016
+  rotate: false
+  xy: 1308, 287
+  size: 379, 282
+  orig: 520, 446
+  offset: 99, 74
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_018
+  rotate: false
+  xy: 1300, 571
+  size: 394, 301
+  orig: 520, 446
+  offset: 82, 74
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_022
+  rotate: false
+  xy: 1289, 23
+  size: 406, 262
+  orig: 520, 446
+  offset: 57, 74
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_026
+  rotate: false
+  xy: 878, 1400
+  size: 442, 293
+  orig: 520, 446
+  offset: 20, 93
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_028
+  rotate: false
+  xy: 2, 573
+  size: 438, 323
+  orig: 520, 446
+  offset: 71, 59
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_030
+  rotate: false
+  xy: 890, 818
+  size: 406, 315
+  orig: 520, 446
+  offset: 74, 10
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_032
+  rotate: false
+  xy: 1322, 1137
+  size: 433, 308
+  orig: 520, 446
+  offset: 39, 31
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_034
+  rotate: false
+  xy: 442, 451
+  size: 439, 302
+  orig: 520, 446
+  offset: 62, 17
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_036
+  rotate: false
+  xy: 2, 1227
+  size: 432, 398
+  orig: 520, 446
+  offset: 75, 47
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_038
+  rotate: false
+  xy: 2, 898
+  size: 452, 327
+  orig: 520, 446
+  offset: 65, 58
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_040
+  rotate: false
+  xy: 1335, 1703
+  size: 443, 343
+  orig: 520, 446
+  offset: 77, 43
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_044
+  rotate: false
+  xy: 1780, 1629
+  size: 256, 191
+  orig: 520, 446
+  offset: 161, 118
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_004
+  rotate: false
+  xy: 751, 8
+  size: 87, 180
+  orig: 105, 238
+  offset: 11, 41
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_000
+  rotate: false
+  xy: 1780, 1822
+  size: 265, 224
+  orig: 356, 245
+  offset: 46, 12
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_018
+  rotate: false
+  xy: 1892, 877
+  size: 153, 68
+  orig: 356, 245
+  offset: 132, 148
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_014
+  rotate: false
+  xy: 2, 2
+  size: 1, 1
+  orig: 1, 1
+  offset: 0, 0
+  index: -1
+effect/skill3/sfxl/bemt_skill3_dxuli_006
+  rotate: false
+  xy: 436, 1374
+  size: 18, 19
+  orig: 182, 160
+  offset: 83, 72
+  index: -1
+
+fx_55008_yase_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/sfdg/bemt_attack_shifadaoguang_002
+  rotate: false
+  xy: 1711, 19
+  size: 109, 53
+  orig: 250, 113
+  offset: 64, 23
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_008
+  rotate: false
+  xy: 1887, 1225
+  size: 159, 83
+  orig: 250, 113
+  offset: 41, 11
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_020
+  rotate: false
+  xy: 387, 753
+  size: 239, 92
+  orig: 250, 113
+  offset: 3, 5
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_010
+  rotate: false
+  xy: 340, 1724
+  size: 377, 322
+  orig: 535, 527
+  offset: 72, 112
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_012
+  rotate: false
+  xy: 429, 259
+  size: 363, 259
+  orig: 535, 527
+  offset: 83, 175
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_014
+  rotate: false
+  xy: 1512, 614
+  size: 348, 220
+  orig: 535, 527
+  offset: 89, 214
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_000
+  rotate: false
+  xy: 1887, 1125
+  size: 145, 98
+  orig: 511, 327
+  offset: 199, 105
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_002
+  rotate: false
+  xy: 1536, 1310
+  size: 371, 217
+  orig: 511, 327
+  offset: 71, 32
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_004
+  rotate: false
+  xy: 1120, 768
+  size: 390, 235
+  orig: 511, 327
+  offset: 58, 13
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_006
+  rotate: false
+  xy: 725, 1261
+  size: 397, 254
+  orig: 511, 327
+  offset: 58, 3
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_010
+  rotate: false
+  xy: 1142, 1781
+  size: 421, 265
+  orig: 511, 327
+  offset: 63, 11
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_016
+  rotate: false
+  xy: 1142, 1519
+  size: 392, 260
+  orig: 511, 327
+  offset: 67, 7
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_018
+  rotate: false
+  xy: 1124, 1261
+  size: 389, 256
+  orig: 511, 327
+  offset: 63, 10
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_020
+  rotate: false
+  xy: 1120, 1005
+  size: 390, 254
+  orig: 511, 327
+  offset: 58, 5
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_022
+  rotate: false
+  xy: 725, 1517
+  size: 397, 261
+  orig: 511, 327
+  offset: 58, 1
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_024
+  rotate: false
+  xy: 2, 489
+  size: 422, 262
+  orig: 511, 327
+  offset: 61, 5
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_026
+  rotate: false
+  xy: 719, 1780
+  size: 421, 266
+  orig: 511, 327
+  offset: 63, 10
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_032
+  rotate: false
+  xy: 685, 736
+  size: 395, 260
+  orig: 511, 327
+  offset: 64, 5
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_034
+  rotate: false
+  xy: 1001, 270
+  size: 372, 244
+  orig: 511, 327
+  offset: 70, 14
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_036
+  rotate: false
+  xy: 1082, 516
+  size: 382, 250
+  orig: 511, 327
+  offset: 66, 11
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_038
+  rotate: false
+  xy: 1565, 1529
+  size: 390, 251
+  orig: 511, 327
+  offset: 58, 6
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_040
+  rotate: false
+  xy: 721, 998
+  size: 397, 261
+  orig: 511, 327
+  offset: 58, 1
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_044
+  rotate: false
+  xy: 1565, 1782
+  size: 421, 264
+  orig: 511, 327
+  offset: 63, 12
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_048
+  rotate: false
+  xy: 2, 238
+  size: 425, 249
+  orig: 511, 327
+  offset: 58, 17
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_052
+  rotate: false
+  xy: 1515, 1102
+  size: 370, 206
+  orig: 511, 327
+  offset: 72, 35
+  index: -1
+effect/skill/down_xl/bemt_skill_jiaoxiaxuli_056
+  rotate: false
+  xy: 1466, 491
+  size: 336, 121
+  orig: 511, 327
+  offset: 89, 73
+  index: -1
+effect/skill/huanrao/bemt_skill_huanrao_008
+  rotate: false
+  xy: 1884, 501
+  size: 162, 143
+  orig: 334, 185
+  offset: 167, 40
+  index: -1
+effect/skill/huanrao/bemt_skill_huanrao_010
+  rotate: false
+  xy: 1884, 411
+  size: 162, 88
+  orig: 334, 185
+  offset: 154, 90
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_000
+  rotate: false
+  xy: 2, 1026
+  size: 364, 320
+  orig: 472, 463
+  offset: 43, 76
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_006
+  rotate: false
+  xy: 2, 1678
+  size: 336, 368
+  orig: 472, 463
+  offset: 44, 34
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_008
+  rotate: false
+  xy: 387, 847
+  size: 296, 324
+  orig: 472, 463
+  offset: 67, 61
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_010
+  rotate: false
+  xy: 2, 1348
+  size: 360, 328
+  orig: 472, 463
+  offset: 62, 53
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_014
+  rotate: false
+  xy: 426, 544
+  size: 203, 207
+  orig: 472, 463
+  offset: 131, 123
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_016
+  rotate: false
+  xy: 1707, 281
+  size: 175, 208
+  orig: 472, 463
+  offset: 129, 122
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_018
+  rotate: false
+  xy: 794, 313
+  size: 205, 205
+  orig: 472, 463
+  offset: 129, 122
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_000
+  rotate: false
+  xy: 368, 1173
+  size: 351, 271
+  orig: 401, 286
+  offset: 39, 0
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_004
+  rotate: false
+  xy: 1375, 281
+  size: 330, 208
+  orig: 401, 286
+  offset: 54, 35
+  index: -1
+effect/skill/zadidaoguang/bemt_skill_zadidaoguang_006
+  rotate: false
+  xy: 1505, 74
+  size: 319, 205
+  orig: 401, 286
+  offset: 55, 33
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_016
+  rotate: false
+  xy: 1830, 842
+  size: 216, 59
+  orig: 245, 95
+  offset: 10, 13
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_002
+  rotate: false
+  xy: 631, 520
+  size: 381, 214
+  orig: 520, 446
+  offset: 79, 80
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_004
+  rotate: false
+  xy: 2, 10
+  size: 391, 226
+  orig: 520, 446
+  offset: 89, 71
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_006
+  rotate: false
+  xy: 1161, 27
+  size: 342, 241
+  orig: 520, 446
+  offset: 112, 37
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_008
+  rotate: false
+  xy: 800, 32
+  size: 359, 236
+  orig: 520, 446
+  offset: 95, 40
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_010
+  rotate: false
+  xy: 2, 753
+  size: 383, 271
+  orig: 520, 446
+  offset: 98, 41
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_020
+  rotate: false
+  xy: 364, 1446
+  size: 359, 276
+  orig: 520, 446
+  offset: 117, 69
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_024
+  rotate: false
+  xy: 429, 11
+  size: 369, 246
+  orig: 520, 446
+  offset: 95, 75
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_042
+  rotate: false
+  xy: 1512, 836
+  size: 316, 264
+  orig: 520, 446
+  offset: 121, 102
+  index: -1
+effect/skill2/luanwu/bemt_skill2_daoguang01_046
+  rotate: false
+  xy: 1505, 2
+  size: 204, 70
+  orig: 520, 446
+  offset: 213, 192
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_000
+  rotate: false
+  xy: 1957, 1532
+  size: 60, 89
+  orig: 105, 238
+  offset: 33, 42
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_002
+  rotate: false
+  xy: 1957, 1623
+  size: 88, 157
+  orig: 105, 238
+  offset: 10, 36
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_006
+  rotate: false
+  xy: 1909, 1347
+  size: 86, 180
+  orig: 105, 238
+  offset: 12, 41
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_010
+  rotate: false
+  xy: 1014, 612
+  size: 64, 122
+  orig: 105, 238
+  offset: 23, 86
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_012
+  rotate: false
+  xy: 1804, 501
+  size: 45, 111
+  orig: 105, 238
+  offset: 36, 87
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_010
+  rotate: false
+  xy: 1826, 82
+  size: 200, 197
+  orig: 356, 245
+  offset: 111, 12
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_012
+  rotate: false
+  xy: 1830, 903
+  size: 196, 197
+  orig: 356, 245
+  offset: 113, 14
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_014
+  rotate: false
+  xy: 1862, 646
+  size: 174, 194
+  orig: 356, 245
+  offset: 124, 20
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_016
+  rotate: false
+  xy: 1884, 289
+  size: 153, 120
+  orig: 356, 245
+  offset: 133, 95
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_018
+  rotate: false
+  xy: 1826, 2
+  size: 168, 78
+  orig: 199, 98
+  offset: 30, 9
+  index: -1
+effect/skill3/sfxl/bemt_skill3_dxuli_004
+  rotate: false
+  xy: 1014, 553
+  size: 61, 57
+  orig: 182, 160
+  offset: 61, 53
+  index: -1
+
+fx_55008_yase_skill_3.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/sfdg/bemt_attack_shifadaoguang_004
+  rotate: false
+  xy: 847, 588
+  size: 139, 61
+  orig: 250, 113
+  offset: 51, 19
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_006
+  rotate: false
+  xy: 351, 528
+  size: 154, 76
+  orig: 250, 113
+  offset: 39, 11
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_010
+  rotate: false
+  xy: 1204, 584
+  size: 183, 79
+  orig: 250, 113
+  offset: 31, 15
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_012
+  rotate: false
+  xy: 1683, 612
+  size: 196, 85
+  orig: 250, 113
+  offset: 20, 6
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_014
+  rotate: false
+  xy: 794, 651
+  size: 194, 93
+  orig: 250, 113
+  offset: 18, 3
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_016
+  rotate: false
+  xy: 1494, 605
+  size: 187, 94
+  orig: 250, 113
+  offset: 26, 4
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_018
+  rotate: false
+  xy: 1494, 701
+  size: 194, 89
+  orig: 250, 113
+  offset: 25, 9
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_022
+  rotate: false
+  xy: 1268, 911
+  size: 236, 86
+  orig: 250, 113
+  offset: 10, 8
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_024
+  rotate: false
+  xy: 1506, 915
+  size: 235, 82
+  orig: 250, 113
+  offset: 9, 8
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_026
+  rotate: false
+  xy: 1743, 914
+  size: 223, 83
+  orig: 250, 113
+  offset: 9, 6
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_028
+  rotate: false
+  xy: 1723, 830
+  size: 213, 82
+  orig: 250, 113
+  offset: 12, 7
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_030
+  rotate: false
+  xy: 990, 744
+  size: 212, 77
+  orig: 250, 113
+  offset: 14, 9
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_032
+  rotate: false
+  xy: 990, 667
+  size: 212, 75
+  orig: 250, 113
+  offset: 14, 12
+  index: -1
+effect/attack/sfdg/bemt_attack_shifadaoguang_034
+  rotate: false
+  xy: 990, 596
+  size: 212, 69
+  orig: 250, 113
+  offset: 14, 18
+  index: -1
+effect/skill/dg/bemt_skill_daoguang_016
+  rotate: false
+  xy: 2, 889
+  size: 312, 108
+  orig: 535, 527
+  offset: 108, 318
+  index: -1
+effect/skill/huanrao/bemt_skill_huanrao_000
+  rotate: false
+  xy: 1389, 572
+  size: 92, 100
+  orig: 334, 185
+  offset: 22, 67
+  index: -1
+effect/skill/huanrao/bemt_skill_huanrao_002
+  rotate: false
+  xy: 393, 606
+  size: 112, 123
+  orig: 334, 185
+  offset: 18, 47
+  index: -1
+effect/skill/huanrao/bemt_skill_huanrao_006
+  rotate: false
+  xy: 804, 850
+  size: 236, 147
+  orig: 334, 185
+  offset: 96, 14
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_012
+  rotate: false
+  xy: 217, 703
+  size: 173, 172
+  orig: 472, 463
+  offset: 144, 140
+  index: -1
+effect/skill/up_xl/bemt_skill_kongzhongxuli_020
+  rotate: false
+  xy: 392, 731
+  size: 146, 144
+  orig: 472, 463
+  offset: 156, 153
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_002
+  rotate: false
+  xy: 351, 481
+  size: 143, 45
+  orig: 245, 95
+  offset: 49, 22
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_004
+  rotate: false
+  xy: 1690, 699
+  size: 205, 62
+  orig: 245, 95
+  offset: 22, 17
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_006
+  rotate: false
+  xy: 1705, 763
+  size: 210, 65
+  orig: 245, 95
+  offset: 20, 16
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_008
+  rotate: false
+  xy: 1490, 792
+  size: 213, 66
+  orig: 245, 95
+  offset: 18, 15
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_010
+  rotate: false
+  xy: 1264, 779
+  size: 218, 68
+  orig: 245, 95
+  offset: 15, 15
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_012
+  rotate: false
+  xy: 1042, 823
+  size: 220, 69
+  orig: 245, 95
+  offset: 13, 14
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_014
+  rotate: false
+  xy: 1268, 849
+  size: 220, 60
+  orig: 245, 95
+  offset: 11, 14
+  index: -1
+effect/skill2/SM/bemt_skill2_yanwu_018
+  rotate: false
+  xy: 1506, 860
+  size: 215, 53
+  orig: 245, 95
+  offset: 12, 13
+  index: -1
+effect/skill2/qitiaoyanwu/bemt_skill2_tuowei_008
+  rotate: false
+  xy: 716, 709
+  size: 76, 154
+  orig: 105, 238
+  offset: 17, 65
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_002
+  rotate: false
+  xy: 2, 693
+  size: 213, 194
+  orig: 356, 245
+  offset: 98, 12
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_004
+  rotate: false
+  xy: 2, 498
+  size: 207, 193
+  orig: 356, 245
+  offset: 104, 12
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_006
+  rotate: false
+  xy: 2, 106
+  size: 205, 193
+  orig: 356, 245
+  offset: 106, 12
+  index: -1
+effect/skill2/zadidaoguang/bemt_skill2_zadidaoguang_008
+  rotate: false
+  xy: 2, 301
+  size: 204, 195
+  orig: 356, 245
+  offset: 107, 12
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_000
+  rotate: false
+  xy: 507, 559
+  size: 172, 80
+  orig: 199, 98
+  offset: 22, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_002
+  rotate: false
+  xy: 325, 313
+  size: 170, 81
+  orig: 199, 98
+  offset: 28, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_004
+  rotate: false
+  xy: 1012, 516
+  size: 164, 78
+  orig: 199, 98
+  offset: 34, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_006
+  rotate: false
+  xy: 498, 392
+  size: 171, 82
+  orig: 199, 98
+  offset: 26, 5
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_008
+  rotate: false
+  xy: 497, 307
+  size: 167, 83
+  orig: 199, 98
+  offset: 26, 4
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_010
+  rotate: false
+  xy: 847, 506
+  size: 163, 80
+  orig: 199, 98
+  offset: 31, 7
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_012
+  rotate: false
+  xy: 847, 426
+  size: 163, 78
+  orig: 199, 98
+  offset: 31, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_014
+  rotate: false
+  xy: 507, 641
+  size: 172, 83
+  orig: 199, 98
+  offset: 21, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_016
+  rotate: false
+  xy: 217, 621
+  size: 174, 80
+  orig: 199, 98
+  offset: 22, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_020
+  rotate: false
+  xy: 681, 485
+  size: 164, 80
+  orig: 199, 98
+  offset: 32, 7
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_022
+  rotate: false
+  xy: 325, 396
+  size: 171, 83
+  orig: 199, 98
+  offset: 23, 4
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_024
+  rotate: false
+  xy: 681, 567
+  size: 164, 82
+  orig: 199, 98
+  offset: 29, 5
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_026
+  rotate: false
+  xy: 1178, 504
+  size: 164, 78
+  orig: 199, 98
+  offset: 29, 9
+  index: -1
+effect/skill3/dd/bemt_skill3_dandao_028
+  rotate: false
+  xy: 507, 476
+  size: 172, 81
+  orig: 199, 98
+  offset: 21, 9
+  index: -1
+effect/skill3/sf/bemt_skill3_baodian_000
+  rotate: false
+  xy: 208, 361
+  size: 115, 125
+  orig: 240, 135
+  offset: 58, 7
+  index: -1
+effect/skill3/sf/bemt_skill3_baodian_002
+  rotate: false
+  xy: 1204, 665
+  size: 172, 112
+  orig: 240, 135
+  offset: 29, 8
+  index: -1
+effect/skill3/sf/bemt_skill3_baodian_004
+  rotate: false
+  xy: 1483, 539
+  size: 176, 64
+  orig: 240, 135
+  offset: 21, 39
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_000
+  rotate: false
+  xy: 540, 726
+  size: 174, 137
+  orig: 304, 165
+  offset: 14, 15
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_002
+  rotate: false
+  xy: 561, 865
+  size: 241, 132
+  orig: 304, 165
+  offset: 32, 9
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_004
+  rotate: false
+  xy: 316, 877
+  size: 243, 120
+  orig: 304, 165
+  offset: 36, 14
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_006
+  rotate: false
+  xy: 1042, 894
+  size: 224, 103
+  orig: 304, 165
+  offset: 51, 26
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_008
+  rotate: false
+  xy: 2, 2
+  size: 200, 102
+  orig: 304, 165
+  offset: 53, 27
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_010
+  rotate: false
+  xy: 794, 746
+  size: 194, 102
+  orig: 304, 165
+  offset: 54, 27
+  index: -1
+effect/skill3/sfdg/bemt_skill3_daoguang_012
+  rotate: false
+  xy: 1683, 535
+  size: 183, 75
+  orig: 304, 165
+  offset: 62, 27
+  index: -1
+effect/skill3/sfxl/bemt_skill3_dxuli_000
+  rotate: false
+  xy: 211, 488
+  size: 138, 131
+  orig: 182, 160
+  offset: 21, 13
+  index: -1
+effect/skill3/sfxl/bemt_skill3_dxuli_002
+  rotate: false
+  xy: 1378, 674
+  size: 114, 103
+  orig: 182, 160
+  offset: 34, 30
+  index: -1

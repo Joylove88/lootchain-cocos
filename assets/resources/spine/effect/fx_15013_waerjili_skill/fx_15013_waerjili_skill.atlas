@@ -1,0 +1,1138 @@
+
+fx_15013_waerjili_skill.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/chibang/wejl_attack_cb_00018
+  rotate: false
+  xy: 1924, 666
+  size: 120, 123
+  orig: 284, 206
+  offset: 23, 50
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00016
+  rotate: false
+  xy: 1945, 1416
+  size: 101, 108
+  orig: 284, 206
+  offset: 47, 46
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00031
+  rotate: false
+  xy: 1924, 576
+  size: 91, 88
+  orig: 284, 206
+  offset: 148, 31
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00000
+  rotate: false
+  xy: 1954, 2009
+  size: 84, 37
+  orig: 184, 98
+  offset: 6, 7
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00014
+  rotate: false
+  xy: 1945, 1355
+  size: 94, 59
+  orig: 184, 98
+  offset: 43, 23
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00026
+  rotate: false
+  xy: 303, 51
+  size: 251, 113
+  orig: 307, 144
+  offset: 50, 9
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00038
+  rotate: false
+  xy: 303, 3
+  size: 166, 46
+  orig: 307, 144
+  offset: 6, 10
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00000
+  rotate: false
+  xy: 1193, 1526
+  size: 756, 236
+  orig: 800, 328
+  offset: 25, 50
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00001
+  rotate: false
+  xy: 1193, 1764
+  size: 759, 282
+  orig: 800, 328
+  offset: 24, 21
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00002
+  rotate: false
+  xy: 1188, 1303
+  size: 755, 221
+  orig: 800, 328
+  offset: 26, 61
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00004
+  rotate: false
+  xy: 1126, 775
+  size: 690, 221
+  orig: 800, 328
+  offset: 93, 61
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00006
+  rotate: false
+  xy: 1084, 557
+  size: 628, 216
+  orig: 800, 328
+  offset: 153, 63
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00008
+  rotate: false
+  xy: 1084, 344
+  size: 603, 211
+  orig: 800, 328
+  offset: 155, 66
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00010
+  rotate: false
+  xy: 1020, 138
+  size: 593, 204
+  orig: 800, 328
+  offset: 161, 70
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00014
+  rotate: false
+  xy: 614, 1387
+  size: 572, 176
+  orig: 800, 328
+  offset: 169, 82
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00000
+  rotate: false
+  xy: 1689, 378
+  size: 357, 177
+  orig: 680, 362
+  offset: 159, 87
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00001
+  rotate: false
+  xy: 1126, 998
+  size: 616, 303
+  orig: 680, 362
+  offset: 34, 29
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00006
+  rotate: false
+  xy: 556, 15
+  size: 462, 481
+  orig: 636, 560
+  offset: 81, 46
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00010
+  rotate: false
+  xy: 594, 498
+  size: 488, 440
+  orig: 636, 560
+  offset: 66, 32
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00012
+  rotate: false
+  xy: 602, 940
+  size: 522, 445
+  orig: 636, 560
+  offset: 46, 26
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00014
+  rotate: false
+  xy: 2, 166
+  size: 552, 460
+  orig: 636, 560
+  offset: 31, 21
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00016
+  rotate: false
+  xy: 614, 1565
+  size: 577, 481
+  orig: 636, 560
+  offset: 21, 17
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00018
+  rotate: false
+  xy: 2, 1073
+  size: 598, 489
+  orig: 636, 560
+  offset: 10, 14
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00020
+  rotate: false
+  xy: 2, 1564
+  size: 610, 482
+  orig: 636, 560
+  offset: 5, 11
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00022
+  rotate: false
+  xy: 2, 628
+  size: 590, 443
+  orig: 636, 560
+  offset: 8, 23
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00001
+  rotate: false
+  xy: 1020, 2
+  size: 267, 134
+  orig: 320, 202
+  offset: 27, 16
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00002
+  rotate: false
+  xy: 1289, 2
+  size: 267, 134
+  orig: 320, 202
+  offset: 27, 16
+  index: -1
+effect/skill1/xuli/wejl_skill1_xl_00005
+  rotate: false
+  xy: 1744, 1019
+  size: 284, 282
+  orig: 400, 400
+  offset: 57, 59
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00004
+  rotate: false
+  xy: 1615, 13
+  size: 384, 128
+  orig: 440, 178
+  offset: 31, 25
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00000
+  rotate: false
+  xy: 2, 2
+  size: 299, 162
+  orig: 480, 339
+  offset: 41, 150
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00006
+  rotate: false
+  xy: 1689, 143
+  size: 351, 233
+  orig: 480, 339
+  offset: 74, 65
+  index: -1
+effect/skill2/xuli1/wejl_skill2_xl_00006
+  rotate: false
+  xy: 1714, 563
+  size: 208, 210
+  orig: 320, 320
+  offset: 56, 55
+  index: -1
+effect/skill2/xuli2/wejl_skill2_xl2_00002
+  rotate: false
+  xy: 1818, 791
+  size: 226, 226
+  orig: 304, 304
+  offset: 41, 42
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00025
+  rotate: false
+  xy: 1945, 1323
+  size: 99, 30
+  orig: 384, 101
+  offset: 202, 12
+  index: -1
+
+fx_15013_waerjili_skill_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/ci/wejl_attack_c_00000
+  rotate: false
+  xy: 730, 2
+  size: 330, 118
+  orig: 400, 155
+  offset: 58, 19
+  index: -1
+effect/attack/ci/wejl_attack_c_00001
+  rotate: false
+  xy: 1208, 691
+  size: 374, 137
+  orig: 400, 155
+  offset: 12, 7
+  index: -1
+effect/attack/ci/wejl_attack_c_00002
+  rotate: false
+  xy: 1085, 85
+  size: 369, 120
+  orig: 400, 155
+  offset: 13, 17
+  index: -1
+effect/attack/ci/wejl_attack_c_00006
+  rotate: false
+  xy: 1686, 976
+  size: 326, 133
+  orig: 400, 155
+  offset: 63, 13
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00002
+  rotate: false
+  xy: 1297, 210
+  size: 109, 59
+  orig: 184, 98
+  offset: 9, 6
+  index: -1
+effect/skill1/changqiang/wejl_skill1_cq_00012
+  rotate: false
+  xy: 1435, 1850
+  size: 589, 196
+  orig: 800, 328
+  offset: 161, 74
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00002
+  rotate: false
+  xy: 896, 1790
+  size: 537, 256
+  orig: 680, 362
+  offset: 83, 58
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00004
+  rotate: false
+  xy: 896, 1528
+  size: 527, 260
+  orig: 680, 362
+  offset: 81, 50
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00006
+  rotate: false
+  xy: 1435, 1600
+  size: 518, 248
+  orig: 680, 362
+  offset: 94, 65
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00008
+  rotate: false
+  xy: 1425, 1355
+  size: 518, 243
+  orig: 680, 362
+  offset: 93, 69
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00010
+  rotate: false
+  xy: 465, 1373
+  size: 428, 225
+  orig: 680, 362
+  offset: 126, 70
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00012
+  rotate: false
+  xy: 449, 1152
+  size: 428, 219
+  orig: 680, 362
+  offset: 125, 69
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00014
+  rotate: false
+  xy: 879, 1089
+  size: 424, 218
+  orig: 680, 362
+  offset: 128, 70
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00016
+  rotate: false
+  xy: 895, 1309
+  size: 430, 217
+  orig: 680, 362
+  offset: 122, 70
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00018
+  rotate: false
+  xy: 449, 934
+  size: 418, 216
+  orig: 680, 362
+  offset: 130, 71
+  index: -1
+effect/skill1/dabaozha_down/wejl_skill1_dbzx_00020
+  rotate: false
+  xy: 406, 718
+  size: 414, 214
+  orig: 680, 362
+  offset: 134, 72
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00000
+  rotate: false
+  xy: 2, 368
+  size: 395, 367
+  orig: 636, 560
+  offset: 116, 78
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00001
+  rotate: false
+  xy: 2, 737
+  size: 402, 378
+  orig: 636, 560
+  offset: 116, 74
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00002
+  rotate: false
+  xy: 465, 1600
+  size: 429, 446
+  orig: 636, 560
+  offset: 98, 68
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00004
+  rotate: false
+  xy: 2, 1575
+  size: 461, 471
+  orig: 636, 560
+  offset: 81, 57
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00008
+  rotate: false
+  xy: 2, 1117
+  size: 445, 456
+  orig: 636, 560
+  offset: 91, 38
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00024
+  rotate: false
+  xy: 2, 14
+  size: 396, 352
+  orig: 636, 560
+  offset: 191, 96
+  index: -1
+effect/skill1/dabaozha_up/wejl_skill1_dbzs_00026
+  rotate: false
+  xy: 1710, 1111
+  size: 245, 242
+  orig: 636, 560
+  offset: 217, 105
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00001
+  rotate: false
+  xy: 1113, 207
+  size: 182, 418
+  orig: 280, 496
+  offset: 46, 42
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00002
+  rotate: false
+  xy: 1482, 269
+  size: 178, 420
+  orig: 280, 496
+  offset: 50, 40
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00004
+  rotate: false
+  xy: 1844, 330
+  size: 182, 407
+  orig: 280, 496
+  offset: 48, 39
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00000
+  rotate: false
+  xy: 1062, 2
+  size: 132, 81
+  orig: 320, 202
+  offset: 94, 49
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00010
+  rotate: false
+  xy: 1456, 102
+  size: 261, 165
+  orig: 320, 202
+  offset: 29, 18
+  index: -1
+effect/skill1/xuli/wejl_skill1_xl_00001
+  rotate: false
+  xy: 400, 78
+  size: 307, 297
+  orig: 400, 400
+  offset: 42, 51
+  index: -1
+effect/skill1/xuli/wejl_skill1_xl_00003
+  rotate: false
+  xy: 399, 377
+  size: 334, 339
+  orig: 400, 400
+  offset: 36, 30
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00001
+  rotate: false
+  xy: 1327, 1207
+  size: 381, 146
+  orig: 440, 178
+  offset: 31, 14
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00002
+  rotate: false
+  xy: 1305, 1080
+  size: 379, 125
+  orig: 440, 178
+  offset: 31, 28
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00010
+  rotate: false
+  xy: 1803, 21
+  size: 196, 83
+  orig: 440, 178
+  offset: 112, 44
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00001
+  rotate: false
+  xy: 869, 868
+  size: 411, 219
+  orig: 480, 339
+  offset: 34, 58
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00002
+  rotate: false
+  xy: 822, 627
+  size: 384, 239
+  orig: 480, 339
+  offset: 59, 61
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00004
+  rotate: false
+  xy: 1659, 739
+  size: 362, 235
+  orig: 480, 339
+  offset: 72, 64
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00010
+  rotate: false
+  xy: 735, 374
+  size: 376, 251
+  orig: 480, 339
+  offset: 48, 42
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00012
+  rotate: false
+  xy: 1282, 830
+  size: 375, 248
+  orig: 480, 339
+  offset: 48, 41
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00014
+  rotate: false
+  xy: 709, 122
+  size: 374, 250
+  orig: 480, 339
+  offset: 48, 37
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00020
+  rotate: false
+  xy: 1719, 106
+  size: 250, 208
+  orig: 480, 339
+  offset: 171, 67
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00001
+  rotate: false
+  xy: 1297, 271
+  size: 183, 418
+  orig: 268, 480
+  offset: 43, 27
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00002
+  rotate: false
+  xy: 1662, 316
+  size: 180, 421
+  orig: 268, 480
+  offset: 46, 24
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00013
+  rotate: false
+  xy: 1470, 15
+  size: 331, 85
+  orig: 384, 101
+  offset: 24, 5
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00017
+  rotate: false
+  xy: 400, 2
+  size: 328, 74
+  orig: 384, 101
+  offset: 28, 5
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00019
+  rotate: false
+  xy: 1196, 8
+  size: 272, 75
+  orig: 384, 101
+  offset: 73, 5
+  index: -1
+
+fx_15013_waerjili_skill_3.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/chibang/wejl_attack_cb_00016
+  rotate: false
+  xy: 163, 173
+  size: 132, 140
+  orig: 284, 206
+  offset: 33, 29
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00017
+  rotate: false
+  xy: 403, 1327
+  size: 115, 126
+  orig: 284, 206
+  offset: 40, 54
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00019
+  rotate: false
+  xy: 164, 445
+  size: 116, 124
+  orig: 284, 206
+  offset: 22, 49
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00020
+  rotate: false
+  xy: 163, 315
+  size: 112, 128
+  orig: 284, 206
+  offset: 23, 49
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00021
+  rotate: false
+  xy: 136, 2
+  size: 127, 132
+  orig: 284, 206
+  offset: 20, 47
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00022
+  rotate: false
+  xy: 1529, 1288
+  size: 136, 126
+  orig: 284, 206
+  offset: 23, 53
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00023
+  rotate: false
+  xy: 1373, 1290
+  size: 154, 124
+  orig: 284, 206
+  offset: 18, 53
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00024
+  rotate: false
+  xy: 1211, 1346
+  size: 155, 129
+  orig: 284, 206
+  offset: 25, 33
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00025
+  rotate: false
+  xy: 1527, 1159
+  size: 139, 127
+  orig: 284, 206
+  offset: 38, 23
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00026
+  rotate: false
+  xy: 1373, 1189
+  size: 152, 99
+  orig: 284, 206
+  offset: 57, 20
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00027
+  rotate: false
+  xy: 1211, 1239
+  size: 160, 105
+  orig: 284, 206
+  offset: 105, 18
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00028
+  rotate: false
+  xy: 374, 1539
+  size: 152, 112
+  orig: 284, 206
+  offset: 108, 22
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00029
+  rotate: false
+  xy: 1668, 1093
+  size: 140, 117
+  orig: 284, 206
+  offset: 113, 26
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00030
+  rotate: false
+  xy: 2, 2
+  size: 132, 132
+  orig: 284, 206
+  offset: 117, 25
+  index: -1
+effect/attack/chibang/wejl_attack_cb_00031
+  rotate: false
+  xy: 297, 207
+  size: 129, 131
+  orig: 284, 206
+  offset: 123, 24
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00017
+  rotate: false
+  xy: 1025, 1139
+  size: 109, 110
+  orig: 284, 206
+  offset: 38, 61
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00018
+  rotate: false
+  xy: 428, 64
+  size: 120, 111
+  orig: 284, 206
+  offset: 22, 58
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00019
+  rotate: false
+  xy: 428, 177
+  size: 125, 112
+  orig: 284, 206
+  offset: 20, 55
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00020
+  rotate: false
+  xy: 1810, 1233
+  size: 130, 120
+  orig: 284, 206
+  offset: 19, 51
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00021
+  rotate: false
+  xy: 297, 85
+  size: 129, 120
+  orig: 284, 206
+  offset: 22, 52
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00022
+  rotate: false
+  xy: 1810, 1111
+  size: 130, 120
+  orig: 284, 206
+  offset: 25, 51
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00023
+  rotate: false
+  xy: 1799, 1355
+  size: 137, 123
+  orig: 284, 206
+  offset: 27, 45
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00024
+  rotate: false
+  xy: 1668, 1212
+  size: 140, 128
+  orig: 284, 206
+  offset: 30, 36
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00025
+  rotate: false
+  xy: 1667, 1342
+  size: 130, 129
+  orig: 284, 206
+  offset: 40, 31
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00026
+  rotate: false
+  xy: 1811, 1480
+  size: 147, 109
+  orig: 284, 206
+  offset: 70, 8
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00027
+  rotate: false
+  xy: 800, 908
+  size: 135, 115
+  orig: 284, 206
+  offset: 121, 6
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00028
+  rotate: false
+  xy: 937, 907
+  size: 130, 116
+  orig: 284, 206
+  offset: 123, 12
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00029
+  rotate: false
+  xy: 428, 291
+  size: 119, 114
+  orig: 284, 206
+  offset: 128, 19
+  index: -1
+effect/attack/chibangdg/wejl_attack_cbglow_00030
+  rotate: false
+  xy: 1025, 1027
+  size: 113, 110
+  orig: 284, 206
+  offset: 133, 22
+  index: -1
+effect/attack/ci/wejl_attack_c_00004
+  rotate: false
+  xy: 1432, 1642
+  size: 377, 127
+  orig: 400, 155
+  offset: 9, 14
+  index: -1
+effect/attack/ci/wejl_attack_c_00008
+  rotate: false
+  xy: 1645, 1473
+  size: 149, 94
+  orig: 400, 155
+  offset: 137, 31
+  index: -1
+effect/attack/ci/wejl_attack_c_00010
+  rotate: false
+  xy: 1810, 1015
+  size: 126, 94
+  orig: 400, 155
+  offset: 135, 33
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00004
+  rotate: false
+  xy: 277, 340
+  size: 147, 65
+  orig: 184, 98
+  offset: 12, 6
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00006
+  rotate: false
+  xy: 1645, 1569
+  size: 164, 71
+  orig: 184, 98
+  offset: 18, 5
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00008
+  rotate: false
+  xy: 265, 6
+  size: 129, 77
+  orig: 184, 98
+  offset: 20, 4
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00010
+  rotate: false
+  xy: 403, 1455
+  size: 123, 82
+  orig: 184, 98
+  offset: 25, 4
+  index: -1
+effect/attack/yanwu1/wejl_attack_yw_00012
+  rotate: false
+  xy: 421, 901
+  size: 103, 67
+  orig: 184, 98
+  offset: 37, 12
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00028
+  rotate: false
+  xy: 533, 514
+  size: 234, 129
+  orig: 307, 144
+  offset: 35, 9
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00030
+  rotate: false
+  xy: 1164, 1528
+  size: 239, 122
+  orig: 307, 144
+  offset: 30, 9
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00032
+  rotate: false
+  xy: 282, 512
+  size: 249, 119
+  orig: 307, 144
+  offset: 16, 6
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00034
+  rotate: false
+  xy: 1379, 1416
+  size: 237, 110
+  orig: 307, 144
+  offset: 13, 7
+  index: -1
+effect/attack/yanwu2/wejl_attack_yw2_00036
+  rotate: false
+  xy: 1145, 1477
+  size: 232, 49
+  orig: 307, 144
+  offset: 9, 8
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00000
+  rotate: false
+  xy: 1811, 1591
+  size: 178, 197
+  orig: 280, 496
+  offset: 50, 34
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00006
+  rotate: false
+  xy: 371, 1653
+  size: 183, 393
+  orig: 280, 496
+  offset: 48, 42
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00008
+  rotate: false
+  xy: 2, 878
+  size: 178, 379
+  orig: 280, 496
+  offset: 50, 46
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00010
+  rotate: false
+  xy: 2, 136
+  size: 159, 369
+  orig: 280, 496
+  offset: 59, 50
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00012
+  rotate: false
+  xy: 182, 963
+  size: 125, 294
+  orig: 280, 496
+  offset: 77, 92
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00014
+  rotate: false
+  xy: 164, 571
+  size: 116, 305
+  orig: 280, 496
+  offset: 78, 105
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00016
+  rotate: false
+  xy: 184, 1259
+  size: 112, 261
+  orig: 280, 496
+  offset: 79, 125
+  index: -1
+effect/skill1/tiaoguang2/wejl_skill1_tg2_00018
+  rotate: false
+  xy: 298, 1272
+  size: 103, 248
+  orig: 280, 496
+  offset: 88, 123
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00004
+  rotate: false
+  xy: 876, 1494
+  size: 267, 143
+  orig: 320, 202
+  offset: 27, 16
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00006
+  rotate: false
+  xy: 1164, 1652
+  size: 266, 152
+  orig: 320, 202
+  offset: 27, 17
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00008
+  rotate: false
+  xy: 896, 1639
+  size: 266, 163
+  orig: 320, 202
+  offset: 28, 16
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00012
+  rotate: false
+  xy: 792, 1251
+  size: 251, 165
+  orig: 320, 202
+  offset: 35, 17
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00014
+  rotate: false
+  xy: 538, 845
+  size: 244, 163
+  orig: 320, 202
+  offset: 35, 23
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00016
+  rotate: false
+  xy: 1405, 1528
+  size: 238, 112
+  orig: 320, 202
+  offset: 36, 27
+  index: -1
+effect/skill1/tiaoguang2_down/wejl_skill1_tg2x_00018
+  rotate: false
+  xy: 282, 407
+  size: 231, 103
+  orig: 320, 202
+  offset: 40, 33
+  index: -1
+effect/skill1/xuli/wejl_skill1_xl_00000
+  rotate: false
+  xy: 1452, 1771
+  size: 274, 275
+  orig: 400, 400
+  offset: 43, 57
+  index: -1
+effect/skill1/xuli/wejl_skill1_xl_00007
+  rotate: false
+  xy: 551, 1010
+  size: 247, 193
+  orig: 400, 400
+  offset: 50, 101
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00000
+  rotate: false
+  xy: 528, 1522
+  size: 346, 123
+  orig: 440, 178
+  offset: 64, 30
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00006
+  rotate: false
+  xy: 556, 1647
+  size: 338, 142
+  orig: 440, 178
+  offset: 80, 17
+  index: -1
+effect/skill2/ci2/wejl_skill2_c2_00008
+  rotate: false
+  xy: 186, 1522
+  size: 186, 128
+  orig: 440, 178
+  offset: 132, 14
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00008
+  rotate: false
+  xy: 556, 1791
+  size: 314, 255
+  orig: 480, 339
+  offset: 108, 41
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00016
+  rotate: false
+  xy: 872, 1804
+  size: 288, 242
+  orig: 480, 339
+  offset: 134, 34
+  index: -1
+effect/skill2/dadaoguang/wejl_skill2_ddg_00018
+  rotate: false
+  xy: 1162, 1806
+  size: 288, 240
+  orig: 480, 339
+  offset: 133, 35
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00000
+  rotate: false
+  xy: 528, 645
+  size: 180, 198
+  orig: 268, 480
+  offset: 46, 18
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00004
+  rotate: false
+  xy: 2, 1641
+  size: 182, 405
+  orig: 268, 480
+  offset: 45, 25
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00006
+  rotate: false
+  xy: 186, 1652
+  size: 183, 394
+  orig: 268, 480
+  offset: 45, 26
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00008
+  rotate: false
+  xy: 2, 1259
+  size: 180, 380
+  orig: 268, 480
+  offset: 46, 30
+  index: -1
+effect/skill2/tiaoguang/wejl_skill2_tg_00010
+  rotate: false
+  xy: 2, 507
+  size: 160, 369
+  orig: 268, 480
+  offset: 56, 35
+  index: -1
+effect/skill2/xuli1/wejl_skill2_xl_00000
+  rotate: false
+  xy: 551, 1205
+  size: 239, 229
+  orig: 320, 320
+  offset: 39, 57
+  index: -1
+effect/skill2/xuli1/wejl_skill2_xl_00002
+  rotate: false
+  xy: 282, 633
+  size: 244, 243
+  orig: 320, 320
+  offset: 33, 38
+  index: -1
+effect/skill2/xuli1/wejl_skill2_xl_00004
+  rotate: false
+  xy: 1728, 1790
+  size: 258, 256
+  orig: 320, 320
+  offset: 28, 32
+  index: -1
+effect/skill2/xuli1/wejl_skill2_xl_00008
+  rotate: false
+  xy: 1045, 1252
+  size: 164, 164
+  orig: 320, 320
+  offset: 78, 78
+  index: -1
+effect/skill2/xuli2/wejl_skill2_xl2_00000
+  rotate: false
+  xy: 800, 1025
+  size: 223, 224
+  orig: 304, 304
+  offset: 31, 45
+  index: -1
+effect/skill2/xuli2/wejl_skill2_xl2_00004
+  rotate: false
+  xy: 309, 1028
+  size: 240, 242
+  orig: 304, 304
+  offset: 33, 31
+  index: -1
+effect/skill2/xuli2/wejl_skill2_xl2_00006
+  rotate: false
+  xy: 710, 707
+  size: 136, 136
+  orig: 304, 304
+  offset: 83, 85
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00011
+  rotate: false
+  xy: 182, 878
+  size: 237, 83
+  orig: 384, 101
+  offset: 51, 5
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00015
+  rotate: false
+  xy: 528, 1436
+  size: 342, 84
+  orig: 384, 101
+  offset: 24, 5
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00021
+  rotate: false
+  xy: 872, 1418
+  size: 268, 74
+  orig: 384, 101
+  offset: 71, 5
+  index: -1
+effect/skill2/yanchen/wejl_skill2_yc_00023
+  rotate: false
+  xy: 309, 970
+  size: 227, 56
+  orig: 384, 101
+  offset: 104, 5
+  index: -1
