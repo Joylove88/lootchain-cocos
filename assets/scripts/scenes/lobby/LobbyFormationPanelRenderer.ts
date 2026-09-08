@@ -146,9 +146,7 @@ export class LobbyFormationPanelRenderer {
     veilGraphics.fillColor = rgba(5, 4, 6, 90);
     veilGraphics.rect(-layout.width / 2, -layout.height / 2 + 96 * scale, layout.width, 40 * scale);
     veilGraphics.fill();
-    veilGraphics.fillColor = rgba(5, 4, 6, 130);
-    veilGraphics.rect(-layout.width / 2, layout.height / 2 - 84 * scale, layout.width, 84 * scale);
-    veilGraphics.fill();
+    // (2026-09-08 用户反馈:顶部整行遮盖暗带移除——标题横幅/战力金匾自带暗底,直接压在场景上。)
     // 功能页采用场景式导航，遮罩只阻断底层输入，不再承担点击关闭语义。
     dim.addComponent(BlockInputEvents);
 
@@ -332,13 +330,15 @@ export class LobbyFormationPanelRenderer {
     scale: number,
   ): void {
     const gap = 18 * scale;
-    // 2026-09-08 参考图还原:右栏宽度跟随竖版面板素材 2:3 等比(栏高×0.68),战场吃剩余宽度。
-    const rightWidth = Math.max(250 * scale, Math.min(width - 330 * scale - gap, height * 0.68));
+    // 2026-09-08 用户反馈:右栏面板加高 15%(中心不变,向上下各溢出 body 一截);
+    // 栏宽跟随竖版面板素材 2:3 等比(加高后栏高×0.68),战场吃剩余宽度。
+    const pickerHeight = height * 1.15;
+    const rightWidth = Math.max(250 * scale, Math.min(width - 330 * scale - gap, pickerHeight * 0.68));
     const leftWidth = Math.max(200 * scale, width - rightWidth - gap);
     const leftX = x - width / 2 + leftWidth / 2;
     const rightX = x + width / 2 - rightWidth / 2;
     this.renderFormationBattlefield(parent, slots, leftX, y, leftWidth, height, scale);
-    this.renderFormationHeroPicker(parent, heroes, selectedHeroIds, rightX, y, rightWidth, height, scale);
+    this.renderFormationHeroPicker(parent, heroes, selectedHeroIds, rightX, y, rightWidth, pickerHeight, scale);
   }
 
   private renderFormationBattlefield(parent: Node, slots: Array<LobbyHeroItemVO | null>, x: number, y: number, width: number, height: number, scale: number): void {
@@ -346,14 +346,14 @@ export class LobbyFormationPanelRenderer {
     // 英雄直接站在全屏场景上(参考图);field 仅作站位坐标容器。
     const field = this.host.addChildPlainNode(parent, 'LobbyFormationBattlefieldScene', x, y, width, height);
 
-    // 站位 2+2 浅弧(2026-09-08 用户反馈:背景整屏铺满后按紧凑跨度重排,不再随超宽战场散开):
-    // 跨度基数取 min(栏宽, 栏高×1.55),前排中路靠下、后排两翼抬高缩小做近大远小,整体成一道浅弧。
+    // 站位 2+2 浅弧(2026-09-08 用户反馈二调:全员站地面带——场景地平线约在栏中线,
+    // 后排此前 +0.06h 踩到了远山上;整体压到下半区,后排只比前排高 0.13h 且收进中路)。
     const spanWidth = Math.min(width, height * 1.55);
     const positions = [
-      { x: -spanWidth * 0.13, y: -height * 0.14, depth: 1 },
-      { x: spanWidth * 0.13, y: -height * 0.14, depth: 1 },
-      { x: -spanWidth * 0.36, y: height * 0.06, depth: 0.87 },
-      { x: spanWidth * 0.36, y: height * 0.06, depth: 0.87 },
+      { x: -spanWidth * 0.12, y: -height * 0.17, depth: 1 },
+      { x: spanWidth * 0.12, y: -height * 0.17, depth: 1 },
+      { x: -spanWidth * 0.31, y: -height * 0.04, depth: 0.9 },
+      { x: spanWidth * 0.31, y: -height * 0.04, depth: 0.9 },
     ];
     const standWidth = Math.min(270 * scale, spanWidth * 0.32);
     const standHeight = Math.min(350 * scale, height * 0.66);
@@ -741,9 +741,11 @@ export class LobbyFormationPanelRenderer {
     });
     const selectedSet = new Set(selectedHeroIds);
     const allVisible = this.visibleHeroes(heroes);
-    const visible = this.pickerRarityFilter === 'ALL'
+    const filtered = this.pickerRarityFilter === 'ALL'
       ? allVisible
       : allVisible.filter((hero) => safeText(hero.rarity).toUpperCase() === this.pickerRarityFilter);
+    // 2026-09-08 用户反馈:已上阵英雄置顶(稳定排序,组内保持原有战力序)。
+    const visible = [...filtered].sort((a, b) => (selectedSet.has(b.id) ? 1 : 0) - (selectedSet.has(a.id) ? 1 : 0));
     // 底部保存阵容按钮(阵容变更本就自动回写,按钮提供显式确认);压在面板内框底部。
     // 2026-09-08 用户反馈:按钮放大一档。
     const saveHeight = 60 * scale;
@@ -949,22 +951,35 @@ export class LobbyFormationPanelRenderer {
     const noteText = powerShort
       ? `战力不足（还差 ${formatInteger(power.powerGap)}），仍可挑战。`
       : '点击候选英雄上阵，点击已上阵英雄下阵；阵容仅用于本次出战快照。';
+    // 2026-09-08 右栏加高 15% 后面板左缘会压到居中的"挑战"按钮:提示行与三按钮
+    // 重新居中到战场区正下方(分栏公式须与 renderBattleFormationScene 保持一致)。
+    const compact = width < 720 * scale || height < 450 * scale;
+    let footerCenterX = 0;
+    if (!compact) {
+      const bodyWidth = width - 76 * scale;
+      const bodyHeight = Math.max(150 * scale, height - 218 * scale);
+      const splitGap = 18 * scale;
+      const pickerHeight = bodyHeight * 1.15;
+      const rightWidth = Math.max(250 * scale, Math.min(bodyWidth - 330 * scale - splitGap, pickerHeight * 0.68));
+      const leftWidth = Math.max(200 * scale, bodyWidth - rightWidth - splitGap);
+      footerCenterX = -bodyWidth / 2 + leftWidth / 2;
+    }
     // 提示行上移到底部按钮上方,避免被三个按钮盖住(按钮中心 y=-h/2+38、高 60,顶到 y=-h/2+68)。
-    const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', noteText, 0, -height / 2 + 92 * scale, 15 * scale, powerShort ? rgba(255, 110, 100, 235) : rgba(168, 148, 112, 220), new Size(width - 110 * scale, 22 * scale));
+    const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', noteText, footerCenterX, -height / 2 + 92 * scale, 15 * scale, powerShort ? rgba(255, 110, 100, 235) : rgba(168, 148, 112, 220), new Size(Math.min(width - 110 * scale, 760 * scale), 22 * scale));
     note.overflow = Label.Overflow.SHRINK;
     if (footerHidden) {
       // 从英雄界面进入:纯布阵场景,隐藏刷新/去升级/挑战三按钮。
       return;
     }
-    const reload = this.addFooterButton(parent, 'LobbyFormationReloadButton', '刷新英雄', -226 * scale, -height / 2 + 38 * scale, 196 * scale, 60 * scale, scale);
+    const reload = this.addFooterButton(parent, 'LobbyFormationReloadButton', '刷新英雄', footerCenterX - 226 * scale, -height / 2 + 38 * scale, 196 * scale, 60 * scale, scale);
     reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyHeroRoster(), this);
-    const grow = this.addFooterButton(parent, 'LobbyFormationGrowButton', power.enough ? '查看英雄' : '去升级', 0, -height / 2 + 38 * scale, 196 * scale, 60 * scale, scale, !state.loading && this.visibleHeroes(state.heroes).length > 0);
+    const grow = this.addFooterButton(parent, 'LobbyFormationGrowButton', power.enough ? '查看英雄' : '去升级', footerCenterX, -height / 2 + 38 * scale, 196 * scale, 60 * scale, scale, !state.loading && this.visibleHeroes(state.heroes).length > 0);
     if (!state.loading && this.visibleHeroes(state.heroes).length > 0) {
       grow.on(Button.EventType.CLICK, () => this.host.openLobbyHeroRosterPanel(), this);
     }
     const previewEnabled = this.canOpenBattlePreview(state, stageCode);
     const previewLabel = previewEnabled ? '挑战' : state.loading ? '读取中' : '不可出战';
-    const preview = this.addFooterButton(parent, 'LobbyFormationBattlePreviewButton', previewLabel, 226 * scale, -height / 2 + 38 * scale, 196 * scale, 60 * scale, scale, previewEnabled);
+    const preview = this.addFooterButton(parent, 'LobbyFormationBattlePreviewButton', previewLabel, footerCenterX + 226 * scale, -height / 2 + 38 * scale, 196 * scale, 60 * scale, scale, previewEnabled);
     if (previewEnabled) {
       preview.on(Button.EventType.CLICK, () => this.host.openLobbyBattlePreviewPanel(stageCode), this);
     }
