@@ -132,18 +132,33 @@ export class LobbyFormationPanelRenderer {
     panelGroup.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
     // 面板内容区阻挡输入，避免点英雄槽时穿透遮罩关闭弹窗。
     panelGroup.addComponent(BlockInputEvents);
-    const panel = this.host.addChildBeveledPanelNode(
-      panelGroup,
-      'LobbyFormationSceneFrame',
-      0,
-      0,
-      panelWidth,
-      panelHeight,
-      rgba(5, 5, 8, 232),
-      rgba(195, 144, 61, 230),
-      18 * scale,
-    );
-    this.drawPanelAtmosphere(panel, panelWidth, panelHeight, scale);
+    // 2026-09-08 用户反馈:背景图整屏铺满(参考图),UI 悬浮其上——不再用暗盒面板框住战场。
+    const panel = this.host.addChildPlainNode(panelGroup, 'LobbyFormationSceneFrame', 0, 0, panelWidth, panelHeight);
+    // 地狱场景等比 cover 铺满全屏(1920×1080 源图,溢出边缘不裁无碍);缺图回退深色底。
+    const bgAspect = 1920 / 1080;
+    const bgWidth = panelWidth / panelHeight > bgAspect ? panelWidth : panelHeight * bgAspect;
+    const bgHeight = bgWidth / bgAspect;
+    if (!this.host.addSprite('LobbyFormationSceneBgSprite', FORMATION_BATTLE_BG_ASSET, 0, 0, bgWidth, bgHeight, panel)) {
+      const bgFallback = panel.addComponent(Graphics);
+      bgFallback.fillColor = rgba(10, 7, 8, 250);
+      bgFallback.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+      bgFallback.fill();
+    }
+    // 顶/底压暗带(悬浮 UI 可读性):顶部承标题/战力条,底部承提示/按钮;中部只上极轻的全局压暗。
+    const veil = this.host.addChildPlainNode(panel, 'LobbyFormationSceneVeil', 0, 0, panelWidth, panelHeight);
+    const veilGraphics = veil.addComponent(Graphics);
+    veilGraphics.fillColor = rgba(8, 6, 8, 46);
+    veilGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    veilGraphics.fill();
+    veilGraphics.fillColor = rgba(5, 4, 6, 168);
+    veilGraphics.rect(-panelWidth / 2, panelHeight / 2 - 96 * scale, panelWidth, 96 * scale);
+    veilGraphics.fill();
+    veilGraphics.fillColor = rgba(5, 4, 6, 90);
+    veilGraphics.rect(-panelWidth / 2, panelHeight / 2 - 136 * scale, panelWidth, 40 * scale);
+    veilGraphics.fill();
+    veilGraphics.fillColor = rgba(5, 4, 6, 120);
+    veilGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, 74 * scale);
+    veilGraphics.fill();
     this.renderHeader(panel, panelWidth, panelHeight, scale, state, selectedStageCode, selectedHeroIds);
     this.renderBody(panel, panelWidth, panelHeight, scale, state, selectedHeroIds);
     this.renderFooter(panel, panelWidth, panelHeight, scale, selectedStageCode, state);
@@ -341,25 +356,9 @@ export class LobbyFormationPanelRenderer {
   }
 
   private renderFormationBattlefield(parent: Node, slots: Array<LobbyHeroItemVO | null>, x: number, y: number, width: number, height: number, scale: number): void {
+    // 2026-09-08 用户反馈:场景背景已整屏铺满(render 顶层),战场区不再画自己的底图/描边框/压暗带,
+    // 英雄直接站在全屏场景上(参考图);field 仅作站位坐标容器。
     const field = this.host.addChildPlainNode(parent, 'LobbyFormationBattlefieldScene', x, y, width, height);
-    this.host.addSprite('LobbyFormationBattlefieldBackgroundSprite', FORMATION_BATTLE_BG_ASSET, 0, 0, width, height, field);
-    if (FORMATION_BATTLE_GROUND_ASSET !== FORMATION_BATTLE_BG_ASSET) {
-      this.host.addSprite('LobbyFormationBattlefieldGroundSprite', FORMATION_BATTLE_GROUND_ASSET, 0, -height * 0.2, width, height * 0.48, field);
-    }
-    const graphics = field.addComponent(Graphics);
-    graphics.fillColor = rgba(6, 7, 10, 92);
-    graphics.roundRect(-width / 2, -height / 2, width, height, 10 * scale);
-    graphics.fill();
-    graphics.strokeColor = rgba(146, 108, 55, 168);
-    graphics.lineWidth = Math.max(1, 1.1 * scale);
-    graphics.stroke();
-    // 底部压暗带(双段渐变感):名牌落在暗带上更可读,也让站位区与背景过渡自然。
-    graphics.fillColor = rgba(4, 4, 6, 70);
-    graphics.rect(-width / 2 + 2 * scale, -height / 2 + 2 * scale, width - 4 * scale, height * 0.34);
-    graphics.fill();
-    graphics.fillColor = rgba(4, 4, 6, 90);
-    graphics.rect(-width / 2 + 2 * scale, -height / 2 + 2 * scale, width - 4 * scale, height * 0.16);
-    graphics.fill();
 
     // 站位 2+2 对称菱形(2026-09-05 布阵改版):槽 0/1=前排中路靠下,槽 2/3=后排两翼靠上;
     // 整体重心上提一档(名牌不贴底边),后排缩小 10% 做近大远小透视。
@@ -998,14 +997,6 @@ export class LobbyFormationPanelRenderer {
     label.outlineColor = rgba(20, 10, 4, 220);
     label.outlineWidth = Math.max(1, 1.3 * scale);
     return button;
-  }
-
-  private drawPanelAtmosphere(parent: Node, width: number, height: number, scale: number): void {
-    const node = this.host.addChildPlainNode(parent, 'LobbyFormationPanelAtmosphere', 0, 0, width, height);
-    const graphics = node.addComponent(Graphics);
-    graphics.fillColor = rgba(102, 15, 21, 40);
-    graphics.rect(-width / 2 + 18 * scale, height / 2 - 94 * scale, width - 36 * scale, 48 * scale);
-    graphics.fill();
   }
 
   private drawSectionFrame(graphics: Graphics, width: number, height: number, scale: number, fill: Color): void {
