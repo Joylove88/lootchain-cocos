@@ -58,7 +58,7 @@ export class UiPrimitiveFactory {
     return label;
   }
 
-  addEditBox(initialText: string, x: number, y: number, width: number, layout?: UiLayout, password = false): EditBox {
+  addEditBox(initialText: string, x: number, y: number, width: number, layout?: UiLayout, password = false, placeholder = ''): EditBox {
     const currentLayout = layout ?? this.host.resolveLayout();
     const node = this.host.createUiNode('EditBox');
     // 先冻结节点(2026-09-06 四修):EditBox 的 __preload 在激活时才建 DOM——激活前把 inputMode
@@ -103,6 +103,8 @@ export class UiPrimitiveFactory {
     editBox.textLabel = textLabel;
     editBox.placeholderLabel = placeholderLabel;
     editBox.maxLength = 256;
+    // 占位文案不走 Cocos placeholderLabel(引擎激活时会按自己的规则重排该 Label,位置跑偏),
+    // 而是设到常驻的原生 DOM 元素上(styleNativeInput),Web 端视觉层本来就是它。
     editBox.placeholder = '';
     editBox.inputMode = EditBox.InputMode.SINGLE_LINE;
     editBox.string = initialText;
@@ -115,7 +117,7 @@ export class UiPrimitiveFactory {
     node.getChildByName('PLACEHOLDER_LABEL')?.destroy();
     // 激活 → __preload → 引擎按 SINGLE_LINE 建 <input> 并做官方尺寸同步。
     node.active = true;
-    this.styleNativeInput(editBox);
+    this.styleNativeInput(editBox, placeholder);
     return editBox;
   }
 
@@ -124,9 +126,9 @@ export class UiPrimitiveFactory {
    * (2026-09-06 六修):正解是让它完全透明融入——外观全交给 addFramedEditBox 画的金框,
    * 元素只保留文字颜色与金色光标,聚焦/非聚焦视觉一致。
    */
-  private styleNativeInput(editBox: EditBox): void {
+  private styleNativeInput(editBox: EditBox, placeholder = ''): void {
     try {
-      const el = (editBox as unknown as { _impl?: { _edTxt?: { style?: Record<string, string> } | null } })._impl?._edTxt;
+      const el = (editBox as unknown as { _impl?: { _edTxt?: ({ style?: Record<string, string>; placeholder?: string; classList?: { add(name: string): void } }) | null } })._impl?._edTxt;
       if (!el || !el.style) {
         return;
       }
@@ -139,6 +141,15 @@ export class UiPrimitiveFactory {
       el.style.paddingLeft = '14px';
       el.style.overflow = 'hidden';
       el.style.resize = 'none';
+      // 占位文案挂原生元素(2026-09-09):颜色经一次性注入的 ::placeholder 样式统一成暗金灰。
+      el.placeholder = placeholder;
+      el.classList?.add('lc-native-input');
+      if (typeof document !== 'undefined' && !document.getElementById('lc-native-input-style')) {
+        const style = document.createElement('style');
+        style.id = 'lc-native-input-style';
+        style.textContent = '.lc-native-input::placeholder { color: rgba(150, 136, 110, 0.9); }';
+        document.head.appendChild(style);
+      }
     } catch (error) {
       // 非 Web 平台或引擎内部结构变化:静默跳过,输入功能不受影响。
       void error;
@@ -156,9 +167,13 @@ export class UiPrimitiveFactory {
     editBox.node.on(EditBox.EventType.EDITING_RETURN, mask, this);
   }
 
-  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false): EditBox {
-    this.addBeveledPanel('InputFrame', x, y, width + 28, layout.inputHeight + 8, rgba(8, 7, 9, 220), rgba(185, 138, 58, 190), 8);
-    return this.addEditBox(initialText, x, y, width, layout, password);
+  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false, options?: { frameless?: boolean; placeholder?: string }): EditBox {
+    // frameless(2026-09-09 登录素材化改版):外观由调用方自摆素材框时不再画手绘金框,
+    // EditBox 本体仍走同一条冻结-激活链路(见 addEditBox),只是少了这层兄弟节点。
+    if (!options?.frameless) {
+      this.addBeveledPanel('InputFrame', x, y, width + 28, layout.inputHeight + 8, rgba(8, 7, 9, 220), rgba(185, 138, 58, 190), 8);
+    }
+    return this.addEditBox(initialText, x, y, width, layout, password, options?.placeholder ?? '');
   }
 
   addButton(text: string, x: number, y: number, callback: () => void, layout?: UiLayout, width?: number, height?: number): Button {

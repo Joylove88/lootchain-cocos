@@ -4880,8 +4880,8 @@ export class LootChainGameRoot extends Component {
     this.uiPrimitiveFactory.applyPasswordMask(editBox, textLabel);
   }
 
-  private addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false): EditBox {
-    return this.uiPrimitiveFactory.addFramedEditBox(initialText, x, y, width, layout, password);
+  private addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false, options?: { frameless?: boolean; placeholder?: string }): EditBox {
+    return this.uiPrimitiveFactory.addFramedEditBox(initialText, x, y, width, layout, password, options);
   }
 
   private addButton(text: string, x: number, y: number, callback: () => void, layout?: UiLayout, width?: number, height?: number): Button {
