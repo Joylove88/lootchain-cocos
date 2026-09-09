@@ -168,10 +168,11 @@ export class LoginRenderer {
     scene.node.addComponent(BlockInputEvents);
 
     // 面板等比锚高(900×1238),矮屏下随安全高收缩;超窄屏再按宽度钳一道。
+    // 2026-09-09 用户反馈:整个登录框放大一档(高上限 720→800,边距/宽钳同步放宽)。
     const panelAspect = 900 / 1238;
-    let formHeight = Math.min(720 * scale, layout.safeHeight - 16 * scale);
+    let formHeight = Math.min(800 * scale, layout.safeHeight - 8 * scale);
     let formWidth = formHeight * panelAspect;
-    const maxWidth = Math.max(320 * scale, layout.safeWidth * 0.62);
+    const maxWidth = Math.max(320 * scale, layout.safeWidth * 0.7);
     if (formWidth > maxWidth) {
       formWidth = maxWidth;
       formHeight = formWidth / panelAspect;
@@ -182,17 +183,32 @@ export class LoginRenderer {
       form.node.addComponent(BlockInputEvents);
     }
 
-    const inner = formWidth * 0.8;
-    const titleY = panelY + formHeight * 0.29;
-    const title = this.host.addLabel('账号登录', centerX, titleY, 34 * scale, rgba(245, 210, 122), new Size(formWidth - 90 * scale, 48 * scale));
+    // 内容整体向内缩进 10px(2026-09-09 用户反馈)。
+    const inner = formWidth * 0.8 - 20 * scale;
+    // 标题下移 35px + 参考图风格:大号鎏金粗体+深棕描边,副标题两侧星饰线。
+    const titleY = panelY + formHeight * 0.29 - 35 * scale;
+    const title = this.host.addLabel('账号登录', centerX, titleY, 44 * scale, rgba(245, 210, 122), new Size(formWidth - 90 * scale, 58 * scale));
     title.overflow = Label.Overflow.SHRINK;
-    const subtitle = this.host.addLabel('登录已有账号,或注册新账号进入 LootChain', centerX, titleY - 40 * scale, 14 * scale, rgba(196, 176, 138, 230), new Size(formWidth - 100 * scale, 24 * scale));
+    title.isBold = true;
+    title.enableOutline = true;
+    title.outlineColor = rgba(62, 34, 10, 255);
+    title.outlineWidth = Math.max(2, 3 * scale);
+    const subtitleY = titleY - 46 * scale;
+    const subtitle = this.host.addLabel('登录已有账号,或注册新账号进入 LootChain', centerX, subtitleY, 16 * scale, rgba(208, 186 , 144, 235), new Size(formWidth - 160 * scale, 26 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
+    for (const dir of [-1, 1]) {
+      const orn = this.host.addLabel('—◆', centerX + dir * (formWidth / 2 - 78 * scale), subtitleY, 13 * scale, rgba(196, 158, 92, 220), new Size(48 * scale, 20 * scale));
+      orn.overflow = Label.Overflow.SHRINK;
+      if (dir > 0) {
+        orn.string = '◆—';
+      }
+    }
 
     // 输入区:素材框(左端烘焙图标)+ frameless EditBox 叠放,右侧格式提示压在框内。
     const frameHeight = inner * (196 / 1571);
     const labelX = centerX - inner / 2 + 60 * scale;
-    const accountLabelY = panelY + formHeight * 0.145;
+    // 矮屏防撞:账号行既锚面板比例,也不越过副标题下沿。
+    const accountLabelY = Math.min(panelY + formHeight * 0.145, subtitleY - 44 * scale);
     const accountInputY = accountLabelY - 18 * scale - frameHeight / 2;
     const accountInput = this.mountAssetInputRow(layout, centerX, labelX, accountLabelY, accountInputY, inner, frameHeight, {
       label: '账号', hint: '4~20位字母/数字/下划线', frameName: 'AccountInputFrameArt', asset: LOGIN_AI_ASSETS.inputAccount, placeholder: '请输入账号', password: false,
@@ -210,12 +226,13 @@ export class LoginRenderer {
     const regW = inner * 0.4;
     const regH = regW * (205 / 726);
     const enterButtonY = passwordInputY - frameHeight / 2 - 28 * scale - loginH / 2;
-    this.mountPanelButton('AccountLoginSubmit', LOGIN_AI_ASSETS.btnLogin, '登 录', centerX - inner / 2 + loginW / 2, enterButtonY, loginW, loginH, 22 * scale, layout, () => this.host.submitLogin(), 'primary');
-    this.mountPanelButton('AccountRegisterSubmit', LOGIN_AI_ASSETS.btnRegister, '注 册', centerX + inner / 2 - regW / 2, enterButtonY, regW, regH, 19 * scale, layout, () => this.host.submitRegister(), 'secondary');
+    this.mountPanelButton('AccountLoginSubmit', LOGIN_AI_ASSETS.btnLogin, '登 录', centerX - inner / 2 + loginW / 2, enterButtonY, loginW, loginH, 26 * scale, layout, () => this.host.submitLogin(), 'primary');
+    this.mountPanelButton('AccountRegisterSubmit', LOGIN_AI_ASSETS.btnRegister, '注 册', centerX + inner / 2 - regW / 2, enterButtonY, regW, regH, 22 * scale, layout, () => this.host.submitRegister(), 'secondary');
 
     const dividerY = enterButtonY - loginH / 2 - 38 * scale;
     const socialY = dividerY - 56 * scale;
-    const agreementY = socialY - 58 * scale;
+    // 2026-09-09 用户反馈:协议行整行上移 15px。
+    const agreementY = socialY - 43 * scale;
     if (SHOW_DIALOG_THIRD_PARTY_LOGIN) {
       this.renderThirdPartyLogin(dividerY, socialY, layout, centerX, inner);
     }
@@ -236,27 +253,17 @@ export class LoginRenderer {
     row: { label: string; hint: string; frameName: string; asset: string; placeholder: string; password: boolean },
   ): EditBox {
     const scale = layout.uiScale;
-    const tip = this.host.addLabel(row.label, labelX, labelY, 16 * scale, rgba(224, 202, 156, 240), new Size(120 * scale, 24 * scale));
+    const tip = this.host.addLabel(row.label, labelX, labelY, 19 * scale, rgba(224, 202, 156, 240), new Size(140 * scale, 28 * scale));
     tip.horizontalAlign = HorizontalTextAlignment.LEFT;
     const frameOk = !!this.host.addSprite(row.frameName, row.asset, centerX, inputY, inner, frameHeight);
     // 素材左端 ~14% 是烘焙的人像/锁图标区,EditBox 从图标右侧起排;缺图退回手绘金框(占满行宽)。
     const editWidth = frameOk ? inner * 0.66 : inner - 28 * scale;
     const editX = frameOk ? centerX - inner / 2 + inner * 0.15 + editWidth / 2 : centerX;
-    const hint = this.host.addLabel(row.hint, centerX + inner / 2 - 140 * scale, inputY, 12.5 * scale, rgba(150, 134, 104, 210), new Size(240 * scale, 20 * scale));
+    const hint = this.host.addLabel(row.hint, centerX + inner / 2 - 140 * scale, inputY, 14 * scale, rgba(150, 134, 104, 210), new Size(240 * scale, 22 * scale));
     hint.horizontalAlign = HorizontalTextAlignment.RIGHT;
     hint.overflow = Label.Overflow.SHRINK;
-    const editBox = this.host.addFramedEditBox('', editX, inputY, editWidth, layout, row.password, { frameless: frameOk, placeholder: row.placeholder });
-    // 空闲态占位:原生 DOM 元素仅聚焦时显示(引擎行为),Cocos placeholderLabel 又会被引擎
-    // 重排跑位——所以空闲占位用独立"幽灵 Label"自绘,聚焦/有内容时隐藏,原生占位接管聚焦态。
-    const ghost = this.host.addLabel(row.placeholder, editX, inputY, 13.5 * scale, rgba(150, 136, 110, 220), new Size(editWidth - 28, 20 * scale));
-    ghost.horizontalAlign = HorizontalTextAlignment.LEFT;
-    ghost.overflow = Label.Overflow.CLAMP;
-    const syncGhost = () => { ghost.node.active = editBox.string.length === 0; };
-    editBox.node.on(EditBox.EventType.EDITING_DID_BEGAN, () => { ghost.node.active = false; }, this);
-    editBox.node.on(EditBox.EventType.EDITING_DID_ENDED, syncGhost, this);
-    editBox.node.on(EditBox.EventType.TEXT_CHANGED, syncGhost, this);
-    syncGhost();
-    return editBox;
+    // 失焦占位/内容显示由工厂 EditBoxDisplayLabel 统一承担(2026-09-09 根治引擎重摆跑位)。
+    return this.host.addFramedEditBox('', editX, inputY, editWidth, layout, row.password, { frameless: frameOk, placeholder: row.placeholder });
   }
 
   /** 素材按钮(空底图+文字 Label 叠加);缺图兜底手绘(主=红底金框,次=暗底金描边)。 */
@@ -320,7 +327,7 @@ export class LoginRenderer {
   private renderThirdPartyLogin(dividerY: number, socialY: number, layout: UiLayout, centerX: number, inner: number): void {
     const scale = layout.uiScale;
     // 分隔行:星饰线素材左右段夹住"其他登录方式"(缺图退手绘细线)。
-    const dividerLabel = this.host.addLabel('其他登录方式', centerX, dividerY, 15 * scale, rgba(214, 177, 94), new Size(150 * scale, 24 * scale));
+    const dividerLabel = this.host.addLabel('其他登录方式', centerX, dividerY, 17 * scale, rgba(214, 177, 94), new Size(160 * scale, 26 * scale));
     dividerLabel.overflow = Label.Overflow.SHRINK;
     const segWidth = Math.max(60 * scale, inner / 2 - 92 * scale);
     const segHeightL = segWidth * (43 / 558);
@@ -360,8 +367,8 @@ export class LoginRenderer {
 
   private renderAgreement(y: number, layout: UiLayout, centerX: number, agreementAccepted: boolean): void {
     const scale = layout.uiScale;
-    const boxSize = 24 * scale;
-    const x = centerX - 168 * scale;
+    const boxSize = 26 * scale;
+    const x = centerX - 176 * scale;
     // 勾选框:选中=用户金勾素材,未选/缺图=手绘切角空框;整框可点切换。
     const box = this.host.createUiNode('LoginAgreementBox');
     box.setPosition(new Vec3(x, y, 0));
@@ -388,7 +395,7 @@ export class LoginRenderer {
     box.addComponent(Button);
     box.on(Button.EventType.CLICK, () => this.host.toggleLoginAgreement(), this);
     this.host.applyPointerCursor(box);
-    const text = this.host.addLabel('我已阅读并同意《用户协议》和《隐私政策》', centerX + 24 * scale, y, 14 * scale, rgba(215, 210, 198), new Size(360 * scale, 24 * scale));
+    const text = this.host.addLabel('我已阅读并同意《用户协议》和《隐私政策》', centerX + 26 * scale, y, 16 * scale, rgba(215, 210, 198), new Size(400 * scale, 26 * scale));
     text.overflow = Label.Overflow.SHRINK;
   }
 

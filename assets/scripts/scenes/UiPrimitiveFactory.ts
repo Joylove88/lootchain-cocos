@@ -73,15 +73,19 @@ export class UiPrimitiveFactory {
     // 注意顺序(2026-09-06 五修):必须先把两个 Label 赋给组件,再碰 inputMode/inputFlag——
     // 这些 setter 会触发 _updateTextLabel,若此刻组件还没有 label 引擎会自建一套
     // 白色 40px 的默认 TEXT_LABEL/PLACEHOLDER_LABEL(占位文案就是"label")留在树上。
+    // 引擎在失焦同步(_updateLabels)时会按自己的规则重摆 textLabel/placeholderLabel,
+    // 位置在我们的坐标体系下必跑偏(2026-09-09 实锤:失焦后已输入内容飘到框外)。
+    // 对策:这两个 Label 只作引擎挂点、全透明;真正的失焦显示走下方自绘 DisplayLabel。
+    const inputFontSize = Math.max(15, currentLayout.bodyFont + 1);
     const textNode = new Node('TextLabel');
     textNode.layer = node.layer;
     node.addChild(textNode);
     textNode.setPosition(Vec3.ZERO);
     textNode.addComponent(UITransform).setContentSize(new Size(width - 28, currentLayout.inputHeight));
     const textLabel = textNode.addComponent(Label);
-    textLabel.fontSize = Math.max(13, currentLayout.bodyFont - 1);
-    textLabel.lineHeight = currentLayout.bodyFont + 5;
-    textLabel.color = rgba(231, 226, 214);
+    textLabel.fontSize = inputFontSize;
+    textLabel.lineHeight = inputFontSize + 6;
+    textLabel.color = rgba(231, 226, 214, 0);
     textLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
     textLabel.verticalAlign = VerticalTextAlignment.CENTER;
     textLabel.overflow = Label.Overflow.CLAMP;
@@ -92,9 +96,9 @@ export class UiPrimitiveFactory {
     placeholderNode.setPosition(Vec3.ZERO);
     placeholderNode.addComponent(UITransform).setContentSize(new Size(width - 28, currentLayout.inputHeight));
     const placeholderLabel = placeholderNode.addComponent(Label);
-    placeholderLabel.fontSize = Math.max(13, currentLayout.bodyFont - 1);
-    placeholderLabel.lineHeight = currentLayout.bodyFont + 5;
-    placeholderLabel.color = rgba(120, 114, 105);
+    placeholderLabel.fontSize = inputFontSize;
+    placeholderLabel.lineHeight = inputFontSize + 6;
+    placeholderLabel.color = rgba(120, 114, 105, 0);
     placeholderLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
     placeholderLabel.verticalAlign = VerticalTextAlignment.CENTER;
     placeholderLabel.overflow = Label.Overflow.CLAMP;
@@ -117,7 +121,29 @@ export class UiPrimitiveFactory {
     node.getChildByName('PLACEHOLDER_LABEL')?.destroy();
     // 激活 → __preload → 引擎按 SINGLE_LINE 建 <input> 并做官方尺寸同步。
     node.active = true;
-    this.styleNativeInput(editBox, placeholder);
+    this.styleNativeInput(editBox);
+    // 自绘失焦显示层(2026-09-09):有内容显内容(密码打*)、无内容显占位;编辑中隐藏
+    // (DOM 元素接管,含原生密码圆点)。位置我们自己钉死,不受引擎 _updateLabels 影响。
+    const displayNode = new Node('EditBoxDisplayLabel');
+    displayNode.layer = node.layer;
+    node.addChild(displayNode);
+    displayNode.setPosition(Vec3.ZERO);
+    displayNode.addComponent(UITransform).setContentSize(new Size(width - 28, currentLayout.inputHeight));
+    const display = displayNode.addComponent(Label);
+    display.fontSize = inputFontSize;
+    display.lineHeight = inputFontSize + 6;
+    display.horizontalAlign = HorizontalTextAlignment.LEFT;
+    display.verticalAlign = VerticalTextAlignment.CENTER;
+    display.overflow = Label.Overflow.CLAMP;
+    const refreshDisplay = () => {
+      const hasText = editBox.string.length > 0;
+      display.string = hasText ? (password ? '*'.repeat(editBox.string.length) : editBox.string) : placeholder;
+      display.color = hasText ? rgba(231, 226, 214) : rgba(150, 136, 110, 220);
+    };
+    refreshDisplay();
+    node.on(EditBox.EventType.EDITING_DID_BEGAN, () => { displayNode.active = false; }, this);
+    node.on(EditBox.EventType.EDITING_DID_ENDED, () => { refreshDisplay(); displayNode.active = true; }, this);
+    node.on(EditBox.EventType.EDITING_RETURN, () => { refreshDisplay(); displayNode.active = true; }, this);
     return editBox;
   }
 
@@ -126,9 +152,9 @@ export class UiPrimitiveFactory {
    * (2026-09-06 六修):正解是让它完全透明融入——外观全交给 addFramedEditBox 画的金框,
    * 元素只保留文字颜色与金色光标,聚焦/非聚焦视觉一致。
    */
-  private styleNativeInput(editBox: EditBox, placeholder = ''): void {
+  private styleNativeInput(editBox: EditBox): void {
     try {
-      const el = (editBox as unknown as { _impl?: { _edTxt?: ({ style?: Record<string, string>; placeholder?: string; classList?: { add(name: string): void } }) | null } })._impl?._edTxt;
+      const el = (editBox as unknown as { _impl?: { _edTxt?: { style?: Record<string, string> } | null } })._impl?._edTxt;
       if (!el || !el.style) {
         return;
       }
@@ -141,15 +167,8 @@ export class UiPrimitiveFactory {
       el.style.paddingLeft = '14px';
       el.style.overflow = 'hidden';
       el.style.resize = 'none';
-      // 占位文案挂原生元素(2026-09-09):颜色经一次性注入的 ::placeholder 样式统一成暗金灰。
-      el.placeholder = placeholder;
-      el.classList?.add('lc-native-input');
-      if (typeof document !== 'undefined' && !document.getElementById('lc-native-input-style')) {
-        const style = document.createElement('style');
-        style.id = 'lc-native-input-style';
-        style.textContent = '.lc-native-input::placeholder { color: rgba(150, 136, 110, 0.9); }';
-        document.head.appendChild(style);
-      }
+      // 原生占位不再使用(2026-09-09):失焦占位由 EditBoxDisplayLabel 承担,聚焦空态只显光标,
+      // 避免原生占位与自绘层重叠。
     } catch (error) {
       // 非 Web 平台或引擎内部结构变化:静默跳过,输入功能不受影响。
       void error;
