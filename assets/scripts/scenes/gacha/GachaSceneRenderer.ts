@@ -1907,9 +1907,24 @@ export class GachaSceneRenderer {
       panelGraphics.stroke();
     }
 
-    const title = this.host.addChildLabel(panel, 'GachaResultSceneTitle', drawResult ? '召唤结果' : (mode === 'once' ? '召唤结果预览' : '十连结果预览'), 0, panelHeight / 2 - panelHeight * 0.088, Math.max(26 * scale, panelHeight * 0.042), rgba(252, 222, 153), new Size(panelWidth * 0.24, Math.max(32 * scale, panelHeight * 0.07)));
+    const titleText = drawResult ? '召唤结果' : (mode === 'once' ? '召唤结果预览' : '十连结果预览');
+    const titleFont = Math.max(26 * scale, panelHeight * 0.042);
+    const titleY = panelHeight / 2 - panelHeight * 0.088;
+    const title = this.host.addChildLabel(panel, 'GachaResultSceneTitle', titleText, 0, titleY, titleFont, rgba(252, 222, 153), new Size(panelWidth * 0.24, Math.max(32 * scale, panelHeight * 0.07)));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
+    const titleHalf = Math.min(titleText.length * titleFont, panelWidth * 0.24) / 2;
+    const titleGap = 10 * scale;
+    const titleDividerAvail = panelWidth * 0.47 - titleHalf - titleGap;
+    if (titleDividerAvail >= 40) {
+      const titleDividerW = Math.min(panelWidth * 0.12, titleDividerAvail);
+      const titleDividerX = titleHalf + titleGap + titleDividerW / 2;
+      const titleDividerL = this.host.addSprite('GachaResultSceneTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -titleDividerX, titleY, titleDividerW, titleDividerW * (76 / 390), panel);
+      const titleDividerR = titleDividerL ? this.host.addSprite('GachaResultSceneTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', titleDividerX, titleY, titleDividerW, titleDividerW * (73 / 392), panel) : null;
+      if (titleDividerL && !titleDividerR) {
+        titleDividerL.node.destroy();
+      }
+    }
 
     // drawNo 行:两侧金色装饰线,菱形端点朝向文字(参考图)。
     const subtitleText = drawResult ? `真实 drawNo：${drawResult.drawNo}` : '本结果为本地 mock：未扣资源、未写入记录、未更新保底。';

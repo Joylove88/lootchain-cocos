@@ -53,6 +53,8 @@ const LOGIN_AI_ASSETS = {
   /** 分隔线左右段 558×43 / 618×42(星饰端头,成对)。 */
   dividerLeft: 'ui/login/ai/divider_left/spriteFrame',
   dividerRight: 'ui/login/ai/divider_right/spriteFrame',
+  subDividerLeft: 'ui/common/ai/footer_divider_left/spriteFrame',
+  subDividerRight: 'ui/common/ai/footer_divider_right/spriteFrame',
   /** 菱形第三方登录钮(参考图顺序 G/A/Discord/X,303×304 上下)。 */
   socials: [
     { key: 'G', path: 'ui/login/ai/social_g/spriteFrame' },
@@ -194,13 +196,30 @@ export class LoginRenderer {
     title.outlineColor = rgba(62, 34, 10, 255);
     title.outlineWidth = Math.max(2, 3 * scale);
     const subtitleY = titleY - 46 * scale;
-    const subtitle = this.host.addLabel('登录已有账号,或注册新账号进入 LootChain', centerX, subtitleY, 16 * scale, rgba(208, 186 , 144, 235), new Size(formWidth - 160 * scale, 26 * scale));
+    const subtitleText = '登录已有账号,或注册新账号进入 LootChain';
+    const subtitle = this.host.addLabel(subtitleText, centerX, subtitleY, 16 * scale, rgba(208, 186 , 144, 235), new Size(formWidth - 160 * scale, 26 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
-    for (const dir of [-1, 1]) {
-      const orn = this.host.addLabel('—◆', centerX + dir * (formWidth / 2 - 78 * scale), subtitleY, 13 * scale, rgba(196, 158, 92, 220), new Size(48 * scale, 20 * scale));
-      orn.overflow = Label.Overflow.SHRINK;
-      if (dir > 0) {
-        orn.string = '◆—';
+    let subtitleTextW = 0;
+    for (const ch of subtitleText) {
+      subtitleTextW += (ch.codePointAt(0) ?? 0) > 255 ? 16 * scale : 16 * scale * 0.55;
+    }
+    const subtitleHalf = Math.min(subtitleTextW, formWidth - 160 * scale) / 2;
+    const subGap = 8 * scale;
+    const subDividerAvail = formWidth / 2 - subtitleHalf - subGap - 12 * scale;
+    if (subDividerAvail >= 40) {
+      const subDividerW = Math.min(64 * scale, subDividerAvail);
+      const subDividerH = subDividerW * (71 / 224);
+      const subDividerX = subtitleHalf + subGap + subDividerW / 2;
+      const subLeft = this.host.addSprite('LoginSubtitleDividerL', LOGIN_AI_ASSETS.subDividerLeft, centerX - subDividerX, subtitleY, subDividerW, subDividerH);
+      const subRight = subLeft ? this.host.addSprite('LoginSubtitleDividerR', LOGIN_AI_ASSETS.subDividerRight, centerX + subDividerX, subtitleY, subDividerW, subDividerH) : null;
+      if (subLeft && !subRight) {
+        subLeft.node.destroy();
+      }
+      if (!subLeft || !subRight) {
+        for (const dir of [-1, 1]) {
+          const orn = this.host.addLabel(dir < 0 ? '—◆' : '◆—', centerX + dir * (formWidth / 2 - 78 * scale), subtitleY, 13 * scale, rgba(196, 158, 92, 220), new Size(48 * scale, 20 * scale));
+          orn.overflow = Label.Overflow.SHRINK;
+        }
       }
     }
 

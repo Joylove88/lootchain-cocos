@@ -922,6 +922,11 @@ export class LootChainGameRoot extends Component {
     this.removePlayerProfileDialog();
     this.removeLobbyPlaceholderDialog();
     this.renderLobbyHud(layout);
+    // 任务弹框模式(2026-09-10):HUD 局部重绘上面防御性拆了弹框节点,开着时重挂回大厅之上。
+    if (this.lobbyQuestPanelOpen && this.currentView === 'lobby') {
+      this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
+    }
     this.layoutKey = this.makeLayoutKey();
   }
 
@@ -1170,6 +1175,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderCurrentLobbyScenePage(): void {
+    // 任务弹框模式(2026-09-10):状态 bump 时只局部重挂弹框,不整页重建大厅。
+    if (this.lobbyQuestPanelOpen && this.currentView === 'lobby') {
+      this.renderLobbyQuestDialog();
+      return;
+    }
     if (this.isLobbyScenePageView(this.currentView)) {
       this.renderCurrentView();
     }
@@ -4004,24 +4014,45 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbySettingsSceneContent');
   }
 
-  // ── 任务/成就面板(P1,2026-09-04) ──
+  // ── 任务/成就面板(P1,2026-09-04;2026-09-10 用户拍板改弹框:不清大厅、不切 currentView,
+  // 遮罩+面板直接叠在活的大厅之上;非大厅视图保留旧场景页语义兜底) ──
   private openLobbyQuestPanel(): void {
     lobbyGuide.markVisited('quest');
-    if (this.lobbyQuestPanelOpen && this.currentView === 'quest') {
+    if (this.lobbyQuestPanelOpen) {
       return;
     }
-    this.closeAllLobbyScenePanelFlags();
+    if (this.currentView !== 'lobby') {
+      this.closeAllLobbyScenePanelFlags();
+      this.lobbyQuestPanelOpen = true;
+      this.currentView = 'quest';
+      this.renderCurrentView();
+      void this.loadLobbyQuestSummary(true);
+      return;
+    }
     this.lobbyQuestPanelOpen = true;
-    this.currentView = 'quest';
-    this.renderCurrentView();
+    this.renderLobbyQuestDialog();
     void this.loadLobbyQuestSummary(true);
+  }
+
+  /** 弹框模式渲染:重挂任务面板节点,并把引导覆盖层切到 quest 视图键(CLAIM 步指向面板内领取钮)。 */
+  private renderLobbyQuestDialog(): void {
+    this.removeLobbyQuestPanel();
+    const layout = this.resolveLayout();
+    this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
+    this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
   }
 
   private closeLobbyQuestPanel(): void {
     if (!this.lobbyQuestPanelOpen) {
       return;
     }
-    this.returnToLobbyFromScenePage();
+    if (this.currentView === 'quest') {
+      this.returnToLobbyFromScenePage();
+      return;
+    }
+    this.lobbyQuestPanelOpen = false;
+    this.removeLobbyQuestPanel();
+    this.lobbyHudRenderer.mountGuideOverlay(this.resolveLayout(), 'lobby');
   }
 
   private removeLobbyQuestPanel(): void {

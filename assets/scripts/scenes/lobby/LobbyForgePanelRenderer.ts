@@ -64,6 +64,9 @@ const BAG_ICON_DIAMOND_ASSET = 'ui/bag/ai/icon_diamond/spriteFrame';
 const BAG_ICON_ENHANCE_STONE_ASSET = 'ui/bag/ai/icon_enhance_low/spriteFrame';
 const BAG_ICON_ENHANCE_STONE_HIGH_ASSET = 'ui/bag/ai/icon_enhance_high/spriteFrame';
 const FORGE_AI_BLESS_ICON_ASSET = 'ui/forge/ai/icon_bless_stone/spriteFrame';
+const FOOTER_DIVIDER_LEFT_ASSET = 'ui/common/ai/footer_divider_left/spriteFrame';
+const FOOTER_DIVIDER_RIGHT_ASSET = 'ui/common/ai/footer_divider_right/spriteFrame';
+const FOOTER_DIVIDER_ASPECT = 71 / 224;
 
 /** 锻造页预载清单(登录时拉,进面板即整树一次成型;强化流光序列帧按需仍现拉)。 */
 export const FORGE_PRELOAD_ASSETS: readonly string[] = [
@@ -2265,33 +2268,44 @@ export class LobbyForgePanelRenderer {
     return node;
   }
 
-  // 面板标题(参考图1):居中金字 + 两侧饰线与菱形点。
+  // 面板标题(参考图1):居中金字 + 两侧饰线(footer_divider 素材,缺图退回手绘线+菱形点)。
   private addPanelTitle(parent: Node, name: string, text: string, cx: number, y: number, width: number, scale: number): void {
     const label = this.host.addChildLabel(parent, name, text, cx, y, 22 * scale, rgba(238, 206, 138), new Size(width * 0.6, 30 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, true);
-    const deco = this.host.addChildPlainNode(parent, `${name}Deco`, cx, y, width, 12 * scale);
-    const g = deco.addComponent(Graphics);
     const inner = (text.length * 22 * scale) / 2 + 20 * scale;
     const outer = width / 2 - 18 * scale;
-    if (outer > inner + 12 * scale) {
-      g.strokeColor = rgba(168, 132, 74, 170);
-      g.lineWidth = 1.2 * scale;
-      g.moveTo(-outer, 0);
-      g.lineTo(-inner, 0);
-      g.moveTo(inner, 0);
-      g.lineTo(outer, 0);
-      g.stroke();
-      g.fillColor = rgba(214, 172, 96, 225);
-      for (const dx of [-inner, inner]) {
-        g.moveTo(dx - 5 * scale, 0);
-        g.lineTo(dx, 4 * scale);
-        g.lineTo(dx + 5 * scale, 0);
-        g.lineTo(dx, -4 * scale);
-        g.close();
-      }
-      g.fill();
+    if (outer <= inner + 12 * scale) {
+      return;
     }
+    const artWidth = Math.min(90 * scale, outer - inner);
+    if (artWidth >= 40 * scale) {
+      const leftArt = this.host.addSprite(`${name}DividerL`, FOOTER_DIVIDER_LEFT_ASSET, cx - inner - artWidth / 2, y, artWidth, artWidth * FOOTER_DIVIDER_ASPECT, parent);
+      const rightArt = this.host.addSprite(`${name}DividerR`, FOOTER_DIVIDER_RIGHT_ASSET, cx + inner + artWidth / 2, y, artWidth, artWidth * FOOTER_DIVIDER_ASPECT, parent);
+      if (leftArt && rightArt) {
+        return;
+      }
+      leftArt?.node.destroy();
+      rightArt?.node.destroy();
+    }
+    const deco = this.host.addChildPlainNode(parent, `${name}Deco`, cx, y, width, 12 * scale);
+    const g = deco.addComponent(Graphics);
+    g.strokeColor = rgba(168, 132, 74, 170);
+    g.lineWidth = 1.2 * scale;
+    g.moveTo(-outer, 0);
+    g.lineTo(-inner, 0);
+    g.moveTo(inner, 0);
+    g.lineTo(outer, 0);
+    g.stroke();
+    g.fillColor = rgba(214, 172, 96, 225);
+    for (const dx of [-inner, inner]) {
+      g.moveTo(dx - 5 * scale, 0);
+      g.lineTo(dx, 4 * scale);
+      g.lineTo(dx + 5 * scale, 0);
+      g.lineTo(dx, -4 * scale);
+      g.close();
+    }
+    g.fill();
   }
 
   // 混色同行文本:按字宽估算(CJK≈字号,ASCII≈0.55字号)顺排后整体居中。

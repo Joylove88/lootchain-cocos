@@ -100,6 +100,14 @@ const DAILY_IC_NOTICE_ASSET = 'ui/daily/ai/ic_notice/spriteFrame';
 const DAILY_IC_LOCK_ASSET = 'ui/daily/ai/ic_lock/spriteFrame';
 const DAILY_TIER_BADGE_ASSETS = ['', 'ui/daily/ai/tier_1/spriteFrame', 'ui/daily/ai/tier_2/spriteFrame', 'ui/daily/ai/tier_3/spriteFrame'];  // 141×185
 const DAILY_STAMINA_ICON_ASSET = 'ui/bag/ai/icon_stamina/spriteFrame';
+const TITLE_DIVIDER_LEFT_ASSET = 'ui/common/ai/title_divider_left/spriteFrame';
+const TITLE_DIVIDER_RIGHT_ASSET = 'ui/common/ai/title_divider_right/spriteFrame';
+const TITLE_DIVIDER_LEFT_ASPECT = 76 / 390;
+const TITLE_DIVIDER_RIGHT_ASPECT = 73 / 392;
+const DECO_DIVIDER_LEFT_ASSET = 'ui/common/ai/deco_divider_left/spriteFrame';
+const DECO_DIVIDER_RIGHT_ASSET = 'ui/common/ai/deco_divider_right/spriteFrame';
+const DECO_DIVIDER_LEFT_ASPECT = 76 / 463;
+const DECO_DIVIDER_RIGHT_ASPECT = 77 / 471;
 // 主题场景图:按 theme.code 关键词映射;src 尺寸用于等比 cover 计算(只看比例,与实际像素同比即可)。
 const DAILY_THEME_SCENE_ASSETS: Array<{ keyword: string; asset: string; srcWidth: number; srcHeight: number }> = [
   { keyword: 'AWAKEN', asset: 'ui/daily/ai/scene_awaken/spriteFrame', srcWidth: 430, srcHeight: 317 },
@@ -211,16 +219,17 @@ export class LobbyDailyDungeonPanelRenderer {
       new Size(width * 0.4, 38 * scale),
     );
     title.overflow = Label.Overflow.SHRINK;
-    // 标题两侧坠饰线(参考图):现有 divider_gold 素材,右侧镜像。
-    const dividerWidth = 130 * scale;
-    const dividerHeight = dividerWidth * (164 / 800);
-    const dividerGap = 150 * scale;
-    const leftDivider = this.host.addSprite('LobbyDailyTitleDividerL', 'ui/common/ai/divider_gold/spriteFrame', -dividerGap - dividerWidth / 2, height / 2 - 40 * scale, dividerWidth, dividerHeight, parent);
-    const rightDivider = this.host.addSprite('LobbyDailyTitleDividerR', 'ui/common/ai/divider_gold/spriteFrame', dividerGap + dividerWidth / 2, height / 2 - 40 * scale, dividerWidth, dividerHeight, parent);
-    if (rightDivider) {
-      rightDivider.node.setScale(-1, 1, 1);
+    const titleY = height / 2 - 40 * scale;
+    const dividerInner = this.estimateHalfTextWidth('限时副本 · 每日轮换', 28 * scale) + 10 * scale;
+    const dividerWidth = Math.min(150 * scale, width / 2 - 320 * scale - dividerInner);
+    if (dividerWidth >= 40 * scale) {
+      const leftDivider = this.host.addSprite('LobbyDailyTitleDividerL', TITLE_DIVIDER_LEFT_ASSET, -dividerInner - dividerWidth / 2, titleY, dividerWidth, dividerWidth * TITLE_DIVIDER_LEFT_ASPECT, parent);
+      const rightDivider = this.host.addSprite('LobbyDailyTitleDividerR', TITLE_DIVIDER_RIGHT_ASSET, dividerInner + dividerWidth / 2, titleY, dividerWidth, dividerWidth * TITLE_DIVIDER_RIGHT_ASPECT, parent);
+      if (!leftDivider || !rightDivider) {
+        leftDivider?.node.destroy();
+        rightDivider?.node.destroy();
+      }
     }
-    void leftDivider;
     const day = state.summary?.todayDayOfWeek ?? 0;
     const stamina = state.summary?.staminaCost ?? 8;
     const subline = day >= 1 && day <= 7
@@ -243,6 +252,28 @@ export class LobbyDailyDungeonPanelRenderer {
       renderTopCurrencyBar(this.host, parent, width / 2, height / 2, scale, [
         { key: 'stamina', icon: DAILY_STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}` },
       ]);
+    }
+  }
+
+  private estimateHalfTextWidth(text: string, fontSize: number): number {
+    let total = 0;
+    for (const ch of text) {
+      total += ch.charCodeAt(0) > 255 ? fontSize : fontSize * 0.55;
+    }
+    return total / 2;
+  }
+
+  private addDecoDividerPair(parent: Node, name: string, text: string, fontSize: number, y: number, sideWidth: number, maxOuter: number, scale: number): void {
+    const inner = this.estimateHalfTextWidth(text, fontSize) + 10 * scale;
+    const width = Math.min(sideWidth, maxOuter - inner);
+    if (width < 40 * scale) {
+      return;
+    }
+    const left = this.host.addSprite(`${name}L`, DECO_DIVIDER_LEFT_ASSET, -inner - width / 2, y, width, width * DECO_DIVIDER_LEFT_ASPECT, parent);
+    const right = this.host.addSprite(`${name}R`, DECO_DIVIDER_RIGHT_ASSET, inner + width / 2, y, width, width * DECO_DIVIDER_RIGHT_ASPECT, parent);
+    if (!left || !right) {
+      left?.node.destroy();
+      right?.node.destroy();
     }
   }
 
@@ -835,8 +866,10 @@ export class LobbyDailyDungeonPanelRenderer {
 
     const rankState = this.host.currentLobbyCrystalRankState?.();
     const summary = rankState?.summary ?? null;
-    const title = this.host.addChildLabel(card, 'RankTitle', summary ? `输出周榜 · ${summary.weekKey}` : '输出周榜', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(w - 60 * scale, 34 * scale));
+    const titleText = summary ? `输出周榜 · ${summary.weekKey}` : '输出周榜';
+    const title = this.host.addChildLabel(card, 'RankTitle', titleText, 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(w - 60 * scale, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
+    this.addDecoDividerPair(card, 'RankTitleDivider', titleText, 26 * scale, h / 2 - 34 * scale, 110 * scale, w / 2 - 24 * scale, scale);
 
     if (!rankState || rankState.loading) {
       const hint = this.host.addChildLabel(card, 'RankLoading', '正在读取周榜…', 0, 0, 18 * scale, rgba(214, 196, 156, 235), new Size(w - 80 * scale, 24 * scale));
@@ -1115,6 +1148,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const title = this.host.addChildLabel(card, 'FurnaceTitle', '矿晶熔炉 · 矿晶兑代币', 0, h / 2 - 38 * scale, 28 * scale, rgba(255, 234, 176, 255), new Size(w * 0.7, 38 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutlineIfAvailable(title, scale);
+    this.addDecoDividerPair(card, 'FurnaceTitleDivider', '矿晶熔炉 · 矿晶兑代币', 28 * scale, h / 2 - 38 * scale, 130 * scale, w / 2 - 64 * scale, scale);
 
     const summary = state.summary;
     if (state.loading && !summary) {
@@ -1419,6 +1453,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const lineW = w - 56 * scale;
     const title = this.host.addChildLabel(card, 'TrialTitle', '输出试炼 · 奖励档位', 0, h / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(lineW, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
+    this.addDecoDividerPair(card, 'TrialTitleDivider', '输出试炼 · 奖励档位', 26 * scale, h / 2 - 34 * scale, 110 * scale, w / 2 - 24 * scale, scale);
     // P3b 口径(2026-09-04):难度Ⅲ=10 分钟 BOSS 车轮战,层数=BOSS 击杀+波次,分=层×100。
     const sub = this.host.addChildLabel(card, 'TrialSub', '10 分钟 BOSS 车轮战:层数=BOSS 击杀+波次,时间到或水晶碎即结算;层数越高档位越高。', 0, h / 2 - 66 * scale, 15.5 * scale, rgba(196, 182, 152, 235), new Size(lineW, 22 * scale));
     sub.overflow = Label.Overflow.SHRINK;

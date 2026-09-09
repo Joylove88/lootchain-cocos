@@ -904,6 +904,7 @@ export class LobbyBagPanelRenderer {
     const title = this.host.addChildLabel(dialog, 'LobbyBagComposeTitle', '材料合成', 0, h / 2 - 32 * scale, 24 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
+    this.addDialogTitleDividers(dialog, 'LobbyBagComposeTitleDivider', h / 2 - 32 * scale, 2 * 24 * scale, w, scale);
     const ruleRow = this.host.addChildLabel(dialog, 'LobbyBagComposeRule', `${safeText(item.itemName)} ×${rule.need} → ${rule.targetLabel} ×1`, 0, h / 2 - 66 * scale, 18 * scale, rgba(214, 196, 158), new Size(w - 52 * scale, 24 * scale));
     ruleRow.overflow = Label.Overflow.SHRINK;
 
@@ -1008,6 +1009,7 @@ export class LobbyBagPanelRenderer {
     const title = this.host.addChildLabel(dialog, 'LobbyBagComposeResultTitle', '合成成功！', 0, h / 2 - 36 * scale, 24 * scale, rgba(250, 216, 120), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
+    this.addDialogTitleDividers(dialog, 'LobbyBagComposeResultTitleDivider', h / 2 - 36 * scale, 2.5 * 24 * scale, w, scale);
 
     // 产物图标格:图标 + 右下 ×N 角标。
     const cellSize = 96 * scale;
@@ -1236,6 +1238,22 @@ export class LobbyBagPanelRenderer {
     label.enableOutline = true;
     label.outlineColor = rgba(0, 0, 0, strong ? 220 : 180);
     label.outlineWidth = Math.max(1, (strong ? 1.5 : 1) * scale);
+  }
+
+  private addDialogTitleDividers(parent: Node, name: string, y: number, halfTextWidth: number, dialogWidth: number, scale: number): void {
+    const gap = 10 * scale;
+    const avail = dialogWidth / 2 - halfTextWidth - gap - 20 * scale;
+    if (avail < 40) {
+      return;
+    }
+    const dividerWidth = Math.min(80 * scale, avail);
+    const dividerHeight = dividerWidth * (71 / 224);
+    const x = halfTextWidth + gap + dividerWidth / 2;
+    const left = this.host.addSprite(`${name}L`, 'ui/common/ai/footer_divider_left/spriteFrame', -x, y, dividerWidth, dividerHeight, parent);
+    const right = left ? this.host.addSprite(`${name}R`, 'ui/common/ai/footer_divider_right/spriteFrame', x, y, dividerWidth, dividerHeight, parent) : null;
+    if (left && !right) {
+      left.node.destroy();
+    }
   }
 }
 

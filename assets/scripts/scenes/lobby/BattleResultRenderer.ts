@@ -30,6 +30,8 @@ export interface BattleResultHost {
 }
 
 const VICTORY_BANNER_ASSET = 'ui/battle/ai/banner_victory/spriteFrame';
+const FOOTER_DIVIDER_LEFT_ASSET = 'ui/common/ai/footer_divider_left/spriteFrame';
+const FOOTER_DIVIDER_RIGHT_ASSET = 'ui/common/ai/footer_divider_right/spriteFrame';
 
 export interface BattleResultData {
   victory: boolean;
@@ -74,6 +76,7 @@ export class BattleResultRenderer {
     const heroY = height * 0.08;
     const heroTitle = this.host.addChildLabel(dim, 'BattleResultHeroTitle', '出战英雄', 0, heroY + 30 * scale, 18 * scale, rgba(231, 205, 142), new Size(300 * scale, 24 * scale));
     heroTitle.overflow = Label.Overflow.SHRINK;
+    this.addSectionDividers(dim, 'BattleResultHeroTitleDivider', heroY + 30 * scale, 2 * 18 * scale, width, scale);
     const heroText = data.heroNames.slice(0, 5).map((n) => safeText(n)).join('  ');
     const heroLabel = this.host.addChildLabel(dim, 'BattleResultHeroes', heroText, 0, heroY, 17 * scale, rgba(210, 190, 150), new Size(width - 80 * scale, 28 * scale));
     heroLabel.overflow = Label.Overflow.SHRINK;
@@ -82,6 +85,7 @@ export class BattleResultRenderer {
     const rewardY = -height * 0.08;
     const rewardTitle = this.host.addChildLabel(dim, 'BattleResultRewardTitle', '获得奖励', 0, rewardY + 30 * scale, 18 * scale, rgba(238, 204, 138), new Size(300 * scale, 24 * scale));
     rewardTitle.overflow = Label.Overflow.SHRINK;
+    this.addSectionDividers(dim, 'BattleResultRewardTitleDivider', rewardY + 30 * scale, 2 * 18 * scale, width, scale);
     const rewardText = data.rewards.length > 0 ? data.rewards.slice(0, 4).map((r) => '· ' + safeText(r)).join('\n') : '无奖励';
     const rewardLabel = this.host.addChildLabel(dim, 'BattleResultRewards', rewardText, 0, rewardY - 10 * scale, 17 * scale, rgba(220, 200, 160), new Size(width - 80 * scale, 80 * scale));
     rewardLabel.overflow = Label.Overflow.SHRINK;
@@ -103,6 +107,22 @@ export class BattleResultRenderer {
     statsBtn.addComponent(Button);
     statsBtn.on(Button.EventType.CLICK, () => this.host.showStats(), this);
     this.host.applyImageButtonFeedback(statsBtn, 1.025, 0.975);
+  }
+
+  private addSectionDividers(parent: Node, name: string, y: number, halfTextWidth: number, totalWidth: number, scale: number): void {
+    const gap = 10 * scale;
+    const avail = totalWidth / 2 - halfTextWidth - gap - 24 * scale;
+    if (avail < 40) {
+      return;
+    }
+    const dividerWidth = Math.min(80 * scale, avail);
+    const dividerHeight = dividerWidth * (71 / 224);
+    const x = halfTextWidth + gap + dividerWidth / 2;
+    const left = this.host.addSprite(`${name}L`, FOOTER_DIVIDER_LEFT_ASSET, -x, y, dividerWidth, dividerHeight, parent);
+    const right = left ? this.host.addSprite(`${name}R`, FOOTER_DIVIDER_RIGHT_ASSET, x, y, dividerWidth, dividerHeight, parent) : null;
+    if (left && !right) {
+      left.node.destroy();
+    }
   }
 
   private styleButton(node: Node, text: string, scale: number, enabled: boolean): void {

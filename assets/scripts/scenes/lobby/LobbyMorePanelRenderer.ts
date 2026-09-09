@@ -43,6 +43,11 @@ const MORE_ICON_ASSETS: Record<string, string> = {
   support: 'ui/lobby/more/micon_support/spriteFrame',
 };
 
+const TITLE_DIVIDER_LEFT_ASSET = 'ui/common/ai/title_divider_left/spriteFrame';
+const TITLE_DIVIDER_RIGHT_ASSET = 'ui/common/ai/title_divider_right/spriteFrame';
+const TITLE_DIVIDER_LEFT_ASPECT = 76 / 390;
+const TITLE_DIVIDER_RIGHT_ASPECT = 73 / 392;
+
 /**
  * "更多"面板(2026-09-06):低频系统入口收纳——邮件/设置/公告宫格 + 最近战报列表 +
  * 兑换码输入区 + 客服占位。邮件/设置从右上图标区迁入,右上只留一个"更多"钮(带未读红点)。
@@ -69,6 +74,17 @@ export class LobbyMorePanelRenderer {
 
     const title = this.host.addChildLabel(panel, 'Title', '更多', 0, panelHeight / 2 - 34 * scale, 26 * scale, rgba(244, 220, 166, 255), new Size(panelWidth - 120 * scale, 34 * scale));
     this.outline(title, scale, true);
+    const titleY = panelHeight / 2 - 34 * scale;
+    const dividerInner = ('更多'.length * 26 * scale) / 2 + 10 * scale;
+    const dividerWidth = Math.min(130 * scale, panelWidth / 2 - 70 * scale - dividerInner);
+    if (dividerWidth >= 40 * scale) {
+      const leftDivider = this.host.addSprite('TitleDividerL', TITLE_DIVIDER_LEFT_ASSET, -dividerInner - dividerWidth / 2, titleY, dividerWidth, dividerWidth * TITLE_DIVIDER_LEFT_ASPECT, panel);
+      const rightDivider = this.host.addSprite('TitleDividerR', TITLE_DIVIDER_RIGHT_ASSET, dividerInner + dividerWidth / 2, titleY, dividerWidth, dividerWidth * TITLE_DIVIDER_RIGHT_ASPECT, panel);
+      if (!leftDivider || !rightDivider) {
+        leftDivider?.destroy();
+        rightDivider?.destroy();
+      }
+    }
     this.addCloseButton(panel, panelWidth / 2 - 34 * scale, panelHeight / 2 - 34 * scale, scale);
 
     // ── 宫格:邮件(未读角标)/ 设置 / 公告 ──

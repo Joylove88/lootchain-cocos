@@ -57,6 +57,10 @@ const FORMATION_TAB_ACTIVE_ASSET = 'ui/formation/name_plate/spriteFrame';
 const FORMATION_TAB_ACTIVE_ASPECT = 88 / 166;
 const FORMATION_TAB_IDLE_ASSET = 'ui/formation/plate_dark/spriteFrame';
 const FORMATION_CHECK_GOLD_ASSET = 'ui/formation/check_gold/spriteFrame';
+const DECO_DIVIDER_LEFT_ASSET = 'ui/common/ai/deco_divider_left/spriteFrame';
+const DECO_DIVIDER_RIGHT_ASSET = 'ui/common/ai/deco_divider_right/spriteFrame';
+const DECO_DIVIDER_LEFT_ASPECT = 76 / 463;
+const DECO_DIVIDER_RIGHT_ASPECT = 77 / 471;
 
 export interface LobbyFormationPanelHost {
   node: Node;
@@ -693,12 +697,21 @@ export class LobbyFormationPanelRenderer {
     const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, titleY, 24 * scale, rgba(244, 216, 152), new Size(innerWidth - 20 * scale, 32 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    // 金色分隔线(手绘细线:divider 素材是粗雕花图,压扁会失真)。
-    graphics.strokeColor = rgba(206, 160, 82, 190);
-    graphics.lineWidth = Math.max(1, 1.2 * scale);
-    graphics.moveTo(-innerWidth / 2, titleY - 22 * scale);
-    graphics.lineTo(innerWidth / 2, titleY - 22 * scale);
-    graphics.stroke();
+    const dividerInner = ('可出战英雄'.length * 24 * scale) / 2 + 10 * scale;
+    const dividerWidth = Math.min(innerWidth * 0.2, innerWidth / 2 - dividerInner);
+    if (dividerWidth >= 40 * scale) {
+      const leftArt = this.host.addSprite('LobbyFormationHeroPickerDividerL', DECO_DIVIDER_LEFT_ASSET, -dividerInner - dividerWidth / 2, titleY, dividerWidth, dividerWidth * DECO_DIVIDER_LEFT_ASPECT, panel);
+      const rightArt = this.host.addSprite('LobbyFormationHeroPickerDividerR', DECO_DIVIDER_RIGHT_ASSET, dividerInner + dividerWidth / 2, titleY, dividerWidth, dividerWidth * DECO_DIVIDER_RIGHT_ASPECT, panel);
+      if (!leftArt || !rightArt) {
+        leftArt?.node.destroy();
+        rightArt?.node.destroy();
+        graphics.strokeColor = rgba(206, 160, 82, 190);
+        graphics.lineWidth = Math.max(1, 1.2 * scale);
+        graphics.moveTo(-innerWidth / 2, titleY - 22 * scale);
+        graphics.lineTo(innerWidth / 2, titleY - 22 * scale);
+        graphics.stroke();
+      }
+    }
     // 稀有度过滤页签:选中=用户小金匾素材(等比撑满格宽),未选=纯黑胶囊素材(可拉伸);缺图手绘。
     const tabs: Array<{ key: 'ALL' | 'UR' | 'SSR' | 'SR' | 'R'; label: string }> = [
       { key: 'ALL', label: '全部' },

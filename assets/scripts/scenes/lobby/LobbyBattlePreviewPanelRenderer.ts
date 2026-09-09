@@ -7606,18 +7606,25 @@ export class LobbyBattlePreviewPanelRenderer {
     const dailyDungeon = isDailyDungeonStageCode(snapshot.stageCode);
     const dailyCounts = dailyDungeon && state.settlement ? /今日 (\d+)\/(\d+) 次/.exec(state.settlement.message || '') : null;
     const dailyCanRetry = !!dailyCounts && Number(dailyCounts[1]) < Number(dailyCounts[2]);
-    // 收益区重设计(2026-08-13):经验横幅下 → 细金分割线 → "获得奖励"小标 → 奖励格,建立清晰纵向层次。
+    // 收益区重设计(2026-08-13):经验横幅下 → "获得奖励"小标两侧金饰线对 → 奖励格,建立清晰纵向层次。
     if (rewards.length > 0) {
-      const divider = this.host.addChildPlainNode(overlay, 'LobbyBattleStage12VictoryDivider', 0, overlayHeight / 2 - 206 * scale, overlayWidth * 0.46, 3 * scale);
-      const dg = divider.addComponent(Graphics);
-      dg.strokeColor = rgba(206, 168, 96, 155);
-      dg.lineWidth = Math.max(1, 1.4 * scale);
-      dg.moveTo(-overlayWidth * 0.23, 0);
-      dg.lineTo(overlayWidth * 0.23, 0);
-      dg.stroke();
-      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, overlayHeight / 2 - 230 * scale, 18 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 24 * scale));
+      const rewardTitleY = overlayHeight / 2 - 230 * scale;
+      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, rewardTitleY, 18 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 24 * scale));
       rewardTitle.overflow = Label.Overflow.SHRINK;
       this.applyOutline(rewardTitle, scale, false);
+      const rewardTitleHalf = 2 * 18 * scale;
+      const dividerGap = 10 * scale;
+      const dividerAvail = overlayWidth / 2 - rewardTitleHalf - dividerGap - 24 * scale;
+      if (dividerAvail >= 40) {
+        const dividerWidth = Math.min(90 * scale, dividerAvail);
+        const dividerHeight = dividerWidth * (71 / 224);
+        const dividerX = rewardTitleHalf + dividerGap + dividerWidth / 2;
+        const dividerLeft = this.host.addSprite('LobbyBattleStage12VictoryDividerL', 'ui/common/ai/footer_divider_left/spriteFrame', -dividerX, rewardTitleY, dividerWidth, dividerHeight, overlay);
+        const dividerRight = dividerLeft ? this.host.addSprite('LobbyBattleStage12VictoryDividerR', 'ui/common/ai/footer_divider_right/spriteFrame', dividerX, rewardTitleY, dividerWidth, dividerHeight, overlay) : null;
+        if (dividerLeft && !dividerRight) {
+          dividerLeft.node.destroy();
+        }
+      }
     }
     // 奖励区:图标格加大+道具图标+名字/数量。奖励块整体下移居中到"获得奖励"标下方的面板下半(消除原先挤上半、下方大片空黑的失衡)。
     const rewardY = -84 * scale;

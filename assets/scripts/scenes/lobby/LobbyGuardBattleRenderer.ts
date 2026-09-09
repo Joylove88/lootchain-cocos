@@ -1477,6 +1477,14 @@ export class LobbyGuardBattleRenderer {
     const wheelPanelH = Math.min(600, height * 0.62);
     this.paintOverlayPanel(overlay, wheelPanelH * 1.7, wheelPanelH, 0);
     this.host.addChildLabel(overlay, 'GuardWheelTitle', '矿脉宝箱', 0, wheelPanelH / 2 - 76, 32, rgba(255, 232, 150), new Size(width * 0.6, 42));
+    const wheelTitleHalf = 2 * 32;
+    const wheelDividerAvail = (wheelPanelH * 1.7) / 2 - wheelTitleHalf - 10 - 24;
+    if (wheelDividerAvail >= 40) {
+      const wheelDividerW = Math.min(150, wheelDividerAvail);
+      const wheelDividerX = wheelTitleHalf + 10 + wheelDividerW / 2;
+      this.mountSprite(overlay, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -wheelDividerX, wheelPanelH / 2 - 76, wheelDividerW, wheelDividerW * (76 / 390));
+      this.mountSprite(overlay, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', wheelDividerX, wheelPanelH / 2 - 76, wheelDividerW, wheelDividerW * (73 / 392));
+    }
     // 轮盘(2026-08-25 用户验收重做):暖色扇区+奖励字样+双层金圈;中心矿脉宝箱素材,停格开箱爆金光。
     const wheelX = -wheelPanelH * 0.4;
     const wheelY = -height * 0.025;
@@ -3265,6 +3273,18 @@ export class LobbyGuardBattleRenderer {
         : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
       : '';
     this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, -height * 0.02 + panelH / 2 - 76, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 46));
+    let endTitleTextW = 0;
+    for (const ch of title) {
+      endTitleTextW += (ch.codePointAt(0) ?? 0) > 255 ? 34 : 34 * 0.55;
+    }
+    const endDividerAvail = (panelH * 1.65) / 2 - endTitleTextW / 2 - 10 - 24;
+    if (endDividerAvail >= 40) {
+      const endDividerW = Math.min(160, endDividerAvail);
+      const endDividerX = endTitleTextW / 2 + 10 + endDividerW / 2;
+      const endTitleY = -height * 0.02 + panelH / 2 - 76;
+      this.mountSprite(overlay, 'GuardEndTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -endDividerX, endTitleY, endDividerW, endDividerW * (76 / 390));
+      this.mountSprite(overlay, 'GuardEndTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', endDividerX, endTitleY, endDividerW, endDividerW * (73 / 392));
+    }
     this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
     // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER)。
     if (rush && sim) {
