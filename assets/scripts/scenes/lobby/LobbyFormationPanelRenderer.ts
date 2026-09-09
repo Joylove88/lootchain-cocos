@@ -693,7 +693,8 @@ export class LobbyFormationPanelRenderer {
       graphics.stroke();
     }
     const innerWidth = artWidth * 0.8;
-    const titleY = artHeight / 2 - artHeight * 0.075;
+    // 2026-09-10 用户反馈:标题下移 20px。
+    const titleY = artHeight / 2 - artHeight * 0.075 - 20 * scale;
     const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, titleY, 24 * scale, rgba(244, 216, 152), new Size(innerWidth - 20 * scale, 32 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
@@ -760,9 +761,9 @@ export class LobbyFormationPanelRenderer {
     // 2026-09-08 用户反馈:已上阵英雄置顶(稳定排序,组内保持原有战力序)。
     const visible = [...filtered].sort((a, b) => (selectedSet.has(b.id) ? 1 : 0) - (selectedSet.has(a.id) ? 1 : 0));
     // 底部保存阵容按钮(阵容变更本就自动回写,按钮提供显式确认);压在面板内框底部。
-    // 2026-09-08 用户反馈:按钮放大一档。
-    const saveHeight = 60 * scale;
-    const saveWidth = Math.min(innerWidth, 380 * scale);
+    // 2026-09-08 用户反馈:按钮放大一档;2026-09-10:缩短 25%、加高 20%。
+    const saveHeight = 72 * scale;
+    const saveWidth = Math.min(innerWidth, 285 * scale);
     const saveY = -artHeight / 2 + artHeight * 0.058 + saveHeight / 2;
     const saveButton = this.host.addChildPlainNode(panel, 'LobbyFormationSaveButton', 0, saveY, saveWidth, saveHeight);
     // 主按钮素材(与底部三按钮同款红金 button_primary);缺图回退手绘。

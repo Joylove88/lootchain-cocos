@@ -98,7 +98,8 @@ export class LobbyQuestMailPanelRenderer {
     const ART_BOTTOM = 0.828;
     const ART_SIDE = 0.96;
     const artHeightFrac = ART_BOTTOM - ART_TOP;
-    let panelHeight = Math.min(layout.stageHeight - 28 * scale, 640 * scale);
+    // 2026-09-10 用户反馈:弹框高度 +20%(640→768)。
+    let panelHeight = Math.min(layout.stageHeight - 28 * scale, 768 * scale);
     let panelWidth = (panelHeight / artHeightFrac) * frameAspect * ART_SIDE;
     if (panelWidth > layout.stageWidth - 36 * scale) {
       panelWidth = layout.stageWidth - 36 * scale;

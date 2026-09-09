@@ -720,15 +720,34 @@ export function guardDragTo(state: GuardBattleState, fromCell: number, toCell: n
   }
   const superMerge = state.rng() < GUARD_SUPER_MERGE_CHANCE;
   const starBefore = to.star;
-  to.star = Math.min(GUARD_MAX_STAR, to.star + (superMerge ? 2 : 1));
-  state.heroes = state.heroes.filter((hero) => hero.unitId !== from.unitId);
+  const newStar = Math.min(GUARD_MAX_STAR, to.star + (superMerge ? 2 : 1));
+  // 合成结果随机化(2026-09-10 用户拍板,Random Dice 式):升星后的英雄从召唤池均匀抽取——
+  // 可能仍是合成时的英雄,也可能变身为阵容中其他英雄。确定性走 seeded rng(P3 复演不受影响)。
+  // 实现为"移除两只+按新身份重生一只"(新 unitId),渲染层据此重建视图自动换骨骼。
+  const pick = state.pool.length > 0 ? state.pool[Math.floor(state.rng() * state.pool.length)] : null;
+  const mergedCode = pick ? pick.heroCode : to.heroCode;
+  const mergedRole = pick ? pick.role : to.role;
+  state.heroes = state.heroes.filter((hero) => hero.unitId !== from.unitId && hero.unitId !== to.unitId);
+  const merged: GuardHeroUnit = {
+    unitId: state.nextUnitId++,
+    heroCode: mergedCode,
+    star: newStar,
+    cell: toCell,
+    role: mergedRole,
+    attackCooldownMs: 0,
+    lastAttackAtMs: -10000,
+    lastTargetId: null,
+    attackCount: 0,
+    skillReadyMs: state.timeMs + GUARD_HERO_SKILL_WARMUP_MS,
+  };
+  state.heroes.push(merged);
   state.events.push({
     type: superMerge ? 'superMerge' : 'merge',
     timeMs: state.timeMs,
-    heroCode: to.heroCode,
-    star: to.star,
+    heroCode: mergedCode,
+    star: newStar,
     cell: toCell,
-    skillUnlocked: starBefore < 2 && to.star >= 2,
+    skillUnlocked: starBefore < 2 && newStar >= 2,
   });
   return superMerge ? 'superMerge' : 'merge';
 }
