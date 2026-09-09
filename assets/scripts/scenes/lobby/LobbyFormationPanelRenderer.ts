@@ -822,8 +822,9 @@ export class LobbyFormationPanelRenderer {
     graphics.fillColor = this.resolveRarityColor(hero.rarity, selected ? 236 : 188);
     graphics.roundRect(-width / 2 + 2 * scale, -height / 2 + 4 * scale, 3.5 * scale, height - 8 * scale, 1.6 * scale);
     graphics.fill();
-    const crestSize = (compact ? 24 : 36) * scale;
-    const crest = this.host.addChildPlainNode(row, 'LobbyFormationHeroPickerRarity', -width / 2 + 22 * scale, 0, crestSize, crestSize);
+    // 2026-09-09 用户反馈:稀有度徽章放大 20%。
+    const crestSize = (compact ? 29 : 43) * scale;
+    const crest = this.host.addChildPlainNode(row, 'LobbyFormationHeroPickerRarity', -width / 2 + 26 * scale, 0, crestSize, crestSize);
     const crestGraphics = crest.addComponent(Graphics);
     crestGraphics.fillColor = this.resolveRarityColor(hero.rarity, selected ? 224 : 176);
     crestGraphics.circle(0, 0, crestSize * 0.36);
@@ -834,7 +835,7 @@ export class LobbyFormationPanelRenderer {
       crestGraphics.circle(0, 0, crestSize * 0.46);
       crestGraphics.stroke();
     }
-    const tag = this.host.addChildLabel(crest, 'LobbyFormationHeroPickerRarityText', safeText(hero.rarity).slice(0, 3), 0, 0, 12 * scale, rgba(255, 246, 210), new Size(28 * scale, 15 * scale));
+    const tag = this.host.addChildLabel(crest, 'LobbyFormationHeroPickerRarityText', safeText(hero.rarity).slice(0, 3), 0, 0, 14 * scale, rgba(255, 246, 210), new Size(34 * scale, 18 * scale));
     tag.overflow = Label.Overflow.SHRINK;
     // 出战标记(2026-09-08 参考图):行尾常驻圆位——选中=用户金勾素材(缺图手绘金圆✓),
     // 未选=空心暗圆;标记占位恒定,切换选中不再引起文字横移。
@@ -869,9 +870,9 @@ export class LobbyFormationPanelRenderer {
       name.overflow = Label.Overflow.SHRINK;
     } else {
       // 2026-09-08 用户反馈:整体字体放大一档。
-      const name = this.host.addChildLabel(row, 'LobbyFormationHeroPickerName', `${safeText(hero.heroName)}${hero.protagonist ? '  队长' : ''}`, -width / 2 + 50 * scale, 11 * scale, 22 * scale, selected ? rgba(255, 232, 166) : rgba(218, 198, 151), new Size(width - 140 * scale - markWidth, 26 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(row, 'LobbyFormationHeroPickerName', `${safeText(hero.heroName)}${hero.protagonist ? '  队长' : ''}`, -width / 2 + 56 * scale, 11 * scale, 22 * scale, selected ? rgba(255, 232, 166) : rgba(218, 198, 151), new Size(width - 146 * scale - markWidth, 26 * scale), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const meta = this.host.addChildLabel(row, 'LobbyFormationHeroPickerMeta', `${safeText(hero.heroClass || '未分类')} · Lv.${hero.level}`, -width / 2 + 50 * scale, -12 * scale, 17 * scale, rgba(170, 151, 108), new Size(width - 140 * scale - markWidth, 20 * scale), HorizontalTextAlignment.LEFT);
+      const meta = this.host.addChildLabel(row, 'LobbyFormationHeroPickerMeta', `${safeText(hero.heroClass || '未分类')} · Lv.${hero.level}`, -width / 2 + 56 * scale, -12 * scale, 17 * scale, rgba(170, 151, 108), new Size(width - 146 * scale - markWidth, 20 * scale), HorizontalTextAlignment.LEFT);
       meta.overflow = Label.Overflow.SHRINK;
       const power = this.host.addChildLabel(row, 'LobbyFormationHeroPickerPower', `战力 ${formatInteger(hero.power)}`, width / 2 - 62 * scale - markWidth, -12 * scale, 17 * scale, rgba(214, 190, 138), new Size(110 * scale, 20 * scale), HorizontalTextAlignment.RIGHT);
       power.overflow = Label.Overflow.SHRINK;
