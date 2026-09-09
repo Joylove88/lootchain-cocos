@@ -32,6 +32,8 @@ const QUEST_UI_ASSETS = {
   close: 'ui/common/ai/button_close/spriteFrame',
   dividerLeft: 'ui/common/ai/footer_divider_left/spriteFrame',
   dividerRight: 'ui/common/ai/footer_divider_right/spriteFrame',
+  titleDividerLeft: 'ui/common/ai/title_divider_left/spriteFrame',
+  titleDividerRight: 'ui/common/ai/title_divider_right/spriteFrame',
 };
 
 /** 任务类型图标:按任务名/描述关键词匹配(ratio=宽/高,等比显示)。 */
@@ -104,7 +106,8 @@ export class LobbyQuestMailPanelRenderer {
     }
     const state = this.host.currentLobbyQuestState();
 
-    this.mountDim('LobbyQuestDim', centerX, centerY, layout, () => this.host.closeLobbyQuestPanel());
+    // 遮罩加深(2026-09-10 用户反馈:弹框后大厅要更暗,分清主次)。
+    this.mountDim('LobbyQuestDim', centerX, centerY, layout, () => this.host.closeLobbyQuestPanel(), 200);
     const group = this.host.createUiNode('LobbyQuestSceneContent');
     group.setPosition(new Vec3(centerX, centerY, 0));
     group.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
@@ -124,30 +127,32 @@ export class LobbyQuestMailPanelRenderer {
       g.stroke();
     }
 
-    // 标题+两侧星饰线(以下 Y 均以可见框为基准)。
-    const titleY = panelHeight * 0.375;
-    const title = this.host.addChildLabel(panel, 'Title', '任务', 0, titleY, 30 * scale, rgba(244, 220, 166, 255), new Size(panelWidth * 0.4, 40 * scale));
+    // 标题+两侧星饰线(以下 Y 均以可见框为基准;2026-09-10 用户反馈:参考图鎏金大字+下移 30px,
+    // 饰线换 title_divider 长款)。
+    const titleY = panelHeight * 0.375 - 30 * scale;
+    const title = this.host.addChildLabel(panel, 'Title', '任务', 0, titleY, 38 * scale, rgba(245, 213, 130, 255), new Size(panelWidth * 0.4, 50 * scale));
     title.isBold = true;
-    this.outline(title, scale, true);
-    const dividerW = 92 * scale;
-    const dividerH = dividerW * (71 / 224);
-    const dividerGap = 46 * scale + dividerW / 2;
-    this.host.addSprite('TitleDividerL', QUEST_UI_ASSETS.dividerLeft, -dividerGap, titleY, dividerW, dividerH, panel);
-    this.host.addSprite('TitleDividerR', QUEST_UI_ASSETS.dividerRight, dividerGap, titleY, dividerW, dividerH, panel);
+    title.enableOutline = true;
+    title.outlineColor = rgba(58, 32, 10, 255);
+    title.outlineWidth = Math.max(2, 3 * scale);
+    const dividerW = 118 * scale;
+    const dividerGap = 58 * scale + dividerW / 2;
+    this.host.addSprite('TitleDividerL', QUEST_UI_ASSETS.titleDividerLeft, -dividerGap, titleY, dividerW, dividerW * (76 / 390), panel);
+    this.host.addSprite('TitleDividerR', QUEST_UI_ASSETS.titleDividerRight, dividerGap, titleY, dividerW, dividerW * (73 / 392), panel);
     this.addAssetCloseButton(panel, panelWidth * 0.43, panelHeight * 0.39, scale, () => this.host.closeLobbyQuestPanel());
 
-    // 页签(素材:选中=红大理石金框,未选=暗石纹;缺图退手绘)。
+    // 页签(素材:选中=红大理石金框,未选=暗石纹;缺图退手绘;2026-09-10 用户反馈:间隔缩小)。
     const tabW = 186 * scale;
     const tabY = panelHeight * 0.25;
-    this.addQuestTabButton(panel, '日常任务', state.tab === 'DAILY', -tabW / 2 - 16 * scale, tabY, tabW, scale, () => this.host.setLobbyQuestTab('DAILY'));
-    this.addQuestTabButton(panel, '成就', state.tab === 'ACHIEVE', tabW / 2 + 16 * scale, tabY, tabW, scale, () => this.host.setLobbyQuestTab('ACHIEVE'));
+    this.addQuestTabButton(panel, '日常任务', state.tab === 'DAILY', -tabW / 2 - 6 * scale, tabY, tabW, scale, () => this.host.setLobbyQuestTab('DAILY'));
+    this.addQuestTabButton(panel, '成就', state.tab === 'ACHIEVE', tabW / 2 + 6 * scale, tabY, tabW, scale, () => this.host.setLobbyQuestTab('ACHIEVE'));
 
-    // 底部标语+饰线。
-    const footerY = -panelHeight * 0.415;
+    // 底部标语+饰线(2026-09-10 用户反馈:上移 20px,饰线拉长)。
+    const footerY = -panelHeight * 0.415 + 20 * scale;
     const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 14 * scale, rgba(190, 174, 144, 215), new Size(panelWidth * 0.5, 20 * scale));
     footer.overflow = Label.Overflow.SHRINK;
-    const footDivW = 70 * scale;
-    const footDivGap = 128 * scale + footDivW / 2;
+    const footDivW = 132 * scale;
+    const footDivGap = 122 * scale + footDivW / 2;
     this.host.addSprite('FooterDividerL', QUEST_UI_ASSETS.dividerLeft, -footDivGap, footerY, footDivW, footDivW * (71 / 224), panel);
     this.host.addSprite('FooterDividerR', QUEST_UI_ASSETS.dividerRight, footDivGap, footerY, footDivW, footDivW * (71 / 224), panel);
 
@@ -164,11 +169,21 @@ export class LobbyQuestMailPanelRenderer {
       this.centerHint(panel, '暂无任务', rgba(196, 182, 152, 220), scale);
       return;
     }
-    // 行列表:Mask+ScrollView 单列滚动(成就多时不再静默截断)。
+    // 行列表:外包大框(2026-09-10 用户反馈:参考图层次感,行整体缩进)+Mask+ScrollView 单列滚动。
     const listTop = tabY - 40 * scale;
     const listBottom = footerY + 26 * scale;
     const listHeight = Math.max(80 * scale, listTop - listBottom);
-    const rowW = panelWidth * 0.86;
+    const outerW = panelWidth * 0.9;
+    const listFrame = this.host.addChildPlainNode(panel, 'QuestListFrame', 0, listBottom + listHeight / 2, outerW, listHeight + 18 * scale);
+    const lf = listFrame.addComponent(Graphics);
+    lf.fillColor = rgba(9, 8, 10, 150);
+    lf.roundRect(-outerW / 2, -(listHeight + 18 * scale) / 2, outerW, listHeight + 18 * scale, 8 * scale);
+    lf.fill();
+    lf.strokeColor = rgba(152, 118, 68, 170);
+    lf.lineWidth = Math.max(1, 1.3 * scale);
+    lf.roundRect(-outerW / 2, -(listHeight + 18 * scale) / 2, outerW, listHeight + 18 * scale, 8 * scale);
+    lf.stroke();
+    const rowW = panelWidth * 0.82;
     const rowH = 88 * scale;
     const listNode = this.host.addChildPlainNode(panel, 'QuestList', 0, listBottom + listHeight / 2, rowW + 12 * scale, listHeight);
     listNode.addComponent(Mask);
@@ -196,6 +211,13 @@ export class LobbyQuestMailPanelRenderer {
     g.strokeColor = quest.claimable ? rgba(240, 194, 104, 230) : rgba(112, 90, 58, 150);
     g.lineWidth = Math.max(1, quest.claimable ? 1.7 * scale : 1.1 * scale);
     g.roundRect(-width / 2, -height / 2, width, height, 7 * scale);
+    g.stroke();
+    // 左侧信息区与奖励区之间的竖分割线(2026-09-10 用户反馈)。
+    const sepX = width * 0.075;
+    g.strokeColor = rgba(130, 104, 64, 130);
+    g.lineWidth = Math.max(1, scale);
+    g.moveTo(sepX, -height / 2 + 10 * scale);
+    g.lineTo(sepX, height / 2 - 10 * scale);
     g.stroke();
 
     // 任务类型图标(按名称/描述关键词;无匹配不占位画暗框)。
@@ -432,12 +454,12 @@ export class LobbyQuestMailPanelRenderer {
   }
 
   // ── 共用小件 ──
-  private mountDim(name: string, centerX: number, centerY: number, layout: UiLayout, onClose: () => void): void {
+  private mountDim(name: string, centerX: number, centerY: number, layout: UiLayout, onClose: () => void, alpha = 132): void {
     const dim = this.host.createUiNode(name);
     dim.setPosition(new Vec3(centerX, centerY, 0));
     dim.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     const g = dim.addComponent(Graphics);
-    g.fillColor = rgba(0, 0, 0, 132);
+    g.fillColor = rgba(0, 0, 0, alpha);
     g.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     g.fill();
     dim.addComponent(BlockInputEvents);
