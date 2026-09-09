@@ -101,10 +101,10 @@ export class LobbyQuestMailPanelRenderer {
     g.roundRect(-width / 2, -height / 2, width, height, 8 * scale);
     g.stroke();
 
-    const name = this.host.addChildLabel(row, 'Name', quest.questName, -width / 2 + 16 * scale, height / 2 - 15 * scale, 17 * scale, rgba(245, 222, 160, 250), new Size(width * 0.34, 22 * scale), HorizontalTextAlignment.LEFT);
+    const name = this.host.addChildLabel(row, 'Name', quest.questName, -width / 2 + 16 * scale, height / 2 - 15 * scale, 18 * scale, rgba(245, 222, 160, 250), new Size(width * 0.34, 24 * scale), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
     this.outline(name, scale, true);
-    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', -width / 2 + 16 * scale, -height / 2 + 14 * scale, 13 * scale, rgba(186, 172, 144, 225), new Size(width * 0.38, 17 * scale), HorizontalTextAlignment.LEFT);
+    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', -width / 2 + 16 * scale, -height / 2 + 14 * scale, 15 * scale, rgba(186, 172, 144, 225), new Size(width * 0.38, 21 * scale), HorizontalTextAlignment.LEFT);
     desc.overflow = Label.Overflow.SHRINK;
 
     // 进度条
@@ -119,11 +119,11 @@ export class LobbyQuestMailPanelRenderer {
     bg.fillColor = quest.claimable || quest.claimed ? rgba(150, 226, 130, 240) : rgba(224, 178, 90, 235);
     bg.roundRect(-barW / 2, -4 * scale, Math.max(4 * scale, barW * ratio), 8 * scale, 4 * scale);
     bg.fill();
-    const progress = this.host.addChildLabel(row, 'Progress', `${quest.progress}/${quest.targetCount}`, barX, 13 * scale, 12 * scale, rgba(206, 192, 160, 235), new Size(barW + 30 * scale, 16 * scale));
+    const progress = this.host.addChildLabel(row, 'Progress', `${quest.progress}/${quest.targetCount}`, barX, 13 * scale, 16 * scale, rgba(206, 192, 160, 235), new Size(barW + 30 * scale, 22 * scale));
     progress.overflow = Label.Overflow.SHRINK;
 
     const rewardText = quest.rewards.map((item) => `${item.name}×${item.amount}`).join(' ');
-    const reward = this.host.addChildLabel(row, 'Reward', rewardText, width * 0.17, 0, 13.5 * scale, rgba(255, 226, 150, 245), new Size(width * 0.24, 34 * scale));
+    const reward = this.host.addChildLabel(row, 'Reward', rewardText, width * 0.17, 0, 16 * scale, rgba(255, 226, 150, 245), new Size(width * 0.24, 34 * scale));
     reward.overflow = Label.Overflow.SHRINK;
 
     // 领取按钮(可领时命名 LobbyQuestClaimReady:新手引导 CLAIM 步的光圈目标,findLobbyNode 命中第一个可领行)
@@ -140,7 +140,7 @@ export class LobbyQuestMailPanelRenderer {
     bgB.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 6 * scale);
     bgB.stroke();
     const btnText = quest.claimed ? '已领取' : claiming === quest.questCode ? '领取中…' : quest.claimable ? '领取' : '未完成';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 15 * scale, quest.claimed ? rgba(140, 128, 108) : claimable ? rgba(255, 236, 190) : rgba(160, 146, 120), new Size(btnW - 8 * scale, btnH));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 16 * scale, quest.claimed ? rgba(140, 128, 108) : claimable ? rgba(255, 236, 190) : rgba(160, 146, 120), new Size(btnW - 8 * scale, btnH));
     label.overflow = Label.Overflow.SHRINK;
     if (claimable) {
       btn.addComponent(Button);
@@ -230,15 +230,15 @@ export class LobbyQuestMailPanelRenderer {
     g.roundRect(-width / 2, -height / 2, width, height, 8 * scale);
     g.stroke();
 
-    const title = this.host.addChildLabel(row, 'Title', `${unread ? '● ' : ''}${mail.title}`, -width / 2 + 16 * scale, height / 2 - 16 * scale, 16.5 * scale, rgba(245, 222, 160, 250), new Size(width * 0.6, 22 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.host.addChildLabel(row, 'Title', `${unread ? '● ' : ''}${mail.title}`, -width / 2 + 16 * scale, height / 2 - 16 * scale, 18 * scale, rgba(245, 222, 160, 250), new Size(width * 0.6, 24 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.outline(title, scale, unread);
-    const content = this.host.addChildLabel(row, 'Content', mail.content, -width / 2 + 16 * scale, -1 * scale, 13 * scale, rgba(190, 176, 148, 230), new Size(width * 0.62, 17 * scale), HorizontalTextAlignment.LEFT);
+    const content = this.host.addChildLabel(row, 'Content', mail.content, -width / 2 + 16 * scale, -1 * scale, 15 * scale, rgba(190, 176, 148, 230), new Size(width * 0.62, 21 * scale), HorizontalTextAlignment.LEFT);
     content.overflow = Label.Overflow.SHRINK;
     const attachText = mail.attachments.length > 0
       ? `附件:${mail.attachments.map((item) => `${item.name}×${item.amount}`).join(' ')}`
       : '';
-    const attach = this.host.addChildLabel(row, 'Attach', attachText, -width / 2 + 16 * scale, -height / 2 + 13 * scale, 12.5 * scale, rgba(255, 226, 150, 240), new Size(width * 0.62, 16 * scale), HorizontalTextAlignment.LEFT);
+    const attach = this.host.addChildLabel(row, 'Attach', attachText, -width / 2 + 16 * scale, -height / 2 + 13 * scale, 16 * scale, rgba(255, 226, 150, 240), new Size(width * 0.62, 22 * scale), HorizontalTextAlignment.LEFT);
     attach.overflow = Label.Overflow.SHRINK;
 
     const btnW = 92 * scale;
@@ -255,7 +255,7 @@ export class LobbyQuestMailPanelRenderer {
     bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 6 * scale);
     bg.stroke();
     const btnText = !hasAttachment ? '无附件' : mail.claimed ? '已领取' : claiming === mail.mailId ? '领取中…' : '领取';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 14 * scale, mail.claimed || !hasAttachment ? rgba(140, 128, 108) : rgba(255, 236, 190), new Size(btnW - 8 * scale, btnH));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 16 * scale, mail.claimed || !hasAttachment ? rgba(140, 128, 108) : rgba(255, 236, 190), new Size(btnW - 8 * scale, btnH));
     label.overflow = Label.Overflow.SHRINK;
     if (claimable) {
       btn.addComponent(Button);

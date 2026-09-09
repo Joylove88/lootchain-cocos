@@ -95,7 +95,7 @@ export class BattleFormationSceneRenderer {
     g.lineWidth = Math.max(1, hero?.protagonist ? 1.6 * scale : scale);
     g.stroke();
     if (hero) {
-      const name = this.host.addChildLabel(slot, 'BattleFormationSlotName', safeText(hero.heroName), 0, size * 0.22, 14 * scale, rgba(246, 218, 156), new Size(size - 6 * scale, 18 * scale));
+      const name = this.host.addChildLabel(slot, 'BattleFormationSlotName', safeText(hero.heroName), 0, size * 0.22, 16 * scale, rgba(246, 218, 156), new Size(size - 6 * scale, 22 * scale));
       name.overflow = Label.Overflow.SHRINK;
       const badge = this.host.addChildLabel(slot, 'BattleFormationSlotBadge', safeText(hero.rarity) + ' Lv.' + hero.level, 0, -size * 0.18, 13 * scale, rgba(185, 160, 105), new Size(size - 6 * scale, 16 * scale));
       badge.overflow = Label.Overflow.SHRINK;
@@ -103,7 +103,7 @@ export class BattleFormationSceneRenderer {
       slot.on(Button.EventType.CLICK, () => this.host.toggleFormationHero(hero.id), this);
       this.host.applyImageButtonFeedback(slot, 1.02, 0.98);
     } else {
-      const empty = this.host.addChildLabel(slot, 'BattleFormationSlotEmpty', '空位', 0, 0, 14 * scale, rgba(120, 108, 84), new Size(size - 6 * scale, 18 * scale));
+      const empty = this.host.addChildLabel(slot, 'BattleFormationSlotEmpty', '空位', 0, 0, 15 * scale, rgba(120, 108, 84), new Size(size - 6 * scale, 21 * scale));
       empty.overflow = Label.Overflow.SHRINK;
     }
   }
@@ -130,7 +130,7 @@ export class BattleFormationSceneRenderer {
       tg.fill();
       tg.strokeColor = active ? rgba(210, 152, 64, 200) : rgba(100, 80, 45, 120);
       tg.stroke();
-      const tl = this.host.addChildLabel(tabNode, 'BattleFormationClassTabLabel_' + i, tab, 0, 0, 14 * scale, active ? rgba(246, 218, 156) : rgba(180, 160, 120), new Size(tabWidth - 8 * scale, 22 * scale));
+      const tl = this.host.addChildLabel(tabNode, 'BattleFormationClassTabLabel_' + i, tab, 0, 0, 16 * scale, active ? rgba(246, 218, 156) : rgba(180, 160, 120), new Size(tabWidth - 8 * scale, 22 * scale));
       tl.overflow = Label.Overflow.SHRINK;
       tabNode.addComponent(Button);
       tabNode.on(Button.EventType.CLICK, () => { this.selectedClass = tab; }, this);
@@ -157,7 +157,7 @@ export class BattleFormationSceneRenderer {
     row.on(Button.EventType.CLICK, () => this.host.toggleFormationHero(hero.id), this);
     this.host.applyImageButtonFeedback(row, 1.012, 0.988);
     const text = (selected ? '已上阵' : safeText(hero.rarity)) + '  ' + safeText(hero.heroName) + '  Lv.' + hero.level + '  战力 ' + hero.power.toLocaleString('en-US');
-    const label = this.host.addChildLabel(row, 'BattleFormationHeroRowLabel_' + index, text, -width / 2 + 12 * scale, 0, 15 * scale, selected ? rgba(246, 218, 156) : rgba(207, 188, 145), new Size(width - 20 * scale, height), HorizontalTextAlignment.LEFT);
+    const label = this.host.addChildLabel(row, 'BattleFormationHeroRowLabel_' + index, text, -width / 2 + 12 * scale, 0, 16 * scale, selected ? rgba(246, 218, 156) : rgba(207, 188, 145), new Size(width - 20 * scale, height), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
   }
 

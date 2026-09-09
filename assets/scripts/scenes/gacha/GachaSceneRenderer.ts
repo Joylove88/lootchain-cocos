@@ -633,7 +633,7 @@ export class GachaSceneRenderer {
     graphics.stroke();
     const component = button.addComponent(Button);
     component.interactable = false;
-    const label = this.host.addChildLabel(button, 'GachaExchangeDisabledLabel', '兑换未开放', 0, 0, 19 * scale, rgba(154, 137, 105), new Size(230 * scale, 34 * scale));
+    const label = this.host.addChildLabel(button, 'GachaExchangeDisabledLabel', '兑换未开放', 0, 0, 20 * scale, rgba(154, 137, 105), new Size(230 * scale, 34 * scale));
     label.overflow = Label.Overflow.SHRINK;
   }
 
@@ -1830,7 +1830,7 @@ export class GachaSceneRenderer {
     graphics.lineWidth = Math.max(1.2, 1.5 * scale);
     graphics.circle(0, 0, 13 * scale);
     graphics.stroke();
-    const title = this.host.addChildLabel(node, 'GachaRevealStepTitle', step.title, 0, -25 * scale, 16 * scale, rgba(238, 205, 132), new Size(96 * scale, 22 * scale));
+    const title = this.host.addChildLabel(node, 'GachaRevealStepTitle', step.title, 0, -25 * scale, 18 * scale, rgba(238, 205, 132), new Size(96 * scale, 24 * scale));
     title.overflow = Label.Overflow.SHRINK;
     const detail = this.host.addChildLabel(node, 'GachaRevealStepDetail', step.detail, 0, -45 * scale, 14 * scale, rgba(161, 137, 96), new Size(Math.min(170 * scale, totalWidth / 3), 18 * scale));
     detail.overflow = Label.Overflow.SHRINK;
@@ -1907,7 +1907,7 @@ export class GachaSceneRenderer {
       panelGraphics.stroke();
     }
 
-    const title = this.host.addChildLabel(panel, 'GachaResultSceneTitle', drawResult ? '召唤结果' : (mode === 'once' ? '召唤结果预览' : '十连结果预览'), 0, panelHeight / 2 - panelHeight * 0.088, Math.max(20 * scale, panelHeight * 0.042), rgba(252, 222, 153), new Size(panelWidth * 0.24, panelHeight * 0.07));
+    const title = this.host.addChildLabel(panel, 'GachaResultSceneTitle', drawResult ? '召唤结果' : (mode === 'once' ? '召唤结果预览' : '十连结果预览'), 0, panelHeight / 2 - panelHeight * 0.088, Math.max(26 * scale, panelHeight * 0.042), rgba(252, 222, 153), new Size(panelWidth * 0.24, Math.max(32 * scale, panelHeight * 0.07)));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
 
@@ -2199,7 +2199,7 @@ export class GachaSceneRenderer {
     g.lineWidth = 2 * scale;
     g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.stroke();
-    const title = this.host.addChildLabel(card, 'Title', item.name, 0, h / 2 - 34 * scale, 23 * scale, tone, new Size(w - 44 * scale, 32 * scale));
+    const title = this.host.addChildLabel(card, 'Title', item.name, 0, h / 2 - 34 * scale, 24 * scale, tone, new Size(w - 44 * scale, 32 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const summary = this.host.addChildLabel(card, 'Summary', `英雄 · ${item.rarity} · Lv${Math.max(1, hero.level)} · ${Math.max(1, Math.trunc(hero.star || 1))}星 · 战力 ${compactValue(hero.power)}`, 0, h / 2 - 64 * scale, 17 * scale, rgba(206, 190, 156), new Size(w - 48 * scale, 22 * scale));
@@ -2215,7 +2215,7 @@ export class GachaSceneRenderer {
       label.overflow = Label.Overflow.SHRINK;
     });
     cursor -= attrRows * 30 * scale + 12 * scale;
-    const skillTitle = this.host.addChildLabel(card, 'SkillTitle', '技能', -w / 2 + 36 * scale, cursor, 17 * scale, rgba(238, 210, 148), new Size(120 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const skillTitle = this.host.addChildLabel(card, 'SkillTitle', '技能', -w / 2 + 36 * scale, cursor, 18 * scale, rgba(238, 210, 148), new Size(120 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     skillTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(skillTitle, scale, true);
     cursor -= 30 * scale;
@@ -2248,7 +2248,7 @@ export class GachaSceneRenderer {
     g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.stroke();
     const info = this.resolveResultItemInfo(item);
-    const title = this.host.addChildLabel(dialog, 'Title', item.name, 0, h / 2 - 34 * scale, 22 * scale, tone, new Size(w - 44 * scale, 30 * scale));
+    const title = this.host.addChildLabel(dialog, 'Title', item.name, 0, h / 2 - 34 * scale, 24 * scale, tone, new Size(w - 44 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const category = this.host.addChildLabel(dialog, 'Category', info.category, 0, h / 2 - 64 * scale, 17 * scale, rgba(196, 178, 140), new Size(w - 48 * scale, 22 * scale));
@@ -2388,7 +2388,7 @@ export class GachaSceneRenderer {
       graphics.fill();
       graphics.strokeColor = rgba(177, 127, 60, 160);
       graphics.stroke();
-      const label = this.host.addChildLabel(node, 'GachaCompactActionLabel', action.label, 0, 0, 15 * scale, rgba(225, 190, 112), new Size(buttonWidth - 8 * scale, 30 * scale));
+      const label = this.host.addChildLabel(node, 'GachaCompactActionLabel', action.label, 0, 0, 16 * scale, rgba(225, 190, 112), new Size(buttonWidth - 8 * scale, 30 * scale));
       label.overflow = Label.Overflow.SHRINK;
     });
   }

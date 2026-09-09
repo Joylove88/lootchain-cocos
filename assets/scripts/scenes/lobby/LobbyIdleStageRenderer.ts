@@ -252,7 +252,7 @@ export class LobbyIdleStageRenderer {
     graphics.fillColor = rgba(229, 173, 82, 230);
     graphics.circle(0, height * 0.24, 9 * scale);
     graphics.fill();
-    const label = this.host.addChildLabel(parent, 'LobbyIdleHeroName', safeText(hero.heroName).slice(0, 4), 0, -height * 0.4, 12 * scale, rgba(240, 214, 152), new Size(width, 14 * scale));
+    const label = this.host.addChildLabel(parent, 'LobbyIdleHeroName', safeText(hero.heroName).slice(0, 4), 0, -height * 0.4, 13 * scale, rgba(240, 214, 152), new Size(width, 19 * scale));
     label.overflow = Label.Overflow.SHRINK;
   }
 
@@ -463,7 +463,7 @@ export class LobbyIdleStageRenderer {
     graphics.lineWidth = Math.max(1, 1.1 * scale);
     graphics.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 9 * scale);
     graphics.stroke();
-    const title = this.host.addChildLabel(panel, 'LobbyIdleRewardTitle', summary ? '挂机收益' : '挂机收益(预览)', 0, panelHeight / 2 - 18 * scale, 15 * scale, rgba(244, 214, 150), new Size(panelWidth - 20 * scale, 20 * scale));
+    const title = this.host.addChildLabel(panel, 'LobbyIdleRewardTitle', summary ? '挂机收益' : '挂机收益(预览)', 0, panelHeight / 2 - 18 * scale, 18 * scale, rgba(244, 214, 150), new Size(panelWidth - 20 * scale, 24 * scale));
     title.overflow = Label.Overflow.SHRINK;
     graphics.strokeColor = rgba(196, 150, 76, 120);
     graphics.moveTo(-panelWidth / 2 + 12 * scale, panelHeight / 2 - 32 * scale);
@@ -482,7 +482,7 @@ export class LobbyIdleStageRenderer {
         `挂机数据同步中…`,
       ];
     rows.forEach((row, index) => {
-      const label = this.host.addChildLabel(panel, `LobbyIdleRewardRow_${index}`, row, -panelWidth / 2 + 14 * scale, panelHeight / 2 - 48 * scale - index * 22 * scale, 14 * scale, rgba(206, 186, 140), new Size(panelWidth - 28 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+      const label = this.host.addChildLabel(panel, `LobbyIdleRewardRow_${index}`, row, -panelWidth / 2 + 14 * scale, panelHeight / 2 - 48 * scale - index * 22 * scale, 16 * scale, rgba(206, 186, 140), new Size(panelWidth - 28 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
       label.overflow = Label.Overflow.SHRINK;
     });
     if (summary) {
@@ -499,7 +499,7 @@ export class LobbyIdleStageRenderer {
         const dim = claimArt.node.addComponent(UIOpacity);
         dim.opacity = 128;
       }
-      const claimLabel = this.host.addChildLabel(claimButton, 'LobbyIdleClaimButtonLabel', claiming ? '领取中…' : '领取收益', 0, 0, 19 * scale, rgba(255, 238, 196), new Size(panelWidth - 80 * scale, 24 * scale));
+      const claimLabel = this.host.addChildLabel(claimButton, 'LobbyIdleClaimButtonLabel', claiming ? '领取中…' : '领取收益', 0, 0, 20 * scale, rgba(255, 238, 196), new Size(panelWidth - 80 * scale, 26 * scale));
       claimLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(claimLabel, scale, true);
       claimButton.addComponent(Button);
@@ -519,13 +519,13 @@ export class LobbyIdleStageRenderer {
         toggleGraphics.roundRect(-(panelWidth - 48 * scale) / 2, -13 * scale, panelWidth - 48 * scale, 26 * scale, 13 * scale);
         toggleGraphics.stroke();
       }
-      const toggleLabel = this.host.addChildLabel(toggle, 'LobbyIdleAutoToggleLabel', autoOn ? '自动挑战 · 开' : '自动挑战 · 关', 0, 0, 14 * scale, autoOn ? rgba(255, 214, 168) : rgba(166, 150, 120), new Size(panelWidth - 64 * scale, 18 * scale));
+      const toggleLabel = this.host.addChildLabel(toggle, 'LobbyIdleAutoToggleLabel', autoOn ? '自动挑战 · 开' : '自动挑战 · 关', 0, 0, 16 * scale, autoOn ? rgba(255, 214, 168) : rgba(166, 150, 120), new Size(panelWidth - 64 * scale, 22 * scale));
       toggleLabel.overflow = Label.Overflow.SHRINK;
       toggle.addComponent(Button);
       this.host.applyImageButtonFeedback(toggle, 1.03, 0.97);
       toggle.on(Button.EventType.CLICK, () => this.host.toggleAutoChallenge?.(), this);
     } else {
-      const note = this.host.addChildLabel(panel, 'LobbyIdleRewardNote', '真实数值由服务端结算发放', 0, -panelHeight / 2 + 16 * scale, 12 * scale, rgba(150, 132, 96), new Size(panelWidth - 20 * scale, 14 * scale));
+      const note = this.host.addChildLabel(panel, 'LobbyIdleRewardNote', '真实数值由服务端结算发放', 0, -panelHeight / 2 + 16 * scale, 13 * scale, rgba(150, 132, 96), new Size(panelWidth - 20 * scale, 19 * scale));
       note.overflow = Label.Overflow.SHRINK;
     }
   }
@@ -562,7 +562,7 @@ export class LobbyIdleStageRenderer {
     toggleGraphics.fillColor = rgba(18, 16, 18, 190);
     toggleGraphics.roundRect(-buttonWidth / 2, -13 * scale, buttonWidth, 26 * scale, 13 * scale);
     toggleGraphics.fill();
-    const toggleLabel = this.host.addChildLabel(toggle, 'LobbyIdleAutoToggleLabel', '自动挑战 · 未开放', 0, 0, 14 * scale, rgba(146, 132, 104), new Size(buttonWidth - 16 * scale, 18 * scale));
+    const toggleLabel = this.host.addChildLabel(toggle, 'LobbyIdleAutoToggleLabel', '自动挑战 · 未开放', 0, 0, 16 * scale, rgba(146, 132, 104), new Size(buttonWidth - 16 * scale, 22 * scale));
     toggleLabel.overflow = Label.Overflow.SHRINK;
     toggle.addComponent(Button);
     toggle.on(Button.EventType.CLICK, () => {

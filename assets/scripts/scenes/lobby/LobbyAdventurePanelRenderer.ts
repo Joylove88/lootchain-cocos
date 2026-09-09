@@ -193,10 +193,10 @@ export class LobbyAdventurePanelRenderer {
     graphics.lineWidth = Math.max(1, 1.2 * scale);
     graphics.roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, 8 * scale);
     graphics.stroke();
-    const title = this.host.addChildLabel(card, 'LobbyAdventureMapActionTitle', safeText(stage.stageName), 0, cardHeight / 2 - 20 * scale, 18 * scale, rgba(248, 219, 151), new Size(cardWidth - 24 * scale, 24 * scale));
+    const title = this.host.addChildLabel(card, 'LobbyAdventureMapActionTitle', safeText(stage.stageName), 0, cardHeight / 2 - 20 * scale, 24 * scale, rgba(248, 219, 151), new Size(cardWidth - 24 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    const powerLine = this.host.addChildLabel(card, 'LobbyAdventureMapActionPower', this.stagePowerLine(stage), 0, cardHeight / 2 - 44 * scale, 14 * scale, rgba(206, 186, 140), new Size(cardWidth - 24 * scale, 18 * scale));
+    const powerLine = this.host.addChildLabel(card, 'LobbyAdventureMapActionPower', this.stagePowerLine(stage), 0, cardHeight / 2 - 44 * scale, 16 * scale, rgba(206, 186, 140), new Size(cardWidth - 24 * scale, 22 * scale));
     powerLine.overflow = Label.Overflow.SHRINK;
     const buttonWidth = Math.min(180 * scale, cardWidth - 36 * scale);
     const formationButton = this.host.addChildPlainNode(card, 'LobbyAdventureFormationButton', 0, -cardHeight / 2 + 28 * scale, buttonWidth, 36 * scale);
@@ -221,7 +221,7 @@ export class LobbyAdventurePanelRenderer {
     } else {
       this.drawDisabledButton(formationButton, buttonWidth, 36 * scale, scale);
     }
-    const formationLabel = this.host.addChildLabel(formationButton, 'LobbyAdventureFormationButtonLabel', action.label, 0, 0, 19 * scale, action.enabled ? rgba(245, 211, 123) : rgba(179, 150, 91), new Size(buttonWidth, 34 * scale));
+    const formationLabel = this.host.addChildLabel(formationButton, 'LobbyAdventureFormationButtonLabel', action.label, 0, 0, 20 * scale, action.enabled ? rgba(245, 211, 123) : rgba(179, 150, 91), new Size(buttonWidth, 34 * scale));
     formationLabel.overflow = Label.Overflow.SHRINK;
   }
 
@@ -269,7 +269,7 @@ export class LobbyAdventurePanelRenderer {
       'LobbyAdventureCompactFormationButtonLabel',
       this.stageActionLabel(recommended),
       0,
-      0, 19 * scale,
+      0, 20 * scale,
       this.canOpenBattleEntryStage(recommended) ? rgba(245, 211, 123) : rgba(179, 150, 91),
       new Size(ctaWidth - 16 * scale, ctaHeight),
     );
@@ -440,7 +440,7 @@ export class LobbyAdventurePanelRenderer {
     this.addDetailLine(panel, 'LobbyAdventureUnlockGap', this.stageUnlockGapText(stage), 0, height / 2 - 138 * scale, width, scale);
     this.addDetailLine(panel, 'LobbyAdventureReqPower', this.stagePowerLine(stage), 0, height / 2 - 168 * scale, width, scale);
     this.addDetailLine(panel, 'LobbyAdventureEnemy', `敌方：${safeText(stage.enemySummary)}`, 0, height / 2 - 198 * scale, width, scale);
-    const rewardTitle = this.host.addChildLabel(panel, 'LobbyAdventureRewardTitle', this.stageRewardTitle(stage), -width / 2 + 20 * scale, height / 2 - 234 * scale, 17 * scale, rgba(221, 173, 85), new Size(width - 40 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const rewardTitle = this.host.addChildLabel(panel, 'LobbyAdventureRewardTitle', this.stageRewardTitle(stage), -width / 2 + 20 * scale, height / 2 - 234 * scale, 18 * scale, rgba(221, 173, 85), new Size(width - 40 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     rewardTitle.overflow = Label.Overflow.SHRINK;
     const rewards = stage.rewardPreview.length > 0 ? stage.rewardPreview : ['当前阶段不发放奖励；仅展示关卡配置占位'];
     rewards.slice(0, 4).forEach((reward, index) => {
@@ -474,7 +474,7 @@ export class LobbyAdventurePanelRenderer {
     } else {
       this.drawDisabledButton(formationButton, buttonWidth, 36 * scale, scale);
     }
-    const formationLabel = this.host.addChildLabel(formationButton, 'LobbyAdventureFormationButtonLabel', action.label, 0, 0, 19 * scale, action.enabled ? rgba(245, 211, 123) : rgba(179, 150, 91), new Size(buttonWidth, 34 * scale));
+    const formationLabel = this.host.addChildLabel(formationButton, 'LobbyAdventureFormationButtonLabel', action.label, 0, 0, 20 * scale, action.enabled ? rgba(245, 211, 123) : rgba(179, 150, 91), new Size(buttonWidth, 34 * scale));
     formationLabel.overflow = Label.Overflow.SHRINK;
   }
 
@@ -518,7 +518,7 @@ export class LobbyAdventurePanelRenderer {
     graphics.stroke();
     const title = this.host.addChildLabel(card, 'LobbyAdventureRecentBattleTitle', '最近战斗记录', -cardWidth / 2 + 12 * scale, 11 * scale, 13 * scale, rgba(221, 173, 85), new Size(cardWidth - 24 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
-    const label = this.host.addChildLabel(card, 'LobbyAdventureRecentBattleSummary', primaryText, -cardWidth / 2 + 12 * scale, -4 * scale, 15 * scale, latest || stageRecord ? rgba(186, 218, 231) : rgba(156, 139, 101), new Size(cardWidth - 24 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    const label = this.host.addChildLabel(card, 'LobbyAdventureRecentBattleSummary', primaryText, -cardWidth / 2 + 12 * scale, -4 * scale, 16 * scale, latest || stageRecord ? rgba(186, 218, 231) : rgba(156, 139, 101), new Size(cardWidth - 24 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
     const guard = this.host.addChildLabel(card, 'LobbyAdventureRecentBattleGuard', guardText, -cardWidth / 2 + 12 * scale, -18 * scale, 13 * scale, rgba(162, 145, 106), new Size(cardWidth - 24 * scale, 16 * scale), HorizontalTextAlignment.LEFT);
     guard.overflow = Label.Overflow.SHRINK;

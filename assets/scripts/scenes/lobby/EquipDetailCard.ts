@@ -155,8 +155,8 @@ export function renderEquipDetailCard(host: EquipCardHost, parent: Node, item: E
   // 顶部:装备真图 + 名称(品质色+强化)+ 品质·部位·需求
   addEquipIconInCard(host, tip, item, -w / 2 + 80 * scale, h / 2 - 90 * scale, 70 * scale, scale);
   const enhance = item.enhanceLevel ?? 0;
-  const nameLabel = host.addChildLabel(tip, 'CardName', `${safeText(item.equipName)}${enhance > 0 ? ` +${enhance}` : ''}`, -w / 2 + 126 * scale, h / 2 - 71 * scale, 21 * scale, rgba(q.r, q.g, q.b, 255), new Size(w - 150 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
-  nameLabel.fontSize = 23 * scale;
+  const nameLabel = host.addChildLabel(tip, 'CardName', `${safeText(item.equipName)}${enhance > 0 ? ` +${enhance}` : ''}`, -w / 2 + 126 * scale, h / 2 - 71 * scale, 21 * scale, rgba(q.r, q.g, q.b, 255), new Size(w - 150 * scale, 32 * scale), HorizontalTextAlignment.LEFT);
+  nameLabel.fontSize = 24 * scale;
   nameLabel.overflow = Label.Overflow.SHRINK;
   applyOutline(nameLabel, scale, true);
   const slotLabel = HERO_EQUIP_SLOTS.find((slot) => slot.code === item.slot)?.label ?? item.slot;
@@ -259,7 +259,7 @@ export function renderEquipDetailCard(host: EquipCardHost, parent: Node, item: E
     }
     if (gemParts.length > 0) {
       // 合计行独占 16px:下移并把槽行起点顺延,避免压到首条槽条顶部。
-      const gemTotalLabel = host.addChildLabel(tip, 'CardGemTotal', `合计 ${gemParts.join(' · ')}`, 0, cursor - 34 * scale, 13 * scale, rgba(214, 190, 148, 235), new Size(w - 90 * scale, 17 * scale));
+      const gemTotalLabel = host.addChildLabel(tip, 'CardGemTotal', `合计 ${gemParts.join(' · ')}`, 0, cursor - 34 * scale, 15 * scale, rgba(214, 190, 148, 235), new Size(w - 90 * scale, 21 * scale));
       gemTotalLabel.overflow = Label.Overflow.SHRINK;
       cursor -= 74 * scale;
     } else {

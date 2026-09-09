@@ -1067,11 +1067,11 @@ export class LobbyHeroRosterPanelRenderer {
       this.applyOutline(star, scale, false);
     }
 
-    const name = this.host.addChildLabel(card, 'LobbyHeroRosterHeroName', safeText(hero.heroName), 0, -height / 2 + height * HERO_ROSTER_CARD_NAME_Y_RATIO, Math.min(13 * scale, height * 0.038), rgba(250, 218, 146), new Size(width - 72 * scale, height * 0.054));
+    const name = this.host.addChildLabel(card, 'LobbyHeroRosterHeroName', safeText(hero.heroName), 0, -height / 2 + height * HERO_ROSTER_CARD_NAME_Y_RATIO, Math.min(16 * scale, height * 0.047), rgba(250, 218, 146), new Size(width - 72 * scale, Math.max(22 * scale, height * 0.054)));
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
 
-    const level = this.host.addChildLabel(card, 'LobbyHeroRosterLevelText', formatHeroCardLevel(hero.level), width * HERO_ROSTER_CARD_LEVEL_X_RATIO, height * HERO_ROSTER_CARD_LEVEL_Y_RATIO, Math.min(14 * scale, width * 0.078), rgba(246, 225, 170), new Size(width * HERO_ROSTER_CARD_LEVEL_TEXT_WIDTH_RATIO, height * 0.058), HorizontalTextAlignment.CENTER);
+    const level = this.host.addChildLabel(card, 'LobbyHeroRosterLevelText', formatHeroCardLevel(hero.level), width * HERO_ROSTER_CARD_LEVEL_X_RATIO, height * HERO_ROSTER_CARD_LEVEL_Y_RATIO, Math.min(16 * scale, width * 0.089), rgba(246, 225, 170), new Size(width * HERO_ROSTER_CARD_LEVEL_TEXT_WIDTH_RATIO, Math.max(22 * scale, height * 0.058)), HorizontalTextAlignment.CENTER);
     level.overflow = Label.Overflow.SHRINK;
     this.applyOutline(level, scale, false);
   }

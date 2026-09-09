@@ -542,7 +542,7 @@ export class LobbyHeroDetailPanelRenderer {
     g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
     g.stroke();
 
-    const title = this.host.addChildLabel(dialog, 'LobbyHeroUltimateTitle', '终极技能升级', 0, h / 2 - 34 * scale, 23 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
+    const title = this.host.addChildLabel(dialog, 'LobbyHeroUltimateTitle', '终极技能升级', 0, h / 2 - 34 * scale, 24 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
 
@@ -623,7 +623,7 @@ export class LobbyHeroDetailPanelRenderer {
       cg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
       cg.fill();
     }
-    const confirmLabel = this.host.addChildLabel(confirm, 'Label', ult.busy ? '处理中…' : '升 级', 0, 1 * scale, 19 * scale, confirmEnabled ? rgba(255, 240, 200) : rgba(190, 176, 150), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    const confirmLabel = this.host.addChildLabel(confirm, 'Label', ult.busy ? '处理中…' : '升 级', 0, 1 * scale, 20 * scale, confirmEnabled ? rgba(255, 240, 200) : rgba(190, 176, 150), new Size(buttonW - 46 * scale, buttonH * 0.7));
     confirmLabel.overflow = Label.Overflow.SHRINK;
     this.applyOutline(confirmLabel, scale, true);
 
@@ -637,7 +637,7 @@ export class LobbyHeroDetailPanelRenderer {
       xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
       xg.fill();
     }
-    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '关闭', 0, 1 * scale, 19 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '关闭', 0, 1 * scale, 20 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
     cancelLabel.overflow = Label.Overflow.SHRINK;
   }
 
@@ -1144,7 +1144,7 @@ export class LobbyHeroDetailPanelRenderer {
           const artIcon = equipIconAssetByCode(equipped.equipCode);
           const artShown = artIcon ? this.host.addSprite('ArtEquipIcon', artIcon, 0, 2 * scale, slotSize * 0.88, slotSize * 0.88, cell) : null;
           const name = artShown
-            ? this.host.addChildLabel(cell, 'ArtEquipName', safeText(equipped.equipName), 0, -slotSize / 2 + 14 * scale, 15 * scale, rgba(q.r, q.g, q.b, 255), new Size(slotSize - 8 * scale, 18 * scale))
+            ? this.host.addChildLabel(cell, 'ArtEquipName', safeText(equipped.equipName), 0, -slotSize / 2 + 14 * scale, 16 * scale, rgba(q.r, q.g, q.b, 255), new Size(slotSize - 8 * scale, 22 * scale))
             : this.host.addChildLabel(cell, 'ArtEquipName', safeText(equipped.equipName), 0, -8 * scale, 18 * scale, rgba(q.r, q.g, q.b, 255), new Size(slotSize - 10 * scale, 42 * scale));
           name.overflow = Label.Overflow.SHRINK;
           this.applyOutline(name, scale, true);
@@ -1911,7 +1911,7 @@ export class LobbyHeroDetailPanelRenderer {
     const dialogHeight = Math.min(680 * scale, panelHeight - 50 * scale);
     const dialog = this.host.addChildBeveledPanelNode(dim, 'LobbyHeroEquipDialog', 0, 0, dialogWidth, dialogHeight, rgba(14, 11, 10, 246), rgba(150, 112, 58, 220), 12 * scale);
 
-    const title = this.host.addChildLabel(dialog, 'LobbyHeroEquipTitle', `装备 · ${safeText(hero.heroName)}`, 0, dialogHeight / 2 - 30 * scale, 23 * scale, rgba(247, 218, 148), new Size(dialogWidth - 40 * scale, 26 * scale));
+    const title = this.host.addChildLabel(dialog, 'LobbyHeroEquipTitle', `装备 · ${safeText(hero.heroName)}`, 0, dialogHeight / 2 - 30 * scale, 24 * scale, rgba(247, 218, 148), new Size(dialogWidth - 40 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
 
@@ -2043,7 +2043,7 @@ export class LobbyHeroDetailPanelRenderer {
     const dialogHeight = 236 * scale + Math.max(1, visibleRows) * (rowH + rowGap);
     const dialog = this.host.addChildBeveledPanelNode(dim, 'LobbyEquipFuseDialog', 0, 0, dialogWidth, dialogHeight, rgba(14, 11, 10, 248), rgba(150, 112, 58, 220), 12 * scale);
 
-    const title = this.host.addChildLabel(dialog, 'LobbyEquipFuseTitle', '装备合成', 0, dialogHeight / 2 - 30 * scale, 23 * scale, rgba(247, 218, 148), new Size(dialogWidth - 40 * scale, 28 * scale));
+    const title = this.host.addChildLabel(dialog, 'LobbyEquipFuseTitle', '装备合成', 0, dialogHeight / 2 - 30 * scale, 24 * scale, rgba(247, 218, 148), new Size(dialogWidth - 40 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const hint = this.host.addChildLabel(dialog, 'LobbyEquipFuseHint', '同部位同稀有度 3 件合成上一稀有度 1 件;失败返还同档 1 件。', 0, dialogHeight / 2 - 60 * scale, 17 * scale, rgba(196, 178, 140), new Size(dialogWidth - 48 * scale, 22 * scale));
@@ -2284,7 +2284,7 @@ export class LobbyHeroDetailPanelRenderer {
 
     const level = item.enhanceLevel ?? 0;
     const q = equipQualityColor(item.quality);
-    const title = this.host.addChildLabel(dialog, 'EnhTitle', `强化 · ${safeText(item.equipName)}${level > 0 ? ` +${level}` : ''}`, 0, dialogHeight / 2 - 32 * scale, 22 * scale, rgba(q.r, q.g, q.b, 255), new Size(dialogWidth - 40 * scale, 28 * scale));
+    const title = this.host.addChildLabel(dialog, 'EnhTitle', `强化 · ${safeText(item.equipName)}${level > 0 ? ` +${level}` : ''}`, 0, dialogHeight / 2 - 32 * scale, 24 * scale, rgba(q.r, q.g, q.b, 255), new Size(dialogWidth - 40 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
 
@@ -2386,7 +2386,7 @@ export class LobbyHeroDetailPanelRenderer {
     g.lineWidth = 2 * scale;
     g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.stroke();
-    const title = this.host.addChildLabel(dialog, 'Title', `觉醒 · ${safeText(hero.heroName)}`, 0, h / 2 - 30 * scale, 20 * scale, rgba(240, 210, 140), new Size(w - 40 * scale, 28 * scale));
+    const title = this.host.addChildLabel(dialog, 'Title', `觉醒 · ${safeText(hero.heroName)}`, 0, h / 2 - 30 * scale, 24 * scale, rgba(240, 210, 140), new Size(w - 40 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const lines = ['消耗：同名碎片 ×120 · 金币 500,000', '　　　觉醒石 ×1 · BOSS印记 ×10', '效果：大招等级上限提升 · 属性增强', '　　　解锁觉醒立绘与边框（后续版本）'];
@@ -2408,7 +2408,7 @@ export class LobbyHeroDetailPanelRenderer {
         bg.lineWidth = 1.5 * scale;
         bg.stroke();
       }
-      const label = this.host.addChildLabel(btn, 'Label', text, 0, 0, 19 * scale, primary ? rgba(248, 226, 168) : rgba(214, 198, 168), new Size(btnW - 14 * scale, btnH - 8 * scale));
+      const label = this.host.addChildLabel(btn, 'Label', text, 0, 0, 20 * scale, primary ? rgba(248, 226, 168) : rgba(214, 198, 168), new Size(btnW - 14 * scale, btnH - 8 * scale));
       label.overflow = Label.Overflow.SHRINK;
       btn.addComponent(Button);
       btn.on(Button.EventType.CLICK, onClick, this);
@@ -2471,7 +2471,7 @@ export class LobbyHeroDetailPanelRenderer {
     g.lineWidth = 2 * scale;
     g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.stroke();
-    const title = this.host.addChildLabel(dialog, 'Title', `${safeText(hero.heroName)} · 属性详情`, 0, h / 2 - 28 * scale, 19 * scale, rgba(240, 210, 140), new Size(w - 40 * scale, 26 * scale));
+    const title = this.host.addChildLabel(dialog, 'Title', `${safeText(hero.heroName)} · 属性详情`, 0, h / 2 - 28 * scale, 24 * scale, rgba(240, 210, 140), new Size(w - 40 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const rows: { label: string; value: string }[] = [
@@ -2845,7 +2845,7 @@ export class LobbyHeroDetailPanelRenderer {
     sg.fillColor = rgba(6, 5, 5, 205);
     sg.roundRect(-stripW / 2, -10 * scale, stripW, 20 * scale, 5 * scale);
     sg.fill();
-    const nm = this.host.addChildLabel(strip, `${name}Name`, safeText(item.equipName), 0, 0, 14 * scale, rgba(q.r, q.g, q.b, 255), new Size(stripW - 6 * scale, 22 * scale));
+    const nm = this.host.addChildLabel(strip, `${name}Name`, safeText(item.equipName), 0, 0, 16 * scale, rgba(q.r, q.g, q.b, 255), new Size(stripW - 6 * scale, 22 * scale));
     nm.overflow = Label.Overflow.SHRINK;
     const level = item.enhanceLevel ?? 0;
     if (level > 0) {
@@ -2929,7 +2929,7 @@ export class LobbyHeroDetailPanelRenderer {
     // 升星解锁:逐条展示真实被动技能(名称/标签/含数值描述,与技能页同一数据源 resolveSkills)。
     const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity);
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
-    const listTitle = this.host.addChildLabel(panel, 'StarUnlockTitle', '升星解锁', -width / 2 + 24 * scale, height / 2 - 140 * scale, 17 * scale, rgba(238, 206, 138), new Size(width - 48 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const listTitle = this.host.addChildLabel(panel, 'StarUnlockTitle', '升星解锁', -width / 2 + 24 * scale, height / 2 - 140 * scale, 18 * scale, rgba(238, 206, 138), new Size(width - 48 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     listTitle.overflow = Label.Overflow.SHRINK;
     const rowH = 62 * scale;
     unlockStars.forEach((needStar, index) => {

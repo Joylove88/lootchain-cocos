@@ -818,7 +818,7 @@ export class LobbyHudRenderer {
     const left = -width / 2;
     const top = height / 2;
     const padX = width * 0.09;
-    const title = this.addChildLabel(parent, 'LobbyGoalTrackerTitle', goal.title, left + padX, top - height * 0.16, 17 * scale, rgba(245, 213, 145), new Size(width - padX * 2 - width * 0.2, 24 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.addChildLabel(parent, 'LobbyGoalTrackerTitle', goal.title, left + padX, top - height * 0.16, 18 * scale, rgba(245, 213, 145), new Size(width - padX * 2 - width * 0.2, 24 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(title, scale, true);
     const stage = this.addChildLabel(parent, 'LobbyGoalTrackerStage', goal.stageLine, left + padX, top - height * 0.335, 23 * scale, rgba(248, 226, 169), new Size(width - padX * 2, 30 * scale), HorizontalTextAlignment.LEFT);
@@ -835,7 +835,7 @@ export class LobbyHudRenderer {
   }
 
   private addLobbyCompactGoalContent(parent: Node, goal: LobbyNextGoalView, width: number, height: number, scale: number): void {
-    const title = this.addChildLabel(parent, 'LobbyCompactGoalTitle', `下一步：${goal.actionLabel}`, -width / 2 + 16 * scale, height / 2 - 18 * scale, 14 * scale, rgba(246, 218, 150), new Size(width - 126 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.addChildLabel(parent, 'LobbyCompactGoalTitle', `下一步：${goal.actionLabel}`, -width / 2 + 16 * scale, height / 2 - 18 * scale, 16 * scale, rgba(246, 218, 150), new Size(width - 126 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(title, scale, true);
     const stage = this.addChildLabel(parent, 'LobbyCompactGoalStage', goal.stageLine, -width / 2 + 16 * scale, -height / 2 + 17 * scale, 15 * scale, rgba(204, 186, 141), new Size(width - 126 * scale, 19 * scale), HorizontalTextAlignment.LEFT);
@@ -2081,7 +2081,7 @@ export class LobbyHudRenderer {
     graphics.strokeColor = rgba(145, 109, 62, 150);
     graphics.lineWidth = Math.max(1, 0.9 * scale);
     graphics.stroke();
-    const text = this.addChildLabel(node, 'LobbyCompactActionLabel', label, 0, 0, Math.max(11, 15 * scale), rgba(226, 198, 137), new Size(width - 12 * scale, height));
+    const text = this.addChildLabel(node, 'LobbyCompactActionLabel', label, 0, 0, Math.max(11, 16 * scale), rgba(226, 198, 137), new Size(width - 12 * scale, height));
     text.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(text, scale, false);
   }

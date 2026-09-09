@@ -111,7 +111,7 @@ export class LobbyProfileDialogRenderer {
     lg.lineWidth = Math.max(1, 1.4 * dialogScale);
     lg.roundRect(-logoutW / 2, -logoutH / 2, logoutW, logoutH, 8 * dialogScale);
     lg.stroke();
-    const logoutLabel = this.host.addChildLabel(logoutBtn, 'Text', '退出登录 / 切换账号', 0, 0, Math.max(13, 17 * dialogScale), rgba(255, 214, 196), new Size(logoutW - 16 * dialogScale, logoutH));
+    const logoutLabel = this.host.addChildLabel(logoutBtn, 'Text', '退出登录 / 切换账号', 0, 0, Math.max(13, 20 * dialogScale), rgba(255, 214, 196), new Size(logoutW - 16 * dialogScale, logoutH));
     logoutLabel.overflow = Label.Overflow.SHRINK;
     logoutBtn.addComponent(Button);
     logoutBtn.on(Button.EventType.CLICK, () => this.host.logoutToLoginPage(), this);
@@ -167,7 +167,7 @@ export class LobbyProfileDialogRenderer {
       profile.displayName,
       textLeft,
       avatarY + (narrow ? 22 : 30) * scale,
-      Math.max(14, (narrow ? 23 : 28) * scale),
+      Math.max(14, (narrow ? 24 : 28) * scale),
       rgba(250, 226, 164),
       new Size(textWidth, 40 * scale),
       HorizontalTextAlignment.LEFT,
@@ -191,7 +191,7 @@ export class LobbyProfileDialogRenderer {
       this.profileStatusText(profile),
       textLeft,
       avatarY - (narrow ? 38 : 42) * scale,
-      Math.max(10, (narrow ? 14 : 16) * scale),
+      Math.max(10, (narrow ? 15 : 16) * scale),
       this.host.getLobbyProfileError() ? rgba(255, 162, 92) : rgba(127, 214, 255),
       new Size(textWidth, 28 * scale),
       HorizontalTextAlignment.LEFT,

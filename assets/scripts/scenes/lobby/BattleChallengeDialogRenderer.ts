@@ -67,8 +67,8 @@ export class BattleChallengeDialogRenderer {
       ? '敌方偏远程 · 推荐上刺客切后排'
       : '敌方偏近战 · 推荐法师/射手输出';
     const advice = this.host.addChildLabel(section, 'BattleChallengeDialogCounterAdvice', counterAdvice, 0, 8 * scale, 17 * scale, rgba(255, 216, 130), new Size(width - 24 * scale, 22 * scale)); advice.overflow = Label.Overflow.SHRINK;
-    const counterRule = this.host.addChildLabel(section, 'BattleChallengeDialogCounterRule', '克制:近战 → 刺客 → 远程 → 近战(伤害 +30%)', 0, -14 * scale, 14.5 * scale, rgba(176, 158, 122), new Size(width - 24 * scale, 20 * scale)); counterRule.overflow = Label.Overflow.SHRINK;
-    const condTitle = this.host.addChildLabel(section, 'BattleChallengeDialogCondTitle', '通关条件', 0, -height / 2 + 56 * scale, 16 * scale, rgba(221, 173, 85), new Size(width - 20 * scale, 22 * scale)); condTitle.overflow = Label.Overflow.SHRINK;
+    const counterRule = this.host.addChildLabel(section, 'BattleChallengeDialogCounterRule', '克制:近战 → 刺客 → 远程 → 近战(伤害 +30%)', 0, -14 * scale, 15 * scale, rgba(176, 158, 122), new Size(width - 24 * scale, 21 * scale)); counterRule.overflow = Label.Overflow.SHRINK;
+    const condTitle = this.host.addChildLabel(section, 'BattleChallengeDialogCondTitle', '通关条件', 0, -height / 2 + 56 * scale, 18 * scale, rgba(221, 173, 85), new Size(width - 20 * scale, 24 * scale)); condTitle.overflow = Label.Overflow.SHRINK;
     const cond = this.host.addChildLabel(section, 'BattleChallengeDialogCondText', '击败全部敌方单位\n推荐战力 ' + stage.recommendedPower.toLocaleString('en-US'), 0, -height / 2 + 22 * scale, 16 * scale, rgba(205, 185, 146), new Size(width - 24 * scale, 40 * scale)); cond.overflow = Label.Overflow.SHRINK;
   }
   private renderRewardSection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO): void {

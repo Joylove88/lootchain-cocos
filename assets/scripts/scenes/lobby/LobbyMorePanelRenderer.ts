@@ -94,7 +94,7 @@ export class LobbyMorePanelRenderer {
     const rowH = 26 * scale;
     let cursor = battleTop - 24 * scale;
     if (battles.length === 0) {
-      const empty = this.host.addChildLabel(panel, 'BattleEmpty', '暂无战斗记录', -panelWidth / 2 + 42 * scale, cursor, 13.5 * scale, rgba(150, 134, 104, 200), new Size(panelWidth * 0.7, 18 * scale), HorizontalTextAlignment.LEFT);
+      const empty = this.host.addChildLabel(panel, 'BattleEmpty', '暂无战斗记录', -panelWidth / 2 + 42 * scale, cursor, 16 * scale, rgba(150, 134, 104, 200), new Size(panelWidth * 0.7, 22 * scale), HorizontalTextAlignment.LEFT);
       empty.overflow = Label.Overflow.SHRINK;
       cursor -= rowH;
     } else {
@@ -102,9 +102,9 @@ export class LobbyMorePanelRenderer {
         const win = battle.result === 'WIN';
         const when = (battle.recordedTime ?? '').replace('T', ' ').slice(5, 16);
         const line = `${when}  ${battle.stageCode}`;
-        const row = this.host.addChildLabel(panel, `BattleRow_${battle.battleNo}`, line, -panelWidth / 2 + 42 * scale, cursor, 13.5 * scale, rgba(196, 178, 140, 225), new Size(panelWidth * 0.62, 18 * scale), HorizontalTextAlignment.LEFT);
+        const row = this.host.addChildLabel(panel, `BattleRow_${battle.battleNo}`, line, -panelWidth / 2 + 42 * scale, cursor, 16 * scale, rgba(196, 178, 140, 225), new Size(panelWidth * 0.62, 22 * scale), HorizontalTextAlignment.LEFT);
         row.overflow = Label.Overflow.SHRINK;
-        const verdict = this.host.addChildLabel(panel, `BattleVerdict_${battle.battleNo}`, win ? '胜利' : '失败', panelWidth / 2 - 60 * scale, cursor, 13.5 * scale, win ? rgba(150, 226, 130, 235) : rgba(240, 120, 100, 235), new Size(60 * scale, 18 * scale));
+        const verdict = this.host.addChildLabel(panel, `BattleVerdict_${battle.battleNo}`, win ? '胜利' : '失败', panelWidth / 2 - 60 * scale, cursor, 16 * scale, win ? rgba(150, 226, 130, 235) : rgba(240, 120, 100, 235), new Size(60 * scale, 22 * scale));
         verdict.overflow = Label.Overflow.SHRINK;
         cursor -= rowH;
       }
@@ -143,7 +143,7 @@ export class LobbyMorePanelRenderer {
     }
 
     // ── 客服占位 ──
-    const support = this.host.addChildLabel(panel, 'SupportNote', '客服与反馈:support@lootchain.game(上线后接入工单)', 0, -panelHeight / 2 + 26 * scale, 12.5 * scale, rgba(140, 124, 96, 200), new Size(panelWidth - 60 * scale, 18 * scale));
+    const support = this.host.addChildLabel(panel, 'SupportNote', '客服与反馈:support@lootchain.game(上线后接入工单)', 0, -panelHeight / 2 + 26 * scale, 13 * scale, rgba(140, 124, 96, 200), new Size(panelWidth - 60 * scale, 19 * scale));
     support.overflow = Label.Overflow.SHRINK;
   }
 
@@ -164,7 +164,7 @@ export class LobbyMorePanelRenderer {
       const glyph = this.host.addChildLabel(card, 'IconGlyph', fallback[key] ?? '•', 0, iconY, iconSize * 0.72, rgba(226, 186, 110, 235), new Size(iconSize, iconSize));
       glyph.overflow = Label.Overflow.SHRINK;
     }
-    const text = this.host.addChildLabel(card, 'CardLabel', label, 0, -height * 0.3, 16 * scale, rgba(238, 210, 152, 245), new Size(width - 12 * scale, 20 * scale));
+    const text = this.host.addChildLabel(card, 'CardLabel', label, 0, -height * 0.3, 18 * scale, rgba(238, 210, 152, 245), new Size(width - 12 * scale, 24 * scale));
     text.overflow = Label.Overflow.SHRINK;
     this.outline(text, scale, false);
     if (badge > 0) {
@@ -173,7 +173,7 @@ export class LobbyMorePanelRenderer {
       bg.fillColor = rgba(214, 54, 42, 245);
       bg.circle(0, 0, 11 * scale);
       bg.fill();
-      const count = this.host.addChildLabel(badgeNode, 'Text', badge > 99 ? '99+' : String(badge), 0, 0, 12 * scale, rgba(255, 240, 230), new Size(24 * scale, 16 * scale));
+      const count = this.host.addChildLabel(badgeNode, 'Text', badge > 99 ? '99+' : String(badge), 0, 0, 13 * scale, rgba(255, 240, 230), new Size(24 * scale, 19 * scale));
       count.overflow = Label.Overflow.SHRINK;
     }
     card.addComponent(Button);
@@ -184,7 +184,7 @@ export class LobbyMorePanelRenderer {
   private addSectionTitle(parent: Node, iconKey: string, text: string, leftX: number, y: number, panelWidth: number, scale: number): void {
     const iconSize = 20 * scale;
     this.host.addSprite(`SectionIcon_${iconKey}`, MORE_ICON_ASSETS[iconKey] ?? '', leftX + iconSize / 2, y, iconSize, iconSize, parent);
-    const label = this.host.addChildLabel(parent, `SectionTitle_${iconKey}`, text, leftX + iconSize + 8 * scale, y, 16 * scale, rgba(231, 205, 142, 245), new Size(160 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
+    const label = this.host.addChildLabel(parent, `SectionTitle_${iconKey}`, text, leftX + iconSize + 8 * scale, y, 18 * scale, rgba(231, 205, 142, 245), new Size(160 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, scale, false);
     const parentGraphics = parent.getComponent(Graphics) ?? parent.addComponent(Graphics);

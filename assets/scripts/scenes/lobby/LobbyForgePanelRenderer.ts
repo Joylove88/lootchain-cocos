@@ -1765,7 +1765,7 @@ export class LobbyForgePanelRenderer {
         const gemName = this.host.addChildLabel(row, 'GemName', info.label, -rowW / 2 + 90 * scale, 11 * scale, 17 * scale, rgba(tierQ.r, tierQ.g, tierQ.b, 255), new Size(rowW * 0.42, 22 * scale), HorizontalTextAlignment.LEFT);
         gemName.overflow = Label.Overflow.SHRINK;
         this.applyOutline(gemName, scale, false);
-        const gemAttr = this.host.addChildLabel(row, 'GemAttr', info.attrText, -rowW / 2 + 90 * scale, -11 * scale, 14 * scale, rgba(238, 210, 148), new Size(rowW * 0.48, 18 * scale), HorizontalTextAlignment.LEFT);
+        const gemAttr = this.host.addChildLabel(row, 'GemAttr', info.attrText, -rowW / 2 + 90 * scale, -11 * scale, 15 * scale, rgba(238, 210, 148), new Size(rowW * 0.48, 21 * scale), HorizontalTextAlignment.LEFT);
         gemAttr.overflow = Label.Overflow.SHRINK;
         const btnW = 108 * scale;
         const btnH = 36 * scale;
@@ -1777,7 +1777,7 @@ export class LobbyForgePanelRenderer {
         ug.strokeColor = rgba(150, 170, 200, 190);
         ug.lineWidth = 1.4 * scale;
         ug.stroke();
-        const btnLabel = this.host.addChildLabel(btn, 'Label', `拆卸 ${formatInteger(gemUnsocketGold(info.tier))}金`, 0, 0, 14 * scale, rgba(214, 226, 244), new Size(btnW - 8 * scale, 26 * scale));
+        const btnLabel = this.host.addChildLabel(btn, 'Label', `拆卸 ${formatInteger(gemUnsocketGold(info.tier))}金`, 0, 0, 16 * scale, rgba(214, 226, 244), new Size(btnW - 8 * scale, 26 * scale));
         btnLabel.overflow = Label.Overflow.SHRINK;
         if (!state.busy) {
           btn.addComponent(Button);
@@ -1839,7 +1839,7 @@ export class LobbyForgePanelRenderer {
     g.lineWidth = 2 * scale;
     g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
     g.stroke();
-    const title = this.host.addChildLabel(dialog, 'ForgeGemPickTitle', `选择宝石 · 第 ${slotIndex + 1} 孔`, 0, h / 2 - 30 * scale, 20 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 26 * scale));
+    const title = this.host.addChildLabel(dialog, 'ForgeGemPickTitle', `选择宝石 · 第 ${slotIndex + 1} 孔`, 0, h / 2 - 30 * scale, 24 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     if (owned.length === 0) {
@@ -1865,7 +1865,7 @@ export class LobbyForgePanelRenderer {
       const textLeft = gemArt ? 48 : 14;
       const nm = this.host.addChildLabel(row, 'Name', info.label, -rowW / 2 + textLeft * scale, 10 * scale, 16 * scale, enabled ? rgba(tq.r, tq.g, tq.b, 255) : rgba(140, 128, 106, 255), new Size(rowW * 0.4, 20 * scale), HorizontalTextAlignment.LEFT);
       nm.overflow = Label.Overflow.SHRINK;
-      const attr = this.host.addChildLabel(row, 'Attr', blocked ? '每件装备限 1 颗五阶' : info.attrText, -rowW / 2 + textLeft * scale, -10 * scale, 13 * scale, blocked ? rgba(206, 122, 104, 255) : rgba(238, 210, 148, 255), new Size(rowW * 0.55, 17 * scale), HorizontalTextAlignment.LEFT);
+      const attr = this.host.addChildLabel(row, 'Attr', blocked ? '每件装备限 1 颗五阶' : info.attrText, -rowW / 2 + textLeft * scale, -10 * scale, 15 * scale, blocked ? rgba(206, 122, 104, 255) : rgba(238, 210, 148, 255), new Size(rowW * 0.55, 21 * scale), HorizontalTextAlignment.LEFT);
       attr.overflow = Label.Overflow.SHRINK;
       const cnt = this.host.addChildLabel(row, 'Count', `×${formatInteger(entry.count)}`, rowW / 2 - 14 * scale, 0, 16 * scale, rgba(240, 218, 156, 255), new Size(80 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
       cnt.overflow = Label.Overflow.SHRINK;
@@ -2156,7 +2156,7 @@ export class LobbyForgePanelRenderer {
     g.lineWidth = 2 * scale;
     g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
     g.stroke();
-    const title = this.host.addChildLabel(dialog, 'ForgeDecBatchTitle', '批量分解设置', 0, h / 2 - 32 * scale, 21 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 28 * scale));
+    const title = this.host.addChildLabel(dialog, 'ForgeDecBatchTitle', '批量分解设置', 0, h / 2 - 32 * scale, 24 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const hint = this.host.addChildLabel(dialog, 'ForgeDecBatchHint', '按规则快速勾选未穿戴装备(单次上限 20 件)', 0, h / 2 - 62 * scale, 15 * scale, rgba(186, 166, 128), new Size(w - 48 * scale, 20 * scale));
@@ -2337,7 +2337,7 @@ export class LobbyForgePanelRenderer {
     sg.fillColor = rgba(6, 5, 5, 205);
     sg.roundRect(-stripW / 2, -10 * scale, stripW, 20 * scale, 5 * scale);
     sg.fill();
-    const nm = this.host.addChildLabel(strip, `${name}Name`, safeText(item.equipName), 0, 0, 15 * scale, rgba(q.r, q.g, q.b, 255), new Size(stripW - 6 * scale, 22 * scale));
+    const nm = this.host.addChildLabel(strip, `${name}Name`, safeText(item.equipName), 0, 0, 16 * scale, rgba(q.r, q.g, q.b, 255), new Size(stripW - 6 * scale, 22 * scale));
     nm.overflow = Label.Overflow.SHRINK;
     const level = item.enhanceLevel ?? 0;
     if (level > 0) {

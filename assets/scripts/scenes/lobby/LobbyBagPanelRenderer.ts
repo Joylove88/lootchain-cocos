@@ -689,7 +689,7 @@ export class LobbyBagPanelRenderer {
     closeButton.on(Button.EventType.CLICK, closePopup, this);
 
     // 标题/副标题/展示图整体下移,全部落在框顶饰(约占高 15%)下方。
-    const title = this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), width * 0.02, height / 2 - height * 0.162, 22 * scale, rgba(248, 220, 153), new Size(contentWidth - 60 * scale, 30 * scale));
+    const title = this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), width * 0.02, height / 2 - height * 0.162, 24 * scale, rgba(248, 220, 153), new Size(contentWidth - 60 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const subtitle = this.host.addChildLabel(detail, 'LobbyBagDetailSubtitle', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, width * 0.02, height / 2 - height * 0.196, 18 * scale, this.rarityColor(item.rarity), new Size(contentWidth - 60 * scale, 21 * scale));
@@ -901,7 +901,7 @@ export class LobbyBagPanelRenderer {
     g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
     g.stroke();
 
-    const title = this.host.addChildLabel(dialog, 'LobbyBagComposeTitle', '材料合成', 0, h / 2 - 32 * scale, 22 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
+    const title = this.host.addChildLabel(dialog, 'LobbyBagComposeTitle', '材料合成', 0, h / 2 - 32 * scale, 24 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     const ruleRow = this.host.addChildLabel(dialog, 'LobbyBagComposeRule', `${safeText(item.itemName)} ×${rule.need} → ${rule.targetLabel} ×1`, 0, h / 2 - 66 * scale, 18 * scale, rgba(214, 196, 158), new Size(w - 52 * scale, 24 * scale));
@@ -956,7 +956,7 @@ export class LobbyBagPanelRenderer {
       cg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
       cg.fill();
     }
-    const confirmLabel = this.host.addChildLabel(confirm, 'Label', '合 成', 0, 1 * scale, 19 * scale, rgba(255, 240, 200), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    const confirmLabel = this.host.addChildLabel(confirm, 'Label', '合 成', 0, 1 * scale, 20 * scale, rgba(255, 240, 200), new Size(buttonW - 46 * scale, buttonH * 0.7));
     confirmLabel.overflow = Label.Overflow.SHRINK;
     this.applyOutline(confirmLabel, scale, true);
     const cancel = this.host.addChildPlainNode(dialog, 'LobbyBagComposeCancel', buttonW / 2 + 18 * scale, -h / 2 + 52 * scale, buttonW, buttonH);
@@ -969,7 +969,7 @@ export class LobbyBagPanelRenderer {
       xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
       xg.fill();
     }
-    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 19 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 20 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
     cancelLabel.overflow = Label.Overflow.SHRINK;
   }
 
@@ -1005,7 +1005,7 @@ export class LobbyBagPanelRenderer {
     g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
     g.stroke();
 
-    const title = this.host.addChildLabel(dialog, 'LobbyBagComposeResultTitle', '合成成功！', 0, h / 2 - 36 * scale, 23 * scale, rgba(250, 216, 120), new Size(w - 48 * scale, 30 * scale));
+    const title = this.host.addChildLabel(dialog, 'LobbyBagComposeResultTitle', '合成成功！', 0, h / 2 - 36 * scale, 24 * scale, rgba(250, 216, 120), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
 

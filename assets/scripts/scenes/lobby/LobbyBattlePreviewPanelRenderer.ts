@@ -1138,13 +1138,13 @@ export class LobbyBattlePreviewPanelRenderer {
       g.roundRect(-gw / 2, -gh / 2, gw, gh, gh / 2);
       g.stroke();
       // 名称压条左中;右端"×N"层数(默认999,每清一层-1),下方小字提示已破层数。
-      const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, -18 * scale, 0, 15 * scale, rgba(255, 234, 174), new Size(gw * 0.52, 22 * scale));
+      const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, -18 * scale, 0, 16 * scale, rgba(255, 234, 174), new Size(gw * 0.52, 22 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, true);
       const mult = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeMult', `×${counter}`, gw / 2 - 52 * scale, 0, 18 * scale, rgba(255, 238, 156), new Size(96 * scale, 24 * scale), HorizontalTextAlignment.RIGHT);
       mult.overflow = Label.Overflow.SHRINK;
       this.applyOutline(mult, scale, true);
-      const tip = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeTip', `已击破 ${layersCleared} 层`, 0, -gh / 2 - 12 * scale, 12 * scale, rgba(214, 196, 156, 220), new Size(gw, 16 * scale));
+      const tip = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeTip', `已击破 ${layersCleared} 层`, 0, -gh / 2 - 12 * scale, 13 * scale, rgba(214, 196, 156, 220), new Size(gw, 19 * scale));
       tip.overflow = Label.Overflow.SHRINK;
       return;
     }
@@ -1165,7 +1165,7 @@ export class LobbyBattlePreviewPanelRenderer {
         }
       }
     }
-    const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, 0, 4 * scale, 15 * scale, rgba(255, 225, 157), new Size(gaugeWidth - 62 * scale, 22 * scale));
+    const label = this.host.addChildLabel(gauge, 'LobbyBattleBossGaugeLabel', snapshot.leadEnemy.displayName, 0, 4 * scale, 16 * scale, rgba(255, 225, 157), new Size(gaugeWidth - 62 * scale, 22 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
   }
@@ -1252,11 +1252,11 @@ export class LobbyBattlePreviewPanelRenderer {
           && this.resolveBattleActorUltEnergy(ally.unitKey, snapshot, timeline, t) >= BATTLE_MANUAL_ULT_ENERGY_MAX;
       });
       const pulse = 0.6 + 0.4 * Math.abs(Math.sin(t / 160));
-      const barText = this.host.addChildLabel(bar, 'RhythmCastBarText', `BOSS 蓄力 · ${activeCast.skillName}`, 0, 0, 14 * scale, rgba(255, 240, 220), new Size(barW - 16 * scale, barH));
+      const barText = this.host.addChildLabel(bar, 'RhythmCastBarText', `BOSS 蓄力 · ${activeCast.skillName}`, 0, 0, 16 * scale, rgba(255, 240, 220), new Size(barW - 16 * scale, barH));
       barText.overflow = Label.Overflow.SHRINK;
       this.applyOutline(barText, scale, true);
       const hintText = anyUltReady ? '▶ 点击发光技能卡释放大招 · 打断!' : '大招命中可打断 · 读满全队掉血 40%';
-      const hint = this.host.addChildLabel(hud, 'RhythmCastHint', hintText, 0, barY - 22 * scale, (anyUltReady ? 16 : 13) * scale, anyUltReady ? rgba(255, 236, 140, Math.round(255 * pulse)) : rgba(255, 190, 170, 235), new Size(barW + 80 * scale, 22 * scale));
+      const hint = this.host.addChildLabel(hud, 'RhythmCastHint', hintText, 0, barY - 22 * scale, (anyUltReady ? 16 : 15) * scale, anyUltReady ? rgba(255, 236, 140, Math.round(255 * pulse)) : rgba(255, 190, 170, 235), new Size(barW + 80 * scale, 22 * scale));
       hint.overflow = Label.Overflow.SHRINK;
       this.applyOutline(hint, scale, true);
       // 读条中 BOSS 头顶红色叹号(试炼 BOSS 无头顶血条也看得见)
@@ -1363,7 +1363,7 @@ export class LobbyBattlePreviewPanelRenderer {
       pg.fillColor = rgba(255, 214, 92, 70);
       pg.roundRect(-pillW / 2, -pillH / 2, pillW * frac, pillH, pillH / 2);
       pg.fill();
-      const pillText = this.host.addChildLabel(pill, 'RhythmBreakText', `破防中 · 伤害 ×${BATTLE_BREAK_DAMAGE_MULTIPLIER} · ${remain.toFixed(1)}s`, 0, 0, 15 * scale, rgba(255, 234, 150), new Size(pillW - 14 * scale, pillH));
+      const pillText = this.host.addChildLabel(pill, 'RhythmBreakText', `破防中 · 伤害 ×${BATTLE_BREAK_DAMAGE_MULTIPLIER} · ${remain.toFixed(1)}s`, 0, 0, 16 * scale, rgba(255, 234, 150), new Size(pillW - 14 * scale, pillH));
       pillText.overflow = Label.Overflow.SHRINK;
       this.applyOutline(pillText, scale, true);
     }
@@ -4464,7 +4464,7 @@ export class LobbyBattlePreviewPanelRenderer {
       graphics.fill();
       const unitName = (hero.displayName || hero.heroCode || '英雄').trim() || '英雄';
       const shortName = unitName.length > 3 ? unitName.slice(0, 3) : unitName;
-      const label = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardName', shortName, 0, cardHeight / 2 - 17 * scale, 15 * scale, rgba(255, 239, 194), new Size(cardWidth - 14 * scale, 18 * scale));
+      const label = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardName', shortName, 0, cardHeight / 2 - 17 * scale, 16 * scale, rgba(255, 239, 194), new Size(cardWidth - 14 * scale, 22 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, false);
       const roleChipWidth = Math.min(27 * scale, cardWidth * 0.36);
@@ -4491,7 +4491,7 @@ export class LobbyBattlePreviewPanelRenderer {
       graphics.fill();
       const statusText = heroDead ? '阵亡' : this.resolveBattleHeroCardStatusText(acting, threatened, supported, hp);
       const statusColor = heroDead ? rgba(186, 132, 122) : threatened ? rgba(255, 158, 132) : acting ? rgba(255, 231, 132) : supported ? rgba(160, 224, 255) : hp <= 25 ? rgba(255, 164, 142) : rgba(178, 255, 170);
-      const hpLabel = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardHp', statusText, 0, -cardHeight / 2 + 26 * scale, 12 * scale, statusColor, new Size(cardWidth - 10 * scale, 14 * scale));
+      const hpLabel = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardHp', statusText, 0, -cardHeight / 2 + 26 * scale, 13 * scale, statusColor, new Size(cardWidth - 10 * scale, 19 * scale));
       hpLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(hpLabel, scale, false);
       const pipY = -cardHeight / 2 + 36 * scale;
@@ -4527,7 +4527,7 @@ export class LobbyBattlePreviewPanelRenderer {
           shadeGraphics.fill();
         }
         // "怒气"标注:能量百分比太像血量(用户实测看混),明确标出这是大招充能;底部小条才是血量。
-        const chargeTag = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardChargeTag', '怒气', 0, 14 * scale, 11 * scale, rgba(214, 196, 156, 225), new Size(cardWidth - 10 * scale, 14 * scale));
+        const chargeTag = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardChargeTag', '怒气', 0, 14 * scale, 13 * scale, rgba(214, 196, 156, 225), new Size(cardWidth - 10 * scale, 19 * scale));
         chargeTag.overflow = Label.Overflow.SHRINK;
         this.applyOutline(chargeTag, scale, false);
         const chargePct = this.host.addChildLabel(card, 'LobbyBattleStage12HeroCardChargePct', `${Math.floor(energyRatio * 100)}%`, 0, -4 * scale, 17 * scale, rgba(255, 235, 170), new Size(cardWidth - 10 * scale, 20 * scale));
@@ -5948,7 +5948,7 @@ export class LobbyBattlePreviewPanelRenderer {
     barBackground.stroke();
     const fillNode = this.host.addChildPlainNode(barNode, 'LobbyBattleAssetLoadingBarFill', 0, 0, barWidth, barHeight);
     fillNode.addComponent(Graphics);
-    const percentLabel = this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingPercent', '0%', 0, barY - 26 * scale, 14 * scale, rgba(230, 214, 182), new Size(width * 0.4, 20 * scale));
+    const percentLabel = this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingPercent', '0%', 0, barY - 26 * scale, 16 * scale, rgba(230, 214, 182), new Size(width * 0.4, 22 * scale));
     const tipIndex = Math.abs([...(state.stageCode || 'battle')].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) | 0, 7)) % BATTLE_ASSET_LOADING_TIPS.length;
     this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingTip', BATTLE_ASSET_LOADING_TIPS[tipIndex], 0, barY - 58 * scale, 13 * scale, rgba(176, 164, 148), new Size(width * 0.76, 18 * scale));
     this.battleLoadingFillNode = fillNode;
@@ -7294,7 +7294,7 @@ export class LobbyBattlePreviewPanelRenderer {
     graphics.rect(-panelWidth / 2 + 8 * scale, panelHeight / 2 - 30 * scale, panelWidth - 16 * scale, 22 * scale);
     graphics.fill();
 
-    const title = this.host.addChildLabel(panel, 'LobbyBattleStage8SettlementFlowTitle', settlementView.title, -panelWidth / 2 + 14 * scale, panelHeight / 2 - 19 * scale, 13 * scale, rgba(246, 217, 147), new Size(panelWidth * 0.46, 18 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.host.addChildLabel(panel, 'LobbyBattleStage8SettlementFlowTitle', settlementView.title, -panelWidth / 2 + 14 * scale, panelHeight / 2 - 19 * scale, 18 * scale, rgba(246, 217, 147), new Size(panelWidth * 0.46, 24 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     const receipt = this.host.addChildLabel(panel, 'LobbyBattleStage8ReceiptStatus', settlementView.receiptStatus, panelWidth / 2 - 86 * scale, panelHeight / 2 - 19 * scale, 13 * scale, rgba(184, 218, 229), new Size(158 * scale, 18 * scale));
     receipt.overflow = Label.Overflow.SHRINK;
@@ -7356,7 +7356,7 @@ export class LobbyBattlePreviewPanelRenderer {
       'LobbyBattleStage8RecoveryHint',
       `${settlementView.primaryRecoveryLabel}：${settlementView.recoveryHint}`,
       0,
-      0, 14 * scale,
+      0, 15 * scale,
       settlementView.phase === 'error' ? rgba(255, 206, 185) : rgba(194, 205, 190),
       new Size(bannerWidth - 22 * scale, bannerHeight - 4 * scale),
     );
@@ -7513,7 +7513,7 @@ export class LobbyBattlePreviewPanelRenderer {
     graphics.fill();
     graphics.strokeColor = rgba(132, 98, 52, 120);
     graphics.stroke();
-    const text = this.host.addChildLabel(log, 'LobbyBattlePreviewLogText', presentation.logLines.join('\n'), 0, 0, 15 * scale, rgba(207, 188, 145), new Size(rect.width - 28 * scale, rect.height - 10 * scale));
+    const text = this.host.addChildLabel(log, 'LobbyBattlePreviewLogText', presentation.logLines.join('\n'), 0, 0, 16 * scale, rgba(207, 188, 145), new Size(rect.width - 28 * scale, rect.height - 10 * scale));
     text.lineHeight = 18 * scale;
     text.overflow = Label.Overflow.SHRINK;
   }
@@ -7615,7 +7615,7 @@ export class LobbyBattlePreviewPanelRenderer {
       dg.moveTo(-overlayWidth * 0.23, 0);
       dg.lineTo(overlayWidth * 0.23, 0);
       dg.stroke();
-      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, overlayHeight / 2 - 230 * scale, 16 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 20 * scale));
+      const rewardTitle = this.host.addChildLabel(overlay, 'LobbyBattleStage12VictoryRewardTitle', dailyDungeon ? '获得产出' : '获得奖励', 0, overlayHeight / 2 - 230 * scale, 18 * scale, rgba(226, 198, 142, 240), new Size(overlayWidth * 0.5, 24 * scale));
       rewardTitle.overflow = Label.Overflow.SHRINK;
       this.applyOutline(rewardTitle, scale, false);
     }
@@ -7665,7 +7665,7 @@ export class LobbyBattlePreviewPanelRenderer {
       const amountLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotAmount', `×${reward.amount}`, slotSize / 2 - 18 * scale, 10 * scale - slotSize / 2 + 13 * scale, 16 * scale, rgba(255, 236, 176), new Size(slotSize * 0.7, 20 * scale), HorizontalTextAlignment.RIGHT);
       amountLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(amountLabel, scale, false);
-      const nameLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotName', reward.resourceName, 0, 10 * scale - slotSize / 2 - 16 * scale, 15 * scale, rgba(214, 196, 156, 235), new Size(slotSize + slotGap, 20 * scale));
+      const nameLabel = this.host.addChildLabel(slot, 'LobbyBattleStage12RewardSlotName', reward.resourceName, 0, 10 * scale - slotSize / 2 - 16 * scale, 16 * scale, rgba(214, 196, 156, 235), new Size(slotSize + slotGap, 22 * scale));
       nameLabel.overflow = Label.Overflow.SHRINK;
       // 奖励悬浮/点击看详情(名称/类型/数量/用途)。Button 吞点击不误触下方按钮。
       slot.addComponent(Button);
@@ -7791,7 +7791,7 @@ export class LobbyBattlePreviewPanelRenderer {
     this.applyOutline(name, scale, false);
     const meta = this.host.addChildLabel(card, 'RewardDetailMeta', `${this.victoryRewardTypeLabel(reward.resourceType)} · 数量 ×${reward.amount}`, 0, ch / 2 - 44 * scale, 13 * scale, rgba(210, 196, 160, 238), new Size(cw - 22 * scale, 18 * scale));
     meta.overflow = Label.Overflow.SHRINK;
-    const desc = this.host.addChildLabel(card, 'RewardDetailDesc', this.victoryRewardDescLine(reward.resourceCode), 0, -ch / 2 + 22 * scale, 12 * scale, rgba(182, 172, 150, 232), new Size(cw - 24 * scale, 34 * scale));
+    const desc = this.host.addChildLabel(card, 'RewardDetailDesc', this.victoryRewardDescLine(reward.resourceCode), 0, -ch / 2 + 22 * scale, 13 * scale, rgba(182, 172, 150, 232), new Size(cw - 24 * scale, 34 * scale));
     desc.overflow = Label.Overflow.SHRINK;
     desc.enableWrapText = true;
   }
@@ -7893,7 +7893,7 @@ export class LobbyBattlePreviewPanelRenderer {
     graphics.rect(-receiptWidth / 2 + 8 * scale, receiptHeight / 2 - 34 * scale, receiptWidth - 16 * scale, 26 * scale);
     graphics.fill();
 
-    const title = this.host.addChildLabel(receipt, 'LobbyBattleSettlementReceiptTitle', '结算回执', 0, receiptHeight / 2 - 21 * scale, 16 * scale, rgba(248, 219, 151), new Size(receiptWidth - 18 * scale, 22 * scale));
+    const title = this.host.addChildLabel(receipt, 'LobbyBattleSettlementReceiptTitle', '结算回执', 0, receiptHeight / 2 - 21 * scale, 18 * scale, rgba(248, 219, 151), new Size(receiptWidth - 18 * scale, 24 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, false);
 
@@ -7941,7 +7941,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const disabledRect = layout.footerButtons[0];
     const disabled = this.host.addChildPlainNode(parent, 'LobbyBattleSettleDisabled', disabledRect.x, disabledRect.y, disabledRect.width, disabledRect.height);
     this.drawDisabledButton(disabled, disabledRect.width, disabledRect.height, scale);
-    const disabledLabel = this.host.addChildLabel(disabled, 'LobbyBattleSettleDisabledLabel', this.resolveLeftStatusLabel(presentation, settlementView), 0, 0, 18 * scale, rgba(179, 150, 91), new Size(disabledRect.width - 10 * scale, disabledRect.height));
+    const disabledLabel = this.host.addChildLabel(disabled, 'LobbyBattleSettleDisabledLabel', this.resolveLeftStatusLabel(presentation, settlementView), 0, 0, 20 * scale, rgba(179, 150, 91), new Size(disabledRect.width - 10 * scale, disabledRect.height));
     disabledLabel.overflow = Label.Overflow.SHRINK;
 
     this.renderActionButton(parent, layout.footerButtons[1], scale, state, presentation);
@@ -7949,7 +7949,7 @@ export class LobbyBattlePreviewPanelRenderer {
     if (presentation.returnToLobby || (state.presentationComplete && !!state.start)) {
       const locked = this.host.addChildPlainNode(parent, 'LobbyBattlePreviewCloseButton', backRect.x, backRect.y, backRect.width, backRect.height);
       this.drawDisabledButton(locked, backRect.width, backRect.height, scale);
-      const label = this.host.addChildLabel(locked, 'LobbyBattlePreviewCloseButtonLabel', presentation.returnToLobby ? '已记录' : '演出完成', 0, 0, 18 * scale, rgba(179, 150, 91), new Size(backRect.width - 10 * scale, backRect.height));
+      const label = this.host.addChildLabel(locked, 'LobbyBattlePreviewCloseButtonLabel', presentation.returnToLobby ? '已记录' : '演出完成', 0, 0, 20 * scale, rgba(179, 150, 91), new Size(backRect.width - 10 * scale, backRect.height));
       label.overflow = Label.Overflow.SHRINK;
       return;
     }
@@ -7961,7 +7961,7 @@ export class LobbyBattlePreviewPanelRenderer {
     if (!presentation.actionEnabled) {
       const pending = this.host.addChildPlainNode(parent, presentation.actionNodeName, rect.x, rect.y, rect.width, rect.height);
       this.drawDisabledButton(pending, rect.width, rect.height, scale);
-      const label = this.host.addChildLabel(pending, `${presentation.actionNodeName}Label`, presentation.actionLabel, 0, 0, 18 * scale, rgba(179, 150, 91), new Size(rect.width, rect.height));
+      const label = this.host.addChildLabel(pending, `${presentation.actionNodeName}Label`, presentation.actionLabel, 0, 0, 20 * scale, rgba(179, 150, 91), new Size(rect.width, rect.height));
       label.overflow = Label.Overflow.SHRINK;
       return;
     }
@@ -8005,7 +8005,7 @@ export class LobbyBattlePreviewPanelRenderer {
     }
     button.addComponent(Button);
     this.host.applyImageButtonFeedback(button, 1.025, 0.975);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 19 * scale, art ? rgba(255, 240, 200) : rgba(245, 211, 123), new Size(rect.width - 10 * scale, rect.height));
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 20 * scale, art ? rgba(255, 240, 200) : rgba(245, 211, 123), new Size(rect.width - 10 * scale, rect.height));
     label.overflow = Label.Overflow.SHRINK;
     return button;
   }

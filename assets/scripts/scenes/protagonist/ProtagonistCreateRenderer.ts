@@ -244,7 +244,7 @@ export class ProtagonistCreateRenderer {
     const text = unlocked ? label : `${label}  锁定`;
     const title = this.host.addChildLabel(chip, 'ProtagonistFormLabel', text, -width / 2 + 58 * scale, 7 * scale, 18 * scale, unlocked ? rgba(242, 214, 156) : rgba(144, 132, 108), new Size(width - 70 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
-    const detailLabel = this.host.addChildLabel(chip, 'ProtagonistFormDetail', detail, -width / 2 + 58 * scale, -10 * scale, 14 * scale, rgba(159, 135, 92), new Size(width - 72 * scale, 18 * scale), HorizontalTextAlignment.LEFT);
+    const detailLabel = this.host.addChildLabel(chip, 'ProtagonistFormDetail', detail, -width / 2 + 58 * scale, -10 * scale, 15 * scale, rgba(159, 135, 92), new Size(width - 72 * scale, 21 * scale), HorizontalTextAlignment.LEFT);
     detailLabel.overflow = Label.Overflow.SHRINK;
   }
 
@@ -317,7 +317,7 @@ export class ProtagonistCreateRenderer {
         state.error,
         0,
         0,
-        14 * metrics.scale,
+        15 * metrics.scale,
         rgba(255, 118, 118),
         new Size(metrics.panelWidth - 60 * metrics.scale, 24 * metrics.scale),
       );

@@ -191,7 +191,7 @@ export class LobbyCodexPanelRenderer {
     role.overflow = Label.Overflow.SHRINK;
 
     const ownedText = item.owned ? `已拥有 x${Math.max(1, item.ownedCount)}` : '未收集';
-    const owned = this.host.addChildLabel(card, 'LobbyCodexOwnedState', ownedText, width / 2 - 54 * scale, -height / 2 + 15 * scale, 15 * scale, item.owned ? rgba(124, 220, 151) : rgba(151, 127, 96), new Size(96 * scale, 20 * scale), HorizontalTextAlignment.RIGHT);
+    const owned = this.host.addChildLabel(card, 'LobbyCodexOwnedState', ownedText, width / 2 - 54 * scale, -height / 2 + 15 * scale, 16 * scale, item.owned ? rgba(124, 220, 151) : rgba(151, 127, 96), new Size(96 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
     owned.overflow = Label.Overflow.SHRINK;
   }
 

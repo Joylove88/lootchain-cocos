@@ -665,7 +665,7 @@ export class LobbyGuardBattleRenderer {
     const hpBar = this.host.addChildPlainNode(hud, 'GuardCrystalHpBar', -width / 2 + hpW / 2 + 26, height / 2 - 20 - hpH / 2, hpW, hpH);
     hpBar.addComponent(Graphics);
     this.mountSprite(hpBar, 'Frame', 'ui/battle/ai/ghud_hp_frame/spriteFrame', 0, 0, hpW, hpH);
-    const hpText = this.host.addChildLabel(hpBar, 'GuardCrystalHpText', '', hpW * 0.05, 1, 15, rgba(255, 250, 235, 250), new Size(hpW * 0.8, 20));
+    const hpText = this.host.addChildLabel(hpBar, 'GuardCrystalHpText', '', hpW * 0.05, 1, 16, rgba(255, 250, 235, 250), new Size(hpW * 0.8, 22));
     hpText.enableOutline = true;
     hpText.outlineColor = rgba(10, 14, 26, 255);
     hpText.outlineWidth = 2;
@@ -715,7 +715,7 @@ export class LobbyGuardBattleRenderer {
     bossName.outlineWidth = 2;
     const bossBar = this.host.addChildPlainNode(hud, 'GuardBossTopBar', 0, height / 2 - 16 - bannerH - 40, 480, 24);
     bossBar.addComponent(Graphics);
-    const bossText = this.host.addChildLabel(bossBar, 'GuardBossTopBarText', '', 0, 0, 14, rgba(255, 244, 230, 252), new Size(440, 18));
+    const bossText = this.host.addChildLabel(bossBar, 'GuardBossTopBarText', '', 0, 0, 16, rgba(255, 244, 230, 252), new Size(440, 22));
     bossText.enableOutline = true;
     bossText.outlineColor = rgba(40, 12, 8, 255);
     bossText.outlineWidth = 2;
@@ -737,11 +737,12 @@ export class LobbyGuardBattleRenderer {
     this.host.applyImageButtonFeedback(closeBtn);
     closeBtn.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
     // 次级信息:等级击杀(左)/下一波预告(右)/波次轨道(标准模式)
-    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 24, stripTop - statsBtnH - 44, 14, rgba(150, 230, 190, 230), new Size(220, 20), HorizontalTextAlignment.LEFT);
+    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 24, stripTop - statsBtnH - 44, 15, rgba(150, 230, 190, 230), new Size(220, 21), HorizontalTextAlignment.LEFT);
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
     track.addComponent(Graphics);
-    this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★)· 拖到水晶出售回金', 0, -height / 2 + 16, 14, rgba(196, 180, 150, 200), new Size(width * 0.6, 18));
+    const hintText = this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★)· 拖到水晶出售回金', 0, -height / 2 + 16, 15, rgba(196, 180, 150, 200), new Size(width * 0.6, 21));
+    hintText.overflow = Label.Overflow.SHRINK;
   }
 
   /** 输出贡献统计面板:英雄伤害降序排行(名字+K/M/B 值+橙色占比条),开着时每 0.5s 重建一次。 */
@@ -790,20 +791,20 @@ export class LobbyGuardBattleRenderer {
     pg.lineWidth = 1.4;
     pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
     pg.stroke();
-    const title = this.host.addChildLabel(panel, 'Title', '我方贡献统计', 0, panelH / 2 - 22, 17, rgba(244, 220, 166, 252), new Size(panelW - 20, 22));
+    const title = this.host.addChildLabel(panel, 'Title', '我方贡献统计', 0, panelH / 2 - 22, 18, rgba(244, 220, 166, 252), new Size(panelW - 20, 24));
     title.enableOutline = true;
     title.outlineColor = rgba(12, 8, 6, 255);
     title.outlineWidth = 2;
     if (entries.length === 0) {
-      this.host.addChildLabel(panel, 'Empty', '暂无输出记录', 0, -4, 14, rgba(196, 182, 152, 220), new Size(panelW - 20, 18));
+      this.host.addChildLabel(panel, 'Empty', '暂无输出记录', 0, -4, 15, rgba(196, 182, 152, 220), new Size(panelW - 20, 21));
       return;
     }
     const maxDamage = Math.max(1, entries[0].damage);
     entries.forEach((entry, index) => {
       const rowY = panelH / 2 - 46 - rowH * index - rowH / 2 + 4;
-      const name = this.host.addChildLabel(panel, `Name_${index}`, entry.name, -panelW / 2 + 14 + 78, rowY + 6, 14, rgba(236, 226, 200, 248), new Size(156, 18), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(panel, `Name_${index}`, entry.name, -panelW / 2 + 14 + 78, rowY + 6, 16, rgba(236, 226, 200, 248), new Size(156, 22), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const value = this.host.addChildLabel(panel, `Value_${index}`, this.formatDamageValue(entry.damage), panelW / 2 - 14 - 55, rowY + 6, 15, rgba(255, 214, 120, 252), new Size(110, 20), HorizontalTextAlignment.RIGHT);
+      const value = this.host.addChildLabel(panel, `Value_${index}`, this.formatDamageValue(entry.damage), panelW / 2 - 14 - 55, rowY + 6, 16, rgba(255, 214, 120, 252), new Size(110, 22), HorizontalTextAlignment.RIGHT);
       value.enableOutline = true;
       value.outlineColor = rgba(12, 8, 6, 255);
       value.outlineWidth = 2;
@@ -1004,7 +1005,7 @@ export class LobbyGuardBattleRenderer {
     const button = this.host.addChildPlainNode(root, 'GuardCrystalSkillButton', -this.layoutWidth / 2 + 34 + size / 2, -height / 2 + 66 + size / 2, size, size);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_skill/spriteFrame', 0, 0, size, size * (271 / 273));
     this.host.applyImageButtonFeedback(button);
-    const label = this.host.addChildLabel(button, 'GuardCrystalSkillLabel', '水晶技能', 0, -size / 2 - 14, 15, rgba(200, 232, 255, 250), new Size(110, 20));
+    const label = this.host.addChildLabel(button, 'GuardCrystalSkillLabel', '水晶技能', 0, -size / 2 - 14, 16, rgba(200, 232, 255, 250), new Size(110, 22));
     label.enableOutline = true;
     label.outlineColor = rgba(10, 16, 28, 255);
     label.outlineWidth = 2;
@@ -1012,7 +1013,7 @@ export class LobbyGuardBattleRenderer {
     const pillH = pillW * (71 / 239);
     const pill = this.host.addChildPlainNode(root, 'GuardCrystalEnergy', -this.layoutWidth / 2 + 34 + size + 14 + pillW / 2, -height / 2 + 66 + size * 0.32, pillW, pillH);
     this.mountSprite(pill, 'Img', 'ui/battle/ai/ghud_energy_pill/spriteFrame', 0, 0, pillW, pillH);
-    const energy = this.host.addChildLabel(pill, 'Text', '', pillW * 0.08, 1, 15, rgba(150, 214, 255, 252), new Size(pillW * 0.7, 18));
+    const energy = this.host.addChildLabel(pill, 'Text', '', pillW * 0.08, 1, 16, rgba(150, 214, 255, 252), new Size(pillW * 0.7, 22));
     energy.enableOutline = true;
     energy.outlineColor = rgba(10, 16, 28, 255);
     energy.outlineWidth = 2;
@@ -1080,7 +1081,7 @@ export class LobbyGuardBattleRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(60, 26, 8, 255);
     title.outlineWidth = 3;
-    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 15, rgba(255, 224, 140, 250), new Size(w * 0.72, 20));
+    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 16, rgba(255, 224, 140, 250), new Size(w * 0.72, 22));
     cost.enableOutline = true;
     cost.outlineColor = rgba(50, 22, 8, 255);
     cost.outlineWidth = 2;
@@ -1658,7 +1659,7 @@ export class LobbyGuardBattleRenderer {
       g.roundRect(-cardW / 2 + 6, cardH / 2 - 52, cardW - 12, 44, 10);
       g.fill();
       // 标题进头带(2026-08-25 用户验收:头带空着、标题飘在下面)。
-      const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH / 2 - 29, 21, rgba(255, 240, 200), new Size(cardW - 22, 40));
+      const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH / 2 - 29, 24, rgba(255, 240, 200), new Size(cardW - 22, 40));
       title.overflow = Label.Overflow.SHRINK;
       const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, cardH * 0.05, 17, rgba(212, 200, 176, 240), new Size(cardW - 24, 60));
       detail.overflow = Label.Overflow.SHRINK;
@@ -2516,18 +2517,18 @@ export class LobbyGuardBattleRenderer {
     this.mountSprite(panel, 'Frame', 'ui/common/ai/bag_grid_panel/spriteFrame', 0, 0, w, h);
     const panelOpacity = panel.addComponent(UIOpacity);
     panelOpacity.opacity = 225;
-    const nameLabel = this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 58, 21, rgba(255, 234, 180), new Size(w - 96, 26));
+    const nameLabel = this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 58, 24, rgba(255, 234, 180), new Size(w - 96, 30));
     nameLabel.overflow = Label.Overflow.SHRINK;
     this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 88, 18, rgba(255, 220, 110), new Size(w - 60, 22));
     const roleName = GUARD_ROLE_LABEL[hero.role] ?? hero.role;
     this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格`, 0, h / 2 - 118, 16, rgba(226, 214, 188), new Size(w - 60, 20));
-    this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`, 0, h / 2 - 148, 15, rgba(255, 200, 150), new Size(w - 60, 20));
+    this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`, 0, h / 2 - 148, 16, rgba(255, 200, 150), new Size(w - 60, 22));
     // 主动技能卡(参考蔚蓝星球:技能名+冷却+描述)
     const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
     const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${this.resolveGuardSkillDisplayName(hero.heroCode, skill.name)} · ${skillState}`, 0, h / 2 - 182, 17, rgba(150, 220, 255), new Size(w - 64, 22));
+    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${this.resolveGuardSkillDisplayName(hero.heroCode, skill.name)} · ${skillState}`, 0, h / 2 - 182, 18, rgba(150, 220, 255), new Size(w - 64, 24));
     skillTitle.overflow = Label.Overflow.SHRINK;
-    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 226, 13, rgba(206, 196, 172), new Size(w - 76, 46));
+    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 226, 15, rgba(206, 196, 172), new Size(w - 76, 46));
     desc.overflow = Label.Overflow.SHRINK;
   }
 

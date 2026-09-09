@@ -88,7 +88,7 @@ function renderBackTitle(host: SceneBackButtonHost, parent: Node, layout: UiLayo
   const banner = host.addSprite?.('SceneBackTitleBanner', SCENE_TITLE_BANNER_ASSET, bannerX, titleY, bannerWidth, bannerHeight, parent);
   let bannerRight = bannerX + bannerWidth / 2;
   if (banner) {
-    const title = host.addChildLabel(parent, 'SceneBackTitle', titleText, bannerX + bannerWidth * 0.09, titleY + bannerHeight * 0.02, 25 * scale, rgba(250, 222, 158), new Size(bannerWidth * 0.56, 40 * scale));
+    const title = host.addChildLabel(parent, 'SceneBackTitle', titleText, bannerX + bannerWidth * 0.09, titleY + bannerHeight * 0.02, 26 * scale, rgba(250, 222, 158), new Size(bannerWidth * 0.56, 40 * scale));
     title.overflow = Label.Overflow.SHRINK;
     title.enableOutline = true;
     title.outlineColor = rgba(0, 0, 0, 220);
@@ -164,7 +164,7 @@ function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiL
     g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.stroke();
   }
-  const title = host.addChildLabel(panel, 'SceneHelpTitle', titleText + ' · 说明', 0, h / 2 - 46 * scale, 22 * scale, rgba(240, 210, 140), new Size(w - 96 * scale, 30 * scale));
+  const title = host.addChildLabel(panel, 'SceneHelpTitle', titleText + ' · 说明', 0, h / 2 - 46 * scale, 24 * scale, rgba(240, 210, 140), new Size(w - 96 * scale, 30 * scale));
   title.overflow = Label.Overflow.SHRINK;
   title.enableOutline = true;
   title.outlineColor = rgba(0, 0, 0, 220);
