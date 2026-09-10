@@ -1,5 +1,6 @@
 import {
   _decorator,
+  assetManager,
   BlockInputEvents,
   Button,
   Color,
@@ -437,8 +438,12 @@ export class LootChainGameRoot extends Component {
     this.runBootPreload();
   }
 
+  /** 启动预载进行中:拦截一切 renderCurrentView(保护加载屏,防提前放行)。 */
+  private bootPreloadActive = false;
+
   /** 启动预载:纯程序绘制加载屏 → loadDir 全量 UI 图与骨骼 → 进登录。任何目录失败只告警不拦门。 */
   private runBootPreload(): void {
+    this.bootPreloadActive = true;
     const layout = this.resolveLayout();
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
@@ -446,10 +451,12 @@ export class LootChainGameRoot extends Component {
     const root = this.createUiNode('BootLoadingRoot');
     root.setPosition(0, 0, 0);
     const rootTransform = root.addComponent(UITransform);
-    rootTransform.setContentSize(new Size(layout.width, layout.height));
+    // 启动极早期 layout 与真实视口可能尚未同步:遮罩按 3 倍超采样铺,保证任何比例下都盖满。
+    const coverWidth = Math.max(layout.width, layout.height) * 3;
+    rootTransform.setContentSize(new Size(coverWidth, coverWidth));
     const bg = root.addComponent(Graphics);
     bg.fillColor = new Color(6, 5, 8, 255);
-    bg.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
+    bg.rect(-coverWidth / 2, -coverWidth / 2, coverWidth, coverWidth);
     bg.fill();
     root.addComponent(BlockInputEvents);
     const title = this.addChildLabel(root, 'BootLoadingTitle', 'LOOTCHAIN', centerX, centerY + 96 * scale, 52 * scale, new Color(245, 210, 122, 255), new Size(720 * scale, 66 * scale));
@@ -493,60 +500,76 @@ export class LootChainGameRoot extends Component {
         return;
       }
       finished = true;
+      this.bootPreloadActive = false;
       this.removeNodeFromContent('BootLoadingRoot');
       this.renderCurrentView();
       // 会话持久化(token 7 天):本地有 token+userId 就自动恢复登录,免每次重登;失败清态留在登录页。
       void this.tryResumeSession();
     };
     // 清单+并发逐个加载(loadDir 在编辑器预览环境会悬死,不可用;getDirWithPath 同步出全量清单)。
-    const uiInfos: Array<{ path: string }> = resources.getDirWithPath('ui', SpriteFrame) ?? [];
-    const spineInfos: Array<{ path: string }> = resources.getDirWithPath('spine', sp.SkeletonData) ?? [];
-    const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
-      ...uiInfos.map((info) => ({ path: info.path, kind: 'ui' as const })),
-      ...spineInfos.map((info) => ({ path: info.path, kind: 'spine' as const })),
-    ];
-    const total = tasks.length;
-    if (total === 0) {
-      finish();
-      return;
-    }
-    let done = 0;
-    let failed = 0;
-    let cursor = 0;
-    const worker = (): void => {
+    const startPreload = (): void => {
       if (finished) {
         return;
       }
-      if (cursor >= tasks.length) {
+      const uiInfos: Array<{ path: string }> = resources.getDirWithPath('ui', SpriteFrame) ?? [];
+      const spineInfos: Array<{ path: string }> = resources.getDirWithPath('spine', sp.SkeletonData) ?? [];
+      const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
+        ...uiInfos.map((info) => ({ path: info.path, kind: 'ui' as const })),
+        ...spineInfos.map((info) => ({ path: info.path, kind: 'spine' as const })),
+      ];
+      const total = tasks.length;
+      if (total === 0) {
+        console.warn('[LootChain] boot preload: 资源清单为空,跳过预载');
+        finish();
         return;
       }
-      const task = tasks[cursor++];
-      const onLoaded = (error: Error | null): void => {
-        if (error) {
-          failed += 1;
-        }
-        done += 1;
-        updateProgress(done / total, task.kind === 'ui' ? '界面素材' : '角色动画');
-        if (done >= total) {
-          if (failed > 0) {
-            console.warn(`[LootChain] boot preload: ${failed}/${total} 项加载失败(已跳过)`);
-          }
-          finish();
+      let done = 0;
+      let failed = 0;
+      let cursor = 0;
+      const worker = (): void => {
+        if (finished) {
           return;
         }
-        worker();
+        if (cursor >= tasks.length) {
+          return;
+        }
+        const task = tasks[cursor++];
+        const onLoaded = (error: Error | null): void => {
+          if (error) {
+            failed += 1;
+          }
+          done += 1;
+          updateProgress(done / total, task.kind === 'ui' ? '界面素材' : '角色动画');
+          if (done >= total) {
+            if (failed > 0) {
+              console.warn(`[LootChain] boot preload: ${failed}/${total} 项加载失败(已跳过)`);
+            }
+            finish();
+            return;
+          }
+          worker();
+        };
+        if (task.kind === 'ui') {
+          resources.load(task.path, SpriteFrame, (error) => onLoaded(error));
+        } else {
+          resources.load(task.path, sp.SkeletonData, (error) => onLoaded(error));
+        }
       };
-      if (task.kind === 'ui') {
-        resources.load(task.path, SpriteFrame, (error) => onLoaded(error));
-      } else {
-        resources.load(task.path, sp.SkeletonData, (error) => onLoaded(error));
+      updateProgress(0, '界面素材');
+      const concurrency = Math.min(10, total);
+      for (let i = 0; i < concurrency; i++) {
+        worker();
       }
     };
-    updateProgress(0, '界面素材');
-    const concurrency = Math.min(10, total);
-    for (let i = 0; i < concurrency; i++) {
-      worker();
-    }
+    // 自动 boot 下 start() 可能早于 resources bundle 配置就绪,此时 getDirWithPath 拿到空清单
+    // 会把预载整个空跑掉(2026-09-10 实测:登录场景仍闪 1 秒兜底)。先确保 bundle 就绪再开载;
+    // 已加载时 loadBundle 立即回调,无额外开销。
+    assetManager.loadBundle('resources', (bundleError) => {
+      if (bundleError) {
+        console.warn('[LootChain] boot preload: resources bundle 加载失败', bundleError);
+      }
+      startPreload();
+    });
     // 兜底:预载异常悬挂也不至于锁死进不了游戏。
     setTimeout(finish, 180000);
   }
@@ -613,6 +636,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderCurrentView(): void {
+    // 启动预载期间任何重绘请求(精灵缓存到货整刷/resize)都会清掉加载屏并提前放行登录页,
+    // 一律拦下;finish() 会先解闸再渲染(2026-09-10)。
+    if (this.bootPreloadActive) {
+      return;
+    }
     // 所有视图入口集中在这里，resize 或状态变化时按 currentView 重绘。
     if (this.currentView === 'lobby') {
       if (this.lobbyBackgroundController.isRendered()) {
