@@ -242,6 +242,17 @@ export class UiSpriteFrameCache {
     if (railIndex >= 0 && overrides.rightRailFrames[railIndex]) {
       return overrides.rightRailFrames[railIndex];
     }
-    return this.spriteFrames.get(path);
+    const cached = this.spriteFrames.get(path);
+    if (cached) {
+      return cached;
+    }
+    // 启动加载屏 loadDir 已入 bundle 缓存的资源同步取用(2026-09-10):首帧即有图,
+    // 不再"先兜底再到货整刷"——也顺带消掉素材逐张到货引发的重渲风暴。
+    const bundled = resources.get(path, SpriteFrame);
+    if (bundled) {
+      this.spriteFrames.set(path, bundled);
+      return bundled;
+    }
+    return undefined;
   }
 }

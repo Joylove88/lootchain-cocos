@@ -12,7 +12,9 @@ import {
   Node,
   input,
   profiler,
+  resources,
   Size,
+  sp,
   Sprite,
   SpriteFrame,
   VideoClip,
@@ -430,9 +432,123 @@ export class LootChainGameRoot extends Component {
     this.preloadUiSprites();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.on(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
-    this.renderCurrentView();
-    // 会话持久化(token 7 天):本地有 token+userId 就自动恢复登录,免每次重登;失败清态留在登录页。
-    void this.tryResumeSession();
+    // 首次进入加载屏(2026-09-10 用户拍板):全部 UI 图+骨骼预载完成后才进登录页,
+    // 根治"首帧全兜底/素材到货整刷风暴/战场骨骼迟到";完成回调里再渲染登录+恢复会话。
+    this.runBootPreload();
+  }
+
+  /** 启动预载:纯程序绘制加载屏 → loadDir 全量 UI 图与骨骼 → 进登录。任何目录失败只告警不拦门。 */
+  private runBootPreload(): void {
+    const layout = this.resolveLayout();
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
+    const root = this.createUiNode('BootLoadingRoot');
+    root.setPosition(0, 0, 0);
+    const rootTransform = root.addComponent(UITransform);
+    rootTransform.setContentSize(new Size(layout.width, layout.height));
+    const bg = root.addComponent(Graphics);
+    bg.fillColor = new Color(6, 5, 8, 255);
+    bg.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
+    bg.fill();
+    root.addComponent(BlockInputEvents);
+    const title = this.addChildLabel(root, 'BootLoadingTitle', 'LOOTCHAIN', centerX, centerY + 96 * scale, 52 * scale, new Color(245, 210, 122, 255), new Size(720 * scale, 66 * scale));
+    title.isBold = true;
+    this.addChildLabel(root, 'BootLoadingSub', 'SILENT GODS', centerX, centerY + 54 * scale, 17 * scale, new Color(196, 168, 112, 220), new Size(400 * scale, 24 * scale));
+    const barWidth = Math.min(520 * scale, layout.width * 0.6);
+    const barHeight = 14 * scale;
+    const barNode = this.addChildPlainNode(root, 'BootLoadingBar', centerX, centerY - 12 * scale, barWidth, barHeight);
+    const barGraphics = barNode.addComponent(Graphics);
+    const percentLabel = this.addChildLabel(root, 'BootLoadingPercent', '0%', centerX, centerY - 44 * scale, 16 * scale, new Color(228, 202, 150, 240), new Size(200 * scale, 22 * scale));
+    const tipLabel = this.addChildLabel(root, 'BootLoadingTip', '正在加载界面素材…', centerX, centerY - 72 * scale, 14 * scale, new Color(168, 150, 118, 210), new Size(460 * scale, 20 * scale));
+    const drawBar = (progress: number): void => {
+      if (!barGraphics.isValid) {
+        return;
+      }
+      barGraphics.clear();
+      barGraphics.fillColor = new Color(26, 22, 20, 235);
+      barGraphics.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+      barGraphics.fill();
+      barGraphics.strokeColor = new Color(170, 132, 74, 220);
+      barGraphics.lineWidth = Math.max(1, 1.2 * scale);
+      barGraphics.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+      barGraphics.stroke();
+      const fillWidth = Math.max(barHeight, barWidth * Math.min(1, progress));
+      barGraphics.fillColor = new Color(232, 176, 74, 245);
+      barGraphics.roundRect(-barWidth / 2 + 2, -barHeight / 2 + 2, fillWidth - 4, barHeight - 4, (barHeight - 4) / 2);
+      barGraphics.fill();
+    };
+    const updateProgress = (progress: number, phaseLabel: string): void => {
+      drawBar(progress);
+      if (percentLabel.isValid) {
+        percentLabel.string = `${Math.round(progress * 100)}%`;
+      }
+      if (tipLabel.isValid) {
+        tipLabel.string = `正在加载${phaseLabel}…`;
+      }
+    };
+    let finished = false;
+    const finish = (): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      this.removeNodeFromContent('BootLoadingRoot');
+      this.renderCurrentView();
+      // 会话持久化(token 7 天):本地有 token+userId 就自动恢复登录,免每次重登;失败清态留在登录页。
+      void this.tryResumeSession();
+    };
+    // 清单+并发逐个加载(loadDir 在编辑器预览环境会悬死,不可用;getDirWithPath 同步出全量清单)。
+    const uiInfos: Array<{ path: string }> = resources.getDirWithPath('ui', SpriteFrame) ?? [];
+    const spineInfos: Array<{ path: string }> = resources.getDirWithPath('spine', sp.SkeletonData) ?? [];
+    const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
+      ...uiInfos.map((info) => ({ path: info.path, kind: 'ui' as const })),
+      ...spineInfos.map((info) => ({ path: info.path, kind: 'spine' as const })),
+    ];
+    const total = tasks.length;
+    if (total === 0) {
+      finish();
+      return;
+    }
+    let done = 0;
+    let failed = 0;
+    let cursor = 0;
+    const worker = (): void => {
+      if (finished) {
+        return;
+      }
+      if (cursor >= tasks.length) {
+        return;
+      }
+      const task = tasks[cursor++];
+      const onLoaded = (error: Error | null): void => {
+        if (error) {
+          failed += 1;
+        }
+        done += 1;
+        updateProgress(done / total, task.kind === 'ui' ? '界面素材' : '角色动画');
+        if (done >= total) {
+          if (failed > 0) {
+            console.warn(`[LootChain] boot preload: ${failed}/${total} 项加载失败(已跳过)`);
+          }
+          finish();
+          return;
+        }
+        worker();
+      };
+      if (task.kind === 'ui') {
+        resources.load(task.path, SpriteFrame, (error) => onLoaded(error));
+      } else {
+        resources.load(task.path, sp.SkeletonData, (error) => onLoaded(error));
+      }
+    };
+    updateProgress(0, '界面素材');
+    const concurrency = Math.min(10, total);
+    for (let i = 0; i < concurrency; i++) {
+      worker();
+    }
+    // 兜底:预载异常悬挂也不至于锁死进不了游戏。
+    setTimeout(finish, 180000);
   }
 
   // 启动自动恢复会话:用 /me/lobby(已放行)探活 token,成功走与真实登录相同的入口流程。
