@@ -37,7 +37,7 @@ const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   UR_EVELYN: { effect: 'fx_4601_bingyuanjulang_skill', animation: 'skill', anchor: 'target', scale: 0.92, offsetY: 18 }, // 深渊·冰狱湮灭:冰原巨浪
   SSR_LIVIA: { effect: 'fx_25017_yanlingnvwang_skill', animation: 'skill', anchor: 'target', scale: 0.88, offsetY: 18 }, // 夜烬·焚世之焰(SSR T0):焰灵女王(2026-09-07 全量换新)
   SR_WITCH_03: { effect: 'fx_35012_shuoyemonv_skill', animation: 'skill', anchor: 'target', scale: 0.72, offsetY: 14 }, // 契约·朔夜降临:朔夜魔女
-  R_CULT_05: { effect: 'fx_25002_dutengnv_skill', animation: 'Skill_down', anchor: 'target', scale: 0.6, offsetY: 14 }, // 低语·暗蚀诅咒:毒藤缠绕(2026-09-07 全量换新)
+  R_CULT_05: { effect: 'fx_12601_youyingzhizhu_skill', animation: 'skill2', anchor: 'target', scale: 0.78, offsetY: 10 }, // 低语·暗蚀诅咒:幽影蚀咒(2026-09-11 用户反馈毒藤不好看换新;血红诅咒漩涡+暗紫魔法环+三芒邪教符文,1.53s)
   // ── 射手:箭雨/穿刺系 ──
   UR_AURELIA: { effect: 'fx_13601_menghuanfengdie_skill', animation: 'Skill1', anchor: 'target', scale: 0.92, offsetY: 18 }, // 苍翎·万箭裂空:梦幻凤蝶(2026-09-07 全量换新)
   SR_SNIPER_05: { effect: 'fx_35005_kuangliechangmao_hit', animation: 'Skill_hit', anchor: 'target', scale: 1.0, offsetY: 12 }, // 峡谷·狂裂贯穿(SR T0):狂裂爆点(2026-09-07 用户反馈瘦长矛太小,换大爆点版)
