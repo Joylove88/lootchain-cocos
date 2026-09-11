@@ -370,6 +370,8 @@ export class LobbyGuardBattleRenderer {
         spawnCountMult: isMain ? 2 : 1,
         monsterHpMult: isMain || isDaily ? 3 : 1,
         monsterBiteMult: isDaily ? 1 : undefined,
+        // 限时副本小怪总计 ×10(2026-09-11 用户拍板;BOSS/精英维持 ×3):3 × 10/3。
+        minionHpMult: isDaily ? 10 / 3 : 1,
       },
     );
     this.simBattleNo = battleState.start?.battleNo ?? '';
@@ -3216,7 +3218,26 @@ export class LobbyGuardBattleRenderer {
         }
       }
     }
+    this.sortMonsterViewsByDepth();
     this.refreshBossTopBar();
+  }
+
+  /**
+   * 怪物层级按纵深排序(2026-09-11 用户反馈:BOSS 身后远车道的小怪画在了 BOSS 身上):
+   * 屏幕越靠上(y 越大)越远,先画;只在怪物节点已占的兄弟槽位内重排,不动英雄/特效层级。
+   */
+  private sortMonsterViewsByDepth(): void {
+    const views = [...this.monsterViews.values()].filter((view) => view.node.isValid && view.node.parent);
+    if (views.length < 2) {
+      return;
+    }
+    const slots = views.map((view) => view.node.getSiblingIndex()).sort((a, b) => a - b);
+    views.sort((a, b) => b.node.position.y - a.node.position.y);
+    views.forEach((view, index) => {
+      if (view.node.getSiblingIndex() !== slots[index]) {
+        view.node.setSiblingIndex(slots[index]);
+      }
+    });
   }
 
   /** BOSS 顶部大血条(视频验收:×6 体型配 220px 小条看不见):取当前存活最强 BOSS,画在波次标题下方。 */

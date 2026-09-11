@@ -203,6 +203,8 @@ export interface GuardBattleState {
   monsterHpMult: number;
   /** 怪物啃水晶倍率(缺省=√monsterHpMult 沿用主线难度包耦合;每日副本传 1 只加血不加啃咬)。 */
   monsterBiteMult: number;
+  /** 小怪(非 BOSS/精英)额外血量倍率,叠乘在 monsterHpMult 之上(限时副本收紧用,缺省 1)。 */
+  minionHpMult: number;
   /** 每英雄累计输出(heroCode→伤害;含普攻/技能/区域跳伤,2026-09-02 统计面板)。 */
   heroDamage: Record<string, number>;
   /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
@@ -544,6 +546,8 @@ export function createGuardBattle(
     monsterHpMult?: number;
     /** 怪物啃水晶倍率(缺省 √monsterHpMult;传 1 = 只加血不加啃咬)。 */
     monsterBiteMult?: number;
+    /** 小怪(非 BOSS/精英)额外血量倍率,叠乘在 monsterHpMult 之上(缺省 1)。 */
+    minionHpMult?: number;
   },
 ): GuardBattleState {
   const seed = guardHashSeed(seedText || 'guard');
@@ -552,6 +556,7 @@ export function createGuardBattle(
   const spawnCountMult = Math.max(1, Math.min(3, opts?.spawnCountMult ?? 1));
   const monsterHpMult = Math.max(0.5, Math.min(10, opts?.monsterHpMult ?? 1));
   const monsterBiteMult = Math.max(0.5, Math.min(10, opts?.monsterBiteMult ?? Math.sqrt(monsterHpMult)));
+  const minionHpMult = Math.max(0.5, Math.min(20, opts?.minionHpMult ?? 1));
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
   const crystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   return {
@@ -601,6 +606,7 @@ export function createGuardBattle(
     spawnCountMult,
     monsterHpMult,
     monsterBiteMult,
+    minionHpMult,
     heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
@@ -1028,7 +1034,8 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
   const profile = MONSTER_PROFILE[kind];
   const refWave = Math.max(1, opts?.refWave ?? state.wave);
   // monsterScale:主线 P5 关卡难度曲线(HP 全乘;啃咬伤害 ^0.85 软化,低层不至于刮痧、高层不至于秒晶)。
-  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP) * state.monsterScale * state.monsterHpMult));
+  const minionMult = kind === 'boss' || kind === 'elite' ? 1 : state.minionHpMult;
+  const hp = Math.max(1, Math.round(MONSTER_BASE_HP * profile.hpMult * Math.pow(refWave, MONSTER_HP_WAVE_EXP) * state.monsterScale * state.monsterHpMult * minionMult));
   const monster: GuardMonster = {
     monsterId: state.nextMonsterId++,
     kind,
@@ -1065,15 +1072,15 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       return false;
     }
     const damage = Math.round(attack * 2.0);
-    let firstId: number | null = null;
+    // 特效锚点取命中群按 x 排序的中位怪(2026-09-11 用户反馈:锚在数组首怪时横扫画到射程外的怪身上,
+    // "看着打右边、掉血在左边");中位锚点让斩击艺术覆盖命中簇本身。
+    const sortedByX = [...targets].sort((a, b) => a.x - b.x);
+    const anchorId = sortedByX[Math.floor(sortedByX.length / 2)].monsterId;
     for (const monster of targets) {
       monster.x = Math.min(GUARD_SPAWN_X, monster.x + 0.35);
-      if (firstId === null) {
-        firstId = monster.monsterId;
-      }
       damageMonster(state, monster, damage, hero);
     }
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: firstId ?? undefined, monsterIds: targets.map((monster) => monster.monsterId) });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId) });
     return true;
   }
   if (hero.role === 'ranged') {
