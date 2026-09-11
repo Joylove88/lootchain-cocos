@@ -198,6 +198,8 @@ export interface GuardBattleState {
   spawnCountMult: number;
   /** 怪物血量额外倍率(只乘 HP;主线收紧用)。 */
   monsterHpMult: number;
+  /** 怪物啃水晶倍率(缺省=√monsterHpMult 沿用主线难度包耦合;每日副本传 1 只加血不加啃咬)。 */
+  monsterBiteMult: number;
   /** 每英雄累计输出(heroCode→伤害;含普攻/技能/区域跳伤,2026-09-02 统计面板)。 */
   heroDamage: Record<string, number>;
   /** 辅助"圣辉涌泉"攻速增益截止时刻。 */
@@ -535,8 +537,10 @@ export function createGuardBattle(
     monsterScale?: number;
     /** 每波怪物数量倍率(主线 P5a2 翻倍;缺省 1=每日副本原样)。 */
     spawnCountMult?: number;
-    /** 怪物血量额外倍率(只乘 HP 不乘啃咬;主线收紧用,缺省 1)。 */
+    /** 怪物血量额外倍率(主线收紧用,缺省 1)。 */
     monsterHpMult?: number;
+    /** 怪物啃水晶倍率(缺省 √monsterHpMult;传 1 = 只加血不加啃咬)。 */
+    monsterBiteMult?: number;
   },
 ): GuardBattleState {
   const seed = guardHashSeed(seedText || 'guard');
@@ -544,6 +548,7 @@ export function createGuardBattle(
   const monsterScale = Math.max(0.1, Math.min(10, opts?.monsterScale ?? 1));
   const spawnCountMult = Math.max(1, Math.min(3, opts?.spawnCountMult ?? 1));
   const monsterHpMult = Math.max(0.5, Math.min(10, opts?.monsterHpMult ?? 1));
+  const monsterBiteMult = Math.max(0.5, Math.min(10, opts?.monsterBiteMult ?? Math.sqrt(monsterHpMult)));
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
   const crystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   return {
@@ -592,6 +597,7 @@ export function createGuardBattle(
     monsterScale,
     spawnCountMult,
     monsterHpMult,
+    monsterBiteMult,
     heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
@@ -766,13 +772,17 @@ export function isGuardT0Hero(heroCode: string | null | undefined): boolean {
   return !!GUARD_T0_ATTACK_MULT_BY_CODE[(heroCode || '').toUpperCase()];
 }
 
+/** 稀有度攻击倍率(2026-09-11 用户拍板:UR 与 R 要拉开数级伤害跨度;乘在守卫攻击上,与 T0 倍率叠乘)。 */
+export const GUARD_RARITY_ATTACK_MULT: Record<string, number> = { R: 1, SR: 1.35, SSR: 1.8, UR: 2.4 };
+
 export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUnit): number {
   const pool = state.pool.find((entry) => entry.heroCode === hero.heroCode);
   const base = pool?.baseAttack ?? 40;
   const profile = GUARD_ROLE_PROFILE[hero.role];
   const teamPct = state.mods.teamAtkPct + state.enhanceLevel * GUARD_ENHANCE_ATK_PCT;
   const t0Mult = GUARD_T0_ATTACK_MULT_BY_CODE[hero.heroCode.toUpperCase()] ?? 1;
-  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult));
+  const rarityMult = GUARD_RARITY_ATTACK_MULT[(pool?.rarity ?? 'R').toUpperCase()] ?? 1;
+  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult));
 }
 
 // ── P2:XP/三选一 ──
@@ -1024,7 +1034,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     hp,
     maxHp: hp,
     speedCellsPerSec: opts?.speed ?? profile.speed * (0.88 + state.rng() * 0.24),
-    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95) * Math.pow(state.monsterScale, 0.85) * Math.pow(state.monsterHpMult, 0.5))),
+    crystalDamage: Math.max(1, Math.round(MONSTER_BASE_CRYSTAL_DMG * profile.dmgMult * Math.pow(refWave, 0.95) * Math.pow(state.monsterScale, 0.85) * state.monsterBiteMult)),
     attackCooldownMs: 0,
     slowUntilMs: 0,
     stunnedUntilMs: 0,
