@@ -461,6 +461,51 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 战场背景(矿洞图 1536×1024):cover 等比铺满,裁洞顶保地面;顶部再压一条渐暗带保 HUD 可读。 */
+  /**
+   * 爬塔章节战场背景(2026-09-11 用户拍板:不同章节展示不同战场背景)。
+   * 25 章按世界观主题分 8 组循环取图;每张 2048×1152 与守卫矿脉同规格。
+   * 表外(每日副本/未知关卡)回退矿脉图。
+   */
+  private static readonly CHAPTER_SCENE_BG: Record<number, string> = {
+    1: 'battle_scene_shadow_keep',    // 暗影之堡
+    2: 'battle_scene_ash_cathedral',  // 灰烬圣堂
+    3: 'battle_scene_blood_moon',     // 血月荒原
+    4: 'battle_scene_frost_wall',     // 霜骨长城
+    5: 'battle_scene_void_harbor',    // 虚空港湾
+    6: 'battle_scene_shadow_keep',    // 黑曜王庭
+    7: 'battle_scene_void_harbor',    // 星坠地窟
+    8: 'battle_scene_blood_moon',     // 赤砂古域
+    9: 'battle_scene_night_forest',   // 永夜林海
+    10: 'battle_scene_final_throne',  // 雷鸣圣域
+    11: 'battle_scene_molten_core',   // 熔核深渊
+    12: 'battle_scene_void_harbor',   // 命运回廊
+    13: 'battle_scene_final_throne',  // 终焉前线
+    14: 'battle_scene_night_forest',  // 雾锁群岛
+    15: 'battle_scene_final_throne',  // 断星高塔
+    16: 'battle_scene_frost_wall',    // 龙骸荒冢
+    17: 'battle_scene_molten_core',   // 苍银矿脉
+    18: 'battle_scene_night_forest',  // 沉眠墓园
+    19: 'battle_scene_void_harbor',   // 天幕裂谷
+    20: 'battle_scene_ash_cathedral', // 圣辉废都
+    21: 'battle_scene_void_harbor',   // 群星祭坛
+    22: 'battle_scene_void_harbor',   // 虚妄回声
+    23: 'battle_scene_shadow_keep',   // 王冠残垣
+    24: 'battle_scene_ash_cathedral', // 永恒审判庭
+    25: 'battle_scene_final_throne',  // 终焉王座
+  };
+
+  /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景资源路径;非主线或越界回退矿脉图。 */
+  private resolveSceneBgPath(): string {
+    const fallback = 'ui/battle/battle_scene_guard_mine/spriteFrame';
+    const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
+    const matched = /^MAIN_(\d+)_\d+$/.exec(stageCode);
+    if (!matched) {
+      return fallback;
+    }
+    const name = LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])];
+    return name ? `ui/battle/${name}/spriteFrame` : fallback;
+  }
+
   private mountBackground(root: Node): void {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
@@ -470,7 +515,7 @@ export class LobbyGuardBattleRenderer {
     const cover = Math.max(width / bgSrcW, height / bgSrcH);
     const bgW = bgSrcW * cover;
     const bgH = bgSrcH * cover;
-    this.mountSprite(root, 'GuardSceneBg', 'ui/battle/battle_scene_guard_mine/spriteFrame', 0, (bgH - height) / 2, bgW, bgH);
+    this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, (bgH - height) / 2, bgW, bgH);
     const shade = this.host.addChildPlainNode(root, 'GuardTopShade', 0, height / 2 - height * 0.08, width, height * 0.16);
     const g = shade.addComponent(Graphics);
     g.fillColor = rgba(10, 8, 8, 118);
