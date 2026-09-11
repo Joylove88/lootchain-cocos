@@ -271,7 +271,7 @@ export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; int
 };
 /** 主动技能(2★ 解锁,自动施放;参考蔚蓝星球主动技,2026-08-26 用户拍板"参考此图按横板做")。 */
 export const GUARD_HERO_SKILL: Record<GuardHeroRole, { name: string; cdMs: number; desc: string }> = {
-  melee: { name: '裂地横扫', cdMs: 12_000, desc: '对本车道覆盖范围内所有敌人造成 200% 攻击,并击退 0.35 格' },
+  melee: { name: '裂地横扫', cdMs: 12_000, desc: '对覆盖范围内所有敌人造成 200% 攻击,并击退 0.35 格' },
   ranged: { name: '烈焰领域', cdMs: 15_000, desc: '在最前方敌人脚下生成灼烧区,4 秒内每 0.5 秒造成 50% 攻击' },
   control: { name: '飓风呼啸', cdMs: 18_000, desc: '召唤缓慢推进的旋风,5 秒内每 0.5 秒对触及敌人造成 60% 攻击并减速' },
   support: { name: '圣辉涌泉', cdMs: 20_000, desc: '水晶回复 6% 生命,全队攻速 +20% 持续 4 秒' },
@@ -1062,14 +1062,23 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
   }
 }
 
+/**
+ * 近战能否命中该怪(2026-09-11):飞行怪在飞行途中免疫近战(阵容检查器),
+ * 落地啃水晶后视为落地目标,近战可打——避免"怪在啃水晶、近战全程发呆"。
+ */
+function guardMeleeCanHit(monster: GuardMonster): boolean {
+  return monster.kind !== 'flying' || monster.x <= GUARD_CRYSTAL_REACH_X + 0.01;
+}
+
 /** 主动技能施放(2★,冷却制,自动):近战横扫/远程灼烧区/控制旋风/辅助圣辉。返回是否成功施放。 */
 function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
   const profile = GUARD_ROLE_PROFILE[hero.role];
   const attack = guardHeroAttackValue(state, hero);
   const skill = GUARD_HERO_SKILL[hero.role];
   if (hero.role === 'melee') {
-    const heroLane = guardCellLane(hero.cell);
-    const targets = state.monsters.filter((monster) => !monster.dead && monster.lane === heroLane && monster.kind !== 'flying' && monster.x <= profile.rangeCells);
+    // 2026-09-11 用户拍板:横扫打覆盖范围内全部敌人(此前硬编码只打本车道,与普攻
+    // laneLocked=false 不一致,观感"特效扫过一片却只有一只掉血")。飞行怪落地啃水晶后可被打。
+    const targets = state.monsters.filter((monster) => !monster.dead && guardMeleeCanHit(monster) && monster.x <= profile.rangeCells);
     if (targets.length === 0) {
       return false;
     }
@@ -1194,8 +1203,9 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     if (monster.dead) {
       continue;
     }
-    // 飞行怪无视近战格挡(阵容检查器):只能被远程/控制打。
-    if (monster.kind === 'flying' && hero.role === 'melee') {
+    // 飞行怪无视近战格挡(阵容检查器):飞行途中只能被远程/控制打;
+    // 落地啃水晶后可被近战攻击(2026-09-11 用户反馈"近战没打正在啃水晶的怪")。
+    if (hero.role === 'melee' && !guardMeleeCanHit(monster)) {
       continue;
     }
     if (profile.laneLocked && monster.lane !== heroLane) {

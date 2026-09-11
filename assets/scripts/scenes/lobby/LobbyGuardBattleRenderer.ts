@@ -192,6 +192,8 @@ export class LobbyGuardBattleRenderer {
   private dragGhost: Node | null = null;
   /** 墙钟累积器:后台/节流环境 setInterval 触发率不可靠,按真实流逝补跑固定步长子 tick。 */
   private lastTickWallMs = 0;
+  /** 固定步长余数(ms):不足一个 TICK_MS 的真实流逝结转到下次回调,防模拟时间跑快。 */
+  private tickAccumulatorMs = 0;
   private chestViews = new Map<number, Node>();
   private choiceOverlayLevel = 0;
   private wheelOverlayOpen = false;
@@ -402,6 +404,7 @@ export class LobbyGuardBattleRenderer {
       this.mountFirstBattleGuide(root, layout);
     }
     this.lastTickWallMs = Date.now();
+    this.tickAccumulatorMs = 0;
     this.tickTimer = setInterval(() => this.step(), TICK_MS);
   }
 
@@ -1159,12 +1162,16 @@ export class LobbyGuardBattleRenderer {
     if (!sim || !this.isMounted()) {
       return;
     }
-    // 固定步长累积器:一次回调补跑 (真实流逝/TICK_MS) 个子 tick,单次上限 1s 防挂起后雪崩。
+    // 固定步长累积器(2026-09-11 修:原写法 spent 从 0 起算,真实流逝 51ms 也会跑满 2 个
+    // 子 tick=100ms 模拟时间,且不结转余数 → 模拟时间系统性快 1.5~2 倍,英雄出手频率随之偏快、
+    // 攻击动画被反复打断重播,观感"动画播两次只掉一次血")。改为余数累积,模拟与真实严格一致。
     const now = Date.now();
-    const elapsed = Math.min(1000, Math.max(TICK_MS, now - this.lastTickWallMs));
+    const elapsed = Math.min(1000, Math.max(0, now - this.lastTickWallMs));
     this.lastTickWallMs = now;
+    this.tickAccumulatorMs = Math.min(1000, this.tickAccumulatorMs + elapsed);
     let phase = sim.phase;
-    for (let spent = 0; spent < elapsed && phase !== 'victory' && phase !== 'defeat'; spent += TICK_MS) {
+    while (this.tickAccumulatorMs >= TICK_MS && phase !== 'victory' && phase !== 'defeat') {
+      this.tickAccumulatorMs -= TICK_MS;
       phase = guardTick(sim, TICK_MS);
     }
     this.consumeEvents();
@@ -1634,6 +1641,7 @@ export class LobbyGuardBattleRenderer {
         this.sim.paused = false;
       }
       this.lastTickWallMs = Date.now();
+      this.tickAccumulatorMs = 0;
     }, this);
   }
 
@@ -1650,6 +1658,7 @@ export class LobbyGuardBattleRenderer {
         existing.destroy();
         this.choiceOverlayLevel = 0;
         this.lastTickWallMs = Date.now();
+        this.tickAccumulatorMs = 0;
       }
       return;
     }
@@ -1963,7 +1972,7 @@ export class LobbyGuardBattleRenderer {
   private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
     void targetId;
     const big = skill || amount >= 1000;
-    if (this.liveDamageFloaters >= (big ? 46 : 30)) {
+    if (this.liveDamageFloaters >= (big ? 72 : 52)) {
       return;
     }
     const field = this.fieldNode;
