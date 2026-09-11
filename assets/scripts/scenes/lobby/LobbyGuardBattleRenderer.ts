@@ -367,7 +367,8 @@ export class LobbyGuardBattleRenderer {
       rushMode ? 'rush' : 'standard',
       {
         monsterScale: this.resolveMainMonsterScale(stageCode),
-        spawnCountMult: isMain ? 2 : 1,
+        // 限时副本小怪数量 ×3(2026-09-11 用户拍板);BOSS/精英在波次编排循环外单独 push,不受此倍率影响。
+        spawnCountMult: isMain ? 2 : isDaily ? 3 : 1,
         monsterHpMult: isMain || isDaily ? 3 : 1,
         monsterBiteMult: isDaily ? 1 : undefined,
         // 限时副本小怪总计 ×10(2026-09-11 用户拍板;BOSS/精英维持 ×3):3 × 10/3。

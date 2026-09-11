@@ -450,9 +450,11 @@ export function guardTrialLayers(state: GuardBattleState): number {
 export function guardWaveComposition(wave: number, rng: () => number, maxWave = 10, mode: GuardMode = 'standard', countMult = 1): Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> {
   const spawns: Array<{ kind: GuardMonsterKind; lane: number; atMs: number }> = [];
   // 热身 6/8/10 只;第 4 波起 6+3×波(18/21/24…),上限 40(同屏性能护栏)。
-  // countMult:主线 P5a2 怪量翻倍(2026-09-04 用户拍板);上限放宽到 64(仍留同屏护栏)。
+  // countMult:主线 P5a2 怪量翻倍(2026-09-04 用户拍板);限时副本 ×3(2026-09-11 用户拍板)。
+  // 上限按倍率分档,保证"翻几倍就是几倍"不被护栏吃掉:×1→40、×2→64、×3+→112。
   const base = wave <= 3 ? 4 + wave * 2 : 6 + wave * 3;
-  const count = Math.min(countMult > 1 ? 64 : 40, Math.round(base * countMult));
+  const countCap = countMult >= 3 ? 112 : countMult > 1 ? 64 : 40;
+  const count = Math.min(countCap, Math.round(base * countMult));
   for (let i = 0; i < count; i += 1) {
     const roll = rng();
     let kind: GuardMonsterKind;
