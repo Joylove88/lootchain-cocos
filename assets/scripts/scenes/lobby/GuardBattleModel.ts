@@ -121,7 +121,8 @@ export interface GuardBossCast {
 export interface GuardEvent {
   type:
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
-    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero' | 'bossSkill';
+    | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero' | 'bossSkill'
+    | 'zoneTick';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -138,6 +139,8 @@ export interface GuardEvent {
   skillUnlocked?: boolean;
   /** heroSkill:技能名(渲染层飘字)与产生的区域 id(如有)。 */
   skillName?: string;
+  /** heroSkill(群体直击)/zoneTick(区域跳伤):本次被命中的全部怪物 id,渲染层逐只飘伤害(2026-09-11)。 */
+  monsterIds?: number[];
   /** bossSkill:smash=近战重踏,volley=远程投射(渲染层分表现)。 */
   skillKind?: GuardBossSkillKind;
   zoneId?: number;
@@ -1070,7 +1073,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       }
       damageMonster(state, monster, damage, hero);
     }
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: firstId ?? undefined });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: firstId ?? undefined, monsterIds: targets.map((monster) => monster.monsterId) });
     return true;
   }
   if (hero.role === 'ranged') {
@@ -1354,10 +1357,12 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     }
     while (state.timeMs >= zone.nextTickAtMs && zone.nextTickAtMs <= zone.untilMs) {
       zone.nextTickAtMs += zone.tickMs;
+      const hitIds: number[] = [];
       for (const monster of state.monsters) {
         if (monster.dead || Math.abs(monster.x - zone.x) > zone.radiusCells) {
           continue;
         }
+        hitIds.push(monster.monsterId);
         if (zone.slowMs > 0) {
           monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + zone.slowMs);
         }
@@ -1365,6 +1370,9 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
           state.heroDamage[zone.casterHeroCode] = (state.heroDamage[zone.casterHeroCode] ?? 0) + zone.tickDamage;
         }
         damageMonster(state, monster, zone.tickDamage, null);
+      }
+      if (hitIds.length > 0) {
+        state.events.push({ type: 'zoneTick', timeMs: state.timeMs, zoneId: zone.zoneId, amount: zone.tickDamage, heroCode: zone.casterHeroCode, monsterIds: hitIds });
       }
     }
   }

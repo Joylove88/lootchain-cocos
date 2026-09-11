@@ -1315,6 +1315,38 @@ export class LobbyGuardBattleRenderer {
             this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target);
           }
         }
+        // 群体直击技能(2026-09-11 用户反馈"技能打怪没伤害"):每只命中怪金色大号飘字+红闪,
+        // 外加一次节流小震屏——此前技能只播特效不出数字,观感像空放。
+        if (event.monsterIds && event.monsterIds.length > 0) {
+          event.monsterIds.forEach((hitId, index) => {
+            const hitView = this.monsterViews.get(hitId);
+            if (!hitView || !hitView.node.isValid) {
+              return;
+            }
+            const jitterX = ((event.timeMs + index * 37) % 48) - 24;
+            this.queueDamage(hitId, event.amount ?? 0, true, hitView.node.position.x + jitterX, hitView.node.position.y);
+            this.flashMonster(hitId);
+          });
+          const now = Date.now();
+          if (now - this.lastSkillShakeAt > 900) {
+            this.lastSkillShakeAt = now;
+            this.shakeField(5);
+          }
+        }
+      } else if (event.type === 'zoneTick') {
+        // 区域跳伤(火海/旋风):每跳逐只红闪;飘字隔一跳出一次(每 0.5s 一跳,20 只怪全飘会糊屏)。
+        const showFloater = Math.floor(event.timeMs / 500) % 2 === 0;
+        (event.monsterIds ?? []).forEach((hitId, index) => {
+          const hitView = this.monsterViews.get(hitId);
+          if (!hitView || !hitView.node.isValid) {
+            return;
+          }
+          this.flashMonster(hitId);
+          if (showFloater) {
+            const jitterX = ((event.timeMs + index * 53) % 40) - 20;
+            this.queueDamage(hitId, event.amount ?? 0, false, hitView.node.position.x + jitterX, hitView.node.position.y + this.unitSize() * 0.1);
+          }
+        });
       } else if (event.type === 'cellsUnlock') {
         this.host.setStatus('阵地扩建!解锁 1 个新召唤格!');
         if (typeof event.cell === 'number') {
