@@ -80,7 +80,8 @@ import {
   resolveBattleUnitSpineSkinName,
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
-import { resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { resolveAttackFxSpritePath, resolveHeroAttackFx, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
@@ -128,6 +129,9 @@ const GUARD_BEAM_EFFECT_CODES = new Set(['fx_5601_fenghuang_skill']);
 const GUARD_BEAM_ROOT_INSET: Record<string, number> = { fx_5601_fenghuang_skill: 0.2 };
 /** 同英雄技能特效表现冷却(视频验收:束状几乎常驻屏幕,视觉疲劳)。 */
 const GUARD_HERO_FX_COOLDOWN_MS = 1600;
+/** 技能特效放大上限(2026-09-12:低稀有度也要≥标准尺寸,再大只会糊);群体横扫为覆盖命中簇可再放宽。 */
+const GUARD_FX_UPSCALE_CAP = 2.0;
+const GUARD_FX_GROUP_UPSCALE_CAP = 2.6;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
 /** 主线 P5 难度锚点:monsterScale = 关卡 recommendedPower / 本基线。2800≈MAIN_3_12(难度Ⅰ在当前验收阵容下的平衡点);
@@ -377,6 +381,7 @@ export class LobbyGuardBattleRenderer {
         minionHpMult: isDaily ? 10 / 3 : 1,
       },
     );
+    this.prewarmAttackFx(pool);
     this.simBattleNo = battleState.start?.battleNo ?? '';
     this.settleRequested = false;
     this.overlayShown = false;
@@ -427,6 +432,13 @@ export class LobbyGuardBattleRenderer {
       sprite.spriteFrame = frame;
       node.getComponent(UITransform)?.setContentSize(width, height);
     };
+    // 已在缓存(开局全量预载/开局预热)则同步套用:resources.load 即使命中缓存也走异步管线,
+    // 与骨骼/纹理并发时实测可拖到 1.3s——弹道只活 0.4s,异步等到贴图时早已命中消失(2026-09-12)。
+    const cached = resources.get(path, SpriteFrame);
+    if (cached) {
+      apply(cached);
+      return;
+    }
     resources.load(path, SpriteFrame, (error: Error | null, frame: SpriteFrame | null) => {
       if (!error && frame) {
         apply(frame);
@@ -1260,8 +1272,7 @@ export class LobbyGuardBattleRenderer {
         if (view && view.node.isValid) {
           this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.5, `+${event.amount ?? 0}`, rgba(255, 214, 92));
           this.spawnGoldCoin(view.node.position.x, view.node.position.y);
-          // 击杀迸发(打击感):小金环炸开
-          this.spawnCellBurst(view.node.position.x, view.node.position.y - this.unitSize() * 0.2, rgba(255, 190, 90), false);
+          // 2026-09-12 用户反馈:击杀处的金环+星芒像"锁定准星",去掉;金币掉落表现保留。
         }
       } else if (event.type === 'crystalHit') {
         gameAudio.sfx('crystal_hit');
@@ -1359,15 +1370,16 @@ export class LobbyGuardBattleRenderer {
           this.highlightCaster(event.cell, `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!`);
         }
         gameAudio.sfx('skill');
-        if (typeof event.zoneId === 'number' && typeof event.cell === 'number') {
-          // 区域技能(旋风/灼烧)从施放英雄身上飞出落地
+        const skillZone = typeof event.zoneId === 'number' ? sim.zones.find((entry) => entry.zoneId === event.zoneId) ?? null : null;
+        if (skillZone && skillZone.kind === 'cyclone' && typeof event.cell === 'number') {
+          // 旋风从施放英雄身上飞出落地(灼烧区 2026-09-12 起由技能特效本体在落点循环播放,不再画地面黄圈、不再飞行)
           const from = this.cellCenter(event.cell);
-          this.zoneFlights.set(event.zoneId, { fromX: from.x, fromY: from.y, startMs: sim.timeMs });
+          this.zoneFlights.set(skillZone.zoneId, { fromX: from.x, fromY: from.y, startMs: sim.timeMs });
         }
         if (typeof event.monsterId === 'number' && event.heroCode) {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
           if (target) {
-            this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target);
+            this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone });
           }
         }
         // 群体直击技能(2026-09-11 用户反馈"技能打怪没伤害"):每只命中怪金色大号飘字+红闪,
@@ -1450,12 +1462,20 @@ export class LobbyGuardBattleRenderer {
                 this.lastSkillShakeAt = now;
                 this.shakeField(4);
               }
-            } else if (hero && (hero.role === 'ranged' || hero.role === 'control' || hero.role === 'support')) {
-              const origin = this.cellCenter(hero.cell);
-              const color = GUARD_ROLE_COLOR[hero.role] ?? rgba(255, 220, 150);
-              this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, color);
+            } else if (hero) {
+              // 2026-09-12 用户反馈:近战/远程普攻都是同一颗魔法弹太单调 → 一人一套专属普攻表现(LobbyBattleAttackFxConfig):
+              // bolt=专属弹道贴图从英雄身前飞向目标(命中才结算);strike=专属斩击/撞击贴图直接落在目标身上(即时结算)。
+              const attackFx = this.resolveHeroAttackFxSpec(hero);
+              const attackColor = new Color(attackFx.color[0], attackFx.color[1], attackFx.color[2]);
+              if (attackFx.kind === 'bolt') {
+                const origin = this.cellCenter(hero.cell);
+                this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, attackColor, attackFx);
+              } else {
+                this.spawnStrikeFx(attackFx, targetView.node.position.x + jitterX * 0.4, targetView.node.position.y + this.unitSize() * 0.16);
+                this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
+                this.flashMonster(target.monsterId);
+              }
             } else {
-              this.spawnSlashArc(targetView.node.position.x + jitterX * 0.4, targetView.node.position.y + this.unitSize() * 0.16);
               this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
             }
@@ -1852,7 +1872,7 @@ export class LobbyGuardBattleRenderer {
 
   // ── 打击感系统(2026-08-26 用户拍板:弹幕射击+受击反馈)──
   /** 普攻弹幕:发光弹体从英雄身前归巢飞向目标,命中才结算飘字+爆闪+受击红闪。 */
-  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color): void {
+  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color, spec?: BattleAttackFxSpec): void {
     const field = this.fieldNode;
     if (!field) {
       return;
@@ -1864,6 +1884,13 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardProjectile', fromX, fromY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
+    if (spec) {
+      // 专属弹道贴图(朝右绘制,飞行时父节点按方向旋转;等比设尺寸不拉伸)
+      const lengthPx = this.unitSize() * spec.size;
+      this.mountSprite(node, 'Img', resolveAttackFxSpritePath(spec), 0, 0, lengthPx, lengthPx * spec.aspect);
+      this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color });
+      return;
+    }
     const g = node.addComponent(Graphics);
     // 弹体:亮核+外辉+尾迹(朝右绘制,飞行时整体旋转)
     g.strokeColor = rgba(color.r, color.g, color.b, 130);
@@ -2155,26 +2182,43 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 近战刀光:目标处双弧斩闪 0.16s。 */
-  private spawnSlashArc(x: number, y: number): void {
+  /** 近战专属斩击/撞击贴图(2026-09-12):落在目标身上,0.14s 弹开 + 0.24s 淡出,角度按飘字轮转轻微错开。 */
+  private spawnStrikeFx(spec: BattleAttackFxSpec, x: number, y: number): void {
     const field = this.fieldNode;
     if (!field) {
       return;
     }
-    const node = this.host.addChildPlainNode(field, 'GuardSlash', x, y, 10, 10);
+    const widthPx = this.unitSize() * spec.size;
+    const heightPx = widthPx * spec.aspect;
+    const node = this.host.addChildPlainNode(field, 'GuardStrikeFx', x, y, widthPx, heightPx);
     node.setSiblingIndex(field.children.length - 1);
-    node.angle = ((this.floaterCycle % 3) - 1) * 26;
-    const g = node.addComponent(Graphics);
-    g.strokeColor = rgba(255, 244, 214, 235);
-    g.lineWidth = 5;
-    g.arc(0, 0, 34, -Math.PI * 0.42, Math.PI * 0.42, false);
-    g.stroke();
-    g.strokeColor = rgba(255, 190, 120, 200);
-    g.lineWidth = 3;
-    g.arc(0, 0, 46, -Math.PI * 0.3, Math.PI * 0.3, false);
-    g.stroke();
+    node.angle = ((this.floaterCycle % 3) - 1) * 14;
+    this.mountSprite(node, 'Img', resolveAttackFxSpritePath(spec), 0, 0, widthPx, heightPx);
     const opacity = node.addComponent(UIOpacity);
-    tween(node).to(0.16, { scale: new Vec3(1.45, 1.45, 1) }).start();
-    tween(opacity).to(0.18, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+    node.setScale(0.55, 0.55, 1);
+    tween(node).to(0.14, { scale: new Vec3(1.12, 1.12, 1) }, { easing: 'quadOut' }).start();
+    tween(opacity).delay(0.1).to(0.24, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  /** 开局预热本阵容全部普攻贴图:首发弹道在飞行 0.4s 内贴图未到会"飞空"(实测首载 1.6s / 二载 6ms,2026-09-12)。 */
+  private prewarmAttackFx(pool: GuardPoolHero[]): void {
+    const seen = new Set<string>();
+    for (const entry of pool) {
+      const ally = this.snapshot?.allies[entry.sourceIndex] ?? null;
+      const spec = resolveHeroAttackFx(entry.heroCode, ally?.heroClass ?? null, entry.role === 'melee');
+      if (seen.has(spec.sprite)) {
+        continue;
+      }
+      seen.add(spec.sprite);
+      resources.load(resolveAttackFxSpritePath(spec), SpriteFrame, () => { /* 仅预热缓存 */ });
+    }
+  }
+
+  /** 普攻表现解析:heroCode → 职业 → 角色三级兜底(职业取自阵容快照)。 */
+  private resolveHeroAttackFxSpec(hero: GuardHeroUnit): BattleAttackFxSpec {
+    const pool = this.sim?.pool.find((entry) => entry.heroCode === hero.heroCode);
+    const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
+    return resolveHeroAttackFx(hero.heroCode, ally?.heroClass ?? null, hero.role === 'melee');
   }
 
   /** 受击红闪(spine 染色 90ms,syncMonsters 每帧恢复)。 */
@@ -2360,23 +2404,10 @@ export class LobbyGuardBattleRenderer {
       const radiusPx = Math.max(48, this.xToPx(Math.min(GUARD_SPAWN_X, zone.x + zone.radiusCells)) - this.xToPx(zone.x));
       g.clear();
       if (zone.kind === 'burn') {
+        // 2026-09-12 用户反馈图 3:地面黄色火海椭圆不要——灼烧区由技能特效本体在落点循环播放到期(spawnGuardSkillFx zone 模式),
+        // 区域节点只保留结算用途,不画任何东西。
         node.angle = 0;
-        node.setScale(flightScale, flightScale, 1);
-        // 无边框火海(2026-08-28 用户验收:黄色边框不要):各车道地面椭圆火光+跳动余烬
-        const pulse = 0.85 + 0.15 * Math.sin(sim.timeMs / 140);
-        // 走道单团火海(分区布局后灼烧区落在中央走道上)
-        g.fillColor = rgba(255, 120, 40, 66);
-        g.ellipse(0, -this.unitSize() * 0.4, radiusPx * 0.95 * pulse, this.unitSize() * 0.18);
-        g.fill();
-        g.fillColor = rgba(255, 190, 80, 110);
-        g.ellipse(0, -this.unitSize() * 0.4, radiusPx * 0.55 * pulse, this.unitSize() * 0.11);
-        g.fill();
-        g.fillColor = rgba(255, 210, 100, 175);
-        for (let i = -2; i <= 2; i += 1) {
-          const flickY = -this.unitSize() * (0.22 + 0.16 * Math.sin(sim.timeMs / 170 + i * 1.7));
-          g.circle(i * radiusPx * 0.36, flickY, 6);
-        }
-        g.fill();
+        node.setScale(1, 1, 1);
       } else {
         // 旋风素材化(2026-09-02 用户拍板 image2 方向):透明漩涡贴图子节点自旋,父节点压扁成地面椭圆
         node.angle = 0;
@@ -2671,7 +2702,7 @@ export class LobbyGuardBattleRenderer {
 
   // ── 技能击特效(2026-08-25 用户拍板):束状=从英雄身前沿攻击方向延伸、锁定怪物方向;爆点=贴在目标身上;
   //    目标死亡自动转向最近存活怪(guardFxAimers 逐帧驱动)。──
-  private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster): void {
+  private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster, group?: { monsterIds?: number[]; zone?: GuardZone | null }): void {
     const field = this.fieldNode;
     const sim = this.sim;
     if (!field || !sim || heroCell === null) {
@@ -2758,7 +2789,8 @@ export class LobbyGuardBattleRenderer {
           ?? names.find((name) => name.toLowerCase().includes(wanted))
           ?? names[0];
         skeleton.skeletonData = data;
-        const bounds = this.measureGuardFxExtent(skeleton, animationName, `${spec.effect}:${animationName}`);
+        // 有实测表优先(预览页探针实拍,2026-09-12);无表项才回退运行时 3 时刻采样。
+        const bounds = lookupBattleFxBounds(spec.effect, animationName) ?? this.measureGuardFxExtent(skeleton, animationName, `${spec.effect}:${animationName}`);
         const extentW = Math.max(8, bounds?.w ?? 1100);
         const extentH = Math.max(8, bounds?.h ?? 1100);
         const centerX = bounds?.cx ?? 0;
@@ -2773,12 +2805,37 @@ export class LobbyGuardBattleRenderer {
         }
         const beamExtent = vertical ? extentH : extentW;
         const beamThickExtent = vertical ? extentW : extentH;
-        // 放大上限 1.5×:超采样必糊(高星大目标不再无限放大)。
-        const burstFit = Math.min(1.5, (this.unitSize() * 1.7 / Math.max(extentW, extentH)) * (spec.scale || 1));
+        // 放大上限 2.0×(2026-09-12:低稀有度也要≥标准尺寸;再大只会糊)。
+        const baseFit = Math.min(GUARD_FX_UPSCALE_CAP, (this.unitSize() * 1.7 * (spec.scale || 1)) / Math.max(extentW, extentH));
         let currentTargetId = monster.monsterId;
-        let flying = !beam;
-        let flyX = muzzleX;
-        let flyY = muzzleY;
+        const zone = group?.zone ?? null;
+        const hitIds = (group?.monsterIds ?? []).filter((hitId) => this.sim?.monsters.some((entry) => entry.monsterId === hitId && !entry.dead) ?? false);
+        // 2026-09-12 用户反馈图 2:横斩从英雄身前"飞"过去、半张在屏幕左下——技能不再飞行,直接锁在目标上:
+        // zone=灼烧区中心循环播到区域到期(区域本体就是特效);group=群体命中簇中心、宽度拉到覆盖全部命中怪
+        //(特效覆盖处即掉血处);target=贴住单个目标(目标死亡转最近怪)。束状(凤凰)照旧从英雄身前指向目标。
+        const anchorMode: 'zone' | 'group' | 'target' = zone ? 'zone' : hitIds.length > 1 ? 'group' : 'target';
+        let burstFit = baseFit;
+        let groupX = 0;
+        let groupY = 0;
+        if (anchorMode === 'group' && this.sim) {
+          let minX = Number.POSITIVE_INFINITY;
+          let maxX = Number.NEGATIVE_INFINITY;
+          let sumY = 0;
+          let count = 0;
+          for (const hit of this.sim.monsters) {
+            if (!hitIds.includes(hit.monsterId)) {
+              continue;
+            }
+            const hx = this.xToPx(hit.x);
+            minX = Math.min(minX, hx);
+            maxX = Math.max(maxX, hx);
+            sumY += this.monsterY(hit.lane, hit.x) + this.monsterJitterY(hit) * this.monsterSpread(hit.x);
+            count += 1;
+          }
+          groupX = (minX + maxX) / 2;
+          groupY = sumY / Math.max(1, count) + this.unitSize() * 0.1;
+          burstFit = Math.min(GUARD_FX_GROUP_UPSCALE_CAP, Math.max(baseFit, (maxX - minX + this.unitSize() * 1.6) / extentW));
+        }
         const resolveTarget = (): GuardMonster | null => {
           if (!this.sim) {
             return null;
@@ -2803,8 +2860,24 @@ export class LobbyGuardBattleRenderer {
           }
           return target;
         };
+        const place = (ax: number, ay: number): void => {
+          node.setScale(burstFit, burstFit, 1);
+          node.setPosition(ax - centerX * burstFit, ay - centerY * burstFit, 0);
+        };
         const aim = (): void => {
           if (!node.isValid) {
+            return;
+          }
+          if (anchorMode === 'zone' && zone && !beam) {
+            if (this.sim && this.sim.timeMs >= zone.untilMs) {
+              release();
+              return;
+            }
+            place(this.xToPx(zone.x), this.walkwayY() + this.unitSize() * 0.35);
+            return;
+          }
+          if (anchorMode === 'group' && !beam) {
+            place(groupX, groupY);
             return;
           }
           const target = resolveTarget();
@@ -2839,34 +2912,9 @@ export class LobbyGuardBattleRenderer {
             const cos = Math.cos(nodeRad);
             const sin = Math.sin(nodeRad);
             node.setPosition(muzzleX - (rootLx * cos - rootLy * sin), muzzleY - (rootLx * sin + rootLy * cos), 0);
-          } else if (flying) {
-            // 弹道:每 tick 朝当前目标位置推进,到位后转命中段
-            const dx = tx - flyX;
-            const dy = ty - flyY;
-            const dist = Math.hypot(dx, dy);
-            const stepLen = 150;
-            if (dist <= stepLen) {
-              flying = false;
-              flyX = tx;
-              flyY = ty;
-              try {
-                skeleton.setAnimation(0, animationName, false);
-                skeleton.setCompleteListener(() => release());
-              } catch (error) {
-                void error;
-                release();
-              }
-            } else {
-              flyX += (dx / dist) * stepLen;
-              flyY += (dy / dist) * stepLen;
-              // 弹道朝向也钳在前向 ±75°,不向后翻转
-              node.angle = Math.max(-75, Math.min(75, Math.atan2(dy, dx) * (180 / Math.PI)));
-            }
-            node.setScale(burstFit, burstFit, 1);
-            node.setPosition(flyX - centerX * burstFit, flyY - centerY * burstFit, 0);
           } else {
-            // 命中段:贴住目标(目标死了由 resolveTarget 换最近怪)
-            node.setPosition(tx - centerX * burstFit, ty - centerY * burstFit, 0);
+            // 单目标:贴住目标(目标死了由 resolveTarget 换最近怪)
+            place(tx, ty);
           }
         };
         aim();
@@ -2887,16 +2935,20 @@ export class LobbyGuardBattleRenderer {
               release();
             }
           });
-        } else {
-          // 飞行段循环播放,命中时重播一次(aim 内切换)
+        } else if (anchorMode === 'zone') {
+          // 灼烧区:循环播放,aim 内按 zone.untilMs 到期释放
           skeleton.setAnimation(0, animationName, true);
+        } else {
+          skeleton.setAnimation(0, animationName, false);
+          skeleton.setCompleteListener(() => release());
         }
       } catch (error) {
         void error;
         release();
       }
     });
-    tween(node).delay(3.4).call(release).start();
+    const lifetimeSec = group?.zone && this.sim ? Math.max(0.6, (group.zone.untilMs - this.sim.timeMs) / 1000 + 0.3) : 3.4;
+    tween(node).delay(lifetimeSec).call(release).start();
   }
 
   /** 采样动画 3 时刻,遍历 Region/Mesh 附件求 AABB 宽高与原点偏移(按套缓存;测不出返回 null 走兜底)。 */

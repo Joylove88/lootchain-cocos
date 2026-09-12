@@ -3366,33 +3366,35 @@ export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] 
 // 各英雄终极技能名(2026-07-18):按名号与职业定位设计;缺省(未来新英雄)回退"终极技能"。
 // v2(2026-09-07 专属技能体系):随专属特效换代微调 7 个名字,与特效主题强绑定更好记
 // (冰原巨浪/月神/阿努比斯/朔夜魔女/狂裂长矛/鬼剑士/T0 强化名)。
+// v3(2026-09-12 用户反馈「技能名要和技能动画匹配」):按预览页实拍特效画面重命名 15 个——
+// 龙骑金色横斩→裂空龙斩、米迦勒金雷矛→雷霆裁决、妮克丝血影漩涡→血影绞杀、凯恩换圣枪光爆→圣枪穿刺 等。
 const HERO_ULTIMATE_SKILL_NAMES: Record<string, string> = {
   // UR
-  UR_ARTHAS: '永夜·龙焰审判',
-  UR_ATLAS: '圣铠·不动壁垒',
-  UR_AURELIA: '苍翎·万箭裂空',
+  UR_ARTHAS: '永夜·裂空龙斩',
+  UR_ATLAS: '圣铠·天启旋盾',
+  UR_AURELIA: '苍翎·翠翎风暴',
   UR_EVELYN: '深渊·冰狱湮灭',
-  UR_NYX: '影刃·千夜追猎',
+  UR_NYX: '影刃·血影绞杀',
   UR_SERAPHINA: '晨星·月华圣辉',
   // SSR
-  SSR_KANE: '白银·圣枪壁垒',
+  SSR_KANE: '白银·圣枪穿刺',
   SSR_LIVIA: '夜烬·焚世之焰',
-  SSR_MICHAEL: '圣光·终极审判',
-  SSR_RON: '灰烬·致命猎杀',
+  SSR_MICHAEL: '圣光·雷霆裁决',
+  SSR_RON: '灰烬·杀星一闪',
   // SR
-  SR_ABYSS_06: '深渊·冥神审判',
-  SR_BLADE_04: '断刃·狂乱斩',
-  SR_PALADIN_02: '圣盾·守御反击',
+  SR_ABYSS_06: '深渊·冥狱之环',
+  SR_BLADE_04: '断刃·旋刃风暴',
+  SR_PALADIN_02: '圣盾·圣纹壁垒',
   SR_PRIEST_01: '银色·圣愈祷言',
-  SR_SNIPER_05: '峡谷·狂裂贯穿',
+  SR_SNIPER_05: '峡谷·狂裂爆矢',
   SR_WITCH_03: '契约·朔夜降临',
   // R
   R_ACOLY_02: '祈福·微光庇护',
   R_CULT_05: '低语·暗蚀诅咒',
-  R_GUARD_07: '城门·坚守盾击',
-  R_PATROL_01: '王国·誓约剑气',
-  R_RANGER_06: '荒原·疾风连射',
-  R_SCOUT_03: '灰谷·绝影猎杀',
+  R_GUARD_07: '城门·盾锋回斩',
+  R_PATROL_01: '王国·誓约结界',
+  R_RANGER_06: '荒原·猎鹰降临',
+  R_SCOUT_03: '灰谷·血镰绝影',
 };
 
 // 导出:战斗大招施放的全屏名字横幅也用同一命名(单一数据源)。
