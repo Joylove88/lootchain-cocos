@@ -169,6 +169,10 @@ interface GuardProjectile {
   crystalTarget?: boolean;
   visualOnly?: boolean;
   scale?: number;
+  /** 近战弹道命中时全尺寸爆开的斩击规格(2026-09-12 用户反馈:近战也要有"从英雄身上飞出"的过程)。 */
+  strikeSpec?: BattleAttackFxSpec;
+  /** 飞行速度倍率(近战贴脸打,飞得更快)。 */
+  speedMult?: number;
   /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
   impactShake?: number;
 }
@@ -506,16 +510,48 @@ export class LobbyGuardBattleRenderer {
     25: 'battle_scene_final_throne',  // 终焉王座
   };
 
-  /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景资源路径;非主线或越界回退矿脉图。 */
-  private resolveSceneBgPath(): string {
-    const fallback = 'ui/battle/battle_scene_guard_mine/spriteFrame';
+  /**
+   * 各战场背景图的地平线位置(从图顶算的比例,离线量测:行间亮度梯度峰值 + 目视校对)。
+   * 2026-09-12 用户反馈"上面一排格子的英雄占位应该要在地面":AI 出图的地平线天然在 38%~49% 之间飘,
+   * 与其把背景放大平移去迁就固定布局(必然损画质),不如让格位跟着当前背景的地平线走(见 laneToPy)。
+   */
+  private static readonly SCENE_BG_HORIZON: Record<string, number> = {
+    battle_scene_guard_mine: 0.39,
+    battle_scene_shadow_keep: 0.425,
+    battle_scene_ash_cathedral: 0.45,
+    battle_scene_blood_moon: 0.381,
+    battle_scene_frost_wall: 0.463,
+    battle_scene_void_harbor: 0.487,
+    battle_scene_night_forest: 0.406,
+    battle_scene_molten_core: 0.403,
+    battle_scene_final_throne: 0.438,
+  };
+
+  /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景图名;非主线或越界回退矿脉图。 */
+  private resolveSceneBgName(): string {
+    const fallback = 'battle_scene_guard_mine';
     const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
     const matched = /^MAIN_(\d+)_\d+$/.exec(stageCode);
     if (!matched) {
       return fallback;
     }
-    const name = LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])];
-    return name ? `ui/battle/${name}/spriteFrame` : fallback;
+    return LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])] ?? fallback;
+  }
+
+  private resolveSceneBgPath(): string {
+    return `ui/battle/${this.resolveSceneBgName()}/spriteFrame`;
+  }
+
+  /**
+   * 当前背景地平线的屏幕 Y(场地坐标系,向上为正)。
+   * 背景按 cover 铺满且底边对齐屏幕底:地平线距图底 (1-r)·bgH,换算到屏幕即 bgH·(1-r) - H/2。
+   */
+  private horizonPy(): number {
+    const height = this.layoutHeight;
+    const ratio = LobbyGuardBattleRenderer.SCENE_BG_HORIZON[this.resolveSceneBgName()] ?? 0.39;
+    const cover = Math.max(this.layoutWidth / 2048, height / 1152);
+    const bgH = 1152 * cover;
+    return bgH * (1 - ratio) - height / 2;
   }
 
   private mountBackground(root: Node): void {
@@ -555,14 +591,23 @@ export class LobbyGuardBattleRenderer {
   private pathRightPx(): number {
     return this.xToPx(GUARD_SPAWN_X);
   }
-  /** 两排格子(2026-08-28 用户拍板):row0 贴地面顶部,row1 贴地面底部,中间整条走道。 */
+  /**
+   * 两排格子(2026-08-28 用户拍板):row0 贴地面顶部,row1 贴地面底部,中间整条走道。
+   * 2026-09-12:row0 不再写死 +0.12H,而是跟随当前背景地平线——踏台上沿(格心上方 0.021H)压在
+   * 地平线下方,英雄才是"站在地面上"而不是浮在远景山上;地面极窄的图有下限保护,避免和走道挤成一团。
+   */
   private laneToPy(lane: number): number {
-    return this.layoutHeight * (lane === 0 ? 0.12 : -0.30);
+    const height = this.layoutHeight;
+    if (lane !== 0) {
+      return height * -0.34;
+    }
+    const onGround = this.horizonPy() - height * 0.021;
+    return Math.max(height * -0.03, Math.min(height * 0.12, onGround));
   }
 
-  /** 中央走道 Y(怪物通行,水晶垂直居中对准)。 */
+  /** 中央走道 Y(怪物通行,水晶垂直居中对准):始终取两排格位的中线。 */
   private walkwayY(): number {
-    return -this.layoutHeight * 0.09;
+    return (this.laneToPy(0) + this.laneToPy(1)) / 2;
   }
 
   /** 怪物 Y:跑道段(x≥5.6)上下两道散布,x∈[4.2,5.6] 平滑汇入走道,格子区只走走道——不踩英雄格。 */
@@ -1467,14 +1512,10 @@ export class LobbyGuardBattleRenderer {
               // bolt=专属弹道贴图从英雄身前飞向目标(命中才结算);strike=专属斩击/撞击贴图直接落在目标身上(即时结算)。
               const attackFx = this.resolveHeroAttackFxSpec(hero);
               const attackColor = new Color(attackFx.color[0], attackFx.color[1], attackFx.color[2]);
-              if (attackFx.kind === 'bolt') {
-                const origin = this.cellCenter(hero.cell);
-                this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, attackColor, attackFx);
-              } else {
-                this.spawnStrikeFx(attackFx, targetView.node.position.x + jitterX * 0.4, targetView.node.position.y + this.unitSize() * 0.16);
-                this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
-                this.flashMonster(target.monsterId);
-              }
+              // 近战与远程统一走弹道:都从英雄身前发出飞向目标,命中才结算伤害表现
+              //(2026-09-12 用户反馈:近战斩击直接出现在怪身上,缺"发出→飞行"的过程)。
+              const origin = this.cellCenter(hero.cell);
+              this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, attackColor, attackFx);
             } else {
               this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
@@ -1885,10 +1926,23 @@ export class LobbyGuardBattleRenderer {
     const node = this.host.addChildPlainNode(field, 'GuardProjectile', fromX, fromY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
     if (spec) {
-      // 专属弹道贴图(朝右绘制,飞行时父节点按方向旋转;等比设尺寸不拉伸)
-      const lengthPx = this.unitSize() * spec.size;
+      // 专属贴图(朝右绘制,飞行时父节点按方向旋转;等比设尺寸不拉伸)。
+      // 近战(strike):飞行体取 0.6 倍,命中时再由 strikeSpec 全尺寸爆开,形成"蓄力飞出 → 命中炸开"。
+      const melee = spec.kind === 'strike';
+      const lengthPx = this.unitSize() * spec.size * (melee ? 0.6 : 1);
       this.mountSprite(node, 'Img', resolveAttackFxSpritePath(spec), 0, 0, lengthPx, lengthPx * spec.aspect);
-      this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color });
+      this.projectiles.push({
+        node,
+        targetId: monster.monsterId,
+        x: fromX,
+        y: fromY,
+        amount,
+        color,
+        strikeSpec: melee ? spec : undefined,
+        // 近战飞得比远程慢一点:贴脸距离本来就短(2~4 格),快了就成"瞬移",看不见飞出去的过程
+        //(2026-09-12 实测 1.9 倍时 60ms 内已命中)。
+        speedMult: melee ? 0.8 : 1,
+      });
       return;
     }
     const g = node.addComponent(Graphics);
@@ -1940,13 +1994,14 @@ export class LobbyGuardBattleRenderer {
     if (!sim || this.projectiles.length === 0) {
       return;
     }
-    const speed = 90; // px / tick(50ms)≈ 1800px/s
+    const baseSpeed = 90; // px / 每次推进(随渲染帧调用)
     for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
       const proj = this.projectiles[i];
       if (!proj.node.isValid) {
         this.projectiles.splice(i, 1);
         continue;
       }
+      const speed = baseSpeed * (proj.speedMult ?? 1);
       if (proj.crystalTarget) {
         // BOSS 暗弹:飞向水晶,命中=水晶红闪+飘字+小震屏
         const tx = this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5;
@@ -2007,7 +2062,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnImpactFlash(tx, ty, proj.color);
           this.flashMonster(proj.targetId);
         } else {
-          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color);
+          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec);
         }
         proj.node.destroy();
         this.projectiles.splice(i, 1);
@@ -2094,9 +2149,13 @@ export class LobbyGuardBattleRenderer {
     }).start();
   }
 
-  /** 命中结算:爆闪+伤害入聚合窗+目标受击红闪。 */
-  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color): void {
-    this.spawnImpactFlash(x, y, color);
+  /** 命中结算:爆闪(近战=全尺寸斩击炸开)+伤害入聚合窗+目标受击红闪。 */
+  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec): void {
+    if (strikeSpec) {
+      this.spawnStrikeFx(strikeSpec, x, y);
+    } else {
+      this.spawnImpactFlash(x, y, color);
+    }
     this.queueDamage(targetId, amount, false, x, y);
     this.flashMonster(targetId);
   }
