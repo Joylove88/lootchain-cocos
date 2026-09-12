@@ -220,6 +220,8 @@ export class LobbyGuardBattleRenderer {
   private lastSkillShakeAt = 0;
   /** 车道/格子底图(解锁进度变化时整层重画;key=已解锁格数:提示倒数)。 */
   private fieldBaseG: Graphics | null = null;
+  /** 建场时的布局签名;render() 发现签名变了就重建静态层(2026-09-12)。 */
+  private mountedLayoutKey = '';
   private paintedCellsKey = '';
   private layoutUiScale = 1;
   /** 金币 HUD 滚动显示值(-1=未初始化)与在场飞行金币计数。 */
@@ -279,6 +281,7 @@ export class LobbyGuardBattleRenderer {
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
+    this.mountedLayoutKey = '';
     this.displayedGold = -1;
     this.goldCoinLive = 0;
     this.zoneViews.clear();
@@ -322,6 +325,12 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     if (this.isMounted() && this.simBattleNo === battleNo) {
+      // 2026-09-12 用户反馈"英雄没有站在格子上":此前这里只更新 layoutWidth/Height 就返回,
+      // 而石台/水晶/HUD/背景都是建场时一次性画好的——视口一变(窗口缩放、横竖屏),
+      // 英雄每帧按新布局重排、石台却留在旧坐标,实测偏差可达 270px。签名变了就重建静态层。
+      if (this.mountedLayoutKey !== this.layoutKey()) {
+        this.remountSceneTree(layout, (battleState.start?.stageCode ?? '').toUpperCase());
+      }
       this.refreshEndOverlay();
       return;
     }
@@ -390,6 +399,23 @@ export class LobbyGuardBattleRenderer {
     this.settleRequested = false;
     this.overlayShown = false;
 
+    this.buildSceneTree(layout, stageCode);
+    this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
+    this.lastTickWallMs = Date.now();
+    this.tickAccumulatorMs = 0;
+    this.tickTimer = setInterval(() => this.step(), TICK_MS);
+  }
+
+  /**
+   * 布局签名:视口尺寸、UI 缩放、两排格位 Y(后者随背景地平线变化)。
+   * 任一变化都意味着一次性画好的静态层(石台、水晶、HUD、背景)坐标全部作废。
+   */
+  private layoutKey(): string {
+    return `${Math.round(this.layoutWidth)}x${Math.round(this.layoutHeight)}:${Math.round(this.layoutUiScale * 100)}:${Math.round(this.laneToPy(0))}:${Math.round(this.laneToPy(1))}`;
+  }
+
+  /** 静态层建场(建场与重排布局共用):根节点、背景、场地、石台、水晶、HUD、按钮、首战引导。 */
+  private buildSceneTree(layout: UiLayout, stageCode: string): void {
     const root = this.host.addChildPlainNode(this.host.node, 'LobbyGuardBattleRoot', 0, 0, layout.width, layout.height);
     this.root = root;
     // 点空白处关闭范围显示与英雄详情(英雄节点会拦截冒泡,2026-08-26 用户拍板)。
@@ -407,14 +433,55 @@ export class LobbyGuardBattleRenderer {
     this.renderSummonButton();
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
-    this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
     // 新手引导(P1,2026-09-05):首战 MAIN_1_1 指向召唤按钮的强提示(image2 箭头+气泡),首次召唤后消失(step 里检测)。
-    if (stageCode === 'MAIN_1_1') {
+    // 重排布局时若已召唤过就不再补建,避免引导气泡闪回。
+    const ended = this.sim?.phase === 'victory' || this.sim?.phase === 'defeat';
+    if (stageCode === 'MAIN_1_1' && (this.sim?.summonCount ?? 0) === 0 && !ended) {
       this.mountFirstBattleGuide(root, layout);
     }
-    this.lastTickWallMs = Date.now();
-    this.tickAccumulatorMs = 0;
-    this.tickTimer = setInterval(() => this.step(), TICK_MS);
+    this.mountedLayoutKey = this.layoutKey();
+  }
+
+  /**
+   * 布局变了但战斗还在打:销毁并重建静态层与全部视图节点,sim(波次/金币/英雄/怪物)原样保留——
+   * 英雄/怪物/区域/宝箱视图都由每帧 sync 按 sim 重建,弹道与飘字这类瞬时表现丢弃即可。
+   */
+  private remountSceneTree(layout: UiLayout, stageCode: string): void {
+    // 结算覆盖层必须自己补建:refreshEndOverlay() 只在 overlayShown 且节点还在时刷新文案,
+    // 而 showEndOverlay() 唯一调用点在 step() 里,战斗结束时 tickTimer 已被 clearInterval——
+    // 若不在这里重放,结算后一旦 resize,"返回"按钮会连同覆盖层一起永久消失(玩家卡死在已结束的战斗里)。
+    const restoreEndOverlay = this.overlayShown;
+    const endVictory = this.sim?.phase === 'victory';
+    if (this.root && this.root.isValid) {
+      this.root.destroy();
+    }
+    this.root = null;
+    this.fieldNode = null;
+    this.fieldBaseG = null;
+    this.paintedCellsKey = '';
+    this.heroViews.clear();
+    this.monsterViews.clear();
+    this.zoneViews.clear();
+    this.zoneFlights.clear();
+    this.chestViews.clear();
+    this.projectiles.length = 0;
+    this.guardFxAimers.clear();
+    this.guardFxLiveCount = 0;
+    this.beamFxLive = 0;
+    this.heroFxLastAt.clear();
+    this.dragFromCell = null;
+    this.dragGhost = null;
+    this.rangeShownUnitId = null;
+    this.choiceOverlayLevel = 0;
+    this.wheelOverlayOpen = false;
+    this.overlayShown = false;
+    this.displayedGold = -1;
+    this.goldCoinLive = 0;
+    this.liveDamageFloaters = 0;
+    this.buildSceneTree(layout, stageCode);
+    if (restoreEndOverlay) {
+      this.showEndOverlay(endVictory);
+    }
   }
 
   private paintBackdrop(root: Node, width: number, height: number): void {
@@ -601,6 +668,11 @@ export class LobbyGuardBattleRenderer {
     if (lane !== 0) {
       return height * -0.34;
     }
+    // 余量口径(2026-09-12 审计校准):horizonPy() 是 root/屏幕坐标,而格位挂在 GuardField 内
+    // (field 自身 y = -0.03H),故"踏台上沿正好贴地平线"的临界值是 horizonPy + 0.051H
+    // (+0.0576H 台心下沉 -0.0367H 台半高 +0.03H 场地偏移)。这里取 horizonPy - 0.021H,
+    // 即比临界值再压低约 0.072H(1080 下约 78px)——余量用于吸收各图地平线量测误差与近大远小的透视,
+    // 9 张背景离线核算 + 暗影石堡/虚空港湾实拍均落在地面纹理区内。
     const onGround = this.horizonPy() - height * 0.021;
     return Math.max(height * -0.03, Math.min(height * 0.12, onGround));
   }
@@ -701,7 +773,6 @@ export class LobbyGuardBattleRenderer {
     if (!g || !field || !sim) {
       return;
     }
-    this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
     g.clear();
     // 踏台改版(2026-09-02 用户拍板参考图):格子=英雄脚下石台(image2 生成 ghud_cell_tile),不再是身后立卡;
     // 锁图标/解锁提示压低 sibling,不再盖到路过的怪物身上。
@@ -733,6 +804,8 @@ export class LobbyGuardBattleRenderer {
       hint.outlineColor = rgba(20, 12, 6, 255);
       hint.outlineWidth = 2;
     }
+    // 脏标记落在重建完成之后:中途抛异常时宁可下一帧重画,也不要被误标为"已画好"而留下半成品。
+    this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
   }
 
   private renderCrystal(): void {
