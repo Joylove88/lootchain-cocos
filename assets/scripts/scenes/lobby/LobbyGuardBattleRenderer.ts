@@ -6,6 +6,7 @@ import {
   Graphics,
   HorizontalTextAlignment,
   Label,
+  Mask,
   Node,
   resources,
   Size,
@@ -82,6 +83,7 @@ import {
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { resolveAttackFxSpritePath, resolveHeroAttackFx, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
@@ -138,6 +140,13 @@ const GUARD_BASE_ATTACK_SCALE = 1.0;
  * 全 393 层曲线 740→12000 → 缩放 0.26→4.3,钳制 [0.25, 6]。 */
 const GUARD_MAIN_POWER_BASELINE = 2800;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
+/** 统计面板无头像图时的占位底色(按稀有度)。 */
+const GUARD_RARITY_TINT: Record<string, Color> = {
+  R: new Color(86, 96, 112),
+  SR: new Color(58, 104, 168),
+  SSR: new Color(126, 70, 176),
+  UR: new Color(186, 132, 44),
+};
 const GUARD_ROLE_COLOR: Record<string, Color> = {
   melee: new Color(232, 150, 92),
   ranged: new Color(120, 196, 255),
@@ -222,6 +231,8 @@ export class LobbyGuardBattleRenderer {
   private fieldBaseG: Graphics | null = null;
   /** 建场时的布局签名;render() 发现签名变了就重建静态层(2026-09-12)。 */
   private mountedLayoutKey = '';
+  /** 统计面板当前行序签名(英雄码顺序):不变时只刷数值与横条,不重建头像/骨骼。 */
+  private statsPanelSignature = '';
   private paintedCellsKey = '';
   private layoutUiScale = 1;
   /** 金币 HUD 滚动显示值(-1=未初始化)与在场飞行金币计数。 */
@@ -282,6 +293,7 @@ export class LobbyGuardBattleRenderer {
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
     this.mountedLayoutKey = '';
+    this.statsPanelSignature = '';
     this.displayedGold = -1;
     this.goldCoinLive = 0;
     this.zoneViews.clear();
@@ -459,6 +471,7 @@ export class LobbyGuardBattleRenderer {
     this.fieldNode = null;
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
+    this.statsPanelSignature = '';
     this.heroViews.clear();
     this.monsterViews.clear();
     this.zoneViews.clear();
@@ -928,7 +941,10 @@ export class LobbyGuardBattleRenderer {
     hintText.overflow = Label.Overflow.SHRINK;
   }
 
-  /** 输出贡献统计面板:英雄伤害降序排行(名字+K/M/B 值+橙色占比条),开着时每 0.5s 重建一次。 */
+  /**
+   * 输出贡献统计面板(2026-09-14 用户参考图重排):标题色带 + 每行「头像 · 名字 · 伤害值 · 占比横条」,伤害降序。
+   * 行集合/顺序不变时只刷数值与横条(头像与骨骼不重建);变了才整体重建。开着时最快 0.5s 刷一次。
+   */
   private refreshStatsPanel(force: boolean): void {
     const hud = this.root?.getChildByName('GuardHud');
     const sim = this.sim;
@@ -940,6 +956,7 @@ export class LobbyGuardBattleRenderer {
       if (existing) {
         existing.destroy();
       }
+      this.statsPanelSignature = '';
       return;
     }
     const now = Date.now();
@@ -947,60 +964,172 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     this.lastStatsRefreshMs = now;
+    const entries = Object.entries(sim.heroDamage)
+      .map(([heroCode, damage]) => {
+        const pool = sim.pool.find((entry) => entry.heroCode === heroCode);
+        return {
+          heroCode,
+          name: pool?.displayName ?? heroCode,
+          rarity: (pool?.rarity ?? 'R').toUpperCase(),
+          ally: this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null,
+          damage,
+        };
+      })
+      .sort((a, b) => b.damage - a.damage)
+      .slice(0, 8);
+    const maxDamage = Math.max(1, entries[0]?.damage ?? 1);
+    const signature = entries.map((entry) => entry.heroCode).join('|') || '-';
+    if (existing && existing.isValid && signature === this.statsPanelSignature) {
+      this.updateStatsPanelRows(existing, entries, maxDamage);
+      return;
+    }
     if (existing) {
       existing.destroy();
     }
-    const entries = Object.entries(sim.heroDamage)
-      .map(([heroCode, damage]) => ({
-        name: sim.pool.find((entry) => entry.heroCode === heroCode)?.displayName ?? heroCode,
-        damage,
-      }))
-      .sort((a, b) => b.damage - a.damage)
-      .slice(0, 8);
+    this.statsPanelSignature = signature;
+
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const hpW = Math.min(390, width * 0.29);
     const hpH = hpW * (105 / 632);
     const panelTop = height / 2 - 20 - hpH - 14 - 44;
-    const rowH = 32;
-    const panelW = 300;
-    const panelH = 46 + Math.max(1, entries.length) * rowH + 10;
+    const panelW = 340;
+    const headerH = 42;
+    const rowH = 60;
+    const pad = 12;
+    const avatar = 46;
+    const panelH = headerH + (entries.length === 0 ? 48 : entries.length * rowH) + pad;
     const panel = this.host.addChildPlainNode(hud, 'GuardStatsPanel', -width / 2 + 16 + panelW / 2, panelTop - panelH / 2, panelW, panelH);
     const pg = panel.addComponent(Graphics);
-    pg.fillColor = rgba(10, 8, 7, 215);
-    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
+    pg.fillColor = rgba(10, 8, 7, 228);
+    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
     pg.fill();
-    pg.strokeColor = rgba(190, 150, 84, 190);
+    pg.strokeColor = rgba(190, 150, 84, 200);
     pg.lineWidth = 1.4;
-    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 10);
+    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
     pg.stroke();
-    const title = this.host.addChildLabel(panel, 'Title', '我方贡献统计', 0, panelH / 2 - 22, 18, rgba(244, 220, 166, 252), new Size(panelW - 20, 24));
+    // 标题色带:参考图是整条独立色带压在面板顶部;本作配色用暗金,底角补方
+    const header = this.host.addChildPlainNode(panel, 'Header', 0, panelH / 2 - headerH / 2, panelW, headerH);
+    const hg = header.addComponent(Graphics);
+    hg.fillColor = rgba(128, 88, 34, 240);
+    hg.roundRect(-panelW / 2, -headerH / 2, panelW, headerH, 12);
+    hg.fill();
+    hg.rect(-panelW / 2, -headerH / 2, panelW, 14);
+    hg.fill();
+    hg.strokeColor = rgba(232, 190, 110, 160);
+    hg.lineWidth = 1;
+    hg.moveTo(-panelW / 2 + 10, -headerH / 2 + 0.5);
+    hg.lineTo(panelW / 2 - 10, -headerH / 2 + 0.5);
+    hg.stroke();
+    const title = this.host.addChildLabel(header, 'Title', '我方贡献统计', 0, 0, 19, rgba(255, 236, 190, 255), new Size(panelW - 20, 26));
     title.enableOutline = true;
-    title.outlineColor = rgba(12, 8, 6, 255);
+    title.outlineColor = rgba(40, 24, 8, 255);
     title.outlineWidth = 2;
     if (entries.length === 0) {
-      this.host.addChildLabel(panel, 'Empty', '暂无输出记录', 0, -4, 15, rgba(196, 182, 152, 220), new Size(panelW - 20, 21));
+      this.host.addChildLabel(panel, 'Empty', '暂无输出记录', 0, -headerH / 2 - 2, 15, rgba(196, 182, 152, 220), new Size(panelW - 20, 21));
       return;
     }
-    const maxDamage = Math.max(1, entries[0].damage);
+    const nameX = -panelW / 2 + pad + avatar + 12;
+    const rightX = panelW / 2 - pad;
+    const barW = rightX - nameX;
     entries.forEach((entry, index) => {
-      const rowY = panelH / 2 - 46 - rowH * index - rowH / 2 + 4;
-      const name = this.host.addChildLabel(panel, `Name_${index}`, entry.name, -panelW / 2 + 14 + 78, rowY + 6, 16, rgba(236, 226, 200, 248), new Size(156, 22), HorizontalTextAlignment.LEFT);
+      const rowTop = panelH / 2 - headerH - 4 - rowH * index;
+      const rowCy = rowTop - rowH / 2;
+      if (index > 0) {
+        pg.strokeColor = rgba(255, 236, 200, 22);
+        pg.lineWidth = 1;
+        pg.moveTo(-panelW / 2 + pad, rowTop + 2);
+        pg.lineTo(panelW / 2 - pad, rowTop + 2);
+        pg.stroke();
+      }
+      // 头像:圆角方框 + 内容(有头像图直接贴;无图挂小骨骼露头)
+      const frame = this.host.addChildPlainNode(panel, `Avatar_${index}`, -panelW / 2 + pad + avatar / 2, rowCy, avatar, avatar);
+      const fg = frame.addComponent(Graphics);
+      fg.fillColor = rgba(28, 22, 18, 255);
+      fg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
+      fg.fill();
+      this.mountStatsAvatar(frame, entry, avatar - 6);
+      const ring = this.host.addChildPlainNode(frame, 'Ring', 0, 0, avatar, avatar);
+      const rg = ring.addComponent(Graphics);
+      rg.strokeColor = rgba(214, 168, 92, 230);
+      rg.lineWidth = 1.6;
+      rg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
+      rg.stroke();
+      // addChildLabel 对 LEFT/RIGHT 对齐把 x 当作左/右边界(工厂内部再偏移半宽),这里直接传边界(2026-09-14 用户反馈名字跑中间)。
+      const name = this.host.addChildLabel(panel, `Name_${index}`, entry.name, nameX, rowCy + 12, 17, rgba(240, 230, 204, 250), new Size(barW - 112, 24), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const value = this.host.addChildLabel(panel, `Value_${index}`, this.formatDamageValue(entry.damage), panelW / 2 - 14 - 55, rowY + 6, 16, rgba(255, 214, 120, 252), new Size(110, 22), HorizontalTextAlignment.RIGHT);
+      const value = this.host.addChildLabel(panel, `Value_${index}`, this.formatDamageValue(entry.damage), rightX, rowCy + 12, 17, rgba(255, 214, 120, 255), new Size(108, 24), HorizontalTextAlignment.RIGHT);
       value.enableOutline = true;
       value.outlineColor = rgba(12, 8, 6, 255);
       value.outlineWidth = 2;
-      const barW = panelW - 28;
-      const bar = this.host.addChildPlainNode(panel, `Bar_${index}`, 0, rowY - 8, barW, 5);
-      const bg = bar.addComponent(Graphics);
-      bg.fillColor = rgba(50, 40, 30, 200);
-      bg.roundRect(-barW / 2, -2.5, barW, 5, 2.5);
-      bg.fill();
-      bg.fillColor = rgba(255, 158, 54, 240);
-      bg.roundRect(-barW / 2, -2.5, Math.max(4, barW * (entry.damage / maxDamage)), 5, 2.5);
-      bg.fill();
+      const bar = this.host.addChildPlainNode(panel, `Bar_${index}`, nameX + barW / 2, rowCy - 13, barW, 9);
+      bar.addComponent(Graphics);
+      this.paintStatsBar(bar, entry.damage / maxDamage);
     });
+  }
+
+  /** 统计面板轻量刷新:只改数值文本与横条占比,节点树不动。 */
+  private updateStatsPanelRows(panel: Node, entries: Array<{ damage: number }>, maxDamage: number): void {
+    entries.forEach((entry, index) => {
+      const value = panel.getChildByName(`Value_${index}`)?.getComponent(Label);
+      if (value) {
+        value.string = this.formatDamageValue(entry.damage);
+      }
+      const bar = panel.getChildByName(`Bar_${index}`);
+      if (bar && bar.isValid) {
+        this.paintStatsBar(bar, entry.damage / maxDamage);
+      }
+    });
+  }
+
+  /** 占比横条:深色轨 + 橙色填充(参考图橙条),圆角,最短保留一个圆头。 */
+  private paintStatsBar(bar: Node, ratio: number): void {
+    const g = bar.getComponent(Graphics);
+    const w = bar.getComponent(UITransform)?.width ?? 0;
+    if (!g || w <= 0) {
+      return;
+    }
+    const h = 9;
+    g.clear();
+    g.fillColor = rgba(46, 36, 26, 225);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    g.fill();
+    g.fillColor = rgba(255, 150, 46, 248);
+    g.roundRect(-w / 2, -h / 2, Math.max(h, w * Math.max(0, Math.min(1, ratio))), h, h / 2);
+    g.fill();
+  }
+
+  /**
+   * 统计行头像:有名英雄用 result_portrait 方形头像;SR/R(act 系)没有头像图,
+   * 在圆形遮罩窗口里挂一个放大的骨骼、把脚底压到窗口下方使头部落进窗口(不动素材,纯显示裁切);
+   * 骨骼到位前先显示稀有度色底 + 名字首字(loadSpineInto 成功后会销毁该占位)。
+   */
+  private mountStatsAvatar(parent: Node, entry: { name: string; rarity: string; ally: BattlePresentationUnitSnapshot | null }, size: number): void {
+    const portrait = resolveC1812HeroResultPortraitPath(entry.ally?.spineAsset ?? entry.ally?.portraitAsset);
+    if (portrait) {
+      this.mountSprite(parent, 'Img', portrait, 0, 0, size, size);
+      return;
+    }
+    const fallback = this.host.addChildPlainNode(parent, 'Fallback', 0, 0, size, size);
+    const fg = fallback.addComponent(Graphics);
+    const tint = GUARD_RARITY_TINT[entry.rarity] ?? rgba(90, 80, 70, 255);
+    fg.fillColor = rgba(tint.r, tint.g, tint.b, 255);
+    fg.roundRect(-size / 2, -size / 2, size, size, 7);
+    fg.fill();
+    const initial = this.host.addChildLabel(fallback, 'Initial', entry.name.slice(0, 1), 0, 0, Math.round(size * 0.5), rgba(255, 246, 226, 252), new Size(size, size));
+    initial.enableOutline = true;
+    initial.outlineColor = rgba(10, 8, 6, 255);
+    initial.outlineWidth = 2;
+    const resource = entry.ally ? resolveBattleUnitSpineResource(entry.ally) : null;
+    if (!resource || !entry.ally) {
+      return;
+    }
+    const window = this.host.addChildPlainNode(parent, 'Window', 0, 0, size, size);
+    const mask = window.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_ELLIPSE;
+    // 骨骼按 2.6 倍窗口高挂;英雄立绘头部约在总高 82%~96%,脚底下压 0.86 倍骨骼高后头部正好落在窗口中心附近。
+    const spineSize = size * 2.6;
+    this.loadSpineInto(window, fallback, resource, spineSize, false, undefined, { allyUnit: entry.ally, footY: -spineSize * 0.86 });
   }
 
   private refreshWaveTrack(): void {

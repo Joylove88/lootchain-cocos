@@ -23,6 +23,17 @@ export function resolveC1812HeroBattlePortraitPath(asset?: string | null): strin
   const value = (asset || '').trim();
   return C1812_HERO_BATTLE_PORTRAIT_ASSETS.has(value) ? `${C1812_HERO_BATTLE_PORTRAIT_DIR}${value}/spriteFrame` : null;
 }
+// C1812 named 英雄方形头像(约 92×90),用于结算行/输出统计等小尺寸列表行(2026-09-14 抽到公共处)。
+const C1812_HERO_RESULT_PORTRAIT_DIR = 'ui/hero/c1812/result_portrait/';
+const C1812_HERO_RESULT_PORTRAIT_ASSETS: ReadonlySet<string> = new Set([
+  'Nuu', 'Ishmael', 'IshmaelA', 'Carmilla', 'Eulenspigel', 'Belladonna', 'LucienA', 'Lucrecia',
+  'Sphinx', 'HeylelS01', 'Hopkins', 'Robert', 'Saighead', 'Simone', 'Sirucus',
+]);
+
+export function resolveC1812HeroResultPortraitPath(asset?: string | null): string | null {
+  const value = (asset || '').trim();
+  return C1812_HERO_RESULT_PORTRAIT_ASSETS.has(value) ? `${C1812_HERO_RESULT_PORTRAIT_DIR}${value}/spriteFrame` : null;
+}
 export const C1812_BUTTON_PRIMARY_ASSET = 'ui/common/ai/button_primary/spriteFrame';
 // button_danger 素材已下线:强调按钮与主按钮同用红金 button_primary。
 export const C1812_BUTTON_DANGER_ASSET = C1812_BUTTON_PRIMARY_ASSET;
