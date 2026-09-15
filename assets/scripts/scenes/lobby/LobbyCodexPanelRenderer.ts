@@ -184,7 +184,7 @@ export class LobbyCodexPanelRenderer {
     sprite.node.getComponent(UITransform)?.setContentSize(new Size(srcW * coverScale, srcH * coverScale));
     const shade = this.host.addChildPlainNode(panel, 'LobbyCodexBackdropShade', 0, 0, width, height);
     const g = shade.addComponent(Graphics);
-    g.fillColor = rgba(4, 3, 6, 96);
+    g.fillColor = rgba(4, 3, 6, 58);
     g.rect(-width / 2, -height / 2, width, height);
     g.fill();
     return true;
