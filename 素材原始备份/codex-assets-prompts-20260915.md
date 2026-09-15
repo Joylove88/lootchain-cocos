@@ -33,3 +33,18 @@
 1. 三张放到 `D:\project\lootchain-cocos\assets\resources\ui\codex\ai\`。
 2. 放完告诉我一声,我把 `.meta` 翻成 `sprite-frame` 并截图核对(宝箱在进度条上约 60px 高、弹框里约 200px 高,两种尺寸都会看)。
 3. 原图我会先备份到 `素材原始备份/codex-chest-20260915/` 再入库。
+
+---
+
+# 追加:图鉴全屏背景图(2026-09-15 第二批)
+
+文件名 `codex_bg.png`,同样放到 `assets/resources/ui/codex/ai/`。代码按 cover 等比铺满并裁掉溢出,再压一层 38% 暗色,所以画面本身不要太亮。
+
+- 尺寸 **2048×1152**(16:9),PNG,不透明。
+- 构图:哥特大教堂/亡灵圣殿内景,正对祭坛的对称透视;**画面中央 70% 宽、从上到下**要相对暗且干净(卡墙压在这里,不能有高对比的细节抢戏),视觉细节集中在左右两侧(石雕、烛台、红绒帷幔、书籍、雕像)和顶部(彩窗、血月)。
+- 光:冷暗底调,少量烛光暖光在两侧,顶部一点点红/紫色天光;整体低饱和,不要强光斑。
+- **不要任何文字、徽章、UI 元素、人物角色**(参考图里的英文标语、宝箱、卡片都不要)。
+
+> Interior of a vast dark gothic cathedral turned undead sanctum, symmetrical one-point perspective facing the altar, black stone pillars and pointed arches, tall stained glass windows and a blood-red moon at the top, crimson velvet drapes, candelabras with warm candlelight, stacks of old tomes and stone statues along the left and right sides, the central 70% of the frame kept dark, empty and low-contrast for UI overlay, cold desaturated palette with subtle purple-red ambient light, no text, no characters, no UI elements, realistic painterly dark fantasy game background, 2048x1152
+
+放好后告诉我,我翻 meta 并截图核对。

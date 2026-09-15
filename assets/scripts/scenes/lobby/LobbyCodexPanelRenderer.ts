@@ -44,6 +44,8 @@ const CODEX_UI_ASSETS = {
   chestLocked: 'ui/codex/ai/chest_locked/spriteFrame',
   chestReady: 'ui/codex/ai/chest_ready/spriteFrame',
   chestOpened: 'ui/codex/ai/chest_opened/spriteFrame',
+  /** 图鉴全屏背景(ui/codex/ai,2048×1152 一体构图,cover 等比裁切;缺图保留深色面板)。 */
+  background: 'ui/codex/ai/codex_bg/spriteFrame',
 };
 
 /** 奖励图标按资源码精确映射(背包 C 组 160×160 方图),未知码退回文字。 */
@@ -142,7 +144,9 @@ export class LobbyCodexPanelRenderer {
       rgba(190, 141, 62, 226),
       18 * scale,
     );
-    this.drawPanelAtmosphere(panel, panelWidth, panelHeight, scale);
+    if (!this.mountBackground(panel, panelWidth, panelHeight)) {
+      this.drawPanelAtmosphere(panel, panelWidth, panelHeight, scale);
+    }
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
     this.renderFilterRow(panel, panelWidth, panelHeight, scale, state);
     this.renderCardWall(panel, panelWidth, panelHeight, scale, state);
@@ -161,6 +165,29 @@ export class LobbyCodexPanelRenderer {
 
   private createUiNode(name: string): Node {
     return this.host.createUiNode(name);
+  }
+
+  /** 背景图按 cover 等比铺满面板(Mask 裁掉溢出),上面压一层暗色让卡墙可读;缺图返回 false。 */
+  private mountBackground(panel: Node, width: number, height: number): boolean {
+    const maskNode = this.host.addChildPlainNode(panel, 'LobbyCodexBackdropMask', 0, 0, width, height);
+    const mask = maskNode.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
+    const sprite = this.host.addSprite('LobbyCodexBackdrop', CODEX_UI_ASSETS.background, 0, 0, width, height, maskNode);
+    if (!sprite) {
+      maskNode.removeFromParent();
+      return false;
+    }
+    const frame = sprite.spriteFrame;
+    const srcW = frame?.originalSize?.width || frame?.rect?.width || 2048;
+    const srcH = frame?.originalSize?.height || frame?.rect?.height || 1152;
+    const coverScale = Math.max(width / srcW, height / srcH);
+    sprite.node.getComponent(UITransform)?.setContentSize(new Size(srcW * coverScale, srcH * coverScale));
+    const shade = this.host.addChildPlainNode(panel, 'LobbyCodexBackdropShade', 0, 0, width, height);
+    const g = shade.addComponent(Graphics);
+    g.fillColor = rgba(4, 3, 6, 96);
+    g.rect(-width / 2, -height / 2, width, height);
+    g.fill();
+    return true;
   }
 
   // ── 顶部:收录进度 + 里程碑宝箱 + 一键领取 ──
@@ -440,8 +467,8 @@ export class LobbyCodexPanelRenderer {
       this.host.selectLobbyCodexHero(item.heroCode);
     }, this);
     this.host.applyImageButtonFeedback(card, 1.024, 0.982);
-    // 未收集不挂稀有度边框动效:灰影下看不清还白耗骨骼。
-    this.host.renderCodexHeroCardArtwork(card, this.toHeroStub(item), width, height, scale, item.owned);
+    // 图鉴卡不挂 SSR/UR 边框动效(2026-09-15 用户拍板:图鉴去掉,英雄界面保留)。
+    this.host.renderCodexHeroCardArtwork(card, this.toHeroStub(item), width, height, scale, false);
     this.renderCardChrome(card, item, width, height, scale);
 
     if (!item.owned) {
@@ -555,7 +582,7 @@ export class LobbyCodexPanelRenderer {
     const cardW = cardH * CODEX_CARD_ASPECT;
     const cardX = -width * 0.5 + cardW / 2 + width * 0.09;
     const card = this.host.addChildPlainNode(body, 'LobbyCodexPopupCard', cardX, height * 0.02, cardW, cardH);
-    this.host.renderCodexHeroCardArtwork(card, this.toHeroStub(item), cardW, cardH, scale, item.owned);
+    this.host.renderCodexHeroCardArtwork(card, this.toHeroStub(item), cardW, cardH, scale, false);
     this.renderCardChrome(card, item, cardW, cardH, scale);
     if (!item.owned) {
       this.renderUnownedOverlay(card, cardW, cardH, scale);
