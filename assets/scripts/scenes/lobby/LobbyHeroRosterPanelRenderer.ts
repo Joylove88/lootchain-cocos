@@ -685,6 +685,24 @@ export class LobbyHeroRosterPanelRenderer {
     this.renderHeroCardChrome(card, hero, width, height, scale);
   }
 
+  /**
+   * 图鉴复用(2026-09-15):只画卡面(阴影+卡框+立绘背景+稀有度边框动效),
+   * 不挂按钮/等级/星级/名字,三态由图鉴自己叠加;borderEffect=false 时省掉 SSR/UR 骨骼(未收集灰影下看不见)。
+   */
+  renderCardArtworkForCodex(card: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number, borderEffect: boolean): void {
+    this.drawHeroCardShadow(card, width, height, scale);
+    if (!this.host.addSprite('LobbyHeroRosterCardSkin', this.resolveHeroRosterCardAsset(), 0, 0, width, height, card)) {
+      this.drawHeroCardFallback(card, width, height, scale, hero);
+    }
+    const hasCardArtwork = this.renderHeroCardBackground(card, hero, width, height, scale);
+    if (borderEffect) {
+      this.renderHeroCardBorderEffect(card, hero, width, height);
+    }
+    if (!hasCardArtwork) {
+      this.renderHeroPortrait(card, hero, width, height, scale);
+    }
+  }
+
   private drawHeroCardShadow(card: Node, width: number, height: number, scale: number): void {
     const shadow = this.host.addChildPlainNode(card, 'LobbyHeroRosterCardShadow', 0, -7 * scale, width * 1.02, height * 1.02);
     const graphics = shadow.addComponent(Graphics);

@@ -92,7 +92,7 @@ import { LobbySettingsPanelRenderer, type LobbySettingsPanelHost } from './lobby
 import type { LobbyAdventurePanelState, LobbyAdventureStageVO } from '../types/LobbyAdventureTypes';
 import type { LobbyBagPanelState } from '../types/BagTypes';
 import type { LobbyBattlePanelState } from './lobby/LobbyBattleState';
-import type { LobbyCodexPanelState } from '../types/LobbyCodexTypes';
+import type { LobbyCodexClaimPayload, LobbyCodexPanelState, LobbyCodexRarityFilter } from '../types/LobbyCodexTypes';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../types/LobbyHeroTypes';
 import type { PlayerBattleStartVO } from '../types/BattleTypes';
 import type { LobbyNoticePanelState } from '../types/LobbyNoticeTypes';
@@ -258,8 +258,8 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyCodexState = new LobbyCodexState();
   private readonly lobbyCodexLoader = new LobbyPanelLoader(
     this.lobbyCodexState,
-    () => this.api.lobbyCodex.lobbyCodex(),
-    (items) => this.lobbyCodexState.applyLoaded(items),
+    () => this.api.lobbyCodex.lobbyCodexSummary(),
+    (summary) => this.lobbyCodexState.applyLoaded(summary),
     this as unknown as LobbyPanelLoaderHost,
     'lobby codex',
   );
@@ -2332,6 +2332,72 @@ export class LootChainGameRoot extends Component {
 
   private reloadLobbyCodex(): void {
     void this.loadLobbyCodex(true);
+  }
+
+  // ── 图鉴系统一期(2026-09-15):页内 UI 态 + 激活奖励/里程碑领取 ──
+  private setLobbyCodexFilter(filter: LobbyCodexRarityFilter): void {
+    this.lobbyCodexState.setFilter(filter);
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private toggleLobbyCodexUnownedOnly(): void {
+    this.lobbyCodexState.toggleUnownedOnly();
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private selectLobbyCodexHero(heroCode: string | null): void {
+    this.lobbyCodexState.selectHero(heroCode);
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private selectLobbyCodexMilestone(targetCount: number | null): void {
+    this.lobbyCodexState.selectMilestone(targetCount);
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private openLobbyGachaSceneFromCodex(): void {
+    this.lobbyCodexState.selectHero(null);
+    this.openLobbyGachaScene();
+  }
+
+  private renderCodexHeroCardArtwork(card: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number, borderEffect: boolean): void {
+    this.lobbyHeroRosterPanelRenderer.renderCardArtworkForCodex(card, hero, width, height, scale, borderEffect);
+  }
+
+  private claimLobbyCodexReward(payload: LobbyCodexClaimPayload): void {
+    const key = payload.type === 'HERO' ? `HERO:${payload.heroCode}` : `MILESTONE:${payload.targetCount}`;
+    this.runLobbyCodexClaim(key, () => this.api.lobbyCodex.claim(payload));
+  }
+
+  private claimAllLobbyCodexRewards(): void {
+    this.runLobbyCodexClaim('ALL', () => this.api.lobbyCodex.claimAll());
+  }
+
+  private runLobbyCodexClaim(key: string, request: () => Promise<import('../types/LobbyCodexTypes').LobbyCodexClaimResultVO>): void {
+    if (this.lobbyCodexState.snapshot().claiming) {
+      return;
+    }
+    this.lobbyCodexState.setClaiming(key);
+    this.renderCurrentLobbyScenePage();
+    void request()
+      .then((result) => {
+        const rewardText = result.rewards.map((item) => `${item.name}×${item.amount}`).join(' ');
+        this.setStatus(`已领取「${result.rewardName}」奖励:${rewardText}`);
+        // 领取接口直接带回最新汇总,免二次拉取;弹框保持打开以展示"已领取"态。
+        this.lobbyCodexState.applyLoaded(result.summary);
+        this.lobbyCodexState.setClaiming(null);
+        this.renderCurrentLobbyScenePage();
+        const profile = this.currentLobbyProfile();
+        void this.loadLobbyProfile(profile.userId);
+        void this.loadLobbyBag(true);
+      })
+      .catch((error) => {
+        this.lobbyCodexState.setClaiming(null);
+        this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
+        // 服务端拒绝(如已领取/未达标)时按最新数据刷新一次,避免本地停留在过期的"可领取"态。
+        void this.loadLobbyCodex(true);
+        this.renderCurrentLobbyScenePage();
+      });
   }
 
   private currentLobbyCodexState(): LobbyCodexPanelState {

@@ -210,8 +210,11 @@ export class UiSpriteFrameCache {
     }, 90);
   }
 
+  /** 加载失败过的路径(缺图),不再重复请求。 */
+  private readonly failedSpriteFrames = new Set<string>();
+
   request(path: string): void {
-    if (this.spriteFrames.has(path) || this.loadingSpriteFrames.has(path)) {
+    if (this.spriteFrames.has(path) || this.loadingSpriteFrames.has(path) || this.failedSpriteFrames.has(path)) {
       return;
     }
     // loadingSpriteFrames 用来去重，防止同一帧内重复发起资源加载。
@@ -219,6 +222,8 @@ export class UiSpriteFrameCache {
     resources.load(path, SpriteFrame, (error, frame) => {
       this.loadingSpriteFrames.delete(path);
       if (error) {
+        // 缺图只告警一次:图鉴宝箱等可选素材未落位时,每次重绘都重试会刷屏。
+        this.failedSpriteFrames.add(path);
         console.warn(`[LootChain] UI sprite load failed: ${path}`, error);
         return;
       }

@@ -1,8 +1,17 @@
 import { HttpClient } from '../net/HttpClient';
-import type { LobbyCodexItemVO } from '../types/LobbyCodexTypes';
-import { isRecord, readInteger, readOptionalText, readText } from './ApiValueGuards';
+import type {
+  LobbyCodexClaimPayload,
+  LobbyCodexClaimResultVO,
+  LobbyCodexItemVO,
+  LobbyCodexMilestoneVO,
+  LobbyCodexSummaryVO,
+} from '../types/LobbyCodexTypes';
+import type { QuestRewardItemVO } from '../types/QuestTypes';
+import { isRecord, readArray, readInteger, readNumber, readOptionalText, readText } from './ApiValueGuards';
 
 const MAX_CODEX_COUNT = 96;
+const MAX_MILESTONE_COUNT = 16;
+const MAX_REWARD_COUNT = 8;
 const MAX_TEXT_LENGTH = 96;
 const MAX_RESOURCE_PATH_LENGTH = 192;
 const HERO_ASSET_FALLBACKS: Record<string, { portraitAsset: string; spineAsset: string; cardBackgroundAsset?: string }> = {
@@ -22,13 +31,31 @@ const HERO_ASSET_FALLBACKS: Record<string, { portraitAsset: string; spineAsset: 
   UR_EVELYN: { portraitAsset: 'Nuu', spineAsset: 'Nuu', cardBackgroundAsset: 'ui/hero-roster/card_background/Nuu_Illust' },
 };
 
-/** 大厅图鉴只读 API；只允许读取窄口径大厅门面，不能调用英雄养成 Controller。 */
+/** 大厅图鉴 API(2026-09-15 图鉴系统一期):汇总 + 激活奖励/里程碑领取;不调用英雄养成 Controller。 */
 export class LobbyCodexApi {
   constructor(private readonly http: HttpClient) {}
 
+  /** 兼容旧口:只读列表。 */
   lobbyCodex(): Promise<LobbyCodexItemVO[]> {
-    // 大厅只读图鉴使用独立门面，避免前端直接依赖带养成写入口的英雄模块 Controller。
     return this.http.get<unknown>('/api/player/lobby/codex').then(validateLobbyCodex);
+  }
+
+  /** 卡墙 + 收录进度 + 里程碑,一次拉取。 */
+  lobbyCodexSummary(): Promise<LobbyCodexSummaryVO> {
+    return this.http.get<unknown>('/api/player/lobby/codex/summary').then(validateSummary);
+  }
+
+  /** 领取单个激活奖励/里程碑。 */
+  claim(payload: LobbyCodexClaimPayload): Promise<LobbyCodexClaimResultVO> {
+    const body = payload.type === 'HERO'
+      ? { type: 'HERO', heroCode: payload.heroCode }
+      : { type: 'MILESTONE', targetCount: payload.targetCount };
+    return this.http.post<unknown>('/api/player/lobby/codex/claim', body).then(validateClaimResult);
+  }
+
+  /** 一键领取全部可领。 */
+  claimAll(): Promise<LobbyCodexClaimResultVO> {
+    return this.http.post<unknown>('/api/player/lobby/codex/claim-all').then(validateClaimResult);
   }
 }
 
@@ -42,6 +69,78 @@ function validateLobbyCodex(data: unknown): LobbyCodexItemVO[] {
   return data
     .map((item, index) => normalizeCodexItem(item, index))
     .filter((item): item is LobbyCodexItemVO => item !== null);
+}
+
+function validateSummary(data: unknown): LobbyCodexSummaryVO {
+  if (!isRecord(data)) {
+    throw new Error('图鉴汇总响应格式错误：data 不是对象');
+  }
+  const items = validateLobbyCodex(readArray(data, 'items', MAX_CODEX_COUNT));
+  const milestones = readArray(data, 'milestones', MAX_MILESTONE_COUNT)
+    .map((row, index) => normalizeMilestone(row, index))
+    .filter((row): row is LobbyCodexMilestoneVO => row !== null)
+    .sort((a, b) => a.targetCount - b.targetCount);
+  return {
+    total: readInteger(data.total, 0, 999),
+    ownedCount: readInteger(data.ownedCount, 0, 999),
+    claimableCount: readInteger(data.claimableCount, 0, 999),
+    milestones,
+    items,
+  };
+}
+
+function validateClaimResult(data: unknown): LobbyCodexClaimResultVO {
+  if (!isRecord(data)) {
+    throw new Error('图鉴领取响应格式错误：data 不是对象');
+  }
+  return {
+    rewardName: readText(data, 'rewardName', 128, '图鉴奖励'),
+    rewards: normalizeRewards(data.rewards),
+    claimedCount: readInteger(data.claimedCount, 0, 999),
+    summary: validateSummary(data.summary),
+  };
+}
+
+function normalizeMilestone(row: unknown, index: number): LobbyCodexMilestoneVO | null {
+  if (!isRecord(row)) {
+    throw new Error(`图鉴里程碑响应格式错误：第 ${index + 1} 项不是对象`);
+  }
+  const targetCount = readInteger(row.targetCount, 0, 999);
+  if (targetCount <= 0) {
+    return null;
+  }
+  return {
+    rewardCode: readText(row, 'rewardCode', 64, `MILESTONE_${targetCount}`),
+    targetCount,
+    rewardName: readText(row, 'rewardName', MAX_TEXT_LENGTH, `收录 ${targetCount} 位英雄`),
+    rewards: normalizeRewards(row.rewards),
+    reached: row.reached === true,
+    claimed: row.claimed === true,
+    claimable: row.claimable === true,
+  };
+}
+
+function normalizeRewards(value: unknown): QuestRewardItemVO[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const rewards: QuestRewardItemVO[] = [];
+  for (const raw of value.slice(0, MAX_REWARD_COUNT)) {
+    if (!isRecord(raw)) {
+      continue;
+    }
+    const code = readText(raw, 'code', 64, '');
+    if (!code) {
+      continue;
+    }
+    rewards.push({
+      type: readText(raw, 'type', 32, 'ITEM'),
+      code,
+      name: readText(raw, 'name', MAX_TEXT_LENGTH, code),
+      amount: readNumber(raw.amount, 0, 1_000_000_000),
+    });
+  }
+  return rewards;
 }
 
 function normalizeCodexItem(item: unknown, index: number): LobbyCodexItemVO | null {
@@ -59,6 +158,7 @@ function normalizeCodexItem(item: unknown, index: number): LobbyCodexItemVO | nu
   const cardBackgroundAsset = readOptionalText(item, 'cardBackgroundAsset', MAX_RESOURCE_PATH_LENGTH) ?? fallbackAssets?.cardBackgroundAsset ?? null;
   const spineAsset = readOptionalText(item, 'spineAsset', 128) ?? deriveSpineAssetFromPortrait(portraitAsset) ?? fallbackAssets?.spineAsset ?? null;
   const spineUuid = readOptionalText(item, 'spineUuid', 64);
+  const owned = item.owned === true;
   return {
     heroCode,
     heroName: readText(item, 'heroName', MAX_TEXT_LENGTH, '未命名英雄'),
@@ -70,8 +170,11 @@ function normalizeCodexItem(item: unknown, index: number): LobbyCodexItemVO | nu
     cardBackgroundAsset,
     spineAsset,
     spineUuid,
-    owned: item.owned === true,
+    owned,
     ownedCount: readInteger(item.ownedCount, 0, 999),
+    activateRewards: normalizeRewards(item.activateRewards),
+    rewardClaimable: owned && item.rewardClaimable === true,
+    rewardClaimed: item.rewardClaimed === true,
   };
 }
 
@@ -86,4 +189,3 @@ function deriveSpineAssetFromPortrait(portraitAsset: string | null): string | nu
 function resolveHeroAssetFallback(heroCode: string): { portraitAsset: string; spineAsset: string; cardBackgroundAsset?: string } | null {
   return HERO_ASSET_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
 }
-
