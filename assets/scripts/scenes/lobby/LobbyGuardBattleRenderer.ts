@@ -644,11 +644,77 @@ export class LobbyGuardBattleRenderer {
     const bgW = bgSrcW * cover;
     const bgH = bgSrcH * cover;
     this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, (bgH - height) / 2, bgW, bgH);
-    const shade = this.host.addChildPlainNode(root, 'GuardTopShade', 0, height / 2 - height * 0.08, width, height * 0.16);
-    const g = shade.addComponent(Graphics);
-    g.fillColor = rgba(10, 8, 8, 118);
-    g.rect(-width / 2, -height * 0.08, width, height * 0.16);
-    g.fill();
+    // 顶部压暗改羽化渐变(2026-09-15 用户反馈平涂半透明黑带太难看):上沿最深、向下平滑透明,没有硬边。
+    const shadeH = height * 0.15;
+    this.mountSoftShade(root, 'GuardTopShade', 0, height / 2 - shadeH / 2, width, shadeH, 'top-fade');
+  }
+
+  /** 柔和暗底纹理缓存(按样式键复用,重挂/重排布局不重复生成)。 */
+  private static readonly SOFT_SHADE_FRAMES = new Map<string, SpriteFrame>();
+
+  /**
+   * 运行时生成羽化暗底并挂成 Sprite(替代程序平涂的硬边半透明框):
+   * - top-fade:1×64 竖向渐变,alpha 从顶部 0.66 按 (1-v)^1.7 衰减到 0;
+   * - blob:48×24 圆角矩形 SDF,内部 0.62、向四边 38% 宽度羽化到 0。
+   * 纹理极小、双线性拉伸后视觉平滑;生成失败(极端环境)回退为原来的平涂,不影响功能。
+   */
+  private mountSoftShade(parent: Node, name: string, x: number, y: number, width: number, height: number, style: 'top-fade' | 'blob'): void {
+    const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
+    let frame = LobbyGuardBattleRenderer.SOFT_SHADE_FRAMES.get(style) ?? null;
+    if (!frame) {
+      try {
+        const pw = style === 'top-fade' ? 1 : 48;
+        const ph = style === 'top-fade' ? 64 : 24;
+        const data = new Uint8Array(pw * ph * 4);
+        for (let py = 0; py < ph; py += 1) {
+          for (let px = 0; px < pw; px += 1) {
+            // 纹理行 0 在底部:v=0 底、v=1 顶
+            const u = (px + 0.5) / pw;
+            const v = (py + 0.5) / ph;
+            let alpha: number;
+            if (style === 'top-fade') {
+              alpha = 0.66 * Math.pow(v, 1.7);
+            } else {
+              // 圆角矩形距离场:中心区满强度,边缘按羽化宽度平滑归零
+              const feather = 0.38;
+              const dx = Math.max(0, Math.abs(u - 0.5) - (0.5 - feather));
+              const dy = Math.max(0, Math.abs(v - 0.5) - (0.5 - feather));
+              const d = Math.min(1, Math.hypot(dx / feather, dy / feather));
+              const t = 1 - d;
+              alpha = 0.62 * t * t * (3 - 2 * t);
+            }
+            const offset = (py * pw + px) * 4;
+            data[offset] = 10;
+            data[offset + 1] = 8;
+            data[offset + 2] = 8;
+            data[offset + 3] = Math.round(Math.max(0, Math.min(1, alpha)) * 255);
+          }
+        }
+        const texture = new Texture2D();
+        texture.reset({ width: pw, height: ph, format: Texture2D.PixelFormat.RGBA8888, mipmapLevel: 1 });
+        texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
+        texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
+        texture.uploadData(data);
+        frame = new SpriteFrame();
+        frame.texture = texture;
+        LobbyGuardBattleRenderer.SOFT_SHADE_FRAMES.set(style, frame);
+      } catch (error) {
+        void error;
+        frame = null;
+      }
+    }
+    if (!frame) {
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(10, 8, 8, style === 'top-fade' ? 118 : 150);
+      g.roundRect(-width / 2, -height / 2, width, height, style === 'top-fade' ? 0 : 14);
+      g.fill();
+      return;
+    }
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.spriteFrame = frame;
+    node.getComponent(UITransform)?.setContentSize(width, height);
   }
 
   // ── 几何(参考图 2026-08-21):水晶+3×3 格占左 1/3,怪物跑道占右 2/3 ──
@@ -848,13 +914,10 @@ export class LobbyGuardBattleRenderer {
     const height = this.layoutHeight;
     const hud = this.host.addChildPlainNode(root, 'GuardHud', 0, 0, width, height);
     // 左侧信息暗底板(2026-08-28 用户验收:亮背景处信息看不清;2026-09-02 职业计数移除后收矮)
-    const panelW = 214;
-    const panelH = height * 0.155;
-    const leftPanel = this.host.addChildPlainNode(hud, 'GuardLeftPanel', -width / 2 + 10 + panelW / 2, height / 2 - 12 - panelH / 2, panelW, panelH);
-    const lpG = leftPanel.addComponent(Graphics);
-    lpG.fillColor = rgba(8, 6, 5, 150);
-    lpG.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 14);
-    lpG.fill();
+    // 2026-09-15 用户反馈透明框难看:圆角平涂换四边羽化的柔和暗底(略放大让羽化边盖住内容外沿),仍保证亮背景可读。
+    const panelW = 250;
+    const panelH = height * 0.185;
+    this.mountSoftShade(hud, 'GuardLeftPanel', -width / 2 + 4 + panelW / 2, height / 2 - 4 - panelH / 2, panelW, panelH, 'blob');
     // 左上:水晶生命(素材框 632×105,内嵌蓝条)
     const hpW = Math.min(390, width * 0.29);
     const hpH = hpW * (105 / 632);
