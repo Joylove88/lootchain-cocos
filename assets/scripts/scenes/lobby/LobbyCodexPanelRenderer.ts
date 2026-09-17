@@ -10,8 +10,6 @@ import {
   ScrollView,
   Size,
   Sprite,
-  SpriteFrame,
-  Texture2D,
   tween,
   UIOpacity,
   UITransform,
@@ -152,7 +150,7 @@ export class LobbyCodexPanelRenderer {
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
     this.renderFilterRow(panel, panelWidth, panelHeight, scale, state);
     this.renderCardWall(panel, panelWidth, panelHeight, scale, state);
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyCodexBackButton', () => this.host.closeLobbyCodexPanel(), scale, '图鉴');
+    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyCodexBackButton', () => this.host.closeLobbyCodexPanel(), scale, '图鉴', '首次获得一位英雄即完成收录，点开卡片可领取一次性激活奖励（按稀有度）。\n\n收录数达到 5 / 10 / 15 / 22 时，进度条上的宝箱可以打开领取里程碑奖励。\n\n未收集的英雄可从卡片详情直接前往召唤。');
 
     const selectedHero = state.selectedHeroCode ? state.items.find((item) => item.heroCode === state.selectedHeroCode) ?? null : null;
     const selectedMilestone = state.selectedMilestone !== null
@@ -463,51 +461,6 @@ export class LobbyCodexPanelRenderer {
       const row = Math.floor(index / columns);
       this.renderCodexCard(content, item, index, startX + col * (cardWidth + gap), startY - row * (cardHeight + rowGap), cardWidth, cardHeight, scale, state.claiming !== null);
     });
-    // 滚动区下沿羽化:被裁切的卡片渐隐进背景,而不是一刀切(上沿不加:实测会在页签下方留一道硬边)。
-    if (contentHeight > bodyHeight + 1) {
-      this.mountEdgeFade(parent, 'LobbyCodexFadeBottom', 0, bodyCenterY - bodyHeight / 2 + 34 * scale, bodyWidth + 8 * scale, 68 * scale, 'bottom');
-    }
-  }
-
-  /** 边缘羽化纹理缓存(1×64 竖向渐变,双线性拉伸后平滑)。 */
-  private static readonly EDGE_FADE_FRAMES = new Map<string, SpriteFrame>();
-
-  /** 深色竖向渐变贴片:'bottom'=下沿实、向上透明;'top'=上沿实、向下透明。生成失败则不挂(纯装饰)。 */
-  private mountEdgeFade(parent: Node, name: string, x: number, y: number, width: number, height: number, edge: 'top' | 'bottom'): void {
-    let frame = LobbyCodexPanelRenderer.EDGE_FADE_FRAMES.get(edge) ?? null;
-    if (!frame) {
-      try {
-        const ph = 64;
-        const data = new Uint8Array(ph * 4);
-        for (let py = 0; py < ph; py += 1) {
-          // 纹理行 0 在底部:v=0 底、v=1 顶
-          const v = (py + 0.5) / ph;
-          const t = edge === 'bottom' ? 1 - v : v;
-          const alpha = 0.92 * Math.pow(t, 1.6);
-          data[py * 4] = 4;
-          data[py * 4 + 1] = 3;
-          data[py * 4 + 2] = 6;
-          data[py * 4 + 3] = Math.round(clamp(alpha, 0, 1) * 255);
-        }
-        const texture = new Texture2D();
-        texture.reset({ width: 1, height: ph, format: Texture2D.PixelFormat.RGBA8888, mipmapLevel: 1 });
-        texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
-        texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
-        texture.uploadData(data);
-        frame = new SpriteFrame();
-        frame.texture = texture;
-        LobbyCodexPanelRenderer.EDGE_FADE_FRAMES.set(edge, frame);
-      } catch (error) {
-        void error;
-        return;
-      }
-    }
-    const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const sprite = node.addComponent(Sprite);
-    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-    sprite.trim = false;
-    sprite.spriteFrame = frame;
-    node.getComponent(UITransform)?.setContentSize(width, height);
   }
 
   private renderEmpty(parent: Node, width: number, y: number, scale: number, text: string): void {
@@ -585,21 +538,33 @@ export class LobbyCodexPanelRenderer {
    */
   private renderCardChrome(card: Node, item: LobbyCodexItemVO, width: number, height: number, scale: number): void {
     const rarity = safeText(item.rarity || 'R').toUpperCase();
-    const badgeW = clamp(width * 0.2, 30 * scale, 46 * scale);
-    const badgeH = badgeW * 0.56;
-    const badge = this.host.addChildPlainNode(card, 'LobbyCodexRarityBadge', -width / 2 + badgeW / 2 + width * 0.075, height / 2 - badgeH / 2 - height * 0.075, badgeW, badgeH);
-    const color = item.owned ? this.rarityColor(rarity) : rgba(120, 112, 100);
+    // 参考图(2026-09-17):六边形牌,稀有度色实底 + 金边 + 白字;未收集灰底。
+    const badgeW = clamp(width * 0.22, 32 * scale, 52 * scale);
+    const badgeH = badgeW * 0.58;
+    const badge = this.host.addChildPlainNode(card, 'LobbyCodexRarityBadge', -width / 2 + badgeW / 2 + width * 0.07, height / 2 - badgeH / 2 - height * 0.07, badgeW, badgeH);
+    const color = item.owned ? this.rarityColor(rarity) : rgba(96, 90, 84);
     const bg = badge.addComponent(Graphics);
-    bg.fillColor = rgba(8, 6, 10, 214);
-    bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, 4 * scale);
+    const cut = badgeH * 0.5;
+    const traceHex = (g: Graphics, w: number, h: number): void => {
+      g.moveTo(-w / 2 + cut, h / 2);
+      g.lineTo(w / 2 - cut, h / 2);
+      g.lineTo(w / 2, 0);
+      g.lineTo(w / 2 - cut, -h / 2);
+      g.lineTo(-w / 2 + cut, -h / 2);
+      g.lineTo(-w / 2, 0);
+      g.close();
+    };
+    bg.fillColor = new Color(Math.round(color.r * 0.55), Math.round(color.g * 0.55), Math.round(color.b * 0.55), 236);
+    traceHex(bg, badgeW, badgeH);
     bg.fill();
-    bg.strokeColor = new Color(color.r, color.g, color.b, 230);
-    bg.lineWidth = Math.max(1, 1.3 * scale);
-    bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, 4 * scale);
+    bg.strokeColor = item.owned ? rgba(232, 190, 104, 235) : rgba(150, 136, 118, 200);
+    bg.lineWidth = Math.max(1, 1.4 * scale);
+    traceHex(bg, badgeW, badgeH);
     bg.stroke();
-    const rarityLabel = this.host.addChildLabel(badge, 'Text', rarity, 0, 0, Math.max(11, badgeH * 0.66), color, new Size(badgeW - 4 * scale, badgeH));
+    const rarityLabel = this.host.addChildLabel(badge, 'Text', rarity, 0, 0, Math.max(11, badgeH * 0.62), item.owned ? rgba(255, 246, 226) : rgba(196, 186, 170), new Size(badgeW - 6 * scale, badgeH));
     rarityLabel.overflow = Label.Overflow.SHRINK;
     rarityLabel.isBold = true;
+    this.applyOutline(rarityLabel, scale, true);
     const name = this.host.addChildLabel(card, 'LobbyCodexHeroName', safeText(item.heroName), 0, -height / 2 + height * 0.122, Math.min(17 * scale, height * 0.052), item.owned ? rgba(250, 218, 146) : rgba(168, 156, 132), new Size(width - 56 * scale, Math.max(22 * scale, height * 0.056)));
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
@@ -729,11 +694,14 @@ export class LobbyCodexPanelRenderer {
     const sectionTitle = this.host.addChildLabel(body, 'LobbyCodexPopupRewardTitle', item.owned ? '激活奖励' : '收录激活奖励', rightLeft, height * 0.085, 18 * scale, rgba(226, 196, 132), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     sectionTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(sectionTitle, scale, false);
-    this.renderRewardRows(body, item.activateRewards, rightLeft, height * 0.085 - 34 * scale, rightWidth, scale);
+    // 奖励清单装进暗底金边小框(参考图排版),获取途径紧随其后。
     const rewardRows = Math.max(1, Math.min(4, item.activateRewards.length));
-    const sourceY = height * 0.085 - 34 * scale - rewardRows * 36 * scale - 4 * scale;
+    const boxTop = height * 0.085 - 18 * scale;
+    const boxH = rewardRows * 38 * scale + 18 * scale;
+    this.drawRewardBox(body, rightLeft, boxTop, rightWidth, boxH, scale);
+    this.renderRewardRows(body, item.activateRewards, rightLeft + 14 * scale, boxTop - 9 * scale - 19 * scale, rightWidth - 28 * scale, scale);
     const sourceText = `获取途径:${rarity === 'UR' ? '限定召唤 / 英雄召唤' : '英雄召唤'}`;
-    const source = this.host.addChildLabel(body, 'LobbyCodexPopupSource', sourceText, rightLeft, sourceY, 15 * scale, rgba(176, 164, 138), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+    const source = this.host.addChildLabel(body, 'LobbyCodexPopupSource', sourceText, rightLeft, boxTop - boxH - 16 * scale, 15 * scale, rgba(176, 164, 138), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
     source.overflow = Label.Overflow.SHRINK;
 
     const statusText = !item.owned
@@ -743,7 +711,7 @@ export class LobbyCodexPanelRenderer {
       : item.rewardClaimable
       ? `已收录 ×${Math.max(1, item.ownedCount)} · 首次收录奖励待领取`
       : `已收录 ×${Math.max(1, item.ownedCount)}`;
-    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, -height * 0.245, 15 * scale, item.rewardClaimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, -height * 0.27, 15 * scale, item.rewardClaimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
     status.overflow = Label.Overflow.SHRINK;
 
     const btnW = clamp(rightWidth * 0.62, 150 * scale, 220 * scale);
@@ -790,10 +758,14 @@ export class LobbyCodexPanelRenderer {
     const sectionTitle = this.host.addChildLabel(body, 'LobbyCodexPopupRewardTitle', '里程碑奖励', rightLeft, height * 0.08, 18 * scale, rgba(226, 196, 132), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     sectionTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(sectionTitle, scale, false);
-    this.renderRewardRows(body, milestone.rewards, rightLeft, height * 0.08 - 34 * scale, rightWidth, scale);
+    const mRows = Math.max(1, Math.min(4, milestone.rewards.length));
+    const mBoxTop = height * 0.08 - 18 * scale;
+    const mBoxH = mRows * 38 * scale + 18 * scale;
+    this.drawRewardBox(body, rightLeft, mBoxTop, rightWidth, mBoxH, scale);
+    this.renderRewardRows(body, milestone.rewards, rightLeft + 14 * scale, mBoxTop - 9 * scale - 19 * scale, rightWidth - 28 * scale, scale);
 
     const statusText = milestone.claimed ? '奖励已领取' : milestone.claimable ? '达成!可领取里程碑奖励' : `再收录 ${Math.max(0, milestone.targetCount - state.ownedCount)} 位英雄即可领取`;
-    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, -height * 0.23, 15 * scale, milestone.claimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, -height * 0.27, 15 * scale, milestone.claimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
     status.overflow = Label.Overflow.SHRINK;
 
     const btnW = clamp(rightWidth * 0.62, 150 * scale, 220 * scale);
@@ -844,6 +816,19 @@ export class LobbyCodexPanelRenderer {
     return { node: popup, width, height };
   }
 
+  /** 奖励清单底框:暗底 + 细金边。 */
+  private drawRewardBox(parent: Node, left: number, top: number, width: number, height: number, scale: number): void {
+    const node = this.host.addChildPlainNode(parent, 'LobbyCodexRewardBox', left + width / 2, top - height / 2, width, height);
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(8, 6, 9, 150);
+    g.roundRect(-width / 2, -height / 2, width, height, 8 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 170, 92, 96);
+    g.lineWidth = Math.max(1, 1 * scale);
+    g.roundRect(-width / 2, -height / 2, width, height, 8 * scale);
+    g.stroke();
+  }
+
   /** 弹框右栏分隔线:金色渐弱细线。 */
   private drawPopupDivider(parent: Node, left: number, y: number, width: number, scale: number): void {
     const node = this.host.addChildPlainNode(parent, 'LobbyCodexPopupDivider', left + width / 2, y, width, 2 * scale);
@@ -865,8 +850,8 @@ export class LobbyCodexPanelRenderer {
       none.overflow = Label.Overflow.SHRINK;
       return;
     }
-    const rowH = 36 * scale;
-    const iconSize = 30 * scale;
+    const rowH = 38 * scale;
+    const iconSize = 32 * scale;
     rewards.slice(0, 4).forEach((reward, index) => {
       const y = top - index * rowH;
       const iconPath = REWARD_ICON_BY_CODE[reward.code.toUpperCase()];
@@ -881,7 +866,7 @@ export class LobbyCodexPanelRenderer {
         g.stroke();
       }
       const text = `${safeText(reward.name || reward.code)} ×${this.formatAmount(reward.amount)}`;
-      const label = this.host.addChildLabel(parent, `LobbyCodexRewardText_${index}`, text, left + iconSize + 10 * scale, y, 17 * scale, rgba(236, 222, 186), new Size(width - iconSize - 10 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+      const label = this.host.addChildLabel(parent, `LobbyCodexRewardText_${index}`, text, left + iconSize + 12 * scale, y, 18 * scale, rgba(236, 222, 186), new Size(width - iconSize - 12 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, false);
     });
