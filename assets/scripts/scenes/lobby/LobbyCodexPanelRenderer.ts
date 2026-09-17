@@ -483,66 +483,95 @@ export class LobbyCodexPanelRenderer {
     this.host.applyImageButtonFeedback(card, 1.024, 0.982);
     // 图鉴卡不挂 SSR/UR 边框动效(2026-09-15 用户拍板:图鉴去掉,英雄界面保留)。
     this.host.renderCodexHeroCardArtwork(card, this.toHeroStub(item), width, height, scale, false);
-    this.renderCardChrome(card, item, width, height, scale);
-    // 参考图:每张卡外沿一圈细金边,让卡与背景分层;未收集用暗灰。
-    const rim = this.host.addChildPlainNode(card, 'LobbyCodexCardRim', 0, 0, width, height);
-    const rg = rim.addComponent(Graphics);
-    rg.strokeColor = item.owned ? rgba(214, 170, 92, 120) : rgba(110, 100, 90, 80);
-    rg.lineWidth = Math.max(1, 1.2 * scale);
-    this.traceSlantRect(rg, width * 1.004, height * 1.003, 14 * scale);
-    rg.stroke();
+
+    // 2026-09-17 滚动卡顿优化:未收集灰影 / 外沿金边 / 稀有度牌 / 角标全部画进同一个 Graphics,
+    // 每卡程序绘制从 5 个节点降到 1 个,draw call 与每帧脏节点重填都少一大截。
+    const deco = this.host.addChildPlainNode(card, 'LobbyCodexCardDeco', 0, 0, width, height);
+    const g = deco.addComponent(Graphics);
+    if (!item.owned) {
+      g.fillColor = rgba(4, 4, 8, 172);
+      this.traceSlantRect(g, width * 0.985, height * 0.99, 16 * scale);
+      g.fill();
+    }
+    g.strokeColor = item.owned ? rgba(214, 170, 92, 120) : rgba(110, 100, 90, 80);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    this.traceSlantRect(g, width * 1.004, height * 1.003, 14 * scale);
+    g.stroke();
+    this.renderCardChrome(deco, item, width, height, scale, g);
 
     if (!item.owned) {
-      this.renderUnownedOverlay(card, width, height, scale);
+      const lockH = clamp(height * 0.2, 30 * scale, 56 * scale);
+      const lockW = lockH * (135 / 192);
+      this.host.addSprite('LobbyCodexLock', CODEX_UI_ASSETS.lock, 0, height * 0.1, lockW, lockH, deco);
+      const tip = this.host.addChildLabel(deco, 'LobbyCodexUnownedText', '未收集', 0, height * 0.1 - lockH * 0.78, Math.min(15 * scale, height * 0.048), rgba(214, 200, 168), new Size(width - 30 * scale, 20 * scale));
+      tip.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(tip, scale, true);
+      tip.cacheMode = Label.CacheMode.BITMAP;
       return;
     }
     if (item.rewardClaimable) {
       this.renderClaimableGlow(card, width, height, scale);
-      this.addCornerTag(card, 'LobbyCodexClaimTag', '领取', width / 2 - 26 * scale, height / 2 - 14 * scale, 50 * scale, 22 * scale, rgba(200, 44, 38, 242), rgba(255, 232, 200), scale);
-      this.addRedDot(card, width / 2 - 2 * scale, height / 2 - 2 * scale, 5 * scale);
+      this.addCornerTag(deco, 'LobbyCodexClaimTag', '领取', width / 2 - 26 * scale, height / 2 - 14 * scale, 50 * scale, 22 * scale, rgba(200, 44, 38, 242), rgba(255, 232, 200), scale, g);
     } else if (item.rewardClaimed) {
-      this.addCornerTag(card, 'LobbyCodexClaimedTag', '已激活', width / 2 - 32 * scale, height / 2 - 14 * scale, 62 * scale, 22 * scale, rgba(30, 92, 58, 228), rgba(200, 240, 206), scale);
+      this.addCornerTag(deco, 'LobbyCodexClaimedTag', '已激活', width / 2 - 32 * scale, height / 2 - 14 * scale, 62 * scale, 22 * scale, rgba(30, 92, 58, 228), rgba(200, 240, 206), scale, g);
     }
   }
 
   /**
-   * 卡面文字(2026-09-17 用户反馈优化):稀有度改成左上角小徽章,不再压在英雄脚上;
+   * 卡面文字(2026-09-17 用户反馈优化):稀有度改成左上角六边形色牌,不再压在英雄脚上;
    * 名字落到卡框下部铭牌正中(铭牌区约 0.04h~0.20h)。
+   * sharedGraphics 给定时把牌面画进它(卡墙合批路径),否则自建节点(弹框大卡)。
    */
-  private renderCardChrome(card: Node, item: LobbyCodexItemVO, width: number, height: number, scale: number): void {
+  private renderCardChrome(card: Node, item: LobbyCodexItemVO, width: number, height: number, scale: number, sharedGraphics?: Graphics): void {
     const rarity = safeText(item.rarity || 'R').toUpperCase();
-    // 参考图(2026-09-17):六边形牌,稀有度色实底 + 金边 + 白字;未收集灰底。
     const badgeW = clamp(width * 0.22, 32 * scale, 52 * scale);
     const badgeH = badgeW * 0.58;
-    const badge = this.host.addChildPlainNode(card, 'LobbyCodexRarityBadge', -width / 2 + badgeW / 2 + width * 0.07, height / 2 - badgeH / 2 - height * 0.07, badgeW, badgeH);
+    const badgeX = -width / 2 + badgeW / 2 + width * 0.07;
+    const badgeY = height / 2 - badgeH / 2 - height * 0.07;
     const color = item.owned ? this.rarityColor(rarity) : rgba(96, 90, 84);
-    const bg = badge.addComponent(Graphics);
     const cut = badgeH * 0.5;
-    const traceHex = (g: Graphics, w: number, h: number): void => {
-      g.moveTo(-w / 2 + cut, h / 2);
-      g.lineTo(w / 2 - cut, h / 2);
-      g.lineTo(w / 2, 0);
-      g.lineTo(w / 2 - cut, -h / 2);
-      g.lineTo(-w / 2 + cut, -h / 2);
-      g.lineTo(-w / 2, 0);
+    const traceHex = (g: Graphics, cx: number, cy: number, w: number, h: number): void => {
+      g.moveTo(cx - w / 2 + cut, cy + h / 2);
+      g.lineTo(cx + w / 2 - cut, cy + h / 2);
+      g.lineTo(cx + w / 2, cy);
+      g.lineTo(cx + w / 2 - cut, cy - h / 2);
+      g.lineTo(cx - w / 2 + cut, cy - h / 2);
+      g.lineTo(cx - w / 2, cy);
       g.close();
     };
+    let labelParent: Node;
+    let bg: Graphics;
+    let cx = 0;
+    let cy = 0;
+    if (sharedGraphics) {
+      bg = sharedGraphics;
+      labelParent = card;
+      cx = badgeX;
+      cy = badgeY;
+    } else {
+      labelParent = this.host.addChildPlainNode(card, 'LobbyCodexRarityBadge', badgeX, badgeY, badgeW, badgeH);
+      bg = labelParent.addComponent(Graphics);
+    }
     bg.fillColor = new Color(Math.round(color.r * 0.55), Math.round(color.g * 0.55), Math.round(color.b * 0.55), 236);
-    traceHex(bg, badgeW, badgeH);
+    traceHex(bg, cx, cy, badgeW, badgeH);
     bg.fill();
     bg.strokeColor = item.owned ? rgba(232, 190, 104, 235) : rgba(150, 136, 118, 200);
     bg.lineWidth = Math.max(1, 1.4 * scale);
-    traceHex(bg, badgeW, badgeH);
+    traceHex(bg, cx, cy, badgeW, badgeH);
     bg.stroke();
-    const rarityLabel = this.host.addChildLabel(badge, 'Text', rarity, 0, 0, Math.max(11, badgeH * 0.62), item.owned ? rgba(255, 246, 226) : rgba(196, 186, 170), new Size(badgeW - 6 * scale, badgeH));
+    const rarityLabel = this.host.addChildLabel(labelParent, 'LobbyCodexRarityText', rarity, cx, cy, Math.max(11, badgeH * 0.62), item.owned ? rgba(255, 246, 226) : rgba(196, 186, 170), new Size(badgeW - 6 * scale, badgeH));
     rarityLabel.overflow = Label.Overflow.SHRINK;
     rarityLabel.isBold = true;
     this.applyOutline(rarityLabel, scale, true);
+    // 卡上静态文字走位图缓存:进动态图集后可与贴图合批。
+    rarityLabel.cacheMode = Label.CacheMode.BITMAP;
     const name = this.host.addChildLabel(card, 'LobbyCodexHeroName', safeText(item.heroName), 0, -height / 2 + height * 0.122, Math.min(17 * scale, height * 0.052), item.owned ? rgba(250, 218, 146) : rgba(168, 156, 132), new Size(width - 56 * scale, Math.max(22 * scale, height * 0.056)));
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
+    name.cacheMode = Label.CacheMode.BITMAP;
   }
 
+  /** 弹框大卡的未收集灰影(卡墙路径已合进 renderCodexCard 的共享 Graphics)。 */
   private renderUnownedOverlay(card: Node, width: number, height: number, scale: number): void {
     const overlay = this.host.addChildPlainNode(card, 'LobbyCodexUnownedShade', 0, 0, width, height);
     const g = overlay.addComponent(Graphics);
@@ -551,15 +580,7 @@ export class LobbyCodexPanelRenderer {
     g.fill();
     const lockH = clamp(height * 0.2, 30 * scale, 56 * scale);
     const lockW = lockH * (135 / 192);
-    if (!this.host.addSprite('LobbyCodexLock', CODEX_UI_ASSETS.lock, 0, height * 0.1, lockW, lockH, overlay)) {
-      const lg = this.host.addChildPlainNode(overlay, 'LobbyCodexLockFallback', 0, height * 0.1, lockW, lockH).addComponent(Graphics);
-      lg.strokeColor = rgba(210, 190, 150, 220);
-      lg.lineWidth = Math.max(1.5, 2.4 * scale);
-      lg.roundRect(-lockW / 2, -lockH / 2, lockW, lockH * 0.55, 3 * scale);
-      lg.stroke();
-      lg.arc(0, lockH * 0.05, lockW * 0.3, 0, Math.PI, false);
-      lg.stroke();
-    }
+    this.host.addSprite('LobbyCodexLock', CODEX_UI_ASSETS.lock, 0, height * 0.1, lockW, lockH, overlay);
     const tip = this.host.addChildLabel(overlay, 'LobbyCodexUnownedText', '未收集', 0, height * 0.1 - lockH * 0.78, Math.min(15 * scale, height * 0.048), rgba(214, 200, 168), new Size(width - 30 * scale, 20 * scale));
     tip.overflow = Label.Overflow.SHRINK;
     this.applyOutline(tip, scale, true);
@@ -585,22 +606,35 @@ export class LobbyCodexPanelRenderer {
     const opacity = glow.addComponent(UIOpacity);
     opacity.opacity = 255;
     tween(opacity)
-      .repeatForever(tween(opacity).to(0.7, { opacity: 110 }).to(0.7, { opacity: 255 }))
+      .repeatForever(tween(opacity).to(1.2, { opacity: 120 }).to(1.2, { opacity: 255 }))
       .start();
   }
 
-  private addCornerTag(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, fill: Color, textColor: Color, scale: number): void {
-    const tag = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const g = tag.addComponent(Graphics);
+  /** 角标:sharedGraphics 给定时画进它(卡墙合批路径),文字挂在 parent 对应位置。 */
+  private addCornerTag(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, fill: Color, textColor: Color, scale: number, sharedGraphics?: Graphics): void {
+    let g: Graphics;
+    let labelParent: Node;
+    let lx = 0;
+    let ly = 0;
+    if (sharedGraphics) {
+      g = sharedGraphics;
+      labelParent = parent;
+      lx = x;
+      ly = y;
+    } else {
+      labelParent = this.host.addChildPlainNode(parent, name, x, y, width, height);
+      g = labelParent.addComponent(Graphics);
+    }
     g.fillColor = fill;
-    g.roundRect(-width / 2, -height / 2, width, height, 4 * scale);
+    g.roundRect(lx - width / 2, ly - height / 2, width, height, 4 * scale);
     g.fill();
     g.strokeColor = rgba(255, 226, 160, 160);
     g.lineWidth = Math.max(1, 1 * scale);
-    g.roundRect(-width / 2, -height / 2, width, height, 4 * scale);
+    g.roundRect(lx - width / 2, ly - height / 2, width, height, 4 * scale);
     g.stroke();
-    const label = this.host.addChildLabel(tag, 'Text', text, 0, 0, Math.max(11, 13 * scale), textColor, new Size(width - 6 * scale, height));
+    const label = this.host.addChildLabel(labelParent, `${name}Text`, text, lx, ly, Math.max(11, 13 * scale), textColor, new Size(width - 6 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
+    label.cacheMode = Label.CacheMode.BITMAP;
   }
 
   private addRedDot(parent: Node, x: number, y: number, radius: number): void {

@@ -690,11 +690,11 @@ export class LobbyHeroRosterPanelRenderer {
    * 不挂按钮/等级/星级/名字,三态由图鉴自己叠加;borderEffect=false 时省掉 SSR/UR 骨骼(未收集灰影下看不见)。
    */
   renderCardArtworkForCodex(card: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number, borderEffect: boolean): void {
-    this.drawHeroCardShadow(card, width, height, scale);
+    // 2026-09-17 图鉴滚动卡顿优化:不画阴影 Graphics;立绘 Mask 只在图片真会溢出窗口时才加(22 张卡逐卡 stencil 是大头)。
     if (!this.host.addSprite('LobbyHeroRosterCardSkin', this.resolveHeroRosterCardAsset(), 0, 0, width, height, card)) {
       this.drawHeroCardFallback(card, width, height, scale, hero);
     }
-    const hasCardArtwork = this.renderHeroCardBackground(card, hero, width, height, scale);
+    const hasCardArtwork = this.renderHeroCardBackground(card, hero, width, height, scale, true);
     if (borderEffect) {
       this.renderHeroCardBorderEffect(card, hero, width, height);
     }
@@ -711,7 +711,8 @@ export class LobbyHeroRosterPanelRenderer {
     graphics.fill();
   }
 
-  private renderHeroCardBackground(card: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): boolean {
+  /** lazyMask=true:先不挂 Mask,图加载后按实际显示尺寸判断,只有溢出窗口才补 Mask(图鉴卡墙用,省 stencil)。 */
+  private renderHeroCardBackground(card: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number, lazyMask = false): boolean {
     const assetPath = this.resolveHeroCardBackgroundAssetPath(hero);
     if (!assetPath) {
       return false;
@@ -726,8 +727,10 @@ export class LobbyHeroRosterPanelRenderer {
       maskWidth,
       maskHeight,
     );
-    const mask = maskNode.addComponent(Mask);
-    mask.type = Mask.Type.GRAPHICS_RECT;
+    if (!lazyMask) {
+      const mask = maskNode.addComponent(Mask);
+      mask.type = Mask.Type.GRAPHICS_RECT;
+    }
     const node = this.host.addChildPlainNode(maskNode, 'LobbyHeroRosterCardBackgroundSprite', 0, 0, maskWidth, maskHeight);
     const sprite = node.addComponent(Sprite);
     sprite.type = Sprite.Type.SIMPLE;
@@ -745,7 +748,15 @@ export class LobbyHeroRosterPanelRenderer {
       const frameSize = this.resolveHeroCardBackgroundFrameSize(frame);
       const displaySize = this.resolveHeroCardBackgroundDisplaySize(assetPath, frameSize, maskWidth, maskHeight, height, scale);
       node.getComponent(UITransform)?.setContentSize(displaySize);
-      node.setPosition(new Vec3(this.resolveHeroCardBackgroundOffsetX(assetPath, displaySize.width), this.resolveHeroCardBackgroundOffsetY(displaySize.height, maskHeight), 0));
+      const offsetX = this.resolveHeroCardBackgroundOffsetX(assetPath, displaySize.width);
+      node.setPosition(new Vec3(offsetX, this.resolveHeroCardBackgroundOffsetY(displaySize.height, maskHeight), 0));
+      if (lazyMask && !maskNode.getComponent(Mask)) {
+        const overflow = displaySize.width / 2 + Math.abs(offsetX) > maskWidth / 2 + 0.5 || displaySize.height > maskHeight + 0.5;
+        if (overflow) {
+          const lateMask = maskNode.addComponent(Mask);
+          lateMask.type = Mask.Type.GRAPHICS_RECT;
+        }
+      }
     });
     return true;
   }
