@@ -186,7 +186,7 @@ export class LobbyCodexPanelRenderer {
     sprite.node.getComponent(UITransform)?.setContentSize(new Size(srcW * coverScale, srcH * coverScale));
     const shade = this.host.addChildPlainNode(panel, 'LobbyCodexBackdropShade', 0, 0, width, height);
     const g = shade.addComponent(Graphics);
-    g.fillColor = rgba(4, 3, 6, 58);
+    g.fillColor = rgba(4, 3, 6, 34);
     g.rect(-width / 2, -height / 2, width, height);
     g.fill();
     return true;
@@ -203,14 +203,32 @@ export class LobbyCodexPanelRenderer {
     const captionW = 96 * scale;
     const countW = 84 * scale;
     const btnW = clamp(width * 0.13, 150 * scale, 196 * scale);
-    const groupGap = 36 * scale;
-    const groupW = captionW + 8 * scale + barW + 12 * scale + countW + groupGap + btnW;
+    const groupGap = 32 * scale;
+    // 2026-09-17 参考图美化:进度条一组装进暗色金边底板。
+    const platePad = 22 * scale;
+    const plateW = platePad + captionW + 8 * scale + barW + 12 * scale + countW + platePad;
+    const plateH = 94 * scale;
+    const groupW = plateW + groupGap + btnW;
     const groupLeft = -groupW / 2;
-    const barX = groupLeft + captionW + 8 * scale + barW / 2;
+    const barX = groupLeft + platePad + captionW + 8 * scale + barW / 2;
     const total = Math.max(1, state.total);
     const ratio = clamp(state.ownedCount / total, 0, 1);
 
-    const caption = this.host.addChildLabel(parent, 'LobbyCodexProgressCaption', '收录进度', groupLeft + captionW, rowY, 19 * scale, rgba(226, 196, 132), new Size(captionW, 26 * scale), HorizontalTextAlignment.RIGHT);
+    const plate = this.host.addChildPlainNode(parent, 'LobbyCodexProgressPlate', groupLeft + plateW / 2, rowY, plateW, plateH);
+    const pg = plate.addComponent(Graphics);
+    pg.fillColor = rgba(10, 7, 9, 196);
+    pg.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 12 * scale);
+    pg.fill();
+    pg.strokeColor = rgba(204, 156, 72, 210);
+    pg.lineWidth = Math.max(1, 1.6 * scale);
+    pg.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 12 * scale);
+    pg.stroke();
+    pg.strokeColor = rgba(204, 156, 72, 70);
+    pg.lineWidth = Math.max(1, 1 * scale);
+    pg.roundRect(-plateW / 2 + 4 * scale, -plateH / 2 + 4 * scale, plateW - 8 * scale, plateH - 8 * scale, 9 * scale);
+    pg.stroke();
+
+    const caption = this.host.addChildLabel(parent, 'LobbyCodexProgressCaption', '收录进度', groupLeft + platePad + captionW, rowY, 19 * scale, rgba(226, 196, 132), new Size(captionW, 26 * scale), HorizontalTextAlignment.RIGHT);
     caption.overflow = Label.Overflow.SHRINK;
     this.applyOutline(caption, scale, false);
 
@@ -235,7 +253,7 @@ export class LobbyCodexPanelRenderer {
       }
     }
     const countText = state.loaded ? `${state.ownedCount}/${state.total}` : state.loading ? '读取中' : '--/--';
-    const chestSize = clamp(barH * 2.0, 44 * scale, 64 * scale);
+    const chestSize = clamp(barH * 2.4, 48 * scale, 74 * scale);
     const count = this.host.addChildLabel(parent, 'LobbyCodexProgressCount', countText, barX + barW / 2 + 12 * scale, rowY, 22 * scale, rgba(255, 236, 178), new Size(countW, 28 * scale), HorizontalTextAlignment.LEFT);
     count.overflow = Label.Overflow.SHRINK;
     this.applyOutline(count, scale, true);
@@ -244,7 +262,7 @@ export class LobbyCodexPanelRenderer {
     state.milestones.forEach((milestone, index) => {
       const fraction = clamp(milestone.targetCount / total, 0, 1);
       const chestX = barX - barW / 2 + barW * (0.07 + 0.86 * fraction);
-      this.renderMilestoneChest(parent, milestone, index, chestX, rowY + 4 * scale, chestSize, scale, state.claiming !== null);
+      this.renderMilestoneChest(parent, milestone, index, chestX, rowY + 8 * scale, chestSize, scale, state.claiming !== null);
     });
 
     if (state.loaded) {
@@ -252,6 +270,11 @@ export class LobbyCodexPanelRenderer {
       const busy = state.claiming !== null;
       const claimable = state.claimableCount > 0;
       this.addAssetButton(parent, 'LobbyCodexClaimAll', claimable ? `一键领取 ${state.claimableCount}` : '暂无可领', btnX, rowY, btnW, scale, claimable && !busy ? 'claim' : 'disabled', claimable && !busy ? () => this.host.claimAllLobbyCodexRewards() : null);
+      if (claimable) {
+        // 参考图:钮右侧压一枚钻石角标,提示奖励属性。
+        const gem = 24 * scale;
+        this.host.addSprite('LobbyCodexClaimAllGem', REWARD_ICON_BY_CODE.DIAMOND, btnX + btnW * 0.36, rowY + 1 * scale, gem, gem, parent);
+      }
     }
 
     if (state.error) {
@@ -310,8 +333,8 @@ export class LobbyCodexPanelRenderer {
     const rowY = height / 2 - 140 * scale;
     const metrics = this.wallMetrics(width, height, scale);
     // 页签放大一档,左沿与卡墙第一列左沿对齐;页签总宽不超过卡墙宽的 62%,给右侧开关留位。
-    const gap = 10 * scale;
-    const tabW = clamp(Math.min(width * 0.095, (metrics.gridWidth * 0.62 - gap * (CODEX_FILTERS.length - 1)) / CODEX_FILTERS.length), 72 * scale, 132 * scale);
+    const gap = 12 * scale;
+    const tabW = clamp((metrics.gridWidth * 0.66 - gap * (CODEX_FILTERS.length - 1)) / CODEX_FILTERS.length, 80 * scale, 156 * scale);
     const startX = -metrics.gridWidth / 2 + tabW / 2;
     CODEX_FILTERS.forEach((filter, index) => {
       const active = state.filter === filter;
@@ -361,7 +384,7 @@ export class LobbyCodexPanelRenderer {
       g.roundRect(-width / 2, -height / 2, width, height, 6 * scale);
       g.stroke();
     }
-    const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 21 * scale, active ? rgba(255, 231, 166) : rgba(200, 182, 142), new Size(width - 16 * scale, 28 * scale));
+    const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 23 * scale, active ? rgba(255, 231, 166) : rgba(200, 182, 142), new Size(width - 16 * scale, 30 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, active);
     btn.addComponent(Button);
@@ -535,6 +558,13 @@ export class LobbyCodexPanelRenderer {
     // 图鉴卡不挂 SSR/UR 边框动效(2026-09-15 用户拍板:图鉴去掉,英雄界面保留)。
     this.host.renderCodexHeroCardArtwork(card, this.toHeroStub(item), width, height, scale, false);
     this.renderCardChrome(card, item, width, height, scale);
+    // 参考图:每张卡外沿一圈细金边,让卡与背景分层;未收集用暗灰。
+    const rim = this.host.addChildPlainNode(card, 'LobbyCodexCardRim', 0, 0, width, height);
+    const rg = rim.addComponent(Graphics);
+    rg.strokeColor = item.owned ? rgba(214, 170, 92, 120) : rgba(110, 100, 90, 80);
+    rg.lineWidth = Math.max(1, 1.2 * scale);
+    this.traceSlantRect(rg, width * 1.004, height * 1.003, 14 * scale);
+    rg.stroke();
 
     if (!item.owned) {
       this.renderUnownedOverlay(card, width, height, scale);
