@@ -194,41 +194,18 @@ export class LobbyCodexPanelRenderer {
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
     // 2026-09-17 用户反馈:标题/关闭一行,进度条 + 一键领取第二行整体横向居中,页签第三行。
-    const rowY = height / 2 - 74 * scale;
+    // 2026-09-17 用户反馈二:去掉底板、“收录进度”与计数,只留带宝箱的进度条 + 一键领取,整组横向居中。
+    const rowY = height / 2 - 70 * scale;
     const compact = width < 760 * scale;
-    const barW = clamp(width * (compact ? 0.4 : 0.34), 220 * scale, 520 * scale);
+    const barW = clamp(width * (compact ? 0.44 : 0.38), 240 * scale, 580 * scale);
     const barH = barW * (86 / 603);
-    const captionW = 96 * scale;
-    const countW = 84 * scale;
     const btnW = clamp(width * 0.13, 150 * scale, 196 * scale);
-    const groupGap = 32 * scale;
-    // 2026-09-17 参考图美化:进度条一组装进暗色金边底板。
-    const platePad = 22 * scale;
-    const plateW = platePad + captionW + 8 * scale + barW + 12 * scale + countW + platePad;
-    const plateH = 94 * scale;
-    const groupW = plateW + groupGap + btnW;
+    const groupGap = 44 * scale;
+    const groupW = barW + groupGap + btnW;
     const groupLeft = -groupW / 2;
-    const barX = groupLeft + platePad + captionW + 8 * scale + barW / 2;
+    const barX = groupLeft + barW / 2;
     const total = Math.max(1, state.total);
     const ratio = clamp(state.ownedCount / total, 0, 1);
-
-    const plate = this.host.addChildPlainNode(parent, 'LobbyCodexProgressPlate', groupLeft + plateW / 2, rowY, plateW, plateH);
-    const pg = plate.addComponent(Graphics);
-    pg.fillColor = rgba(10, 7, 9, 196);
-    pg.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 12 * scale);
-    pg.fill();
-    pg.strokeColor = rgba(204, 156, 72, 210);
-    pg.lineWidth = Math.max(1, 1.6 * scale);
-    pg.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 12 * scale);
-    pg.stroke();
-    pg.strokeColor = rgba(204, 156, 72, 70);
-    pg.lineWidth = Math.max(1, 1 * scale);
-    pg.roundRect(-plateW / 2 + 4 * scale, -plateH / 2 + 4 * scale, plateW - 8 * scale, plateH - 8 * scale, 9 * scale);
-    pg.stroke();
-
-    const caption = this.host.addChildLabel(parent, 'LobbyCodexProgressCaption', '收录进度', groupLeft + platePad + captionW, rowY, 19 * scale, rgba(226, 196, 132), new Size(captionW, 26 * scale), HorizontalTextAlignment.RIGHT);
-    caption.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(caption, scale, false);
 
     const frameSprite = this.host.addSprite('LobbyCodexBarFrame', CODEX_UI_ASSETS.progressFrame, barX, rowY, barW, barH, parent);
     const fillSprite = ratio > 0 ? this.host.addSprite('LobbyCodexBarFill', CODEX_UI_ASSETS.progressFilled, barX, rowY, barW, barH, parent) : null;
@@ -250,11 +227,7 @@ export class LobbyCodexPanelRenderer {
         g.fill();
       }
     }
-    const countText = state.loaded ? `${state.ownedCount}/${state.total}` : state.loading ? '读取中' : '--/--';
     const chestSize = clamp(barH * 2.4, 48 * scale, 74 * scale);
-    const count = this.host.addChildLabel(parent, 'LobbyCodexProgressCount', countText, barX + barW / 2 + 12 * scale, rowY, 22 * scale, rgba(255, 236, 178), new Size(countW, 28 * scale), HorizontalTextAlignment.LEFT);
-    count.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(count, scale, true);
 
     // 里程碑宝箱压在进度条对应刻度上,刻度映射到条内 [7%, 93%] 区间,末档宝箱不再越过条尾金框;点开弹框看奖励/领取。
     state.milestones.forEach((milestone, index) => {
@@ -328,7 +301,7 @@ export class LobbyCodexPanelRenderer {
   // ── 页签行:稀有度 + 仅看未收集 ──
 
   private renderFilterRow(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    const rowY = height / 2 - 140 * scale;
+    const rowY = height / 2 - 158 * scale;
     const metrics = this.wallMetrics(width, height, scale);
     // 页签放大一档,左沿与卡墙第一列左沿对齐;页签总宽不超过卡墙宽的 62%,给右侧开关留位。
     const gap = 12 * scale;
@@ -400,7 +373,7 @@ export class LobbyCodexPanelRenderer {
     bodyTop: number; bodyBottom: number; bodyWidth: number; columns: number;
     cardWidth: number; cardHeight: number; gap: number; rowGap: number; gridWidth: number;
   } {
-    const bodyTop = height / 2 - 186 * scale;
+    const bodyTop = height / 2 - 196 * scale;
     const bodyBottom = -height / 2 + 16 * scale;
     const bodyWidth = width - 56 * scale;
     const gap = 26 * scale;
@@ -438,7 +411,7 @@ export class LobbyCodexPanelRenderer {
     }
 
     // 顶部留出可领取柔光外扩的余量。
-    const effectPad = cardHeight * 0.06;
+    const effectPad = cardHeight * 0.02;
     const rows = Math.ceil(items.length / columns);
     const contentHeight = Math.max(bodyHeight, rows * cardHeight + (rows - 1) * rowGap + effectPad * 2);
 
