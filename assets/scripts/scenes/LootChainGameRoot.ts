@@ -26,6 +26,7 @@ import {
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { syncDesignResolutionToViewport } from '../app/ScreenAdapter';
+import { ensureAssetServiceWorker, isBootPreloadCached, markBootPreloadCached } from '../app/AssetOfflineCache';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
@@ -444,6 +445,11 @@ export class LootChainGameRoot extends Component {
   /** 启动预载:纯程序绘制加载屏 → loadDir 全量 UI 图与骨骼 → 进登录。任何目录失败只告警不拦门。 */
   private runBootPreload(): void {
     this.bootPreloadActive = true;
+    // 2026-09-17 用户拍板:首次访问预载完成后资源已存本地,二次访问不再显示预载屏。
+    if (isBootPreloadCached()) {
+      this.runCachedBootWarmup();
+      return;
+    }
     const layout = this.resolveLayout();
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
@@ -543,6 +549,9 @@ export class LootChainGameRoot extends Component {
           if (done >= total) {
             if (failed > 0) {
               console.warn(`[LootChain] boot preload: ${failed}/${total} 项加载失败(已跳过)`);
+            } else {
+              // 全部下载成功才记标记;有失败项下次访问重新预载补齐。
+              markBootPreloadCached();
             }
             finish();
             return;
@@ -568,10 +577,47 @@ export class LootChainGameRoot extends Component {
       if (bundleError) {
         console.warn('[LootChain] boot preload: resources bundle 加载失败', bundleError);
       }
-      startPreload();
+      // 首次访问先等 Service Worker 接管页面,预载请求才会写入本地缓存(不支持/超时照常预载)。
+      void ensureAssetServiceWorker(true).then(() => startPreload());
     });
     // 兜底:预载异常悬挂也不至于锁死进不了游戏。
     setTimeout(finish, 180000);
+  }
+
+  /**
+   * 二次访问快速启动:不画预载屏,只把登录页自己的十几张图从本地缓存读出来就进登录;
+   * 其余素材在各页面用到时从本地缓存按需加载。最多等 3 秒,读不到也照常放行。
+   */
+  private runCachedBootWarmup(): void {
+    // 顺带检查 Service Worker 是否有新版本,不阻塞启动。
+    void ensureAssetServiceWorker(false);
+    let finished = false;
+    const finish = (): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      this.bootPreloadActive = false;
+      this.renderCurrentView();
+      void this.tryResumeSession();
+    };
+    assetManager.loadBundle('resources', () => {
+      const infos: Array<{ path: string }> = resources.getDirWithPath('ui/login', SpriteFrame) ?? [];
+      let remaining = infos.length;
+      if (remaining === 0) {
+        finish();
+        return;
+      }
+      infos.forEach((info) => {
+        resources.load(info.path, SpriteFrame, () => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            finish();
+          }
+        });
+      });
+    });
+    setTimeout(finish, 3000);
   }
 
   // 启动自动恢复会话:用 /me/lobby(已放行)探活 token,成功走与真实登录相同的入口流程。
