@@ -77,4 +77,6 @@ export interface LobbyCodexPanelState {
   selectedMilestone: number | null;
   /** 领取中的键('HERO:<code>' / 'MILESTONE:<n>' / 'ALL'),用于禁用按钮。 */
   claiming: string | null;
+  /** 领取成功后待播放的特效(渲染器消费一次后清空):key 同 claiming 键。 */
+  claimFx: { key: string; rewards: QuestRewardItemVO[]; token: number } | null;
 }

@@ -19,6 +19,7 @@ function emptyState(): LobbyCodexPanelState {
     selectedHeroCode: null,
     selectedMilestone: null,
     claiming: null,
+    claimFx: null,
   };
 }
 
@@ -106,6 +107,16 @@ export class LobbyCodexState {
   setClaiming(key: string | null): void {
     this.panelState = { ...this.panelState, claiming: key };
     this.revision += 1;
+  }
+
+  setClaimFx(fx: LobbyCodexPanelState['claimFx']): void {
+    this.panelState = { ...this.panelState, claimFx: fx };
+    this.revision += 1;
+  }
+
+  /** 渲染器播完特效后静默清票据(不 bump,避免再触发一次整页重绘)。 */
+  clearClaimFx(): void {
+    this.panelState = { ...this.panelState, claimFx: null };
   }
 
   snapshot(): LobbyCodexPanelState {

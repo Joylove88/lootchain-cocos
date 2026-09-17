@@ -2378,7 +2378,11 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyCodexState.setClaiming(key);
-    this.renderCurrentLobbyScenePage();
+    // 宝箱直领(2026-09-17):没有弹框时不在请求开始就整页重绘,免得宝箱闪一下;弹框里的按钮需要"领取中"态才重绘。
+    const before = this.lobbyCodexState.snapshot();
+    if (before.selectedHeroCode || before.selectedMilestone !== null) {
+      this.renderCurrentLobbyScenePage();
+    }
     void request()
       .then((result) => {
         const rewardText = result.rewards.map((item) => `${item.name}×${item.amount}`).join(' ');
@@ -2386,10 +2390,15 @@ export class LootChainGameRoot extends Component {
         // 领取接口直接带回最新汇总,免二次拉取;弹框保持打开以展示"已领取"态。
         this.lobbyCodexState.applyLoaded(result.summary);
         this.lobbyCodexState.setClaiming(null);
+        // 种一张特效票据,渲染器在新一帧的宝箱/按钮位置上播领取特效后消费掉。
+        this.lobbyCodexState.setClaimFx({ key, rewards: result.rewards, token: Date.now() });
         this.renderCurrentLobbyScenePage();
-        const profile = this.currentLobbyProfile();
-        void this.loadLobbyProfile(profile.userId);
-        void this.loadLobbyBag(true);
+        // 资料/背包刷新会触发整页重绘、打断领取特效,延后到特效播完再拉。
+        this.scheduleOnce(() => {
+          const profile = this.currentLobbyProfile();
+          void this.loadLobbyProfile(profile.userId);
+          void this.loadLobbyBag(true);
+        }, 2.4);
       })
       .catch((error) => {
         this.lobbyCodexState.setClaiming(null);
@@ -2402,6 +2411,10 @@ export class LootChainGameRoot extends Component {
 
   private currentLobbyCodexState(): LobbyCodexPanelState {
     return this.lobbyCodexLoader.currentState();
+  }
+
+  private acknowledgeLobbyCodexClaimFx(): void {
+    this.lobbyCodexState.clearClaimFx();
   }
 
   private openLobbyHeroRosterPanel(): void {

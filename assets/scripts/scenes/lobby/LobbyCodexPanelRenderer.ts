@@ -82,6 +82,8 @@ export interface LobbyCodexPanelHost {
   selectLobbyCodexMilestone(targetCount: number | null): void;
   claimLobbyCodexReward(payload: LobbyCodexClaimPayload): void;
   claimAllLobbyCodexRewards(): void;
+  /** 渲染器播完领取特效后调用,静默清掉票据。 */
+  acknowledgeLobbyCodexClaimFx(): void;
   openLobbyGachaSceneFromCodex(): void;
   /** 复用英雄名册的卡面绘制(阴影+卡框+立绘+稀有度边框动效),图鉴自己叠三态。 */
   renderCodexHeroCardArtwork(card: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number, borderEffect: boolean): void;
@@ -229,12 +231,24 @@ export class LobbyCodexPanelRenderer {
     }
     const chestSize = clamp(barH * 2.4, 48 * scale, 74 * scale);
 
-    // 里程碑宝箱压在进度条对应刻度上,刻度映射到条内 [7%, 93%] 区间,末档宝箱不再越过条尾金框;点开弹框看奖励/领取。
+    // 里程碑宝箱压在进度条对应刻度上,刻度映射到条内 [7%, 93%] 区间,末档宝箱不再越过条尾金框。
+    // 可领取的宝箱点一下直接领(2026-09-17 用户反馈:不弹框),其余状态点开弹框看奖励。
+    const chestNodes = new Map<number, Node>();
     state.milestones.forEach((milestone, index) => {
       const fraction = clamp(milestone.targetCount / total, 0, 1);
       const chestX = barX - barW / 2 + barW * (0.07 + 0.86 * fraction);
-      this.renderMilestoneChest(parent, milestone, index, chestX, rowY + 8 * scale, chestSize, scale, state.claiming !== null);
+      chestNodes.set(milestone.targetCount, this.renderMilestoneChest(parent, milestone, index, chestX, rowY + 8 * scale, chestSize, scale));
     });
+    // 领取成功特效:票据落在刚变成"已开"的宝箱上,播一次即消费。
+    const fx = state.claimFx;
+    if (fx) {
+      const match = /^MILESTONE:(\d+)$/.exec(fx.key);
+      const chest = match ? chestNodes.get(Number(match[1])) ?? null : null;
+      if (chest) {
+        this.playChestClaimFx(parent, chest, fx.rewards, chestSize, scale);
+      }
+      this.host.acknowledgeLobbyCodexClaimFx();
+    }
 
     if (state.loaded) {
       const btnX = groupLeft + groupW - btnW / 2;
@@ -254,7 +268,7 @@ export class LobbyCodexPanelRenderer {
     }
   }
 
-  private renderMilestoneChest(parent: Node, milestone: LobbyCodexMilestoneVO, index: number, x: number, y: number, size: number, scale: number, busy: boolean): void {
+  private renderMilestoneChest(parent: Node, milestone: LobbyCodexMilestoneVO, index: number, x: number, y: number, size: number, scale: number): Node {
     const node = this.host.addChildPlainNode(parent, `LobbyCodexChest_${index}`, x, y, size, size);
     const assetPath = milestone.claimed ? CODEX_UI_ASSETS.chestOpened : milestone.claimable ? CODEX_UI_ASSETS.chestReady : CODEX_UI_ASSETS.chestLocked;
     const art = this.host.addSprite('Art', assetPath, 0, 0, size, size, node);
@@ -271,11 +285,86 @@ export class LobbyCodexPanelRenderer {
     node.addComponent(Button);
     this.host.applyImageButtonFeedback(node, 1.08, 0.94);
     node.on(Button.EventType.CLICK, () => {
-      if (busy) {
+      // 点击时读实时状态:直领期间不重绘,靠这里挡住连点。
+      if (this.host.currentLobbyCodexState().claiming) {
+        return;
+      }
+      if (milestone.claimable) {
+        this.host.claimLobbyCodexReward({ type: 'MILESTONE', targetCount: milestone.targetCount });
         return;
       }
       this.host.selectLobbyCodexMilestone(milestone.targetCount);
     }, this);
+    return node;
+  }
+
+  /**
+   * 宝箱直领特效:宝箱弹一下 + 金环扩散 + 火花四散 + 奖励飘字;全部挂在临时节点上,2.2s 后自毁,
+   * 不挂 Button 不挡输入;若期间整页重绘被销毁也无副作用。
+   */
+  private playChestClaimFx(parent: Node, chest: Node, rewards: QuestRewardItemVO[], size: number, scale: number): void {
+    const pos = chest.position;
+    const fx = this.host.addChildPlainNode(parent, 'LobbyCodexChestFx', pos.x, pos.y, size * 3, size * 3);
+
+    // 宝箱弹跳
+    chest.setScale(new Vec3(0.8, 0.8, 1));
+    tween(chest)
+      .to(0.14, { scale: new Vec3(1.32, 1.32, 1) }, { easing: 'quadOut' })
+      .to(0.32, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
+      .start();
+
+    // 金环扩散
+    for (let r = 0; r < 2; r += 1) {
+      const ring = this.host.addChildPlainNode(fx, `Ring_${r}`, 0, 0, size, size);
+      const rg = ring.addComponent(Graphics);
+      rg.strokeColor = r === 0 ? rgba(255, 220, 120, 240) : rgba(255, 180, 70, 180);
+      rg.lineWidth = Math.max(2, (r === 0 ? 3.2 : 2) * scale);
+      rg.circle(0, 0, size * 0.42);
+      rg.stroke();
+      const ro = ring.addComponent(UIOpacity);
+      ring.setScale(new Vec3(0.6, 0.6, 1));
+      tween(ring).delay(r * 0.12).to(0.6, { scale: new Vec3(2.8, 2.8, 1) }, { easing: 'quadOut' }).start();
+      tween(ro).delay(r * 0.12).to(0.6, { opacity: 0 }).start();
+    }
+
+    // 火花四散
+    const sparkCount = 12;
+    for (let i = 0; i < sparkCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / sparkCount + (Math.random() - 0.5) * 0.5;
+      const dist = size * (0.9 + Math.random() * 0.7);
+      const radius = (2.2 + Math.random() * 2.2) * scale;
+      const spark = this.host.addChildPlainNode(fx, `Spark_${i}`, 0, 0, radius * 2, radius * 2);
+      const sg = spark.addComponent(Graphics);
+      sg.fillColor = i % 3 === 0 ? rgba(255, 240, 200, 255) : rgba(255, 200, 90, 255);
+      sg.circle(0, 0, radius);
+      sg.fill();
+      const so = spark.addComponent(UIOpacity);
+      tween(spark)
+        .to(0.55 + Math.random() * 0.25, { position: new Vec3(Math.cos(angle) * dist, Math.sin(angle) * dist + size * 0.15, 0) }, { easing: 'quadOut' })
+        .start();
+      tween(so).delay(0.25).to(0.45, { opacity: 0 }).start();
+    }
+
+    // 奖励飘字(最多 3 条,错峰上浮淡出)
+    rewards.slice(0, 3).forEach((reward, index) => {
+      const text = `+${this.formatAmount(reward.amount)} ${safeText(reward.name || reward.code)}`;
+      // 宝箱贴着屏幕顶,飘字从箱底起飞、只升到箱子中线附近,不会飘出屏外。
+      const label = this.host.addChildLabel(fx, `Float_${index}`, text, 0, -size * 0.85 - index * 8 * scale, 20 * scale, rgba(255, 232, 150), new Size(260 * scale, 28 * scale));
+      label.overflow = Label.Overflow.SHRINK;
+      label.isBold = true;
+      this.applyOutline(label, scale, true);
+      const lo = label.node.addComponent(UIOpacity);
+      lo.opacity = 0;
+      const delay = 0.1 + index * 0.16;
+      tween(lo).delay(delay).to(0.15, { opacity: 255 }).delay(0.85).to(0.45, { opacity: 0 }).start();
+      tween(label.node).delay(delay).by(1.45, { position: new Vec3(0, size * 0.55 + index * 6 * scale, 0) }, { easing: 'quadOut' }).start();
+    });
+
+    tween(fx).delay(2.2).call(() => {
+      if (fx.isValid) {
+        fx.destroy();
+      }
+    }).start();
   }
 
   /** 宝箱缺图时的手绘占位:圆角箱体 + 盖子;锁定灰、可领金、已开绿。 */
