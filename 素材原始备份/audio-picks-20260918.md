@@ -34,4 +34,16 @@
 | 战斗预演 | heal_cast_01 | 治疗法术zth(裁 2.0s) | 治疗 | 治愈光 |
 | 战斗预演 | buff_apply_01 | 吟唱激励zth(裁 1.35s) | 增益 | 吟唱 |
 
-未挂音效、未来可加:页签切换、抽卡召唤影像已有自带 call.mp3、背景音乐仍是占位(素材包不含 BGM,建议 Suno 出)。
+## 背景音乐(2026-09-18,来源:D:\骨骼动画素材\C1812音效\Data\Sound\BGM)
+
+同一 C1812 包里 29 首 BGM 全部量过时长/响度/循环接缝(首尾 50ms 能量差)。选用:
+
+| 文件 | 选用 | 触发点 | 依据 |
+|---|---|---|---|
+| `audio/bgm/bgm_lobby.mp3` | BGM_World(120s) | 大厅及所有功能页 | 接缝 0.0 dB 可无缝循环;包作者自带的 LobbyTest 与它是同一文件 |
+| `audio/bgm/bgm_battle.mp3` | BGM_Battle_01(59s) | 进入战斗视图(守卫战/时间线战斗),回大厅切回 | 接缝 0.3 dB,能量最稳的战斗曲之一 |
+
+加工:单声道 128kbps MP3(LAME 带无缝信息),峰值压到 -1 dB 内;旧的程序合成 `bgm_lobby.wav`、`battle/bgm/battle_loop_01.wav` 已删(备份在 audio-placeholder-20260918)。
+其他备选:BGM_Town(城镇,末尾渐弱不适合硬循环)、BGM_Adventure(首尾渐弱 65s)、Card_BGM=BGM_Battle_06(平缓上扬,可做抽卡页)、BGM_Loading=BGM_Survivor(76s 末尾淡出)。
+
+未挂音效、未来可加:页签切换;抽卡召唤影像已有自带 call.mp3;同包 `UI/` 目录还有 33 条与本项目 UI 同源的界面音(TouchOpen/Close、Get_Reward、SummonMyth/Unique/Normal、LevelUp、Win/Lose),可替换现用界面音。

@@ -120,7 +120,8 @@ export const BATTLE_STAGE3_UI_ASSETS: BattlePresentationStage2UiAssets = {
 };
 
 export const BATTLE_STAGE3_AUDIO_CUES: BattlePresentationStage2AudioCues = {
-  battleBgm: 'audio/battle/bgm/battle_loop_01',
+  // 战斗 BGM 改由全局 GameAudio 在进入战斗视图时统一切换(2026-09-18),这里留空=时间线运行时不再自播,避免双轨叠放。
+  battleBgm: '',
   battleStart: 'audio/battle/ui/battle_start_stinger',
   heroBasicAttack: 'audio/battle/sfx/attack/hero_basic_01',
   rangedAttack: 'audio/battle/sfx/attack/ranged_01',

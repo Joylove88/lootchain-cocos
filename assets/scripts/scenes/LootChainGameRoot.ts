@@ -698,6 +698,13 @@ export class LootChainGameRoot extends Component {
       } else if (this.currentView === 'lobby' && this.isLobbyScenePageView(previousView)) {
         gameAudio.sfx('panel_close');
       }
+      // 战斗 BGM(2026-09-18 C1812 音效包 BGM_Battle_01):进战斗视图切战斗曲,回大厅由 renderLobby 切回大厅曲。
+      if (this.currentView === 'battle') {
+        gameAudio.bgm('bgm_battle');
+      } else if (previousView === 'battle') {
+        // 从战斗退到布阵/结算等功能页也切回大厅曲(不只回大厅那一条路)。
+        gameAudio.bgm('bgm_lobby');
+      }
     }
     // 所有视图入口集中在这里，resize 或状态变化时按 currentView 重绘。
     if (this.currentView === 'lobby') {
