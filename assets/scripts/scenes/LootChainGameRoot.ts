@@ -681,11 +681,23 @@ export class LootChainGameRoot extends Component {
     this.releaseLobbyVideoRuntime();
   }
 
+  /** 上一次真正渲染的视图:用于在视图切换时播功能页开/合音(2026-09-18 正式音源接入)。 */
+  private lastRenderedView: ViewName | null = null;
+
   private renderCurrentView(): void {
     // 启动预载期间任何重绘请求(精灵缓存到货整刷/resize)都会清掉加载屏并提前放行登录页,
     // 一律拦下;finish() 会先解闸再渲染(2026-09-10)。
     if (this.bootPreloadActive) {
       return;
+    }
+    const previousView = this.lastRenderedView;
+    this.lastRenderedView = this.currentView;
+    if (previousView !== null && previousView !== this.currentView) {
+      if (previousView === 'lobby' && this.isLobbyScenePageView(this.currentView)) {
+        gameAudio.sfx('panel_open');
+      } else if (this.currentView === 'lobby' && this.isLobbyScenePageView(previousView)) {
+        gameAudio.sfx('panel_close');
+      }
     }
     // 所有视图入口集中在这里，resize 或状态变化时按 currentView 重绘。
     if (this.currentView === 'lobby') {
@@ -1751,9 +1763,11 @@ export class LootChainGameRoot extends Component {
       // 弹结果框(展示新装备/返还件),闪光作为辅助氛围。
       this.lobbyForgeFuseResult = { success: result.success, chance: result.chance, item: result.resultItem };
       if (result.success) {
+        gameAudio.sfx('forge_success');
         this.setStatus(`合成成功！获得「${result.resultItem.equipName}」（成功率 ${Math.round(result.chance * 100)}%）。`);
         flash = { ok: true, text: `合成成功 · ${result.resultItem.equipName}` };
       } else {
+        gameAudio.sfx('ui_error');
         this.setStatus(`合成失败（成功率 ${Math.round(result.chance * 100)}%），返还「${result.resultItem.equipName}」×1。`);
         flash = { ok: false, text: '合成失败 · 材料返还 1 件' };
       }
@@ -2433,6 +2447,7 @@ export class LootChainGameRoot extends Component {
       .then((result) => {
         const rewardText = result.rewards.map((item) => `${item.name}×${item.amount}`).join(' ');
         this.setStatus(`已领取「${result.rewardName}」奖励:${rewardText}`);
+        gameAudio.sfx(key.startsWith('MILESTONE:') ? 'chest_open' : 'reward_claim');
         // 领取接口直接带回最新汇总,免二次拉取;弹框保持打开以展示"已领取"态。
         this.lobbyCodexState.applyLoaded(result.summary);
         this.lobbyCodexState.setClaiming(null);
@@ -2448,6 +2463,7 @@ export class LootChainGameRoot extends Component {
       })
       .catch((error) => {
         this.lobbyCodexState.setClaiming(null);
+        gameAudio.sfx('ui_error');
         this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
         // 服务端拒绝(如已领取/未达标)时按最新数据刷新一次,避免本地停留在过期的"可领取"态。
         void this.loadLobbyCodex(true);
@@ -2612,9 +2628,11 @@ export class LootChainGameRoot extends Component {
       await this.loadLobbyHeroDetail(heroId);
       const powerGain = Math.max(0, result.power - beforePower);
       lobbyGuide.markVisited('levelup');
+      gameAudio.sfx('level_up');
       this.setStatus(`${heroName} 升级成功：Lv.${result.level}，战力 ${this.formatInteger(result.power)}${powerGain > 0 ? `（+${this.formatInteger(powerGain)}）` : ''}，已回读英雄、背包、资源和主线引导。`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      gameAudio.sfx('ui_error');
       this.setStatus(`英雄升级失败：${message}`);
     } finally {
       this.lobbyHeroLevelUpBusyId = null;
@@ -2716,6 +2734,7 @@ export class LootChainGameRoot extends Component {
       await this.loadLobbyBag(true);
       // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
       await this.loadLobbyHeroDetail(heroId);
+      gameAudio.sfx(ok ? 'level_up' : 'ui_error');
       this.setStatus(ok ? `${heroName} 觉醒成功！大招等级上限提升，战力 ${this.formatInteger(lastPower)}。` : `觉醒失败：${failReason}`);
       this.lobbyHeroLevelUpBusyId = null;
       if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
@@ -2778,8 +2797,10 @@ export class LootChainGameRoot extends Component {
       // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
       await this.loadLobbyHeroDetail(heroId);
       if (ups > 0) {
+        gameAudio.sfx('level_up');
         this.setStatus(`${heroName} 升星 +${ups}${lastStar !== null ? `，当前 ${lastStar} 星` : ''}，战力 ${this.formatInteger(lastPower)}${stopReason ? `（已停止：${stopReason}）` : ''}`);
       } else {
+        gameAudio.sfx('ui_error');
         this.setStatus(`升星未执行：${stopReason || '碎片或金币不足'}`);
       }
       this.lobbyHeroLevelUpBusyId = null;
@@ -3078,12 +3099,15 @@ export class LootChainGameRoot extends Component {
       this.lobbyHeroEquipDirty = true;
       powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
       if (result.success) {
+        gameAudio.sfx('forge_success');
         this.setStatus(`强化成功：+${result.levelBefore} → +${result.levelAfter}（成功率 ${Math.round(result.chance * 100)}%）。`);
         flash = { ok: true, text: `强化成功 · +${result.levelAfter}` };
       } else if (result.downgraded) {
+        gameAudio.sfx('ui_error');
         this.setStatus(`强化失败并降级：+${result.levelBefore} → +${result.levelAfter}（成功率 ${Math.round(result.chance * 100)}%）。`);
         flash = { ok: false, text: `强化失败 · 降至 +${result.levelAfter}` };
       } else {
+        gameAudio.sfx('ui_error');
         this.setStatus(`强化失败（等级保留 +${result.levelAfter}，成功率 ${Math.round(result.chance * 100)}%）。`);
         flash = { ok: false, text: `强化失败 · 保留 +${result.levelAfter}` };
       }
@@ -3182,8 +3206,10 @@ export class LootChainGameRoot extends Component {
       await this.loadLobbyBag(true);
       this.lobbyHeroEquipDirty = true;
       if (result.success) {
+        gameAudio.sfx('forge_success');
         this.setStatus(`合成成功！获得「${result.resultItem.equipName}」（成功率 ${Math.round(result.chance * 100)}%）。`);
       } else {
+        gameAudio.sfx('ui_error');
         this.setStatus(`合成失败（成功率 ${Math.round(result.chance * 100)}%），返还「${result.resultItem.equipName}」×1。`);
       }
     } catch (error) {
@@ -4152,6 +4178,7 @@ export class LootChainGameRoot extends Component {
     this.currentView = 'gachaResult';
     this.renderCurrentView();
     this.setStatus(`召唤完成：${result.drawNo}`);
+    gameAudio.sfx(pending.highestRarity === 'SSR' || pending.highestRarity === 'UR' ? 'gacha_rare' : 'gacha_common');
     void this.loadGachaPity(pending.poolCode);
     void this.refreshReadonlyAssetsAfterGacha();
   }
@@ -4166,6 +4193,7 @@ export class LootChainGameRoot extends Component {
     this.gachaSceneState = { ...this.gachaSceneState, drawing: false, error: message };
     this.currentView = 'gacha';
     this.renderCurrentView();
+    gameAudio.sfx('ui_error');
     this.setStatus(`召唤失败：${message}`);
   }
 
@@ -4361,6 +4389,7 @@ export class LootChainGameRoot extends Component {
     void this.api.quest.claim(questCode)
       .then(async (quest) => {
         lobbyGuide.markVisited('claim');
+        gameAudio.sfx('reward_claim');
         this.setStatus(`已领取「${quest.questName}」奖励:${quest.rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
         this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
         await this.loadLobbyQuestSummary(true);
@@ -4370,6 +4399,7 @@ export class LootChainGameRoot extends Component {
       })
       .catch((error) => {
         this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
+        gameAudio.sfx('ui_error');
         this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
         this.renderCurrentLobbyScenePage();
       });
@@ -4496,6 +4526,7 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentLobbyScenePage();
     void this.api.mail.claim(mailId)
       .then(async (mail) => {
+        gameAudio.sfx('reward_claim');
         this.setStatus(`已领取邮件附件:${mail.attachments.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
         this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
         await this.loadLobbyMails(true);
@@ -4505,6 +4536,7 @@ export class LootChainGameRoot extends Component {
       })
       .catch((error) => {
         this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        gameAudio.sfx('ui_error');
         this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
         this.renderCurrentLobbyScenePage();
       });
@@ -4527,6 +4559,7 @@ export class LootChainGameRoot extends Component {
       })
       .catch((error) => {
         this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        gameAudio.sfx('ui_error');
         this.setStatus(`一键领取失败:${error instanceof Error ? error.message : String(error)}`);
         this.renderCurrentLobbyScenePage();
       });
