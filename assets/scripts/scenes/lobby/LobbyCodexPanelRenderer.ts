@@ -199,8 +199,9 @@ export class LobbyCodexPanelRenderer {
     // 2026-09-17 用户反馈二:去掉底板、“收录进度”与计数,只留带宝箱的进度条 + 一键领取,整组横向居中。
     const rowY = height / 2 - 70 * scale;
     const compact = width < 760 * scale;
-    const barW = clamp(width * (compact ? 0.44 : 0.38), 240 * scale, 580 * scale);
-    const barH = barW * (86 / 603);
+    // 2026-09-17 用户反馈三:进度条拉长(占屏宽一半),四个宝箱不再挤;条框/填充改九宫格拉伸,只拉中段管身,两端雕花不变形。
+    const barW = clamp(width * (compact ? 0.5 : 0.5), 300 * scale, 860 * scale);
+    const barH = 64 * scale;
     const btnW = clamp(width * 0.13, 150 * scale, 196 * scale);
     const groupGap = 44 * scale;
     const groupW = barW + groupGap + btnW;
@@ -210,12 +211,17 @@ export class LobbyCodexPanelRenderer {
     const ratio = clamp(state.ownedCount / total, 0, 1);
 
     const frameSprite = this.host.addSprite('LobbyCodexBarFrame', CODEX_UI_ASSETS.progressFrame, barX, rowY, barW, barH, parent);
-    const fillSprite = ratio > 0 ? this.host.addSprite('LobbyCodexBarFill', CODEX_UI_ASSETS.progressFilled, barX, rowY, barW, barH, parent) : null;
-    if (fillSprite) {
-      fillSprite.type = Sprite.Type.FILLED;
-      fillSprite.fillType = Sprite.FillType.HORIZONTAL;
-      fillSprite.fillStart = 0;
-      fillSprite.fillRange = ratio;
+    if (frameSprite) {
+      this.applyBarSlicing(frameSprite, 72);
+    }
+    if (ratio > 0) {
+      // 填充按进度截宽(左对齐),九宫格保证圆头端帽不拉伸;最短保留两端端帽宽度。
+      const fillMinW = Math.min(barW, 150 * scale);
+      const fillW = Math.max(fillMinW, barW * ratio);
+      const fillSprite = this.host.addSprite('LobbyCodexBarFill', CODEX_UI_ASSETS.progressFilled, barX - barW / 2 + fillW / 2, rowY, fillW, barH, parent);
+      if (fillSprite) {
+        this.applyBarSlicing(fillSprite, 72);
+      }
     }
     if (!frameSprite) {
       const bar = this.host.addChildPlainNode(parent, 'LobbyCodexBarFallback', barX, rowY, barW, 10 * scale);
@@ -229,7 +235,7 @@ export class LobbyCodexPanelRenderer {
         g.fill();
       }
     }
-    const chestSize = clamp(barH * 2.4, 48 * scale, 74 * scale);
+    const chestSize = clamp(barH * 1.2, 48 * scale, 78 * scale);
 
     // 里程碑宝箱压在进度条对应刻度上,刻度映射到条内 [7%, 93%] 区间,末档宝箱不再越过条尾金框。
     // 可领取的宝箱点一下直接领(2026-09-17 用户反馈:不弹框),其余状态点开弹框看奖励。
@@ -266,6 +272,19 @@ export class LobbyCodexPanelRenderer {
       const err = this.host.addChildLabel(parent, 'LobbyCodexError', '图鉴暂不可用,请稍后重试', 0, height / 2 - 100 * scale, 16 * scale, rgba(226, 132, 110), new Size(width - 120 * scale, 22 * scale));
       err.overflow = Label.Overflow.SHRINK;
     }
+  }
+
+  /** 进度条素材(603×86 一体图)改九宫格:两端各留 inset 像素雕花原样,只拉中段管身。 */
+  private applyBarSlicing(sprite: Sprite, inset: number): void {
+    const frame = sprite.spriteFrame;
+    if (frame) {
+      frame.insetLeft = inset;
+      frame.insetRight = inset;
+      frame.insetTop = 0;
+      frame.insetBottom = 0;
+    }
+    sprite.type = Sprite.Type.SLICED;
+    sprite.markForUpdateRenderData();
   }
 
   private renderMilestoneChest(parent: Node, milestone: LobbyCodexMilestoneVO, index: number, x: number, y: number, size: number, scale: number): Node {
