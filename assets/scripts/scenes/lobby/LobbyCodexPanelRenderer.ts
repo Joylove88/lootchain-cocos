@@ -195,15 +195,22 @@ export class LobbyCodexPanelRenderer {
   // ── 顶部:收录进度 + 里程碑宝箱 + 一键领取 ──
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    const rowY = height / 2 - 64 * scale;
+    // 2026-09-17 用户反馈:标题/关闭一行,进度条 + 一键领取第二行整体横向居中,页签第三行。
+    const rowY = height / 2 - 74 * scale;
     const compact = width < 760 * scale;
-    const barW = clamp(width * (compact ? 0.44 : 0.4), 220 * scale, 560 * scale);
+    const barW = clamp(width * (compact ? 0.4 : 0.34), 220 * scale, 520 * scale);
     const barH = barW * (86 / 603);
-    const barX = compact ? -width * 0.04 : -width * 0.08;
+    const captionW = 96 * scale;
+    const countW = 84 * scale;
+    const btnW = clamp(width * 0.13, 150 * scale, 196 * scale);
+    const groupGap = 36 * scale;
+    const groupW = captionW + 8 * scale + barW + 12 * scale + countW + groupGap + btnW;
+    const groupLeft = -groupW / 2;
+    const barX = groupLeft + captionW + 8 * scale + barW / 2;
     const total = Math.max(1, state.total);
     const ratio = clamp(state.ownedCount / total, 0, 1);
 
-    const caption = this.host.addChildLabel(parent, 'LobbyCodexProgressCaption', '收录进度', barX - barW / 2 - 12 * scale, rowY, 19 * scale, rgba(226, 196, 132), new Size(96 * scale, 26 * scale), HorizontalTextAlignment.RIGHT);
+    const caption = this.host.addChildLabel(parent, 'LobbyCodexProgressCaption', '收录进度', groupLeft + captionW, rowY, 19 * scale, rgba(226, 196, 132), new Size(captionW, 26 * scale), HorizontalTextAlignment.RIGHT);
     caption.overflow = Label.Overflow.SHRINK;
     this.applyOutline(caption, scale, false);
 
@@ -228,24 +235,23 @@ export class LobbyCodexPanelRenderer {
       }
     }
     const countText = state.loaded ? `${state.ownedCount}/${state.total}` : state.loading ? '读取中' : '--/--';
-    // 计数文字让开条尾的全收集宝箱(宝箱中心压在 100% 刻度上,右半个箱体越过条尾)。
-    const chestSize = clamp(barH * 2.1, 44 * scale, 66 * scale);
-    const count = this.host.addChildLabel(parent, 'LobbyCodexProgressCount', countText, barX + barW / 2 + chestSize * 0.55 + 8 * scale, rowY, 22 * scale, rgba(255, 236, 178), new Size(110 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+    const chestSize = clamp(barH * 2.0, 44 * scale, 64 * scale);
+    const count = this.host.addChildLabel(parent, 'LobbyCodexProgressCount', countText, barX + barW / 2 + 12 * scale, rowY, 22 * scale, rgba(255, 236, 178), new Size(countW, 28 * scale), HorizontalTextAlignment.LEFT);
     count.overflow = Label.Overflow.SHRINK;
     this.applyOutline(count, scale, true);
 
-    // 里程碑宝箱压在进度条对应刻度上;点开弹框看奖励/领取。
+    // 里程碑宝箱压在进度条对应刻度上,刻度映射到条内 [7%, 93%] 区间,末档宝箱不再越过条尾金框;点开弹框看奖励/领取。
     state.milestones.forEach((milestone, index) => {
-      const fraction = clamp(milestone.targetCount / total, 0.1, 1);
-      const chestX = barX - barW / 2 + barW * fraction;
+      const fraction = clamp(milestone.targetCount / total, 0, 1);
+      const chestX = barX - barW / 2 + barW * (0.07 + 0.86 * fraction);
       this.renderMilestoneChest(parent, milestone, index, chestX, rowY + 4 * scale, chestSize, scale, state.claiming !== null);
     });
 
-    if (state.claimableCount > 0 && state.loaded) {
-      const btnW = clamp(width * 0.14, 150 * scale, 200 * scale);
-      const btnX = width / 2 - btnW / 2 - 72 * scale;
+    if (state.loaded) {
+      const btnX = groupLeft + groupW - btnW / 2;
       const busy = state.claiming !== null;
-      this.addAssetButton(parent, 'LobbyCodexClaimAll', `一键领取 ${state.claimableCount}`, btnX, rowY, btnW, scale, busy ? 'disabled' : 'claim', busy ? null : () => this.host.claimAllLobbyCodexRewards());
+      const claimable = state.claimableCount > 0;
+      this.addAssetButton(parent, 'LobbyCodexClaimAll', claimable ? `一键领取 ${state.claimableCount}` : '暂无可领', btnX, rowY, btnW, scale, claimable && !busy ? 'claim' : 'disabled', claimable && !busy ? () => this.host.claimAllLobbyCodexRewards() : null);
     }
 
     if (state.error) {
@@ -301,13 +307,12 @@ export class LobbyCodexPanelRenderer {
   // ── 页签行:稀有度 + 仅看未收集 ──
 
   private renderFilterRow(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    const rowY = height / 2 - 124 * scale;
-    const compact = width < 760 * scale;
-    const tabW = clamp(width * 0.085, 64 * scale, 104 * scale);
-    const gap = 8 * scale;
-    const totalW = tabW * CODEX_FILTERS.length + gap * (CODEX_FILTERS.length - 1);
-    const startX = (compact ? -width / 2 + 24 * scale : -width * 0.36) + tabW / 2;
-    void totalW;
+    const rowY = height / 2 - 140 * scale;
+    const metrics = this.wallMetrics(width, height, scale);
+    // 页签放大一档,左沿与卡墙第一列左沿对齐;页签总宽不超过卡墙宽的 62%,给右侧开关留位。
+    const gap = 10 * scale;
+    const tabW = clamp(Math.min(width * 0.095, (metrics.gridWidth * 0.62 - gap * (CODEX_FILTERS.length - 1)) / CODEX_FILTERS.length), 72 * scale, 132 * scale);
+    const startX = -metrics.gridWidth / 2 + tabW / 2;
     CODEX_FILTERS.forEach((filter, index) => {
       const active = state.filter === filter;
       this.addTabButton(parent, `LobbyCodexTab_${filter}`, CODEX_FILTER_LABELS[filter], active, startX + index * (tabW + gap), rowY, tabW, scale, () => this.host.setLobbyCodexFilter(filter));
@@ -315,8 +320,8 @@ export class LobbyCodexPanelRenderer {
 
     // 仅看未收集:勾选框 + 文案。
     const toggleW = 150 * scale;
-    const toggleX = startX + CODEX_FILTERS.length * (tabW + gap) + toggleW / 2 + 10 * scale;
-    const toggle = this.host.addChildPlainNode(parent, 'LobbyCodexUnownedToggle', Math.min(toggleX, width / 2 - toggleW / 2 - 20 * scale), rowY, toggleW, 30 * scale);
+    const toggleX = startX + CODEX_FILTERS.length * (tabW + gap) + toggleW / 2 + 14 * scale;
+    const toggle = this.host.addChildPlainNode(parent, 'LobbyCodexUnownedToggle', Math.min(toggleX, metrics.gridWidth / 2 - toggleW / 2), rowY, toggleW, 30 * scale);
     const g = toggle.addComponent(Graphics);
     const boxSize = 18 * scale;
     const boxX = -toggleW / 2 + 12 * scale;
@@ -345,7 +350,7 @@ export class LobbyCodexPanelRenderer {
 
   private addTabButton(parent: Node, name: string, text: string, active: boolean, x: number, y: number, width: number, scale: number, onClick: () => void): void {
     const height = active ? width * (205 / 673) : width * (162 / 621);
-    const btn = this.host.addChildPlainNode(parent, name, x, y, width, Math.max(height, 34 * scale));
+    const btn = this.host.addChildPlainNode(parent, name, x, y, width, Math.max(height, 38 * scale));
     if (!this.host.addSprite('Art', active ? CODEX_UI_ASSETS.tabActive : CODEX_UI_ASSETS.tabNormal, 0, 0, width, height, btn)) {
       const g = btn.addComponent(Graphics);
       g.fillColor = active ? rgba(89, 65, 30, 238) : rgba(14, 13, 15, 218);
@@ -356,7 +361,7 @@ export class LobbyCodexPanelRenderer {
       g.roundRect(-width / 2, -height / 2, width, height, 6 * scale);
       g.stroke();
     }
-    const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 18 * scale, active ? rgba(255, 231, 166) : rgba(200, 182, 142), new Size(width - 16 * scale, 26 * scale));
+    const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 21 * scale, active ? rgba(255, 231, 166) : rgba(200, 182, 142), new Size(width - 16 * scale, 28 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, active);
     btn.addComponent(Button);
@@ -365,6 +370,27 @@ export class LobbyCodexPanelRenderer {
   }
 
   // ── 卡墙 ──
+
+  /**
+   * 卡墙几何(2026-09-17 用户反馈:页签起点要与第一列卡对齐,卡与卡之间要有明显留白)。
+   * 头两行固定高度,余下全部给卡墙;列数按最小卡宽推,卡宽封顶 238。
+   */
+  private wallMetrics(width: number, height: number, scale: number): {
+    bodyTop: number; bodyBottom: number; bodyWidth: number; columns: number;
+    cardWidth: number; cardHeight: number; gap: number; rowGap: number; gridWidth: number;
+  } {
+    const bodyTop = height / 2 - 186 * scale;
+    const bodyBottom = -height / 2 + 16 * scale;
+    const bodyWidth = width - 56 * scale;
+    const gap = 26 * scale;
+    const minCardW = 150 * scale;
+    const columns = clamp(Math.floor((bodyWidth + gap) / (minCardW + gap)), 2, 5);
+    const cardWidth = Math.min(238 * scale, (bodyWidth - gap * (columns - 1)) / columns);
+    const cardHeight = cardWidth / CODEX_CARD_ASPECT;
+    const rowGap = 30 * scale;
+    const gridWidth = cardWidth * columns + gap * (columns - 1);
+    return { bodyTop, bodyBottom, bodyWidth, columns, cardWidth, cardHeight, gap, rowGap, gridWidth };
+  }
 
   private visibleItems(state: LobbyCodexPanelState): LobbyCodexItemVO[] {
     return state.items.filter((item) => {
@@ -376,10 +402,9 @@ export class LobbyCodexPanelRenderer {
   }
 
   private renderCardWall(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    const bodyTop = height / 2 - 158 * scale;
-    const bodyBottom = -height / 2 + 16 * scale;
+    const metrics = this.wallMetrics(width, height, scale);
+    const { bodyTop, bodyBottom, bodyWidth, columns, cardWidth, cardHeight, gap, rowGap, gridWidth } = metrics;
     const bodyHeight = Math.max(120 * scale, bodyTop - bodyBottom);
-    const bodyWidth = width - 56 * scale;
     const bodyCenterY = (bodyTop + bodyBottom) / 2;
     if (state.loading && state.items.length === 0) {
       this.renderEmpty(parent, width, bodyCenterY, scale, '图鉴读取中,请稍候。');
@@ -391,15 +416,8 @@ export class LobbyCodexPanelRenderer {
       return;
     }
 
-    const gap = 18 * scale;
-    const minCardW = 150 * scale;
-    const columns = clamp(Math.floor((bodyWidth + gap) / (minCardW + gap)), 2, 5);
-    // 2026-09-17 用户反馈优化:卡墙加宽(参考图卡墙占屏宽约 65%),卡上限 212→238。
-    const cardWidth = Math.min(238 * scale, (bodyWidth - gap * (columns - 1)) / columns);
-    const cardHeight = cardWidth / CODEX_CARD_ASPECT;
-    const rowGap = 22 * scale;
-    // 顶部留出稀有度边框动效外扩的余量(UR 序列帧边框比卡大 25%)。
-    const effectPad = cardHeight * 0.14;
+    // 顶部留出可领取柔光外扩的余量。
+    const effectPad = cardHeight * 0.06;
     const rows = Math.ceil(items.length / columns);
     const contentHeight = Math.max(bodyHeight, rows * cardHeight + (rows - 1) * rowGap + effectPad * 2);
 
@@ -415,7 +433,6 @@ export class LobbyCodexPanelRenderer {
     const content = this.host.addChildPlainNode(viewport, 'LobbyCodexScrollContent', 0, (bodyHeight - contentHeight) / 2, bodyWidth, contentHeight);
     scrollView.content = content;
 
-    const gridWidth = cardWidth * columns + gap * (columns - 1);
     const startX = -gridWidth / 2 + cardWidth / 2;
     const startY = contentHeight / 2 - effectPad - cardHeight / 2;
     items.forEach((item, index) => {
@@ -586,10 +603,10 @@ export class LobbyCodexPanelRenderer {
     const g = glow.addComponent(Graphics);
     // 由外到内四层递减描边模拟外发光(Graphics 无模糊),最内层细亮线贴卡框。
     const layers: Array<[number, number, number]> = [
-      [1.075, 16, 26],
-      [1.05, 11, 60],
-      [1.028, 6, 120],
-      [1.01, 2.4, 236],
+      [1.045, 10, 30],
+      [1.03, 7, 70],
+      [1.018, 4, 130],
+      [1.008, 2.2, 236],
     ];
     layers.forEach(([grow, lineWidth, alpha]) => {
       g.strokeColor = rgba(255, 214, 110, alpha);
