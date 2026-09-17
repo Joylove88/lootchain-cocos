@@ -82,11 +82,16 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { resolveAttackFxSpritePath, resolveHeroAttackFx, resolveHeroAttackSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { resolveAttackFxSpritePath, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
+/** 怪物视高上限(屏高比例):BOSS 原 0.62 头顶出屏、整排上格被盖,2026-09-18 降到 0.52。 */
+const GUARD_MONSTER_VISUAL_H_CAP = 0.52;
+/** BOSS 血条锚头顶(2026-09-18 用户拍板);置 false 可切回顶部横幅。 */
+const GUARD_BOSS_BAR_ON_HEAD = true;
+
 const GUARD_HERO_SCALE_TWEAK_BY_ASSET: Record<string, number> = {
   Eulenspigel: 1.2,
 };
@@ -1679,7 +1684,7 @@ export class LobbyGuardBattleRenderer {
           // 无专属名(主角/下架英雄)回退职业机制名。
           this.highlightCaster(event.cell, `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!`);
         }
-        gameAudio.sfx('skill');
+        gameAudio.sfx(resolveHeroSkillSfxKey(event.heroCode));
         const skillZone = typeof event.zoneId === 'number' ? sim.zones.find((entry) => entry.zoneId === event.zoneId) ?? null : null;
         if (skillZone && skillZone.kind === 'cyclone' && typeof event.cell === 'number') {
           // 旋风从施放英雄身上飞出落地(灼烧区 2026-09-12 起由技能特效本体在落点循环播放,不再画地面黄圈、不再飞行)
@@ -2148,7 +2153,9 @@ export class LobbyGuardBattleRenderer {
     const barW = 200;
     const barH = 14;
     const x = this.xToPx(boss.x);
-    const y = this.laneToPy(boss.lane) + this.unitSize() * (boss.kind === 'boss' ? 1.6 : 1);
+    const bossView = this.monsterViews.get(boss.monsterId);
+    const headY = bossView?.node.isValid ? bossView.node.position.y + this.monsterHeadOffsetY(boss) + 44 : this.laneToPy(boss.lane) + this.unitSize();
+    const y = Math.min(headY, this.layoutHeight * 0.47);
     let bar = existing;
     if (!bar) {
       bar = this.host.addChildPlainNode(field, 'GuardBossCastBar', x, y, barW, barH + 22);
@@ -3628,6 +3635,9 @@ export class LobbyGuardBattleRenderer {
       if (view.skeleton && view.skeleton.isValid) {
         view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : GUARD_SPINE_WHITE;
       }
+      if (monster.kind === 'boss' || monster.kind === 'elite') {
+        this.applyOccluderGhost(view, monster);
+      }
       const slowMark = view.node.getChildByName('GuardSlowMark');
       if (slowMark) {
         slowMark.destroy();
@@ -3645,8 +3655,24 @@ export class LobbyGuardBattleRenderer {
       if (hpBar && hpGraphics && hpTransform) {
         const ratio = Math.max(0, monster.hp / monster.maxHp);
         hpGraphics.clear();
-        // 满血不显示血条(视频验收:入场怪扎堆时几十条红条叠成噪声);BOSS 走顶部大血条
-        if (ratio < 1 && monster.kind !== 'boss') {
+        if (monster.kind === 'boss') {
+          const barW = hpTransform.width;
+          hpGraphics.fillColor = rgba(10, 8, 8, 225);
+          hpGraphics.roundRect(-barW / 2, -7, barW, 14, 7);
+          hpGraphics.fill();
+          hpGraphics.fillColor = ratio > 0.35 ? rgba(235, 60, 45, 250) : rgba(255, 140, 60, 250);
+          hpGraphics.roundRect(-barW / 2, -7, Math.max(8, barW * ratio), 14, 7);
+          hpGraphics.fill();
+          hpGraphics.strokeColor = rgba(255, 200, 120, 235);
+          hpGraphics.lineWidth = 2;
+          hpGraphics.roundRect(-barW / 2, -7, barW, 14, 7);
+          hpGraphics.stroke();
+          const hpText = hpBar.getChildByName('GuardMonsterHpText')?.getComponent(Label);
+          if (hpText) {
+            hpText.string = `BOSS  ${Math.ceil(monster.hp)} / ${monster.maxHp}`;
+          }
+        } else if (ratio < 1) {
+          // 满血不显示血条(视频验收:入场怪扎堆时几十条红条叠成噪声)
           const barW = hpTransform.width;
           hpGraphics.fillColor = rgba(8, 8, 10, 210);
           hpGraphics.rect(-barW / 2, -3, barW, 6);
@@ -3659,6 +3685,50 @@ export class LobbyGuardBattleRenderer {
     }
     this.sortMonsterViewsByDepth();
     this.refreshBossTopBar();
+  }
+
+  /** 怪物脚底→头顶的相对高度(与 createMonsterView 的视高公式一致)。 */
+  private monsterHeadOffsetY(monster: GuardMonster): number {
+    const unit = this.unitSize();
+    const kindMult = GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1;
+    const dbScale = GUARD_MONSTER_DB_SCALE[monster.spineCode] ?? 1;
+    const visualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * GUARD_MONSTER_VISUAL_H_CAP);
+    return -unit * 0.45 + visualH;
+  }
+
+  /**
+   * 大体型单位(BOSS/精英)身体盖到有英雄的格子时整体降到 55% 不透明(2026-09-18 用户拍板):
+   * 英雄层已在怪物层之上,这里再让格位/脚下特效透出来;离开重叠区回到不透明,每帧渐变不闪。
+   */
+  private applyOccluderGhost(view: GuardUnitView, monster: GuardMonster): void {
+    const sim = this.sim;
+    if (!sim) {
+      return;
+    }
+    const unit = this.unitSize();
+    const bodyH = this.monsterHeadOffsetY(monster) + unit * 0.45;
+    const halfW = bodyH * 0.4;
+    const footY = view.node.position.y - unit * 0.45;
+    const topY = footY + bodyH;
+    const bx = view.node.position.x;
+    const heroSize = this.heroDisplaySize();
+    let overlap = false;
+    for (const hero of sim.heroes) {
+      const tile = this.cellTileRect(hero.cell);
+      const center = this.cellCenter(hero.cell);
+      const heroBottom = tile.y - tile.h / 2;
+      const heroTop = center.y + heroSize * 0.55;
+      if (Math.abs(tile.x - bx) < halfW + tile.w / 2 && heroBottom < topY && heroTop > footY) {
+        overlap = true;
+        break;
+      }
+    }
+    const opacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
+    const target = overlap ? 140 : 255;
+    const delta = target - opacity.opacity;
+    if (delta !== 0) {
+      opacity.opacity += Math.max(-16, Math.min(16, delta));
+    }
   }
 
   /**
@@ -3691,7 +3761,8 @@ export class LobbyGuardBattleRenderer {
     }
     const boss = sim.monsters.find((entry) => entry.kind === 'boss' && !entry.dead) ?? null;
     g.clear();
-    if (!boss) {
+    // 2026-09-18 用户拍板:BOSS 血条改锚头顶(syncMonsters 里画),顶部横幅只留名字。
+    if (!boss || GUARD_BOSS_BAR_ON_HEAD) {
       label.string = '';
       return;
     }
@@ -3716,6 +3787,13 @@ export class LobbyGuardBattleRenderer {
     const kindMult = GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1;
     const baseSize = unit * kindMult;
     const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardMonster_${monster.monsterId}`, this.xToPx(monster.x), this.monsterY(monster.lane, monster.x), baseSize, baseSize);
+    // 2026-09-18 用户拍板:英雄层永远在怪物层之上(BOSS 再大也盖不住上排英雄)——新怪插到第一个英雄节点之前。
+    if (field) {
+      const firstHero = field.children.findIndex((child) => child.name.startsWith('GuardHero_'));
+      if (firstHero >= 0) {
+        node.setSiblingIndex(firstHero);
+      }
+    }
     // 地面阴影:近黑素材在暖色地面上的剪影分离
     const shadow = node.addComponent(Graphics);
     shadow.fillColor = rgba(8, 5, 3, 105);
@@ -3730,15 +3808,26 @@ export class LobbyGuardBattleRenderer {
     // 体型 = 标定视高(unit×体型倍率×DB逐皮肤校准,BOSS 钳 0.72 屏高)/ bounds 高——与旧战斗渲染同一公式;
     // S196 素材原点=脚底中心,直接脚踩地面线,不吃 bounds 偏移。
     const dbScale = GUARD_MONSTER_DB_SCALE[monster.spineCode] ?? 1;
-    const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * 0.62);
+    // BOSS 视高钳 0.62→0.52 屏高(2026-09-18:原尺寸头顶出屏、整排上格被盖)。
+    const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * GUARD_MONSTER_VISUAL_H_CAP);
     const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
     this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view, {
       calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
       footY: -unit * 0.45,
       enemyAnimNames: true,
     });
-    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, Math.min(baseSize * 0.58, this.layoutHeight * 0.4), Math.min(baseSize * 0.9, monster.kind === 'boss' ? 220 : 110), 6);
+    // BOSS 血条锚在头顶(2026-09-18 用户拍板,不再走顶部横幅):头顶再往上 18px,并钳在屏内。
+    const hpBarY = monster.kind === 'boss'
+      ? Math.min(this.monsterHeadOffsetY(monster) + 18, this.layoutHeight * 0.47 - node.position.y)
+      : Math.min(baseSize * 0.58, this.layoutHeight * 0.4);
+    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, hpBarY, monster.kind === 'boss' ? 280 : Math.min(baseSize * 0.9, 110), monster.kind === 'boss' ? 14 : 6);
     hpBar.addComponent(Graphics);
+    if (monster.kind === 'boss') {
+      const hpText = this.host.addChildLabel(hpBar, 'GuardMonsterHpText', '', 0, 0, 13, rgba(255, 244, 230, 252), new Size(260, 18));
+      hpText.enableOutline = true;
+      hpText.outlineColor = rgba(40, 12, 8, 255);
+      hpText.outlineWidth = 2;
+    }
     return view;
   }
 

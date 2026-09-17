@@ -68,6 +68,18 @@ const CLASS_ATTACK_SFX: Record<string, string> = {
   辅助: 'atk/class_support',
 };
 
+/** 大招/技能音效键(2026-09-18):22 位英雄各一条(通用音效包 技能音效 目录按元素挑),未知英雄回退通用 skill。 */
+const HERO_SKILL_SFX_CODES = new Set([
+  'UR_NYX', 'SSR_RON', 'SR_ABYSS_06', 'R_SCOUT_03', 'UR_EVELYN', 'SSR_LIVIA', 'SR_WITCH_03', 'R_CULT_05',
+  'UR_AURELIA', 'SR_SNIPER_05', 'R_RANGER_06', 'UR_ARTHAS', 'SSR_MICHAEL', 'SSR_KANE', 'SR_BLADE_04', 'R_PATROL_01',
+  'UR_ATLAS', 'SR_PALADIN_02', 'R_GUARD_07', 'UR_SERAPHINA', 'SR_PRIEST_01', 'R_ACOLY_02',
+]);
+
+export function resolveHeroSkillSfxKey(heroCode: string | null | undefined): string {
+  const code = (heroCode || '').trim().toUpperCase();
+  return HERO_SKILL_SFX_CODES.has(code) ? `skill/hero_${code.toLowerCase()}` : 'skill';
+}
+
 export function resolveHeroAttackSfxKey(heroCode: string | null | undefined, heroClass: string | null | undefined, meleeRole: boolean): string {
   const code = (heroCode || '').trim().toUpperCase();
   if (HERO_ATTACK_SFX_CODES.has(code)) {
