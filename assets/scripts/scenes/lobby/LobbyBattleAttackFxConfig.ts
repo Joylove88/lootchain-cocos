@@ -54,6 +54,32 @@ const CLASS_FALLBACK_ATTACK_FX: Record<string, BattleAttackFxSpec> = {
   辅助: HERO_ATTACK_FX.R_ACOLY_02,
 };
 
+/**
+ * 普攻音效键(2026-09-18 正式音源):SSR/UR 英雄用 C1812 包里本角色自带的攻击音(audio/sfx/atk/hero_<code>),
+ * 其余按职业兜底(近战/远程/法师/辅助)。文件名见 素材原始备份/audio-picks-20260918.md。
+ */
+const HERO_ATTACK_SFX_CODES = new Set(['SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON', 'UR_ARTHAS', 'UR_ATLAS', 'UR_AURELIA', 'UR_EVELYN', 'UR_NYX', 'UR_SERAPHINA']);
+const CLASS_ATTACK_SFX: Record<string, string> = {
+  刺客: 'atk/class_melee',
+  战士: 'atk/class_melee',
+  坦克: 'atk/class_melee',
+  法师: 'atk/class_mage',
+  射手: 'atk/class_ranged',
+  辅助: 'atk/class_support',
+};
+
+export function resolveHeroAttackSfxKey(heroCode: string | null | undefined, heroClass: string | null | undefined, meleeRole: boolean): string {
+  const code = (heroCode || '').trim().toUpperCase();
+  if (HERO_ATTACK_SFX_CODES.has(code)) {
+    return `atk/hero_${code.toLowerCase()}`;
+  }
+  const byClass = CLASS_ATTACK_SFX[(heroClass || '').trim()];
+  if (byClass) {
+    return byClass;
+  }
+  return meleeRole ? 'atk/class_melee' : 'atk/class_ranged';
+}
+
 /** 按 heroCode → 职业 → 角色(近战 strike / 其余 bolt)三级兜底解析普攻表现。 */
 export function resolveHeroAttackFx(heroCode: string | null | undefined, heroClass: string | null | undefined, meleeRole: boolean): BattleAttackFxSpec {
   const code = (heroCode || '').trim().toUpperCase();

@@ -46,4 +46,25 @@
 加工:单声道 128kbps MP3(LAME 带无缝信息),峰值压到 -1 dB 内;旧的程序合成 `bgm_lobby.wav`、`battle/bgm/battle_loop_01.wav` 已删(备份在 audio-placeholder-20260918)。
 其他备选:BGM_Town(城镇,末尾渐弱不适合硬循环)、BGM_Adventure(首尾渐弱 65s)、Card_BGM=BGM_Battle_06(平缓上扬,可做抽卡页)、BGM_Loading=BGM_Survivor(76s 末尾淡出)。
 
+## 守卫战普攻音(2026-09-18)
+
+守卫战里每次普攻发射时播(`audio/sfx/atk/`,裁 1.2s、RMS -18,代码里再压到 0.55 倍):SSR/UR 用 C1812 包 `FX/Source` 里本角色自带的攻击音,R/SR 按职业兜底。
+
+| 键 | 素材 | 用于 |
+|---|---|---|
+| hero_ssr_kane | 193_Ishmael_Atk_a_v2 | 白银圣枪 |
+| hero_ssr_livia | 210_Carmilla_Atk_a_v3 | 夜烬女王 |
+| hero_ssr_michael | 410_HeyrelS01_Atk_a_v1 | 圣光审判者 |
+| hero_ssr_ron | 356_Eulenspigel_Atk_b_v1 | 灰烬猎手 |
+| hero_ur_arthas | 388_IshmaelA_Atk_a_v1 | 永夜龙骑 |
+| hero_ur_atlas | 289_Lucrecia_Atk_a_v1 | 圣铠壁垒 |
+| hero_ur_aurelia | 157_Belladonna_Atk_a_v1 | 苍翎神射 |
+| hero_ur_evelyn | 096_Nuu_Atk_a_v1 | 深渊魔女 |
+| hero_ur_nyx | 117_Sphinx_Atk | 影刃女皇 |
+| hero_ur_seraphina | 318_LucienA_Atk_a_v1 | 晨星圣女 |
+| class_melee | 攻击2-WQ(通用包) | 战士/坦克/刺客 |
+| class_ranged | 弓弩类发射-mcx(通用包) | 射手 |
+| class_mage | 小魔法音效1-mcx(通用包) | 法师 |
+| class_support | 小型光魔法-xys(通用包) | 辅助 |
+
 未挂音效、未来可加:页签切换;抽卡召唤影像已有自带 call.mp3;同包 `UI/` 目录还有 33 条与本项目 UI 同源的界面音(TouchOpen/Close、Get_Reward、SummonMyth/Unique/Normal、LevelUp、Win/Lose),可替换现用界面音。

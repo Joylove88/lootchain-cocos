@@ -82,7 +82,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { resolveAttackFxSpritePath, resolveHeroAttackFx, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { resolveAttackFxSpritePath, resolveHeroAttackFx, resolveHeroAttackSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 
@@ -1780,6 +1780,8 @@ export class LobbyGuardBattleRenderer {
               // 近战与远程统一走弹道:都从英雄身前发出飞向目标,命中才结算伤害表现
               //(2026-09-12 用户反馈:近战斩击直接出现在怪身上,缺"发出→飞行"的过程)。
               const origin = this.cellCenter(hero.cell);
+              // 普攻音(2026-09-18):随弹道发出,多英雄齐射时靠管理器 80ms/键节流 + 压低音量避免糊成一片。
+              gameAudio.sfx(this.resolveHeroAttackSfxKey(hero), 0.55);
               this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, attackColor, attackFx);
             } else {
               this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
@@ -2543,6 +2545,12 @@ export class LobbyGuardBattleRenderer {
     const pool = this.sim?.pool.find((entry) => entry.heroCode === hero.heroCode);
     const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
     return resolveHeroAttackFx(hero.heroCode, ally?.heroClass ?? null, hero.role === 'melee');
+  }
+
+  private resolveHeroAttackSfxKey(hero: GuardHeroUnit): string {
+    const pool = this.sim?.pool.find((entry) => entry.heroCode === hero.heroCode);
+    const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
+    return resolveHeroAttackSfxKey(hero.heroCode, ally?.heroClass ?? null, hero.role === 'melee');
   }
 
   /** 受击红闪(spine 染色 90ms,syncMonsters 每帧恢复)。 */
