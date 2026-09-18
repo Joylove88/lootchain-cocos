@@ -3185,7 +3185,13 @@ export class LobbyGuardBattleRenderer {
         const beamExtent = vertical ? extentH : extentW;
         const beamThickExtent = vertical ? extentW : extentH;
         // 放大上限 2.0×(2026-09-12:低稀有度也要≥标准尺寸;再大只会糊)。
-        const baseFit = Math.min(GUARD_FX_UPSCALE_CAP, (this.unitSize() * 1.7 * (spec.scale || 1)) / Math.max(extentW, extentH));
+        // 2026-09-18 用户反馈 UR 技能太小:原按"最长边"适配,横长条素材(阿鲁卡多横斩实测盒 5776×612)缩到目标宽后
+        // 高度只剩 75px。改按面积(几何均值)适配——方形素材尺寸不变,细长素材横向铺开、纵向不再被压扁;
+        // 再钳在战场 90% 宽 / 75% 高内不出屏。
+        const targetLen = this.unitSize() * 1.7 * (spec.scale || 1);
+        const areaFit = targetLen / Math.sqrt(extentW * extentH);
+        const screenFit = Math.min((this.layoutWidth * 0.9) / extentW, (this.layoutHeight * 0.75) / extentH);
+        const baseFit = Math.min(GUARD_FX_UPSCALE_CAP, areaFit, screenFit);
         let currentTargetId = monster.monsterId;
         const zone = group?.zone ?? null;
         const hitIds = (group?.monsterIds ?? []).filter((hitId) => this.sim?.monsters.some((entry) => entry.monsterId === hitId && !entry.dead) ?? false);

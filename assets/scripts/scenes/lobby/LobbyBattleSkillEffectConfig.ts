@@ -4,6 +4,7 @@
 // 自动把特效适配到目标尺寸(target=目标单位高×1.4 / self=施法者高×1.3 / fullscreen=战场宽×0.9),
 // 因此这里的 scale 是**相对倍率**(1=标准尺寸),不再是绝对缩放(2026-08-19 视频验收改)。
 // 2026-09-12 用户反馈低稀有度技能太小:按稀有度分档 R 1.15 / SR 1.25 / SSR 1.4 / UR 1.6,低阶也不小于标准尺寸。
+// 2026-09-18 用户反馈 UR 技能仍太小:UR 1.6→2.4(渲染层 baseFit=单位高×1.7×scale/特效实测尺寸,UR 未触及 2.0 放大上限)。
 // 纯表现配置:不碰结算、不改数值、不新增玩家 API(doc 24 安全边界)。
 
 export type BattleSkillEffectAnchor = 'target' | 'self' | 'fullscreen';
@@ -30,31 +31,31 @@ export interface BattleSkillEffectSpec {
 // 职业/元素对味,稀有度越高越华丽;T0(每档天花板)配库内最顶级全套。兜底 6 套独立不与专属冲突。
 const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   // ── 刺客:暗影系 ──
-  UR_NYX: { effect: 'fx_65002_luxifa_skill', animation: 'Skill_down', anchor: 'target', scale: 1.6, offsetY: 20 }, // 影刃·千夜追猎:路西法堕影
+  UR_NYX: { effect: 'fx_65002_luxifa_skill', animation: 'Skill_down', anchor: 'target', scale: 2.4, offsetY: 20 }, // 影刃·千夜追猎:路西法堕影
   SSR_RON: { effect: 'fx_450081_shaxing_jineng', animation: 'skill', anchor: 'target', scale: 1.4, offsetY: 16 }, // 灰烬·致命猎杀:杀星(2026-09-07 全量换新)
   SR_ABYSS_06: { effect: 'fx_65008_anubisi_skill', animation: 'skill_sf1_down', anchor: 'target', scale: 1.25, offsetY: 12 }, // 深渊·冥神审判:阿努比斯
   R_SCOUT_03: { effect: 'fx_6601_sishen_skill', animation: 'skill', anchor: 'target', scale: 1.15, offsetY: 14 }, // 灰谷·绝影猎杀(R T0):死神暗镰(毕业感)
   // ── 法师:元素爆发系 ──
-  UR_EVELYN: { effect: 'fx_4601_bingyuanjulang_skill', animation: 'skill', anchor: 'target', scale: 1.6, offsetY: 18 }, // 深渊·冰狱湮灭:冰原巨浪
+  UR_EVELYN: { effect: 'fx_4601_bingyuanjulang_skill', animation: 'skill', anchor: 'target', scale: 2.4, offsetY: 18 }, // 深渊·冰狱湮灭:冰原巨浪
   SSR_LIVIA: { effect: 'fx_25017_yanlingnvwang_skill', animation: 'skill', anchor: 'target', scale: 1.4, offsetY: 18 }, // 夜烬·焚世之焰(SSR T0):焰灵女王(2026-09-07 全量换新)
   SR_WITCH_03: { effect: 'fx_35012_shuoyemonv_skill', animation: 'skill', anchor: 'target', scale: 1.25, offsetY: 14 }, // 契约·朔夜降临:朔夜魔女
   R_CULT_05: { effect: 'fx_34001_lilian_skill', animation: 'Skill2_down', anchor: 'target', scale: 1.15, offsetY: 12 }, // 低语·暗蚀诅咒:紫雾蚀涡(2026-09-12 二次换新;幽影蜘蛛实测渲染为空被退回,本套紫红雾涡实测可见且大于原毒藤,2.7s)
   // ── 射手:箭雨/穿刺系 ──
-  UR_AURELIA: { effect: 'fx_13601_menghuanfengdie_skill', animation: 'Skill1', anchor: 'target', scale: 1.6, offsetY: 18 }, // 苍翎·万箭裂空:梦幻凤蝶(2026-09-07 全量换新)
+  UR_AURELIA: { effect: 'fx_13601_menghuanfengdie_skill', animation: 'Skill1', anchor: 'target', scale: 2.4, offsetY: 18 }, // 苍翎·万箭裂空:梦幻凤蝶(2026-09-07 全量换新)
   SR_SNIPER_05: { effect: 'fx_35005_kuangliechangmao_hit', animation: 'Skill_hit', anchor: 'target', scale: 1.25, offsetY: 12 }, // 峡谷·狂裂贯穿(SR T0):狂裂爆点(2026-09-07 用户反馈瘦长矛太小,换大爆点版)
   R_RANGER_06: { effect: 'fx_45013_yingshu_skill', animation: 'skill_down', anchor: 'target', scale: 1.15, offsetY: 12 }, // 荒原·疾风连射:猎鹰之术(2026-09-07 全量换新)
   // ── 战士:龙焰/圣光/剑气系 ──
-  UR_ARTHAS: { effect: 'fx_350159_alukaduo_skill', animation: 'Skill_dowm', anchor: 'target', scale: 1.6, offsetY: 22 }, // 永夜·龙焰审判(UR T0):阿鲁卡多暗夜领主(素材内拼写就是 dowm)
+  UR_ARTHAS: { effect: 'fx_350159_alukaduo_skill', animation: 'Skill_dowm', anchor: 'target', scale: 2.4, offsetY: 22 }, // 永夜·龙焰审判(UR T0):阿鲁卡多暗夜领主(素材内拼写就是 dowm)
   SSR_MICHAEL: { effect: 'fx_55011_yadianna_skill', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16 }, // 圣光·终极审判:雅典娜圣裁(2026-09-07 全量换新)
   SR_BLADE_04: { effect: 'fx_55008_yase_skill', animation: 'Skill_down', anchor: 'target', scale: 1.25, offsetY: 14 }, // 断刃·狂乱斩:亚瑟王剑气(2026-09-07 升级)
   R_PATROL_01: { effect: 'fx_25013_guijianshi_skill', animation: 'Skill_down', anchor: 'target', scale: 1.15, offsetY: 14 }, // 王国·誓约剑气:鬼剑士
   // ── 坦克:冲击波/盾击系 ──
-  UR_ATLAS: { effect: 'fx_15001_tianqiqishi_skill', animation: 'skill_01', anchor: 'self', scale: 1.6, offsetY: 12 }, // 圣铠·不动壁垒:天启骑士
+  UR_ATLAS: { effect: 'fx_15001_tianqiqishi_skill', animation: 'skill_01', anchor: 'self', scale: 2.4, offsetY: 12 }, // 圣铠·不动壁垒:天启骑士
   SSR_KANE: { effect: 'fx_45014_shengqishi_skill', animation: 'Skill2', anchor: 'target', scale: 1.4, offsetY: 14 }, // 白银·圣枪穿刺:圣骑士圣枪光爆(2026-09-12 换新:原拉斐尔音符十字是治疗向、与圣枪不搭且实测仅 435px)
   SR_PALADIN_02: { effect: 'fx_15013_waerjili_skill', animation: 'Skill_down', anchor: 'self', scale: 1.25, offsetY: 10 }, // 圣盾·守御反击:瓦尔基里圣枪(2026-09-07 升级)
   R_GUARD_07: { effect: 'fx_43001_shouwei_jineng', animation: 'Skill', anchor: 'self', scale: 1.15, offsetY: 10 }, // 城门·坚守盾击:守卫壁障
   // ── 辅助:圣光/自然系 ──
-  UR_SERAPHINA: { effect: 'fx_55010_yuerennvshen_skill', animation: 'skill', anchor: 'self', scale: 1.6, offsetY: 14 }, // 晨星·月华圣辉:月神降临
+  UR_SERAPHINA: { effect: 'fx_55010_yuerennvshen_skill', animation: 'skill', anchor: 'self', scale: 2.4, offsetY: 14 }, // 晨星·月华圣辉:月神降临
   SR_PRIEST_01: { effect: 'fx_45010_xiunv_skill', animation: 'skill', anchor: 'self', scale: 1.25, offsetY: 12 }, // 银色·圣愈祷言:修女圣光(2026-09-07 升级)
   R_ACOLY_02: { effect: 'fx_450101_shengnvpifu_skill', animation: 'Skill_down', anchor: 'self', scale: 1.15, offsetY: 12 }, // 祈福·微光庇护:圣女光柱(2026-09-07 全量换新)
 };
