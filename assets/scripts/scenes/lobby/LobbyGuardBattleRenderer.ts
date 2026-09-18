@@ -3656,6 +3656,16 @@ export class LobbyGuardBattleRenderer {
         const ratio = Math.max(0, monster.hp / monster.maxHp);
         hpGraphics.clear();
         if (monster.kind === 'boss') {
+          // 血条贴真实头顶(2026-09-18 用户反馈离头太远):骨骼 json 的声明高度含武器/翅膀外扩,
+          // 改按当前姿态顶点实测的最高点定位;每 15 帧测一次,测不到(wasm 无 _skeleton)保留初值。
+          this.bossHpBarTick = (this.bossHpBarTick + 1) % 15;
+          if (this.bossHpBarTick === 0 && view.spineReady && view.skeleton && view.skeleton.isValid) {
+            const headY = this.measureSkeletonTopY(view.skeleton);
+            if (headY !== null) {
+              const capped = Math.min(headY + 14, this.layoutHeight * 0.47 - view.node.position.y);
+              hpBar.setPosition(0, capped, 0);
+            }
+          }
           const barW = hpTransform.width;
           hpGraphics.fillColor = rgba(10, 8, 8, 225);
           hpGraphics.roundRect(-barW / 2, -7, barW, 14, 7);
@@ -3685,6 +3695,59 @@ export class LobbyGuardBattleRenderer {
     }
     this.sortMonsterViewsByDepth();
     this.refreshBossTopBar();
+  }
+
+  private bossHpBarTick = 0;
+
+  /**
+   * 当前姿态下骨骼最高顶点在怪物节点坐标系里的 y(spine 原生单位 × 节点缩放 + 骨骼节点偏移)。
+   * 走 spine-core 的 slot/attachment.computeWorldVertices(与特效量尺同法);拿不到返回 null。
+   */
+  private measureSkeletonTopY(skeleton: sp.Skeleton): number | null {
+    const raw = (skeleton as unknown as { _skeleton?: unknown })._skeleton as {
+      slots?: Array<{ getAttachment?: () => unknown; bone?: unknown }>;
+    } | undefined;
+    if (!raw || !raw.slots) {
+      return null;
+    }
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const slot of raw.slots) {
+      const attachment = slot.getAttachment?.() as {
+        computeWorldVertices?: (...args: unknown[]) => void;
+        width?: number;
+        worldVerticesLength?: number;
+      } | null | undefined;
+      if (!attachment || typeof attachment.computeWorldVertices !== 'function') {
+        continue;
+      }
+      let verts: number[] | null = null;
+      try {
+        if (typeof attachment.width === 'number') {
+          verts = new Array<number>(8).fill(0);
+          attachment.computeWorldVertices(slot.bone, verts, 0, 2);
+        } else if (typeof attachment.worldVerticesLength === 'number' && attachment.worldVerticesLength > 0) {
+          const count = attachment.worldVerticesLength;
+          verts = new Array<number>(count).fill(0);
+          attachment.computeWorldVertices(slot, 0, count, verts, 0, 2);
+        }
+      } catch (error) {
+        void error;
+        continue;
+      }
+      if (!verts) {
+        continue;
+      }
+      for (let i = 1; i < verts.length; i += 2) {
+        if (Number.isFinite(verts[i])) {
+          maxY = Math.max(maxY, verts[i]);
+        }
+      }
+    }
+    if (!Number.isFinite(maxY)) {
+      return null;
+    }
+    const spineNode = skeleton.node;
+    return spineNode.position.y + maxY * Math.abs(spineNode.scale.y);
   }
 
   /** 怪物脚底→头顶的相对高度(与 createMonsterView 的视高公式一致)。 */

@@ -68,6 +68,7 @@ import { LobbyBagPanelRenderer, type LobbyBagPanelHost } from './lobby/LobbyBagP
 import { LobbyBattleFlow, type LobbyBattleFlowHost } from './lobby/LobbyBattleFlow';
 import { LobbyBattlePreviewPanelRenderer, type LobbyBattlePreviewPanelHost } from './lobby/LobbyBattlePreviewPanelRenderer';
 import { LobbyGuardBattleRenderer, type LobbyGuardBattleHost } from './lobby/LobbyGuardBattleRenderer';
+import { GUARD_MONSTER_SPINE_FILE, guardMonsterSpineResource } from './lobby/GuardBattleModel';
 import { LobbyCodexState } from './lobby/LobbyCodexState';
 import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/LobbyCodexPanelRenderer';
 import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/LobbyForgePanelRenderer';
@@ -600,6 +601,9 @@ export class LootChainGameRoot extends Component {
       this.bootPreloadActive = false;
       this.renderCurrentView();
       void this.tryResumeSession();
+      // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析,不是直接显示。
+      // 登录页亮出后在后台把全部 UI 图 + 骨骼从本地缓存热进内存(并发 2,不抢主流程),进战场时已解析好。
+      this.scheduleOnce(() => this.warmAllAssetsInBackground(), 1.5);
     };
     assetManager.loadBundle('resources', () => {
       const infos: Array<{ path: string }> = resources.getDirWithPath('ui/login', SpriteFrame) ?? [];
@@ -618,6 +622,63 @@ export class LootChainGameRoot extends Component {
       });
     });
     setTimeout(finish, 3000);
+  }
+
+  /** 后台资源预热进行中标记(只跑一次)。 */
+  private backgroundWarmStarted = false;
+
+  /**
+   * 后台预热:把 resources/ui 与 resources/spine 全量 load 一遍(已在内存的跳过),并发 2、每批之间让出一帧,
+   * 玩家在登录页/大厅停留的这段时间足够把战场用的怪物骨骼与特效解析完。任何失败静默跳过。
+   */
+  private warmAllAssetsInBackground(): void {
+    if (this.backgroundWarmStarted) {
+      return;
+    }
+    this.backgroundWarmStarted = true;
+    const spineInfos: Array<{ path: string }> = resources.getDirWithPath('spine', sp.SkeletonData) ?? [];
+    const uiInfos: Array<{ path: string }> = resources.getDirWithPath('ui', SpriteFrame) ?? [];
+    // 骨骼优先(战场首帧最缺的就是它),再补界面图。
+    const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
+      ...spineInfos.map((info) => ({ path: info.path, kind: 'spine' as const })),
+      ...uiInfos.map((info) => ({ path: info.path, kind: 'ui' as const })),
+    ];
+    let cursor = 0;
+    const worker = (): void => {
+      if (cursor >= tasks.length || !this.isValid) {
+        return;
+      }
+      const task = tasks[cursor++];
+      const next = (): void => {
+        // 每项之间让出一帧,避免连续解析卡住输入。
+        this.scheduleOnce(worker, 0);
+      };
+      if (task.kind === 'spine') {
+        if (resources.get(task.path, sp.SkeletonData)) {
+          worker();
+          return;
+        }
+        resources.load(task.path, sp.SkeletonData, next);
+      } else {
+        if (resources.get(task.path, SpriteFrame)) {
+          worker();
+          return;
+        }
+        resources.load(task.path, SpriteFrame, next);
+      }
+    };
+    worker();
+    worker();
+  }
+
+  /** 进守卫战前把全部怪物骨骼(40 套)预取进内存:首波怪入场即带动画,不再先出占位色块。 */
+  private prefetchGuardMonsterSpineAssets(): void {
+    for (const spineCode of Object.keys(GUARD_MONSTER_SPINE_FILE)) {
+      const path = guardMonsterSpineResource(spineCode);
+      if (!resources.get(path, sp.SkeletonData)) {
+        resources.load(path, sp.SkeletonData, () => undefined);
+      }
+    }
   }
 
   // 启动自动恢复会话:用 /me/lobby(已放行)探活 token,成功走与真实登录相同的入口流程。
@@ -2183,6 +2244,7 @@ export class LootChainGameRoot extends Component {
     this.currentView = 'battle';
     this.renderBattleScene();
     this.prefetchLobbyBattleFormationSpineAssets();
+    this.prefetchGuardMonsterSpineAssets();
     const startStageCode = resolvedStageCode;
     if (reuseExistingBattleState) {
       return;
