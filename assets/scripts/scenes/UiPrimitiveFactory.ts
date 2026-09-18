@@ -8,6 +8,7 @@ import {
   Node,
   Size,
   Sprite,
+  UIOpacity,
   UITransform,
   Vec3,
   VerticalTextAlignment,
@@ -82,10 +83,14 @@ export class UiPrimitiveFactory {
     node.addChild(textNode);
     textNode.setPosition(Vec3.ZERO);
     textNode.addComponent(UITransform).setContentSize(new Size(width - 28, currentLayout.inputHeight));
+    // 2026-09-18 用户反馈"输入后是黑的看不到":引擎每次聚焦 _showDom→_updateStyleSheet 会把原生 <input>
+    // 的 color 重设为 textLabel.color.toCSS(),此前 textLabel 用 alpha 0 隐藏 → 输入文字全透明。
+    // 改为颜色不透明、用节点 UIOpacity=0 隐藏(引擎显隐 label 只切 active,不碰 UIOpacity)。
+    textNode.addComponent(UIOpacity).opacity = 0;
     const textLabel = textNode.addComponent(Label);
     textLabel.fontSize = inputFontSize;
     textLabel.lineHeight = inputFontSize + 6;
-    textLabel.color = rgba(231, 226, 214, 0);
+    textLabel.color = rgba(231, 226, 214, 255);
     textLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
     textLabel.verticalAlign = VerticalTextAlignment.CENTER;
     textLabel.overflow = Label.Overflow.CLAMP;
@@ -95,10 +100,11 @@ export class UiPrimitiveFactory {
     node.addChild(placeholderNode);
     placeholderNode.setPosition(Vec3.ZERO);
     placeholderNode.addComponent(UITransform).setContentSize(new Size(width - 28, currentLayout.inputHeight));
+    placeholderNode.addComponent(UIOpacity).opacity = 0;
     const placeholderLabel = placeholderNode.addComponent(Label);
     placeholderLabel.fontSize = inputFontSize;
     placeholderLabel.lineHeight = inputFontSize + 6;
-    placeholderLabel.color = rgba(120, 114, 105, 0);
+    placeholderLabel.color = rgba(120, 114, 105, 255);
     placeholderLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
     placeholderLabel.verticalAlign = VerticalTextAlignment.CENTER;
     placeholderLabel.overflow = Label.Overflow.CLAMP;
@@ -141,7 +147,8 @@ export class UiPrimitiveFactory {
       display.color = hasText ? rgba(231, 226, 214) : rgba(150, 136, 110, 220);
     };
     refreshDisplay();
-    node.on(EditBox.EventType.EDITING_DID_BEGAN, () => { displayNode.active = false; }, this);
+    // 聚焦后引擎已重写过 <input> 样式,这里再注一次暗色样式(颜色/光标/透明底)作双保险。
+    node.on(EditBox.EventType.EDITING_DID_BEGAN, () => { displayNode.active = false; this.styleNativeInput(editBox); }, this);
     node.on(EditBox.EventType.EDITING_DID_ENDED, () => { refreshDisplay(); displayNode.active = true; }, this);
     node.on(EditBox.EventType.EDITING_RETURN, () => { refreshDisplay(); displayNode.active = true; }, this);
     return editBox;
