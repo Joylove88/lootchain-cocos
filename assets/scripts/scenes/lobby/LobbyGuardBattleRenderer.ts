@@ -32,6 +32,8 @@ import {
   guardCurrentSummonCost,
   guardDragTo,
   guardEnhance,
+  guardEnhanceBlocked,
+  guardEnhanceNextCost,
   guardFindHeroAt,
   guardHeroAttackValue,
   guardOpenChest,
@@ -50,7 +52,6 @@ import {
   guardCellUnlockRank,
   GUARD_CRYSTAL_REACH_X,
   GUARD_CRYSTAL_SKILL_CD_MS,
-  GUARD_ENHANCE_ATK_PCT,
   GUARD_MAX_STAR,
   GUARD_GRID_CELLS,
   GUARD_GRID_COLS,
@@ -402,7 +403,7 @@ export class LobbyGuardBattleRenderer {
     const isMain = /^MAIN_\d+_\d+$/.test(stageCode);
     const rushMode = isDaily && stageCode.endsWith('_3');
     // 主线难度包(P5a2,2026-09-04 用户拍板"怪量翻倍/血量翻几倍"):怪量×2(击杀金币减半保持收入中性)、
-    // 血量×3(啃咬 √3)、标准模式局内强化封顶 12 级(sim 内)。
+    // 血量×3(啃咬 √3)、标准模式局内强化词条封顶 11 次(sim 内价格表)。
     // 限时副本三档(2026-09-11 用户拍板"太容易击杀"):怪物血量同样 ×3,怪量不变。
     this.sim = createGuardBattle(
       pool,
@@ -977,10 +978,7 @@ export class LobbyGuardBattleRenderer {
       this.refreshStatsPanel(true);
     }, this);
     this.host.applyImageButtonFeedback(statsBtn, 1.05, 0.95);
-    const teamAtk = this.host.addChildLabel(hud, 'GuardTeamAtkText', '', -width / 2 + 24, stripTop - statsBtnH - 20, 16, rgba(255, 176, 130, 250), new Size(190, 22), HorizontalTextAlignment.LEFT);
-    teamAtk.enableOutline = true;
-    teamAtk.outlineColor = rgba(12, 8, 6, 255);
-    teamAtk.outlineWidth = 2;
+    // 2026-09-18 用户要求:左上角不再显示"全队攻击 +x%"与"等级·击杀"(强化改词条后攻击加成不再是主线数值)。
     // 顶部中央:标题横幅(素材 704×110)
     const bannerW = Math.min(600, width * 0.42);
     const bannerH = bannerW * (110 / 704);
@@ -1019,8 +1017,7 @@ export class LobbyGuardBattleRenderer {
     this.mountSprite(closeBtn, 'Img', 'ui/battle/ai/ghud_btn_close/spriteFrame', 0, 0, 42, 42);
     this.host.applyImageButtonFeedback(closeBtn);
     closeBtn.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
-    // 次级信息:等级击杀(左)/下一波预告(右)/波次轨道(标准模式)
-    this.host.addChildLabel(hud, 'GuardXpText', '', -width / 2 + 24, stripTop - statsBtnH - 44, 15, rgba(150, 230, 190, 230), new Size(220, 21), HorizontalTextAlignment.LEFT);
+    // 次级信息:下一波预告(右)/波次轨道(标准模式)
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
     track.addComponent(Graphics);
@@ -1320,16 +1317,6 @@ export class LobbyGuardBattleRenderer {
     }
     this.refreshWaveTrack();
     this.refreshStatsPanel(false);
-    const xpText = hud.getChildByName('GuardXpText')?.getComponent(Label);
-    if (xpText) {
-      xpText.string = `等级 ${sim.level} · 击杀 ${sim.killCount}`;
-    }
-    const teamAtkText = hud.getChildByName('GuardTeamAtkText')?.getComponent(Label);
-    if (teamAtkText) {
-      const pct = sim.mods.teamAtkPct + sim.enhanceLevel * 8;
-      const surge = sim.supportSurgeUntilMs > sim.timeMs ? ' ·涌泉' : '';
-      teamAtkText.string = `全队攻击 +${pct}%${surge}`;
-    }
     const previewText = hud.getChildByName('GuardPreviewText')?.getComponent(Label);
     if (previewText) {
       if (sim.phase === 'prep' && sim.nextWaveSpawns) {
@@ -1341,12 +1328,13 @@ export class LobbyGuardBattleRenderer {
       }
     }
     const enhanceDesc = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceDesc')?.getComponent(Label);
-    if (enhanceDesc) {
-      enhanceDesc.string = `全队攻击 +${sim.enhanceLevel * GUARD_ENHANCE_ATK_PCT}%`;
-    }
     const enhanceCost = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceCost')?.getComponent(Label);
+    const nextEnhanceCost = guardEnhanceNextCost(sim);
+    if (enhanceDesc) {
+      enhanceDesc.string = nextEnhanceCost === null ? '词条已买满' : `选词条 · 第 ${sim.enhanceLevel + 1} 次`;
+    }
     if (enhanceCost) {
-      enhanceCost.string = `${sim.enhanceCost}`;
+      enhanceCost.string = nextEnhanceCost === null ? '—' : `${nextEnhanceCost}`;
     }
     this.refreshCrystalSkillButton();
   }
@@ -1381,10 +1369,21 @@ export class LobbyGuardBattleRenderer {
       if (!sim) {
         return;
       }
-      if (!guardEnhance(sim)) {
-        this.host.setStatus('战斗金币不足,无法强化。');
-      } else {
-        this.host.setStatus(`全队攻击强化至 Lv${sim.enhanceLevel}(+${sim.enhanceLevel * 8}%)`);
+      const blocked = guardEnhanceBlocked(sim);
+      if (blocked === 'gold') {
+        this.host.setStatus(`战斗金币不足,强化需要 ${guardEnhanceNextCost(sim) ?? 0}。`);
+        return;
+      }
+      if (blocked === 'capped') {
+        this.host.setStatus('本局强化词条已买满。');
+        return;
+      }
+      if (blocked) {
+        return;
+      }
+      if (guardEnhance(sim)) {
+        gameAudio.sfx('ui_click');
+        this.host.setStatus(`强化 ×${sim.enhanceLevel}:选择一条词条`);
       }
     }, this);
   }
@@ -2059,11 +2058,11 @@ export class LobbyGuardBattleRenderer {
       }
       return;
     }
-    if (existing && this.choiceOverlayLevel === sim.level) {
+    if (existing && this.choiceOverlayLevel === sim.choiceSerial) {
       return;
     }
     existing?.destroy();
-    this.choiceOverlayLevel = sim.level;
+    this.choiceOverlayLevel = sim.choiceSerial;
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const overlay = this.host.addChildPlainNode(root, 'GuardChoiceOverlay', 0, 0, width, height);
@@ -2074,7 +2073,8 @@ export class LobbyGuardBattleRenderer {
     const panelH = height * 0.6;
     this.paintOverlayPanel(overlay, Math.min(width * 0.9, panelH * 1.62), panelH, 0);
     // 标题下移 15px(2026-08-28 用户验收)
-    this.host.addChildLabel(overlay, 'GuardChoiceTitle', `等级提升!Lv${sim.level} · 三选一`, 0, panelH / 2 - 93, 30, rgba(255, 232, 150), new Size(width * 0.7, 40));
+    const fromEnhance = sim.choiceSource === 'enhance';
+    this.host.addChildLabel(overlay, 'GuardChoiceTitle', fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择一条词条` : `等级提升!Lv${sim.level} · 三选一`, 0, panelH / 2 - 93, 30, rgba(255, 232, 150), new Size(width * 0.7, 40));
     const cardW = Math.min(262, width * 0.22);
     const cardH = 232;
     sim.pendingChoice.forEach((option, index) => {
@@ -2139,11 +2139,13 @@ export class LobbyGuardBattleRenderer {
       smallLabel.overflow = Label.Overflow.SHRINK;
       button.on(Node.EventType.TOUCH_END, onTap, this);
     };
-    // 按钮间距加大(2026-08-28 用户验收)
-    makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -160, () => {
-      guardSkipChoice(sim);
-    });
-    makeSmall('GuardChoiceReroll', `刷新(剩 ${sim.rerollLeft})`, 160, () => {
+    // 按钮间距加大(2026-08-28 用户验收);强化付费弹出的词条不可跳过(只剩刷新,居中)
+    if (!fromEnhance) {
+      makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -160, () => {
+        guardSkipChoice(sim);
+      });
+    }
+    makeSmall('GuardChoiceReroll', `刷新(剩 ${sim.rerollLeft})`, fromEnhance ? 0 : 160, () => {
       if (guardRerollChoice(sim)) {
         this.choiceOverlayLevel = 0;
       } else {

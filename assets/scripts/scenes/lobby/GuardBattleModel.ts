@@ -97,7 +97,7 @@ export interface GuardChoiceOption {
 }
 
 export interface GuardMods {
-  /** 全队攻击 +%(词条与强化线合并计入)。 */
+  /** 全队攻击 +%(词条累计;2026-09-18 起强化不再单独加攻击)。 */
   teamAtkPct: number;
   /** 攻速 +%(缩短出手间隔)。 */
   atkSpeedPct: number;
@@ -175,6 +175,10 @@ export interface GuardBattleState {
   xpIntoLevel: number;
   /** 待处理三选一(存在即暂停;由 guardChooseOption/Skip/Reroll/Banish 消费)。 */
   pendingChoice: GuardChoiceOption[] | null;
+  /** 当前三选一来源:升级(可跳过换金币)/ 强化(付费必选)。 */
+  choiceSource: 'levelUp' | 'enhance';
+  /** 每次摇出新一组选项 +1,渲染层据此重建弹层。 */
+  choiceSerial: number;
   rerollLeft: number;
   banishLeft: number;
   banished: string[];
@@ -288,11 +292,20 @@ export const GUARD_SUPPORT_CRYSTAL_HEAL_RATIO = 0.025;
 export const GUARD_CRYSTAL_THORNS_BASE = 6;
 export const GUARD_CRYSTAL_THORNS_PER_WAVE = 3;
 
-// P2:强化线(全队攻击等级)/宝箱跳奖/三选一/BOSS 读条/水晶技能
-export const GUARD_ENHANCE_BASE_COST = 40;
-export const GUARD_ENHANCE_COST_STEP = 20;
-// 8→5(2026-08-28 用户拍板:强化全队攻击加成削弱)。
-export const GUARD_ENHANCE_ATK_PCT = 5;
+// P2:强化线/宝箱跳奖/三选一/BOSS 读条/水晶技能
+/**
+ * 强化改词条(2026-09-18 用户拍板):强化不再直接加攻击,付金币弹一次词条三选一;
+ * 价格按次数走阶梯,标准模式买满 11 次封顶,车轮战(rush)超出后按末价继续。
+ */
+export const GUARD_ENHANCE_PRICES = [100, 200, 400, 600, 800, 1000, 1500, 1800, 2500, 3000, 3500];
+
+/** 下一次强化价格;标准模式买满返回 null(已封顶)。 */
+export function guardEnhanceNextCost(state: { mode: GuardMode; enhanceLevel: number }): number | null {
+  if (state.enhanceLevel < GUARD_ENHANCE_PRICES.length) {
+    return GUARD_ENHANCE_PRICES[state.enhanceLevel];
+  }
+  return state.mode === 'standard' ? null : GUARD_ENHANCE_PRICES[GUARD_ENHANCE_PRICES.length - 1];
+}
 export const GUARD_CHEST_TIER5_CHANCE = 0.03;
 export const GUARD_CHEST_TIER3_CHANCE = 0.1;
 export const GUARD_BOSS_CAST_INTERVAL_MS = 12_000;
@@ -586,12 +599,14 @@ export function createGuardBattle(
     level: 1,
     xpIntoLevel: 0,
     pendingChoice: null,
+    choiceSource: 'levelUp',
+    choiceSerial: 0,
     rerollLeft: 1,
     banishLeft: 1,
     banished: [],
     mods: { teamAtkPct: 0, atkSpeedPct: 0, goldGainPct: 0, summonDiscount: 0, thornsPct: 0 },
     enhanceLevel: 0,
-    enhanceCost: GUARD_ENHANCE_BASE_COST,
+    enhanceCost: GUARD_ENHANCE_PRICES[0],
     crystalSkillReadyMs: 0,
     bossCast: null,
     nextBossCastMs: 0,
@@ -679,21 +694,41 @@ export function guardSummon(state: GuardBattleState, free = false): GuardHeroUni
   return unit;
 }
 
-/** 强化线:花金币升全队攻击等级(每级 +8%),费用递增——与召唤争夺同一份金币。 */
-/** 标准模式强化封顶(主线收紧 2026-09-04:无上限强化=局内无限成长,任何关卡磨得动,账号养成失去闸门意义;
- *  rush 车轮战不封顶——层数爬升本来就靠它,且经济已隔离到输出分)。 */
-export const GUARD_ENHANCE_MAX_LEVEL_STANDARD = 12;
+export type GuardEnhanceBlock = 'over' | 'capped' | 'busy' | 'gold';
 
+/** 强化为何不可用:战斗已结束 / 标准模式买满 / 已有待选三选一 / 金币不足;可用返回 null。 */
+export function guardEnhanceBlocked(state: GuardBattleState): GuardEnhanceBlock | null {
+  if (state.phase === 'victory' || state.phase === 'defeat') {
+    return 'over';
+  }
+  const cost = guardEnhanceNextCost(state);
+  if (cost === null) {
+    return 'capped';
+  }
+  if (state.pendingChoice) {
+    return 'busy';
+  }
+  if (state.gold < cost) {
+    return 'gold';
+  }
+  return null;
+}
+
+/**
+ * 强化(2026-09-18 改版):付当前价 → 立刻弹词条三选一(必选,可刷新/放逐,不可跳过);不再直接加攻击。
+ * 标准模式封顶 11 次(价格表长度):无上限强化=局内无限成长,账号养成失去闸门意义;rush 不封顶(层数爬升靠它)。
+ */
 export function guardEnhance(state: GuardBattleState): boolean {
-  if (state.phase === 'victory' || state.phase === 'defeat' || state.gold < state.enhanceCost) {
+  if (guardEnhanceBlocked(state)) {
     return false;
   }
-  if (state.mode === 'standard' && state.enhanceLevel >= GUARD_ENHANCE_MAX_LEVEL_STANDARD) {
-    return false;
-  }
-  state.gold -= state.enhanceCost;
+  const cost = guardEnhanceNextCost(state) ?? 0;
+  state.gold -= cost;
   state.enhanceLevel += 1;
-  state.enhanceCost = GUARD_ENHANCE_BASE_COST + state.enhanceLevel * GUARD_ENHANCE_COST_STEP;
+  state.enhanceCost = guardEnhanceNextCost(state) ?? 0;
+  state.pendingChoice = rollChoices(state);
+  state.choiceSource = 'enhance';
+  state.choiceSerial += 1;
   state.events.push({ type: 'enhance', timeMs: state.timeMs, amount: state.enhanceLevel });
   return true;
 }
@@ -790,7 +825,7 @@ export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUni
   const pool = state.pool.find((entry) => entry.heroCode === hero.heroCode);
   const base = pool?.baseAttack ?? 40;
   const profile = GUARD_ROLE_PROFILE[hero.role];
-  const teamPct = state.mods.teamAtkPct + state.enhanceLevel * GUARD_ENHANCE_ATK_PCT;
+  const teamPct = state.mods.teamAtkPct;
   const t0Mult = GUARD_T0_ATTACK_MULT_BY_CODE[hero.heroCode.toUpperCase()] ?? 1;
   const rarityMult = GUARD_RARITY_ATTACK_MULT[(pool?.rarity ?? 'R').toUpperCase()] ?? 1;
   return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult));
@@ -830,6 +865,8 @@ function grantXp(state: GuardBattleState, amount: number): void {
     state.xpIntoLevel -= xpThreshold(state.level);
     state.level += 1;
     state.pendingChoice = rollChoices(state);
+    state.choiceSource = 'levelUp';
+    state.choiceSerial += 1;
     state.events.push({ type: 'levelUp', timeMs: state.timeMs, amount: state.level });
   }
 }
@@ -853,6 +890,8 @@ function afterChoiceResolved(state: GuardBattleState): void {
     state.xpIntoLevel -= xpThreshold(state.level);
     state.level += 1;
     state.pendingChoice = rollChoices(state);
+    state.choiceSource = 'levelUp';
+    state.choiceSerial += 1;
     state.events.push({ type: 'levelUp', timeMs: state.timeMs, amount: state.level });
   }
 }
@@ -867,9 +906,9 @@ export function guardChooseOption(state: GuardBattleState, index: number): boole
   return true;
 }
 
-/** 跳过=换 50 金币。 */
+/** 跳过=换 50 金币;强化付费弹出的词条不可跳过。 */
 export function guardSkipChoice(state: GuardBattleState): boolean {
-  if (!state.pendingChoice) {
+  if (!state.pendingChoice || state.choiceSource === 'enhance') {
     return false;
   }
   state.gold += 50;
@@ -883,6 +922,7 @@ export function guardRerollChoice(state: GuardBattleState): boolean {
   }
   state.rerollLeft -= 1;
   state.pendingChoice = rollChoices(state);
+  state.choiceSerial += 1;
   return true;
 }
 
@@ -895,6 +935,7 @@ export function guardBanishChoice(state: GuardBattleState, index: number): boole
   state.banishLeft -= 1;
   state.banished.push(option.id);
   state.pendingChoice = rollChoices(state);
+  state.choiceSerial += 1;
   return true;
 }
 
@@ -1404,3 +1445,5 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   state.monsters = state.monsters.filter((monster) => !monster.dead || state.timeMs - monster.diedAtMs < 3000);
   return state.phase;
 }
+
+// 2026-09-18 强化改词条:见 GUARD_ENHANCE_PRICES / guardEnhance。
