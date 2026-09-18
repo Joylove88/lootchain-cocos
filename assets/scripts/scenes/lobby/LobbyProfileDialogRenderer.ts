@@ -177,7 +177,8 @@ export class LobbyProfileDialogRenderer {
     if (art) {
       const shade = this.host.addChildPlainNode(holder, 'LobbyProfileBgShade', 0, 0, panelWidth, panelHeight);
       const g = shade.addComponent(Graphics);
-      g.fillColor = rgba(4, 3, 5, 96);
+      // 2026-09-18 用户反馈背景太亮:压暗层 96→168。
+      g.fillColor = rgba(4, 3, 5, 168);
       g.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
       g.fill();
     }
@@ -185,11 +186,11 @@ export class LobbyProfileDialogRenderer {
 
   /** 左侧导航:玩家资料(激活,红底金边)/外观设置/游戏设置(待开放,点击提示)。 */
   private addSideNav(panel: Node, panelWidth: number, panelHeight: number, scale: number): void {
+    // 2026-09-18 用户拍板:外观设置/游戏设置先隐藏(功能未开放),只留玩家资料;要恢复把下面两项放回即可。
     const entries: Array<{ key: string; label: string; icon: string; active: boolean }> = [
       { key: 'profile', label: '玩家资料', icon: 'ui/profile/ai/title/spriteFrame', active: true },
-      { key: 'appearance', label: '外观设置', icon: 'ui/profile/ai/hero_cap/spriteFrame', active: false },
-      { key: 'game', label: '游戏设置', icon: PROFILE_ASSETS.navSettings, active: false },
     ];
+    void PROFILE_ASSETS.navSettings;
     const navW = 206 * scale;
     const navH = 64 * scale;
     const navX = -panelWidth / 2 + 12 * scale + navW / 2;
