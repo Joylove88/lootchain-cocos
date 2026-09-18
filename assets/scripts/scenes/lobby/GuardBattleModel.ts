@@ -81,12 +81,16 @@ export interface GuardMonster {
   diedAtMs: number;
 }
 
-/** 精英掉落宝箱(点击开箱→跳奖)。 */
+/** 宝箱档次:精英掉普通箱(跳奖 1/3/5 连)、BOSS 掉豪华箱(固定 5 连、金币翻倍)——2026-09-18 用户拍板。 */
+export type GuardChestGrade = 'normal' | 'deluxe';
+
+/** 精英/BOSS 掉落宝箱(点击开箱→跳奖)。 */
 export interface GuardChest {
   chestId: number;
   x: number;
   lane: number;
   droppedAtMs: number;
+  grade: GuardChestGrade;
 }
 
 /** 三选一选项(P2 白池=通用属性;蓝/金留 P4)。 */
@@ -322,7 +326,8 @@ export function guardCrystalSkillDamage(wave: number): number {
 }
 
 export const GUARD_KILL_GOLD: Record<GuardMonsterKind, number> = { normal: 8, fast: 6, tank: 14, flying: 8, shooter: 12, elite: 60, boss: 200 };
-export const GUARD_KILL_XP: Record<GuardMonsterKind, number> = { normal: 1, fast: 1, tank: 2, flying: 1, shooter: 2, elite: 10, boss: 30 };
+// BOSS 经验 30→0(2026-09-18 用户拍板:击杀 BOSS 不再弹词条三选一,改掉豪华宝箱)。
+export const GUARD_KILL_XP: Record<GuardMonsterKind, number> = { normal: 1, fast: 1, tank: 2, flying: 1, shooter: 2, elite: 10, boss: 0 };
 // 速度整体 ×0.5(2026-08-26 用户拍板:怪物移动过快)。
 const MONSTER_PROFILE: Record<GuardMonsterKind, { hpMult: number; speed: number; dmgMult: number; spineCodes: string[] }> = {
   normal: { hpMult: 1, speed: 0.28, dmgMult: 1, spineCodes: ['mutant_male', 'infected_male', 'goathead_blade'] },
@@ -947,28 +952,33 @@ export interface GuardChestReward {
 }
 
 /**
- * 开箱:跳奖档位 3%→5连 / 10%→3连 / 其余 1连(账号前 3 箱由渲染层传 scriptTier 固定 1-3-5)。
+ * 开箱:普通箱跳奖档位 3%→5连 / 10%→3连 / 其余 1连(账号前 3 箱由渲染层传 scriptTier 固定 1-3-5);
+ * 豪华箱(BOSS 掉落)固定 5 连、金币件翻倍,不吃新手脚本。
  * 返回逐件奖励(渲染层轮盘演出逐件揭示);奖励立即入账。
  */
-export function guardOpenChest(state: GuardBattleState, chestId: number, scriptTier?: 1 | 3 | 5): { tier: number; rewards: GuardChestReward[] } | null {
+export function guardOpenChest(state: GuardBattleState, chestId: number, scriptTier?: 1 | 3 | 5): { tier: number; rewards: GuardChestReward[]; grade: GuardChestGrade } | null {
   const chestIndex = state.chests.findIndex((chest) => chest.chestId === chestId);
   if (chestIndex < 0) {
     return null;
   }
+  const grade: GuardChestGrade = state.chests[chestIndex].grade ?? 'normal';
   state.chests.splice(chestIndex, 1);
   state.chestOpenedCount += 1;
   let tier: number;
-  if (scriptTier) {
+  if (grade === 'deluxe') {
+    tier = 5;
+  } else if (scriptTier) {
     tier = scriptTier;
   } else {
     const roll = state.rng();
     tier = roll < GUARD_CHEST_TIER5_CHANCE ? 5 : roll < GUARD_CHEST_TIER5_CHANCE + GUARD_CHEST_TIER3_CHANCE ? 3 : 1;
   }
+  const goldBase = grade === 'deluxe' ? 300 : 150;
   const rewards: GuardChestReward[] = [];
   for (let i = 0; i < tier; i += 1) {
     const roll = state.rng();
     if (roll < 0.45) {
-      const amount = Math.round(150 * (1 + state.mods.goldGainPct / 100));
+      const amount = Math.round(goldBase * (1 + state.mods.goldGainPct / 100));
       state.gold += amount;
       rewards.push({ kind: 'gold', amount, label: `战斗金币 +${amount}` });
     } else if (roll < 0.75) {
@@ -986,7 +996,7 @@ export function guardOpenChest(state: GuardBattleState, chestId: number, scriptT
     }
   }
   state.events.push({ type: 'chestOpen', timeMs: state.timeMs, chestId, tier });
-  return { tier, rewards };
+  return { tier, rewards, grade };
 }
 
 // ── P2:水晶技能(矿晶震荡) ──
@@ -1031,8 +1041,14 @@ function killMonster(state: GuardBattleState, monster: GuardMonster): void {
       state.bossCast = null;
     }
   }
-  if (monster.kind === 'elite') {
-    const chest: GuardChest = { chestId: state.nextChestId++, x: monster.x, lane: monster.lane, droppedAtMs: state.timeMs };
+  if (monster.kind === 'elite' || monster.kind === 'boss') {
+    const chest: GuardChest = {
+      chestId: state.nextChestId++,
+      x: monster.x,
+      lane: monster.lane,
+      droppedAtMs: state.timeMs,
+      grade: monster.kind === 'boss' ? 'deluxe' : 'normal',
+    };
     state.chests.push(chest);
     state.events.push({ type: 'chestDrop', timeMs: state.timeMs, chestId: chest.chestId });
   }

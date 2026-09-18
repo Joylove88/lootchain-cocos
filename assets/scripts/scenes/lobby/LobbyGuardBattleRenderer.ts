@@ -64,6 +64,7 @@ import {
   GUARD_SPAWN_X,
   resolveGuardRole,
   type GuardBattleState,
+  type GuardChestGrade,
   type GuardChestReward,
   type GuardZone,
   type GuardHeroUnit,
@@ -1837,19 +1838,21 @@ export class LobbyGuardBattleRenderer {
       if (this.chestViews.has(chest.chestId)) {
         continue;
       }
-      const size = this.unitSize() * 0.8;
+      // BOSS 豪华箱(2026-09-18 用户拍板):图鉴哥特金箱素材、体型 ×1.3、红金光晕;精英普通箱沿用矿脉石箱。
+      const deluxe = chest.grade === 'deluxe';
+      const size = this.unitSize() * (deluxe ? 1.04 : 0.8);
       const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, this.xToPx(chest.x), this.monsterY(chest.lane, chest.x) - size * 0.15, size, size);
       // 呼吸光晕(2026-08-28 用户验收:掉在地上不明显):金色双环随缩放呼吸,画在宝箱图之下
       const glow = this.host.addChildPlainNode(node, 'GuardChestGlow', 0, -size * 0.06, size, size);
       const glowG = glow.addComponent(Graphics);
-      glowG.fillColor = rgba(255, 214, 110, 56);
+      glowG.fillColor = deluxe ? rgba(255, 120, 70, 70) : rgba(255, 214, 110, 56);
       glowG.circle(0, 0, size * 0.56);
       glowG.fill();
-      glowG.strokeColor = rgba(255, 226, 130, 190);
+      glowG.strokeColor = deluxe ? rgba(255, 170, 90, 220) : rgba(255, 226, 130, 190);
       glowG.lineWidth = 4;
       glowG.circle(0, 0, size * 0.56);
       glowG.stroke();
-      glowG.strokeColor = rgba(255, 240, 180, 120);
+      glowG.strokeColor = deluxe ? rgba(255, 230, 150, 160) : rgba(255, 240, 180, 120);
       glowG.lineWidth = 2;
       glowG.circle(0, 0, size * 0.72);
       glowG.stroke();
@@ -1861,8 +1864,8 @@ export class LobbyGuardBattleRenderer {
         .repeatForever(tween().to(0.7, { opacity: 255 }).to(0.7, { opacity: 140 }))
         .start();
       // 场上宝箱用素材(2026-08-25:程序画的方块太素)。
-      this.mountSprite(node, 'Img', 'ui/guard/chest_closed/spriteFrame', 0, 0, size, size);
-      const hint = this.host.addChildLabel(node, 'GuardChestHint', '点击开箱', 0, size * 0.48, 15, rgba(255, 232, 150), new Size(size * 1.8, 20));
+      this.mountSprite(node, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, size, size);
+      const hint = this.host.addChildLabel(node, 'GuardChestHint', deluxe ? '豪华宝箱 · 点击开箱' : '点击开箱', 0, size * 0.48, deluxe ? 17 : 15, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(size * 1.8, 22));
       hint.enableOutline = true;
       hint.outlineColor = rgba(40, 24, 10, 255);
       hint.outlineWidth = 2;
@@ -1900,10 +1903,13 @@ export class LobbyGuardBattleRenderer {
     if (!sim || !root || this.wheelOverlayOpen) {
       return;
     }
-    const result = guardOpenChest(sim, chestId, this.nextChestScriptTier());
+    // 新手 1-3-5 脚本只吃普通箱;豪华箱固定 5 连不占脚本名额。
+    const grade: GuardChestGrade = sim.chests.find((chest) => chest.chestId === chestId)?.grade ?? 'normal';
+    const result = guardOpenChest(sim, chestId, grade === 'deluxe' ? undefined : this.nextChestScriptTier());
     if (!result) {
       return;
     }
+    const deluxe = result.grade === 'deluxe';
     this.wheelOverlayOpen = true;
     sim.paused = true;
     const width = this.layoutWidth;
@@ -1916,7 +1922,7 @@ export class LobbyGuardBattleRenderer {
     // 横版布局适配 popup_frame_large(1.7 宽高比):左轮盘右奖励列。
     const wheelPanelH = Math.min(600, height * 0.62);
     this.paintOverlayPanel(overlay, wheelPanelH * 1.7, wheelPanelH, 0);
-    this.host.addChildLabel(overlay, 'GuardWheelTitle', '矿脉宝箱', 0, wheelPanelH / 2 - 76, 32, rgba(255, 232, 150), new Size(width * 0.6, 42));
+    this.host.addChildLabel(overlay, 'GuardWheelTitle', deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱', 0, wheelPanelH / 2 - 76, 32, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(width * 0.6, 42));
     const wheelTitleHalf = 2 * 32;
     const wheelDividerAvail = (wheelPanelH * 1.7) / 2 - wheelTitleHalf - 10 - 24;
     if (wheelDividerAvail >= 40) {
@@ -1968,27 +1974,28 @@ export class LobbyGuardBattleRenderer {
     });
     // 中心矿脉宝箱(不随盘转);停格后换开箱图+金光
     const chestNode = this.host.addChildPlainNode(overlay, 'GuardWheelChest', wheelX, wheelY, 128, 128);
-    this.mountSprite(chestNode, 'Img', 'ui/guard/chest_closed/spriteFrame', 0, 0, 128, 128);
+    this.mountSprite(chestNode, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, 128, 128);
     const pointer = this.host.addChildLabel(overlay, 'GuardWheelPointer', '▼', wheelX, wheelY + radius + 20, 30, rgba(255, 214, 92), new Size(44, 36));
     void pointer;
     // 指针不动转盘转:2.2s 缓停(圈数+随机相位由 tier 决定视觉落点,纯演出)
     const turns = 4 + result.tier;
     tween(wheel)
       .to(2.2, { angle: -360 * turns - 45 }, { easing: 'quartOut' })
-      .call(() => this.revealChestRewards(overlay, result.tier, result.rewards))
+      .call(() => this.revealChestRewards(overlay, result.tier, result.rewards, result.grade))
       .start();
   }
 
-  private revealChestRewards(overlay: Node, tier: number, rewards: GuardChestReward[]): void {
+  private revealChestRewards(overlay: Node, tier: number, rewards: GuardChestReward[], grade: GuardChestGrade = 'normal'): void {
     if (!overlay.isValid) {
       return;
     }
+    const deluxe = grade === 'deluxe';
     const height = this.layoutHeight;
     // 开箱动效:闭箱→开箱素材切换 + 缩放弹跳 + 金光爆环
     const chestNode = overlay.getChildByName('GuardWheelChest');
     if (chestNode && chestNode.isValid) {
       chestNode.getChildByName('Img')?.destroy();
-      this.mountSprite(chestNode, 'Img', 'ui/guard/chest_open/spriteFrame', 0, 6, 150, 150);
+      this.mountSprite(chestNode, 'Img', deluxe ? 'ui/codex/ai/chest_opened/spriteFrame' : 'ui/guard/chest_open/spriteFrame', 0, 6, 150, 150);
       chestNode.setScale(0.7, 0.7, 1);
       tween(chestNode)
         .to(0.16, { scale: new Vec3(1.22, 1.22, 1) }, { easing: 'backOut' })
@@ -2006,7 +2013,8 @@ export class LobbyGuardBattleRenderer {
     }
     const panelH = Math.min(600, height * 0.62);
     const colX = panelH * 0.5;
-    const tierLabel = this.host.addChildLabel(overlay, 'GuardWheelTier', tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励', colX, panelH / 2 - 128, tier >= 5 ? 32 : 24, tier >= 5 ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(panelH * 0.8, 44));
+    const tierText = deluxe ? '★ 豪华 5 连大奖!★' : tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励';
+    const tierLabel = this.host.addChildLabel(overlay, 'GuardWheelTier', tierText, colX, panelH / 2 - 128, tier >= 5 ? 32 : 24, tier >= 5 ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(panelH * 0.8, 44));
     tierLabel.enableOutline = true;
     tierLabel.outlineColor = rgba(60, 30, 10, 255);
     tierLabel.outlineWidth = 3;
