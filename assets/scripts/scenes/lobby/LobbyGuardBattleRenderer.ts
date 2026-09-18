@@ -162,6 +162,14 @@ const GUARD_ROLE_COLOR: Record<string, Color> = {
 interface GuardUnitView {
   node: Node;
   spineReady: boolean;
+  /** BOSS 头顶血条高度(怪物节点坐标系,行走阶段实测顶点峰值 +14);未量到前 undefined。 */
+  hpBarY?: number;
+  /** 已采样次数;攒够 20 次(≈1 秒)后锁定。 */
+  hpBarSamples?: number;
+  /** 血条高度已锁定,不再重新量。 */
+  hpBarLocked?: boolean;
+  /** 攻击动作播放截止时刻(Date.now 毫秒),期间头顶血条不重新量。 */
+  attackHoldUntil?: number;
   lastAnimKey: string;
   skeleton: sp.Skeleton | null;
   idleAnim: string;
@@ -2937,8 +2945,19 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     try {
-      view.skeleton.setAnimation(0, view.attackAnim, false);
+      const attackEntry = view.skeleton.setAnimation(0, view.attackAnim, false);
       view.skeleton.addAnimation(0, view.idleAnim, true, 0);
+      // 攻击动作期间(挥臂/扑击顶点远高于头)BOSS 头顶血条冻结不量,动作结束再继续跟头。
+      let attackMs = 900;
+      try {
+        const end = (attackEntry as unknown as { animationEnd?: number } | null)?.animationEnd;
+        if (typeof end === 'number' && Number.isFinite(end) && end > 0) {
+          attackMs = end * 1000;
+        }
+      } catch (error) {
+        void error;
+      }
+      view.attackHoldUntil = Date.now() + attackMs + 120;
     } catch (error) {
       void error;
     }
@@ -3668,13 +3687,24 @@ export class LobbyGuardBattleRenderer {
         hpGraphics.clear();
         if (monster.kind === 'boss') {
           // 血条贴真实头顶(2026-09-18 用户反馈离头太远):骨骼 json 的声明高度含武器/翅膀外扩,
-          // 改按当前姿态顶点实测的最高点定位;每 15 帧测一次,测不到(wasm 无 _skeleton)保留初值。
-          this.bossHpBarTick = (this.bossHpBarTick + 1) % 15;
-          if (this.bossHpBarTick === 0 && view.spineReady && view.skeleton && view.skeleton.isValid) {
-            const headY = this.measureSkeletonTopY(view.skeleton);
-            if (headY !== null) {
-              const capped = Math.min(headY + 14, this.layoutHeight * 0.47 - view.node.position.y);
-              hpBar.setPosition(0, capped, 0);
+          // 改按当前姿态顶点实测的最高点定位;每 15 帧测一次,先读渲染顶点缓冲、再退 spine-core,都测不到保留初值。
+          // 2026-09-18 用户拍板:血条位置要固定,不能随动作上下跳。做法:骨骼就绪后的行走阶段每 3 帧量一次,
+          // 取这段时间(20 次≈1 秒)顶点最高值 +14 作为固定高度,之后锁死不再量;攻击动作期间不采样(挥臂顶点远高于头)。
+          // 高度只会单调上调、从不下落,肉眼看就是"出场即定"。
+          if (!view.hpBarLocked && view.spineReady && view.skeleton && view.skeleton.isValid) {
+            this.bossHpBarTick = (this.bossHpBarTick + 1) % 3;
+            const attacking = Date.now() < (view.attackHoldUntil ?? 0);
+            if (this.bossHpBarTick === 0 && !attacking) {
+              const headY = this.measureSkeletonTopY(view.skeleton);
+              if (headY !== null) {
+                const peak = Math.max(view.hpBarY ?? Number.NEGATIVE_INFINITY, headY + 14);
+                view.hpBarY = peak;
+                view.hpBarSamples = (view.hpBarSamples ?? 0) + 1;
+                hpBar.setPosition(0, Math.min(peak, this.layoutHeight * 0.47 - view.node.position.y), 0);
+                if (view.hpBarSamples >= 20) {
+                  view.hpBarLocked = true;
+                }
+              }
             }
           }
           const barW = hpTransform.width;
@@ -3711,10 +3741,60 @@ export class LobbyGuardBattleRenderer {
   private bossHpBarTick = 0;
 
   /**
+   * 从骨骼组件本帧的渲染顶点缓冲取最高 y(怪物节点坐标系)。
+   * 顶点格式 pos(3f) uv(2f) color(4B)[+color2(4B)],用 renderData.floatStride 取步长;alpha 为 0 的顶点(隐藏 slot)跳过。
+   * enableBatch 时顶点已是世界坐标,转回怪物节点空间;否则是骨骼节点本地坐标,乘节点缩放加偏移。
+   */
+  private measureRenderedTopY(skeleton: sp.Skeleton): number | null {
+    const rd = (skeleton as unknown as { renderData?: { vertexCount: number; floatStride: number; chunk?: { vb: Float32Array } } }).renderData;
+    if (!rd || !rd.chunk || !rd.chunk.vb || rd.vertexCount < 3 || rd.floatStride < 6) {
+      return null;
+    }
+    const vb = rd.chunk.vb;
+    const stride = rd.floatStride;
+    const bytes = new Uint8Array(vb.buffer, vb.byteOffset, vb.byteLength);
+    const count = Math.min(rd.vertexCount, Math.floor(vb.length / stride));
+    let maxY = Number.NEGATIVE_INFINITY;
+    let maxX = 0;
+    for (let i = 0; i < count; i++) {
+      const base = i * stride;
+      const alpha = bytes[(base + 5) * 4 + 3];
+      if (alpha === 0) {
+        continue;
+      }
+      const y = vb[base + 1];
+      if (Number.isFinite(y) && y > maxY) {
+        maxY = y;
+        maxX = vb[base];
+      }
+    }
+    if (!Number.isFinite(maxY)) {
+      return null;
+    }
+    const spineNode = skeleton.node;
+    const batched = (skeleton as unknown as { enableBatch?: boolean }).enableBatch === true;
+    if (batched) {
+      const monsterNode = spineNode.parent;
+      const transform = monsterNode?.getComponent(UITransform);
+      if (!transform) {
+        return null;
+      }
+      return transform.convertToNodeSpaceAR(new Vec3(maxX, maxY, 0)).y;
+    }
+    return spineNode.position.y + maxY * Math.abs(spineNode.scale.y);
+  }
+
+  /**
    * 当前姿态下骨骼最高顶点在怪物节点坐标系里的 y(spine 原生单位 × 节点缩放 + 骨骼节点偏移)。
    * 走 spine-core 的 slot/attachment.computeWorldVertices(与特效量尺同法);拿不到返回 null。
    */
   private measureSkeletonTopY(skeleton: sp.Skeleton): number | null {
+    // 首选:直接读本帧提交给 GPU 的顶点缓冲(wasm / JS 两种 spine 后端都有),跳过 alpha=0 的隐藏顶点,
+    // 得到的就是"画面上真正画出来的最高点"。2026-09-18 用户二次反馈:走 spine-core 那条路在 wasm 后端拿不到 slots。
+    const fromBuffer = this.measureRenderedTopY(skeleton);
+    if (fromBuffer !== null) {
+      return fromBuffer;
+    }
     const raw = (skeleton as unknown as { _skeleton?: unknown })._skeleton as {
       slots?: Array<{ getAttachment?: () => unknown; bone?: unknown }>;
     } | undefined;
