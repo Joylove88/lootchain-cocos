@@ -41,7 +41,21 @@
 | 文件 | 选用 | 触发点 | 依据 |
 |---|---|---|---|
 | `audio/bgm/bgm_lobby.mp3` | BGM_World(120s) | 大厅及所有功能页 | 接缝 0.0 dB 可无缝循环;包作者自带的 LobbyTest 与它是同一文件 |
-| `audio/bgm/bgm_battle.mp3` | BGM_Battle_01(59s) | 进入战斗视图(守卫战/时间线战斗),回大厅切回 | 接缝 0.3 dB,能量最稳的战斗曲之一 |
+| `audio/bgm/bgm_battle_<场景>.mp3` | 见下表 | 进入战斗视图按章节场景切换,回大厅切回 | 一场景一首 |
+
+战斗曲按 9 个战场场景分配(2026-09-18 用户拍板;`LobbyGuardBattleRenderer.resolveBattleBgmKey`,非主线关走 guard_mine):
+
+| 场景 | 曲目 | 章节 | 接缝/备注 |
+|---|---|---|---|
+| guard_mine 守卫矿境 | BGM_Battle_06 | 非主线/兜底 | 0.0 dB |
+| shadow_keep 暗影之堡 | BGM_Battle_05 | 1/6/23 | 0.7 dB |
+| ash_cathedral 灰烬圣堂 | BGM_Battle_09 | 2/20/24 | 1.4 dB,首尾各加 30/60ms 淡变 |
+| blood_moon 血月荒原 | BGM_Battle_14 | 3/8 | 1.6 dB,能量最稳、最响(已压 2.5dB) |
+| frost_wall 霜骨长城 | BGM_Battle_10 | 4/16 | 3.0 dB,加淡变 |
+| void_harbor 虚空港湾 | BGM_Battle_07 | 5/7/12/19/21/22 | 2.7 dB,加淡变 |
+| night_forest 永夜林海 | BGM_Battle_04 | 9/14/18 | 2.5 dB,加淡变 |
+| molten_core 熔核深渊 | BGM_Battle_03 | 11/17 | 4.0 dB,加淡变,偏重 |
+| final_throne 终焉王座 | BattleTest | 10/13/15/25 | 2.1 dB,最激烈(已压 2.8dB) |
 
 加工:单声道 128kbps MP3(LAME 带无缝信息),峰值压到 -1 dB 内;旧的程序合成 `bgm_lobby.wav`、`battle/bgm/battle_loop_01.wav` 已删(备份在 audio-placeholder-20260918)。
 其他备选:BGM_Town(城镇,末尾渐弱不适合硬循环)、BGM_Adventure(首尾渐弱 65s)、Card_BGM=BGM_Battle_06(平缓上扬,可做抽卡页)、BGM_Loading=BGM_Survivor(76s 末尾淡出)。

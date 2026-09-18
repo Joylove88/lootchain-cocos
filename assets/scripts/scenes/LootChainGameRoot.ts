@@ -761,7 +761,7 @@ export class LootChainGameRoot extends Component {
       }
       // 战斗 BGM(2026-09-18 C1812 音效包 BGM_Battle_01):进战斗视图切战斗曲,回大厅由 renderLobby 切回大厅曲。
       if (this.currentView === 'battle') {
-        gameAudio.bgm('bgm_battle');
+        gameAudio.bgm(this.resolveCurrentBattleBgmKey());
       } else if (previousView === 'battle') {
         // 从战斗退到布阵/结算等功能页也切回大厅曲(不只回大厅那一条路)。
         gameAudio.bgm('bgm_lobby');
@@ -996,6 +996,12 @@ export class LootChainGameRoot extends Component {
   private isGuardBattleStage(stageCode: string | null | undefined): boolean {
     const code = (stageCode || '').trim();
     return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code);
+  }
+
+  /** 当前战斗的场景 BGM 键(关卡码来源与 isGuardBattleActive 同口径)。 */
+  private resolveCurrentBattleBgmKey(): string {
+    const battleState = this.currentLobbyBattleState();
+    return LobbyGuardBattleRenderer.resolveBattleBgmKey(battleState.start?.stageCode || battleState.stageCode || this.selectedLobbyStageCode);
   }
 
   private isGuardBattleActive(): boolean {
@@ -2243,6 +2249,8 @@ export class LootChainGameRoot extends Component {
     this.removeLobbyBattlePreviewPanel();
     this.currentView = 'battle';
     this.renderBattleScene();
+    // 战斗 BGM 按场景切换(2026-09-18):在战斗视图内直接进下一关也要换曲,所以这里按关卡再切一次(同键幂等)。
+    gameAudio.bgm(LobbyGuardBattleRenderer.resolveBattleBgmKey(resolvedStageCode));
     this.prefetchLobbyBattleFormationSpineAssets();
     this.prefetchGuardMonsterSpineAssets();
     const startStageCode = resolvedStageCode;

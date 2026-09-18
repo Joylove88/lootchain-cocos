@@ -613,6 +613,17 @@ export class LobbyGuardBattleRenderer {
   };
 
   /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景图名;非主线或越界回退矿脉图。 */
+  /**
+   * 战斗 BGM 键按章节场景分配(2026-09-18 用户拍板:不同场景不同音乐):
+   * `audio/bgm/bgm_battle_<场景名>`,9 个场景各一首(C1812 包 BGM_Battle_xx,见 素材原始备份/audio-picks-20260918.md);
+   * 非主线关(限时/日常)与解析失败走 guard_mine 那首。
+   */
+  static resolveBattleBgmKey(stageCode: string | null | undefined): string {
+    const matched = /^MAIN_(\d+)_\d+$/.exec((stageCode ?? '').toUpperCase());
+    const scene = (matched ? LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])] : undefined) ?? 'battle_scene_guard_mine';
+    return `bgm_battle_${scene.replace(/^battle_scene_/, '')}`;
+  }
+
   private resolveSceneBgName(): string {
     const fallback = 'battle_scene_guard_mine';
     const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
