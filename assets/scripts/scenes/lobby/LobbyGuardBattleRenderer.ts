@@ -2,6 +2,7 @@
 // 复用现有 battle start/settle 通道:开战回执→建局,胜负→host.settleLobbyBattleSession()(奖励后端权威)。
 // P1 视觉:英雄/怪物用现有骨骼(缺省回退色块),水晶/格子/按钮程序绘制;宝箱/三选一/水晶技能在 P2。
 import {
+  BlockInputEvents,
   Color,
   Graphics,
   HorizontalTextAlignment,
@@ -1915,6 +1916,8 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const overlay = this.host.addChildPlainNode(root, 'GuardWheelOverlay', 0, 0, width, height);
+    // 2026-09-19 审计:全屏弹层必须挡住点击,否则点空白处会穿透到底下的强化/召唤按钮(扣金币、再弹词条)。
+    overlay.addComponent(BlockInputEvents);
     const og = overlay.addComponent(Graphics);
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
@@ -2074,6 +2077,7 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const overlay = this.host.addChildPlainNode(root, 'GuardChoiceOverlay', 0, 0, width, height);
+    overlay.addComponent(BlockInputEvents);
     const og = overlay.addComponent(Graphics);
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
@@ -4011,6 +4015,7 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const overlay = this.host.addChildPlainNode(this.root, 'GuardEndOverlay', 0, 0, width, height);
+    overlay.addComponent(BlockInputEvents);
     const g = overlay.addComponent(Graphics);
     g.fillColor = rgba(8, 6, 6, 176);
     g.rect(-width / 2, -height / 2, width, height);

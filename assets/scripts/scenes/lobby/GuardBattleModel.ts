@@ -179,7 +179,7 @@ export interface GuardBattleState {
   xpIntoLevel: number;
   /** 待处理三选一(存在即暂停;由 guardChooseOption/Skip/Reroll/Banish 消费)。 */
   pendingChoice: GuardChoiceOption[] | null;
-  /** 当前三选一来源:升级(可跳过换金币)/ 强化(付费必选)。 */
+  /** 当前三选一来源。2026-09-18 起只有 'enhance'(付费必选);'levelUp' 保留供回退。 */
   choiceSource: 'levelUp' | 'enhance';
   /** 每次摇出新一组选项 +1,渲染层据此重建弹层。 */
   choiceSerial: number;
@@ -862,16 +862,17 @@ function rollChoices(state: GuardBattleState): GuardChoiceOption[] {
   return picked;
 }
 
+/**
+ * 击杀经验:2026-09-18 用户反馈"局内击杀怪物还是有弹框选词条"——升级不再弹词条三选一。
+ * 词条只从「强化」按钮付费获得(guardEnhance),击杀只给金币与经验计数;等级继续累计但不再产生弹框,
+ * 溢出经验不再堆积(超过阈值即进位),levelUp 事件保留给渲染层将来做飘字用。
+ */
 function grantXp(state: GuardBattleState, amount: number): void {
   state.xp += amount;
   state.xpIntoLevel += amount;
-  // 一次只弹一个三选一;溢出经验保留,选完继续判级。
-  if (!state.pendingChoice && state.xpIntoLevel >= xpThreshold(state.level)) {
+  while (state.xpIntoLevel >= xpThreshold(state.level)) {
     state.xpIntoLevel -= xpThreshold(state.level);
     state.level += 1;
-    state.pendingChoice = rollChoices(state);
-    state.choiceSource = 'levelUp';
-    state.choiceSerial += 1;
     state.events.push({ type: 'levelUp', timeMs: state.timeMs, amount: state.level });
   }
 }
@@ -889,16 +890,8 @@ function applyChoice(state: GuardBattleState, option: GuardChoiceOption): void {
 }
 
 function afterChoiceResolved(state: GuardBattleState): void {
+  // 选完即关:词条弹框只由强化触发(2026-09-18),不再因攒够经验接着弹下一个。
   state.pendingChoice = null;
-  // 溢出经验可能直接再升一级。
-  if (state.xpIntoLevel >= xpThreshold(state.level)) {
-    state.xpIntoLevel -= xpThreshold(state.level);
-    state.level += 1;
-    state.pendingChoice = rollChoices(state);
-    state.choiceSource = 'levelUp';
-    state.choiceSerial += 1;
-    state.events.push({ type: 'levelUp', timeMs: state.timeMs, amount: state.level });
-  }
 }
 
 export function guardChooseOption(state: GuardBattleState, index: number): boolean {
