@@ -262,6 +262,10 @@ export class LobbyHeroDetailPanelRenderer {
   // 洗练弹窗局部刷新上下文:锁定切换/确认只重建弹窗节点,不整面板重渲染(避免背景 spine 动画重播)。
   private detailRenderContext: { panelGroup: Node; panelWidth: number; panelHeight: number; scale: number } | null = null;
   private refineDialogNode: Node | null = null;
+  /** 当前挂着的英雄立绘舞台(含 spine)及其复用键;整页重绘前由 stashArtStage() 摘下暂存,重绘时键一致就原样挂回。 */
+  private artStageNode: Node | null = null;
+  private artStageKey = '';
+  private artStageStash: { node: Node; key: string } | null = null;
   private equipDialogNode: Node | null = null;
   private wearTooltipNode: Node | null = null;
   private heroSkillSelectedIndex = 0;
@@ -291,6 +295,7 @@ export class LobbyHeroDetailPanelRenderer {
   render(layout: UiLayout): void {
     const hero = this.host.currentLobbyHeroDetailHero();
     if (!hero) {
+      this.dropArtStageStash();
       return;
     }
     const scale = Math.max(0.62, Math.min(1, layout.uiScale));
@@ -338,6 +343,8 @@ export class LobbyHeroDetailPanelRenderer {
     if (this.host.currentLobbyHeroDetailTab() === 'attr') {
       this.renderFooter(panel, hero, panelWidth, panelHeight, scale);
     }
+    // 本次重绘没用上的暂存立绘(换了英雄/尺寸变了)在这里销毁,不留孤儿节点。
+    this.dropArtStageStash();
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbyHeroDetailBackButton', () => this.host.backToLobbyHeroRosterPanel(), scale, '英雄', '升级：消耗金币与英雄经验书，即时生效。\n\n右下页签切换 属性 / 装备 / 技能 / 升星。\n\n技能：大招默认解锁，战斗中攒满能量手动释放；被动技能随星级逐条解锁。');
     this.detailRenderContext = { panelGroup, panelWidth, panelHeight, scale };
     this.refineDialogNode = null;
@@ -1190,8 +1197,43 @@ export class LobbyHeroDetailPanelRenderer {
     makeButton('LobbyHeroDetailOneClickUnequip', '一键卸下', rightX, { r: 46, g: 68, b: 96 }, () => this.host.oneClickUnequipLobbyHero(hero.id));
   }
 
+  /**
+   * 整页重绘前调用(2026-09-21 用户反馈"每点一次升级,中间的动画都会重新加载"):把立绘舞台从旧树上摘下来(不销毁),
+   * 随后的 render() 里若英雄/尺寸没变就原样挂回——spine 不重建、动画不重播;变了就照常新建。
+   */
+  stashArtStage(): void {
+    this.dropArtStageStash();
+    const node = this.artStageNode;
+    if (node && this.isNodeAlive(node) && node.parent) {
+      node.removeFromParent();
+      this.artStageStash = { node, key: this.artStageKey };
+    }
+    this.artStageNode = null;
+  }
+
+  private dropArtStageStash(): void {
+    const stash = this.artStageStash;
+    this.artStageStash = null;
+    if (stash && this.isNodeAlive(stash.node)) {
+      stash.node.destroy();
+    }
+  }
+
   private renderArtStage(parent: Node, hero: LobbyHeroItemVO, x: number, y: number, width: number, height: number, scale: number): void {
+    const key = `${hero.id}|${hero.heroCode}|${Math.round(width)}x${Math.round(height)}|${scale.toFixed(3)}`;
+    const stash = this.artStageStash;
+    if (stash && stash.key === key && this.isNodeAlive(stash.node)) {
+      this.artStageStash = null;
+      parent.addChild(stash.node);
+      stash.node.setPosition(x, y, 0);
+      this.artStageNode = stash.node;
+      this.artStageKey = key;
+      return;
+    }
+    this.dropArtStageStash();
     const stage = this.host.addChildPlainNode(parent, 'LobbyHeroDetailArtStage', x, y, width, height);
+    this.artStageNode = stage;
+    this.artStageKey = key;
     const graphics = stage.addComponent(Graphics);
     graphics.fillColor = rgba(0, 0, 0, 0);
     graphics.rect(-width / 2, -height / 2, width, height);

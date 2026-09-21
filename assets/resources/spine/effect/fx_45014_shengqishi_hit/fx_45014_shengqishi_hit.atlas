@@ -1,0 +1,472 @@
+
+fx_45014_shengqishi_hit.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/attack_hit_006
+  rotate: false
+  xy: 309, 12
+  size: 130, 139
+  orig: 225, 225
+  offset: 50, 45
+  index: -1
+skill1/dl_000
+  rotate: false
+  xy: 2, 32
+  size: 305, 119
+  orig: 330, 150
+  offset: 13, 13
+  index: -1
+skill1/skill1_hit_002
+  rotate: false
+  xy: 2, 1189
+  size: 964, 857
+  orig: 1048, 930
+  offset: 42, 25
+  index: -1
+skill1/skill1_hit_003
+  rotate: false
+  xy: 968, 1190
+  size: 963, 856
+  orig: 1048, 930
+  offset: 43, 25
+  index: -1
+skill1/skill1_hit_004
+  rotate: false
+  xy: 2, 331
+  size: 964, 856
+  orig: 1048, 930
+  offset: 42, 26
+  index: -1
+skill1/skill1_hit_005
+  rotate: false
+  xy: 968, 334
+  size: 960, 854
+  orig: 1048, 930
+  offset: 46, 27
+  index: -1
+skill1/skill1_hitlight_000
+  rotate: false
+  xy: 1933, 1768
+  size: 106, 278
+  orig: 117, 287
+  offset: 5, 4
+  index: -1
+skill1/skill1_hitlight_001
+  rotate: false
+  xy: 1933, 1426
+  size: 67, 228
+  orig: 117, 287
+  offset: 26, 52
+  index: -1
+skill1/skill1_hitlight_002
+  rotate: false
+  xy: 1933, 1215
+  size: 58, 209
+  orig: 117, 287
+  offset: 28, 68
+  index: -1
+skill1/skill1_weapon
+  rotate: false
+  xy: 1337, 25
+  size: 201, 307
+  orig: 267, 400
+  offset: 26, 48
+  index: -1
+skill1/stone
+  rotate: false
+  xy: 2, 153
+  size: 484, 176
+  orig: 512, 256
+  offset: 10, 30
+  index: -1
+skill2/skill2_baodian_002
+  rotate: false
+  xy: 1540, 67
+  size: 196, 265
+  orig: 214, 283
+  offset: 9, 6
+  index: -1
+skill2/skill2_baodian_003
+  rotate: false
+  xy: 1738, 74
+  size: 200, 258
+  orig: 214, 283
+  offset: 6, 18
+  index: -1
+skill2/skill2_ci_000
+  rotate: false
+  xy: 441, 9
+  size: 238, 103
+  orig: 371, 221
+  offset: 60, 3
+  index: -1
+skill2/skill2_ci_001
+  rotate: false
+  xy: 968, 115
+  size: 367, 217
+  orig: 371, 221
+  offset: 3, 4
+  index: -1
+skill2/skill2_ci_002
+  rotate: false
+  xy: 488, 114
+  size: 368, 215
+  orig: 371, 221
+  offset: 1, 6
+  index: -1
+skill2/skill2_ci_004
+  rotate: false
+  xy: 1148, 53
+  size: 101, 60
+  orig: 371, 221
+  offset: 2, 152
+  index: -1
+skill2/skill2_dl
+  rotate: false
+  xy: 1933, 1656
+  size: 113, 110
+  orig: 128, 128
+  offset: 7, 7
+  index: -1
+skill2/skill2_light17
+  rotate: false
+  xy: 1540, 25
+  size: 41, 40
+  orig: 52, 52
+  offset: 6, 6
+  index: -1
+skill2/skill2_lightsweep_005
+  rotate: false
+  xy: 858, 127
+  size: 102, 202
+  orig: 175, 269
+  offset: 39, 10
+  index: -1
+skill2/skill2_lightsweep_006
+  rotate: false
+  xy: 1930, 1012
+  size: 90, 176
+  orig: 175, 269
+  offset: 44, 12
+  index: -1
+skill2/skill2_lightsweep_007
+  rotate: false
+  xy: 1930, 874
+  size: 40, 136
+  orig: 175, 269
+  offset: 63, 18
+  index: -1
+skill2/skill2_yw_002
+  rotate: false
+  xy: 681, 28
+  size: 229, 84
+  orig: 238, 87
+  offset: 3, 1
+  index: -1
+skill2/skill2_yw_004
+  rotate: false
+  xy: 912, 29
+  size: 234, 84
+  orig: 238, 87
+  offset: 3, 1
+  index: -1
+skill2/skill2_yw_005
+  rotate: false
+  xy: 1738, 2
+  size: 223, 70
+  orig: 238, 87
+  offset: 10, 2
+  index: -1
+
+fx_45014_shengqishi_hit_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/attack_hit_000
+  rotate: false
+  xy: 392, 104
+  size: 206, 207
+  orig: 225, 225
+  offset: 10, 9
+  index: -1
+attack/attack_hit_001
+  rotate: false
+  xy: 600, 111
+  size: 200, 200
+  orig: 225, 225
+  offset: 13, 12
+  index: -1
+attack/attack_hit_002
+  rotate: false
+  xy: 1260, 142
+  size: 197, 194
+  orig: 225, 225
+  offset: 14, 17
+  index: -1
+attack/attack_hit_003
+  rotate: false
+  xy: 1459, 167
+  size: 177, 169
+  orig: 225, 225
+  offset: 21, 36
+  index: -1
+attack/attack_hit_004
+  rotate: false
+  xy: 1638, 166
+  size: 176, 170
+  orig: 225, 225
+  offset: 21, 36
+  index: -1
+attack/attack_hit_005
+  rotate: false
+  xy: 1816, 170
+  size: 173, 166
+  orig: 225, 225
+  offset: 23, 38
+  index: -1
+attack/attack_hit_007
+  rotate: false
+  xy: 1898, 506
+  size: 123, 137
+  orig: 225, 225
+  offset: 53, 48
+  index: -1
+attack/attack_hit_008
+  rotate: false
+  xy: 1898, 645
+  size: 125, 139
+  orig: 225, 225
+  offset: 53, 47
+  index: -1
+attack/attack_hit_009
+  rotate: false
+  xy: 1914, 1287
+  size: 126, 141
+  orig: 225, 225
+  offset: 53, 44
+  index: -1
+attack/attack_hit_010
+  rotate: false
+  xy: 1898, 369
+  size: 129, 135
+  orig: 225, 225
+  offset: 51, 42
+  index: -1
+attack/attack_hit_011
+  rotate: false
+  xy: 1898, 786
+  size: 128, 137
+  orig: 225, 225
+  offset: 51, 40
+  index: -1
+skill1/skill1_hit_006
+  rotate: false
+  xy: 2, 1158
+  size: 958, 852
+  orig: 1048, 930
+  offset: 48, 29
+  index: -1
+skill1/skill1_hit_007
+  rotate: false
+  xy: 2, 313
+  size: 956, 843
+  orig: 1048, 930
+  offset: 49, 31
+  index: -1
+skill1/skill1_hit_008
+  rotate: false
+  xy: 962, 1170
+  size: 950, 840
+  orig: 1048, 930
+  offset: 49, 34
+  index: -1
+skill1/skill1_hit_009
+  rotate: false
+  xy: 962, 338
+  size: 934, 830
+  orig: 1048, 930
+  offset: 56, 39
+  index: -1
+skill2/skill2_baodian_000
+  rotate: false
+  xy: 802, 68
+  size: 163, 243
+  orig: 214, 283
+  offset: 27, 15
+  index: -1
+skill2/skill2_baodian_001
+  rotate: false
+  xy: 204, 54
+  size: 186, 257
+  orig: 214, 283
+  offset: 12, 9
+  index: -1
+skill2/skill2_baodian_004
+  rotate: false
+  xy: 2, 57
+  size: 200, 254
+  orig: 214, 283
+  offset: 6, 23
+  index: -1
+skill2/skill2_ci_003
+  rotate: false
+  xy: 1914, 1596
+  size: 131, 186
+  orig: 371, 221
+  offset: 2, 35
+  index: -1
+skill2/skill2_lightsweep_000
+  rotate: false
+  xy: 1914, 1430
+  size: 124, 164
+  orig: 175, 269
+  offset: 22, 97
+  index: -1
+skill2/skill2_lightsweep_001
+  rotate: false
+  xy: 967, 74
+  size: 149, 262
+  orig: 175, 269
+  offset: 10, 6
+  index: -1
+skill2/skill2_lightsweep_002
+  rotate: false
+  xy: 1118, 84
+  size: 140, 252
+  orig: 175, 269
+  offset: 19, 5
+  index: -1
+skill2/skill2_lightsweep_003
+  rotate: false
+  xy: 1898, 925
+  size: 134, 243
+  orig: 175, 269
+  offset: 23, 5
+  index: -1
+skill2/skill2_lightsweep_004
+  rotate: false
+  xy: 1914, 1784
+  size: 117, 226
+  orig: 175, 269
+  offset: 33, 6
+  index: -1
+skill2/skill2_yw_000
+  rotate: false
+  xy: 392, 28
+  size: 216, 74
+  orig: 238, 87
+  offset: 4, 0
+  index: -1
+skill2/skill2_yw_001
+  rotate: false
+  xy: 1260, 59
+  size: 231, 81
+  orig: 238, 87
+  offset: 1, 2
+  index: -1
+skill2/skill2_yw_003
+  rotate: false
+  xy: 1816, 84
+  size: 227, 84
+  orig: 238, 87
+  offset: 4, 1
+  index: -1
+skill2/skill2_yw_006
+  rotate: false
+  xy: 967, 2
+  size: 222, 70
+  orig: 238, 87
+  offset: 11, 2
+  index: -1
+skill2/skill2_yw_007
+  rotate: false
+  xy: 1191, 7
+  size: 212, 50
+  orig: 238, 87
+  offset: 13, 1
+  index: -1
+
+fx_45014_shengqishi_hit_3.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill1/skill1_hit_001
+  rotate: false
+  xy: 928, 505
+  size: 811, 740
+  orig: 1048, 930
+  offset: 121, 52
+  index: -1
+skill1/skill1_hit_010
+  rotate: false
+  xy: 2, 1207
+  size: 924, 818
+  orig: 1048, 930
+  offset: 66, 42
+  index: -1
+skill1/skill1_hit_011
+  rotate: false
+  xy: 2, 398
+  size: 906, 807
+  orig: 1048, 930
+  offset: 69, 46
+  index: -1
+skill1/skill1_hit_012
+  rotate: false
+  xy: 928, 1247
+  size: 862, 778
+  orig: 1048, 930
+  offset: 94, 56
+  index: -1
+skill1/skill1_hit_017
+  rotate: false
+  xy: 910, 2
+  size: 556, 501
+  orig: 1048, 930
+  offset: 252, 213
+  index: -1
+skill1/skill1_hit_019
+  rotate: false
+  xy: 1468, 31
+  size: 540, 472
+  orig: 1048, 930
+  offset: 253, 237
+  index: -1
+
+fx_45014_shengqishi_hit_4.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill1/skill1_hit_000
+  rotate: false
+  xy: 1466, 472
+  size: 555, 536
+  orig: 1048, 930
+  offset: 255, 123
+  index: -1
+skill1/skill1_hit_013
+  rotate: false
+  xy: 2, 308
+  size: 776, 700
+  orig: 1048, 930
+  offset: 138, 76
+  index: -1
+skill1/skill1_hit_015
+  rotate: false
+  xy: 780, 475
+  size: 684, 533
+  orig: 1048, 930
+  offset: 176, 188
+  index: -1
+skill1/skill1_hit_021
+  rotate: false
+  xy: 780, 2
+  size: 518, 471
+  orig: 1048, 930
+  offset: 278, 232
+  index: -1

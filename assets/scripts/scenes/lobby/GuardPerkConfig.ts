@@ -279,7 +279,9 @@ export function guardPurplePerkId(heroCode: string, suffix: string): string {
 }
 
 // ── 金卡:专属大招觉醒(方案 A:2★ 战技原样保留,金卡把战技升级为专属大招)──
-export const GUARD_ULT_MAX_LEVEL = 3;
+// 2026-09-21 用户拍板:专属大招觉醒是"一次永久生效"的词条,每个英雄只出现/只选一次(此前可升到 Lv3,玩家看到的是同一张金卡反复出现)。
+// Lv2/Lv3 的数值表保留但不再可达;可叠加属性的白/蓝/紫卡不受影响。
+export const GUARD_ULT_MAX_LEVEL = 1;
 /** 伤害/回复倍率:Lv1 ×1.5;Lv2 再 +30%(×1.95);Lv3 同 Lv2,另加范围/持续 +50%。 */
 export const GUARD_ULT_DAMAGE_MULT = [1, 1.5, 1.95, 1.95];
 /** 冷却系数:Lv1 -15%;Lv2 再 -15%。 */

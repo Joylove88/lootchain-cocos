@@ -1748,7 +1748,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
   // 金卡觉醒(docs/32 §5.1 方案 A):战技升级为专属大招——伤害/回复 ×1.5(Lv2 ×1.95),Lv3 击退/持续 +50%。
   const ultLv = guardHeroPerks(state, hero.heroCode).ultLv;
   const ultMult = GUARD_ULT_DAMAGE_MULT[ultLv] ?? 1;
-  const ultExtent = ultLv >= GUARD_ULT_MAX_LEVEL ? GUARD_ULT_LV3_EXTENT : 1;
+  const ultExtent = ultLv >= 3 ? GUARD_ULT_LV3_EXTENT : 1;
   if (hero.role === 'melee') {
     // 2026-09-11 用户拍板:横扫打覆盖范围内全部敌人(此前硬编码只打本车道,与普攻
     // laneLocked=false 不一致,观感"特效扫过一片却只有一只掉血")。飞行怪落地啃水晶后可被打。

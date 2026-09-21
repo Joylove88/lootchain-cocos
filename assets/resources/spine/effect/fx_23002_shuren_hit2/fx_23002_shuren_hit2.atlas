@@ -1,0 +1,153 @@
+
+fx_23002_shuren_hit2.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/huifu_00049
+  rotate: false
+  xy: 1724, 69
+  size: 285, 264
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00050
+  rotate: false
+  xy: 1724, 335
+  size: 285, 265
+  orig: 285, 365
+  offset: 0, 23
+  index: -1
+skill/huifu_00051
+  rotate: false
+  xy: 2, 585
+  size: 285, 291
+  orig: 285, 365
+  offset: 0, 21
+  index: -1
+skill/huifu_00052
+  rotate: false
+  xy: 289, 587
+  size: 285, 289
+  orig: 285, 365
+  offset: 0, 23
+  index: -1
+skill/huifu_00053
+  rotate: false
+  xy: 2, 2
+  size: 285, 289
+  orig: 285, 365
+  offset: 0, 23
+  index: -1
+skill/huifu_00054
+  rotate: false
+  xy: 2, 293
+  size: 285, 290
+  orig: 285, 365
+  offset: 0, 23
+  index: -1
+skill/huifu_00055
+  rotate: false
+  xy: 289, 297
+  size: 285, 288
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00056
+  rotate: false
+  xy: 576, 591
+  size: 285, 285
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00057
+  rotate: false
+  xy: 863, 595
+  size: 285, 281
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00058
+  rotate: false
+  xy: 289, 13
+  size: 285, 282
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00059
+  rotate: false
+  xy: 576, 307
+  size: 285, 282
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00060
+  rotate: false
+  xy: 576, 24
+  size: 285, 281
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00061
+  rotate: false
+  xy: 863, 312
+  size: 285, 281
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00062
+  rotate: false
+  xy: 863, 30
+  size: 285, 280
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00063
+  rotate: false
+  xy: 1150, 313
+  size: 285, 280
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00064
+  rotate: false
+  xy: 1150, 595
+  size: 285, 281
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00065
+  rotate: false
+  xy: 1437, 597
+  size: 285, 279
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00066
+  rotate: false
+  xy: 1150, 32
+  size: 285, 279
+  orig: 285, 365
+  offset: 0, 24
+  index: -1
+skill/huifu_00067
+  rotate: false
+  xy: 1437, 319
+  size: 285, 276
+  orig: 285, 365
+  offset: 0, 25
+  index: -1
+skill/huifu_00068
+  rotate: false
+  xy: 1724, 602
+  size: 285, 274
+  orig: 285, 365
+  offset: 0, 25
+  index: -1
+skill/huifu_00069
+  rotate: false
+  xy: 1437, 44
+  size: 285, 273
+  orig: 285, 365
+  offset: 0, 25
+  index: -1

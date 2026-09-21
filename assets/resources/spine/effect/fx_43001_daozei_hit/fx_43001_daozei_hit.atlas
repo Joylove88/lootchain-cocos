@@ -1,0 +1,139 @@
+
+fx_43001_daozei_hit.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/atk/gy-xj_00018
+  rotate: false
+  xy: 391, 302
+  size: 201, 208
+  orig: 217, 217
+  offset: 8, 5
+  index: -1
+images/atk/sj_00018
+  rotate: false
+  xy: 780, 585
+  size: 161, 166
+  orig: 209, 218
+  offset: 17, 18
+  index: -1
+images/atk/sj_00019
+  rotate: false
+  xy: 311, 72
+  size: 163, 158
+  orig: 209, 218
+  offset: 29, 25
+  index: -1
+images/atk/sj_00020
+  rotate: false
+  xy: 943, 596
+  size: 169, 155
+  orig: 209, 218
+  offset: 29, 30
+  index: -1
+images/atk/sj_00021
+  rotate: false
+  xy: 594, 354
+  size: 177, 156
+  orig: 209, 218
+  offset: 30, 32
+  index: -1
+images/atk/sj_00022
+  rotate: false
+  xy: 773, 337
+  size: 141, 153
+  orig: 209, 218
+  offset: 34, 36
+  index: -1
+images/atk/sj_00023
+  rotate: false
+  xy: 946, 452
+  size: 135, 142
+  orig: 209, 218
+  offset: 41, 47
+  index: -1
+images/atk/sj_00024
+  rotate: false
+  xy: 1946, 974
+  size: 65, 45
+  orig: 209, 218
+  offset: 49, 104
+  index: -1
+images/skill/2sj_00027
+  rotate: false
+  xy: 2, 39
+  size: 307, 191
+  orig: 405, 274
+  offset: 61, 50
+  index: -1
+images/skill/2sj_00028
+  rotate: false
+  xy: 391, 512
+  size: 387, 238
+  orig: 405, 274
+  offset: 9, 29
+  index: -1
+images/skill/2sj_00029
+  rotate: false
+  xy: 2, 489
+  size: 387, 257
+  orig: 405, 274
+  offset: 9, 17
+  index: -1
+images/skill/2sj_00030
+  rotate: false
+  xy: 2, 748
+  size: 386, 271
+  orig: 405, 274
+  offset: 10, 3
+  index: -1
+images/skill/2sj_00031
+  rotate: false
+  xy: 1557, 757
+  size: 387, 262
+  orig: 405, 274
+  offset: 9, 12
+  index: -1
+images/skill/2sj_00032
+  rotate: false
+  xy: 779, 753
+  size: 387, 266
+  orig: 405, 274
+  offset: 9, 8
+  index: -1
+images/skill/2sj_00033
+  rotate: false
+  xy: 390, 752
+  size: 387, 267
+  orig: 405, 274
+  offset: 9, 7
+  index: -1
+images/skill/2sj_00034
+  rotate: false
+  xy: 1168, 754
+  size: 387, 265
+  orig: 405, 274
+  offset: 9, 9
+  index: -1
+images/skill/2sj_00035
+  rotate: false
+  xy: 2, 232
+  size: 387, 255
+  orig: 405, 274
+  offset: 9, 15
+  index: -1
+images/skill/tw_00024
+  rotate: false
+  xy: 2, 2
+  size: 278, 35
+  orig: 295, 47
+  offset: 11, 6
+  index: -1
+images/skill/zd_00024
+  rotate: false
+  xy: 780, 492
+  size: 164, 91
+  orig: 175, 100
+  offset: 6, 6
+  index: -1

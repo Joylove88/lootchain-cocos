@@ -357,6 +357,8 @@ export class LootChainGameRoot extends Component {
   private lobbyForgeGemEquipId: number | null = null;
   private lobbyForgeGemPickSlot: number | null = null;
   private lobbyForgeEnhanceSlotId: number | null = null;
+  /** 从英雄装备页点"强化"跳进锻造页时记下英雄,关闭锻造页回到该英雄的装备页(而不是回大厅)。 */
+  private lobbyForgeReturnHeroId: number | null = null;
   // 强化页(参考图版):部位页签 / 稀有度筛选(下拉) / 排序方向 / 连续强化勾选。
   private lobbyForgeEnhanceSlotTab: string | null = null;
   private lobbyForgeEnhanceRarity: string | null = null;
@@ -1067,6 +1069,10 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderLobbyScenePage(): void {
+    // 英雄详情整页重绘(升级/升星/切页签)前先把立绘舞台摘下暂存,重绘后原样挂回,中间的骨骼动画不重载。
+    if (this.currentView === 'heroDetail') {
+      this.lobbyHeroDetailPanelRenderer.stashArtStage();
+    }
     const layout = this.renderBase();
     // 大厅功能入口必须切换到独立全屏逻辑场景，不再把内容浮在大厅背景/HUD 上。
     this.renderLobbyFeatureSceneBackdrop(layout);
@@ -1586,8 +1592,9 @@ export class LootChainGameRoot extends Component {
 
   // ===== 锻造工坊(导航栏"锻造",装备养成集中页) =====
   // 强化/合成走英雄详情同源 mutation;分解/合成支持按具体装备 id 批量提交;本页无英雄上下文,穿卸仍走英雄详情。
-  private openLobbyForgePanel(): void {
+  private openLobbyForgePanel(preselectEquipId: number | null = null, returnHeroId: number | null = null): void {
     this.closeAllLobbyScenePanelFlags();
+    this.lobbyForgeReturnHeroId = returnHeroId;
     this.lobbyForgePanelOpen = true;
     // 清掉英雄详情装备弹窗残留状态,锻造页从干净状态进入(默认强化页签)。
     this.lobbyHeroEquipDialogOpen = false;
@@ -1613,6 +1620,11 @@ export class LootChainGameRoot extends Component {
     this.lobbyForgeDecomposeSelectedIds.clear();
     this.lobbyForgeDecomposeRarity = null;
     this.lobbyForgeDecomposeEnhance = 'all';
+    if (preselectEquipId !== null) {
+      // 指定装备进入:默认选中它,并把部位页签切到它所在部位,列表里一眼能看到。
+      this.lobbyForgeEnhanceSlotId = preselectEquipId;
+      this.lobbyForgeEnhanceSlotTab = this.lobbyEquipmentItems.find((item) => item.id === preselectEquipId)?.slot ?? null;
+    }
     this.currentView = 'forge';
     this.renderCurrentView();
     void this.loadLobbyEquipmentList();
@@ -2024,6 +2036,15 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyEquipEnhanceTargetId = null;
     this.lobbyEquipFuseUseLuckStone = false;
+    const returnHeroId = this.lobbyForgeReturnHeroId;
+    this.lobbyForgeReturnHeroId = null;
+    if (returnHeroId !== null && this.lobbyHeroRosterLoader.currentState().heroes.some((item) => item.id === returnHeroId)) {
+      // 从英雄装备页跳来的:回到该英雄的装备页签。
+      this.lobbyForgePanelOpen = false;
+      this.openLobbyHeroDetail(returnHeroId);
+      this.selectLobbyHeroDetailTab('equip');
+      return;
+    }
     this.returnToLobbyFromScenePage();
   }
 
@@ -2907,14 +2928,24 @@ export class LootChainGameRoot extends Component {
   private openLobbyHeroRefineDialog(): void {
     this.lobbyHeroEquipDialogOpen = false;
     this.lobbyHeroRefineDialogOpen = true;
-    this.lobbyHeroRefineLockedIds.clear();
+    // 锁定一直保留到玩家手动解锁(2026-09-21 用户反馈):重开弹窗/换英雄时只剔除已不属于当前英雄的词条 id。
+    this.pruneLobbyHeroRefineLocks();
     this.lobbyHeroRefineDirty = false;
     this.refreshLobbyHeroRefineDialog();
   }
 
+  /** 锁定集合只保留当前英雄仍然持有的词条 id(服务端洗练时被锁词条原行保留、id 不变;被重随的词条是新 id)。 */
+  private pruneLobbyHeroRefineLocks(): void {
+    const owned = new Set((this.currentLobbyHeroDetailHero()?.affixes ?? []).map((affix) => affix.id));
+    for (const id of [...this.lobbyHeroRefineLockedIds]) {
+      if (!owned.has(id)) {
+        this.lobbyHeroRefineLockedIds.delete(id);
+      }
+    }
+  }
+
   private closeLobbyHeroRefineDialog(): void {
     this.lobbyHeroRefineDialogOpen = false;
-    this.lobbyHeroRefineLockedIds.clear();
     if (this.lobbyHeroRefineDirty) {
       // 弹窗期间发生过洗练:关闭时整刷一次,把底层词条卡/战力同步到最新(此时重建 spine 可接受)。
       this.lobbyHeroRefineDirty = false;
@@ -2973,8 +3004,9 @@ export class LootChainGameRoot extends Component {
       const powerDelta = result.power - beforePower;
       const deltaText = powerDelta === 0 ? '' : powerDelta > 0 ? `（+${this.formatInteger(powerDelta)}）` : `（${this.formatInteger(powerDelta)}）`;
       this.setStatus(`${heroName} 洗练完成：战力 ${this.formatInteger(result.power)}${deltaText}，锁定 ${lockedIds.length} 条词条已保留。`);
-      // 洗练后词条集合已变化,清空锁定但保持弹窗打开,方便连续洗练;关闭弹窗时再整刷底层面板。
-      this.lobbyHeroRefineLockedIds.clear();
+      // 被锁词条在服务端原行保留(id 不变),锁定状态延续到下一次洗练,直到玩家手动解锁(2026-09-21 用户反馈);
+      // 弹窗保持打开方便连续洗练,关闭弹窗时再整刷底层面板。
+      this.pruneLobbyHeroRefineLocks();
       this.lobbyHeroRefineDirty = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -3050,7 +3082,7 @@ export class LootChainGameRoot extends Component {
     void this.loadLobbyEquipmentList();
   }
 
-  // 一键穿戴:每个空部位自动穿"战力加成最高"的闲置装备(与服务器 equipPowerBonus 同权重估算)。
+  // 一键穿戴:每个部位换上"等级够、战力加成最高"的闲置装备(与服务器 equipPowerBonus 同权重估算),比身上的更好才换。
   private oneClickEquipLobbyHero(heroId: number): void {
     void this.runOneClickEquip(heroId, 'equip');
   }
@@ -3083,19 +3115,30 @@ export class LootChainGameRoot extends Component {
           applied += 1;
         }
       } else {
+        // 2026-09-21 用户反馈"一键穿戴没把可穿戴的最高战力装备穿上":此前只填空部位(已穿的部位有更好的也跳过),
+        // 且不看穿戴等级——挑到等级不够的装备,服务端一拒,整个一键流程就中断。现在每个部位在"等级够的闲置装备"里取战力最高,
+        // 比身上那件更好才换(服务端穿戴即自动替换旧件),单件失败不影响其余部位。
+        this.lobbyEquipmentItems = await this.api.equipment.list();
         const slots = ['WEAPON', 'HELMET', 'CHEST', 'BOOTS', 'RING', 'NECKLACE'];
-        const equippedSlots = new Set(this.lobbyEquipmentItems.filter((item) => item.heroId === hero.id).map((item) => item.slot));
+        const heroLevel = Math.max(1, hero.level);
+        let lastError = '';
         for (const slot of slots) {
-          if (equippedSlots.has(slot)) {
+          const worn = this.lobbyEquipmentItems.find((item) => item.slot === slot && item.heroId === hero.id) ?? null;
+          const best = this.lobbyEquipmentItems
+            .filter((item) => item.slot === slot && item.heroId == null && (item.requiredLevel ?? 1) <= heroLevel)
+            .sort((x, y) => equipItemPowerScore(y) - equipItemPowerScore(x) || y.id - x.id)[0];
+          if (!best || (worn && equipItemPowerScore(worn) >= equipItemPowerScore(best))) {
             continue;
           }
-          const best = this.lobbyEquipmentItems
-            .filter((item) => item.slot === slot && item.heroId == null)
-            .sort((a, b) => equipItemPowerScore(b) - equipItemPowerScore(a))[0];
-          if (best) {
+          try {
             await this.api.equipment.equip(best.id, hero.id);
             applied += 1;
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
           }
+        }
+        if (applied <= 0 && lastError) {
+          throw new Error(lastError);
         }
       }
       if (applied > 0) {
@@ -3105,7 +3148,7 @@ export class LootChainGameRoot extends Component {
         powerDelta = (fresh?.power ?? hero.power) - beforePower;
         this.setStatus(`${hero.heroName} 一键${kind === 'equip' ? '穿戴' : '卸下'} ${applied} 件完成，战力 ${this.formatInteger(fresh?.power ?? hero.power)}。`);
       } else {
-        this.setStatus(kind === 'equip' ? '没有可穿戴的闲置装备。' : '该英雄没有已穿戴装备。');
+        this.setStatus(kind === 'equip' ? '身上已是可穿戴的最高战力装备(或没有等级足够的闲置装备)。' : '该英雄没有已穿戴装备。');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -3130,6 +3173,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyEquipEnhanceDialog(equipmentId: number): void {
+    // 2026-09-21 用户要求:英雄装备界面点"强化"直接跳到装备强化界面,并默认选中这件装备。
+    if (this.currentView === 'heroDetail') {
+      this.openLobbyForgePanel(equipmentId, this.lobbyHeroDetailHeroId);
+      return;
+    }
     this.lobbyEquipFuseDialogOpen = false;
     this.lobbyEquipEnhanceTargetId = equipmentId;
     this.lobbyEquipEnhanceUseBless = false;
@@ -5687,5 +5735,6 @@ function isAnnualMainlineStage(stageCode: string): boolean {
 
 // 装备战力估分(与服务器 HeroPowerCalculator.equipPowerBonus 同权重),一键穿戴挑选每部位最优闲置装备用。
 function equipItemPowerScore(item: EquipmentItemVO): number {
-  return item.attrHp + item.attrAttack * 2 + item.attrDefense * 1.5 + item.attrSpeed * 1.2 + item.attrCrit;
+  // 与服务端实例口径一致:模板平属性 ×(1+0.1×强化等级);词条/宝石加成客户端拿不到权值,不计入比较。
+  return (item.attrHp + item.attrAttack * 2 + item.attrDefense * 1.5 + item.attrSpeed * 1.2 + item.attrCrit) * (1 + 0.1 * Math.max(0, item.enhanceLevel ?? 0));
 }

@@ -1,0 +1,284 @@
+
+fx_14003_leige_hit.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill/baozha/lg_skill_bz_00000
+  rotate: false
+  xy: 1000, 13
+  size: 539, 536
+  orig: 800, 800
+  offset: 134, 134
+  index: -1
+effect/skill/baozha/lg_skill_bz_00001
+  rotate: false
+  xy: 2, 1253
+  size: 787, 786
+  orig: 800, 800
+  offset: 9, 10
+  index: -1
+effect/skill/baozha/lg_skill_bz_00002
+  rotate: false
+  xy: 2, 497
+  size: 759, 754
+  orig: 800, 800
+  offset: 26, 26
+  index: -1
+effect/skill/baozha/lg_skill_bz_00003
+  rotate: false
+  xy: 791, 1285
+  size: 759, 754
+  orig: 800, 800
+  offset: 26, 26
+  index: -1
+effect/skill/baozha/lg_skill_bz_00004
+  rotate: false
+  xy: 791, 551
+  size: 738, 732
+  orig: 800, 800
+  offset: 42, 37
+  index: -1
+effect/skill/baozha/lg_skill_bz_00014
+  rotate: false
+  xy: 1531, 575
+  size: 497, 502
+  orig: 800, 800
+  offset: 156, 149
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00001
+  rotate: false
+  xy: 2, 2
+  size: 497, 493
+  orig: 550, 550
+  offset: 30, 30
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00002
+  rotate: false
+  xy: 501, 2
+  size: 497, 493
+  orig: 550, 550
+  offset: 30, 30
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00003
+  rotate: false
+  xy: 1552, 1560
+  size: 475, 479
+  orig: 550, 550
+  offset: 41, 37
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00004
+  rotate: false
+  xy: 1552, 1079
+  size: 475, 479
+  orig: 550, 550
+  offset: 41, 37
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00006
+  rotate: false
+  xy: 1541, 109
+  size: 461, 464
+  orig: 550, 550
+  offset: 48, 45
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00018
+  rotate: false
+  xy: 1541, 4
+  size: 131, 103
+  orig: 550, 550
+  offset: 343, 226
+  index: -1
+
+fx_14003_leige_hit_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill/baozha/lg_skill_bz_00006
+  rotate: false
+  xy: 2, 1325
+  size: 728, 710
+  orig: 800, 800
+  offset: 53, 48
+  index: -1
+effect/skill/baozha/lg_skill_bz_00008
+  rotate: false
+  xy: 2, 630
+  size: 687, 693
+  orig: 800, 800
+  offset: 59, 54
+  index: -1
+effect/skill/baozha/lg_skill_bz_00010
+  rotate: false
+  xy: 732, 1369
+  size: 660, 666
+  orig: 800, 800
+  offset: 75, 70
+  index: -1
+effect/skill/baozha/lg_skill_bz_00012
+  rotate: false
+  xy: 2, 12
+  size: 628, 616
+  orig: 800, 800
+  offset: 81, 92
+  index: -1
+effect/skill/ci_hit/lg_skill_db_00001
+  rotate: false
+  xy: 632, 177
+  size: 422, 451
+  orig: 500, 500
+  offset: 42, 32
+  index: -1
+effect/skill/ci_hit/lg_skill_db_00002
+  rotate: false
+  xy: 691, 898
+  size: 422, 425
+  orig: 500, 500
+  offset: 42, 39
+  index: -1
+effect/skill/ci_hit/lg_skill_db_00004
+  rotate: false
+  xy: 1527, 722
+  size: 410, 419
+  orig: 500, 500
+  offset: 48, 45
+  index: -1
+effect/skill/ci_hit/lg_skill_db_00006
+  rotate: false
+  xy: 1454, 333
+  size: 384, 387
+  orig: 500, 500
+  offset: 61, 58
+  index: -1
+effect/skill2/hit1/lg_skill2_hit1_00002
+  rotate: false
+  xy: 1056, 2
+  size: 392, 332
+  orig: 451, 372
+  offset: 29, 21
+  index: -1
+effect/skill2/hit1/lg_skill2_hit1_00006
+  rotate: false
+  xy: 691, 678
+  size: 253, 218
+  orig: 451, 372
+  offset: 53, 84
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00000
+  rotate: false
+  xy: 1056, 336
+  size: 396, 399
+  orig: 550, 550
+  offset: 80, 77
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00008
+  rotate: false
+  xy: 1394, 1581
+  size: 450, 454
+  orig: 550, 550
+  offset: 52, 48
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00010
+  rotate: false
+  xy: 1394, 1143
+  size: 432, 436
+  orig: 550, 550
+  offset: 63, 59
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00012
+  rotate: false
+  xy: 1115, 737
+  size: 410, 404
+  orig: 550, 550
+  offset: 77, 73
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00014
+  rotate: false
+  xy: 1450, 3
+  size: 358, 328
+  orig: 550, 550
+  offset: 115, 111
+  index: -1
+effect/skill2/hit2/lg_skill2_hit2_00016
+  rotate: false
+  xy: 1846, 1913
+  size: 153, 122
+  orig: 550, 550
+  offset: 309, 219
+  index: -1
+
+fx_14003_leige_hit_3.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/atk_hit/lg_attack_hit_00000
+  rotate: false
+  xy: 691, 98
+  size: 290, 292
+  orig: 380, 380
+  offset: 47, 45
+  index: -1
+effect/attack/atk_hit/lg_attack_hit_00001
+  rotate: false
+  xy: 2, 373
+  size: 380, 380
+  orig: 380, 380
+  offset: 0, 0
+  index: -1
+effect/attack/atk_hit/lg_attack_hit_00002
+  rotate: false
+  xy: 2, 2
+  size: 366, 369
+  orig: 380, 380
+  offset: 10, 7
+  index: -1
+effect/attack/atk_hit/lg_attack_hit_00004
+  rotate: false
+  xy: 384, 101
+  size: 305, 308
+  orig: 380, 380
+  offset: 40, 37
+  index: -1
+effect/attack/atk_hit/lg_attack_hit_00006
+  rotate: false
+  xy: 983, 114
+  size: 290, 276
+  orig: 380, 380
+  offset: 39, 52
+  index: -1
+effect/skill/ci_hit/lg_skill_db_00000
+  rotate: false
+  xy: 787, 392
+  size: 363, 361
+  orig: 500, 500
+  offset: 70, 71
+  index: -1
+effect/skill/ci_hit/lg_skill_db_00008
+  rotate: false
+  xy: 1152, 407
+  size: 359, 346
+  orig: 500, 500
+  offset: 65, 78
+  index: -1
+effect/skill2/hit1/lg_skill2_hit1_00000
+  rotate: false
+  xy: 1513, 139
+  size: 314, 314
+  orig: 451, 372
+  offset: 35, 30
+  index: -1
+effect/skill2/hit1/lg_skill2_hit1_00001
+  rotate: false
+  xy: 384, 411
+  size: 401, 342
+  orig: 451, 372
+  offset: 21, 16
+  index: -1
+effect/skill2/hit1/lg_skill2_hit1_00004
+  rotate: false
+  xy: 1513, 455
+  size: 376, 298
+  orig: 451, 372
+  offset: 46, 38
+  index: -1

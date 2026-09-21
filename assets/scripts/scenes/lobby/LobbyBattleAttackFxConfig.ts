@@ -158,3 +158,21 @@ export function resolveHeroAttackSpineFx(heroCode: string | null | undefined): B
 export function resolveAttackSpineFxResource(spec: { effect: string }): string {
   return `spine/effect/${spec.effect}/${spec.effect}`;
 }
+
+// ── 专属词条触发特效(2026-09-21 用户反馈:"伊芙琳选了词条说怪物脚下出现冰刺,但没有效果";同类词条都要配上)──
+// 键=紫卡后缀(GuardPerkConfig);fx_pack 里引擎内实拍挑选,原样入库。只给"描述里有画面"的补击/爆发类词条配,纯数值词条不配。
+const GUARD_PERK_PROC_FX: Record<string, { effect: string; animation: string; size: number }> = {
+  deepchill: { effect: 'fx_14601_xuenv_hit', animation: 'skill2_hit', size: 1.9 }, // 伊芙琳·深寒:脚下冰刺炸开
+  punish: { effect: 'fx_45014_shengqishi_hit', animation: 'Skill_hit_down', size: 2.0 }, // 见习圣骑士·惩戒:光锤砸地
+  echo: { effect: 'fx_13001_shenghui_hit', animation: 'hit', size: 1.5 }, // 银色祭司·祷言回响:金色圣光爆点(jineng_down 的圣环会长到半屏,实拍后弃用)
+  pyre: { effect: 'fx_15015_hongtiansilng_hit', animation: 'skill2', size: 1.7 }, // 莉维娅·余烬爆燃:火焰爆炸
+  dragonslayer: { effect: 'fx_15015_hongtiansilng_hit', animation: 'skill2', size: 2.2 }, // 阿尔萨斯·龙焰爆
+  phase: { effect: 'fx_14003_leige_hit', animation: 'Skill2_hit2', size: 1.7 }, // 深渊行者·相位突袭:暗紫锁链闪
+  curseburst: { effect: 'fx_23002_shuren_hit2', animation: 'skill', size: 1.7 }, // 低语教徒·咒爆:幽绿咒阵
+  skirmish: { effect: 'fx_45002_jiangui_hit', animation: 'Skill', size: 1.5 }, // 游侠·游击:蓝色斩光
+  cutthroat: { effect: 'fx_43001_daozei_hit', animation: 'skill_hit', size: 1.5 }, // 斥候·割喉:暗蓝刺击
+};
+
+export function resolveGuardPerkProcFx(perkId: string | null | undefined): { effect: string; animation: string; size: number } | null {
+  return GUARD_PERK_PROC_FX[(perkId ?? '').trim()] ?? null;
+}

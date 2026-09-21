@@ -90,7 +90,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -1852,7 +1852,9 @@ export class LobbyGuardBattleRenderer {
           if (!hitView || !hitView.node.isValid) {
             return;
           }
-          this.spawnImpactFlash(hitView.node.position.x, hitView.node.position.y, rgba(255, 150, 90));
+          if (index >= 6 || !this.spawnSpineBurstFx(resolveGuardPerkProcFx(event.perkId), hitView.node.position.x, hitView.node.position.y, 1)) {
+            this.spawnImpactFlash(hitView.node.position.x, hitView.node.position.y, rgba(255, 150, 90));
+          }
           this.queueDamage(hitId, event.amount ?? 0, false, hitView.node.position.x + ((index * 31) % 30) - 15, hitView.node.position.y);
           this.flashMonster(hitId);
         });
@@ -2521,6 +2523,12 @@ export class LobbyGuardBattleRenderer {
         }
         const x = this.xToPx(monster.x);
         const y = this.monsterY(monster.lane, monster.x) + this.unitSize() * 0.12;
+        if (hit.kind === 'perk' && this.spawnSpineBurstFx(resolveGuardPerkProcFx(event.perkId), x, y - this.unitSize() * 0.12, 1)) {
+          // 专属词条补击:播该词条自己的特效(冰刺/光锤/咒阵…),伤害数字与受击红闪照常。
+          this.queueDamage(monster.monsterId, hit.amount, false, x, y);
+          this.flashMonster(monster.monsterId);
+          return;
+        }
         this.resolveProjectileHit(x, y, monster.monsterId, hit.amount, hit.kind === 'perk' ? rgba(220, 150, 255) : color, undefined, false, hit.kind === 'splash' ? 0.7 : 0.85, hero.heroCode);
       }, 160 + 50 * index);
     });
@@ -2741,8 +2749,12 @@ export class LobbyGuardBattleRenderer {
    * 过长的动画加速到 ≤0.5s。未预热好/同屏超限返回 false,由调用方回退静态斩击图或十字爆闪。
    */
   private spawnAttackHitFx(heroCode: string, x: number, y: number, scale: number): boolean {
+    return this.spawnSpineBurstFx(resolveHeroAttackSpineFx(heroCode)?.hit ?? null, x, y, scale);
+  }
+
+  /** 一次性骨骼爆点(普攻命中 / 专属词条触发共用):未就绪时补预热并返回 false,由调用方回退。 */
+  private spawnSpineBurstFx(hitSpec: { effect: string; animation: string; size: number } | null, x: number, y: number, scale: number): boolean {
     const field = this.fieldNode;
-    const hitSpec = resolveHeroAttackSpineFx(heroCode)?.hit;
     if (!field || !hitSpec) {
       return false;
     }
@@ -2895,6 +2907,10 @@ export class LobbyGuardBattleRenderer {
       const spineSpec = resolveHeroAttackSpineFx(entry.heroCode);
       if (spineSpec) {
         this.prewarmAttackSpineFx(spineSpec);
+      }
+      const perkFx = resolveGuardPerkProcFx(resolveGuardHeroPerkProfile(entry.heroCode, entry.role).purple?.suffix);
+      if (perkFx) {
+        this.prewarmAttackSpineFx(perkFx);
       }
     }
   }
