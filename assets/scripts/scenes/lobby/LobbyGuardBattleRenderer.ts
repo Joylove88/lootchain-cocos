@@ -93,7 +93,7 @@ import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltE
 import { resolveAttackFxSpritePath, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
-import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
+import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
 /** 怪物视高上限(屏高比例):BOSS 原 0.62 头顶出屏、整排上格被盖,2026-09-18 降到 0.52。 */
@@ -2401,6 +2401,7 @@ export class LobbyGuardBattleRenderer {
         color,
         strikeSpec: melee ? spec : undefined,
         crit: extra?.crit,
+        scale: extra?.scale,
         // 近战飞得比远程慢一点:贴脸距离本来就短(2~4 格),快了就成"瞬移",看不见飞出去的过程
         //(2026-09-12 实测 1.9 倍时 60ms 内已命中)。
         speedMult: melee ? 0.8 : 1,
@@ -2584,7 +2585,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnImpactFlash(tx, ty, proj.color);
           this.flashMonster(proj.targetId);
         } else {
-          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec, proj.crit);
+          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec, proj.crit, proj.scale);
         }
         proj.node.destroy();
         this.projectiles.splice(i, 1);
@@ -2672,9 +2673,9 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 命中结算:爆闪(近战=全尺寸斩击炸开)+伤害入聚合窗+目标受击红闪。 */
-  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec, crit?: boolean): void {
+  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec, crit?: boolean, scale = 1): void {
     if (strikeSpec) {
-      this.spawnStrikeFx(strikeSpec, x, y);
+      this.spawnStrikeFx(strikeSpec, x, y, scale);
     } else {
       this.spawnImpactFlash(x, y, color);
     }
@@ -2764,12 +2765,13 @@ export class LobbyGuardBattleRenderer {
 
   /** 近战刀光:目标处双弧斩闪 0.16s。 */
   /** 近战专属斩击/撞击贴图(2026-09-12):落在目标身上,0.14s 弹开 + 0.24s 淡出,角度按飘字轮转轻微错开。 */
-  private spawnStrikeFx(spec: BattleAttackFxSpec, x: number, y: number): void {
+  private spawnStrikeFx(spec: BattleAttackFxSpec, x: number, y: number, scale = 1): void {
     const field = this.fieldNode;
     if (!field) {
       return;
     }
-    const widthPx = this.unitSize() * spec.size;
+    // 巨型词条:命中爆开的斩击同步放大(此前只放大了 0.6 倍的飞行体,近战几乎看不出)。
+    const widthPx = this.unitSize() * spec.size * scale;
     const heightPx = widthPx * spec.aspect;
     const node = this.host.addChildPlainNode(field, 'GuardStrikeFx', x, y, widthPx, heightPx);
     node.setSiblingIndex(field.children.length - 1);
@@ -3305,11 +3307,12 @@ export class LobbyGuardBattleRenderer {
       return '';
     }
     const perks = guardHeroPerks(sim, hero.heroCode);
+    const perkArchetype = resolveGuardHeroPerkProfile(hero.heroCode, hero.role).archetype;
     const parts: string[] = [];
     for (const def of GUARD_BLUE_PERKS) {
       const level = perks.blue[def.id] ?? 0;
       if (level > 0) {
-        parts.push(`${def.name} Lv${level}`);
+        parts.push(`${guardBluePerkName(def, perkArchetype)} Lv${level}`);
       }
     }
     const purple = resolveGuardHeroPerkProfile(hero.heroCode, hero.role).purple;

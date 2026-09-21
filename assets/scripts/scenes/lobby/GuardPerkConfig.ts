@@ -27,8 +27,29 @@ export interface GuardBluePerkDef {
   /** 适用原型;null=全部。 */
   archetypes: GuardAttackArchetype[] | null;
   maxStack: number;
-  /** 卡面描述(按将要到达的层数)。 */
-  describe: (level: number) => string;
+  /** 近战原型(剑光/双匕/盾枪)的卡面名:同一机制换近战说法(多重→连斩、穿透→贯穿),避免近战英雄拿到"弹道"字样的卡。 */
+  meleeName?: string;
+  /** 卡面描述(按将要到达的层数 + 该英雄的普攻原型:措辞用他自己的普攻形态,不写"主弹/发"这类远程词)。 */
+  describe: (level: number, archetype: GuardAttackArchetype) => string;
+}
+
+/** 各原型普攻的名词与量词(卡面描述用):近战打出去的是剑光/刃光/枪芒,不是"弹"。 */
+export const GUARD_ARCHETYPE_NOUN: Record<GuardAttackArchetype, { noun: string; unit: string }> = {
+  orb: { noun: '元素球', unit: '颗' },
+  whirl: { noun: '旋风', unit: '道' },
+  slash: { noun: '剑光', unit: '道' },
+  dagger: { noun: '刃光', unit: '道' },
+  arrow: { noun: '箭矢', unit: '支' },
+  shock: { noun: '枪芒', unit: '道' },
+  holy: { noun: '圣光', unit: '道' },
+};
+
+export function guardArchetypeIsMelee(archetype: GuardAttackArchetype): boolean {
+  return archetype === 'slash' || archetype === 'dagger' || archetype === 'shock';
+}
+
+export function guardBluePerkName(def: GuardBluePerkDef, archetype: GuardAttackArchetype): string {
+  return guardArchetypeIsMelee(archetype) && def.meleeName ? def.meleeName : def.name;
 }
 
 /** 多重:共 N 发、每发系数(对群 ×1.56/2.04/2.48,单体 ×1.17/1.36/1.55)。 */
@@ -45,7 +66,8 @@ export const GUARD_PIERCE_COEF = 0.5;
 export const GUARD_GIANT_COUNT = [0, 2, 3, 4];
 export const GUARD_GIANT_COEF = 0.25;
 export const GUARD_GIANT_RADIUS = 0.7;
-export const GUARD_GIANT_VISUAL_SCALE = [1, 1.3, 1.6, 2.0];
+/** 2026-09-21 用户反馈"巨型没看出效果":1.3/1.6/2.0 → 1.5/1.9/2.4,且近战命中爆开的斩击也按此放大。 */
+export const GUARD_GIANT_VISUAL_SCALE = [1, 1.5, 1.9, 2.4];
 /** 会心:每第 5 次出手必暴击。 */
 export const GUARD_CRIT_EVERY = 5;
 export const GUARD_CRIT_MULT = [1, 1.6, 1.9, 2.2];
@@ -72,7 +94,11 @@ export const GUARD_BLUE_PERKS: GuardBluePerkDef[] = [
     category: 'count',
     archetypes: null,
     maxStack: 3,
-    describe: (level) => `共 ${GUARD_MULTISHOT_SHOTS[level]} 发,每发 ${Math.round(GUARD_MULTISHOT_COEF[level] * 100)}%;副发打下一只怪`,
+    meleeName: '连斩',
+    describe: (level, archetype) => {
+      const { noun, unit } = GUARD_ARCHETYPE_NOUN[archetype];
+      return `每次普攻打出 ${GUARD_MULTISHOT_SHOTS[level]} ${unit}${noun},每${unit} ${Math.round(GUARD_MULTISHOT_COEF[level] * 100)}% 伤害;多出的${noun}打向下一只怪`;
+    },
   },
   {
     id: 'atk_spread',
@@ -80,7 +106,10 @@ export const GUARD_BLUE_PERKS: GuardBluePerkDef[] = [
     category: 'count',
     archetypes: ['orb', 'arrow', 'holy'],
     maxStack: 3,
-    describe: (level) => `额外 2 发侧翼弹打最远的 2 只,各 ${Math.round(GUARD_SPREAD_COEF[level] * 100)}%`,
+    describe: (level, archetype) => {
+      const { noun, unit } = GUARD_ARCHETYPE_NOUN[archetype];
+      return `额外向两侧各射出 1 ${unit}${noun},打最远的 2 只怪,各 ${Math.round(GUARD_SPREAD_COEF[level] * 100)}% 伤害`;
+    },
   },
   {
     id: 'atk_pierce',
@@ -88,7 +117,8 @@ export const GUARD_BLUE_PERKS: GuardBluePerkDef[] = [
     category: 'form',
     archetypes: ['arrow', 'slash', 'shock'],
     maxStack: 3,
-    describe: (level) => `主弹穿透身后最近 ${GUARD_PIERCE_COUNT[level]} 只,各 ${Math.round(GUARD_PIERCE_COEF * 100)}%`,
+    meleeName: '贯穿',
+    describe: (level, archetype) => `${GUARD_ARCHETYPE_NOUN[archetype].noun}命中后继续贯穿目标身后最近 ${GUARD_PIERCE_COUNT[level]} 只怪,各 ${Math.round(GUARD_PIERCE_COEF * 100)}% 伤害`,
   },
   {
     id: 'atk_giant',
@@ -96,7 +126,7 @@ export const GUARD_BLUE_PERKS: GuardBluePerkDef[] = [
     category: 'func',
     archetypes: null,
     maxStack: 3,
-    describe: (level) => `体积 ×${GUARD_GIANT_VISUAL_SCALE[level]};溅射最近 ${GUARD_GIANT_COUNT[level]} 只各 ${Math.round(GUARD_GIANT_COEF * 100)}%`,
+    describe: (level, archetype) => `${GUARD_ARCHETYPE_NOUN[archetype].noun}放大 ×${GUARD_GIANT_VISUAL_SCALE[level]};命中时波及目标旁最近 ${GUARD_GIANT_COUNT[level]} 只怪,各 ${Math.round(GUARD_GIANT_COEF * 100)}% 伤害`,
   },
   {
     id: 'atk_crit',
@@ -280,13 +310,14 @@ export function guardRarityGate(pickIndex: number): { white: number; blue: numbe
   }
   return { white: 15, blue: 40, purple: 45 };
 }
-export const GUARD_GOLD_FIRST_CHANCE = 0.25;
-export const GUARD_GOLD_BASE_CHANCE = 0.12;
-export const GUARD_GOLD_STEP_CHANCE = 0.12;
+// 2026-09-21 用户反馈"强化买到 2000 金币档才出 1 张金卡,太低":首次 25%→50%,基础 12%→30%,每次未出 +12%→+25%,最多连续不出 3→2 次(平均约每 2 次强化见 1 张)。
+export const GUARD_GOLD_FIRST_CHANCE = 0.5;
+export const GUARD_GOLD_BASE_CHANCE = 0.3;
+export const GUARD_GOLD_STEP_CHANCE = 0.25;
 export const GUARD_GOLD_STAR3_BONUS = 0.03;
 export const GUARD_GOLD_STAR3_BONUS_CAP = 0.12;
-/** 首张之后最多连续 3 次不出。 */
-export const GUARD_GOLD_MAX_MISS = 3;
+/** 首张之后最多连续 2 次不出。 */
+export const GUARD_GOLD_MAX_MISS = 2;
 export const GUARD_OWNED_BIAS = 0.45;
 /** 上阵但不在场的英雄:前 3 次强化不出,之后权重 0.25。 */
 export const GUARD_OFFFIELD_WEIGHT = 0.25;

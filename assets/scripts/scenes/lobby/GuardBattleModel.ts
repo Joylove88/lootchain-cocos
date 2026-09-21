@@ -47,6 +47,7 @@ import {
   GUARD_ULT_MAX_LEVEL,
   GUARD_WHITE_CAP,
   describeGuardUltLevel,
+  guardBluePerkName,
   guardFreeEnhanceWaves,
   guardPurplePerkId,
   guardRarityGate,
@@ -1102,7 +1103,7 @@ function guardGoldCandidates(state: GuardBattleState): string[] {
 
 /**
  * 下一次强化的金卡概率(强化按钮常驻公示,与实际判定同一个函数,逐位一致)。
- * 第 1 次 25%;首张最晚第 2 次必出;之后 12% + 12%×n(n=连续未出层数),每个 ≥3★ 单位 +3%(封顶 +12%),最多连续 3 次不出。
+ * 第 1 次 50%;首张最晚第 2 次必出;之后 30% + 25%×n(n=连续未出层数),每个 ≥3★ 单位 +3%(封顶 +12%),最多连续 2 次不出(2026-09-21 用户反馈概率偏低后上调)。
  * 没有候选(场上没有 ≥2★ 单位)时 available=false,本层不判金卡、保底计数不动。
  */
 export function guardGoldCardChance(state: GuardBattleState): { chance: number; forced: boolean; available: boolean } {
@@ -1203,8 +1204,8 @@ function guardMakeBlueOption(state: GuardBattleState, ctx: GuardRollContext, onl
   const profile = guardHeroProfileOf(state, heroCode);
   return {
     id: `${def.id}@${heroCode}`,
-    title: `【${guardHeroShortName(state, heroCode)}】${GUARD_ARCHETYPE_LABEL[profile.archetype]}·${def.name}${level > 1 ? ` Lv${level}` : ''}`,
-    detail: def.describe(level),
+    title: `【${guardHeroShortName(state, heroCode)}】${GUARD_ARCHETYPE_LABEL[profile.archetype]}·${guardBluePerkName(def, profile.archetype)}${level > 1 ? ` Lv${level}` : ''}`,
+    detail: def.describe(level, profile.archetype),
     rarity: 'blue',
     heroCode,
     perkId: def.id,
