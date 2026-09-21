@@ -1,0 +1,104 @@
+
+fx_150079_laierde_hit.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/New_15007_Skill_baozha_00073
+  rotate: false
+  xy: 449, 166
+  size: 342, 315
+  orig: 515, 400
+  offset: 133, 0
+  index: -1
+skill/New_15007_Skill_baozha_00075
+  rotate: false
+  xy: 1452, 601
+  size: 395, 372
+  orig: 515, 400
+  offset: 96, 8
+  index: -1
+skill/New_15007_Skill_baozha_00077
+  rotate: false
+  xy: 2, 196
+  size: 445, 390
+  orig: 515, 400
+  offset: 58, 6
+  index: -1
+skill/New_15007_Skill_baozha_00079
+  rotate: false
+  xy: 2, 588
+  size: 478, 385
+  orig: 515, 400
+  offset: 33, 7
+  index: -1
+skill/New_15007_Skill_baozha_00081
+  rotate: false
+  xy: 482, 609
+  size: 490, 364
+  orig: 515, 400
+  offset: 17, 20
+  index: -1
+skill/New_15007_Skill_baozha_00083
+  rotate: false
+  xy: 974, 614
+  size: 476, 359
+  orig: 515, 400
+  offset: 8, 13
+  index: -1
+skill/New_15007_Skill_baozha_00085
+  rotate: false
+  xy: 2, 2
+  size: 419, 192
+  orig: 515, 400
+  offset: 4, 39
+  index: -1
+skill/New_15007_Skill_dilie_00074
+  rotate: false
+  xy: 1313, 480
+  size: 316, 119
+  orig: 400, 130
+  offset: 38, 4
+  index: -1
+skill/New_15007_Skill_dilie_00076
+  rotate: false
+  xy: 974, 489
+  size: 337, 123
+  orig: 400, 130
+  offset: 29, 3
+  index: -1
+skill/New_15007_Skill_dilie_00078
+  rotate: false
+  xy: 482, 483
+  size: 386, 124
+  orig: 400, 130
+  offset: 7, 3
+  index: -1
+skill/New_15007_Skill_dilie_00080
+  rotate: false
+  xy: 423, 40
+  size: 346, 124
+  orig: 400, 130
+  offset: 30, 4
+  index: -1
+skill/New_15007_Skill_dilie_00082
+  rotate: false
+  xy: 1631, 489
+  size: 300, 110
+  orig: 400, 130
+  offset: 50, 11
+  index: -1
+skill/New_15007_Skill_dilie_00084
+  rotate: false
+  xy: 1631, 399
+  size: 259, 88
+  orig: 400, 130
+  offset: 66, 17
+  index: -1
+skill/New_15007_Skill_dilie_00086
+  rotate: false
+  xy: 793, 390
+  size: 257, 91
+  orig: 400, 130
+  offset: 67, 16
+  index: -1

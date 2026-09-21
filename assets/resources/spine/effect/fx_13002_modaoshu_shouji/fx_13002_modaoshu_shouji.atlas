@@ -1,0 +1,160 @@
+
+fx_13002_modaoshu_shouji.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/dimian/HCR_jineng_baozha_00
+  rotate: false
+  xy: 1115, 671
+  size: 209, 109
+  orig: 285, 171
+  offset: 43, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_01
+  rotate: false
+  xy: 1326, 611
+  size: 208, 122
+  orig: 285, 171
+  offset: 43, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_02
+  rotate: false
+  xy: 1347, 735
+  size: 237, 134
+  orig: 285, 171
+  offset: 27, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_03
+  rotate: false
+  xy: 872, 633
+  size: 236, 135
+  orig: 285, 171
+  offset: 21, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_04
+  rotate: false
+  xy: 1608, 872
+  size: 247, 136
+  orig: 285, 171
+  offset: 16, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_05
+  rotate: false
+  xy: 1347, 871
+  size: 259, 137
+  orig: 285, 171
+  offset: 10, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_06
+  rotate: false
+  xy: 2, 2
+  size: 269, 138
+  orig: 285, 171
+  offset: 4, 17
+  index: -1
+images/dimian/HCR_jineng_baozha_07
+  rotate: false
+  xy: 599, 588
+  size: 231, 147
+  orig: 285, 171
+  offset: 31, 9
+  index: -1
+images/dimian/HCR_jineng_baozha_08
+  rotate: false
+  xy: 590, 448
+  size: 223, 138
+  orig: 285, 171
+  offset: 30, 18
+  index: -1
+images/dimian/HCR_jineng_baozha_09
+  rotate: false
+  xy: 1110, 597
+  size: 198, 72
+  orig: 285, 171
+  offset: 48, 18
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_00
+  rotate: false
+  xy: 1115, 782
+  size: 230, 226
+  orig: 325, 336
+  offset: 43, 55
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_01
+  rotate: false
+  xy: 2, 142
+  size: 292, 283
+  orig: 325, 336
+  offset: 14, 25
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_02
+  rotate: false
+  xy: 2, 717
+  size: 298, 291
+  orig: 325, 336
+  offset: 12, 23
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_03
+  rotate: false
+  xy: 2, 427
+  size: 298, 288
+  orig: 325, 336
+  offset: 12, 24
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_04
+  rotate: false
+  xy: 302, 724
+  size: 295, 284
+  orig: 325, 336
+  offset: 13, 25
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_05
+  rotate: false
+  xy: 302, 437
+  size: 286, 285
+  orig: 325, 336
+  offset: 20, 26
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_06
+  rotate: false
+  xy: 599, 737
+  size: 271, 271
+  orig: 325, 336
+  offset: 28, 36
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_07
+  rotate: false
+  xy: 872, 770
+  size: 241, 238
+  orig: 325, 336
+  offset: 41, 47
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_08
+  rotate: false
+  xy: 590, 272
+  size: 196, 174
+  orig: 325, 336
+  offset: 61, 77
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_09
+  rotate: false
+  xy: 1857, 855
+  size: 151, 153
+  orig: 325, 336
+  offset: 91, 97
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_10
+  rotate: false
+  xy: 302, 346
+  size: 147, 89
+  orig: 325, 336
+  offset: 94, 101
+  index: -1
+images/shouji/HCR_mdaoshu_shouji_11
+  rotate: false
+  xy: 2010, 975
+  size: 28, 33
+  orig: 325, 336
+  offset: 148, 133
+  index: -1

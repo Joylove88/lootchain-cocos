@@ -1,0 +1,466 @@
+
+fx_25002_dutengnv_hit.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/New_New_skill_baozha_00044
+  rotate: false
+  xy: 1479, 964
+  size: 513, 376
+  orig: 581, 377
+  offset: 1, 0
+  index: -1
+skill/New_New_skill_baozha_00046
+  rotate: false
+  xy: 708, 2
+  size: 574, 359
+  orig: 581, 377
+  offset: 7, 17
+  index: -1
+skill/New_New_skill_baozha_00048
+  rotate: false
+  xy: 684, 363
+  size: 577, 361
+  orig: 581, 377
+  offset: 4, 15
+  index: -1
+skill/New_New_skill_baozha_00050
+  rotate: false
+  xy: 1284, 13
+  size: 580, 348
+  orig: 581, 377
+  offset: 1, 12
+  index: -1
+skill/New_New_skill_baozha_00052
+  rotate: false
+  xy: 1263, 363
+  size: 577, 345
+  orig: 581, 377
+  offset: 4, 11
+  index: -1
+skill/New_skill_shuye_00037
+  rotate: false
+  xy: 1866, 132
+  size: 166, 136
+  orig: 437, 375
+  offset: 129, 124
+  index: -1
+skill2/New_New_skill2_fengdai_00029
+  rotate: false
+  xy: 1484, 1342
+  size: 542, 211
+  orig: 559, 280
+  offset: 11, 27
+  index: -1
+skill2/New_New_skill2_fengsi_00029
+  rotate: false
+  xy: 2, 25
+  size: 704, 268
+  orig: 735, 280
+  offset: 27, 10
+  index: -1
+skill2/New_New_skill2_fengsi_00037
+  rotate: false
+  xy: 1383, 710
+  size: 620, 252
+  orig: 735, 280
+  offset: 15, 4
+  index: -1
+skill2/New_New_skill2_fengsi_00039
+  rotate: false
+  xy: 740, 726
+  size: 641, 245
+  orig: 735, 280
+  offset: 27, 20
+  index: -1
+skill2/New_New_skill2_yanwu_00033
+  rotate: false
+  xy: 1966, 1971
+  size: 74, 72
+  orig: 191, 168
+  offset: 62, 51
+  index: -1
+skill2/New_New_skill2_yanwu_00035
+  rotate: false
+  xy: 1866, 16
+  size: 98, 114
+  orig: 191, 168
+  offset: 48, 32
+  index: -1
+skill2/New_New_skill2_yanwu_00041
+  rotate: false
+  xy: 1866, 270
+  size: 160, 146
+  orig: 191, 168
+  offset: 12, 7
+  index: -1
+skill2/New_New_skill2_yanwu_00043
+  rotate: false
+  xy: 1842, 560
+  size: 168, 148
+  orig: 191, 168
+  offset: 11, 6
+  index: -1
+skill2/New_New_skill2_yanwu_00045
+  rotate: false
+  xy: 1842, 418
+  size: 168, 140
+  orig: 191, 168
+  offset: 17, 6
+  index: -1
+skill2/New_skill2_duqi_00030
+  rotate: false
+  xy: 1484, 1555
+  size: 480, 488
+  orig: 947, 676
+  offset: 32, 69
+  index: -1
+skill2/New_skill2_duqi_00034
+  rotate: false
+  xy: 2, 295
+  size: 680, 568
+  orig: 947, 676
+  offset: 42, 24
+  index: -1
+skill2/New_skill2_duqi_00036
+  rotate: false
+  xy: 2, 865
+  size: 736, 588
+  orig: 947, 676
+  offset: 58, 33
+  index: -1
+skill2/New_skill2_duqi_00038
+  rotate: false
+  xy: 2, 1455
+  size: 778, 588
+  orig: 947, 676
+  offset: 94, 56
+  index: -1
+skill2/New_skill2_duqi_00040
+  rotate: false
+  xy: 782, 1471
+  size: 700, 572
+  orig: 947, 676
+  offset: 197, 59
+  index: -1
+skill2/New_skill2_duqi_00042
+  rotate: false
+  xy: 782, 973
+  size: 695, 496
+  orig: 947, 676
+  offset: 219, 99
+  index: -1
+
+fx_25002_dutengnv_hit_2.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_attack_shouji_00021
+  rotate: false
+  xy: 592, 1596
+  size: 452, 448
+  orig: 494, 494
+  offset: 21, 22
+  index: -1
+attack/New_attack_shouji_00025
+  rotate: false
+  xy: 1118, 578
+  size: 383, 359
+  orig: 494, 494
+  offset: 40, 56
+  index: -1
+attack/New_attack_shouji_00027
+  rotate: false
+  xy: 580, 912
+  size: 411, 368
+  orig: 494, 494
+  offset: 56, 77
+  index: -1
+attack/New_attack_shouji_00029
+  rotate: false
+  xy: 1503, 308
+  size: 401, 375
+  orig: 494, 494
+  offset: 67, 74
+  index: -1
+attack/New_attack_shouji_00031
+  rotate: false
+  xy: 1503, 685
+  size: 398, 382
+  orig: 494, 494
+  offset: 73, 72
+  index: -1
+skill/New_New_skill_baozha_00042
+  rotate: false
+  xy: 2, 129
+  size: 470, 339
+  orig: 581, 377
+  offset: 31, 9
+  index: -1
+skill/New_New_skill_baozha_00054
+  rotate: false
+  xy: 2, 778
+  size: 570, 324
+  orig: 581, 377
+  offset: 11, 16
+  index: -1
+skill/New_New_skill_baozha_00056
+  rotate: false
+  xy: 1046, 1720
+  size: 563, 324
+  orig: 581, 377
+  offset: 18, 16
+  index: -1
+skill/New_New_skill_baozha_00058
+  rotate: false
+  xy: 2, 470
+  size: 565, 306
+  orig: 581, 377
+  offset: 16, 34
+  index: -1
+skill/New_New_skill_baozha_00060
+  rotate: false
+  xy: 993, 939
+  size: 503, 306
+  orig: 581, 377
+  offset: 78, 35
+  index: -1
+skill/New_skill_shuye_00055
+  rotate: false
+  xy: 1114, 230
+  size: 383, 346
+  orig: 437, 375
+  offset: 10, 4
+  index: -1
+skill/New_skill_shuye_00058
+  rotate: false
+  xy: 1558, 1069
+  size: 411, 347
+  orig: 437, 375
+  offset: 3, 0
+  index: -1
+skill/New_skill_shuye_00061
+  rotate: false
+  xy: 1611, 1418
+  size: 423, 301
+  orig: 437, 375
+  offset: 0, 35
+  index: -1
+skill/New_skill_shuye_00064
+  rotate: false
+  xy: 592, 1282
+  size: 416, 312
+  orig: 437, 375
+  offset: 4, 35
+  index: -1
+skill/New_skill_shuye_00067
+  rotate: false
+  xy: 1611, 1721
+  size: 415, 323
+  orig: 437, 375
+  offset: 4, 36
+  index: -1
+skill2/New_New_skill2_fengdai_00031
+  rotate: false
+  xy: 574, 709
+  size: 542, 201
+  orig: 559, 280
+  offset: 10, 35
+  index: -1
+skill2/New_New_skill2_fengdai_00033
+  rotate: false
+  xy: 474, 19
+  size: 537, 198
+  orig: 559, 280
+  offset: 10, 34
+  index: -1
+skill2/New_New_skill2_fengdai_00037
+  rotate: false
+  xy: 474, 219
+  size: 531, 240
+  orig: 559, 280
+  offset: 12, 20
+  index: -1
+skill2/New_New_skill2_fengdai_00039
+  rotate: false
+  xy: 569, 461
+  size: 543, 246
+  orig: 559, 280
+  offset: 11, 13
+  index: -1
+skill2/New_New_skill2_fengdai_00041
+  rotate: false
+  xy: 1010, 1247
+  size: 546, 242
+  orig: 559, 280
+  offset: 12, 14
+  index: -1
+skill2/New_New_skill2_fengdai_00043
+  rotate: false
+  xy: 1013, 6
+  size: 533, 222
+  orig: 559, 280
+  offset: 11, 28
+  index: -1
+skill2/New_New_skill2_fengsi_00035
+  rotate: false
+  xy: 1046, 1491
+  size: 563, 227
+  orig: 735, 280
+  offset: 38, 17
+  index: -1
+skill2/New_New_skill2_yanwu_00037
+  rotate: false
+  xy: 1903, 784
+  size: 121, 137
+  orig: 191, 168
+  offset: 32, 15
+  index: -1
+skill2/New_New_skill2_yanwu_00039
+  rotate: false
+  xy: 1903, 923
+  size: 143, 144
+  orig: 191, 168
+  offset: 17, 10
+  index: -1
+skill2/New_New_skill2_yanwu_00047
+  rotate: false
+  xy: 1844, 172
+  size: 161, 134
+  orig: 191, 168
+  offset: 22, 9
+  index: -1
+skill2/New_New_skill2_yanwu_00049
+  rotate: false
+  xy: 1007, 378
+  size: 105, 81
+  orig: 191, 168
+  offset: 68, 23
+  index: -1
+skill2/New_skill2_duqi_00028
+  rotate: false
+  xy: 1548, 2
+  size: 294, 304
+  orig: 947, 676
+  offset: 32, 189
+  index: -1
+skill2/New_skill2_duqi_00032
+  rotate: false
+  xy: 2, 1544
+  size: 588, 500
+  orig: 947, 676
+  offset: 32, 61
+  index: -1
+skill2/New_skill2_duqi_00044
+  rotate: false
+  xy: 2, 1104
+  size: 576, 438
+  orig: 947, 676
+  offset: 320, 116
+  index: -1
+
+fx_25002_dutengnv_hit_3.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_attack_shouji_00023
+  rotate: false
+  xy: 406, 208
+  size: 329, 372
+  orig: 494, 494
+  offset: 51, 61
+  index: -1
+skill/New_New_skill_baozha_00040
+  rotate: false
+  xy: 2, 262
+  size: 402, 318
+  orig: 581, 377
+  offset: 70, 22
+  index: -1
+skill/New_New_skill_baozha_00074
+  rotate: false
+  xy: 737, 534
+  size: 256, 288
+  orig: 581, 377
+  offset: 108, 52
+  index: -1
+skill/New_skill_shuye_00040
+  rotate: false
+  xy: 1589, 435
+  size: 249, 241
+  orig: 437, 375
+  offset: 74, 53
+  index: -1
+skill/New_skill_shuye_00043
+  rotate: false
+  xy: 1363, 393
+  size: 224, 283
+  orig: 437, 375
+  offset: 77, 23
+  index: -1
+skill/New_skill_shuye_00046
+  rotate: false
+  xy: 1766, 718
+  size: 264, 299
+  orig: 437, 375
+  offset: 51, 25
+  index: -1
+skill/New_skill_shuye_00049
+  rotate: false
+  xy: 1044, 365
+  size: 317, 320
+  orig: 437, 375
+  offset: 45, 17
+  index: -1
+skill/New_skill_shuye_00052
+  rotate: false
+  xy: 1410, 678
+  size: 354, 339
+  orig: 437, 375
+  offset: 26, 6
+  index: -1
+skill/New_skill_shuye_00070
+  rotate: false
+  xy: 1040, 687
+  size: 368, 330
+  orig: 437, 375
+  offset: 50, 36
+  index: -1
+skill/New_skill_shuye_00073
+  rotate: false
+  xy: 737, 203
+  size: 305, 329
+  orig: 437, 375
+  offset: 52, 44
+  index: -1
+skill2/New_New_skill2_fengdai_00035
+  rotate: false
+  xy: 2, 786
+  size: 535, 231
+  orig: 559, 280
+  offset: 11, 14
+  index: -1
+skill2/New_New_skill2_fengsi_00031
+  rotate: false
+  xy: 539, 824
+  size: 499, 193
+  orig: 735, 280
+  offset: 8, 50
+  index: -1
+skill2/New_New_skill2_fengsi_00033
+  rotate: false
+  xy: 2, 582
+  size: 520, 202
+  orig: 735, 280
+  offset: 20, 46
+  index: -1
+skill2/New_skill2_duqi_00046
+  rotate: false
+  xy: 2, 2
+  size: 330, 258
+  orig: 947, 676
+  offset: 566, 301
+  index: -1

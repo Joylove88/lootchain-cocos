@@ -1,0 +1,132 @@
+
+fx_450081_shaxing_hit.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/attack/glow_00016
+  rotate: false
+  xy: 1825, 332
+  size: 174, 176
+  orig: 220, 220
+  offset: 24, 22
+  index: -1
+images/attackhit/attackhit_00016
+  rotate: false
+  xy: 1572, 314
+  size: 251, 194
+  orig: 400, 282
+  offset: 15, 30
+  index: -1
+images/attackhit/attackhit_00017
+  rotate: false
+  xy: 1572, 314
+  size: 251, 194
+  orig: 400, 282
+  offset: 15, 30
+  index: -1
+images/attackhit/attackhit_00018
+  rotate: false
+  xy: 340, 3
+  size: 272, 251
+  orig: 400, 282
+  offset: 30, 12
+  index: -1
+images/attackhit/attackhit_00019
+  rotate: false
+  xy: 346, 256
+  size: 314, 252
+  orig: 400, 282
+  offset: 25, 11
+  index: -1
+images/attackhit/attackhit_00020
+  rotate: false
+  xy: 2, 2
+  size: 336, 252
+  orig: 400, 282
+  offset: 25, 11
+  index: -1
+images/attackhit/attackhit_00021
+  rotate: false
+  xy: 2, 256
+  size: 342, 252
+  orig: 400, 282
+  offset: 32, 11
+  index: -1
+images/attackhit/attackhit_00022
+  rotate: false
+  xy: 614, 16
+  size: 216, 133
+  orig: 400, 282
+  offset: 165, 100
+  index: -1
+images/attackhit/attackhit_00023
+  rotate: false
+  xy: 1162, 172
+  size: 200, 135
+  orig: 400, 282
+  offset: 180, 99
+  index: -1
+images/attackhit/attackhit_00024
+  rotate: false
+  xy: 1518, 174
+  size: 116, 135
+  orig: 400, 282
+  offset: 186, 99
+  index: -1
+images/skill02/guanxian_00037
+  rotate: false
+  xy: 1636, 75
+  size: 74, 237
+  orig: 84, 262
+  offset: 5, 14
+  index: -1
+images/skillhit/skillhit_00061
+  rotate: false
+  xy: 1364, 180
+  size: 152, 129
+  orig: 348, 231
+  offset: 16, 6
+  index: -1
+images/skillhit/skillhit_00062
+  rotate: false
+  xy: 1364, 180
+  size: 152, 129
+  orig: 348, 231
+  offset: 16, 6
+  index: -1
+images/skillhit/skillhit_00063
+  rotate: false
+  xy: 919, 121
+  size: 241, 186
+  orig: 348, 231
+  offset: 13, 0
+  index: -1
+images/skillhit/skillhit_00064
+  rotate: false
+  xy: 1289, 311
+  size: 281, 197
+  orig: 348, 231
+  offset: 20, 8
+  index: -1
+images/skillhit/skillhit_00065
+  rotate: false
+  xy: 980, 309
+  size: 307, 199
+  orig: 348, 231
+  offset: 20, 6
+  index: -1
+images/skillhit/skillhit_00066
+  rotate: false
+  xy: 662, 317
+  size: 316, 191
+  orig: 348, 231
+  offset: 26, 10
+  index: -1
+images/skillhit/skillhit_00067
+  rotate: false
+  xy: 662, 151
+  size: 255, 164
+  orig: 348, 231
+  offset: 93, 26
+  index: -1

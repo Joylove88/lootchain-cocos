@@ -1,0 +1,118 @@
+
+fx_35004_kaerweisi_hit.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/atk_hit_000
+  rotate: false
+  xy: 867, 2
+  size: 201, 205
+  orig: 349, 348
+  offset: 68, 59
+  index: -1
+attack/atk_hit_001
+  rotate: false
+  xy: 930, 213
+  size: 292, 292
+  orig: 349, 348
+  offset: 26, 25
+  index: -1
+attack/atk_hit_002
+  rotate: false
+  xy: 320, 188
+  size: 314, 317
+  orig: 349, 348
+  offset: 17, 14
+  index: -1
+attack/atk_hit_003
+  rotate: false
+  xy: 2, 184
+  size: 316, 321
+  orig: 349, 348
+  offset: 18, 13
+  index: -1
+attack/atk_hit_004
+  rotate: false
+  xy: 636, 209
+  size: 292, 296
+  orig: 349, 348
+  offset: 29, 25
+  index: -1
+attack/atk_hit_005
+  rotate: false
+  xy: 1437, 254
+  size: 206, 251
+  orig: 349, 348
+  offset: 73, 52
+  index: -1
+attack/atk_hit_006
+  rotate: false
+  xy: 1224, 251
+  size: 211, 254
+  orig: 349, 348
+  offset: 71, 50
+  index: -1
+attack/atk_hit_007
+  rotate: false
+  xy: 1645, 292
+  size: 212, 213
+  orig: 349, 348
+  offset: 70, 81
+  index: -1
+attack/atk_hit_008
+  rotate: false
+  xy: 1707, 91
+  size: 192, 199
+  orig: 349, 348
+  offset: 68, 81
+  index: -1
+attack/atk_hit_009
+  rotate: false
+  xy: 1514, 52
+  size: 191, 200
+  orig: 349, 348
+  offset: 68, 80
+  index: -1
+skill2/hit_000
+  rotate: false
+  xy: 1859, 363
+  size: 169, 142
+  orig: 268, 224
+  offset: 39, 40
+  index: -1
+skill2/hit_001
+  rotate: false
+  xy: 636, 14
+  size: 229, 193
+  orig: 268, 224
+  offset: 9, 12
+  index: -1
+skill2/hit_002
+  rotate: false
+  xy: 1070, 8
+  size: 219, 203
+  orig: 268, 224
+  offset: 35, 11
+  index: -1
+skill2/hit_003
+  rotate: false
+  xy: 1291, 46
+  size: 221, 203
+  orig: 268, 224
+  offset: 37, 12
+  index: -1
+skill2/hit_004
+  rotate: false
+  xy: 2, 45
+  size: 181, 137
+  orig: 268, 224
+  offset: 68, 68
+  index: -1
+skill2/hit_005
+  rotate: false
+  xy: 185, 107
+  size: 93, 75
+  orig: 268, 224
+  offset: 98, 87
+  index: -1

@@ -1,0 +1,223 @@
+
+fx_350131_jialulupifu_hit.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/jll_attack_hit1/jll_attack_hit1_00000
+  rotate: false
+  xy: 1846, 1087
+  size: 177, 138
+  orig: 253, 248
+  offset: 35, 56
+  index: -1
+effect/attack/jll_attack_hit1/jll_attack_hit1_00002
+  rotate: false
+  xy: 1089, 538
+  size: 225, 202
+  orig: 253, 248
+  offset: 10, 26
+  index: -1
+effect/attack/jll_attack_hit1/jll_attack_hit1_00004
+  rotate: false
+  xy: 1089, 345
+  size: 227, 191
+  orig: 253, 248
+  offset: 13, 28
+  index: -1
+effect/attack/jll_attack_hit1/jll_attack_hit1_00006
+  rotate: false
+  xy: 1316, 550
+  size: 231, 192
+  orig: 253, 248
+  offset: 17, 30
+  index: -1
+effect/attack/jll_attack_hit1/jll_attack_hit1_00008
+  rotate: false
+  xy: 1318, 368
+  size: 224, 180
+  orig: 253, 248
+  offset: 24, 34
+  index: -1
+effect/attack/jll_attack_hit1/jll_attack_hit1_00010
+  rotate: false
+  xy: 1026, 2
+  size: 198, 167
+  orig: 253, 248
+  offset: 30, 41
+  index: -1
+effect/attack/jll_attack_hit2/jll_attack_hit2_00000
+  rotate: false
+  xy: 1054, 171
+  size: 213, 172
+  orig: 364, 312
+  offset: 87, 65
+  index: -1
+effect/attack/jll_attack_hit2/jll_attack_hit2_00002
+  rotate: false
+  xy: 564, 755
+  size: 302, 274
+  orig: 364, 312
+  offset: 46, 16
+  index: -1
+effect/attack/jll_attack_hit2/jll_attack_hit2_00004
+  rotate: false
+  xy: 511, 493
+  size: 292, 260
+  orig: 364, 312
+  offset: 52, 22
+  index: -1
+effect/attack/jll_attack_hit2/jll_attack_hit2_00006
+  rotate: false
+  xy: 805, 475
+  size: 282, 265
+  orig: 364, 312
+  offset: 56, 17
+  index: -1
+effect/attack/jll_attack_hit2/jll_attack_hit2_00008
+  rotate: false
+  xy: 1156, 744
+  size: 263, 245
+  orig: 364, 312
+  offset: 69, 32
+  index: -1
+effect/attack/jll_attack_hit2/jll_attack_hit2_00010
+  rotate: false
+  xy: 1593, 1165
+  size: 251, 220
+  orig: 364, 312
+  offset: 67, 44
+  index: -1
+effect/skill/jll_skill_hit/jll_skill_hit_00000
+  rotate: false
+  xy: 1368, 1045
+  size: 223, 221
+  orig: 400, 375
+  offset: 91, 77
+  index: -1
+effect/skill/jll_skill_hit/jll_skill_hit_00002
+  rotate: false
+  xy: 1558, 1387
+  size: 358, 313
+  orig: 400, 375
+  offset: 26, 31
+  index: -1
+effect/skill/jll_skill_hit/jll_skill_hit_00004
+  rotate: false
+  xy: 1099, 1268
+  size: 346, 297
+  orig: 400, 375
+  offset: 41, 39
+  index: -1
+effect/skill/jll_skill_hit/jll_skill_hit_00006
+  rotate: false
+  xy: 1038, 991
+  size: 328, 275
+  orig: 400, 375
+  offset: 52, 51
+  index: -1
+effect/skill/jll_skill_hit/jll_skill_hit_00008
+  rotate: false
+  xy: 868, 742
+  size: 286, 247
+  orig: 400, 375
+  offset: 49, 69
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00000
+  rotate: false
+  xy: 418, 137
+  size: 338, 330
+  orig: 600, 600
+  offset: 133, 137
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00001
+  rotate: false
+  xy: 2, 974
+  size: 560, 527
+  orig: 600, 600
+  offset: 20, 36
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00002
+  rotate: false
+  xy: 2, 1503
+  size: 560, 535
+  orig: 600, 600
+  offset: 20, 33
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00004
+  rotate: false
+  xy: 564, 1509
+  size: 533, 529
+  orig: 600, 600
+  offset: 35, 36
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00006
+  rotate: false
+  xy: 2, 469
+  size: 507, 503
+  orig: 600, 600
+  offset: 52, 49
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00008
+  rotate: false
+  xy: 564, 1031
+  size: 472, 476
+  orig: 600, 600
+  offset: 68, 64
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00010
+  rotate: false
+  xy: 1099, 1567
+  size: 457, 471
+  orig: 600, 600
+  offset: 71, 65
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00012
+  rotate: false
+  xy: 2, 55
+  size: 414, 412
+  orig: 600, 600
+  offset: 98, 95
+  index: -1
+effect/skill/jll_skill_hit2/jll_skill_hit2_00014
+  rotate: false
+  xy: 1558, 1702
+  size: 425, 336
+  orig: 600, 600
+  offset: 95, 138
+  index: -1
+effect/skill2/jll_skill2_hit/jll_skill2_hit_00000
+  rotate: false
+  xy: 1846, 1227
+  size: 171, 158
+  orig: 325, 250
+  offset: 78, 46
+  index: -1
+effect/skill2/jll_skill2_hit/jll_skill2_hit_00002
+  rotate: false
+  xy: 758, 262
+  size: 294, 211
+  orig: 325, 250
+  offset: 16, 19
+  index: -1
+effect/skill2/jll_skill2_hit/jll_skill2_hit_00004
+  rotate: false
+  xy: 758, 74
+  size: 266, 186
+  orig: 325, 250
+  offset: 32, 35
+  index: -1
+effect/skill2/jll_skill2_hit/jll_skill2_hit_00006
+  rotate: false
+  xy: 1593, 995
+  size: 251, 168
+  orig: 325, 250
+  offset: 38, 48
+  index: -1
+effect/skill2/jll_skill2_hit/jll_skill2_hit_00008
+  rotate: false
+  xy: 418, 19
+  size: 212, 116
+  orig: 325, 250
+  offset: 58, 67
+  index: -1

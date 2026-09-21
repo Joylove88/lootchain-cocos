@@ -90,7 +90,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec, type BattleAttackSpineFxSpec } from './LobbyBattleAttackFxConfig';
+import { resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -206,6 +206,8 @@ interface GuardProjectile {
   crit?: boolean;
   /** 弹体是 Spine 飞行特效(同屏限额计数用)。 */
   spine?: boolean;
+  /** 出手英雄(命中时播他的专属命中特效)。 */
+  heroCode?: string;
   /** 飞行速度倍率(近战贴脸打,飞得更快)。 */
   speedMult?: number;
   /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
@@ -220,6 +222,8 @@ const GUARD_PERK_CARD_STYLE: Record<GuardPerkRarity, { tag: string; frame: strin
 };
 /** 同屏 Spine 普攻弹体上限(每个都是一次骨骼更新 + 一次合批打断),超额回退静态贴图弹道。 */
 const GUARD_SPINE_PROJECTILE_CAP = 18;
+/** 同屏 Spine 命中特效上限,超额回退静态斩击图/十字爆闪。 */
+const GUARD_SPINE_HIT_FX_CAP = 14;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 // 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
@@ -285,8 +289,9 @@ export class LobbyGuardBattleRenderer {
   /** 未觉醒战技放出的灼烧区(没有专属特效本体,由区域节点自己画余烬环)。 */
   private plainBurnZones = new Set<number>();
   /** 普攻 Spine 飞行特效(fx_pack)的就绪表:开局按阵容预热,数据 + 动画名 + 实测包围盒齐了才用,否则回退贴图弹道。 */
-  private readonly attackSpineFxReady = new Map<string, { spec: BattleAttackSpineFxSpec; data: sp.SkeletonData; animation: string; w: number; h: number; cx: number; cy: number }>();
+  private readonly attackSpineFxReady = new Map<string, { spec: { effect: string; animation: string; size: number }; data: sp.SkeletonData; animation: string; w: number; h: number; cx: number; cy: number }>();
   private readonly attackSpineFxPending = new Set<string>();
+  private attackHitFxLive = 0;
   /** 紫卡触发喊话节流(每单位 2.5s 一次,防刷屏)。 */
   private perkShoutAt = new Map<number, number>();
 
@@ -520,6 +525,7 @@ export class LobbyGuardBattleRenderer {
     this.zoneFlights.clear();
     this.plainBurnZones.clear();
     this.perkShoutAt.clear();
+    this.attackHitFxLive = 0;
     this.chestViews.clear();
     this.projectiles.length = 0;
     this.guardFxAimers.clear();
@@ -2424,6 +2430,7 @@ export class LobbyGuardBattleRenderer {
         strikeSpec: melee ? spec : undefined,
         crit: extra?.crit,
         scale: extra?.scale,
+        heroCode: extra?.heroCode,
         spine: true,
         speedMult: melee ? 0.8 : 1,
       });
@@ -2445,6 +2452,7 @@ export class LobbyGuardBattleRenderer {
         strikeSpec: melee ? spec : undefined,
         crit: extra?.crit,
         scale: extra?.scale,
+        heroCode: extra?.heroCode,
         // 近战飞得比远程慢一点:贴脸距离本来就短(2~4 格),快了就成"瞬移",看不见飞出去的过程
         //(2026-09-12 实测 1.9 倍时 60ms 内已命中)。
         speedMult: melee ? 0.8 : 1,
@@ -2513,7 +2521,7 @@ export class LobbyGuardBattleRenderer {
         }
         const x = this.xToPx(monster.x);
         const y = this.monsterY(monster.lane, monster.x) + this.unitSize() * 0.12;
-        this.resolveProjectileHit(x, y, monster.monsterId, hit.amount, hit.kind === 'perk' ? rgba(220, 150, 255) : color);
+        this.resolveProjectileHit(x, y, monster.monsterId, hit.amount, hit.kind === 'perk' ? rgba(220, 150, 255) : color, undefined, false, hit.kind === 'splash' ? 0.7 : 0.85, hero.heroCode);
       }, 160 + 50 * index);
     });
     if (event.perkId && hero) {
@@ -2628,7 +2636,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnImpactFlash(tx, ty, proj.color);
           this.flashMonster(proj.targetId);
         } else {
-          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec, proj.crit, proj.scale);
+          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec, proj.crit, proj.scale, proj.heroCode);
         }
         proj.node.destroy();
         this.projectiles.splice(i, 1);
@@ -2716,14 +2724,59 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 命中结算:爆闪(近战=全尺寸斩击炸开)+伤害入聚合窗+目标受击红闪。 */
-  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec, crit?: boolean, scale = 1): void {
-    if (strikeSpec) {
+  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec, crit?: boolean, scale = 1, heroCode?: string): void {
+    if (heroCode && this.spawnAttackHitFx(heroCode, x, y, scale)) {
+      // fx_pack 配套命中特效已播:不再叠静态斩击图/十字爆闪。
+    } else if (strikeSpec) {
       this.spawnStrikeFx(strikeSpec, x, y, scale);
     } else {
       this.spawnImpactFlash(x, y, color);
     }
     this.queueDamage(targetId, amount, !!crit, x, y);
     this.flashMonster(targetId);
+  }
+
+  /**
+   * 英雄专属命中特效(fx_pack 的 _hit 系列,2026-09-21):在命中点播一遍即销毁;按实测包围盒等比缩放并居中,
+   * 过长的动画加速到 ≤0.5s。未预热好/同屏超限返回 false,由调用方回退静态斩击图或十字爆闪。
+   */
+  private spawnAttackHitFx(heroCode: string, x: number, y: number, scale: number): boolean {
+    const field = this.fieldNode;
+    const hitSpec = resolveHeroAttackSpineFx(heroCode)?.hit;
+    if (!field || !hitSpec) {
+      return false;
+    }
+    const ready = this.attackSpineFxReady.get(hitSpec.effect);
+    if (!ready) {
+      this.prewarmAttackSpineFx(hitSpec);
+      return false;
+    }
+    if (this.attackHitFxLive >= GUARD_SPINE_HIT_FX_CAP) {
+      return false;
+    }
+    const fit = (this.unitSize() * hitSpec.size * scale) / Math.max(ready.w, ready.h);
+    const node = this.host.addChildPlainNode(field, 'GuardAttackHitFx', x - ready.cx * fit, y - ready.cy * fit, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    node.setScale(fit, fit, 1);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = false;
+    skeleton.skeletonData = ready.data;
+    let duration = 0.4;
+    try {
+      duration = Math.max(0.12, skeleton.findAnimation(ready.animation)?.duration ?? 0.4);
+      skeleton.timeScale = Math.max(1, duration / 0.5);
+      skeleton.setAnimation(0, ready.animation, false);
+    } catch (error) {
+      void error;
+    }
+    this.attackHitFxLive += 1;
+    setTimeout(() => {
+      this.attackHitFxLive = Math.max(0, this.attackHitFxLive - 1);
+      if (node.isValid) {
+        node.destroy();
+      }
+    }, Math.min(500, duration * 1000) + 30);
+    return true;
   }
 
   /** 命中爆闪:小十字星芒 0.18s。 */
@@ -2847,7 +2900,10 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 预热一个普攻 Spine 飞行特效:加载共享骨骼数据 → 选动画 → 用临时骨骼实测包围盒(等比缩放与居中要用)→ 记入就绪表。 */
-  private prewarmAttackSpineFx(spec: BattleAttackSpineFxSpec): void {
+  private prewarmAttackSpineFx(spec: { effect: string; animation: string; size: number; hit?: { effect: string; animation: string; size: number } }): void {
+    if (spec.hit) {
+      this.prewarmAttackSpineFx(spec.hit);
+    }
     if (this.attackSpineFxReady.has(spec.effect) || this.attackSpineFxPending.has(spec.effect)) {
       return;
     }

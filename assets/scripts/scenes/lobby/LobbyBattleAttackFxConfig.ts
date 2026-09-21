@@ -122,37 +122,39 @@ export interface BattleAttackSpineFxSpec {
   animation: string;
   /** 目标长度(最长边),unitSize 倍率。 */
   size: number;
+  /** 命中特效(fx_pack 里同角色配套的 _hit;播一遍即销毁)。近战有它就不再贴静态斩击图。 */
+  hit?: { effect: string; animation: string; size: number };
 }
 
 const HERO_ATTACK_SPINE_FX: Record<string, BattleAttackSpineFxSpec> = {
-  UR_ARTHAS: { effect: 'fx_350131_jialulupifu_fly', animation: 'skill3_fly', size: 1.9 }, // 龙焰月牙剑光
-  UR_ATLAS: { effect: 'fx_15007_laierde_fly', animation: 'Skill', size: 1.5 }, // 金色盾波
-  UR_AURELIA: { effect: 'fx_24001_haerbie_fly', animation: 'attack', size: 1.5 }, // 青翎光箭
-  UR_EVELYN: { effect: 'fx_45018_adaier_fly', animation: 'Skill_fly', size: 1.3 }, // 冰蓝旋风
-  UR_NYX: { effect: 'fx_65007_fulade_fly', animation: 'attack', size: 1.7 }, // 暗紫影刃
-  UR_SERAPHINA: { effect: 'fx_64012_jingleicanglong_fxw', animation: 'attack_fly', size: 1.0 }, // 银蓝星光
-  SSR_KANE: { effect: 'fx_43002_ruilin_fly', animation: 'Attack_fly', size: 1.7 }, // 银白枪芒
-  SSR_LIVIA: { effect: 'fx_450081_shaxing_fxw', animation: 'animation', size: 1.4 }, // 夜烬镰刃旋风
-  SSR_MICHAEL: { effect: 'fx_15010_lengjingmofashi_fly', animation: 'skill', size: 1.7 }, // 金白圣剑光
-  SSR_RON: { effect: 'fx_13002_modaoshu_fxw', animation: 'Attack', size: 1.1 }, // 余烬飞刃
-  SR_ABYSS_06: { effect: 'fx_45008_ailina_fly', animation: 'skill', size: 0.9 }, // 深蓝裂刃
-  SR_BLADE_04: { effect: 'fx_12601_youyingzhizhu_fly', animation: 'attack_fly', size: 1.4 }, // 猩红月牙
-  SR_PALADIN_02: { effect: 'fx_450101_shengnvpifu_fly', animation: 'Attack_fly', size: 1.3 }, // 淡金盾波
-  SR_PRIEST_01: { effect: 'fx_15004_xe_fxw', animation: 'zidan', size: 1.2 }, // 圣光细弹
-  SR_SNIPER_05: { effect: 'fx_35004_kaerweisi_fly', animation: 'Attack', size: 1.5 }, // 尾焰弩矢
-  SR_WITCH_03: { effect: 'fx_150079_laierde_fly', animation: 'Skill', size: 1.4 }, // 紫电球
-  R_ACOLY_02: { effect: 'fx_45013_yingshu_fly', animation: 'attack', size: 0.9 }, // 暖黄微光
-  R_CULT_05: { effect: 'fx_25002_dutengnv_fly', animation: 'Attack_fly', size: 1.1 }, // 幽绿咒球
-  R_GUARD_07: { effect: 'fx_650011_zuozhupifu_fly', animation: 'skill2_fly', size: 1.2 }, // 灰白撞击棱
-  R_PATROL_01: { effect: 'fx_240019_haerbie_fly', animation: 'skill_idle', size: 1.4 }, // 蓝白霜刃
-  R_RANGER_06: { effect: 'fx_35005_kuangliechangmao_toushewu', animation: 'toushewu2', size: 1.5 }, // 草绿羽箭
-  R_SCOUT_03: { effect: 'fx_450141_miaomokepifu_fly', animation: 'attack_fly', size: 1.0 }, // 钢匕飞刃
+  UR_ARTHAS: { effect: 'fx_350131_jialulupifu_fly', animation: 'skill3_fly', size: 1.9, hit: { effect: 'fx_350131_jialulupifu_hit', animation: 'attack_hit', size: 2.2 } }, // 龙焰月牙剑光
+  UR_ATLAS: { effect: 'fx_15007_laierde_fly', animation: 'Skill', size: 1.5, hit: { effect: 'fx_15007_laierde_hit', animation: 'Skill_bomb_up', size: 1.9 } }, // 金色盾波
+  UR_AURELIA: { effect: 'fx_24001_haerbie_fly', animation: 'attack', size: 1.5, hit: { effect: 'fx_24001_haerbie_hit', animation: 'attack', size: 1.4 } }, // 青翎光箭
+  UR_EVELYN: { effect: 'fx_45018_adaier_fly', animation: 'Skill_fly', size: 1.3, hit: { effect: 'fx_45018_adaier_hit', animation: 'Attack_hit', size: 1.6 } }, // 冰蓝旋风
+  UR_NYX: { effect: 'fx_65007_fulade_fly', animation: 'attack', size: 1.7, hit: { effect: 'fx_65007_fulade_hit', animation: 'attack', size: 1.9 } }, // 暗紫影刃
+  UR_SERAPHINA: { effect: 'fx_64012_jingleicanglong_fxw', animation: 'attack_fly', size: 1.0, hit: { effect: 'fx_45013_yingshu_hit', animation: 'attack', size: 1.3 } }, // 银蓝星光
+  SSR_KANE: { effect: 'fx_43002_ruilin_fly', animation: 'Attack_fly', size: 1.7, hit: { effect: 'fx_43002_ruilin_hit', animation: 'Attack_hit', size: 1.8 } }, // 银白枪芒
+  SSR_LIVIA: { effect: 'fx_450081_shaxing_fxw', animation: 'animation', size: 1.4, hit: { effect: 'fx_450081_shaxing_hit', animation: 'attack', size: 1.6 } }, // 夜烬镰刃旋风
+  SSR_MICHAEL: { effect: 'fx_15010_lengjingmofashi_fly', animation: 'skill', size: 1.7, hit: { effect: 'fx_15010_lengjingmofashi_hit', animation: 'attack', size: 1.9 } }, // 金白圣剑光
+  SSR_RON: { effect: 'fx_13002_modaoshu_fxw', animation: 'Attack', size: 1.1, hit: { effect: 'fx_13002_modaoshu_shouji', animation: 'hit', size: 1.5 } }, // 余烬飞刃
+  SR_ABYSS_06: { effect: 'fx_45008_ailina_fly', animation: 'skill', size: 0.9, hit: { effect: 'fx_45008_ailina_hit', animation: 'attack', size: 1.7 } }, // 深蓝裂刃
+  SR_BLADE_04: { effect: 'fx_12601_youyingzhizhu_fly', animation: 'attack_fly', size: 1.4, hit: { effect: 'fx_450141_miaomokepifu_hit', animation: 'attack_hit', size: 1.8 } }, // 猩红月牙
+  SR_PALADIN_02: { effect: 'fx_450101_shengnvpifu_fly', animation: 'Attack_fly', size: 1.3, hit: { effect: 'fx_450101_shengnvpifu_hit', animation: 'Attack_hit', size: 1.6 } }, // 淡金盾波
+  SR_PRIEST_01: { effect: 'fx_15004_xe_fxw', animation: 'zidan', size: 1.2, hit: { effect: 'fx_15004_xe_hit', animation: 'Hit', size: 1.1 } }, // 圣光细弹
+  SR_SNIPER_05: { effect: 'fx_35004_kaerweisi_fly', animation: 'Attack', size: 1.5, hit: { effect: 'fx_35004_kaerweisi_hit', animation: 'Attack', size: 1.3 } }, // 尾焰弩矢
+  SR_WITCH_03: { effect: 'fx_150079_laierde_fly', animation: 'Skill', size: 1.4, hit: { effect: 'fx_150079_laierde_hit', animation: 'Skill_bomb_up', size: 1.6 } }, // 紫电球
+  R_ACOLY_02: { effect: 'fx_45013_yingshu_fly', animation: 'attack', size: 0.9, hit: { effect: 'fx_45013_yingshu_hit', animation: 'attack', size: 1.0 } }, // 暖黄微光
+  R_CULT_05: { effect: 'fx_25002_dutengnv_fly', animation: 'Attack_fly', size: 1.1, hit: { effect: 'fx_25002_dutengnv_hit', animation: 'Attack', size: 1.4 } }, // 幽绿咒球
+  R_GUARD_07: { effect: 'fx_650011_zuozhupifu_fly', animation: 'skill2_fly', size: 1.2, hit: { effect: 'fx_650011_zuozhupifu_hit', animation: 'attack_hit', size: 1.5 } }, // 灰白撞击棱
+  R_PATROL_01: { effect: 'fx_240019_haerbie_fly', animation: 'skill_idle', size: 1.4, hit: { effect: 'fx_240019_haerbie_hit', animation: 'skill', size: 1.5 } }, // 蓝白霜刃
+  R_RANGER_06: { effect: 'fx_35005_kuangliechangmao_toushewu', animation: 'toushewu2', size: 1.5, hit: { effect: 'fx_35005_kuangliechangmao_hit', animation: 'Hit', size: 1.2 } }, // 草绿羽箭
+  R_SCOUT_03: { effect: 'fx_450141_miaomokepifu_fly', animation: 'attack_fly', size: 1.0, hit: { effect: 'fx_450141_miaomokepifu_hit', animation: 'attack_hit', size: 1.5 } }, // 钢匕飞刃
 };
 
 export function resolveHeroAttackSpineFx(heroCode: string | null | undefined): BattleAttackSpineFxSpec | null {
   return HERO_ATTACK_SPINE_FX[(heroCode ?? '').trim().toUpperCase()] ?? null;
 }
 
-export function resolveAttackSpineFxResource(spec: BattleAttackSpineFxSpec): string {
+export function resolveAttackSpineFxResource(spec: { effect: string }): string {
   return `spine/effect/${spec.effect}/${spec.effect}`;
 }

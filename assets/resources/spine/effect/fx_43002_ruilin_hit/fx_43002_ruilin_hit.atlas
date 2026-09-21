@@ -1,0 +1,258 @@
+
+fx_43002_ruilin_hit.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/skill/attackhit_00016
+  rotate: false
+  xy: 1496, 317
+  size: 250, 193
+  orig: 400, 282
+  offset: 74, 45
+  index: -1
+images/skill/baodian
+  rotate: false
+  xy: 1018, 267
+  size: 238, 243
+  orig: 256, 256
+  offset: 9, 9
+  index: -1
+images/skill/baodian_00063
+  rotate: false
+  xy: 518, 282
+  size: 256, 228
+  orig: 256, 256
+  offset: 0, 22
+  index: -1
+images/skill/baodian_00064
+  rotate: false
+  xy: 2, 262
+  size: 256, 248
+  orig: 256, 256
+  offset: 0, 5
+  index: -1
+images/skill/baodian_00066
+  rotate: false
+  xy: 260, 280
+  size: 256, 230
+  orig: 256, 256
+  offset: 0, 12
+  index: -1
+images/skill/bb1
+  rotate: false
+  xy: 536, 171
+  size: 120, 109
+  orig: 129, 117
+  offset: 4, 4
+  index: -1
+images/skill/dimian_gd1
+  rotate: false
+  xy: 251, 2
+  size: 125, 114
+  orig: 391, 336
+  offset: 144, 108
+  index: -1
+images/skill/dimian_gd2
+  rotate: false
+  xy: 1258, 298
+  size: 236, 212
+  orig: 391, 336
+  offset: 83, 55
+  index: -1
+images/skill/dimian_gd3
+  rotate: false
+  xy: 1258, 124
+  size: 180, 172
+  orig: 391, 336
+  offset: 113, 80
+  index: -1
+images/skill/dimian_gd4
+  rotate: false
+  xy: 996, 173
+  size: 112, 92
+  orig: 391, 336
+  offset: 150, 138
+  index: -1
+images/skill/dust_after
+  rotate: false
+  xy: 753, 54
+  size: 99, 101
+  orig: 116, 128
+  offset: 6, 18
+  index: -1
+images/skill/gaung01
+  rotate: false
+  xy: 658, 171
+  size: 108, 109
+  orig: 128, 128
+  offset: 9, 10
+  index: -1
+images/skill/glow_04
+  rotate: false
+  xy: 776, 267
+  size: 240, 243
+  orig: 256, 256
+  offset: 5, 9
+  index: -1
+images/skill/hcr_ymns_jianshexulie_01
+  rotate: false
+  xy: 1440, 118
+  size: 108, 178
+  orig: 128, 256
+  offset: 7, 8
+  index: -1
+images/skill/hcr_ymns_jianshexulie_02
+  rotate: false
+  xy: 1550, 123
+  size: 119, 192
+  orig: 128, 256
+  offset: 4, 32
+  index: -1
+images/skill/hcr_ymns_jianshexulie_03
+  rotate: false
+  xy: 1730, 129
+  size: 122, 179
+  orig: 128, 256
+  offset: 5, 59
+  index: -1
+images/skill/hcr_ymns_jianshexulie_04
+  rotate: false
+  xy: 1854, 152
+  size: 121, 156
+  orig: 128, 256
+  offset: 7, 91
+  index: -1
+images/skill/hcr_ymns_jianshexulie_05
+  rotate: false
+  xy: 412, 141
+  size: 122, 137
+  orig: 128, 256
+  offset: 6, 115
+  index: -1
+images/skill/hcr_ymns_jianshexulie_06
+  rotate: false
+  xy: 768, 157
+  size: 120, 108
+  orig: 128, 256
+  offset: 5, 147
+  index: -1
+images/skill/hcr_ymns_jianshexulie_07
+  rotate: false
+  xy: 1110, 179
+  size: 110, 86
+  orig: 128, 256
+  offset: 7, 166
+  index: -1
+images/skill/henji
+  rotate: false
+  xy: 1671, 130
+  size: 57, 185
+  orig: 79, 188
+  offset: 11, 0
+  index: -1
+images/skill/luodi_01
+  rotate: false
+  xy: 1043, 100
+  size: 92, 71
+  orig: 149, 125
+  offset: 46, 21
+  index: -1
+images/skill/luodi_02
+  rotate: false
+  xy: 1950, 315
+  size: 96, 73
+  orig: 149, 125
+  offset: 43, 23
+  index: -1
+images/skill/luodi_03
+  rotate: false
+  xy: 536, 93
+  size: 109, 76
+  orig: 149, 125
+  offset: 33, 26
+  index: -1
+images/skill/luodi_04
+  rotate: false
+  xy: 1854, 97
+  size: 101, 53
+  orig: 149, 125
+  offset: 29, 46
+  index: -1
+images/skill/luodi_05
+  rotate: false
+  xy: 1043, 46
+  size: 99, 52
+  orig: 149, 125
+  offset: 36, 52
+  index: -1
+images/skill/luodi_06
+  rotate: false
+  xy: 1137, 122
+  size: 84, 55
+  orig: 149, 125
+  offset: 53, 49
+  index: -1
+images/skill/nengliang_jianshi
+  rotate: false
+  xy: 1977, 187
+  size: 52, 126
+  orig: 54, 132
+  offset: 1, 3
+  index: -1
+images/skill/tubao_01
+  rotate: false
+  xy: 953, 35
+  size: 88, 116
+  orig: 112, 131
+  offset: 14, 0
+  index: -1
+images/skill/tubao_02
+  rotate: false
+  xy: 1950, 390
+  size: 96, 120
+  orig: 112, 131
+  offset: 9, 4
+  index: -1
+images/skill/tubao_03
+  rotate: false
+  xy: 890, 153
+  size: 104, 112
+  orig: 112, 131
+  offset: 5, 18
+  index: -1
+images/skill/tubao_04
+  rotate: false
+  xy: 647, 77
+  size: 104, 92
+  orig: 112, 131
+  offset: 4, 39
+  index: -1
+images/skill/zz_qjz_001
+  rotate: false
+  xy: 854, 54
+  size: 97, 97
+  orig: 247, 249
+  offset: 75, 76
+  index: -1
+images/skill/zz_qjz_002
+  rotate: false
+  xy: 260, 129
+  size: 150, 149
+  orig: 247, 249
+  offset: 48, 50
+  index: -1
+images/skill/zz_qjz_003
+  rotate: false
+  xy: 1748, 310
+  size: 200, 200
+  orig: 247, 249
+  offset: 23, 25
+  index: -1
+images/skill/zz_qjz_004
+  rotate: false
+  xy: 2, 11
+  size: 247, 249
+  orig: 247, 249
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,187 @@
+
+fx_45018_adaier_hit.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/lm_pg_mz/lm_pg_mz_02
+  rotate: false
+  xy: 1614, 730
+  size: 431, 293
+  orig: 500, 330
+  offset: 33, 18
+  index: -1
+effect/attack/lm_pg_mz/lm_pg_mz_04
+  rotate: false
+  xy: 1614, 476
+  size: 423, 252
+  orig: 500, 330
+  offset: 37, 39
+  index: -1
+effect/attack/lm_pg_mz/lm_pg_mz_08
+  rotate: false
+  xy: 1753, 1240
+  size: 283, 129
+  orig: 500, 330
+  offset: 146, 123
+  index: -1
+effect/skill/lm_dz_mz/lm_dz_mz_02
+  rotate: false
+  xy: 2, 1492
+  size: 975, 550
+  orig: 1100, 600
+  offset: 61, 25
+  index: -1
+effect/skill/lm_dz_mz/lm_dz_mz_04
+  rotate: false
+  xy: 979, 1371
+  size: 911, 319
+  orig: 1100, 600
+  offset: 134, 176
+  index: -1
+effect/skill/lm_dz_mz/lm_dz_mz_06
+  rotate: false
+  xy: 979, 1692
+  size: 917, 350
+  orig: 1100, 600
+  offset: 150, 175
+  index: -1
+effect/skill/lm_dz_zdmz/lm_dz_zdmz_02
+  rotate: false
+  xy: 2, 562
+  size: 753, 464
+  orig: 800, 600
+  offset: 23, 68
+  index: -1
+effect/skill/lm_dz_zdmz/lm_dz_zdmz_04
+  rotate: false
+  xy: 2, 30
+  size: 590, 530
+  orig: 800, 600
+  offset: 104, 40
+  index: -1
+effect/skill/lm_dz_zdmz/lm_dz_zdmz_08
+  rotate: false
+  xy: 1358, 2
+  size: 428, 369
+  orig: 800, 600
+  offset: 274, 92
+  index: -1
+effect/skill2/lm_jn_mz/lm_jn_mz_02
+  rotate: false
+  xy: 849, 1025
+  size: 902, 344
+  orig: 980, 380
+  offset: 39, 18
+  index: -1
+effect/skill2/lm_jn_mz/lm_jn_mz_04
+  rotate: false
+  xy: 594, 47
+  size: 762, 324
+  orig: 980, 380
+  offset: 109, 28
+  index: -1
+effect/skill3/lm_zj_mz/lm_zj_mz_02
+  rotate: false
+  xy: 2, 1028
+  size: 845, 462
+  orig: 1100, 500
+  offset: 126, 19
+  index: -1
+effect/skill3/lm_zj_mz/lm_zj_mz_04
+  rotate: false
+  xy: 757, 373
+  size: 853, 315
+  orig: 1100, 500
+  offset: 192, 126
+  index: -1
+effect/skill3/lm_zj_mz/lm_zj_mz_06
+  rotate: false
+  xy: 757, 690
+  size: 855, 333
+  orig: 1100, 500
+  offset: 212, 130
+  index: -1
+
+fx_45018_adaier_hit_2.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/lm_pg_mz/lm_pg_mz_00
+  rotate: false
+  xy: 1059, 83
+  size: 295, 254
+  orig: 500, 330
+  offset: 102, 38
+  index: -1
+effect/attack/lm_pg_mz/lm_pg_mz_06
+  rotate: false
+  xy: 1356, 300
+  size: 388, 210
+  orig: 500, 330
+  offset: 55, 63
+  index: -1
+effect/skill/lm_dz_mz/lm_dz_mz_00
+  rotate: false
+  xy: 1418, 760
+  size: 556, 249
+  orig: 1100, 600
+  offset: 270, 191
+  index: -1
+effect/skill/lm_dz_mz/lm_dz_mz_08
+  rotate: false
+  xy: 2, 725
+  size: 760, 284
+  orig: 1100, 600
+  offset: 311, 212
+  index: -1
+effect/skill/lm_dz_zdmz/lm_dz_zdmz_00
+  rotate: false
+  xy: 531, 81
+  size: 526, 256
+  orig: 800, 600
+  offset: 137, 172
+  index: -1
+effect/skill/lm_dz_zdmz/lm_dz_zdmz_06
+  rotate: false
+  xy: 2, 2
+  size: 527, 436
+  orig: 800, 600
+  offset: 172, 88
+  index: -1
+effect/skill2/lm_jn_mz/lm_jn_mz_00
+  rotate: false
+  xy: 721, 339
+  size: 530, 249
+  orig: 980, 380
+  offset: 227, 68
+  index: -1
+effect/skill2/lm_jn_mz/lm_jn_mz_06
+  rotate: false
+  xy: 764, 745
+  size: 652, 264
+  orig: 980, 380
+  offset: 191, 58
+  index: -1
+effect/skill2/lm_jn_mz/lm_jn_mz_08
+  rotate: false
+  xy: 764, 590
+  size: 566, 153
+  orig: 980, 380
+  offset: 282, 154
+  index: -1
+effect/skill3/lm_zj_mz/lm_zj_mz_00
+  rotate: false
+  xy: 1418, 512
+  size: 467, 246
+  orig: 1100, 500
+  offset: 316, 141
+  index: -1
+effect/skill3/lm_zj_mz/lm_zj_mz_08
+  rotate: false
+  xy: 2, 440
+  size: 717, 283
+  orig: 1100, 500
+  offset: 353, 163
+  index: -1
