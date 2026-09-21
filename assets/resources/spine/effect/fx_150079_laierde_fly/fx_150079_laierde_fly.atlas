@@ -1,0 +1,27 @@
+
+fx_150079_laierde_fly.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/New_15007_Skill_dandao_00071
+  rotate: false
+  xy: 662, 4
+  size: 284, 240
+  orig: 350, 253
+  offset: 61, 7
+  index: -1
+skill/New_15007_Skill_dandao_00073
+  rotate: false
+  xy: 2, 2
+  size: 332, 242
+  orig: 350, 253
+  offset: 12, 6
+  index: -1
+skill/New_15007_Skill_dandao_00075
+  rotate: false
+  xy: 336, 3
+  size: 324, 241
+  orig: 350, 253
+  offset: 20, 5
+  index: -1

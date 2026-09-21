@@ -110,3 +110,49 @@ export function resolveHeroAttackFx(heroCode: string | null | undefined, heroCla
 export function resolveAttackFxSpritePath(spec: BattleAttackFxSpec): string {
   return `ui/battle/attack/${spec.sprite}/spriteFrame`;
 }
+
+// ── 普攻飞行特效(Spine,2026-09-21 用户要求:从 D:\骨骼动画素材\fx_pack 的 500+ 特效里挑普攻效果)──
+// fx_pack 里 _fly / _fxw(飞行物)/ _toushewu(投射物)共 54 个弹道类特效,引擎内逐个实拍后按"武器原型 + 元素"给 22 名英雄各配一个;
+// 全部朝右绘制,渲染层按实测包围盒等比缩到 size×unitSize 长,挂在弹道节点下随飞行方向旋转。素材原样入库(spine/effect/<effect>),未改图。
+// 贴图版(上表)保留为回退:特效数据未预热完成 / 同屏 Spine 弹道满额 / 表外英雄。
+export interface BattleAttackSpineFxSpec {
+  /** spine/effect/<effect>/<effect>。 */
+  effect: string;
+  /** 动画名(大小写不敏感;找不到取第一个)。 */
+  animation: string;
+  /** 目标长度(最长边),unitSize 倍率。 */
+  size: number;
+}
+
+const HERO_ATTACK_SPINE_FX: Record<string, BattleAttackSpineFxSpec> = {
+  UR_ARTHAS: { effect: 'fx_350131_jialulupifu_fly', animation: 'skill3_fly', size: 1.9 }, // 龙焰月牙剑光
+  UR_ATLAS: { effect: 'fx_15007_laierde_fly', animation: 'Skill', size: 1.5 }, // 金色盾波
+  UR_AURELIA: { effect: 'fx_24001_haerbie_fly', animation: 'attack', size: 1.5 }, // 青翎光箭
+  UR_EVELYN: { effect: 'fx_45018_adaier_fly', animation: 'Skill_fly', size: 1.3 }, // 冰蓝旋风
+  UR_NYX: { effect: 'fx_65007_fulade_fly', animation: 'attack', size: 1.7 }, // 暗紫影刃
+  UR_SERAPHINA: { effect: 'fx_64012_jingleicanglong_fxw', animation: 'attack_fly', size: 1.0 }, // 银蓝星光
+  SSR_KANE: { effect: 'fx_43002_ruilin_fly', animation: 'Attack_fly', size: 1.7 }, // 银白枪芒
+  SSR_LIVIA: { effect: 'fx_450081_shaxing_fxw', animation: 'animation', size: 1.4 }, // 夜烬镰刃旋风
+  SSR_MICHAEL: { effect: 'fx_15010_lengjingmofashi_fly', animation: 'skill', size: 1.7 }, // 金白圣剑光
+  SSR_RON: { effect: 'fx_13002_modaoshu_fxw', animation: 'Attack', size: 1.1 }, // 余烬飞刃
+  SR_ABYSS_06: { effect: 'fx_45008_ailina_fly', animation: 'skill', size: 0.9 }, // 深蓝裂刃
+  SR_BLADE_04: { effect: 'fx_12601_youyingzhizhu_fly', animation: 'attack_fly', size: 1.4 }, // 猩红月牙
+  SR_PALADIN_02: { effect: 'fx_450101_shengnvpifu_fly', animation: 'Attack_fly', size: 1.3 }, // 淡金盾波
+  SR_PRIEST_01: { effect: 'fx_15004_xe_fxw', animation: 'zidan', size: 1.2 }, // 圣光细弹
+  SR_SNIPER_05: { effect: 'fx_35004_kaerweisi_fly', animation: 'Attack', size: 1.5 }, // 尾焰弩矢
+  SR_WITCH_03: { effect: 'fx_150079_laierde_fly', animation: 'Skill', size: 1.4 }, // 紫电球
+  R_ACOLY_02: { effect: 'fx_45013_yingshu_fly', animation: 'attack', size: 0.9 }, // 暖黄微光
+  R_CULT_05: { effect: 'fx_25002_dutengnv_fly', animation: 'Attack_fly', size: 1.1 }, // 幽绿咒球
+  R_GUARD_07: { effect: 'fx_650011_zuozhupifu_fly', animation: 'skill2_fly', size: 1.2 }, // 灰白撞击棱
+  R_PATROL_01: { effect: 'fx_240019_haerbie_fly', animation: 'skill_idle', size: 1.4 }, // 蓝白霜刃
+  R_RANGER_06: { effect: 'fx_35005_kuangliechangmao_toushewu', animation: 'toushewu2', size: 1.5 }, // 草绿羽箭
+  R_SCOUT_03: { effect: 'fx_450141_miaomokepifu_fly', animation: 'attack_fly', size: 1.0 }, // 钢匕飞刃
+};
+
+export function resolveHeroAttackSpineFx(heroCode: string | null | undefined): BattleAttackSpineFxSpec | null {
+  return HERO_ATTACK_SPINE_FX[(heroCode ?? '').trim().toUpperCase()] ?? null;
+}
+
+export function resolveAttackSpineFxResource(spec: BattleAttackSpineFxSpec): string {
+  return `spine/effect/${spec.effect}/${spec.effect}`;
+}

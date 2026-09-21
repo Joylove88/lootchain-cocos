@@ -1,0 +1,195 @@
+
+fx_45008_ailina_fly.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/jianguang_00040
+  rotate: false
+  xy: 1007, 128
+  size: 234, 186
+  orig: 495, 190
+  offset: 10, 0
+  index: -1
+skill/jianguang_00041
+  rotate: false
+  xy: 727, 127
+  size: 278, 187
+  orig: 495, 190
+  offset: 48, 0
+  index: -1
+skill/jianguang_00042
+  rotate: false
+  xy: 389, 316
+  size: 361, 187
+  orig: 495, 190
+  offset: 48, 0
+  index: -1
+skill/jianguang_00043
+  rotate: false
+  xy: 752, 316
+  size: 358, 187
+  orig: 495, 190
+  offset: 51, 0
+  index: -1
+skill/jianguang_00044
+  rotate: false
+  xy: 1458, 371
+  size: 357, 132
+  orig: 495, 190
+  offset: 52, 22
+  index: -1
+skill/jianguang_00045
+  rotate: false
+  xy: 386, 210
+  size: 339, 104
+  orig: 495, 190
+  offset: 70, 45
+  index: -1
+skill/jianguang_00046
+  rotate: false
+  xy: 368, 16
+  size: 218, 98
+  orig: 495, 190
+  offset: 96, 50
+  index: -1
+skill/jianguang_00047
+  rotate: false
+  xy: 368, 16
+  size: 218, 98
+  orig: 495, 190
+  offset: 96, 50
+  index: -1
+skill/jianguang_00048
+  rotate: false
+  xy: 1476, 271
+  size: 199, 98
+  orig: 495, 190
+  offset: 105, 49
+  index: -1
+skill/jianguang_00049
+  rotate: false
+  xy: 1476, 271
+  size: 199, 98
+  orig: 495, 190
+  offset: 105, 49
+  index: -1
+skill/jianguang_00050
+  rotate: false
+  xy: 1476, 173
+  size: 179, 96
+  orig: 495, 190
+  offset: 109, 49
+  index: -1
+skill/jianguang_00051
+  rotate: false
+  xy: 1476, 173
+  size: 179, 96
+  orig: 495, 190
+  offset: 109, 49
+  index: -1
+skill/jianguang_00052
+  rotate: false
+  xy: 1007, 40
+  size: 172, 86
+  orig: 495, 190
+  offset: 112, 49
+  index: -1
+skill/jianguang_00053
+  rotate: false
+  xy: 1007, 40
+  size: 172, 86
+  orig: 495, 190
+  offset: 112, 49
+  index: -1
+skill/jianguang_00054
+  rotate: false
+  xy: 1243, 44
+  size: 164, 83
+  orig: 495, 190
+  offset: 116, 53
+  index: -1
+skill/jianguang_00055
+  rotate: false
+  xy: 1243, 44
+  size: 164, 83
+  orig: 495, 190
+  offset: 116, 53
+  index: -1
+skill/jianguang_00056
+  rotate: false
+  xy: 1427, 101
+  size: 153, 70
+  orig: 495, 190
+  offset: 121, 60
+  index: -1
+skill/jianguang_00057
+  rotate: false
+  xy: 1427, 101
+  size: 153, 70
+  orig: 495, 190
+  offset: 121, 60
+  index: -1
+skill/jianguang_00058
+  rotate: false
+  xy: 648, 162
+  size: 24, 46
+  orig: 495, 190
+  offset: 240, 73
+  index: -1
+skill/jiantou_00040
+  rotate: false
+  xy: 1817, 342
+  size: 228, 161
+  orig: 403, 183
+  offset: 111, 22
+  index: -1
+skill/jiantou_00041
+  rotate: false
+  xy: 1243, 179
+  size: 231, 144
+  orig: 403, 183
+  offset: 137, 39
+  index: -1
+skill/jiantou_00042
+  rotate: false
+  xy: 1112, 325
+  size: 344, 178
+  orig: 403, 183
+  offset: 49, 5
+  index: -1
+skill/jiantou_00043
+  rotate: false
+  xy: 2, 325
+  size: 385, 178
+  orig: 403, 183
+  offset: 18, 0
+  index: -1
+skill/jiantou_00044
+  rotate: false
+  xy: 2, 153
+  size: 382, 170
+  orig: 403, 183
+  offset: 21, 0
+  index: -1
+skill/jiantou_00045
+  rotate: false
+  xy: 2, 2
+  size: 364, 149
+  orig: 403, 183
+  offset: 39, 1
+  index: -1
+skill/jiantou_00046
+  rotate: false
+  xy: 386, 116
+  size: 260, 92
+  orig: 403, 183
+  offset: 57, 34
+  index: -1
+skill/jiantou_00047
+  rotate: false
+  xy: 1243, 129
+  size: 182, 48
+  orig: 403, 183
+  offset: 79, 61
+  index: -1

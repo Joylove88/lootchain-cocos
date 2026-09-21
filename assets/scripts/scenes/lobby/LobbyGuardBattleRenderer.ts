@@ -90,7 +90,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { resolveAttackFxSpritePath, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec, type BattleAttackSpineFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -204,6 +204,8 @@ interface GuardProjectile {
   strikeSpec?: BattleAttackFxSpec;
   /** 会心暴击:命中走大号金字。 */
   crit?: boolean;
+  /** 弹体是 Spine 飞行特效(同屏限额计数用)。 */
+  spine?: boolean;
   /** 飞行速度倍率(近战贴脸打,飞得更快)。 */
   speedMult?: number;
   /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
@@ -216,6 +218,8 @@ const GUARD_PERK_CARD_STYLE: Record<GuardPerkRarity, { tag: string; frame: strin
   purple: { tag: '专属流派', frame: 'ui/gacha/ai/purple/spriteFrame', fill: [36, 18, 54], edge: [200, 130, 255], text: [226, 180, 255] },
   gold: { tag: '稀有 · 专属大招', frame: 'ui/battle/ai/battle_card_frame/spriteFrame', fill: [20, 10, 8], edge: [255, 214, 110], text: [255, 226, 130] },
 };
+/** 同屏 Spine 普攻弹体上限(每个都是一次骨骼更新 + 一次合批打断),超额回退静态贴图弹道。 */
+const GUARD_SPINE_PROJECTILE_CAP = 18;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 // 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
@@ -280,6 +284,9 @@ export class LobbyGuardBattleRenderer {
   private readonly projectiles: GuardProjectile[] = [];
   /** 未觉醒战技放出的灼烧区(没有专属特效本体,由区域节点自己画余烬环)。 */
   private plainBurnZones = new Set<number>();
+  /** 普攻 Spine 飞行特效(fx_pack)的就绪表:开局按阵容预热,数据 + 动画名 + 实测包围盒齐了才用,否则回退贴图弹道。 */
+  private readonly attackSpineFxReady = new Map<string, { spec: BattleAttackSpineFxSpec; data: sp.SkeletonData; animation: string; w: number; h: number; cx: number; cy: number }>();
+  private readonly attackSpineFxPending = new Set<string>();
   /** 紫卡触发喊话节流(每单位 2.5s 一次,防刷屏)。 */
   private perkShoutAt = new Map<number, number>();
 
@@ -2374,7 +2381,7 @@ export class LobbyGuardBattleRenderer {
 
   // ── 打击感系统(2026-08-26 用户拍板:弹幕射击+受击反馈)──
   /** 普攻弹幕:发光弹体从英雄身前归巢飞向目标,命中才结算飘字+爆闪+受击红闪。 */
-  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color, spec?: BattleAttackFxSpec, extra?: { scale?: number; crit?: boolean }): void {
+  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color, spec?: BattleAttackFxSpec, extra?: { scale?: number; crit?: boolean; heroCode?: string }): void {
     const field = this.fieldNode;
     if (!field) {
       return;
@@ -2386,6 +2393,42 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardProjectile', fromX, fromY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
+    const spineSpec = spec && extra?.heroCode ? resolveHeroAttackSpineFx(extra.heroCode) : null;
+    const spineFx = spineSpec ? this.attackSpineFxReady.get(spineSpec.effect) : undefined;
+    if (spineSpec && !spineFx) {
+      // 开局预热时战场节点还没建好/合成换了新英雄:出手时补一次预热,本发先走贴图弹道。
+      this.prewarmAttackSpineFx(spineSpec);
+    }
+    if (spec && spineFx && this.projectiles.filter((entry) => entry.spine).length < GUARD_SPINE_PROJECTILE_CAP) {
+      // fx_pack 飞行特效(2026-09-21):骨骼动画弹体循环播放,按实测包围盒等比缩到目标长度并把包围盒中心对到弹道点上;
+      // 近战命中时照旧由 strikeSpec 全尺寸爆开。同屏 Spine 弹体有限额,超额回退下面的贴图弹道。
+      const melee = spec.kind === 'strike';
+      const fit = (this.unitSize() * spineFx.spec.size * (extra?.scale ?? 1)) / Math.max(spineFx.w, spineFx.h);
+      const fxNode = this.host.addChildPlainNode(node, 'Fx', -spineFx.cx * fit, -spineFx.cy * fit, 10, 10);
+      fxNode.setScale(fit, fit, 1);
+      const skeleton = fxNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = spineFx.data;
+      try {
+        skeleton.setAnimation(0, spineFx.animation, true);
+      } catch (error) {
+        void error;
+      }
+      this.projectiles.push({
+        node,
+        targetId: monster.monsterId,
+        x: fromX,
+        y: fromY,
+        amount,
+        color,
+        strikeSpec: melee ? spec : undefined,
+        crit: extra?.crit,
+        scale: extra?.scale,
+        spine: true,
+        speedMult: melee ? 0.8 : 1,
+      });
+      return;
+    }
     if (spec) {
       // 专属贴图(朝右绘制,飞行时父节点按方向旋转;等比设尺寸不拉伸)。
       // 近战(strike):飞行体取 0.6 倍,命中时再由 strikeSpec 全尺寸爆开,形成"蓄力飞出 → 命中炸开"。
@@ -2445,7 +2488,7 @@ export class LobbyGuardBattleRenderer {
         if (this.sim !== sim || !this.fieldNode?.isValid) {
           return;
         }
-        this.spawnProjectile(fromX, fromY + offsetY, monster, hit.amount, color, spec, { scale: hit.kind === 'spread' ? scale * 0.8 : scale, crit: !!event.crit && hit.kind === 'main' });
+        this.spawnProjectile(fromX, fromY + offsetY, monster, hit.amount, color, spec, { scale: hit.kind === 'spread' ? scale * 0.8 : scale, crit: !!event.crit && hit.kind === 'main', heroCode: hero.heroCode });
       };
       if (index === 0) {
         launch();
@@ -2465,7 +2508,7 @@ export class LobbyGuardBattleRenderer {
           return;
         }
         if (hit.kind === 'pierce') {
-          this.spawnProjectile(mainX, mainY + this.unitSize() * 0.12, monster, hit.amount, color, spec, { scale: scale * 0.85 });
+          this.spawnProjectile(mainX, mainY + this.unitSize() * 0.12, monster, hit.amount, color, spec, { scale: scale * 0.85, heroCode: hero.heroCode });
           return;
         }
         const x = this.xToPx(monster.x);
@@ -2795,6 +2838,51 @@ export class LobbyGuardBattleRenderer {
       seen.add(spec.sprite);
       resources.load(resolveAttackFxSpritePath(spec), SpriteFrame, () => { /* 仅预热缓存 */ });
     }
+    for (const entry of pool) {
+      const spineSpec = resolveHeroAttackSpineFx(entry.heroCode);
+      if (spineSpec) {
+        this.prewarmAttackSpineFx(spineSpec);
+      }
+    }
+  }
+
+  /** 预热一个普攻 Spine 飞行特效:加载共享骨骼数据 → 选动画 → 用临时骨骼实测包围盒(等比缩放与居中要用)→ 记入就绪表。 */
+  private prewarmAttackSpineFx(spec: BattleAttackSpineFxSpec): void {
+    if (this.attackSpineFxReady.has(spec.effect) || this.attackSpineFxPending.has(spec.effect)) {
+      return;
+    }
+    this.attackSpineFxPending.add(spec.effect);
+    loadSharedSpineData(resolveAttackSpineFxResource(spec), null, 'GuardAttackFx', (data) => {
+      this.attackSpineFxPending.delete(spec.effect);
+      const field = this.fieldNode;
+      if (!data || !field || !field.isValid || this.attackSpineFxReady.has(spec.effect)) {
+        return;
+      }
+      try {
+        const runtimeData = resolveBattleUnitSpineRuntimeData(data);
+        const names = (runtimeData?.animations ?? []).map((animation) => (animation?.name || '').trim()).filter(Boolean);
+        if (!runtimeData || names.length === 0) {
+          return;
+        }
+        patchBattleUnitSpineRuntimeEnums(data, runtimeData);
+        const wanted = spec.animation.trim().toLowerCase();
+        const animation = names.find((name) => name.toLowerCase() === wanted) ?? names[0];
+        const probe = this.host.addChildPlainNode(field, 'GuardAttackFxProbe', -99999, -99999, 10, 10);
+        const skeleton = probe.addComponent(sp.Skeleton);
+        skeleton.premultipliedAlpha = false;
+        skeleton.skeletonData = data;
+        const bounds = this.measureGuardFxExtent(skeleton, animation, `atk:${spec.effect}:${animation}`);
+        probe.destroy();
+        if (!bounds) {
+          // 量不出来就不缓存失败结果,下次出手再试;本发走贴图弹道。
+          this.guardFxBoundsCache.delete(`atk:${spec.effect}:${animation}`);
+          return;
+        }
+        this.attackSpineFxReady.set(spec.effect, { spec, data, animation, w: bounds.w, h: bounds.h, cx: bounds.cx, cy: bounds.cy });
+      } catch (error) {
+        void error;
+      }
+    });
   }
 
   /** 普攻表现解析:heroCode → 职业 → 角色三级兜底(职业取自阵容快照)。 */
@@ -3650,7 +3738,13 @@ export class LobbyGuardBattleRenderer {
           const targetTime = duration * ratio;
           skeleton.updateAnimation(Math.max(0, targetTime - lastTime));
           lastTime = targetTime;
-          raw.updateWorldTransform?.();
+          // 引擎的 Spine 4.2 wasm 绑定里 updateWorldTransform 需要 Physics 枚举参数且该类型未导出(调用必抛"unbound types"),
+          // 此前这里一抛整次测量就作废;updateAnimation 已经推进并刷新了世界变换,这里失败直接忽略(2026-09-21)。
+          try {
+            raw.updateWorldTransform?.();
+          } catch (transformError) {
+            void transformError;
+          }
           for (const slot of raw.slots ?? []) {
             const attachment = slot.getAttachment?.() as {
               computeWorldVertices?: (...args: unknown[]) => void;
@@ -3662,8 +3756,16 @@ export class LobbyGuardBattleRenderer {
             }
             let verts: number[] | null = null;
             if (typeof attachment.width === 'number') {
+              // Spine 4.2 的 RegionAttachment.computeWorldVertices 第一个参数是 slot(3.x 才是 bone);
+              // 传错会抛异常,整次测量作废(纯 Region 的飞行特效因此量不出包围盒,2026-09-21)。先按 4.2 传 slot,失败再退回 bone。
               verts = new Array<number>(8).fill(0);
-              attachment.computeWorldVertices(slot.bone, verts, 0, 2);
+              try {
+                attachment.computeWorldVertices(slot, verts, 0, 2);
+              } catch (regionError) {
+                void regionError;
+                verts = new Array<number>(8).fill(0);
+                attachment.computeWorldVertices(slot.bone, verts, 0, 2);
+              }
             } else if (typeof attachment.worldVerticesLength === 'number' && attachment.worldVerticesLength > 0) {
               const count = attachment.worldVerticesLength;
               verts = new Array<number>(count).fill(0);

@@ -1,0 +1,104 @@
+
+fx_64012_jingleicanglong_fxw.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+shandianxiao_00000
+  rotate: false
+  xy: 593, 26
+  size: 71, 117
+  orig: 256, 256
+  offset: 185, 7
+  index: -1
+shandianxiao_00001
+  rotate: false
+  xy: 679, 95
+  size: 143, 242
+  orig: 256, 256
+  offset: 113, 14
+  index: -1
+shandianxiao_00002
+  rotate: false
+  xy: 2, 116
+  size: 256, 237
+  orig: 256, 256
+  offset: 0, 19
+  index: -1
+shandianxiao_00003
+  rotate: false
+  xy: 260, 100
+  size: 225, 253
+  orig: 256, 256
+  offset: 0, 3
+  index: -1
+shandianxiao_00004
+  rotate: false
+  xy: 487, 145
+  size: 190, 252
+  orig: 256, 256
+  offset: 0, 4
+  index: -1
+shandianxiao_00005
+  rotate: false
+  xy: 864, 301
+  size: 142, 207
+  orig: 256, 256
+  offset: 0, 5
+  index: -1
+shandianxiao_00006
+  rotate: false
+  xy: 824, 136
+  size: 135, 163
+  orig: 256, 256
+  offset: 0, 5
+  index: -1
+shandianxiao_00007
+  rotate: false
+  xy: 666, 31
+  size: 82, 62
+  orig: 256, 256
+  offset: 32, 9
+  index: -1
+texiaoguan1
+  rotate: false
+  xy: 487, 15
+  size: 104, 128
+  orig: 106, 129
+  offset: 1, 0
+  index: -1
+texiaoguan2
+  rotate: false
+  xy: 2, 2
+  size: 153, 112
+  orig: 173, 164
+  offset: 20, 0
+  index: -1
+texiaoguan3
+  rotate: false
+  xy: 431, 399
+  size: 260, 109
+  orig: 269, 243
+  offset: 4, 134
+  index: -1
+texiaoguan4
+  rotate: false
+  xy: 2, 355
+  size: 427, 153
+  orig: 430, 155
+  offset: 2, 0
+  index: -1
+texiaoguan5
+  rotate: false
+  xy: 157, 18
+  size: 80, 96
+  orig: 81, 96
+  offset: 0, 0
+  index: -1
+texiaoqiu
+  rotate: false
+  xy: 693, 339
+  size: 169, 169
+  orig: 173, 173
+  offset: 2, 2
+  index: -1

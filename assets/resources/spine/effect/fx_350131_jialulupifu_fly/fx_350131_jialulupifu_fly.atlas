@@ -1,0 +1,27 @@
+
+fx_350131_jialulupifu_fly.png
+size: 512, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill3/jll_skill3_fr/jll_skill3_fr_00000
+  rotate: false
+  xy: 2, 324
+  size: 351, 159
+  orig: 383, 198
+  offset: 22, 24
+  index: -1
+effect/skill3/jll_skill3_fr/jll_skill3_fr_00002
+  rotate: false
+  xy: 2, 163
+  size: 348, 159
+  orig: 383, 198
+  offset: 25, 24
+  index: -1
+effect/skill3/jll_skill3_fr/jll_skill3_fr_00004
+  rotate: false
+  xy: 2, 2
+  size: 348, 159
+  orig: 383, 198
+  offset: 25, 24
+  index: -1

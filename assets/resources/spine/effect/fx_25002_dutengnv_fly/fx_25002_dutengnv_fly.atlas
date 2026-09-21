@@ -1,0 +1,41 @@
+
+fx_25002_dutengnv_fly.png
+size: 1024, 128
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_New_attack_dandao_00017
+  rotate: false
+  xy: 765, 26
+  size: 136, 68
+  orig: 212, 92
+  offset: 76, 12
+  index: -1
+attack/New_New_attack_dandao_00018
+  rotate: false
+  xy: 619, 2
+  size: 144, 92
+  orig: 212, 92
+  offset: 68, 0
+  index: -1
+attack/New_New_attack_dandao_00019
+  rotate: false
+  xy: 418, 21
+  size: 199, 73
+  orig: 212, 92
+  offset: 11, 0
+  index: -1
+attack/New_New_attack_dandao_00020
+  rotate: false
+  xy: 209, 28
+  size: 207, 66
+  orig: 212, 92
+  offset: 2, 0
+  index: -1
+attack/New_New_attack_dandao_00021
+  rotate: false
+  xy: 2, 10
+  size: 205, 84
+  orig: 212, 92
+  offset: 6, 0
+  index: -1

@@ -1,0 +1,48 @@
+
+fx_450081_shaxing_fxw.png
+size: 512, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/skill01/dao_00022
+  rotate: false
+  xy: 2, 258
+  size: 231, 228
+  orig: 280, 280
+  offset: 25, 28
+  index: -1
+images/skill01/xuanzhuanbaodian_00028
+  rotate: false
+  xy: 165, 139
+  size: 28, 117
+  orig: 119, 297
+  offset: 51, 5
+  index: -1
+images/skill01/xuanzhuanbaodian_00029
+  rotate: false
+  xy: 312, 262
+  size: 65, 224
+  orig: 119, 297
+  offset: 32, 5
+  index: -1
+images/skill01/xuanzhuanbaodian_00030
+  rotate: false
+  xy: 2, 2
+  size: 78, 254
+  orig: 119, 297
+  offset: 23, 12
+  index: -1
+images/skill01/xuanzhuanbaodian_00031
+  rotate: false
+  xy: 235, 249
+  size: 75, 237
+  orig: 119, 297
+  offset: 24, 34
+  index: -1
+images/skill01/xuanzhuanbaodian_00032
+  rotate: false
+  xy: 82, 24
+  size: 81, 232
+  orig: 119, 297
+  offset: 18, 48
+  index: -1

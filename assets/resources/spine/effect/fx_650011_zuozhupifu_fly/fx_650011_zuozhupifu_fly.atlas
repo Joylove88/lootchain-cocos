@@ -1,0 +1,41 @@
+
+fx_650011_zuozhupifu_fly.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill2/zz_jn2_zd/zz_jn2_zd_00
+  rotate: false
+  xy: 230, 107
+  size: 223, 123
+  orig: 260, 150
+  offset: 22, 6
+  index: -1
+effect/skill2/zz_jn2_zd/zz_jn2_zd_01
+  rotate: false
+  xy: 2, 2
+  size: 227, 89
+  orig: 260, 150
+  offset: 19, 5
+  index: -1
+effect/skill2/zz_jn2_zd/zz_jn2_zd_02
+  rotate: false
+  xy: 455, 127
+  size: 233, 103
+  orig: 260, 150
+  offset: 16, 3
+  index: -1
+effect/skill2/zz_jn2_zd/zz_jn2_zd_03
+  rotate: false
+  xy: 2, 93
+  size: 226, 137
+  orig: 260, 150
+  offset: 19, 5
+  index: -1
+effect/skill2/zz_jn2_zd/zz_jn2_zd_04
+  rotate: false
+  xy: 690, 130
+  size: 227, 100
+  orig: 260, 150
+  offset: 23, 3
+  index: -1

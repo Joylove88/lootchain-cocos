@@ -1,0 +1,41 @@
+
+fx_45018_adaier_fly.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/skill/lm_dz_zd/lm_dz_zd_00
+  rotate: false
+  xy: 715, 8
+  size: 351, 196
+  orig: 400, 240
+  offset: 24, 22
+  index: -1
+effect/skill/lm_dz_zd/lm_dz_zd_02
+  rotate: false
+  xy: 1421, 3
+  size: 348, 201
+  orig: 400, 240
+  offset: 30, 15
+  index: -1
+effect/skill/lm_dz_zd/lm_dz_zd_04
+  rotate: false
+  xy: 2, 2
+  size: 353, 202
+  orig: 400, 240
+  offset: 22, 16
+  index: -1
+effect/skill/lm_dz_zd/lm_dz_zd_06
+  rotate: false
+  xy: 1068, 5
+  size: 351, 199
+  orig: 400, 240
+  offset: 27, 17
+  index: -1
+effect/skill/lm_dz_zd/lm_dz_zd_08
+  rotate: false
+  xy: 357, 9
+  size: 356, 195
+  orig: 400, 240
+  offset: 22, 15
+  index: -1

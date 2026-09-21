@@ -1,0 +1,62 @@
+
+fx_450141_miaomokepifu_fly.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/atk/kuwu_00018
+  rotate: false
+  xy: 746, 131
+  size: 65, 25
+  orig: 834, 140
+  offset: 95, 49
+  index: -1
+images/atk/kuwu_00019
+  rotate: false
+  xy: 843, 158
+  size: 179, 76
+  orig: 834, 140
+  offset: 89, 19
+  index: -1
+images/atk/kuwu_00020
+  rotate: false
+  xy: 373, 2
+  size: 262, 76
+  orig: 834, 140
+  offset: 91, 19
+  index: -1
+images/atk/kuwu_00021
+  rotate: false
+  xy: 427, 80
+  size: 317, 76
+  orig: 834, 140
+  offset: 121, 19
+  index: -1
+images/atk/kuwu_00022
+  rotate: false
+  xy: 2, 2
+  size: 369, 76
+  orig: 834, 140
+  offset: 154, 19
+  index: -1
+images/atk/kuwu_00023
+  rotate: false
+  xy: 436, 158
+  size: 405, 76
+  orig: 834, 140
+  offset: 202, 19
+  index: -1
+images/atk/kuwu_00024
+  rotate: false
+  xy: 2, 80
+  size: 423, 76
+  orig: 834, 140
+  offset: 269, 19
+  index: -1
+images/atk/kuwu_00025
+  rotate: false
+  xy: 2, 158
+  size: 432, 76
+  orig: 834, 140
+  offset: 345, 19
+  index: -1

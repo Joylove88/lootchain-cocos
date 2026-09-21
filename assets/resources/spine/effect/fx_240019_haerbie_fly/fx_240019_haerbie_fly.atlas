@@ -1,0 +1,55 @@
+
+fx_240019_haerbie_fly.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+skill/quan3_00032
+  rotate: false
+  xy: 484, 2
+  size: 90, 193
+  orig: 93, 195
+  offset: 1, 1
+  index: -1
+skill/skillfly_00037
+  rotate: false
+  xy: 2, 123
+  size: 480, 111
+  orig: 494, 158
+  offset: 9, 25
+  index: -1
+skill/yumao3_00034
+  rotate: false
+  xy: 2, 82
+  size: 234, 39
+  orig: 280, 65
+  offset: 12, 15
+  index: -1
+skill/yumao3_00036
+  rotate: false
+  xy: 484, 197
+  size: 229, 37
+  orig: 280, 65
+  offset: 12, 16
+  index: -1
+skill/yumao3_00038
+  rotate: false
+  xy: 2, 46
+  size: 223, 34
+  orig: 280, 65
+  offset: 13, 16
+  index: -1
+skill/yumao3_00040
+  rotate: false
+  xy: 238, 89
+  size: 209, 32
+  orig: 280, 65
+  offset: 12, 17
+  index: -1
+skill/yumao3_00042
+  rotate: false
+  xy: 715, 209
+  size: 100, 25
+  orig: 280, 65
+  offset: 43, 23
+  index: -1

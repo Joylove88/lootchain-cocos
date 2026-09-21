@@ -1,0 +1,97 @@
+
+fx_35005_kuangliechangmao_toushewu.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+fx_35005_klcm_attack/klch_toushewu_0022
+  rotate: false
+  xy: 2, 2
+  size: 248, 37
+  orig: 248, 46
+  offset: 0, 6
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_00
+  rotate: false
+  xy: 2, 316
+  size: 403, 88
+  orig: 446, 119
+  offset: 25, 11
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_01
+  rotate: false
+  xy: 2, 406
+  size: 411, 88
+  orig: 446, 119
+  offset: 25, 10
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_02
+  rotate: false
+  xy: 2, 41
+  size: 347, 91
+  orig: 446, 119
+  offset: 26, 9
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_03
+  rotate: false
+  xy: 2, 226
+  size: 363, 88
+  orig: 446, 119
+  offset: 25, 10
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_04
+  rotate: false
+  xy: 407, 316
+  size: 348, 88
+  orig: 446, 119
+  offset: 26, 10
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_05
+  rotate: false
+  xy: 367, 225
+  size: 342, 89
+  orig: 446, 119
+  offset: 26, 9
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_06
+  rotate: false
+  xy: 357, 135
+  size: 328, 88
+  orig: 446, 119
+  offset: 25, 10
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_07
+  rotate: false
+  xy: 2, 134
+  size: 353, 90
+  orig: 446, 119
+  offset: 25, 9
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_08
+  rotate: false
+  xy: 415, 406
+  size: 373, 88
+  orig: 446, 119
+  offset: 25, 12
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_09
+  rotate: false
+  xy: 711, 225
+  size: 264, 89
+  orig: 446, 119
+  offset: 25, 9
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_10
+  rotate: false
+  xy: 687, 131
+  size: 284, 92
+  orig: 446, 119
+  offset: 25, 9
+  index: -1
+fx_35005_klcm_skill2_jian/wuqishen_11
+  rotate: false
+  xy: 357, 42
+  size: 312, 91
+  orig: 446, 119
+  offset: 25, 9
+  index: -1
