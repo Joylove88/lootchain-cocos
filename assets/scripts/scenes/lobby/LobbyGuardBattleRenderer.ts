@@ -35,6 +35,9 @@ import {
   guardEnhance,
   guardEnhanceBlocked,
   guardEnhanceNextCost,
+  guardGoldCardChance,
+  guardHeroPerks,
+  guardPermanentFrequency,
   guardFindHeroAt,
   guardHeroAttackValue,
   guardOpenChest,
@@ -65,6 +68,8 @@ import {
   GUARD_SPAWN_X,
   resolveGuardRole,
   type GuardBattleState,
+  type GuardChoiceOption,
+  type GuardEvent,
   type GuardChestGrade,
   type GuardChestReward,
   type GuardZone,
@@ -88,6 +93,7 @@ import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltE
 import { resolveAttackFxSpritePath, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
+import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
 /** 怪物视高上限(屏高比例):BOSS 原 0.62 头顶出屏、整排上格被盖,2026-09-18 降到 0.52。 */
@@ -196,11 +202,20 @@ interface GuardProjectile {
   scale?: number;
   /** 近战弹道命中时全尺寸爆开的斩击规格(2026-09-12 用户反馈:近战也要有"从英雄身上飞出"的过程)。 */
   strikeSpec?: BattleAttackFxSpec;
+  /** 会心暴击:命中走大号金字。 */
+  crit?: boolean;
   /** 飞行速度倍率(近战贴脸打,飞得更快)。 */
   speedMult?: number;
   /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
   impactShake?: number;
 }
+/** 词条卡稀有度表现(docs/32 §6):白=通用、蓝=普攻强化、紫=英雄专属流派、金=专属大招觉醒(异形竖卡,高一头)。 */
+const GUARD_PERK_CARD_STYLE: Record<GuardPerkRarity, { tag: string; frame: string | null; fill: [number, number, number]; edge: [number, number, number]; text: [number, number, number] }> = {
+  white: { tag: '通用', frame: null, fill: [34, 34, 38], edge: [170, 172, 180], text: [226, 228, 234] },
+  blue: { tag: '普攻强化', frame: 'ui/gacha/ai/blue/spriteFrame', fill: [16, 30, 52], edge: [110, 180, 255], text: [170, 215, 255] },
+  purple: { tag: '专属流派', frame: 'ui/gacha/ai/purple/spriteFrame', fill: [36, 18, 54], edge: [200, 130, 255], text: [226, 180, 255] },
+  gold: { tag: '稀有 · 专属大招', frame: 'ui/battle/ai/battle_card_frame/spriteFrame', fill: [20, 10, 8], edge: [255, 214, 110], text: [255, 226, 130] },
+};
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 // 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
@@ -263,6 +278,10 @@ export class LobbyGuardBattleRenderer {
   private lastStatsRefreshMs = 0;
   /** 普攻弹幕(远程/控制;打击感系统 2026-08-26)。 */
   private readonly projectiles: GuardProjectile[] = [];
+  /** 未觉醒战技放出的灼烧区(没有专属特效本体,由区域节点自己画余烬环)。 */
+  private plainBurnZones = new Set<number>();
+  /** 紫卡触发喊话节流(每单位 2.5s 一次,防刷屏)。 */
+  private perkShoutAt = new Map<number, number>();
 
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
@@ -492,6 +511,8 @@ export class LobbyGuardBattleRenderer {
     this.monsterViews.clear();
     this.zoneViews.clear();
     this.zoneFlights.clear();
+    this.plainBurnZones.clear();
+    this.perkShoutAt.clear();
     this.chestViews.clear();
     this.projectiles.length = 0;
     this.guardFxAimers.clear();
@@ -1333,10 +1354,20 @@ export class LobbyGuardBattleRenderer {
     const enhanceCost = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceCost')?.getComponent(Label);
     const nextEnhanceCost = guardEnhanceNextCost(sim);
     if (enhanceDesc) {
-      enhanceDesc.string = nextEnhanceCost === null ? '词条已买满' : `选词条 · 第 ${sim.enhanceLevel + 1} 次`;
+      // 金卡概率公示:与 guardEnhance 内判定同一个函数、同一时点(docs/32 §4.3)。
+      const gold = guardGoldCardChance(sim);
+      // 按钮内文字区很窄:有金卡候选时只显示概率(玩家最关心的数),否则显示第几次。
+      const goldText = !gold.available ? '' : gold.forced ? '大招必出!' : `大招 ${Math.round(gold.chance * 100)}%`;
+      enhanceDesc.string = nextEnhanceCost === null ? '词条已选满' : goldText || `第 ${sim.enhanceLevel + 1} 次`;
+      enhanceDesc.color = gold.available && gold.forced ? rgba(255, 220, 120, 255) : rgba(232, 214, 180, 240);
     }
     if (enhanceCost) {
-      enhanceCost.string = nextEnhanceCost === null ? '—' : `${nextEnhanceCost}`;
+      enhanceCost.string = nextEnhanceCost === null ? '—' : nextEnhanceCost === 0 ? `免费 ×${sim.freeEnhance}` : `${nextEnhanceCost}`;
+      enhanceCost.color = nextEnhanceCost === 0 ? rgba(150, 255, 170, 255) : rgba(255, 214, 110, 250);
+    }
+    const freeBadge = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceFreeBadge');
+    if (freeBadge) {
+      freeBadge.active = sim.freeEnhance > 0 && nextEnhanceCost !== null;
     }
     this.refreshCrystalSkillButton();
   }
@@ -1360,12 +1391,25 @@ export class LobbyGuardBattleRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(20, 12, 6, 255);
     title.outlineWidth = 2;
-    const desc = this.host.addChildLabel(button, 'GuardEnhanceDesc', '', w * 0.1, -h * 0.08, 13, rgba(232, 214, 180, 240), new Size(w * 0.66, 16));
+    const desc = this.host.addChildLabel(button, 'GuardEnhanceDesc', '', w * 0.1, -h * 0.08, 15, rgba(232, 214, 180, 240), new Size(w * 0.66, 16));
     desc.overflow = Label.Overflow.SHRINK;
     const cost = this.host.addChildLabel(button, 'GuardEnhanceCost', '', w * 0.1, -h * 0.3, 16, rgba(255, 214, 110, 250), new Size(w * 0.6, 20));
     cost.enableOutline = true;
     cost.outlineColor = rgba(24, 14, 6, 255);
     cost.outlineWidth = 2;
+    // 免费强化角标(波末赠送,docs/32 §2.2):按钮右上角绿点 + 呼吸缩放。
+    const badge = this.host.addChildPlainNode(button, 'GuardEnhanceFreeBadge', w * 0.4, h * 0.36, 44, 22);
+    const bg = badge.addComponent(Graphics);
+    bg.fillColor = rgba(40, 150, 80, 250);
+    bg.roundRect(-22, -11, 44, 22, 11);
+    bg.fill();
+    bg.strokeColor = rgba(200, 255, 210, 250);
+    bg.lineWidth = 1.6;
+    bg.roundRect(-22, -11, 44, 22, 11);
+    bg.stroke();
+    this.host.addChildLabel(badge, 'Text', '免费', 0, 0, 13, rgba(240, 255, 240), new Size(40, 16));
+    badge.active = false;
+    tween(badge).repeatForever(tween<Node>().to(0.5, { scale: new Vec3(1.14, 1.14, 1) }).to(0.5, { scale: new Vec3(1, 1, 1) })).start();
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -1377,7 +1421,7 @@ export class LobbyGuardBattleRenderer {
         return;
       }
       if (blocked === 'capped') {
-        this.host.setStatus('本局强化词条已买满。');
+        this.host.setStatus('本局强化词条已选满。');
         return;
       }
       if (blocked) {
@@ -1699,12 +1743,12 @@ export class LobbyGuardBattleRenderer {
         if (caster) {
           this.playUnitAttack(this.heroViews.get(caster.unitId));
         }
+        // docs/32 §5.1 方案 A:未觉醒=通用"战技"(职业机制名 + 轻量表现);金卡觉醒后才喊专属大招名、播专属 Spine 特效。
+        const awakened = (event.ultLv ?? 0) > 0;
         if (typeof event.cell === 'number') {
-          // 施放者亮相:脚下金圈+弹跳+技能名喊话;喊专属大招名(2026-09-07 专属技能体系),
-          // 无专属名(主角/下架英雄)回退职业机制名。
-          this.highlightCaster(event.cell, `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!`);
+          this.highlightCaster(event.cell, awakened ? `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!` : `战技·${event.skillName ?? '出击'}`);
         }
-        gameAudio.sfx(resolveHeroSkillSfxKey(event.heroCode));
+        gameAudio.sfx(resolveHeroSkillSfxKey(event.heroCode), awakened ? 1 : 0.6);
         const skillZone = typeof event.zoneId === 'number' ? sim.zones.find((entry) => entry.zoneId === event.zoneId) ?? null : null;
         if (skillZone && skillZone.kind === 'cyclone' && typeof event.cell === 'number') {
           // 旋风从施放英雄身上飞出落地(灼烧区 2026-09-12 起由技能特效本体在落点循环播放,不再画地面黄圈、不再飞行)
@@ -1713,8 +1757,15 @@ export class LobbyGuardBattleRenderer {
         }
         if (typeof event.monsterId === 'number' && event.heroCode) {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
-          if (target) {
+          if (target && awakened) {
             this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone });
+          } else if (target && caster) {
+            // 战技:一颗技能弹 + 落点冲击环;灼烧区没有专属特效本体,改画一圈余烬细环标出范围。
+            this.spawnSkillBolt(caster.cell, target);
+            this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 190, 120), false);
+            if (skillZone && skillZone.kind === 'burn') {
+              this.plainBurnZones.add(skillZone.zoneId);
+            }
           }
         }
         // 群体直击技能(2026-09-11 用户反馈"技能打怪没伤害"):每只命中怪金色大号飘字+红闪,
@@ -1769,6 +1820,33 @@ export class LobbyGuardBattleRenderer {
       } else if (event.type === 'bossCastHit') {
         this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.16, `灭世轰击 -${event.amount ?? 0}`, rgba(255, 110, 90));
         this.shakeField(14);
+      } else if (event.type === 'ultUnlock') {
+        this.showUltAwakenBanner(event.heroCode ?? '', event.ultLv ?? 1);
+        gameAudio.sfx('level_up');
+        this.shakeField(6);
+      } else if (event.type === 'freeEnhance') {
+        if ((event.amount ?? 0) > 0) {
+          this.host.setStatus('守住一波!获得 1 次免费强化,点"强化"领取词条。');
+          this.spawnFloater(this.xToPx(3), this.walkwayY() + this.layoutHeight * 0.2, '免费强化 +1', rgba(150, 255, 170), 22);
+        } else {
+          this.spawnFloater(this.xToPx(3), this.walkwayY() + this.layoutHeight * 0.2, '免费强化已攒满 → 金币 +200', rgba(255, 220, 120), 18);
+        }
+        gameAudio.sfx('coin');
+      } else if (event.type === 'perkProc') {
+        // 击杀触发类紫卡(余烬爆燃/龙焰爆):逐只爆闪 + 紫字
+        (event.monsterIds ?? []).forEach((hitId, index) => {
+          const hitView = this.monsterViews.get(hitId);
+          if (!hitView || !hitView.node.isValid) {
+            return;
+          }
+          this.spawnImpactFlash(hitView.node.position.x, hitView.node.position.y, rgba(255, 150, 90));
+          this.queueDamage(hitId, event.amount ?? 0, false, hitView.node.position.x + ((index * 31) % 30) - 15, hitView.node.position.y);
+          this.flashMonster(hitId);
+        });
+        if (event.perkId === 'dragonslayer') {
+          this.shakeField(9);
+          this.spawnFloater(this.xToPx(4), this.walkwayY() + this.layoutHeight * 0.18, '龙焰爆!', rgba(255, 170, 90), 24);
+        }
       } else if (event.type === 'crystalSkill') {
         this.spawnFloater(this.xToPx(2), this.walkwayY(), `矿晶震荡 ${event.amount ?? 0}`, rgba(150, 220, 255));
       } else if (event.type === 'heroAttack') {
@@ -1807,7 +1885,7 @@ export class LobbyGuardBattleRenderer {
               const origin = this.cellCenter(hero.cell);
               // 普攻音(2026-09-18):随弹道发出,多英雄齐射时靠管理器 80ms/键节流 + 压低音量避免糊成一片。
               gameAudio.sfx(this.resolveHeroAttackSfxKey(hero), 0.55);
-              this.spawnProjectile(origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05, target, event.amount ?? 0, attackColor, attackFx);
+              this.spawnAttackVolley(hero, target, event, attackColor, attackFx, origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05);
             } else {
               this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
@@ -2082,71 +2160,55 @@ export class LobbyGuardBattleRenderer {
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    const panelH = height * 0.6;
-    this.paintOverlayPanel(overlay, Math.min(width * 0.9, panelH * 1.62), panelH, 0);
-    // 标题下移 15px(2026-08-28 用户验收)
+    const panelH = height * 0.74;
+    this.paintOverlayPanel(overlay, Math.min(width * 0.92, panelH * 1.66), panelH, 0);
     const fromEnhance = sim.choiceSource === 'enhance';
-    this.host.addChildLabel(overlay, 'GuardChoiceTitle', fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择一条词条` : `等级提升!Lv${sim.level} · 三选一`, 0, panelH / 2 - 93, 30, rgba(255, 232, 150), new Size(width * 0.7, 40));
-    const cardW = Math.min(262, width * 0.22);
-    const cardH = 232;
+    const hasGold = sim.pendingChoice.some((option) => option.rarity === 'gold');
+    const titleText = hasGold ? '✦ 稀有词条出现!专属大招觉醒 ✦' : fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择一条词条` : `等级提升!Lv${sim.level} · 三选一`;
+    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', titleText, 0, panelH / 2 - 84, 30, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.7, 40));
+    overlayTitle.overflow = Label.Overflow.SHRINK;
+    if (hasGold) {
+      overlayTitle.enableOutline = true;
+      overlayTitle.outlineColor = rgba(90, 30, 10, 255);
+      overlayTitle.outlineWidth = 3;
+      gameAudio.sfx('gacha_rare');
+    }
+    // 普通卡高 0.4 屏;金卡异形竖框(320×626 等比)高出一头,一眼区分(docs/32 §6)。
+    const cardH = Math.min(430, height * 0.4);
+    const cardW = cardH * 0.7;
+    const goldH = cardH * 1.3;
+    const goldW = goldH * (320 / 626);
+    const gap = Math.min(40, width * 0.025);
+    const widths = sim.pendingChoice.map((option) => (option.rarity === 'gold' ? goldW : cardW));
+    const totalW = widths.reduce((sum, value) => sum + value, 0) + gap * (widths.length - 1);
+    let cursor = -totalW / 2;
     sim.pendingChoice.forEach((option, index) => {
-      const x = (index - 1) * (cardW + 32);
-      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, height * 0.015, cardW, cardH);
-      // 词条卡美化(2026-08-28):双层描边+上半高光渐层+四角金饰角+头带
-      const g = card.addComponent(Graphics);
-      g.fillColor = rgba(30, 22, 17, 252);
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
-      g.fill();
-      g.fillColor = rgba(56, 40, 28, 130);
-      g.roundRect(-cardW / 2 + 4, 0, cardW - 8, cardH / 2 - 4, 12);
-      g.fill();
-      g.strokeColor = rgba(230, 196, 132, 250);
-      g.lineWidth = 2.6;
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
-      g.stroke();
-      g.strokeColor = rgba(120, 92, 56, 200);
-      g.lineWidth = 1.2;
-      g.roundRect(-cardW / 2 + 5, -cardH / 2 + 5, cardW - 10, cardH - 10, 11);
-      g.stroke();
-      // 四角金饰角
-      g.strokeColor = rgba(255, 214, 130, 240);
-      g.lineWidth = 3;
-      const tick = 16;
-      for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]] as Array<[number, number]>) {
-        g.moveTo(sx * (cardW / 2 - 3) - sx * tick, sy * (cardH / 2 - 3));
-        g.lineTo(sx * (cardW / 2 - 3), sy * (cardH / 2 - 3));
-        g.lineTo(sx * (cardW / 2 - 3), sy * (cardH / 2 - 3) - sy * tick);
-      }
-      g.stroke();
-      g.fillColor = rgba(84, 58, 32, 240);
-      g.roundRect(-cardW / 2 + 6, cardH / 2 - 52, cardW - 12, 44, 10);
-      g.fill();
-      // 标题进头带(2026-08-25 用户验收:头带空着、标题飘在下面)。
-      const title = this.host.addChildLabel(card, 'Title', option.title, 0, cardH / 2 - 29, 24, rgba(255, 240, 200), new Size(cardW - 22, 40));
-      title.overflow = Label.Overflow.SHRINK;
-      const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, cardH * 0.05, 17, rgba(212, 200, 176, 240), new Size(cardW - 24, 60));
-      detail.overflow = Label.Overflow.SHRINK;
-      const banish = this.host.addChildLabel(card, 'Banish', sim.banishLeft > 0 ? '✕ 放逐' : '', 0, -cardH * 0.37, 15, rgba(255, 140, 120, 230), new Size(cardW - 20, 20));
+      const isGold = option.rarity === 'gold';
+      const w = widths[index];
+      const h = isGold ? goldH : cardH;
+      const x = cursor + w / 2;
+      cursor += w + gap;
+      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, -height * 0.005, w, h);
+      this.buildPerkCard(card, option, w, h);
+      // 入场:逐张弹入;金卡最后落下并带呼吸光。
+      card.setScale(0.6, 0.6, 1);
+      tween(card).delay(0.06 * index + (isGold ? 0.12 : 0)).to(0.2, { scale: new Vec3(1.05, 1.05, 1) }, { easing: 'backOut' }).to(0.08, { scale: new Vec3(1, 1, 1) }).start();
       this.host.applyImageButtonFeedback(card);
-      card.on(Node.EventType.TOUCH_END, (event: { getUILocation?: () => { y: number } }) => {
-        // 底部 1/4 点击=放逐;其余=选择。
-        const uiY = event.getUILocation ? event.getUILocation().y : Number.NaN;
-        void uiY;
+      card.on(Node.EventType.TOUCH_END, () => {
         guardChooseOption(sim, index);
       }, this);
-      banish.node.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
-        if (sim.banishLeft > 0) {
-          guardBanishChoice(sim, index);
-          this.choiceOverlayLevel = 0;
-        }
-        if (event) {
-          event.propagationStopped = true;
-        }
-      }, this);
+      if (!option.locked && sim.banishLeft > 0) {
+        const banish = this.host.addChildLabel(overlay, `GuardChoiceBanish_${index}`, '✕ 放逐', x, -height * 0.005 - h / 2 - 18, 17, rgba(255, 140, 120, 230), new Size(w, 22));
+        banish.node.on(Node.EventType.TOUCH_END, () => {
+          if (guardBanishChoice(sim, index)) {
+            this.choiceOverlayLevel = 0;
+          }
+        }, this);
+      }
     });
     // 跳过 / 刷新
     const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
-      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 94, 252);
+      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 86, 232);
       const smallLabel = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(196, 24));
       smallLabel.overflow = Label.Overflow.SHRINK;
       button.on(Node.EventType.TOUCH_END, onTap, this);
@@ -2164,6 +2226,98 @@ export class LobbyGuardBattleRenderer {
         this.host.setStatus('刷新次数已用完。');
       }
     });
+  }
+
+  /** 单张词条卡:稀有度底色 + 素材框(等比)+ 类别标签 + 英雄头像/名 + 词条名 + 效果;金卡用哥特异形竖框 + 外发光 + 专属大招名。 */
+  private buildPerkCard(card: Node, option: GuardChoiceOption, w: number, h: number): void {
+    const sim = this.sim;
+    const style = GUARD_PERK_CARD_STYLE[option.rarity] ?? GUARD_PERK_CARD_STYLE.white;
+    const isGold = option.rarity === 'gold';
+    const edge = rgba(style.edge[0], style.edge[1], style.edge[2], 250);
+    const textTint = rgba(style.text[0], style.text[1], style.text[2], 255);
+    if (isGold) {
+      // 外发光(battle_card_active 320×514,等比)在框后呼吸
+      const glowH = h * 0.96;
+      const glowW = glowH * (320 / 514);
+      const glow = this.host.addChildPlainNode(card, 'Glow', 0, 0, glowW, glowH);
+      this.mountSprite(glow, 'Img', 'ui/battle/ai/battle_card_active/spriteFrame', 0, 0, glowW, glowH);
+      glow.setScale(1.12, 1.06, 1);
+      const glowOpacity = glow.addComponent(UIOpacity);
+      glowOpacity.opacity = 150;
+      tween(glowOpacity).repeatForever(tween<UIOpacity>().to(0.7, { opacity: 255 }).to(0.7, { opacity: 130 })).start();
+      this.mountSprite(card, 'Frame', style.frame ?? '', 0, 0, w, h);
+    } else {
+      const g = card.addComponent(Graphics);
+      g.fillColor = rgba(style.fill[0], style.fill[1], style.fill[2], 250);
+      g.roundRect(-w / 2 + 5, -h / 2 + 5, w - 10, h - 10, 10);
+      g.fill();
+      g.fillColor = rgba(style.edge[0], style.edge[1], style.edge[2], 34);
+      g.roundRect(-w / 2 + 8, h * 0.08, w - 16, h * 0.42 - 8, 8);
+      g.fill();
+      if (style.frame) {
+        this.mountSprite(card, 'Frame', style.frame, 0, 0, w, h);
+      } else {
+        g.strokeColor = edge;
+        g.lineWidth = 2.4;
+        g.roundRect(-w / 2 + 5, -h / 2 + 5, w - 10, h - 10, 10);
+        g.stroke();
+      }
+    }
+    // 金卡框内可用区更窄(框体雕花占两侧各 ~20%)
+    const innerW = isGold ? w * 0.56 : w - 40;
+    const top = isGold ? h * 0.3 : h / 2 - 34;
+    const heroMatch = /^【(.+?)】(.*)$/.exec(option.title);
+    const heroName = heroMatch ? heroMatch[1] : '';
+    const perkTitle = heroMatch ? heroMatch[2] : option.title;
+    const tagText = option.rarity === 'purple' && option.school ? `专属流派 · ${option.school}` : style.tag;
+    const tag = this.host.addChildLabel(card, 'Tag', tagText, 0, top, 17, textTint, new Size(innerW, 22));
+    tag.overflow = Label.Overflow.SHRINK;
+    let y = top - 26;
+    if (option.heroCode && sim) {
+      const pool = sim.pool.find((entry) => entry.heroCode.toUpperCase() === option.heroCode?.toUpperCase());
+      const avatar = Math.min(isGold ? 92 : 84, innerW * 0.62);
+      y -= avatar / 2;
+      const frame = this.host.addChildPlainNode(card, 'Avatar', 0, y, avatar, avatar);
+      const fg = frame.addComponent(Graphics);
+      fg.fillColor = rgba(12, 10, 10, 230);
+      fg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
+      fg.fill();
+      this.mountStatsAvatar(frame, { name: pool?.displayName ?? option.heroCode, rarity: (pool?.rarity ?? 'R').toUpperCase(), ally: this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null }, avatar - 6);
+      const ring = this.host.addChildPlainNode(frame, 'Ring', 0, 0, avatar, avatar);
+      const rg = ring.addComponent(Graphics);
+      rg.strokeColor = edge;
+      rg.lineWidth = 2;
+      rg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
+      rg.stroke();
+      y -= avatar / 2 + 16;
+      const nameLabel = this.host.addChildLabel(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, y, 18, option.offField ? rgba(170, 160, 150) : rgba(236, 224, 196), new Size(innerW, 24));
+      nameLabel.overflow = Label.Overflow.SHRINK;
+      y -= 32;
+    } else {
+      y -= 44;
+    }
+    const mainTitle = isGold ? `「${this.resolveGuardSkillDisplayName(option.heroCode, '专属大招')}」` : perkTitle;
+    const title = this.host.addChildLabel(card, 'Title', mainTitle, 0, y, isGold ? 25 : 25, isGold ? rgba(255, 226, 130) : rgba(255, 244, 214), new Size(innerW, 32));
+    title.overflow = Label.Overflow.SHRINK;
+    title.enableOutline = true;
+    title.outlineColor = rgba(14, 8, 4, 255);
+    title.outlineWidth = 2;
+    y -= 30;
+    if (isGold) {
+      const sub = this.host.addChildLabel(card, 'Sub', perkTitle, 0, y, 17, rgba(255, 200, 150), new Size(innerW, 22));
+      sub.overflow = Label.Overflow.SHRINK;
+      y -= 24;
+    }
+    const bottom = isGold ? -h * 0.3 : -h / 2 + 26;
+    const detailH = Math.max(36, y - bottom - 4);
+    const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2 - 2, 19, rgba(222, 212, 190, 245), new Size(innerW, detailH));
+    detail.overflow = Label.Overflow.SHRINK;
+    detail.enableWrapText = true;
+    detail.lineHeight = 24;
+    if (option.offField) {
+      const shade = card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity);
+      shade.opacity = 190;
+    }
   }
 
   // ── P2:BOSS 读条条(集火打断) ──
@@ -2220,7 +2374,7 @@ export class LobbyGuardBattleRenderer {
 
   // ── 打击感系统(2026-08-26 用户拍板:弹幕射击+受击反馈)──
   /** 普攻弹幕:发光弹体从英雄身前归巢飞向目标,命中才结算飘字+爆闪+受击红闪。 */
-  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color, spec?: BattleAttackFxSpec): void {
+  private spawnProjectile(fromX: number, fromY: number, monster: GuardMonster, amount: number, color: Color, spec?: BattleAttackFxSpec, extra?: { scale?: number; crit?: boolean }): void {
     const field = this.fieldNode;
     if (!field) {
       return;
@@ -2236,7 +2390,7 @@ export class LobbyGuardBattleRenderer {
       // 专属贴图(朝右绘制,飞行时父节点按方向旋转;等比设尺寸不拉伸)。
       // 近战(strike):飞行体取 0.6 倍,命中时再由 strikeSpec 全尺寸爆开,形成"蓄力飞出 → 命中炸开"。
       const melee = spec.kind === 'strike';
-      const lengthPx = this.unitSize() * spec.size * (melee ? 0.6 : 1);
+      const lengthPx = this.unitSize() * spec.size * (melee ? 0.6 : 1) * (extra?.scale ?? 1);
       this.mountSprite(node, 'Img', resolveAttackFxSpritePath(spec), 0, 0, lengthPx, lengthPx * spec.aspect);
       this.projectiles.push({
         node,
@@ -2246,6 +2400,7 @@ export class LobbyGuardBattleRenderer {
         amount,
         color,
         strikeSpec: melee ? spec : undefined,
+        crit: extra?.crit,
         // 近战飞得比远程慢一点:贴脸距离本来就短(2~4 格),快了就成"瞬移",看不见飞出去的过程
         //(2026-09-12 实测 1.9 倍时 60ms 内已命中)。
         speedMult: melee ? 0.8 : 1,
@@ -2266,6 +2421,66 @@ export class LobbyGuardBattleRenderer {
     g.ellipse(1, 0, 8, 4);
     g.fill();
     this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color });
+  }
+
+  /**
+   * 一次普攻的全部命中(docs/32 §3):主弹/多重副发/散射=各自一发弹道从英雄身前扇形飞出(副发错开 70ms);
+   * 穿透=从主目标身上再射向后排;溅射/紫卡补击=落点直接爆开。巨型放大弹体,会心走大号金字。
+   * 模型"出手即结算",这里纯表现;同屏弹道满 40 时自动退化成直接结算。
+   */
+  private spawnAttackVolley(hero: GuardHeroUnit, mainTarget: GuardMonster, event: GuardEvent, color: Color, spec: BattleAttackFxSpec, fromX: number, fromY: number): void {
+    const sim = this.sim;
+    if (!sim) {
+      return;
+    }
+    const hits = event.hits && event.hits.length > 0 ? event.hits : [{ monsterId: mainTarget.monsterId, amount: event.amount ?? 0, kind: 'main' as const }];
+    const scale = GUARD_GIANT_VISUAL_SCALE[event.giantLv ?? 0] ?? 1;
+    const flying = hits.filter((hit) => hit.kind === 'main' || hit.kind === 'multi' || hit.kind === 'spread');
+    const fanStep = this.unitSize() * 0.22;
+    flying.forEach((hit, index) => {
+      const monster = sim.monsters.find((entry) => entry.monsterId === hit.monsterId) ?? mainTarget;
+      const offsetY = (index - (flying.length - 1) / 2) * fanStep;
+      const launch = (): void => {
+        if (this.sim !== sim || !this.fieldNode?.isValid) {
+          return;
+        }
+        this.spawnProjectile(fromX, fromY + offsetY, monster, hit.amount, color, spec, { scale: hit.kind === 'spread' ? scale * 0.8 : scale, crit: !!event.crit && hit.kind === 'main' });
+      };
+      if (index === 0) {
+        launch();
+      } else {
+        setTimeout(launch, 70 * index);
+      }
+    });
+    const mainX = this.xToPx(mainTarget.x);
+    const mainY = this.monsterY(mainTarget.lane, mainTarget.x);
+    hits.filter((hit) => hit.kind === 'pierce' || hit.kind === 'splash' || hit.kind === 'perk').forEach((hit, index) => {
+      const monster = sim.monsters.find((entry) => entry.monsterId === hit.monsterId);
+      if (!monster) {
+        return;
+      }
+      setTimeout(() => {
+        if (this.sim !== sim || !this.fieldNode?.isValid) {
+          return;
+        }
+        if (hit.kind === 'pierce') {
+          this.spawnProjectile(mainX, mainY + this.unitSize() * 0.12, monster, hit.amount, color, spec, { scale: scale * 0.85 });
+          return;
+        }
+        const x = this.xToPx(monster.x);
+        const y = this.monsterY(monster.lane, monster.x) + this.unitSize() * 0.12;
+        this.resolveProjectileHit(x, y, monster.monsterId, hit.amount, hit.kind === 'perk' ? rgba(220, 150, 255) : color);
+      }, 160 + 50 * index);
+    });
+    if (event.perkId && hero) {
+      const purple = resolveGuardHeroPerkProfile(hero.heroCode, hero.role).purple;
+      const now = Date.now();
+      if (purple && purple.suffix === event.perkId && now - (this.perkShoutAt.get(hero.unitId) ?? 0) > 2500) {
+        this.perkShoutAt.set(hero.unitId, now);
+        const center = this.cellCenter(hero.cell);
+        this.spawnFloater(center.x, center.y + this.unitSize() * 0.75, `${purple.name}!`, rgba(226, 170, 255), 16);
+      }
+    }
   }
 
   /** 保底技能弹:完整特效被限流时,从英雄身前发一颗大号发光弹(纯表现)——技能归属永远可见。 */
@@ -2369,7 +2584,7 @@ export class LobbyGuardBattleRenderer {
           this.spawnImpactFlash(tx, ty, proj.color);
           this.flashMonster(proj.targetId);
         } else {
-          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec);
+          this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec, proj.crit);
         }
         proj.node.destroy();
         this.projectiles.splice(i, 1);
@@ -2457,13 +2672,13 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 命中结算:爆闪(近战=全尺寸斩击炸开)+伤害入聚合窗+目标受击红闪。 */
-  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec): void {
+  private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec, crit?: boolean): void {
     if (strikeSpec) {
       this.spawnStrikeFx(strikeSpec, x, y);
     } else {
       this.spawnImpactFlash(x, y, color);
     }
-    this.queueDamage(targetId, amount, false, x, y);
+    this.queueDamage(targetId, amount, !!crit, x, y);
     this.flashMonster(targetId);
   }
 
@@ -2780,6 +2995,18 @@ export class LobbyGuardBattleRenderer {
         // 区域节点只保留结算用途,不画任何东西。
         node.angle = 0;
         node.setScale(1, 1, 1);
+        if (this.plainBurnZones.has(zone.zoneId)) {
+          // 未觉醒的战技没有特效本体:只画一圈脉动的余烬细环标出灼烧范围(不填充,不是当初那块黄椭圆)。
+          const pulse = 0.5 + 0.5 * Math.sin(sim.timeMs / 160);
+          g.strokeColor = rgba(255, 140, 70, 110 + Math.round(90 * pulse));
+          g.lineWidth = 3;
+          g.ellipse(0, 0, radiusPx, radiusPx * 0.3);
+          g.stroke();
+          g.strokeColor = rgba(255, 210, 140, 60 + Math.round(60 * pulse));
+          g.lineWidth = 1.5;
+          g.ellipse(0, 0, radiusPx * 0.72, radiusPx * 0.21);
+          g.stroke();
+        }
       } else {
         // 旋风素材化(2026-09-02 用户拍板 image2 方向):透明漩涡贴图子节点自旋,父节点压扁成地面椭圆
         node.angle = 0;
@@ -3022,27 +3249,74 @@ export class LobbyGuardBattleRenderer {
     const pool = sim.pool.find((entry) => entry.heroCode === hero.heroCode);
     const profile = GUARD_ROLE_PROFILE[hero.role];
     const skill = GUARD_HERO_SKILL[hero.role];
-    // 放大+内容整体下移进框(2026-08-28 用户验收:名字盖住框顶)
+    // 放大+内容整体下移进框(2026-08-28 用户验收:名字盖住框顶);2026-09-21 加高:战技/专属大招分两行 + 已持有词条。
     const w = 404;
-    const h = 312;
+    const h = 408;
     const panel = this.host.addChildPlainNode(root, 'GuardHeroInfoPanel', -this.layoutWidth / 2 + 88 + w / 2, this.layoutHeight / 2 - 226 - h / 2, w, h);
     // 素净框(2026-08-28 用户验收:原框坠饰太多且全遮背景):细金线石板框 + 轻透明,背后英雄隐约可见
     this.mountSprite(panel, 'Frame', 'ui/common/ai/bag_grid_panel/spriteFrame', 0, 0, w, h);
     const panelOpacity = panel.addComponent(UIOpacity);
-    panelOpacity.opacity = 225;
+    panelOpacity.opacity = 232;
     const nameLabel = this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 58, 24, rgba(255, 234, 180), new Size(w - 96, 30));
     nameLabel.overflow = Label.Overflow.SHRINK;
     this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 88, 18, rgba(255, 220, 110), new Size(w - 60, 22));
     const roleName = GUARD_ROLE_LABEL[hero.role] ?? hero.role;
-    this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格`, 0, h / 2 - 118, 16, rgba(226, 214, 188), new Size(w - 60, 20));
-    this.host.addChildLabel(panel, 'Atk', `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`, 0, h / 2 - 148, 16, rgba(255, 200, 150), new Size(w - 60, 22));
-    // 主动技能卡(参考蔚蓝星球:技能名+冷却+描述)
+    const perkProfile = resolveGuardHeroPerkProfile(hero.heroCode, hero.role);
+    const roleLabel = this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格 · 普攻 ${GUARD_ARCHETYPE_LABEL[perkProfile.archetype]}`, 0, h / 2 - 118, 16, rgba(226, 214, 188), new Size(w - 60, 20));
+    roleLabel.overflow = Label.Overflow.SHRINK;
+    this.host.addChildLabel(panel, 'Atk', this.heroInfoAtkText(hero), 0, h / 2 - 146, 16, rgba(255, 200, 150), new Size(w - 60, 22));
+    // 战技(2★ 自动施放,通用表现)与专属大招(金色词条觉醒)分两行
+    const skillTitle = this.host.addChildLabel(panel, 'SkillName', this.heroInfoSkillText(hero), 0, h / 2 - 178, 17, rgba(150, 220, 255), new Size(w - 64, 22));
+    skillTitle.overflow = Label.Overflow.SHRINK;
+    const ultTitle = this.host.addChildLabel(panel, 'UltName', '', 0, h / 2 - 204, 17, rgba(255, 214, 110), new Size(w - 64, 22));
+    ultTitle.overflow = Label.Overflow.SHRINK;
+    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 240, 14, rgba(206, 196, 172), new Size(w - 76, 40));
+    desc.overflow = Label.Overflow.SHRINK;
+    const perksLabel = this.host.addChildLabel(panel, 'Perks', '', 0, h / 2 - 316, 14, rgba(200, 220, 255), new Size(w - 76, 96));
+    perksLabel.overflow = Label.Overflow.SHRINK;
+    perksLabel.enableWrapText = true;
+    perksLabel.lineHeight = 19;
+    this.refreshHeroInfoLive(hero);
+  }
+
+  private heroInfoAtkText(hero: GuardHeroUnit): string {
+    const sim = this.sim;
+    if (!sim) {
+      return '';
+    }
+    const profile = GUARD_ROLE_PROFILE[hero.role];
+    return `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${((1000 / profile.intervalMs) * guardPermanentFrequency(sim, hero.heroCode)).toFixed(1)}/秒`;
+  }
+
+  private heroInfoSkillText(hero: GuardHeroUnit): string {
+    const sim = this.sim;
+    if (!sim) {
+      return '';
+    }
     const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
     const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-    const skillTitle = this.host.addChildLabel(panel, 'SkillName', `⚡ ${this.resolveGuardSkillDisplayName(hero.heroCode, skill.name)} · ${skillState}`, 0, h / 2 - 182, 18, rgba(150, 220, 255), new Size(w - 64, 24));
-    skillTitle.overflow = Label.Overflow.SHRINK;
-    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 226, 15, rgba(206, 196, 172), new Size(w - 76, 46));
-    desc.overflow = Label.Overflow.SHRINK;
+    return `⚡ 战技 · ${GUARD_HERO_SKILL[hero.role].name} · ${skillState}`;
+  }
+
+  /** 已持有词条摘要:蓝卡按层、紫卡流派;词条按英雄编码存,合成重抽身份后换了谁就看谁的。 */
+  private heroInfoPerksText(hero: GuardHeroUnit): string {
+    const sim = this.sim;
+    if (!sim) {
+      return '';
+    }
+    const perks = guardHeroPerks(sim, hero.heroCode);
+    const parts: string[] = [];
+    for (const def of GUARD_BLUE_PERKS) {
+      const level = perks.blue[def.id] ?? 0;
+      if (level > 0) {
+        parts.push(`${def.name} Lv${level}`);
+      }
+    }
+    const purple = resolveGuardHeroPerkProfile(hero.heroCode, hero.role).purple;
+    if (perks.purple > 0 && purple) {
+      parts.push(`【${purple.name}】Lv${perks.purple}`);
+    }
+    return parts.length > 0 ? `词条:${parts.join(' · ')}` : '词条:暂无(点"强化"抽取)';
   }
 
   /** 守卫战场技能显示名(2026-09-07 专属技能体系):优先专属大招名,无专属(主角/下架)回退职业机制名。 */
@@ -3058,17 +3332,27 @@ export class LobbyGuardBattleRenderer {
     if (!sim || !panel || !panel.isValid) {
       return;
     }
-    const skill = GUARD_HERO_SKILL[hero.role];
     const skillLabel = panel.getChildByName('SkillName')?.getComponent(Label);
     if (skillLabel) {
-      const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
-      const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-      skillLabel.string = `⚡ ${this.resolveGuardSkillDisplayName(hero.heroCode, skill.name)} · ${skillState}`;
+      skillLabel.string = this.heroInfoSkillText(hero);
+    }
+    const ultLabel = panel.getChildByName('UltName')?.getComponent(Label);
+    if (ultLabel) {
+      const ultLv = guardHeroPerks(sim, hero.heroCode).ultLv;
+      const ultName = this.resolveGuardSkillDisplayName(hero.heroCode, '专属大招');
+      ultLabel.string = ultLv > 0 ? `✦ 专属大招 · ${ultName} · Lv${ultLv} 已觉醒` : `✦ 专属大招 · ${ultName} · 金色词条觉醒`;
+      ultLabel.color = ultLv > 0 ? rgba(255, 214, 110, 255) : rgba(170, 150, 110, 255);
+    }
+    const perksLabel = panel.getChildByName('Perks')?.getComponent(Label);
+    if (perksLabel) {
+      const text = this.heroInfoPerksText(hero);
+      if (perksLabel.string !== text) {
+        perksLabel.string = text;
+      }
     }
     const atkLabel = panel.getChildByName('Atk')?.getComponent(Label);
     if (atkLabel) {
-      const profile = GUARD_ROLE_PROFILE[hero.role];
-      atkLabel.string = `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${(1000 / (profile.intervalMs * (1 - Math.min(50, sim.mods.atkSpeedPct) / 100))).toFixed(1)}/秒`;
+      atkLabel.string = this.heroInfoAtkText(hero);
     }
     const starLabel = panel.getChildByName('Star')?.getComponent(Label);
     if (starLabel) {
@@ -3408,7 +3692,44 @@ export class LobbyGuardBattleRenderer {
     return extent;
   }
 
-  /** 合成解锁专属技能横幅:点明解锁了什么(2 星=专属技能),2.2s 上浮淡出。 */
+  /** 金卡觉醒横幅:专属大招名大字 + 金边,2.6s 上浮淡出(docs/32 §6"稀有时刻")。 */
+  private showUltAwakenBanner(heroCode: string, ultLv: number): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    const pool = this.sim?.pool.find((entry) => entry.heroCode.toUpperCase() === heroCode.toUpperCase());
+    root.getChildByName('GuardUltAwakenBanner')?.destroy();
+    const w = 620;
+    const h = 118;
+    const banner = this.host.addChildPlainNode(root, 'GuardUltAwakenBanner', 0, this.layoutHeight * 0.24, w, h);
+    const g = banner.addComponent(Graphics);
+    g.fillColor = rgba(26, 12, 8, 244);
+    g.roundRect(-w / 2, -h / 2, w, h, 18);
+    g.fill();
+    g.strokeColor = rgba(255, 214, 110, 255);
+    g.lineWidth = 4;
+    g.roundRect(-w / 2, -h / 2, w, h, 18);
+    g.stroke();
+    g.strokeColor = rgba(180, 40, 40, 220);
+    g.lineWidth = 1.6;
+    g.roundRect(-w / 2 + 7, -h / 2 + 7, w - 14, h - 14, 13);
+    g.stroke();
+    const head = ultLv <= 1 ? '专属大招觉醒!' : `专属大招 Lv${ultLv}!`;
+    const title = this.host.addChildLabel(banner, 'Title', `✦ ${pool?.displayName ?? heroCode} · ${head}`, 0, h * 0.2, 25, rgba(255, 226, 130), new Size(w - 36, 32));
+    title.enableOutline = true;
+    title.outlineColor = rgba(80, 24, 8, 255);
+    title.outlineWidth = 3;
+    title.overflow = Label.Overflow.SHRINK;
+    const detail = this.host.addChildLabel(banner, 'Detail', `「${this.resolveGuardSkillDisplayName(heroCode, '专属大招')}」${ultLv <= 1 ? '取代战技:专属特效 · 伤害 ×1.5 · 冷却 -15%' : ultLv === 2 ? '伤害与冷却再强化' : '范围 / 持续 +50%'}`, 0, -h * 0.22, 17, rgba(240, 226, 196), new Size(w - 40, 24));
+    detail.overflow = Label.Overflow.SHRINK;
+    banner.setScale(0.7, 0.7, 1);
+    const opacity = banner.addComponent(UIOpacity);
+    tween(banner).to(0.18, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'backOut' }).to(0.1, { scale: new Vec3(1, 1, 1) }).by(2.3, { position: new Vec3(0, 36, 0) }).start();
+    tween(opacity).delay(1.9).to(0.7, { opacity: 0 }).call(() => { if (banner.isValid) { banner.destroy(); } }).start();
+  }
+
+  /** 合成解锁战技横幅:点明解锁了什么(2 星=战技;专属大招要靠金色词条觉醒),2.2s 上浮淡出。 */
   private showSkillUnlockBanner(cell: number, heroCode: string): void {
     const root = this.root;
     if (!root) {
@@ -3430,14 +3751,14 @@ export class LobbyGuardBattleRenderer {
     g.lineWidth = 3;
     g.roundRect(-w / 2, -h / 2, w, h, 16);
     g.stroke();
-    const title = this.host.addChildLabel(banner, 'Title', `⚡ ${name} 技能解锁!`, 0, h * 0.2, 24, rgba(255, 226, 130), new Size(w - 28, 30));
+    const title = this.host.addChildLabel(banner, 'Title', `⚡ ${name} 战技解锁!`, 0, h * 0.2, 24, rgba(255, 226, 130), new Size(w - 28, 30));
     title.enableOutline = true;
     title.outlineColor = rgba(60, 30, 10, 255);
     title.outlineWidth = 2;
     title.overflow = Label.Overflow.SHRINK;
     const heroRole = this.sim?.heroes.find((entry) => entry.heroCode === heroCode)?.role ?? this.sim?.pool.find((entry) => entry.heroCode === heroCode)?.role;
     const skill = heroRole ? GUARD_HERO_SKILL[heroRole] : null;
-    const detail = this.host.addChildLabel(banner, 'Detail', skill ? `主动技能「${skill.name}」已解锁:${skill.desc}` : '2★ 专属技能已解锁', 0, -h * 0.22, 16, rgba(236, 224, 196), new Size(w - 32, 24));
+    const detail = this.host.addChildLabel(banner, 'Detail', skill ? `战技「${skill.name}」:${skill.desc}(专属大招需金色词条觉醒)` : '2★ 战技已解锁', 0, -h * 0.22, 16, rgba(236, 224, 196), new Size(w - 32, 24));
     detail.overflow = Label.Overflow.SHRINK;
     const opacity = banner.addComponent(UIOpacity);
     tween(banner).by(2.4, { position: new Vec3(0, 40, 0) }).start();
