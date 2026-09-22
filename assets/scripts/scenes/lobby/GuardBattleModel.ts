@@ -1943,6 +1943,11 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
   const condMult = Math.min(GUARD_ATTACK_MULT_CAP, cond);
 
   // ── 命中列表 ──
+  // 控制系出手先给主目标上减速(2026-09-22 用户反馈"深寒冰刺没效果":此前减速在命中算完之后才上,而减速时长与出手间隔相等,
+  // 第 5 击时几乎没有怪处于"减速中",冰刺很少触发)。同 tick 内提前上减速不改变怪物位移结果。
+  if (hero.role === 'control') {
+    target.slowUntilMs = state.timeMs + GUARD_CONTROL_SLOW_MS;
+  }
   const inRange = state.monsters
     .filter((monster) => guardCanHit(hero, monster, roleProfile.rangeCells))
     .sort((a, b) => a.x - b.x || a.monsterId - b.monsterId);
@@ -2042,9 +2047,6 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
     }
   });
 
-  if (hero.role === 'control') {
-    target.slowUntilMs = state.timeMs + GUARD_CONTROL_SLOW_MS;
-  }
   const mainAmount = resolved[0]?.amount ?? 0;
   state.events.push({
     type: 'heroAttack',

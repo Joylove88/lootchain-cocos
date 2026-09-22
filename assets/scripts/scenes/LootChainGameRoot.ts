@@ -23,6 +23,7 @@ import {
   UIOpacity,
   UITransform,
   VideoPlayer,
+  Vec3,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { syncDesignResolutionToViewport } from '../app/ScreenAdapter';
@@ -4806,28 +4807,40 @@ export class LootChainGameRoot extends Component {
     this.syncLobbyShopOverlay();
   }
 
-  private buyShopGold(tierCode: string): void {
-    void this.runLobbyShopAction(() => this.api.shop.buyGold(tierCode));
+  private buyShopGold(tierCode: string, fromWorld?: Vec3): void {
+    const tier = this.lobbyShopDialog?.catalog?.goldTiers.find((entry) => entry.code === tierCode);
+    void this.runLobbyShopAction(() => this.api.shop.buyGold(tierCode), { kind: 'gold', amount: tier?.goldAmount ?? 0, fromWorld: fromWorld ?? null });
   }
 
-  private buyShopStamina(count: number): void {
-    void this.runLobbyShopAction(() => this.api.shop.buyStamina(Math.max(1, Math.floor(count))));
+  private buyShopStamina(count: number, fromWorld?: Vec3): void {
+    const safeCount = Math.max(1, Math.floor(count));
+    const gain = (this.lobbyShopDialog?.catalog?.staminaOffer.staminaGain ?? 30) * safeCount;
+    void this.runLobbyShopAction(() => this.api.shop.buyStamina(safeCount), { kind: 'stamina', amount: gain, fromWorld: fromWorld ?? null });
   }
 
-  private rechargeShopDiamond(tierCode: string): void {
-    void this.runLobbyShopAction(() => this.api.shop.recharge(tierCode));
+  private rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void {
+    const tier = this.lobbyShopDialog?.catalog?.rechargeTiers.find((entry) => entry.code === tierCode);
+    void this.runLobbyShopAction(() => this.api.shop.recharge(tierCode), { kind: 'diamond', amount: tier?.diamondTotal ?? 0, fromWorld: fromWorld ?? null });
   }
 
-  /** 购买流程:服务端写入 → 回读资料(顶部金币/钻石/体力同步)→ 回读商店目录(余额/今日次数)→ 弹窗留在原地显示结果。 */
-  private async runLobbyShopAction(action: () => Promise<{ message: string }>): Promise<void> {
+  /**
+   * 购买流程:服务端写入 → 回读资料(顶部金币/钻石/体力同步)→ 回读商店目录(余额/今日次数)→ 弹窗留在原地显示结果
+   * → 飞字(+N)从被点的卡片飞向顶部对应货币栏(2026-09-22 用户要求)。充值未到账(待支付)不飞。
+   */
+  private async runLobbyShopAction(
+    action: () => Promise<{ message: string; mockPaid?: boolean }>,
+    fly: { kind: 'gold' | 'stamina' | 'diamond'; amount: number; fromWorld: Vec3 | null },
+  ): Promise<void> {
     const dialog = this.lobbyShopDialog;
     if (!dialog || dialog.busy) {
       return;
     }
     dialog.busy = true;
     this.syncLobbyShopOverlay();
+    let granted = false;
     try {
       const result = await action();
+      granted = result.mockPaid !== false;
       if (this.lobbyShopDialog === dialog) {
         dialog.notice = result.message;
       }
@@ -4852,7 +4865,78 @@ export class LootChainGameRoot extends Component {
         dialog.busy = false;
       }
       this.syncLobbyShopOverlay();
+      if (granted && fly.amount > 0) {
+        this.spawnLobbyCurrencyFly(fly.kind, fly.amount, fly.fromWorld);
+      }
     }
+  }
+
+  /** 顶部货币栏里对应货币的节点(大厅资源条 / 功能页右上胶囊 / 窄屏体力小片),没有时返回 null。 */
+  private findLobbyCurrencyHudNode(kind: 'gold' | 'stamina' | 'diamond'): Node | null {
+    const names = kind === 'gold'
+      ? ['LobbyResourceItem_coin', 'TopCurrency_gold']
+      : kind === 'diamond'
+        ? ['LobbyResourceItem_ruby', 'TopCurrency_diamond']
+        : ['LobbyResourceItem_stamina', 'LobbyCompactStaminaChip', 'TopCurrency_stamina'];
+    const root = this.ensureContentRoot();
+    let found: Node | null = null;
+    const walk = (node: Node): void => {
+      if (found) {
+        return;
+      }
+      if (names.indexOf(node.name) >= 0) {
+        found = node;
+        return;
+      }
+      node.children.forEach(walk);
+    };
+    walk(root);
+    return found;
+  }
+
+  /** 购买成功飞字:图标 + "+N" 在起点弹出,停半拍后飞向顶部对应货币栏,到达时货币栏脉冲一下。 */
+  private spawnLobbyCurrencyFly(kind: 'gold' | 'stamina' | 'diamond', amount: number, fromWorld: Vec3 | null): void {
+    const root = this.ensureContentRoot();
+    // 内容根是裸 Node(无 UITransform),且挂在宿主节点原点、不缩放:用宿主节点的变换做世界→本地换算,坐标一致。
+    const rootTransform = root.getComponent(UITransform) ?? this.node.getComponent(UITransform);
+    if (!rootTransform) {
+      return;
+    }
+    const layout = this.resolveLayout();
+    const target = this.findLobbyCurrencyHudNode(kind);
+    const start = fromWorld
+      ? rootTransform.convertToNodeSpaceAR(fromWorld)
+      : new Vec3((layout.stageLeft + layout.stageRight) / 2, (layout.stageTop + layout.stageBottom) / 2, 0);
+    const end = target ? rootTransform.convertToNodeSpaceAR(target.getWorldPosition()) : new Vec3(start.x, start.y + 180, 0);
+    const icon = kind === 'gold' ? 'ui/bag/ai/icon_gold/spriteFrame' : kind === 'diamond' ? 'ui/bag/ai/icon_diamond/spriteFrame' : 'ui/bag/ai/icon_stamina/spriteFrame';
+    const color = kind === 'gold' ? new Color(255, 214, 110, 255) : kind === 'diamond' ? new Color(170, 215, 255, 255) : new Color(140, 230, 255, 255);
+    const fly = this.createUiNode('LobbyShopFlyFx');
+    fly.setPosition(new Vec3(start.x, start.y, 0));
+    fly.addComponent(UITransform).setContentSize(new Size(240, 44));
+    this.addSprite('LobbyShopFlyIcon', icon, -78, 0, 36, 36, fly);
+    const text = this.addChildLabel(fly, 'LobbyShopFlyText', `+${this.formatInteger(amount)}`, 26, 0, 28, color, new Size(170, 36));
+    text.isBold = true;
+    text.enableOutline = true;
+    text.outlineColor = new Color(20, 10, 6, 255);
+    text.outlineWidth = 2;
+    fly.setScale(0.5, 0.5, 1);
+    const opacity = fly.addComponent(UIOpacity);
+    tween(fly)
+      .to(0.18, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'backOut' })
+      .to(0.1, { scale: new Vec3(1, 1, 1) })
+      .delay(0.4)
+      .to(0.62, { position: new Vec3(end.x, end.y, 0), scale: new Vec3(0.5, 0.5, 1) }, { easing: 'quadIn' })
+      .call(() => {
+        if (fly.isValid) {
+          fly.destroy();
+        }
+        if (target && target.isValid) {
+          tween(target).to(0.12, { scale: new Vec3(1.16, 1.16, 1) }).to(0.18, { scale: new Vec3(1, 1, 1) }).start();
+        }
+        gameAudio.sfx('coin', 0.7);
+      })
+      .start();
+    tween(opacity).delay(1.05).to(0.25, { opacity: 90 }).start();
   }
 
   /** 锻造页强化材料不足(2026-09-22 用户反馈"金币不够点强化没提示"):说清差什么;金币不够顺手打开金币商店。 */
