@@ -2043,22 +2043,25 @@ export class LobbyGuardBattleRenderer {
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    // 横版布局适配 popup_frame_large(1.7 宽高比):左轮盘右奖励列。
-    const wheelPanelH = Math.min(600, height * 0.62);
-    this.paintOverlayPanel(overlay, wheelPanelH * 1.7, wheelPanelH, 0);
-    this.host.addChildLabel(overlay, 'GuardWheelTitle', deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱', 0, wheelPanelH / 2 - 76, 32, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(width * 0.6, 42));
-    const wheelTitleHalf = 2 * 32;
-    const wheelDividerAvail = (wheelPanelH * 1.7) / 2 - wheelTitleHalf - 10 - 24;
+    // 面板底与词条弹层同款 refine_panel_bg(4:3,2026-09-22 用户要求各弹层统一):左轮盘右奖励列按 4:3 收窄,标题压到顶饰之下。
+    const wheelPanelH = Math.min(700, height * 0.74);
+    const wheelPanelW = Math.min(width * 0.92, wheelPanelH * (1448 / 1086));
+    this.paintOverlayPanel(overlay, wheelPanelW, wheelPanelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    const wheelTitleText = deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
+    const wheelTitleY = wheelPanelH / 2 - 112;
+    this.host.addChildLabel(overlay, 'GuardWheelTitle', wheelTitleText, 0, wheelTitleY, 32, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(width * 0.6, 42));
+    const wheelTitleHalf = Array.from(wheelTitleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * 32, 0) / 2;
+    const wheelDividerAvail = wheelPanelW / 2 - wheelTitleHalf - 22 - 30;
     if (wheelDividerAvail >= 40) {
       const wheelDividerW = Math.min(150, wheelDividerAvail);
-      const wheelDividerX = wheelTitleHalf + 10 + wheelDividerW / 2;
-      this.mountSprite(overlay, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -wheelDividerX, wheelPanelH / 2 - 76, wheelDividerW, wheelDividerW * (76 / 390));
-      this.mountSprite(overlay, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', wheelDividerX, wheelPanelH / 2 - 76, wheelDividerW, wheelDividerW * (73 / 392));
+      const wheelDividerX = wheelTitleHalf + 22 + wheelDividerW / 2;
+      this.mountSprite(overlay, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -wheelDividerX, wheelTitleY, wheelDividerW, wheelDividerW * (76 / 390));
+      this.mountSprite(overlay, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', wheelDividerX, wheelTitleY, wheelDividerW, wheelDividerW * (73 / 392));
     }
     // 轮盘(2026-08-25 用户验收重做):暖色扇区+奖励字样+双层金圈;中心矿脉宝箱素材,停格开箱爆金光。
-    const wheelX = -wheelPanelH * 0.4;
-    const wheelY = -height * 0.025;
-    const radius = Math.min(168, wheelPanelH * 0.34);
+    const wheelX = -wheelPanelW * 0.26;
+    const wheelY = -height * 0.02;
+    const radius = Math.min(150, wheelPanelH * 0.24);
     const wheel = this.host.addChildPlainNode(overlay, 'GuardWheel', wheelX, wheelY, radius * 2, radius * 2);
     const wg = wheel.addComponent(Graphics);
     for (let i = 0; i < 8; i += 1) {
@@ -2135,10 +2138,14 @@ export class LobbyGuardBattleRenderer {
       tween(burst).to(0.5, { scale: new Vec3(3.4, 3.4, 1) }, { easing: 'quadOut' }).start();
       tween(burstOpacity).to(0.5, { opacity: 0 }).call(() => { if (burst.isValid) { burst.destroy(); } }).start();
     }
-    const panelH = Math.min(600, height * 0.62);
-    const colX = panelH * 0.5;
+    // 与 openChestWithWheel 同一套面板几何(4:3 refine_panel_bg)。
+    const panelH = Math.min(700, height * 0.74);
+    const panelW = Math.min(this.layoutWidth * 0.92, panelH * (1448 / 1086));
+    const colX = panelW * 0.24;
+    const colW = panelW * 0.42;
     const tierText = deluxe ? '★ 豪华 5 连大奖!★' : tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励';
-    const tierLabel = this.host.addChildLabel(overlay, 'GuardWheelTier', tierText, colX, panelH / 2 - 128, tier >= 5 ? 32 : 24, tier >= 5 ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(panelH * 0.8, 44));
+    const tierLabel = this.host.addChildLabel(overlay, 'GuardWheelTier', tierText, colX, panelH / 2 - 168, tier >= 5 ? 32 : 24, tier >= 5 ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(colW, 44));
+    tierLabel.overflow = Label.Overflow.SHRINK;
     tierLabel.enableOutline = true;
     tierLabel.outlineColor = rgba(60, 30, 10, 255);
     tierLabel.outlineWidth = 3;
@@ -2152,13 +2159,13 @@ export class LobbyGuardBattleRenderer {
       this.spawnFloater(center.x, center.y + this.unitSize() * 0.75, '免费召唤!已上阵', rgba(150, 240, 160));
     }
     rewards.forEach((reward, index) => {
-      const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, colX, panelH / 2 - 176 - index * 34, 19, rgba(236, 224, 196), new Size(panelH * 0.82, 26));
+      const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, colX, panelH / 2 - 216 - index * 34, 19, rgba(236, 224, 196), new Size(colW, 26));
       label.overflow = Label.Overflow.SHRINK;
       const opacity = label.node.addComponent(UIOpacity);
       opacity.opacity = 0;
       tween(opacity).delay(0.18 * index).to(0.2, { opacity: 255 }).start();
     });
-    const close = this.mountPrimaryButton(overlay, 'GuardWheelClose', colX, -panelH / 2 + 100, 236);
+    const close = this.mountPrimaryButton(overlay, 'GuardWheelClose', colX, -panelH / 2 + 97, 236);
     this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, 22, rgba(255, 238, 190), new Size(200, 28));
     close.on(Node.EventType.TOUCH_END, () => {
       if (overlay.isValid) {
@@ -2234,7 +2241,8 @@ export class LobbyGuardBattleRenderer {
     const cardsTop = titleY - 56;
     const cardsBottom = buttonY + 44;
     // 卡宽压到可用高的 0.8、封顶 214(2026-09-22 用户反馈:内层卡框比外层面板框还重)。
-    const cardW = Math.min(206, ((cardsTop - cardsBottom) * 0.9) / (693 / 413), (panelW - 160) / 3 - 24);
+    // 2026-09-22 用户:缩得太多,再放大 25%(206 → 258)。
+    const cardW = Math.min(258, ((cardsTop - cardsBottom) * 0.9) / (693 / 413), (panelW - 160) / 3 - 24);
     const gap = Math.min(44, width * 0.028);
     const count = sim.pendingChoice.length;
     const totalW = cardW * count + gap * (count - 1);
@@ -4552,28 +4560,32 @@ export class LobbyGuardBattleRenderer {
     g.fill();
     const sim = this.sim;
     const rush = sim?.mode === 'rush';
-    const panelH = height * 0.56;
-    this.paintOverlayPanel(overlay, panelH * 1.65, panelH, -height * 0.02);
+    // 面板底与词条弹层同款 refine_panel_bg(4:3,2026-09-22 用户要求各弹层统一);标题压到顶饰之下,返回钮贴底沿上方。
+    const panelH = height * 0.54;
+    const panelW = Math.min(width * 0.92, panelH * (1448 / 1086));
+    const panelY = -height * 0.02;
+    this.paintOverlayPanel(overlay, panelW, panelH, panelY, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    const endTitleY = panelY + panelH / 2 - 112;
     const title = rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
     const detail = sim
       ? rush
         ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
         : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
       : '';
-    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, -height * 0.02 + panelH / 2 - 76, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 46));
+    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, endTitleY, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(panelW * 0.8, 46));
     let endTitleTextW = 0;
     for (const ch of title) {
       endTitleTextW += (ch.codePointAt(0) ?? 0) > 255 ? 34 : 34 * 0.55;
     }
-    const endDividerAvail = (panelH * 1.65) / 2 - endTitleTextW / 2 - 10 - 24;
+    const endDividerAvail = panelW / 2 - endTitleTextW / 2 - 22 - 30;
     if (endDividerAvail >= 40) {
       const endDividerW = Math.min(160, endDividerAvail);
-      const endDividerX = endTitleTextW / 2 + 10 + endDividerW / 2;
-      const endTitleY = -height * 0.02 + panelH / 2 - 76;
+      const endDividerX = endTitleTextW / 2 + 22 + endDividerW / 2;
       this.mountSprite(overlay, 'GuardEndTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -endDividerX, endTitleY, endDividerW, endDividerW * (76 / 390));
       this.mountSprite(overlay, 'GuardEndTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', endDividerX, endTitleY, endDividerW, endDividerW * (73 / 392));
     }
-    this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
+    const endDetail = this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, endTitleY - 50, 20, rgba(226, 210, 180), new Size(panelW * 0.86, 28));
+    endDetail.overflow = Label.Overflow.SHRINK;
     // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER)。
     if (rush && sim) {
       const layers = guardTrialLayers(sim);
@@ -4593,10 +4605,12 @@ export class LobbyGuardBattleRenderer {
         const nearMiss = next
           ? `本场 ${current.tierName}(${current.tierCode})档 · 再多 ${Math.ceil((next.minScore - score) / 100)} 层升 ${next.tierName}(${next.tierCode})档!`
           : `本场 ${current.tierName}(${current.tierCode})档 · 已是最高档!`;
-        this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(width * 0.72, 22));
+        const nearMissLabel = this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, endTitleY - 86, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(panelW * 0.86, 22));
+        nearMissLabel.overflow = Label.Overflow.SHRINK;
       }
     }
-    this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04, 18, rgba(196, 182, 152), new Size(width * 0.7, 24));
+    const settle = this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, endTitleY - 122, 18, rgba(196, 182, 152), new Size(panelW * 0.86, 24));
+    settle.overflow = Label.Overflow.SHRINK;
   }
 
   /** 结算回执到达:更新覆盖层为奖励与返回按钮。 */
@@ -4625,11 +4639,16 @@ export class LobbyGuardBattleRenderer {
     if (settleLabel) {
       settleLabel.string = settlement.message || (settlement.rewardGranted ? '奖励已发放。' : '本场未产生奖励。');
     }
+    // 与 showEndOverlay 同一套面板几何(4:3 refine_panel_bg)。
+    const endPanelH = this.layoutHeight * 0.54;
+    const endPanelW = Math.min(this.layoutWidth * 0.92, endPanelH * (1448 / 1086));
+    const endPanelY = -this.layoutHeight * 0.02;
     const rewards = (settlement.rewardItems ?? []).slice(0, 6).map((item) => `${item.resourceName ?? item.resourceCode} ×${item.amount}`).join('  ');
     if (rewards) {
-      this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05, 19, rgba(255, 226, 150), new Size(this.layoutWidth * 0.7, 26));
+      const rewardsLabel = this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, endPanelY - endPanelH * 0.06, 19, rgba(255, 226, 150), new Size(endPanelW * 0.86, 26));
+      rewardsLabel.overflow = Label.Overflow.SHRINK;
     }
-    const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 236);
+    const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, endPanelY - endPanelH / 2 + 97, 236);
     this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
     back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
   }
