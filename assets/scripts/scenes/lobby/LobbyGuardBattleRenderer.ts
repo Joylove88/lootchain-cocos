@@ -18,6 +18,7 @@ import {
   UIOpacity,
   UITransform,
   Vec3,
+  VerticalTextAlignment,
   tween,
 } from 'cc';
 import { gameAudio } from '../../audio/GameAudio';
@@ -213,12 +214,39 @@ interface GuardProjectile {
   /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
   impactShake?: number;
 }
-/** 词条卡稀有度表现(docs/32 §6):白=通用、蓝=普攻强化、紫=英雄专属流派、金=专属大招觉醒(异形竖卡,高一头)。 */
-const GUARD_PERK_CARD_STYLE: Record<GuardPerkRarity, { tag: string; frame: string | null; fill: [number, number, number]; edge: [number, number, number]; text: [number, number, number] }> = {
-  white: { tag: '通用', frame: null, fill: [34, 34, 38], edge: [170, 172, 180], text: [226, 228, 234] },
-  blue: { tag: '普攻强化', frame: 'ui/gacha/ai/blue/spriteFrame', fill: [16, 30, 52], edge: [110, 180, 255], text: [170, 215, 255] },
-  purple: { tag: '专属流派', frame: 'ui/gacha/ai/purple/spriteFrame', fill: [36, 18, 54], edge: [200, 130, 255], text: [226, 180, 255] },
-  gold: { tag: '稀有 · 专属大招', frame: 'ui/battle/ai/battle_card_frame/spriteFrame', fill: [20, 10, 8], edge: [255, 214, 110], text: [255, 226, 130] },
+/**
+ * 词条卡框(2026-09-22 用户提供 ui/battle/ai/perk_card_{blue,purple,red},413 宽哥特竖框,只能等比):
+ * 框内自带顶部标签带、圆形头像环、下方文字区,布局按各框实测像素折成比例(从顶边起算)。
+ * 用户定的三色:蓝=普攻强化(白卡通用也用蓝框,靠标签与圆环里的图标区分)、紫=英雄专属流派、红=稀有专属大招。
+ */
+interface GuardPerkCardStyle {
+  tag: string;
+  frame: string;
+  /** 框高/框宽。 */
+  aspect: number;
+  /** 顶部标签带中心 y、带高;圆环中心 y、可用直径;文字区上下沿——均为占框高/框宽的比例,y 从顶边起算。 */
+  bandCy: number;
+  bandH: number;
+  ringCy: number;
+  ringD: number;
+  textTop: number;
+  textBottom: number;
+  text: [number, number, number];
+}
+const GUARD_PERK_CARD_STYLE: Record<GuardPerkRarity, GuardPerkCardStyle> = {
+  white: { tag: '通用', frame: 'ui/battle/ai/perk_card_blue/spriteFrame', aspect: 685 / 413, bandCy: 0.191, bandH: 0.089, ringCy: 0.365, ringD: 0.34, textTop: 0.5, textBottom: 0.806, text: [206, 222, 240] },
+  blue: { tag: '普攻强化', frame: 'ui/battle/ai/perk_card_blue/spriteFrame', aspect: 685 / 413, bandCy: 0.191, bandH: 0.089, ringCy: 0.365, ringD: 0.34, textTop: 0.5, textBottom: 0.806, text: [170, 215, 255] },
+  purple: { tag: '专属流派', frame: 'ui/battle/ai/perk_card_purple/spriteFrame', aspect: 693 / 413, bandCy: 0.183, bandH: 0.094, ringCy: 0.361, ringD: 0.34, textTop: 0.495, textBottom: 0.808, text: [226, 180, 255] },
+  gold: { tag: '稀有 · 专属大招', frame: 'ui/battle/ai/perk_card_red/spriteFrame', aspect: 692 / 413, bandCy: 0.197, bandH: 0.087, ringCy: 0.368, ringD: 0.34, textTop: 0.5, textBottom: 0.809, text: [255, 214, 130] },
+};
+/** 通用(白卡)词条在圆环里放的图标(等比;素材原有像素比写死)。 */
+const GUARD_WHITE_PERK_ICON: Record<string, { path: string; aspect: number }> = {
+  gen_team_atk: { path: 'ui/battle/ai/buff_atk/spriteFrame', aspect: 133 / 128 },
+  gen_team_aspd: { path: 'ui/bag/ai/icon_stamina/spriteFrame', aspect: 1 },
+  gen_gold_gain: { path: 'ui/common/ai/ic_gold_large/spriteFrame', aspect: 171 / 184 },
+  gen_summon_discount: { path: 'ui/common/ai/ic_quest_summon/spriteFrame', aspect: 274 / 249 },
+  gen_thorns: { path: 'ui/battle/ai/buff_shield/spriteFrame', aspect: 69 / 70 },
+  gen_crystal_repair: { path: 'ui/battle/ai/ghud_crystal_tower/spriteFrame', aspect: 652 / 299 },
 };
 /** 同屏 Spine 普攻弹体上限(每个都是一次骨骼更新 + 一次合批打断),超额回退静态贴图弹道。 */
 const GUARD_SPINE_PROJECTILE_CAP = 18;
@@ -2179,33 +2207,36 @@ export class LobbyGuardBattleRenderer {
     this.paintOverlayPanel(overlay, Math.min(width * 0.92, panelH * 1.66), panelH, 0);
     const fromEnhance = sim.choiceSource === 'enhance';
     const hasGold = sim.pendingChoice.some((option) => option.rarity === 'gold');
-    const titleText = hasGold ? '✦ 稀有词条出现!专属大招觉醒 ✦' : fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择一条词条` : `等级提升!Lv${sim.level} · 三选一`;
-    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', titleText, 0, panelH / 2 - 84, 30, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.7, 40));
+    // 标题 + 副标题(2026-09-22 用户参考图):金卡在场时"稀有词条出现!专属大招觉醒",两侧饰线。
+    const titleCore = hasGold ? '稀有词条出现!专属大招觉醒' : fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择词条` : `等级提升!Lv${sim.level} · 三选一`;
+    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', `─✦─  ${titleCore}  ─✦─`, 0, panelH / 2 - 76, 30, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.7, 40));
     overlayTitle.overflow = Label.Overflow.SHRINK;
+    overlayTitle.enableOutline = true;
+    overlayTitle.outlineColor = hasGold ? rgba(90, 30, 10, 255) : rgba(40, 24, 10, 255);
+    overlayTitle.outlineWidth = 3;
+    const subtitle = this.host.addChildLabel(overlay, 'GuardChoiceSubtitle', '选择一个词条,获得强大的战斗增益', 0, panelH / 2 - 112, 17, rgba(212, 190, 150, 235), new Size(width * 0.6, 22));
+    subtitle.overflow = Label.Overflow.SHRINK;
     if (hasGold) {
-      overlayTitle.enableOutline = true;
-      overlayTitle.outlineColor = rgba(90, 30, 10, 255);
-      overlayTitle.outlineWidth = 3;
       gameAudio.sfx('gacha_rare');
     }
-    // 普通卡高 0.4 屏;金卡异形竖框(320×626 等比)高出一头,一眼区分(docs/32 §6)。
-    const cardH = Math.min(430, height * 0.4);
-    const cardW = cardH * 0.7;
-    const goldH = cardH * 1.3;
-    const goldW = goldH * (320 / 626);
-    const gap = Math.min(40, width * 0.025);
-    const widths = sim.pendingChoice.map((option) => (option.rarity === 'gold' ? goldW : cardW));
-    const totalW = widths.reduce((sum, value) => sum + value, 0) + gap * (widths.length - 1);
-    let cursor = -totalW / 2;
+    // 三张同宽竖卡(参考图三卡等大);每张按自己框的像素比定高,不拉伸。
+    const buttonY = -panelH / 2 + 84;
+    const cardsTop = panelH / 2 - 132;
+    const cardsBottom = buttonY + 44;
+    const cardW = Math.min(300, ((cardsTop - cardsBottom) * 0.94) / (693 / 413), width * 0.17);
+    const gap = Math.min(34, width * 0.02);
+    const count = sim.pendingChoice.length;
+    const totalW = cardW * count + gap * (count - 1);
+    const centerY = (cardsTop + cardsBottom) / 2;
     sim.pendingChoice.forEach((option, index) => {
       const isGold = option.rarity === 'gold';
-      const w = widths[index];
-      const h = isGold ? goldH : cardH;
-      const x = cursor + w / 2;
-      cursor += w + gap;
-      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, -height * 0.005, w, h);
-      this.buildPerkCard(card, option, w, h);
-      // 入场:逐张弹入;金卡最后落下并带呼吸光。
+      const style = GUARD_PERK_CARD_STYLE[option.rarity] ?? GUARD_PERK_CARD_STYLE.white;
+      const w = cardW;
+      const h = cardW * style.aspect;
+      const x = -totalW / 2 + cardW / 2 + index * (cardW + gap);
+      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, centerY, w, h);
+      this.buildPerkCard(card, option, style, w, h);
+      // 入场:逐张弹入;红卡(专属大招)最后落下。
       card.setScale(0.6, 0.6, 1);
       tween(card).delay(0.06 * index + (isGold ? 0.12 : 0)).to(0.2, { scale: new Vec3(1.05, 1.05, 1) }, { easing: 'backOut' }).to(0.08, { scale: new Vec3(1, 1, 1) }).start();
       this.host.applyImageButtonFeedback(card);
@@ -2213,7 +2244,7 @@ export class LobbyGuardBattleRenderer {
         guardChooseOption(sim, index);
       }, this);
       if (!option.locked && sim.banishLeft > 0) {
-        const banish = this.host.addChildLabel(overlay, `GuardChoiceBanish_${index}`, '✕ 放逐', x, -height * 0.005 - h / 2 - 18, 17, rgba(255, 140, 120, 230), new Size(w, 22));
+        const banish = this.host.addChildLabel(overlay, `GuardChoiceBanish_${index}`, '✕ 放逐', x, centerY - h / 2 - 16, 16, rgba(255, 140, 120, 230), new Size(w, 22));
         banish.node.on(Node.EventType.TOUCH_END, () => {
           if (guardBanishChoice(sim, index)) {
             this.choiceOverlayLevel = 0;
@@ -2221,20 +2252,27 @@ export class LobbyGuardBattleRenderer {
         }, this);
       }
     });
-    // 跳过 / 刷新
-    const makeSmall = (name: string, text: string, x: number, onTap: () => void): void => {
-      const button = this.mountPrimaryButton(overlay, name, x, -panelH / 2 + 86, 232);
-      const smallLabel = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 18, rgba(255, 238, 190), new Size(196, 24));
-      smallLabel.overflow = Label.Overflow.SHRINK;
+    // 跳过 / 刷新:用户提供的红底金边按钮(perk_btn_red 561×155,等比)
+    const makeButton = (name: string, text: string, x: number, onTap: () => void): void => {
+      const bw = Math.min(268, width * 0.17);
+      const bh = bw * (155 / 561);
+      const button = this.host.addChildPlainNode(overlay, name, x, buttonY, bw, bh);
+      this.mountSprite(button, `${name}Art`, 'ui/battle/ai/perk_btn_red/spriteFrame', 0, 0, bw, bh);
+      this.host.applyImageButtonFeedback(button);
+      const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 1, 22, rgba(255, 238, 190), new Size(bw * 0.7, 28));
+      label.overflow = Label.Overflow.SHRINK;
+      label.enableOutline = true;
+      label.outlineColor = rgba(60, 10, 6, 255);
+      label.outlineWidth = 2;
       button.on(Node.EventType.TOUCH_END, onTap, this);
     };
-    // 按钮间距加大(2026-08-28 用户验收);强化付费弹出的词条不可跳过(只剩刷新,居中)
+    // 强化付费弹出的词条不可跳过(只剩刷新,居中);升级三选一才有跳过。
     if (!fromEnhance) {
-      makeSmall('GuardChoiceSkip', '跳过(+50 金币)', -160, () => {
+      makeButton('GuardChoiceSkip', '跳过 (+50 金币)', -160, () => {
         guardSkipChoice(sim);
       });
     }
-    makeSmall('GuardChoiceReroll', `刷新(剩 ${sim.rerollLeft})`, fromEnhance ? 0 : 160, () => {
+    makeButton('GuardChoiceReroll', `刷新 (剩 ${sim.rerollLeft})`, fromEnhance ? 0 : 160, () => {
       if (guardRerollChoice(sim)) {
         this.choiceOverlayLevel = 0;
       } else {
@@ -2243,92 +2281,75 @@ export class LobbyGuardBattleRenderer {
     });
   }
 
-  /** 单张词条卡:稀有度底色 + 素材框(等比)+ 类别标签 + 英雄头像/名 + 词条名 + 效果;金卡用哥特异形竖框 + 外发光 + 专属大招名。 */
-  private buildPerkCard(card: Node, option: GuardChoiceOption, w: number, h: number): void {
+  /**
+   * 单张词条卡(2026-09-22 用户参考图):素材框等比铺满 → 标签写进框顶的带子 → 圆环里放英雄圆形头像(通用词条放图标)
+   * → 环下英雄名 → 词条名(红卡=专属大招名 + "专属大招觉醒")→ 效果描述。所有位置按框的实测比例算,不画任何底色。
+   */
+  private buildPerkCard(card: Node, option: GuardChoiceOption, style: GuardPerkCardStyle, w: number, h: number): void {
     const sim = this.sim;
-    const style = GUARD_PERK_CARD_STYLE[option.rarity] ?? GUARD_PERK_CARD_STYLE.white;
     const isGold = option.rarity === 'gold';
-    const edge = rgba(style.edge[0], style.edge[1], style.edge[2], 250);
     const textTint = rgba(style.text[0], style.text[1], style.text[2], 255);
-    if (isGold) {
-      // 外发光(battle_card_active 320×514,等比)在框后呼吸
-      const glowH = h * 0.96;
-      const glowW = glowH * (320 / 514);
-      const glow = this.host.addChildPlainNode(card, 'Glow', 0, 0, glowW, glowH);
-      this.mountSprite(glow, 'Img', 'ui/battle/ai/battle_card_active/spriteFrame', 0, 0, glowW, glowH);
-      glow.setScale(1.12, 1.06, 1);
-      const glowOpacity = glow.addComponent(UIOpacity);
-      glowOpacity.opacity = 150;
-      tween(glowOpacity).repeatForever(tween<UIOpacity>().to(0.7, { opacity: 255 }).to(0.7, { opacity: 130 })).start();
-      this.mountSprite(card, 'Frame', style.frame ?? '', 0, 0, w, h);
-    } else {
-      const g = card.addComponent(Graphics);
-      g.fillColor = rgba(style.fill[0], style.fill[1], style.fill[2], 250);
-      g.roundRect(-w / 2 + 5, -h / 2 + 5, w - 10, h - 10, 10);
-      g.fill();
-      g.fillColor = rgba(style.edge[0], style.edge[1], style.edge[2], 34);
-      g.roundRect(-w / 2 + 8, h * 0.08, w - 16, h * 0.42 - 8, 8);
-      g.fill();
-      if (style.frame) {
-        this.mountSprite(card, 'Frame', style.frame, 0, 0, w, h);
-      } else {
-        g.strokeColor = edge;
-        g.lineWidth = 2.4;
-        g.roundRect(-w / 2 + 5, -h / 2 + 5, w - 10, h - 10, 10);
-        g.stroke();
-      }
-    }
-    // 金卡框内可用区更窄(框体雕花占两侧各 ~20%)
-    const innerW = isGold ? w * 0.56 : w - 40;
-    const top = isGold ? h * 0.3 : h / 2 - 34;
+    const top = h / 2;
+    const innerW = w * 0.72;
+    this.mountSprite(card, 'Frame', style.frame, 0, 0, w, h);
+    // 标签带
     const heroMatch = /^【(.+?)】(.*)$/.exec(option.title);
     const heroName = heroMatch ? heroMatch[1] : '';
     const perkTitle = heroMatch ? heroMatch[2] : option.title;
     const tagText = option.rarity === 'purple' && option.school ? `专属流派 · ${option.school}` : style.tag;
-    const tag = this.host.addChildLabel(card, 'Tag', tagText, 0, top, 17, textTint, new Size(innerW, 22));
+    const tag = this.host.addChildLabel(card, 'Tag', tagText, 0, top - h * style.bandCy, Math.round(w * 0.062), textTint, new Size(w * 0.46, h * style.bandH * 0.8));
     tag.overflow = Label.Overflow.SHRINK;
-    let y = top - 26;
+    // 圆环:英雄圆形头像 / 通用图标
+    const ringY = top - h * style.ringCy;
+    const ringD = w * style.ringD;
     if (option.heroCode && sim) {
       const pool = sim.pool.find((entry) => entry.heroCode.toUpperCase() === option.heroCode?.toUpperCase());
-      const avatar = Math.min(isGold ? 92 : 84, innerW * 0.62);
-      y -= avatar / 2;
-      const frame = this.host.addChildPlainNode(card, 'Avatar', 0, y, avatar, avatar);
-      const fg = frame.addComponent(Graphics);
-      fg.fillColor = rgba(12, 10, 10, 230);
-      fg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
-      fg.fill();
-      this.mountStatsAvatar(frame, { name: pool?.displayName ?? option.heroCode, rarity: (pool?.rarity ?? 'R').toUpperCase(), ally: this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null }, avatar - 6);
-      const ring = this.host.addChildPlainNode(frame, 'Ring', 0, 0, avatar, avatar);
-      const rg = ring.addComponent(Graphics);
-      rg.strokeColor = edge;
-      rg.lineWidth = 2;
-      rg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
-      rg.stroke();
-      y -= avatar / 2 + 16;
-      const nameLabel = this.host.addChildLabel(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, y, 18, option.offField ? rgba(170, 160, 150) : rgba(236, 224, 196), new Size(innerW, 24));
-      nameLabel.overflow = Label.Overflow.SHRINK;
-      y -= 32;
+      const avatar = this.host.addChildPlainNode(card, 'Avatar', 0, ringY, ringD, ringD);
+      const mask = avatar.addComponent(Mask);
+      mask.type = Mask.Type.GRAPHICS_ELLIPSE;
+      const bg = this.host.addChildPlainNode(avatar, 'Bg', 0, 0, ringD, ringD);
+      const bgG = bg.addComponent(Graphics);
+      bgG.fillColor = rgba(10, 8, 12, 255);
+      bgG.circle(0, 0, ringD / 2);
+      bgG.fill();
+      this.mountStatsAvatar(avatar, { name: pool?.displayName ?? option.heroCode, rarity: (pool?.rarity ?? 'R').toUpperCase(), ally: this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null }, ringD);
     } else {
-      y -= 44;
+      const icon = GUARD_WHITE_PERK_ICON[option.perkId];
+      if (icon) {
+        const box = ringD * 0.78;
+        const iw = icon.aspect >= 1 ? box / icon.aspect : box;
+        const ih = icon.aspect >= 1 ? box : box * icon.aspect;
+        this.mountSprite(card, 'Icon', icon.path, 0, ringY, iw, ih);
+      }
+    }
+    // 文字区:英雄名 → 词条名 →(红卡副题)→ 描述
+    let y = top - h * style.textTop - 2;
+    const textBottom = top - h * style.textBottom;
+    if (heroName) {
+      const nameLabel = this.host.addChildLabel(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, y - 9, Math.round(w * 0.066), option.offField ? rgba(170, 160, 150) : rgba(236, 224, 196), new Size(innerW, 22));
+      nameLabel.overflow = Label.Overflow.SHRINK;
+      y -= 30;
     }
     const mainTitle = isGold ? `「${this.resolveGuardSkillDisplayName(option.heroCode, '专属大招')}」` : perkTitle;
-    const title = this.host.addChildLabel(card, 'Title', mainTitle, 0, y, isGold ? 25 : 25, isGold ? rgba(255, 226, 130) : rgba(255, 244, 214), new Size(innerW, 32));
+    const titleSize = Math.round(w * 0.088);
+    const title = this.host.addChildLabel(card, 'Title', mainTitle, 0, y - titleSize / 2, titleSize, isGold ? rgba(255, 226, 130) : rgba(255, 244, 214), new Size(innerW, titleSize + 8));
     title.overflow = Label.Overflow.SHRINK;
     title.enableOutline = true;
     title.outlineColor = rgba(14, 8, 4, 255);
     title.outlineWidth = 2;
-    y -= 30;
+    y -= titleSize + 10;
     if (isGold) {
-      const sub = this.host.addChildLabel(card, 'Sub', perkTitle, 0, y, 17, rgba(255, 200, 150), new Size(innerW, 22));
+      const sub = this.host.addChildLabel(card, 'Sub', perkTitle, 0, y - 8, Math.round(w * 0.06), rgba(255, 200, 150), new Size(innerW, 20));
       sub.overflow = Label.Overflow.SHRINK;
       y -= 24;
     }
-    const bottom = isGold ? -h * 0.3 : -h / 2 + 26;
-    const detailH = Math.max(36, y - bottom - 4);
-    const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2 - 2, 19, rgba(222, 212, 190, 245), new Size(innerW, detailH));
+    const detailSize = Math.round(w * 0.066);
+    const detailH = Math.max(40, y - textBottom);
+    const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2, detailSize, rgba(222, 212, 190, 245), new Size(innerW, detailH));
     detail.overflow = Label.Overflow.SHRINK;
     detail.enableWrapText = true;
-    detail.lineHeight = 24;
+    detail.lineHeight = Math.round(detailSize * 1.32);
+    detail.verticalAlign = VerticalTextAlignment.TOP;
     if (option.offField) {
       const shade = card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity);
       shade.opacity = 190;
