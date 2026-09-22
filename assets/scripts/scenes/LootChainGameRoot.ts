@@ -4776,13 +4776,20 @@ export class LootChainGameRoot extends Component {
     this.syncLobbyShopOverlay();
   }
 
-  /** 覆盖层挂载:先拆旧的再按状态重挂;不在大厅/功能页时不挂。 */
+  /** 覆盖层挂载:先拆旧的再按状态重挂;不在大厅/功能页时不挂。挂完把飞行中的货币飞字重新提到最上层(重挂/HUD 刷新会把新节点排到末尾盖住它)。 */
   private syncLobbyShopOverlay(): void {
     this.removeNodeFromContent('LobbyShopOverlay');
-    if (!this.lobbyShopDialog || !this.isLobbyViewActive()) {
-      return;
+    if (this.lobbyShopDialog && this.isLobbyViewActive()) {
+      this.lobbyShopDialogRenderer.render(this.resolveLayout());
     }
-    this.lobbyShopDialogRenderer.render(this.resolveLayout());
+    this.raiseLobbyCurrencyFlies();
+  }
+
+  private raiseLobbyCurrencyFlies(): void {
+    const root = this.ensureContentRoot();
+    for (const child of root.children.filter((node) => node.name === 'LobbyShopFlyFx' && node.isValid)) {
+      child.setSiblingIndex(root.children.length - 1);
+    }
   }
 
   private async loadLobbyShopCatalog(): Promise<void> {
