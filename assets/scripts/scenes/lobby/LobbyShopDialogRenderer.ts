@@ -64,7 +64,10 @@ interface SpriteSpec {
   aspect: number;
 }
 
-const PANEL_FRAME: SpriteSpec = { path: 'ui/common/ai/popup_frame_large/spriteFrame', aspect: 543 / 926 };
+/** 面板底:与守卫战各弹层同款素净框 refine_panel_bg(1448×1086,细金线 + 小顶饰;2026-09-22 用户反馈 popup_frame_large 坠饰太大)。 */
+const PANEL_FRAME: SpriteSpec = { path: 'ui/hero/ai/refine_panel_bg/spriteFrame', aspect: 1086 / 1448 };
+const TITLE_DIVIDER_L: SpriteSpec = { path: 'ui/common/ai/title_divider_left/spriteFrame', aspect: 76 / 390 };
+const TITLE_DIVIDER_R: SpriteSpec = { path: 'ui/common/ai/title_divider_right/spriteFrame', aspect: 73 / 392 };
 const CLOSE_BUTTON: SpriteSpec = { path: 'ui/common/ai/button_close/spriteFrame', aspect: 161 / 155 };
 const BUY_BUTTON: SpriteSpec = { path: 'ui/common/ai/bag_button_crimson/spriteFrame', aspect: 128 / 512 };
 /** 档位卡框:绿 → 蓝 → 紫 → 橙(现成抽卡框,只能等比)。 */
@@ -108,23 +111,36 @@ export class LobbyShopDialogRenderer {
     overlay.addComponent(Button);
     overlay.on(Button.EventType.CLICK, () => this.host.closeLobbyShopDialog(), this);
 
-    const panelW = Math.min(layout.stageWidth - 32 * scale, 980 * scale);
-    const panelH = panelW * PANEL_FRAME.aspect;
+    // 4:3 素材按高定尺寸(占舞台高 ≤ 92%),宽度放不下时再按宽反推,始终等比。
+    let panelH = Math.min(layout.stageHeight * 0.92, 790 * scale);
+    let panelW = panelH / PANEL_FRAME.aspect;
+    if (panelW > layout.stageWidth - 32 * scale) {
+      panelW = layout.stageWidth - 32 * scale;
+      panelH = panelW * PANEL_FRAME.aspect;
+    }
     const panel = this.host.addChildPlainNode(overlay, 'LobbyShopPanel', 0, 0, panelW, panelH);
     // 面板自己吞掉点击:点面板不关闭,点外面暗幕才关闭。
     panel.addComponent(BlockInputEvents);
     this.host.addSprite('LobbyShopPanelFrame', PANEL_FRAME.path, 0, 0, panelW, panelH, panel);
 
     const closeSize = 44 * scale;
-    const close = this.host.addChildPlainNode(panel, 'LobbyShopClose', panelW / 2 - 50 * scale, panelH / 2 - 46 * scale, closeSize, closeSize * CLOSE_BUTTON.aspect);
+    const close = this.host.addChildPlainNode(panel, 'LobbyShopClose', panelW / 2 - 64 * scale, panelH / 2 - 62 * scale, closeSize, closeSize * CLOSE_BUTTON.aspect);
     this.host.addSprite('LobbyShopCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => this.host.closeLobbyShopDialog(), this);
     this.host.applyImageButtonFeedback(close, 1.08, 0.94);
 
     const catalog = state.catalog;
-    const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, panelH / 2 - 58 * scale, 27 * scale, rgba(255, 226, 150), new Size(panelW * 0.6, 34 * scale));
+    // 标题压到顶饰之下,两侧任务页同款 title_divider 饰件(与守卫战弹层一致)。
+    const titleY = panelH / 2 - 112 * scale;
+    const titleSize = 27 * scale;
+    const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, titleY, titleSize, rgba(255, 226, 150), new Size(panelW * 0.6, 34 * scale));
     this.outline(title, scale, rgba(60, 30, 10, 255));
+    const titleHalf = (TITLE[state.kind].length * titleSize) / 2;
+    const dividerW = 150 * scale;
+    const dividerX = titleHalf + 22 * scale + dividerW / 2;
+    this.host.addSprite('LobbyShopTitleDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
+    this.host.addSprite('LobbyShopTitleDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
     const subtitleText = state.kind === 'gold'
       ? '用钻石换取金币,档位越高赠送越多'
       : state.kind === 'stamina'
@@ -132,10 +148,10 @@ export class LobbyShopDialogRenderer {
         : catalog?.mockPay
           ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
           : '支付渠道接入中,档位仅供预览';
-    const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, panelH / 2 - 88 * scale, 15 * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.8, 20 * scale));
+    const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - 32 * scale, 15 * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.8, 20 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
     if (state.notice) {
-      const notice = this.host.addChildLabel(panel, 'LobbyShopNotice', state.notice, 0, panelH / 2 - 110 * scale, 14 * scale, state.notice.includes('失败') || state.notice.includes('不足') ? rgba(255, 150, 130) : rgba(160, 240, 170), new Size(panelW * 0.84, 18 * scale));
+      const notice = this.host.addChildLabel(panel, 'LobbyShopNotice', state.notice, 0, titleY - 54 * scale, 14 * scale, state.notice.includes('失败') || state.notice.includes('不足') ? rgba(255, 150, 130) : rgba(160, 240, 170), new Size(panelW * 0.84, 18 * scale));
       notice.overflow = Label.Overflow.SHRINK;
     }
 
@@ -144,11 +160,11 @@ export class LobbyShopDialogRenderer {
     const diamond = catalog ? Number(catalog.diamond ?? 0) : Number(profile.diamond ?? 0);
     const stamina = catalog ? catalog.stamina : profile.stamina;
     const maxStamina = catalog ? catalog.maxStamina : profile.maxStamina;
-    const footer = this.host.addChildLabel(panel, 'LobbyShopFooter', `当前:金币 ${this.host.formatInteger(gold)} · 钻石 ${this.host.formatInteger(diamond)} · 体力 ${stamina}/${maxStamina}`, 0, -panelH / 2 + 58 * scale, 15 * scale, rgba(226, 212, 182, 240), new Size(panelW * 0.8, 20 * scale));
+    const footer = this.host.addChildLabel(panel, 'LobbyShopFooter', `当前:金币 ${this.host.formatInteger(gold)} · 钻石 ${this.host.formatInteger(diamond)} · 体力 ${stamina}/${maxStamina}`, 0, -panelH / 2 + 72 * scale, 15 * scale, rgba(226, 212, 182, 240), new Size(panelW * 0.8, 20 * scale));
     footer.overflow = Label.Overflow.SHRINK;
 
-    const bodyTop = panelH / 2 - 126 * scale;
-    const bodyBottom = -panelH / 2 + 80 * scale;
+    const bodyTop = titleY - 78 * scale;
+    const bodyBottom = -panelH / 2 + 96 * scale;
     if (!catalog) {
       this.host.addChildLabel(panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, (bodyTop + bodyBottom) / 2, 18 * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 24 * scale));
       return;
@@ -171,7 +187,7 @@ export class LobbyShopDialogRenderer {
   // ── 金币:4 档横排 ──
   private renderGoldTiers(panel: Node, catalog: ShopCatalogVO, panelW: number, top: number, bottom: number, scale: number, busy: boolean, diamond: number): void {
     const tiers = catalog.goldTiers;
-    const layout = this.tierLayout(panelW, top, bottom, scale, tiers.length, 178 * scale);
+    const layout = this.tierLayout(panelW, top, bottom, scale, tiers.length, 200 * scale);
     tiers.forEach((tier, index) => {
       const x = layout.startX + index * (layout.cardW + layout.gap);
       const affordable = diamond >= tier.diamondCost;
@@ -196,7 +212,7 @@ export class LobbyShopDialogRenderer {
     const remaining = Math.max(0, offer.dailyLimit - offer.usedToday);
     const bodyH = top - bottom;
     const frame = TIER_FRAMES[1];
-    const cardW = Math.min(214 * scale, (bodyH * 0.96) / frame.aspect);
+    const cardW = Math.min(236 * scale, (bodyH * 0.96) / frame.aspect);
     const cardX = -panelW * 0.24;
     this.buildTierCard(panel, 'LobbyShopStaminaCard', cardX, (top + bottom) / 2, cardW, frame, scale, {
       name: '体力补充',
