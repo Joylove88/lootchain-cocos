@@ -100,6 +100,16 @@ export class LobbyTopHudRenderer {
     this.host.openLobbySettingsPanel();
   }
 
+  /** 资源项点击(2026-09-22 用户拍板):金币 → 金币商店,体力 → 体力补充,钻石 → 钻石充值;其余仍走占位弹窗。 */
+  private onResourceTap(item: LobbyResourceItem): void {
+    const kind = item.key === 'coin' ? 'gold' : item.key === 'stamina' ? 'stamina' : item.key === 'ruby' ? 'diamond' : null;
+    if (kind && this.host.openLobbyShopDialog) {
+      this.host.openLobbyShopDialog(kind);
+      return;
+    }
+    this.showUnopenedFeature(`资源：${item.label}`, this.resourcePlaceholderDetail(item));
+  }
+
   private showUnopenedFeature(title: string, detail?: string): void {
     // 顶部系统图标当前仍是占位入口，点击时只打开统一未开放弹窗。
     this.openLobbyPlaceholderDialog(title, detail);
@@ -266,7 +276,7 @@ export class LobbyTopHudRenderer {
     node.setPosition(new Vec3(chipX, chipY, 0));
     node.addComponent(UITransform).setContentSize(new Size(chipWidth, chipHeight));
     node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.showUnopenedFeature(`资源：${item.label}`, this.resourcePlaceholderDetail(item)), this);
+    node.on(Button.EventType.CLICK, () => this.onResourceTap(item), this);
     this.applyImageButtonFeedback(node, 1.018, 0.985);
     const graphics = node.addComponent(Graphics);
     this.drawResourceCapsule(graphics, chipWidth, chipHeight, scale);
@@ -313,6 +323,11 @@ export class LobbyTopHudRenderer {
   }
 
   private resourceItems(profile: PlayerLobbyProfileVO): LobbyResourceItem[] {
+    // 矿晶(打金结算积分)2026-09-22 用户要求从顶部隐藏:入口收进矿晶熔炉/资料页,数据仍在 profile.sacredCrystal。
+    return this.allResourceItems(profile).filter((item) => item.key !== 'crystal');
+  }
+
+  private allResourceItems(profile: PlayerLobbyProfileVO): LobbyResourceItem[] {
     return [
       {
         key: 'stamina',
@@ -449,7 +464,7 @@ export class LobbyTopHudRenderer {
   private addResourceItem(parent: Node, item: LobbyResourceItem, x: number, width: number, height: number, scale: number): void {
     const node = this.addChildPlainNode(parent, `LobbyResourceItem_${item.key}`, x, 0, width, height);
     node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.showUnopenedFeature(`资源：${item.label}`, this.resourcePlaceholderDetail(item)), this);
+    node.on(Button.EventType.CLICK, () => this.onResourceTap(item), this);
     this.applyImageButtonFeedback(node, 1.018, 0.985);
     // 2026-08-12 与背包顶部货币胶囊统一:bag_currency_bar 素材底(已裁短,自带右端+钮),
     // 图标/数值排版按 renderTopCurrencyBar 同比例(槽心 17.1%+6px、图标高=胶囊高 56%);缺图回退旧手绘框。

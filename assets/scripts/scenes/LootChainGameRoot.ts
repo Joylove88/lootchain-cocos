@@ -89,6 +89,7 @@ import { LobbyDailyDungeonPanelRenderer, type LobbyDailyDungeonPanelHost } from 
 import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
+import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
 import { LobbyProfileLoader, type LobbyProfileLoaderHost } from './lobby/LobbyProfileLoader';
 import { LobbySettingsPanelRenderer, type LobbySettingsPanelHost } from './lobby/LobbySettingsPanelRenderer';
 import type { LobbyAdventurePanelState, LobbyAdventureStageVO } from '../types/LobbyAdventureTypes';
@@ -311,6 +312,9 @@ export class LootChainGameRoot extends Component {
   };
   private lobbyTokenFurnaceTicket = 0;
   private readonly lobbyProfileDialogRenderer = new LobbyProfileDialogRenderer(this as unknown as LobbyProfileDialogHost);
+  /** 货币商店弹窗(docs/33,2026-09-22):挂在当前视图之上的覆盖层,每次整页重绘后由 syncLobbyShopOverlay 重新挂回。 */
+  private readonly lobbyShopDialogRenderer = new LobbyShopDialogRenderer(this as unknown as LobbyShopDialogHost);
+  private lobbyShopDialog: LobbyShopDialogState | null = null;
   private readonly lobbyProfileLoader = new LobbyProfileLoader(this.api.profile, AppConfig.defaultDevUserId, this as unknown as LobbyProfileLoaderHost);
   private readonly lobbySettingsPanelRenderer = new LobbySettingsPanelRenderer(this as unknown as LobbySettingsPanelHost);
   private currentView: ViewName = 'login';
@@ -748,6 +752,12 @@ export class LootChainGameRoot extends Component {
   private lastRenderedView: ViewName | null = null;
 
   private renderCurrentView(): void {
+    this.renderCurrentViewInner();
+    // 整页重绘会清空 UI 根,商店弹窗是覆盖层:重绘完再挂回去(最后挂 = 最上层)。
+    this.syncLobbyShopOverlay();
+  }
+
+  private renderCurrentViewInner(): void {
     // 启动预载期间任何重绘请求(精灵缓存到货整刷/resize)都会清掉加载屏并提前放行登录页,
     // 一律拦下;finish() 会先解闸再渲染(2026-09-10)。
     if (this.bootPreloadActive) {
@@ -1158,6 +1168,7 @@ export class LootChainGameRoot extends Component {
     this.setPointerCursor(false);
     this.resizeLobbyBackground(layout);
     this.rerenderLobbyOverlay(layout);
+    this.syncLobbyShopOverlay();
   }
 
   private refreshLobbyViewPreservingBackground(): void {
@@ -1170,6 +1181,7 @@ export class LootChainGameRoot extends Component {
     this.setPointerCursor(false);
     this.resizeLobbyBackground(layout);
     this.rerenderLobbyOverlay(layout);
+    this.syncLobbyShopOverlay();
   }
 
   private rerenderLobbyOverlay(layout: UiLayout): void {
@@ -1432,6 +1444,7 @@ export class LootChainGameRoot extends Component {
    * 只在 openLobbyDailyDungeonPanel 自立、returnToLobbyFromScenePage 显式清除。
    */
   private closeAllLobbyScenePanelFlags(): void {
+    this.lobbyShopDialog = null;
     this.lobbyAdventurePanelOpen = false;
     this.lobbyBagPanelOpen = false;
     this.lobbyForgePanelOpen = false;
@@ -1729,6 +1742,8 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.equipment.reroll(equipmentId);
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyHeroRoster(true);
@@ -1797,6 +1812,8 @@ export class LootChainGameRoot extends Component {
     try {
       await op();
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyHeroRoster(true);
@@ -1845,6 +1862,8 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.equipment.fuse(ids, this.lobbyEquipFuseUseLuckStone);
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       // 弹结果框(展示新装备/返还件),闪光作为辅助氛围。
       this.lobbyForgeFuseResult = { success: result.success, chance: result.chance, item: result.resultItem };
@@ -1929,6 +1948,8 @@ export class LootChainGameRoot extends Component {
     } finally {
       try {
         this.lobbyEquipmentItems = await this.api.equipment.list();
+        // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+        await this.loadLobbyProfile(this.currentLobbyProfile().userId);
         await this.loadLobbyBag(true);
         await this.loadLobbyHeroRoster(true);
         this.lobbyHeroEquipDirty = true;
@@ -2002,6 +2023,8 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.equipment.decompose(ids);
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       this.setStatus(`分解完成：${result.count} 件 → 强化石 ×${this.formatInteger(result.stonesGained)}。`);
       // 分解结果改弹窗展示(获得明细+已拥有),替代原中央闪光。
@@ -3219,6 +3242,8 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.equipment.enhance(equipmentId, this.lobbyEquipEnhanceUseBless, this.lobbyEquipEnhanceUseGuard);
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       await this.loadLobbyHeroRoster(true);
       this.lobbyHeroEquipDirty = true;
@@ -3271,6 +3296,8 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.equipment.decompose([candidates[0].id]);
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       this.lobbyHeroEquipDirty = true;
       this.setStatus(`分解完成：获得强化石 ×${this.formatInteger(result.stonesGained)}。`);
@@ -3328,6 +3355,8 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.equipment.fuse(materials.map((item) => item.id), this.lobbyEquipFuseUseLuckStone);
       this.lobbyEquipmentItems = await this.api.equipment.list();
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyBag(true);
       this.lobbyHeroEquipDirty = true;
       if (result.success) {
@@ -4718,6 +4747,120 @@ export class LootChainGameRoot extends Component {
     if (this.gachaSceneState.selectedPoolCode) {
       void this.loadGachaPoolDetail(this.gachaSceneState.selectedPoolCode, true);
       void this.loadGachaPity(this.gachaSceneState.selectedPoolCode);
+    }
+  }
+
+  // ===== 货币商店(docs/33,2026-09-22:金币 / 体力 / 钻石充值)=====
+  private currentLobbyShopState(): LobbyShopDialogState | null {
+    return this.lobbyShopDialog;
+  }
+
+  private openLobbyShopDialog(kind: LobbyShopKind): void {
+    if (!this.isLobbyViewActive()) {
+      return;
+    }
+    const previous = this.lobbyShopDialog;
+    this.lobbyShopDialog = { kind, catalog: previous?.catalog ?? null, loading: true, busy: false, notice: '' };
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+    void this.loadLobbyShopCatalog();
+  }
+
+  private closeLobbyShopDialog(): void {
+    if (!this.lobbyShopDialog) {
+      return;
+    }
+    this.lobbyShopDialog = null;
+    gameAudio.sfx('panel_close');
+    this.syncLobbyShopOverlay();
+  }
+
+  /** 覆盖层挂载:先拆旧的再按状态重挂;不在大厅/功能页时不挂。 */
+  private syncLobbyShopOverlay(): void {
+    this.removeNodeFromContent('LobbyShopOverlay');
+    if (!this.lobbyShopDialog || !this.isLobbyViewActive()) {
+      return;
+    }
+    this.lobbyShopDialogRenderer.render(this.resolveLayout());
+  }
+
+  private async loadLobbyShopCatalog(): Promise<void> {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog) {
+      return;
+    }
+    try {
+      const catalog = await this.api.shop.catalog();
+      if (this.lobbyShopDialog !== dialog) {
+        return;
+      }
+      dialog.catalog = catalog;
+      dialog.loading = false;
+    } catch (error) {
+      if (this.lobbyShopDialog !== dialog) {
+        return;
+      }
+      dialog.loading = false;
+      dialog.notice = `商店读取失败:${error instanceof Error ? error.message : String(error)}`;
+    }
+    this.syncLobbyShopOverlay();
+  }
+
+  private buyShopGold(tierCode: string): void {
+    void this.runLobbyShopAction(() => this.api.shop.buyGold(tierCode));
+  }
+
+  private buyShopStamina(count: number): void {
+    void this.runLobbyShopAction(() => this.api.shop.buyStamina(Math.max(1, Math.floor(count))));
+  }
+
+  private rechargeShopDiamond(tierCode: string): void {
+    void this.runLobbyShopAction(() => this.api.shop.recharge(tierCode));
+  }
+
+  /** 购买流程:服务端写入 → 回读资料(顶部金币/钻石/体力同步)→ 回读商店目录(余额/今日次数)→ 弹窗留在原地显示结果。 */
+  private async runLobbyShopAction(action: () => Promise<{ message: string }>): Promise<void> {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog || dialog.busy) {
+      return;
+    }
+    dialog.busy = true;
+    this.syncLobbyShopOverlay();
+    try {
+      const result = await action();
+      if (this.lobbyShopDialog === dialog) {
+        dialog.notice = result.message;
+      }
+      this.setStatus(result.message);
+      gameAudio.sfx('coin');
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+      if (this.lobbyShopDialog === dialog) {
+        const catalog = await this.api.shop.catalog();
+        if (this.lobbyShopDialog === dialog) {
+          dialog.catalog = catalog;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (this.lobbyShopDialog === dialog) {
+        dialog.notice = `购买失败:${message}`;
+      }
+      this.setStatus(`购买失败:${message}`);
+      gameAudio.sfx('ui_error');
+    } finally {
+      if (this.lobbyShopDialog === dialog) {
+        dialog.busy = false;
+      }
+      this.syncLobbyShopOverlay();
+    }
+  }
+
+  /** 锻造页强化材料不足(2026-09-22 用户反馈"金币不够点强化没提示"):说清差什么;金币不够顺手打开金币商店。 */
+  private reportForgeMaterialShortfall(message: string, goldLacking: boolean): void {
+    this.setStatus(message);
+    gameAudio.sfx('ui_error');
+    if (goldLacking) {
+      this.openLobbyShopDialog('gold');
     }
   }
 

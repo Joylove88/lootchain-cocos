@@ -146,6 +146,8 @@ export interface LobbyForgePanelHost {
   clearLobbyForgeFuseResult(): void;
   clearLobbyForgeDecomposeResult(): void;
   openLobbyForgeRerollDialog(): void;
+  /** 强化材料不足时的提示(2026-09-22 用户反馈"金币不够点强化没任何提示");goldLacking=true 时根节点顺手打开金币商店。 */
+  reportForgeMaterialShortfall(message: string, goldLacking: boolean): void;
   closeLobbyForgeRerollDialog(): void;
   rerollLobbyForgeEquipment(equipmentId: number): void;
   selectLobbyForgeTab(tab: ForgeTab): void;
@@ -1279,7 +1281,23 @@ export class LobbyForgePanelRenderer {
     const materialsOk = stoneHeldOf(level) >= stoneCost && goldHeld >= goldCost && (!enhance.useBless || blessHeld >= 1) && (!enhance.useGuard || guardHeld >= 1);
     const canEnhance = !state.busy && !maxed && materialsOk;
     const strikeThen = (action: () => void) => this.playEnhanceStrike(cx, ringCy, scale, action);
-    this.renderPrimaryButton(parent, 'ForgeEnhConfirm', state.busy ? '强化中…' : maxed ? '已满级' : materialsOk ? '强 化' : '材料不足', cx, buttonY, buttonW, scale, canEnhance, () => strikeThen(() => (forge.autoRepeat ? this.host.autoEnhanceLobbyEquipment(target.id) : this.host.enhanceLobbyEquipment(target.id))));
+    // 材料不足:按钮仍可点,点了说清差什么(金币差额 / 强化石 / 祝福石 / 护符),金币不够顺手开金币商店。
+    const shortfall: string[] = [];
+    if (goldHeld < goldCost) {
+      shortfall.push(`金币 ${formatInteger(goldHeld)}/${formatInteger(goldCost)}(还差 ${formatInteger(goldCost - goldHeld)})`);
+    }
+    if (stoneHeldOf(level) < stoneCost) {
+      shortfall.push(`强化石 ${formatInteger(stoneHeldOf(level))}/${formatInteger(stoneCost)}`);
+    }
+    if (enhance.useBless && blessHeld < 1) {
+      shortfall.push('祝福石不足');
+    }
+    if (enhance.useGuard && guardHeld < 1) {
+      shortfall.push('守护符不足');
+    }
+    const shortfallText = `强化材料不足:${shortfall.join(' · ')}`;
+    const onShortfall = !state.busy && !maxed && !materialsOk ? () => this.host.reportForgeMaterialShortfall(shortfallText, goldHeld < goldCost) : undefined;
+    this.renderPrimaryButton(parent, 'ForgeEnhConfirm', state.busy ? '强化中…' : maxed ? '已满级' : materialsOk ? '强 化' : '材料不足', cx, buttonY, buttonW, scale, canEnhance, () => strikeThen(() => (forge.autoRepeat ? this.host.autoEnhanceLobbyEquipment(target.id) : this.host.enhanceLobbyEquipment(target.id))), onShortfall);
     // 词条洗练入口(P4):紫装起可洗;与强化按钮同排左侧。
     const rerollable = ['PURPLE', 'GOLD', 'RED'].includes((target.quality || '').toUpperCase());
     const rerollW = 172 * scale;
@@ -2209,7 +2227,7 @@ export class LobbyForgePanelRenderer {
   }
 
   // 主操作按钮(强化/合成/分解共用):AI 图优先(2.5:1 等比,高度由宽度推出),缺图红底金描边兜底。
-  private renderPrimaryButton(parent: Node, name: string, text: string, x: number, y: number, width: number, scale: number, enabled: boolean, onClick: () => void): void {
+  private renderPrimaryButton(parent: Node, name: string, text: string, x: number, y: number, width: number, scale: number, enabled: boolean, onClick: () => void, onDisabledClick?: () => void): void {
     const height = width / FORGE_BUTTON_RATIO;
     const btn = this.host.addChildPlainNode(parent, name, x, y, width, height);
     const art = enabled ? this.host.addSprite(`${name}Art`, FORGE_AI_BUTTON_ASSET, 0, 0, width, height, btn) : null;
@@ -2234,6 +2252,10 @@ export class LobbyForgePanelRenderer {
       btn.addComponent(Button);
       btn.on(Button.EventType.CLICK, onClick, this);
       this.host.applyImageButtonFeedback(btn);
+    } else if (onDisabledClick) {
+      // 灰态按钮也接点击:只用来解释为什么不能点(2026-09-22)。
+      btn.addComponent(Button);
+      btn.on(Button.EventType.CLICK, onDisabledClick, this);
     }
   }
 

@@ -34,6 +34,8 @@ export interface SceneBackButtonHost {
     horizontalAlign?: HorizontalTextAlignment,
   ): Label;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
+  /** 货币商店入口(docs/33,2026-09-22):有它时,货币胶囊的金币/钻石/体力可点开对应购买弹窗。 */
+  openLobbyShopDialog?(kind: 'gold' | 'stamina' | 'diamond'): void;
 }
 
 /**
@@ -201,7 +203,11 @@ export interface TopCurrencyEntry {
   key: string;
   icon: string;
   value: string;
+  /** 自定义点击;缺省时 gold/diamond/stamina 三个键自动接货币商店。 */
+  onTap?: () => void;
 }
+
+const TOP_CURRENCY_SHOP_KIND: Record<string, 'gold' | 'stamina' | 'diamond'> = { gold: 'gold', diamond: 'diamond', stamina: 'stamina' };
 
 export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, rightX: number, topY: number, scale: number, entries: TopCurrencyEntry[], rightInset = 150): void {
   if (!host.addChildLabel || !host.addSprite) {
@@ -233,6 +239,13 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
     value.enableOutline = true;
     value.outlineColor = rgba(0, 0, 0, 220);
     value.outlineWidth = Math.max(1, 1.4 * scale);
+    const shopKind = TOP_CURRENCY_SHOP_KIND[entry.key];
+    const onTap = entry.onTap ?? (shopKind && host.openLobbyShopDialog ? () => host.openLobbyShopDialog?.(shopKind) : null);
+    if (onTap) {
+      chip.addComponent(Button);
+      chip.on(Button.EventType.CLICK, onTap);
+      host.applyImageButtonFeedback(chip, 1.03, 0.97);
+    }
     cursorX -= capWidth + gap;
   }
 }

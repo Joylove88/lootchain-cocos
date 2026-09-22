@@ -16,6 +16,7 @@ import { LobbyNoticeApi } from './LobbyNoticeApi';
 import { MailApi } from './MailApi';
 import { PlayerAuthApi } from './PlayerAuthApi';
 import { QuestApi } from './QuestApi';
+import { ShopApi } from './ShopApi';
 import { PlayerProfileApi } from './PlayerProfileApi';
 import { ProtagonistApi } from './ProtagonistApi';
 import { TokenApi } from './TokenApi';
@@ -47,6 +48,7 @@ export class LootChainApi {
   readonly quest = new QuestApi(this.http);
   readonly mail = new MailApi(this.http);
   readonly gift = new GiftApi(this.http);
+  readonly shop = new ShopApi(this.http);
 
   setApiBaseUrl(baseUrl: string): void {
     this.http.setBaseUrl(baseUrl);
