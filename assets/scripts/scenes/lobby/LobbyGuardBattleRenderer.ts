@@ -2211,22 +2211,31 @@ export class LobbyGuardBattleRenderer {
     const hasGold = sim.pendingChoice.some((option) => option.rarity === 'gold');
     // 标题 + 副标题(2026-09-22 用户参考图):金卡在场时"稀有词条出现!专属大招觉醒",两侧饰线。
     const titleCore = hasGold ? '稀有词条出现!专属大招觉醒' : fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择词条` : `等级提升!Lv${sim.level} · 三选一`;
-    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', `─✦─  ${titleCore}  ─✦─`, 0, panelH / 2 - 92, 30, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.7, 40));
+    // 标题饰件用任务页同款 title_divider 左右两段(2026-09-22 用户要求),按标题估宽贴在两侧;标题较上一版下移 20px。
+    const titleY = panelH / 2 - 112;
+    const titleSize = 30;
+    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', titleCore, 0, titleY, titleSize, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.6, 40));
     overlayTitle.overflow = Label.Overflow.SHRINK;
     overlayTitle.enableOutline = true;
     overlayTitle.outlineColor = hasGold ? rgba(90, 30, 10, 255) : rgba(40, 24, 10, 255);
     overlayTitle.outlineWidth = 3;
-    const subtitle = this.host.addChildLabel(overlay, 'GuardChoiceSubtitle', '选择一个词条,获得强大的战斗增益', 0, panelH / 2 - 124, 17, rgba(212, 190, 150, 235), new Size(width * 0.6, 22));
+    const titleTextW = Array.from(titleCore).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0);
+    const dividerW = 150;
+    const dividerGap = titleTextW / 2 + 22 + dividerW / 2;
+    this.mountSprite(overlay, 'GuardChoiceTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerGap, titleY, dividerW, dividerW * (76 / 390));
+    this.mountSprite(overlay, 'GuardChoiceTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerGap, titleY, dividerW, dividerW * (73 / 392));
+    const subtitle = this.host.addChildLabel(overlay, 'GuardChoiceSubtitle', '选择一个词条,获得强大的战斗增益', 0, titleY - 34, 17, rgba(212, 190, 150, 235), new Size(width * 0.6, 22));
     subtitle.overflow = Label.Overflow.SHRINK;
     if (hasGold) {
       gameAudio.sfx('gacha_rare');
     }
     // 三张同宽竖卡(参考图三卡等大);每张按自己框的像素比定高,不拉伸。
-    const buttonY = -panelH / 2 + 82;
-    const cardsTop = panelH / 2 - 142;
+    const buttonY = -panelH / 2 + 97;
+    const cardsTop = titleY - 56;
     const cardsBottom = buttonY + 44;
-    const cardW = Math.min(300, ((cardsTop - cardsBottom) * 0.94) / (693 / 413), (panelW - 120) / 3 - 24);
-    const gap = Math.min(34, width * 0.02);
+    // 卡宽压到可用高的 0.8、封顶 214(2026-09-22 用户反馈:内层卡框比外层面板框还重)。
+    const cardW = Math.min(206, ((cardsTop - cardsBottom) * 0.9) / (693 / 413), (panelW - 160) / 3 - 24);
+    const gap = Math.min(44, width * 0.028);
     const count = sim.pendingChoice.length;
     const totalW = cardW * count + gap * (count - 1);
     const centerY = (cardsTop + cardsBottom) / 2;
@@ -2292,14 +2301,14 @@ export class LobbyGuardBattleRenderer {
     const isGold = option.rarity === 'gold';
     const textTint = rgba(style.text[0], style.text[1], style.text[2], 255);
     const top = h / 2;
-    const innerW = w * 0.72;
+    const innerW = w * 0.75;
     this.mountSprite(card, 'Frame', style.frame, 0, 0, w, h);
     // 标签带
     const heroMatch = /^【(.+?)】(.*)$/.exec(option.title);
     const heroName = heroMatch ? heroMatch[1] : '';
     const perkTitle = heroMatch ? heroMatch[2] : option.title;
     const tagText = option.rarity === 'purple' && option.school ? `专属流派 · ${option.school}` : style.tag;
-    const tag = this.host.addChildLabel(card, 'Tag', tagText, 0, top - h * style.bandCy, Math.round(w * 0.062), textTint, new Size(w * 0.46, h * style.bandH * 0.8));
+    const tag = this.host.addChildLabel(card, 'Tag', tagText, 0, top - h * style.bandCy, Math.round(w * 0.07), textTint, new Size(w * 0.46, h * style.bandH * 0.8));
     tag.overflow = Label.Overflow.SHRINK;
     // 圆环:英雄圆形头像 / 通用图标
     const ringY = top - h * style.ringCy;
@@ -2328,12 +2337,12 @@ export class LobbyGuardBattleRenderer {
     let y = top - h * style.textTop - 2;
     const textBottom = top - h * style.textBottom;
     if (heroName) {
-      const nameLabel = this.host.addChildLabel(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, y - 9, Math.round(w * 0.066), option.offField ? rgba(170, 160, 150) : rgba(236, 224, 196), new Size(innerW, 22));
+      const nameLabel = this.host.addChildLabel(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, y - 9, Math.round(w * 0.072), option.offField ? rgba(170, 160, 150) : rgba(236, 224, 196), new Size(innerW, 22));
       nameLabel.overflow = Label.Overflow.SHRINK;
       y -= 30;
     }
     const mainTitle = isGold ? `「${this.resolveGuardSkillDisplayName(option.heroCode, '专属大招')}」` : perkTitle;
-    const titleSize = Math.round(w * 0.088);
+    const titleSize = Math.round(w * 0.098);
     const title = this.host.addChildLabel(card, 'Title', mainTitle, 0, y - titleSize / 2, titleSize, isGold ? rgba(255, 226, 130) : rgba(255, 244, 214), new Size(innerW, titleSize + 8));
     title.overflow = Label.Overflow.SHRINK;
     title.enableOutline = true;
@@ -2341,16 +2350,16 @@ export class LobbyGuardBattleRenderer {
     title.outlineWidth = 2;
     y -= titleSize + 10;
     if (isGold) {
-      const sub = this.host.addChildLabel(card, 'Sub', perkTitle, 0, y - 8, Math.round(w * 0.06), rgba(255, 200, 150), new Size(innerW, 20));
+      const sub = this.host.addChildLabel(card, 'Sub', perkTitle, 0, y - 8, Math.round(w * 0.066), rgba(255, 200, 150), new Size(innerW, 20));
       sub.overflow = Label.Overflow.SHRINK;
       y -= 24;
     }
-    const detailSize = Math.round(w * 0.066);
+    const detailSize = Math.round(w * 0.076);
     const detailH = Math.max(40, y - textBottom);
     const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2, detailSize, rgba(222, 212, 190, 245), new Size(innerW, detailH));
     detail.overflow = Label.Overflow.SHRINK;
     detail.enableWrapText = true;
-    detail.lineHeight = Math.round(detailSize * 1.32);
+    detail.lineHeight = Math.round(detailSize * 1.3);
     detail.verticalAlign = VerticalTextAlignment.TOP;
     if (option.offField) {
       const shade = card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity);
