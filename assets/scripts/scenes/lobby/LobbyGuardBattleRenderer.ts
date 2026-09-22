@@ -628,9 +628,9 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 弹框面板底:现有素材 popup_frame_large(926×543 金雕花黑石板,2026-08-25 用户拍板改素材);miss 时直载补图。 */
-  private paintOverlayPanel(parent: Node, w: number, h: number, y: number): Node {
+  private paintOverlayPanel(parent: Node, w: number, h: number, y: number, asset = 'ui/common/ai/popup_frame_large/spriteFrame'): Node {
     const panel = this.host.addChildPlainNode(parent, 'GuardOverlayPanel', 0, y, w, h);
-    this.mountSprite(panel, 'Frame', 'ui/common/ai/popup_frame_large/spriteFrame', 0, 0, w, h);
+    this.mountSprite(panel, 'Frame', asset, 0, 0, w, h);
     return panel;
   }
 
@@ -2203,27 +2203,29 @@ export class LobbyGuardBattleRenderer {
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    const panelH = height * 0.74;
-    this.paintOverlayPanel(overlay, Math.min(width * 0.92, panelH * 1.66), panelH, 0);
+    // 面板底换素净框(2026-09-22 用户反馈 popup_frame_large 四角坠饰太大):洗练弹窗同款 refine_panel_bg(1448×1086,细金线 + 小顶饰),等比。
+    const panelH = height * 0.78;
+    const panelW = Math.min(width * 0.92, panelH * (1448 / 1086));
+    this.paintOverlayPanel(overlay, panelW, panelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
     const fromEnhance = sim.choiceSource === 'enhance';
     const hasGold = sim.pendingChoice.some((option) => option.rarity === 'gold');
     // 标题 + 副标题(2026-09-22 用户参考图):金卡在场时"稀有词条出现!专属大招觉醒",两侧饰线。
     const titleCore = hasGold ? '稀有词条出现!专属大招觉醒' : fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择词条` : `等级提升!Lv${sim.level} · 三选一`;
-    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', `─✦─  ${titleCore}  ─✦─`, 0, panelH / 2 - 76, 30, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.7, 40));
+    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', `─✦─  ${titleCore}  ─✦─`, 0, panelH / 2 - 92, 30, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.7, 40));
     overlayTitle.overflow = Label.Overflow.SHRINK;
     overlayTitle.enableOutline = true;
     overlayTitle.outlineColor = hasGold ? rgba(90, 30, 10, 255) : rgba(40, 24, 10, 255);
     overlayTitle.outlineWidth = 3;
-    const subtitle = this.host.addChildLabel(overlay, 'GuardChoiceSubtitle', '选择一个词条,获得强大的战斗增益', 0, panelH / 2 - 112, 17, rgba(212, 190, 150, 235), new Size(width * 0.6, 22));
+    const subtitle = this.host.addChildLabel(overlay, 'GuardChoiceSubtitle', '选择一个词条,获得强大的战斗增益', 0, panelH / 2 - 124, 17, rgba(212, 190, 150, 235), new Size(width * 0.6, 22));
     subtitle.overflow = Label.Overflow.SHRINK;
     if (hasGold) {
       gameAudio.sfx('gacha_rare');
     }
     // 三张同宽竖卡(参考图三卡等大);每张按自己框的像素比定高,不拉伸。
-    const buttonY = -panelH / 2 + 84;
-    const cardsTop = panelH / 2 - 132;
+    const buttonY = -panelH / 2 + 82;
+    const cardsTop = panelH / 2 - 142;
     const cardsBottom = buttonY + 44;
-    const cardW = Math.min(300, ((cardsTop - cardsBottom) * 0.94) / (693 / 413), width * 0.17);
+    const cardW = Math.min(300, ((cardsTop - cardsBottom) * 0.94) / (693 / 413), (panelW - 120) / 3 - 24);
     const gap = Math.min(34, width * 0.02);
     const count = sim.pendingChoice.length;
     const totalW = cardW * count + gap * (count - 1);
