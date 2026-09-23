@@ -91,6 +91,10 @@ import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
+
+/** 购买动效飞行图标数量档(2026-09-22 用户:不同包飞的量不同——少量/中量/大量,宝箱档最多)。 */
+type LobbyShopFlyVolume = 'few' | 'some' | 'many' | 'chest';
+const LOBBY_SHOP_FLY_COIN_COUNT: Record<LobbyShopFlyVolume, number> = { few: 6, some: 12, many: 18, chest: 28 };
 import { LobbyProfileLoader, type LobbyProfileLoaderHost } from './lobby/LobbyProfileLoader';
 import { LobbySettingsPanelRenderer, type LobbySettingsPanelHost } from './lobby/LobbySettingsPanelRenderer';
 import type { LobbyAdventurePanelState, LobbyAdventureStageVO } from '../types/LobbyAdventureTypes';
@@ -4816,18 +4820,18 @@ export class LootChainGameRoot extends Component {
 
   private buyShopGold(tierCode: string, fromWorld?: Vec3): void {
     const tier = this.lobbyShopDialog?.catalog?.goldTiers.find((entry) => entry.code === tierCode);
-    void this.runLobbyShopAction(() => this.api.shop.buyGold(tierCode), { kind: 'gold', amount: tier?.goldAmount ?? 0, fromWorld: fromWorld ?? null });
+    void this.runLobbyShopAction(() => this.api.shop.buyGold(tierCode), { kind: 'gold', amount: tier?.goldAmount ?? 0, fromWorld: fromWorld ?? null, volume: this.shopFlyVolume(tier?.iconKey) });
   }
 
   private buyShopStamina(count: number, fromWorld?: Vec3): void {
     const safeCount = Math.max(1, Math.floor(count));
     const gain = (this.lobbyShopDialog?.catalog?.staminaOffer.staminaGain ?? 30) * safeCount;
-    void this.runLobbyShopAction(() => this.api.shop.buyStamina(safeCount), { kind: 'stamina', amount: gain, fromWorld: fromWorld ?? null });
+    void this.runLobbyShopAction(() => this.api.shop.buyStamina(safeCount), { kind: 'stamina', amount: gain, fromWorld: fromWorld ?? null, volume: safeCount >= 5 ? 'some' : 'few' });
   }
 
   private rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void {
     const tier = this.lobbyShopDialog?.catalog?.rechargeTiers.find((entry) => entry.code === tierCode);
-    void this.runLobbyShopAction(() => this.api.shop.recharge(tierCode), { kind: 'diamond', amount: tier?.diamondTotal ?? 0, fromWorld: fromWorld ?? null });
+    void this.runLobbyShopAction(() => this.api.shop.recharge(tierCode), { kind: 'diamond', amount: tier?.diamondTotal ?? 0, fromWorld: fromWorld ?? null, volume: this.shopFlyVolume(tier?.iconKey) });
   }
 
   /**
@@ -4836,7 +4840,7 @@ export class LootChainGameRoot extends Component {
    */
   private async runLobbyShopAction(
     action: () => Promise<{ message: string; mockPaid?: boolean }>,
-    fly: { kind: 'gold' | 'stamina' | 'diamond'; amount: number; fromWorld: Vec3 | null },
+    fly: { kind: 'gold' | 'stamina' | 'diamond'; amount: number; fromWorld: Vec3 | null; volume: LobbyShopFlyVolume },
   ): Promise<void> {
     const dialog = this.lobbyShopDialog;
     if (!dialog || dialog.busy) {
@@ -4873,7 +4877,7 @@ export class LootChainGameRoot extends Component {
       }
       this.syncLobbyShopOverlay();
       if (granted && fly.amount > 0) {
-        this.spawnLobbyCurrencyFly(fly.kind, fly.amount, fly.fromWorld);
+        this.spawnLobbyCurrencyFly(fly.kind, fly.amount, fly.fromWorld, fly.volume);
       }
     }
   }
@@ -4901,8 +4905,27 @@ export class LootChainGameRoot extends Component {
     return found;
   }
 
-  /** 购买成功飞字:图标 + "+N" 在起点弹出,停半拍后飞向顶部对应货币栏,到达时货币栏脉冲一下。 */
-  private spawnLobbyCurrencyFly(kind: 'gold' | 'stamina' | 'diamond', amount: number, fromWorld: Vec3 | null): void {
+  /** 档位图标键 → 飞行图标数量档(gold_small/diamond_few=少量,medium/some=中量,large/many=大量,*chest=宝箱)。 */
+  private shopFlyVolume(iconKey: string | null | undefined): LobbyShopFlyVolume {
+    const key = (iconKey ?? '').toLowerCase();
+    if (key.endsWith('chest')) {
+      return 'chest';
+    }
+    if (key.includes('large') || key.includes('many')) {
+      return 'many';
+    }
+    if (key.includes('medium') || key.includes('some')) {
+      return 'some';
+    }
+    return 'few';
+  }
+
+  /**
+   * 购买成功动效(2026-09-22 用户:先"+N 金币"向上飘、数字不飞;再一把金币飞向顶部货币栏,包越大飞得越多):
+   * ① 飘字在被点的卡片位置弹出,上浮 80px 渐隐;② 同时按档位撒出 6/12/18/28 枚小图标,散开后错开起飞、沿弧线飞向顶部对应货币栏,
+   * 每到几枚播一次金币音,最后一枚到达时货币栏脉冲。节点都叫 LobbyShopFlyFx,弹层重挂时由 raiseLobbyCurrencyFlies 提到最上层。
+   */
+  private spawnLobbyCurrencyFly(kind: 'gold' | 'stamina' | 'diamond', amount: number, fromWorld: Vec3 | null, volume: LobbyShopFlyVolume): void {
     const root = this.ensureContentRoot();
     // 内容根是裸 Node(无 UITransform),且挂在宿主节点原点、不缩放:用宿主节点的变换做世界→本地换算,坐标一致。
     const rootTransform = root.getComponent(UITransform) ?? this.node.getComponent(UITransform);
@@ -4914,36 +4937,73 @@ export class LootChainGameRoot extends Component {
     const start = fromWorld
       ? rootTransform.convertToNodeSpaceAR(fromWorld)
       : new Vec3((layout.stageLeft + layout.stageRight) / 2, (layout.stageTop + layout.stageBottom) / 2, 0);
-    const end = target ? rootTransform.convertToNodeSpaceAR(target.getWorldPosition()) : new Vec3(start.x, start.y + 180, 0);
+    const end = target ? rootTransform.convertToNodeSpaceAR(target.getWorldPosition()) : new Vec3(start.x, start.y + 220, 0);
     const icon = kind === 'gold' ? 'ui/bag/ai/icon_gold/spriteFrame' : kind === 'diamond' ? 'ui/bag/ai/icon_diamond/spriteFrame' : 'ui/bag/ai/icon_stamina/spriteFrame';
     const color = kind === 'gold' ? new Color(255, 214, 110, 255) : kind === 'diamond' ? new Color(170, 215, 255, 255) : new Color(140, 230, 255, 255);
-    const fly = this.createUiNode('LobbyShopFlyFx');
-    fly.setPosition(new Vec3(start.x, start.y, 0));
-    fly.addComponent(UITransform).setContentSize(new Size(240, 44));
-    this.addSprite('LobbyShopFlyIcon', icon, -78, 0, 36, 36, fly);
-    const text = this.addChildLabel(fly, 'LobbyShopFlyText', `+${this.formatInteger(amount)}`, 26, 0, 28, color, new Size(170, 36));
+    const unit = kind === 'gold' ? '金币' : kind === 'diamond' ? '钻石' : '体力';
+    // ① 飘字:弹出 → 上浮 → 渐隐(不飞)
+    const float = this.createUiNode('LobbyShopFlyFx');
+    float.setPosition(new Vec3(start.x, start.y + 30, 0));
+    float.addComponent(UITransform).setContentSize(new Size(360, 44));
+    const text = this.addChildLabel(float, 'LobbyShopFlyText', `+${this.formatInteger(amount)} ${unit}`, 0, 0, 30, color, new Size(360, 40));
     text.isBold = true;
     text.enableOutline = true;
     text.outlineColor = new Color(20, 10, 6, 255);
     text.outlineWidth = 2;
-    fly.setScale(0.5, 0.5, 1);
-    const opacity = fly.addComponent(UIOpacity);
-    tween(fly)
-      .to(0.18, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'backOut' })
+    float.setScale(0.6, 0.6, 1);
+    const floatOpacity = float.addComponent(UIOpacity);
+    tween(float)
+      .to(0.16, { scale: new Vec3(1.12, 1.12, 1) }, { easing: 'backOut' })
       .to(0.1, { scale: new Vec3(1, 1, 1) })
-      .delay(0.4)
-      .to(0.62, { position: new Vec3(end.x, end.y, 0), scale: new Vec3(0.5, 0.5, 1) }, { easing: 'quadIn' })
+      .by(0.9, { position: new Vec3(0, 80, 0) }, { easing: 'quadOut' })
       .call(() => {
-        if (fly.isValid) {
-          fly.destroy();
+        if (float.isValid) {
+          float.destroy();
         }
-        if (target && target.isValid) {
-          tween(target).to(0.12, { scale: new Vec3(1.16, 1.16, 1) }).to(0.18, { scale: new Vec3(1, 1, 1) }).start();
-        }
-        gameAudio.sfx('coin', 0.7);
       })
       .start();
-    tween(opacity).delay(1.05).to(0.25, { opacity: 90 }).start();
+    tween(floatOpacity).delay(0.72).to(0.42, { opacity: 0 }).start();
+    // ② 金币:按档位撒开再错开起飞,弧线飞向顶部货币栏
+    const count = LOBBY_SHOP_FLY_COIN_COUNT[volume];
+    const coinSize = 30;
+    let arrived = 0;
+    for (let i = 0; i < count; i += 1) {
+      const coin = this.createUiNode('LobbyShopFlyFx');
+      coin.setPosition(new Vec3(start.x, start.y, 0));
+      coin.addComponent(UITransform).setContentSize(new Size(coinSize, coinSize));
+      if (!this.addSprite('LobbyShopFlyCoin', icon, 0, 0, coinSize, coinSize, coin)) {
+        // 图标未缓存:画个同色小圆顶上,不让金币"隐形"飞
+        const g = coin.addComponent(Graphics);
+        g.fillColor = color;
+        g.circle(0, 0, coinSize * 0.42);
+        g.fill();
+      }
+      coin.setScale(0.3, 0.3, 1);
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 40 + Math.random() * 70;
+      const scatter = new Vec3(start.x + Math.cos(angle) * radius, start.y + Math.sin(angle) * radius * 0.7, 0);
+      // 弧顶钳在舞台顶边以内,飞向顶部货币栏时不越出屏幕。
+      const arc = new Vec3((scatter.x + end.x) / 2 + (Math.random() - 0.5) * 90, Math.min(layout.stageTop - 24, Math.max(scatter.y, end.y) + 50 + Math.random() * 60), 0);
+      tween(coin)
+        .delay(i * 0.015)
+        .to(0.22, { position: scatter, scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
+        .delay(0.16 + i * 0.02)
+        .to(0.26, { position: arc }, { easing: 'quadOut' })
+        .to(0.3, { position: new Vec3(end.x, end.y, 0), scale: new Vec3(0.55, 0.55, 1) }, { easing: 'quadIn' })
+        .call(() => {
+          if (coin.isValid) {
+            coin.destroy();
+          }
+          arrived += 1;
+          if (arrived % 4 === 1) {
+            gameAudio.sfx('coin', 0.55);
+          }
+          if (arrived === count && target && target.isValid) {
+            tween(target).to(0.12, { scale: new Vec3(1.16, 1.16, 1) }).to(0.18, { scale: new Vec3(1, 1, 1) }).start();
+          }
+        })
+        .start();
+    }
   }
 
   /** 锻造页强化材料不足(2026-09-22 用户反馈"金币不够点强化没提示"):说清差什么;金币不够顺手打开金币商店。 */
