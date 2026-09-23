@@ -11,6 +11,7 @@ import {
   UIOpacity,
   UITransform,
   Vec3,
+  tween,
 } from 'cc';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
@@ -22,7 +23,7 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
  * - 体力:点顶部体力打开;左侧当前体力 + 回复进度,右侧"补充 1 份 / 5 份"两张卡;60 钻 = 30 体力,每日限次,可超上限。
  * - 钻石:点顶部钻石打开;6 档人民币→钻石按 3×2 排,图标 少量 → 中量 → 大量 → 钻石宝箱 递进;支付渠道未接入时只预览。
  * 面板底与守卫战各弹层同款素净框(4:3),尺寸同时满足内容宽与内容高(2026-09-23 用户反馈"过于紧凑":卡距/边距放宽,卡内加光晕、赠送标签,
- * 价格带钻石图标,底部余额改成货币胶囊);字号按限时副本面板口径(标题 34、正文 18、卡名 20、数额 28)。
+ * 价格带钻石图标;2026-09-24 去掉底部余额行,改成醒目的结果横幅);字号按限时副本面板口径(标题 34、正文 18、卡名 20、数额 28)。
  * 作为全屏覆盖层挂在当前视图之上(大厅 / 锻造等功能页都能开),数据与写入全走服务端 ShopApi;购买成功由根节点做飘字 + 飞币动效。
  */
 export type LobbyShopKind = 'gold' | 'stamina' | 'diamond';
@@ -78,8 +79,6 @@ const TITLE_DIVIDER_L: SpriteSpec = { path: 'ui/common/ai/title_divider_left/spr
 const TITLE_DIVIDER_R: SpriteSpec = { path: 'ui/common/ai/title_divider_right/spriteFrame', aspect: 73 / 392 };
 const CLOSE_BUTTON: SpriteSpec = { path: 'ui/common/ai/button_close/spriteFrame', aspect: 161 / 155 };
 const BUY_BUTTON: SpriteSpec = { path: 'ui/common/ai/bag_button_crimson/spriteFrame', aspect: 128 / 512 };
-/** 底部余额胶囊(与顶部货币栏同款素材,已裁短 280×91)。 */
-const CURRENCY_CAPSULE: SpriteSpec = { path: 'ui/common/ai/bag_currency_bar/spriteFrame', aspect: 91 / 280 };
 /** 档位卡框:绿 → 蓝 → 紫 → 橙(现成抽卡框,只能等比);tint 用于卡内光晕与上半区淡染。 */
 const TIER_FRAMES: Array<SpriteSpec & { tint: [number, number, number] }> = [
   { path: 'ui/gacha/ai/green/spriteFrame', aspect: 416 / 294, tint: [120, 210, 110] },
@@ -101,9 +100,12 @@ const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '�
 
 /** 字号口径(2026-09-22 用户:与限时副本面板一致,以后所有弹窗统一)。 */
 const FONT = { title: 34, subtitle: 18, body: 18, small: 16, cardName: 20, amount: 28, unit: 16, tag: 15, price: 20, big: 26 };
-/** 面板顶边 → 内容区顶 / 内容区底 → 面板底边 的固定留白(含标题、副标题、余额胶囊)。 */
+/** 面板顶边 → 内容区顶 / 内容区底 → 面板底边 的固定留白(顶部含标题、副标题;底部含结果横幅)。 */
 const HEADER_H = 206;
-const FOOTER_H = 170;
+const FOOTER_H = 156;
+/** 结果横幅中心离面板底边的距离与字号(2026-09-24:去掉余额行后横幅下移放大)。 */
+const NOTICE_Y = 102;
+const NOTICE_FONT = 22;
 /** 内容区左右各留的边距(2026-09-23 放宽)。 */
 const SIDE_PAD = 80;
 /** 卡片框最高的高宽比(排版预留)。 */
@@ -134,6 +136,9 @@ interface TierCardSpec {
 }
 
 export class LobbyShopDialogRenderer {
+  /** 上一次渲染的结果文案(只在文案变化时弹一下)。 */
+  private lastNotice = '';
+
   constructor(private readonly host: LobbyShopDialogHost) {}
 
   render(layout: UiLayout): void {
@@ -203,34 +208,16 @@ export class LobbyShopDialogRenderer {
     const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - 36 * scale, FONT.subtitle * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.82, 24 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
 
-    // 底部余额:货币胶囊(金币 / 钻石;体力页再加体力),替代原来的一行小字。
+    // 2026-09-24 用户:去掉底部"当前持有"余额行(顶部货币栏已有),底部整条留给结果横幅。
     const profile = this.host.currentLobbyProfile();
-    const gold = catalog ? Number(catalog.gold ?? 0) : Number(profile.gold ?? 0);
     const diamond = catalog ? Number(catalog.diamond ?? 0) : Number(profile.diamond ?? 0);
-    const stamina = catalog ? catalog.stamina : profile.stamina;
-    const maxStamina = catalog ? catalog.maxStamina : profile.maxStamina;
-    const chips: Array<{ key: string; icon: SpriteSpec; value: string }> = [
-      { key: 'gold', icon: ICONS.gold_small, value: this.host.formatInteger(gold) },
-      { key: 'diamond', icon: ICONS.diamond, value: this.host.formatInteger(diamond) },
-    ];
-    if (state.kind === 'stamina') {
-      chips.push({ key: 'stamina', icon: ICONS.stamina, value: `${stamina}/${maxStamina}` });
-    }
-    const chipW = 172 * scale;
-    const chipGap = 22 * scale;
-    const chipsW = chips.length * chipW + (chips.length - 1) * chipGap;
-    const chipY = -panelH / 2 + 78 * scale;
-    this.host.addChildLabel(panel, 'LobbyShopFooterLabel', '当前持有', -chipsW / 2 - 16 * scale - 40 * scale, chipY, FONT.small * scale, rgba(190, 172, 140, 230), new Size(80 * scale, 22 * scale));
-    chips.forEach((chip, index) => {
-      this.addCurrencyChip(panel, `LobbyShopFooterChip_${chip.key}`, -chipsW / 2 + chipW / 2 + index * (chipW + chipGap), chipY, chipW, chip.icon, chip.value, scale);
-    });
 
     const bodyTop = panelH / 2 - HEADER_H * scale;
     const bodyBottom = -panelH / 2 + FOOTER_H * scale;
     if (state.notice) {
-      // 状态行(购买成功 / 失败 / 等待支付)独占卡片区与余额胶囊之间的一条带(FOOTER_H 已含),不与任何卡片重叠
-      const notice = this.host.addChildLabel(panel, 'LobbyShopNotice', state.notice, 0, -panelH / 2 + 136 * scale, FONT.body * scale, state.notice.includes('失败') || state.notice.includes('不足') ? rgba(255, 150, 130) : rgba(160, 240, 170), new Size(panelW * 0.84, 24 * scale));
-      notice.overflow = Label.Overflow.SHRINK;
+      this.renderNoticeBanner(panel, state.notice, -panelH / 2 + NOTICE_Y * scale, panelW, scale);
+    } else {
+      this.lastNotice = '';
     }
     if (!catalog) {
       this.host.addChildLabel(panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, (bodyTop + bodyBottom) / 2, FONT.body * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 26 * scale));
@@ -575,24 +562,41 @@ export class LobbyShopDialogRenderer {
     void scale;
   }
 
-  /** 底部余额胶囊:与顶部货币栏同款(素材已裁短,槽心在宽 17.1% 处,图标高=胶囊高 56%)。 */
-  private addCurrencyChip(parent: Node, name: string, x: number, y: number, capWidth: number, icon: SpriteSpec, value: string, scale: number): void {
-    const capHeight = capWidth * CURRENCY_CAPSULE.aspect;
-    const chip = this.host.addChildPlainNode(parent, name, x, y, capWidth, capHeight);
-    if (!this.host.addSprite(`${name}Capsule`, CURRENCY_CAPSULE.path, 0, 0, capWidth, capHeight, chip)) {
-      const g = chip.addComponent(Graphics);
-      g.fillColor = rgba(12, 10, 10, 190);
-      g.roundRect(-capWidth / 2, -capHeight / 2, capWidth, capHeight, capHeight / 2);
-      g.fill();
-      g.strokeColor = rgba(157, 118, 60, 170);
-      g.stroke();
-    }
-    this.fitSprite(chip, `${name}Icon`, icon, -capWidth / 2 + capWidth * 0.171 + 7 * scale, 0, capHeight * 0.56);
-    const label = this.host.addChildLabel(chip, `${name}Value`, value, capWidth * 0.05, 0, FONT.body * scale, rgba(245, 222, 168), new Size(capWidth * 0.52, 22 * scale));
+  /**
+   * 结果横幅(2026-09-24 用户:提示不够明显):圆角底 + 描边 + 大号加粗字,失败红 / 成功绿 / 其余(等待支付等)金;
+   * 文案变化时弹一下(弹层会被 HUD 定时重挂,同一条提示不重复弹)。
+   */
+  private renderNoticeBanner(panel: Node, text: string, y: number, panelW: number, scale: number): void {
+    const tone = /失败|不足|异常|拦截|超时|错误|不可用|不支持/.test(text) ? 'error' : /成功/.test(text) ? 'ok' : 'info';
+    const palette = tone === 'error'
+      ? { fill: rgba(96, 18, 18, 238), stroke: rgba(255, 110, 90, 255), text: rgba(255, 222, 210) }
+      : tone === 'ok'
+        ? { fill: rgba(18, 70, 34, 238), stroke: rgba(120, 225, 130, 255), text: rgba(215, 255, 218) }
+        : { fill: rgba(70, 50, 16, 238), stroke: rgba(255, 205, 110, 255), text: rgba(255, 238, 190) };
+    const fontSize = NOTICE_FONT * scale;
+    const bannerH = 50 * scale;
+    const bannerW = Math.min(panelW * 0.86, Math.max(360 * scale, text.length * fontSize * 0.95 + 64 * scale));
+    const banner = this.host.addChildPlainNode(panel, 'LobbyShopNotice', 0, y, bannerW, bannerH);
+    const g = banner.addComponent(Graphics);
+    g.fillColor = palette.fill;
+    g.roundRect(-bannerW / 2, -bannerH / 2, bannerW, bannerH, bannerH / 2);
+    g.fill();
+    g.strokeColor = palette.stroke;
+    g.lineWidth = Math.max(1.5, 2.4 * scale);
+    g.roundRect(-bannerW / 2, -bannerH / 2, bannerW, bannerH, bannerH / 2);
+    g.stroke();
+    const label = this.host.addChildLabel(banner, 'LobbyShopNoticeText', text, 0, 0, fontSize, palette.text, new Size(bannerW - 40 * scale, bannerH - 6 * scale));
     label.overflow = Label.Overflow.SHRINK;
-    label.enableOutline = true;
-    label.outlineColor = rgba(0, 0, 0, 220);
-    label.outlineWidth = Math.max(1, 1.4 * scale);
+    label.isBold = true;
+    this.outline(label, scale, rgba(0, 0, 0, 255));
+    if (text !== this.lastNotice) {
+      this.lastNotice = text;
+      banner.setScale(0.86, 0.86, 1);
+      tween(banner)
+        .to(0.14, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'backOut' })
+        .to(0.1, { scale: new Vec3(1, 1, 1) })
+        .start();
+    }
   }
 
   /** 档位图标:金币四档各一张图;钻石按数量用同一颗钻石组合成 1/3/5 颗,宝箱档=宝箱 + 钻石角标(纯显示组合,不改素材)。 */
