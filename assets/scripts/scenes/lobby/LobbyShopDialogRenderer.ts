@@ -36,8 +36,6 @@ export interface LobbyShopDialogState {
   notice: string;
   /** 钻石页选中的充值通道(空=第一个可用通道)。 */
   channelCode?: string | null;
-  /** 已打开支付窗口、等待到账的订单号(轮询中)。 */
-  pendingOrderNo?: string | null;
 }
 
 export interface LobbyShopDialogHost {
@@ -567,7 +565,7 @@ export class LobbyShopDialogRenderer {
    * 文案变化时弹一下(弹层会被 HUD 定时重挂,同一条提示不重复弹)。
    */
   private renderNoticeBanner(panel: Node, text: string, y: number, panelW: number, scale: number): void {
-    const tone = /失败|不足|异常|拦截|超时|错误|不可用|不支持/.test(text) ? 'error' : /成功/.test(text) ? 'ok' : 'info';
+    const tone = /失败|不足|异常|拦截|超时|错误|不可用|不支持|不符|过期|频繁/.test(text) ? 'error' : /成功/.test(text) ? 'ok' : 'info';
     const palette = tone === 'error'
       ? { fill: rgba(96, 18, 18, 238), stroke: rgba(255, 110, 90, 255), text: rgba(255, 222, 210) }
       : tone === 'ok'

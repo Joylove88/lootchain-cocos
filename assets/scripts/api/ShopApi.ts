@@ -1,5 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
-import type { ShopCatalogVO, ShopPurchaseResultVO, ShopRechargeOrderVO, ShopRechargeResultVO } from '../types/ShopTypes';
+import type { ShopCatalogVO, ShopPurchaseResultVO, ShopRechargeOrderVO, ShopRechargePendingVO, ShopRechargeResultVO } from '../types/ShopTypes';
 import { expectRecord } from './ApiValueGuards';
 
 /** 货币商店(docs/33):目录 / 钻石买金币 / 钻石买体力 / 钻石充值下单。 */
@@ -26,6 +26,11 @@ export class ShopApi {
   /** 查自己的充值订单(支付窗口打开后轮询到账)。 */
   rechargeOrder(orderNo: string): Promise<ShopRechargeOrderVO> {
     return this.http.get<unknown>('/api/player/shop/recharge/order', { orderNo }).then(expectRecord<ShopRechargeOrderVO>('充值订单'));
+  }
+
+  /** 未完成的真实充值订单(最新在前)。 */
+  rechargePending(): Promise<ShopRechargePendingVO[]> {
+    return this.http.get<unknown>('/api/player/shop/recharge/pending').then((value) => (Array.isArray(value) ? (value as ShopRechargePendingVO[]) : []));
   }
 
   /** 收银台中转地址转绝对地址(预先打开的支付窗口要导航过去)。 */

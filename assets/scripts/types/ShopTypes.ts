@@ -83,6 +83,16 @@ export interface ShopRechargeResultVO {
   payContent?: string | null;
   /** 收银台中转地址(相对 API 基址,带签名);预先打开的支付窗口导航过去。 */
   cashierUrl?: string | null;
+  /** true=复用了同档位同通道的未付款订单(重新打开原支付页,没有新建订单)。 */
+  reused?: boolean;
+}
+
+/** 未完成(待支付)的真实充值订单:打开钻石页时拉取,继续轮询到账。 */
+export interface ShopRechargePendingVO {
+  orderNo: string;
+  tierCode: string;
+  diamondTotal: number;
+  createTime: string;
 }
 
 /** 充值订单状态(下单后轮询):0 待支付 1 已到账 2 下单失败/关闭 3 金额异常待人工 4 已过期。 */

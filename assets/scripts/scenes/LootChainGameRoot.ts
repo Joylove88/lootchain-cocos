@@ -321,8 +321,12 @@ export class LootChainGameRoot extends Component {
   /** 货币商店弹窗(docs/33,2026-09-22):挂在当前视图之上的覆盖层,每次整页重绘后由 syncLobbyShopOverlay 重新挂回。 */
   private readonly lobbyShopDialogRenderer = new LobbyShopDialogRenderer(this as unknown as LobbyShopDialogHost);
   private lobbyShopDialog: LobbyShopDialogState | null = null;
-  /** 已打开支付窗口、等待回调到账的充值单(docs/34);弹窗关掉也继续轮询,到账后飞钻石。 */
-  private lobbyRechargePending: { orderNo: string; diamondTotal: number; volume: LobbyShopFlyVolume; fromWorld: Vec3 | null; startedAt: number } | null = null;
+  /**
+   * 等待回调到账的真实充值单(docs/34;2026-09-24 起同时跟踪全部未付款订单):
+   * 玩家开了多个支付页、付的是其中任意一笔,都能立即刷新余额并飞钻石。弹窗关掉也继续轮询。
+   */
+  private readonly lobbyRechargePending = new Map<string, { diamondTotal: number; volume: LobbyShopFlyVolume; fromWorld: Vec3 | null; startedAt: number }>();
+  private lobbyRechargePollTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly lobbyProfileLoader = new LobbyProfileLoader(this.api.profile, AppConfig.defaultDevUserId, this as unknown as LobbyProfileLoaderHost);
   private readonly lobbySettingsPanelRenderer = new LobbySettingsPanelRenderer(this as unknown as LobbySettingsPanelHost);
   private currentView: ViewName = 'login';
@@ -4768,15 +4772,13 @@ export class LootChainGameRoot extends Component {
       return;
     }
     const previous = this.lobbyShopDialog;
-    const pending = this.lobbyRechargePending;
     this.lobbyShopDialog = {
       kind,
       catalog: previous?.catalog ?? null,
       loading: true,
       busy: false,
-      notice: kind === 'diamond' && pending ? `等待支付完成:订单 ${pending.orderNo},付款后钻石自动到账` : '',
+      notice: kind === 'diamond' ? this.rechargePendingNotice() : '',
       channelCode: previous?.channelCode ?? null,
-      pendingOrderNo: pending?.orderNo ?? null,
     };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
@@ -4820,6 +4822,9 @@ export class LootChainGameRoot extends Component {
       }
       dialog.catalog = catalog;
       dialog.loading = false;
+      if (dialog.kind === 'diamond' && catalog.payMode === 'ONLINE') {
+        void this.resumeRechargePending(catalog);
+      }
     } catch (error) {
       if (this.lobbyShopDialog !== dialog) {
         return;
@@ -4828,6 +4833,43 @@ export class LootChainGameRoot extends Component {
       dialog.notice = `商店读取失败:${error instanceof Error ? error.message : String(error)}`;
     }
     this.syncLobbyShopOverlay();
+  }
+
+  /** 打开钻石页时把服务端的未付款订单接回来继续轮询(刷新页面 / 之前开过多个支付页的情况)。 */
+  private async resumeRechargePending(catalog: import('../types/ShopTypes').ShopCatalogVO): Promise<void> {
+    let list: import('../types/ShopTypes').ShopRechargePendingVO[];
+    try {
+      list = await this.api.shop.rechargePending();
+    } catch {
+      return;
+    }
+    let added = false;
+    for (const item of list) {
+      if (this.lobbyRechargePending.has(item.orderNo)) {
+        continue;
+      }
+      const tier = catalog.rechargeTiers.find((entry) => entry.code === item.tierCode);
+      this.lobbyRechargePending.set(item.orderNo, {
+        diamondTotal: item.diamondTotal || tier?.diamondTotal || 0,
+        volume: this.shopFlyVolume(tier?.iconKey),
+        fromWorld: null,
+        startedAt: Date.now(),
+      });
+      added = true;
+    }
+    if (added) {
+      this.ensureRechargePoll(1000);
+      const dialog = this.lobbyShopDialog;
+      if (dialog && dialog.kind === 'diamond' && !dialog.busy) {
+        dialog.notice = this.rechargePendingNotice();
+        this.syncLobbyShopOverlay();
+      }
+    }
+  }
+
+  private rechargePendingNotice(): string {
+    const count = this.lobbyRechargePending.size;
+    return count > 0 ? `有 ${count} 笔充值订单等待付款,付款后钻石自动到账` : '';
   }
 
   private buyShopGold(tierCode: string, fromWorld?: Vec3): void {
@@ -4865,6 +4907,7 @@ export class LootChainGameRoot extends Component {
 
   /**
    * 支付中心真实充值(docs/34):下单 → 把占位窗口导航到后端收银台中转页 → 轮询订单,回调到账后刷新余额并飞钻石。
+   * 2026-09-24:服务端对同档位同通道的未付款订单直接复用(reused=true,重新打开原支付页);连点 / 未付款过多由服务端拒绝,文案进红色横幅。
    * 下单失败/没拿到收银台地址时关掉占位窗口,错误文案直接给玩家。
    */
   private async startOnlineRecharge(tierCode: string, payWindow: PaymentWindow, fromWorld: Vec3 | null, diamondTotal: number, volume: LobbyShopFlyVolume): Promise<void> {
@@ -4883,19 +4926,18 @@ export class LootChainGameRoot extends Component {
         throw new Error(result.message || '支付平台未返回支付地址');
       }
       const opened = payWindow.navigate(this.api.shop.absoluteUrl(result.cashierUrl));
-      this.lobbyRechargePending = { orderNo: result.orderNo, diamondTotal: result.diamondTotal || diamondTotal, volume, fromWorld, startedAt: Date.now() };
-      const notice = opened
-        ? `已打开支付页:完成付款后钻石自动到账(订单 ${result.orderNo})`
-        : '浏览器拦截了支付窗口:请允许本站弹出窗口后重新点击档位';
+      // 复用的订单也照样跟踪(可能之前没在跟踪,例如刷新过页面)。
+      this.trackRecharge(result.orderNo, result.diamondTotal || diamondTotal, volume, fromWorld);
+      const notice = !opened
+        ? '浏览器拦截了支付窗口:请允许本站弹出窗口后重新点击档位'
+        : result.reused
+          ? `已重新打开你未付款的同档位订单(${result.orderNo}),付款后钻石自动到账`
+          : `已打开支付页:完成付款后钻石自动到账(订单 ${result.orderNo})`;
       if (this.lobbyShopDialog === dialog) {
         dialog.notice = notice;
-        dialog.pendingOrderNo = opened ? result.orderNo : null;
       }
       this.setStatus(notice);
-      if (opened) {
-        this.scheduleRechargePoll(result.orderNo, 4000);
-      } else {
-        this.lobbyRechargePending = null;
+      if (!opened) {
         gameAudio.sfx('ui_error');
       }
     } catch (error) {
@@ -4914,71 +4956,80 @@ export class LootChainGameRoot extends Component {
     }
   }
 
-  /** 轮询到账:3 秒一次,最多 15 分钟;换了新订单 / 已终态就停。页面不可见时也照常(setTimeout 会被浏览器节流,不影响结果)。 */
-  private scheduleRechargePoll(orderNo: string, delayMs: number): void {
-    setTimeout(() => {
-      void this.pollRechargeOrder(orderNo);
+  private trackRecharge(orderNo: string, diamondTotal: number, volume: LobbyShopFlyVolume, fromWorld: Vec3 | null): void {
+    const existing = this.lobbyRechargePending.get(orderNo);
+    this.lobbyRechargePending.set(orderNo, {
+      diamondTotal,
+      volume,
+      fromWorld,
+      startedAt: existing?.startedAt ?? Date.now(),
+    });
+    this.ensureRechargePoll(4000);
+  }
+
+  /** 单一轮询循环:3 秒一轮查全部未付款订单,清空后停;每笔最多跟 15 分钟。 */
+  private ensureRechargePoll(delayMs: number): void {
+    if (this.lobbyRechargePollTimer !== null || this.lobbyRechargePending.size === 0) {
+      return;
+    }
+    this.lobbyRechargePollTimer = setTimeout(() => {
+      this.lobbyRechargePollTimer = null;
+      void this.pollAllRecharges();
     }, delayMs);
   }
 
-  private async pollRechargeOrder(orderNo: string): Promise<void> {
-    const pending = this.lobbyRechargePending;
-    if (!pending || pending.orderNo !== orderNo) {
-      return;
-    }
-    if (Date.now() - pending.startedAt > 15 * 60 * 1000) {
-      this.finishRechargePending(orderNo, '支付等待超时:如已付款,稍后刷新即可看到钻石;仍未到账请联系客服', false);
-      return;
-    }
-    let order;
-    try {
-      order = await this.api.shop.rechargeOrder(orderNo);
-    } catch {
-      this.scheduleRechargePoll(orderNo, 5000);
-      return;
-    }
-    if (this.lobbyRechargePending?.orderNo !== orderNo) {
-      return;
-    }
-    if (order.paid) {
-      const amount = order.diamondTotal || pending.diamondTotal;
-      this.finishRechargePending(orderNo, `充值成功:钻石 +${this.formatInteger(amount)}`, true);
-      gameAudio.sfx('coin');
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      const dialog = this.lobbyShopDialog;
-      if (dialog) {
-        try {
-          const catalog = await this.api.shop.catalog();
-          if (this.lobbyShopDialog === dialog) {
-            dialog.catalog = catalog;
-          }
-        } catch {
-          // 余额以资料为准,目录刷新失败不影响
-        }
-        this.syncLobbyShopOverlay();
+  private async pollAllRecharges(): Promise<void> {
+    const now = Date.now();
+    for (const [orderNo, pending] of [...this.lobbyRechargePending.entries()]) {
+      if (now - pending.startedAt > 15 * 60 * 1000) {
+        this.finishRechargePending(orderNo, '支付等待超时:如已付款,稍后刷新即可看到钻石;仍未到账请联系客服', false);
+        continue;
       }
-      this.spawnLobbyCurrencyFly('diamond', amount, dialog ? pending.fromWorld : null, pending.volume);
-      return;
+      let order;
+      try {
+        order = await this.api.shop.rechargeOrder(orderNo);
+      } catch {
+        continue;
+      }
+      if (!this.lobbyRechargePending.has(orderNo)) {
+        continue;
+      }
+      if (order.paid) {
+        await this.onRechargePaid(orderNo, order.diamondTotal || pending.diamondTotal, pending);
+      } else if (order.status === 3) {
+        this.finishRechargePending(orderNo, '支付金额与订单不符,已转人工核实,请联系客服', false);
+      } else if (order.status === 4 || order.status === 2) {
+        this.finishRechargePending(orderNo, `订单${order.statusLabel}:如已付款请联系客服`, false);
+      }
     }
-    if (order.status === 3) {
-      this.finishRechargePending(orderNo, '支付金额与订单不符,已转人工核实,请联系客服', false);
-      return;
+    this.ensureRechargePoll(3000);
+  }
+
+  private async onRechargePaid(orderNo: string, amount: number, pending: { volume: LobbyShopFlyVolume; fromWorld: Vec3 | null }): Promise<void> {
+    this.finishRechargePending(orderNo, `充值成功:钻石 +${this.formatInteger(amount)}`, true);
+    gameAudio.sfx('coin');
+    await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+    const dialog = this.lobbyShopDialog;
+    if (dialog) {
+      try {
+        const catalog = await this.api.shop.catalog();
+        if (this.lobbyShopDialog === dialog) {
+          dialog.catalog = catalog;
+        }
+      } catch {
+        // 余额以资料为准,目录刷新失败不影响
+      }
+      this.syncLobbyShopOverlay();
     }
-    if (order.status === 4 || order.status === 2) {
-      this.finishRechargePending(orderNo, `订单${order.statusLabel}:如已付款请联系客服`, false);
-      return;
-    }
-    this.scheduleRechargePoll(orderNo, 3000);
+    this.spawnLobbyCurrencyFly('diamond', amount, dialog ? pending.fromWorld : null, pending.volume);
   }
 
   private finishRechargePending(orderNo: string, message: string, success: boolean): void {
-    if (this.lobbyRechargePending?.orderNo === orderNo) {
-      this.lobbyRechargePending = null;
-    }
+    this.lobbyRechargePending.delete(orderNo);
     const dialog = this.lobbyShopDialog;
-    if (dialog && dialog.pendingOrderNo === orderNo) {
-      dialog.pendingOrderNo = null;
-      dialog.notice = message;
+    if (dialog && dialog.kind === 'diamond') {
+      const rest = this.rechargePendingNotice();
+      dialog.notice = rest ? `${message};${rest}` : message;
       this.syncLobbyShopOverlay();
     }
     this.setStatus(message);
