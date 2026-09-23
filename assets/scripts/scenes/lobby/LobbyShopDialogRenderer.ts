@@ -13,7 +13,7 @@ import {
   Vec3,
 } from 'cc';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
-import type { ShopCatalogVO } from '../../types/ShopTypes';
+import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 
 /**
@@ -33,6 +33,10 @@ export interface LobbyShopDialogState {
   loading: boolean;
   busy: boolean;
   notice: string;
+  /** 钻石页选中的充值通道(空=第一个可用通道)。 */
+  channelCode?: string | null;
+  /** 已打开支付窗口、等待到账的订单号(轮询中)。 */
+  pendingOrderNo?: string | null;
 }
 
 export interface LobbyShopDialogHost {
@@ -43,6 +47,7 @@ export interface LobbyShopDialogHost {
   buyShopGold(tierCode: string, fromWorld?: Vec3): void;
   buyShopStamina(count: number, fromWorld?: Vec3): void;
   rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void;
+  selectShopRechargeChannel(channelCode: string): void;
   createUiNode(name: string): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
@@ -98,7 +103,7 @@ const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '�
 const FONT = { title: 34, subtitle: 18, body: 18, small: 16, cardName: 20, amount: 28, unit: 16, tag: 15, price: 20, big: 26 };
 /** 面板顶边 → 内容区顶 / 内容区底 → 面板底边 的固定留白(含标题、副标题、余额胶囊)。 */
 const HEADER_H = 206;
-const FOOTER_H = 138;
+const FOOTER_H = 170;
 /** 内容区左右各留的边距(2026-09-23 放宽)。 */
 const SIDE_PAD = 80;
 /** 卡片框最高的高宽比(排版预留)。 */
@@ -106,6 +111,8 @@ const TALLEST_FRAME = Math.max(...TIER_FRAMES.map((frame) => frame.aspect));
 /** 各页卡宽上限与每排张数。 */
 const CARD_W = { gold: 224, stamina: 196, diamond: 210 };
 const GAP = { col: 32, row: 26 };
+/** 钻石页支付方式行占的高度(ONLINE 且有通道时)。 */
+const CHANNEL_ROW_H = 58;
 
 interface TierCardSpec {
   name: string;
@@ -188,9 +195,11 @@ export class LobbyShopDialogRenderer {
       ? '用钻石换取金币,档位越高赠送越多'
       : state.kind === 'stamina'
         ? `${catalog?.staminaOffer.diamondCost ?? 60} 钻石 = ${catalog?.staminaOffer.staminaGain ?? 30} 体力 · 每 5 分钟自然回复 1 点`
-        : catalog?.mockPay
-          ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
-          : '支付渠道接入中,档位仅供预览';
+        : this.payMode(catalog) === 'ONLINE'
+          ? '选择支付方式后点击档位,在新窗口完成付款,到账后钻石自动发放'
+          : this.payMode(catalog) === 'MOCK'
+            ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
+            : '支付渠道接入中,档位仅供预览';
     const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - 36 * scale, FONT.subtitle * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.82, 24 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
 
@@ -219,8 +228,8 @@ export class LobbyShopDialogRenderer {
     const bodyTop = panelH / 2 - HEADER_H * scale;
     const bodyBottom = -panelH / 2 + FOOTER_H * scale;
     if (state.notice) {
-      // 状态行(购买成功 / 失败)放在卡片行之下、余额胶囊之上,离刚刚点过的卡与变化的余额都近
-      const notice = this.host.addChildLabel(panel, 'LobbyShopNotice', state.notice, 0, -panelH / 2 + 160 * scale, FONT.body * scale, state.notice.includes('失败') || state.notice.includes('不足') ? rgba(255, 150, 130) : rgba(160, 240, 170), new Size(panelW * 0.84, 24 * scale));
+      // 状态行(购买成功 / 失败 / 等待支付)独占卡片区与余额胶囊之间的一条带(FOOTER_H 已含),不与任何卡片重叠
+      const notice = this.host.addChildLabel(panel, 'LobbyShopNotice', state.notice, 0, -panelH / 2 + 136 * scale, FONT.body * scale, state.notice.includes('失败') || state.notice.includes('不足') ? rgba(255, 150, 130) : rgba(160, 240, 170), new Size(panelW * 0.84, 24 * scale));
       notice.overflow = Label.Overflow.SHRINK;
     }
     if (!catalog) {
@@ -232,7 +241,7 @@ export class LobbyShopDialogRenderer {
     } else if (state.kind === 'stamina') {
       this.renderStamina(panel, catalog, panelW, bodyTop, bodyBottom, scale, state.busy, diamond);
     } else {
-      this.renderRechargeTiers(panel, catalog, panelW, bodyTop, bodyBottom, scale, state.busy);
+      this.renderRechargeTiers(panel, catalog, state, panelW, bodyTop, bodyBottom, scale);
     }
     if (state.busy) {
       const cover = this.host.addChildPlainNode(panel, 'LobbyShopBusy', 0, 0, panelW, panelH);
@@ -255,7 +264,29 @@ export class LobbyShopDialogRenderer {
       return { w: 940 * scale, h: (CARD_W.stamina * TALLEST_FRAME + 90) * scale };
     }
     const rows = Math.ceil(catalog.rechargeTiers.length / 3);
-    return { w: (3 * CARD_W.diamond + 2 * GAP.col) * scale, h: (rows * CARD_W.diamond * TALLEST_FRAME + (rows - 1) * GAP.row + 40) * scale };
+    const channelRow = this.onlineChannels(catalog).length > 0 ? CHANNEL_ROW_H : 0;
+    return { w: (3 * CARD_W.diamond + 2 * GAP.col) * scale, h: (rows * CARD_W.diamond * TALLEST_FRAME + (rows - 1) * GAP.row + 40 + channelRow) * scale };
+  }
+
+  /** 旧服务端没有 payMode 字段时按 mockPay 推断。 */
+  private payMode(catalog: ShopCatalogVO | null): ShopPayMode {
+    if (!catalog) {
+      return 'NONE';
+    }
+    return catalog.payMode ?? (catalog.mockPay ? 'MOCK' : 'NONE');
+  }
+
+  private onlineChannels(catalog: ShopCatalogVO): ShopRechargeChannelVO[] {
+    return this.payMode(catalog) === 'ONLINE' ? catalog.rechargeChannels ?? [] : [];
+  }
+
+  private static channelFits(channel: ShopRechargeChannelVO | undefined, price: number): boolean {
+    if (!channel) {
+      return true;
+    }
+    const min = channel.minAmount == null ? null : Number(channel.minAmount);
+    const max = channel.maxAmount == null ? null : Number(channel.maxAmount);
+    return (min == null || price >= min) && (max == null || price <= max);
   }
 
   // ── 金币:4 档一排;赠送最高的一档标"最划算" ──
@@ -346,16 +377,26 @@ export class LobbyShopDialogRenderer {
     quota.overflow = Label.Overflow.SHRINK;
   }
 
-  // ── 钻石充值:6 档 3×2,图标 少量 → 中量 → 大量 → 宝箱;赠送最高的一档标"最划算" ──
-  private renderRechargeTiers(panel: Node, catalog: ShopCatalogVO, panelW: number, top: number, bottom: number, scale: number, busy: boolean): void {
+  // ── 钻石充值:6 档 3×2,图标 少量 → 中量 → 大量 → 宝箱;赠送最高的一档标"最划算";ONLINE 时顶部一行支付方式 ──
+  private renderRechargeTiers(panel: Node, catalog: ShopCatalogVO, state: LobbyShopDialogState, panelW: number, top: number, bottom: number, scale: number): void {
+    const busy = state.busy;
+    const mode = this.payMode(catalog);
+    const channels = this.onlineChannels(catalog);
+    const selected = channels.find((channel) => channel.channelCode === state.channelCode) ?? channels[0];
+    let gridTop = top;
+    if (channels.length > 0) {
+      this.renderChannelRow(panel, channels, selected?.channelCode ?? '', top - 24 * scale, scale, busy);
+      gridTop = top - CHANNEL_ROW_H * scale;
+    }
     const tiers = catalog.rechargeTiers;
     const bestBonus = Math.max(0, ...tiers.map((tier) => tier.diamondBonus));
-    const grid = this.tierGrid(panelW, top, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
+    const grid = this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
     const frameByIndex = [0, 0, 1, 2, 2, 3];
     tiers.forEach((tier, index) => {
       const slot = grid.slots[index];
       const price = Number(tier.priceCny ?? 0);
       const best = tier.diamondBonus > 0 && tier.diamondBonus === bestBonus;
+      const payable = mode === 'MOCK' || (mode === 'ONLINE' && LobbyShopDialogRenderer.channelFits(selected, price));
       this.buildTierCard(panel, `LobbyShopRecharge_${tier.code}`, slot.x, slot.y, grid.cardW, TIER_FRAMES[frameByIndex[index] ?? 3], scale, {
         name: tier.name,
         iconKey: tier.iconKey,
@@ -365,10 +406,48 @@ export class LobbyShopDialogRenderer {
         tag: tier.diamondBonus > 0 ? (best ? `最划算 · 赠 ${this.host.formatInteger(tier.diamondBonus)}` : `赠 ${this.host.formatInteger(tier.diamondBonus)}`) : '',
         tagHighlight: best,
         price: `¥ ${Number.isInteger(price) ? price : price.toFixed(2)}`,
-        enabled: !busy && catalog.mockPay,
-        dimmed: !catalog.mockPay,
+        enabled: !busy && payable,
+        dimmed: !payable,
         onTap: (from) => this.host.rechargeShopDiamond(tier.code, from),
       });
+    });
+  }
+
+  /** 支付方式一排圆角签:选中=金边亮底;只有一个通道时也显示,让玩家知道走的是哪种支付。 */
+  private renderChannelRow(panel: Node, channels: ShopRechargeChannelVO[], selectedCode: string, y: number, scale: number, busy: boolean): void {
+    const chipH = 40 * scale;
+    const gap = 16 * scale;
+    const widths = channels.map((channel) => Math.max(120 * scale, (channel.channelName.length * FONT.body + 48) * scale));
+    const labelW = 96 * scale;
+    const total = labelW + widths.reduce((sum, width) => sum + width, 0) + gap * channels.length;
+    let x = -total / 2;
+    const label = this.host.addChildLabel(panel, 'LobbyShopChannelLabel', '支付方式', x + labelW / 2, y, FONT.body * scale, rgba(212, 190, 150, 235), new Size(labelW, 26 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    x += labelW + gap;
+    channels.forEach((channel, index) => {
+      const width = widths[index];
+      const active = channel.channelCode === selectedCode;
+      const chip = this.host.addChildPlainNode(panel, `LobbyShopChannel_${channel.channelCode}`, x + width / 2, y, width, chipH);
+      const g = chip.addComponent(Graphics);
+      g.fillColor = active ? rgba(120, 70, 24, 240) : rgba(22, 18, 24, 230);
+      g.roundRect(-width / 2, -chipH / 2, width, chipH, chipH / 2);
+      g.fill();
+      g.strokeColor = active ? rgba(255, 214, 110, 255) : rgba(150, 120, 80, 200);
+      g.lineWidth = Math.max(1, (active ? 2.2 : 1.4) * scale);
+      g.roundRect(-width / 2, -chipH / 2, width, chipH, chipH / 2);
+      g.stroke();
+      const text = this.host.addChildLabel(chip, `LobbyShopChannelText_${channel.channelCode}`, channel.channelName, 0, 0, FONT.body * scale,
+        active ? rgba(255, 238, 190) : rgba(210, 196, 170), new Size(width - 16 * scale, chipH));
+      text.overflow = Label.Overflow.SHRINK;
+      if (active) {
+        text.isBold = true;
+      }
+      if (!busy && !active) {
+        chip.addComponent(Button);
+        chip.on(Button.EventType.CLICK, () => this.host.selectShopRechargeChannel(channel.channelCode), this);
+        this.host.applyImageButtonFeedback(chip, 1.04, 0.96);
+      }
+      x += width + gap;
     });
   }
 

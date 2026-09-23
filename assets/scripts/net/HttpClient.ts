@@ -36,6 +36,16 @@ export class HttpClient {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
+  /** API 路径 → 绝对地址(基址是相对路径时补当前页面 origin),给需要在新窗口打开的地址用。 */
+  absoluteUrl(path: string): string {
+    const joined = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+    if (/^https?:\/\//i.test(joined)) {
+      return joined;
+    }
+    const origin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+    return `${origin}${joined.startsWith('/') ? joined : `/${joined}`}`;
+  }
+
   get<T>(path: string, query?: QueryParams): Promise<T> {
     return this.request<T>('GET', path, undefined, query);
   }

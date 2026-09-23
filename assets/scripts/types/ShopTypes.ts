@@ -43,6 +43,22 @@ export interface ShopCatalogVO {
   rechargeTiers: ShopRechargeTierVO[];
   /** true=联调环境模拟支付(下单即到账);false=支付渠道未接入,充值不可用。 */
   mockPay: boolean;
+  /** 充值支付模式(docs/34):MOCK 模拟到账 / ONLINE 支付中心真实支付 / NONE 未接入。旧服务端无此字段时按 mockPay 推断。 */
+  payMode?: ShopPayMode;
+  /** 可选充值通道(ONLINE 才有,第一个为默认)。 */
+  rechargeChannels?: ShopRechargeChannelVO[];
+}
+
+export type ShopPayMode = 'MOCK' | 'ONLINE' | 'NONE';
+
+export interface ShopRechargeChannelVO {
+  channelCode: string;
+  /** 玩家端显示名,如"支付宝"。 */
+  channelName: string;
+  payTypeCode: string;
+  /** 档位价(元)范围,空=不限。 */
+  minAmount: ShopDecimal | null;
+  maxAmount: ShopDecimal | null;
 }
 
 export interface ShopPurchaseResultVO {
@@ -61,4 +77,20 @@ export interface ShopRechargeResultVO {
   diamondTotal: number;
   diamond: ShopDecimal;
   message: string;
+  payMode?: ShopPayMode;
+  /** 支付中心 CommonPayRsp.type(仅 ONLINE)。 */
+  payContentType?: string | null;
+  payContent?: string | null;
+  /** 收银台中转地址(相对 API 基址,带签名);预先打开的支付窗口导航过去。 */
+  cashierUrl?: string | null;
+}
+
+/** 充值订单状态(下单后轮询):0 待支付 1 已到账 2 下单失败/关闭 3 金额异常待人工 4 已过期。 */
+export interface ShopRechargeOrderVO {
+  orderNo: string;
+  status: number;
+  statusLabel: string;
+  paid: boolean;
+  diamondTotal: number;
+  diamond: ShopDecimal;
 }
