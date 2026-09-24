@@ -166,24 +166,10 @@ const LOGIN_SCENE_BACKGROUND_NODE_NAMES = [
   'Login_BG_Video',
 ] as const;
 
+// 旧版登录场景的天空/漩涡/龙眼等编辑器节点已于 2026-09-24 从 main.scene 移除(原场景备份在 素材原始备份/scene-backup-20260924),
+// 这里只剩场景里仍在的 Audio_BGM 需要强制隐藏。
 const LOGIN_SCENE_LEGACY_NODE_NAMES = [
   'Audio_BGM',
-  'BG_Main',
-  'BG_Main-001',
-  'BG_Main-002',
-  'Sky_Effects',
-  'Vortex_Center_Debug',
-  'Sky_Mask',
-  'Sky_MaskNew2',
-  'Sky_MaskNew',
-  'FG_Architecture',
-  'Architecture_Edge_Shadow_Soft',
-  'Architecture_Edge_Shadow_Tight',
-  'Crystal_Effects',
-  'Dragon_Layer',
-  'Character_Effects',
-  'Lightning_Particle',
-  'Foreground_Effects',
 ] as const;
 
 const LOGIN_SCENE_STAGE_NODE_NAMES = [...LOGIN_SCENE_BACKGROUND_NODE_NAMES, ...LOGIN_SCENE_LEGACY_NODE_NAMES] as const;

@@ -12,3 +12,6 @@ web-vue/screenshots/
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+
+# 2026-09-24 瘦身移出的未引用 PNG(git 历史里已有同内容,不重复入库;恢复见其中 MANIFEST.tsv)
+素材原始备份/unused-png-20260924/
