@@ -422,7 +422,7 @@ function grantBattleReplayInitialShields(
   unitByKey: Map<string, BattlePresentationUnitSnapshot>,
   units: Map<string, BattleReplayUnitState>,
 ): void {
-  const allies = [...unitByKey.values()].filter((unit) => unit.side === 'ally');
+  const allies = [...Array.from(unitByKey.values())].filter((unit) => unit.side === 'ally');
   if (allies.length === 0) {
     return;
   }
@@ -644,7 +644,7 @@ function resolveBattleReplayCombatActions(
 }
 
 function resolveBattleReplayCombatOrder(unitByKey: Map<string, BattlePresentationUnitSnapshot>): BattlePresentationUnitSnapshot[] {
-  return [...unitByKey.values()].sort((a, b) => {
+  return [...Array.from(unitByKey.values())].sort((a, b) => {
     if (a.side !== b.side) {
       return a.side === 'ally' ? -1 : 1;
     }
@@ -1002,7 +1002,7 @@ function resolveBattleReplayStatContext(
   snapshot: BattlePresentationSnapshot,
   unitByKey: Map<string, BattlePresentationUnitSnapshot>,
 ): BattleReplayStatContext {
-  const units = [...unitByKey.values()];
+  const units = [...Array.from(unitByKey.values())];
   const allyTotalPower = units
     .filter((unit) => unit.side === 'ally')
     .reduce((sum, unit) => sum + Math.max(0, unit.power), 0);

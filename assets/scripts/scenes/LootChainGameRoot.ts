@@ -1673,7 +1673,7 @@ export class LootChainGameRoot extends Component {
       fuseResult: this.lobbyForgeFuseResult,
       decomposeResult: this.lobbyForgeDecomposeResult,
       rerollOpen: this.lobbyForgeRerollOpen,
-      decomposeSelectedIds: [...this.lobbyForgeDecomposeSelectedIds],
+      decomposeSelectedIds: [...Array.from(this.lobbyForgeDecomposeSelectedIds)],
       decomposeRarity: this.lobbyForgeDecomposeRarity,
       decomposeEnhance: this.lobbyForgeDecomposeEnhance,
       decomposeBatchOpen: this.lobbyForgeDecomposeBatchOpen,
@@ -2010,7 +2010,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus('装备操作处理中，请勿重复点击。');
       return;
     }
-    const ids = [...this.lobbyForgeDecomposeSelectedIds].filter((id) =>
+    const ids = [...Array.from(this.lobbyForgeDecomposeSelectedIds)].filter((id) =>
       this.lobbyEquipmentItems.some((item) => item.id === id && item.heroId == null));
     if (ids.length <= 0) {
       this.setStatus('请先勾选要分解的未穿戴装备。');
@@ -2936,7 +2936,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private currentLobbyHeroRefineState(): { dialogOpen: boolean; lockedAttrIds: number[] } {
-    return { dialogOpen: this.lobbyHeroRefineDialogOpen, lockedAttrIds: [...this.lobbyHeroRefineLockedIds] };
+    return { dialogOpen: this.lobbyHeroRefineDialogOpen, lockedAttrIds: [...Array.from(this.lobbyHeroRefineLockedIds)] };
   }
 
   // 弹窗开关/锁定切换只做弹窗级局部刷新(背景 spine 不重建、动画不重播);面板未渲染时回退整视图。
@@ -2958,7 +2958,7 @@ export class LootChainGameRoot extends Component {
   /** 锁定集合只保留当前英雄仍然持有的词条 id(服务端洗练时被锁词条原行保留、id 不变;被重随的词条是新 id)。 */
   private pruneLobbyHeroRefineLocks(): void {
     const owned = new Set((this.currentLobbyHeroDetailHero()?.affixes ?? []).map((affix) => affix.id));
-    for (const id of [...this.lobbyHeroRefineLockedIds]) {
+    for (const id of [...Array.from(this.lobbyHeroRefineLockedIds)]) {
       if (!owned.has(id)) {
         this.lobbyHeroRefineLockedIds.delete(id);
       }
@@ -3015,7 +3015,7 @@ export class LootChainGameRoot extends Component {
     let refinePowerDelta = 0;
     try {
       const beforePower = this.currentLobbyHeroDetailHero()?.power ?? 0;
-      const lockedIds = [...this.lobbyHeroRefineLockedIds];
+      const lockedIds = [...Array.from(this.lobbyHeroRefineLockedIds)];
       const result = await this.api.hero.refine(heroId, lockedIds);
       refinePowerDelta = result.power - beforePower;
       const userId = this.currentLobbyProfile().userId;
@@ -4966,7 +4966,7 @@ export class LootChainGameRoot extends Component {
 
   private async pollAllRecharges(): Promise<void> {
     const now = Date.now();
-    for (const [orderNo, pending] of [...this.lobbyRechargePending.entries()]) {
+    for (const [orderNo, pending] of [...Array.from(this.lobbyRechargePending.entries())]) {
       if (now - pending.startedAt > 15 * 60 * 1000) {
         this.finishRechargePending(orderNo, '支付等待超时:如已付款,稍后刷新即可看到钻石;仍未到账请联系客服', false);
         continue;

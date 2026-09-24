@@ -207,7 +207,7 @@ function mergeBagGroupsWithEquipments(groups: ItemTypeBagGroupVO[], equipments: 
     }
     byCode.set(item.equipCode, entry);
   });
-  const items: BagItemEntryVO[] = [...byCode.values()].map((entry, index) => toEquipBagItem(entry.sample, entry.total, entry.equipped, index));
+  const items: BagItemEntryVO[] = [...Array.from(byCode.values())].map((entry, index) => toEquipBagItem(entry.sample, entry.total, entry.equipped, index));
   return [
     ...(groups ?? []),
     {

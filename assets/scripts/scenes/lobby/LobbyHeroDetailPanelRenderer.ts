@@ -2075,7 +2075,7 @@ export class LobbyHeroDetailPanelRenderer {
       entry.count += 1;
       groups.set(key, entry);
     });
-    const rows = [...groups.values()].sort((a, b) =>
+    const rows = [...Array.from(groups.values())].sort((a, b) =>
       EQUIP_QUALITY_ORDER.indexOf(a.quality) - EQUIP_QUALITY_ORDER.indexOf(b.quality) || a.slot.localeCompare(b.slot));
 
     const rowH = 58 * scale;

@@ -5687,7 +5687,7 @@ export class LobbyBattlePreviewPanelRenderer {
         ? BATTLE_AI_MONSTER_ELITE_PORTRAIT
         : unit.role === 'back'
           ? BATTLE_AI_MONSTER_BACK_PORTRAIT
-          : BATTLE_AI_MONSTER_PORTRAITS[Math.abs([...unit.unitKey].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) | 0, 7)) % BATTLE_AI_MONSTER_PORTRAITS.length];
+          : BATTLE_AI_MONSTER_PORTRAITS[Math.abs([...Array.from(unit.unitKey)].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) | 0, 7)) % BATTLE_AI_MONSTER_PORTRAITS.length];
       displayHeight = height * (isElite ? 1.04 : 0.98);
       displayWidth = displayHeight * portrait.aspect;
       sprite = this.host.addSprite('LobbyBattleStage12EnemyAiPortrait', portrait.path, 0, 0, displayWidth, displayHeight, parent);
@@ -5949,7 +5949,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const fillNode = this.host.addChildPlainNode(barNode, 'LobbyBattleAssetLoadingBarFill', 0, 0, barWidth, barHeight);
     fillNode.addComponent(Graphics);
     const percentLabel = this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingPercent', '0%', 0, barY - 26 * scale, 16 * scale, rgba(230, 214, 182), new Size(width * 0.4, 22 * scale));
-    const tipIndex = Math.abs([...(state.stageCode || 'battle')].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) | 0, 7)) % BATTLE_ASSET_LOADING_TIPS.length;
+    const tipIndex = Math.abs([...Array.from((state.stageCode || 'battle'))].reduce((acc, ch) => ((acc * 31) + ch.charCodeAt(0)) | 0, 7)) % BATTLE_ASSET_LOADING_TIPS.length;
     this.host.addChildLabel(overlay, 'LobbyBattleAssetLoadingTip', BATTLE_ASSET_LOADING_TIPS[tipIndex], 0, barY - 58 * scale, 13 * scale, rgba(176, 164, 148), new Size(width * 0.76, 18 * scale));
     this.battleLoadingFillNode = fillNode;
     this.battleLoadingPercentLabel = percentLabel;
@@ -6560,7 +6560,7 @@ export class LobbyBattlePreviewPanelRenderer {
   // 纯表现:一次性特效播完即毁(动画完成回调 + 4.5s 兜底),循环特效(BOSS 蓄力光环)由节奏 HUD 按
   // playbackTimelineTimeMs 生命周期管理;同屏特效骨骼数量封顶 BATTLE_SKILL_FX_MAX_LIVE,超出直接跳过。
   private countLiveBattleSkillFx(): number {
-    for (const node of [...this.battleSkillFxLiveNodes]) {
+    for (const node of [...Array.from(this.battleSkillFxLiveNodes)]) {
       if (!this.isNodeAlive(node)) {
         this.battleSkillFxLiveNodes.delete(node);
       }

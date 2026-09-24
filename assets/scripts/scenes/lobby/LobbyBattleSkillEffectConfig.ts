@@ -148,5 +148,5 @@ export function listBattleSkillEffectCodes(): string[] {
   Object.values(CLASS_FALLBACK_ULT_EFFECTS).forEach((spec) => codes.add(spec.effect));
   codes.add(DEFAULT_ULT_EFFECT.effect);
   [BOSS_CAST_CHARGE_EFFECT, BOSS_CAST_BURST_EFFECT, BOSS_CAST_INTERRUPT_EFFECT, BOSS_BREAK_EFFECT].forEach((spec) => codes.add(spec.effect));
-  return [...codes];
+  return [...Array.from(codes)];
 }

@@ -188,7 +188,7 @@ export function parseBattleDisplayNumber(value: string | null | undefined): numb
 }
 
 function resolveBattlePresentationSideHpRatio(units: Map<string, BattlePresentationHpUnitState>, side: 'ally' | 'enemy'): number {
-  const sideUnits = [...units.values()].filter((unit) => unit.side === side);
+  const sideUnits = [...Array.from(units.values())].filter((unit) => unit.side === side);
   if (sideUnits.length === 0) {
     return 0;
   }

@@ -2014,7 +2014,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const liveIds = new Set(sim.chests.map((chest) => chest.chestId));
-    for (const [chestId, node] of [...this.chestViews]) {
+    for (const [chestId, node] of [...Array.from(this.chestViews)]) {
       if (!liveIds.has(chestId)) {
         if (node.isValid) {
           node.destroy();
@@ -3720,7 +3720,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const liveIds = new Set(sim.heroes.map((hero) => hero.unitId));
-    for (const [unitId, view] of [...this.heroViews]) {
+    for (const [unitId, view] of [...Array.from(this.heroViews)]) {
       if (!liveIds.has(unitId)) {
         if (view.node.isValid) {
           view.node.destroy();
@@ -3814,7 +3814,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const live = new Set(sim.zones.map((zone: GuardZone) => zone.zoneId));
-    for (const [zoneId, node] of [...this.zoneViews]) {
+    for (const [zoneId, node] of [...Array.from(this.zoneViews)]) {
       if (!live.has(zoneId)) {
         if (node.isValid) {
           node.destroy();
@@ -4835,7 +4835,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const liveIds = new Set(sim.monsters.map((monster) => monster.monsterId));
-    for (const [monsterId, view] of [...this.monsterViews]) {
+    for (const [monsterId, view] of [...Array.from(this.monsterViews)]) {
       if (!liveIds.has(monsterId)) {
         if (view.node.isValid) {
           view.node.destroy();
@@ -5120,7 +5120,7 @@ export class LobbyGuardBattleRenderer {
    * 屏幕越靠上(y 越大)越远,先画;只在怪物节点已占的兄弟槽位内重排,不动英雄/特效层级。
    */
   private sortMonsterViewsByDepth(): void {
-    const views = [...this.monsterViews.values()].filter((view) => view.node.isValid && view.node.parent);
+    const views = [...Array.from(this.monsterViews.values())].filter((view) => view.node.isValid && view.node.parent);
     if (views.length < 2) {
       return;
     }

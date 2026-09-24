@@ -1656,7 +1656,7 @@ export class LobbyForgePanelRenderer {
       entry.items.push(item);
       groups.set(key, entry);
     });
-    const list = [...groups.values()];
+    const list = [...Array.from(groups.values())];
     list.forEach((group) => group.items.sort((a, b) => (a.enhanceLevel ?? 0) - (b.enhanceLevel ?? 0)));
     return list.sort((a, b) =>
       EQUIP_QUALITY_ORDER.indexOf(a.quality) - EQUIP_QUALITY_ORDER.indexOf(b.quality)

@@ -17,7 +17,7 @@ export function resolveLobbyBattleVisualCompletionDurationMs(
   timeline: BattlePresentationTimeline,
 ): number {
   const replay = resolveBattleReplay(snapshot, timeline);
-  const units = [...replay.units.values()];
+  const units = [...Array.from(replay.units.values())];
   const firstAction = timeline.events.find((event) => event.type === 'action_start') ?? timeline.currentEvent;
   const combatStartPresentationMs = LOBBY_BATTLE_COMBAT_START_STEP * LOBBY_BATTLE_PRESENTATION_STEP_INTERVAL_MS;
   // 一方全灭即战斗结束:敌全灭=胜、我全灭=败。取先被全灭那一方的最后死亡时间收口演出,
@@ -54,7 +54,7 @@ export function resolveBattleVisualOutcome(
   playbackTimelineTimeMs: number,
 ): 'victory' | 'defeat' | null {
   const sideWipedOut = (side: 'ally' | 'enemy'): boolean => {
-    const list = [...hpState.units.values()].filter((unit) => unit.side === side);
+    const list = [...Array.from(hpState.units.values())].filter((unit) => unit.side === side);
     if (list.length <= 0) {
       return false;
     }
