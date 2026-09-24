@@ -96,6 +96,9 @@ const ICONS: Record<string, SpriteSpec> = {
 
 const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '体力补充', diamond: '钻石充值' };
 
+/** 金币 / 钻石充值的档位卡统一用最高一档橙框(2026-09-24 用户:不区分颜色);体力页仍按 1 份蓝 / 5 份紫。 */
+const UNIFIED_TIER_FRAME = TIER_FRAMES[TIER_FRAMES.length - 1];
+
 /** 字号口径(2026-09-22 用户:与限时副本面板一致,以后所有弹窗统一)。 */
 const FONT = { title: 34, subtitle: 18, body: 18, small: 16, cardName: 20, amount: 28, unit: 16, tag: 15, price: 20, big: 26 };
 /** 面板顶边 → 内容区顶 / 内容区底 → 面板底边 的固定留白(顶部含标题、副标题;底部含结果横幅)。 */
@@ -283,7 +286,7 @@ export class LobbyShopDialogRenderer {
       const slot = grid.slots[index];
       const affordable = diamond >= tier.diamondCost;
       const best = tier.bonusPct > 0 && tier.bonusPct === bestBonus;
-      this.buildTierCard(panel, `LobbyShopGold_${tier.code}`, slot.x, slot.y, grid.cardW, TIER_FRAMES[Math.min(index, TIER_FRAMES.length - 1)], scale, {
+      this.buildTierCard(panel, `LobbyShopGold_${tier.code}`, slot.x, slot.y, grid.cardW, UNIFIED_TIER_FRAME, scale, {
         name: tier.name,
         iconKey: tier.iconKey,
         amount: this.host.formatInteger(tier.goldAmount),
@@ -376,13 +379,12 @@ export class LobbyShopDialogRenderer {
     const tiers = catalog.rechargeTiers;
     const bestBonus = Math.max(0, ...tiers.map((tier) => tier.diamondBonus));
     const grid = this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
-    const frameByIndex = [0, 0, 1, 2, 2, 3];
     tiers.forEach((tier, index) => {
       const slot = grid.slots[index];
       const price = Number(tier.priceCny ?? 0);
       const best = tier.diamondBonus > 0 && tier.diamondBonus === bestBonus;
       const payable = mode === 'MOCK' || (mode === 'ONLINE' && LobbyShopDialogRenderer.channelFits(selected, price));
-      this.buildTierCard(panel, `LobbyShopRecharge_${tier.code}`, slot.x, slot.y, grid.cardW, TIER_FRAMES[frameByIndex[index] ?? 3], scale, {
+      this.buildTierCard(panel, `LobbyShopRecharge_${tier.code}`, slot.x, slot.y, grid.cardW, UNIFIED_TIER_FRAME, scale, {
         name: tier.name,
         iconKey: tier.iconKey,
         amount: this.host.formatInteger(tier.diamondTotal),

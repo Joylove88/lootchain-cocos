@@ -43,6 +43,13 @@ export class StatusPresenter {
     );
   }
 
+  /** 清空已显示的状态字(不创建新 Label)。 */
+  clear(): void {
+    if (this.label && this.label.node?.isValid) {
+      this.label.string = '';
+    }
+  }
+
   set(text: string, layout?: UiLayout, y?: number): void {
     if (!this.label || !this.label.node?.isValid) {
       this.add(text, layout, y);

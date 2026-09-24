@@ -5815,6 +5815,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private setStatus(text: string): void {
+    // 2026-09-24 用户:大厅(及大厅功能页)底部不显示这行蓝色状态字;结果反馈由各弹窗自己的横幅 / 提示承担。
+    if (this.isLobbyViewActive()) {
+      this.statusPresenter.clear();
+      return;
+    }
     if (this.currentView === 'gacha' || this.currentView === 'gachaReveal' || this.currentView === 'gachaSummon' || this.currentView === 'gachaResult' || this.isGachaActionSceneView(this.currentView)) {
       const layout = this.resolveLayout();
       const gachaStatusY = layout.stageBottom + 210 * layout.uiScale;
