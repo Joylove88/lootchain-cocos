@@ -1,0 +1,153 @@
+
+fx_450131_jiangziya_fly.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/attack fly_00000
+  rotate: false
+  xy: 2, 74
+  size: 236, 17
+  orig: 310, 89
+  offset: 37, 37
+  index: -1
+attack/attack fly_00001
+  rotate: false
+  xy: 477, 184
+  size: 235, 24
+  orig: 310, 89
+  offset: 43, 33
+  index: -1
+attack/attack fly_00002
+  rotate: false
+  xy: 707, 220
+  size: 232, 29
+  orig: 310, 89
+  offset: 47, 29
+  index: -1
+attack/attack fly_00003
+  rotate: false
+  xy: 2, 93
+  size: 228, 37
+  orig: 310, 89
+  offset: 50, 26
+  index: -1
+attack/attack fly_00004
+  rotate: false
+  xy: 2, 171
+  size: 236, 37
+  orig: 310, 89
+  offset: 37, 26
+  index: -1
+attack/attack fly_00005
+  rotate: false
+  xy: 2, 132
+  size: 235, 37
+  orig: 310, 89
+  offset: 43, 26
+  index: -1
+attack/attack fly_00006
+  rotate: false
+  xy: 240, 173
+  size: 235, 36
+  orig: 310, 89
+  offset: 44, 27
+  index: -1
+attack/attack fly_00007
+  rotate: false
+  xy: 477, 210
+  size: 228, 39
+  orig: 310, 89
+  offset: 50, 24
+  index: -1
+attack/attack fly_00008
+  rotate: false
+  xy: 2, 210
+  size: 236, 39
+  orig: 310, 89
+  offset: 37, 24
+  index: -1
+attack/attack fly_00009
+  rotate: false
+  xy: 240, 211
+  size: 235, 38
+  orig: 310, 89
+  offset: 43, 24
+  index: -1
+skill/dianqiu_00000
+  rotate: false
+  xy: 836, 129
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00002
+  rotate: false
+  xy: 836, 38
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00004
+  rotate: false
+  xy: 927, 129
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00006
+  rotate: false
+  xy: 927, 38
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00008
+  rotate: false
+  xy: 240, 82
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00010
+  rotate: false
+  xy: 331, 82
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00012
+  rotate: false
+  xy: 422, 82
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00014
+  rotate: false
+  xy: 513, 93
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00016
+  rotate: false
+  xy: 604, 93
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill/dianqiu_00018
+  rotate: false
+  xy: 513, 2
+  size: 89, 89
+  orig: 181, 181
+  offset: 46, 46
+  index: -1
+skill2/dianqiuz_00000
+  rotate: false
+  xy: 714, 91
+  size: 120, 127
+  orig: 237, 237
+  offset: 58, 55
+  index: -1

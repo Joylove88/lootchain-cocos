@@ -211,7 +211,9 @@ export interface GuardEvent {
   type:
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
     | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero' | 'bossSkill'
-    | 'zoneTick' | 'ultUnlock' | 'perkGain' | 'perkProc' | 'freeEnhance';
+    | 'zoneTick' | 'ultUnlock' | 'perkGain' | 'perkProc' | 'freeEnhance'
+    // 辅助周期治疗水晶(2026-09-24 表现层:水晶回血特效 + 绿色飘字);amount=实际回复量(满血时不发)。
+    | 'crystalHeal';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -1830,13 +1832,16 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
   if (!state.monsters.some((monster) => !monster.dead)) {
     return false;
   }
+  const surgeBefore = state.crystalHp;
   state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.06));
+  const surgeHealed = state.crystalHp - surgeBefore;
   // 觉醒带来的回复增量(6% → 9%/11.7%)计入词条治疗的每波上限。
   if (ultMult > 1) {
     guardPerkHeal(state, state.crystalMaxHp * 0.06 * (ultMult - 1));
   }
   state.supportSurgeUntilMs = state.timeMs + GUARD_SUPPORT_SURGE_MS * ultExtent;
-  state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, ultLv });
+  // amount=本次水晶实际回复量(表现层飘字);全队攻速增益时长由 supportSurgeUntilMs 读取。
+  state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, ultLv, amount: surgeHealed });
   return true;
 }
 
@@ -2089,7 +2094,11 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     hero.attackCooldownMs = interval;
     hero.lastAttackAtMs = state.timeMs;
     const baseHeal = Math.round(state.crystalMaxHp * GUARD_SUPPORT_CRYSTAL_HEAL_RATIO);
+    const crystalBefore = state.crystalHp;
     state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + baseHeal);
+    if (state.crystalHp > crystalBefore) {
+      state.events.push({ type: 'crystalHeal', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, amount: state.crystalHp - crystalBefore });
+    }
     // 塞拉菲娜·晨星恩典 / 侍僧·微光祷告:词条带来的回复增量计入每波治疗上限。
     if (purpleSuffix === 'grace') {
       guardPerkHeal(state, state.crystalMaxHp * (purpleValue - GUARD_SUPPORT_CRYSTAL_HEAL_RATIO));

@@ -1,0 +1,76 @@
+
+fx_33002_kuloufashi_fly.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+attack/New_y_33002_attack_fly_00017
+  rotate: false
+  xy: 1751, 310
+  size: 260, 123
+  orig: 344, 272
+  offset: 84, 38
+  index: -1
+attack/New_y_33002_attack_fly_00018
+  rotate: false
+  xy: 1230, 271
+  size: 261, 162
+  orig: 344, 272
+  offset: 83, 18
+  index: -1
+attack/New_y_33002_attack_fly_00019
+  rotate: false
+  xy: 340, 295
+  size: 316, 138
+  orig: 344, 272
+  offset: 28, 17
+  index: -1
+attack/New_y_33002_attack_fly_00020
+  rotate: false
+  xy: 2, 143
+  size: 332, 126
+  orig: 344, 272
+  offset: 12, 20
+  index: -1
+attack/New_y_33002_attack_fly_00021
+  rotate: false
+  xy: 2, 271
+  size: 336, 162
+  orig: 344, 272
+  offset: 8, 8
+  index: -1
+skill/New_y_33002_skill_fly_00055
+  rotate: false
+  xy: 1751, 192
+  size: 226, 116
+  orig: 297, 156
+  offset: 71, 12
+  index: -1
+skill/New_y_33002_skill_fly_00056
+  rotate: false
+  xy: 1493, 279
+  size: 256, 154
+  orig: 297, 156
+  offset: 39, 1
+  index: -1
+skill/New_y_33002_skill_fly_00057
+  rotate: false
+  xy: 950, 306
+  size: 278, 127
+  orig: 297, 156
+  offset: 15, 1
+  index: -1
+skill/New_y_33002_skill_fly_00058
+  rotate: false
+  xy: 658, 304
+  size: 290, 129
+  orig: 297, 156
+  offset: 2, 0
+  index: -1
+skill/New_y_33002_skill_fly_00059
+  rotate: false
+  xy: 2, 2
+  size: 286, 139
+  orig: 297, 156
+  offset: 9, 2
+  index: -1

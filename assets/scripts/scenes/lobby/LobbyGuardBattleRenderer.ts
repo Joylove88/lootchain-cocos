@@ -91,7 +91,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_SUPPORT_FX, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -294,6 +294,8 @@ export class LobbyGuardBattleRenderer {
   private readonly heroFxLastAt = new Map<string, number>();
   private beamFxLive = 0;
   private lastSkillShakeAt = 0;
+  /** 辅助周期治疗的水晶回血特效节流(多名辅助同时在场时不叠成一团)。 */
+  private lastCrystalHealFxAt = 0;
   /** 车道/格子底图(解锁进度变化时整层重画;key=已解锁格数:提示倒数)。 */
   private fieldBaseG: Graphics | null = null;
   /** 建场时的布局签名;render() 发现签名变了就重建静态层(2026-09-12)。 */
@@ -1701,19 +1703,9 @@ export class LobbyGuardBattleRenderer {
         const attackerView = attacker ? this.monsterViews.get(attacker.monsterId) : null;
         this.playUnitAttack(attackerView ?? undefined);
         if (attacker?.kind === 'shooter' && attackerView && attackerView.node.isValid) {
-          // 远程怪:出手动画+暗红箭矢飞向水晶,命中时(crystalTarget 弹道到达)才出红闪+飘字。
-          const sx = attackerView.node.position.x - this.unitSize() * 0.3;
-          const sy = attackerView.node.position.y + this.unitSize() * 0.25;
-          const node = this.host.addChildPlainNode(field, 'GuardShooterBolt', sx, sy, 10, 10);
-          node.setSiblingIndex(field.children.length - 1);
-          const g = node.addComponent(Graphics);
-          g.fillColor = rgba(255, 110, 70, 160);
-          g.ellipse(0, 0, 13, 6);
-          g.fill();
-          g.fillColor = rgba(255, 190, 120, 245);
-          g.ellipse(1, 0, 7, 3);
-          g.fill();
-          this.projectiles.push({ node, targetId: -1, x: sx, y: sy, amount: event.amount ?? 0, color: rgba(255, 130, 80), crystalTarget: true, impactShake: 0 });
+          // 远程怪:出手动画 + 弹道飞向水晶,命中时(crystalTarget 弹道到达)才出红闪+飘字。
+          // 2026-09-24:按皮肤配 fx_pack 骨骼弹道(弩矢尾焰 / 细箭 / 鬼火);未就绪或超限额回退暗红箭矢贴图。
+          this.spawnCrystalBolt(attacker, attackerView, event.amount ?? 0);
         } else {
           // 近战啃咬:水晶即时红闪+飘字(sim 已扣血)。
           this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.14, `-${event.amount ?? 0}`, rgba(255, 120, 100));
@@ -1790,6 +1782,10 @@ export class LobbyGuardBattleRenderer {
           this.highlightCaster(event.cell, awakened ? `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!` : `战技·${event.skillName ?? '出击'}`);
         }
         gameAudio.sfx(resolveHeroSkillSfxKey(event.heroCode), awakened ? 1 : 0.6);
+        if (caster?.role === 'support' && typeof event.monsterId !== 'number') {
+          // 圣辉涌泉(2026-09-24 用户反馈"辅助没有技能效果"):水晶金色圣光爆发 + 每个友军套金色光罩,持续到攻速增益结束。
+          this.playSupportSurge(sim, caster, event.amount ?? 0);
+        }
         const skillZone = typeof event.zoneId === 'number' ? sim.zones.find((entry) => entry.zoneId === event.zoneId) ?? null : null;
         if (skillZone && skillZone.kind === 'cyclone' && typeof event.cell === 'number') {
           // 旋风从施放英雄身上飞出落地(灼烧区 2026-09-12 起由技能特效本体在落点循环播放,不再画地面黄圈、不再飞行)
@@ -1889,6 +1885,15 @@ export class LobbyGuardBattleRenderer {
         if (event.perkId === 'dragonslayer') {
           this.shakeField(9);
           this.spawnFloater(this.xToPx(4), this.walkwayY() + this.layoutHeight * 0.18, '龙焰爆!', rgba(255, 170, 90), 24);
+        }
+      } else if (event.type === 'crystalHeal') {
+        // 辅助周期治疗水晶:小圣光升起 + 绿色飘字(≥1.2s 一次,多辅助不叠)。
+        const now = Date.now();
+        if (now - this.lastCrystalHealFxAt >= 1200) {
+          this.lastCrystalHealFxAt = now;
+          const center = this.crystalFxCenter();
+          this.spawnSpineBurstFx(GUARD_SUPPORT_FX.crystalHealSmall, center.x, center.y - this.unitSize() * 0.1, 1, 900);
+          this.spawnFloater(center.x, center.y + this.unitSize() * 0.45, `+${this.formatDamageValue(event.amount ?? 0)}`, rgba(150, 255, 170), 20);
         }
       } else if (event.type === 'crystalSkill') {
         this.spawnFloater(this.xToPx(2), this.walkwayY(), `矿晶震荡 ${event.amount ?? 0}`, rgba(150, 220, 255));
@@ -2788,12 +2793,135 @@ export class LobbyGuardBattleRenderer {
    * 英雄专属命中特效(fx_pack 的 _hit 系列,2026-09-21):在命中点播一遍即销毁;按实测包围盒等比缩放并居中,
    * 过长的动画加速到 ≤0.5s。未预热好/同屏超限返回 false,由调用方回退静态斩击图或十字爆闪。
    */
+  /** 水晶特效锚点:水晶节点中心略偏上(GuardCrystal 节点在 field 坐标系)。 */
+  private crystalFxCenter(): { x: number; y: number } {
+    const crystal = this.fieldNode?.getChildByName('GuardCrystal');
+    if (crystal && crystal.isValid) {
+      return { x: crystal.position.x, y: crystal.position.y + this.unitSize() * 0.15 };
+    }
+    return { x: this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5, y: this.walkwayY() + this.layoutHeight * 0.02 };
+  }
+
+  /**
+   * 圣辉涌泉表现(2026-09-24):水晶处播大号金色圣光(播一遍,拉到 ~1.8s),回血绿字;
+   * 每个在场友军套一层金色光罩(循环骨骼,跟随英雄节点),持续到 sim.supportSurgeUntilMs,再淡出。
+   */
+  private playSupportSurge(sim: GuardBattleState, caster: GuardHeroUnit, healed: number): void {
+    const center = this.crystalFxCenter();
+    if (!this.spawnSpineBurstFx(GUARD_SUPPORT_FX.crystalHealBig, center.x, center.y - this.unitSize() * 0.15, 1, 1800)) {
+      this.spawnCellBurst(center.x, center.y, rgba(255, 230, 140), true);
+    }
+    if (healed > 0) {
+      this.spawnFloater(center.x, center.y + this.unitSize() * 0.55, `+${this.formatDamageValue(healed)}`, rgba(160, 255, 180), 26);
+    }
+    const durationMs = Math.max(1200, sim.supportSurgeUntilMs - sim.timeMs);
+    for (const hero of sim.heroes) {
+      const view = this.heroViews.get(hero.unitId);
+      if (!view || !view.node.isValid) {
+        continue;
+      }
+      this.attachAllyShield(view, durationMs, hero.unitId === caster.unitId ? 1.15 : 1);
+    }
+  }
+
+  /** 给友军脚下套金色光环(垫在英雄骨骼之下):已有则续时;循环播放,到期 0.35s 淡出销毁。未就绪时补预热并退化为金色描边脉动椭圆。 */
+  private attachAllyShield(view: GuardUnitView, durationMs: number, scaleMult: number): void {
+    const existing = view.node.getChildByName('GuardAllyShield');
+    const until = Date.now() + durationMs;
+    if (existing && existing.isValid) {
+      (existing as unknown as { __shieldUntil?: number }).__shieldUntil = until;
+      return;
+    }
+    const spec = GUARD_SUPPORT_FX.allyShield;
+    const ready = this.attackSpineFxReady.get(spec.effect);
+    const unit = this.unitSize();
+    const shield = this.host.addChildPlainNode(view.node, 'GuardAllyShield', 0, -unit * 0.42, 10, 10);
+    shield.setSiblingIndex(0);
+    (shield as unknown as { __shieldUntil?: number }).__shieldUntil = until;
+    if (ready) {
+      const fit = (unit * spec.size * scaleMult) / Math.max(ready.w, ready.h);
+      const fxNode = this.host.addChildPlainNode(shield, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
+      fxNode.setScale(fit, fit, 1);
+      const skeleton = fxNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = ready.data;
+      try {
+        skeleton.setAnimation(0, ready.animation, true);
+      } catch (error) {
+        void error;
+      }
+    } else {
+      this.prewarmAttackSpineFx(spec);
+      const g = shield.addComponent(Graphics);
+      g.strokeColor = rgba(255, 220, 120, 220);
+      g.lineWidth = 4;
+      g.ellipse(0, 0, unit * 0.5 * scaleMult, unit * 0.16 * scaleMult);
+      g.stroke();
+      tween(shield).repeatForever(tween().to(0.5, { scale: new Vec3(1.06, 1.06, 1) }).to(0.5, { scale: Vec3.ONE })).start();
+    }
+    const opacity = shield.addComponent(UIOpacity);
+    opacity.opacity = 0;
+    tween(opacity).to(0.25, { opacity: 235 }).start();
+    const tick = (): void => {
+      if (!shield.isValid) {
+        return;
+      }
+      const remain = ((shield as unknown as { __shieldUntil?: number }).__shieldUntil ?? 0) - Date.now();
+      if (remain > 0) {
+        setTimeout(tick, Math.min(remain, 500));
+        return;
+      }
+      tween(opacity).to(0.35, { opacity: 0 }).call(() => { if (shield.isValid) { shield.destroy(); } }).start();
+    };
+    setTimeout(tick, Math.min(durationMs, 500));
+  }
+
+  /** 远程怪的弹道:按皮肤取 fx_pack 骨骼飞行体,循环播放并按包围盒等比缩放;未就绪/超限额回退暗红箭矢贴图。 */
+  private spawnCrystalBolt(attacker: GuardMonster, attackerView: GuardUnitView, amount: number): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const sx = attackerView.node.position.x - this.unitSize() * 0.3;
+    const sy = attackerView.node.position.y + this.unitSize() * 0.25;
+    const node = this.host.addChildPlainNode(field, 'GuardShooterBolt', sx, sy, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    const spec = resolveGuardMonsterProjectileFx(attacker.spineCode);
+    const ready = spec ? this.attackSpineFxReady.get(spec.effect) : undefined;
+    if (spec && !ready) {
+      this.prewarmAttackSpineFx(spec);
+    }
+    if (spec && ready && this.projectiles.filter((entry) => entry.spine).length < GUARD_SPINE_PROJECTILE_CAP) {
+      const fit = (this.unitSize() * spec.size) / Math.max(ready.w, ready.h);
+      const fxNode = this.host.addChildPlainNode(node, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
+      fxNode.setScale(fit, fit, 1);
+      const skeleton = fxNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = ready.data;
+      try {
+        skeleton.setAnimation(0, ready.animation, true);
+      } catch (error) {
+        void error;
+      }
+      this.projectiles.push({ node, targetId: -1, x: sx, y: sy, amount, color: rgba(255, 130, 80), crystalTarget: true, impactShake: 0, spine: true });
+      return;
+    }
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(255, 110, 70, 160);
+    g.ellipse(0, 0, 13, 6);
+    g.fill();
+    g.fillColor = rgba(255, 190, 120, 245);
+    g.ellipse(1, 0, 7, 3);
+    g.fill();
+    this.projectiles.push({ node, targetId: -1, x: sx, y: sy, amount, color: rgba(255, 130, 80), crystalTarget: true, impactShake: 0 });
+  }
+
   private spawnAttackHitFx(heroCode: string, x: number, y: number, scale: number): boolean {
     return this.spawnSpineBurstFx(resolveHeroAttackSpineFx(heroCode)?.hit ?? null, x, y, scale);
   }
 
   /** 一次性骨骼爆点(普攻命中 / 专属词条触发共用):未就绪时补预热并返回 false,由调用方回退。 */
-  private spawnSpineBurstFx(hitSpec: { effect: string; animation: string; size: number } | null, x: number, y: number, scale: number): boolean {
+  private spawnSpineBurstFx(hitSpec: { effect: string; animation: string; size: number } | null, x: number, y: number, scale: number, holdMs = 500): boolean {
     const field = this.fieldNode;
     if (!field || !hitSpec) {
       return false;
@@ -2816,7 +2944,7 @@ export class LobbyGuardBattleRenderer {
     let duration = 0.4;
     try {
       duration = Math.max(0.12, skeleton.findAnimation(ready.animation)?.duration ?? 0.4);
-      skeleton.timeScale = Math.max(1, duration / 0.5);
+      skeleton.timeScale = Math.max(1, duration / (holdMs / 1000));
       skeleton.setAnimation(0, ready.animation, false);
     } catch (error) {
       void error;
@@ -2827,7 +2955,7 @@ export class LobbyGuardBattleRenderer {
       if (node.isValid) {
         node.destroy();
       }
-    }, Math.min(500, duration * 1000) + 30);
+    }, Math.min(holdMs, duration * 1000) + 30);
     return true;
   }
 
@@ -2953,6 +3081,16 @@ export class LobbyGuardBattleRenderer {
         this.prewarmAttackSpineFx(perkFx);
       }
     }
+    // 辅助英雄在池子里就预热"圣辉涌泉"三件套(光罩 / 水晶大回血 / 周期小回血),首次施放不缺帧。
+    if (pool.some((entry) => entry.role === 'support')) {
+      this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.allyShield);
+      this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.crystalHealBig);
+      this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.crystalHealSmall);
+    }
+    // 远程怪三种皮肤的弹道(shooter 从第 3 波起才出,开局预热来得及)。
+    for (const spec of guardMonsterProjectileFxSpecs()) {
+      this.prewarmAttackSpineFx(spec);
+    }
   }
 
   /** 预热一个普攻 Spine 飞行特效:加载共享骨骼数据 → 选动画 → 用临时骨骼实测包围盒(等比缩放与居中要用)→ 记入就绪表。 */
@@ -2983,7 +3121,8 @@ export class LobbyGuardBattleRenderer {
         const skeleton = probe.addComponent(sp.Skeleton);
         skeleton.premultipliedAlpha = false;
         skeleton.skeletonData = data;
-        const bounds = this.measureGuardFxExtent(skeleton, animation, `atk:${spec.effect}:${animation}`);
+        // 先查实测包围盒表(技能类特效前后帧差异大,三帧抽样会量偏,2026-09-24 圣女法阵实测放大成满屏),没有再现量。
+        const bounds = lookupBattleFxBounds(spec.effect, animation) ?? this.measureGuardFxExtent(skeleton, animation, `atk:${spec.effect}:${animation}`);
         probe.destroy();
         if (!bounds) {
           // 量不出来就不缓存失败结果,下次出手再试;本发走贴图弹道。

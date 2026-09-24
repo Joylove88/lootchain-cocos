@@ -1,0 +1,41 @@
+
+fx_35016_batuoli_fly.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+effect/attack/njf_attack_zd/njf_attack_zd_00000
+  rotate: false
+  xy: 2, 2
+  size: 282, 144
+  orig: 300, 157
+  offset: 10, 4
+  index: -1
+effect/attack/njf_attack_zd/njf_attack_zd_00001
+  rotate: false
+  xy: 286, 2
+  size: 282, 144
+  orig: 300, 157
+  offset: 10, 4
+  index: -1
+effect/attack/njf_attack_zd/njf_attack_zd_00002
+  rotate: false
+  xy: 570, 2
+  size: 282, 144
+  orig: 300, 157
+  offset: 10, 4
+  index: -1
+effect/attack/njf_attack_zd/njf_attack_zd_00003
+  rotate: false
+  xy: 854, 2
+  size: 282, 144
+  orig: 300, 157
+  offset: 10, 4
+  index: -1
+effect/attack/njf_attack_zd/njf_attack_zd_00004
+  rotate: false
+  xy: 1138, 2
+  size: 282, 144
+  orig: 300, 157
+  offset: 10, 4
+  index: -1

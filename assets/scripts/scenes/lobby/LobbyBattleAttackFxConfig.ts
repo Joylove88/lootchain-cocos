@@ -176,3 +176,30 @@ const GUARD_PERK_PROC_FX: Record<string, { effect: string; animation: string; si
 export function resolveGuardPerkProcFx(perkId: string | null | undefined): { effect: string; animation: string; size: number } | null {
   return GUARD_PERK_PROC_FX[(perkId ?? '').trim()] ?? null;
 }
+
+// ── 辅助英雄技能表现(2026-09-24 用户反馈:"辅助英雄没有技能效果")──
+// fx_pack 引擎内实拍挑选(scratchpad probe_any_cdp):圣辉涌泉 = 水晶回血 + 全队攻速,走金色圣光一套。
+export const GUARD_SUPPORT_FX = {
+  /** 全队增益期间套在每个友军脚下的金色雷纹光环(雄狮领域下层,循环;实拍 6 帧稳定)。 */
+  allyShield: { effect: 'fx_1602_xiongshilingyu', animation: 'xia', size: 1.45 },
+  /** 大招:水晶脚下展开的大号金色莲花法阵(圣女技能下层,播一遍拉到 ~1.8s)。 */
+  crystalHealBig: { effect: 'fx_450101_shengnvpifu_skill', animation: 'Skill_down', size: 5.5 },
+  /** 辅助周期治疗:水晶处荡开的金色圣环(圣骑士技能,播一遍 ~0.9s,节流)。 */
+  crystalHealSmall: { effect: 'fx_45014_shengqishi_skill', animation: 'Skill', size: 1.8 },
+} as const;
+
+// ── 远程怪攻击水晶的弹道(2026-09-24 用户反馈:"怪物远程攻击水晶也需要弹道效果")──
+// 键=怪物皮肤 spineCode(GuardBattleModel GUARD_MONSTER_KIND_PROFILE.shooter.spineCodes);兜底走原来的暗红箭矢贴图。
+const GUARD_MONSTER_PROJECTILE_FX: Record<string, { effect: string; animation: string; size: number }> = {
+  crossbow_male: { effect: 'fx_35016_batuoli_fly', animation: 'Attack_fly', size: 1.3 }, // 红色弩矢尾焰
+  bow_male: { effect: 'fx_450131_jiangziya_fly', animation: 'attack_fly', size: 1.4 }, // 青色细箭
+  cursed_caster: { effect: 'fx_33002_kuloufashi_fly', animation: 'Attack', size: 1.5 }, // 幽蓝鬼火弹
+};
+
+export function resolveGuardMonsterProjectileFx(spineCode: string | null | undefined): { effect: string; animation: string; size: number } | null {
+  return GUARD_MONSTER_PROJECTILE_FX[(spineCode ?? '').trim()] ?? null;
+}
+
+export function guardMonsterProjectileFxSpecs(): Array<{ effect: string; animation: string; size: number }> {
+  return Object.values(GUARD_MONSTER_PROJECTILE_FX);
+}
