@@ -96,7 +96,7 @@ const ICONS: Record<string, SpriteSpec> = {
 
 const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '体力补充', diamond: '钻石充值' };
 
-/** 金币 / 钻石充值的档位卡统一用最高一档橙框(2026-09-24 用户:不区分颜色);体力页仍按 1 份蓝 / 5 份紫。 */
+/** 金币 / 体力 / 钻石充值的档位卡统一用最高一档橙框(2026-09-24 用户:不区分颜色,体力页随后也统一)。 */
 const UNIFIED_TIER_FRAME = TIER_FRAMES[TIER_FRAMES.length - 1];
 
 /** 字号口径(2026-09-22 用户:与限时副本面板一致,以后所有弹窗统一)。 */
@@ -345,7 +345,7 @@ export class LobbyShopDialogRenderer {
       const slot = grid.slots[index];
       const cost = offer.diamondCost * count;
       const sellable = offer.dailyLimit > 0 && count <= remaining;
-      this.buildTierCard(panel, `LobbyShopStaminaBuy_${count}`, rightX + slot.x, slot.y + 14 * scale, grid.cardW, TIER_FRAMES[index === 0 ? 1 : 2], scale, {
+      this.buildTierCard(panel, `LobbyShopStaminaBuy_${count}`, rightX + slot.x, slot.y + 14 * scale, grid.cardW, UNIFIED_TIER_FRAME, scale, {
         name: `补充 ${count} 份`,
         iconKey: 'stamina',
         amount: `+${offer.staminaGain * count}`,
