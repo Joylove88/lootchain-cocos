@@ -99,6 +99,8 @@ export const BOSS_BREAK_EFFECT: BattleSkillEffectSpec = { effect: 'fx_63001_yang
 // → 放大到上限 1.5× 后横贯整屏且只露一半(2026-09-12 用户反馈图 2)。有表项优先用表,无表项才回退运行时采样。
 export interface BattleFxMeasuredBounds { w: number; h: number; cx: number; cy: number; }
 export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
+  // 守卫战 BOSS 蓄力法阵(2026-09-24 实拍 4 时刻亮区 bbox):法阵在骨骼原点下方 ~286,运行时三帧采样会把它挪到 BOSS 右下方。
+  'fx_6602_moquanlingyu:xia': { w: 1337, h: 735, cx: 0, cy: -286 },
   'fx_65002_luxifa_skill:skill_down': { w: 2306, h: 1082, cx: 188, cy: -147 },
   'fx_450081_shaxing_jineng:skill': { w: 2153, h: 659, cx: 500, cy: 65 },
   'fx_65008_anubisi_skill:skill_sf1_down': { w: 576, h: 400, cx: -76, cy: 194 },

@@ -203,3 +203,32 @@ export function resolveGuardMonsterProjectileFx(spineCode: string | null | undef
 export function guardMonsterProjectileFxSpecs(): Array<{ effect: string; animation: string; size: number }> {
   return Object.values(GUARD_MONSTER_PROJECTILE_FX);
 }
+
+// ── BOSS 攻击水晶的表现(2026-09-24 用户反馈:"BOSS 没有攻击动画、没有弹道,看不出水晶是如何掉血的")──
+// 读条=脚下紫色法阵循环 + 蓄力动作循环;读满=出手动作 + 大号暗焰弹飞向水晶,命中才出爆点/飘字/震屏;
+// 重踏=重击动作 + 贴地血月冲击波;投射=施法动作 + 暗焰弹。素材均为仓库已有 fx(引擎内实拍挑选)。
+export const GUARD_BOSS_FX = {
+  /** 读条期间 BOSS 脚下的紫色法阵(魔犬领域下层,循环)。 */
+  chargeAura: { effect: 'fx_6602_moquanlingyu', animation: 'xia', size: 3.4 },
+  /** 灭世轰击:大号暗焰弹(芙拉德飞行体)。 */
+  blast: { effect: 'fx_65007_fulade_fly', animation: 'attack', size: 2.6 },
+  /** 灭世轰击命中水晶:大号紫色爆裂。 */
+  blastHit: { effect: 'fx_650011_zuozhupifu_hit', animation: 'attack_hit', size: 3.2 },
+  /** 暗焰投射(远程 BOSS 技能):中号暗焰弹。 */
+  volley: { effect: 'fx_65007_fulade_fly', animation: 'attack', size: 1.6 },
+  volleyHit: { effect: 'fx_65007_fulade_hit', animation: 'attack', size: 1.8 },
+  /** 裂地重踏(近战 BOSS 技能):贴地飞向水晶的血月冲击波。 */
+  smashWave: { effect: 'fx_12601_youyingzhizhu_fly', animation: 'attack_fly', size: 1.8 },
+  smashHit: { effect: 'fx_65007_fulade_hit', animation: 'attack', size: 2.2 },
+} as const;
+
+/**
+ * BOSS 皮肤 → 蓄力(循环)/ 灭世轰击出手 / 技能出手 动画名(S196 怪物包实测动画表);缺失时回退通用攻击动作。
+ * centerX = 身体画面中心相对怪物节点的横向偏移 ÷ BOSS 视高(镜像朝左后身体整体落在节点左侧;
+ * 2026-09-24 无头实拍"有/无 BOSS"两帧差分取像素质心:石魔像 -0.28、深渊魔 -0.30、大法师 -0.25)。
+ */
+export const GUARD_BOSS_ANIMS: Record<string, { charge: string; blast: string; skill: string; centerX: number }> = {
+  rock_golem: { charge: 'summon', blast: 'basic_normal_attack_03', skill: 'basic_normal_attack_01', centerX: -0.28 },
+  abyss_devilman: { charge: 'p3_attack_fallsun_start', blast: 'p3_attack_fallsun_fire', skill: 'p5_attack_fallshock_end', centerX: -0.3 },
+  grand_magus: { charge: 'p1_attack_vinewave_start', blast: 'p1_attack_vinewave_fire', skill: 'p2_attack_entangle_fire', centerX: -0.25 },
+};

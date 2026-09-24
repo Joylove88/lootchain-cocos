@@ -20,6 +20,7 @@ import {
   Vec3,
   VerticalTextAlignment,
   tween,
+  Tween,
 } from 'cc';
 import { gameAudio } from '../../audio/GameAudio';
 import type { UiLayout } from './LobbyHudTypes';
@@ -91,7 +92,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_SUPPORT_FX, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_SUPPORT_FX, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -188,6 +189,8 @@ interface GuardUnitView {
   deathAnim: string;
   /** 受击红闪截止时刻(打击感,2026-08-26)。 */
   hitFlashUntil: number;
+  /** BOSS 身体画面中心相对节点的 x 偏移(脚下法阵/出手弹道锚点;2026-09-24)。 */
+  centerOffsetX?: number;
 }
 
 /** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹;visualOnly=保底技能弹(命中不出飘字)。 */
@@ -213,6 +216,10 @@ interface GuardProjectile {
   speedMult?: number;
   /** crystalTarget 命中震屏强度(缺省 5=BOSS 暗弹;shooter 普攻弹传 0 防多怪齐射抖屏)。 */
   impactShake?: number;
+  /** crystalTarget 命中时在水晶上播的骨骼爆点(BOSS 出手用;缺省走十字爆闪)。 */
+  impactFx?: { effect: string; animation: string; size: number };
+  /** crystalTarget 命中飘字前缀(如"灭世轰击")。 */
+  impactLabel?: string;
 }
 /**
  * 词条卡框(2026-09-22 用户提供 ui/battle/ai/perk_card_{blue,purple,red},413 宽哥特竖框,只能等比):
@@ -296,6 +303,8 @@ export class LobbyGuardBattleRenderer {
   private lastSkillShakeAt = 0;
   /** 辅助周期治疗的水晶回血特效节流(多名辅助同时在场时不叠成一团)。 */
   private lastCrystalHealFxAt = 0;
+  /** 场上是否挂着 BOSS 蓄力法阵(读条结束兜底清理用)。 */
+  private bossChargeAuraLive = false;
   /** 车道/格子底图(解锁进度变化时整层重画;key=已解锁格数:提示倒数)。 */
   private fieldBaseG: Graphics | null = null;
   /** 建场时的布局签名;render() 发现签名变了就重建静态层(2026-09-12)。 */
@@ -1744,31 +1753,21 @@ export class LobbyGuardBattleRenderer {
         }
       } else if (event.type === 'bossSkill') {
         // BOSS 技能(2026-08-28):重踏=脚下冲击环+大震屏+水晶掉血;投射=暗弹从 BOSS 飞向水晶
+        // 2026-09-24 用户反馈"BOSS 没有攻击动画、没有弹道":按皮肤播技能出手动作,伤害随弹道/冲击波到达水晶才出爆点与飘字。
         const bossView = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : null;
-        const bx = bossView?.node.isValid ? bossView.node.position.x : this.xToPx(5);
+        const bossMonster = typeof event.monsterId === 'number' ? sim.monsters.find((entry) => entry.monsterId === event.monsterId) ?? null : null;
+        const bx = bossView?.node.isValid ? bossView.node.position.x + this.bossVisualOffsetX(bossView) : this.xToPx(5);
         const by = bossView?.node.isValid ? bossView.node.position.y : this.walkwayY();
-        this.playUnitAttack(bossView ?? undefined);
+        this.playBossAnim(bossMonster, bossView ?? undefined, 'skill');
         this.spawnFloater(bx, by + this.unitSize() * 1.1, `${event.skillName ?? 'BOSS技能'}!`, rgba(255, 140, 90), 20);
         if (event.skillKind === 'volley') {
-          const field2 = this.fieldNode;
-          if (field2) {
-            const node = this.host.addChildPlainNode(field2, 'GuardBossBolt', bx - this.unitSize() * 0.4, by, 10, 10);
-            node.setSiblingIndex(field2.children.length - 1);
-            const g = node.addComponent(Graphics);
-            g.fillColor = rgba(180, 90, 255, 150);
-            g.ellipse(0, 0, 16, 9);
-            g.fill();
-            g.fillColor = rgba(255, 120, 200, 245);
-            g.ellipse(1, 0, 9, 5);
-            g.fill();
-            this.projectiles.push({ node, targetId: -1, x: bx - this.unitSize() * 0.4, y: by, amount: event.amount ?? 0, color: rgba(200, 110, 255), crystalTarget: true });
-          }
+          const chestY = by + (bossMonster ? this.monsterHeadOffsetY(bossMonster) * 0.5 : this.unitSize() * 0.6);
+          this.spawnBossCrystalProjectile(bx - this.unitSize() * 0.4, chestY, GUARD_BOSS_FX.volley, GUARD_BOSS_FX.volleyHit, event.amount ?? 0, { shake: 6, speedMult: 0.8 });
         } else {
-          // 重踏:BOSS 脚下冲击环+全场震屏,水晶伤害即时结算(sim 已扣),水晶处红闪+飘字
+          // 重踏:BOSS 脚下冲击环 + 震屏,贴地冲击波飞向水晶,到达才出爆点与飘字
           this.spawnCellBurst(bx, by - this.unitSize() * 0.5, rgba(255, 130, 70), true);
-          this.shakeField(11);
-          const cx = this.xToPx(GUARD_CRYSTAL_REACH_X) - this.unitSize() * 0.5;
-          this.spawnFloater(cx, this.walkwayY() + this.layoutHeight * 0.1, `-${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 120, 100), 20);
+          this.shakeField(9);
+          this.spawnBossCrystalProjectile(bx - this.unitSize() * 0.5, by - this.unitSize() * 0.25, GUARD_BOSS_FX.smashWave, GUARD_BOSS_FX.smashHit, event.amount ?? 0, { shake: 8, speedMult: 1.2 });
         }
       } else if (event.type === 'heroSkill') {
         // 主动技能(2★ 冷却制):施法动画+技能名飘字;近战/远程附专属特效打向首个目标
@@ -1851,12 +1850,28 @@ export class LobbyGuardBattleRenderer {
         gameAudio.sfx('coin');
       } else if (event.type === 'bossCastStart') {
         this.host.setStatus('BOSS 蓄力轰击水晶!集火打断!');
+        // 蓄力:BOSS 播蓄力动作(循环)+ 脚下紫色法阵,直到读满/被打断(2026-09-24)。
+        const castBoss = typeof event.monsterId === 'number' ? sim.monsters.find((entry) => entry.monsterId === event.monsterId) ?? null : null;
+        const castView = castBoss ? this.monsterViews.get(castBoss.monsterId) : undefined;
+        this.playBossAnim(castBoss, castView, 'charge');
+        this.attachBossChargeAura(castView);
       } else if (event.type === 'bossCastInterrupt') {
-        this.spawnFloater(this.xToPx(5), this.walkwayY() + this.layoutHeight * 0.12, '打断!', rgba(255, 240, 160));
+        const stunView = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : undefined;
+        this.clearBossChargeAura(stunView);
+        this.playBossStun(stunView);
+        const sx = stunView?.node.isValid ? stunView.node.position.x + this.bossVisualOffsetX(stunView) : this.xToPx(5);
+        this.spawnFloater(sx, this.walkwayY() + this.layoutHeight * 0.12, '打断!', rgba(255, 240, 160));
         this.shakeField(8);
       } else if (event.type === 'bossCastHit') {
-        this.spawnFloater(this.xToPx(0), this.walkwayY() + this.layoutHeight * 0.16, `灭世轰击 -${event.amount ?? 0}`, rgba(255, 110, 90));
-        this.shakeField(14);
+        // 灭世轰击:BOSS 出手动作 + 大号暗焰弹飞向水晶,命中才出紫色爆裂 + "灭世轰击 -N" + 大震屏。
+        const blastBoss = typeof event.monsterId === 'number' ? sim.monsters.find((entry) => entry.monsterId === event.monsterId) ?? null : null;
+        const blastView = blastBoss ? this.monsterViews.get(blastBoss.monsterId) : undefined;
+        this.clearBossChargeAura(blastView);
+        this.playBossAnim(blastBoss, blastView, 'blast');
+        const ox = blastView?.node.isValid ? blastView.node.position.x + this.bossVisualOffsetX(blastView) : this.xToPx(5);
+        const oy = blastView?.node.isValid ? blastView.node.position.y : this.walkwayY();
+        const chest = oy + (blastBoss ? this.monsterHeadOffsetY(blastBoss) * 0.5 : this.unitSize() * 0.6);
+        this.spawnBossCrystalProjectile(ox - this.unitSize() * 0.6, chest, GUARD_BOSS_FX.blast, GUARD_BOSS_FX.blastHit, event.amount ?? 0, { shake: 14, speedMult: 0.65, label: '灭世轰击' });
       } else if (event.type === 'ultUnlock') {
         this.showUltAwakenBanner(event.heroCode ?? '', event.ultLv ?? 1);
         gameAudio.sfx('level_up');
@@ -2390,6 +2405,11 @@ export class LobbyGuardBattleRenderer {
     const existing = field.getChildByName('GuardBossCastBar');
     if (!sim.bossCast) {
       existing?.destroy();
+      if (this.bossChargeAuraLive) {
+        // 读条被别的途径结束(BOSS 死亡/重开)时兜底收掉脚下法阵。
+        this.monsterViews.forEach((view) => this.clearBossChargeAura(view));
+        this.bossChargeAuraLive = false;
+      }
       return;
     }
     const boss = sim.monsters.find((monster) => monster.monsterId === sim.bossCast?.monsterId && !monster.dead);
@@ -2637,8 +2657,13 @@ export class LobbyGuardBattleRenderer {
         const dy = ty - proj.y;
         const dist = Math.hypot(dx, dy);
         if (dist <= speed) {
-          this.spawnImpactFlash(tx, ty, proj.color);
-          this.spawnFloater(tx, ty + this.unitSize() * 0.4, `-${this.formatDamageValue(proj.amount)}`, rgba(255, 120, 100), 20);
+          if (!proj.impactFx || !this.spawnSpineBurstFx(proj.impactFx, tx, ty, 1, 700, true)) {
+            this.spawnImpactFlash(tx, ty, proj.color);
+          }
+          const impactText = proj.impactLabel
+            ? `${proj.impactLabel} -${this.formatDamageValue(proj.amount)}`
+            : `-${this.formatDamageValue(proj.amount)}`;
+          this.spawnFloater(tx, ty + this.unitSize() * 0.4, impactText, rgba(255, 120, 100), proj.impactLabel ? 26 : 20);
           const shake = proj.impactShake ?? 5;
           if (shake > 0) {
             this.shakeField(shake);
@@ -2876,6 +2901,170 @@ export class LobbyGuardBattleRenderer {
     setTimeout(tick, Math.min(durationMs, 500));
   }
 
+  /**
+   * BOSS 按皮肤播专属动作(GUARD_BOSS_ANIMS):charge=循环直到被替换;blast/skill=播一遍接回行走。
+   * 皮肤没配或骨骼里找不到该动画:charge 保持原样,出手类回退通用攻击动作。
+   */
+  private playBossAnim(monster: GuardMonster | null, view: GuardUnitView | undefined, key: 'charge' | 'blast' | 'skill'): void {
+    if (!view || !view.spineReady || !view.skeleton || !view.skeleton.isValid) {
+      return;
+    }
+    const name = monster ? GUARD_BOSS_ANIMS[monster.spineCode]?.[key] : undefined;
+    let found = false;
+    try {
+      found = !!name && !!view.skeleton.findAnimation(name);
+    } catch (error) {
+      void error;
+    }
+    if (!found || !name) {
+      if (key !== 'charge') {
+        this.playUnitAttack(view);
+      }
+      return;
+    }
+    try {
+      if (key === 'charge') {
+        view.skeleton.setAnimation(0, name, true);
+        // 蓄力期间不让头顶血条重新采样(动作顶点会高于行走姿态)。
+        view.attackHoldUntil = Date.now() + 60_000;
+        return;
+      }
+      const entry = view.skeleton.setAnimation(0, name, false);
+      view.skeleton.addAnimation(0, view.idleAnim, true, 0);
+      let ms = 1000;
+      const end = (entry as unknown as { animationEnd?: number } | null)?.animationEnd;
+      if (typeof end === 'number' && Number.isFinite(end) && end > 0) {
+        ms = end * 1000;
+      }
+      view.attackHoldUntil = Date.now() + ms + 120;
+    } catch (error) {
+      void error;
+    }
+  }
+
+  /** 读条被打断:有受击踉跄动作就播一遍再接回行走,否则直接回行走。 */
+  private playBossStun(view: GuardUnitView | undefined): void {
+    if (!view || !view.spineReady || !view.skeleton || !view.skeleton.isValid) {
+      return;
+    }
+    try {
+      if (view.skeleton.findAnimation('beaten_stun')) {
+        view.skeleton.setAnimation(0, 'beaten_stun', false);
+        view.skeleton.addAnimation(0, view.idleAnim, true, 0);
+      } else {
+        view.skeleton.setAnimation(0, view.idleAnim, true);
+      }
+    } catch (error) {
+      void error;
+    }
+    view.attackHoldUntil = Date.now() + 1200;
+  }
+
+  /** 蓄力法阵:挂在 BOSS 节点脚下、垫在骨骼之下循环播放;未就绪退化为紫色脉动椭圆。 */
+  private attachBossChargeAura(view: GuardUnitView | undefined): void {
+    if (!view || !view.node.isValid || view.node.getChildByName('GuardBossChargeAura')) {
+      return;
+    }
+    const unit = this.unitSize();
+    const aura = this.host.addChildPlainNode(view.node, 'GuardBossChargeAura', this.bossVisualOffsetX(view), -unit * 0.45, 10, 10);
+    aura.setSiblingIndex(0);
+    const spec = GUARD_BOSS_FX.chargeAura;
+    const ready = this.attackSpineFxReady.get(spec.effect);
+    if (ready) {
+      const fit = (unit * spec.size) / Math.max(ready.w, ready.h);
+      const fxNode = this.host.addChildPlainNode(aura, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
+      fxNode.setScale(fit, fit, 1);
+      const skeleton = fxNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = ready.data;
+      try {
+        skeleton.setAnimation(0, ready.animation, true);
+      } catch (error) {
+        void error;
+      }
+    } else {
+      this.prewarmAttackSpineFx(spec);
+      const g = aura.addComponent(Graphics);
+      g.strokeColor = rgba(200, 90, 255, 230);
+      g.lineWidth = 5;
+      g.ellipse(0, 0, unit * 1.5, unit * 0.45);
+      g.stroke();
+      tween(aura).repeatForever(tween().to(0.4, { scale: new Vec3(1.08, 1.08, 1) }).to(0.4, { scale: Vec3.ONE })).start();
+    }
+    const opacity = aura.addComponent(UIOpacity);
+    opacity.opacity = 0;
+    tween(opacity).to(0.3, { opacity: 255 }).start();
+    this.bossChargeAuraLive = true;
+  }
+
+  private clearBossChargeAura(view: GuardUnitView | undefined): void {
+    const aura = view?.node.isValid ? view.node.getChildByName('GuardBossChargeAura') : null;
+    if (!aura || !aura.isValid) {
+      return;
+    }
+    aura.name = 'GuardBossChargeAuraFading';
+    const opacity = aura.getComponent(UIOpacity) ?? aura.addComponent(UIOpacity);
+    Tween.stopAllByTarget(opacity);
+    tween(opacity).to(0.25, { opacity: 0 }).call(() => { if (aura.isValid) { aura.destroy(); } }).start();
+  }
+
+  /** BOSS 打水晶的骨骼弹道(不占普通弹道限额):循环飞行体飞向水晶,到达时播 impact 爆点 + 飘字 + 震屏;未就绪回退紫色暗弹。 */
+  private spawnBossCrystalProjectile(
+    sx: number,
+    sy: number,
+    spec: { effect: string; animation: string; size: number },
+    impact: { effect: string; animation: string; size: number },
+    amount: number,
+    opts: { shake: number; speedMult: number; label?: string },
+  ): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(field, 'GuardBossBolt', sx, sy, 10, 10);
+    node.setSiblingIndex(field.children.length - 1);
+    const ready = this.attackSpineFxReady.get(spec.effect);
+    let spine = false;
+    if (ready) {
+      const fit = (this.unitSize() * spec.size) / Math.max(ready.w, ready.h);
+      const fxNode = this.host.addChildPlainNode(node, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
+      fxNode.setScale(fit, fit, 1);
+      const skeleton = fxNode.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = ready.data;
+      try {
+        skeleton.setAnimation(0, ready.animation, true);
+        spine = true;
+      } catch (error) {
+        void error;
+      }
+    } else {
+      this.prewarmAttackSpineFx(spec);
+    }
+    if (!spine) {
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(180, 90, 255, 150);
+      g.ellipse(0, 0, 22, 12);
+      g.fill();
+      g.fillColor = rgba(255, 120, 200, 245);
+      g.ellipse(2, 0, 12, 7);
+      g.fill();
+    }
+    this.projectiles.push({
+      node,
+      targetId: -1,
+      x: sx,
+      y: sy,
+      amount,
+      color: rgba(200, 110, 255),
+      crystalTarget: true,
+      impactShake: opts.shake,
+      speedMult: opts.speedMult,
+      impactFx: impact,
+      impactLabel: opts.label,
+    });
+  }
+
   /** 远程怪的弹道:按皮肤取 fx_pack 骨骼飞行体,循环播放并按包围盒等比缩放;未就绪/超限额回退暗红箭矢贴图。 */
   private spawnCrystalBolt(attacker: GuardMonster, attackerView: GuardUnitView, amount: number): void {
     const field = this.fieldNode;
@@ -2921,7 +3110,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 一次性骨骼爆点(普攻命中 / 专属词条触发共用):未就绪时补预热并返回 false,由调用方回退。 */
-  private spawnSpineBurstFx(hitSpec: { effect: string; animation: string; size: number } | null, x: number, y: number, scale: number, holdMs = 500): boolean {
+  private spawnSpineBurstFx(hitSpec: { effect: string; animation: string; size: number } | null, x: number, y: number, scale: number, holdMs = 500, force = false): boolean {
     const field = this.fieldNode;
     if (!field || !hitSpec) {
       return false;
@@ -2931,7 +3120,7 @@ export class LobbyGuardBattleRenderer {
       this.prewarmAttackSpineFx(hitSpec);
       return false;
     }
-    if (this.attackHitFxLive >= GUARD_SPINE_HIT_FX_CAP) {
+    if (!force && this.attackHitFxLive >= GUARD_SPINE_HIT_FX_CAP) {
       return false;
     }
     const fit = (this.unitSize() * hitSpec.size * scale) / Math.max(ready.w, ready.h);
@@ -3086,6 +3275,10 @@ export class LobbyGuardBattleRenderer {
       this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.allyShield);
       this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.crystalHealBig);
       this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.crystalHealSmall);
+    }
+    // BOSS 蓄力法阵 / 灭世轰击 / 技能弹道与爆点(车轮战开局 6s 就上 BOSS,开局统一预热)。
+    for (const spec of Object.values(GUARD_BOSS_FX)) {
+      this.prewarmAttackSpineFx(spec);
     }
     // 远程怪三种皮肤的弹道(shooter 从第 3 波起才出,开局预热来得及)。
     for (const spec of guardMonsterProjectileFxSpecs()) {
@@ -4442,6 +4635,11 @@ export class LobbyGuardBattleRenderer {
    * 顶点格式 pos(3f) uv(2f) color(4B)[+color2(4B)],用 renderData.floatStride 取步长;alpha 为 0 的顶点(隐藏 slot)跳过。
    * enableBatch 时顶点已是世界坐标,转回怪物节点空间;否则是骨骼节点本地坐标,乘节点缩放加偏移。
    */
+  /** BOSS 身体画面中心相对怪物节点的 x 偏移(建视图时按 GUARD_BOSS_ANIMS.centerX × 视高算好;非 BOSS/未配置为 0)。 */
+  private bossVisualOffsetX(view: GuardUnitView | undefined): number {
+    return view?.centerOffsetX ?? 0;
+  }
+
   private measureRenderedTopY(skeleton: sp.Skeleton): number | null {
     const rd = (skeleton as unknown as { renderData?: { vertexCount: number; floatStride: number; chunk?: { vb: Float32Array } } }).renderData;
     if (!rd || !rd.chunk || !rd.chunk.vb || rd.vertexCount < 3 || rd.floatStride < 6) {
@@ -4662,6 +4860,9 @@ export class LobbyGuardBattleRenderer {
     // BOSS 视高钳 0.62→0.52 屏高(2026-09-18:原尺寸头顶出屏、整排上格被盖)。
     const targetVisualH = Math.min(unit * kindMult * dbScale, this.layoutHeight * GUARD_MONSTER_VISUAL_H_CAP);
     const view: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
+    if (monster.kind === 'boss') {
+      view.centerOffsetX = (GUARD_BOSS_ANIMS[monster.spineCode]?.centerX ?? 0) * targetVisualH;
+    }
     this.loadSpineInto(node, fallback, guardMonsterSpineResource(monster.spineCode), baseSize, true, view, {
       calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
       footY: -unit * 0.45,
