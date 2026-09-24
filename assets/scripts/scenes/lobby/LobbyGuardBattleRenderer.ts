@@ -4,6 +4,7 @@
 import {
   BlockInputEvents,
   Color,
+  EventTouch,
   Graphics,
   HorizontalTextAlignment,
   Label,
@@ -19,6 +20,7 @@ import {
   UITransform,
   Vec3,
   VerticalTextAlignment,
+  sys,
   tween,
   Tween,
 } from 'cc';
@@ -170,6 +172,27 @@ const GUARD_ROLE_COLOR: Record<string, Color> = {
   control: new Color(190, 150, 255),
 };
 
+// ── 战斗内设置偏好(2026-09-24 用户确认方案):存本地,跨局保留;读写失败按默认值处理 ──
+const GUARD_PREF_SHAKE = 'lootchain.guard.shake';
+const GUARD_PREF_DAMAGE_NUMBERS = 'lootchain.guard.damageNumbers';
+
+function readGuardPref(key: string, fallback: string): string {
+  try {
+    return sys.localStorage.getItem(key) ?? fallback;
+  } catch (error) {
+    void error;
+    return fallback;
+  }
+}
+
+function writeGuardPref(key: string, value: string): void {
+  try {
+    sys.localStorage.setItem(key, value);
+  } catch (error) {
+    void error;
+  }
+}
+
 interface GuardUnitView {
   node: Node;
   spineReady: boolean;
@@ -288,6 +311,12 @@ export class LobbyGuardBattleRenderer {
   private chestViews = new Map<number, Node>();
   private choiceOverlayLevel = 0;
   private wheelOverlayOpen = false;
+  /** 战斗内设置面板 / 退出确认框是否打开(打开期间暂停 sim)。 */
+  private settingsOpen = false;
+  private exitConfirmOpen = false;
+  /** 设置项:战斗震屏(默认开)、伤害数字精简模式(默认全部显示)。 */
+  private shakeEnabled = readGuardPref(GUARD_PREF_SHAKE, '1') !== '0';
+  private damageNumbersLite = readGuardPref(GUARD_PREF_DAMAGE_NUMBERS, 'all') === 'lite';
   /** 点击英雄显示攻击范围(unitId;拖拽结束/再点空白清除)。 */
   private rangeShownUnitId: number | null = null;
   /** 已绘制选中层对应的格位:仅换人/换格时整层重建(每 tick 重建=详情框闪烁,2026-08-28 用户验收)。 */
@@ -373,6 +402,8 @@ export class LobbyGuardBattleRenderer {
     this.chestViews.clear();
     this.choiceOverlayLevel = 0;
     this.wheelOverlayOpen = false;
+    this.settingsOpen = false;
+    this.exitConfirmOpen = false;
     this.rangeShownUnitId = null;
     this.guardFxLiveCount = 0;
     this.guardFxAimers.clear();
@@ -550,6 +581,11 @@ export class LobbyGuardBattleRenderer {
     // 若不在这里重放,结算后一旦 resize,"返回"按钮会连同覆盖层一起永久消失(玩家卡死在已结束的战斗里)。
     const restoreEndOverlay = this.overlayShown;
     const endVictory = this.sim?.phase === 'victory';
+    // 设置面板 / 退出确认随 root 一起销毁:重建后按原状态补开;开箱轮盘不补(奖励已入 sim),统一重算暂停。
+    const restoreSettings = this.settingsOpen;
+    const restoreExitConfirm = this.exitConfirmOpen;
+    this.settingsOpen = false;
+    this.exitConfirmOpen = false;
     if (this.root && this.root.isValid) {
       this.root.destroy();
     }
@@ -581,6 +617,15 @@ export class LobbyGuardBattleRenderer {
     this.goldCoinLive = 0;
     this.liveDamageFloaters = 0;
     this.buildSceneTree(layout, stageCode);
+    if (!restoreEndOverlay) {
+      if (restoreSettings) {
+        this.openBattleSettings();
+      }
+      if (restoreExitConfirm) {
+        this.openExitConfirm();
+      }
+    }
+    this.syncBattlePause();
     if (restoreEndOverlay) {
       this.showEndOverlay(endVictory);
     }
@@ -1087,11 +1132,12 @@ export class LobbyGuardBattleRenderer {
     const settingsBtn = this.host.addChildPlainNode(hud, 'GuardSettingsButton', width / 2 - 82, height / 2 - 20 - pillH / 2, 42, 42);
     this.mountSprite(settingsBtn, 'Img', 'ui/battle/ai/ghud_btn_settings/spriteFrame', 0, 0, 42, 42);
     this.host.applyImageButtonFeedback(settingsBtn);
-    settingsBtn.on(Node.EventType.TOUCH_END, () => this.host.setStatus('战斗内设置即将开放。'), this);
+    settingsBtn.on(Node.EventType.TOUCH_END, () => this.openBattleSettings(), this);
     const closeBtn = this.host.addChildPlainNode(hud, 'GuardCloseButton', width / 2 - 34, height / 2 - 20 - pillH / 2, 42, 42);
     this.mountSprite(closeBtn, 'Img', 'ui/battle/ai/ghud_btn_close/spriteFrame', 0, 0, 42, 42);
     this.host.applyImageButtonFeedback(closeBtn);
-    closeBtn.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
+    // 2026-09-24:× 不再一点就走,战斗进行中先弹退出确认(已结束/未开战直接返回)。
+    closeBtn.on(Node.EventType.TOUCH_END, () => this.requestExitBattle(), this);
     // 次级信息:下一波预告(右)/波次轨道(标准模式)
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
@@ -1549,7 +1595,7 @@ export class LobbyGuardBattleRenderer {
 
   private shakeField(amplitude: number): void {
     const field = this.fieldNode;
-    if (!field || !field.isValid) {
+    if (!field || !field.isValid || !this.shakeEnabled) {
       return;
     }
     const base = new Vec3(field.position.x, field.position.y, field.position.z);
@@ -2039,6 +2085,296 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
+  // ── 战斗内设置(2026-09-24 用户确认方案):齿轮 = 暂停 + 设置面板;× / 面板"退出战斗" = 退出确认 ──
+
+  /** 统一暂停口径:开箱轮盘 / 设置面板 / 退出确认任一打开即暂停;恢复时重置步进时钟,避免补跑一大段模拟。 */
+  private syncBattlePause(): void {
+    const sim = this.sim;
+    if (!sim) {
+      return;
+    }
+    const want = this.wheelOverlayOpen || this.settingsOpen || this.exitConfirmOpen;
+    if (sim.paused && !want) {
+      this.lastTickWallMs = Date.now();
+      this.tickAccumulatorMs = 0;
+    }
+    sim.paused = want;
+  }
+
+  private battleEnded(): boolean {
+    const phase = this.sim?.phase;
+    return this.overlayShown || phase === 'victory' || phase === 'defeat';
+  }
+
+  /** 全屏遮罩 + refine_panel_bg 面板(与词条/开箱弹层同款);点面板外回调 onOutside。 */
+  private mountSettingsOverlay(name: string, panelW: number, panelH: number, onOutside: (() => void) | null): Node | null {
+    const root = this.root;
+    if (!root) {
+      return null;
+    }
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const overlay = this.host.addChildPlainNode(root, name, 0, 0, width, height);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(8, 6, 6, 190);
+    og.rect(-width / 2, -height / 2, width, height);
+    og.fill();
+    this.paintOverlayPanel(overlay, panelW, panelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    if (onOutside) {
+      overlay.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
+        const transform = overlay.getComponent(UITransform);
+        const loc = event.getUILocation();
+        const local = transform ? transform.convertToNodeSpaceAR(new Vec3(loc.x, loc.y, 0)) : null;
+        if (local && (Math.abs(local.x) > panelW / 2 || Math.abs(local.y) > panelH / 2)) {
+          onOutside();
+        }
+      }, this);
+    }
+    return overlay;
+  }
+
+  /** 弹层标题 + 两侧 title_divider(与开箱/词条弹层同一套估宽规则)。 */
+  private paintSettingsTitle(parent: Node, text: string, panelW: number, y: number): void {
+    const size = 34;
+    this.host.addChildLabel(parent, `${parent.name}Title`, text, 0, y, size, rgba(255, 232, 150), new Size(panelW * 0.6, 44));
+    const half = Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * size, 0) / 2;
+    const avail = panelW / 2 - half - 22 - 30;
+    if (avail >= 40) {
+      const dividerW = Math.min(150, avail);
+      const dividerX = half + 22 + dividerW / 2;
+      this.mountSprite(parent, `${parent.name}DividerL`, 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, y, dividerW, dividerW * (76 / 390));
+      this.mountSprite(parent, `${parent.name}DividerR`, 'ui/common/ai/title_divider_right/spriteFrame', dividerX, y, dividerW, dividerW * (73 / 392));
+    }
+  }
+
+  /** 退出类次要按钮:暗石底(bag_button_dark,158:512)+ 浅红字,与红色主按钮"继续战斗"拉开层级。 */
+  private mountDangerButton(parent: Node, name: string, x: number, y: number, w: number, text: string): Node {
+    const h = w * (158 / 512);
+    const button = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    this.mountSprite(button, `${name}Art`, 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, w, h);
+    this.host.applyImageButtonFeedback(button);
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 22, rgba(255, 176, 150), new Size(w - 24, h));
+    label.overflow = Label.Overflow.SHRINK;
+    return button;
+  }
+
+  private mountPrimaryTextButton(parent: Node, name: string, x: number, y: number, w: number, text: string): Node {
+    const button = this.mountPrimaryButton(parent, name, x, y, w);
+    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 22, rgba(255, 238, 190), new Size(w - 24, 28));
+    label.overflow = Label.Overflow.SHRINK;
+    return button;
+  }
+
+  /** 二选一胶囊开关(选中金底白字,未选暗底灰字);点未选中的一侧回调 onPick。 */
+  private mountSettingsSegment(parent: Node, name: string, x: number, y: number, options: [string, string], activeIndex: number, onPick: (index: number) => void): void {
+    const pillW = 118;
+    const pillH = 46;
+    const gap = 12;
+    options.forEach((text, index) => {
+      const active = index === activeIndex;
+      const px = x + (index - 0.5) * (pillW + gap);
+      const node = this.host.addChildPlainNode(parent, `${name}_${index}`, px, y, pillW, pillH);
+      const g = node.addComponent(Graphics);
+      g.fillColor = active ? rgba(186, 128, 46, 245) : rgba(34, 27, 22, 235);
+      g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+      g.fill();
+      g.strokeColor = active ? rgba(255, 222, 150, 255) : rgba(130, 102, 66, 210);
+      g.lineWidth = 2;
+      g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+      g.stroke();
+      this.host.addChildLabel(node, `${name}_${index}Label`, text, 0, 0, 20, active ? rgba(255, 246, 224) : rgba(186, 168, 136), new Size(pillW - 12, pillH));
+      node.on(Node.EventType.TOUCH_END, () => {
+        if (!active) {
+          onPick(index);
+        }
+      }, this);
+    });
+  }
+
+  private settingsPanelSize(): { w: number; h: number } {
+    const h = Math.min(660, this.layoutHeight * 0.82);
+    return { w: Math.min(this.layoutWidth * 0.92, h * (1448 / 1086)), h };
+  }
+
+  /** 本局一句话信息:车轮战=层数/BOSS 数;标准=波次/击杀/水晶。 */
+  private battleInfoText(): string {
+    const sim = this.sim;
+    if (!sim) {
+      return '';
+    }
+    if (sim.mode === 'rush') {
+      return `车轮战 · 层数 ${guardTrialLayers(sim)} · 已击败 BOSS ×${sim.bossKills} · 击杀 ${sim.killCount}`;
+    }
+    return `第 ${sim.wave}/${sim.maxWave} 波 · 击杀 ${sim.killCount} · 水晶 ${Math.ceil(sim.crystalHp)}/${sim.crystalMaxHp}`;
+  }
+
+  /** 齿轮:暂停战斗并打开设置面板(已结束/弹层中不响应)。 */
+  private openBattleSettings(): void {
+    if (!this.root || !this.sim || this.settingsOpen || this.battleEnded()) {
+      return;
+    }
+    const { w, h } = this.settingsPanelSize();
+    const overlay = this.mountSettingsOverlay('GuardSettingsOverlay', w, h, () => this.closeBattleSettings());
+    if (!overlay) {
+      return;
+    }
+    this.settingsOpen = true;
+    this.syncBattlePause();
+    gameAudio.sfx('ui_click');
+    this.renderSettingsPage(overlay, 'main');
+  }
+
+  private closeBattleSettings(): void {
+    this.root?.getChildByName('GuardSettingsOverlay')?.destroy();
+    this.settingsOpen = false;
+    this.syncBattlePause();
+  }
+
+  /** 设置面板内容页:main=信息 + 四个开关 + 玩法速查入口 + 退出/继续;help=玩法速查。切页/切开关整页重画。 */
+  private renderSettingsPage(overlay: Node, page: 'main' | 'help'): void {
+    if (!overlay.isValid) {
+      return;
+    }
+    overlay.getChildByName('GuardSettingsContent')?.destroy();
+    const { w: panelW, h: panelH } = this.settingsPanelSize();
+    const content = this.host.addChildPlainNode(overlay, 'GuardSettingsContent', 0, 0, panelW, panelH);
+    const titleY = panelH / 2 - 112;
+    const buttonY = -panelH / 2 + 97;
+    if (page === 'help') {
+      this.paintSettingsTitle(content, '玩法速查', panelW, titleY);
+      const lines = [
+        '召唤:花金币把英雄召唤到空格,每次召唤费用递增。',
+        '合成:把同名同星英雄拖到一起升星(最高 5★),2★ 起自动释放战技。',
+        '出售:把英雄拖到水晶上出售,返还部分金币。',
+        '强化:花金币抽词条三选一;每守住一波送一次免费强化。',
+        'BOSS:头顶出现蓄力条时集火打断,读满会轰掉水晶 15% 生命。',
+        '辅助:圣辉涌泉为水晶回血并给全队加攻速(脚下金色光环)。',
+      ];
+      if (this.sim?.mode === 'rush') {
+        lines.push('车轮战:BOSS 一只比一只强,水晶碎裂或时间到即按层数结算。');
+      }
+      const top = titleY - 70;
+      const step = Math.min(46, (top - (buttonY + 70)) / lines.length);
+      lines.forEach((text, index) => {
+        const label = this.host.addChildLabel(content, `GuardSettingsHelp_${index}`, text, -panelW * 0.37, top - index * step, 18, rgba(232, 214, 178), new Size(panelW * 0.74, step), HorizontalTextAlignment.LEFT);
+        label.overflow = Label.Overflow.SHRINK;
+      });
+      const back = this.mountPrimaryTextButton(content, 'GuardSettingsHelpBack', 0, buttonY, 236, '返回');
+      back.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
+      return;
+    }
+    this.paintSettingsTitle(content, '战斗设置', panelW, titleY);
+    const info = this.host.addChildLabel(content, 'GuardSettingsInfo', `已暂停 · ${this.battleInfoText()}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
+    info.overflow = Label.Overflow.SHRINK;
+    const rows: Array<{ key: string; label: string; options: [string, string]; active: number; pick: (index: number) => void }> = [
+      { key: 'Bgm', label: '背景音乐', options: ['开', '关'], active: gameAudio.bgmEnabled() ? 0 : 1, pick: (index) => gameAudio.setBgmEnabled(index === 0) },
+      {
+        key: 'Sfx', label: '音效', options: ['开', '关'], active: gameAudio.sfxEnabled() ? 0 : 1,
+        pick: (index) => {
+          gameAudio.setSfxEnabled(index === 0);
+          gameAudio.sfx('ui_click');
+        },
+      },
+      {
+        key: 'Shake', label: '战斗震屏', options: ['开', '关'], active: this.shakeEnabled ? 0 : 1,
+        pick: (index) => {
+          this.shakeEnabled = index === 0;
+          writeGuardPref(GUARD_PREF_SHAKE, this.shakeEnabled ? '1' : '0');
+          this.shakeField(6);
+        },
+      },
+      {
+        key: 'Damage', label: '伤害数字', options: ['全部', '精简'], active: this.damageNumbersLite ? 1 : 0,
+        pick: (index) => {
+          this.damageNumbersLite = index === 1;
+          writeGuardPref(GUARD_PREF_DAMAGE_NUMBERS, this.damageNumbersLite ? 'lite' : 'all');
+        },
+      },
+    ];
+    const rowTop = titleY - 118;
+    const rowStep = Math.min(62, (rowTop - (buttonY + 150)) / (rows.length - 1));
+    const labelX = -panelW * 0.17;
+    const segX = panelW * 0.11;
+    rows.forEach((row, index) => {
+      const y = rowTop - index * rowStep;
+      const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, labelX, y, 20, rgba(240, 222, 186), new Size(180, 30), HorizontalTextAlignment.RIGHT);
+      label.overflow = Label.Overflow.SHRINK;
+      this.mountSettingsSegment(content, `GuardSettings${row.key}`, segX, y, row.options, row.active, (picked) => {
+        row.pick(picked);
+        this.renderSettingsPage(overlay, 'main');
+      });
+    });
+    const hintY = rowTop - (rows.length - 1) * rowStep - 40;
+    this.host.addChildLabel(content, 'GuardSettingsHint', '精简:只显示暴击、大额与 BOSS 身上的伤害;水晶掉血始终显示', 0, hintY, 16, rgba(170, 156, 128), new Size(panelW * 0.74, 22));
+    const help = this.host.addChildPlainNode(content, 'GuardSettingsHelpLink', 0, hintY - 44, 200, 40);
+    const hg = help.addComponent(Graphics);
+    hg.strokeColor = rgba(220, 180, 110, 230);
+    hg.lineWidth = 2;
+    hg.roundRect(-100, -20, 200, 40, 20);
+    hg.stroke();
+    this.host.addChildLabel(help, 'GuardSettingsHelpLinkLabel', '玩法速查 ›', 0, 0, 19, rgba(255, 226, 160), new Size(190, 36));
+    this.host.applyImageButtonFeedback(help);
+    help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
+    const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -panelW * 0.18, buttonY, 220, '退出战斗');
+    exitBtn.on(Node.EventType.TOUCH_END, () => this.openExitConfirm(), this);
+    const resume = this.mountPrimaryTextButton(content, 'GuardSettingsResume', panelW * 0.18, buttonY, 236, '继续战斗');
+    resume.on(Node.EventType.TOUCH_END, () => this.closeBattleSettings(), this);
+  }
+
+  /** ×:战斗进行中弹退出确认;未开战/已结束直接回大厅。 */
+  private requestExitBattle(): void {
+    if (!this.sim || this.battleEnded()) {
+      this.host.returnToLobbyFromBattlePreview();
+      return;
+    }
+    this.openExitConfirm();
+  }
+
+  /**
+   * 退出确认(压在设置面板之上):后端开战不扣任何消耗,体力(主线首通)与每日次数都在结算时才扣——
+   * 中途退出不结算,所以既不发奖也不消耗(PlayerBattleServiceImpl.startBattle / settleBattle,2026-09-24 核对)。
+   */
+  private openExitConfirm(): void {
+    if (!this.root || !this.sim || this.exitConfirmOpen) {
+      return;
+    }
+    const panelW = Math.min(this.layoutWidth * 0.8, 660);
+    const panelH = panelW * (1086 / 1448);
+    const overlay = this.mountSettingsOverlay('GuardExitConfirmOverlay', panelW, panelH, () => this.closeExitConfirm());
+    if (!overlay) {
+      return;
+    }
+    this.exitConfirmOpen = true;
+    this.syncBattlePause();
+    gameAudio.sfx('ui_click');
+    this.paintSettingsTitle(overlay, '退出战斗?', panelW, panelH / 2 - 100);
+    const rush = this.sim.mode === 'rush';
+    const lines = [
+      rush ? '退出后本局作废,已打到的层数不计入结算。' : '退出后本局作废,不结算奖励。',
+      '本局尚未结算,不消耗体力,也不占用挑战次数。',
+    ];
+    lines.forEach((text, index) => {
+      const label = this.host.addChildLabel(overlay, `GuardExitConfirmLine_${index}`, text, 0, 22 - index * 38, 18, index === 0 ? rgba(255, 196, 170) : rgba(214, 196, 160), new Size(panelW * 0.76, 30));
+      label.overflow = Label.Overflow.SHRINK;
+    });
+    const buttonY = -panelH / 2 + 88;
+    const confirm = this.mountDangerButton(overlay, 'GuardExitConfirmOk', -panelW * 0.2, buttonY, 200, '确认退出');
+    confirm.on(Node.EventType.TOUCH_END, () => {
+      this.exitConfirmOpen = false;
+      this.settingsOpen = false;
+      this.host.returnToLobbyFromBattlePreview();
+    }, this);
+    const cancel = this.mountPrimaryTextButton(overlay, 'GuardExitConfirmCancel', panelW * 0.2, buttonY, 216, '继续战斗');
+    cancel.on(Node.EventType.TOUCH_END, () => this.closeExitConfirm(), this);
+  }
+
+  private closeExitConfirm(): void {
+    this.root?.getChildByName('GuardExitConfirmOverlay')?.destroy();
+    this.exitConfirmOpen = false;
+    this.syncBattlePause();
+  }
+
   private openChestWithWheel(chestId: number): void {
     const sim = this.sim;
     const root = this.root;
@@ -2192,11 +2528,7 @@ export class LobbyGuardBattleRenderer {
         overlay.destroy();
       }
       this.wheelOverlayOpen = false;
-      if (this.sim) {
-        this.sim.paused = false;
-      }
-      this.lastTickWallMs = Date.now();
-      this.tickAccumulatorMs = 0;
+      this.syncBattlePause();
     }, this);
   }
 
@@ -2749,8 +3081,11 @@ export class LobbyGuardBattleRenderer {
   private liveDamageFloaters = 0;
 
   private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
-    void targetId;
     const big = skill || amount >= 1000;
+    // 精简模式(战斗设置):只留暴击/大额与打在 BOSS 身上的数字;水晶掉血走 spawnFloater,不受影响。
+    if (this.damageNumbersLite && !big && this.sim?.monsters.find((entry) => entry.monsterId === targetId)?.kind !== 'boss') {
+      return;
+    }
     if (this.liveDamageFloaters >= (big ? 72 : 52)) {
       return;
     }
