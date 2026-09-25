@@ -3,7 +3,9 @@
 构建后处理:把 Web 构建产物里的 PNG 量化成 256 色调色板(docs/31「构建产物体积」)。
 
 - 只动构建产物(默认 build/web-mobile),不碰 assets/ 源素材——源图保持原样,符合"素材先备份、不改原图"规则。
-- 量化:FASTOCTREE 256 色 + Floyd-Steinberg 抖动(保留 alpha);2026-09-05 目检金属高光/渐变无可见损失。
+- 首选 libimagequant(pngquant 引擎,`pip install imagequant`):带透明度也能抖动,设质量下限 MIN_QUALITY,
+  达不到下限就保留原图——"不影响实际效果才压"(2026-09-24 用户要求)。骨骼特效光晕/英雄图集也走它。
+- 没装 imagequant 时退回 Pillow:不透明图 RGB+FS 抖动,透明 UI 调色板量化,骨骼贴图不动(Pillow 带透明量化不抖动会出色带)。
 - 只在结果更小时替换;已是调色板(P 模式)的跳过,所以重复执行是幂等的。
 - 用法:
     python scripts/compress-build-png.py                 # 默认 build/web-mobile
@@ -18,6 +20,15 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 
 from PIL import Image
+
+try:
+    import imagequant  # libimagequant 绑定
+except Exception:  # 未安装时退回 Pillow 路径
+    imagequant = None
+
+# libimagequant 质量(0~100,同 pngquant --quality):达不到 MIN_QUALITY 就不压,保原图。
+MIN_QUALITY = 80
+MAX_QUALITY = 100
 
 
 def _has_real_alpha(im):
@@ -37,7 +48,13 @@ def compress_one(task):
             if im.mode == 'P':
                 return path, before, before, 'skip-palette'
             has_alpha = _has_real_alpha(im)
-            if not has_alpha:
+            if imagequant is not None and spine_mode != 'palette':
+                try:
+                    quant = imagequant.quantize_pil_image(im.convert('RGBA'), dithering_level=1.0, max_colors=256,
+                                                          min_quality=MIN_QUALITY, max_quality=MAX_QUALITY)
+                except RuntimeError:
+                    return path, before, before, 'skip-quality'
+            elif not has_alpha:
                 # 不透明图:RGB 调色板 + Floyd-Steinberg 抖动(Pillow 只对 RGB 抖动),立绘/背景渐变不出色带。
                 quant = im.convert('RGB').quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
             else:
@@ -129,7 +146,8 @@ def main():
     if args.spine == 'keep' and os.path.isdir(args.source):
         SPINE_TEXTURE_UUIDS.update(_collect_spine_uuids(args.source))
     started = time.time()
-    stats = {'ok': 0, 'skip-palette': 0, 'skip-bigger': 0, 'skip-spine': 0, 'error': 0}
+    stats = {'ok': 0, 'skip-palette': 0, 'skip-bigger': 0, 'skip-spine': 0, 'skip-quality': 0, 'error': 0}
+    print('量化引擎:%s' % ('libimagequant(质量下限 %d)' % MIN_QUALITY if imagequant is not None and args.spine != 'palette' else 'Pillow'))
     after_total = 0
     errors = []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init_worker, initargs=(frozenset(SPINE_TEXTURE_UUIDS),)) as pool:
@@ -140,8 +158,8 @@ def main():
             after_total += after if after else os.path.getsize(path)
             if key == 'error':
                 errors.append((path, status))
-    print('完成 %.0fs:压缩 %d / 已是调色板 %d / 量化后更大保留原图 %d / 骨骼贴图未动 %d / 失败 %d' % (
-        time.time() - started, stats['ok'], stats['skip-palette'], stats['skip-bigger'], stats['skip-spine'], stats['error']))
+    print('完成 %.0fs:压缩 %d / 已是调色板 %d / 量化后更大保留原图 %d / 达不到质量下限保留原图 %d / 骨骼贴图未动 %d / 失败 %d' % (
+        time.time() - started, stats['ok'], stats['skip-palette'], stats['skip-bigger'], stats['skip-quality'], stats['skip-spine'], stats['error']))
     print('PNG %.1f MB -> %.1f MB' % (total_before / 1048576, after_total / 1048576))
     build_total = sum(os.path.getsize(os.path.join(dp, f)) for dp, _dn, fn in os.walk(root) for f in fn)
     print('构建产物总量 %.1f MB' % (build_total / 1048576))

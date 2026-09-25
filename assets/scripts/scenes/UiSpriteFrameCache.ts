@@ -89,6 +89,9 @@ export interface UiSpriteFrameOverrides {
  * Inspector 上手动绑定的 SpriteFrame 优先级最高；未绑定时才走 resources.load。
  * 加载成功后通知 root 重新渲染当前视图，让登录 logo、按钮图和大厅面板自动补上。
  */
+/** 按玩法页分组的 UI 图预载(第一次打开对应页面时拉)。 */
+export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle';
+
 export class UiSpriteFrameCache {
   private readonly spriteFrames = new Map<string, SpriteFrame>();
   private readonly loadingSpriteFrames = new Set<string>();
@@ -111,8 +114,11 @@ export class UiSpriteFrameCache {
     }
   }
 
+  /**
+   * 启动只预载登录 + 大厅会立刻看到的 UI 图(2026-09-25 用户拍板:只下载游戏里用到的)。
+   * 各玩法页面的图按分组在第一次打开该页时再拉(preloadGroup),到货走 90ms 合并整刷,不会逐张重建。
+   */
   preload(overrides: UiSpriteFrameOverrides): void {
-    // 只预加载当前阶段会用到的 UI 图，避免误拉未开放玩法资源。
     if (SHOW_LOGIN_BRAND && !overrides.logoFrame) {
       this.request(LOGIN_UI_ASSETS.logo);
     }
@@ -123,75 +129,102 @@ export class UiSpriteFrameCache {
       LOGIN_UI_ASSETS.rightRail.forEach((asset) => this.request(asset.path));
     }
     this.request(LOBBY_PLAYER_INFO_PANEL_ASSET);
-    this.request(LOBBY_BATTLE_SCENE_BG_ASSET);
-    this.request(LOBBY_BATTLE_SCENE_GROUND_ASSET);
-    this.request(LOBBY_BATTLE_SCENE_FOREGROUND_ASSET);
-    this.request(LOBBY_HERO_DETAIL_BACKDROP_ASSET);
-    this.request(LOBBY_HERO_DETAIL_PROTAGONIST_ASSET);
-    this.request(LOBBY_HERO_ROSTER_BACKDROP_ASSET);
-    LOBBY_HERO_ROSTER_CARD_ASSETS.forEach((asset) => this.request(asset));
-    this.request(GACHA_BACKGROUND_ASSET);
-    this.request(GACHA_MODAL_CLOSE_BUTTON_ASSET);
-    GACHA_POOL_LOGO_ASSETS.forEach((asset) => this.request(asset));
     this.request(SCENE_BACK_BUTTON_ASSET);
-    // C1812 通用/背包/冒险/战斗 UI 切图：保持只读展示，不预拉未开放玩法资源。
     Object.values(LOBBY_C1812_RESOURCE_ICON_ASSETS).forEach((asset) => this.request(asset.path));
-    this.request(BAG_C1812_ITEM_SLOT_ASSET);
-    this.request(BAG_C1812_ITEM_SLOT_HIGHLIGHT_ASSET);
-    this.request(BAG_C1812_BUTTON_PRIMARY_ASSET);
-    this.request(BAG_C1812_DIVIDER_ASSET);
-    this.request(BAG_C1812_TITLE_BANNER_ASSET);
-    this.request(BAG_C1812_MODAL_FRAME_ASSET);
-    Object.values(BAG_C1812_ITEM_TYPE_ICON_ASSETS).forEach((asset) => this.request(asset));
-    this.request(HERO_C1812_STAR_FILLED_ASSET);
-    this.request(HERO_C1812_STAR_EMPTY_ASSET);
-    Object.values(HERO_C1812_GRADE_CREST_ASSETS).forEach((asset) => this.request(asset));
-    this.request(ADVENTURE_C1812_STAGE_NODE_ASSET);
-    this.request(ADVENTURE_C1812_STAGE_NODE_BOSS_ASSET);
-    this.request(ADVENTURE_C1812_STAGE_NODE_CLEAR_ASSET);
-    this.request(ADVENTURE_C1812_CHAPTER_ICON_ASSET);
-    this.request(ADVENTURE_C1812_ICON_LOCK_ASSET);
-    this.request(BATTLE_C1812_HP_BAR_FRAME_ASSET);
-    this.request(BATTLE_C1812_HP_BAR_FILL_ASSET);
-    this.request(BATTLE_C1812_BANNER_VICTORY_ASSET);
-    this.request(BATTLE_C1812_BANNER_DEFEAT_ASSET);
+    Object.values(LOBBY_C1812_NAV_ICON_ASSETS).forEach((asset) => this.request(asset));
     this.request(C1812_TITLE_BANNER_ASSET);
     this.request(C1812_BUTTON_PRIMARY_ASSET);
     this.request(C1812_BUTTON_DISABLED_ASSET);
-    STAR_BAND_ASSETS.forEach((asset) => this.request(asset));
-    this.request(GACHA_RESULT_PANEL_ASSET);
-    Object.values(GACHA_RESULT_FRAME_ASSETS).forEach((asset) => this.request(asset));
-    this.request(GACHA_RESULT_DIVIDER_LEFT_ASSET);
-    this.request(GACHA_RESULT_DIVIDER_RIGHT_ASSET);
-    this.request(GACHA_TAB_PLATE_ASSET);
-    Object.values(GACHA_POOL_TAB_ICON_ASSETS).forEach((asset) => this.request(asset));
-    Object.values(GACHA_ACTION_ICON_ASSETS).forEach((asset) => this.request(asset));
-    this.request(GACHA_COST_TICKET_ICON_ASSET);
-    this.request(GACHA_COST_DIAMOND_ICON_ASSET);
-    this.request(GACHA_LOCK_ICON_ASSET);
+    this.request(C1812_TAB_SELECTED_ASSET);
     this.request(LOCK_BODY_ASSET);
     this.request(LOCK_HEAD_ASSET);
-    this.request(C1812_TAB_SELECTED_ASSET);
-    this.request(BATTLE_C1812_SKILL_FRAME_ASSET);
-    this.request(BATTLE_C1812_SKILL_FRAME_ACTIVE_ASSET);
-    this.request(BATTLE_C1812_BOSS_GAUGE_FRAME_ASSET);
-    this.request(BATTLE_C1812_BOSS_GAUGE_BAR_ASSET);
-    this.request(BATTLE_C1812_SKILL_TARGET_FRAME_ASSET);
-    this.request(BATTLE_C1812_HIT_BURST_ASSET);
-    this.request(BATTLE_C1812_HIT_SLASH_ASSET);
-    this.request(BATTLE_C1812_HIT_BURST_EFFECT_ASSET);
-    this.request(BATTLE_C1812_HIT_RING_ASSET);
-    this.request(BATTLE_C1812_HIT_SPARK_ASSET);
-    this.request(BATTLE_C1812_BUFF_ATTACK_UP_ASSET);
-    this.request(BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET);
-    this.request(BATTLE_C1812_BUFF_SHIELD_ASSET);
-    this.request(BATTLE_C1812_BUFF_STUN_ASSET);
-    Object.values(LOBBY_C1812_NAV_ICON_ASSETS).forEach((asset) => this.request(asset));
-    // 2026-07-22 锻造/装备/道具图标全量预载:锻造页近百张图原先进面板才现拉,
-    // 每张到货触发一次整刷 = 首进重渲风暴;登录时拉完,进面板一次成型。
-    FORGE_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
-    EQUIP_ICON_ALL_ASSETS.forEach((asset) => this.request(asset));
-    BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
+  }
+
+  private readonly preloadedGroups = new Set<UiPreloadGroup>();
+
+  /** 某玩法页第一次打开时拉它的整组 UI 图(只拉一次;已在内存的 request 内部会跳过)。 */
+  preloadGroup(group: UiPreloadGroup): void {
+    if (this.preloadedGroups.has(group)) {
+      return;
+    }
+    this.preloadedGroups.add(group);
+    switch (group) {
+      case 'heroes':
+        this.request(LOBBY_HERO_DETAIL_BACKDROP_ASSET);
+        this.request(LOBBY_HERO_DETAIL_PROTAGONIST_ASSET);
+        this.request(LOBBY_HERO_ROSTER_BACKDROP_ASSET);
+        LOBBY_HERO_ROSTER_CARD_ASSETS.forEach((asset) => this.request(asset));
+        this.request(HERO_C1812_STAR_FILLED_ASSET);
+        this.request(HERO_C1812_STAR_EMPTY_ASSET);
+        Object.values(HERO_C1812_GRADE_CREST_ASSETS).forEach((asset) => this.request(asset));
+        STAR_BAND_ASSETS.forEach((asset) => this.request(asset));
+        break;
+      case 'gacha':
+        this.request(GACHA_BACKGROUND_ASSET);
+        this.request(GACHA_MODAL_CLOSE_BUTTON_ASSET);
+        GACHA_POOL_LOGO_ASSETS.forEach((asset) => this.request(asset));
+        this.request(GACHA_RESULT_PANEL_ASSET);
+        Object.values(GACHA_RESULT_FRAME_ASSETS).forEach((asset) => this.request(asset));
+        this.request(GACHA_RESULT_DIVIDER_LEFT_ASSET);
+        this.request(GACHA_RESULT_DIVIDER_RIGHT_ASSET);
+        this.request(GACHA_TAB_PLATE_ASSET);
+        Object.values(GACHA_POOL_TAB_ICON_ASSETS).forEach((asset) => this.request(asset));
+        Object.values(GACHA_ACTION_ICON_ASSETS).forEach((asset) => this.request(asset));
+        this.request(GACHA_COST_TICKET_ICON_ASSET);
+        this.request(GACHA_COST_DIAMOND_ICON_ASSET);
+        this.request(GACHA_LOCK_ICON_ASSET);
+        STAR_BAND_ASSETS.forEach((asset) => this.request(asset));
+        break;
+      case 'bag':
+        this.request(BAG_C1812_ITEM_SLOT_ASSET);
+        this.request(BAG_C1812_ITEM_SLOT_HIGHLIGHT_ASSET);
+        this.request(BAG_C1812_BUTTON_PRIMARY_ASSET);
+        this.request(BAG_C1812_DIVIDER_ASSET);
+        this.request(BAG_C1812_TITLE_BANNER_ASSET);
+        this.request(BAG_C1812_MODAL_FRAME_ASSET);
+        Object.values(BAG_C1812_ITEM_TYPE_ICON_ASSETS).forEach((asset) => this.request(asset));
+        BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
+        EQUIP_ICON_ALL_ASSETS.forEach((asset) => this.request(asset));
+        break;
+      case 'forge':
+        // 2026-07-22:锻造页近百张图原先逐张到货触发整刷;现在第一次开锻造时整组一起拉,到货合并整刷。
+        FORGE_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
+        EQUIP_ICON_ALL_ASSETS.forEach((asset) => this.request(asset));
+        BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
+        break;
+      case 'adventure':
+        this.request(ADVENTURE_C1812_STAGE_NODE_ASSET);
+        this.request(ADVENTURE_C1812_STAGE_NODE_BOSS_ASSET);
+        this.request(ADVENTURE_C1812_STAGE_NODE_CLEAR_ASSET);
+        this.request(ADVENTURE_C1812_CHAPTER_ICON_ASSET);
+        this.request(ADVENTURE_C1812_ICON_LOCK_ASSET);
+        break;
+      case 'battle':
+        this.request(LOBBY_BATTLE_SCENE_BG_ASSET);
+        this.request(LOBBY_BATTLE_SCENE_GROUND_ASSET);
+        this.request(LOBBY_BATTLE_SCENE_FOREGROUND_ASSET);
+        this.request(BATTLE_C1812_HP_BAR_FRAME_ASSET);
+        this.request(BATTLE_C1812_HP_BAR_FILL_ASSET);
+        this.request(BATTLE_C1812_BANNER_VICTORY_ASSET);
+        this.request(BATTLE_C1812_BANNER_DEFEAT_ASSET);
+        this.request(BATTLE_C1812_SKILL_FRAME_ASSET);
+        this.request(BATTLE_C1812_SKILL_FRAME_ACTIVE_ASSET);
+        this.request(BATTLE_C1812_BOSS_GAUGE_FRAME_ASSET);
+        this.request(BATTLE_C1812_BOSS_GAUGE_BAR_ASSET);
+        this.request(BATTLE_C1812_SKILL_TARGET_FRAME_ASSET);
+        this.request(BATTLE_C1812_HIT_BURST_ASSET);
+        this.request(BATTLE_C1812_HIT_SLASH_ASSET);
+        this.request(BATTLE_C1812_HIT_BURST_EFFECT_ASSET);
+        this.request(BATTLE_C1812_HIT_RING_ASSET);
+        this.request(BATTLE_C1812_HIT_SPARK_ASSET);
+        this.request(BATTLE_C1812_BUFF_ATTACK_UP_ASSET);
+        this.request(BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET);
+        this.request(BATTLE_C1812_BUFF_SHIELD_ASSET);
+        this.request(BATTLE_C1812_BUFF_STUN_ASSET);
+        break;
+      default:
+        break;
+    }
   }
 
   private renderRefreshTimer: ReturnType<typeof setTimeout> | null = null;

@@ -161,6 +161,27 @@ type PendingGachaDraw = {
   highestRarity: GachaRarity | null;
 };
 
+// ── 资源加载分级(2026-09-25 用户拍板:首次访问只下载游戏里用到的,没用到的不下载)──
+// 首次访问阻塞预载只拿登录 + 大厅界面图(约 15MB);大厅亮出后后台静默预取守卫战必用的战斗 HUD/怪物骨骼;
+// 其余(英雄骨骼、技能特效、抽卡/锻造/背包等各页面素材)全部在真正用到时按需下载,经 Service Worker 存本地。
+const BOOT_PRELOAD_UI_DIRS = ['ui/login', 'ui/common', 'ui/lobby'] as const;
+const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard'] as const;
+
+/** 列出若干 resources 目录下全部 SpriteFrame 路径(去重;bundle 未就绪时为空)。 */
+function collectUiDirPaths(dirs: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const paths: string[] = [];
+  for (const dir of dirs) {
+    for (const info of (resources.getDirWithPath(dir, SpriteFrame) ?? []) as Array<{ path: string }>) {
+      if (!seen.has(info.path)) {
+        seen.add(info.path);
+        paths.push(info.path);
+      }
+    }
+  }
+  return paths;
+}
+
 const LOGIN_SCENE_BACKGROUND_NODE_NAMES = [
   'Login_BG_Poster',
   'Login_BG_Video',
@@ -439,15 +460,15 @@ export class LootChainGameRoot extends Component {
     this.preloadUiSprites();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.on(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
-    // 首次进入加载屏(2026-09-10 用户拍板):全部 UI 图+骨骼预载完成后才进登录页,
-    // 根治"首帧全兜底/素材到货整刷风暴/战场骨骼迟到";完成回调里再渲染登录+恢复会话。
+    // 首次进入加载屏:只预载登录+大厅界面图(2026-09-25 起;原 2026-09-10 版全量预载 UI+骨骼,
+    // 首访要下 500MB+),完成回调里再渲染登录+恢复会话;战斗必用素材在大厅亮出后后台预取。
     this.runBootPreload();
   }
 
   /** 启动预载进行中:拦截一切 renderCurrentView(保护加载屏,防提前放行)。 */
   private bootPreloadActive = false;
 
-  /** 启动预载:纯程序绘制加载屏 → loadDir 全量 UI 图与骨骼 → 进登录。任何目录失败只告警不拦门。 */
+  /** 启动预载:纯程序绘制加载屏 → 登录+大厅界面图(BOOT_PRELOAD_UI_DIRS)→ 进登录。任何目录失败只告警不拦门。 */
   private runBootPreload(): void {
     this.bootPreloadActive = true;
     // 2026-09-17 用户拍板:首次访问预载完成后资源已存本地,二次访问不再显示预载屏。
@@ -516,18 +537,16 @@ export class LootChainGameRoot extends Component {
       this.renderCurrentView();
       // 会话持久化(token 7 天):本地有 token+userId 就自动恢复登录,免每次重登;失败清态留在登录页。
       void this.tryResumeSession();
+      // 登录页亮出后后台预取守卫战必用素材(不阻塞、低并发)。
+      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
     };
     // 清单+并发逐个加载(loadDir 在编辑器预览环境会悬死,不可用;getDirWithPath 同步出全量清单)。
     const startPreload = (): void => {
       if (finished) {
         return;
       }
-      const uiInfos: Array<{ path: string }> = resources.getDirWithPath('ui', SpriteFrame) ?? [];
-      const spineInfos: Array<{ path: string }> = resources.getDirWithPath('spine', sp.SkeletonData) ?? [];
-      const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
-        ...uiInfos.map((info) => ({ path: info.path, kind: 'ui' as const })),
-        ...spineInfos.map((info) => ({ path: info.path, kind: 'spine' as const })),
-      ];
+      const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = collectUiDirPaths(BOOT_PRELOAD_UI_DIRS)
+        .map((path) => ({ path, kind: 'ui' as const }));
       const total = tasks.length;
       if (total === 0) {
         console.warn('[LootChain] boot preload: 资源清单为空,跳过预载');
@@ -605,12 +624,12 @@ export class LootChainGameRoot extends Component {
       this.bootPreloadActive = false;
       this.renderCurrentView();
       void this.tryResumeSession();
-      // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析,不是直接显示。
-      // 登录页亮出后在后台把全部 UI 图 + 骨骼从本地缓存热进内存(并发 2,不抢主流程),进战场时已解析好。
-      this.scheduleOnce(() => this.warmAllAssetsInBackground(), 1.5);
+      // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材
+      // (2026-09-25 起只取战斗 HUD + 怪物骨骼,不再全量热 UI+全部骨骼,否则没缓存的会被整包下载)。
+      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
     };
     assetManager.loadBundle('resources', () => {
-      const infos: Array<{ path: string }> = resources.getDirWithPath('ui/login', SpriteFrame) ?? [];
+      const infos: Array<{ path: string }> = collectUiDirPaths(BOOT_PRELOAD_UI_DIRS).map((path) => ({ path }));
       let remaining = infos.length;
       if (remaining === 0) {
         finish();
@@ -628,24 +647,23 @@ export class LootChainGameRoot extends Component {
     setTimeout(finish, 3000);
   }
 
-  /** 后台资源预热进行中标记(只跑一次)。 */
+  /** 后台战斗素材预取进行中标记(只跑一次)。 */
   private backgroundWarmStarted = false;
 
   /**
-   * 后台预热:把 resources/ui 与 resources/spine 全量 load 一遍(已在内存的跳过),并发 2、每批之间让出一帧,
-   * 玩家在登录页/大厅停留的这段时间足够把战场用的怪物骨骼与特效解析完。任何失败静默跳过。
+   * 后台预取守卫战必用素材:怪物骨骼(每局都会刷)优先,再补战斗 HUD/攻击贴图/守卫 UI(BATTLE_PREFETCH_UI_DIRS)。
+   * 并发 2、每项之间让出一帧;已在内存的跳过。英雄骨骼与技能特效不在这里拿——开战时按阵容预热、用到才下载。
    */
-  private warmAllAssetsInBackground(): void {
+  private prefetchBattleEssentialsInBackground(): void {
     if (this.backgroundWarmStarted) {
       return;
     }
     this.backgroundWarmStarted = true;
-    const spineInfos: Array<{ path: string }> = resources.getDirWithPath('spine', sp.SkeletonData) ?? [];
-    const uiInfos: Array<{ path: string }> = resources.getDirWithPath('ui', SpriteFrame) ?? [];
-    // 骨骼优先(战场首帧最缺的就是它),再补界面图。
+    // 战斗页的 C1812 图组(血条/胜负横幅/受击贴图等)与守卫战素材一起在后台拉。
+    this.uiSpriteFrameCache.preloadGroup('battle');
     const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
-      ...spineInfos.map((info) => ({ path: info.path, kind: 'spine' as const })),
-      ...uiInfos.map((info) => ({ path: info.path, kind: 'ui' as const })),
+      ...Object.keys(GUARD_MONSTER_SPINE_FILE).map((code) => ({ path: guardMonsterSpineResource(code), kind: 'spine' as const })),
+      ...collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS).map((path) => ({ path, kind: 'ui' as const })),
     ];
     let cursor = 0;
     const worker = (): void => {
@@ -1532,6 +1550,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyAdventurePanel(): void {
+    this.uiSpriteFrameCache.preloadGroup('adventure');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyAdventurePanelOpen = true;
     this.currentView = 'adventure';
@@ -1564,6 +1583,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyBagPanel(): void {
+    this.uiSpriteFrameCache.preloadGroup('bag');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyBagPanelOpen = true;
     this.currentView = 'bag';
@@ -1604,6 +1624,7 @@ export class LootChainGameRoot extends Component {
   // ===== 锻造工坊(导航栏"锻造",装备养成集中页) =====
   // 强化/合成走英雄详情同源 mutation;分解/合成支持按具体装备 id 批量提交;本页无英雄上下文,穿卸仍走英雄详情。
   private openLobbyForgePanel(preselectEquipId: number | null = null, returnHeroId: number | null = null): void {
+    this.uiSpriteFrameCache.preloadGroup('forge');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyForgeReturnHeroId = returnHeroId;
     this.lobbyForgePanelOpen = true;
@@ -2447,6 +2468,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyFormationPanel(stageCode?: string, origin?: string): void {
+    this.uiSpriteFrameCache.preloadGroup('battle');
     this.lobbyFormationOrigin = origin === 'roster' ? 'roster' : null;
     // 英雄面板「布阵」等无关卡上下文的入口:回落当前选中关,再回落服务端推荐/最后解锁关。
     const requestedStageCode = stageCode ?? this.selectedLobbyStageCode ?? this.resolveDefaultLobbyFormationStageCode() ?? undefined;
@@ -2599,6 +2621,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyHeroRosterPanel(): void {
+    this.uiSpriteFrameCache.preloadGroup('heroes');
     lobbyGuide.markVisited('hero');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyHeroRosterPanelOpen = true;
@@ -2629,6 +2652,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyHeroDetail(heroId: number): void {
+    this.uiSpriteFrameCache.preloadGroup('heroes');
     const hero = this.lobbyHeroRosterLoader.currentState().heroes.find((item) => item.id === heroId);
     if (!hero || hero.rarity.toUpperCase() === 'EX' || hero.heroCode.toUpperCase().startsWith('EX_')) {
       this.setStatus('该英雄当前不可查看详情。');
@@ -3877,6 +3901,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyGachaScene(): void {
+    this.uiSpriteFrameCache.preloadGroup('gacha');
     lobbyGuide.markVisited('summon');
     this.closeAllLobbyScenePanelFlags();
     this.gachaResultMode = null;

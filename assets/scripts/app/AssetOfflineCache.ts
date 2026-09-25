@@ -2,7 +2,8 @@ import { assetManager, sys } from 'cc';
 import { PREVIEW } from 'cc/env';
 
 /**
- * 静态资源离线缓存(2026-09-17 用户拍板):首次访问启动预载时把全部资源下载存本地,二次访问不再显示预载屏。
+ * 静态资源离线缓存(2026-09-17 用户拍板;2026-09-25 改:首次只预载登录+大厅界面图,其余用到才下载):
+ * 下载过的资源都经 Service Worker 存本地,二次访问不再显示预载屏、用过的资源不再走网络。
  *
  * - 构建包:注册根目录 sw.js(build-templates/web-mobile/sw.js),资源请求经 Service Worker 写入 Cache Storage,
  *   二次访问直接从本地读,不走网络。
