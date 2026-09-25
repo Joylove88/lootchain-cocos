@@ -278,6 +278,8 @@ export class LobbyHeroDetailPanelRenderer {
   /** 觉醒确认弹窗打开中的英雄(整页重绘后按它补开,不会被补图/刷新关掉)。 */
   private awakenConfirmHeroId: number | null = null;
   private awakenDialogNode: Node | null = null;
+  /** 当前是否紧凑布局(无底部页签,觉醒提示标签直接开弹窗)。 */
+  private compactLayout = false;
   /** 当前挂着的英雄立绘舞台(含 spine)及其复用键;整页重绘前由 stashArtStage() 摘下暂存,重绘时键一致就原样挂回。 */
   private artStageNode: Node | null = null;
   private artStageKey = '';
@@ -350,6 +352,7 @@ export class LobbyHeroDetailPanelRenderer {
     );
     this.host.addSprite('LobbyHeroDetailBackdropSprite', LOBBY_HERO_DETAIL_BACKDROP_ASSET, 0, 0, panelWidth, panelHeight, panel);
     this.drawPanelShade(panel, panelWidth, panelHeight, scale);
+    this.compactLayout = compact;
     if (compact) {
       this.renderCompact(panel, hero, panelWidth, panelHeight, scale);
     } else {
@@ -1844,22 +1847,31 @@ export class LobbyHeroDetailPanelRenderer {
     const chipW = (width - sideInset * 2 - chipGap * (chips.length - 1)) / chips.length;
     chips.forEach((chip, index) => {
       const cx = -width / 2 + sideInset + chipW / 2 + index * (chipW + chipGap);
+      // 2026-09-25 用户拍板:属性页的"觉醒"只做提示(与左右标签同尺寸 + 金边 + 红点),点了跳升星页签;操作放升星页。
       const awakenable = chip.label === '觉醒' && this.isHeroAwakenable(hero);
-      if (awakenable) {
-        // 2026-09-25 用户反馈"觉醒太不显眼,看不出是按钮":可觉醒时换成红金按钮素材 + 呼吸金光 + 红点。
-        this.renderAwakenChipButton(parent, hero, cx, growthY, chipW, chipH, scale);
-        return;
-      }
       const node = this.host.addChildPlainNode(parent, `LobbyHeroDetailGrowthChip_${index}`, cx, growthY, chipW, chipH);
       const g = node.addComponent(Graphics);
-      g.fillColor = rgba(18, 15, 12, 200);
+      g.fillColor = awakenable ? rgba(64, 30, 18, 235) : rgba(18, 15, 12, 200);
       g.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
       g.fill();
-      g.strokeColor = rgba(136, 104, 58, 150);
-      g.lineWidth = 1.5 * scale;
+      g.strokeColor = awakenable ? rgba(244, 196, 96, 235) : rgba(136, 104, 58, 150);
+      g.lineWidth = (awakenable ? 2 : 1.5) * scale;
       g.stroke();
-      const label = this.host.addChildLabel(node, 'LobbyHeroDetailGrowthChipText', `${chip.label}  ${chip.value}`, 0, 0, 15 * scale, rgba(226, 206, 158), new Size(chipW - 16 * scale, chipH - 6 * scale), HorizontalTextAlignment.CENTER);
+      const label = this.host.addChildLabel(node, 'LobbyHeroDetailGrowthChipText', awakenable ? '觉醒  可觉醒' : `${chip.label}  ${chip.value}`, 0, 0, 15 * scale, awakenable ? rgba(250, 226, 160) : rgba(226, 206, 158), new Size(chipW - 16 * scale, chipH - 6 * scale), HorizontalTextAlignment.CENTER);
       label.overflow = Label.Overflow.SHRINK;
+      if (awakenable) {
+        this.drawRedDot(node, 'LobbyHeroDetailGrowthChipDot', chipW / 2 - 6 * scale, chipH / 2 - 2 * scale, scale);
+        node.addComponent(Button);
+        this.applyPointerCursor(node);
+        node.on(Button.EventType.CLICK, () => {
+          if (this.compactLayout) {
+            this.openAwakenDialog(hero);
+          } else {
+            this.host.selectLobbyHeroDetailTab('star');
+          }
+        }, this);
+        this.host.applyImageButtonFeedback(node);
+      }
     });
     // 词条标题 + 洗练入口(有词条才显示;弹窗内锁定/确认)。
     const affixTitleY = growthY - chipH / 2 - 26 * scale;
@@ -2437,48 +2449,77 @@ export class LobbyHeroDetailPanelRenderer {
     return (hero.awakenStatus ?? 0) <= 0 && Math.trunc(hero.star || 1) >= AWAKEN_COST.minStar;
   }
 
-  /** 养成行里的"觉醒"按钮:红金按钮底图(btn_star_up)+ 背后呼吸金光 + 右上红点,一眼能看出可点。 */
-  private renderAwakenChipButton(parent: Node, hero: LobbyHeroItemVO, cx: number, cy: number, chipW: number, chipH: number, scale: number): void {
-    const btnH = chipH + 12 * scale;
-    const btnW = Math.min(chipW, btnH * (431 / 100));
-    const glow = this.host.addChildPlainNode(parent, 'LobbyHeroDetailAwakenGlow', cx, cy, btnW + 24 * scale, btnH + 18 * scale);
-    const gg = glow.addComponent(Graphics);
-    gg.fillColor = rgba(255, 196, 90, 70);
-    gg.roundRect(-(btnW + 20 * scale) / 2, -(btnH + 14 * scale) / 2, btnW + 20 * scale, btnH + 14 * scale, (btnH + 14 * scale) / 2);
-    gg.fill();
-    gg.strokeColor = rgba(255, 214, 120, 150);
-    gg.lineWidth = 2 * scale;
-    gg.stroke();
-    const glowOpacity = glow.addComponent(UIOpacity);
-    glowOpacity.opacity = 90;
-    tween(glowOpacity).repeatForever(tween<UIOpacity>().to(0.8, { opacity: 255 }).to(0.8, { opacity: 90 })).start();
-    const button = this.host.addChildPlainNode(parent, 'LobbyHeroDetailAwakenButton', cx, cy, btnW, btnH);
-    if (!this.host.addSprite('LobbyHeroDetailAwakenButtonArt', 'ui/hero/ai/btn_star_up/spriteFrame', 0, 0, btnW, btnH, button)) {
-      const bg = button.addComponent(Graphics);
-      bg.fillColor = rgba(128, 36, 26, 245);
-      bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, btnH / 2);
-      bg.fill();
-      bg.strokeColor = rgba(248, 204, 110, 240);
-      bg.lineWidth = 2 * scale;
-      bg.stroke();
+  /** 红点(有可操作的养成):红芯 + 浅金描边。 */
+  private drawRedDot(parent: Node, name: string, x: number, y: number, scale: number): void {
+    const dot = this.host.addChildPlainNode(parent, name, x, y, 16 * scale, 16 * scale);
+    const g = dot.addComponent(Graphics);
+    g.fillColor = rgba(230, 52, 40, 255);
+    g.circle(0, 0, 6.5 * scale);
+    g.fill();
+    g.strokeColor = rgba(255, 226, 180, 240);
+    g.lineWidth = 1.5 * scale;
+    g.stroke();
+  }
+
+  /**
+   * 升星页的"觉醒"卡(2026-09-25 用户拍板:操作放升星页):星级行之下、升星解锁列表之上。
+   * 三态:未满 10★ = 灰色锁定并写明条件;满 10★ 未觉醒 = 金边点亮 + 右侧红金"觉醒"按钮(开确认弹窗);已觉醒 = 绿字"已觉醒"。
+   * 返回卡片高度(含下间距),供下方列表顺延。
+   */
+  private renderStarAwakenCard(panel: Node, hero: LobbyHeroItemVO, width: number, topY: number, scale: number): number {
+    const star = Math.trunc(hero.star || 1);
+    const awakened = (hero.awakenStatus ?? 0) > 0;
+    const ready = !awakened && star >= AWAKEN_COST.minStar;
+    const rowW = width - 44 * scale;
+    const rowH = 66 * scale;
+    const cy = topY - rowH / 2;
+    const card = this.host.addChildPlainNode(panel, 'StarAwakenCard', 0, cy, rowW, rowH);
+    const g = card.addComponent(Graphics);
+    g.fillColor = ready ? rgba(64, 30, 18, 238) : awakened ? rgba(28, 36, 22, 225) : rgba(18, 16, 14, 220);
+    g.roundRect(-rowW / 2, -rowH / 2, rowW, rowH, 7 * scale);
+    g.fill();
+    g.strokeColor = ready ? rgba(244, 196, 96, 240) : awakened ? rgba(120, 190, 120, 180) : rgba(96, 84, 64, 140);
+    g.lineWidth = (ready ? 2 : 1.3) * scale;
+    g.roundRect(-rowW / 2, -rowH / 2, rowW, rowH, 7 * scale);
+    g.stroke();
+    const rightW = ready ? 150 * scale : 104 * scale;
+    const textW = rowW - rightW - 34 * scale;
+    const nameText = awakened ? '觉醒 · 已觉醒' : ready ? '觉醒 · 可觉醒！' : `觉醒 · 满 ${AWAKEN_COST.minStar}★ 可觉醒`;
+    const nameLabel = this.host.addChildLabel(card, 'Name', nameText, -rowW / 2 + 14 * scale, 15 * scale, 17 * scale, ready ? rgba(250, 226, 160) : awakened ? rgba(220, 236, 200) : rgba(170, 158, 134), new Size(textW, 22 * scale), HorizontalTextAlignment.LEFT);
+    nameLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(nameLabel, scale, ready);
+    const descText = awakened
+      ? `大招等级上限 Lv.${ultimateCap(true)} · 属性已增强`
+      : `大招上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)} · 属性增强 · 消耗碎片与金币等`;
+    const descLabel = this.host.addChildLabel(card, 'Desc', descText, -rowW / 2 + 14 * scale, -12 * scale, 15 * scale, ready ? rgba(226, 206, 166) : awakened ? rgba(196, 210, 180) : rgba(140, 130, 112), new Size(textW, 20 * scale), HorizontalTextAlignment.LEFT);
+    descLabel.overflow = Label.Overflow.SHRINK;
+    if (ready) {
+      const btnW = 136 * scale;
+      const btnH = btnW * (100 / 431);
+      const btn = this.host.addChildPlainNode(card, 'StarAwakenButton', rowW / 2 - 14 * scale - btnW / 2, 0, btnW, btnH);
+      if (!this.host.addSprite('StarAwakenButtonArt', 'ui/hero/ai/btn_star_up/spriteFrame', 0, 0, btnW, btnH, btn)) {
+        const bg = btn.addComponent(Graphics);
+        bg.fillColor = rgba(128, 36, 26, 245);
+        bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, btnH / 2);
+        bg.fill();
+        bg.strokeColor = rgba(248, 204, 110, 240);
+        bg.lineWidth = 2 * scale;
+        bg.stroke();
+      }
+      const btnLabel = this.host.addChildLabel(btn, 'Label', '觉 醒', 0, 1 * scale, 19 * scale, rgba(255, 238, 190), new Size(btnW - 30 * scale, btnH - 6 * scale));
+      btnLabel.isBold = true;
+      btnLabel.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(btnLabel, scale, true);
+      this.drawRedDot(btn, 'StarAwakenButtonDot', btnW / 2 - 8 * scale, btnH / 2 - 4 * scale, scale);
+      btn.addComponent(Button);
+      this.applyPointerCursor(btn);
+      btn.on(Button.EventType.CLICK, () => this.openAwakenDialog(hero), this);
+      this.host.applyImageButtonFeedback(btn, 1.05, 0.95);
+    } else {
+      const stateLabel = this.host.addChildLabel(card, 'State', awakened ? '已觉醒' : `${AWAKEN_COST.minStar}★ 解锁`, rowW / 2 - 14 * scale, 0, 16 * scale, awakened ? rgba(140, 220, 140) : rgba(150, 140, 120), new Size(rightW, 22 * scale), HorizontalTextAlignment.RIGHT);
+      stateLabel.overflow = Label.Overflow.SHRINK;
     }
-    const label = this.host.addChildLabel(button, 'LobbyHeroDetailAwakenButtonLabel', '✦ 觉 醒 ✦', 0, 1 * scale, 18 * scale, rgba(255, 238, 190), new Size(btnW - 36 * scale, btnH - 8 * scale));
-    label.isBold = true;
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, true);
-    // 右上红点(与大厅入口红点同语义:有可操作的养成)。
-    const dot = this.host.addChildPlainNode(button, 'LobbyHeroDetailAwakenDot', btnW / 2 - 10 * scale, btnH / 2 - 6 * scale, 16 * scale, 16 * scale);
-    const dg = dot.addComponent(Graphics);
-    dg.fillColor = rgba(230, 52, 40, 255);
-    dg.circle(0, 0, 7 * scale);
-    dg.fill();
-    dg.strokeColor = rgba(255, 226, 180, 240);
-    dg.lineWidth = 1.5 * scale;
-    dg.stroke();
-    button.addComponent(Button);
-    this.applyPointerCursor(button);
-    button.on(Button.EventType.CLICK, () => this.openAwakenDialog(hero), this);
-    this.host.applyImageButtonFeedback(button, 1.05, 0.95);
+    return rowH + 10 * scale;
   }
 
   private openAwakenDialog(hero: LobbyHeroItemVO): void {
@@ -2880,6 +2921,8 @@ export class LobbyHeroDetailPanelRenderer {
 
   // 右下页签导航(参考图1):属性/装备/技能/升星,选中红底金框金字。
   private renderDetailNav(parent: Node, active: 'attr' | 'equip' | 'skill' | 'star', width: number, height: number, scale: number): void {
+    const hero = this.host.currentLobbyHeroDetailHero();
+    const starDot = !!hero && this.isHeroAwakenable(hero);
     const entries: { key: 'attr' | 'equip' | 'skill' | 'star'; label: string }[] = [
       { key: 'attr', label: '属性' },
       { key: 'equip', label: '装备' },
@@ -2906,6 +2949,10 @@ export class LobbyHeroDetailPanelRenderer {
       const label = this.host.addChildLabel(node, 'Label', entry.label, 0, 0, 21 * scale, selected ? rgba(250, 226, 160) : rgba(198, 182, 148), new Size(tabW - 16 * scale, 30 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, selected);
+      if (entry.key === 'star' && starDot) {
+        // 可觉醒:升星页签右上红点,任何页签都能注意到。
+        this.drawRedDot(node, 'HeroDetailNavStarDot', tabW / 2 - 8 * scale, tabH / 2 - 6 * scale, scale);
+      }
       if (!selected) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroDetailTab(entry.key), this);
@@ -3167,11 +3214,13 @@ export class LobbyHeroDetailPanelRenderer {
     // 升星解锁:逐条展示真实被动技能(名称/标签/含数值描述,与技能页同一数据源 resolveSkills)。
     const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity);
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
-    const listTitle = this.host.addChildLabel(panel, 'StarUnlockTitle', '升星解锁', -width / 2 + 24 * scale, height / 2 - 140 * scale, 18 * scale, rgba(238, 206, 138), new Size(width - 48 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    // 觉醒卡(2026-09-25):紧跟星级行,升星解锁列表整体下移。
+    const awakenShift = this.renderStarAwakenCard(panel, hero, width, rowY - 30 * scale, scale);
+    const listTitle = this.host.addChildLabel(panel, 'StarUnlockTitle', '升星解锁', -width / 2 + 24 * scale, height / 2 - 140 * scale - awakenShift, 18 * scale, rgba(238, 206, 138), new Size(width - 48 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     listTitle.overflow = Label.Overflow.SHRINK;
     const rowH = 62 * scale;
     unlockStars.forEach((needStar, index) => {
-      const ry = height / 2 - 178 * scale - index * (rowH + 8 * scale);
+      const ry = height / 2 - 178 * scale - awakenShift - index * (rowH + 8 * scale);
       const unlocked = star >= needStar;
       const skill = passives[index] ?? null;
       const rowW = width - 44 * scale;
