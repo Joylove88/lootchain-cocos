@@ -2,6 +2,7 @@ import {
   BlockInputEvents,
   Button,
   Color,
+  EditBox,
   Graphics,
   HorizontalTextAlignment,
   Label,
@@ -48,6 +49,22 @@ export interface LobbyProfileDialogHost {
   /** 爬塔层数与挂机产出(与大厅挂机区同源,2026-09-25 占位清理:资料页不再显示"未开放")。 */
   currentLobbyTowerFloor?(): number;
   currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
+  /** 改昵称弹窗(2026-09-25):状态存 host(输入草稿在重绘后回种),提交走服务端校验与扣费。 */
+  currentProfileRenameState(): ProfileRenameState;
+  openProfileRename(): void;
+  closeProfileRename(): void;
+  setProfileRenameDraft(text: string): void;
+  submitProfileRename(): void;
+  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean, options?: { frameless?: boolean; placeholder?: string }): EditBox;
+}
+
+export interface ProfileRenameState {
+  open: boolean;
+  infoLoading: boolean;
+  info: { currentName: string; freeAvailable: boolean; diamondCost: number; renameCount: number } | null;
+  draft: string;
+  busy: boolean;
+  error: string;
 }
 
 const LOBBY_PROFILE_PLACEHOLDER = '-';
@@ -61,6 +78,8 @@ const PROFILE_ASSETS = {
   editName: 'ui/profile/ai/edit_name/spriteFrame',
   navSettings: 'ui/lobby/more/micon_settings/spriteFrame',
 };
+const PROFILE_BUTTON_PRIMARY = 'ui/common/ai/button_primary/spriteFrame';
+const PROFILE_BUTTON_RETURN = 'ui/common/ai/button_return_dis/spriteFrame';
 /** 属性条素材 795×127(两端尖饰、中段平直):按九宫格横向拉伸,再整体等比缩到目标高度,两端不变形。 */
 const PROFILE_ROW_BG_W = 795;
 const PROFILE_ROW_BG_H = 127;
@@ -144,6 +163,109 @@ export class LobbyProfileDialogRenderer {
     this.addLogoutButton(panel, panelWidth, panelHeight, dialogScale);
 
     renderSceneBackButton(this.host, panel, layout, 'LobbyProfileBackButton', () => this.host.closePlayerProfileDialog(), dialogScale, '资料');
+
+    const rename = this.host.currentProfileRenameState();
+    if (rename.open) {
+      this.renderRenameDialog(panel, layout, panelX, panelY, profile, rename, dialogScale);
+    }
+  }
+
+  /** 改昵称弹窗:输入框走宿主工厂(挂内容根、绝对坐标),所以按面板中心换算绝对位置。 */
+  private renderRenameDialog(panel: Node, layout: UiLayout, panelX: number, panelY: number, profile: PlayerLobbyProfileVO, state: ProfileRenameState, scale: number): void {
+    const overlay = this.host.addChildPlainNode(panel, 'LobbyProfileRenameOverlay', 0, 0, 4000, 4000);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(0, 0, 0, 176);
+    og.rect(-2000, -2000, 4000, 4000);
+    og.fill();
+
+    const w = 580 * scale;
+    const h = 400 * scale;
+    const dialog = this.host.addChildPlainNode(overlay, 'LobbyProfileRenameDialog', 0, 0, w, h);
+    const g = dialog.addComponent(Graphics);
+    g.fillColor = rgba(12, 10, 9, 250);
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 82, 230);
+    g.lineWidth = 2 * scale;
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.stroke();
+
+    const title = this.host.addChildLabel(dialog, 'LobbyProfileRenameTitle', '修改昵称', 0, h / 2 - 38 * scale, 28 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 34 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+    title.enableOutline = true;
+    title.outlineColor = rgba(0, 0, 0, 210);
+    title.outlineWidth = Math.max(1, 1.3 * scale);
+    const currentName = state.info?.currentName || profile.displayName;
+    const current = this.host.addChildLabel(dialog, 'LobbyProfileRenameCurrent', `当前昵称:${currentName}`, 0, h / 2 - 80 * scale, 18 * scale, rgba(206, 190, 160), new Size(w - 60 * scale, 24 * scale));
+    current.overflow = Label.Overflow.SHRINK;
+
+    const inputY = h / 2 - 134 * scale;
+    // 带金框的输入框;占位文字必须在创建时传入(失焦显示走工厂自绘层,事后改 placeholder 不生效)。
+    const input = this.host.addFramedEditBox(state.draft, panelX, panelY + inputY, 400 * scale, layout, false, { placeholder: '输入新昵称' });
+    input.maxLength = 12;
+    input.node.on(EditBox.EventType.TEXT_CHANGED, (box: EditBox) => this.host.setProfileRenameDraft(box.string), this);
+    input.node.on(EditBox.EventType.EDITING_RETURN, () => this.host.submitProfileRename(), this);
+    const rules = this.host.addChildLabel(dialog, 'LobbyProfileRenameRules', '2-12 个字符,支持中文、英文、数字和下划线,不能与他人重名', 0, inputY - 44 * scale, 16 * scale, rgba(160, 144, 114), new Size(w - 60 * scale, 22 * scale));
+    rules.overflow = Label.Overflow.SHRINK;
+
+    const diamond = Math.max(0, Math.floor(Number(profile.diamond ?? 0)));
+    let costText = '正在读取改名价格…';
+    let costColor = rgba(190, 176, 146);
+    let affordable = true;
+    if (state.info) {
+      if (state.info.freeAvailable) {
+        costText = '本次改名免费(每个账号首次改名免费)';
+        costColor = rgba(130, 224, 150);
+      } else {
+        affordable = diamond >= state.info.diamondCost;
+        costText = `本次改名消耗 ${this.host.formatInteger(state.info.diamondCost)} 钻石(当前持有 ${this.host.formatInteger(diamond)})`;
+        costColor = affordable ? rgba(250, 210, 120) : rgba(255, 130, 110);
+      }
+    }
+    const cost = this.host.addChildLabel(dialog, 'LobbyProfileRenameCost', costText, 0, inputY - 82 * scale, 18 * scale, costColor, new Size(w - 60 * scale, 26 * scale));
+    cost.overflow = Label.Overflow.SHRINK;
+    const errorText = state.error || (!affordable ? '钻石不足,可在商店充值后再改名' : '');
+    if (errorText) {
+      const err = this.host.addChildLabel(dialog, 'LobbyProfileRenameError', errorText, 0, inputY - 114 * scale, 16 * scale, rgba(255, 128, 110), new Size(w - 60 * scale, 22 * scale));
+      err.overflow = Label.Overflow.SHRINK;
+    }
+
+    const canSubmit = !state.busy && !state.infoLoading && !!state.info && affordable;
+    const buttonW = 200 * scale;
+    const buttonH = buttonW * (211 / 740);
+    const buttonY = -h / 2 + 50 * scale;
+    const confirm = this.host.addChildPlainNode(dialog, 'LobbyProfileRenameConfirm', -buttonW / 2 - 18 * scale, buttonY, buttonW, buttonH);
+    if (!this.host.addSprite('LobbyProfileRenameConfirmArt', PROFILE_BUTTON_PRIMARY, 0, 0, buttonW, buttonH, confirm)) {
+      const cg = confirm.addComponent(Graphics);
+      cg.fillColor = rgba(122, 42, 30, 235);
+      cg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      cg.fill();
+    }
+    const confirmLabel = this.host.addChildLabel(confirm, 'Label', state.busy ? '提交中…' : '确认修改', 0, 1 * scale, 22 * scale, rgba(255, 240, 200), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    confirmLabel.overflow = Label.Overflow.SHRINK;
+    if (canSubmit) {
+      confirm.addComponent(Button);
+      confirm.on(Button.EventType.CLICK, () => this.host.submitProfileRename(), this);
+      this.host.applyImageButtonFeedback(confirm, 1.035, 0.965);
+    } else {
+      const dim = confirm.addComponent(Graphics);
+      dim.fillColor = rgba(0, 0, 0, 110);
+      dim.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      dim.fill();
+    }
+    const cancel = this.host.addChildPlainNode(dialog, 'LobbyProfileRenameCancel', buttonW / 2 + 18 * scale, buttonY, buttonW, buttonH);
+    if (!this.host.addSprite('LobbyProfileRenameCancelArt', PROFILE_BUTTON_RETURN, 0, 0, buttonW, buttonH, cancel)) {
+      const xg = cancel.addComponent(Graphics);
+      xg.fillColor = rgba(28, 24, 22, 230);
+      xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      xg.fill();
+    }
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 22 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    cancelLabel.overflow = Label.Overflow.SHRINK;
+    cancel.addComponent(Button);
+    cancel.on(Button.EventType.CLICK, () => this.host.closeProfileRename(), this);
+    this.host.applyImageButtonFeedback(cancel, 1.035, 0.965);
   }
 
   private addSceneRoot(layout: UiLayout): Node {
@@ -276,7 +398,21 @@ export class LobbyProfileDialogRenderer {
     name.enableOutline = true;
     name.outlineColor = rgba(0, 0, 0, 200);
     name.outlineWidth = Math.max(1, 1.4 * scale);
-    // 2026-09-25 占位清理:改昵称没有后端接口,编辑图标先下架(做好接口再放回 PROFILE_ASSETS.editName)。
+    // 昵称编辑图标紧跟昵称(按字数估宽):点开改名弹窗(2026-09-25 接入,首次免费、之后扣钻石)。
+    const estimatedNameWidth = Math.min(textWidth - 40 * scale, Math.max(1, nameText.length) * nameSize * 0.98);
+    const editSize = (narrow ? 22 : 30) * scale;
+    const edit = this.host.addChildPlainNode(panel, 'LobbyProfileEditName', textLeft + estimatedNameWidth + 12 * scale + editSize / 2, avatarY + (narrow ? 24 : 58) * scale, editSize * 1.4, editSize * 1.4);
+    const editArt = this.host.addSprite('Art', PROFILE_ASSETS.editName, 0, 0, editSize, editSize, edit);
+    if (!editArt) {
+      const eg = edit.addComponent(Graphics);
+      eg.strokeColor = rgba(222, 186, 110, 230);
+      eg.lineWidth = Math.max(1, 1.6 * scale);
+      eg.roundRect(-editSize / 2, -editSize / 2, editSize, editSize, 4 * scale);
+      eg.stroke();
+    }
+    edit.addComponent(Button);
+    edit.on(Button.EventType.CLICK, () => this.host.openProfileRename(), this);
+    this.host.applyImageButtonFeedback(edit, 1.08, 0.94);
 
     const subline = this.host.addChildLabel(
       panel,

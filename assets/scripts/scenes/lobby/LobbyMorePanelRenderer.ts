@@ -18,12 +18,14 @@ import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 export interface LobbyMorePanelHost {
   /** 最近战报里的关卡称呼(深渊爬塔第 N 层 / 限时副本),不露关卡代码。 */
   lobbyStageDisplayLabel?(stageCode: string): string;
+  /** 打开用户协议/隐私政策(2026-09-25)。 */
+  openLegalDocument?(key: 'terms' | 'privacy'): void;
   createUiNode(name: string): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addChildLabel(parent: Node, name: string, text: string, x: number, y: number, fontSize: number, color: Color, contentSize: Size, horizontalAlign?: HorizontalTextAlignment): Label;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Node | null;
-  addEditBox(initialText: string, x: number, y: number, width: number, layout?: UiLayout, password?: boolean): EditBox;
+  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean, options?: { frameless?: boolean; placeholder?: string }): EditBox;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   closeLobbyMorePanel(): void;
   openLobbyMailPanel?(): void;
@@ -131,12 +133,13 @@ export class LobbyMorePanelRenderer {
     // ── 兑换码 ──
     const giftTop = cursor - 10 * scale;
     this.addSectionTitle(panel, 'gift', '兑换码', -panelWidth / 2 + 30 * scale, giftTop, panelWidth, scale);
-    const inputY = giftTop - 34 * scale;
+    // 带金框后框体更高,与小标题拉开距离。
+    const inputY = giftTop - 44 * scale;
     const inputWidth = Math.min(280 * scale, panelWidth * 0.5);
     const inputX = centerX - panelWidth / 2 + 42 * scale + inputWidth / 2;
     // EditBox 走内容根绝对坐标(工厂挂根节点)。
-    this.giftCodeInput = this.host.addEditBox('', inputX, centerY + inputY, inputWidth, layout);
-    this.giftCodeInput.placeholder = '输入礼包码';
+    // 带金框 + 创建时传占位文字(原来用无框版且事后设 placeholder,输入框在画面上是隐形的)。
+    this.giftCodeInput = this.host.addFramedEditBox('', inputX, centerY + inputY, inputWidth, layout, false, { placeholder: '输入礼包码' });
     const redeeming = this.host.isLobbyGiftRedeeming();
     const btnW = 108 * scale;
     const btnH = 40 * scale;
@@ -160,9 +163,33 @@ export class LobbyMorePanelRenderer {
       this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
     }
 
-    // ── 客服占位 ──
-    const support = this.host.addChildLabel(panel, 'SupportNote', '客服与反馈:support@lootchain.game', 0, -panelHeight / 2 + 26 * scale, 13 * scale, rgba(140, 124, 96, 200), new Size(panelWidth - 60 * scale, 19 * scale));
-    support.overflow = Label.Overflow.SHRINK;
+    // ── 协议链接 + 客服邮箱(2026-09-25:协议可点开全文;字号按口径 16) ──
+    const footY = -panelHeight / 2 + 28 * scale;
+    const linkFont = 16 * scale;
+    const parts: Array<{ name: string; text: string; doc?: 'terms' | 'privacy' }> = [
+      { name: 'TermsLink', text: '用户协议', doc: 'terms' },
+      { name: 'FooterDot1', text: ' · ' },
+      { name: 'PrivacyLink', text: '隐私政策', doc: 'privacy' },
+      { name: 'FooterDot2', text: ' · ' },
+      { name: 'SupportNote', text: '客服:support@lootchain.game' },
+    ];
+    // 中文按 1 字宽、ASCII 按半字宽估算,整行居中。
+    const textWidth = (text: string): number => Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0xff ? 1 : 0.55), 0) * linkFont;
+    const widths = parts.map((part) => textWidth(part.text));
+    let footX = -widths.reduce((sum, width) => sum + width, 0) / 2;
+    parts.forEach((part, index) => {
+      const width = widths[index];
+      const label = this.host.addChildLabel(panel, part.name, part.text, footX + width / 2, footY, linkFont, part.doc ? rgba(236, 192, 104, 240) : rgba(150, 134, 104, 220), new Size(width + 6 * scale, 24 * scale));
+      label.overflow = Label.Overflow.SHRINK;
+      if (part.doc) {
+        const doc = part.doc;
+        label.isUnderline = true;
+        label.node.addComponent(Button);
+        label.node.on(Button.EventType.CLICK, () => this.host.openLegalDocument?.(doc), this);
+        this.host.applyImageButtonFeedback(label.node, 1.04, 0.96);
+      }
+      footX += width;
+    });
   }
 
   private addGridCard(parent: Node, key: string, label: string, badge: number, x: number, y: number, width: number, height: number, scale: number, onClick: () => void): void {

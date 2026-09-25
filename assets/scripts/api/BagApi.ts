@@ -17,7 +17,19 @@ export interface BagComposeResultVO {
   gainedCount: number;
 }
 
-/** 背包只读接口封装；当前只允许读取列表和来源，不接入 use/sell。 */
+/** 出售结果(与后端 BagSellResultVO 对齐,2026-09-25 开放)。 */
+export interface BagSellResultVO {
+  itemCode: string;
+  itemName: string;
+  soldCount: number;
+  unitPrice: number;
+  goldGained: number;
+  remainingCount: number;
+  goldBalance: number;
+  replayed: boolean;
+}
+
+/** 背包接口:列表/来源/使用/合成/出售。 */
 export class BagApi {
   constructor(private readonly http: HttpClient) {}
 
@@ -37,5 +49,10 @@ export class BagApi {
   // 背包材料合成:强化石x10→高阶x1 / 旧低阶石1:1并入强化石;times=合成组数(空=全量,服务器上限500)。
   compose(itemCode: string, times?: number): Promise<BagComposeResultVO> {
     return this.http.post<unknown>('/api/player/bag/compose', { itemCode, times: times ?? null }).then(expectRecord<BagComposeResultVO>('道具合成'));
+  }
+
+  // 出售(2026-09-25 开放,定价见后端 docs/36):requestId 由调用方按"一次确认"生成,网络重试不会重复出售。
+  sell(itemCode: string, count: number, requestId: string): Promise<BagSellResultVO> {
+    return this.http.post<unknown>('/api/player/bag/sell', { itemCode, count, requestId }).then(expectRecord<BagSellResultVO>('道具出售'));
   }
 }

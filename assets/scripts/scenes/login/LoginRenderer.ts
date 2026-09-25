@@ -111,6 +111,8 @@ export interface LoginRendererHost {
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   applyPointerCursor(node: Node): void;
   setLoginInputs(accountInput: EditBox | null, passwordInput: EditBox | null): void;
+  /** 打开用户协议/隐私政策查看层(2026-09-25)。 */
+  openLegalDocument?(key: 'terms' | 'privacy'): void;
   openLoginAccountScene(): void;
   openLoginLanguageDialog(): void;
   renderLogin(): void;
@@ -419,8 +421,30 @@ export class LoginRenderer {
     box.addComponent(Button);
     box.on(Button.EventType.CLICK, () => this.host.toggleLoginAgreement(), this);
     this.host.applyPointerCursor(box);
-    const text = this.host.addLabel('我已阅读并同意《用户协议》和《隐私政策》', centerX + 26 * scale, y, 16 * scale, rgba(215, 210, 198), new Size(400 * scale, 26 * scale));
-    text.overflow = Label.Overflow.SHRINK;
+    // 协议名可点击查看全文(2026-09-25):四段文字按字数估宽横排,整行仍以原位置居中。
+    const fontSize = 16 * scale;
+    const parts: Array<{ text: string; doc?: 'terms' | 'privacy' }> = [
+      { text: '我已阅读并同意' },
+      { text: '《用户协议》', doc: 'terms' },
+      { text: '和' },
+      { text: '《隐私政策》', doc: 'privacy' },
+    ];
+    const widths = parts.map((part) => part.text.length * fontSize);
+    let cursorX = centerX + 26 * scale - widths.reduce((sum, width) => sum + width, 0) / 2;
+    parts.forEach((part, index) => {
+      const width = widths[index];
+      const label = this.host.addLabel(part.text, cursorX + width / 2, y, fontSize, part.doc ? rgba(240, 196, 102) : rgba(215, 210, 198), new Size(width + 4 * scale, 26 * scale));
+      label.overflow = Label.Overflow.SHRINK;
+      if (part.doc) {
+        const doc = part.doc;
+        label.isUnderline = true;
+        label.node.name = doc === 'terms' ? 'LoginAgreementTermsLink' : 'LoginAgreementPrivacyLink';
+        label.node.addComponent(Button);
+        label.node.on(Button.EventType.CLICK, () => this.host.openLegalDocument?.(doc), this);
+        this.host.applyPointerCursor(label.node);
+      }
+      cursorX += width;
+    });
   }
 
   private addRailImageButton(asset: RailButtonAsset, x: number, y: number, layout: UiLayout): Button {

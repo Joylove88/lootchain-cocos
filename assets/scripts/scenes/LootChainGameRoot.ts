@@ -43,6 +43,9 @@ import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
+import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
+import type { ProfileRenameState } from './lobby/LobbyProfileDialogRenderer';
+import type { LegalDocumentKey } from '../legal/LegalDocuments';
 import type { UiPreloadGroup } from './UiSpriteFrameCache';
 import {
   compactResourceValue as compactUiResourceValue,
@@ -207,6 +210,26 @@ const LOBBY_BAG_REUSE_NODE_NAMES = ['LobbyBagDim', 'LobbyBagSceneContent'] as co
  * 这里只保留根职责：生命周期、视图切换、资源/资料调度，以及给各渲染模块提供 host wrapper。
  * 具体 UI 绘制、登录流程、loading 流程和背景控制都拆到独立模块，避免大厅代码继续堆在根组件里。
  */
+const PROFILE_RENAME_CLOSED: ProfileRenameState = { open: false, infoLoading: false, info: null, draft: '', busy: false, error: '' };
+
+/** 改名前端校验(与服务端 PlayerRenameService 同口径;保留字/重名仍以服务端为准)。 */
+function profileRenameInvalidReason(name: string, currentName: string): string {
+  const length = Array.from(name).length;
+  if (length < 2 || length > 12) {
+    return '昵称长度须为 2-12 个字符';
+  }
+  if (!/^[\u4e00-\u9fa5A-Za-z0-9_]+$/.test(name)) {
+    return '昵称仅支持中文、英文、数字和下划线';
+  }
+  if (/^[0-9]+$/.test(name)) {
+    return '昵称不能是纯数字';
+  }
+  if (name === currentName) {
+    return '新昵称与当前昵称相同';
+  }
+  return '';
+}
+
 @ccclass('LootChainGameRoot')
 export class LootChainGameRoot extends Component {
   @property(SpriteFrame)
@@ -326,6 +349,9 @@ export class LootChainGameRoot extends Component {
   };
   private lobbyTokenFurnaceTicket = 0;
   private readonly lobbyProfileDialogRenderer = new LobbyProfileDialogRenderer(this as unknown as LobbyProfileDialogHost);
+  /** 用户协议/隐私政策查看层(2026-09-25):任何视图都可打开,整页重绘后由 syncLegalDocumentOverlay 重新挂回。 */
+  private readonly legalDocumentOverlayRenderer = new LegalDocumentOverlayRenderer(this as unknown as LegalDocumentOverlayHost);
+  private legalDocumentKey: LegalDocumentKey | null = null;
   /** 货币商店弹窗(docs/33,2026-09-22):挂在当前视图之上的覆盖层,每次整页重绘后由 syncLobbyShopOverlay 重新挂回。 */
   private readonly lobbyShopDialogRenderer = new LobbyShopDialogRenderer(this as unknown as LobbyShopDialogHost);
   private lobbyShopDialog: LobbyShopDialogState | null = null;
@@ -1653,6 +1679,7 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyProfileOpen && this.currentView === 'profile') {
       return;
     }
+    this.profileRename = { ...PROFILE_RENAME_CLOSED };
     this.closeAllLobbyScenePanelFlags();
     this.lobbyProfileOpen = true;
     this.currentView = 'profile';
@@ -1663,7 +1690,88 @@ export class LootChainGameRoot extends Component {
     if (!this.lobbyProfileOpen) {
       return;
     }
+    this.profileRename = { ...PROFILE_RENAME_CLOSED };
     this.returnToLobbyFromScenePage();
+  }
+
+  // ── 改昵称(2026-09-25):第一次免费,之后按服务端价格扣钻石;前端先做与服务端一致的格式校验 ──
+  private profileRename: ProfileRenameState = { ...PROFILE_RENAME_CLOSED };
+
+  private currentProfileRenameState(): ProfileRenameState {
+    return this.profileRename;
+  }
+
+  private openProfileRename(): void {
+    this.profileRename = { ...PROFILE_RENAME_CLOSED, open: true, infoLoading: true };
+    this.renderCurrentView();
+    void this.api.profile.renameInfo()
+      .then((info) => {
+        if (this.profileRename.open) {
+          this.profileRename = { ...this.profileRename, info, infoLoading: false };
+        }
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.profileRename = { ...this.profileRename, infoLoading: false, error: `读取改名价格失败:${message}` };
+      })
+      .finally(() => {
+        if (this.profileRename.open && this.currentView === 'profile') {
+          this.renderCurrentView();
+        }
+      });
+  }
+
+  private closeProfileRename(): void {
+    if (this.profileRename.busy) {
+      return;
+    }
+    this.profileRename = { ...PROFILE_RENAME_CLOSED };
+    this.renderCurrentView();
+  }
+
+  private setProfileRenameDraft(text: string): void {
+    // 只存草稿不重绘:重绘会重建输入框,打字过程中不能打断。
+    this.profileRename = { ...this.profileRename, draft: text, error: '' };
+  }
+
+  private submitProfileRename(): void {
+    void this.runProfileRename();
+  }
+
+  private async runProfileRename(): Promise<void> {
+    const state = this.profileRename;
+    if (!state.open || state.busy || !state.info) {
+      return;
+    }
+    const name = state.draft.trim();
+    const invalid = profileRenameInvalidReason(name, state.info.currentName);
+    if (invalid) {
+      this.profileRename = { ...state, error: invalid };
+      this.renderCurrentView();
+      return;
+    }
+    this.profileRename = { ...state, busy: true, error: '' };
+    this.renderCurrentView();
+    let floats: string[] = [];
+    try {
+      const result = await this.api.profile.rename(name);
+      this.profileRename = { ...PROFILE_RENAME_CLOSED };
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+      floats = [result.diamondSpent > 0
+        ? `昵称已改为「${result.displayName}」· 消耗 ${this.formatInteger(result.diamondSpent)} 钻石`
+        : `昵称已改为「${result.displayName}」`];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.profileRename = { ...this.profileRename, busy: false, error: message || '修改失败,请稍后重试' };
+    } finally {
+      if (this.profileRename.busy) {
+        this.profileRename = { ...this.profileRename, busy: false };
+      }
+      this.renderCurrentView();
+      if (floats.length > 0) {
+        this.spawnRewardFloats(floats);
+      }
+    }
   }
 
   private removePlayerProfileDialog(): void {
@@ -1720,6 +1828,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyBagComposeResult = null;
+    this.lobbyBagSellItemCode = null;
     this.returnToLobbyFromScenePage();
   }
 
@@ -2336,7 +2445,87 @@ export class LootChainGameRoot extends Component {
 
   private clearLobbyBagSelection(): void {
     this.lobbyBagComposeItemCode = null;
+    this.lobbyBagSellItemCode = null;
     this.lobbyBagLoader.clearSelection();
+  }
+
+  // 出售弹窗状态(2026-09-25):选中道具 + 数量 + 本次确认的请求号。
+  // 打开弹窗或改数量才换新请求号;网络失败后原样重试同一个号,服务端按幂等回放,不会重复出售。
+  private lobbyBagSellItemCode: string | null = null;
+  private lobbyBagSellCount = 1;
+  private lobbyBagSellRequestId = '';
+  private lobbyBagSellError = '';
+
+  private currentLobbyBagSellState(): { itemCode: string | null; count: number; busy: boolean; error: string } {
+    return { itemCode: this.lobbyBagSellItemCode, count: this.lobbyBagSellCount, busy: this.lobbyBagActionBusy, error: this.lobbyBagSellError };
+  }
+
+  private newLobbyBagSellRequestId(): string {
+    return `bag-sell-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  }
+
+  private openLobbyBagSellDialog(itemCode: string): void {
+    this.lobbyBagSellItemCode = itemCode;
+    this.lobbyBagSellCount = 1;
+    this.lobbyBagSellRequestId = this.newLobbyBagSellRequestId();
+    this.lobbyBagSellError = '';
+    this.renderCurrentView();
+  }
+
+  private closeLobbyBagSellDialog(): void {
+    if (this.lobbyBagActionBusy) {
+      return;
+    }
+    this.lobbyBagSellItemCode = null;
+    this.lobbyBagSellError = '';
+    this.renderCurrentView();
+  }
+
+  private setLobbyBagSellCount(count: number): void {
+    const next = Math.max(1, Math.min(9999, Math.trunc(count) || 1));
+    if (next !== this.lobbyBagSellCount) {
+      this.lobbyBagSellCount = next;
+      this.lobbyBagSellRequestId = this.newLobbyBagSellRequestId();
+    }
+    this.lobbyBagSellError = '';
+    this.renderCurrentView();
+  }
+
+  private confirmLobbyBagSell(): void {
+    void this.runLobbyBagSell();
+  }
+
+  private async runLobbyBagSell(): Promise<void> {
+    const itemCode = this.lobbyBagSellItemCode;
+    if (!itemCode || this.lobbyBagActionBusy) {
+      return;
+    }
+    this.lobbyBagActionBusy = true;
+    this.lobbyBagSellError = '';
+    this.renderCurrentView();
+    let floats: string[] = [];
+    try {
+      const result = await this.api.bag.sell(itemCode, this.lobbyBagSellCount, this.lobbyBagSellRequestId);
+      this.lobbyBagSellItemCode = null;
+      if (result.remainingCount <= 0) {
+        // 卖光了:关掉详情弹窗,免得回落显示列表第一件。
+        this.lobbyBagPanelRenderer.closeDetailPopup();
+        this.lobbyBagLoader.clearSelection();
+      }
+      await this.loadLobbyBag(true);
+      void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+      floats = [`金币 +${this.formatInteger(Math.round(Number(result.goldGained) || 0))}`];
+      this.setStatus(`已出售 ${result.itemName} ×${this.formatInteger(result.soldCount)},获得 ${this.formatInteger(Math.round(Number(result.goldGained) || 0))} 金币`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyBagSellError = `出售失败:${message}`;
+    } finally {
+      this.lobbyBagActionBusy = false;
+      this.renderCurrentView();
+      if (floats.length > 0) {
+        this.spawnRewardFloats(floats);
+      }
+    }
   }
 
   private selectLobbyBagItem(itemCode: string): void {
@@ -4936,6 +5125,39 @@ export class LootChainGameRoot extends Component {
       this.lobbyShopDialogRenderer.render(this.resolveLayout());
     }
     this.raiseLobbyCurrencyFlies();
+    this.syncLegalDocumentOverlay();
+  }
+
+  // ── 用户协议 / 隐私政策 ──
+  // 打开时不重绘底下页面(登录输入框每次重绘会清空已输入内容),直接挂到最上层。
+  private openLegalDocument(key: LegalDocumentKey): void {
+    this.legalDocumentKey = key;
+    this.syncLegalDocumentOverlay();
+  }
+
+  private closeLegalDocument(): void {
+    this.legalDocumentKey = null;
+    this.syncLegalDocumentOverlay();
+  }
+
+  private syncLegalDocumentOverlay(): void {
+    this.removeNodeFromContent(LegalDocumentOverlayRenderer.ROOT_NAME);
+    const open = this.legalDocumentKey !== null;
+    if (open) {
+      this.legalDocumentOverlayRenderer.render(this.resolveLayout(), this.legalDocumentKey as LegalDocumentKey);
+    }
+    // 输入框的原生元素浮在画布之上,覆盖层挡不住:打开期间隐藏,关闭后恢复。
+    this.setEditBoxDomHidden(open);
+  }
+
+  private setEditBoxDomHidden(hidden: boolean): void {
+    const root = this.ensureContentRoot();
+    root.getComponentsInChildren(EditBox).forEach((editBox) => {
+      const el = (editBox as unknown as { _impl?: { _edTxt?: { style?: Record<string, string> } | null } })._impl?._edTxt;
+      if (el?.style) {
+        el.style.visibility = hidden ? 'hidden' : '';
+      }
+    });
   }
 
   private raiseLobbyCurrencyFlies(): void {

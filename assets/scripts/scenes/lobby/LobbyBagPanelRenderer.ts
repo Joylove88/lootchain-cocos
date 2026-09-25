@@ -54,6 +54,7 @@ export const BAG_AI_OP_ICON_SOURCE_ASSET = 'ui/common/ai/ic_source/spriteFrame';
 export const BAG_AI_OP_ICON_USE_ASSET = 'ui/common/ai/ic_use/spriteFrame';
 export const BAG_AI_OP_ICON_FORGE_ASSET = 'ui/common/ai/ic_forge/spriteFrame';
 export const BAG_AI_OP_ICON_SHARE_ASSET = 'ui/common/ai/ic_share/spriteFrame';
+export const BAG_AI_OP_ICON_GOLD_ASSET = 'ui/bag/ai/icon_gold/spriteFrame';
 export const BAG_AI_SIDEBAR_ICON_ASSETS: Record<string, string> = {
   ALL: 'ui/common/ai/bag_ic_all/spriteFrame',
   GACHA_TICKET: 'ui/common/ai/bag_ic_item/spriteFrame',
@@ -218,6 +219,12 @@ export interface LobbyBagPanelHost {
   openLobbyBagComposeDialog(itemCode: string): void;
   closeLobbyBagComposeDialog(): void;
   setLobbyBagComposeTimes(times: number): void;
+  /** 出售(2026-09-25 开放):弹窗态(道具+数量+提交中+错误)存 host,重绘回种。 */
+  currentLobbyBagSellState(): { itemCode: string | null; count: number; busy: boolean; error: string };
+  openLobbyBagSellDialog(itemCode: string): void;
+  closeLobbyBagSellDialog(): void;
+  setLobbyBagSellCount(count: number): void;
+  confirmLobbyBagSell(): void;
   reloadLobbyBagItemSource(itemCode: string): void;
   refreshLobbyOverlay?(): void;
   currentLobbyProfile?(): PlayerLobbyProfileVO;
@@ -244,6 +251,11 @@ export class LobbyBagPanelRenderer {
   // 本地展示态:侧栏过滤分类 + 详情弹窗开关(纯前端,不写任何接口)。
   private selectedGroupKey = 'ALL';
   private detailPopupOpen = false;
+
+  /** 道具卖光后关掉详情弹窗(否则会回落显示列表第一件)。 */
+  closeDetailPopup(): void {
+    this.detailPopupOpen = false;
+  }
 
   constructor(private readonly host: LobbyBagPanelHost) {}
 
@@ -321,10 +333,12 @@ export class LobbyBagPanelRenderer {
     const composeSig = composeState.itemCode ? `compose:${composeState.itemCode}:${composeState.times}` : 'nocompose';
     const composeResult = this.host.currentLobbyBagComposeResult();
     const composeResultSig = composeResult ? `cres:${composeResult.targetCode}:${composeResult.gainedCount}:${composeResult.usedCount}` : 'nocres';
+    const sellState = this.host.currentLobbyBagSellState();
+    const sellSig = sellState.itemCode ? `sell:${sellState.itemCode}:${sellState.count}:${sellState.busy ? 1 : 0}:${sellState.error}` : 'nosell';
     const groups = state.groups
       .map((group) => `${group.itemType}#${group.items.map((item) => `${item.itemCode}:${item.itemCount}:${item.rarity ?? ''}`).join(',')}`)
       .join('|');
-    return `${this.selectedGroupKey}|${flags}|${wallet}|${state.selectedItemCode ?? ''}|${popup}|${composeSig}|${composeResultSig}|${groups}`;
+    return `${this.selectedGroupKey}|${flags}|${wallet}|${state.selectedItemCode ?? ''}|${popup}|${composeSig}|${composeResultSig}|${sellSig}|${groups}`;
   }
 
   private createUiNode(name: string): Node {
@@ -738,7 +752,7 @@ export class LobbyBagPanelRenderer {
     separatorGraphics.stroke();
     // 信息两列(堆叠+出售价 / 过期):
     const rowCells: Array<Array<[string, string]>> = [
-      [['堆叠', formatCompact(safeNumber(item.maxStack))], ['出售价', `${formatMoney(item.sellGold)} 金币`]],
+      [['堆叠', formatCompact(safeNumber(item.maxStack))], ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售']],
       [['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久'], ['', '']],
     ];
     const rowsTopY = useRowY - rowStep;
@@ -808,7 +822,7 @@ export class LobbyBagPanelRenderer {
       platesBottom = rowY - sourceRowHeight / 2;
     });
 
-    // 操作按钮:使用/合成一行,来源居中第二行(2026-09-25 占位清理:分享与出售未实装,先下架)。
+    // 操作按钮 2×2:使用/合成 + 来源/出售(2026-09-25 出售开放;不可出售的道具按钮灰显"不可出售")。
     const buttonWidth = contentWidth * 0.485;
     const buttonHeight = budgetButtonHeight;
     const buttonLeftX = -contentWidth * 0.253;
@@ -837,9 +851,17 @@ export class LobbyBagPanelRenderer {
     if (canCompose) {
       composeButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagComposeDialog(item.itemCode), this);
     }
-    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, 0, buttonRow2Y, buttonWidth, buttonHeight, scale, !state.sourceLoading);
+    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, buttonLeftX, buttonRow2Y, buttonWidth, buttonHeight, scale, !state.sourceLoading);
     sourceButton.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
-    // 出售:后端 /bag/sell 已有但未进 PhaseGate 白名单、也无幂等,开放属经济口径决策,待拍板后再接(按钮样式见 git 历史 addDetailDisabledSellButton)。
+    const sellable = !isVirtualEntry && safeNumber(item.sellGold) > 0 && safeNumber(item.itemCount) > 0;
+    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', BAG_AI_OP_ICON_GOLD_ASSET, buttonRightX, buttonRow2Y, buttonWidth, buttonHeight, scale, sellable);
+    if (sellable) {
+      sellButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagSellDialog(item.itemCode), this);
+    }
+    const sellState = this.host.currentLobbyBagSellState();
+    if (sellState.itemCode === item.itemCode) {
+      this.renderSellDialog(detail.parent ?? detail, item, sellState, scale);
+    }
     const composeState = this.host.currentLobbyBagComposeState();
     if (composeState.itemCode === item.itemCode) {
       this.renderComposeDialog(detail.parent ?? detail, item, composeState.times, scale);
@@ -964,6 +986,116 @@ export class LobbyBagPanelRenderer {
     }
     const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 20 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
     cancelLabel.overflow = Label.Overflow.SHRINK;
+  }
+
+  // 出售确认弹窗(2026-09-25):单价 + 数量选择(−/＋/+10/最大)+ 获得金币 + 出售后剩余;确认才提交,出售不可撤销。
+  private renderSellDialog(parent: Node, item: BagItemEntryVO, sellState: { itemCode: string | null; count: number; busy: boolean; error: string }, scale: number): void {
+    const held = safeNumber(item.itemCount);
+    const unitPrice = safeNumber(item.sellGold);
+    if (held <= 0 || unitPrice <= 0) {
+      return;
+    }
+    const maxCount = Math.max(1, Math.min(9999, held));
+    const count = Math.max(1, Math.min(maxCount, sellState.count));
+
+    const overlay = this.host.addChildPlainNode(parent, 'LobbyBagSellOverlay', 0, 0, 4000, 4000);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(0, 0, 0, 170);
+    og.rect(-2000, -2000, 4000, 4000);
+    og.fill();
+
+    const w = 500 * scale;
+    const h = 380 * scale;
+    const dialog = this.host.addChildPlainNode(overlay, 'LobbyBagSellDialog', 0, 0, w, h);
+    const g = dialog.addComponent(Graphics);
+    g.fillColor = rgba(12, 10, 9, 250);
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 82, 230);
+    g.lineWidth = 2 * scale;
+    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+    g.stroke();
+
+    const title = this.host.addChildLabel(dialog, 'LobbyBagSellTitle', '出售道具', 0, h / 2 - 34 * scale, 26 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 32 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(title, scale, true);
+    this.addDialogTitleDividers(dialog, 'LobbyBagSellTitleDivider', h / 2 - 34 * scale, 2 * 26 * scale, w, scale);
+    const priceRow = this.host.addChildLabel(dialog, 'LobbyBagSellPrice', `${safeText(item.itemName)}  ·  单价 ${formatMoney(unitPrice)} 金币  ·  持有 ×${formatCompact(held)}`, 0, h / 2 - 72 * scale, 18 * scale, rgba(214, 196, 158), new Size(w - 52 * scale, 24 * scale));
+    priceRow.overflow = Label.Overflow.SHRINK;
+
+    // 数量选择:[−] N 个 [＋] [+10] [最大]
+    const pickY = h / 2 - 122 * scale;
+    const enabled = !sellState.busy;
+    const makePickButton = (name: string, x: number, bw: number, textValue: string, on: boolean, onClick: () => void): void => {
+      const bh = 44 * scale;
+      const btn = this.host.addChildPlainNode(dialog, name, x, pickY, bw, bh);
+      const bg = btn.addComponent(Graphics);
+      bg.fillColor = on ? rgba(48, 38, 22, 235) : rgba(24, 22, 20, 210);
+      bg.roundRect(-bw / 2, -bh / 2, bw, bh, 8 * scale);
+      bg.fill();
+      bg.strokeColor = on ? rgba(214, 176, 100, 225) : rgba(110, 96, 70, 150);
+      bg.lineWidth = 1.5 * scale;
+      bg.stroke();
+      const bl = this.host.addChildLabel(btn, 'Label', textValue, 0, 0, 20 * scale, on ? rgba(244, 222, 168) : rgba(150, 138, 116), new Size(bw - 8 * scale, bh - 8 * scale));
+      bl.overflow = Label.Overflow.SHRINK;
+      if (on) {
+        btn.addComponent(Button);
+        btn.on(Button.EventType.CLICK, onClick, this);
+        this.host.applyImageButtonFeedback(btn, 1.05, 0.95);
+      }
+    };
+    makePickButton('LobbyBagSellMinus', -w / 2 + 52 * scale, 52 * scale, '−', enabled && count > 1, () => this.host.setLobbyBagSellCount(count - 1));
+    const countLabel = this.host.addChildLabel(dialog, 'LobbyBagSellCount', `${formatCompact(count)} 个`, -w / 2 + 138 * scale, pickY, 22 * scale, rgba(255, 236, 180), new Size(110 * scale, 30 * scale));
+    countLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(countLabel, scale, true);
+    makePickButton('LobbyBagSellPlus', -w / 2 + 224 * scale, 52 * scale, '＋', enabled && count < maxCount, () => this.host.setLobbyBagSellCount(count + 1));
+    makePickButton('LobbyBagSellPlus10', -w / 2 + 300 * scale, 70 * scale, '+10', enabled && count < maxCount, () => this.host.setLobbyBagSellCount(Math.min(maxCount, count + 10)));
+    makePickButton('LobbyBagSellMax', w / 2 - 70 * scale, 100 * scale, `最大 ${formatCompact(maxCount)}`, enabled && count < maxCount, () => this.host.setLobbyBagSellCount(maxCount));
+
+    const gainRow = this.host.addChildLabel(dialog, 'LobbyBagSellGain', `出售 ×${formatCompact(count)}  →  获得 ${formatMoney(unitPrice * count)} 金币`, 0, h / 2 - 174 * scale, 22 * scale, rgba(250, 214, 120), new Size(w - 52 * scale, 30 * scale));
+    gainRow.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(gainRow, scale, true);
+    const afterRow = this.host.addChildLabel(dialog, 'LobbyBagSellAfter', `出售后剩余 ×${formatCompact(held - count)}  ·  出售后不可撤销`, 0, h / 2 - 210 * scale, 16 * scale, rgba(190, 172, 140), new Size(w - 52 * scale, 22 * scale));
+    afterRow.overflow = Label.Overflow.SHRINK;
+    if (sellState.error) {
+      const err = this.host.addChildLabel(dialog, 'LobbyBagSellError', sellState.error, 0, h / 2 - 240 * scale, 16 * scale, rgba(255, 128, 110), new Size(w - 52 * scale, 22 * scale));
+      err.overflow = Label.Overflow.SHRINK;
+    }
+
+    const buttonW = 190 * scale;
+    const buttonH = buttonW * (211 / 740);
+    const confirm = this.host.addChildPlainNode(dialog, 'LobbyBagSellConfirm', -buttonW / 2 - 18 * scale, -h / 2 + 52 * scale, buttonW, buttonH);
+    if (!this.host.addSprite('LobbyBagSellConfirmArt', 'ui/common/ai/button_primary/spriteFrame', 0, 0, buttonW, buttonH, confirm)) {
+      const cg = confirm.addComponent(Graphics);
+      cg.fillColor = rgba(122, 42, 30, 235);
+      cg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      cg.fill();
+    }
+    const confirmLabel = this.host.addChildLabel(confirm, 'Label', sellState.busy ? '出售中…' : '出 售', 0, 1 * scale, 22 * scale, rgba(255, 240, 200), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    confirmLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(confirmLabel, scale, true);
+    if (enabled) {
+      confirm.addComponent(Button);
+      confirm.on(Button.EventType.CLICK, () => this.host.confirmLobbyBagSell(), this);
+      this.host.applyImageButtonFeedback(confirm, 1.035, 0.965);
+    } else {
+      confirm.addComponent(UIOpacity).opacity = 150;
+    }
+    const cancel = this.host.addChildPlainNode(dialog, 'LobbyBagSellCancel', buttonW / 2 + 18 * scale, -h / 2 + 52 * scale, buttonW, buttonH);
+    if (!this.host.addSprite('LobbyBagSellCancelArt', 'ui/common/ai/button_return_dis/spriteFrame', 0, 0, buttonW, buttonH, cancel)) {
+      const xg = cancel.addComponent(Graphics);
+      xg.fillColor = rgba(28, 24, 22, 230);
+      xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      xg.fill();
+    }
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 22 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    cancelLabel.overflow = Label.Overflow.SHRINK;
+    if (enabled) {
+      cancel.addComponent(Button);
+      cancel.on(Button.EventType.CLICK, () => this.host.closeLobbyBagSellDialog(), this);
+      this.host.applyImageButtonFeedback(cancel, 1.035, 0.965);
+    }
   }
 
   // 合成道具名(合成规则涉及的道具都在此;宝石走 parseGemCode)。
