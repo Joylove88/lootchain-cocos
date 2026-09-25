@@ -43,6 +43,7 @@ import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
+import type { UiPreloadGroup } from './UiSpriteFrameCache';
 import {
   compactResourceValue as compactUiResourceValue,
   formatInteger as formatUiInteger,
@@ -996,6 +997,89 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  /** 当前页面对应的素材分组(没有分组的页面不拦)。 */
+  private sceneAssetGateGroup(view: string): UiPreloadGroup | null {
+    switch (view) {
+      case 'heroes':
+      case 'heroDetail':
+        return 'heroes';
+      case 'forge':
+        return 'forge';
+      case 'bag':
+        return 'bag';
+      case 'adventure':
+        return 'adventure';
+      case 'gacha':
+        return 'gacha';
+      default:
+        return null;
+    }
+  }
+
+  /** 该页首开素材未齐时画加载进度并返回 true;名册额外等玩家已有英雄的卡面立绘。 */
+  private renderSceneAssetGate(layout: UiLayout): boolean {
+    const group = this.sceneAssetGateGroup(this.currentView);
+    if (!group) {
+      return false;
+    }
+    if (this.currentView === 'heroes') {
+      const heroes = this.lobbyHeroRosterLoader.currentState().heroes;
+      if (heroes.length > 0) {
+        this.uiSpriteFrameCache.addGroupAssets('heroes', this.lobbyHeroRosterPanelRenderer.cardArtSpriteFramePaths(heroes));
+      }
+    }
+    const progress = this.uiSpriteFrameCache.groupProgress(group);
+    if (!progress) {
+      return false;
+    }
+    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panel = this.createUiNode('SceneAssetLoading');
+    panel.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    // 纯色底盖住功能页背景(背景里的聚光圆平时被面板挡住,加载态单独露出来像花屏)。
+    const cover = panel.addComponent(Graphics);
+    cover.fillColor = new Color(10, 8, 9, 255);
+    cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
+    cover.fill();
+    const titles: Record<UiPreloadGroup, string> = {
+      heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
+      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材',
+    };
+    this.addChildLabel(panel, 'SceneAssetLoadingTitle', titles[group], centerX, centerY + 40 * scale, 28 * scale, new Color(245, 214, 140, 255), new Size(520 * scale, 40 * scale));
+    const barWidth = Math.min(460 * scale, layout.width * 0.5);
+    const barHeight = 12 * scale;
+    const bar = this.addChildPlainNode(panel, 'SceneAssetLoadingBar', centerX, centerY - 6 * scale, barWidth, barHeight);
+    const g = bar.addComponent(Graphics);
+    g.fillColor = new Color(26, 22, 20, 235);
+    g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+    g.fill();
+    g.strokeColor = new Color(170, 132, 74, 220);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+    g.stroke();
+    const ratio = progress.total > 0 ? progress.done / progress.total : 0;
+    g.fillColor = new Color(232, 176, 74, 245);
+    g.roundRect(-barWidth / 2 + 2, -barHeight / 2 + 2, Math.max(barHeight - 4, (barWidth - 4) * ratio), barHeight - 4, (barHeight - 4) / 2);
+    g.fill();
+    this.addChildLabel(panel, 'SceneAssetLoadingCount', `${progress.done} / ${progress.total}`, centerX, centerY - 34 * scale, 18 * scale, new Color(228, 202, 150, 240), new Size(240 * scale, 26 * scale));
+    this.addChildLabel(panel, 'SceneAssetLoadingTip', '首次打开需要下载素材,之后会直接从本地读取', centerX, centerY - 64 * scale, 16 * scale, new Color(168, 150, 118, 220), new Size(560 * scale, 24 * scale));
+    renderSceneBackButton(
+      this as unknown as SceneBackButtonHost,
+      panel,
+      layout,
+      'SceneAssetLoadingBack',
+      () => {
+        this.closeAllLobbyScenePanelFlags();
+        this.currentView = 'lobby';
+        this.renderCurrentView();
+      },
+      scale,
+      '',
+    );
+    return true;
+  }
+
   private renderLoading(): void {
     this.currentView = 'loading';
     this.invalidateReusableScenes();
@@ -1017,6 +1101,34 @@ export class LootChainGameRoot extends Component {
     this.renderLobbyHud(layout);
     // 大厅 BGM(音效底铺 2026-09-04):Web 自动播放被拦时,首次点击自动补播(GameAudio 内处理)。
     gameAudio.bgm('bgm_lobby');
+    // 本会话第一次进大厅:稍后后台拉玩家已有英雄的名册卡面立绘(都是会用到的),首开名册基本不用等。
+    if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
+      this.ownedHeroCardArtPrefetched = true;
+      this.scheduleOnce(() => void this.prefetchOwnedHeroCardArt(), 3);
+    }
+  }
+
+  private ownedHeroCardArtPrefetched = false;
+
+  /** 后台拉名册卡面立绘:并发 2,直接进资源缓存,不触发整刷(名册首开时闸门判断 resources.get 即视为已到)。 */
+  private async prefetchOwnedHeroCardArt(): Promise<void> {
+    try {
+      await this.loadLobbyHeroRoster();
+    } catch (error) {
+      void error;
+      return;
+    }
+    const paths = this.lobbyHeroRosterPanelRenderer.cardArtSpriteFramePaths(this.lobbyHeroRosterLoader.currentState().heroes)
+      .filter((path) => !resources.get(path, SpriteFrame));
+    let cursor = 0;
+    const worker = (): void => {
+      if (cursor >= paths.length || !this.isValid) {
+        return;
+      }
+      resources.load(paths[cursor++], SpriteFrame, () => this.scheduleOnce(worker, 0));
+    };
+    worker();
+    worker();
   }
 
   // 矿境守卫启用面:限时副本三难度全量(Ⅰ=10波/Ⅱ=20波/Ⅲ=BOSS车轮战)+ 主线全量
@@ -1057,6 +1169,14 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderGachaScene(): void {
+    if (this.uiSpriteFrameCache.groupProgress('gacha')) {
+      // 首次进召唤页素材未齐:先画加载进度(与功能页同一套),齐了整刷换成召唤页。
+      const gateLayout = this.renderBase();
+      this.renderLobbyFeatureSceneBackdrop(gateLayout);
+      if (this.renderSceneAssetGate(gateLayout)) {
+        return;
+      }
+    }
     this.currentView = 'gacha';
     const layout = this.renderBase();
     // 抽奖页读取后端卡池展示配置；真实抽卡只通过已有 gacha draw 接口触发。
@@ -1102,6 +1222,10 @@ export class LootChainGameRoot extends Component {
     const layout = this.renderBase();
     // 大厅功能入口必须切换到独立全屏逻辑场景，不再把内容浮在大厅背景/HUD 上。
     this.renderLobbyFeatureSceneBackdrop(layout);
+    // 首次打开某玩法页时素材还在下载:先显示加载进度,齐了再整页画出来(2026-09-25 用户反馈名册空卡体验差)。
+    if (this.renderSceneAssetGate(layout)) {
+      return;
+    }
     if (this.currentView === 'profile') {
       this.renderPlayerProfileDialog(layout);
       return;

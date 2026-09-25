@@ -89,6 +89,9 @@ export interface UiSpriteFrameOverrides {
  * Inspector 上手动绑定的 SpriteFrame 优先级最高；未绑定时才走 resources.load。
  * 加载成功后通知 root 重新渲染当前视图，让登录 logo、按钮图和大厅面板自动补上。
  */
+/** 页面首开等素材的最长时间:超过就先画页面(缺图走兜底),不让慢网卡死在加载态。 */
+const GROUP_GATE_WINDOW_MS = 20000;
+
 /** 按玩法页分组的 UI 图预载(第一次打开对应页面时拉)。 */
 export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle';
 
@@ -148,83 +151,125 @@ export class UiSpriteFrameCache {
       return;
     }
     this.preloadedGroups.add(group);
+    this.groupWaits.set(group, { pending: new Set<string>(), total: 0, startedAt: Date.now() });
+    // 闸门最长等 GROUP_GATE_WINDOW_MS:到点无论还有几张没到都放行(缺图走兜底),并补一次整刷让页面换出来。
+    setTimeout(() => this.scheduleRenderRefresh(), GROUP_GATE_WINDOW_MS + 50);
+    const track = (path: string): void => this.trackGroupPath(group, path);
     switch (group) {
       case 'heroes':
+        // 详情页大图只拉不拦:名册首开先等卡面相关的图,详情页用到时多半已到。
         this.request(LOBBY_HERO_DETAIL_BACKDROP_ASSET);
         this.request(LOBBY_HERO_DETAIL_PROTAGONIST_ASSET);
-        this.request(LOBBY_HERO_ROSTER_BACKDROP_ASSET);
-        LOBBY_HERO_ROSTER_CARD_ASSETS.forEach((asset) => this.request(asset));
-        this.request(HERO_C1812_STAR_FILLED_ASSET);
-        this.request(HERO_C1812_STAR_EMPTY_ASSET);
-        Object.values(HERO_C1812_GRADE_CREST_ASSETS).forEach((asset) => this.request(asset));
-        STAR_BAND_ASSETS.forEach((asset) => this.request(asset));
+        track(LOBBY_HERO_ROSTER_BACKDROP_ASSET);
+        LOBBY_HERO_ROSTER_CARD_ASSETS.forEach((asset) => track(asset));
+        track(HERO_C1812_STAR_FILLED_ASSET);
+        track(HERO_C1812_STAR_EMPTY_ASSET);
+        Object.values(HERO_C1812_GRADE_CREST_ASSETS).forEach((asset) => track(asset));
+        STAR_BAND_ASSETS.forEach((asset) => track(asset));
         break;
       case 'gacha':
-        this.request(GACHA_BACKGROUND_ASSET);
-        this.request(GACHA_MODAL_CLOSE_BUTTON_ASSET);
-        GACHA_POOL_LOGO_ASSETS.forEach((asset) => this.request(asset));
-        this.request(GACHA_RESULT_PANEL_ASSET);
-        Object.values(GACHA_RESULT_FRAME_ASSETS).forEach((asset) => this.request(asset));
-        this.request(GACHA_RESULT_DIVIDER_LEFT_ASSET);
-        this.request(GACHA_RESULT_DIVIDER_RIGHT_ASSET);
-        this.request(GACHA_TAB_PLATE_ASSET);
-        Object.values(GACHA_POOL_TAB_ICON_ASSETS).forEach((asset) => this.request(asset));
-        Object.values(GACHA_ACTION_ICON_ASSETS).forEach((asset) => this.request(asset));
-        this.request(GACHA_COST_TICKET_ICON_ASSET);
-        this.request(GACHA_COST_DIAMOND_ICON_ASSET);
-        this.request(GACHA_LOCK_ICON_ASSET);
-        STAR_BAND_ASSETS.forEach((asset) => this.request(asset));
+        track(GACHA_BACKGROUND_ASSET);
+        track(GACHA_MODAL_CLOSE_BUTTON_ASSET);
+        GACHA_POOL_LOGO_ASSETS.forEach((asset) => track(asset));
+        track(GACHA_RESULT_PANEL_ASSET);
+        Object.values(GACHA_RESULT_FRAME_ASSETS).forEach((asset) => track(asset));
+        track(GACHA_RESULT_DIVIDER_LEFT_ASSET);
+        track(GACHA_RESULT_DIVIDER_RIGHT_ASSET);
+        track(GACHA_TAB_PLATE_ASSET);
+        Object.values(GACHA_POOL_TAB_ICON_ASSETS).forEach((asset) => track(asset));
+        Object.values(GACHA_ACTION_ICON_ASSETS).forEach((asset) => track(asset));
+        track(GACHA_COST_TICKET_ICON_ASSET);
+        track(GACHA_COST_DIAMOND_ICON_ASSET);
+        track(GACHA_LOCK_ICON_ASSET);
+        STAR_BAND_ASSETS.forEach((asset) => track(asset));
         break;
       case 'bag':
-        this.request(BAG_C1812_ITEM_SLOT_ASSET);
-        this.request(BAG_C1812_ITEM_SLOT_HIGHLIGHT_ASSET);
-        this.request(BAG_C1812_BUTTON_PRIMARY_ASSET);
-        this.request(BAG_C1812_DIVIDER_ASSET);
-        this.request(BAG_C1812_TITLE_BANNER_ASSET);
-        this.request(BAG_C1812_MODAL_FRAME_ASSET);
-        Object.values(BAG_C1812_ITEM_TYPE_ICON_ASSETS).forEach((asset) => this.request(asset));
-        BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
-        EQUIP_ICON_ALL_ASSETS.forEach((asset) => this.request(asset));
+        track(BAG_C1812_ITEM_SLOT_ASSET);
+        track(BAG_C1812_ITEM_SLOT_HIGHLIGHT_ASSET);
+        track(BAG_C1812_BUTTON_PRIMARY_ASSET);
+        track(BAG_C1812_DIVIDER_ASSET);
+        track(BAG_C1812_TITLE_BANNER_ASSET);
+        track(BAG_C1812_MODAL_FRAME_ASSET);
+        Object.values(BAG_C1812_ITEM_TYPE_ICON_ASSETS).forEach((asset) => track(asset));
+        BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => track(asset));
+        EQUIP_ICON_ALL_ASSETS.forEach((asset) => track(asset));
         break;
       case 'forge':
         // 2026-07-22:锻造页近百张图原先逐张到货触发整刷;现在第一次开锻造时整组一起拉,到货合并整刷。
-        FORGE_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
-        EQUIP_ICON_ALL_ASSETS.forEach((asset) => this.request(asset));
-        BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
+        FORGE_PRELOAD_ASSETS.forEach((asset) => track(asset));
+        EQUIP_ICON_ALL_ASSETS.forEach((asset) => track(asset));
+        BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => track(asset));
         break;
       case 'adventure':
-        this.request(ADVENTURE_C1812_STAGE_NODE_ASSET);
-        this.request(ADVENTURE_C1812_STAGE_NODE_BOSS_ASSET);
-        this.request(ADVENTURE_C1812_STAGE_NODE_CLEAR_ASSET);
-        this.request(ADVENTURE_C1812_CHAPTER_ICON_ASSET);
-        this.request(ADVENTURE_C1812_ICON_LOCK_ASSET);
+        track(ADVENTURE_C1812_STAGE_NODE_ASSET);
+        track(ADVENTURE_C1812_STAGE_NODE_BOSS_ASSET);
+        track(ADVENTURE_C1812_STAGE_NODE_CLEAR_ASSET);
+        track(ADVENTURE_C1812_CHAPTER_ICON_ASSET);
+        track(ADVENTURE_C1812_ICON_LOCK_ASSET);
         break;
       case 'battle':
-        this.request(LOBBY_BATTLE_SCENE_BG_ASSET);
-        this.request(LOBBY_BATTLE_SCENE_GROUND_ASSET);
-        this.request(LOBBY_BATTLE_SCENE_FOREGROUND_ASSET);
-        this.request(BATTLE_C1812_HP_BAR_FRAME_ASSET);
-        this.request(BATTLE_C1812_HP_BAR_FILL_ASSET);
-        this.request(BATTLE_C1812_BANNER_VICTORY_ASSET);
-        this.request(BATTLE_C1812_BANNER_DEFEAT_ASSET);
-        this.request(BATTLE_C1812_SKILL_FRAME_ASSET);
-        this.request(BATTLE_C1812_SKILL_FRAME_ACTIVE_ASSET);
-        this.request(BATTLE_C1812_BOSS_GAUGE_FRAME_ASSET);
-        this.request(BATTLE_C1812_BOSS_GAUGE_BAR_ASSET);
-        this.request(BATTLE_C1812_SKILL_TARGET_FRAME_ASSET);
-        this.request(BATTLE_C1812_HIT_BURST_ASSET);
-        this.request(BATTLE_C1812_HIT_SLASH_ASSET);
-        this.request(BATTLE_C1812_HIT_BURST_EFFECT_ASSET);
-        this.request(BATTLE_C1812_HIT_RING_ASSET);
-        this.request(BATTLE_C1812_HIT_SPARK_ASSET);
-        this.request(BATTLE_C1812_BUFF_ATTACK_UP_ASSET);
-        this.request(BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET);
-        this.request(BATTLE_C1812_BUFF_SHIELD_ASSET);
-        this.request(BATTLE_C1812_BUFF_STUN_ASSET);
+        track(LOBBY_BATTLE_SCENE_BG_ASSET);
+        track(LOBBY_BATTLE_SCENE_GROUND_ASSET);
+        track(LOBBY_BATTLE_SCENE_FOREGROUND_ASSET);
+        track(BATTLE_C1812_HP_BAR_FRAME_ASSET);
+        track(BATTLE_C1812_HP_BAR_FILL_ASSET);
+        track(BATTLE_C1812_BANNER_VICTORY_ASSET);
+        track(BATTLE_C1812_BANNER_DEFEAT_ASSET);
+        track(BATTLE_C1812_SKILL_FRAME_ASSET);
+        track(BATTLE_C1812_SKILL_FRAME_ACTIVE_ASSET);
+        track(BATTLE_C1812_BOSS_GAUGE_FRAME_ASSET);
+        track(BATTLE_C1812_BOSS_GAUGE_BAR_ASSET);
+        track(BATTLE_C1812_SKILL_TARGET_FRAME_ASSET);
+        track(BATTLE_C1812_HIT_BURST_ASSET);
+        track(BATTLE_C1812_HIT_SLASH_ASSET);
+        track(BATTLE_C1812_HIT_BURST_EFFECT_ASSET);
+        track(BATTLE_C1812_HIT_RING_ASSET);
+        track(BATTLE_C1812_HIT_SPARK_ASSET);
+        track(BATTLE_C1812_BUFF_ATTACK_UP_ASSET);
+        track(BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET);
+        track(BATTLE_C1812_BUFF_SHIELD_ASSET);
+        track(BATTLE_C1812_BUFF_STUN_ASSET);
         break;
       default:
         break;
     }
+  }
+
+
+  /** 各页面分组的首开等待状态:pending=还没到的图;超过窗口期不再拦页面。 */
+  private readonly groupWaits = new Map<UiPreloadGroup, { pending: Set<string>; total: number; startedAt: number }>();
+
+  private trackGroupPath(group: UiPreloadGroup, path: string): void {
+    const wait = this.groupWaits.get(group);
+    const ready = this.spriteFrames.has(path) || !!resources.get(path, SpriteFrame) || this.failedSpriteFrames.has(path);
+    if (wait && !ready && !wait.pending.has(path) && Date.now() - wait.startedAt < GROUP_GATE_WINDOW_MS) {
+      wait.pending.add(path);
+      wait.total += 1;
+    }
+    this.request(path);
+  }
+
+  /** 页面动态补进组里的图(如名册里玩家已有英雄的卡面):窗口期内一起等,过了窗口只拉不拦。 */
+  addGroupAssets(group: UiPreloadGroup, paths: readonly string[]): void {
+    this.preloadGroup(group);
+    paths.forEach((path) => this.trackGroupPath(group, path));
+  }
+
+  /** 页面首开时该组还在下载:返回进度;已齐/超时/没开过返回 null(直接画页面)。 */
+  groupProgress(group: UiPreloadGroup): { done: number; total: number } | null {
+    const wait = this.groupWaits.get(group);
+    if (!wait || wait.pending.size === 0 || Date.now() - wait.startedAt >= GROUP_GATE_WINDOW_MS) {
+      return null;
+    }
+    return { done: wait.total - wait.pending.size, total: wait.total };
+  }
+
+  private settleGroupPath(path: string): void {
+    this.groupWaits.forEach((wait) => {
+      if (wait.pending.delete(path) && wait.pending.size === 0) {
+        this.scheduleRenderRefresh();
+      }
+    });
   }
 
   private renderRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -254,6 +299,7 @@ export class UiSpriteFrameCache {
     this.loadingSpriteFrames.add(path);
     resources.load(path, SpriteFrame, (error, frame) => {
       this.loadingSpriteFrames.delete(path);
+      this.settleGroupPath(path);
       if (error) {
         // 缺图只告警一次:图鉴宝箱等可选素材未落位时,每次重绘都重试会刷屏。
         this.failedSpriteFrames.add(path);

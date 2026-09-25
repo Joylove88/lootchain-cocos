@@ -1223,6 +1223,18 @@ export class LobbyHeroRosterPanelRenderer {
     return LOBBY_HERO_ROSTER_CARD_FRAME_ASSET;
   }
 
+  /** 名册卡面立绘的 SpriteFrame 路径(首开名册时进 heroes 组一起等,避免卡片先空着)。 */
+  cardArtSpriteFramePaths(heroes: readonly LobbyHeroItemVO[]): string[] {
+    const paths = new Set<string>();
+    heroes.forEach((hero) => {
+      const path = this.resolveHeroCardBackgroundAssetPath(hero);
+      if (path) {
+        paths.add(`${path}/spriteFrame`);
+      }
+    });
+    return Array.from(paths);
+  }
+
   private resolveHeroCardBackgroundAssetPath(hero: LobbyHeroItemVO): string | null {
     const rawPath = safeText(hero.cardBackgroundAsset || '').trim();
     if (!rawPath) {
