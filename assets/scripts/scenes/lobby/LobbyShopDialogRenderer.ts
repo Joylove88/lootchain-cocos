@@ -205,7 +205,7 @@ export class LobbyShopDialogRenderer {
           ? '选择支付方式后点击档位,在新窗口完成付款,到账后钻石自动发放'
           : this.payMode(catalog) === 'MOCK'
             ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
-            : '支付渠道接入中,档位仅供预览';
+            : '钻石充值暂未开放,敬请期待';
     const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - 36 * scale, FONT.subtitle * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.82, 24 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
 

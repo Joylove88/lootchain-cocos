@@ -665,7 +665,7 @@ export class LobbyAdventurePanelRenderer {
     const note = this.host.addChildLabel(
       parent,
       'LobbyAdventureBoundaryNote',
-      '年度主线 MAIN_1_1 至 MAIN_25_16 已配置；战斗胜利后自动提交结算并发放奖励。',
+      '每层胜利后自动领取首通奖励并解锁下一层。',
       0,
       -height / 2 + 62 * scale, 17 * scale,
       rgba(168, 146, 105),

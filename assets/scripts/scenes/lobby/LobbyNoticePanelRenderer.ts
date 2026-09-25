@@ -90,7 +90,7 @@ export class LobbyNoticePanelRenderer {
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyNoticePanelState): void {
     // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
 
-    const statusText = state.loading ? '正在读取服务端公告...' : state.error ? '服务端公告暂不可用，已显示本地说明' : state.loaded ? '服务端只读公告' : '等待公告数据';
+    const statusText = state.loading ? '正在读取公告...' : state.error ? '公告读取失败,请稍后重试' : state.loaded ? '最新公告' : '正在读取公告...';
     const status = this.host.addChildLabel(
       parent,
       'LobbyNoticeStatus',

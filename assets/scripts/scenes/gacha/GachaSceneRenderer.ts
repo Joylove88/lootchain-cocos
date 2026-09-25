@@ -1927,7 +1927,7 @@ export class GachaSceneRenderer {
     }
 
     // drawNo 行:两侧金色装饰线,菱形端点朝向文字(参考图)。
-    const subtitleText = drawResult ? `真实 drawNo：${drawResult.drawNo}` : '本结果为本地 mock：未扣资源、未写入记录、未更新保底。';
+    const subtitleText = drawResult ? `召唤单号：${drawResult.drawNo}` : '本结果为本地 mock：未扣资源、未写入记录、未更新保底。';
     const subtitleY = -panelHeight / 2 + panelHeight * 0.17;
     const subtitleWidth = panelWidth * 0.32;
     const subtitle = this.host.addChildLabel(panel, 'GachaResultSceneNoWriteNote', subtitleText, 0, subtitleY, 16 * scale, rgba(196, 172, 122), new Size(subtitleWidth, 26 * scale));

@@ -2635,13 +2635,12 @@ export class LobbyHeroDetailPanelRenderer {
       this.applyOutline(amount, scale, false);
     });
 
-    // 觉醒效果区:暗底圆角框 + 三条金点条目。
+    // 觉醒效果区:暗底圆角框 + 金点条目(只列已生效的效果;觉醒立绘/边框做好再加)。
     const effTop = slotY - slot / 2 - 66 * scale;
     const effW = w * 0.74;
     const effects = [
       `大招等级上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)}`,
       '英雄属性增强',
-      '解锁觉醒立绘与边框(后续版本开放)',
     ];
     const effH = 38 * scale + effects.length * 26 * scale;
     const effBox = this.host.addChildPlainNode(dialog, 'LobbyHeroAwakenEffects', 0, effTop - effH / 2, effW, effH);

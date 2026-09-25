@@ -404,6 +404,11 @@ export class LobbyHudRenderer {
     this.idleStageRenderer.render(root, layout, towerStageCode, this.resolveIdleTowerFloor(towerStageCode));
   }
 
+  /** 当前爬塔层数(与挂机区显示同源),供玩家资料页展示;未读到冒险数据时为 0。 */
+  currentTowerFloor(): number {
+    return this.resolveIdleTowerFloor(this.resolveIdleTowerStageCode());
+  }
+
   // 真实爬塔层数 = 该关卡在主线全序列里的累计序号(每关=1层),而不是"每章16层"的估算。
   // 各章关卡数不固定(如第一章9关、第二章…),按 adventure 章节里的关卡顺序数到该关即真实层数。
   private resolveIdleTowerFloor(stageCode: string): number {
@@ -912,8 +917,8 @@ export class LobbyHudRenderer {
     }
     if (!adventure || !stage) {
       return {
-        title: '开始主线预演',
-        stageLine: '等待服务器推荐主线目标',
+        title: '开始爬塔',
+        stageLine: '正在读取爬塔进度…',
         recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
         boundaryLine: '准备英雄队伍后从爬塔面板选择关卡。',
         actionLabel: '进入爬塔',
@@ -924,9 +929,9 @@ export class LobbyHudRenderer {
     if (!stage.unlocked) {
       return {
         title: '主线目标未解锁',
-        stageLine: `${stage.stageName} · ${stage.stageCode}`,
+        stageLine: this.goalStageLine(stage),
         recentLine: `状态：${stage.statusLabel || '查看解锁条件'}`,
-        boundaryLine: '只能查看目标，不绕过锁定进入编队。',
+        boundaryLine: '通关前一层后即可挑战。',
         actionLabel: '查看目标',
         disabled: false,
         tone: 'locked',
@@ -934,7 +939,7 @@ export class LobbyHudRenderer {
     }
     return {
       title: '下一步目标',
-      stageLine: `${stage.stageName} · ${stage.stageCode}`,
+      stageLine: this.goalStageLine(stage),
       recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
       boundaryLine: '打开深渊爬塔选关；战斗胜利后自动结算发奖并推进主线。',
       actionLabel: recent ? '继续爬塔' : '进入爬塔',
@@ -973,12 +978,32 @@ export class LobbyHudRenderer {
     if (!recent) {
       return '尚无战斗记录，先完成一次主线挑战';
     }
-    const readonlyTag = recent.rewardGranted && recent.economyApplied
-      ? '首通奖励已结算'
-      : !recent.rewardGranted && recent.readonlyEconomy && !recent.economyApplied
-        ? '无奖励记录'
-        : '记录待核验';
-    return `最近 ${recent.stageCode} · ${recent.result} · ${readonlyTag}`;
+    // 2026-09-25 占位清理:不再露出关卡代码/英文结果/"无奖励记录"等内部口径。
+    const rewardTag = recent.rewardGranted && recent.economyApplied ? ' · 已领首通奖励' : '';
+    return `最近 ${this.stageFloorLabel(recent.stageCode)} · ${this.battleResultLabel(recent.result)}${rewardTag}`;
+  }
+
+  private goalStageLine(stage: LobbyAdventureStageVO): string {
+    return `${stage.stageName} · ${this.stageFloorLabel(stage.stageCode)}`;
+  }
+
+  /** 关卡在爬塔里的层数(与挂机区同源);限时副本/查不到时给通用称呼,不露关卡代码。 */
+  private stageFloorLabel(stageCode: string): string {
+    const floor = this.resolveIdleTowerFloor(stageCode);
+    if (floor > 0) {
+      return `第 ${floor} 层`;
+    }
+    return /^DAILY_/i.test(stageCode.trim()) ? '限时副本' : '主线关卡';
+  }
+
+  /** 给其它面板(如"更多"里的最近战报)用的关卡称呼:爬塔关带"深渊爬塔"前缀。 */
+  stageDisplayLabel(stageCode: string): string {
+    const label = this.stageFloorLabel(stageCode);
+    return label.startsWith('第 ') ? `深渊爬塔 ${label}` : label;
+  }
+
+  private battleResultLabel(result: string): string {
+    return result === 'WIN' ? '胜利' : result === 'LOSE' ? '失败' : result === 'ABORT' ? '中途退出' : '已结束';
   }
 
   private normalizeMainStageCode(value: string | null | undefined): string | null {

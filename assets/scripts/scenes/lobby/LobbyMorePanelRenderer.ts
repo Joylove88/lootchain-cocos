@@ -16,6 +16,8 @@ import type { PlayerMailVO } from '../../types/QuestTypes';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 
 export interface LobbyMorePanelHost {
+  /** 最近战报里的关卡称呼(深渊爬塔第 N 层 / 限时副本),不露关卡代码。 */
+  lobbyStageDisplayLabel?(stageCode: string): string;
   createUiNode(name: string): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
@@ -117,7 +119,7 @@ export class LobbyMorePanelRenderer {
       for (const battle of battles) {
         const win = battle.result === 'WIN';
         const when = (battle.recordedTime ?? '').replace('T', ' ').slice(5, 16);
-        const line = `${when}  ${battle.stageCode}`;
+        const line = `${when}  ${this.host.lobbyStageDisplayLabel?.(battle.stageCode) ?? '主线关卡'}`;
         const row = this.host.addChildLabel(panel, `BattleRow_${battle.battleNo}`, line, -panelWidth / 2 + 42 * scale, cursor, 16 * scale, rgba(196, 178, 140, 225), new Size(panelWidth * 0.62, 22 * scale), HorizontalTextAlignment.LEFT);
         row.overflow = Label.Overflow.SHRINK;
         const verdict = this.host.addChildLabel(panel, `BattleVerdict_${battle.battleNo}`, win ? '胜利' : '失败', panelWidth / 2 - 60 * scale, cursor, 16 * scale, win ? rgba(150, 226, 130, 235) : rgba(240, 120, 100, 235), new Size(60 * scale, 22 * scale));
@@ -159,7 +161,7 @@ export class LobbyMorePanelRenderer {
     }
 
     // ── 客服占位 ──
-    const support = this.host.addChildLabel(panel, 'SupportNote', '客服与反馈:support@lootchain.game(上线后接入工单)', 0, -panelHeight / 2 + 26 * scale, 13 * scale, rgba(140, 124, 96, 200), new Size(panelWidth - 60 * scale, 19 * scale));
+    const support = this.host.addChildLabel(panel, 'SupportNote', '客服与反馈:support@lootchain.game', 0, -panelHeight / 2 + 26 * scale, 13 * scale, rgba(140, 124, 96, 200), new Size(panelWidth - 60 * scale, 19 * scale));
     support.overflow = Label.Overflow.SHRINK;
   }
 

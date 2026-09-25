@@ -433,24 +433,19 @@ export class LoginRenderer {
     node.setPosition(new Vec3(x, y, 0));
     node.addComponent(UITransform).setContentSize(new Size(railWidth, railHeight));
     const button = node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.host.setStatus('该入口为登录页占位，当前阶段暂未开放。'));
-    if (isLanguageButton) {
-      node.off(Button.EventType.CLICK);
-      node.on(Button.EventType.CLICK, () => this.host.openLoginLanguageDialog());
-    }
-    if (asset.path.includes('side_btn_repair')) {
-      // 修复:清掉本地资源缓存(Service Worker + Cache Storage + 预载标记)后重新加载,解决素材错乱/更新不生效。
-      node.off(Button.EventType.CLICK);
-      node.on(Button.EventType.CLICK, () => {
+    // 右栏只剩"语言"与"修复"(2026-09-25 占位清理);修复=清掉本地资源缓存(Service Worker + Cache Storage + 预载标记)后重新加载。
+    const onClick = isLanguageButton
+      ? (): void => this.host.openLoginLanguageDialog()
+      : (): void => {
         this.host.setStatus('正在清理本地缓存并重新加载…');
         void resetAssetOfflineCache().then(() => window.location.reload());
-      });
-    }
+      };
+    node.on(Button.EventType.CLICK, onClick);
     this.host.applyImageButtonFeedback(node);
 
     if (!this.host.addSprite('Icon', asset.path, 0, 15 * layout.uiScale, iconSize, iconSize, node)) {
-      // 图标未加载完成时画一个菱形占位，避免按钮区域空白不可见。
-      this.addDiamondButton('', x, y + 14, () => this.host.setStatus('该入口为登录页占位，当前阶段暂未开放。'), layout);
+      // 图标未加载完成时画一个菱形,避免按钮区域空白不可见;点击走同一动作。
+      this.addDiamondButton('', x, y + 14, onClick, layout);
     }
     this.host.addChildLabel(node, 'Label', label, 0, -27 * layout.uiScale, Math.max(13, 18 * layout.uiScale), rgba(229, 196, 122), new Size(72 * layout.uiScale, 28 * layout.uiScale));
     return button;

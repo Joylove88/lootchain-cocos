@@ -3,8 +3,8 @@ import type { LobbyNoticePanelState, LobbyNoticeVO } from '../../types/LobbyNoti
 const FALLBACK_NOTICE: LobbyNoticeVO = {
   noticeNo: 'local-lobby-preview',
   noticeType: 'lobby',
-  title: '大厅公告占位',
-  content: '服务端公告暂不可用时，大厅会保留本地只读说明。该面板不会触发玩法、资源或账号状态变更。',
+  title: '公告暂时无法读取',
+  content: '网络不太稳定，公告没能读取成功。请稍后关闭本页重新打开。',
   priority: 0,
   startTime: null,
   endTime: null,

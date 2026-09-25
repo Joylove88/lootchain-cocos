@@ -549,7 +549,7 @@ export class LobbyBagPanelRenderer {
     }
 
     // 底部说明与刷新移入板内(不遮下边框)。
-    const note = this.host.addChildLabel(grid, 'LobbyBagBoundaryNote', '当前背包只读展示道具与来源，不提供使用、出售、兑换、领取或资源变更入口。', 0, -height / 2 + height * 0.155, 16 * scale, rgba(167, 146, 105), new Size(width - width * 0.14, 22 * scale));
+    const note = this.host.addChildLabel(grid, 'LobbyBagBoundaryNote', '点击道具查看详情、获取途径,可使用的道具可直接使用或合成。', 0, -height / 2 + height * 0.155, 16 * scale, rgba(167, 146, 105), new Size(width - width * 0.14, 22 * scale));
     note.overflow = Label.Overflow.SHRINK;
     const reload = this.addFooterButton(grid, 'LobbyBagReloadButton', state.loading ? '读取中' : '刷新', 0, -height / 2 + height * 0.095, 150 * scale, 46 * scale, scale, !state.loading);
     reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyBag(), this);
@@ -808,7 +808,7 @@ export class LobbyBagPanelRenderer {
       platesBottom = rowY - sourceRowHeight / 2;
     });
 
-    // 操作按钮 2×2:紧跟途径区(留 34px 间距),行距固定 15px;使用/合成/分享只读禁用,来源接查看来源。
+    // 操作按钮:使用/合成一行,来源居中第二行(2026-09-25 占位清理:分享与出售未实装,先下架)。
     const buttonWidth = contentWidth * 0.485;
     const buttonHeight = budgetButtonHeight;
     const buttonLeftX = -contentWidth * 0.253;
@@ -837,17 +837,9 @@ export class LobbyBagPanelRenderer {
     if (canCompose) {
       composeButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagComposeDialog(item.itemCode), this);
     }
-    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, buttonLeftX, buttonRow2Y, buttonWidth, buttonHeight, scale, !state.sourceLoading);
+    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, 0, buttonRow2Y, buttonWidth, buttonHeight, scale, !state.sourceLoading);
     sourceButton.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
-    this.addDetailActionButton(detail, 'LobbyBagShareDisabled', '分享', BAG_AI_OP_ICON_SHARE_ASSET, buttonRightX, buttonRow2Y, buttonWidth, buttonHeight, scale, false);
-    // 底部出售按钮(bag_button_crimson 深红宽按钮):上移进框内不遮底饰;出售仍未开放(只读边界)。
-    const sellHeight = budgetSellHeight;
-    const sellY = Math.max(-height / 2 + height * 0.13, buttonRow2Y - buttonHeight / 2 - 18 * scale - sellHeight / 2);
-    const disabled = this.addDetailDisabledSellButton(detail, 'LobbyBagDisabledAction', `出售 ${formatMoney(item.sellGold)} 金币 · 未开放`, 0, sellY, contentWidth * 0.8, sellHeight, scale);
-    const disabledButton = disabled.getComponent(Button);
-    if (disabledButton) {
-      disabledButton.interactable = false;
-    }
+    // 出售:后端 /bag/sell 已有但未进 PhaseGate 白名单、也无幂等,开放属经济口径决策,待拍板后再接(按钮样式见 git 历史 addDetailDisabledSellButton)。
     const composeState = this.host.currentLobbyBagComposeState();
     if (composeState.itemCode === item.itemCode) {
       this.renderComposeDialog(detail.parent ?? detail, item, composeState.times, scale);
@@ -1116,30 +1108,6 @@ export class LobbyBagPanelRenderer {
     const label = this.host.addChildLabel(button, `${name}Label`, text, art ? width * 0.135 : 0, 0, 20 * scale, enabled ? rgba(255, 240, 200) : rgba(147, 134, 111), new Size(art ? width * 0.56 : width - 14 * scale, height - 6 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
-    return button;
-  }
-
-  private addDetailDisabledSellButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number): Node {
-    const button = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    // 深红宽按钮整图绘制;轻度压暗表达未开放,不用乘色改素材色相。
-    const art = this.host.addSprite(`${name}Art`, BAG_AI_BUTTON_CRIMSON_ASSET, 0, 0, width, height, button);
-    if (art) {
-      const dimmed = art.node.addComponent(UIOpacity);
-      dimmed.opacity = 200;
-    } else {
-      const graphics = button.addComponent(Graphics);
-      graphics.fillColor = rgba(20, 18, 18, 126);
-      graphics.rect(-width / 2, -height / 2, width, height);
-      graphics.fill();
-      graphics.strokeColor = rgba(107, 91, 66, 130);
-      graphics.stroke();
-    }
-    const component = button.addComponent(Button);
-    component.interactable = false;
-    // 深红宽按钮左右饰对称,文字直接居中。
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 20 * scale, art ? rgba(255, 236, 190) : rgba(178, 156, 128), new Size(width * 0.72, height - 6 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, true);
     return button;
   }
 

@@ -5427,6 +5427,14 @@ export class LootChainGameRoot extends Component {
 
   // ===== 挂机收益闭环(服务端权威计费) =====
 
+  private currentLobbyTowerFloor(): number {
+    return this.lobbyHudRenderer.currentTowerFloor();
+  }
+
+  private lobbyStageDisplayLabel(stageCode: string): string {
+    return this.lobbyHudRenderer.stageDisplayLabel(stageCode);
+  }
+
   private currentIdleSummary(): PlayerIdleSummaryVO | null {
     return this.idleSummary;
   }

@@ -17,7 +17,7 @@ import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/Lob
 import { safeText } from '../UiTextFormatter';
 import { C1812_BUTTON_DANGER_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
 import { BAG_AI_BUTTON_CRIMSON_ASSET } from './LobbyBagPanelRenderer';
-import { rgba, type UiLayout } from './LobbyHudTypes';
+import { LOBBY_C1812_RESOURCE_ICON_ASSETS, rgba, type UiLayout } from './LobbyHudTypes';
 import {
   isBattleUnitSpineDataAsset,
   patchBattleUnitSpineRuntimeEnums,
@@ -367,6 +367,9 @@ export class LobbyIdleStageRenderer {
     const fadeTo = (value: number, duration: number): void => {
       tween(opacity).to(duration, { opacity: value }).start();
     };
+    // 每只怪两次倒下之间的真实间隔,用于把服务端挂机产出(金币/时)折算成每次掉落的数额;不足 1 金币的零头累积到下次。
+    let lastKillAt = Date.now();
+    let goldCarry = 0;
     const cycle = (): void => {
       if (!monster.isValid) {
         return;
@@ -387,7 +390,15 @@ export class LobbyIdleStageRenderer {
           if (!monster.isValid) {
             return;
           }
-          this.spawnIdleLoot(stage, homeX, groundY + 40 * scale, scale);
+          const now = Date.now();
+          const summary = this.host.currentIdleSummary?.() ?? null;
+          if (summary) {
+            goldCarry += (summary.goldPerHour / Math.max(1, IDLE_MONSTER_SPINES.length)) * ((now - lastKillAt) / 1000) / 3600;
+            const whole = Math.floor(goldCarry);
+            goldCarry -= whole;
+            this.spawnIdleLoot(stage, homeX, groundY + 40 * scale, scale, whole);
+          }
+          lastKillAt = now;
           if (names?.death) {
             playAnimation(names.death, false);
           } else {
@@ -426,13 +437,17 @@ export class LobbyIdleStageRenderer {
     };
   }
 
-  // 掉落飘字(预览数值,不写资源)。
-  private spawnIdleLoot(parent: Node, x: number, y: number, scale: number): void {
-    const amount = 40 + Math.floor(Math.random() * 120);
-    const label = this.host.addChildLabel(parent, 'LobbyIdleLootFloat', `+${amount} 金币(预览)`, x, y, 20 * scale, rgba(255, 224, 128), new Size(260 * scale, 28 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, true);
-    const node = label.node;
+  // 掉落飘字(纯表现,不写资源):金币图标上飘;数额 = 服务端挂机产出(金币/时)按怪物数与间隔折算的整数部分,各怪合计≈真实产出。
+  private spawnIdleLoot(parent: Node, x: number, y: number, scale: number, amount: number): void {
+    const iconSize = 30 * scale;
+    const node = this.host.addChildPlainNode(parent, 'LobbyIdleLootFloat', x, y, 200 * scale, iconSize);
+    const hasAmount = amount >= 1;
+    this.host.addSprite('Coin', LOBBY_C1812_RESOURCE_ICON_ASSETS.coin.path, hasAmount ? -30 * scale : 0, 0, iconSize, iconSize, node);
+    if (hasAmount) {
+      const label = this.host.addChildLabel(node, 'Amount', `+${amount.toLocaleString('en-US')}`, 26 * scale, 0, 20 * scale, rgba(255, 224, 128), new Size(100 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      label.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(label, scale, true);
+    }
     const opacity = node.addComponent(UIOpacity);
     opacity.opacity = 235;
     tween(node)
@@ -463,7 +478,7 @@ export class LobbyIdleStageRenderer {
     graphics.lineWidth = Math.max(1, 1.1 * scale);
     graphics.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 9 * scale);
     graphics.stroke();
-    const title = this.host.addChildLabel(panel, 'LobbyIdleRewardTitle', summary ? '挂机收益' : '挂机收益(预览)', 0, panelHeight / 2 - 18 * scale, 18 * scale, rgba(244, 214, 150), new Size(panelWidth - 20 * scale, 24 * scale));
+    const title = this.host.addChildLabel(panel, 'LobbyIdleRewardTitle', '挂机收益', 0, panelHeight / 2 - 18 * scale, 18 * scale, rgba(244, 214, 150), new Size(panelWidth - 20 * scale, 24 * scale));
     title.overflow = Label.Overflow.SHRINK;
     graphics.strokeColor = rgba(196, 150, 76, 120);
     graphics.moveTo(-panelWidth / 2 + 12 * scale, panelHeight / 2 - 32 * scale);
@@ -477,8 +492,6 @@ export class LobbyIdleStageRenderer {
         `累计  ${formatIdleDuration(summary.accruedSeconds)} / ${formatIdleDuration(summary.capSeconds)}`,
       ]
       : [
-        `预计金币  ${(120 + floor * 30).toLocaleString('en-US')} / 时`,
-        `英雄经验书掉落随层数提升`,
         `挂机数据同步中…`,
       ];
     rows.forEach((row, index) => {

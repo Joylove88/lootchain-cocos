@@ -45,9 +45,11 @@ export interface LobbyProfileDialogHost {
   /** 退出登录/切换账号(2026-09-05):吊销 token+清本地会话+回登录页。 */
   logoutToLoginPage(): void;
   setStatus(text: string): void;
+  /** 爬塔层数与挂机产出(与大厅挂机区同源,2026-09-25 占位清理:资料页不再显示"未开放")。 */
+  currentLobbyTowerFloor?(): number;
+  currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
 }
 
-const LOBBY_PROFILE_SERVER_NAME = '本地开发服';
 const LOBBY_PROFILE_PLACEHOLDER = '-';
 const LOBBY_PROFILE_MOTTO = '—— 无畏前行,书写属于自己的传说 ——';
 
@@ -81,10 +83,8 @@ const PROFILE_ROW_ICON: Record<string, string> = {
   登录方式: 'login_method',
   钱包绑定: 'wallet',
   钱包地址: 'wallet',
-  主线进度: 'main_progress',
-  深渊层数: 'abyss_floor',
-  公会: 'guild',
-  称号: 'title',
+  深渊爬塔: 'abyss_floor',
+  挂机产出: 'main_progress',
 };
 
 interface ProfileRowSpec {
@@ -276,26 +276,12 @@ export class LobbyProfileDialogRenderer {
     name.enableOutline = true;
     name.outlineColor = rgba(0, 0, 0, 200);
     name.outlineWidth = Math.max(1, 1.4 * scale);
-    // 昵称编辑图标紧跟昵称(按字数估宽;编辑尚未开放,点击提示)
-    const estimatedNameWidth = Math.min(textWidth - 40 * scale, Math.max(1, nameText.length) * nameSize * 0.98);
-    const editSize = (narrow ? 22 : 30) * scale;
-    const edit = this.host.addChildPlainNode(panel, 'LobbyProfileEditName', textLeft + estimatedNameWidth + 12 * scale + editSize / 2, avatarY + (narrow ? 24 : 58) * scale, editSize * 1.4, editSize * 1.4);
-    const editArt = this.host.addSprite('Art', PROFILE_ASSETS.editName, 0, 0, editSize, editSize, edit);
-    if (!editArt) {
-      const eg = edit.addComponent(Graphics);
-      eg.strokeColor = rgba(222, 186, 110, 230);
-      eg.lineWidth = Math.max(1, 1.6 * scale);
-      eg.roundRect(-editSize / 2, -editSize / 2, editSize, editSize, 4 * scale);
-      eg.stroke();
-    }
-    edit.addComponent(Button);
-    edit.on(Button.EventType.CLICK, () => this.host.setStatus('昵称修改即将开放。'), this);
-    this.host.applyImageButtonFeedback(edit, 1.08, 0.94);
+    // 2026-09-25 占位清理:改昵称没有后端接口,编辑图标先下架(做好接口再放回 PROFILE_ASSETS.editName)。
 
     const subline = this.host.addChildLabel(
       panel,
       'LobbyProfileSubline',
-      `UID ${profile.userId}   |   ${LOBBY_PROFILE_SERVER_NAME}`,
+      `UID ${profile.userId}`,
       textLeft,
       avatarY + (narrow ? -2 : 16) * scale,
       Math.max(10, (narrow ? 15 : 19) * scale),
@@ -360,12 +346,8 @@ export class LobbyProfileDialogRenderer {
         { label: '钱包地址', value: this.maskWalletAddress(profile.walletAddress), copyText: walletAddress || undefined },
       ],
       [
-        { label: '主线进度', value: '未开放' },
-        { label: '深渊层数', value: '未开放' },
-      ],
-      [
-        { label: '公会', value: '未加入' },
-        { label: '称号', value: '圣契旅者' },
+        { label: '深渊爬塔', value: this.profileTowerFloorText() },
+        { label: '挂机产出', value: this.profileIdleRateText() },
       ],
     ];
   }
@@ -578,12 +560,22 @@ export class LobbyProfileDialogRenderer {
     return maxHeroLevel == null ? LOBBY_PROFILE_PLACEHOLDER : `Lv.${maxHeroLevel}`;
   }
 
+  private profileTowerFloorText(): string {
+    const floor = this.host.currentLobbyTowerFloor?.() ?? 0;
+    return floor > 0 ? `第 ${floor} 层` : LOBBY_PROFILE_PLACEHOLDER;
+  }
+
+  private profileIdleRateText(): string {
+    const summary = this.host.currentIdleSummary?.() ?? null;
+    return summary ? `${this.host.formatInteger(summary.goldPerHour)} 金币/时` : LOBBY_PROFILE_PLACEHOLDER;
+  }
+
   private profileStatusText(profile: PlayerLobbyProfileVO): string {
     if (this.host.isLobbyProfileLoading()) {
       return '资料读取中...';
     }
     if (this.host.getLobbyProfileError()) {
-      return '资料接口暂不可用,已使用本地占位';
+      return '资料读取失败,请稍后重试';
     }
     return `账号状态:${profile.accountStatus}`;
   }
