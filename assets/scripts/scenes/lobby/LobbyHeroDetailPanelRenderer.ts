@@ -173,6 +173,19 @@ const HERO_DETAIL_SPINE_DISPLAY_PROFILES: Record<string, HeroSpineDisplayProfile
   Sphinx: HERO_DETAIL_IDLE_ONLY_PROFILE,
 };
 
+/** 觉醒消耗:hero_awaken_config 第 1 阶镜像(sql/05_hero_module.sql;服务器为唯一扣减方,这里只做展示与按钮置灰)。 */
+const AWAKEN_COST = { minStar: 10, fragments: 120, gold: 500000, awakenStone: 1, bossMark: 10 } as const;
+
+/** 觉醒材料数额:万以上用"万"缩写,避免 8,233,784 这类长数字挤出卡宽。 */
+function formatAwakenAmount(value: number): string {
+  const v = Math.max(0, Math.floor(value));
+  if (v >= 100000) {
+    const wan = v / 10000;
+    return `${wan >= 100 ? Math.floor(wan) : Math.floor(wan * 10) / 10}万`;
+  }
+  return v.toLocaleString('en-US');
+}
+
 export interface LobbyHeroDetailPanelHost {
   node: Node;
   currentLobbyHeroDetailHero(): LobbyHeroItemVO | null;
@@ -262,6 +275,9 @@ export class LobbyHeroDetailPanelRenderer {
   // 洗练弹窗局部刷新上下文:锁定切换/确认只重建弹窗节点,不整面板重渲染(避免背景 spine 动画重播)。
   private detailRenderContext: { panelGroup: Node; panelWidth: number; panelHeight: number; scale: number } | null = null;
   private refineDialogNode: Node | null = null;
+  /** 觉醒确认弹窗打开中的英雄(整页重绘后按它补开,不会被补图/刷新关掉)。 */
+  private awakenConfirmHeroId: number | null = null;
+  private awakenDialogNode: Node | null = null;
   /** 当前挂着的英雄立绘舞台(含 spine)及其复用键;整页重绘前由 stashArtStage() 摘下暂存,重绘时键一致就原样挂回。 */
   private artStageNode: Node | null = null;
   private artStageKey = '';
@@ -354,6 +370,14 @@ export class LobbyHeroDetailPanelRenderer {
     }
     if (this.host.currentLobbyHeroUltimateState().dialogOpen) {
       this.renderUltimateUpDialog(panelGroup, hero, panelWidth, panelHeight, scale);
+    }
+    this.awakenDialogNode = null;
+    if (this.awakenConfirmHeroId !== null) {
+      if (this.awakenConfirmHeroId === hero.id && this.isHeroAwakenable(hero)) {
+        this.renderAwakenDialog(panelGroup, hero, panelWidth, panelHeight, scale);
+      } else {
+        this.awakenConfirmHeroId = null;
+      }
     }
     if (this.host.currentLobbyHeroEquipState().dialogOpen) {
       this.renderEquipDialog(panelGroup, hero, panelWidth, panelHeight, scale);
@@ -1820,23 +1844,22 @@ export class LobbyHeroDetailPanelRenderer {
     const chipW = (width - sideInset * 2 - chipGap * (chips.length - 1)) / chips.length;
     chips.forEach((chip, index) => {
       const cx = -width / 2 + sideInset + chipW / 2 + index * (chipW + chipGap);
+      const awakenable = chip.label === '觉醒' && this.isHeroAwakenable(hero);
+      if (awakenable) {
+        // 2026-09-25 用户反馈"觉醒太不显眼,看不出是按钮":可觉醒时换成红金按钮素材 + 呼吸金光 + 红点。
+        this.renderAwakenChipButton(parent, hero, cx, growthY, chipW, chipH, scale);
+        return;
+      }
       const node = this.host.addChildPlainNode(parent, `LobbyHeroDetailGrowthChip_${index}`, cx, growthY, chipW, chipH);
       const g = node.addComponent(Graphics);
-      const awakenable = chip.label === '觉醒' && (hero.awakenStatus ?? 0) <= 0 && Math.trunc(hero.star || 1) >= 10;
-      g.fillColor = awakenable ? rgba(74, 34, 20, 235) : rgba(18, 15, 12, 200);
+      g.fillColor = rgba(18, 15, 12, 200);
       g.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
       g.fill();
-      g.strokeColor = awakenable ? rgba(244, 196, 96, 235) : rgba(136, 104, 58, 150);
-      g.lineWidth = (awakenable ? 2 : 1.5) * scale;
+      g.strokeColor = rgba(136, 104, 58, 150);
+      g.lineWidth = 1.5 * scale;
       g.stroke();
-      const label = this.host.addChildLabel(node, 'LobbyHeroDetailGrowthChipText', awakenable ? '觉醒  可觉醒！' : `${chip.label}  ${chip.value}`, 0, 0, 15 * scale, awakenable ? rgba(250, 226, 160) : rgba(226, 206, 158), new Size(chipW - 16 * scale, chipH - 6 * scale), HorizontalTextAlignment.CENTER);
+      const label = this.host.addChildLabel(node, 'LobbyHeroDetailGrowthChipText', `${chip.label}  ${chip.value}`, 0, 0, 15 * scale, rgba(226, 206, 158), new Size(chipW - 16 * scale, chipH - 6 * scale), HorizontalTextAlignment.CENTER);
       label.overflow = Label.Overflow.SHRINK;
-      if (awakenable) {
-        node.addComponent(Button);
-        this.applyPointerCursor(node);
-        node.on(Button.EventType.CLICK, () => this.showAwakenConfirm(parent, hero, scale), this);
-        this.host.applyImageButtonFeedback(node);
-      }
     });
     // 词条标题 + 洗练入口(有词条才显示;弹窗内锁定/确认)。
     const affixTitleY = growthY - chipH / 2 - 26 * scale;
@@ -2409,64 +2432,237 @@ export class LobbyHeroDetailPanelRenderer {
     this.host.applyImageButtonFeedback(cancel);
   }
 
-  // 觉醒确认弹窗:材料清单(hero_awaken_config 镜像)+ 确认/取消;服务器为唯一扣减方。
-  private showAwakenConfirm(parent: Node, hero: LobbyHeroItemVO, scale: number): void {
-    const overlay = this.host.addChildPlainNode(parent, 'LobbyHeroAwakenOverlay', 0, 0, 4000, 4000);
-    overlay.addComponent(BlockInputEvents);
-    const og = overlay.addComponent(Graphics);
-    og.fillColor = rgba(0, 0, 0, 158);
-    og.rect(-2000, -2000, 4000, 4000);
-    og.fill();
-    const w = 420 * scale;
-    const h = 300 * scale;
-    const dialog = this.host.addChildPlainNode(overlay, 'LobbyHeroAwakenDialog', 0, 0, w, h);
-    const g = dialog.addComponent(Graphics);
-    g.fillColor = rgba(12, 10, 9, 248);
-    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
-    g.fill();
-    g.strokeColor = rgba(214, 168, 82, 225);
-    g.lineWidth = 2 * scale;
-    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
-    g.stroke();
-    const title = this.host.addChildLabel(dialog, 'Title', `觉醒 · ${safeText(hero.heroName)}`, 0, h / 2 - 30 * scale, 24 * scale, rgba(240, 210, 140), new Size(w - 40 * scale, 30 * scale));
+  /** 可觉醒:未觉醒且满 10 星(hero_awaken_config 第 1 阶 min_star=10)。 */
+  private isHeroAwakenable(hero: LobbyHeroItemVO): boolean {
+    return (hero.awakenStatus ?? 0) <= 0 && Math.trunc(hero.star || 1) >= AWAKEN_COST.minStar;
+  }
+
+  /** 养成行里的"觉醒"按钮:红金按钮底图(btn_star_up)+ 背后呼吸金光 + 右上红点,一眼能看出可点。 */
+  private renderAwakenChipButton(parent: Node, hero: LobbyHeroItemVO, cx: number, cy: number, chipW: number, chipH: number, scale: number): void {
+    const btnH = chipH + 12 * scale;
+    const btnW = Math.min(chipW, btnH * (431 / 100));
+    const glow = this.host.addChildPlainNode(parent, 'LobbyHeroDetailAwakenGlow', cx, cy, btnW + 24 * scale, btnH + 18 * scale);
+    const gg = glow.addComponent(Graphics);
+    gg.fillColor = rgba(255, 196, 90, 70);
+    gg.roundRect(-(btnW + 20 * scale) / 2, -(btnH + 14 * scale) / 2, btnW + 20 * scale, btnH + 14 * scale, (btnH + 14 * scale) / 2);
+    gg.fill();
+    gg.strokeColor = rgba(255, 214, 120, 150);
+    gg.lineWidth = 2 * scale;
+    gg.stroke();
+    const glowOpacity = glow.addComponent(UIOpacity);
+    glowOpacity.opacity = 90;
+    tween(glowOpacity).repeatForever(tween<UIOpacity>().to(0.8, { opacity: 255 }).to(0.8, { opacity: 90 })).start();
+    const button = this.host.addChildPlainNode(parent, 'LobbyHeroDetailAwakenButton', cx, cy, btnW, btnH);
+    if (!this.host.addSprite('LobbyHeroDetailAwakenButtonArt', 'ui/hero/ai/btn_star_up/spriteFrame', 0, 0, btnW, btnH, button)) {
+      const bg = button.addComponent(Graphics);
+      bg.fillColor = rgba(128, 36, 26, 245);
+      bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, btnH / 2);
+      bg.fill();
+      bg.strokeColor = rgba(248, 204, 110, 240);
+      bg.lineWidth = 2 * scale;
+      bg.stroke();
+    }
+    const label = this.host.addChildLabel(button, 'LobbyHeroDetailAwakenButtonLabel', '✦ 觉 醒 ✦', 0, 1 * scale, 18 * scale, rgba(255, 238, 190), new Size(btnW - 36 * scale, btnH - 8 * scale));
+    label.isBold = true;
+    label.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(label, scale, true);
+    // 右上红点(与大厅入口红点同语义:有可操作的养成)。
+    const dot = this.host.addChildPlainNode(button, 'LobbyHeroDetailAwakenDot', btnW / 2 - 10 * scale, btnH / 2 - 6 * scale, 16 * scale, 16 * scale);
+    const dg = dot.addComponent(Graphics);
+    dg.fillColor = rgba(230, 52, 40, 255);
+    dg.circle(0, 0, 7 * scale);
+    dg.fill();
+    dg.strokeColor = rgba(255, 226, 180, 240);
+    dg.lineWidth = 1.5 * scale;
+    dg.stroke();
+    button.addComponent(Button);
+    this.applyPointerCursor(button);
+    button.on(Button.EventType.CLICK, () => this.openAwakenDialog(hero), this);
+    this.host.applyImageButtonFeedback(button, 1.05, 0.95);
+  }
+
+  private openAwakenDialog(hero: LobbyHeroItemVO): void {
+    this.awakenConfirmHeroId = hero.id;
+    const ctx = this.detailRenderContext;
+    if (ctx && this.isNodeAlive(ctx.panelGroup)) {
+      this.renderAwakenDialog(ctx.panelGroup, hero, ctx.panelWidth, ctx.panelHeight, ctx.scale);
+    }
+  }
+
+  private closeAwakenDialog(): void {
+    this.awakenConfirmHeroId = null;
+    if (this.awakenDialogNode && this.isNodeAlive(this.awakenDialogNode)) {
+      this.awakenDialogNode.destroy();
+    }
+    this.awakenDialogNode = null;
+  }
+
+  /**
+   * 觉醒确认弹窗(2026-09-25 美化,现有素材):洗练同款 refine_panel_bg 底板 + 标题饰线 + 右上金 X;
+   * 四格材料卡(背包格底图 + 物品图标 + 需求/持有,不足红字)+ 觉醒效果区 + 主/次按钮;材料不足时主按钮置灰。
+   * 挂在详情场景根(panelGroup)最后,遮罩盖住整页(名称牌/页签/返回键一起压暗)。服务器为唯一扣减方。
+   */
+  private renderAwakenDialog(panelGroup: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number, scale: number): void {
+    if (this.awakenDialogNode && this.isNodeAlive(this.awakenDialogNode)) {
+      this.awakenDialogNode.destroy();
+    }
+    const dim = this.host.addChildPlainNode(panelGroup, 'LobbyHeroAwakenDim', 0, 0, panelWidth, panelHeight);
+    this.awakenDialogNode = dim;
+    const dimGraphics = dim.addComponent(Graphics);
+    dimGraphics.fillColor = rgba(0, 0, 0, 178);
+    dimGraphics.rect(-panelWidth / 2 - 400, -panelHeight / 2 - 400, panelWidth + 800, panelHeight + 800);
+    dimGraphics.fill();
+    dim.addComponent(BlockInputEvents);
+
+    const w = Math.min(820 * scale, panelWidth - 60 * scale);
+    const h = w / (1448 / 1086);
+    const dialog = this.host.addChildPlainNode(dim, 'LobbyHeroAwakenDialog', 0, 0, w, h);
+    const base = dialog.addComponent(Graphics);
+    base.fillColor = rgba(12, 10, 9, 248);
+    base.rect(-w * 0.47, -h * 0.46, w * 0.94, h * 0.92);
+    base.fill();
+    if (!this.host.addSprite('LobbyHeroAwakenDialogBg', 'ui/hero/ai/refine_panel_bg/spriteFrame', 0, 0, w, h, dialog)) {
+      base.strokeColor = rgba(150, 112, 58, 220);
+      base.lineWidth = 2 * scale;
+      base.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
+      base.stroke();
+    }
+
+    // 标题 + 两侧饰线(与词条/开箱弹层同一套)。
+    const titleText = `觉醒 · ${safeText(hero.heroName)}`;
+    const titleSize = 30 * scale;
+    const titleY = h / 2 - 76 * scale;
+    const title = this.host.addChildLabel(dialog, 'LobbyHeroAwakenTitle', titleText, 0, titleY, titleSize, rgba(250, 222, 150), new Size(w * 0.56, 40 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    const lines = ['消耗：同名碎片 ×120 · 金币 500,000', '　　　觉醒石 ×1 · BOSS印记 ×10', '效果：大招等级上限提升 · 属性增强', '　　　解锁觉醒立绘与边框（后续版本）'];
-    lines.forEach((text, index) => {
-      const line = this.host.addChildLabel(dialog, `Line_${index}`, text, -w / 2 + 28 * scale, h / 2 - 72 * scale - index * 28 * scale, 17 * scale, rgba(222, 208, 178), new Size(w - 56 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
+    const titleHalf = Math.min(w * 0.28, Array.from(titleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0) / 2);
+    const dividerW = Math.min(130 * scale, w / 2 - titleHalf - 70 * scale);
+    if (dividerW >= 36 * scale) {
+      const dividerX = titleHalf + 18 * scale + dividerW / 2;
+      this.host.addSprite('LobbyHeroAwakenDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, titleY, dividerW, dividerW * (76 / 390), dialog);
+      this.host.addSprite('LobbyHeroAwakenDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerX, titleY, dividerW, dividerW * (73 / 392), dialog);
+    }
+    const closeSize = 44 * scale;
+    const close = this.host.addChildPlainNode(dialog, 'LobbyHeroAwakenClose', w / 2 - 60 * scale, titleY, closeSize, closeSize);
+    close.addComponent(Button);
+    close.on(Button.EventType.CLICK, () => this.closeAwakenDialog(), this);
+    this.host.applyImageButtonFeedback(close, 1.08, 0.94);
+    this.host.addSprite('LobbyHeroAwakenCloseArt', 'ui/common/ai/button_close/spriteFrame', 0, 0, closeSize, closeSize, close);
+
+    const sub = this.host.addChildLabel(dialog, 'LobbyHeroAwakenSub', `${Math.trunc(hero.star || 1)} 星已满足觉醒条件 · 消耗以下材料完成觉醒`, 0, titleY - 38 * scale, 18 * scale, rgba(206, 188, 150), new Size(w * 0.72, 24 * scale));
+    sub.overflow = Label.Overflow.SHRINK;
+
+    // 材料卡:同名碎片 / 金币 / 觉醒石 / BOSS印记(需求 = hero_awaken_config 第 1 阶镜像)。
+    const bag = this.host.currentLobbyBagState();
+    const held = (code: string): number => Number(bag.groups.flatMap((group) => group.items).find((entry) => (entry.itemCode || '').toUpperCase() === code)?.itemCount ?? 0);
+    const tier = (hero.rarity || '').toLowerCase();
+    const shardIcon = `ui/bag/ai/icon_shard_${['r', 'sr', 'ssr', 'ur'].includes(tier) ? tier : 'n'}/spriteFrame`;
+    const costs: Array<{ key: string; name: string; icon: string; need: number; have: number }> = [
+      { key: 'Shard', name: '同名碎片', icon: shardIcon, need: AWAKEN_COST.fragments, have: held(`HERO_FRAGMENT:${(hero.heroCode || '').toUpperCase()}`) },
+      { key: 'Gold', name: '金币', icon: 'ui/bag/ai/icon_gold/spriteFrame', need: AWAKEN_COST.gold, have: Number(this.host.currentLobbyProfile().gold) || 0 },
+      { key: 'Stone', name: '觉醒石', icon: 'ui/bag/ai/icon_awaken_stone/spriteFrame', need: AWAKEN_COST.awakenStone, have: held('AWAKEN_STONE') },
+      { key: 'Mark', name: 'BOSS印记', icon: 'ui/bag/ai/icon_boss_mark/spriteFrame', need: AWAKEN_COST.bossMark, have: held('BOSS_MARK') },
+    ];
+    const enough = costs.every((cost) => cost.have >= cost.need);
+    const rowW = w * 0.74;
+    const cardW = rowW / costs.length;
+    const slot = Math.min(84 * scale, cardW - 26 * scale);
+    const slotY = titleY - 110 * scale;
+    costs.forEach((cost, index) => {
+      const x = -rowW / 2 + cardW / 2 + index * cardW;
+      const ok = cost.have >= cost.need;
+      const card = this.host.addChildPlainNode(dialog, `LobbyHeroAwakenCost${cost.key}`, x, slotY, slot, slot);
+      if (!this.host.addSprite('Slot', 'ui/common/ai/bag_slot/spriteFrame', 0, 0, slot, slot, card)) {
+        const sg = card.addComponent(Graphics);
+        sg.fillColor = rgba(24, 20, 17, 240);
+        sg.roundRect(-slot / 2, -slot / 2, slot, slot, 8 * scale);
+        sg.fill();
+      }
+      this.host.addSprite('Icon', cost.icon, 0, 0, slot * 0.66, slot * 0.66, card);
+      if (!ok) {
+        const warn = card.addComponent(Graphics);
+        warn.strokeColor = rgba(226, 88, 72, 230);
+        warn.lineWidth = 2 * scale;
+        warn.roundRect(-slot / 2 + 2 * scale, -slot / 2 + 2 * scale, slot - 4 * scale, slot - 4 * scale, 8 * scale);
+        warn.stroke();
+      }
+      const name = this.host.addChildLabel(dialog, `LobbyHeroAwakenCostName${cost.key}`, cost.name, x, slotY - slot / 2 - 16 * scale, 17 * scale, rgba(222, 204, 166), new Size(cardW - 8 * scale, 22 * scale));
+      name.overflow = Label.Overflow.SHRINK;
+      const amountText = `${formatAwakenAmount(cost.have)} / ${formatAwakenAmount(cost.need)}`;
+      const amount = this.host.addChildLabel(dialog, `LobbyHeroAwakenCostAmount${cost.key}`, amountText, x, slotY - slot / 2 - 40 * scale, 17 * scale, ok ? rgba(240, 212, 140) : rgba(238, 104, 88), new Size(cardW - 8 * scale, 22 * scale));
+      amount.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(amount, scale, false);
+    });
+
+    // 觉醒效果区:暗底圆角框 + 三条金点条目。
+    const effTop = slotY - slot / 2 - 66 * scale;
+    const effW = w * 0.74;
+    const effects = [
+      `大招等级上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)}`,
+      '英雄属性增强',
+      '解锁觉醒立绘与边框(后续版本开放)',
+    ];
+    const effH = 38 * scale + effects.length * 26 * scale;
+    const effBox = this.host.addChildPlainNode(dialog, 'LobbyHeroAwakenEffects', 0, effTop - effH / 2, effW, effH);
+    const eg = effBox.addComponent(Graphics);
+    eg.fillColor = rgba(8, 7, 7, 190);
+    eg.roundRect(-effW / 2, -effH / 2, effW, effH, 8 * scale);
+    eg.fill();
+    eg.strokeColor = rgba(150, 116, 62, 150);
+    eg.lineWidth = 1.2 * scale;
+    eg.stroke();
+    const effTitle = this.host.addChildLabel(effBox, 'Title', '觉醒效果', -effW / 2 + 18 * scale, effH / 2 - 18 * scale, 18 * scale, rgba(246, 212, 132), new Size(effW - 36 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
+    effTitle.overflow = Label.Overflow.SHRINK;
+    effects.forEach((text, index) => {
+      const y = effH / 2 - 44 * scale - index * 26 * scale;
+      const dot = this.host.addChildPlainNode(effBox, `Dot_${index}`, -effW / 2 + 26 * scale, y, 10 * scale, 10 * scale);
+      const dg = dot.addComponent(Graphics);
+      dg.fillColor = rgba(236, 184, 88, 240);
+      dg.moveTo(0, 5 * scale);
+      dg.lineTo(5 * scale, 0);
+      dg.lineTo(0, -5 * scale);
+      dg.lineTo(-5 * scale, 0);
+      dg.close();
+      dg.fill();
+      const line = this.host.addChildLabel(effBox, `Line_${index}`, text, -effW / 2 + 40 * scale, y, 17 * scale, rgba(226, 212, 182), new Size(effW - 60 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
       line.overflow = Label.Overflow.SHRINK;
     });
-    const makeBtn = (name: string, x: number, text: string, primary: boolean, onClick: () => void) => {
-      const btnW = 150 * scale;
-      const btnH = 48 * scale;
-      const btn = this.host.addChildPlainNode(dialog, name, x, -h / 2 + 44 * scale, btnW, btnH);
-      const art = this.host.addSprite(`${name}Art`, primary ? C1812_BUTTON_PRIMARY_ASSET : C1812_BUTTON_RETURN_ASSET, 0, 0, btnW, btnH, btn);
-      if (!art) {
-        const bg = btn.addComponent(Graphics);
-        bg.fillColor = primary ? rgba(122, 42, 30, 235) : rgba(28, 24, 22, 230);
-        bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 9 * scale);
-        bg.fill();
-        bg.strokeColor = primary ? rgba(214, 152, 74, 215) : rgba(128, 108, 76, 190);
-        bg.lineWidth = 1.5 * scale;
-        bg.stroke();
-      }
-      const label = this.host.addChildLabel(btn, 'Label', text, 0, 0, 20 * scale, primary ? rgba(248, 226, 168) : rgba(214, 198, 168), new Size(btnW - 14 * scale, btnH - 8 * scale));
-      label.overflow = Label.Overflow.SHRINK;
-      btn.addComponent(Button);
-      btn.on(Button.EventType.CLICK, onClick, this);
-      this.host.applyImageButtonFeedback(btn);
-    };
-    makeBtn('AwakenConfirm', -w / 4, '觉 醒', true, () => {
-      if (overlay.isValid) {
-        overlay.destroy();
-      }
-      this.host.awakenLobbyHero(hero.id);
-    });
-    makeBtn('AwakenCancel', w / 4, '取消', false, () => {
-      if (overlay.isValid) {
-        overlay.destroy();
-      }
-    });
+
+    // 按钮:主"觉醒"(材料不足置灰并改字)+ 次"取消"。
+    const buttonW = 200 * scale;
+    const buttonH = buttonW * (211 / 740);
+    const buttonY = -h / 2 + 92 * scale;
+    const confirm = this.host.addChildPlainNode(dialog, 'LobbyHeroAwakenConfirm', -buttonW / 2 - 22 * scale, buttonY, buttonW, buttonH);
+    const confirmArt = enough ? 'ui/common/ai/button_primary/spriteFrame' : 'ui/common/ai/button_return_dis/spriteFrame';
+    if (!this.host.addSprite('Art', confirmArt, 0, 0, buttonW, buttonH, confirm)) {
+      const cg = confirm.addComponent(Graphics);
+      cg.fillColor = enough ? rgba(122, 42, 30, 235) : rgba(60, 52, 40, 220);
+      cg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      cg.fill();
+    }
+    const confirmLabel = this.host.addChildLabel(confirm, 'Label', enough ? '觉 醒' : '材料不足', 0, 1 * scale, 21 * scale, enough ? rgba(255, 240, 200) : rgba(190, 176, 150), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    confirmLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(confirmLabel, scale, true);
+    if (enough) {
+      confirm.addComponent(Button);
+      confirm.on(Button.EventType.CLICK, () => {
+        this.closeAwakenDialog();
+        this.host.awakenLobbyHero(hero.id);
+      }, this);
+      this.host.applyImageButtonFeedback(confirm, 1.035, 0.965);
+    }
+    const cancel = this.host.addChildPlainNode(dialog, 'LobbyHeroAwakenCancel', buttonW / 2 + 22 * scale, buttonY, buttonW, buttonH);
+    if (!this.host.addSprite('Art', 'ui/common/ai/button_return_dis/spriteFrame', 0, 0, buttonW, buttonH, cancel)) {
+      const xg = cancel.addComponent(Graphics);
+      xg.fillColor = rgba(28, 24, 22, 230);
+      xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
+      xg.fill();
+    }
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取 消', 0, 1 * scale, 21 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    cancelLabel.overflow = Label.Overflow.SHRINK;
+    cancel.addComponent(Button);
+    cancel.on(Button.EventType.CLICK, () => this.closeAwakenDialog(), this);
+    this.host.applyImageButtonFeedback(cancel, 1.035, 0.965);
   }
 
   // 区块标题(参考图2):通栏暗色半透明底框 + 左侧星徽 ic_section_star + 金字标题,左对齐。
