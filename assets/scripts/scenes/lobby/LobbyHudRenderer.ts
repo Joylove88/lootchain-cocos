@@ -655,7 +655,7 @@ export class LobbyHudRenderer {
     const y = layout.stageTop - margin - height / 2;
     const node = this.createSizedUiNode('LobbyMicroStamina', x, y, width, height);
     node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.showUnopenedFeature('体力', '当前仅展示体力数值，不开放购买、领取或消耗入口。'), this);
+    node.on(Button.EventType.CLICK, () => this.host.openLobbyShopDialog?.('stamina'), this);
     this.applyImageButtonFeedback(node, 1.015, 0.985);
     const graphics = node.addComponent(Graphics);
     this.drawMicroPanel(graphics, width, height, unit, rgba(2, 3, 5, 184), rgba(99, 190, 218, 150));
@@ -1446,7 +1446,6 @@ export class LobbyHudRenderer {
     graphics.fill();
     node.addComponent(Button);
     node.on(Node.EventType.MOUSE_ENTER, () => {
-      this.setStatus(`${label} 暂未开放。`);
       this.drawLobbyHotspotHover(node, width, height, scale, true);
     }, this);
     node.on(Node.EventType.MOUSE_LEAVE, () => this.drawLobbyHotspotHover(node, width, height, scale, false), this);
@@ -1457,7 +1456,6 @@ export class LobbyHudRenderer {
   private addLobbyHotspotPlaque(parent: Node, label: string, x: number, y: number, width: number, height: number, scale: number, hot: boolean): void {
     const node = this.addChildPlainNode(parent, `LobbyHotspot_${label}`, x, y, width, height);
     node.addComponent(Button);
-    node.on(Node.EventType.MOUSE_ENTER, () => this.setStatus(`${label} 暂未开放。`), this);
     node.on(Button.EventType.CLICK, () => this.activateLobbyHotspot(parent, label, x, y, scale), this);
     this.applyImageButtonFeedback(node, 1.035, 0.97);
     const graphics = node.addComponent(Graphics);
@@ -1567,6 +1565,14 @@ export class LobbyHudRenderer {
     if (label === '战役') {
       this.openLobbyBattleMapFromDungeonEntry(label);
       this.playLobbyClickEffect(parent, x, y, scale);
+      return;
+    }
+    if (label === '熔铸工坊') {
+      this.openLobbyForgePanel();
+      return;
+    }
+    if (label === '商店') {
+      this.host.openLobbyShopDialog?.('gold');
       return;
     }
     this.showUnopenedFeature(label, '场景玩法入口暂未开放；当前不会跳转到玩法页面，也不会调用玩法或经济接口。');
@@ -1986,16 +1992,17 @@ export class LobbyHudRenderer {
     // 小屏隐藏侧栏/底栏时，用本地快捷入口保留大厅模块的可达性。
     return [
       // 公告已收进"更多"(2026-09-06):紧凑档也改挂"更多"(设置/邮箱/公告/兑换码统一可达)。
+      // 2026-09-25 占位清理:每一项都接真实面板(任务/商店/锻造/副本按 label 分派),聊天未实装不再列出。
       { label: '更多', detail: '' },
-      { label: '召唤', detail: '召唤祭坛按后端卡池状态开放真实召唤；当前仅开放 draw，兑换和补发关闭。', gacha: true },
-      { label: '挑战', detail: '进入关卡地图后选择关卡；胜利后自动提交结算并发放奖励。', adventure: true },
-      { label: '爬塔', detail: '主线章节只读展示；当前不会进入战斗或产生进度写入。', adventure: true },
-      { label: '聊天', detail: '聊天系统暂未开放；当前仅展示本地欢迎语，不连接聊天服务，也不会发送消息。' },
-      { label: '图鉴', detail: '英雄图鉴只读预览；当前不会进入养成或改变英雄状态。', codex: true },
-      { label: '英雄', detail: '英雄队列展示已开放详情页升级；升星、觉醒仍关闭。', heroRoster: true },
-      { label: '背包', detail: '背包只读展示道具和来源；当前不会使用、出售或发放任何道具。', bag: true },
-      { label: '任务', detail: '任务系统暂未开放；当前不会领取奖励或写入任务进度。' },
-      { label: '商店', detail: '商店入口暂未开放；当前不会购买、兑换或消耗资源。' },
+      { label: '召唤', detail: '', gacha: true },
+      { label: '挑战', detail: '', adventure: true },
+      { label: '副本', detail: '' },
+      { label: '英雄', detail: '', heroRoster: true },
+      { label: '背包', detail: '', bag: true },
+      { label: '锻造', detail: '' },
+      { label: '图鉴', detail: '', codex: true },
+      { label: '任务', detail: '' },
+      { label: '商店', detail: '' },
     ];
   }
 
@@ -2003,7 +2010,7 @@ export class LobbyHudRenderer {
     entries: Array<{ label: string; detail: string; notice?: boolean; codex?: boolean; heroRoster?: boolean; bag?: boolean; adventure?: boolean; gacha?: boolean }>,
     layout: UiLayout,
   ): Array<{ label: string; detail: string; notice?: boolean; codex?: boolean; heroRoster?: boolean; bag?: boolean; adventure?: boolean; gacha?: boolean }> {
-    const visibleEntries = SHOW_LOBBY_WORLD_CHAT ? entries : entries.filter((_, index) => index !== 4);
+    const visibleEntries = entries;
     if (layout.stageHeight >= 300) {
       return visibleEntries;
     }
@@ -2065,6 +2072,22 @@ export class LobbyHudRenderer {
         this.openLobbyGachaScene();
         return;
       }
+      if (label === '副本') {
+        this.openLobbyDailyDungeonPanel();
+        return;
+      }
+      if (label === '锻造') {
+        this.openLobbyForgePanel();
+        return;
+      }
+      if (label === '任务') {
+        this.host.openLobbyQuestPanel?.();
+        return;
+      }
+      if (label === '商店') {
+        this.host.openLobbyShopDialog?.('gold');
+        return;
+      }
       this.showUnopenedFeature(label, detail);
     }, this);
     this.applyImageButtonFeedback(node, 1.025, 0.97);
@@ -2110,6 +2133,11 @@ export class LobbyHudRenderer {
       if (key === 'contract') {
         // 圣契 = 召唤:直达召唤(抽卡)场景。
         this.openLobbyGachaScene();
+        return;
+      }
+      if (key === 'shop') {
+        // 2026-09-25 占位清理:底部"商店"接货币商店(金币页;页内可切体力/钻石)。
+        this.host.openLobbyShopDialog?.('gold');
         return;
       }
       if (key === 'quest') {

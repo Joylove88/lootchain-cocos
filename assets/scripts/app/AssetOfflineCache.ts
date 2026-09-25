@@ -87,3 +87,32 @@ export async function ensureAssetServiceWorker(waitForControl: boolean): Promise
     setTimeout(() => done(!!navigator.serviceWorker.controller), SW_CONTROL_TIMEOUT_MS);
   });
 }
+
+/**
+ * 登录页"修复"(2026-09-25):注销本站 Service Worker、删除 lootchain-assets-* 缓存、清预载标记。
+ * 之后刷新页面会重新走一次首访预载(只拉登录+大厅),其余素材用到时重新下载。任何一步失败都跳过继续。
+ */
+export async function resetAssetOfflineCache(): Promise<void> {
+  try {
+    sys.localStorage.removeItem(PRELOAD_DONE_KEY);
+  } catch (error) {
+    void error;
+  }
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+  } catch (error) {
+    void error;
+  }
+  try {
+    if (typeof caches !== 'undefined') {
+      const names = await caches.keys();
+      await Promise.all(names.filter((name) => name.startsWith('lootchain-assets-')).map((name) => caches.delete(name)));
+    }
+  } catch (error) {
+    void error;
+  }
+}
+

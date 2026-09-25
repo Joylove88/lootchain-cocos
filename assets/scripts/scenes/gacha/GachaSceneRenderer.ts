@@ -2358,7 +2358,7 @@ export class GachaSceneRenderer {
     };
     makeButton('GachaResultSceneReturnButton', -width / 2 - 26 * scale, width * (165 / 695), C1812_BUTTON_RETURN_ASSET, '返回召唤', () => {
       this.host.closeGachaMockResultScene();
-      this.host.setStatus('已返回召唤页；兑换和补发入口仍未开放。');
+      this.host.setStatus('已返回召唤页。');
     });
     makeButton('GachaResultSceneTenButton', width / 2 + 26 * scale, width * (211 / 740), C1812_BUTTON_PRIMARY_ASSET, '召唤十次', () => {
       this.host.closeGachaMockResultScene();

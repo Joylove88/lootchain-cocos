@@ -556,18 +556,7 @@ export class LobbyIdleStageRenderer {
     this.host.applyImageButtonFeedback(button, 1.04, 0.96);
     button.on(Button.EventType.CLICK, () => this.host.openLobbyBattlePreviewPanel(stageCode), this);
 
-    // 自动挑战开关占位:结算闭环(第二期服务端接口)就绪前不开放。
-    const toggle = this.host.addChildPlainNode(parent, 'LobbyIdleAutoToggle', x, y - buttonHeight / 2 - 22 * scale, buttonWidth, 26 * scale);
-    const toggleGraphics = toggle.addComponent(Graphics);
-    toggleGraphics.fillColor = rgba(18, 16, 18, 190);
-    toggleGraphics.roundRect(-buttonWidth / 2, -13 * scale, buttonWidth, 26 * scale, 13 * scale);
-    toggleGraphics.fill();
-    const toggleLabel = this.host.addChildLabel(toggle, 'LobbyIdleAutoToggleLabel', '自动挑战 · 未开放', 0, 0, 16 * scale, rgba(146, 132, 104), new Size(buttonWidth - 16 * scale, 22 * scale));
-    toggleLabel.overflow = Label.Overflow.SHRINK;
-    toggle.addComponent(Button);
-    toggle.on(Button.EventType.CLICK, () => {
-      this.host.setStatus('自动挑战需要服务端结算接口(第二期);当前请手动挑战 BOSS 推进层数。');
-    }, this);
+    // 2026-09-25 占位清理:"自动挑战"开关(需第二期服务端结算)未实装,不再显示。
   }
 
   private loadSpineData(resourcePath: string, callback: (data: sp.SkeletonData | null) => void): void {

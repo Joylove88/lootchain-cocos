@@ -13,6 +13,7 @@ import {
   Vec3,
   VerticalTextAlignment,
 } from 'cc';
+import { resetAssetOfflineCache } from '../../app/AssetOfflineCache';
 import { lootChainI18n, type LootChainI18nKey } from '../../i18n/LootChainI18n';
 import { clamp, rgba, type UiLayout } from '../lobby/LobbyHudTypes';
 
@@ -67,7 +68,8 @@ const LOGIN_AI_ASSETS = {
 export const SHOW_LOGIN_BRAND = true;
 export const SHOW_RIGHT_RAIL = true;
 export const USE_IMAGE_LOGIN_BUTTON = true;
-export const SHOW_DIALOG_THIRD_PARTY_LOGIN = true;
+// 2026-09-25 占位清理:第三方登录未接入,账号登录弹窗里的 G/A/Discord/X 钮先隐藏。
+export const SHOW_DIALOG_THIRD_PARTY_LOGIN = false;
 
 export interface LoginRendererState {
   agreementAccepted: boolean;
@@ -338,9 +340,12 @@ export class LoginRenderer {
     const x = layout.safeRight - railWidth / 2;
     const yStart = layout.safeTop - Math.max(8 * layout.uiScale, layout.safeInsetY * 0.4) - railHeight / 2;
     const railGap = 84 * layout.uiScale;
-    LOGIN_UI_ASSETS.rightRail.forEach((asset, index) => {
-      this.addRailImageButton(asset, x, yStart - index * railGap, layout);
-    });
+    // 2026-09-25 占位清理:客服/公告未接入先不显示;只留"语言"与"修复"(清本地缓存重载)。
+    LOGIN_UI_ASSETS.rightRail
+      .filter((asset) => asset.path.includes('side_btn_prophecy') || asset.path.includes('side_btn_repair'))
+      .forEach((asset, index) => {
+        this.addRailImageButton(asset, x, yStart - index * railGap, layout);
+      });
   }
 
   private renderThirdPartyLogin(dividerY: number, socialY: number, layout: UiLayout, centerX: number, inner: number): void {
@@ -432,6 +437,14 @@ export class LoginRenderer {
     if (isLanguageButton) {
       node.off(Button.EventType.CLICK);
       node.on(Button.EventType.CLICK, () => this.host.openLoginLanguageDialog());
+    }
+    if (asset.path.includes('side_btn_repair')) {
+      // 修复:清掉本地资源缓存(Service Worker + Cache Storage + 预载标记)后重新加载,解决素材错乱/更新不生效。
+      node.off(Button.EventType.CLICK);
+      node.on(Button.EventType.CLICK, () => {
+        this.host.setStatus('正在清理本地缓存并重新加载…');
+        void resetAssetOfflineCache().then(() => window.location.reload());
+      });
     }
     this.host.applyImageButtonFeedback(node);
 

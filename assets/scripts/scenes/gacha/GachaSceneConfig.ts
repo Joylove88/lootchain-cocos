@@ -162,7 +162,7 @@ export const GACHA_MOCK_RESULT_TEN: GachaMockResultItem[] = [
 export const GACHA_RIGHT_ACTIONS: GachaActionItem[] = [
   { key: 'info', label: '概率保底', note: '概率与保底合并展示，只读取后端卡池配置。' },
   { key: 'record', label: '记录', note: '召唤记录将只读展示历史结果，不能补发或重抽。' },
-  { key: 'exchange', label: '兑换', note: '召唤积分兑换属于经济写入，当前阶段保持关闭。' },
+  // 2026-09-25 占位清理:"兑换"(召唤积分兑换)未实装,先不显示。
   { key: 'pool', label: '奖池内容', note: '展示当前卡池中的英雄与物品条目，不变更卡池。' },
 ];
 
