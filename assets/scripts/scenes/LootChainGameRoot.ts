@@ -4329,6 +4329,10 @@ export class LootChainGameRoot extends Component {
     if (!pool.locked && !pool.previewOnly && pool.drawEnabled === true) {
       void this.loadGachaPity(pool.poolCode ?? pool.id);
     }
+    // 主页"概率提升"卡要用卡池条目(UP 英雄),选中即拉详情,不必等打开奖池内容。
+    if (!pool.locked) {
+      void this.loadGachaPoolDetail(pool.poolCode ?? pool.id, true);
+    }
   }
 
   private openGachaActionScene(action: GachaActionKey): void {
@@ -4394,6 +4398,11 @@ export class LootChainGameRoot extends Component {
       const selectedPool = this.gachaSceneState.pools.find((pool) => pool.poolCode === selectedPoolCode || pool.id === selectedPoolCode);
       if (selectedPoolCode && selectedPool && !selectedPool.locked && !selectedPool.previewOnly && selectedPool.drawEnabled === true) {
         void this.loadGachaPity(selectedPoolCode);
+      }
+      // 首次进召唤页:默认选中的卡池也拉一次详情(主页"概率提升"卡用)。
+      const detailPoolCode = this.gachaSceneState.poolDetail?.pool?.poolCode;
+      if (selectedPoolCode && selectedPool && !selectedPool.locked && detailPoolCode !== selectedPoolCode) {
+        void this.loadGachaPoolDetail(selectedPoolCode);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

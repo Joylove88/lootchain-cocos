@@ -75,6 +75,8 @@ export interface GachaPoolItemVO {
   upFlag: number;
   limitedFlag: number;
   status: number;
+  /** 展示名(后端按英雄/道具/装备模板名下发,2026-09-26);缺省时回退编码。 */
+  rewardName?: string | null;
 }
 
 export interface GachaPoolPityConfigVO {

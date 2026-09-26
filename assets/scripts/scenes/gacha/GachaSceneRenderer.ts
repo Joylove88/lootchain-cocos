@@ -200,7 +200,7 @@ export class GachaSceneRenderer {
     const selectedPool = this.resolveSelectedPool(state);
     this.renderPoolRail(root, layout, scale, state);
     this.renderCenterStage(root, layout, scale, selectedPool, state);
-    this.renderRightPanel(root, layout, scale, selectedPool);
+    this.renderRightPanel(root, layout, scale, selectedPool, state);
     this.renderBottomSummonBar(root, layout, scale, selectedPool, state);
     this.renderActionModal(root, layout, scale, state);
   }
@@ -506,23 +506,29 @@ export class GachaSceneRenderer {
 
   private actionSubtitle(action: GachaActionKey, state: GachaSceneState, selectedPool: GachaPreviewPool): string {
     if (action === 'record') {
-      return state.logsLoading ? '正在读取召唤记录...' : state.logsError || '只读读取当前玩家召唤记录，不提供补发或重抽。';
+      return state.logsLoading ? '正在读取召唤记录...' : state.logsError || '最近的召唤记录';
     }
     if (state.poolDetailLoading) {
-      return '正在读取卡池展示配置...';
+      return '正在读取卡池信息...';
     }
     if (state.poolDetailError) {
-      return `卡池详情读取失败：${safeText(state.poolDetailError)}`;
+      return `卡池信息读取失败：${safeText(state.poolDetailError)}`;
     }
     if (action === 'exchange') {
       return selectedPool.exchangeNote ?? '兑换涉及经济写入，当前阶段仅展示规则说明并保持关闭。';
     }
-    return selectedPool.noticeText ?? '信息来自后端卡池配置，只读展示。';
+    return selectedPool.noticeText ?? '';
   }
 
   private actionRows(action: GachaActionKey, state: GachaSceneState, selectedPool: GachaPreviewPool): string[] {
     if (action === 'record') {
-      return state.logs.slice(0, 14).map((log) => `${formatDateTime(log.createTime)}  ${log.drawCount}抽  ${safeText(log.poolCode)}  消耗 ${compactValue(log.costAmount)} ${safeText(log.costCode)}  ${safeText(log.drawNo)}`);
+      // 记录行:时间 + 卡池名 + 单抽/十连 + 消耗(货币/券名),不露卡池编码与单号。
+      const poolTitles = new Map(state.pools.map((pool) => [pool.poolCode ?? pool.id, pool.title]));
+      return state.logs.slice(0, 14).map((log) => {
+        const amount = Number(log.costAmount ?? 0);
+        const cost = amount > 0 ? `消耗 ${compactValue(log.costAmount)} ${gachaCostLabel(log.costCode)}` : '免费';
+        return `${formatDateTime(log.createTime)}  ${safeText(poolTitles.get(log.poolCode) ?? '召唤')}  ${log.drawCount >= 10 ? '十连' : `${log.drawCount} 抽`}  ${cost}`;
+      });
     }
     const detail = state.poolDetail;
     if (!detail) {
@@ -539,7 +545,7 @@ export class GachaSceneRenderer {
         ? [`保底说明：${safeText(selectedPool.guaranteeNote)}`]
         : detail.pityConfigs
           .filter((pity) => pity.status === 1 && activeRateRarities.has(safeText(pity.rarity)))
-          .map((pity) => `保底 ${safeText(pity.rarity)}：${pity.pityCount} 抽，重置 ${safeText(pity.resetRarity || '-')}`);
+          .map((pity) => `${safeText(pity.rarity)} 保底：${pity.pityCount} 抽必得`);
       const currentRows = state.pity.filter((pity) => activeRateRarities.has(safeText(pity.rarity))).map((pity) => {
         const left = Math.max(0, Number(pity.pityCount) - Number(pity.counter));
         return `当前 ${safeText(pity.rarity)} 保底：已 ${pity.counter} / ${pity.pityCount}，还需 ${left} 抽`;
@@ -556,9 +562,13 @@ export class GachaSceneRenderer {
         .map((config) => `碎片来源：重复 ${safeText(config.rarity)} 英雄转化 ${compactValue(config.fragmentCount)} 碎片`);
       return [...exchangeNote, ...duplicateRows, '当前不开放兑换、补发、碎片消耗或资源变更接口。'];
     }
+    // 奖池内容(2026-09-26):按稀有度从高到低、UP 在前;显示名称与单抽概率(稀有度概率 × 档内权重占比),不露编码与权重。
+    const odds = gachaItemOdds(detail);
     return detail.items
       .filter((item) => item.status === 1)
-      .map((item) => `${safeText(item.rarity)}  ${rewardTypeLabel(item.rewardType)}  ${safeText(item.rewardCode)}  权重 ${item.weight}${item.upFlag === 1 ? '  UP' : ''}${item.limitedFlag === 1 ? '  限定' : ''}`);
+      .slice()
+      .sort((a, b) => gachaRarityRank(b.rarity) - gachaRarityRank(a.rarity) || (b.upFlag ?? 0) - (a.upFlag ?? 0) || b.weight - a.weight)
+      .map((item) => `${safeText(item.rarity)}  ${rewardTypeLabel(item.rewardType)}  ${safeText(item.rewardName || item.rewardCode)}  ${formatOddsPercent(odds.get(item.id) ?? 0)}${item.upFlag === 1 ? '  UP' : ''}${item.limitedFlag === 1 ? '  限定' : ''}`);
   }
 
   private renderActionRows(parent: Node, width: number, height: number, scale: number, rows: string[], action: GachaActionKey): void {
@@ -1247,7 +1257,7 @@ export class GachaSceneRenderer {
     return `再召唤 ${left} 次必得 ${rarityText}`;
   }
 
-  private renderRightPanel(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool): void {
+  private renderRightPanel(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool, state: GachaSceneState): void {
     const actionSize = 62 * scale;
     const gap = 22 * scale;
     const totalHeight = GACHA_RIGHT_ACTIONS.length * actionSize + (GACHA_RIGHT_ACTIONS.length - 1) * gap;
@@ -1257,7 +1267,7 @@ export class GachaSceneRenderer {
       this.renderActionButton(parent, action.key, action.label, action.note, x, cursorY, actionSize, scale);
       cursorY -= actionSize + gap;
     }
-    this.renderUpPreview(parent, layout, scale);
+    this.renderUpPreview(parent, layout, scale, selectedPool, state);
   }
 
   private renderActionButton(parent: Node, key: GachaActionKey, label: string, note: string, x: number, y: number, size: number, scale: number): void {
@@ -1340,17 +1350,39 @@ export class GachaSceneRenderer {
     }));
   }
 
-  private renderUpPreview(parent: Node, layout: UiLayout, scale: number): void {
-    const width = 238 * scale;
-    const height = 132 * scale;
+  /** 概率提升卡(2026-09-26 接真实数据):当前卡池的 UP 英雄按稀有度分行列出;没有 UP 的卡池不显示。 */
+  private renderUpPreview(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool, state: GachaSceneState): void {
+    const detail = state.poolDetail;
+    if (!detail || (selectedPool.poolCode && detail.pool?.poolCode && detail.pool.poolCode !== selectedPool.poolCode)) {
+      return;
+    }
+    const upItems = detail.items.filter((item) => item.status === 1 && item.upFlag === 1 && (item.rewardType || '').toUpperCase() === 'HERO');
+    if (upItems.length === 0) {
+      return;
+    }
+    const byRarity = new Map<string, string[]>();
+    upItems
+      .slice()
+      .sort((a, b) => gachaRarityRank(b.rarity) - gachaRarityRank(a.rarity))
+      .forEach((item) => {
+        const key = safeText(item.rarity);
+        byRarity.set(key, [...(byRarity.get(key) ?? []), safeText(item.rewardName || item.rewardCode)]);
+      });
+    const lines = Array.from(byRarity.entries()).slice(0, 3).map(([rarity, names]) => `${rarity}  ${names.join('、')}`);
+    // 两名 UR 全名约 18 字,卡宽按此留足,避免 SHRINK 把字缩太小。
+    const width = 360 * scale;
+    const lineHeight = 26 * scale;
+    const height = 56 * scale + lines.length * lineHeight;
     const x = layout.stageRight - width / 2 - 22 * scale;
     const y = layout.stageBottom + height / 2 + 26 * scale;
     const panel = this.host.addChildBeveledPanelNode(parent, 'GachaUpPreviewPanel', x, y, width, height, rgba(8, 7, 8, 206), rgba(184, 134, 57, 184), 12 * scale);
-    const title = this.host.addChildLabel(panel, 'GachaUpTitle', '概率提升预览', 0, 31 * scale, 21 * scale, rgba(245, 213, 139), new Size(width - 28 * scale, 30 * scale));
+    const title = this.host.addChildLabel(panel, 'GachaUpTitle', '概率提升', 0, height / 2 - 24 * scale, 21 * scale, rgba(245, 213, 139), new Size(width - 28 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    const line = this.host.addChildLabel(panel, 'GachaUpLine', '限定英雄卡池规则冻结后接入', 0, -3 * scale, 17 * scale, rgba(201, 170, 109), new Size(width - 32 * scale, 44 * scale));
-    line.overflow = Label.Overflow.SHRINK;
+    lines.forEach((text, index) => {
+      const line = this.host.addChildLabel(panel, `GachaUpLine_${index}`, text, 0, height / 2 - 56 * scale - index * lineHeight, 17 * scale, rgba(226, 196, 132), new Size(width - 28 * scale, lineHeight));
+      line.overflow = Label.Overflow.SHRINK;
+    });
   }
 
   private renderBottomSummonBar(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool, state: GachaSceneState): void {
@@ -2475,6 +2507,51 @@ function compactValue(value: unknown): string {
     return `${Math.floor(numberValue / 100) / 10}K`;
   }
   return Math.floor(numberValue).toLocaleString('en-US');
+}
+
+const GACHA_RARITY_RANK: Record<string, number> = { N: 0, R: 1, SR: 2, SSR: 3, UR: 4, EX: 5 };
+
+function gachaRarityRank(rarity: string | null | undefined): number {
+  return GACHA_RARITY_RANK[(rarity || '').toUpperCase()] ?? 0;
+}
+
+/** 每个条目的单抽概率(%)= 该稀有度概率 × 条目权重 / 同稀有度启用条目总权重。 */
+function gachaItemOdds(detail: GachaPoolDetailVO): Map<number, number> {
+  const rateByRarity = new Map(detail.rates.filter((rate) => rate.status === 1).map((rate) => [safeText(rate.rarity), Number(rate.rate ?? 0)]));
+  const active = detail.items.filter((item) => item.status === 1 && item.weight > 0);
+  const weightByRarity = new Map<string, number>();
+  active.forEach((item) => weightByRarity.set(safeText(item.rarity), (weightByRarity.get(safeText(item.rarity)) ?? 0) + item.weight));
+  const odds = new Map<number, number>();
+  active.forEach((item) => {
+    const rarity = safeText(item.rarity);
+    const total = weightByRarity.get(rarity) ?? 0;
+    const rate = rateByRarity.get(rarity) ?? 0;
+    odds.set(item.id, total > 0 && Number.isFinite(rate) ? (rate * 100 * item.weight) / total : 0);
+  });
+  return odds;
+}
+
+/** 概率显示:≥1% 保留两位、<1% 保留三位,去掉末尾 0。 */
+function formatOddsPercent(percent: number): string {
+  if (!Number.isFinite(percent) || percent <= 0) {
+    return '0%';
+  }
+  const digits = percent >= 1 ? 2 : 3;
+  return `${Number(percent.toFixed(digits))}%`;
+}
+
+/** 召唤消耗名称(记录行用)。 */
+function gachaCostLabel(costCode: string | null | undefined): string {
+  const code = (costCode || '').toUpperCase();
+  const labels: Record<string, string> = {
+    DIAMOND: '钻石',
+    BOUND_DIAMOND: '绑定钻石',
+    LIMITED_CONTRACT_TICKET: '限定契约券',
+    HERO_CONTRACT_TICKET: '英雄契约券',
+    NORMAL_CONTRACT_TICKET: '普通契约券',
+    EQUIP_GACHA_TICKET: '装备召唤券',
+  };
+  return labels[code] ?? '召唤道具';
 }
 
 function formatPercentValue(value: unknown): string {
