@@ -48,6 +48,8 @@ export interface LobbyAdventurePanelHost {
   openLobbyFormationPanel(stageCode?: string): void;
   openLobbyBattlePreviewPanel(stageCode: string): void;
   openLobbyHeroRosterPanel(): void;
+  /** 守卫水晶养成弹窗(docs/38)。 */
+  openGuardCrystalDialog(): void;
   closeLobbyAdventurePanel(): void;
   reloadLobbyAdventure(): void;
   createUiNode(name: string): Node;
@@ -223,6 +225,24 @@ export class LobbyAdventurePanelRenderer {
     }
     const formationLabel = this.host.addChildLabel(formationButton, 'LobbyAdventureFormationButtonLabel', action.label, 0, 0, 20 * scale, action.enabled ? rgba(245, 211, 123) : rgba(179, 150, 91), new Size(buttonWidth, 34 * scale));
     formationLabel.overflow = Label.Overflow.SHRINK;
+    // 守卫水晶养成入口(docs/38):挂在行动卡正上方,出战前顺手升水晶。
+    const crystalW = Math.min(200 * scale, cardWidth);
+    const crystalH = 44 * scale;
+    const crystalButton = this.host.addChildPlainNode(parent, 'LobbyAdventureGuardCrystalButton', card.position.x + cardWidth / 2 - crystalW / 2, card.position.y + cardHeight / 2 + crystalH / 2 + 10 * scale, crystalW, crystalH);
+    const cg = crystalButton.addComponent(Graphics);
+    cg.fillColor = rgba(12, 22, 36, 232);
+    cg.roundRect(-crystalW / 2, -crystalH / 2, crystalW, crystalH, crystalH / 2);
+    cg.fill();
+    cg.strokeColor = rgba(120, 190, 255, 220);
+    cg.lineWidth = Math.max(1, 1.6 * scale);
+    cg.roundRect(-crystalW / 2, -crystalH / 2, crystalW, crystalH, crystalH / 2);
+    cg.stroke();
+    this.host.addSprite('LobbyAdventureGuardCrystalIcon', 'ui/battle/ai/ghud_crystal_tower/spriteFrame', -crystalW / 2 + 24 * scale, 0, 17 * scale, 36 * scale, crystalButton);
+    const crystalLabel = this.host.addChildLabel(crystalButton, 'LobbyAdventureGuardCrystalLabel', '守卫水晶', 10 * scale, 0, 20 * scale, rgba(190, 230, 255), new Size(crystalW - 50 * scale, 30 * scale));
+    crystalLabel.overflow = Label.Overflow.SHRINK;
+    crystalButton.addComponent(Button);
+    crystalButton.on(Button.EventType.CLICK, () => this.host.openGuardCrystalDialog(), this);
+    this.host.applyImageButtonFeedback(crystalButton, 1.04, 0.96);
   }
 
   private renderCompactBody(parent: Node, width: number, height: number, scale: number, state: LobbyAdventurePanelState): void {

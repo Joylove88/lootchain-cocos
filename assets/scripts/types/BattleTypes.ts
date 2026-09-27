@@ -91,6 +91,8 @@ export interface PlayerBattleStartVO {
   expireTime: string;
   readonlyEconomy: boolean;
   guardrails: string[];
+  /** 开战时守卫水晶等级与效果快照(docs/38);旧服务端/旧会话没有该字段,按 1 级。 */
+  guardCrystal?: import('./GuardCrystalTypes').GuardCrystalEffectVO | null;
 }
 
 export interface PlayerBattleSettlementVO {

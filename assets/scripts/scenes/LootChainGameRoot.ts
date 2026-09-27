@@ -96,6 +96,7 @@ import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
+import { LobbyGuardCrystalDialogRenderer, type LobbyGuardCrystalDialogHost, type LobbyGuardCrystalDialogState } from './lobby/LobbyGuardCrystalDialogRenderer';
 
 /** 购买动效飞行图标数量档(2026-09-22 用户:不同包飞的量不同——少量/中量/大量,宝箱档最多)。 */
 type LobbyShopFlyVolume = 'few' | 'some' | 'many' | 'chest';
@@ -355,6 +356,9 @@ export class LootChainGameRoot extends Component {
   /** 货币商店弹窗(docs/33,2026-09-22):挂在当前视图之上的覆盖层,每次整页重绘后由 syncLobbyShopOverlay 重新挂回。 */
   private readonly lobbyShopDialogRenderer = new LobbyShopDialogRenderer(this as unknown as LobbyShopDialogHost);
   private lobbyShopDialog: LobbyShopDialogState | null = null;
+  /** 守卫水晶养成弹窗(docs/38)。 */
+  private lobbyGuardCrystalDialog: LobbyGuardCrystalDialogState | null = null;
+  private readonly lobbyGuardCrystalDialogRenderer = new LobbyGuardCrystalDialogRenderer(this as unknown as LobbyGuardCrystalDialogHost);
   /**
    * 等待回调到账的真实充值单(docs/34;2026-09-24 起同时跟踪全部未付款订单):
    * 玩家开了多个支付页、付的是其中任意一笔,都能立即刷新余额并飞钻石。弹窗关掉也继续轮询。
@@ -5133,8 +5137,111 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyShopDialog && this.isLobbyViewActive()) {
       this.lobbyShopDialogRenderer.render(this.resolveLayout());
     }
+    // 守卫水晶弹窗与商店同一套覆盖层生命周期(整页重绘后挂回)。
+    this.removeNodeFromContent('LobbyGuardCrystalOverlay');
+    if (this.lobbyGuardCrystalDialog && this.isLobbyViewActive()) {
+      this.lobbyGuardCrystalDialogRenderer.render(this.resolveLayout());
+      if (this.lobbyGuardCrystalDialog) {
+        this.lobbyGuardCrystalDialog.flashLevel = null;
+      }
+    }
     this.raiseLobbyCurrencyFlies();
     this.syncLegalDocumentOverlay();
+  }
+
+  // ── 守卫水晶养成(docs/38)──
+
+  private currentGuardCrystalState(): LobbyGuardCrystalDialogState | null {
+    return this.lobbyGuardCrystalDialog;
+  }
+
+  private openGuardCrystalDialog(): void {
+    if (!this.isLobbyViewActive()) {
+      return;
+    }
+    this.lobbyGuardCrystalDialog = {
+      info: this.lobbyGuardCrystalDialog?.info ?? null,
+      loading: true,
+      busy: false,
+      notice: '',
+      noticeGood: false,
+      flashLevel: null,
+    };
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+    void this.loadGuardCrystalInfo();
+  }
+
+  private closeGuardCrystalDialog(): void {
+    if (!this.lobbyGuardCrystalDialog) {
+      return;
+    }
+    this.lobbyGuardCrystalDialog = null;
+    gameAudio.sfx('panel_close');
+    this.syncLobbyShopOverlay();
+  }
+
+  private async loadGuardCrystalInfo(): Promise<void> {
+    const dialog = this.lobbyGuardCrystalDialog;
+    if (!dialog) {
+      return;
+    }
+    try {
+      const info = await this.api.guardCrystal.info();
+      if (this.lobbyGuardCrystalDialog !== dialog) {
+        return;
+      }
+      dialog.info = info;
+      dialog.loading = false;
+    } catch (error) {
+      if (this.lobbyGuardCrystalDialog !== dialog) {
+        return;
+      }
+      dialog.loading = false;
+      dialog.notice = `读取失败:${error instanceof Error ? error.message : String(error)}`;
+      dialog.noticeGood = false;
+    }
+    this.syncLobbyShopOverlay();
+  }
+
+  /** 升 1 级:锁按钮 → 服务端扣金币升级(requestId 幂等)→ 刷面板 + 顶部金币 + 升级光效。 */
+  private upgradeGuardCrystal(): void {
+    void this.runGuardCrystalUpgrade();
+  }
+
+  private async runGuardCrystalUpgrade(): Promise<void> {
+    const dialog = this.lobbyGuardCrystalDialog;
+    if (!dialog || dialog.busy || !dialog.info) {
+      return;
+    }
+    dialog.busy = true;
+    this.syncLobbyShopOverlay();
+    const requestId = `guard-crystal-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+    try {
+      const result = await this.api.guardCrystal.upgrade(requestId);
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.info = result.info;
+        dialog.notice = `守卫水晶升到 Lv.${result.toLevel}!`;
+        dialog.noticeGood = true;
+        dialog.flashLevel = result.toLevel;
+      }
+      this.setStatus(`守卫水晶升到 Lv.${result.toLevel}(-${result.goldCost} 金币)`);
+      gameAudio.sfx('level_up');
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.notice = message;
+        dialog.noticeGood = false;
+      }
+      this.setStatus(`水晶升级失败:${message}`);
+      gameAudio.sfx('ui_error');
+    } finally {
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.busy = false;
+      }
+      this.syncLobbyShopOverlay();
+    }
   }
 
   // ── 用户协议 / 隐私政策 ──

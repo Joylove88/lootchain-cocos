@@ -307,6 +307,8 @@ export const GUARD_SPELLS: Record<GuardSpellId, GuardSpellDef> = {
 };
 export const GUARD_SPELL_IDS: GuardSpellId[] = ['quake', 'frost', 'thunder', 'goldrush', 'aegis', 'warhorn'];
 export const GUARD_DEFAULT_SPELL_LOADOUT: GuardSpellId[] = ['quake', 'frost', 'thunder'];
+/** 法术解锁等级(水晶养成 docs/38;仅供界面显示"Lv.N 解锁",真正能否使用以服务端快照 unlockedSpells 为准)。 */
+export const GUARD_SPELL_UNLOCK_LEVEL: Record<GuardSpellId, number> = { quake: 1, frost: 1, thunder: 1, goldrush: 3, aegis: 6, warhorn: 10 };
 export const GUARD_SPELL_ENERGY_MAX = 150;
 /** 能量来源:波中每秒回复、击杀(普通按怪量倍率折算)、精英/BOSS 击杀、打断 BOSS 读条。 */
 export const GUARD_SPELL_ENERGY_REGEN_PER_SEC = 1.2;
@@ -488,6 +490,11 @@ export interface GuardBattleState {
   /** 水晶法术(docs/37 F):能量、出战 3 格、壁垒/号角截止时刻、金矿爆发已用的波次。 */
   spellEnergy: number;
   spellLoadout: GuardSpellId[];
+  /** 水晶养成(docs/38):水晶等级、法术强度倍率、能量上限、已解锁法术(来自开战快照)。 */
+  crystalLevel: number;
+  spellPowerMult: number;
+  spellEnergyMax: number;
+  unlockedSpells: GuardSpellId[];
   aegisUntilMs: number;
   warhornUntilMs: number;
   goldrushWave: number;
@@ -884,6 +891,16 @@ export function createGuardBattle(
     monsterBiteMult?: number;
     /** 小怪(非 BOSS/精英)额外血量倍率,叠乘在 monsterHpMult 之上(缺省 1)。 */
     minionHpMult?: number;
+    /** 守卫水晶养成快照(docs/38,开战回执 guardCrystal;缺省=1 级无加成、只解锁 3 个基础法术)。 */
+    crystal?: {
+      level?: number;
+      crystalHpPct?: number;
+      startGold?: number;
+      spellPowerPct?: number;
+      startEnergy?: number;
+      energyMaxBonus?: number;
+      unlockedSpells?: string[];
+    } | null;
   },
 ): GuardBattleState {
   const seed = guardHashSeed(seedText || 'guard');
@@ -894,7 +911,13 @@ export function createGuardBattle(
   const monsterBiteMult = Math.max(0.5, Math.min(10, opts?.monsterBiteMult ?? Math.sqrt(monsterHpMult)));
   const minionHpMult = Math.max(0.5, Math.min(20, opts?.minionHpMult ?? 1));
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
-  const crystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
+  const baseCrystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
+  // 水晶养成(docs/38):数值都做了钳制,防旧服务端/异常快照把战斗打穿。
+  const crystal = opts?.crystal ?? null;
+  const clampNum = (value: number | undefined, max: number): number => Math.max(0, Math.min(max, Number(value ?? 0) || 0));
+  const crystalHp = Math.round(baseCrystalHp * (1 + clampNum(crystal?.crystalHpPct, 200) / 100));
+  const unlockedSpells = GUARD_SPELL_IDS.filter((id) => GUARD_DEFAULT_SPELL_LOADOUT.indexOf(id) >= 0 || (crystal?.unlockedSpells ?? []).indexOf(id) >= 0);
+  const spellEnergyMax = GUARD_SPELL_ENERGY_MAX + clampNum(crystal?.energyMaxBonus, 100);
   return {
     seed,
     rng,
@@ -906,7 +929,7 @@ export function createGuardBattle(
     pendingSpawns: [],
     nextWaveSpawns: null,
     waveStartedAtMs: 0,
-    gold: GUARD_START_GOLD,
+    gold: GUARD_START_GOLD + clampNum(crystal?.startGold, 1000),
     summonCost: GUARD_SUMMON_BASE_COST,
     summonCount: 0,
     crystalHp,
@@ -972,8 +995,12 @@ export function createGuardBattle(
     pickups: [],
     nextPickupId: 1,
     greedySpawned: 0,
-    spellEnergy: 0,
+    spellEnergy: Math.min(spellEnergyMax, clampNum(crystal?.startEnergy, 150)),
     spellLoadout: GUARD_DEFAULT_SPELL_LOADOUT.slice(),
+    crystalLevel: Math.max(1, Math.round(clampNum(crystal?.level, 999)) || 1),
+    spellPowerMult: 1 + clampNum(crystal?.spellPowerPct, 300) / 100,
+    spellEnergyMax,
+    unlockedSpells,
     aegisUntilMs: 0,
     warhornUntilMs: 0,
     goldrushWave: -1,
@@ -1785,7 +1812,7 @@ function killMonster(state: GuardBattleState, monster: GuardMonster, killerCode:
     state.events.push({ type: 'greedyKill', timeMs: state.timeMs, monsterId: monster.monsterId, amount: gold });
   }
   const energy = monster.kind === 'boss' ? GUARD_SPELL_ENERGY_BOSS : monster.kind === 'elite' ? GUARD_SPELL_ENERGY_ELITE : GUARD_SPELL_ENERGY_PER_KILL / state.spawnCountMult;
-  state.spellEnergy = Math.min(GUARD_SPELL_ENERGY_MAX, state.spellEnergy + energy);
+  state.spellEnergy = Math.min(state.spellEnergyMax, state.spellEnergy + energy);
   grantXp(state, GUARD_KILL_XP[monster.kind]);
   if (monster.kind === 'boss') {
     state.bossKilled = true;
@@ -1880,7 +1907,7 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
     if (state.bossCast.damageTaken >= threshold) {
       monster.stunnedUntilMs = state.timeMs + GUARD_BOSS_STUN_MS;
       state.events.push({ type: 'bossCastInterrupt', timeMs: state.timeMs, monsterId: monster.monsterId });
-      state.spellEnergy = Math.min(GUARD_SPELL_ENERGY_MAX, state.spellEnergy + GUARD_SPELL_ENERGY_INTERRUPT);
+      state.spellEnergy = Math.min(state.spellEnergyMax, state.spellEnergy + GUARD_SPELL_ENERGY_INTERRUPT);
       state.bossCast = null;
       state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
     }
@@ -2455,7 +2482,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       }
     }
     guardFireFieldEvents(state);
-    state.spellEnergy = Math.min(GUARD_SPELL_ENERGY_MAX, state.spellEnergy + GUARD_SPELL_ENERGY_REGEN_PER_SEC * (dtMs / 1000));
+    state.spellEnergy = Math.min(state.spellEnergyMax, state.spellEnergy + GUARD_SPELL_ENERGY_REGEN_PER_SEC * (dtMs / 1000));
     // rush:车轮 BOSS 常驻,不阻塞小怪波推进。
     const anyAlive = state.monsters.some((monster) => !monster.dead && (state.mode !== 'rush' || monster.kind !== 'boss'));
     if (state.pendingSpawns.length === 0 && !anyAlive) {
@@ -2898,7 +2925,7 @@ export function guardSpellCastable(state: GuardBattleState, id: GuardSpellId): b
   if (state.phase === 'victory' || state.phase === 'defeat' || state.paused || state.pendingChoice) {
     return false;
   }
-  if (state.spellLoadout.indexOf(id) < 0 || state.spellEnergy < GUARD_SPELLS[id].cost) {
+  if (state.spellLoadout.indexOf(id) < 0 || state.unlockedSpells.indexOf(id) < 0 || state.spellEnergy < GUARD_SPELLS[id].cost) {
     return false;
   }
   return id !== 'goldrush' || state.goldrushWave !== state.wave;
@@ -2917,7 +2944,8 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
     return false;
   }
   const alive = state.monsters.filter((monster) => !monster.dead);
-  const unit = guardSpellUnit(state);
+  // 水晶养成的法术强度:伤害 / 回血 / 金矿金币同乘(docs/38)。
+  const unit = guardSpellUnit(state) * state.spellPowerMult;
   const hitIds: number[] = [];
   let amount = 0;
   if (id === 'quake') {
@@ -2948,13 +2976,13 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
       damageMonster(state, monster, monster.kind === 'elite' || monster.kind === 'boss' ? amount * 2 : amount, null);
     }
   } else if (id === 'goldrush') {
-    amount = Math.round((25 + 3 * Math.max(1, state.wave)) * (1 + state.mods.goldGainPct / 100));
+    amount = Math.round((25 + 3 * Math.max(1, state.wave)) * (1 + state.mods.goldGainPct / 100) * state.spellPowerMult);
     state.gold += amount;
     state.goldrushWave = state.wave;
   } else if (id === 'aegis') {
     state.aegisUntilMs = state.timeMs + GUARD_SPELL_AEGIS_MS;
     const before = state.crystalHp;
-    state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.1));
+    state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.1 * state.spellPowerMult));
     amount = state.crystalHp - before;
   } else if (id === 'warhorn') {
     state.warhornUntilMs = state.timeMs + GUARD_SPELL_WARHORN_MS;
@@ -2965,12 +2993,12 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
   return true;
 }
 
-/** 设置出战法术(去重、只认合法 id、最多 3 个,不足补默认)。 */
+/** 设置出战法术(去重、只认合法且已解锁的 id、最多 3 个,不足补默认)。 */
 export function guardSetSpellLoadout(state: GuardBattleState, ids: string[]): GuardSpellId[] {
   const picked: GuardSpellId[] = [];
   for (const raw of ids) {
     const id = raw as GuardSpellId;
-    if (GUARD_SPELL_IDS.indexOf(id) >= 0 && picked.indexOf(id) < 0 && picked.length < 3) {
+    if (GUARD_SPELL_IDS.indexOf(id) >= 0 && state.unlockedSpells.indexOf(id) >= 0 && picked.indexOf(id) < 0 && picked.length < 3) {
       picked.push(id);
     }
   }

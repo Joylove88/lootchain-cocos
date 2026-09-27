@@ -294,6 +294,31 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
     expireTime: readText(data, 'expireTime', MAX_TEXT, ''),
     readonlyEconomy,
     guardrails: sanitizeTextArray(readArray(data, 'guardrails', 10), MAX_TEXT),
+    guardCrystal: normalizeGuardCrystal(data.guardCrystal),
+  };
+}
+
+/** 开战水晶快照(docs/38):数值钳到合理范围,法术只认已知 id;缺失/格式不对返回 null(sim 按 1 级)。 */
+function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'] {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const num = (key: string, max: number): number => {
+    const value = Number(raw[key]);
+    return Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : 0;
+  };
+  const known = ['quake', 'frost', 'thunder', 'goldrush', 'aegis', 'warhorn'];
+  const spells = Array.isArray(raw.unlockedSpells)
+    ? raw.unlockedSpells.filter((id): id is string => typeof id === 'string' && known.indexOf(id) >= 0).slice(0, known.length)
+    : [];
+  return {
+    level: Math.max(1, num('level', 999)),
+    crystalHpPct: num('crystalHpPct', 200),
+    startGold: num('startGold', 1000),
+    spellPowerPct: num('spellPowerPct', 300),
+    startEnergy: num('startEnergy', 150),
+    energyMaxBonus: num('energyMaxBonus', 100),
+    unlockedSpells: spells,
   };
 }
 

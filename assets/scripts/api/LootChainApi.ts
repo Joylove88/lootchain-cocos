@@ -3,6 +3,7 @@ import { HttpClient } from '../net/HttpClient';
 import { TokenStore } from '../store/TokenStore';
 import { BagApi } from './BagApi';
 import { EquipmentApi } from './EquipmentApi';
+import { GuardCrystalApi } from './GuardCrystalApi';
 import { BattleApi } from './BattleApi';
 import { GachaApi } from './GachaApi';
 import { GiftApi } from './GiftApi';
@@ -32,6 +33,7 @@ export class LootChainApi {
   readonly http = new HttpClient(AppConfig.apiBaseUrl, this.tokenStore);
   readonly auth = new PlayerAuthApi(this.http, this.tokenStore);
   readonly profile = new PlayerProfileApi(this.http);
+  readonly guardCrystal = new GuardCrystalApi(this.http);
   readonly protagonist = new ProtagonistApi(this.http);
   readonly lobbyNotice = new LobbyNoticeApi(this.http);
   readonly lobbyCodex = new LobbyCodexApi(this.http);

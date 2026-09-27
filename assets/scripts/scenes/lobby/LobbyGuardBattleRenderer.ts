@@ -64,7 +64,7 @@ import {
   guardSetSpellLoadout,
   GUARD_SPELLS,
   GUARD_SPELL_IDS,
-  GUARD_SPELL_ENERGY_MAX,
+  GUARD_SPELL_UNLOCK_LEVEL,
   GUARD_SPELL_THUNDER_RADIUS,
   GUARD_SPELL_FROST_RADIUS,
   GUARD_SPELL_AEGIS_MS,
@@ -638,6 +638,8 @@ export class LobbyGuardBattleRenderer {
         monsterBiteMult: isDaily ? 1 : undefined,
         // 限时副本小怪总计 ×10(2026-09-11 用户拍板;BOSS/精英维持 ×3):3 × 10/3。
         minionHpMult: isDaily ? 10 / 3 : 1,
+        // 守卫水晶养成快照(docs/38):服务端开战时下发,客户端不信本地。
+        crystal: battleState.start?.guardCrystal ?? null,
       },
     );
     this.sim.skillAutoImmediate = this.skillAutoImmediate;
@@ -3121,7 +3123,7 @@ export class LobbyGuardBattleRenderer {
       eg.roundRect(-barW / 2, -7, barW, 14, 7);
       eg.fill();
       eg.fillColor = rgba(90, 170, 255, 245);
-      eg.roundRect(-barW / 2, -7, Math.max(6, barW * (energy / GUARD_SPELL_ENERGY_MAX)), 14, 7);
+      eg.roundRect(-barW / 2, -7, Math.max(6, barW * (energy / sim.spellEnergyMax)), 14, 7);
       eg.fill();
       eg.strokeColor = rgba(150, 200, 255, 200);
       eg.lineWidth = 1.5;
@@ -3129,7 +3131,7 @@ export class LobbyGuardBattleRenderer {
       eg.stroke();
     }
     const text = bar.getChildByName('EnergyText')?.getComponent(Label);
-    const energyString = `水晶能量 ${Math.floor(energy)} / ${GUARD_SPELL_ENERGY_MAX}`;
+    const energyString = `水晶能量 ${Math.floor(energy)} / ${sim.spellEnergyMax}`;
     if (text && text.string !== energyString) {
       text.string = energyString;
     }
@@ -3376,10 +3378,11 @@ export class LobbyGuardBattleRenderer {
   private renderSpellLoadoutPage(overlay: Node, content: Node, panelW: number, panelH: number, titleY: number, buttonY: number): void {
     const sim = this.sim;
     this.paintSettingsTitle(content, '法术配置', panelW, titleY);
-    const current = (readGuardPref(GUARD_PREF_SPELLS, '') || (sim ? sim.spellLoadout.join(',') : '')).split(',').filter((id) => GUARD_SPELL_IDS.indexOf(id as GuardSpellId) >= 0) as GuardSpellId[];
+    const unlocked = sim ? sim.unlockedSpells : (['quake', 'frost', 'thunder'] as GuardSpellId[]);
+    const current = (readGuardPref(GUARD_PREF_SPELLS, '') || (sim ? sim.spellLoadout.join(',') : '')).split(',').filter((id) => GUARD_SPELL_IDS.indexOf(id as GuardSpellId) >= 0 && unlocked.indexOf(id as GuardSpellId) >= 0) as GuardSpellId[];
     const picked = current.length > 0 ? current.slice(0, 3) : ['quake', 'frost', 'thunder'] as GuardSpellId[];
     const live = !!sim && sim.wave === 0;
-    const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `选 3 个带进战斗(已选 ${picked.length}/3)· ${live ? '本局立即生效' : '下一局生效'}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
+    const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `选 3 个带进战斗(已选 ${picked.length}/3)· 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · ${live ? '本局立即生效' : '下一局生效'}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
     tip.overflow = Label.Overflow.SHRINK;
     const cardW = Math.min(250, panelW * 0.25);
     const cardH = 118;
@@ -3391,6 +3394,7 @@ export class LobbyGuardBattleRenderer {
       const x = (col - 1) * (cardW + 18);
       const y = top - row * (cardH + 16);
       const selected = picked.indexOf(id) >= 0;
+      const locked = unlocked.indexOf(id) < 0;
       const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, x, y, cardW, cardH);
       const g = card.addComponent(Graphics);
       g.fillColor = selected ? rgba(60, 40, 16, 235) : rgba(20, 14, 10, 210);
@@ -3405,8 +3409,13 @@ export class LobbyGuardBattleRenderer {
       const nameLabel = this.host.addChildLabel(card, 'Name', def.name, -cardW / 2 + 14 + iconSize + 10, 30, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
       nameLabel.overflow = Label.Overflow.SHRINK;
       this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 4, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
-      const desc = this.host.addChildLabel(card, 'Desc', def.desc, 0, -cardH / 2 + 24, 15, rgba(210, 196, 170), new Size(cardW - 20, 36));
+      const desc = this.host.addChildLabel(card, 'Desc', locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : def.desc, 0, -cardH / 2 + 24, 15, locked ? rgba(255, 170, 120) : rgba(210, 196, 170), new Size(cardW - 20, 36));
       desc.overflow = Label.Overflow.SHRINK;
+      if (locked) {
+        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;
+        this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', -cardW / 2 + 14 + 28, 14, 26, 26);
+        return;
+      }
       this.host.applyImageButtonFeedback(card);
       card.on(Node.EventType.TOUCH_END, () => {
         const next = picked.slice();
