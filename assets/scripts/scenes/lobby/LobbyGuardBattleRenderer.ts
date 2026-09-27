@@ -61,7 +61,8 @@ import {
   guardCollectPickup,
   guardCastSpell,
   guardSpellCastable,
-  guardSetSpellLoadout,
+  GUARD_DEFAULT_SPELL_LOADOUT,
+  GUARD_BASE_SPELL_SLOTS,
   GUARD_SPELLS,
   GUARD_SPELL_IDS,
   GUARD_SPELL_UNLOCK_LEVEL,
@@ -200,8 +201,6 @@ const GUARD_ROLE_COLOR: Record<string, Color> = {
 // ── 战斗内设置偏好(2026-09-24 用户确认方案):存本地,跨局保留;读写失败按默认值处理 ──
 const GUARD_PREF_SHAKE = 'lootchain.guard.shake';
 const GUARD_PREF_DAMAGE_NUMBERS = 'lootchain.guard.damageNumbers';
-/** 水晶法术出战配置(docs/37 F;逗号分隔 3 个法术 id,本地保存,下一局 / 首波前生效)。 */
-const GUARD_PREF_SPELLS = 'lootchain.guard.spells';
 /** 法术图标(现有素材拼:水晶徽章 / 冰旋 / 雷光 / 金币 / 金色盾波 / 剑徽)。 */
 const GUARD_SPELL_ICON: Record<GuardSpellId, string> = {
   quake: 'ui/battle/ai/ghud_btn_skill/spriteFrame',
@@ -644,7 +643,6 @@ export class LobbyGuardBattleRenderer {
     );
     this.sim.skillAutoImmediate = this.skillAutoImmediate;
     this.interactHints.clear();
-    guardSetSpellLoadout(this.sim, readGuardPref(GUARD_PREF_SPELLS, '').split(',').filter(Boolean));
     this.resonanceUnits.clear();
     this.prewarmAttackFx(pool);
     this.simBattleNo = battleState.start?.battleNo ?? '';
@@ -2595,7 +2593,7 @@ export class LobbyGuardBattleRenderer {
         '集火:点怪物标记,射程内英雄优先打它、伤害 +20%;标记读条中的 BOSS 更易打断。',
         '共鸣格:每波发金光的格子,站上去的英雄本波攻击 +40%;把主力拖过去。',
         '迎战:波间点「提前迎战」立刻开下一波,越早奖励金币越多。',
-        '法术:底部 3 格水晶法术,击杀和打断攒能量;冰封/天雷按住拖到战场施放。',
+        '法术:底部是出战的水晶法术(大厅「水晶 → 法术装备」里配置),击杀和打断攒能量;冰封/天雷按住拖到战场施放。',
         '事件:流星矿晶落地后点它拿金币;偷金鼠要点它集火,打死掉大笔金币。',
         '陷阱:点「陷阱」展开托盘,把尖刺/冰霜/爆炎拖到跑道上,花金币,最多 3 个。',
         '出售:把英雄拖到水晶上出售,返还部分金币。',
@@ -2675,7 +2673,7 @@ export class LobbyGuardBattleRenderer {
     slg.lineWidth = 2;
     slg.roundRect(-100, -20, 200, 40, 20);
     slg.stroke();
-    this.host.addChildLabel(spellsLink, 'GuardSettingsSpellsLinkLabel', '法术配置 ›', 0, 0, 19, rgba(255, 226, 160), new Size(190, 36));
+    this.host.addChildLabel(spellsLink, 'GuardSettingsSpellsLinkLabel', '法术装备 ›', 0, 0, 19, rgba(255, 226, 160), new Size(190, 36));
     this.host.applyImageButtonFeedback(spellsLink);
     spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
     const help = this.host.addChildPlainNode(content, 'GuardSettingsHelpLink', -110, hintY - 44, 200, 40);
@@ -3054,12 +3052,19 @@ export class LobbyGuardBattleRenderer {
     return 60;
   }
 
+  /** 法术栏宽度随格数(2~5 格,docs/38 §9)。 */
+  private spellBarWidth(): number {
+    const size = LobbyGuardBattleRenderer.SPELL_SLOT;
+    const count = Math.max(1, this.sim?.spellLoadout.length ?? 3);
+    return size * count + LobbyGuardBattleRenderer.SPELL_GAP * (count - 1);
+  }
+
   private spellBarY(): number {
     // 名字标签要让开最底部的操作提示行(-H/2+16)
     return -this.layoutHeight / 2 + 50 + LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 14;
   }
 
-  /** 底部法术栏:3 个圆形法术位 + 上方能量条;点击 = 无目标法术直接放,按住拖 = 瞄准法术落点。 */
+  /** 底部法术栏:出战法术圆形位(格数来自水晶快照)+ 上方能量条;点击 = 无目标法术直接放,按住拖 = 瞄准法术落点。 */
   private renderSpellBar(): void {
     const root = this.root;
     const sim = this.sim;
@@ -3069,7 +3074,7 @@ export class LobbyGuardBattleRenderer {
     root.getChildByName('GuardSpellBar')?.destroy();
     const size = LobbyGuardBattleRenderer.SPELL_SLOT;
     const gap = LobbyGuardBattleRenderer.SPELL_GAP;
-    const barW = size * 3 + gap * 2;
+    const barW = this.spellBarWidth();
     const bar = this.host.addChildPlainNode(root, 'GuardSpellBar', this.spellBarCenterX(), this.spellBarY(), barW, size + 60);
     const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 14);
     energyBg.addComponent(Graphics);
@@ -3114,7 +3119,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const size = LobbyGuardBattleRenderer.SPELL_SLOT;
-    const barW = size * 3 + LobbyGuardBattleRenderer.SPELL_GAP * 2;
+    const barW = this.spellBarWidth();
     const energy = sim.spellEnergy;
     const eg = bar.getChildByName('Energy')?.getComponent(Graphics);
     if (eg) {
@@ -3374,15 +3379,15 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  /** 设置 → 法术配置:6 个法术选 3 个(本地保存;首波开始前改动立即生效,之后下一局生效)。 */
+  /** 设置 → 法术装备:只读展示本局出战法术与格数(配置在大厅「水晶 → 法术装备」,服务端保存,docs/38 §9)。 */
   private renderSpellLoadoutPage(overlay: Node, content: Node, panelW: number, panelH: number, titleY: number, buttonY: number): void {
+    // docs/38 §9:出战法术在大厅「水晶 → 法术装备」里配置并由服务端保存,开战快照带入;战斗内只展示,不再改。
     const sim = this.sim;
-    this.paintSettingsTitle(content, '法术配置', panelW, titleY);
-    const unlocked = sim ? sim.unlockedSpells : (['quake', 'frost', 'thunder'] as GuardSpellId[]);
-    const current = (readGuardPref(GUARD_PREF_SPELLS, '') || (sim ? sim.spellLoadout.join(',') : '')).split(',').filter((id) => GUARD_SPELL_IDS.indexOf(id as GuardSpellId) >= 0 && unlocked.indexOf(id as GuardSpellId) >= 0) as GuardSpellId[];
-    const picked = current.length > 0 ? current.slice(0, 3) : ['quake', 'frost', 'thunder'] as GuardSpellId[];
-    const live = !!sim && sim.wave === 0;
-    const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `选 3 个带进战斗(已选 ${picked.length}/3)· 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · ${live ? '本局立即生效' : '下一局生效'}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
+    this.paintSettingsTitle(content, '法术装备', panelW, titleY);
+    const unlocked = sim ? sim.unlockedSpells : (GUARD_DEFAULT_SPELL_LOADOUT.slice(0, GUARD_BASE_SPELL_SLOTS) as GuardSpellId[]);
+    const equipped = sim ? sim.spellLoadout : [];
+    const slots = sim ? sim.spellSlots : GUARD_BASE_SPELL_SLOTS;
+    const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `本局出战 ${equipped.length}/${slots} 格 · 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · 更换请到大厅「水晶 → 法术装备」`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.78, 26));
     tip.overflow = Label.Overflow.SHRINK;
     const cardW = Math.min(250, panelW * 0.25);
     const cardH = 118;
@@ -3393,7 +3398,8 @@ export class LobbyGuardBattleRenderer {
       const row = Math.floor(index / 3);
       const x = (col - 1) * (cardW + 18);
       const y = top - row * (cardH + 16);
-      const selected = picked.indexOf(id) >= 0;
+      const slotIndex = equipped.indexOf(id);
+      const selected = slotIndex >= 0;
       const locked = unlocked.indexOf(id) < 0;
       const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, x, y, cardW, cardH);
       const g = card.addComponent(Graphics);
@@ -3409,35 +3415,15 @@ export class LobbyGuardBattleRenderer {
       const nameLabel = this.host.addChildLabel(card, 'Name', def.name, -cardW / 2 + 14 + iconSize + 10, 30, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
       nameLabel.overflow = Label.Overflow.SHRINK;
       this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 4, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
-      const desc = this.host.addChildLabel(card, 'Desc', locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : def.desc, 0, -cardH / 2 + 24, 15, locked ? rgba(255, 170, 120) : rgba(210, 196, 170), new Size(cardW - 20, 36));
+      const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : selected ? `已装备 · 第 ${slotIndex + 1} 格` : '未装备';
+      const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 24, 15, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 20, 36));
       desc.overflow = Label.Overflow.SHRINK;
       if (locked) {
         (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;
         this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', -cardW / 2 + 14 + 28, 14, 26, 26);
-        return;
+      } else if (!selected) {
+        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 190;
       }
-      this.host.applyImageButtonFeedback(card);
-      card.on(Node.EventType.TOUCH_END, () => {
-        const next = picked.slice();
-        const at = next.indexOf(id);
-        if (at >= 0) {
-          if (next.length <= 1) {
-            return;
-          }
-          next.splice(at, 1);
-        } else if (next.length >= 3) {
-          this.host.setStatus('最多带 3 个法术,先点掉一个再选');
-          return;
-        } else {
-          next.push(id);
-        }
-        writeGuardPref(GUARD_PREF_SPELLS, next.join(','));
-        if (this.sim && this.sim.wave === 0 && next.length === 3) {
-          guardSetSpellLoadout(this.sim, next);
-          this.renderSpellBar();
-        }
-        this.renderSettingsPage(overlay, 'spells');
-      }, this);
     });
     void panelH;
     const back = this.mountPrimaryTextButton(content, 'GuardSpellsBack', 0, buttonY, 236, '返回');
@@ -3447,8 +3433,7 @@ export class LobbyGuardBattleRenderer {
   // ── docs/37 G 车道陷阱 ──
 
   private trapButtonX(): number {
-    const size = LobbyGuardBattleRenderer.SPELL_SLOT;
-    const barW = size * 3 + LobbyGuardBattleRenderer.SPELL_GAP * 2;
+    const barW = this.spellBarWidth();
     return this.spellBarCenterX() + barW / 2 + 30 + 40;
   }
 

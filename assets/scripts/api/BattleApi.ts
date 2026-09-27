@@ -298,7 +298,7 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
   };
 }
 
-/** 开战水晶快照(docs/38):数值钳到合理范围,法术只认已知 id;缺失/格式不对返回 null(sim 按 1 级)。 */
+/** 开战水晶快照(docs/38):数值钳到合理范围,法术只认已知 id,出战法术只认已解锁的;缺失/格式不对返回 null(sim 按 1 级)。 */
 function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'] {
   if (!isRecord(raw)) {
     return null;
@@ -311,6 +311,10 @@ function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'
   const spells = Array.isArray(raw.unlockedSpells)
     ? raw.unlockedSpells.filter((id): id is string => typeof id === 'string' && known.indexOf(id) >= 0).slice(0, known.length)
     : [];
+  const slots = num('spellSlots', 5);
+  const loadout = Array.isArray(raw.spellLoadout)
+    ? raw.spellLoadout.filter((id): id is string => typeof id === 'string' && spells.indexOf(id) >= 0).slice(0, 5)
+    : [];
   return {
     level: Math.max(1, num('level', 999)),
     crystalHpPct: num('crystalHpPct', 200),
@@ -319,6 +323,8 @@ function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'
     startEnergy: num('startEnergy', 150),
     energyMaxBonus: num('energyMaxBonus', 100),
     unlockedSpells: spells,
+    spellSlots: slots > 0 ? slots : undefined,
+    spellLoadout: loadout,
   };
 }
 

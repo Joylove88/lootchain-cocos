@@ -307,6 +307,32 @@ export const GUARD_SPELLS: Record<GuardSpellId, GuardSpellDef> = {
 };
 export const GUARD_SPELL_IDS: GuardSpellId[] = ['quake', 'frost', 'thunder', 'goldrush', 'aegis', 'warhorn'];
 export const GUARD_DEFAULT_SPELL_LOADOUT: GuardSpellId[] = ['quake', 'frost', 'thunder'];
+/**
+ * 法术装备栏(docs/38 §9,2026-09-27 用户"需要有个法术装备,最多带几个;后期皮肤可解锁穿戴数量"):
+ * 基础 2 格,守卫水晶 Lv5 起 3 格,皮肤等外观再追加,总上限 5 格。格数与出战法术以开战快照为准(服务端保存)。
+ */
+export const GUARD_BASE_SPELL_SLOTS = 2;
+export const GUARD_MAX_SPELL_SLOTS = 5;
+/** 按格位顺序整理出战法术:只留已解锁、去重、截到格数,不足按解锁顺序补满(与服务端 GuardCrystalService.resolveLoadout 一致)。 */
+export function guardResolveSpellLoadout(saved: readonly string[] | null | undefined, unlocked: readonly GuardSpellId[], slots: number): GuardSpellId[] {
+  const cap = Math.max(1, Math.min(GUARD_MAX_SPELL_SLOTS, Math.round(slots) || GUARD_BASE_SPELL_SLOTS));
+  const picked: GuardSpellId[] = [];
+  for (const raw of saved ?? []) {
+    const id = raw as GuardSpellId;
+    if (unlocked.indexOf(id) >= 0 && picked.indexOf(id) < 0 && picked.length < cap) {
+      picked.push(id);
+    }
+  }
+  for (const id of GUARD_SPELL_IDS) {
+    if (picked.length >= cap) {
+      break;
+    }
+    if (unlocked.indexOf(id) >= 0 && picked.indexOf(id) < 0) {
+      picked.push(id);
+    }
+  }
+  return picked;
+}
 /** 法术解锁等级(水晶养成 docs/38;仅供界面显示"Lv.N 解锁",真正能否使用以服务端快照 unlockedSpells 为准)。 */
 export const GUARD_SPELL_UNLOCK_LEVEL: Record<GuardSpellId, number> = { quake: 1, frost: 1, thunder: 1, goldrush: 3, aegis: 6, warhorn: 10 };
 export const GUARD_SPELL_ENERGY_MAX = 150;
@@ -487,9 +513,10 @@ export interface GuardBattleState {
   pickups: GuardPickup[];
   nextPickupId: number;
   greedySpawned: number;
-  /** 水晶法术(docs/37 F):能量、出战 3 格、壁垒/号角截止时刻、金矿爆发已用的波次。 */
+  /** 水晶法术(docs/37 F):能量、出战法术(按格位)、法术格数(docs/38 §9)、壁垒/号角截止时刻、金矿爆发已用的波次。 */
   spellEnergy: number;
   spellLoadout: GuardSpellId[];
+  spellSlots: number;
   /** 水晶养成(docs/38):水晶等级、法术强度倍率、能量上限、已解锁法术(来自开战快照)。 */
   crystalLevel: number;
   spellPowerMult: number;
@@ -900,6 +927,9 @@ export function createGuardBattle(
       startEnergy?: number;
       energyMaxBonus?: number;
       unlockedSpells?: string[];
+      /** 法术装备格数(含外观追加;缺省 2)与出战法术(按格位顺序)。 */
+      spellSlots?: number;
+      spellLoadout?: string[] | null;
     } | null;
   },
 ): GuardBattleState {
@@ -918,6 +948,7 @@ export function createGuardBattle(
   const crystalHp = Math.round(baseCrystalHp * (1 + clampNum(crystal?.crystalHpPct, 200) / 100));
   const unlockedSpells = GUARD_SPELL_IDS.filter((id) => GUARD_DEFAULT_SPELL_LOADOUT.indexOf(id) >= 0 || (crystal?.unlockedSpells ?? []).indexOf(id) >= 0);
   const spellEnergyMax = GUARD_SPELL_ENERGY_MAX + clampNum(crystal?.energyMaxBonus, 100);
+  const spellSlots = Math.max(1, Math.min(GUARD_MAX_SPELL_SLOTS, Math.round(Number(crystal?.spellSlots ?? 0)) || GUARD_BASE_SPELL_SLOTS));
   return {
     seed,
     rng,
@@ -996,7 +1027,8 @@ export function createGuardBattle(
     nextPickupId: 1,
     greedySpawned: 0,
     spellEnergy: Math.min(spellEnergyMax, clampNum(crystal?.startEnergy, 150)),
-    spellLoadout: GUARD_DEFAULT_SPELL_LOADOUT.slice(),
+    spellLoadout: guardResolveSpellLoadout(crystal?.spellLoadout ?? null, unlockedSpells, spellSlots),
+    spellSlots,
     crystalLevel: Math.max(1, Math.round(clampNum(crystal?.level, 999)) || 1),
     spellPowerMult: 1 + clampNum(crystal?.spellPowerPct, 300) / 100,
     spellEnergyMax,
@@ -2993,23 +3025,9 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
   return true;
 }
 
-/** 设置出战法术(去重、只认合法且已解锁的 id、最多 3 个,不足补默认)。 */
+/** 设置出战法术(去重、只认已解锁的 id、最多 state.spellSlots 个,不足按解锁顺序补满)。 */
 export function guardSetSpellLoadout(state: GuardBattleState, ids: string[]): GuardSpellId[] {
-  const picked: GuardSpellId[] = [];
-  for (const raw of ids) {
-    const id = raw as GuardSpellId;
-    if (GUARD_SPELL_IDS.indexOf(id) >= 0 && state.unlockedSpells.indexOf(id) >= 0 && picked.indexOf(id) < 0 && picked.length < 3) {
-      picked.push(id);
-    }
-  }
-  for (const id of GUARD_DEFAULT_SPELL_LOADOUT) {
-    if (picked.length >= 3) {
-      break;
-    }
-    if (picked.indexOf(id) < 0) {
-      picked.push(id);
-    }
-  }
+  const picked = guardResolveSpellLoadout(ids, state.unlockedSpells, state.spellSlots);
   state.spellLoadout = picked;
   return picked;
 }

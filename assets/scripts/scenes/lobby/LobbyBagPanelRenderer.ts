@@ -111,6 +111,8 @@ export const BAG_AI_ITEM_ICON_ASSETS: Record<string, string> = {
   // P6/P7 材料:临时兜底图(专属图生成后换回 icon_ult_scroll / icon_abyss_crystal):
   ULT_SCROLL: 'ui/bag/ai/icon_expbook/spriteFrame',
   ABYSS_CRYSTAL: 'ui/bag/ai/icon_bound_diamond/spriteFrame',
+  // 守卫水晶升级材料(docs/38 §9):水晶塔顶晶簇裁出的图标。
+  GUARD_CORE: 'ui/bag/ai/icon_guard_core/spriteFrame',
 };
 const BAG_AI_SHARD_ICON_ASSETS: Record<string, string> = {
   N: 'ui/bag/ai/icon_shard_n/spriteFrame',

@@ -5166,6 +5166,9 @@ export class LootChainGameRoot extends Component {
       notice: '',
       noticeGood: false,
       flashLevel: null,
+      tab: 'upgrade',
+      selectedSpell: null,
+      targetSlot: -1,
     };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
@@ -5225,7 +5228,7 @@ export class LootChainGameRoot extends Component {
         dialog.noticeGood = true;
         dialog.flashLevel = result.toLevel;
       }
-      this.setStatus(`守卫水晶升到 Lv.${result.toLevel}(-${result.goldCost} 金币)`);
+      this.setStatus(`守卫水晶升到 Lv.${result.toLevel}(-${result.goldCost} 金币${result.coreCost ? ` · -${result.coreCost} 守卫晶核` : ''})`);
       gameAudio.sfx('level_up');
       await this.loadLobbyProfile(this.currentLobbyProfile().userId);
     } catch (error) {
@@ -5235,6 +5238,48 @@ export class LootChainGameRoot extends Component {
         dialog.noticeGood = false;
       }
       this.setStatus(`水晶升级失败:${message}`);
+      gameAudio.sfx('ui_error');
+    } finally {
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.busy = false;
+      }
+      this.syncLobbyShopOverlay();
+    }
+  }
+
+  /** 水晶弹窗内的本地交互(切页签 / 选法术 / 选格位)只重绘覆盖层。 */
+  private refreshGuardCrystalDialog(): void {
+    if (this.lobbyGuardCrystalDialog) {
+      this.syncLobbyShopOverlay();
+    }
+  }
+
+  /** 法术装备(docs/38 §9):按格位顺序提交出战法术,服务端校验解锁与格数后保存,下一局开战快照带入。 */
+  private setGuardCrystalLoadout(spells: string[]): void {
+    void this.runGuardCrystalLoadout(spells);
+  }
+
+  private async runGuardCrystalLoadout(spells: string[]): Promise<void> {
+    const dialog = this.lobbyGuardCrystalDialog;
+    if (!dialog || dialog.busy || !dialog.info) {
+      return;
+    }
+    dialog.busy = true;
+    this.syncLobbyShopOverlay();
+    try {
+      const info = await this.api.guardCrystal.setLoadout(spells);
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.info = info;
+        dialog.notice = '法术装备已保存,下一局生效';
+        dialog.noticeGood = true;
+      }
+      gameAudio.sfx('merge');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.notice = message;
+        dialog.noticeGood = false;
+      }
       gameAudio.sfx('ui_error');
     } finally {
       if (this.lobbyGuardCrystalDialog === dialog) {
