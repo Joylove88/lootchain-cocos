@@ -62,7 +62,7 @@ export interface LobbyResourceItem {
 
 export type LobbySystemIconKey = 'friends' | 'mail' | 'settings' | 'menu';
 export type LobbyActivityIconKey = 'event' | 'summon' | 'contract' | 'market' | 'gift';
-export type LobbyNavIconKey = 'hero' | 'bag' | 'contract' | 'codex' | 'quest' | 'forge' | 'shop';
+export type LobbyNavIconKey = 'hero' | 'bag' | 'crystal' | 'codex' | 'quest' | 'forge' | 'shop';
 
 export interface LobbyActivityItemConfig {
   icon: LobbyActivityIconKey;
@@ -141,6 +141,8 @@ export interface LobbyHudHost {
   openLobbyPlaceholderDialog(title: string, detail?: string): void;
   /** 货币商店(docs/33,2026-09-22):点顶部金币/体力/钻石打开对应购买弹窗。 */
   openLobbyShopDialog?(kind: 'gold' | 'stamina' | 'diamond'): void;
+  /** 底部导航「水晶」(2026-09-27 用户拍板替换「圣契」):守卫水晶养成弹窗(docs/38)。 */
+  openGuardCrystalDialog?(): void;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildLabel(

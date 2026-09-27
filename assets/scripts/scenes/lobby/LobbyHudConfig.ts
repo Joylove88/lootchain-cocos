@@ -21,7 +21,8 @@ export const LOBBY_ACTIVITY_ITEMS: LobbyActivityItemConfig[] = [
 
 // x/y 控制可见牌匾位置；hitX/hitY/hitW/hitH 控制透明建筑点击区域。
 export const LOBBY_SCENE_HOTSPOTS: LobbySceneHotspotConfig[] = [
-  { label: '召唤祭坛', x: 0.172, y: 0.393, width: 136, hot: false, hitX: 0.167, hitY: 0.405, hitW: 0.09, hitH: 0.15 },
+  // 2026-09-27 用户:底部导航「圣契」换成「水晶」,左侧祭坛牌匾改叫「圣契召唤」承接召唤入口。
+  { label: '圣契召唤', x: 0.172, y: 0.393, width: 136, hot: false, hitX: 0.167, hitY: 0.405, hitW: 0.09, hitH: 0.15 },
   // 2026-09-25 占位清理:公会 / 排行榜 / 旅者集会 / 深渊之门 未实装,先下架;熔铸工坊接锻造,商店接货币商店。
   { label: '熔铸工坊', x: 0.388, y: 0.342, width: 136, hot: false, hitX: 0.39, hitY: 0.342, hitW: 0.105, hitH: 0.135 },
   { label: '战役', x: 0.746, y: 0.372, width: 112, hot: false, hitX: 0.748, hitY: 0.355, hitW: 0.11, hitH: 0.135 },
@@ -38,7 +39,7 @@ export const LOBBY_CHALLENGE_ITEMS: LobbyChallengeItemConfig[] = [
 export const LOBBY_NAV_ITEMS: LobbyNavItemConfig[] = [
   { key: 'hero', label: '英雄', hot: false },
   { key: 'bag', label: '背包', hot: false },
-  { key: 'contract', label: '圣契', hot: false },
+  { key: 'crystal', label: '水晶', hot: false },
   { key: 'codex', label: '图鉴', hot: false },
   { key: 'quest', label: '任务', hot: false },
   { key: 'forge', label: '锻造', hot: false },

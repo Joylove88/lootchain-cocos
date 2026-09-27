@@ -120,13 +120,13 @@ export class LobbyHudRenderer {
     if (step === 'DONE') {
       return;
     }
-    const summonEntry = { targets: ['LobbyNavItem_contract', 'LobbyCompactAction_召唤'], text: '去召唤祭坛,今天有免费召唤!' };
+    const summonEntry = { targets: ['LobbyHotspot_圣契召唤', 'LobbyCompactAction_召唤'], text: '去圣契召唤,今天有免费召唤!' };
     const heroEntry = { targets: ['LobbyNavItem_hero', 'LobbyCompactAction_英雄'], text: '去英雄页,给英雄升级变强!' };
     const questEntry = { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,去领取!' };
     const heroCardEntry = { targets: ['LobbyHeroRosterCard_0'], text: '点击英雄,查看详情' };
     const config: Record<string, Partial<Record<string, { targets: string[]; text: string }>>> = {
       TOWER: { lobby: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_爬塔'], text: '点这里,开始你的第一场矿境守卫战!' } },
-      SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去召唤祭坛,今天有免费召唤!' } },
+      SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去圣契召唤,今天有免费召唤!' } },
       DRAW: { lobby: summonEntry, gacha: { targets: ['GachaSummonOnceButton'], text: '点击免费召唤,获得新英雄!' } },
       HERO: { lobby: { ...heroEntry, text: '英雄到手!去看看你的队伍' } },
       HERO_CARD: { lobby: heroEntry, heroes: heroCardEntry },
@@ -1583,7 +1583,7 @@ export class LobbyHudRenderer {
   }
 
   private activateLobbyHotspot(parent: Node, label: string, x: number, y: number, scale: number): void {
-    if (label === '召唤祭坛') {
+    if (label === '圣契召唤') {
       this.openLobbyGachaScene();
       return;
     }
@@ -2155,9 +2155,9 @@ export class LobbyHudRenderer {
         this.openLobbyForgePanel();
         return;
       }
-      if (key === 'contract') {
-        // 圣契 = 召唤:直达召唤(抽卡)场景。
-        this.openLobbyGachaScene();
+      if (key === 'crystal') {
+        // 水晶 = 守卫水晶养成(docs/38);召唤入口在左侧「圣契召唤」建筑。
+        this.host.openGuardCrystalDialog?.();
         return;
       }
       if (key === 'shop') {
@@ -2257,11 +2257,13 @@ export class LobbyHudRenderer {
       graphics.stroke();
       return;
     }
-    if (key === 'contract') {
-      graphics.moveTo(0, half * 0.68);
-      graphics.lineTo(half * 0.56, 0);
-      graphics.lineTo(0, -half * 0.68);
-      graphics.lineTo(-half * 0.56, 0);
+    if (key === 'crystal') {
+      graphics.strokeColor = rgba(120, 190, 255, 230);
+      graphics.moveTo(0, half * 0.72);
+      graphics.lineTo(half * 0.34, half * 0.1);
+      graphics.lineTo(half * 0.22, -half * 0.6);
+      graphics.lineTo(-half * 0.22, -half * 0.6);
+      graphics.lineTo(-half * 0.34, half * 0.1);
       graphics.close();
       graphics.stroke();
       return;

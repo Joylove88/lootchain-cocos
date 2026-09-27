@@ -26,6 +26,9 @@ import { renderSceneBackButton } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_TAB_SELECTED_ASSET, starBandAssetOf, starBandTextRgb, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 
+/** 顶栏信息板图标(2026-09-27):拥有=英雄导航徽章,战力=金星。 */
+const LOBBY_HERO_ROSTER_TOP_ICON_HERO = 'ui/lobby/ai/nav_hero/spriteFrame';
+const LOBBY_HERO_ROSTER_TOP_ICON_POWER = 'ui/hero/ai/star_filled/spriteFrame';
 export const LOBBY_HERO_ROSTER_BACKDROP_ASSET = 'ui/hero-detail/hero_detail_backdrop/spriteFrame';
 export const LOBBY_HERO_ROSTER_CARD_FRAME_ASSET = 'ui/hero-roster/hero_card_frame/spriteFrame';
 export const LOBBY_HERO_ROSTER_CARD_BACKGROUND_NUU_ASSET = 'ui/hero-roster/card_background/Nuu_Illust';
@@ -278,57 +281,90 @@ export class LobbyHeroRosterPanelRenderer {
     return this.host.createUiNode(name);
   }
 
+  /**
+   * 顶栏(2026-09-27 用户:"顶部栏信息需要美化"):右侧一块斜切信息板,里面 同步状态灯 | 拥有 N(英雄徽章)| 战力 X(金星),
+   * 板外一颗「刷新」按钮;去掉开发口径的「只读」标签。窄屏只留 拥有 + 刷新。
+   */
   private renderTopBar(parent: Node, width: number, height: number, scale: number, state: LobbyHeroRosterPanelState): void {
     const y = height / 2 - 42 * scale;
-    // 顶右胶囊让位右上关闭按钮(关闭钮占 stageRight-58 一带)。
     const topBarRightInset = 118 * scale;
     const topBarLeftReserve = -width / 2 + 170 * scale;
     const right = width / 2 - topBarRightInset;
     const compact = width < 760 * scale;
+    const barH = 34 * scale;
     const power = state.heroes.reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0);
-    const capsules = compact ? [
-      { name: 'Owned', text: `拥有 ${state.heroes.length}`, width: 116 * scale, interactive: false },
-      { name: 'Readonly', text: '只读', width: 76 * scale, interactive: false },
-    ] : [
-      { name: 'Owned', text: `拥有 ${state.heroes.length}`, width: 116 * scale, interactive: false },
-      { name: 'Power', text: `战力 ${formatCompactInteger(power)}`, width: 152 * scale, interactive: false },
-      { name: 'Readonly', text: '只读', width: 76 * scale, interactive: false },
-    ];
-    let cursorX = right;
-    for (let index = capsules.length - 1; index >= 0; index -= 1) {
-      const item = capsules[index];
-      this.addTopCapsule(parent, `LobbyHeroRosterTop${item.name}`, item.text, cursorX - item.width / 2, y, item.width, 30 * scale, scale);
-      cursorX -= item.width + 8 * scale;
-    }
-
-    const reloadWidth = 86 * scale;
-    if (cursorX - reloadWidth < topBarLeftReserve) {
-      return;
-    }
-    const reload = this.addTopCapsule(parent, 'LobbyHeroRosterReloadButton', '刷新', cursorX - reloadWidth / 2, y, reloadWidth, 30 * scale, scale, true);
-    reload.addComponent(Button);
-    reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyHeroRoster(), this);
-    this.host.applyImageButtonFeedback(reload, 1.025, 0.97);
-
-    if (compact) {
-      return;
-    }
     const statusText = state.loading ? '读取中' : state.error ? '读取失败' : state.loaded ? '已同步' : '待同步';
-    const statusWidth = 94 * scale;
-    const statusX = cursorX - reloadWidth - 60 * scale;
-    if (statusX - statusWidth / 2 < topBarLeftReserve) {
+    const statusColor = state.loading ? rgba(240, 200, 90) : state.error ? rgba(238, 116, 92) : state.loaded ? rgba(120, 220, 130) : rgba(180, 170, 150);
+    const items: Array<{ key: string; icon: string | null; text: string; width: number; dot?: Color }> = compact
+      ? [{ key: 'Owned', icon: LOBBY_HERO_ROSTER_TOP_ICON_HERO, text: `拥有 ${state.heroes.length}`, width: 118 * scale }]
+      : [
+        { key: 'Status', icon: null, text: statusText, width: 104 * scale, dot: statusColor },
+        { key: 'Owned', icon: LOBBY_HERO_ROSTER_TOP_ICON_HERO, text: `拥有 ${state.heroes.length}`, width: 122 * scale },
+        { key: 'Power', icon: LOBBY_HERO_ROSTER_TOP_ICON_POWER, text: `战力 ${formatCompactInteger(power)}`, width: 158 * scale },
+      ];
+    const barW = items.reduce((sum, item) => sum + item.width, 0) + 16 * scale;
+    const barX = right - barW / 2;
+    if (barX - barW / 2 - 100 * scale < topBarLeftReserve) {
       return;
     }
-    const status = this.host.addChildLabel(
-      parent,
-      'LobbyHeroRosterStatus',
-      statusText,
-      statusX,
-      y, 17 * scale,
-      state.error ? rgba(238, 116, 92) : rgba(213, 191, 137),
-      new Size(statusWidth, 24 * scale),
-    );
-    status.overflow = Label.Overflow.SHRINK;
+    const bar = this.host.addChildPlainNode(parent, 'LobbyHeroRosterTopBar', barX, y, barW, barH);
+    const bg = bar.addComponent(Graphics);
+    bg.fillColor = rgba(12, 11, 14, 215);
+    this.traceSlantRect(bg, barW, barH, 10 * scale);
+    bg.fill();
+    bg.strokeColor = rgba(190, 150, 80, 190);
+    bg.lineWidth = Math.max(1, 1.3 * scale);
+    this.traceSlantRect(bg, barW, barH, 10 * scale);
+    bg.stroke();
+    // 顶边一线金色高光
+    bg.strokeColor = rgba(255, 220, 150, 90);
+    bg.lineWidth = 1;
+    bg.moveTo(-barW / 2 + 12 * scale, barH / 2 - 1.5 * scale);
+    bg.lineTo(barW / 2 - 12 * scale, barH / 2 - 1.5 * scale);
+    bg.stroke();
+    let cursor = -barW / 2 + 8 * scale;
+    items.forEach((item, index) => {
+      const cx = cursor + item.width / 2;
+      if (index > 0) {
+        bg.strokeColor = rgba(190, 150, 80, 110);
+        bg.lineWidth = 1;
+        bg.moveTo(cursor, barH / 2 - 8 * scale);
+        bg.lineTo(cursor, -barH / 2 + 8 * scale);
+        bg.stroke();
+      }
+      let textX = cx;
+      if (item.dot) {
+        const dot = this.host.addChildPlainNode(bar, `LobbyHeroRosterTop${item.key}Dot`, cx - item.width / 2 + 16 * scale, 0, 12 * scale, 12 * scale);
+        const dg = dot.addComponent(Graphics);
+        dg.fillColor = new Color(item.dot.r, item.dot.g, item.dot.b, 90);
+        dg.circle(0, 0, 7 * scale);
+        dg.fill();
+        dg.fillColor = item.dot;
+        dg.circle(0, 0, 4 * scale);
+        dg.fill();
+        textX = cx + 8 * scale;
+      } else if (item.icon) {
+        const iconSize = 22 * scale;
+        this.host.addSprite(`LobbyHeroRosterTop${item.key}Icon`, item.icon, cx - item.width / 2 + 10 * scale + iconSize / 2, 0, iconSize, iconSize, bar);
+        textX = cx + 10 * scale;
+      }
+      const label = this.host.addChildLabel(bar, `LobbyHeroRosterTop${item.key}`, item.text, textX, 0, 16 * scale, item.key === 'Power' ? rgba(255, 226, 150) : rgba(238, 218, 166), new Size(item.width - 28 * scale, barH));
+      label.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(label, scale, false);
+      cursor += item.width;
+    });
+    // 刷新按钮:信息板左侧,金边胶囊
+    const reloadWidth = 92 * scale;
+    const reloadX = barX - barW / 2 - 10 * scale - reloadWidth / 2;
+    if (reloadX - reloadWidth / 2 < topBarLeftReserve) {
+      return;
+    }
+    const reload = this.addTopCapsule(parent, 'LobbyHeroRosterReloadButton', state.loading ? '读取中…' : '↻ 刷新', reloadX, y, reloadWidth, barH, scale, true);
+    if (!state.loading) {
+      reload.addComponent(Button);
+      reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyHeroRoster(), this);
+      this.host.applyImageButtonFeedback(reload, 1.025, 0.97);
+    }
   }
 
   private addTopCapsule(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number, active = false): Node {

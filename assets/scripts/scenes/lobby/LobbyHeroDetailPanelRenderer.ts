@@ -1129,8 +1129,9 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
 
-  // 装备格环绕立绘(参考图1,二版):大格 92px+圆角厚底板+粗描边,字号全面加大;
-  // 左列 武器/头盔/胸甲,右列 鞋子/戒指/项链;已穿=品质色框+装备名,空=大"+"+部位名。
+  // 装备穿戴栏(2026-09-27 用户:"要像按部位穿戴一样"):六格按身体部位错落排在立绘两侧——
+  // 左列 头盔(头)/胸甲(躯干)/鞋子(脚),右列 武器(手)/项链(颈)/戒指(手),每格一条指向身体的引线;
+  // 八角厚底板 + 品质描边 + 四角铆钉,空格画部位线稿 + "点击穿戴",已穿显示真图 + 强化 +N 角标 + 名字。
   private renderEquipSlotsAroundArt(parent: Node, hero: LobbyHeroItemVO, artX: number, artY: number, artWidth: number, artHeight: number, scale: number): void {
     const state = this.host.currentLobbyHeroEquipState();
     const equippedBySlot = new Map<string, EquipmentItemVO>();
@@ -1139,68 +1140,139 @@ export class LobbyHeroDetailPanelRenderer {
         equippedBySlot.set(item.slot, item);
       }
     });
-    const slotSize = 92 * scale;
-    const slotGap = 20 * scale;
+    const slotSize = 96 * scale;
     const columnOffset = Math.max(artWidth / 2 - slotSize / 2 - 6 * scale, artWidth * 0.34);
     const leftX = artX - columnOffset;
     const rightX = artX + columnOffset;
-    const topY = artY + artHeight * 0.3;
-    const leftSlots = HERO_EQUIP_SLOTS.slice(0, 3);
-    const rightSlots = HERO_EQUIP_SLOTS.slice(3, 6);
-    const renderColumn = (columnSlots: { code: string; label: string }[], x: number, side: 'left' | 'right') => {
-      columnSlots.forEach((slot, index) => {
-        const cy = topY - index * (slotSize + slotGap);
-        const equipped = equippedBySlot.get(slot.code) ?? null;
-        const q = equipped ? equipQualityColor(equipped.quality) : { r: 118, g: 110, b: 96 };
-        const cell = this.host.addChildPlainNode(parent, `LobbyHeroDetailArtEquip_${slot.code}`, x, cy, slotSize, slotSize);
-        // 厚底板:内浅外深双层,悬空感消除。
+    // 三档高度对应 头 / 躯干 / 脚(立绘脚底在 artY - 0.43H)
+    // 底行不能压到底部英雄名牌(名牌顶约 -0.33H),脚位收到 -0.22H
+    const rowYs = [artY + artHeight * 0.3, artY + artHeight * 0.03, artY - artHeight * 0.22];
+    const bodyX = (side: 'left' | 'right'): number => artX + (side === 'left' ? -1 : 1) * artWidth * 0.13;
+    const slotByCode = new Map(HERO_EQUIP_SLOTS.map((slot) => [slot.code, slot]));
+    const columns: Array<{ side: 'left' | 'right'; x: number; codes: string[] }> = [
+      { side: 'left', x: leftX, codes: ['HELMET', 'CHEST', 'BOOTS'] },
+      { side: 'right', x: rightX, codes: ['WEAPON', 'NECKLACE', 'RING'] },
+    ];
+    const cut = 14 * scale;
+    const traceOctagon = (g: Graphics, size: number, inset: number): void => {
+      const h = size / 2 - inset;
+      const c = Math.max(4 * scale, cut - inset);
+      g.moveTo(-h + c, h);
+      g.lineTo(h - c, h);
+      g.lineTo(h, h - c);
+      g.lineTo(h, -h + c);
+      g.lineTo(h - c, -h);
+      g.lineTo(-h + c, -h);
+      g.lineTo(-h, -h + c);
+      g.lineTo(-h, h - c);
+      g.close();
+    };
+    columns.forEach((column) => {
+      column.codes.forEach((code, index) => {
+        const slot = slotByCode.get(code) ?? { code, label: code };
+        const cy = rowYs[index];
+        const x = column.x;
+        const side = column.side;
+        const equipped = equippedBySlot.get(code) ?? null;
+        const q = equipped ? equipQualityColor(equipped.quality) : { r: 150, g: 138, b: 116 };
+        // 引线:从格子内侧边指向身体,末端一颗小菱形
+        const link = this.host.addChildPlainNode(parent, `LobbyHeroDetailArtEquipLink_${code}`, 0, 0, 10, 10);
+        const lg = link.addComponent(Graphics);
+        const fromX = x + (side === 'left' ? 1 : -1) * slotSize / 2;
+        const toX = bodyX(side);
+        lg.strokeColor = equipped ? rgba(q.r, q.g, q.b, 150) : rgba(150, 138, 116, 90);
+        lg.lineWidth = Math.max(1, 1.4 * scale);
+        lg.moveTo(fromX, cy);
+        lg.lineTo(toX, cy);
+        lg.stroke();
+        lg.fillColor = equipped ? rgba(q.r, q.g, q.b, 220) : rgba(150, 138, 116, 140);
+        const d = 4 * scale;
+        lg.moveTo(toX, cy + d);
+        lg.lineTo(toX + d, cy);
+        lg.lineTo(toX, cy - d);
+        lg.lineTo(toX - d, cy);
+        lg.close();
+        lg.fill();
+        const cell = this.host.addChildPlainNode(parent, `LobbyHeroDetailArtEquip_${code}`, x, cy, slotSize, slotSize);
         const g = cell.addComponent(Graphics);
-        g.fillColor = rgba(10, 9, 8, 216);
-        g.roundRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 12 * scale);
-        g.fill();
-        g.fillColor = equipped ? rgba(Math.round(q.r * 0.2 + 14), Math.round(q.g * 0.2 + 14), Math.round(q.b * 0.2 + 14), 235) : rgba(22, 20, 18, 235);
-        g.roundRect(-slotSize / 2 + 3 * scale, -slotSize / 2 + 3 * scale, slotSize - 6 * scale, slotSize - 6 * scale, 10 * scale);
-        g.fill();
-        g.strokeColor = rgba(q.r, q.g, q.b, equipped ? 235 : 150);
-        g.lineWidth = (equipped ? 3 : 2) * scale;
-        g.roundRect(-slotSize / 2, -slotSize / 2, slotSize, slotSize, 12 * scale);
-        g.stroke();
         if (equipped) {
-          // 强化流光只在穿戴栏(环绕格)展示,列表/弹窗不再挂特效。
+          // 品质外晕
+          g.strokeColor = rgba(q.r, q.g, q.b, 60);
+          g.lineWidth = 10 * scale;
+          traceOctagon(g, slotSize, -2 * scale);
+          g.stroke();
+        }
+        g.fillColor = rgba(10, 9, 8, 225);
+        traceOctagon(g, slotSize, 0);
+        g.fill();
+        g.fillColor = equipped ? rgba(Math.round(q.r * 0.22 + 14), Math.round(q.g * 0.22 + 14), Math.round(q.b * 0.22 + 14), 240) : rgba(22, 20, 18, 240);
+        traceOctagon(g, slotSize, 4 * scale);
+        g.fill();
+        g.strokeColor = rgba(q.r, q.g, q.b, equipped ? 240 : 140);
+        g.lineWidth = (equipped ? 3 : 2) * scale;
+        traceOctagon(g, slotSize, 0);
+        g.stroke();
+        // 四角铆钉
+        g.fillColor = equipped ? rgba(255, 224, 150, 230) : rgba(120, 108, 90, 200);
+        const stud = slotSize / 2 - cut * 0.55;
+        for (const sx of [-1, 1]) {
+          for (const sy of [-1, 1]) {
+            g.circle(sx * stud, sy * stud, 2.4 * scale);
+            g.fill();
+          }
+        }
+        if (equipped) {
           this.attachEnhanceGlow(cell, slotSize, slotSize, scale, equipped.enhanceLevel ?? 0);
-          // 悬浮详情:朝立绘外侧弹出。
           cell.on(Node.EventType.MOUSE_ENTER, () => this.showEquipTooltip(parent, equipped, side === 'left' ? x - slotSize / 2 - 10 * scale : x + slotSize / 2 + 10 * scale, cy, side, scale), this);
           cell.on(Node.EventType.MOUSE_LEAVE, () => this.hideWearTooltip(), this);
-          const slotTag = this.host.addChildLabel(cell, 'ArtEquipSlotTag', slot.label, 0, slotSize / 2 - 14 * scale, 15 * scale, rgba(196, 178, 140), new Size(slotSize - 10 * scale, 18 * scale));
-          slotTag.overflow = Label.Overflow.SHRINK;
-          this.applyOutline(slotTag, scale, false);
-          // 装备真图(v2 不透明暗底方图)优先;有图时名字压到格子底部一行,无图回退原纯文字排版。
           const artIcon = equipIconAssetByCode(equipped.equipCode);
-          const artShown = artIcon ? this.host.addSprite('ArtEquipIcon', artIcon, 0, 2 * scale, slotSize * 0.88, slotSize * 0.88, cell) : null;
-          const name = artShown
-            ? this.host.addChildLabel(cell, 'ArtEquipName', safeText(equipped.equipName), 0, -slotSize / 2 + 14 * scale, 16 * scale, rgba(q.r, q.g, q.b, 255), new Size(slotSize - 8 * scale, 22 * scale))
-            : this.host.addChildLabel(cell, 'ArtEquipName', safeText(equipped.equipName), 0, -8 * scale, 18 * scale, rgba(q.r, q.g, q.b, 255), new Size(slotSize - 10 * scale, 42 * scale));
+          const artShown = artIcon ? this.host.addSprite('ArtEquipIcon', artIcon, 0, 4 * scale, slotSize * 0.8, slotSize * 0.8, cell) : null;
+          if (!artShown) {
+            this.drawEquipPartGlyph(cell, code, slotSize * 0.3, 4 * scale, rgba(q.r, q.g, q.b, 230), scale);
+          }
+          // 名字压底(品质色)
+          const nameBand = this.host.addChildPlainNode(cell, 'ArtEquipNameBand', 0, -slotSize / 2 + 12 * scale, slotSize - 8 * scale, 20 * scale);
+          const nb = nameBand.addComponent(Graphics);
+          nb.fillColor = rgba(0, 0, 0, 170);
+          nb.roundRect(-(slotSize - 8 * scale) / 2, -10 * scale, slotSize - 8 * scale, 20 * scale, 5 * scale);
+          nb.fill();
+          const name = this.host.addChildLabel(cell, 'ArtEquipName', safeText(equipped.equipName), 0, -slotSize / 2 + 12 * scale, 15 * scale, rgba(q.r, q.g, q.b, 255), new Size(slotSize - 12 * scale, 20 * scale));
           name.overflow = Label.Overflow.SHRINK;
           this.applyOutline(name, scale, true);
+          // 强化 +N 角标(右上)
+          const level = equipped.enhanceLevel ?? 0;
+          if (level > 0) {
+            const badgeW = 34 * scale;
+            const badgeH = 18 * scale;
+            const badge = this.host.addChildPlainNode(cell, 'ArtEquipEnhance', slotSize / 2 - badgeW / 2 - 4 * scale, slotSize / 2 - badgeH / 2 - 4 * scale, badgeW, badgeH);
+            const bg = badge.addComponent(Graphics);
+            bg.fillColor = level >= 15 ? rgba(200, 60, 40, 240) : level >= 10 ? rgba(120, 60, 180, 240) : rgba(40, 90, 160, 240);
+            bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, 5 * scale);
+            bg.fill();
+            const badgeLabel = this.host.addChildLabel(badge, 'Text', `+${level}`, 0, 0, 15 * scale, rgba(255, 240, 210), new Size(badgeW, badgeH));
+            this.applyOutline(badgeLabel, scale, false);
+          }
+          // 部位小签(左上)
+          const tag = this.host.addChildLabel(cell, 'ArtEquipSlotTag', slot.label, -slotSize / 2 + 20 * scale, slotSize / 2 - 12 * scale, 15 * scale, rgba(214, 196, 150), new Size(40 * scale, 18 * scale));
+          this.applyOutline(tag, scale, true);
         } else {
-          const plus = this.host.addChildLabel(cell, 'ArtEquipPlus', '+', 0, 8 * scale, 42 * scale, rgba(150, 196, 128), new Size(slotSize, 46 * scale));
-          plus.overflow = Label.Overflow.SHRINK;
-          this.applyOutline(plus, scale, true);
-          const slotTag = this.host.addChildLabel(cell, 'ArtEquipSlotTag', slot.label, 0, -slotSize / 2 + 15 * scale, 16 * scale, rgba(188, 172, 140), new Size(slotSize - 8 * scale, 18 * scale));
+          this.drawEquipPartGlyph(cell, code, slotSize * 0.27, 8 * scale, rgba(150, 138, 116, 210), scale);
+          const slotTag = this.host.addChildLabel(cell, 'ArtEquipSlotTag', slot.label, 0, -slotSize / 2 + 26 * scale, 16 * scale, rgba(214, 196, 150), new Size(slotSize - 8 * scale, 20 * scale));
           slotTag.overflow = Label.Overflow.SHRINK;
           this.applyOutline(slotTag, scale, false);
+          const hint = this.host.addChildLabel(cell, 'ArtEquipHint', '点击穿戴', 0, -slotSize / 2 + 10 * scale, 15 * scale, rgba(150, 196, 128, 230), new Size(slotSize - 8 * scale, 18 * scale));
+          hint.overflow = Label.Overflow.SHRINK;
+          this.applyOutline(hint, scale, false);
         }
         cell.addComponent(Button);
-        cell.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroEquipSlot(slot.code), this);
+        cell.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroEquipSlot(code), this);
         this.host.applyImageButtonFeedback(cell);
       });
-    };
-    renderColumn(leftSlots, leftX, 'left');
-    renderColumn(rightSlots, rightX, 'right');
-    // 一键穿戴 / 一键卸下(列底,与格子同宽对齐)。
+    });
+    // 一键穿戴 / 一键卸下:立绘顶部并排(底部被英雄名牌占着)。
     const btnW = Math.max(120 * scale, slotSize + 28 * scale);
     const btnH = 40 * scale;
-    const btnY = topY - 2 * (slotSize + slotGap) - slotSize / 2 - slotGap - btnH / 2;
+    const btnY = Math.min(artY + artHeight / 2 - btnH / 2 - 6 * scale, rowYs[0] + slotSize / 2 + 26 * scale + btnH / 2);
     const pending = state.busy;
     const makeButton = (name: string, text: string, x: number, fill: { r: number; g: number; b: number }, onClick: () => void) => {
       const btn = this.host.addChildPlainNode(parent, name, x, btnY, btnW, btnH);
@@ -1220,8 +1292,104 @@ export class LobbyHeroDetailPanelRenderer {
         this.host.applyImageButtonFeedback(btn);
       }
     };
-    makeButton('LobbyHeroDetailOneClickEquip', '一键穿戴', leftX, { r: 132, g: 88, b: 26 }, () => this.host.oneClickEquipLobbyHero(hero.id));
-    makeButton('LobbyHeroDetailOneClickUnequip', '一键卸下', rightX, { r: 46, g: 68, b: 96 }, () => this.host.oneClickUnequipLobbyHero(hero.id));
+    makeButton('LobbyHeroDetailOneClickEquip', '一键穿戴', artX - btnW / 2 - 8 * scale, { r: 132, g: 88, b: 26 }, () => this.host.oneClickEquipLobbyHero(hero.id));
+    makeButton('LobbyHeroDetailOneClickUnequip', '一键卸下', artX + btnW / 2 + 8 * scale, { r: 46, g: 68, b: 96 }, () => this.host.oneClickUnequipLobbyHero(hero.id));
+  }
+
+  /** 六个部位的线稿(空格占位 / 无真图兜底):头盔 / 胸甲 / 鞋子 / 武器 / 项链 / 戒指。r=半径尺度。 */
+  private drawEquipPartGlyph(parent: Node, code: string, r: number, y: number, color: Color, scale: number): void {
+    const node = this.host.addChildPlainNode(parent, 'ArtEquipGlyph', 0, y, r * 2, r * 2);
+    const g = node.addComponent(Graphics);
+    g.strokeColor = color;
+    g.fillColor = new Color(color.r, color.g, color.b, Math.round(color.a * 0.25));
+    g.lineWidth = Math.max(1.5, 2.4 * scale);
+    switch (code) {
+      case 'HELMET':
+        g.moveTo(-r, -r * 0.2);
+        g.lineTo(-r, r * 0.1);
+        g.arc(0, r * 0.1, r, Math.PI, 0, true);
+        g.lineTo(r, -r * 0.2);
+        g.close();
+        g.fill();
+        g.stroke();
+        g.moveTo(-r * 0.7, -r * 0.2);
+        g.lineTo(r * 0.7, -r * 0.2);
+        g.stroke();
+        g.moveTo(0, r * 1.1);
+        g.lineTo(0, r * 0.5);
+        g.stroke();
+        break;
+      case 'CHEST':
+        g.moveTo(-r, r * 0.9);
+        g.lineTo(-r * 0.45, r * 0.6);
+        g.lineTo(-r * 0.6, -r * 0.9);
+        g.lineTo(r * 0.6, -r * 0.9);
+        g.lineTo(r * 0.45, r * 0.6);
+        g.lineTo(r, r * 0.9);
+        g.lineTo(r * 0.8, r * 0.2);
+        g.lineTo(-r * 0.8, r * 0.2);
+        g.close();
+        g.fill();
+        g.stroke();
+        g.moveTo(0, r * 0.6);
+        g.lineTo(0, -r * 0.7);
+        g.stroke();
+        break;
+      case 'BOOTS':
+        g.moveTo(-r * 0.6, r);
+        g.lineTo(r * 0.2, r);
+        g.lineTo(r * 0.2, -r * 0.2);
+        g.lineTo(r, -r * 0.6);
+        g.lineTo(r, -r);
+        g.lineTo(-r * 0.7, -r);
+        g.close();
+        g.fill();
+        g.stroke();
+        g.moveTo(-r * 0.6, r * 0.3);
+        g.lineTo(r * 0.2, r * 0.3);
+        g.stroke();
+        break;
+      case 'WEAPON':
+        g.moveTo(0, r * 1.1);
+        g.lineTo(r * 0.2, r * 0.8);
+        g.lineTo(r * 0.2, -r * 0.2);
+        g.lineTo(-r * 0.2, -r * 0.2);
+        g.lineTo(-r * 0.2, r * 0.8);
+        g.close();
+        g.fill();
+        g.stroke();
+        g.moveTo(-r * 0.7, -r * 0.2);
+        g.lineTo(r * 0.7, -r * 0.2);
+        g.stroke();
+        g.moveTo(0, -r * 0.2);
+        g.lineTo(0, -r * 0.9);
+        g.stroke();
+        g.circle(0, -r, r * 0.16);
+        g.fill();
+        break;
+      case 'NECKLACE':
+        g.arc(0, r * 0.4, r * 0.85, Math.PI * 1.15, Math.PI * 1.85, true);
+        g.stroke();
+        g.moveTo(0, -r * 0.2);
+        g.lineTo(r * 0.35, -r * 0.55);
+        g.lineTo(0, -r);
+        g.lineTo(-r * 0.35, -r * 0.55);
+        g.close();
+        g.fill();
+        g.stroke();
+        break;
+      default:
+        g.circle(0, -r * 0.15, r * 0.7);
+        g.stroke();
+        g.moveTo(0, r * 0.95);
+        g.lineTo(r * 0.3, r * 0.6);
+        g.lineTo(0, r * 0.3);
+        g.lineTo(-r * 0.3, r * 0.6);
+        g.close();
+        g.fill();
+        g.stroke();
+        break;
+    }
   }
 
   /**

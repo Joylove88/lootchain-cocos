@@ -54,11 +54,11 @@ export const BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET = 'ui/battle/ai/buff_def/sprit
 export const BATTLE_C1812_BUFF_SHIELD_ASSET = 'ui/battle/ai/buff_shield/spriteFrame';
 export const BATTLE_C1812_BUFF_STUN_ASSET = 'ui/battle/ai/buff_stun/spriteFrame';
 
-// 底部导航图标换用 lobby/ai 新套件(128 方图);圣契位用召唤图标。
+// 底部导航图标换用 lobby/ai 新套件(128 方图);2026-09-27「圣契」位改「水晶」(nav_crystal 由守卫水晶立绘合成)。
 export const LOBBY_C1812_NAV_ICON_ASSETS: Record<LobbyNavIconKey, string> = {
   hero: 'ui/lobby/ai/nav_hero/spriteFrame',
   bag: 'ui/lobby/ai/nav_bag/spriteFrame',
-  contract: 'ui/lobby/ai/nav_summon/spriteFrame',
+  crystal: 'ui/lobby/ai/nav_crystal/spriteFrame',
   codex: 'ui/lobby/ai/nav_codex/spriteFrame',
   quest: 'ui/lobby/ai/nav_quest/spriteFrame',
   forge: 'ui/lobby/ai/nav_forge/spriteFrame',
