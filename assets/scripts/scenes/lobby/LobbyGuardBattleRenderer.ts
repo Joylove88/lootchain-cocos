@@ -2626,7 +2626,7 @@ export class LobbyGuardBattleRenderer {
     const panelW = Math.min(width * 0.92, panelH * (1448 / 1086));
     const s = panelH / 666;
     const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
-    const R = Math.min(150, panelH * 0.24);
+    const R = Math.min(170, panelH * 0.245);
     const wheelX = -panelW * 0.26;
     const wheelY = -height * 0.02;
     const colX = panelW * 0.24;
@@ -2711,61 +2711,79 @@ export class LobbyGuardBattleRenderer {
     // 转盘本体:8 扇 × 3 层假径向渐变(中心亮外缘暗)+ 分割线 + 深红大奖扇
     const disc = this.host.addChildPlainNode(wheel, 'WheelDisc', 0, 0, R * 2, R * 2);
     const dg = disc.addComponent(Graphics);
+    // 2026-09-27 用户验收"转盘还要美化":扇区单层实色(金币亮金 / 召唤深黑 / 强攻赤铜 / 大奖深红,相邻明暗交替),
+    // 径向明暗不用叠 Graphics(多层楔形叠加实拍出放射状锯齿),改用中心一枚柔光贴图 + 外缘一圈暗晕收边。
+    const sectorColor: Record<GuardWheelSector, Color> = {
+      gold: rgba(138, 92, 34, 255),
+      summon: rgba(52, 36, 26, 255),
+      teamAtk: rgba(112, 62, 28, 255),
+      jackpot: rgba(160, 28, 34, 255),
+    };
     GUARD_WHEEL_SECTORS.forEach((kind, k) => {
       const a0 = (k / 8) * Math.PI * 2;
       const a1 = ((k + 1) / 8) * Math.PI * 2;
       // 注意:本引擎 Graphics.arc 的 counterclockwise=false 走长弧(2026-09-27 探针实拍,旧轮盘因此整盘同色),扇形一律传 true。
-      const wedge = (r: number, color: Color): void => {
-        dg.fillColor = color;
-        dg.moveTo(0, 0);
-        dg.arc(0, 0, r, a0, a1, true);
-        dg.close();
-        dg.fill();
-      };
-      wedge(R, kind === 'jackpot' ? rgba(122, 24, 30, 255) : kind === 'gold' ? rgba(96, 62, 26, 255) : kind === 'summon' ? rgba(44, 30, 18, 255) : rgba(70, 44, 22, 255));
-      wedge(R * 0.62, kind === 'jackpot' ? rgba(255, 120, 90, 50) : rgba(255, 210, 130, 34));
-      wedge(R * 0.32, kind === 'jackpot' ? rgba(255, 170, 120, 60) : rgba(255, 230, 170, 40));
+      dg.fillColor = sectorColor[kind];
+      dg.moveTo(0, 0);
+      dg.arc(0, 0, R, a0, a1, true);
+      dg.close();
+      dg.fill();
     });
+    // 外缘暗晕(宽描边压在扇区上)
+    dg.strokeColor = rgba(0, 0, 0, 70);
+    dg.lineWidth = R * 0.22;
+    dg.circle(0, 0, R - R * 0.11);
+    dg.stroke();
+    // 分割线:金线 + 大奖扇两侧加粗;外缘一圈亮金细边、内缘一圈暗边收口
     for (let k = 0; k < 8; k += 1) {
       const a = (k / 8) * Math.PI * 2;
       const jackpotEdge = k === 7 || k === 0;
-      dg.strokeColor = jackpotEdge ? rgba(255, 220, 120, 255) : rgba(236, 190, 110, 180);
+      dg.strokeColor = jackpotEdge ? rgba(255, 224, 130, 255) : rgba(236, 190, 110, 210);
       dg.lineWidth = jackpotEdge ? 3 : 2;
       dg.moveTo(Math.cos(a) * R * 0.3, Math.sin(a) * R * 0.3);
       dg.lineTo(Math.cos(a) * R, Math.sin(a) * R);
       dg.stroke();
     }
-    // 图标靠外缘(0.80R)、文字居中带(0.52R):中心宝箱 0.7R 的角只到 ~0.5R,不压文字
-    const iconSize = R * 0.22;
+    dg.strokeColor = rgba(255, 236, 190, 90);
+    dg.lineWidth = 3;
+    dg.circle(0, 0, R - 2);
+    dg.stroke();
+    // 中心柔光:一枚金色 hit_burst 贴图盖在扇区上,做出"中心亮、外缘暗"的平滑打光
+    this.mountSprite(disc, 'WheelLight', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, R * 1.9, R * 1.9, rgba(255, 220, 150)).addComponent(UIOpacity).opacity = 130;
+    // 图标坐在深色圆徽上(0.78R,徽 0.17R + 金细边)、文字带 0.5R;大奖扇的星徽换成金色柔光呼吸,不再是细线空圈。
+    const iconSize = R * 0.26;
     const segIcons: Node[] = [];
     const segLabels: Node[] = [];
     GUARD_WHEEL_SECTORS.forEach((kind, k) => {
       const a = ((k + 0.5) / 8) * Math.PI * 2;
-      segIcons.push(this.mountSprite(disc, `SegIcon_${k}`, GUARD_WHEEL_SECTOR_ICON[kind], Math.cos(a) * R * 0.8, Math.sin(a) * R * 0.8, iconSize, iconSize));
+      const ix = Math.cos(a) * R * 0.78;
+      const iy = Math.sin(a) * R * 0.78;
+      if (kind === 'jackpot') {
+        const glow = this.mountSprite(disc, 'JackpotGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', ix, iy, R * 0.5, R * 0.5, rgba(255, 214, 110));
+        const glowOp = glow.addComponent(UIOpacity);
+        glowOp.opacity = 200;
+        tween(glowOp).repeatForever(tween().to(0.6, { opacity: 90 }).to(0.6, { opacity: 220 })).start();
+        tween(glow).repeatForever(tween().to(0.6, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'sineInOut' }).to(0.6, { scale: new Vec3(0.9, 0.9, 1) }, { easing: 'sineInOut' })).start();
+      }
+      const medal = this.host.addChildPlainNode(disc, `SegMedal_${k}`, ix, iy, 10, 10).addComponent(Graphics);
+      medal.fillColor = kind === 'jackpot' ? rgba(60, 8, 14, 200) : rgba(0, 0, 0, 120);
+      medal.circle(0, 0, R * 0.17);
+      medal.fill();
+      medal.strokeColor = kind === 'jackpot' ? rgba(255, 224, 130, 240) : rgba(255, 208, 116, 150);
+      medal.lineWidth = kind === 'jackpot' ? 2.5 : 1.5;
+      medal.circle(0, 0, R * 0.17);
+      medal.stroke();
+      segIcons.push(this.mountSprite(disc, `SegIcon_${k}`, GUARD_WHEEL_SECTOR_ICON[kind], ix, iy, iconSize, iconSize));
       if (R >= 120) {
-        const label = this.host.addChildLabel(disc, `SegLabel_${k}`, GUARD_WHEEL_SECTOR_LABEL[kind], Math.cos(a) * R * 0.52, Math.sin(a) * R * 0.52, 18, rgba(255, 232, 178, 245), new Size(64, 24));
+        const label = this.host.addChildLabel(disc, `SegLabel_${k}`, GUARD_WHEEL_SECTOR_LABEL[kind], Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, 18, kind === 'jackpot' ? rgba(255, 224, 130, 255) : rgba(255, 232, 178, 245), new Size(64, 24));
         label.enableOutline = true;
         label.outlineColor = rgba(40, 24, 8, 255);
         label.outlineWidth = 2;
+        label.isBold = kind === 'jackpot';
         segLabels.push(label.node);
       }
-      if (kind === 'jackpot') {
-        const ring = this.host.addChildPlainNode(disc, 'JackpotRing', Math.cos(a) * R * 0.8, Math.sin(a) * R * 0.8, 10, 10);
-        const rg = ring.addComponent(Graphics);
-        rg.strokeColor = rgba(255, 220, 120, 200);
-        rg.lineWidth = 2;
-        rg.circle(0, 0, R * 0.15);
-        rg.stroke();
-        const ringOp = ring.addComponent(UIOpacity);
-        tween(ringOp).repeatForever(tween().to(0.6, { opacity: 120 }).to(0.6, { opacity: 255 })).start();
-      }
     });
-    // 玻璃高光(不转)+ 轴心 + 指针扇区高亮
-    const glossG = this.host.addChildPlainNode(wheel, 'WheelGloss', 0, 0, 10, 10).addComponent(Graphics);
-    glossG.strokeColor = rgba(255, 236, 190, 55);
-    glossG.lineWidth = R * 0.12;
-    glossG.arc(0, 0, R * 0.92, (25 / 180) * Math.PI, (155 / 180) * Math.PI, true);
-    glossG.stroke();
+    // 轴心(玻璃高光带已去掉:斜跨扇区的半透明弧看着像脏印)
     const hubG = this.host.addChildPlainNode(wheel, 'WheelHub', 0, 0, 10, 10).addComponent(Graphics);
     hubG.fillColor = rgba(28, 18, 12, 255);
     hubG.circle(0, 0, R * 0.34);
