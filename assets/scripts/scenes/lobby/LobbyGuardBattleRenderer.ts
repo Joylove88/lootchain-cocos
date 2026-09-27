@@ -53,6 +53,12 @@ import {
   guardTick,
   guardTrialLayers,
   guardUseCrystalSkill,
+  guardMarkMonster,
+  guardHeroSkillPending,
+  guardCastHeroSkillNow,
+  guardCallNextWave,
+  guardCallWaveReward,
+  GUARD_SKILL_MANUAL_WINDOW_MS,
   guardMonsterSpineResource,
   GUARD_CELL_UNLOCK_EVERY,
   GUARD_START_CELLS,
@@ -175,6 +181,8 @@ const GUARD_ROLE_COLOR: Record<string, Color> = {
 // ── 战斗内设置偏好(2026-09-24 用户确认方案):存本地,跨局保留;读写失败按默认值处理 ──
 const GUARD_PREF_SHAKE = 'lootchain.guard.shake';
 const GUARD_PREF_DAMAGE_NUMBERS = 'lootchain.guard.damageNumbers';
+/** 战技释放方式(docs/37 B):'0'=蓄满后给 1.5s 手动窗口(默认),'1'=立即自动释放。 */
+const GUARD_PREF_SKILL_AUTO = 'lootchain.guard.skillAuto';
 
 function readGuardPref(key: string, fallback: string): string {
   try {
@@ -376,6 +384,11 @@ export class LobbyGuardBattleRenderer {
   /** 设置项:战斗震屏(默认开)、伤害数字精简模式(默认全部显示)。 */
   private shakeEnabled = readGuardPref(GUARD_PREF_SHAKE, '1') !== '0';
   private damageNumbersLite = readGuardPref(GUARD_PREF_DAMAGE_NUMBERS, 'all') === 'lite';
+  private skillAutoImmediate = readGuardPref(GUARD_PREF_SKILL_AUTO, '0') === '1';
+  /** docs/37 交互玩法:每局只提示一次的引导 key;共鸣格视图签名;已飘过"共鸣"字的英雄。 */
+  private interactHints = new Set<string>();
+  private resonanceKey = '';
+  private resonanceUnits = new Set<number>();
   /** 点击英雄显示攻击范围(unitId;拖拽结束/再点空白清除)。 */
   private rangeShownUnitId: number | null = null;
   /** 已绘制选中层对应的格位:仅换人/换格时整层重建(每 tick 重建=详情框闪烁,2026-08-28 用户验收)。 */
@@ -468,6 +481,7 @@ export class LobbyGuardBattleRenderer {
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
+    this.resonanceKey = '';
     this.mountedLayoutKey = '';
     this.statsPanelSignature = '';
     this.displayedGold = -1;
@@ -582,6 +596,9 @@ export class LobbyGuardBattleRenderer {
         minionHpMult: isDaily ? 10 / 3 : 1,
       },
     );
+    this.sim.skillAutoImmediate = this.skillAutoImmediate;
+    this.interactHints.clear();
+    this.resonanceUnits.clear();
     this.prewarmAttackFx(pool);
     this.simBattleNo = battleState.start?.battleNo ?? '';
     this.settleRequested = false;
@@ -607,9 +624,13 @@ export class LobbyGuardBattleRenderer {
     const root = this.host.addChildPlainNode(this.host.node, 'LobbyGuardBattleRoot', 0, 0, layout.width, layout.height);
     this.root = root;
     // 点空白处关闭范围显示与英雄详情(英雄节点会拦截冒泡,2026-08-26 用户拍板)。
-    root.on(Node.EventType.TOUCH_END, () => {
+    root.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
       if (this.rangeShownUnitId !== null) {
         this.clearRangeIndicator();
+      }
+      // docs/37 A:点在战场上(事件目标就是根节点,按钮/英雄/宝箱各自接住的不算)= 点怪集火,点空地取消标记。
+      if (event && (event as unknown as { target?: Node }).target === root) {
+        this.handleFieldTap(event);
       }
     }, this);
     this.paintBackdrop(root, layout.width, layout.height);
@@ -619,6 +640,7 @@ export class LobbyGuardBattleRenderer {
     this.renderCrystal();
     this.renderHud();
     this.renderSummonButton();
+    this.renderCallWaveButton();
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
     // 新手引导(P1,2026-09-05):首战 MAIN_1_1 指向召唤按钮的强提示(image2 箭头+气泡),首次召唤后消失(step 里检测)。
@@ -652,6 +674,7 @@ export class LobbyGuardBattleRenderer {
     this.fieldNode = null;
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
+    this.resonanceKey = '';
     this.statsPanelSignature = '';
     this.heroViews.clear();
     this.monsterViews.clear();
@@ -1781,9 +1804,11 @@ export class LobbyGuardBattleRenderer {
       this.root?.getChildByName('GuardGuideHint')?.destroy();
     }
     this.syncHeroes();
+    this.syncResonance();
     this.syncMonsters();
     this.syncChests();
     this.syncZones();
+    this.refreshCallWaveButton();
     this.syncBossCastBar();
     this.syncChoiceOverlay();
     this.refreshHud();
@@ -1890,6 +1915,15 @@ export class LobbyGuardBattleRenderer {
           this.highlightCaster(event.cell, awakened ? `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!` : `战技·${event.skillName ?? '出击'}`);
         }
         gameAudio.sfx(resolveHeroSkillSfxKey(event.heroCode), awakened ? 1 : 0.6);
+        if (event.manual && typeof event.cell === 'number') {
+          // docs/37 B:手动释放 +25%;两名英雄 1.5s 内先后手动释放 = 合击,再 ×1.3。
+          const at = this.cellCenter(event.cell);
+          this.spawnFloater(at.x, at.y + this.unitSize() * 1.5, event.chained ? '合击!伤害 ×1.6' : '手动释放 +25%', event.chained ? rgba(255, 150, 90) : rgba(255, 214, 92), event.chained ? 22 : 18);
+          if (event.chained) {
+            this.shakeField(5);
+            gameAudio.sfx('level_up', 0.7);
+          }
+        }
         if (caster?.role === 'support' && typeof event.monsterId !== 'number') {
           // 圣辉涌泉(2026-09-24 用户反馈"辅助没有技能效果"):水晶金色圣光爆发 + 每个友军套金色光罩,持续到攻速增益结束。
           this.playSupportSurge(sim, caster, event.amount ?? 0);
@@ -1951,6 +1985,13 @@ export class LobbyGuardBattleRenderer {
           const center = this.cellCenter(event.cell);
           this.spawnFloater(center.x, center.y + this.unitSize() * 0.4, '新格解锁!', rgba(150, 240, 160));
         }
+      } else if (event.type === 'skillReady') {
+        if (!sim.skillAutoImmediate) {
+          this.showInteractHint('skillReady', '战技就绪:点击脚下发金光的英雄手动释放,伤害 +25%(不点 1.5 秒后自动释放)');
+        }
+      } else if (event.type === 'callWave') {
+        gameAudio.sfx('coin');
+        this.host.setStatus(`提前迎战!奖励 ${event.amount ?? 0} 金币`);
       } else if (event.type === 'waveStart') {
         this.host.setStatus(`第 ${event.wave} 波来袭!`);
         gameAudio.sfx('wave_start');
@@ -1958,7 +1999,7 @@ export class LobbyGuardBattleRenderer {
         this.host.setStatus('精英宝箱掉落!点击开箱!');
         gameAudio.sfx('coin');
       } else if (event.type === 'bossCastStart') {
-        this.host.setStatus('BOSS 蓄力轰击水晶!集火打断!');
+        this.host.setStatus(sim.markedMonsterId === event.monsterId ? 'BOSS 蓄力轰击水晶!已集火,打断所需伤害减半!' : 'BOSS 蓄力轰击水晶!点击 BOSS 集火,打断所需伤害减半!');
         // 蓄力:BOSS 播蓄力动作(循环)+ 脚下紫色法阵,直到读满/被打断(2026-09-24)。
         const castBoss = typeof event.monsterId === 'number' ? sim.monsters.find((entry) => entry.monsterId === event.monsterId) ?? null : null;
         const castView = castBoss ? this.monsterViews.get(castBoss.monsterId) : undefined;
@@ -2428,7 +2469,11 @@ export class LobbyGuardBattleRenderer {
       this.paintSettingsTitle(content, '玩法速查', panelW, titleY);
       const lines = [
         '召唤:花金币把英雄召唤到空格,每次召唤费用递增。',
-        '合成:把同名同星英雄拖到一起升星(最高 5★),2★ 起自动释放战技。',
+        '合成:把同名同星英雄拖到一起升星(最高 5★),2★ 起解锁战技。',
+        '战技:蓄满时英雄脚下发金光,点它手动释放 +25%;两人接连手动释放触发合击。',
+        '集火:点怪物标记,射程内英雄优先打它、伤害 +20%;标记读条中的 BOSS 更易打断。',
+        '共鸣格:每波发金光的格子,站上去的英雄本波攻击 +40%;把主力拖过去。',
+        '迎战:波间点「提前迎战」立刻开下一波,越早奖励金币越多。',
         '出售:把英雄拖到水晶上出售,返还部分金币。',
         '强化:花金币抽词条三选一;每守住一波送一次免费强化。',
         'BOSS:头顶出现蓄力条时集火打断,读满会轰掉水晶 15% 生命。',
@@ -2472,6 +2517,16 @@ export class LobbyGuardBattleRenderer {
         pick: (index) => {
           this.damageNumbersLite = index === 1;
           writeGuardPref(GUARD_PREF_DAMAGE_NUMBERS, this.damageNumbersLite ? 'lite' : 'all');
+        },
+      },
+      {
+        key: 'SkillAuto', label: '战技释放', options: ['手动加成', '立即自动'], active: this.skillAutoImmediate ? 1 : 0,
+        pick: (index) => {
+          this.skillAutoImmediate = index === 1;
+          writeGuardPref(GUARD_PREF_SKILL_AUTO, this.skillAutoImmediate ? '1' : '0');
+          if (this.sim) {
+            this.sim.skillAutoImmediate = this.skillAutoImmediate;
+          }
         },
       },
     ];
@@ -2550,6 +2605,241 @@ export class LobbyGuardBattleRenderer {
     }, this);
     const cancel = this.mountPrimaryTextButton(overlay, 'GuardExitConfirmCancel', panelW * 0.2, buttonY, 216, '继续战斗');
     cancel.on(Node.EventType.TOUCH_END, () => this.closeExitConfirm(), this);
+  }
+
+  // ── docs/37 P1 交互玩法 ──
+
+  /** 每局只弹一次的玩法提示(走状态栏,不加弹框)。 */
+  private showInteractHint(key: string, text: string): void {
+    if (this.interactHints.has(key)) {
+      return;
+    }
+    this.interactHints.add(key);
+    this.host.setStatus(text);
+  }
+
+  /** 点在战场上:命中怪物 = 集火标记(再点同一只取消),点空地 = 取消标记。 */
+  private handleFieldTap(event: EventTouch): void {
+    const sim = this.sim;
+    const field = this.fieldNode;
+    if (!sim || !field || sim.paused || sim.pendingChoice || sim.phase === 'victory' || sim.phase === 'defeat') {
+      return;
+    }
+    const transform = field.getComponent(UITransform);
+    if (!transform || typeof event.getUILocation !== 'function') {
+      return;
+    }
+    const ui = event.getUILocation();
+    const local = transform.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+    const monsterId = this.pickMonsterAt(local.x, local.y);
+    if (monsterId === null) {
+      if (sim.markedMonsterId !== null) {
+        guardMarkMonster(sim, null);
+      }
+      return;
+    }
+    const marked = guardMarkMonster(sim, monsterId);
+    if (marked === null) {
+      return;
+    }
+    gameAudio.sfx('ui_click');
+    const target = sim.monsters.find((entry) => entry.monsterId === marked);
+    if (target && sim.bossCast && sim.bossCast.monsterId === marked) {
+      this.host.setStatus('已集火 BOSS:打断所需伤害减半!');
+    } else if (target) {
+      this.showInteractHint('mark', '已集火:射程内的英雄优先攻击它,伤害 +20%。再点一次或点空地取消');
+    }
+  }
+
+  /** 战场坐标下命中的活怪(按身体中心距离 / 体型半径取最近;BOSS 用身体画面中心偏移)。 */
+  private pickMonsterAt(x: number, y: number): number | null {
+    const sim = this.sim;
+    if (!sim) {
+      return null;
+    }
+    let best: number | null = null;
+    let bestScore = 1;
+    for (const monster of sim.monsters) {
+      if (monster.dead) {
+        continue;
+      }
+      const view = this.monsterViews.get(monster.monsterId);
+      if (!view || !view.node.isValid) {
+        continue;
+      }
+      const size = view.node.getComponent(UITransform)?.width ?? this.unitSize();
+      const cx = view.node.position.x + this.bossVisualOffsetX(view);
+      const cy = view.node.position.y + size * 0.1;
+      const radius = Math.max(this.unitSize() * 0.6, size * 0.42);
+      const score = Math.hypot(x - cx, y - cy) / radius;
+      if (score < bestScore) {
+        bestScore = score;
+        best = monster.monsterId;
+      }
+    }
+    return best;
+  }
+
+  /** 集火准星:红色旋转环 + 四向刻度,盖在怪物身体中心,出现时弹一下。 */
+  private mountMarkReticle(view: GuardUnitView): void {
+    const size = view.node.getComponent(UITransform)?.width ?? this.unitSize();
+    const r = Math.max(28, Math.min(90, size * 0.34));
+    const node = this.host.addChildPlainNode(view.node, 'GuardMarkReticle', this.bossVisualOffsetX(view), size * 0.1, r * 2, r * 2);
+    const g = node.addComponent(Graphics);
+    g.strokeColor = rgba(255, 70, 60, 235);
+    g.lineWidth = 3;
+    g.circle(0, 0, r);
+    g.stroke();
+    g.lineWidth = 4;
+    for (let i = 0; i < 4; i += 1) {
+      const a = (i / 4) * Math.PI * 2;
+      g.moveTo(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62);
+      g.lineTo(Math.cos(a) * r * 1.22, Math.sin(a) * r * 1.22);
+    }
+    g.stroke();
+    g.fillColor = rgba(255, 90, 70, 230);
+    g.circle(0, 0, 4);
+    g.fill();
+    node.setScale(1.8, 1.8, 1);
+    tween(node).to(0.18, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+    tween(node).repeatForever(tween().by(2.4, { angle: -360 })).start();
+  }
+
+  /** 战技等待手动释放:英雄脚下金色光环脉动 + 身后柔光。 */
+  private syncSkillReadyGlow(heroNode: Node, pending: boolean): void {
+    const existing = heroNode.getChildByName('GuardSkillReadyGlow');
+    if (!pending) {
+      existing?.destroy();
+      return;
+    }
+    if (existing) {
+      return;
+    }
+    const unit = this.unitSize();
+    const glow = this.host.addChildPlainNode(heroNode, 'GuardSkillReadyGlow', 0, 0, 10, 10);
+    glow.setSiblingIndex(0);
+    const halo = this.mountSprite(glow, 'Halo', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, unit * 0.05, unit * 1.3, unit * 1.3, rgba(255, 214, 110));
+    const haloOp = halo.addComponent(UIOpacity);
+    haloOp.opacity = 170;
+    tween(haloOp).repeatForever(tween().to(0.35, { opacity: 90 }).to(0.35, { opacity: 200 })).start();
+    const ring = this.host.addChildPlainNode(glow, 'Ring', 0, -unit * 0.42, 10, 10);
+    const rg = ring.addComponent(Graphics);
+    rg.strokeColor = rgba(255, 214, 92, 255);
+    rg.lineWidth = 4;
+    rg.ellipse(0, 0, unit * 0.44, unit * 0.13);
+    rg.stroke();
+    tween(ring).repeatForever(tween().to(0.35, { scale: new Vec3(1.18, 1.18, 1) }).to(0.35, { scale: Vec3.ONE })).start();
+  }
+
+  /** 共鸣格:发金光的格子(旋转光芒 + 金框 + "共鸣 攻+40%");站上去的英雄飘字确认。 */
+  private syncResonance(): void {
+    const sim = this.sim;
+    const field = this.fieldNode;
+    if (!sim || !field) {
+      return;
+    }
+    const key = `${sim.resonanceCells.join(',')}|${this.mountedLayoutKey}`;
+    if (key !== this.resonanceKey) {
+      for (const stale of field.children.filter((child) => child.name === 'GuardResonance')) {
+        stale.destroy();
+      }
+      for (const cell of sim.resonanceCells) {
+        const tile = this.cellTileRect(cell);
+        const node = this.host.addChildPlainNode(field, 'GuardResonance', tile.x, tile.y, tile.w, tile.h);
+        node.setSiblingIndex(3);
+        const ray = this.mountSprite(node, 'Ray', 'ui/guard/cast_flash/spriteFrame', 0, 0, tile.w * 1.15, tile.w * 1.15, rgba(255, 214, 110));
+        ray.addComponent(UIOpacity).opacity = 150;
+        tween(ray).repeatForever(tween().by(10, { angle: -360 })).start();
+        const frame = this.host.addChildPlainNode(node, 'Frame', 0, 0, tile.w, tile.h);
+        const fg = frame.addComponent(Graphics);
+        fg.fillColor = rgba(255, 214, 110, 46);
+        fg.roundRect(-tile.w * 0.47, -tile.h * 0.45, tile.w * 0.94, tile.h * 0.9, 10);
+        fg.fill();
+        fg.strokeColor = rgba(255, 220, 120, 235);
+        fg.lineWidth = 3;
+        fg.roundRect(-tile.w * 0.47, -tile.h * 0.45, tile.w * 0.94, tile.h * 0.9, 10);
+        fg.stroke();
+        const frameOp = frame.addComponent(UIOpacity);
+        tween(frameOp).repeatForever(tween().to(0.7, { opacity: 150 }).to(0.7, { opacity: 255 })).start();
+        const tag = this.host.addChildLabel(node, 'Tag', '共鸣 攻+40%', 0, -tile.h * 0.5 - 12, 15, rgba(255, 226, 140), new Size(tile.w * 1.3, 20));
+        tag.enableOutline = true;
+        tag.outlineColor = rgba(40, 24, 8, 255);
+        tag.outlineWidth = 2;
+      }
+      this.resonanceKey = key;
+      if (sim.resonanceCells.length > 0) {
+        this.showInteractHint('resonance', '金色共鸣格:把英雄拖上去,本波攻击 +40%、攻速 +15%');
+      }
+    }
+    for (const hero of sim.heroes) {
+      const on = sim.resonanceCells.indexOf(hero.cell) >= 0;
+      if (on && !this.resonanceUnits.has(hero.unitId)) {
+        this.resonanceUnits.add(hero.unitId);
+        const at = this.cellCenter(hero.cell);
+        this.spawnFloater(at.x, at.y + this.unitSize() * 0.9, '共鸣 攻击+40%', rgba(255, 214, 92), 18);
+      } else if (!on) {
+        this.resonanceUnits.delete(hero.unitId);
+      }
+    }
+  }
+
+  /** 提前迎战按钮:顶部波次横幅下方,只在波间运营窗口出现,文案带实时奖励。 */
+  private renderCallWaveButton(): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const bannerW = Math.min(600, width * 0.42);
+    const bannerH = bannerW * (110 / 704);
+    const btnW = 230;
+    const btnH = btnW * (100 / 431);
+    const y = height / 2 - 16 - bannerH - 14 - 22 - btnH / 2;
+    const button = this.mountPrimaryButton(root, 'GuardCallWaveButton', 0, y, btnW);
+    const label = this.host.addChildLabel(button, 'GuardCallWaveLabel', '提前迎战', 0, 0, 20, rgba(255, 238, 190), new Size(btnW * 0.86, 28));
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableOutline = true;
+    label.outlineColor = rgba(60, 20, 8, 255);
+    label.outlineWidth = 2;
+    button.active = false;
+    button.on(Node.EventType.TOUCH_END, () => {
+      const sim = this.sim;
+      if (!sim || this.wheelOverlayOpen) {
+        return;
+      }
+      const reward = guardCallNextWave(sim);
+      if (reward !== null) {
+        this.spawnFloater(0, y + height * 0.03 - btnH, `+${reward} 金币`, rgba(255, 214, 92), 22);
+      }
+      this.refreshCallWaveButton();
+    }, this);
+  }
+
+  private refreshCallWaveButton(): void {
+    const sim = this.sim;
+    const button = this.root?.getChildByName('GuardCallWaveButton');
+    if (!sim || !button || !button.isValid) {
+      return;
+    }
+    const reward = guardCallWaveReward(sim);
+    // 开局还没召唤任何英雄时不显示(首战引导期间别抢注意力)。
+    const show = reward > 0 && !this.wheelOverlayOpen && !(sim.wave === 0 && sim.heroes.length === 0);
+    if (button.active !== show) {
+      button.active = show;
+      if (show) {
+        button.setScale(0.7, 0.7, 1);
+        tween(button).to(0.2, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+        this.showInteractHint('callWave', '波间可点「提前迎战」立刻开下一波,越早奖励越多');
+      }
+    }
+    if (show) {
+      const label = button.getChildByName('GuardCallWaveLabel')?.getComponent(Label);
+      const text = `提前迎战  +${reward} 金币`;
+      if (label && label.string !== text) {
+        label.string = text;
+      }
+    }
   }
 
   private closeExitConfirm(): void {
@@ -4702,7 +4992,8 @@ export class LobbyGuardBattleRenderer {
       if (attackLabel) {
         attackLabel.string = `${guardHeroAttackValue(sim, hero)}`;
       }
-      // 主动技能冷却条(2★ 起):橙=充能中,亮蓝=就绪
+      // 主动技能冷却条(2★ 起):橙=充能中,亮蓝=就绪,金色回缩=等玩家点击手动释放(docs/37 B)
+      const skillPending = !sim.skillAutoImmediate && guardHeroSkillPending(sim, hero);
       let cdNode = view.node.getChildByName('GuardHeroCd');
       if (!cdNode) {
         cdNode = this.host.addChildPlainNode(view.node, 'GuardHeroCd', 0, -this.heroDisplaySize() * 0.7, this.heroDisplaySize() * 0.8, 6);
@@ -4718,11 +5009,19 @@ export class LobbyGuardBattleRenderer {
           cdG.fillColor = rgba(10, 8, 8, 190);
           cdG.roundRect(-w / 2, -3, w, 6, 3);
           cdG.fill();
-          cdG.fillColor = ready >= 1 ? rgba(140, 230, 255, 245) : rgba(255, 196, 90, 225);
-          cdG.roundRect(-w / 2, -3, Math.max(3, w * ready), 6, 3);
+          if (skillPending) {
+            // 手动窗口:金条从满往回缩,缩完自动释放
+            const left = Math.max(0, Math.min(1, 1 - (sim.timeMs - (hero.skillPendingSinceMs ?? sim.timeMs)) / GUARD_SKILL_MANUAL_WINDOW_MS));
+            cdG.fillColor = rgba(255, 214, 92, 255);
+            cdG.roundRect(-w / 2, -3, Math.max(3, w * left), 6, 3);
+          } else {
+            cdG.fillColor = ready >= 1 ? rgba(140, 230, 255, 245) : rgba(255, 196, 90, 225);
+            cdG.roundRect(-w / 2, -3, Math.max(3, w * ready), 6, 3);
+          }
           cdG.fill();
         }
       }
+      this.syncSkillReadyGlow(view.node, skillPending);
     }
   }
 
@@ -5689,6 +5988,12 @@ export class LobbyGuardBattleRenderer {
         return;
       }
       if (movedPx < 10) {
+        // docs/37 B:战技已蓄满时点英雄 = 手动释放(+25%,可合击);没蓄满或没目标才走选中/范围显示。
+        const tappedHero = sim.heroes.find((entry) => entry.unitId === unitId);
+        if (tappedHero && tappedHero.star >= 2 && sim.timeMs >= tappedHero.skillReadyMs && guardCastHeroSkillNow(sim, unitId)) {
+          this.syncHeroes();
+          return;
+        }
         // 点击:选中显示范围+信息卡;再点同一英雄收起。
         if (this.rangeShownUnitId === unitId) {
           this.clearRangeIndicator();
@@ -5816,6 +6121,14 @@ export class LobbyGuardBattleRenderer {
       const slowMark = view.node.getChildByName('GuardSlowMark');
       if (slowMark) {
         slowMark.destroy();
+      }
+      const reticle = view.node.getChildByName('GuardMarkReticle');
+      if (sim.markedMonsterId === monster.monsterId) {
+        if (!reticle) {
+          this.mountMarkReticle(view);
+        }
+      } else if (reticle) {
+        reticle.destroy();
       }
       let stunMark = view.node.getChildByName('GuardStunMark');
       if (stunned && !stunMark) {

@@ -94,6 +94,8 @@ export interface GuardHeroUnit {
   attackCount: number;
   /** 主动技能就绪时刻(2★ 解锁,自动施放;参考蔚蓝星球主动技,2026-08-26)。 */
   skillReadyMs: number;
+  /** 战技蓄满、等待玩家点击手动释放的起始时刻(0=未等待;docs/37 B,窗口过后自动释放)。 */
+  skillPendingSinceMs?: number;
   /** 奥蕾莉亚·追猎之翎:连续命中同一目标的叠层(其他英雄恒 0)。 */
   focusTargetId: number | null;
   focusStacks: number;
@@ -213,7 +215,9 @@ export interface GuardEvent {
     | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero' | 'bossSkill'
     | 'zoneTick' | 'ultUnlock' | 'perkGain' | 'perkProc' | 'freeEnhance'
     // 辅助周期治疗水晶(2026-09-24 表现层:水晶回血特效 + 绿色飘字);amount=实际回复量(满血时不发)。
-    | 'crystalHeal';
+    | 'crystalHeal'
+    // docs/37:战技蓄满进入手动窗口 / 提前开战(amount=奖励金币)。
+    | 'skillReady' | 'callWave';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -245,7 +249,17 @@ export interface GuardEvent {
   perkId?: string;
   /** heroSkill:该英雄的专属大招觉醒等级(0=未觉醒的通用战技)。 */
   ultLv?: number;
+  /** heroSkill:玩家手动释放(+25%)/ 与另一英雄手动战技构成合击(再 ×1.3)。 */
+  manual?: boolean;
+  chained?: boolean;
   zoneId?: number;
+}
+
+/** 玩家战斗内操作记录(docs/37 §1-5:为服务端复演留口子;t=sim 时间,v=目标 id)。 */
+export interface GuardInput {
+  t: number;
+  k: 'mark' | 'skill' | 'callWave';
+  v: number;
 }
 
 export interface GuardBattleState {
@@ -342,6 +356,19 @@ export interface GuardBattleState {
   bossKills: number;
   /** 车轮战下一只 BOSS 入场时刻(击杀后短暂间隔,下一只更强的入场)。 */
   nextRushBossAtMs: number;
+  // ── docs/37 P1 交互玩法 ──
+  /** 集火标记的怪物(null=未标记);英雄优先打它、它受伤 +20%,BOSS 读条中被标记则打断阈值减半。 */
+  markedMonsterId: number | null;
+  /** 共鸣地块:本波(含波前运营窗口)发光的格子,站上去的英雄攻击 +40%、攻速 +15%。 */
+  resonanceCells: number[];
+  /** 战技立即自动释放(设置项;true=蓄满即放无加成,false=给玩家 1.5s 手动窗口)。 */
+  skillAutoImmediate: boolean;
+  /** 最近一次手动战技(合击判定用)。 */
+  lastManualSkill: { heroCode: string; atMs: number } | null;
+  /** 交互玩法专用派生随机流(不消耗主 rng:不操作的对局波次构成与改版前逐位一致)。 */
+  eventRng: () => number;
+  /** 玩家操作日志。 */
+  inputs: GuardInput[];
 }
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
@@ -446,6 +473,26 @@ export const GUARD_BOSS_CAST_INTERRUPT_HP_RATIO = 0.06;
 export const GUARD_BOSS_CAST_CRYSTAL_RATIO = 0.15;
 export const GUARD_BOSS_STUN_MS = 2_500;
 export const GUARD_CRYSTAL_SKILL_CD_MS = 45_000;
+// ── docs/37 P1 交互玩法数值(2026-09-27 首版,回归见 docs/37 §6)──
+/** 集火标记:目标受伤倍率;BOSS 读条中被标记时打断阈值倍率。 */
+export const GUARD_MARK_DAMAGE_MULT = 1.2;
+export const GUARD_MARK_INTERRUPT_RATIO = 0.5;
+/** 战技手动窗口:蓄满后等玩家点击的时长;手动释放加成;合击窗口与加成。 */
+export const GUARD_SKILL_MANUAL_WINDOW_MS = 1500;
+export const GUARD_SKILL_MANUAL_MULT = 1.25;
+export const GUARD_SKILL_CHAIN_WINDOW_MS = 1500;
+export const GUARD_SKILL_CHAIN_MULT = 1.3;
+/** 共鸣地块:攻击 / 攻速加成;从第几波起每波亮 2 格。 */
+export const GUARD_RESONANCE_ATK_MULT = 1.4;
+export const GUARD_RESONANCE_ASPD_MULT = 1.15;
+export const GUARD_RESONANCE_TWO_FROM_WAVE = 6;
+/**
+ * 提前开战:每提前 1 秒奖励 (基数 + 每波系数 × 下一波波次) 金币;剩余不足该值(ms)不再允许。
+ * 2026-09-27 回归:主线 10 波一局总收入约 2760,每波都满 5s 提前 ≈ +180(约 7%),给战场事件留出 +15% 总预算的余量。
+ */
+export const GUARD_CALL_WAVE_GOLD_BASE = 2;
+export const GUARD_CALL_WAVE_GOLD_PER_WAVE = 0.3;
+export const GUARD_CALL_WAVE_MIN_REMAIN_MS = 500;
 export const GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS = 1.2;
 export function guardCrystalSkillDamage(wave: number): number {
   return 60 + 25 * Math.max(1, wave);
@@ -772,6 +819,12 @@ export function createGuardBattle(
     unlockedCells: GUARD_START_CELLS,
     bossKills: 0,
     nextRushBossAtMs: GUARD_RUSH_FIRST_BOSS_DELAY_MS,
+    markedMonsterId: null,
+    resonanceCells: [],
+    skillAutoImmediate: false,
+    lastManualSkill: null,
+    eventRng: createGuardRng((seed ^ 0x27d4eb2f) >>> 0),
+    inputs: [],
   };
 }
 
@@ -1007,7 +1060,8 @@ export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUni
       perkMult = 1 + value * Math.min(4, Math.max(0, same - 1));
     }
   }
-  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult));
+  const resonanceMult = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ATK_MULT : 1;
+  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult * resonanceMult));
 }
 
 // ── P2:XP(击杀经验只累计等级,不再弹词条,2026-09-19)──
@@ -1563,6 +1617,9 @@ export function guardUseCrystalSkill(state: GuardBattleState): boolean {
 function killMonster(state: GuardBattleState, monster: GuardMonster, killerCode: string | null = null): void {
   monster.dead = true;
   monster.diedAtMs = state.timeMs;
+  if (state.markedMonsterId === monster.monsterId) {
+    state.markedMonsterId = null;
+  }
   state.killCount += 1;
   // 击杀金币随怪物所属波次成长(+6%/波):怪血 wave^1.08 超线性,经济不同步涨则 15 波后必然入不敷出。
   // ÷spawnCountMult:主线怪量翻倍后单只金币减半(总收入中性),否则怪越多经济越富、难度自抵消。
@@ -1644,15 +1701,22 @@ function guardOnKillPerks(state: GuardBattleState, monster: GuardMonster, killer
   }
 }
 
-function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: number, byHero: GuardHeroUnit | null, sourceCode: string | null = null): void {
+function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: number, byHero: GuardHeroUnit | null, sourceCode: string | null = null, markApplied = false): void {
   if (monster.dead) {
     return;
   }
+  // 集火标记(docs/37 A):被标记目标受伤 +20%;普攻已在结算时乘过(飘字数值一致),这里不重复乘。
+  if (!markApplied) {
+    damage = Math.round(damage * guardMarkMult(state, monster));
+  }
   monster.hp -= damage;
-  // BOSS 读条集火:读条期间受到的伤害计入打断阈值。
+  // BOSS 读条集火:读条期间受到的伤害计入打断阈值;玩家标记了读条中的 BOSS 则阈值减半。
   if (state.bossCast && state.bossCast.monsterId === monster.monsterId) {
     state.bossCast.damageTaken += damage;
-    if (state.bossCast.damageTaken >= state.bossCast.threshold) {
+    const threshold = state.markedMonsterId === monster.monsterId
+      ? Math.max(1, Math.round(state.bossCast.threshold * GUARD_MARK_INTERRUPT_RATIO))
+      : state.bossCast.threshold;
+    if (state.bossCast.damageTaken >= threshold) {
       monster.stunnedUntilMs = state.timeMs + GUARD_BOSS_STUN_MS;
       state.events.push({ type: 'bossCastInterrupt', timeMs: state.timeMs, monsterId: monster.monsterId });
       state.bossCast = null;
@@ -1742,10 +1806,13 @@ function guardMeleeCanHit(monster: GuardMonster): boolean {
   return monster.kind !== 'flying' || monster.x <= GUARD_CRYSTAL_REACH_X + 0.01;
 }
 
-/** 主动技能施放(2★,冷却制,自动):近战横扫/远程灼烧区/控制旋风/辅助圣辉。返回是否成功施放。 */
-function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
+/**
+ * 主动技能施放(2★,冷却制):近战横扫/远程灼烧区/控制旋风/辅助圣辉。返回是否成功施放。
+ * cast.mult=手动释放倍率(docs/37 B;自动=1),远程/控制落点优先集火目标。
+ */
+function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mult: number; manual: boolean; chained: boolean } = { mult: 1, manual: false, chained: false }): boolean {
   const profile = GUARD_ROLE_PROFILE[hero.role];
-  const attack = guardHeroAttackValue(state, hero);
+  const attack = guardHeroAttackValue(state, hero) * cast.mult;
   const skill = GUARD_HERO_SKILL[hero.role];
   // 金卡觉醒(docs/32 §5.1 方案 A):战技升级为专属大招——伤害/回复 ×1.5(Lv2 ×1.95),Lv3 击退/持续 +50%。
   const ultLv = guardHeroPerks(state, hero.heroCode).ultLv;
@@ -1767,7 +1834,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       monster.x = Math.min(GUARD_SPAWN_X, monster.x + 0.35 * ultExtent);
       damageMonster(state, monster, damage, hero);
     }
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId), ultLv });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId), ultLv, manual: cast.manual, chained: cast.chained });
     return true;
   }
   if (hero.role === 'ranged') {
@@ -1776,6 +1843,10 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       if (!monster.dead && monster.x <= profile.rangeCells && (!front || monster.x < front.x)) {
         front = monster;
       }
+    }
+    const markedRanged = guardMarkedMonster(state);
+    if (front && markedRanged && markedRanged.x <= profile.rangeCells) {
+      front = markedRanged;
     }
     if (!front) {
       return false;
@@ -1794,7 +1865,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       casterHeroCode: hero.heroCode,
     };
     state.zones.push(zone);
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId, monsterId: front.monsterId, ultLv });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId, monsterId: front.monsterId, ultLv, manual: cast.manual, chained: cast.chained });
     return true;
   }
   if (hero.role === 'control') {
@@ -1806,6 +1877,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
         front = monster;
       }
     }
+    front = guardMarkedMonster(state) ?? front;
     if (!front) {
       return false;
     }
@@ -1825,7 +1897,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
       casterHeroCode: hero.heroCode,
     };
     state.zones.push(zone);
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId, ultLv });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, zoneId: zone.zoneId, ultLv, manual: cast.manual, chained: cast.chained });
     return true;
   }
   // support:有怪压场才放(空场省冷却)
@@ -1833,7 +1905,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
     return false;
   }
   const surgeBefore = state.crystalHp;
-  state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.06));
+  state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.06 * cast.mult));
   const surgeHealed = state.crystalHp - surgeBefore;
   // 觉醒带来的回复增量(6% → 9%/11.7%)计入词条治疗的每波上限。
   if (ultMult > 1) {
@@ -1841,7 +1913,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit): boolean {
   }
   state.supportSurgeUntilMs = state.timeMs + GUARD_SUPPORT_SURGE_MS * ultExtent;
   // amount=本次水晶实际回复量(表现层飘字);全队攻速增益时长由 supportSurgeUntilMs 读取。
-  state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, ultLv, amount: surgeHealed });
+  state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, ultLv, amount: surgeHealed, manual: cast.manual, chained: cast.chained });
   return true;
 }
 
@@ -2046,7 +2118,7 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
       coef = Math.max(0, Math.min(coef, GUARD_ATTACK_TARGET_COEF_CAP - used));
       perTarget[hit.monster.monsterId] = used + coef;
     }
-    const amount = Math.round(hit.base * coef * (hit.strike ? strikeMult : condMult));
+    const amount = Math.round(hit.base * coef * (hit.strike ? strikeMult : condMult) * guardMarkMult(state, hit.monster));
     if (amount > 0) {
       resolved.push({ monster: hit.monster, amount, kind: hit.kind });
     }
@@ -2068,16 +2140,28 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
     hits: resolved.map((hit) => ({ monsterId: hit.monster.monsterId, amount: hit.amount, kind: hit.kind })),
   });
   for (const hit of resolved) {
-    damageMonster(state, hit.monster, hit.amount, hero);
+    damageMonster(state, hit.monster, hit.amount, hero, null, true);
   }
 }
 
 function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): void {
   const profile = GUARD_ROLE_PROFILE[hero.role];
   const perks = guardHeroPerks(state, hero.heroCode);
-  // 战技:2★ 解锁,冷却就绪且有合法目标时自动施放;金卡觉醒为专属大招后冷却缩短(docs/32 §5.1 方案 A)。
-  if (hero.star >= 2 && state.timeMs >= hero.skillReadyMs && castHeroSkill(state, hero)) {
-    hero.skillReadyMs = state.timeMs + GUARD_HERO_SKILL[hero.role].cdMs * (GUARD_ULT_CD_MULT[perks.ultLv] ?? 1);
+  // 战技:2★ 解锁;金卡觉醒为专属大招后冷却缩短(docs/32 §5.1 方案 A)。
+  // docs/37 B:蓄满且有目标时先进 1.5s 手动窗口(玩家点英雄=+25% 立即放),窗口过了自动放;设置"立即自动"则蓄满即放。
+  if (hero.star >= 2 && state.timeMs >= hero.skillReadyMs) {
+    const pendingSince = hero.skillPendingSinceMs ?? 0;
+    if (state.skillAutoImmediate || (pendingSince > 0 && state.timeMs - pendingSince >= GUARD_SKILL_MANUAL_WINDOW_MS)) {
+      if (castHeroSkill(state, hero)) {
+        // 等待窗口的时长从下一轮冷却里扣回:挂机玩家战技频率与改版前一致,只是每发晚 1.5s(2026-09-27 回归:不扣回时每日Ⅱ挂机胜率 -10pp)。
+        const waited = pendingSince > 0 ? state.timeMs - pendingSince : 0;
+        hero.skillReadyMs = state.timeMs + GUARD_HERO_SKILL[hero.role].cdMs * (GUARD_ULT_CD_MULT[perks.ultLv] ?? 1) - waited;
+        hero.skillPendingSinceMs = 0;
+      }
+    } else if (pendingSince === 0 && guardHeroSkillHasTarget(state, hero)) {
+      hero.skillPendingSinceMs = state.timeMs;
+      state.events.push({ type: 'skillReady', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell });
+    }
   }
   hero.attackCooldownMs -= dtMs;
   if (hero.attackCooldownMs > 0) {
@@ -2085,7 +2169,8 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   }
   // 出手频率:常驻 = 白卡攻速 × 急速(钳 ×2.0);临时增益(圣辉涌泉 ×1.2)在钳外。
   const surgeDiv = state.supportSurgeUntilMs > state.timeMs ? GUARD_SUPPORT_SURGE_ATKSPD : 1;
-  const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv;
+  const resonanceDiv = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ASPD_MULT : 1;
+  const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv / resonanceDiv;
   const heroProfile = guardHeroProfileOf(state, hero.heroCode);
   const purpleSuffix = perks.purple > 0 ? heroProfile.purple?.suffix ?? '' : '';
   const purpleValue = perks.purple > 0 && heroProfile.purple ? heroProfile.purple.values[perks.purple - 1] : 0;
@@ -2112,6 +2197,10 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
         healBest = monster.x;
         healTarget = monster;
       }
+    }
+    const markedHeal = guardMarkedMonster(state);
+    if (markedHeal && markedHeal.x <= profile.rangeCells) {
+      healTarget = markedHeal;
     }
     if (healTarget) {
       hero.lastTargetId = healTarget.monsterId;
@@ -2148,6 +2237,11 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
       ?? [...inRange].sort((a, b) => b.hp - a.hp || a.monsterId - b.monsterId)[0];
     target = priority ?? target;
   }
+  // 集火标记(docs/37 A):能打到就优先打标记目标(近战车道锁定 / 飞行怪规则照旧)。
+  const marked = guardMarkedMonster(state);
+  if (marked && guardCanHit(hero, marked, profile.rangeCells) && (!profile.laneLocked || marked.lane === heroLane)) {
+    target = marked;
+  }
   if (!target) {
     return;
   }
@@ -2178,6 +2272,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     if (!state.nextWaveSpawns) {
       // prep 期生成下一波构成(供预告条;startWave 消费,保持确定性)。
       state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng, state.maxWave, state.mode, state.spawnCountMult);
+      // 共鸣地块随下一波一起定(docs/37 C):运营窗口里就亮,玩家有时间把主力挪上去。
+      guardRollResonance(state, state.wave + 1);
     }
     const readyAtMs = state.wave === 0 ? GUARD_WAVE_INTERMISSION_MS : state.waveStartedAtMs + GUARD_WAVE_INTERMISSION_MS;
     if (state.timeMs >= readyAtMs) {
@@ -2331,6 +2427,126 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   // 尸体延迟清理(渲染层要播死亡),3s 后移除。
   state.monsters = state.monsters.filter((monster) => !monster.dead || state.timeMs - monster.diedAtMs < 3000);
   return state.phase;
+}
+
+// ── docs/37 P1 交互玩法 ──
+
+function guardMarkedMonster(state: GuardBattleState): GuardMonster | null {
+  if (state.markedMonsterId === null) {
+    return null;
+  }
+  const monster = state.monsters.find((entry) => entry.monsterId === state.markedMonsterId) ?? null;
+  return monster && !monster.dead ? monster : null;
+}
+
+function guardMarkMult(state: GuardBattleState, monster: GuardMonster): number {
+  return state.markedMonsterId === monster.monsterId ? GUARD_MARK_DAMAGE_MULT : 1;
+}
+
+/** 战技此刻有没有可打的目标(与 castHeroSkill 内的判定一致,无副作用)。 */
+function guardHeroSkillHasTarget(state: GuardBattleState, hero: GuardHeroUnit): boolean {
+  const range = GUARD_ROLE_PROFILE[hero.role].rangeCells;
+  return state.monsters.some((monster) => {
+    if (monster.dead) {
+      return false;
+    }
+    if (hero.role === 'melee') {
+      return guardMeleeCanHit(monster) && monster.x <= range;
+    }
+    if (hero.role === 'ranged') {
+      return monster.x <= range;
+    }
+    return true;
+  });
+}
+
+/** 共鸣地块:从已解锁格里随机点亮 1 格(第 6 波起 2 格);派生随机流,不影响波次构成。 */
+function guardRollResonance(state: GuardBattleState, forWave: number): void {
+  const candidates: number[] = [];
+  for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
+    if (guardCellUnlocked(state, cell)) {
+      candidates.push(cell);
+    }
+  }
+  const want = Math.min(candidates.length, forWave >= GUARD_RESONANCE_TWO_FROM_WAVE ? 2 : 1);
+  const picked: number[] = [];
+  while (picked.length < want && candidates.length > 0) {
+    const index = Math.floor(state.eventRng() * candidates.length);
+    picked.push(candidates.splice(index, 1)[0]);
+  }
+  state.resonanceCells = picked.sort((a, b) => a - b);
+}
+
+/** 集火标记:点怪=标记它;再点同一只或传 null=取消。返回当前标记 id。 */
+export function guardMarkMonster(state: GuardBattleState, monsterId: number | null): number | null {
+  const monster = monsterId === null ? null : state.monsters.find((entry) => entry.monsterId === monsterId && !entry.dead) ?? null;
+  state.markedMonsterId = !monster || state.markedMonsterId === monster.monsterId ? null : monster.monsterId;
+  state.inputs.push({ t: state.timeMs, k: 'mark', v: state.markedMonsterId ?? -1 });
+  return state.markedMonsterId;
+}
+
+/** 该英雄战技是否在等玩家手动释放(渲染层画金色光环 + 可点)。 */
+export function guardHeroSkillPending(state: GuardBattleState, hero: GuardHeroUnit): boolean {
+  return hero.star >= 2 && state.timeMs >= hero.skillReadyMs && (hero.skillPendingSinceMs ?? 0) > 0;
+}
+
+/**
+ * 玩家手动释放战技(docs/37 B):蓄满即可点,+25%;与另一名英雄的手动战技间隔 ≤1.5s 构成合击再 ×1.3。
+ * 返回 null=未就绪或当前没有可打目标。
+ */
+export function guardCastHeroSkillNow(state: GuardBattleState, unitId: number): { chained: boolean } | null {
+  const hero = state.heroes.find((entry) => entry.unitId === unitId);
+  if (!hero || hero.star < 2 || state.timeMs < hero.skillReadyMs || state.paused || state.phase === 'victory' || state.phase === 'defeat') {
+    return null;
+  }
+  const last = state.lastManualSkill;
+  const chained = !!last && last.heroCode !== hero.heroCode && state.timeMs - last.atMs <= GUARD_SKILL_CHAIN_WINDOW_MS;
+  const mult = GUARD_SKILL_MANUAL_MULT * (chained ? GUARD_SKILL_CHAIN_MULT : 1);
+  if (!castHeroSkill(state, hero, { mult, manual: true, chained })) {
+    return null;
+  }
+  const perks = guardHeroPerks(state, hero.heroCode);
+  const waited = (hero.skillPendingSinceMs ?? 0) > 0 ? state.timeMs - (hero.skillPendingSinceMs ?? 0) : 0;
+  hero.skillReadyMs = state.timeMs + GUARD_HERO_SKILL[hero.role].cdMs * (GUARD_ULT_CD_MULT[perks.ultLv] ?? 1) - waited;
+  hero.skillPendingSinceMs = 0;
+  state.lastManualSkill = { heroCode: hero.heroCode, atMs: state.timeMs };
+  state.inputs.push({ t: state.timeMs, k: 'skill', v: unitId });
+  return { chained };
+}
+
+/** 波间运营窗口还剩多少毫秒(非 prep 返回 0)。 */
+export function guardPrepRemainingMs(state: GuardBattleState): number {
+  if (state.phase !== 'prep') {
+    return 0;
+  }
+  const readyAtMs = state.wave === 0 ? GUARD_WAVE_INTERMISSION_MS : state.waveStartedAtMs + GUARD_WAVE_INTERMISSION_MS;
+  return Math.max(0, readyAtMs - state.timeMs);
+}
+
+/** 提前开战可得金币(不可提前时为 0)。 */
+export function guardCallWaveReward(state: GuardBattleState): number {
+  const remain = guardPrepRemainingMs(state);
+  if (remain < GUARD_CALL_WAVE_MIN_REMAIN_MS || state.paused || state.pendingChoice) {
+    return 0;
+  }
+  return Math.max(1, Math.round((remain / 1000) * (GUARD_CALL_WAVE_GOLD_BASE + GUARD_CALL_WAVE_GOLD_PER_WAVE * (state.wave + 1))));
+}
+
+/** 提前开战(docs/37 E):立刻开下一波,按剩余运营时间给金币。返回奖励金币,不可提前返回 null。 */
+export function guardCallNextWave(state: GuardBattleState): number | null {
+  const reward = guardCallWaveReward(state);
+  if (reward <= 0) {
+    return null;
+  }
+  if (!state.nextWaveSpawns) {
+    state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng, state.maxWave, state.mode, state.spawnCountMult);
+    guardRollResonance(state, state.wave + 1);
+  }
+  state.gold += reward;
+  state.events.push({ type: 'callWave', timeMs: state.timeMs, amount: reward, wave: state.wave + 1 });
+  state.inputs.push({ t: state.timeMs, k: 'callWave', v: state.wave + 1 });
+  startWave(state);
+  return reward;
 }
 
 // 2026-09-18 强化改词条:见 GUARD_ENHANCE_PRICES / guardEnhance。
