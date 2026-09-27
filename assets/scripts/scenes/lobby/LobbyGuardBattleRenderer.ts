@@ -58,6 +58,25 @@ import {
   guardCastHeroSkillNow,
   guardCallNextWave,
   guardCallWaveReward,
+  guardCollectPickup,
+  guardCastSpell,
+  guardSpellCastable,
+  guardSetSpellLoadout,
+  GUARD_SPELLS,
+  GUARD_SPELL_IDS,
+  GUARD_SPELL_ENERGY_MAX,
+  GUARD_SPELL_THUNDER_RADIUS,
+  GUARD_SPELL_FROST_RADIUS,
+  GUARD_SPELL_AEGIS_MS,
+  GUARD_SPELL_WARHORN_MS,
+  type GuardSpellId,
+  guardPlaceTrap,
+  guardTrapBlockReason,
+  GUARD_TRAPS,
+  GUARD_TRAP_KINDS,
+  GUARD_TRAP_MAX,
+  type GuardTrapKind,
+  GUARD_METEOR_LIFE_MS,
   GUARD_SKILL_MANUAL_WINDOW_MS,
   guardMonsterSpineResource,
   GUARD_CELL_UNLOCK_EVERY,
@@ -181,6 +200,17 @@ const GUARD_ROLE_COLOR: Record<string, Color> = {
 // ── 战斗内设置偏好(2026-09-24 用户确认方案):存本地,跨局保留;读写失败按默认值处理 ──
 const GUARD_PREF_SHAKE = 'lootchain.guard.shake';
 const GUARD_PREF_DAMAGE_NUMBERS = 'lootchain.guard.damageNumbers';
+/** 水晶法术出战配置(docs/37 F;逗号分隔 3 个法术 id,本地保存,下一局 / 首波前生效)。 */
+const GUARD_PREF_SPELLS = 'lootchain.guard.spells';
+/** 法术图标(现有素材拼:水晶徽章 / 冰旋 / 雷光 / 金币 / 金色盾波 / 剑徽)。 */
+const GUARD_SPELL_ICON: Record<GuardSpellId, string> = {
+  quake: 'ui/battle/ai/ghud_btn_skill/spriteFrame',
+  frost: 'ui/guard/fx_wind_zone/spriteFrame',
+  thunder: 'ui/battle/attack/atk_abyss_rift/spriteFrame',
+  goldrush: 'ui/bag/ai/icon_gold/spriteFrame',
+  aegis: 'ui/battle/attack/atk_atlas_shieldwave/spriteFrame',
+  warhorn: 'ui/battle/ai/buff_atk/spriteFrame',
+};
 /** 战技释放方式(docs/37 B):'0'=蓄满后给 1.5s 手动窗口(默认),'1'=立即自动释放。 */
 const GUARD_PREF_SKILL_AUTO = 'lootchain.guard.skillAuto';
 
@@ -292,6 +322,8 @@ const GUARD_SPINE_PROJECTILE_CAP = 18;
 const GUARD_SPINE_HIT_FX_CAP = 14;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
+/** 偷金鼠金色染色(docs/37 D)。 */
+const GUARD_GREEDY_TINT = new Color(255, 214, 120, 255);
 // 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
 const GUARD_SLOW_TINT_COLOR = new Color(96, 168, 255, 255);
 
@@ -389,6 +421,15 @@ export class LobbyGuardBattleRenderer {
   private interactHints = new Set<string>();
   private resonanceKey = '';
   private resonanceUnits = new Set<number>();
+  /** 流星矿晶视图(docs/37 D)。 */
+  private pickupViews = new Map<number, Node>();
+  /** 水晶法术拖拽瞄准中的法术(docs/37 F)与上次壁垒"免疫"飘字时刻。 */
+  private spellDrag: { id: GuardSpellId; moved: number; aim: { lane: number; x: number } | null } | null = null;
+  private aegisFloaterAt = 0;
+  /** 车道陷阱(docs/37 G):托盘开关、拖拽中的陷阱、场上陷阱视图。 */
+  private trapTrayOpen = false;
+  private trapDrag: { kind: GuardTrapKind; moved: number; x: number | null } | null = null;
+  private trapViews = new Map<number, Node>();
   /** 点击英雄显示攻击范围(unitId;拖拽结束/再点空白清除)。 */
   private rangeShownUnitId: number | null = null;
   /** 已绘制选中层对应的格位:仅换人/换格时整层重建(每 tick 重建=详情框闪烁,2026-08-28 用户验收)。 */
@@ -472,6 +513,9 @@ export class LobbyGuardBattleRenderer {
     this.dragFromCell = null;
     this.dragGhost = null;
     this.chestViews.clear();
+    this.pickupViews.clear();
+    this.trapViews.clear();
+    this.trapTrayOpen = false;
     this.choiceOverlayLevel = 0;
     this.wheelOverlayOpen = false;
     this.settingsOpen = false;
@@ -598,6 +642,7 @@ export class LobbyGuardBattleRenderer {
     );
     this.sim.skillAutoImmediate = this.skillAutoImmediate;
     this.interactHints.clear();
+    guardSetSpellLoadout(this.sim, readGuardPref(GUARD_PREF_SPELLS, '').split(',').filter(Boolean));
     this.resonanceUnits.clear();
     this.prewarmAttackFx(pool);
     this.simBattleNo = battleState.start?.battleNo ?? '';
@@ -641,6 +686,8 @@ export class LobbyGuardBattleRenderer {
     this.renderHud();
     this.renderSummonButton();
     this.renderCallWaveButton();
+    this.renderSpellBar();
+    this.renderTrapButton();
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
     // 新手引导(P1,2026-09-05):首战 MAIN_1_1 指向召唤按钮的强提示(image2 箭头+气泡),首次召唤后消失(step 里检测)。
@@ -678,6 +725,8 @@ export class LobbyGuardBattleRenderer {
     this.statsPanelSignature = '';
     this.heroViews.clear();
     this.monsterViews.clear();
+    this.pickupViews.clear();
+    this.trapViews.clear();
     this.zoneViews.clear();
     this.zoneFlights.clear();
     this.plainBurnZones.clear();
@@ -1807,8 +1856,12 @@ export class LobbyGuardBattleRenderer {
     this.syncResonance();
     this.syncMonsters();
     this.syncChests();
+    this.syncPickups();
     this.syncZones();
     this.refreshCallWaveButton();
+    this.refreshSpellBar();
+    this.syncTraps();
+    this.refreshTrapTray();
     this.syncBossCastBar();
     this.syncChoiceOverlay();
     this.refreshHud();
@@ -1988,6 +2041,68 @@ export class LobbyGuardBattleRenderer {
       } else if (event.type === 'skillReady') {
         if (!sim.skillAutoImmediate) {
           this.showInteractHint('skillReady', '战技就绪:点击脚下发金光的英雄手动释放,伤害 +25%(不点 1.5 秒后自动释放)');
+        }
+      } else if (event.type === 'meteorSpawn') {
+        this.showInteractHint('meteor', '流星矿晶落下!落地后点它拿金币,4 秒后会碎掉');
+      } else if (event.type === 'meteorCollect') {
+        const view = typeof event.pickupId === 'number' ? this.pickupViews.get(event.pickupId) : undefined;
+        if (view && view.isValid) {
+          const px = view.position.x;
+          const py = view.position.y;
+          this.spawnFloater(px, py + this.unitSize() * 0.7, `+${event.amount ?? 0} 金币`, rgba(255, 214, 92), 22);
+          for (let i = 0; i < 3; i += 1) {
+            this.spawnGoldCoin(px + (i - 1) * 18, py);
+          }
+          this.burstPickup(view, rgba(160, 200, 255));
+        }
+        gameAudio.sfx('coin');
+      } else if (event.type === 'meteorExpire') {
+        const view = typeof event.pickupId === 'number' ? this.pickupViews.get(event.pickupId) : undefined;
+        if (view && view.isValid) {
+          this.burstPickup(view, rgba(120, 110, 140));
+        }
+      } else if (event.type === 'greedySpawn') {
+        this.host.setStatus('偷金鼠出现!点它集火,打死掉大笔金币,跑到水晶前就溜了');
+        gameAudio.sfx('coin');
+      } else if (event.type === 'greedyKill') {
+        const view = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : undefined;
+        if (view && view.node.isValid) {
+          const px = view.node.position.x;
+          const py = view.node.position.y;
+          this.spawnFloater(px, py + this.unitSize() * 0.9, `偷金鼠 +${event.amount ?? 0} 金币`, rgba(255, 214, 92), 24);
+          for (let i = 0; i < 6; i += 1) {
+            this.spawnGoldCoin(px + (i - 2.5) * 16, py);
+          }
+          view.node.getChildByName('GuardGreedyBag')?.destroy();
+        }
+        gameAudio.sfx('coin_shower');
+        this.host.setStatus(`打倒偷金鼠!夺回 ${event.amount ?? 0} 金币`);
+      } else if (event.type === 'greedyEscape') {
+        const view = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : undefined;
+        if (view && view.node.isValid) {
+          this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.8, '偷金鼠带着金币跑了…', rgba(190, 180, 170), 18);
+        }
+      } else if (event.type === 'spellCast' && event.spellId) {
+        this.playSpellFx(event.spellId, event.x ?? null, event.lane ?? 0, event.amount ?? 0, event.monsterIds ?? []);
+      } else if (event.type === 'aegisBlock') {
+        const now = Date.now();
+        if (now - this.aegisFloaterAt > 700) {
+          this.aegisFloaterAt = now;
+          this.spawnFloater(this.xToPx(0.5), this.walkwayY() + this.unitSize() * 1.2, '圣光壁垒 免疫', rgba(255, 230, 150), 18);
+        }
+      } else if (event.type === 'trapPlace') {
+        gameAudio.sfx('chest_land', 0.7);
+        this.host.setStatus(`放下${GUARD_TRAPS[event.trapKind ?? 'spikes'].name}(-${event.amount ?? 0} 金币)`);
+      } else if (event.type === 'trapTick') {
+        for (const id of event.monsterIds ?? []) {
+          this.flashMonster(id);
+        }
+      } else if (event.type === 'trapBoom' && typeof event.x === 'number') {
+        this.playTrapBoom(event.x, event.amount ?? 0);
+      } else if (event.type === 'trapExpire') {
+        const view = typeof event.trapId === 'number' ? this.trapViews.get(event.trapId) : undefined;
+        if (view && view.isValid) {
+          this.spawnFloater(view.position.x, view.position.y + this.unitSize() * 0.6, `${GUARD_TRAPS[event.trapKind ?? 'spikes'].name}失效`, rgba(190, 180, 170), 16);
         }
       } else if (event.type === 'callWave') {
         gameAudio.sfx('coin');
@@ -2456,7 +2571,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 设置面板内容页:main=信息 + 四个开关 + 玩法速查入口 + 退出/继续;help=玩法速查。切页/切开关整页重画。 */
-  private renderSettingsPage(overlay: Node, page: 'main' | 'help'): void {
+  private renderSettingsPage(overlay: Node, page: 'main' | 'help' | 'spells'): void {
     if (!overlay.isValid) {
       return;
     }
@@ -2465,6 +2580,10 @@ export class LobbyGuardBattleRenderer {
     const content = this.host.addChildPlainNode(overlay, 'GuardSettingsContent', 0, 0, panelW, panelH);
     const titleY = panelH / 2 - 112;
     const buttonY = -panelH / 2 + 97;
+    if (page === 'spells') {
+      this.renderSpellLoadoutPage(overlay, content, panelW, panelH, titleY, buttonY);
+      return;
+    }
     if (page === 'help') {
       this.paintSettingsTitle(content, '玩法速查', panelW, titleY);
       const lines = [
@@ -2474,6 +2593,9 @@ export class LobbyGuardBattleRenderer {
         '集火:点怪物标记,射程内英雄优先打它、伤害 +20%;标记读条中的 BOSS 更易打断。',
         '共鸣格:每波发金光的格子,站上去的英雄本波攻击 +40%;把主力拖过去。',
         '迎战:波间点「提前迎战」立刻开下一波,越早奖励金币越多。',
+        '法术:底部 3 格水晶法术,击杀和打断攒能量;冰封/天雷按住拖到战场施放。',
+        '事件:流星矿晶落地后点它拿金币;偷金鼠要点它集火,打死掉大笔金币。',
+        '陷阱:点「陷阱」展开托盘,把尖刺/冰霜/爆炎拖到跑道上,花金币,最多 3 个。',
         '出售:把英雄拖到水晶上出售,返还部分金币。',
         '强化:花金币抽词条三选一;每守住一波送一次免费强化。',
         'BOSS:头顶出现蓄力条时集火打断,读满会轰掉水晶 15% 生命。',
@@ -2545,7 +2667,16 @@ export class LobbyGuardBattleRenderer {
     });
     const hintY = rowTop - (rows.length - 1) * rowStep - 40;
     this.host.addChildLabel(content, 'GuardSettingsHint', '精简:只显示暴击、大额与 BOSS 身上的伤害;水晶掉血始终显示', 0, hintY, 16, rgba(170, 156, 128), new Size(panelW * 0.74, 22));
-    const help = this.host.addChildPlainNode(content, 'GuardSettingsHelpLink', 0, hintY - 44, 200, 40);
+    const spellsLink = this.host.addChildPlainNode(content, 'GuardSettingsSpellsLink', 110, hintY - 44, 200, 40);
+    const slg = spellsLink.addComponent(Graphics);
+    slg.strokeColor = rgba(220, 180, 110, 230);
+    slg.lineWidth = 2;
+    slg.roundRect(-100, -20, 200, 40, 20);
+    slg.stroke();
+    this.host.addChildLabel(spellsLink, 'GuardSettingsSpellsLinkLabel', '法术配置 ›', 0, 0, 19, rgba(255, 226, 160), new Size(190, 36));
+    this.host.applyImageButtonFeedback(spellsLink);
+    spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
+    const help = this.host.addChildPlainNode(content, 'GuardSettingsHelpLink', -110, hintY - 44, 200, 40);
     const hg = help.addComponent(Graphics);
     hg.strokeColor = rgba(220, 180, 110, 230);
     hg.lineWidth = 2;
@@ -2781,6 +2912,859 @@ export class LobbyGuardBattleRenderer {
         this.resonanceUnits.delete(hero.unitId);
       }
     }
+  }
+
+  /** 偷金鼠头顶钱袋(金币堆图标上下晃)+ 名牌。 */
+  private mountGreedyBag(view: GuardUnitView): void {
+    const size = view.node.getComponent(UITransform)?.width ?? this.unitSize();
+    const bagSize = Math.max(34, this.unitSize() * 0.42);
+    const bagY = size * 0.55;
+    const bag = this.host.addChildPlainNode(view.node, 'GuardGreedyBag', 0, bagY, bagSize, bagSize);
+    this.mountSprite(bag, 'Img', 'ui/common/ai/ic_gold_medium/spriteFrame', 0, 0, bagSize, bagSize);
+    tween(bag).repeatForever(tween().to(0.25, { position: new Vec3(0, bagY + 6, 0) }).to(0.25, { position: new Vec3(0, bagY, 0) })).start();
+    const tag = this.host.addChildLabel(bag, 'Tag', '偷金鼠', 0, bagSize * 0.75, 15, rgba(255, 220, 120), new Size(90, 20));
+    tag.enableOutline = true;
+    tag.outlineColor = rgba(40, 20, 6, 255);
+    tag.outlineWidth = 2;
+  }
+
+  /** 流星矿晶视图:下落 → 落地冲击 → 发光待拾取(倒计时环);点击 = 拾取。 */
+  private syncPickups(): void {
+    const sim = this.sim;
+    const field = this.fieldNode;
+    if (!sim || !field) {
+      return;
+    }
+    const live = new Set(sim.pickups.map((pickup) => pickup.pickupId));
+    for (const [pickupId, node] of Array.from(this.pickupViews)) {
+      if (!live.has(pickupId)) {
+        // 拾取/碎掉的演出在事件里已经播了,这里只兜底清理
+        if (node.isValid && !node.getChildByName('Bursting')) {
+          node.destroy();
+        }
+        this.pickupViews.delete(pickupId);
+      }
+    }
+    const unit = this.unitSize();
+    for (const pickup of sim.pickups) {
+      let node = this.pickupViews.get(pickup.pickupId);
+      const px = this.xToPx(pickup.x);
+      const py = this.monsterY(pickup.lane, pickup.x);
+      if (!node) {
+        const hit = unit * 1.2;
+        node = this.host.addChildPlainNode(field, `GuardPickup_${pickup.pickupId}`, px, py, hit, hit);
+        const glow = this.mountSprite(node, 'Glow', 'ui/guard/cast_flash/spriteFrame', 0, 0, unit * 1.3, unit * 1.3, rgba(150, 200, 255));
+        glow.addComponent(UIOpacity).opacity = 0;
+        tween(glow).repeatForever(tween().by(6, { angle: -360 })).start();
+        this.host.addChildPlainNode(node, 'Timer', 0, 0, 10, 10).addComponent(Graphics);
+        const gem = this.mountSprite(node, 'Gem', 'ui/common/ai/ic_diamond_gem/spriteFrame', 0, 0, unit * 0.55, unit * 0.55);
+        // 下落:从右上方斜砸下来,拖一条亮尾
+        const fallFrom = new Vec3(unit * 1.6, unit * 5, 0);
+        gem.setPosition(fallFrom);
+        gem.angle = 30;
+        const trail = this.host.addChildPlainNode(node, 'Trail', 0, 0, 10, 10);
+        const tg = trail.addComponent(Graphics);
+        const fallSec = Math.max(0.05, (pickup.landAtMs - sim.timeMs) / 1000);
+        let elapsed = 0;
+        const drawTrail = (): void => {
+          if (!trail.isValid || !gem.isValid) {
+            return;
+          }
+          tg.clear();
+          tg.strokeColor = rgba(170, 210, 255, 200);
+          tg.lineWidth = unit * 0.12;
+          tg.moveTo(gem.position.x + unit * 0.6, gem.position.y + unit * 1.8);
+          tg.lineTo(gem.position.x, gem.position.y);
+          tg.stroke();
+        };
+        tween(gem)
+          .to(fallSec, { position: new Vec3(0, unit * 0.1, 0), angle: 0 }, { easing: 'quadIn', onUpdate: () => { elapsed += 1; drawTrail(); } })
+          .call(() => {
+            if (!node || !node.isValid) {
+              return;
+            }
+            trail.destroy();
+            gameAudio.sfx('chest_land', 0.6);
+            const ring = this.mountSprite(node, 'LandRing', 'ui/battle/c1812/effects/hit_ring/spriteFrame', 0, 0, unit * 0.8, unit * 0.8, rgba(170, 210, 255));
+            ring.setScale(0.3, 0.3, 1);
+            const ringOp = ring.addComponent(UIOpacity);
+            tween(ring).to(0.35, { scale: new Vec3(1.8, 1.8, 1) }, { easing: 'quadOut' }).start();
+            tween(ringOp).to(0.35, { opacity: 0 }).call(() => { if (ring.isValid) { ring.destroy(); } }).start();
+            const glowOp = glow.getComponent(UIOpacity);
+            if (glowOp) {
+              tween(glowOp).to(0.2, { opacity: 170 }).start();
+            }
+            tween(gem).repeatForever(tween().to(0.5, { position: new Vec3(0, unit * 0.2, 0) }, { easing: 'sineInOut' }).to(0.5, { position: new Vec3(0, unit * 0.1, 0) }, { easing: 'sineInOut' })).start();
+          })
+          .start();
+        void elapsed;
+        node.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
+          if (event) {
+            event.propagationStopped = true;
+          }
+          const current = this.sim;
+          if (current) {
+            guardCollectPickup(current, pickup.pickupId);
+          }
+        }, this);
+        this.pickupViews.set(pickup.pickupId, node);
+      }
+      // 倒计时环:落地后金蓝环按剩余时间缩(扇形一律 arc(..., true),见 Graphics.arc 方向坑)
+      const timer = node.getChildByName('Timer')?.getComponent(Graphics);
+      if (timer) {
+        timer.clear();
+        if (sim.timeMs >= pickup.landAtMs) {
+          const left = Math.max(0, Math.min(1, (pickup.expireAtMs - sim.timeMs) / GUARD_METEOR_LIFE_MS));
+          timer.strokeColor = rgba(20, 16, 30, 180);
+          timer.lineWidth = 6;
+          timer.circle(0, unit * 0.12, unit * 0.42);
+          timer.stroke();
+          timer.strokeColor = left > 0.3 ? rgba(150, 210, 255, 240) : rgba(255, 120, 90, 240);
+          timer.lineWidth = 5;
+          timer.arc(0, unit * 0.12, unit * 0.42, Math.PI / 2, Math.PI / 2 + Math.PI * 2 * left, true);
+          timer.stroke();
+        }
+      }
+    }
+  }
+
+  /** 拾取/碎裂:爆一圈光后销毁(节点先打 Bursting 标记,syncPickups 不抢先销毁)。 */
+  private burstPickup(node: Node, color: Color): void {
+    if (!node.isValid || node.getChildByName('Bursting')) {
+      return;
+    }
+    this.host.addChildPlainNode(node, 'Bursting', 0, 0, 1, 1);
+    const unit = this.unitSize();
+    node.getChildByName('Timer')?.destroy();
+    const burst = this.mountSprite(node, 'Burst', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, unit * 0.12, unit * 0.9, unit * 0.9, color);
+    burst.setScale(0.5, 0.5, 1);
+    tween(burst).to(0.3, { scale: new Vec3(2.2, 2.2, 1) }, { easing: 'quadOut' }).start();
+    const op = node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+    tween(op).delay(0.1).to(0.25, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+  }
+
+  // ── docs/37 F 水晶法术栏 ──
+
+  private static readonly SPELL_SLOT = 88;
+  private static readonly SPELL_GAP = 26;
+
+  private spellBarCenterX(): number {
+    return 60;
+  }
+
+  private spellBarY(): number {
+    // 名字标签要让开最底部的操作提示行(-H/2+16)
+    return -this.layoutHeight / 2 + 50 + LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 14;
+  }
+
+  /** 底部法术栏:3 个圆形法术位 + 上方能量条;点击 = 无目标法术直接放,按住拖 = 瞄准法术落点。 */
+  private renderSpellBar(): void {
+    const root = this.root;
+    const sim = this.sim;
+    if (!root || !sim) {
+      return;
+    }
+    root.getChildByName('GuardSpellBar')?.destroy();
+    const size = LobbyGuardBattleRenderer.SPELL_SLOT;
+    const gap = LobbyGuardBattleRenderer.SPELL_GAP;
+    const barW = size * 3 + gap * 2;
+    const bar = this.host.addChildPlainNode(root, 'GuardSpellBar', this.spellBarCenterX(), this.spellBarY(), barW, size + 60);
+    const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 14);
+    energyBg.addComponent(Graphics);
+    const energyText = this.host.addChildLabel(bar, 'EnergyText', '', -barW / 2, size / 2 + 46, 15, rgba(170, 220, 255), new Size(barW, 20), HorizontalTextAlignment.LEFT);
+    energyText.enableOutline = true;
+    energyText.outlineColor = rgba(10, 16, 28, 255);
+    energyText.outlineWidth = 2;
+    sim.spellLoadout.forEach((id, index) => {
+      const def = GUARD_SPELLS[id];
+      const x = -barW / 2 + size / 2 + index * (size + gap);
+      const slot = this.host.addChildPlainNode(bar, `Spell_${id}`, x, 0, size, size);
+      const g = slot.addComponent(Graphics);
+      g.fillColor = rgba(14, 10, 8, 225);
+      g.circle(0, 0, size / 2);
+      g.fill();
+      const iconSize = id === 'quake' ? size : size * 0.72;
+      this.mountSprite(slot, 'Icon', GUARD_SPELL_ICON[id], 0, 0, iconSize, iconSize);
+      this.host.addChildPlainNode(slot, 'Charge', 0, 0, 10, 10).addComponent(Graphics);
+      const rim = this.host.addChildPlainNode(slot, 'Rim', 0, 0, 10, 10).addComponent(Graphics);
+      rim.strokeColor = rgba(214, 168, 92, 235);
+      rim.lineWidth = 3;
+      rim.circle(0, 0, size / 2);
+      rim.stroke();
+      const cost = this.host.addChildLabel(slot, 'Cost', `${def.cost}`, size * 0.36, size * 0.36, 15, rgba(170, 220, 255), new Size(40, 20));
+      cost.enableOutline = true;
+      cost.outlineColor = rgba(10, 16, 28, 255);
+      cost.outlineWidth = 2;
+      const name = this.host.addChildLabel(slot, 'Name', def.name, 0, -size / 2 - 13, 15, rgba(240, 222, 186), new Size(size + gap, 20));
+      name.overflow = Label.Overflow.SHRINK;
+      name.enableOutline = true;
+      name.outlineColor = rgba(20, 12, 6, 255);
+      name.outlineWidth = 2;
+      this.bindSpellSlot(slot, id);
+    });
+    this.refreshSpellBar();
+  }
+
+  private refreshSpellBar(): void {
+    const sim = this.sim;
+    const bar = this.root?.getChildByName('GuardSpellBar');
+    if (!sim || !bar || !bar.isValid) {
+      return;
+    }
+    const size = LobbyGuardBattleRenderer.SPELL_SLOT;
+    const barW = size * 3 + LobbyGuardBattleRenderer.SPELL_GAP * 2;
+    const energy = sim.spellEnergy;
+    const eg = bar.getChildByName('Energy')?.getComponent(Graphics);
+    if (eg) {
+      eg.clear();
+      eg.fillColor = rgba(8, 10, 18, 215);
+      eg.roundRect(-barW / 2, -7, barW, 14, 7);
+      eg.fill();
+      eg.fillColor = rgba(90, 170, 255, 245);
+      eg.roundRect(-barW / 2, -7, Math.max(6, barW * (energy / GUARD_SPELL_ENERGY_MAX)), 14, 7);
+      eg.fill();
+      eg.strokeColor = rgba(150, 200, 255, 200);
+      eg.lineWidth = 1.5;
+      eg.roundRect(-barW / 2, -7, barW, 14, 7);
+      eg.stroke();
+    }
+    const text = bar.getChildByName('EnergyText')?.getComponent(Label);
+    const energyString = `水晶能量 ${Math.floor(energy)} / ${GUARD_SPELL_ENERGY_MAX}`;
+    if (text && text.string !== energyString) {
+      text.string = energyString;
+    }
+    for (const id of sim.spellLoadout) {
+      const slot = bar.getChildByName(`Spell_${id}`);
+      if (!slot) {
+        continue;
+      }
+      const def = GUARD_SPELLS[id];
+      const castable = guardSpellCastable(sim, id);
+      const icon = slot.getChildByName('Icon');
+      const iconOp = icon ? icon.getComponent(UIOpacity) ?? icon.addComponent(UIOpacity) : null;
+      if (iconOp) {
+        iconOp.opacity = castable ? 255 : 110;
+      }
+      const charge = slot.getChildByName('Charge')?.getComponent(Graphics);
+      if (charge) {
+        charge.clear();
+        const frac = Math.min(1, energy / def.cost);
+        if (frac < 1) {
+          // 充能进度环(扇形一律 arc(..., true))
+          charge.strokeColor = rgba(110, 180, 255, 235);
+          charge.lineWidth = 5;
+          charge.arc(0, 0, size / 2 - 5, Math.PI / 2, Math.PI / 2 + Math.PI * 2 * frac, true);
+          charge.stroke();
+        } else if (castable) {
+          charge.strokeColor = rgba(255, 224, 130, 180 + Math.round(60 * Math.sin(Date.now() / 160)));
+          charge.lineWidth = 6;
+          charge.circle(0, 0, size / 2 + 3);
+          charge.stroke();
+        }
+      }
+    }
+  }
+
+  /** 法术位手势:点击 = 无目标法术施放;按住拖到战场 = 瞄准(冰封/天雷),松手在战场内施放,拖回法术栏取消。 */
+  private bindSpellSlot(slot: Node, id: GuardSpellId): void {
+    slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
+      (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      this.spellDrag = { id, moved: 0, aim: null };
+    }, this);
+    slot.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
+      const drag = this.spellDrag;
+      if (!drag || drag.id !== id || GUARD_SPELLS[id].target === 'none') {
+        return;
+      }
+      const delta = event.getUIDelta();
+      drag.moved += Math.abs(delta.x) + Math.abs(delta.y);
+      drag.aim = this.spellAimAt(event.getUILocation().x, event.getUILocation().y);
+      this.drawSpellAim(id, drag.aim);
+    }, this);
+    const finish = (event: EventTouch | null): void => {
+      const drag = this.spellDrag;
+      this.spellDrag = null;
+      this.fieldNode?.getChildByName('GuardSpellAim')?.destroy();
+      const sim = this.sim;
+      if (!drag || drag.id !== id || !sim) {
+        return;
+      }
+      if (event) {
+        (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      }
+      const def = GUARD_SPELLS[id];
+      if (def.target === 'none') {
+        if (!guardCastSpell(sim, id)) {
+          this.host.setStatus(sim.spellLoadout.indexOf(id) >= 0 && id === 'goldrush' && sim.goldrushWave === sim.wave ? '金矿爆发每波只能用 1 次' : `水晶能量不足(需要 ${def.cost})`);
+        }
+        return;
+      }
+      if (drag.moved < 12 || !drag.aim) {
+        this.host.setStatus(`按住「${def.name}」拖到战场上施放`);
+        return;
+      }
+      if (!guardCastSpell(sim, id, drag.aim)) {
+        this.host.setStatus(`水晶能量不足(需要 ${def.cost})`);
+      }
+    };
+    slot.on(Node.EventType.TOUCH_END, (event: EventTouch) => finish(event), this);
+    slot.on(Node.EventType.TOUCH_CANCEL, (event: EventTouch) => finish(event), this);
+  }
+
+  /** xToPx 的反函数(战场像素 → 格)。 */
+  private pxToX(px: number): number {
+    const width = this.layoutWidth;
+    const heroLeft = -width * 0.44;
+    const heroRight = -width * 0.167;
+    const runwayRight = width * 0.47;
+    const split = LobbyGuardBattleRenderer.HERO_ZONE_SIM_END;
+    if (px <= heroRight) {
+      return ((px - heroLeft) / (heroRight - heroLeft)) * split;
+    }
+    return split + ((px - heroRight) / (runwayRight - heroRight)) * (GUARD_SPAWN_X - split);
+  }
+
+  /** UI 坐标 → 法术落点(x 格 + 最近车道);落在战场怪物带以外返回 null(松手即取消)。 */
+  private spellAimAt(uiX: number, uiY: number): { lane: number; x: number } | null {
+    const field = this.fieldNode;
+    const transform = field?.getComponent(UITransform);
+    if (!field || !transform) {
+      return null;
+    }
+    const local = transform.convertToNodeSpaceAR(new Vec3(uiX, uiY, 0));
+    const x = this.pxToX(local.x);
+    if (x < 0.3 || x > GUARD_SPAWN_X) {
+      return null;
+    }
+    const y0 = this.monsterY(0, x);
+    const y1 = this.monsterY(1, x);
+    const band = this.unitSize() * 1.1;
+    if (local.y > Math.max(y0, y1) + band || local.y < Math.min(y0, y1) - band) {
+      return null;
+    }
+    return { lane: Math.abs(local.y - y0) <= Math.abs(local.y - y1) ? 0 : 1, x };
+  }
+
+  /** 瞄准指示:落点处覆盖两条车道的椭圆范围(冰封蓝 / 天雷金),落点无效时不画。 */
+  private drawSpellAim(id: GuardSpellId, aim: { lane: number; x: number } | null): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    let node = field.getChildByName('GuardSpellAim');
+    if (!node) {
+      node = this.host.addChildPlainNode(field, 'GuardSpellAim', 0, 0, 10, 10);
+      node.addComponent(Graphics);
+    }
+    node.setSiblingIndex(field.children.length - 1);
+    const g = node.getComponent(Graphics);
+    if (!g) {
+      return;
+    }
+    g.clear();
+    if (!aim) {
+      return;
+    }
+    const radius = id === 'frost' ? GUARD_SPELL_FROST_RADIUS : GUARD_SPELL_THUNDER_RADIUS;
+    const cx = this.xToPx(aim.x);
+    const rx = Math.max(this.unitSize() * 0.6, (this.xToPx(Math.min(GUARD_SPAWN_X, aim.x + radius)) - this.xToPx(Math.max(0, aim.x - radius))) / 2);
+    const y0 = this.monsterY(0, aim.x);
+    const y1 = this.monsterY(1, aim.x);
+    const cy = (y0 + y1) / 2;
+    const ry = Math.abs(y0 - y1) / 2 + this.unitSize() * 0.6;
+    const color = id === 'frost' ? rgba(120, 200, 255, 255) : rgba(255, 220, 110, 255);
+    g.fillColor = new Color(color.r, color.g, color.b, 50);
+    g.ellipse(cx, cy, rx, ry);
+    g.fill();
+    g.strokeColor = new Color(color.r, color.g, color.b, 230);
+    g.lineWidth = 3;
+    g.ellipse(cx, cy, rx, ry);
+    g.stroke();
+  }
+
+  /** 法术表现(sim 已结算,这里只演)。 */
+  private playSpellFx(id: GuardSpellId, x: number | null, lane: number, amount: number, hitIds: number[]): void {
+    const field = this.fieldNode;
+    const sim = this.sim;
+    if (!field || !sim) {
+      return;
+    }
+    const unit = this.unitSize();
+    const def = GUARD_SPELLS[id];
+    this.host.setStatus(`水晶法术:${def.name}!`);
+    const crystal = field.getChildByName('GuardCrystal');
+    const crystalX = crystal ? crystal.position.x : this.xToPx(0);
+    const crystalY = crystal ? crystal.position.y : this.walkwayY();
+    const flashAt = (px: number, py: number, path: string, size: number, color: Color, sec: number, spin = 0): Node => {
+      const node = this.mountSprite(field, 'GuardSpellFx', path, px, py, size, size, color);
+      node.setSiblingIndex(field.children.length - 1);
+      node.setScale(0.4, 0.4, 1);
+      const op = node.addComponent(UIOpacity);
+      tween(node).to(sec * 0.4, { scale: Vec3.ONE, angle: spin }, { easing: 'quadOut' }).start();
+      tween(op).delay(sec * 0.5).to(sec * 0.5, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+      return node;
+    };
+    if (id === 'quake') {
+      gameAudio.sfx('wheel_stop');
+      this.shakeField(12);
+      flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 4, rgba(140, 210, 255), 0.8, 40);
+      const wave = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/c1812/effects/hit_ring/spriteFrame', crystalX, crystalY, unit, unit, rgba(150, 220, 255));
+      wave.setSiblingIndex(field.children.length - 1);
+      const waveOp = wave.addComponent(UIOpacity);
+      tween(wave).to(0.6, { scale: new Vec3(14, 5, 1) }, { easing: 'quadOut' }).start();
+      tween(waveOp).to(0.6, { opacity: 0 }).call(() => { if (wave.isValid) { wave.destroy(); } }).start();
+      this.spawnFloater(this.xToPx(2), this.walkwayY() + unit, `矿晶震荡 -${amount}`, rgba(150, 220, 255), 22);
+    } else if ((id === 'frost' || id === 'thunder') && x !== null) {
+      const px = this.xToPx(x);
+      const py = (this.monsterY(0, x) + this.monsterY(1, x)) / 2;
+      if (id === 'frost') {
+        gameAudio.sfx('wheel_tick');
+        const band = flashAt(px, py, 'ui/guard/fx_wind_zone/spriteFrame', unit * 3.4, rgba(170, 225, 255), 1.6, -90);
+        band.setScale(0.4, 0.25, 1);
+        tween(band).to(0.3, { scale: new Vec3(1, 0.6, 1) }, { easing: 'quadOut' }).start();
+        this.spawnFloater(px, py + unit * 1.1, hitIds.length > 0 ? `冰封 ×${hitIds.length}` : '冰封', rgba(170, 225, 255), 20);
+      } else {
+        gameAudio.sfx('chest_land');
+        this.shakeField(8);
+        const bolt = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/attack/atk_abyss_rift/spriteFrame', px, py + unit * 2.4, unit * 4.6, unit * 1.6, rgba(220, 235, 255));
+        bolt.setSiblingIndex(field.children.length - 1);
+        bolt.angle = -62;
+        const boltOp = bolt.addComponent(UIOpacity);
+        tween(boltOp).to(0.08, { opacity: 255 }).delay(0.2).to(0.25, { opacity: 0 }).call(() => { if (bolt.isValid) { bolt.destroy(); } }).start();
+        flashAt(px, py, 'ui/battle/c1812/effects/hit_burst/spriteFrame', unit * 2.6, rgba(210, 230, 255), 0.5);
+        flashAt(px, py, 'ui/battle/c1812/effects/hit_ring/spriteFrame', unit * 3, rgba(255, 230, 140), 0.6);
+        this.spawnFloater(px, py + unit * 1.2, `天雷 -${amount}`, rgba(255, 230, 140), 22);
+      }
+      void lane;
+    } else if (id === 'goldrush') {
+      gameAudio.sfx('coin_shower');
+      flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 3, rgba(255, 214, 110), 0.7, 30);
+      for (let i = 0; i < 8; i += 1) {
+        this.spawnGoldCoin(crystalX + (i - 3.5) * 14, crystalY + unit * 0.4);
+      }
+      this.spawnFloater(crystalX + unit, crystalY + unit * 1.3, `金矿爆发 +${amount} 金币`, rgba(255, 214, 92), 22);
+    } else if (id === 'aegis') {
+      gameAudio.sfx('reward_claim');
+      const shield = this.mountSprite(field, 'GuardAegisShield', 'ui/battle/attack/atk_atlas_shieldwave/spriteFrame', crystalX, crystalY + unit * 0.3, unit * 3.2, unit * 3.2, rgba(255, 236, 170));
+      shield.setSiblingIndex(field.children.length - 1);
+      const shieldOp = shield.addComponent(UIOpacity);
+      shieldOp.opacity = 0;
+      tween(shieldOp).to(0.2, { opacity: 220 }).repeat(Math.max(1, Math.floor(GUARD_SPELL_AEGIS_MS / 800)), tween().to(0.4, { opacity: 140 }).to(0.4, { opacity: 220 })).to(0.3, { opacity: 0 }).call(() => { if (shield.isValid) { shield.destroy(); } }).start();
+      tween(shield).by(GUARD_SPELL_AEGIS_MS / 1000 + 0.5, { angle: 120 }).start();
+      this.spawnFloater(crystalX + unit, crystalY + unit * 1.4, amount > 0 ? `圣光壁垒 +${amount}` : '圣光壁垒', rgba(255, 236, 170), 22);
+    } else if (id === 'warhorn') {
+      gameAudio.sfx('level_up');
+      for (const hero of sim.heroes) {
+        const view = this.heroViews.get(hero.unitId);
+        if (!view || !view.node.isValid) {
+          continue;
+        }
+        const ring = this.host.addChildPlainNode(view.node, 'GuardWarhornRing', 0, -unit * 0.42, 10, 10);
+        ring.setSiblingIndex(0);
+        const rg = ring.addComponent(Graphics);
+        rg.strokeColor = rgba(255, 110, 70, 235);
+        rg.lineWidth = 4;
+        rg.ellipse(0, 0, unit * 0.46, unit * 0.14);
+        rg.stroke();
+        tween(ring).repeat(Math.floor(GUARD_SPELL_WARHORN_MS / 500), tween().to(0.25, { scale: new Vec3(1.2, 1.2, 1) }).to(0.25, { scale: Vec3.ONE })).call(() => { if (ring.isValid) { ring.destroy(); } }).start();
+      }
+      this.spawnFloater(this.xToPx(0.8), this.walkwayY() + unit * 1.6, '狂战号角!攻速 +50%', rgba(255, 150, 110), 22);
+    }
+  }
+
+  /** 设置 → 法术配置:6 个法术选 3 个(本地保存;首波开始前改动立即生效,之后下一局生效)。 */
+  private renderSpellLoadoutPage(overlay: Node, content: Node, panelW: number, panelH: number, titleY: number, buttonY: number): void {
+    const sim = this.sim;
+    this.paintSettingsTitle(content, '法术配置', panelW, titleY);
+    const current = (readGuardPref(GUARD_PREF_SPELLS, '') || (sim ? sim.spellLoadout.join(',') : '')).split(',').filter((id) => GUARD_SPELL_IDS.indexOf(id as GuardSpellId) >= 0) as GuardSpellId[];
+    const picked = current.length > 0 ? current.slice(0, 3) : ['quake', 'frost', 'thunder'] as GuardSpellId[];
+    const live = !!sim && sim.wave === 0;
+    const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `选 3 个带进战斗(已选 ${picked.length}/3)· ${live ? '本局立即生效' : '下一局生效'}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
+    tip.overflow = Label.Overflow.SHRINK;
+    const cardW = Math.min(250, panelW * 0.25);
+    const cardH = 118;
+    const top = titleY - 130;
+    GUARD_SPELL_IDS.forEach((id, index) => {
+      const def = GUARD_SPELLS[id];
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      const x = (col - 1) * (cardW + 18);
+      const y = top - row * (cardH + 16);
+      const selected = picked.indexOf(id) >= 0;
+      const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, x, y, cardW, cardH);
+      const g = card.addComponent(Graphics);
+      g.fillColor = selected ? rgba(60, 40, 16, 235) : rgba(20, 14, 10, 210);
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+      g.fill();
+      g.strokeColor = selected ? rgba(255, 214, 110, 255) : rgba(150, 110, 60, 170);
+      g.lineWidth = selected ? 3 : 1.5;
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+      g.stroke();
+      const iconSize = 56;
+      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], -cardW / 2 + 14 + iconSize / 2, 14, iconSize, iconSize);
+      const nameLabel = this.host.addChildLabel(card, 'Name', def.name, -cardW / 2 + 14 + iconSize + 10, 30, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
+      nameLabel.overflow = Label.Overflow.SHRINK;
+      this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 4, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
+      const desc = this.host.addChildLabel(card, 'Desc', def.desc, 0, -cardH / 2 + 24, 15, rgba(210, 196, 170), new Size(cardW - 20, 36));
+      desc.overflow = Label.Overflow.SHRINK;
+      this.host.applyImageButtonFeedback(card);
+      card.on(Node.EventType.TOUCH_END, () => {
+        const next = picked.slice();
+        const at = next.indexOf(id);
+        if (at >= 0) {
+          if (next.length <= 1) {
+            return;
+          }
+          next.splice(at, 1);
+        } else if (next.length >= 3) {
+          this.host.setStatus('最多带 3 个法术,先点掉一个再选');
+          return;
+        } else {
+          next.push(id);
+        }
+        writeGuardPref(GUARD_PREF_SPELLS, next.join(','));
+        if (this.sim && this.sim.wave === 0 && next.length === 3) {
+          guardSetSpellLoadout(this.sim, next);
+          this.renderSpellBar();
+        }
+        this.renderSettingsPage(overlay, 'spells');
+      }, this);
+    });
+    void panelH;
+    const back = this.mountPrimaryTextButton(content, 'GuardSpellsBack', 0, buttonY, 236, '返回');
+    back.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
+  }
+
+  // ── docs/37 G 车道陷阱 ──
+
+  private trapButtonX(): number {
+    const size = LobbyGuardBattleRenderer.SPELL_SLOT;
+    const barW = size * 3 + LobbyGuardBattleRenderer.SPELL_GAP * 2;
+    return this.spellBarCenterX() + barW / 2 + 30 + 40;
+  }
+
+  private static readonly TRAP_ICON_SIZE = 72;
+
+  /** 法术栏右侧的"陷阱"按钮;点它展开 / 收起上方托盘(不暂停)。 */
+  private renderTrapButton(): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    root.getChildByName('GuardTrapButton')?.destroy();
+    root.getChildByName('GuardTrapTray')?.destroy();
+    const size = 80;
+    const button = this.host.addChildPlainNode(root, 'GuardTrapButton', this.trapButtonX(), this.spellBarY(), size, size);
+    const g = button.addComponent(Graphics);
+    g.fillColor = rgba(24, 16, 10, 230);
+    g.circle(0, 0, size / 2);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 235);
+    g.lineWidth = 3;
+    g.circle(0, 0, size / 2);
+    g.stroke();
+    this.paintSpikes(button, size * 0.62, size * 0.36, rgba(200, 200, 210));
+    const label = this.host.addChildLabel(button, 'Label', '陷阱', 0, -size / 2 - 13, 15, rgba(240, 222, 186), new Size(90, 20));
+    label.enableOutline = true;
+    label.outlineColor = rgba(20, 12, 6, 255);
+    label.outlineWidth = 2;
+    this.host.applyImageButtonFeedback(button);
+    button.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
+      (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      this.trapTrayOpen = !this.trapTrayOpen;
+      this.renderTrapTray();
+      if (this.trapTrayOpen) {
+        this.showInteractHint('trap', '按住陷阱拖到跑道上放置(花金币,场上最多 3 个)');
+      }
+    }, this);
+    this.renderTrapTray();
+  }
+
+  /** 托盘:3 个陷阱图标(名字 + 价格),按住拖到跑道放置。 */
+  private renderTrapTray(): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    root.getChildByName('GuardTrapTray')?.destroy();
+    if (!this.trapTrayOpen) {
+      return;
+    }
+    const icon = LobbyGuardBattleRenderer.TRAP_ICON_SIZE;
+    const gap = 16;
+    const trayW = icon * 3 + gap * 2 + 28;
+    const trayH = icon + 58;
+    // 托盘底边让开法术栏上方的能量条与文字(槽心 +90 以内)
+    const trayY = this.spellBarY() + LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 64 + trayH / 2;
+    const trayX = Math.min(this.trapButtonX(), this.layoutWidth / 2 - trayW / 2 - 16);
+    const tray = this.host.addChildPlainNode(root, 'GuardTrapTray', trayX, trayY, trayW, trayH);
+    tray.addComponent(BlockInputEvents);
+    const g = tray.addComponent(Graphics);
+    g.fillColor = rgba(14, 10, 8, 225);
+    g.roundRect(-trayW / 2, -trayH / 2, trayW, trayH, 12);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 220);
+    g.lineWidth = 2;
+    g.roundRect(-trayW / 2, -trayH / 2, trayW, trayH, 12);
+    g.stroke();
+    GUARD_TRAP_KINDS.forEach((kind, index) => {
+      const def = GUARD_TRAPS[kind];
+      const x = -trayW / 2 + 14 + icon / 2 + index * (icon + gap);
+      const item = this.host.addChildPlainNode(tray, `Trap_${kind}`, x, 10, icon, icon);
+      this.paintTrapIcon(item, kind, icon);
+      const name = this.host.addChildLabel(item, 'Name', def.name, 0, -icon / 2 - 12, 15, rgba(240, 222, 186), new Size(icon + gap, 20));
+      name.overflow = Label.Overflow.SHRINK;
+      const cost = this.host.addChildLabel(item, 'Cost', `${def.cost}`, icon * 0.34, icon * 0.36, 15, rgba(255, 214, 92), new Size(40, 20));
+      cost.enableOutline = true;
+      cost.outlineColor = rgba(40, 20, 6, 255);
+      cost.outlineWidth = 2;
+      this.bindTrapItem(item, kind);
+    });
+    this.refreshTrapTray();
+  }
+
+  /** 托盘刷新:买不起 / 满 3 个时图标变暗。 */
+  private refreshTrapTray(): void {
+    const sim = this.sim;
+    const tray = this.root?.getChildByName('GuardTrapTray');
+    if (!sim || !tray || !tray.isValid) {
+      return;
+    }
+    for (const kind of GUARD_TRAP_KINDS) {
+      const item = tray.getChildByName(`Trap_${kind}`);
+      if (!item) {
+        continue;
+      }
+      const ok = sim.gold >= GUARD_TRAPS[kind].cost && sim.traps.length < GUARD_TRAP_MAX;
+      const op = item.getComponent(UIOpacity) ?? item.addComponent(UIOpacity);
+      op.opacity = ok ? 255 : 120;
+    }
+  }
+
+  /** 陷阱图标:尖刺(程序绘制的金属刺)/ 冰霜(冰旋贴图)/ 爆炎(橙色宝石徽章)。 */
+  private paintTrapIcon(parent: Node, kind: GuardTrapKind, size: number): void {
+    const bg = parent.addComponent(Graphics);
+    bg.fillColor = rgba(30, 22, 16, 235);
+    bg.circle(0, 0, size / 2);
+    bg.fill();
+    bg.strokeColor = rgba(170, 130, 70, 220);
+    bg.lineWidth = 2;
+    bg.circle(0, 0, size / 2);
+    bg.stroke();
+    if (kind === 'spikes') {
+      this.paintSpikes(parent, size * 0.64, size * 0.38, rgba(210, 210, 220));
+    } else if (kind === 'frostfield') {
+      this.mountSprite(parent, 'Img', 'ui/guard/fx_wind_zone/spriteFrame', 0, 0, size * 0.8, size * 0.8, rgba(190, 230, 255));
+    } else {
+      this.mountSprite(parent, 'Img', 'ui/equip/gem_t4/spriteFrame', 0, 0, size * 0.76, size * 0.76);
+    }
+  }
+
+  /** 一排金属尖刺(Graphics):w 宽 h 高,刺尖带一点血色。 */
+  private paintSpikes(parent: Node, w: number, h: number, metal: Color): void {
+    const node = this.host.addChildPlainNode(parent, 'Spikes', 0, -h * 0.1, w, h);
+    const g = node.addComponent(Graphics);
+    const count = 5;
+    const step = w / count;
+    for (let i = 0; i < count; i += 1) {
+      const left = -w / 2 + i * step;
+      const tall = i % 2 === 0 ? h : h * 0.72;
+      g.fillColor = metal;
+      g.moveTo(left + step * 0.08, -h / 2);
+      g.lineTo(left + step / 2, -h / 2 + tall);
+      g.lineTo(left + step * 0.92, -h / 2);
+      g.close();
+      g.fill();
+      g.strokeColor = rgba(40, 36, 40, 255);
+      g.lineWidth = 1.5;
+      g.moveTo(left + step * 0.08, -h / 2);
+      g.lineTo(left + step / 2, -h / 2 + tall);
+      g.lineTo(left + step * 0.92, -h / 2);
+      g.close();
+      g.stroke();
+      g.fillColor = rgba(170, 40, 40, 230);
+      g.circle(left + step / 2, -h / 2 + tall - 3, 2.5);
+      g.fill();
+    }
+    g.fillColor = rgba(60, 50, 44, 255);
+    g.roundRect(-w / 2, -h / 2 - 4, w, 6, 3);
+    g.fill();
+  }
+
+  /** 托盘图标手势:按住拖到跑道(显示范围,不能放显示红色),松手放置;拖回托盘取消。 */
+  private bindTrapItem(item: Node, kind: GuardTrapKind): void {
+    item.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
+      (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      this.trapDrag = { kind, moved: 0, x: null };
+    }, this);
+    item.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
+      const drag = this.trapDrag;
+      if (!drag || drag.kind !== kind) {
+        return;
+      }
+      const delta = event.getUIDelta();
+      drag.moved += Math.abs(delta.x) + Math.abs(delta.y);
+      const aim = this.spellAimAt(event.getUILocation().x, event.getUILocation().y);
+      drag.x = aim ? aim.x : null;
+      this.drawTrapAim(kind, drag.x);
+    }, this);
+    const finish = (event: EventTouch | null): void => {
+      const drag = this.trapDrag;
+      this.trapDrag = null;
+      this.fieldNode?.getChildByName('GuardTrapAim')?.destroy();
+      const sim = this.sim;
+      if (!drag || drag.kind !== kind || !sim) {
+        return;
+      }
+      if (event) {
+        (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      }
+      if (drag.moved < 12 || drag.x === null) {
+        this.host.setStatus(`按住「${GUARD_TRAPS[kind].name}」拖到跑道上放置`);
+        return;
+      }
+      const reason = guardTrapBlockReason(sim, kind, drag.x);
+      if (reason) {
+        this.host.setStatus(reason);
+        return;
+      }
+      guardPlaceTrap(sim, kind, drag.x);
+    };
+    item.on(Node.EventType.TOUCH_END, (event: EventTouch) => finish(event), this);
+    item.on(Node.EventType.TOUCH_CANCEL, (event: EventTouch) => finish(event), this);
+  }
+
+  /** 陷阱落点预览:覆盖两条车道的椭圆,能放 = 绿,不能放 = 红。 */
+  private drawTrapAim(kind: GuardTrapKind, x: number | null): void {
+    const field = this.fieldNode;
+    const sim = this.sim;
+    if (!field || !sim) {
+      return;
+    }
+    let node = field.getChildByName('GuardTrapAim');
+    if (!node) {
+      node = this.host.addChildPlainNode(field, 'GuardTrapAim', 0, 0, 10, 10);
+      node.addComponent(Graphics);
+    }
+    node.setSiblingIndex(field.children.length - 1);
+    const g = node.getComponent(Graphics);
+    if (!g) {
+      return;
+    }
+    g.clear();
+    if (x === null) {
+      return;
+    }
+    const ok = guardTrapBlockReason(sim, kind, x) === null;
+    const { cx, cy, rx, ry } = this.trapEllipse(x, GUARD_TRAPS[kind].radius);
+    const color = ok ? rgba(130, 240, 150) : rgba(255, 90, 80);
+    g.fillColor = new Color(color.r, color.g, color.b, 50);
+    g.ellipse(cx, cy, rx, ry);
+    g.fill();
+    g.strokeColor = new Color(color.r, color.g, color.b, 230);
+    g.lineWidth = 3;
+    g.ellipse(cx, cy, rx, ry);
+    g.stroke();
+  }
+
+  /** 陷阱在画面上的椭圆(覆盖两条车道的怪物带)。 */
+  private trapEllipse(x: number, radius: number): { cx: number; cy: number; rx: number; ry: number } {
+    const y0 = this.monsterY(0, x);
+    const y1 = this.monsterY(1, x);
+    return {
+      cx: this.xToPx(x),
+      cy: (y0 + y1) / 2,
+      rx: Math.max(this.unitSize() * 0.45, (this.xToPx(Math.min(GUARD_SPAWN_X, x + radius)) - this.xToPx(Math.max(0, x - radius))) / 2),
+      ry: Math.abs(y0 - y1) / 2 + this.unitSize() * 0.45,
+    };
+  }
+
+  /** 场上陷阱视图:地面椭圆 + 本体(尖刺 / 冰旋 / 宝石符文)+ 剩余波数。 */
+  private syncTraps(): void {
+    const sim = this.sim;
+    const field = this.fieldNode;
+    if (!sim || !field) {
+      return;
+    }
+    const live = new Set(sim.traps.map((trap) => trap.trapId));
+    for (const [trapId, node] of Array.from(this.trapViews)) {
+      if (!live.has(trapId)) {
+        if (node.isValid) {
+          const op = node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+          tween(op).to(0.3, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+        }
+        this.trapViews.delete(trapId);
+      }
+    }
+    const unit = this.unitSize();
+    for (const trap of sim.traps) {
+      const def = GUARD_TRAPS[trap.kind];
+      let node = this.trapViews.get(trap.trapId);
+      const shape = this.trapEllipse(trap.x, def.radius);
+      if (!node) {
+        node = this.host.addChildPlainNode(field, `GuardTrap_${trap.trapId}`, shape.cx, shape.cy, shape.rx * 2, shape.ry * 2);
+        // 贴地:排在格子卡片之后、单位之前
+        node.setSiblingIndex(3);
+        const g = node.addComponent(Graphics);
+        const tint = trap.kind === 'spikes' ? rgba(200, 200, 210) : trap.kind === 'frostfield' ? rgba(140, 210, 255) : rgba(255, 140, 70);
+        g.fillColor = new Color(tint.r, tint.g, tint.b, 38);
+        g.ellipse(0, 0, shape.rx, shape.ry);
+        g.fill();
+        g.strokeColor = new Color(tint.r, tint.g, tint.b, 150);
+        g.lineWidth = 2;
+        g.ellipse(0, 0, shape.rx, shape.ry);
+        g.stroke();
+        if (trap.kind === 'spikes') {
+          for (let i = -1; i <= 1; i += 1) {
+            const cluster = this.host.addChildPlainNode(node, 'Cluster', i * shape.rx * 0.5, (i === 0 ? 0.25 : -0.2) * shape.ry, 10, 10);
+            this.paintSpikes(cluster, unit * 0.42, unit * 0.24, rgba(160, 160, 172));
+          }
+        } else if (trap.kind === 'frostfield') {
+          const swirl = this.mountSprite(node, 'Swirl', 'ui/guard/fx_wind_zone/spriteFrame', 0, 0, shape.rx * 2, shape.ry * 2, rgba(180, 225, 255));
+          swirl.addComponent(UIOpacity).opacity = 150;
+          tween(swirl).repeatForever(tween().by(8, { angle: -360 })).start();
+        } else {
+          const glow = this.mountSprite(node, 'Glow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, unit * 1.2, unit * 0.8, rgba(255, 130, 60));
+          const glowOp = glow.addComponent(UIOpacity);
+          tween(glowOp).repeatForever(tween().to(0.5, { opacity: 110 }).to(0.5, { opacity: 230 })).start();
+          const rune = this.mountSprite(node, 'Rune', 'ui/equip/gem_t4/spriteFrame', 0, 0, unit * 0.62, unit * 0.62);
+          rune.setScale(1, 0.62, 1);
+        }
+        const left = this.host.addChildLabel(node, 'Left', '', 0, -shape.ry - 10, 15, rgba(230, 214, 180), new Size(120, 20));
+        left.enableOutline = true;
+        left.outlineColor = rgba(20, 12, 6, 255);
+        left.outlineWidth = 2;
+        node.setScale(0.4, 0.4, 1);
+        tween(node).to(0.2, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+        this.trapViews.set(trap.trapId, node);
+      }
+      const left = node.getChildByName('Left')?.getComponent(Label);
+      const text = trap.kind === 'rune' ? '爆炎符文' : `${def.name} · 余 ${trap.wavesLeft} 波`;
+      if (left && left.string !== text) {
+        left.string = text;
+      }
+    }
+  }
+
+  /** 爆炎符文爆炸:橙色爆闪 + 冲击环 + 震屏 + 伤害飘字。 */
+  private playTrapBoom(x: number, amount: number): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const unit = this.unitSize();
+    const shape = this.trapEllipse(x, GUARD_TRAPS.rune.radius);
+    gameAudio.sfx('chest_jackpot', 0.6);
+    this.shakeField(10);
+    for (const [path, size, sec] of [['ui/battle/c1812/effects/hit_burst/spriteFrame', unit * 3, 0.45], ['ui/guard/cast_flash/spriteFrame', unit * 3.6, 0.6], ['ui/battle/c1812/effects/hit_ring/spriteFrame', unit * 2.4, 0.5]] as Array<[string, number, number]>) {
+      const node = this.mountSprite(field, 'GuardTrapBoom', path, shape.cx, shape.cy, size, size, rgba(255, 150, 70));
+      node.setSiblingIndex(field.children.length - 1);
+      node.setScale(0.3, 0.3, 1);
+      const op = node.addComponent(UIOpacity);
+      tween(node).to(sec, { scale: new Vec3(1.2, 1.2, 1) }, { easing: 'quadOut' }).start();
+      tween(op).to(sec, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+    }
+    this.spawnFloater(shape.cx, shape.cy + unit * 1.2, `爆炎符文 -${amount}`, rgba(255, 160, 90), 22);
   }
 
   /** 提前迎战按钮:顶部波次横幅下方,只在波间运营窗口出现,文案带实时奖励。 */
@@ -6084,10 +7068,22 @@ export class LobbyGuardBattleRenderer {
       const flashLeft = view.hitFlashUntil - Date.now();
       const hitJiggle = !monster.dead && flashLeft > 0 ? (flashLeft / 90) * 7 : 0;
       view.node.setPosition(this.xToPx(monster.x) + hitJiggle, this.monsterY(monster.lane, monster.x) + jitterY * this.monsterSpread(monster.x) + flyLift, 0);
+      if (monster.dead && monster.escaped) {
+        // 偷金鼠溜走:不播死亡,向左淡出
+        if (view.lastAnimKey !== 'escaped') {
+          view.lastAnimKey = 'escaped';
+          view.node.getChildByName('GuardMonsterHp')?.getComponent(Graphics)?.clear();
+          const escapeOpacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
+          tween(escapeOpacity).to(0.4, { opacity: 0 }).start();
+          tween(view.node).by(0.4, { position: new Vec3(-this.unitSize() * 0.8, 0, 0) }).start();
+        }
+        continue;
+      }
       if (monster.dead) {
         // 死亡演出:有死亡动画播动画后淡出,否则淡出下沉(打击感 2026-08-26)
         if (view.lastAnimKey !== 'dead') {
           view.lastAnimKey = 'dead';
+          view.node.getChildByName('GuardMarkReticle')?.destroy();
           // 死亡瞬间清掉血条(视频验收:'血没空就死'的错觉=死时血条残留旧值)
           view.node.getChildByName('GuardMonsterHp')?.getComponent(Graphics)?.clear();
           const opacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
@@ -6113,7 +7109,10 @@ export class LobbyGuardBattleRenderer {
       const slowed = monster.slowUntilMs > sim.timeMs;
       const stunned = monster.stunnedUntilMs > sim.timeMs;
       if (view.skeleton && view.skeleton.isValid) {
-        view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : GUARD_SPINE_WHITE;
+        view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : monster.greedy ? GUARD_GREEDY_TINT : GUARD_SPINE_WHITE;
+      }
+      if (monster.greedy && !view.node.getChildByName('GuardGreedyBag')) {
+        this.mountGreedyBag(view);
       }
       if (monster.kind === 'boss' || monster.kind === 'elite') {
         this.applyOccluderGhost(view, monster);

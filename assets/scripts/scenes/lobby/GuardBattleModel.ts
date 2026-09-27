@@ -149,6 +149,10 @@ export interface GuardMonster {
   spineCode: string;
   /** BOSS 技能就绪时刻(2026-08-28:BOSS 进入自身攻击范围后冷却制放技能;非 BOSS 恒 0)。 */
   skillReadyMs: number;
+  /** 偷金鼠(docs/37 D):不啃水晶,跑到水晶前就带钱溜走;打死掉大笔金币。 */
+  greedy?: boolean;
+  /** 偷金鼠已逃走(dead=true 但不是被击杀,渲染层淡出不播死亡)。 */
+  escaped?: boolean;
   dead: boolean;
   diedAtMs: number;
 }
@@ -217,7 +221,13 @@ export interface GuardEvent {
     // 辅助周期治疗水晶(2026-09-24 表现层:水晶回血特效 + 绿色飘字);amount=实际回复量(满血时不发)。
     | 'crystalHeal'
     // docs/37:战技蓄满进入手动窗口 / 提前开战(amount=奖励金币)。
-    | 'skillReady' | 'callWave';
+    | 'skillReady' | 'callWave'
+    // docs/37 D:流星矿晶落下 / 被拾取 / 碎掉;偷金鼠出现 / 被打死 / 逃走。
+    | 'meteorSpawn' | 'meteorCollect' | 'meteorExpire' | 'greedySpawn' | 'greedyKill' | 'greedyEscape'
+    // docs/37 F:水晶法术施放(spellId + 目标车道/位置 + 命中怪物)/ 圣光壁垒挡下的伤害。
+    | 'spellCast' | 'aegisBlock'
+    // docs/37 G:陷阱放置 / 尖刺跳伤 / 符文爆炸 / 耐久耗尽。
+    | 'trapPlace' | 'trapTick' | 'trapBoom' | 'trapExpire';
   timeMs: number;
   heroCode?: string;
   star?: number;
@@ -249,6 +259,15 @@ export interface GuardEvent {
   perkId?: string;
   /** heroSkill:该英雄的专属大招觉醒等级(0=未觉醒的通用战技)。 */
   ultLv?: number;
+  /** meteor*:拾取物 id。 */
+  pickupId?: number;
+  /** trap*:陷阱 id 与种类。 */
+  trapId?: number;
+  trapKind?: GuardTrapKind;
+  /** spellCast:法术 id、目标车道与位置(格)。 */
+  spellId?: GuardSpellId;
+  lane?: number;
+  x?: number;
   /** heroSkill:玩家手动释放(+25%)/ 与另一英雄手动战技构成合击(再 ×1.3)。 */
   manual?: boolean;
   chained?: boolean;
@@ -258,8 +277,100 @@ export interface GuardEvent {
 /** 玩家战斗内操作记录(docs/37 §1-5:为服务端复演留口子;t=sim 时间,v=目标 id)。 */
 export interface GuardInput {
   t: number;
-  k: 'mark' | 'skill' | 'callWave';
+  k: 'mark' | 'skill' | 'callWave' | 'pickup' | 'spell' | 'trap';
   v: number;
+}
+
+// ── docs/37 F 水晶法术栏 ──
+export type GuardSpellId = 'quake' | 'frost' | 'thunder' | 'goldrush' | 'aegis' | 'warhorn';
+export type GuardSpellTarget = 'none' | 'point';
+export interface GuardSpellDef {
+  id: GuardSpellId;
+  name: string;
+  cost: number;
+  target: GuardSpellTarget;
+  desc: string;
+}
+/**
+ * 6 个法术(2026-09-27 首版;伤害按"本波普通怪血量"折算,主线/副本血量倍率不同也保持同样手感):
+ * 震荡=全场 0.6 倍普通怪血 + 击退;冰封=落点 ±1.6 格冻结 3s(BOSS 只减速);天雷=落点 ±1.2 格 2.5 倍,精英/BOSS 再 ×2;
+ * 冰封/天雷按落点 x 判定、两条车道都算(靠近水晶时两车道在画面上汇成一条路,按车道瞄会看不清)。
+ * 金矿=立刻 +(25 + 3×波次) 金币(每波限 1 次);壁垒=水晶 4s 无敌 + 回 10%;号角=全队攻速 ×1.5 持续 6s。
+ */
+export const GUARD_SPELLS: Record<GuardSpellId, GuardSpellDef> = {
+  quake: { id: 'quake', name: '矿晶震荡', cost: 100, target: 'none', desc: '全场伤害并击退' },
+  frost: { id: 'frost', name: '冰封', cost: 60, target: 'point', desc: '拖到战场:一片区域冻结 3 秒' },
+  thunder: { id: 'thunder', name: '天雷', cost: 80, target: 'point', desc: '拖到战场落雷,精英双倍' },
+  goldrush: { id: 'goldrush', name: '金矿爆发', cost: 80, target: 'none', desc: '立刻获得金币(每波限 1 次)' },
+  aegis: { id: 'aegis', name: '圣光壁垒', cost: 90, target: 'none', desc: '水晶 4 秒无敌并回复 10%' },
+  warhorn: { id: 'warhorn', name: '狂战号角', cost: 70, target: 'none', desc: '全队攻速 +50%,持续 6 秒' },
+};
+export const GUARD_SPELL_IDS: GuardSpellId[] = ['quake', 'frost', 'thunder', 'goldrush', 'aegis', 'warhorn'];
+export const GUARD_DEFAULT_SPELL_LOADOUT: GuardSpellId[] = ['quake', 'frost', 'thunder'];
+export const GUARD_SPELL_ENERGY_MAX = 150;
+/** 能量来源:波中每秒回复、击杀(普通按怪量倍率折算)、精英/BOSS 击杀、打断 BOSS 读条。 */
+export const GUARD_SPELL_ENERGY_REGEN_PER_SEC = 1.2;
+export const GUARD_SPELL_ENERGY_PER_KILL = 1;
+export const GUARD_SPELL_ENERGY_ELITE = 15;
+export const GUARD_SPELL_ENERGY_BOSS = 30;
+export const GUARD_SPELL_ENERGY_INTERRUPT = 20;
+export const GUARD_SPELL_THUNDER_RADIUS = 1.2;
+export const GUARD_SPELL_FROST_RADIUS = 1.6;
+export const GUARD_SPELL_FROST_MS = 3000;
+export const GUARD_SPELL_AEGIS_MS = 4000;
+export const GUARD_SPELL_WARHORN_MS = 6000;
+export const GUARD_SPELL_WARHORN_ASPD = 1.5;
+
+// ── docs/37 G 车道陷阱 ──
+export type GuardTrapKind = 'spikes' | 'frostfield' | 'rune';
+export interface GuardTrapDef {
+  kind: GuardTrapKind;
+  name: string;
+  cost: number;
+  /** 作用半径(格,按 x 判定,两条车道都算)。 */
+  radius: number;
+  /** 持续波数(爆炎符文一次性,0)。 */
+  waves: number;
+  desc: string;
+}
+/**
+ * 三种陷阱(2026-09-27 首版;伤害按本波普通怪血量折算,和法术同口径):
+ * 尖刺阵 80 金:半径 0.7 格内地面怪每 0.5s 受 0.12 倍普通怪血(飞行途中免疫),持续 3 波;
+ * 冰霜法阵 60 金:半径 0.9 格内减速 40%,持续 3 波;
+ * 爆炎符文 100 金:第一只地面怪踏入 0.4 格即爆炸,半径 1.3 格 3 倍普通怪血,精英/BOSS ×1.5,一次性。
+ * 场上最多 3 个,间距 ≥ 0.8 格;只能放在跑道上(1.2~8.5 格)。
+ */
+export const GUARD_TRAPS: Record<GuardTrapKind, GuardTrapDef> = {
+  spikes: { kind: 'spikes', name: '尖刺阵', cost: 80, radius: 0.7, waves: 3, desc: '持续扎伤路过的地面怪,3 波' },
+  frostfield: { kind: 'frostfield', name: '冰霜法阵', cost: 60, radius: 0.9, waves: 3, desc: '经过的怪减速 40%,3 波' },
+  rune: { kind: 'rune', name: '爆炎符文', cost: 100, radius: 1.3, waves: 0, desc: '踩中即爆,范围重伤,一次性' },
+};
+export const GUARD_TRAP_KINDS: GuardTrapKind[] = ['spikes', 'frostfield', 'rune'];
+export const GUARD_TRAP_MAX = 3;
+export const GUARD_TRAP_MIN_X = 1.2;
+export const GUARD_TRAP_MAX_X = 8.5;
+export const GUARD_TRAP_MIN_GAP = 0.8;
+export const GUARD_TRAP_TICK_MS = 500;
+export const GUARD_TRAP_RUNE_TRIGGER = 0.4;
+
+export interface GuardTrap {
+  trapId: number;
+  kind: GuardTrapKind;
+  x: number;
+  /** 剩余波数(波结束 -1,到 0 移除;符文不计)。 */
+  wavesLeft: number;
+  nextTickAtMs: number;
+}
+
+/** 流星矿晶(docs/37 D):landAtMs 前在下落,落地后到 expireAtMs 前可点。 */
+export interface GuardPickup {
+  pickupId: number;
+  x: number;
+  lane: number;
+  spawnAtMs: number;
+  landAtMs: number;
+  expireAtMs: number;
+  gold: number;
 }
 
 export interface GuardBattleState {
@@ -369,6 +480,20 @@ export interface GuardBattleState {
   eventRng: () => number;
   /** 玩家操作日志。 */
   inputs: GuardInput[];
+  /** 战场事件:本波待触发(波开始时用 eventRng 排好)、场上流星矿晶、已出现的偷金鼠数。 */
+  pendingFieldEvents: Array<{ kind: 'meteor' | 'greedy'; atMs: number; lane: number; x: number }>;
+  pickups: GuardPickup[];
+  nextPickupId: number;
+  greedySpawned: number;
+  /** 水晶法术(docs/37 F):能量、出战 3 格、壁垒/号角截止时刻、金矿爆发已用的波次。 */
+  spellEnergy: number;
+  spellLoadout: GuardSpellId[];
+  aegisUntilMs: number;
+  warhornUntilMs: number;
+  goldrushWave: number;
+  /** 车道陷阱(docs/37 G)。 */
+  traps: GuardTrap[];
+  nextTrapId: number;
 }
 
 // ── 配置(docs/30 待拍板口径;改数值只动这里)──
@@ -493,6 +618,24 @@ export const GUARD_RESONANCE_TWO_FROM_WAVE = 6;
 export const GUARD_CALL_WAVE_GOLD_BASE = 2;
 export const GUARD_CALL_WAVE_GOLD_PER_WAVE = 0.3;
 export const GUARD_CALL_WAVE_MIN_REMAIN_MS = 500;
+/**
+ * 战场事件(docs/37 D;金币按主线 10 波总收入约 2760 控预算):
+ * 流星矿晶每波 35%(第 1 波必出),下落 0.7s、落地亮 4s,点它得 10 + 2.5×波次;
+ * 偷金鼠第 3 波起每波 40%、每局最多 2 只,血量 = 同波普通怪 ×10,速度 0.75 格/秒,打死得 50 + 5×波次(不除怪量倍率);
+ * 英雄不会主动瞄准偷金鼠,必须玩家集火标记(范围技能可顺带打到)——2026-09-27 回归:不设此条挂机也 100% 打死,成了白送金币。
+ */
+export const GUARD_METEOR_CHANCE = 0.35;
+export const GUARD_METEOR_FALL_MS = 700;
+export const GUARD_METEOR_LIFE_MS = 4000;
+export const GUARD_METEOR_GOLD_BASE = 10;
+export const GUARD_METEOR_GOLD_PER_WAVE = 2.5;
+export const GUARD_GREEDY_FROM_WAVE = 3;
+export const GUARD_GREEDY_CHANCE = 0.4;
+export const GUARD_GREEDY_MAX = 2;
+export const GUARD_GREEDY_HP_MULT = 10;
+export const GUARD_GREEDY_SPEED = 0.75;
+export const GUARD_GREEDY_GOLD_BASE = 50;
+export const GUARD_GREEDY_GOLD_PER_WAVE = 5;
 export const GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS = 1.2;
 export function guardCrystalSkillDamage(wave: number): number {
   return 60 + 25 * Math.max(1, wave);
@@ -825,6 +968,17 @@ export function createGuardBattle(
     lastManualSkill: null,
     eventRng: createGuardRng((seed ^ 0x27d4eb2f) >>> 0),
     inputs: [],
+    pendingFieldEvents: [],
+    pickups: [],
+    nextPickupId: 1,
+    greedySpawned: 0,
+    spellEnergy: 0,
+    spellLoadout: GUARD_DEFAULT_SPELL_LOADOUT.slice(),
+    aegisUntilMs: 0,
+    warhornUntilMs: 0,
+    goldrushWave: -1,
+    traps: [],
+    nextTrapId: 1,
   };
 }
 
@@ -1623,8 +1777,15 @@ function killMonster(state: GuardBattleState, monster: GuardMonster, killerCode:
   state.killCount += 1;
   // 击杀金币随怪物所属波次成长(+6%/波):怪血 wave^1.08 超线性,经济不同步涨则 15 波后必然入不敷出。
   // ÷spawnCountMult:主线怪量翻倍后单只金币减半(总收入中性),否则怪越多经济越富、难度自抵消。
-  const gold = Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100) / state.spawnCountMult);
+  const gold = monster.greedy
+    ? Math.round((GUARD_GREEDY_GOLD_BASE + GUARD_GREEDY_GOLD_PER_WAVE * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100))
+    : Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100) / state.spawnCountMult);
   state.gold += gold;
+  if (monster.greedy) {
+    state.events.push({ type: 'greedyKill', timeMs: state.timeMs, monsterId: monster.monsterId, amount: gold });
+  }
+  const energy = monster.kind === 'boss' ? GUARD_SPELL_ENERGY_BOSS : monster.kind === 'elite' ? GUARD_SPELL_ENERGY_ELITE : GUARD_SPELL_ENERGY_PER_KILL / state.spawnCountMult;
+  state.spellEnergy = Math.min(GUARD_SPELL_ENERGY_MAX, state.spellEnergy + energy);
   grantXp(state, GUARD_KILL_XP[monster.kind]);
   if (monster.kind === 'boss') {
     state.bossKilled = true;
@@ -1719,6 +1880,7 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
     if (state.bossCast.damageTaken >= threshold) {
       monster.stunnedUntilMs = state.timeMs + GUARD_BOSS_STUN_MS;
       state.events.push({ type: 'bossCastInterrupt', timeMs: state.timeMs, monsterId: monster.monsterId });
+      state.spellEnergy = Math.min(GUARD_SPELL_ENERGY_MAX, state.spellEnergy + GUARD_SPELL_ENERGY_INTERRUPT);
       state.bossCast = null;
       state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
     }
@@ -1740,6 +1902,7 @@ function startWave(state: GuardBattleState): void {
   state.pendingSpawns = spawns.map((spawn) => ({ ...spawn, atMs: spawn.atMs + state.timeMs }));
   state.gold += GUARD_WAVE_WAGE_BASE + state.wave * 10;
   state.events.push({ type: 'waveStart', timeMs: state.timeMs, wave: state.wave });
+  guardScheduleFieldEvents(state);
   state.perkHealThisWave = 0;
   // 契约魔女·血契:她有单位在场的波次开始时扣水晶(单局 ≤12%,不低于 10%;车轮战该卡不入池)。
   const witch = state.heroPerks.SR_WITCH_03;
@@ -2170,7 +2333,8 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   // 出手频率:常驻 = 白卡攻速 × 急速(钳 ×2.0);临时增益(圣辉涌泉 ×1.2)在钳外。
   const surgeDiv = state.supportSurgeUntilMs > state.timeMs ? GUARD_SUPPORT_SURGE_ATKSPD : 1;
   const resonanceDiv = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ASPD_MULT : 1;
-  const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv / resonanceDiv;
+  const hornDiv = state.warhornUntilMs > state.timeMs ? GUARD_SPELL_WARHORN_ASPD : 1;
+  const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv / resonanceDiv / hornDiv;
   const heroProfile = guardHeroProfileOf(state, hero.heroCode);
   const purpleSuffix = perks.purple > 0 ? heroProfile.purple?.suffix ?? '' : '';
   const purpleValue = perks.purple > 0 && heroProfile.purple ? heroProfile.purple.values[perks.purple - 1] : 0;
@@ -2193,7 +2357,7 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     let healTarget: GuardMonster | null = null;
     let healBest = Number.POSITIVE_INFINITY;
     for (const monster of state.monsters) {
-      if (!monster.dead && monster.x <= profile.rangeCells && monster.x < healBest) {
+      if (!monster.dead && !monster.greedy && monster.x <= profile.rangeCells && monster.x < healBest) {
         healBest = monster.x;
         healTarget = monster;
       }
@@ -2216,6 +2380,10 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     if (monster.dead) {
       continue;
     }
+    // 偷金鼠(docs/37 D)贴地溜边:英雄不会主动瞄它,要玩家集火标记(或范围技能顺带打到)。
+    if (monster.greedy) {
+      continue;
+    }
     // 飞行怪无视近战格挡(阵容检查器):飞行途中只能被远程/控制打;
     // 落地啃水晶后可被近战攻击(2026-09-11 用户反馈"近战没打正在啃水晶的怪")。
     if (hero.role === 'melee' && !guardMeleeCanHit(monster)) {
@@ -2232,7 +2400,7 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   }
   // 狙击手·猎首:优先锁精英/BOSS,其次血量最高的怪。
   if (target && purpleSuffix === 'headhunt') {
-    const inRange = state.monsters.filter((monster) => guardCanHit(hero, monster, profile.rangeCells));
+    const inRange = state.monsters.filter((monster) => !monster.greedy && guardCanHit(hero, monster, profile.rangeCells));
     const priority = inRange.filter((monster) => monster.kind === 'elite' || monster.kind === 'boss').sort((a, b) => a.x - b.x || a.monsterId - b.monsterId)[0]
       ?? [...inRange].sort((a, b) => b.hp - a.hp || a.monsterId - b.monsterId)[0];
     target = priority ?? target;
@@ -2286,6 +2454,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         spawnMonster(state, spawn.kind, spawn.lane);
       }
     }
+    guardFireFieldEvents(state);
+    state.spellEnergy = Math.min(GUARD_SPELL_ENERGY_MAX, state.spellEnergy + GUARD_SPELL_ENERGY_REGEN_PER_SEC * (dtMs / 1000));
     // rush:车轮 BOSS 常驻,不阻塞小怪波推进。
     const anyAlive = state.monsters.some((monster) => !monster.dead && (state.mode !== 'rush' || monster.kind !== 'boss'));
     if (state.pendingSpawns.length === 0 && !anyAlive) {
@@ -2296,8 +2466,19 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       }
       state.phase = 'prep';
       state.waveStartedAtMs = state.timeMs;
+      state.pendingFieldEvents = [];
+      guardAgeTraps(state);
       guardGrantFreeEnhance(state);
     }
+  }
+  // 流星矿晶过期(波间也会走,落地没点的 4s 后碎掉)。
+  if (state.pickups.length > 0) {
+    for (const pickup of state.pickups) {
+      if (state.timeMs >= pickup.expireAtMs) {
+        state.events.push({ type: 'meteorExpire', timeMs: state.timeMs, pickupId: pickup.pickupId });
+      }
+    }
+    state.pickups = state.pickups.filter((pickup) => state.timeMs < pickup.expireAtMs);
   }
   // 车轮战:场上始终一只 BOSS——开局 6s 首只入场,击杀后 2.5s 换更强的下一只(强度参考波次递增,速度极慢压迫感)。
   if (state.mode === 'rush') {
@@ -2321,7 +2502,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       state.events.push({ type: 'bossCastStart', timeMs: state.timeMs, monsterId: boss.monsterId });
     }
     if (state.bossCast && state.timeMs >= state.bossCast.hitMs) {
-      const damage = Math.round(state.crystalMaxHp * GUARD_BOSS_CAST_CRYSTAL_RATIO);
+      const damage = guardAegisFilter(state, Math.round(state.crystalMaxHp * GUARD_BOSS_CAST_CRYSTAL_RATIO));
       state.crystalHp = Math.max(0, state.crystalHp - damage);
       state.events.push({ type: 'bossCastHit', timeMs: state.timeMs, monsterId: state.bossCast.monsterId, amount: damage });
       state.bossCast = null;
@@ -2346,7 +2527,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     const bossStunned = bossMonster.stunnedUntilMs > state.timeMs;
     if (!casting && !bossStunned && bossMonster.x <= skillSpec.rangeCells && state.timeMs >= bossMonster.skillReadyMs) {
       bossMonster.skillReadyMs = state.timeMs + skillSpec.cdMs;
-      const damage = Math.max(1, Math.round(state.crystalMaxHp * skillSpec.crystalPct));
+      const damage = guardAegisFilter(state, Math.max(1, Math.round(state.crystalMaxHp * skillSpec.crystalPct)));
       state.crystalHp = Math.max(0, state.crystalHp - damage);
       state.events.push({ type: 'bossSkill', timeMs: state.timeMs, monsterId: bossMonster.monsterId, amount: damage, skillName: skillSpec.name, skillKind });
       if (state.crystalHp <= 0) {
@@ -2363,6 +2544,17 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       continue;
     }
     const standX = monster.kind === 'shooter' ? GUARD_SHOOTER_STAND_X : GUARD_CRYSTAL_REACH_X;
+    if (monster.greedy && monster.x <= standX + 0.01) {
+      // 偷金鼠跑到水晶前 = 带着金币溜走(不啃水晶、不算击杀、不给金币)。
+      monster.dead = true;
+      monster.escaped = true;
+      monster.diedAtMs = state.timeMs;
+      if (state.markedMonsterId === monster.monsterId) {
+        state.markedMonsterId = null;
+      }
+      state.events.push({ type: 'greedyEscape', timeMs: state.timeMs, monsterId: monster.monsterId });
+      continue;
+    }
     const casting = state.bossCast?.monsterId === monster.monsterId;
     const stunned = monster.stunnedUntilMs > state.timeMs;
     if (monster.x > standX && !casting && !stunned) {
@@ -2372,8 +2564,9 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       monster.attackCooldownMs -= dtMs;
       if (monster.attackCooldownMs <= 0) {
         monster.attackCooldownMs = MONSTER_ATTACK_INTERVAL_MS;
-        state.crystalHp = Math.max(0, state.crystalHp - monster.crystalDamage);
-        state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: monster.crystalDamage });
+        const bite = guardAegisFilter(state, monster.crystalDamage);
+        state.crystalHp = Math.max(0, state.crystalHp - bite);
+        state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: bite });
         if ((state.heroPerks.UR_ATLAS?.purple ?? 0) > 0 && state.heroes.some((hero) => hero.heroCode.toUpperCase() === 'UR_ATLAS')) {
           state.riposteSeals = Math.min(3, state.riposteSeals + 1);
         }
@@ -2420,6 +2613,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     }
   }
   state.zones = state.zones.filter((zone) => state.timeMs < zone.untilMs);
+  guardTickTraps(state);
   // 英雄出手。
   for (const hero of state.heroes) {
     heroTick(state, hero, dtMs);
@@ -2514,6 +2708,284 @@ export function guardCastHeroSkillNow(state: GuardBattleState, unitId: number): 
   return { chained };
 }
 
+/** 波开始时排本波战场事件(派生随机流,不影响波次构成)。 */
+function guardScheduleFieldEvents(state: GuardBattleState): void {
+  const rng = state.eventRng;
+  const events: Array<{ kind: 'meteor' | 'greedy'; atMs: number; lane: number; x: number }> = [];
+  const meteorRoll = rng();
+  if (state.wave === 1 || meteorRoll < GUARD_METEOR_CHANCE) {
+    events.push({ kind: 'meteor', atMs: state.timeMs + 4000 + Math.round(rng() * 8000), lane: rng() < 0.5 ? 0 : 1, x: 2.6 + rng() * 4.2 });
+  }
+  const greedyRoll = rng();
+  if (state.wave >= GUARD_GREEDY_FROM_WAVE && state.greedySpawned < GUARD_GREEDY_MAX && greedyRoll < GUARD_GREEDY_CHANCE) {
+    events.push({ kind: 'greedy', atMs: state.timeMs + 3000 + Math.round(rng() * 6000), lane: rng() < 0.5 ? 0 : 1, x: GUARD_SPAWN_X });
+    state.greedySpawned += 1;
+  }
+  state.pendingFieldEvents = events.sort((a, b) => a.atMs - b.atMs);
+}
+
+function guardFireFieldEvents(state: GuardBattleState): void {
+  while (state.pendingFieldEvents.length > 0 && state.pendingFieldEvents[0].atMs <= state.timeMs) {
+    const event = state.pendingFieldEvents.shift();
+    if (!event) {
+      break;
+    }
+    if (event.kind === 'meteor') {
+      const pickup: GuardPickup = {
+        pickupId: state.nextPickupId++,
+        x: event.x,
+        lane: event.lane,
+        spawnAtMs: state.timeMs,
+        landAtMs: state.timeMs + GUARD_METEOR_FALL_MS,
+        expireAtMs: state.timeMs + GUARD_METEOR_FALL_MS + GUARD_METEOR_LIFE_MS,
+        gold: Math.round(GUARD_METEOR_GOLD_BASE + GUARD_METEOR_GOLD_PER_WAVE * state.wave),
+      };
+      state.pickups.push(pickup);
+      state.events.push({ type: 'meteorSpawn', timeMs: state.timeMs, pickupId: pickup.pickupId });
+    } else {
+      // 偷金鼠:以普通怪为底(同波血量 ×4),换快速怪里的老鼠骨骼,速度固定。
+      spawnMonster(state, 'fast', event.lane, { speed: GUARD_GREEDY_SPEED });
+      const rat = state.monsters[state.monsters.length - 1];
+      const normalHp = Math.max(1, Math.round(rat.maxHp / MONSTER_PROFILE.fast.hpMult * MONSTER_PROFILE.normal.hpMult));
+      rat.greedy = true;
+      rat.spineCode = 'medium_rat';
+      rat.maxHp = normalHp * GUARD_GREEDY_HP_MULT;
+      rat.hp = rat.maxHp;
+      state.events.push({ type: 'greedySpawn', timeMs: state.timeMs, monsterId: rat.monsterId });
+    }
+  }
+}
+
+/** 点流星矿晶:落地后、碎掉前可拾取。返回得到的金币,不可拾取返回 null。 */
+export function guardCollectPickup(state: GuardBattleState, pickupId: number): number | null {
+  const index = state.pickups.findIndex((pickup) => pickup.pickupId === pickupId);
+  if (index < 0 || state.paused || state.phase === 'victory' || state.phase === 'defeat') {
+    return null;
+  }
+  const pickup = state.pickups[index];
+  if (state.timeMs < pickup.landAtMs || state.timeMs >= pickup.expireAtMs) {
+    return null;
+  }
+  state.pickups.splice(index, 1);
+  const gold = Math.round(pickup.gold * (1 + state.mods.goldGainPct / 100));
+  state.gold += gold;
+  state.events.push({ type: 'meteorCollect', timeMs: state.timeMs, pickupId, amount: gold });
+  state.inputs.push({ t: state.timeMs, k: 'pickup', v: pickupId });
+  return gold;
+}
+
+/** 陷阱能否放在这里(跑道范围、数量、间距、金币)。返回不能放的原因,可以放返回 null。 */
+export function guardTrapBlockReason(state: GuardBattleState, kind: GuardTrapKind, x: number): string | null {
+  if (state.phase === 'victory' || state.phase === 'defeat' || state.paused || state.pendingChoice) {
+    return '现在不能放陷阱';
+  }
+  if (x < GUARD_TRAP_MIN_X || x > GUARD_TRAP_MAX_X) {
+    return '陷阱只能放在怪物跑道上';
+  }
+  if (state.traps.length >= GUARD_TRAP_MAX) {
+    return `场上最多 ${GUARD_TRAP_MAX} 个陷阱`;
+  }
+  if (state.traps.some((trap) => Math.abs(trap.x - x) < GUARD_TRAP_MIN_GAP)) {
+    return '离其他陷阱太近';
+  }
+  if (state.gold < GUARD_TRAPS[kind].cost) {
+    return `金币不足(需要 ${GUARD_TRAPS[kind].cost})`;
+  }
+  return null;
+}
+
+/** 放置陷阱(docs/37 G)。成功返回陷阱。 */
+export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: number): GuardTrap | null {
+  if (guardTrapBlockReason(state, kind, x) !== null) {
+    return null;
+  }
+  const def = GUARD_TRAPS[kind];
+  state.gold -= def.cost;
+  const trap: GuardTrap = { trapId: state.nextTrapId++, kind, x, wavesLeft: def.waves, nextTickAtMs: state.timeMs + GUARD_TRAP_TICK_MS };
+  state.traps.push(trap);
+  state.events.push({ type: 'trapPlace', timeMs: state.timeMs, trapId: trap.trapId, trapKind: kind, x, amount: def.cost });
+  state.inputs.push({ t: state.timeMs, k: 'trap', v: GUARD_TRAP_KINDS.indexOf(kind) });
+  return trap;
+}
+
+/** 地面怪(飞行途中的飞行怪不踩陷阱,落地啃水晶后才算)。 */
+function guardOnGround(monster: GuardMonster): boolean {
+  return monster.kind !== 'flying' || monster.x <= GUARD_CRYSTAL_REACH_X + 0.01;
+}
+
+function guardTickTraps(state: GuardBattleState): void {
+  if (state.traps.length === 0) {
+    return;
+  }
+  const unit = guardSpellUnit(state);
+  const spent: number[] = [];
+  for (const trap of state.traps) {
+    const def = GUARD_TRAPS[trap.kind];
+    const alive = state.monsters.filter((monster) => !monster.dead);
+    if (trap.kind === 'frostfield') {
+      for (const monster of alive) {
+        if (Math.abs(monster.x - trap.x) <= def.radius) {
+          monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + 300);
+        }
+      }
+    } else if (trap.kind === 'spikes') {
+      if (state.timeMs < trap.nextTickAtMs) {
+        continue;
+      }
+      trap.nextTickAtMs = state.timeMs + GUARD_TRAP_TICK_MS;
+      const amount = Math.max(1, Math.round(unit * 0.12));
+      const hitIds: number[] = [];
+      for (const monster of alive) {
+        if (guardOnGround(monster) && Math.abs(monster.x - trap.x) <= def.radius) {
+          hitIds.push(monster.monsterId);
+          damageMonster(state, monster, amount, null);
+        }
+      }
+      if (hitIds.length > 0) {
+        state.events.push({ type: 'trapTick', timeMs: state.timeMs, trapId: trap.trapId, trapKind: 'spikes', amount, monsterIds: hitIds });
+      }
+    } else if (trap.kind === 'rune') {
+      if (!alive.some((monster) => guardOnGround(monster) && Math.abs(monster.x - trap.x) <= GUARD_TRAP_RUNE_TRIGGER)) {
+        continue;
+      }
+      const amount = Math.round(unit * 3);
+      const hitIds: number[] = [];
+      for (const monster of alive) {
+        if (Math.abs(monster.x - trap.x) <= def.radius) {
+          hitIds.push(monster.monsterId);
+          damageMonster(state, monster, monster.kind === 'elite' || monster.kind === 'boss' ? Math.round(amount * 1.5) : amount, null);
+        }
+      }
+      state.events.push({ type: 'trapBoom', timeMs: state.timeMs, trapId: trap.trapId, trapKind: 'rune', x: trap.x, amount, monsterIds: hitIds });
+      spent.push(trap.trapId);
+    }
+  }
+  if (spent.length > 0) {
+    state.traps = state.traps.filter((trap) => spent.indexOf(trap.trapId) < 0);
+  }
+}
+
+/** 波结束:持续型陷阱耐久 -1,耗尽移除。 */
+function guardAgeTraps(state: GuardBattleState): void {
+  for (const trap of state.traps) {
+    if (trap.kind === 'rune') {
+      continue;
+    }
+    trap.wavesLeft -= 1;
+    if (trap.wavesLeft <= 0) {
+      state.events.push({ type: 'trapExpire', timeMs: state.timeMs, trapId: trap.trapId, trapKind: trap.kind });
+    }
+  }
+  state.traps = state.traps.filter((trap) => trap.kind === 'rune' || trap.wavesLeft > 0);
+}
+
+/** 圣光壁垒期间水晶不掉血(返回实际应扣量;被挡时发 aegisBlock 事件)。 */
+function guardAegisFilter(state: GuardBattleState, damage: number): number {
+  if (state.aegisUntilMs > state.timeMs && damage > 0) {
+    state.events.push({ type: 'aegisBlock', timeMs: state.timeMs, amount: damage });
+    return 0;
+  }
+  return damage;
+}
+
+/** 法术伤害基准:本波普通怪的血量(随波次/主线难度/副本小怪倍率同步缩放)。 */
+function guardSpellUnit(state: GuardBattleState): number {
+  return MONSTER_BASE_HP * Math.pow(Math.max(1, state.wave), MONSTER_HP_WAVE_EXP) * state.monsterScale * state.monsterHpMult * state.minionHpMult;
+}
+
+/** 该法术此刻能否施放(在出战配置里、能量够、金矿本波没用过、战斗未结束)。 */
+export function guardSpellCastable(state: GuardBattleState, id: GuardSpellId): boolean {
+  if (state.phase === 'victory' || state.phase === 'defeat' || state.paused || state.pendingChoice) {
+    return false;
+  }
+  if (state.spellLoadout.indexOf(id) < 0 || state.spellEnergy < GUARD_SPELLS[id].cost) {
+    return false;
+  }
+  return id !== 'goldrush' || state.goldrushWave !== state.wave;
+}
+
+/**
+ * 施放水晶法术(docs/37 F)。target:冰封/天雷的落点(x,格;lane 仅供表现层定位)。
+ * 返回是否施放成功;成功时扣能量并发 spellCast 事件(monsterIds=命中的怪)。
+ */
+export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target?: { lane: number; x: number }): boolean {
+  if (!guardSpellCastable(state, id)) {
+    return false;
+  }
+  const def = GUARD_SPELLS[id];
+  if (def.target !== 'none' && !target) {
+    return false;
+  }
+  const alive = state.monsters.filter((monster) => !monster.dead);
+  const unit = guardSpellUnit(state);
+  const hitIds: number[] = [];
+  let amount = 0;
+  if (id === 'quake') {
+    amount = Math.round(unit * 0.6);
+    for (const monster of alive) {
+      monster.x = Math.min(GUARD_SPAWN_X, monster.x + GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS);
+      hitIds.push(monster.monsterId);
+      damageMonster(state, monster, amount, null);
+    }
+  } else if (id === 'frost' && target) {
+    for (const monster of alive) {
+      if (Math.abs(monster.x - target.x) > GUARD_SPELL_FROST_RADIUS) {
+        continue;
+      }
+      hitIds.push(monster.monsterId);
+      monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + GUARD_SPELL_FROST_MS);
+      if (monster.kind !== 'boss') {
+        monster.stunnedUntilMs = Math.max(monster.stunnedUntilMs, state.timeMs + GUARD_SPELL_FROST_MS);
+      }
+    }
+  } else if (id === 'thunder' && target) {
+    amount = Math.round(unit * 2.5);
+    for (const monster of alive) {
+      if (Math.abs(monster.x - target.x) > GUARD_SPELL_THUNDER_RADIUS) {
+        continue;
+      }
+      hitIds.push(monster.monsterId);
+      damageMonster(state, monster, monster.kind === 'elite' || monster.kind === 'boss' ? amount * 2 : amount, null);
+    }
+  } else if (id === 'goldrush') {
+    amount = Math.round((25 + 3 * Math.max(1, state.wave)) * (1 + state.mods.goldGainPct / 100));
+    state.gold += amount;
+    state.goldrushWave = state.wave;
+  } else if (id === 'aegis') {
+    state.aegisUntilMs = state.timeMs + GUARD_SPELL_AEGIS_MS;
+    const before = state.crystalHp;
+    state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.1));
+    amount = state.crystalHp - before;
+  } else if (id === 'warhorn') {
+    state.warhornUntilMs = state.timeMs + GUARD_SPELL_WARHORN_MS;
+  }
+  state.spellEnergy -= def.cost;
+  state.events.push({ type: 'spellCast', timeMs: state.timeMs, spellId: id, lane: target?.lane, x: target?.x, amount, monsterIds: hitIds });
+  state.inputs.push({ t: state.timeMs, k: 'spell', v: GUARD_SPELL_IDS.indexOf(id) });
+  return true;
+}
+
+/** 设置出战法术(去重、只认合法 id、最多 3 个,不足补默认)。 */
+export function guardSetSpellLoadout(state: GuardBattleState, ids: string[]): GuardSpellId[] {
+  const picked: GuardSpellId[] = [];
+  for (const raw of ids) {
+    const id = raw as GuardSpellId;
+    if (GUARD_SPELL_IDS.indexOf(id) >= 0 && picked.indexOf(id) < 0 && picked.length < 3) {
+      picked.push(id);
+    }
+  }
+  for (const id of GUARD_DEFAULT_SPELL_LOADOUT) {
+    if (picked.length >= 3) {
+      break;
+    }
+    if (picked.indexOf(id) < 0) {
+      picked.push(id);
+    }
+  }
+  state.spellLoadout = picked;
+  return picked;
+}
+
 /** 波间运营窗口还剩多少毫秒(非 prep 返回 0)。 */
 export function guardPrepRemainingMs(state: GuardBattleState): number {
   if (state.phase !== 'prep') {
@@ -2529,7 +3001,9 @@ export function guardCallWaveReward(state: GuardBattleState): number {
   if (remain < GUARD_CALL_WAVE_MIN_REMAIN_MS || state.paused || state.pendingChoice) {
     return 0;
   }
-  return Math.max(1, Math.round((remain / 1000) * (GUARD_CALL_WAVE_GOLD_BASE + GUARD_CALL_WAVE_GOLD_PER_WAVE * (state.wave + 1))));
+  // 车轮战波次多,全程提前能攒出 800+ 金币把输出榜拉穿(2026-09-27 回归弱阵容 +25.4% 层),减半。
+  const modeMult = state.mode === 'rush' ? 0.5 : 1;
+  return Math.max(1, Math.round((remain / 1000) * (GUARD_CALL_WAVE_GOLD_BASE + GUARD_CALL_WAVE_GOLD_PER_WAVE * (state.wave + 1)) * modeMult));
 }
 
 /** 提前开战(docs/37 E):立刻开下一波,按剩余运营时间给金币。返回奖励金币,不可提前返回 null。 */
