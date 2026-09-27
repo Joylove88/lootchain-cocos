@@ -2117,16 +2117,12 @@ export class LobbyGuardBattleRenderer {
         ray2.angle = 22;
         tween(ray2).repeatForever(tween().by(10, { angle: 360 })).start();
       }
-      // 脚下光晕:实心圆 + 环,呼吸
+      // 脚下光晕:只留柔和实心圆呼吸(2026-09-27 用户验收:外圈金色描边环显得生硬,去掉)
       const glow = this.host.addChildPlainNode(node, 'GuardChestGlow', 0, -size * 0.06, size, size);
       const glowG = glow.addComponent(Graphics);
       glowG.fillColor = deluxe ? rgba(255, 120, 70, 64) : rgba(255, 214, 110, 48);
       glowG.circle(0, 0, size * 0.5);
       glowG.fill();
-      glowG.strokeColor = deluxe ? rgba(255, 170, 90, 200) : rgba(255, 226, 130, 170);
-      glowG.lineWidth = 3;
-      glowG.circle(0, 0, size * 0.62);
-      glowG.stroke();
       const glowOpacity = glow.addComponent(UIOpacity);
       tween(glow).repeatForever(tween().to(0.6, { scale: new Vec3(1.16, 1.16, 1) }).to(0.6, { scale: Vec3.ONE })).start();
       tween(glowOpacity).repeatForever(tween().to(0.6, { opacity: 150 }).to(0.6, { opacity: 255 })).start();
@@ -2143,22 +2139,28 @@ export class LobbyGuardBattleRenderer {
       tween(lockPop).repeatForever(tween().delay(2.7).set({ scale: new Vec3(0.4, 0.4, 1) }).to(0.28, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'quadOut' }).delay(0.02)).start();
       tween(lockOpacity).repeatForever(tween().delay(2.7).set({ opacity: 255 }).to(0.28, { opacity: 0 }).delay(0.02)).start();
       // 提示:胶囊 + 文字 + 上方跳动的金色倒三角(手机上"能点"要一眼看出)
-      const pillW = size * 1.7;
-      const pill = this.host.addChildPlainNode(node, 'GuardChestHintPill', 0, size * 0.56, pillW, 28);
+      // 2026-09-27 用户验收:胶囊原先按箱宽 1.7 倍拉满、高 28 显得又长又细 → 宽度贴合文字(左右各留 20)、高 36。
+      const hintText = deluxe ? 'BOSS 豪华宝箱 · 点击' : '点击开箱';
+      const hintSize = 18;
+      const hintTextW = Array.from(hintText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * hintSize, 0);
+      const pillW = hintTextW + 40;
+      const pillH = 36;
+      const pillY = size * 0.56;
+      const pill = this.host.addChildPlainNode(node, 'GuardChestHintPill', 0, pillY, pillW, pillH);
       const pg = pill.addComponent(Graphics);
-      pg.fillColor = rgba(10, 6, 4, 180);
-      pg.roundRect(-pillW / 2, -14, pillW, 28, 14);
+      pg.fillColor = rgba(10, 6, 4, 200);
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
       pg.fill();
-      pg.strokeColor = deluxe ? rgba(255, 150, 90, 190) : rgba(210, 160, 80, 170);
-      pg.lineWidth = 1.5;
-      pg.roundRect(-pillW / 2, -14, pillW, 28, 14);
+      pg.strokeColor = deluxe ? rgba(255, 150, 90, 200) : rgba(210, 160, 80, 180);
+      pg.lineWidth = 2;
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
       pg.stroke();
-      const hint = this.host.addChildLabel(pill, 'GuardChestHint', deluxe ? 'BOSS 豪华宝箱 · 点击' : '点击开箱', 0, 0, 18, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(pillW - 8, 24));
+      const hint = this.host.addChildLabel(pill, 'GuardChestHint', hintText, 0, 0, hintSize, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(pillW - 16, hintSize + 8));
       hint.overflow = Label.Overflow.SHRINK;
       hint.enableOutline = true;
       hint.outlineColor = rgba(40, 24, 10, 255);
       hint.outlineWidth = 2;
-      const arrowY = size * 0.86;
+      const arrowY = pillY + pillH / 2 + 20;
       const arrow = this.host.addChildPlainNode(node, 'GuardChestArrow', 0, arrowY, 28, 28);
       const ag = arrow.addComponent(Graphics);
       ag.fillColor = rgba(255, 214, 92, 255);
