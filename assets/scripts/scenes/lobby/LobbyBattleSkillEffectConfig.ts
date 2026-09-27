@@ -129,6 +129,10 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'fx_15005_yidunqishi_skill:skill2': { w: 1294, h: 824, cx: -35, cy: -18 },
   'fx_44003_daofengzhanshi_jineng:skill': { w: 1506, h: 800, cx: 400, cy: -6 },
   'fx_44003_daofengzhanshi_jineng:skill2': { w: 1129, h: 482, cx: 118, cy: 153 },
+  // 守卫战宝箱 / 开箱轮盘(2026-09-27 实拍 6 时刻亮区 bbox,scratchpad fx_measure_cdp):凤翼光柱从原点向上冲 ~2000 高,熔岩环在原点下方。
+  'fx_5602_fenghuanglingyu:shang': { w: 1344, h: 1968, cx: -40, cy: 392 },
+  'fx_5602_fenghuanglingyu:xia': { w: 1360, h: 744, cx: 0, cy: -244 },
+  'fx_2602_yanguilingyu:xia': { w: 1456, h: 760, cx: 48, cy: -260 },
 };
 
 /** 查实测包围盒(key = effect:animation 小写);没有返回 null。 */

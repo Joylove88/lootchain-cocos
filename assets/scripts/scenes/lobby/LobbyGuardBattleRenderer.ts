@@ -94,7 +94,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_SUPPORT_FX, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SUPPORT_FX, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -286,6 +286,65 @@ const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 // 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
 const GUARD_SLOW_TINT_COLOR = new Color(96, 168, 255, 255);
+
+// ── 开箱轮盘(2026-09-27 重做)──
+type GuardWheelSector = 'gold' | 'summon' | 'teamAtk' | 'jackpot';
+/** 8 扇区顺序(索引 k 的扇心角 = (k+0.5)×45°,逆时针自 +x 起;指针在 90° 正上方)。 */
+const GUARD_WHEEL_SECTORS: GuardWheelSector[] = ['gold', 'summon', 'gold', 'teamAtk', 'summon', 'gold', 'teamAtk', 'jackpot'];
+const GUARD_WHEEL_SECTOR_LABEL: Record<GuardWheelSector, string> = { gold: '金币', summon: '召唤', teamAtk: '强攻', jackpot: '大奖' };
+const GUARD_WHEEL_SECTOR_ICON: Record<GuardWheelSector, string> = {
+  gold: 'ui/common/ai/ic_gold_medium/spriteFrame',
+  summon: 'ui/common/ai/ic_quest_summon/spriteFrame',
+  teamAtk: 'ui/common/ai/ic_quest_dungeon/spriteFrame',
+  jackpot: 'ui/hero/ai/star_filled/spriteFrame',
+};
+/** 开局预热的宝箱/轮盘贴图:mountSprite 未命中缓存走异步,首箱 28 枚金币/8 个扇区图标会晚 0.3~1.3s 才显示。 */
+const GUARD_CHEST_SPRITE_PRELOAD = [
+  'ui/guard/chest_closed/spriteFrame', 'ui/guard/chest_open/spriteFrame', 'ui/codex/ai/chest_ready/spriteFrame', 'ui/codex/ai/chest_opened/spriteFrame',
+  'ui/guard/cast_flash/spriteFrame', 'ui/guard/coin_gold/spriteFrame', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 'ui/battle/c1812/effects/hit_ring/spriteFrame',
+  'ui/common/ai/star_orange/spriteFrame', 'ui/common/ai/star_red/spriteFrame', 'ui/hero/ai/refine_panel_bg/spriteFrame', 'ui/hero/ai/btn_star_up/spriteFrame',
+  GUARD_WHEEL_SECTOR_ICON.gold, GUARD_WHEEL_SECTOR_ICON.summon, GUARD_WHEEL_SECTOR_ICON.teamAtk, GUARD_WHEEL_SECTOR_ICON.jackpot,
+];
+
+/** 一次开箱轮盘演出的全部节点与状态(阶段机门控点击:entering/spinning/stopped/revealing/done)。 */
+interface GuardWheelParts {
+  overlay: Node;
+  panelRoot: Node;
+  panelOpacity: UIOpacity;
+  dimOpacity: UIOpacity;
+  wheel: Node;
+  disc: Node;
+  pointer: Node;
+  sectorFlashOp: UIOpacity;
+  bulbs: UIOpacity[];
+  segIcons: Node[];
+  segLabels: Node[];
+  chestNode: Node;
+  fxUnder: Node;
+  fxOver: Node;
+  resultTag: Label;
+  hintLine: Label;
+  result: { tier: number; rewards: GuardChestReward[]; grade: GuardChestGrade };
+  deluxe: boolean;
+  jackpot: boolean;
+  compact: boolean;
+  panelW: number;
+  panelH: number;
+  s: number;
+  R: number;
+  colX: number;
+  colW: number;
+  phase: 'entering' | 'spinning' | 'stopped' | 'revealing' | 'done';
+  timers: Array<ReturnType<typeof setTimeout>>;
+  ticker: ReturnType<typeof setInterval> | null;
+  skippable: boolean;
+  thetaEnd: number;
+  landIdx: number;
+  tickCount: number;
+  lastIdx: number;
+  cards: Node[];
+  closeShown: boolean;
+}
 
 export class LobbyGuardBattleRenderer {
   constructor(private readonly host: LobbyGuardBattleHost) {}
@@ -639,7 +698,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 贴图挂载:同步建占位节点锁定兄弟序(异步补挂会排到末尾、盖住整场),资源到位只填 spriteFrame。 */
-  private mountSprite(parent: Node, name: string, path: string, x: number, y: number, width: number, height: number): void {
+  private mountSprite(parent: Node, name: string, path: string, x: number, y: number, width: number, height: number, tint?: Color): Node {
     const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
     const apply = (frame: SpriteFrame): void => {
       if (!node.isValid) {
@@ -648,6 +707,9 @@ export class LobbyGuardBattleRenderer {
       const sprite = node.getComponent(Sprite) ?? node.addComponent(Sprite);
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
       sprite.spriteFrame = frame;
+      if (tint) {
+        sprite.color = tint;
+      }
       node.getComponent(UITransform)?.setContentSize(width, height);
     };
     // 已在缓存(开局全量预载/开局预热)则同步套用:resources.load 即使命中缓存也走异步管线,
@@ -655,7 +717,7 @@ export class LobbyGuardBattleRenderer {
     const cached = resources.get(path, SpriteFrame);
     if (cached) {
       apply(cached);
-      return;
+      return node;
     }
     resources.load(path, SpriteFrame, (error: Error | null, frame: SpriteFrame | null) => {
       if (!error && frame) {
@@ -672,6 +734,7 @@ export class LobbyGuardBattleRenderer {
         apply(wrapped);
       });
     });
+    return node;
   }
 
   /** 主按钮(素材=英雄详情升级按钮 btn_star_up 431×100,2026-08-26 用户拍板);标签由调用方叠加。 */
@@ -2007,6 +2070,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   // ── P2:宝箱(点击→开箱轮盘) ──
+  // 2026-09-27 用户反馈"宝箱和转盘效果太简单":场上宝箱改为掉落入场 + 旋转光芒 + 骨骼光环 + 浮动抖锁 + 箭头/胶囊提示;轮盘弹层见 openChestWithWheel。
   private syncChests(): void {
     const sim = this.sim;
     const field = this.fieldNode;
@@ -2014,7 +2078,7 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const liveIds = new Set(sim.chests.map((chest) => chest.chestId));
-    for (const [chestId, node] of [...Array.from(this.chestViews)]) {
+    for (const [chestId, node] of Array.from(this.chestViews)) {
       if (!liveIds.has(chestId)) {
         if (node.isValid) {
           node.destroy();
@@ -2026,44 +2090,161 @@ export class LobbyGuardBattleRenderer {
       if (this.chestViews.has(chest.chestId)) {
         continue;
       }
-      // BOSS 豪华箱(2026-09-18 用户拍板):图鉴哥特金箱素材、体型 ×1.3、红金光晕;精英普通箱沿用矿脉石箱。
+      // BOSS 豪华箱(2026-09-18 用户拍板):图鉴哥特金箱素材、体型 ×1.3、红金配色;精英普通箱沿用矿脉石箱。
       const deluxe = chest.grade === 'deluxe';
       const size = this.unitSize() * (deluxe ? 1.04 : 0.8);
-      const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, this.xToPx(chest.x), this.monsterY(chest.lane, chest.x) - size * 0.15, size, size);
-      // 呼吸光晕(2026-08-28 用户验收:掉在地上不明显):金色双环随缩放呼吸,画在宝箱图之下
+      const px = this.xToPx(chest.x);
+      const py = this.monsterY(chest.lane, chest.x) - size * 0.15;
+      const hot = deluxe ? rgba(255, 140, 80) : rgba(255, 214, 110);
+      const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, px, py, size, size);
+      // 骨骼光环容器(最底层;落地后再生成,避免箱子还在半空光环已经贴地)
+      this.host.addChildPlainNode(node, 'GuardChestAura', 0, -size * 0.1, 10, 10);
+      // 地面投影:让箱子"落在地上"而不是贴在地上
+      const shadowG = this.host.addChildPlainNode(node, 'GuardChestShadow', 0, -size * 0.42, size, size * 0.3).addComponent(Graphics);
+      shadowG.fillColor = rgba(0, 0, 0, 110);
+      shadowG.ellipse(0, 0, size * 0.42, size * 0.12);
+      shadowG.fill();
+      // 旋转光芒(cast_flash 金色星芒 12s 一圈,呼吸缩放;豪华箱叠一层反向红光)
+      const ray = this.mountSprite(node, 'GuardChestRay', 'ui/guard/cast_flash/spriteFrame', 0, -size * 0.06, size * 1.9, size * 1.9, hot);
+      ray.addComponent(UIOpacity).opacity = deluxe ? 135 : 105;
+      tween(ray).repeatForever(tween().by(deluxe ? 8 : 12, { angle: -360 })).start();
+      tween(ray)
+        .repeatForever(tween().to(1.4, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'sineInOut' }).to(1.4, { scale: new Vec3(0.95, 0.95, 1) }, { easing: 'sineInOut' }))
+        .start();
+      if (deluxe) {
+        const ray2 = this.mountSprite(node, 'GuardChestRay2', 'ui/guard/cast_flash/spriteFrame', 0, -size * 0.06, size * 1.5, size * 1.5, rgba(255, 90, 60));
+        ray2.addComponent(UIOpacity).opacity = 110;
+        ray2.angle = 22;
+        tween(ray2).repeatForever(tween().by(10, { angle: 360 })).start();
+      }
+      // 脚下光晕:实心圆 + 环,呼吸
       const glow = this.host.addChildPlainNode(node, 'GuardChestGlow', 0, -size * 0.06, size, size);
       const glowG = glow.addComponent(Graphics);
-      glowG.fillColor = deluxe ? rgba(255, 120, 70, 70) : rgba(255, 214, 110, 56);
-      glowG.circle(0, 0, size * 0.56);
+      glowG.fillColor = deluxe ? rgba(255, 120, 70, 64) : rgba(255, 214, 110, 48);
+      glowG.circle(0, 0, size * 0.5);
       glowG.fill();
-      glowG.strokeColor = deluxe ? rgba(255, 170, 90, 220) : rgba(255, 226, 130, 190);
-      glowG.lineWidth = 4;
-      glowG.circle(0, 0, size * 0.56);
-      glowG.stroke();
-      glowG.strokeColor = deluxe ? rgba(255, 230, 150, 160) : rgba(255, 240, 180, 120);
-      glowG.lineWidth = 2;
-      glowG.circle(0, 0, size * 0.72);
+      glowG.strokeColor = deluxe ? rgba(255, 170, 90, 200) : rgba(255, 226, 130, 170);
+      glowG.lineWidth = 3;
+      glowG.circle(0, 0, size * 0.62);
       glowG.stroke();
       const glowOpacity = glow.addComponent(UIOpacity);
-      tween(glow)
-        .repeatForever(tween().to(0.7, { scale: new Vec3(1.22, 1.22, 1) }).to(0.7, { scale: new Vec3(0.92, 0.92, 1) }))
+      tween(glow).repeatForever(tween().to(0.6, { scale: new Vec3(1.16, 1.16, 1) }).to(0.6, { scale: Vec3.ONE })).start();
+      tween(glowOpacity).repeatForever(tween().to(0.6, { opacity: 150 }).to(0.6, { opacity: 255 })).start();
+      // 箱体:上下浮动 + 每 3s 抖一下锁 + 锁口小闪
+      const img = this.mountSprite(node, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, size, size);
+      tween(img)
+        .repeatForever(tween().to(1.2, { position: new Vec3(0, size * 0.04, 0) }, { easing: 'sineInOut' }).to(1.2, { position: new Vec3(0, -size * 0.04, 0) }, { easing: 'sineInOut' }))
         .start();
-      tween(glowOpacity)
-        .repeatForever(tween().to(0.7, { opacity: 255 }).to(0.7, { opacity: 140 }))
-        .start();
-      // 场上宝箱用素材(2026-08-25:程序画的方块太素)。
-      this.mountSprite(node, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, size, size);
-      const hint = this.host.addChildLabel(node, 'GuardChestHint', deluxe ? '豪华宝箱 · 点击开箱' : '点击开箱', 0, size * 0.48, deluxe ? 17 : 15, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(size * 1.8, 22));
+      tween(img).repeatForever(tween().delay(2.7).to(0.08, { angle: -4 }).to(0.08, { angle: 4 }).to(0.14, { angle: 0 })).start();
+      const lockPop = this.mountSprite(node, 'GuardChestLockPop', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, size * 0.22, size * 0.7, size * 0.7, hot);
+      const lockOpacity = lockPop.addComponent(UIOpacity);
+      lockOpacity.opacity = 0;
+      lockPop.setScale(0.4, 0.4, 1);
+      tween(lockPop).repeatForever(tween().delay(2.7).set({ scale: new Vec3(0.4, 0.4, 1) }).to(0.28, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'quadOut' }).delay(0.02)).start();
+      tween(lockOpacity).repeatForever(tween().delay(2.7).set({ opacity: 255 }).to(0.28, { opacity: 0 }).delay(0.02)).start();
+      // 提示:胶囊 + 文字 + 上方跳动的金色倒三角(手机上"能点"要一眼看出)
+      const pillW = size * 1.7;
+      const pill = this.host.addChildPlainNode(node, 'GuardChestHintPill', 0, size * 0.56, pillW, 28);
+      const pg = pill.addComponent(Graphics);
+      pg.fillColor = rgba(10, 6, 4, 180);
+      pg.roundRect(-pillW / 2, -14, pillW, 28, 14);
+      pg.fill();
+      pg.strokeColor = deluxe ? rgba(255, 150, 90, 190) : rgba(210, 160, 80, 170);
+      pg.lineWidth = 1.5;
+      pg.roundRect(-pillW / 2, -14, pillW, 28, 14);
+      pg.stroke();
+      const hint = this.host.addChildLabel(pill, 'GuardChestHint', deluxe ? 'BOSS 豪华宝箱 · 点击' : '点击开箱', 0, 0, 18, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(pillW - 8, 24));
+      hint.overflow = Label.Overflow.SHRINK;
       hint.enableOutline = true;
       hint.outlineColor = rgba(40, 24, 10, 255);
       hint.outlineWidth = 2;
-      tween(node)
-        .repeatForever(tween().to(0.4, { scale: new Vec3(1.08, 1.08, 1) }).to(0.4, { scale: Vec3.ONE }))
+      const arrowY = size * 0.86;
+      const arrow = this.host.addChildPlainNode(node, 'GuardChestArrow', 0, arrowY, 28, 28);
+      const ag = arrow.addComponent(Graphics);
+      ag.fillColor = rgba(255, 214, 92, 255);
+      ag.strokeColor = rgba(90, 50, 10, 255);
+      ag.lineWidth = 2;
+      ag.moveTo(0, -12);
+      ag.lineTo(-11, 9);
+      ag.lineTo(11, 9);
+      ag.close();
+      ag.fill();
+      ag.stroke();
+      tween(arrow)
+        .repeatForever(tween().to(0.5, { position: new Vec3(0, arrowY - 8, 0) }, { easing: 'sineInOut' }).to(0.5, { position: new Vec3(0, arrowY + 4, 0) }, { easing: 'sineInOut' }))
         .start();
       this.host.applyImageButtonFeedback(node);
       node.on(Node.EventType.TOUCH_END, () => this.openChestWithWheel(chest.chestId), this);
       this.chestViews.set(chest.chestId, node);
+      // 刚掉的箱子从上方砸下来;重建/缩放窗口时补建的箱子直接落位(不再响一次落地音)。
+      if (sim.timeMs - chest.droppedAtMs < 1500) {
+        this.playChestLanding(node, px, py, size, deluxe);
+      } else {
+        this.spawnChestAura(node, size, deluxe);
+      }
     }
+  }
+
+  /** 宝箱脚下循环骨骼光环(普通=金色雷纹环 / 豪华=红色熔岩环);未就绪静默跳过(贴图光芒已足够)。 */
+  private spawnChestAura(node: Node, size: number, deluxe: boolean): void {
+    const holder = node.getChildByName('GuardChestAura');
+    if (!holder || !holder.isValid) {
+      return;
+    }
+    const spec = deluxe ? GUARD_CHEST_FX.auraDeluxe : GUARD_CHEST_FX.auraNormal;
+    this.spawnOverlaySpineFx(holder, spec, 0, 0, size * spec.size, 0, true);
+  }
+
+  /** 宝箱掉落:0.42s 砸地 + 压扁回弹 + 尘环/星屑 + 落地音 + 轻震;豪华箱加红闪。 */
+  private playChestLanding(node: Node, px: number, py: number, size: number, deluxe: boolean): void {
+    const field = this.fieldNode;
+    if (!field || !node.isValid) {
+      return;
+    }
+    node.setPosition(px, py + size * 1.6, 0);
+    node.setScale(0.7, 0.7, 1);
+    tween(node)
+      .to(0.42, { position: new Vec3(px, py, 0), scale: Vec3.ONE }, { easing: 'quadIn' })
+      .call(() => {
+        if (!node.isValid || !field.isValid) {
+          return;
+        }
+        gameAudio.sfx('chest_land');
+        if (deluxe) {
+          gameAudio.sfx('coin');
+        }
+        this.shakeField(deluxe ? 6 : 3);
+        this.spawnChestAura(node, size, deluxe);
+        const hot = deluxe ? rgba(255, 150, 90) : rgba(255, 214, 110);
+        const dust = this.mountSprite(field, 'GuardChestDust', 'ui/battle/c1812/effects/hit_ring/spriteFrame', px, py - size * 0.3, size * 0.9, size * 0.9, hot);
+        dust.setSiblingIndex(field.children.length - 1);
+        dust.setScale(0.3, 0.3, 1);
+        const dustOpacity = dust.addComponent(UIOpacity);
+        tween(dust).to(0.35, { scale: new Vec3(1.6, 1.6, 1) }, { easing: 'quadOut' }).start();
+        tween(dustOpacity).to(0.35, { opacity: 0 }).call(() => { if (dust.isValid) { dust.destroy(); } }).start();
+        for (let i = 0; i < 6; i += 1) {
+          const a = (i / 6) * Math.PI * 2 + Math.PI / 12;
+          const spark = this.mountSprite(field, 'GuardChestSpark', deluxe && i % 2 === 1 ? 'ui/common/ai/star_red/spriteFrame' : 'ui/common/ai/star_orange/spriteFrame', px, py - size * 0.2, 22, 22);
+          spark.setSiblingIndex(field.children.length - 1);
+          const sparkOpacity = spark.addComponent(UIOpacity);
+          tween(spark)
+            .to(0.4, { position: new Vec3(px + Math.cos(a) * size * 0.9, py + Math.sin(a) * size * 0.6, 0), scale: new Vec3(0.3, 0.3, 1) }, { easing: 'quadOut' })
+            .start();
+          tween(sparkOpacity).to(0.4, { opacity: 0 }).call(() => { if (spark.isValid) { spark.destroy(); } }).start();
+        }
+        if (deluxe) {
+          const flash = this.mountSprite(field, 'GuardChestLandFlash', 'ui/guard/cast_flash/spriteFrame', px, py, size * 2.2, size * 2.2, rgba(255, 120, 70));
+          flash.setSiblingIndex(field.children.length - 1);
+          const flashOpacity = flash.addComponent(UIOpacity);
+          flashOpacity.opacity = 200;
+          tween(flash).to(0.5, { scale: new Vec3(1.4, 1.4, 1), angle: 30 }, { easing: 'quadOut' }).start();
+          tween(flashOpacity).to(0.5, { opacity: 0 }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
+        }
+      })
+      .to(0.09, { scale: new Vec3(1.18, 0.84, 1) })
+      .to(0.1, { scale: new Vec3(0.94, 1.08, 1) })
+      .to(0.08, { scale: Vec3.ONE })
+      .start();
   }
 
   /** 账号前 3 箱固定 1-3-5 连(localStorage 计数;不可用则跳过脚本)。 */
@@ -2375,161 +2556,834 @@ export class LobbyGuardBattleRenderer {
     this.syncBattlePause();
   }
 
+  /** 前 3 箱(与 nextChestScriptTier 同一 localStorage 计数)强制看完轮盘;之后允许点任意处跳过。计数不可用视作可跳过。 */
+  private chestSkipAllowed(): boolean {
+    try {
+      const store = (globalThis as { localStorage?: Storage }).localStorage;
+      if (!store) {
+        return true;
+      }
+      return Number(store.getItem('lootchainGuardChestScript') ?? '0') >= 3;
+    } catch (error) {
+      void error;
+      return true;
+    }
+  }
+
+  private wheelLater(p: GuardWheelParts, ms: number, fn: () => void): void {
+    const id = setTimeout(() => {
+      if (p.overlay.isValid) {
+        fn();
+      }
+    }, ms);
+    p.timers.push(id);
+  }
+
+  /** 节点横向抖动(面板自身震:场地被压暗后 shakeField 几乎看不见)。 */
+  private shakeNodeX(node: Node, amplitude: number, times: number): void {
+    if (!node.isValid || !this.shakeEnabled) {
+      return;
+    }
+    const base = node.position.clone();
+    let chain = tween(node);
+    for (let i = 0; i < times; i += 1) {
+      const dir = i % 2 === 0 ? 1 : -1;
+      chain = chain.to(0.06, { position: new Vec3(base.x + dir * amplitude, base.y, base.z) });
+    }
+    chain.to(0.05, { position: base }).start();
+  }
+
+  /**
+   * 开箱轮盘(2026-09-27 重做):0=点击 → 面板 backOut 入场 + 灯珠 → 350ms 预转/加速/减速三段(指针过格嘀嗒 + 扇区闪 + 灯珠追光)
+   * → 2550ms 停格重击(指针大颤 / 面板震 / 结果标签)→ 2800ms 开箱爆发(光芒/圣环骨骼/金币喷泉/星屑)→ 3000ms 奖励卡逐张滑入
+   * (5 连/豪华叠全屏闪金 + 横幅砸入 + 彩星雨)→ 收下:金币飞向 HUD、面板淡出、恢复战斗。落点=结果扇区(纯演出,结果由 guardOpenChest 定)。
+   */
   private openChestWithWheel(chestId: number): void {
     const sim = this.sim;
     const root = this.root;
     if (!sim || !root || this.wheelOverlayOpen) {
       return;
     }
-    // 新手 1-3-5 脚本只吃普通箱;豪华箱固定 5 连不占脚本名额。
+    // 新手 1-3-5 脚本只吃普通箱;豪华箱固定 5 连不占脚本名额。跳过许可要在脚本计数递增之前读。
     const grade: GuardChestGrade = sim.chests.find((chest) => chest.chestId === chestId)?.grade ?? 'normal';
+    const skippable = this.chestSkipAllowed();
     const result = guardOpenChest(sim, chestId, grade === 'deluxe' ? undefined : this.nextChestScriptTier());
     if (!result) {
       return;
     }
+    gameAudio.sfx('ui_click');
     const deluxe = result.grade === 'deluxe';
+    const jackpot = deluxe || result.tier >= 5;
     this.wheelOverlayOpen = true;
     sim.paused = true;
     const width = this.layoutWidth;
     const height = this.layoutHeight;
+    const compact = height < 500;
+    // 几何:4:3 refine_panel_bg(2026-09-22 各弹层统一);手机横屏(高 <500)面板拉到 0.86 高;s=相对桌面 666 高的缩放,固定偏移全部 ×s。
+    const panelH = compact ? height * 0.86 : Math.min(700, height * 0.74);
+    const panelW = Math.min(width * 0.92, panelH * (1448 / 1086));
+    const s = panelH / 666;
+    const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
+    const R = Math.min(150, panelH * 0.24);
+    const wheelX = -panelW * 0.26;
+    const wheelY = -height * 0.02;
+    const colX = panelW * 0.24;
+    const colW = panelW * 0.42;
+    const hot = deluxe ? rgba(255, 150, 90) : rgba(255, 214, 110);
     const overlay = this.host.addChildPlainNode(root, 'GuardWheelOverlay', 0, 0, width, height);
     // 2026-09-19 审计:全屏弹层必须挡住点击,否则点空白处会穿透到底下的强化/召唤按钮(扣金币、再弹词条)。
     overlay.addComponent(BlockInputEvents);
-    const og = overlay.addComponent(Graphics);
+    const dim = this.host.addChildPlainNode(overlay, 'Dim', 0, 0, width, height);
+    const og = dim.addComponent(Graphics);
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    // 面板底与词条弹层同款 refine_panel_bg(4:3,2026-09-22 用户要求各弹层统一):左轮盘右奖励列按 4:3 收窄,标题压到顶饰之下。
-    const wheelPanelH = Math.min(700, height * 0.74);
-    const wheelPanelW = Math.min(width * 0.92, wheelPanelH * (1448 / 1086));
-    this.paintOverlayPanel(overlay, wheelPanelW, wheelPanelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
-    const wheelTitleText = deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
-    const wheelTitleY = wheelPanelH / 2 - 112;
-    this.host.addChildLabel(overlay, 'GuardWheelTitle', wheelTitleText, 0, wheelTitleY, 32, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(width * 0.6, 42));
-    const wheelTitleHalf = Array.from(wheelTitleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * 32, 0) / 2;
-    const wheelDividerAvail = wheelPanelW / 2 - wheelTitleHalf - 22 - 30;
-    if (wheelDividerAvail >= 40) {
-      const wheelDividerW = Math.min(150, wheelDividerAvail);
-      const wheelDividerX = wheelTitleHalf + 22 + wheelDividerW / 2;
-      this.mountSprite(overlay, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -wheelDividerX, wheelTitleY, wheelDividerW, wheelDividerW * (76 / 390));
-      this.mountSprite(overlay, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', wheelDividerX, wheelTitleY, wheelDividerW, wheelDividerW * (73 / 392));
+    const dimOpacity = dim.addComponent(UIOpacity);
+    dimOpacity.opacity = 0;
+    tween(dimOpacity).to(0.18, { opacity: 255 }).start();
+    // 面板容器:入场 backOut;停格/大奖时自己震;关闭时整体淡出。
+    const panelRoot = this.host.addChildPlainNode(overlay, 'GuardWheelPanelRoot', 0, 0, panelW, panelH);
+    const panelOpacity = panelRoot.addComponent(UIOpacity);
+    panelRoot.setScale(0.86, 0.86, 1);
+    tween(panelRoot).to(0.32, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+    gameAudio.sfx('panel_open');
+    this.paintOverlayPanel(panelRoot, panelW, panelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    const titleText = deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
+    const titleSize = fs(34, 24);
+    const titleY = panelH / 2 - 112 * s;
+    const title = this.host.addChildLabel(panelRoot, 'GuardWheelTitle', titleText, 0, titleY, titleSize, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(panelW * 0.6, titleSize + 10));
+    title.enableOutline = true;
+    title.outlineColor = rgba(60, 30, 10, 255);
+    title.outlineWidth = 3;
+    const titleHalf = Array.from(titleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0) / 2;
+    const dividerAvail = panelW / 2 - titleHalf - 22 - 30;
+    if (dividerAvail >= 40) {
+      const dividerW = Math.min(150, dividerAvail);
+      const dividerX = titleHalf + 22 + dividerW / 2;
+      this.mountSprite(panelRoot, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, titleY, dividerW, dividerW * (76 / 390));
+      this.mountSprite(panelRoot, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerX, titleY, dividerW, dividerW * (73 / 392));
     }
-    // 轮盘(2026-08-25 用户验收重做):暖色扇区+奖励字样+双层金圈;中心矿脉宝箱素材,停格开箱爆金光。
-    const wheelX = -wheelPanelW * 0.26;
-    const wheelY = -height * 0.02;
-    const radius = Math.min(150, wheelPanelH * 0.24);
-    const wheel = this.host.addChildPlainNode(overlay, 'GuardWheel', wheelX, wheelY, radius * 2, radius * 2);
-    const wg = wheel.addComponent(Graphics);
-    for (let i = 0; i < 8; i += 1) {
-      const a0 = (i / 8) * Math.PI * 2;
-      const a1 = ((i + 1) / 8) * Math.PI * 2;
-      wg.fillColor = i % 2 === 0 ? rgba(112, 74, 34, 252) : rgba(70, 48, 26, 252);
-      wg.moveTo(0, 0);
-      wg.arc(0, 0, radius, a0, a1, false);
-      wg.close();
-      wg.fill();
+    // ── 轮盘:只有 WheelDisc 转,其余(投影/外框/灯珠/高光/轴心/指针/高亮扇)不转 ──
+    const wheel = this.host.addChildPlainNode(panelRoot, 'GuardWheel', wheelX, wheelY, R * 2, R * 2);
+    const shadowG = this.host.addChildPlainNode(wheel, 'WheelShadow', 4, -8, 10, 10).addComponent(Graphics);
+    shadowG.fillColor = rgba(0, 0, 0, 150);
+    shadowG.circle(0, 0, R + 16);
+    shadowG.fill();
+    const rimG = this.host.addChildPlainNode(wheel, 'WheelRim', 0, 0, 10, 10).addComponent(Graphics);
+    rimG.fillColor = rgba(52, 34, 18, 255);
+    rimG.circle(0, 0, R + 14);
+    rimG.fill();
+    rimG.strokeColor = rgba(255, 208, 116, 255);
+    rimG.lineWidth = 4;
+    rimG.circle(0, 0, R + 14);
+    rimG.stroke();
+    rimG.strokeColor = rgba(28, 18, 10, 255);
+    rimG.lineWidth = 6;
+    rimG.circle(0, 0, R + 8);
+    rimG.stroke();
+    rimG.strokeColor = rgba(120, 80, 36, 255);
+    rimG.lineWidth = 2;
+    rimG.circle(0, 0, R + 2);
+    rimG.stroke();
+    // 灯珠:偶数颗在 A、奇数颗在 B,交替明暗就是"追光"
+    const bulbCount = compact ? 8 : 16;
+    const bulbs: UIOpacity[] = [];
+    for (let group = 0; group < 2; group += 1) {
+      const bulbNode = this.host.addChildPlainNode(wheel, group === 0 ? 'WheelBulbsA' : 'WheelBulbsB', 0, 0, 10, 10);
+      const bg = bulbNode.addComponent(Graphics);
+      for (let i = group; i < bulbCount; i += 2) {
+        const a = (i / bulbCount) * Math.PI * 2;
+        const bx = Math.cos(a) * (R + 8);
+        const by = Math.sin(a) * (R + 8);
+        bg.fillColor = rgba(255, 200, 90, 90);
+        bg.circle(bx, by, R * 0.06);
+        bg.fill();
+        bg.fillColor = rgba(255, 236, 170, 255);
+        bg.circle(bx, by, R * 0.03);
+        bg.fill();
+      }
+      const op = bulbNode.addComponent(UIOpacity);
+      op.opacity = group === 0 ? 255 : 90;
+      bulbs.push(op);
     }
-    // 分隔线+双层金圈
-    wg.strokeColor = rgba(236, 190, 110, 130);
-    wg.lineWidth = 2;
-    for (let i = 0; i < 8; i += 1) {
-      const a = (i / 8) * Math.PI * 2;
-      wg.moveTo(Math.cos(a) * 58, Math.sin(a) * 58);
-      wg.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
-    }
-    wg.stroke();
-    wg.strokeColor = rgba(255, 208, 116, 250);
-    wg.lineWidth = 5;
-    wg.circle(0, 0, radius);
-    wg.stroke();
-    wg.strokeColor = rgba(140, 100, 50, 220);
-    wg.lineWidth = 2;
-    wg.circle(0, 0, radius - 9);
-    wg.stroke();
-    // 扇区奖励字样(随盘转)
-    const segLabels = ['金币', '召唤', '词条', '强攻', '金币', '召唤', '词条', '强攻'];
-    segLabels.forEach((text, i) => {
-      const a = ((i + 0.5) / 8) * Math.PI * 2;
-      const label = this.host.addChildLabel(wheel, `GuardWheelSeg_${i}`, text, Math.cos(a) * (radius - 46), Math.sin(a) * (radius - 46), 19, rgba(255, 232, 178, 245), new Size(64, 26));
-      label.enableOutline = true;
-      label.outlineColor = rgba(40, 24, 8, 255);
-      label.outlineWidth = 2;
+    // 转盘本体:8 扇 × 3 层假径向渐变(中心亮外缘暗)+ 分割线 + 深红大奖扇
+    const disc = this.host.addChildPlainNode(wheel, 'WheelDisc', 0, 0, R * 2, R * 2);
+    const dg = disc.addComponent(Graphics);
+    GUARD_WHEEL_SECTORS.forEach((kind, k) => {
+      const a0 = (k / 8) * Math.PI * 2;
+      const a1 = ((k + 1) / 8) * Math.PI * 2;
+      // 注意:本引擎 Graphics.arc 的 counterclockwise=false 走长弧(2026-09-27 探针实拍,旧轮盘因此整盘同色),扇形一律传 true。
+      const wedge = (r: number, color: Color): void => {
+        dg.fillColor = color;
+        dg.moveTo(0, 0);
+        dg.arc(0, 0, r, a0, a1, true);
+        dg.close();
+        dg.fill();
+      };
+      wedge(R, kind === 'jackpot' ? rgba(122, 24, 30, 255) : kind === 'gold' ? rgba(96, 62, 26, 255) : kind === 'summon' ? rgba(44, 30, 18, 255) : rgba(70, 44, 22, 255));
+      wedge(R * 0.62, kind === 'jackpot' ? rgba(255, 120, 90, 50) : rgba(255, 210, 130, 34));
+      wedge(R * 0.32, kind === 'jackpot' ? rgba(255, 170, 120, 60) : rgba(255, 230, 170, 40));
     });
-    // 中心矿脉宝箱(不随盘转);停格后换开箱图+金光
-    const chestNode = this.host.addChildPlainNode(overlay, 'GuardWheelChest', wheelX, wheelY, 128, 128);
-    this.mountSprite(chestNode, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, 128, 128);
-    const pointer = this.host.addChildLabel(overlay, 'GuardWheelPointer', '▼', wheelX, wheelY + radius + 20, 30, rgba(255, 214, 92), new Size(44, 36));
-    void pointer;
-    // 指针不动转盘转:2.2s 缓停(圈数+随机相位由 tier 决定视觉落点,纯演出)
-    const turns = 4 + result.tier;
-    tween(wheel)
-      .to(2.2, { angle: -360 * turns - 45 }, { easing: 'quartOut' })
-      .call(() => this.revealChestRewards(overlay, result.tier, result.rewards, result.grade))
-      .start();
+    for (let k = 0; k < 8; k += 1) {
+      const a = (k / 8) * Math.PI * 2;
+      const jackpotEdge = k === 7 || k === 0;
+      dg.strokeColor = jackpotEdge ? rgba(255, 220, 120, 255) : rgba(236, 190, 110, 180);
+      dg.lineWidth = jackpotEdge ? 3 : 2;
+      dg.moveTo(Math.cos(a) * R * 0.3, Math.sin(a) * R * 0.3);
+      dg.lineTo(Math.cos(a) * R, Math.sin(a) * R);
+      dg.stroke();
+    }
+    // 图标靠外缘(0.80R)、文字居中带(0.52R):中心宝箱 0.7R 的角只到 ~0.5R,不压文字
+    const iconSize = R * 0.22;
+    const segIcons: Node[] = [];
+    const segLabels: Node[] = [];
+    GUARD_WHEEL_SECTORS.forEach((kind, k) => {
+      const a = ((k + 0.5) / 8) * Math.PI * 2;
+      segIcons.push(this.mountSprite(disc, `SegIcon_${k}`, GUARD_WHEEL_SECTOR_ICON[kind], Math.cos(a) * R * 0.8, Math.sin(a) * R * 0.8, iconSize, iconSize));
+      if (R >= 120) {
+        const label = this.host.addChildLabel(disc, `SegLabel_${k}`, GUARD_WHEEL_SECTOR_LABEL[kind], Math.cos(a) * R * 0.52, Math.sin(a) * R * 0.52, 18, rgba(255, 232, 178, 245), new Size(64, 24));
+        label.enableOutline = true;
+        label.outlineColor = rgba(40, 24, 8, 255);
+        label.outlineWidth = 2;
+        segLabels.push(label.node);
+      }
+      if (kind === 'jackpot') {
+        const ring = this.host.addChildPlainNode(disc, 'JackpotRing', Math.cos(a) * R * 0.8, Math.sin(a) * R * 0.8, 10, 10);
+        const rg = ring.addComponent(Graphics);
+        rg.strokeColor = rgba(255, 220, 120, 200);
+        rg.lineWidth = 2;
+        rg.circle(0, 0, R * 0.15);
+        rg.stroke();
+        const ringOp = ring.addComponent(UIOpacity);
+        tween(ringOp).repeatForever(tween().to(0.6, { opacity: 120 }).to(0.6, { opacity: 255 })).start();
+      }
+    });
+    // 玻璃高光(不转)+ 轴心 + 指针扇区高亮
+    const glossG = this.host.addChildPlainNode(wheel, 'WheelGloss', 0, 0, 10, 10).addComponent(Graphics);
+    glossG.strokeColor = rgba(255, 236, 190, 55);
+    glossG.lineWidth = R * 0.12;
+    glossG.arc(0, 0, R * 0.92, (25 / 180) * Math.PI, (155 / 180) * Math.PI, true);
+    glossG.stroke();
+    const hubG = this.host.addChildPlainNode(wheel, 'WheelHub', 0, 0, 10, 10).addComponent(Graphics);
+    hubG.fillColor = rgba(28, 18, 12, 255);
+    hubG.circle(0, 0, R * 0.34);
+    hubG.fill();
+    hubG.strokeColor = rgba(255, 208, 116, 255);
+    hubG.lineWidth = 3;
+    hubG.circle(0, 0, R * 0.34);
+    hubG.stroke();
+    const sectorFlash = this.host.addChildPlainNode(wheel, 'SectorFlash', 0, 0, 10, 10);
+    const sfG = sectorFlash.addComponent(Graphics);
+    sfG.fillColor = rgba(255, 236, 170, 120);
+    sfG.moveTo(0, 0);
+    sfG.arc(0, 0, R, (67.5 / 180) * Math.PI, (112.5 / 180) * Math.PI, true);
+    sfG.close();
+    sfG.fill();
+    const sectorFlashOp = sectorFlash.addComponent(UIOpacity);
+    sectorFlashOp.opacity = 0;
+    // 开箱光芒层(箱下)/ 中心宝箱 / 粒子层(箱上):先建空容器锁定层序
+    const fxUnder = this.host.addChildPlainNode(wheel, 'OpenFxUnder', 0, 0, 10, 10);
+    const chestSize = R * 0.7;
+    const chestNode = this.host.addChildPlainNode(wheel, 'GuardWheelChest', 0, R * 0.02, chestSize, chestSize);
+    this.mountSprite(chestNode, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, chestSize, chestSize);
+    const fxOver = this.host.addChildPlainNode(wheel, 'OpenFxOver', 0, 0, 10, 10);
+    // 指针:金三角 + 红宝石,枢轴在底边,背后垫一枚柔光;入场从上方落下
+    const pointer = this.host.addChildPlainNode(wheel, 'WheelPointer', 0, R + 40, 10, 10);
+    this.mountSprite(pointer, 'PointerGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, -R * 0.05, R * 0.5, R * 0.5, hot).addComponent(UIOpacity).opacity = 120;
+    const pg = pointer.addComponent(Graphics);
+    pg.fillColor = rgba(255, 214, 92, 255);
+    pg.strokeColor = rgba(90, 50, 10, 255);
+    pg.lineWidth = 2;
+    pg.moveTo(0, -R * 0.16);
+    pg.lineTo(-R * 0.09, R * 0.06);
+    pg.lineTo(R * 0.09, R * 0.06);
+    pg.close();
+    pg.fill();
+    pg.stroke();
+    pg.fillColor = rgba(230, 60, 60, 255);
+    pg.circle(0, R * 0.03, R * 0.035);
+    pg.fill();
+    pg.fillColor = rgba(255, 220, 220, 255);
+    pg.circle(-R * 0.01, R * 0.04, R * 0.012);
+    pg.fill();
+    tween(pointer).delay(0.1).to(0.2, { position: new Vec3(0, R + 14, 0) }, { easing: 'backOut' }).start();
+    // 结果标签(停格后在轮盘下方弹出)+ 提示行
+    const resultTag = this.host.addChildLabel(wheel, 'WheelResultTag', '', 0, -R - R * 0.3, fs(20, 16), rgba(255, 214, 92), new Size(R * 2.6, 30));
+    resultTag.enableOutline = true;
+    resultTag.outlineColor = rgba(40, 20, 8, 255);
+    resultTag.outlineWidth = 3;
+    resultTag.isBold = true;
+    resultTag.node.active = false;
+    const hintLine = this.host.addChildLabel(wheel, 'WheelHintLine', skippable ? '点击任意处跳过' : '停在哪格就是第一件奖励', 0, -R - R * 0.3, fs(18, 15), rgba(200, 180, 140, 220), new Size(R * 2.6, 24));
+    hintLine.overflow = Label.Overflow.SHRINK;
+    // 落点:5 连/豪华落大奖扇,否则落第一件奖励同类扇;θ_end = 90 - 扇心角 - 整圈数 + 抖动(±14°,扇区 45° 留安全边)
+    const firstKind = result.rewards[0]?.kind ?? 'gold';
+    const candidates = jackpot ? [7] : GUARD_WHEEL_SECTORS.map((kind, k) => (kind === firstKind ? k : -1)).filter((k) => k >= 0);
+    const landIdx = candidates[Math.floor(Math.random() * candidates.length)] ?? 7;
+    const turns = result.tier >= 5 ? 7 : result.tier >= 3 ? 6 : 5;
+    const thetaEnd = 90 - (landIdx + 0.5) * 45 - 360 * turns + (Math.random() * 2 - 1) * 14;
+    const p: GuardWheelParts = {
+      overlay, panelRoot, panelOpacity, dimOpacity, wheel, disc, pointer, sectorFlashOp, bulbs, segIcons, segLabels, chestNode, fxUnder, fxOver, resultTag, hintLine,
+      result, deluxe, jackpot, compact, panelW, panelH, s, R, colX, colW,
+      phase: 'entering', timers: [], ticker: null, skippable, thetaEnd, landIdx, tickCount: 0, lastIdx: -1, cards: [], closeShown: false,
+    };
+    // 点空白:可跳过局里旋转段直跳停格、揭示段全卡到位;BlockInputEvents 只挡穿透,不影响 overlay 自身收事件。
+    overlay.on(Node.EventType.TOUCH_END, () => {
+      if (!p.skippable || !overlay.isValid) {
+        return;
+      }
+      if (p.phase === 'spinning') {
+        Tween.stopAllByTarget(disc);
+        disc.angle = p.thetaEnd + 6;
+        this.finishWheelSpin(p);
+      } else if (p.phase === 'revealing') {
+        this.snapWheelReveal(p);
+      }
+    }, this);
+    this.wheelLater(p, 350, () => this.startWheelSpin(p));
   }
 
-  private revealChestRewards(overlay: Node, tier: number, rewards: GuardChestReward[], grade: GuardChestGrade = 'normal'): void {
-    if (!overlay.isValid) {
+  /** 三段旋转:预转 +18°(蓄力)→ 加速到 -432° → 1.55s quartOut 减到 θ_end+6°;每帧检测指针过扇区 → 嘀嗒/指针踢/扇区闪/灯珠追光。 */
+  private startWheelSpin(p: GuardWheelParts): void {
+    if (p.phase !== 'entering') {
       return;
     }
-    const deluxe = grade === 'deluxe';
-    const height = this.layoutHeight;
-    // 开箱动效:闭箱→开箱素材切换 + 缩放弹跳 + 金光爆环
-    const chestNode = overlay.getChildByName('GuardWheelChest');
-    if (chestNode && chestNode.isValid) {
-      chestNode.getChildByName('Img')?.destroy();
-      this.mountSprite(chestNode, 'Img', deluxe ? 'ui/codex/ai/chest_opened/spriteFrame' : 'ui/guard/chest_open/spriteFrame', 0, 6, 150, 150);
-      chestNode.setScale(0.7, 0.7, 1);
-      tween(chestNode)
-        .to(0.16, { scale: new Vec3(1.22, 1.22, 1) }, { easing: 'backOut' })
-        .to(0.14, { scale: new Vec3(1, 1, 1) })
-        .start();
-      const burst = this.host.addChildPlainNode(overlay, 'GuardWheelBurst', 0, chestNode.position.y, 10, 10);
-      const bg = burst.addComponent(Graphics);
-      bg.strokeColor = rgba(255, 222, 120, 235);
-      bg.lineWidth = 6;
-      bg.circle(0, 0, 60);
-      bg.stroke();
-      const burstOpacity = burst.addComponent(UIOpacity);
-      tween(burst).to(0.5, { scale: new Vec3(3.4, 3.4, 1) }, { easing: 'quadOut' }).start();
-      tween(burstOpacity).to(0.5, { opacity: 0 }).call(() => { if (burst.isValid) { burst.destroy(); } }).start();
+    p.phase = 'spinning';
+    gameAudio.sfx('wheel_spin');
+    tween(p.disc)
+      .to(0.25, { angle: 18 }, { easing: 'quadOut' })
+      .to(0.4, { angle: -432 }, { easing: 'quadIn' })
+      .to(1.55, { angle: p.thetaEnd + 6 }, { easing: 'quartOut' })
+      .call(() => this.finishWheelSpin(p))
+      .start();
+    p.ticker = setInterval(() => {
+      if (!p.disc.isValid) {
+        if (p.ticker) {
+          clearInterval(p.ticker);
+          p.ticker = null;
+        }
+        return;
+      }
+      const theta = p.disc.angle;
+      // 图标/文字反向转保持朝上(8+8 个节点,便宜)
+      for (const icon of p.segIcons) {
+        icon.angle = -theta;
+      }
+      for (const label of p.segLabels) {
+        label.angle = -theta;
+      }
+      const idx = Math.floor(((((90 - theta) % 360) + 360) % 360) / 45);
+      if (idx === p.lastIdx) {
+        return;
+      }
+      p.lastIdx = idx;
+      if (p.phase !== 'spinning') {
+        return;
+      }
+      // gameAudio 对同 key 80ms 节流:加速段每 25ms 过一扇只响 1/3,减速末段每次都响
+      gameAudio.sfx('wheel_tick');
+      Tween.stopAllByTarget(p.pointer);
+      p.pointer.angle = 0;
+      tween(p.pointer).to(0.04, { angle: -14 }).to(0.12, { angle: 0 }, { easing: 'backOut' }).start();
+      Tween.stopAllByTarget(p.sectorFlashOp);
+      p.sectorFlashOp.opacity = 255;
+      tween(p.sectorFlashOp).to(0.12, { opacity: 0 }).start();
+      p.tickCount += 1;
+      const on = p.tickCount % 2 === 0;
+      p.bulbs[0].opacity = on ? 255 : 90;
+      p.bulbs[1].opacity = on ? 90 : 255;
+    }, 16);
+  }
+
+  /** 停格重击:回弹到 θ_end + 指针大颤 + 面板震 + 扇区闪 3 次常亮 + 停格图标放大 + 灯珠全亮同步闪 + 结果标签;250ms 后开箱。 */
+  private finishWheelSpin(p: GuardWheelParts): void {
+    if (!p.overlay.isValid || p.phase !== 'spinning') {
+      return;
     }
-    // 与 openChestWithWheel 同一套面板几何(4:3 refine_panel_bg)。
-    const panelH = Math.min(700, height * 0.74);
-    const panelW = Math.min(this.layoutWidth * 0.92, panelH * (1448 / 1086));
-    const colX = panelW * 0.24;
-    const colW = panelW * 0.42;
-    const tierText = deluxe ? '★ 豪华 5 连大奖!★' : tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励';
-    const tierLabel = this.host.addChildLabel(overlay, 'GuardWheelTier', tierText, colX, panelH / 2 - 168, tier >= 5 ? 32 : 24, tier >= 5 ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(colW, 44));
+    p.phase = 'stopped';
+    Tween.stopAllByTarget(p.disc);
+    tween(p.disc).to(0.14, { angle: p.thetaEnd }, { easing: 'backOut' }).start();
+    gameAudio.sfx('wheel_stop');
+    this.shakeField(p.deluxe ? 10 : 6);
+    this.shakeNodeX(p.panelRoot, 6, 4);
+    Tween.stopAllByTarget(p.pointer);
+    p.pointer.angle = 0;
+    tween(p.pointer).to(0.05, { angle: -24 }).to(0.35, { angle: 0 }, { easing: 'elasticOut' }).start();
+    Tween.stopAllByTarget(p.sectorFlashOp);
+    tween(p.sectorFlashOp)
+      .set({ opacity: 255 }).delay(0.09).set({ opacity: 60 }).delay(0.09)
+      .set({ opacity: 255 }).delay(0.09).set({ opacity: 60 }).delay(0.09)
+      .set({ opacity: 255 }).delay(0.09).set({ opacity: 90 })
+      .start();
+    const icon = p.segIcons[p.landIdx];
+    if (icon && icon.isValid) {
+      tween(icon).to(0.2, { scale: new Vec3(1.35, 1.35, 1) }, { easing: 'backOut' }).to(0.15, { scale: new Vec3(1.15, 1.15, 1) }).start();
+    }
+    for (const op of p.bulbs) {
+      Tween.stopAllByTarget(op);
+      tween(op)
+        .set({ opacity: 255 }).delay(0.08).set({ opacity: 80 }).delay(0.08)
+        .set({ opacity: 255 }).delay(0.08).set({ opacity: 80 }).delay(0.08)
+        .set({ opacity: 255 }).delay(0.08).set({ opacity: 80 }).delay(0.08).set({ opacity: 255 })
+        .repeatForever(tween().to(0.5, { opacity: 170 }).to(0.5, { opacity: 255 }))
+        .start();
+    }
+    p.hintLine.node.active = false;
+    this.wheelLater(p, 50, () => {
+      const kind = GUARD_WHEEL_SECTORS[p.landIdx];
+      p.resultTag.string = kind === 'jackpot' ? '大奖 ×5' : GUARD_WHEEL_SECTOR_LABEL[kind];
+      p.resultTag.color = kind === 'gold' ? rgba(255, 214, 92) : kind === 'summon' ? rgba(200, 160, 255) : kind === 'teamAtk' ? rgba(255, 140, 110) : rgba(255, 220, 90);
+      p.resultTag.node.active = true;
+      p.resultTag.node.setScale(1.6, 1.6, 1);
+      tween(p.resultTag.node).to(0.22, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+    });
+    this.wheelLater(p, 250, () => this.openWheelChest(p));
+  }
+
+  /** 开箱爆发:箱体蓄力压扁 → 换开箱图 1.32 backOut;光芒(cast_flash ×2 / hit_burst / hit_ring ×2 / 骨骼)→ 金币喷泉 → 星屑 → 200ms 后揭示奖励。 */
+  private openWheelChest(p: GuardWheelParts): void {
+    if (!p.overlay.isValid) {
+      return;
+    }
+    const R = p.R;
+    const chest = p.chestNode;
+    gameAudio.sfx('chest_open');
+    tween(chest)
+      .to(0.07, { scale: new Vec3(0.9, 1.1, 1) })
+      .call(() => {
+        if (!chest.isValid) {
+          return;
+        }
+        chest.getChildByName('Img')?.destroy();
+        this.mountSprite(chest, 'Img', p.deluxe ? 'ui/codex/ai/chest_opened/spriteFrame' : 'ui/guard/chest_open/spriteFrame', 0, R * 0.06, R * 0.9, R * 0.9);
+        this.spawnWheelOpenBurst(p);
+      })
+      .to(0.18, { scale: new Vec3(1.32, 1.32, 1) }, { easing: 'backOut' })
+      .to(0.14, { scale: Vec3.ONE })
+      .start();
+    if (p.deluxe) {
+      // 豪华开箱图内部是黑的:箱口常驻一枚柔光呼吸,避免"黑洞"
+      const mouth = this.mountSprite(p.fxOver, 'MouthGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, R * 0.15, R * 0.6, R * 0.6, rgba(255, 150, 90));
+      mouth.addComponent(UIOpacity).opacity = 0;
+      tween(mouth.getComponent(UIOpacity) as UIOpacity).delay(0.1).to(0.2, { opacity: 200 }).start();
+      tween(mouth).repeatForever(tween().to(0.6, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'sineInOut' }).to(0.6, { scale: new Vec3(0.9, 0.9, 1) }, { easing: 'sineInOut' })).start();
+    }
+    this.wheelLater(p, 100, () => this.spawnWheelCoins(p));
+    this.wheelLater(p, 150, () => this.spawnWheelStars(p));
+    this.wheelLater(p, 200, () => this.revealWheelRewards(p));
+  }
+
+  private spawnWheelOpenBurst(p: GuardWheelParts): void {
+    const R = p.R;
+    const hot = p.deluxe ? rgba(255, 150, 90) : rgba(255, 214, 110);
+    const ray = (name: string, size: number, angle0: number, angleDelta: number, peak: number): void => {
+      const node = this.mountSprite(p.fxUnder, name, 'ui/guard/cast_flash/spriteFrame', 0, 0, size, size, hot);
+      node.angle = angle0;
+      node.setScale(0.2, 0.2, 1);
+      const op = node.addComponent(UIOpacity);
+      op.opacity = 0;
+      tween(node).to(0.25, { scale: Vec3.ONE }, { easing: 'quadOut' }).to(1.2, { angle: angle0 + angleDelta }).start();
+      tween(op).to(0.25, { opacity: peak }, { easing: 'quadOut' }).delay(0.25).to(0.9, { opacity: 0 }, { easing: 'sineInOut' }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+    };
+    ray('RayA', R * 2.6, 0, 25, 230);
+    if (!p.compact) {
+      // 1024² 贴图两层叠 + 全屏压暗,手机端过绘制风险 → 手机只放一层
+      ray('RayB', R * 1.8, 45, -30, 170);
+    }
+    const burst = this.mountSprite(p.fxUnder, 'Burst', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, R * 0.9, R * 0.9, hot);
+    burst.setScale(0.5, 0.5, 1);
+    const burstOp = burst.addComponent(UIOpacity);
+    tween(burst).to(0.35, { scale: new Vec3(3.2, 3.2, 1) }, { easing: 'quadOut' }).start();
+    tween(burstOp).to(0.35, { opacity: 0 }).call(() => { if (burst.isValid) { burst.destroy(); } }).start();
+    for (let i = 0; i < 2; i += 1) {
+      const ring = this.mountSprite(p.fxUnder, `Ring_${i}`, 'ui/battle/c1812/effects/hit_ring/spriteFrame', 0, 0, R * 0.8, R * 0.8, hot);
+      ring.setScale(0.4, 0.4, 1);
+      const ringOp = ring.addComponent(UIOpacity);
+      ringOp.opacity = i === 0 ? 220 : 0;
+      tween(ring).delay(i * 0.12).to(0.45, { scale: new Vec3(3.8, 3.8, 1) }, { easing: 'quadOut' }).start();
+      tween(ringOp).delay(i * 0.12).set({ opacity: 220 }).to(0.45, { opacity: 0 }).call(() => { if (ring.isValid) { ring.destroy(); } }).start();
+    }
+    // 骨骼槽位:普通=圣环荡开(箱下),大奖=凤翼光柱(箱上);未就绪静默跳过,贴图层已足够
+    if (p.jackpot) {
+      this.spawnOverlaySpineFx(p.fxOver, GUARD_CHEST_FX.burstJackpot, 0, R * 0.1, R * GUARD_CHEST_FX.burstJackpot.size, 1100, false);
+    } else {
+      this.spawnOverlaySpineFx(p.fxUnder, GUARD_CHEST_FX.burstNormal, 0, 0, R * GUARD_CHEST_FX.burstNormal.size, 900, false);
+    }
+  }
+
+  /** 金币喷泉:数量按档位(1 连 8 / 3 连 14 / 5 连 22 / 豪华 28;手机减量),抛物线上升 quadOut 下落 quadIn,落到盘缘淡出。 */
+  private spawnWheelCoins(p: GuardWheelParts): void {
+    const R = p.R;
+    const tier = p.result.tier;
+    const full = p.deluxe ? 28 : tier >= 5 ? 22 : tier >= 3 ? 14 : 8;
+    const count = p.compact ? Math.min(full, 20) : full;
+    gameAudio.sfx('coin_shower');
+    const coinSize = R * 0.19;
+    for (let i = 0; i < count; i += 1) {
+      const coin = this.mountSprite(p.fxOver, `Coin_${i}`, 'ui/guard/coin_gold/spriteFrame', 0, R * 0.2, coinSize, coinSize);
+      const op = coin.addComponent(UIOpacity);
+      op.opacity = 0;
+      const endX = (Math.random() * 2 - 1) * R * 1.1;
+      const peakX = endX * 0.55;
+      const peakY = R * 0.2 + R * (0.9 + Math.random() * 0.7);
+      const delay = i * 0.018;
+      tween(coin)
+        .delay(delay)
+        .call(() => { op.opacity = 255; })
+        .to(0.28, { position: new Vec3(peakX, peakY, 0), angle: (Math.random() * 2 - 1) * 180 }, { easing: 'quadOut' })
+        .to(0.42, { position: new Vec3(endX, -R * 0.95, 0), angle: (Math.random() * 2 - 1) * 360 }, { easing: 'quadIn' })
+        .start();
+      tween(op).delay(delay + 0.5).to(0.2, { opacity: 0 }).call(() => { if (coin.isValid) { coin.destroy(); } }).start();
+    }
+  }
+
+  /** 星屑:3 连起 12 颗(豪华 14 / 手机 10)橙红星径向散开 0.5s。 */
+  private spawnWheelStars(p: GuardWheelParts): void {
+    if (p.result.tier < 3) {
+      return;
+    }
+    const R = p.R;
+    const count = p.compact ? 10 : p.deluxe ? 14 : 12;
+    for (let i = 0; i < count; i += 1) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = R * (1.3 + Math.random() * 0.7);
+      const star = this.mountSprite(p.fxOver, `Star_${i}`, i % 2 === 0 ? 'ui/common/ai/star_orange/spriteFrame' : 'ui/common/ai/star_red/spriteFrame', 0, 0, R * 0.16, R * 0.16);
+      const op = star.addComponent(UIOpacity);
+      tween(star).to(0.5, { position: new Vec3(Math.cos(a) * dist, Math.sin(a) * dist, 0), scale: new Vec3(0.3, 0.3, 1) }, { easing: 'quadOut' }).start();
+      tween(op).delay(0.15).to(0.35, { opacity: 0 }).call(() => { if (star.isValid) { star.destroy(); } }).start();
+    }
+  }
+
+  /** 奖励揭示:档位章盖入 + 奖励卡(图标/名称/数额)从右滑入逐张落位(每张按种类响一声、金币数额滚动)→ 收下按钮;5 连/豪华叠大奖演出。 */
+  private revealWheelRewards(p: GuardWheelParts): void {
+    if (!p.overlay.isValid) {
+      return;
+    }
+    p.phase = 'revealing';
+    const { tier, rewards } = p.result;
+    const s = p.s;
+    const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
+    const tierText = p.deluxe ? '★ 豪华 5 连大奖!★' : tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励';
+    const tierSize = p.jackpot ? fs(34, 24) : tier >= 3 ? fs(30, 22) : fs(24, 18);
+    const tierLabel = this.host.addChildLabel(p.panelRoot, 'GuardWheelTier', tierText, p.colX, p.panelH / 2 - 168 * s, tierSize, p.jackpot ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(p.colW, tierSize + 12));
     tierLabel.overflow = Label.Overflow.SHRINK;
     tierLabel.enableOutline = true;
     tierLabel.outlineColor = rgba(60, 30, 10, 255);
     tierLabel.outlineWidth = 3;
-    if (tier >= 5) {
-      this.shakeField(12);
+    tierLabel.isBold = true;
+    const tierOp = tierLabel.node.addComponent(UIOpacity);
+    if (tier >= 3) {
+      const from = p.jackpot ? 2.4 : 1.8;
+      tierLabel.node.setScale(from, from, 1);
+      tierLabel.node.angle = -6;
+      tween(tierLabel.node).to(p.jackpot ? 0.3 : 0.25, { scale: Vec3.ONE, angle: 0 }, { easing: 'backOut' }).start();
+    } else {
+      tierOp.opacity = 0;
+      tween(tierOp).to(0.15, { opacity: 255 }).start();
     }
-    // 免费召唤是"开箱瞬间直接上阵到随机空格"(不涨召唤费):给新英雄头上飘绿字点明
-    if (rewards.some((reward) => reward.kind === 'summon') && this.sim && this.sim.heroes.length > 0) {
+    if (p.jackpot) {
+      this.playWheelJackpot(p);
+    } else {
+      // 1/3 连:揭示短旋律(大奖走 chest_jackpot 铜管,不叠)
+      gameAudio.sfx('chest_reveal');
+    }
+    const colW = p.colW;
+    const cardH = p.compact && tier >= 5 ? 26 : Math.max(30, 46 * s);
+    const gap = 6 * s;
+    const stagger = tier >= 5 ? 0.16 : tier >= 3 ? 0.2 : 0;
+    const nameSize = p.compact ? 16 : 18;
+    const amountSize = p.compact ? 20 : 28;
+    const amountW = colW * 0.3;
+    const nameW = Math.max(60, colW - cardH * 1.7 - amountW - 6);
+    rewards.forEach((reward, i) => {
+      const y = p.panelH / 2 - 216 * s - i * (cardH + gap);
+      const card = this.host.addChildPlainNode(p.panelRoot, `GuardWheelRewardCard_${i}`, p.colX + 40, y, colW, cardH);
+      const cg = card.addComponent(Graphics);
+      cg.fillColor = rgba(20, 12, 10, 175);
+      cg.roundRect(-colW / 2, -cardH / 2, colW, cardH, 8);
+      cg.fill();
+      cg.strokeColor = p.jackpot ? rgba(255, 208, 116, 220) : rgba(190, 140, 70, 150);
+      cg.lineWidth = 1.5;
+      cg.roundRect(-colW / 2, -cardH / 2, colW, cardH, 8);
+      cg.stroke();
+      const iconSize = cardH * 0.74;
+      this.mountSprite(card, 'CardIcon', GUARD_WHEEL_SECTOR_ICON[reward.kind], -colW / 2 + cardH * 0.6, 0, iconSize, iconSize);
+      const name = reward.kind === 'gold' ? (reward.label.startsWith('阵地已满') ? '阵地已满 → 金币' : '战斗金币') : reward.kind === 'summon' ? reward.label : '全队攻击';
+      // addChildLabel 的 LEFT/RIGHT 对齐把 x 当作左/右边缘
+      const nameLabel = this.host.addChildLabel(card, 'CardText', name, -colW / 2 + cardH * 1.3, 0, nameSize, rgba(236, 224, 196), new Size(nameW, nameSize + 6), HorizontalTextAlignment.LEFT);
+      nameLabel.overflow = Label.Overflow.SHRINK;
+      const amountX = colW / 2 - cardH * 0.4;
+      if (reward.kind === 'summon') {
+        this.host.addChildLabel(card, 'CardAmount', '已上阵', amountX, 0, 16, rgba(150, 240, 160), new Size(amountW, 22), HorizontalTextAlignment.RIGHT);
+      } else {
+        const amount = this.host.addChildLabel(card, 'CardAmount', reward.kind === 'teamAtk' ? '+8%' : '+0', amountX, 0, amountSize, rgba(255, 214, 92), new Size(amountW, amountSize + 6), HorizontalTextAlignment.RIGHT);
+        amount.enableOutline = true;
+        amount.outlineColor = rgba(60, 30, 10, 255);
+        amount.outlineWidth = 2;
+        amount.isBold = true;
+      }
+      const op = card.addComponent(UIOpacity);
+      op.opacity = 0;
+      const delay = i * stagger;
+      tween(card)
+        .delay(delay)
+        .to(0.22, { position: new Vec3(p.colX, y, 0) }, { easing: 'backOut' })
+        .call(() => this.onWheelCardLand(p, card, reward))
+        .to(0.06, { scale: new Vec3(1.06, 1.06, 1) })
+        .to(0.1, { scale: Vec3.ONE })
+        .start();
+      tween(op).delay(delay).to(0.22, { opacity: 255 }).start();
+      p.cards.push(card);
+    });
+    this.wheelLater(p, Math.round((rewards.length - 1) * stagger * 1000) + 220 + 150, () => this.showWheelClose(p));
+  }
+
+  /** 奖励卡落位:按种类响一声(金币 coin / 召唤 summon / 强攻 level_up)+ 金币数额 0→amount 滚动 + 免费召唤飘字。 */
+  private onWheelCardLand(p: GuardWheelParts, card: Node, reward: GuardChestReward): void {
+    if (!card.isValid) {
+      return;
+    }
+    gameAudio.sfx(reward.kind === 'gold' ? 'coin' : reward.kind === 'summon' ? 'summon' : 'level_up');
+    if (reward.kind === 'gold') {
+      const amount = card.getChildByName('CardAmount')?.getComponent(Label) ?? null;
+      const steps = 7;
+      for (let k = 1; k <= steps; k += 1) {
+        this.wheelLater(p, k * 40, () => {
+          if (amount && amount.isValid) {
+            amount.string = `+${Math.round((reward.amount * k) / steps)}`;
+          }
+        });
+      }
+    } else if (reward.kind === 'summon' && this.sim && this.sim.heroes.length > 0) {
+      // 免费召唤是"开箱瞬间直接上阵到随机空格"(不涨召唤费):对应卡落位时给新英雄头上飘绿字点明
       const newest = this.sim.heroes.reduce((latest, hero) => (hero.unitId > latest.unitId ? hero : latest), this.sim.heroes[0]);
       const center = this.cellCenter(newest.cell);
       this.spawnFloater(center.x, center.y + this.unitSize() * 0.75, '免费召唤!已上阵', rgba(150, 240, 160));
     }
-    rewards.forEach((reward, index) => {
-      const label = this.host.addChildLabel(overlay, `GuardWheelReward_${index}`, reward.label, colX, panelH / 2 - 216 - index * 34, 19, rgba(236, 224, 196), new Size(colW, 26));
-      label.overflow = Label.Overflow.SHRINK;
-      const opacity = label.node.addComponent(UIOpacity);
-      opacity.opacity = 0;
-      tween(opacity).delay(0.18 * index).to(0.2, { opacity: 255 }).start();
-    });
-    const close = this.mountPrimaryButton(overlay, 'GuardWheelClose', colX, -panelH / 2 + 97, 236);
-    this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, 22, rgba(255, 238, 190), new Size(200, 28));
-    close.on(Node.EventType.TOUCH_END, () => {
-      if (overlay.isValid) {
-        overlay.destroy();
+  }
+
+  /** 揭示段点空白:全部奖励卡立即到位、数额直接写满、收下按钮立刻出现。 */
+  private snapWheelReveal(p: GuardWheelParts): void {
+    p.cards.forEach((card, i) => {
+      if (!card.isValid) {
+        return;
       }
-      this.wheelOverlayOpen = false;
+      Tween.stopAllByTarget(card);
+      const op = card.getComponent(UIOpacity);
+      if (op) {
+        Tween.stopAllByTarget(op);
+        op.opacity = 255;
+      }
+      card.setPosition(p.colX, card.position.y, 0);
+      card.setScale(1, 1, 1);
+      const reward = p.result.rewards[i];
+      const amount = card.getChildByName('CardAmount')?.getComponent(Label) ?? null;
+      if (reward && reward.kind === 'gold' && amount) {
+        amount.string = `+${reward.amount}`;
+      }
+    });
+    this.showWheelClose(p);
+  }
+
+  /** 5 连 / 豪华大奖:全屏闪金 + 横幅砸入(面板震)+ 面板背后大光芒 + 彩星雨 + 灯珠快闪 + 开箱图呼吸。 */
+  private playWheelJackpot(p: GuardWheelParts): void {
+    const width = this.layoutWidth;
+    const height = this.layoutHeight;
+    const hotFill = p.deluxe ? rgba(255, 140, 80, 255) : rgba(255, 236, 180, 255);
+    gameAudio.sfx('chest_jackpot');
+    const flash = this.host.addChildPlainNode(p.overlay, 'GuardWheelFlash', 0, 0, width, height);
+    const fg = flash.addComponent(Graphics);
+    fg.fillColor = hotFill;
+    fg.rect(-width / 2, -height / 2, width, height);
+    fg.fill();
+    const flashOp = flash.addComponent(UIOpacity);
+    flashOp.opacity = 0;
+    tween(flashOp).to(0.06, { opacity: 170 }).to(0.38, { opacity: 0 }, { easing: 'quadOut' }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
+    // 横幅:深红带 + 上下金线 + 两端斜切;scale 2.6 砸到 1 → 压扁回弹 → 呼吸
+    const bannerW = p.panelW * 0.9;
+    const bannerH = p.compact ? 44 : 84 * p.s;
+    const bannerY = p.panelH / 2 + (p.compact ? 30 : 18);
+    const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', 0, bannerY, bannerW, bannerH);
+    const bg = banner.addComponent(Graphics);
+    const cutW = bannerH * 0.5;
+    bg.fillColor = rgba(122, 20, 26, 235);
+    bg.moveTo(-bannerW / 2 + cutW, bannerH / 2);
+    bg.lineTo(bannerW / 2 - cutW, bannerH / 2);
+    bg.lineTo(bannerW / 2, 0);
+    bg.lineTo(bannerW / 2 - cutW, -bannerH / 2);
+    bg.lineTo(-bannerW / 2 + cutW, -bannerH / 2);
+    bg.lineTo(-bannerW / 2, 0);
+    bg.close();
+    bg.fill();
+    bg.strokeColor = rgba(255, 208, 116, 255);
+    bg.lineWidth = 3;
+    bg.moveTo(-bannerW / 2 + cutW, bannerH / 2 - 2);
+    bg.lineTo(bannerW / 2 - cutW, bannerH / 2 - 2);
+    bg.moveTo(-bannerW / 2 + cutW, -bannerH / 2 + 2);
+    bg.lineTo(bannerW / 2 - cutW, -bannerH / 2 + 2);
+    bg.stroke();
+    const bannerSize = p.compact ? 22 : Math.max(24, Math.round(34 * Math.min(1, p.s * 1.6)));
+    const bannerLabel = this.host.addChildLabel(banner, 'Text', p.deluxe ? 'BOSS 豪华宝箱 · 5 连大奖' : 'JACKPOT · 5 连大奖', 0, 0, bannerSize, rgba(255, 220, 90), new Size(bannerW - cutW * 2 - 20, bannerSize + 10));
+    bannerLabel.overflow = Label.Overflow.SHRINK;
+    bannerLabel.enableOutline = true;
+    bannerLabel.outlineColor = rgba(60, 20, 10, 255);
+    bannerLabel.outlineWidth = 3;
+    bannerLabel.isBold = true;
+    const bannerOp = banner.addComponent(UIOpacity);
+    bannerOp.opacity = 0;
+    banner.setScale(2.6, 2.6, 1);
+    tween(bannerOp).to(0.2, { opacity: 255 }, { easing: 'quadIn' }).repeatForever(tween().to(0.8, { opacity: 210 }).to(0.8, { opacity: 255 })).start();
+    tween(banner)
+      .to(0.2, { scale: Vec3.ONE }, { easing: 'quadIn' })
+      .call(() => {
+        this.shakeField(14);
+        this.shakeNodeX(p.panelRoot, 10, 5);
+      })
+      .to(0.08, { scale: new Vec3(1.06, 0.94, 1) })
+      .to(0.1, { scale: Vec3.ONE })
+      .start();
+    // 面板背后大光芒(压暗层之上、面板之下)
+    const rayTint = p.deluxe ? rgba(255, 120, 70) : rgba(255, 214, 110);
+    const rayLayers = p.compact ? 1 : 2;
+    for (let i = 0; i < rayLayers; i += 1) {
+      const ray = this.mountSprite(p.overlay, `GuardJackpotRay_${i}`, 'ui/guard/cast_flash/spriteFrame', 0, 0, p.panelH * 1.4, p.panelH * 1.4, rayTint);
+      ray.setSiblingIndex(1);
+      ray.angle = i * 22;
+      const rayOp = ray.addComponent(UIOpacity);
+      rayOp.opacity = 0;
+      tween(ray).to(1.4, { angle: i * 22 + (i === 0 ? 30 : -30) }).start();
+      tween(rayOp).delay(0.05).to(0.2, { opacity: 160 }).to(1.2, { opacity: 0 }).call(() => { if (ray.isValid) { ray.destroy(); } }).start();
+    }
+    // 彩星雨
+    const starCount = p.compact ? 12 : 20;
+    for (let i = 0; i < starCount; i += 1) {
+      const x = (Math.random() - 0.5) * width;
+      const star = this.mountSprite(p.overlay, `GuardJackpotStar_${i}`, i % 2 === 0 ? 'ui/common/ai/star_orange/spriteFrame' : 'ui/common/ai/star_red/spriteFrame', x, height / 2 + 30, p.R * 0.16, p.R * 0.16);
+      const starOp = star.addComponent(UIOpacity);
+      const delay = 0.1 + Math.random() * 0.6;
+      tween(star).delay(delay).to(1.4, { position: new Vec3(x + (Math.random() - 0.5) * 60, -height / 2 - 30, 0), angle: (Math.random() - 0.5) * 360 }, { easing: 'quadIn' }).start();
+      tween(starOp).delay(delay + 1.1).to(0.3, { opacity: 0 }).call(() => { if (star.isValid) { star.destroy(); } }).start();
+    }
+    // 灯珠 2s 快闪后回慢呼吸;开箱图呼吸(等开箱弹跳结束再接)
+    p.bulbs.forEach((op, group) => {
+      Tween.stopAllByTarget(op);
+      const seq = tween(op);
+      for (let k = 0; k < 12; k += 1) {
+        const on = (k + group) % 2 === 0;
+        seq.set({ opacity: on ? 255 : 90 }).delay(0.08);
+      }
+      seq.repeatForever(tween().to(0.5, { opacity: 170 }).to(0.5, { opacity: 255 })).start();
+    });
+    this.wheelLater(p, 300, () => {
+      if (p.chestNode.isValid) {
+        tween(p.chestNode).repeatForever(tween().to(0.5, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'sineInOut' }).to(0.5, { scale: Vec3.ONE }, { easing: 'sineInOut' })).start();
+      }
+    });
+  }
+
+  private showWheelClose(p: GuardWheelParts): void {
+    if (!p.overlay.isValid || p.closeShown) {
+      return;
+    }
+    p.closeShown = true;
+    const btnW = p.compact ? 180 : 236;
+    const btnH = btnW * (100 / 431);
+    const close = this.mountPrimaryButton(p.panelRoot, 'GuardWheelClose', p.colX, -p.panelH / 2 + (p.compact ? 58 : 97 * p.s), btnW);
+    const glow = this.mountSprite(close, 'CloseGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, btnH * 1.6, btnH * 1.6, rgba(255, 214, 110));
+    glow.setSiblingIndex(0);
+    glow.addComponent(UIOpacity).opacity = 90;
+    tween(glow).repeatForever(tween().to(0.5, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'sineInOut' }).to(0.5, { scale: new Vec3(0.95, 0.95, 1) }, { easing: 'sineInOut' })).start();
+    this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, p.compact ? 18 : 22, rgba(255, 238, 190), new Size(btnW * 0.85, 28));
+    close.setScale(0.6, 0.6, 1);
+    tween(close).to(0.25, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+    if (p.result.tier !== 3) {
+      gameAudio.sfx('reward_claim');
+    }
+    close.on(Node.EventType.TOUCH_END, () => this.closeWheel(p), this);
+  }
+
+  /** 收下:立即解锁 wheelOverlayOpen(防"点不动")→ 金币卡飞币到右上 HUD → 面板/压暗淡出 → 260ms 销毁并恢复战斗。 */
+  private closeWheel(p: GuardWheelParts): void {
+    if (!p.overlay.isValid || p.phase === 'done') {
+      return;
+    }
+    p.phase = 'done';
+    this.wheelOverlayOpen = false;
+    gameAudio.sfx('ui_click');
+    if (p.ticker) {
+      clearInterval(p.ticker);
+      p.ticker = null;
+    }
+    const root = this.root;
+    const rootTransform = root?.getComponent(UITransform) ?? null;
+    if (root && rootTransform) {
+      const targetX = this.layoutWidth / 2 - 180;
+      const targetY = this.layoutHeight / 2 - 42;
+      let coinIndex = 0;
+      let sfxLeft = 3;
+      p.result.rewards.forEach((reward, i) => {
+        const card = p.cards[i];
+        if (reward.kind !== 'gold' || !card || !card.isValid) {
+          return;
+        }
+        const from = rootTransform.convertToNodeSpaceAR((card.getChildByName('CardIcon') ?? card).getWorldPosition());
+        const count = reward.amount >= 300 ? 10 : 6;
+        for (let k = 0; k < count; k += 1) {
+          const coin = this.mountSprite(root, 'GuardWheelFlyCoin', 'ui/guard/coin_gold/spriteFrame', from.x, from.y, 28, 28);
+          const midX = (from.x + targetX) / 2 + (Math.random() - 0.5) * 60;
+          const midY = Math.max(from.y, targetY) + 80 + Math.random() * 40;
+          let done = false;
+          const finish = (): void => {
+            if (done) {
+              return;
+            }
+            done = true;
+            if (coin.isValid) {
+              coin.destroy();
+            }
+            const goldText = root.getChildByName('GuardHud')?.getChildByName('GuardGoldText');
+            if (goldText && goldText.isValid) {
+              tween(goldText).to(0.08, { scale: new Vec3(1.22, 1.22, 1) }).to(0.12, { scale: Vec3.ONE }).start();
+            }
+            if (sfxLeft > 0) {
+              sfxLeft -= 1;
+              gameAudio.sfx('coin');
+            }
+          };
+          tween(coin)
+            .delay(coinIndex * 0.04)
+            .to(0.22, { position: new Vec3(midX, midY, 0) }, { easing: 'quadOut' })
+            .to(0.23, { position: new Vec3(targetX, targetY, 0), scale: new Vec3(0.6, 0.6, 1) }, { easing: 'quadIn' })
+            .call(finish)
+            .start();
+          setTimeout(finish, 1500);
+          coinIndex += 1;
+        }
+      });
+    }
+    Tween.stopAllByTarget(p.panelRoot);
+    tween(p.panelRoot).to(0.18, { scale: new Vec3(0.96, 0.96, 1) }, { easing: 'quadIn' }).start();
+    tween(p.panelOpacity).to(0.18, { opacity: 0 }).start();
+    tween(p.dimOpacity).to(0.22, { opacity: 0 }).start();
+    this.wheelLater(p, 180, () => gameAudio.sfx('panel_close'));
+    setTimeout(() => {
+      this.destroyWheel(p);
       this.syncBattlePause();
-    }, this);
+    }, 260);
+  }
+
+  private destroyWheel(p: GuardWheelParts): void {
+    for (const id of p.timers) {
+      clearTimeout(id);
+    }
+    p.timers.length = 0;
+    if (p.ticker) {
+      clearInterval(p.ticker);
+      p.ticker = null;
+    }
+    if (p.overlay.isValid) {
+      p.overlay.destroy();
+    }
   }
 
   // ── P2:升级三选一(pendingChoice 即暂停) ──
@@ -3483,6 +4337,45 @@ export class LobbyGuardBattleRenderer {
     return true;
   }
 
+  /**
+   * 挂到任意父节点的骨骼特效(宝箱光环 / 开箱爆发):按目标像素等比缩放、按实测包围盒居中,不占场上命中特效配额;
+   * loop=true 随父节点销毁,否则 holdMs 后自毁。未就绪时补预热并返回 false(调用方静默跳过,贴图层已足够)。
+   */
+  private spawnOverlaySpineFx(parent: Node, spec: { effect: string; animation: string; size: number }, x: number, y: number, sizePx: number, holdMs: number, loop: boolean): boolean {
+    if (!parent.isValid) {
+      return false;
+    }
+    const ready = this.attackSpineFxReady.get(spec.effect);
+    if (!ready) {
+      this.prewarmAttackSpineFx(spec);
+      return false;
+    }
+    const fit = sizePx / Math.max(ready.w, ready.h);
+    const node = this.host.addChildPlainNode(parent, 'GuardOverlaySpineFx', x - ready.cx * fit, y - ready.cy * fit, 10, 10);
+    node.setScale(fit, fit, 1);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = false;
+    skeleton.skeletonData = ready.data;
+    let duration = 0.6;
+    try {
+      duration = Math.max(0.12, skeleton.findAnimation(ready.animation)?.duration ?? 0.6);
+      if (!loop) {
+        skeleton.timeScale = Math.max(0.5, duration / (Math.max(120, holdMs) / 1000));
+      }
+      skeleton.setAnimation(0, ready.animation, loop);
+    } catch (error) {
+      void error;
+    }
+    if (!loop) {
+      setTimeout(() => {
+        if (node.isValid) {
+          node.destroy();
+        }
+      }, holdMs + 60);
+    }
+    return true;
+  }
+
   /** 命中爆闪:小十字星芒 0.18s。 */
   private spawnImpactFlash(x: number, y: number, color: Color): void {
     const field = this.fieldNode;
@@ -3618,6 +4511,13 @@ export class LobbyGuardBattleRenderer {
     // 远程怪三种皮肤的弹道(shooter 从第 3 波起才出,开局预热来得及)。
     for (const spec of guardMonsterProjectileFxSpecs()) {
       this.prewarmAttackSpineFx(spec);
+    }
+    // 宝箱 / 开箱轮盘(2026-09-27):光环与爆发骨骼 + 全部贴图,首箱不缺帧(精英 8 波前不掉,预热来得及)。
+    for (const spec of Object.values(GUARD_CHEST_FX)) {
+      this.prewarmAttackSpineFx(spec);
+    }
+    for (const path of GUARD_CHEST_SPRITE_PRELOAD) {
+      resources.load(path, SpriteFrame, () => { /* 仅预热缓存 */ });
     }
   }
 

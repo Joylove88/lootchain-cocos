@@ -188,6 +188,19 @@ export const GUARD_SUPPORT_FX = {
   crystalHealSmall: { effect: 'fx_45014_shengqishi_skill', animation: 'Skill', size: 1.8 },
 } as const;
 
+// ── 宝箱 / 开箱轮盘(2026-09-27 用户反馈:"宝箱和转盘效果太简单,不够酷炫")──
+// fx_pack 引擎内实拍挑选(scratchpad probe_any_cdp / fx_measure_cdp):同一 effect 只能登记一个动画(就绪表按 effect 键)。
+export const GUARD_CHEST_FX = {
+  /** 场上普通宝箱脚下循环的金色雷纹光环(与辅助光罩同素材同动画,共用就绪项)。 */
+  auraNormal: { effect: 'fx_1602_xiongshilingyu', animation: 'xia', size: 1.6 },
+  /** BOSS 豪华宝箱脚下循环的红色熔岩环(炎鬼领域下层)。 */
+  auraDeluxe: { effect: 'fx_2602_yanguilingyu', animation: 'xia', size: 1.8 },
+  /** 普通开箱爆发:金色圣环荡开(圣骑士技能,与辅助周期治疗共用就绪项)。 */
+  burstNormal: { effect: 'fx_45014_shengqishi_skill', animation: 'Skill', size: 2.4 },
+  /** 5 连 / 豪华开箱爆发:金色凤翼光柱冲天(凤凰领域上层,1.1s)。 */
+  burstJackpot: { effect: 'fx_5602_fenghuanglingyu', animation: 'shang', size: 3.4 },
+} as const;
+
 // ── 远程怪攻击水晶的弹道(2026-09-24 用户反馈:"怪物远程攻击水晶也需要弹道效果")──
 // 键=怪物皮肤 spineCode(GuardBattleModel GUARD_MONSTER_KIND_PROFILE.shooter.spineCodes);兜底走原来的暗红箭矢贴图。
 const GUARD_MONSTER_PROJECTILE_FX: Record<string, { effect: string; animation: string; size: number }> = {

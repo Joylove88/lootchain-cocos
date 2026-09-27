@@ -111,3 +111,16 @@
 | R_ACOLY_02 礼拜堂侍僧 | 微光庇护 | 18治愈系/美好之光 |
 
 未挂音效、未来可加:页签切换;抽卡召唤影像已有自带 call.mp3;同包 `UI/` 目录还有 33 条与本项目 UI 同源的界面音(TouchOpen/Close、Get_Reward、SummonMyth/Unique/Normal、LevelUp、Win/Lose),可替换现用界面音。
+
+
+## 2026-09-26 守卫战宝箱/转盘新增(原始文件在 audio-pack-picks-20260926/)
+
+| 类别 | key | 源文件 | 用途 | 加工结果 |
+|---|---|---|---|---|
+| 守卫宝箱 | wheel_spin | 军鼓滚奏-mcx20070511.wav(裁 2.8s) | 转盘旋转期间的军鼓滚奏(2.8s,与转 2.6s+缓停对齐) | RMS -21.2 dB / 峰 -1.0 dB / 232KB |
+| 守卫宝箱 | wheel_tick | tick.wav | 指针每经过一格的短嘀 | RMS -24.0 dB / 峰 -1.5 dB / 15KB |
+| 守卫宝箱 | wheel_stop | 打击乐2.wav(裁 0.9s) | 转盘停格重击 | RMS -17.6 dB / 峰 -1.0 dB / 77KB |
+| 守卫宝箱 | chest_jackpot | 重大场面-铜管-短4-mcx20070511.wav + 烟花爆炸-ltt20070510.wav(裁 2.2s) | 5 连/豪华大奖:铜管短号 + 烟花爆 | RMS -16.0 dB / 峰 -1.5 dB / 189KB |
+| 守卫宝箱 | coin_shower | 硬币撞击的声音－YS2007058.wav.wav(裁 1.8s) | 开箱金币雨(一串硬币碰撞) | RMS -32.3 dB / 峰 -1.0 dB / 155KB |
+| 守卫宝箱 | chest_land | 重包裹落地zth070518.wav(裁 0.8s) | 宝箱掉落砸地 | RMS -17.0 dB / 峰 -2.5 dB / 64KB |
+| 守卫宝箱 | chest_reveal | 胜利完成－xh20070419.wav(裁 1.3s) | 普通 1/3 连奖励揭示 | RMS -32.9 dB / 峰 -1.0 dB / 104KB |
