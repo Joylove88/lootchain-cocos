@@ -469,6 +469,8 @@ export class LobbyGuardBattleRenderer {
   private readonly projectiles: GuardProjectile[] = [];
   /** 未觉醒战技放出的灼烧区(没有专属特效本体,由区域节点自己画余烬环)。 */
   private plainBurnZones = new Set<number>();
+  /** 水晶头顶血条上次绘制的数值(没变不重画)。 */
+  private crystalHpPaintedKey = '';
   /** 普攻 Spine 飞行特效(fx_pack)的就绪表:开局按阵容预热,数据 + 动画名 + 实测包围盒齐了才用,否则回退贴图弹道。 */
   private readonly attackSpineFxReady = new Map<string, { spec: { effect: string; animation: string; size: number }; data: sp.SkeletonData; animation: string; w: number; h: number; cx: number; cy: number }>();
   private readonly attackSpineFxPending = new Set<string>();
@@ -525,6 +527,7 @@ export class LobbyGuardBattleRenderer {
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
+    this.crystalHpPaintedKey = '';
     this.resonanceKey = '';
     this.mountedLayoutKey = '';
     this.statsPanelSignature = '';
@@ -722,6 +725,7 @@ export class LobbyGuardBattleRenderer {
     this.fieldNode = null;
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
+    this.crystalHpPaintedKey = '';
     this.resonanceKey = '';
     this.statsPanelSignature = '';
     this.heroViews.clear();
@@ -1002,10 +1006,30 @@ export class LobbyGuardBattleRenderer {
   // 分段线性映射:sim x∈[0,5](英雄区)→ [-0.44W,-0.167W];x∈[5,10](跑道)→ [-0.167W,+0.47W]。
   // 格子与怪物共用同一映射,射程像素与 sim 判定天然对齐。
   private static readonly HERO_ZONE_SIM_END = 5;
+  /**
+   * 水晶几何(2026-09-28 用户:"水晶位置需要重新设计"——原先贴屏幕左缘被切掉一半、又压住第一列格子):
+   * 水晶整座落在屏幕内(左留 1.2% 宽),底座压在中央走道上、垂直居中于两排格子之间;格子整体让到水晶右侧。
+   */
+  private crystalGeom(): { x: number; y: number; w: number; h: number } {
+    const h = Math.min(this.layoutHeight * 0.32, this.layoutWidth * 0.2);
+    const w = h * (299 / 652);
+    const x = -this.layoutWidth * 0.488 + w / 2;
+    const y = this.walkwayY() + h * 0.12;
+    return { x, y, w, h };
+  }
+  /** 第一列格心 x:紧贴水晶右缘 + 英雄半宽 + 小间隙。 */
+  private firstCellX(): number {
+    const c = this.crystalGeom();
+    return c.x + c.w / 2 + this.layoutWidth * 0.006 + this.heroDisplaySize() / 2;
+  }
   private xToPx(x: number): number {
     const width = this.layoutWidth;
-    const heroLeft = -width * 0.44;
-    const heroRight = -width * 0.167;
+    // sim x∈[0,5] 英雄区:水晶接触点(GUARD_CRYSTAL_REACH_X)落在水晶右缘内侧,英雄区右端在最后一列格子之外半格。
+    const crystal = this.crystalGeom();
+    const heroRight = this.firstCellX() + (GUARD_GRID_COLS - 0.5) * this.cellPitchPx();
+    const reachPx = crystal.x + crystal.w * 0.3;
+    const reachT = GUARD_CRYSTAL_REACH_X / LobbyGuardBattleRenderer.HERO_ZONE_SIM_END;
+    const heroLeft = (reachPx - reachT * heroRight) / (1 - reachT);
     const runwayRight = width * 0.47;
     if (x <= LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) {
       return heroLeft + (x / LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) * (heroRight - heroLeft);
@@ -1072,7 +1096,7 @@ export class LobbyGuardBattleRenderer {
   private cellCenter(cell: number): { x: number; y: number } {
     const col = cell % GUARD_GRID_COLS;
     const row = Math.floor(cell / GUARD_GRID_COLS);
-    return { x: this.layoutWidth * -0.41 + col * this.cellPitchPx(), y: this.laneToPy(row) };
+    return { x: this.firstCellX() + col * this.cellPitchPx(), y: this.laneToPy(row) };
   }
 
   private cellAtPosition(px: number, py: number): number | null {
@@ -1173,11 +1197,12 @@ export class LobbyGuardBattleRenderer {
     if (!field) {
       return;
     }
-    // 1:1 复刻:新水晶素材(ghud_cell 同批,299×652 熔岩基座蓝晶簇)
-    const height = this.layoutHeight * 0.38;
-    const width = height * (299 / 652);
-    const x = -this.layoutWidth * 0.462;
-    const y = -this.layoutHeight * 0.055;
+    // 1:1 复刻:新水晶素材(ghud_cell 同批,299×652 熔岩基座蓝晶簇);位置见 crystalGeom()
+    const geom = this.crystalGeom();
+    const height = geom.h;
+    const width = geom.w;
+    const x = geom.x;
+    const y = geom.y;
     // 2026-09-28 用户:"水晶弹窗里的水晶效果不错,战场中也用同样的效果"——与大厅弹窗同一套骨骼特效:
     // 背后蓝紫星云旋涡(LOBBY_CRYSTAL_FX.aura)+ 基座漩涡法阵(pedestal),都放在水晶节点之前(层级在下),不随水晶呼吸缩放。
     const fxHost = { addChildPlainNode: (p: Node, n: string, fx: number, fy: number, fw: number, fh: number) => this.host.addChildPlainNode(p, n, fx, fy, fw, fh) };
@@ -1191,6 +1216,23 @@ export class LobbyGuardBattleRenderer {
     tween(holder)
       .repeatForever(tween().to(1.4, { scale: new Vec3(1.03, 1.03, 1) }).to(1.4, { scale: Vec3.ONE }))
       .start();
+    // 水晶血条挂在水晶头顶(2026-09-28 用户:"血条也要放到水晶上"),原左上角大血条移除;独立节点,不随水晶呼吸缩放。
+    const barW = Math.max(width * 1.35, 132);
+    const barH = 18;
+    // 水晶贴左缘:血条整体钳在屏幕内(左留 12px)
+    const barX = Math.max(x, -this.layoutWidth / 2 + 12 + barW / 2);
+    const bar = this.host.addChildPlainNode(field, 'GuardCrystalHpBar', barX, y + height / 2 + 22, barW, barH);
+    bar.addComponent(Graphics);
+    const hpText = this.host.addChildLabel(bar, 'GuardCrystalHpText', '', 0, 0, 14, rgba(255, 250, 235, 250), new Size(barW - 8, barH));
+    hpText.enableOutline = true;
+    hpText.outlineColor = rgba(8, 14, 30, 255);
+    hpText.outlineWidth = 2;
+    hpText.isBold = true;
+    const cap = this.host.addChildPlainNode(field, 'GuardCrystalHpCap', barX, y + height / 2 + 22 + barH / 2 + 11, 120, 18);
+    const capLabel = this.host.addChildLabel(cap, 'Text', '守卫水晶', 0, 0, 14, rgba(170, 215, 255, 240), new Size(120, 18));
+    capLabel.enableOutline = true;
+    capLabel.outlineColor = rgba(8, 14, 30, 255);
+    capLabel.outlineWidth = 2;
   }
 
   // ── HUD:1:1 复刻用户提供的整套素材(2026-08-28)──
@@ -1207,18 +1249,9 @@ export class LobbyGuardBattleRenderer {
     const panelW = 250;
     const panelH = height * 0.185;
     this.mountSoftShade(hud, 'GuardLeftPanel', -width / 2 + 4 + panelW / 2, height / 2 - 4 - panelH / 2, panelW, panelH, 'blob');
-    // 左上:水晶生命(素材框 632×105,内嵌蓝条)
-    const hpW = Math.min(390, width * 0.29);
-    const hpH = hpW * (105 / 632);
-    const hpBar = this.host.addChildPlainNode(hud, 'GuardCrystalHpBar', -width / 2 + hpW / 2 + 26, height / 2 - 20 - hpH / 2, hpW, hpH);
-    hpBar.addComponent(Graphics);
-    this.mountSprite(hpBar, 'Frame', 'ui/battle/ai/ghud_hp_frame/spriteFrame', 0, 0, hpW, hpH);
-    const hpText = this.host.addChildLabel(hpBar, 'GuardCrystalHpText', '', hpW * 0.05, 1, 16, rgba(255, 250, 235, 250), new Size(hpW * 0.8, 22));
-    hpText.enableOutline = true;
-    hpText.outlineColor = rgba(10, 14, 26, 255);
-    hpText.outlineWidth = 2;
+    // 水晶生命已挪到水晶头顶(renderCrystal,2026-09-28);左上只留"统计"按钮。
     // 左侧改版(2026-09-02 用户拍板参考图):去掉职业计数竖条,换"统计"按钮展开每英雄输出贡献
-    const stripTop = height / 2 - 20 - hpH - 14;
+    const stripTop = height / 2 - 20;
     const statsBtnW = 88;
     const statsBtnH = 38;
     const statsBtn = this.host.addChildPlainNode(hud, 'GuardStatsButton', -width / 2 + 24 + statsBtnW / 2, stripTop - statsBtnH / 2, statsBtnW, statsBtnH);
@@ -1531,27 +1564,40 @@ export class LobbyGuardBattleRenderer {
     if (this.paintedCellsKey !== `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`) {
       this.repaintFieldBase();
     }
-    // 水晶生命:蓝条画在素材框内(框中空区约 [-0.27w, +0.44w])
-    const hpBar = hud.getChildByName('GuardCrystalHpBar');
+    // 水晶生命(水晶头顶胶囊条):深底 + 金边 + 蓝色填充(≤35% 变红)+ 数值居中
+    const hpBar = this.fieldNode?.getChildByName('GuardCrystalHpBar');
     const hpTransform = hpBar?.getComponent(UITransform);
     const hpGraphics = hpBar?.getComponent(Graphics);
-    if (hpBar && hpTransform && hpGraphics) {
+    const hpRatio = Math.max(0, sim.crystalHp / sim.crystalMaxHp);
+    const hpKey = `${Math.ceil(sim.crystalHp)}/${sim.crystalMaxHp}`;
+    if (hpBar && hpTransform && hpGraphics && this.crystalHpPaintedKey !== hpKey) {
+      this.crystalHpPaintedKey = hpKey;
       const w = hpTransform.width;
       const h = hpTransform.height;
-      const ratio = Math.max(0, sim.crystalHp / sim.crystalMaxHp);
-      const fillL = -w * 0.27;
-      const fillW = w * 0.71;
+      const r = h / 2;
       hpGraphics.clear();
-      hpGraphics.fillColor = rgba(10, 14, 24, 235);
-      hpGraphics.roundRect(fillL, -h * 0.22, fillW, h * 0.44, h * 0.2);
+      hpGraphics.fillColor = rgba(8, 12, 22, 230);
+      hpGraphics.roundRect(-w / 2, -h / 2, w, h, r);
       hpGraphics.fill();
-      hpGraphics.fillColor = ratio > 0.35 ? rgba(90, 180, 255, 245) : rgba(240, 90, 70, 245);
-      hpGraphics.roundRect(fillL, -h * 0.22, Math.max(4, fillW * ratio), h * 0.44, h * 0.2);
+      const inset = 3;
+      const fillW = Math.max(r, (w - inset * 2) * hpRatio);
+      hpGraphics.fillColor = hpRatio > 0.35 ? rgba(70, 165, 255, 250) : rgba(240, 86, 66, 250);
+      hpGraphics.roundRect(-w / 2 + inset, -h / 2 + inset, fillW, h - inset * 2, r - inset);
       hpGraphics.fill();
+      hpGraphics.fillColor = hpRatio > 0.35 ? rgba(190, 230, 255, 90) : rgba(255, 190, 170, 90);
+      hpGraphics.roundRect(-w / 2 + inset, 0, fillW, h / 2 - inset, r - inset);
+      hpGraphics.fill();
+      hpGraphics.strokeColor = rgba(214, 170, 96, 235);
+      hpGraphics.lineWidth = 1.5;
+      hpGraphics.roundRect(-w / 2, -h / 2, w, h, r);
+      hpGraphics.stroke();
     }
-    const hpText = hud.getChildByName('GuardCrystalHpBar')?.getChildByName('GuardCrystalHpText')?.getComponent(Label);
+    const hpText = hpBar?.getChildByName('GuardCrystalHpText')?.getComponent(Label);
     if (hpText) {
-      hpText.string = `水晶生命 ${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
+      const hpString = `${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
+      if (hpText.string !== hpString) {
+        hpText.string = hpString;
+      }
     }
     const waveText = hud.getChildByName('GuardTopBanner')?.getChildByName('GuardWaveText')?.getComponent(Label);
     if (waveText) {
@@ -4509,14 +4555,16 @@ export class LobbyGuardBattleRenderer {
     const height = this.layoutHeight;
     const hotFill = p.deluxe ? rgba(255, 140, 80, 255) : rgba(255, 236, 180, 255);
     gameAudio.sfx('chest_jackpot');
-    const flash = this.host.addChildPlainNode(p.overlay, 'GuardWheelFlash', 0, 0, width, height);
-    const fg = flash.addComponent(Graphics);
-    fg.fillColor = hotFill;
-    fg.rect(-width / 2, -height / 2, width, height);
-    fg.fill();
-    const flashOp = flash.addComponent(UIOpacity);
-    flashOp.opacity = 0;
-    tween(flashOp).to(0.06, { opacity: 170 }).to(0.38, { opacity: 0 }, { easing: 'quadOut' }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
+    // 2026-09-28 用户:"开启豪华宝箱的时候全屏黄"——原先是整屏纯色 Graphics 矩形 + UIOpacity 淡出,
+    // 实测(无头冻结峰值帧)UIOpacity 对 Graphics 填充不生效,整屏不透明橙 0.44s。改为只用面板中心的径向柔光贴图(Sprite 能正常淡出)。
+    const glowSize = Math.min(width, height) * 1.15;
+    const glow = this.mountSprite(p.overlay, 'GuardWheelGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, glowSize, glowSize, hotFill);
+    glow.setSiblingIndex(1);
+    glow.setScale(0.5, 0.5, 1);
+    const glowOp = glow.addComponent(UIOpacity);
+    glowOp.opacity = 0;
+    tween(glow).to(0.45, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'quadOut' }).start();
+    tween(glowOp).to(0.08, { opacity: 170 }).to(0.5, { opacity: 0 }, { easing: 'quadIn' }).call(() => { if (glow.isValid) { glow.destroy(); } }).start();
     // 横幅:深红带 + 上下金线 + 两端斜切;scale 2.6 砸到 1 → 压扁回弹 → 呼吸
     const bannerW = p.panelW * 0.9;
     const bannerH = p.compact ? 44 : 84 * p.s;
@@ -4560,9 +4608,19 @@ export class LobbyGuardBattleRenderer {
       .to(0.08, { scale: new Vec3(1.06, 0.94, 1) })
       .to(0.1, { scale: Vec3.ONE })
       .start();
-    // 面板背后大光芒(压暗层之上、面板之下)
+    // 面板背后大光芒(压暗层之上、面板之下):新批次金色光丝聚拢爆开(与结算胜利同款);豪华箱染暖红。未就绪才回退旧星芒贴图。
     const rayTint = p.deluxe ? rgba(255, 120, 70) : rgba(255, 214, 110);
-    const rayLayers = p.compact ? 1 : 2;
+    const rayFx = LOBBY_UI_FX.victoryTitle;
+    const rayFxHolder = this.host.addChildPlainNode(p.overlay, 'GuardJackpotRayFx', 0, 0, 10, 10);
+    rayFxHolder.setSiblingIndex(1);
+    const rayFxNode = rayFx ? mountLobbySpineFx(this.host, rayFxHolder, rayFx, 0, 0, p.panelH * 1.5, false, 1700) : null;
+    if (rayFxNode && p.deluxe) {
+      const sk = rayFxNode.getComponent(sp.Skeleton);
+      if (sk) {
+        sk.color = rgba(255, 170, 130);
+      }
+    }
+    const rayLayers = rayFxNode ? 0 : p.compact ? 1 : 2;
     for (let i = 0; i < rayLayers; i += 1) {
       const ray = this.mountSprite(p.overlay, `GuardJackpotRay_${i}`, 'ui/guard/cast_flash/spriteFrame', 0, 0, p.panelH * 1.4, p.panelH * 1.4, rayTint);
       ray.setSiblingIndex(1);
