@@ -121,7 +121,7 @@ import {
 import { loadSharedSpineData } from './SpineDataStore';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -1178,6 +1178,14 @@ export class LobbyGuardBattleRenderer {
     const width = height * (299 / 652);
     const x = -this.layoutWidth * 0.462;
     const y = -this.layoutHeight * 0.055;
+    // 2026-09-28 用户:"水晶弹窗里的水晶效果不错,战场中也用同样的效果"——与大厅弹窗同一套骨骼特效:
+    // 背后蓝紫星云旋涡(LOBBY_CRYSTAL_FX.aura)+ 基座漩涡法阵(pedestal),都放在水晶节点之前(层级在下),不随水晶呼吸缩放。
+    const fxHost = { addChildPlainNode: (p: Node, n: string, fx: number, fy: number, fw: number, fh: number) => this.host.addChildPlainNode(p, n, fx, fy, fw, fh) };
+    const auraHolder = this.host.addChildPlainNode(field, 'GuardCrystalAuraFx', x, y + height * 0.08, 10, 10);
+    mountLobbySpineFx(fxHost, auraHolder, LOBBY_CRYSTAL_FX.aura, 0, 0, height * LOBBY_CRYSTAL_FX.aura.size, true, 0);
+    const pedestalHolder = this.host.addChildPlainNode(field, 'GuardCrystalPedestalFx', x, y - height * 0.4, 10, 10);
+    // 战场里水晶旁就是英雄格:法阵比弹窗收小(×0.7),不压到下排英雄。
+    mountLobbySpineFx(fxHost, pedestalHolder, LOBBY_CRYSTAL_FX.pedestal, 0, 0, height * LOBBY_CRYSTAL_FX.pedestal.size * 0.7, true, 0);
     const holder = this.host.addChildPlainNode(field, 'GuardCrystal', x, y, width, height);
     this.mountSprite(holder, 'GuardCrystalIcon', 'ui/battle/ai/ghud_crystal_tower/spriteFrame', 0, 0, width, height);
     tween(holder)
