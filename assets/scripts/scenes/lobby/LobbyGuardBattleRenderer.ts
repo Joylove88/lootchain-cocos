@@ -691,7 +691,7 @@ export class LobbyGuardBattleRenderer {
     this.renderSummonButton();
     this.renderCallWaveButton();
     this.renderSpellBar();
-    this.renderTrapButton();
+    // 2026-09-28 用户:"陷阱移除掉吧,不然太挤了"——战场底栏不再挂陷阱按钮 / 托盘(模型保留,无入口即不会放置)。
     this.renderEnhanceButton();
     this.renderCrystalSkillButton();
     // 新手引导(P1,2026-09-05):首战 MAIN_1_1 指向召唤按钮的强提示(image2 箭头+气泡),首次召唤后消失(step 里检测)。
@@ -1022,15 +1022,17 @@ export class LobbyGuardBattleRenderer {
     const c = this.crystalGeom();
     return c.x + c.w / 2 + this.layoutWidth * 0.006 + this.heroDisplaySize() / 2;
   }
-  private xToPx(x: number): number {
-    const width = this.layoutWidth;
-    // sim x∈[0,5] 英雄区:水晶接触点(GUARD_CRYSTAL_REACH_X)落在水晶右缘内侧,英雄区右端在最后一列格子之外半格。
+  /** sim x∈[0,5] 英雄区的像素端点:水晶接触点(GUARD_CRYSTAL_REACH_X)落在水晶右缘内侧,英雄区右端在最后一列格子之外半格。 */
+  private heroZonePx(): { heroLeft: number; heroRight: number; runwayRight: number } {
     const crystal = this.crystalGeom();
     const heroRight = this.firstCellX() + (GUARD_GRID_COLS - 0.5) * this.cellPitchPx();
     const reachPx = crystal.x + crystal.w * 0.3;
     const reachT = GUARD_CRYSTAL_REACH_X / LobbyGuardBattleRenderer.HERO_ZONE_SIM_END;
     const heroLeft = (reachPx - reachT * heroRight) / (1 - reachT);
-    const runwayRight = width * 0.47;
+    return { heroLeft, heroRight, runwayRight: this.layoutWidth * 0.47 };
+  }
+  private xToPx(x: number): number {
+    const { heroLeft, heroRight, runwayRight } = this.heroZonePx();
     if (x <= LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) {
       return heroLeft + (x / LobbyGuardBattleRenderer.HERO_ZONE_SIM_END) * (heroRight - heroLeft);
     }
@@ -2627,7 +2629,6 @@ export class LobbyGuardBattleRenderer {
         '迎战:波间点「提前迎战」立刻开下一波,越早奖励金币越多。',
         '法术:底部是出战的水晶法术(大厅「水晶 → 法术装备」里配置),击杀和打断攒能量;冰封/天雷按住拖到战场施放。',
         '事件:流星矿晶落地后点它拿金币;偷金鼠要点它集火,打死掉大笔金币。',
-        '陷阱:点「陷阱」展开托盘,把尖刺/冰霜/爆炎拖到跑道上,花金币,最多 3 个。',
         '出售:把英雄拖到水晶上出售,返还部分金币。',
         '强化:花金币抽词条三选一;每守住一波送一次免费强化。',
         'BOSS:头顶出现蓄力条时集火打断,读满会轰掉水晶 15% 生命。',
@@ -3217,13 +3218,18 @@ export class LobbyGuardBattleRenderer {
       }
       const delta = event.getUIDelta();
       drag.moved += Math.abs(delta.x) + Math.abs(delta.y);
-      drag.aim = this.spellAimAt(event.getUILocation().x, event.getUILocation().y);
+      const ui = event.getUILocation();
+      // 2026-09-28 用户:"法术拖拽怎么取消"——拖回法术栏(出现「拖回这里取消」圈)或拖到战场怪物带之外,松手即取消。
+      const overBar = this.isOverSpellBar(ui.x, ui.y);
+      drag.aim = overBar ? null : this.spellAimAt(ui.x, ui.y);
       this.drawSpellAim(id, drag.aim);
+      this.drawSpellCancelHint(drag.moved >= 12, overBar, drag.aim === null, ui.x, ui.y);
     }, this);
     const finish = (event: EventTouch | null): void => {
       const drag = this.spellDrag;
       this.spellDrag = null;
       this.fieldNode?.getChildByName('GuardSpellAim')?.destroy();
+      this.drawSpellCancelHint(false, false, false, 0, 0);
       const sim = this.sim;
       if (!drag || drag.id !== id || !sim) {
         return;
@@ -3238,8 +3244,12 @@ export class LobbyGuardBattleRenderer {
         }
         return;
       }
-      if (drag.moved < 12 || !drag.aim) {
-        this.host.setStatus(`按住「${def.name}」拖到战场上施放`);
+      if (drag.moved < 12) {
+        this.host.setStatus(`按住「${def.name}」拖到战场上施放;拖回法术栏松手可取消`);
+        return;
+      }
+      if (!drag.aim) {
+        this.host.setStatus(`已取消「${def.name}」,未消耗能量`);
         return;
       }
       if (!guardCastSpell(sim, id, drag.aim)) {
@@ -3250,12 +3260,91 @@ export class LobbyGuardBattleRenderer {
     slot.on(Node.EventType.TOUCH_CANCEL, (event: EventTouch) => finish(event), this);
   }
 
+  /** UI 坐标是否落在底部法术栏范围内(含上方能量条,四周放宽 24px)——拖回这里松手 = 取消。 */
+  private isOverSpellBar(uiX: number, uiY: number): boolean {
+    const bar = this.root?.getChildByName('GuardSpellBar');
+    const transform = bar?.getComponent(UITransform);
+    if (!bar || !transform) {
+      return false;
+    }
+    const local = transform.convertToNodeSpaceAR(new Vec3(uiX, uiY, 0));
+    return Math.abs(local.x) <= transform.width / 2 + 24 && Math.abs(local.y) <= transform.height / 2 + 24;
+  }
+
+  /**
+   * 拖拽取消提示:拖动开始后法术栏上方出现「拖回这里取消」红圈(指到上面时变亮放大);
+   * 指在无效区域(怪物带之外)时手指旁跟一个「松手取消」小标签。show=false 时全部移除。
+   */
+  private drawSpellCancelHint(show: boolean, overBar: boolean, invalid: boolean, uiX: number, uiY: number): void {
+    const root = this.root;
+    if (!root) {
+      return;
+    }
+    const zone = root.getChildByName('GuardSpellCancelZone');
+    const tag = root.getChildByName('GuardSpellCancelTag');
+    if (!show) {
+      zone?.destroy();
+      tag?.destroy();
+      return;
+    }
+    const bar = root.getChildByName('GuardSpellBar');
+    const barTransform = bar?.getComponent(UITransform);
+    let zoneNode = zone;
+    if (!zoneNode && bar && barTransform) {
+      const zw = barTransform.width + 40;
+      const zh = barTransform.height + 30;
+      zoneNode = this.host.addChildPlainNode(root, 'GuardSpellCancelZone', bar.position.x, bar.position.y + 8, zw, zh);
+      zoneNode.addComponent(Graphics);
+      const label = this.host.addChildLabel(zoneNode, 'Text', '✕ 拖回这里取消', 0, zh / 2 + 16, 18, rgba(255, 190, 180), new Size(zw, 24));
+      label.enableOutline = true;
+      label.outlineColor = rgba(40, 8, 8, 255);
+      label.outlineWidth = 2;
+      label.isBold = true;
+    }
+    if (zoneNode && barTransform) {
+      const zw = barTransform.width + 40;
+      const zh = barTransform.height + 30;
+      const g = zoneNode.getComponent(Graphics);
+      if (g) {
+        g.clear();
+        g.fillColor = overBar ? rgba(180, 30, 30, 110) : rgba(120, 20, 20, 55);
+        g.roundRect(-zw / 2, -zh / 2, zw, zh, 18);
+        g.fill();
+        g.strokeColor = overBar ? rgba(255, 110, 100, 255) : rgba(220, 90, 80, 170);
+        g.lineWidth = overBar ? 3 : 2;
+        g.roundRect(-zw / 2, -zh / 2, zw, zh, 18);
+        g.stroke();
+      }
+      zoneNode.setScale(overBar ? 1.04 : 1, overBar ? 1.04 : 1, 1);
+    }
+    // 手指旁标签:无效区域 / 在取消区上 → 「松手取消」
+    const rootTransform = root.getComponent(UITransform);
+    if (invalid && rootTransform) {
+      const local = rootTransform.convertToNodeSpaceAR(new Vec3(uiX, uiY, 0));
+      let tagNode = tag;
+      if (!tagNode) {
+        tagNode = this.host.addChildPlainNode(root, 'GuardSpellCancelTag', 0, 0, 120, 30);
+        const tg = tagNode.addComponent(Graphics);
+        tg.fillColor = rgba(20, 10, 10, 210);
+        tg.roundRect(-60, -15, 120, 30, 15);
+        tg.fill();
+        tg.strokeColor = rgba(230, 110, 100, 220);
+        tg.lineWidth = 1.5;
+        tg.roundRect(-60, -15, 120, 30, 15);
+        tg.stroke();
+        const text = this.host.addChildLabel(tagNode, 'Text', '松手取消', 0, 0, 16, rgba(255, 200, 190), new Size(110, 24));
+        text.isBold = true;
+      }
+      tagNode.setPosition(local.x + 70, local.y + 46, 0);
+      tagNode.setSiblingIndex(root.children.length - 1);
+    } else {
+      tag?.destroy();
+    }
+  }
+
   /** xToPx 的反函数(战场像素 → 格)。 */
   private pxToX(px: number): number {
-    const width = this.layoutWidth;
-    const heroLeft = -width * 0.44;
-    const heroRight = -width * 0.167;
-    const runwayRight = width * 0.47;
+    const { heroLeft, heroRight, runwayRight } = this.heroZonePx();
     const split = LobbyGuardBattleRenderer.HERO_ZONE_SIM_END;
     if (px <= heroRight) {
       return ((px - heroLeft) / (heroRight - heroLeft)) * split;
