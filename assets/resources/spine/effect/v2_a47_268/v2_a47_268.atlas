@@ -1,0 +1,69 @@
+
+effect_SB_5_ZXD.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+bd
+  rotate: false
+  xy: 104, 2
+  size: 83, 83
+  orig: 83, 83
+  offset: 0, 0
+  index: -1
+ciji1
+  rotate: false
+  xy: 869, 175
+  size: 95, 74
+  orig: 166, 166
+  offset: 4, 63
+  index: -1
+ciji2
+  rotate: false
+  xy: 2, 11
+  size: 100, 74
+  orig: 166, 166
+  offset: 15, 54
+  index: -1
+ciji3
+  rotate: false
+  xy: 162, 87
+  size: 155, 162
+  orig: 166, 166
+  offset: 5, 0
+  index: -1
+ciji4
+  rotate: false
+  xy: 473, 105
+  size: 142, 144
+  orig: 166, 166
+  offset: 13, 6
+  index: -1
+ciji5
+  rotate: false
+  xy: 319, 109
+  size: 152, 140
+  orig: 166, 166
+  offset: 8, 13
+  index: -1
+ciji6
+  rotate: false
+  xy: 2, 87
+  size: 158, 162
+  orig: 166, 166
+  offset: 5, 0
+  index: -1
+ciji7
+  rotate: false
+  xy: 617, 103
+  size: 132, 146
+  orig: 166, 166
+  offset: 21, 3
+  index: -1
+ciji8
+  rotate: false
+  xy: 751, 111
+  size: 116, 138
+  orig: 166, 166
+  offset: 34, 3
+  index: -1

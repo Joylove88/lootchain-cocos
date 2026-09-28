@@ -1,0 +1,111 @@
+
+skeleton.png
+size: 2048, 128
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+shenjiang_shengxing_dian_xunhuan_00
+  rotate: false
+  xy: 2, 2
+  size: 114, 102
+  orig: 200, 200
+  offset: 43, 46
+  index: -1
+shenjiang_shengxing_dian_xunhuan_01
+  rotate: false
+  xy: 350, 4
+  size: 113, 100
+  orig: 200, 200
+  offset: 43, 45
+  index: -1
+shenjiang_shengxing_dian_xunhuan_02
+  rotate: false
+  xy: 1156, 4
+  size: 111, 100
+  orig: 200, 200
+  offset: 44, 44
+  index: -1
+shenjiang_shengxing_dian_xunhuan_03
+  rotate: false
+  xy: 1269, 4
+  size: 111, 100
+  orig: 200, 200
+  offset: 43, 44
+  index: -1
+shenjiang_shengxing_dian_xunhuan_04
+  rotate: false
+  xy: 1382, 3
+  size: 111, 101
+  orig: 200, 200
+  offset: 44, 44
+  index: -1
+shenjiang_shengxing_dian_xunhuan_05
+  rotate: false
+  xy: 1610, 5
+  size: 111, 99
+  orig: 200, 200
+  offset: 44, 45
+  index: -1
+shenjiang_shengxing_dian_xunhuan_06
+  rotate: false
+  xy: 465, 4
+  size: 113, 100
+  orig: 200, 200
+  offset: 44, 45
+  index: -1
+shenjiang_shengxing_dian_xunhuan_07
+  rotate: false
+  xy: 1042, 4
+  size: 112, 100
+  orig: 200, 200
+  offset: 44, 45
+  index: -1
+shenjiang_shengxing_dian_xunhuan_08
+  rotate: false
+  xy: 580, 4
+  size: 113, 100
+  orig: 200, 200
+  offset: 44, 45
+  index: -1
+shenjiang_shengxing_dian_xunhuan_09
+  rotate: false
+  xy: 695, 4
+  size: 113, 100
+  orig: 200, 200
+  offset: 44, 46
+  index: -1
+shenjiang_shengxing_dian_xunhuan_10
+  rotate: false
+  xy: 1495, 6
+  size: 113, 98
+  orig: 200, 200
+  offset: 44, 48
+  index: -1
+shenjiang_shengxing_dian_xunhuan_11
+  rotate: false
+  xy: 810, 5
+  size: 114, 99
+  orig: 200, 200
+  offset: 43, 48
+  index: -1
+shenjiang_shengxing_dian_xunhuan_12
+  rotate: false
+  xy: 118, 4
+  size: 114, 100
+  orig: 200, 200
+  offset: 43, 48
+  index: -1
+shenjiang_shengxing_dian_xunhuan_13
+  rotate: false
+  xy: 234, 4
+  size: 114, 100
+  orig: 200, 200
+  offset: 43, 48
+  index: -1
+shenjiang_shengxing_dian_xunhuan_14
+  rotate: false
+  xy: 926, 5
+  size: 114, 99
+  orig: 200, 200
+  offset: 43, 48
+  index: -1

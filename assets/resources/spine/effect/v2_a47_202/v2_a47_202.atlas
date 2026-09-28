@@ -1,0 +1,146 @@
+
+effect_baize.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+baocis1
+  rotate: false
+  xy: 352, 69
+  size: 51, 48
+  orig: 154, 154
+  offset: 52, 47
+  index: -1
+baocis10
+  rotate: false
+  xy: 2, 19
+  size: 139, 97
+  orig: 154, 154
+  offset: 5, 28
+  index: -1
+baocis2
+  rotate: false
+  xy: 910, 2
+  size: 76, 75
+  orig: 154, 154
+  offset: 38, 37
+  index: -1
+baocis3
+  rotate: false
+  xy: 793, 154
+  size: 96, 98
+  orig: 154, 154
+  offset: 25, 28
+  index: -1
+baocis4
+  rotate: false
+  xy: 545, 131
+  size: 113, 121
+  orig: 154, 154
+  offset: 15, 17
+  index: -1
+baocis5
+  rotate: false
+  xy: 424, 122
+  size: 119, 130
+  orig: 154, 154
+  offset: 10, 14
+  index: -1
+baocis6
+  rotate: false
+  xy: 2, 118
+  size: 140, 134
+  orig: 154, 154
+  offset: 3, 13
+  index: -1
+baocis7
+  rotate: false
+  xy: 291, 119
+  size: 131, 133
+  orig: 154, 154
+  offset: 1, 14
+  index: -1
+baocis8
+  rotate: false
+  xy: 144, 126
+  size: 145, 126
+  orig: 154, 154
+  offset: 0, 19
+  index: -1
+baocis9
+  rotate: false
+  xy: 660, 153
+  size: 131, 99
+  orig: 154, 154
+  offset: 0, 25
+  index: -1
+bd
+  rotate: false
+  xy: 910, 79
+  size: 77, 77
+  orig: 77, 77
+  offset: 0, 0
+  index: -1
+bishua1
+  rotate: false
+  xy: 216, 11
+  size: 45, 35
+  orig: 154, 154
+  offset: 27, 28
+  index: -1
+bishua2
+  rotate: false
+  xy: 290, 59
+  size: 60, 58
+  orig: 154, 154
+  offset: 28, 28
+  index: -1
+bishua3
+  rotate: false
+  xy: 216, 48
+  size: 72, 76
+  orig: 154, 154
+  offset: 28, 28
+  index: -1
+bishua4
+  rotate: false
+  xy: 660, 65
+  size: 83, 86
+  orig: 154, 154
+  offset: 30, 29
+  index: -1
+bishua5
+  rotate: false
+  xy: 745, 64
+  size: 82, 87
+  orig: 154, 154
+  offset: 35, 30
+  index: -1
+bishua6
+  rotate: false
+  xy: 829, 68
+  size: 79, 84
+  orig: 154, 154
+  offset: 40, 34
+  index: -1
+bishua7
+  rotate: false
+  xy: 143, 34
+  size: 71, 82
+  orig: 154, 154
+  offset: 49, 36
+  index: -1
+bishua8
+  rotate: false
+  xy: 263, 7
+  size: 43, 39
+  orig: 154, 154
+  offset: 78, 76
+  index: -1
+gq1
+  rotate: false
+  xy: 891, 158
+  size: 95, 94
+  orig: 154, 154
+  offset: 30, 30
+  index: -1

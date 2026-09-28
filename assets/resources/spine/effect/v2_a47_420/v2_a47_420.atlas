@@ -1,0 +1,90 @@
+
+E54115.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+A_bagua
+  rotate: false
+  xy: 577, 457
+  size: 246, 246
+  orig: 256, 256
+  offset: 5, 5
+  index: -1
+A_fire_zhao_00000
+  rotate: false
+  xy: 289, 447
+  size: 286, 256
+  orig: 355, 355
+  offset: 31, 42
+  index: -1
+A_fire_zhao_00001
+  rotate: false
+  xy: 1149, 708
+  size: 285, 255
+  orig: 355, 355
+  offset: 31, 42
+  index: -1
+A_fire_zhao_00002
+  rotate: false
+  xy: 290, 705
+  size: 285, 258
+  orig: 355, 355
+  offset: 31, 40
+  index: -1
+A_fire_zhao_00003
+  rotate: false
+  xy: 2, 705
+  size: 286, 258
+  orig: 355, 355
+  offset: 30, 39
+  index: -1
+A_fire_zhao_00004
+  rotate: false
+  xy: 2, 184
+  size: 285, 258
+  orig: 355, 355
+  offset: 31, 39
+  index: -1
+A_fire_zhao_00005
+  rotate: false
+  xy: 2, 444
+  size: 285, 259
+  orig: 355, 355
+  offset: 32, 38
+  index: -1
+A_fire_zhao_00006
+  rotate: false
+  xy: 577, 705
+  size: 284, 258
+  orig: 355, 355
+  offset: 32, 40
+  index: -1
+A_fire_zhao_00007
+  rotate: false
+  xy: 863, 706
+  size: 284, 257
+  orig: 355, 355
+  offset: 32, 40
+  index: -1
+A_fire_zhao_00008
+  rotate: false
+  xy: 289, 187
+  size: 284, 258
+  orig: 355, 355
+  offset: 32, 40
+  index: -1
+A_glow_orange_small
+  rotate: false
+  xy: 1436, 912
+  size: 51, 51
+  orig: 64, 64
+  offset: 7, 6
+  index: -1
+A_juji
+  rotate: false
+  xy: 2, 2
+  size: 176, 180
+  orig: 256, 256
+  offset: 32, 32
+  index: -1

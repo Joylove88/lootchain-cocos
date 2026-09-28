@@ -1,0 +1,160 @@
+
+3013.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+boss_skill1/bao_00001
+  rotate: false
+  xy: 693, 167
+  size: 119, 118
+  orig: 201, 202
+  offset: 36, 45
+  index: -1
+boss_skill1/bao_00002
+  rotate: false
+  xy: 769, 8
+  size: 126, 118
+  orig: 201, 202
+  offset: 33, 45
+  index: -1
+boss_skill1/bao_00004
+  rotate: false
+  xy: 1771, 185
+  size: 146, 141
+  orig: 201, 202
+  offset: 26, 29
+  index: -1
+boss_skill1/bao_00005
+  rotate: false
+  xy: 1620, 172
+  size: 149, 154
+  orig: 201, 202
+  offset: 25, 17
+  index: -1
+boss_skill1/bao_00006
+  rotate: false
+  xy: 1319, 162
+  size: 150, 160
+  orig: 201, 202
+  offset: 25, 13
+  index: -1
+boss_skill1/bao_00008
+  rotate: false
+  xy: 533, 121
+  size: 158, 164
+  orig: 201, 202
+  offset: 24, 11
+  index: -1
+boss_skill1/bao_00010
+  rotate: false
+  xy: 1471, 165
+  size: 147, 158
+  orig: 201, 202
+  offset: 27, 12
+  index: -1
+boss_skill1/bao_00011
+  rotate: false
+  xy: 696, 23
+  size: 71, 142
+  orig: 201, 202
+  offset: 53, 23
+  index: -1
+boss_skill1/penhuo_00002
+  rotate: false
+  xy: 533, 2
+  size: 161, 117
+  orig: 373, 293
+  offset: 43, 62
+  index: -1
+boss_skill1/penhuo_00003
+  rotate: false
+  xy: 2, 279
+  size: 307, 222
+  orig: 373, 293
+  offset: 0, 32
+  index: -1
+boss_skill1/penhuo_00004
+  rotate: false
+  xy: 2, 50
+  size: 267, 227
+  orig: 373, 293
+  offset: 28, 30
+  index: -1
+boss_skill1/penhuo_00005
+  rotate: false
+  xy: 311, 287
+  size: 250, 214
+  orig: 373, 293
+  offset: 32, 45
+  index: -1
+boss_skill1/penhuo_00006
+  rotate: false
+  xy: 563, 287
+  size: 250, 214
+  orig: 373, 293
+  offset: 32, 45
+  index: -1
+boss_skill1/penhuo_00007
+  rotate: false
+  xy: 815, 305
+  size: 264, 196
+  orig: 373, 293
+  offset: 25, 62
+  index: -1
+boss_skill1/penhuo_00008
+  rotate: false
+  xy: 1322, 325
+  size: 239, 176
+  orig: 373, 293
+  offset: 45, 72
+  index: -1
+boss_skill1/penhuo_00009
+  rotate: false
+  xy: 1081, 324
+  size: 239, 177
+  orig: 373, 293
+  offset: 40, 61
+  index: -1
+boss_skill1/penhuo_00010
+  rotate: false
+  xy: 815, 128
+  size: 234, 175
+  orig: 373, 293
+  offset: 45, 55
+  index: -1
+boss_skill1/penhuo_00011
+  rotate: false
+  xy: 1081, 151
+  size: 236, 171
+  orig: 373, 293
+  offset: 50, 52
+  index: -1
+boss_skill1/penhuo_00012
+  rotate: false
+  xy: 1563, 328
+  size: 238, 173
+  orig: 373, 293
+  offset: 59, 54
+  index: -1
+boss_skill1/penhuo_00013
+  rotate: false
+  xy: 1803, 328
+  size: 237, 173
+  orig: 373, 293
+  offset: 60, 54
+  index: -1
+boss_skill1/penhuo_00014
+  rotate: false
+  xy: 311, 108
+  size: 220, 177
+  orig: 373, 293
+  offset: 40, 57
+  index: -1
+glow
+  rotate: false
+  xy: 897, 70
+  size: 56, 56
+  orig: 64, 64
+  offset: 3, 4
+  index: -1

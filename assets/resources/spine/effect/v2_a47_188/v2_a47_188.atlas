@@ -1,0 +1,76 @@
+
+xxm_jtboss_bs_sj.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+image/bo1_01
+  rotate: false
+  xy: 806, 405
+  size: 159, 82
+  orig: 178, 100
+  offset: 10, 10
+  index: -1
+image/bo2_01
+  rotate: false
+  xy: 582, 289
+  size: 98, 84
+  orig: 125, 105
+  offset: 16, 7
+  index: -1
+image/bo3_01
+  rotate: false
+  xy: 245, 53
+  size: 100, 117
+  orig: 118, 125
+  offset: 15, 2
+  index: -1
+image/dilie
+  rotate: false
+  xy: 2, 299
+  size: 399, 188
+  orig: 425, 213
+  offset: 15, 16
+  index: -1
+image/guang/dian_bai
+  rotate: false
+  xy: 2, 2
+  size: 39, 39
+  orig: 60, 60
+  offset: 11, 11
+  index: -1
+image/guang/dian_hong
+  rotate: false
+  xy: 967, 455
+  size: 31, 32
+  orig: 60, 60
+  offset: 15, 14
+  index: -1
+image/guang/guang1
+  rotate: false
+  xy: 403, 306
+  size: 177, 181
+  orig: 255, 256
+  offset: 40, 36
+  index: -1
+image/guang/line3
+  rotate: false
+  xy: 582, 375
+  size: 222, 112
+  orig: 254, 188
+  offset: 14, 39
+  index: -1
+image/guang/xin
+  rotate: false
+  xy: 245, 172
+  size: 114, 125
+  orig: 144, 144
+  offset: 19, 12
+  index: -1
+image/yanquan_00
+  rotate: false
+  xy: 2, 43
+  size: 241, 254
+  orig: 256, 256
+  offset: 10, 0
+  index: -1

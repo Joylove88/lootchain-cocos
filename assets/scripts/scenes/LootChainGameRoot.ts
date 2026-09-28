@@ -97,6 +97,8 @@ import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
 import { LobbyGuardCrystalDialogRenderer, type LobbyGuardCrystalDialogHost, type LobbyGuardCrystalDialogState } from './lobby/LobbyGuardCrystalDialogRenderer';
+import { LOBBY_UI_FX } from './lobby/LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx } from './lobby/LobbyUiSpineFx';
 
 /** 购买动效飞行图标数量档(2026-09-22 用户:不同包飞的量不同——少量/中量/大量,宝箱档最多)。 */
 type LobbyShopFlyVolume = 'few' | 'some' | 'many' | 'chest';
@@ -358,6 +360,14 @@ export class LootChainGameRoot extends Component {
   private lobbyShopDialog: LobbyShopDialogState | null = null;
   /** 守卫水晶养成弹窗(docs/38)。 */
   private lobbyGuardCrystalDialog: LobbyGuardCrystalDialogState | null = null;
+  /** 英雄养成成功的一次性庆祝标记(详情页渲染时消费,docs/29 v3)。 */
+  private lobbyHeroCelebration: 'starUp' | 'awaken' | 'levelUp' | null = null;
+
+  private consumeLobbyHeroCelebration(): 'starUp' | 'awaken' | 'levelUp' | null {
+    const value = this.lobbyHeroCelebration;
+    this.lobbyHeroCelebration = null;
+    return value;
+  }
   private readonly lobbyGuardCrystalDialogRenderer = new LobbyGuardCrystalDialogRenderer(this as unknown as LobbyGuardCrystalDialogHost);
   /**
    * 等待回调到账的真实充值单(docs/34;2026-09-24 起同时跟踪全部未付款订单):
@@ -3079,6 +3089,7 @@ export class LootChainGameRoot extends Component {
       const beforePower = this.currentLobbyHeroDetailHero()?.power ?? 0;
       const result = await this.api.hero.levelUp(heroId);
       levelUpPowerDelta = result.power - beforePower;
+      this.lobbyHeroCelebration = 'levelUp';
       const userId = this.currentLobbyProfile().userId;
       await this.loadLobbyProfile(userId);
       await this.loadLobbyHeroRoster(true);
@@ -3258,6 +3269,7 @@ export class LootChainGameRoot extends Component {
       await this.loadLobbyHeroDetail(heroId);
       if (ups > 0) {
         gameAudio.sfx('level_up');
+        this.lobbyHeroCelebration = 'starUp';
         this.setStatus(`${heroName} 升星 +${ups}${lastStar !== null ? `，当前 ${lastStar} 星` : ''}，战力 ${this.formatInteger(lastPower)}${stopReason ? `（已停止：${stopReason}）` : ''}`);
       } else {
         gameAudio.sfx('ui_error');
@@ -5663,6 +5675,15 @@ export class LootChainGameRoot extends Component {
     const icon = kind === 'gold' ? 'ui/bag/ai/icon_gold/spriteFrame' : kind === 'diamond' ? 'ui/bag/ai/icon_diamond/spriteFrame' : 'ui/bag/ai/icon_stamina/spriteFrame';
     const color = kind === 'gold' ? new Color(255, 214, 110, 255) : kind === 'diamond' ? new Color(170, 215, 255, 255) : new Color(140, 230, 255, 255);
     const unit = kind === 'gold' ? '金币' : kind === 'diamond' ? '钻石' : '体力';
+    // ⓪ 起点爆发(docs/29 v3 新批次 UI 特效;没配就跳过)
+    if (LOBBY_UI_FX.rewardClaim) {
+      const claimSpec = LOBBY_UI_FX.rewardClaim;
+      const burstHolder = this.createUiNode('LobbyShopFlyFx');
+      burstHolder.setPosition(new Vec3(start.x, start.y, 0));
+      burstHolder.addComponent(UITransform).setContentSize(new Size(10, 10));
+      mountLobbySpineFx({ addChildPlainNode: (parent, name, x, y, w, h) => this.addChildPlainNode(parent, name, x, y, w, h) }, burstHolder, claimSpec, 0, 0, 260 * claimSpec.size, claimSpec.loop, claimSpec.holdMs);
+      setTimeout(() => { if (burstHolder.isValid) { burstHolder.destroy(); } }, claimSpec.holdMs + 200);
+    }
     // ① 飘字:弹出 → 上浮 → 渐隐(不飞)
     const float = this.createUiNode('LobbyShopFlyFx');
     float.setPosition(new Vec3(start.x, start.y + 30, 0));

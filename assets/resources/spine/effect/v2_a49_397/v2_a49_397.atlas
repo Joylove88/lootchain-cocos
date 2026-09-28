@@ -1,0 +1,341 @@
+
+skeleton.png
+size: 2048, 2048
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+baozha_jin_00
+  rotate: false
+  xy: 1640, 814
+  size: 257, 262
+  orig: 800, 800
+  offset: 267, 266
+  index: -1
+baozha_jin_01
+  rotate: false
+  xy: 1726, 1412
+  size: 278, 293
+  orig: 800, 800
+  offset: 253, 249
+  index: -1
+baozha_jin_02
+  rotate: false
+  xy: 685, 2
+  size: 284, 272
+  orig: 800, 800
+  offset: 254, 263
+  index: -1
+baozha_jin_03
+  rotate: false
+  xy: 1311, 249
+  size: 288, 274
+  orig: 800, 800
+  offset: 254, 259
+  index: -1
+baozha_jin_04
+  rotate: false
+  xy: 1014, 110
+  size: 273, 262
+  orig: 800, 800
+  offset: 260, 265
+  index: -1
+baozha_jin_05
+  rotate: false
+  xy: 1819, 1816
+  size: 223, 230
+  orig: 800, 800
+  offset: 286, 282
+  index: -1
+baozha_jin_07
+  rotate: false
+  xy: 1844, 223
+  size: 171, 170
+  orig: 800, 800
+  offset: 313, 315
+  index: -1
+baozha_jin_08
+  rotate: false
+  xy: 424, 839
+  size: 160, 152
+  orig: 800, 800
+  offset: 315, 325
+  index: -1
+baozha_jin_09
+  rotate: false
+  xy: 1726, 1213
+  size: 239, 197
+  orig: 800, 800
+  offset: 280, 311
+  index: -1
+baozha_jin_10
+  rotate: false
+  xy: 1315, 525
+  size: 300, 266
+  orig: 800, 800
+  offset: 249, 274
+  index: -1
+baozha_jin_11
+  rotate: false
+  xy: 482, 993
+  size: 360, 320
+  orig: 800, 800
+  offset: 219, 247
+  index: -1
+baozha_jin_12
+  rotate: false
+  xy: 2, 835
+  size: 420, 372
+  orig: 800, 800
+  offset: 189, 223
+  index: -1
+baozha_jin_13
+  rotate: false
+  xy: 2, 1626
+  size: 480, 420
+  orig: 800, 800
+  offset: 159, 200
+  index: -1
+baozha_jin_14
+  rotate: false
+  xy: 2, 1209
+  size: 478, 415
+  orig: 800, 800
+  offset: 160, 198
+  index: -1
+baozha_jin_15
+  rotate: false
+  xy: 484, 1644
+  size: 473, 402
+  orig: 800, 800
+  offset: 163, 195
+  index: -1
+baozha_jin_16
+  rotate: false
+  xy: 2, 430
+  size: 366, 403
+  orig: 800, 800
+  offset: 233, 195
+  index: -1
+baozha_jin_17
+  rotate: false
+  xy: 2, 27
+  size: 368, 401
+  orig: 800, 800
+  offset: 232, 196
+  index: -1
+baozha_jin_18
+  rotate: false
+  xy: 370, 433
+  size: 309, 400
+  orig: 800, 800
+  offset: 231, 197
+  index: -1
+baozha_jin_19
+  rotate: false
+  xy: 372, 35
+  size: 311, 396
+  orig: 800, 800
+  offset: 230, 200
+  index: -1
+baozha_jin_20
+  rotate: false
+  xy: 681, 605
+  size: 308, 386
+  orig: 800, 800
+  offset: 233, 210
+  index: -1
+baozha_jin_21
+  rotate: false
+  xy: 1601, 183
+  size: 241, 210
+  orig: 800, 800
+  offset: 264, 300
+  index: -1
+baozha_jin_23
+  rotate: false
+  xy: 1617, 395
+  size: 242, 207
+  orig: 800, 800
+  offset: 259, 305
+  index: -1
+baozha_lan_01
+  rotate: false
+  xy: 1777, 8
+  size: 210, 173
+  orig: 800, 800
+  offset: 294, 323
+  index: -1
+baozha_lan_02
+  rotate: false
+  xy: 1640, 604
+  size: 252, 208
+  orig: 800, 800
+  offset: 273, 307
+  index: -1
+baozha_lan_03
+  rotate: false
+  xy: 1014, 374
+  size: 295, 291
+  orig: 800, 800
+  offset: 251, 255
+  index: -1
+baozha_lan_04
+  rotate: false
+  xy: 1390, 1397
+  size: 334, 308
+  orig: 800, 800
+  offset: 232, 248
+  index: -1
+baozha_lan_05
+  rotate: false
+  xy: 1384, 1078
+  size: 334, 317
+  orig: 800, 800
+  offset: 232, 243
+  index: -1
+baozha_lan_06
+  rotate: false
+  xy: 844, 994
+  size: 333, 319
+  orig: 800, 800
+  offset: 232, 241
+  index: -1
+baozha_lan_09
+  rotate: false
+  xy: 1819, 1730
+  size: 99, 84
+  orig: 800, 800
+  offset: 317, 384
+  index: -1
+baozha_zi_00
+  rotate: false
+  xy: 1560, 4
+  size: 215, 177
+  orig: 800, 800
+  offset: 292, 319
+  index: -1
+baozha_zi_01
+  rotate: false
+  xy: 1289, 13
+  size: 269, 234
+  orig: 800, 800
+  offset: 265, 289
+  index: -1
+baozha_zi_02
+  rotate: false
+  xy: 1315, 793
+  size: 323, 283
+  orig: 800, 800
+  offset: 238, 263
+  index: -1
+baozha_zi_03
+  rotate: false
+  xy: 484, 1315
+  size: 377, 327
+  orig: 800, 800
+  offset: 211, 241
+  index: -1
+baozha_zi_04
+  rotate: false
+  xy: 959, 1695
+  size: 429, 351
+  orig: 800, 800
+  offset: 185, 239
+  index: -1
+baozha_zi_05
+  rotate: false
+  xy: 1390, 1707
+  size: 427, 339
+  orig: 800, 800
+  offset: 186, 243
+  index: -1
+baozha_zi_06
+  rotate: false
+  xy: 959, 1365
+  size: 423, 328
+  orig: 800, 800
+  offset: 188, 244
+  index: -1
+baozha_zi_07
+  rotate: false
+  xy: 685, 276
+  size: 327, 327
+  orig: 800, 800
+  offset: 251, 244
+  index: -1
+baozha_zi_08
+  rotate: false
+  xy: 991, 667
+  size: 322, 325
+  orig: 800, 800
+  offset: 254, 245
+  index: -1
+baozha_zi_09
+  rotate: false
+  xy: 1179, 1165
+  size: 185, 198
+  orig: 800, 800
+  offset: 295, 302
+  index: -1
+baozha_zi_10
+  rotate: false
+  xy: 1861, 407
+  size: 165, 195
+  orig: 800, 800
+  offset: 318, 302
+  index: -1
+
+skeleton_2.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+baozha_jin_06
+  rotate: false
+  xy: 704, 2
+  size: 204, 207
+  orig: 800, 800
+  offset: 297, 299
+  index: -1
+baozha_jin_22
+  rotate: false
+  xy: 242, 15
+  size: 230, 194
+  orig: 800, 800
+  offset: 268, 310
+  index: -1
+baozha_jin_24
+  rotate: false
+  xy: 2, 11
+  size: 238, 198
+  orig: 800, 800
+  offset: 259, 312
+  index: -1
+baozha_jin_25
+  rotate: false
+  xy: 474, 22
+  size: 228, 187
+  orig: 800, 800
+  offset: 264, 325
+  index: -1
+baozha_lan_00
+  rotate: false
+  xy: 1228, 72
+  size: 167, 137
+  orig: 800, 800
+  offset: 316, 339
+  index: -1
+baozha_lan_07
+  rotate: false
+  xy: 910, 44
+  size: 159, 165
+  orig: 800, 800
+  offset: 314, 320
+  index: -1
+baozha_lan_08
+  rotate: false
+  xy: 1071, 54
+  size: 155, 155
+  orig: 800, 800
+  offset: 315, 324
+  index: -1

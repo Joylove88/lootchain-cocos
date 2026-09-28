@@ -1,0 +1,286 @@
+
+skeleton.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+pic/eff/xiaolongnv_skill_b_sub_19
+  rotate: false
+  xy: 1558, 560
+  size: 192, 88
+  orig: 313, 568
+  offset: 102, 121
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_20
+  rotate: false
+  xy: 1807, 593
+  size: 215, 106
+  orig: 313, 568
+  offset: 95, 105
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_21
+  rotate: false
+  xy: 1810, 701
+  size: 225, 118
+  orig: 313, 568
+  offset: 88, 99
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_22
+  rotate: false
+  xy: 1810, 821
+  size: 228, 133
+  orig: 313, 568
+  offset: 85, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_23
+  rotate: false
+  xy: 1296, 499
+  size: 241, 145
+  orig: 313, 568
+  offset: 72, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_24
+  rotate: false
+  xy: 1052, 800
+  size: 251, 154
+  orig: 313, 568
+  offset: 62, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_25
+  rotate: false
+  xy: 530, 796
+  size: 258, 158
+  orig: 313, 568
+  offset: 55, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_40
+  rotate: false
+  xy: 530, 796
+  size: 258, 158
+  orig: 313, 568
+  offset: 55, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_26
+  rotate: false
+  xy: 267, 796
+  size: 261, 158
+  orig: 313, 568
+  offset: 52, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_41
+  rotate: false
+  xy: 267, 796
+  size: 261, 158
+  orig: 313, 568
+  offset: 52, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_27
+  rotate: false
+  xy: 2, 479
+  size: 262, 157
+  orig: 313, 568
+  offset: 51, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_42
+  rotate: false
+  xy: 2, 479
+  size: 262, 157
+  orig: 313, 568
+  offset: 51, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_28
+  rotate: false
+  xy: 2, 797
+  size: 263, 157
+  orig: 313, 568
+  offset: 50, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_43
+  rotate: false
+  xy: 2, 797
+  size: 263, 157
+  orig: 313, 568
+  offset: 50, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_29
+  rotate: false
+  xy: 2, 638
+  size: 263, 157
+  orig: 313, 568
+  offset: 50, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_44
+  rotate: false
+  xy: 2, 638
+  size: 263, 157
+  orig: 313, 568
+  offset: 50, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_30
+  rotate: false
+  xy: 267, 638
+  size: 261, 156
+  orig: 313, 568
+  offset: 52, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_45
+  rotate: false
+  xy: 267, 638
+  size: 261, 156
+  orig: 313, 568
+  offset: 52, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_31
+  rotate: false
+  xy: 790, 647
+  size: 255, 153
+  orig: 313, 568
+  offset: 58, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_46
+  rotate: false
+  xy: 790, 647
+  size: 255, 153
+  orig: 313, 568
+  offset: 58, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_32
+  rotate: false
+  xy: 1557, 803
+  size: 251, 151
+  orig: 313, 568
+  offset: 62, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_47
+  rotate: false
+  xy: 1557, 803
+  size: 251, 151
+  orig: 313, 568
+  offset: 62, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_33
+  rotate: false
+  xy: 1047, 503
+  size: 247, 150
+  orig: 313, 568
+  offset: 66, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_48
+  rotate: false
+  xy: 1047, 503
+  size: 247, 150
+  orig: 313, 568
+  offset: 66, 94
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_34
+  rotate: false
+  xy: 1558, 650
+  size: 247, 151
+  orig: 313, 568
+  offset: 66, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_49
+  rotate: false
+  xy: 1558, 650
+  size: 247, 151
+  orig: 313, 568
+  offset: 66, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_35
+  rotate: false
+  xy: 1307, 646
+  size: 249, 152
+  orig: 313, 568
+  offset: 64, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_50
+  rotate: false
+  xy: 1307, 646
+  size: 249, 152
+  orig: 313, 568
+  offset: 64, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_36
+  rotate: false
+  xy: 1305, 800
+  size: 250, 154
+  orig: 313, 568
+  offset: 63, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_51
+  rotate: false
+  xy: 1305, 800
+  size: 250, 154
+  orig: 313, 568
+  offset: 63, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_37
+  rotate: false
+  xy: 2, 2
+  size: 252, 156
+  orig: 313, 568
+  offset: 61, 91
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_52
+  rotate: false
+  xy: 2, 2
+  size: 252, 156
+  orig: 313, 568
+  offset: 61, 91
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_38
+  rotate: false
+  xy: 2, 160
+  size: 254, 157
+  orig: 313, 568
+  offset: 59, 91
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_39
+  rotate: false
+  xy: 2, 319
+  size: 256, 158
+  orig: 313, 568
+  offset: 57, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_53
+  rotate: false
+  xy: 260, 320
+  size: 254, 157
+  orig: 313, 568
+  offset: 59, 92
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_54
+  rotate: false
+  xy: 266, 479
+  size: 256, 157
+  orig: 313, 568
+  offset: 57, 93
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_55
+  rotate: false
+  xy: 530, 639
+  size: 258, 155
+  orig: 313, 568
+  offset: 55, 95
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_56
+  rotate: false
+  xy: 790, 802
+  size: 260, 152
+  orig: 313, 568
+  offset: 53, 97
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_57
+  rotate: false
+  xy: 1047, 655
+  size: 258, 143
+  orig: 313, 568
+  offset: 55, 104
+  index: -1
+pic/eff/xiaolongnv_skill_b_sub_58
+  rotate: false
+  xy: 790, 525
+  size: 250, 120
+  orig: 313, 568
+  offset: 63, 116
+  index: -1

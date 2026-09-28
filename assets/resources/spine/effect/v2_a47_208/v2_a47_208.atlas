@@ -1,0 +1,104 @@
+
+effect_change.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+baodianyue1
+  rotate: false
+  xy: 2, 2
+  size: 140, 74
+  orig: 154, 154
+  offset: 9, 38
+  index: -1
+baodianyue10
+  rotate: false
+  xy: 931, 93
+  size: 147, 139
+  orig: 154, 154
+  offset: 7, 11
+  index: -1
+baodianyue11
+  rotate: false
+  xy: 1234, 99
+  size: 146, 133
+  orig: 154, 154
+  offset: 8, 11
+  index: -1
+baodianyue12
+  rotate: false
+  xy: 1382, 108
+  size: 143, 124
+  orig: 154, 154
+  offset: 11, 13
+  index: -1
+baodianyue13
+  rotate: false
+  xy: 1527, 113
+  size: 132, 119
+  orig: 154, 154
+  offset: 22, 13
+  index: -1
+baodianyue2
+  rotate: false
+  xy: 1798, 133
+  size: 132, 99
+  orig: 154, 154
+  offset: 15, 13
+  index: -1
+baodianyue3
+  rotate: false
+  xy: 1661, 122
+  size: 135, 110
+  orig: 154, 154
+  offset: 13, 2
+  index: -1
+baodianyue4
+  rotate: false
+  xy: 1080, 103
+  size: 152, 129
+  orig: 154, 154
+  offset: 0, 0
+  index: -1
+baodianyue5
+  rotate: false
+  xy: 775, 97
+  size: 154, 135
+  orig: 154, 154
+  offset: 0, 4
+  index: -1
+baodianyue6
+  rotate: false
+  xy: 158, 83
+  size: 152, 149
+  orig: 154, 154
+  offset: 1, 5
+  index: -1
+baodianyue7
+  rotate: false
+  xy: 622, 88
+  size: 151, 144
+  orig: 154, 154
+  offset: 2, 10
+  index: -1
+baodianyue8
+  rotate: false
+  xy: 468, 89
+  size: 152, 143
+  orig: 154, 154
+  offset: 2, 11
+  index: -1
+baodianyue9
+  rotate: false
+  xy: 312, 89
+  size: 154, 143
+  orig: 154, 154
+  offset: 0, 11
+  index: -1
+yhrbd2
+  rotate: false
+  xy: 2, 78
+  size: 154, 154
+  orig: 154, 154
+  offset: 0, 0
+  index: -1

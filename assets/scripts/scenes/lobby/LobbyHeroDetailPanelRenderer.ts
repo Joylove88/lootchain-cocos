@@ -18,6 +18,8 @@ import {
   UITransform,
   Vec3,
 } from 'cc';
+import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
@@ -189,6 +191,8 @@ function formatAwakenAmount(value: number): string {
 export interface LobbyHeroDetailPanelHost {
   node: Node;
   currentLobbyHeroDetailHero(): LobbyHeroItemVO | null;
+  /** 刚完成的养成动作(升星 / 觉醒 / 升级),渲染层播一次庆祝特效后即清空(docs/29 v3)。 */
+  consumeLobbyHeroCelebration?(): 'starUp' | 'awaken' | 'levelUp' | null;
   currentLobbyHeroDetailInfo?(): import('../../types/HeroTypes').UserHeroDetailVO | null;
   currentLobbyProfile(): PlayerLobbyProfileVO;
   currentLobbyBagState(): LobbyBagPanelState;
@@ -1423,6 +1427,7 @@ export class LobbyHeroDetailPanelRenderer {
       stash.node.setPosition(x, y, 0);
       this.artStageNode = stash.node;
       this.artStageKey = key;
+      this.mountHeroCelebrationFx(parent, x, y, height);
       return;
     }
     this.dropArtStageStash();
@@ -1437,6 +1442,18 @@ export class LobbyHeroDetailPanelRenderer {
 
     const fallbackPortrait = this.renderStaticHeroPortrait(stage, hero, width, height, scale);
     this.renderHeroSpinePreview(stage, hero, fallbackPortrait, width, height, scale);
+    this.mountHeroCelebrationFx(parent, x, y, height);
+  }
+
+  /** 升星 / 觉醒 / 升级成功后的一次性庆祝特效(docs/29 v3):立绘舞台复用暂存节点时也要播,所以挂在舞台旁的独立节点上。 */
+  private mountHeroCelebrationFx(parent: Node, x: number, y: number, height: number): void {
+    const celebration = this.host.consumeLobbyHeroCelebration?.() ?? null;
+    const celebrateSpec = celebration === 'levelUp' ? LOBBY_UI_FX.heroLevelUp : celebration ? LOBBY_UI_FX.heroStarUp : null;
+    if (!celebrateSpec) {
+      return;
+    }
+    const fxHolder = this.host.addChildPlainNode(parent, 'LobbyHeroDetailCelebrateFx', x, y - height * 0.08, 10, 10);
+    mountLobbySpineFx(this.host, fxHolder, celebrateSpec, 0, 0, height * celebrateSpec.size, celebrateSpec.loop, celebrateSpec.holdMs);
   }
 
   private renderStaticHeroPortrait(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): Node {

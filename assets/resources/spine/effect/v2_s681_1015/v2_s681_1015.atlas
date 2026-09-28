@@ -1,0 +1,264 @@
+
+HeroF_1015_skill.png
+size: 2044,2044
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+fx/baodian
+  rotate: true
+  xy: 684, 1777
+  size: 167, 220
+  orig: 256, 256
+  offset: 75, 24
+  index: -1
+fx/baodian1/baodian_1_01
+  rotate: false
+  xy: 1336, 1732
+  size: 214, 189
+  orig: 256, 256
+  offset: 36, 28
+  index: -1
+fx/baodian1/baodian_1_02
+  rotate: false
+  xy: 1786, 1681
+  size: 238, 236
+  orig: 256, 256
+  offset: 18, 14
+  index: -1
+fx/baodian1/baodian_1_03
+  rotate: true
+  xy: 269, 1540
+  size: 247, 250
+  orig: 256, 256
+  offset: 9, 5
+  index: -1
+fx/baodian1/baodian_1_04
+  rotate: true
+  xy: 521, 1527
+  size: 248, 251
+  orig: 256, 256
+  offset: 8, 4
+  index: -1
+fx/baodian1/baodian_1_05
+  rotate: true
+  xy: 1552, 1700
+  size: 217, 232
+  orig: 256, 256
+  offset: 18, 10
+  index: -1
+fx/baodian1/baodian_1_06
+  rotate: true
+  xy: 470, 1789
+  size: 165, 212
+  orig: 256, 256
+  offset: 30, 16
+  index: -1
+fx/canying
+  rotate: false
+  xy: 2, 817
+  size: 553, 369
+  orig: 555, 372
+  offset: 1, 2
+  index: -1
+fx/canying_2
+  rotate: false
+  xy: 752, 1106
+  size: 547, 361
+  orig: 555, 372
+  offset: 8, 4
+  index: -1
+fx/daoguang_00
+  rotate: true
+  xy: 1140, 1743
+  size: 178, 194
+  orig: 229, 228
+  offset: 36, 27
+  index: -1
+fx/glow1
+  rotate: true
+  xy: 1402, 603
+  size: 426, 429
+  orig: 512, 512
+  offset: 43, 41
+  index: -1
+fx/line
+  rotate: false
+  xy: 2, 2000
+  size: 129, 42
+  orig: 256, 128
+  offset: 64, 43
+  index: -1
+fx/mask_42_00
+  rotate: true
+  xy: 906, 1771
+  size: 173, 232
+  orig: 256, 256
+  offset: 37, 13
+  index: -1
+fx/shuiche_27
+  rotate: false
+  xy: 1369, 155
+  size: 451, 446
+  orig: 512, 512
+  offset: 31, 33
+  index: -1
+fx/shuiche_27_00
+  rotate: false
+  xy: 924, 195
+  size: 443, 442
+  orig: 512, 512
+  offset: 33, 35
+  index: -1
+fx/shuiche_27_01
+  rotate: true
+  xy: 482, 290
+  size: 437, 440
+  orig: 512, 512
+  offset: 38, 35
+  index: -1
+fx/shuiche_27_02
+  rotate: false
+  xy: 1716, 1356
+  size: 326, 323
+  orig: 512, 512
+  offset: 97, 101
+  index: -1
+fx/shuiche_4_55
+  rotate: false
+  xy: 2, 383
+  size: 478, 432
+  orig: 512, 512
+  offset: 17, 61
+  index: -1
+fx/shuihua/shuihua_04
+  rotate: false
+  xy: 2, 1597
+  size: 265, 223
+  orig: 512, 512
+  offset: 145, 152
+  index: -1
+fx/shuihua/shuihua_05
+  rotate: false
+  xy: 1037, 1469
+  size: 313, 261
+  orig: 512, 512
+  offset: 125, 137
+  index: -1
+fx/shuihua/shuihua_06
+  rotate: false
+  xy: 1352, 1397
+  size: 362, 301
+  orig: 512, 512
+  offset: 100, 117
+  index: -1
+fx/shuihua/shuihua_07
+  rotate: false
+  xy: 345, 1188
+  size: 405, 337
+  orig: 512, 512
+  offset: 77, 97
+  index: -1
+fx/shuihua/shuihua_08
+  rotate: false
+  xy: 557, 729
+  size: 437, 375
+  orig: 512, 512
+  offset: 58, 76
+  index: -1
+fx/shuihua/shuihua_09
+  rotate: true
+  xy: 996, 639
+  size: 390, 404
+  orig: 512, 512
+  offset: 42, 59
+  index: -1
+fx/shuihua/shuihua_10
+  rotate: false
+  xy: 1301, 1031
+  size: 372, 364
+  orig: 512, 512
+  offset: 31, 86
+  index: -1
+fx/shuihua/shuihua_11
+  rotate: false
+  xy: 2, 1218
+  size: 341, 320
+  orig: 512, 512
+  offset: 38, 89
+  index: -1
+fx/smk-043tz
+  rotate: false
+  xy: 222, 1956
+  size: 474, 86
+  orig: 484, 95
+  offset: 1, 7
+  index: -1
+fx/suishi_0020
+  rotate: false
+  xy: 774, 1513
+  size: 261, 256
+  orig: 512, 512
+  offset: 105, 120
+  index: -1
+fx/yanchen01_000
+  rotate: false
+  xy: 1165, 1923
+  size: 445, 119
+  orig: 512, 188
+  offset: 59, 6
+  index: -1
+fx/yanchen01_001
+  rotate: false
+  xy: 698, 1946
+  size: 465, 96
+  orig: 512, 188
+  offset: 39, 6
+  index: -1
+fx/yanchen01_002
+  rotate: false
+  xy: 2, 1822
+  size: 466, 132
+  orig: 512, 188
+  offset: 39, 6
+  index: -1
+fx/yanchen01_003
+  rotate: false
+  xy: 1612, 1919
+  size: 418, 123
+  orig: 512, 188
+  offset: 91, 6
+  index: -1
+fx/yanwu-di_01
+  rotate: false
+  xy: 133, 1980
+  size: 87, 62
+  orig: 100, 100
+  offset: 13, 16
+  index: -1
+
+HeroF_1015_skill2.png
+size: 2044,2044
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+fx/liuliuwu_0000
+  rotate: false
+  xy: 2, 1653
+  size: 2040, 389
+  orig: 2040, 389
+  offset: 0, 0
+  index: -1
+fx/shuiche_2_27
+  rotate: true
+  xy: 492, 1165
+  size: 486, 492
+  orig: 512, 512
+  offset: 10, 10
+  index: -1
+fx/shuiche_3_41
+  rotate: true
+  xy: 2, 1171
+  size: 480, 488
+  orig: 512, 512
+  offset: 17, 10
+  index: -1

@@ -1,0 +1,139 @@
+
+HeroF_4004_skill.png
+size: 876,876
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+FX/07/kuosan_0001
+  rotate: true
+  xy: 2, 153
+  size: 207, 68
+  orig: 300, 150
+  offset: 21, 16
+  index: -1
+FX/07/kuosan_0002
+  rotate: false
+  xy: 516, 765
+  size: 191, 109
+  orig: 300, 150
+  offset: 37, 14
+  index: -1
+FX/07/kuosan_0003
+  rotate: true
+  xy: 574, 171
+  size: 173, 120
+  orig: 300, 150
+  offset: 53, 12
+  index: -1
+FX/07/kuosan_0004
+  rotate: true
+  xy: 717, 33
+  size: 183, 126
+  orig: 300, 150
+  offset: 47, 14
+  index: -1
+FX/07/kuosan_0005
+  rotate: true
+  xy: 444, 167
+  size: 193, 128
+  orig: 300, 150
+  offset: 43, 17
+  index: -1
+FX/07/kuosan_0006
+  rotate: true
+  xy: 184, 162
+  size: 198, 127
+  orig: 300, 150
+  offset: 39, 19
+  index: -1
+FX/07/kuosan_0007
+  rotate: true
+  xy: 313, 163
+  size: 197, 129
+  orig: 300, 150
+  offset: 36, 19
+  index: -1
+FX/07/kuosan_0008
+  rotate: true
+  xy: 72, 155
+  size: 205, 110
+  orig: 300, 150
+  offset: 32, 37
+  index: -1
+FX/Q2/0
+  rotate: true
+  xy: 361, 26
+  size: 135, 176
+  orig: 148, 191
+  offset: 7, 9
+  index: -1
+FX/Q2/1
+  rotate: false
+  xy: 717, 699
+  size: 133, 175
+  orig: 148, 191
+  offset: 8, 9
+  index: -1
+FX/Q2/2
+  rotate: true
+  xy: 2, 13
+  size: 138, 177
+  orig: 148, 191
+  offset: 3, 9
+  index: -1
+FX/Q2/3
+  rotate: true
+  xy: 181, 17
+  size: 136, 178
+  orig: 148, 191
+  offset: 4, 9
+  index: -1
+FX/Q2/4
+  rotate: false
+  xy: 574, 587
+  size: 130, 176
+  orig: 148, 191
+  offset: 8, 10
+  index: -1
+FX/Q2/5
+  rotate: true
+  xy: 696, 218
+  size: 126, 178
+  orig: 148, 191
+  offset: 8, 9
+  index: -1
+FX/Q2/6
+  rotate: false
+  xy: 574, 408
+  size: 127, 177
+  orig: 148, 191
+  offset: 8, 9
+  index: -1
+FX/Q2/7
+  rotate: false
+  xy: 717, 346
+  size: 127, 174
+  orig: 148, 191
+  offset: 8, 9
+  index: -1
+FX/Q2/8
+  rotate: false
+  xy: 717, 522
+  size: 128, 175
+  orig: 148, 191
+  offset: 8, 9
+  index: -1
+FX/Q2/9
+  rotate: true
+  xy: 539, 32
+  size: 133, 176
+  orig: 148, 191
+  offset: 7, 9
+  index: -1
+FX/fx_xi
+  rotate: false
+  xy: 2, 362
+  size: 512, 512
+  orig: 512, 512
+  offset: 0, 0
+  index: -1

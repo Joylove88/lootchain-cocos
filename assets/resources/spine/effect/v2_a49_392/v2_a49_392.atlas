@@ -1,0 +1,55 @@
+
+skeleton.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+ui_xinguaji_guai_siwang_00
+  rotate: false
+  xy: 644, 2
+  size: 187, 226
+  orig: 290, 256
+  offset: 49, 14
+  index: -1
+ui_xinguaji_guai_siwang_01
+  rotate: false
+  xy: 221, 24
+  size: 211, 204
+  orig: 290, 256
+  offset: 37, 23
+  index: -1
+ui_xinguaji_guai_siwang_02
+  rotate: false
+  xy: 2, 24
+  size: 217, 204
+  orig: 290, 256
+  offset: 34, 23
+  index: -1
+ui_xinguaji_guai_siwang_03
+  rotate: false
+  xy: 434, 42
+  size: 208, 186
+  orig: 290, 256
+  offset: 38, 40
+  index: -1
+ui_xinguaji_guai_siwang_04
+  rotate: false
+  xy: 833, 71
+  size: 198, 157
+  orig: 290, 256
+  offset: 37, 62
+  index: -1
+ui_xinguaji_guai_siwang_05
+  rotate: false
+  xy: 1033, 93
+  size: 169, 135
+  orig: 290, 256
+  offset: 51, 74
+  index: -1
+ui_xinguaji_guai_siwang_06
+  rotate: false
+  xy: 1204, 114
+  size: 98, 114
+  orig: 290, 256
+  offset: 114, 89
+  index: -1

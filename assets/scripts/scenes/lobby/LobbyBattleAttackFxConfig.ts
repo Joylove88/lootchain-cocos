@@ -188,17 +188,86 @@ export const GUARD_SUPPORT_FX = {
   crystalHealSmall: { effect: 'fx_45014_shengqishi_skill', animation: 'Skill', size: 1.8 },
 } as const;
 
+// ── 水晶法术特效(docs/29 v3,2026-09-27 用户:"战斗场景中的法术技能也要在通用技能里找合适的用")──
+// 此前法术全是贴图缩放/旋转拼的;现在每个法术一套骨骼特效。anchor:crystal=水晶处 / point=落点 / heroes=每个友军脚下(循环 buff)。
+// 一次性的 holdMs 内播完自毁;loop=true 的挂到独立容器,ms 到期整容器销毁(冰封 3s / 壁垒 4s / 号角 6s 与 sim 时长一致)。
+export interface GuardSpellFxSpec {
+  effect: string;
+  animation: string;
+  /** 最长边 = unitSize × size。 */
+  size: number;
+  anchor: 'crystal' | 'point' | 'heroes';
+  /** 一次性:播放时长(毫秒);循环:整容器存活时长。 */
+  holdMs: number;
+  loop?: boolean;
+  /** 相对锚点的 Y 偏移(unitSize 倍率;贴地光环用负值)。 */
+  offsetY?: number;
+  /** 相对锚点的 X 偏移(unitSize 倍率;水晶贴着屏幕左缘,水晶处的大号特效整体右移才不出屏)。 */
+  offsetX?: number;
+}
+// 素材 = fx_pack_v2 新批次(2026-09-28 多智能体目视选型 + 本人复核;短编号 v2_<包>_<号>,溯源见 docs/29 v3):
+// 震荡=蓝白强光炸开 + 冰晶尖刺 + 地面电光裂纹环(A47-340);冰封=浅蓝冰晶簇从地面隆起(A47-447,循环 2 遍盖满 3s);
+// 天雷=紫蓝雷柱从天而降落点炸开(S576-022);金矿爆发=金色光环炸开(A47-343);壁垒=金色符文法阵 + 光柱升起(A49-206,循环);
+// 号角=每人脚下橙红火焰椭圆环(A47-376,循环)+ 水晶处火焰半球爆发(S576-040)。
+export const GUARD_SPELL_FX: Record<'quake' | 'frost' | 'thunder' | 'goldrush' | 'aegis' | 'warhorn', GuardSpellFxSpec> = {
+  quake: { effect: 'v2_a47_340', animation: 'action', size: 4.2, anchor: 'crystal', holdMs: 800, offsetY: 1.1, offsetX: 1.8 },
+  frost: { effect: 'v2_a47_447', animation: 'action2', size: 3.8, anchor: 'point', holdMs: 3000, loop: true, offsetY: 0.1 },
+  thunder: { effect: 'v2_s576_022', animation: 'E705_Special_SkillUltra_sd', size: 3.8, anchor: 'point', holdMs: 900, offsetY: 0.3 },
+  goldrush: { effect: 'v2_a47_343', animation: 'action2', size: 3.0, anchor: 'crystal', holdMs: 900, offsetY: 1.0, offsetX: 1.4 },
+  aegis: { effect: 'v2_a49_206', animation: 'action', size: 2.8, anchor: 'crystal', holdMs: 4000, loop: true, offsetY: 0.6, offsetX: 1.5 },
+  warhorn: { effect: 'v2_a47_376', animation: 'action2', size: 1.5, anchor: 'heroes', holdMs: 6000, loop: true, offsetY: -0.42 },
+};
+/** 号角吹响时水晶处的一次性爆发(与每人脚下的循环 buff 分开,便于就绪表按 effect 键唯一)。 */
+export const GUARD_WARHORN_BURST_FX = { effect: 'v2_s576_040', animation: 'E803_Special_SkillUltra2_sj_Up', size: 3.2 };
+
+// ── 大厅「守卫水晶」弹窗(docs/29 v3,2026-09-27 用户:"水晶背后旋转的特效和底部的蓝色圆圈换一下")──
+// 背景光效循环挂在立绘后面、法阵循环贴在台座位置;升级成功一次性爆发;法术装备保存时格位闪光。尺寸 = 立绘高 × size。
+// 素材:背景=蓝紫星云旋涡循环(A49-212);台座=蓝色透视漩涡光环循环(A49-448);升级=蓝金星芒炸开(A49-373);装备闪光=金色四芒星(A49-089)。
+export const LOBBY_CRYSTAL_FX = {
+  aura: { effect: 'v2_a49_212', animation: 'action', size: 1.9, loop: true },
+  pedestal: { effect: 'v2_a49_448', animation: 'idle', size: 1.0, loop: true },
+  upgradeBurst: { effect: 'v2_a49_373', animation: 'idle1', size: 1.5, loop: false, holdMs: 1000 },
+  equipFlash: { effect: 'v2_a49_089', animation: 'animation', size: 1.0, loop: false, holdMs: 650 },
+} as const;
+
+// ── 大厅其它 UI 特效位(docs/29 v3,2026-09-27 用户:"整个游戏系统中需要的 UI 特效的,可以在 UI 特效中找最合适的")──
+// null = 该位置暂不放;尺寸 = 目标尺寸 × size。
+export interface LobbyUiFxSpec { effect: string; animation: string; size: number; loop: boolean; holdMs: number }
+export const LOBBY_UI_FX: {
+  /** 召唤结果 UR / SSR 卡翻出时的一次性稀有度爆闪(A49-373 蓝金星芒)。 */
+  gachaRareCard: LobbyUiFxSpec | null;
+  /** 英雄升星 / 觉醒成功:立绘处一次性金色光柱升起(A49-032)。 */
+  heroStarUp: LobbyUiFxSpec | null;
+  /** 英雄升级成功:同挂点青蓝光柱(A49-031),与升星拉开档次。 */
+  heroLevelUp: LobbyUiFxSpec | null;
+  /** 领奖 / 购买到账:飘字起点一次性金色四芒星(A49-089,全编目最轻)。 */
+  rewardClaim: LobbyUiFxSpec | null;
+  /** 守卫战结算胜利标题背后:金色光丝聚拢再炸开(A49-397)。 */
+  victoryTitle: LobbyUiFxSpec | null;
+  /** 大厅「限时副本」入口牌匾背后的金色星芒呼吸光(A49-180,循环)。 */
+  dungeonHotspot: LobbyUiFxSpec | null;
+} = {
+  gachaRareCard: { effect: 'v2_a49_373', animation: 'idle1', size: 1.5, loop: false, holdMs: 1000 },
+  heroStarUp: { effect: 'v2_a49_032', animation: 'shengxing', size: 1.15, loop: false, holdMs: 2600 },
+  heroLevelUp: { effect: 'v2_a49_031', animation: 'shengji', size: 1.1, loop: false, holdMs: 2200 },
+  rewardClaim: { effect: 'v2_a49_089', animation: 'animation', size: 1.0, loop: false, holdMs: 700 },
+  victoryTitle: { effect: 'v2_a49_397', animation: 'idle3', size: 1.0, loop: false, holdMs: 1700 },
+  dungeonHotspot: { effect: 'v2_a49_180', animation: 'action', size: 1.0, loop: true, holdMs: 0 },
+};
+
 // ── 宝箱 / 开箱轮盘(2026-09-27 用户反馈:"宝箱和转盘效果太简单,不够酷炫")──
 // fx_pack 引擎内实拍挑选(scratchpad probe_any_cdp / fx_measure_cdp):同一 effect 只能登记一个动画(就绪表按 effect 键)。
 export const GUARD_CHEST_FX = {
-  /** 场上普通宝箱脚下循环的金色雷纹光环(与辅助光罩同素材同动画,共用就绪项)。 */
-  auraNormal: { effect: 'fx_1602_xiongshilingyu', animation: 'xia', size: 1.6 },
-  /** BOSS 豪华宝箱脚下循环的红色熔岩环(炎鬼领域下层)。 */
-  auraDeluxe: { effect: 'fx_2602_yanguilingyu', animation: 'xia', size: 1.8 },
+  /** 场上普通宝箱脚下循环的金色流光环(A49-455,正面圆环压扁成地面透视)。 */
+  auraNormal: { effect: 'v2_a49_455', animation: 'idle', size: 2.7, squashY: 0.42 },
+  /** BOSS 豪华宝箱脚下循环的红色符文法阵(A47-162,压扁成地面透视)。 */
+  auraDeluxe: { effect: 'v2_a47_162', animation: 'fz', size: 2.9, squashY: 0.42 },
   /** 普通开箱爆发:金色圣环荡开(圣骑士技能,与辅助周期治疗共用就绪项)。 */
   burstNormal: { effect: 'fx_45014_shengqishi_skill', animation: 'Skill', size: 2.4 },
   /** 5 连 / 豪华开箱爆发:金色凤翼光柱冲天(凤凰领域上层,1.1s)。 */
   burstJackpot: { effect: 'fx_5602_fenghuanglingyu', animation: 'shang', size: 3.4 },
+  /** 豪华箱落地橙红爆闪(A49-392,替代 cast_flash 贴图)。 */
+  landFlash: { effect: 'v2_a49_392', animation: 'idle', size: 2.6 },
 } as const;
 
 // ── 远程怪攻击水晶的弹道(2026-09-24 用户反馈:"怪物远程攻击水晶也需要弹道效果")──

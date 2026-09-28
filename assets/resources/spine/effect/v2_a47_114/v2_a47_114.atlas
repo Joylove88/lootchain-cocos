@@ -1,0 +1,69 @@
+
+skeleton.png
+size: 1024, 128
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/eff/taojing_skill_a_12
+  rotate: false
+  xy: 2, 2
+  size: 113, 97
+  orig: 181, 166
+  offset: 35, 41
+  index: -1
+images/eff/taojing_skill_a_13
+  rotate: false
+  xy: 117, 13
+  size: 115, 86
+  orig: 181, 166
+  offset: 30, 35
+  index: -1
+images/eff/taojing_skill_a_14
+  rotate: false
+  xy: 744, 9
+  size: 94, 90
+  orig: 181, 166
+  offset: 42, 34
+  index: -1
+images/eff/taojing_skill_a_15
+  rotate: false
+  xy: 234, 8
+  size: 102, 91
+  orig: 181, 166
+  offset: 36, 34
+  index: -1
+images/eff/taojing_skill_a_16
+  rotate: false
+  xy: 338, 9
+  size: 102, 90
+  orig: 181, 166
+  offset: 36, 35
+  index: -1
+images/eff/taojing_skill_a_17
+  rotate: false
+  xy: 544, 12
+  size: 101, 87
+  orig: 181, 166
+  offset: 38, 40
+  index: -1
+images/eff/taojing_skill_a_18
+  rotate: false
+  xy: 442, 10
+  size: 100, 89
+  orig: 181, 166
+  offset: 38, 38
+  index: -1
+images/eff/taojing_skill_a_19
+  rotate: false
+  xy: 647, 5
+  size: 95, 94
+  orig: 181, 166
+  offset: 42, 37
+  index: -1
+images/eff/taojing_skill_a_20
+  rotate: false
+  xy: 840, 16
+  size: 83, 83
+  orig: 181, 166
+  offset: 44, 36
+  index: -1

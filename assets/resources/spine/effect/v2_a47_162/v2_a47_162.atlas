@@ -1,0 +1,118 @@
+
+xxm_625_bs.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/fazheng
+  rotate: false
+  xy: 376, 227
+  size: 272, 281
+  orig: 354, 340
+  offset: 41, 32
+  index: -1
+images/line_1
+  rotate: false
+  xy: 650, 413
+  size: 254, 95
+  orig: 256, 128
+  offset: 0, 16
+  index: -1
+images/nangua_00
+  rotate: false
+  xy: 2, 47
+  size: 189, 191
+  orig: 211, 200
+  offset: 17, 1
+  index: -1
+images/shaoc_00
+  rotate: false
+  xy: 2, 240
+  size: 372, 268
+  orig: 372, 268
+  offset: 0, 0
+  index: -1
+images/shaog/shaog_00
+  rotate: false
+  xy: 509, 92
+  size: 99, 28
+  orig: 198, 185
+  offset: 19, 145
+  index: -1
+images/shaog/shaog_01
+  rotate: false
+  xy: 2, 2
+  size: 108, 43
+  orig: 198, 185
+  offset: 34, 131
+  index: -1
+images/shaog/shaog_02
+  rotate: false
+  xy: 346, 53
+  size: 161, 65
+  orig: 198, 185
+  offset: 0, 105
+  index: -1
+images/shaog/shaog_03
+  rotate: false
+  xy: 346, 120
+  size: 158, 105
+  orig: 198, 185
+  offset: 19, 62
+  index: -1
+images/shaog/shaog_04
+  rotate: false
+  xy: 193, 69
+  size: 151, 169
+  orig: 198, 185
+  offset: 36, 1
+  index: -1
+images/shaog/shaog_05
+  rotate: false
+  xy: 650, 246
+  size: 122, 165
+  orig: 198, 185
+  offset: 60, 10
+  index: -1
+images/shaog/shaog_06
+  rotate: false
+  xy: 774, 258
+  size: 128, 153
+  orig: 198, 185
+  offset: 57, 17
+  index: -1
+images/shaog/shaog_07
+  rotate: false
+  xy: 906, 387
+  size: 88, 121
+  orig: 198, 185
+  offset: 87, 47
+  index: -1
+images/shaog/shaog_08
+  rotate: false
+  xy: 904, 251
+  size: 66, 134
+  orig: 198, 185
+  offset: 110, 29
+  index: -1
+images/shaog/shaog_09
+  rotate: false
+  xy: 623, 79
+  size: 51, 146
+  orig: 198, 185
+  offset: 128, 2
+  index: -1
+images/shaog/shaog_10
+  rotate: false
+  xy: 676, 116
+  size: 57, 128
+  orig: 198, 185
+  offset: 129, 0
+  index: -1
+images/zheng_g
+  rotate: false
+  xy: 506, 122
+  size: 115, 103
+  orig: 115, 103
+  offset: 0, 0
+  index: -1

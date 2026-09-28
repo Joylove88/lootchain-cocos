@@ -23,6 +23,8 @@ import {
   guardResolveSpellLoadout,
   type GuardSpellId,
 } from './GuardBattleModel';
+import { LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 
 /**
@@ -210,32 +212,30 @@ export class LobbyGuardCrystalDialogRenderer {
     const artH = Math.min(areaH * 0.62, 330 * scale);
     const artW = artH / CRYSTAL_ART.aspect;
     const artY = top - artH / 2 - 16 * scale;
-    const pedestal = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPedestal', x, artY - artH * 0.42, w, artH * 0.4);
-    const pg = pedestal.addComponent(Graphics);
-    pg.fillColor = rgba(60, 140, 220, 42);
-    pg.ellipse(0, 0, w * 0.42, artH * 0.16);
-    pg.fill();
-    pg.strokeColor = rgba(120, 200, 255, 140);
-    pg.lineWidth = 2;
-    pg.ellipse(0, 0, w * 0.42, artH * 0.16);
-    pg.stroke();
-    pg.strokeColor = rgba(120, 200, 255, 70);
-    pg.lineWidth = 1;
-    pg.ellipse(0, 0, w * 0.3, artH * 0.11);
-    pg.stroke();
-    const glow = this.host.addSprite('LobbyGuardCrystalGlow', 'ui/guard/cast_flash/spriteFrame', x, artY - artH * 0.08, artH * 1.15, artH * 1.15, panel);
-    if (glow) {
-      glow.color = rgba(120, 200, 255);
-      glow.node.addComponent(UIOpacity).opacity = 120;
-      tween(glow.node).repeatForever(tween().by(14, { angle: -360 })).start();
+    // 台座法阵 + 背景光效:新批次 UI 骨骼特效(docs/29 v3,2026-09-27 用户"旋转特效和底部蓝圈换一下");未就绪时退回柔和椭圆底光。
+    const pedestalY = artY - artH * 0.42;
+    const pedestalHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPedestal', x, pedestalY, 10, 10);
+    const pedestalMounted = this.mountSpineFx(pedestalHolder, LOBBY_CRYSTAL_FX.pedestal, 0, 0, artH * LOBBY_CRYSTAL_FX.pedestal.size, true, 0);
+    if (!pedestalMounted) {
+      const pg = pedestalHolder.addComponent(Graphics);
+      pg.fillColor = rgba(60, 140, 220, 42);
+      pg.ellipse(0, 0, w * 0.42, artH * 0.16);
+      pg.fill();
     }
+    const auraHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalGlow', x, artY + artH * 0.08, 10, 10);
+    this.mountSpineFx(auraHolder, LOBBY_CRYSTAL_FX.aura, 0, 0, artH * LOBBY_CRYSTAL_FX.aura.size, true, 0);
+    // 显式压到最底(框之后):光效层不能盖住立绘
+    auraHolder.setSiblingIndex(1);
+    pedestalHolder.setSiblingIndex(2);
     const art = this.host.addSprite('LobbyGuardCrystalArt', CRYSTAL_ART.path, x, artY, artW, artH, panel);
     if (art) {
       tween(art.node).repeatForever(tween().to(1.6, { position: new Vec3(x, artY + 6 * scale, 0) }, { easing: 'sineInOut' }).to(1.6, { position: new Vec3(x, artY, 0) }, { easing: 'sineInOut' })).start();
       if (state.flashLevel !== null) {
         art.node.setScale(0.9, 0.9, 1);
         tween(art.node).to(0.18, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'backOut' }).to(0.16, { scale: Vec3.ONE }).start();
-        const burst = this.host.addSprite('LobbyGuardCrystalBurst', 'ui/battle/c1812/effects/hit_burst/spriteFrame', x, artY, artH * 0.9, artH * 0.9, panel);
+        const burstHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalBurstFx', x, artY, 10, 10);
+        const burstMounted = this.mountSpineFx(burstHolder, LOBBY_CRYSTAL_FX.upgradeBurst, 0, 0, artH * LOBBY_CRYSTAL_FX.upgradeBurst.size, false, LOBBY_CRYSTAL_FX.upgradeBurst.holdMs);
+        const burst = burstMounted ? null : this.host.addSprite('LobbyGuardCrystalBurst', 'ui/battle/c1812/effects/hit_burst/spriteFrame', x, artY, artH * 0.9, artH * 0.9, panel);
         if (burst) {
           burst.color = rgba(160, 220, 255);
           burst.node.setScale(0.4, 0.4, 1);
@@ -535,6 +535,10 @@ export class LobbyGuardCrystalDialogRenderer {
       const caption = open ? (id ? GUARD_SPELLS[id].name : '空格位') : `水晶 Lv.${info.nextSlotLevel} 解锁`;
       const cap = this.host.addChildLabel(panel, `LobbyGuardCrystalSocketName_${i}`, caption, sx, socketY - socket / 2 - 12 * scale, FONT.tiny * scale, open ? rgba(236, 224, 196) : rgba(255, 170, 120), new Size(socket + socketGap, 20 * scale));
       cap.overflow = Label.Overflow.SHRINK;
+      if (open && id && state.noticeGood && state.notice.indexOf('已保存') >= 0 && i === target) {
+        const flashHolder = this.host.addChildPlainNode(panel, `LobbyGuardCrystalSocketFlash_${i}`, sx, socketY, 10, 10);
+        this.mountSpineFx(flashHolder, LOBBY_CRYSTAL_FX.equipFlash, 0, 0, socket * 2.2 * LOBBY_CRYSTAL_FX.equipFlash.size, false, LOBBY_CRYSTAL_FX.equipFlash.holdMs);
+      }
       if (open) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => {
@@ -714,6 +718,10 @@ export class LobbyGuardCrystalDialogRenderer {
     } else if (preview) {
       (btn.getComponent(UIOpacity) ?? btn.addComponent(UIOpacity)).opacity = 150;
     }
+  }
+
+  private mountSpineFx(parent: Node, spec: { effect: string; animation: string }, x: number, y: number, sizePx: number, loop: boolean, holdMs: number): boolean {
+    return mountLobbySpineFx(this.host, parent, spec, x, y, sizePx, loop, holdMs) !== null;
   }
 
   private measureLabelHeight(label: Label, width: number): number {

@@ -1,0 +1,62 @@
+
+shengji.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+ef_guang_1
+  rotate: false
+  xy: 545, 155
+  size: 39, 206
+  orig: 46, 251
+  offset: 3, 22
+  index: -1
+ef_guang_2
+  rotate: false
+  xy: 288, 363
+  size: 411, 87
+  orig: 437, 96
+  offset: 21, 5
+  index: -1
+ef_guangzhu_1
+  rotate: false
+  xy: 288, 89
+  size: 71, 272
+  orig: 89, 333
+  offset: 10, 5
+  index: -1
+ef_guangzhu_2
+  rotate: false
+  xy: 2, 94
+  size: 284, 356
+  orig: 291, 404
+  offset: 3, 6
+  index: -1
+ef_hl_1
+  rotate: false
+  xy: 701, 376
+  size: 72, 74
+  orig: 89, 90
+  offset: 9, 7
+  index: -1
+ef_quan
+  rotate: false
+  xy: 361, 206
+  size: 182, 155
+  orig: 192, 192
+  offset: 5, 5
+  index: -1
+ef_xx_a
+  rotate: false
+  xy: 2, 2
+  size: 89, 90
+  orig: 91, 92
+  offset: 1, 1
+  index: -1
+ef_xx_b
+  rotate: false
+  xy: 361, 141
+  size: 63, 63
+  orig: 66, 66
+  offset: 1, 1
+  index: -1

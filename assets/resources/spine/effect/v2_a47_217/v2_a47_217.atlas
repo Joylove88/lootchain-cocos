@@ -1,0 +1,111 @@
+
+effect_debuff.png
+size: 1024, 128
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+jd1
+  rotate: false
+  xy: 90, 29
+  size: 83, 84
+  orig: 154, 154
+  offset: 37, 35
+  index: -1
+jd2
+  rotate: false
+  xy: 260, 28
+  size: 81, 85
+  orig: 154, 154
+  offset: 39, 35
+  index: -1
+jd3
+  rotate: false
+  xy: 343, 30
+  size: 80, 83
+  orig: 154, 154
+  offset: 39, 38
+  index: -1
+jd4
+  rotate: false
+  xy: 585, 35
+  size: 80, 78
+  orig: 154, 154
+  offset: 36, 44
+  index: -1
+jd5
+  rotate: false
+  xy: 505, 31
+  size: 78, 82
+  orig: 154, 154
+  offset: 36, 41
+  index: -1
+jd6
+  rotate: false
+  xy: 425, 27
+  size: 78, 86
+  orig: 154, 154
+  offset: 34, 36
+  index: -1
+jd7
+  rotate: false
+  xy: 175, 29
+  size: 83, 84
+  orig: 154, 154
+  offset: 34, 35
+  index: -1
+jd8
+  rotate: false
+  xy: 2, 30
+  size: 86, 83
+  orig: 154, 154
+  offset: 34, 35
+  index: -1
+xic1
+  rotate: false
+  xy: 761, 71
+  size: 24, 42
+  orig: 154, 154
+  offset: 67, 91
+  index: -1
+xic2
+  rotate: false
+  xy: 667, 15
+  size: 25, 98
+  orig: 154, 154
+  offset: 66, 22
+  index: -1
+xic3
+  rotate: false
+  xy: 694, 17
+  size: 22, 96
+  orig: 154, 154
+  offset: 67, 18
+  index: -1
+xic4
+  rotate: false
+  xy: 718, 27
+  size: 21, 86
+  orig: 154, 154
+  offset: 68, 18
+  index: -1
+xic5
+  rotate: false
+  xy: 741, 50
+  size: 18, 63
+  orig: 154, 154
+  offset: 70, 17
+  index: -1
+xic6
+  rotate: false
+  xy: 2, 2
+  size: 15, 26
+  orig: 154, 154
+  offset: 71, 18
+  index: -1
+xic7
+  rotate: false
+  xy: 787, 90
+  size: 11, 23
+  orig: 154, 154
+  offset: 73, 19
+  index: -1

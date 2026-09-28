@@ -22,6 +22,8 @@ import {
   AudioSource,
   tween,
 } from 'cc';
+import { LOBBY_UI_FX } from '../lobby/LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx } from '../lobby/LobbyUiSpineFx';
 import { C1812_BUTTON_DISABLED_ASSET, C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, C1812_POPUP_FRAME_PARCHMENT_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
@@ -2058,6 +2060,11 @@ export class GachaSceneRenderer {
       graphics.fillColor = rgba(255, 213, 111, 26);
       graphics.rect(-width * 0.47, height * 0.04, width * 0.94, height * 0.42);
       graphics.fill();
+    }
+    if ((item.rarity === 'UR' || item.rarity === 'SSR') && LOBBY_UI_FX.gachaRareCard) {
+      const rareSpec = LOBBY_UI_FX.gachaRareCard;
+      const glowHolder = this.host.addChildPlainNode(node, 'GachaResultCardRareFx', 0, 0, 10, 10);
+      mountLobbySpineFx(this.host, glowHolder, rareSpec, 0, 0, height * rareSpec.size, rareSpec.loop, rareSpec.holdMs);
     }
     const frameArt = this.host.addSprite('GachaResultCardFrame', GACHA_RESULT_FRAME_ASSETS[frameColor], 0, 0, width, height, node);
     if (!frameArt) {

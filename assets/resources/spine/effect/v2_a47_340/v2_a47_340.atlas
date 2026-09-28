@@ -1,0 +1,76 @@
+
+E54044.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+zhadi_00
+  rotate: false
+  xy: 712, 2
+  size: 354, 238
+  orig: 409, 343
+  offset: 25, 14
+  index: -1
+zhadi_02
+  rotate: false
+  xy: 712, 242
+  size: 352, 268
+  orig: 409, 343
+  offset: 25, 14
+  index: -1
+zhadi_04
+  rotate: false
+  xy: 356, 227
+  size: 354, 283
+  orig: 409, 343
+  offset: 25, 13
+  index: -1
+zhadi_06
+  rotate: false
+  xy: 2, 218
+  size: 352, 292
+  orig: 409, 343
+  offset: 25, 14
+  index: -1
+zhadi_08
+  rotate: false
+  xy: 1066, 243
+  size: 352, 267
+  orig: 409, 343
+  offset: 25, 14
+  index: -1
+zhadi_10
+  rotate: false
+  xy: 1068, 53
+  size: 352, 188
+  orig: 409, 343
+  offset: 25, 14
+  index: -1
+zhadi_12
+  rotate: false
+  xy: 2, 13
+  size: 352, 203
+  orig: 409, 343
+  offset: 25, 14
+  index: -1
+zhadi_14
+  rotate: false
+  xy: 1420, 295
+  size: 353, 215
+  orig: 409, 343
+  offset: 24, 14
+  index: -1
+zhadi_16
+  rotate: false
+  xy: 356, 31
+  size: 347, 194
+  orig: 409, 343
+  offset: 29, 15
+  index: -1
+zhadi_18
+  rotate: false
+  xy: 1422, 154
+  size: 331, 139
+  orig: 409, 343
+  offset: 36, 18
+  index: -1

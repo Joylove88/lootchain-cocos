@@ -1,0 +1,97 @@
+
+effect_baihu.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+hu2
+  rotate: false
+  xy: 1163, 151
+  size: 160, 96
+  orig: 205, 205
+  offset: 21, 69
+  index: -1
+zhuabo1
+  rotate: false
+  xy: 974, 77
+  size: 187, 170
+  orig: 205, 205
+  offset: 18, 35
+  index: -1
+zhuabo2
+  rotate: false
+  xy: 2, 62
+  size: 205, 185
+  orig: 205, 205
+  offset: 0, 20
+  index: -1
+zhuabo3
+  rotate: false
+  xy: 406, 62
+  size: 188, 185
+  orig: 205, 205
+  offset: 17, 20
+  index: -1
+zhuabo4
+  rotate: false
+  xy: 596, 49
+  size: 187, 198
+  orig: 205, 205
+  offset: 18, 7
+  index: -1
+zhuabo5
+  rotate: false
+  xy: 209, 62
+  size: 195, 185
+  orig: 205, 205
+  offset: 10, 20
+  index: -1
+zhuabo6
+  rotate: false
+  xy: 785, 53
+  size: 187, 194
+  orig: 205, 205
+  offset: 18, 11
+  index: -1
+zhuaci2
+  rotate: false
+  xy: 1325, 119
+  size: 57, 128
+  orig: 205, 205
+  offset: 102, 56
+  index: -1
+zhuaci3
+  rotate: false
+  xy: 1384, 107
+  size: 54, 140
+  orig: 205, 205
+  offset: 108, 38
+  index: -1
+zhuaci4
+  rotate: false
+  xy: 1440, 124
+  size: 56, 123
+  orig: 205, 205
+  offset: 104, 27
+  index: -1
+zhuaci5
+  rotate: false
+  xy: 1498, 127
+  size: 57, 120
+  orig: 205, 205
+  offset: 102, 24
+  index: -1
+zhuaci6
+  rotate: false
+  xy: 1557, 130
+  size: 55, 117
+  orig: 205, 205
+  offset: 101, 20
+  index: -1
+zhuaci7
+  rotate: false
+  xy: 2, 2
+  size: 52, 58
+  orig: 205, 205
+  offset: 101, 20
+  index: -1

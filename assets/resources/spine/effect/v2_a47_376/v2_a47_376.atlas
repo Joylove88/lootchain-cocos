@@ -1,0 +1,125 @@
+
+E54087.png
+size: 1024, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+A_glow_orange_half
+  rotate: false
+  xy: 304, 191
+  size: 108, 63
+  orig: 128, 75
+  offset: 10, 1
+  index: -1
+A_heibai_uv_00000
+  rotate: false
+  xy: 570, 304
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00001
+  rotate: false
+  xy: 699, 434
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00002
+  rotate: false
+  xy: 414, 199
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00003
+  rotate: false
+  xy: 699, 377
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00004
+  rotate: false
+  xy: 786, 434
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00005
+  rotate: false
+  xy: 786, 377
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00006
+  rotate: false
+  xy: 873, 434
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00007
+  rotate: false
+  xy: 873, 377
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00008
+  rotate: false
+  xy: 180, 2
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00009
+  rotate: false
+  xy: 570, 247
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_heibai_uv_00010
+  rotate: false
+  xy: 699, 320
+  size: 85, 55
+  orig: 85, 55
+  offset: 0, 0
+  index: -1
+A_huoquan
+  rotate: false
+  xy: 2, 189
+  size: 300, 300
+  orig: 300, 300
+  offset: 0, 0
+  index: -1
+A_huoquan2
+  rotate: false
+  xy: 180, 59
+  size: 90, 128
+  orig: 128, 128
+  offset: 19, 0
+  index: -1
+A_huoquan_ban
+  rotate: false
+  xy: 304, 256
+  size: 264, 233
+  orig: 269, 239
+  offset: 1, 6
+  index: -1
+A_juji
+  rotate: false
+  xy: 2, 7
+  size: 176, 180
+  orig: 256, 256
+  offset: 32, 32
+  index: -1
+A_wave
+  rotate: false
+  xy: 570, 361
+  size: 127, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1

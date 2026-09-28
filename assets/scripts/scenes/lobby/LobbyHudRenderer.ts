@@ -40,6 +40,8 @@ import { gameAudio } from '../../audio/GameAudio';
 import { lobbyGuide } from '../../guide/GuideManager';
 import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
+import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
@@ -320,6 +322,12 @@ export class LobbyHudRenderer {
       layer.setSiblingIndex(layer.parent.children.length - 1);
     }
     const srcLocal = layerTf.convertToNodeSpaceAR(src.worldPosition.clone());
+    if (LOBBY_UI_FX.rewardClaim) {
+      // docs/29 v3:领取按钮处一次性金色四芒星(与商店到账同素材,全编目最轻)
+      const claimFx = LOBBY_UI_FX.rewardClaim;
+      const claimHolder = this.addChildPlainNode(layer, 'LobbyClaimFx', srcLocal.x, srcLocal.y, 10, 10);
+      mountLobbySpineFx({ addChildPlainNode: (p, n, fx, fy, fw, fh) => this.addChildPlainNode(p, n, fx, fy, fw, fh) }, claimHolder, claimFx, 0, 0, 240 * claimFx.size, claimFx.loop, claimFx.holdMs);
+    }
     const dstLocal = layerTf.convertToNodeSpaceAR(dst.worldPosition.clone());
     const coinCount = 14;
     let arrived = 0;
@@ -1328,6 +1336,15 @@ export class LobbyHudRenderer {
     scale: number,
   ): void {
     const node = this.addChildPlainNode(parent, `LobbyActivityItem_${icon}`, x, y, width, height);
+    if (icon === 'event' && LOBBY_UI_FX.dungeonHotspot) {
+      // docs/29 v3:「限时副本」入口卡背后金色星芒呼吸光(循环,压在卡面之下,半透明)
+      const entryFx = LOBBY_UI_FX.dungeonHotspot;
+      const fxHolder = this.addChildPlainNode(node, 'LobbyActivityFx', -width * 0.28, 0, 10, 10);
+      const fxNode = mountLobbySpineFx({ addChildPlainNode: (p, n, fx, fy, fw, fh) => this.addChildPlainNode(p, n, fx, fy, fw, fh) }, fxHolder, entryFx, 0, 0, height * 2.6 * entryFx.size, entryFx.loop, entryFx.holdMs);
+      if (fxNode) {
+        (fxNode.getComponent(UIOpacity) ?? fxNode.addComponent(UIOpacity)).opacity = 140;
+      }
+    }
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => {
       if (icon === 'event') {

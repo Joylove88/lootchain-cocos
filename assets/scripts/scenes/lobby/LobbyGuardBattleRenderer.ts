@@ -119,8 +119,9 @@ import {
   resolveBattleUnitSpineSkinName,
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
-import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SUPPORT_FX, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx } from './LobbyUiSpineFx';
+import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -1992,11 +1993,14 @@ export class LobbyGuardBattleRenderer {
           if (target && awakened) {
             this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone });
           } else if (target && caster) {
-            // 战技:一颗技能弹 + 落点冲击环;灼烧区没有专属特效本体,改画一圈余烬细环标出范围。
-            this.spawnSkillBolt(caster.cell, target);
-            this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 190, 120), false);
-            if (skillZone && skillZone.kind === 'burn') {
-              this.plainBurnZones.add(skillZone.zoneId);
+            // 战技(docs/29 v3):通用战技骨骼特效(近战横扫 / 远程灼烧区本体 / 控制旋风本体),被限流时回退技能弹 + 冲击环。
+            const skillSpec = resolveHeroGuardSkillEffect(event.heroCode, caster.role);
+            const played = this.spawnGuardSkillFx(event.heroCode, caster.cell, target, { monsterIds: event.monsterIds, zone: skillZone, spec: skillSpec });
+            if (!played) {
+              this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 190, 120), false);
+              if (skillZone && skillZone.kind === 'burn') {
+                this.plainBurnZones.add(skillZone.zoneId);
+              }
             }
           }
         }
@@ -2254,34 +2258,13 @@ export class LobbyGuardBattleRenderer {
       const hot = deluxe ? rgba(255, 140, 80) : rgba(255, 214, 110);
       const node = this.host.addChildPlainNode(field, `GuardChest_${chest.chestId}`, px, py, size, size);
       // 骨骼光环容器(最底层;落地后再生成,避免箱子还在半空光环已经贴地)
-      this.host.addChildPlainNode(node, 'GuardChestAura', 0, -size * 0.1, 10, 10);
+      this.host.addChildPlainNode(node, 'GuardChestAura', 0, -size * 0.34, 10, 10);
       // 地面投影:让箱子"落在地上"而不是贴在地上
       const shadowG = this.host.addChildPlainNode(node, 'GuardChestShadow', 0, -size * 0.42, size, size * 0.3).addComponent(Graphics);
       shadowG.fillColor = rgba(0, 0, 0, 110);
       shadowG.ellipse(0, 0, size * 0.42, size * 0.12);
       shadowG.fill();
-      // 旋转光芒(cast_flash 金色星芒 12s 一圈,呼吸缩放;豪华箱叠一层反向红光)
-      const ray = this.mountSprite(node, 'GuardChestRay', 'ui/guard/cast_flash/spriteFrame', 0, -size * 0.06, size * 1.9, size * 1.9, hot);
-      ray.addComponent(UIOpacity).opacity = deluxe ? 135 : 105;
-      tween(ray).repeatForever(tween().by(deluxe ? 8 : 12, { angle: -360 })).start();
-      tween(ray)
-        .repeatForever(tween().to(1.4, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'sineInOut' }).to(1.4, { scale: new Vec3(0.95, 0.95, 1) }, { easing: 'sineInOut' }))
-        .start();
-      if (deluxe) {
-        const ray2 = this.mountSprite(node, 'GuardChestRay2', 'ui/guard/cast_flash/spriteFrame', 0, -size * 0.06, size * 1.5, size * 1.5, rgba(255, 90, 60));
-        ray2.addComponent(UIOpacity).opacity = 110;
-        ray2.angle = 22;
-        tween(ray2).repeatForever(tween().by(10, { angle: 360 })).start();
-      }
-      // 脚下光晕:只留柔和实心圆呼吸(2026-09-27 用户验收:外圈金色描边环显得生硬,去掉)
-      const glow = this.host.addChildPlainNode(node, 'GuardChestGlow', 0, -size * 0.06, size, size);
-      const glowG = glow.addComponent(Graphics);
-      glowG.fillColor = deluxe ? rgba(255, 120, 70, 64) : rgba(255, 214, 110, 48);
-      glowG.circle(0, 0, size * 0.5);
-      glowG.fill();
-      const glowOpacity = glow.addComponent(UIOpacity);
-      tween(glow).repeatForever(tween().to(0.6, { scale: new Vec3(1.16, 1.16, 1) }).to(0.6, { scale: Vec3.ONE })).start();
-      tween(glowOpacity).repeatForever(tween().to(0.6, { opacity: 150 }).to(0.6, { opacity: 255 })).start();
+      // 2026-09-27 用户验收"背后旋转的特效换掉":cast_flash 星芒与程序圆底光全部去掉,宝箱的光只来自 GuardChestAura 里的骨骼光环(新批次 UI 特效)。
       // 箱体:上下浮动 + 每 3s 抖一下锁 + 锁口小闪
       const img = this.mountSprite(node, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, size, size);
       tween(img)
@@ -2391,12 +2374,7 @@ export class LobbyGuardBattleRenderer {
           tween(sparkOpacity).to(0.4, { opacity: 0 }).call(() => { if (spark.isValid) { spark.destroy(); } }).start();
         }
         if (deluxe) {
-          const flash = this.mountSprite(field, 'GuardChestLandFlash', 'ui/guard/cast_flash/spriteFrame', px, py, size * 2.2, size * 2.2, rgba(255, 120, 70));
-          flash.setSiblingIndex(field.children.length - 1);
-          const flashOpacity = flash.addComponent(UIOpacity);
-          flashOpacity.opacity = 200;
-          tween(flash).to(0.5, { scale: new Vec3(1.4, 1.4, 1), angle: 30 }, { easing: 'quadOut' }).start();
-          tween(flashOpacity).to(0.5, { opacity: 0 }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
+          this.spawnSpineBurstFx(GUARD_CHEST_FX.landFlash, px, py, size / this.unitSize(), 500, true);
         }
       })
       .to(0.09, { scale: new Vec3(1.18, 0.84, 1) })
@@ -3290,6 +3268,22 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 法术表现(sim 已结算,这里只演)。 */
+  /** 循环型法术(冰封 / 壁垒):挂到独立容器循环播放,holdMs 后整容器销毁;未就绪返回 false 走贴图回退。 */
+  private spawnSpellLoopFx(spec: GuardSpellFxSpec, px: number, py: number): boolean {
+    const field = this.fieldNode;
+    if (!field) {
+      return false;
+    }
+    const holder = this.host.addChildPlainNode(field, 'GuardSpellLoopFx', px, py, 10, 10);
+    holder.setSiblingIndex(field.children.length - 1);
+    if (!this.spawnOverlaySpineFx(holder, spec, 0, 0, this.unitSize() * spec.size, 0, true)) {
+      holder.destroy();
+      return false;
+    }
+    setTimeout(() => { if (holder.isValid) { holder.destroy(); } }, spec.holdMs);
+    return true;
+  }
+
   private playSpellFx(id: GuardSpellId, x: number | null, lane: number, amount: number, hitIds: number[]): void {
     const field = this.fieldNode;
     const sim = this.sim;
@@ -3302,6 +3296,15 @@ export class LobbyGuardBattleRenderer {
     const crystal = field.getChildByName('GuardCrystal');
     const crystalX = crystal ? crystal.position.x : this.xToPx(0);
     const crystalY = crystal ? crystal.position.y : this.walkwayY();
+    const spineAt = (spec: GuardSpellFxSpec, px: number, py: number): boolean => {
+      const oy = (spec.offsetY ?? 0) * unit;
+      const ox = (spec.offsetX ?? 0) * unit;
+      if (spec.loop) {
+        return this.spawnSpellLoopFx(spec, px + ox, py + oy);
+      }
+      // spawnSpineBurstFx 的 sizePx = unitSize × spec.size × scale,这里 scale 传 1(此前误传 spec.size 被平方,天雷放大到 6000px 出屏)。
+      return this.spawnSpineBurstFx(spec, px + ox, py + oy, 1, spec.holdMs, true);
+    };
     const flashAt = (px: number, py: number, path: string, size: number, color: Color, sec: number, spin = 0): Node => {
       const node = this.mountSprite(field, 'GuardSpellFx', path, px, py, size, size, color);
       node.setSiblingIndex(field.children.length - 1);
@@ -3314,7 +3317,9 @@ export class LobbyGuardBattleRenderer {
     if (id === 'quake') {
       gameAudio.sfx('wheel_stop');
       this.shakeField(12);
-      flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 4, rgba(140, 210, 255), 0.8, 40);
+      if (!spineAt(GUARD_SPELL_FX.quake, crystalX, crystalY)) {
+        flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 4, rgba(140, 210, 255), 0.8, 40);
+      }
       const wave = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/c1812/effects/hit_ring/spriteFrame', crystalX, crystalY, unit, unit, rgba(150, 220, 255));
       wave.setSiblingIndex(field.children.length - 1);
       const waveOp = wave.addComponent(UIOpacity);
@@ -3326,46 +3331,63 @@ export class LobbyGuardBattleRenderer {
       const py = (this.monsterY(0, x) + this.monsterY(1, x)) / 2;
       if (id === 'frost') {
         gameAudio.sfx('wheel_tick');
-        const band = flashAt(px, py, 'ui/guard/fx_wind_zone/spriteFrame', unit * 3.4, rgba(170, 225, 255), 1.6, -90);
-        band.setScale(0.4, 0.25, 1);
-        tween(band).to(0.3, { scale: new Vec3(1, 0.6, 1) }, { easing: 'quadOut' }).start();
+        if (!spineAt(GUARD_SPELL_FX.frost, px, py)) {
+          const band = flashAt(px, py, 'ui/guard/fx_wind_zone/spriteFrame', unit * 3.4, rgba(170, 225, 255), 1.6, -90);
+          band.setScale(0.4, 0.25, 1);
+          tween(band).to(0.3, { scale: new Vec3(1, 0.6, 1) }, { easing: 'quadOut' }).start();
+        }
         this.spawnFloater(px, py + unit * 1.1, hitIds.length > 0 ? `冰封 ×${hitIds.length}` : '冰封', rgba(170, 225, 255), 20);
       } else {
         gameAudio.sfx('chest_land');
         this.shakeField(8);
-        const bolt = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/attack/atk_abyss_rift/spriteFrame', px, py + unit * 2.4, unit * 4.6, unit * 1.6, rgba(220, 235, 255));
-        bolt.setSiblingIndex(field.children.length - 1);
-        bolt.angle = -62;
-        const boltOp = bolt.addComponent(UIOpacity);
-        tween(boltOp).to(0.08, { opacity: 255 }).delay(0.2).to(0.25, { opacity: 0 }).call(() => { if (bolt.isValid) { bolt.destroy(); } }).start();
-        flashAt(px, py, 'ui/battle/c1812/effects/hit_burst/spriteFrame', unit * 2.6, rgba(210, 230, 255), 0.5);
-        flashAt(px, py, 'ui/battle/c1812/effects/hit_ring/spriteFrame', unit * 3, rgba(255, 230, 140), 0.6);
+        if (!spineAt(GUARD_SPELL_FX.thunder, px, py)) {
+          const bolt = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/attack/atk_abyss_rift/spriteFrame', px, py + unit * 2.4, unit * 4.6, unit * 1.6, rgba(220, 235, 255));
+          bolt.setSiblingIndex(field.children.length - 1);
+          bolt.angle = -62;
+          const boltOp = bolt.addComponent(UIOpacity);
+          tween(boltOp).to(0.08, { opacity: 255 }).delay(0.2).to(0.25, { opacity: 0 }).call(() => { if (bolt.isValid) { bolt.destroy(); } }).start();
+          flashAt(px, py, 'ui/battle/c1812/effects/hit_burst/spriteFrame', unit * 2.6, rgba(210, 230, 255), 0.5);
+          flashAt(px, py, 'ui/battle/c1812/effects/hit_ring/spriteFrame', unit * 3, rgba(255, 230, 140), 0.6);
+        }
         this.spawnFloater(px, py + unit * 1.2, `天雷 -${amount}`, rgba(255, 230, 140), 22);
       }
       void lane;
     } else if (id === 'goldrush') {
       gameAudio.sfx('coin_shower');
-      flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 3, rgba(255, 214, 110), 0.7, 30);
+      if (!spineAt(GUARD_SPELL_FX.goldrush, crystalX, crystalY)) {
+        flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 3, rgba(255, 214, 110), 0.7, 30);
+      }
       for (let i = 0; i < 8; i += 1) {
         this.spawnGoldCoin(crystalX + (i - 3.5) * 14, crystalY + unit * 0.4);
       }
       this.spawnFloater(crystalX + unit, crystalY + unit * 1.3, `金矿爆发 +${amount} 金币`, rgba(255, 214, 92), 22);
     } else if (id === 'aegis') {
       gameAudio.sfx('reward_claim');
-      const shield = this.mountSprite(field, 'GuardAegisShield', 'ui/battle/attack/atk_atlas_shieldwave/spriteFrame', crystalX, crystalY + unit * 0.3, unit * 3.2, unit * 3.2, rgba(255, 236, 170));
-      shield.setSiblingIndex(field.children.length - 1);
-      const shieldOp = shield.addComponent(UIOpacity);
-      shieldOp.opacity = 0;
-      tween(shieldOp).to(0.2, { opacity: 220 }).repeat(Math.max(1, Math.floor(GUARD_SPELL_AEGIS_MS / 800)), tween().to(0.4, { opacity: 140 }).to(0.4, { opacity: 220 })).to(0.3, { opacity: 0 }).call(() => { if (shield.isValid) { shield.destroy(); } }).start();
-      tween(shield).by(GUARD_SPELL_AEGIS_MS / 1000 + 0.5, { angle: 120 }).start();
+      if (!spineAt(GUARD_SPELL_FX.aegis, crystalX, crystalY)) {
+        const shield = this.mountSprite(field, 'GuardAegisShield', 'ui/battle/attack/atk_atlas_shieldwave/spriteFrame', crystalX, crystalY + unit * 0.3, unit * 3.2, unit * 3.2, rgba(255, 236, 170));
+        shield.setSiblingIndex(field.children.length - 1);
+        const shieldOp = shield.addComponent(UIOpacity);
+        shieldOp.opacity = 0;
+        tween(shieldOp).to(0.2, { opacity: 220 }).repeat(Math.max(1, Math.floor(GUARD_SPELL_AEGIS_MS / 800)), tween().to(0.4, { opacity: 140 }).to(0.4, { opacity: 220 })).to(0.3, { opacity: 0 }).call(() => { if (shield.isValid) { shield.destroy(); } }).start();
+        tween(shield).by(GUARD_SPELL_AEGIS_MS / 1000 + 0.5, { angle: 120 }).start();
+      }
       this.spawnFloater(crystalX + unit, crystalY + unit * 1.4, amount > 0 ? `圣光壁垒 +${amount}` : '圣光壁垒', rgba(255, 236, 170), 22);
     } else if (id === 'warhorn') {
       gameAudio.sfx('level_up');
+      this.spawnSpineBurstFx(GUARD_WARHORN_BURST_FX, crystalX + unit * 1.5, crystalY + unit * 1.0, 1, 800, true);
       for (const hero of sim.heroes) {
         const view = this.heroViews.get(hero.unitId);
         if (!view || !view.node.isValid) {
           continue;
         }
+        const hornSpec = GUARD_SPELL_FX.warhorn;
+        const hornHolder = this.host.addChildPlainNode(view.node, 'GuardWarhornFx', 0, (hornSpec.offsetY ?? 0) * unit, 10, 10);
+        hornHolder.setSiblingIndex(0);
+        if (this.spawnOverlaySpineFx(hornHolder, hornSpec, 0, 0, unit * hornSpec.size, 0, true)) {
+          setTimeout(() => { if (hornHolder.isValid) { hornHolder.destroy(); } }, hornSpec.holdMs);
+          continue;
+        }
+        hornHolder.destroy();
         const ring = this.host.addChildPlainNode(view.node, 'GuardWarhornRing', 0, -unit * 0.42, 10, 10);
         ring.setSiblingIndex(0);
         const rg = ring.addComponent(Graphics);
@@ -5629,7 +5651,7 @@ export class LobbyGuardBattleRenderer {
    * 挂到任意父节点的骨骼特效(宝箱光环 / 开箱爆发):按目标像素等比缩放、按实测包围盒居中,不占场上命中特效配额;
    * loop=true 随父节点销毁,否则 holdMs 后自毁。未就绪时补预热并返回 false(调用方静默跳过,贴图层已足够)。
    */
-  private spawnOverlaySpineFx(parent: Node, spec: { effect: string; animation: string; size: number }, x: number, y: number, sizePx: number, holdMs: number, loop: boolean): boolean {
+  private spawnOverlaySpineFx(parent: Node, spec: { effect: string; animation: string; size: number; squashY?: number }, x: number, y: number, sizePx: number, holdMs: number, loop: boolean): boolean {
     if (!parent.isValid) {
       return false;
     }
@@ -5639,8 +5661,9 @@ export class LobbyGuardBattleRenderer {
       return false;
     }
     const fit = sizePx / Math.max(ready.w, ready.h);
-    const node = this.host.addChildPlainNode(parent, 'GuardOverlaySpineFx', x - ready.cx * fit, y - ready.cy * fit, 10, 10);
-    node.setScale(fit, fit, 1);
+    const squash = spec.squashY ?? 1;
+    const node = this.host.addChildPlainNode(parent, 'GuardOverlaySpineFx', x - ready.cx * fit, y - ready.cy * fit * squash, 10, 10);
+    node.setScale(fit, fit * squash, 1);
     const skeleton = node.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
     skeleton.skeletonData = ready.data;
@@ -5795,6 +5818,25 @@ export class LobbyGuardBattleRenderer {
     // BOSS 蓄力法阵 / 灭世轰击 / 技能弹道与爆点(车轮战开局 6s 就上 BOSS,开局统一预热)。
     for (const spec of Object.values(GUARD_BOSS_FX)) {
       this.prewarmAttackSpineFx(spec);
+    }
+    // 水晶法术(六件全预热,体量小;首放不缺帧)/ 号角爆发 / 宝箱光环与落地闪(docs/29 v3)。
+    for (const spec of Object.values(GUARD_SPELL_FX)) {
+      this.prewarmAttackSpineFx(spec);
+    }
+    this.prewarmAttackSpineFx(GUARD_WARHORN_BURST_FX);
+    for (const spec of Object.values(GUARD_CHEST_FX)) {
+      this.prewarmAttackSpineFx(spec);
+    }
+    // 战技 / 专属大招骨骼数据按阵容池预热(共享缓存,首放不等加载)。
+    const skillSeen = new Set<string>();
+    for (const entry of pool) {
+      const ally = this.snapshot?.allies[entry.sourceIndex] ?? null;
+      for (const spec of [resolveHeroGuardSkillEffect(entry.heroCode, entry.role), resolveHeroUltEffect(entry.heroCode, ally?.heroClass ?? null)]) {
+        if (!skillSeen.has(spec.effect)) {
+          skillSeen.add(spec.effect);
+          loadSharedSpineData(resolveBattleSkillEffectResource(spec), null, 'GuardSkillFx', () => { /* 仅预热缓存 */ });
+        }
+      }
     }
     // 远程怪三种皮肤的弹道(shooter 从第 3 波起才出,开局预热来得及)。
     for (const spec of guardMonsterProjectileFxSpecs()) {
@@ -6436,29 +6478,30 @@ export class LobbyGuardBattleRenderer {
 
   // ── 技能击特效(2026-08-25 用户拍板):束状=从英雄身前沿攻击方向延伸、锁定怪物方向;爆点=贴在目标身上;
   //    目标死亡自动转向最近存活怪(guardFxAimers 逐帧驱动)。──
-  private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster, group?: { monsterIds?: number[]; zone?: GuardZone | null }): void {
+  /** 返回 false = 被限流只放了保底技能弹(调用方可补冲击环等轻量表现)。group.spec 指定特效(战技),缺省取专属大招。 */
+  private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster, group?: { monsterIds?: number[]; zone?: GuardZone | null; spec?: BattleSkillEffectSpec }): boolean {
     const field = this.fieldNode;
     const sim = this.sim;
     if (!field || !sim || heroCell === null) {
-      return;
+      return false;
     }
     // 被限流时不再静默吞掉:保底从英雄身前发一颗大号技能弹(纯表现)——归属永远可见(2026-09-02 用户验收)
     if (this.guardFxLiveCount >= 5) {
       this.spawnSkillBolt(heroCell, monster);
-      return;
+      return false;
     }
     const pool = sim.pool.find((entry) => entry.heroCode === heroCode);
     const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
-    const spec: BattleSkillEffectSpec = resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
+    const spec: BattleSkillEffectSpec = group?.spec ?? resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
     // 表现限流(视频验收):同英雄 1.6s 内只放一次完整特效;束状同屏最多 1 条;被限流走保底技能弹。
     const now = Date.now();
     if (now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
       this.spawnSkillBolt(heroCell, monster);
-      return;
+      return false;
     }
     if (GUARD_BEAM_EFFECT_CODES.has(spec.effect) && this.beamFxLive >= 1) {
       this.spawnSkillBolt(heroCell, monster);
-      return;
+      return false;
     }
     this.heroFxLastAt.set(heroCode, now);
     const hero = sim.heroes.find((entry) => entry.cell === heroCell);
@@ -6689,6 +6732,7 @@ export class LobbyGuardBattleRenderer {
     });
     const lifetimeSec = group?.zone && this.sim ? Math.max(0.6, (group.zone.untilMs - this.sim.timeMs) / 1000 + 0.3) : 3.4;
     tween(node).delay(lifetimeSec).call(release).start();
+    return true;
   }
 
   /** 采样动画 3 时刻,遍历 Region/Mesh 附件求 AABB 宽高与原点偏移(按套缓存;测不出返回 null 走兜底)。 */
@@ -7469,6 +7513,12 @@ export class LobbyGuardBattleRenderer {
         ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
         : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
       : '';
+    if ((victory || rush) && LOBBY_UI_FX.victoryTitle) {
+      // docs/29 v3:胜利标题背后金色光丝聚拢再炸开(一次性);失败不放
+      const titleFx = LOBBY_UI_FX.victoryTitle;
+      const titleFxHolder = this.host.addChildPlainNode(overlay, 'GuardEndTitleFx', 0, -height * 0.02 + panelH / 2 - 76, 10, 10);
+      mountLobbySpineFx(this.host, titleFxHolder, titleFx, 0, 0, 300 * titleFx.size, titleFx.loop, titleFx.holdMs);
+    }
     this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, -height * 0.02 + panelH / 2 - 76, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 46));
     let endTitleTextW = 0;
     for (const ch of title) {

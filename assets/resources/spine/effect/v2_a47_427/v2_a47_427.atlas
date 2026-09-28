@@ -1,0 +1,111 @@
+
+E54124.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+A_fazhen
+  rotate: false
+  xy: 2, 2
+  size: 234, 234
+  orig: 256, 256
+  offset: 11, 11
+  index: -1
+A_glow
+  rotate: false
+  xy: 238, 4
+  size: 51, 50
+  orig: 64, 64
+  offset: 7, 7
+  index: -1
+A_juji
+  rotate: false
+  xy: 238, 56
+  size: 176, 180
+  orig: 256, 256
+  offset: 32, 32
+  index: -1
+A_wenli_wave_00000
+  rotate: false
+  xy: 479, 183
+  size: 45, 53
+  orig: 64, 64
+  offset: 9, 5
+  index: -1
+A_wenli_wave_00001
+  rotate: false
+  xy: 526, 183
+  size: 45, 53
+  orig: 64, 64
+  offset: 9, 5
+  index: -1
+A_wenli_wave_00002
+  rotate: false
+  xy: 573, 183
+  size: 44, 53
+  orig: 64, 64
+  offset: 9, 4
+  index: -1
+A_wenli_wave_00003
+  rotate: false
+  xy: 619, 184
+  size: 44, 52
+  orig: 64, 64
+  offset: 9, 4
+  index: -1
+A_wenli_wave_00004
+  rotate: false
+  xy: 887, 183
+  size: 42, 53
+  orig: 64, 64
+  offset: 9, 4
+  index: -1
+A_wenli_wave_00005
+  rotate: false
+  xy: 755, 182
+  size: 42, 54
+  orig: 64, 64
+  offset: 9, 4
+  index: -1
+A_wenli_wave_00006
+  rotate: false
+  xy: 665, 182
+  size: 43, 54
+  orig: 64, 64
+  offset: 9, 5
+  index: -1
+A_wenli_wave_00007
+  rotate: false
+  xy: 710, 182
+  size: 43, 54
+  orig: 64, 64
+  offset: 9, 5
+  index: -1
+A_wenli_wave_00008
+  rotate: false
+  xy: 799, 180
+  size: 42, 56
+  orig: 64, 64
+  offset: 10, 3
+  index: -1
+A_wenli_wave_00009
+  rotate: false
+  xy: 434, 180
+  size: 43, 56
+  orig: 64, 64
+  offset: 10, 3
+  index: -1
+A_wenli_wave_00010
+  rotate: false
+  xy: 843, 180
+  size: 42, 56
+  orig: 64, 64
+  offset: 11, 3
+  index: -1
+glwo_10_zgd
+  rotate: false
+  xy: 416, 131
+  size: 16, 105
+  orig: 64, 128
+  offset: 23, 11
+  index: -1

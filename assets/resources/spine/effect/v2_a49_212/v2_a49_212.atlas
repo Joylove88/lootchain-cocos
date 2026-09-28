@@ -1,0 +1,167 @@
+
+E100126.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+A_lizi
+  rotate: false
+  xy: 2, 14
+  size: 220, 217
+  orig: 223, 218
+  offset: 1, 1
+  index: -1
+A_rotation_unmult
+  rotate: false
+  xy: 427, 134
+  size: 95, 97
+  orig: 128, 128
+  offset: 18, 13
+  index: -1
+A_wenli_qi 2_00000
+  rotate: false
+  xy: 427, 68
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00001
+  rotate: false
+  xy: 524, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00002
+  rotate: false
+  xy: 590, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00003
+  rotate: false
+  xy: 656, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00004
+  rotate: false
+  xy: 722, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00005
+  rotate: false
+  xy: 788, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00006
+  rotate: false
+  xy: 854, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00007
+  rotate: false
+  xy: 920, 167
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00008
+  rotate: false
+  xy: 427, 2
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00009
+  rotate: false
+  xy: 524, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00010
+  rotate: false
+  xy: 590, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00011
+  rotate: false
+  xy: 656, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00012
+  rotate: false
+  xy: 722, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00013
+  rotate: false
+  xy: 788, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00014
+  rotate: false
+  xy: 854, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00015
+  rotate: false
+  xy: 920, 101
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00016
+  rotate: false
+  xy: 493, 35
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00017
+  rotate: false
+  xy: 559, 35
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00018
+  rotate: false
+  xy: 625, 35
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_wenli_qi 2_00019
+  rotate: false
+  xy: 691, 35
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+A_xuanwo
+  rotate: false
+  xy: 224, 14
+  size: 201, 217
+  orig: 256, 256
+  offset: 28, 11
+  index: -1

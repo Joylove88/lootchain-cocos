@@ -1,0 +1,83 @@
+
+HeroF_6031_skill.png
+size: 1438,1438
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+FXshui/01
+  rotate: true
+  xy: 1206, 708
+  size: 329, 221
+  orig: 512, 428
+  offset: 98, 16
+  index: -1
+FXshui/02
+  rotate: false
+  xy: 960, 1039
+  size: 476, 397
+  orig: 512, 428
+  offset: 18, 16
+  index: -1
+FXshui/03
+  rotate: false
+  xy: 457, 1039
+  size: 501, 397
+  orig: 512, 428
+  offset: 11, 16
+  index: -1
+FXshui/04
+  rotate: true
+  xy: 411, 468
+  size: 503, 403
+  orig: 512, 428
+  offset: 9, 16
+  index: -1
+FXshui/05
+  rotate: true
+  xy: 816, 531
+  size: 506, 388
+  orig: 512, 428
+  offset: 6, 16
+  index: -1
+FXshui/06
+  rotate: true
+  xy: 2, 468
+  size: 503, 407
+  orig: 512, 428
+  offset: 0, 16
+  index: -1
+FXshui/07
+  rotate: false
+  xy: 506, 55
+  size: 485, 411
+  orig: 512, 428
+  offset: 27, 16
+  index: -1
+FXshui/08
+  rotate: false
+  xy: 2, 61
+  size: 502, 405
+  orig: 512, 428
+  offset: 10, 19
+  index: -1
+FXshui/09
+  rotate: true
+  xy: 993, 30
+  size: 499, 302
+  orig: 512, 428
+  offset: 13, 24
+  index: -1
+texiao/fx_huahen
+  rotate: true
+  xy: 2, 10
+  size: 49, 461
+  orig: 58, 462
+  offset: 4, 0
+  index: -1
+texiao/fx_xi
+  rotate: false
+  xy: 2, 973
+  size: 453, 463
+  orig: 512, 512
+  offset: 59, 49
+  index: -1
