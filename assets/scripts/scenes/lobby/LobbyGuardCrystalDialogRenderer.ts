@@ -144,7 +144,7 @@ export class LobbyGuardCrystalDialogRenderer {
     if (!state) {
       return;
     }
-    const scale = Math.max(0.62, Math.min(1, layout.uiScale));
+    const uiScale = Math.max(0.62, Math.min(1, layout.uiScale));
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
     const overlay = this.host.createUiNode('LobbyGuardCrystalOverlay');
@@ -158,12 +158,15 @@ export class LobbyGuardCrystalDialogRenderer {
     overlay.addComponent(Button);
     overlay.on(Button.EventType.CLICK, () => this.host.closeGuardCrystalDialog(), this);
 
-    let panelW = Math.min(1120 * scale, layout.stageWidth - 32 * scale);
+    // 2026-09-30 用户对照参考图:弹窗要占满屏幕主体(参考图约 80% 宽)。外框 refine_panel_bg 顶部有冠饰只能等比,
+    // 所以按"高度顶到舞台 94%"定尺寸;内部所有尺寸统一乘 scale = panelW / 1120(旧版基准宽),字号 / 图标 / 卡片一起放大。
+    let panelW = Math.min(1400 * uiScale, layout.stageWidth - 32 * uiScale);
     let panelH = panelW * PANEL_FRAME.aspect;
     if (panelH > layout.stageHeight * 0.94) {
       panelH = layout.stageHeight * 0.94;
       panelW = panelH / PANEL_FRAME.aspect;
     }
+    const scale = panelW / 1120;
     const panel = this.host.addChildPlainNode(overlay, 'LobbyGuardCrystalPanel', 0, 0, panelW, panelH);
     panel.addComponent(BlockInputEvents);
     this.host.addSprite('LobbyGuardCrystalFrame', PANEL_FRAME.path, 0, 0, panelW, panelH, panel);
@@ -176,7 +179,7 @@ export class LobbyGuardCrystalDialogRenderer {
     this.host.applyImageButtonFeedback(close, 1.08, 0.94);
 
     const titleY = panelH / 2 - 106 * scale;
-    const titleSize = FONT.title * scale;
+    const titleSize = 40 * scale;
     const titleText = '守卫水晶';
     const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', titleText, 0, titleY, titleSize, GOLD_TEXT, new Size(panelW * 0.6, titleSize + 10 * scale));
     title.isBold = true;
@@ -188,10 +191,10 @@ export class LobbyGuardCrystalDialogRenderer {
     const subtitleText = state.tab === 'spells'
       ? '出战法术会带进每一局矿境守卫,格位随水晶等级增加,更换后下一局生效'
       : '花金币与守卫晶核升级水晶:守卫战里水晶更坚固、开局更富、法术更强';
-    const subtitle = this.host.addChildLabel(panel, 'LobbyGuardCrystalSubtitle', subtitleText, 0, titleY - 38 * scale, FONT.body * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.8, 24 * scale));
+    const subtitle = this.host.addChildLabel(panel, 'LobbyGuardCrystalSubtitle', subtitleText, 0, titleY - 44 * scale, FONT.body * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.8, 24 * scale));
     subtitle.overflow = Label.Overflow.SHRINK;
 
-    const bodyTop = titleY - 62 * scale;
+    const bodyTop = titleY - 68 * scale;
     const bodyBottom = -panelH / 2 + 84 * scale;
     const info = state.info;
     if (!info || this.host.isGuardCrystalAssetsLoading()) {
@@ -200,9 +203,9 @@ export class LobbyGuardCrystalDialogRenderer {
       return;
     }
     // 左 33% 水晶展示区,右 60% 页签内容(参考图 2026-09-30:左立绘、右页签 + 内面板 + 底部说明框与按钮)。
-    const leftW = panelW * 0.33;
+    const leftW = panelW * 0.29;
     const leftX = -panelW / 2 + 44 * scale + leftW / 2;
-    const rightW = panelW * 0.6;
+    const rightW = panelW * 0.635;
     const rightX = panelW / 2 - 44 * scale - rightW / 2;
     this.renderCrystal(panel, info, state, leftX, leftW, bodyTop, bodyBottom, scale);
     const contentTop = this.renderTabs(panel, state, info, rightX, rightW, bodyTop, scale);
@@ -227,7 +230,7 @@ export class LobbyGuardCrystalDialogRenderer {
   /** 左侧:星云背景光 + 漩涡法阵 + 新水晶立绘 + 等级牌 + 进度条 + 下一级解锁提示 + 题词。 */
   private renderCrystal(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, top: number, bottom: number, scale: number): void {
     const areaH = top - bottom;
-    const artH = Math.min(areaH * 0.66, 380 * scale);
+    const artH = Math.min(areaH * 0.72, 420 * scale);
     const artW = artH / CRYSTAL_ART.aspect;
     const artY = top - artH / 2 - 4 * scale;
     // 台座法阵 + 背景光效(新批次 UI 骨骼特效);显式压到立绘之下
@@ -310,14 +313,15 @@ export class LobbyGuardCrystalDialogRenderer {
     quote.overflow = Label.Overflow.SHRINK;
     const lineNode = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalQuoteLine', x, quoteY, w, 2);
     const lg = lineNode.addComponent(Graphics);
-    lg.strokeColor = rgba(170, 130, 70, 140);
-    lg.lineWidth = 1;
-    const half = 92 * scale;
-    lg.moveTo(-half - 44 * scale, 0);
+    const half = 84 * scale;
+    lg.strokeColor = rgba(196, 150, 80, 210);
+    lg.lineWidth = Math.max(1.5, 1.5 * scale);
+    lg.moveTo(-half - 34 * scale, 0);
     lg.lineTo(-half, 0);
     lg.moveTo(half, 0);
-    lg.lineTo(half + 44 * scale, 0);
+    lg.lineTo(half + 34 * scale, 0);
     lg.stroke();
+    [-half - 34 * scale, half + 34 * scale].forEach((ex) => this.fillDiamond(lineNode, ex, 0, 4 * scale, 4 * scale, rgba(200, 160, 90, 220)));
   }
 
   /** 右侧页签(新素材 选中 / 未选中,等比)。返回页签下方内容区顶边。 */
@@ -425,21 +429,15 @@ export class LobbyGuardCrystalDialogRenderer {
     const colNext = x + w * 0.3;
     const colDelta = right - 34 * scale;
     const lvText = next ? `Lv.${info.level}` : `Lv.${info.level} · 满级`;
-    const lvCur = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadCur', lvText, colCur, headY, FONT.name * scale, GOLD_TEXT, new Size(140 * scale, 26 * scale));
+    const lvCur = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadCur', lvText, colCur, headY, 24 * scale, GOLD_TEXT, new Size(140 * scale, 30 * scale));
     lvCur.isBold = true;
     if (next) {
-      this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadArrow', '→', colArrow, headY, FONT.name * scale, GOLD_TEXT, new Size(40 * scale, 26 * scale));
-      const lvNext = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadNext', `Lv.${info.level + 1}`, colNext, headY, FONT.name * scale, GOLD_TEXT, new Size(120 * scale, 26 * scale));
+      this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadArrow', '→', colArrow, headY, 24 * scale, GOLD_TEXT, new Size(40 * scale, 30 * scale));
+      const lvNext = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadNext', `Lv.${info.level + 1}`, colNext, headY, 24 * scale, GOLD_TEXT, new Size(120 * scale, 30 * scale));
       lvNext.isBold = true;
     }
     const divY = headY - emblemH / 2 - 8 * scale;
-    const div = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalStatsDivider', x, divY, w - pad * 2, 2);
-    const dg = div.addComponent(Graphics);
-    dg.strokeColor = rgba(190, 140, 70, 120);
-    dg.lineWidth = 1;
-    dg.moveTo(-(w - pad * 2) / 2, 0);
-    dg.lineTo((w - pad * 2) / 2, 0);
-    dg.stroke();
+    this.drawDivider(panel, 'LobbyGuardCrystalStatsDivider', x, divY, w - pad * 2);
 
     const levelRow = (info.levels ?? []).find((row) => row.level === info.level);
     const extraSlots = Math.max(0, this.slotsOf(info) - Number(levelRow?.effect.spellSlots ?? this.slotsOf(info)));
@@ -460,10 +458,11 @@ export class LobbyGuardCrystalDialogRenderer {
       const y = rowsTop - rowH / 2 - index * (rowH + gap);
       this.mountSliced(panel, `LobbyGuardCrystalRow${row.key}`, STAT_ROW, x, y, rowW, rowH);
       const icon = STAT_ICON[row.key];
-      const iconH = rowH * 0.66;
+      const iconH = rowH * 0.74;
       const iconW = Math.min(iconH / icon.aspect, iconH * 1.4);
-      this.host.addSprite(`Icon${row.key}`, icon.path, left + 22 * scale, y, iconW, iconW * icon.aspect, panel);
-      this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + 48 * scale, y, FONT.body * scale, rgba(236, 224, 196), new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+      this.host.addSprite(`Icon${row.key}`, icon.path, left + 30 * scale, y, iconW, iconW * icon.aspect, panel);
+      const rowName = this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + 62 * scale, y, FONT.body * scale, rgba(240, 230, 206), new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+      rowName.isBold = true;
       const curValue = row.read(current);
       const cur = this.host.addChildLabel(panel, `LobbyGuardCrystalRowCur${row.key}`, row.fmt(curValue), colCur, y, FONT.name * scale, GOLD_TEXT, new Size(120 * scale, 26 * scale));
       cur.isBold = true;
@@ -688,6 +687,11 @@ export class LobbyGuardCrystalDialogRenderer {
       g.fillColor = equipped ? rgba(62, 42, 16, 235) : rgba(16, 12, 10, 225);
       g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 6 * scale);
       g.fill();
+      if (equipped) {
+        g.fillColor = rgba(255, 214, 140, 22);
+        g.roundRect(-cardW / 2 + 2, 0, cardW - 4, cardH / 2 - 2, 5 * scale);
+        g.fill();
+      }
       g.strokeColor = selected ? rgba(255, 238, 170, 255) : equipped ? rgba(214, 168, 92, 240) : rgba(120, 96, 62, 150);
       g.lineWidth = selected ? 3 : equipped ? 2 : 1.2;
       g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 6 * scale);
@@ -696,11 +700,11 @@ export class LobbyGuardCrystalDialogRenderer {
       this.mountSpellIcon(card, 'Icon', id, -cardW / 2 + 10 * scale + iconSize / 2, 0, iconSize, !open);
       const textX = -cardW / 2 + 20 * scale + iconSize;
       const textW = cardW - iconSize - 60 * scale;
-      const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, cardH * 0.2, FONT.body * scale, open ? rgba(244, 232, 204) : rgba(170, 156, 136), new Size(textW, 24 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, cardH * 0.2, FONT.name * scale, open ? rgba(244, 232, 204) : rgba(170, 156, 136), new Size(textW, 24 * scale), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
       name.isBold = true;
       const status = !open ? `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : equipped ? `已装备(${slotIndex + 1}号位)` : '未装备';
-      const statusLabel = this.host.addChildLabel(card, 'Status', status, textX, -cardH * 0.2, FONT.tiny * scale, !open ? rgba(230, 190, 120) : equipped ? GREEN_TEXT : rgba(140, 190, 240), new Size(textW, 20 * scale), HorizontalTextAlignment.LEFT);
+      const statusLabel = this.host.addChildLabel(card, 'Status', status, textX, -cardH * 0.2, FONT.small * scale, !open ? rgba(230, 190, 120) : equipped ? GREEN_TEXT : rgba(140, 190, 240), new Size(textW, 20 * scale), HorizontalTextAlignment.LEFT);
       statusLabel.overflow = Label.Overflow.SHRINK;
       if (!open) {
         this.host.addSprite('Lock', LOCK_ICON.path, cardW / 2 - 26 * scale, 0, 22 * scale, 22 * scale * LOCK_ICON.aspect, card);
@@ -717,14 +721,37 @@ export class LobbyGuardCrystalDialogRenderer {
     });
   }
 
+  /** 分隔线(参考图款):金线从中间向两端渐隐 + 中心小菱形。 */
   private drawDivider(panel: Node, name: string, x: number, y: number, w: number): void {
-    const node = this.host.addChildPlainNode(panel, name, x, y, w, 2);
+    const node = this.host.addChildPlainNode(panel, name, x, y, w, 8);
     const g = node.addComponent(Graphics);
-    g.strokeColor = rgba(190, 140, 70, 110);
-    g.lineWidth = 1;
-    g.moveTo(-w / 2, 0);
-    g.lineTo(w / 2, 0);
-    g.stroke();
+    // 实测坑:同一 Graphics 先 stroke 后 fill 会吞掉描边;<2px 高的细矩形会被三角化合并成 2 点画不出来。
+    // 所以线只用分段 stroke(渐隐),菱形挂到子节点单独 fill。
+    g.lineWidth = Math.max(2, w / 480);
+    const steps = 10;
+    for (let i = 0; i < steps; i++) {
+      const a0 = (i / steps) * (w / 2);
+      const a1 = ((i + 1) / steps) * (w / 2);
+      g.strokeColor = rgba(220, 172, 92, Math.round(255 * (1 - (i / steps) * 0.85)));
+      g.moveTo(a0, 0);
+      g.lineTo(a1, 0);
+      g.moveTo(-a0, 0);
+      g.lineTo(-a1, 0);
+      g.stroke();
+    }
+    this.fillDiamond(node, 0, 0, 7, 4, rgba(230, 188, 110, 240));
+  }
+
+  private fillDiamond(parent: Node, x: number, y: number, rx: number, ry: number, color: Color): void {
+    const node = this.host.addChildPlainNode(parent, 'Diamond', x, y, rx * 2, ry * 2);
+    const g = node.addComponent(Graphics);
+    g.fillColor = color;
+    g.moveTo(0, ry);
+    g.lineTo(rx, 0);
+    g.lineTo(0, -ry);
+    g.lineTo(-rx, 0);
+    g.close();
+    g.fill();
   }
 
   /** 格位编号:金边菱形 + 数字。 */
@@ -820,11 +847,11 @@ export class LobbyGuardCrystalDialogRenderer {
       pill.on(Button.EventType.CLICK, () => run(), this);
       this.host.applyImageButtonFeedback(pill, 1.06, 0.95);
     }
-    const energy = this.host.addChildLabel(box, 'Meta', `能量 ${def.cost}`, textX, h * 0.05, FONT.small * scale, rgba(160, 210, 255), new Size(textW, 20 * scale), HorizontalTextAlignment.LEFT);
+    const energy = this.host.addChildLabel(box, 'Meta', `能量 ${def.cost}`, textX, h * 0.09, FONT.small * scale, rgba(160, 210, 255), new Size(textW, 20 * scale), HorizontalTextAlignment.LEFT);
     energy.overflow = Label.Overflow.SHRINK;
-    const desc = this.host.addChildLabel(box, 'Desc', SPELL_DETAIL[id], textX, -h * 0.24, 13 * scale, rgba(222, 210, 186), new Size(textW, h * 0.42), HorizontalTextAlignment.LEFT);
+    const desc = this.host.addChildLabel(box, 'Desc', SPELL_DETAIL[id], textX, -h * 0.25, 13 * scale, rgba(222, 210, 186), new Size(textW, h * 0.44), HorizontalTextAlignment.LEFT);
     desc.enableWrapText = true;
-    desc.lineHeight = 17 * scale;
+    desc.lineHeight = 16 * scale;
     desc.verticalAlign = VerticalTextAlignment.CENTER;
     desc.overflow = Label.Overflow.SHRINK;
 
