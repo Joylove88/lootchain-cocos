@@ -203,10 +203,13 @@ export class LobbyGuardCrystalDialogRenderer {
       return;
     }
     // 左 33% 水晶展示区,右 60% 页签内容(参考图 2026-09-30:左立绘、右页签 + 内面板 + 底部说明框与按钮)。
-    const leftW = panelW * 0.29;
-    const leftX = -panelW / 2 + 44 * scale + leftW / 2;
-    const rightW = panelW * 0.635;
-    const rightX = panelW / 2 - 44 * scale - rightW / 2;
+    // 外框 refine_panel_bg 实测:外侧透明 + 边框约占宽度 5.5%(源图 80/1448 px),内容两侧各留 7.5%(84 * scale),
+    // 否则右侧内面板 / 按钮会盖住外框边线(2026-09-30 用户截图指出)。
+    const sideMargin = 84 * scale;
+    const leftW = 300 * scale;
+    const leftX = -panelW / 2 + sideMargin + leftW / 2;
+    const rightW = panelW - sideMargin * 2 - leftW - 12 * scale;
+    const rightX = panelW / 2 - sideMargin - rightW / 2;
     this.renderCrystal(panel, info, state, leftX, leftW, bodyTop, bodyBottom, scale);
     const contentTop = this.renderTabs(panel, state, info, rightX, rightW, bodyTop, scale);
     const footerH = 86 * scale;
@@ -311,17 +314,11 @@ export class LobbyGuardCrystalDialogRenderer {
     const quoteY = Math.max(bottom + 14 * scale, cursor - 10 * scale);
     const quote = this.host.addChildLabel(panel, 'LobbyGuardCrystalQuote', '「水晶不灭,光明不息。」', x, quoteY, FONT.tiny * scale, rgba(180, 160, 124), new Size(w, 22 * scale));
     quote.overflow = Label.Overflow.SHRINK;
-    const lineNode = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalQuoteLine', x, quoteY, w, 2);
-    const lg = lineNode.addComponent(Graphics);
+    // 两侧坠饰用现成的标题花边素材(与「守卫水晶」标题两侧同一套,2026-09-30 用户指定)
     const half = 84 * scale;
-    lg.strokeColor = rgba(196, 150, 80, 210);
-    lg.lineWidth = Math.max(1.5, 1.5 * scale);
-    lg.moveTo(-half - 34 * scale, 0);
-    lg.lineTo(-half, 0);
-    lg.moveTo(half, 0);
-    lg.lineTo(half + 34 * scale, 0);
-    lg.stroke();
-    [-half - 34 * scale, half + 34 * scale].forEach((ex) => this.fillDiamond(lineNode, ex, 0, 4 * scale, 4 * scale, rgba(200, 160, 90, 220)));
+    const ornW = 64 * scale;
+    this.host.addSprite('LobbyGuardCrystalQuoteOrnL', TITLE_DIVIDER_L.path, x - half - ornW / 2, quoteY, ornW, ornW * TITLE_DIVIDER_L.aspect, panel);
+    this.host.addSprite('LobbyGuardCrystalQuoteOrnR', TITLE_DIVIDER_R.path, x + half + ornW / 2, quoteY, ornW, ornW * TITLE_DIVIDER_R.aspect, panel);
   }
 
   /** 右侧页签(新素材 选中 / 未选中,等比)。返回页签下方内容区顶边。 */
@@ -334,8 +331,8 @@ export class LobbyGuardCrystalDialogRenderer {
       { key: 'spells', text: `法术装备 ${this.loadoutOf(info).length}/${this.slotsOf(info)}` },
     ];
     const widths = tabs.map((tab) => tabH / (state.tab === tab.key ? TAB_ON.aspect : TAB_OFF.aspect));
-    const totalW = widths[0] + widths[1] + gap;
-    let cursor = x - totalW / 2;
+    // 页签与下方内面板左边对齐(略缩进 24),参考图同款(2026-09-30 用户:"选项卡要向左偏移,与下面的属性框对齐")
+    let cursor = x - w / 2 + 24 * scale;
     tabs.forEach((tab, index) => {
       const active = state.tab === tab.key;
       const tabW = widths[index];
@@ -864,7 +861,7 @@ export class LobbyGuardCrystalDialogRenderer {
     const btnX = x + w / 2 - btnW / 2;
     const button = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalUpgrade', btnX, y, btnW, btnH);
     this.host.addSprite('LobbyGuardCrystalUpgradeArt', BTN_COST_UP.path, 0, 0, btnW, btnH, button);
-    const label = this.host.addChildLabel(button, 'LobbyGuardCrystalUpgradeLabel', maxed ? '已满级' : `升级 ${this.host.formatInteger(goldCost)}`, btnW * 0.08, 0, 22 * scale, gold >= goldCost ? rgba(255, 238, 200) : rgba(255, 170, 150), new Size(btnW * 0.56, 30 * scale));
+    const label = this.host.addChildLabel(button, 'LobbyGuardCrystalUpgradeLabel', maxed ? '已满级' : `升级 ${this.host.formatInteger(goldCost)}`, btnW * 0.1, 0, 22 * scale, gold >= goldCost ? rgba(255, 238, 200) : rgba(255, 170, 150), new Size(btnW * 0.5, 30 * scale));
     label.overflow = Label.Overflow.SHRINK;
     label.isBold = true;
     this.outline(label, scale, rgba(60, 12, 8, 255));
