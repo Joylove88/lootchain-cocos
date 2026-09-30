@@ -93,7 +93,19 @@ export interface UiSpriteFrameOverrides {
 const GROUP_GATE_WINDOW_MS = 20000;
 
 /** 按玩法页分组的 UI 图预载(第一次打开对应页面时拉)。 */
-export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle';
+export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle' | 'crystal';
+
+/** 守卫水晶弹窗专用新素材(ui/crystal/ai,2026-09-30 参考图改版):首次打开弹窗时整组拉,齐了再画,避免空框闪一下。 */
+const GUARD_CRYSTAL_UI_ASSETS = [
+  'crystal_art', 'level_plate', 'tab_on', 'tab_off', 'btn_level_up', 'btn_cost_up', 'inner_panel_bg', 'stat_row_bg', 'preview_box', 'section_emblem',
+  'stat_hp', 'stat_gold', 'stat_power', 'stat_energy', 'stat_energy_max', 'stat_slots',
+  'spell_quake', 'spell_frost', 'spell_thunder', 'spell_goldrush', 'spell_aegis',
+].map((name) => `ui/crystal/ai/${name}/spriteFrame`).concat([
+  // 弹窗里共用的外框 / 标题花边 / 关闭 / 锁 / 货币图标,一起等,首开不缺角
+  'ui/hero/ai/refine_panel_bg/spriteFrame', 'ui/common/ai/title_divider_left/spriteFrame', 'ui/common/ai/title_divider_right/spriteFrame',
+  'ui/common/ai/button_close/spriteFrame', 'ui/common/ai/ic_lock/spriteFrame', 'ui/common/ai/ic_gold_medium/spriteFrame',
+  'ui/bag/ai/icon_guard_core/spriteFrame', 'ui/battle/ai/buff_atk/spriteFrame',
+]);
 
 export class UiSpriteFrameCache {
   private readonly spriteFrames = new Map<string, SpriteFrame>();
@@ -229,6 +241,9 @@ export class UiSpriteFrameCache {
         track(BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET);
         track(BATTLE_C1812_BUFF_SHIELD_ASSET);
         track(BATTLE_C1812_BUFF_STUN_ASSET);
+        break;
+      case 'crystal':
+        GUARD_CRYSTAL_UI_ASSETS.forEach((asset) => track(asset));
         break;
       default:
         break;

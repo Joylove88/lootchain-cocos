@@ -1084,7 +1084,7 @@ export class LootChainGameRoot extends Component {
     cover.fill();
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
-      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材',
+      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材',
     };
     this.addChildLabel(panel, 'SceneAssetLoadingTitle', titles[group], centerX, centerY + 40 * scale, 28 * scale, new Color(245, 214, 140, 255), new Size(520 * scale, 40 * scale));
     const barWidth = Math.min(460 * scale, layout.width * 0.5);
@@ -5182,9 +5182,15 @@ export class LootChainGameRoot extends Component {
       selectedSpell: null,
       targetSlot: -1,
     };
+    this.uiSpriteFrameCache.preloadGroup('crystal');
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
     void this.loadGuardCrystalInfo();
+  }
+
+  /** 水晶弹窗新素材组还在首拉(窗口期内):弹窗先显示"读取中…"。 */
+  private isGuardCrystalAssetsLoading(): boolean {
+    return this.uiSpriteFrameCache.groupProgress('crystal') !== null;
   }
 
   private closeGuardCrystalDialog(): void {
