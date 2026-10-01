@@ -4141,8 +4141,9 @@ export class LobbyGuardBattleRenderer {
     const slots = sim ? sim.spellSlots : GUARD_BASE_SPELL_SLOTS;
     const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `本局出战 ${equipped.length}/${slots} 格 · 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · 更换请到大厅「水晶 → 法术装备」`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.78, 26));
     tip.overflow = Label.Overflow.SHRINK;
-    const cardW = Math.min(250, panelW * 0.25);
-    const cardH = 118;
+    const cardW = Math.min(260, panelW * 0.26);
+    // docs/39:卡片要放下按等级生成的描述(两三行),加高
+    const cardH = 140;
     const top = titleY - 130;
     GUARD_SPELL_IDS.forEach((id, index) => {
       const def = GUARD_SPELLS[id];
@@ -4169,7 +4170,9 @@ export class LobbyGuardBattleRenderer {
       nameLabel.overflow = Label.Overflow.SHRINK;
       this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 4, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
       const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : `${selected ? `已装备 · 第 ${slotIndex + 1} 格` : '未装备'} · ${guardSpellDescribe(id, cardLevel)}`;
-      const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 24, 15, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 20, 36));
+      const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 32, 14, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 18, 58));
+      desc.enableWrapText = true;
+      desc.lineHeight = 17;
       desc.overflow = Label.Overflow.SHRINK;
       if (locked) {
         (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;

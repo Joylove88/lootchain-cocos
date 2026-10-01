@@ -376,6 +376,8 @@ export const GUARD_SPELL_WARHORN_ASPD = 1.5;
  * U = 本波普通怪血量 × 水晶 spellPowerMult(guardSpellUnit)。
  */
 export const GUARD_SPELL_MAX_LEVEL = 5;
+// 2026-10-02 平衡闸门(docs/39 §8,scratchpad balance39):首版 Lv5 超标(主线 +11pp、20 波层数 +19%、金矿额外金币 10.8%),
+// 按实测归因削弱神雷 / 冰碎 / 金矿 / 号角;震荡与壁垒实测几乎无增益保持不动。削后:主线 ≤ +7pp、层数 ≤ +7.7%、金矿 ≤ 5.9%。
 export interface GuardSpellLevelRow {
   /** 冰封 / 神雷落点半径(格);其他法术 0。 */
   radius: number;
@@ -438,21 +440,21 @@ export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
     spellRow({ radius: 1.8, ms: 3300, fxScale: GUARD_SPELL_FX_SCALE[1] }),
     spellRow({ radius: 2.0, ms: 3600, floorMs: 4000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
     spellRow({ radius: 2.2, ms: 4000, floorMs: 4500, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ radius: 2.4, ms: 4400, floorMs: 5000, shatterDmg: 0.8, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    spellRow({ radius: 2.4, ms: 4200, floorMs: 5000, shatterDmg: 0.12, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
   thunder: [
     spellRow({ radius: GUARD_SPELL_THUNDER_RADIUS, dmg: 2.5, fxScale: GUARD_SPELL_FX_SCALE[0] }),
-    spellRow({ radius: 1.35, dmg: 2.75, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ radius: 1.5, dmg: 3.0, chain: 3, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ radius: 1.65, dmg: 3.25, chain: 4, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ radius: 1.8, dmg: 3.5, chain: 4, boltCount: 8, boltDmg: 0.45, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    spellRow({ radius: 1.3, dmg: 2.6, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ radius: 1.4, dmg: 2.7, chain: 2, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ radius: 1.5, dmg: 2.8, chain: 3, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ radius: 1.6, dmg: 2.9, chain: 3, boltCount: 8, boltDmg: 0.2, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
   goldrush: [
     spellRow({ goldMult: 1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
-    spellRow({ goldMult: 1.08, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ goldMult: 1.16, boostMs: 6000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ goldMult: 1.24, boostMs: 8000, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ goldMult: 1.32, boostMs: 8000, jackpotEvery: 3, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    spellRow({ goldMult: 1.03, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ goldMult: 1.06, boostMs: 3000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ goldMult: 1.09, boostMs: 3500, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ goldMult: 1.12, boostMs: 3500, jackpotEvery: 3, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
   aegis: [
     spellRow({ ms: GUARD_SPELL_AEGIS_MS, healPct: 0.1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
@@ -463,10 +465,10 @@ export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
   ],
   warhorn: [
     spellRow({ ms: GUARD_SPELL_WARHORN_MS, aspd: GUARD_SPELL_WARHORN_ASPD, fxScale: GUARD_SPELL_FX_SCALE[0] }),
-    spellRow({ ms: 6500, aspd: 1.55, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ ms: 7000, aspd: 1.6, cdCutMs: 3000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ ms: 7500, aspd: 1.65, cdCutMs: 3500, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ ms: 8000, aspd: 1.7, cdCutMs: 3500, dmgMult: 1.15, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    spellRow({ ms: 6300, aspd: 1.52, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ ms: 6600, aspd: 1.54, cdCutMs: 1000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ ms: 6800, aspd: 1.56, cdCutMs: 1500, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ ms: 7000, aspd: 1.58, cdCutMs: 1500, dmgMult: 1.03, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
 };
 /** 奇数级解锁的新效果名(展示层:名牌 / 详情框"下一级解锁"用)。 */
