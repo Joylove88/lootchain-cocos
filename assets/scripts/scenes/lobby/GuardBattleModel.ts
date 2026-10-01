@@ -293,8 +293,8 @@ export interface GuardSpellDef {
 }
 /**
  * 6 个法术(2026-09-27 首版;伤害按"本波普通怪血量"折算,主线/副本血量倍率不同也保持同样手感):
- * 震荡=全场 0.6 倍普通怪血 + 击退;冰封=落点 ±1.6 格冻结 3s(BOSS 只减速);天雷=落点 ±1.2 格 2.5 倍,精英/BOSS 再 ×2;
- * 冰封/天雷按落点 x 判定、两条车道都算(靠近水晶时两车道在画面上汇成一条路,按车道瞄会看不清)。
+ * 震荡=全场 0.6 倍普通怪血 + 击退;冰封=落点 ±1.6 格冻结 3s(BOSS 只减速);九天神雷=落点 ±1.2 格 2.5 倍,精英/BOSS 再 ×2;
+ * 冰封/九天神雷按落点 x 判定、两条车道都算(靠近水晶时两车道在画面上汇成一条路,按车道瞄会看不清)。
  * 金矿=立刻 +(25 + 3×波次) 金币(每波限 1 次);壁垒=水晶 4s 无敌 + 回 10%;号角=全队攻速 ×1.5 持续 6s。
  */
 export const GUARD_SPELLS: Record<GuardSpellId, GuardSpellDef> = {
@@ -2964,7 +2964,7 @@ export function guardSpellCastable(state: GuardBattleState, id: GuardSpellId): b
 }
 
 /**
- * 施放水晶法术(docs/37 F)。target:冰封/天雷的落点(x,格;lane 仅供表现层定位)。
+ * 施放水晶法术(docs/37 F)。target:冰封/九天神雷的落点(x,格;lane 仅供表现层定位)。
  * 返回是否施放成功;成功时扣能量并发 spellCast 事件(monsterIds=命中的怪)。
  */
 export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target?: { lane: number; x: number }): boolean {

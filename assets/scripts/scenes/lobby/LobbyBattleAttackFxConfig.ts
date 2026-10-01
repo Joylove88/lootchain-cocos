@@ -207,7 +207,7 @@ export interface GuardSpellFxSpec {
 }
 // 素材 = fx_pack_v2 新批次(2026-09-28 多智能体目视选型 + 本人复核;短编号 v2_<包>_<号>,溯源见 docs/29 v3):
 // 震荡=蓝白强光炸开 + 冰晶尖刺 + 地面电光裂纹环(A47-340);冰封=浅蓝冰晶簇从地面隆起(A47-447,循环 2 遍盖满 3s);
-// 天雷=紫蓝雷柱从天而降落点炸开(S576-022);金矿爆发=金色光环炸开(A47-343);壁垒=金色符文法阵 + 光柱升起(A49-206,循环);
+// 九天神雷=紫蓝雷柱从天而降落点炸开(S576-022);金矿爆发=金色光环炸开(A47-343);壁垒=金色符文法阵 + 光柱升起(A49-206,循环);
 // 号角=每人脚下橙红火焰椭圆环(A47-376,循环)+ 水晶处火焰半球爆发(S576-040)。
 export const GUARD_SPELL_FX: Record<'quake' | 'frost' | 'thunder' | 'goldrush' | 'aegis' | 'warhorn', GuardSpellFxSpec> = {
   quake: { effect: 'v2_a47_340', animation: 'action', size: 4.2, anchor: 'crystal', holdMs: 800, offsetY: 1.1, offsetX: 1.8 },

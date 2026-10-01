@@ -2728,7 +2728,7 @@ export class LobbyGuardBattleRenderer {
         '集火:点怪物标记,射程内英雄优先打它、伤害 +20%;标记读条中的 BOSS 更易打断。',
         '共鸣格:每波发金光的格子,站上去的英雄本波攻击 +40%;把主力拖过去。',
         '迎战:波间点「提前迎战」立刻开下一波,越早奖励金币越多。',
-        '法术:底部是出战的水晶法术(大厅「水晶 → 法术装备」里配置),击杀和打断攒能量;冰封/天雷按住拖到战场施放。',
+        '法术:击杀和打断攒能量,冰封、九天神雷要拖到战场施放;出战法术在大厅「水晶」配置。',
         '事件:流星矿晶落地后点它拿金币;偷金鼠要点它集火,打死掉大笔金币。',
         '出售:把英雄拖到水晶上出售,返还部分金币。',
         '强化:花金币抽词条三选一;每守住一波送一次免费强化。',
@@ -3306,7 +3306,7 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  /** 法术位手势:点击 = 无目标法术施放;按住拖到战场 = 瞄准(冰封/天雷),松手在战场内施放,拖回法术栏取消。 */
+  /** 法术位手势:点击 = 无目标法术施放;按住拖到战场 = 瞄准(冰封/九天神雷),松手在战场内施放,拖回法术栏取消。 */
   private bindSpellSlot(slot: Node, id: GuardSpellId): void {
     slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
       (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
@@ -3474,7 +3474,7 @@ export class LobbyGuardBattleRenderer {
     return { lane: Math.abs(local.y - y0) <= Math.abs(local.y - y1) ? 0 : 1, x };
   }
 
-  /** 瞄准指示:落点处覆盖两条车道的椭圆范围(冰封蓝 / 天雷金),落点无效时不画。 */
+  /** 瞄准指示:落点处覆盖两条车道的椭圆范围(冰封蓝 / 九天神雷金),落点无效时不画。 */
   private drawSpellAim(id: GuardSpellId, aim: { lane: number; x: number } | null): void {
     const field = this.fieldNode;
     if (!field) {
