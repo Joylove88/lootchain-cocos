@@ -242,6 +242,49 @@ export function lookupBattleFxBounds(effect: string, animation: string): BattleF
   return BATTLE_FX_MEASURED_BOUNDS[`${effect}:${(animation || '').toLowerCase()}`] ?? null;
 }
 
+/**
+ * 专属大招"核心亮区"(2026-10-01 用户:"战场中的大招比较小,不易被区分出来")。
+ * BATTLE_FX_MEASURED_BOUNDS 是 12 帧里所有 >24/255 像素的并集,飞得很远的淡粒子把框撑得很大,
+ * 按它做面积适配后亮的主体只剩框的 ~57%(中位数),多数大招主体比一个英雄还小。
+ * 本表 = 逐帧按亮度加权取 10%~90% 分位框,再取亮度 ≥ 峰值 45% 的帧求并集(scratchpad fxprev/core_measure.py),
+ * 同口径骨骼坐标 {w,h,cx,cy};战场大招按它定尺寸、按它的中心对准目标。
+ */
+export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
+  'v2_s681_1001:attackall': { w: 1013, h: 534, cx: 49, cy: 299 },
+  'v2_s681_1006:skill01_2': { w: 711, h: 472, cx: 67, cy: 169 },
+  'v2_s681_1007:skill02': { w: 1015, h: 486, cx: 159, cy: 249 },
+  'v2_s681_1015:skill01_1': { w: 1227, h: 947, cx: 37, cy: 520 },
+  'v2_s681_2001:skill02_2': { w: 348, h: 389, cx: 49, cy: 242 },
+  'v2_s681_2014:skill04_1': { w: 258, h: 465, cx: -23, cy: 334 },
+  'v2_s681_3012:skill01_1': { w: 704, h: 565, cx: 336, cy: 199 },
+  'v2_s681_3022:skill01_1': { w: 1397, h: 718, cx: 883, cy: 255 },
+  'v2_s681_4003:skill01_2': { w: 686, h: 1401, cx: 9, cy: 653 },
+  'v2_s681_4004:skill01_1': { w: 289, h: 368, cx: 24, cy: 192 },
+  'v2_s681_4006:skill03': { w: 747, h: 518, cx: 483, cy: 316 },
+  'v2_s681_4024:skill01': { w: 1890, h: 482, cx: 1416, cy: 232 },
+  'v2_s681_4029:skill02': { w: 618, h: 248, cx: -4, cy: 51 },
+  'v2_s681_4030:skill03': { w: 210, h: 208, cx: 238, cy: 223 },
+  'v2_s681_5001:skill01_3': { w: 1441, h: 2283, cx: 176, cy: 861 },
+  'v2_s681_5008:skill01_1': { w: 1302, h: 1082, cx: 38, cy: 608 },
+  'v2_s681_5012:skill03': { w: 1090, h: 585, cx: 811, cy: 253 },
+  'v2_s681_6009:skill02_3': { w: 314, h: 369, cx: 13, cy: -18 },
+  'v2_s681_6014:skill01_1': { w: 901, h: 552, cx: 8, cy: 224 },
+  'v2_s681_6015:attackall': { w: 1163, h: 548, cx: 130, cy: 243 },
+  'v2_s681_6031:attackall': { w: 1085, h: 816, cx: 126, cy: 453 },
+  'v2_s681_6033:skill03_1': { w: 490, h: 498, cx: 31, cy: 294 },
+};
+
+/** 查核心亮区(key 同 lookupBattleFxBounds);没有或比宽松框还大(测量异常)返回 null,调用方按宽松框 ×0.57 兜底。 */
+export function lookupBattleFxCoreBounds(effect: string, animation: string): BattleFxMeasuredBounds | null {
+  const key = `${effect}:${(animation || '').toLowerCase()}`;
+  const core = BATTLE_FX_CORE_BOUNDS[key] ?? null;
+  const loose = BATTLE_FX_MEASURED_BOUNDS[key] ?? null;
+  if (!core || (loose && (core.w > loose.w * 1.05 || core.h > loose.h * 1.05))) {
+    return null;
+  }
+  return core;
+}
+
 /** 资源路径:assets/resources/spine/effect/<effect>/<effect>(与 SpineDataStore.loadSharedSpineData 直接对接)。 */
 export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): string {
   return `spine/effect/${spec.effect}/${spec.effect}`;

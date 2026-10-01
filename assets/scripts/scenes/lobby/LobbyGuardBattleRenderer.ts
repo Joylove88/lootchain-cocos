@@ -120,7 +120,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
-import { lookupBattleFxBounds, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
@@ -179,6 +179,29 @@ const GUARD_HERO_FX_COOLDOWN_MS = 1600;
 /** 技能特效放大上限(2026-09-12:低稀有度也要≥标准尺寸,再大只会糊);群体横扫为覆盖命中簇可再放宽。 */
 const GUARD_FX_UPSCALE_CAP = 2.0;
 const GUARD_FX_GROUP_UPSCALE_CAP = 2.6;
+/**
+ * 专属大招尺寸(2026-10-01 用户:"战场中的大招比较小,不易被区分出来"):不再按含淡粒子的宽松包围盒做面积适配,
+ * 改按"核心亮区"(BATTLE_FX_CORE_BOUNDS)的几何均值定目标,单位 = unitSize;稀有度逐档放大,战技保持原口径。
+ */
+const GUARD_ULT_CORE_TARGET_U: Record<string, number> = { R: 2.3, SR: 2.6, SSR: 3.0, UR: 3.4 };
+const GUARD_ULT_FIT_CAP = 2.0;
+/** 核心亮区上屏上限(× 场宽 / 场高);宽松框(含淡粒子)上限——防止整屏发雾。 */
+const GUARD_ULT_CORE_MAX_W = 0.55;
+const GUARD_ULT_CORE_MAX_H = 0.56;
+const GUARD_ULT_LOOSE_MAX = 0.85;
+/** 没有核心表项时:核心 ≈ 宽松框 × 0.57(22 套实测中位数)。 */
+const GUARD_ULT_CORE_FALLBACK_RATIO = 0.57;
+/** 辅助大招挂在施法者身上,比打怪的大招小一档。 */
+const GUARD_ULT_SUPPORT_MULT = 0.8;
+/** 战技群体模式相对 baseFit 的放大上限(此前可拉到 2.6×,近战战技反而比大招大)。 */
+const GUARD_SKILL_GROUP_GROWTH = 1.15;
+/** 大招安全区(field 坐标 × 场宽 / 场高):核心亮区不压底部法术栏、不顶到顶部波次横幅。 */
+const GUARD_FX_SAFE = { left: -0.48, right: 0.48, bottom: -0.28, top: 0.39 };
+/** 骨骼特效同屏名额:战技与大招分开计数,大招永远有位置(不再被挤成一颗紫色技能弹)。 */
+const GUARD_SKILL_FX_MAX_LIVE = 4;
+const GUARD_ULT_FX_MAX_LIVE = 2;
+/** 大招压暗节流(同时多个大招只压一次)。 */
+const GUARD_ULT_DIM_INTERVAL_MS = 2000;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
 /** 主线 P5 难度锚点:monsterScale = 关卡 recommendedPower / 本基线。2800≈MAIN_3_12(难度Ⅰ在当前验收阵容下的平衡点);
@@ -436,7 +459,9 @@ export class LobbyGuardBattleRenderer {
   private rangeShownDrawnCell = -1;
   /** 技能特效包围盒缓存(effect:anim → 宽高+原点偏移),与在场技能特效计数。 */
   private readonly guardFxBoundsCache = new Map<string, { w: number; h: number; cx: number; cy: number } | null>();
-  private guardFxLiveCount = 0;
+  private skillFxLive = 0;
+  private ultFxLive = 0;
+  private lastUltDimAt = 0;
   /** 在场技能特效瞄准器(step 逐帧驱动:锁定目标方向,目标死亡自动转向最近怪物)。 */
   private readonly guardFxAimers = new Map<Node, () => void>();
   /** 同英雄特效上次触发时刻(表现冷却)与束状同屏计数(≤1)。 */
@@ -523,7 +548,9 @@ export class LobbyGuardBattleRenderer {
     this.settingsOpen = false;
     this.exitConfirmOpen = false;
     this.rangeShownUnitId = null;
-    this.guardFxLiveCount = 0;
+    this.skillFxLive = 0;
+    this.ultFxLive = 0;
+    this.lastUltDimAt = 0;
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
@@ -534,6 +561,8 @@ export class LobbyGuardBattleRenderer {
     this.displayedGold = -1;
     this.goldCoinLive = 0;
     this.zoneViews.clear();
+    this.zoneFlights.clear();
+    this.plainBurnZones.clear();
     this.projectiles.length = 0;
     this.heroFxLastAt.clear();
     this.beamFxLive = 0;
@@ -740,7 +769,9 @@ export class LobbyGuardBattleRenderer {
     this.chestViews.clear();
     this.projectiles.length = 0;
     this.guardFxAimers.clear();
-    this.guardFxLiveCount = 0;
+    this.skillFxLive = 0;
+    this.ultFxLive = 0;
+    this.lastUltDimAt = 0;
     this.beamFxLive = 0;
     this.heroFxLastAt.clear();
     this.dragFromCell = null;
@@ -943,13 +974,13 @@ export class LobbyGuardBattleRenderer {
    * - blob:48×24 圆角矩形 SDF,内部 0.62、向四边 38% 宽度羽化到 0。
    * 纹理极小、双线性拉伸后视觉平滑;生成失败(极端环境)回退为原来的平涂,不影响功能。
    */
-  private mountSoftShade(parent: Node, name: string, x: number, y: number, width: number, height: number, style: 'top-fade' | 'blob'): void {
+  private mountSoftShade(parent: Node, name: string, x: number, y: number, width: number, height: number, style: 'top-fade' | 'blob' | 'flat'): Node | null {
     const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
     let frame = LobbyGuardBattleRenderer.SOFT_SHADE_FRAMES.get(style) ?? null;
     if (!frame) {
       try {
-        const pw = style === 'top-fade' ? 1 : 48;
-        const ph = style === 'top-fade' ? 64 : 24;
+        const pw = style === 'top-fade' ? 1 : style === 'flat' ? 2 : 48;
+        const ph = style === 'top-fade' ? 64 : style === 'flat' ? 2 : 24;
         const data = new Uint8Array(pw * ph * 4);
         for (let py = 0; py < ph; py += 1) {
           for (let px = 0; px < pw; px += 1) {
@@ -959,6 +990,8 @@ export class LobbyGuardBattleRenderer {
             let alpha: number;
             if (style === 'top-fade') {
               alpha = 0.66 * Math.pow(v, 1.7);
+            } else if (style === 'flat') {
+              alpha = 1;
             } else {
               // 圆角矩形距离场:中心区满强度,边缘按羽化宽度平滑归零
               const feather = 0.38;
@@ -993,13 +1026,51 @@ export class LobbyGuardBattleRenderer {
       g.fillColor = rgba(10, 8, 8, style === 'top-fade' ? 118 : 150);
       g.roundRect(-width / 2, -height / 2, width, height, style === 'top-fade' ? 0 : 14);
       g.fill();
-      return;
+      return null;
     }
     const sprite = node.addComponent(Sprite);
     sprite.sizeMode = Sprite.SizeMode.CUSTOM;
     sprite.trim = false;
     sprite.spriteFrame = frame;
     node.getComponent(UITransform)?.setContentSize(width, height);
+    return node;
+  }
+
+  /**
+   * 大招压暗(2026-10-01 用户:"大招不易被区分"):放大招的一瞬间整块战场压暗约 0.6s,
+   * 之后挂上的大招特效 / 名牌 / 伤害数字都在压暗层之上,所以大招单独"亮"出来。HUD 在 root 上、不受影响。
+   * 只用 Sprite(UIOpacity 淡不掉 Graphics 填充);同时多个大招 2s 内只压一次。
+   */
+  private pulseUltDim(): void {
+    const field = this.fieldNode;
+    const sim = this.sim;
+    const now = Date.now();
+    if (!field || !sim || this.wheelOverlayOpen || sim.pendingChoice || now - this.lastUltDimAt < GUARD_ULT_DIM_INTERVAL_MS) {
+      return;
+    }
+    let node = field.getChildByName('GuardUltDim');
+    let opacity = node?.getComponent(UIOpacity) ?? null;
+    if (node && opacity) {
+      // 复用唯一一层(切后台时 director 暂停,tween 不推进,每次新挂会在回前台时叠成一瞬黑屏)
+      Tween.stopAllByTarget(opacity);
+    } else {
+      node?.destroy();
+      node = this.mountSoftShade(field, 'GuardUltDim', 0, this.layoutHeight * 0.03, this.layoutWidth * 1.1, this.layoutHeight * 1.12, 'flat');
+      if (!node) {
+        field.getChildByName('GuardUltDim')?.destroy();
+        return;
+      }
+      opacity = node.addComponent(UIOpacity);
+      opacity.opacity = 0;
+    }
+    const dimNode = node;
+    this.lastUltDimAt = now;
+    dimNode.setSiblingIndex(field.children.length - 1);
+    tween(opacity).to(0.08, { opacity: 100 }).delay(0.25).to(0.3, { opacity: 0 }).call(() => {
+      if (dimNode.isValid) {
+        dimNode.destroy();
+      }
+    }).start();
   }
 
   // ── 几何(参考图 2026-08-21):水晶+3×3 格占左 1/3,怪物跑道占右 2/3 ──
@@ -2021,8 +2092,12 @@ export class LobbyGuardBattleRenderer {
         }
         // docs/32 §5.1 方案 A:未觉醒=通用"战技"(职业机制名 + 轻量表现);金卡觉醒后才喊专属大招名、播专属 Spine 特效。
         const awakened = (event.ultLv ?? 0) > 0;
+        if (awakened) {
+          // 大招身份(2026-10-01 用户:"大招不易被区分"):先压暗战场,之后挂的出手闪光 / 名牌 / 大招特效都在压暗层之上
+          this.pulseUltDim();
+        }
         if (typeof event.cell === 'number') {
-          this.highlightCaster(event.cell, awakened ? `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!` : `战技·${event.skillName ?? '出击'}`);
+          this.highlightCaster(event.cell, awakened ? `${this.resolveGuardSkillDisplayName(event.heroCode, event.skillName)}!` : `战技·${event.skillName ?? '出击'}`, awakened);
         }
         gameAudio.sfx(resolveHeroSkillSfxKey(event.heroCode), awakened ? 1 : 0.6);
         if (event.manual && typeof event.cell === 'number') {
@@ -2047,7 +2122,14 @@ export class LobbyGuardBattleRenderer {
         if (typeof event.monsterId === 'number' && event.heroCode) {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
           if (target && awakened) {
-            this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone });
+            const played = this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone });
+            if (!played) {
+              // 大招名额满:除了金色保底弹,落点补金色冲击环;灼烧区画余烬环,不会什么都看不到
+              this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 200, 90), true);
+              if (skillZone && skillZone.kind === 'burn') {
+                this.plainBurnZones.add(skillZone.zoneId);
+              }
+            }
           } else if (target && caster) {
             // 战技(docs/29 v3):通用战技骨骼特效(近战横扫 / 远程灼烧区本体 / 控制旋风本体),被限流时回退技能弹 + 冲击环。
             const skillSpec = resolveHeroGuardSkillEffect(event.heroCode, caster.role);
@@ -2058,6 +2140,25 @@ export class LobbyGuardBattleRenderer {
                 this.plainBurnZones.add(skillZone.zoneId);
               }
             }
+          }
+        } else if (awakened && caster && event.heroCode) {
+          // 控制 / 辅助的技能事件不带 monsterId,此前觉醒后也从没播过专属大招骨骼(只有旋风贴图 / 圣辉涌泉),2026-10-01 补上:
+          // 控制 = 大招跟着旋风区域爆一次;辅助 = 大招挂在施法者身上(小一档)。
+          const center = this.cellCenter(caster.cell);
+          let nearest: GuardMonster | null = null;
+          for (const entry of sim.monsters) {
+            if (!entry.dead && (!nearest || entry.x < nearest.x)) {
+              nearest = entry;
+            }
+          }
+          let played = false;
+          if (skillZone && skillZone.kind === 'cyclone') {
+            played = this.spawnGuardSkillFx(event.heroCode, caster.cell, nearest, { zone: skillZone });
+          } else if (caster.role === 'support') {
+            played = this.spawnGuardSkillFx(event.heroCode, caster.cell, nearest, { anchorAt: { x: center.x, y: center.y + this.unitSize() * 0.2 } });
+          }
+          if (!played) {
+            this.spawnCellBurst(center.x, center.y, rgba(255, 200, 90), true);
           }
         }
         // 群体直击技能(2026-09-11 用户反馈"技能打怪没伤害"):每只命中怪金色大号飘字+红闪,
@@ -5260,9 +5361,9 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 保底技能弹:完整特效被限流时,从英雄身前发一颗大号发光弹(纯表现)——技能归属永远可见。 */
-  private spawnSkillBolt(heroCell: number, monster: GuardMonster): void {
+  private spawnSkillBolt(heroCell: number, monster: GuardMonster | null, ult = false): void {
     const field = this.fieldNode;
-    if (!field || this.projectiles.length >= 40) {
+    if (!field || !monster || (!ult && this.projectiles.length >= 40)) {
       return;
     }
     const origin = this.cellCenter(heroCell);
@@ -5270,20 +5371,22 @@ export class LobbyGuardBattleRenderer {
     const fromY = origin.y + this.heroDisplaySize() * 0.1;
     const node = this.host.addChildPlainNode(field, 'GuardSkillBolt', fromX, fromY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
-    node.setScale(1.6, 1.6, 1);
+    node.setScale(ult ? 2.2 : 1.6, ult ? 2.2 : 1.6, 1);
+    // 大招保底弹改金色(紫色 = 战技保底弹),一眼分得出是大招
+    const tint = ult ? rgba(255, 200, 90) : rgba(200, 150, 255);
     const g = node.addComponent(Graphics);
-    g.strokeColor = rgba(200, 150, 255, 150);
+    g.strokeColor = rgba(tint.r, tint.g, tint.b, ult ? 160 : 150);
     g.lineWidth = 6;
     g.moveTo(-34, 0);
     g.lineTo(-9, 0);
     g.stroke();
-    g.fillColor = rgba(200, 150, 255, 140);
+    g.fillColor = rgba(tint.r, tint.g, tint.b, ult ? 150 : 140);
     g.ellipse(0, 0, 15, 8);
     g.fill();
     g.fillColor = rgba(255, 250, 240, 250);
     g.ellipse(1, 0, 9, 5);
     g.fill();
-    this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount: 0, color: rgba(200, 150, 255), visualOnly: true });
+    this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount: 0, color: tint, visualOnly: true });
   }
 
   /** 每 tick 推进弹幕(归巢;目标死亡转向最近怪;命中=爆闪+飘字+受击红闪)。 */
@@ -5909,17 +6012,53 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 施放者亮相:英雄脚下金色爆闪+身形弹跳,一眼看清技能是谁放的(2026-08-27 用户验收)。 */
-  private highlightCaster(cell: number, label: string): void {
+  private highlightCaster(cell: number, label: string, ult = false): void {
     const center = this.cellCenter(cell);
-    this.spawnCastFlash(center.x, center.y - this.unitSize() * 0.24, this.unitSize() * 1.2);
+    const u = this.unitSize();
+    this.spawnCastFlash(center.x, center.y - u * 0.24, u * (ult ? 2.0 : 1.2));
     const hero = this.sim?.heroes.find((entry) => entry.cell === cell);
     const view = hero ? this.heroViews.get(hero.unitId) : null;
     if (view && view.node.isValid) {
-      tween(view.node).to(0.1, { scale: new Vec3(1.12, 1.12, 1) }).to(0.14, { scale: Vec3.ONE }).start();
+      if (ult) {
+        tween(view.node).to(0.08, { scale: new Vec3(1.22, 1.22, 1) }).to(0.2, { scale: Vec3.ONE }).start();
+      } else {
+        tween(view.node).to(0.1, { scale: new Vec3(1.12, 1.12, 1) }).to(0.14, { scale: Vec3.ONE }).start();
+      }
     }
-    if (label) {
-      this.spawnFloater(center.x, center.y + this.unitSize() * 0.95, label, rgba(255, 226, 130), 18);
+    if (!label) {
+      return;
     }
+    if (!ult) {
+      this.spawnFloater(center.x, center.y + u * 0.95, label, rgba(255, 226, 130), 18);
+      return;
+    }
+    // 大招名牌(2026-10-01):固定在施法者头顶的 26 号金字,不跟普通飘字轮转抖动;同格新大招顶掉旧名牌。
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const plateName = `GuardUltName_${cell}`;
+    field.getChildByName(plateName)?.destroy();
+    const w = this.layoutWidth;
+    const h = this.layoutHeight;
+    const px = Math.max(-0.5 * w + 1.7 * u, Math.min(0.5 * w - 1.7 * u, center.x));
+    const py = Math.min(center.y + u * 1.1, GUARD_FX_SAFE.top * h - 24);
+    const plate = this.host.addChildLabel(field, plateName, label, px, py, 26, rgba(255, 214, 92), new Size(u * 3.4, 34));
+    plate.isBold = true;
+    plate.enableOutline = true;
+    plate.outlineColor = rgba(90, 24, 0, 255);
+    plate.outlineWidth = 3;
+    plate.overflow = Label.Overflow.SHRINK;
+    plate.node.setSiblingIndex(field.children.length - 1);
+    plate.node.setScale(1.5, 1.5, 1);
+    tween(plate.node).to(0.14, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+    tween(plate.node).by(1.1, { position: new Vec3(0, 24, 0) }).start();
+    const opacity = plate.node.addComponent(UIOpacity);
+    tween(opacity).delay(0.8).to(0.3, { opacity: 0 }).call(() => {
+      if (plate.node.isValid) {
+        plate.node.destroy();
+      }
+    }).start();
   }
 
   /** 近战刀光:目标处双弧斩闪 0.16s。 */
@@ -6634,15 +6773,25 @@ export class LobbyGuardBattleRenderer {
   // ── 技能击特效(2026-08-25 用户拍板):束状=从英雄身前沿攻击方向延伸、锁定怪物方向;爆点=贴在目标身上;
   //    目标死亡自动转向最近存活怪(guardFxAimers 逐帧驱动)。──
   /** 返回 false = 被限流只放了保底技能弹(调用方可补冲击环等轻量表现)。group.spec 指定特效(战技),缺省取专属大招。 */
-  private spawnGuardSkillFx(heroCode: string, heroCell: number | null, monster: GuardMonster, group?: { monsterIds?: number[]; zone?: GuardZone | null; spec?: BattleSkillEffectSpec }): boolean {
+  private spawnGuardSkillFx(
+    heroCode: string,
+    heroCell: number | null,
+    monster: GuardMonster | null,
+    group?: { monsterIds?: number[]; zone?: GuardZone | null; spec?: BattleSkillEffectSpec; anchorAt?: { x: number; y: number }; internal?: boolean },
+  ): boolean {
     const field = this.fieldNode;
     const sim = this.sim;
     if (!field || !sim || heroCell === null) {
       return false;
     }
+    // 不带 spec = 专属大招(2026-10-01):与战技分开计名额,不吃同英雄 1.6s 冷却与束状名额——大招永远完整播放,
+    // 只有大招名额也满了才退成金色保底弹(紫色保底弹 = 战技)。internal = 大招播完把灼烧区交还给战技循环,不算新出手。
+    const isUlt = !group?.spec;
     // 被限流时不再静默吞掉:保底从英雄身前发一颗大号技能弹(纯表现)——归属永远可见(2026-09-02 用户验收)
-    if (this.guardFxLiveCount >= 5) {
-      this.spawnSkillBolt(heroCell, monster);
+    if (isUlt ? this.ultFxLive >= GUARD_ULT_FX_MAX_LIVE : this.skillFxLive >= GUARD_SKILL_FX_MAX_LIVE) {
+      if (!group?.internal) {
+        this.spawnSkillBolt(heroCell, monster, isUlt);
+      }
       return false;
     }
     const pool = sim.pool.find((entry) => entry.heroCode === heroCode);
@@ -6650,37 +6799,46 @@ export class LobbyGuardBattleRenderer {
     const spec: BattleSkillEffectSpec = group?.spec ?? resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
     // 表现限流(视频验收):同英雄 1.6s 内只放一次完整特效;束状同屏最多 1 条;被限流走保底技能弹。
     const now = Date.now();
-    if (now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
+    if (!isUlt && !group?.internal && now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
       this.spawnSkillBolt(heroCell, monster);
       return false;
     }
-    if (GUARD_BEAM_EFFECT_CODES.has(spec.effect) && this.beamFxLive >= 1) {
+    if (!isUlt && GUARD_BEAM_EFFECT_CODES.has(spec.effect) && this.beamFxLive >= 1) {
       this.spawnSkillBolt(heroCell, monster);
       return false;
     }
-    this.heroFxLastAt.set(heroCode, now);
+    if (!group?.internal) {
+      this.heroFxLastAt.set(heroCode, now);
+    }
     const hero = sim.heroes.find((entry) => entry.cell === heroCell);
     const role = hero?.role ?? 'ranged';
     const origin = this.cellCenter(heroCell);
     const muzzleX = origin.x + this.unitSize() * 0.45;
     const muzzleY = origin.y + this.unitSize() * 0.02;
     const rangePx = Math.max(this.unitSize() * 1.5, this.xToPx(Math.min(GUARD_SPAWN_X, GUARD_ROLE_PROFILE[role].rangeCells)) - muzzleX);
-    // 出手闪光:一眼看清技能从谁身前发出(2026-08-26 用户验收)。
-    const flash = this.host.addChildPlainNode(field, 'GuardMuzzleFlash', muzzleX, muzzleY, 10, 10);
-    const flashG = flash.addComponent(Graphics);
-    flashG.fillColor = rgba(255, 230, 150, 210);
-    flashG.circle(0, 0, 16);
-    flashG.fill();
-    const flashOpacity = flash.addComponent(UIOpacity);
-    tween(flash).to(0.2, { scale: new Vec3(2.4, 2.4, 1) }).start();
-    tween(flashOpacity).to(0.24, { opacity: 0 }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
+    if (!group?.internal && !group?.anchorAt) {
+      // 出手闪光:一眼看清技能从谁身前发出(2026-08-26 用户验收)。
+      const flash = this.host.addChildPlainNode(field, 'GuardMuzzleFlash', muzzleX, muzzleY, 10, 10);
+      const flashG = flash.addComponent(Graphics);
+      flashG.fillColor = rgba(255, 230, 150, 210);
+      flashG.circle(0, 0, 16);
+      flashG.fill();
+      const flashOpacity = flash.addComponent(UIOpacity);
+      tween(flash).to(0.2, { scale: new Vec3(2.4, 2.4, 1) }).start();
+      tween(flashOpacity).to(0.24, { opacity: 0 }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
+    }
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
     const skeleton = node.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
-    this.guardFxLiveCount += 1;
+    if (isUlt) {
+      this.ultFxLive += 1;
+    } else {
+      this.skillFxLive += 1;
+    }
     let released = false;
     let beamCounted = false;
+    let started = false;
     const release = (): void => {
       if (released) {
         return;
@@ -6690,9 +6848,22 @@ export class LobbyGuardBattleRenderer {
         this.beamFxLive = Math.max(0, this.beamFxLive - 1);
       }
       this.guardFxAimers.delete(node);
-      this.guardFxLiveCount = Math.max(0, this.guardFxLiveCount - 1);
+      if (isUlt) {
+        this.ultFxLive = Math.max(0, this.ultFxLive - 1);
+      } else {
+        this.skillFxLive = Math.max(0, this.skillFxLive - 1);
+      }
       if (node.isValid) {
         node.destroy();
+      }
+      // 大招骨骼没能播出来(加载失败 / 动画为空):补一个金色冲击环,大招不会无声消失。
+      if (isUlt && !started) {
+        const zoneAt = group?.zone ?? null;
+        const at = group?.anchorAt
+          ?? (zoneAt ? { x: this.xToPx(zoneAt.x), y: this.walkwayY() } : monster ? { x: this.xToPx(monster.x), y: this.monsterY(monster.lane, monster.x) } : null);
+        if (at) {
+          this.spawnCellBurst(at.x, at.y, rgba(255, 200, 90), true);
+        }
       }
     };
     const markBeamLive = (): boolean => {
@@ -6745,14 +6916,35 @@ export class LobbyGuardBattleRenderer {
         const areaFit = targetLen / Math.sqrt(extentW * extentH);
         const screenFit = Math.min((this.layoutWidth * 0.9) / extentW, (this.layoutHeight * 0.75) / extentH);
         const baseFit = Math.min(GUARD_FX_UPSCALE_CAP, areaFit, screenFit);
-        let currentTargetId = monster.monsterId;
+        // 大招按"核心亮区"定尺寸与对位(2026-10-01):目标 = 稀有度档位 × unitSize 的几何均值,
+        // 再钳在核心 ≤ 场宽 55% / 场高 56%、宽松框 ≤ 85%(淡粒子不糊满屏)内;战技继续用上面的 baseFit。
+        const u = this.unitSize();
+        const core: BattleFxMeasuredBounds = isUlt
+          ? (lookupBattleFxCoreBounds(spec.effect, animationName)
+            ?? { w: extentW * GUARD_ULT_CORE_FALLBACK_RATIO, h: extentH * GUARD_ULT_CORE_FALLBACK_RATIO, cx: centerX, cy: centerY })
+          : { w: extentW, h: extentH, cx: centerX, cy: centerY };
+        const ultClampFit = Math.min(
+          GUARD_ULT_FIT_CAP,
+          (this.layoutWidth * GUARD_ULT_CORE_MAX_W) / Math.max(8, core.w),
+          (this.layoutHeight * GUARD_ULT_CORE_MAX_H) / Math.max(8, core.h),
+          (this.layoutWidth * GUARD_ULT_LOOSE_MAX) / extentW,
+          (this.layoutHeight * GUARD_ULT_LOOSE_MAX) / extentH,
+        );
+        const tierU = (GUARD_ULT_CORE_TARGET_U[heroCode.split('_')[0]] ?? GUARD_ULT_CORE_TARGET_U.R) * (group?.anchorAt ? GUARD_ULT_SUPPORT_MULT : 1);
+        let ultWant = (u * tierU) / Math.sqrt(Math.max(64, core.w * core.h));
+        let currentTargetId = monster?.monsterId ?? -1;
         const zone = group?.zone ?? null;
         const hitIds = (group?.monsterIds ?? []).filter((hitId) => this.sim?.monsters.some((entry) => entry.monsterId === hitId && !entry.dead) ?? false);
+        if (isUlt && zone && zone.kind === 'burn') {
+          // 远程大招落在灼烧区:亮核至少盖满灼烧圈(与 syncZones 半径同口径)
+          const zoneR = Math.max(48, this.xToPx(Math.min(GUARD_SPAWN_X, zone.x + zone.radiusCells)) - this.xToPx(zone.x));
+          ultWant = Math.max(ultWant, (2 * zoneR) / Math.max(8, core.w));
+        }
         // 2026-09-12 用户反馈图 2:横斩从英雄身前"飞"过去、半张在屏幕左下——技能不再飞行,直接锁在目标上:
         // zone=灼烧区中心循环播到区域到期(区域本体就是特效);group=群体命中簇中心、宽度拉到覆盖全部命中怪
         //(特效覆盖处即掉血处);target=贴住单个目标(目标死亡转最近怪)。束状(凤凰)照旧从英雄身前指向目标。
-        const anchorMode: 'zone' | 'group' | 'target' = zone ? 'zone' : hitIds.length > 1 ? 'group' : 'target';
-        let burstFit = baseFit;
+        const anchorMode: 'fixed' | 'zone' | 'group' | 'target' = group?.anchorAt ? 'fixed' : zone ? 'zone' : hitIds.length > 1 ? 'group' : 'target';
+        let burstFit = isUlt ? Math.min(ultWant, ultClampFit) : baseFit;
         let groupX = 0;
         let groupY = 0;
         if (anchorMode === 'group' && this.sim) {
@@ -6772,7 +6964,22 @@ export class LobbyGuardBattleRenderer {
           }
           groupX = (minX + maxX) / 2;
           groupY = sumY / Math.max(1, count) + this.unitSize() * 0.1;
-          burstFit = Math.min(GUARD_FX_GROUP_UPSCALE_CAP, Math.max(baseFit, (maxX - minX + this.unitSize() * 1.6) / extentW));
+          if (isUlt) {
+            // 大招:亮核横向盖住整个命中簇
+            burstFit = Math.min(ultClampFit, Math.max(ultWant, (maxX - minX + u * 1.2) / Math.max(8, core.w)));
+          } else {
+            // 战技:最多比 baseFit 大 15%(此前可拉到 2.6×,近战战技反而比大招还大)
+            burstFit = Math.min(GUARD_FX_GROUP_UPSCALE_CAP, baseFit * GUARD_SKILL_GROUP_GROWTH, Math.max(baseFit, (maxX - minX + u * 1.6) / extentW));
+          }
+        }
+        // 出手时锚定目标已死(大招 ×1.5 一击清场常见):钉在它最后的位置(死怪 3s 内仍留在 sim.monsters 里),
+        // 不然 aim 找不到活怪会直接 return,节点停在英雄身前、按原始骨骼尺寸(上千像素)播放。
+        let pinned: { x: number; y: number } | null = null;
+        if (monster && (monster.dead || !(this.sim?.monsters.some((entry) => entry.monsterId === monster.monsterId && !entry.dead) ?? false))) {
+          pinned = {
+            x: this.xToPx(monster.x),
+            y: this.monsterY(monster.lane, monster.x) + this.monsterJitterY(monster) * this.monsterSpread(monster.x) + this.unitSize() * 0.1,
+          };
         }
         const resolveTarget = (): GuardMonster | null => {
           if (!this.sim) {
@@ -6800,10 +7007,28 @@ export class LobbyGuardBattleRenderer {
         };
         const place = (ax: number, ay: number): void => {
           node.setScale(burstFit, burstFit, 1);
+          if (isUlt) {
+            // 大招:亮核中心对准锚点,并整体收进安全区(不压底部法术栏、不顶顶部横幅、不出屏)
+            const hw = (core.w * burstFit) / 2;
+            const hh = (core.h * burstFit) / 2;
+            const W = this.layoutWidth;
+            const H = this.layoutHeight;
+            const within = (v: number, lo: number, hi: number): number => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
+            const cx = within(ax, GUARD_FX_SAFE.left * W + hw, GUARD_FX_SAFE.right * W - hw);
+            // 辅助大招挂在施法者身上:下排英雄脚下就是屏幕底部,下沿放宽到屏幕底边,否则会被顶离施法者
+            const bottom = anchorMode === 'fixed' ? -0.5 * H + 8 : GUARD_FX_SAFE.bottom * H;
+            const cy = within(ay, bottom + hh, GUARD_FX_SAFE.top * H - hh);
+            node.setPosition(cx - core.cx * burstFit, cy - core.cy * burstFit, 0);
+            return;
+          }
           node.setPosition(ax - centerX * burstFit, ay - centerY * burstFit, 0);
         };
         const aim = (): void => {
           if (!node.isValid) {
+            return;
+          }
+          if (anchorMode === 'fixed' && group?.anchorAt) {
+            place(group.anchorAt.x, group.anchorAt.y);
             return;
           }
           if (anchorMode === 'zone' && zone && !beam) {
@@ -6816,6 +7041,10 @@ export class LobbyGuardBattleRenderer {
           }
           if (anchorMode === 'group' && !beam) {
             place(groupX, groupY);
+            return;
+          }
+          if (pinned && !beam) {
+            place(pinned.x, pinned.y);
             return;
           }
           const target = resolveTarget();
@@ -6873,19 +7102,30 @@ export class LobbyGuardBattleRenderer {
               release();
             }
           });
-        } else if (anchorMode === 'zone') {
+        } else if (anchorMode === 'zone' && !isUlt) {
           // 灼烧区:循环播放,aim 内按 zone.untilMs 到期释放
           skeleton.setAnimation(0, animationName, true);
         } else {
           skeleton.setAnimation(0, animationName, false);
-          skeleton.setCompleteListener(() => release());
+          skeleton.setCompleteListener(() => {
+            release();
+            // 远程大招(2026-10-01):在灼烧区上只爆一次大的,然后把还没到期的灼烧区交给战技循环特效接着烧
+            const live = this.sim;
+            if (isUlt && zone && zone.kind === 'burn' && live && live.timeMs < zone.untilMs && live.zones.some((entry) => entry.zoneId === zone.zoneId)) {
+              const handed = this.spawnGuardSkillFx(heroCode, heroCell, resolveTarget(), { zone, spec: resolveHeroGuardSkillEffect(heroCode, role), internal: true });
+              if (!handed) {
+                this.plainBurnZones.add(zone.zoneId);
+              }
+            }
+          });
         }
+        started = true;
       } catch (error) {
         void error;
         release();
       }
     });
-    const lifetimeSec = group?.zone && this.sim ? Math.max(0.6, (group.zone.untilMs - this.sim.timeMs) / 1000 + 0.3) : 3.4;
+    const lifetimeSec = !isUlt && group?.zone && this.sim ? Math.max(0.6, (group.zone.untilMs - this.sim.timeMs) / 1000 + 0.3) : 3.4;
     tween(node).delay(lifetimeSec).call(release).start();
     return true;
   }
