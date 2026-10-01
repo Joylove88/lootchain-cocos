@@ -300,7 +300,7 @@ export interface GuardSpellDef {
 export const GUARD_SPELLS: Record<GuardSpellId, GuardSpellDef> = {
   quake: { id: 'quake', name: '矿晶震荡', cost: 100, target: 'none', desc: '全场伤害并击退' },
   frost: { id: 'frost', name: '冰封', cost: 60, target: 'point', desc: '拖到战场:一片区域冻结 3 秒' },
-  thunder: { id: 'thunder', name: '天雷', cost: 80, target: 'point', desc: '拖到战场落雷,精英双倍' },
+  thunder: { id: 'thunder', name: '九天神雷', cost: 80, target: 'point', desc: '拖到战场落雷,精英双倍' }, // 2026-10-01 用户:天雷改名九天神雷
   goldrush: { id: 'goldrush', name: '金矿爆发', cost: 80, target: 'none', desc: '立刻获得金币(每波限 1 次)' },
   aegis: { id: 'aegis', name: '圣光壁垒', cost: 90, target: 'none', desc: '水晶 4 秒无敌并回复 10%' },
   warhorn: { id: 'warhorn', name: '狂战号角', cost: 70, target: 'none', desc: '全队攻速 +50%,持续 6 秒' },

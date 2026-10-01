@@ -3593,7 +3593,7 @@ export class LobbyGuardBattleRenderer {
           flashAt(px, py, 'ui/battle/c1812/effects/hit_burst/spriteFrame', unit * 2.6, rgba(210, 230, 255), 0.5);
           flashAt(px, py, 'ui/battle/c1812/effects/hit_ring/spriteFrame', unit * 3, rgba(255, 230, 140), 0.6);
         }
-        this.spawnFloater(px, py + unit * 1.2, `天雷 -${amount}`, rgba(255, 230, 140), 22);
+        this.spawnFloater(px, py + unit * 1.2, `${GUARD_SPELLS.thunder.name} -${amount}`, rgba(255, 230, 140), 22);
       }
       void lane;
     } else if (id === 'goldrush') {
