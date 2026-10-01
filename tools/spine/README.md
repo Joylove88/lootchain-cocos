@@ -95,6 +95,7 @@ Get-ChildItem assets\resources\spine\effect -Directory | Where-Object { -not (Te
 | `fx_convert_batch.ps1` | 批量转换(任意旧版本 → 4.2.43;-Recurse 递归找套、重名加前缀、-SkipDone 续跑;写 report.tsv / manifest.tsv) |
 | `fx_install.ps1` | 把转换产物入库到 `assets/resources/spine/effect`,校验版本与图集引用 |
 | `fx_install_v2.py` | 新批次(fx_pack_v2)按**短编号**入库:`python tools/spine/fx_install_v2.py 映射文件`(每行 `<code>\t<套名>`),套名改成 `v2_<包>_<号>`,只复制 atlas 引用的 png;选型 / 渲染工具链见 docs/29 v3 |
+| `fx_halfres.py` | 已入库特效贴图等比降半分辨率（atlas 坐标同步 ×0.5，预乘 alpha 缩放防黑边）：`python tools/spine/fx_halfres.py assets/resources/spine/effect/<code>`；用于多页大图集、战场只缩小显示的特效（如 v2_s681_6030 12.4MB → 4.1MB）。只改入库副本 |
 | `fx42_binary_pack.export.json` | 二进制 + 重打包图集(2048、stripWhitespace、premultiplyAlpha=false) |
 | `fx42_json_data.export.json` | 数据 json(不打包),供清单 / 校验 |
 | `fx42_reuse_atlas.export.json` | 只升级数据不打包(沿用原 atlas/png) |

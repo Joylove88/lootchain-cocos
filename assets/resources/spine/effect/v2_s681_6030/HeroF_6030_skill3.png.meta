@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "6f7be601-f2ae-43c4-87af-f41f0fbc4c5c",
+  "uuid": "e9180dc6-d3d0-4d78-9136-e816ff74cb00",
   "files": [
     ".json",
     ".png"
@@ -10,8 +10,8 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "6f7be601-f2ae-43c4-87af-f41f0fbc4c5c@6c48a",
-      "displayName": "HeroF_4030_skill",
+      "uuid": "e9180dc6-d3d0-4d78-9136-e816ff74cb00@6c48a",
+      "displayName": "HeroF_6030_skill3",
       "id": "6c48a",
       "name": "texture",
       "userData": {
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "6f7be601-f2ae-43c4-87af-f41f0fbc4c5c",
+        "imageUuidOrDatabaseUri": "e9180dc6-d3d0-4d78-9136-e816ff74cb00",
         "visible": false
       },
       "ver": "1.0.22",
@@ -37,6 +37,6 @@
     "type": "texture",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "6f7be601-f2ae-43c4-87af-f41f0fbc4c5c@6c48a"
+    "redirect": "e9180dc6-d3d0-4d78-9136-e816ff74cb00@6c48a"
   }
 }

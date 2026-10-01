@@ -51,7 +51,7 @@ const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   R_PATROL_01: { effect: 'v2_s681_1001', animation: 'attackall', anchor: 'target', scale: 1.15, offsetY: 14 }, // 王国·誓约剑气(S681 1001,1.233s)
   UR_ATLAS: { effect: 'v2_s681_6009', animation: 'skill02_3', anchor: 'self', scale: 2.4, offsetY: 12 }, // 圣铠·不动壁垒:金色星芒大爆发(S681 6009,0.767s)
   SSR_KANE: { effect: 'v2_s681_4006', animation: 'skill03', anchor: 'target', scale: 1.4, offsetY: 14 }, // 白银·圣枪穿刺(S681 4006,0.867s)
-  SR_PALADIN_02: { effect: 'v2_s681_4030', animation: 'skill03', anchor: 'self', scale: 1.25, offsetY: 10 }, // 圣盾·守御反击(S681 4030,1.2s)
+  SR_PALADIN_02: { effect: 'v2_s681_6030', animation: 'skill01_2_1', anchor: 'target', scale: 1.25, offsetY: 12 }, // 圣盾·圣纹壁垒:金色圣盾罩升起 → 地面符文金环炸开(S681 6030,1.3s;2026-10-01 用户嫌原 4030 小金火花太弱,换套;贴图已半分辨率入库)
   R_GUARD_07: { effect: 'v2_s681_1007', animation: 'skill02', anchor: 'self', scale: 1.15, offsetY: 10 }, // 城门·坚守盾击(S681 1007,1.533s)
   UR_SERAPHINA: { effect: 'v2_s681_6033', animation: 'skill03_1', anchor: 'self', scale: 2.4, offsetY: 14 }, // 晨星·月华圣辉(S681 6033,1.733s)
   SR_PRIEST_01: { effect: 'v2_s681_1015', animation: 'skill01_1', anchor: 'self', scale: 1.25, offsetY: 12 }, // 银色·圣愈祷言(S681 1015,1.267s)
@@ -226,7 +226,7 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_s681_4006:skill03': { w: 1806, h: 1183, cx: 365, cy: 318 },
   'v2_s681_4024:skill01': { w: 2592, h: 723, cx: 1328, cy: 288 },
   'v2_s681_4029:skill02': { w: 1049, h: 424, cx: 2, cy: 62 },
-  'v2_s681_4030:skill03': { w: 685, h: 516, cx: 116, cy: 217 },
+  'v2_s681_6030:skill01_2_1': { w: 6599, h: 2837, cx: 374, cy: 500 },
   'v2_s681_5001:skill01_3': { w: 3915, h: 3227, cx: 99, cy: 963 },
   'v2_s681_5008:skill01_1': { w: 1520, h: 1433, cx: 20, cy: 555 },
   'v2_s681_5012:skill03': { w: 2289, h: 1054, cx: 748, cy: 292 },
@@ -263,7 +263,7 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   'v2_s681_4006:skill03': { w: 747, h: 518, cx: 483, cy: 316 },
   'v2_s681_4024:skill01': { w: 1890, h: 482, cx: 1416, cy: 232 },
   'v2_s681_4029:skill02': { w: 618, h: 248, cx: -4, cy: 51 },
-  'v2_s681_4030:skill03': { w: 210, h: 208, cx: 238, cy: 223 },
+  'v2_s681_6030:skill01_2_1': { w: 3612, h: 1219, cx: 623, cy: 94 },
   'v2_s681_5001:skill01_3': { w: 1441, h: 2283, cx: 176, cy: 861 },
   'v2_s681_5008:skill01_1': { w: 1302, h: 1082, cx: 38, cy: 608 },
   'v2_s681_5012:skill03': { w: 1090, h: 585, cx: 811, cy: 253 },
