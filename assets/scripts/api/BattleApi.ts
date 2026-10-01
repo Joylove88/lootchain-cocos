@@ -315,6 +315,13 @@ function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'
   const loadout = Array.isArray(raw.spellLoadout)
     ? raw.spellLoadout.filter((id): id is string => typeof id === 'string' && spells.indexOf(id) >= 0).slice(0, 5)
     : [];
+  // 法术等级(docs/39):只认已解锁法术,钳到 1..5,缺项 = 1。白名单式校验——不在这里放行,战斗里会全员按 Lv1 打。
+  const spellLevels: Record<string, number> = {};
+  const rawLevels = isRecord(raw.spellLevels) ? raw.spellLevels : null;
+  for (const id of spells) {
+    const value = rawLevels ? Number(rawLevels[id]) : NaN;
+    spellLevels[id] = Number.isFinite(value) ? Math.max(1, Math.min(5, Math.round(value))) : 1;
+  }
   return {
     level: Math.max(1, num('level', 999)),
     crystalHpPct: num('crystalHpPct', 200),
@@ -325,6 +332,7 @@ function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'
     unlockedSpells: spells,
     spellSlots: slots > 0 ? slots : undefined,
     spellLoadout: loadout,
+    spellLevels,
   };
 }
 

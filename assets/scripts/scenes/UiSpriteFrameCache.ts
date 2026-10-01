@@ -105,6 +105,8 @@ const GUARD_CRYSTAL_UI_ASSETS = [
   'ui/hero/ai/refine_panel_bg/spriteFrame', 'ui/common/ai/title_divider_left/spriteFrame', 'ui/common/ai/title_divider_right/spriteFrame',
   'ui/common/ai/button_close/spriteFrame', 'ui/common/ai/ic_lock/spriteFrame', 'ui/common/ai/ic_gold_medium/spriteFrame',
   'ui/bag/ai/icon_guard_core/spriteFrame', 'ui/battle/ai/buff_atk/spriteFrame',
+  // docs/39 法术等级:卡片档位徽记 Ⅰ / Ⅱ / Ⅲ
+  'ui/daily/ai/tier_1/spriteFrame', 'ui/daily/ai/tier_2/spriteFrame', 'ui/daily/ai/tier_3/spriteFrame',
 ]);
 
 export class UiSpriteFrameCache {

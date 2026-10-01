@@ -74,7 +74,7 @@ import { LobbyBagPanelRenderer, type LobbyBagPanelHost } from './lobby/LobbyBagP
 import { LobbyBattleFlow, type LobbyBattleFlowHost } from './lobby/LobbyBattleFlow';
 import { LobbyBattlePreviewPanelRenderer, type LobbyBattlePreviewPanelHost } from './lobby/LobbyBattlePreviewPanelRenderer';
 import { LobbyGuardBattleRenderer, type LobbyGuardBattleHost } from './lobby/LobbyGuardBattleRenderer';
-import { GUARD_MONSTER_SPINE_FILE, guardMonsterSpineResource } from './lobby/GuardBattleModel';
+import { GUARD_MONSTER_SPINE_FILE, GUARD_SPELLS, GUARD_SPELL_UNLOCK_NAMES, guardMonsterSpineResource, type GuardSpellId } from './lobby/GuardBattleModel';
 import { LobbyCodexState } from './lobby/LobbyCodexState';
 import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/LobbyCodexPanelRenderer';
 import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/LobbyForgePanelRenderer';
@@ -5155,6 +5155,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyGuardCrystalDialogRenderer.render(this.resolveLayout());
       if (this.lobbyGuardCrystalDialog) {
         this.lobbyGuardCrystalDialog.flashLevel = null;
+        this.lobbyGuardCrystalDialog.spellFlash = null;
       }
     }
     this.raiseLobbyCurrencyFlies();
@@ -5256,6 +5257,50 @@ export class LootChainGameRoot extends Component {
         dialog.noticeGood = false;
       }
       this.setStatus(`水晶升级失败:${message}`);
+      gameAudio.sfx('ui_error');
+    } finally {
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.busy = false;
+      }
+      this.syncLobbyShopOverlay();
+    }
+  }
+
+  /** 法术升 1 级(docs/39):锁按钮 → 服务端扣金币 + 守卫晶核(requestId 幂等)→ 刷面板与顶部金币 + 卡片闪光。 */
+  private upgradeGuardSpell(spellId: string): void {
+    void this.runGuardSpellUpgrade(spellId);
+  }
+
+  private async runGuardSpellUpgrade(spellId: string): Promise<void> {
+    const dialog = this.lobbyGuardCrystalDialog;
+    if (!dialog || dialog.busy || !dialog.info) {
+      return;
+    }
+    dialog.busy = true;
+    this.syncLobbyShopOverlay();
+    const requestId = `guard-spell-${spellId}-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+    const spellName = GUARD_SPELLS[spellId as GuardSpellId]?.name ?? spellId;
+    try {
+      const result = await this.api.guardCrystal.upgradeSpell(spellId, requestId);
+      const unlock = result.toLevel === 3 || result.toLevel === 5
+        ? GUARD_SPELL_UNLOCK_NAMES[spellId as GuardSpellId]?.[result.toLevel === 3 ? 'lv3' : 'lv5'] ?? null
+        : null;
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.info = result.info;
+        dialog.notice = unlock ? `${spellName}升到 Lv.${result.toLevel}!解锁「${unlock}」· 下一局生效` : `${spellName}升到 Lv.${result.toLevel}!下一局生效`;
+        dialog.noticeGood = true;
+        dialog.spellFlash = { id: spellId as GuardSpellId, level: result.toLevel };
+      }
+      this.setStatus(`${spellName}升到 Lv.${result.toLevel}(-${result.goldCost} 金币 · -${result.coreCost} 守卫晶核)`);
+      gameAudio.sfx('level_up');
+      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (this.lobbyGuardCrystalDialog === dialog) {
+        dialog.notice = message;
+        dialog.noticeGood = false;
+      }
+      this.setStatus(`法术升级失败:${message}`);
       gameAudio.sfx('ui_error');
     } finally {
       if (this.lobbyGuardCrystalDialog === dialog) {

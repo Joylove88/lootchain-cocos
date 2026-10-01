@@ -13,6 +13,19 @@ export interface GuardCrystalEffectVO {
   spellSlots?: number;
   /** 出战法术(按格位顺序;面板当前等级与开战快照填写,等级表行为 null)。 */
   spellLoadout?: string[] | null;
+  /** 法术等级(docs/39;只含已解锁法术,缺项 = 1;等级表行为 null)。 */
+  spellLevels?: Partial<Record<string, number>> | null;
+}
+
+/** 单个法术的等级与下一级花费(docs/39;满级时 next* / needCrystalLevel 为 null)。 */
+export interface GuardSpellLevelVO {
+  spellId: string;
+  level: number;
+  maxLevel: number;
+  unlocked: boolean;
+  nextGold: number | null;
+  nextCore: number | null;
+  needCrystalLevel: number | null;
 }
 
 export interface GuardCrystalLevelVO {
@@ -39,6 +52,8 @@ export interface GuardCrystalInfoVO {
   maxSpellSlots?: number;
   nextSlotLevel?: number | null;
   levels: GuardCrystalLevelVO[];
+  /** 法术等级列表(docs/39;按 quake/frost/thunder/goldrush/aegis/warhorn 顺序)。 */
+  spells?: GuardSpellLevelVO[] | null;
 }
 
 export interface GuardCrystalUpgradeResultVO {
@@ -46,6 +61,17 @@ export interface GuardCrystalUpgradeResultVO {
   toLevel: number;
   goldCost: number;
   coreCost?: number;
+  replayed: boolean;
+  info: GuardCrystalInfoVO;
+}
+
+/** 法术升级回执(docs/39 POST /api/player/guard-crystal/spell-upgrade)。 */
+export interface GuardSpellUpgradeResultVO {
+  spellId: string;
+  fromLevel: number;
+  toLevel: number;
+  goldCost: number;
+  coreCost: number;
   replayed: boolean;
   info: GuardCrystalInfoVO;
 }

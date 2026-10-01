@@ -66,10 +66,12 @@ import {
   GUARD_SPELLS,
   GUARD_SPELL_IDS,
   GUARD_SPELL_UNLOCK_LEVEL,
-  GUARD_SPELL_THUNDER_RADIUS,
-  GUARD_SPELL_FROST_RADIUS,
-  GUARD_SPELL_AEGIS_MS,
-  GUARD_SPELL_WARHORN_MS,
+  GUARD_SPELL_CHAIN_RANGE,
+  GUARD_SPELL_UNLOCK_NAMES,
+  guardSpellDescribe,
+  guardSpellLevel,
+  guardSpellRow,
+  guardSpellTier,
   type GuardSpellId,
   guardPlaceTrap,
   guardTrapBlockReason,
@@ -226,6 +228,26 @@ const GUARD_ROLE_COLOR: Record<string, Color> = {
 const GUARD_PREF_SHAKE = 'lootchain.guard.shake';
 const GUARD_PREF_DAMAGE_NUMBERS = 'lootchain.guard.damageNumbers';
 /** 法术图标(现有素材拼:水晶徽章 / 冰旋 / 雷光 / 金币 / 金色盾波 / 剑徽)。 */
+/** 金矿爆发金币堆(docs/39 §5):小堆 / 中堆 / 大堆 + 满仓宝箱。项目现成图,全部按原比例显示;宽 = unitSize × u。 */
+const GUARD_GOLD_PILE_SPRITES: Array<{ path: string; aspect: number; u: number }> = [
+  { path: 'ui/crystal/ai/stat_gold/spriteFrame', aspect: 72 / 76, u: 0.95 },
+  { path: 'ui/common/ai/ic_gold_medium/spriteFrame', aspect: 153 / 176, u: 1.45 },
+  { path: 'ui/common/ai/ic_gold_large/spriteFrame', aspect: 171 / 184, u: 2.0 },
+];
+const GUARD_GOLD_PILE_JACKPOT = { path: 'ui/bag/ai/icon_gold_chest/spriteFrame', aspect: 1, u: 1.7 };
+/**
+ * 金币堆骨骼版(docs/39 §5,2026-10-01 烘焙):fx_pack_v2 A49-005「挂机奖励」去掉宝箱 / 宝石 / 箱内飘币后只留金币堆 + 光芒闪光,
+ * jiangli_2 / 3 / 4 = 小 / 中 / 大堆(静态堆 + 循环光效)。heap = 只算金币的包围盒(骨骼单位),
+ * 三档用同一个缩放(大堆宽 = 2.6 × unitSize),天然大小差就是档位差。没就绪时退回上面的静态图。
+ */
+const GUARD_GOLD_PILE_SPINE = {
+  effect: 'v2_a49_005c',
+  anims: ['jiangli_2', 'jiangli_3', 'jiangli_4'],
+  heap: [{ w: 648, h: 158, cx: -10, cy: -21 }, { w: 1034, h: 238, cx: 34, cy: 6 }, { w: 1543, h: 297, cx: -15, cy: 23 }],
+  largeWidthU: 2.6,
+};
+/** 法术等级档位边框色(T1 青铜 / T2 银 / T3 金)与等级点缀用的通用贴图。 */
+const GUARD_SPELL_TIER_RIM = [rgba(170, 128, 72, 235), rgba(214, 228, 248, 245), rgba(255, 214, 92, 255)];
 const GUARD_SPELL_ICON: Record<GuardSpellId, string> = {
   quake: 'ui/battle/ai/ghud_btn_skill/spriteFrame',
   frost: 'ui/guard/fx_wind_zone/spriteFrame',
@@ -449,6 +471,10 @@ export class LobbyGuardBattleRenderer {
   /** 水晶法术拖拽瞄准中的法术(docs/37 F)与上次壁垒"免疫"飘字时刻。 */
   private spellDrag: { id: GuardSpellId; moved: number; aim: { lane: number; x: number } | null } | null = null;
   private aegisFloaterAt = 0;
+  /** docs/39:本局已出过 Lv5 名牌的法术;法术追加效果飘字节流;金币堆飞币计数(独立于击杀金币的 12 枚上限)。 */
+  private readonly spellLv5Shown = new Set<GuardSpellId>();
+  private spellEchoFloaterAt = 0;
+  private pileCoinLive = 0;
   /** 车道陷阱(docs/37 G):托盘开关、拖拽中的陷阱、场上陷阱视图。 */
   private trapTrayOpen = false;
   private trapDrag: { kind: GuardTrapKind; moved: number; x: number | null } | null = null;
@@ -551,6 +577,8 @@ export class LobbyGuardBattleRenderer {
     this.skillFxLive = 0;
     this.ultFxLive = 0;
     this.lastUltDimAt = 0;
+    this.spellLv5Shown.clear();
+    this.pileCoinLive = 0;
     this.guardFxAimers.clear();
     this.fieldBaseG = null;
     this.paintedCellsKey = '';
@@ -616,6 +644,44 @@ export class LobbyGuardBattleRenderer {
     this.mount(battleState, layout);
   }
 
+  /**
+   * 本机调试专用(docs/39 P0):只在 localhost / 127.0.0.1 生效——URL 参数 guardSpellLv=goldrush:5,thunder:3
+   * 或 window.__guardSpellLv 同格式字符串,覆盖开战快照里的法术等级,用于截图自验各档表现。正式环境原样返回。
+   */
+  private withLocalSpellLevelOverride<T extends { spellLevels?: Partial<Record<string, number>> | null } | null>(crystal: T): T {
+    try {
+      const w = globalThis as unknown as { location?: { hostname?: string; search?: string }; __guardSpellLv?: string };
+      const host = w.location?.hostname ?? '';
+      if (host !== 'localhost' && host !== '127.0.0.1') {
+        return crystal;
+      }
+      const fromUrl = /[?&]guardSpellLv=([^&]+)/.exec(w.location?.search ?? '');
+      const raw = w.__guardSpellLv ?? (fromUrl ? decodeURIComponent(fromUrl[1]) : '');
+      if (!raw) {
+        return crystal;
+      }
+      const levels: Record<string, number> = {};
+      const base = crystal?.spellLevels ?? null;
+      if (base) {
+        for (const id of GUARD_SPELL_IDS) {
+          if (typeof base[id] === 'number') {
+            levels[id] = base[id] as number;
+          }
+        }
+      }
+      for (const part of raw.split(',')) {
+        const [id, lv] = part.split(':');
+        if (GUARD_SPELL_IDS.indexOf(id as GuardSpellId) >= 0) {
+          levels[id] = Number(lv);
+        }
+      }
+      return Object.assign({}, crystal ?? {}, { spellLevels: levels }) as T;
+    } catch (error) {
+      void error;
+      return crystal;
+    }
+  }
+
   /** 主线 P5 难度曲线:monsterScale=关卡 recommendedPower/GUARD_MAIN_POWER_BASELINE;每日副本与查无关卡时恒 1。 */
   private resolveMainMonsterScale(stageCode: string): number {
     if (!/^MAIN_\d+_\d+$/.test(stageCode)) {
@@ -670,14 +736,21 @@ export class LobbyGuardBattleRenderer {
         monsterBiteMult: isDaily ? 1 : undefined,
         // 限时副本小怪总计 ×10(2026-09-11 用户拍板;BOSS/精英维持 ×3):3 × 10/3。
         minionHpMult: isDaily ? 10 / 3 : 1,
-        // 守卫水晶养成快照(docs/38):服务端开战时下发,客户端不信本地。
-        crystal: battleState.start?.guardCrystal ?? null,
+        // 守卫水晶养成快照(docs/38):服务端开战时下发,客户端不信本地(本机调试可覆盖法术等级,见 withLocalSpellLevelOverride)。
+        crystal: this.withLocalSpellLevelOverride(battleState.start?.guardCrystal ?? null),
       },
     );
     this.sim.skillAutoImmediate = this.skillAutoImmediate;
     this.interactHints.clear();
     this.resonanceUnits.clear();
     this.prewarmAttackFx(pool);
+    if (this.sim && this.sim.spellLoadout.indexOf('goldrush') >= 0) {
+      // 金币堆贴图开局预热(短命节点必须同步套用,见 mountSprite 注释)
+      for (const pile of GUARD_GOLD_PILE_SPRITES.concat([GUARD_GOLD_PILE_JACKPOT])) {
+        resources.load(pile.path, SpriteFrame, () => undefined);
+      }
+      this.prewarmAttackSpineFx({ effect: GUARD_GOLD_PILE_SPINE.effect, animation: GUARD_GOLD_PILE_SPINE.anims[0], size: 1 });
+    }
     this.simBattleNo = battleState.start?.battleNo ?? '';
     this.settleRequested = false;
     this.overlayShown = false;
@@ -963,6 +1036,53 @@ export class LobbyGuardBattleRenderer {
     // 顶部压暗改羽化渐变(2026-09-15 用户反馈平涂半透明黑带太难看):上沿最深、向下平滑透明,没有硬边。
     const shadeH = height * 0.15;
     this.mountSoftShade(root, 'GuardTopShade', 0, height / 2 - shadeH / 2, width, shadeH, 'top-fade');
+  }
+
+  /** 法术等级点缀用的白色柔光 / 光环纹理(运行时生成 64×64,按法术颜色染色)。 */
+  private static readonly SOFT_FX_FRAMES = new Map<string, SpriteFrame>();
+
+  private mountSoftFx(parent: Node, name: string, kind: 'glow' | 'ring', x: number, y: number, width: number, height: number, color: Color): Node {
+    const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
+    let frame = LobbyGuardBattleRenderer.SOFT_FX_FRAMES.get(kind) ?? null;
+    if (!frame) {
+      try {
+        const n = 64;
+        const data = new Uint8Array(n * n * 4);
+        for (let py = 0; py < n; py += 1) {
+          for (let px = 0; px < n; px += 1) {
+            const dx = (px + 0.5) / n - 0.5;
+            const dy = (py + 0.5) / n - 0.5;
+            const r = Math.min(1, Math.hypot(dx, dy) * 2);
+            const alpha = kind === 'glow'
+              ? Math.pow(1 - r, 2.2)
+              : Math.max(0, 1 - Math.abs(r - 0.82) / 0.14) * (r < 1 ? 1 : 0);
+            const offset = (py * n + px) * 4;
+            data[offset] = 255;
+            data[offset + 1] = 255;
+            data[offset + 2] = 255;
+            data[offset + 3] = Math.round(Math.max(0, Math.min(1, alpha)) * 255);
+          }
+        }
+        const texture = new Texture2D();
+        texture.reset({ width: n, height: n, format: Texture2D.PixelFormat.RGBA8888, mipmapLevel: 1 });
+        texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
+        texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
+        texture.uploadData(data);
+        frame = new SpriteFrame();
+        frame.texture = texture;
+        LobbyGuardBattleRenderer.SOFT_FX_FRAMES.set(kind, frame);
+      } catch (error) {
+        void error;
+        return node;
+      }
+    }
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.spriteFrame = frame;
+    sprite.color = color;
+    node.getComponent(UITransform)?.setContentSize(width, height);
+    return node;
   }
 
   /** 柔和暗底纹理缓存(按样式键复用,重挂/重排布局不重复生成)。 */
@@ -2244,7 +2364,9 @@ export class LobbyGuardBattleRenderer {
           this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.8, '偷金鼠带着金币跑了…', rgba(190, 180, 170), 18);
         }
       } else if (event.type === 'spellCast' && event.spellId) {
-        this.playSpellFx(event.spellId, event.x ?? null, event.lane ?? 0, event.amount ?? 0, event.monsterIds ?? []);
+        this.playSpellFx(event.spellId, event.x ?? null, event.lane ?? 0, event.amount ?? 0, event.monsterIds ?? [], event);
+      } else if (event.type === 'spellEcho' && event.spellId) {
+        this.playSpellEcho(event);
       } else if (event.type === 'aegisBlock') {
         const now = Date.now();
         if (now - this.aegisFloaterAt > 700) {
@@ -3227,11 +3349,26 @@ export class LobbyGuardBattleRenderer {
       const iconSize = id === 'quake' ? size : size * 0.72;
       this.mountSprite(slot, 'Icon', GUARD_SPELL_ICON[id], 0, 0, iconSize, iconSize);
       this.host.addChildPlainNode(slot, 'Charge', 0, 0, 10, 10).addComponent(Graphics);
+      // 档位边框(docs/39:T1 青铜 / T2 银 / T3 金,金边外加一圈细光环)——一眼看出法术等级
+      const level = guardSpellLevel(sim, id);
+      const tier = guardSpellTier(level);
       const rim = this.host.addChildPlainNode(slot, 'Rim', 0, 0, 10, 10).addComponent(Graphics);
-      rim.strokeColor = rgba(214, 168, 92, 235);
-      rim.lineWidth = 3;
+      rim.strokeColor = GUARD_SPELL_TIER_RIM[tier - 1];
+      rim.lineWidth = tier === 3 ? 4 : 3;
       rim.circle(0, 0, size / 2);
       rim.stroke();
+      if (tier === 3) {
+        rim.strokeColor = rgba(255, 236, 160, 150);
+        rim.lineWidth = 2;
+        rim.circle(0, 0, size / 2 + 4);
+        rim.stroke();
+      }
+      const lvBadge = this.host.addChildLabel(slot, 'Level', `Lv.${level}`, -size * 0.34, size * 0.36, 14, tier === 3 ? rgba(255, 224, 120) : tier === 2 ? rgba(226, 236, 255) : rgba(236, 214, 170), new Size(44, 18));
+      lvBadge.isBold = true;
+      lvBadge.overflow = Label.Overflow.SHRINK;
+      lvBadge.enableOutline = true;
+      lvBadge.outlineColor = rgba(16, 10, 6, 255);
+      lvBadge.outlineWidth = 2;
       const cost = this.host.addChildLabel(slot, 'Cost', `${def.cost}`, size * 0.36, size * 0.36, 15, rgba(170, 220, 255), new Size(40, 20));
       cost.enableOutline = true;
       cost.outlineColor = rgba(10, 16, 28, 255);
@@ -3494,7 +3631,9 @@ export class LobbyGuardBattleRenderer {
     if (!aim) {
       return;
     }
-    const radius = id === 'frost' ? GUARD_SPELL_FROST_RADIUS : GUARD_SPELL_THUNDER_RADIUS;
+    const level = this.sim ? guardSpellLevel(this.sim, id) : 1;
+    const row = guardSpellRow(id, level);
+    const radius = row.radius;
     const cx = this.xToPx(aim.x);
     const rx = Math.max(this.unitSize() * 0.6, (this.xToPx(Math.min(GUARD_SPAWN_X, aim.x + radius)) - this.xToPx(Math.max(0, aim.x - radius))) / 2);
     const y0 = this.monsterY(0, aim.x);
@@ -3506,29 +3645,120 @@ export class LobbyGuardBattleRenderer {
     g.ellipse(cx, cy, rx, ry);
     g.fill();
     g.strokeColor = new Color(color.r, color.g, color.b, 230);
-    g.lineWidth = 3;
+    g.lineWidth = 3 + guardSpellTier(level);
     g.ellipse(cx, cy, rx, ry);
     g.stroke();
+    if (id === 'thunder' && row.chain > 0) {
+      // 「连锁闪电」弹射范围:落点 3 格内的外圈(虚线,只描边)
+      const chainRx = Math.max(rx, (this.xToPx(Math.min(GUARD_SPAWN_X, aim.x + GUARD_SPELL_CHAIN_RANGE)) - this.xToPx(Math.max(0, aim.x - GUARD_SPELL_CHAIN_RANGE))) / 2);
+      g.strokeColor = new Color(color.r, color.g, color.b, 150);
+      g.lineWidth = 2;
+      const steps = 36;
+      for (let i = 0; i < steps; i += 2) {
+        const a0 = (i / steps) * Math.PI * 2;
+        const a1 = ((i + 1) / steps) * Math.PI * 2;
+        g.moveTo(cx + Math.cos(a0) * chainRx, cy + Math.sin(a0) * (ry + this.unitSize() * 0.2));
+        g.lineTo(cx + Math.cos(a1) * chainRx, cy + Math.sin(a1) * (ry + this.unitSize() * 0.2));
+      }
+      g.stroke();
+    }
   }
 
   /** 法术表现(sim 已结算,这里只演)。 */
   /** 循环型法术(冰封 / 壁垒):挂到独立容器循环播放,holdMs 后整容器销毁;未就绪返回 false 走贴图回退。 */
-  private spawnSpellLoopFx(spec: GuardSpellFxSpec, px: number, py: number): boolean {
+  private spawnSpellLoopFx(spec: GuardSpellFxSpec, px: number, py: number, sizeMult = 1, holdMs = spec.holdMs, squashY = 1, opacity = 255): boolean {
     const field = this.fieldNode;
     if (!field) {
       return false;
     }
     const holder = this.host.addChildPlainNode(field, 'GuardSpellLoopFx', px, py, 10, 10);
     holder.setSiblingIndex(field.children.length - 1);
-    if (!this.spawnOverlaySpineFx(holder, spec, 0, 0, this.unitSize() * spec.size, 0, true)) {
+    const shaped = squashY !== 1 ? Object.assign({}, spec, { squashY }) : spec;
+    if (!this.spawnOverlaySpineFx(holder, shaped, 0, 0, this.unitSize() * spec.size * sizeMult, 0, true)) {
       holder.destroy();
       return false;
     }
-    setTimeout(() => { if (holder.isValid) { holder.destroy(); } }, spec.holdMs);
+    if (opacity < 255) {
+      holder.addComponent(UIOpacity).opacity = opacity;
+    }
+    setTimeout(() => { if (holder.isValid) { holder.destroy(); } }, holdMs);
     return true;
   }
 
-  private playSpellFx(id: GuardSpellId, x: number | null, lane: number, amount: number, hitIds: number[]): void {
+  /**
+   * 法术等级点缀(docs/39 "每一级都看得出提升"):Lv2 起施法处多一团同色光晕,Lv4 起再叠一圈向外扩的光环,
+   * Lv5 加金色星芒。尺寸随等级递增。全部用 Sprite(UIOpacity 淡得掉),不占骨骼特效名额。
+   */
+  private spellLevelAccent(px: number, py: number, level: number, color: Color, baseSize: number): void {
+    const field = this.fieldNode;
+    if (!field || level < 2) {
+      return;
+    }
+    // Lv2+:同色柔光一团(越高越大越亮)
+    const bloom = (size: number, peak: number, sec: number): void => {
+      const node = this.mountSoftFx(field, 'GuardSpellAccent', 'glow', px, py, size, size * 0.62, color);
+      node.setSiblingIndex(field.children.length - 1);
+      node.setScale(0.5, 0.5, 1);
+      const op = node.addComponent(UIOpacity);
+      op.opacity = 0;
+      tween(node).to(sec * 0.35, { scale: Vec3.ONE }, { easing: 'quadOut' }).start();
+      tween(op).to(sec * 0.25, { opacity: peak }).delay(sec * 0.25).to(sec * 0.5, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+    };
+    bloom(baseSize * (0.7 + 0.15 * level), Math.min(255, 150 + 20 * level), 0.8);
+    // Lv4+:贴地光环向外扩(压扁成地面椭圆),Lv5 两圈
+    const ring = (delay: number, to: number): void => {
+      const node = this.mountSoftFx(field, 'GuardSpellAccent', 'ring', px, py, baseSize * 0.6, baseSize * 0.6, color);
+      node.setSiblingIndex(field.children.length - 1);
+      node.setScale(0.3, 0.14, 1);
+      const op = node.addComponent(UIOpacity);
+      op.opacity = 0;
+      tween(node).delay(delay).to(0.6, { scale: new Vec3(to, to * 0.42, 1) }, { easing: 'quadOut' }).start();
+      tween(op).delay(delay).to(0.08, { opacity: 235 }).to(0.52, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
+    };
+    if (level >= 4) {
+      ring(0, 1.6 + 0.3 * (level - 4));
+    }
+    if (level >= 5) {
+      ring(0.16, 2.3);
+      bloom(baseSize * 0.55, 255, 0.5);
+    }
+  }
+
+  /** Lv5 新效果本局第一次触发:大招式金色名牌(不暂停,docs/37 口径)。 */
+  private showSpellUnlockBanner(id: GuardSpellId, x: number, y: number): void {
+    const field = this.fieldNode;
+    if (!field || this.spellLv5Shown.has(id)) {
+      return;
+    }
+    this.spellLv5Shown.add(id);
+    const text = `${GUARD_SPELLS[id].name}·${GUARD_SPELL_UNLOCK_NAMES[id].lv5}!`;
+    const u = this.unitSize();
+    const px = Math.max(-0.5 * this.layoutWidth + 2 * u, Math.min(0.5 * this.layoutWidth - 2 * u, x));
+    const py = Math.min(y, GUARD_FX_SAFE.top * this.layoutHeight - 30);
+    const plate = this.host.addChildLabel(field, 'GuardSpellLv5Banner', text, px, py, 28, rgba(255, 220, 110), new Size(u * 4, 38));
+    plate.isBold = true;
+    plate.enableOutline = true;
+    plate.outlineColor = rgba(90, 30, 0, 255);
+    plate.outlineWidth = 3;
+    plate.overflow = Label.Overflow.SHRINK;
+    plate.node.setSiblingIndex(field.children.length - 1);
+    plate.node.setScale(1.6, 1.6, 1);
+    tween(plate.node).to(0.16, { scale: Vec3.ONE }, { easing: 'backOut' }).by(1.2, { position: new Vec3(0, 26, 0) }).start();
+    const op = plate.node.addComponent(UIOpacity);
+    tween(op).delay(1.0).to(0.35, { opacity: 0 }).call(() => { if (plate.node.isValid) { plate.node.destroy(); } }).start();
+  }
+
+  /** 战场位置 → 该怪当前像素位置(找不到视图时按 sim 坐标算)。 */
+  private monsterPx(monsterId: number): { x: number; y: number } | null {
+    const view = this.monsterViews.get(monsterId);
+    if (view && view.node.isValid) {
+      return { x: view.node.position.x, y: view.node.position.y };
+    }
+    const monster = this.sim?.monsters.find((entry) => entry.monsterId === monsterId);
+    return monster ? { x: this.xToPx(monster.x), y: this.monsterY(monster.lane, monster.x) } : null;
+  }
+
+  private playSpellFx(id: GuardSpellId, x: number | null, lane: number, amount: number, hitIds: number[], event?: GuardEvent): void {
     const field = this.fieldNode;
     const sim = this.sim;
     if (!field || !sim) {
@@ -3536,18 +3766,22 @@ export class LobbyGuardBattleRenderer {
     }
     const unit = this.unitSize();
     const def = GUARD_SPELLS[id];
-    this.host.setStatus(`水晶法术:${def.name}!`);
+    // docs/39:等级 / 档位 / 本级数值;Lv2 起飘字带等级,让玩家一眼看出这是几级法术
+    const level = event?.level ?? guardSpellLevel(sim, id);
+    const row = guardSpellRow(id, level);
+    const lvTag = level >= 2 ? ` Lv.${level}` : '';
+    this.host.setStatus(`水晶法术:${def.name}${lvTag}!`);
     const crystal = field.getChildByName('GuardCrystal');
     const crystalX = crystal ? crystal.position.x : this.xToPx(0);
     const crystalY = crystal ? crystal.position.y : this.walkwayY();
-    const spineAt = (spec: GuardSpellFxSpec, px: number, py: number): boolean => {
+    const spineAt = (spec: GuardSpellFxSpec, px: number, py: number, sizeMult = 1, holdMs = spec.holdMs): boolean => {
       const oy = (spec.offsetY ?? 0) * unit;
       const ox = (spec.offsetX ?? 0) * unit;
       if (spec.loop) {
-        return this.spawnSpellLoopFx(spec, px + ox, py + oy);
+        return this.spawnSpellLoopFx(spec, px + ox, py + oy, sizeMult, holdMs);
       }
-      // spawnSpineBurstFx 的 sizePx = unitSize × spec.size × scale,这里 scale 传 1(此前误传 spec.size 被平方,天雷放大到 6000px 出屏)。
-      return this.spawnSpineBurstFx(spec, px + ox, py + oy, 1, spec.holdMs, true);
+      // spawnSpineBurstFx 的 sizePx = unitSize × spec.size × scale,这里 scale 传等级倍率(此前误传 spec.size 被平方,神雷放大到 6000px 出屏)。
+      return this.spawnSpineBurstFx(spec, px + ox, py + oy, sizeMult, holdMs, true);
     };
     const flashAt = (px: number, py: number, path: string, size: number, color: Color, sec: number, spin = 0): Node => {
       const node = this.mountSprite(field, 'GuardSpellFx', path, px, py, size, size, color);
@@ -3560,31 +3794,46 @@ export class LobbyGuardBattleRenderer {
     };
     if (id === 'quake') {
       gameAudio.sfx('wheel_stop');
-      this.shakeField(12);
-      if (!spineAt(GUARD_SPELL_FX.quake, crystalX, crystalY)) {
-        flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 4, rgba(140, 210, 255), 0.8, 40);
+      this.shakeField(12 + (level - 1));
+      if (!spineAt(GUARD_SPELL_FX.quake, crystalX, crystalY, row.fxScale)) {
+        flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 4 * row.fxScale, rgba(140, 210, 255), 0.8, 40);
       }
       const wave = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/c1812/effects/hit_ring/spriteFrame', crystalX, crystalY, unit, unit, rgba(150, 220, 255));
       wave.setSiblingIndex(field.children.length - 1);
       const waveOp = wave.addComponent(UIOpacity);
-      tween(wave).to(0.6, { scale: new Vec3(14, 5, 1) }, { easing: 'quadOut' }).start();
+      tween(wave).to(0.6, { scale: new Vec3(14 * row.fxScale, 5 * row.fxScale, 1) }, { easing: 'quadOut' }).start();
       tween(waveOp).to(0.6, { opacity: 0 }).call(() => { if (wave.isValid) { wave.destroy(); } }).start();
-      this.spawnFloater(this.xToPx(2), this.walkwayY() + unit, `矿晶震荡 -${amount}`, rgba(150, 220, 255), 22);
+      this.spellLevelAccent(crystalX + unit * 1.8, crystalY + unit * 0.6, level, rgba(150, 220, 255), unit * 3);
+      this.spawnFloater(this.xToPx(2), this.walkwayY() + unit, `矿晶震荡${lvTag} -${amount}`, rgba(150, 220, 255), 22 + guardSpellTier(level) * 2);
+      if (row.stunMs > 0) {
+        const stunned = hitIds.filter((monsterId) => sim.monsters.some((entry) => entry.monsterId === monsterId && !entry.dead && entry.kind !== 'boss')).length;
+        if (stunned > 0) {
+          this.spawnFloater(this.xToPx(3.2), this.walkwayY() + unit * 1.5, `震慑 ×${stunned}`, rgba(255, 236, 150), 20);
+        }
+        this.showSpellUnlockBanner(id, this.xToPx(2.5), this.walkwayY() + unit * 2.2);
+      }
     } else if ((id === 'frost' || id === 'thunder') && x !== null) {
       const px = this.xToPx(x);
       const py = (this.monsterY(0, x) + this.monsterY(1, x)) / 2;
+      // 冰封 / 神雷:特效大小跟着本级半径走(和瞄准圈一致),Lv2 起加点缀
+      const radiusMult = row.radius / guardSpellRow(id, 1).radius;
       if (id === 'frost') {
         gameAudio.sfx('wheel_tick');
-        if (!spineAt(GUARD_SPELL_FX.frost, px, py)) {
-          const band = flashAt(px, py, 'ui/guard/fx_wind_zone/spriteFrame', unit * 3.4, rgba(170, 225, 255), 1.6, -90);
+        if (!spineAt(GUARD_SPELL_FX.frost, px, py, radiusMult, row.ms)) {
+          const band = flashAt(px, py, 'ui/guard/fx_wind_zone/spriteFrame', unit * 3.4 * radiusMult, rgba(170, 225, 255), 1.6, -90);
           band.setScale(0.4, 0.25, 1);
           tween(band).to(0.3, { scale: new Vec3(1, 0.6, 1) }, { easing: 'quadOut' }).start();
         }
-        this.spawnFloater(px, py + unit * 1.1, hitIds.length > 0 ? `冰封 ×${hitIds.length}` : '冰封', rgba(170, 225, 255), 20);
+        if (row.floorMs > 0) {
+          // 「霜冻地面」:同款冰晶压扁成地面冰层,淡一些铺在落点,持续 floorMs
+          this.spawnSpellLoopFx(GUARD_SPELL_FX.frost, px, py - unit * 0.25, radiusMult * 1.25, row.floorMs, 0.32, 150);
+        }
+        this.spellLevelAccent(px, py, level, rgba(170, 225, 255), unit * 2.6 * radiusMult);
+        this.spawnFloater(px, py + unit * 1.1, hitIds.length > 0 ? `冰封${lvTag} ×${hitIds.length}` : `冰封${lvTag}`, rgba(170, 225, 255), 20 + guardSpellTier(level) * 2);
       } else {
         gameAudio.sfx('chest_land');
-        this.shakeField(8);
-        if (!spineAt(GUARD_SPELL_FX.thunder, px, py)) {
+        this.shakeField(8 + (level - 1));
+        if (!spineAt(GUARD_SPELL_FX.thunder, px, py, radiusMult)) {
           const bolt = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/attack/atk_abyss_rift/spriteFrame', px, py + unit * 2.4, unit * 4.6, unit * 1.6, rgba(220, 235, 255));
           bolt.setSiblingIndex(field.children.length - 1);
           bolt.angle = -62;
@@ -3593,32 +3842,92 @@ export class LobbyGuardBattleRenderer {
           flashAt(px, py, 'ui/battle/c1812/effects/hit_burst/spriteFrame', unit * 2.6, rgba(210, 230, 255), 0.5);
           flashAt(px, py, 'ui/battle/c1812/effects/hit_ring/spriteFrame', unit * 3, rgba(255, 230, 140), 0.6);
         }
-        this.spawnFloater(px, py + unit * 1.2, `${GUARD_SPELLS.thunder.name} -${amount}`, rgba(255, 230, 140), 22);
+        this.spellLevelAccent(px, py, level, rgba(200, 210, 255), unit * 2.4 * radiusMult);
+        this.spawnFloater(px, py + unit * 1.2, `${GUARD_SPELLS.thunder.name}${lvTag} -${amount}`, rgba(255, 230, 140), 22 + guardSpellTier(level) * 2);
+        // 「连锁闪电」:落点到每个弹射目标一道折线电弧 + 小号神雷
+        const chainIds = event?.chainIds ?? [];
+        chainIds.forEach((monsterId, index) => {
+          const at = this.monsterPx(monsterId);
+          if (!at) {
+            return;
+          }
+          const arc = this.host.addChildPlainNode(field, 'GuardSpellChain', 0, 0, 10, 10);
+          arc.setSiblingIndex(field.children.length - 1);
+          const g = arc.addComponent(Graphics);
+          g.strokeColor = rgba(210, 230, 255, 235);
+          g.lineWidth = 4;
+          const segs = 6;
+          g.moveTo(px, py);
+          for (let k = 1; k < segs; k += 1) {
+            const t = k / segs;
+            const jitter = ((k + index) % 2 === 0 ? 1 : -1) * unit * 0.18;
+            g.lineTo(px + (at.x - px) * t, py + (at.y - py) * t + jitter);
+          }
+          g.lineTo(at.x, at.y);
+          g.stroke();
+          setTimeout(() => { if (arc.isValid) { arc.destroy(); } }, 220 + index * 60);
+          setTimeout(() => this.spawnSpineBurstFx(GUARD_SPELL_FX.thunder, at.x, at.y + unit * 0.2, 0.45, 600, true), 80 * index);
+          this.flashMonster(monsterId);
+        });
+        if (chainIds.length > 0) {
+          this.spawnFloater(px + unit * 1.4, py + unit * 1.6, `连锁 ×${chainIds.length}`, rgba(210, 230, 255), 20);
+        }
+        if (row.boltCount > 0) {
+          this.showSpellUnlockBanner(id, px, py + unit * 2.4);
+        }
       }
       void lane;
     } else if (id === 'goldrush') {
       gameAudio.sfx('coin_shower');
-      if (!spineAt(GUARD_SPELL_FX.goldrush, crystalX, crystalY)) {
-        flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 3, rgba(255, 214, 110), 0.7, 30);
+      if (!spineAt(GUARD_SPELL_FX.goldrush, crystalX, crystalY, row.fxScale)) {
+        flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 3 * row.fxScale, rgba(255, 214, 110), 0.7, 30);
       }
-      for (let i = 0; i < 8; i += 1) {
-        this.spawnGoldCoin(crystalX + (i - 3.5) * 14, crystalY + unit * 0.4);
+      // docs/39 §5:金币堆按档位(小堆 / 中堆 / 大堆),满仓再弹宝箱;金币从堆顶飞向 HUD
+      const jackpot = event?.jackpot === true;
+      this.spawnGoldPile(guardSpellTier(level), jackpot, crystalX + unit * 1.5, this.walkwayY() - unit * 0.1, level);
+      if (jackpot) {
+        gameAudio.sfx('chest_jackpot');
+        this.shakeField(6);
+        this.spawnFloater(crystalX + unit * 1.5, crystalY + unit * 1.6, `满仓!+${amount} 金币`, rgba(255, 226, 110), 30);
+        this.showSpellUnlockBanner(id, crystalX + unit * 2, crystalY + unit * 2.4);
+      } else {
+        this.spawnFloater(crystalX + unit * 1.5, crystalY + unit * 1.3, `金矿爆发${lvTag} +${amount} 金币`, rgba(255, 214, 92), 22 + guardSpellTier(level) * 2);
       }
-      this.spawnFloater(crystalX + unit, crystalY + unit * 1.3, `金矿爆发 +${amount} 金币`, rgba(255, 214, 92), 22);
+      if (row.boostMs > 0) {
+        this.spawnFloater(crystalX + unit * 2.6, crystalY + unit * 0.7, `点金 ${Math.round(row.boostMs / 1000)} 秒 · 击杀金币 ×1.5`, rgba(255, 236, 160), 18);
+      }
     } else if (id === 'aegis') {
       gameAudio.sfx('reward_claim');
-      if (!spineAt(GUARD_SPELL_FX.aegis, crystalX, crystalY)) {
+      this.spellLevelAccent(crystalX + unit * 1.5, crystalY + unit * 0.6, level, rgba(255, 236, 170), unit * 3);
+      if (row.pushRange > 0) {
+        // 「驱邪」:金色光环从水晶向外扩到驱邪范围
+        const push = this.mountSoftFx(field, 'GuardSpellFx', 'ring', this.xToPx(0.3), this.walkwayY(), unit, unit, rgba(255, 236, 170));
+        push.setSiblingIndex(field.children.length - 1);
+        push.setScale(0.3, 0.12, 1);
+        const pushOp = push.addComponent(UIOpacity);
+        const reachPx = Math.max(unit, this.xToPx(row.pushRange) - this.xToPx(0));
+        tween(push).to(0.4, { scale: new Vec3((reachPx * 2) / unit, (reachPx * 0.8) / unit, 1) }, { easing: 'quadOut' }).start();
+        tween(pushOp).delay(0.2).to(0.3, { opacity: 0 }).call(() => { if (push.isValid) { push.destroy(); } }).start();
+        if (hitIds.length > 0) {
+          this.spawnFloater(this.xToPx(1.4), this.walkwayY() + unit * 1.1, `驱邪 ×${hitIds.length}`, rgba(255, 236, 170), 20);
+        }
+      }
+      if (row.reflectDmg > 0) {
+        this.showSpellUnlockBanner(id, crystalX + unit * 2, crystalY + unit * 2.4);
+      }
+      if (!spineAt(GUARD_SPELL_FX.aegis, crystalX, crystalY, row.fxScale, row.ms)) {
         const shield = this.mountSprite(field, 'GuardAegisShield', 'ui/battle/attack/atk_atlas_shieldwave/spriteFrame', crystalX, crystalY + unit * 0.3, unit * 3.2, unit * 3.2, rgba(255, 236, 170));
         shield.setSiblingIndex(field.children.length - 1);
         const shieldOp = shield.addComponent(UIOpacity);
         shieldOp.opacity = 0;
-        tween(shieldOp).to(0.2, { opacity: 220 }).repeat(Math.max(1, Math.floor(GUARD_SPELL_AEGIS_MS / 800)), tween().to(0.4, { opacity: 140 }).to(0.4, { opacity: 220 })).to(0.3, { opacity: 0 }).call(() => { if (shield.isValid) { shield.destroy(); } }).start();
-        tween(shield).by(GUARD_SPELL_AEGIS_MS / 1000 + 0.5, { angle: 120 }).start();
+        tween(shieldOp).to(0.2, { opacity: 220 }).repeat(Math.max(1, Math.floor(row.ms / 800)), tween().to(0.4, { opacity: 140 }).to(0.4, { opacity: 220 })).to(0.3, { opacity: 0 }).call(() => { if (shield.isValid) { shield.destroy(); } }).start();
+        tween(shield).by(row.ms / 1000 + 0.5, { angle: 120 }).start();
       }
-      this.spawnFloater(crystalX + unit, crystalY + unit * 1.4, amount > 0 ? `圣光壁垒 +${amount}` : '圣光壁垒', rgba(255, 236, 170), 22);
+      this.spawnFloater(crystalX + unit, crystalY + unit * 1.4, amount > 0 ? `圣光壁垒${lvTag} +${amount}` : `圣光壁垒${lvTag}`, rgba(255, 236, 170), 22 + guardSpellTier(level) * 2);
     } else if (id === 'warhorn') {
       gameAudio.sfx('level_up');
-      this.spawnSpineBurstFx(GUARD_WARHORN_BURST_FX, crystalX + unit * 1.5, crystalY + unit * 1.0, 1, 800, true);
+      this.spawnSpineBurstFx(GUARD_WARHORN_BURST_FX, crystalX + unit * 1.5, crystalY + unit * 1.0, 1 + (row.fxScale - 1) * 0.5, 800, true);
+      this.spellLevelAccent(crystalX + unit * 1.5, crystalY + unit * 1.0, level, rgba(255, 150, 110), unit * 3);
       for (const hero of sim.heroes) {
         const view = this.heroViews.get(hero.unitId);
         if (!view || !view.node.isValid) {
@@ -3627,8 +3936,11 @@ export class LobbyGuardBattleRenderer {
         const hornSpec = GUARD_SPELL_FX.warhorn;
         const hornHolder = this.host.addChildPlainNode(view.node, 'GuardWarhornFx', 0, (hornSpec.offsetY ?? 0) * unit, 10, 10);
         hornHolder.setSiblingIndex(0);
-        if (this.spawnOverlaySpineFx(hornHolder, hornSpec, 0, 0, unit * hornSpec.size, 0, true)) {
-          setTimeout(() => { if (hornHolder.isValid) { hornHolder.destroy(); } }, hornSpec.holdMs);
+        if (this.spawnOverlaySpineFx(hornHolder, hornSpec, 0, 0, unit * hornSpec.size * (1 + 0.1 * (level - 1)), 0, true)) {
+          setTimeout(() => { if (hornHolder.isValid) { hornHolder.destroy(); } }, row.ms);
+          if (row.cdCutMs > 0 && hero.star >= 2) {
+            this.spawnFloater(view.node.position.x, view.node.position.y + unit * 0.9, `战技 −${Math.round(row.cdCutMs / 100) / 10}s`, rgba(255, 190, 140), 16);
+          }
           continue;
         }
         hornHolder.destroy();
@@ -3639,10 +3951,184 @@ export class LobbyGuardBattleRenderer {
         rg.lineWidth = 4;
         rg.ellipse(0, 0, unit * 0.46, unit * 0.14);
         rg.stroke();
-        tween(ring).repeat(Math.floor(GUARD_SPELL_WARHORN_MS / 500), tween().to(0.25, { scale: new Vec3(1.2, 1.2, 1) }).to(0.25, { scale: Vec3.ONE })).call(() => { if (ring.isValid) { ring.destroy(); } }).start();
+        tween(ring).repeat(Math.floor(row.ms / 500), tween().to(0.25, { scale: new Vec3(1.2, 1.2, 1) }).to(0.25, { scale: Vec3.ONE })).call(() => { if (ring.isValid) { ring.destroy(); } }).start();
       }
-      this.spawnFloater(this.xToPx(0.8), this.walkwayY() + unit * 1.6, '狂战号角!攻速 +50%', rgba(255, 150, 110), 22);
+      const hornText = `狂战号角${lvTag}!攻速 +${Math.round((row.aspd - 1) * 100)}%` + (row.dmgMult > 1 ? ` 伤害 +${Math.round((row.dmgMult - 1) * 100)}%` : '');
+      this.spawnFloater(this.xToPx(0.8), this.walkwayY() + unit * 1.6, hornText, rgba(255, 150, 110), 22 + guardSpellTier(level) * 2);
+      if (row.dmgMult > 1) {
+        this.showSpellUnlockBanner(id, this.xToPx(1.2), this.walkwayY() + unit * 2.4);
+      }
     }
+  }
+
+  /** 法术追加效果(docs/39):余震 / 冰碎 / 九重雷劫单道 / 圣光反震。 */
+  private playSpellEcho(event: GuardEvent): void {
+    const field = this.fieldNode;
+    const sim = this.sim;
+    if (!field || !sim || !event.spellId) {
+      return;
+    }
+    const unit = this.unitSize();
+    const ids = event.monsterIds ?? [];
+    const amount = event.amount ?? 0;
+    const now = Date.now();
+    if (event.echoKind === 'quakeEcho') {
+      // 余震:三处地面同款冰晶小爆 + 小震屏
+      this.shakeField(8);
+      const midX = (this.xToPx(0.5) + this.xToPx(9)) / 2;
+      this.spellLevelAccent(midX, this.walkwayY(), 5, rgba(150, 220, 255), Math.abs(this.xToPx(9) - this.xToPx(0.5)) * 0.55);
+      for (const atX of [2.5, 5, 7.5]) {
+        this.spawnSpineBurstFx(GUARD_SPELL_FX.quake, this.xToPx(atX), this.walkwayY() + unit * 0.3, 0.7, 700, true);
+      }
+      ids.forEach((monsterId) => this.flashMonster(monsterId));
+      if (ids.length > 0) {
+        this.spawnFloater(this.xToPx(4), this.walkwayY() + unit * 1.3, `余震 -${amount}`, rgba(150, 220, 255), 20);
+      }
+    } else if (event.echoKind === 'frostShatter') {
+      // 冰碎:每只碎冰怪身上冰蓝爆点(最多 8 个)
+      ids.slice(0, 8).forEach((monsterId) => {
+        const at = this.monsterPx(monsterId);
+        if (!at) {
+          return;
+        }
+        this.spellLevelAccent(at.x, at.y + unit * 0.3, 4, rgba(170, 230, 255), unit * 1.6);
+        this.spawnSpineBurstFx(GUARD_SPELL_FX.frost, at.x, at.y, 0.32, 500, true);
+        this.flashMonster(monsterId);
+      });
+      if (ids.length > 0) {
+        gameAudio.sfx('wheel_tick', 0.8);
+        const at = this.monsterPx(ids[0]);
+        this.spawnFloater(at ? at.x : this.xToPx(event.x ?? 4), (at ? at.y : this.walkwayY()) + unit * 1.2, `冰碎 ×${ids.length} -${amount}`, rgba(170, 230, 255), 20);
+        this.showSpellUnlockBanner('frost', at ? at.x : this.xToPx(event.x ?? 4), this.walkwayY() + unit * 2.4);
+      }
+    } else if (event.echoKind === 'thunderBolt') {
+      // 九重雷劫单道:神雷砸在落点 2 格内血量最高的怪身上
+      const at = ids.length > 0 ? this.monsterPx(ids[0]) : null;
+      if (at) {
+        this.spawnSpineBurstFx(GUARD_SPELL_FX.thunder, at.x, at.y + unit * 0.3, 0.9, 650, true);
+        this.spellLevelAccent(at.x, at.y + unit * 0.2, 2, rgba(220, 210, 255), unit * 1.8);
+        this.shakeField(4);
+        this.flashMonster(ids[0]);
+        if (now - this.spellEchoFloaterAt > 260) {
+          this.spellEchoFloaterAt = now;
+          this.spawnFloater(at.x, at.y + unit * 1.3, `雷劫 -${amount}`, rgba(255, 230, 140), 18);
+        }
+      }
+    } else if (event.echoKind === 'aegisReflect') {
+      const at = ids.length > 0 ? this.monsterPx(ids[0]) : null;
+      if (at) {
+        this.spellLevelAccent(at.x, at.y + unit * 0.3, 4, rgba(255, 230, 150), unit * 1.4);
+        if (now - this.aegisFloaterAt > 700) {
+          this.aegisFloaterAt = now;
+          this.spawnFloater(at.x, at.y + unit * 1.1, `反震 -${amount}`, rgba(255, 230, 150), 18);
+        }
+      }
+    }
+  }
+
+  /**
+   * 金矿爆发金币堆(docs/39 §5):小堆 / 中堆 / 大堆(+ 满仓宝箱)从水晶前地面弹出,
+   * 金币从堆顶扇形飞向 HUD,最后金币堆缩小淡出("搬空")。金币数 6 / 12 / 18 / 满仓 28。
+   */
+  private spawnGoldPile(tier: 1 | 2 | 3, jackpot: boolean, x: number, y: number, level: number): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const unit = this.unitSize();
+    const spec = GUARD_GOLD_PILE_SPRITES[tier - 1];
+    // 同档内也随等级略放大(Lv2 / Lv4 比同档前一级大 10%)——每一级都看得出提升
+    const levelBump = level % 2 === 0 ? 1.1 : 1;
+    let w = unit * spec.u * levelBump;
+    let h = w * spec.aspect;
+    let pile: Node;
+    const ready = this.attackSpineFxReady.get(GUARD_GOLD_PILE_SPINE.effect);
+    if (ready) {
+      // 骨骼金币堆:三档同一缩放;堆底中心对准地面点
+      const heap = GUARD_GOLD_PILE_SPINE.heap[tier - 1];
+      const fit = (unit * GUARD_GOLD_PILE_SPINE.largeWidthU * levelBump) / GUARD_GOLD_PILE_SPINE.heap[2].w;
+      w = heap.w * fit;
+      h = heap.h * fit;
+      pile = this.host.addChildPlainNode(field, 'GuardGoldPile', x, y + h / 2, 10, 10);
+      const holder = this.host.addChildPlainNode(pile, 'Spine', -heap.cx * fit, -heap.cy * fit, 10, 10);
+      holder.setScale(fit, fit, 1);
+      const skeleton = holder.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = ready.data;
+      try {
+        skeleton.setAnimation(0, GUARD_GOLD_PILE_SPINE.anims[tier - 1], true);
+      } catch (error) {
+        void error;
+      }
+    } else {
+      this.prewarmAttackSpineFx({ effect: GUARD_GOLD_PILE_SPINE.effect, animation: GUARD_GOLD_PILE_SPINE.anims[0], size: 1 });
+      pile = this.mountSprite(field, 'GuardGoldPile', spec.path, x, y + h / 2, w, h);
+    }
+    pile.setSiblingIndex(field.children.length - 1);
+    pile.setScale(0.3, 0.3, 1);
+    const holdSec = [1.2, 1.6, 2.0][tier - 1] + (jackpot ? 0.4 : 0);
+    tween(pile).to(0.18, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'quadOut' }).to(0.1, { scale: Vec3.ONE })
+      .delay(holdSec).to(0.35, { scale: new Vec3(0.85, 0.85, 1) }).start();
+    const pileOp = pile.addComponent(UIOpacity);
+    tween(pileOp).delay(0.28 + holdSec).to(0.35, { opacity: 0 }).call(() => { if (pile.isValid) { pile.destroy(); } }).start();
+    // 堆底光晕:档位越高越大越亮
+    this.spellLevelAccent(x, y + h * 0.3, Math.max(2, level), rgba(255, 214, 110), w * 1.6);
+    if (jackpot) {
+      const cw = unit * GUARD_GOLD_PILE_JACKPOT.u;
+      const chest = this.mountSprite(field, 'GuardGoldPile', GUARD_GOLD_PILE_JACKPOT.path, x, y + h + cw * 0.35, cw, cw * GUARD_GOLD_PILE_JACKPOT.aspect);
+      chest.setSiblingIndex(field.children.length - 1);
+      chest.setScale(0.2, 0.2, 1);
+      tween(chest).delay(0.12).to(0.22, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'backOut' }).to(0.12, { scale: Vec3.ONE }).start();
+      const chestOp = chest.addComponent(UIOpacity);
+      tween(chestOp).delay(0.5 + holdSec).to(0.35, { opacity: 0 }).call(() => { if (chest.isValid) { chest.destroy(); } }).start();
+    }
+    const coins = jackpot ? 28 : [6, 12, 18][tier - 1];
+    for (let i = 0; i < coins; i += 1) {
+      const spread = (i % 7 - 3) * unit * 0.12;
+      this.spawnPileCoin(x + spread, y + h * 0.9, 0.25 + i * 0.03);
+    }
+  }
+
+  /** 金币堆飞币:独立计数(上限 28),不挤掉击杀金币;落地弹一下再飞向 HUD 金币数。 */
+  private spawnPileCoin(fieldX: number, fieldY: number, delaySec: number): void {
+    const root = this.root;
+    if (!root || this.pileCoinLive >= 28) {
+      return;
+    }
+    this.pileCoinLive += 1;
+    const yOffset = -this.layoutHeight * 0.03;
+    const size = 36;
+    const coin = this.host.addChildPlainNode(root, 'GuardPileCoin', fieldX, fieldY + yOffset, size, size);
+    this.mountSprite(coin, 'Img', 'ui/guard/coin_gold/spriteFrame', 0, 0, size, size);
+    coin.setScale(0, 0, 1);
+    const hopX = fieldX + (Math.random() - 0.5) * this.unitSize() * 0.8;
+    const hopY = fieldY + yOffset + this.unitSize() * (0.35 + Math.random() * 0.3);
+    const targetX = this.layoutWidth / 2 - 180;
+    const targetY = this.layoutHeight / 2 - 42;
+    let released = false;
+    const done = (): void => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.pileCoinLive = Math.max(0, this.pileCoinLive - 1);
+      if (coin.isValid) {
+        coin.destroy();
+      }
+      const goldText = root.getChildByName('GuardHud')?.getChildByName('GuardGoldText');
+      if (goldText && goldText.isValid) {
+        tween(goldText).to(0.06, { scale: new Vec3(1.18, 1.18, 1) }).to(0.1, { scale: Vec3.ONE }).start();
+      }
+    };
+    tween(coin)
+      .delay(delaySec)
+      .to(0.05, { scale: Vec3.ONE })
+      .to(0.2, { position: new Vec3(hopX, hopY, 0) }, { easing: 'quadOut' })
+      .delay(0.08)
+      .to(0.5, { position: new Vec3(targetX, targetY, 0), scale: new Vec3(0.6, 0.6, 1) }, { easing: 'quadIn' })
+      .call(done)
+      .start();
+    tween(coin).delay(delaySec + 1.6).call(done).start();
   }
 
   /** 设置 → 法术装备:只读展示本局出战法术与格数(配置在大厅「水晶 → 法术装备」,服务端保存,docs/38 §9)。 */
@@ -3678,10 +4164,11 @@ export class LobbyGuardBattleRenderer {
       g.stroke();
       const iconSize = 56;
       this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], -cardW / 2 + 14 + iconSize / 2, 14, iconSize, iconSize);
-      const nameLabel = this.host.addChildLabel(card, 'Name', def.name, -cardW / 2 + 14 + iconSize + 10, 30, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
+      const cardLevel = sim ? guardSpellLevel(sim, id) : 1;
+      const nameLabel = this.host.addChildLabel(card, 'Name', `${def.name} Lv.${cardLevel}`, -cardW / 2 + 14 + iconSize + 10, 30, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
       nameLabel.overflow = Label.Overflow.SHRINK;
       this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 4, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
-      const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : selected ? `已装备 · 第 ${slotIndex + 1} 格` : '未装备';
+      const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : `${selected ? `已装备 · 第 ${slotIndex + 1} 格` : '未装备'} · ${guardSpellDescribe(id, cardLevel)}`;
       const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 24, 15, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 20, 36));
       desc.overflow = Label.Overflow.SHRINK;
       if (locked) {

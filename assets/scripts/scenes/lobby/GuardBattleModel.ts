@@ -153,6 +153,8 @@ export interface GuardMonster {
   greedy?: boolean;
   /** 偷金鼠已逃走(dead=true 但不是被击杀,渲染层淡出不播死亡)。 */
   escaped?: boolean;
+  /** 圣光反震(docs/39 壁垒 Lv5)对该怪的下次可反弹时刻。 */
+  aegisReflectReadyMs?: number;
   dead: boolean;
   diedAtMs: number;
 }
@@ -226,6 +228,8 @@ export interface GuardEvent {
     | 'meteorSpawn' | 'meteorCollect' | 'meteorExpire' | 'greedySpawn' | 'greedyKill' | 'greedyEscape'
     // docs/37 F:水晶法术施放(spellId + 目标车道/位置 + 命中怪物)/ 圣光壁垒挡下的伤害。
     | 'spellCast' | 'aegisBlock'
+    // docs/39 法术等级:延时 / 追加效果(余震 / 冰碎 / 九重雷劫单道 / 圣光反震),spellEcho.echoKind 区分。
+    | 'spellEcho'
     // docs/37 G:陷阱放置 / 尖刺跳伤 / 符文爆炸 / 耐久耗尽。
     | 'trapPlace' | 'trapTick' | 'trapBoom' | 'trapExpire';
   timeMs: number;
@@ -266,6 +270,11 @@ export interface GuardEvent {
   trapKind?: GuardTrapKind;
   /** spellCast:法术 id、目标车道与位置(格)。 */
   spellId?: GuardSpellId;
+  /** spellCast / spellEcho(docs/39):法术等级、展示档位(tier 复用宝箱档位字段:1/2/3)、满仓、连锁命中、追加效果种类。 */
+  level?: number;
+  jackpot?: boolean;
+  chainIds?: number[];
+  echoKind?: 'quakeEcho' | 'frostShatter' | 'thunderBolt' | 'aegisReflect' | 'quakeStun';
   lane?: number;
   x?: number;
   /** heroSkill:玩家手动释放(+25%)/ 与另一英雄手动战技构成合击(再 ×1.3)。 */
@@ -313,6 +322,15 @@ export const GUARD_DEFAULT_SPELL_LOADOUT: GuardSpellId[] = ['quake', 'frost', 't
  */
 export const GUARD_BASE_SPELL_SLOTS = 2;
 export const GUARD_MAX_SPELL_SLOTS = 5;
+/** 开战快照的法术等级 → 每个法术都有值(缺项 = 1,钳 1..5;for 循环,不用展开——正式包 loose 模式坑)。 */
+export function guardNormalizeSpellLevels(raw: Partial<Record<string, number>> | null | undefined): Record<GuardSpellId, number> {
+  const out = { quake: 1, frost: 1, thunder: 1, goldrush: 1, aegis: 1, warhorn: 1 } as Record<GuardSpellId, number>;
+  for (const id of GUARD_SPELL_IDS) {
+    const value = raw ? raw[id] : undefined;
+    out[id] = value === undefined || value === null ? 1 : guardClampSpellLevel(value);
+  }
+  return out;
+}
 /** 按格位顺序整理出战法术:只留已解锁、去重、截到格数,不足按解锁顺序补满(与服务端 GuardCrystalService.resolveLoadout 一致)。 */
 export function guardResolveSpellLoadout(saved: readonly string[] | null | undefined, unlocked: readonly GuardSpellId[], slots: number): GuardSpellId[] {
   const cap = Math.max(1, Math.min(GUARD_MAX_SPELL_SLOTS, Math.round(slots) || GUARD_BASE_SPELL_SLOTS));
@@ -342,12 +360,246 @@ export const GUARD_SPELL_ENERGY_PER_KILL = 1;
 export const GUARD_SPELL_ENERGY_ELITE = 15;
 export const GUARD_SPELL_ENERGY_BOSS = 30;
 export const GUARD_SPELL_ENERGY_INTERRUPT = 20;
+/** 震荡 Lv1 击退(= GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS 1.2;单独定义是因为等级表初始化早于那个常量)。 */
+const GUARD_SPELL_QUAKE_KNOCKBACK_LV1 = 1.2;
 export const GUARD_SPELL_THUNDER_RADIUS = 1.2;
 export const GUARD_SPELL_FROST_RADIUS = 1.6;
 export const GUARD_SPELL_FROST_MS = 3000;
 export const GUARD_SPELL_AEGIS_MS = 4000;
 export const GUARD_SPELL_WARHORN_MS = 6000;
 export const GUARD_SPELL_WARHORN_ASPD = 1.5;
+
+/**
+ * 法术等级(docs/39,2026-10-01 用户拍板):每个法术 Lv1-5,金币 + 守卫晶核阶梯化升级(服务端),开战快照带 spellLevels。
+ * 硬要求"每一级都看得出提升":每级数值都涨(范围 / 伤害 / 时长 / 倍率),奇数级(3 / 5)再解锁一个有名字的新效果,
+ * 展示尺寸 fxScale 逐级放大。Lv1 行 = 改版前的常量,逐位一致(回归闸门 A)。能量消耗不随等级变(只提每次价值)。
+ * U = 本波普通怪血量 × 水晶 spellPowerMult(guardSpellUnit)。
+ */
+export const GUARD_SPELL_MAX_LEVEL = 5;
+export interface GuardSpellLevelRow {
+  /** 冰封 / 神雷落点半径(格);其他法术 0。 */
+  radius: number;
+  /** 震荡 / 神雷主伤害系数(×U)。 */
+  dmg: number;
+  /** 震荡击退(格)。 */
+  knockback: number;
+  /** 冰封冻结 / 壁垒无敌 / 号角持续(ms)。 */
+  ms: number;
+  /** 壁垒回血比例。 */
+  healPct: number;
+  /** 号角攻速倍率。 */
+  aspd: number;
+  /** 金矿爆发金币倍率。 */
+  goldMult: number;
+  /** 震荡「余震」1.2s 后全场伤害(×U),0 = 未解锁。 */
+  echoDmg: number;
+  /** 震荡「震慑」眩晕非 BOSS(ms),>0 时 BOSS 读条必断。 */
+  stunMs: number;
+  /** 冰封「霜冻地面」时长(ms),期间落点范围内减速 40%。 */
+  floorMs: number;
+  /** 冰封「冰碎」冻结结束时伤害(×U)。 */
+  shatterDmg: number;
+  /** 神雷「连锁闪电」弹射目标数(各 50% 主伤害)。 */
+  chain: number;
+  /** 神雷「九重雷劫」追加神雷道数与每道伤害(×U)。 */
+  boltCount: number;
+  boltDmg: number;
+  /** 金矿「点金」:之后 boostMs 内击杀金币 ×1.5。 */
+  boostMs: number;
+  /** 金矿「满仓」:本局每第 N 次再 ×1.5(0 = 未解锁)。 */
+  jackpotEvery: number;
+  /** 壁垒「驱邪」:施放时把水晶前 pushRange 格内的非 BOSS 怪推回 1 格。 */
+  pushRange: number;
+  /** 壁垒「圣光反震」:挡下攻击时反弹给攻击者(×U)。 */
+  reflectDmg: number;
+  /** 号角「激昂」:2★ 以上英雄战技冷却立刻缩短(ms)。 */
+  cdCutMs: number;
+  /** 号角「狂怒」:号角期间全队伤害倍率。 */
+  dmgMult: number;
+  /** 展示尺寸倍率(每级都放大,让玩家一眼看出等级)。 */
+  fxScale: number;
+}
+const GUARD_SPELL_ROW_BASE: GuardSpellLevelRow = {
+  radius: 0, dmg: 0, knockback: 0, ms: 0, healPct: 0, aspd: 1, goldMult: 1, echoDmg: 0, stunMs: 0, floorMs: 0, shatterDmg: 0,
+  chain: 0, boltCount: 0, boltDmg: 0, boostMs: 0, jackpotEvery: 0, pushRange: 0, reflectDmg: 0, cdCutMs: 0, dmgMult: 1, fxScale: 1,
+};
+const spellRow = (patch: Partial<GuardSpellLevelRow>): GuardSpellLevelRow => Object.assign({}, GUARD_SPELL_ROW_BASE, patch);
+const GUARD_SPELL_FX_SCALE = [1, 1.15, 1.3, 1.45, 1.6];
+export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
+  quake: [
+    spellRow({ dmg: 0.6, knockback: GUARD_SPELL_QUAKE_KNOCKBACK_LV1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ dmg: 0.66, knockback: 1.35, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ dmg: 0.72, knockback: 1.5, echoDmg: 0.25, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ dmg: 0.78, knockback: 1.65, echoDmg: 0.3, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ dmg: 0.84, knockback: 1.8, echoDmg: 0.35, stunMs: 800, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+  ],
+  frost: [
+    spellRow({ radius: GUARD_SPELL_FROST_RADIUS, ms: GUARD_SPELL_FROST_MS, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ radius: 1.8, ms: 3300, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ radius: 2.0, ms: 3600, floorMs: 4000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ radius: 2.2, ms: 4000, floorMs: 4500, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ radius: 2.4, ms: 4400, floorMs: 5000, shatterDmg: 0.8, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+  ],
+  thunder: [
+    spellRow({ radius: GUARD_SPELL_THUNDER_RADIUS, dmg: 2.5, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ radius: 1.35, dmg: 2.75, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ radius: 1.5, dmg: 3.0, chain: 3, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ radius: 1.65, dmg: 3.25, chain: 4, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ radius: 1.8, dmg: 3.5, chain: 4, boltCount: 8, boltDmg: 0.45, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+  ],
+  goldrush: [
+    spellRow({ goldMult: 1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ goldMult: 1.08, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ goldMult: 1.16, boostMs: 6000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ goldMult: 1.24, boostMs: 8000, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ goldMult: 1.32, boostMs: 8000, jackpotEvery: 3, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+  ],
+  aegis: [
+    spellRow({ ms: GUARD_SPELL_AEGIS_MS, healPct: 0.1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ ms: 4400, healPct: 0.115, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ ms: 4800, healPct: 0.13, pushRange: 2.0, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ ms: 5200, healPct: 0.145, pushRange: 2.4, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ ms: 5600, healPct: 0.16, pushRange: 2.4, reflectDmg: 0.6, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+  ],
+  warhorn: [
+    spellRow({ ms: GUARD_SPELL_WARHORN_MS, aspd: GUARD_SPELL_WARHORN_ASPD, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ ms: 6500, aspd: 1.55, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ ms: 7000, aspd: 1.6, cdCutMs: 3000, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ ms: 7500, aspd: 1.65, cdCutMs: 3500, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ ms: 8000, aspd: 1.7, cdCutMs: 3500, dmgMult: 1.15, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+  ],
+};
+/** 奇数级解锁的新效果名(展示层:名牌 / 详情框"下一级解锁"用)。 */
+export const GUARD_SPELL_UNLOCK_NAMES: Record<GuardSpellId, { lv3: string; lv5: string }> = {
+  quake: { lv3: '余震', lv5: '震慑' },
+  frost: { lv3: '霜冻地面', lv5: '冰碎' },
+  thunder: { lv3: '连锁闪电', lv5: '九重雷劫' },
+  goldrush: { lv3: '点金', lv5: '满仓' },
+  aegis: { lv3: '驱邪', lv5: '圣光反震' },
+  warhorn: { lv3: '激昂', lv5: '狂怒' },
+};
+export const GUARD_SPELL_ECHO_DELAY_MS = 1200;
+export const GUARD_SPELL_FROST_FLOOR_SLOW_MS = 700;
+export const GUARD_SPELL_FROST_FLOOR_TICK_MS = 500;
+export const GUARD_SPELL_CHAIN_RANGE = 3.0;
+export const GUARD_SPELL_BOLT_RANGE = 2.0;
+export const GUARD_SPELL_BOLT_START_MS = 300;
+export const GUARD_SPELL_BOLT_INTERVAL_MS = 200;
+export const GUARD_SPELL_GOLD_BOOST_MULT = 1.5;
+export const GUARD_SPELL_JACKPOT_MULT = 1.5;
+export const GUARD_SPELL_REFLECT_CD_MS = 500;
+
+export function guardClampSpellLevel(value: unknown): number {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.max(1, Math.min(GUARD_SPELL_MAX_LEVEL, n)) : 1;
+}
+export function guardSpellRow(id: GuardSpellId, level: number): GuardSpellLevelRow {
+  return GUARD_SPELL_LEVELS[id][guardClampSpellLevel(level) - 1];
+}
+/** 展示档位:T1 = Lv1-2,T2 = Lv3-4,T3 = Lv5(金矿爆发 = 小堆 / 中堆 / 大堆)。 */
+export function guardSpellTier(level: number): 1 | 2 | 3 {
+  const lv = guardClampSpellLevel(level);
+  return lv >= 5 ? 3 : lv >= 3 ? 2 : 1;
+}
+export function guardSpellLevel(state: GuardBattleState, id: GuardSpellId): number {
+  return guardClampSpellLevel(state.spellLevels?.[id] ?? 1);
+}
+
+const fmtNum = (v: number): string => (Math.round(v * 100) / 100).toString();
+const fmtSec = (ms: number): string => fmtNum(ms / 1000);
+const fmtPct = (v: number): string => `${Math.round(v * 100)}%`;
+/** 法术描述(随等级生成;水晶弹窗详情框与战斗内只读页共用)。 */
+export function guardSpellDescribe(id: GuardSpellId, level: number): string {
+  const r = guardSpellRow(id, level);
+  if (id === 'quake') {
+    let text = `对全场怪物造成本波普通怪 ${fmtPct(r.dmg)} 血量的伤害并击退 ${fmtNum(r.knockback)} 格。`;
+    if (r.echoDmg > 0) {
+      text += `「余震」1.2 秒后全场再震 ${fmtPct(r.echoDmg)}。`;
+    }
+    if (r.stunMs > 0) {
+      text += `「震慑」眩晕非 BOSS ${fmtSec(r.stunMs)} 秒,BOSS 读条必断。`;
+    }
+    return text;
+  }
+  if (id === 'frost') {
+    let text = `按住拖到战场:落点周围 ${fmtNum(r.radius)} 格冻结 ${fmtSec(r.ms)} 秒(BOSS 只减速)。`;
+    if (r.floorMs > 0) {
+      text += `「霜冻地面」留下 ${fmtSec(r.floorMs)} 秒冰面,减速 40%。`;
+    }
+    if (r.shatterDmg > 0) {
+      text += `「冰碎」冻结结束时碎冰,${fmtPct(r.shatterDmg)} 伤害。`;
+    }
+    return text;
+  }
+  if (id === 'thunder') {
+    let text = `按住拖到战场:落点周围 ${fmtNum(r.radius)} 格落雷,本波普通怪 ${fmtPct(r.dmg)} 血量的伤害,精英 / BOSS 双倍。`;
+    if (r.chain > 0) {
+      text += `「连锁闪电」弹射 ${r.chain} 个目标,各 50%。`;
+    }
+    if (r.boltCount > 0) {
+      text += `「九重雷劫」再降 ${r.boltCount} 道神雷,每道 ${fmtPct(r.boltDmg)}。`;
+    }
+    return text;
+  }
+  if (id === 'goldrush') {
+    let text = `立刻获得 (25 + 3×波次)×${fmtPct(r.goldMult)} 金币(每波限 1 次)。`;
+    if (r.boostMs > 0) {
+      text += `「点金」${fmtSec(r.boostMs)} 秒内击杀金币 ×1.5。`;
+    }
+    if (r.jackpotEvery > 0) {
+      text += `「满仓」每第 ${r.jackpotEvery} 次再 ×1.5。`;
+    }
+    return text;
+  }
+  if (id === 'aegis') {
+    let text = `水晶 ${fmtSec(r.ms)} 秒内不掉血,并回复 ${fmtPct(r.healPct)} 最大生命。`;
+    if (r.pushRange > 0) {
+      text += `「驱邪」把水晶前 ${fmtNum(r.pushRange)} 格内的怪推回 1 格。`;
+    }
+    if (r.reflectDmg > 0) {
+      text += `「圣光反震」挡下的攻击反弹 ${fmtPct(r.reflectDmg)} 伤害。`;
+    }
+    return text;
+  }
+  let text = `全队攻速 +${fmtPct(r.aspd - 1)},持续 ${fmtSec(r.ms)} 秒。`;
+  if (r.cdCutMs > 0) {
+    text += `「激昂」2★ 英雄战技冷却 −${fmtSec(r.cdCutMs)} 秒。`;
+  }
+  if (r.dmgMult > 1) {
+    text += `「狂怒」期间全队伤害 +${fmtPct(r.dmgMult - 1)}。`;
+  }
+  return text;
+}
+/** 下一级变化(只列有变化的项 + 下一级解锁的新效果);已满级返回 null。 */
+export function guardSpellNextDiff(id: GuardSpellId, level: number): { changes: string[]; unlock: string | null } | null {
+  const lv = guardClampSpellLevel(level);
+  if (lv >= GUARD_SPELL_MAX_LEVEL) {
+    return null;
+  }
+  const a = guardSpellRow(id, lv);
+  const b = guardSpellRow(id, lv + 1);
+  const changes: string[] = [];
+  const add = (label: string, from: number, to: number, fmt: (v: number) => string): void => {
+    if (to !== from && from > 0) {
+      changes.push(`${label} ${fmt(from)}→${fmt(to)}`);
+    }
+  };
+  add('范围', a.radius, b.radius, (v) => `${fmtNum(v)} 格`);
+  add('伤害', a.dmg, b.dmg, fmtPct);
+  add('击退', a.knockback, b.knockback, (v) => `${fmtNum(v)} 格`);
+  add(id === 'frost' ? '冻结' : id === 'aegis' ? '无敌' : '持续', a.ms, b.ms, (v) => `${fmtSec(v)} 秒`);
+  add('回血', a.healPct, b.healPct, fmtPct);
+  add('攻速', a.aspd - 1, b.aspd - 1, (v) => `+${fmtPct(v)}`);
+  add('金币', a.goldMult, b.goldMult, fmtPct);
+  add('余震', a.echoDmg, b.echoDmg, fmtPct);
+  add('冰面', a.floorMs, b.floorMs, (v) => `${fmtSec(v)} 秒`);
+  add('弹射', a.chain, b.chain, (v) => `${v} 个`);
+  add('点金', a.boostMs, b.boostMs, (v) => `${fmtSec(v)} 秒`);
+  add('驱邪', a.pushRange, b.pushRange, (v) => `${fmtNum(v)} 格`);
+  add('激昂', a.cdCutMs, b.cdCutMs, (v) => `−${fmtSec(v)} 秒`);
+  const unlockName = lv + 1 === 3 ? GUARD_SPELL_UNLOCK_NAMES[id].lv3 : lv + 1 === 5 ? GUARD_SPELL_UNLOCK_NAMES[id].lv5 : null;
+  return { changes, unlock: unlockName };
+}
 
 // ── docs/37 G 车道陷阱 ──
 export type GuardTrapKind = 'spikes' | 'frostfield' | 'rune';
@@ -525,6 +777,17 @@ export interface GuardBattleState {
   aegisUntilMs: number;
   warhornUntilMs: number;
   goldrushWave: number;
+  /** 法术等级(docs/39;开战快照 spellLevels,缺省 1)与施放时锁定的等级效果。 */
+  spellLevels: Record<GuardSpellId, number>;
+  warhornAspd: number;
+  warhornDmgMult: number;
+  aegisReflectU: number;
+  goldBoostUntilMs: number;
+  goldrushCasts: number;
+  /** 延时追加效果队列(余震 / 冰碎 / 九重雷劫),只在 guardTick 里推进(暂停 / 三选一 / 结束时自然不走),确定性无随机。 */
+  spellPending: Array<{ atMs: number; kind: 'quakeEcho' | 'frostShatter' | 'thunderBolt'; spellId: GuardSpellId; x: number; amount: number; ids: number[] }>;
+  /** 冰封「霜冻地面」(docs/39 冰封 Lv3+):落点范围持续减速,不造成伤害(不走区域 zone 的跳伤路径)。 */
+  frostFloors: Array<{ x: number; radius: number; untilMs: number; nextTickMs: number }>;
   /** 车道陷阱(docs/37 G)。 */
   traps: GuardTrap[];
   nextTrapId: number;
@@ -930,6 +1193,8 @@ export function createGuardBattle(
       /** 法术装备格数(含外观追加;缺省 2)与出战法术(按格位顺序)。 */
       spellSlots?: number;
       spellLoadout?: string[] | null;
+      /** 法术等级(docs/39;缺省 / 缺项 = 1,钳到 1..5)。 */
+      spellLevels?: Partial<Record<string, number>> | null;
     } | null;
   },
 ): GuardBattleState {
@@ -1036,6 +1301,14 @@ export function createGuardBattle(
     aegisUntilMs: 0,
     warhornUntilMs: 0,
     goldrushWave: -1,
+    spellLevels: guardNormalizeSpellLevels(crystal?.spellLevels ?? null),
+    warhornAspd: GUARD_SPELL_WARHORN_ASPD,
+    warhornDmgMult: 1,
+    aegisReflectU: 0,
+    goldBoostUntilMs: 0,
+    goldrushCasts: 0,
+    spellPending: [],
+    frostFloors: [],
     traps: [],
     nextTrapId: 1,
   };
@@ -1274,7 +1547,9 @@ export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUni
     }
   }
   const resonanceMult = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ATK_MULT : 1;
-  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult * resonanceMult));
+  // 狂战号角「狂怒」(docs/39 Lv5):号角期间全队伤害 ×1.15;未解锁 / 号角结束时为 1(不影响旧口径)。
+  const hornMult = state.warhornUntilMs > state.timeMs ? state.warhornDmgMult : 1;
+  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult * resonanceMult * hornMult));
 }
 
 // ── P2:XP(击杀经验只累计等级,不再弹词条,2026-09-19)──
@@ -1838,7 +2113,8 @@ function killMonster(state: GuardBattleState, monster: GuardMonster, killerCode:
   // ÷spawnCountMult:主线怪量翻倍后单只金币减半(总收入中性),否则怪越多经济越富、难度自抵消。
   const gold = monster.greedy
     ? Math.round((GUARD_GREEDY_GOLD_BASE + GUARD_GREEDY_GOLD_PER_WAVE * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100))
-    : Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100) / state.spawnCountMult);
+    : Math.round(GUARD_KILL_GOLD[monster.kind] * (1 + 0.06 * monster.spawnedWave) * (1 + state.mods.goldGainPct / 100) / state.spawnCountMult
+      * (state.goldBoostUntilMs > state.timeMs ? GUARD_SPELL_GOLD_BOOST_MULT : 1));
   state.gold += gold;
   if (monster.greedy) {
     state.events.push({ type: 'greedyKill', timeMs: state.timeMs, monsterId: monster.monsterId, amount: gold });
@@ -1937,11 +2213,7 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
       ? Math.max(1, Math.round(state.bossCast.threshold * GUARD_MARK_INTERRUPT_RATIO))
       : state.bossCast.threshold;
     if (state.bossCast.damageTaken >= threshold) {
-      monster.stunnedUntilMs = state.timeMs + GUARD_BOSS_STUN_MS;
-      state.events.push({ type: 'bossCastInterrupt', timeMs: state.timeMs, monsterId: monster.monsterId });
-      state.spellEnergy = Math.min(state.spellEnergyMax, state.spellEnergy + GUARD_SPELL_ENERGY_INTERRUPT);
-      state.bossCast = null;
-      state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
+      guardInterruptBossCast(state, monster);
     }
   }
   if (byHero) {
@@ -1950,6 +2222,15 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
   if (monster.hp <= 0) {
     killMonster(state, monster, byHero?.heroCode ?? sourceCode);
   }
+}
+
+/** 打断 BOSS 读条:踉跄 + 回能量 + 下一次读条间隔(伤害打断与震荡 Lv5「震慑」必断共用)。 */
+function guardInterruptBossCast(state: GuardBattleState, monster: GuardMonster): void {
+  monster.stunnedUntilMs = state.timeMs + GUARD_BOSS_STUN_MS;
+  state.events.push({ type: 'bossCastInterrupt', timeMs: state.timeMs, monsterId: monster.monsterId });
+  state.spellEnergy = Math.min(state.spellEnergyMax, state.spellEnergy + GUARD_SPELL_ENERGY_INTERRUPT);
+  state.bossCast = null;
+  state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
 }
 
 function startWave(state: GuardBattleState): void {
@@ -2392,7 +2673,7 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   // 出手频率:常驻 = 白卡攻速 × 急速(钳 ×2.0);临时增益(圣辉涌泉 ×1.2)在钳外。
   const surgeDiv = state.supportSurgeUntilMs > state.timeMs ? GUARD_SUPPORT_SURGE_ATKSPD : 1;
   const resonanceDiv = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ASPD_MULT : 1;
-  const hornDiv = state.warhornUntilMs > state.timeMs ? GUARD_SPELL_WARHORN_ASPD : 1;
+  const hornDiv = state.warhornUntilMs > state.timeMs ? state.warhornAspd : 1;
   const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv / resonanceDiv / hornDiv;
   const heroProfile = guardHeroProfileOf(state, hero.heroCode);
   const purpleSuffix = perks.purple > 0 ? heroProfile.purple?.suffix ?? '' : '';
@@ -2561,7 +2842,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       state.events.push({ type: 'bossCastStart', timeMs: state.timeMs, monsterId: boss.monsterId });
     }
     if (state.bossCast && state.timeMs >= state.bossCast.hitMs) {
-      const damage = guardAegisFilter(state, Math.round(state.crystalMaxHp * GUARD_BOSS_CAST_CRYSTAL_RATIO));
+      const castBoss = state.monsters.find((entry) => entry.monsterId === state.bossCast?.monsterId) ?? null;
+      const damage = guardAegisFilter(state, Math.round(state.crystalMaxHp * GUARD_BOSS_CAST_CRYSTAL_RATIO), castBoss);
       state.crystalHp = Math.max(0, state.crystalHp - damage);
       state.events.push({ type: 'bossCastHit', timeMs: state.timeMs, monsterId: state.bossCast.monsterId, amount: damage });
       state.bossCast = null;
@@ -2586,7 +2868,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     const bossStunned = bossMonster.stunnedUntilMs > state.timeMs;
     if (!casting && !bossStunned && bossMonster.x <= skillSpec.rangeCells && state.timeMs >= bossMonster.skillReadyMs) {
       bossMonster.skillReadyMs = state.timeMs + skillSpec.cdMs;
-      const damage = guardAegisFilter(state, Math.max(1, Math.round(state.crystalMaxHp * skillSpec.crystalPct)));
+      const damage = guardAegisFilter(state, Math.max(1, Math.round(state.crystalMaxHp * skillSpec.crystalPct)), bossMonster);
       state.crystalHp = Math.max(0, state.crystalHp - damage);
       state.events.push({ type: 'bossSkill', timeMs: state.timeMs, monsterId: bossMonster.monsterId, amount: damage, skillName: skillSpec.name, skillKind });
       if (state.crystalHp <= 0) {
@@ -2623,7 +2905,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       monster.attackCooldownMs -= dtMs;
       if (monster.attackCooldownMs <= 0) {
         monster.attackCooldownMs = MONSTER_ATTACK_INTERVAL_MS;
-        const bite = guardAegisFilter(state, monster.crystalDamage);
+        const bite = guardAegisFilter(state, monster.crystalDamage, monster);
         state.crystalHp = Math.max(0, state.crystalHp - bite);
         state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: bite });
         if ((state.heroPerks.UR_ATLAS?.purple ?? 0) > 0 && state.heroes.some((hero) => hero.heroCode.toUpperCase() === 'UR_ATLAS')) {
@@ -2637,7 +2919,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         }
       }
       // 水晶荆棘反伤(按 tick 折算;shooter 站远程位不吃荆棘——用远程/控制处理它)。
-      if (monster.kind !== 'shooter') {
+      if (monster.kind !== 'shooter' && !monster.dead) {
         monster.hp -= thornsPerSec * (dtMs / 1000);
         if (monster.hp <= 0) {
           killMonster(state, monster, null);
@@ -2672,6 +2954,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     }
   }
   state.zones = state.zones.filter((zone) => state.timeMs < zone.untilMs);
+  guardTickSpellPending(state);
+  guardTickFrostFloors(state);
   guardTickTraps(state);
   // 英雄出手。
   for (const hero of state.heroes) {
@@ -2939,12 +3223,90 @@ function guardAgeTraps(state: GuardBattleState): void {
 }
 
 /** 圣光壁垒期间水晶不掉血(返回实际应扣量;被挡时发 aegisBlock 事件)。 */
-function guardAegisFilter(state: GuardBattleState, damage: number): number {
+function guardAegisFilter(state: GuardBattleState, damage: number, attacker: GuardMonster | null = null): number {
   if (state.aegisUntilMs > state.timeMs && damage > 0) {
     state.events.push({ type: 'aegisBlock', timeMs: state.timeMs, amount: damage });
+    // 圣光反震(docs/39 壁垒 Lv5):挡下的攻击反弹给攻击者,同一只怪 0.5s 最多一次。
+    if (state.aegisReflectU > 0 && attacker && !attacker.dead && state.timeMs >= (attacker.aegisReflectReadyMs ?? 0)) {
+      attacker.aegisReflectReadyMs = state.timeMs + GUARD_SPELL_REFLECT_CD_MS;
+      const reflect = Math.max(1, Math.round(state.aegisReflectU));
+      state.events.push({ type: 'spellEcho', timeMs: state.timeMs, spellId: 'aegis', echoKind: 'aegisReflect', amount: reflect, monsterIds: [attacker.monsterId], level: 5 });
+      damageMonster(state, attacker, reflect, null);
+    }
     return 0;
   }
   return damage;
+}
+
+/** 推进法术延时追加效果(余震 / 冰碎 / 九重雷劫);确定性:按入队顺序、到点即结算,目标按固定规则选。 */
+function guardTickSpellPending(state: GuardBattleState): void {
+  if (state.spellPending.length === 0) {
+    return;
+  }
+  const due = state.spellPending.filter((entry) => entry.atMs <= state.timeMs);
+  if (due.length === 0) {
+    return;
+  }
+  state.spellPending = state.spellPending.filter((entry) => entry.atMs > state.timeMs);
+  for (const entry of due) {
+    if (state.phase === 'victory' || state.phase === 'defeat') {
+      state.spellPending = [];
+      return;
+    }
+    const hitIds: number[] = [];
+    if (entry.kind === 'quakeEcho') {
+      for (const monster of state.monsters) {
+        if (!monster.dead) {
+          hitIds.push(monster.monsterId);
+          damageMonster(state, monster, entry.amount, null);
+        }
+      }
+    } else if (entry.kind === 'frostShatter') {
+      for (const monsterId of entry.ids) {
+        const monster = state.monsters.find((item) => item.monsterId === monsterId);
+        if (monster && !monster.dead) {
+          hitIds.push(monster.monsterId);
+          damageMonster(state, monster, entry.amount, null);
+        }
+      }
+    } else {
+      // 九重雷劫单道:落点 2 格内当前血量最高的活怪(同血按 id 小者),精英 / BOSS ×2;没有目标就跳过。
+      let best: GuardMonster | null = null;
+      for (const monster of state.monsters) {
+        if (monster.dead || Math.abs(monster.x - entry.x) > GUARD_SPELL_BOLT_RANGE) {
+          continue;
+        }
+        if (!best || monster.hp > best.hp || (monster.hp === best.hp && monster.monsterId < best.monsterId)) {
+          best = monster;
+        }
+      }
+      if (best) {
+        hitIds.push(best.monsterId);
+        damageMonster(state, best, best.kind === 'elite' || best.kind === 'boss' ? entry.amount * 2 : entry.amount, null);
+      }
+    }
+    if (hitIds.length > 0 || entry.kind === 'quakeEcho') {
+      state.events.push({ type: 'spellEcho', timeMs: state.timeMs, spellId: entry.spellId, echoKind: entry.kind, x: entry.x, amount: entry.amount, monsterIds: hitIds, level: guardSpellLevel(state, entry.spellId) });
+    }
+  }
+}
+
+/** 冰封「霜冻地面」:每 0.5s 给落点范围内的怪(含 BOSS)续 0.7s 减速;不造成伤害、不发跳伤事件。 */
+function guardTickFrostFloors(state: GuardBattleState): void {
+  if (state.frostFloors.length === 0) {
+    return;
+  }
+  for (const floor of state.frostFloors) {
+    while (state.timeMs >= floor.nextTickMs && floor.nextTickMs <= floor.untilMs) {
+      floor.nextTickMs += GUARD_SPELL_FROST_FLOOR_TICK_MS;
+      for (const monster of state.monsters) {
+        if (!monster.dead && Math.abs(monster.x - floor.x) <= floor.radius) {
+          monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + GUARD_SPELL_FROST_FLOOR_SLOW_MS);
+        }
+      }
+    }
+  }
+  state.frostFloors = state.frostFloors.filter((floor) => state.timeMs < floor.untilMs);
 }
 
 /** 法术伤害基准:本波普通怪的血量(随波次/主线难度/副本小怪倍率同步缩放)。 */
@@ -2978,49 +3340,111 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
   const alive = state.monsters.filter((monster) => !monster.dead);
   // 水晶养成的法术强度:伤害 / 回血 / 金矿金币同乘(docs/38)。
   const unit = guardSpellUnit(state) * state.spellPowerMult;
+  // 法术等级(docs/39):Lv1 行 = 改版前常量,逐位一致。
+  const level = guardSpellLevel(state, id);
+  const row = guardSpellRow(id, level);
   const hitIds: number[] = [];
+  const chainIds: number[] = [];
   let amount = 0;
+  let jackpot = false;
   if (id === 'quake') {
-    amount = Math.round(unit * 0.6);
+    amount = Math.round(unit * row.dmg);
     for (const monster of alive) {
-      monster.x = Math.min(GUARD_SPAWN_X, monster.x + GUARD_CRYSTAL_SKILL_KNOCKBACK_CELLS);
+      monster.x = Math.min(GUARD_SPAWN_X, monster.x + row.knockback);
       hitIds.push(monster.monsterId);
       damageMonster(state, monster, amount, null);
+      // 「震慑」(Lv5):眩晕非 BOSS;BOSS 读条中必断。
+      if (row.stunMs > 0 && !monster.dead) {
+        if (monster.kind !== 'boss') {
+          monster.stunnedUntilMs = Math.max(monster.stunnedUntilMs, state.timeMs + row.stunMs);
+        } else if (state.bossCast && state.bossCast.monsterId === monster.monsterId) {
+          guardInterruptBossCast(state, monster);
+        }
+      }
+    }
+    if (row.echoDmg > 0) {
+      state.spellPending.push({ atMs: state.timeMs + GUARD_SPELL_ECHO_DELAY_MS, kind: 'quakeEcho', spellId: id, x: 0, amount: Math.round(unit * row.echoDmg), ids: [] });
     }
   } else if (id === 'frost' && target) {
     for (const monster of alive) {
-      if (Math.abs(monster.x - target.x) > GUARD_SPELL_FROST_RADIUS) {
+      if (Math.abs(monster.x - target.x) > row.radius) {
         continue;
       }
       hitIds.push(monster.monsterId);
-      monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + GUARD_SPELL_FROST_MS);
+      monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + row.ms);
       if (monster.kind !== 'boss') {
-        monster.stunnedUntilMs = Math.max(monster.stunnedUntilMs, state.timeMs + GUARD_SPELL_FROST_MS);
+        monster.stunnedUntilMs = Math.max(monster.stunnedUntilMs, state.timeMs + row.ms);
       }
     }
+    if (row.floorMs > 0) {
+      state.frostFloors.push({ x: target.x, radius: row.radius, untilMs: state.timeMs + row.floorMs, nextTickMs: state.timeMs });
+    }
+    if (row.shatterDmg > 0 && hitIds.length > 0) {
+      state.spellPending.push({ atMs: state.timeMs + row.ms, kind: 'frostShatter', spellId: id, x: target.x, amount: Math.round(unit * row.shatterDmg), ids: Array.from(hitIds) });
+    }
   } else if (id === 'thunder' && target) {
-    amount = Math.round(unit * 2.5);
+    amount = Math.round(unit * row.dmg);
     for (const monster of alive) {
-      if (Math.abs(monster.x - target.x) > GUARD_SPELL_THUNDER_RADIUS) {
+      if (Math.abs(monster.x - target.x) > row.radius) {
         continue;
       }
       hitIds.push(monster.monsterId);
       damageMonster(state, monster, monster.kind === 'elite' || monster.kind === 'boss' ? amount * 2 : amount, null);
     }
+    if (row.chain > 0) {
+      // 「连锁闪电」(Lv3+):范围外、落点 3 格内最近的 N 只(按 |dx|、再按 id 排序,确定性),各 50%。
+      const chainAmount = Math.round(amount * 0.5);
+      const candidates = state.monsters
+        .filter((monster) => !monster.dead && hitIds.indexOf(monster.monsterId) < 0 && Math.abs(monster.x - target.x) <= GUARD_SPELL_CHAIN_RANGE)
+        .sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x) || a.monsterId - b.monsterId)
+        .slice(0, row.chain);
+      for (const monster of candidates) {
+        chainIds.push(monster.monsterId);
+        damageMonster(state, monster, monster.kind === 'elite' || monster.kind === 'boss' ? chainAmount * 2 : chainAmount, null);
+      }
+    }
+    for (let i = 0; i < row.boltCount; i += 1) {
+      state.spellPending.push({ atMs: state.timeMs + GUARD_SPELL_BOLT_START_MS + i * GUARD_SPELL_BOLT_INTERVAL_MS, kind: 'thunderBolt', spellId: id, x: target.x, amount: Math.round(unit * row.boltDmg), ids: [] });
+    }
   } else if (id === 'goldrush') {
-    amount = Math.round((25 + 3 * Math.max(1, state.wave)) * (1 + state.mods.goldGainPct / 100) * state.spellPowerMult);
+    state.goldrushCasts += 1;
+    jackpot = row.jackpotEvery > 0 && state.goldrushCasts % row.jackpotEvery === 0;
+    amount = Math.round((25 + 3 * Math.max(1, state.wave)) * (1 + state.mods.goldGainPct / 100) * state.spellPowerMult * row.goldMult * (jackpot ? GUARD_SPELL_JACKPOT_MULT : 1));
     state.gold += amount;
     state.goldrushWave = state.wave;
+    if (row.boostMs > 0) {
+      state.goldBoostUntilMs = state.timeMs + row.boostMs;
+    }
   } else if (id === 'aegis') {
-    state.aegisUntilMs = state.timeMs + GUARD_SPELL_AEGIS_MS;
+    state.aegisUntilMs = state.timeMs + row.ms;
+    state.aegisReflectU = row.reflectDmg > 0 ? unit * row.reflectDmg : 0;
     const before = state.crystalHp;
-    state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * 0.1 * state.spellPowerMult));
+    state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * row.healPct * state.spellPowerMult));
     amount = state.crystalHp - before;
+    if (row.pushRange > 0) {
+      // 「驱邪」(Lv3+):把水晶前 pushRange 格内的非 BOSS 怪推回 1 格(与震荡击退同口径,封顶刷怪口)。
+      for (const monster of alive) {
+        if (monster.kind !== 'boss' && monster.x <= row.pushRange) {
+          monster.x = Math.min(GUARD_SPAWN_X, monster.x + 1);
+          hitIds.push(monster.monsterId);
+        }
+      }
+    }
   } else if (id === 'warhorn') {
-    state.warhornUntilMs = state.timeMs + GUARD_SPELL_WARHORN_MS;
+    state.warhornUntilMs = state.timeMs + row.ms;
+    state.warhornAspd = row.aspd;
+    state.warhornDmgMult = row.dmgMult;
+    if (row.cdCutMs > 0) {
+      // 「激昂」(Lv3+):2★ 以上英雄战技冷却立刻缩短。
+      for (const hero of state.heroes) {
+        if (hero.star >= 2) {
+          hero.skillReadyMs = Math.max(state.timeMs, hero.skillReadyMs - row.cdCutMs);
+        }
+      }
+    }
   }
   state.spellEnergy -= def.cost;
-  state.events.push({ type: 'spellCast', timeMs: state.timeMs, spellId: id, lane: target?.lane, x: target?.x, amount, monsterIds: hitIds });
+  state.events.push({ type: 'spellCast', timeMs: state.timeMs, spellId: id, lane: target?.lane, x: target?.x, amount, monsterIds: hitIds, level, tier: guardSpellTier(level), jackpot, chainIds });
   state.inputs.push({ t: state.timeMs, k: 'spell', v: GUARD_SPELL_IDS.indexOf(id) });
   return true;
 }
