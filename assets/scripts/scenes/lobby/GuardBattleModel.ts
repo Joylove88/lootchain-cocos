@@ -377,7 +377,8 @@ export const GUARD_SPELL_WARHORN_ASPD = 1.5;
  */
 export const GUARD_SPELL_MAX_LEVEL = 5;
 // 2026-10-02 平衡闸门(docs/39 §8,scratchpad balance39):首版 Lv5 超标(主线 +11pp、20 波层数 +19%、金矿额外金币 10.8%),
-// 按实测归因削弱神雷 / 冰碎 / 金矿 / 号角;震荡与壁垒实测几乎无增益保持不动。削后:主线 ≤ +7pp、层数 ≤ +7.7%、金矿 ≤ 5.9%。
+// 按实测归因削弱神雷 / 冰碎 / 金矿 / 号角;复核补测单法术阵容后再削壁垒(反震 0.1U、每盾 3 次、时长回血放缓)、震荡改为击退 / 震慑成长。
+// 削后:主线 ≤ +7pp、层数 ≈ +6~8%、金矿 ≤ 5.4%;专带壁垒主线 ≤ +8.4pp、层数 +6.8%。
 export interface GuardSpellLevelRow {
   /** 冰封 / 神雷落点半径(格);其他法术 0。 */
   radius: number;
@@ -430,10 +431,11 @@ const GUARD_SPELL_FX_SCALE = [1, 1.15, 1.3, 1.45, 1.6];
 export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
   quake: [
     spellRow({ dmg: 0.6, knockback: GUARD_SPELL_QUAKE_KNOCKBACK_LV1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
-    spellRow({ dmg: 0.66, knockback: 1.35, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ dmg: 0.72, knockback: 1.5, echoDmg: 0.25, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ dmg: 0.78, knockback: 1.65, echoDmg: 0.3, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ dmg: 0.84, knockback: 1.8, echoDmg: 0.35, stunMs: 800, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    // 震荡 Lv1 已经吃满收益(实测比不放法术主线 +20~33pp),加伤害反而略亏;等级预算给击退 / 震慑,伤害只小涨。
+    spellRow({ dmg: 0.62, knockback: 1.4, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ dmg: 0.64, knockback: 1.6, echoDmg: 0.15, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ dmg: 0.66, knockback: 1.8, echoDmg: 0.2, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ dmg: 0.68, knockback: 2.0, echoDmg: 0.25, stunMs: 1200, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
   frost: [
     spellRow({ radius: GUARD_SPELL_FROST_RADIUS, ms: GUARD_SPELL_FROST_MS, fxScale: GUARD_SPELL_FX_SCALE[0] }),
@@ -458,10 +460,11 @@ export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
   ],
   aegis: [
     spellRow({ ms: GUARD_SPELL_AEGIS_MS, healPct: 0.1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
-    spellRow({ ms: 4400, healPct: 0.115, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ ms: 4800, healPct: 0.13, pushRange: 2.0, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ ms: 5200, healPct: 0.145, pushRange: 2.4, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ ms: 5600, healPct: 0.16, pushRange: 2.4, reflectDmg: 0.6, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    // 专带壁垒(单法术阵容)实测 Lv5 跳涨最多,时长 / 回血成长放缓、反震 0.1U × 每盾 3 次(主线 ≤ +8.4pp、层数 +6.8%)。
+    spellRow({ ms: 4300, healPct: 0.11, fxScale: GUARD_SPELL_FX_SCALE[1] }),
+    spellRow({ ms: 4600, healPct: 0.12, pushRange: 2.0, fxScale: GUARD_SPELL_FX_SCALE[2] }),
+    spellRow({ ms: 4900, healPct: 0.13, pushRange: 2.2, fxScale: GUARD_SPELL_FX_SCALE[3] }),
+    spellRow({ ms: 5200, healPct: 0.14, pushRange: 2.4, reflectDmg: 0.1, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
   warhorn: [
     spellRow({ ms: GUARD_SPELL_WARHORN_MS, aspd: GUARD_SPELL_WARHORN_ASPD, fxScale: GUARD_SPELL_FX_SCALE[0] }),
@@ -489,7 +492,9 @@ export const GUARD_SPELL_BOLT_START_MS = 300;
 export const GUARD_SPELL_BOLT_INTERVAL_MS = 200;
 export const GUARD_SPELL_GOLD_BOOST_MULT = 1.5;
 export const GUARD_SPELL_JACKPOT_MULT = 1.5;
-export const GUARD_SPELL_REFLECT_CD_MS = 500;
+// 圣光反震(壁垒 Lv5):每次护盾每只怪最多反弹一次、全场最多 3 次,反弹伤害不计入 BOSS 读条打断阈值。
+// 2026-10-02 复核:原「每只怪 0.5s 一次、不限次数」让专带壁垒的玩家主线 +17pp / 层数 +20%,且反弹打断读条会让读条命中处读到 null 崩溃。
+export const GUARD_SPELL_REFLECT_MAX = 3;
 
 export function guardClampSpellLevel(value: unknown): number {
   const n = Math.round(Number(value));
@@ -559,7 +564,7 @@ export function guardSpellDescribe(id: GuardSpellId, level: number): string {
       text += `「驱邪」把水晶前 ${fmtNum(r.pushRange)} 格内的怪推回 1 格。`;
     }
     if (r.reflectDmg > 0) {
-      text += `「圣光反震」挡下的攻击反弹 ${fmtPct(r.reflectDmg)} 伤害。`;
+      text += `「圣光反震」挡下的攻击反弹 ${fmtPct(r.reflectDmg)} 伤害(每次护盾最多 ${GUARD_SPELL_REFLECT_MAX} 次)。`;
     }
     return text;
   }
@@ -784,6 +789,8 @@ export interface GuardBattleState {
   warhornAspd: number;
   warhornDmgMult: number;
   aegisReflectU: number;
+  /** 本次护盾剩余可反弹次数(圣光反震)。 */
+  aegisReflectLeft: number;
   goldBoostUntilMs: number;
   goldrushCasts: number;
   /** 延时追加效果队列(余震 / 冰碎 / 九重雷劫),只在 guardTick 里推进(暂停 / 三选一 / 结束时自然不走),确定性无随机。 */
@@ -1307,6 +1314,7 @@ export function createGuardBattle(
     warhornAspd: GUARD_SPELL_WARHORN_ASPD,
     warhornDmgMult: 1,
     aegisReflectU: 0,
+    aegisReflectLeft: 0,
     goldBoostUntilMs: 0,
     goldrushCasts: 0,
     spellPending: [],
@@ -2199,7 +2207,7 @@ function guardOnKillPerks(state: GuardBattleState, monster: GuardMonster, killer
   }
 }
 
-function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: number, byHero: GuardHeroUnit | null, sourceCode: string | null = null, markApplied = false): void {
+function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: number, byHero: GuardHeroUnit | null, sourceCode: string | null = null, markApplied = false, countsTowardInterrupt = true): void {
   if (monster.dead) {
     return;
   }
@@ -2209,7 +2217,7 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
   }
   monster.hp -= damage;
   // BOSS 读条集火:读条期间受到的伤害计入打断阈值;玩家标记了读条中的 BOSS 则阈值减半。
-  if (state.bossCast && state.bossCast.monsterId === monster.monsterId) {
+  if (countsTowardInterrupt && state.bossCast && state.bossCast.monsterId === monster.monsterId) {
     state.bossCast.damageTaken += damage;
     const threshold = state.markedMonsterId === monster.monsterId
       ? Math.max(1, Math.round(state.bossCast.threshold * GUARD_MARK_INTERRUPT_RATIO))
@@ -2844,10 +2852,12 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       state.events.push({ type: 'bossCastStart', timeMs: state.timeMs, monsterId: boss.monsterId });
     }
     if (state.bossCast && state.timeMs >= state.bossCast.hitMs) {
-      const castBoss = state.monsters.find((entry) => entry.monsterId === state.bossCast?.monsterId) ?? null;
+      // 先记下读条的 BOSS:护盾反弹可能在下面击杀它,读条状态以本帧开始时为准。
+      const castMonsterId = state.bossCast.monsterId;
+      const castBoss = state.monsters.find((entry) => entry.monsterId === castMonsterId) ?? null;
       const damage = guardAegisFilter(state, Math.round(state.crystalMaxHp * GUARD_BOSS_CAST_CRYSTAL_RATIO), castBoss);
       state.crystalHp = Math.max(0, state.crystalHp - damage);
-      state.events.push({ type: 'bossCastHit', timeMs: state.timeMs, monsterId: state.bossCast.monsterId, amount: damage });
+      state.events.push({ type: 'bossCastHit', timeMs: state.timeMs, monsterId: castMonsterId, amount: damage });
       state.bossCast = null;
       state.nextBossCastMs = state.timeMs + GUARD_BOSS_CAST_INTERVAL_MS;
       if (state.crystalHp <= 0) {
@@ -3228,12 +3238,13 @@ function guardAgeTraps(state: GuardBattleState): void {
 function guardAegisFilter(state: GuardBattleState, damage: number, attacker: GuardMonster | null = null): number {
   if (state.aegisUntilMs > state.timeMs && damage > 0) {
     state.events.push({ type: 'aegisBlock', timeMs: state.timeMs, amount: damage });
-    // 圣光反震(docs/39 壁垒 Lv5):挡下的攻击反弹给攻击者,同一只怪 0.5s 最多一次。
-    if (state.aegisReflectU > 0 && attacker && !attacker.dead && state.timeMs >= (attacker.aegisReflectReadyMs ?? 0)) {
-      attacker.aegisReflectReadyMs = state.timeMs + GUARD_SPELL_REFLECT_CD_MS;
+    // 圣光反震(docs/39 壁垒 Lv5):挡下的攻击反弹给攻击者;每次护盾每只怪一次、共 GUARD_SPELL_REFLECT_MAX 次,不计入读条打断。
+    if (state.aegisReflectU > 0 && state.aegisReflectLeft > 0 && attacker && !attacker.dead && (attacker.aegisReflectReadyMs ?? 0) < state.aegisUntilMs) {
+      attacker.aegisReflectReadyMs = state.aegisUntilMs;
+      state.aegisReflectLeft -= 1;
       const reflect = Math.max(1, Math.round(state.aegisReflectU));
       state.events.push({ type: 'spellEcho', timeMs: state.timeMs, spellId: 'aegis', echoKind: 'aegisReflect', amount: reflect, monsterIds: [attacker.monsterId], level: 5 });
-      damageMonster(state, attacker, reflect, null);
+      damageMonster(state, attacker, reflect, null, null, false, false);
     }
     return 0;
   }
@@ -3420,6 +3431,7 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
   } else if (id === 'aegis') {
     state.aegisUntilMs = state.timeMs + row.ms;
     state.aegisReflectU = row.reflectDmg > 0 ? unit * row.reflectDmg : 0;
+    state.aegisReflectLeft = row.reflectDmg > 0 ? GUARD_SPELL_REFLECT_MAX : 0;
     const before = state.crystalHp;
     state.crystalHp = Math.min(state.crystalMaxHp, state.crystalHp + Math.round(state.crystalMaxHp * row.healPct * state.spellPowerMult));
     amount = state.crystalHp - before;
