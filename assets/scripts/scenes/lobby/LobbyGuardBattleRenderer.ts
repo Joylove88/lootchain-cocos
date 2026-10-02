@@ -469,7 +469,8 @@ export class LobbyGuardBattleRenderer {
   /** 流星矿晶视图(docs/37 D)。 */
   private pickupViews = new Map<number, Node>();
   /** 水晶法术拖拽瞄准中的法术(docs/37 F)与上次壁垒"免疫"飘字时刻。 */
-  private spellDrag: { id: GuardSpellId; moved: number; aim: { lane: number; x: number } | null } | null = null;
+  private spellDrag: { id: GuardSpellId; moved: number; aim: { lane: number; x: number } | null; tipShown?: boolean } | null = null;
+  private spellTipTimer: ReturnType<typeof setTimeout> | null = null;
   private aegisFloaterAt = 0;
   /** docs/39:本局已出过 Lv5 名牌的法术;法术追加效果飘字节流;金币堆飞币计数(独立于击杀金币的 12 枚上限)。 */
   private readonly spellLv5Shown = new Set<GuardSpellId>();
@@ -547,6 +548,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   unmount(): void {
+    this.clearSpellTipTimer();
     if (this.tickTimer !== null) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
@@ -3448,6 +3450,21 @@ export class LobbyGuardBattleRenderer {
       if (iconOp) {
         iconOp.opacity = castable ? 255 : 110;
       }
+      // 金矿爆发每波限 1 次:用过后图标变暗并挂「下一波可用」,不让玩家以为坏了或在冷却(2026-10-02 用户反馈)
+      const lockedThisWave = id === 'goldrush' && sim.goldrushWave === sim.wave;
+      let stateTag = slot.getChildByName('StateTag')?.getComponent(Label) ?? null;
+      if (lockedThisWave && !stateTag) {
+        stateTag = this.host.addChildLabel(slot, 'StateTag', '下一波\n可用', 0, 0, 17, rgba(255, 214, 140), new Size(size, 44));
+        stateTag.isBold = true;
+        stateTag.lineHeight = 20;
+        stateTag.overflow = Label.Overflow.SHRINK;
+        stateTag.enableOutline = true;
+        stateTag.outlineColor = rgba(16, 10, 6, 255);
+        stateTag.outlineWidth = 3;
+      }
+      if (stateTag) {
+        stateTag.node.active = lockedThisWave;
+      }
       const charge = slot.getChildByName('Charge')?.getComponent(Graphics);
       if (charge) {
         charge.clear();
@@ -3470,17 +3487,48 @@ export class LobbyGuardBattleRenderer {
 
   /** 法术位手势:点击 = 无目标法术施放;按住拖到战场 = 瞄准(冰封/九天神雷),松手在战场内施放,拖回法术栏取消。 */
   private bindSpellSlot(slot: Node, id: GuardSpellId): void {
+    // 长按 0.45 秒(手指不动)= 显示法术详情,松手不施放;电脑端鼠标悬停同样显示(2026-10-02 用户:「如何看是否冷却中,长按显示技能详细信息」)
     slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
       (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
       this.spellDrag = { id, moved: 0, aim: null };
+      this.clearSpellTipTimer();
+      this.spellTipTimer = setTimeout(() => {
+        this.spellTipTimer = null;
+        const drag = this.spellDrag;
+        if (drag && drag.id === id && drag.moved < 12 && slot.isValid) {
+          drag.tipShown = true;
+          this.showSpellTip(id, slot);
+        }
+      }, 450);
+    }, this);
+    slot.on(Node.EventType.MOUSE_ENTER, () => {
+      if (!this.spellDrag) {
+        this.showSpellTip(id, slot);
+      }
+    }, this);
+    slot.on(Node.EventType.MOUSE_LEAVE, () => {
+      if (!this.spellDrag) {
+        this.hideSpellTip();
+      }
     }, this);
     slot.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
       const drag = this.spellDrag;
-      if (!drag || drag.id !== id || GUARD_SPELLS[id].target === 'none') {
+      if (!drag || drag.id !== id) {
         return;
       }
       const delta = event.getUIDelta();
       drag.moved += Math.abs(delta.x) + Math.abs(delta.y);
+      if (drag.moved >= 12) {
+        // 开始拖动:取消长按详情,照常进入瞄准
+        this.clearSpellTipTimer();
+        if (drag.tipShown) {
+          drag.tipShown = false;
+          this.hideSpellTip();
+        }
+      }
+      if (GUARD_SPELLS[id].target === 'none') {
+        return;
+      }
       const ui = event.getUILocation();
       // 2026-09-28 用户:"法术拖拽怎么取消"——拖回法术栏(出现「拖回这里取消」圈)或拖到战场怪物带之外,松手即取消。
       const overBar = this.isOverSpellBar(ui.x, ui.y);
@@ -3491,6 +3539,7 @@ export class LobbyGuardBattleRenderer {
     const finish = (event: EventTouch | null): void => {
       const drag = this.spellDrag;
       this.spellDrag = null;
+      this.clearSpellTipTimer();
       this.fieldNode?.getChildByName('GuardSpellAim')?.destroy();
       this.drawSpellCancelHint(false, false, false, 0, 0);
       const sim = this.sim;
@@ -3499,6 +3548,11 @@ export class LobbyGuardBattleRenderer {
       }
       if (event) {
         (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      }
+      if (drag.tipShown) {
+        // 长按看详情:松手只关详情,不施放
+        this.hideSpellTip();
+        return;
       }
       const def = GUARD_SPELLS[id];
       if (def.target === 'none') {
@@ -3521,6 +3575,76 @@ export class LobbyGuardBattleRenderer {
     };
     slot.on(Node.EventType.TOUCH_END, (event: EventTouch) => finish(event), this);
     slot.on(Node.EventType.TOUCH_CANCEL, (event: EventTouch) => finish(event), this);
+  }
+
+  private clearSpellTipTimer(): void {
+    if (this.spellTipTimer) {
+      clearTimeout(this.spellTipTimer);
+      this.spellTipTimer = null;
+    }
+  }
+
+  /** 法术当前状态一句话(详情卡用)。 */
+  private spellStateText(id: GuardSpellId): { text: string; ready: boolean } {
+    const sim = this.sim;
+    if (!sim) {
+      return { text: '', ready: false };
+    }
+    const cost = GUARD_SPELLS[id].cost;
+    if (id === 'goldrush' && sim.goldrushWave === sim.wave) {
+      return { text: '本波已施放,下一波开始后可再用', ready: false };
+    }
+    if (sim.spellEnergy < cost) {
+      return { text: `能量不足:${Math.floor(sim.spellEnergy)} / ${cost}(击杀怪物、波次进行中会回能量)`, ready: false };
+    }
+    return guardSpellCastable(sim, id) ? { text: '可施放', ready: true } : { text: '当前不可施放', ready: false };
+  }
+
+  /** 法术详情卡:名字 + 等级、能量与施放方式、当前效果、当前状态;显示在法术栏上方,对准该法术位。 */
+  private showSpellTip(id: GuardSpellId, slot: Node): void {
+    const root = this.root;
+    const sim = this.sim;
+    if (!root || !sim || !slot.isValid) {
+      return;
+    }
+    this.hideSpellTip();
+    const def = GUARD_SPELLS[id];
+    const level = guardSpellLevel(sim, id);
+    const w = 440;
+    const h = 236;
+    const rootTf = root.getComponent(UITransform);
+    const local = rootTf ? rootTf.convertToNodeSpaceAR(slot.worldPosition) : new Vec3(0, 0, 0);
+    const hudScale = this.bottomHudScale();
+    const x = Math.max(-this.layoutWidth / 2 + w / 2 + 12, Math.min(this.layoutWidth / 2 - w / 2 - 12, local.x));
+    const y = this.spellBarY() + (LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 70) * hudScale + h / 2;
+    const tip = this.host.addChildPlainNode(root, 'GuardSpellTip', x, y, w, h);
+    tip.setSiblingIndex(root.children.length - 1);
+    const g = tip.addComponent(Graphics);
+    g.fillColor = rgba(14, 10, 8, 240);
+    g.roundRect(-w / 2, -h / 2, w, h, 12);
+    g.fill();
+    g.strokeColor = rgba(214, 168, 92, 230);
+    g.lineWidth = 2;
+    g.roundRect(-w / 2, -h / 2, w, h, 12);
+    g.stroke();
+    const pad = 20;
+    const title = this.host.addChildLabel(tip, 'Title', `${def.name} Lv.${level}`, -w / 2 + pad, h / 2 - 26, 24, rgba(255, 226, 150), new Size(w - pad * 2, 30), HorizontalTextAlignment.LEFT);
+    title.isBold = true;
+    const how = def.target === 'none' ? '点击施放' : '按住拖到战场施放';
+    const meta = this.host.addChildLabel(tip, 'Meta', `能量 ${def.cost} · ${how}${id === 'goldrush' ? ' · 每波限 1 次' : ''}`, -w / 2 + pad, h / 2 - 58, 17, rgba(160, 210, 255), new Size(w - pad * 2, 24), HorizontalTextAlignment.LEFT);
+    meta.overflow = Label.Overflow.SHRINK;
+    const desc = this.host.addChildLabel(tip, 'Desc', guardSpellDescribe(id, level), -w / 2 + pad, -6, 17, rgba(232, 222, 200), new Size(w - pad * 2, 96), HorizontalTextAlignment.LEFT);
+    desc.enableWrapText = true;
+    desc.lineHeight = 23;
+    desc.overflow = Label.Overflow.SHRINK;
+    desc.verticalAlign = VerticalTextAlignment.TOP;
+    const state = this.spellStateText(id);
+    const stateLabel = this.host.addChildLabel(tip, 'State', state.text, -w / 2 + pad, -h / 2 + 22, 18, state.ready ? rgba(150, 240, 160) : rgba(255, 176, 110), new Size(w - pad * 2, 26), HorizontalTextAlignment.LEFT);
+    stateLabel.overflow = Label.Overflow.SHRINK;
+  }
+
+  private hideSpellTip(): void {
+    this.root?.getChildByName('GuardSpellTip')?.destroy();
   }
 
   /** UI 坐标是否落在底部法术栏范围内(含上方能量条,四周放宽 24px)——拖回这里松手 = 取消。 */
@@ -6769,6 +6893,9 @@ export class LobbyGuardBattleRenderer {
     const ox = ((this.floaterCycle % 3) - 1) * 38;
     const oy = Math.floor(this.floaterCycle / 3) * 26;
     const label = this.host.addChildLabel(field, 'GuardFloater', text, x + ox, y + oy, fontSize, color, new Size(190, fontSize + 8));
+    // 飘字按文字自适应尺寸、不换行(2026-10-02 用户:「金矿爆发 Lv.N +N 金币」超出 190 宽换到第二行,被裁成半截)
+    label.enableWrapText = false;
+    label.overflow = Label.Overflow.NONE;
     label.enableOutline = true;
     label.outlineColor = rgba(20, 12, 8, 255);
     label.outlineWidth = fontSize >= 20 ? 3 : 2;

@@ -134,7 +134,7 @@ export const GUARD_BLUE_PERKS: GuardBluePerkDef[] = [
     category: 'func',
     archetypes: null,
     maxStack: 3,
-    describe: (level) => `每第 ${GUARD_CRIT_EVERY} 次出手必暴击 ×${GUARD_CRIT_MULT[level]}`,
+    describe: (level) => `每第 ${GUARD_CRIT_EVERY} 次出手必定暴击,该击伤害 ×${GUARD_CRIT_MULT[level]}`,
   },
   {
     id: 'atk_haste',
@@ -143,11 +143,13 @@ export const GUARD_BLUE_PERKS: GuardBluePerkDef[] = [
     // 圣光(辅助)的出手节拍同时是回血节拍,急速不入池(docs/32:新增频率来源不加快回血)。
     archetypes: ['orb', 'whirl', 'slash', 'dagger', 'arrow', 'shock'],
     maxStack: 3,
-    describe: (level) => `出手频率 ×${GUARD_HASTE_MULT[level]}`,
+    describe: (level) => `出手频率(攻速)×${GUARD_HASTE_MULT[level]}`,
   },
 ];
 
 // ── 紫卡:英雄专属(A 批,每英雄 1 条,3 层)──
+// 描述口径(2026-10-02 用户:「追猎之翎没说清楚是加什么」):数值一律写明加的是什么——伤害 / 攻击力 / 回复量 / 倍率,
+// 「X% 伤害」= 该英雄一次普通攻击伤害的 X%(模型里 base = extraBase)。
 export interface GuardPurplePerkDef {
   /** 后缀;完整 id = hero_<英雄编码>_<suffix>。 */
   suffix: string;
@@ -174,93 +176,93 @@ const pct = (value: number): string => `${Math.round(value * 100)}%`;
 export const GUARD_HERO_PERK_PROFILE: Record<string, GuardHeroPerkProfile> = {
   UR_ARTHAS: {
     archetype: 'slash', element: 'fire', look: '暗红巨型月牙,龙焰火星',
-    purple: { suffix: 'dragonslayer', name: '屠龙者', school: '屠龙火剑', values: [0.10, 0.18, 0.25], describe: (v) => `对精英与 BOSS +${pct(v)};击杀精英时龙焰爆,最近 10 只各 150%(每波 1 次)` },
+    purple: { suffix: 'dragonslayer', name: '屠龙者', school: '屠龙火剑', values: [0.10, 0.18, 0.25], describe: (v) => `对精英与 BOSS 伤害 +${pct(v)};击杀精英时龙焰爆,最近 10 只怪各受 150% 伤害(每波 1 次)` },
   },
   UR_ATLAS: {
     archetype: 'shock', element: 'holy', look: '金色大扇形盾波',
-    purple: { suffix: 'riposte', name: '盾反', school: '反击壁垒', values: [0.4, 0.7, 1.0], describe: (v) => `水晶每受击攒 1 枚金印(最多 3 枚);每枚让他的下一击 +${pct(v)}` },
+    purple: { suffix: 'riposte', name: '盾反', school: '反击壁垒', values: [0.4, 0.7, 1.0], describe: (v) => `水晶每受击攒 1 枚金印(最多 3 枚);每枚金印让他的下一击伤害 +${pct(v)}` },
   },
   UR_AURELIA: {
     archetype: 'arrow', element: 'edge', look: '青翠光箭,翎羽拖尾',
-    purple: { suffix: 'focus', name: '追猎之翎', school: '破甲追击', values: [0.04, 0.06, 0.08], describe: (v) => `连续命中同一目标每次 +${pct(v)},最多 5 次` },
+    purple: { suffix: 'focus', name: '追猎之翎', school: '破甲追击', values: [0.04, 0.06, 0.08], describe: (v) => `连续攻击同一目标时伤害逐次 +${pct(v)},最多叠 5 层(+${pct(v * 5)});换目标清零` },
   },
   UR_EVELYN: {
     archetype: 'whirl', element: 'ice', look: '冰蓝霜旋风,卷起冰晶',
-    purple: { suffix: 'deepchill', name: '深寒', school: '冰控', values: [0.4, 0.6, 0.8], describe: (v) => `每第 5 击,减速中的怪(最近 5 只)脚下升起冰刺,各 ${pct(v)}` },
+    purple: { suffix: 'deepchill', name: '深寒', school: '冰控', values: [0.4, 0.6, 0.8], describe: (v) => `每第 5 击,减速中的怪(最近 5 只)脚下升起冰刺,各受 ${pct(v)} 伤害` },
   },
   UR_NYX: {
     archetype: 'dagger', element: 'dark', look: '暗紫双影 X 斩,带残影',
-    purple: { suffix: 'execute', name: '处刑宣告', school: '处刑', values: [0.2, 0.25, 0.3], describe: (v) => `目标生命低于 ${pct(v)} 时该击 ×${v <= 0.2 ? 1.5 : v <= 0.25 ? 1.75 : 2.0}(对 BOSS 加成减半)` },
+    purple: { suffix: 'execute', name: '处刑宣告', school: '处刑', values: [0.2, 0.25, 0.3], describe: (v) => `目标生命低于 ${pct(v)} 时,该击伤害 ×${v <= 0.2 ? 1.5 : v <= 0.25 ? 1.75 : 2.0}(对 BOSS 加成减半)` },
   },
   UR_SERAPHINA: {
     archetype: 'holy', element: 'holy', look: '银蓝星光坠落',
-    purple: { suffix: 'grace', name: '晨星恩典', school: '续航星落', values: [0.03, 0.035, 0.04], describe: (v) => `出手回水晶从 2.5% 提到 ${(v * 100).toFixed(1)}%` },
+    purple: { suffix: 'grace', name: '晨星恩典', school: '续航星落', values: [0.03, 0.035, 0.04], describe: (v) => `每次出手给水晶的回复从最大生命的 2.5% 提到 ${(v * 100).toFixed(1)}%` },
   },
   SSR_KANE: {
     archetype: 'shock', element: 'holy', look: '银白直线枪芒',
-    purple: { suffix: 'longlance', name: '贯日长枪', school: '贯穿荆棘', values: [1, 2, 3], describe: (v) => `普攻自带贯穿,身后最近 ${v} 只各 50%` },
+    purple: { suffix: 'longlance', name: '贯日长枪', school: '贯穿荆棘', values: [1, 2, 3], describe: (v) => `普攻自带贯穿,再打目标身后最近 ${v} 只怪,各 50% 伤害` },
   },
   SSR_LIVIA: {
     // 用户 2026-09-21:夜烬女王持镰,普攻用旋风。
     archetype: 'whirl', element: 'fire', look: '夜烬橙红镰刃旋风,黑烟拖尾',
-    purple: { suffix: 'pyre', name: '余烬爆燃', school: '灼烧爆燃', values: [0.3, 0.45, 0.6], describe: (v) => `被她击杀的怪爆燃,±0.8 格内最近 4 只受 ${pct(v)}(不连锁)` },
+    purple: { suffix: 'pyre', name: '余烬爆燃', school: '灼烧爆燃', values: [0.3, 0.45, 0.6], describe: (v) => `被她击杀的怪会爆燃,±0.8 格内最近 4 只怪各受 ${pct(v)} 伤害(不连锁)` },
   },
   SSR_MICHAEL: {
     archetype: 'slash', element: 'thunder', look: '金白十字剑光,带电弧',
-    purple: { suffix: 'verdict', name: '审判', school: '单体审判', values: [1.9, 2.2, 2.5], describe: (v) => `技能击倍率从 1.6 提到 ${v}` },
+    purple: { suffix: 'verdict', name: '审判', school: '单体审判', values: [1.9, 2.2, 2.5], describe: (v) => `技能击(2★ 起每第 4 次出手)伤害倍率从 ×1.6 提到 ×${v}` },
   },
   SSR_RON: {
     archetype: 'dagger', element: 'fire', look: '灰橙匕首二连,余烬飘散',
-    purple: { suffix: 'mark', name: '灰烬印记', school: '连击暴击', values: [0.2, 0.35, 0.5], describe: (v) => `会心倍率与技能击倍率都 +${v}` },
+    purple: { suffix: 'mark', name: '灰烬印记', school: '连击暴击', values: [0.2, 0.35, 0.5], describe: (v) => `技能击伤害倍率 +${v};已有「会心」时,暴击伤害倍率也 +${v}` },
   },
   SR_ABYSS_06: {
     archetype: 'dagger', element: 'dark', look: '深蓝裂痕斩,空间裂纹',
-    purple: { suffix: 'phase', name: '相位突袭', school: '相位突袭', values: [0.8, 1.1, 1.4], describe: (v) => `每第 5 击,闪现到生命比例最高的怪身后补一击 ${pct(v)}` },
+    purple: { suffix: 'phase', name: '相位突袭', school: '相位突袭', values: [0.8, 1.1, 1.4], describe: (v) => `每第 5 击,闪现到生命比例最高的怪身后补一击,造成 ${pct(v)} 伤害` },
   },
   SR_BLADE_04: {
     archetype: 'slash', element: 'edge', look: '猩红缺口短弧',
-    purple: { suffix: 'fury', name: '断刃狂怒', school: '背水', values: [0.03, 0.04, 0.05], describe: (v) => `水晶每损失 10% 生命,自身攻击 +${pct(v)}` },
+    purple: { suffix: 'fury', name: '断刃狂怒', school: '背水', values: [0.03, 0.04, 0.05], describe: (v) => `水晶每损失 10% 生命,自身攻击力 +${pct(v)}` },
   },
   SR_PALADIN_02: {
     archetype: 'shock', element: 'holy', look: '淡金小盾波',
-    purple: { suffix: 'punish', name: '惩戒', school: '守晶惩戒', values: [0.5, 0.75, 1.0], describe: (v) => `每第 4 击,对正在攻击水晶的怪(最近 3 只)落下光锤,各 ${pct(v)}` },
+    purple: { suffix: 'punish', name: '惩戒', school: '守晶惩戒', values: [0.5, 0.75, 1.0], describe: (v) => `每第 4 击,对正在攻击水晶的怪(最近 3 只)落下光锤,各受 ${pct(v)} 伤害` },
   },
   SR_PRIEST_01: {
     archetype: 'holy', element: 'holy', look: '银白细光柱',
-    purple: { suffix: 'echo', name: '祷言回响', school: '圣光回响', values: [1.0, 1.4, 1.8], describe: (v) => `每第 2 次出手追加一道回响圣光,${pct(v)} 攻击(不带回血)` },
+    purple: { suffix: 'echo', name: '祷言回响', school: '圣光回响', values: [1.0, 1.4, 1.8], describe: (v) => `每第 2 次出手追加一道回响圣光,造成 ${pct(v)} 伤害(不带回血)` },
   },
   SR_SNIPER_05: {
     archetype: 'arrow', element: 'fire', look: '钢灰弩矢,橙色尾焰',
-    purple: { suffix: 'headhunt', name: '猎首', school: '爆破猎首', values: [0.6, 0.9, 1.2], describe: (v) => `优先锁定精英/BOSS 与血量最高的怪;每第 4 箭爆头 +${pct(v)}` },
+    purple: { suffix: 'headhunt', name: '猎首', school: '爆破猎首', values: [0.6, 0.9, 1.2], describe: (v) => `优先锁定精英/BOSS 与血量最高的怪;每第 4 箭爆头,该箭伤害 +${pct(v)}` },
   },
   SR_WITCH_03: {
     // 用户 2026-09-21:契约魔女=紫电球(元素球+雷)。
     archetype: 'orb', element: 'thunder', look: '紫电球,符文电弧',
-    purple: { suffix: 'pact', name: '血契', school: '代价换输出', values: [0.2, 0.35, 0.5], standardOnly: true, describe: (v) => `自身攻击 +${pct(v)};代价:她在场的波次开始时水晶 -${v <= 0.2 ? 2 : v <= 0.35 ? 3 : 4}%(单局至多 -12%)` },
+    purple: { suffix: 'pact', name: '血契', school: '代价换输出', values: [0.2, 0.35, 0.5], standardOnly: true, describe: (v) => `自身攻击力 +${pct(v)};代价:她在场的波次开始时水晶 -${v <= 0.2 ? 2 : v <= 0.35 ? 3 : 4}%(单局至多 -12%)` },
   },
   R_ACOLY_02: {
     archetype: 'holy', element: 'holy', look: '暖黄微光点',
-    purple: { suffix: 'prayer', name: '微光祷告', school: '低配续航', values: [1.5, 1.75, 2.0], describe: (v) => `水晶生命低于 50% 时,他给水晶的回复 ×${v}` },
+    purple: { suffix: 'prayer', name: '微光祷告', school: '低配续航', values: [1.5, 1.75, 2.0], describe: (v) => `水晶生命低于 50% 时,他给水晶的回复量 ×${v}` },
   },
   R_CULT_05: {
     archetype: 'orb', element: 'poison', look: '幽绿咒球,绿雾拖尾',
-    purple: { suffix: 'curseburst', name: '疫咒', school: '叠毒咒爆', values: [0.6, 0.8, 1.0], describe: (v) => `每第 4 次普攻改为咒爆,±0.8 格内最近 4 只受 ${pct(v)}` },
+    purple: { suffix: 'curseburst', name: '疫咒', school: '叠毒咒爆', values: [0.6, 0.8, 1.0], describe: (v) => `每第 4 次普攻改为咒爆,±0.8 格内最近 4 只怪各受 ${pct(v)} 伤害` },
   },
   R_GUARD_07: {
     archetype: 'shock', element: 'edge', look: '铁灰盾撞尘环',
-    purple: { suffix: 'veteran', name: '老兵', school: 'R 卡逆袭', values: [0.25, 0.4, 0.6], describe: (v) => `自身攻击 +${pct(v)}` },
+    purple: { suffix: 'veteran', name: '老兵', school: 'R 卡逆袭', values: [0.25, 0.4, 0.6], describe: (v) => `自身攻击力 +${pct(v)}` },
   },
   R_PATROL_01: {
     archetype: 'slash', element: 'ice', look: '蓝白霜刃细月牙',
-    purple: { suffix: 'formation', name: '王国编制', school: '群狼', values: [0.06, 0.09, 0.12], describe: (v) => `场上每多 1 个巡逻兵单位,全体巡逻兵攻击 +${pct(v)}(最多计 4 个)` },
+    purple: { suffix: 'formation', name: '王国编制', school: '群狼', values: [0.06, 0.09, 0.12], describe: (v) => `场上每多 1 个巡逻兵,全体巡逻兵攻击力 +${pct(v)}(最多计 4 个)` },
   },
   R_RANGER_06: {
     archetype: 'arrow', element: 'edge', look: '草绿木羽箭,落叶拖尾',
-    purple: { suffix: 'skirmish', name: '游击', school: '防空游击', values: [0.5, 0.7, 0.9], describe: (v) => `每第 3 箭,同时向射程内最远的怪补射一箭 ${pct(v)}` },
+    purple: { suffix: 'skirmish', name: '游击', school: '防空游击', values: [0.5, 0.7, 0.9], describe: (v) => `每第 3 箭,额外向射程内最远的怪补射一箭,造成 ${pct(v)} 伤害` },
   },
   R_SCOUT_03: {
     archetype: 'dagger', element: 'edge', look: '钢银单匕快斩,带血线',
-    purple: { suffix: 'cutthroat', name: '割喉', school: '收割', values: [0.6, 0.9, 1.2], describe: (v) => `每第 5 击,对射程内生命最低的怪补一刀 ${pct(v)}` },
+    purple: { suffix: 'cutthroat', name: '割喉', school: '收割', values: [0.6, 0.9, 1.2], describe: (v) => `每第 5 击,对射程内生命最低的怪补一刀,造成 ${pct(v)} 伤害` },
   },
 };
 
