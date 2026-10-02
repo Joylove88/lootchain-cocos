@@ -13,6 +13,7 @@ import {
   Vec3,
   VerticalTextAlignment,
 } from 'cc';
+import { DESKTOP_DESIGN_HEIGHT, currentDesignHeight, markTextInputFocus } from '../app/ScreenAdapter';
 import { gameAudio } from '../audio/GameAudio';
 import { lootChainI18n } from '../i18n/LootChainI18n';
 import { clamp, rgba, type UiLayout } from './lobby/LobbyHudTypes';
@@ -35,6 +36,16 @@ export interface UiPrimitiveFactoryHost {
  * 登录页、loading、大厅 HUD 和资料弹窗都通过 Root wrapper 调到这里。
  * 这个类只负责创建/装饰 UI 节点，不持有业务状态，也不调用任何后端接口。
  */
+
+/**
+ * 手机最小字号(2026-10-02 用户拍板「手机整体放大」):手机设计高 720,390 像素高的屏幕上 1 设计像素 ≈ 0.54 CSS 像素,
+ * 18 号以下的字(大量 12~16 号的说明 / 数值)实际不到 9 像素看不清,统一抬到 20(约 10.8 CSS 像素);电脑 / 平板(设计高 1080)不变。
+ */
+export const PHONE_MIN_FONT_SIZE = 20;
+export function phoneReadableFontSize(size: number): number {
+  return currentDesignHeight() < DESKTOP_DESIGN_HEIGHT ? Math.max(size, PHONE_MIN_FONT_SIZE) : size;
+}
+
 export class UiPrimitiveFactory {
   constructor(
     private readonly host: UiPrimitiveFactoryHost,
@@ -148,8 +159,8 @@ export class UiPrimitiveFactory {
     };
     refreshDisplay();
     // 聚焦后引擎已重写过 <input> 样式,这里再注一次暗色样式(颜色/光标/透明底)作双保险。
-    node.on(EditBox.EventType.EDITING_DID_BEGAN, () => { displayNode.active = false; this.styleNativeInput(editBox); }, this);
-    node.on(EditBox.EventType.EDITING_DID_ENDED, () => { refreshDisplay(); displayNode.active = true; }, this);
+    node.on(EditBox.EventType.EDITING_DID_BEGAN, () => { displayNode.active = false; this.styleNativeInput(editBox); markTextInputFocus(node, true); }, this);
+    node.on(EditBox.EventType.EDITING_DID_ENDED, () => { refreshDisplay(); displayNode.active = true; markTextInputFocus(node, false); }, this);
     node.on(EditBox.EventType.EDITING_RETURN, () => { refreshDisplay(); displayNode.active = true; }, this);
     return editBox;
   }
@@ -307,11 +318,13 @@ export class UiPrimitiveFactory {
     labelNode.addComponent(UITransform).setContentSize(contentSize);
     const label = labelNode.addComponent(Label);
     label.string = trimText(this.translateText(text));
-    label.fontSize = size;
-    label.lineHeight = size + 8;
+    const fontSize = phoneReadableFontSize(size);
+    label.fontSize = fontSize;
+    label.lineHeight = fontSize + 8;
     label.horizontalAlign = horizontalAlign;
     label.verticalAlign = VerticalTextAlignment.CENTER;
-    label.overflow = Label.Overflow.CLAMP;
+    // 手机抬高了字号时改成缩放适配,保证不会超出原来的文字框(框够大就显示更大的字)
+    label.overflow = fontSize > size ? Label.Overflow.SHRINK : Label.Overflow.CLAMP;
     label.color = color;
     return label;
   }

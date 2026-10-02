@@ -74,6 +74,11 @@ function checkBuildLayout() {
   if (settings.length === 0) {
     fail('src/ 下没有带 md5 的 settings.json——构建没开 md5Cache,Service Worker 不会缓存优先');
   }
+  // 仅横屏(2026-10-02):构建设置里必须是 landscape,否则手机竖握时首屏(启动画面)不旋转;运行时 GameRoot 也会再设一次
+  const screenCfg = JSON.parse(fs.readFileSync(path.join(BUILD_DIR, 'src', settings[0]), 'utf8')).screen || {};
+  if (screenCfg.orientation !== 'landscape' || screenCfg.exactFitScreen === false) {
+    fail(`构建设置 screen.orientation=${screenCfg.orientation} exactFitScreen=${screenCfg.exactFitScreen},应为 landscape / true(检查 build-config/web-mobile.json)`);
+  }
   if (fs.existsSync(path.join(BUILD_DIR, 'png-compress-report.json')) && !skipBuild) {
     console.warn('[release] 注意:构建目录里已有压缩报告,可能不是全新构建');
   }
@@ -101,7 +106,8 @@ if (!skipBuild) {
   }
   const code = run(CREATOR_EXE, [
     '--project', ROOT,
-    '--build', 'platform=web-mobile;debug=false;sourceMaps=false;md5Cache=true',
+    // 构建参数放在 build-config/web-mobile.json(扁平 key=value 写不了 packages.web-mobile.orientation=landscape)
+    '--build', `configPath=${path.join(ROOT, 'build-config', 'web-mobile.json')}`,
   ]);
   if (code !== CREATOR_BUILD_OK) {
     fail(`构建退出码 ${code}(成功应为 ${CREATOR_BUILD_OK}),看上面的构建日志`);

@@ -5,6 +5,7 @@ import {
   view,
 } from 'cc';
 import { clamp, type UiLayout } from './lobby/LobbyHudTypes';
+import { currentDesignHeight, viewportCssSize } from '../app/ScreenAdapter';
 
 interface StageBounds {
   width: number;
@@ -43,7 +44,10 @@ export class AdaptiveStageLayoutResolver {
     const stage = this.resolveStageBounds(width, height);
     const stageWidth = stage.width;
     const stageHeight = stage.height;
-    const uiScale = Math.min(1, stageWidth / LOGIN_REFERENCE_WIDTH, stageHeight / LOGIN_REFERENCE_HEIGHT);
+    // 参考尺寸跟随设计高(电脑 1920×1080 / 手机 1280×720):手机设计高 720 时 uiScale 仍可到 1,界面相对屏幕放大 1.5 倍。
+    const referenceHeight = currentDesignHeight();
+    const referenceWidth = referenceHeight * (LOGIN_REFERENCE_WIDTH / LOGIN_REFERENCE_HEIGHT);
+    const uiScale = Math.min(1, stageWidth / referenceWidth, stageHeight / referenceHeight);
     const stageLeft = stage.centerX - stageWidth / 2;
     const stageRight = stage.centerX + stageWidth / 2;
     const stageTop = stage.centerY + stageHeight / 2;
@@ -137,12 +141,8 @@ export class AdaptiveStageLayoutResolver {
   }
 
   private runtimeWindowSize(): Size | null {
-    const runtime = globalThis as { innerHeight?: number; innerWidth?: number };
-    const width = Math.round(runtime.innerWidth || 0);
-    const height = Math.round(runtime.innerHeight || 0);
-    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-      return new Size(width, height);
-    }
-    return null;
+    // 读引擎的视口尺寸(手机竖握被旋转成横屏时已对调宽高);window.innerWidth/innerHeight 旋转时仍是竖向数值,不能用。
+    const size = viewportCssSize();
+    return size ? new Size(size.width, size.height) : null;
   }
 }

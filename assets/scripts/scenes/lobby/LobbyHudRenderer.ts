@@ -510,7 +510,9 @@ export class LobbyHudRenderer {
   }
 
   private isMicroViewport(layout: UiLayout): boolean {
-    return layout.viewportWidth < 640 || layout.viewportHeight < 420;
+    // 2026-10-02 手机整体放大后不再走精简大厅(用户拍板:手机和电脑同一套完整界面)。
+    void layout;
+    return false;
   }
 
   private hudMode(layout: UiLayout): LobbyHudModeSize {

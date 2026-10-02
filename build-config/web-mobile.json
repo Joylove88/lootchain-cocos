@@ -1,0 +1,13 @@
+{
+  "platform": "web-mobile",
+  "debug": false,
+  "sourceMaps": false,
+  "md5Cache": true,
+  "packages": {
+    "web-mobile": {
+      "orientation": "landscape",
+      "useWebGPU": false,
+      "embedWebDebugger": false
+    }
+  }
+}

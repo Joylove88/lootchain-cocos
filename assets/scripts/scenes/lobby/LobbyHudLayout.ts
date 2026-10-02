@@ -9,13 +9,14 @@ export interface LobbyHudModeSize {
 }
 
 /**
- * 浏览器视口比 Cocos 设计舞台窄时，用可见视口尺寸决定 HUD 显隐模式，
- * 避免 720 宽 Preview 仍按 1920 舞台渲染完整底栏而被裁切。
+ * HUD 显隐模式按设计舞台尺寸决定(2026-10-02 仅横屏 + 手机整体放大后):
+ * 旧版按浏览器 CSS 像素比较,横屏手机(390 高)全部落进精简档,金币 / 入口 / 底栏都被藏掉;
+ * 现在手机走 720 设计高,舞台本身就是完整界面的尺寸,不再另做精简。
  */
 export function resolveLobbyHudModeSize(layout: UiLayout): LobbyHudModeSize {
   return {
-    width: Math.min(layout.stageWidth, layout.viewportWidth),
-    height: Math.min(layout.stageHeight, layout.viewportHeight),
+    width: layout.stageWidth,
+    height: layout.stageHeight,
   };
 }
 

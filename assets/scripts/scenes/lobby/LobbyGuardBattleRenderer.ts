@@ -1865,7 +1865,10 @@ export class LobbyGuardBattleRenderer {
     const h = w * (234 / 510);
     const summonW = Math.min(264, width * 0.2);
     const summonH = summonW * (236 / 560);
-    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - summonW - 16 - w / 2, -height / 2 + 18 + summonH / 2, w, h);
+    // 窄屏(4:3 / 16:9 手机)右下整组按钮等比缩小到不压英雄格,节点内部仍按原尺寸绘制(bottomHudScale)
+    const s = this.bottomHudScale();
+    const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - (summonW + 16) * s - w * s / 2, -height / 2 + 18 + summonH * s / 2, w, h);
+    button.setScale(s, s, 1);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_enhance/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     const title = this.host.addChildLabel(button, 'GuardEnhanceLabel', '强化', w * 0.1, h * 0.2, 22, rgba(255, 238, 190, 252), new Size(w * 0.6, 26));
@@ -1999,7 +2002,9 @@ export class LobbyGuardBattleRenderer {
     // 2026-09-02 用户拍板:恢复横向摆放(格子已收左 1/3,右下无冲突)
     const w = Math.min(264, width * 0.2);
     const h = w * (236 / 560);
-    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w / 2, -height / 2 + 18 + h / 2, w, h);
+    const s = this.bottomHudScale();
+    const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w * s / 2, -height / 2 + 18 + h * s / 2, w, h);
+    button.setScale(s, s, 1);
     this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_summon/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     const title = this.host.addChildLabel(button, 'GuardSummonLabel', '召唤', w * 0.08, h * 0.14, 28, rgba(255, 244, 210, 255), new Size(w * 0.6, 34));
@@ -2050,7 +2055,7 @@ export class LobbyGuardBattleRenderer {
     const bx = summonBtn.position.x;
     const by = summonBtn.position.y;
     const btnTf = summonBtn.getComponent(UITransform);
-    const btnH = btnTf?.height ?? 80;
+    const btnH = (btnTf?.height ?? 80) * summonBtn.scale.y;
     const pointerH = 78;
     const pointerW = pointerH * (192 / 256);
     const pointerY = by + btnH / 2 + pointerH / 2 + 8;
@@ -3304,8 +3309,26 @@ export class LobbyGuardBattleRenderer {
   private static readonly SPELL_SLOT = 88;
   private static readonly SPELL_GAP = 26;
 
+  /**
+   * 右下操作区(法术栏 + 陷阱 + 强化 + 召唤)的统一缩放(2026-10-02 仅横屏 + 多分辨率):
+   * 原尺寸按 1920 宽排成一行,4:3(1440 宽)与 16:9 手机(1280 宽)放不下,法术栏会压到强化按钮、英雄格上。
+   * 这里算出「英雄格右缘 → 屏幕右缘」可用宽度能放下整行的比例,下限 0.6;1920 及更宽保持 1。
+   */
+  private bottomHudScale(): number {
+    const width = this.layoutWidth;
+    const summonW = Math.min(264, width * 0.2);
+    const enhanceW = Math.min(236, width * 0.18);
+    const required = 24 + summonW + 16 + enhanceW + 16 + 80 + 30 + this.spellBarWidth();
+    const available = width / 2 - (this.heroZonePx().heroRight + 16);
+    return Math.max(0.6, Math.min(1, available / required));
+  }
+
   private spellBarCenterX(): number {
-    return 60;
+    // 宽屏保持原来的 x=60;窄屏贴在陷阱按钮左边(整组右对齐到强化按钮左侧)
+    const width = this.layoutWidth;
+    const s = this.bottomHudScale();
+    const enhanceLeft = width / 2 - 24 - (Math.min(264, width * 0.2) + 16 + Math.min(236, width * 0.18)) * s;
+    return Math.min(60, enhanceLeft - (16 + 80 + 30) * s - this.spellBarWidth() * s / 2);
   }
 
   /** 法术栏宽度随格数(2~5 格,docs/38 §9)。 */
@@ -3317,7 +3340,7 @@ export class LobbyGuardBattleRenderer {
 
   private spellBarY(): number {
     // 名字标签要让开最底部的操作提示行(-H/2+16)
-    return -this.layoutHeight / 2 + 50 + LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 14;
+    return -this.layoutHeight / 2 + (50 + LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 14) * this.bottomHudScale();
   }
 
   /** 底部法术栏:出战法术圆形位(格数来自水晶快照)+ 上方能量条;点击 = 无目标法术直接放,按住拖 = 瞄准法术落点。 */
@@ -3332,6 +3355,8 @@ export class LobbyGuardBattleRenderer {
     const gap = LobbyGuardBattleRenderer.SPELL_GAP;
     const barW = this.spellBarWidth();
     const bar = this.host.addChildPlainNode(root, 'GuardSpellBar', this.spellBarCenterX(), this.spellBarY(), barW, size + 60);
+    const hudScale = this.bottomHudScale();
+    bar.setScale(hudScale, hudScale, 1);
     const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 14);
     energyBg.addComponent(Graphics);
     const energyText = this.host.addChildLabel(bar, 'EnergyText', '', -barW / 2, size / 2 + 46, 15, rgba(170, 220, 255), new Size(barW, 20), HorizontalTextAlignment.LEFT);
@@ -3531,7 +3556,8 @@ export class LobbyGuardBattleRenderer {
     if (!zoneNode && bar && barTransform) {
       const zw = barTransform.width + 40;
       const zh = barTransform.height + 30;
-      zoneNode = this.host.addChildPlainNode(root, 'GuardSpellCancelZone', bar.position.x, bar.position.y + 8, zw, zh);
+      zoneNode = this.host.addChildPlainNode(root, 'GuardSpellCancelZone', bar.position.x, bar.position.y + 8 * bar.scale.y, zw, zh);
+      zoneNode.setScale(bar.scale);
       zoneNode.addComponent(Graphics);
       const label = this.host.addChildLabel(zoneNode, 'Text', '✕ 拖回这里取消', 0, zh / 2 + 16, 18, rgba(255, 190, 180), new Size(zw, 24));
       label.enableOutline = true;
@@ -4217,7 +4243,7 @@ export class LobbyGuardBattleRenderer {
 
   private trapButtonX(): number {
     const barW = this.spellBarWidth();
-    return this.spellBarCenterX() + barW / 2 + 30 + 40;
+    return this.spellBarCenterX() + (barW / 2 + 30 + 40) * this.bottomHudScale();
   }
 
   private static readonly TRAP_ICON_SIZE = 72;
@@ -4232,6 +4258,8 @@ export class LobbyGuardBattleRenderer {
     root.getChildByName('GuardTrapTray')?.destroy();
     const size = 80;
     const button = this.host.addChildPlainNode(root, 'GuardTrapButton', this.trapButtonX(), this.spellBarY(), size, size);
+    const hudScale = this.bottomHudScale();
+    button.setScale(hudScale, hudScale, 1);
     const g = button.addComponent(Graphics);
     g.fillColor = rgba(24, 16, 10, 230);
     g.circle(0, 0, size / 2);
@@ -4272,9 +4300,11 @@ export class LobbyGuardBattleRenderer {
     const trayW = icon * 3 + gap * 2 + 28;
     const trayH = icon + 58;
     // 托盘底边让开法术栏上方的能量条与文字(槽心 +90 以内)
-    const trayY = this.spellBarY() + LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 64 + trayH / 2;
-    const trayX = Math.min(this.trapButtonX(), this.layoutWidth / 2 - trayW / 2 - 16);
+    const hudScale = this.bottomHudScale();
+    const trayY = this.spellBarY() + (LobbyGuardBattleRenderer.SPELL_SLOT / 2 + 64 + trayH / 2) * hudScale;
+    const trayX = Math.min(this.trapButtonX(), this.layoutWidth / 2 - trayW * hudScale / 2 - 16);
     const tray = this.host.addChildPlainNode(root, 'GuardTrapTray', trayX, trayY, trayW, trayH);
+    tray.setScale(hudScale, hudScale, 1);
     tray.addComponent(BlockInputEvents);
     const g = tray.addComponent(Graphics);
     g.fillColor = rgba(14, 10, 8, 225);

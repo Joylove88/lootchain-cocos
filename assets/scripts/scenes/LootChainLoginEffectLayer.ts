@@ -292,14 +292,14 @@ export class LootChainLoginEffectLayer extends Component {
   }
 
   private resolveLayout(): EffectLayout {
-    const runtime = globalThis as { innerHeight?: number; innerWidth?: number };
+    // 特效按设计坐标(可视区)摆放;旧版读 window.innerWidth(CSS 像素)当设计尺寸,手机 / 大屏上会摆到屏幕中间或屏外。
     const visible = view.getVisibleSize();
-    const width = Math.max(360, Math.round(runtime.innerWidth || visible.width || 1280));
-    const height = Math.max(560, Math.round(runtime.innerHeight || visible.height || 720));
+    const width = Math.max(1440, Math.round(visible.width || 1920));
+    const height = Math.max(720, Math.round(visible.height || 1080));
     return {
       width,
       height,
-      compact: width <= 900 || height > width * 1.12,
+      compact: false,
     };
   }
 

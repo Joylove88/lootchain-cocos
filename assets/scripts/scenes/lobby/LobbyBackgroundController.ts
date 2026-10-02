@@ -32,6 +32,13 @@ export interface LobbyBackgroundHost {
  * 负责 poster、原生 VideoPlayer、淡出和播放重试；不负责 HUD 和任何业务状态。
  * Root 切换视图或重绘时会调用 release，避免旧视频事件继续影响新视图。
  */
+
+/** 大厅背景(3840×2160 海报 / 16:9 视频)按 16:9 等比铺满可视区(cover),不随屏幕比例拉伸变形。 */
+function coverSize(width: number, height: number): { width: number; height: number } {
+  const unit = Math.max(width / 16, height / 9, 1);
+  return { width: Math.ceil(unit * 16), height: Math.ceil(unit * 9) };
+}
+
 export class LobbyBackgroundController {
   private posterFrame: SpriteFrame | null = null;
   private videoClip: VideoClip | null = null;
@@ -83,8 +90,9 @@ export class LobbyBackgroundController {
 
   resize(layout: UiLayout): void {
     // 大厅内 resize 或 UI 图片补帧时只调整已有背景节点尺寸，避免视频 stop/play 引起闪屏。
-    this.resizeNode(this.posterNode, layout.width, layout.height);
-    this.resizeNode(this.videoNode, layout.width, layout.height);
+    const cover = coverSize(layout.width, layout.height);
+    this.resizeNode(this.posterNode, cover.width, cover.height);
+    this.resizeNode(this.videoNode, cover.width, cover.height);
     this.resizeNode(this.fallbackNode, layout.width, layout.height);
     if (this.fallbackNode?.isValid) {
       const graphics = this.fallbackNode.getComponent(Graphics);
@@ -157,7 +165,8 @@ export class LobbyBackgroundController {
     const posterNode = this.host.createUiNode('Lobby_BG_Poster');
     this.posterNode = posterNode;
     posterNode.setPosition(Vec3.ZERO);
-    posterNode.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    const cover = coverSize(layout.width, layout.height);
+    posterNode.addComponent(UITransform).setContentSize(new Size(cover.width, cover.height));
     this.posterOpacity = posterNode.addComponent(UIOpacity);
     this.posterOpacity.opacity = 255;
     const poster = posterNode.addComponent(Sprite);
@@ -170,7 +179,8 @@ export class LobbyBackgroundController {
     const videoNode = this.host.createUiNode('Lobby_BG_Video');
     this.videoNode = videoNode;
     videoNode.setPosition(Vec3.ZERO);
-    videoNode.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    const cover = coverSize(layout.width, layout.height);
+    videoNode.addComponent(UITransform).setContentSize(new Size(cover.width, cover.height));
     const video = videoNode.addComponent(VideoPlayer);
     video.clip = this.videoClip;
     video.mute = true;

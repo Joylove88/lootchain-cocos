@@ -5,7 +5,6 @@ import {
     Size,
     Sprite,
     SpriteFrame,
-    sys,
     Texture2D,
     UITransform,
     VideoPlayer,
@@ -18,12 +17,11 @@ import {
 
 const { ccclass, property } = _decorator;
 
-type LoginBackgroundMode = 'pc' | 'h5';
+// 仅横屏(2026-10-02):竖版 h5 背景(720×1280)已移到 素材原始备份/unused-login-h5-20261002,手机也用横版。
+type LoginBackgroundMode = 'pc';
 
 const PC_VIDEO_PATH = 'login-bg/login_bg_loop_1080p';
 const PC_POSTER_PATH = 'login-bg/login_bg_first';
-const H5_VIDEO_PATH = 'login-bg-h5/login_bg_loop';
-const H5_POSTER_PATH = 'login-bg-h5/login_bg_poster';
 
 @ccclass('LoginVideoBackground')
 export class LoginVideoBackground extends Component {
@@ -201,8 +199,9 @@ export class LoginVideoBackground extends Component {
         }
 
         const ticket = ++this.assetLoadTicket;
-        const videoPath = mode === 'h5' ? H5_VIDEO_PATH : PC_VIDEO_PATH;
-        const posterPath = mode === 'h5' ? H5_POSTER_PATH : PC_POSTER_PATH;
+        void mode;
+        const videoPath = PC_VIDEO_PATH;
+        const posterPath = PC_POSTER_PATH;
 
         this.loadPoster(posterPath, ticket);
         this.loadVideoClip(videoPath, ticket);
@@ -229,14 +228,15 @@ export class LoginVideoBackground extends Component {
     }
 
     private resolveBackgroundMode(): LoginBackgroundMode {
-        const visibleSize = view.getVisibleSize();
-        const isPortrait = visibleSize.height > visibleSize.width;
-        return sys.isMobile || isPortrait ? 'h5' : 'pc';
+        // 仅横屏(2026-10-02):手机也用 1920×1080 横版背景;h5 竖版素材(720×1280)拉到横屏会严重变形。
+        return 'pc';
     }
 
     private applyBackgroundSize() {
+        // 一体构图背景只能等比缩放:节点按 16:9 铺满(cover),超出部分由画面边缘裁掉,不再拉伸到可视区比例。
         const visibleSize = view.getVisibleSize();
-        const contentSize = new Size(Math.max(1, visibleSize.width), Math.max(1, visibleSize.height));
+        const unit = Math.max(visibleSize.width / 16, visibleSize.height / 9, 1);
+        const contentSize = new Size(Math.ceil(unit * 16), Math.ceil(unit * 9));
         this.video?.node.getComponent(UITransform)?.setContentSize(contentSize);
         this.posterOpacity?.node.getComponent(UITransform)?.setContentSize(contentSize);
     }

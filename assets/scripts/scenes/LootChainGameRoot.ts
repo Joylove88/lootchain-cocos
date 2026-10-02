@@ -12,6 +12,7 @@ import {
   Label,
   Node,
   input,
+  macro,
   profiler,
   resources,
   Size,
@@ -24,9 +25,10 @@ import {
   UITransform,
   VideoPlayer,
   Vec3,
+  view,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
-import { syncDesignResolutionToViewport } from '../app/ScreenAdapter';
+import { isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
 import { ensureAssetServiceWorker, isBootPreloadCached, markBootPreloadCached } from '../app/AssetOfflineCache';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
@@ -490,7 +492,9 @@ export class LootChainGameRoot extends Component {
   private reusableScenesRegistered = false;
 
   start(): void {
-    // H5/PC 全屏适配:设计分辨率跟随视口(竖屏手机不再上下黑边),后续每帧在 update 里保持同步。
+    // 仅横屏(2026-10-02 用户拍板):手机竖握时引擎旋转画布显示横屏;构建配置也设了 landscape,这里保证预览与任何构建都生效。
+    view.setOrientation(macro.ORIENTATION_LANDSCAPE);
+    // H5/PC 全屏适配:设计分辨率跟随横屏视口比例,后续每帧在 update 里保持同步。
     syncDesignResolutionToViewport();
     // 隐藏引擎自带性能浮层(FPS/DrawCall 等左上角数字):开发调试层,正式游戏不该出现。
     profiler.hideStats();
@@ -779,11 +783,14 @@ export class LootChainGameRoot extends Component {
   }
 
   update(deltaTime: number): void {
-    // 视口变化(转屏/窗口缩放)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
-    syncDesignResolutionToViewport();
-    const nextKey = this.makeLayoutKey();
-    if (this.layoutKey && this.layoutKey !== nextKey) {
-      this.renderCurrentView();
+    // 视口变化(窗口缩放 / 手机转动)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
+    // 输入框编辑中(软键盘弹出会改窗口尺寸)不同步也不重排,否则输入框被重建、键盘收起、字丢失。
+    if (!isTextInputActive()) {
+      syncDesignResolutionToViewport();
+      const nextKey = this.makeLayoutKey();
+      if (this.layoutKey && this.layoutKey !== nextKey) {
+        this.renderCurrentView();
+      }
     }
     this.updateGachaConfigRefresh(deltaTime);
     this.updateLobbyPosterFade(deltaTime);
