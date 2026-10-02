@@ -92,3 +92,11 @@ export function isTextInputActive(): boolean {
   }
   return focusedInputs.size > 0 || Date.now() - inputReleasedAtMs < INPUT_RELEASE_GRACE_MS;
 }
+
+/**
+ * 手机布局(设计高 720)。2026-10-02 用户:「横屏模式下弹框都调整成全屏」——手机上弹框铺满舞台(留安全边距),
+ * 电脑 / 平板保持原来的居中弹框。各弹框 renderer 用它分支,不要自己比较 innerWidth 或设计高。
+ */
+export function isPhoneDesign(): boolean {
+  return currentDesignHeight() < DESKTOP_DESIGN_HEIGHT;
+}

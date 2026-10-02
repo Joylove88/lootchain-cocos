@@ -5,12 +5,15 @@ import {
   Graphics,
   HorizontalTextAlignment,
   Label,
+  Mask,
   Node,
+  ScrollView,
   Size,
   Sprite,
   UITransform,
   Vec3,
 } from 'cc';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import type { LobbyNoticePanelState, LobbyNoticeVO } from '../../types/LobbyNoticeTypes';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
@@ -105,8 +108,9 @@ export class LobbyNoticePanelRenderer {
   }
 
   private renderNoticeBody(parent: Node, width: number, height: number, scale: number, state: LobbyNoticePanelState): void {
+    const phone = isPhoneDesign();
     const bodyTop = height / 2 - 112 * scale;
-    const bodyBottom = -height / 2 + 82 * scale;
+    const bodyBottom = phone ? -height / 2 + 112 : -height / 2 + 82 * scale;
     const bodyHeight = Math.max(120 * scale, bodyTop - bodyBottom);
     const rowGap = 10 * scale;
     const notices = state.notices;
@@ -119,6 +123,10 @@ export class LobbyNoticePanelRenderer {
       return;
     }
 
+    if (phone) {
+      this.renderNoticeListPhone(parent, notices, width, bodyTop, bodyHeight, scale);
+      return;
+    }
     const maxRows = Math.max(1, Math.min(notices.length, Math.floor((bodyHeight + rowGap) / (84 * scale + rowGap))));
     const rowHeight = Math.min(96 * scale, (bodyHeight - rowGap * Math.max(0, maxRows - 1)) / maxRows);
     let y = bodyTop - rowHeight / 2;
@@ -130,6 +138,31 @@ export class LobbyNoticePanelRenderer {
       this.renderNoticeRow(parent, notice, index, 0, y, width - 86 * scale, rowHeight, scale);
       y -= rowHeight + rowGap;
     }
+  }
+
+  /**
+   * 手机横屏(2026-10-02):设计高只有 720,装不下几条公告——改成 Mask + ScrollView 可上下滑动,全部公告都能看到;
+   * 行加高放下 20 号正文两行,发布时间挪到标题行右侧,不再压正文。
+   */
+  private renderNoticeListPhone(parent: Node, notices: LobbyNoticeVO[], width: number, bodyTop: number, bodyHeight: number, scale: number): void {
+    const rowW = width - 86 * scale;
+    const rowH = 112;
+    const rowGap = 10;
+    const listNode = this.host.addChildPlainNode(parent, 'LobbyNoticeList', 0, bodyTop - bodyHeight / 2, rowW + 8, bodyHeight);
+    listNode.addComponent(Mask);
+    const contentHeight = Math.max(bodyHeight, notices.length * (rowH + rowGap));
+    const contentNode = this.host.addChildPlainNode(listNode, 'LobbyNoticeListContent', 0, 0, rowW + 8, contentHeight);
+    contentNode.getComponent(UITransform)?.setAnchorPoint(0.5, 1);
+    contentNode.setPosition(0, bodyHeight / 2, 0);
+    const scroll = listNode.addComponent(ScrollView);
+    scroll.content = contentNode;
+    scroll.horizontal = false;
+    scroll.vertical = true;
+    scroll.inertia = true;
+    scroll.elastic = true;
+    notices.forEach((notice, index) => {
+      this.renderNoticeRow(contentNode, notice, index, 0, -rowH / 2 - index * (rowH + rowGap), rowW, rowH, scale);
+    });
   }
 
   private renderEmpty(parent: Node, width: number, bodyHeight: number, scale: number, text: string): void {
@@ -146,6 +179,7 @@ export class LobbyNoticePanelRenderer {
   }
 
   private renderNoticeRow(parent: Node, notice: LobbyNoticeVO, index: number, x: number, y: number, width: number, height: number, scale: number): void {
+    const phone = isPhoneDesign();
     const row = this.host.addChildPlainNode(parent, `LobbyNoticeRow_${index}`, x, y, width, height);
     const graphics = row.addComponent(Graphics);
     this.traceRow(graphics, width, height, scale, index);
@@ -169,7 +203,7 @@ export class LobbyNoticePanelRenderer {
       height / 2 - 24 * scale,
       22 * scale,
       rgba(247, 220, 164),
-      new Size(width - 136 * scale, 30 * scale),
+      new Size(width - 136 * scale - (phone ? 260 : 0), 30 * scale),
       HorizontalTextAlignment.LEFT,
     );
     title.overflow = Label.Overflow.SHRINK;
@@ -185,27 +219,35 @@ export class LobbyNoticePanelRenderer {
       new Size(width - 38 * scale, Math.max(34 * scale, height - 44 * scale)),
       HorizontalTextAlignment.LEFT,
     );
-    content.lineHeight = 21 * scale;
+    // 手机端正文被工厂抬到 20 号,行高跟着实际字号走,否则两行压字。
+    content.lineHeight = phone ? Math.max(21 * scale, content.fontSize + 6) : 21 * scale;
     content.overflow = Label.Overflow.SHRINK;
 
     const timeText = notice.publishTime ? `发布 ${notice.publishTime.slice(0, 16).replace('T', ' ')}` : '本地只读展示';
-    const time = this.host.addChildLabel(row, 'LobbyNoticePublishTime', timeText, width / 2 - 114 * scale, -height / 2 + 17 * scale, 16 * scale, rgba(161, 139, 98), new Size(210 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
+    // 手机端发布时间挪到标题行右侧(原来贴在正文下沿,正文一长就与它重叠)。
+    const time = phone
+      ? this.host.addChildLabel(row, 'LobbyNoticePublishTime', timeText, width / 2 - 24, height / 2 - 24 * scale, 18, rgba(161, 139, 98), new Size(240, 26), HorizontalTextAlignment.RIGHT)
+      : this.host.addChildLabel(row, 'LobbyNoticePublishTime', timeText, width / 2 - 114 * scale, -height / 2 + 17 * scale, 16 * scale, rgba(161, 139, 98), new Size(210 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
     time.overflow = Label.Overflow.SHRINK;
   }
 
   private renderFooter(parent: Node, width: number, height: number, scale: number): void {
+    // 手机端说明与刷新钮各自拉开(原来挤在底边 60 像素内),刷新钮加大好点。
+    const phone = isPhoneDesign();
     const note = this.host.addChildLabel(
       parent,
       'LobbyNoticeBoundaryNote',
       '当前面板只读取公告信息，不进入玩法，不改变玩家资源。',
       0,
-      -height / 2 + 62 * scale, 17 * scale,
+      phone ? -height / 2 + 92 : -height / 2 + 62 * scale, 17 * scale,
       rgba(167, 146, 105),
       new Size(width - 110 * scale, 24 * scale),
     );
     note.overflow = Label.Overflow.SHRINK;
 
-    const reload = this.addFooterButton(parent, 'LobbyNoticeReloadButton', '刷新', 0, -height / 2 + 30 * scale, 112 * scale, 36 * scale, scale);
+    const reload = phone
+      ? this.addFooterButton(parent, 'LobbyNoticeReloadButton', '刷新', 0, -height / 2 + 38, 150, 46, scale)
+      : this.addFooterButton(parent, 'LobbyNoticeReloadButton', '刷新', 0, -height / 2 + 30 * scale, 112 * scale, 36 * scale, scale);
     reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyNotices(), this);
   }
 

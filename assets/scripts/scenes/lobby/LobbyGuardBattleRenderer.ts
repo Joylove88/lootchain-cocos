@@ -25,6 +25,8 @@ import {
   Tween,
 } from 'cc';
 import { gameAudio } from '../../audio/GameAudio';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 import type { UiLayout } from './LobbyHudTypes';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -419,6 +421,10 @@ interface GuardWheelParts {
   R: number;
   colX: number;
   colW: number;
+  /** 标题行 y(档位文字 / 奖励卡从它往下排);手机全屏时标题贴近顶边。 */
+  titleY: number;
+  /** 手机全屏弹层(横幅不能再挂到面板外沿上方)。 */
+  sheet: boolean;
   phase: 'entering' | 'spinning' | 'stopped' | 'revealing' | 'done';
   timers: Array<ReturnType<typeof setTimeout>>;
   ticker: ReturnType<typeof setInterval> | null;
@@ -2723,7 +2729,7 @@ export class LobbyGuardBattleRenderer {
     og.fillColor = rgba(8, 6, 6, 190);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
-    this.paintOverlayPanel(overlay, panelW, panelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    this.paintDialogPanel(overlay, panelW, panelH);
     if (onOutside) {
       overlay.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
         const transform = overlay.getComponent(UITransform);
@@ -2735,6 +2741,42 @@ export class LobbyGuardBattleRenderer {
       }, this);
     }
     return overlay;
+  }
+
+  /**
+   * 手机横屏(设计高 720)战斗内弹层一律全屏(2026-10-02 用户拍板 H5 横屏弹框全屏,内容重新排布用足空间);
+   * 电脑 / 平板(设计高 1080)保持原居中弹框不变。
+   */
+  private phoneSheet(): boolean {
+    return isPhoneDesign();
+  }
+
+  /** 手机全屏弹层尺寸:与大厅全屏弹框同一口径(LobbyPhoneDialogFrame:左右留安全边距 40%,上下各 8)。 */
+  private phoneSheetSize(): { w: number; h: number } {
+    const size = phoneDialogSizeForStage(this.layoutWidth, this.layoutHeight);
+    return { w: size.width, h: size.height };
+  }
+
+  /** 弹层面板底:电脑 refine_panel_bg(4:3 一体构图,等比);手机全屏改程序绘制面板(一体构图素材不许非等比拉伸)。 */
+  private paintDialogPanel(parent: Node, w: number, h: number): Node {
+    return this.phoneSheet() ? this.paintPhoneSheet(parent, w, h) : this.paintOverlayPanel(parent, w, h, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+  }
+
+  /** 手机全屏面板:用大厅全屏弹框的公共程序框(黑曜石底 + 双层细金线 + 四角 / 顶底小菱形),战斗内外观一致。 */
+  private paintPhoneSheet(parent: Node, w: number, h: number): Node {
+    const panel = this.host.addChildPlainNode(parent, 'GuardOverlayPanel', 0, 0, w, h);
+    drawPhoneDialogFrame(this.host, panel, w, h);
+    return panel;
+  }
+
+  /** 手机全屏弹层右上角 ×(面板铺满后没有"点面板外关闭"的空白可点)。 */
+  private mountSheetClose(parent: Node, panelW: number, panelH: number, onClose: () => void): void {
+    const size = 52;
+    // 往里收一点,别压到程序框右上角的小菱形。
+    const button = this.host.addChildPlainNode(parent, 'GuardSheetClose', panelW / 2 - size / 2 - 30, panelH / 2 - size / 2 - 24, size, size);
+    this.mountSprite(button, 'Img', 'ui/battle/ai/ghud_btn_close/spriteFrame', 0, 0, size, size);
+    this.host.applyImageButtonFeedback(button);
+    button.on(Node.EventType.TOUCH_END, onClose, this);
   }
 
   /** 弹层标题 + 两侧 title_divider(与开箱/词条弹层同一套估宽规则)。 */
@@ -2770,9 +2812,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 二选一胶囊开关(选中金底白字,未选暗底灰字);点未选中的一侧回调 onPick。 */
-  private mountSettingsSegment(parent: Node, name: string, x: number, y: number, options: [string, string], activeIndex: number, onPick: (index: number) => void): void {
-    const pillW = 118;
-    const pillH = 46;
+  private mountSettingsSegment(parent: Node, name: string, x: number, y: number, options: [string, string], activeIndex: number, onPick: (index: number) => void, pillW = 118, pillH = 46, fontSize = 20): void {
     const gap = 12;
     options.forEach((text, index) => {
       const active = index === activeIndex;
@@ -2786,7 +2826,7 @@ export class LobbyGuardBattleRenderer {
       g.lineWidth = 2;
       g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
       g.stroke();
-      this.host.addChildLabel(node, `${name}_${index}Label`, text, 0, 0, 20, active ? rgba(255, 246, 224) : rgba(186, 168, 136), new Size(pillW - 12, pillH));
+      this.host.addChildLabel(node, `${name}_${index}Label`, text, 0, 0, fontSize, active ? rgba(255, 246, 224) : rgba(186, 168, 136), new Size(pillW - 12, pillH));
       node.on(Node.EventType.TOUCH_END, () => {
         if (!active) {
           onPick(index);
@@ -2796,6 +2836,9 @@ export class LobbyGuardBattleRenderer {
   }
 
   private settingsPanelSize(): { w: number; h: number } {
+    if (this.phoneSheet()) {
+      return this.phoneSheetSize();
+    }
     const h = Math.min(660, this.layoutHeight * 0.82);
     return { w: Math.min(this.layoutWidth * 0.92, h * (1448 / 1086)), h };
   }
@@ -2842,8 +2885,13 @@ export class LobbyGuardBattleRenderer {
     overlay.getChildByName('GuardSettingsContent')?.destroy();
     const { w: panelW, h: panelH } = this.settingsPanelSize();
     const content = this.host.addChildPlainNode(overlay, 'GuardSettingsContent', 0, 0, panelW, panelH);
-    const titleY = panelH / 2 - 112;
-    const buttonY = -panelH / 2 + 97;
+    const phone = this.phoneSheet();
+    // 手机全屏:标题贴近顶边、按钮贴近底边,中间整块给内容;右上补 ×。
+    const titleY = phone ? panelH / 2 - 54 : panelH / 2 - 112;
+    const buttonY = phone ? -panelH / 2 + 64 : -panelH / 2 + 97;
+    if (phone) {
+      this.mountSheetClose(content, panelW, panelH, () => this.closeBattleSettings());
+    }
     if (page === 'spells') {
       this.renderSpellLoadoutPage(overlay, content, panelW, panelH, titleY, buttonY);
       return;
@@ -2866,6 +2914,12 @@ export class LobbyGuardBattleRenderer {
       ];
       if (this.sim?.mode === 'rush') {
         lines.push('车轮战:BOSS 一只比一只强,水晶碎裂或时间到即按层数结算。');
+      }
+      if (phone) {
+        this.renderSettingsHelpPhone(content, lines, panelW, titleY, buttonY);
+        const phoneBack = this.mountPrimaryTextButton(content, 'GuardSettingsHelpBack', 0, buttonY, 260, '返回');
+        phoneBack.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
+        return;
       }
       const top = titleY - 70;
       const step = Math.min(46, (top - (buttonY + 70)) / lines.length);
@@ -2915,6 +2969,10 @@ export class LobbyGuardBattleRenderer {
         },
       },
     ];
+    if (phone) {
+      this.renderSettingsMainPhone(overlay, content, rows, panelW, titleY, buttonY);
+      return;
+    }
     const rowTop = titleY - 118;
     const rowStep = Math.min(62, (rowTop - (buttonY + 150)) / (rows.length - 1));
     const labelX = -panelW * 0.17;
@@ -2954,6 +3012,92 @@ export class LobbyGuardBattleRenderer {
     resume.on(Node.EventType.TOUCH_END, () => this.closeBattleSettings(), this);
   }
 
+  /**
+   * 手机全屏设置主页(2026-10-02 用户反馈:车轮战设置里开关行上下叠在一起):
+   * 左栏 5 个开关行(大行距、大胶囊),右栏 玩法速查 / 法术装备 入口 + 精简说明,底部 退出 / 继续 两键。
+   */
+  private renderSettingsMainPhone(
+    overlay: Node,
+    content: Node,
+    rows: Array<{ key: string; label: string; options: [string, string]; active: number; pick: (index: number) => void }>,
+    panelW: number,
+    titleY: number,
+    buttonY: number,
+  ): void {
+    // 左栏一行 = 标签 220 + 间距 28 + 两颗胶囊 312,整块居中在左半屏。
+    const blockLeft = -panelW / 4 - 280;
+    const rightX = panelW / 4;
+    const rowTop = titleY - 128;
+    const rowStep = Math.min(80, (rowTop - (buttonY + 76)) / Math.max(1, rows.length - 1));
+    rows.forEach((row, index) => {
+      const y = rowTop - index * rowStep;
+      const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, blockLeft + 220, y, 24, rgba(240, 222, 186), new Size(220, 36), HorizontalTextAlignment.RIGHT);
+      label.overflow = Label.Overflow.SHRINK;
+      this.mountSettingsSegment(content, `GuardSettings${row.key}`, blockLeft + 404, y, row.options, row.active, (picked) => {
+        row.pick(picked);
+        this.renderSettingsPage(overlay, 'main');
+      }, 150, 54, 22);
+    });
+    // 两栏分隔细线
+    const sepTop = rowTop + 30;
+    const sepBottom = rowTop - (rows.length - 1) * rowStep - 30;
+    const sep = this.host.addChildPlainNode(content, 'GuardSettingsSep', 0, (sepTop + sepBottom) / 2, 4, sepTop - sepBottom);
+    const sg = sep.addComponent(Graphics);
+    sg.strokeColor = rgba(150, 112, 62, 120);
+    sg.lineWidth = 1.5;
+    sg.moveTo(0, (sepTop - sepBottom) / 2);
+    sg.lineTo(0, -(sepTop - sepBottom) / 2);
+    sg.stroke();
+    // 右栏三件(两个入口 + 说明)整体与左栏开关行垂直居中对齐。
+    const rowMid = (sepTop + sepBottom) / 2;
+    const help = this.mountOutlineLink(content, 'GuardSettingsHelpLink', rightX, rowMid + 100, 360, 64, '玩法速查 ›');
+    help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
+    const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', rightX, rowMid + 8, 360, 64, '法术装备 ›');
+    spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
+    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '伤害数字「精简」:只显示暴击、大额与 BOSS 身上的伤害;水晶掉血始终显示', rightX, rowMid - 96, 20, rgba(170, 156, 128), new Size(460, 64));
+    hint.enableWrapText = true;
+    hint.lineHeight = 28;
+    hint.overflow = Label.Overflow.SHRINK;
+    const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -200, buttonY, 250, '退出战斗');
+    exitBtn.on(Node.EventType.TOUCH_END, () => this.openExitConfirm(), this);
+    const resume = this.mountPrimaryTextButton(content, 'GuardSettingsResume', 200, buttonY, 270, '继续战斗');
+    resume.on(Node.EventType.TOUCH_END, () => this.closeBattleSettings(), this);
+  }
+
+  /** 手机全屏玩法速查:两栏排布,每条可折两行(20 号字),不再挤成一列小字。 */
+  private renderSettingsHelpPhone(content: Node, lines: string[], panelW: number, titleY: number, buttonY: number): void {
+    const perCol = Math.ceil(lines.length / 2);
+    const colW = (panelW - 160) / 2;
+    const top = titleY - 66;
+    const bottom = buttonY + 52;
+    const step = Math.min(72, (top - bottom) / perCol);
+    lines.forEach((text, index) => {
+      const col = Math.floor(index / perCol);
+      const row = index % perCol;
+      const left = -panelW / 2 + 60 + col * (colW + 40);
+      const label = this.host.addChildLabel(content, `GuardSettingsHelp_${index}`, text, left, top - step / 2 - row * step, 20, rgba(232, 214, 178), new Size(colW, step - 6), HorizontalTextAlignment.LEFT);
+      label.enableWrapText = true;
+      label.lineHeight = 27;
+      label.overflow = Label.Overflow.SHRINK;
+    });
+  }
+
+  /** 描金边的透明胶囊入口(玩法速查 / 法术装备)。 */
+  private mountOutlineLink(parent: Node, name: string, x: number, y: number, w: number, h: number, text: string): Node {
+    const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(40, 28, 16, 160);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    g.fill();
+    g.strokeColor = rgba(220, 180, 110, 230);
+    g.lineWidth = 2;
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+    g.stroke();
+    this.host.addChildLabel(node, `${name}Label`, text, 0, 0, 24, rgba(255, 226, 160), new Size(w - 20, h - 8));
+    this.host.applyImageButtonFeedback(node);
+    return node;
+  }
+
   /** ×:战斗进行中弹退出确认;未开战/已结束直接回大厅。 */
   private requestExitBattle(): void {
     if (!this.sim || this.battleEnded()) {
@@ -2971,8 +3115,10 @@ export class LobbyGuardBattleRenderer {
     if (!this.root || !this.sim || this.exitConfirmOpen) {
       return;
     }
-    const panelW = Math.min(this.layoutWidth * 0.8, 660);
-    const panelH = panelW * (1086 / 1448);
+    // 手机全屏(2026-10-02):内容整体放大并居中,按钮加宽好点。
+    const phone = this.phoneSheet();
+    const panelW = phone ? this.phoneSheetSize().w : Math.min(this.layoutWidth * 0.8, 660);
+    const panelH = phone ? this.phoneSheetSize().h : panelW * (1086 / 1448);
     const overlay = this.mountSettingsOverlay('GuardExitConfirmOverlay', panelW, panelH, () => this.closeExitConfirm());
     if (!overlay) {
       return;
@@ -2980,24 +3126,29 @@ export class LobbyGuardBattleRenderer {
     this.exitConfirmOpen = true;
     this.syncBattlePause();
     gameAudio.sfx('ui_click');
-    this.paintSettingsTitle(overlay, '退出战斗?', panelW, panelH / 2 - 100);
+    if (phone) {
+      this.mountSheetClose(overlay, panelW, panelH, () => this.closeExitConfirm());
+    }
+    this.paintSettingsTitle(overlay, '退出战斗?', panelW, phone ? 150 : panelH / 2 - 100);
     const rush = this.sim.mode === 'rush';
     const lines = [
       rush ? '退出后本局作废,已打到的层数不计入结算。' : '退出后本局作废,不结算奖励。',
       '本局尚未结算,不消耗体力,也不占用挑战次数。',
     ];
     lines.forEach((text, index) => {
-      const label = this.host.addChildLabel(overlay, `GuardExitConfirmLine_${index}`, text, 0, 22 - index * 38, 18, index === 0 ? rgba(255, 196, 170) : rgba(214, 196, 160), new Size(panelW * 0.76, 30));
+      const label = phone
+        ? this.host.addChildLabel(overlay, `GuardExitConfirmLine_${index}`, text, 0, 46 - index * 52, 24, index === 0 ? rgba(255, 196, 170) : rgba(214, 196, 160), new Size(Math.min(panelW * 0.8, 900), 40))
+        : this.host.addChildLabel(overlay, `GuardExitConfirmLine_${index}`, text, 0, 22 - index * 38, 18, index === 0 ? rgba(255, 196, 170) : rgba(214, 196, 160), new Size(panelW * 0.76, 30));
       label.overflow = Label.Overflow.SHRINK;
     });
-    const buttonY = -panelH / 2 + 88;
-    const confirm = this.mountDangerButton(overlay, 'GuardExitConfirmOk', -panelW * 0.2, buttonY, 200, '确认退出');
+    const buttonY = phone ? -150 : -panelH / 2 + 88;
+    const confirm = this.mountDangerButton(overlay, 'GuardExitConfirmOk', phone ? -200 : -panelW * 0.2, buttonY, phone ? 250 : 200, '确认退出');
     confirm.on(Node.EventType.TOUCH_END, () => {
       this.exitConfirmOpen = false;
       this.settingsOpen = false;
       this.host.returnToLobbyFromBattlePreview();
     }, this);
-    const cancel = this.mountPrimaryTextButton(overlay, 'GuardExitConfirmCancel', panelW * 0.2, buttonY, 216, '继续战斗');
+    const cancel = this.mountPrimaryTextButton(overlay, 'GuardExitConfirmCancel', phone ? 200 : panelW * 0.2, buttonY, phone ? 270 : 216, '继续战斗');
     cancel.on(Node.EventType.TOUCH_END, () => this.closeExitConfirm(), this);
   }
 
@@ -4318,6 +4469,12 @@ export class LobbyGuardBattleRenderer {
     const slots = sim ? sim.spellSlots : GUARD_BASE_SPELL_SLOTS;
     const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `本局出战 ${equipped.length}/${slots} 格 · 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · 更换请到大厅「水晶 → 法术装备」`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.78, 26));
     tip.overflow = Label.Overflow.SHRINK;
+    if (this.phoneSheet()) {
+      this.renderSpellCardsPhone(content, panelW, titleY, buttonY, unlocked, equipped);
+      const phoneBack = this.mountPrimaryTextButton(content, 'GuardSpellsBack', 0, buttonY, 260, '返回');
+      phoneBack.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
+      return;
+    }
     const cardW = Math.min(260, panelW * 0.26);
     // docs/39:卡片要放下按等级生成的描述(Lv5 约 5 行),加高;往下最多再占 30 设计像素,不压「返回」按钮
     const cardH = 160;
@@ -4361,6 +4518,62 @@ export class LobbyGuardBattleRenderer {
     void panelH;
     const back = this.mountPrimaryTextButton(content, 'GuardSpellsBack', 0, buttonY, 236, '返回');
     back.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
+  }
+
+  /** 手机全屏法术装备:3×2 宽卡铺满内容区(图标 + 名称 / 能量一行,描述占卡片下半整宽,20 号字可折 4 行)。 */
+  private renderSpellCardsPhone(content: Node, panelW: number, titleY: number, buttonY: number, unlocked: readonly GuardSpellId[], equipped: readonly GuardSpellId[]): void {
+    const sim = this.sim;
+    const gap = 18;
+    const cardW = (panelW - 120 - gap * 2) / 3;
+    const top = titleY - 84;
+    const bottom = buttonY + 52;
+    const cardH = Math.min(240, (top - bottom - gap) / 2);
+    const iconSize = 64;
+    GUARD_SPELL_IDS.forEach((id, index) => {
+      const def = GUARD_SPELLS[id];
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      const x = (col - 1) * (cardW + gap);
+      const y = top - cardH / 2 - row * (cardH + gap);
+      const slotIndex = equipped.indexOf(id);
+      const selected = slotIndex >= 0;
+      const locked = unlocked.indexOf(id) < 0;
+      const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, x, y, cardW, cardH);
+      const g = card.addComponent(Graphics);
+      g.fillColor = selected ? rgba(60, 40, 16, 235) : rgba(20, 14, 10, 210);
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      g.fill();
+      g.strokeColor = selected ? rgba(255, 214, 110, 255) : rgba(150, 110, 60, 170);
+      g.lineWidth = selected ? 3 : 1.5;
+      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      g.stroke();
+      const iconX = -cardW / 2 + 16 + iconSize / 2;
+      const iconY = cardH / 2 - 14 - iconSize / 2;
+      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], iconX, iconY, iconSize, iconSize);
+      const cardLevel = sim ? guardSpellLevel(sim, id) : 1;
+      const textX = iconX + iconSize / 2 + 14;
+      const textW = cardW / 2 - textX - 14;
+      const nameLabel = this.host.addChildLabel(card, 'Name', `${def.name} Lv.${cardLevel}`, textX, iconY + 15, 24, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(textW, 32), HorizontalTextAlignment.LEFT);
+      nameLabel.overflow = Label.Overflow.SHRINK;
+      const slotText = locked ? '未解锁' : selected ? `出战第 ${slotIndex + 1} 格` : '未装备';
+      const costLabel = this.host.addChildLabel(card, 'Cost', `能量 ${def.cost} · ${slotText}`, textX, iconY - 18, 20, rgba(160, 210, 255), new Size(textW, 28), HorizontalTextAlignment.LEFT);
+      costLabel.overflow = Label.Overflow.SHRINK;
+      const descText = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : guardSpellDescribe(id, cardLevel);
+      const descTop = iconY - iconSize / 2 - 8;
+      const descH = descTop - (-cardH / 2 + 10);
+      const desc = this.host.addChildLabel(card, 'Desc', descText, 0, descTop - descH / 2, 20, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 28, descH));
+      desc.enableWrapText = true;
+      desc.lineHeight = 26;
+      desc.verticalAlign = VerticalTextAlignment.TOP;
+      desc.horizontalAlign = HorizontalTextAlignment.LEFT;
+      desc.overflow = Label.Overflow.SHRINK;
+      if (locked) {
+        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;
+        this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', iconX, iconY, 30, 30);
+      } else if (!selected) {
+        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 190;
+      }
+    });
   }
 
   // ── docs/37 G 车道陷阱 ──
@@ -4827,15 +5040,18 @@ export class LobbyGuardBattleRenderer {
     const height = this.layoutHeight;
     const compact = height < 500;
     // 几何:4:3 refine_panel_bg(2026-09-22 各弹层统一);手机横屏(高 <500)面板拉到 0.86 高;s=相对桌面 666 高的缩放,固定偏移全部 ×s。
-    const panelH = compact ? height * 0.86 : Math.min(700, height * 0.74);
-    const panelW = Math.min(width * 0.92, panelH * (1448 / 1086));
-    const s = panelH / 666;
+    // 手机(设计高 720)全屏(2026-10-02 用户拍板):面板铺满,轮盘 / 奖励栏按 16:9 内容宽排,不随超宽屏散到两边。
+    const sheet = this.phoneSheet();
+    const panelH = sheet ? this.phoneSheetSize().h : compact ? height * 0.86 : Math.min(700, height * 0.74);
+    const panelW = sheet ? this.phoneSheetSize().w : Math.min(width * 0.92, panelH * (1448 / 1086));
+    const s = sheet ? 1 : panelH / 666;
     const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
-    const R = Math.min(170, panelH * 0.245);
-    const wheelX = -panelW * 0.26;
-    const wheelY = -height * 0.02;
-    const colX = panelW * 0.24;
-    const colW = panelW * 0.42;
+    const R = sheet ? Math.min(200, panelH * 0.28) : Math.min(170, panelH * 0.245);
+    const spanW = sheet ? Math.min(panelW, panelH * 1.78) : panelW;
+    const wheelX = sheet ? -spanW * 0.24 : -panelW * 0.26;
+    const wheelY = sheet ? -24 : -height * 0.02;
+    const colX = sheet ? spanW * 0.22 : panelW * 0.24;
+    const colW = sheet ? spanW * 0.38 : panelW * 0.42;
     const hot = deluxe ? rgba(255, 150, 90) : rgba(255, 214, 110);
     const overlay = this.host.addChildPlainNode(root, 'GuardWheelOverlay', 0, 0, width, height);
     // 2026-09-19 审计:全屏弹层必须挡住点击,否则点空白处会穿透到底下的强化/召唤按钮(扣金币、再弹词条)。
@@ -4854,10 +5070,10 @@ export class LobbyGuardBattleRenderer {
     panelRoot.setScale(0.86, 0.86, 1);
     tween(panelRoot).to(0.32, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
     gameAudio.sfx('panel_open');
-    this.paintOverlayPanel(panelRoot, panelW, panelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    this.paintDialogPanel(panelRoot, panelW, panelH);
     const titleText = deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
     const titleSize = fs(34, 24);
-    const titleY = panelH / 2 - 112 * s;
+    const titleY = sheet ? panelH / 2 - 60 : panelH / 2 - 112 * s;
     const title = this.host.addChildLabel(panelRoot, 'GuardWheelTitle', titleText, 0, titleY, titleSize, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(panelW * 0.6, titleSize + 10));
     title.enableOutline = true;
     title.outlineColor = rgba(60, 30, 10, 255);
@@ -5049,7 +5265,7 @@ export class LobbyGuardBattleRenderer {
     const thetaEnd = 90 - (landIdx + 0.5) * 45 - 360 * turns + (Math.random() * 2 - 1) * 14;
     const p: GuardWheelParts = {
       overlay, panelRoot, panelOpacity, dimOpacity, wheel, disc, pointer, sectorFlashOp, bulbs, segIcons, segLabels, chestNode, fxUnder, fxOver, resultTag, hintLine,
-      result, deluxe, jackpot, compact, panelW, panelH, s, R, colX, colW,
+      result, deluxe, jackpot, compact, panelW, panelH, s, R, colX, colW, titleY, sheet,
       phase: 'entering', timers: [], ticker: null, skippable, thetaEnd, landIdx, tickCount: 0, lastIdx: -1, cards: [], closeShown: false,
     };
     // 点空白:可跳过局里旋转段直跳停格、揭示段全卡到位;BlockInputEvents 只挡穿透,不影响 overlay 自身收事件。
@@ -5290,7 +5506,9 @@ export class LobbyGuardBattleRenderer {
     const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
     const tierText = p.deluxe ? '★ 豪华 5 连大奖!★' : tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励';
     const tierSize = p.jackpot ? fs(34, 24) : tier >= 3 ? fs(30, 22) : fs(24, 18);
-    const tierLabel = this.host.addChildLabel(p.panelRoot, 'GuardWheelTier', tierText, p.colX, p.panelH / 2 - 168 * s, tierSize, p.jackpot ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(p.colW, tierSize + 12));
+    // 手机全屏:大奖横幅压在标题行上(高 64),档位字再往下让开横幅;奖励卡加高、字号放大(铺满后右栏下方空着)。
+    const tierY = p.sheet ? p.titleY - 76 : p.titleY - 56 * s;
+    const tierLabel = this.host.addChildLabel(p.panelRoot, 'GuardWheelTier', tierText, p.colX, tierY, tierSize, p.jackpot ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(p.colW, tierSize + 12));
     tierLabel.overflow = Label.Overflow.SHRINK;
     tierLabel.enableOutline = true;
     tierLabel.outlineColor = rgba(60, 30, 10, 255);
@@ -5313,15 +5531,16 @@ export class LobbyGuardBattleRenderer {
       gameAudio.sfx('chest_reveal');
     }
     const colW = p.colW;
-    const cardH = p.compact && tier >= 5 ? 26 : Math.max(30, 46 * s);
-    const gap = 6 * s;
+    const cardH = p.sheet ? 60 : p.compact && tier >= 5 ? 26 : Math.max(30, 46 * s);
+    const gap = p.sheet ? 10 : 6 * s;
     const stagger = tier >= 5 ? 0.16 : tier >= 3 ? 0.2 : 0;
-    const nameSize = p.compact ? 16 : 18;
-    const amountSize = p.compact ? 20 : 28;
+    const nameSize = p.sheet ? 22 : p.compact ? 16 : 18;
+    const amountSize = p.sheet ? 30 : p.compact ? 20 : 28;
+    const cardsTop = p.sheet ? p.titleY - 136 : p.titleY - 104 * s;
     const amountW = colW * 0.3;
     const nameW = Math.max(60, colW - cardH * 1.7 - amountW - 6);
     rewards.forEach((reward, i) => {
-      const y = p.panelH / 2 - 216 * s - i * (cardH + gap);
+      const y = cardsTop - i * (cardH + gap);
       const card = this.host.addChildPlainNode(p.panelRoot, `GuardWheelRewardCard_${i}`, p.colX + 40, y, colW, cardH);
       const cg = card.addComponent(Graphics);
       cg.fillColor = rgba(20, 12, 10, 175);
@@ -5339,7 +5558,7 @@ export class LobbyGuardBattleRenderer {
       nameLabel.overflow = Label.Overflow.SHRINK;
       const amountX = colW / 2 - cardH * 0.4;
       if (reward.kind === 'summon') {
-        this.host.addChildLabel(card, 'CardAmount', '已上阵', amountX, 0, 16, rgba(150, 240, 160), new Size(amountW, 22), HorizontalTextAlignment.RIGHT);
+        this.host.addChildLabel(card, 'CardAmount', '已上阵', amountX, 0, p.sheet ? 20 : 16, rgba(150, 240, 160), new Size(amountW, p.sheet ? 26 : 22), HorizontalTextAlignment.RIGHT);
       } else {
         const amount = this.host.addChildLabel(card, 'CardAmount', reward.kind === 'teamAtk' ? '+8%' : '+0', amountX, 0, amountSize, rgba(255, 214, 92), new Size(amountW, amountSize + 6), HorizontalTextAlignment.RIGHT);
         amount.enableOutline = true;
@@ -5427,9 +5646,10 @@ export class LobbyGuardBattleRenderer {
     tween(glow).to(0.45, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'quadOut' }).start();
     tween(glowOp).to(0.08, { opacity: 170 }).to(0.5, { opacity: 0 }, { easing: 'quadIn' }).call(() => { if (glow.isValid) { glow.destroy(); } }).start();
     // 横幅:深红带 + 上下金线 + 两端斜切;scale 2.6 砸到 1 → 压扁回弹 → 呼吸
-    const bannerW = p.panelW * 0.9;
-    const bannerH = p.compact ? 44 : 84 * p.s;
-    const bannerY = p.panelH / 2 + (p.compact ? 30 : 18);
+    const bannerW = p.sheet ? Math.min(p.panelW * 0.9, 1100) : p.panelW * 0.9;
+    const bannerH = p.sheet ? 64 : p.compact ? 44 : 84 * p.s;
+    // 手机全屏面板贴边,横幅改压在标题行上(挂到面板外沿会出屏)。
+    const bannerY = p.sheet ? p.titleY + 6 : p.panelH / 2 + (p.compact ? 30 : 18);
     const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', 0, bannerY, bannerW, bannerH);
     const bg = banner.addComponent(Graphics);
     const cutW = bannerH * 0.5;
@@ -5525,7 +5745,7 @@ export class LobbyGuardBattleRenderer {
     p.closeShown = true;
     const btnW = p.compact ? 180 : 236;
     const btnH = btnW * (100 / 431);
-    const close = this.mountPrimaryButton(p.panelRoot, 'GuardWheelClose', p.colX, -p.panelH / 2 + (p.compact ? 58 : 97 * p.s), btnW);
+    const close = this.mountPrimaryButton(p.panelRoot, 'GuardWheelClose', p.colX, -p.panelH / 2 + (p.sheet ? 64 : p.compact ? 58 : 97 * p.s), btnW);
     const glow = this.mountSprite(close, 'CloseGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, btnH * 1.6, btnH * 1.6, rgba(255, 214, 110));
     glow.setSiblingIndex(0);
     glow.addComponent(UIOpacity).opacity = 90;
@@ -5654,16 +5874,18 @@ export class LobbyGuardBattleRenderer {
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
     // 面板底换素净框(2026-09-22 用户反馈 popup_frame_large 四角坠饰太大):洗练弹窗同款 refine_panel_bg(1448×1086,细金线 + 小顶饰),等比。
-    const panelH = height * 0.78;
-    const panelW = Math.min(width * 0.92, panelH * (1448 / 1086));
-    this.paintOverlayPanel(overlay, panelW, panelH, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
+    // 手机横屏全屏(2026-10-02 用户拍板):面板铺满,标题贴顶、按钮贴底,卡片放大(描述字不再挤成一团)。
+    const phone = this.phoneSheet();
+    const panelH = phone ? this.phoneSheetSize().h : height * 0.78;
+    const panelW = phone ? this.phoneSheetSize().w : Math.min(width * 0.92, panelH * (1448 / 1086));
+    this.paintDialogPanel(overlay, panelW, panelH);
     const fromEnhance = sim.choiceSource === 'enhance';
     const hasGold = sim.pendingChoice.some((option) => option.rarity === 'gold');
     // 标题 + 副标题(2026-09-22 用户参考图):金卡在场时"稀有词条出现!专属大招觉醒",两侧饰线。
     const titleCore = hasGold ? '稀有词条出现!专属大招觉醒' : fromEnhance ? `强化 ×${sim.enhanceLevel} · 选择词条` : `等级提升!Lv${sim.level} · 三选一`;
     // 标题饰件用任务页同款 title_divider 左右两段(2026-09-22 用户要求),按标题估宽贴在两侧;标题较上一版下移 20px。
-    const titleY = panelH / 2 - 112;
-    const titleSize = 30;
+    const titleY = phone ? panelH / 2 - 50 : panelH / 2 - 112;
+    const titleSize = phone ? 34 : 30;
     const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', titleCore, 0, titleY, titleSize, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.6, 40));
     overlayTitle.overflow = Label.Overflow.SHRINK;
     overlayTitle.enableOutline = true;
@@ -5680,12 +5902,12 @@ export class LobbyGuardBattleRenderer {
       gameAudio.sfx('gacha_rare');
     }
     // 三张同宽竖卡(参考图三卡等大);每张按自己框的像素比定高,不拉伸。
-    const buttonY = -panelH / 2 + 97;
-    const cardsTop = titleY - 56;
-    const cardsBottom = buttonY + 44;
+    const buttonY = phone ? -panelH / 2 + 50 : -panelH / 2 + 97;
+    const cardsTop = titleY - (phone ? 62 : 56);
+    const cardsBottom = buttonY + (phone ? 66 : 44);
     // 卡宽压到可用高的 0.8、封顶 214(2026-09-22 用户反馈:内层卡框比外层面板框还重)。
-    // 2026-09-22 用户:缩得太多,再放大 25%(206 → 258)。
-    const cardW = Math.min(258, ((cardsTop - cardsBottom) * 0.9) / (693 / 413), (panelW - 160) / 3 - 24);
+    // 2026-09-22 用户:缩得太多,再放大 25%(206 → 258)。手机全屏:可用高够,封顶放到 280 让描述字够大。
+    const cardW = Math.min(phone ? 280 : 258, ((cardsTop - cardsBottom) * 0.9) / (693 / 413), (panelW - 160) / 3 - 24);
     const gap = Math.min(44, width * 0.028);
     const count = sim.pendingChoice.length;
     const totalW = cardW * count + gap * (count - 1);
@@ -5810,7 +6032,8 @@ export class LobbyGuardBattleRenderer {
     const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2, detailSize, rgba(222, 212, 190, 245), new Size(innerW, detailH));
     detail.overflow = Label.Overflow.SHRINK;
     detail.enableWrapText = true;
-    detail.lineHeight = Math.round(detailSize * 1.3);
+    // 手机端工厂会把小字抬到 20 号,行高跟着实际字号走,否则多行互相压字。
+    detail.lineHeight = Math.round(Math.max(detailSize, detail.fontSize) * 1.3);
     detail.verticalAlign = VerticalTextAlignment.TOP;
     if (option.offField) {
       const shade = card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity);

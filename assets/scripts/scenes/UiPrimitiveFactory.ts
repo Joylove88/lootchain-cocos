@@ -315,10 +315,12 @@ export class UiPrimitiveFactory {
     labelNode.layer = this.host.node.layer;
     parent.addChild(labelNode);
     labelNode.setPosition(new Vec3(this.resolveAlignedLabelX(x, contentSize.width, horizontalAlign), y, 0));
-    labelNode.addComponent(UITransform).setContentSize(contentSize);
+    const fontSize = phoneReadableFontSize(size);
+    // 手机抬高了字号时,文字框高度至少容下新字号(否则 SHRINK 又把字缩回 13~16 号);框中心不变
+    const boxSize = fontSize > size && contentSize.height < fontSize + 6 ? new Size(contentSize.width, fontSize + 6) : contentSize;
+    labelNode.addComponent(UITransform).setContentSize(boxSize);
     const label = labelNode.addComponent(Label);
     label.string = trimText(this.translateText(text));
-    const fontSize = phoneReadableFontSize(size);
     label.fontSize = fontSize;
     label.lineHeight = fontSize + 8;
     label.horizontalAlign = horizontalAlign;

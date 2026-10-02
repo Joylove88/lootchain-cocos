@@ -32,6 +32,8 @@ import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { PHONE_DIALOG_CONTENT_PAD, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 
 export interface LobbyDailyDungeonPanelHost {
   node: Node;
@@ -200,11 +202,15 @@ export class LobbyDailyDungeonPanelRenderer {
       if (this.trialLadderPopupTiers && this.trialLadderPopupTiers.length > 0) {
         this.renderTrialLadderPopup(panel, panelWidth, panelHeight, scale, this.trialLadderPopupTiers);
       }
-      if (this.host.currentLobbyTokenFurnaceState?.().open) {
+      if (this.host.currentLobbyTokenFurnaceState?.().open && !isPhoneDesign()) {
         this.renderTokenFurnacePopup(panel, panelWidth, panelHeight, scale);
       }
     }
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本');
+    // 手机全屏熔炉要盖住左上返回钮 / 右上关闭钮(否则两个关闭入口叠在一起),所以挂到 panelGroup 最上层(与 panel 同心)
+    if (state.summary && this.host.currentLobbyTokenFurnaceState?.().open && isPhoneDesign()) {
+      this.renderTokenFurnacePopup(panelGroup, panelWidth, panelHeight, scale);
+    }
   }
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyDailyDungeonPanelState): void {
@@ -1104,7 +1110,10 @@ export class LobbyDailyDungeonPanelRenderer {
     overlay.addComponent(Button);
     overlay.on(Button.EventType.CLICK, () => this.host.closeLobbyTokenFurnace?.(), this);
 
-    const w = Math.min(980 * scale, panelWidth * 0.9);
+    // 2026-10-02 用户「横屏模式下弹框都调整成全屏」:手机铺满舞台(留安全边距),去掉底部大「关闭」钮(右上 × 加大),内容区往下放。
+    const phone = isPhoneDesign();
+    const phoneSize = phone ? phoneDialogSizeForStage(panelWidth, panelHeight) : null;
+    const w = phoneSize ? phoneSize.width : Math.min(980 * scale, panelWidth * 0.9);
     // 卡高随内容自适应(锁定态/无单据时不留大片空白):按左右两栏各自需要的高度取大者。
     const preSummary = state.summary;
     let needH = 560;
@@ -1114,7 +1123,7 @@ export class LobbyDailyDungeonPanelRenderer {
       const rightNeed = 14 + 26 + 3 * 44 + 10 + 48 + (state.bindOpen ? 176 : 26 + 136 + (preSummary.eligible ? 88 : 0)) + 62;
       needH = 90 + 118 + Math.max(leftNeed, rightNeed) + 12;
     }
-    const h = Math.min(Math.max(520 * scale, needH * scale), 760 * scale, panelHeight * 0.97);
+    const h = phoneSize ? phoneSize.height : Math.min(Math.max(520 * scale, needH * scale), 760 * scale, panelHeight * 0.97);
     const card = this.host.addChildPlainNode(overlay, 'LobbyTokenFurnaceCard', 0, 0, w, h);
     card.addComponent(BlockInputEvents);
     card.addComponent(Button);
@@ -1142,10 +1151,14 @@ export class LobbyDailyDungeonPanelRenderer {
       g.fill();
     }
     // 右上关闭 ×
-    this.furnaceButton(card, 'FurnaceCloseX', '×', w / 2 - 34 * scale, h / 2 - 34 * scale, 40 * scale, 40 * scale, scale, false, true, () => this.host.closeLobbyTokenFurnace?.(), 22);
+    if (phone) {
+      this.furnaceButton(card, 'FurnaceCloseX', '×', w / 2 - 44, h / 2 - 38, 52, 52, scale, false, true, () => this.host.closeLobbyTokenFurnace?.(), 30);
+    } else {
+      this.furnaceButton(card, 'FurnaceCloseX', '×', w / 2 - 34 * scale, h / 2 - 34 * scale, 40 * scale, 40 * scale, scale, false, true, () => this.host.closeLobbyTokenFurnace?.(), 22);
+    }
 
     // 标题(压在纹章冠下方)
-    const title = this.host.addChildLabel(card, 'FurnaceTitle', '矿晶熔炉 · 矿晶兑代币', 0, h / 2 - 38 * scale, 28 * scale, rgba(255, 234, 176, 255), new Size(w * 0.7, 38 * scale));
+    const title = this.host.addChildLabel(card, 'FurnaceTitle', '矿晶熔炉 · 矿晶兑代币', 0, h / 2 - 38 * scale, (phone ? 32 : 28) * scale, rgba(255, 234, 176, 255), new Size(w * 0.7, 38 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutlineIfAvailable(title, scale);
     this.addDecoDividerPair(card, 'FurnaceTitleDivider', '矿晶熔炉 · 矿晶兑代币', 28 * scale, h / 2 - 38 * scale, 130 * scale, w / 2 - 64 * scale, scale);
@@ -1154,25 +1167,31 @@ export class LobbyDailyDungeonPanelRenderer {
     if (state.loading && !summary) {
       const hint = this.host.addChildLabel(card, 'FurnaceLoading', '正在读取熔炉…', 0, 0, 20 * scale, rgba(214, 196, 156, 235), new Size(w * 0.6, 28 * scale));
       hint.overflow = Label.Overflow.SHRINK;
-      this.renderFurnaceCloseButton(card, w, h, scale);
+      if (!phone) {
+        this.renderFurnaceCloseButton(card, w, h, scale);
+      }
       return;
     }
     if (state.error && !summary) {
       const hint = this.host.addChildLabel(card, 'FurnaceError', `读取失败：${state.error}`, 0, 0, 17 * scale, rgba(255, 150, 130, 235), new Size(w * 0.7, 44 * scale));
       hint.overflow = Label.Overflow.SHRINK;
-      this.renderFurnaceCloseButton(card, w, h, scale);
+      if (!phone) {
+        this.renderFurnaceCloseButton(card, w, h, scale);
+      }
       return;
     }
     if (!summary) {
-      this.renderFurnaceCloseButton(card, w, h, scale);
+      if (!phone) {
+        this.renderFurnaceCloseButton(card, w, h, scale);
+      }
       return;
     }
 
     // ── 双栏几何 ──
     const contentTop = h / 2 - 90 * scale;
-    const contentBottom = -h / 2 + 118 * scale;
+    const contentBottom = -h / 2 + (phone ? 64 : 118 * scale);
     const gutter = 20 * scale;
-    const sideMargin = 46 * scale;
+    const sideMargin = phone ? PHONE_DIALOG_CONTENT_PAD : 46 * scale;
     const colW = (w - sideMargin * 2 - gutter) / 2;
     const leftX = -w / 2 + sideMargin + colW / 2;   // 左栏中心 x
     const rightX = w / 2 - sideMargin - colW / 2;    // 右栏中心 x
@@ -1268,7 +1287,7 @@ export class LobbyDailyDungeonPanelRenderer {
     this.furnaceButton(card, 'FurnaceBindToggle', state.bindOpen ? '收起绑定' : (summary.walletBound ? '换绑钱包' : '绑定钱包'), rightX + rowW / 2 - bindBtnW / 2, ry - 17 * scale, bindBtnW, 34 * scale, scale, state.bindOpen, true, () => {
       this.host.setLobbyTokenFurnaceForm?.({ bindOpen: !state.bindOpen, actionMessage: '', actionError: false });
     }, 15);
-    ry -= 34 * scale + 14 * scale;
+    ry -= 34 * scale + (phone ? 22 : 14) * scale; // 手机端「预计到账」标题字被抬到 20 号,与换绑钮多留点缝
 
     if (state.bindOpen) {
       // 绑定表单占据右栏中段
@@ -1303,7 +1322,7 @@ export class LobbyDailyDungeonPanelRenderer {
       const pvLine = this.host.addChildLabel(pv, 'FurnacePvLine', pvText, 0, -18 * scale, crystal > 0 ? 24 * scale : 16 * scale, rgba(255, 232, 150, 255), new Size(rowW - 20 * scale, 32 * scale));
       pvLine.overflow = Label.Overflow.SHRINK;
       this.applyOutlineIfAvailable(pvLine, scale);
-      const pvFee = this.host.addChildLabel(pv, 'FurnacePvFee', crystal > 0 ? `手续费 ${fee} 矿晶(${feePct}%) · 合计扣 ${crystal + fee}` : `手续费 ${feePct}%`, 0, -44 * scale, 14 * scale, rgba(200, 186, 156, 240), new Size(rowW - 20 * scale, 20 * scale));
+      const pvFee = this.host.addChildLabel(pv, 'FurnacePvFee', crystal > 0 ? `手续费 ${fee} 矿晶(${feePct}%) · 合计扣 ${crystal + fee}` : `手续费 ${feePct}%`, 0, -44 * scale, 14 * scale, rgba(200, 186, 156, 240), new Size(rowW - 20 * scale, phone ? 26 : 20 * scale));
       pvFee.overflow = Label.Overflow.SHRINK;
       ry -= pvH + 10 * scale;
       // 档位胶囊(500/1000/2000/全部)+ 自定义(仅解锁后)
@@ -1345,14 +1364,16 @@ export class LobbyDailyDungeonPanelRenderer {
     }, 24);
 
     // 操作反馈(卡底提示行上方)
-    const footY = -h / 2 + 88 * scale;
+    const footY = phone ? -h / 2 + 24 : -h / 2 + 88 * scale;
     if (state.actionMessage) {
-      const msg = this.host.addChildLabel(card, 'FurnaceActionMsg', state.actionMessage, 0, footY + 24 * scale, 15 * scale, state.actionError ? rgba(255, 150, 130, 245) : rgba(168, 226, 168, 250), new Size(w * 0.8, 22 * scale));
+      const msg = this.host.addChildLabel(card, 'FurnaceActionMsg', state.actionMessage, 0, footY + (phone ? 28 : 24 * scale), 15 * scale, state.actionError ? rgba(255, 150, 130, 245) : rgba(168, 226, 168, 250), new Size(w * 0.8, phone ? 26 : 22 * scale));
       msg.overflow = Label.Overflow.SHRINK;
     }
-    const foot = this.host.addChildLabel(card, 'FurnaceFootHint', '✦ 兑换需满足解锁条件，审核通过后将尽快发放至您的钱包。 ✦', 0, footY, 14 * scale, rgba(190, 176, 148, 235), new Size(w * 0.8, 20 * scale));
+    const foot = this.host.addChildLabel(card, 'FurnaceFootHint', '✦ 兑换需满足解锁条件，审核通过后将尽快发放至您的钱包。 ✦', 0, footY, 14 * scale, rgba(190, 176, 148, 235), new Size(w * 0.8, phone ? 26 : 20 * scale));
     foot.overflow = Label.Overflow.SHRINK;
-    this.renderFurnaceCloseButton(card, w, h, scale);
+    if (!phone) {
+      this.renderFurnaceCloseButton(card, w, h, scale);
+    }
   }
 
   private renderFurnaceBindForm(card: Node, state: LobbyTokenFurnaceState, left: number, lineW: number, startY: number, scale: number): number {

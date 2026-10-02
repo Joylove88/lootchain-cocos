@@ -14,6 +14,8 @@ import {
   Vec3,
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO, PlayerQuestSummaryVO, PlayerQuestVO, QuestRewardItemVO } from '../../types/QuestTypes';
 
 // 任务弹框素材(2026-09-10 用户切图,原名已 ascii 化):全部一体构图只能等比显示。
@@ -99,11 +101,18 @@ export class LobbyQuestMailPanelRenderer {
     const ART_SIDE = 0.96;
     const artHeightFrac = ART_BOTTOM - ART_TOP;
     // 2026-09-10 用户反馈:弹框高度 +20%(640→768)。
+    // 2026-10-02 用户「横屏模式下弹框都调整成全屏」:手机铺满舞台;恶魔框是一体构图(3:2)不能拉宽,手机改程序画框。
+    const phone = isPhoneDesign();
     let panelHeight = Math.min(layout.stageHeight - 28 * scale, 768 * scale);
     let panelWidth = (panelHeight / artHeightFrac) * frameAspect * ART_SIDE;
     if (panelWidth > layout.stageWidth - 36 * scale) {
       panelWidth = layout.stageWidth - 36 * scale;
       panelHeight = (panelWidth / ART_SIDE / frameAspect) * artHeightFrac;
+    }
+    if (phone) {
+      const size = resolvePhoneDialogSize(layout);
+      panelWidth = size.width;
+      panelHeight = size.height;
     }
     const state = this.host.currentLobbyQuestState();
 
@@ -117,7 +126,9 @@ export class LobbyQuestMailPanelRenderer {
     const artHeight = panelHeight / artHeightFrac;
     const artWidth = artHeight * frameAspect;
     const artYOffset = ((ART_TOP + ART_BOTTOM) / 2 - 0.5) * artHeight;
-    if (!this.host.addSprite('FrameArt', QUEST_UI_ASSETS.panelFrame, 0, artYOffset, artWidth, artHeight, panel)) {
+    if (phone) {
+      drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, 74);
+    } else if (!this.host.addSprite('FrameArt', QUEST_UI_ASSETS.panelFrame, 0, artYOffset, artWidth, artHeight, panel)) {
       const g = panel.addComponent(Graphics);
       g.fillColor = rgba(7, 7, 10, 240);
       g.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 18 * scale);
@@ -130,8 +141,8 @@ export class LobbyQuestMailPanelRenderer {
 
     // 标题+两侧星饰线(以下 Y 均以可见框为基准;2026-09-10 用户反馈:参考图鎏金大字+下移 30px,
     // 饰线换 title_divider 长款)。
-    const titleY = panelHeight * 0.375 - 30 * scale;
-    const title = this.host.addChildLabel(panel, 'Title', '任务', 0, titleY, 38 * scale, rgba(245, 213, 130, 255), new Size(panelWidth * 0.4, 50 * scale));
+    const titleY = phone ? panelHeight / 2 - 42 : panelHeight * 0.375 - 30 * scale;
+    const title = this.host.addChildLabel(panel, 'Title', '任务', 0, titleY, phone ? 34 : 38 * scale, rgba(245, 213, 130, 255), new Size(panelWidth * 0.4, 50 * scale));
     title.isBold = true;
     title.enableOutline = true;
     title.outlineColor = rgba(58, 32, 10, 255);
@@ -140,17 +151,21 @@ export class LobbyQuestMailPanelRenderer {
     const dividerGap = 58 * scale + dividerW / 2;
     this.host.addSprite('TitleDividerL', QUEST_UI_ASSETS.titleDividerLeft, -dividerGap, titleY, dividerW, dividerW * (76 / 390), panel);
     this.host.addSprite('TitleDividerR', QUEST_UI_ASSETS.titleDividerRight, dividerGap, titleY, dividerW, dividerW * (73 / 392), panel);
-    this.addAssetCloseButton(panel, panelWidth * 0.43, panelHeight * 0.39, scale, () => this.host.closeLobbyQuestPanel());
+    if (phone) {
+      this.addAssetCloseButton(panel, panelWidth / 2 - 46, panelHeight / 2 - 42, 52 / 46, () => this.host.closeLobbyQuestPanel());
+    } else {
+      this.addAssetCloseButton(panel, panelWidth * 0.43, panelHeight * 0.39, scale, () => this.host.closeLobbyQuestPanel());
+    }
 
     // 页签(素材:选中=红大理石金框,未选=暗石纹;缺图退手绘;2026-09-10 用户反馈:间隔缩小)。
     const tabW = 186 * scale;
-    const tabY = panelHeight * 0.25;
+    const tabY = phone ? panelHeight / 2 - 118 : panelHeight * 0.25;
     this.addQuestTabButton(panel, '日常任务', state.tab === 'DAILY', -tabW / 2 - 6 * scale, tabY, tabW, scale, () => this.host.setLobbyQuestTab('DAILY'));
     this.addQuestTabButton(panel, '成就', state.tab === 'ACHIEVE', tabW / 2 + 6 * scale, tabY, tabW, scale, () => this.host.setLobbyQuestTab('ACHIEVE'));
 
     // 底部标语+饰线(2026-09-10 用户反馈:上移 20px,饰线拉长)。
-    const footerY = -panelHeight * 0.415 + 20 * scale;
-    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 14 * scale, rgba(190, 174, 144, 215), new Size(panelWidth * 0.5, 20 * scale));
+    const footerY = phone ? -panelHeight / 2 + 26 : -panelHeight * 0.415 + 20 * scale;
+    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 14 * scale, rgba(190, 174, 144, 215), new Size(panelWidth * 0.5, phone ? 26 : 20 * scale));
     footer.overflow = Label.Overflow.SHRINK;
     const footDivW = 132 * scale;
     const footDivGap = 122 * scale + footDivW / 2;
@@ -171,10 +186,10 @@ export class LobbyQuestMailPanelRenderer {
       return;
     }
     // 行列表:外包大框(2026-09-10 用户反馈:参考图层次感,行整体缩进)+Mask+ScrollView 单列滚动。
-    const listTop = tabY - 40 * scale;
+    const listTop = tabY - (phone ? 42 : 40 * scale);
     const listBottom = footerY + 26 * scale;
     const listHeight = Math.max(80 * scale, listTop - listBottom);
-    const outerW = panelWidth * 0.9;
+    const outerW = phone ? panelWidth - PHONE_DIALOG_CONTENT_PAD * 2 : panelWidth * 0.9;
     const listFrame = this.host.addChildPlainNode(panel, 'QuestListFrame', 0, listBottom + listHeight / 2, outerW, listHeight + 18 * scale);
     const lf = listFrame.addComponent(Graphics);
     lf.fillColor = rgba(9, 8, 10, 150);
@@ -184,8 +199,9 @@ export class LobbyQuestMailPanelRenderer {
     lf.lineWidth = Math.max(1, 1.3 * scale);
     lf.roundRect(-outerW / 2, -(listHeight + 18 * scale) / 2, outerW, listHeight + 18 * scale, 8 * scale);
     lf.stroke();
-    const rowW = panelWidth * 0.82;
-    const rowH = 88 * scale;
+    const rowW = phone ? outerW - 28 : panelWidth * 0.82;
+    // 手机全屏:行加高放大字(见 addQuestRow 的 fs)
+    const rowH = (phone ? 96 : 88) * scale;
     const listNode = this.host.addChildPlainNode(panel, 'QuestList', 0, listBottom + listHeight / 2, rowW + 12 * scale, listHeight);
     listNode.addComponent(Mask);
     const contentHeight = Math.max(listHeight, quests.length * rowH);
@@ -199,12 +215,14 @@ export class LobbyQuestMailPanelRenderer {
     scroll.inertia = true;
     scroll.elastic = true;
     quests.forEach((quest, index) => {
-      this.addQuestRow(contentNode, quest, 0, -rowH / 2 - index * rowH, rowW, rowH - 10 * scale, scale, state.claiming);
+      this.addQuestRow(contentNode, quest, 0, -rowH / 2 - index * rowH, rowW, rowH - 10 * scale, scale, state.claiming, phone);
     });
   }
 
-  private addQuestRow(parent: Node, quest: PlayerQuestVO, x: number, y: number, width: number, height: number, scale: number, claiming: string | null): void {
+  private addQuestRow(parent: Node, quest: PlayerQuestVO, x: number, y: number, width: number, height: number, scale: number, claiming: string | null, phone = false): void {
     const row = this.host.addChildPlainNode(parent, `QuestRow_${quest.questCode}`, x, y, width, height);
+    // 手机全屏行:字号 / 标签盒 / 图标 / 按钮放大 1.2 倍(工厂把 <20 号抬到 20,盒子不跟着放会被 SHRINK 压回小字);电脑 1
+    const fs = phone ? 1.2 : 1;
     const g = row.addComponent(Graphics);
     g.fillColor = quest.claimable ? rgba(56, 42, 18, 230) : rgba(15, 13, 14, 225);
     g.roundRect(-width / 2, -height / 2, width, height, 7 * scale);
@@ -223,20 +241,21 @@ export class LobbyQuestMailPanelRenderer {
 
     // 任务类型图标(按名称/描述关键词;无匹配不占位画暗框)。
     const iconRule = QUEST_ICON_RULES.find((rule) => rule.match.test(`${quest.questName}${quest.questDesc ?? ''}`)) ?? null;
-    const iconBoxX = -width / 2 + 44 * scale;
+    const iconBoxX = -width / 2 + 44 * scale * fs;
     if (iconRule) {
-      const iconH = 58 * scale;
+      const iconH = 58 * scale * fs;
       this.host.addSprite('TypeIcon', iconRule.path, iconBoxX, 0, iconH * iconRule.ratio, iconH, row);
     }
-    const textLeft = -width / 2 + 84 * scale;
-    const name = this.host.addChildLabel(row, 'Name', quest.questName, textLeft, height / 2 - 22 * scale, 19 * scale, rgba(245, 222, 160, 250), new Size(width * 0.26, 26 * scale), HorizontalTextAlignment.LEFT);
+    const textLeft = -width / 2 + 84 * scale * fs;
+    const name = this.host.addChildLabel(row, 'Name', quest.questName, textLeft, height / 2 - 22 * scale * fs, 19 * scale * fs, rgba(245, 222, 160, 250), new Size(width * 0.26, 26 * scale * fs), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
     this.outline(name, scale, true);
-    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', textLeft, -height / 2 + 18 * scale, 15 * scale, rgba(186, 172, 144, 225), new Size(width * 0.28, 21 * scale), HorizontalTextAlignment.LEFT);
+    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', textLeft, -height / 2 + 18 * scale * fs, 15 * scale * fs, rgba(186, 172, 144, 225), new Size(width * 0.28, 21 * scale * fs), HorizontalTextAlignment.LEFT);
     desc.overflow = Label.Overflow.SHRINK;
 
     // 进度条(素材金框+满格绿填充 FILLED 水平裁剪;缺图退手绘)。
-    const barW = width * 0.21;
+    // 手机全屏行更宽:进度条宽封顶(否则按比例变粗,压到上方进度数字)
+    const barW = phone ? Math.min(width * 0.21, 250 * scale) : width * 0.21;
     const barH = barW * (86 / 603);
     const barX = -width * 0.035;
     const barY = -8 * scale;
@@ -259,7 +278,7 @@ export class LobbyQuestMailPanelRenderer {
       bg.roundRect(-barW / 2, -4 * scale, Math.max(4 * scale, barW * ratio), 8 * scale, 4 * scale);
       bg.fill();
     }
-    const progress = this.host.addChildLabel(row, 'Progress', `${quest.progress}/${quest.targetCount}`, barX, barY + barH / 2 + 13 * scale, 15 * scale, rgba(206, 192, 160, 235), new Size(barW + 30 * scale, 20 * scale));
+    const progress = this.host.addChildLabel(row, 'Progress', `${quest.progress}/${quest.targetCount}`, barX, barY + barH / 2 + 13 * scale * fs, 15 * scale * fs, rgba(206, 192, 160, 235), new Size(barW + 30 * scale, phone ? 26 : 20 * scale));
     progress.overflow = Label.Overflow.SHRINK;
 
     // 奖励区:最多两行 图标+文字(金币按量分大小堆;无图标纯文字)。
@@ -267,19 +286,19 @@ export class LobbyQuestMailPanelRenderer {
     const rewardTextX = width * 0.145;
     const rewards = quest.rewards.slice(0, 2);
     rewards.forEach((item, index) => {
-      const ry = rewards.length === 1 ? 0 : (index === 0 ? 19 * scale : -19 * scale);
+      const ry = rewards.length === 1 ? 0 : (index === 0 ? 19 * scale * fs : -19 * scale * fs);
       const icon = resolveRewardIcon(item);
       if (icon) {
-        const iconH = 30 * scale;
+        const iconH = 30 * scale * fs;
         this.host.addSprite(`RewardIcon_${index}`, icon.path, rewardIconX, ry, iconH * icon.ratio, iconH, row);
       }
-      const label = this.host.addChildLabel(row, `Reward_${index}`, `${item.name}×${item.amount}`, rewardTextX + 12 * scale, ry, 16 * scale, rgba(255, 226, 150, 245), new Size(width * 0.17, 22 * scale), HorizontalTextAlignment.LEFT);
+      const label = this.host.addChildLabel(row, `Reward_${index}`, `${item.name}×${item.amount}`, rewardTextX + 12 * scale * fs, ry, 16 * scale * fs, rgba(255, 226, 150, 245), new Size(width * 0.17, 22 * scale * fs), HorizontalTextAlignment.LEFT);
       label.overflow = Label.Overflow.SHRINK;
     });
 
     // 领取按钮(可领时命名 LobbyQuestClaimReady:新手引导 CLAIM 步的光圈目标,findLobbyNode 命中第一个可领行)
-    const btnW = 118 * scale;
-    const btnH = 42 * scale;
+    const btnW = 118 * scale * fs;
+    const btnH = 42 * scale * fs;
     const claimable = quest.claimable && claiming === null;
     const btn = this.host.addChildPlainNode(row, claimable ? 'LobbyQuestClaimReady' : 'Claim', width / 2 - btnW / 2 - 16 * scale, 0, btnW, btnH);
     const useClaimArt = !quest.claimed && claimable;
@@ -294,7 +313,7 @@ export class LobbyQuestMailPanelRenderer {
       bgB.stroke();
     }
     const btnText = quest.claimed ? '已领取' : claiming === quest.questCode ? '领取中…' : quest.claimable ? '领取' : '未完成';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 18 * scale, quest.claimed ? rgba(150, 138, 118) : claimable ? rgba(255, 236, 190) : rgba(170, 156, 130), new Size(btnW - 12 * scale, btnH));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 18 * scale * fs, quest.claimed ? rgba(150, 138, 118) : claimable ? rgba(255, 236, 190) : rgba(170, 156, 130), new Size(btnW - 12 * scale, btnH));
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, scale, claimable);
     if (claimable) {
@@ -341,6 +360,10 @@ export class LobbyQuestMailPanelRenderer {
 
   // ── 邮件面板 ──
   renderMailPanel(layout: UiLayout): void {
+    if (isPhoneDesign()) {
+      this.renderMailPanelPhone(layout);
+      return;
+    }
     const scale = Math.max(0.72, Math.min(1, layout.uiScale));
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
@@ -406,6 +429,92 @@ export class LobbyQuestMailPanelRenderer {
       this.addMailRow(panel, mail, 0, cursor, rowW, rowH - 8 * scale, scale, state.claiming);
       cursor -= rowH;
     }
+  }
+
+  /**
+   * 手机横屏全屏邮件(2026-10-02 用户「横屏模式下弹框都调整成全屏」):公共全屏框 + 标题带;
+   * 邮件行放大(字号 ≥20)并放进 Mask+ScrollView,封数多时上下滑动查看;一键领取贴底。
+   */
+  private renderMailPanelPhone(layout: UiLayout): void {
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const { width: panelWidth, height: panelHeight } = resolvePhoneDialogSize(layout);
+    const headerH = 74;
+    const rowScale = 1.25;
+    const state = this.host.currentLobbyMailState();
+
+    this.mountDim('LobbyMailDim', centerX, centerY, layout, () => this.host.closeLobbyMailPanel());
+    const group = this.host.createUiNode('LobbyMailSceneContent');
+    group.setPosition(new Vec3(centerX, centerY, 0));
+    group.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
+    group.addComponent(BlockInputEvents);
+    const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, headerH);
+    const titleY = panelHeight / 2 - 6 - headerH / 2;
+    const title = this.host.addChildLabel(panel, 'Title', '邮件', 0, titleY, 34, rgba(244, 220, 166, 255), new Size(260, 46));
+    this.outline(title, 1, true);
+    const dividerW = 150;
+    this.host.addSprite('TitleDividerL', QUEST_UI_ASSETS.titleDividerLeft, -56 - dividerW / 2, titleY, dividerW, dividerW * (76 / 390), panel);
+    this.host.addSprite('TitleDividerR', QUEST_UI_ASSETS.titleDividerRight, 56 + dividerW / 2, titleY, dividerW, dividerW * (73 / 392), panel);
+    this.addCloseButton(panel, panelWidth / 2 - 46, titleY, 1.3, () => this.host.closeLobbyMailPanel());
+
+    if (state.loading && state.mails.length === 0) {
+      this.centerHint(panel, '邮件读取中…', rgba(214, 196, 156, 235), 1.2);
+      return;
+    }
+    if (state.error && state.mails.length === 0) {
+      this.centerHint(panel, `读取失败:${state.error}`, rgba(255, 150, 130, 235), 1.2);
+      return;
+    }
+    if (state.mails.length === 0) {
+      this.centerHint(panel, '暂无邮件', rgba(196, 182, 152, 220), 1.2);
+      return;
+    }
+
+    // 一键领取(有可领附件时)贴底居中
+    const anyClaimable = state.mails.some((mail) => !mail.claimed && mail.attachments.length > 0);
+    if (anyClaimable) {
+      const btnW = 230;
+      const btnH = 54;
+      const btn = this.host.addChildPlainNode(panel, 'ClaimAll', 0, -panelHeight / 2 + 16 + btnH / 2, btnW, btnH);
+      const g = btn.addComponent(Graphics);
+      g.fillColor = rgba(122, 32, 26, 240);
+      g.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 9);
+      g.fill();
+      g.strokeColor = rgba(240, 180, 90, 235);
+      g.lineWidth = 1.6;
+      g.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 9);
+      g.stroke();
+      const label = this.host.addChildLabel(btn, 'Text', state.claiming === -1 ? '领取中…' : '一键领取', 0, 0, 22, rgba(255, 236, 190), new Size(btnW - 16, btnH));
+      label.overflow = Label.Overflow.SHRINK;
+      if (state.claiming === null) {
+        btn.addComponent(Button);
+        btn.on(Button.EventType.CLICK, () => this.host.claimAllLobbyMails(), this);
+        this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
+      }
+    }
+
+    // 列表:Mask + ScrollView 单列滚动(行高 100,字号随 rowScale 放大)
+    const listTop = panelHeight / 2 - 6 - headerH - 14;
+    const listBottom = -panelHeight / 2 + (anyClaimable ? 84 : 22);
+    const listHeight = Math.max(100, listTop - listBottom);
+    const rowW = panelWidth - PHONE_DIALOG_CONTENT_PAD * 2;
+    const rowH = 100;
+    const listNode = this.host.addChildPlainNode(panel, 'MailList', 0, listBottom + listHeight / 2, rowW + 12, listHeight);
+    listNode.addComponent(Mask);
+    const contentHeight = Math.max(listHeight, state.mails.length * rowH);
+    const contentNode = this.host.addChildPlainNode(listNode, 'MailListContent', 0, 0, rowW + 12, contentHeight);
+    contentNode.getComponent(UITransform)?.setAnchorPoint(0.5, 1);
+    contentNode.setPosition(0, listHeight / 2, 0);
+    const scroll = listNode.addComponent(ScrollView);
+    scroll.content = contentNode;
+    scroll.horizontal = false;
+    scroll.vertical = true;
+    scroll.inertia = true;
+    scroll.elastic = true;
+    state.mails.forEach((mail, index) => {
+      this.addMailRow(contentNode, mail, 0, -rowH / 2 - index * rowH, rowW, rowH - 10, rowScale, state.claiming);
+    });
   }
 
   private addMailRow(parent: Node, mail: PlayerMailVO, x: number, y: number, width: number, height: number, scale: number, claiming: number | null): void {

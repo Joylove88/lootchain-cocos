@@ -12,6 +12,8 @@ import {
   Vec3,
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO } from '../../types/QuestTypes';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 
@@ -62,6 +64,10 @@ export class LobbyMorePanelRenderer {
   constructor(private readonly host: LobbyMorePanelHost) {}
 
   render(layout: UiLayout): void {
+    if (isPhoneDesign()) {
+      this.renderPhone(layout);
+      return;
+    }
     const scale = Math.max(0.72, Math.min(1, layout.uiScale));
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
@@ -140,10 +146,122 @@ export class LobbyMorePanelRenderer {
     // EditBox 走内容根绝对坐标(工厂挂根节点)。
     // 带金框 + 创建时传占位文字(原来用无框版且事后设 placeholder,输入框在画面上是隐形的)。
     this.giftCodeInput = this.host.addFramedEditBox('', inputX, centerY + inputY, inputWidth, layout, false, { placeholder: '输入礼包码' });
-    const redeeming = this.host.isLobbyGiftRedeeming();
     const btnW = 108 * scale;
     const btnH = 40 * scale;
-    const btn = this.host.addChildPlainNode(panel, 'GiftRedeemButton', -panelWidth / 2 + 42 * scale + inputWidth + 18 * scale + btnW / 2, inputY, btnW, btnH);
+    this.addGiftRedeemButton(panel, -panelWidth / 2 + 42 * scale + inputWidth + 18 * scale + btnW / 2, inputY, btnW, btnH, scale);
+
+    // ── 协议链接 + 客服邮箱(2026-09-25:协议可点开全文;字号按口径 16) ──
+    this.addFooterLinks(panel, -panelHeight / 2 + 28 * scale, 16 * scale, scale);
+  }
+
+  /**
+   * 手机横屏全屏版(2026-10-02 用户「横屏模式下弹框都调整成全屏」):
+   * 顶部标题带 + 右上 ×;左栏 = 邮件/设置/公告 三张大卡 + 兑换码,右栏 = 最近战报(行更高、可多列几条);底部协议链接。
+   */
+  private renderPhone(layout: UiLayout): void {
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const { width: panelWidth, height: panelHeight } = resolvePhoneDialogSize(layout);
+    const headerH = 74;
+    const pad = PHONE_DIALOG_CONTENT_PAD;
+    this.giftCodeInput = null;
+
+    this.mountDim(centerX, centerY, layout);
+    const group = this.host.createUiNode('LobbyMoreSceneContent');
+    group.setPosition(new Vec3(centerX, centerY, 0));
+    group.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
+    group.addComponent(BlockInputEvents);
+    const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, headerH);
+
+    const titleY = panelHeight / 2 - 6 - headerH / 2;
+    const title = this.host.addChildLabel(panel, 'Title', '更多', 0, titleY, 34, rgba(244, 220, 166, 255), new Size(260, 46));
+    this.outline(title, 1, true);
+    const dividerW = 150;
+    const dividerInner = 34 + 22;
+    this.host.addSprite('TitleDividerL', TITLE_DIVIDER_LEFT_ASSET, -dividerInner - dividerW / 2, titleY, dividerW, dividerW * TITLE_DIVIDER_LEFT_ASPECT, panel);
+    this.host.addSprite('TitleDividerR', TITLE_DIVIDER_RIGHT_ASSET, dividerInner + dividerW / 2, titleY, dividerW, dividerW * TITLE_DIVIDER_RIGHT_ASPECT, panel);
+    this.addCloseButton(panel, panelWidth / 2 - 46, titleY, 1.3);
+
+    const bodyTop = panelHeight / 2 - 6 - headerH - 22;
+    const footY = -panelHeight / 2 + 30;
+    const bodyBottom = footY + 30;
+    const colGap = 48;
+    const leftL = -panelWidth / 2 + pad;
+    const leftR = -colGap / 2;
+    const rightL = colGap / 2;
+    const rightR = panelWidth / 2 - pad;
+    const leftW = leftR - leftL;
+    const rightW = rightR - rightL;
+    const leftCx = (leftL + leftR) / 2;
+    // 两栏分隔细线
+    const sep = this.host.addChildPlainNode(panel, 'ColumnSep', 0, (bodyTop + bodyBottom) / 2, 4, bodyTop - bodyBottom);
+    const sg = sep.addComponent(Graphics);
+    sg.strokeColor = rgba(150, 114, 62, 110);
+    sg.lineWidth = 1.5;
+    sg.moveTo(0, (bodyTop - bodyBottom) / 2);
+    sg.lineTo(0, -(bodyTop - bodyBottom) / 2);
+    sg.stroke();
+
+    // ── 左栏:宫格(邮件 / 设置 / 公告)──
+    const unread = this.host.currentLobbyMailState().mails.filter((mail) => !mail.read).length;
+    const cards: Array<{ key: string; label: string; badge: number; onClick: () => void }> = [
+      { key: 'mail', label: '邮件', badge: unread, onClick: () => this.host.openLobbyMailPanel?.() },
+      { key: 'settings', label: '设置', badge: 0, onClick: () => this.host.openLobbySettingsPanel() },
+      { key: 'notice', label: '公告', badge: 0, onClick: () => this.host.openLobbyNoticePanel() },
+    ];
+    const cardGap = 28;
+    const cardW = Math.min(210, (leftW - cardGap * 2) / 3);
+    const cardH = cardW * 0.94;
+    const cardY = bodyTop - cardH / 2;
+    cards.forEach((card, index) => {
+      this.addGridCard(panel, card.key, card.label, card.badge, leftCx + (index - 1) * (cardW + cardGap), cardY, cardW, cardH, 1.3, card.onClick);
+    });
+
+    // ── 左栏:兑换码 ──
+    const giftTop = cardY - cardH / 2 - 44;
+    this.addSectionTitle(panel, 'gift', '兑换码', leftL, giftTop, panelWidth, 1.2, leftR);
+    const inputY = giftTop - 62;
+    const btnW = 150;
+    const btnH = 52;
+    const inputWidth = Math.min(420, leftW - btnW - 60);
+    const inputX = leftL + 14 + inputWidth / 2;
+    this.giftCodeInput = this.host.addFramedEditBox('', centerX + inputX, centerY + inputY, inputWidth, layout, false, { placeholder: '输入礼包码' });
+    this.addGiftRedeemButton(panel, inputX + inputWidth / 2 + 14 + 24 + btnW / 2, inputY, btnW, btnH, 1.3);
+
+    // ── 右栏:最近战报 ──
+    this.addSectionTitle(panel, 'battle', '最近战报', rightL, bodyTop - 14, panelWidth, 1.2, rightR);
+    const rowH = 46;
+    const listTop = bodyTop - 14 - 44;
+    const maxRows = Math.max(1, Math.floor((listTop - bodyBottom) / rowH));
+    const battles = this.host.currentLobbyBattleState().recentBattles.slice(0, maxRows);
+    if (battles.length === 0) {
+      const empty = this.host.addChildLabel(panel, 'BattleEmpty', '暂无战斗记录', rightL + 12, listTop, 20, rgba(150, 134, 104, 200), new Size(rightW - 24, 30), HorizontalTextAlignment.LEFT);
+      empty.overflow = Label.Overflow.SHRINK;
+    }
+    battles.forEach((battle, index) => {
+      const y = listTop - index * rowH;
+      const stripe = this.host.addChildPlainNode(panel, `BattleStripe_${index}`, (rightL + rightR) / 2, y, rightW, rowH - 6);
+      const bg = stripe.addComponent(Graphics);
+      bg.fillColor = index % 2 === 0 ? rgba(30, 24, 20, 170) : rgba(18, 15, 14, 140);
+      bg.roundRect(-rightW / 2, -(rowH - 6) / 2, rightW, rowH - 6, 6);
+      bg.fill();
+      const win = battle.result === 'WIN';
+      const when = (battle.recordedTime ?? '').replace('T', ' ').slice(5, 16);
+      const line = `${when}  ${this.host.lobbyStageDisplayLabel?.(battle.stageCode) ?? '主线关卡'}`;
+      const row = this.host.addChildLabel(panel, `BattleRow_${battle.battleNo}`, line, rightL + 16, y, 20, rgba(196, 178, 140, 225), new Size(rightW - 120, 30), HorizontalTextAlignment.LEFT);
+      row.overflow = Label.Overflow.SHRINK;
+      const verdict = this.host.addChildLabel(panel, `BattleVerdict_${battle.battleNo}`, win ? '胜利' : '失败', rightR - 50, y, 20, win ? rgba(150, 226, 130, 235) : rgba(240, 120, 100, 235), new Size(80, 30));
+      verdict.overflow = Label.Overflow.SHRINK;
+    });
+
+    this.addFooterLinks(panel, footY, 20, 1);
+  }
+
+  /** 兑换按钮(红底金边,兑换中置灰不可点)。 */
+  private addGiftRedeemButton(panel: Node, x: number, y: number, btnW: number, btnH: number, scale: number): void {
+    const redeeming = this.host.isLobbyGiftRedeeming();
+    const btn = this.host.addChildPlainNode(panel, 'GiftRedeemButton', x, y, btnW, btnH);
     const bg = btn.addComponent(Graphics);
     bg.fillColor = redeeming ? rgba(50, 40, 32, 220) : rgba(122, 32, 24, 240);
     bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 8 * scale);
@@ -162,10 +280,10 @@ export class LobbyMorePanelRenderer {
       }, this);
       this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
     }
+  }
 
-    // ── 协议链接 + 客服邮箱(2026-09-25:协议可点开全文;字号按口径 16) ──
-    const footY = -panelHeight / 2 + 28 * scale;
-    const linkFont = 16 * scale;
+  /** 协议链接 + 客服邮箱(2026-09-25:协议可点开全文);中文按 1 字宽、ASCII 按半字宽估算,整行居中。 */
+  private addFooterLinks(panel: Node, footY: number, linkFont: number, scale: number): void {
     const parts: Array<{ name: string; text: string; doc?: 'terms' | 'privacy' }> = [
       { name: 'TermsLink', text: '用户协议', doc: 'terms' },
       { name: 'FooterDot1', text: ' · ' },
@@ -173,7 +291,6 @@ export class LobbyMorePanelRenderer {
       { name: 'FooterDot2', text: ' · ' },
       { name: 'SupportNote', text: '客服:support@lootchain.game' },
     ];
-    // 中文按 1 字宽、ASCII 按半字宽估算,整行居中。
     const textWidth = (text: string): number => Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0xff ? 1 : 0.55), 0) * linkFont;
     const widths = parts.map((part) => textWidth(part.text));
     let footX = -widths.reduce((sum, width) => sum + width, 0) / 2;
@@ -226,7 +343,7 @@ export class LobbyMorePanelRenderer {
     this.host.applyImageButtonFeedback(card, 1.04, 0.96);
   }
 
-  private addSectionTitle(parent: Node, iconKey: string, text: string, leftX: number, y: number, panelWidth: number, scale: number): void {
+  private addSectionTitle(parent: Node, iconKey: string, text: string, leftX: number, y: number, panelWidth: number, scale: number, lineEndX = panelWidth / 2 - 30 * scale): void {
     const iconSize = 20 * scale;
     this.host.addSprite(`SectionIcon_${iconKey}`, MORE_ICON_ASSETS[iconKey] ?? '', leftX + iconSize / 2, y, iconSize, iconSize, parent);
     const label = this.host.addChildLabel(parent, `SectionTitle_${iconKey}`, text, leftX + iconSize + 8 * scale, y, 18 * scale, rgba(231, 205, 142, 245), new Size(160 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
@@ -236,7 +353,7 @@ export class LobbyMorePanelRenderer {
     parentGraphics.strokeColor = rgba(150, 114, 62, 130);
     parentGraphics.lineWidth = Math.max(1, scale);
     parentGraphics.moveTo(leftX + iconSize + 8 * scale + 76 * scale, y);
-    parentGraphics.lineTo(panelWidth / 2 - 30 * scale, y);
+    parentGraphics.lineTo(lineEndX, y);
     parentGraphics.stroke();
   }
 

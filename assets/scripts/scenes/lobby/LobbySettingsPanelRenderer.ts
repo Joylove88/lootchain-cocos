@@ -14,7 +14,17 @@ import {
 import { gameAudio } from '../../audio/GameAudio';
 import { lootChainI18n, type LootChainLanguage } from '../../i18n/LootChainI18n';
 import { renderSceneBackButton } from '../UiSceneBackButton';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+
+/** 手机全屏版里语言 / 声音两区左右并排时的区块矩形(面板内坐标)与区内字号放大系数。 */
+interface SettingsSectionRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  s: number;
+}
 
 export interface LobbySettingsPanelHost {
   createUiNode(name: string): Node;
@@ -41,15 +51,32 @@ export interface LobbySettingsPanelHost {
  * 大厅设置页当前只承载本地显示语言切换，不连接账号、经济、背包、英雄养成或抽卡写接口。
  */
 export class LobbySettingsPanelRenderer {
+  /** 手机全屏时两区并排的矩形;电脑端为 null(走原来上下叠放的固定偏移)。 */
+  private languageRect: SettingsSectionRect | null = null;
+  private audioRect: SettingsSectionRect | null = null;
+
   constructor(private readonly host: LobbySettingsPanelHost) {}
 
   render(layout: UiLayout): void {
     const scale = Math.max(0.72, Math.min(1, layout.uiScale));
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const panelWidth = Math.min(layout.stageWidth - 44 * scale, 620 * scale);
+    // 手机横屏全屏(2026-10-02 用户「横屏模式下弹框都调整成全屏」):与公告页同口径铺满舞台,语言 / 声音两区左右并排放大。
+    const phone = isPhoneDesign();
+    const panelWidth = phone ? layout.stageWidth : Math.min(layout.stageWidth - 44 * scale, 620 * scale);
     // 2026-09-04 音效开关入驻:面板加高一档容纳"声音"区。
-    const panelHeight = Math.min(layout.stageHeight - 86 * scale, 500 * scale);
+    const panelHeight = phone ? layout.stageHeight : Math.min(layout.stageHeight - 86 * scale, 500 * scale);
+    if (phone) {
+      const gap = 56;
+      const sectionW = Math.min(620, (panelWidth - gap * 3) / 2);
+      const sectionH = Math.min(280, panelHeight - 220);
+      const sectionY = -20;
+      this.languageRect = { x: -sectionW / 2 - gap / 2, y: sectionY, w: sectionW, h: sectionH, s: 1.3 };
+      this.audioRect = { x: sectionW / 2 + gap / 2, y: sectionY, w: sectionW, h: sectionH, s: 1.3 };
+    } else {
+      this.languageRect = null;
+      this.audioRect = null;
+    }
 
     const dim = this.createUiNode('LobbySettingsDim');
     dim.setPosition(new Vec3(centerX, centerY, 0));
@@ -76,8 +103,10 @@ export class LobbySettingsPanelRenderer {
       rgba(192, 145, 66, 226),
       18 * scale,
     );
-    this.drawPanelChrome(panel, panelWidth, panelHeight, scale);
-    this.renderHeader(panel, panelWidth, panelHeight, scale);
+    if (!phone) {
+      this.drawPanelChrome(panel, panelWidth, panelHeight, scale);
+    }
+    this.renderHeader(panel, panelWidth, panelHeight, phone ? 1.2 : scale, phone ? panelHeight / 2 - 120 : undefined);
     this.renderLanguageSection(panel, panelWidth, panelHeight, scale);
     this.renderAudioSection(panel, panelWidth, panelHeight, scale);
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbySettingsBackButton', () => this.host.closeLobbySettingsPanel(), scale, lootChainI18n.t('settings.title'));
@@ -87,7 +116,7 @@ export class LobbySettingsPanelRenderer {
     return this.host.createUiNode(name);
   }
 
-  private renderHeader(parent: Node, width: number, height: number, scale: number): void {
+  private renderHeader(parent: Node, width: number, height: number, scale: number, y = height / 2 - 91 * scale): void {
     // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
 
     const subtitle = this.host.addChildLabel(
@@ -95,7 +124,7 @@ export class LobbySettingsPanelRenderer {
       'LobbySettingsSubtitle',
       lootChainI18n.t('settings.languageDetail'),
       0,
-      height / 2 - 91 * scale, 19 * scale,
+      y, 19 * scale,
       rgba(198, 168, 104),
       new Size(width - 118 * scale, 28 * scale),
     );
@@ -103,15 +132,17 @@ export class LobbySettingsPanelRenderer {
     this.applyOutline(subtitle, scale, false);
   }
 
-  private renderLanguageSection(parent: Node, width: number, height: number, scale: number): void {
-    const sectionWidth = Math.min(width - 82 * scale, 490 * scale);
+  private renderLanguageSection(parent: Node, width: number, height: number, panelScale: number): void {
+    const rect = this.languageRect;
+    const scale = rect ? rect.s : panelScale;
+    const sectionWidth = rect ? rect.w : Math.min(width - 82 * scale, 490 * scale);
     // 2026-09-04:压缩语言区(190→150)给下方"声音"区腾位。
-    const sectionHeight = 150 * scale;
-    const sectionY = height / 2 - 116 * scale - 14 * scale - sectionHeight / 2;
+    const sectionHeight = rect ? rect.h : 150 * scale;
+    const sectionY = rect ? rect.y : height / 2 - 116 * scale - 14 * scale - sectionHeight / 2;
     const section = this.host.addChildBeveledPanelNode(
       parent,
       'LobbySettingsLanguagePanel',
-      0,
+      rect ? rect.x : 0,
       sectionY,
       sectionWidth,
       sectionHeight,
@@ -149,22 +180,24 @@ export class LobbySettingsPanelRenderer {
     const buttonWidth = Math.min(186 * scale, (sectionWidth - 84 * scale) / 2);
     const buttonHeight = 44 * scale;
     const gap = 24 * scale;
-    const buttonY = -sectionHeight / 2 + 34 * scale;
+    const buttonY = rect ? -sectionHeight / 2 + 78 : -sectionHeight / 2 + 34 * scale;
     this.addLanguageButton(section, 'zh-CN', -buttonWidth / 2 - gap / 2, buttonY, buttonWidth, buttonHeight, scale);
     this.addLanguageButton(section, 'en-US', buttonWidth / 2 + gap / 2, buttonY, buttonWidth, buttonHeight, scale);
   }
 
   /** 声音区(音效底铺配套,2026-09-04):音乐/音效开关,状态持久化在 GameAudio;点击原地重建刷新。 */
-  private renderAudioSection(parent: Node, width: number, height: number, scale: number): void {
+  private renderAudioSection(parent: Node, width: number, height: number, panelScale: number): void {
     parent.getChildByName('LobbySettingsAudioPanel')?.destroy();
-    const sectionWidth = Math.min(width - 82 * scale, 490 * scale);
-    const sectionHeight = 130 * scale;
+    const rect = this.audioRect;
+    const scale = rect ? rect.s : panelScale;
+    const sectionWidth = rect ? rect.w : Math.min(width - 82 * scale, 490 * scale);
+    const sectionHeight = rect ? rect.h : 130 * scale;
     const languageBottom = height / 2 - 116 * scale - 14 * scale - 150 * scale;
-    const sectionY = languageBottom - 14 * scale - sectionHeight / 2;
+    const sectionY = rect ? rect.y : languageBottom - 14 * scale - sectionHeight / 2;
     const section = this.host.addChildBeveledPanelNode(
       parent,
       'LobbySettingsAudioPanel',
-      0,
+      rect ? rect.x : 0,
       sectionY,
       sectionWidth,
       sectionHeight,
@@ -177,7 +210,8 @@ export class LobbySettingsPanelRenderer {
       'LobbySettingsAudioLabel',
       '声音',
       -sectionWidth / 2 + 30 * scale,
-      sectionHeight / 2 - 34 * scale,
+      // 手机两区并排:标题与左边「语言」同一行高
+      rect ? sectionHeight / 2 - 42 * scale : sectionHeight / 2 - 34 * scale,
       22 * scale,
       rgba(245, 218, 151),
       new Size(sectionWidth - 60 * scale, 34 * scale),
@@ -185,10 +219,24 @@ export class LobbySettingsPanelRenderer {
     );
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, true);
+    if (rect) {
+      // 手机两区并排:补一行说明与左边「当前语言」对齐,免得右区标题下方空一大块。
+      const detail = this.host.addChildLabel(
+        section,
+        'LobbySettingsAudioDetail',
+        '背景音乐与音效开关,切换后立即生效',
+        -sectionWidth / 2 + 30 * scale,
+        sectionHeight / 2 - 75 * scale, 18 * scale,
+        rgba(184, 163, 118),
+        new Size(sectionWidth - 60 * scale, 26 * scale),
+        HorizontalTextAlignment.LEFT,
+      );
+      detail.overflow = Label.Overflow.SHRINK;
+    }
     const buttonWidth = Math.min(186 * scale, (sectionWidth - 84 * scale) / 2);
     const buttonHeight = 44 * scale;
     const gap = 24 * scale;
-    const buttonY = -sectionHeight / 2 + 34 * scale;
+    const buttonY = rect ? -sectionHeight / 2 + 78 : -sectionHeight / 2 + 34 * scale;
     this.addAudioToggle(section, parent, width, height, '音乐', gameAudio.bgmEnabled(), () => gameAudio.setBgmEnabled(!gameAudio.bgmEnabled()), -buttonWidth / 2 - gap / 2, buttonY, buttonWidth, buttonHeight, scale);
     this.addAudioToggle(section, parent, width, height, '音效', gameAudio.sfxEnabled(), () => gameAudio.setSfxEnabled(!gameAudio.sfxEnabled()), buttonWidth / 2 + gap / 2, buttonY, buttonWidth, buttonHeight, scale);
   }

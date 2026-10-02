@@ -5,7 +5,9 @@ import {
   Graphics,
   HorizontalTextAlignment,
   Label,
+  Mask,
   Node,
+  ScrollView,
   Size,
   Sprite,
   UIOpacity,
@@ -19,6 +21,7 @@ import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
 export const BAG_C1812_ITEM_SLOT_ASSET = 'ui/common/ai/item_slot/spriteFrame';
@@ -114,6 +117,9 @@ export const BAG_AI_ITEM_ICON_ASSETS: Record<string, string> = {
   // 守卫水晶升级材料(docs/38 §9):水晶塔顶晶簇裁出的图标。
   GUARD_CORE: 'ui/bag/ai/icon_guard_core/spriteFrame',
 };
+// 格阵实建封顶:装备虚拟条目可能上百件,全建会拖慢开屏(同锻造列表 60 行封顶的口径);超出时尾部提示按分类筛选。
+const BAG_GRID_RENDER_CAP = 240;
+
 const BAG_AI_SHARD_ICON_ASSETS: Record<string, string> = {
   N: 'ui/bag/ai/icon_shard_n/spriteFrame',
   R: 'ui/bag/ai/icon_shard_r/spriteFrame',
@@ -253,6 +259,11 @@ export class LobbyBagPanelRenderer {
   // 本地展示态:侧栏过滤分类 + 详情弹窗开关(纯前端,不写任何接口)。
   private selectedGroupKey = 'ALL';
   private detailPopupOpen = false;
+  // 格阵滚动位置(content.y)与其所属分类:重绘时恢复,换分类/关背包回顶。
+  private gridScrollY: number | null = null;
+  private gridScrollKey = '';
+  // 手机全屏弹窗区域(相对背包场景中心,已扣安全边距);电脑为 null,走原居中弹窗。每次 render 重算。
+  private phoneDialogRect: PhoneDialogRect | null = null;
 
   /** 道具卖光后关掉详情弹窗(否则会回落显示列表第一件)。 */
   closeDetailPopup(): void {
@@ -305,6 +316,19 @@ export class LobbyBagPanelRenderer {
     // 顶部装饰(横梁/副标题/chips)移除:左上标题+顶部货币展示+右上关闭。
     this.renderBagCurrencyBar(panel, panelWidth, panelHeight, scale);
     this.renderBagBody(panel, panelWidth, panelHeight, scale, state);
+    const renderBackButton = (): void => {
+      renderSceneBackButton(this.host, panelGroup, layout, 'LobbyBagBackButton', () => {
+        this.detailPopupOpen = false;
+        this.gridScrollY = null;
+        this.host.closeLobbyBagPanel();
+      }, scale, '背包');
+    };
+    // 手机(H5 横屏,2026-10-02 用户拍板):详情/合成/出售/合成结果弹窗铺满舞台,返回钮先画、被全屏弹窗盖住,
+    // 免得与弹窗右上的关闭钮叠在同一位置误关整个背包。电脑保持原来居中弹窗 + 返回钮压在最上。
+    this.phoneDialogRect = isPhoneDesign() ? resolvePhoneDialogRect(layout, centerX, centerY) : null;
+    if (this.phoneDialogRect) {
+      renderBackButton();
+    }
     // 详情改为居中弹窗:点格子打开,叠在场景内容之上,随场景一起清理。
     const popupItems = flatItems(state.groups);
     if (this.detailPopupOpen && popupItems.length > 0) {
@@ -315,10 +339,9 @@ export class LobbyBagPanelRenderer {
     if (composeResult) {
       this.renderComposeResultDialog(panelGroup, composeResult, scale);
     }
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyBagBackButton', () => {
-      this.detailPopupOpen = false;
-      this.host.closeLobbyBagPanel();
-    }, scale, '背包');
+    if (!this.phoneDialogRect) {
+      renderBackButton();
+    }
   }
 
   // 面板复用内容签名:凡影响渲染的输入都纳入(侧栏筛选/详情弹窗态/加载态/钱包/道具逐项数量/来源信息)。
@@ -426,11 +449,8 @@ export class LobbyBagPanelRenderer {
     const bodyWidth = panelArt ? width * 0.84 : width - 12 * scale;
     const railTopInset = panelArt ? height * 0.13 : 20 * scale;
     const railBottomInset = panelArt ? height * 0.075 : 0;
-    // 行高收紧(上限 72),从板顶顺排。
     const availableHeight = height - railTopInset - railBottomInset;
-    const rowHeight = Math.min(72 * scale, availableHeight / 7);
     const rowWidth = bodyWidth;
-    const maxRows = Math.max(1, Math.floor(availableHeight / rowHeight));
     // 固定分类全集(参考图):没有道具的分类也展示,计数 0;服务端有额外分类则追加。
     const presetGroups: Array<{ key: string; label: string }> = [
       { key: 'MATERIAL', label: '材料' },
@@ -459,6 +479,10 @@ export class LobbyBagPanelRenderer {
           count: group.items.reduce((sum, item) => sum + safeNumber(item.itemCount), 0),
         })),
     ];
+    // 行高收紧(上限 72),从板顶顺排;行数按实际分类数分配(2026-10-02:手机设计高 720 下原按 7 行均分,
+    // 服务端追加的第 8 类「门票」被截掉点不到)。
+    const rowHeight = Math.min(72 * scale, availableHeight / Math.max(7, rows.length));
+    const maxRows = Math.max(1, Math.floor(availableHeight / rowHeight));
     // 行间淡金分割线(参考 Diablo 侧栏)。
     const railSeparators = this.host.addChildPlainNode(rail, 'LobbyBagGroupRailSeparators', 0, 0, width, height);
     const railSeparatorGraphics = railSeparators.addComponent(Graphics);
@@ -541,27 +565,91 @@ export class LobbyBagPanelRenderer {
     // 新容器板无面具:首行只需让开顶部边框与容量行。
     const gridTop = height / 2 - Math.max(capHeight + 30 * scale, height * 0.155);
     const footerReserve = height * 0.155;
-    const rows = Math.max(1, Math.floor((gridTop + height / 2 - footerReserve + gap) / (cellSize + gap)));
-    const maxItems = Math.min(items.length, columns * rows);
     const innerWidth = cellSize * columns + gap * (columns - 1);
-    const startX = -innerWidth / 2 + cellSize / 2;
-    const startY = gridTop - cellSize / 2;
 
-    for (let index = 0; index < maxItems; index += 1) {
-      const item = items[index];
+    // 2026-10-02 用户反馈「背包中无法上下滚动,看不到其他道具」:格阵改 Mask + ScrollView 纵向滚动
+    // (触屏拖动 + 鼠标滚轮,电脑/手机通用),原来只画首屏几行、其余只给「已显示 N/M 件」提示。
+    // 视口上下各留选中光环外扩余量;下沿让开板内说明文字。重绘(点格子开详情等)按分类记住滚动位置。
+    const ringPad = 8 * scale;
+    const viewportBottom = -height / 2 + footerReserve + 14 * scale;
+    const viewportWidth = innerWidth + ringPad * 2;
+    const shownItems = items.slice(0, BAG_GRID_RENDER_CAP);
+    const hiddenCount = items.length - shownItems.length;
+    const rows = Math.ceil(shownItems.length / columns);
+    const hintHeight = hiddenCount > 0 ? 36 * scale : 0;
+    const neededHeight = ringPad * 2 + rows * cellSize + Math.max(0, rows - 1) * gap + hintHeight;
+    // 一屏放得下(不滚动)时首行位置与旧版完全一致;需要滚动时视口上沿再让开右上容量胶囊,
+    // 否则滚到半截的格子会从胶囊底下露出来。
+    const fitsWithoutScroll = neededHeight <= gridTop + ringPad - viewportBottom;
+    const viewportTop = fitsWithoutScroll ? gridTop + ringPad : Math.min(gridTop + ringPad, capY - capHeight / 2 - 2 * scale);
+    const viewportHeight = Math.max(cellSize + ringPad * 2, viewportTop - viewportBottom);
+    const contentHeight = Math.max(viewportHeight, neededHeight);
+    const viewport = this.host.addChildPlainNode(grid, 'LobbyBagItemGridScroll', 0, (viewportTop + viewportBottom) / 2, viewportWidth, viewportHeight);
+    const mask = viewport.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
+    const scrollView = viewport.addComponent(ScrollView);
+    scrollView.horizontal = false;
+    scrollView.vertical = true;
+    scrollView.inertia = true;
+    scrollView.elastic = true;
+    scrollView.cancelInnerEvents = true;
+    const contentBaseY = (viewportHeight - contentHeight) / 2;
+    const content = this.host.addChildPlainNode(viewport, 'LobbyBagItemGridScrollContent', 0, contentBaseY, viewportWidth, contentHeight);
+    scrollView.content = content;
+    const startX = -innerWidth / 2 + cellSize / 2;
+    const startY = contentHeight / 2 - ringPad - cellSize / 2;
+
+    shownItems.forEach((item, index) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
-      this.renderItemCard(grid, item, index, item.itemCode === selectedItem.itemCode, startX + column * (cellSize + gap), startY - row * (cellSize + gap), cellSize, cellSize, scale);
+      this.renderItemCard(content, item, index, item.itemCode === selectedItem.itemCode, startX + column * (cellSize + gap), startY - row * (cellSize + gap), cellSize, cellSize, scale);
+    });
+    if (hiddenCount > 0) {
+      const more = this.host.addChildLabel(content, 'LobbyBagMoreHint', `已显示 ${shownItems.length}/${items.length} 件 · 用左侧分类筛选查看其余`, 0, -contentHeight / 2 + ringPad + hintHeight / 2, 17 * scale, rgba(186, 168, 132), new Size(viewportWidth - 24 * scale, 24 * scale));
+      more.overflow = Label.Overflow.SHRINK;
+    }
+
+    // 滚动位置:同一分类内重绘时恢复(夹到合法区间),换分类回顶。
+    const maxOffset = Math.max(0, contentHeight - viewportHeight);
+    if (this.gridScrollKey !== this.selectedGroupKey) {
+      this.gridScrollKey = this.selectedGroupKey;
+      this.gridScrollY = null;
+    }
+    if (this.gridScrollY !== null) {
+      content.setPosition(0, Math.min(contentBaseY + maxOffset, Math.max(contentBaseY, this.gridScrollY)));
+    }
+    // 右侧细滚动条:内容超出视口时才画,提示还能往下翻;滚动中跟随重绘。
+    if (maxOffset > 1) {
+      const trackHeight = viewportHeight - ringPad * 2;
+      const thumbHeight = Math.max(36 * scale, trackHeight * (viewportHeight / contentHeight));
+      const barWidth = 5 * scale;
+      const barX = Math.min(width / 2 - width * 0.035, viewportWidth / 2 + 10 * scale);
+      const bar = this.host.addChildPlainNode(grid, 'LobbyBagItemGridScrollBar', barX, viewport.position.y, barWidth, trackHeight);
+      const barGraphics = bar.addComponent(Graphics);
+      const drawBar = (): void => {
+        const offset = Math.min(maxOffset, Math.max(0, content.position.y - contentBaseY));
+        const thumbTop = trackHeight / 2 - (trackHeight - thumbHeight) * (offset / maxOffset);
+        barGraphics.clear();
+        barGraphics.fillColor = rgba(60, 50, 38, 150);
+        barGraphics.roundRect(-barWidth / 2, -trackHeight / 2, barWidth, trackHeight, barWidth / 2);
+        barGraphics.fill();
+        barGraphics.fillColor = rgba(214, 176, 104, 220);
+        barGraphics.roundRect(-barWidth / 2, thumbTop - thumbHeight, barWidth, thumbHeight, barWidth / 2);
+        barGraphics.fill();
+      };
+      drawBar();
+      viewport.on(ScrollView.EventType.SCROLLING, () => {
+        this.gridScrollY = content.position.y;
+        drawBar();
+      }, this);
+    } else {
+      this.gridScrollY = null;
     }
 
     if (items.length === 0) {
       const empty = this.host.addChildLabel(grid, 'LobbyBagGridEmptyHint', '该分类暂无道具', 0, 0, 19 * scale, rgba(180, 160, 122), new Size(width - 40 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
       this.applyOutline(empty, scale, false);
-    }
-    if (items.length > maxItems) {
-      const more = this.host.addChildLabel(grid, 'LobbyBagMoreHint', `已显示 ${maxItems}/${items.length} 件`, 0, -height / 2 + height * 0.185, 14 * scale, rgba(145, 128, 96), new Size(width - 18 * scale, 18 * scale));
-      more.overflow = Label.Overflow.SHRINK;
     }
 
     // 底部说明与刷新移入板内(不遮下边框)。
@@ -650,6 +738,10 @@ export class LobbyBagPanelRenderer {
   // 居中详情弹窗(参考图):遮罩点击或右上 X 关闭;用途/获取途径/操作按钮(只读禁用)/出售横幅。
   // 框整图非等比拉宽到参考图比例(角饰轻微加宽可接受),内容按比例内边距排布。
   private renderDetailPopup(parent: Node, item: BagItemEntryVO, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
+    if (this.phoneDialogRect) {
+      this.renderDetailPopupPhone(parent, item, this.phoneDialogRect, panelWidth, panelHeight, scale, state);
+      return;
+    }
     const frameAspect = 1.5;
     let width = Math.min(584 * scale, panelWidth - 110 * scale);
     let height = width * frameAspect;
@@ -831,11 +923,21 @@ export class LobbyBagPanelRenderer {
     const buttonRightX = contentWidth * 0.253;
     const buttonRow1Y = platesBottom - 5 * scale - buttonHeight / 2;
     const buttonRow2Y = buttonRow1Y - buttonHeight - 0.3 * scale;
+    this.renderDetailActions(detail, item, state, scale, buttonWidth, buttonHeight, [
+      [buttonLeftX, buttonRow1Y],
+      [buttonRightX, buttonRow1Y],
+      [buttonLeftX, buttonRow2Y],
+      [buttonRightX, buttonRow2Y],
+    ]);
+  }
+
+  // 详情操作钮(使用/合成/来源/出售,按 slots 顺序摆放)+ 挂在其上的出售/合成确认弹窗;电脑 2×2、手机一排 4 个共用。
+  private renderDetailActions(detail: Node, item: BagItemEntryVO, state: LobbyBagPanelState, scale: number, buttonWidth: number, buttonHeight: number, slots: Array<[number, number]>): void {
     // 使用(2026-07-24 开放):金币/钻石/体力/固定礼包/随机箱可直接用;经验书走英雄页,虚拟条目(装备/碎片)不可用。
     const usableEffects = ['ADD_GOLD', 'ADD_DIAMOND', 'ADD_STAMINA', 'RANDOM_REWARD', 'FIXED_REWARD'];
     const isVirtualEntry = (item.itemCode || '').includes(':');
     const canUse = !isVirtualEntry && usableEffects.includes((item.useEffectType || '').toUpperCase()) && safeNumber(item.itemCount) > 0;
-    const useButton = this.addDetailActionButton(detail, 'LobbyBagUseButton', '使用', BAG_AI_OP_ICON_USE_ASSET, buttonLeftX, buttonRow1Y, buttonWidth, buttonHeight, scale, canUse);
+    const useButton = this.addDetailActionButton(detail, 'LobbyBagUseButton', '使用', BAG_AI_OP_ICON_USE_ASSET, slots[0][0], slots[0][1], buttonWidth, buttonHeight, scale, canUse);
     if (canUse) {
       useButton.on(Button.EventType.CLICK, () => this.host.useLobbyBagItem(item.itemCode), this);
     }
@@ -849,14 +951,14 @@ export class LobbyBagPanelRenderer {
     };
     const composeNeed = composeRules[(item.itemCode || '').toUpperCase()];
     const canCompose = composeNeed != null && safeNumber(item.itemCount) >= composeNeed;
-    const composeButton = this.addDetailActionButton(detail, 'LobbyBagComposeButton', '合成', BAG_AI_OP_ICON_FORGE_ASSET, buttonRightX, buttonRow1Y, buttonWidth, buttonHeight, scale, canCompose);
+    const composeButton = this.addDetailActionButton(detail, 'LobbyBagComposeButton', '合成', BAG_AI_OP_ICON_FORGE_ASSET, slots[1][0], slots[1][1], buttonWidth, buttonHeight, scale, canCompose);
     if (canCompose) {
       composeButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagComposeDialog(item.itemCode), this);
     }
-    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, buttonLeftX, buttonRow2Y, buttonWidth, buttonHeight, scale, !state.sourceLoading);
+    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, slots[2][0], slots[2][1], buttonWidth, buttonHeight, scale, !state.sourceLoading);
     sourceButton.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
     const sellable = !isVirtualEntry && safeNumber(item.sellGold) > 0 && safeNumber(item.itemCount) > 0;
-    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', BAG_AI_OP_ICON_GOLD_ASSET, buttonRightX, buttonRow2Y, buttonWidth, buttonHeight, scale, sellable);
+    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', BAG_AI_OP_ICON_GOLD_ASSET, slots[3][0], slots[3][1], buttonWidth, buttonHeight, scale, sellable);
     if (sellable) {
       sellButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagSellDialog(item.itemCode), this);
     }
@@ -868,6 +970,262 @@ export class LobbyBagPanelRenderer {
     if (composeState.itemCode === item.itemCode) {
       this.renderComposeDialog(detail.parent ?? detail, item, composeState.times, scale);
     }
+  }
+
+  // 手机全屏详情(2026-10-02 用户拍板「横屏弹框都调整成全屏」):程序绘制面板铺满舞台(竖框素材不做非等比拉伸),
+  // 左列大图标 + 拥有/堆叠/出售价/过期,右列用途(可两行)+ 获取途径条 + 底部一排 4 个操作钮。
+  private renderDetailPopupPhone(parent: Node, item: BagItemEntryVO, rect: PhoneDialogRect, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
+    const width = rect.width;
+    const height = rect.height;
+    const dim = this.host.addChildPlainNode(parent, 'LobbyBagDetailPopupDim', 0, 0, panelWidth, panelHeight);
+    const dimGraphics = dim.addComponent(Graphics);
+    dimGraphics.fillColor = rgba(0, 0, 0, 190);
+    dimGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    dimGraphics.fill();
+    dim.addComponent(BlockInputEvents);
+
+    const detail = this.host.addChildPlainNode(parent, 'LobbyBagItemDetail', rect.x, rect.y, width, height);
+    detail.addComponent(BlockInputEvents);
+    this.drawPhoneDialogPanel(detail, width, height, scale);
+    const closePopup = (): void => {
+      this.detailPopupOpen = false;
+      if (detail.isValid) {
+        detail.destroy();
+      }
+      if (dim.isValid) {
+        dim.destroy();
+      }
+      this.host.clearLobbyBagSelection();
+    };
+    const closeSize = 58 * scale;
+    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', width / 2 - 44 * scale, height / 2 - 42 * scale, closeSize + 10 * scale, closeSize + 10 * scale);
+    this.host.addSprite('LobbyBagDetailCloseArt', BAG_AI_CLOSE_BUTTON_ASSET, 0, 0, closeSize, closeSize, closeButton);
+    closeButton.addComponent(Button);
+    this.host.applyImageButtonFeedback(closeButton, 1.08, 0.92);
+    closeButton.on(Button.EventType.CLICK, closePopup, this);
+
+    // 顶栏:名称(标题 34)+ 稀有度·类型,左对齐;下方金色细分隔线。
+    const pad = 36 * scale;
+    const left = -width / 2 + pad;
+    const right = width / 2 - pad;
+    const title = this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), left, height / 2 - 42 * scale, 34 * scale, rgba(248, 220, 153), new Size(width - pad * 2 - 120 * scale, 44 * scale), HorizontalTextAlignment.LEFT);
+    title.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(title, scale, true);
+    const subtitle = this.host.addChildLabel(detail, 'LobbyBagDetailSubtitle', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, left, height / 2 - 80 * scale, 20 * scale, this.rarityColor(item.rarity), new Size(width * 0.5, 26 * scale), HorizontalTextAlignment.LEFT);
+    subtitle.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(subtitle, scale, false);
+    const lines = this.host.addChildPlainNode(detail, 'LobbyBagDetailSeparators', 0, 0, width, height);
+    const lineGraphics = lines.addComponent(Graphics);
+    lineGraphics.strokeColor = rgba(206, 168, 104, 90);
+    lineGraphics.lineWidth = Math.max(1, 1.2 * scale);
+    const headerLineY = height / 2 - 104 * scale;
+    lineGraphics.moveTo(left, headerLineY);
+    lineGraphics.lineTo(right, headerLineY);
+    lineGraphics.stroke();
+
+    const bodyTop = headerLineY - 18 * scale;
+    const bodyBottom = -height / 2 + pad * 0.8;
+    const leftWidth = width * 0.3;
+    const gutter = 44 * scale;
+    // 左列:大图标 + 4 行信息(拥有数量用数额 28 字号)。
+    const infoRows: Array<[string, string, boolean]> = [
+      ['拥有数量', formatCompact(safeNumber(item.itemCount)), true],
+      ['堆叠', formatCompact(safeNumber(item.maxStack)), false],
+      ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', false],
+      ['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久', false],
+    ];
+    const infoRowHeight = 50 * scale;
+    const iconSize = Math.max(96 * scale, Math.min(leftWidth * 0.6, 220 * scale, bodyTop - bodyBottom - infoRows.length * infoRowHeight - 30 * scale));
+    const iconX = left + leftWidth / 2;
+    const iconY = bodyTop - iconSize / 2 - 4 * scale;
+    this.host.addSprite('LobbyBagDetailSlotArt', BAG_AI_SLOT_BASE_ASSET, iconX, iconY, iconSize, iconSize, detail);
+    const popupIcon = bagItemIconAsset(item);
+    if (popupIcon) {
+      this.host.addSprite('LobbyBagDetailIcon', popupIcon, iconX, iconY, iconSize * 0.86, iconSize * 0.86, detail);
+    } else {
+      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), iconX, iconY, iconSize * 0.68, iconSize * 0.68, detail);
+    }
+    this.addCleanSlotFrame(detail, 'LobbyBagDetailRarityFrame', iconX, iconY, iconSize, scale * 1.4, item.rarity);
+    const infoTop = iconY - iconSize / 2 - 22 * scale;
+    infoRows.forEach(([rowTitle, rowValue, strong], index) => {
+      const rowY = infoTop - infoRowHeight / 2 - index * infoRowHeight;
+      const titleLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoTitle_${index}`, rowTitle, left, rowY, 20 * scale, rgba(224, 200, 150), new Size(leftWidth * 0.42, 28 * scale), HorizontalTextAlignment.LEFT);
+      titleLabel.overflow = Label.Overflow.SHRINK;
+      const valueLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoValue_${index}`, rowValue, left + leftWidth, rowY, (strong ? 28 : 20) * scale, strong ? rgba(255, 232, 168) : rgba(206, 188, 150), new Size(leftWidth * 0.58, 34 * scale), HorizontalTextAlignment.RIGHT);
+      valueLabel.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(valueLabel, scale, strong);
+      lineGraphics.moveTo(left, rowY - infoRowHeight / 2);
+      lineGraphics.lineTo(left + leftWidth, rowY - infoRowHeight / 2);
+      lineGraphics.stroke();
+    });
+    // 两列竖分隔线。
+    const dividerX = left + leftWidth + gutter / 2;
+    lineGraphics.moveTo(dividerX, bodyTop);
+    lineGraphics.lineTo(dividerX, bodyBottom);
+    lineGraphics.stroke();
+
+    // 右列:用途(两行内自动换行缩放)→ 获取途径条 → 底部操作钮一排。
+    const rightLeft = left + leftWidth + gutter;
+    const rightWidth = right - rightLeft;
+    const rightCenterX = rightLeft + rightWidth / 2;
+    const useTitleY = bodyTop - 16 * scale;
+    const useTitle = this.host.addChildLabel(detail, 'LobbyBagDetailUseTitle', '用途', rightLeft, useTitleY, 22 * scale, rgba(236, 206, 146), new Size(rightWidth * 0.5, 30 * scale), HorizontalTextAlignment.LEFT);
+    useTitle.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(useTitle, scale, false);
+    const useBoxHeight = 64 * scale;
+    const useValue = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), rightLeft, useTitleY - 22 * scale - useBoxHeight / 2, 20 * scale, rgba(206, 190, 154), new Size(rightWidth, useBoxHeight), HorizontalTextAlignment.LEFT);
+    useValue.enableWrapText = true;
+    useValue.overflow = Label.Overflow.SHRINK;
+    const useLineY = useTitleY - 22 * scale - useBoxHeight - 10 * scale;
+    lineGraphics.moveTo(rightLeft, useLineY);
+    lineGraphics.lineTo(right, useLineY);
+    lineGraphics.stroke();
+
+    const buttonGap = 14 * scale;
+    const buttonWidth = (rightWidth - buttonGap * 3) / 4;
+    // 操作钮素材 220×68:按原比例定高(一体构图只等比)。
+    const buttonHeight = Math.min(72 * scale, buttonWidth * (68 / 220));
+    const buttonY = bodyBottom + buttonHeight / 2;
+
+    const sourceTitleY = useLineY - 30 * scale;
+    const sourceTitle = this.host.addChildLabel(detail, 'LobbyBagSourceRowLabel', '获取途径', rightLeft, sourceTitleY, 22 * scale, rgba(236, 206, 146), new Size(rightWidth * 0.5, 30 * scale), HorizontalTextAlignment.LEFT);
+    sourceTitle.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(sourceTitle, scale, false);
+    const sourceRowHeight = 50 * scale;
+    const sourceRowGap = 10 * scale;
+    const rowsTop = sourceTitleY - 24 * scale;
+    const rowsFloor = buttonY + buttonHeight / 2 + 18 * scale;
+    const maxSourceRows = Math.max(1, Math.min(4, Math.floor((rowsTop - rowsFloor + sourceRowGap) / (sourceRowHeight + sourceRowGap))));
+    const segments = this.resolveSourceSegments(item, state, 34);
+    const visibleSegments = segments.slice(0, maxSourceRows);
+    if (segments.length > maxSourceRows) {
+      visibleSegments[maxSourceRows - 1] = `${visibleSegments[maxSourceRows - 1]}…`;
+    }
+    visibleSegments.forEach((segment, index) => {
+      const rowY = rowsTop - sourceRowHeight / 2 - index * (sourceRowHeight + sourceRowGap);
+      const rowNode = this.host.addChildPlainNode(detail, `LobbyBagSourceRowPlate_${index}`, rightCenterX, rowY, rightWidth, sourceRowHeight);
+      const rowGraphics = rowNode.addComponent(Graphics);
+      rowGraphics.fillColor = rgba(26, 21, 17, 224);
+      rowGraphics.rect(-rightWidth / 2, -sourceRowHeight / 2, rightWidth, sourceRowHeight);
+      rowGraphics.fill();
+      rowGraphics.strokeColor = rgba(186, 160, 114, 255);
+      rowGraphics.lineWidth = Math.max(1.5, 1.5 * scale);
+      rowGraphics.rect(-rightWidth / 2, -sourceRowHeight / 2, rightWidth, sourceRowHeight);
+      rowGraphics.stroke();
+      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -rightWidth / 2 + 20 * scale, 0, 20 * scale, rgba(216, 200, 164), new Size(rightWidth - 40 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      segLabel.overflow = Label.Overflow.SHRINK;
+    });
+
+    this.renderDetailActions(detail, item, state, scale, buttonWidth, buttonHeight, [0, 1, 2, 3].map((index) => [
+      rightLeft + buttonWidth / 2 + index * (buttonWidth + buttonGap),
+      buttonY,
+    ] as [number, number]));
+  }
+
+  // 手机全屏确认弹窗壳:底板铺满舞台;withShowcase 时左侧留道具展示列。返回右侧控件区中心 X 与放大倍数 k
+  // (控件沿用原设计坐标 × k,k 上限 1.4:标题 26→36、正文 18→25,按钮也同比放大好点按)。
+  private addPhoneConfirmShell(overlay: Node, name: string, rect: PhoneDialogRect, designWidth: number, designHeight: number, scale: number, withShowcase = true): { node: Node; controlsX: number; k: number; showcaseX: number; showcaseWidth: number } {
+    const node = this.host.addChildPlainNode(overlay, name, rect.x, rect.y, rect.width, rect.height);
+    node.addComponent(BlockInputEvents);
+    this.drawPhoneDialogPanel(node, rect.width, rect.height, scale);
+    const pad = 36 * scale;
+    const showcaseWidth = withShowcase ? rect.width * 0.34 : 0;
+    const gutter = withShowcase ? 40 * scale : 0;
+    const showcaseX = -rect.width / 2 + pad + showcaseWidth / 2;
+    const regionLeft = -rect.width / 2 + pad + showcaseWidth + gutter;
+    const regionRight = rect.width / 2 - pad;
+    const k = Math.max(1, Math.min(1.4, (regionRight - regionLeft) / (designWidth * scale), (rect.height - 40 * scale) / (designHeight * scale)));
+    return { node, controlsX: (regionLeft + regionRight) / 2, k, showcaseX, showcaseWidth };
+  }
+
+  // 手机确认弹窗左列道具展示:暗底卡 + 1~2 个大图标格(两个时中间画箭头)+ 名称/副标题 + 信息行。
+  private renderPhoneItemShowcase(parent: Node, x: number, width: number, dialogHeight: number, cells: Array<{ item: BagItemEntryVO; badge: string }>, name: string, subtitle: string, rows: Array<[string, string]>, scale: number): void {
+    const height = dialogHeight - 72 * scale;
+    const card = this.host.addChildPlainNode(parent, 'LobbyBagPhoneShowcase', x, 0, width, height);
+    const graphics = card.addComponent(Graphics);
+    graphics.fillColor = rgba(26, 21, 16, 210);
+    graphics.roundRect(-width / 2, -height / 2, width, height, 12 * scale);
+    graphics.fill();
+    graphics.strokeColor = rgba(176, 136, 72, 140);
+    graphics.lineWidth = Math.max(1, 1.4 * scale);
+    graphics.roundRect(-width / 2, -height / 2, width, height, 12 * scale);
+    graphics.stroke();
+
+    const arrowWidth = cells.length > 1 ? 56 * scale : 0;
+    const cellSize = Math.min(cells.length > 1 ? (width - 64 * scale - arrowWidth) / 2 : width * 0.5, 190 * scale, height * 0.4);
+    const rowHeight = 44 * scale;
+    // 图标 + 名称 + 副标题 + 信息行整组在卡内纵向居中。
+    const groupHeight = cellSize + 40 * scale + 64 * scale + rows.length * rowHeight;
+    const cellY = Math.min(height / 2 - 30 * scale, groupHeight / 2) - cellSize / 2;
+    cells.forEach((cell, index) => {
+      const cellX = cells.length > 1 ? (index === 0 ? -1 : 1) * (arrowWidth / 2 + cellSize / 2) : 0;
+      this.host.addSprite(`LobbyBagShowcaseSlot_${index}`, BAG_AI_SLOT_BASE_ASSET, cellX, cellY, cellSize, cellSize, card);
+      const icon = bagItemIconAsset(cell.item);
+      if (icon) {
+        this.host.addSprite(`LobbyBagShowcaseIcon_${index}`, icon, cellX, cellY, cellSize * 0.86, cellSize * 0.86, card);
+      } else {
+        this.host.addSprite(`LobbyBagShowcaseTypeIcon_${index}`, bagItemTypeIconAsset(cell.item.itemType), cellX, cellY, cellSize * 0.68, cellSize * 0.68, card);
+      }
+      this.addCleanSlotFrame(card, `LobbyBagShowcaseFrame_${index}`, cellX, cellY, cellSize, scale * 1.3, cell.item.rarity);
+      const badge = this.host.addChildLabel(card, `LobbyBagShowcaseBadge_${index}`, cell.badge, cellX + cellSize / 2 - 10 * scale, cellY - cellSize / 2 + 18 * scale, 22 * scale, rgba(255, 236, 180), new Size(cellSize - 16 * scale, 28 * scale), HorizontalTextAlignment.RIGHT);
+      badge.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(badge, scale, true);
+    });
+    if (cells.length > 1) {
+      const arrow = this.host.addChildPlainNode(card, 'LobbyBagShowcaseArrow', 0, cellY, arrowWidth, 40 * scale);
+      const arrowGraphics = arrow.addComponent(Graphics);
+      arrowGraphics.strokeColor = rgba(236, 200, 120, 235);
+      arrowGraphics.lineWidth = 4 * scale;
+      arrowGraphics.moveTo(-arrowWidth * 0.32, 0);
+      arrowGraphics.lineTo(arrowWidth * 0.3, 0);
+      arrowGraphics.moveTo(arrowWidth * 0.08, 12 * scale);
+      arrowGraphics.lineTo(arrowWidth * 0.32, 0);
+      arrowGraphics.lineTo(arrowWidth * 0.08, -12 * scale);
+      arrowGraphics.stroke();
+    }
+
+    const textWidth = width - 48 * scale;
+    const nameY = cellY - cellSize / 2 - 40 * scale;
+    const nameLabel = this.host.addChildLabel(card, 'LobbyBagShowcaseName', name, 0, nameY, 28 * scale, rgba(248, 220, 153), new Size(textWidth, 36 * scale));
+    nameLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(nameLabel, scale, true);
+    const subtitleLabel = this.host.addChildLabel(card, 'LobbyBagShowcaseSubtitle', subtitle, 0, nameY - 36 * scale, 20 * scale, this.rarityColor(cells[0]?.item.rarity ?? ''), new Size(textWidth, 26 * scale));
+    subtitleLabel.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(subtitleLabel, scale, false);
+    const rowsTop = nameY - 64 * scale;
+    const lines = this.host.addChildPlainNode(card, 'LobbyBagShowcaseLines', 0, 0, width, height);
+    const lineGraphics = lines.addComponent(Graphics);
+    lineGraphics.strokeColor = rgba(206, 168, 104, 70);
+    lineGraphics.lineWidth = Math.max(1, 1 * scale);
+    rows.forEach(([rowTitle, rowValue], index) => {
+      const rowY = rowsTop - rowHeight / 2 - index * rowHeight;
+      if (rowY - rowHeight / 2 < -height / 2 + 8 * scale) {
+        return;
+      }
+      lineGraphics.moveTo(-textWidth / 2, rowY + rowHeight / 2);
+      lineGraphics.lineTo(textWidth / 2, rowY + rowHeight / 2);
+      lineGraphics.stroke();
+      const titleLabel = this.host.addChildLabel(card, `LobbyBagShowcaseRowTitle_${index}`, rowTitle, -textWidth / 2, rowY, 20 * scale, rgba(224, 200, 150), new Size(textWidth * 0.5, 28 * scale), HorizontalTextAlignment.LEFT);
+      titleLabel.overflow = Label.Overflow.SHRINK;
+      const valueLabel = this.host.addChildLabel(card, `LobbyBagShowcaseRowValue_${index}`, rowValue, textWidth / 2, rowY, 20 * scale, rgba(255, 232, 168), new Size(textWidth * 0.5, 28 * scale), HorizontalTextAlignment.RIGHT);
+      valueLabel.overflow = Label.Overflow.SHRINK;
+    });
+  }
+
+  // 手机全屏弹窗底板:程序绘制暗底 + 金色外框 + 内细线(不拉伸一体构图框素材)。
+  private drawPhoneDialogPanel(node: Node, width: number, height: number, scale: number): void {
+    const graphics = node.addComponent(Graphics);
+    graphics.fillColor = rgba(12, 10, 9, 255);
+    graphics.roundRect(-width / 2, -height / 2, width, height, 14 * scale);
+    graphics.fill();
+    graphics.strokeColor = rgba(214, 168, 82, 230);
+    graphics.lineWidth = 2 * scale;
+    graphics.roundRect(-width / 2, -height / 2, width, height, 14 * scale);
+    graphics.stroke();
+    graphics.strokeColor = rgba(214, 168, 82, 70);
+    graphics.lineWidth = Math.max(1, 1 * scale);
+    graphics.roundRect(-width / 2 + 7 * scale, -height / 2 + 7 * scale, width - 14 * scale, height - 14 * scale, 10 * scale);
+    graphics.stroke();
   }
 
   // 合成确认弹窗(2026-07-24):组数选择(-/+/最大)+ 消耗→产出 + 合成前/后对比;确认才真正提交。
@@ -905,17 +1263,35 @@ export class LobbyBagPanelRenderer {
     og.rect(-2000, -2000, 4000, 4000);
     og.fill();
 
+    let dialog: Node;
+    const phone = this.phoneDialogRect;
+    if (phone) {
+      // 手机全屏:左列「源材料 → 产物」展示,右侧控件按原设计尺寸 × k 放大排布。
+      const shell = this.addPhoneConfirmShell(overlay, 'LobbyBagComposeDialog', phone, 470, 360, scale);
+      const targetEntry = bag.groups.flatMap((group) => group.items).find((entry) => (entry.itemCode || '').toUpperCase() === rule.target);
+      const targetItem = targetEntry ?? ({ ...item, itemCode: rule.target, itemName: rule.targetLabel, itemCount: 0 } as BagItemEntryVO);
+      this.renderPhoneItemShowcase(shell.node, shell.showcaseX, shell.showcaseWidth, phone.height, [
+        { item, badge: `×${rule.need}` },
+        { item: targetItem, badge: '×1' },
+      ], `${safeText(item.itemName)} → ${rule.targetLabel}`, `每 ${rule.need} 个合成 1 个`, [
+        ['持有', `×${formatCompact(held)}`],
+        [rule.targetLabel, `×${formatCompact(targetHeld)}`],
+      ], scale);
+      scale *= shell.k;
+      dialog = this.host.addChildPlainNode(shell.node, 'LobbyBagComposeControls', shell.controlsX, 0, 470 * scale, 360 * scale);
+    } else {
+      dialog = this.host.addChildPlainNode(overlay, 'LobbyBagComposeDialog', 0, 0, 470 * scale, 360 * scale);
+      const g = dialog.addComponent(Graphics);
+      g.fillColor = rgba(12, 10, 9, 250);
+      g.roundRect(-235 * scale, -180 * scale, 470 * scale, 360 * scale, 12 * scale);
+      g.fill();
+      g.strokeColor = rgba(214, 168, 82, 230);
+      g.lineWidth = 2 * scale;
+      g.roundRect(-235 * scale, -180 * scale, 470 * scale, 360 * scale, 12 * scale);
+      g.stroke();
+    }
     const w = 470 * scale;
     const h = 360 * scale;
-    const dialog = this.host.addChildPlainNode(overlay, 'LobbyBagComposeDialog', 0, 0, w, h);
-    const g = dialog.addComponent(Graphics);
-    g.fillColor = rgba(12, 10, 9, 250);
-    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
-    g.fill();
-    g.strokeColor = rgba(214, 168, 82, 230);
-    g.lineWidth = 2 * scale;
-    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
-    g.stroke();
 
     const title = this.host.addChildLabel(dialog, 'LobbyBagComposeTitle', '材料合成', 0, h / 2 - 32 * scale, 24 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
@@ -1007,17 +1383,31 @@ export class LobbyBagPanelRenderer {
     og.rect(-2000, -2000, 4000, 4000);
     og.fill();
 
+    let dialog: Node;
+    const phone = this.phoneDialogRect;
+    if (phone) {
+      // 手机全屏:左列道具展示(大图标 + 单价/持有),右侧控件按原设计尺寸 × k 放大排布。
+      const shell = this.addPhoneConfirmShell(overlay, 'LobbyBagSellDialog', phone, 500, 380, scale);
+      this.renderPhoneItemShowcase(shell.node, shell.showcaseX, shell.showcaseWidth, phone.height, [{ item, badge: `×${formatCompact(held)}` }],
+        safeText(item.itemName), `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, [
+          ['单价', `${formatMoney(unitPrice)} 金币`],
+          ['持有', `×${formatCompact(held)}`],
+        ], scale);
+      scale *= shell.k;
+      dialog = this.host.addChildPlainNode(shell.node, 'LobbyBagSellControls', shell.controlsX, 0, 500 * scale, 380 * scale);
+    } else {
+      dialog = this.host.addChildPlainNode(overlay, 'LobbyBagSellDialog', 0, 0, 500 * scale, 380 * scale);
+      const g = dialog.addComponent(Graphics);
+      g.fillColor = rgba(12, 10, 9, 250);
+      g.roundRect(-250 * scale, -190 * scale, 500 * scale, 380 * scale, 12 * scale);
+      g.fill();
+      g.strokeColor = rgba(214, 168, 82, 230);
+      g.lineWidth = 2 * scale;
+      g.roundRect(-250 * scale, -190 * scale, 500 * scale, 380 * scale, 12 * scale);
+      g.stroke();
+    }
     const w = 500 * scale;
     const h = 380 * scale;
-    const dialog = this.host.addChildPlainNode(overlay, 'LobbyBagSellDialog', 0, 0, w, h);
-    const g = dialog.addComponent(Graphics);
-    g.fillColor = rgba(12, 10, 9, 250);
-    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
-    g.fill();
-    g.strokeColor = rgba(214, 168, 82, 230);
-    g.lineWidth = 2 * scale;
-    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
-    g.stroke();
 
     const title = this.host.addChildLabel(dialog, 'LobbyBagSellTitle', '出售道具', 0, h / 2 - 34 * scale, 26 * scale, rgba(248, 220, 153), new Size(w - 48 * scale, 32 * scale));
     title.overflow = Label.Overflow.SHRINK;
@@ -1120,17 +1510,26 @@ export class LobbyBagPanelRenderer {
     og.rect(-2000, -2000, 4000, 4000);
     og.fill();
 
+    let dialog: Node;
+    const phone = this.phoneDialogRect;
+    if (phone) {
+      // 手机全屏:底板铺满舞台,结果内容按原设计尺寸 × k 放大居中。
+      const shell = this.addPhoneConfirmShell(overlay, 'LobbyBagComposeResultDialog', phone, 440, 400, scale, false);
+      scale *= shell.k;
+      dialog = this.host.addChildPlainNode(shell.node, 'LobbyBagComposeResultContent', shell.controlsX, 0, 440 * scale, 400 * scale);
+    } else {
+      dialog = this.host.addChildPlainNode(overlay, 'LobbyBagComposeResultDialog', 0, 0, 440 * scale, 400 * scale);
+      const g = dialog.addComponent(Graphics);
+      g.fillColor = rgba(12, 10, 9, 250);
+      g.roundRect(-220 * scale, -200 * scale, 440 * scale, 400 * scale, 12 * scale);
+      g.fill();
+      g.strokeColor = rgba(214, 168, 82, 230);
+      g.lineWidth = 2 * scale;
+      g.roundRect(-220 * scale, -200 * scale, 440 * scale, 400 * scale, 12 * scale);
+      g.stroke();
+    }
     const w = 440 * scale;
     const h = 400 * scale;
-    const dialog = this.host.addChildPlainNode(overlay, 'LobbyBagComposeResultDialog', 0, 0, w, h);
-    const g = dialog.addComponent(Graphics);
-    g.fillColor = rgba(12, 10, 9, 250);
-    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
-    g.fill();
-    g.strokeColor = rgba(214, 168, 82, 230);
-    g.lineWidth = 2 * scale;
-    g.roundRect(-w / 2, -h / 2, w, h, 12 * scale);
-    g.stroke();
 
     const title = this.host.addChildLabel(dialog, 'LobbyBagComposeResultTitle', '合成成功！', 0, h / 2 - 36 * scale, 24 * scale, rgba(250, 216, 120), new Size(w - 48 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
@@ -1188,7 +1587,7 @@ export class LobbyBagPanelRenderer {
   }
 
   // 来源说明拆条:分号/句号/换行切分;超长段再按字数二次拆分,避免单行 SHRINK 把字压小到看不清。
-  private resolveSourceSegments(item: BagItemEntryVO, state: LobbyBagPanelState): string[] {
+  private resolveSourceSegments(item: BagItemEntryVO, state: LobbyBagPanelState, chunkSize = 15): string[] {
     if (state.sourceItemCode === item.itemCode && state.sourceLoading) {
       return ['来源读取中...'];
     }
@@ -1198,7 +1597,6 @@ export class LobbyBagPanelRenderer {
     if (state.sourceItemCode === item.itemCode && state.sourceDesc) {
       const raw = safeText(state.sourceDesc).split(/[;；。\n]+/).map((part) => part.trim()).filter((part) => part.length > 0);
       const segments = (raw.length > 0 ? raw : [safeText(state.sourceDesc)]).flatMap((part) => {
-        const chunkSize = 15;
         if (part.length <= chunkSize + 2) {
           return [part];
         }
@@ -1408,4 +1806,22 @@ function itemTypeLabel(itemType: string): string {
     return '消耗品';
   }
   return safeText(itemType || '道具');
+}
+
+interface PhoneDialogRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// 手机全屏弹窗区域(相对背包场景中心):四周贴舞台留窄边距。
+function resolvePhoneDialogRect(layout: UiLayout, centerX: number, centerY: number): PhoneDialogRect {
+  const marginX = 16;
+  const marginY = 12;
+  const left = layout.stageLeft + marginX - centerX;
+  const right = layout.stageRight - marginX - centerX;
+  const top = layout.stageTop - marginY - centerY;
+  const bottom = layout.stageBottom + marginY - centerY;
+  return { x: (left + right) / 2, y: (top + bottom) / 2, width: right - left, height: top - bottom };
 }

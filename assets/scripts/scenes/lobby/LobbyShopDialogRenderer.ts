@@ -15,7 +15,9 @@ import {
 } from 'cc';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 
 /**
  * 货币商店弹窗(2026-09-22 用户拍板"你来设计",docs/33):
@@ -116,6 +118,13 @@ const CARD_W = { gold: 224, stamina: 196, diamond: 210 };
 const GAP = { col: 32, row: 26 };
 /** 钻石页支付方式行占的高度(ONLINE 且有通道时)。 */
 const CHANNEL_ROW_H = 58;
+/**
+ * 手机横屏全屏版(2026-10-02 用户:「横屏模式下弹框都调整成全屏」):面板铺满舞台、程序画框(原 4:3 素材框只能等比);
+ * 标题带更紧凑,卡片上限放大、文字随卡宽同比放大(上限 1.35 倍);钻石页 6 档按"卡最大"自动选每排张数(宽屏一排 6 张)。
+ */
+const PHONE_GEO = { headerH: 120, footerH: 84, noticeY: 42, sidePad: 28, gapCol: 18, titleBand: 104 };
+const PHONE_CARD_W = { gold: 300, stamina: 280, diamond: 260 };
+const PHONE_TEXT_SCALE_MAX = 1.35;
 
 interface TierCardSpec {
   name: string;
@@ -123,6 +132,8 @@ interface TierCardSpec {
   amount: string;
   unit: string;
   amountColor: Color;
+  /** 卡内文字 / 细节放大倍数(手机全屏版卡片变大时同比放大;缺省 1)。 */
+  textScale?: number;
   /** 赠送标签(空=不显示);highlight=金色"最划算"样式。 */
   tag: string;
   tagHighlight?: boolean;
@@ -139,6 +150,8 @@ interface TierCardSpec {
 export class LobbyShopDialogRenderer {
   /** 上一次渲染的结果文案(只在文案变化时弹一下)。 */
   private lastNotice = '';
+  /** 本次渲染是否手机全屏版(render 开头确定,排版工具函数共用)。 */
+  private phone = false;
 
   constructor(private readonly host: LobbyShopDialogHost) {}
 
@@ -162,32 +175,49 @@ export class LobbyShopDialogRenderer {
     overlay.on(Button.EventType.CLICK, () => this.host.closeLobbyShopDialog(), this);
 
     // 面板尺寸同时满足内容宽(卡片一排铺开 + 边距)与内容高(标题区 + 卡片 + 余额区),4:3 等比;超出舞台再按舞台收。
+    // 手机:全屏(铺满舞台留安全边距),程序画框。
     const catalog = state.catalog;
-    const need = this.contentNeeds(state.kind, catalog, scale);
-    let panelW = Math.max(need.w + SIDE_PAD * 2 * scale, (need.h + (HEADER_H + FOOTER_H) * scale) / PANEL_FRAME.aspect);
-    let panelH = panelW * PANEL_FRAME.aspect;
-    if (panelH > layout.stageHeight * 0.9) {
-      panelH = layout.stageHeight * 0.9;
-      panelW = panelH / PANEL_FRAME.aspect;
-    }
-    if (panelW > layout.stageWidth - 32 * scale) {
-      panelW = layout.stageWidth - 32 * scale;
+    const phone = isPhoneDesign();
+    this.phone = phone;
+    let panelW: number;
+    let panelH: number;
+    if (phone) {
+      const size = resolvePhoneDialogSize(layout);
+      panelW = size.width;
+      panelH = size.height;
+    } else {
+      const need = this.contentNeeds(state.kind, catalog, scale);
+      panelW = Math.max(need.w + SIDE_PAD * 2 * scale, (need.h + (HEADER_H + FOOTER_H) * scale) / PANEL_FRAME.aspect);
       panelH = panelW * PANEL_FRAME.aspect;
+      if (panelH > layout.stageHeight * 0.9) {
+        panelH = layout.stageHeight * 0.9;
+        panelW = panelH / PANEL_FRAME.aspect;
+      }
+      if (panelW > layout.stageWidth - 32 * scale) {
+        panelW = layout.stageWidth - 32 * scale;
+        panelH = panelW * PANEL_FRAME.aspect;
+      }
     }
     const panel = this.host.addChildPlainNode(overlay, 'LobbyShopPanel', 0, 0, panelW, panelH);
     // 面板自己吞掉点击:点面板不关闭,点外面暗幕才关闭。
     panel.addComponent(BlockInputEvents);
-    this.host.addSprite('LobbyShopPanelFrame', PANEL_FRAME.path, 0, 0, panelW, panelH, panel);
+    if (phone) {
+      drawPhoneDialogFrame(this.host, panel, panelW, panelH, PHONE_GEO.titleBand * scale);
+    } else {
+      this.host.addSprite('LobbyShopPanelFrame', PANEL_FRAME.path, 0, 0, panelW, panelH, panel);
+    }
 
-    const closeSize = 44 * scale;
-    const close = this.host.addChildPlainNode(panel, 'LobbyShopClose', panelW / 2 - 64 * scale, panelH / 2 - 62 * scale, closeSize, closeSize * CLOSE_BUTTON.aspect);
+    const closeSize = (phone ? 52 : 44) * scale;
+    const closeX = phone ? panelW / 2 - 46 * scale : panelW / 2 - 64 * scale;
+    const closeY = phone ? panelH / 2 - 52 * scale : panelH / 2 - 62 * scale;
+    const close = this.host.addChildPlainNode(panel, 'LobbyShopClose', closeX, closeY, closeSize, closeSize * CLOSE_BUTTON.aspect);
     this.host.addSprite('LobbyShopCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => this.host.closeLobbyShopDialog(), this);
     this.host.applyImageButtonFeedback(close, 1.08, 0.94);
 
     // 标题压到顶饰之下,两侧任务页同款 title_divider 饰件(与守卫战弹层一致)。
-    const titleY = panelH / 2 - 112 * scale;
+    const titleY = panelH / 2 - (phone ? 40 : 112) * scale;
     const titleSize = FONT.title * scale;
     const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, titleY, titleSize, rgba(255, 226, 150), new Size(panelW * 0.6, titleSize + 10 * scale));
     title.isBold = true;
@@ -206,17 +236,17 @@ export class LobbyShopDialogRenderer {
           : this.payMode(catalog) === 'MOCK'
             ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
             : '钻石充值暂未开放,敬请期待';
-    const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - 36 * scale, FONT.subtitle * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.82, 24 * scale));
+    const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - (phone ? 40 : 36) * scale, FONT.subtitle * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.82, this.lh(24, scale)));
     subtitle.overflow = Label.Overflow.SHRINK;
 
     // 2026-09-24 用户:去掉底部"当前持有"余额行(顶部货币栏已有),底部整条留给结果横幅。
     const profile = this.host.currentLobbyProfile();
     const diamond = catalog ? Number(catalog.diamond ?? 0) : Number(profile.diamond ?? 0);
 
-    const bodyTop = panelH / 2 - HEADER_H * scale;
-    const bodyBottom = -panelH / 2 + FOOTER_H * scale;
+    const bodyTop = panelH / 2 - (phone ? PHONE_GEO.headerH : HEADER_H) * scale;
+    const bodyBottom = -panelH / 2 + (phone ? PHONE_GEO.footerH : FOOTER_H) * scale;
     if (state.notice) {
-      this.renderNoticeBanner(panel, state.notice, -panelH / 2 + NOTICE_Y * scale, panelW, scale);
+      this.renderNoticeBanner(panel, state.notice, -panelH / 2 + (phone ? PHONE_GEO.noticeY : NOTICE_Y) * scale, panelW, scale);
     } else {
       this.lastNotice = '';
     }
@@ -281,12 +311,13 @@ export class LobbyShopDialogRenderer {
   private renderGoldTiers(panel: Node, catalog: ShopCatalogVO, panelW: number, top: number, bottom: number, scale: number, busy: boolean, diamond: number): void {
     const tiers = catalog.goldTiers;
     const bestBonus = Math.max(0, ...tiers.map((tier) => tier.bonusPct));
-    const grid = this.tierGrid(panelW, top, bottom, scale, tiers.length, tiers.length, CARD_W.gold * scale);
+    const grid = this.tierGrid(panelW, top, bottom, scale, tiers.length, tiers.length, (this.phone ? PHONE_CARD_W.gold : CARD_W.gold) * scale);
     tiers.forEach((tier, index) => {
       const slot = grid.slots[index];
       const affordable = diamond >= tier.diamondCost;
       const best = tier.bonusPct > 0 && tier.bonusPct === bestBonus;
       this.buildTierCard(panel, `LobbyShopGold_${tier.code}`, slot.x, slot.y, grid.cardW, UNIFIED_TIER_FRAME, scale, {
+        textScale: this.cardTextScale(grid.cardW, CARD_W.gold * scale),
         name: tier.name,
         iconKey: tier.iconKey,
         amount: this.host.formatInteger(tier.goldAmount),
@@ -334,18 +365,19 @@ export class LobbyShopDialogRenderer {
     bg.stroke();
     const notes = ['每 5 分钟自然回复 1 点(上限内)', '购买的体力可超过上限,超出部分不会消失'];
     notes.forEach((text, index) => {
-      const note = this.host.addChildLabel(panel, `LobbyShopStaminaNote_${index}`, text, leftX, centerY - (90 + index * 26) * scale, FONT.small * scale, rgba(206, 194, 168), new Size(panelW * 0.42, 22 * scale));
+      const note = this.host.addChildLabel(panel, `LobbyShopStaminaNote_${index}`, text, leftX, centerY - (90 + index * (this.phone ? 30 : 26)) * scale, FONT.small * scale, rgba(206, 194, 168), new Size(panelW * 0.42, this.lh(22, scale)));
       note.overflow = Label.Overflow.SHRINK;
     });
     // 右栏:两张购买卡(1 份 / 5 份)
     const rightX = panelW * 0.2;
     const packs = [1, offer.maxCountPerBuy].filter((count, index, all) => count >= 1 && all.indexOf(count) === index);
-    const grid = this.tierGrid(panelW * 0.5, top, bottom, scale, packs.length, packs.length, CARD_W.stamina * scale);
+    const grid = this.tierGrid(panelW * 0.5, top, bottom + (this.phone ? 40 * scale : 0), scale, packs.length, packs.length, (this.phone ? PHONE_CARD_W.stamina : CARD_W.stamina) * scale);
     packs.forEach((count, index) => {
       const slot = grid.slots[index];
       const cost = offer.diamondCost * count;
       const sellable = offer.dailyLimit > 0 && count <= remaining;
       this.buildTierCard(panel, `LobbyShopStaminaBuy_${count}`, rightX + slot.x, slot.y + 14 * scale, grid.cardW, UNIFIED_TIER_FRAME, scale, {
+        textScale: this.cardTextScale(grid.cardW, CARD_W.stamina * scale),
         name: `补充 ${count} 份`,
         iconKey: 'stamina',
         amount: `+${offer.staminaGain * count}`,
@@ -361,7 +393,7 @@ export class LobbyShopDialogRenderer {
       });
     });
     const quotaText = offer.dailyLimit > 0 ? `今日已购 ${offer.usedToday}/${offer.dailyLimit} 次 · 还可购买 ${remaining} 次` : '体力购买暂未开放';
-    const quota = this.host.addChildLabel(panel, 'LobbyShopStaminaQuota', quotaText, rightX, grid.slots[0].y + 14 * scale - (grid.cardW * TALLEST_FRAME) / 2 - 22 * scale, FONT.small * scale, remaining > 0 ? rgba(206, 194, 168) : rgba(255, 170, 150), new Size(panelW * 0.46, 22 * scale));
+    const quota = this.host.addChildLabel(panel, 'LobbyShopStaminaQuota', quotaText, rightX, grid.slots[0].y + 14 * scale - (grid.cardW * TALLEST_FRAME) / 2 - 22 * scale, FONT.small * scale, remaining > 0 ? rgba(206, 194, 168) : rgba(255, 170, 150), new Size(panelW * 0.46, this.lh(22, scale)));
     quota.overflow = Label.Overflow.SHRINK;
   }
 
@@ -378,13 +410,16 @@ export class LobbyShopDialogRenderer {
     }
     const tiers = catalog.rechargeTiers;
     const bestBonus = Math.max(0, ...tiers.map((tier) => tier.diamondBonus));
-    const grid = this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
+    const grid = this.phone
+      ? this.bestTierGrid(panelW, gridTop, bottom, scale, tiers.length, PHONE_CARD_W.diamond * scale)
+      : this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
     tiers.forEach((tier, index) => {
       const slot = grid.slots[index];
       const price = Number(tier.priceCny ?? 0);
       const best = tier.diamondBonus > 0 && tier.diamondBonus === bestBonus;
       const payable = mode === 'MOCK' || (mode === 'ONLINE' && LobbyShopDialogRenderer.channelFits(selected, price));
       this.buildTierCard(panel, `LobbyShopRecharge_${tier.code}`, slot.x, slot.y, grid.cardW, UNIFIED_TIER_FRAME, scale, {
+        textScale: this.cardTextScale(grid.cardW, CARD_W.diamond * scale),
         name: tier.name,
         iconKey: tier.iconKey,
         amount: this.host.formatInteger(tier.diamondTotal),
@@ -440,10 +475,10 @@ export class LobbyShopDialogRenderer {
 
   /** 网格排版:perRow 张一排,超出换行;卡宽受 maxCardW、一排可用宽、可用高(全部行)三者约束;整体在内容区居中。 */
   private tierGrid(areaW: number, top: number, bottom: number, scale: number, count: number, perRow: number, maxCardW: number): { cardW: number; slots: Array<{ x: number; y: number }> } {
-    const gap = GAP.col * scale;
+    const gap = (this.phone ? PHONE_GEO.gapCol : GAP.col) * scale;
     const rowGap = GAP.row * scale;
     const rows = Math.max(1, Math.ceil(count / perRow));
-    const available = areaW - SIDE_PAD * 2 * scale;
+    const available = areaW - (this.phone ? PHONE_GEO.sidePad : SIDE_PAD) * 2 * scale;
     let cardW = Math.min(maxCardW, (available - gap * (perRow - 1)) / perRow);
     const bodyH = top - bottom;
     const rowsH = (rowsCount: number, width: number): number => rowsCount * width * TALLEST_FRAME + (rowsCount - 1) * rowGap;
@@ -467,11 +502,38 @@ export class LobbyShopDialogRenderer {
     return { cardW, slots };
   }
 
+  /** 手机全屏版:每排张数取"卡片最大"的那种(宽屏常是一排铺满),同宽时取行数少的。 */
+  private bestTierGrid(areaW: number, top: number, bottom: number, scale: number, count: number, maxCardW: number): { cardW: number; slots: Array<{ x: number; y: number }> } {
+    let best = this.tierGrid(areaW, top, bottom, scale, count, count, maxCardW);
+    for (let perRow = count - 1; perRow >= 1; perRow -= 1) {
+      const grid = this.tierGrid(areaW, top, bottom, scale, count, perRow, maxCardW);
+      if (grid.cardW > best.cardW + 0.5) {
+        best = grid;
+      }
+    }
+    return best;
+  }
+
+  /** 小字标签盒高:手机端至少 26(工厂已把字抬到 20 号,盒子太矮会被 SHRINK 压回小字);电脑端原样。 */
+  private lh(base: number, scale: number): number {
+    return this.phone ? Math.max(base * scale, 26) : base * scale;
+  }
+
+  /** 卡内文字放大倍数:只在手机全屏版、卡比电脑版基准宽时放大(电脑端恒为 1)。 */
+  private cardTextScale(cardW: number, baseW: number): number {
+    if (!this.phone || baseW <= 0) {
+      return 1;
+    }
+    return Math.max(1, Math.min(PHONE_TEXT_SCALE_MAX, cardW / baseW));
+  }
+
   /**
    * 单张档位卡:深底 + 档位色上半区淡染 + 素材框(等比)→ 名 → 档位色光晕 + 图标(+角标)→ 数额 → 单位 → 赠送标签 → 价格钮(钻石图标 + 数字)。
    * 纵向按卡高比例定位,赠送标签与价格钮各占自己的带,互不压盖(此前赠送行被价格钮盖住)。
    */
   private buildTierCard(parent: Node, name: string, x: number, y: number, cardW: number, frame: SpriteSpec & { tint: [number, number, number] }, scale: number, spec: TierCardSpec): void {
+    // 卡内字号 / 标签高 / 描边统一乘 textScale(手机全屏版大卡同比放大;电脑端 1,不变)
+    scale *= spec.textScale ?? 1;
     const cardH = cardW * frame.aspect;
     const card = this.host.addChildPlainNode(parent, name, x, y, cardW, cardH);
     const bg = card.addComponent(Graphics);
