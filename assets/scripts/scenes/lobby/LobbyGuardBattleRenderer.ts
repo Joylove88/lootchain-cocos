@@ -3933,6 +3933,9 @@ export class LobbyGuardBattleRenderer {
         if (!view || !view.node.isValid) {
           continue;
         }
+        if (row.dmgMult > 1) {
+          this.mountRageGlow(view.node, unit, row.ms);
+        }
         const hornSpec = GUARD_SPELL_FX.warhorn;
         const hornHolder = this.host.addChildPlainNode(view.node, 'GuardWarhornFx', 0, (hornSpec.offsetY ?? 0) * unit, 10, 10);
         hornHolder.setSiblingIndex(0);
@@ -3959,6 +3962,30 @@ export class LobbyGuardBattleRenderer {
         this.showSpellUnlockBanner(id, this.xToPx(1.2), this.walkwayY() + unit * 2.4);
       }
     }
+  }
+
+  /** 狂怒(号角 Lv5)期间英雄脚下的红橙脉动光团:数值只 +3%,靠持续光团 + 橙红伤害数字让玩家看得出来。 */
+  private mountRageGlow(heroNode: Node, unit: number, ms: number): void {
+    const glow = this.mountSoftFx(heroNode, 'GuardRageGlow', 'glow', 0, -unit * 0.36, unit * 1.5, unit * 0.62, rgba(255, 90, 40));
+    glow.setSiblingIndex(0);
+    const op = glow.addComponent(UIOpacity);
+    op.opacity = 0;
+    const pulses = Math.max(1, Math.floor(ms / 700));
+    tween(op).to(0.2, { opacity: 230 }).repeat(pulses, tween().to(0.35, { opacity: 140 }).to(0.35, { opacity: 230 })).to(0.3, { opacity: 0 })
+      .call(() => { if (glow.isValid) { glow.destroy(); } }).start();
+    // 地面光团会和号角自带的橙色地环混在一起,再在身后加一层竖向红色气焰,一眼区分「狂怒」。
+    const aura = this.mountSoftFx(heroNode, 'GuardRageAura', 'glow', 0, unit * 0.3, unit * 1.05, unit * 1.5, rgba(255, 50, 30));
+    aura.setSiblingIndex(0);
+    const auraOp = aura.addComponent(UIOpacity);
+    auraOp.opacity = 0;
+    tween(auraOp).to(0.2, { opacity: 170 }).repeat(pulses, tween().to(0.35, { opacity: 90 }).to(0.35, { opacity: 170 })).to(0.3, { opacity: 0 })
+      .call(() => { if (aura.isValid) { aura.destroy(); } }).start();
+  }
+
+  /** 狂怒期间(号角 Lv5 生效中)英雄造成的普通伤害数字改成橙红色并放大一号。 */
+  private rageActive(): boolean {
+    const sim = this.sim;
+    return !!sim && sim.warhornDmgMult > 1 && sim.warhornUntilMs > sim.timeMs;
   }
 
   /** 法术追加效果(docs/39):余震 / 冰碎 / 九重雷劫单道 / 圣光反震。 */
@@ -3998,7 +4025,7 @@ export class LobbyGuardBattleRenderer {
       if (ids.length > 0) {
         gameAudio.sfx('wheel_tick', 0.8);
         const at = this.monsterPx(ids[0]);
-        this.spawnFloater(at ? at.x : this.xToPx(event.x ?? 4), (at ? at.y : this.walkwayY()) + unit * 1.2, `冰碎 ×${ids.length} -${amount}`, rgba(170, 230, 255), 20);
+        this.spawnFloater(at ? at.x : this.xToPx(event.x ?? 4), (at ? at.y : this.walkwayY()) + unit * 1.2, `冰碎 ×${ids.length} -${amount} · 减速`, rgba(170, 230, 255), 20);
         this.showSpellUnlockBanner('frost', at ? at.x : this.xToPx(event.x ?? 4), this.walkwayY() + unit * 2.4);
       }
     } else if (event.echoKind === 'thunderBolt') {
@@ -4142,9 +4169,9 @@ export class LobbyGuardBattleRenderer {
     const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `本局出战 ${equipped.length}/${slots} 格 · 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · 更换请到大厅「水晶 → 法术装备」`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.78, 26));
     tip.overflow = Label.Overflow.SHRINK;
     const cardW = Math.min(260, panelW * 0.26);
-    // docs/39:卡片要放下按等级生成的描述(两三行),加高
-    const cardH = 140;
-    const top = titleY - 130;
+    // docs/39:卡片要放下按等级生成的描述(Lv5 约 5 行),加高;往下最多再占 30 设计像素,不压「返回」按钮
+    const cardH = 160;
+    const top = titleY - 140;
     GUARD_SPELL_IDS.forEach((id, index) => {
       const def = GUARD_SPELLS[id];
       const col = index % 3;
@@ -4164,19 +4191,19 @@ export class LobbyGuardBattleRenderer {
       g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
       g.stroke();
       const iconSize = 56;
-      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], -cardW / 2 + 14 + iconSize / 2, 14, iconSize, iconSize);
+      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], -cardW / 2 + 14 + iconSize / 2, 24, iconSize, iconSize);
       const cardLevel = sim ? guardSpellLevel(sim, id) : 1;
-      const nameLabel = this.host.addChildLabel(card, 'Name', `${def.name} Lv.${cardLevel}`, -cardW / 2 + 14 + iconSize + 10, 30, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
+      const nameLabel = this.host.addChildLabel(card, 'Name', `${def.name} Lv.${cardLevel}`, -cardW / 2 + 14 + iconSize + 10, 40, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
       nameLabel.overflow = Label.Overflow.SHRINK;
-      this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 4, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
-      const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : `${selected ? `已装备 · 第 ${slotIndex + 1} 格` : '未装备'} · ${guardSpellDescribe(id, cardLevel)}`;
-      const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 32, 14, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 18, 58));
+      this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 14, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
+      const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : `${selected ? `出战第 ${slotIndex + 1} 格` : '未装备'} · ${guardSpellDescribe(id, cardLevel)}`;
+      const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 40, 13, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 16, 76));
       desc.enableWrapText = true;
-      desc.lineHeight = 17;
+      desc.lineHeight = 15;
       desc.overflow = Label.Overflow.SHRINK;
       if (locked) {
         (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;
-        this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', -cardW / 2 + 14 + 28, 14, 26, 26);
+        this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', -cardW / 2 + 14 + 28, 24, 26, 26);
       } else if (!selected) {
         (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 190;
       }
@@ -6023,8 +6050,9 @@ export class LobbyGuardBattleRenderer {
       this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -46, -2, 34, 34);
       labelX = 26;
     }
-    const size = skill ? 24 : big ? 22 : 16;
-    const color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rgba(255, 248, 236, 240);
+    const rage = !big && this.rageActive();
+    const size = skill ? 24 : big ? 22 : rage ? 18 : 16;
+    const color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rage ? rgba(255, 150, 70, 250) : rgba(255, 248, 236, 240);
     const label = this.host.addChildLabel(node, 'Text', `-${valueText}`, labelX, 0, size, color, new Size(big ? 140 : 116, size + 10));
     label.enableOutline = true;
     label.outlineColor = rgba(40, 12, 6, 255);

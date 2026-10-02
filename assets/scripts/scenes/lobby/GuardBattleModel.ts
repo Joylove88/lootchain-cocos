@@ -485,6 +485,8 @@ export const GUARD_SPELL_UNLOCK_NAMES: Record<GuardSpellId, { lv3: string; lv5: 
 };
 export const GUARD_SPELL_ECHO_DELAY_MS = 1200;
 export const GUARD_SPELL_FROST_FLOOR_SLOW_MS = 700;
+// 冰碎(冰封 Lv5)碎冰后再减速这么久:伤害不能加(0.35U 时 20 波层数 +10.9%),用看得见的减速让玩家感到「冰碎」(2026-10-02 用户同意)。
+export const GUARD_SPELL_SHATTER_SLOW_MS = 1500;
 export const GUARD_SPELL_FROST_FLOOR_TICK_MS = 500;
 export const GUARD_SPELL_CHAIN_RANGE = 3.0;
 export const GUARD_SPELL_BOLT_RANGE = 2.0;
@@ -534,7 +536,7 @@ export function guardSpellDescribe(id: GuardSpellId, level: number): string {
       text += `「霜冻地面」留下 ${fmtSec(r.floorMs)} 秒冰面,减速 40%。`;
     }
     if (r.shatterDmg > 0) {
-      text += `「冰碎」冻结结束时碎冰,${fmtPct(r.shatterDmg)} 伤害。`;
+      text += `「冰碎」冻结结束时碎冰,${fmtPct(r.shatterDmg)} 伤害并减速 ${fmtSec(GUARD_SPELL_SHATTER_SLOW_MS)} 秒。`;
     }
     return text;
   }
@@ -3280,6 +3282,9 @@ function guardTickSpellPending(state: GuardBattleState): void {
         if (monster && !monster.dead) {
           hitIds.push(monster.monsterId);
           damageMonster(state, monster, entry.amount, null);
+          if (!monster.dead) {
+            monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + GUARD_SPELL_SHATTER_SLOW_MS);
+          }
         }
       }
     } else {
