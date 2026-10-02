@@ -16,6 +16,7 @@ import {
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 
 export interface LobbyProfileDialogHost {
@@ -517,10 +518,13 @@ export class LobbyProfileDialogRenderer {
     const columnWidth = Math.min(800 * scale, (panelWidth / 2 - rightMargin - navRight - gap) / 2);
     const leftX = navRight + columnWidth / 2;
     const rightX = leftX + columnWidth + gap;
-    const rowTop = avatarY - 158 * scale;
-    const rowPitch = 67 * scale;
-    const rowHeight = 60 * scale;
-    const bottomLimit = -panelHeight / 2 + 150 * scale;
+    // 手机横屏(设计高 720,2026-10-02):行距 67 只放得下 4 行,钱包 / 爬塔 / 挂机三项被截掉;
+    // 手机改紧凑行距让 6 行全显示,退出按钮相应下移(见 addLogoutButton)。
+    const phone = isPhoneDesign();
+    const rowTop = avatarY - (phone ? 150 : 158) * scale;
+    const rowPitch = (phone ? 50 : 67) * scale;
+    const rowHeight = (phone ? 46 : 60) * scale;
+    const bottomLimit = -panelHeight / 2 + (phone ? 110 : 150) * scale;
     const visibleRows = Math.max(4, Math.min(rows.length, Math.floor((rowTop - bottomLimit) / rowPitch) + 1));
     for (let index = 0; index < visibleRows; index += 1) {
       const row = rows[index];
@@ -627,9 +631,11 @@ export class LobbyProfileDialogRenderer {
   }
 
   private addLogoutButton(panel: Node, panelWidth: number, panelHeight: number, scale: number): void {
-    const logoutW = Math.min(310 * scale, panelWidth * 0.5);
+    // 手机:属性条 6 行排满后,按钮略缩并下移,说明文字贴底。
+    const phone = isPhoneDesign();
+    const logoutW = Math.min((phone ? 280 : 310) * scale, panelWidth * 0.5);
     const logoutH = logoutW * PROFILE_BUTTON_RATIO;
-    const logoutBtn = this.host.addChildPlainNode(panel, 'LobbyProfileLogoutButton', 0, -panelHeight / 2 + 92 * scale, logoutW, logoutH);
+    const logoutBtn = this.host.addChildPlainNode(panel, 'LobbyProfileLogoutButton', 0, -panelHeight / 2 + (phone ? 76 : 92) * scale, logoutW, logoutH);
     const art = this.host.addSprite('Art', PROFILE_ASSETS.button, 0, 0, logoutW, logoutH, logoutBtn);
     if (!art) {
       const lg = logoutBtn.addComponent(Graphics);
@@ -655,7 +661,7 @@ export class LobbyProfileDialogRenderer {
       'LobbyProfileReadonlyNote',
       '退出后回到登录界面,可直接登录或注册其他账号。头像、昵称等信息将不丢失。',
       0,
-      -panelHeight / 2 + 42 * scale,
+      -panelHeight / 2 + (phone ? 24 : 42) * scale,
       Math.max(10, 15 * scale),
       rgba(180, 166, 140),
       new Size(panelWidth - 90 * scale, 28 * scale),
