@@ -8058,7 +8058,7 @@ export class LobbyGuardBattleRenderer {
         release();
       }
     });
-    const lifetimeSec = !isUlt && group?.zone && this.sim ? Math.max(0.6, (group.zone.untilMs - this.sim.timeMs) / 1000 + 0.3) : 3.4;
+    const lifetimeSec = !isUlt && group?.zone && this.sim ? Math.max(0.6, (group.zone.untilMs - this.sim.timeMs) / 1000 + 0.3) : Math.max(3.4, spec.clip ? (spec.clip.end - spec.clip.start) / Math.max(0.25, spec.clip.speed ?? 1) + 0.6 : 0);
     tween(node).delay(lifetimeSec).call(release).start();
     return true;
   }
