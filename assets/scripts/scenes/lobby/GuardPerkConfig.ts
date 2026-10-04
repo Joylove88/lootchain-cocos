@@ -315,13 +315,14 @@ export function guardRarityGate(pickIndex: number): { white: number; blue: numbe
   return { white: 15, blue: 40, purple: 45 };
 }
 // 2026-09-21 用户反馈"强化买到 2000 金币档才出 1 张金卡,太低":首次 25%→50%,基础 12%→30%,每次未出 +12%→+25%,最多连续不出 3→2 次(平均约每 2 次强化见 1 张)。
-export const GUARD_GOLD_FIRST_CHANCE = 0.5;
-export const GUARD_GOLD_BASE_CHANCE = 0.3;
-export const GUARD_GOLD_STEP_CHANCE = 0.25;
+// 2026-10-05 用户反馈"一把最多只能出 2 个大招":首次 50%→80%,基础 30%→60%,每次未出 +25%→+40%(下一次必出),最多连续不出 2→1 次(平均约每 1.3 次强化见 1 张)。
+export const GUARD_GOLD_FIRST_CHANCE = 0.8;
+export const GUARD_GOLD_BASE_CHANCE = 0.6;
+export const GUARD_GOLD_STEP_CHANCE = 0.4;
 export const GUARD_GOLD_STAR3_BONUS = 0.03;
 export const GUARD_GOLD_STAR3_BONUS_CAP = 0.12;
-/** 首张之后最多连续 2 次不出。 */
-export const GUARD_GOLD_MAX_MISS = 2;
+/** 首张之后最多连续 1 次不出。 */
+export const GUARD_GOLD_MAX_MISS = 1;
 export const GUARD_OWNED_BIAS = 0.45;
 /** 上阵但不在场的英雄:前 3 次强化不出,之后权重 0.25。 */
 export const GUARD_OFFFIELD_WEIGHT = 0.25;
