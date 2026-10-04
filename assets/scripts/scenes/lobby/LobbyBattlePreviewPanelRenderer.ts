@@ -133,10 +133,13 @@ import {
   BOSS_CAST_BURST_EFFECT,
   BOSS_CAST_CHARGE_EFFECT,
   BOSS_CAST_INTERRUPT_EFFECT,
+  lookupBattleFxBounds,
+  resolveBattleFxHiddenSlots,
   resolveBattleSkillEffectResource,
   resolveHeroUltEffect,
   type BattleSkillEffectSpec,
 } from './LobbyBattleSkillEffectConfig';
+import { BattleFxSlotFilter } from './BattleFxSlotFilter';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { ultimateDamageScale } from './LobbyBattleHeroSkillConfig';
 
@@ -6750,7 +6753,9 @@ export class LobbyBattlePreviewPanelRenderer {
       skeleton.skeletonData = data;
       // 先以测量为目的播一遍(非循环),测包围盒;再正式 setAnimation 从 0 开始播。
       skeleton.setAnimation(0, animationName, false);
-      const bounds = this.measureBattleSkillEffectBounds(skeleton, animationName, `${spec.effect}:${animationName}`);
+      // 只播片段的整段演出类特效(spec.clip):运行时采样量的是整段 4~18 秒,框不对,改查实测表
+      const bounds = (spec.clip ? lookupBattleFxBounds(spec.effect, animationName) : null)
+        ?? this.measureBattleSkillEffectBounds(skeleton, animationName, `${spec.effect}:${animationName}`);
       const relative = spec.scale || 1;
       if (bounds) {
         const extent = Math.max(bounds.w, bounds.h);
@@ -6769,6 +6774,18 @@ export class LobbyBattlePreviewPanelRenderer {
       }
       if (!spec.loop) {
         skeleton.setCompleteListener(() => onComplete());
+      }
+      const clip = spec.clip;
+      if (clip && clip.end > clip.start && !spec.loop) {
+        const speed = Math.max(0.25, clip.speed ?? 1);
+        skeleton.timeScale = 1;
+        skeleton.updateAnimation(Math.max(0, clip.start));
+        skeleton.timeScale = speed;
+        const hidden = resolveBattleFxHiddenSlots(spec);
+        if (hidden) {
+          node.addComponent(BattleFxSlotFilter).setup(skeleton, spec.effect, hidden);
+        }
+        tween(node).delay((clip.end - clip.start) / speed).call(() => onComplete()).start();
       }
       return true;
     } catch (error) {

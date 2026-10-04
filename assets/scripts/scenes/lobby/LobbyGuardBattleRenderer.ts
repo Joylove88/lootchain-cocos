@@ -124,7 +124,8 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
-import { lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { BattleFxSlotFilter } from './BattleFxSlotFilter';
+import { lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
@@ -8005,7 +8006,12 @@ export class LobbyGuardBattleRenderer {
           skeleton.setAnimation(0, animationName, true);
         } else {
           skeleton.setAnimation(0, animationName, false);
-          skeleton.setCompleteListener(() => {
+          let finished = false;
+          const finish = (): void => {
+            if (finished) {
+              return;
+            }
+            finished = true;
             release();
             // 远程大招(2026-10-01):在灼烧区上只爆一次大的,然后把还没到期的灼烧区交给战技循环特效接着烧
             const live = this.sim;
@@ -8015,7 +8021,35 @@ export class LobbyGuardBattleRenderer {
                 this.plainBurnZones.add(zone.zoneId);
               }
             }
-          });
+          };
+          skeleton.setCompleteListener(finish);
+          // 整段演出类大招(2026-10-05 新批次 hu_*):跳到片段起点,播到片段终点淡出收掉
+          const clip = spec.clip;
+          if (clip && clip.end > clip.start) {
+            const speed = Math.max(0.25, clip.speed ?? 1);
+            skeleton.timeScale = 1;
+            skeleton.updateAnimation(Math.max(0, clip.start));
+            skeleton.timeScale = speed;
+            // 只留特效:角色本体部件与压暗黑底逐帧隐藏
+            const hidden = resolveBattleFxHiddenSlots(spec);
+            if (hidden) {
+              node.addComponent(BattleFxSlotFilter).setup(skeleton, spec.effect, hidden);
+            }
+            const playSec = (clip.end - clip.start) / speed;
+            const fadeSec = Math.min(0.14, playSec * 0.25);
+            const fade = { alpha: 255 };
+            tween(fade)
+              .delay(Math.max(0, playSec - fadeSec))
+              .to(fadeSec, { alpha: 0 }, {
+                onUpdate: () => {
+                  if (node.isValid) {
+                    skeleton.color = new Color(255, 255, 255, Math.round(fade.alpha));
+                  }
+                },
+              })
+              .call(finish)
+              .start();
+          }
         }
         started = true;
       } catch (error) {
