@@ -206,7 +206,11 @@ export class LobbyDailyDungeonPanelRenderer {
         this.renderTokenFurnacePopup(panel, panelWidth, panelHeight, scale);
       }
     }
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本');
+    // 手机(2026-10-04 用户选「卡片放大铺满屏幕」):顶部不再放居中标题 / 规则副标题,规则收进左上「?」,顶部中段让给矿脉信息条
+    const phoneHelp = isPhoneDesign()
+      ? `每天轮换开放不同主题。\n每次挑战消耗体力 ${state.summary?.staminaCost ?? 8};每个主题每天 ${state.summary?.themes?.[0]?.timesPerDay ?? 2} 次,胜利才计次。\n难度越高奖励越好;难度Ⅲ「输出试炼」按限时输出档位发矿晶。`
+      : '';
+    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本', phoneHelp);
     // 手机全屏熔炉要盖住左上返回钮 / 右上关闭钮(否则两个关闭入口叠在一起),所以挂到 panelGroup 最上层(与 panel 同心)
     if (state.summary && this.host.currentLobbyTokenFurnaceState?.().open && isPhoneDesign()) {
       this.renderTokenFurnacePopup(panelGroup, panelWidth, panelHeight, scale);
@@ -214,6 +218,16 @@ export class LobbyDailyDungeonPanelRenderer {
   }
 
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyDailyDungeonPanelState): void {
+    if (isPhoneDesign()) {
+      // 手机:只留右上体力胶囊;标题由左上返回横幅承担
+      const phoneProfile = this.host.currentLobbyProfile?.();
+      if (phoneProfile) {
+        renderTopCurrencyBar(this.host, parent, width / 2, height / 2, scale, [
+          { key: 'stamina', icon: DAILY_STAMINA_ICON_ASSET, value: `${phoneProfile.stamina}/${phoneProfile.maxStamina}` },
+        ]);
+      }
+      return;
+    }
     const title = this.host.addChildLabel(
       parent,
       'LobbyDailyTitle',
@@ -289,11 +303,12 @@ export class LobbyDailyDungeonPanelRenderer {
       return;
     }
     const themes = summary.themes.slice(0, 4);
+    const phone = isPhoneDesign();
     const margin = 20 * scale;
-    const gap = 10 * scale;
-    const areaTop = height / 2 - 88 * scale;
-    // 手机(2026-10-04 美化):底部信息条整条收进屏内(原来下缘被裁),卡片区相应上收
-    const areaBottom = -height / 2 + (isPhoneDesign() ? 94 : 68) * scale;
+    const gap = (phone ? 14 : 10) * scale;
+    // 手机:信息条移到顶部中段后,卡片区从顶栏下方一直铺到屏幕底,卡框等比放大占满横向
+    const areaTop = height / 2 - (phone ? 76 : 88) * scale;
+    const areaBottom = -height / 2 + (phone ? 6 : 68) * scale;
     const areaHeight = areaTop - areaBottom;
     const columnWidth = (width - margin * 2 - gap * (themes.length - 1)) / Math.max(1, themes.length);
     const cardHeight = Math.min(areaHeight, columnWidth * (1026 / 477));
@@ -302,7 +317,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const fitCardWidth = Math.min(columnWidth, cardHeight * (477 / 1026) * 1.22);
     const stripWidth = fitCardWidth * themes.length + gap * (themes.length - 1);
     const startX = -stripWidth / 2 + fitCardWidth / 2;
-    const centerYPos = areaTop - cardHeight / 2;
+    const centerYPos = phone ? (areaTop + areaBottom) / 2 : areaTop - cardHeight / 2;
     themes.forEach((theme, index) => {
       const x = startX + index * (fitCardWidth + gap);
       this.renderThemeCard(parent, theme, summary.staminaCost, x, centerYPos, fitCardWidth, cardHeight, scale, index);
@@ -366,12 +381,15 @@ export class LobbyDailyDungeonPanelRenderer {
 
     // 头部三行(在框之后创建=最上层,浮于图上):2026-08-12 定标——标题下移 50 设计px 到 15.9%,
     // 开放/状态行贴排(行距 3.3%/3.0%),不再上下散开。
-    const title = this.host.addChildLabel(card, 'ThemeName', theme.name || theme.code, 0, height / 2 - height * 0.159, 24 * scale, open ? rgba(250, 226, 160, 255) : rgba(216, 198, 162, 245), new Size(width * 0.66, 32 * scale));
+    const phone = isPhoneDesign();
+    const title = this.host.addChildLabel(card, 'ThemeName', theme.name || theme.code, 0, height / 2 - height * 0.159, (phone ? 32 : 24) * scale, open ? rgba(255, 232, 170, 255) : rgba(216, 198, 162, 245), new Size(width * 0.7, (phone ? 42 : 32) * scale));
     title.overflow = Label.Overflow.SHRINK;
     title.enableOutline = true;
     title.outlineColor = rgba(0, 0, 0, 225);
-    title.outlineWidth = Math.max(1, 1.5 * scale);
-    const phone = isPhoneDesign();
+    title.outlineWidth = Math.max(1, (phone ? 3 : 1.5) * scale);
+    if (phone) {
+      title.isBold = true;
+    }
     const openDaysText = `周${theme.openDays.map((d) => WEEKDAY_TEXT[d] ?? '?').join('/')}`;
     // 手机字号下限 20,三行(行距约 18)会互相压住:开放日并进状态行,只留两行。
     if (!phone) {
@@ -384,12 +402,26 @@ export class LobbyDailyDungeonPanelRenderer {
     const statusText = open
       ? `今日开放 · 次数 ${theme.usedToday}/${theme.timesPerDay}`
       : phone ? `未开放 · ${openDaysText}开放` : '今日未开放';
+    if (phone) {
+      // 状态做成小标签:深底 + 细边,压在场景图上也清楚
+      const tagW = Math.min(width * 0.78, this.estimateHalfTextWidth(statusText, 20 * scale) * 2 + 30 * scale);
+      const tagH = 30 * scale;
+      const tag = this.host.addChildPlainNode(card, 'ThemeStatusTag', 0, height / 2 - height * 0.222, tagW, tagH);
+      const tg = tag.addComponent(Graphics);
+      tg.fillColor = open ? rgba(8, 20, 10, 190) : rgba(14, 12, 10, 190);
+      tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, tagH / 2);
+      tg.fill();
+      tg.strokeColor = open ? rgba(126, 214, 132, 200) : rgba(160, 146, 120, 170);
+      tg.lineWidth = Math.max(1, 1.4 * scale);
+      tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, tagH / 2);
+      tg.stroke();
+    }
     const status = this.host.addChildLabel(
       card,
       'ThemeStatus',
       statusText,
       0,
-      height / 2 - height * (phone ? 0.214 : 0.224),
+      height / 2 - height * (phone ? 0.222 : 0.224),
       19 * scale,
       open ? rgba(168, 232, 168, 255) : rgba(196, 182, 158, 245),
       new Size(width * 0.74, 26 * scale),
@@ -475,11 +507,17 @@ export class LobbyDailyDungeonPanelRenderer {
       `挑战 难度${TIER_ROMAN[tier.tier] ?? tier.tier}`,
       0,
       0,
-      20 * scale,
+      (isPhoneDesign() ? 22 : 20) * scale,
       rgba(255, 240, 205, 255),
-      new Size(buttonWidth - 16 * scale, 26 * scale),
+      new Size(buttonWidth - 16 * scale, (isPhoneDesign() ? 32 : 26) * scale),
     );
     label.overflow = Label.Overflow.SHRINK;
+    if (isPhoneDesign()) {
+      label.isBold = true;
+      label.enableOutline = true;
+      label.outlineColor = rgba(60, 10, 8, 255);
+      label.outlineWidth = Math.max(1, 2 * scale);
+    }
     button.addComponent(Button);
     button.on(Button.EventType.CLICK, () => this.host.startLobbyDailyDungeonBattle(tier.stageCode), this);
     this.host.applyImageButtonFeedback(button, 1.04, 0.96);
@@ -654,11 +692,13 @@ export class LobbyDailyDungeonPanelRenderer {
     // 行=难度选择项:选中行画金框微光(不可挑战的选中行降亮度,只表达"当前查看");其余行素朴。
     if (selected) {
       const glow = block.addComponent(Graphics);
-      glow.fillColor = rgba(214, 158, 72, available ? 30 : 16);
+      // 手机:选中行高亮加重(金色底 + 粗边),一眼看出当前选的是哪档
+      const strong = isPhoneDesign();
+      glow.fillColor = rgba(214, 158, 72, available ? (strong ? 62 : 30) : (strong ? 28 : 16));
       glow.roundRect(-width / 2, -blockHeight / 2, width, blockHeight, 7 * scale);
       glow.fill();
-      glow.strokeColor = rgba(240, 194, 104, available ? 225 : 145);
-      glow.lineWidth = Math.max(1.2, 1.6 * scale);
+      glow.strokeColor = rgba(250, 206, 112, available ? 240 : 150);
+      glow.lineWidth = Math.max(1.2, (strong ? 2.8 : 1.6) * scale);
       glow.roundRect(-width / 2, -blockHeight / 2, width, blockHeight, 7 * scale);
       glow.stroke();
     }
@@ -733,7 +773,9 @@ export class LobbyDailyDungeonPanelRenderer {
     } else {
       const cellWidth = rewardAreaWidth / 4;
       const gridLeft = (rewardLeft + rewardRight) / 2 - (cellWidth * rewards.length) / 2;
-      const iconSize = Math.max(26 * scale, Math.min(cellWidth - 6 * scale, contentHeight * 0.66, 50 * scale));
+      const iconSize = isPhoneDesign()
+        ? Math.max(26 * scale, Math.min(cellWidth - 4 * scale, contentHeight * 0.86, 62 * scale))
+        : Math.max(26 * scale, Math.min(cellWidth - 6 * scale, contentHeight * 0.66, 50 * scale));
       rewards.forEach((reward, rewardIndex) => {
         const cellX = gridLeft + cellWidth * rewardIndex + cellWidth / 2;
         const iconAsset = resolveBagStyleItemIconAsset(reward.resourceCode, reward.resourceType);
@@ -794,7 +836,11 @@ export class LobbyDailyDungeonPanelRenderer {
     const barWidth = Math.min(width * 0.6, 760 * scale);
     const barHeight = barWidth * (133 / 1227);
     const phone = isPhoneDesign();
-    const bar = this.host.addChildPlainNode(parent, 'LobbyDailyFooterBar', 0, -height / 2 + (phone ? barHeight / 2 + 6 * scale : 36 * scale), barWidth, barHeight);
+    if (phone) {
+      this.renderPhoneMineBar(parent, width, height, scale, mine);
+      return;
+    }
+    const bar = this.host.addChildPlainNode(parent, 'LobbyDailyFooterBar', 0, -height / 2 + 36 * scale, barWidth, barHeight);
     if (!this.host.addSprite('LobbyDailyFooterBg', DAILY_FOOTER_BG_ASSET, 0, 0, barWidth, barHeight, bar)) {
       const g = bar.addComponent(Graphics);
       g.fillColor = rgba(12, 10, 9, 215);
@@ -838,6 +884,69 @@ export class LobbyDailyDungeonPanelRenderer {
     text.overflow = Label.Overflow.SHRINK;
     this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
     this.renderFooterPill(bar, 'LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, 0, pillW, pillH, scale, () => {
+      this.rankPopupOpen = true;
+      this.host.loadLobbyCrystalRankSummary?.();
+      this.host.refreshLobbyDailyDungeonPanel();
+    });
+  }
+
+  /** 手机:矿脉信息条放顶部中段(左上返回横幅与右上体力胶囊之间),右端两个素材按钮。 */
+  private renderPhoneMineBar(parent: Node, width: number, height: number, scale: number, mine: CrystalMineVO | null): void {
+    const zoneLeft = -width / 2 + 318 * scale;
+    const zoneRight = width / 2 - 326 * scale;
+    const barWidth = Math.min(780 * scale, zoneRight - zoneLeft);
+    const barHeight = barWidth * (133 / 1227);
+    const bar = this.host.addChildPlainNode(parent, 'LobbyDailyFooterBar', (zoneLeft + zoneRight) / 2, height / 2 - 40 * scale, barWidth, barHeight);
+    if (!this.host.addSprite('LobbyDailyFooterBg', DAILY_FOOTER_BG_ASSET, 0, 0, barWidth, barHeight, bar)) {
+      const g = bar.addComponent(Graphics);
+      g.fillColor = rgba(12, 10, 9, 215);
+      g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, 8 * scale);
+      g.fill();
+    }
+    const iconSize = barHeight * 0.5;
+    const iconX = -barWidth / 2 + barWidth * 0.06 + iconSize / 2;
+    this.host.addSprite('LobbyDailyFooterIcon', DAILY_IC_NOTICE_ASSET, iconX, 0, iconSize * (87 / 83), iconSize, bar);
+    let text = '每日轮换不同主题,难度越高奖励越好';
+    let color = rgba(224, 202, 158, 240);
+    if (mine) {
+      if (!mine.unlocked) {
+        text = '通关 MAIN_3_1 后副本可掉矿晶';
+        color = rgba(196, 182, 158, 235);
+      } else {
+        const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);
+        text = `矿脉 ${remain}/${mine.dailyBudgetTotal} · 我的掉落 ${mine.myTodayDrop}/${mine.myDailyCap}`;
+        color = rgba(186, 226, 255, 245);
+      }
+    }
+    // 素材按钮 bag_button_dark(512×158)等比显示
+    const pillH = barHeight * 0.6;
+    const pillW = pillH * (512 / 158);
+    const pillGap = 6 * scale;
+    const rightEdge = barWidth / 2 - barWidth * 0.04;
+    const textLeft = iconX + iconSize * 0.6 + 8 * scale;
+    const textRight = rightEdge - pillW * 2 - pillGap - 8 * scale;
+    const label = this.host.addChildLabel(bar, 'LobbyDailyFooterText', text, (textLeft + textRight) / 2, 0, 20 * scale, color, new Size(Math.max(60 * scale, textRight - textLeft), 28 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    const artPill = (name: string, caption: string, x: number, onClick: () => void): void => {
+      const pill = this.host.addChildPlainNode(bar, name, x, 0, pillW, pillH);
+      if (!this.host.addSprite(`${name}Bg`, 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, pillW, pillH, pill)) {
+        const g = pill.addComponent(Graphics);
+        g.fillColor = rgba(38, 24, 16, 235);
+        g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+        g.fill();
+        g.strokeColor = rgba(214, 168, 92, 225);
+        g.lineWidth = Math.max(1, 1.3 * scale);
+        g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+        g.stroke();
+      }
+      const cap = this.host.addChildLabel(pill, `${name}Label`, caption, 0, 0, 20 * scale, rgba(255, 234, 176, 255), new Size(pillW * 0.74, pillH - 6 * scale));
+      cap.overflow = Label.Overflow.SHRINK;
+      pill.addComponent(Button);
+      pill.on(Button.EventType.CLICK, onClick, this);
+      this.host.applyImageButtonFeedback(pill, 1.05, 0.95);
+    };
+    artPill('LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, () => this.host.openLobbyTokenFurnace?.());
+    artPill('LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, () => {
       this.rankPopupOpen = true;
       this.host.loadLobbyCrystalRankSummary?.();
       this.host.refreshLobbyDailyDungeonPanel();
