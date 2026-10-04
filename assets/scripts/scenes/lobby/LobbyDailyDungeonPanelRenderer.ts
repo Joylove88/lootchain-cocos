@@ -208,7 +208,7 @@ export class LobbyDailyDungeonPanelRenderer {
     }
     // 手机(2026-10-04 用户选「卡片放大铺满屏幕」):顶部不再放居中标题 / 规则副标题,规则收进左上「?」,顶部中段让给矿脉信息条
     const phoneHelp = isPhoneDesign()
-      ? `每天轮换开放不同主题。\n每次挑战消耗体力 ${state.summary?.staminaCost ?? 8};每个主题每天 ${state.summary?.themes?.[0]?.timesPerDay ?? 2} 次,胜利才计次。\n难度越高奖励越好;难度Ⅲ「输出试炼」按限时输出档位发矿晶。`
+      ? `每天轮换开放不同主题。\n\n每次挑战消耗体力 ${state.summary?.staminaCost ?? 8};每个主题每天 ${state.summary?.themes?.[0]?.timesPerDay ?? 2} 次,胜利才计次。\n\n难度越高奖励越好;难度Ⅲ「输出试炼」按限时输出档位发矿晶。`
       : '';
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本', phoneHelp);
     // 手机全屏熔炉要盖住左上返回钮 / 右上关闭钮(否则两个关闭入口叠在一起),所以挂到 panelGroup 最上层(与 panel 同心)

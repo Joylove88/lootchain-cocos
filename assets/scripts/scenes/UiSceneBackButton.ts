@@ -9,6 +9,7 @@ import {
   Size,
   Sprite,
 } from 'cc';
+import { isPhoneDesign } from '../app/ScreenAdapter';
 import { rgba, type UiLayout } from './lobby/LobbyHudTypes';
 
 // 旧资产路径保留供布局守护基线引用;实际渲染用 AI 圆形关闭钮。
@@ -153,7 +154,11 @@ function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiL
   og.fillColor = rgba(0, 0, 0, 168);
   og.rect(-2000, -2000, 4000, 4000);
   og.fill();
-  const w = Math.min(640 * scale, (layout.stageRight - layout.stageLeft) * 0.84);
+  // 2026-10-04 用户截图:手机上正文偏到右半边并伸出框外、标题与底部提示压在雕花边上。
+  // 原因:LEFT 对齐的 Label 第 4 个参数是左缘 x(原来传 0 = 从面板中线起排);手机字号被抬到 20 而行数仍按 16 估。
+  // 现在:文字区按框内安全区(左右各 13%、上 29%、下 21%)排,手机面板放大、字号 20;内容过长时整体缩字。
+  const phone = isPhoneDesign();
+  const w = Math.min((phone ? 860 : 640) * scale, (layout.stageRight - layout.stageLeft) * 0.84);
   const h = w * SCENE_HELP_PANEL_ASPECT;
   const panel = host.addChildPlainNode(overlay, 'SceneHelpPanel', 0, 0, w, h);
   if (!host.addSprite?.('SceneHelpPanelArt', SCENE_HELP_PANEL_ASSET, 0, 0, w, h, panel)) {
@@ -166,27 +171,38 @@ function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiL
     g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.stroke();
   }
-  const title = host.addChildLabel(panel, 'SceneHelpTitle', titleText + ' · 说明', 0, h / 2 - 46 * scale, 24 * scale, rgba(240, 210, 140), new Size(w - 96 * scale, 30 * scale));
+  const titleSize = (phone ? 28 : 24) * scale;
+  const title = host.addChildLabel(panel, 'SceneHelpTitle', titleText + ' · 说明', 0, h / 2 - h * 0.19, titleSize, rgba(240, 210, 140), new Size(w * 0.7, titleSize + 8 * scale));
   title.overflow = Label.Overflow.SHRINK;
   title.enableOutline = true;
   title.outlineColor = rgba(0, 0, 0, 220);
   title.outlineWidth = Math.max(1, 1.4 * scale);
-  const paddingX = 60 * scale;
+  const paddingX = w * 0.13;
   const textWidth = w - paddingX * 2;
-  const fontSize = 16 * scale;
-  const lineHeight = 23 * scale;
+  const bodyTop = h / 2 - h * 0.29;
+  const bodyBottom = -h / 2 + h * 0.21;
   const paragraphs = helpText.split(/\n{2,}/).map((part) => part.replace(/\n/g, '')).filter(Boolean);
+  let fontSize = (phone ? 20 : 16) * scale;
+  let lineHeight = fontSize * 1.42;
+  const paragraphGap = 9 * scale;
+  const measure = (): number => paragraphs.reduce((sum, text) => sum + Math.max(1, Math.ceil(text.length / Math.max(8, Math.floor(textWidth / fontSize)))) * lineHeight + paragraphGap, -paragraphGap);
+  for (let i = 0; i < 6 && measure() > bodyTop - bodyBottom; i += 1) {
+    fontSize *= 0.93;
+    lineHeight = fontSize * 1.42;
+  }
   const charsPerLine = Math.max(8, Math.floor(textWidth / fontSize));
-  let cursorY = h / 2 - 76 * scale;
+  let cursorY = bodyTop;
   paragraphs.forEach((text, index) => {
     const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
     const blockHeight = lines * lineHeight;
-    const paragraph = host.addChildLabel!(panel, `SceneHelpBody_${index}`, text, 0, cursorY - blockHeight / 2, fontSize, rgba(222, 208, 178), new Size(textWidth, blockHeight), HorizontalTextAlignment.LEFT);
+    const paragraph = host.addChildLabel!(panel, `SceneHelpBody_${index}`, text, -textWidth / 2, cursorY - blockHeight / 2, fontSize, rgba(222, 208, 178), new Size(textWidth, blockHeight), HorizontalTextAlignment.LEFT);
+    paragraph.fontSize = fontSize;
     paragraph.lineHeight = lineHeight;
+    paragraph.enableWrapText = true;
     paragraph.overflow = Label.Overflow.SHRINK;
-    cursorY -= blockHeight + 9 * scale;
+    cursorY -= blockHeight + paragraphGap;
   });
-  const hint = host.addChildLabel(panel, 'SceneHelpHint', '点击任意处关闭', 0, -h / 2 + 32 * scale, 15 * scale, rgba(160, 146, 120), new Size(w - 96 * scale, 20 * scale));
+  const hint = host.addChildLabel(panel, 'SceneHelpHint', '点击任意处关闭', 0, -h / 2 + h * 0.15, (phone ? 20 : 15) * scale, rgba(160, 146, 120), new Size(w * 0.6, (phone ? 26 : 20) * scale));
   hint.overflow = Label.Overflow.SHRINK;
   overlay.addComponent(Button);
   overlay.on(Button.EventType.CLICK, () => {
