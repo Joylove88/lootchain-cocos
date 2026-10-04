@@ -292,7 +292,8 @@ export class LobbyDailyDungeonPanelRenderer {
     const margin = 20 * scale;
     const gap = 10 * scale;
     const areaTop = height / 2 - 88 * scale;
-    const areaBottom = -height / 2 + 68 * scale;
+    // 手机(2026-10-04 美化):底部信息条整条收进屏内(原来下缘被裁),卡片区相应上收
+    const areaBottom = -height / 2 + (isPhoneDesign() ? 94 : 68) * scale;
     const areaHeight = areaTop - areaBottom;
     const columnWidth = (width - margin * 2 - gap * (themes.length - 1)) / Math.max(1, themes.length);
     const cardHeight = Math.min(areaHeight, columnWidth * (1026 / 477));
@@ -370,19 +371,25 @@ export class LobbyDailyDungeonPanelRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(0, 0, 0, 225);
     title.outlineWidth = Math.max(1, 1.5 * scale);
-    const daysText = `开放：周${theme.openDays.map((d) => WEEKDAY_TEXT[d] ?? '?').join('/')}`;
-    const days = this.host.addChildLabel(card, 'ThemeDays', daysText, 0, height / 2 - height * 0.192, 15 * scale, rgba(205, 189, 156, 235), new Size(width * 0.72, 20 * scale));
-    days.overflow = Label.Overflow.SHRINK;
-    days.enableOutline = true;
-    days.outlineColor = rgba(0, 0, 0, 225);
-    days.outlineWidth = Math.max(1, 1.5 * scale);
-    const statusText = open ? `今日开放 · 次数 ${theme.usedToday}/${theme.timesPerDay}` : '今日未开放';
+    const phone = isPhoneDesign();
+    const openDaysText = `周${theme.openDays.map((d) => WEEKDAY_TEXT[d] ?? '?').join('/')}`;
+    // 手机字号下限 20,三行(行距约 18)会互相压住:开放日并进状态行,只留两行。
+    if (!phone) {
+      const days = this.host.addChildLabel(card, 'ThemeDays', `开放：${openDaysText}`, 0, height / 2 - height * 0.192, 15 * scale, rgba(205, 189, 156, 235), new Size(width * 0.72, 20 * scale));
+      days.overflow = Label.Overflow.SHRINK;
+      days.enableOutline = true;
+      days.outlineColor = rgba(0, 0, 0, 225);
+      days.outlineWidth = Math.max(1, 1.5 * scale);
+    }
+    const statusText = open
+      ? `今日开放 · 次数 ${theme.usedToday}/${theme.timesPerDay}`
+      : phone ? `未开放 · ${openDaysText}开放` : '今日未开放';
     const status = this.host.addChildLabel(
       card,
       'ThemeStatus',
       statusText,
       0,
-      height / 2 - height * 0.224,
+      height / 2 - height * (phone ? 0.214 : 0.224),
       19 * scale,
       open ? rgba(168, 232, 168, 255) : rgba(196, 182, 158, 245),
       new Size(width * 0.74, 26 * scale),
@@ -452,7 +459,8 @@ export class LobbyDailyDungeonPanelRenderer {
       this.renderCardActionBar(card, '今日次数已用完', centerY, cardWidth, cardHeight, scale);
       return;
     }
-    const buttonHeight = cardHeight * 0.066;
+    // 手机:按钮撑满素材锁行区高度(8.2%),更好点
+    const buttonHeight = cardHeight * (isPhoneDesign() ? 0.08 : 0.066);
     const buttonWidth = Math.min(cardWidth * 0.64, buttonHeight * (740 / 211));
     const button = this.host.addChildPlainNode(card, 'ThemeChallengeButton', 0, centerY, buttonWidth, buttonHeight);
     if (!this.host.addSprite('ThemeChallengeButtonBg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, buttonWidth, buttonHeight, button)) {
@@ -686,10 +694,16 @@ export class LobbyDailyDungeonPanelRenderer {
       }
       const textLeft = iconX + iconSize / 2 + 8 * scale;
       const textW = Math.max(40 * scale, rewardRight - textLeft);
-      const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 矿晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 11 * scale, 18 * scale, rgba(250, 226, 160, 250), new Size(textW, 24 * scale));
-      l1.overflow = Label.Overflow.SHRINK;
-      const l2 = this.host.addChildLabel(block, 'TierTrialLine2', '限时拼输出，档位越高越多 ›', textLeft + textW / 2, contentCenterY - 12 * scale, 15 * scale, rgba(196, 182, 152, 235), new Size(textW, 20 * scale));
-      l2.overflow = Label.Overflow.SHRINK;
+      if (isPhoneDesign()) {
+        // 手机:行高只有约 38,放不下两行 20 号字,合成一行(点进去看完整档位说明)
+        const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 矿晶 ${minC}~${maxC} ›`, textLeft + textW / 2, contentCenterY, 20 * scale, rgba(250, 226, 160, 250), new Size(textW, 28 * scale));
+        l1.overflow = Label.Overflow.SHRINK;
+      } else {
+        const l1 = this.host.addChildLabel(block, 'TierTrialLine1', `输出试炼 · 矿晶 ${minC}~${maxC}`, textLeft + textW / 2, contentCenterY + 11 * scale, 18 * scale, rgba(250, 226, 160, 250), new Size(textW, 24 * scale));
+        l1.overflow = Label.Overflow.SHRINK;
+        const l2 = this.host.addChildLabel(block, 'TierTrialLine2', '限时拼输出，档位越高越多 ›', textLeft + textW / 2, contentCenterY - 12 * scale, 15 * scale, rgba(196, 182, 152, 235), new Size(textW, 20 * scale));
+        l2.overflow = Label.Overflow.SHRINK;
+      }
       if (!available) {
         const dim = block.getComponent(UIOpacity) ?? block.addComponent(UIOpacity);
         void dim; // 不整块降透明以免压掉选中高亮;文字已足够区分
@@ -779,7 +793,8 @@ export class LobbyDailyDungeonPanelRenderer {
   private renderFooterBar(parent: Node, width: number, height: number, scale: number, mine: CrystalMineVO | null): void {
     const barWidth = Math.min(width * 0.6, 760 * scale);
     const barHeight = barWidth * (133 / 1227);
-    const bar = this.host.addChildPlainNode(parent, 'LobbyDailyFooterBar', 0, -height / 2 + 36 * scale, barWidth, barHeight);
+    const phone = isPhoneDesign();
+    const bar = this.host.addChildPlainNode(parent, 'LobbyDailyFooterBar', 0, -height / 2 + (phone ? barHeight / 2 + 6 * scale : 36 * scale), barWidth, barHeight);
     if (!this.host.addSprite('LobbyDailyFooterBg', DAILY_FOOTER_BG_ASSET, 0, 0, barWidth, barHeight, bar)) {
       const g = bar.addComponent(Graphics);
       g.fillColor = rgba(12, 10, 9, 215);
@@ -801,23 +816,26 @@ export class LobbyDailyDungeonPanelRenderer {
         footerColor = rgba(186, 226, 255, 245);
       }
     }
-    // 文案让出右端 30% 给两个矿晶功能胶囊(熔炉/输出榜):同主题聚合在矿脉条内,不再孤悬顶部。
+    // 右端两个紧凑胶囊按钮:矿晶熔炉 | 输出榜(手机加大到放得下 20 号字)。
+    const pillW = barWidth * (phone ? 0.148 : 0.125);
+    const pillH = barHeight * (phone ? 0.56 : 0.5);
+    const pillGap = barWidth * 0.012;
+    const rightEdge = barWidth / 2 - barWidth * 0.045;
+    // 文案让出右端给两个矿晶功能胶囊(熔炉/输出榜):同主题聚合在矿脉条内,不再孤悬顶部。
+    // 手机:文字框精确夹在感叹号与胶囊之间(原固定 56% 宽在 20 号字下会伸到胶囊底下)。
+    const phoneTextLeft = -barWidth / 2 + barWidth * 0.06 + iconSize * 1.1 + 8 * scale;
+    const phoneTextRight = rightEdge - pillW * 2 - pillGap - 10 * scale;
     const text = this.host.addChildLabel(
       bar,
       'LobbyDailyFooterText',
       footerText,
-      -barWidth * 0.06 + iconSize * 0.5,
+      phone ? (phoneTextLeft + phoneTextRight) / 2 : -barWidth * 0.06 + iconSize * 0.5,
       0,
       15 * scale,
       footerColor,
-      new Size(barWidth * 0.56, 22 * scale),
+      new Size(phone ? phoneTextRight - phoneTextLeft : barWidth * 0.56, 22 * scale),
     );
     text.overflow = Label.Overflow.SHRINK;
-    // 右端两个紧凑胶囊按钮:矿晶熔炉 | 输出榜。
-    const pillW = barWidth * 0.125;
-    const pillH = barHeight * 0.5;
-    const pillGap = barWidth * 0.012;
-    const rightEdge = barWidth / 2 - barWidth * 0.045;
     this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
     this.renderFooterPill(bar, 'LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, 0, pillW, pillH, scale, () => {
       this.rankPopupOpen = true;
