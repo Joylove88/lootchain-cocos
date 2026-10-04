@@ -5,7 +5,9 @@ import {
   Graphics,
   HorizontalTextAlignment,
   Label,
+  Mask,
   Node,
+  ScrollView,
   Size,
   Sprite,
   UIOpacity,
@@ -123,8 +125,9 @@ const CHANNEL_ROW_H = 58;
  * 标题带更紧凑,卡片上限放大、文字随卡宽同比放大(上限 1.35 倍);钻石页 6 档按"卡最大"自动选每排张数(宽屏一排 6 张)。
  */
 const PHONE_GEO = { headerH: 120, footerH: 84, noticeY: 42, sidePad: 28, gapCol: 18, titleBand: 104 };
-const PHONE_CARD_W = { gold: 300, stamina: 280, diamond: 260 };
-const PHONE_TEXT_SCALE_MAX = 1.35;
+// 2026-10-04 用户「每个充值的框都放大」:卡宽上限放开,实际由可用高度决定(框素材只能等比);钻石 6 档一排放不下时横向滑动。
+const PHONE_CARD_W = { gold: 380, stamina: 340, diamond: 340 };
+const PHONE_TEXT_SCALE_MAX = 1.6;
 
 interface TierCardSpec {
   name: string;
@@ -410,15 +413,67 @@ export class LobbyShopDialogRenderer {
     }
     const tiers = catalog.rechargeTiers;
     const bestBonus = Math.max(0, ...tiers.map((tier) => tier.diamondBonus));
-    const grid = this.phone
-      ? this.bestTierGrid(panelW, gridTop, bottom, scale, tiers.length, PHONE_CARD_W.diamond * scale)
-      : this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
+    // 手机:卡片按可用高度放到最大;6 张一排超出面板宽时放进横向滑动区(露出半张提示可滑),位置在重绘间保留
+    let cardParent = panel;
+    let grid: { cardW: number; slots: Array<{ x: number; y: number }> };
+    if (this.phone) {
+      const gap = PHONE_GEO.gapCol * scale;
+      const side = PHONE_GEO.sidePad * scale;
+      const viewW = panelW - side * 2;
+      const bodyH = gridTop - bottom;
+      const cardW = Math.min(PHONE_CARD_W.diamond * scale, (bodyH * 0.97) / TALLEST_FRAME);
+      const rowW = tiers.length * cardW + (tiers.length - 1) * gap;
+      const centerY = (gridTop + bottom) / 2;
+      if (rowW <= viewW) {
+        grid = { cardW, slots: tiers.map((_, index) => ({ x: -rowW / 2 + cardW / 2 + index * (cardW + gap), y: centerY })) };
+      } else {
+        const viewport = this.host.addChildPlainNode(panel, 'LobbyShopRechargeScroll', 0, centerY, viewW, bodyH);
+        viewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+        const scrollView = viewport.addComponent(ScrollView);
+        scrollView.horizontal = true;
+        scrollView.vertical = false;
+        scrollView.inertia = true;
+        scrollView.elastic = true;
+        scrollView.cancelInnerEvents = true;
+        const contentW = rowW + 8 * scale;
+        const maxShift = contentW - viewW;
+        const baseX = maxShift / 2;
+        this.rechargeScroll = Math.max(0, Math.min(maxShift, this.rechargeScroll));
+        const content = this.host.addChildPlainNode(viewport, 'LobbyShopRechargeScrollContent', baseX - this.rechargeScroll, 0, contentW, bodyH);
+        scrollView.content = content;
+        // 右缘「›」提示还有更多,滑到头就隐藏
+        const hint = this.host.addChildPlainNode(panel, 'LobbyShopRechargeMore', viewW / 2 - 6 * scale, centerY, 44 * scale, 88 * scale);
+        const hg = hint.addComponent(Graphics);
+        hg.fillColor = rgba(10, 8, 6, 215);
+        hg.roundRect(-22 * scale, -44 * scale, 44 * scale, 88 * scale, 14 * scale);
+        hg.fill();
+        hg.strokeColor = rgba(214, 168, 92, 210);
+        hg.lineWidth = Math.max(1, 1.5 * scale);
+        hg.roundRect(-22 * scale, -44 * scale, 44 * scale, 88 * scale, 14 * scale);
+        hg.stroke();
+        const arrow = this.host.addChildLabel(hint, 'Arrow', '›', 0, 4 * scale, 44 * scale, rgba(255, 226, 150), new Size(40 * scale, 60 * scale));
+        arrow.isBold = true;
+        const syncHint = (): void => {
+          this.rechargeScroll = Math.max(0, Math.min(maxShift, baseX - content.position.x));
+          if (hint.isValid) {
+            hint.active = this.rechargeScroll < maxShift - 12 * scale;
+          }
+        };
+        viewport.on('scrolling', syncHint, this);
+        viewport.on('scroll-ended', syncHint, this);
+        syncHint();
+        cardParent = content;
+        grid = { cardW, slots: tiers.map((_, index) => ({ x: -contentW / 2 + 4 * scale + cardW / 2 + index * (cardW + gap), y: 0 })) };
+      }
+    } else {
+      grid = this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
+    }
     tiers.forEach((tier, index) => {
       const slot = grid.slots[index];
       const price = Number(tier.priceCny ?? 0);
       const best = tier.diamondBonus > 0 && tier.diamondBonus === bestBonus;
       const payable = mode === 'MOCK' || (mode === 'ONLINE' && LobbyShopDialogRenderer.channelFits(selected, price));
-      this.buildTierCard(panel, `LobbyShopRecharge_${tier.code}`, slot.x, slot.y, grid.cardW, UNIFIED_TIER_FRAME, scale, {
+      this.buildTierCard(cardParent, `LobbyShopRecharge_${tier.code}`, slot.x, slot.y, grid.cardW, UNIFIED_TIER_FRAME, scale, {
         textScale: this.cardTextScale(grid.cardW, CARD_W.diamond * scale),
         name: tier.name,
         iconKey: tier.iconKey,
@@ -503,6 +558,9 @@ export class LobbyShopDialogRenderer {
   }
 
   /** 手机全屏版:每排张数取"卡片最大"的那种(宽屏常是一排铺满),同宽时取行数少的。 */
+  /** 钻石页横向滑动位置(手机):重绘(选支付方式 / 下单中)后保留。 */
+  private rechargeScroll = 0;
+
   private bestTierGrid(areaW: number, top: number, bottom: number, scale: number, count: number, maxCardW: number): { cardW: number; slots: Array<{ x: number; y: number }> } {
     let best = this.tierGrid(areaW, top, bottom, scale, count, count, maxCardW);
     for (let perRow = count - 1; perRow >= 1; perRow -= 1) {
