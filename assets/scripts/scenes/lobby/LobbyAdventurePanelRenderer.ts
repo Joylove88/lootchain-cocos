@@ -74,6 +74,8 @@ export interface LobbyAdventurePanelHost {
 export class LobbyAdventurePanelRenderer {
   private currentLayout: UiLayout | null = null;
   private challengeDialogRoot: Node | null = null;
+  /** 当前打开的挑战弹框关卡:页面数据 / 素材加载完会整页重绘、把弹框一起清掉,重绘后据此补开(2026-10-04 用户:刚进冒险点关卡弹框会闪退)。 */
+  private pendingChallengeStageCode: string | null = null;
 
   constructor(private readonly host: LobbyAdventurePanelHost) {}
 
@@ -116,7 +118,19 @@ export class LobbyAdventurePanelRenderer {
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
     this.renderBody(panel, panelWidth, panelHeight, scale, state);
     this.renderFooter(panel, panelWidth, panelHeight, scale);
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyAdventureBackButton', () => this.host.closeLobbyAdventurePanel(), scale, '深渊爬塔', '挑战 BOSS 推进层数，层数越高挂机产出越高；挑战失败不掉层。\n\n战力不足时，先在英雄页升级、穿戴并强化装备，再回来挑战。');
+    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyAdventureBackButton', () => { this.resetChallengeDialog(); this.host.closeLobbyAdventurePanel(); }, scale, '深渊爬塔', '挑战 BOSS 推进层数，层数越高挂机产出越高；挑战失败不掉层。\n\n战力不足时，先在英雄页升级、穿戴并强化装备，再回来挑战。');
+    // 整页重绘会清掉打开中的挑战弹框:按记录重建(内容按最新数据)。
+    // 不能用 isValid 判断旧弹框还在不在——destroy 要到帧末才生效,同一帧里旧节点仍报 valid,随后才消失。
+    const pending = this.pendingChallengeStageCode;
+    if (pending) {
+      this.showChallengeDialog(pending);
+    }
+  }
+
+  /** 进入 / 离开冒险页时清掉弹框记录,避免下次进页自动弹出旧关卡。 */
+  resetChallengeDialog(): void {
+    this.pendingChallengeStageCode = null;
+    this.closeChallengeDialog();
   }
 
   private createUiNode(name: string): Node {
@@ -744,6 +758,7 @@ export class LobbyAdventurePanelRenderer {
       }
       if (this.challengeDialogRoot === dialogRoot) {
         this.challengeDialogRoot = null;
+        this.pendingChallengeStageCode = null;
       }
       dialogRoot = null;
     };
@@ -772,6 +787,7 @@ export class LobbyAdventurePanelRenderer {
     const renderer = new BattleChallengeDialogRenderer(dialogHost);
     dialogRoot = renderer.render(centerX, centerY, layoutWidth, layoutHeight, scale, stage, formation, canChallenge);
     this.challengeDialogRoot = dialogRoot;
+    this.pendingChallengeStageCode = stage.stageCode;
   }
 
   private closeChallengeDialog(): void {

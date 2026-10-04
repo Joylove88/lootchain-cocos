@@ -234,7 +234,8 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
     // 图标嵌胶囊左端圆槽(裁短后槽心在源图 48px≈宽 17.1% 处;+7px 微调,图标高=胶囊高 56%)。
     const iconSize = capHeight * 0.56;
     host.addSprite(`TopCurrencyIcon_${entry.key}`, entry.icon, -capWidth / 2 + capWidth * 0.171 + 7 * scale, 0, iconSize, iconSize, chip);
-    const value = host.addChildLabel(chip, `TopCurrencyValue_${entry.key}`, entry.value, capWidth * 0.05, 0, 18 * scale, rgba(245, 222, 168), new Size(capWidth * 0.5, 22 * scale));
+    // 数字框:左缘让开图标、右缘离「+」留一段空(原 -0.20w~0.30w,长数字缩放后贴着「+」,2026-10-04 用户)
+    const value = host.addChildLabel(chip, `TopCurrencyValue_${entry.key}`, entry.value, capWidth * 0.035, 0, 18 * scale, rgba(245, 222, 168), new Size(capWidth * 0.45, 22 * scale));
     value.overflow = Label.Overflow.SHRINK;
     value.enableOutline = true;
     value.outlineColor = rgba(0, 0, 0, 220);

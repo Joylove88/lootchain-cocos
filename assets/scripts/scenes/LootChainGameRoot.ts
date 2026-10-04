@@ -1805,6 +1805,7 @@ export class LootChainGameRoot extends Component {
   private openLobbyAdventurePanel(): void {
     this.uiSpriteFrameCache.preloadGroup('adventure');
     this.closeAllLobbyScenePanelFlags();
+    this.lobbyAdventurePanelRenderer.resetChallengeDialog();
     this.lobbyAdventurePanelOpen = true;
     this.currentView = 'adventure';
     this.renderCurrentView();
@@ -1817,6 +1818,7 @@ export class LootChainGameRoot extends Component {
     if (!this.lobbyAdventurePanelOpen) {
       return;
     }
+    this.lobbyAdventurePanelRenderer.resetChallengeDialog();
     this.returnToLobbyFromScenePage();
   }
 
