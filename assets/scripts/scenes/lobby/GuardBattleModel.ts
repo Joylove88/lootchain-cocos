@@ -1642,7 +1642,16 @@ export function guardPermanentFrequency(state: GuardBattleState, heroCode: strin
   return Math.min(GUARD_FREQ_CAP, white * haste);
 }
 
-/** 金卡候选:在场、有 ≥2★ 单位(1★ 没有战技,觉醒了也是废卡)、觉醒未满级。 */
+/** 战技 / 大招是否可用:2★ 解锁战技;觉醒了专属大招的英雄 1★ 也能放(2026-10-05,金卡不再要求先合到 2★)。 */
+export function guardHeroSkillUnlocked(state: GuardBattleState, hero: GuardHeroUnit): boolean {
+  return hero.star >= 2 || guardHeroPerks(state, hero.heroCode).ultLv > 0;
+}
+
+/**
+ * 金卡候选:在场、觉醒未满级。
+ * 2026-10-05 用户「强化到第 7 次一张大招都没出」:原先要求场上有 ≥2★ 单位,没合成的局永远没有候选;
+ * 现在在场即可,觉醒后该英雄 1★ 单位也能放大招(权重仍按星级,2★ 以上更容易被抽到)。
+ */
 function guardGoldCandidates(state: GuardBattleState): string[] {
   const codes: string[] = [];
   for (const entry of state.pool) {
@@ -1650,7 +1659,7 @@ function guardGoldCandidates(state: GuardBattleState): string[] {
     if (codes.indexOf(code) >= 0 || guardHeroPerks(state, code).ultLv >= GUARD_ULT_MAX_LEVEL) {
       continue;
     }
-    if (state.heroes.some((hero) => hero.heroCode.toUpperCase() === code && hero.star >= 2)) {
+    if (state.heroes.some((hero) => hero.heroCode.toUpperCase() === code)) {
       codes.push(code);
     }
   }
@@ -1960,7 +1969,7 @@ function applyChoice(state: GuardBattleState, option: GuardChoiceOption): void {
     // 试放:只让该英雄星级最高的 1 个单位立刻就绪(跳过预热);场上没目标时等首个目标出现即放。
     const code = option.heroCode.toUpperCase();
     const best = state.heroes
-      .filter((hero) => hero.heroCode.toUpperCase() === code && hero.star >= 2)
+      .filter((hero) => hero.heroCode.toUpperCase() === code)
       .sort((a, b) => b.star - a.star || a.unitId - b.unitId)[0];
     if (best) {
       best.skillReadyMs = state.timeMs;
@@ -2664,7 +2673,7 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   const perks = guardHeroPerks(state, hero.heroCode);
   // 战技:2★ 解锁;金卡觉醒为专属大招后冷却缩短(docs/32 §5.1 方案 A)。
   // docs/37 B:蓄满且有目标时先进 1.5s 手动窗口(玩家点英雄=+25% 立即放),窗口过了自动放;设置"立即自动"则蓄满即放。
-  if (hero.star >= 2 && state.timeMs >= hero.skillReadyMs) {
+  if (guardHeroSkillUnlocked(state, hero) && state.timeMs >= hero.skillReadyMs) {
     const pendingSince = hero.skillPendingSinceMs ?? 0;
     if (state.skillAutoImmediate || (pendingSince > 0 && state.timeMs - pendingSince >= GUARD_SKILL_MANUAL_WINDOW_MS)) {
       if (castHeroSkill(state, hero)) {
@@ -3038,7 +3047,7 @@ export function guardMarkMonster(state: GuardBattleState, monsterId: number | nu
 
 /** 该英雄战技是否在等玩家手动释放(渲染层画金色光环 + 可点)。 */
 export function guardHeroSkillPending(state: GuardBattleState, hero: GuardHeroUnit): boolean {
-  return hero.star >= 2 && state.timeMs >= hero.skillReadyMs && (hero.skillPendingSinceMs ?? 0) > 0;
+  return guardHeroSkillUnlocked(state, hero) && state.timeMs >= hero.skillReadyMs && (hero.skillPendingSinceMs ?? 0) > 0;
 }
 
 /**
@@ -3047,7 +3056,7 @@ export function guardHeroSkillPending(state: GuardBattleState, hero: GuardHeroUn
  */
 export function guardCastHeroSkillNow(state: GuardBattleState, unitId: number): { chained: boolean } | null {
   const hero = state.heroes.find((entry) => entry.unitId === unitId);
-  if (!hero || hero.star < 2 || state.timeMs < hero.skillReadyMs || state.paused || state.phase === 'victory' || state.phase === 'defeat') {
+  if (!hero || !guardHeroSkillUnlocked(state, hero) || state.timeMs < hero.skillReadyMs || state.paused || state.phase === 'victory' || state.phase === 'defeat') {
     return null;
   }
   const last = state.lastManualSkill;
@@ -3456,7 +3465,7 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
     if (row.cdCutMs > 0) {
       // 「激昂」(Lv3+):2★ 以上英雄战技冷却立刻缩短。
       for (const hero of state.heroes) {
-        if (hero.star >= 2) {
+        if (guardHeroSkillUnlocked(state, hero)) {
           hero.skillReadyMs = Math.max(state.timeMs, hero.skillReadyMs - row.cdCutMs);
         }
       }

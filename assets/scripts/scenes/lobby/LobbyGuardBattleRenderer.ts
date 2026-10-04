@@ -42,6 +42,7 @@ import {
   guardEnhanceBlocked,
   guardEnhanceNextCost,
   guardGoldCardChance,
+  guardHeroSkillUnlocked,
   guardHeroPerks,
   guardPermanentFrequency,
   guardFindHeroAt,
@@ -4243,7 +4244,7 @@ export class LobbyGuardBattleRenderer {
         hornHolder.setSiblingIndex(0);
         if (this.spawnOverlaySpineFx(hornHolder, hornSpec, 0, 0, unit * hornSpec.size * (1 + 0.1 * (level - 1)), 0, true)) {
           setTimeout(() => { if (hornHolder.isValid) { hornHolder.destroy(); } }, row.ms);
-          if (row.cdCutMs > 0 && hero.star >= 2) {
+          if (row.cdCutMs > 0 && guardHeroSkillUnlocked(sim, hero)) {
             this.spawnFloater(view.node.position.x, view.node.position.y + unit * 0.9, `战技 −${Math.round(row.cdCutMs / 100) / 10}s`, rgba(255, 190, 140), 16);
           }
           continue;
@@ -7215,7 +7216,7 @@ export class LobbyGuardBattleRenderer {
       const cdG = cdNode.getComponent(Graphics);
       if (cdG) {
         cdG.clear();
-        if (hero.star >= 2) {
+        if (guardHeroSkillUnlocked(sim, hero)) {
           const cd = GUARD_HERO_SKILL[hero.role].cdMs;
           const ready = Math.max(0, Math.min(1, 1 - (hero.skillReadyMs - sim.timeMs) / cd));
           const w = this.unitSize() * 0.8;
@@ -7595,7 +7596,7 @@ export class LobbyGuardBattleRenderer {
       return '';
     }
     const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
-    const skillState = hero.star >= 2 ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
+    const skillState = guardHeroSkillUnlocked(sim, hero) ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
     return `⚡ 战技 · ${GUARD_HERO_SKILL[hero.role].name} · ${skillState}`;
   }
 
@@ -8339,7 +8340,7 @@ export class LobbyGuardBattleRenderer {
       if (movedPx < 10) {
         // docs/37 B:战技已蓄满时点英雄 = 手动释放(+25%,可合击);没蓄满或没目标才走选中/范围显示。
         const tappedHero = sim.heroes.find((entry) => entry.unitId === unitId);
-        if (tappedHero && tappedHero.star >= 2 && sim.timeMs >= tappedHero.skillReadyMs && guardCastHeroSkillNow(sim, unitId)) {
+        if (tappedHero && guardHeroSkillUnlocked(sim, tappedHero) && sim.timeMs >= tappedHero.skillReadyMs && guardCastHeroSkillNow(sim, unitId)) {
           this.syncHeroes();
           return;
         }
