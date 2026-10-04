@@ -44,6 +44,7 @@ import {
 } from './lobby/LobbyHeroDetailPanelRenderer';
 import { LOBBY_HERO_ROSTER_BACKDROP_ASSET, LOBBY_HERO_ROSTER_CARD_ASSETS } from './lobby/LobbyHeroRosterPanelRenderer';
 import { FORGE_PRELOAD_ASSETS } from './lobby/LobbyForgePanelRenderer';
+import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
 import { EQUIP_ICON_ALL_ASSETS } from './lobby/EquipIconAssets';
 import { BAG_ITEM_ICON_PRELOAD_ASSETS } from './lobby/LobbyBagPanelRenderer';
@@ -174,6 +175,7 @@ export class UiSpriteFrameCache {
         // 详情页大图只拉不拦:名册首开先等卡面相关的图,详情页用到时多半已到。
         this.request(LOBBY_HERO_DETAIL_BACKDROP_ASSET);
         this.request(LOBBY_HERO_DETAIL_PROTAGONIST_ASSET);
+        HERO_DETAIL_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
         track(LOBBY_HERO_ROSTER_BACKDROP_ASSET);
         LOBBY_HERO_ROSTER_CARD_ASSETS.forEach((asset) => track(asset));
         track(HERO_C1812_STAR_FILLED_ASSET);

@@ -15,6 +15,7 @@ import {
   UITransform,
   Vec3,
 } from 'cc';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
 import type {
   LobbyCodexClaimPayload,
@@ -194,56 +195,88 @@ export class LobbyCodexPanelRenderer {
 
   // ── 顶部:收录进度 + 里程碑宝箱 + 一键领取 ──
 
+  /**
+   * 顶部「里程碑轨道」(2026-10-04 美化,CODEX_HEADER_TRACK_V2):
+   * 宝箱立在进度条上方,条上对应刻度压一枚数字铭牌(达成=金、未达成=暗),填充与铭牌共用同一刻度映射;
+   * 整组(条 + 一键领取)在「标题/问号」与「关闭钮」之间的空档里居中,不再顶到问号钮。
+   * 条框整图等比缩放、只拉中段;填充改程序绘制的金色管芯(原填充图自带端帽,截宽后会在半路露出一截框尾)。
+   */
   private renderHeader(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    // 2026-09-17 用户反馈:标题/关闭一行,进度条 + 一键领取第二行整体横向居中,页签第三行。
-    // 2026-09-17 用户反馈二:去掉底板、“收录进度”与计数,只留带宝箱的进度条 + 一键领取,整组横向居中。
-    const rowY = height / 2 - 70 * scale;
-    const compact = width < 760 * scale;
-    // 2026-09-17 用户反馈三:进度条拉长(占屏宽一半),四个宝箱不再挤;条框/填充改九宫格拉伸,只拉中段管身,两端雕花不变形。
-    const barW = clamp(width * (compact ? 0.5 : 0.5), 300 * scale, 860 * scale);
-    const barH = 64 * scale;
+    const phone = isPhoneDesign();
+    const top = height / 2;
+    const chestSize = 66 * scale;
+    const chestY = top - 49 * scale;
+    const barY = top - 93 * scale;
+    const barH = 46 * scale;
     const btnW = clamp(width * 0.13, 150 * scale, 196 * scale);
-    const groupGap = 44 * scale;
+    const groupGap = 34 * scale;
+    const freeLeft = -width / 2 + 316 * scale;
+    const freeRight = width / 2 - 100 * scale;
+    const barW = Math.max(240 * scale, Math.min(clamp(width * 0.5, 300 * scale, 860 * scale), freeRight - freeLeft - groupGap - btnW));
     const groupW = barW + groupGap + btnW;
-    const groupLeft = -groupW / 2;
+    const groupLeft = Math.max(-width / 2 + 16 * scale, (freeLeft + freeRight) / 2 - groupW / 2);
     const barX = groupLeft + barW / 2;
     const total = Math.max(1, state.total);
     const ratio = clamp(state.ownedCount / total, 0, 1);
 
-    const frameSprite = this.host.addSprite('LobbyCodexBarFrame', CODEX_UI_ASSETS.progressFrame, barX, rowY, barW, barH, parent);
+    // 条框:节点按 barH/86 等比缩放,内容宽度反算,九宫格只拉中段 → 两端雕花不变形。
+    const artScale = barH / 86;
+    const frameSprite = this.host.addSprite('LobbyCodexBarFrame', CODEX_UI_ASSETS.progressFrame, barX, barY, barW / artScale, 86, parent);
     if (frameSprite) {
       this.applyBarSlicing(frameSprite, 72);
+      frameSprite.node.getComponent(UITransform)?.setContentSize(new Size(barW / artScale, 86));
+      frameSprite.node.setScale(new Vec3(artScale, artScale, 1));
+    }
+    // 管芯(素材内黑槽:x 46..552 / 603,y 26..60 / 86)。
+    const chLeft = barX - barW / 2 + 46 * artScale;
+    const chRight = barX + barW / 2 - 51 * artScale;
+    const chH = (frameSprite ? 34 : 30) * artScale;
+    const pillW = 50 * scale;
+    const pillH = 26 * scale;
+    const trackX = (fraction: number): number => chLeft + (chRight - chLeft - pillW / 2) * clamp(fraction, 0, 1);
+
+    const track = this.host.addChildPlainNode(parent, 'LobbyCodexBarTrack', 0, barY, barW, barH);
+    const tg = track.addComponent(Graphics);
+    if (!frameSprite) {
+      tg.fillColor = rgba(14, 12, 12, 236);
+      tg.roundRect(chLeft - 3 * scale, -chH / 2 - 3 * scale, chRight - chLeft + 6 * scale, chH + 6 * scale, chH / 2 + 3 * scale);
+      tg.fill();
+      tg.strokeColor = rgba(190, 141, 62, 220);
+      tg.lineWidth = Math.max(1, 1.4 * scale);
+      tg.roundRect(chLeft - 3 * scale, -chH / 2 - 3 * scale, chRight - chLeft + 6 * scale, chH + 6 * scale, chH / 2 + 3 * scale);
+      tg.stroke();
     }
     if (ratio > 0) {
-      // 填充按进度截宽(左对齐),九宫格保证圆头端帽不拉伸;最短保留两端端帽宽度。
-      const fillMinW = Math.min(barW, 150 * scale);
-      const fillW = Math.max(fillMinW, barW * ratio);
-      const fillSprite = this.host.addSprite('LobbyCodexBarFill', CODEX_UI_ASSETS.progressFilled, barX - barW / 2 + fillW / 2, rowY, fillW, barH, parent);
-      if (fillSprite) {
-        this.applyBarSlicing(fillSprite, 72);
-      }
+      const fillRight = ratio >= 1 ? chRight : trackX(ratio);
+      const fillH = chH * 0.86;
+      const fillW = Math.max(fillH, fillRight - chLeft);
+      tg.fillColor = rgba(176, 118, 36, 255);
+      tg.roundRect(chLeft, -fillH / 2, fillW, fillH, fillH / 2);
+      tg.fill();
+      tg.fillColor = rgba(232, 178, 78, 255);
+      tg.roundRect(chLeft + fillH * 0.12, -fillH * 0.2, fillW - fillH * 0.24, fillH * 0.62, fillH * 0.31);
+      tg.fill();
+      tg.fillColor = rgba(255, 236, 178, 190);
+      tg.roundRect(chLeft + fillH * 0.4, fillH * 0.14, Math.max(1, fillW - fillH * 0.8), fillH * 0.16, fillH * 0.08);
+      tg.fill();
     }
-    if (!frameSprite) {
-      const bar = this.host.addChildPlainNode(parent, 'LobbyCodexBarFallback', barX, rowY, barW, 10 * scale);
-      const g = bar.addComponent(Graphics);
-      g.fillColor = rgba(40, 34, 26, 220);
-      g.roundRect(-barW / 2, -5 * scale, barW, 10 * scale, 5 * scale);
-      g.fill();
-      if (ratio > 0) {
-        g.fillColor = rgba(150, 226, 130, 240);
-        g.roundRect(-barW / 2, -5 * scale, Math.max(6 * scale, barW * ratio), 10 * scale, 5 * scale);
-        g.fill();
-      }
-    }
-    const chestSize = clamp(barH * 1.2, 48 * scale, 78 * scale);
 
-    // 里程碑宝箱压在进度条对应刻度上,刻度映射到条内 [7%, 93%] 区间,末档宝箱不再越过条尾金框。
-    // 可领取的宝箱点一下直接领(2026-09-17 用户反馈:不弹框),其余状态点开弹框看奖励。
+    // 里程碑:铭牌压在条上,宝箱立在铭牌正上方。可领取的宝箱点一下直接领(2026-09-17 用户反馈:不弹框),其余状态点开弹框看奖励。
+    const numFont = phone ? 20 : Math.max(11, 16 * scale);
     const chestNodes = new Map<number, Node>();
     state.milestones.forEach((milestone, index) => {
-      const fraction = clamp(milestone.targetCount / total, 0, 1);
-      const chestX = barX - barW / 2 + barW * (0.07 + 0.86 * fraction);
-      chestNodes.set(milestone.targetCount, this.renderMilestoneChest(parent, milestone, index, chestX, rowY + 8 * scale, chestSize, scale));
+      const x = trackX(milestone.targetCount / total);
+      tg.fillColor = milestone.reached ? rgba(226, 178, 84, 255) : rgba(20, 17, 18, 246);
+      this.traceHex(tg, x, 0, pillW, pillH);
+      tg.fill();
+      tg.strokeColor = milestone.reached ? rgba(255, 240, 190, 255) : rgba(150, 118, 66, 230);
+      tg.lineWidth = Math.max(1, 1.4 * scale);
+      this.traceHex(tg, x, 0, pillW, pillH);
+      tg.stroke();
+      const num = this.host.addChildLabel(track, `Num_${index}`, `${milestone.targetCount}`, x, 0, numFont, milestone.reached ? rgba(52, 30, 8) : rgba(184, 170, 142), new Size(pillW - pillH * 0.7, pillH));
+      num.overflow = Label.Overflow.SHRINK;
+      num.isBold = true;
+      chestNodes.set(milestone.targetCount, this.renderMilestoneChest(parent, milestone, index, x, chestY, chestSize, scale, chestY - barY + pillH / 2));
     });
     // 领取成功特效:票据落在刚变成"已开"的宝箱上,播一次即消费。
     const fx = state.claimFx;
@@ -258,18 +291,41 @@ export class LobbyCodexPanelRenderer {
 
     if (state.loaded) {
       const btnX = groupLeft + groupW - btnW / 2;
+      // 钮心落在「宝箱顶 ~ 条底」这一组的竖向中线上(CODEX_REFINE_V4),页头只读成标题行 + 轨道组两行。
+      const btnY = (chestY + chestSize / 2 + barY - barH / 2) / 2;
       const busy = state.claiming !== null;
       const claimable = state.claimableCount > 0;
-      this.addAssetButton(parent, 'LobbyCodexClaimAll', claimable ? `一键领取 ${state.claimableCount}` : '暂无可领', btnX, rowY, btnW, scale, claimable && !busy ? 'claim' : 'disabled', claimable && !busy ? () => this.host.claimAllLobbyCodexRewards() : null);
+      const made = this.addAssetButton(parent, 'LobbyCodexClaimAll', claimable ? '一键领取' : '暂无可领', btnX, btnY, btnW, scale, claimable && !busy ? 'claim' : 'disabled', claimable && !busy ? () => this.host.claimAllLobbyCodexRewards() : null);
       if (claimable) {
-        // 参考图:钮右侧压一枚钻石角标,提示奖励属性。
-        const gem = 24 * scale;
-        this.host.addSprite('LobbyCodexClaimAllGem', REWARD_ICON_BY_CODE.DIAMOND, btnX + btnW * 0.36, rowY + 1 * scale, gem, gem, parent);
+        // 钮内:钻石在字左侧(不再压住数字);可领数量做成右上角红色数字角标。
+        const font = phone ? 20 : 19 * scale;
+        const gem = 26 * scale;
+        const textW = font * 4.3;
+        const contentW = gem + 5 * scale + textW;
+        made.label.node.setPosition(new Vec3(contentW / 2 - textW / 2, 0, 0));
+        made.label.node.getComponent(UITransform)?.setContentSize(new Size(textW, made.height));
+        this.host.addSprite('LobbyCodexClaimAllGem', REWARD_ICON_BY_CODE.DIAMOND, -contentW / 2 + gem / 2, 1 * scale, gem, gem, made.node);
+        const countText = state.claimableCount > 99 ? '99+' : `${state.claimableCount}`;
+        const badgeFont = phone ? 20 : Math.max(11, 16 * scale);
+        const badgeH = 28 * scale;
+        const badgeW = Math.max(badgeH, countText.length * badgeFont * 0.62 + 16 * scale);
+        const badge = this.host.addChildPlainNode(made.node, 'LobbyCodexClaimAllBadge', btnW / 2 - badgeW / 2 + 4 * scale, made.height / 2 - badgeH * 0.36, badgeW, badgeH);
+        const bg = badge.addComponent(Graphics);
+        bg.fillColor = rgba(222, 52, 42, 255);
+        bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, badgeH / 2);
+        bg.fill();
+        bg.strokeColor = rgba(255, 232, 196, 240);
+        bg.lineWidth = Math.max(1, 1.6 * scale);
+        bg.roundRect(-badgeW / 2, -badgeH / 2, badgeW, badgeH, badgeH / 2);
+        bg.stroke();
+        const count = this.host.addChildLabel(badge, 'Text', countText, 0, 0, badgeFont, rgba(255, 250, 240), new Size(badgeW - 6 * scale, badgeH));
+        count.overflow = Label.Overflow.SHRINK;
+        count.isBold = true;
       }
     }
 
     if (state.error) {
-      const err = this.host.addChildLabel(parent, 'LobbyCodexError', '图鉴暂不可用,请稍后重试', 0, height / 2 - 100 * scale, 16 * scale, rgba(226, 132, 110), new Size(width - 120 * scale, 22 * scale));
+      const err = this.host.addChildLabel(parent, 'LobbyCodexError', '图鉴暂不可用,请稍后重试', 0, top - 200 * scale, 16 * scale, rgba(226, 132, 110), new Size(width - 120 * scale, 22 * scale));
       err.overflow = Label.Overflow.SHRINK;
     }
   }
@@ -287,22 +343,59 @@ export class LobbyCodexPanelRenderer {
     sprite.markForUpdateRenderData();
   }
 
-  private renderMilestoneChest(parent: Node, milestone: LobbyCodexMilestoneVO, index: number, x: number, y: number, size: number, scale: number): Node {
-    const node = this.host.addChildPlainNode(parent, `LobbyCodexChest_${index}`, x, y, size, size);
-    const assetPath = milestone.claimed ? CODEX_UI_ASSETS.chestOpened : milestone.claimable ? CODEX_UI_ASSETS.chestReady : CODEX_UI_ASSETS.chestLocked;
-    const art = this.host.addSprite('Art', assetPath, 0, 0, size, size, node);
+  /** 里程碑宝箱:hitBelow = 宝箱中心到条上铭牌下沿的距离,点击热区向下盖住铭牌(手机上更好点)。 */
+  private renderMilestoneChest(parent: Node, milestone: LobbyCodexMilestoneVO, index: number, x: number, y: number, size: number, scale: number, hitBelow: number): Node {
+    const node = this.host.addChildPlainNode(parent, `LobbyCodexChest_${index}`, x, y, size * 1.1, Math.max(size, hitBelow * 2));
+    if (milestone.reached) {
+      // 暗色宝箱压在暗背景上容易糊成一团:达成后垫一圈暖光把轮廓托出来(可领更亮)。
+      const glow = node.addComponent(Graphics);
+      const strong = milestone.claimable;
+      [[0.7, strong ? 20 : 16], [0.58, strong ? 30 : 24], [0.46, strong ? 42 : 34], [0.34, strong ? 54 : 44], [0.22, strong ? 60 : 50]].forEach(([r, a]) => {
+        glow.fillColor = rgba(255, 190, 96, a);
+        glow.circle(0, -size * 0.02, size * r);
+        glow.fill();
+      });
+    }
+    const art = this.host.addSprite('Art', milestone.claimed ? CODEX_UI_ASSETS.chestOpened : milestone.claimable ? CODEX_UI_ASSETS.chestReady : CODEX_UI_ASSETS.chestLocked, 0, 0, size, size, node);
     if (!art) {
       this.drawChestFallback(node, milestone, size, scale);
+    } else if (!milestone.reached) {
+      // 未达成:箱体压暗一档,与"已开/可领"拉开层次。
+      art.color = rgba(150, 146, 158, 255);
+    }
+    if (art && milestone.claimed) {
+      // 已领(开盖空箱):箱口透出一团金光 + 右下角金底对勾,一眼区分"已领"与"未达成"。
+      const mark = this.host.addChildPlainNode(node, 'LobbyCodexChestDone', 0, 0, size, size);
+      const mg = mark.addComponent(Graphics);
+      [[0.3, 0.13, 34], [0.24, 0.1, 50], [0.17, 0.07, 70], [0.1, 0.04, 96]].forEach(([rx, ry, a]) => {
+        mg.fillColor = rgba(255, 206, 112, a);
+        mg.ellipse(0, size * 0.1, size * rx, size * ry);
+        mg.fill();
+      });
+      const r = size * 0.15;
+      const cx = size * 0.3;
+      const cy = -size * 0.26;
+      mg.fillColor = rgba(226, 178, 84, 255);
+      mg.circle(cx, cy, r);
+      mg.fill();
+      mg.strokeColor = rgba(40, 24, 8, 255);
+      mg.lineWidth = Math.max(1, 1.2 * scale);
+      mg.circle(cx, cy, r);
+      mg.stroke();
+      mg.lineCap = Graphics.LineCap.ROUND;
+      mg.lineJoin = Graphics.LineJoin.ROUND;
+      mg.lineWidth = Math.max(1.5, 2.6 * scale);
+      mg.moveTo(cx - r * 0.5, cy);
+      mg.lineTo(cx - r * 0.12, cy - r * 0.38);
+      mg.lineTo(cx + r * 0.52, cy + r * 0.38);
+      mg.stroke();
     }
     if (milestone.claimable) {
-      this.attachPulse(node, 0.92, 1.06);
-      this.addRedDot(node, size * 0.38, size * 0.38, 6 * scale);
+      this.attachPulse(art ? art.node : node, 0.94, 1.06);
+      this.addRedDot(node, size * 0.36, size * 0.34, 7 * scale);
     }
-    const num = this.host.addChildLabel(node, 'Num', `${milestone.targetCount}`, 0, -size * 0.62, 14 * scale, milestone.reached ? rgba(255, 226, 150) : rgba(170, 156, 128), new Size(size * 1.4, 18 * scale));
-    num.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(num, scale, true);
     node.addComponent(Button);
-    this.host.applyImageButtonFeedback(node, 1.08, 0.94);
+    this.host.applyImageButtonFeedback(node, 1.06, 0.95);
     node.on(Button.EventType.CLICK, () => {
       // 点击时读实时状态:直领期间不重绘,靠这里挡住连点。
       if (this.host.currentLobbyCodexState().claiming) {
@@ -325,9 +418,10 @@ export class LobbyCodexPanelRenderer {
     const pos = chest.position;
     const fx = this.host.addChildPlainNode(parent, 'LobbyCodexChestFx', pos.x, pos.y, size * 3, size * 3);
 
-    // 宝箱弹跳
-    chest.setScale(new Vec3(0.8, 0.8, 1));
-    tween(chest)
+    // 宝箱弹跳(只弹箱体贴图:节点热区向下盖着条上铭牌,整节点缩放会把位置带偏)
+    const bounce = chest.getChildByName('Art') ?? chest;
+    bounce.setScale(new Vec3(0.8, 0.8, 1));
+    tween(bounce)
       .to(0.14, { scale: new Vec3(1.32, 1.32, 1) }, { easing: 'quadOut' })
       .to(0.32, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
       .start();
@@ -409,9 +503,10 @@ export class LobbyCodexPanelRenderer {
   // ── 页签行:稀有度 + 仅看未收集 ──
 
   private renderFilterRow(parent: Node, width: number, height: number, scale: number, state: LobbyCodexPanelState): void {
-    const rowY = height / 2 - 158 * scale;
+    const phone = isPhoneDesign();
+    const rowY = height / 2 - 139 * scale;
     const metrics = this.wallMetrics(width, height, scale);
-    // 页签放大一档,左沿与卡墙第一列左沿对齐;页签总宽不超过卡墙宽的 62%,给右侧开关留位。
+    // 页签左沿与卡墙第一列左沿对齐;页签总宽不超过卡墙宽的 62%,给右侧开关留位。
     const gap = 12 * scale;
     const tabW = clamp((metrics.gridWidth * 0.66 - gap * (CODEX_FILTERS.length - 1)) / CODEX_FILTERS.length, 80 * scale, 156 * scale);
     const startX = -metrics.gridWidth / 2 + tabW / 2;
@@ -420,29 +515,41 @@ export class LobbyCodexPanelRenderer {
       this.addTabButton(parent, `LobbyCodexTab_${filter}`, CODEX_FILTER_LABELS[filter], active, startX + index * (tabW + gap), rowY, tabW, scale, () => this.host.setLobbyCodexFilter(filter));
     });
 
-    // 仅看未收集:勾选框 + 文案。
-    const toggleW = 150 * scale;
-    const toggleX = startX + CODEX_FILTERS.length * (tabW + gap) + toggleW / 2 + 14 * scale;
-    const toggle = this.host.addChildPlainNode(parent, 'LobbyCodexUnownedToggle', Math.min(toggleX, metrics.gridWidth / 2 - toggleW / 2), rowY, toggleW, 30 * scale);
+    // 仅看未收集:暗底金边胶囊(勾选框 + 文案),右沿与卡墙最后一列右沿对齐,和左侧页签成一行两端对齐。
+    const font = phone ? 20 : 20 * scale;
+    const boxSize = phone ? 22 * scale : 20 * scale;
+    const padX = 14 * scale;
+    const textW = font * 5.2;
+    const toggleW = padX + boxSize + 8 * scale + textW + padX * 0.7;
+    const toggleH = Math.max(36 * scale, tabW * (162 / 621) * 0.86);
+    const tabsRight = startX + (CODEX_FILTERS.length - 1) * (tabW + gap) + tabW / 2;
+    const toggleX = Math.max(tabsRight + 14 * scale + toggleW / 2, metrics.gridWidth / 2 - toggleW / 2);
+    const toggle = this.host.addChildPlainNode(parent, 'LobbyCodexUnownedToggle', toggleX, rowY, toggleW, toggleH);
     const g = toggle.addComponent(Graphics);
-    const boxSize = 18 * scale;
-    const boxX = -toggleW / 2 + 12 * scale;
-    g.fillColor = state.unownedOnly ? rgba(196, 146, 60, 235) : rgba(16, 14, 16, 200);
-    g.roundRect(boxX, -boxSize / 2, boxSize, boxSize, 3 * scale);
+    g.fillColor = state.unownedOnly ? rgba(58, 40, 16, 232) : rgba(16, 13, 14, 224);
+    g.roundRect(-toggleW / 2, -toggleH / 2, toggleW, toggleH, toggleH / 2);
     g.fill();
-    g.strokeColor = rgba(214, 170, 92, 220);
-    g.lineWidth = Math.max(1, 1.2 * scale);
-    g.roundRect(boxX, -boxSize / 2, boxSize, boxSize, 3 * scale);
+    g.strokeColor = state.unownedOnly ? rgba(240, 198, 104, 240) : rgba(186, 146, 78, 226);
+    g.lineWidth = Math.max(1, 1.5 * scale);
+    g.roundRect(-toggleW / 2, -toggleH / 2, toggleW, toggleH, toggleH / 2);
+    g.stroke();
+    const boxX = -toggleW / 2 + padX;
+    g.fillColor = state.unownedOnly ? rgba(214, 162, 66, 245) : rgba(20, 17, 18, 230);
+    g.roundRect(boxX, -boxSize / 2, boxSize, boxSize, 4 * scale);
+    g.fill();
+    g.strokeColor = rgba(224, 180, 98, 236);
+    g.lineWidth = Math.max(1, 1.4 * scale);
+    g.roundRect(boxX, -boxSize / 2, boxSize, boxSize, 4 * scale);
     g.stroke();
     if (state.unownedOnly) {
       g.strokeColor = rgba(28, 20, 12, 255);
-      g.lineWidth = Math.max(1.5, 2.2 * scale);
+      g.lineWidth = Math.max(1.5, 2.4 * scale);
       g.moveTo(boxX + boxSize * 0.22, 0);
       g.lineTo(boxX + boxSize * 0.44, -boxSize * 0.26);
       g.lineTo(boxX + boxSize * 0.8, boxSize * 0.3);
       g.stroke();
     }
-    const label = this.host.addChildLabel(toggle, 'Text', '仅看未收集', boxX + boxSize + 8 * scale, 0, 17 * scale, state.unownedOnly ? rgba(255, 228, 160) : rgba(196, 180, 146), new Size(toggleW - boxSize - 28 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const label = this.host.addChildLabel(toggle, 'Text', '仅看未收集', boxX + boxSize + 8 * scale, 0, font, state.unownedOnly ? rgba(255, 228, 160) : rgba(226, 208, 168), new Size(textW, toggleH), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
     toggle.addComponent(Button);
@@ -481,7 +588,7 @@ export class LobbyCodexPanelRenderer {
     bodyTop: number; bodyBottom: number; bodyWidth: number; columns: number;
     cardWidth: number; cardHeight: number; gap: number; rowGap: number; gridWidth: number;
   } {
-    const bodyTop = height / 2 - 196 * scale;
+    const bodyTop = height / 2 - 174 * scale;
     const bodyBottom = -height / 2 + 16 * scale;
     const bodyWidth = width - 56 * scale;
     const gap = 26 * scale;
@@ -542,6 +649,112 @@ export class LobbyCodexPanelRenderer {
       const row = Math.floor(index / columns);
       this.renderCodexCard(content, item, index, startX + col * (cardWidth + gap), startY - row * (cardHeight + rowGap), cardWidth, cardHeight, scale, state.claiming !== null);
     });
+    // 页签行与卡墙之间一道两端渐隐的细金线:滚动后卡片在这条线下被裁,读成"收进页眉下"而不是硬切。
+    const rule = this.host.addChildPlainNode(parent, 'LobbyCodexWallRule', 0, bodyTop + 1 * scale, gridWidth, 2 * scale);
+    const lg = rule.addComponent(Graphics);
+    lg.lineWidth = Math.max(1, 1.2 * scale);
+    const seg = 14;
+    for (let i = 0; i < seg; i += 1) {
+      const mid = (i + 0.5) / seg;
+      lg.strokeColor = rgba(214, 170, 92, Math.round(150 * Math.min(1, Math.min(mid, 1 - mid) * 5)));
+      lg.moveTo(-gridWidth / 2 + (gridWidth / seg) * i, 0);
+      lg.lineTo(-gridWidth / 2 + (gridWidth / seg) * (i + 1), 0);
+      lg.stroke();
+    }
+    if (contentHeight > bodyHeight + 1) {
+      this.mountScrollHints(parent, scrollView, width, bodyCenterY, bodyWidth, bodyHeight, contentHeight, gridWidth, scale);
+    }
+  }
+
+  /**
+   * 可滚动提示(CODEX_REFINE_V4):底部压一段渐暗(滚到底隐去);滚动后顶部补一段短渐暗,卡片不再被页签行硬切;
+   * 右侧细滚动条跟手移动,条尾一枚跳动的金色下箭头(原先的圆牌箭头压在中列卡面上像卡片自带的按钮,已挪到卡墙之外)。
+   * 全是不带 Button 的纯绘制节点,不吃触摸。
+   */
+  private mountScrollHints(parent: Node, scrollView: ScrollView, width: number, bodyCenterY: number, bodyWidth: number, bodyHeight: number, contentHeight: number, gridWidth: number, scale: number): void {
+    const bottom = bodyCenterY - bodyHeight / 2;
+    const top = bodyCenterY + bodyHeight / 2;
+    const steps = 12;
+    const fadeH = Math.min(bodyHeight * 0.22, 84 * scale);
+    const fade = this.host.addChildPlainNode(parent, 'LobbyCodexScrollFade', 0, bottom + fadeH / 2, bodyWidth, fadeH);
+    const fg = fade.addComponent(Graphics);
+    for (let i = 0; i < steps; i += 1) {
+      // 自下而上逐条变淡。
+      const t = 1 - i / steps;
+      fg.fillColor = rgba(5, 4, 7, Math.round(215 * t * t));
+      fg.rect(-bodyWidth / 2, -fadeH / 2 + (fadeH / steps) * i, bodyWidth, fadeH / steps + 0.6);
+      fg.fill();
+    }
+    const fadeOpacity = fade.addComponent(UIOpacity);
+
+    const topFadeH = 36 * scale;
+    const topFade = this.host.addChildPlainNode(parent, 'LobbyCodexScrollTopFade', 0, top - topFadeH / 2, bodyWidth, topFadeH);
+    const tf = topFade.addComponent(Graphics);
+    for (let i = 0; i < steps; i += 1) {
+      // 自上而下逐条变淡。
+      const t = 1 - i / steps;
+      tf.fillColor = rgba(5, 4, 7, Math.round(205 * t * t));
+      tf.rect(-bodyWidth / 2, topFadeH / 2 - (topFadeH / steps) * (i + 1), bodyWidth, topFadeH / steps + 0.6);
+      tf.fill();
+    }
+    const topFadeOpacity = topFade.addComponent(UIOpacity);
+    topFadeOpacity.opacity = 0;
+
+    const arrowW = 20 * scale;
+    const arrowZone = 30 * scale;
+    const trackH = bodyHeight - 24 * scale - arrowZone;
+    const thumbH = Math.max(36 * scale, trackH * (bodyHeight / contentHeight));
+    const barX = Math.min(width / 2 - 14 * scale, gridWidth / 2 + 24 * scale);
+    const rail = this.host.addChildPlainNode(parent, 'LobbyCodexScrollRail', barX, bodyCenterY + arrowZone / 2, 6 * scale, trackH);
+    const rg = rail.addComponent(Graphics);
+    rg.fillColor = rgba(0, 0, 0, 120);
+    rg.roundRect(-1.5 * scale, -trackH / 2, 3 * scale, trackH, 1.5 * scale);
+    rg.fill();
+    const thumb = this.host.addChildPlainNode(rail, 'Thumb', 0, trackH / 2 - thumbH / 2, 6 * scale, thumbH);
+    const hg = thumb.addComponent(Graphics);
+    hg.fillColor = rgba(214, 170, 92, 230);
+    hg.roundRect(-2.5 * scale, -thumbH / 2, 5 * scale, thumbH, 2.5 * scale);
+    hg.fill();
+
+    const arrow = this.host.addChildPlainNode(parent, 'LobbyCodexScrollArrow', barX, bottom + 12 * scale + arrowZone / 2, arrowW, arrowW);
+    const ag = arrow.addComponent(Graphics);
+    ag.lineCap = Graphics.LineCap.ROUND;
+    ag.lineJoin = Graphics.LineJoin.ROUND;
+    const strokes: Array<[number, number, Color]> = [
+      [5 * scale, 3.6, rgba(8, 6, 8, 230)],
+      [5 * scale, 2.2, rgba(250, 218, 140, 255)],
+      [-4 * scale, 3.6, rgba(8, 6, 8, 230)],
+      [-4 * scale, 2.2, rgba(250, 218, 140, 255)],
+    ];
+    strokes.forEach(([dy, lw, color]) => {
+      ag.strokeColor = color;
+      ag.lineWidth = Math.max(1.5, lw * scale);
+      ag.moveTo(-arrowW * 0.4, dy + arrowW * 0.18);
+      ag.lineTo(0, dy - arrowW * 0.18);
+      ag.lineTo(arrowW * 0.4, dy + arrowW * 0.18);
+      ag.stroke();
+    });
+    const arrowOpacity = arrow.addComponent(UIOpacity);
+    tween(arrow)
+      .repeatForever(tween(arrow).by(0.6, { position: new Vec3(0, -5 * scale, 0) }, { easing: 'sineInOut' }).by(0.6, { position: new Vec3(0, 5 * scale, 0) }, { easing: 'sineInOut' }))
+      .start();
+
+    const maxOffset = Math.max(1, contentHeight - bodyHeight);
+    const sync = (): void => {
+      if (!thumb.isValid) {
+        return;
+      }
+      const offset = clamp(scrollView.getScrollOffset().y, 0, maxOffset);
+      const t = offset / maxOffset;
+      thumb.setPosition(new Vec3(0, trackH / 2 - thumbH / 2 - (trackH - thumbH) * t, 0));
+      const nearEnd = clamp(((1 - t) * maxOffset) / (60 * scale), 0, 1);
+      arrowOpacity.opacity = Math.round(255 * nearEnd);
+      fadeOpacity.opacity = Math.round(255 * nearEnd);
+      topFadeOpacity.opacity = Math.round(255 * clamp(offset / (36 * scale), 0, 1));
+    };
+    scrollView.node.on('scrolling', sync, this);
+    scrollView.node.on('scroll-ended', sync, this);
+    sync();
   }
 
   private renderEmpty(parent: Node, width: number, y: number, scale: number, text: string): void {
@@ -619,9 +832,9 @@ export class LobbyCodexPanelRenderer {
     }
     if (item.rewardClaimable) {
       this.renderClaimableGlow(card, width, height, scale);
-      this.addCornerTag(deco, 'LobbyCodexClaimTag', '领取', width / 2 - 26 * scale, height / 2 - 14 * scale, 50 * scale, 22 * scale, rgba(200, 44, 38, 242), rgba(255, 232, 200), scale, g);
+      this.addCornerTag(deco, 'LobbyCodexClaimTag', '领取', width, height, rgba(196, 40, 34, 246), rgba(255, 226, 160, 240), rgba(255, 240, 214), scale, g);
     } else if (item.rewardClaimed) {
-      this.addCornerTag(deco, 'LobbyCodexClaimedTag', '已激活', width / 2 - 32 * scale, height / 2 - 14 * scale, 62 * scale, 22 * scale, rgba(30, 92, 58, 228), rgba(200, 240, 206), scale, g);
+      this.addCornerTag(deco, 'LobbyCodexClaimedTag', '已激活', width, height, rgba(22, 70, 46, 236), rgba(132, 196, 146, 220), rgba(204, 240, 210), scale, g);
     }
   }
 
@@ -632,21 +845,13 @@ export class LobbyCodexPanelRenderer {
    */
   private renderCardChrome(card: Node, item: LobbyCodexItemVO, width: number, height: number, scale: number, sharedGraphics?: Graphics): void {
     const rarity = safeText(item.rarity || 'R').toUpperCase();
-    const badgeW = clamp(width * 0.22, 32 * scale, 52 * scale);
-    const badgeH = badgeW * 0.58;
-    const badgeX = -width / 2 + badgeW / 2 + width * 0.07;
-    const badgeY = height / 2 - badgeH / 2 - height * 0.07;
+    const badge = this.rarityBadgeRect(width, height, scale);
+    const badgeW = badge.w;
+    const badgeH = badge.h;
+    const badgeX = badge.x;
+    const badgeY = badge.y;
     const color = item.owned ? this.rarityColor(rarity) : rgba(96, 90, 84);
-    const cut = badgeH * 0.5;
-    const traceHex = (g: Graphics, cx: number, cy: number, w: number, h: number): void => {
-      g.moveTo(cx - w / 2 + cut, cy + h / 2);
-      g.lineTo(cx + w / 2 - cut, cy + h / 2);
-      g.lineTo(cx + w / 2, cy);
-      g.lineTo(cx + w / 2 - cut, cy - h / 2);
-      g.lineTo(cx - w / 2 + cut, cy - h / 2);
-      g.lineTo(cx - w / 2, cy);
-      g.close();
-    };
+    const traceHex = (g: Graphics, cx: number, cy: number, w: number, h: number): void => this.traceHex(g, cx, cy, w, h);
     let labelParent: Node;
     let bg: Graphics;
     let cx = 0;
@@ -673,7 +878,7 @@ export class LobbyCodexPanelRenderer {
     this.applyOutline(rarityLabel, scale, true);
     // 卡上静态文字走位图缓存:进动态图集后可与贴图合批。
     rarityLabel.cacheMode = Label.CacheMode.BITMAP;
-    const name = this.host.addChildLabel(card, 'LobbyCodexHeroName', safeText(item.heroName), 0, -height / 2 + height * 0.122, Math.min(17 * scale, height * 0.052), item.owned ? rgba(250, 218, 146) : rgba(168, 156, 132), new Size(width - 56 * scale, Math.max(22 * scale, height * 0.056)));
+    const name = this.host.addChildLabel(card, 'LobbyCodexHeroName', safeText(item.heroName), 0, -height / 2 + height * 0.122, Math.min(20 * scale, height * 0.058), item.owned ? rgba(250, 218, 146) : rgba(168, 156, 132), new Size(width - 56 * scale, Math.max(22 * scale, height * 0.056)));
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
     name.cacheMode = Label.CacheMode.BITMAP;
@@ -718,30 +923,45 @@ export class LobbyCodexPanelRenderer {
       .start();
   }
 
-  /** 角标:sharedGraphics 给定时画进它(卡墙合批路径),文字挂在 parent 对应位置。 */
-  private addCornerTag(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, fill: Color, textColor: Color, scale: number, sharedGraphics?: Graphics): void {
-    let g: Graphics;
-    let labelParent: Node;
-    let lx = 0;
-    let ly = 0;
-    if (sharedGraphics) {
-      g = sharedGraphics;
-      labelParent = parent;
-      lx = x;
-      ly = y;
-    } else {
-      labelParent = this.host.addChildPlainNode(parent, name, x, y, width, height);
-      g = labelParent.addComponent(Graphics);
-    }
+  /** 稀有度牌几何:卡左上角内缩 7% 的六边形;状态角标与它等高、镜像放在右上角。 */
+  private rarityBadgeRect(width: number, height: number, scale: number): { w: number; h: number; x: number; y: number } {
+    const w = clamp(width * 0.22, 32 * scale, 52 * scale);
+    const h = w * 0.58;
+    return { w, h, x: -width / 2 + w / 2 + width * 0.07, y: height / 2 - h / 2 - height * 0.07 };
+  }
+
+  private traceHex(g: Graphics, cx: number, cy: number, w: number, h: number): void {
+    const cut = h * 0.5;
+    g.moveTo(cx - w / 2 + cut, cy + h / 2);
+    g.lineTo(cx + w / 2 - cut, cy + h / 2);
+    g.lineTo(cx + w / 2, cy);
+    g.lineTo(cx + w / 2 - cut, cy - h / 2);
+    g.lineTo(cx - w / 2 + cut, cy - h / 2);
+    g.lineTo(cx - w / 2, cy);
+    g.close();
+  }
+
+  /**
+   * 状态角标(CODEX_TAG_MIRROR):与左上稀有度牌同形同高的六边形,镜像收在卡框右上角之内(不再探出卡外压住雕花角)。
+   * 画进卡墙共享 Graphics,文字挂在 parent 上。
+   */
+  private addCornerTag(parent: Node, name: string, text: string, cardWidth: number, cardHeight: number, fill: Color, stroke: Color, textColor: Color, scale: number, g: Graphics): void {
+    const badge = this.rarityBadgeRect(cardWidth, cardHeight, scale);
+    const font = isPhoneDesign() ? 20 : Math.max(11, badge.h * 0.56);
+    const tagH = badge.h;
+    const tagW = text.length * font + tagH * 0.9;
+    const x = cardWidth / 2 - cardWidth * 0.07 - tagW / 2;
+    const y = badge.y;
     g.fillColor = fill;
-    g.roundRect(lx - width / 2, ly - height / 2, width, height, 4 * scale);
+    this.traceHex(g, x, y, tagW, tagH);
     g.fill();
-    g.strokeColor = rgba(255, 226, 160, 160);
-    g.lineWidth = Math.max(1, 1 * scale);
-    g.roundRect(lx - width / 2, ly - height / 2, width, height, 4 * scale);
+    g.strokeColor = stroke;
+    g.lineWidth = Math.max(1, 1.4 * scale);
+    this.traceHex(g, x, y, tagW, tagH);
     g.stroke();
-    const label = this.host.addChildLabel(labelParent, `${name}Text`, text, lx, ly, Math.max(11, 13 * scale), textColor, new Size(width - 6 * scale, height));
+    const label = this.host.addChildLabel(parent, `${name}Text`, text, x, y, font, textColor, new Size(tagW - tagH * 0.6, tagH));
     label.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(label, scale, true);
     label.cacheMode = Label.CacheMode.BITMAP;
   }
 
@@ -785,14 +1005,24 @@ export class LobbyCodexPanelRenderer {
       this.renderClaimableGlow(card, cardW, cardH, scale);
     }
 
-    // 右:名字 / 标签 / 奖励清单 / 状态 / 按钮。
+    // 右:名字 / 标签 / 奖励清单 / 状态 / 按钮(POPUP_COLUMN_V4:右栏离内金边留出与左侧同量的边距,按钮收进内框、避开角花)。
     const rightLeft = cardX + cardW / 2 + width * 0.05;
-    const rightWidth = width / 2 - rightLeft - width * 0.07;
-    const name = this.host.addChildLabel(body, 'LobbyCodexPopupName', safeText(item.heroName), rightLeft, height * 0.31, 28 * scale, rgba(255, 234, 176), new Size(rightWidth, 36 * scale), HorizontalTextAlignment.LEFT);
+    const rightWidth = width / 2 - rightLeft - width * 0.1;
+    const rarity = safeText(item.rarity).toUpperCase();
+    const rewardCount = Math.min(4, item.activateRewards.length);
+    const rewardCols = rewardCount > 2 ? 2 : 1;
+    const rewardRows = Math.max(1, Math.ceil(rewardCount / rewardCols));
+    const boxH = rewardRows * 38 * scale + 18 * scale;
+    const footer = this.popupFooter(height, rightLeft, rightWidth, scale);
+    const sourceBlock = 36 * scale;
+    // 自上而下排一遍,余量的一部分用来把上半块整体下压,获取途径落在清单框与状态行的正中 → 不留大块空带。
+    const innerTop = height / 2 - height * 0.085;
+    const slack = innerTop - 147 * scale - boxH - footer.statusTop - sourceBlock - 14 * scale;
+    const colTop = innerTop - clamp(slack * 0.4, 0, 22 * scale);
+    const name = this.host.addChildLabel(body, 'LobbyCodexPopupName', safeText(item.heroName), rightLeft, colTop - 40 * scale, 28 * scale, rgba(255, 234, 176), new Size(rightWidth, 36 * scale), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
 
-    const rarity = safeText(item.rarity).toUpperCase();
     const chips = [rarity, safeText(item.faction), safeText(item.heroClass), safeText(item.roleDesc ?? '')].filter((text) => text.length > 0);
     let chipX = rightLeft;
     chips.forEach((text, index) => {
@@ -801,22 +1031,20 @@ export class LobbyCodexPanelRenderer {
         return;
       }
       const color = index === 0 ? this.rarityColor(text) : rgba(196, 176, 140);
-      this.addChip(body, `LobbyCodexPopupChip_${index}`, text, chipX + chipW / 2, height * 0.2, chipW, 24 * scale, color, scale);
+      this.addChip(body, `LobbyCodexPopupChip_${index}`, text, chipX + chipW / 2, colTop - 86 * scale, chipW, 24 * scale, color, scale);
       chipX += chipW + 6 * scale;
     });
 
-    this.drawPopupDivider(body, rightLeft, height * 0.135, rightWidth, scale);
-    const sectionTitle = this.host.addChildLabel(body, 'LobbyCodexPopupRewardTitle', item.owned ? '激活奖励' : '收录激活奖励', rightLeft, height * 0.085, 18 * scale, rgba(226, 196, 132), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
+    this.drawPopupDivider(body, rightLeft, colTop - 108 * scale, rightWidth, scale);
+    const sectionTitle = this.host.addChildLabel(body, 'LobbyCodexPopupRewardTitle', item.owned ? '激活奖励' : '收录激活奖励', rightLeft, colTop - 130 * scale, 18 * scale, rgba(226, 196, 132), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     sectionTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(sectionTitle, scale, false);
-    // 奖励清单装进暗底金边小框(参考图排版),获取途径紧随其后。
-    const rewardRows = Math.max(1, Math.min(4, item.activateRewards.length));
-    const boxTop = height * 0.085 - 18 * scale;
-    const boxH = rewardRows * 38 * scale + 18 * scale;
+    // 奖励清单装进暗底金边小框(参考图排版;超过 2 项排两列),获取途径紧随其后。
+    const boxTop = colTop - 147 * scale;
     this.drawRewardBox(body, rightLeft, boxTop, rightWidth, boxH, scale);
-    this.renderRewardRows(body, item.activateRewards, rightLeft + 14 * scale, boxTop - 9 * scale - 19 * scale, rightWidth - 28 * scale, scale);
+    this.renderRewardRows(body, item.activateRewards, rightLeft + 14 * scale, boxTop - 9 * scale - 19 * scale, rightWidth - 28 * scale, scale, rewardCols);
     const sourceText = `获取途径:${rarity === 'UR' ? '限定召唤 / 英雄召唤' : '英雄召唤'}`;
-    const source = this.host.addChildLabel(body, 'LobbyCodexPopupSource', sourceText, rightLeft, boxTop - boxH - 16 * scale, 15 * scale, rgba(176, 164, 138), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+    const source = this.host.addChildLabel(body, 'LobbyCodexPopupSource', sourceText, rightLeft, (boxTop - boxH + footer.statusTop) / 2, 15 * scale, rgba(176, 164, 138), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
     source.overflow = Label.Overflow.SHRINK;
 
     const statusText = !item.owned
@@ -826,12 +1054,9 @@ export class LobbyCodexPanelRenderer {
       : item.rewardClaimable
       ? `已收录 ×${Math.max(1, item.ownedCount)} · 首次收录奖励待领取`
       : `已收录 ×${Math.max(1, item.ownedCount)}`;
-    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, -height * 0.27, 15 * scale, item.rewardClaimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+    const { btnW, btnX, btnY } = footer;
+    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, footer.statusY, 15 * scale, item.rewardClaimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     status.overflow = Label.Overflow.SHRINK;
-
-    const btnW = clamp(rightWidth * 0.62, 150 * scale, 220 * scale);
-    const btnX = rightLeft + rightWidth - btnW / 2;
-    const btnY = -height * 0.35;
     const busy = state.claiming !== null;
     if (!item.owned) {
       this.addAssetButton(body, 'LobbyCodexPopupSummon', '前往召唤', btnX, btnY, btnW, scale, 'primary', () => this.host.openLobbyGachaSceneFromCodex());
@@ -862,30 +1087,33 @@ export class LobbyCodexPanelRenderer {
     }
 
     const rightLeft = chestX + chestSize / 2 + width * 0.06;
-    const rightWidth = width / 2 - rightLeft - width * 0.07;
-    const title = this.host.addChildLabel(body, 'LobbyCodexPopupMilestoneTitle', safeText(milestone.rewardName), rightLeft, height * 0.3, 27 * scale, rgba(255, 234, 176), new Size(rightWidth, 36 * scale), HorizontalTextAlignment.LEFT);
+    const rightWidth = width / 2 - rightLeft - width * 0.1;
+    const rewardCount = Math.min(4, milestone.rewards.length);
+    const rewardCols = rewardCount > 2 ? 2 : 1;
+    const mRows = Math.max(1, Math.ceil(rewardCount / rewardCols));
+    const mBoxH = mRows * 38 * scale + 18 * scale;
+    const footer = this.popupFooter(height, rightLeft, rightWidth, scale);
+    const innerTop = height / 2 - height * 0.085;
+    const slack = innerTop - 147 * scale - mBoxH - footer.statusTop - 16 * scale;
+    const colTop = innerTop - clamp(slack * 0.5, 0, 40 * scale);
+    const title = this.host.addChildLabel(body, 'LobbyCodexPopupMilestoneTitle', safeText(milestone.rewardName), rightLeft, colTop - 40 * scale, 27 * scale, rgba(255, 234, 176), new Size(rightWidth, 36 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    const progress = this.host.addChildLabel(body, 'LobbyCodexPopupMilestoneProgress', `收录进度 ${Math.min(state.ownedCount, milestone.targetCount)}/${milestone.targetCount}`, rightLeft, height * 0.19, 17 * scale, milestone.reached ? rgba(160, 230, 150) : rgba(196, 176, 140), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
+    const progress = this.host.addChildLabel(body, 'LobbyCodexPopupMilestoneProgress', `收录进度 ${Math.min(state.ownedCount, milestone.targetCount)}/${milestone.targetCount}`, rightLeft, colTop - 84 * scale, 17 * scale, milestone.reached ? rgba(160, 230, 150) : rgba(196, 176, 140), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     progress.overflow = Label.Overflow.SHRINK;
 
-    this.drawPopupDivider(body, rightLeft, height * 0.135, rightWidth, scale);
-    const sectionTitle = this.host.addChildLabel(body, 'LobbyCodexPopupRewardTitle', '里程碑奖励', rightLeft, height * 0.08, 18 * scale, rgba(226, 196, 132), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
+    this.drawPopupDivider(body, rightLeft, colTop - 108 * scale, rightWidth, scale);
+    const sectionTitle = this.host.addChildLabel(body, 'LobbyCodexPopupRewardTitle', '里程碑奖励', rightLeft, colTop - 130 * scale, 18 * scale, rgba(226, 196, 132), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     sectionTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(sectionTitle, scale, false);
-    const mRows = Math.max(1, Math.min(4, milestone.rewards.length));
-    const mBoxTop = height * 0.08 - 18 * scale;
-    const mBoxH = mRows * 38 * scale + 18 * scale;
+    const mBoxTop = colTop - 147 * scale;
     this.drawRewardBox(body, rightLeft, mBoxTop, rightWidth, mBoxH, scale);
-    this.renderRewardRows(body, milestone.rewards, rightLeft + 14 * scale, mBoxTop - 9 * scale - 19 * scale, rightWidth - 28 * scale, scale);
+    this.renderRewardRows(body, milestone.rewards, rightLeft + 14 * scale, mBoxTop - 9 * scale - 19 * scale, rightWidth - 28 * scale, scale, rewardCols);
 
     const statusText = milestone.claimed ? '奖励已领取' : milestone.claimable ? '达成!可领取里程碑奖励' : `再收录 ${Math.max(0, milestone.targetCount - state.ownedCount)} 位英雄即可领取`;
-    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, -height * 0.27, 15 * scale, milestone.claimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 22 * scale), HorizontalTextAlignment.LEFT);
+    const { btnW, btnX, btnY } = footer;
+    const status = this.host.addChildLabel(body, 'LobbyCodexPopupStatus', statusText, rightLeft, footer.statusY, 15 * scale, milestone.claimable ? rgba(255, 214, 130) : rgba(180, 168, 140), new Size(rightWidth, 24 * scale), HorizontalTextAlignment.LEFT);
     status.overflow = Label.Overflow.SHRINK;
-
-    const btnW = clamp(rightWidth * 0.62, 150 * scale, 220 * scale);
-    const btnX = rightLeft + rightWidth - btnW / 2;
-    const btnY = -height * 0.35;
     const busy = state.claiming !== null;
     if (milestone.claimable) {
       this.addAssetButton(body, 'LobbyCodexPopupClaim', busy ? '领取中...' : '领取奖励', btnX, btnY, btnW, scale, busy ? 'disabled' : 'claim', busy ? null : () => this.host.claimLobbyCodexReward({ type: 'MILESTONE', targetCount: milestone.targetCount }));
@@ -894,11 +1122,24 @@ export class LobbyCodexPanelRenderer {
     }
   }
 
+  /**
+   * 弹框右栏底部(按钮 + 状态行)几何:按钮右沿 = 右栏右沿,下沿离内金边 28(让开右下角花的卷草);三种按钮素材高宽比相近,统一按 0.36 定位,
+   * 各状态下按钮中线不跳。状态行贴在按钮上沿之上(POPUP_STATUS_ABOVE_BTN)。
+   */
+  private popupFooter(height: number, rightLeft: number, rightWidth: number, scale: number): { btnW: number; btnX: number; btnY: number; statusY: number; statusTop: number } {
+    const btnW = clamp(rightWidth * 0.62, 150 * scale, 220 * scale);
+    const btnX = rightLeft + rightWidth - btnW / 2;
+    const innerBottom = -height / 2 + height * 0.085;
+    const btnY = innerBottom + 28 * scale + btnW * 0.18; // POPUP_FOOTER_V5
+    const statusY = btnY + btnW * 0.18 + 20 * scale;
+    return { btnW, btnX, btnY, statusY, statusTop: statusY + 13 * scale };
+  }
+
   /** 弹框外壳:全屏半透遮罩(点击关闭)+ 金雕花石板(popup_frame_large 926×543 一体构图,等比)+ 右上关闭钮。 */
   private mountPopupShell(parent: Node, layout: UiLayout, panelWidth: number, panelHeight: number, scale: number, onClose: () => void): { node: Node; width: number; height: number } {
     const shade = this.host.addChildPlainNode(parent, 'LobbyCodexPopupDim', 0, 0, layout.width, layout.height);
     const sg = shade.addComponent(Graphics);
-    sg.fillColor = rgba(0, 0, 0, 150);
+    sg.fillColor = rgba(0, 0, 0, 198);
     sg.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     sg.fill();
     shade.addComponent(BlockInputEvents);
@@ -919,8 +1160,11 @@ export class LobbyCodexPanelRenderer {
       g.roundRect(-width / 2, -height / 2, width, height, 14 * scale);
       g.stroke();
     }
-    const closeSize = 40 * scale;
-    const closeBtn = this.host.addChildPlainNode(popup, 'LobbyCodexPopupClose', width / 2 - closeSize * 0.9, height / 2 - closeSize * 0.9, closeSize, closeSize);
+    // 关闭钮:手机上放大到约 30 CSS px、热区 80 设计单位(≈44 CSS px),稳稳坐在右上角花的宝石位上。
+    const phone = isPhoneDesign();
+    const closeSize = (phone ? 58 : 46) * scale;
+    const closeHit = Math.max(closeSize, (phone ? 80 : 46) * scale);
+    const closeBtn = this.host.addChildPlainNode(popup, 'LobbyCodexPopupClose', width / 2 - 36 * scale, height / 2 - 36 * scale, closeHit, closeHit);
     if (!this.host.addSprite('Art', CODEX_UI_ASSETS.close, 0, 0, closeSize * (155 / 161), closeSize, closeBtn)) {
       const label = this.host.addChildLabel(closeBtn, 'Text', '✕', 0, 0, 24 * scale, rgba(240, 210, 150), new Size(closeSize, closeSize));
       this.applyOutline(label, scale, true);
@@ -959,7 +1203,7 @@ export class LobbyCodexPanelRenderer {
     g.stroke();
   }
 
-  private renderRewardRows(parent: Node, rewards: QuestRewardItemVO[], left: number, top: number, width: number, scale: number): void {
+  private renderRewardRows(parent: Node, rewards: QuestRewardItemVO[], left: number, top: number, width: number, scale: number, columns = 1): void {
     if (rewards.length === 0) {
       const none = this.host.addChildLabel(parent, 'LobbyCodexRewardNone', '暂无奖励配置', left, top, 15 * scale, rgba(160, 150, 130), new Size(width, 22 * scale), HorizontalTextAlignment.LEFT);
       none.overflow = Label.Overflow.SHRINK;
@@ -967,10 +1211,13 @@ export class LobbyCodexPanelRenderer {
     }
     const rowH = 38 * scale;
     const iconSize = 32 * scale;
+    const colGap = 12 * scale;
+    const colW = (width - colGap * (columns - 1)) / columns;
     rewards.slice(0, 4).forEach((reward, index) => {
-      const y = top - index * rowH;
+      const y = top - Math.floor(index / columns) * rowH;
+      const colLeft = left + (index % columns) * (colW + colGap);
       const iconPath = REWARD_ICON_BY_CODE[reward.code.toUpperCase()];
-      const iconNode = this.host.addChildPlainNode(parent, `LobbyCodexRewardIcon_${index}`, left + iconSize / 2, y, iconSize, iconSize);
+      const iconNode = this.host.addChildPlainNode(parent, `LobbyCodexRewardIcon_${index}`, colLeft + iconSize / 2, y, iconSize, iconSize);
       if (!iconPath || !this.host.addSprite('Art', iconPath, 0, 0, iconSize, iconSize, iconNode)) {
         const g = iconNode.addComponent(Graphics);
         g.fillColor = rgba(60, 48, 30, 230);
@@ -981,7 +1228,7 @@ export class LobbyCodexPanelRenderer {
         g.stroke();
       }
       const text = `${safeText(reward.name || reward.code)} ×${this.formatAmount(reward.amount)}`;
-      const label = this.host.addChildLabel(parent, `LobbyCodexRewardText_${index}`, text, left + iconSize + 12 * scale, y, 18 * scale, rgba(236, 222, 186), new Size(width - iconSize - 12 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+      const label = this.host.addChildLabel(parent, `LobbyCodexRewardText_${index}`, text, colLeft + iconSize + 12 * scale, y, 18 * scale, rgba(236, 222, 186), new Size(colW - iconSize - 12 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, false);
     });
@@ -1009,7 +1256,7 @@ export class LobbyCodexPanelRenderer {
   }
 
   /** 素材化按钮:claim=红底金框(571×203)/disabled=黑牌(393×142)/primary=通用主钮(740×211);缺图退手绘。 */
-  private addAssetButton(parent: Node, name: string, text: string, x: number, y: number, width: number, scale: number, style: 'claim' | 'disabled' | 'primary', onClick: (() => void) | null): void {
+  private addAssetButton(parent: Node, name: string, text: string, x: number, y: number, width: number, scale: number, style: 'claim' | 'disabled' | 'primary', onClick: (() => void) | null): { node: Node; label: Label; height: number } {
     const ratio = style === 'claim' ? 203 / 571 : style === 'disabled' ? 142 / 393 : 211 / 740;
     const height = Math.max(width * ratio, 36 * scale);
     const btn = this.host.addChildPlainNode(parent, name, x, y, width, height);
@@ -1033,6 +1280,7 @@ export class LobbyCodexPanelRenderer {
       this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
       btn.on(Button.EventType.CLICK, onClick, this);
     }
+    return { node: btn, label, height };
   }
 
   // ── 通用 ──
