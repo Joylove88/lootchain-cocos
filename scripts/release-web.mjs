@@ -1,5 +1,6 @@
 // 一键出 Web 正式包(docs/31、LootChain docs/35):
-//   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → PNG 压缩 → 打 tar.gz。
+//   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → PNG 压缩
+//   → 写整包下载清单 asset-manifest.json → 打 tar.gz。
 // 用法:npm run release:web            (完整流程)
 //       npm run release:web -- --skip-build   (只对现有 build/web-mobile 做后处理并打包)
 // 产物:build/release/lootchain-web-<日期时间>-<commit>.tar.gz,服务器上解压到站点目录即可(见 docs/35)。
@@ -84,6 +85,35 @@ function checkBuildLayout() {
   }
 }
 
+function writeAssetManifest() {
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (!/\.mp4$/i.test(entry.name)) {
+        files.push([path.relative(BUILD_DIR, full).split(path.sep).join('/'), fs.statSync(full).size]);
+      }
+    }
+  };
+  for (const top of ['assets', 'cocos-js']) {
+    const dir = path.join(BUILD_DIR, top);
+    if (fs.existsSync(dir)) {
+      walk(dir);
+    }
+  }
+  if (files.length === 0) {
+    fail('assets/ 下没有文件,清单为空');
+  }
+  // 优先下界面图与小文件:进度条前段走得快,中途断网时常用素材先到本地
+  const rank = (p) => (p.includes('/resources/') && /\/ui\//.test(p) ? 0 : p.startsWith('cocos-js/') || !p.includes('/resources/') ? 0 : 1);
+  files.sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  const total = files.reduce((sum, f) => sum + f[1], 0);
+  fs.writeFileSync(path.join(BUILD_DIR, 'asset-manifest.json'), JSON.stringify({ version: commit, files }));
+  console.log(`[release] asset-manifest.json:${files.length} 个文件,${(total / 1024 / 1024).toFixed(1)} MB`);
+}
+
 step('0/5 环境检查');
 const commit = git(['rev-parse', '--short', 'HEAD']) || 'nogit';
 const dirty = git(['status', '--porcelain', '--untracked-files=no']);
@@ -124,7 +154,11 @@ if (run(python, [path.join(ROOT, 'scripts', 'compress-build-png.py'), BUILD_DIR]
   fail('压缩脚本失败(需要 pip install pillow imagequant)');
 }
 
-step('4/5 写版本信息');
+step('4/5 写整包下载清单 + 版本信息');
+// 2026-10-04:Web/H5 首访按这份清单把 assets/ 与 cocos-js/ 整包下载进浏览器缓存(AssetOfflineCache.downloadFullPack)。
+// 必须在 PNG 压缩之后生成(字节数用于进度条)。mp4 走分段请求、Service Worker 不缓存,不列入。
+writeAssetManifest();
+
 const stamp = new Date();
 const pad = (n) => String(n).padStart(2, '0');
 const tag = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}`;

@@ -1,5 +1,5 @@
 /*
- * LootChain 静态资源离线缓存(2026-09-17 起;2026-09-25 改为首次只下登录+大厅,其余用到才下载)。
+ * LootChain 静态资源离线缓存(2026-09-17 起;2026-10-04 起首访按 asset-manifest.json 整包下载进本缓存,见 AssetOfflineCache.ts)。
  * 用到过的资源都经本文件写入 Cache Storage,二次访问直接读本地。
  *
  * 构建时本文件原样拷到 build/web-mobile/ 根目录,由游戏脚本 AssetOfflineCache.ts 注册。
@@ -27,7 +27,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  if (request.method !== 'GET' || request.headers.has('range')) {
+  // x-lootchain-prefetch:首访整包下载由页面自己写缓存(AssetOfflineCache.downloadFullPack),这里不再重复写一遍。
+  if (request.method !== 'GET' || request.headers.has('range') || request.headers.has('x-lootchain-prefetch')) {
     return;
   }
   const url = new URL(request.url);
@@ -38,7 +39,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     if (hashed) {
-      const hit = await cache.match(request);
+      const hit = await cache.match(request, { ignoreVary: true });
       if (hit) {
         return hit;
       }

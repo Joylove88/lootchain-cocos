@@ -18,6 +18,7 @@ import {
   Size,
   sp,
   Sprite,
+  sys,
   SpriteFrame,
   VideoClip,
   tween,
@@ -29,7 +30,21 @@ import {
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
-import { ensureAssetServiceWorker, isBootPreloadCached, markBootPreloadCached } from '../app/AssetOfflineCache';
+import {
+  downloadFullPack,
+  ensureAssetServiceWorker,
+  fetchAssetManifest,
+  hasStorageRoomFor,
+  isBootPreloadCached,
+  isFullPackCached,
+  markBootPreloadCached,
+  markFullPackCached,
+  missingManifestFiles,
+  pruneStaleAssetCache,
+  supportsFullPack,
+  type AssetManifest,
+} from '../app/AssetOfflineCache';
+import { PREVIEW } from 'cc/env';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
@@ -505,8 +520,8 @@ export class LootChainGameRoot extends Component {
     this.preloadUiSprites();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.on(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
-    // 首次进入加载屏:只预载登录+大厅界面图(2026-09-25 起;原 2026-09-10 版全量预载 UI+骨骼,
-    // 首访要下 500MB+),完成回调里再渲染登录+恢复会话;战斗必用素材在大厅亮出后后台预取。
+    // 首次进入加载屏(2026-10-04 起):Web/H5 先按清单整包下载进浏览器缓存,再把登录+大厅界面图读进内存;
+    // 之后刷新不再下载。原生包资源在安装包里,直接进。战斗必用素材与各页面素材在登录页亮出后后台读进内存。
     this.runBootPreload();
   }
 
@@ -517,7 +532,8 @@ export class LootChainGameRoot extends Component {
   private runBootPreload(): void {
     this.bootPreloadActive = true;
     // 2026-09-17 用户拍板:首次访问预载完成后资源已存本地,二次访问不再显示预载屏。
-    if (isBootPreloadCached()) {
+    // 2026-10-04:Web/H5 还要整包下载完成过当前版本才算;原生包资源都在安装包里,直接走快速启动。
+    if (sys.isNative || (isBootPreloadCached() && (!supportsFullPack() || isFullPackCached()))) {
       this.runCachedBootWarmup();
       return;
     }
@@ -543,8 +559,9 @@ export class LootChainGameRoot extends Component {
     const barHeight = 14 * scale;
     const barNode = this.addChildPlainNode(root, 'BootLoadingBar', centerX, centerY - 12 * scale, barWidth, barHeight);
     const barGraphics = barNode.addComponent(Graphics);
-    const percentLabel = this.addChildLabel(root, 'BootLoadingPercent', '0%', centerX, centerY - 44 * scale, 16 * scale, new Color(228, 202, 150, 240), new Size(200 * scale, 22 * scale));
-    const tipLabel = this.addChildLabel(root, 'BootLoadingTip', '正在加载界面素材…', centerX, centerY - 72 * scale, 14 * scale, new Color(168, 150, 118, 210), new Size(460 * scale, 20 * scale));
+    const percentLabel = this.addChildLabel(root, 'BootLoadingPercent', '0%', centerX, centerY - 44 * scale, 20 * scale, new Color(228, 202, 150, 240), new Size(200 * scale, 28 * scale));
+    const tipLabel = this.addChildLabel(root, 'BootLoadingTip', '正在加载界面素材…', centerX, centerY - 76 * scale, 18 * scale, new Color(196, 176, 140, 230), new Size(680 * scale, 26 * scale));
+    tipLabel.overflow = Label.Overflow.SHRINK;
     const drawBar = (progress: number): void => {
       if (!barGraphics.isValid) {
         return;
@@ -571,6 +588,24 @@ export class LootChainGameRoot extends Component {
         tipLabel.string = `正在加载${phaseLabel}…`;
       }
     };
+    const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
+    let lastPackDraw = 0;
+    const updatePackProgress = (doneBytes: number, totalBytes: number): void => {
+      // 进度回调很密(每个文件一次),最多 10 次/秒重画
+      const now = Date.now();
+      if (now - lastPackDraw < 100 && doneBytes < totalBytes) {
+        return;
+      }
+      lastPackDraw = now;
+      const ratio = totalBytes > 0 ? doneBytes / totalBytes : 1;
+      drawBar(ratio);
+      if (percentLabel.isValid) {
+        percentLabel.string = `${Math.round(ratio * 100)}%`;
+      }
+      if (tipLabel.isValid) {
+        tipLabel.string = `正在下载游戏资源 ${mb(doneBytes)} / ${mb(totalBytes)} MB(仅首次,之后打开无需等待)`;
+      }
+    };
     let finished = false;
     const finish = (): void => {
       if (finished) {
@@ -585,11 +620,34 @@ export class LootChainGameRoot extends Component {
       // 登录页亮出后后台预取守卫战必用素材(不阻塞、低并发)。
       this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
     };
+    // 第一段(Web/H5):按 asset-manifest.json 把缺的文件整包下载进浏览器缓存;没有清单 / 空间不够就跳过,
+    // 退回按页面首开时加载。下载期间不设兜底超时(网速慢也要下完),失败的文件下次访问继续补。
+    const downloadPack = async (): Promise<void> => {
+      const manifest: AssetManifest | null = await fetchAssetManifest();
+      if (!manifest) {
+        return;
+      }
+      const missing = await missingManifestFiles(manifest);
+      const totalBytes = manifest.files.reduce((sum, entry) => sum + entry[1], 0);
+      const missingBytes = missing.reduce((sum, entry) => sum + entry[1], 0);
+      if (missing.length === 0) {
+        markFullPackCached();
+      } else if (await hasStorageRoomFor(missingBytes)) {
+        await downloadFullPack(missing, totalBytes, totalBytes - missingBytes, (progress) => updatePackProgress(progress.doneBytes, progress.totalBytes));
+      } else {
+        console.warn(`[LootChain] full pack: 浏览器剩余空间不足 ${mb(missingBytes)}MB,改为按页面加载`);
+      }
+      // 发版后旧版本文件留在缓存里没用,进游戏后后台清掉
+      setTimeout(() => void pruneStaleAssetCache(manifest), 20000);
+    };
+    // 第二段:登录+大厅界面图读进内存(整包已在本地时几乎是瞬时)。
     // 清单+并发逐个加载(loadDir 在编辑器预览环境会悬死,不可用;getDirWithPath 同步出全量清单)。
     const startPreload = (): void => {
       if (finished) {
         return;
       }
+      // 兜底:界面图加载异常悬挂也不至于锁死进不了游戏(整包下载阶段不计时)。
+      setTimeout(finish, 180000);
       const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = collectUiDirPaths(BOOT_PRELOAD_UI_DIRS)
         .map((path) => ({ path, kind: 'ui' as const }));
       const total = tasks.length;
@@ -646,11 +704,12 @@ export class LootChainGameRoot extends Component {
       if (bundleError) {
         console.warn('[LootChain] boot preload: resources bundle 加载失败', bundleError);
       }
-      // 首次访问先等 Service Worker 接管页面,预载请求才会写入本地缓存(不支持/超时照常预载)。
-      void ensureAssetServiceWorker(true).then(() => startPreload());
+      // 首次访问先等 Service Worker 接管页面,之后引擎的资源请求才会命中本地缓存(不支持/超时照常预载)。
+      void ensureAssetServiceWorker(true)
+        .then(() => downloadPack())
+        .catch((error) => console.warn('[LootChain] full pack download failed', error))
+        .then(() => startPreload());
     });
-    // 兜底:预载异常悬挂也不至于锁死进不了游戏。
-    setTimeout(finish, 180000);
   }
 
   /**
@@ -669,9 +728,12 @@ export class LootChainGameRoot extends Component {
       this.bootPreloadActive = false;
       this.renderCurrentView();
       void this.tryResumeSession();
-      // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材
-      // (2026-09-25 起只取战斗 HUD + 怪物骨骼,不再全量热 UI+全部骨骼,否则没缓存的会被整包下载)。
+      // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材。
       this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
+      // 浏览器空间紧张时可能清掉过部分缓存:后台对一遍清单,缺的悄悄补回来(不挡玩家)。
+      if (supportsFullPack() && isFullPackCached()) {
+        this.scheduleOnce(() => void this.repairFullPackInBackground(), 8);
+      }
     };
     assetManager.loadBundle('resources', () => {
       const infos: Array<{ path: string }> = collectUiDirPaths(BOOT_PRELOAD_UI_DIRS).map((path) => ({ path }));
@@ -692,6 +754,41 @@ export class LootChainGameRoot extends Component {
     setTimeout(finish, 3000);
   }
 
+  /** 快速启动后核对整包缓存:有缺失(被浏览器清理过)就后台补齐。 */
+  private async repairFullPackInBackground(): Promise<void> {
+    const manifest = await fetchAssetManifest();
+    if (!manifest) {
+      return;
+    }
+    const missing = await missingManifestFiles(manifest);
+    if (missing.length === 0) {
+      return;
+    }
+    const totalBytes = manifest.files.reduce((sum, entry) => sum + entry[1], 0);
+    const missingBytes = missing.reduce((sum, entry) => sum + entry[1], 0);
+    console.warn(`[LootChain] full pack: 本地缓存缺 ${missing.length} 个文件,后台补齐`);
+    await downloadFullPack(missing, totalBytes, totalBytes - missingBytes, () => undefined);
+  }
+
+  /**
+   * 各玩法页素材在后台依次读进内存(2026-10-04 用户「点哪个模块都要等加载中」):
+   * 只在素材已在本地时做(Web 整包已下完 / 原生安装包 / 编辑器预览),每组间隔 1 秒,不和首屏抢。
+   * 玩家抢先点开某页时该页照常显示进度,通常已读完一大半。
+   */
+  private warmPageGroupsInBackground(): void {
+    if (!(sys.isNative || PREVIEW || isFullPackCached())) {
+      return;
+    }
+    const groups: UiPreloadGroup[] = ['heroes', 'bag', 'forge', 'adventure', 'gacha', 'crystal'];
+    groups.forEach((group, index) => {
+      this.scheduleOnce(() => {
+        if (this.isValid) {
+          this.uiSpriteFrameCache.preloadGroup(group);
+        }
+      }, index);
+    });
+  }
+
   /** 后台战斗素材预取进行中标记(只跑一次)。 */
   private backgroundWarmStarted = false;
 
@@ -706,6 +803,7 @@ export class LootChainGameRoot extends Component {
     this.backgroundWarmStarted = true;
     // 战斗页的 C1812 图组(血条/胜负横幅/受击贴图等)与守卫战素材一起在后台拉。
     this.uiSpriteFrameCache.preloadGroup('battle');
+    this.scheduleOnce(() => this.warmPageGroupsInBackground(), 2);
     const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
       ...Object.keys(GUARD_MONSTER_SPINE_FILE).map((code) => ({ path: guardMonsterSpineResource(code), kind: 'spine' as const })),
       ...collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS).map((path) => ({ path, kind: 'ui' as const })),
