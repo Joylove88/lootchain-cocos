@@ -20,6 +20,7 @@ import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../ty
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
+import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
 
 /**
  * 货币商店弹窗(2026-09-22 用户拍板"你来设计",docs/33):
@@ -147,6 +148,8 @@ interface TierCardSpec {
   dimmed: boolean;
   /** 图标角标(体力 5 份包的 ×5)。 */
   badge?: string;
+  /** 左上角斜角标(手机「最划算」):同时给整张卡加金色外发光。 */
+  ribbon?: string;
   onTap: ((fromWorld: Vec3) => void) | null;
 }
 
@@ -228,8 +231,13 @@ export class LobbyShopDialogRenderer {
     const titleHalf = (TITLE[state.kind].length * titleSize) / 2;
     const dividerW = 150 * scale;
     const dividerX = titleHalf + 22 * scale + dividerW / 2;
-    this.host.addSprite('LobbyShopTitleDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
-    this.host.addSprite('LobbyShopTitleDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
+    // 手机窄屏(16:9):左侧两个余额胶囊会顶到标题左饰件,放不下就不画两侧饰件
+    const chipCount = state.kind === 'diamond' ? 1 : 2;
+    const chipsRight = -panelW / 2 + (26 + chipCount * 158 + (chipCount - 1) * 18) * scale;
+    if (!phone || chipsRight < -dividerX - dividerW / 2 - 10 * scale) {
+      this.host.addSprite('LobbyShopTitleDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
+      this.host.addSprite('LobbyShopTitleDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
+    }
     const subtitleText = state.kind === 'gold'
       ? '用钻石换取金币,档位越高赠送越多'
       : state.kind === 'stamina'
@@ -253,6 +261,10 @@ export class LobbyShopDialogRenderer {
     } else {
       this.lastNotice = '';
     }
+    if (phone) {
+      this.renderPhoneBalances(panel, state.kind, catalog, profile, diamond, panelW, panelH, scale);
+      this.renderPhoneBodyWell(panel, panelW, bodyTop, bodyBottom, scale);
+    }
     if (!catalog) {
       this.host.addChildLabel(panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, (bodyTop + bodyBottom) / 2, FONT.body * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 26 * scale));
       return;
@@ -270,6 +282,49 @@ export class LobbyShopDialogRenderer {
       const busyLabel = this.host.addChildLabel(cover, 'LobbyShopBusyText', '处理中…', 0, (bodyTop + bodyBottom) / 2, FONT.big * scale, rgba(255, 238, 190), new Size(panelW * 0.5, 34 * scale));
       this.outline(busyLabel, scale, rgba(0, 0, 0, 255));
     }
+  }
+
+  /**
+   * 手机全屏版盖住了大厅顶部货币栏,在标题带左侧补余额胶囊(同款素材);点胶囊切到对应商店。
+   * (2026-10-04 用户「美化钻石充值 / 金币商店 / 体力补充」)
+   */
+  private renderPhoneBalances(panel: Node, kind: LobbyShopKind, catalog: ShopCatalogVO | null, profile: PlayerLobbyProfileVO, diamond: number, panelW: number, panelH: number, scale: number): void {
+    const entries: TopCurrencyEntry[] = [];
+    if (kind === 'gold') {
+      entries.push({ key: 'gold', icon: ICONS.gold_small.path, value: this.host.formatInteger(Number(profile.gold ?? 0)) });
+    } else if (kind === 'stamina') {
+      const stamina = catalog ? catalog.stamina : Number(profile.stamina ?? 0);
+      const maxStamina = catalog ? catalog.maxStamina : Number(profile.maxStamina ?? 0);
+      entries.push({ key: 'stamina', icon: ICONS.stamina.path, value: `${stamina}/${maxStamina}` });
+    }
+    entries.push({ key: 'diamond', icon: ICONS.diamond.path, value: this.host.formatInteger(diamond) });
+    const capW = 158 * scale;
+    const gap = 18 * scale;
+    const rightX = -panelW / 2 + 26 * scale + entries.length * capW + (entries.length - 1) * gap;
+    renderTopCurrencyBar(this.host as unknown as SceneBackButtonHost, panel, rightX, panelH / 2, scale, entries, 0);
+  }
+
+  /** 手机:卡片区垫一块内凹底板(深底 + 金色上沿线 + 细边),不再是整块平黑。 */
+  private renderPhoneBodyWell(panel: Node, panelW: number, top: number, bottom: number, scale: number): void {
+    const w = panelW - 36 * scale;
+    const h = top - bottom + 12 * scale;
+    const well = this.host.addChildPlainNode(panel, 'LobbyShopBodyWell', 0, (top + bottom) / 2, w, h);
+    const g = well.addComponent(Graphics);
+    g.fillColor = rgba(0, 0, 0, 120);
+    g.roundRect(-w / 2, -h / 2, w, h, 14 * scale);
+    g.fill();
+    g.fillColor = rgba(120, 78, 30, 26);
+    g.roundRect(-w / 2, 0, w, h / 2, 14 * scale);
+    g.fill();
+    g.strokeColor = rgba(170, 128, 62, 120);
+    g.lineWidth = Math.max(1, 1.4 * scale);
+    g.roundRect(-w / 2, -h / 2, w, h, 14 * scale);
+    g.stroke();
+    g.strokeColor = rgba(240, 200, 120, 190);
+    g.lineWidth = Math.max(1, 2 * scale);
+    g.moveTo(-w * 0.3, h / 2);
+    g.lineTo(w * 0.3, h / 2);
+    g.stroke();
   }
 
   /** 各页内容区需要的宽与高(决定面板尺寸):金币一排 4 卡;体力 左状态 + 右两卡;充值 3×2 两排。 */
@@ -326,8 +381,9 @@ export class LobbyShopDialogRenderer {
         amount: this.host.formatInteger(tier.goldAmount),
         unit: '金币',
         amountColor: rgba(255, 214, 110),
-        tag: tier.bonusPct > 0 ? (best ? `最划算 · 赠 ${tier.bonusPct}%` : `赠 ${tier.bonusPct}%`) : '',
+        tag: tier.bonusPct > 0 ? (best && !this.phone ? `最划算 · 赠 ${tier.bonusPct}%` : `赠 ${tier.bonusPct}%`) : '',
         tagHighlight: best,
+        ribbon: best && this.phone ? '最划算' : undefined,
         price: this.host.formatInteger(tier.diamondCost),
         priceIcon: ICONS.diamond,
         enabled: !busy,
@@ -345,6 +401,27 @@ export class LobbyShopDialogRenderer {
     // 左栏:药剂 + 数值 + 进度条 + 说明
     const leftX = -panelW * 0.25;
     const iconBox = Math.min(150 * scale, (top - bottom) * 0.4);
+    if (this.phone) {
+      // 左栏信息框:深底 + 金边 + 小标题,体力状态不再悬在空处
+      const boxW = panelW * 0.4;
+      const boxH = (top - bottom) * 0.9;
+      const box = this.host.addChildPlainNode(panel, 'LobbyShopStaminaBox', leftX, centerY, boxW, boxH);
+      const bx = box.addComponent(Graphics);
+      bx.fillColor = rgba(20, 14, 12, 215);
+      bx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 12 * scale);
+      bx.fill();
+      bx.strokeColor = rgba(190, 146, 72, 190);
+      bx.lineWidth = Math.max(1, 1.6 * scale);
+      bx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 12 * scale);
+      bx.stroke();
+      const caption = this.host.addChildLabel(box, 'Caption', '当前体力', 0, boxH / 2 - 26 * scale, 22 * scale, rgba(250, 222, 158), new Size(boxW * 0.6, 30 * scale));
+      caption.isBold = true;
+      this.outline(caption, scale, rgba(30, 14, 6, 255));
+      if (catalog.stamina > catalog.maxStamina) {
+        const over = this.host.addChildLabel(box, 'Over', `已超出上限 +${catalog.stamina - catalog.maxStamina}`, 0, -boxH / 2 + 24 * scale, 20 * scale, rgba(150, 240, 160), new Size(boxW * 0.8, 28 * scale));
+        over.overflow = Label.Overflow.SHRINK;
+      }
+    }
     this.drawGlow(panel, 'LobbyShopStaminaGlow', leftX, centerY + 78 * scale, iconBox * 0.62, [255, 110, 120], scale);
     this.fitSprite(panel, 'LobbyShopStaminaIcon', ICONS.stamina, leftX, centerY + 78 * scale, iconBox);
     const value = this.host.addChildLabel(panel, 'LobbyShopStaminaValue', `体力 ${catalog.stamina}/${catalog.maxStamina}`, leftX, centerY - 26 * scale, FONT.big * scale, rgba(140, 230, 255), new Size(panelW * 0.4, 32 * scale));
@@ -421,7 +498,7 @@ export class LobbyShopDialogRenderer {
       const side = PHONE_GEO.sidePad * scale;
       const viewW = panelW - side * 2;
       const bodyH = gridTop - bottom;
-      const cardW = Math.min(PHONE_CARD_W.diamond * scale, (bodyH * 0.97) / TALLEST_FRAME);
+      const cardW = Math.min(PHONE_CARD_W.diamond * scale, (bodyH * 0.9) / TALLEST_FRAME);
       const rowW = tiers.length * cardW + (tiers.length - 1) * gap;
       const centerY = (gridTop + bottom) / 2;
       if (rowW <= viewW) {
@@ -435,7 +512,7 @@ export class LobbyShopDialogRenderer {
         scrollView.inertia = true;
         scrollView.elastic = true;
         scrollView.cancelInnerEvents = true;
-        const contentW = rowW + 8 * scale;
+        const contentW = rowW + 52 * scale;
         const maxShift = contentW - viewW;
         const baseX = maxShift / 2;
         this.rechargeScroll = Math.max(0, Math.min(maxShift, this.rechargeScroll));
@@ -463,7 +540,7 @@ export class LobbyShopDialogRenderer {
         viewport.on('scroll-ended', syncHint, this);
         syncHint();
         cardParent = content;
-        grid = { cardW, slots: tiers.map((_, index) => ({ x: -contentW / 2 + 4 * scale + cardW / 2 + index * (cardW + gap), y: 0 })) };
+        grid = { cardW, slots: tiers.map((_, index) => ({ x: -contentW / 2 + 26 * scale + cardW / 2 + index * (cardW + gap), y: 0 })) };
       }
     } else {
       grid = this.tierGrid(panelW, gridTop, bottom, scale, tiers.length, 3, CARD_W.diamond * scale);
@@ -480,8 +557,9 @@ export class LobbyShopDialogRenderer {
         amount: this.host.formatInteger(tier.diamondTotal),
         unit: '钻石',
         amountColor: rgba(170, 215, 255),
-        tag: tier.diamondBonus > 0 ? (best ? `最划算 · 赠 ${this.host.formatInteger(tier.diamondBonus)}` : `赠 ${this.host.formatInteger(tier.diamondBonus)}`) : '',
+        tag: tier.diamondBonus > 0 ? (best && !this.phone ? `最划算 · 赠 ${this.host.formatInteger(tier.diamondBonus)}` : `赠 ${this.host.formatInteger(tier.diamondBonus)}`) : '',
         tagHighlight: best,
+        ribbon: best && this.phone ? '最划算' : undefined,
         price: `¥ ${Number.isInteger(price) ? price : price.toFixed(2)}`,
         enabled: !busy && payable,
         dimmed: !payable,
@@ -594,6 +672,21 @@ export class LobbyShopDialogRenderer {
     scale *= spec.textScale ?? 1;
     const cardH = cardW * frame.aspect;
     const card = this.host.addChildPlainNode(parent, name, x, y, cardW, cardH);
+    if (spec.ribbon) {
+      // 金色外发光(呼吸):几圈递减透明度的圆角描边,画在卡框后面
+      const halo = this.host.addChildPlainNode(card, `${name}Halo`, 0, 0, cardW, cardH);
+      const hg = halo.addComponent(Graphics);
+      for (let ring = 0; ring < 5; ring += 1) {
+        const grow = (3 + ring * 4) * scale;
+        hg.strokeColor = rgba(255, 196, 90, 150 - ring * 28);
+        hg.lineWidth = 5 * scale;
+        hg.roundRect(-cardW / 2 - grow, -cardH / 2 - grow, cardW + grow * 2, cardH + grow * 2, 14 * scale + grow);
+        hg.stroke();
+      }
+      const haloOpacity = halo.addComponent(UIOpacity);
+      haloOpacity.opacity = 255;
+      tween(haloOpacity).repeatForever(tween<UIOpacity>().to(0.9, { opacity: 120 }).to(0.9, { opacity: 255 })).start();
+    }
     const bg = card.addComponent(Graphics);
     bg.fillColor = rgba(12, 10, 14, 236);
     bg.roundRect(-cardW / 2 + 6 * scale, -cardH / 2 + 6 * scale, cardW - 12 * scale, cardH - 12 * scale, 10 * scale);
@@ -657,8 +750,27 @@ export class LobbyShopDialogRenderer {
       priceLabel.overflow = Label.Overflow.SHRINK;
       this.outline(priceLabel, scale, rgba(60, 10, 6, 255));
     }
+    if (spec.ribbon) {
+      // 左上角斜角标:深红底金边,压在卡框角上
+      const rw = Math.max(92 * scale, spec.ribbon.length * 22 * scale + 26 * scale);
+      const rh = 32 * scale;
+      const ribbon = this.host.addChildPlainNode(card, `${name}Ribbon`, -cardW / 2 + rw * 0.36, cardH / 2 - rh * 0.5, rw, rh);
+      ribbon.angle = 14;
+      const rg = ribbon.addComponent(Graphics);
+      rg.fillColor = rgba(150, 24, 20, 250);
+      rg.roundRect(-rw / 2, -rh / 2, rw, rh, 7 * scale);
+      rg.fill();
+      rg.strokeColor = rgba(255, 220, 130, 255);
+      rg.lineWidth = Math.max(1, 2 * scale);
+      rg.roundRect(-rw / 2, -rh / 2, rw, rh, 7 * scale);
+      rg.stroke();
+      const ribbonText = this.host.addChildLabel(ribbon, `${name}RibbonText`, spec.ribbon, 0, 0, 20 * scale, rgba(255, 240, 190), new Size(rw - 10 * scale, rh));
+      ribbonText.isBold = true;
+      ribbonText.overflow = Label.Overflow.SHRINK;
+      this.outline(ribbonText, scale, rgba(70, 10, 6, 255));
+    }
     if (spec.dimmed) {
-      const opacity = card.addComponent(UIOpacity);
+      const opacity = card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity);
       opacity.opacity = 150;
     }
     if (spec.enabled && spec.onTap) {
