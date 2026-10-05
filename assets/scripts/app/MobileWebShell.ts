@@ -36,6 +36,7 @@ export function installMobileWebShell(): void {
   }
   installed = true;
   patchEditBoxScroll();
+  watchContextLost();
   if (!sys.isMobile) {
     return;
   }
@@ -172,4 +173,32 @@ function patchEditBoxScroll(): void {
   } catch (error) {
     void error;
   }
+}
+
+/**
+ * 显卡画面丢失(手机内存紧张时浏览器会回收 WebGL 上下文,画面定住不动,2026-10-05 用户手机战斗中卡死):
+ * 引擎不会自己恢复,盖一层提示,点一下重新加载(素材已在本地缓存,几秒回到游戏)。
+ */
+function watchContextLost(): void {
+  const attach = (): void => {
+    const canvas = document.getElementById('GameCanvas');
+    if (!canvas) {
+      setTimeout(attach, 500);
+      return;
+    }
+    canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      if (document.getElementById('lc-ctx-lost')) {
+        return;
+      }
+      const overlay = document.createElement('div');
+      overlay.id = 'lc-ctx-lost';
+      overlay.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2147483600;display:flex;flex-direction:column;align-items:center;justify-content:center;'
+        + 'background:rgba(0,0,0,.82);color:#f5d27a;font-family:"PingFang SC","Microsoft YaHei",sans-serif;text-align:center';
+      overlay.innerHTML = '<div style="font-size:22px;font-weight:bold">画面已中断</div><div style="margin-top:10px;font-size:15px;color:rgba(230,205,160,.85)">设备内存不足,点击任意处重新加载<br>建议在设置里把画面调成「流畅」</div>';
+      overlay.addEventListener('click', () => location.reload());
+      document.body.appendChild(overlay);
+    });
+  };
+  attach();
 }

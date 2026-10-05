@@ -800,7 +800,9 @@ export class LootChainGameRoot extends Component {
     }
     // 大厅最常点的排前面。只返回路径,由后台预读队列按小批量依次读——
     // 2026-10-05 实测:原先 6 个分组一次性发出几百个请求,玩家点开的界面排在队尾,要等十几秒才轮到。
-    const groups: UiPreloadGroup[] = ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
+    // 手机只预读轻的几组:锻造 / 召唤 / 英雄的大图解码后占几百 MB 显存,全读进来手机浏览器可能丢失画面或杀页面
+    // (2026-10-05 用户手机战斗中卡死);这三页在手机上首开时再读(素材已在本地,不到 1 秒)。
+    const groups: UiPreloadGroup[] = sys.isMobile ? ['adventure', 'bag', 'crystal'] : ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
     const paths: string[] = [];
     groups.forEach((group) => this.uiSpriteFrameCache.groupAssetPaths(group).forEach((path) => paths.push(path)));
     return paths;
@@ -822,7 +824,8 @@ export class LootChainGameRoot extends Component {
     this.uiSpriteFrameCache.preloadGroup('battle');
     // 2026-10-05 用户「进战场背景 / 格子还是后出来」:进场第一眼要用的图(场景背景、石台格子、战斗 HUD)排最前,
     // 怪物骨骼(40 套,最慢)放后面;电脑端最后再把其余玩法页的界面图整目录读进内存(手机内存小,只读各页分组)。
-    const sceneBgPaths = (resources.getDirWithPath('ui/battle', SpriteFrame) ?? [])
+    // 10 张场景背景每张解码后约 9MB 显存:电脑全读;手机不预读(进战场时只读当前关卡那一张)
+    const sceneBgPaths = sys.isMobile ? [] : (resources.getDirWithPath('ui/battle', SpriteFrame) ?? [])
       .map((info) => info.path)
       .filter((path) => /^ui\/battle\/battle_scene_[^/]+\/spriteFrame$/.test(path));
     const first = new Set<string>(this.warmPageGroupPaths().concat(sceneBgPaths, collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS)));

@@ -773,7 +773,19 @@ export class LobbyGuardBattleRenderer {
     this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
     this.tickAccumulatorMs = 0;
-    this.tickTimer = setInterval(() => this.step(), TICK_MS);
+    this.tickTimer = setInterval(() => {
+      try {
+        this.step();
+      } catch (error) {
+        // 战斗循环出异常时不再静默(否则画面像"卡死"却没有任何线索):底部提示一次,便于截图反馈
+        if (!this.stepErrorShown) {
+          this.stepErrorShown = true;
+          const text = String((error as Error)?.message ?? error).slice(0, 90);
+          console.error('[LootChain] guard battle step failed', error);
+          this.host.setStatus(`战斗出现异常,请截图反馈:${text}`);
+        }
+      }
+    }, TICK_MS);
   }
 
   /**
@@ -2092,6 +2104,8 @@ export class LobbyGuardBattleRenderer {
     text.outlineColor = rgba(12, 8, 6, 255);
     text.outlineWidth = 2;
   }
+
+  private stepErrorShown = false;
 
   private step(): void {
     const sim = this.sim;
