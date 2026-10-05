@@ -26,6 +26,7 @@ import {
 } from 'cc';
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { GRAPHICS_FRAME_RATES, getGraphicsFrameRate, getGraphicsMode, graphicsCaps, setGraphicsFrameRate, setGraphicsMode } from '../../app/GraphicsSettings';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 import type { UiLayout } from './LobbyHudTypes';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
@@ -371,12 +372,7 @@ const GUARD_WHITE_PERK_ICON: Record<string, { path: string; aspect: number }> = 
   gen_crystal_repair: { path: 'ui/battle/ai/ghud_crystal_tower/spriteFrame', aspect: 652 / 299 },
 };
 /** 同屏 Spine 普攻弹体上限(每个都是一次骨骼更新 + 一次合批打断),超额回退静态贴图弹道。 */
-const GUARD_SPINE_PROJECTILE_CAP = 18;
-/** 手机上的同屏上限(2026-10-05 用户手机实测后期掉到 17~20 帧):骨骼弹体 / 命中特效 / 伤害飘字各砍一半左右。 */
-const GUARD_PHONE_SPINE_PROJECTILE_CAP = 8;
-const GUARD_PHONE_SPINE_HIT_FX_CAP = 6;
-/** 同屏 Spine 命中特效上限,超额回退静态斩击图/十字爆闪。 */
-const GUARD_SPINE_HIT_FX_CAP = 14;
+// 同屏上限改由画面设置决定(app/GraphicsSettings:流畅 6 / 极致 18)。
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 /** 偷金鼠金色染色(docs/37 D)。 */
@@ -2827,11 +2823,15 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 二选一胶囊开关(选中金底白字,未选暗底灰字);点未选中的一侧回调 onPick。 */
-  private mountSettingsSegment(parent: Node, name: string, x: number, y: number, options: [string, string], activeIndex: number, onPick: (index: number) => void, pillW = 118, pillH = 46, fontSize = 20): void {
+  private mountSettingsSegment(parent: Node, name: string, x: number, y: number, options: string[], activeIndex: number, onPick: (index: number) => void, pillW = 118, pillH = 46, fontSize = 20): void {
     const gap = 12;
+    // 两个选项按原尺寸;三个及以上(帧率 30 / 60 / 120)在同样的总宽度里等分,整行不变宽
+    const totalW = pillW * 2 + gap;
+    const twoW = pillW;
+    pillW = options.length <= 2 ? twoW : (totalW - gap * (options.length - 1)) / options.length;
     options.forEach((text, index) => {
       const active = index === activeIndex;
-      const px = x + (index - 0.5) * (pillW + gap);
+      const px = x - totalW / 2 + pillW / 2 + index * (pillW + gap);
       const node = this.host.addChildPlainNode(parent, `${name}_${index}`, px, y, pillW, pillH);
       const g = node.addComponent(Graphics);
       g.fillColor = active ? rgba(186, 128, 46, 245) : rgba(34, 27, 22, 235);
@@ -2949,7 +2949,7 @@ export class LobbyGuardBattleRenderer {
     this.paintSettingsTitle(content, '战斗设置', panelW, titleY);
     const info = this.host.addChildLabel(content, 'GuardSettingsInfo', `已暂停 · ${this.battleInfoText()}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
     info.overflow = Label.Overflow.SHRINK;
-    const rows: Array<{ key: string; label: string; options: [string, string]; active: number; pick: (index: number) => void }> = [
+    const rows: Array<{ key: string; label: string; options: string[]; active: number; pick: (index: number) => void }> = [
       { key: 'Bgm', label: '背景音乐', options: ['开', '关'], active: gameAudio.bgmEnabled() ? 0 : 1, pick: (index) => gameAudio.setBgmEnabled(index === 0) },
       {
         key: 'Sfx', label: '音效', options: ['开', '关'], active: gameAudio.sfxEnabled() ? 0 : 1,
@@ -2965,6 +2965,14 @@ export class LobbyGuardBattleRenderer {
           writeGuardPref(GUARD_PREF_SHAKE, this.shakeEnabled ? '1' : '0');
           this.shakeField(6);
         },
+      },
+      {
+        key: 'Graphics', label: '画面', options: ['流畅', '极致'], active: getGraphicsMode() === 'smooth' ? 0 : 1,
+        pick: (index) => setGraphicsMode(index === 0 ? 'smooth' : 'ultra'),
+      },
+      {
+        key: 'Fps', label: '帧率', options: GRAPHICS_FRAME_RATES.map((fps) => String(fps)), active: Math.max(0, GRAPHICS_FRAME_RATES.indexOf(getGraphicsFrameRate() as 30 | 60 | 120)),
+        pick: (index) => setGraphicsFrameRate(GRAPHICS_FRAME_RATES[index]),
       },
       {
         key: 'Damage', label: '伤害数字', options: ['全部', '精简'], active: this.damageNumbersLite ? 1 : 0,
@@ -3002,7 +3010,7 @@ export class LobbyGuardBattleRenderer {
       });
     });
     const hintY = rowTop - (rows.length - 1) * rowStep - 40;
-    this.host.addChildLabel(content, 'GuardSettingsHint', '精简:只显示暴击、大额与 BOSS 身上的伤害;水晶掉血始终显示', 0, hintY, 16, rgba(170, 156, 128), new Size(panelW * 0.74, 22));
+    this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它 · 伤害数字「精简」:只显示暴击、大额与 BOSS 伤害', 0, hintY, 16, rgba(170, 156, 128), new Size(panelW * 0.74, 22));
     const spellsLink = this.host.addChildPlainNode(content, 'GuardSettingsSpellsLink', 110, hintY - 44, 200, 40);
     const slg = spellsLink.addComponent(Graphics);
     slg.strokeColor = rgba(220, 180, 110, 230);
@@ -3034,7 +3042,7 @@ export class LobbyGuardBattleRenderer {
   private renderSettingsMainPhone(
     overlay: Node,
     content: Node,
-    rows: Array<{ key: string; label: string; options: [string, string]; active: number; pick: (index: number) => void }>,
+    rows: Array<{ key: string; label: string; options: string[]; active: number; pick: (index: number) => void }>,
     panelW: number,
     titleY: number,
     buttonY: number,
@@ -3069,7 +3077,7 @@ export class LobbyGuardBattleRenderer {
     help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
     const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', rightX, rowMid + 8, 360, 64, '法术装备 ›');
     spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
-    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '伤害数字「精简」:只显示暴击、大额与 BOSS 身上的伤害;水晶掉血始终显示', rightX, rowMid - 96, 20, rgba(170, 156, 128), new Size(460, 64));
+    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满。120 帧需要高刷屏', rightX, rowMid - 96, 20, rgba(170, 156, 128), new Size(460, 64));
     hint.enableWrapText = true;
     hint.lineHeight = 28;
     hint.overflow = Label.Overflow.SHRINK;
@@ -6132,7 +6140,7 @@ export class LobbyGuardBattleRenderer {
       // 开局预热时战场节点还没建好/合成换了新英雄:出手时补一次预热,本发先走贴图弹道。
       this.prewarmAttackSpineFx(spineSpec);
     }
-    if (spec && spineFx && this.projectiles.filter((entry) => entry.spine).length < (isPhoneDesign() ? GUARD_PHONE_SPINE_PROJECTILE_CAP : GUARD_SPINE_PROJECTILE_CAP)) {
+    if (spec && spineFx && this.projectiles.filter((entry) => entry.spine).length < graphicsCaps().spineProjectiles) {
       // fx_pack 飞行特效(2026-09-21):骨骼动画弹体循环播放,按实测包围盒等比缩到目标长度并把包围盒中心对到弹道点上;
       // 近战命中时照旧由 strikeSpec 全尺寸爆开。同屏 Spine 弹体有限额,超额回退下面的贴图弹道。
       const melee = spec.kind === 'strike';
@@ -6411,7 +6419,7 @@ export class LobbyGuardBattleRenderer {
     if (this.damageNumbersLite && !big && this.sim?.monsters.find((entry) => entry.monsterId === targetId)?.kind !== 'boss') {
       return;
     }
-    const floaterCap = isPhoneDesign() ? (big ? 30 : 18) : (big ? 72 : 52);
+    const floaterCap = big ? graphicsCaps().floatersBig : graphicsCaps().floatersSmall;
     if (this.liveDamageFloaters >= floaterCap) {
       return;
     }
@@ -6743,7 +6751,7 @@ export class LobbyGuardBattleRenderer {
     if (spec && !ready) {
       this.prewarmAttackSpineFx(spec);
     }
-    if (spec && ready && this.projectiles.filter((entry) => entry.spine).length < (isPhoneDesign() ? GUARD_PHONE_SPINE_PROJECTILE_CAP : GUARD_SPINE_PROJECTILE_CAP)) {
+    if (spec && ready && this.projectiles.filter((entry) => entry.spine).length < graphicsCaps().spineProjectiles) {
       const fit = (this.unitSize() * spec.size) / Math.max(ready.w, ready.h);
       const fxNode = this.host.addChildPlainNode(node, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
       fxNode.setScale(fit, fit, 1);
@@ -6783,7 +6791,7 @@ export class LobbyGuardBattleRenderer {
       this.prewarmAttackSpineFx(hitSpec);
       return false;
     }
-    if (!force && this.attackHitFxLive >= (isPhoneDesign() ? GUARD_PHONE_SPINE_HIT_FX_CAP : GUARD_SPINE_HIT_FX_CAP)) {
+    if (!force && this.attackHitFxLive >= graphicsCaps().spineHitFx) {
       return false;
     }
     const fit = (this.unitSize() * hitSpec.size * scale) / Math.max(ready.w, ready.h);

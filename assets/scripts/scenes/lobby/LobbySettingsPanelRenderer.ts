@@ -15,6 +15,7 @@ import { gameAudio } from '../../audio/GameAudio';
 import { lootChainI18n, type LootChainLanguage } from '../../i18n/LootChainI18n';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { GRAPHICS_FRAME_RATES, getGraphicsFrameRate, getGraphicsMode, setGraphicsFrameRate, setGraphicsMode } from '../../app/GraphicsSettings';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 
 /** 手机全屏版里语言 / 声音两区左右并排时的区块矩形(面板内坐标)与区内字号放大系数。 */
@@ -65,11 +66,11 @@ export class LobbySettingsPanelRenderer {
     const phone = isPhoneDesign();
     const panelWidth = phone ? layout.stageWidth : Math.min(layout.stageWidth - 44 * scale, 620 * scale);
     // 2026-09-04 音效开关入驻:面板加高一档容纳"声音"区。
-    const panelHeight = phone ? layout.stageHeight : Math.min(layout.stageHeight - 86 * scale, 500 * scale);
+    const panelHeight = phone ? layout.stageHeight : Math.min(layout.stageHeight - 86 * scale, 560 * scale);
     if (phone) {
       const gap = 56;
       const sectionW = Math.min(620, (panelWidth - gap * 3) / 2);
-      const sectionH = Math.min(280, panelHeight - 220);
+      const sectionH = Math.min(350, panelHeight - 200);
       const sectionY = -20;
       this.languageRect = { x: -sectionW / 2 - gap / 2, y: sectionY, w: sectionW, h: sectionH, s: 1.3 };
       this.audioRect = { x: sectionW / 2 + gap / 2, y: sectionY, w: sectionW, h: sectionH, s: 1.3 };
@@ -191,7 +192,8 @@ export class LobbySettingsPanelRenderer {
     const rect = this.audioRect;
     const scale = rect ? rect.s : panelScale;
     const sectionWidth = rect ? rect.w : Math.min(width - 82 * scale, 490 * scale);
-    const sectionHeight = rect ? rect.h : 130 * scale;
+    // 2026-10-05:声音区下面加一行「画面 / 帧率」(用户:设置里加画面设置,流畅 / 极致 + 帧率 30 / 60 / 120)
+    const sectionHeight = rect ? rect.h : 190 * scale;
     const languageBottom = height / 2 - 116 * scale - 14 * scale - 150 * scale;
     const sectionY = rect ? rect.y : languageBottom - 14 * scale - sectionHeight / 2;
     const section = this.host.addChildBeveledPanelNode(
@@ -208,7 +210,7 @@ export class LobbySettingsPanelRenderer {
     const label = this.host.addChildLabel(
       section,
       'LobbySettingsAudioLabel',
-      '声音',
+      '声音与画面',
       -sectionWidth / 2 + 30 * scale,
       // 手机两区并排:标题与左边「语言」同一行高
       rect ? sectionHeight / 2 - 42 * scale : sectionHeight / 2 - 34 * scale,
@@ -224,7 +226,7 @@ export class LobbySettingsPanelRenderer {
       const detail = this.host.addChildLabel(
         section,
         'LobbySettingsAudioDetail',
-        '背景音乐与音效开关,切换后立即生效',
+        '流畅:降低分辨率、减少特效,卡顿时选它;极致:全部拉满',
         -sectionWidth / 2 + 30 * scale,
         sectionHeight / 2 - 75 * scale, 18 * scale,
         rgba(184, 163, 118),
@@ -236,9 +238,16 @@ export class LobbySettingsPanelRenderer {
     const buttonWidth = Math.min(186 * scale, (sectionWidth - 84 * scale) / 2);
     const buttonHeight = 44 * scale;
     const gap = 24 * scale;
-    const buttonY = rect ? -sectionHeight / 2 + 78 : -sectionHeight / 2 + 34 * scale;
+    const rowStep = buttonHeight + 14 * scale;
+    const graphicsY = rect ? -sectionHeight / 2 + 62 : -sectionHeight / 2 + 34 * scale;
+    const buttonY = graphicsY + rowStep;
     this.addAudioToggle(section, parent, width, height, '音乐', gameAudio.bgmEnabled(), () => gameAudio.setBgmEnabled(!gameAudio.bgmEnabled()), -buttonWidth / 2 - gap / 2, buttonY, buttonWidth, buttonHeight, scale);
     this.addAudioToggle(section, parent, width, height, '音效', gameAudio.sfxEnabled(), () => gameAudio.setSfxEnabled(!gameAudio.sfxEnabled()), buttonWidth / 2 + gap / 2, buttonY, buttonWidth, buttonHeight, scale);
+    const smooth = getGraphicsMode() === 'smooth';
+    this.addAudioToggle(section, parent, width, height, '画面', !smooth, () => setGraphicsMode(smooth ? 'ultra' : 'smooth'), -buttonWidth / 2 - gap / 2, graphicsY, buttonWidth, buttonHeight, scale, `画面:${smooth ? '流畅' : '极致'}`);
+    const fps = getGraphicsFrameRate();
+    const nextFps = GRAPHICS_FRAME_RATES[(GRAPHICS_FRAME_RATES.indexOf(fps as 30 | 60 | 120) + 1) % GRAPHICS_FRAME_RATES.length];
+    this.addAudioToggle(section, parent, width, height, '帧率', fps >= 60, () => setGraphicsFrameRate(nextFps), buttonWidth / 2 + gap / 2, graphicsY, buttonWidth, buttonHeight, scale, `帧率:${fps}`);
   }
 
   private addAudioToggle(
@@ -254,6 +263,7 @@ export class LobbySettingsPanelRenderer {
     width: number,
     height: number,
     scale: number,
+    text?: string,
   ): void {
     const button = this.host.addChildPlainNode(section, `LobbySettingsAudioToggle_${name}`, x, y, width, height);
     button.addComponent(Button);
@@ -271,7 +281,7 @@ export class LobbySettingsPanelRenderer {
     graphics.lineWidth = Math.max(1, enabled ? 2 * scale : 1.3 * scale);
     this.traceBeveled(graphics, width, height, bevel);
     graphics.stroke();
-    const label = this.host.addChildLabel(button, 'Text', `${name}:${enabled ? '开' : '关'}`, 0, 0, 20 * scale, enabled ? rgba(255, 231, 166) : rgba(180, 165, 140), new Size(width - 28 * scale, height));
+    const label = this.host.addChildLabel(button, 'Text', text ?? `${name}:${enabled ? '开' : '关'}`, 0, 0, 20 * scale, enabled ? rgba(255, 231, 166) : rgba(180, 165, 140), new Size(width - 28 * scale, height));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, enabled);
   }
