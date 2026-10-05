@@ -6342,7 +6342,9 @@ export class LobbyGuardBattleRenderer {
       }
       // 2026-10-05 用户「弹道飞一半突然自动换方向」:目标中途死亡不再改追别的怪,
       // 沿原方向飞到目标最后所在的位置落地(伤害在出手时已结算,这里只是表现)。
-      const target = sim.monsters.find((entry) => entry.monsterId === proj.targetId && !entry.dead) ?? null;
+      // 死怪在 sim.monsters 里还会留几秒:照样取它的位置(伤害在出手时已结算,目标常常在弹体出手那一刻就已经死了,
+      // 只认活怪的话弹体一出手就没有落点,会直接在英雄身上爆开)。
+      const target = sim.monsters.find((entry) => entry.monsterId === proj.targetId) ?? null;
       if (target) {
         proj.aimX = this.xToPx(target.x);
         proj.aimY = this.monsterY(target.lane, target.x) + this.monsterJitterY(target) * this.monsterSpread(target.x) + this.unitSize() * 0.12;

@@ -29,7 +29,7 @@ import {
   view,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
-import { isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
+import { isPhoneDesign, isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
 import {
   downloadFullPack,
   ensureAssetServiceWorker,
@@ -189,7 +189,12 @@ type PendingGachaDraw = {
 // 首次访问阻塞预载只拿登录 + 大厅界面图(约 15MB);大厅亮出后后台静默预取守卫战必用的战斗 HUD/怪物骨骼;
 // 其余(英雄骨骼、技能特效、抽卡/锻造/背包等各页面素材)全部在真正用到时按需下载,经 Service Worker 存本地。
 const BOOT_PRELOAD_UI_DIRS = ['ui/login', 'ui/common', 'ui/lobby'] as const;
-const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard'] as const;
+const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard', 'ui/battle/c1812'] as const;
+/** 电脑端后台读进内存的其余玩法页界面图(整目录;素材已在本地时才有意义,见 prefetchBattleEssentialsInBackground)。 */
+const BACKGROUND_WARM_UI_DIRS = [
+  'ui/hero', 'ui/hero-roster', 'ui/hero-detail', 'ui/formation', 'ui/adventure', 'ui/bag', 'ui/equip', 'ui/forge',
+  'ui/gacha', 'ui/crystal', 'ui/daily', 'ui/codex', 'ui/mission', 'ui/profile', 'ui/guide', 'ui/protagonist', 'ui/battle',
+] as const;
 
 /** 列出若干 resources 目录下全部 SpriteFrame 路径(去重;bundle 未就绪时为空)。 */
 function collectUiDirPaths(dirs: readonly string[]): string[] {
@@ -804,9 +809,18 @@ export class LootChainGameRoot extends Component {
     // 战斗页的 C1812 图组(血条/胜负横幅/受击贴图等)与守卫战素材一起在后台拉。
     this.uiSpriteFrameCache.preloadGroup('battle');
     this.scheduleOnce(() => this.warmPageGroupsInBackground(), 2);
+    // 2026-10-05 用户「进战场背景 / 格子还是后出来」:进场第一眼要用的图(场景背景、石台格子、战斗 HUD)排最前,
+    // 怪物骨骼(40 套,最慢)放后面;电脑端最后再把其余玩法页的界面图整目录读进内存(手机内存小,只读各页分组)。
+    const sceneBgPaths = (resources.getDirWithPath('ui/battle', SpriteFrame) ?? [])
+      .map((info) => info.path)
+      .filter((path) => /^ui\/battle\/battle_scene_[^/]+\/spriteFrame$/.test(path));
+    const first = new Set<string>(sceneBgPaths.concat(collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS)));
+    const localAssets = sys.isNative || PREVIEW || isFullPackCached();
+    const restUi = isPhoneDesign() || !localAssets ? [] : collectUiDirPaths(BACKGROUND_WARM_UI_DIRS).filter((path) => !first.has(path));
     const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
+      ...Array.from(first).map((path) => ({ path, kind: 'ui' as const })),
       ...Object.keys(GUARD_MONSTER_SPINE_FILE).map((code) => ({ path: guardMonsterSpineResource(code), kind: 'spine' as const })),
-      ...collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS).map((path) => ({ path, kind: 'ui' as const })),
+      ...restUi.map((path) => ({ path, kind: 'ui' as const })),
     ];
     let cursor = 0;
     const worker = (): void => {
@@ -832,6 +846,8 @@ export class LootChainGameRoot extends Component {
         resources.load(task.path, SpriteFrame, next);
       }
     };
+    worker();
+    worker();
     worker();
     worker();
   }
