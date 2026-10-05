@@ -1,3 +1,4 @@
+import { isTextInputActive } from '../app/ScreenAdapter';
 import {
   Node,
   resources,
@@ -301,10 +302,26 @@ export class UiSpriteFrameCache {
     }
     this.renderRefreshTimer = setTimeout(() => {
       this.renderRefreshTimer = null;
+      // 输入框编辑中不整刷(2026-10-05 用户手机实测:后台预读的图陆续到货触发整刷,登录框被重建,输入法弹出又立刻收起);
+      // 等输入结束再补刷一次。
+      if (isTextInputActive()) {
+        this.scheduleRenderRefreshLater();
+        return;
+      }
       if (this.isHostNodeAlive()) {
         this.host.renderCurrentView();
       }
     }, 90);
+  }
+
+  private scheduleRenderRefreshLater(): void {
+    if (this.renderRefreshTimer !== null) {
+      return;
+    }
+    this.renderRefreshTimer = setTimeout(() => {
+      this.renderRefreshTimer = null;
+      this.scheduleRenderRefresh();
+    }, 300);
   }
 
   /** 加载失败过的路径(缺图),不再重复请求。 */

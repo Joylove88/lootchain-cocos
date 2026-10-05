@@ -5,6 +5,8 @@ import { HTML5 } from 'cc/env';
  * 手机网页外壳(2026-10-05 用户:「竖屏应该要有提示横屏的动画,强制横屏」「横屏后浏览器的标头会占用上面一部分空间」):
  * - 竖握时盖一层"请横屏"提示(手机图标转 90° 的循环动画),横过来自动消失;
  * - 点一下屏幕就请求全屏(隐藏地址栏 / 标签栏)并锁定横屏——安卓 Chrome / Edge / 三星等支持;
+ *   登录 / 注册 / 起名等有输入框的界面不触发(2026-10-05 用户实测:进全屏时视口变化会把刚弹出的输入法收掉,
+ *   浏览器自带的「如需退出全屏…」提示也会盖住登录按钮好几秒——该提示是浏览器强制的,网页无法移除);
  *   iPhone Safari 不支持网页全屏,只能靠提示层 + 「添加到主屏幕」(index.ejs 已声明 apple-mobile-web-app-capable);
  * - 引擎 EditBox 聚焦 0.4s 后会对输入框 DOM 调 scrollIntoView,输入框在这 0.4s 内被销毁(界面重建)时引擎直接报错
  *   「Cannot read properties of null (reading 'scrollIntoView')」并弹红屏——这里给它补空值判断。
@@ -16,6 +18,17 @@ const FULLSCREEN_RETRY_MS = 1500;
 
 let installed = false;
 let lastFullscreenTry = 0;
+/** 由游戏设置:当前界面是否允许自动进全屏(登录 / 输入中返回 false)。 */
+let fullscreenGate: () => boolean = () => true;
+
+export function setFullscreenGate(gate: () => boolean): void {
+  fullscreenGate = gate;
+}
+
+function inputFocused(): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
 
 export function installMobileWebShell(): void {
   if (installed || !HTML5 || typeof document === 'undefined') {
@@ -31,13 +44,17 @@ export function installMobileWebShell(): void {
   window.addEventListener('resize', sync);
   window.addEventListener('orientationchange', () => setTimeout(sync, 120));
   sync();
-  // 用户手势里才能请求全屏:任何一次点击 / 触摸抬起都试一次(输入框除外,不打断软键盘)
+  // 用户手势里才能请求全屏(手势后约 5 秒内都有效):触摸抬起后等 0.3s,确认这一下没有点开输入框、当前界面允许,再请求
   const tryFullscreen = (event: Event): void => {
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
       return;
     }
-    requestLandscapeFullscreen();
+    setTimeout(() => {
+      if (!inputFocused() && fullscreenGate()) {
+        requestLandscapeFullscreen();
+      }
+    }, 300);
   };
   document.addEventListener('touchend', tryFullscreen, { capture: true, passive: true });
   document.addEventListener('click', tryFullscreen, { capture: true, passive: true });

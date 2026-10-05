@@ -45,7 +45,7 @@ import {
   type AssetManifest,
 } from '../app/AssetOfflineCache';
 import { PREVIEW } from 'cc/env';
-import { installMobileWebShell } from '../app/MobileWebShell';
+import { installMobileWebShell, setFullscreenGate } from '../app/MobileWebShell';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
@@ -515,6 +515,8 @@ export class LootChainGameRoot extends Component {
   start(): void {
     // 手机网页:竖握提示横屏 + 点击全屏锁横屏 + EditBox 引擎报错补丁(2026-10-05)
     installMobileWebShell();
+    // 有输入框的界面不自动进全屏(进全屏会收掉输入法;浏览器的退出全屏提示会挡住登录按钮)
+    setFullscreenGate(() => !isTextInputActive() && ['login', 'loginAccount', 'loading', 'protagonistCreate'].indexOf(this.currentView) < 0);
     // 仅横屏(2026-10-02 用户拍板):手机竖握时引擎旋转画布显示横屏;构建配置也设了 landscape,这里保证预览与任何构建都生效。
     view.setOrientation(macro.ORIENTATION_LANDSCAPE);
     // H5/PC 全屏适配:设计分辨率跟随横屏视口比例,后续每帧在 update 里保持同步。
@@ -910,6 +912,8 @@ export class LootChainGameRoot extends Component {
       const nextKey = this.makeLayoutKey();
       if (this.layoutKey && this.layoutKey !== nextKey) {
         this.renderCurrentView();
+      } else if (this.renderDeferredForInput) {
+        this.renderCurrentView();
       }
     }
     this.updateGachaConfigRefresh(deltaTime);
@@ -935,7 +939,25 @@ export class LootChainGameRoot extends Component {
   /** 上一次真正渲染的视图:用于在视图切换时播功能页开/合音(2026-09-18 正式音源接入)。 */
   private lastRenderedView: ViewName | null = null;
 
+  /** 输入中被推迟的同页重绘(输入结束后在 update 里补上)。 */
+  private renderDeferredForInput = false;
+  /** 输入开始后第一次收到重绘请求时所在的页面:输入期间同页重绘一律推迟,换到别的页才放行。 */
+  private inputView: string | null = null;
+
   private renderCurrentView(): void {
+    // 输入框编辑中不重建同一页(2026-10-05 用户手机实测:图片陆续到货 / 状态刷新触发整页重建,输入框被换掉,
+    // 输入法弹出后立刻收起);换页照常立即渲染。
+    if (isTextInputActive()) {
+      if (this.inputView === null) {
+        this.inputView = this.currentView;
+      }
+      if (this.inputView === this.currentView) {
+        this.renderDeferredForInput = true;
+        return;
+      }
+    }
+    this.inputView = null;
+    this.renderDeferredForInput = false;
     this.renderCurrentViewInner();
     // 整页重绘会清空 UI 根,商店弹窗是覆盖层:重绘完再挂回去(最后挂 = 最上层)。
     this.syncLobbyShopOverlay();
