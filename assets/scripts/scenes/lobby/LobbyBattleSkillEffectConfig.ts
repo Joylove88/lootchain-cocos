@@ -27,6 +27,7 @@ export interface BattleSkillEffectSpec {
   /**
    * 只播动画的一段(秒,动画自身时间轴):新批次「满屏大招」是 4~18 秒的整段演出,战场里只取高潮片段。
    * speed = 播放倍速(缺省 1)。不填 = 整段播完。
+   * 2026-10-05 用户「有的大招一闪就没,还是要长一点」:每个大招上屏时长不少于约 1.7 秒——优先把片段取长,取不长的放慢。
    */
   clip?: { start: number; end: number; speed?: number };
 }
@@ -65,28 +66,28 @@ export interface BattleSkillEffectSpec {
 //   SR_PRIEST_01: { effect: 'v2_s681_1015', animation: 'skill01_1', anchor: 'self', scale: 1.25, offsetY: 12 }, // 银色·圣愈祷言(S681 1015,1.267s)
 //   R_ACOLY_02: { effect: 'v2_s681_4004', animation: 'skill01_1', anchor: 'self', scale: 1.15, offsetY: 12 }, // 祈福·微光庇护(S681 4004,2.667s)
 const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
-  UR_NYX: { effect: 'hu_098', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 20, clip: { start: 2.6, end: 4.0 } }, // 影刃·千夜追猎:紫蓝利爪连撕 → 幽蓝弧斩(hu_098)
-  SSR_RON: { effect: 'hu_100', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 6.4, end: 7.05 } }, // 灰烬·致命猎杀:橙红爆燃十字斩(hu_100)
+  UR_NYX: { effect: 'hu_098', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 20, clip: { start: 2.0, end: 4.0 } }, // 影刃·千夜追猎:紫蓝利爪连撕 → 幽蓝弧斩(hu_098)
+  SSR_RON: { effect: 'hu_100', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 5.9, end: 7.3, speed: 0.75 } }, // 灰烬·致命猎杀:橙红爆燃十字斩(hu_100)
   SR_ABYSS_06: { effect: 'hu_054', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 2.0, end: 4.2 } }, // 深渊·冥神审判:幽紫鬼火与冥眼(hu_054)
-  R_SCOUT_03: { effect: 'hu_073', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 4.2, end: 4.72 } }, // 灰谷·绝影猎杀:幽蓝月牙一斩(hu_073)
+  R_SCOUT_03: { effect: 'hu_073', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 4.2, end: 5.3, speed: 0.6 } }, // 灰谷·绝影猎杀:幽蓝月牙一斩(hu_073)
   UR_EVELYN: { effect: 'hu_077', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 18, clip: { start: 1.2, end: 3.1 } }, // 深渊·冰狱湮灭:巨型冰晶雪华绽开(hu_077)
   SSR_LIVIA: { effect: 'hu_008', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 18, clip: { start: 7.85, end: 9.65 } }, // 夜烬·焚世之焰:烈焰龙卷(hu_008)
-  SR_WITCH_03: { effect: 'hu_018', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 5.85, end: 6.95 } }, // 契约·朔夜降临:紫色冥球膨胀 → 斩裂(hu_018)
+  SR_WITCH_03: { effect: 'hu_018', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 5.6, end: 7.2, speed: 0.85 } }, // 契约·朔夜降临:紫色冥球膨胀 → 斩裂(hu_018)
   R_CULT_05: { effect: 'hu_035', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 12, clip: { start: 1.3, end: 3.0 } }, // 低语·暗蚀诅咒:紫色蚀月残影(hu_035)
   UR_AURELIA: { effect: 'hu_093', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 18, clip: { start: 4.4, end: 6.6 } }, // 苍翎·万箭裂空:金色箭雨坠落 + 连环爆点(hu_093)
-  SR_SNIPER_05: { effect: 'hu_074', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 3.0, end: 4.3 } }, // 峡谷·狂裂贯穿:青蓝光束贯穿(hu_074)
+  SR_SNIPER_05: { effect: 'hu_074', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 2.9, end: 4.4, speed: 0.8 } }, // 峡谷·狂裂贯穿:青蓝光束贯穿(hu_074)
   R_RANGER_06: { effect: 'hu_063', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 12, clip: { start: 4.6, end: 6.8 } }, // 荒原·疾风连射:翠绿风刃连斩(hu_063)
   UR_ARTHAS: { effect: 'hu_085', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 22, clip: { start: 14.5, end: 18.3 } }, // 永夜·龙焰审判:天火坠落 → 蓝炎火海 → 焰柱(hu_085)
-  SSR_MICHAEL: { effect: 'hu_044', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 9.1, end: 10.7 } }, // 圣光·雷霆裁决:雷云压顶,多道金色落雷劈下 + 地面雷爆(hu_044;2026-10-05 用户嫌原 hu_057 金色闪光不好看,换套)
-  SR_BLADE_04: { effect: 'hu_065', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 4.75, end: 5.7 } }, // 断刃·狂乱斩:烈焰乱斩爆燃(hu_065)
+  SSR_MICHAEL: { effect: 'hu_044', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 8.9, end: 10.8 } }, // 圣光·雷霆裁决:雷云压顶,多道金色落雷劈下 + 地面雷爆(hu_044;2026-10-05 用户嫌原 hu_057 金色闪光不好看,换套)
+  SR_BLADE_04: { effect: 'hu_065', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 4.75, end: 5.7, speed: 0.55 } }, // 断刃·狂乱斩:烈焰乱斩爆燃(hu_065)
   R_PATROL_01: { effect: 'hu_014', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 1.8, end: 3.9 } }, // 王国·誓约剑气:金色剑气掠地(hu_014)
   UR_ATLAS: { effect: 'hu_027', animation: 'skill2', anchor: 'self', scale: 2.4, offsetY: 12, clip: { start: 0.2, end: 2.9 } }, // 圣铠·不动壁垒:金莲法阵 + 圣纹轮(hu_027)
-  SSR_KANE: { effect: 'hu_013', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 14, clip: { start: 2.9, end: 4.5 } }, // 白银·圣枪穿刺:金枪俯冲 + 光柱(hu_013)
+  SSR_KANE: { effect: 'hu_013', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 14, clip: { start: 2.6, end: 4.6 } }, // 白银·圣枪穿刺:金枪俯冲 + 光柱(hu_013)
   SR_PALADIN_02: { effect: 'hu_052', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 2.2, end: 4.0 } }, // 圣盾·圣纹壁垒:金色雷纹圣球 → 穹顶爆开(hu_052)
-  R_GUARD_07: { effect: 'hu_028', animation: 'skill2', anchor: 'self', scale: 1.15, offsetY: 10, clip: { start: 4.6, end: 5.7 } }, // 城门·坚守盾击:金色冲击环(hu_028)
+  R_GUARD_07: { effect: 'hu_028', animation: 'skill2', anchor: 'self', scale: 1.15, offsetY: 10, clip: { start: 4.5, end: 6.0, speed: 0.8 } }, // 城门·坚守盾击:金色冲击环(hu_028)
   UR_SERAPHINA: { effect: 'hu_067', animation: 'skill2', anchor: 'self', scale: 2.4, offsetY: 14, clip: { start: 6.0, end: 8.2 } }, // 晨星·月华圣辉:星河旋涡托起新月(hu_067)
   SR_PRIEST_01: { effect: 'hu_049', animation: 'skill2', anchor: 'self', scale: 1.25, offsetY: 12, clip: { start: 1.0, end: 3.0 } }, // 银色·圣愈祷言:光柱 + 粉莲绽放(hu_049)
-  R_ACOLY_02: { effect: 'hu_050', animation: 'skill2', anchor: 'self', scale: 1.15, offsetY: 12, clip: { start: 4.5, end: 6.2 } }, // 祈福·微光庇护:柔光 + 花瓣飘落(hu_050)
+  R_ACOLY_02: { effect: 'hu_050', animation: 'skill2', anchor: 'self', scale: 1.15, offsetY: 12, clip: { start: 4.25, end: 6.2 } }, // 祈福·微光庇护:柔光 + 花瓣飘落(hu_050)
 };
 
 // 职业兜底(未登记 heroCode:下架英雄/主角):独立 6 套,不与任何专属特效冲突。
@@ -267,13 +268,13 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_s681_6031:attackall': { w: 1513, h: 1050, cx: 131, cy: 469 },
   'v2_s681_6033:skill03_1': { w: 854, h: 846, cx: 24, cy: 295 },
   // 新批次英雄大招 hu_*(2026-10-05,只量 clip 片段;宽松框 = 片段内亮度 2~98% 分位框,scratchpad fxprev/core_hu.py)
-  'hu_098:skill2': { w: 2215, h: 2221, cx: -803, cy: 676 },
+  'hu_098:skill2': { w: 2015, h: 2135, cx: -641, cy: 636 },
   'hu_100:skill2': { w: 1800, h: 1200, cx: 60, cy: 150 },
   'hu_054:skill2': { w: 1223, h: 637, cx: 129, cy: 62 },
   'hu_073:skill2': { w: 1800, h: 900, cx: 0, cy: 150 },
   'hu_077:skill2': { w: 1612, h: 1681, cx: 89, cy: 61 },
   'hu_008:skill2': { w: 800, h: 800, cx: 110, cy: 160 },
-  'hu_018:skill2': { w: 4015, h: 3540, cx: 867, cy: 853 },
+  'hu_018:skill2': { w: 4235, h: 3770, cx: 896, cy: 947 },
   'hu_035:skill2': { w: 884, h: 592, cx: 314, cy: 5 },
   'hu_093:skill2': { w: 1844, h: 1600, cx: -176, cy: 206 },
   'hu_074:skill2': { w: 1191, h: 1173, cx: 625, cy: -219 },
@@ -283,12 +284,12 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'hu_065:skill2': { w: 3631, h: 2474, cx: 1307, cy: -301 },
   'hu_014:skill2': { w: 1258, h: 989, cx: -84, cy: 150 },
   'hu_027:skill2': { w: 901, h: 755, cx: 117, cy: 28 },
-  'hu_013:skill2': { w: 1349, h: 1720, cx: 422, cy: 771 },
+  'hu_013:skill2': { w: 1712, h: 1717, cx: 366, cy: 754 },
   'hu_052:skill2': { w: 929, h: 870, cx: 3, cy: 322 },
-  'hu_028:skill2': { w: 1196, h: 1082, cx: -258, cy: 23 },
+  'hu_028:skill2': { w: 1201, h: 1081, cx: -255, cy: 23 },
   'hu_067:skill2': { w: 1500, h: 1100, cx: 0, cy: 180 },
   'hu_049:skill2': { w: 1107, h: 1422, cx: -28, cy: 99 },
-  'hu_050:skill2': { w: 2151, h: 786, cx: -85, cy: 232 },
+  'hu_050:skill2': { w: 2149, h: 784, cx: -94, cy: 229 },
 };
 
 /** 查实测包围盒(key = effect:animation 小写);没有返回 null。 */
@@ -327,13 +328,13 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   'v2_s681_6031:attackall': { w: 1085, h: 816, cx: 126, cy: 453 },
   'v2_s681_6033:skill03_1': { w: 490, h: 498, cx: 31, cy: 294 },
   // 新批次英雄大招 hu_*(2026-10-05,只量 clip 片段;核心 = 片段内亮度 10~90% 分位框,scratchpad fxprev/core_hu.py)
-  'hu_098:skill2': { w: 1325, h: 1424, cx: -972, cy: 672 },
+  'hu_098:skill2': { w: 1232, h: 1301, cx: -806, cy: 674 },
   'hu_100:skill2': { w: 900, h: 700, cx: 60, cy: 150 },
   'hu_054:skill2': { w: 862, h: 455, cx: 163, cy: 58 },
   'hu_073:skill2': { w: 900, h: 560, cx: 0, cy: 150 },
   'hu_077:skill2': { w: 712, h: 618, cx: 84, cy: 83 },
   'hu_008:skill2': { w: 600, h: 700, cx: 110, cy: 160 },
-  'hu_018:skill2': { w: 2970, h: 2744, cx: 606, cy: 645 },
+  'hu_018:skill2': { w: 3141, h: 2890, cx: 613, cy: 721 },
   'hu_035:skill2': { w: 736, h: 375, cx: 345, cy: 84 },
   'hu_093:skill2': { w: 1329, h: 841, cx: -92, cy: 184 },
   'hu_074:skill2': { w: 795, h: 949, cx: 560, cy: -187 },
@@ -343,12 +344,12 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   'hu_065:skill2': { w: 2528, h: 1425, cx: 1173, cy: -236 },
   'hu_014:skill2': { w: 529, h: 359, cx: 216, cy: 57 },
   'hu_027:skill2': { w: 700, h: 623, cx: 105, cy: 17 },
-  'hu_013:skill2': { w: 1030, h: 1334, cx: 448, cy: 635 },
+  'hu_013:skill2': { w: 630, h: 1250, cx: 648, cy: 627 },
   'hu_052:skill2': { w: 690, h: 571, cx: 13, cy: 234 },
-  'hu_028:skill2': { w: 664, h: 643, cx: -221, cy: 89 },
+  'hu_028:skill2': { w: 673, h: 644, cx: -224, cy: 88 },
   'hu_067:skill2': { w: 700, h: 700, cx: 0, cy: 200 },
   'hu_049:skill2': { w: 673, h: 732, cx: -2, cy: 14 },
-  'hu_050:skill2': { w: 806, h: 526, cx: -32, cy: 309 },
+  'hu_050:skill2': { w: 784, h: 534, cx: -25, cy: 301 },
 };
 
 /** 查核心亮区(key 同 lookupBattleFxBounds);没有或比宽松框还大(测量异常)返回 null,调用方按宽松框 ×0.57 兜底。 */
@@ -369,7 +370,7 @@ export function lookupBattleFxCoreBounds(effect: string, animation: string): Bat
  * 角色本体部件不用登记,BattleFxSlotFilter 按附件目录统一过滤。
  */
 const BATTLE_FX_HIDDEN_SLOTS: Record<string, readonly string[]> = {
-  hu_073: ['s1_baidi', 's2_guangqiu', 's2_guangqiu3'],
+  hu_073: ['s1_baidi', 's2_guangqiu', 's2_guangqiu3', 's2_daoguang_yueya_normal2'],
   hu_044: ['effect-guangyun', 'effect-guangyun25'],
   hu_100: ['baidi_add', 'baidi_normal', 'guangliu_xulie*', 's2_guangliubo*'],
   hu_018: ['TX-huidong3_9'],
