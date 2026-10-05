@@ -281,6 +281,8 @@ function writeGuardPref(key: string, value: string): void {
 }
 
 interface GuardUnitView {
+  /** 小怪血条上次画出的可见长度(像素;-1=满血不画),没变就不重画。 */
+  hpDrawnKey?: number;
   node: Node;
   spineReady: boolean;
   /** BOSS 头顶血条高度(怪物节点坐标系,行走阶段实测顶点峰值 +14);未量到前 undefined。 */
@@ -370,6 +372,9 @@ const GUARD_WHITE_PERK_ICON: Record<string, { path: string; aspect: number }> = 
 };
 /** 同屏 Spine 普攻弹体上限(每个都是一次骨骼更新 + 一次合批打断),超额回退静态贴图弹道。 */
 const GUARD_SPINE_PROJECTILE_CAP = 18;
+/** 手机上的同屏上限(2026-10-05 用户手机实测后期掉到 17~20 帧):骨骼弹体 / 命中特效 / 伤害飘字各砍一半左右。 */
+const GUARD_PHONE_SPINE_PROJECTILE_CAP = 8;
+const GUARD_PHONE_SPINE_HIT_FX_CAP = 6;
 /** 同屏 Spine 命中特效上限,超额回退静态斩击图/十字爆闪。 */
 const GUARD_SPINE_HIT_FX_CAP = 14;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
@@ -6114,7 +6119,7 @@ export class LobbyGuardBattleRenderer {
       // 开局预热时战场节点还没建好/合成换了新英雄:出手时补一次预热,本发先走贴图弹道。
       this.prewarmAttackSpineFx(spineSpec);
     }
-    if (spec && spineFx && this.projectiles.filter((entry) => entry.spine).length < GUARD_SPINE_PROJECTILE_CAP) {
+    if (spec && spineFx && this.projectiles.filter((entry) => entry.spine).length < (isPhoneDesign() ? GUARD_PHONE_SPINE_PROJECTILE_CAP : GUARD_SPINE_PROJECTILE_CAP)) {
       // fx_pack 飞行特效(2026-09-21):骨骼动画弹体循环播放,按实测包围盒等比缩到目标长度并把包围盒中心对到弹道点上;
       // 近战命中时照旧由 strikeSpec 全尺寸爆开。同屏 Spine 弹体有限额,超额回退下面的贴图弹道。
       const melee = spec.kind === 'strike';
@@ -6393,7 +6398,8 @@ export class LobbyGuardBattleRenderer {
     if (this.damageNumbersLite && !big && this.sim?.monsters.find((entry) => entry.monsterId === targetId)?.kind !== 'boss') {
       return;
     }
-    if (this.liveDamageFloaters >= (big ? 72 : 52)) {
+    const floaterCap = isPhoneDesign() ? (big ? 30 : 18) : (big ? 72 : 52);
+    if (this.liveDamageFloaters >= floaterCap) {
       return;
     }
     const field = this.fieldNode;
@@ -6724,7 +6730,7 @@ export class LobbyGuardBattleRenderer {
     if (spec && !ready) {
       this.prewarmAttackSpineFx(spec);
     }
-    if (spec && ready && this.projectiles.filter((entry) => entry.spine).length < GUARD_SPINE_PROJECTILE_CAP) {
+    if (spec && ready && this.projectiles.filter((entry) => entry.spine).length < (isPhoneDesign() ? GUARD_PHONE_SPINE_PROJECTILE_CAP : GUARD_SPINE_PROJECTILE_CAP)) {
       const fit = (this.unitSize() * spec.size) / Math.max(ready.w, ready.h);
       const fxNode = this.host.addChildPlainNode(node, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
       fxNode.setScale(fit, fit, 1);
@@ -6764,7 +6770,7 @@ export class LobbyGuardBattleRenderer {
       this.prewarmAttackSpineFx(hitSpec);
       return false;
     }
-    if (!force && this.attackHitFxLive >= GUARD_SPINE_HIT_FX_CAP) {
+    if (!force && this.attackHitFxLive >= (isPhoneDesign() ? GUARD_PHONE_SPINE_HIT_FX_CAP : GUARD_SPINE_HIT_FX_CAP)) {
       return false;
     }
     const fit = (this.unitSize() * hitSpec.size * scale) / Math.max(ready.w, ready.h);
@@ -8497,8 +8503,19 @@ export class LobbyGuardBattleRenderer {
       const hpTransform = hpBar?.getComponent(UITransform);
       if (hpBar && hpGraphics && hpTransform) {
         const ratio = Math.max(0, monster.hp / monster.maxHp);
-        hpGraphics.clear();
-        if (monster.kind === 'boss') {
+        // 小怪血条只在可见长度变了才重画(2026-10-05 手机卡顿优化:此前 40 只怪每帧各重画一次矢量血条)
+        let hpDirty = true;
+        if (monster.kind !== 'boss') {
+          const hpKey = ratio >= 1 ? -1 : Math.max(1, Math.round(hpTransform.width * ratio));
+          hpDirty = view.hpDrawnKey !== hpKey;
+          view.hpDrawnKey = hpKey;
+        }
+        if (hpDirty) {
+          hpGraphics.clear();
+        }
+        if (!hpDirty) {
+          // 血条没变:跳过
+        } else if (monster.kind === 'boss') {
           // 血条贴真实头顶(2026-09-18 用户反馈离头太远):骨骼 json 的声明高度含武器/翅膀外扩,
           // 改按当前姿态顶点实测的最高点定位;每 15 帧测一次,先读渲染顶点缓冲、再退 spine-core,都测不到保留初值。
           // 2026-09-18 用户拍板:血条位置要固定,不能随动作上下跳。做法:骨骼就绪后的行走阶段每 3 帧量一次,

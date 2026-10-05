@@ -840,6 +840,11 @@ export class LootChainGameRoot extends Component {
       if (cursor >= tasks.length || !this.isValid) {
         return;
       }
+      // 战斗中暂停后台预读(2026-10-05 剖析:大图解码后上传显卡一次 0.1~0.3 秒,正是战斗里的周期性卡顿),回大厅后继续
+      if (this.currentView === 'battle') {
+        this.scheduleOnce(worker, 1);
+        return;
+      }
       const task = tasks[cursor++];
       const next = (): void => {
         // 每项之间让出一帧,避免连续解析卡住输入。
