@@ -133,10 +133,18 @@ export interface LoginRendererHost {
 export class LoginRenderer {
   constructor(private readonly host: LoginRendererHost) {}
 
+  /**
+   * 账号 / 密码草稿:输入时实时记下,页面重建(图片到货、横竖屏变化)后回填——
+   * 否则重建出来的是空输入框,玩家刚输的内容"过一会儿自己消失"(2026-10-05 用户手机录屏)。回到登录首页时清空。
+   */
+  private readonly drafts = { account: '', password: '' };
+
   /** 账号登录页状态提示行的位置(按钮与协议之间);登录中 / 报错的提示也显示在这里,不压协议行。 */
   accountStatusY: number | null = null;
 
   renderLogin(layout: UiLayout): void {
+    this.drafts.account = '';
+    this.drafts.password = '';
     if (SHOW_LOGIN_BRAND) {
       this.renderLoginBrand(layout);
     }
@@ -286,6 +294,7 @@ export class LoginRenderer {
     frameHeight: number,
     row: { label: string; hint: string; frameName: string; asset: string; placeholder: string; password: boolean },
   ): EditBox {
+    const draftKey = row.password ? 'password' : 'account';
     const scale = layout.uiScale;
     const tip = this.host.addLabel(row.label, labelX, labelY, 19 * scale, rgba(224, 202, 156, 240), new Size(140 * scale, 28 * scale));
     tip.horizontalAlign = HorizontalTextAlignment.LEFT;
@@ -297,7 +306,15 @@ export class LoginRenderer {
     hint.horizontalAlign = HorizontalTextAlignment.RIGHT;
     hint.overflow = Label.Overflow.SHRINK;
     // 失焦占位/内容显示由工厂 EditBoxDisplayLabel 统一承担(2026-09-09 根治引擎重摆跑位)。
-    return this.host.addFramedEditBox('', editX, inputY, editWidth, layout, row.password, { frameless: frameOk, placeholder: row.placeholder });
+    const box = this.host.addFramedEditBox(this.drafts[draftKey], editX, inputY, editWidth, layout, row.password, { frameless: frameOk, placeholder: row.placeholder });
+    const keep = (): void => {
+      if (box.isValid) {
+        this.drafts[draftKey] = box.string;
+      }
+    };
+    box.node.on(EditBox.EventType.TEXT_CHANGED, keep, this);
+    box.node.on(EditBox.EventType.EDITING_DID_ENDED, keep, this);
+    return box;
   }
 
   /** 素材按钮(空底图+文字 Label 叠加);缺图兜底手绘(主=红底金框,次=暗底金描边)。 */

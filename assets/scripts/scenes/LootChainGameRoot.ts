@@ -764,7 +764,9 @@ export class LootChainGameRoot extends Component {
         });
       });
     });
-    setTimeout(finish, 3000);
+    // 素材在本地(整包已缓存 / 原生 / 电脑预览)最多等 3 秒;走网络时(手机连预览、没有整包缓存)最多等 15 秒,
+    // 否则登录页先亮出来却缺图(2026-10-05 用户手机录屏)。全部读完会提前放行。
+    setTimeout(finish, sys.isNative || isFullPackCached() || (PREVIEW && !sys.isMobile) ? 3000 : 15000);
   }
 
   /** 快速启动后核对整包缓存:有缺失(被浏览器清理过)就后台补齐。 */
@@ -789,7 +791,9 @@ export class LootChainGameRoot extends Component {
    * 玩家抢先点开某页时该页照常显示进度,通常已读完一大半。
    */
   private warmPageGroupsInBackground(): void {
-    if (!(sys.isNative || PREVIEW || isFullPackCached())) {
+    // 编辑器预览只在电脑上预读(本机取图很快);手机连电脑预览走局域网,几百个请求会把当前页面自己的图堵在队列后面
+    // (2026-10-05 用户手机录屏:登录框素材 17 秒都没出来)。
+    if (!(sys.isNative || (PREVIEW && !sys.isMobile) || isFullPackCached())) {
       return;
     }
     // 大厅最常点的排前面;每组间隔 0.3s(素材在本地,读一组只要几十到几百毫秒)
@@ -857,8 +861,11 @@ export class LootChainGameRoot extends Component {
     };
     worker();
     worker();
-    worker();
-    worker();
+    // 素材在本地才开 4 路;走网络时 2 路,给当前页面自己的图留带宽
+    if (localAssets || (PREVIEW && !sys.isMobile)) {
+      worker();
+      worker();
+    }
   }
 
   /** 进守卫战前把全部怪物骨骼(40 套)预取进内存:首波怪入场即带动画,不再先出占位色块。 */
