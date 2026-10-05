@@ -10,6 +10,7 @@ import {
   Label,
   Mask,
   Node,
+  profiler,
   resources,
   Size,
   sp,
@@ -2106,6 +2107,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   private stepErrorShown = false;
+  private perfStatsShown = false;
 
   private step(): void {
     const sim = this.sim;
@@ -2987,6 +2989,18 @@ export class LobbyGuardBattleRenderer {
       {
         key: 'Fps', label: '帧率', options: GRAPHICS_FRAME_RATES.map((fps) => String(fps)), active: Math.max(0, GRAPHICS_FRAME_RATES.indexOf(getGraphicsFrameRate() as 30 | 60 | 120)),
         pick: (index) => setGraphicsFrameRate(GRAPHICS_FRAME_RATES[index]),
+      },
+      {
+        // 性能面板(引擎自带统计:帧率 / 每帧耗时 / 绘制次数 / 逻辑与渲染耗时):卡顿时打开截图反馈,便于定位
+        key: 'Perf', label: '性能面板', options: ['关', '开'], active: this.perfStatsShown ? 1 : 0,
+        pick: (index) => {
+          this.perfStatsShown = index === 1;
+          if (this.perfStatsShown) {
+            profiler.showStats();
+          } else {
+            profiler.hideStats();
+          }
+        },
       },
       {
         key: 'Damage', label: '伤害数字', options: ['全部', '精简'], active: this.damageNumbersLite ? 1 : 0,
@@ -7424,11 +7438,23 @@ export class LobbyGuardBattleRenderer {
       enemyAnimNames?: boolean;
       /** 英雄:走主战斗统一体型公式(资源补偿表,修 act 系 bounds 虚标导致的体型忽大忽小)。 */
       allyUnit?: BattlePresentationUnitSnapshot;
+      /**
+       * 小怪:骨骼动画走引擎的共享缓存(同一种怪的同一个动画只算一遍,所有实例共用算好的帧)。
+       * 2026-10-05 手机卡顿优化:后期 40~90 只怪各自逐帧算骨骼是 CPU 最大头。BOSS / 英雄不用(要量头顶、要混合动作)。
+       */
+      sharedCache?: boolean;
     },
   ): void {
     const spineNode = this.host.addChildPlainNode(node, 'GuardUnitSpine', 0, opts?.footY ?? -size * 0.36, size, size * 1.1);
     const skeleton = spineNode.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = false;
+    if (opts?.sharedCache) {
+      try {
+        skeleton.setAnimationCacheMode(sp.Skeleton.AnimationCacheMode.SHARED_CACHE);
+      } catch (error) {
+        void error;
+      }
+    }
     // 兜底直载:共享缓存层的在途合并队列若丢回调(极端环境观测到过)会永久悬空——4s 未回来就绕过缓存直载一次。
     let delivered = false;
     const applyData = (data: sp.SkeletonData | null): void => {
@@ -7484,7 +7510,8 @@ export class LobbyGuardBattleRenderer {
         }
         spineNode.setScale(mirror ? -fit : fit, fit, 1);
         const track = skeleton.setAnimation(0, idle, true);
-        if (!track) {
+        // 共享缓存模式下 setAnimation 不返回轨道对象(返回 null 属正常),不能当失败
+        if (!track && !(opts?.sharedCache && skeleton.isAnimationCached())) {
           // 动画起不来按失败处理:保留回退块,别销毁。
           return;
         }
@@ -8846,6 +8873,7 @@ export class LobbyGuardBattleRenderer {
       calibratedScale: (rawBoundsHeight) => targetVisualH / rawBoundsHeight,
       footY: -unit * 0.45,
       enemyAnimNames: true,
+      sharedCache: monster.kind !== 'boss',
     });
     // BOSS 血条锚在头顶(2026-09-18 用户拍板,不再走顶部横幅):头顶再往上 18px,并钳在屏内。
     const hpBarY = monster.kind === 'boss'
