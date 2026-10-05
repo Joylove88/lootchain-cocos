@@ -261,7 +261,9 @@ export class LoginRenderer {
     }
     this.renderAgreement(agreementY, layout, centerX, state.agreementAccepted);
     this.host.addButton('返回登录', layout.safeLeft + 62 * scale, layout.safeTop - 26 * scale, () => this.host.renderLogin(), layout, 118 * scale, 38 * scale);
-    this.host.addStatus('新玩家点「注 册」直接开号进游戏。', layout);
+    // 不显示第三方登录时,提示放进按钮与协议之间的空白处;放在默认的屏幕底部会和协议行叠在一起(手机横屏,2026-10-05)
+    const hintY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? undefined : (enterButtonY - loginH / 2 + agreementY) / 2;
+    this.host.addStatus('新玩家点「注 册」直接开号进游戏。', layout, hintY);
   }
 
   /** 素材输入行:标签 + 素材框(左端烘焙图标,故 EditBox 右移避开)+ 框内右缘格式提示。 */

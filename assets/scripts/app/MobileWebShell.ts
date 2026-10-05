@@ -74,7 +74,14 @@ function isFullscreen(): boolean {
   return !!(document.fullscreenElement || doc.webkitFullscreenElement);
 }
 
-function requestLandscapeFullscreen(): void {
+/**
+ * 请求全屏 + 锁横屏(须在用户手势后约 5 秒内调用)。手机端才生效;已全屏 / 不支持 / 1.5s 内重复调用时忽略。
+ * 游戏在「登录」「注册」按钮里主动调用:浏览器的退出全屏提示随后落在加载 / 进大厅过程里,不挡登录按钮。
+ */
+export function requestLandscapeFullscreen(): void {
+  if (!installed || !sys.isMobile) {
+    return;
+  }
   const now = Date.now();
   if (isFullscreen() || now - lastFullscreenTry < FULLSCREEN_RETRY_MS || !fullscreenSupported()) {
     return;
@@ -122,10 +129,9 @@ function mountRotateOverlay(): void {
   if (!document.getElementById(OVERLAY_ID)) {
     const overlay = document.createElement('div');
     overlay.id = OVERLAY_ID;
-    const tip = fullscreenSupported() ? '横过来后点一下屏幕,自动全屏' : '建议关闭竖排方向锁定后横屏游玩';
+    const tip = fullscreenSupported() ? '横屏后登录即自动全屏' : '建议关闭竖排方向锁定后横屏游玩';
     overlay.innerHTML = `<div class="lc-arc"></div><div class="lc-phone"></div><div class="lc-title">请将手机横过来</div><div class="lc-sub">${tip}</div>`;
-    // 点提示层也尝试全屏 + 锁横屏(安卓可直接转过去)
-    overlay.addEventListener('click', () => requestLandscapeFullscreen());
+    // 点提示层不进全屏:转过来后正好落在登录页,浏览器的「如需退出全屏…」提示会挡住登录按钮(2026-10-05 用户)
     document.body.appendChild(overlay);
   }
 }

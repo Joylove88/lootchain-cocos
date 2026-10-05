@@ -43,15 +43,9 @@ export const FORGE_AI_SLOT_FRAME_ASSET = 'ui/forge/ai/slot_frame/spriteFrame';
 export const FORGE_AI_TAB_ACTIVE_ASSET = 'ui/forge/ai/tab_active/spriteFrame';
 export const FORGE_AI_TAB_NORMAL_ASSET = 'ui/forge/ai/tab_normal/spriteFrame';
 export const FORGE_AI_BUTTON_ASSET = 'ui/forge/ai/btn_forge/spriteFrame';
-// 部位小图标(装备行/槽位用;生成后导入即换装,缺图走 Graphics 线稿兜底)。
-export const FORGE_AI_SLOT_ICON_ASSETS: Record<string, string> = {
-  WEAPON: 'ui/forge/ai/icon_weapon/spriteFrame',
-  HELMET: 'ui/forge/ai/icon_helmet/spriteFrame',
-  CHEST: 'ui/forge/ai/icon_chest/spriteFrame',
-  BOOTS: 'ui/forge/ai/icon_boots/spriteFrame',
-  RING: 'ui/forge/ai/icon_ring/spriteFrame',
-  NECKLACE: 'ui/forge/ai/icon_necklace/spriteFrame',
-};
+// 部位小图标(装备行/槽位用):素材一直没生成,当前全部走 Graphics 线稿(drawSlotGlyph)。
+// 生成后放到 ui/forge/ai/icon_<部位> 并在这里登记即换装;不要登记不存在的路径(会预载失败、控制台刷黄字,2026-10-05)。
+export const FORGE_AI_SLOT_ICON_ASSETS: Record<string, string> = {};
 // 强化页参考图新增素材钩子(待生成;缺图 Graphics 兜底)。
 export const FORGE_AI_ENHANCE_RING_ASSET = 'ui/forge/ai/enhance_ring/spriteFrame';
 export const FORGE_AI_GUARD_ICON_ASSET = 'ui/forge/ai/icon_guard_rune/spriteFrame';
@@ -81,7 +75,6 @@ export const FORGE_PRELOAD_ASSETS: readonly string[] = [
   FORGE_AI_ENHANCE_RING_ASSET,
   FORGE_AI_GUARD_ICON_ASSET,
   FORGE_AI_BLESS_ICON_ASSET,
-  ...Object.values(FORGE_AI_SLOT_ICON_ASSETS),
   `${FORGE_AI_NAV_PREFIX}enhance/spriteFrame`,
   `${FORGE_AI_NAV_PREFIX}fuse/spriteFrame`,
   `${FORGE_AI_NAV_PREFIX}decompose/spriteFrame`,

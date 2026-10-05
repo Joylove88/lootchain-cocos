@@ -45,7 +45,7 @@ import {
   type AssetManifest,
 } from '../app/AssetOfflineCache';
 import { PREVIEW } from 'cc/env';
-import { installMobileWebShell, setFullscreenGate } from '../app/MobileWebShell';
+import { installMobileWebShell, requestLandscapeFullscreen, setFullscreenGate } from '../app/MobileWebShell';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
@@ -740,8 +740,9 @@ export class LootChainGameRoot extends Component {
       void this.tryResumeSession();
       // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材。
       // 2026-10-05:素材已在本地时立刻开始(实测登录后马上点冒险 / 背包仍要等 0.7~1.8s),否则等 1.5s 不和首屏抢网络。
-      const localAssets = sys.isNative || PREVIEW || isFullPackCached();
-      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), localAssets ? 0.1 : 1.5);
+      // 编辑器预览不算"本地":手机连电脑预览时素材走局域网,同时发几十个请求会把登录页自己的图挤失败(2026-10-05 用户实测)。
+      const localAssets = sys.isNative || isFullPackCached();
+      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), localAssets ? 0.1 : 3);
       // 浏览器空间紧张时可能清掉过部分缓存:后台对一遍清单,缺的悄悄补回来(不挡玩家)。
       if (supportsFullPack() && isFullPackCached()) {
         this.scheduleOnce(() => void this.repairFullPackInBackground(), 8);
@@ -823,7 +824,7 @@ export class LootChainGameRoot extends Component {
       .map((info) => info.path)
       .filter((path) => /^ui\/battle\/battle_scene_[^/]+\/spriteFrame$/.test(path));
     const first = new Set<string>(sceneBgPaths.concat(collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS)));
-    const localAssets = sys.isNative || PREVIEW || isFullPackCached();
+    const localAssets = sys.isNative || isFullPackCached();
     const restUi = isPhoneDesign() || !localAssets ? [] : collectUiDirPaths(BACKGROUND_WARM_UI_DIRS).filter((path) => !first.has(path));
     const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
       ...Array.from(first).map((path) => ({ path, kind: 'ui' as const })),
@@ -6452,10 +6453,14 @@ export class LootChainGameRoot extends Component {
   }
 
   private submitLogin(): void {
+    // 手机网页:借这次点击进全屏(退出全屏提示落在加载 / 进大厅过程里,不挡按钮)
+    requestLandscapeFullscreen();
     this.run(() => this.loginFlow.login());
   }
 
   private submitRegister(): void {
+    // 手机网页:借这次点击进全屏(退出全屏提示落在加载 / 进大厅过程里,不挡按钮)
+    requestLandscapeFullscreen();
     this.run(() => this.loginFlow.register());
   }
 

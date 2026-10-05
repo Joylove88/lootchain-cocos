@@ -337,9 +337,18 @@ export class UiSpriteFrameCache {
       this.loadingSpriteFrames.delete(path);
       this.settleGroupPath(path);
       if (error) {
-        // 缺图只告警一次:图鉴宝箱等可选素材未落位时,每次重绘都重试会刷屏。
+        // 缺图(包里没有这张)只告警一次、不再请求:可选素材未落位时每次重绘都重试会刷屏。
+        // 网络 / 超时类失败(手机连预览、弱网)3 秒后允许重试,并补一次整刷——否则登录框等界面图失败一次就永久缺失。
         this.failedSpriteFrames.add(path);
-        console.warn(`[LootChain] UI sprite load failed: ${path}`, error);
+        const missing = /doesn't contain|not found|no asset/i.test(String((error as Error)?.message ?? error));
+        if (missing) {
+          console.warn(`[LootChain] UI sprite load failed: ${path}`, error);
+          return;
+        }
+        setTimeout(() => {
+          this.failedSpriteFrames.delete(path);
+          this.scheduleRenderRefresh();
+        }, 3000);
         return;
       }
       if (!error && frame) {
