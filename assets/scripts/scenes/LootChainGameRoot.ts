@@ -787,24 +787,20 @@ export class LootChainGameRoot extends Component {
 
   /**
    * 各玩法页素材在后台依次读进内存(2026-10-04 用户「点哪个模块都要等加载中」):
-   * 只在素材已在本地时做(Web 整包已下完 / 原生安装包 / 编辑器预览),登录页一亮出就开始,每组间隔 0.3 秒。
+   * 只在素材已在本地时做(Web 整包已下完 / 原生安装包 / 编辑器预览),登录页一亮出就开始,并入后台预读队列按小批量依次读。
    * 玩家抢先点开某页时该页照常显示进度,通常已读完一大半。
    */
-  private warmPageGroupsInBackground(): void {
-    // 编辑器预览只在电脑上预读(本机取图很快);手机连电脑预览走局域网,几百个请求会把当前页面自己的图堵在队列后面
-    // (2026-10-05 用户手机录屏:登录框素材 17 秒都没出来)。
+  private warmPageGroupPaths(): string[] {
+    // 编辑器预览只在电脑上预读(本机取图很快);手机连电脑预览走局域网,不预读(2026-10-05 用户手机录屏:登录框素材 17 秒都没出来)。
     if (!(sys.isNative || (PREVIEW && !sys.isMobile) || isFullPackCached())) {
-      return;
+      return [];
     }
-    // 大厅最常点的排前面;每组间隔 0.3s(素材在本地,读一组只要几十到几百毫秒)
+    // 大厅最常点的排前面。只返回路径,由后台预读队列按小批量依次读——
+    // 2026-10-05 实测:原先 6 个分组一次性发出几百个请求,玩家点开的界面排在队尾,要等十几秒才轮到。
     const groups: UiPreloadGroup[] = ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
-    groups.forEach((group, index) => {
-      this.scheduleOnce(() => {
-        if (this.isValid) {
-          this.uiSpriteFrameCache.preloadGroup(group);
-        }
-      }, index * 0.3);
-    });
+    const paths: string[] = [];
+    groups.forEach((group) => this.uiSpriteFrameCache.groupAssetPaths(group).forEach((path) => paths.push(path)));
+    return paths;
   }
 
   /** 后台战斗素材预取进行中标记(只跑一次)。 */
@@ -821,13 +817,12 @@ export class LootChainGameRoot extends Component {
     this.backgroundWarmStarted = true;
     // 战斗页的 C1812 图组(血条/胜负横幅/受击贴图等)与守卫战素材一起在后台拉。
     this.uiSpriteFrameCache.preloadGroup('battle');
-    this.scheduleOnce(() => this.warmPageGroupsInBackground(), 0.2);
     // 2026-10-05 用户「进战场背景 / 格子还是后出来」:进场第一眼要用的图(场景背景、石台格子、战斗 HUD)排最前,
     // 怪物骨骼(40 套,最慢)放后面;电脑端最后再把其余玩法页的界面图整目录读进内存(手机内存小,只读各页分组)。
     const sceneBgPaths = (resources.getDirWithPath('ui/battle', SpriteFrame) ?? [])
       .map((info) => info.path)
       .filter((path) => /^ui\/battle\/battle_scene_[^/]+\/spriteFrame$/.test(path));
-    const first = new Set<string>(sceneBgPaths.concat(collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS)));
+    const first = new Set<string>(this.warmPageGroupPaths().concat(sceneBgPaths, collectUiDirPaths(BATTLE_PREFETCH_UI_DIRS)));
     const localAssets = sys.isNative || isFullPackCached();
     const restUi = isPhoneDesign() || !localAssets ? [] : collectUiDirPaths(BACKGROUND_WARM_UI_DIRS).filter((path) => !first.has(path));
     const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [

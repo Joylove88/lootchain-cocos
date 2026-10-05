@@ -19,7 +19,7 @@ import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
-import { drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
+import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
 
 /**
@@ -225,16 +225,22 @@ export class LobbyShopDialogRenderer {
     // 标题压到顶饰之下,两侧任务页同款 title_divider 饰件(与守卫战弹层一致)。
     const titleY = panelH / 2 - (phone ? 40 : 112) * scale;
     const titleSize = FONT.title * scale;
-    const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, titleY, titleSize, rgba(255, 226, 150), new Size(panelW * 0.6, titleSize + 10 * scale));
-    title.isBold = true;
-    this.outline(title, scale, rgba(60, 30, 10, 255));
+    if (phone) {
+      // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户);余额胶囊挪到右上、关闭钮左侧
+      addPhoneDialogTitle(this.host, panel, panelW, panelH, TITLE[state.kind], 44 * scale, 0.9 * scale);
+    } else {
+      const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, titleY, titleSize, rgba(255, 226, 150), new Size(panelW * 0.6, titleSize + 10 * scale));
+      title.isBold = true;
+      this.outline(title, scale, rgba(60, 30, 10, 255));
+    }
     const titleHalf = (TITLE[state.kind].length * titleSize) / 2;
     const dividerW = 150 * scale;
     const dividerX = titleHalf + 22 * scale + dividerW / 2;
     // 手机窄屏(16:9):左侧两个余额胶囊会顶到标题左饰件,放不下就不画两侧饰件
     const chipCount = state.kind === 'diamond' ? 1 : 2;
     const chipsRight = -panelW / 2 + (26 + chipCount * 158 + (chipCount - 1) * 18) * scale;
-    if (!phone || chipsRight < -dividerX - dividerW / 2 - 10 * scale) {
+    void chipsRight;
+    if (!phone) {
       this.host.addSprite('LobbyShopTitleDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
       this.host.addSprite('LobbyShopTitleDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
     }
@@ -300,7 +306,9 @@ export class LobbyShopDialogRenderer {
     entries.push({ key: 'diamond', icon: ICONS.diamond.path, value: this.host.formatInteger(diamond) });
     const capW = 158 * scale;
     const gap = 18 * scale;
-    const rightX = -panelW / 2 + 26 * scale + entries.length * capW + (entries.length - 1) * gap;
+    void capW;
+    void gap;
+    const rightX = panelW / 2 - 92 * scale;
     renderTopCurrencyBar(this.host as unknown as SceneBackButtonHost, panel, rightX, panelH / 2, scale, entries, 0);
   }
 

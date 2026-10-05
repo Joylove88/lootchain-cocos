@@ -655,11 +655,14 @@ export class GachaSceneRenderer {
     // 行高比素材原比拉高约 20%(用户要求页签更高;板轻度纵向拉伸,徽章按圆的横径定尺不压圆边)。
     const gap = 12 * scale;
     const rawItemHeight = railWidth / (GACHA_TAB_PLATE_ASPECT / 1.2);
-    const available = layout.stageTop - layout.stageBottom - 24 * scale;
+    // 顶部让出左上角标题牌(牌高约 84 × 按钮缩放,牌心在 stageTop - 42):卡池页签不再压住「召唤」标题(2026-10-05 用户)
+    const titleReserve = 90 * Math.max(0.56, Math.min(1, scale));
+    const railTop = layout.stageTop - titleReserve;
+    const available = railTop - layout.stageBottom - 16 * scale;
     const itemHeight = Math.min(rawItemHeight, (available - gap * (pools.length - 1)) / Math.max(1, pools.length));
     const totalHeight = pools.length * itemHeight + (pools.length - 1) * gap;
     const x = layout.stageLeft + railWidth / 2 + 22 * scale;
-    const y = (layout.stageTop + layout.stageBottom) / 2 + 4 * scale;
+    const y = (railTop + layout.stageBottom) / 2 + 2 * scale;
     const rail = this.host.addChildPlainNode(parent, 'GachaPoolRail', x, y, railWidth, totalHeight);
     let cursorY = totalHeight / 2 - itemHeight / 2;
     for (const pool of pools) {

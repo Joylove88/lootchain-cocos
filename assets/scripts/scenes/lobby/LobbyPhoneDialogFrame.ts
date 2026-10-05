@@ -1,5 +1,17 @@
-import { Graphics, Node } from 'cc';
+import { Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UITransform } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+
+/** 全屏弹框的实景背景(与背包页同一张血色大教堂,1920×1080;等比铺满后由遮罩裁掉上下)。 */
+const PHONE_DIALOG_BACKDROP_ASSET = 'ui/battle/ai/battle_bg_cathedral/spriteFrame';
+const PHONE_DIALOG_BACKDROP_ASPECT = 1920 / 1080;
+/** 左上角标题牌(与英雄 / 背包等功能页同款,596×201 一体构图,只能等比)。 */
+const PHONE_DIALOG_TITLE_BANNER_ASSET = 'ui/common/ai/title_banner_new/spriteFrame';
+
+export interface PhoneDialogFrameHost {
+  addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
+  addSprite?(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | Node | null;
+  addChildLabel?(parent: Node, name: string, text: string, x: number, y: number, fontSize: number, color: Color, contentSize: Size, horizontalAlign?: HorizontalTextAlignment): Label;
+}
 
 /**
  * 手机横屏全屏弹框(2026-10-02 用户:「横屏模式下弹框都调整成全屏」)的公共外框。
@@ -39,22 +51,38 @@ export function phoneDialogSizeForStage(stageWidth: number, stageHeight: number,
  * 菱形挂子节点单独 fill(实测同一 Graphics 先 stroke 后 fill 会吞描边),所以本函数里所有 fill 都排在 stroke 之前。
  */
 export function drawPhoneDialogFrame(
-  host: { addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node },
+  host: PhoneDialogFrameHost,
   node: Node,
   width: number,
   height: number,
   headerH = 0,
 ): void {
-  const g = node.getComponent(Graphics) ?? node.addComponent(Graphics);
+  // 2026-10-05 用户「旋转宝箱 / 水晶 / 任务界面都没有背景 UI」:垫一张实景背景(等比铺满 + 遮罩裁切),
+  // 外框与压暗画在它上面的子节点里;背景图还没读到时退回原来的纯色底。
+  let frameNode = node;
+  let hasBackdrop = false;
+  if (host.addSprite) {
+    const clip = host.addChildPlainNode(node, 'PhoneFrameBackdrop', 0, 0, width - 10, height - 10);
+    const coverW = Math.max(width, height * PHONE_DIALOG_BACKDROP_ASPECT);
+    const art = host.addSprite('Art', PHONE_DIALOG_BACKDROP_ASSET, 0, 0, coverW, coverW / PHONE_DIALOG_BACKDROP_ASPECT, clip);
+    if (art) {
+      clip.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+      hasBackdrop = true;
+      frameNode = host.addChildPlainNode(node, 'PhoneFrameArt', 0, 0, width, height);
+    } else {
+      clip.destroy();
+    }
+  }
+  const g = frameNode.getComponent(Graphics) ?? frameNode.addComponent(Graphics);
   const radius = 14;
   const left = -width / 2;
   const top = height / 2;
-  g.fillColor = rgba(13, 10, 10, 250);
+  g.fillColor = hasBackdrop ? rgba(6, 4, 7, 186) : rgba(13, 10, 10, 250);
   g.roundRect(left, -height / 2, width, height, radius);
   g.fill();
   const headerBottom = top - 6 - headerH;
   if (headerH > 0) {
-    g.fillColor = rgba(30, 21, 15, 240);
+    g.fillColor = hasBackdrop ? rgba(22, 14, 10, 200) : rgba(30, 21, 15, 240);
     g.roundRect(left + 6, headerBottom, width - 12, headerH, 10);
     g.fill();
     // 暖色渐隐:顶部最亮,向分隔线淡出
@@ -119,7 +147,7 @@ export function drawPhoneDialogFrame(
     gems.push([0, headerBottom, 9, 5], [-width * 0.2, headerBottom, 5, 3.5], [width * 0.2, headerBottom, 5, 3.5]);
   }
   gems.forEach(([x, y, rx, ry], index) => {
-    const gem = host.addChildPlainNode(node, `PhoneFrameGem_${index}`, x, y, rx * 2, ry * 2);
+    const gem = host.addChildPlainNode(frameNode, `PhoneFrameGem_${index}`, x, y, rx * 2, ry * 2);
     const gg = gem.addComponent(Graphics);
     gg.fillColor = index < 2 || index >= 6 ? rgba(236, 196, 118, 250) : rgba(190, 146, 78, 230);
     gg.moveTo(0, ry);
@@ -129,4 +157,26 @@ export function drawPhoneDialogFrame(
     gg.close();
     gg.fill();
   });
+}
+
+/**
+ * 全屏弹框左上角标题牌(与英雄 / 背包页的左上标题同款,2026-10-05 用户:弹框标题统一成这个样式)。
+ * 牌心在弹框顶边下方 centerDrop 处;返回标题牌右缘 x(弹框坐标),调用方可在其右侧接着排页签 / 货币。
+ */
+export function addPhoneDialogTitle(host: PhoneDialogFrameHost, panel: Node, width: number, height: number, title: string, centerDrop = 42, scale = 0.9): number {
+  const bannerW = Math.max(250 * scale, title.length * 52 * scale + 72 * scale);
+  const bannerH = bannerW * (201 / 596);
+  const x = -width / 2 + 14 + bannerW / 2;
+  const y = height / 2 - centerDrop;
+  const banner = host.addSprite?.('PhoneDialogTitleBanner', PHONE_DIALOG_TITLE_BANNER_ASSET, x, y, bannerW, bannerH, panel) ?? null;
+  if (host.addChildLabel) {
+    const label = host.addChildLabel(panel, 'PhoneDialogTitle', title, banner ? x + bannerW * 0.09 : x, y + bannerH * 0.02, 26 * scale, rgba(250, 222, 158), new Size(bannerW * 0.56, 40 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(0, 0, 0, 220);
+    label.outlineWidth = 2;
+    label.node.getComponent(UITransform)?.setContentSize(bannerW * 0.56, 40 * scale);
+  }
+  return x - bannerW / 2 + bannerW * 0.95;
 }

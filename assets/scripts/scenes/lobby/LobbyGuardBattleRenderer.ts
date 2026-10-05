@@ -26,7 +26,7 @@ import {
 } from 'cc';
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
+import { addPhoneDialogTitle, drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 import type { UiLayout } from './LobbyHudTypes';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -2791,6 +2791,11 @@ export class LobbyGuardBattleRenderer {
 
   /** 弹层标题 + 两侧 title_divider(与开箱/词条弹层同一套估宽规则)。 */
   private paintSettingsTitle(parent: Node, text: string, panelW: number, y: number): void {
+    if (this.phoneSheet()) {
+      // 手机全屏弹层:左上角标题牌(与英雄 / 背包页同款)
+      addPhoneDialogTitle(this.host, parent, panelW, y * 2, text, 0);
+      return;
+    }
     const size = 34;
     this.host.addChildLabel(parent, `${parent.name}Title`, text, 0, y, size, rgba(255, 232, 150), new Size(panelW * 0.6, 44));
     const half = Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * size, 0) / 2;
@@ -5075,17 +5080,22 @@ export class LobbyGuardBattleRenderer {
     const titleText = deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
     const titleSize = fs(34, 24);
     const titleY = sheet ? panelH / 2 - 60 : panelH / 2 - 112 * s;
-    const title = this.host.addChildLabel(panelRoot, 'GuardWheelTitle', titleText, 0, titleY, titleSize, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(panelW * 0.6, titleSize + 10));
-    title.enableOutline = true;
-    title.outlineColor = rgba(60, 30, 10, 255);
-    title.outlineWidth = 3;
-    const titleHalf = Array.from(titleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0) / 2;
-    const dividerAvail = panelW / 2 - titleHalf - 22 - 30;
-    if (dividerAvail >= 40) {
-      const dividerW = Math.min(150, dividerAvail);
-      const dividerX = titleHalf + 22 + dividerW / 2;
-      this.mountSprite(panelRoot, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, titleY, dividerW, dividerW * (76 / 390));
-      this.mountSprite(panelRoot, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerX, titleY, dividerW, dividerW * (73 / 392));
+    if (sheet) {
+      // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户)
+      addPhoneDialogTitle(this.host, panelRoot, panelW, panelH, titleText, 44);
+    } else {
+      const title = this.host.addChildLabel(panelRoot, 'GuardWheelTitle', titleText, 0, titleY, titleSize, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(panelW * 0.6, titleSize + 10));
+      title.enableOutline = true;
+      title.outlineColor = rgba(60, 30, 10, 255);
+      title.outlineWidth = 3;
+      const titleHalf = Array.from(titleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0) / 2;
+      const dividerAvail = panelW / 2 - titleHalf - 22 - 30;
+      if (dividerAvail >= 40) {
+        const dividerW = Math.min(150, dividerAvail);
+        const dividerX = titleHalf + 22 + dividerW / 2;
+        this.mountSprite(panelRoot, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, titleY, dividerW, dividerW * (76 / 390));
+        this.mountSprite(panelRoot, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerX, titleY, dividerW, dividerW * (73 / 392));
+      }
     }
     // ── 轮盘:只有 WheelDisc 转,其余(投影/外框/灯珠/高光/轴心/指针/高亮扇)不转 ──
     const wheel = this.host.addChildPlainNode(panelRoot, 'GuardWheel', wheelX, wheelY, R * 2, R * 2);
@@ -5647,11 +5657,14 @@ export class LobbyGuardBattleRenderer {
     tween(glow).to(0.45, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'quadOut' }).start();
     tween(glowOp).to(0.08, { opacity: 170 }).to(0.5, { opacity: 0 }, { easing: 'quadIn' }).call(() => { if (glow.isValid) { glow.destroy(); } }).start();
     // 横幅:深红带 + 上下金线 + 两端斜切;scale 2.6 砸到 1 → 压扁回弹 → 呼吸
-    const bannerW = p.sheet ? Math.min(p.panelW * 0.9, 1100) : p.panelW * 0.9;
+    // 手机:左上角是标题牌(约占 500 宽),横幅排在它右边到关闭钮之间,不压标题(2026-10-05)
+    const sheetLeft = -p.panelW / 2 + 510;
+    const sheetRight = p.panelW / 2 - 40;
+    const bannerW = p.sheet ? Math.min(sheetRight - sheetLeft, 1100) : p.panelW * 0.9;
     const bannerH = p.sheet ? 64 : p.compact ? 44 : 84 * p.s;
     // 手机全屏面板贴边,横幅改压在标题行上(挂到面板外沿会出屏)。
     const bannerY = p.sheet ? p.titleY + 6 : p.panelH / 2 + (p.compact ? 30 : 18);
-    const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', 0, bannerY, bannerW, bannerH);
+    const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', p.sheet ? (sheetLeft + sheetRight) / 2 : 0, bannerY, bannerW, bannerH);
     const bg = banner.addComponent(Graphics);
     const cutW = bannerH * 0.5;
     bg.fillColor = rgba(122, 20, 26, 235);
@@ -6976,6 +6989,10 @@ export class LobbyGuardBattleRenderer {
 
   /** 开局预热本阵容全部普攻贴图:首发弹道在飞行 0.4s 内贴图未到会"飞空"(实测首载 1.6s / 二载 6ms,2026-09-12)。 */
   private prewarmAttackFx(pool: GuardPoolHero[]): void {
+    // 手机全屏弹层的实景背景 / 标题牌:开局先读,弹层打开时同步可用
+    for (const path of ['ui/battle/ai/battle_bg_cathedral/spriteFrame', 'ui/common/ai/title_banner_new/spriteFrame']) {
+      resources.load(path, SpriteFrame, () => undefined);
+    }
     const seen = new Set<string>();
     for (const entry of pool) {
       const ally = this.snapshot?.allies[entry.sourceIndex] ?? null;

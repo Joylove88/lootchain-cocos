@@ -17,7 +17,7 @@ import {
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
+import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO, PlayerQuestSummaryVO, PlayerQuestVO, QuestRewardItemVO } from '../../types/QuestTypes';
 
 // 任务弹框素材(2026-09-10 用户切图,原名已 ascii 化):全部一体构图只能等比显示。
@@ -491,15 +491,8 @@ export class LobbyQuestMailPanelRenderer {
   /** 手机标题带内容:鎏金标题 + 两侧星饰线 + 素材关闭钮(任务 / 邮件共用)。 */
   private addPhoneHeader(panel: Node, text: string, panelWidth: number, panelHeight: number, onClose: () => void): void {
     const titleY = panelHeight / 2 - 6 - PHONE_HEADER_H / 2;
-    const title = this.host.addChildLabel(panel, 'Title', text, 0, titleY, 34, rgba(245, 213, 130, 255), new Size(260, 48));
-    title.isBold = true;
-    title.enableOutline = true;
-    title.outlineColor = rgba(58, 32, 10, 255);
-    title.outlineWidth = 3;
-    const dividerW = 170;
-    const gap = 62 + dividerW / 2;
-    this.host.addSprite('TitleDividerL', QUEST_UI_ASSETS.titleDividerLeft, -gap, titleY, dividerW, dividerW * (76 / 390), panel);
-    this.host.addSprite('TitleDividerR', QUEST_UI_ASSETS.titleDividerRight, gap, titleY, dividerW, dividerW * (73 / 392), panel);
+    // 标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户)
+    addPhoneDialogTitle(this.host, panel, panelWidth, panelHeight, text, 6 + PHONE_HEADER_H / 2);
     this.addAssetCloseButton(panel, panelWidth / 2 - 50, titleY, 52 / 46, onClose);
   }
 

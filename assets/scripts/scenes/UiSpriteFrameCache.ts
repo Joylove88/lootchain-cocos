@@ -171,12 +171,24 @@ export class UiSpriteFrameCache {
     // 闸门最长等 GROUP_GATE_WINDOW_MS:到点无论还有几张没到都放行(缺图走兜底),并补一次整刷让页面换出来。
     setTimeout(() => this.scheduleRenderRefresh(), GROUP_GATE_WINDOW_MS + 50);
     const track = (path: string): void => this.trackGroupPath(group, path);
+    this.forEachGroupAsset(group, track, (path) => this.request(path));
+  }
+
+  /** 某分组用到的全部图路径(后台预读用:按小批量排队读,不一次性塞满加载队列)。 */
+  groupAssetPaths(group: UiPreloadGroup): string[] {
+    const paths: string[] = [];
+    const push = (path: string): void => { paths.push(path); };
+    this.forEachGroupAsset(group, push, push);
+    return paths;
+  }
+
+  private forEachGroupAsset(group: UiPreloadGroup, track: (path: string) => void, request: (path: string) => void): void {
     switch (group) {
       case 'heroes':
         // 详情页大图只拉不拦:名册首开先等卡面相关的图,详情页用到时多半已到。
-        this.request(LOBBY_HERO_DETAIL_BACKDROP_ASSET);
-        this.request(LOBBY_HERO_DETAIL_PROTAGONIST_ASSET);
-        HERO_DETAIL_PRELOAD_ASSETS.forEach((asset) => this.request(asset));
+        request(LOBBY_HERO_DETAIL_BACKDROP_ASSET);
+        request(LOBBY_HERO_DETAIL_PROTAGONIST_ASSET);
+        HERO_DETAIL_PRELOAD_ASSETS.forEach((asset) => request(asset));
         track(LOBBY_HERO_ROSTER_BACKDROP_ASSET);
         LOBBY_HERO_ROSTER_CARD_ASSETS.forEach((asset) => track(asset));
         track(HERO_C1812_STAR_FILLED_ASSET);

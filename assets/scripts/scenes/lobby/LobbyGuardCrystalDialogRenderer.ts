@@ -31,7 +31,7 @@ import { LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
+import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 
 /**
  * 守卫水晶养成弹窗(docs/38):左侧水晶立绘坐在发光台座上 + 等级徽章 + 进度条 + 下一级解锁提示;右侧两个页签——
@@ -227,17 +227,30 @@ export class LobbyGuardCrystalDialogRenderer {
     const titleY = phone ? panelH / 2 - 38 : panelH / 2 - 106 * scale;
     const titleSize = phone ? FONT.title : 40 * scale;
     const titleText = '守卫水晶';
-    const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', titleText, 0, titleY, titleSize, GOLD_TEXT, new Size(panelW * 0.6, titleSize + 10 * scale));
-    title.isBold = true;
-    this.outline(title, scale, rgba(60, 30, 10, 255));
-    const dividerW = 150 * scale;
-    const dividerX = (titleText.length * titleSize) / 2 + 22 * scale + dividerW / 2;
-    this.host.addSprite('LobbyGuardCrystalDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
-    this.host.addSprite('LobbyGuardCrystalDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
+    // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户),副标题排在牌右侧
+    let phoneTitleRight = 0;
+    if (phone) {
+      phoneTitleRight = addPhoneDialogTitle(this.host, panel, panelW, panelH, titleText, 49);
+    } else {
+      const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', titleText, 0, titleY, titleSize, GOLD_TEXT, new Size(panelW * 0.6, titleSize + 10 * scale));
+      title.isBold = true;
+      this.outline(title, scale, rgba(60, 30, 10, 255));
+      const dividerW = 150 * scale;
+      const dividerX = (titleText.length * titleSize) / 2 + 22 * scale + dividerW / 2;
+      this.host.addSprite('LobbyGuardCrystalDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
+      this.host.addSprite('LobbyGuardCrystalDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
+    }
     const subtitleText = state.tab === 'spells'
       ? '出战法术带进每一局矿境守卫;花金币与守卫晶核升级法术,范围更大、效果更多'
       : '花金币与守卫晶核升级水晶:守卫战里水晶更坚固、开局更富、法术更强';
     const subtitle = this.host.addChildLabel(panel, 'LobbyGuardCrystalSubtitle', subtitleText, 0, titleY - (phone ? 38 : 44 * scale), FONT.body * scale, rgba(212, 190, 150, 235), new Size(panelW * (phone ? 0.7 : 0.8), 24 * scale));
+    if (phone) {
+      const subLeft = phoneTitleRight + 18;
+      const subW = panelW / 2 - 96 - subLeft;
+      subtitle.node.setPosition(subLeft + subW / 2, panelH / 2 - 49, 0);
+      subtitle.node.getComponent(UITransform)?.setContentSize(subW, 30);
+      subtitle.horizontalAlign = HorizontalTextAlignment.LEFT;
+    }
     subtitle.overflow = Label.Overflow.SHRINK;
 
     const bodyTop = phone ? panelH / 2 - 110 : titleY - 68 * scale;
