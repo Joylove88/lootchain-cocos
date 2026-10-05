@@ -3643,7 +3643,8 @@ export class LobbyGuardBattleRenderer {
 
   /** 法术位手势:点击 = 无目标法术施放;按住拖到战场 = 瞄准(冰封/九天神雷),松手在战场内施放,拖回法术栏取消。 */
   private bindSpellSlot(slot: Node, id: GuardSpellId): void {
-    // 长按 0.45 秒(手指不动)= 显示法术详情,松手不施放;电脑端鼠标悬停同样显示(2026-10-02 用户:「如何看是否冷却中,长按显示技能详细信息」)
+    // 长按 0.45 秒(手指 / 鼠标不动)= 显示法术详情,松手不施放(2026-10-02 用户:「长按显示技能详细信息」)。
+    // 2026-10-05 用户「需要长按才显示详细信息,单击不显示」:去掉电脑端鼠标悬停显示,点击只施放。
     slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
       (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
       this.spellDrag = { id, moved: 0, aim: null };
@@ -3656,16 +3657,6 @@ export class LobbyGuardBattleRenderer {
           this.showSpellTip(id, slot);
         }
       }, 450);
-    }, this);
-    slot.on(Node.EventType.MOUSE_ENTER, () => {
-      if (!this.spellDrag) {
-        this.showSpellTip(id, slot);
-      }
-    }, this);
-    slot.on(Node.EventType.MOUSE_LEAVE, () => {
-      if (!this.spellDrag) {
-        this.hideSpellTip();
-      }
     }, this);
     slot.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
       const drag = this.spellDrag;
