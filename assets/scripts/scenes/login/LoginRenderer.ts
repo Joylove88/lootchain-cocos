@@ -133,6 +133,9 @@ export interface LoginRendererHost {
 export class LoginRenderer {
   constructor(private readonly host: LoginRendererHost) {}
 
+  /** 账号登录页状态提示行的位置(按钮与协议之间);登录中 / 报错的提示也显示在这里,不压协议行。 */
+  accountStatusY: number | null = null;
+
   renderLogin(layout: UiLayout): void {
     if (SHOW_LOGIN_BRAND) {
       this.renderLoginBrand(layout);
@@ -259,7 +262,8 @@ export class LoginRenderer {
     const dividerY = enterButtonY - loginH / 2 - 38 * scale;
     const socialY = dividerY - 56 * scale;
     // 2026-09-09 用户反馈:协议行整行上移 15px。
-    const agreementY = socialY - 43 * scale;
+    // 协议行必须落在面板框内(手机横屏面板矮,原公式会压到底边雕花上,2026-10-05 用户):下限 = 面板底边上方 9.5% 高。
+    const agreementY = Math.max(socialY - 43 * scale, panelY - formHeight / 2 + formHeight * 0.095);
     if (SHOW_DIALOG_THIRD_PARTY_LOGIN) {
       this.renderThirdPartyLogin(dividerY, socialY, layout, centerX, inner);
     }
@@ -267,6 +271,7 @@ export class LoginRenderer {
     this.host.addButton('返回登录', layout.safeLeft + 62 * scale, layout.safeTop - 26 * scale, () => this.host.renderLogin(), layout, 118 * scale, 38 * scale);
     // 不显示第三方登录时,提示放进按钮与协议之间的空白处;放在默认的屏幕底部会和协议行叠在一起(手机横屏,2026-10-05)
     const hintY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? undefined : (enterButtonY - loginH / 2 + agreementY) / 2;
+    this.accountStatusY = hintY ?? null;
     this.host.addStatus('新玩家点「注 册」直接开号进游戏。', layout, hintY);
   }
 

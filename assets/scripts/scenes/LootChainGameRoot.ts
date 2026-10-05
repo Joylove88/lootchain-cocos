@@ -6580,6 +6580,10 @@ export class LootChainGameRoot extends Component {
       this.statusPresenter.set(text, layout, gachaStatusY);
       return;
     }
+    if (this.currentView === 'loginAccount' && this.loginRenderer.accountStatusY !== null) {
+      this.statusPresenter.set(text, this.resolveLayout(), this.loginRenderer.accountStatusY);
+      return;
+    }
     this.statusPresenter.set(text);
   }
 
