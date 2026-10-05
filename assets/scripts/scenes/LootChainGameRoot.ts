@@ -734,7 +734,9 @@ export class LootChainGameRoot extends Component {
       this.renderCurrentView();
       void this.tryResumeSession();
       // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材。
-      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
+      // 2026-10-05:素材已在本地时立刻开始(实测登录后马上点冒险 / 背包仍要等 0.7~1.8s),否则等 1.5s 不和首屏抢网络。
+      const localAssets = sys.isNative || PREVIEW || isFullPackCached();
+      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), localAssets ? 0.1 : 1.5);
       // 浏览器空间紧张时可能清掉过部分缓存:后台对一遍清单,缺的悄悄补回来(不挡玩家)。
       if (supportsFullPack() && isFullPackCached()) {
         this.scheduleOnce(() => void this.repairFullPackInBackground(), 8);
@@ -777,20 +779,21 @@ export class LootChainGameRoot extends Component {
 
   /**
    * 各玩法页素材在后台依次读进内存(2026-10-04 用户「点哪个模块都要等加载中」):
-   * 只在素材已在本地时做(Web 整包已下完 / 原生安装包 / 编辑器预览),每组间隔 1 秒,不和首屏抢。
+   * 只在素材已在本地时做(Web 整包已下完 / 原生安装包 / 编辑器预览),登录页一亮出就开始,每组间隔 0.3 秒。
    * 玩家抢先点开某页时该页照常显示进度,通常已读完一大半。
    */
   private warmPageGroupsInBackground(): void {
     if (!(sys.isNative || PREVIEW || isFullPackCached())) {
       return;
     }
-    const groups: UiPreloadGroup[] = ['heroes', 'bag', 'forge', 'adventure', 'gacha', 'crystal'];
+    // 大厅最常点的排前面;每组间隔 0.3s(素材在本地,读一组只要几十到几百毫秒)
+    const groups: UiPreloadGroup[] = ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
     groups.forEach((group, index) => {
       this.scheduleOnce(() => {
         if (this.isValid) {
           this.uiSpriteFrameCache.preloadGroup(group);
         }
-      }, index);
+      }, index * 0.3);
     });
   }
 
@@ -808,7 +811,7 @@ export class LootChainGameRoot extends Component {
     this.backgroundWarmStarted = true;
     // 战斗页的 C1812 图组(血条/胜负横幅/受击贴图等)与守卫战素材一起在后台拉。
     this.uiSpriteFrameCache.preloadGroup('battle');
-    this.scheduleOnce(() => this.warmPageGroupsInBackground(), 2);
+    this.scheduleOnce(() => this.warmPageGroupsInBackground(), 0.2);
     // 2026-10-05 用户「进战场背景 / 格子还是后出来」:进场第一眼要用的图(场景背景、石台格子、战斗 HUD)排最前,
     // 怪物骨骼(40 套,最慢)放后面;电脑端最后再把其余玩法页的界面图整目录读进内存(手机内存小,只读各页分组)。
     const sceneBgPaths = (resources.getDirWithPath('ui/battle', SpriteFrame) ?? [])
