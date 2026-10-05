@@ -77,7 +77,7 @@ const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   SR_SNIPER_05: { effect: 'hu_074', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 3.0, end: 4.3 } }, // 峡谷·狂裂贯穿:青蓝光束贯穿(hu_074)
   R_RANGER_06: { effect: 'hu_063', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 12, clip: { start: 4.6, end: 6.8 } }, // 荒原·疾风连射:翠绿风刃连斩(hu_063)
   UR_ARTHAS: { effect: 'hu_085', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 22, clip: { start: 14.5, end: 18.3 } }, // 永夜·龙焰审判:天火坠落 → 蓝炎火海 → 焰柱(hu_085)
-  SSR_MICHAEL: { effect: 'hu_057', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 1.75, end: 2.95 } }, // 圣光·终极审判:金色雷光十字爆闪(hu_057)
+  SSR_MICHAEL: { effect: 'hu_044', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 9.1, end: 10.7 } }, // 圣光·雷霆裁决:雷云压顶,多道金色落雷劈下 + 地面雷爆(hu_044;2026-10-05 用户嫌原 hu_057 金色闪光不好看,换套)
   SR_BLADE_04: { effect: 'hu_065', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 4.75, end: 5.7 } }, // 断刃·狂乱斩:烈焰乱斩爆燃(hu_065)
   R_PATROL_01: { effect: 'hu_014', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 1.8, end: 3.9 } }, // 王国·誓约剑气:金色剑气掠地(hu_014)
   UR_ATLAS: { effect: 'hu_027', animation: 'skill2', anchor: 'self', scale: 2.4, offsetY: 12, clip: { start: 0.2, end: 2.9 } }, // 圣铠·不动壁垒:金莲法阵 + 圣纹轮(hu_027)
@@ -279,7 +279,7 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'hu_074:skill2': { w: 1191, h: 1173, cx: 625, cy: -219 },
   'hu_063:skill2': { w: 2398, h: 1033, cx: 688, cy: 213 },
   'hu_085:skill2': { w: 2171, h: 1220, cx: -35, cy: 212 },
-  'hu_057:skill2': { w: 1065, h: 707, cx: 102, cy: 177 },
+  'hu_044:skill2': { w: 1694, h: 987, cx: 152, cy: 94 },
   'hu_065:skill2': { w: 3631, h: 2474, cx: 1307, cy: -301 },
   'hu_014:skill2': { w: 1258, h: 989, cx: -84, cy: 150 },
   'hu_027:skill2': { w: 901, h: 755, cx: 117, cy: 28 },
@@ -339,7 +339,7 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   'hu_074:skill2': { w: 795, h: 949, cx: 560, cy: -187 },
   'hu_063:skill2': { w: 1386, h: 629, cx: 479, cy: 111 },
   'hu_085:skill2': { w: 1341, h: 830, cx: 3, cy: 87 },
-  'hu_057:skill2': { w: 520, h: 530, cx: 28, cy: 196 },
+  'hu_044:skill2': { w: 857, h: 792, cx: -111, cy: 51 },
   'hu_065:skill2': { w: 2528, h: 1425, cx: 1173, cy: -236 },
   'hu_014:skill2': { w: 529, h: 359, cx: 216, cy: 57 },
   'hu_027:skill2': { w: 700, h: 623, cx: 105, cy: 17 },
@@ -370,6 +370,7 @@ export function lookupBattleFxCoreBounds(effect: string, animation: string): Bat
  */
 const BATTLE_FX_HIDDEN_SLOTS: Record<string, readonly string[]> = {
   hu_073: ['s1_baidi', 's2_guangqiu', 's2_guangqiu3'],
+  hu_044: ['effect-guangyun', 'effect-guangyun25'],
   hu_100: ['baidi_add', 'baidi_normal', 'guangliu_xulie*', 's2_guangliubo*'],
   hu_018: ['TX-huidong3_9'],
   hu_098: ['tx-hei'],

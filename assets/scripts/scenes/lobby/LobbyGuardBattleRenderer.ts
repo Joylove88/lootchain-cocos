@@ -303,7 +303,7 @@ interface GuardUnitView {
   centerOffsetX?: number;
 }
 
-/** 普攻弹幕(轻量 Graphics 弹体,归巢飞向目标;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹;visualOnly=保底技能弹(命中不出飘字)。 */
+/** 普攻弹幕(轻量 Graphics 弹体,跟着出手时锁定的目标飞,目标死了落在它最后的位置;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹;visualOnly=保底技能弹(命中不出飘字)。 */
 interface GuardProjectile {
   node: Node;
   targetId: number;
@@ -330,6 +330,9 @@ interface GuardProjectile {
   impactFx?: { effect: string; animation: string; size: number };
   /** crystalTarget 命中飘字前缀(如"灭世轰击")。 */
   impactLabel?: string;
+  /** 目标最后所在的位置:目标中途死亡后弹体继续飞到这里落地,不改追别的怪。 */
+  aimX?: number;
+  aimY?: number;
 }
 /**
  * 词条卡框(2026-09-22 用户提供 ui/battle/ai/perk_card_{blue,purple,red},413 宽哥特竖框,只能等比):
@@ -6285,7 +6288,7 @@ export class LobbyGuardBattleRenderer {
     this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount: 0, color: tint, visualOnly: true });
   }
 
-  /** 每 tick 推进弹幕(归巢;目标死亡转向最近怪;命中=爆闪+飘字+受击红闪)。 */
+  /** 每 tick 推进弹幕(跟随锁定目标;目标死亡落在其最后位置;命中=爆闪+飘字+受击红闪)。 */
   private updateProjectiles(): void {
     const sim = this.sim;
     if (!sim || this.projectiles.length === 0) {
@@ -6337,29 +6340,20 @@ export class LobbyGuardBattleRenderer {
         }
         continue;
       }
-      let target = sim.monsters.find((entry) => entry.monsterId === proj.targetId && !entry.dead) ?? null;
-      if (!target) {
-        let bestDist = Number.POSITIVE_INFINITY;
-        for (const candidate of sim.monsters) {
-          if (candidate.dead) {
-            continue;
-          }
-          const dist = Math.abs(this.xToPx(candidate.x) - proj.x);
-          if (dist < bestDist) {
-            bestDist = dist;
-            target = candidate;
-          }
-        }
-        if (target) {
-          proj.targetId = target.monsterId;
-        }
+      // 2026-10-05 用户「弹道飞一半突然自动换方向」:目标中途死亡不再改追别的怪,
+      // 沿原方向飞到目标最后所在的位置落地(伤害在出手时已结算,这里只是表现)。
+      const target = sim.monsters.find((entry) => entry.monsterId === proj.targetId && !entry.dead) ?? null;
+      if (target) {
+        proj.aimX = this.xToPx(target.x);
+        proj.aimY = this.monsterY(target.lane, target.x) + this.monsterJitterY(target) * this.monsterSpread(target.x) + this.unitSize() * 0.12;
       }
-      const tx = target ? this.xToPx(target.x) : proj.x + speed;
-      const ty = target ? this.monsterY(target.lane, target.x) + this.monsterJitterY(target) * this.monsterSpread(target.x) + this.unitSize() * 0.12 : proj.y;
+      const hasAim = proj.aimX !== undefined && proj.aimY !== undefined;
+      const tx = proj.aimX ?? proj.x + speed;
+      const ty = proj.aimY ?? proj.y;
       const dx = tx - proj.x;
       const dy = ty - proj.y;
       const dist = Math.hypot(dx, dy);
-      if (dist <= speed || !target) {
+      if (dist <= speed || !hasAim) {
         if (proj.visualOnly) {
           this.spawnImpactFlash(tx, ty, proj.color);
           this.flashMonster(proj.targetId);
