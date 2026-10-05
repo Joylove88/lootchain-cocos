@@ -82,33 +82,27 @@ export function drawPhoneDialogFrame(
   g.fill();
   const headerBottom = top - 6 - headerH;
   if (headerH > 0) {
-    g.fillColor = hasBackdrop ? rgba(22, 14, 10, 200) : rgba(30, 21, 15, 240);
-    g.roundRect(left + 6, headerBottom, width - 12, headerH, 10);
-    g.fill();
-    // 暖色渐隐:顶部最亮,向分隔线淡出
-    const bands = 9;
-    const bandH = (headerH - 8) / bands;
+    // 2026-10-05 用户「上面部分还是不太好看」:去掉方盒子式的标题带(实底 + 落影 + 三颗菱形),
+    // 改成自上而下的柔和压暗(保证标题 / 货币可读)+ 一条两端渐隐的金线,中间一颗小菱形。
+    const fadeH = headerH + 26;
+    const bands = 14;
     for (let i = 0; i < bands; i++) {
-      g.fillColor = rgba(92, 44, 22, Math.round(120 * (1 - i / bands) ** 1.6));
-      g.rect(left + 10, top - 10 - (i + 1) * bandH, width - 20, bandH + 0.5);
+      const t = i / bands;
+      g.fillColor = rgba(8, 5, 6, Math.round(170 * (1 - t) ** 1.4));
+      g.rect(left + 6, top - 6 - (i + 1) * (fadeH / bands), width - 12, fadeH / bands + 0.5);
       g.fill();
     }
-    g.fillColor = rgba(255, 226, 160, 40);
-    g.rect(left + 18, top - 11, width - 36, 1.5);
+    // 顶沿一丝暖色高光
+    g.fillColor = rgba(255, 214, 140, 34);
+    g.rect(left + 60, top - 9, width - 120, 1.5);
     g.fill();
-    // 标题带下方的落影(正文区顶部压暗一条,标题带有"浮起"感)
-    for (let i = 0; i < 5; i++) {
-      g.fillColor = rgba(0, 0, 0, 70 - i * 14);
-      g.rect(left + 8, headerBottom - (i + 1) * 4, width - 16, 4);
-      g.fill();
-    }
-    // 分隔线:两端渐隐
-    const lineW = width - 48;
-    const segs = 24;
+    // 分隔线:占 86% 宽,两端渐隐
+    const lineW = width * 0.86;
+    const segs = 32;
     for (let i = 0; i < segs; i++) {
       const t = Math.abs((i + 0.5) / segs - 0.5) * 2;
-      g.fillColor = rgba(226, 180, 100, Math.round(235 * (1 - t * t * 0.82)));
-      g.rect(left + 24 + (lineW / segs) * i, headerBottom - 1, lineW / segs + 0.5, 2.4);
+      g.fillColor = rgba(226, 182, 104, Math.round(220 * (1 - t) ** 1.3));
+      g.rect(-lineW / 2 + (lineW / segs) * i, headerBottom - 1, lineW / segs + 0.5, 2);
       g.fill();
     }
   }
@@ -126,6 +120,10 @@ export function drawPhoneDialogFrame(
   g.strokeColor = rgba(240, 198, 118, 245);
   g.lineWidth = 3.2;
   ([[-1, 1], [1, 1], [-1, -1], [1, -1]] as Array<[number, number]>).forEach(([sx, sy]) => {
+    if (headerH > 0 && sx < 0 && sy > 0) {
+      // 左上角是标题牌的位置,不画包角(免得压在徽记上)
+      return;
+    }
     const cx = sx * (width / 2 - inset);
     const cy = sy * (height / 2 - inset);
     g.moveTo(cx - sx * arm, cy);
@@ -138,18 +136,18 @@ export function drawPhoneDialogFrame(
   const gems: Array<[number, number, number, number]> = [
     [0, height / 2, 11, 6],
     [0, -height / 2, 9, 5],
-    [-width / 2 + corner, height / 2 - corner, 6, 6],
+    ...(headerH > 0 ? [] : [[-width / 2 + corner, height / 2 - corner, 6, 6] as [number, number, number, number]]),
     [width / 2 - corner, height / 2 - corner, 6, 6],
     [-width / 2 + corner, -height / 2 + corner, 6, 6],
     [width / 2 - corner, -height / 2 + corner, 6, 6],
   ];
   if (headerH > 0) {
-    gems.push([0, headerBottom, 9, 5], [-width * 0.2, headerBottom, 5, 3.5], [width * 0.2, headerBottom, 5, 3.5]);
+    gems.push([0, headerBottom, 8, 4.5]);
   }
   gems.forEach(([x, y, rx, ry], index) => {
     const gem = host.addChildPlainNode(frameNode, `PhoneFrameGem_${index}`, x, y, rx * 2, ry * 2);
     const gg = gem.addComponent(Graphics);
-    gg.fillColor = index < 2 || index >= 6 ? rgba(236, 196, 118, 250) : rgba(190, 146, 78, 230);
+    gg.fillColor = index < 2 || index >= 5 ? rgba(236, 196, 118, 250) : rgba(190, 146, 78, 230);
     gg.moveTo(0, ry);
     gg.lineTo(rx, 0);
     gg.lineTo(0, -ry);
@@ -163,10 +161,10 @@ export function drawPhoneDialogFrame(
  * 全屏弹框左上角标题牌(与英雄 / 背包页的左上标题同款,2026-10-05 用户:弹框标题统一成这个样式)。
  * 牌心在弹框顶边下方 centerDrop 处;返回标题牌右缘 x(弹框坐标),调用方可在其右侧接着排页签 / 货币。
  */
-export function addPhoneDialogTitle(host: PhoneDialogFrameHost, panel: Node, width: number, height: number, title: string, centerDrop = 42, scale = 0.9): number {
+export function addPhoneDialogTitle(host: PhoneDialogFrameHost, panel: Node, width: number, height: number, title: string, centerDrop = 42, scale = 1.05): number {
   const bannerW = Math.max(250 * scale, title.length * 52 * scale + 72 * scale);
   const bannerH = bannerW * (201 / 596);
-  const x = -width / 2 + 14 + bannerW / 2;
+  const x = -width / 2 + 8 + bannerW / 2;
   const y = height / 2 - centerDrop;
   const banner = host.addSprite?.('PhoneDialogTitleBanner', PHONE_DIALOG_TITLE_BANNER_ASSET, x, y, bannerW, bannerH, panel) ?? null;
   if (host.addChildLabel) {

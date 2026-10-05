@@ -125,7 +125,8 @@ const CHANNEL_ROW_H = 58;
  * 手机横屏全屏版(2026-10-02 用户:「横屏模式下弹框都调整成全屏」):面板铺满舞台、程序画框(原 4:3 素材框只能等比);
  * 标题带更紧凑,卡片上限放大、文字随卡宽同比放大(上限 1.35 倍);钻石页 6 档按"卡最大"自动选每排张数(宽屏一排 6 张)。
  */
-const PHONE_GEO = { headerH: 120, footerH: 84, noticeY: 42, sidePad: 28, gapCol: 18, titleBand: 104 };
+// 2026-10-05 用户「上面部分不太好看」:标题带改单行(标题牌 · 说明 · 余额同一行),高 104 → 88
+const PHONE_GEO = { headerH: 104, footerH: 84, noticeY: 42, sidePad: 28, gapCol: 18, titleBand: 88 };
 // 2026-10-04 用户「每个充值的框都放大」:卡宽上限放开,实际由可用高度决定(框素材只能等比);钻石 6 档一排放不下时横向滑动。
 const PHONE_CARD_W = { gold: 380, stamina: 340, diamond: 340 };
 const PHONE_TEXT_SCALE_MAX = 1.6;
@@ -215,7 +216,7 @@ export class LobbyShopDialogRenderer {
 
     const closeSize = (phone ? 52 : 44) * scale;
     const closeX = phone ? panelW / 2 - 46 * scale : panelW / 2 - 64 * scale;
-    const closeY = phone ? panelH / 2 - 52 * scale : panelH / 2 - 62 * scale;
+    const closeY = phone ? panelH / 2 - (6 + (PHONE_GEO.titleBand * scale) / 2) : panelH / 2 - 62 * scale;
     const close = this.host.addChildPlainNode(panel, 'LobbyShopClose', closeX, closeY, closeSize, closeSize * CLOSE_BUTTON.aspect);
     this.host.addSprite('LobbyShopCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
     close.addComponent(Button);
@@ -225,9 +226,11 @@ export class LobbyShopDialogRenderer {
     // 标题压到顶饰之下,两侧任务页同款 title_divider 饰件(与守卫战弹层一致)。
     const titleY = panelH / 2 - (phone ? 40 : 112) * scale;
     const titleSize = FONT.title * scale;
+    const phoneRowDrop = 6 + (PHONE_GEO.titleBand * scale) / 2;
+    let phoneTitleRight = 0;
     if (phone) {
       // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户);余额胶囊挪到右上、关闭钮左侧
-      addPhoneDialogTitle(this.host, panel, panelW, panelH, TITLE[state.kind], 44 * scale, 0.9 * scale);
+      phoneTitleRight = addPhoneDialogTitle(this.host, panel, panelW, panelH, TITLE[state.kind], phoneRowDrop, 1.05 * scale);
     } else {
       const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, titleY, titleSize, rgba(255, 226, 150), new Size(panelW * 0.6, titleSize + 10 * scale));
       title.isBold = true;
@@ -255,6 +258,16 @@ export class LobbyShopDialogRenderer {
             : '钻石充值暂未开放,敬请期待';
     const subtitle = this.host.addChildLabel(panel, 'LobbyShopSubtitle', subtitleText, 0, titleY - (phone ? 40 : 36) * scale, FONT.subtitle * scale, rgba(212, 190, 150, 235), new Size(panelW * 0.82, this.lh(24, scale)));
     subtitle.overflow = Label.Overflow.SHRINK;
+    if (phone) {
+      // 说明排在标题牌右侧、余额胶囊左侧,同一行左对齐
+      const chips = state.kind === 'diamond' ? 1 : 2;
+      const subLeft = phoneTitleRight + 20 * scale;
+      const subRight = panelW / 2 - (96 + chips * 216) * scale;
+      const subW = Math.max(120 * scale, subRight - subLeft);
+      subtitle.node.setPosition(subLeft + subW / 2, panelH / 2 - phoneRowDrop, 0);
+      subtitle.node.getComponent(UITransform)?.setContentSize(subW, 30 * scale);
+      subtitle.horizontalAlign = HorizontalTextAlignment.LEFT;
+    }
 
     // 2026-09-24 用户:去掉底部"当前持有"余额行(顶部货币栏已有),底部整条留给结果横幅。
     const profile = this.host.currentLobbyProfile();
@@ -308,8 +321,11 @@ export class LobbyShopDialogRenderer {
     const gap = 18 * scale;
     void capW;
     void gap;
-    const rightX = panelW / 2 - 92 * scale;
-    renderTopCurrencyBar(this.host as unknown as SceneBackButtonHost, panel, rightX, panelH / 2, scale, entries, 0);
+    // 胶囊放大到 1.25 倍,与标题牌同一行居中
+    const capScale = scale * 1.25;
+    const rightX = panelW / 2 - 88 * scale;
+    const rowY = panelH / 2 - 6 - (PHONE_GEO.titleBand * scale) / 2;
+    renderTopCurrencyBar(this.host as unknown as SceneBackButtonHost, panel, rightX, rowY + 40 * capScale, capScale, entries, 0);
   }
 
   /** 手机:卡片区垫一块内凹底板(深底 + 金色上沿线 + 细边),不再是整块平黑。 */
