@@ -6145,7 +6145,9 @@ export class LobbyGuardBattleRenderer {
       });
       return;
     }
-    if (spec) {
+    // 配了骨骼特效的英雄不再回退 AI 贴图(2026-10-05 用户:「圣光审判者普攻还有 AI 贴图」):
+    // 骨骼还没读好 / 同屏超额时走下面的通用光弹,命中走爆闪,等骨骼就绪自动换成专属特效。
+    if (spec && !spineSpec) {
       // 专属贴图(朝右绘制,飞行时父节点按方向旋转;等比设尺寸不拉伸)。
       // 近战(strike):飞行体取 0.6 倍,命中时再由 strikeSpec 全尺寸爆开,形成"蓄力飞出 → 命中炸开"。
       const melee = spec.kind === 'strike';
@@ -6181,7 +6183,7 @@ export class LobbyGuardBattleRenderer {
     g.fillColor = rgba(255, 250, 235, 245);
     g.ellipse(1, 0, 8, 4);
     g.fill();
-    this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color });
+    this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color, crit: extra?.crit, scale: extra?.scale, heroCode: extra?.heroCode });
   }
 
   /**
@@ -6446,7 +6448,8 @@ export class LobbyGuardBattleRenderer {
   private resolveProjectileHit(x: number, y: number, targetId: number, amount: number, color: Color, strikeSpec?: BattleAttackFxSpec, crit?: boolean, scale = 1, heroCode?: string): void {
     if (heroCode && this.spawnAttackHitFx(heroCode, x, y, scale)) {
       // fx_pack 配套命中特效已播:不再叠静态斩击图/十字爆闪。
-    } else if (strikeSpec) {
+    } else if (strikeSpec && !(heroCode && resolveHeroAttackSpineFx(heroCode))) {
+      // 没配骨骼特效的英雄才用静态斩击图;配了的(骨骼未就绪时)走下面的爆闪
       this.spawnStrikeFx(strikeSpec, x, y, scale);
     } else {
       this.spawnImpactFlash(x, y, color);
