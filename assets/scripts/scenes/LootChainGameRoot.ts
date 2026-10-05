@@ -45,6 +45,7 @@ import {
   type AssetManifest,
 } from '../app/AssetOfflineCache';
 import { PREVIEW } from 'cc/env';
+import { installMobileWebShell } from '../app/MobileWebShell';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
@@ -512,6 +513,8 @@ export class LootChainGameRoot extends Component {
   private reusableScenesRegistered = false;
 
   start(): void {
+    // 手机网页:竖握提示横屏 + 点击全屏锁横屏 + EditBox 引擎报错补丁(2026-10-05)
+    installMobileWebShell();
     // 仅横屏(2026-10-02 用户拍板):手机竖握时引擎旋转画布显示横屏;构建配置也设了 landscape,这里保证预览与任何构建都生效。
     view.setOrientation(macro.ORIENTATION_LANDSCAPE);
     // H5/PC 全屏适配:设计分辨率跟随横屏视口比例,后续每帧在 update 里保持同步。
