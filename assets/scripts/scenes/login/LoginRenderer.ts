@@ -1,3 +1,4 @@
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import {
   BlockInputEvents,
   Button,
@@ -143,7 +144,10 @@ export class LoginRenderer {
     const buttonWidth = clamp(layout.contentWidth * 0.34, 300 * layout.uiScale, 450 * layout.uiScale);
     const buttonHeight = Math.round(buttonWidth * 0.23);
     // 主登录按钮贴近舞台底部安全区，避免不同预览分辨率下跑出背景舞台。
-    const buttonY = layout.safeBottom + Math.max(12 * layout.uiScale, layout.safeHeight * 0.02) + buttonHeight / 2;
+    // 手机:点屏幕会进全屏,浏览器的「如需退出全屏…」提示条占屏幕底部约 1/4(网页无法去掉),
+    // 按钮整体抬到底部 27% 之上,不被挡(2026-10-05 用户)。
+    const bottomGap = isPhoneDesign() ? layout.safeHeight * 0.27 : Math.max(12 * layout.uiScale, layout.safeHeight * 0.02);
+    const buttonY = layout.safeBottom + bottomGap + buttonHeight / 2;
     if (USE_IMAGE_LOGIN_BUTTON) {
       this.host.addImageButton(
         'MainAccountLoginButton',
