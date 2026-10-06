@@ -1,97 +1,97 @@
 
 effect_baihu.png
-size: 2048, 256
+size: 1024,128
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 hu2
   rotate: false
-  xy: 1163, 151
-  size: 160, 96
-  orig: 205, 205
-  offset: 21, 69
+  xy: 581, 75
+  size: 80, 48
+  orig: 102, 102
+  offset: 10, 34
   index: -1
 zhuabo1
   rotate: false
-  xy: 974, 77
-  size: 187, 170
-  orig: 205, 205
-  offset: 18, 35
+  xy: 487, 38
+  size: 94, 85
+  orig: 102, 102
+  offset: 9, 18
   index: -1
 zhuabo2
   rotate: false
-  xy: 2, 62
-  size: 205, 185
-  orig: 205, 205
-  offset: 0, 20
+  xy: 1, 31
+  size: 103, 93
+  orig: 102, 102
+  offset: 0, 10
   index: -1
 zhuabo3
   rotate: false
-  xy: 406, 62
-  size: 188, 185
-  orig: 205, 205
-  offset: 17, 20
+  xy: 203, 31
+  size: 94, 93
+  orig: 102, 102
+  offset: 8, 10
   index: -1
 zhuabo4
   rotate: false
-  xy: 596, 49
-  size: 187, 198
-  orig: 205, 205
-  offset: 18, 7
+  xy: 298, 24
+  size: 94, 99
+  orig: 102, 102
+  offset: 9, 4
   index: -1
 zhuabo5
   rotate: false
-  xy: 209, 62
-  size: 195, 185
-  orig: 205, 205
-  offset: 10, 20
+  xy: 104, 31
+  size: 98, 93
+  orig: 102, 102
+  offset: 5, 10
   index: -1
 zhuabo6
   rotate: false
-  xy: 785, 53
-  size: 187, 194
-  orig: 205, 205
-  offset: 18, 11
+  xy: 392, 26
+  size: 94, 97
+  orig: 102, 102
+  offset: 9, 6
   index: -1
 zhuaci2
   rotate: false
-  xy: 1325, 119
-  size: 57, 128
-  orig: 205, 205
-  offset: 102, 56
+  xy: 662, 59
+  size: 29, 64
+  orig: 102, 102
+  offset: 51, 28
   index: -1
 zhuaci3
   rotate: false
-  xy: 1384, 107
-  size: 54, 140
-  orig: 205, 205
-  offset: 108, 38
+  xy: 692, 53
+  size: 27, 70
+  orig: 102, 102
+  offset: 54, 19
   index: -1
 zhuaci4
   rotate: false
-  xy: 1440, 124
-  size: 56, 123
-  orig: 205, 205
-  offset: 104, 27
+  xy: 720, 62
+  size: 28, 62
+  orig: 102, 102
+  offset: 52, 14
   index: -1
 zhuaci5
   rotate: false
-  xy: 1498, 127
-  size: 57, 120
-  orig: 205, 205
-  offset: 102, 24
+  xy: 749, 63
+  size: 29, 60
+  orig: 102, 102
+  offset: 51, 12
   index: -1
 zhuaci6
   rotate: false
-  xy: 1557, 130
-  size: 55, 117
-  orig: 205, 205
-  offset: 101, 20
+  xy: 778, 65
+  size: 28, 59
+  orig: 102, 102
+  offset: 50, 10
   index: -1
 zhuaci7
   rotate: false
-  xy: 2, 2
-  size: 52, 58
-  orig: 205, 205
-  offset: 101, 20
+  xy: 1, 1
+  size: 26, 29
+  orig: 102, 102
+  offset: 50, 10
   index: -1

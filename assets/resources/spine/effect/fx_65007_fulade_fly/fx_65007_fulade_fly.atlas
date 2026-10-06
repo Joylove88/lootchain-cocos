@@ -1,76 +1,76 @@
 
 fx_65007_fulade_fly.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/fly_00000
   rotate: false
-  xy: 2, 409
-  size: 676, 201
-  orig: 746, 400
-  offset: 47, 175
+  xy: 1, 204
+  size: 338, 101
+  orig: 373, 200
+  offset: 24, 88
   index: -1
 attack/fly_00001
   rotate: false
-  xy: 2, 612
-  size: 696, 195
-  orig: 746, 400
-  offset: 28, 171
+  xy: 1, 306
+  size: 348, 98
+  orig: 373, 200
+  offset: 14, 86
   index: -1
 attack/fly_00002
   rotate: false
-  xy: 2, 2
-  size: 706, 89
-  orig: 746, 400
-  offset: 21, 171
+  xy: 1, 1
+  size: 353, 45
+  orig: 373, 200
+  offset: 10, 86
   index: -1
 attack/fly_00003
   rotate: false
-  xy: 2, 93
-  size: 701, 134
-  orig: 746, 400
-  offset: 20, 108
+  xy: 1, 46
+  size: 351, 67
+  orig: 373, 200
+  offset: 10, 54
   index: -1
 attack/fly_00004
   rotate: false
-  xy: 701, 818
-  size: 688, 195
-  orig: 746, 400
-  offset: 26, 48
+  xy: 350, 409
+  size: 344, 98
+  orig: 373, 200
+  offset: 13, 24
   index: -1
 attack/fly_00005
   rotate: false
-  xy: 2, 229
-  size: 697, 178
-  orig: 746, 400
-  offset: 20, 65
+  xy: 1, 114
+  size: 349, 89
+  orig: 373, 200
+  offset: 10, 32
   index: -1
 attack/fly_00006
   rotate: false
-  xy: 701, 703
-  size: 701, 113
-  orig: 746, 400
-  offset: 21, 128
+  xy: 350, 351
+  size: 351, 57
+  orig: 373, 200
+  offset: 10, 64
   index: -1
 attack/fly_00007
   rotate: false
-  xy: 680, 480
-  size: 664, 73
-  orig: 746, 400
-  offset: 62, 172
+  xy: 340, 240
+  size: 332, 37
+  orig: 373, 200
+  offset: 31, 86
   index: -1
 attack/fly_00008
   rotate: false
-  xy: 700, 555
-  size: 680, 146
-  orig: 746, 400
-  offset: 47, 175
+  xy: 350, 277
+  size: 340, 73
+  orig: 373, 200
+  offset: 24, 88
   index: -1
 attack/fly_00009
   rotate: false
-  xy: 2, 809
-  size: 697, 204
-  orig: 746, 400
-  offset: 26, 171
+  xy: 1, 404
+  size: 349, 102
+  orig: 373, 200
+  offset: 13, 86
   index: -1

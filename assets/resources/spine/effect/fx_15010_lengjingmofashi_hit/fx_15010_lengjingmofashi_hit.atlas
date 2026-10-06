@@ -1,125 +1,125 @@
 
 fx_15010_lengjingmofashi_hit.png
-size: 2048, 512
+size: 1024,256
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/glow_00015
   rotate: false
-  xy: 1656, 2
-  size: 94, 96
-  orig: 128, 128
-  offset: 18, 17
+  xy: 828, 1
+  size: 47, 48
+  orig: 64, 64
+  offset: 9, 8
   index: -1
 attack/hit_00036
   rotate: false
-  xy: 1905, 405
-  size: 104, 104
-  orig: 280, 280
-  offset: 82, 90
+  xy: 952, 202
+  size: 52, 52
+  orig: 140, 140
+  offset: 41, 45
   index: -1
 attack/hit_00037
   rotate: false
-  xy: 1735, 356
-  size: 168, 153
-  orig: 280, 280
-  offset: 56, 67
+  xy: 867, 178
+  size: 84, 77
+  orig: 140, 140
+  offset: 28, 34
   index: -1
 attack/hit_00038
   rotate: false
-  xy: 1524, 317
-  size: 209, 192
-  orig: 280, 280
-  offset: 30, 60
+  xy: 762, 158
+  size: 105, 96
+  orig: 140, 140
+  offset: 15, 30
   index: -1
 attack/hit_00039
   rotate: false
-  xy: 1656, 100
-  size: 237, 215
-  orig: 280, 280
-  offset: 14, 51
+  xy: 828, 50
+  size: 119, 108
+  orig: 140, 140
+  offset: 7, 26
   index: -1
 attack/hit_00040
   rotate: false
-  xy: 807, 37
-  size: 259, 226
-  orig: 280, 280
-  offset: 8, 51
+  xy: 403, 18
+  size: 130, 113
+  orig: 140, 140
+  offset: 4, 26
   index: -1
 attack/hit_00041
   rotate: false
-  xy: 542, 15
-  size: 263, 208
-  orig: 280, 280
-  offset: 8, 49
+  xy: 271, 7
+  size: 132, 104
+  orig: 140, 140
+  offset: 4, 24
   index: -1
 attack/hit_00042
   rotate: false
-  xy: 992, 310
-  size: 264, 199
-  orig: 280, 280
-  offset: 8, 45
+  xy: 496, 155
+  size: 132, 100
+  orig: 140, 140
+  offset: 4, 22
   index: -1
 attack/hit_00043
   rotate: false
-  xy: 1258, 311
-  size: 264, 198
-  orig: 280, 280
-  offset: 8, 46
+  xy: 629, 155
+  size: 132, 99
+  orig: 140, 140
+  offset: 4, 23
   index: -1
 skill/hit_00059
   rotate: false
-  xy: 1370, 33
-  size: 284, 276
-  orig: 352, 352
-  offset: 26, 26
+  xy: 685, 16
+  size: 142, 138
+  orig: 176, 176
+  offset: 13, 13
   index: -1
 skill/hit_00060
   rotate: false
-  xy: 1068, 20
-  size: 300, 288
-  orig: 352, 352
-  offset: 27, 18
+  xy: 534, 10
+  size: 150, 144
+  orig: 176, 176
+  offset: 14, 9
   index: -1
 skill/hit_00061
   rotate: false
-  xy: 2, 192
-  size: 320, 317
-  orig: 352, 352
-  offset: 10, 16
+  xy: 1, 96
+  size: 160, 159
+  orig: 176, 176
+  offset: 5, 8
   index: -1
 skill/hit_00062
   rotate: false
-  xy: 324, 225
-  size: 336, 284
-  orig: 352, 352
-  offset: 6, 47
+  xy: 162, 112
+  size: 168, 142
+  orig: 176, 176
+  offset: 3, 24
   index: -1
 skill/hit_00063
   rotate: false
-  xy: 662, 265
-  size: 328, 244
-  orig: 352, 352
-  offset: 20, 83
+  xy: 331, 132
+  size: 164, 122
+  orig: 176, 176
+  offset: 10, 42
   index: -1
 skill/hit_00064
   rotate: false
-  xy: 2, 17
-  size: 308, 173
-  orig: 352, 352
-  offset: 35, 142
+  xy: 1, 8
+  size: 154, 87
+  orig: 176, 176
+  offset: 18, 71
   index: -1
 skill/hit_00065
   rotate: false
-  xy: 312, 24
-  size: 228, 166
-  orig: 352, 352
-  offset: 104, 152
+  xy: 156, 12
+  size: 114, 83
+  orig: 176, 176
+  offset: 52, 76
   index: -1
 skill/hit_00066
   rotate: false
-  xy: 1895, 234
-  size: 108, 120
-  orig: 352, 352
-  offset: 213, 171
+  xy: 947, 117
+  size: 54, 60
+  orig: 176, 176
+  offset: 106, 86
   index: -1

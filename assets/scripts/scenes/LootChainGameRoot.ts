@@ -516,6 +516,10 @@ export class LootChainGameRoot extends Component {
   start(): void {
     // 手机网页:竖握提示横屏 + 点击全屏锁横屏 + EditBox 引擎报错补丁(2026-10-05)
     installMobileWebShell();
+    // 手机:贴图上传显卡后释放 CPU 侧解码图(默认两份都留着,内存翻倍;2026-10-06 手机内存优化)
+    if (sys.isMobile) {
+      macro.CLEANUP_IMAGE_CACHE = true;
+    }
     // 画面设置(流畅 / 极致 + 帧率):启动时套用上次的选择
     applyGraphicsSettings();
     // 有输入框的界面不自动进全屏(进全屏会收掉输入法);登录首页可以(主按钮已抬到浏览器退出全屏提示条之上)
@@ -833,7 +837,7 @@ export class LootChainGameRoot extends Component {
     const restUi = isPhoneDesign() || !localAssets ? [] : collectUiDirPaths(BACKGROUND_WARM_UI_DIRS).filter((path) => !first.has(path));
     const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [
       ...Array.from(first).map((path) => ({ path, kind: 'ui' as const })),
-      ...Object.keys(GUARD_MONSTER_SPINE_FILE).map((code) => ({ path: guardMonsterSpineResource(code), kind: 'spine' as const })),
+      ...(sys.isMobile ? [] : Object.keys(GUARD_MONSTER_SPINE_FILE).map((code) => ({ path: guardMonsterSpineResource(code), kind: 'spine' as const }))),
       ...restUi.map((path) => ({ path, kind: 'ui' as const })),
     ];
     let cursor = 0;
@@ -876,6 +880,10 @@ export class LootChainGameRoot extends Component {
 
   /** 进守卫战前把全部怪物骨骼(40 套)预取进内存:首波怪入场即带动画,不再先出占位色块。 */
   private prefetchGuardMonsterSpineAssets(): void {
+    // 手机:本局用到的怪在开战加载门里按抽样表预载,不再把 40 套全读进内存(2026-10-06 显存优化)
+    if (sys.isMobile) {
+      return;
+    }
     for (const spineCode of Object.keys(GUARD_MONSTER_SPINE_FILE)) {
       const path = guardMonsterSpineResource(spineCode);
       if (!resources.get(path, sp.SkeletonData)) {
@@ -6950,7 +6958,49 @@ export class LootChainGameRoot extends Component {
         monsterSkinAsset: enemy.skinAsset ?? null,
       })),
     ];
-    return this.lobbyBattlePreviewPanelRenderer.preloadBattleSessionAssets(units, onProgress);
+    // 守卫战本局会用到的怪物骨骼 / 特效骨骼 / 贴图也在这道门里顺序读完(2026-10-06:此前进场第一帧集中解码上传,手机卡死几秒)
+    const extra = this.lobbyGuardBattleRenderer.collectBattlePrewarmResources(this.currentLobbyBattleState());
+    const extraTotal = extra.spine.length + extra.sprites.length;
+    let baseTotal = 0;
+    return this.lobbyBattlePreviewPanelRenderer.preloadBattleSessionAssets(units, (loaded, total) => {
+      baseTotal = total;
+      onProgress(loaded, total + extraTotal);
+    }).then(() => new Promise<void>((resolve) => {
+      const tasks: Array<{ path: string; kind: 'spine' | 'sprite' }> = [
+        ...extra.spine.map((path) => ({ path, kind: 'spine' as const })),
+        ...extra.sprites.map((path) => ({ path, kind: 'sprite' as const })),
+      ];
+      let index = 0;
+      let done = 0;
+      const finish = (): void => resolve();
+      const timer = setTimeout(finish, 20000);
+      const next = (): void => {
+        if (index >= tasks.length) {
+          clearTimeout(timer);
+          finish();
+          return;
+        }
+        const task = tasks[index++];
+        const after = (): void => {
+          done += 1;
+          onProgress(baseTotal + done, baseTotal + extraTotal);
+          // 每个之间让出一帧:解码 / 上传分摊到多帧,加载门里的进度条也能动
+          this.scheduleOnce(next, 0);
+        };
+        if (task.kind === 'spine') {
+          if (resources.get(task.path, sp.SkeletonData)) {
+            after();
+          } else {
+            resources.load(task.path, sp.SkeletonData, after);
+          }
+        } else if (resources.get(task.path, SpriteFrame)) {
+          after();
+        } else {
+          resources.load(task.path, SpriteFrame, after);
+        }
+      };
+      next();
+    }));
   }
 
   private fillLobbyFormationWithDefaultHeroes(): void {

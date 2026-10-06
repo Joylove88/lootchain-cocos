@@ -1,97 +1,97 @@
 
 fx_650059_specialhit.png
-size: 2048, 256
+size: 1024,128
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_70
   rotate: false
-  xy: 1067, 159
-  size: 134, 95
-  orig: 203, 167
-  offset: 33, 46
+  xy: 533, 79
+  size: 67, 48
+  orig: 102, 84
+  offset: 16, 23
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_71
   rotate: false
-  xy: 2, 5
-  size: 161, 112
-  orig: 203, 167
-  offset: 19, 35
+  xy: 1, 2
+  size: 81, 56
+  orig: 102, 84
+  offset: 10, 18
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_72
   rotate: false
-  xy: 331, 2
-  size: 171, 119
-  orig: 203, 167
-  offset: 16, 31
+  xy: 165, 1
+  size: 86, 60
+  orig: 102, 84
+  offset: 8, 16
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_73
   rotate: false
-  xy: 371, 123
-  size: 176, 131
-  orig: 203, 167
-  offset: 16, 25
+  xy: 185, 61
+  size: 88, 66
+  orig: 102, 84
+  offset: 8, 12
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_74
   rotate: false
-  xy: 2, 119
-  size: 181, 135
-  orig: 203, 167
-  offset: 16, 22
+  xy: 1, 59
+  size: 91, 68
+  orig: 102, 84
+  offset: 8, 11
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_75
   rotate: false
-  xy: 185, 124
-  size: 184, 130
-  orig: 203, 167
-  offset: 15, 21
+  xy: 92, 62
+  size: 92, 65
+  orig: 102, 84
+  offset: 8, 10
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_76
   rotate: false
-  xy: 549, 127
-  size: 176, 127
-  orig: 203, 167
-  offset: 24, 21
+  xy: 274, 63
+  size: 88, 64
+  orig: 102, 84
+  offset: 12, 10
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_77
   rotate: false
-  xy: 727, 127
-  size: 175, 127
-  orig: 203, 167
-  offset: 24, 21
+  xy: 363, 63
+  size: 88, 64
+  orig: 102, 84
+  offset: 12, 10
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_78
   rotate: false
-  xy: 904, 129
-  size: 161, 125
-  orig: 203, 167
-  offset: 27, 19
+  xy: 452, 64
+  size: 81, 63
+  orig: 102, 84
+  offset: 14, 10
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_79
   rotate: false
-  xy: 904, 2
-  size: 158, 125
-  orig: 203, 167
-  offset: 28, 17
+  xy: 452, 1
+  size: 79, 63
+  orig: 102, 84
+  offset: 14, 8
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_81
   rotate: false
-  xy: 185, 2
-  size: 144, 120
-  orig: 203, 167
-  offset: 43, 15
+  xy: 92, 1
+  size: 72, 60
+  orig: 102, 84
+  offset: 22, 8
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_83
   rotate: false
-  xy: 1203, 143
-  size: 88, 111
-  orig: 203, 167
-  offset: 66, 12
+  xy: 601, 71
+  size: 44, 56
+  orig: 102, 84
+  offset: 33, 6
   index: -1
 fx_65005_dhzy_skill1_5/fx_65005_dhzy_skill1_5_85
   rotate: false
-  xy: 1293, 160
-  size: 82, 94
-  orig: 203, 167
-  offset: 71, 27
+  xy: 646, 80
+  size: 41, 47
+  orig: 102, 84
+  offset: 36, 14
   index: -1

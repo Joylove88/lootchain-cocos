@@ -113,6 +113,7 @@ import {
   type GuardHeroUnit,
   type GuardMonster,
   type GuardPoolHero,
+  guardPickMonsterSpineCodes,
 } from './GuardBattleModel';
 import { resolveLobbyBattlePresentationSnapshot, type BattlePresentationSnapshot, type BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 import {
@@ -745,6 +746,7 @@ export class LobbyGuardBattleRenderer {
       rushMode ? 'rush' : 'standard',
       {
         monsterScale: this.resolveMainMonsterScale(stageCode),
+        monsterVariety: LobbyGuardBattleRenderer.monsterVariety(),
         // 限时副本小怪数量 ×3(2026-09-11 用户拍板);BOSS/精英在波次编排循环外单独 push,不受此倍率影响。
         spawnCountMult: isMain ? 2 : isDaily ? 3 : 1,
         monsterHpMult: isMain || isDaily ? 3 : 1,
@@ -3075,23 +3077,62 @@ export class LobbyGuardBattleRenderer {
     titleY: number,
     buttonY: number,
   ): void {
-    // 左栏一行 = 标签 220 + 间距 28 + 两颗胶囊 312,整块居中在左半屏。
-    const blockLeft = -panelW / 4 - 280;
-    const rightX = panelW / 4;
-    const rowTop = titleY - 128;
-    const rowStep = Math.min(80, (rowTop - (buttonY + 76)) / Math.max(1, rows.length - 1));
-    rows.forEach((row, index) => {
-      const y = rowTop - index * rowStep;
-      const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, blockLeft + 220, y, 24, rgba(240, 222, 186), new Size(220, 36), HorizontalTextAlignment.RIGHT);
-      label.overflow = Label.Overflow.SHRINK;
-      this.mountSettingsSegment(content, `GuardSettings${row.key}`, blockLeft + 404, y, row.options, row.active, (picked) => {
-        row.pick(picked);
-        this.renderSettingsPage(overlay, 'main');
-      }, 150, 54, 22);
-    });
-    // 两栏分隔细线
-    const sepTop = rowTop + 30;
-    const sepBottom = rowTop - (rows.length - 1) * rowStep - 30;
+    // 2026-10-06 用户「排版挤压严重」:8 行开关不再堆一列,按主题分两栏——
+    // 左「声音与画面」(音乐 / 音效 / 画面 / 帧率 / 性能面板),右「战斗」(震屏 / 伤害数字 / 战技释放)+ 两个入口;
+    // 每栏一行 = 标签 150 + 两颗胶囊(帧率三颗等分同宽),栏心在 ±panelW/4 附近,行距 70。
+    const leftKeys = ['Bgm', 'Sfx', 'Graphics', 'Fps', 'Perf'];
+    const left = rows.filter((row) => leftKeys.indexOf(row.key) >= 0);
+    const right = rows.filter((row) => leftKeys.indexOf(row.key) < 0);
+    const rowStep = 70;
+    const headerY = titleY - 104;
+    const rowTop = headerY - 56;
+    const labelW = 150;
+    const pillW = 140;
+    const colW = labelW + 18 + pillW * 2 + 12;
+    const colCenters = [-panelW / 4 - 20, panelW / 4 + 20];
+    const paintHeader = (x: number, text: string): void => {
+      const header = this.host.addChildLabel(content, `GuardSettingsGroup_${text}`, text, x, headerY, 22, rgba(245, 214, 140), new Size(colW, 32));
+      header.isBold = true;
+      // 标题两侧细金线
+      const lineW = (colW - Array.from(text).length * 24 - 40) / 2;
+      const g = this.host.addChildPlainNode(content, `GuardSettingsGroupLine_${text}`, x, headerY, colW, 4).addComponent(Graphics);
+      g.strokeColor = rgba(170, 130, 70, 170);
+      g.lineWidth = 1.5;
+      g.moveTo(-colW / 2, 0);
+      g.lineTo(-colW / 2 + lineW, 0);
+      g.moveTo(colW / 2 - lineW, 0);
+      g.lineTo(colW / 2, 0);
+      g.stroke();
+    };
+    const paintColumn = (list: typeof rows, x: number): number => {
+      const labelX = x - colW / 2 + labelW;
+      const segX = x + colW / 2 - pillW - 6;
+      list.forEach((row, index) => {
+        const y = rowTop - index * rowStep;
+        const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, labelX, y, 23, rgba(240, 222, 186), new Size(labelW, 36), HorizontalTextAlignment.RIGHT);
+        label.overflow = Label.Overflow.SHRINK;
+        this.mountSettingsSegment(content, `GuardSettings${row.key}`, segX, y, row.options, row.active, (picked) => {
+          row.pick(picked);
+          this.renderSettingsPage(overlay, 'main');
+        }, pillW, 52, 22);
+      });
+      return rowTop - (list.length - 1) * rowStep;
+    };
+    paintHeader(colCenters[0], '声音与画面');
+    paintHeader(colCenters[1], '战斗');
+    const leftBottom = paintColumn(left, colCenters[0]);
+    const rightBottom = paintColumn(right, colCenters[1]);
+    // 右栏开关下面接两个入口(与开关同宽),再下面是说明
+    const linkW = colW - 20;
+    const linkY1 = rightBottom - rowStep - 2;
+    const linkY2 = linkY1 - 66;
+    const help = this.mountOutlineLink(content, 'GuardSettingsHelpLink', colCenters[1], linkY1, linkW, 54, '玩法速查 ›');
+    help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
+    const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', colCenters[1], linkY2, linkW, 54, '法术装备 ›');
+    spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
+    // 中线
+    const sepTop = headerY + 16;
+    const sepBottom = Math.min(leftBottom, linkY2) - 30;
     const sep = this.host.addChildPlainNode(content, 'GuardSettingsSep', 0, (sepTop + sepBottom) / 2, 4, sepTop - sepBottom);
     const sg = sep.addComponent(Graphics);
     sg.strokeColor = rgba(150, 112, 62, 120);
@@ -3099,15 +3140,8 @@ export class LobbyGuardBattleRenderer {
     sg.moveTo(0, (sepTop - sepBottom) / 2);
     sg.lineTo(0, -(sepTop - sepBottom) / 2);
     sg.stroke();
-    // 右栏三件(两个入口 + 说明)整体与左栏开关行垂直居中对齐。
-    const rowMid = (sepTop + sepBottom) / 2;
-    const help = this.mountOutlineLink(content, 'GuardSettingsHelpLink', rightX, rowMid + 100, 360, 64, '玩法速查 ›');
-    help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
-    const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', rightX, rowMid + 8, 360, 64, '法术装备 ›');
-    spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
-    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满。120 帧需要高刷屏', rightX, rowMid - 96, 20, rgba(170, 156, 128), new Size(460, 64));
-    hint.enableWrapText = true;
-    hint.lineHeight = 28;
+    // 说明一行,压在按钮上方
+    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满(120 帧需要高刷屏)', 0, buttonY + 58, 18, rgba(170, 156, 128), new Size(panelW - 120, 26));
     hint.overflow = Label.Overflow.SHRINK;
     const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -200, buttonY, 250, '退出战斗');
     exitBtn.on(Node.EventType.TOUCH_END, () => this.openExitConfirm(), this);
@@ -7089,6 +7123,61 @@ export class LobbyGuardBattleRenderer {
     for (const path of GUARD_CHEST_SPRITE_PRELOAD) {
       resources.load(path, SpriteFrame, () => { /* 仅预热缓存 */ });
     }
+  }
+
+  /** 每种怪本局皮肤数:手机 1(显存),电脑 3(全部)。加载门与建场都从这里取,保证两边抽到同一份表。 */
+  static monsterVariety(): number {
+    return sys.isMobile ? 1 : 3;
+  }
+
+  /**
+   * 开战加载门要预载的资源(2026-10-06 用户「初次进入战场卡死几秒」):本局抽到的怪物骨骼 + 阵容会用到的全部特效骨骼 + 贴图。
+   * 与 prewarmAttackFx 同一份清单;加载门里逐个顺序读(每个让出一帧),进场时都已在内存,不再在第一帧里集中解码上传。
+   */
+  collectBattlePrewarmResources(battleState: LobbyBattlePanelState): { spine: string[]; sprites: string[] } {
+    const spine = new Set<string>();
+    const sprites = new Set<string>(['ui/battle/ai/battle_bg_cathedral/spriteFrame', 'ui/common/ai/title_banner_new/spriteFrame']);
+    const start = battleState.start;
+    if (!start) {
+      return { spine: [], sprites: [] };
+    }
+    const seedText = `${start.serverSeed ?? ''}:${start.battleNo ?? ''}`;
+    Object.values(guardPickMonsterSpineCodes(seedText, LobbyGuardBattleRenderer.monsterVariety())).forEach((codes) => {
+      codes.forEach((code) => spine.add(guardMonsterSpineResource(code)));
+    });
+    const heroes = this.host.currentLobbyHeroRosterState().heroes;
+    const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroes);
+    const allies = snapshot.allies.filter((ally) => ally.power > 0 && !ally.unitKey.includes('empty')).slice(0, 4);
+    const addFx = (spec: { effect: string; hit?: { effect: string } } | null | undefined): void => {
+      if (!spec) {
+        return;
+      }
+      spine.add(resolveAttackSpineFxResource(spec));
+      if (spec.hit) {
+        spine.add(resolveAttackSpineFxResource(spec.hit));
+      }
+    };
+    allies.forEach((ally) => {
+      const heroCode = (ally.heroCode ?? ally.unitKey).toUpperCase();
+      const role = resolveGuardRole(ally.heroCode ?? ally.unitKey, ally.heroClass);
+      sprites.add(resolveAttackFxSpritePath(resolveHeroAttackFx(heroCode, ally.heroClass ?? null, role === 'melee')));
+      addFx(resolveHeroAttackSpineFx(heroCode));
+      addFx(resolveGuardPerkProcFx(resolveGuardHeroPerkProfile(heroCode, role).purple?.suffix));
+      spine.add(resolveBattleSkillEffectResource(resolveHeroGuardSkillEffect(heroCode, role)));
+      spine.add(resolveBattleSkillEffectResource(resolveHeroUltEffect(heroCode, ally.heroClass ?? null)));
+      if (role === 'support') {
+        addFx(GUARD_SUPPORT_FX.allyShield);
+        addFx(GUARD_SUPPORT_FX.crystalHealBig);
+        addFx(GUARD_SUPPORT_FX.crystalHealSmall);
+      }
+    });
+    Object.values(GUARD_BOSS_FX).forEach(addFx);
+    Object.values(GUARD_SPELL_FX).forEach(addFx);
+    addFx(GUARD_WARHORN_BURST_FX);
+    Object.values(GUARD_CHEST_FX).forEach(addFx);
+    guardMonsterProjectileFxSpecs().forEach(addFx);
+    GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => sprites.add(path));
+    return { spine: Array.from(spine), sprites: Array.from(sprites) };
   }
 
   /** 预热一个普攻 Spine 飞行特效:加载共享骨骼数据 → 选动画 → 用临时骨骼实测包围盒(等比缩放与居中要用)→ 记入就绪表。 */

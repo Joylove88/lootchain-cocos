@@ -1,286 +1,286 @@
 
 skeleton.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 pic/eff/xiaolongnv_skill_b_sub_19
   rotate: false
-  xy: 1558, 560
-  size: 192, 88
-  orig: 313, 568
-  offset: 102, 121
+  xy: 779, 280
+  size: 96, 44
+  orig: 156, 284
+  offset: 51, 60
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_20
   rotate: false
-  xy: 1807, 593
-  size: 215, 106
-  orig: 313, 568
-  offset: 95, 105
+  xy: 903, 296
+  size: 108, 53
+  orig: 156, 284
+  offset: 48, 52
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_21
   rotate: false
-  xy: 1810, 701
-  size: 225, 118
-  orig: 313, 568
-  offset: 88, 99
+  xy: 905, 350
+  size: 113, 59
+  orig: 156, 284
+  offset: 44, 50
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_22
   rotate: false
-  xy: 1810, 821
-  size: 228, 133
-  orig: 313, 568
-  offset: 85, 94
+  xy: 905, 410
+  size: 114, 67
+  orig: 156, 284
+  offset: 42, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_23
   rotate: false
-  xy: 1296, 499
-  size: 241, 145
-  orig: 313, 568
-  offset: 72, 92
+  xy: 648, 249
+  size: 121, 73
+  orig: 156, 284
+  offset: 36, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_24
   rotate: false
-  xy: 1052, 800
-  size: 251, 154
-  orig: 313, 568
-  offset: 62, 92
+  xy: 526, 400
+  size: 126, 77
+  orig: 156, 284
+  offset: 31, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_25
   rotate: false
-  xy: 530, 796
-  size: 258, 158
-  orig: 313, 568
-  offset: 55, 92
+  xy: 265, 398
+  size: 129, 79
+  orig: 156, 284
+  offset: 28, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_40
   rotate: false
-  xy: 530, 796
-  size: 258, 158
-  orig: 313, 568
-  offset: 55, 92
+  xy: 265, 398
+  size: 129, 79
+  orig: 156, 284
+  offset: 28, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_26
   rotate: false
-  xy: 267, 796
-  size: 261, 158
-  orig: 313, 568
-  offset: 52, 92
+  xy: 133, 398
+  size: 131, 79
+  orig: 156, 284
+  offset: 26, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_41
   rotate: false
-  xy: 267, 796
-  size: 261, 158
-  orig: 313, 568
-  offset: 52, 92
+  xy: 133, 398
+  size: 131, 79
+  orig: 156, 284
+  offset: 26, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_27
   rotate: false
-  xy: 2, 479
-  size: 262, 157
-  orig: 313, 568
-  offset: 51, 93
+  xy: 1, 239
+  size: 131, 79
+  orig: 156, 284
+  offset: 26, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_42
   rotate: false
-  xy: 2, 479
-  size: 262, 157
-  orig: 313, 568
-  offset: 51, 93
+  xy: 1, 239
+  size: 131, 79
+  orig: 156, 284
+  offset: 26, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_28
   rotate: false
-  xy: 2, 797
-  size: 263, 157
-  orig: 313, 568
-  offset: 50, 93
+  xy: 1, 398
+  size: 132, 79
+  orig: 156, 284
+  offset: 25, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_43
   rotate: false
-  xy: 2, 797
-  size: 263, 157
-  orig: 313, 568
-  offset: 50, 93
+  xy: 1, 398
+  size: 132, 79
+  orig: 156, 284
+  offset: 25, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_29
   rotate: false
-  xy: 2, 638
-  size: 263, 157
-  orig: 313, 568
-  offset: 50, 92
+  xy: 1, 319
+  size: 132, 79
+  orig: 156, 284
+  offset: 25, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_44
   rotate: false
-  xy: 2, 638
-  size: 263, 157
-  orig: 313, 568
-  offset: 50, 92
+  xy: 1, 319
+  size: 132, 79
+  orig: 156, 284
+  offset: 25, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_30
   rotate: false
-  xy: 267, 638
-  size: 261, 156
-  orig: 313, 568
-  offset: 52, 92
+  xy: 133, 319
+  size: 131, 78
+  orig: 156, 284
+  offset: 26, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_45
   rotate: false
-  xy: 267, 638
-  size: 261, 156
-  orig: 313, 568
-  offset: 52, 92
+  xy: 133, 319
+  size: 131, 78
+  orig: 156, 284
+  offset: 26, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_31
   rotate: false
-  xy: 790, 647
-  size: 255, 153
-  orig: 313, 568
-  offset: 58, 94
+  xy: 395, 323
+  size: 128, 77
+  orig: 156, 284
+  offset: 29, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_46
   rotate: false
-  xy: 790, 647
-  size: 255, 153
-  orig: 313, 568
-  offset: 58, 94
+  xy: 395, 323
+  size: 128, 77
+  orig: 156, 284
+  offset: 29, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_32
   rotate: false
-  xy: 1557, 803
-  size: 251, 151
-  orig: 313, 568
-  offset: 62, 94
+  xy: 778, 401
+  size: 126, 76
+  orig: 156, 284
+  offset: 31, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_47
   rotate: false
-  xy: 1557, 803
-  size: 251, 151
-  orig: 313, 568
-  offset: 62, 94
+  xy: 778, 401
+  size: 126, 76
+  orig: 156, 284
+  offset: 31, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_33
   rotate: false
-  xy: 1047, 503
-  size: 247, 150
-  orig: 313, 568
-  offset: 66, 94
+  xy: 523, 251
+  size: 124, 75
+  orig: 156, 284
+  offset: 33, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_48
   rotate: false
-  xy: 1047, 503
-  size: 247, 150
-  orig: 313, 568
-  offset: 66, 94
+  xy: 523, 251
+  size: 124, 75
+  orig: 156, 284
+  offset: 33, 47
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_34
   rotate: false
-  xy: 1558, 650
-  size: 247, 151
-  orig: 313, 568
-  offset: 66, 93
+  xy: 779, 325
+  size: 124, 76
+  orig: 156, 284
+  offset: 33, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_49
   rotate: false
-  xy: 1558, 650
-  size: 247, 151
-  orig: 313, 568
-  offset: 66, 93
+  xy: 779, 325
+  size: 124, 76
+  orig: 156, 284
+  offset: 33, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_35
   rotate: false
-  xy: 1307, 646
-  size: 249, 152
-  orig: 313, 568
-  offset: 64, 93
+  xy: 653, 323
+  size: 125, 76
+  orig: 156, 284
+  offset: 32, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_50
   rotate: false
-  xy: 1307, 646
-  size: 249, 152
-  orig: 313, 568
-  offset: 64, 93
+  xy: 653, 323
+  size: 125, 76
+  orig: 156, 284
+  offset: 32, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_36
   rotate: false
-  xy: 1305, 800
-  size: 250, 154
-  orig: 313, 568
-  offset: 63, 92
+  xy: 652, 400
+  size: 125, 77
+  orig: 156, 284
+  offset: 32, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_51
   rotate: false
-  xy: 1305, 800
-  size: 250, 154
-  orig: 313, 568
-  offset: 63, 92
+  xy: 652, 400
+  size: 125, 77
+  orig: 156, 284
+  offset: 32, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_37
   rotate: false
-  xy: 2, 2
-  size: 252, 156
-  orig: 313, 568
-  offset: 61, 91
+  xy: 1, 1
+  size: 126, 78
+  orig: 156, 284
+  offset: 30, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_52
   rotate: false
-  xy: 2, 2
-  size: 252, 156
-  orig: 313, 568
-  offset: 61, 91
+  xy: 1, 1
+  size: 126, 78
+  orig: 156, 284
+  offset: 30, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_38
   rotate: false
-  xy: 2, 160
-  size: 254, 157
-  orig: 313, 568
-  offset: 59, 91
+  xy: 1, 80
+  size: 127, 79
+  orig: 156, 284
+  offset: 30, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_39
   rotate: false
-  xy: 2, 319
-  size: 256, 158
-  orig: 313, 568
-  offset: 57, 92
+  xy: 1, 159
+  size: 128, 79
+  orig: 156, 284
+  offset: 28, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_53
   rotate: false
-  xy: 260, 320
-  size: 254, 157
-  orig: 313, 568
-  offset: 59, 92
+  xy: 130, 160
+  size: 127, 79
+  orig: 156, 284
+  offset: 30, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_54
   rotate: false
-  xy: 266, 479
-  size: 256, 157
-  orig: 313, 568
-  offset: 57, 93
+  xy: 133, 239
+  size: 128, 79
+  orig: 156, 284
+  offset: 28, 46
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_55
   rotate: false
-  xy: 530, 639
-  size: 258, 155
-  orig: 313, 568
-  offset: 55, 95
+  xy: 265, 319
+  size: 129, 78
+  orig: 156, 284
+  offset: 28, 48
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_56
   rotate: false
-  xy: 790, 802
-  size: 260, 152
-  orig: 313, 568
-  offset: 53, 97
+  xy: 395, 401
+  size: 130, 76
+  orig: 156, 284
+  offset: 26, 48
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_57
   rotate: false
-  xy: 1047, 655
-  size: 258, 143
-  orig: 313, 568
-  offset: 55, 104
+  xy: 523, 327
+  size: 129, 72
+  orig: 156, 284
+  offset: 28, 52
   index: -1
 pic/eff/xiaolongnv_skill_b_sub_58
   rotate: false
-  xy: 790, 525
-  size: 250, 120
-  orig: 313, 568
-  offset: 63, 116
+  xy: 395, 262
+  size: 125, 60
+  orig: 156, 284
+  offset: 32, 58
   index: -1

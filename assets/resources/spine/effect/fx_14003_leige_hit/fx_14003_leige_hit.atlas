@@ -1,284 +1,284 @@
 
 fx_14003_leige_hit.png
-size: 2048, 2048
+size: 1024,1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 effect/skill/baozha/lg_skill_bz_00000
   rotate: false
-  xy: 1000, 13
-  size: 539, 536
-  orig: 800, 800
-  offset: 134, 134
+  xy: 500, 6
+  size: 270, 268
+  orig: 400, 400
+  offset: 67, 67
   index: -1
 effect/skill/baozha/lg_skill_bz_00001
   rotate: false
-  xy: 2, 1253
-  size: 787, 786
-  orig: 800, 800
-  offset: 9, 10
+  xy: 1, 626
+  size: 394, 393
+  orig: 400, 400
+  offset: 4, 5
   index: -1
 effect/skill/baozha/lg_skill_bz_00002
   rotate: false
-  xy: 2, 497
-  size: 759, 754
-  orig: 800, 800
-  offset: 26, 26
+  xy: 1, 248
+  size: 380, 377
+  orig: 400, 400
+  offset: 13, 13
   index: -1
 effect/skill/baozha/lg_skill_bz_00003
   rotate: false
-  xy: 791, 1285
-  size: 759, 754
-  orig: 800, 800
-  offset: 26, 26
+  xy: 395, 642
+  size: 380, 377
+  orig: 400, 400
+  offset: 13, 13
   index: -1
 effect/skill/baozha/lg_skill_bz_00004
   rotate: false
-  xy: 791, 551
-  size: 738, 732
-  orig: 800, 800
-  offset: 42, 37
+  xy: 395, 275
+  size: 369, 366
+  orig: 400, 400
+  offset: 21, 18
   index: -1
 effect/skill/baozha/lg_skill_bz_00014
   rotate: false
-  xy: 1531, 575
-  size: 497, 502
-  orig: 800, 800
-  offset: 156, 149
+  xy: 765, 287
+  size: 249, 251
+  orig: 400, 400
+  offset: 78, 74
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00001
   rotate: false
-  xy: 2, 2
-  size: 497, 493
-  orig: 550, 550
-  offset: 30, 30
+  xy: 1, 1
+  size: 249, 247
+  orig: 275, 275
+  offset: 15, 15
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00002
   rotate: false
-  xy: 501, 2
-  size: 497, 493
-  orig: 550, 550
-  offset: 30, 30
+  xy: 250, 1
+  size: 249, 247
+  orig: 275, 275
+  offset: 15, 15
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00003
   rotate: false
-  xy: 1552, 1560
-  size: 475, 479
-  orig: 550, 550
-  offset: 41, 37
+  xy: 776, 780
+  size: 238, 240
+  orig: 275, 275
+  offset: 20, 18
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00004
   rotate: false
-  xy: 1552, 1079
-  size: 475, 479
-  orig: 550, 550
-  offset: 41, 37
+  xy: 776, 539
+  size: 238, 240
+  orig: 275, 275
+  offset: 20, 18
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00006
   rotate: false
-  xy: 1541, 109
-  size: 461, 464
-  orig: 550, 550
-  offset: 48, 45
+  xy: 770, 54
+  size: 231, 232
+  orig: 275, 275
+  offset: 24, 22
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00018
   rotate: false
-  xy: 1541, 4
-  size: 131, 103
-  orig: 550, 550
-  offset: 343, 226
+  xy: 770, 2
+  size: 66, 52
+  orig: 275, 275
+  offset: 172, 113
   index: -1
 
 fx_14003_leige_hit_2.png
-size: 2048, 2048
+size: 1024,1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 effect/skill/baozha/lg_skill_bz_00006
   rotate: false
-  xy: 2, 1325
-  size: 728, 710
-  orig: 800, 800
-  offset: 53, 48
+  xy: 1, 662
+  size: 364, 355
+  orig: 400, 400
+  offset: 26, 24
   index: -1
 effect/skill/baozha/lg_skill_bz_00008
   rotate: false
-  xy: 2, 630
-  size: 687, 693
-  orig: 800, 800
-  offset: 59, 54
+  xy: 1, 315
+  size: 344, 347
+  orig: 400, 400
+  offset: 30, 27
   index: -1
 effect/skill/baozha/lg_skill_bz_00010
   rotate: false
-  xy: 732, 1369
-  size: 660, 666
-  orig: 800, 800
-  offset: 75, 70
+  xy: 366, 684
+  size: 330, 333
+  orig: 400, 400
+  offset: 38, 35
   index: -1
 effect/skill/baozha/lg_skill_bz_00012
   rotate: false
-  xy: 2, 12
-  size: 628, 616
-  orig: 800, 800
-  offset: 81, 92
+  xy: 1, 6
+  size: 314, 308
+  orig: 400, 400
+  offset: 40, 46
   index: -1
 effect/skill/ci_hit/lg_skill_db_00001
   rotate: false
-  xy: 632, 177
-  size: 422, 451
-  orig: 500, 500
-  offset: 42, 32
+  xy: 316, 88
+  size: 211, 226
+  orig: 250, 250
+  offset: 21, 16
   index: -1
 effect/skill/ci_hit/lg_skill_db_00002
   rotate: false
-  xy: 691, 898
-  size: 422, 425
-  orig: 500, 500
-  offset: 42, 39
+  xy: 345, 449
+  size: 211, 213
+  orig: 250, 250
+  offset: 21, 20
   index: -1
 effect/skill/ci_hit/lg_skill_db_00004
   rotate: false
-  xy: 1527, 722
-  size: 410, 419
-  orig: 500, 500
-  offset: 48, 45
+  xy: 763, 361
+  size: 205, 210
+  orig: 250, 250
+  offset: 24, 22
   index: -1
 effect/skill/ci_hit/lg_skill_db_00006
   rotate: false
-  xy: 1454, 333
-  size: 384, 387
-  orig: 500, 500
-  offset: 61, 58
+  xy: 727, 166
+  size: 192, 194
+  orig: 250, 250
+  offset: 30, 29
   index: -1
 effect/skill2/hit1/lg_skill2_hit1_00002
   rotate: false
-  xy: 1056, 2
-  size: 392, 332
-  orig: 451, 372
-  offset: 29, 21
+  xy: 528, 1
+  size: 196, 166
+  orig: 226, 186
+  offset: 14, 10
   index: -1
 effect/skill2/hit1/lg_skill2_hit1_00006
   rotate: false
-  xy: 691, 678
-  size: 253, 218
-  orig: 451, 372
-  offset: 53, 84
+  xy: 345, 339
+  size: 127, 109
+  orig: 226, 186
+  offset: 26, 42
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00000
   rotate: false
-  xy: 1056, 336
-  size: 396, 399
-  orig: 550, 550
-  offset: 80, 77
+  xy: 528, 168
+  size: 198, 200
+  orig: 275, 275
+  offset: 40, 38
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00008
   rotate: false
-  xy: 1394, 1581
-  size: 450, 454
-  orig: 550, 550
-  offset: 52, 48
+  xy: 697, 790
+  size: 225, 227
+  orig: 275, 275
+  offset: 26, 24
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00010
   rotate: false
-  xy: 1394, 1143
-  size: 432, 436
-  orig: 550, 550
-  offset: 63, 59
+  xy: 697, 571
+  size: 216, 218
+  orig: 275, 275
+  offset: 32, 30
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00012
   rotate: false
-  xy: 1115, 737
-  size: 410, 404
-  orig: 550, 550
-  offset: 77, 73
+  xy: 557, 368
+  size: 205, 202
+  orig: 275, 275
+  offset: 38, 36
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00014
   rotate: false
-  xy: 1450, 3
-  size: 358, 328
-  orig: 550, 550
-  offset: 115, 111
+  xy: 725, 1
+  size: 179, 164
+  orig: 275, 275
+  offset: 58, 56
   index: -1
 effect/skill2/hit2/lg_skill2_hit2_00016
   rotate: false
-  xy: 1846, 1913
-  size: 153, 122
-  orig: 550, 550
-  offset: 309, 219
+  xy: 923, 956
+  size: 77, 61
+  orig: 275, 275
+  offset: 154, 110
   index: -1
 
 fx_14003_leige_hit_3.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 effect/attack/atk_hit/lg_attack_hit_00000
   rotate: false
-  xy: 691, 98
-  size: 290, 292
-  orig: 380, 380
-  offset: 47, 45
+  xy: 345, 49
+  size: 145, 146
+  orig: 190, 190
+  offset: 24, 22
   index: -1
 effect/attack/atk_hit/lg_attack_hit_00001
   rotate: false
-  xy: 2, 373
-  size: 380, 380
-  orig: 380, 380
+  xy: 1, 186
+  size: 190, 190
+  orig: 190, 190
   offset: 0, 0
   index: -1
 effect/attack/atk_hit/lg_attack_hit_00002
   rotate: false
-  xy: 2, 2
-  size: 366, 369
-  orig: 380, 380
-  offset: 10, 7
+  xy: 1, 1
+  size: 183, 185
+  orig: 190, 190
+  offset: 5, 4
   index: -1
 effect/attack/atk_hit/lg_attack_hit_00004
   rotate: false
-  xy: 384, 101
-  size: 305, 308
-  orig: 380, 380
-  offset: 40, 37
+  xy: 192, 50
+  size: 153, 154
+  orig: 190, 190
+  offset: 20, 18
   index: -1
 effect/attack/atk_hit/lg_attack_hit_00006
   rotate: false
-  xy: 983, 114
-  size: 290, 276
-  orig: 380, 380
-  offset: 39, 52
+  xy: 491, 57
+  size: 145, 138
+  orig: 190, 190
+  offset: 20, 26
   index: -1
 effect/skill/ci_hit/lg_skill_db_00000
   rotate: false
-  xy: 787, 392
-  size: 363, 361
-  orig: 500, 500
-  offset: 70, 71
+  xy: 393, 196
+  size: 182, 181
+  orig: 250, 250
+  offset: 35, 36
   index: -1
 effect/skill/ci_hit/lg_skill_db_00008
   rotate: false
-  xy: 1152, 407
-  size: 359, 346
-  orig: 500, 500
-  offset: 65, 78
+  xy: 576, 203
+  size: 180, 173
+  orig: 250, 250
+  offset: 32, 39
   index: -1
 effect/skill2/hit1/lg_skill2_hit1_00000
   rotate: false
-  xy: 1513, 139
-  size: 314, 314
-  orig: 451, 372
-  offset: 35, 30
+  xy: 756, 69
+  size: 157, 157
+  orig: 226, 186
+  offset: 18, 15
   index: -1
 effect/skill2/hit1/lg_skill2_hit1_00001
   rotate: false
-  xy: 384, 411
-  size: 401, 342
-  orig: 451, 372
-  offset: 21, 16
+  xy: 192, 205
+  size: 201, 171
+  orig: 226, 186
+  offset: 10, 8
   index: -1
 effect/skill2/hit1/lg_skill2_hit1_00004
   rotate: false
-  xy: 1513, 455
-  size: 376, 298
-  orig: 451, 372
-  offset: 46, 38
+  xy: 756, 227
+  size: 188, 149
+  orig: 226, 186
+  offset: 23, 19
   index: -1

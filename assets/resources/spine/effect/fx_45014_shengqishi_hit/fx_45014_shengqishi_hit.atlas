@@ -1,472 +1,472 @@
 
 fx_45014_shengqishi_hit.png
-size: 2048, 2048
+size: 1024,1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/attack_hit_006
   rotate: false
-  xy: 309, 12
-  size: 130, 139
-  orig: 225, 225
-  offset: 50, 45
+  xy: 154, 6
+  size: 65, 70
+  orig: 112, 112
+  offset: 25, 22
   index: -1
 skill1/dl_000
   rotate: false
-  xy: 2, 32
-  size: 305, 119
-  orig: 330, 150
-  offset: 13, 13
+  xy: 1, 16
+  size: 153, 60
+  orig: 165, 75
+  offset: 6, 6
   index: -1
 skill1/skill1_hit_002
   rotate: false
-  xy: 2, 1189
-  size: 964, 857
-  orig: 1048, 930
-  offset: 42, 25
+  xy: 1, 594
+  size: 482, 429
+  orig: 524, 465
+  offset: 21, 12
   index: -1
 skill1/skill1_hit_003
   rotate: false
-  xy: 968, 1190
-  size: 963, 856
-  orig: 1048, 930
-  offset: 43, 25
+  xy: 484, 595
+  size: 482, 428
+  orig: 524, 465
+  offset: 22, 12
   index: -1
 skill1/skill1_hit_004
   rotate: false
-  xy: 2, 331
-  size: 964, 856
-  orig: 1048, 930
-  offset: 42, 26
+  xy: 1, 165
+  size: 482, 428
+  orig: 524, 465
+  offset: 21, 13
   index: -1
 skill1/skill1_hit_005
   rotate: false
-  xy: 968, 334
-  size: 960, 854
-  orig: 1048, 930
-  offset: 46, 27
+  xy: 484, 167
+  size: 480, 427
+  orig: 524, 465
+  offset: 23, 14
   index: -1
 skill1/skill1_hitlight_000
   rotate: false
-  xy: 1933, 1768
-  size: 106, 278
-  orig: 117, 287
-  offset: 5, 4
+  xy: 966, 884
+  size: 53, 139
+  orig: 58, 144
+  offset: 2, 2
   index: -1
 skill1/skill1_hitlight_001
   rotate: false
-  xy: 1933, 1426
-  size: 67, 228
-  orig: 117, 287
-  offset: 26, 52
+  xy: 966, 713
+  size: 34, 114
+  orig: 58, 144
+  offset: 13, 26
   index: -1
 skill1/skill1_hitlight_002
   rotate: false
-  xy: 1933, 1215
-  size: 58, 209
-  orig: 117, 287
-  offset: 28, 68
+  xy: 966, 607
+  size: 29, 105
+  orig: 58, 144
+  offset: 14, 34
   index: -1
 skill1/skill1_weapon
   rotate: false
-  xy: 1337, 25
-  size: 201, 307
-  orig: 267, 400
-  offset: 26, 48
+  xy: 668, 12
+  size: 101, 154
+  orig: 134, 200
+  offset: 13, 24
   index: -1
 skill1/stone
   rotate: false
-  xy: 2, 153
-  size: 484, 176
-  orig: 512, 256
-  offset: 10, 30
+  xy: 1, 76
+  size: 242, 88
+  orig: 256, 128
+  offset: 5, 15
   index: -1
 skill2/skill2_baodian_002
   rotate: false
-  xy: 1540, 67
-  size: 196, 265
-  orig: 214, 283
-  offset: 9, 6
+  xy: 770, 33
+  size: 98, 133
+  orig: 107, 142
+  offset: 4, 3
   index: -1
 skill2/skill2_baodian_003
   rotate: false
-  xy: 1738, 74
-  size: 200, 258
-  orig: 214, 283
-  offset: 6, 18
+  xy: 869, 37
+  size: 100, 129
+  orig: 107, 142
+  offset: 3, 9
   index: -1
 skill2/skill2_ci_000
   rotate: false
-  xy: 441, 9
-  size: 238, 103
-  orig: 371, 221
-  offset: 60, 3
+  xy: 220, 4
+  size: 119, 52
+  orig: 186, 110
+  offset: 30, 2
   index: -1
 skill2/skill2_ci_001
   rotate: false
-  xy: 968, 115
-  size: 367, 217
-  orig: 371, 221
-  offset: 3, 4
+  xy: 484, 57
+  size: 184, 109
+  orig: 186, 110
+  offset: 2, 2
   index: -1
 skill2/skill2_ci_002
   rotate: false
-  xy: 488, 114
-  size: 368, 215
-  orig: 371, 221
-  offset: 1, 6
+  xy: 244, 57
+  size: 184, 108
+  orig: 186, 110
+  offset: 0, 3
   index: -1
 skill2/skill2_ci_004
   rotate: false
-  xy: 1148, 53
-  size: 101, 60
-  orig: 371, 221
-  offset: 2, 152
+  xy: 574, 26
+  size: 51, 30
+  orig: 186, 110
+  offset: 1, 76
   index: -1
 skill2/skill2_dl
   rotate: false
-  xy: 1933, 1656
-  size: 113, 110
-  orig: 128, 128
-  offset: 7, 7
+  xy: 966, 828
+  size: 57, 55
+  orig: 64, 64
+  offset: 4, 4
   index: -1
 skill2/skill2_light17
   rotate: false
-  xy: 1540, 25
-  size: 41, 40
-  orig: 52, 52
-  offset: 6, 6
+  xy: 770, 12
+  size: 21, 20
+  orig: 26, 26
+  offset: 3, 3
   index: -1
 skill2/skill2_lightsweep_005
   rotate: false
-  xy: 858, 127
-  size: 102, 202
-  orig: 175, 269
-  offset: 39, 10
+  xy: 429, 63
+  size: 51, 101
+  orig: 88, 134
+  offset: 20, 5
   index: -1
 skill2/skill2_lightsweep_006
   rotate: false
-  xy: 1930, 1012
-  size: 90, 176
-  orig: 175, 269
-  offset: 44, 12
+  xy: 965, 506
+  size: 45, 88
+  orig: 88, 134
+  offset: 22, 6
   index: -1
 skill2/skill2_lightsweep_007
   rotate: false
-  xy: 1930, 874
-  size: 40, 136
-  orig: 175, 269
-  offset: 63, 18
+  xy: 965, 437
+  size: 20, 68
+  orig: 88, 134
+  offset: 32, 9
   index: -1
 skill2/skill2_yw_002
   rotate: false
-  xy: 681, 28
-  size: 229, 84
-  orig: 238, 87
-  offset: 3, 1
+  xy: 340, 14
+  size: 115, 42
+  orig: 119, 44
+  offset: 2, 0
   index: -1
 skill2/skill2_yw_004
   rotate: false
-  xy: 912, 29
-  size: 234, 84
-  orig: 238, 87
-  offset: 3, 1
+  xy: 456, 14
+  size: 117, 42
+  orig: 119, 44
+  offset: 2, 0
   index: -1
 skill2/skill2_yw_005
   rotate: false
-  xy: 1738, 2
-  size: 223, 70
-  orig: 238, 87
-  offset: 10, 2
+  xy: 869, 1
+  size: 112, 35
+  orig: 119, 44
+  offset: 5, 1
   index: -1
 
 fx_45014_shengqishi_hit_2.png
-size: 2048, 2048
+size: 1024,1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/attack_hit_000
   rotate: false
-  xy: 392, 104
-  size: 206, 207
-  orig: 225, 225
-  offset: 10, 9
+  xy: 196, 52
+  size: 103, 104
+  orig: 112, 112
+  offset: 5, 4
   index: -1
 attack/attack_hit_001
   rotate: false
-  xy: 600, 111
-  size: 200, 200
-  orig: 225, 225
-  offset: 13, 12
+  xy: 300, 55
+  size: 100, 100
+  orig: 112, 112
+  offset: 6, 6
   index: -1
 attack/attack_hit_002
   rotate: false
-  xy: 1260, 142
-  size: 197, 194
-  orig: 225, 225
-  offset: 14, 17
+  xy: 630, 71
+  size: 99, 97
+  orig: 112, 112
+  offset: 7, 8
   index: -1
 attack/attack_hit_003
   rotate: false
-  xy: 1459, 167
-  size: 177, 169
-  orig: 225, 225
-  offset: 21, 36
+  xy: 729, 83
+  size: 89, 85
+  orig: 112, 112
+  offset: 10, 18
   index: -1
 attack/attack_hit_004
   rotate: false
-  xy: 1638, 166
-  size: 176, 170
-  orig: 225, 225
-  offset: 21, 36
+  xy: 819, 83
+  size: 88, 85
+  orig: 112, 112
+  offset: 10, 18
   index: -1
 attack/attack_hit_005
   rotate: false
-  xy: 1816, 170
-  size: 173, 166
-  orig: 225, 225
-  offset: 23, 38
+  xy: 908, 85
+  size: 87, 83
+  orig: 112, 112
+  offset: 12, 19
   index: -1
 attack/attack_hit_007
   rotate: false
-  xy: 1898, 506
-  size: 123, 137
-  orig: 225, 225
-  offset: 53, 48
+  xy: 949, 253
+  size: 62, 69
+  orig: 112, 112
+  offset: 26, 24
   index: -1
 attack/attack_hit_008
   rotate: false
-  xy: 1898, 645
-  size: 125, 139
-  orig: 225, 225
-  offset: 53, 47
+  xy: 949, 322
+  size: 63, 70
+  orig: 112, 112
+  offset: 26, 24
   index: -1
 attack/attack_hit_009
   rotate: false
-  xy: 1914, 1287
-  size: 126, 141
-  orig: 225, 225
-  offset: 53, 44
+  xy: 957, 643
+  size: 63, 71
+  orig: 112, 112
+  offset: 26, 22
   index: -1
 attack/attack_hit_010
   rotate: false
-  xy: 1898, 369
-  size: 129, 135
-  orig: 225, 225
-  offset: 51, 42
+  xy: 949, 184
+  size: 65, 68
+  orig: 112, 112
+  offset: 26, 21
   index: -1
 attack/attack_hit_011
   rotate: false
-  xy: 1898, 786
-  size: 128, 137
-  orig: 225, 225
-  offset: 51, 40
+  xy: 949, 393
+  size: 64, 69
+  orig: 112, 112
+  offset: 26, 20
   index: -1
 skill1/skill1_hit_006
   rotate: false
-  xy: 2, 1158
-  size: 958, 852
-  orig: 1048, 930
-  offset: 48, 29
+  xy: 1, 579
+  size: 479, 426
+  orig: 524, 465
+  offset: 24, 14
   index: -1
 skill1/skill1_hit_007
   rotate: false
-  xy: 2, 313
-  size: 956, 843
-  orig: 1048, 930
-  offset: 49, 31
+  xy: 1, 156
+  size: 478, 422
+  orig: 524, 465
+  offset: 24, 16
   index: -1
 skill1/skill1_hit_008
   rotate: false
-  xy: 962, 1170
-  size: 950, 840
-  orig: 1048, 930
-  offset: 49, 34
+  xy: 481, 585
+  size: 475, 420
+  orig: 524, 465
+  offset: 24, 17
   index: -1
 skill1/skill1_hit_009
   rotate: false
-  xy: 962, 338
-  size: 934, 830
-  orig: 1048, 930
-  offset: 56, 39
+  xy: 481, 169
+  size: 467, 415
+  orig: 524, 465
+  offset: 28, 20
   index: -1
 skill2/skill2_baodian_000
   rotate: false
-  xy: 802, 68
-  size: 163, 243
-  orig: 214, 283
-  offset: 27, 15
+  xy: 401, 34
+  size: 82, 122
+  orig: 107, 142
+  offset: 14, 8
   index: -1
 skill2/skill2_baodian_001
   rotate: false
-  xy: 204, 54
-  size: 186, 257
-  orig: 214, 283
-  offset: 12, 9
+  xy: 102, 27
+  size: 93, 129
+  orig: 107, 142
+  offset: 6, 4
   index: -1
 skill2/skill2_baodian_004
   rotate: false
-  xy: 2, 57
-  size: 200, 254
-  orig: 214, 283
-  offset: 6, 23
+  xy: 1, 28
+  size: 100, 127
+  orig: 107, 142
+  offset: 3, 12
   index: -1
 skill2/skill2_ci_003
   rotate: false
-  xy: 1914, 1596
-  size: 131, 186
-  orig: 371, 221
-  offset: 2, 35
+  xy: 957, 798
+  size: 66, 93
+  orig: 186, 110
+  offset: 1, 18
   index: -1
 skill2/skill2_lightsweep_000
   rotate: false
-  xy: 1914, 1430
-  size: 124, 164
-  orig: 175, 269
-  offset: 22, 97
+  xy: 957, 715
+  size: 62, 82
+  orig: 88, 134
+  offset: 11, 48
   index: -1
 skill2/skill2_lightsweep_001
   rotate: false
-  xy: 967, 74
-  size: 149, 262
-  orig: 175, 269
-  offset: 10, 6
+  xy: 483, 37
+  size: 75, 131
+  orig: 88, 134
+  offset: 5, 3
   index: -1
 skill2/skill2_lightsweep_002
   rotate: false
-  xy: 1118, 84
-  size: 140, 252
-  orig: 175, 269
-  offset: 19, 5
+  xy: 559, 42
+  size: 70, 126
+  orig: 88, 134
+  offset: 10, 2
   index: -1
 skill2/skill2_lightsweep_003
   rotate: false
-  xy: 1898, 925
-  size: 134, 243
-  orig: 175, 269
-  offset: 23, 5
+  xy: 949, 462
+  size: 67, 122
+  orig: 88, 134
+  offset: 12, 2
   index: -1
 skill2/skill2_lightsweep_004
   rotate: false
-  xy: 1914, 1784
-  size: 117, 226
-  orig: 175, 269
-  offset: 33, 6
+  xy: 957, 892
+  size: 59, 113
+  orig: 88, 134
+  offset: 16, 3
   index: -1
 skill2/skill2_yw_000
   rotate: false
-  xy: 392, 28
-  size: 216, 74
-  orig: 238, 87
-  offset: 4, 0
+  xy: 196, 14
+  size: 108, 37
+  orig: 119, 44
+  offset: 2, 0
   index: -1
 skill2/skill2_yw_001
   rotate: false
-  xy: 1260, 59
-  size: 231, 81
-  orig: 238, 87
-  offset: 1, 2
+  xy: 630, 29
+  size: 116, 41
+  orig: 119, 44
+  offset: 0, 1
   index: -1
 skill2/skill2_yw_003
   rotate: false
-  xy: 1816, 84
-  size: 227, 84
-  orig: 238, 87
-  offset: 4, 1
+  xy: 908, 42
+  size: 114, 42
+  orig: 119, 44
+  offset: 2, 0
   index: -1
 skill2/skill2_yw_006
   rotate: false
-  xy: 967, 2
-  size: 222, 70
-  orig: 238, 87
-  offset: 11, 2
+  xy: 483, 1
+  size: 111, 35
+  orig: 119, 44
+  offset: 6, 1
   index: -1
 skill2/skill2_yw_007
   rotate: false
-  xy: 1191, 7
-  size: 212, 50
-  orig: 238, 87
-  offset: 13, 1
+  xy: 595, 3
+  size: 106, 25
+  orig: 119, 44
+  offset: 6, 0
   index: -1
 
 fx_45014_shengqishi_hit_3.png
-size: 2048, 2048
+size: 1024,1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 skill1/skill1_hit_001
   rotate: false
-  xy: 928, 505
-  size: 811, 740
-  orig: 1048, 930
-  offset: 121, 52
+  xy: 464, 252
+  size: 406, 370
+  orig: 524, 465
+  offset: 60, 26
   index: -1
 skill1/skill1_hit_010
   rotate: false
-  xy: 2, 1207
-  size: 924, 818
-  orig: 1048, 930
-  offset: 66, 42
+  xy: 1, 603
+  size: 462, 409
+  orig: 524, 465
+  offset: 33, 21
   index: -1
 skill1/skill1_hit_011
   rotate: false
-  xy: 2, 398
-  size: 906, 807
-  orig: 1048, 930
-  offset: 69, 46
+  xy: 1, 199
+  size: 453, 404
+  orig: 524, 465
+  offset: 34, 23
   index: -1
 skill1/skill1_hit_012
   rotate: false
-  xy: 928, 1247
-  size: 862, 778
-  orig: 1048, 930
-  offset: 94, 56
+  xy: 464, 623
+  size: 431, 389
+  orig: 524, 465
+  offset: 47, 28
   index: -1
 skill1/skill1_hit_017
   rotate: false
-  xy: 910, 2
-  size: 556, 501
-  orig: 1048, 930
-  offset: 252, 213
+  xy: 455, 1
+  size: 278, 251
+  orig: 524, 465
+  offset: 126, 106
   index: -1
 skill1/skill1_hit_019
   rotate: false
-  xy: 1468, 31
-  size: 540, 472
-  orig: 1048, 930
-  offset: 253, 237
+  xy: 734, 15
+  size: 270, 236
+  orig: 524, 465
+  offset: 126, 118
   index: -1
 
 fx_45014_shengqishi_hit_4.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 skill1/skill1_hit_000
   rotate: false
-  xy: 1466, 472
-  size: 555, 536
-  orig: 1048, 930
-  offset: 255, 123
+  xy: 733, 236
+  size: 278, 268
+  orig: 524, 465
+  offset: 128, 62
   index: -1
 skill1/skill1_hit_013
   rotate: false
-  xy: 2, 308
-  size: 776, 700
-  orig: 1048, 930
-  offset: 138, 76
+  xy: 1, 154
+  size: 388, 350
+  orig: 524, 465
+  offset: 69, 38
   index: -1
 skill1/skill1_hit_015
   rotate: false
-  xy: 780, 475
-  size: 684, 533
-  orig: 1048, 930
-  offset: 176, 188
+  xy: 390, 237
+  size: 342, 267
+  orig: 524, 465
+  offset: 88, 94
   index: -1
 skill1/skill1_hit_021
   rotate: false
-  xy: 780, 2
-  size: 518, 471
-  orig: 1048, 930
-  offset: 278, 232
+  xy: 390, 1
+  size: 259, 236
+  orig: 524, 465
+  offset: 139, 116
   index: -1

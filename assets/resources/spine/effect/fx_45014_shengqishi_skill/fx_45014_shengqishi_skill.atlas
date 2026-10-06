@@ -1,272 +1,272 @@
 
 fx_45014_shengqishi_skill.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/attackk_dg_000
   rotate: false
-  xy: 667, 817
-  size: 231, 205
-  orig: 270, 270
-  offset: 24, 54
+  xy: 333, 408
+  size: 116, 103
+  orig: 135, 135
+  offset: 12, 27
   index: -1
 attack/attackk_dg_001
   rotate: false
-  xy: 2, 544
-  size: 214, 239
-  orig: 270, 270
-  offset: 45, 16
+  xy: 1, 272
+  size: 107, 120
+  orig: 135, 135
+  offset: 22, 8
   index: -1
 attack/attackk_dg_002
   rotate: false
-  xy: 2, 785
-  size: 218, 237
-  orig: 270, 270
-  offset: 42, 16
+  xy: 1, 392
+  size: 109, 119
+  orig: 135, 135
+  offset: 21, 8
   index: -1
 attack/attackk_dg_003
   rotate: false
-  xy: 222, 785
-  size: 214, 237
-  orig: 270, 270
-  offset: 47, 11
+  xy: 111, 392
+  size: 107, 119
+  orig: 135, 135
+  offset: 24, 6
   index: -1
 attack/attackk_dg_004
   rotate: false
-  xy: 2, 306
-  size: 213, 236
-  orig: 270, 270
-  offset: 47, 11
+  xy: 1, 153
+  size: 107, 118
+  orig: 135, 135
+  offset: 24, 6
   index: -1
 attack/attackk_dg_005
   rotate: false
-  xy: 218, 549
-  size: 214, 234
-  orig: 270, 270
-  offset: 46, 11
+  xy: 109, 274
+  size: 107, 117
+  orig: 135, 135
+  offset: 23, 6
   index: -1
 attack/attackk_dg_006
   rotate: false
-  xy: 2, 73
-  size: 206, 231
-  orig: 270, 270
-  offset: 47, 11
+  xy: 1, 36
+  size: 103, 116
+  orig: 135, 135
+  offset: 24, 6
   index: -1
 attack/attackk_dg_007
   rotate: false
-  xy: 1648, 643
-  size: 202, 223
-  orig: 270, 270
-  offset: 47, 12
+  xy: 824, 321
+  size: 101, 112
+  orig: 135, 135
+  offset: 24, 6
   index: -1
 attack/attackk_dg_008
   rotate: false
-  xy: 210, 88
-  size: 199, 216
-  orig: 270, 270
-  offset: 48, 12
+  xy: 105, 44
+  size: 100, 108
+  orig: 135, 135
+  offset: 24, 6
   index: -1
 attack/attackk_dg_009
   rotate: false
-  xy: 1882, 482
-  size: 157, 85
-  orig: 270, 270
-  offset: 83, 25
+  xy: 941, 241
+  size: 79, 43
+  orig: 135, 135
+  offset: 42, 12
   index: -1
 skill1/skill1_feng_000
   rotate: false
-  xy: 667, 707
-  size: 209, 108
-  orig: 342, 217
-  offset: 55, 40
+  xy: 333, 353
+  size: 105, 54
+  orig: 171, 108
+  offset: 28, 20
   index: -1
 skill1/skill1_feng_001
   rotate: false
-  xy: 1175, 877
-  size: 269, 145
-  orig: 342, 217
-  offset: 23, 31
+  xy: 587, 438
+  size: 135, 73
+  orig: 171, 108
+  offset: 12, 16
   index: -1
 skill1/skill1_feng_002
   rotate: false
-  xy: 900, 744
-  size: 272, 115
-  orig: 342, 217
-  offset: 15, 38
+  xy: 450, 372
+  size: 136, 58
+  orig: 171, 108
+  offset: 8, 19
   index: -1
 skill1/skill1_feng_003
   rotate: false
-  xy: 900, 861
-  size: 273, 161
-  orig: 342, 217
-  offset: 40, 31
+  xy: 450, 430
+  size: 137, 81
+  orig: 171, 108
+  offset: 20, 16
   index: -1
 skill1/skill1_feng_004
   rotate: false
-  xy: 1446, 868
-  size: 251, 154
-  orig: 342, 217
-  offset: 52, 40
+  xy: 723, 434
+  size: 126, 77
+  orig: 171, 108
+  offset: 26, 20
   index: -1
 skill1/skill1_feng_005
   rotate: false
-  xy: 1699, 880
-  size: 251, 142
-  orig: 342, 217
-  offset: 42, 31
+  xy: 849, 440
+  size: 126, 71
+  orig: 171, 108
+  offset: 21, 16
   index: -1
 skill1/skill1_feng_006
   rotate: false
-  xy: 438, 681
-  size: 218, 122
-  orig: 342, 217
-  offset: 53, 40
+  xy: 219, 340
+  size: 109, 61
+  orig: 171, 108
+  offset: 26, 20
   index: -1
 skill1/skill1_feng_007
   rotate: false
-  xy: 1175, 734
-  size: 251, 141
-  orig: 342, 217
-  offset: 42, 31
+  xy: 587, 367
+  size: 126, 71
+  orig: 171, 108
+  offset: 21, 16
   index: -1
 skill1/skill1_light_000
   rotate: false
-  xy: 210, 73
-  size: 15, 13
-  orig: 231, 223
-  offset: 109, 105
+  xy: 105, 36
+  size: 8, 7
+  orig: 116, 112
+  offset: 54, 52
   index: -1
 skill1/skill1_light_001
   rotate: false
-  xy: 411, 526
-  size: 21, 21
-  orig: 231, 223
-  offset: 106, 101
+  xy: 205, 263
+  size: 11, 11
+  orig: 116, 112
+  offset: 53, 50
   index: -1
 skill1/skill1_light_002
   rotate: false
-  xy: 1024, 539
-  size: 24, 24
-  orig: 231, 223
-  offset: 105, 99
+  xy: 512, 269
+  size: 12, 12
+  orig: 116, 112
+  offset: 52, 50
   index: -1
 skill1/skill1_light_003
   rotate: false
-  xy: 2016, 648
-  size: 30, 29
-  orig: 231, 223
-  offset: 102, 97
+  xy: 1008, 324
+  size: 15, 15
+  orig: 116, 112
+  offset: 51, 48
   index: -1
 skill1/skill1_light_004
   rotate: false
-  xy: 2, 2
-  size: 64, 69
-  orig: 231, 223
-  offset: 87, 76
+  xy: 1, 1
+  size: 32, 35
+  orig: 116, 112
+  offset: 44, 38
   index: -1
 skill1/skill1_light_005
   rotate: false
-  xy: 658, 500
-  size: 204, 205
-  orig: 231, 223
-  offset: 25, 2
+  xy: 329, 250
+  size: 102, 103
+  orig: 116, 112
+  offset: 12, 1
   index: -1
 skill1/skill1_light_006
   rotate: false
-  xy: 438, 805
-  size: 227, 217
-  orig: 231, 223
-  offset: 2, 4
+  xy: 219, 402
+  size: 114, 109
+  orig: 116, 112
+  offset: 1, 2
   index: -1
 skill1/skill1_light_007
   rotate: false
-  xy: 1428, 661
-  size: 218, 205
-  orig: 231, 223
-  offset: 6, 10
+  xy: 714, 330
+  size: 109, 103
+  orig: 116, 112
+  offset: 3, 5
   index: -1
 skill1/skill1_light_008
   rotate: false
-  xy: 1852, 679
-  size: 166, 199
-  orig: 231, 223
-  offset: 10, 11
+  xy: 926, 339
+  size: 83, 100
+  orig: 116, 112
+  offset: 5, 6
   index: -1
 skill1/skill1_light_009
   rotate: false
-  xy: 864, 512
-  size: 158, 193
-  orig: 231, 223
-  offset: 15, 11
+  xy: 432, 256
+  size: 79, 97
+  orig: 116, 112
+  offset: 8, 6
   index: -1
 skill1/skill1_light_010
   rotate: false
-  xy: 68, 12
-  size: 56, 59
-  orig: 231, 223
-  offset: 95, 83
+  xy: 34, 6
+  size: 28, 30
+  orig: 116, 112
+  offset: 48, 42
   index: -1
 skill1/skill1_quan
   rotate: false
-  xy: 1760, 521
-  size: 120, 120
-  orig: 128, 128
-  offset: 4, 4
+  xy: 880, 260
+  size: 60, 60
+  orig: 64, 64
+  offset: 2, 2
   index: -1
 skill2/skill2_dunpai
   rotate: false
-  xy: 1024, 565
-  size: 90, 177
-  orig: 99, 186
-  offset: 5, 4
+  xy: 512, 282
+  size: 45, 89
+  orig: 50, 93
+  offset: 2, 2
   index: -1
 skill2/skill2_light_000
   rotate: false
-  xy: 1882, 569
-  size: 132, 108
-  orig: 224, 201
-  offset: 49, 47
+  xy: 941, 284
+  size: 66, 54
+  orig: 112, 100
+  offset: 24, 24
   index: -1
 skill2/skill2_light_001
   rotate: false
-  xy: 434, 491
-  size: 208, 188
-  orig: 224, 201
-  offset: 8, 8
+  xy: 217, 245
+  size: 104, 94
+  orig: 112, 100
+  offset: 4, 4
   index: -1
 skill2/skill2_light_002
   rotate: false
-  xy: 1116, 560
-  size: 192, 172
-  orig: 224, 201
-  offset: 16, 14
+  xy: 558, 280
+  size: 96, 86
+  orig: 112, 100
+  offset: 8, 7
   index: -1
 skill2/skill2_light_003
   rotate: false
-  xy: 1428, 497
-  size: 172, 162
-  orig: 224, 201
-  offset: 26, 20
+  xy: 714, 248
+  size: 86, 81
+  orig: 112, 100
+  offset: 13, 10
   index: -1
 skill2/skill2_light_004
   rotate: false
-  xy: 1602, 469
-  size: 156, 172
-  orig: 224, 201
-  offset: 34, 14
+  xy: 801, 234
+  size: 78, 86
+  orig: 112, 100
+  offset: 17, 7
   index: -1
 skill2/skill2_light_005
   rotate: false
-  xy: 1310, 608
-  size: 116, 124
-  orig: 224, 201
-  offset: 54, 39
+  xy: 655, 304
+  size: 58, 62
+  orig: 112, 100
+  offset: 27, 20
   index: -1
 skill2/skill2_light_006
   rotate: false
-  xy: 1952, 954
-  size: 63, 68
-  orig: 224, 201
-  offset: 81, 67
+  xy: 976, 477
+  size: 32, 34
+  orig: 112, 100
+  offset: 40, 34
   index: -1

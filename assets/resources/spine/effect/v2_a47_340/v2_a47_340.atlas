@@ -1,76 +1,76 @@
 
 E54044.png
-size: 2048, 512
+size: 1024,256
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 zhadi_00
   rotate: false
-  xy: 712, 2
-  size: 354, 238
-  orig: 409, 343
-  offset: 25, 14
+  xy: 356, 1
+  size: 177, 119
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_02
   rotate: false
-  xy: 712, 242
-  size: 352, 268
-  orig: 409, 343
-  offset: 25, 14
+  xy: 356, 121
+  size: 176, 134
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_04
   rotate: false
-  xy: 356, 227
-  size: 354, 283
-  orig: 409, 343
-  offset: 25, 13
+  xy: 178, 113
+  size: 177, 142
+  orig: 204, 172
+  offset: 12, 6
   index: -1
 zhadi_06
   rotate: false
-  xy: 2, 218
-  size: 352, 292
-  orig: 409, 343
-  offset: 25, 14
+  xy: 1, 109
+  size: 176, 146
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_08
   rotate: false
-  xy: 1066, 243
-  size: 352, 267
-  orig: 409, 343
-  offset: 25, 14
+  xy: 533, 121
+  size: 176, 134
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_10
   rotate: false
-  xy: 1068, 53
-  size: 352, 188
-  orig: 409, 343
-  offset: 25, 14
+  xy: 534, 26
+  size: 176, 94
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_12
   rotate: false
-  xy: 2, 13
-  size: 352, 203
-  orig: 409, 343
-  offset: 25, 14
+  xy: 1, 6
+  size: 176, 102
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_14
   rotate: false
-  xy: 1420, 295
-  size: 353, 215
-  orig: 409, 343
-  offset: 24, 14
+  xy: 710, 147
+  size: 177, 108
+  orig: 204, 172
+  offset: 12, 7
   index: -1
 zhadi_16
   rotate: false
-  xy: 356, 31
-  size: 347, 194
-  orig: 409, 343
-  offset: 29, 15
+  xy: 178, 15
+  size: 174, 97
+  orig: 204, 172
+  offset: 14, 8
   index: -1
 zhadi_18
   rotate: false
-  xy: 1422, 154
-  size: 331, 139
-  orig: 409, 343
-  offset: 36, 18
+  xy: 711, 77
+  size: 166, 70
+  orig: 204, 172
+  offset: 18, 9
   index: -1

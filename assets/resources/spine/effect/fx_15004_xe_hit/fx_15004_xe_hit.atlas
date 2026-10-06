@@ -1,321 +1,321 @@
 
 fx_15004_xe_hit.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 image/fx_15004_xe_attack/xe_attack_glow_00001
   rotate: false
-  xy: 1115, 813
-  size: 62, 30
-  orig: 64, 32
-  offset: 1, 0
+  xy: 557, 406
+  size: 31, 15
+  orig: 32, 16
+  offset: 0, 0
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00032
   rotate: false
-  xy: 1516, 761
-  size: 78, 94
-  orig: 180, 180
-  offset: 54, 48
+  xy: 758, 380
+  size: 39, 47
+  orig: 90, 90
+  offset: 27, 24
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00033
   rotate: false
-  xy: 566, 164
-  size: 160, 131
-  orig: 180, 180
-  offset: 10, 25
+  xy: 283, 82
+  size: 80, 66
+  orig: 90, 90
+  offset: 5, 12
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00034
   rotate: false
-  xy: 968, 310
-  size: 172, 149
-  orig: 180, 180
-  offset: 8, 11
+  xy: 484, 155
+  size: 86, 75
+  orig: 90, 90
+  offset: 4, 6
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00035
   rotate: false
-  xy: 576, 297
-  size: 165, 144
-  orig: 180, 180
-  offset: 8, 14
+  xy: 288, 148
+  size: 83, 72
+  orig: 90, 90
+  offset: 4, 7
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00036
   rotate: false
-  xy: 1596, 699
-  size: 143, 131
-  orig: 180, 180
-  offset: 15, 23
+  xy: 798, 349
+  size: 72, 66
+  orig: 90, 90
+  offset: 8, 12
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00037
   rotate: false
-  xy: 1741, 696
-  size: 134, 134
-  orig: 180, 180
-  offset: 24, 22
+  xy: 870, 348
+  size: 67, 67
+  orig: 90, 90
+  offset: 12, 11
   index: -1
 image/fx_15004_xe_hit/xe_hit_da_00038
   rotate: false
-  xy: 1928, 819
-  size: 114, 103
-  orig: 180, 180
-  offset: 31, 37
+  xy: 964, 409
+  size: 57, 52
+  orig: 90, 90
+  offset: 16, 18
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00004
   rotate: false
-  xy: 1877, 703
-  size: 129, 114
-  orig: 200, 200
-  offset: 40, 53
+  xy: 938, 351
+  size: 65, 57
+  orig: 100, 100
+  offset: 20, 26
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00005
   rotate: false
-  xy: 394, 168
-  size: 170, 130
-  orig: 200, 200
-  offset: 16, 38
+  xy: 197, 84
+  size: 85, 65
+  orig: 100, 100
+  offset: 8, 19
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00006
   rotate: false
-  xy: 782, 312
-  size: 184, 147
-  orig: 200, 200
-  offset: 13, 25
+  xy: 391, 156
+  size: 92, 74
+  orig: 100, 100
+  offset: 6, 12
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00007
   rotate: false
-  xy: 398, 300
-  size: 176, 141
-  orig: 200, 200
-  offset: 13, 27
+  xy: 199, 150
+  size: 88, 71
+  orig: 100, 100
+  offset: 6, 14
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00008
   rotate: false
-  xy: 728, 166
-  size: 100, 96
-  orig: 200, 200
-  offset: 49, 52
+  xy: 364, 83
+  size: 50, 48
+  orig: 100, 100
+  offset: 24, 26
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00009
   rotate: false
-  xy: 830, 163
-  size: 103, 99
-  orig: 200, 200
-  offset: 47, 50
+  xy: 415, 81
+  size: 52, 50
+  orig: 100, 100
+  offset: 24, 25
   index: -1
 image/fx_15004_xe_hit/xe_hit_xiao_00010
   rotate: false
-  xy: 1048, 206
-  size: 103, 102
-  orig: 200, 200
-  offset: 47, 49
+  xy: 524, 103
+  size: 52, 51
+  orig: 100, 100
+  offset: 24, 24
   index: -1
 image/fx_15004_xe_skill/xe_skill_baodian2_00065
   rotate: false
-  xy: 909, 2
-  size: 102, 89
-  orig: 128, 128
-  offset: 10, 9
+  xy: 454, 1
+  size: 51, 45
+  orig: 64, 64
+  offset: 5, 4
   index: -1
 image/fx_15004_xe_skill/xe_skill_baodian2_00066
   rotate: false
-  xy: 935, 93
-  size: 114, 101
-  orig: 128, 128
-  offset: 3, 8
+  xy: 467, 46
+  size: 57, 51
+  orig: 64, 64
+  offset: 2, 4
   index: -1
 image/fx_15004_xe_skill/xe_skill_baodian2_00067
   rotate: false
-  xy: 333, 41
-  size: 115, 106
-  orig: 128, 128
-  offset: 5, 10
+  xy: 166, 20
+  size: 58, 53
+  orig: 64, 64
+  offset: 2, 5
   index: -1
 image/fx_15004_xe_skill/xe_skill_baodian2_00068
   rotate: false
-  xy: 564, 57
-  size: 117, 105
-  orig: 128, 128
-  offset: 7, 13
+  xy: 282, 28
+  size: 59, 53
+  orig: 64, 64
+  offset: 4, 6
   index: -1
 image/fx_15004_xe_skill/xe_skill_huan_00064
   rotate: false
-  xy: 450, 54
-  size: 112, 112
-  orig: 128, 128
-  offset: 7, 9
+  xy: 225, 27
+  size: 56, 56
+  orig: 64, 64
+  offset: 4, 4
   index: -1
 image/fx_15004_xe_skill/xe_skill_xiantiao_00007
   rotate: false
-  xy: 164, 12
-  size: 152, 30
-  orig: 170, 60
-  offset: 18, 10
+  xy: 82, 6
+  size: 76, 15
+  orig: 85, 30
+  offset: 9, 5
   index: -1
 image/fx_15004_xe_skill/xe_skill_xiantiao_00008
   rotate: false
-  xy: 2, 5
-  size: 160, 37
-  orig: 170, 60
-  offset: 10, 10
+  xy: 1, 2
+  size: 80, 19
+  orig: 85, 30
+  offset: 5, 5
   index: -1
 image/fx_15004_xe_skill/xe_skill_xiantiao_00009
   rotate: false
-  xy: 791, 264
-  size: 138, 46
-  orig: 170, 60
-  offset: 3, 10
+  xy: 395, 132
+  size: 69, 23
+  orig: 85, 30
+  offset: 2, 5
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00068
   rotate: false
-  xy: 1142, 373
-  size: 78, 92
-  orig: 180, 180
-  offset: 35, 25
+  xy: 571, 186
+  size: 39, 46
+  orig: 90, 90
+  offset: 18, 12
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00070
   rotate: false
-  xy: 1051, 102
-  size: 92, 102
-  orig: 180, 180
-  offset: 39, 38
+  xy: 525, 51
+  size: 46, 51
+  orig: 90, 90
+  offset: 20, 19
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00072
   rotate: false
-  xy: 683, 54
-  size: 106, 108
-  orig: 180, 180
-  offset: 37, 45
+  xy: 341, 27
+  size: 53, 54
+  orig: 90, 90
+  offset: 18, 22
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00074
   rotate: false
-  xy: 935, 196
-  size: 111, 112
-  orig: 180, 180
-  offset: 37, 47
+  xy: 467, 98
+  size: 56, 56
+  orig: 90, 90
+  offset: 18, 24
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00076
   rotate: false
-  xy: 791, 55
-  size: 116, 106
-  orig: 180, 180
-  offset: 34, 56
+  xy: 395, 27
+  size: 58, 53
+  orig: 90, 90
+  offset: 17, 28
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00078
   rotate: false
-  xy: 1921, 924
-  size: 115, 98
-  orig: 180, 180
-  offset: 32, 67
+  xy: 960, 462
+  size: 58, 49
+  orig: 90, 90
+  offset: 16, 34
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu2_00080
   rotate: false
-  xy: 1049, 467
-  size: 114, 76
-  orig: 180, 180
-  offset: 33, 91
+  xy: 524, 233
+  size: 57, 38
+  orig: 90, 90
+  offset: 16, 46
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00068
   rotate: false
-  xy: 782, 461
-  size: 265, 82
-  orig: 350, 150
-  offset: 49, 32
+  xy: 391, 230
+  size: 133, 41
+  orig: 175, 75
+  offset: 24, 16
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00070
   rotate: false
-  xy: 782, 545
-  size: 310, 95
-  orig: 350, 150
-  offset: 27, 28
+  xy: 391, 272
+  size: 155, 48
+  orig: 175, 75
+  offset: 14, 14
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00072
   rotate: false
-  xy: 789, 642
-  size: 316, 98
-  orig: 350, 150
-  offset: 24, 27
+  xy: 394, 321
+  size: 158, 49
+  orig: 175, 75
+  offset: 12, 14
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00074
   rotate: false
-  xy: 1598, 923
-  size: 321, 99
-  orig: 350, 150
-  offset: 21, 26
+  xy: 799, 461
+  size: 161, 50
+  orig: 175, 75
+  offset: 10, 13
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00076
   rotate: false
-  xy: 789, 742
-  size: 324, 101
-  orig: 350, 150
-  offset: 19, 25
+  xy: 394, 371
+  size: 162, 51
+  orig: 175, 75
+  offset: 10, 12
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00078
   rotate: false
-  xy: 2, 44
-  size: 329, 103
-  orig: 350, 150
-  offset: 15, 24
+  xy: 1, 22
+  size: 165, 52
+  orig: 175, 75
+  offset: 8, 12
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00080
   rotate: false
-  xy: 1598, 832
-  size: 328, 89
-  orig: 350, 150
-  offset: 12, 24
+  xy: 799, 416
+  size: 164, 45
+  orig: 175, 75
+  offset: 6, 12
   index: -1
 image/fx_15004_xe_skill/xe_skill_yanwu_00082
   rotate: false
-  xy: 1193, 767
-  size: 321, 88
-  orig: 350, 150
-  offset: 11, 23
+  xy: 596, 383
+  size: 161, 44
+  orig: 175, 75
+  offset: 6, 12
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00067
   rotate: false
-  xy: 398, 443
-  size: 382, 288
-  orig: 440, 300
-  offset: 24, 0
+  xy: 199, 221
+  size: 191, 144
+  orig: 220, 150
+  offset: 12, 0
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00068
   rotate: false
-  xy: 403, 733
-  size: 384, 289
-  orig: 440, 300
-  offset: 23, 0
+  xy: 201, 366
+  size: 192, 145
+  orig: 220, 150
+  offset: 12, 0
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00070
   rotate: false
-  xy: 2, 149
-  size: 390, 291
-  orig: 440, 300
-  offset: 20, 1
+  xy: 1, 74
+  size: 195, 146
+  orig: 220, 150
+  offset: 10, 0
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00072
   rotate: false
-  xy: 2, 442
-  size: 394, 289
-  orig: 440, 300
-  offset: 18, 5
+  xy: 1, 221
+  size: 197, 145
+  orig: 220, 150
+  offset: 9, 2
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00074
   rotate: false
-  xy: 2, 733
-  size: 399, 289
-  orig: 440, 300
-  offset: 15, 5
+  xy: 1, 366
+  size: 200, 145
+  orig: 220, 150
+  offset: 8, 2
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00076
   rotate: false
-  xy: 789, 845
-  size: 402, 177
-  orig: 440, 300
-  offset: 13, 9
+  xy: 394, 422
+  size: 201, 89
+  orig: 220, 150
+  offset: 6, 4
   index: -1
 image/fx_15004_xe_skill/xe_skill_zhao_00078
   rotate: false
-  xy: 1193, 857
-  size: 403, 165
-  orig: 440, 300
-  offset: 12, 21
+  xy: 596, 428
+  size: 202, 83
+  orig: 220, 150
+  offset: 6, 10
   index: -1

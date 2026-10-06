@@ -742,6 +742,8 @@ export interface GuardBattleState {
   spawnCountMult: number;
   /** 怪物血量额外倍率(只乘 HP;主线收紧用)。 */
   monsterHpMult: number;
+  /** 本局每种怪可用的皮肤(createGuardBattle 按种子抽样;spawn 从这里取)。 */
+  monsterSpineCodes: Record<GuardMonsterKind, string[]>;
   /** 怪物啃水晶倍率(缺省=√monsterHpMult 沿用主线难度包耦合;每日副本传 1 只加血不加啃咬)。 */
   monsterBiteMult: number;
   /** 小怪(非 BOSS/精英)额外血量倍率,叠乘在 monsterHpMult 之上(限时副本收紧用,缺省 1)。 */
@@ -1136,6 +1138,33 @@ export function guardSummarizeSpawns(spawns: Array<{ kind: GuardMonsterKind }> |
   return summary;
 }
 
+/** 本局抽样后的皮肤表里挑一套(表缺项时退回全表)。 */
+function pickMonsterSpineCode(state: GuardBattleState, kind: GuardMonsterKind): string {
+  const codes = state.monsterSpineCodes?.[kind] ?? MONSTER_PROFILE[kind].spineCodes;
+  return codes[Math.floor(state.rng() * codes.length)];
+}
+
+/**
+ * 按种子为每种怪抽 variety 套皮肤(独立 rng 流,不影响其它随机序列;同一 seedText 永远同一结果,
+ * 所以开战前的加载门与建场后的 sim 能算出同一份表)。
+ */
+export function guardPickMonsterSpineCodes(seedText: string, variety: number): Record<GuardMonsterKind, string[]> {
+  const rng = createGuardRng((guardHashSeed(seedText || 'guard') ^ 0x9e3779b9) >>> 0);
+  const out = {} as Record<GuardMonsterKind, string[]>;
+  (Object.keys(MONSTER_PROFILE) as GuardMonsterKind[]).forEach((kind) => {
+    const all = MONSTER_PROFILE[kind].spineCodes.slice();
+    const take = Math.max(1, Math.min(all.length, Math.round(variety)));
+    for (let i = all.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      const swap = all[i];
+      all[i] = all[j];
+      all[j] = swap;
+    }
+    out[kind] = all.slice(0, take);
+  });
+  return out;
+}
+
 // ── RNG(mulberry32,seed 由 serverSeed 字符串散列)──
 export function guardHashSeed(text: string): number {
   let hash = 2166136261 >>> 0;
@@ -1192,6 +1221,11 @@ export function createGuardBattle(
     monsterBiteMult?: number;
     /** 小怪(非 BOSS/精英)额外血量倍率,叠乘在 monsterHpMult 之上(缺省 1)。 */
     minionHpMult?: number;
+    /**
+     * 每种怪本局用几套皮肤(1..3,缺省 3 = 全部)。2026-10-06 手机显存优化:40 套怪物图集全在内存要 ~640MB,
+     * 手机每局每种怪只抽 1 套(按种子抽,同一局确定),开战前只预载这几套。
+     */
+    monsterVariety?: number;
     /** 守卫水晶养成快照(docs/38,开战回执 guardCrystal;缺省=1 级无加成、只解锁 3 个基础法术)。 */
     crystal?: {
       level?: number;
@@ -1261,6 +1295,7 @@ export function createGuardBattle(
     freeEnhance: 0,
     enhanceCost: GUARD_ENHANCE_PRICES[0],
     choiceRng: createGuardRng((seed ^ 0x5bd1e995) >>> 0),
+    monsterSpineCodes: guardPickMonsterSpineCodes(seedText, opts?.monsterVariety ?? 3),
     heroPerks: {},
     whiteStacks: {},
     goldSeen: 0,
@@ -2311,7 +2346,7 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
     slowUntilMs: 0,
     stunnedUntilMs: 0,
     spawnedWave: state.wave,
-    spineCode: profile.spineCodes[Math.floor(state.rng() * profile.spineCodes.length)],
+    spineCode: pickMonsterSpineCode(state, kind),
     skillReadyMs: kind === 'boss' ? state.timeMs + 5000 : 0,
     dead: false,
     diedAtMs: 0,

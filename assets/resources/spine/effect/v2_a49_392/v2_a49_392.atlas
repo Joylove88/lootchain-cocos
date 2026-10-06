@@ -1,55 +1,55 @@
 
 skeleton.png
-size: 2048, 256
+size: 1024,128
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 ui_xinguaji_guai_siwang_00
   rotate: false
-  xy: 644, 2
-  size: 187, 226
-  orig: 290, 256
-  offset: 49, 14
+  xy: 322, 1
+  size: 94, 113
+  orig: 145, 128
+  offset: 24, 7
   index: -1
 ui_xinguaji_guai_siwang_01
   rotate: false
-  xy: 221, 24
-  size: 211, 204
-  orig: 290, 256
-  offset: 37, 23
+  xy: 110, 12
+  size: 106, 102
+  orig: 145, 128
+  offset: 18, 12
   index: -1
 ui_xinguaji_guai_siwang_02
   rotate: false
-  xy: 2, 24
-  size: 217, 204
-  orig: 290, 256
-  offset: 34, 23
+  xy: 1, 12
+  size: 109, 102
+  orig: 145, 128
+  offset: 17, 12
   index: -1
 ui_xinguaji_guai_siwang_03
   rotate: false
-  xy: 434, 42
-  size: 208, 186
-  orig: 290, 256
-  offset: 38, 40
+  xy: 217, 21
+  size: 104, 93
+  orig: 145, 128
+  offset: 19, 20
   index: -1
 ui_xinguaji_guai_siwang_04
   rotate: false
-  xy: 833, 71
-  size: 198, 157
-  orig: 290, 256
-  offset: 37, 62
+  xy: 416, 35
+  size: 99, 79
+  orig: 145, 128
+  offset: 18, 31
   index: -1
 ui_xinguaji_guai_siwang_05
   rotate: false
-  xy: 1033, 93
-  size: 169, 135
-  orig: 290, 256
-  offset: 51, 74
+  xy: 516, 46
+  size: 85, 68
+  orig: 145, 128
+  offset: 26, 37
   index: -1
 ui_xinguaji_guai_siwang_06
   rotate: false
-  xy: 1204, 114
-  size: 98, 114
-  orig: 290, 256
-  offset: 114, 89
+  xy: 602, 57
+  size: 49, 57
+  orig: 145, 128
+  offset: 57, 44
   index: -1

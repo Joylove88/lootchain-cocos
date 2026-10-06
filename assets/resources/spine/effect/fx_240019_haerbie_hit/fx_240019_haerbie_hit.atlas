@@ -1,125 +1,125 @@
 
 fx_240019_haerbie_hit.png
-size: 2048, 1024
+size: 1024,512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 skill/skillhit_00036
   rotate: false
-  xy: 1708, 660
-  size: 306, 302
-  orig: 402, 450
-  offset: 15, 49
+  xy: 854, 330
+  size: 153, 151
+  orig: 201, 225
+  offset: 8, 24
   index: -1
 skill/skillhit_00037
   rotate: false
-  xy: 1390, 662
-  size: 316, 300
-  orig: 402, 450
-  offset: 15, 49
+  xy: 695, 331
+  size: 158, 150
+  orig: 201, 225
+  offset: 8, 24
   index: -1
 skill/skillhit_00038
   rotate: false
-  xy: 1007, 452
-  size: 309, 208
-  orig: 402, 450
-  offset: 89, 99
+  xy: 503, 226
+  size: 155, 104
+  orig: 201, 225
+  offset: 44, 50
   index: -1
 skill/skillhit_00039
   rotate: false
-  xy: 688, 418
-  size: 317, 242
-  orig: 402, 450
-  offset: 85, 90
+  xy: 344, 209
+  size: 159, 121
+  orig: 201, 225
+  offset: 42, 45
   index: -1
 skill/skillhit_00040
   rotate: false
-  xy: 356, 393
-  size: 330, 275
-  orig: 402, 450
-  offset: 72, 75
+  xy: 178, 196
+  size: 165, 138
+  orig: 201, 225
+  offset: 36, 38
   index: -1
 skill/skillhit_00041
   rotate: false
-  xy: 713, 662
-  size: 340, 300
-  orig: 402, 450
-  offset: 62, 62
+  xy: 356, 331
+  size: 170, 150
+  orig: 201, 225
+  offset: 31, 31
   index: -1
 skill/skillhit_00042
   rotate: false
-  xy: 2, 313
-  size: 347, 319
-  orig: 402, 450
-  offset: 55, 53
+  xy: 1, 156
+  size: 174, 160
+  orig: 201, 225
+  offset: 28, 26
   index: -1
 skill/skillhit_00043
   rotate: false
-  xy: 2, 634
-  size: 352, 328
-  orig: 402, 450
-  offset: 50, 47
+  xy: 1, 317
+  size: 176, 164
+  orig: 201, 225
+  offset: 25, 24
   index: -1
 skill/skillhit_00044
   rotate: false
-  xy: 356, 670
-  size: 355, 292
-  orig: 402, 450
-  offset: 47, 42
+  xy: 178, 335
+  size: 178, 146
+  orig: 201, 225
+  offset: 24, 21
   index: -1
 skill/skillhit_00045
   rotate: false
-  xy: 2, 11
-  size: 347, 300
-  orig: 402, 450
-  offset: 46, 38
+  xy: 1, 5
+  size: 174, 150
+  orig: 201, 225
+  offset: 23, 19
   index: -1
 skill/skillhit_00046
   rotate: false
-  xy: 1055, 662
-  size: 333, 300
-  orig: 402, 450
-  offset: 58, 36
+  xy: 527, 331
+  size: 167, 150
+  orig: 201, 225
+  offset: 29, 18
   index: -1
 skill/skillhit_00047
   rotate: false
-  xy: 351, 124
-  size: 308, 267
-  orig: 402, 450
-  offset: 59, 35
+  xy: 175, 62
+  size: 154, 134
+  orig: 201, 225
+  offset: 30, 18
   index: -1
 skill/skillhit_00048
   rotate: false
-  xy: 1318, 406
-  size: 197, 254
-  orig: 402, 450
-  offset: 87, 34
+  xy: 659, 203
+  size: 99, 127
+  orig: 201, 225
+  offset: 44, 17
   index: -1
 skill/skillhit_00049
   rotate: false
-  xy: 1517, 407
-  size: 185, 253
-  orig: 402, 450
-  offset: 92, 38
+  xy: 758, 203
+  size: 93, 127
+  orig: 201, 225
+  offset: 46, 19
   index: -1
 skill/skillhit_00050
   rotate: false
-  xy: 1704, 484
-  size: 153, 174
-  orig: 402, 450
-  offset: 93, 117
+  xy: 852, 242
+  size: 77, 87
+  orig: 201, 225
+  offset: 46, 58
   index: -1
 skill/skillhit_00051
   rotate: false
-  xy: 1859, 488
-  size: 155, 170
-  orig: 402, 450
-  offset: 94, 119
+  xy: 929, 244
+  size: 78, 85
+  orig: 201, 225
+  offset: 47, 60
   index: -1
 skill2/glow_00019
   rotate: false
-  xy: 351, 2
-  size: 120, 120
-  orig: 128, 128
-  offset: 4, 4
+  xy: 175, 1
+  size: 60, 60
+  orig: 64, 64
+  offset: 2, 2
   index: -1

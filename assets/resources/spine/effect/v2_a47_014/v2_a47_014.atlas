@@ -1,160 +1,160 @@
 
 3013.png
-size: 2048, 512
+size: 1024,256
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 boss_skill1/bao_00001
   rotate: false
-  xy: 693, 167
-  size: 119, 118
-  orig: 201, 202
-  offset: 36, 45
+  xy: 346, 83
+  size: 60, 59
+  orig: 100, 101
+  offset: 18, 22
   index: -1
 boss_skill1/bao_00002
   rotate: false
-  xy: 769, 8
-  size: 126, 118
-  orig: 201, 202
-  offset: 33, 45
+  xy: 384, 4
+  size: 63, 59
+  orig: 100, 101
+  offset: 16, 22
   index: -1
 boss_skill1/bao_00004
   rotate: false
-  xy: 1771, 185
-  size: 146, 141
-  orig: 201, 202
-  offset: 26, 29
+  xy: 885, 92
+  size: 73, 71
+  orig: 100, 101
+  offset: 13, 14
   index: -1
 boss_skill1/bao_00005
   rotate: false
-  xy: 1620, 172
-  size: 149, 154
-  orig: 201, 202
-  offset: 25, 17
+  xy: 810, 86
+  size: 75, 77
+  orig: 100, 101
+  offset: 12, 8
   index: -1
 boss_skill1/bao_00006
   rotate: false
-  xy: 1319, 162
-  size: 150, 160
-  orig: 201, 202
-  offset: 25, 13
+  xy: 659, 81
+  size: 75, 80
+  orig: 100, 101
+  offset: 12, 6
   index: -1
 boss_skill1/bao_00008
   rotate: false
-  xy: 533, 121
-  size: 158, 164
-  orig: 201, 202
-  offset: 24, 11
+  xy: 266, 60
+  size: 79, 82
+  orig: 100, 101
+  offset: 12, 6
   index: -1
 boss_skill1/bao_00010
   rotate: false
-  xy: 1471, 165
-  size: 147, 158
-  orig: 201, 202
-  offset: 27, 12
+  xy: 735, 82
+  size: 74, 79
+  orig: 100, 101
+  offset: 14, 6
   index: -1
 boss_skill1/bao_00011
   rotate: false
-  xy: 696, 23
-  size: 71, 142
-  orig: 201, 202
-  offset: 53, 23
+  xy: 348, 11
+  size: 36, 71
+  orig: 100, 101
+  offset: 26, 12
   index: -1
 boss_skill1/penhuo_00002
   rotate: false
-  xy: 533, 2
-  size: 161, 117
-  orig: 373, 293
-  offset: 43, 62
+  xy: 266, 1
+  size: 81, 59
+  orig: 186, 146
+  offset: 22, 31
   index: -1
 boss_skill1/penhuo_00003
   rotate: false
-  xy: 2, 279
-  size: 307, 222
-  orig: 373, 293
-  offset: 0, 32
+  xy: 1, 139
+  size: 154, 111
+  orig: 186, 146
+  offset: 0, 16
   index: -1
 boss_skill1/penhuo_00004
   rotate: false
-  xy: 2, 50
-  size: 267, 227
-  orig: 373, 293
-  offset: 28, 30
+  xy: 1, 25
+  size: 134, 114
+  orig: 186, 146
+  offset: 14, 15
   index: -1
 boss_skill1/penhuo_00005
   rotate: false
-  xy: 311, 287
-  size: 250, 214
-  orig: 373, 293
-  offset: 32, 45
+  xy: 155, 143
+  size: 125, 107
+  orig: 186, 146
+  offset: 16, 22
   index: -1
 boss_skill1/penhuo_00006
   rotate: false
-  xy: 563, 287
-  size: 250, 214
-  orig: 373, 293
-  offset: 32, 45
+  xy: 281, 143
+  size: 125, 107
+  orig: 186, 146
+  offset: 16, 22
   index: -1
 boss_skill1/penhuo_00007
   rotate: false
-  xy: 815, 305
-  size: 264, 196
-  orig: 373, 293
-  offset: 25, 62
+  xy: 407, 152
+  size: 132, 98
+  orig: 186, 146
+  offset: 12, 31
   index: -1
 boss_skill1/penhuo_00008
   rotate: false
-  xy: 1322, 325
-  size: 239, 176
-  orig: 373, 293
-  offset: 45, 72
+  xy: 661, 162
+  size: 120, 88
+  orig: 186, 146
+  offset: 22, 36
   index: -1
 boss_skill1/penhuo_00009
   rotate: false
-  xy: 1081, 324
-  size: 239, 177
-  orig: 373, 293
-  offset: 40, 61
+  xy: 540, 162
+  size: 120, 89
+  orig: 186, 146
+  offset: 20, 30
   index: -1
 boss_skill1/penhuo_00010
   rotate: false
-  xy: 815, 128
-  size: 234, 175
-  orig: 373, 293
-  offset: 45, 55
+  xy: 407, 64
+  size: 117, 88
+  orig: 186, 146
+  offset: 22, 28
   index: -1
 boss_skill1/penhuo_00011
   rotate: false
-  xy: 1081, 151
-  size: 236, 171
-  orig: 373, 293
-  offset: 50, 52
+  xy: 540, 75
+  size: 118, 86
+  orig: 186, 146
+  offset: 25, 26
   index: -1
 boss_skill1/penhuo_00012
   rotate: false
-  xy: 1563, 328
-  size: 238, 173
-  orig: 373, 293
-  offset: 59, 54
+  xy: 781, 164
+  size: 119, 87
+  orig: 186, 146
+  offset: 30, 27
   index: -1
 boss_skill1/penhuo_00013
   rotate: false
-  xy: 1803, 328
-  size: 237, 173
-  orig: 373, 293
-  offset: 60, 54
+  xy: 901, 164
+  size: 119, 87
+  orig: 186, 146
+  offset: 30, 27
   index: -1
 boss_skill1/penhuo_00014
   rotate: false
-  xy: 311, 108
-  size: 220, 177
-  orig: 373, 293
-  offset: 40, 57
+  xy: 155, 54
+  size: 110, 89
+  orig: 186, 146
+  offset: 20, 28
   index: -1
 glow
   rotate: false
-  xy: 897, 70
-  size: 56, 56
-  orig: 64, 64
-  offset: 3, 4
+  xy: 448, 35
+  size: 28, 28
+  orig: 32, 32
+  offset: 2, 2
   index: -1
