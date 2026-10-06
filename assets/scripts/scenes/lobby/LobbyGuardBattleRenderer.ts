@@ -129,7 +129,7 @@ import {
 import { loadSharedSpineData } from './SpineDataStore';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { BattleFxSlotFilter } from './BattleFxSlotFilter';
-import { lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
+import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
@@ -1190,6 +1190,51 @@ export class LobbyGuardBattleRenderer {
    * 之后挂上的大招特效 / 名牌 / 伤害数字都在压暗层之上,所以大招单独"亮"出来。HUD 在 root 上、不受影响。
    * 只用 Sprite(UIOpacity 淡不掉 Graphics 填充);同时多个大招 2s 内只压一次。
    */
+  /** 压暗保持到的时刻(整段演出类大招按片段长度压暗;多个大招叠加时取最晚)。 */
+  private ultDimHoldUntil = 0;
+
+  /**
+   * 整段演出类大招的压暗(2026-10-06):压到 120/255 并保持 durationSec,再 0.35s 淡出;期间再来一个大招就顺延。
+   * 与 pulseUltDim 共用同一个 GuardUltDim 节点。
+   */
+  private holdUltDim(durationSec: number): void {
+    const field = this.fieldNode;
+    const sim = this.sim;
+    if (!field || !sim || this.wheelOverlayOpen || sim.pendingChoice) {
+      return;
+    }
+    const until = Date.now() + durationSec * 1000;
+    const extend = this.ultDimHoldUntil > Date.now();
+    this.ultDimHoldUntil = Math.max(this.ultDimHoldUntil, until);
+    let node = field.getChildByName('GuardUltDim');
+    let opacity = node?.getComponent(UIOpacity) ?? null;
+    if (node && opacity) {
+      Tween.stopAllByTarget(opacity);
+    } else {
+      node?.destroy();
+      node = this.mountSoftShade(field, 'GuardUltDim', 0, this.layoutHeight * 0.03, this.layoutWidth * 1.1, this.layoutHeight * 1.12, 'flat');
+      if (!node) {
+        return;
+      }
+      opacity = node.addComponent(UIOpacity);
+      opacity.opacity = 0;
+    }
+    const dimNode = node;
+    this.lastUltDimAt = Date.now();
+    dimNode.setSiblingIndex(field.children.length - 1);
+    const holdSec = Math.max(0.2, (this.ultDimHoldUntil - Date.now()) / 1000);
+    tween(opacity)
+      .to(extend ? 0.05 : 0.12, { opacity: 120 })
+      .delay(holdSec)
+      .to(0.35, { opacity: 0 })
+      .call(() => {
+        if (dimNode.isValid && this.ultDimHoldUntil <= Date.now() + 50) {
+          dimNode.destroy();
+        }
+      })
+      .start();
+  }
+
   private pulseUltDim(): void {
     const field = this.fieldNode;
     const sim = this.sim;
@@ -7881,7 +7926,7 @@ export class LobbyGuardBattleRenderer {
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
     const skeleton = node.addComponent(sp.Skeleton);
-    skeleton.premultipliedAlpha = false;
+    skeleton.premultipliedAlpha = battleFxPremultiplied(spec.effect);
     if (isUlt) {
       this.ultFxLive += 1;
     } else {
@@ -7974,12 +8019,15 @@ export class LobbyGuardBattleRenderer {
           ? (lookupBattleFxCoreBounds(spec.effect, animationName)
             ?? { w: extentW * GUARD_ULT_CORE_FALLBACK_RATIO, h: extentH * GUARD_ULT_CORE_FALLBACK_RATIO, cx: centerX, cy: centerY })
           : { w: extentW, h: extentH, cx: centerX, cy: centerY };
+        // 整段演出类大招(spec.clip,满屏素材):粒子本来就飞出画面,宽松框不再按 85% 屏钳(否则整体被缩到三成),
+        // 只按核心亮区钳;出屏的淡粒子由安全区裁掉即可(2026-10-06 用户「实机看着假」:上屏太小)
+        const looseMax = spec.clip ? 1.7 : GUARD_ULT_LOOSE_MAX;
         const ultClampFit = Math.min(
           GUARD_ULT_FIT_CAP,
           (this.layoutWidth * GUARD_ULT_CORE_MAX_W) / Math.max(8, core.w),
           (this.layoutHeight * GUARD_ULT_CORE_MAX_H) / Math.max(8, core.h),
-          (this.layoutWidth * GUARD_ULT_LOOSE_MAX) / extentW,
-          (this.layoutHeight * GUARD_ULT_LOOSE_MAX) / extentH,
+          (this.layoutWidth * looseMax) / extentW,
+          (this.layoutHeight * looseMax) / extentH,
         );
         const tierU = (GUARD_ULT_CORE_TARGET_U[heroCode.split('_')[0]] ?? GUARD_ULT_CORE_TARGET_U.R) * (group?.anchorAt ? GUARD_ULT_SUPPORT_MULT : 1);
         let ultWant = (u * tierU) / Math.sqrt(Math.max(64, core.w * core.h));
@@ -8189,9 +8237,23 @@ export class LobbyGuardBattleRenderer {
             }
             const playSec = (clip.end - clip.start) / speed;
             const fadeSec = Math.min(0.14, playSec * 0.25);
-            const fade = { alpha: 255 };
+            // 2026-10-06 用户「实机看着假」:这批素材在 Spine 里是压暗全屏 + 角色一起看的,战场上只剩特效本体、
+            // 又从片段中间直接蹦出来,叠在亮背景上像贴纸。补三件事:整段压暗战场(与片段同长)、0.15s 淡入、片段末淡出。
+            if (isUlt) {
+              this.holdUltDim(playSec);
+            }
+            const fadeInSec = Math.min(0.15, playSec * 0.2);
+            const fade = { alpha: 0 };
+            skeleton.color = new Color(255, 255, 255, 0);
             tween(fade)
-              .delay(Math.max(0, playSec - fadeSec))
+              .to(fadeInSec, { alpha: 255 }, {
+                onUpdate: () => {
+                  if (node.isValid) {
+                    skeleton.color = new Color(255, 255, 255, Math.round(fade.alpha));
+                  }
+                },
+              })
+              .delay(Math.max(0, playSec - fadeSec - fadeInSec))
               .to(fadeSec, { alpha: 0 }, {
                 onUpdate: () => {
                   if (node.isValid) {

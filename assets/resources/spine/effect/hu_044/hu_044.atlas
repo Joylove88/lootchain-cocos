@@ -3,6 +3,7 @@ hu_044.png
 size: 2017,872
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bz_tou
   rotate: false

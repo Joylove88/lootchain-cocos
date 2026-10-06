@@ -3,6 +3,7 @@ hu_073.png
 size: 1873,459
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 baidi
   rotate: false

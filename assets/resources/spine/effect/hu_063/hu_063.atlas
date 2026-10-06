@@ -3,6 +3,7 @@ hu_063.png
 size: 2033,920
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bz_y_dabi
   rotate: false

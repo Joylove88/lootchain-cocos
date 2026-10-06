@@ -129,6 +129,7 @@ import {
   type BattleReplayBossCast,
 } from './LobbyBattleReplayModel';
 import {
+  battleFxPremultiplied,
   BOSS_BREAK_EFFECT,
   BOSS_CAST_BURST_EFFECT,
   BOSS_CAST_CHARGE_EFFECT,
@@ -6611,7 +6612,7 @@ export class LobbyBattlePreviewPanelRenderer {
     const layer = this.ensureBattleSkillFxLayer(parent);
     const node = this.host.addChildPlainNode(layer, nodeName, x, y, 10, 10);
     const skeleton = node.addComponent(sp.Skeleton);
-    skeleton.premultipliedAlpha = false;
+    skeleton.premultipliedAlpha = battleFxPremultiplied(spec.effect);
     // 先按保守名义尺寸给初始缩放,数据到了再按实测包围盒修正(避免首帧爆屏)。
     const provisional = (desiredSize / BATTLE_SKILL_FX_FALLBACK_NATIVE_SIZE) * (spec.scale || 1);
     node.setScale(new Vec3(provisional, provisional, 1));

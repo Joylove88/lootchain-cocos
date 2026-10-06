@@ -3,6 +3,7 @@ hu_074.png
 size: 1349,1032
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bikong
   rotate: false

@@ -27,7 +27,8 @@ export interface BattleSkillEffectSpec {
   /**
    * 只播动画的一段(秒,动画自身时间轴):新批次「满屏大招」是 4~18 秒的整段演出,战场里只取高潮片段。
    * speed = 播放倍速(缺省 1)。不填 = 整段播完。
-   * 2026-10-05 用户「有的大招一闪就没,还是要长一点」:每个大招上屏时长不少于约 1.7 秒——优先把片段取长,取不长的放慢。
+   * 2026-10-05 用户「有的大招一闪就没,还是要长一点」:每个大招上屏时长不少于约 1.7 秒——优先把片段取长,取不长的放慢;
+   * 慢放不低于 0.8 倍(更慢像慢镜头,2026-10-06 用户「实机看着假」)。
    */
   clip?: { start: number; end: number; speed?: number };
 }
@@ -67,9 +68,9 @@ export interface BattleSkillEffectSpec {
 //   R_ACOLY_02: { effect: 'v2_s681_4004', animation: 'skill01_1', anchor: 'self', scale: 1.15, offsetY: 12 }, // 祈福·微光庇护(S681 4004,2.667s)
 const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   UR_NYX: { effect: 'hu_098', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 20, clip: { start: 2.0, end: 4.0 } }, // 影刃·千夜追猎:紫蓝利爪连撕 → 幽蓝弧斩(hu_098)
-  SSR_RON: { effect: 'hu_100', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 5.9, end: 7.3, speed: 0.75 } }, // 灰烬·致命猎杀:橙红爆燃十字斩(hu_100)
+  SSR_RON: { effect: 'hu_100', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 5.9, end: 7.3, speed: 0.8 } }, // 灰烬·致命猎杀:橙红爆燃十字斩(hu_100)
   SR_ABYSS_06: { effect: 'hu_054', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 2.0, end: 4.2 } }, // 深渊·冥神审判:幽紫鬼火与冥眼(hu_054)
-  R_SCOUT_03: { effect: 'hu_073', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 4.2, end: 5.3, speed: 0.6 } }, // 灰谷·绝影猎杀:幽蓝月牙一斩(hu_073)
+  R_SCOUT_03: { effect: 'hu_073', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 4.2, end: 5.3, speed: 0.8 } }, // 灰谷·绝影猎杀:幽蓝月牙一斩(hu_073)
   UR_EVELYN: { effect: 'hu_077', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 18, clip: { start: 1.2, end: 3.1 } }, // 深渊·冰狱湮灭:巨型冰晶雪华绽开(hu_077)
   SSR_LIVIA: { effect: 'hu_008', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 18, clip: { start: 7.85, end: 9.65 } }, // 夜烬·焚世之焰:烈焰龙卷(hu_008)
   SR_WITCH_03: { effect: 'hu_018', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 5.6, end: 7.2, speed: 0.85 } }, // 契约·朔夜降临:紫色冥球膨胀 → 斩裂(hu_018)
@@ -79,7 +80,7 @@ const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   R_RANGER_06: { effect: 'hu_063', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 12, clip: { start: 4.6, end: 6.8 } }, // 荒原·疾风连射:翠绿风刃连斩(hu_063)
   UR_ARTHAS: { effect: 'hu_085', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 22, clip: { start: 14.5, end: 18.3 } }, // 永夜·龙焰审判:天火坠落 → 蓝炎火海 → 焰柱(hu_085)
   SSR_MICHAEL: { effect: 'hu_044', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 8.9, end: 10.8 } }, // 圣光·雷霆裁决:雷云压顶,多道金色落雷劈下 + 地面雷爆(hu_044;2026-10-05 用户嫌原 hu_057 金色闪光不好看,换套)
-  SR_BLADE_04: { effect: 'hu_065', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 4.75, end: 5.7, speed: 0.55 } }, // 断刃·狂乱斩:烈焰乱斩爆燃(hu_065)
+  SR_BLADE_04: { effect: 'hu_065', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 14, clip: { start: 4.5, end: 5.7, speed: 0.8 } }, // 断刃·狂乱斩:烈焰乱斩爆燃(hu_065)
   R_PATROL_01: { effect: 'hu_014', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 1.8, end: 3.9 } }, // 王国·誓约剑气:金色剑气掠地(hu_014)
   UR_ATLAS: { effect: 'hu_027', animation: 'skill2', anchor: 'self', scale: 2.4, offsetY: 12, clip: { start: 0.2, end: 2.9 } }, // 圣铠·不动壁垒:金莲法阵 + 圣纹轮(hu_027)
   SSR_KANE: { effect: 'hu_013', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 14, clip: { start: 2.6, end: 4.6 } }, // 白银·圣枪穿刺:金枪俯冲 + 光柱(hu_013)
@@ -334,14 +335,14 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   'hu_073:skill2': { w: 900, h: 560, cx: 0, cy: 150 },
   'hu_077:skill2': { w: 712, h: 618, cx: 84, cy: 83 },
   'hu_008:skill2': { w: 600, h: 700, cx: 110, cy: 160 },
-  'hu_018:skill2': { w: 3141, h: 2890, cx: 613, cy: 721 },
+  'hu_018:skill2': { w: 1600, h: 1400, cx: 613, cy: 721 }, // 实测 3141×2890 被后段巨型丝带撑大,上屏只剩 0.15 倍(2026-10-06 定格图冥球像颗豆);手定成冥球 + 斩击主体
   'hu_035:skill2': { w: 736, h: 375, cx: 345, cy: 84 },
   'hu_093:skill2': { w: 1329, h: 841, cx: -92, cy: 184 },
   'hu_074:skill2': { w: 795, h: 949, cx: 560, cy: -187 },
   'hu_063:skill2': { w: 1386, h: 629, cx: 479, cy: 111 },
   'hu_085:skill2': { w: 1341, h: 830, cx: 3, cy: 87 },
   'hu_044:skill2': { w: 857, h: 792, cx: -111, cy: 51 },
-  'hu_065:skill2': { w: 2528, h: 1425, cx: 1173, cy: -236 },
+  'hu_065:skill2': { w: 1800, h: 1200, cx: 1173, cy: -236 }, // 实测 2528×1425 含飞出的火星,手定成火焰爆点主体(2026-10-06 定格图红月牙太小)
   'hu_014:skill2': { w: 529, h: 359, cx: 216, cy: 57 },
   'hu_027:skill2': { w: 700, h: 623, cx: 105, cy: 17 },
   'hu_013:skill2': { w: 630, h: 1250, cx: 648, cy: 627 },
@@ -395,6 +396,17 @@ export function resolveBattleFxHiddenSlots(spec: BattleSkillEffectSpec): readonl
 
 export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): string {
   return `spine/effect/${spec.effect}/${spec.effect}`;
+}
+
+/**
+ * 该特效图集是否为预乘透明(premultiplied alpha)。2026-10-06 排查用户「新大招 Spine 里看还行,实机看着假」时的两项处理之一:
+ * 新购满屏大招包 hu_* 原图集非预乘、透明区 RGB 带色(bleed);引擎对"正片叠底"插槽固定用 DST_COLOR / ONE_MINUS_SRC_ALPHA 混合,
+ * 非预乘的白透明区会把底图提亮一倍。已把 hu_* 图集像素转成 RGB×A 预乘(原图备份 素材原始备份/hu-ult-pma-20261006,
+ * 处理脚本 scratchpad fxprev/hu_fix_tex.py,同时给整帧铺满的烟尘序列帧做了椭圆柔边——那才是"灰棕色硬边矩形"的真凶),
+ * 挂骨骼时必须同步 premultipliedAlpha=true;旧特效包(fx_pack_v2 / 早期批次)仍是非预乘,保持 false。
+ */
+export function battleFxPremultiplied(effectCode: string): boolean {
+  return effectCode.startsWith('hu_');
 }
 
 /** 本配置引用到的全部 effect_code(去重;供入库校验/预热用)。 */

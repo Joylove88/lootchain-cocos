@@ -3,6 +3,7 @@ hu_077.png
 size: 1889,1032
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 BZ1/bz_jiao_01
   rotate: true

@@ -3,6 +3,7 @@ hu_093.png
 size: 1682,1286
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 daiji
   rotate: false

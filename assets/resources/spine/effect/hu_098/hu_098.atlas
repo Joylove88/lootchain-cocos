@@ -3,6 +3,7 @@ hu_098.png
 size: 1953,618
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bz_baoshi
   rotate: false

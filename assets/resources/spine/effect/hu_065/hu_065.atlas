@@ -3,6 +3,7 @@ hu_065.png
 size: 1969,1032
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bz/bz_shenti
   rotate: true

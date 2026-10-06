@@ -1,5 +1,5 @@
 // 一键出 Web 正式包(docs/31、LootChain docs/35):
-//   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → PNG 压缩
+//   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → 引擎 DPR 封顶补丁 → PNG 压缩
 //   → 写整包下载清单 asset-manifest.json → 打 tar.gz。
 // 用法:npm run release:web            (完整流程)
 //       npm run release:web -- --skip-build   (只对现有 build/web-mobile 做后处理并打包)
@@ -63,6 +63,36 @@ function fixServiceWorkerName() {
   }
   if (!fs.existsSync(target)) {
     fail('构建包里没有 sw.js(build-templates/web-mobile/sw.js 没被拷进来?)');
+  }
+}
+
+/**
+ * 引擎网页端把 devicePixelRatio 封顶在 2(pal/screen-adapter/web:Math.min(window.devicePixelRatio ?? 1, 2)),现代手机 DPR 2.6~3.5,
+ * 画布只有物理分辨率的 57%~76%,整个画面(尤其大招特效)发糊(2026-10-06 用户「开了极致还是不够清晰」)。引擎没有公开调节口,
+ * 出包时把封顶改成读 window.__lcMaxDevicePixelRatio(GraphicsSettings.ts 启动时写 3;没写时仍是 2)。
+ * 这个 chunk 文件名不带 md5(sw.js 对它网络优先),改内容不会被老缓存卡住。模式必须恰好命中 1 处——升级引擎后不匹配就在这里报错,别静默放过。
+ */
+function patchEngineDprCap() {
+  const dir = path.join(BUILD_DIR, 'cocos-js');
+  const pattern = /Math\.min\(null!==\((\w+)=window\.devicePixelRatio\)&&void 0!==\1\?\1:1,2\)/g;
+  let hits = 0;
+  for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+    const file = path.join(dir, name);
+    const src = fs.readFileSync(file, 'utf8');
+    if (!src.includes('window.devicePixelRatio')) {
+      continue;
+    }
+    const out = src.replace(pattern, (m, v) => {
+      hits += 1;
+      return `Math.min(null!==(${v}=window.devicePixelRatio)&&void 0!==${v}?${v}:1,window.__lcMaxDevicePixelRatio||2)`;
+    });
+    if (out !== src) {
+      fs.writeFileSync(file, out);
+      console.log(`[release] 引擎 DPR 封顶补丁:${name}`);
+    }
+  }
+  if (hits !== 1) {
+    fail(`引擎 DPR 封顶补丁命中 ${hits} 处(应为 1):引擎版本变了?对照 pal/screen-adapter/web 的 devicePixelRatio getter 更新 patchEngineDprCap 的正则`);
   }
 }
 
@@ -147,6 +177,7 @@ if (!skipBuild) {
 }
 checkBuildLayout();
 fixServiceWorkerName();
+patchEngineDprCap();
 
 step('3/5 PNG 压缩(libimagequant,达不到画质下限的保原图)');
 const python = process.env.PYTHON || 'python';

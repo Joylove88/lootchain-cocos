@@ -3,6 +3,7 @@ hu_085.png
 size: 2017,1222
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 SK2/shuijing5
   rotate: false

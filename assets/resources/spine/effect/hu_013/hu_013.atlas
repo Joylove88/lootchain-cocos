@@ -3,6 +3,7 @@ hu_013.png
 size: 2048, 1024
 format: RGBA8888
 filter: Linear, Linear
+pma: true
 repeat: none
 biaoqing_daiji
   rotate: false

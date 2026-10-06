@@ -3,6 +3,7 @@ hu_027.png
 size: 1985,475
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 baidi
   rotate: false

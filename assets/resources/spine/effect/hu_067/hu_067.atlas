@@ -3,6 +3,7 @@ hu_067.png
 size: 1921,904
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bozi_01
   rotate: false

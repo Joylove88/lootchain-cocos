@@ -3,6 +3,7 @@ hu_018.png
 size: 2048, 512
 format: RGBA8888
 filter: Linear, Linear
+pma: true
 repeat: none
 BZ/bz1_jiao_an
   rotate: false

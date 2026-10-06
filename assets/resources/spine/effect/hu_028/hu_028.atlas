@@ -3,6 +3,7 @@ hu_028.png
 size: 1794,523
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bz/bz_zmqt
   rotate: false

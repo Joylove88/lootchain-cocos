@@ -3,6 +3,7 @@ hu_052.png
 size: 2001,380
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 3_dupi
   rotate: true

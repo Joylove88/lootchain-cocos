@@ -3,6 +3,7 @@ hu_050.png
 size: 1825,459
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 bozi
   rotate: true

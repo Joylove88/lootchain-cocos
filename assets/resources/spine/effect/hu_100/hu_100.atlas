@@ -3,6 +3,7 @@ hu_100.png
 size: 2017,269
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 baidi
   rotate: false

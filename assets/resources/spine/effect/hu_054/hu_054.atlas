@@ -3,6 +3,7 @@ hu_054.png
 size: 1873,396
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 biaoqing_zui_01
   rotate: false

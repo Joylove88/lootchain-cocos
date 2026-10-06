@@ -3,6 +3,7 @@ hu_049.png
 size: 618,1032
 format: RGBA8888
 filter: Linear,Linear
+pma: true
 repeat: none
 biaoqing
   rotate: false
