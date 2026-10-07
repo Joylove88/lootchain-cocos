@@ -1,5 +1,5 @@
 // 一键出 Web 正式包(docs/31、LootChain docs/35):
-//   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → 引擎 DPR 封顶补丁 → PNG 压缩
+//   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → 引擎 DPR 封顶补丁 → 关 Cocos 启动图 → PNG 压缩
 //   → 写整包下载清单 asset-manifest.json → 打 tar.gz。
 // 用法:npm run release:web            (完整流程)
 //       npm run release:web -- --skip-build   (只对现有 build/web-mobile 做后处理并打包)
@@ -96,6 +96,27 @@ function patchEngineDprCap() {
   }
 }
 
+/**
+ * 去掉 Cocos 启动图(2026-10-07 用户「每次刷新后不要展示这个 cocos logo」):引擎在 splashScreen.totalTime <= 0 时直接跳过。
+ * 项目里没配启动图(构建默认显示 2 秒),出包后直接改 src/settings.<md5>.json;src/ 不归 Service Worker 管,改内容不会被老缓存卡住。
+ */
+function disableSplashScreen() {
+  const srcDir = path.join(BUILD_DIR, 'src');
+  const files = fs.readdirSync(srcDir).filter((n) => /^settings(\.[0-9a-f]{5})?\.json$/.test(n));
+  if (files.length !== 1) {
+    fail(`src/ 下 settings*.json 有 ${files.length} 个(应为 1),没法关启动图`);
+  }
+  const file = path.join(srcDir, files[0]);
+  const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!settings.splashScreen) {
+    console.log('[release] settings 里没有 splashScreen,启动图本来就不显示');
+    return;
+  }
+  settings.splashScreen.totalTime = 0;
+  fs.writeFileSync(file, JSON.stringify(settings));
+  console.log(`[release] 启动图已关闭:${files[0]} splashScreen.totalTime = 0`);
+}
+
 function checkBuildLayout() {
   const indexHtml = path.join(BUILD_DIR, 'index.html');
   if (!fs.existsSync(indexHtml)) {
@@ -178,6 +199,7 @@ if (!skipBuild) {
 checkBuildLayout();
 fixServiceWorkerName();
 patchEngineDprCap();
+disableSplashScreen();
 
 step('3/5 PNG 压缩(libimagequant,达不到画质下限的保原图)');
 const python = process.env.PYTHON || 'python';

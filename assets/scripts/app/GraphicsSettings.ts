@@ -40,6 +40,7 @@ const CAPS: Record<GraphicsMode, GraphicsCaps> = {
 };
 
 let nativePixelRatio = 0;
+let pixelRatioApplied = false;
 let cachedMode: GraphicsMode | null = null;
 
 function read(key: string): string | null {
@@ -129,7 +130,10 @@ function applyPixelRatio(): void {
     }
     (window as Window & { __lcMaxDevicePixelRatio?: number }).__lcMaxDevicePixelRatio = LC_MAX_DEVICE_PIXEL_RATIO;
     const want = desiredPixelRatio(getGraphicsMode(), nativePixelRatio);
-    if (Math.abs((window.devicePixelRatio || 1) - want) < 0.01) {
+    // 第一次套用必须走一遍 resize + 重建渲染窗口:引擎可能在封顶值写入前已按旧封顶建好窗口(2026-10-07 极致档画面缩在左下)
+    const first = !pixelRatioApplied;
+    pixelRatioApplied = true;
+    if (!first && Math.abs((window.devicePixelRatio || 1) - want) < 0.01) {
       return;
     }
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: () => want });

@@ -69,6 +69,37 @@ export class ProtagonistCreateFlow {
     }
   }
 
+  /**
+   * 刷新后恢复会话(已直接进大厅):后台核对主角色。已创建 → 只记下档案,不再重进大厅;
+   * 极少数没建过的账号 → 照常补建隐藏主角,建好后走正常进大厅流程。
+   */
+  async verifyAfterResume(userId: number, tokenName: string): Promise<void> {
+    this.currentUserId = userId;
+    this.currentTokenName = tokenName;
+    this.nameInput = null;
+    const ticket = this.nextTicket();
+    this.state.beginCreate(userId);
+    try {
+      const serverState = await this.protagonistApi.state();
+      if (!this.isCurrent(ticket)) {
+        return;
+      }
+      if (serverState.created && serverState.profile) {
+        this.state.rememberServerProfile(serverState.profile);
+        return;
+      }
+      await this.ensureHiddenProtagonistReady(ticket);
+    } catch (error) {
+      if (!this.isCurrent(ticket)) {
+        return;
+      }
+      // 401 已由 onAuthExpired 统一回登录页;其余错误只提示,不打断大厅
+      const message = this.formatApiError(error, '玩家档案初始化失败');
+      this.state.setError(message);
+      this.host.setStatus(message);
+    }
+  }
+
   selectGender(gender: ProtagonistGender): void {
     this.state.setGender(gender);
   }

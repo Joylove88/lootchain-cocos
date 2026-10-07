@@ -1,25 +1,26 @@
-import type { SpriteFrame, VideoClip } from 'cc';
-import { LobbyResourceLoader } from './LobbyResourceLoader';
+import { resources, SpriteFrame } from 'cc';
+import type { VideoClip } from 'cc';
+import { LOBBY_POSTER_PATH } from './LobbyBackgroundController';
 import type { LobbyLoadingState } from './LobbyLoadingRenderer';
 
-const INITIAL_LOADING_PROGRESS = 0.04;
-const PROGRESS_FRAME_DELAY_MS = 80;
-const FALLBACK_TOKEN_NAME = 'player-token';
 
 export interface LobbyLoadingFlowHost {
   showLobbyLoadingView(): void;
   refreshLobbyLoadingView(): void;
   setLobbyBackgroundResources(posterFrame: SpriteFrame, videoClip: VideoClip | null): void;
   enterLobbyView(): void;
+  /** 大厅已在显示时补画背景(海报晚到)。 */
+  refreshLobbyBackground(): void;
 }
 
 /**
- * 大厅资源加载流程控制器。
+ * 登录成功 → 进大厅。
  *
- * 通过 loadingTicket 防止旧加载流程覆盖新状态；资源加载完成后只通过 host 通知 root 写入背景资源并进入大厅。
+ * 2026-10-07 用户「卡在这个加载页不动了,这个加载页有用吗?没有就移除」:原先这里有一页「资源加载中」,只为读一张大厅海报;
+ * 海报早在启动预载 / 整包缓存里,这一页纯属多余,而且进大厅一旦抛错就永远停在 100%。现在直接进大厅:
+ * 海报已在内存就同步铺上;不在就先用深色底进大厅,读到后补画背景(不再有加载页)。
  */
 export class LobbyLoadingFlow {
-  private readonly resourceLoader = new LobbyResourceLoader();
   private loadingTicket = 0;
   private currentState: LobbyLoadingState = {
     progress: 0,
@@ -33,17 +34,27 @@ export class LobbyLoadingFlow {
     return this.currentState;
   }
 
-  start(tokenName: string): void {
-    // 每次 start 都生成新 ticket，旧的异步回调会被 isCurrentTicket 拦截。
+  start(_tokenName: string): void {
     const ticket = ++this.loadingTicket;
-    this.currentState = {
-      progress: INITIAL_LOADING_PROGRESS,
-      message: `登录成功：${tokenName || FALLBACK_TOKEN_NAME}，准备资源清单...`,
-      error: '',
-    };
-    this.host.showLobbyLoadingView();
-    this.load(ticket).catch((error: unknown) => {
-      this.fail(ticket, error);
+    const posterPath = `${LOBBY_POSTER_PATH}/spriteFrame`;
+    const cached = resources.get(posterPath, SpriteFrame);
+    if (cached) {
+      this.host.setLobbyBackgroundResources(cached, null);
+    }
+    this.host.enterLobbyView();
+    if (cached) {
+      return;
+    }
+    resources.load(posterPath, SpriteFrame, (error, frame) => {
+      if (error || !frame) {
+        console.warn('[LootChain] lobby poster load failed', error);
+        return;
+      }
+      if (!this.isCurrentTicket(ticket)) {
+        return;
+      }
+      this.host.setLobbyBackgroundResources(frame, null);
+      this.host.refreshLobbyBackground();
     });
   }
 
@@ -52,62 +63,11 @@ export class LobbyLoadingFlow {
   }
 
   cancel(): void {
-    // 根节点销毁或切换流程时让当前异步加载票据失效，避免旧回调再进入大厅。
+    // 根节点销毁或切换流程时让当前异步回调失效。
     this.loadingTicket += 1;
-  }
-
-  private async load(ticket: number): Promise<void> {
-    const loadedResources = await this.resourceLoader.load((progress, message) => this.setLoadingProgress(ticket, progress, message));
-    if (!loadedResources || !this.isCurrentTicket(ticket)) {
-      return;
-    }
-
-    // 资源写入前再次检查 ticket，避免快速重试时旧资源覆盖新流程。
-    this.host.setLobbyBackgroundResources(loadedResources.posterFrame, loadedResources.videoClip);
-    if (!await this.setLoadingProgress(ticket, 1, '资源加载完成，进入圣契大厅...')) {
-      return;
-    }
-    if (!this.isCurrentTicket(ticket)) {
-      return;
-    }
-    this.host.enterLobbyView();
-  }
-
-  private async setLoadingProgress(ticket: number, progress: number, message: string): Promise<boolean> {
-    if (!this.isCurrentTicket(ticket)) {
-      return false;
-    }
-    this.currentState = {
-      progress,
-      message,
-      error: '',
-    };
-    this.host.refreshLobbyLoadingView();
-    // 延迟一帧给 loading 界面刷新机会，避免进度直接跳到最终态。
-    await this.delay(PROGRESS_FRAME_DELAY_MS);
-    return this.isCurrentTicket(ticket);
-  }
-
-  private fail(ticket: number, error: unknown): void {
-    if (!this.isCurrentTicket(ticket)) {
-      return;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    this.currentState = {
-      progress: 0,
-      message: '',
-      error: `资源加载失败：${message}`,
-    };
-    this.host.refreshLobbyLoadingView();
   }
 
   private isCurrentTicket(ticket: number): boolean {
     return ticket === this.loadingTicket;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, ms);
-    });
   }
 }

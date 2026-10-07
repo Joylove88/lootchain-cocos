@@ -45,6 +45,9 @@
     html, body { background: #000; overflow: hidden; overscroll-behavior: none; }
     #GameDiv { overflow: hidden; }
   </style>
+  <!-- 引擎 DPR 封顶(release-web.mjs 出包补丁读这个值,2026-10-06):必须在引擎初始化前就有,
+       否则引擎先按 2 建渲染窗口、后续画面只画在左下角一块(2026-10-07 极致档 DPR 2.6 实测) -->
+  <script>window.__lcMaxDevicePixelRatio = 3;</script>
 
 </head>
 <body>

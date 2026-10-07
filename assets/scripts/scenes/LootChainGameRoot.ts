@@ -631,9 +631,10 @@ export class LootChainGameRoot extends Component {
       finished = true;
       this.bootPreloadActive = false;
       this.removeNodeFromContent('BootLoadingRoot');
-      this.renderCurrentView();
-      // 会话持久化(token 7 天):本地有 token+userId 就自动恢复登录,免每次重登;失败清态留在登录页。
-      void this.tryResumeSession();
+      // 会话持久化(token 7 天):本地有 token+userId 就直接进大厅(不先画登录页);没有会话才画登录页。
+      if (!this.resumeSessionIntoLobby()) {
+        this.renderCurrentView();
+      }
       // 登录页亮出后后台预取守卫战必用素材(不阻塞、低并发)。
       this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
     };
@@ -743,8 +744,9 @@ export class LootChainGameRoot extends Component {
       }
       finished = true;
       this.bootPreloadActive = false;
-      this.renderCurrentView();
-      void this.tryResumeSession();
+      if (!this.resumeSessionIntoLobby()) {
+        this.renderCurrentView();
+      }
       // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材。
       // 2026-10-05:素材已在本地时立刻开始(实测登录后马上点冒险 / 背包仍要等 0.7~1.8s),否则等 1.5s 不和首屏抢网络。
       // 编辑器预览不算"本地":手机连电脑预览时素材走局域网,同时发几十个请求会把登录页自己的图挤失败(2026-10-05 用户实测)。
@@ -892,27 +894,24 @@ export class LootChainGameRoot extends Component {
     }
   }
 
-  // 启动自动恢复会话:用 /me/lobby(已放行)探活 token,成功走与真实登录相同的入口流程。
-  private async tryResumeSession(): Promise<void> {
+  /**
+   * 刷新后恢复会话(2026-10-07 用户「每次刷新…已登录用户或 token 在有效期内的用户可以直接展示大厅」):
+   * 本地有 token + 用户 id 就直接进大厅,不先画登录页、不再探活等待;各面板数据随后到。
+   * token 已过期 → 大厅首批请求 401 → onAuthExpired 清会话回登录页;主角色在后台核对(没建过才补建)。
+   * @returns true = 已进大厅;false = 本地没有会话,调用方照常画登录页。
+   */
+  private resumeSessionIntoLobby(): boolean {
     const token = this.api.tokenStore.tokenValue();
     const tokenName = this.api.tokenStore.tokenName();
     const userId = this.api.tokenStore.userId();
     if (!token || !tokenName || !userId) {
-      return;
+      return false;
     }
-    this.setStatus('正在恢复上次登录…');
-    try {
-      await this.api.profile.lobbyProfile();
-      this.setStatus('登录已恢复。');
-      this.resetLobbyProfileForLogin(userId);
-      this.handleLoginSuccess(userId, tokenName);
-    } catch (error) {
-      // 探活失败(过期/服务不可达):清会话留在登录页;401 分支已由 onAuthExpired 统一处理。
-      void error;
-      this.api.auth.logout();
-      this.playerWsClient.disconnect();
-      this.setStatus('登录已过期，请重新登录。');
-    }
+    this.resetLobbyProfileForLogin(userId);
+    this.lobbyLoadingFlow.start(tokenName);
+    this.loadLobbyProfileAfterLogin(userId);
+    void this.protagonistCreateFlow.verifyAfterResume(userId, tokenName);
+    return true;
   }
 
   // 登录态失效:清 token、断长连接、回登录页(避免各面板反复弹业务错误)。
@@ -6388,9 +6387,21 @@ export class LootChainGameRoot extends Component {
     this.lobbyBackgroundController.setResources(posterFrame, videoClip);
   }
 
+  /** 大厅海报晚到(本地缓存里没有,现读):只在大厅主界面时整页重画一次;功能页回大厅时自然带上。 */
+  private refreshLobbyBackground(): void {
+    if (this.currentView === 'lobby' && !this.bootPreloadActive) {
+      this.renderCurrentView();
+    }
+  }
+
   private enterLobbyView(): void {
     this.currentView = 'lobby';
-    this.renderLobby();
+    try {
+      this.renderLobby();
+    } catch (error) {
+      // 不吞:大厅绘制出错时留痕,下一次 renderCurrentView(任意刷新 / 点击)会重画
+      console.error('[LootChain] render lobby failed', error);
+    }
     void this.loadIdleSummary();
     // 登录态就绪后建立通知长连接(幂等;断线自动重连)。
     this.playerWsClient.connect();
