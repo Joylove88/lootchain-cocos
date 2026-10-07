@@ -43,6 +43,11 @@ def compress_one(task):
     path, spine_mode = task
     try:
         before = os.path.getsize(path)
+        # 预乘透明的骨骼图集(源 .atlas 标了 pma: true,目前是 hu_* 满屏大招)一律不量化:调色板量化按直通透明处理,
+        # 会给完全透明的像素留下颜色,预乘混合(ONE, ONE_MINUS_SRC_ALPHA)下直接叠到画面上,
+        # 实机就是发绿的矩形 + 锯齿边(2026-10-07 用户手机实测罗恩大招 hu_100)。
+        if _uuid_of(path) in PMA_TEXTURE_UUIDS:
+            return path, before, before, 'skip-pma'
         with Image.open(path) as im:
             im.load()
             if im.mode == 'P':
@@ -79,11 +84,45 @@ def compress_one(task):
 
 
 SPINE_TEXTURE_UUIDS = set()
+PMA_TEXTURE_UUIDS = set()
 
 
-def _init_worker(uuids):
+def _init_worker(uuids, pma_uuids=frozenset()):
     # Windows 进程池是 spawn:子进程不继承主进程里填好的全局集合,靠 initializer 传入
     SPINE_TEXTURE_UUIDS.update(uuids)
+    PMA_TEXTURE_UUIDS.update(pma_uuids)
+
+
+def _uuid_of(path):
+    return os.path.basename(path.replace(os.sep, '/')).split('.')[0].split('@')[0]
+
+
+def _collect_pma_uuids(source_assets):
+    """源素材里图集头带 pma: true 的骨骼目录 → 该目录下 PNG 的 uuid。"""
+    import json as _json
+    uuids = set()
+    for dp, _dn, fn in os.walk(source_assets):
+        atlases = [f for f in fn if f.lower().endswith('.atlas')]
+        if not atlases:
+            continue
+        pma = False
+        for a in atlases:
+            try:
+                with open(os.path.join(dp, a), encoding='utf-8') as fp:
+                    if any(line.strip().lower() == 'pma: true' for line in fp):
+                        pma = True
+                        break
+            except Exception:
+                pass
+        if not pma:
+            continue
+        for f in fn:
+            if f.lower().endswith('.png.meta'):
+                try:
+                    uuids.add(_json.load(open(os.path.join(dp, f), encoding='utf-8')).get('uuid'))
+                except Exception:
+                    pass
+    return uuids
 
 
 def _looks_like_spine(path):
@@ -145,12 +184,15 @@ def main():
 
     if args.spine == 'keep' and os.path.isdir(args.source):
         SPINE_TEXTURE_UUIDS.update(_collect_spine_uuids(args.source))
+    if os.path.isdir(args.source):
+        PMA_TEXTURE_UUIDS.update(_collect_pma_uuids(args.source))
+        print('预乘透明骨骼贴图(不量化):%d 张' % len(PMA_TEXTURE_UUIDS))
     started = time.time()
-    stats = {'ok': 0, 'skip-palette': 0, 'skip-bigger': 0, 'skip-spine': 0, 'skip-quality': 0, 'error': 0}
+    stats = {'ok': 0, 'skip-palette': 0, 'skip-bigger': 0, 'skip-spine': 0, 'skip-quality': 0, 'skip-pma': 0, 'error': 0}
     print('量化引擎:%s' % ('libimagequant(质量下限 %d)' % MIN_QUALITY if imagequant is not None and args.spine != 'palette' else 'Pillow'))
     after_total = 0
     errors = []
-    with ProcessPoolExecutor(max_workers=args.workers, initializer=_init_worker, initargs=(frozenset(SPINE_TEXTURE_UUIDS),)) as pool:
+    with ProcessPoolExecutor(max_workers=args.workers, initializer=_init_worker, initargs=(frozenset(SPINE_TEXTURE_UUIDS), frozenset(PMA_TEXTURE_UUIDS))) as pool:
         tasks = [(f, args.spine) for f in files]
         for path, before, after, status in pool.map(compress_one, tasks, chunksize=16):
             key = 'error' if status.startswith('error') else status
@@ -158,8 +200,8 @@ def main():
             after_total += after if after else os.path.getsize(path)
             if key == 'error':
                 errors.append((path, status))
-    print('完成 %.0fs:压缩 %d / 已是调色板 %d / 量化后更大保留原图 %d / 达不到质量下限保留原图 %d / 骨骼贴图未动 %d / 失败 %d' % (
-        time.time() - started, stats['ok'], stats['skip-palette'], stats['skip-bigger'], stats['skip-quality'], stats['skip-spine'], stats['error']))
+    print('完成 %.0fs:压缩 %d / 已是调色板 %d / 量化后更大保留原图 %d / 达不到质量下限保留原图 %d / 骨骼贴图未动 %d / 预乘图集未动 %d / 失败 %d' % (
+        time.time() - started, stats['ok'], stats['skip-palette'], stats['skip-bigger'], stats['skip-quality'], stats['skip-spine'], stats['skip-pma'], stats['error']))
     print('PNG %.1f MB -> %.1f MB' % (total_before / 1048576, after_total / 1048576))
     build_total = sum(os.path.getsize(os.path.join(dp, f)) for dp, _dn, fn in os.walk(root) for f in fn)
     print('构建产物总量 %.1f MB' % (build_total / 1048576))
