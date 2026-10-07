@@ -19,6 +19,8 @@ import {
   UIOpacity,
   UITransform,
   Vec3,
+  sys,
+  view,
 } from 'cc';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
@@ -391,6 +393,13 @@ export class LobbyHeroDetailPanelRenderer {
   private skillSelectBoxes: Node[] = [];
   /** 手机横屏分区;null = 桌面布局(保持原样)。每次 render 重算。 */
   private phoneFrame: HeroDetailPhoneFrame | null = null;
+  /**
+   * 触屏点开详情的装备(2026-10-07 用户「手机端英雄装备,点击装备没有显示详情」):
+   * 电脑端靠鼠标悬停出详情卡,手机没有悬停;手机点装备 = 选中它并弹详情卡,点任意处关闭。
+   */
+  private touchTipEquipId: number | null = null;
+  /** 英雄详情内容根(每次整页渲染重建):触屏详情卡挂在它最上层,盖住名牌 / 翻页箭头;整页重建时随之销毁。 */
+  private detailContentRoot: Node | null = null;
 
   constructor(private readonly host: LobbyHeroDetailPanelHost) {}
 
@@ -458,6 +467,7 @@ export class LobbyHeroDetailPanelRenderer {
     panelGroup.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
     // 内容区阻断点击，保证详情内部操作不会穿透到遮罩导致关闭。
     panelGroup.addComponent(BlockInputEvents);
+    this.detailContentRoot = panelGroup;
 
     const panel = this.host.addChildBeveledPanelNode(
       panelGroup,
@@ -1611,7 +1621,10 @@ export class LobbyHeroDetailPanelRenderer {
           this.applyOutline(hint, scale, false);
         }
         cell.addComponent(Button);
-        cell.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroEquipSlot(code), this);
+        cell.on(Button.EventType.CLICK, () => {
+          this.touchTipEquipId = sys.isMobile && equipped ? equipped.id : null;
+          this.host.selectLobbyHeroEquipSlot(code);
+        }, this);
         this.host.applyImageButtonFeedback(cell);
       });
     });
@@ -2611,7 +2624,10 @@ export class LobbyHeroDetailPanelRenderer {
         this.applyOutline(content, scale, false);
       }
       cell.addComponent(Button);
-      cell.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroEquipSlot(slot.code), this);
+      cell.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = null;
+        this.host.selectLobbyHeroEquipSlot(slot.code);
+      }, this);
     });
 
     // 选中部位候选列表(该部位全部持有装备;穿在本英雄=可卸下,穿在他人=可转移,未穿=可穿戴)。
@@ -3804,7 +3820,10 @@ export class LobbyHeroDetailPanelRenderer {
       chipLabel.overflow = Label.Overflow.SHRINK;
       chip.addComponent(Button);
       this.applyPointerCursor(chip);
-      chip.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroEquipSlot(slot.code), this);
+      chip.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = null;
+        this.host.selectLobbyHeroEquipSlot(slot.code);
+      }, this);
     });
     const listTop = chipY - chipH / 2 - 14 * scale;
     const listBottom = -height / 2 + 24 * scale;
@@ -3867,7 +3886,10 @@ export class LobbyHeroDetailPanelRenderer {
       node.on(Node.EventType.MOUSE_LEAVE, () => this.hideWearTooltip(), this);
       node.addComponent(Button);
       this.applyPointerCursor(node);
-      node.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroWearEquip(item.id), this);
+      node.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = sys.isMobile ? item.id : null;
+        this.host.selectLobbyHeroWearEquip(item.id);
+      }, this);
     });
     if (candidates.length > capacity) {
       const more = this.host.addChildLabel(parent, 'WearGridMore', `共 ${candidates.length} 件,显示前 ${capacity} 件`, 0, areaBottom + barH + 12 * scale, 14 * scale, rgba(150, 140, 120), new Size(gridW, 18 * scale));
@@ -3936,6 +3958,39 @@ export class LobbyHeroDetailPanelRenderer {
       enhBtn.on(Button.EventType.CLICK, () => this.host.openLobbyEquipEnhanceDialog(selected.id), this);
       this.host.applyImageButtonFeedback(enhBtn);
     }
+    // 触屏:刚点过的装备弹详情卡(最后挂,压在网格与操作条之上)
+    const touchTip = sys.isMobile && this.touchTipEquipId != null ? shown.find((entry) => entry.id === this.touchTipEquipId) ?? null : null;
+    if (touchTip) {
+      this.showTouchEquipTip(parent, touchTip, scale);
+    }
+  }
+
+  /** 触屏详情卡:面板正中弹出,全屏透明层拦住下面的点击,点任意处关闭。 */
+  private showTouchEquipTip(parent: Node, item: EquipmentItemVO, scale: number): void {
+    this.hideWearTooltip();
+    if (!this.isNodeAlive(parent)) {
+      return;
+    }
+    // 放在屏幕正中(详情卡比手机横屏还高:按可见高度等比缩小到 94%)
+    const cardParent = this.isNodeAlive(this.detailContentRoot) ? this.detailContentRoot! : parent;
+    const screenCenter = this.host.node.worldPosition;
+    const local = cardParent.getComponent(UITransform)?.convertToNodeSpaceAR(new Vec3(screenCenter.x, screenCenter.y, 0)) ?? new Vec3();
+    const card = renderEquipDetailCard(this.host, cardParent, item, local.x, local.y, scale);
+    card.setSiblingIndex(cardParent.children.length - 1);
+    this.wearTooltipNode = card;
+    const cardHeight = card.getComponent(UITransform)?.height ?? 0;
+    const visibleHeight = view.getVisibleSize().height;
+    if (cardHeight > visibleHeight * 0.94) {
+      const fit = (visibleHeight * 0.94) / cardHeight;
+      card.setScale(fit, fit, 1);
+    }
+    const closer = this.host.addChildPlainNode(card, 'TouchTipCloser', 0, 0, 4000, 4000);
+    closer.setSiblingIndex(0);
+    closer.addComponent(BlockInputEvents);
+    closer.on(Node.EventType.TOUCH_END, () => {
+      this.touchTipEquipId = null;
+      this.hideWearTooltip();
+    }, this);
   }
 
   // 方块单元(锻造 renderEquipCell 同构):雕花框/品质描边 + 装备图 + 底部名字条 + 右上+N + 左上 穿/他 标。

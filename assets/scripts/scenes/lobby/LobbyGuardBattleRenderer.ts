@@ -312,6 +312,8 @@ interface GuardUnitView {
   hitFlashUntil: number;
   /** BOSS 身体画面中心相对节点的 x 偏移(脚下法阵/出手弹道锚点;2026-09-24)。 */
   centerOffsetX?: number;
+  /** 英雄当前朝左(目标在身后时转身出手;2026-10-07)。 */
+  faceLeft?: boolean;
   /** 帧间插值(2026-10-07):上一 tick / 本 tick 的模拟位置;每渲染帧按累积器进度在两者之间取值。 */
   fromX?: number;
   fromY?: number;
@@ -1325,7 +1327,7 @@ export class LobbyGuardBattleRenderer {
     }
     const dimNode = node;
     this.lastUltDimAt = Date.now();
-    dimNode.setSiblingIndex(field.children.length - 1);
+    this.placeUltDimBelowUlts(field, dimNode);
     const holdSec = Math.max(0.2, (this.ultDimHoldUntil - Date.now()) / 1000);
     tween(opacity)
       .to(extend ? 0.05 : 0.12, { opacity: 120 })
@@ -1337,6 +1339,26 @@ export class LobbyGuardBattleRenderer {
         }
       })
       .start();
+  }
+
+  /**
+   * 压暗层放在所有正在播放的大招特效之下、其余战场元素之上(2026-10-07 用户「大招看起来比普攻特效暗了很多」:
+   * 原先压暗层每次都挪到最顶层,而大招节点先建、压暗后挂,整段大招被压在 120/255 的黑幕下面;两个大招叠放时后一个的压暗也会盖住前一个)。
+   */
+  private placeUltDimBelowUlts(field: Node, dimNode: Node): void {
+    dimNode.setSiblingIndex(field.children.length - 1);
+    let lowest = -1;
+    for (const child of field.children) {
+      if (child !== dimNode && child.isValid && (child as Node & { __lcUltFx?: boolean }).__lcUltFx) {
+        const index = child.getSiblingIndex();
+        if (lowest < 0 || index < lowest) {
+          lowest = index;
+        }
+      }
+    }
+    if (lowest >= 0) {
+      dimNode.setSiblingIndex(lowest);
+    }
   }
 
   private pulseUltDim(): void {
@@ -1363,7 +1385,7 @@ export class LobbyGuardBattleRenderer {
     }
     const dimNode = node;
     this.lastUltDimAt = now;
-    dimNode.setSiblingIndex(field.children.length - 1);
+    this.placeUltDimBelowUlts(field, dimNode);
     tween(opacity).to(0.08, { opacity: 100 }).delay(0.25).to(0.3, { opacity: 0 }).call(() => {
       if (dimNode.isValid) {
         dimNode.destroy();
@@ -2652,8 +2674,15 @@ export class LobbyGuardBattleRenderer {
       } else if (event.type === 'heroAttack') {
         // 攻击动画:怪进入范围出手时播 attack(用户 2026-08-21);技能击追加专属技能特效打在目标身上。
         const hero = sim.heroes.find((entry) => entry.heroCode === event.heroCode && entry.cell === event.cell);
+        // 出手前转身面向目标(2026-10-07 用户「怪物靠近水晶后近战英雄站着不动」:啃水晶的怪都挤在英雄身后,
+        // 英雄却一直朝右挥刀、斩击从身前倒飞回去,看起来像没在打)
+        const attackTarget = typeof event.monsterId === 'number' ? this.monsterViews.get(event.monsterId) : undefined;
         if (hero) {
-          this.playUnitAttack(this.heroViews.get(hero.unitId));
+          const heroView = this.heroViews.get(hero.unitId);
+          if (heroView && attackTarget && attackTarget.node.isValid) {
+            this.faceHeroToward(heroView, this.cellCenter(hero.cell).x, attackTarget.node.position.x);
+          }
+          this.playUnitAttack(heroView);
         }
         // 打击感(2026-08-26):远程/控制普攻发弹幕(命中才结算表现);近战刀光斩闪;技能击照旧专属特效。
         if (typeof event.monsterId === 'number') {
@@ -2685,7 +2714,9 @@ export class LobbyGuardBattleRenderer {
               const origin = this.cellCenter(hero.cell);
               // 普攻音(2026-09-18):随弹道发出,多英雄齐射时靠管理器 80ms/键节流 + 压低音量避免糊成一片。
               gameAudio.sfx(this.resolveHeroAttackSfxKey(hero), 0.55);
-              this.spawnAttackVolley(hero, target, event, attackColor, attackFx, origin.x + this.unitSize() * 0.4, origin.y + this.unitSize() * 0.05);
+              // 弹道从英雄朝向的一侧发出(目标在身后时从左侧出手)
+              const facing = this.heroViews.get(hero.unitId)?.faceLeft ? -1 : 1;
+              this.spawnAttackVolley(hero, target, event, attackColor, attackFx, origin.x + this.unitSize() * 0.4 * facing, origin.y + this.unitSize() * 0.05);
             } else {
               this.queueDamage(target.monsterId, event.amount ?? 0, false, targetView.node.position.x + jitterX, targetView.node.position.y);
               this.flashMonster(target.monsterId);
@@ -7766,6 +7797,25 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 攻击动画:播一次 attack 再接回 idle(骨骼未就绪时静默跳过)。 */
+  /** 英雄转身:目标明显在身后(左侧)就朝左,在身前就朝右。骨骼子节点水平翻转,横向偏移一起镜像,人仍站在格子中间。 */
+  private faceHeroToward(view: GuardUnitView, heroX: number, targetX: number): void {
+    const skeleton = view.skeleton;
+    if (!skeleton || !skeleton.isValid) {
+      return;
+    }
+    const margin = this.unitSize() * 0.25;
+    const wantLeft = targetX < heroX - margin ? true : targetX > heroX + margin ? false : (view.faceLeft ?? false);
+    if (wantLeft === (view.faceLeft ?? false)) {
+      return;
+    }
+    view.faceLeft = wantLeft;
+    const spineNode = skeleton.node;
+    const scale = spineNode.scale;
+    const position = spineNode.position;
+    spineNode.setScale(-scale.x, scale.y, scale.z);
+    spineNode.setPosition(-position.x, position.y, position.z);
+  }
+
   private playUnitAttack(view: GuardUnitView | undefined): void {
     if (!view || !view.spineReady || !view.skeleton || !view.skeleton.isValid || view.attackAnim === view.idleAnim) {
       return;
@@ -8012,6 +8062,8 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
+    // 大招特效节点打标:压暗层要放在它下面(placeUltDimBelowUlts)
+    (node as Node & { __lcUltFx?: boolean }).__lcUltFx = isUlt;
     const skeleton = node.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = battleFxPremultiplied(spec.effect);
     if (isUlt) {
