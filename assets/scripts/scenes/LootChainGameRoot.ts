@@ -27,6 +27,7 @@ import {
   VideoPlayer,
   Vec3,
   view,
+  dynamicAtlasManager,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { isPhoneDesign, isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
@@ -519,6 +520,9 @@ export class LootChainGameRoot extends Component {
     // 手机:贴图上传显卡后释放 CPU 侧解码图(默认两份都留着,内存翻倍;2026-10-06 手机内存优化)
     if (sys.isMobile) {
       macro.CLEANUP_IMAGE_CACHE = true;
+      // 必须配套关动态合图:引擎只在初始化时按 !CLEANUP_IMAGE_CACHE 决定合图开关,这里才打开释放 → 合图仍开着却去读已释放的图片,
+      // 精灵一上屏就抛「Cannot read properties of null (reading 'width')」,大厅绘制中断(2026-10-07 用户手机卡在「资源加载中 100%」的真凶)
+      dynamicAtlasManager.enabled = false;
     }
     // 画面设置(流畅 / 极致 + 帧率):启动时套用上次的选择
     applyGraphicsSettings();
