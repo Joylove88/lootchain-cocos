@@ -140,7 +140,7 @@ import {
   resolveHeroUltEffect,
   type BattleSkillEffectSpec,
 } from './LobbyBattleSkillEffectConfig';
-import { BattleFxSlotFilter } from './BattleFxSlotFilter';
+import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { ultimateDamageScale } from './LobbyBattleHeroSkillConfig';
 
@@ -6742,6 +6742,7 @@ export class LobbyBattlePreviewPanelRenderer {
         return false;
       }
       patchBattleUnitSpineRuntimeEnums(data, runtimeData);
+      prepareBattleFxData(data, runtimeData, resolveBattleFxHiddenSlots(spec));
       // 素材动画名大小写不统一(Skill/skill):精确 → 忽略大小写 → 含名 → 首个动画,四级回退。
       const names = (runtimeData.animations ?? []).map((animation) => (animation?.name || '').trim()).filter(Boolean);
       const wanted = spec.animation.trim().toLowerCase();
@@ -6782,10 +6783,6 @@ export class LobbyBattlePreviewPanelRenderer {
         skeleton.timeScale = 1;
         skeleton.updateAnimation(Math.max(0, clip.start));
         skeleton.timeScale = speed;
-        const hidden = resolveBattleFxHiddenSlots(spec);
-        if (hidden) {
-          node.addComponent(BattleFxSlotFilter).setup(skeleton, spec.effect, hidden);
-        }
         tween(node).delay((clip.end - clip.start) / speed).call(() => onComplete()).start();
       }
       return true;

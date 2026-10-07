@@ -47,6 +47,10 @@ import {
 } from '../app/AssetOfflineCache';
 import { PREVIEW } from 'cc/env';
 import { applyGraphicsSettings } from '../app/GraphicsSettings';
+import { installEnginePerfPatches } from '../app/GraphicsBufferPatch';
+import { resolveBattleUnitSpineRuntimeData } from './lobby/LobbyBattleUnitSpineRuntime';
+import { prepareBattleFxData } from './lobby/BattleFxSlotFilter';
+import { resolveBattleFxHiddenSlotsForEffect } from './lobby/LobbyBattleSkillEffectConfig';
 import { installMobileWebShell, requestLandscapeFullscreen, setFullscreenGate } from '../app/MobileWebShell';
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
@@ -516,6 +520,8 @@ export class LootChainGameRoot extends Component {
   private reusableScenesRegistered = false;
 
   start(): void {
+    // 引擎 Graphics 每个组件首绘固定建 2.25MB 显存缓冲 → 改为按需增长(2026-10-07 手机战斗卡顿 / 大招冻结,见 GraphicsBufferPatch)
+    installEnginePerfPatches();
     // 手机网页:竖握提示横屏 + 点击全屏锁横屏 + EditBox 引擎报错补丁(2026-10-05)
     installMobileWebShell();
     // 手机:贴图上传显卡后释放 CPU 侧解码图(默认两份都留着,内存翻倍;2026-10-06 手机内存优化)
@@ -6981,44 +6987,100 @@ export class LootChainGameRoot extends Component {
     const extra = this.lobbyGuardBattleRenderer.collectBattlePrewarmResources(this.currentLobbyBattleState());
     const extraTotal = extra.spine.length + extra.sprites.length;
     let baseTotal = 0;
+    let extraStarted = false;
+    let shown = 0;
+    // 进度只增不减:基础阶段超时放行后,迟到的回调不再把进度条拉回去
+    const reportMonotonic = (loaded: number, total: number): void => {
+      shown = Math.max(shown, loaded);
+      onProgress(shown, total);
+    };
     return this.lobbyBattlePreviewPanelRenderer.preloadBattleSessionAssets(units, (loaded, total) => {
+      if (extraStarted) {
+        return;
+      }
       baseTotal = total;
-      onProgress(loaded, total + extraTotal);
+      reportMonotonic(loaded, total + extraTotal);
     }).then(() => new Promise<void>((resolve) => {
+      extraStarted = true;
+      // 2026-10-07 修「矿境部署中… 15% 等一分钟直接进场」:原先每个资源读完用同一个回调 scheduleOnce(next, 0),
+      // 引擎调度器对同一回调的重复登记只改间隔不新建定时器,遇到第一个已在内存的资源链条就断了,只能等 20 秒兜底。
+      // 现在:已在内存的直接计数;其余按小并发读(手机 2 / 电脑 4),每完成一个推进一次;结束时进度补满 100%。
       const tasks: Array<{ path: string; kind: 'spine' | 'sprite' }> = [
         ...extra.spine.map((path) => ({ path, kind: 'spine' as const })),
         ...extra.sprites.map((path) => ({ path, kind: 'sprite' as const })),
       ];
-      let index = 0;
+      const concurrency = sys.isMobile ? 2 : 4;
+      let cursor = 0;
       let done = 0;
-      const finish = (): void => resolve();
-      const timer = setTimeout(finish, 20000);
-      const next = (): void => {
-        if (index >= tasks.length) {
-          clearTimeout(timer);
-          finish();
-          return;
-        }
-        const task = tasks[index++];
-        const after = (): void => {
-          done += 1;
-          onProgress(baseTotal + done, baseTotal + extraTotal);
-          // 每个之间让出一帧:解码 / 上传分摊到多帧,加载门里的进度条也能动
-          this.scheduleOnce(next, 0);
-        };
-        if (task.kind === 'spine') {
-          if (resources.get(task.path, sp.SkeletonData)) {
-            after();
-          } else {
-            resources.load(task.path, sp.SkeletonData, after);
-          }
-        } else if (resources.get(task.path, SpriteFrame)) {
-          after();
-        } else {
-          resources.load(task.path, SpriteFrame, after);
+      let inFlight = 0;
+      let finished = false;
+      const report = (): void => {
+        if (!finished) {
+          reportMonotonic(baseTotal + done, baseTotal + extraTotal);
         }
       };
-      next();
+      const finish = (): void => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        clearTimeout(timer);
+        onProgress(baseTotal + extraTotal, baseTotal + extraTotal);
+        resolve();
+      };
+      const timer = setTimeout(finish, 20000);
+      const pump = (): void => {
+        if (finished) {
+          return;
+        }
+        while (cursor < tasks.length && inFlight < concurrency) {
+          const task = tasks[cursor];
+          cursor += 1;
+          const cached = task.kind === 'spine' ? resources.get(task.path, sp.SkeletonData) : resources.get(task.path, SpriteFrame);
+          if (cached) {
+            if (task.kind === 'spine') {
+              try {
+                const runtime = resolveBattleUnitSpineRuntimeData(cached as sp.SkeletonData);
+                prepareBattleFxData(cached, runtime, resolveBattleFxHiddenSlotsForEffect(task.path.split('/').pop() ?? ''));
+              } catch (parseError) {
+                void parseError;
+              }
+            }
+            done += 1;
+            continue;
+          }
+          inFlight += 1;
+          const after = (): void => {
+            inFlight -= 1;
+            done += 1;
+            report();
+            // 下一批放到下一轮事件循环发起(回调里同步发起新加载会把解码 / 上传挤进同一帧)
+            setTimeout(pump, 0);
+          };
+          if (task.kind === 'spine') {
+            resources.load(task.path, sp.SkeletonData, (error, data) => {
+              // 加载屏下顺带完成 wasm 解析(首次出手不再现解析 20~80ms);整段演出类大招在这里一次性裁掉本体 / 底板附件
+              if (!error && data) {
+                try {
+                  const runtime = resolveBattleUnitSpineRuntimeData(data);
+                  const effect = task.path.split('/').pop() ?? '';
+                  prepareBattleFxData(data, runtime, resolveBattleFxHiddenSlotsForEffect(effect));
+                } catch (parseError) {
+                  void parseError;
+                }
+              }
+              after();
+            });
+          } else {
+            resources.load(task.path, SpriteFrame, () => after());
+          }
+        }
+        report();
+        if (done >= tasks.length) {
+          finish();
+        }
+      };
+      pump();
     }));
   }
 

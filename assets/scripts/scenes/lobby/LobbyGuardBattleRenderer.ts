@@ -24,6 +24,9 @@ import {
   sys,
   tween,
   Tween,
+  director,
+  Director,
+  view,
 } from 'cc';
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
@@ -128,7 +131,8 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
-import { BattleFxSlotFilter } from './BattleFxSlotFilter';
+import { prepareBattleFxData } from './BattleFxSlotFilter';
+import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
@@ -177,6 +181,8 @@ function rgba(r: number, g: number, b: number, a = 255): Color {
 }
 
 const TICK_MS = 50;
+/** 单帧最多补算的模拟 tick 数(2026-10-07:原上限 1000ms=20 tick,一次掉帧后集中补算又引出下一次卡顿;超出部分丢弃=短暂慢放)。 */
+const MAX_CATCHUP_TICKS = 3;
 /** 显式束状特效名单(包围盒宽高比判不准的,如凤凰焚世=大花瓣包裹的火柱):必须锚英雄身前沿目标方向喷射。 */
 /** 水晶技能渲染开关(2026-09-02 用户拍板:先隐藏,机制保留)。 */
 const GUARD_CRYSTAL_SKILL_HIDDEN = true;
@@ -306,6 +312,13 @@ interface GuardUnitView {
   hitFlashUntil: number;
   /** BOSS 身体画面中心相对节点的 x 偏移(脚下法阵/出手弹道锚点;2026-09-24)。 */
   centerOffsetX?: number;
+  /** 帧间插值(2026-10-07):上一 tick / 本 tick 的模拟位置;每渲染帧按累积器进度在两者之间取值。 */
+  fromX?: number;
+  fromY?: number;
+  toX?: number;
+  toY?: number;
+  /** 活着且由插值驱动(死亡 / 溜走后改为直接定位,让淡出下沉的 tween 生效)。 */
+  interp?: boolean;
 }
 
 /** 普攻弹幕(轻量 Graphics 弹体,跟着出手时锁定的目标飞,目标死了落在它最后的位置;打击感系统 2026-08-26)。crystalTarget=BOSS 暗弹;visualOnly=保底技能弹(命中不出飘字)。 */
@@ -452,7 +465,14 @@ export class LobbyGuardBattleRenderer {
   private fieldNode: Node | null = null;
   private sim: GuardBattleState | null = null;
   private simBattleNo = '';
-  private tickTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * 战斗循环挂在引擎帧事件上(2026-10-07 用户「战斗一卡一卡的,流畅和极致 120 帧都卡」):
+   * 原先 setInterval(50ms) 驱动,怪物 / 弹体每秒只挪 20 次且不插值,120 帧也像 20 帧;且与刷新不同步,帧间位移忽大忽小。
+   */
+  private frameLoopOn = false;
+  private lastFrameWallMs = 0;
+  /** 本 tick 已新建的伤害数字 / 飘字数(群体大招一次打中几十只怪时只出前几个,避免同一帧建几十个文字节点)。 */
+  private floatersThisStep = 0;
   private snapshot: BattlePresentationSnapshot | null = null;
   private heroViews = new Map<number, GuardUnitView>();
   private monsterViews = new Map<number, GuardUnitView>();
@@ -563,10 +583,7 @@ export class LobbyGuardBattleRenderer {
 
   unmount(): void {
     this.clearSpellTipTimer();
-    if (this.tickTimer !== null) {
-      clearInterval(this.tickTimer);
-      this.tickTimer = null;
-    }
+    this.stopFrameLoop();
     if (this.root && this.root.isValid) {
       this.root.destroy();
     }
@@ -776,19 +793,70 @@ export class LobbyGuardBattleRenderer {
     this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
     this.tickAccumulatorMs = 0;
-    this.tickTimer = setInterval(() => {
-      try {
-        this.step();
-      } catch (error) {
-        // 战斗循环出异常时不再静默(否则画面像"卡死"却没有任何线索):底部提示一次,便于截图反馈
-        if (!this.stepErrorShown) {
-          this.stepErrorShown = true;
-          const text = String((error as Error)?.message ?? error).slice(0, 90);
-          console.error('[LootChain] guard battle step failed', error);
-          this.host.setStatus(`战斗出现异常,请截图反馈:${text}`);
-        }
+    this.startFrameLoop();
+  }
+
+  private startFrameLoop(): void {
+    if (this.frameLoopOn) {
+      return;
+    }
+    this.frameLoopOn = true;
+    this.lastFrameWallMs = Date.now();
+    // 挂在帧首(BEFORE_UPDATE):本帧新建 / 销毁的节点要赶在引擎 AFTER_UPDATE 的兄弟排序之前,
+    // 否则当帧建了子节点又被销毁的父节点会在下一帧排序时读到空子节点表抛异常(同一事件后面的监听全部中断)
+    director.on(Director.EVENT_BEFORE_UPDATE, this.onFrame, this);
+  }
+
+  private stopFrameLoop(): void {
+    if (!this.frameLoopOn) {
+      return;
+    }
+    this.frameLoopOn = false;
+    director.off(Director.EVENT_BEFORE_UPDATE, this.onFrame, this);
+  }
+
+  /** 每渲染帧:攒够一个 tick 就跑模拟与视图同步;每帧都做位置插值与弹体推进。 */
+  private onFrame(): void {
+    try {
+      const now = Date.now();
+      // 系统时间被往回拨(网络校时 / 手动改时间)时重新对齐,否则要等时钟追回来战斗才继续
+      if (now < this.lastTickWallMs) {
+        this.lastTickWallMs = now;
       }
-    }, TICK_MS);
+      const frameMs = Math.min(100, Math.max(0, now - this.lastFrameWallMs));
+      this.lastFrameWallMs = now;
+      if (now - this.lastTickWallMs + this.tickAccumulatorMs >= TICK_MS) {
+        this.step();
+      }
+      if (!this.sim || !this.isMounted()) {
+        return;
+      }
+      this.updateProjectiles(frameMs);
+      this.interpolateMonsterViews(now);
+    } catch (error) {
+      // 战斗循环出异常时不再静默(否则画面像"卡死"却没有任何线索):底部提示一次,便于截图反馈
+      if (!this.stepErrorShown) {
+        this.stepErrorShown = true;
+        const text = String((error as Error)?.message ?? error).slice(0, 90);
+        console.error('[LootChain] guard battle step failed', error);
+        this.host.setStatus(`战斗出现异常,请截图反馈:${text}`);
+      }
+    }
+  }
+
+  /** 活着的怪:在上一 tick 与本 tick 的模拟位置之间插值(进度 = 距上次 tick 的真实时间 / tick 长);受击顶退按真实时间衰减。 */
+  private interpolateMonsterViews(now: number): void {
+    const alpha = Math.max(0, Math.min(1, (now - this.lastTickWallMs + this.tickAccumulatorMs) / TICK_MS));
+    for (const view of this.monsterViews.values()) {
+      if (!view.interp || !view.node.isValid || view.toX === undefined || view.toY === undefined) {
+        continue;
+      }
+      const fromX = view.fromX ?? view.toX;
+      const fromY = view.fromY ?? view.toY;
+      const flashLeft = view.hitFlashUntil - now;
+      const hitJiggle = flashLeft > 0 ? (flashLeft / 90) * 7 : 0;
+      view.node.setPosition(fromX + (view.toX - fromX) * alpha + hitJiggle, fromY + (view.toY - fromY) * alpha, 0);
+    }
   }
 
   /**
@@ -840,7 +908,7 @@ export class LobbyGuardBattleRenderer {
    */
   private remountSceneTree(layout: UiLayout, stageCode: string): void {
     // 结算覆盖层必须自己补建:refreshEndOverlay() 只在 overlayShown 且节点还在时刷新文案,
-    // 而 showEndOverlay() 唯一调用点在 step() 里,战斗结束时 tickTimer 已被 clearInterval——
+    // 而 showEndOverlay() 唯一调用点在 step() 里,战斗结束时帧循环已停——
     // 若不在这里重放,结算后一旦 resize,"返回"按钮会连同覆盖层一起永久消失(玩家卡死在已结束的战斗里)。
     const restoreEndOverlay = this.overlayShown;
     const endVictory = this.sim?.phase === 'victory';
@@ -1123,6 +1191,42 @@ export class LobbyGuardBattleRenderer {
    * - blob:48×24 圆角矩形 SDF,内部 0.62、向四边 38% 宽度羽化到 0。
    * 纹理极小、双线性拉伸后视觉平滑;生成失败(极端环境)回退为原来的平涂,不影响功能。
    */
+  /** 矢量条 / 环的"上次画出的样子"签名:没变就不 clear + 重新三角化 + 重新上传(2026-10-07 HUD 每 tick 重画优化)。 */
+  private sameDrawKey(node: Node, key: string): boolean {
+    const holder = node as Node & { __lcDrawKey?: string };
+    if (holder.__lcDrawKey === key) {
+      return true;
+    }
+    holder.__lcDrawKey = key;
+    return false;
+  }
+
+  private static readonly DAMAGE_FONT_BUCKETS = new Map<number, string>();
+
+  /** 伤害数字字体名:同一缩放同一名字(共享字形);缩放变了换成多一个尾随空格的同字体名(浏览器渲染相同,引擎缓存键不同)。 */
+  private static damageFontFamily(): string {
+    const scale = Math.round(view.getScaleX() * 100);
+    let family = LobbyGuardBattleRenderer.DAMAGE_FONT_BUCKETS.get(scale);
+    if (!family) {
+      family = `Arial${' '.repeat(LobbyGuardBattleRenderer.DAMAGE_FONT_BUCKETS.size)}`;
+      LobbyGuardBattleRenderer.DAMAGE_FONT_BUCKETS.set(scale, family);
+    }
+    return family;
+  }
+
+  /** 烘焙贴图精灵(GuardBakedShapes);烘焙失败时什么都不挂(纯表现,不影响结算)。 */
+  private mountBakedSprite(parent: Node, frame: SpriteFrame | null, x: number, y: number, width: number, height: number): void {
+    if (!frame) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(parent, 'Baked', x, y, width, height);
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.spriteFrame = frame;
+    node.getComponent(UITransform)?.setContentSize(width, height);
+  }
+
   private mountSoftShade(parent: Node, name: string, x: number, y: number, width: number, height: number, style: 'top-fade' | 'blob' | 'flat'): Node | null {
     const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
     let frame = LobbyGuardBattleRenderer.SOFT_SHADE_FRAMES.get(style) ?? null;
@@ -2167,14 +2271,20 @@ export class LobbyGuardBattleRenderer {
     const now = Date.now();
     const elapsed = Math.min(1000, Math.max(0, now - this.lastTickWallMs));
     this.lastTickWallMs = now;
-    this.tickAccumulatorMs = Math.min(1000, this.tickAccumulatorMs + elapsed);
+    // 补算上限 MAX_CATCHUP_TICKS:一次长帧后不再集中补跑十几个 tick(事件 / 飘字 / 特效扎堆 → 下一次卡顿),多出的时间丢掉
+    this.tickAccumulatorMs = Math.min(TICK_MS * (MAX_CATCHUP_TICKS + 1) - 1, this.tickAccumulatorMs + elapsed);
     let phase = sim.phase;
-    while (this.tickAccumulatorMs >= TICK_MS && phase !== 'victory' && phase !== 'defeat') {
+    let ticks = 0;
+    while (this.tickAccumulatorMs >= TICK_MS && ticks < MAX_CATCHUP_TICKS && phase !== 'victory' && phase !== 'defeat') {
       this.tickAccumulatorMs -= TICK_MS;
       phase = guardTick(sim, TICK_MS);
+      ticks += 1;
     }
+    if (this.tickAccumulatorMs >= TICK_MS) {
+      this.tickAccumulatorMs = TICK_MS - 1;
+    }
+    this.floatersThisStep = 0;
     this.consumeEvents();
-    this.updateProjectiles();
     for (const aim of this.guardFxAimers.values()) {
       aim();
     }
@@ -2196,10 +2306,7 @@ export class LobbyGuardBattleRenderer {
     this.syncChoiceOverlay();
     this.refreshHud();
     if (phase === 'victory' || phase === 'defeat') {
-      if (this.tickTimer !== null) {
-        clearInterval(this.tickTimer);
-        this.tickTimer = null;
-      }
+      this.stopFrameLoop();
       this.showEndOverlay(phase === 'victory');
       if (!this.settleRequested) {
         this.settleRequested = true;
@@ -2218,7 +2325,7 @@ export class LobbyGuardBattleRenderer {
       if (event.type === 'kill' && typeof event.monsterId === 'number') {
         const view = this.monsterViews.get(event.monsterId);
         if (view && view.node.isValid) {
-          this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.5, `+${event.amount ?? 0}`, rgba(255, 214, 92));
+          this.spawnFloater(view.node.position.x, view.node.position.y + this.unitSize() * 0.5, `+${event.amount ?? 0}`, rgba(255, 214, 92), 16, true);
           this.spawnGoldCoin(view.node.position.x, view.node.position.y);
           // 2026-09-12 用户反馈:击杀处的金环+星芒像"锁定准星",去掉;金币掉落表现保留。
         }
@@ -3701,7 +3808,7 @@ export class LobbyGuardBattleRenderer {
     const barW = this.spellBarWidth();
     const energy = sim.spellEnergy;
     const eg = bar.getChildByName('Energy')?.getComponent(Graphics);
-    if (eg) {
+    if (eg && !this.sameDrawKey(eg.node, `${Math.round(barW)}:${Math.round(Math.max(6, barW * (energy / sim.spellEnergyMax)))}`)) {
       eg.clear();
       eg.fillColor = rgba(8, 10, 18, 215);
       eg.roundRect(-barW / 2, -7, barW, 14, 7);
@@ -3747,9 +3854,12 @@ export class LobbyGuardBattleRenderer {
         stateTag.node.active = lockedThisWave;
       }
       const charge = slot.getChildByName('Charge')?.getComponent(Graphics);
-      if (charge) {
+      const chargeFrac = Math.min(1, energy / def.cost);
+      // 充能环按 2% 步进、就绪脉冲按 8 档亮度出签名;都没变就不重画
+      const chargeKey = chargeFrac < 1 ? `a${Math.round(chargeFrac * 50)}` : castable ? `p${Math.round((Math.sin(Date.now() / 160) + 1) * 4)}` : 'n';
+      if (charge && !this.sameDrawKey(charge.node, chargeKey)) {
         charge.clear();
-        const frac = Math.min(1, energy / def.cost);
+        const frac = chargeFrac;
         if (frac < 1) {
           // 充能进度环(扇形一律 arc(..., true))
           charge.strokeColor = rgba(110, 180, 255, 235);
@@ -6303,19 +6413,8 @@ export class LobbyGuardBattleRenderer {
       });
       return;
     }
-    const g = node.addComponent(Graphics);
-    // 弹体:亮核+外辉+尾迹(朝右绘制,飞行时整体旋转)
-    g.strokeColor = rgba(color.r, color.g, color.b, 130);
-    g.lineWidth = 5;
-    g.moveTo(-30, 0);
-    g.lineTo(-8, 0);
-    g.stroke();
-    g.fillColor = rgba(color.r, color.g, color.b, 120);
-    g.ellipse(0, 0, 13, 7);
-    g.fill();
-    g.fillColor = rgba(255, 250, 235, 245);
-    g.ellipse(1, 0, 8, 4);
-    g.fill();
+    // 弹体:亮核+外辉+尾迹(朝右绘制,飞行时整体旋转)。2026-10-07 由每发 new Graphics 改为烘焙贴图精灵(见 GuardBakedShapes)
+    this.mountBakedSprite(node, boltFrame(color), -BOLT_SIZE.originX, 0, BOLT_SIZE.w, BOLT_SIZE.h);
     this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount, color, crit: extra?.crit, scale: extra?.scale, heroCode: extra?.heroCode });
   }
 
@@ -6399,28 +6498,19 @@ export class LobbyGuardBattleRenderer {
     node.setScale(ult ? 2.2 : 1.6, ult ? 2.2 : 1.6, 1);
     // 大招保底弹改金色(紫色 = 战技保底弹),一眼分得出是大招
     const tint = ult ? rgba(255, 200, 90) : rgba(200, 150, 255);
-    const g = node.addComponent(Graphics);
-    g.strokeColor = rgba(tint.r, tint.g, tint.b, ult ? 160 : 150);
-    g.lineWidth = 6;
-    g.moveTo(-34, 0);
-    g.lineTo(-9, 0);
-    g.stroke();
-    g.fillColor = rgba(tint.r, tint.g, tint.b, ult ? 150 : 140);
-    g.ellipse(0, 0, 15, 8);
-    g.fill();
-    g.fillColor = rgba(255, 250, 240, 250);
-    g.ellipse(1, 0, 9, 5);
-    g.fill();
+    // 烘焙贴图精灵(2026-10-07,原每发 new Graphics);外形与通用光弹同款、略放大
+    this.mountBakedSprite(node, boltFrame(tint, ult ? 150 : 140, ult ? 160 : 150), -BOLT_SIZE.originX * 1.15, 0, BOLT_SIZE.w * 1.15, BOLT_SIZE.h * 1.15);
     this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount: 0, color: tint, visualOnly: true });
   }
 
   /** 每 tick 推进弹幕(跟随锁定目标;目标死亡落在其最后位置;命中=爆闪+飘字+受击红闪)。 */
-  private updateProjectiles(): void {
+  private updateProjectiles(frameMs: number): void {
     const sim = this.sim;
-    if (!sim || this.projectiles.length === 0) {
+    if (!sim || this.projectiles.length === 0 || sim.paused) {
       return;
     }
-    const baseSpeed = 90; // px / 每次推进(随渲染帧调用)
+    // 每渲染帧推进,速度按真实帧时长折算(原 90px / 50ms tick ≈ 1800px/s,不变)
+    const baseSpeed = 90 * (frameMs / TICK_MS);
     for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
       const proj = this.projectiles[i];
       if (!proj.node.isValid) {
@@ -6527,9 +6617,10 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const floaterCap = big ? graphicsCaps().floatersBig : graphicsCaps().floatersSmall;
-    if (this.liveDamageFloaters >= floaterCap) {
+    if (this.liveDamageFloaters >= floaterCap || this.floatersThisStep >= graphicsCaps().floatersPerTick) {
       return;
     }
+    this.floatersThisStep += 1;
     const field = this.fieldNode;
     if (!field) {
       return;
@@ -6556,10 +6647,13 @@ export class LobbyGuardBattleRenderer {
     const size = skill ? 24 : big ? 22 : rage ? 18 : 16;
     const color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rage ? rgba(255, 150, 70, 250) : rgba(255, 248, 236, 240);
     const label = this.host.addChildLabel(node, 'Text', `-${valueText}`, labelX, 0, size, color, new Size(big ? 140 : 116, size + 10));
+    // 字符缓存(2026-10-07):数字字形进共享字符图集,不再每个飘字单独画一张画布 + 上传一张贴图 + 单独一次绘制。
+    // 引擎字形缓存的键不含画面缩放,切换画质 / 窗口缩放后旧字形大小不对:按当前缩放换一个等价字体名,让新缩放用新字形。
+    label.fontFamily = LobbyGuardBattleRenderer.damageFontFamily();
+    label.cacheMode = Label.CacheMode.CHAR;
     label.enableOutline = true;
     label.outlineColor = rgba(40, 12, 6, 255);
     label.outlineWidth = big ? 3 : 2;
-    label.isBold = true;
 
     const opacity = node.addComponent(UIOpacity);
     opacity.opacity = 250;
@@ -6974,18 +7068,7 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardImpact', x, y, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
-    const g = node.addComponent(Graphics);
-    g.fillColor = rgba(255, 248, 230, 235);
-    g.circle(0, 0, 9);
-    g.fill();
-    g.strokeColor = rgba(color.r, color.g, color.b, 220);
-    g.lineWidth = 3;
-    for (let i = 0; i < 4; i += 1) {
-      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      g.moveTo(Math.cos(a) * 6, Math.sin(a) * 6);
-      g.lineTo(Math.cos(a) * 20, Math.sin(a) * 20);
-    }
-    g.stroke();
+    this.mountBakedSprite(node, impactFrame(color), 0, 0, 48, 48);
     const opacity = node.addComponent(UIOpacity);
     tween(node).to(0.18, { scale: new Vec3(1.7, 1.7, 1) }).start();
     tween(opacity).to(0.2, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
@@ -6999,19 +7082,8 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardCellBurst', x, y, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
-    const g = node.addComponent(Graphics);
-    g.strokeColor = rgba(color.r, color.g, color.b, 235);
-    g.lineWidth = big ? 6 : 4;
-    g.circle(0, 0, big ? 46 : 32);
-    g.stroke();
-    g.strokeColor = rgba(255, 248, 224, 220);
-    g.lineWidth = 3;
-    for (let i = 0; i < 6; i += 1) {
-      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
-      g.moveTo(Math.cos(a) * (big ? 30 : 20), Math.sin(a) * (big ? 30 : 20));
-      g.lineTo(Math.cos(a) * (big ? 62 : 44), Math.sin(a) * (big ? 62 : 44));
-    }
-    g.stroke();
+    const burstSize = cellBurstSize(big);
+    this.mountBakedSprite(node, cellBurstFrame(color, big), 0, 0, burstSize, burstSize);
     const opacity = node.addComponent(UIOpacity);
     tween(node).to(big ? 0.34 : 0.26, { scale: new Vec3(big ? 2.0 : 1.6, big ? 2.0 : 1.6, 1) }, { easing: 'quadOut' }).start();
     tween(opacity).to(big ? 0.36 : 0.28, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
@@ -7286,16 +7358,27 @@ export class LobbyGuardBattleRenderer {
     const view = this.monsterViews.get(monsterId);
     if (view) {
       view.hitFlashUntil = Date.now() + 90;
+      // 弹体改为每帧推进后命中不再与 tick 对齐:红闪当场染上,下一次 tick 的 syncMonsters 负责到期复原
+      if (view.skeleton && view.skeleton.isValid && view.lastAnimKey !== 'dead' && view.lastAnimKey !== 'escaped') {
+        view.skeleton.color = GUARD_HIT_FLASH_COLOR;
+      }
     }
   }
 
   /** 飘字槽位轮转:连续飘字横向 3 槽×纵向 2 层错开,不再叠成一团(2026-08-26 用户验收)。 */
   private floaterCycle = 0;
 
-  private spawnFloater(x: number, y: number, text: string, color: Color, fontSize = 16): void {
+  private spawnFloater(x: number, y: number, text: string, color: Color, fontSize = 16, throttled = false): void {
     const field = this.fieldNode;
     if (!field) {
       return;
+    }
+    // 只有高频的(击杀 +金币)受每 tick 上限约束;玩法提示 / 法术结果 / 玩家操作反馈一律照出
+    if (throttled) {
+      if (this.floatersThisStep >= graphicsCaps().floatersPerTick * 2) {
+        return;
+      }
+      this.floatersThisStep += 1;
     }
     this.floaterCycle = (this.floaterCycle + 1) % 6;
     const ox = ((this.floaterCycle % 3) - 1) * 38;
@@ -7397,18 +7480,22 @@ export class LobbyGuardBattleRenderer {
         cdNode.addComponent(Graphics);
       }
       const cdG = cdNode.getComponent(Graphics);
-      if (cdG) {
+      const cdUnlocked = guardHeroSkillUnlocked(sim, hero);
+      const cdW = this.unitSize() * 0.8;
+      const cdReady = cdUnlocked ? Math.max(0, Math.min(1, 1 - (hero.skillReadyMs - sim.timeMs) / GUARD_HERO_SKILL[hero.role].cdMs)) : 0;
+      const cdLeft = skillPending ? Math.max(0, Math.min(1, 1 - (sim.timeMs - (hero.skillPendingSinceMs ?? sim.timeMs)) / GUARD_SKILL_MANUAL_WINDOW_MS)) : 0;
+      const cdKey = !cdUnlocked ? 'off' : skillPending ? `p${Math.round(cdW * cdLeft)}` : `${cdReady >= 1 ? 'r' : 'c'}${Math.round(cdW * cdReady)}`;
+      if (cdG && !this.sameDrawKey(cdNode, cdKey)) {
         cdG.clear();
-        if (guardHeroSkillUnlocked(sim, hero)) {
-          const cd = GUARD_HERO_SKILL[hero.role].cdMs;
-          const ready = Math.max(0, Math.min(1, 1 - (hero.skillReadyMs - sim.timeMs) / cd));
-          const w = this.unitSize() * 0.8;
+        if (cdUnlocked) {
+          const ready = cdReady;
+          const w = cdW;
           cdG.fillColor = rgba(10, 8, 8, 190);
           cdG.roundRect(-w / 2, -3, w, 6, 3);
           cdG.fill();
           if (skillPending) {
             // 手动窗口:金条从满往回缩,缩完自动释放
-            const left = Math.max(0, Math.min(1, 1 - (sim.timeMs - (hero.skillPendingSinceMs ?? sim.timeMs)) / GUARD_SKILL_MANUAL_WINDOW_MS));
+            const left = cdLeft;
             cdG.fillColor = rgba(255, 214, 92, 255);
             cdG.roundRect(-w / 2, -3, Math.max(3, w * left), 6, 3);
           } else {
@@ -7983,6 +8070,8 @@ export class LobbyGuardBattleRenderer {
           return;
         }
         patchBattleUnitSpineRuntimeEnums(data, runtimeData);
+        // 整段演出类大招:骨骼数据上一次性裁掉角色本体 / 压暗底(替代逐帧插槽过滤),必须在赋给骨骼之前
+        prepareBattleFxData(data, runtimeData, resolveBattleFxHiddenSlots(spec));
         const wanted = spec.animation.trim().toLowerCase();
         const animationName = names.find((name) => name.toLowerCase() === wanted)
           ?? names.find((name) => name.toLowerCase().includes(wanted))
@@ -8230,11 +8319,7 @@ export class LobbyGuardBattleRenderer {
             skeleton.timeScale = 1;
             skeleton.updateAnimation(Math.max(0, clip.start));
             skeleton.timeScale = speed;
-            // 只留特效:角色本体部件与压暗黑底逐帧隐藏
-            const hidden = resolveBattleFxHiddenSlots(spec);
-            if (hidden) {
-              node.addComponent(BattleFxSlotFilter).setup(skeleton, spec.effect, hidden);
-            }
+            // 角色本体部件与压暗黑底已在骨骼数据上裁掉(prepareBattleFxData),不再逐帧过滤
             const playSec = (clip.end - clip.start) / speed;
             const fadeSec = Math.min(0.14, playSec * 0.25);
             // 2026-10-06 用户「实机看着假」:这批素材在 Spine 里是压暗全屏 + 角色一起看的,战场上只剩特效本体、
@@ -8644,14 +8729,31 @@ export class LobbyGuardBattleRenderer {
       // 区域化散布:同车道内确定性 y 抖动(±0.32 车道高)+ sim 侧速度抖动,怪群成片不成线。
       const jitterY = monster.kind === 'boss' ? 0 : this.monsterJitterY(monster);
       // 受击顶退(打击感):红闪期间向后小位移,随时间衰减
-      const flashLeft = view.hitFlashUntil - Date.now();
-      const hitJiggle = !monster.dead && flashLeft > 0 ? (flashLeft / 90) * 7 : 0;
-      view.node.setPosition(this.xToPx(monster.x) + hitJiggle, this.monsterY(monster.lane, monster.x) + jitterY * this.monsterSpread(monster.x) + flyLift, 0);
+      const targetX = this.xToPx(monster.x);
+      const targetY = this.monsterY(monster.lane, monster.x) + jitterY * this.monsterSpread(monster.x) + flyLift;
+      if (monster.dead) {
+        // 死亡 / 溜走:停止插值,定在死亡点(淡出下沉 / 向左溜走的 tween 只在进入该状态时启动一次)
+        if (view.interp !== false) {
+          view.interp = false;
+          view.node.setPosition(view.toX ?? targetX, view.toY ?? targetY, 0);
+        }
+      } else {
+        // 首次出现直接落位;之后上一 tick → 本 tick 由 interpolateMonsterViews 每帧插值
+        view.fromX = view.toX ?? targetX;
+        view.fromY = view.toY ?? targetY;
+        view.toX = targetX;
+        view.toY = targetY;
+        if (!view.interp) {
+          view.interp = true;
+          view.node.setPosition(targetX, targetY, 0);
+        }
+      }
       if (monster.dead && monster.escaped) {
         // 偷金鼠溜走:不播死亡,向左淡出
         if (view.lastAnimKey !== 'escaped') {
           view.lastAnimKey = 'escaped';
-          view.node.getChildByName('GuardMonsterHp')?.getComponent(Graphics)?.clear();
+          view.node.getChildByName('GuardMonsterHp')?.destroy();
+          view.node.getChildByName('GuardMonsterShadow')?.destroy();
           const escapeOpacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
           tween(escapeOpacity).to(0.4, { opacity: 0 }).start();
           tween(view.node).by(0.4, { position: new Vec3(-this.unitSize() * 0.8, 0, 0) }).start();
@@ -8663,8 +8765,8 @@ export class LobbyGuardBattleRenderer {
         if (view.lastAnimKey !== 'dead') {
           view.lastAnimKey = 'dead';
           view.node.getChildByName('GuardMarkReticle')?.destroy();
-          // 死亡瞬间清掉血条(视频验收:'血没空就死'的错觉=死时血条残留旧值)
-          view.node.getChildByName('GuardMonsterHp')?.getComponent(Graphics)?.clear();
+          // 死亡瞬间去掉血条(视频验收:'血没空就死'的错觉=死时血条残留旧值);直接销毁,尸体留场 3 秒期间不再占显存
+          view.node.getChildByName('GuardMonsterHp')?.destroy();
           const opacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
           if (view.skeleton && view.skeleton.isValid) {
             view.skeleton.color = GUARD_SPINE_WHITE;
@@ -8726,6 +8828,11 @@ export class LobbyGuardBattleRenderer {
           const hpKey = ratio >= 1 ? -1 : Math.max(1, Math.round(hpTransform.width * ratio));
           hpDirty = view.hpDrawnKey !== hpKey;
           view.hpDrawnKey = hpKey;
+        } else {
+          // BOSS 血条:头顶高度量定之前每 tick 都要走测量;量定后只在血量像素或文字变了才重画
+          const bossKey = Math.round(hpTransform.width * ratio) * 1e6 + Math.ceil(monster.hp) % 1e6;
+          hpDirty = !view.hpBarLocked || view.hpDrawnKey !== bossKey;
+          view.hpDrawnKey = bossKey;
         }
         if (hpDirty) {
           hpGraphics.clear();
@@ -9000,11 +9107,15 @@ export class LobbyGuardBattleRenderer {
         node.setSiblingIndex(firstHero);
       }
     }
-    // 地面阴影:近黑素材在暖色地面上的剪影分离
-    const shadow = node.addComponent(Graphics);
-    shadow.fillColor = rgba(8, 5, 3, 105);
-    shadow.ellipse(0, -unit * 0.45, Math.min(baseSize, unit * 2.4) * 0.34, unit * 0.065);
-    shadow.fill();
+    // 地面阴影:近黑素材在暖色地面上的剪影分离。
+    // 2026-10-07 由 Graphics 改为共享柔光贴图精灵:每只怪一个 Graphics = 一份独立显存缓冲 + 一次不能合批的绘制。
+    const shadowW = Math.min(baseSize, unit * 2.4) * 0.68;
+    const shadow = this.mountSoftShade(node, 'GuardMonsterShadow', 0, -unit * 0.45, shadowW, Math.max(6, unit * 0.15), 'blob');
+    const shadowSprite = shadow?.getComponent(Sprite);
+    if (shadowSprite) {
+      shadowSprite.color = rgba(255, 255, 255, 170);
+    }
+    shadow?.setSiblingIndex(0);
     const fallback = this.host.addChildPlainNode(node, 'GuardMonsterFallback', 0, 0, baseSize * 0.6, baseSize * 0.7);
     const g = fallback.addComponent(Graphics);
     g.fillColor = monster.kind === 'boss' ? rgba(190, 70, 60, 200) : monster.kind === 'elite' ? rgba(200, 130, 60, 190) : rgba(120, 96, 88, 180);

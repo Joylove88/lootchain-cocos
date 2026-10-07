@@ -32,11 +32,13 @@ export interface GraphicsCaps {
   /** 同屏伤害飘字上限:小字 / 大字。 */
   floatersSmall: number;
   floatersBig: number;
+  /** 每个模拟 tick 最多新建的伤害数字(群体技能一次打中几十只怪时只出前几个)。 */
+  floatersPerTick: number;
 }
 
 const CAPS: Record<GraphicsMode, GraphicsCaps> = {
-  smooth: { spineProjectiles: 6, spineHitFx: 4, floatersSmall: 14, floatersBig: 24 },
-  ultra: { spineProjectiles: 18, spineHitFx: 14, floatersSmall: 52, floatersBig: 72 },
+  smooth: { spineProjectiles: 6, spineHitFx: 4, floatersSmall: 14, floatersBig: 24, floatersPerTick: 6 },
+  ultra: { spineProjectiles: 18, spineHitFx: 14, floatersSmall: 52, floatersBig: 72, floatersPerTick: 12 },
 };
 
 let nativePixelRatio = 0;

@@ -394,6 +394,11 @@ export function resolveBattleFxHiddenSlots(spec: BattleSkillEffectSpec): readonl
   return BATTLE_FX_HIDDEN_SLOTS[spec.effect] ?? [];
 }
 
+/** 按特效套名取需裁剪的插槽表(只对整段演出类 hu_* 大招;加载门预处理用,与 resolveBattleFxHiddenSlots 同口径)。 */
+export function resolveBattleFxHiddenSlotsForEffect(effect: string): readonly string[] | null {
+  return effect.startsWith('hu_') ? (BATTLE_FX_HIDDEN_SLOTS[effect] ?? []) : null;
+}
+
 export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): string {
   return `spine/effect/${spec.effect}/${spec.effect}`;
 }
