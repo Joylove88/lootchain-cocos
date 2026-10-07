@@ -84,6 +84,7 @@ import { ProtagonistCreateFlow, type ProtagonistCreateFlowHost } from './protago
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
 import {
   LobbyBackgroundController,
+  LOBBY_POSTER_PATH,
   type LobbyBackgroundHost,
 } from './lobby/LobbyBackgroundController';
 import { LobbyAdventureState } from './lobby/LobbyAdventureState';
@@ -670,7 +671,8 @@ export class LootChainGameRoot extends Component {
       }
       // 兜底:界面图加载异常悬挂也不至于锁死进不了游戏(整包下载阶段不计时)。
       setTimeout(finish, 180000);
-      const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = collectUiDirPaths(BOOT_PRELOAD_UI_DIRS)
+      // 大厅海报不在 ui/ 目录下,单独加(刷新后直进大厅时要它已在内存,否则先闪深色底)
+      const tasks: Array<{ path: string; kind: 'ui' | 'spine' }> = [...collectUiDirPaths(BOOT_PRELOAD_UI_DIRS), `${LOBBY_POSTER_PATH}/spriteFrame`]
         .map((path) => ({ path, kind: 'ui' as const }));
       const total = tasks.length;
       if (total === 0) {
@@ -762,7 +764,7 @@ export class LootChainGameRoot extends Component {
       }
     };
     assetManager.loadBundle('resources', () => {
-      const infos: Array<{ path: string }> = collectUiDirPaths(BOOT_PRELOAD_UI_DIRS).map((path) => ({ path }));
+      const infos: Array<{ path: string }> = [...collectUiDirPaths(BOOT_PRELOAD_UI_DIRS), `${LOBBY_POSTER_PATH}/spriteFrame`].map((path) => ({ path }));
       let remaining = infos.length;
       if (remaining === 0) {
         finish();
@@ -6394,6 +6396,8 @@ export class LootChainGameRoot extends Component {
   /** 大厅海报晚到(本地缓存里没有,现读):只在大厅主界面时整页重画一次;功能页回大厅时自然带上。 */
   private refreshLobbyBackground(): void {
     if (this.currentView === 'lobby' && !this.bootPreloadActive) {
+      // 大厅已画过背景(深色兜底)时重绘会保留旧背景,必须先释放才会换成海报
+      this.lobbyBackgroundController.release();
       this.renderCurrentView();
     }
   }
