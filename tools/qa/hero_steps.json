@@ -1,0 +1,47 @@
+[
+ [
+  "attr",
+  "__OPEN_DETAIL__",
+  6
+ ],
+ [
+  "attrpop",
+  "(() => { const b = findNode('LobbyHeroDetailAttrDetailBtn'); if (!b) return 'no btn'; b.emit(window.__cc.Button.EventType.CLICK); return 'clicked'; })()",
+  2
+ ],
+ [
+  "ult",
+  "(() => { const o = findNode('LobbyHeroAttrDetailOverlay'); if (o) o.destroy(); r.openLobbyHeroUltimateDialog(); })()",
+  2
+ ],
+ [
+  "refine",
+  "(() => { r.closeLobbyHeroUltimateDialog(); r.openLobbyHeroRefineDialog(); })()",
+  2
+ ],
+ [
+  "equip",
+  "(() => { r.closeLobbyHeroRefineDialog(); r.selectLobbyHeroDetailTab('equip'); })()",
+  5
+ ],
+ [
+  "equipscroll",
+  "(async () => { const sv = findNode('WearGridScrollView'); if (!sv) return 'no scrollview'; const c = sv.getComponent(window.__cc.ScrollView); c.scrollToBottom(0); return 'y=' + Math.round(c.content.position.y); })()",
+  2
+ ],
+ [
+  "skill",
+  "(() => { r.selectLobbyHeroDetailTab('skill'); })()",
+  3
+ ],
+ [
+  "star",
+  "(() => { r.selectLobbyHeroDetailTab('star'); })()",
+  3
+ ],
+ [
+  "awaken",
+  "(() => { const p = r.lobbyHeroDetailPanelRenderer; p.isHeroAwakenable = () => true; p.openAwakenDialog(r.currentLobbyHeroDetailHero()); })()",
+  2
+ ]
+]

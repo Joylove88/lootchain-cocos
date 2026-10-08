@@ -1,0 +1,27 @@
+[
+ [
+  "open",
+  "__OPEN_DETAIL__",
+  6
+ ],
+ [
+  "equip",
+  "(async () => { r.selectLobbyHeroDetailTab('equip'); await new Promise(z => setTimeout(z, 3000)); return ((() => { const h = r.currentLobbyHeroDetailHero(); const hid = h.id || h.heroId; const base = { equipName: '烈焰审判之刃', slot: 'WEAPON', quality: 'GOLD', tier: 2, requiredLevel: 1, attrHp: 0, attrAttack: 320, attrDefense: 0, attrSpeed: 12, attrCrit: 8, enhanceLevel: 5, specialAffixes: [], gems: [null, null, null, null, null] }; r.lobbyEquipmentItems = [Object.assign({}, base, { id: 990001, equipCode: 'MOCK_A', heroId: hid }), Object.assign({}, base, { id: 990002, equipCode: 'MOCK_B', equipName: '暗影猎手长弓', quality: 'PURPLE', heroId: null, enhanceLevel: 0 }), Object.assign({}, base, { id: 990003, equipCode: 'MOCK_C', equipName: '王国守卫剑', quality: 'BLUE', heroId: null, enhanceLevel: 0 })]; r.lobbyHeroEquipSelectedSlot = 'WEAPON'; r.lobbyEquipmentLoading = false; r.renderCurrentView(); return 'mocked hero=' + hid; })()); })()",
+  3
+ ],
+ [
+  "tapworn",
+  "(() => { let hit = null; const w = n => { if (hit) return; if (n.getChildByName && n.getChildByName('ArtEquipName') && n.getComponent(window.__cc.Button)) { hit = n; return; } n.children.forEach(w); }; w(window.__cc.director.getScene()); if (!hit) return 'no worn slot'; hit.emit(window.__cc.Button.EventType.CLICK, hit.getComponent(window.__cc.Button)); return 'tapped ' + hit.name + ' tip=' + !!findNode('WearTooltip'); })()",
+  3
+ ],
+ [
+  "closetip",
+  "(() => { const t = findNode('WearTooltip'); if (t) t.destroy(); r.lobbyHeroDetailPanelRenderer.touchTipEquipId = null; return 'closed'; })()",
+  1
+ ],
+ [
+  "tapgrid",
+  "(() => { const all = []; const w2 = n => { if (/^WearCell_\\d+$/.test(n.name)) all.push(n); n.children.forEach(w2); }; w2(window.__cc.director.getScene()); const t = all.find(n => n.name === 'WearCell_990002') || all[0]; if (!t) return 'no grid'; t.emit(window.__cc.Button.EventType.CLICK, t.getComponent(window.__cc.Button)); return 'tapped ' + t.name + ' of ' + all.length + ' tip=' + !!findNode('WearTooltip'); })()",
+  3
+ ]
+]

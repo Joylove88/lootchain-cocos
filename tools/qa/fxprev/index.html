@@ -1,0 +1,147 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>fx preview</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script src="spine-webgl.js"></script></head>
+<body><canvas id="c" width="512" height="512"></canvas>
+<script>
+// 无头渲染 Spine 4.2 特效:renderSet(name, anims, opts) → {anims:{[anim]:{frames:[dataURL],bounds:{w,h,cx,cy},duration}}}
+// bounds = 亮区(RGB>阈值)在骨骼坐标系下的包围盒,cx 右正 / cy 上正(与 BATTLE_FX_MEASURED_BOUNDS 同口径)。
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { alpha: false, premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false });
+const ctx = new spine.ManagedWebGLRenderingContext(gl);
+const renderer = new spine.SceneRenderer(canvas, ctx);
+const SIZE = 512;
+
+function loadSet(name, pma) {
+  return new Promise((resolve, reject) => {
+    const am = new spine.AssetManager(ctx, '/fx42/' + encodeURIComponent(name) + '/');
+    const skel = encodeURIComponent(name) + '.skel', atlas = encodeURIComponent(name) + '.atlas';
+    am.loadBinary(skel);
+    am.loadTextureAtlas(atlas);
+    const t0 = performance.now();
+    const tick = () => {
+      if (am.isLoadingComplete()) {
+        if (am.hasErrors()) { reject(new Error(JSON.stringify(am.getErrors()))); return; }
+        try {
+          const loader = new spine.AtlasAttachmentLoader(am.require(atlas));
+          const bin = new spine.SkeletonBinary(loader);
+          const data = bin.readSkeletonData(am.require(skel));
+          resolve({ am, data });
+        } catch (e) { reject(e); }
+      } else if (performance.now() - t0 > 60000) { reject(new Error('load timeout')); }
+      else setTimeout(tick, 20);
+    };
+    tick();
+  });
+}
+
+let WINDOW = null;
+function sampleTimes(duration, n) {
+  const out = [];
+  const t0 = WINDOW ? WINDOW[0] : 0, t1 = WINDOW ? Math.min(duration, WINDOW[1]) : duration;
+  for (let i = 0; i < n; i++) out.push(t0 + (t1 - t0) * (i + 0.5) / n);
+  return out;
+}
+
+function pose(skeleton, state, t) {
+  const entry = state.getCurrent(0);
+  entry.trackTime = t;
+  state.apply(skeleton);
+  if (window.__hide) for (const slot of skeleton.slots) if (window.__hide(slot.data.name, slot)) slot.attachment = null;
+  skeleton.update(0);
+  skeleton.updateWorldTransform(spine.Physics.update);
+}
+
+function drawAt(skeleton, cx, cy, zoom, pma) {
+  const bg = window.__bg || 0;
+  gl.clearColor(bg, bg, bg, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  renderer.camera.position.set(cx, cy, 0);
+  renderer.camera.zoom = zoom;
+  renderer.camera.setViewport(SIZE, SIZE);
+  renderer.begin();
+  renderer.drawSkeleton(skeleton, pma);
+  renderer.end();
+}
+
+function pixelBox(threshold) {
+  const buf = new Uint8Array(SIZE * SIZE * 4);
+  gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  let x0 = SIZE, y0 = SIZE, x1 = -1, y1 = -1, sum = 0;
+  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+    const i = (y * SIZE + x) * 4;
+    const m = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+    if (m > threshold) { sum += m; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  if (x1 < 0) return null;
+  // readPixels y 向上为正(GL),与相机 y 向上一致
+  return { x0, y0, x1, y1, sum };
+}
+
+window.renderSet = async function (name, anims, opts) {
+  opts = opts || {};
+  WINDOW = opts.window || null;
+  const hide = opts.hide || null;
+  const pma = !!opts.pma;
+  const frames = opts.frames || 6;
+  const samples = opts.samples || 12;
+  const { am, data } = await loadSet(name, pma);
+  const result = { name, anims: {} };
+  try {
+    const skeleton = new spine.Skeleton(data);
+    const state = new spine.AnimationState(new spine.AnimationStateData(data));
+    const names = data.animations.map(a => a.name);
+    const wanted = (anims && anims.length ? anims : names).filter(a => names.includes(a));
+    for (const anim of wanted) {
+      state.setAnimation(0, anim, false);
+      const duration = state.getCurrent(0).animation.duration || 0.001;
+      // pass 1:顶点包围盒粗定视野(union over samples),再按亮区精测
+      const off = new spine.Vector2(), size = new spine.Vector2();
+      let vx0 = Infinity, vy0 = Infinity, vx1 = -Infinity, vy1 = -Infinity;
+      for (const t of sampleTimes(duration, samples)) {
+        pose(skeleton, state, t);
+        skeleton.getBounds(off, size);
+        if (size.x > 0 && size.y > 0 && isFinite(size.x) && isFinite(size.y)) {
+          vx0 = Math.min(vx0, off.x); vy0 = Math.min(vy0, off.y); vx1 = Math.max(vx1, off.x + size.x); vy1 = Math.max(vy1, off.y + size.y);
+        }
+      }
+      if (!isFinite(vx0)) { vx0 = -600; vy0 = -600; vx1 = 600; vy1 = 600; }
+      let cx = (vx0 + vx1) / 2, cy = (vy0 + vy1) / 2;
+      let zoom = Math.max(vx1 - vx0, vy1 - vy0) * 1.1 / SIZE;
+      // pass 1b:亮区包围盒(骨骼单位)
+      let px0 = Infinity, py0 = Infinity, px1 = -Infinity, py1 = -Infinity, bright = 0;
+      const perFrameBright = [];
+      for (const t of sampleTimes(duration, samples)) {
+        pose(skeleton, state, t);
+        drawAt(skeleton, cx, cy, zoom, pma);
+        const b = pixelBox(24);
+        perFrameBright.push(b ? b.sum : 0);
+        if (b) {
+          bright += b.sum;
+          const wx0 = cx + (b.x0 - SIZE / 2) * zoom, wx1 = cx + (b.x1 + 1 - SIZE / 2) * zoom;
+          const wy0 = cy + (b.y0 - SIZE / 2) * zoom, wy1 = cy + (b.y1 + 1 - SIZE / 2) * zoom;
+          px0 = Math.min(px0, wx0); px1 = Math.max(px1, wx1); py0 = Math.min(py0, wy0); py1 = Math.max(py1, wy1);
+        }
+      }
+      const entry = { duration: Math.round(duration * 1000) / 1000, frames: [], bounds: null, vertexBounds: { w: Math.round(vx1 - vx0), h: Math.round(vy1 - vy0), cx: Math.round(cx), cy: Math.round(cy) }, brightness: perFrameBright };
+      if (isFinite(px0)) {
+        entry.bounds = { w: Math.round(px1 - px0), h: Math.round(py1 - py0), cx: Math.round((px0 + px1) / 2), cy: Math.round((py0 + py1) / 2) };
+        cx = (px0 + px1) / 2; cy = (py0 + py1) / 2;
+        zoom = Math.max(px1 - px0, py1 - py0, 8) * 1.06 / SIZE;
+      }
+      // pass 2:出帧(按亮区居中)
+      if (opts.fixed) { cx = opts.fixed.cx; cy = opts.fixed.cy; zoom = opts.fixed.w / SIZE; }
+      for (const t of sampleTimes(duration, frames)) {
+        pose(skeleton, state, t);
+        drawAt(skeleton, cx, cy, zoom, pma);
+        entry.frames.push(canvas.toDataURL('image/png'));
+      }
+      result.anims[anim] = entry;
+    }
+  } finally {
+    am.dispose();
+  }
+  return result;
+};
+window.__ready = true;
+</script></body></html>

@@ -1,0 +1,47 @@
+{
+ "_T073": {
+  "set": "073",
+  "slots": {
+   "s2_guangqiu": {
+    "att": "effect/guangqiu_gaoliang",
+    "region": "effect/guangqiu_gaoliang",
+    "blend": 1,
+    "maxA": 1,
+    "frames": 30,
+    "rgb": "0.86,0.32,0.97"
+   },
+   "s2_daoguang_yueya_add2": {
+    "att": "effect/daoguang_yueya",
+    "region": "effect/daoguang_yueya",
+    "blend": 1,
+    "maxA": 1,
+    "frames": 22,
+    "rgb": "0.82,0.87,0.9"
+   },
+   "s2_daoguang_yueya_normal2": {
+    "att": "effect/daoguang_yueya",
+    "region": "effect/daoguang_yueya",
+    "blend": 0,
+    "maxA": 1,
+    "frames": 8,
+    "rgb": "1,0.87,0.87"
+   },
+   "s2_guangqiu2": {
+    "att": "effect/guangqiu_gaoliang",
+    "region": "effect/guangqiu_gaoliang",
+    "blend": 1,
+    "maxA": 1,
+    "frames": 3,
+    "rgb": "1,1,1"
+   },
+   "s2_bao": {
+    "att": "effect/shouji20_2",
+    "region": "effect/shouji20_2",
+    "blend": 1,
+    "maxA": 1,
+    "frames": 2,
+    "rgb": "0.98,0.91,0.92"
+   }
+  }
+ }
+}
