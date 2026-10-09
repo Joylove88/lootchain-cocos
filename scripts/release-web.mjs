@@ -1,10 +1,11 @@
 // 一键出 Web 正式包(docs/31、LootChain docs/35):
 //   检查编辑器已关 → loose 展开检查 → 命令行构建(md5Cache) → 修正 Service Worker 文件名 → 引擎 DPR 封顶补丁 → 关 Cocos 启动图 → PNG 压缩
-//   → 写整包下载清单 asset-manifest.json → 打 tar.gz。
+//   → 核对"同名改内容"的文件 → 写整包下载清单 asset-manifest.json → 打 tar.gz。
 // 用法:npm run release:web            (完整流程)
 //       npm run release:web -- --skip-build   (只对现有 build/web-mobile 做后处理并打包)
 // 产物:build/release/lootchain-web-<日期时间>-<commit>.tar.gz,服务器上解压到站点目录即可(见 docs/35)。
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_DIR = path.join(ROOT, 'build', 'web-mobile');
 const RELEASE_DIR = path.join(ROOT, 'build', 'release');
+// 上一次出包各文件的内容哈希(本机留档,不进仓库);同名文件内容变了要列进 MUTABLE_PATHS_FILE
+const CONTENT_INDEX_FILE = path.join(RELEASE_DIR, 'asset-content-index.json');
+// 累计的"同名改过内容"文件(进仓库):玩家可能跳过若干版本,只要曾经同名改过就一直核对
+const MUTABLE_PATHS_FILE = path.join(ROOT, 'scripts', 'asset-mutable-paths.json');
 const CREATOR_EXE = process.env.COCOS_CREATOR_EXE || 'D:/office app/cocos/editors/Creator/3.8.8/CocosCreator.exe';
 // Creator 命令行构建成功时退出码是 36(不是 0)。
 const CREATOR_BUILD_OK = 36;
@@ -136,6 +141,47 @@ function checkBuildLayout() {
   }
 }
 
+const sha16 = (file) => crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex').slice(0, 16);
+
+/**
+ * 带 md5 后缀的文件在浏览器里"缓存优先、永不过期",但后缀是 Creator 按构建时内容算的:出包后处理(PNG 压缩等)
+ * 改了内容不改文件名,处理规则一变,同名文件就换了内容,老玩家缓存里永远是旧的(2026-10-09 手机大招绿方块)。
+ * 这里与上一次出包逐文件比内容,同名不同内容的累计记进 MUTABLE_PATHS_FILE;清单带上这些文件当前内容的哈希,
+ * 游戏启动时按内容核对、过期的删掉重下(AssetOfflineCache.evictMutatedFiles)。返回 { 路径: 哈希 }。
+ */
+function collectMutableAssets(files) {
+  const current = {};
+  for (const [rel] of files) {
+    current[rel] = sha16(path.join(BUILD_DIR, rel));
+  }
+  let previous = {};
+  try {
+    previous = JSON.parse(fs.readFileSync(CONTENT_INDEX_FILE, 'utf8'));
+  } catch (error) {
+    console.warn('[release] 没有上一次出包的内容索引(首次运行),本次只做留档');
+  }
+  let tracked = [];
+  try {
+    tracked = JSON.parse(fs.readFileSync(MUTABLE_PATHS_FILE, 'utf8'));
+  } catch (error) {
+    tracked = [];
+  }
+  const changed = Object.keys(current).filter((rel) => previous[rel] && previous[rel] !== current[rel]);
+  if (changed.length > 0) {
+    console.warn(`[release] ${changed.length} 个文件同名改了内容(已列入启动核对):\n  ` + changed.slice(0, 30).join('\n  '));
+  }
+  const keep = Array.from(new Set(tracked.concat(changed))).filter((rel) => current[rel]).sort();
+  fs.writeFileSync(MUTABLE_PATHS_FILE, JSON.stringify(keep, null, 1) + '\n');
+  fs.mkdirSync(RELEASE_DIR, { recursive: true });
+  fs.writeFileSync(CONTENT_INDEX_FILE, JSON.stringify(current));
+  const mutable = {};
+  for (const rel of keep) {
+    mutable[rel] = current[rel];
+  }
+  console.log(`[release] 启动核对清单:${keep.length} 个文件`);
+  return mutable;
+}
+
 function writeAssetManifest() {
   const files = [];
   const walk = (dir) => {
@@ -161,7 +207,8 @@ function writeAssetManifest() {
   const rank = (p) => (p.includes('/resources/') && /\/ui\//.test(p) ? 0 : p.startsWith('cocos-js/') || !p.includes('/resources/') ? 0 : 1);
   files.sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
   const total = files.reduce((sum, f) => sum + f[1], 0);
-  fs.writeFileSync(path.join(BUILD_DIR, 'asset-manifest.json'), JSON.stringify({ version: commit, files }));
+  const mutable = collectMutableAssets(files);
+  fs.writeFileSync(path.join(BUILD_DIR, 'asset-manifest.json'), JSON.stringify({ version: commit, files, mutable }));
   console.log(`[release] asset-manifest.json:${files.length} 个文件,${(total / 1024 / 1024).toFixed(1)} MB`);
 }
 

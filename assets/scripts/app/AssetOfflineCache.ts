@@ -141,6 +141,12 @@ export interface AssetManifest {
   version: string;
   /** [相对路径, 字节数] */
   files: Array<[string, number]>;
+  /**
+   * 文件名没变、内容却改过的文件(出包后处理策略变了,如 PNG 压缩规则):相对路径 → 当前内容 SHA-1 前 16 位。
+   * 带 md5 后缀的文件按"缓存优先、永不过期"存,同名新内容永远进不了老玩家的缓存,必须按内容核对后删掉重下
+   * (2026-10-09 手机大招一块块绿方块:10-07 前的包把预乘图集压成调色板图,修复后文件名不变,手机一直用缓存里的坏图)。
+   */
+  mutable?: Record<string, string>;
 }
 
 export interface FullPackProgress {
@@ -199,13 +205,43 @@ export async function fetchAssetManifest(): Promise<AssetManifest | null> {
   }
 }
 
-/** 清单里本地缓存还缺的文件(全齐返回空数组)。 */
+/** 清单里本地缓存还缺的文件(全齐返回空数组)。先把内容已过期的同名文件删掉,它们随缺失文件一起重下。 */
 export async function missingManifestFiles(manifest: AssetManifest): Promise<Array<[string, number]>> {
   const cache = await caches.open(ASSET_CACHE_NAME);
   const keys = await cache.keys();
   const have = new Set<string>(keys.map((request) => new URL(request.url).pathname));
   const base = new URL('.', location.href).pathname;
+  await evictMutatedFiles(cache, manifest, base, have);
   return manifest.files.filter(([path]) => !have.has(base + path));
+}
+
+/** 核对 manifest.mutable 里在缓存中的文件:内容哈希对不上就删掉并从 have 里移除。任何一步失败都跳过(不影响启动)。 */
+async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: string, have: Set<string>): Promise<void> {
+  const mutable = manifest.mutable;
+  const subtle = typeof crypto !== 'undefined' ? crypto.subtle : undefined;
+  if (!mutable || !subtle) {
+    return;
+  }
+  for (const path of Object.keys(mutable)) {
+    if (!have.has(base + path)) {
+      continue;
+    }
+    try {
+      const hit = await cache.match(path, { ignoreVary: true });
+      if (!hit) {
+        continue;
+      }
+      const digest = new Uint8Array(await subtle.digest('SHA-1', await hit.arrayBuffer()));
+      const hex = Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('');
+      if (hex !== mutable[path]) {
+        await cache.delete(path, { ignoreVary: true });
+        have.delete(base + path);
+        console.warn(`[LootChain] full pack: ${path} 缓存内容已过期,重新下载`);
+      }
+    } catch (error) {
+      void error;
+    }
+  }
 }
 
 /** 剩余空间够不够放下这些字节(留 15% 余量);拿不到估算时按"够"处理。 */

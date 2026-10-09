@@ -270,7 +270,6 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_s681_6033:skill03_1': { w: 854, h: 846, cx: 24, cy: 295 },
   // 新批次英雄大招 hu_*(2026-10-05,只量 clip 片段;宽松框 = 片段内亮度 2~98% 分位框,scratchpad fxprev/core_hu.py)
   'hu_098:skill2': { w: 2015, h: 2135, cx: -641, cy: 636 },
-  'hu_100:skill2': { w: 1800, h: 1200, cx: 60, cy: 150 },
   'hu_058:skill2': { w: 1580, h: 1180, cx: 60, cy: 234 },
   'hu_054:skill2': { w: 1223, h: 637, cx: 129, cy: 62 },
   'hu_073:skill2': { w: 1800, h: 900, cx: 0, cy: 150 },
@@ -331,7 +330,6 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   'v2_s681_6033:skill03_1': { w: 490, h: 498, cx: 31, cy: 294 },
   // 新批次英雄大招 hu_*(2026-10-05,只量 clip 片段;核心 = 片段内亮度 10~90% 分位框,scratchpad fxprev/core_hu.py)
   'hu_098:skill2': { w: 1232, h: 1301, cx: -806, cy: 674 },
-  'hu_100:skill2': { w: 900, h: 700, cx: 60, cy: 150 },
   'hu_058:skill2': { w: 1224, h: 687, cx: 67, cy: 66 },
   'hu_054:skill2': { w: 862, h: 455, cx: 163, cy: 58 },
   'hu_073:skill2': { w: 900, h: 560, cx: 0, cy: 150 },
@@ -375,7 +373,6 @@ export function lookupBattleFxCoreBounds(effect: string, animation: string): Bat
 const BATTLE_FX_HIDDEN_SLOTS: Record<string, readonly string[]> = {
   hu_073: ['s1_baidi', 's2_guangqiu', 's2_guangqiu3', 's2_daoguang_yueya_normal2'],
   hu_044: ['effect-guangyun', 'effect-guangyun25'],
-  hu_100: ['baidi_add', 'baidi_normal', 'guangliu_xulie*', 's2_guangliubo*'],
   hu_058: ['effect-qichang_1'], // 染纯黑的大爪痕,暗色战场上是一块黑影
   hu_018: ['TX-huidong3_9'],
   hu_098: ['tx-hei'],
