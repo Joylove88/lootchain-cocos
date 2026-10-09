@@ -207,6 +207,9 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'fx_2602_yanguilingyu:xia': { w: 1456, h: 760, cx: 48, cy: -260 },
   // fx_pack_v2 新批次(2026-09-28,spine-webgl 无头渲染 12 时刻亮区 bbox,scratchpad fxprev;短编号 → 原套名见 docs/29 v3)
   'v2_a47_162:fz': { w: 295, h: 308, cx: 0, cy: -3 },
+  // 集火标记(2026-10-09):红色电光环 / 红色星芒冲击环(fx_pack_v2_选型 render.jsonl 实测)
+  'v2_a49_081:red': { w: 206, h: 199, cx: -4, cy: -5 },
+  'v2_a47_189:sj': { w: 403, h: 442, cx: 2, cy: -5 },
   'v2_a47_340:action': { w: 362, h: 298, cx: 8, cy: 101 },
   'v2_a47_343:action2': { w: 338, h: 351, cx: 12, cy: 27 },
   'v2_a47_376:action2': { w: 294, h: 139, cx: 2, cy: 1 },

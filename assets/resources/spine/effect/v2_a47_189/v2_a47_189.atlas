@@ -1,0 +1,48 @@
+
+xxm_lingyu_dd.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/bao
+  rotate: false
+  xy: 505, 40
+  size: 202, 213
+  orig: 256, 256
+  offset: 29, 23
+  index: -1
+images/d
+  rotate: false
+  xy: 709, 166
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1
+images/dian_hong
+  rotate: false
+  xy: 709, 112
+  size: 52, 52
+  orig: 68, 60
+  offset: 8, 4
+  index: -1
+images/kuoshan
+  rotate: false
+  xy: 2, 2
+  size: 253, 251
+  orig: 256, 256
+  offset: 1, 0
+  index: -1
+images/line_hong
+  rotate: false
+  xy: 709, 232
+  size: 224, 21
+  orig: 242, 29
+  offset: 9, 4
+  index: -1
+images/quan_hong
+  rotate: false
+  xy: 257, 7
+  size: 246, 246
+  orig: 256, 256
+  offset: 5, 5
+  index: -1

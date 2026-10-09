@@ -217,6 +217,15 @@ export const GUARD_SPELL_FX: Record<'quake' | 'frost' | 'thunder' | 'goldrush' |
   aegis: { effect: 'v2_a49_206', animation: 'action', size: 2.8, anchor: 'crystal', holdMs: 4000, loop: true, offsetY: 0.6, offsetX: 1.5 },
   warhorn: { effect: 'v2_a47_376', animation: 'action2', size: 1.5, anchor: 'heroes', holdMs: 6000, loop: true, offsetY: -0.42 },
 };
+/**
+ * 集火标记(docs/37 A;2026-10-09 用户「集火效果太简单」换骨骼特效):脚下红色电光环循环(A49-081 red,压扁成透视椭圆)
+ * + 标记瞬间身体中心红色星芒冲击环一次性(A47-189 sj)。ring.size 不用(环宽按怪物体型定),burst.size = unitSize 倍率。
+ */
+export const GUARD_MARK_FX = {
+  ring: { effect: 'v2_a49_081', animation: 'red', size: 1.0 },
+  burst: { effect: 'v2_a47_189', animation: 'sj', size: 1.7 },
+} as const;
+
 /** 号角吹响时水晶处的一次性爆发(与每人脚下的循环 buff 分开,便于就绪表按 effect 键唯一)。 */
 export const GUARD_WARHORN_BURST_FX = { effect: 'v2_s576_040', animation: 'E803_Special_SkillUltra2_sj_Up', size: 3.2 };
 

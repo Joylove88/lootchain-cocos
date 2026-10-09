@@ -859,7 +859,10 @@ export class LobbyHeroRosterPanelRenderer {
 
   private loadHeroCardBackgroundFrame(assetPath: string, callback: (frame: SpriteFrame | null) => void): void {
     const cached = this.cardBackgroundFrames.get(assetPath);
-    if (cached) {
+    // 手机进战斗会把名册卡面从显存释放(UiSpriteFrameCache.releaseIdleTextures),这里缓存的帧可能已销毁:丢掉重读
+    if (cached && !cached.isValid) {
+      this.cardBackgroundFrames.delete(assetPath);
+    } else if (cached) {
       callback(cached);
       return;
     }
@@ -1015,6 +1018,9 @@ export class LobbyHeroRosterPanelRenderer {
   }
 
   private loadUrSequenceBorderFrames(callback: (frames: SpriteFrame[] | null) => void): void {
+    if (this.urSequenceBorderFrames && this.urSequenceBorderFrames.some((frame) => !frame.isValid)) {
+      this.urSequenceBorderFrames = null;
+    }
     if (this.urSequenceBorderFrames) {
       callback(this.urSequenceBorderFrames);
       return;

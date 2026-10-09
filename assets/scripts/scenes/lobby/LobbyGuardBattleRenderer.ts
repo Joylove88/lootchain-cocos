@@ -134,7 +134,7 @@ import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -3440,7 +3440,8 @@ export class LobbyGuardBattleRenderer {
     if (phone) {
       this.mountSheetClose(overlay, panelW, panelH, () => this.closeExitConfirm());
     }
-    this.paintSettingsTitle(overlay, '退出战斗?', panelW, phone ? 150 : panelH / 2 - 100);
+    // 手机:标题牌与其它全屏弹层同一位置(左上角;原先传 150 把牌子放到了半屏高,2026-10-09 用户截图)
+    this.paintSettingsTitle(overlay, '退出战斗?', panelW, phone ? panelH / 2 - 54 : panelH / 2 - 100);
     const rush = this.sim.mode === 'rush';
     const lines = [
       rush ? '退出后本局作废,已打到的层数不计入结算。' : '退出后本局作废,不结算奖励。',
@@ -3536,9 +3537,61 @@ export class LobbyGuardBattleRenderer {
     return best;
   }
 
-  /** 集火准星:红色旋转环 + 四向刻度,盖在怪物身体中心,出现时弹一下。 */
+  /**
+   * 集火标记(2026-10-09 用户「集火效果太简单」换骨骼特效):脚下红色电光环循环(A49-081 red,压扁成透视椭圆,
+   * 排在影子之上、身体之下)+ 标记瞬间身体中心红色星芒冲击环一次性(A47-189 sj,自行销毁)。素材未就绪退回程序绘制准星。
+   * 节点名 GuardMarkReticle 不变:取消标记 / 死亡时按名销毁。
+   */
   private mountMarkReticle(view: GuardUnitView): void {
     const size = view.node.getComponent(UITransform)?.width ?? this.unitSize();
+    const unit = this.unitSize();
+    const ring = this.attackSpineFxReady.get(GUARD_MARK_FX.ring.effect);
+    const burst = this.attackSpineFxReady.get(GUARD_MARK_FX.burst.effect);
+    if (!ring) {
+      this.prewarmAttackSpineFx(GUARD_MARK_FX.ring);
+      this.prewarmAttackSpineFx(GUARD_MARK_FX.burst);
+      this.mountMarkReticleFallback(view, size);
+      return;
+    }
+    const offsetX = this.bossVisualOffsetX(view);
+    // 脚下电光环:与影子同高(骨骼脚底 -unit×0.45),宽按体型取、钳在 0.9~2.2 格,压扁 0.42 成透视椭圆
+    const ringW = Math.max(unit * 0.9, Math.min(unit * 2.2, size * 0.95));
+    const node = this.host.addChildPlainNode(view.node, 'GuardMarkReticle', offsetX, -unit * 0.45, 10, 10);
+    node.setSiblingIndex(1);
+    const holder = this.host.addChildPlainNode(node, 'Ring', 0, 0, 10, 10);
+    holder.setScale(1, 0.42, 1);
+    const fit = ringW / Math.max(ring.w, ring.h);
+    const ringFx = this.host.addChildPlainNode(holder, 'Fx', -ring.cx * fit, -ring.cy * fit, 10, 10);
+    ringFx.setScale(fit, fit, 1);
+    const ringSkeleton = ringFx.addComponent(sp.Skeleton);
+    ringSkeleton.premultipliedAlpha = false;
+    ringSkeleton.skeletonData = ring.data;
+    try {
+      ringSkeleton.setAnimation(0, ring.animation, true);
+    } catch (error) {
+      void error;
+    }
+    node.setScale(1.6, 1.6, 1);
+    tween(node).to(0.22, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
+    if (burst) {
+      const burstNode = this.host.addChildPlainNode(view.node, 'GuardMarkBurst', offsetX, size * 0.1, 10, 10);
+      const burstFit = (unit * GUARD_MARK_FX.burst.size) / Math.max(burst.w, burst.h);
+      const burstFx = this.host.addChildPlainNode(burstNode, 'Fx', -burst.cx * burstFit, -burst.cy * burstFit, 10, 10);
+      burstFx.setScale(burstFit, burstFit, 1);
+      const burstSkeleton = burstFx.addComponent(sp.Skeleton);
+      burstSkeleton.premultipliedAlpha = false;
+      burstSkeleton.skeletonData = burst.data;
+      try {
+        burstSkeleton.setAnimation(0, burst.animation, false);
+      } catch (error) {
+        void error;
+      }
+      tween(burstNode).delay(1.25).call(() => { if (burstNode.isValid) { burstNode.destroy(); } }).start();
+    }
+  }
+
+  /** 程序绘制准星(骨骼素材未就绪时):红色旋转环 + 四向刻度,盖在怪物身体中心,出现时弹一下。 */
+  private mountMarkReticleFallback(view: GuardUnitView, size: number): void {
     const r = Math.max(28, Math.min(90, size * 0.34));
     const node = this.host.addChildPlainNode(view.node, 'GuardMarkReticle', this.bossVisualOffsetX(view), size * 0.1, r * 2, r * 2);
     const g = node.addComponent(Graphics);
@@ -5959,13 +6012,21 @@ export class LobbyGuardBattleRenderer {
     tween(glowOp).to(0.08, { opacity: 170 }).to(0.5, { opacity: 0 }, { easing: 'quadIn' }).call(() => { if (glow.isValid) { glow.destroy(); } }).start();
     // 横幅:深红带 + 上下金线 + 两端斜切;scale 2.6 砸到 1 → 压扁回弹 → 呼吸
     // 手机:左上角是标题牌(约占 500 宽),横幅排在它右边到关闭钮之间,不压标题(2026-10-05)
-    const sheetLeft = -p.panelW / 2 + 510;
-    const sheetRight = p.panelW / 2 - 40;
-    const bannerW = p.sheet ? Math.min(sheetRight - sheetLeft, 1100) : p.panelW * 0.9;
+    // 手机:横幅文字已含"BOSS 豪华宝箱",左上角标题牌退场、横幅居中铺满标题行(2026-10-09 用户「标题处需要美化」:原先两块并排挤在一起)
+    if (p.sheet) {
+      for (const name of ['PhoneDialogTitleBanner', 'PhoneDialogTitle']) {
+        const plate = p.panelRoot.getChildByName(name);
+        if (plate) {
+          const plateOpacity = plate.getComponent(UIOpacity) ?? plate.addComponent(UIOpacity);
+          tween(plateOpacity).to(0.25, { opacity: 0 }).call(() => { if (plate.isValid) { plate.active = false; } }).start();
+        }
+      }
+    }
+    const bannerW = p.sheet ? Math.min(p.panelW - 220, 1100) : p.panelW * 0.9;
     const bannerH = p.sheet ? 64 : p.compact ? 44 : 84 * p.s;
     // 手机全屏面板贴边,横幅改压在标题行上(挂到面板外沿会出屏)。
     const bannerY = p.sheet ? p.titleY + 6 : p.panelH / 2 + (p.compact ? 30 : 18);
-    const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', p.sheet ? (sheetLeft + sheetRight) / 2 : 0, bannerY, bannerW, bannerH);
+    const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', 0, bannerY, bannerW, bannerH);
     const bg = banner.addComponent(Graphics);
     const cutW = bannerH * 0.5;
     bg.fillColor = rgba(122, 20, 26, 235);
@@ -7282,6 +7343,9 @@ export class LobbyGuardBattleRenderer {
       this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.crystalHealBig);
       this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.crystalHealSmall);
     }
+    // 集火标记特效(脚下电光环 + 星芒冲击环):第一次点怪就要在
+    this.prewarmAttackSpineFx(GUARD_MARK_FX.ring);
+    this.prewarmAttackSpineFx(GUARD_MARK_FX.burst);
     // BOSS 蓄力法阵 / 灭世轰击 / 技能弹道与爆点(车轮战开局 6s 就上 BOSS,开局统一预热)。
     for (const spec of Object.values(GUARD_BOSS_FX)) {
       this.prewarmAttackSpineFx(spec);
@@ -7392,6 +7456,8 @@ export class LobbyGuardBattleRenderer {
     addFxTo(deferredSpine, GUARD_WARHORN_BURST_FX);
     Object.values(GUARD_CHEST_FX).forEach((spec) => addFxTo(deferredSpine, spec));
     guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));
+    addFxTo(deferredSpine, GUARD_MARK_FX.ring);
+    addFxTo(deferredSpine, GUARD_MARK_FX.burst);
     GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
     return {
       spine: Array.from(spine),

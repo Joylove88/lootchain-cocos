@@ -1,6 +1,8 @@
 import { isTextInputActive } from '../app/ScreenAdapter';
 import {
   Node,
+  Sprite,
+  director,
   resources,
   SpriteFrame,
 } from 'cc';
@@ -406,11 +408,28 @@ export class UiSpriteFrameCache {
   releaseIdleTextures(prefixes: readonly string[]): number {
     let released = 0;
     const idle = (path: string): boolean => prefixes.some((prefix) => path.startsWith(prefix));
+    // 画面上还挂着的帧不动(保留的大厅背景 / 引导层等):释放后再画会报错
+    const inUse = new Set<SpriteFrame>();
+    try {
+      const walk = (node: Node): void => {
+        const frame = node.getComponent(Sprite)?.spriteFrame;
+        if (frame) {
+          inUse.add(frame);
+        }
+        node.children.forEach(walk);
+      };
+      const scene = director.getScene();
+      if (scene) {
+        walk(scene as unknown as Node);
+      }
+    } catch (error) {
+      void error;
+    }
     for (const prefix of prefixes) {
       const infos = resources.getDirWithPath(prefix, SpriteFrame) ?? [];
       for (const info of infos) {
         const frame = resources.get(info.path, SpriteFrame);
-        if (!frame) {
+        if (!frame || inUse.has(frame)) {
           continue;
         }
         try {
@@ -422,7 +441,8 @@ export class UiSpriteFrameCache {
       }
     }
     for (const path of Array.from(this.spriteFrames.keys())) {
-      if (idle(path)) {
+      const frame = this.spriteFrames.get(path);
+      if (idle(path) && (!frame || !frame.isValid)) {
         this.spriteFrames.delete(path);
       }
     }
