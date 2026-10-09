@@ -3205,54 +3205,15 @@ export class LobbyGuardBattleRenderer {
         },
       },
     ];
-    if (phone) {
-      this.renderSettingsMainPhone(overlay, content, rows, panelW, titleY, buttonY);
-      return;
-    }
-    const rowTop = titleY - 118;
-    const rowStep = Math.min(62, (rowTop - (buttonY + 150)) / (rows.length - 1));
-    const labelX = -panelW * 0.17;
-    const segX = panelW * 0.11;
-    rows.forEach((row, index) => {
-      const y = rowTop - index * rowStep;
-      const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, labelX, y, 20, rgba(240, 222, 186), new Size(180, 30), HorizontalTextAlignment.RIGHT);
-      label.overflow = Label.Overflow.SHRINK;
-      this.mountSettingsSegment(content, `GuardSettings${row.key}`, segX, y, row.options, row.active, (picked) => {
-        row.pick(picked);
-        this.renderSettingsPage(overlay, 'main');
-      });
-    });
-    const hintY = rowTop - (rows.length - 1) * rowStep - 40;
-    this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它 · 伤害数字「精简」:只显示暴击、大额与 BOSS 伤害', 0, hintY, 16, rgba(170, 156, 128), new Size(panelW * 0.74, 22));
-    const spellsLink = this.host.addChildPlainNode(content, 'GuardSettingsSpellsLink', 110, hintY - 44, 200, 40);
-    const slg = spellsLink.addComponent(Graphics);
-    slg.strokeColor = rgba(220, 180, 110, 230);
-    slg.lineWidth = 2;
-    slg.roundRect(-100, -20, 200, 40, 20);
-    slg.stroke();
-    this.host.addChildLabel(spellsLink, 'GuardSettingsSpellsLinkLabel', '法术装备 ›', 0, 0, 19, rgba(255, 226, 160), new Size(190, 36));
-    this.host.applyImageButtonFeedback(spellsLink);
-    spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
-    const help = this.host.addChildPlainNode(content, 'GuardSettingsHelpLink', -110, hintY - 44, 200, 40);
-    const hg = help.addComponent(Graphics);
-    hg.strokeColor = rgba(220, 180, 110, 230);
-    hg.lineWidth = 2;
-    hg.roundRect(-100, -20, 200, 40, 20);
-    hg.stroke();
-    this.host.addChildLabel(help, 'GuardSettingsHelpLinkLabel', '玩法速查 ›', 0, 0, 19, rgba(255, 226, 160), new Size(190, 36));
-    this.host.applyImageButtonFeedback(help);
-    help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
-    const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -panelW * 0.18, buttonY, 220, '退出战斗');
-    exitBtn.on(Node.EventType.TOUCH_END, () => this.openExitConfirm(), this);
-    const resume = this.mountPrimaryTextButton(content, 'GuardSettingsResume', panelW * 0.18, buttonY, 236, '继续战斗');
-    resume.on(Node.EventType.TOUCH_END, () => this.closeBattleSettings(), this);
+    this.renderSettingsMainColumns(overlay, content, rows, panelW, titleY, buttonY);
   }
 
   /**
-   * 手机全屏设置主页(2026-10-02 用户反馈:车轮战设置里开关行上下叠在一起):
-   * 左栏 5 个开关行(大行距、大胶囊),右栏 玩法速查 / 法术装备 入口 + 精简说明,底部 退出 / 继续 两键。
+   * 设置主页两栏排版(手机全屏与电脑弹框共用,尺寸按端区分):
+   * 左栏「声音与画面」5 个开关行,右栏「战斗」3 个开关行 + 玩法速查 / 法术装备 入口,底部说明 + 退出 / 继续 两键。
+   * 2026-10-02 / 10-06 手机、2026-10-09 电脑先后反馈 8 行堆一列时胶囊上下叠在一起。
    */
-  private renderSettingsMainPhone(
+  private renderSettingsMainColumns(
     overlay: Node,
     content: Node,
     rows: Array<{ key: string; label: string; options: string[]; active: number; pick: (index: number) => void }>,
@@ -3260,24 +3221,26 @@ export class LobbyGuardBattleRenderer {
     titleY: number,
     buttonY: number,
   ): void {
-    // 2026-10-06 用户「排版挤压严重」:8 行开关不再堆一列,按主题分两栏——
-    // 左「声音与画面」(音乐 / 音效 / 画面 / 帧率 / 性能面板),右「战斗」(震屏 / 伤害数字 / 战技释放)+ 两个入口;
-    // 每栏一行 = 标签 150 + 两颗胶囊(帧率三颗等分同宽),栏心在 ±panelW/4 附近,行距 70。
+    const phone = this.phoneSheet();
+    // 电脑弹框 refine_panel_bg 固定约 880×660,四边雕花框吃掉约 80,内容区比手机全屏窄矮得多,整体按约 0.72 缩。
+    const m = phone
+      ? { rowStep: 70, headerGap: 104, rowGap: 56, labelW: 150, pillW: 140, pillH: 52, labelFont: 23, pillFont: 22, headerFont: 22, colGap: 20, linkH: 54, linkFont: 24, hintFont: 18, hintGap: 58 }
+      : { rowStep: 50, headerGap: 94, rowGap: 44, labelW: 104, pillW: 98, pillH: 40, labelFont: 19, pillFont: 18, headerFont: 19, colGap: 26, linkH: 40, linkFont: 19, hintFont: 16, hintGap: 60 };
     const leftKeys = ['Bgm', 'Sfx', 'Graphics', 'Fps', 'Perf'];
     const left = rows.filter((row) => leftKeys.indexOf(row.key) >= 0);
     const right = rows.filter((row) => leftKeys.indexOf(row.key) < 0);
-    const rowStep = 70;
-    const headerY = titleY - 104;
-    const rowTop = headerY - 56;
-    const labelW = 150;
-    const pillW = 140;
+    const rowStep = m.rowStep;
+    const headerY = titleY - m.headerGap;
+    const rowTop = headerY - m.rowGap;
+    const labelW = m.labelW;
+    const pillW = m.pillW;
     const colW = labelW + 18 + pillW * 2 + 12;
-    const colCenters = [-panelW / 4 - 20, panelW / 4 + 20];
+    const colCenters = phone ? [-panelW / 4 - m.colGap, panelW / 4 + m.colGap] : [-colW / 2 - m.colGap, colW / 2 + m.colGap];
     const paintHeader = (x: number, text: string): void => {
-      const header = this.host.addChildLabel(content, `GuardSettingsGroup_${text}`, text, x, headerY, 22, rgba(245, 214, 140), new Size(colW, 32));
+      const header = this.host.addChildLabel(content, `GuardSettingsGroup_${text}`, text, x, headerY, m.headerFont, rgba(245, 214, 140), new Size(colW, 32));
       header.isBold = true;
       // 标题两侧细金线
-      const lineW = (colW - Array.from(text).length * 24 - 40) / 2;
+      const lineW = (colW - Array.from(text).length * (m.headerFont + 2) - 40) / 2;
       const g = this.host.addChildPlainNode(content, `GuardSettingsGroupLine_${text}`, x, headerY, colW, 4).addComponent(Graphics);
       g.strokeColor = rgba(170, 130, 70, 170);
       g.lineWidth = 1.5;
@@ -3292,12 +3255,12 @@ export class LobbyGuardBattleRenderer {
       const segX = x + colW / 2 - pillW - 6;
       list.forEach((row, index) => {
         const y = rowTop - index * rowStep;
-        const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, labelX, y, 23, rgba(240, 222, 186), new Size(labelW, 36), HorizontalTextAlignment.RIGHT);
+        const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, labelX, y, m.labelFont, rgba(240, 222, 186), new Size(labelW, 36), HorizontalTextAlignment.RIGHT);
         label.overflow = Label.Overflow.SHRINK;
         this.mountSettingsSegment(content, `GuardSettings${row.key}`, segX, y, row.options, row.active, (picked) => {
           row.pick(picked);
           this.renderSettingsPage(overlay, 'main');
-        }, pillW, 52, 22);
+        }, pillW, m.pillH, m.pillFont);
       });
       return rowTop - (list.length - 1) * rowStep;
     };
@@ -3307,11 +3270,11 @@ export class LobbyGuardBattleRenderer {
     const rightBottom = paintColumn(right, colCenters[1]);
     // 右栏开关下面接两个入口(与开关同宽),再下面是说明
     const linkW = colW - 20;
-    const linkY1 = rightBottom - rowStep - 2;
-    const linkY2 = linkY1 - 66;
-    const help = this.mountOutlineLink(content, 'GuardSettingsHelpLink', colCenters[1], linkY1, linkW, 54, '玩法速查 ›');
+    const linkY1 = rightBottom - rowStep;
+    const linkY2 = linkY1 - rowStep;
+    const help = this.mountOutlineLink(content, 'GuardSettingsHelpLink', colCenters[1], linkY1, linkW, m.linkH, '玩法速查 ›', m.linkFont);
     help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
-    const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', colCenters[1], linkY2, linkW, 54, '法术装备 ›');
+    const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', colCenters[1], linkY2, linkW, m.linkH, '法术装备 ›', m.linkFont);
     spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
     // 中线
     const sepTop = headerY + 16;
@@ -3324,11 +3287,12 @@ export class LobbyGuardBattleRenderer {
     sg.lineTo(0, -(sepTop - sepBottom) / 2);
     sg.stroke();
     // 说明一行,压在按钮上方
-    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满(120 帧需要高刷屏)', 0, buttonY + 58, 18, rgba(170, 156, 128), new Size(panelW - 120, 26));
+    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满(120 帧需要高刷屏)', 0, buttonY + m.hintGap, m.hintFont, rgba(170, 156, 128), new Size(phone ? panelW - 120 : colW * 2 + m.colGap * 2, 26));
     hint.overflow = Label.Overflow.SHRINK;
-    const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -200, buttonY, 250, '退出战斗');
+    const buttonX = phone ? 200 : 180;
+    const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -buttonX, buttonY, phone ? 250 : 220, '退出战斗');
     exitBtn.on(Node.EventType.TOUCH_END, () => this.openExitConfirm(), this);
-    const resume = this.mountPrimaryTextButton(content, 'GuardSettingsResume', 200, buttonY, 270, '继续战斗');
+    const resume = this.mountPrimaryTextButton(content, 'GuardSettingsResume', buttonX, buttonY, phone ? 270 : 236, '继续战斗');
     resume.on(Node.EventType.TOUCH_END, () => this.closeBattleSettings(), this);
   }
 
@@ -3351,7 +3315,7 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 描金边的透明胶囊入口(玩法速查 / 法术装备)。 */
-  private mountOutlineLink(parent: Node, name: string, x: number, y: number, w: number, h: number, text: string): Node {
+  private mountOutlineLink(parent: Node, name: string, x: number, y: number, w: number, h: number, text: string, fontSize = 24): Node {
     const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
     const g = node.addComponent(Graphics);
     g.fillColor = rgba(40, 28, 16, 160);
@@ -3361,7 +3325,7 @@ export class LobbyGuardBattleRenderer {
     g.lineWidth = 2;
     g.roundRect(-w / 2, -h / 2, w, h, h / 2);
     g.stroke();
-    this.host.addChildLabel(node, `${name}Label`, text, 0, 0, 24, rgba(255, 226, 160), new Size(w - 20, h - 8));
+    this.host.addChildLabel(node, `${name}Label`, text, 0, 0, fontSize, rgba(255, 226, 160), new Size(w - 20, h - 8));
     this.host.applyImageButtonFeedback(node);
     return node;
   }
