@@ -7121,6 +7121,11 @@ export class LootChainGameRoot extends Component {
         if (token !== this.deferredBattlePrewarmToken || !this.isValid || this.currentView !== 'battle') {
           return;
         }
+        // 只在波间 / 开场倒计时读:骨骼 wasm 解析与贴图上传一次 100~400ms,落在交战中就是一次顿挫(2026-10-09 用户录屏归因)
+        if (!this.lobbyGuardBattleRenderer.isBetweenWaves()) {
+          setTimeout(next, 400);
+          return;
+        }
         const task = tasks[cursor];
         cursor += 1;
         const cached = task.kind === 'spine' ? resources.get(task.path, sp.SkeletonData) : resources.get(task.path, SpriteFrame);

@@ -351,6 +351,8 @@ interface GuardProjectile {
   crit?: boolean;
   /** 弹体是 Spine 飞行特效(同屏限额计数用)。 */
   spine?: boolean;
+  /** 骨骼飞行特效的资源键:命中后节点按键回池复用(2026-10-10)。 */
+  fxEffect?: string;
   /** 出手英雄(命中时播他的专属命中特效)。 */
   heroCode?: string;
   /** 飞行速度倍率(近战贴脸打,飞得更快)。 */
@@ -481,6 +483,10 @@ export class LobbyGuardBattleRenderer {
    * 连续绘制合成一次;排在所有单位节点之后、特效之前(placeBarLayer),每帧跟随单位位置。
    */
   private barLayer: Node | null = null;
+  /** 命中爆点骨骼节点复用池(按特效键);伤害数字节点复用池(有 / 无暴击箭头)。场地重建时随旧场地一起销毁,取用时按 isValid / parent 校验。 */
+  private readonly hitFxPool = new Map<string, Node[]>();
+  private readonly projectileFxPool = new Map<string, Node[]>();
+  private readonly damageNumPool: { big: Node[]; small: Node[] } = { big: [], small: [] };
   /** 本帧补跑多个 tick 时,最后一个 tick 之前的怪物位置(插值起点用)。 */
   private readonly prevTickMonsterX = new Map<number, number>();
   /** 同一路径在途的贴图加载合并:石台格子等同帧挂 6 次原先发 6 个加载任务(加载门实测排队到最后)。 */
@@ -1987,6 +1993,10 @@ export class LobbyGuardBattleRenderer {
       g.clear();
       return;
     }
+    // 波数没变不重画(2026-10-10 长帧归因:原先每 tick 清掉重铺 10 个圆点 + 轨道线)
+    if (this.sameDrawKey(track, `${sim.wave}:${sim.maxWave}`)) {
+      return;
+    }
     const step = trackW / (sim.maxWave - 1);
     g.clear();
     g.strokeColor = rgba(120, 96, 60, 200);
@@ -3150,6 +3160,15 @@ export class LobbyGuardBattleRenderer {
     return `第 ${sim.wave}/${sim.maxWave} 波 · 击杀 ${sim.killCount} · 水晶 ${Math.ceil(sim.crystalHp)}/${sim.crystalMaxHp}`;
   }
 
+  /** 当前是否处于波间 / 开场倒计时(没有怪在推进):后台预读只挑这种时候做。没有模拟 / 已结束也算"空闲"。 */
+  isBetweenWaves(): boolean {
+    const sim = this.sim;
+    if (!sim) {
+      return true;
+    }
+    return sim.phase !== 'wave' || sim.paused || !!sim.pendingChoice;
+  }
+
   /** 齿轮:暂停战斗并打开设置面板(已结束/弹层中不响应)。 */
   private openBattleSettings(): void {
     if (!this.root || !this.sim || this.settingsOpen || this.battleEnded()) {
@@ -3984,11 +4003,14 @@ export class LobbyGuardBattleRenderer {
       }
       const charge = slot.getChildByName('Charge')?.getComponent(Graphics);
       const chargeFrac = Math.min(1, energy / def.cost);
-      // 充能环按 2% 步进、就绪脉冲按 8 档亮度出签名;都没变就不重画
-      const chargeKey = chargeFrac < 1 ? `a${Math.round(chargeFrac * 50)}` : castable ? `p${Math.round((Math.sin(Date.now() / 160) + 1) * 4)}` : 'n';
+      // 充能环按 2% 步进出签名;就绪脉冲改成透明度 tween(2026-10-10 长帧归因:原先按 8 档亮度每 tick 重画 Graphics,三格每秒几十次重铺顶点)
+      const chargeKey = chargeFrac < 1 ? `a${Math.round(chargeFrac * 50)}` : castable ? 'p' : 'n';
       if (charge && !this.sameDrawKey(charge.node, chargeKey)) {
         charge.clear();
         const frac = chargeFrac;
+        const chargeOpacity = charge.node.getComponent(UIOpacity) ?? charge.node.addComponent(UIOpacity);
+        Tween.stopAllByTarget(chargeOpacity);
+        chargeOpacity.opacity = 255;
         if (frac < 1) {
           // 充能进度环(扇形一律 arc(..., true))
           charge.strokeColor = rgba(110, 180, 255, 235);
@@ -3996,10 +4018,11 @@ export class LobbyGuardBattleRenderer {
           charge.arc(0, 0, size / 2 - 5, Math.PI / 2, Math.PI / 2 + Math.PI * 2 * frac, true);
           charge.stroke();
         } else if (castable) {
-          charge.strokeColor = rgba(255, 224, 130, 180 + Math.round(60 * Math.sin(Date.now() / 160)));
+          charge.strokeColor = rgba(255, 224, 130, 240);
           charge.lineWidth = 6;
           charge.circle(0, 0, size / 2 + 3);
           charge.stroke();
+          tween(chargeOpacity).repeatForever(tween().to(0.5, { opacity: 150 }).to(0.5, { opacity: 255 })).start();
         }
       }
     }
@@ -6494,23 +6517,44 @@ export class LobbyGuardBattleRenderer {
       // 开局预热时战场节点还没建好/合成换了新英雄:出手时补一次预热,本发先走贴图弹道。
       this.prewarmAttackSpineFx(spineSpec);
     }
-    if (spec && spineFx && this.projectiles.filter((entry) => entry.spine).length < graphicsCaps().spineProjectiles) {
+    if (spec && spineSpec && spineFx && this.projectiles.filter((entry) => entry.spine).length < graphicsCaps().spineProjectiles) {
       // fx_pack 飞行特效(2026-09-21):骨骼动画弹体循环播放,按实测包围盒等比缩到目标长度并把包围盒中心对到弹道点上;
       // 近战命中时照旧由 strikeSpec 全尺寸爆开。同屏 Spine 弹体有限额,超额回退下面的贴图弹道。
       const melee = spec.kind === 'strike';
       const fit = (this.unitSize() * spineFx.spec.size * (extra?.scale ?? 1)) / Math.max(spineFx.w, spineFx.h);
-      const fxNode = this.host.addChildPlainNode(node, 'Fx', -spineFx.cx * fit, -spineFx.cy * fit, 10, 10);
+      // 骨骼弹体复用池(2026-10-10 长帧归因:每发 new 骨骼实例 + 命中销毁):同一特效的弹体命中后隐藏回池,下次只重放动画
+      const pool = this.projectileFxPool.get(spineSpec.effect) ?? [];
+      this.projectileFxPool.set(spineSpec.effect, pool);
+      let pooled = pool.pop() ?? null;
+      while (pooled && (!pooled.isValid || pooled.parent !== field)) {
+        pooled = pool.pop() ?? null;
+      }
+      let fxNode = pooled?.getChildByName('Fx') ?? null;
+      let skeleton = fxNode?.getComponent(sp.Skeleton) ?? null;
+      let projNode = pooled;
+      if (!projNode || !fxNode || !skeleton) {
+        projNode = node;
+        fxNode = this.host.addChildPlainNode(projNode, 'Fx', 0, 0, 10, 10);
+        skeleton = fxNode.addComponent(sp.Skeleton);
+        skeleton.premultipliedAlpha = false;
+        skeleton.skeletonData = spineFx.data;
+      } else {
+        node.destroy();
+        projNode.active = true;
+        projNode.setPosition(fromX, fromY, 0);
+        projNode.angle = 0;
+        projNode.setSiblingIndex(field.children.length - 1);
+      }
+      fxNode.setPosition(-spineFx.cx * fit, -spineFx.cy * fit, 0);
       fxNode.setScale(fit, fit, 1);
-      const skeleton = fxNode.addComponent(sp.Skeleton);
-      skeleton.premultipliedAlpha = false;
-      skeleton.skeletonData = spineFx.data;
       try {
         skeleton.setAnimation(0, spineFx.animation, true);
       } catch (error) {
         void error;
       }
       this.projectiles.push({
-        node,
+        node: projNode,
+        fxEffect: spineSpec.effect,
         targetId: monster.monsterId,
         x: fromX,
         y: fromY,
@@ -6640,6 +6684,24 @@ export class LobbyGuardBattleRenderer {
     this.projectiles.push({ node, targetId: monster.monsterId, x: fromX, y: fromY, amount: 0, color: tint, visualOnly: true });
   }
 
+  /** 弹体落地:骨骼弹体隐藏回池(按特效键,每键最多 10 个),其余销毁。 */
+  private releaseProjectileNode(proj: GuardProjectile): void {
+    const node = proj.node;
+    if (!node.isValid) {
+      return;
+    }
+    if (proj.fxEffect && this.fieldNode && node.parent === this.fieldNode) {
+      const pool = this.projectileFxPool.get(proj.fxEffect) ?? [];
+      this.projectileFxPool.set(proj.fxEffect, pool);
+      if (pool.length < 10) {
+        node.active = false;
+        pool.push(node);
+        return;
+      }
+    }
+    node.destroy();
+  }
+
   /** 每 tick 推进弹幕(跟随锁定目标;目标死亡落在其最后位置;命中=爆闪+飘字+受击红闪)。 */
   private updateProjectiles(frameMs: number): void {
     const sim = this.sim;
@@ -6683,7 +6745,7 @@ export class LobbyGuardBattleRenderer {
               }
             }, 130);
           }
-          proj.node.destroy();
+          this.releaseProjectileNode(proj);
           this.projectiles.splice(i, 1);
         } else {
           proj.x += (dx / dist) * speed;
@@ -6715,7 +6777,7 @@ export class LobbyGuardBattleRenderer {
         } else {
           this.resolveProjectileHit(tx, ty, proj.targetId, proj.amount, proj.color, proj.strikeSpec, proj.crit, proj.scale, proj.heroCode);
         }
-        proj.node.destroy();
+        this.releaseProjectileNode(proj);
         this.projectiles.splice(i, 1);
         continue;
       }
@@ -6771,28 +6833,50 @@ export class LobbyGuardBattleRenderer {
     const py = y + this.unitSize() * 0.32 + Math.sin(angle) * radius * 0.8;
     const valueText = this.formatDamageValue(amount);
 
-    const node = this.host.addChildPlainNode(field, 'GuardDamageNum', px, py, big ? 200 : 120, 32);
-    node.setSiblingIndex(field.children.length - 1);
-    this.liveDamageFloaters += 1;
-    let labelX = 0;
-    if (big) {
-      // 大额/技能击:火焰箭头素材 + 红色粗体大字(参考图)
-      this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -46, -2, 34, 34);
-      labelX = 26;
+    // 伤害数字复用池(2026-10-10 长帧归因:每个数字 new 节点 + Label + 3 个 tween 再销毁,是长帧里最大的脚本开销):
+    // 按有无暴击箭头分两池,用完隐藏回池,下次只改文字 / 颜色 / 字号
+    const pool = big ? this.damageNumPool.big : this.damageNumPool.small;
+    let node = pool.pop() ?? null;
+    while (node && (!node.isValid || node.parent !== field)) {
+      node = pool.pop() ?? null;
     }
     const rage = !big && this.rageActive();
     const size = skill ? 24 : big ? 22 : rage ? 18 : 16;
     const color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rage ? rgba(255, 150, 70, 250) : rgba(255, 248, 236, 240);
-    const label = this.host.addChildLabel(node, 'Text', `-${valueText}`, labelX, 0, size, color, new Size(big ? 140 : 116, size + 10));
-    // 字符缓存(2026-10-07):数字字形进共享字符图集,不再每个飘字单独画一张画布 + 上传一张贴图 + 单独一次绘制。
+    const labelX = big ? 26 : 0;
+    let label = node?.getChildByName('Text')?.getComponent(Label) ?? null;
+    if (!node || !label) {
+      node = this.host.addChildPlainNode(field, 'GuardDamageNum', px, py, big ? 200 : 120, 32);
+      if (big) {
+        // 大额/技能击:火焰箭头素材 + 红色粗体大字(参考图)
+        this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -46, -2, 34, 34);
+      }
+      label = this.host.addChildLabel(node, 'Text', `-${valueText}`, labelX, 0, size, color, new Size(big ? 140 : 116, size + 10));
+      // 字符缓存(2026-10-07):数字字形进共享字符图集,不再每个飘字单独画一张画布 + 上传一张贴图 + 单独一次绘制。
+      label.cacheMode = Label.CacheMode.CHAR;
+      label.enableOutline = true;
+      label.outlineColor = rgba(40, 12, 6, 255);
+      node.addComponent(UIOpacity);
+    } else {
+      Tween.stopAllByTarget(node);
+      node.setPosition(px, py, 0);
+      node.active = true;
+      label.string = `-${valueText}`;
+      label.fontSize = size;
+      label.lineHeight = size + 8;
+      label.color = color;
+      label.node.getComponent(UITransform)?.setContentSize(big ? 140 : 116, size + 10);
+    }
     // 引擎字形缓存的键不含画面缩放,切换画质 / 窗口缩放后旧字形大小不对:按当前缩放换一个等价字体名,让新缩放用新字形。
-    label.fontFamily = LobbyGuardBattleRenderer.damageFontFamily();
-    label.cacheMode = Label.CacheMode.CHAR;
-    label.enableOutline = true;
-    label.outlineColor = rgba(40, 12, 6, 255);
+    const family = LobbyGuardBattleRenderer.damageFontFamily();
+    if (label.fontFamily !== family) {
+      label.fontFamily = family;
+    }
     label.outlineWidth = big ? 3 : 2;
-
-    const opacity = node.addComponent(UIOpacity);
+    node.setSiblingIndex(field.children.length - 1);
+    this.liveDamageFloaters += 1;
+    const opacity = node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+    Tween.stopAllByTarget(opacity);
     opacity.opacity = 250;
     // 弹出:先小幅弹大再回落,升幅按槽位错开,整片数字有层次不齐步走
     node.setScale(big ? 0.6 : 0.8, big ? 0.6 : 0.8, 1);
@@ -6801,10 +6885,17 @@ export class LobbyGuardBattleRenderer {
     const rise = 30 + (slot % 4) * 9;
     const life = big ? 0.95 : 0.78;
     tween(node).by(life, { position: new Vec3(0, rise, 0) }, { easing: 'quadOut' }).start();
+    const released = node;
     tween(opacity).delay(life * 0.5).to(life * 0.45, { opacity: 0 }).call(() => {
       this.liveDamageFloaters = Math.max(0, this.liveDamageFloaters - 1);
-      if (node.isValid) {
-        node.destroy();
+      if (!released.isValid) {
+        return;
+      }
+      if (pool.length < 24) {
+        released.active = false;
+        pool.push(released);
+      } else {
+        released.destroy();
       }
     }).start();
   }
@@ -7133,12 +7224,25 @@ export class LobbyGuardBattleRenderer {
       return false;
     }
     const fit = (this.unitSize() * hitSpec.size * scale) / Math.max(ready.w, ready.h);
-    const node = this.host.addChildPlainNode(field, 'GuardAttackHitFx', x - ready.cx * fit, y - ready.cy * fit, 10, 10);
+    // 命中爆点复用池(2026-10-10 长帧归因:每次命中 new 一个骨骼实例再销毁,占长帧 2.6s/100s):同一特效的节点用完隐藏回池,下次只重放动画
+    const pool = this.hitFxPool.get(hitSpec.effect) ?? [];
+    this.hitFxPool.set(hitSpec.effect, pool);
+    let pooled = pool.pop() ?? null;
+    while (pooled && (!pooled.isValid || pooled.parent !== field)) {
+      pooled = pool.pop() ?? null;
+    }
+    let skeleton = pooled?.getComponent(sp.Skeleton) ?? null;
+    if (!pooled || !skeleton) {
+      pooled = this.host.addChildPlainNode(field, 'GuardAttackHitFx', 0, 0, 10, 10);
+      skeleton = pooled.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = ready.data;
+    }
+    const node = pooled;
+    node.active = true;
+    node.setPosition(x - ready.cx * fit, y - ready.cy * fit, 0);
     node.setSiblingIndex(field.children.length - 1);
     node.setScale(fit, fit, 1);
-    const skeleton = node.addComponent(sp.Skeleton);
-    skeleton.premultipliedAlpha = false;
-    skeleton.skeletonData = ready.data;
     let duration = 0.4;
     try {
       duration = Math.max(0.12, skeleton.findAnimation(ready.animation)?.duration ?? 0.4);
@@ -7150,7 +7254,13 @@ export class LobbyGuardBattleRenderer {
     this.attackHitFxLive += 1;
     setTimeout(() => {
       this.attackHitFxLive = Math.max(0, this.attackHitFxLive - 1);
-      if (node.isValid) {
+      if (!node.isValid) {
+        return;
+      }
+      if (pool.length < 12) {
+        node.active = false;
+        pool.push(node);
+      } else {
         node.destroy();
       }
     }, Math.min(holdMs, duration * 1000) + 30);
@@ -7440,6 +7550,11 @@ export class LobbyGuardBattleRenderer {
       const heroCode = (ally.heroCode ?? ally.unitKey).toUpperCase();
       const role = resolveGuardRole(ally.heroCode ?? ally.unitKey, ally.heroClass);
       sprites.add(resolveAttackFxSpritePath(resolveHeroAttackFx(heroCode, ally.heroClass ?? null, role === 'melee')));
+      // 统计面板 / 英雄详情里的头像(413×693):第一次打开面板时才上传显卡会顿一下,进场就读
+      const portrait = resolveC1812HeroResultPortraitPath(ally.spineAsset ?? ally.portraitAsset);
+      if (portrait) {
+        sprites.add(portrait);
+      }
       addFxTo(spine, resolveHeroAttackSpineFx(heroCode));
       if (role === 'support') {
         addFxTo(spine, GUARD_SUPPORT_FX.allyShield);
@@ -7458,6 +7573,8 @@ export class LobbyGuardBattleRenderer {
     guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));
     addFxTo(deferredSpine, GUARD_MARK_FX.ring);
     addFxTo(deferredSpine, GUARD_MARK_FX.burst);
+    // 强化三选一卡牌底图(每张 413×690):第一次强化时才上传显卡会顿 100ms 以上,进场后台先读
+    Object.values(GUARD_PERK_CARD_STYLE).forEach((style) => deferredSprites.add(style.frame));
     GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
     return {
       spine: Array.from(spine),
