@@ -1,46 +1,94 @@
 {
- "_T073": {
-  "set": "073",
+ "SSR_RON": {
+  "set": "058",
   "slots": {
-   "s2_guangqiu": {
-    "att": "effect/guangqiu_gaoliang",
-    "region": "effect/guangqiu_gaoliang",
+   "effect-guangyun": {
+    "att": "effect/guangyun",
+    "region": "effect/guangyun",
     "blend": 1,
     "maxA": 1,
-    "frames": 30,
-    "rgb": "0.86,0.32,0.97"
+    "frames": 4,
+    "rgb": "0.9,0.08,0"
    },
-   "s2_daoguang_yueya_add2": {
-    "att": "effect/daoguang_yueya",
-    "region": "effect/daoguang_yueya",
-    "blend": 1,
-    "maxA": 1,
-    "frames": 22,
-    "rgb": "0.82,0.87,0.9"
-   },
-   "s2_daoguang_yueya_normal2": {
-    "att": "effect/daoguang_yueya",
-    "region": "effect/daoguang_yueya",
-    "blend": 0,
-    "maxA": 1,
-    "frames": 8,
-    "rgb": "1,0.87,0.87"
-   },
-   "s2_guangqiu2": {
-    "att": "effect/guangqiu_gaoliang",
-    "region": "effect/guangqiu_gaoliang",
+   "effect-rongy_bz3": {
+    "att": "effect/rongy_bz",
+    "region": "effect/rongy_bz",
     "blend": 1,
     "maxA": 1,
     "frames": 3,
-    "rgb": "1,1,1"
+    "rgb": "0.98,1,0.93"
    },
-   "s2_bao": {
-    "att": "effect/shouji20_2",
-    "region": "effect/shouji20_2",
-    "blend": 1,
+   "effect-rsh_1": {
+    "att": "effect/rsh_3",
+    "region": "effect/rsh_3",
+    "blend": 0,
     "maxA": 1,
     "frames": 2,
-    "rgb": "0.98,0.91,0.92"
+    "rgb": "1,1,1"
+   },
+   "effect-rsh_2": {
+    "att": "effect/rsh_4",
+    "region": "effect/rsh_4",
+    "blend": 0,
+    "maxA": 0.68,
+    "frames": 1,
+    "rgb": "1,0.77,0.41"
+   },
+   "effect-qichang_8": {
+    "att": "effect/qichang_2",
+    "region": "effect/qichang_2",
+    "blend": 1,
+    "maxA": 0.73,
+    "frames": 1,
+    "rgb": "1,1,1"
+   },
+   "effect-qichang_2": {
+    "att": "effect/qichang_2",
+    "region": "effect/qichang_2",
+    "blend": 1,
+    "maxA": 0.92,
+    "frames": 7,
+    "rgb": "1,0.82,0.65"
+   },
+   "effect-qichang_7": {
+    "att": "effect/qichang_2",
+    "region": "effect/qichang_2",
+    "blend": 0,
+    "maxA": 0.91,
+    "frames": 3,
+    "rgb": "1,1,1"
+   },
+   "effect-qichang_1": {
+    "att": "effect/qichang_1",
+    "region": "effect/qichang_1",
+    "blend": 0,
+    "maxA": 0.79,
+    "frames": 3,
+    "rgb": "0,0,0"
+   },
+   "effect-qichang_3": {
+    "att": "effect/qichang_1",
+    "region": "effect/qichang_1",
+    "blend": 1,
+    "maxA": 0.78,
+    "frames": 4,
+    "rgb": "1,0.25,0.22"
+   },
+   "effect-qichang_9": {
+    "att": "effect/qichang_1",
+    "region": "effect/qichang_1",
+    "blend": 0,
+    "maxA": 1,
+    "frames": 1,
+    "rgb": "1,0.06,0"
+   },
+   "effect-qichang_4": {
+    "att": "effect/qichang_1",
+    "region": "effect/qichang_1",
+    "blend": 0,
+    "maxA": 1,
+    "frames": 1,
+    "rgb": "0.39,0.39,0.39"
    }
   }
  }

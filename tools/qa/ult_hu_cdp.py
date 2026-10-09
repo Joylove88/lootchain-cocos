@@ -17,6 +17,12 @@ ROLE = {
 args = sys.argv[1:]
 CODES = (args[args.index('--codes') + 1].split(',') if '--codes' in args else list(ROLE.keys()))
 WITH_SKILLS = '--skills' in args
+# 英雄 → 大招套与亮度峰值时刻,跟 fxprev 选型 / 量框结果走(换大招后不用改脚本)
+_FXPREV = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fxprev')
+_PICKS = json.load(open(os.path.join(_FXPREV, 'picks_hu.json'), encoding='utf-8'))
+_CORE = json.load(open(os.path.join(_FXPREV, 'core_hu.json'), encoding='utf-8'))
+EXPECT = {code: 'hu_' + pick[0] for code, pick in _PICKS.items()}
+PEAKS = {'hu_' + v['set']: v['peakT'] for v in _CORE.values() if 'peakT' in v}
 
 
 def js_cast(code, ult):
@@ -47,12 +53,12 @@ def js_cast(code, ult):
     await sleep(50);
     if (M.guardHeroSkillPending && M.guardHeroSkillPending(sim, hero)) { M.guardCastHeroSkillNow(sim, hero.unitId); }
     const fxs = r.fieldNode.children.filter(c => c.name === 'GuardSkillFx');
-    const EXPECT = {"UR_NYX": "hu_098", "SSR_RON": "hu_100", "SR_ABYSS_06": "hu_054", "R_SCOUT_03": "hu_073", "UR_EVELYN": "hu_077", "SSR_LIVIA": "hu_008", "SR_WITCH_03": "hu_018", "R_CULT_05": "hu_035", "UR_AURELIA": "hu_093", "SR_SNIPER_05": "hu_074", "R_RANGER_06": "hu_063", "UR_ARTHAS": "hu_085", "SSR_MICHAEL": "hu_044", "SR_BLADE_04": "hu_065", "R_PATROL_01": "hu_014", "UR_ATLAS": "hu_027", "SSR_KANE": "hu_013", "SR_PALADIN_02": "hu_052", "R_GUARD_07": "hu_028", "UR_SERAPHINA": "hu_067", "SR_PRIEST_01": "hu_049", "R_ACOLY_02": "hu_050"};
+    const EXPECT = __EXPECT__;
     node = fxs.find(c => { const sk = c.getComponent(cc.sp.Skeleton); return sk && sk.skeletonData && c.scale.x !== 1 && (!ult || sk.skeletonData.name === EXPECT[code]); }) || null;
     if (node) { fired = true; break; }
   }
   // 等到亮度峰值时刻再定格(大招按 core_measure 实测 peakT,战技取动画 45%)
-  const PEAKS = {"hu_098": 3.621, "hu_100": 6.9, "hu_054": 2.138, "hu_073": 4.57, "hu_077": 1.32, "hu_008": 8.441, "hu_018": 6.515, "hu_035": 2.398, "hu_093": 6.004, "hu_074": 3.12, "hu_063": 5.471, "hu_085": 16.433, "hu_044": 9.75, "hu_065": 4.928, "hu_014": 2.281, "hu_027": 2.506, "hu_013": 4.133, "hu_052": 3.288, "hu_028": 4.852, "hu_067": 6.12, "hu_049": 1.958, "hu_050": 4.96};
+  const PEAKS = __PEAKS__;
   for (let i = 0; i < 80 && node && node.isValid; i++) {
     const sk = node.getComponent(cc.sp.Skeleton); const te = sk && sk.getCurrent && sk.getCurrent(0);
     if (te && te.animation) { const want = ult ? Math.max(0.12, PEAKS[sk.skeletonData.name] ?? te.animation.duration * 0.45) : te.animation.duration * 0.45; if (te.trackTime >= want) break; }
@@ -66,8 +72,9 @@ def js_cast(code, ult):
   }
   const plate = r.fieldNode.children.find(c => c.name.indexOf('GuardUltName_') === 0);
   const dim = r.fieldNode.getChildByName('GuardUltDim');
-  return JSON.stringify({ code, role, ult, fired, info, ultLive: r.ultFxLive, skillLive: r.skillFxLive, plate: plate ? plate.getComponent(cc.Label).string : null, dim: !!dim, unit: Math.round(r.unitSize()) });
-})()""".replace('__CODE__', code).replace('__ROLE__', ROLE.get(code, 'melee')).replace('__ULT__', 'true' if ult else 'false').replace('__KILL__', 'true' if '--killall' in args else 'false').replace('__CELL__', str(int(args[args.index('--cell') + 1]) if '--cell' in args else -1))
+  const seen = r.fieldNode.children.filter(c => c.name === 'GuardSkillFx').map(c => { const sk = c.getComponent(cc.sp.Skeleton); return (sk && sk.skeletonData ? sk.skeletonData.name : '?') + '@' + c.scale.x.toFixed(2); });
+  return JSON.stringify({ code, role, ult, fired, seen, heroOnField: !!sim.heroes.find(h => h.heroCode === code), info, ultLive: r.ultFxLive, skillLive: r.skillFxLive, plate: plate ? plate.getComponent(cc.Label).string : null, dim: !!dim, unit: Math.round(r.unitSize()) });
+})()""".replace('__EXPECT__', json.dumps(EXPECT)).replace('__PEAKS__', json.dumps(PEAKS)).replace('__CODE__', code).replace('__ROLE__', ROLE.get(code, 'melee')).replace('__ULT__', 'true' if ult else 'false').replace('__KILL__', 'true' if '--killall' in args else 'false').replace('__CELL__', str(int(args[args.index('--cell') + 1]) if '--cell' in args else -1))
 
 
 JS_BATTLE2 = r"""(async () => {
@@ -197,7 +204,7 @@ async def main():
                     print('burst-cast', (await ev(js.replace("for (let i = 0; i < 80 && node && node.isValid; i++)", "for (let i = 0; i < 0 && node && node.isValid; i++)"), 60) or '')[:200])
                     for k in range(6):
                         await snap(f'burst_{code}_{k}')
-                        await asyncio.sleep(0.08)
+                        await asyncio.sleep(float(os.environ.get('BURST_GAP', '0.08')))
                 return
             if '--leak' in args:
                 for code in CODES:

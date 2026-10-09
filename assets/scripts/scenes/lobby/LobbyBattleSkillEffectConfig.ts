@@ -68,7 +68,7 @@ export interface BattleSkillEffectSpec {
 //   R_ACOLY_02: { effect: 'v2_s681_4004', animation: 'skill01_1', anchor: 'self', scale: 1.15, offsetY: 12 }, // 祈福·微光庇护(S681 4004,2.667s)
 const HERO_ULT_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   UR_NYX: { effect: 'hu_098', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 20, clip: { start: 2.0, end: 4.0 } }, // 影刃·千夜追猎:紫蓝利爪连撕 → 幽蓝弧斩(hu_098)
-  SSR_RON: { effect: 'hu_100', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 5.9, end: 7.3, speed: 0.8 } }, // 灰烬·致命猎杀:橙红爆燃十字斩(hu_100)
+  SSR_RON: { effect: 'hu_058', animation: 'skill2', anchor: 'target', scale: 1.4, offsetY: 16, clip: { start: 2.2, end: 4.5 } }, // 灰烬·致命猎杀:火环爆开 → 烟灰爪痕夹火焰撕裂(hu_058;2026-10-09 用户嫌原 hu_100 紫青彩带不好看换的)
   SR_ABYSS_06: { effect: 'hu_054', animation: 'skill2', anchor: 'target', scale: 1.25, offsetY: 12, clip: { start: 2.0, end: 4.2 } }, // 深渊·冥神审判:幽紫鬼火与冥眼(hu_054)
   R_SCOUT_03: { effect: 'hu_073', animation: 'skill2', anchor: 'target', scale: 1.15, offsetY: 14, clip: { start: 4.2, end: 5.3, speed: 0.8 } }, // 灰谷·绝影猎杀:幽蓝月牙一斩(hu_073)
   UR_EVELYN: { effect: 'hu_077', animation: 'skill2', anchor: 'target', scale: 2.4, offsetY: 18, clip: { start: 1.2, end: 3.1 } }, // 深渊·冰狱湮灭:巨型冰晶雪华绽开(hu_077)
@@ -271,6 +271,7 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   // 新批次英雄大招 hu_*(2026-10-05,只量 clip 片段;宽松框 = 片段内亮度 2~98% 分位框,scratchpad fxprev/core_hu.py)
   'hu_098:skill2': { w: 2015, h: 2135, cx: -641, cy: 636 },
   'hu_100:skill2': { w: 1800, h: 1200, cx: 60, cy: 150 },
+  'hu_058:skill2': { w: 1580, h: 1180, cx: 60, cy: 234 },
   'hu_054:skill2': { w: 1223, h: 637, cx: 129, cy: 62 },
   'hu_073:skill2': { w: 1800, h: 900, cx: 0, cy: 150 },
   'hu_077:skill2': { w: 1612, h: 1681, cx: 89, cy: 61 },
@@ -331,6 +332,7 @@ export const BATTLE_FX_CORE_BOUNDS: Record<string, BattleFxMeasuredBounds> = {
   // 新批次英雄大招 hu_*(2026-10-05,只量 clip 片段;核心 = 片段内亮度 10~90% 分位框,scratchpad fxprev/core_hu.py)
   'hu_098:skill2': { w: 1232, h: 1301, cx: -806, cy: 674 },
   'hu_100:skill2': { w: 900, h: 700, cx: 60, cy: 150 },
+  'hu_058:skill2': { w: 1224, h: 687, cx: 67, cy: 66 },
   'hu_054:skill2': { w: 862, h: 455, cx: 163, cy: 58 },
   'hu_073:skill2': { w: 900, h: 560, cx: 0, cy: 150 },
   'hu_077:skill2': { w: 712, h: 618, cx: 84, cy: 83 },
@@ -374,6 +376,7 @@ const BATTLE_FX_HIDDEN_SLOTS: Record<string, readonly string[]> = {
   hu_073: ['s1_baidi', 's2_guangqiu', 's2_guangqiu3', 's2_daoguang_yueya_normal2'],
   hu_044: ['effect-guangyun', 'effect-guangyun25'],
   hu_100: ['baidi_add', 'baidi_normal', 'guangliu_xulie*', 's2_guangliubo*'],
+  hu_058: ['effect-qichang_1'], // 染纯黑的大爪痕,暗色战场上是一块黑影
   hu_018: ['TX-huidong3_9'],
   hu_098: ['tx-hei'],
   hu_077: ['HEI'],
