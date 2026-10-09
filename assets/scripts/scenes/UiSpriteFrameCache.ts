@@ -396,4 +396,48 @@ export class UiSpriteFrameCache {
     }
     return undefined;
   }
+
+  /**
+   * 手机进战斗前释放"战斗里用不到"的页面图(2026-10-09 用户手机性能面板:战斗中贴图显存 878MB,
+   * 大头是锻造 / 背包 / 冒险 / 名册等页面在大厅预热后一直常驻的大图;战斗本身只要两三百 MB。
+   * 显存吃紧时手机 GPU 换页,就是几百毫秒一次的顿挫)。按目录前缀判定,这些目录战斗里不会碰;
+   * 回大厅后各页首开时走原来的整组加载闸门重读(素材已在本地整包缓存,不到 1 秒)。返回释放张数。
+   */
+  releaseIdleTextures(prefixes: readonly string[]): number {
+    let released = 0;
+    const idle = (path: string): boolean => prefixes.some((prefix) => path.startsWith(prefix));
+    for (const prefix of prefixes) {
+      const infos = resources.getDirWithPath(prefix, SpriteFrame) ?? [];
+      for (const info of infos) {
+        const frame = resources.get(info.path, SpriteFrame);
+        if (!frame) {
+          continue;
+        }
+        try {
+          resources.release(info.path, SpriteFrame);
+          released += 1;
+        } catch (error) {
+          void error;
+        }
+      }
+    }
+    for (const path of Array.from(this.spriteFrames.keys())) {
+      if (idle(path)) {
+        this.spriteFrames.delete(path);
+      }
+    }
+    // 被释放的分组下次打开页面要重新走首开闸门(整组一起等,不会先画出缺图的页面)
+    for (const group of Array.from(this.preloadedGroups)) {
+      let touched = false;
+      this.forEachGroupAsset(group, (path) => { touched = touched || idle(path); }, (path) => { touched = touched || idle(path); });
+      if (touched) {
+        this.preloadedGroups.delete(group);
+        this.groupWaits.delete(group);
+      }
+    }
+    if (released > 0) {
+      this.loadGeneration += 1;
+    }
+    return released;
+  }
 }

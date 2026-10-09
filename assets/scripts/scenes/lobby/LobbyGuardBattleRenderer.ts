@@ -132,7 +132,7 @@ import {
 import { loadSharedSpineData } from './SpineDataStore';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
-import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame } from './GuardBakedShapes';
+import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
@@ -310,6 +310,17 @@ interface GuardUnitView {
   deathAnim: string;
   /** 受击红闪截止时刻(打击感,2026-08-26)。 */
   hitFlashUntil: number;
+  /** 小怪血条(2026-10-09,共享条层里的两个白贴图精灵:底 / 填充);满血隐藏,受伤才建。 */
+  hpBg?: Node;
+  hpFill?: Node;
+  /** 小怪血条相对怪物节点的高度与总宽(建视图时定)。 */
+  hpBarOffsetY?: number;
+  hpBarW?: number;
+  /** 英雄主动技能冷却条(共享条层里的两个圆角条精灵:底 / 填充)。 */
+  cdBg?: Node;
+  cdFill?: Node;
+  /** 冷却条上次画出的状态键,没变不动。 */
+  cdDrawnKey?: string;
   /** BOSS 身体画面中心相对节点的 x 偏移(脚下法阵/出手弹道锚点;2026-09-24)。 */
   centerOffsetX?: number;
   /** 英雄当前朝左(目标在身后时转身出手;2026-10-07)。 */
@@ -465,6 +476,15 @@ export class LobbyGuardBattleRenderer {
 
   private root: Node | null = null;
   private fieldNode: Node | null = null;
+  /**
+   * 条层(2026-10-09 手机绘制调用优化):小怪血条 / 英雄冷却条全部放在这一个节点里、共用同一张白贴图,
+   * 连续绘制合成一次;排在所有单位节点之后、特效之前(placeBarLayer),每帧跟随单位位置。
+   */
+  private barLayer: Node | null = null;
+  /** 本帧补跑多个 tick 时,最后一个 tick 之前的怪物位置(插值起点用)。 */
+  private readonly prevTickMonsterX = new Map<number, number>();
+  /** 同一路径在途的贴图加载合并:石台格子等同帧挂 6 次原先发 6 个加载任务(加载门实测排队到最后)。 */
+  private readonly spriteLoadWaiters = new Map<string, Array<(frame: SpriteFrame) => void>>();
   private sim: GuardBattleState | null = null;
   private simBattleNo = '';
   /**
@@ -661,8 +681,23 @@ export class LobbyGuardBattleRenderer {
       this.unmount();
       this.root = this.host.addChildPlainNode(this.host.node, 'LobbyGuardBattleRoot', 0, 0, layout.width, layout.height);
       this.paintBackdrop(this.root, layout.width, layout.height);
+      // 加载页铺本关战场背景(压暗)+ 进度条(2026-10-09 用户「这个加载界面可以放个背景图」);背景是加载门的第一项,通常第一次刷进度就有了
+      this.mountLoadingBackdrop(this.root, layout.width, layout.height);
       const progress = battleState.assetsTotalCount > 0 ? Math.round((battleState.assetsLoadedCount / battleState.assetsTotalCount) * 100) : 0;
-      this.host.addChildLabel(this.root, 'GuardLoading', `矿境部署中… ${progress}%`, 0, 0, 20, rgba(230, 214, 178), new Size(layout.width * 0.8, 30));
+      this.host.addChildLabel(this.root, 'GuardLoading', `矿境部署中… ${progress}%`, 0, 18, 20, rgba(230, 214, 178), new Size(layout.width * 0.8, 30));
+      const barW = Math.min(520, layout.width * 0.46);
+      const track = this.host.addChildPlainNode(this.root, 'GuardLoadingBar', 0, -14, barW, 8);
+      const g = track.addComponent(Graphics);
+      g.fillColor = rgba(0, 0, 0, 150);
+      g.roundRect(-barW / 2, -4, barW, 8, 4);
+      g.fill();
+      g.fillColor = rgba(222, 178, 96, 240);
+      g.roundRect(-barW / 2, -4, Math.max(8, (barW * progress) / 100), 8, 4);
+      g.fill();
+      g.strokeColor = rgba(170, 130, 70, 200);
+      g.lineWidth = 1.5;
+      g.roundRect(-barW / 2, -4, barW, 8, 4);
+      g.stroke();
       return;
     }
     if (this.isMounted() && this.simBattleNo === battleNo) {
@@ -835,6 +870,7 @@ export class LobbyGuardBattleRenderer {
       }
       this.updateProjectiles(frameMs);
       this.interpolateMonsterViews(now);
+      this.followHeroBars();
     } catch (error) {
       // 战斗循环出异常时不再静默(否则画面像"卡死"却没有任何线索):底部提示一次,便于截图反馈
       if (!this.stepErrorShown) {
@@ -857,7 +893,12 @@ export class LobbyGuardBattleRenderer {
       const fromY = view.fromY ?? view.toY;
       const flashLeft = view.hitFlashUntil - now;
       const hitJiggle = flashLeft > 0 ? (flashLeft / 90) * 7 : 0;
-      view.node.setPosition(fromX + (view.toX - fromX) * alpha + hitJiggle, fromY + (view.toY - fromY) * alpha, 0);
+      const x = fromX + (view.toX - fromX) * alpha + hitJiggle;
+      const y = fromY + (view.toY - fromY) * alpha;
+      view.node.setPosition(x, y, 0);
+      if (view.hpBg) {
+        this.positionMonsterBars(view, x, y);
+      }
     }
   }
 
@@ -999,19 +1040,34 @@ export class LobbyGuardBattleRenderer {
       apply(cached);
       return node;
     }
+    // 同一路径已在加载:挂到等待名单,不再多发一个加载任务(2026-10-09:石台格子同帧 6 次重复加载把加载门拖到最后)
+    const waiting = this.spriteLoadWaiters.get(path);
+    if (waiting) {
+      waiting.push(apply);
+      return node;
+    }
+    this.spriteLoadWaiters.set(path, [apply]);
+    const settle = (frame: SpriteFrame | null): void => {
+      const list = this.spriteLoadWaiters.get(path) ?? [];
+      this.spriteLoadWaiters.delete(path);
+      if (frame) {
+        list.forEach((fn) => fn(frame));
+      }
+    };
     resources.load(path, SpriteFrame, (error: Error | null, frame: SpriteFrame | null) => {
       if (!error && frame) {
-        apply(frame);
+        settle(frame);
         return;
       }
       // 兜底:spriteFrame 子资源未导出时(meta 尚未翻 sprite-frame),直接取 texture 运行时包一层
       resources.load(path.replace(/\/spriteFrame$/, '/texture'), Texture2D, (err2: Error | null, tex: Texture2D | null) => {
         if (err2 || !tex) {
+          settle(null);
           return;
         }
         const wrapped = new SpriteFrame();
         wrapped.texture = tex;
-        apply(wrapped);
+        settle(wrapped);
       });
     });
     return node;
@@ -1120,6 +1176,14 @@ export class LobbyGuardBattleRenderer {
     const cover = Math.max(this.layoutWidth / 2048, height / 1152);
     const bgH = 1152 * cover;
     return bgH * (1 - ratio) - height / 2;
+  }
+
+  /** 加载页底图:本关战场背景按 cover 铺满并压暗(与正式背景同一张图、同一套几何,进场不会跳)。 */
+  private mountLoadingBackdrop(root: Node, width: number, height: number): void {
+    const cover = Math.max(width / 2048, height / 1152);
+    const bgW = 2048 * cover;
+    const bgH = 1152 * cover;
+    this.mountSprite(root, 'GuardLoadingBg', this.resolveSceneBgPath(), 0, (bgH - height) / 2, bgW, bgH, rgba(112, 104, 98, 255));
   }
 
   private mountBackground(root: Node): void {
@@ -1621,6 +1685,7 @@ export class LobbyGuardBattleRenderer {
     hpText.outlineColor = rgba(8, 14, 30, 255);
     hpText.outlineWidth = 2;
     hpText.isBold = true;
+    LobbyGuardBattleRenderer.hudCharCache(hpText);
     const cap = this.host.addChildPlainNode(field, 'GuardCrystalHpCap', barX, y + height / 2 + 22 + barH / 2 + 11, 120, 18);
     const capLabel = this.host.addChildLabel(cap, 'Text', '守卫水晶', 0, 0, 14, rgba(170, 215, 255, 240), new Size(120, 18));
     capLabel.enableOutline = true;
@@ -1699,6 +1764,7 @@ export class LobbyGuardBattleRenderer {
     goldText.enableOutline = true;
     goldText.outlineColor = rgba(24, 14, 6, 255);
     goldText.outlineWidth = 2;
+    LobbyGuardBattleRenderer.hudCharCache(goldText, true);
     const settingsBtn = this.host.addChildPlainNode(hud, 'GuardSettingsButton', width / 2 - 82, height / 2 - 20 - pillH / 2, 42, 42);
     this.mountSprite(settingsBtn, 'Img', 'ui/battle/ai/ghud_btn_settings/spriteFrame', 0, 0, 42, 42);
     this.host.applyImageButtonFeedback(settingsBtn);
@@ -2075,12 +2141,14 @@ export class LobbyGuardBattleRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(20, 12, 6, 255);
     title.outlineWidth = 2;
+    LobbyGuardBattleRenderer.hudCharCache(title, true);
     const desc = this.host.addChildLabel(button, 'GuardEnhanceDesc', '', w * 0.1, -h * 0.08, 15, rgba(232, 214, 180, 240), new Size(w * 0.66, 16));
     desc.overflow = Label.Overflow.SHRINK;
     const cost = this.host.addChildLabel(button, 'GuardEnhanceCost', '', w * 0.1, -h * 0.3, 16, rgba(255, 214, 110, 250), new Size(w * 0.6, 20));
     cost.enableOutline = true;
     cost.outlineColor = rgba(24, 14, 6, 255);
     cost.outlineWidth = 2;
+    LobbyGuardBattleRenderer.hudCharCache(cost, true);
     // 免费强化角标(波末赠送,docs/32 §2.2):按钮右上角绿点 + 呼吸缩放。
     const badge = this.host.addChildPlainNode(button, 'GuardEnhanceFreeBadge', w * 0.4, h * 0.36, 44, 22);
     const bg = badge.addComponent(Graphics);
@@ -2211,10 +2279,12 @@ export class LobbyGuardBattleRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(60, 26, 8, 255);
     title.outlineWidth = 3;
+    LobbyGuardBattleRenderer.hudCharCache(title, true);
     const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 16, rgba(255, 224, 140, 250), new Size(w * 0.72, 22));
     cost.enableOutline = true;
     cost.outlineColor = rgba(50, 22, 8, 255);
     cost.outlineWidth = 2;
+    LobbyGuardBattleRenderer.hudCharCache(cost, true);
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -2297,7 +2367,16 @@ export class LobbyGuardBattleRenderer {
     this.tickAccumulatorMs = Math.min(TICK_MS * (MAX_CATCHUP_TICKS + 1) - 1, this.tickAccumulatorMs + elapsed);
     let phase = sim.phase;
     let ticks = 0;
+    // 本帧要补跑几个 tick:最后一个 tick 之前记下怪物位置,插值只走"最后一个 tick"这一段(2026-10-09 用户「怪物移动一卡一卡」:
+    // 掉帧补跑 2~3 个 tick 时原先从 2~3 个 tick 前的位置插到现在,一个 tick 的时间走完几个 tick 的路 = 忽快忽慢往前窜)
+    const runnable = Math.min(MAX_CATCHUP_TICKS, Math.floor(this.tickAccumulatorMs / TICK_MS));
+    this.prevTickMonsterX.clear();
     while (this.tickAccumulatorMs >= TICK_MS && ticks < MAX_CATCHUP_TICKS && phase !== 'victory' && phase !== 'defeat') {
+      if (ticks === runnable - 1 && runnable > 1) {
+        for (const monster of sim.monsters) {
+          this.prevTickMonsterX.set(monster.monsterId, monster.x);
+        }
+      }
       this.tickAccumulatorMs -= TICK_MS;
       phase = guardTick(sim, TICK_MS);
       ticks += 1;
@@ -3748,6 +3827,7 @@ export class LobbyGuardBattleRenderer {
     energyText.enableOutline = true;
     energyText.outlineColor = rgba(10, 16, 28, 255);
     energyText.outlineWidth = 2;
+    LobbyGuardBattleRenderer.hudCharCache(energyText, true);
     sim.spellLoadout.forEach((id, index) => {
       const def = GUARD_SPELLS[id];
       const x = -barW / 2 + size / 2 + index * (size + gap);
@@ -3783,6 +3863,7 @@ export class LobbyGuardBattleRenderer {
       cost.enableOutline = true;
       cost.outlineColor = rgba(10, 16, 28, 255);
       cost.outlineWidth = 2;
+      LobbyGuardBattleRenderer.hudCharCache(cost, true);
       const name = this.host.addChildLabel(slot, 'Name', def.name, 0, -size / 2 - 13, 15, rgba(240, 222, 186), new Size(size + gap, 20));
       name.overflow = Label.Overflow.SHRINK;
       name.enableOutline = true;
@@ -7246,50 +7327,78 @@ export class LobbyGuardBattleRenderer {
    * 开战加载门要预载的资源(2026-10-06 用户「初次进入战场卡死几秒」):本局抽到的怪物骨骼 + 阵容会用到的全部特效骨骼 + 贴图。
    * 与 prewarmAttackFx 同一份清单;加载门里逐个顺序读(每个让出一帧),进场时都已在内存,不再在第一帧里集中解码上传。
    */
-  collectBattlePrewarmResources(battleState: LobbyBattlePanelState): { spine: string[]; sprites: string[] } {
+  /**
+   * 进场加载门的资源清单(2026-10-09 拆成两档,用户「加载要等几十秒」):
+   * - spine / sprites:首波就会用到的——关卡背景、石台、首波怪物(第 1~2 波全是普通怪;车轮战 BOSS 开场即到)、
+   *   上阵英雄的普攻贴图 / 普攻骨骼特效、辅助职业的护盾 / 回血特效。加载门只等这些。
+   * - deferredSpine / deferredSprites:后面才会出现的——其余种类的怪(按出现先后排序)、战技 / 大招 / 词条特效、
+   *   法术 / BOSS / 号角 / 宝箱 / 远程怪弹道。进场后在开场倒计时里按顺序后台读(prewarmDeferredBattleResources)。
+   */
+  collectBattlePrewarmResources(battleState: LobbyBattlePanelState): { spine: string[]; sprites: string[]; deferredSpine: string[]; deferredSprites: string[] } {
     const spine = new Set<string>();
-    const sprites = new Set<string>(['ui/battle/ai/battle_bg_cathedral/spriteFrame', 'ui/common/ai/title_banner_new/spriteFrame']);
+    const deferredSpine = new Set<string>();
+    // 进场第一眼就要的图排最前:关卡背景(加载页也拿它当底图)、石台格子、标题横幅
+    const sprites = new Set<string>([
+      this.resolveSceneBgPath(),
+      'ui/guard/ghud_cell_tile/spriteFrame',
+      'ui/guard/ghud_cell_tile_active/spriteFrame',
+      'ui/battle/ai/battle_bg_cathedral/spriteFrame',
+      'ui/common/ai/title_banner_new/spriteFrame',
+    ]);
+    const deferredSprites = new Set<string>();
     const start = battleState.start;
     if (!start) {
-      return { spine: [], sprites: [] };
+      return { spine: [], sprites: [], deferredSpine: [], deferredSprites: [] };
     }
+    const stageCode = (start.stageCode ?? '').toUpperCase();
+    const rushMode = stageCode.startsWith('DAILY_') && stageCode.endsWith('_3');
     const seedText = `${start.serverSeed ?? ''}:${start.battleNo ?? ''}`;
-    Object.values(guardPickMonsterSpineCodes(seedText, LobbyGuardBattleRenderer.monsterVariety())).forEach((codes) => {
-      codes.forEach((code) => spine.add(guardMonsterSpineResource(code)));
-    });
+    const codesByKind = guardPickMonsterSpineCodes(seedText, LobbyGuardBattleRenderer.monsterVariety());
+    type MonsterKind = keyof typeof codesByKind;
+    // 首波会出现的怪进加载门;其余按波次出现先后排队后台读(快/坦克第 3 波起,精英第 4 波,飞行第 4 波起,远程第 6 波起,BOSS 末波)
+    const firstWaveKinds: MonsterKind[] = rushMode ? ['normal', 'boss'] : ['normal'];
+    const laterKinds: MonsterKind[] = (['fast', 'tank', 'elite', 'flying', 'shooter', 'boss'] as MonsterKind[]).filter((kind) => firstWaveKinds.indexOf(kind) < 0);
+    firstWaveKinds.forEach((kind) => (codesByKind[kind] ?? []).forEach((code) => spine.add(guardMonsterSpineResource(code))));
+    laterKinds.forEach((kind) => (codesByKind[kind] ?? []).forEach((code) => deferredSpine.add(guardMonsterSpineResource(code))));
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroes);
     const allies = snapshot.allies.filter((ally) => ally.power > 0 && !ally.unitKey.includes('empty')).slice(0, 4);
-    const addFx = (spec: { effect: string; hit?: { effect: string } } | null | undefined): void => {
+    const addFxTo = (target: Set<string>, spec: { effect: string; hit?: { effect: string } } | null | undefined): void => {
       if (!spec) {
         return;
       }
-      spine.add(resolveAttackSpineFxResource(spec));
+      target.add(resolveAttackSpineFxResource(spec));
       if (spec.hit) {
-        spine.add(resolveAttackSpineFxResource(spec.hit));
+        target.add(resolveAttackSpineFxResource(spec.hit));
       }
     };
     allies.forEach((ally) => {
       const heroCode = (ally.heroCode ?? ally.unitKey).toUpperCase();
       const role = resolveGuardRole(ally.heroCode ?? ally.unitKey, ally.heroClass);
       sprites.add(resolveAttackFxSpritePath(resolveHeroAttackFx(heroCode, ally.heroClass ?? null, role === 'melee')));
-      addFx(resolveHeroAttackSpineFx(heroCode));
-      addFx(resolveGuardPerkProcFx(resolveGuardHeroPerkProfile(heroCode, role).purple?.suffix));
-      spine.add(resolveBattleSkillEffectResource(resolveHeroGuardSkillEffect(heroCode, role)));
-      spine.add(resolveBattleSkillEffectResource(resolveHeroUltEffect(heroCode, ally.heroClass ?? null)));
+      addFxTo(spine, resolveHeroAttackSpineFx(heroCode));
       if (role === 'support') {
-        addFx(GUARD_SUPPORT_FX.allyShield);
-        addFx(GUARD_SUPPORT_FX.crystalHealBig);
-        addFx(GUARD_SUPPORT_FX.crystalHealSmall);
+        addFxTo(spine, GUARD_SUPPORT_FX.allyShield);
+        addFxTo(spine, GUARD_SUPPORT_FX.crystalHealBig);
+        addFxTo(spine, GUARD_SUPPORT_FX.crystalHealSmall);
       }
+      // 战技 / 大招要 2★ 才有,词条特效要先强化:开场用不到,排在后台队列前段
+      deferredSpine.add(resolveBattleSkillEffectResource(resolveHeroGuardSkillEffect(heroCode, role)));
+      deferredSpine.add(resolveBattleSkillEffectResource(resolveHeroUltEffect(heroCode, ally.heroClass ?? null)));
+      addFxTo(deferredSpine, resolveGuardPerkProcFx(resolveGuardHeroPerkProfile(heroCode, role).purple?.suffix));
     });
-    Object.values(GUARD_BOSS_FX).forEach(addFx);
-    Object.values(GUARD_SPELL_FX).forEach(addFx);
-    addFx(GUARD_WARHORN_BURST_FX);
-    Object.values(GUARD_CHEST_FX).forEach(addFx);
-    guardMonsterProjectileFxSpecs().forEach(addFx);
-    GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => sprites.add(path));
-    return { spine: Array.from(spine), sprites: Array.from(sprites) };
+    Object.values(GUARD_BOSS_FX).forEach((spec) => addFxTo(rushMode ? spine : deferredSpine, spec));
+    Object.values(GUARD_SPELL_FX).forEach((spec) => addFxTo(deferredSpine, spec));
+    addFxTo(deferredSpine, GUARD_WARHORN_BURST_FX);
+    Object.values(GUARD_CHEST_FX).forEach((spec) => addFxTo(deferredSpine, spec));
+    guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));
+    GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
+    return {
+      spine: Array.from(spine),
+      sprites: Array.from(sprites),
+      deferredSpine: Array.from(deferredSpine).filter((path) => !spine.has(path)),
+      deferredSprites: Array.from(deferredSprites).filter((path) => !sprites.has(path)),
+    };
   }
 
   /** 预热一个普攻 Spine 飞行特效:加载共享骨骼数据 → 选动画 → 用临时骨骼实测包围盒(等比缩放与居中要用)→ 记入就绪表。 */
@@ -7410,6 +7519,7 @@ export class LobbyGuardBattleRenderer {
         if (view.node.isValid) {
           view.node.destroy();
         }
+        this.destroyUnitBars(view);
         this.heroViews.delete(unitId);
       }
     }
@@ -7469,39 +7579,200 @@ export class LobbyGuardBattleRenderer {
       }
       // 主动技能冷却条(2★ 起):橙=充能中,亮蓝=就绪,金色回缩=等玩家点击手动释放(docs/37 B)
       const skillPending = !sim.skillAutoImmediate && guardHeroSkillPending(sim, hero);
-      let cdNode = view.node.getChildByName('GuardHeroCd');
-      if (!cdNode) {
-        cdNode = this.host.addChildPlainNode(view.node, 'GuardHeroCd', 0, -this.heroDisplaySize() * 0.7, this.heroDisplaySize() * 0.8, 6);
-        cdNode.addComponent(Graphics);
-      }
-      const cdG = cdNode.getComponent(Graphics);
       const cdUnlocked = guardHeroSkillUnlocked(sim, hero);
       const cdW = this.unitSize() * 0.8;
       const cdReady = cdUnlocked ? Math.max(0, Math.min(1, 1 - (hero.skillReadyMs - sim.timeMs) / GUARD_HERO_SKILL[hero.role].cdMs)) : 0;
       const cdLeft = skillPending ? Math.max(0, Math.min(1, 1 - (sim.timeMs - (hero.skillPendingSinceMs ?? sim.timeMs)) / GUARD_SKILL_MANUAL_WINDOW_MS)) : 0;
       const cdKey = !cdUnlocked ? 'off' : skillPending ? `p${Math.round(cdW * cdLeft)}` : `${cdReady >= 1 ? 'r' : 'c'}${Math.round(cdW * cdReady)}`;
-      if (cdG && !this.sameDrawKey(cdNode, cdKey)) {
-        cdG.clear();
-        if (cdUnlocked) {
-          const ready = cdReady;
-          const w = cdW;
-          cdG.fillColor = rgba(10, 8, 8, 190);
-          cdG.roundRect(-w / 2, -3, w, 6, 3);
-          cdG.fill();
-          if (skillPending) {
-            // 手动窗口:金条从满往回缩,缩完自动释放
-            const left = cdLeft;
-            cdG.fillColor = rgba(255, 214, 92, 255);
-            cdG.roundRect(-w / 2, -3, Math.max(3, w * left), 6, 3);
-          } else {
-            cdG.fillColor = ready >= 1 ? rgba(140, 230, 255, 245) : rgba(255, 196, 90, 225);
-            cdG.roundRect(-w / 2, -3, Math.max(3, w * ready), 6, 3);
-          }
-          cdG.fill();
-        }
+      if (view.cdDrawnKey !== cdKey) {
+        view.cdDrawnKey = cdKey;
+        // 冷却条画在共享条层(2026-10-09):橙=充能中,亮蓝=就绪,金色回缩=手动窗口(缩完自动释放)
+        this.syncHeroCdBar(view, cdUnlocked, cdW, skillPending ? cdLeft : cdReady, skillPending ? rgba(255, 214, 92, 255) : cdReady >= 1 ? rgba(140, 230, 255, 245) : rgba(255, 196, 90, 225));
       }
+      this.positionHeroBars(view);
       this.syncSkillReadyGlow(view.node, skillPending);
     }
+    this.placeBarLayer();
+  }
+
+  // ── 条层:小怪血条 / 英雄冷却条(2026-10-09 手机绘制调用优化)──
+
+  /** 条层节点(场地子节点;建场 / 重排布局后首次用到时建)。 */
+  private ensureBarLayer(): Node | null {
+    const field = this.fieldNode;
+    if (!field || !field.isValid) {
+      return null;
+    }
+    if (this.barLayer && this.barLayer.isValid && this.barLayer.parent === field) {
+      return this.barLayer;
+    }
+    this.barLayer = this.host.addChildPlainNode(field, 'GuardBarLayer', 0, 0, this.layoutWidth, this.layoutHeight);
+    return this.barLayer;
+  }
+
+  /** 条层排在最后一个单位节点(怪物 / 英雄)之后:条在所有单位之上、之后追加的特效 / 飘字之下。 */
+  private placeBarLayer(): void {
+    const field = this.fieldNode;
+    const layer = this.barLayer;
+    if (!field || !layer || !layer.isValid || layer.parent !== field) {
+      return;
+    }
+    const children = field.children;
+    let lastUnit = -1;
+    let layerIndex = -1;
+    for (let i = 0; i < children.length; i += 1) {
+      const name = children[i].name;
+      if (children[i] === layer) {
+        layerIndex = i;
+      } else if (name.startsWith('GuardMonster_') || name.startsWith('GuardHero_')) {
+        lastUnit = i;
+      }
+    }
+    if (layerIndex < lastUnit) {
+      layer.setSiblingIndex(lastUnit);
+    } else if (layerIndex > lastUnit + 1) {
+      layer.setSiblingIndex(lastUnit + 1);
+    }
+  }
+
+  /** 条层里的一根条:共享白贴图精灵(bar=纯色矩形,pill=圆角九宫格),颜色含透明度由 Sprite 染色;anchorX=0 时左边缘定位。 */
+  private mountBarSprite(parent: Node, name: string, kind: 'bar' | 'pill', color: Color, anchorX: number, width: number, height: number): Node {
+    const node = this.host.addChildPlainNode(parent, name, 0, 0, width, height);
+    const frame = kind === 'pill' ? whitePillFrame() : whiteBarFrame();
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.type = kind === 'pill' ? Sprite.Type.SLICED : Sprite.Type.SIMPLE;
+    if (frame) {
+      sprite.spriteFrame = frame;
+    }
+    sprite.color = color;
+    const transform = node.getComponent(UITransform);
+    transform?.setAnchorPoint(anchorX, 0.5);
+    transform?.setContentSize(width, height);
+    return node;
+  }
+
+  private syncHeroCdBar(view: GuardUnitView, unlocked: boolean, width: number, ratio: number, fillColor: Color): void {
+    const layer = this.ensureBarLayer();
+    if (!layer) {
+      return;
+    }
+    if (!unlocked) {
+      if (view.cdBg?.isValid) {
+        view.cdBg.active = false;
+      }
+      if (view.cdFill?.isValid) {
+        view.cdFill.active = false;
+      }
+      return;
+    }
+    if (!view.cdBg || !view.cdBg.isValid || !view.cdFill || !view.cdFill.isValid) {
+      view.cdBg = this.mountBarSprite(layer, `${view.node.name}CdBg`, 'pill', rgba(10, 8, 8, 190), 0.5, width, 6);
+      view.cdFill = this.mountBarSprite(layer, `${view.node.name}CdFill`, 'pill', fillColor, 0, width, 6);
+    }
+    view.cdBg.active = true;
+    view.cdFill.active = true;
+    view.cdBg.getComponent(UITransform)?.setContentSize(width, 6);
+    view.cdFill.getComponent(UITransform)?.setContentSize(Math.max(8, width * ratio), 6);
+    const fill = view.cdFill.getComponent(Sprite);
+    if (fill && !fill.color.equals(fillColor)) {
+      fill.color = fillColor;
+    }
+    this.positionHeroBars(view);
+  }
+
+  /** 冷却条跟着英雄节点走(拖拽中每帧跟),并随英雄一起压暗(选中其它英雄时)。 */
+  private positionHeroBars(view: GuardUnitView): void {
+    const bg = view.cdBg;
+    const fill = view.cdFill;
+    if (!bg || !bg.isValid || !fill || !fill.isValid || !bg.active) {
+      return;
+    }
+    const position = view.node.position;
+    const y = position.y - this.heroDisplaySize() * 0.7;
+    const width = bg.getComponent(UITransform)?.width ?? 0;
+    bg.setPosition(position.x, y, 0);
+    fill.setPosition(position.x - width / 2, y, 0);
+    const heroOpacity = view.node.getComponent(UIOpacity)?.opacity ?? 255;
+    const bgOpacity = bg.getComponent(UIOpacity) ?? bg.addComponent(UIOpacity);
+    const fillOpacity = fill.getComponent(UIOpacity) ?? fill.addComponent(UIOpacity);
+    if (bgOpacity.opacity !== heroOpacity) {
+      bgOpacity.opacity = heroOpacity;
+      fillOpacity.opacity = heroOpacity;
+    }
+  }
+
+  private followHeroBars(): void {
+    for (const view of this.heroViews.values()) {
+      if (view.cdBg && view.node.isValid) {
+        this.positionHeroBars(view);
+      }
+    }
+  }
+
+  /** 小怪血条:hpKey = 可见长度像素(-1 = 满血不显示)。 */
+  private syncMonsterHpBar(view: GuardUnitView, monster: GuardMonster, hpKey: number): void {
+    const layer = this.ensureBarLayer();
+    if (!layer) {
+      return;
+    }
+    if (hpKey < 0) {
+      if (view.hpBg?.isValid) {
+        view.hpBg.active = false;
+      }
+      if (view.hpFill?.isValid) {
+        view.hpFill.active = false;
+      }
+      return;
+    }
+    const width = view.hpBarW ?? 0;
+    if (!view.hpBg || !view.hpBg.isValid || !view.hpFill || !view.hpFill.isValid) {
+      view.hpBg = this.mountBarSprite(layer, `${view.node.name}HpBg`, 'bar', rgba(8, 8, 10, 210), 0.5, width, 6);
+      view.hpFill = this.mountBarSprite(layer, `${view.node.name}HpFill`, 'bar', monster.kind === 'elite' ? rgba(255, 150, 60, 240) : rgba(224, 82, 64, 230), 0, width, 6);
+    }
+    view.hpBg.active = true;
+    view.hpFill.active = true;
+    view.hpFill.getComponent(UITransform)?.setContentSize(Math.max(1, hpKey), 6);
+    this.positionMonsterBars(view, view.node.position.x, view.node.position.y);
+  }
+
+  private positionMonsterBars(view: GuardUnitView, x: number, y: number): void {
+    const bg = view.hpBg;
+    const fill = view.hpFill;
+    if (!bg || !bg.isValid || !fill || !fill.isValid || !bg.active) {
+      return;
+    }
+    const barY = y + (view.hpBarOffsetY ?? 0);
+    bg.setPosition(x, barY, 0);
+    fill.setPosition(x - (view.hpBarW ?? 0) / 2, barY, 0);
+  }
+
+  /** 单位离场 / 死亡:条层里属于它的条一起销毁。 */
+  private destroyUnitBars(view: GuardUnitView): void {
+    for (const key of ['hpBg', 'hpFill', 'cdBg', 'cdFill'] as const) {
+      const node = view[key];
+      if (node && node.isValid) {
+        node.destroy();
+      }
+      view[key] = undefined;
+    }
+  }
+
+  /**
+   * 固定 / 数字类 HUD 标签走字符缓存:字形进共享字符图集,几十个标签合成少数几次绘制(2026-10-09 手机 Draw call 143~215 的大头之一)。
+   * 引擎的字符缓存不支持 SHRINK 自适应,缩放中的标签保持原样。
+   */
+  private static hudCharCache(label: Label, shortText = false): void {
+    if (label.overflow === Label.Overflow.SHRINK) {
+      // 手机端字号抬到下限后统一设成 SHRINK;数字 / 星级这类短文本框足够宽,改成不裁切即可走字符缓存
+      if (!shortText) {
+        return;
+      }
+      label.overflow = Label.Overflow.NONE;
+    }
+    label.fontFamily = LobbyGuardBattleRenderer.damageFontFamily();
+    label.cacheMode = Label.CacheMode.CHAR;
   }
 
   /** 持续区域(灼烧区/旋风)视图:横跨三车道的地面区域,旋风随时间旋转并跟随推进。 */
@@ -7599,12 +7870,24 @@ export class LobbyGuardBattleRenderer {
     const node = this.host.addChildPlainNode(field ?? this.host.node, `GuardHero_${hero.unitId}`, center.x, center.y, size, size);
     const pool = this.sim?.pool.find((entry) => entry.heroCode === hero.heroCode);
     const roleColor = GUARD_ROLE_COLOR[hero.role] ?? rgba(220, 220, 220);
-    // 底座色环(职业色)
-    const g = node.addComponent(Graphics);
-    g.strokeColor = rgba(roleColor.r, roleColor.g, roleColor.b, 200);
-    g.lineWidth = 2;
-    g.ellipse(0, -size * 0.42, size * 0.34, size * 0.08);
-    g.stroke();
+    // 底座色环(职业色):烘焙的白色椭圆环精灵按职业色染色(2026-10-09:原先每个英雄一个 Graphics = 一次独立绘制)
+    const ringFrame = whiteRingFrame(size * 0.34, size * 0.08, 2);
+    if (ringFrame) {
+      const ringSize = ringFrameSize(size * 0.34, size * 0.08, 2);
+      const ring = this.host.addChildPlainNode(node, 'GuardHeroRing', 0, -size * 0.42, ringSize.w, ringSize.h);
+      const ringSprite = ring.addComponent(Sprite);
+      ringSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      ringSprite.trim = false;
+      ringSprite.spriteFrame = ringFrame;
+      ringSprite.color = rgba(roleColor.r, roleColor.g, roleColor.b, 200);
+      ring.getComponent(UITransform)?.setContentSize(ringSize.w, ringSize.h);
+    } else {
+      const g = node.addComponent(Graphics);
+      g.strokeColor = rgba(roleColor.r, roleColor.g, roleColor.b, 200);
+      g.lineWidth = 2;
+      g.ellipse(0, -size * 0.42, size * 0.34, size * 0.08);
+      g.stroke();
+    }
     // 骨骼(异步),回退色块+名字
     const ally = this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null;
     const fallback = this.host.addChildPlainNode(node, 'GuardHeroFallback', 0, 0, size * 0.62, size * 0.8);
@@ -7621,7 +7904,9 @@ export class LobbyGuardBattleRenderer {
     star.enableOutline = true;
     star.outlineColor = rgba(40, 24, 10, 255);
     star.outlineWidth = 2;
-    this.host.addChildLabel(node, 'GuardHeroAtk', '', 0, -size * 0.58, 14, rgba(214, 196, 156, 230), new Size(size * 1.2, 18));
+    LobbyGuardBattleRenderer.hudCharCache(star, true);
+    const atkLabel = this.host.addChildLabel(node, 'GuardHeroAtk', '', 0, -size * 0.58, 14, rgba(214, 196, 156, 230), new Size(size * 1.2, 18));
+    LobbyGuardBattleRenderer.hudCharCache(atkLabel, true);
     this.bindHeroDrag(node, hero.unitId);
     return pendingView;
   }
@@ -8729,6 +9014,7 @@ export class LobbyGuardBattleRenderer {
         if (view.node.isValid) {
           view.node.destroy();
         }
+        this.destroyUnitBars(view);
         this.monsterViews.delete(monsterId);
       }
     }
@@ -8754,9 +9040,15 @@ export class LobbyGuardBattleRenderer {
           view.node.setPosition(view.toX ?? targetX, view.toY ?? targetY, 0);
         }
       } else {
-        // 首次出现直接落位;之后上一 tick → 本 tick 由 interpolateMonsterViews 每帧插值
-        view.fromX = view.toX ?? targetX;
-        view.fromY = view.toY ?? targetY;
+        // 首次出现直接落位;之后上一 tick → 本 tick 由 interpolateMonsterViews 每帧插值(补跑多个 tick 时起点取倒数第二个 tick 的位置)
+        const prevX = view.toX !== undefined ? this.prevTickMonsterX.get(monster.monsterId) : undefined;
+        if (prevX !== undefined) {
+          view.fromX = this.xToPx(prevX);
+          view.fromY = this.monsterY(monster.lane, prevX) + jitterY * this.monsterSpread(prevX) + flyLift;
+        } else {
+          view.fromX = view.toX ?? targetX;
+          view.fromY = view.toY ?? targetY;
+        }
         view.toX = targetX;
         view.toY = targetY;
         if (!view.interp) {
@@ -8769,6 +9061,7 @@ export class LobbyGuardBattleRenderer {
         if (view.lastAnimKey !== 'escaped') {
           view.lastAnimKey = 'escaped';
           view.node.getChildByName('GuardMonsterHp')?.destroy();
+          this.destroyUnitBars(view);
           view.node.getChildByName('GuardMonsterShadow')?.destroy();
           const escapeOpacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
           tween(escapeOpacity).to(0.4, { opacity: 0 }).start();
@@ -8783,6 +9076,7 @@ export class LobbyGuardBattleRenderer {
           view.node.getChildByName('GuardMarkReticle')?.destroy();
           // 死亡瞬间去掉血条(视频验收:'血没空就死'的错觉=死时血条残留旧值);直接销毁,尸体留场 3 秒期间不再占显存
           view.node.getChildByName('GuardMonsterHp')?.destroy();
+          this.destroyUnitBars(view);
           const opacity = view.node.getComponent(UIOpacity) ?? view.node.addComponent(UIOpacity);
           if (view.skeleton && view.skeleton.isValid) {
             view.skeleton.color = GUARD_SPINE_WHITE;
@@ -8833,18 +9127,22 @@ export class LobbyGuardBattleRenderer {
       } else if (!stunned && stunMark) {
         stunMark.destroy();
       }
-      const hpBar = view.node.getChildByName('GuardMonsterHp');
+      if (monster.kind !== 'boss') {
+        // 小怪血条只在可见长度变了才动(2026-10-05:此前 40 只怪每帧各重画一次;2026-10-09 改共享条层精灵,满血不显示)
+        const ratio = Math.max(0, monster.hp / monster.maxHp);
+        const hpKey = ratio >= 1 ? -1 : Math.max(1, Math.round((view.hpBarW ?? 0) * ratio));
+        if (view.hpDrawnKey !== hpKey) {
+          view.hpDrawnKey = hpKey;
+          this.syncMonsterHpBar(view, monster, hpKey);
+        }
+      }
+      const hpBar = monster.kind === 'boss' ? view.node.getChildByName('GuardMonsterHp') : null;
       const hpGraphics = hpBar?.getComponent(Graphics);
       const hpTransform = hpBar?.getComponent(UITransform);
       if (hpBar && hpGraphics && hpTransform) {
         const ratio = Math.max(0, monster.hp / monster.maxHp);
-        // 小怪血条只在可见长度变了才重画(2026-10-05 手机卡顿优化:此前 40 只怪每帧各重画一次矢量血条)
         let hpDirty = true;
-        if (monster.kind !== 'boss') {
-          const hpKey = ratio >= 1 ? -1 : Math.max(1, Math.round(hpTransform.width * ratio));
-          hpDirty = view.hpDrawnKey !== hpKey;
-          view.hpDrawnKey = hpKey;
-        } else {
+        {
           // BOSS 血条:头顶高度量定之前每 tick 都要走测量;量定后只在血量像素或文字变了才重画
           const bossKey = Math.round(hpTransform.width * ratio) * 1e6 + Math.ceil(monster.hp) % 1e6;
           hpDirty = !view.hpBarLocked || view.hpDrawnKey !== bossKey;
@@ -8892,19 +9190,11 @@ export class LobbyGuardBattleRenderer {
           if (hpText) {
             hpText.string = `BOSS  ${Math.ceil(monster.hp)} / ${monster.maxHp}`;
           }
-        } else if (ratio < 1) {
-          // 满血不显示血条(视频验收:入场怪扎堆时几十条红条叠成噪声)
-          const barW = hpTransform.width;
-          hpGraphics.fillColor = rgba(8, 8, 10, 210);
-          hpGraphics.rect(-barW / 2, -3, barW, 6);
-          hpGraphics.fill();
-          hpGraphics.fillColor = monster.kind === 'elite' ? rgba(255, 150, 60, 240) : rgba(224, 82, 64, 230);
-          hpGraphics.rect(-barW / 2, -3, Math.max(1, barW * ratio), 6);
-          hpGraphics.fill();
         }
       }
     }
     this.sortMonsterViewsByDepth();
+    this.placeBarLayer();
     this.refreshBossTopBar();
   }
 
@@ -9157,7 +9447,13 @@ export class LobbyGuardBattleRenderer {
     const hpBarY = monster.kind === 'boss'
       ? Math.min(this.monsterHeadOffsetY(monster) + 18, this.layoutHeight * 0.47 - node.position.y)
       : Math.min(baseSize * 0.58, this.layoutHeight * 0.4);
-    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, hpBarY, monster.kind === 'boss' ? 280 : Math.min(baseSize * 0.9, 110), monster.kind === 'boss' ? 14 : 6);
+    if (monster.kind !== 'boss') {
+      // 小怪血条(2026-10-09):不再每只怪一个 Graphics;受伤后在共享条层里用白贴图精灵画,全部合成一次绘制
+      view.hpBarOffsetY = hpBarY;
+      view.hpBarW = Math.min(baseSize * 0.9, 110);
+      return view;
+    }
+    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, hpBarY, 280, 14);
     hpBar.addComponent(Graphics);
     if (monster.kind === 'boss') {
       const hpText = this.host.addChildLabel(hpBar, 'GuardMonsterHpText', '', 0, 0, 13, rgba(255, 244, 230, 252), new Size(260, 18));

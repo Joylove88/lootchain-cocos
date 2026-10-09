@@ -198,6 +198,14 @@ type PendingGachaDraw = {
 // 其余(英雄骨骼、技能特效、抽卡/锻造/背包等各页面素材)全部在真正用到时按需下载,经 Service Worker 存本地。
 const BOOT_PRELOAD_UI_DIRS = ['ui/login', 'ui/common', 'ui/lobby'] as const;
 const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard', 'ui/battle/c1812'] as const;
+/**
+ * 手机进战斗前释放的页面图目录(2026-10-09,见 UiSpriteFrameCache.releaseIdleTextures):战斗及其结算 / 设置弹层都不会用到的页面。
+ * 战斗里会用的 ui/common、ui/bag(结算奖励图标)、ui/hero(星星 / 面板底 / 按钮)、ui/crystal(法术图标)、ui/daily(档位徽记)、ui/battle、ui/guard 不在此列。
+ */
+const BATTLE_IDLE_UI_DIR_PREFIXES = [
+  'ui/forge/', 'ui/adventure/', 'ui/hero-roster/', 'ui/hero-detail/', 'ui/gacha/', 'ui/codex/', 'ui/mission/', 'ui/profile/',
+  'ui/equip/', 'ui/formation/', 'ui/guide/', 'ui/protagonist/',
+] as const;
 /** 电脑端后台读进内存的其余玩法页界面图(整目录;素材已在本地时才有意义,见 prefetchBattleEssentialsInBackground)。 */
 const BACKGROUND_WARM_UI_DIRS = [
   'ui/hero', 'ui/hero-roster', 'ui/hero-detail', 'ui/formation', 'ui/adventure', 'ui/bag', 'ui/equip', 'ui/forge',
@@ -6973,6 +6981,13 @@ export class LootChainGameRoot extends Component {
   // LobbyBattleFlow 进战资产加载门:开战响应到达后加载本场全部单位骨骼+敌怪立绘,
   // 渲染层同时显示加载界面;完成后战斗流才启动演出计时。
   preloadBattleSessionAssets(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void> {
+    // 手机:先把战斗里用不到的页面图从显存里放掉,再往里装战斗资源(2026-10-09 用户手机战斗中贴图显存 878MB)
+    if (sys.isMobile) {
+      const released = this.uiSpriteFrameCache.releaseIdleTextures(BATTLE_IDLE_UI_DIR_PREFIXES);
+      if (released > 0) {
+        console.log(`[LootChain] battle: released ${released} idle UI textures`);
+      }
+    }
     const units = [
       ...this.resolveLobbyBattleAllySpinePrefetchUnits(),
       ...start.enemyPreview.map((enemy) => ({
@@ -7026,6 +7041,8 @@ export class LootChainGameRoot extends Component {
         finished = true;
         clearTimeout(timer);
         onProgress(baseTotal + extraTotal, baseTotal + extraTotal);
+        // 后面波次 / 技能才用到的资源进场后在开场倒计时里后台读(2026-10-09 加载门拆分)
+        this.prewarmDeferredBattleResources(extra.deferredSpine, extra.deferredSprites);
         resolve();
       };
       const timer = setTimeout(finish, 20000);
@@ -7082,6 +7099,57 @@ export class LootChainGameRoot extends Component {
       };
       pump();
     }));
+  }
+
+  /** 后台预读令牌:每次进场换一个,旧队列自行退出(同一时间只跑一条)。 */
+  private deferredBattlePrewarmToken = 0;
+
+  /**
+   * 进场后按顺序把"后面才会用到"的战斗资源读进内存(2026-10-09 加载门拆分):串行、每项之间让出一轮事件循环,
+   * 骨骼顺带做 wasm 解析与大招附件裁剪(与加载门同一套处理);切出战斗视图即停。首波一般 10 秒后才来,排在前面的
+   * 后续波次怪物在此之前就能读完;真没赶上的走原有的占位色块回退。
+   */
+  private prewarmDeferredBattleResources(spinePaths: readonly string[], spritePaths: readonly string[]): void {
+    this.deferredBattlePrewarmToken += 1;
+    const token = this.deferredBattlePrewarmToken;
+    const tasks: Array<{ path: string; kind: 'spine' | 'sprite' }> = [];
+    spinePaths.forEach((path) => tasks.push({ path, kind: 'spine' }));
+    spritePaths.forEach((path) => tasks.push({ path, kind: 'sprite' }));
+    let cursor = 0;
+    const next = (): void => {
+      while (cursor < tasks.length) {
+        if (token !== this.deferredBattlePrewarmToken || !this.isValid || this.currentView !== 'battle') {
+          return;
+        }
+        const task = tasks[cursor];
+        cursor += 1;
+        const cached = task.kind === 'spine' ? resources.get(task.path, sp.SkeletonData) : resources.get(task.path, SpriteFrame);
+        if (cached) {
+          continue;
+        }
+        const after = (): void => {
+          setTimeout(next, 0);
+        };
+        if (task.kind === 'spine') {
+          resources.load(task.path, sp.SkeletonData, (error, data) => {
+            if (!error && data) {
+              try {
+                const runtime = resolveBattleUnitSpineRuntimeData(data);
+                prepareBattleFxData(data, runtime, resolveBattleFxHiddenSlotsForEffect(task.path.split('/').pop() ?? ''));
+              } catch (parseError) {
+                void parseError;
+              }
+            }
+            after();
+          });
+        } else {
+          resources.load(task.path, SpriteFrame, () => after());
+        }
+        return;
+      }
+    };
+    // 进场后先让首帧与开场演出稳住再开始
+    setTimeout(next, 800);
   }
 
   private fillLobbyFormationWithDefaultHeroes(): void {

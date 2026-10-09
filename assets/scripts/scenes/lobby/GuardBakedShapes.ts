@@ -1,4 +1,4 @@
-import { Color, SpriteFrame, Texture2D } from 'cc';
+import { Color, Rect, Size, SpriteFrame, Texture2D, Vec2 } from 'cc';
 
 /**
  * 守卫战程序图形烘焙(2026-10-07 手机战斗卡顿):弹体 / 命中爆闪 / 格位爆闪原先每次 new 一个 Graphics,
@@ -58,6 +58,26 @@ class Canvas {
   strokeCircle(cx: number, cy: number, r: number, lineWidth: number, color: Rgba): void {
     const aa = 1 / SUPERSAMPLE;
     this.each((x, y) => (lineWidth / 2 - Math.abs(Math.hypot(x - cx, y - cy) - r)) / aa + 0.5, color);
+  }
+
+  /** 椭圆描边:到椭圆边界的距离按短半轴换算成像素再做抗锯齿。 */
+  strokeEllipse(cx: number, cy: number, rx: number, ry: number, lineWidth: number, color: Rgba): void {
+    const aa = 1 / SUPERSAMPLE;
+    const unit = Math.min(rx, ry);
+    this.each((x, y) => (lineWidth / 2 - Math.abs(Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * unit) / aa + 0.5, color);
+  }
+
+  /** 圆角矩形填充(中心在 cx, cy);radius 为 0 时是直角矩形。 */
+  fillRoundRectAt(cx: number, cy: number, w: number, h: number, radius: number, color: Rgba): void {
+    const aa = 1 / SUPERSAMPLE;
+    const r = Math.min(radius, w / 2, h / 2);
+    this.each((x, y) => {
+      const qx = Math.max(0, Math.abs(x - cx) - (w / 2 - r));
+      const qy = Math.max(0, Math.abs(y - cy) - (h / 2 - r));
+      const outside = Math.hypot(qx, qy) - r;
+      const edge = r > 0 ? -outside : Math.min(w / 2 - Math.abs(x - cx), h / 2 - Math.abs(y - cy));
+      return edge / aa + 0.5;
+    }, color);
   }
 
   strokeLine(x0: number, y0: number, x1: number, y1: number, lineWidth: number, color: Rgba): void {
@@ -156,4 +176,63 @@ export function cellBurstFrame(color: Color, big: boolean): SpriteFrame | null {
 
 export function cellBurstSize(big: boolean): number {
   return big ? 136 : 98;
+}
+
+/**
+ * 白条图集(2026-10-09 手机战斗绘制调用优化):血条 / 冷却条原先每条一个 Graphics = 一次独立绘制 + 一份顶点缓冲;
+ * 改成所有条共用同一张贴图、按 Sprite 颜色染色,放在同一层里连续绘制就能合成一次。
+ * 一张贴图里两块:左边圆角条(设计 24×8、圆角 3,九宫格左右各切 4,拉长保留圆头),右边纯白方块(直角条)。
+ * 两块必须在同一张贴图上——不同贴图的精灵交替排列就合不了批。
+ */
+const BAR_ATLAS = { w: 32, h: 8, pillW: 24, pillInset: 4, squareX: 27, squareW: 4 } as const;
+let barAtlas: { pill: SpriteFrame; bar: SpriteFrame } | null = null;
+
+function ensureBarAtlas(): { pill: SpriteFrame; bar: SpriteFrame } | null {
+  if (barAtlas) {
+    return barAtlas;
+  }
+  const base = bake('whitebaratlas', BAR_ATLAS.w, BAR_ATLAS.h, (c) => {
+    // 左:圆角条,中心在 x = -w/2 + pillW/2
+    c.fillRoundRectAt(-BAR_ATLAS.w / 2 + BAR_ATLAS.pillW / 2, 0, BAR_ATLAS.pillW - 1, BAR_ATLAS.h - 1, 3, [1, 1, 1, 1]);
+    // 右:纯白方块(比取样区大一圈,双线性取样不会混进透明边)
+    c.fillRoundRectAt(-BAR_ATLAS.w / 2 + BAR_ATLAS.squareX + BAR_ATLAS.squareW / 2, 0, BAR_ATLAS.squareW, BAR_ATLAS.h, 0, [1, 1, 1, 1]);
+  });
+  const texture = base?.texture as Texture2D | null | undefined;
+  if (!texture) {
+    return null;
+  }
+  const s = SUPERSAMPLE;
+  // 子图的原始尺寸必须等于切块本身(默认是整张图集的尺寸,不裁剪的精灵会把切块缩成框里的一个小点)
+  const sub = (rect: Rect): SpriteFrame => {
+    const frame = new SpriteFrame();
+    frame.reset({ texture, rect, originalSize: new Size(rect.width, rect.height), offset: new Vec2(0, 0), isRotate: false });
+    return frame;
+  };
+  const pill = sub(new Rect(0, 0, BAR_ATLAS.pillW * s, BAR_ATLAS.h * s));
+  pill.insetLeft = BAR_ATLAS.pillInset * s;
+  pill.insetRight = BAR_ATLAS.pillInset * s;
+  // 取方块正中 2×2 设计像素,四周留 1 像素白边防取样渗色
+  const bar = sub(new Rect((BAR_ATLAS.squareX + 1) * s, 3 * s, 2 * s, 2 * s));
+  barAtlas = { pill, bar };
+  return barAtlas;
+}
+
+/** 直角纯白条(小怪血条):直接拉伸,颜色由 Sprite.color 给。 */
+export function whiteBarFrame(): SpriteFrame | null {
+  return ensureBarAtlas()?.bar ?? null;
+}
+
+/** 圆角纯白条(冷却条):九宫格,任意拉长保留圆头。 */
+export function whitePillFrame(): SpriteFrame | null {
+  return ensureBarAtlas()?.pill ?? null;
+}
+
+/** 英雄底座色环:白色椭圆描边,按实际半径烘焙(同一布局下所有英雄同尺寸,只烘一次),Sprite 染职业色;贴图尺寸见 ringFrameSize。 */
+export function whiteRingFrame(rx: number, ry: number, lineWidth: number): SpriteFrame | null {
+  const size = ringFrameSize(rx, ry, lineWidth);
+  return bake(`whitering:${Math.round(rx)}x${Math.round(ry)}:${lineWidth}`, size.w, size.h, (c) => c.strokeEllipse(0, 0, rx, ry, lineWidth, [1, 1, 1, 1]));
+}
+
+export function ringFrameSize(rx: number, ry: number, lineWidth: number): { w: number; h: number } {
+  return { w: Math.ceil(rx * 2 + lineWidth + 4), h: Math.ceil(ry * 2 + lineWidth + 4) };
 }
