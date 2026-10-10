@@ -1273,6 +1273,21 @@ export class LobbyGuardBattleRenderer {
     return false;
   }
 
+  /**
+   * 特效骨骼走引擎共享动画缓存(2026-10-10 真机剖析:战斗中骨骼逐帧计算占主线程大头):同一特效同一动画只算一遍,
+   * 所有实例共用算好的帧,画面不变。只用于一次性 / 循环特效(不需要动画融合、事件、跳播);英雄本体、大招、战技仍实时计算。
+   */
+  private static useSharedFxCache(skeleton: sp.Skeleton | null): void {
+    if (!skeleton) {
+      return;
+    }
+    try {
+      skeleton.setAnimationCacheMode(sp.Skeleton.AnimationCacheMode.SHARED_CACHE);
+    } catch (error) {
+      void error;
+    }
+  }
+
   private static readonly DAMAGE_FONT_BUCKETS = new Map<number, string>();
 
   /** 伤害数字字体名:同一缩放同一名字(共享字形);缩放变了换成多一个尾随空格的同字体名(浏览器渲染相同,引擎缓存键不同)。 */
@@ -3574,6 +3589,7 @@ export class LobbyGuardBattleRenderer {
     const ringFx = this.host.addChildPlainNode(holder, 'Fx', -ring.cx * fit, -ring.cy * fit, 10, 10);
     ringFx.setScale(fit, fit, 1);
     const ringSkeleton = ringFx.addComponent(sp.Skeleton);
+    LobbyGuardBattleRenderer.useSharedFxCache(ringSkeleton);
     ringSkeleton.premultipliedAlpha = false;
     ringSkeleton.skeletonData = ring.data;
     try {
@@ -3589,6 +3605,7 @@ export class LobbyGuardBattleRenderer {
       const burstFx = this.host.addChildPlainNode(burstNode, 'Fx', -burst.cx * burstFit, -burst.cy * burstFit, 10, 10);
       burstFx.setScale(burstFit, burstFit, 1);
       const burstSkeleton = burstFx.addComponent(sp.Skeleton);
+      LobbyGuardBattleRenderer.useSharedFxCache(burstSkeleton);
       burstSkeleton.premultipliedAlpha = false;
       burstSkeleton.skeletonData = burst.data;
       try {
@@ -4755,6 +4772,7 @@ export class LobbyGuardBattleRenderer {
       const holder = this.host.addChildPlainNode(pile, 'Spine', -heap.cx * fit, -heap.cy * fit, 10, 10);
       holder.setScale(fit, fit, 1);
       const skeleton = holder.addComponent(sp.Skeleton);
+      LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
       skeleton.premultipliedAlpha = false;
       skeleton.skeletonData = ready.data;
       try {
@@ -6527,6 +6545,7 @@ export class LobbyGuardBattleRenderer {
         projNode = node;
         fxNode = this.host.addChildPlainNode(projNode, 'Fx', 0, 0, 10, 10);
         skeleton = fxNode.addComponent(sp.Skeleton);
+        LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
         skeleton.premultipliedAlpha = false;
         skeleton.skeletonData = spineFx.data;
       } else {
@@ -6959,6 +6978,7 @@ export class LobbyGuardBattleRenderer {
       const fxNode = this.host.addChildPlainNode(shield, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
       fxNode.setScale(fit, fit, 1);
       const skeleton = fxNode.addComponent(sp.Skeleton);
+      LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
       skeleton.premultipliedAlpha = false;
       skeleton.skeletonData = ready.data;
       try {
@@ -7176,6 +7196,7 @@ export class LobbyGuardBattleRenderer {
       const fxNode = this.host.addChildPlainNode(node, 'Fx', -ready.cx * fit, -ready.cy * fit, 10, 10);
       fxNode.setScale(fit, fit, 1);
       const skeleton = fxNode.addComponent(sp.Skeleton);
+      LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
       skeleton.premultipliedAlpha = false;
       skeleton.skeletonData = ready.data;
       try {
@@ -7226,6 +7247,7 @@ export class LobbyGuardBattleRenderer {
     if (!pooled || !skeleton) {
       pooled = this.host.addChildPlainNode(field, 'GuardAttackHitFx', 0, 0, 10, 10);
       skeleton = pooled.addComponent(sp.Skeleton);
+      LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
       skeleton.premultipliedAlpha = false;
       skeleton.skeletonData = ready.data;
     }
@@ -7276,6 +7298,7 @@ export class LobbyGuardBattleRenderer {
     const node = this.host.addChildPlainNode(parent, 'GuardOverlaySpineFx', x - ready.cx * fit, y - ready.cy * fit * squash, 10, 10);
     node.setScale(fit, fit * squash, 1);
     const skeleton = node.addComponent(sp.Skeleton);
+    LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
     skeleton.premultipliedAlpha = false;
     skeleton.skeletonData = ready.data;
     let duration = 0.6;

@@ -27,6 +27,12 @@ export function mountLobbySpineFx(host: LobbyUiSpineFxHost, parent: Node, spec: 
   node.setScale(fit, fit, 1);
   const skeleton = node.addComponent(sp.Skeleton);
   skeleton.premultipliedAlpha = false;
+  // 循环 / 一次性 UI 特效走共享动画缓存(同一特效只算一遍帧,画面不变;2026-10-10 真机剖析)
+  try {
+    skeleton.setAnimationCacheMode(sp.Skeleton.AnimationCacheMode.SHARED_CACHE);
+  } catch (error) {
+    void error;
+  }
   loadSharedSpineData(`spine/effect/${spec.effect}/${spec.effect}`, null, 'LobbyUiFx', (data) => {
     if (!node.isValid || !data) {
       return;
