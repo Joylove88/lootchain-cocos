@@ -291,8 +291,9 @@ export class BattleStageMapRenderer {
     }
 
     // 关卡名:只在选中/推荐节点显示(沿路 16 个节点全挂名称会串叠成一片);挂在序号下方一行。
-    if (selected || pos.stage.recommended) {
-      const stageName = selected ? `已选 ${safeText(pos.stage.stageName)}` : safeText(pos.stage.stageName);
+    // 2026-10-10:选中关卡名已在右下行动卡显示,节点下不再重复挂「已选 xx」(压在地图底边上叠字)。
+    if (pos.stage.recommended && !selected) {
+      const stageName = safeText(pos.stage.stageName);
       const name = this.host.addChildLabel(node, 'BattleStageMapNodeName', stageName, 0, -size * 0.92, 16 * scale, rgba(255, 222, 148), new Size(size * 2.4, 22 * scale));
       name.overflow = Label.Overflow.SHRINK;
       name.enableOutline = true;

@@ -18,6 +18,7 @@ import { safeText } from '../UiTextFormatter';
 import { C1812_BUTTON_DANGER_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
 import { BAG_AI_BUTTON_CRIMSON_ASSET } from './LobbyBagPanelRenderer';
 import { LOBBY_C1812_RESOURCE_ICON_ASSETS, rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitSection, mountKitToggle } from '../UiKit';
 import {
   isBattleUnitSpineDataAsset,
   patchBattleUnitSpineRuntimeEnums,
@@ -469,17 +470,13 @@ export class LobbyIdleStageRenderer {
     const summary = this.host.currentIdleSummary?.() ?? null;
     const panelWidth = Math.min(262 * scale, width * 0.25);
     const panelHeight = (summary ? 226 : 148) * scale;
-    const panel = this.host.addChildPlainNode(parent, 'LobbyIdleRewardPanel', -width / 2 + panelWidth / 2 + 18 * scale, -height / 2 + panelHeight / 2 + 96 * scale, panelWidth, panelHeight);
-    const graphics = panel.addComponent(Graphics);
-    graphics.fillColor = rgba(10, 8, 11, 216);
-    graphics.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 9 * scale);
-    graphics.fill();
-    graphics.strokeColor = rgba(196, 150, 76, 180);
-    graphics.lineWidth = Math.max(1, 1.1 * scale);
-    graphics.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 9 * scale);
-    graphics.stroke();
-    const title = this.host.addChildLabel(panel, 'LobbyIdleRewardTitle', '挂机收益', 0, panelHeight / 2 - 18 * scale, 18 * scale, rgba(244, 214, 150), new Size(panelWidth - 20 * scale, 24 * scale));
+    // 2026-10-10 全界面美化:面板底换四角金饰框(UiKit),标题加描边
+    const panel = mountKitSection(this.host, parent, 'LobbyIdleRewardPanel', -width / 2 + panelWidth / 2 + 18 * scale, -height / 2 + panelHeight / 2 + 96 * scale, panelWidth, panelHeight, scale, 0.14);
+    const title = this.host.addChildLabel(panel, 'LobbyIdleRewardTitle', '挂机收益', 0, panelHeight / 2 - 20 * scale, 20 * scale, rgba(248, 220, 156), new Size(panelWidth - 20 * scale, 26 * scale));
     title.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(title, scale, true);
+    const graphics = this.host.addChildPlainNode(panel, 'LobbyIdleRewardDivider', 0, 0, panelWidth, panelHeight).addComponent(Graphics);
+    graphics.lineWidth = Math.max(1, 1.1 * scale);
     graphics.strokeColor = rgba(196, 150, 76, 120);
     graphics.moveTo(-panelWidth / 2 + 12 * scale, panelHeight / 2 - 32 * scale);
     graphics.lineTo(panelWidth / 2 - 12 * scale, panelHeight / 2 - 32 * scale);
@@ -521,24 +518,11 @@ export class LobbyIdleStageRenderer {
         claimButton.on(Button.EventType.CLICK, () => this.host.claimIdleReward?.(), this);
       }
       const autoOn = this.host.isAutoChallengeEnabled?.() === true;
-      const toggle = this.host.addChildPlainNode(panel, 'LobbyIdleAutoToggle', 0, -panelHeight / 2 + 22 * scale, panelWidth - 48 * scale, 26 * scale);
-      const toggleGraphics = toggle.addComponent(Graphics);
-      toggleGraphics.fillColor = autoOn ? rgba(84, 18, 16, 216) : rgba(18, 16, 18, 190);
-      toggleGraphics.roundRect(-(panelWidth - 48 * scale) / 2, -13 * scale, panelWidth - 48 * scale, 26 * scale, 13 * scale);
-      toggleGraphics.fill();
-      if (autoOn) {
-        toggleGraphics.strokeColor = rgba(226, 92, 68, 200);
-        toggleGraphics.lineWidth = Math.max(1, 1 * scale);
-        toggleGraphics.roundRect(-(panelWidth - 48 * scale) / 2, -13 * scale, panelWidth - 48 * scale, 26 * scale, 13 * scale);
-        toggleGraphics.stroke();
-      }
-      const toggleLabel = this.host.addChildLabel(toggle, 'LobbyIdleAutoToggleLabel', autoOn ? '自动挑战 · 开' : '自动挑战 · 关', 0, 0, 16 * scale, autoOn ? rgba(255, 214, 168) : rgba(166, 150, 120), new Size(panelWidth - 64 * scale, 22 * scale));
-      toggleLabel.overflow = Label.Overflow.SHRINK;
-      toggle.addComponent(Button);
-      this.host.applyImageButtonFeedback(toggle, 1.03, 0.97);
-      toggle.on(Button.EventType.CLICK, () => this.host.toggleAutoChallenge?.(), this);
+      // 自动挑战开关:水晶页签同款金 / 暗开关切图(UiKit)
+      mountKitToggle(this.host, panel, 'LobbyIdleAutoToggle', autoOn ? '自动挑战 · 开' : '自动挑战 · 关', 0, -panelHeight / 2 + 24 * scale, panelWidth - 48 * scale, 32 * scale, scale, autoOn,
+        () => this.host.toggleAutoChallenge?.(), 16);
     } else {
-      const note = this.host.addChildLabel(panel, 'LobbyIdleRewardNote', '真实数值由服务端结算发放', 0, -panelHeight / 2 + 16 * scale, 13 * scale, rgba(150, 132, 96), new Size(panelWidth - 20 * scale, 19 * scale));
+      const note = this.host.addChildLabel(panel, 'LobbyIdleRewardNote', '登录后自动同步挂机产出', 0, -panelHeight / 2 + 18 * scale, 16 * scale, rgba(150, 132, 96), new Size(panelWidth - 20 * scale, 19 * scale));
       note.overflow = Label.Overflow.SHRINK;
     }
   }

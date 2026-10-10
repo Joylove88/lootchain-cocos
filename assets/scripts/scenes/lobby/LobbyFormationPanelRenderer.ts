@@ -354,10 +354,11 @@ export class LobbyFormationPanelRenderer {
     // 后排此前 +0.06h 踩到了远山上;整体压到下半区,后排只比前排高 0.13h 且收进中路)。
     const spanWidth = Math.min(width, height * 1.55);
     const positions = [
-      { x: -spanWidth * 0.12, y: -height * 0.17, depth: 1 },
-      { x: spanWidth * 0.12, y: -height * 0.17, depth: 1 },
-      { x: -spanWidth * 0.31, y: -height * 0.04, depth: 0.9 },
-      { x: spanWidth * 0.31, y: -height * 0.04, depth: 0.9 },
+      // 2026-10-10 全局 UI 巡检:前排两人 ±0.12 时名牌(204 宽)互相压住,拉开到 ±0.16、后排同步外扩。
+      { x: -spanWidth * 0.16, y: -height * 0.17, depth: 1 },
+      { x: spanWidth * 0.16, y: -height * 0.17, depth: 1 },
+      { x: -spanWidth * 0.36, y: -height * 0.04, depth: 0.9 },
+      { x: spanWidth * 0.36, y: -height * 0.04, depth: 0.9 },
     ];
     const standWidth = Math.min(270 * scale, spanWidth * 0.32);
     const standHeight = Math.min(350 * scale, height * 0.66);
@@ -963,9 +964,8 @@ export class LobbyFormationPanelRenderer {
     const footerHidden = this.host.isLobbyFormationFooterHidden?.() ?? false;
     // 从英雄界面进入=纯布阵场景,不显示"战力不足"(这里只是布阵);只有深渊入口才提示。战力不足只红字提示,不拦截挑战。
     const powerShort = !footerHidden && power.rosterLoaded && power.recommendedPower > 0 && !power.enough;
-    const noteText = powerShort
-      ? `战力不足（还差 ${formatInteger(power.powerGap)}），仍可挑战。`
-      : '点击候选英雄上阵，点击已上阵英雄下阵；阵容仅用于本次出战快照。';
+    // 2026-10-10 全局 UI 巡检:常驻操作说明与前排名牌挤在一起(且露"快照"开发口径),只保留战力不足红字。
+    const noteText = powerShort ? `战力不足（还差 ${formatInteger(power.powerGap)}），仍可挑战。` : '';
     // 2026-09-08 右栏加高 15% 后面板左缘会压到居中的"挑战"按钮:提示行与三按钮
     // 重新居中到战场区正下方(分栏公式须与 renderBattleFormationScene 保持一致)。
     const compact = width < 720 * scale || height < 450 * scale;
@@ -980,8 +980,11 @@ export class LobbyFormationPanelRenderer {
       footerCenterX = -bodyWidth / 2 + leftWidth / 2;
     }
     // 提示行上移到底部按钮上方,避免被三个按钮盖住(按钮中心 y=-h/2+38、高 60,顶到 y=-h/2+68)。
-    const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', noteText, footerCenterX, -height / 2 + 92 * scale, 15 * scale, powerShort ? rgba(255, 110, 100, 235) : rgba(168, 148, 112, 220), new Size(Math.min(width - 110 * scale, 760 * scale), 22 * scale));
-    note.overflow = Label.Overflow.SHRINK;
+    if (noteText) {
+      // 红字挪到战力横匾下方(原位置在前排名牌底下)。
+      const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', noteText, 0, height / 2 - 150 * scale, 18 * scale, rgba(255, 110, 100, 235), new Size(Math.min(width - 110 * scale, 760 * scale), 24 * scale));
+      note.overflow = Label.Overflow.SHRINK;
+    }
     if (footerHidden) {
       // 从英雄界面进入:纯布阵场景,隐藏刷新/去升级/挑战三按钮。
       return;

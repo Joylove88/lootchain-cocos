@@ -37,6 +37,8 @@ import { PHONE_DIALOG_CONTENT_PAD, phoneDialogSizeForStage } from './LobbyPhoneD
 
 export interface LobbyDailyDungeonPanelHost {
   node: Node;
+  /** 关卡码 → 玩家可读称呼(深渊爬塔 第 N 层),界面上不露 MAIN_x_y 代码。 */
+  lobbyStageDisplayLabel?(stageCode: string): string;
   currentLobbyDailyDungeonState(): LobbyDailyDungeonPanelState;
   currentLobbyProfile?(): PlayerLobbyProfileVO;
   closeLobbyDailyDungeonPanel(): void;
@@ -147,6 +149,10 @@ export class LobbyDailyDungeonPanelRenderer {
   private trialLadderPopupTiers: TrialTierVO[] | null = null;
 
   constructor(private readonly host: LobbyDailyDungeonPanelHost) {}
+
+  private stageLabel(stageCode: string): string {
+    return this.host.lobbyStageDisplayLabel?.(stageCode) ?? '前置关卡';
+  }
 
   render(layout: UiLayout): void {
     const state = this.host.currentLobbyDailyDungeonState();
@@ -480,7 +486,7 @@ export class LobbyDailyDungeonPanelRenderer {
   ): void {
     const centerY = cardHeight / 2 - cardHeight * 0.913;
     if (!tier.unlocked) {
-      this.renderCardActionBar(card, `通关 ${tier.unlockStageCode} 解锁`, centerY, cardWidth, cardHeight, scale);
+      this.renderCardActionBar(card, `通关${this.stageLabel(tier.unlockStageCode)}解锁`, centerY, cardWidth, cardHeight, scale);
       return;
     }
     if (!theme.openToday) {
@@ -854,7 +860,7 @@ export class LobbyDailyDungeonPanelRenderer {
     let footerColor = rgba(224, 202, 158, 240);
     if (mine) {
       if (!mine.unlocked) {
-        footerText = '矿晶矿脉:通关 MAIN_3_1 后,副本胜利有几率掉落矿晶(打金结算积分)。';
+        footerText = `矿晶矿脉:通关${this.stageLabel('MAIN_3_1')}后,副本胜利有几率掉落矿晶。`;
         footerColor = rgba(196, 182, 158, 235);
       } else {
         const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);
@@ -910,7 +916,7 @@ export class LobbyDailyDungeonPanelRenderer {
     let color = rgba(224, 202, 158, 240);
     if (mine) {
       if (!mine.unlocked) {
-        text = '通关 MAIN_3_1 后副本可掉矿晶';
+        text = `通关${this.stageLabel('MAIN_3_1')}后,副本可掉落矿晶`;
         color = rgba(196, 182, 158, 235);
       } else {
         const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);

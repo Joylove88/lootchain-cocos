@@ -476,7 +476,7 @@ export class LobbyProfileDialogRenderer {
       ],
       [
         { label: '账号状态', value: profile.accountStatus, valueColor: statusOk ? rgba(120, 224, 150) : undefined },
-        { label: '登录方式', value: profile.loginMethod },
+        { label: '登录方式', value: loginMethodLabel(profile.loginMethod) },
       ],
       [
         { label: '钱包绑定', value: profile.walletBound ? '已绑定' : '未绑定' },
@@ -733,4 +733,19 @@ export class LobbyProfileDialogRenderer {
     }
     return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
   }
+}
+
+/** 登录方式码 → 玩家可读文案(2026-10-10:资料页原样露出 dev-login)。 */
+function loginMethodLabel(method: string): string {
+  const key = (method || '').trim().toLowerCase();
+  if (!key || key === 'dev-login' || key === 'password' || key === 'account') {
+    return '账号密码';
+  }
+  if (key.includes('wallet')) {
+    return '钱包';
+  }
+  if (key.includes('guest')) {
+    return '游客';
+  }
+  return method;
 }

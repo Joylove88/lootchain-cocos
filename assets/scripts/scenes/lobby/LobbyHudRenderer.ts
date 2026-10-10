@@ -842,7 +842,7 @@ export class LobbyHudRenderer {
     const recent = this.addChildLabel(parent, 'LobbyGoalTrackerRecent', goal.recentLine, left + padX, top - height * 0.475, 15 * scale, rgba(205, 187, 143), new Size(width - padX * 2, 20 * scale), HorizontalTextAlignment.LEFT);
     recent.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(recent, scale, false);
-    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + padX, top - height * 0.575, 14 * scale, rgba(151, 126, 82), new Size(width - padX * 2, 18 * scale), HorizontalTextAlignment.LEFT);
+    const boundary = this.addChildLabel(parent, 'LobbyGoalTrackerBoundary', goal.boundaryLine, left + padX, top - height * 0.575, 16 * scale, rgba(170, 146, 100), new Size(width - padX * 2, 22 * scale), HorizontalTextAlignment.LEFT);
     boundary.overflow = Label.Overflow.SHRINK;
     const btnW = width * 0.56;
     const btnH = btnW * (137 / 510);
@@ -907,8 +907,8 @@ export class LobbyHudRenderer {
       return {
         title: '同步主线目标',
         stageLine: '主线状态读取中',
-        recentLine: '正在回读最近无奖励战斗记录',
-        boundaryLine: '仅读取大厅状态，不写入资源。',
+        recentLine: '正在读取最近战斗记录',
+        boundaryLine: '正在同步主线进度…',
         actionLabel: '加载中',
         disabled: true,
         tone: 'loading',
@@ -919,7 +919,7 @@ export class LobbyHudRenderer {
         title: '主线目标异常',
         stageLine: '爬塔状态暂时不可用',
         recentLine: battleState.recentError ? '最近记录也读取异常' : this.formatRecentBattleLine(recent, false, ''),
-        boundaryLine: '可打开爬塔面板重试，不发起战斗。',
+        boundaryLine: '进入爬塔面板可重新读取。',
         actionLabel: '进入爬塔',
         disabled: false,
         tone: 'error',
@@ -930,7 +930,7 @@ export class LobbyHudRenderer {
         title: '开始爬塔',
         stageLine: '正在读取爬塔进度…',
         recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
-        boundaryLine: '准备英雄队伍后从爬塔面板选择关卡。',
+        boundaryLine: '编好英雄队伍,进入爬塔挑战首层。',
         actionLabel: '进入爬塔',
         disabled: false,
         tone: 'empty',
@@ -951,7 +951,7 @@ export class LobbyHudRenderer {
       title: '下一步目标',
       stageLine: this.goalStageLine(stage),
       recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
-      boundaryLine: '打开深渊爬塔选关；战斗胜利后自动结算发奖并推进主线。',
+      boundaryLine: '击败本层首领即可领取首通奖励,解锁下一层。',
       actionLabel: recent ? '继续爬塔' : '进入爬塔',
       disabled: false,
       tone: recent ? 'recent' : 'ready',

@@ -15,6 +15,7 @@ import type { LobbyAdventureChapterVO, LobbyAdventurePanelState, LobbyAdventureS
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitButton, mountKitSection } from '../UiKit';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
 import type { LobbyFormationPowerSnapshot } from './LobbyFormationPanelRenderer';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -163,7 +164,8 @@ export class LobbyAdventurePanelRenderer {
 
   private renderBody(parent: Node, width: number, height: number, scale: number, state: LobbyAdventurePanelState): void {
     const top = height / 2 - 112 * scale;
-    const bottom = -height / 2 + 86 * scale;
+    // 2026-10-10:底部说明行移除后地图下沿压到底边(读取失败时才留出刷新钮的位置)
+    const bottom = -height / 2 + (state.error ? 70 : 26) * scale;
     const bodyHeight = Math.max(160 * scale, top - bottom);
     const bodyWidth = width - 76 * scale;
     if (state.loading && !state.adventure) {
@@ -199,46 +201,24 @@ export class LobbyAdventurePanelRenderer {
       return;
     }
     const cardWidth = Math.min(300 * scale, mapWidth * 0.34);
-    const cardHeight = 118 * scale;
-    const card = this.host.addChildPlainNode(parent, 'LobbyAdventureMapActionCard', mapX + mapWidth / 2 - cardWidth / 2 - 14 * scale, mapY - mapHeight / 2 + cardHeight / 2 + 14 * scale, cardWidth, cardHeight);
-    const graphics = card.addComponent(Graphics);
-    graphics.fillColor = rgba(10, 8, 9, 222);
-    graphics.roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, 8 * scale);
-    graphics.fill();
-    graphics.strokeColor = rgba(196, 158, 92, 196);
-    graphics.lineWidth = Math.max(1, 1.2 * scale);
-    graphics.roundRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight, 8 * scale);
-    graphics.stroke();
-    const title = this.host.addChildLabel(card, 'LobbyAdventureMapActionTitle', safeText(stage.stageName), 0, cardHeight / 2 - 20 * scale, 24 * scale, rgba(248, 219, 151), new Size(cardWidth - 24 * scale, 30 * scale));
+    // 2026-10-10 全界面美化:卡底换四角金饰框、按钮换红金主按钮切图(UiKit)
+    const cardHeight = 138 * scale;
+    const card = mountKitSection(this.host, parent, 'LobbyAdventureMapActionCard', mapX + mapWidth / 2 - cardWidth / 2 - 14 * scale, mapY - mapHeight / 2 + cardHeight / 2 + 14 * scale, cardWidth, cardHeight, scale, 0.16);
+    const title = this.host.addChildLabel(card, 'LobbyAdventureMapActionTitle', safeText(stage.stageName), 0, cardHeight / 2 - 26 * scale, 24 * scale, rgba(248, 219, 151), new Size(cardWidth - 36 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    const powerLine = this.host.addChildLabel(card, 'LobbyAdventureMapActionPower', this.stagePowerLine(stage), 0, cardHeight / 2 - 44 * scale, 16 * scale, rgba(206, 186, 140), new Size(cardWidth - 24 * scale, 22 * scale));
+    const powerLine = this.host.addChildLabel(card, 'LobbyAdventureMapActionPower', this.stagePowerLine(stage), 0, cardHeight / 2 - 52 * scale, 16 * scale, rgba(206, 186, 140), new Size(cardWidth - 36 * scale, 22 * scale));
     powerLine.overflow = Label.Overflow.SHRINK;
-    const buttonWidth = Math.min(180 * scale, cardWidth - 36 * scale);
-    const formationButton = this.host.addChildPlainNode(card, 'LobbyAdventureFormationButton', 0, -cardHeight / 2 + 28 * scale, buttonWidth, 36 * scale);
+    const buttonWidth = Math.min(210 * scale, cardWidth - 40 * scale);
     const action = this.resolveStageAction(stage);
-    if (action.enabled) {
-      const buttonGraphics = formationButton.addComponent(Graphics);
-      buttonGraphics.fillColor = rgba(34, 24, 17, 226);
-      buttonGraphics.rect(-buttonWidth / 2, -18 * scale, buttonWidth, 36 * scale);
-      buttonGraphics.fill();
-      buttonGraphics.strokeColor = rgba(188, 137, 58, 216);
-      buttonGraphics.stroke();
-      formationButton.addComponent(Button);
-      formationButton.on(Button.EventType.CLICK, () => {
-        if (action.kind === 'upgrade') {
-          this.host.openLobbyHeroRosterPanel();
-          return;
-        }
-        this.host.selectLobbyAdventureStage(stage.stageCode);
-        this.showChallengeDialog(stage.stageCode);
-      }, this);
-      this.host.applyImageButtonFeedback(formationButton, 1.025, 0.975);
-    } else {
-      this.drawDisabledButton(formationButton, buttonWidth, 36 * scale, scale);
-    }
-    const formationLabel = this.host.addChildLabel(formationButton, 'LobbyAdventureFormationButtonLabel', action.label, 0, 0, 20 * scale, action.enabled ? rgba(245, 211, 123) : rgba(179, 150, 91), new Size(buttonWidth, 34 * scale));
-    formationLabel.overflow = Label.Overflow.SHRINK;
+    mountKitButton(this.host, card, 'LobbyAdventureFormationButton', action.label, 0, -cardHeight / 2 + 34 * scale, buttonWidth, 50 * scale, scale, action.enabled ? 'primary' : 'disabled', () => {
+      if (action.kind === 'upgrade') {
+        this.host.openLobbyHeroRosterPanel();
+        return;
+      }
+      this.host.selectLobbyAdventureStage(stage.stageCode);
+      this.showChallengeDialog(stage.stageCode);
+    }, 22);
     // 守卫水晶养成入口(docs/38):挂在行动卡正上方,出战前顺手升水晶。
     const crystalW = Math.min(200 * scale, cardWidth);
     const crystalH = 44 * scale;
@@ -347,14 +327,18 @@ export class LobbyAdventurePanelRenderer {
         graphics.stroke();
       }
     } else {
-      const graphics = row.addComponent(Graphics);
-      graphics.fillColor = rgba(14, 12, 14, 198);
-      graphics.rect(-width / 2, -height / 2 + 4 * scale, width, height - 8 * scale);
-      graphics.fill();
-      graphics.strokeColor = rgba(126, 106, 74, 122);
-      graphics.lineWidth = Math.max(1, scale);
-      graphics.rect(-width / 2, -height / 2 + 4 * scale, width, height - 8 * scale);
-      graphics.stroke();
+      // 2026-10-10:未选中行也用章节签切图(暗金版 chapter_tab,同尺寸),不再是灰色平框
+      const artHeight = Math.min(height - 4 * scale, width * (200 / 1536) * 2.0);
+      if (!this.host.addSprite('LobbyAdventureChapterTabArt', ADVENTURE_AI_CHAPTER_TAB_ASSET, 0, 0, width, artHeight, row)) {
+        const graphics = row.addComponent(Graphics);
+        graphics.fillColor = rgba(14, 12, 14, 198);
+        graphics.rect(-width / 2, -height / 2 + 4 * scale, width, height - 8 * scale);
+        graphics.fill();
+        graphics.strokeColor = rgba(126, 106, 74, 122);
+        graphics.lineWidth = Math.max(1, scale);
+        graphics.rect(-width / 2, -height / 2 + 4 * scale, width, height - 8 * scale);
+        graphics.stroke();
+      }
     }
     // 整行可点:切换地图显示章节;锁定章节走预览提示,不写玩家状态。
     row.addComponent(Button);
@@ -696,33 +680,12 @@ export class LobbyAdventurePanelRenderer {
   }
 
   private renderFooter(parent: Node, width: number, height: number, scale: number): void {
-    const note = this.host.addChildLabel(
-      parent,
-      'LobbyAdventureBoundaryNote',
-      '每层胜利后自动领取首通奖励并解锁下一层。',
-      0,
-      -height / 2 + 62 * scale, 17 * scale,
-      rgba(168, 146, 105),
-      new Size(width - 112 * scale, 24 * scale),
-    );
-    note.overflow = Label.Overflow.SHRINK;
-    const reload = this.addFooterButton(parent, 'LobbyAdventureReloadButton', '刷新', 0, -height / 2 + 30 * scale, 112 * scale, 36 * scale, scale);
-    reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyAdventure(), this);
-  }
-
-  private addFooterButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number): Node {
-    const button = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const graphics = button.addComponent(Graphics);
-    graphics.fillColor = rgba(20, 16, 15, 226);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.strokeColor = rgba(188, 137, 58, 216);
-    graphics.stroke();
-    button.addComponent(Button);
-    this.host.applyImageButtonFeedback(button, 1.025, 0.975);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 20 * scale, rgba(245, 211, 123), new Size(width, height));
-    label.overflow = Label.Overflow.SHRINK;
-    return button;
+    // 2026-10-10:常驻说明行与地图底部关卡名叠字,移除;刷新只在读取失败时出现(暗金次按钮切图)
+    void width;
+    if (!this.host.currentLobbyAdventureState().error) {
+      return;
+    }
+    mountKitButton(this.host, parent, 'LobbyAdventureReloadButton', '刷新', 0, -height / 2 + 34 * scale, 180 * scale, 50 * scale, scale, 'secondary', () => this.host.reloadLobbyAdventure());
   }
 
   private showChallengeDialog(stageCode: string): void {

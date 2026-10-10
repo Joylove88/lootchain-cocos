@@ -17,6 +17,8 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import type { LobbyNoticePanelState, LobbyNoticeVO } from '../../types/LobbyNoticeTypes';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
+import { mountKitButton, mountKitSection } from '../UiKit';
 
 export interface LobbyNoticePanelHost {
   node: Node;
@@ -48,8 +50,8 @@ export class LobbyNoticePanelRenderer {
   render(layout: UiLayout): void {
     const state = this.host.currentLobbyNoticeState();
     const scale = Math.max(0.68, Math.min(1, layout.uiScale));
-    const panelWidth = Math.max(300 * scale, layout.stageWidth);
-    const panelHeight = Math.max(260 * scale, layout.stageHeight);
+    // 2026-10-10 全界面美化:与更多 / 任务同款全屏实景框(原来是纯黑平框 + 一团红光)
+    const { width: panelWidth, height: panelHeight } = resolvePhoneDialogSize(layout);
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
 
@@ -68,18 +70,8 @@ export class LobbyNoticePanelRenderer {
     panelGroup.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
     // 面板本体阻挡输入事件，避免点击内容区时穿透到遮罩导致弹框关闭。
     panelGroup.addComponent(BlockInputEvents);
-    const panel = this.host.addChildBeveledPanelNode(
-      panelGroup,
-      'LobbyNoticeSceneFrame',
-      0,
-      0,
-      panelWidth,
-      panelHeight,
-      rgba(6, 6, 8, 232),
-      rgba(190, 141, 62, 226),
-      18 * scale,
-    );
-    this.drawPanelAtmosphere(panel, panelWidth, panelHeight, scale);
+    const panel = this.host.addChildPlainNode(panelGroup, 'LobbyNoticeSceneFrame', 0, 0, panelWidth, panelHeight);
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, 0);
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
     this.renderNoticeBody(panel, panelWidth, panelHeight, scale, state);
     this.renderFooter(panel, panelWidth, panelHeight, scale);
@@ -110,7 +102,7 @@ export class LobbyNoticePanelRenderer {
   private renderNoticeBody(parent: Node, width: number, height: number, scale: number, state: LobbyNoticePanelState): void {
     const phone = isPhoneDesign();
     const bodyTop = height / 2 - 112 * scale;
-    const bodyBottom = phone ? -height / 2 + 112 : -height / 2 + 82 * scale;
+    const bodyBottom = phone ? -height / 2 + 96 : -height / 2 + 86 * scale;
     const bodyHeight = Math.max(120 * scale, bodyTop - bodyBottom);
     const rowGap = 10 * scale;
     const notices = state.notices;
@@ -180,9 +172,9 @@ export class LobbyNoticePanelRenderer {
 
   private renderNoticeRow(parent: Node, notice: LobbyNoticeVO, index: number, x: number, y: number, width: number, height: number, scale: number): void {
     const phone = isPhoneDesign();
-    const row = this.host.addChildPlainNode(parent, `LobbyNoticeRow_${index}`, x, y, width, height);
-    const graphics = row.addComponent(Graphics);
-    this.traceRow(graphics, width, height, scale, index);
+    // 行底换四角金饰框(UiKit 区块框)
+    const row = mountKitSection(this.host, parent, `LobbyNoticeRow_${index}`, x, y, width, height, scale, 0.14);
+    void index;
 
     const badgeWidth = 74 * scale;
     const badge = this.host.addChildPlainNode(row, 'LobbyNoticeTypeBadge', -width / 2 + badgeWidth / 2 + 14 * scale, height / 2 - 25 * scale, badgeWidth, 25 * scale);
@@ -223,7 +215,7 @@ export class LobbyNoticePanelRenderer {
     content.lineHeight = phone ? Math.max(21 * scale, content.fontSize + 6) : 21 * scale;
     content.overflow = Label.Overflow.SHRINK;
 
-    const timeText = notice.publishTime ? `发布 ${notice.publishTime.slice(0, 16).replace('T', ' ')}` : '本地只读展示';
+    const timeText = notice.publishTime ? `发布 ${notice.publishTime.slice(0, 16).replace('T', ' ')}` : '';
     // 手机端发布时间挪到标题行右侧(原来贴在正文下沿,正文一长就与它重叠)。
     const time = phone
       ? this.host.addChildLabel(row, 'LobbyNoticePublishTime', timeText, width / 2 - 24, height / 2 - 24 * scale, 18, rgba(161, 139, 98), new Size(240, 26), HorizontalTextAlignment.RIGHT)
@@ -232,77 +224,22 @@ export class LobbyNoticePanelRenderer {
   }
 
   private renderFooter(parent: Node, width: number, height: number, scale: number): void {
-    // 手机端说明与刷新钮各自拉开(原来挤在底边 60 像素内),刷新钮加大好点。
+    // 2026-10-10:去掉「只读取公告信息…」开发口径说明;刷新钮换暗金次按钮切图
+    void width;
     const phone = isPhoneDesign();
-    const note = this.host.addChildLabel(
-      parent,
-      'LobbyNoticeBoundaryNote',
-      '当前面板只读取公告信息，不进入玩法，不改变玩家资源。',
-      0,
-      phone ? -height / 2 + 92 : -height / 2 + 62 * scale, 17 * scale,
-      rgba(167, 146, 105),
-      new Size(width - 110 * scale, 24 * scale),
-    );
-    note.overflow = Label.Overflow.SHRINK;
-
-    const reload = phone
-      ? this.addFooterButton(parent, 'LobbyNoticeReloadButton', '刷新', 0, -height / 2 + 38, 150, 46, scale)
-      : this.addFooterButton(parent, 'LobbyNoticeReloadButton', '刷新', 0, -height / 2 + 30 * scale, 112 * scale, 36 * scale, scale);
-    reload.on(Button.EventType.CLICK, () => this.host.reloadLobbyNotices(), this);
+    mountKitButton(this.host, parent, 'LobbyNoticeReloadButton', '刷新', 0, phone ? -height / 2 + 52 : -height / 2 + 46 * scale, phone ? 220 : 200 * scale, phone ? 60 : 54 * scale, phone ? 1.2 : scale, 'secondary',
+      () => this.host.reloadLobbyNotices());
   }
 
-  private addFooterButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number): Node {
-    const button = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const graphics = button.addComponent(Graphics);
-    graphics.fillColor = rgba(22, 18, 17, 222);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.strokeColor = rgba(184, 138, 62, 210);
-    graphics.stroke();
-    button.addComponent(Button);
-    this.host.applyImageButtonFeedback(button, 1.025, 0.97);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 20 * scale, rgba(242, 207, 122), new Size(width, height));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, false);
-    return button;
-  }
-
-  private drawPanelAtmosphere(panel: Node, width: number, height: number, scale: number): void {
-    const graphics = panel.addComponent(Graphics);
-    graphics.fillColor = rgba(118, 10, 18, 24);
-    graphics.rect(width * 0.1, -height * 0.3, width * 0.36, height * 0.6);
-    graphics.fill();
-    graphics.strokeColor = rgba(229, 181, 92, 64);
-    graphics.lineWidth = Math.max(1, 1 * scale);
-    graphics.moveTo(-width / 2 + 36 * scale, height / 2 - 92 * scale);
-    graphics.lineTo(width / 2 - 36 * scale, height / 2 - 92 * scale);
-    graphics.moveTo(-width / 2 + 38 * scale, -height / 2 + 74 * scale);
-    graphics.lineTo(width / 2 - 38 * scale, -height / 2 + 74 * scale);
-    graphics.stroke();
-  }
-
-  private traceRow(graphics: Graphics, width: number, height: number, scale: number, index: number): void {
-    graphics.fillColor = index % 2 === 0 ? rgba(10, 10, 13, 174) : rgba(18, 15, 13, 166);
-    graphics.moveTo(-width / 2 + 14 * scale, height / 2);
-    graphics.lineTo(width / 2 - 14 * scale, height / 2);
-    graphics.lineTo(width / 2, height / 2 - 13 * scale);
-    graphics.lineTo(width / 2, -height / 2 + 13 * scale);
-    graphics.lineTo(width / 2 - 14 * scale, -height / 2);
-    graphics.lineTo(-width / 2 + 14 * scale, -height / 2);
-    graphics.lineTo(-width / 2, -height / 2 + 13 * scale);
-    graphics.lineTo(-width / 2, height / 2 - 13 * scale);
-    graphics.close();
-    graphics.fill();
-    graphics.strokeColor = rgba(135, 101, 54, 125);
-    graphics.lineWidth = Math.max(1, 0.9 * scale);
-    graphics.stroke();
-  }
-
+  /** 后台公告类型码 → 玩家可读的角标(原来直接显示 HOME 等英文码)。 */
   private compactType(type: string): string {
-    if (!type) {
-      return '公告';
+    const key = (type || '').trim().toUpperCase();
+    const map: Record<string, string> = { HOME: '公告', NOTICE: '公告', SYSTEM: '系统', EVENT: '活动', ACTIVITY: '活动', MAINTAIN: '维护', MAINTENANCE: '维护', UPDATE: '更新', VERSION: '更新' };
+    if (map[key]) {
+      return map[key];
     }
-    return type.slice(0, 6);
+    // 已经是中文的类型名直接用(最多 4 字),其它英文码一律显示「公告」
+    return /[一-龥]/.test(type) ? type.slice(0, 4) : '公告';
   }
 
   private applyOutline(label: Label, scale: number, strong: boolean): void {

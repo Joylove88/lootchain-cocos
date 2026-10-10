@@ -65,6 +65,9 @@ async def main():
                     await ws.send(json.dumps({'id': my, 'method': method, 'params': params or {}}))
                     while True:
                         m = json.loads(await asyncio.wait_for(ws.recv(), timeout))
+                        if m.get('method') == 'Runtime.exceptionThrown':
+                            d = m['params']['exceptionDetails']
+                            print('  !! page exception', (d.get('exception', {}).get('description') or d.get('text', ''))[:700], flush=True)
                         if m.get('id') == my:
                             return m
 
@@ -74,6 +77,7 @@ async def main():
 
                 await call('Emulation.setDeviceMetricsOverride', {'width': w, 'height': h, 'deviceScaleFactor': 2 if mobile else 1, 'mobile': mobile,
                                                                    'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
+                await call('Runtime.enable')
                 if mobile:
                     await call('Emulation.setTouchEmulationEnabled', {'enabled': True, 'maxTouchPoints': 5})
                     await call('Network.setUserAgentOverride', {'userAgent': IPHONE_UA, 'platform': 'iPhone'})
@@ -93,9 +97,12 @@ async def main():
                     res = await ev(f"(async () => {{ const r = window.__root; try {{ await ({opener}); }} catch (e) {{ return 'open err ' + e.message; }} await new Promise(z => setTimeout(z, {int(wait * 1000 * WAIT_SCALE)})); return 'ok view=' + r.currentView; }})()", 120)
                     m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
                     path = os.path.join(SHOTS, f'{TAG}_{vp}_{name}.png')
-                    open(path, 'wb').write(base64.b64decode(m['result']['data']))
+                    if 'result' in m:
+                        open(path, 'wb').write(base64.b64decode(m['result']['data']))
+                    else:
+                        print('  !! screenshot failed', str(m.get('error'))[:300], flush=True)
                     cl = await ev(f"(async () => {{ const r = window.__root; try {{ {closer}; }} catch (e) {{ return 'close err ' + e.message; }} await new Promise(z => setTimeout(z, 800)); return 'view=' + r.currentView; }})()", 60)
-                    print(vp, name, res, "|", cl, await ev("JSON.stringify(window.__dlgLog || null)", 20))
+                    print(vp, name, res, "|", cl, flush=True)
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{base.PORT}/json/close/{t['id']}", timeout=5)
             except Exception:

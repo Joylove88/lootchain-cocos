@@ -66,6 +66,7 @@ import { AdaptiveStageLayoutResolver, type AdaptiveStageLayoutHost } from './Ada
 import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
+import { mountKitBackdrop, type UiKitHost } from './UiKit';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
 import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
 import type { ProfileRenameState } from './lobby/LobbyProfileDialogRenderer';
@@ -1273,6 +1274,8 @@ export class LootChainGameRoot extends Component {
     cover.fillColor = new Color(10, 8, 9, 255);
     cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
     cover.fill();
+    // 2026-10-10 全界面美化:纯黑底上垫一层压暗的大教堂实景(读到图才有),不再是一整屏黑
+    mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
       forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材',

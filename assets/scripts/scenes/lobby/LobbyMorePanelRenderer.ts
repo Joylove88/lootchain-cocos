@@ -8,6 +8,7 @@ import {
   Label,
   Node,
   Size,
+  Sprite,
   UITransform,
   Vec3,
 } from 'cc';
@@ -15,6 +16,7 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO } from '../../types/QuestTypes';
+import { mountKitButton, mountKitSection } from '../UiKit';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 
 export interface LobbyMorePanelHost {
@@ -26,7 +28,7 @@ export interface LobbyMorePanelHost {
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addChildLabel(parent: Node, name: string, text: string, x: number, y: number, fontSize: number, color: Color, contentSize: Size, horizontalAlign?: HorizontalTextAlignment): Label;
-  addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Node | null;
+  addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean, options?: { frameless?: boolean; placeholder?: string }): EditBox;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   closeLobbyMorePanel(): void;
@@ -64,7 +66,8 @@ export class LobbyMorePanelRenderer {
   constructor(private readonly host: LobbyMorePanelHost) {}
 
   render(layout: UiLayout): void {
-    if (isPhoneDesign()) {
+    // 2026-10-10 全界面美化:电脑端也用全屏实景框版式(原电脑版是黑底上的小平框,背后一片空)
+    if (isPhoneDesign() || layout.stageWidth >= 900) {
       this.renderPhone(layout);
       return;
     }
@@ -222,8 +225,8 @@ export class LobbyMorePanelRenderer {
     const giftTop = cardY - cardH / 2 - 44;
     this.addSectionTitle(panel, 'gift', '兑换码', leftL, giftTop, panelWidth, 1.2, leftR);
     const inputY = giftTop - 62;
-    const btnW = 150;
-    const btnH = 52;
+    const btnW = 190;
+    const btnH = 60;
     const inputWidth = Math.min(420, leftW - btnW - 60);
     const inputX = leftL + 14 + inputWidth / 2;
     this.giftCodeInput = this.host.addFramedEditBox('', centerX + inputX, centerY + inputY, inputWidth, layout, false, { placeholder: '输入礼包码' });
@@ -261,25 +264,11 @@ export class LobbyMorePanelRenderer {
   /** 兑换按钮(红底金边,兑换中置灰不可点)。 */
   private addGiftRedeemButton(panel: Node, x: number, y: number, btnW: number, btnH: number, scale: number): void {
     const redeeming = this.host.isLobbyGiftRedeeming();
-    const btn = this.host.addChildPlainNode(panel, 'GiftRedeemButton', x, y, btnW, btnH);
-    const bg = btn.addComponent(Graphics);
-    bg.fillColor = redeeming ? rgba(50, 40, 32, 220) : rgba(122, 32, 24, 240);
-    bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 8 * scale);
-    bg.fill();
-    bg.strokeColor = redeeming ? rgba(130, 108, 70, 160) : rgba(242, 190, 98, 235);
-    bg.lineWidth = Math.max(1, 1.4 * scale);
-    bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 8 * scale);
-    bg.stroke();
-    const btnText = this.host.addChildLabel(btn, 'Text', redeeming ? '兑换中…' : '兑 换', 0, 0, 16 * scale, rgba(255, 230, 168), new Size(btnW - 10 * scale, btnH));
-    btnText.overflow = Label.Overflow.SHRINK;
-    if (!redeeming) {
-      btn.addComponent(Button);
-      btn.on(Button.EventType.CLICK, () => {
-        const code = (this.giftCodeInput?.string ?? '').trim();
-        this.host.redeemLobbyGiftCode(code);
-      }, this);
-      this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
-    }
+    // 2026-10-10:红金主按钮切图(UiKit),兑换中置灰不可点
+    mountKitButton(this.host, panel, 'GiftRedeemButton', redeeming ? '兑换中…' : '兑 换', x, y, btnW, btnH, scale / 1.3, redeeming ? 'disabled' : 'primary', () => {
+      const code = (this.giftCodeInput?.string ?? '').trim();
+      this.host.redeemLobbyGiftCode(code);
+    }, 24);
   }
 
   /** 协议链接 + 客服邮箱(2026-09-25:协议可点开全文);中文按 1 字宽、ASCII 按半字宽估算,整行居中。 */
@@ -310,15 +299,8 @@ export class LobbyMorePanelRenderer {
   }
 
   private addGridCard(parent: Node, key: string, label: string, badge: number, x: number, y: number, width: number, height: number, scale: number, onClick: () => void): void {
-    const card = this.host.addChildPlainNode(parent, `LobbyMoreCard_${key}`, x, y, width, height);
-    const g = card.addComponent(Graphics);
-    g.fillColor = rgba(20, 18, 22, 210);
-    g.roundRect(-width / 2, -height / 2, width, height, 10 * scale);
-    g.fill();
-    g.strokeColor = rgba(150, 114, 62, 190);
-    g.lineWidth = Math.max(1, 1.2 * scale);
-    g.roundRect(-width / 2, -height / 2, width, height, 10 * scale);
-    g.stroke();
+    // 2026-10-10:宫格底换四角金饰框(UiKit 区块框,与设置 / 水晶同款)
+    const card = mountKitSection(this.host, parent, `LobbyMoreCard_${key}`, x, y, width, height, scale, 0.16);
     const iconSize = width * 0.46;
     const iconY = height * 0.14;
     if (!this.host.addSprite(`LobbyMoreCardIcon_${key}`, MORE_ICON_ASSETS[key] ?? '', 0, iconY, iconSize, iconSize, card)) {

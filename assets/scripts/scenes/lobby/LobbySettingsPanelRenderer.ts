@@ -1,6 +1,5 @@
 import {
   BlockInputEvents,
-  Button,
   Color,
   Graphics,
   HorizontalTextAlignment,
@@ -17,6 +16,8 @@ import { renderSceneBackButton } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { GRAPHICS_FRAME_RATES, getGraphicsFrameRate, getGraphicsMode, setGraphicsFrameRate, setGraphicsMode } from '../../app/GraphicsSettings';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
+import { mountKitBackdrop, mountKitSection, mountKitToggle } from '../UiKit';
 
 /** 手机全屏版里语言 / 声音两区左右并排时的区块矩形(面板内坐标)与区内字号放大系数。 */
 interface SettingsSectionRect {
@@ -49,12 +50,14 @@ export interface LobbySettingsPanelHost {
 }
 
 /**
- * 大厅设置页当前只承载本地显示语言切换，不连接账号、经济、背包、英雄养成或抽卡写接口。
+ * 大厅设置页:语言 + 声音与画面。只改本地显示 / 音频 / 画质偏好,不连接账号、经济等写接口。
+ * 2026-10-10 全界面美化:手机用全屏实景框(与更多 / 任务同款),电脑用 refine_panel_bg 4:3 素净框;
+ * 区块换四角金饰底框,选项换水晶页签同款金 / 暗开关(UiKit)。
  */
 export class LobbySettingsPanelRenderer {
-  /** 手机全屏时两区并排的矩形;电脑端为 null(走原来上下叠放的固定偏移)。 */
-  private languageRect: SettingsSectionRect | null = null;
-  private audioRect: SettingsSectionRect | null = null;
+  /** 两个区块在面板内的矩形(手机左右并排、电脑上下叠放),s 为区内字号缩放。 */
+  private languageRect: SettingsSectionRect = { x: 0, y: 0, w: 0, h: 0, s: 1 };
+  private audioRect: SettingsSectionRect = { x: 0, y: 0, w: 0, h: 0, s: 1 };
 
   constructor(private readonly host: LobbySettingsPanelHost) {}
 
@@ -62,30 +65,41 @@ export class LobbySettingsPanelRenderer {
     const scale = Math.max(0.72, Math.min(1, layout.uiScale));
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    // 手机横屏全屏(2026-10-02 用户「横屏模式下弹框都调整成全屏」):与公告页同口径铺满舞台,语言 / 声音两区左右并排放大。
     const phone = isPhoneDesign();
-    const panelWidth = phone ? layout.stageWidth : Math.min(layout.stageWidth - 44 * scale, 620 * scale);
-    // 2026-09-04 音效开关入驻:面板加高一档容纳"声音"区。
-    const panelHeight = phone ? layout.stageHeight : Math.min(layout.stageHeight - 86 * scale, 560 * scale);
+    let panelWidth: number;
+    let panelHeight: number;
     if (phone) {
-      const gap = 56;
-      const sectionW = Math.min(620, (panelWidth - gap * 3) / 2);
-      const sectionH = Math.min(350, panelHeight - 200);
-      const sectionY = -20;
+      ({ width: panelWidth, height: panelHeight } = resolvePhoneDialogSize(layout));
+      const gap = 48;
+      const sectionW = Math.min(640, (panelWidth - 64 - gap) / 2);
+      const sectionH = Math.min(420, panelHeight - 190);
+      const sectionY = -24;
       this.languageRect = { x: -sectionW / 2 - gap / 2, y: sectionY, w: sectionW, h: sectionH, s: 1.3 };
       this.audioRect = { x: sectionW / 2 + gap / 2, y: sectionY, w: sectionW, h: sectionH, s: 1.3 };
     } else {
-      this.languageRect = null;
-      this.audioRect = null;
+      // refine_panel_bg 是 4:3 一体构图,只能等比;内容两侧留 ≥7.5%(外侧透明 + 边框约占 5.5%)
+      panelWidth = Math.min(layout.stageWidth - 44 * scale, 860 * scale, (layout.stageHeight - 40 * scale) / 0.75);
+      panelHeight = panelWidth * 0.75;
+      const sectionW = panelWidth * 0.8;
+      const langH = panelHeight * 0.29;
+      const audioH = panelHeight * 0.44;
+      const gap = panelHeight * 0.035;
+      const top = panelHeight / 2 - panelHeight * 0.115;
+      this.languageRect = { x: 0, y: top - langH / 2, w: sectionW, h: langH, s: scale };
+      this.audioRect = { x: 0, y: top - langH - gap - audioH / 2, w: sectionW, h: audioH, s: scale };
     }
 
     const dim = this.createUiNode('LobbySettingsDim');
     dim.setPosition(new Vec3(centerX, centerY, 0));
     dim.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
-    const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 120);
-    dimGraphics.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
-    dimGraphics.fill();
+    if (phone) {
+      const dimGraphics = dim.addComponent(Graphics);
+      dimGraphics.fillColor = rgba(0, 0, 0, 150);
+      dimGraphics.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
+      dimGraphics.fill();
+    } else {
+      mountKitBackdrop(this.host, dim, layout.width, layout.height);
+    }
     dim.addComponent(BlockInputEvents);
 
     const panelGroup = this.createUiNode('LobbySettingsSceneContent');
@@ -93,23 +107,14 @@ export class LobbySettingsPanelRenderer {
     panelGroup.addComponent(UITransform).setContentSize(new Size(panelWidth, panelHeight));
     panelGroup.addComponent(BlockInputEvents);
 
-    const panel = this.host.addChildBeveledPanelNode(
-      panelGroup,
-      'LobbySettingsSceneFrame',
-      0,
-      0,
-      panelWidth,
-      panelHeight,
-      rgba(7, 7, 10, 236),
-      rgba(192, 145, 66, 226),
-      18 * scale,
-    );
-    if (!phone) {
-      this.drawPanelChrome(panel, panelWidth, panelHeight, scale);
+    const panel = this.host.addChildPlainNode(panelGroup, 'LobbySettingsSceneFrame', 0, 0, panelWidth, panelHeight);
+    if (phone) {
+      drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, 0);
+    } else if (!this.host.addSprite('LobbySettingsPanelArt', 'ui/hero/ai/refine_panel_bg/spriteFrame', 0, 0, panelWidth, panelHeight, panel)) {
+      this.host.addChildBeveledPanelNode(panel, 'LobbySettingsPanelFallback', 0, 0, panelWidth, panelHeight, rgba(7, 7, 10, 236), rgba(192, 145, 66, 226), 18 * scale);
     }
-    this.renderHeader(panel, panelWidth, panelHeight, phone ? 1.2 : scale, phone ? panelHeight / 2 - 120 : undefined);
-    this.renderLanguageSection(panel, panelWidth, panelHeight, scale);
-    this.renderAudioSection(panel, panelWidth, panelHeight, scale);
+    this.renderLanguageSection(panel);
+    this.renderAudioSection(panel);
     renderSceneBackButton(this.host, panelGroup, layout, 'LobbySettingsBackButton', () => this.host.closeLobbySettingsPanel(), scale, lootChainI18n.t('settings.title'));
   }
 
@@ -117,223 +122,61 @@ export class LobbySettingsPanelRenderer {
     return this.host.createUiNode(name);
   }
 
-  private renderHeader(parent: Node, width: number, height: number, scale: number, y = height / 2 - 91 * scale): void {
-    // 中央标题移除:页面标题统一由左上返回组件的横幅承担。
-
-    const subtitle = this.host.addChildLabel(
-      parent,
-      'LobbySettingsSubtitle',
-      lootChainI18n.t('settings.languageDetail'),
-      0,
-      y, 19 * scale,
-      rgba(198, 168, 104),
-      new Size(width - 118 * scale, 28 * scale),
-    );
-    subtitle.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(subtitle, scale, false);
-  }
-
-  private renderLanguageSection(parent: Node, width: number, height: number, panelScale: number): void {
-    const rect = this.languageRect;
-    const scale = rect ? rect.s : panelScale;
-    const sectionWidth = rect ? rect.w : Math.min(width - 82 * scale, 490 * scale);
-    // 2026-09-04:压缩语言区(190→150)给下方"声音"区腾位。
-    const sectionHeight = rect ? rect.h : 150 * scale;
-    const sectionY = rect ? rect.y : height / 2 - 116 * scale - 14 * scale - sectionHeight / 2;
-    const section = this.host.addChildBeveledPanelNode(
-      parent,
-      'LobbySettingsLanguagePanel',
-      rect ? rect.x : 0,
-      sectionY,
-      sectionWidth,
-      sectionHeight,
-      rgba(14, 12, 13, 210),
-      rgba(135, 99, 52, 176),
-      14 * scale,
-    );
-
-    const label = this.host.addChildLabel(
-      section,
-      'LobbySettingsLanguageLabel',
-      lootChainI18n.t('settings.languageRow'),
-      -sectionWidth / 2 + 30 * scale,
-      sectionHeight / 2 - 42 * scale,
-      22 * scale,
-      rgba(245, 218, 151),
-      new Size(sectionWidth - 60 * scale, 34 * scale),
-      HorizontalTextAlignment.LEFT,
-    );
+  /** 区块标题(左对齐,加粗描边)+ 副行说明;返回区块节点。 */
+  private mountSection(parent: Node, name: string, rect: SettingsSectionRect, title: string, detail: string): Node {
+    const scale = rect.s;
+    const section = mountKitSection(this.host, parent, name, rect.x, rect.y, rect.w, rect.h, scale);
+    const padX = 34 * scale;
+    const label = this.host.addChildLabel(section, `${name}Title`, title, -rect.w / 2 + padX, rect.h / 2 - 40 * scale, 24 * scale, rgba(248, 222, 160), new Size(rect.w - padX * 2, 34 * scale), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, true);
-
-    const current = this.host.addChildLabel(
-      section,
-      'LobbySettingsCurrentLanguage',
-      `${lootChainI18n.t('language.current')}  ${lootChainI18n.languageLabel()}`,
-      -sectionWidth / 2 + 30 * scale,
-      sectionHeight / 2 - 75 * scale, 18 * scale,
-      rgba(184, 163, 118),
-      new Size(sectionWidth - 60 * scale, 26 * scale),
-      HorizontalTextAlignment.LEFT,
-    );
-    current.overflow = Label.Overflow.SHRINK;
-
-    const buttonWidth = Math.min(186 * scale, (sectionWidth - 84 * scale) / 2);
-    const buttonHeight = 44 * scale;
-    const gap = 24 * scale;
-    const buttonY = rect ? -sectionHeight / 2 + 78 : -sectionHeight / 2 + 34 * scale;
-    this.addLanguageButton(section, 'zh-CN', -buttonWidth / 2 - gap / 2, buttonY, buttonWidth, buttonHeight, scale);
-    this.addLanguageButton(section, 'en-US', buttonWidth / 2 + gap / 2, buttonY, buttonWidth, buttonHeight, scale);
+    const sub = this.host.addChildLabel(section, `${name}Detail`, detail, -rect.w / 2 + padX, rect.h / 2 - 72 * scale, 17 * scale, rgba(184, 163, 118), new Size(rect.w - padX * 2, 26 * scale), HorizontalTextAlignment.LEFT);
+    sub.overflow = Label.Overflow.SHRINK;
+    return section;
   }
 
-  /** 声音区(音效底铺配套,2026-09-04):音乐/音效开关,状态持久化在 GameAudio;点击原地重建刷新。 */
-  private renderAudioSection(parent: Node, width: number, height: number, panelScale: number): void {
+  private renderLanguageSection(parent: Node): void {
+    const rect = this.languageRect;
+    const scale = rect.s;
+    const section = this.mountSection(parent, 'LobbySettingsLanguagePanel', rect, lootChainI18n.t('settings.languageRow'), `${lootChainI18n.t('language.current')}  ${lootChainI18n.languageLabel()}`);
+    const buttonWidth = Math.min(210 * scale, (rect.w - 96 * scale) / 2);
+    const buttonHeight = 56 * scale;
+    const gap = 28 * scale;
+    // 按钮放在标题区以下剩余空间的中线
+    const buttonY = (rect.h / 2 - 92 * scale - rect.h / 2) / 2;
+    (['zh-CN', 'en-US'] as LootChainLanguage[]).forEach((language, index) => {
+      const active = lootChainI18n.currentLanguage() === language;
+      const text = language === 'zh-CN' ? lootChainI18n.t('language.simplifiedChinese') : lootChainI18n.t('language.english');
+      mountKitToggle(this.host, section, `LobbySettingsLanguageButton_${language}`, text, (index === 0 ? -1 : 1) * (buttonWidth / 2 + gap / 2), buttonY, buttonWidth, buttonHeight, scale, active,
+        () => this.host.setLobbyLanguage(language), 21);
+    });
+  }
+
+  /** 声音与画面:音乐 / 音效开关 + 画质档位 + 帧率;点击后只重建本区块。 */
+  private renderAudioSection(parent: Node): void {
     parent.getChildByName('LobbySettingsAudioPanel')?.destroy();
     const rect = this.audioRect;
-    const scale = rect ? rect.s : panelScale;
-    const sectionWidth = rect ? rect.w : Math.min(width - 82 * scale, 490 * scale);
-    // 2026-10-05:声音区下面加一行「画面 / 帧率」(用户:设置里加画面设置,流畅 / 极致 + 帧率 30 / 60 / 120)
-    const sectionHeight = rect ? rect.h : 190 * scale;
-    const languageBottom = height / 2 - 116 * scale - 14 * scale - 150 * scale;
-    const sectionY = rect ? rect.y : languageBottom - 14 * scale - sectionHeight / 2;
-    const section = this.host.addChildBeveledPanelNode(
-      parent,
-      'LobbySettingsAudioPanel',
-      rect ? rect.x : 0,
-      sectionY,
-      sectionWidth,
-      sectionHeight,
-      rgba(14, 12, 13, 210),
-      rgba(135, 99, 52, 176),
-      14 * scale,
-    );
-    const label = this.host.addChildLabel(
-      section,
-      'LobbySettingsAudioLabel',
-      '声音与画面',
-      -sectionWidth / 2 + 30 * scale,
-      // 手机两区并排:标题与左边「语言」同一行高
-      rect ? sectionHeight / 2 - 42 * scale : sectionHeight / 2 - 34 * scale,
-      22 * scale,
-      rgba(245, 218, 151),
-      new Size(sectionWidth - 60 * scale, 34 * scale),
-      HorizontalTextAlignment.LEFT,
-    );
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, true);
-    if (rect) {
-      // 手机两区并排:补一行说明与左边「当前语言」对齐,免得右区标题下方空一大块。
-      const detail = this.host.addChildLabel(
-        section,
-        'LobbySettingsAudioDetail',
-        '流畅:降低分辨率、减少特效,卡顿时选它;极致:全部拉满',
-        -sectionWidth / 2 + 30 * scale,
-        sectionHeight / 2 - 75 * scale, 18 * scale,
-        rgba(184, 163, 118),
-        new Size(sectionWidth - 60 * scale, 26 * scale),
-        HorizontalTextAlignment.LEFT,
-      );
-      detail.overflow = Label.Overflow.SHRINK;
-    }
-    const buttonWidth = Math.min(186 * scale, (sectionWidth - 84 * scale) / 2);
-    const buttonHeight = 44 * scale;
-    const gap = 24 * scale;
-    const rowStep = buttonHeight + 14 * scale;
-    const graphicsY = rect ? -sectionHeight / 2 + 62 : -sectionHeight / 2 + 34 * scale;
-    const buttonY = graphicsY + rowStep;
-    this.addAudioToggle(section, parent, width, height, '音乐', gameAudio.bgmEnabled(), () => gameAudio.setBgmEnabled(!gameAudio.bgmEnabled()), -buttonWidth / 2 - gap / 2, buttonY, buttonWidth, buttonHeight, scale);
-    this.addAudioToggle(section, parent, width, height, '音效', gameAudio.sfxEnabled(), () => gameAudio.setSfxEnabled(!gameAudio.sfxEnabled()), buttonWidth / 2 + gap / 2, buttonY, buttonWidth, buttonHeight, scale);
+    const scale = rect.s;
+    const section = this.mountSection(parent, 'LobbySettingsAudioPanel', rect, '声音与画面', '流畅:降低分辨率、减少特效,卡顿时选它;极致:全部拉满');
+    const buttonWidth = Math.min(210 * scale, (rect.w - 96 * scale) / 2);
+    const buttonHeight = 56 * scale;
+    const gap = 28 * scale;
+    const rowGap = 16 * scale;
+    const areaMid = (rect.h / 2 - 92 * scale - rect.h / 2) / 2;
+    const row1 = areaMid + (buttonHeight + rowGap) / 2;
+    const row2 = areaMid - (buttonHeight + rowGap) / 2;
+    const leftX = -buttonWidth / 2 - gap / 2;
+    const rightX = buttonWidth / 2 + gap / 2;
+    const refresh = (): void => this.renderAudioSection(parent);
+    const bgm = gameAudio.bgmEnabled();
+    const sfx = gameAudio.sfxEnabled();
+    mountKitToggle(this.host, section, 'LobbySettingsAudioToggle_音乐', `音乐:${bgm ? '开' : '关'}`, leftX, row1, buttonWidth, buttonHeight, scale, bgm, () => { gameAudio.setBgmEnabled(!bgm); refresh(); }, 21);
+    mountKitToggle(this.host, section, 'LobbySettingsAudioToggle_音效', `音效:${sfx ? '开' : '关'}`, rightX, row1, buttonWidth, buttonHeight, scale, sfx, () => { gameAudio.setSfxEnabled(!sfx); refresh(); }, 21);
     const smooth = getGraphicsMode() === 'smooth';
-    this.addAudioToggle(section, parent, width, height, '画面', !smooth, () => setGraphicsMode(smooth ? 'ultra' : 'smooth'), -buttonWidth / 2 - gap / 2, graphicsY, buttonWidth, buttonHeight, scale, `画面:${smooth ? '流畅' : '极致'}`);
+    mountKitToggle(this.host, section, 'LobbySettingsAudioToggle_画面', `画面:${smooth ? '流畅' : '极致'}`, leftX, row2, buttonWidth, buttonHeight, scale, !smooth, () => { setGraphicsMode(smooth ? 'ultra' : 'smooth'); refresh(); }, 21);
     const fps = getGraphicsFrameRate();
     const nextFps = GRAPHICS_FRAME_RATES[(GRAPHICS_FRAME_RATES.indexOf(fps as 30 | 60 | 120) + 1) % GRAPHICS_FRAME_RATES.length];
-    this.addAudioToggle(section, parent, width, height, '帧率', fps >= 60, () => setGraphicsFrameRate(nextFps), buttonWidth / 2 + gap / 2, graphicsY, buttonWidth, buttonHeight, scale, `帧率:${fps}`);
-  }
-
-  private addAudioToggle(
-    section: Node,
-    panel: Node,
-    panelWidth: number,
-    panelHeight: number,
-    name: string,
-    enabled: boolean,
-    toggle: () => void,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    scale: number,
-    text?: string,
-  ): void {
-    const button = this.host.addChildPlainNode(section, `LobbySettingsAudioToggle_${name}`, x, y, width, height);
-    button.addComponent(Button);
-    button.on(Button.EventType.CLICK, () => {
-      toggle();
-      this.renderAudioSection(panel, panelWidth, panelHeight, scale);
-    }, this);
-    this.host.applyImageButtonFeedback(button, 1.025, 0.975);
-    const graphics = button.addComponent(Graphics);
-    const bevel = 10 * scale;
-    graphics.fillColor = enabled ? rgba(89, 65, 30, 238) : rgba(12, 11, 13, 218);
-    this.traceBeveled(graphics, width, height, bevel);
-    graphics.fill();
-    graphics.strokeColor = enabled ? rgba(245, 203, 101, 236) : rgba(132, 96, 50, 188);
-    graphics.lineWidth = Math.max(1, enabled ? 2 * scale : 1.3 * scale);
-    this.traceBeveled(graphics, width, height, bevel);
-    graphics.stroke();
-    const label = this.host.addChildLabel(button, 'Text', text ?? `${name}:${enabled ? '开' : '关'}`, 0, 0, 20 * scale, enabled ? rgba(255, 231, 166) : rgba(180, 165, 140), new Size(width - 28 * scale, height));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, enabled);
-  }
-
-  private addLanguageButton(parent: Node, language: LootChainLanguage, x: number, y: number, width: number, height: number, scale: number): void {
-    const active = lootChainI18n.currentLanguage() === language;
-    const button = this.host.addChildPlainNode(parent, `LobbySettingsLanguageButton_${language}`, x, y, width, height);
-    button.addComponent(Button);
-    button.on(Button.EventType.CLICK, () => this.host.setLobbyLanguage(language), this);
-    this.host.applyImageButtonFeedback(button, 1.025, 0.975);
-
-    const graphics = button.addComponent(Graphics);
-    const bevel = 10 * scale;
-    graphics.fillColor = active ? rgba(89, 65, 30, 238) : rgba(12, 11, 13, 218);
-    this.traceBeveled(graphics, width, height, bevel);
-    graphics.fill();
-    graphics.strokeColor = active ? rgba(245, 203, 101, 236) : rgba(132, 96, 50, 188);
-    graphics.lineWidth = Math.max(1, active ? 2 * scale : 1.3 * scale);
-    this.traceBeveled(graphics, width, height, bevel);
-    graphics.stroke();
-
-    const text = language === 'zh-CN' ? lootChainI18n.t('language.simplifiedChinese') : lootChainI18n.t('language.english');
-    const label = this.host.addChildLabel(button, 'LobbySettingsLanguageButtonLabel', text, 0, 0, 20 * scale, active ? rgba(255, 231, 166) : rgba(219, 196, 145), new Size(width - 28 * scale, height));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, active);
-  }
-
-  private drawPanelChrome(parent: Node, width: number, height: number, scale: number): void {
-    const graphics = parent.addComponent(Graphics);
-    graphics.fillColor = rgba(0, 0, 0, 78);
-    graphics.rect(-width / 2, height / 2 - 116 * scale, width, 1.5 * scale);
-    graphics.rect(-width / 2, -height / 2 + 72 * scale, width, 1.5 * scale);
-    graphics.fill();
-    graphics.strokeColor = rgba(220, 174, 82, 86);
-    graphics.lineWidth = Math.max(1, 1.1 * scale);
-    graphics.moveTo(-width / 2 + 38 * scale, height / 2 - 116 * scale);
-    graphics.lineTo(width / 2 - 38 * scale, height / 2 - 116 * scale);
-    graphics.moveTo(-width / 2 + 38 * scale, -height / 2 + 72 * scale);
-    graphics.lineTo(width / 2 - 38 * scale, -height / 2 + 72 * scale);
-    graphics.stroke();
-  }
-
-  private traceBeveled(graphics: Graphics, width: number, height: number, bevel: number): void {
-    graphics.moveTo(-width / 2 + bevel, height / 2);
-    graphics.lineTo(width / 2 - bevel, height / 2);
-    graphics.lineTo(width / 2, height / 2 - bevel);
-    graphics.lineTo(width / 2, -height / 2 + bevel);
-    graphics.lineTo(width / 2 - bevel, -height / 2);
-    graphics.lineTo(-width / 2 + bevel, -height / 2);
-    graphics.lineTo(-width / 2, -height / 2 + bevel);
-    graphics.lineTo(-width / 2, height / 2 - bevel);
-    graphics.close();
+    mountKitToggle(this.host, section, 'LobbySettingsAudioToggle_帧率', `帧率:${fps}`, rightX, row2, buttonWidth, buttonHeight, scale, fps >= 60, () => { setGraphicsFrameRate(nextFps); refresh(); }, 21);
   }
 
   private applyOutline(label: Label, scale: number, strong: boolean): void {

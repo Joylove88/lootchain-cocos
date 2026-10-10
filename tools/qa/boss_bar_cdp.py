@@ -43,7 +43,7 @@ JS_LOGIN = r"""(async () => {
   if (root.currentView === 'login') {
     let btn = null; const w = n => { if (btn) return; if (n.name === 'MainAccountLoginButton') { btn = n; return; } n.children.forEach(w); }; w(cc.director.getScene());
     if (btn) btn.emit(cc.Button.EventType.CLICK);
-    for (let i = 0; i < 20 && root.currentView !== 'loginAccount'; i++) await sleep(300);
+    for (let i = 0; i < 80 && root.currentView !== 'loginAccount'; i++) { await sleep(300); if (i % 15 === 14 && btn) btn.emit(cc.Button.EventType.CLICK); }
   }
   if (root.currentView === 'loginAccount') {
     const boxes = []; const w2 = n => { const e = n.getComponent && n.getComponent(cc.EditBox); if (e) boxes.push(e); n.children.forEach(w2); }; w2(cc.director.getScene());

@@ -21,6 +21,7 @@ import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitButton, mountKitSection } from '../UiKit';
 import {
   describeEquipAttrs,
   equipQualityColor,
@@ -110,6 +111,8 @@ type ForgeTab = 'enhance' | 'fuse' | 'decompose' | 'gem';
 
 /** 锻造工坊宿主:装备缓存/强化/合成/分解状态与操作全部由 GameRoot 提供(服务器权威)。 */
 export interface LobbyForgePanelHost {
+  /** 空装备时「去召唤」直达召唤页(2026-10-10)。 */
+  openLobbyGachaScene?(): void;
   currentLobbyProfile(): PlayerLobbyProfileVO;
   currentLobbyBagState(): LobbyBagPanelState;
   currentLobbyHeroEquipState(): {
@@ -287,8 +290,7 @@ export class LobbyForgePanelRenderer {
       const loading = this.host.addChildLabel(panel, 'LobbyForgeLoading', '装备读取中…', 0, 0, 22 * scale, rgba(196, 182, 150), new Size(panelWidth - 80 * scale, 36 * scale));
       loading.overflow = Label.Overflow.SHRINK;
     } else if (state.items.length <= 0) {
-      const empty = this.host.addChildLabel(panel, 'LobbyForgeEmpty', '暂无装备:主线首通与装备召唤均可获取。', 0, 0, 21 * scale, rgba(170, 156, 128), new Size(panelWidth - 80 * scale, 36 * scale));
-      empty.overflow = Label.Overflow.SHRINK;
+      this.renderEmptyCard(panel, scale);
     } else if (forge.tab === 'enhance') {
       this.renderEnhanceTab(body, state, forge, tabWidth, panelHeight, contentTop, contentBottom, scale);
     } else if (forge.tab === 'fuse') {
@@ -608,6 +610,24 @@ export class LobbyForgePanelRenderer {
   }
 
   // 顶部货币胶囊栏(强化页,参考图右上):金币 / 钻石 / 强化石,复用 bag 货币条与图标。
+  /** 空装备提示卡(2026-10-10 全界面美化:原来是熔炉场景正中一行灰字)。 */
+  private renderEmptyCard(panel: Node, scale: number): void {
+    const cardW = 520 * scale;
+    const cardH = 236 * scale;
+    const card = mountKitSection(this.host, panel, 'LobbyForgeEmpty', 0, -10 * scale, cardW, cardH, scale, 0.2);
+    this.host.addSprite('LobbyForgeEmptyIcon', `${FORGE_AI_NAV_PREFIX}enhance/spriteFrame`, 0, cardH / 2 - 52 * scale, 74 * scale, 74 * scale, card);
+    const title = this.host.addChildLabel(card, 'LobbyForgeEmptyTitle', '暂无装备', 0, cardH / 2 - 108 * scale, 26 * scale, rgba(248, 222, 160), new Size(cardW - 60 * scale, 34 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+    title.enableOutline = true;
+    title.outlineColor = rgba(0, 0, 0, 220);
+    title.outlineWidth = Math.max(1, 1.5 * scale);
+    const sub = this.host.addChildLabel(card, 'LobbyForgeEmptyText', '主线首通与装备召唤均可获取装备', 0, cardH / 2 - 140 * scale, 18 * scale, rgba(190, 172, 136), new Size(cardW - 60 * scale, 26 * scale));
+    sub.overflow = Label.Overflow.SHRINK;
+    if (this.host.openLobbyGachaScene) {
+      mountKitButton(this.host, card, 'LobbyForgeEmptyGacha', '去召唤', 0, -cardH / 2 + 40 * scale, 200 * scale, 54 * scale, scale, 'primary', () => this.host.openLobbyGachaScene?.());
+    }
+  }
+
   private renderCurrencyBar(parent: Node, panelWidth: number, panelHeight: number, scale: number): void {
     const profile = this.host.currentLobbyProfile();
     renderTopCurrencyBar(this.host, parent, panelWidth / 2, panelHeight / 2, scale, [

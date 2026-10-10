@@ -298,7 +298,8 @@ export class LobbyHeroRosterPanelRenderer {
     const items: Array<{ key: string; icon: string | null; text: string; width: number; dot?: Color }> = compact
       ? [{ key: 'Owned', icon: LOBBY_HERO_ROSTER_TOP_ICON_HERO, text: `拥有 ${state.heroes.length}`, width: 118 * scale }]
       : [
-        { key: 'Status', icon: null, text: statusText, width: 104 * scale, dot: statusColor },
+        // 2026-10-10:「已同步」状态灯是开发口径,只在读取中 / 失败时显示
+        ...(state.loaded && !state.loading && !state.error ? [] : [{ key: 'Status', icon: null, text: statusText, width: 104 * scale, dot: statusColor }]),
         { key: 'Owned', icon: LOBBY_HERO_ROSTER_TOP_ICON_HERO, text: `拥有 ${state.heroes.length}`, width: 122 * scale },
         { key: 'Power', icon: LOBBY_HERO_ROSTER_TOP_ICON_POWER, text: `战力 ${formatCompactInteger(power)}`, width: 158 * scale },
       ];
@@ -1221,18 +1222,8 @@ export class LobbyHeroRosterPanelRenderer {
   }
 
   private renderFooter(parent: Node, width: number, height: number, scale: number): void {
-    const maxWidth = Math.max(160 * scale, width - 420 * scale);
-    const note = this.host.addChildLabel(
-      parent,
-      'LobbyHeroRosterBoundaryNote',
-      '英雄列表只读展示；进入英雄详情可升级，升星、觉醒、抽卡、领取仍关闭。',
-      -width / 2 + 42 * scale,
-      -height / 2 + 30 * scale, 16 * scale,
-      rgba(170, 150, 109),
-      new Size(maxWidth, 24 * scale),
-      HorizontalTextAlignment.LEFT,
-    );
-    note.overflow = Label.Overflow.SHRINK;
+    // 2026-10-10 全界面美化:底部「只读展示…仍关闭」开发口径说明移除。
+    void parent; void width; void height; void scale;
   }
 
   private drawFallbackBackdrop(parent: Node, width: number, height: number, scale: number): void {
