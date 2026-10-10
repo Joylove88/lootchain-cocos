@@ -3835,7 +3835,7 @@ export class LobbyHeroDetailPanelRenderer {
     } else if (candidates.length <= 0) {
       // 2026-10-10 全界面美化:空态加徽章图标 + 两行说明(原来大块空面板里只有一行灰字)
       const midY = (listTop + listBottom) / 2;
-      this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + 40 * scale, 76 * scale, 76 * scale, panel);
+      this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + 52 * scale, 110 * scale, 110 * scale, panel);
       const emptyTitle = selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备';
       const emptyText = selectedSlot ? '主线首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格';
       const empty = this.host.addChildLabel(panel, 'WearEmpty', emptyTitle, 0, midY - 14 * scale, 20 * scale, rgba(232, 208, 156), new Size(width - 44 * scale, 26 * scale));

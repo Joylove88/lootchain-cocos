@@ -276,7 +276,7 @@ export class LoginRenderer {
       this.renderThirdPartyLogin(dividerY, socialY, layout, centerX, inner);
     }
     this.renderAgreement(agreementY, layout, centerX, state.agreementAccepted);
-    this.host.addButton('返回登录', layout.safeLeft + 62 * scale, layout.safeTop - 26 * scale, () => this.host.renderLogin(), layout, 118 * scale, 38 * scale);
+    this.renderBackButton(layout, scale);
     // 不显示第三方登录时,提示放进按钮与协议之间的空白处;放在默认的屏幕底部会和协议行叠在一起(手机横屏,2026-10-05)
     const hintY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? undefined : (enterButtonY - loginH / 2 + agreementY) / 2;
     this.accountStatusY = hintY ?? null;
@@ -535,4 +535,29 @@ export class LoginRenderer {
     label.color = rgba(245, 210, 122);
     return button;
   }
+
+  /** 左上「返回登录」:暗铁按钮切图(bag_button_dark 512×158 等比),图没读到时回退通用按钮。2026-10-10 全界面美化。 */
+  private renderBackButton(layout: UiLayout, scale: number): void {
+    const h = 44 * scale;
+    const w = h * (512 / 158);
+    const x = layout.safeLeft + 18 * scale + w / 2;
+    const y = layout.safeTop - 30 * scale;
+    const node = this.host.createUiNode('LoginBackButton');
+    node.setPosition(x, y, 0);
+    node.addComponent(UITransform).setContentSize(new Size(w, h));
+    if (!this.host.addSprite('Art', 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, w, h, node)) {
+      node.destroy();
+      this.host.addButton('返回登录', layout.safeLeft + 62 * scale, layout.safeTop - 26 * scale, () => this.host.renderLogin(), layout, 118 * scale, 38 * scale);
+      return;
+    }
+    const label = this.host.addChildLabel(node, 'Label', '返回登录', 0, 0, 19 * scale, rgba(240, 214, 156), new Size(w * 0.74, h * 0.7));
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableOutline = true;
+    label.outlineColor = rgba(0, 0, 0, 220);
+    label.outlineWidth = Math.max(1, 1.4 * scale);
+    node.addComponent(Button);
+    node.on(Button.EventType.CLICK, () => this.host.renderLogin(), this);
+    this.host.applyImageButtonFeedback(node, 1.04, 0.96);
+  }
+
 }

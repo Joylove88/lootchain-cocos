@@ -6452,6 +6452,15 @@ export class LobbyGuardBattleRenderer {
     const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2, detailSize, rgba(222, 212, 190, 245), new Size(innerW, detailH));
     detail.overflow = Label.Overflow.SHRINK;
     detail.enableWrapText = true;
+    // 2026-10-10 全界面巡检:一行放不下时在逗号处主动换行,避免自动折行把最后一个字孤零零甩到第二行(「可叠 / 加」)
+    const detailChars = Array.from(option.detail);
+    const perLine = Math.max(1, Math.floor(innerW / Math.max(1, detail.fontSize)));
+    if (detailChars.length > perLine && !option.detail.includes('\n')) {
+      const cut = option.detail.lastIndexOf(',', perLine);
+      if (cut > 0) {
+        detail.string = `${option.detail.slice(0, cut + 1)}\n${option.detail.slice(cut + 1)}`;
+      }
+    }
     // 手机端工厂会把小字抬到 20 号,行高跟着实际字号走,否则多行互相压字。
     detail.lineHeight = Math.round(Math.max(detailSize, detail.fontSize) * 1.3);
     detail.verticalAlign = VerticalTextAlignment.TOP;
