@@ -160,6 +160,15 @@ export class LobbyAdventurePanelRenderer {
     );
     status.overflow = Label.Overflow.SHRINK;
     this.applyOutline(status, scale, false);
+    // 推荐语两侧金饰(按字数估宽,放不下就不挂)
+    const textW = Math.min(width - 116 * scale, Array.from(statusText).reduce((sum, ch) => sum + ((ch.codePointAt(0) ?? 0) > 255 ? 1 : 0.55), 0) * status.fontSize);
+    const dividerW = 130 * scale;
+    const dividerX = textW / 2 + 18 * scale + dividerW / 2;
+    if (dividerX + dividerW / 2 < width / 2 - 70 * scale) {
+      const y = height / 2 - 80 * scale;
+      this.host.addSprite('LobbyAdventureStatusDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, y, dividerW, dividerW * (76 / 390), parent);
+      this.host.addSprite('LobbyAdventureStatusDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerX, y, dividerW, dividerW * (73 / 392), parent);
+    }
   }
 
   private renderBody(parent: Node, width: number, height: number, scale: number, state: LobbyAdventurePanelState): void {
@@ -825,9 +834,7 @@ export class LobbyAdventurePanelRenderer {
   private drawPanelAtmosphere(parent: Node, width: number, height: number, scale: number): void {
     const node = this.host.addChildPlainNode(parent, 'LobbyAdventurePanelAtmosphere', 0, 0, width, height);
     const graphics = node.addComponent(Graphics);
-    graphics.fillColor = rgba(99, 12, 19, 44);
-    graphics.rect(-width / 2 + 18 * scale, height / 2 - 94 * scale, width - 36 * scale, 50 * scale);
-    graphics.fill();
+    // 2026-10-10 全界面美化:顶部平涂红带去掉,推荐语两侧改挂金饰分隔(renderHeader)
     graphics.fillColor = rgba(197, 64, 42, 36);
     graphics.circle(width * 0.16, height * 0.06, Math.min(width, height) * 0.22);
     graphics.fill();

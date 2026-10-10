@@ -18,6 +18,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitTab } from '../UiKit';
 
 export interface LobbyProfileDialogHost {
   node: Node;
@@ -320,40 +321,19 @@ export class LobbyProfileDialogRenderer {
     const firstY = panelHeight / 2 - 188 * scale;
     entries.forEach((entry, index) => {
       const y = firstY - index * 90 * scale;
-      const node = this.host.addChildPlainNode(panel, `LobbyProfileNav_${entry.key}`, navX, y, navW, navH);
-      const g = node.addComponent(Graphics);
-      if (entry.active) {
-        // 红牌底 + 右缘金线,呼应参考图的选中态
-        g.fillColor = rgba(118, 20, 18, 225);
-        g.roundRect(-navW / 2, -navH / 2, navW, navH, 6 * scale);
-        g.fill();
-        g.strokeColor = rgba(222, 176, 96, 235);
-        g.lineWidth = Math.max(1, 1.6 * scale);
-        g.roundRect(-navW / 2, -navH / 2, navW, navH, 6 * scale);
-        g.stroke();
-        g.fillColor = rgba(240, 196, 110, 250);
-        g.rect(navW / 2 - 5 * scale, -navH / 2 + 8 * scale, 3 * scale, navH - 16 * scale);
-        g.fill();
-      } else {
-        g.fillColor = rgba(16, 12, 14, 150);
-        g.roundRect(-navW / 2, -navH / 2, navW, navH, 6 * scale);
-        g.fill();
-        g.strokeColor = rgba(96, 74, 44, 150);
-        g.lineWidth = Math.max(1, 1.2 * scale);
-        g.roundRect(-navW / 2, -navH / 2, navW, navH, 6 * scale);
-        g.stroke();
-      }
+      // 2026-10-10 全界面美化:手绘红牌换页签切图(任务页签同款红底金边 / 暗底),与英雄详情左栏一致
+      const node = mountKitTab(this.host, panel, `LobbyProfileNav_${entry.key}`, '', navX, y, navW, navH, scale, entry.active);
       const iconSize = 36 * scale;
-      this.host.addSprite(`LobbyProfileNavIcon_${entry.key}`, entry.icon, -navW / 2 + 32 * scale, 0, iconSize, iconSize, node);
+      this.host.addSprite(`LobbyProfileNavIcon_${entry.key}`, entry.icon, -navW / 2 + 46 * scale, 0, iconSize, iconSize, node);
       const label = this.host.addChildLabel(
         node,
         'Text',
         entry.label,
-        -navW / 2 + 62 * scale,
+        -navW / 2 + 74 * scale,
         0,
         Math.max(12, 21 * scale),
         entry.active ? rgba(255, 236, 196) : rgba(176, 160, 132),
-        new Size(navW - 70 * scale, navH),
+        new Size(navW - 100 * scale, navH),
         HorizontalTextAlignment.LEFT,
       );
       label.overflow = Label.Overflow.SHRINK;

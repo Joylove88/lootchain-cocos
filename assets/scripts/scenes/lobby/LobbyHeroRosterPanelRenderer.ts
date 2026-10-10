@@ -354,7 +354,10 @@ export class LobbyHeroRosterPanelRenderer {
       this.applyOutline(label, scale, false);
       cursor += item.width;
     });
-    // 刷新按钮:信息板左侧,金边胶囊
+    // 刷新按钮:信息板左侧,金边胶囊。2026-10-10 全界面美化:列表进页自动读取,常驻「刷新」是开发口径,只在读取失败时出现
+    if (!state.error) {
+      return;
+    }
     const reloadWidth = 92 * scale;
     const reloadX = barX - barW / 2 - 10 * scale - reloadWidth / 2;
     if (reloadX - reloadWidth / 2 < topBarLeftReserve) {
