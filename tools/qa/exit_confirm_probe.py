@@ -109,11 +109,15 @@ async def main():
                     break
                 await asyncio.sleep(3)
             print(await ev(base.JS_LOGIN), flush=True)
-            for _ in range(30):
+            for _ in range(120):  # 正式包首访整包下载 + 自动登录可能要 1 分钟以上
                 if (await ev("!!(window.__root && window.__root.currentView === 'lobby')")) is True:
                     break
                 await asyncio.sleep(1)
             await asyncio.sleep(4)
+            if '--warm-pages' in ARGS:
+                # 复现用户顺序:先在大厅开过名册 / 锻造等页面(这些大图进内存),回大厅后再进战斗(进场会释放它们)
+                for opener in ('openLobbyHeroRosterPanel', 'openLobbyForgePanel'):
+                    print('OPEN', opener, await ev("(async () => { const r = window.__root; if (typeof r.%s !== 'function') return 'no fn'; r.%s(); await new Promise(z => setTimeout(z, 4000)); const v = r.currentView; r.closeAllLobbyScenePanelFlags && r.closeAllLobbyScenePanelFlags(); r.currentView = 'lobby'; r.renderCurrentView(); await new Promise(z => setTimeout(z, 1500)); return v; })()" % (opener, opener)), flush=True)
             print('ENTER', (await ev(ENTER) or '')[:1500], flush=True)
             print('STATE', await ev("JSON.stringify({ view: window.__root.currentView, status: (window.__root.lastStatusText || ''), st: (() => { const s = window.__root.currentLobbyBattleState(); return { error: s.error, loading: s.assetsLoading, start: !!s.start }; })() })"), flush=True)
             await asyncio.sleep(3)
@@ -135,7 +139,7 @@ async def main():
             await asyncio.sleep(2.5)
             print('AFTER', await ev("JSON.stringify({ view: window.__root.currentView, exitOpen: window.__gr && window.__gr.exitConfirmOpen, hasBattleRoot: (() => { let f = false; const w = n => { if (n.name === 'LobbyGuardBattleRoot') f = true; n.children.forEach(w); }; w(window.__cc.director.getScene()); return f; })() })"), flush=True)
             await shot('after_tap')
-            print('page exceptions:', exc)
+            print('page exceptions:', len(exc), exc[:3])
     finally:
         proc.terminate()
 

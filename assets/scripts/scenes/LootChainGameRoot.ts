@@ -203,8 +203,9 @@ const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard',
  * 战斗里会用的 ui/common、ui/bag(结算奖励图标)、ui/hero(星星 / 面板底 / 按钮)、ui/crystal(法术图标)、ui/daily(档位徽记)、ui/battle、ui/guard 不在此列。
  */
 const BATTLE_IDLE_UI_DIR_PREFIXES = [
+  // ui/guide(大厅引导层)、ui/formation(进关前编队确认)战斗前后都会用到,不释放
   'ui/forge/', 'ui/adventure/', 'ui/hero-roster/', 'ui/hero-detail/', 'ui/gacha/', 'ui/codex/', 'ui/mission/', 'ui/profile/',
-  'ui/equip/', 'ui/formation/', 'ui/guide/', 'ui/protagonist/',
+  'ui/equip/', 'ui/protagonist/',
 ] as const;
 /** 电脑端后台读进内存的其余玩法页界面图(整目录;素材已在本地时才有意义,见 prefetchBattleEssentialsInBackground)。 */
 const BACKGROUND_WARM_UI_DIRS = [
@@ -2956,18 +2957,34 @@ export class LootChainGameRoot extends Component {
   private returnToLobbyFromBattlePreview(): void {
     const lastBattleStageCode = this.selectedLobbyStageCode ?? '';
     // 回到大厅时结束战斗表现计时，并回读只读大厅数据，保证闭环后的 HUD 与入口状态是最新快照。
+    // 2026-10-10 用户手机上「点确认退出没反应」(电脑复现不了):每一步单独兜底,任何一步出错都继续往下走、
+    // 一定切回大厅,并把第一处错误显示在状态栏(截图即可定位)。
+    let firstError = '';
+    const step = (name: string, fn: () => void): void => {
+      try {
+        fn();
+      } catch (error) {
+        console.error(`[LootChain] returnToLobby ${name} failed`, error);
+        if (!firstError) {
+          firstError = `${name}: ${String((error as Error)?.message ?? error).slice(0, 80)}`;
+        }
+      }
+    };
     this.lobbyBattlePreviewPanelOpen = false;
     this.lobbyFormationPanelOpen = false;
-    this.lobbyBattleFlow.cancel(true);
-    this.lobbyGuardBattleRenderer.unmount();
+    step('cancel', () => this.lobbyBattleFlow.cancel(true));
+    step('unmount', () => this.lobbyGuardBattleRenderer.unmount());
     this.currentView = 'lobby';
-    this.removeLobbyBattlePreviewPanel();
-    this.removeLobbyFormationPanel();
-    this.renderLobby();
-    this.refreshLobbyReadonlyStateAfterBattle();
+    step('removePreview', () => this.removeLobbyBattlePreviewPanel());
+    step('removeFormation', () => this.removeLobbyFormationPanel());
+    step('renderLobby', () => this.renderLobby());
+    step('refresh', () => this.refreshLobbyReadonlyStateAfterBattle());
     if (this.lobbyDailyDungeonPanelOpen && isDailyDungeonStageCode(lastBattleStageCode)) {
       // 从每日副本战斗归来直接回到副本面板并刷新剩余次数。
-      this.openLobbyDailyDungeonPanel();
+      step('dailyPanel', () => this.openLobbyDailyDungeonPanel());
+    }
+    if (firstError) {
+      this.setStatus(`返回大厅时出现异常,请截图反馈:${firstError}`);
     }
   }
 

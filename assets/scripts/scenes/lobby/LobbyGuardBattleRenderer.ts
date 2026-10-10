@@ -3480,11 +3480,25 @@ export class LobbyGuardBattleRenderer {
     });
     const buttonY = phone ? -150 : -panelH / 2 + 88;
     const confirm = this.mountDangerButton(overlay, 'GuardExitConfirmOk', phone ? -200 : -panelW * 0.2, buttonY, phone ? 250 : 200, '确认退出');
-    confirm.on(Node.EventType.TOUCH_END, () => {
+    // 2026-10-10 用户手机上「点确认退出没反应」:按下即生效(不等抬起,避免手指稍微滑动就丢掉 TOUCH_END),只触发一次;
+    // 退出出错时状态栏显示原因(returnToLobbyFromBattlePreview 内逐步兜底)
+    let exiting = false;
+    const doExit = (): void => {
+      if (exiting) {
+        return;
+      }
+      exiting = true;
       this.exitConfirmOpen = false;
       this.settingsOpen = false;
-      this.host.returnToLobbyFromBattlePreview();
-    }, this);
+      try {
+        this.host.returnToLobbyFromBattlePreview();
+      } catch (error) {
+        console.error('[LootChain] exit battle failed', error);
+        this.host.setStatus(`退出战斗时出现异常,请截图反馈:${String((error as Error)?.message ?? error).slice(0, 80)}`);
+      }
+    };
+    confirm.on(Node.EventType.TOUCH_END, doExit, this);
+    confirm.on(Node.EventType.TOUCH_CANCEL, doExit, this);
     const cancel = this.mountPrimaryTextButton(overlay, 'GuardExitConfirmCancel', phone ? 200 : panelW * 0.2, buttonY, phone ? 270 : 216, '继续战斗');
     cancel.on(Node.EventType.TOUCH_END, () => this.closeExitConfirm(), this);
   }

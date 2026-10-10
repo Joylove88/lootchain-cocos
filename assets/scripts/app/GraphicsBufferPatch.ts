@@ -1,4 +1,4 @@
-import { gfx, Graphics, Node, RenderingSubMesh, sp } from 'cc';
+import { gfx, Graphics, Node, RenderingSubMesh, sp, Sprite } from 'cc';
 import { HTML5 } from 'cc/env';
 
 /**
@@ -168,9 +168,43 @@ export function installSiblingIndexGuard(): void {
   };
 }
 
-/** 启动时调用:Graphics 显存按需增长 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护。 */
+/**
+ * 兜底:图片组件引用了已释放的贴图(SpriteFrame 被销毁后 uv 为空)时,引擎每帧 updateUVs 读 null 抛异常,
+ * 同一帧后面的渲染全部中断(2026-10-10 用户手机控制台 1463 条 "reading '0'":画面停住,点「确认退出」看起来没反应)。
+ * 画之前发现贴图已失效就把它摘掉(这张图不画,其余照常),并兜住个别组件的异常不让它拖垮整帧。
+ */
+export function installSpriteReleasedFrameGuard(): void {
+  const proto = Sprite.prototype as unknown as Record<string, unknown>;
+  const original = proto.updateRenderer as ((this: Sprite) => void) | undefined;
+  if (typeof original !== 'function' || proto.__lcReleasedFrameGuard) {
+    return;
+  }
+  proto.__lcReleasedFrameGuard = true;
+  let reported = 0;
+  proto.updateRenderer = function updateRenderer(this: Sprite): void {
+    const frame = this.spriteFrame as (Sprite['spriteFrame'] & { uv?: number[] | null }) | null;
+    if (frame && (!frame.isValid || !frame.uv)) {
+      if (reported < 5) {
+        reported += 1;
+        console.warn(`[LootChain] sprite on ${this.node?.name ?? '?'} referenced a released frame; cleared`);
+      }
+      this.spriteFrame = null;
+    }
+    try {
+      original.call(this);
+    } catch (error) {
+      if (reported < 5) {
+        reported += 1;
+        console.warn(`[LootChain] sprite render failed on ${this.node?.name ?? '?'}`, error);
+      }
+    }
+  };
+}
+
+/** 启动时调用:Graphics 显存按需增长 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护。 */
 export function installEnginePerfPatches(): void {
   installGraphicsBufferPatch();
   installSpineSocketIndexPatch();
   installSiblingIndexGuard();
+  installSpriteReleasedFrameGuard();
 }

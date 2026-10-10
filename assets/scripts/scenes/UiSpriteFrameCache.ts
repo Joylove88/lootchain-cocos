@@ -440,9 +440,10 @@ export class UiSpriteFrameCache {
         }
       }
     }
+    // 引擎释放贴图是延迟到帧末才真正销毁,此刻 isValid 仍为 true:属于这些目录的条目一律清掉
+    //(画面上仍在用、没被释放的,下次 resolve 时会从 resources.get 重新取回;2026-10-10 手机上缓存里留了待销毁的帧)
     for (const path of Array.from(this.spriteFrames.keys())) {
-      const frame = this.spriteFrames.get(path);
-      if (idle(path) && (!frame || !frame.isValid)) {
+      if (idle(path)) {
         this.spriteFrames.delete(path);
       }
     }
