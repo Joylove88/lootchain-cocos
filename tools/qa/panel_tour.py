@@ -22,8 +22,11 @@ STEPS = [
     ('codex', 'r.openLobbyCodexPanel()', 'r.closeLobbyCodexPanel()', 4),
     ('formation', 'r.openLobbyFormationPanel()', 'r.closeLobbyFormationPanel()', 4),
     ('roster', 'r.openLobbyHeroRosterPanel()', 'r.closeLobbyHeroRosterPanel()', 6),
-    ('herodetail', '(async () => { r.openLobbyHeroRosterPanel(); for (let i = 0; i < 60 && !(r.lobbyHeroRosterState.panelState.heroes || []).length; i++) await new Promise(z => setTimeout(z, 300)); await new Promise(z => setTimeout(z, 1500)); r.openLobbyHeroDetail(r.lobbyHeroRosterState.panelState.heroes[0].heroId); })()',
+    ('herodetail', '(async () => { r.openLobbyHeroRosterPanel(); const pick = () => (r.lobbyHeroRosterLoader.currentState().heroes || []).find(h => h.id > 0 && !/^EX/i.test(h.rarity) && !/^EX_/i.test(h.heroCode)); for (let i = 0; i < 60 && !pick(); i++) await new Promise(z => setTimeout(z, 300)); await new Promise(z => setTimeout(z, 1500)); r.openLobbyHeroDetail(pick().id);  })()',
      'r.closeLobbyHeroDetailPanel(); r.closeLobbyHeroRosterPanel && r.closeLobbyHeroRosterPanel()', 6),
+    ('herodetail_equip', "(async () => { r.openLobbyHeroRosterPanel(); const pick = () => (r.lobbyHeroRosterLoader.currentState().heroes || []).find(h => h.id > 0 && !/^EX/i.test(h.rarity) && !/^EX_/i.test(h.heroCode)); for (let i = 0; i < 60 && !pick(); i++) await new Promise(z => setTimeout(z, 300)); await new Promise(z => setTimeout(z, 1500)); r.openLobbyHeroDetail(pick().id); await new Promise(z => setTimeout(z, 2500)); r.lobbyHeroDetailTab = 'equip'; r.renderCurrentView(); })()", 'r.closeLobbyHeroDetailPanel(); r.closeLobbyHeroRosterPanel && r.closeLobbyHeroRosterPanel()', 6),
+    ('herodetail_skill', "(async () => { r.openLobbyHeroRosterPanel(); const pick = () => (r.lobbyHeroRosterLoader.currentState().heroes || []).find(h => h.id > 0 && !/^EX/i.test(h.rarity) && !/^EX_/i.test(h.heroCode)); for (let i = 0; i < 60 && !pick(); i++) await new Promise(z => setTimeout(z, 300)); await new Promise(z => setTimeout(z, 1500)); r.openLobbyHeroDetail(pick().id); await new Promise(z => setTimeout(z, 2500)); r.lobbyHeroDetailTab = 'skill'; r.renderCurrentView(); })()", 'r.closeLobbyHeroDetailPanel(); r.closeLobbyHeroRosterPanel && r.closeLobbyHeroRosterPanel()', 6),
+    ('herodetail_star', "(async () => { r.openLobbyHeroRosterPanel(); const pick = () => (r.lobbyHeroRosterLoader.currentState().heroes || []).find(h => h.id > 0 && !/^EX/i.test(h.rarity) && !/^EX_/i.test(h.heroCode)); for (let i = 0; i < 60 && !pick(); i++) await new Promise(z => setTimeout(z, 300)); await new Promise(z => setTimeout(z, 1500)); r.openLobbyHeroDetail(pick().id); await new Promise(z => setTimeout(z, 2500)); r.lobbyHeroDetailTab = 'star'; r.renderCurrentView(); })()", 'r.closeLobbyHeroDetailPanel(); r.closeLobbyHeroRosterPanel && r.closeLobbyHeroRosterPanel()', 6),
     ('daily', 'r.openLobbyDailyDungeonPanel()', 'r.closeLobbyDailyDungeonPanel()', 4),
     ('gacha', 'r.openLobbyGachaScene()', 'r.closeGachaScene()', 5),
     ('quest', 'r.openLobbyQuestPanel()', 'r.closeLobbyQuestPanel()', 4),
@@ -37,6 +40,7 @@ STEPS = [
     ('shop_stamina', "r.openLobbyShopDialog('stamina')", 'r.closeLobbyShopDialog()', 4),
     ('crystal', 'r.openGuardCrystalDialog()', 'r.closeGuardCrystalDialog()', 6),
     ('furnace', 'r.openLobbyTokenFurnace()', 'r.closeLobbyTokenFurnace()', 4),
+    ('challengedlg', "(async () => { r.openLobbyAdventurePanel(); for (let i = 0; i < 40 && !(r.lobbyAdventureLoader && true); i++) await new Promise(z => setTimeout(z, 200)); await new Promise(z => setTimeout(z, 3000)); const a = r.currentLobbyAdventureState().adventure; const code = (a && a.recommendedStageCode) || 'MAIN_1_2'; r.lobbyAdventurePanelRenderer.showChallengeDialog(code); })()", 'r.lobbyAdventurePanelRenderer.resetChallengeDialog(); r.closeLobbyAdventurePanel()', 3),
     ('challenge', "r.openLobbyBattlePreviewPanel('MAIN_1_1')", 'r.closeLobbyBattlePreviewPanel(); r.returnToLobbyFromBattlePreview && r.returnToLobbyFromBattlePreview()', 5),
 ]
 

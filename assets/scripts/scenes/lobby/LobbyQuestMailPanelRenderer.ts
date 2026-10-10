@@ -903,7 +903,8 @@ export class LobbyQuestMailPanelRenderer {
 
   // ── 邮件面板 ──
   renderMailPanel(layout: UiLayout): void {
-    if (isPhoneDesign()) {
+    // 2026-10-10 全界面美化:电脑端也用全屏实景版式(原电脑版是黑底小平框)
+    if (isPhoneDesign() || layout.stageWidth >= 900) {
       this.renderMailPanelPhone(layout);
       return;
     }

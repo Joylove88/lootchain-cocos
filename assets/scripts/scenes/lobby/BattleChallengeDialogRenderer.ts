@@ -6,109 +6,202 @@ import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import { safeText } from '../UiTextFormatter';
 import { rgba } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
+import { drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
+import { mountKitButton, mountKitSection } from '../UiKit';
+import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 export interface BattleChallengeDialogHost { node: Node; createUiNode(name: string): Node; addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node; addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node; addChildLabel(parent: Node, name: string, text: string, x: number, y: number, fontSize: number, color: Color, contentSize?: Size, horizontalAlign?: HorizontalTextAlignment): Label; addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null; applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void; openFormation(stageCode: string): void; startBattle(stageCode: string): void; closeChallengeDialog(): void; }
-const CHALLENGE_BUTTON_PRIMARY_ASSET = 'ui/common/ai/button_primary/spriteFrame';
-const CHALLENGE_BUTTON_RETURN_DIS_ASSET = 'ui/common/ai/button_return_dis/spriteFrame';
-// C1812 弹窗统一视觉：羊皮纸主框 + 标题横幅(加载失败自动回退原黑底金边框)。
-const CHALLENGE_POPUP_PARCHMENT_ASSET = 'ui/common/ai/popup_frame_large/spriteFrame';
-const CHALLENGE_TITLE_BANNER_ASSET = 'ui/common/ai/title_banner/spriteFrame';
+
+const CLOSE_ASSET = 'ui/common/ai/button_close/spriteFrame';
+const TITLE_DIVIDER_LEFT_ASSET = 'ui/common/ai/title_divider_left/spriteFrame';
+const TITLE_DIVIDER_RIGHT_ASSET = 'ui/common/ai/title_divider_right/spriteFrame';
+const REWARD_SLOT_ASSET = 'ui/common/ai/bag_slot/spriteFrame';
+/** 奖励预览文案 → 图标(按关键词;认不出的只显示文字格)。 */
+const REWARD_ICON_RULES: Array<{ match: RegExp; path: string; aspect: number }> = [
+  { match: /金币/, path: 'ui/common/ai/ic_gold_medium/spriteFrame', aspect: 153 / 176 },
+  { match: /经验书/, path: 'ui/common/ai/ic_exp_book/spriteFrame', aspect: 154 / 193 },
+  { match: /强化石/, path: 'ui/common/ai/ic_enhance_gem/spriteFrame', aspect: 196 / 131 },
+  { match: /钻/, path: 'ui/common/ai/ic_diamond_gem/spriteFrame', aspect: 95 / 97 },
+];
+const RARITY_COLORS: Record<string, Color> = {
+  UR: rgba(255, 96, 80), SSR: rgba(255, 190, 70), SR: rgba(196, 120, 255), R: rgba(96, 170, 255),
+};
+
 /**
- * 手机横屏全屏版(2026-10-02 用户「横屏模式下弹框都调整成全屏」):面板铺满舞台、底色不透明(否则冒险页标题透出来),
- * 区块文字 / 按钮同比放大 1.35 倍,通关条件两行字给足盒高。
+ * 关卡挑战确认弹框(敌方阵容 / 奖励 / 我方阵容 / 布阵 / 挑战)。
+ * 2026-10-10 全界面美化:原来是黑底平框 + 文字清单 + 字母 X;改为全屏实景框(电脑居中大框)、金饰标题、
+ * 区块换四角金饰框,奖励改图标格、我方阵容改头像排,关闭钮与按钮换切图。
  */
-const PHONE_TEXT_SCALE = 1.35;
 export class BattleChallengeDialogRenderer {
   constructor(private readonly host: BattleChallengeDialogHost) {}
+
   render(centerX: number, centerY: number, layoutWidth: number, layoutHeight: number, scale: number, stage: LobbyAdventureStageVO, formation: LobbyHeroItemVO[], canChallenge: boolean): Node {
     const phone = isPhoneDesign();
-    const phoneSize = phone ? phoneDialogSizeForStage(layoutWidth, layoutHeight) : null;
-    const panelWidth = phoneSize ? phoneSize.width : Math.min(720 * scale, layoutWidth - 60 * scale);
-    const panelHeight = phoneSize ? phoneSize.height : Math.min(520 * scale, layoutHeight - 60 * scale);
-    // 区块内字号 / 偏移用 ts(手机放大,电脑 = scale 不变)
-    const ts = phone ? scale * PHONE_TEXT_SCALE : scale;
+    const phoneSize = phoneDialogSizeForStage(layoutWidth, layoutHeight);
+    const panelWidth = phone ? phoneSize.width : Math.min(1080 * scale, layoutWidth - 60 * scale);
+    const panelHeight = phone ? phoneSize.height : Math.min(640 * scale, layoutHeight - 60 * scale);
+    // 区块内字号缩放:手机全屏框按设计高 720 放大,电脑跟 scale
+    const ts = phone ? 1.25 : scale;
     const dim = this.host.createUiNode('BattleChallengeDialogDim');
     dim.setPosition(new Vec3(centerX, centerY, 0));
     dim.addComponent(UITransform).setContentSize(new Size(layoutWidth, layoutHeight));
     const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 166);
+    dimGraphics.fillColor = rgba(0, 0, 0, 180);
     dimGraphics.rect(-layoutWidth / 2, -layoutHeight / 2, layoutWidth, layoutHeight);
     dimGraphics.fill();
     dim.addComponent(Button);
     dim.on(Button.EventType.CLICK, () => this.host.closeChallengeDialog(), this);
     dim.addComponent(BlockInputEvents);
-    const panel = this.host.addChildBeveledPanelNode(dim, 'BattleChallengeDialogPanel', 0, 0, panelWidth, panelHeight, rgba(8, 6, 9, phone ? 255 : 240), rgba(196, 145, 62, 230), 18 * scale);
+    const panel = this.host.addChildPlainNode(dim, 'BattleChallengeDialogPanel', 0, 0, panelWidth, panelHeight);
     panel.addComponent(BlockInputEvents);
-    const title = this.host.addChildLabel(panel, 'BattleChallengeDialogTitle', safeText(stage.stageName), 0, panelHeight / 2 - (phone ? 42 : 36 * scale), phone ? 34 : 26 * scale, rgba(252, 225, 158), new Size(panelWidth - 80 * scale, (phone ? 44 : 34) * scale));
-    title.overflow = Label.Overflow.SHRINK; title.enableOutline = true; title.outlineColor = rgba(0, 0, 0, 226); title.outlineWidth = Math.max(1, 1.4 * scale);
-    const closeSize = phone ? 56 : 42 * scale;
-    const closeButton = this.host.addChildPlainNode(panel, 'BattleChallengeDialogCloseButton', phone ? panelWidth / 2 - 46 : panelWidth / 2 - 34 * scale, phone ? panelHeight / 2 - 42 : panelHeight / 2 - 32 * scale, closeSize, closeSize);
-    const closeGraphics = closeButton.addComponent(Graphics);
-    closeGraphics.fillColor = rgba(36, 16, 12, 226);
-    closeGraphics.circle(0, 0, closeSize * (18 / 42));
-    closeGraphics.fill();
-    closeGraphics.strokeColor = rgba(227, 156, 75, 220);
-    closeGraphics.stroke();
+    const headerH = 74 * (phone ? 1 : scale);
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, headerH);
+
+    // 标题 + 两侧金饰
+    const titleY = panelHeight / 2 - 6 - headerH / 2;
+    const titleText = safeText(stage.stageName);
+    const titleSize = 34 * (phone ? 1 : scale);
+    const title = this.host.addChildLabel(panel, 'BattleChallengeDialogTitle', titleText, 0, titleY, titleSize, rgba(252, 225, 158), new Size(panelWidth * 0.5, titleSize + 12));
+    title.overflow = Label.Overflow.SHRINK; title.enableOutline = true; title.outlineColor = rgba(0, 0, 0, 226); title.outlineWidth = Math.max(1, 1.6 * ts);
+    const dividerW = 150 * ts;
+    const dividerInner = Math.min(panelWidth * 0.25, (Array.from(titleText).length * titleSize) / 2 + 22 * ts);
+    this.host.addSprite('TitleDividerL', TITLE_DIVIDER_LEFT_ASSET, -dividerInner - dividerW / 2, titleY, dividerW, dividerW * (76 / 390), panel);
+    this.host.addSprite('TitleDividerR', TITLE_DIVIDER_RIGHT_ASSET, dividerInner + dividerW / 2, titleY, dividerW, dividerW * (73 / 392), panel);
+    // 关闭钮(圆形金边切图)
+    const closeSize = 56 * (phone ? 1 : scale);
+    const closeButton = this.host.addChildPlainNode(panel, 'BattleChallengeDialogCloseButton', panelWidth / 2 - closeSize / 2 - 22 * ts, titleY, closeSize, closeSize);
+    if (!this.host.addSprite('Art', CLOSE_ASSET, 0, 0, closeSize, closeSize * (161 / 155), closeButton)) {
+      const closeLabel = this.host.addChildLabel(closeButton, 'BattleChallengeDialogCloseLabel', '×', 0, 0, 30 * ts, rgba(255, 214, 150), new Size(closeSize, closeSize));
+      closeLabel.overflow = Label.Overflow.SHRINK;
+    }
     closeButton.addComponent(Button);
     closeButton.on(Button.EventType.CLICK, () => this.host.closeChallengeDialog(), this);
-    this.host.applyImageButtonFeedback(closeButton, 1.035, 0.94);
-    const closeLabel = this.host.addChildLabel(closeButton, 'BattleChallengeDialogCloseLabel', 'X', 0, 1 * scale, phone ? 26 : 20 * scale, rgba(255, 214, 150), new Size(closeSize * (36 / 42), closeSize * (34 / 42)));
-    closeLabel.overflow = Label.Overflow.SHRINK;
-    const colWidth = (panelWidth - 60 * scale) / 2; const leftX = -colWidth / 2 - 10 * scale; const rightX = colWidth / 2 + 10 * scale;
-    const bodyTop = panelHeight / 2 - (phone ? 84 : 72 * scale); const bodyBottom = -panelHeight / 2 + (phone ? 104 : 90 * scale); const bodyHeight = bodyTop - bodyBottom;
-    const sectionGap = phone ? 12 * scale : 0;
-    this.renderEnemySection(panel, leftX, (bodyTop + bodyBottom) / 2, colWidth, bodyHeight, ts, stage);
-    this.renderRewardSection(panel, rightX, (bodyTop + bodyBottom) / 2 + bodyHeight * 0.25 + sectionGap / 2, colWidth, bodyHeight * 0.5 - sectionGap / 2, ts, stage);
-    this.renderAllySection(panel, rightX, (bodyTop + bodyBottom) / 2 - bodyHeight * 0.25 - sectionGap / 2, colWidth, bodyHeight * 0.5 - sectionGap / 2, ts, formation);
-    const buttonY = -panelHeight / 2 + (phone ? 54 : 40 * scale);
-    const formationBtn = this.renderButton(panel, 'BattleChallengeDialogFormationButton', '布阵', -90 * ts, buttonY, 150 * ts, 42 * ts, ts, true);
-    formationBtn.on(Button.EventType.CLICK, () => this.host.openFormation(stage.stageCode), this);
+    this.host.applyImageButtonFeedback(closeButton, 1.05, 0.94);
+
+    // 正文:左敌方(通高),右上奖励、右下我方
+    const padX = 32 * ts;
+    const gap = 20 * ts;
+    const colWidth = (panelWidth - padX * 2 - gap) / 2;
+    const leftX = -gap / 2 - colWidth / 2;
+    const rightX = gap / 2 + colWidth / 2;
+    const bodyTop = panelHeight / 2 - 6 - headerH - 14 * ts;
+    const bodyBottom = -panelHeight / 2 + 96 * ts;
+    const bodyHeight = bodyTop - bodyBottom;
+    const bodyMid = (bodyTop + bodyBottom) / 2;
+    const half = (bodyHeight - gap) / 2;
+    this.renderEnemySection(panel, leftX, bodyMid, colWidth, bodyHeight, ts, stage);
+    this.renderRewardSection(panel, rightX, bodyTop - half / 2, colWidth, half, ts, stage);
+    this.renderAllySection(panel, rightX, bodyBottom + half / 2, colWidth, half, ts, formation);
+
+    const buttonY = -panelHeight / 2 + 50 * ts;
+    const buttonW = 230 * ts;
+    const buttonH = 62 * ts;
+    mountKitButton(this.host, panel, 'BattleChallengeDialogFormationButton', '布阵', -buttonW / 2 - 24 * ts, buttonY, buttonW, buttonH, ts, 'secondary', () => this.host.openFormation(stage.stageCode), 24);
     const challengeLabel = canChallenge ? '挑战' : stage.unlocked ? '加载中' : '未开放';
-    const challengeBtn = this.renderButton(panel, 'BattleChallengeDialogChallengeButton', challengeLabel, 90 * ts, buttonY, 150 * ts, 42 * ts, ts, canChallenge);
-    if (canChallenge) { challengeBtn.on(Button.EventType.CLICK, () => this.host.startBattle(stage.stageCode), this); }
+    mountKitButton(this.host, panel, 'BattleChallengeDialogChallengeButton', challengeLabel, buttonW / 2 + 24 * ts, buttonY, buttonW, buttonH, ts, canChallenge ? 'primary' : 'disabled',
+      canChallenge ? () => this.host.startBattle(stage.stageCode) : undefined, 26);
     return dim;
   }
+
+  /** 区块标题:左右小金线 + 居中标题。 */
+  private sectionTitle(section: Node, name: string, text: string, width: number, height: number, scale: number, color: Color): void {
+    const y = height / 2 - 30 * scale;
+    const label = this.host.addChildLabel(section, name, text, 0, y, 22 * scale, color, new Size(width * 0.6, 30 * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableOutline = true; label.outlineColor = rgba(0, 0, 0, 220); label.outlineWidth = Math.max(1, 1.4 * scale);
+    const lineW = Math.min(90 * scale, width * 0.18);
+    const inner = 60 * scale;
+    const line = this.host.addChildPlainNode(section, `${name}Lines`, 0, y, width, 4);
+    const g = line.addComponent(Graphics);
+    g.strokeColor = rgba(200, 156, 84, 170);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    g.moveTo(-inner - lineW, 0); g.lineTo(-inner, 0);
+    g.moveTo(inner, 0); g.lineTo(inner + lineW, 0);
+    g.stroke();
+  }
+
   private renderEnemySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO): void {
-    const section = this.host.addChildPlainNode(parent, 'BattleChallengeDialogEnemySection', x, y, width, height);
-    const g = section.addComponent(Graphics); g.fillColor = rgba(20, 8, 8, 180); g.roundRect(-width / 2, -height / 2, width, height, 8 * scale); g.fill(); g.strokeColor = rgba(135, 50, 50, 150); g.stroke();
-    const title = this.host.addChildLabel(section, 'BattleChallengeDialogEnemyTitle', '敌方阵容', 0, height / 2 - 20 * scale, 18 * scale, rgba(243, 150, 120), new Size(width - 20 * scale, 24 * scale)); title.overflow = Label.Overflow.SHRINK;
-    const enemy = this.host.addChildLabel(section, 'BattleChallengeDialogEnemySummary', safeText(stage.enemySummary), 0, height / 2 - 56 * scale, 17 * scale, rgba(220, 200, 170), new Size(width - 24 * scale, 60 * scale)); enemy.overflow = Label.Overflow.SHRINK;
-    // 职业克制提示:按敌方阵容给出针对性配队建议,让每一关都成为一道可解的小谜题。
+    const section = mountKitSection(this.host, parent, 'BattleChallengeDialogEnemySection', x, y, width, height, scale, 0.2);
+    this.sectionTitle(section, 'BattleChallengeDialogEnemyTitle', '敌方阵容', width, height, scale, rgba(250, 156, 120));
     const summaryText = safeText(stage.enemySummary);
+    const enemy = this.host.addChildLabel(section, 'BattleChallengeDialogEnemySummary', summaryText || '未知敌人', 0, height / 2 - 76 * scale, 20 * scale, rgba(232, 212, 178), new Size(width - 60 * scale, 56 * scale));
+    enemy.overflow = Label.Overflow.SHRINK;
+    // 职业克制提示:按敌方阵容给出针对性配队建议,让每一关都成为一道可解的小谜题。
     const enemyLooksRanged = /法|弓|射|术|巫|远程/.test(summaryText);
-    const counterAdvice = enemyLooksRanged
-      ? '敌方偏远程 · 推荐上刺客切后排'
-      : '敌方偏近战 · 推荐法师/射手输出';
-    const advice = this.host.addChildLabel(section, 'BattleChallengeDialogCounterAdvice', counterAdvice, 0, 8 * scale, 17 * scale, rgba(255, 216, 130), new Size(width - 24 * scale, 22 * scale)); advice.overflow = Label.Overflow.SHRINK;
-    const counterRule = this.host.addChildLabel(section, 'BattleChallengeDialogCounterRule', '克制:近战 → 刺客 → 远程 → 近战(伤害 +30%)', 0, -14 * scale, 15 * scale, rgba(176, 158, 122), new Size(width - 24 * scale, 21 * scale)); counterRule.overflow = Label.Overflow.SHRINK;
-    // 手机:两行条件字号放大后 40 高的盒会把字压小,盒加高并整体上移(电脑原样)
-    const phone = isPhoneDesign();
-    const condTitle = this.host.addChildLabel(section, 'BattleChallengeDialogCondTitle', '通关条件', 0, -height / 2 + (phone ? 72 : 56) * scale, 18 * scale, rgba(221, 173, 85), new Size(width - 20 * scale, 24 * scale)); condTitle.overflow = Label.Overflow.SHRINK;
-    const cond = this.host.addChildLabel(section, 'BattleChallengeDialogCondText', '击败全部敌方单位\n推荐战力 ' + stage.recommendedPower.toLocaleString('en-US'), 0, -height / 2 + (phone ? 32 : 22) * scale, 16 * scale, rgba(205, 185, 146), new Size(width - 24 * scale, (phone ? 54 : 40) * scale)); cond.overflow = Label.Overflow.SHRINK;
+    const counterAdvice = enemyLooksRanged ? '敌方偏远程 · 推荐上刺客切后排' : '敌方偏近战 · 推荐法师/射手输出';
+    const tip = this.host.addChildPlainNode(section, 'BattleChallengeDialogCounterBox', 0, 4 * scale, width - 60 * scale, 66 * scale);
+    const tg = tip.addComponent(Graphics);
+    tg.fillColor = rgba(60, 22, 14, 150);
+    tg.roundRect(-(width - 60 * scale) / 2, -33 * scale, width - 60 * scale, 66 * scale, 8 * scale);
+    tg.fill();
+    const advice = this.host.addChildLabel(tip, 'BattleChallengeDialogCounterAdvice', counterAdvice, 0, 13 * scale, 19 * scale, rgba(255, 216, 130), new Size(width - 80 * scale, 26 * scale)); advice.overflow = Label.Overflow.SHRINK;
+    const counterRule = this.host.addChildLabel(tip, 'BattleChallengeDialogCounterRule', '克制:近战 → 刺客 → 远程 → 近战(伤害 +30%)', 0, -15 * scale, 16 * scale, rgba(190, 170, 132), new Size(width - 80 * scale, 22 * scale)); counterRule.overflow = Label.Overflow.SHRINK;
+    const condY = -height / 2 + 74 * scale;
+    const condTitle = this.host.addChildLabel(section, 'BattleChallengeDialogCondTitle', '通关条件', 0, condY + 24 * scale, 20 * scale, rgba(226, 178, 92), new Size(width - 40 * scale, 26 * scale)); condTitle.overflow = Label.Overflow.SHRINK;
+    const cond = this.host.addChildLabel(section, 'BattleChallengeDialogCondText', `击败全部敌方单位 · 推荐战力 ${stage.recommendedPower.toLocaleString('en-US')}`, 0, condY - 8 * scale, 18 * scale, rgba(210, 192, 152), new Size(width - 60 * scale, 26 * scale)); cond.overflow = Label.Overflow.SHRINK;
   }
+
   private renderRewardSection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO): void {
-    const section = this.host.addChildPlainNode(parent, 'BattleChallengeDialogRewardSection', x, y, width, height);
-    const g = section.addComponent(Graphics); g.fillColor = rgba(14, 12, 8, 180); g.roundRect(-width / 2, -height / 2, width, height, 8 * scale); g.fill(); g.strokeColor = rgba(142, 106, 55, 150); g.stroke();
-    const title = this.host.addChildLabel(section, 'BattleChallengeDialogRewardTitle', '奖励预览', 0, height / 2 - 20 * scale, 18 * scale, rgba(238, 204, 138), new Size(width - 20 * scale, 24 * scale)); title.overflow = Label.Overflow.SHRINK;
-    const rewards = stage.rewardPreview.length > 0 ? stage.rewardPreview : ['奖励配置预览，胜利结算后发放'];
-    const rewardText = rewards.slice(0, 4).map((r) => '· ' + safeText(r)).join('\n') + '\n· 胜利结算后自动发放';
-    const reward = this.host.addChildLabel(section, 'BattleChallengeDialogRewardText', rewardText, 0, -4 * scale, 16 * scale, rgba(210, 190, 150), new Size(width - 24 * scale, height - 40 * scale)); reward.overflow = Label.Overflow.SHRINK;
+    const section = mountKitSection(this.host, parent, 'BattleChallengeDialogRewardSection', x, y, width, height, scale, 0.2);
+    this.sectionTitle(section, 'BattleChallengeDialogRewardTitle', '奖励预览', width, height, scale, rgba(244, 210, 140));
+    const rewards = stage.rewardPreview.length > 0 ? stage.rewardPreview.slice(0, 5).map((r) => safeText(r)) : ['金币'];
+    const slot = Math.min(84 * scale, (height - 64 * scale) * 0.72, (width - 60 * scale) / rewards.length - 14 * scale);
+    const step = slot + 16 * scale;
+    const rowY = -12 * scale;
+    rewards.forEach((text, index) => {
+      const cx = (index - (rewards.length - 1) / 2) * step;
+      const cell = this.host.addChildPlainNode(section, `BattleChallengeDialogReward_${index}`, cx, rowY + 10 * scale, slot, slot);
+      if (!this.host.addSprite('Slot', REWARD_SLOT_ASSET, 0, 0, slot, slot, cell)) {
+        const g = cell.addComponent(Graphics);
+        g.fillColor = rgba(20, 16, 14, 220); g.roundRect(-slot / 2, -slot / 2, slot, slot, 6 * scale); g.fill();
+        g.strokeColor = rgba(150, 114, 62, 200); g.roundRect(-slot / 2, -slot / 2, slot, slot, 6 * scale); g.stroke();
+      }
+      const rule = REWARD_ICON_RULES.find((item) => item.match.test(text));
+      const iconMax = slot * 0.62;
+      if (!rule || !this.host.addSprite('Icon', rule.path, 0, 0, rule.aspect > 1 ? iconMax / rule.aspect : iconMax, rule.aspect > 1 ? iconMax : iconMax * rule.aspect, cell)) {
+        const glyph = this.host.addChildLabel(cell, 'Glyph', /经验/.test(text) ? 'EXP' : Array.from(text)[0] ?? '?', 0, 0, 22 * scale, rgba(255, 220, 140), new Size(slot * 0.8, slot * 0.6));
+        glyph.overflow = Label.Overflow.SHRINK;
+        glyph.enableOutline = true; glyph.outlineColor = rgba(0, 0, 0, 220); glyph.outlineWidth = Math.max(1, 1.4 * scale);
+      }
+      const name = this.host.addChildLabel(section, `BattleChallengeDialogRewardName_${index}`, text, cx, rowY + 10 * scale - slot / 2 - 16 * scale, 16 * scale, rgba(214, 194, 152), new Size(step - 4 * scale, 22 * scale));
+      name.overflow = Label.Overflow.SHRINK;
+    });
   }
+
   private renderAllySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, formation: LobbyHeroItemVO[]): void {
-    const section = this.host.addChildPlainNode(parent, 'BattleChallengeDialogAllySection', x, y, width, height);
-    const g = section.addComponent(Graphics); g.fillColor = rgba(8, 10, 13, 180); g.roundRect(-width / 2, -height / 2, width, height, 8 * scale); g.fill(); g.strokeColor = rgba(142, 106, 55, 150); g.stroke();
-    const title = this.host.addChildLabel(section, 'BattleChallengeDialogAllyTitle', '我方阵容', 0, height / 2 - 20 * scale, 18 * scale, rgba(231, 205, 142), new Size(width - 20 * scale, 24 * scale)); title.overflow = Label.Overflow.SHRINK;
-    const count = formation.length;
-    const heroes = formation.slice(0, 4).map((h) => safeText(h.heroName)).join('、') || '点击布阵选择英雄';
-    const ally = this.host.addChildLabel(section, 'BattleChallengeDialogAllyText', '出战 ' + count + '/5：' + heroes, 0, -4 * scale, 16 * scale, rgba(210, 190, 150), new Size(width - 24 * scale, height - 40 * scale)); ally.overflow = Label.Overflow.SHRINK;
-  }
-  private renderButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean): Node {
-    const btn = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const art = this.host.addSprite(name + 'Art', enabled ? CHALLENGE_BUTTON_PRIMARY_ASSET : CHALLENGE_BUTTON_RETURN_DIS_ASSET, 0, 0, width, height, btn);
-    if (!art) { const g = btn.addComponent(Graphics); g.fillColor = enabled ? rgba(34, 24, 17, 226) : rgba(24, 21, 18, 184); g.roundRect(-width / 2, -height / 2, width, height, 6 * scale); g.fill(); g.strokeColor = enabled ? rgba(188, 137, 58, 216) : rgba(119, 91, 48, 148); g.stroke(); }
-    const button = btn.addComponent(Button); button.interactable = enabled;
-    if (enabled) { this.host.applyImageButtonFeedback(btn, 1.025, 0.975); }
-    const label = this.host.addChildLabel(btn, name + 'Label', text, 0, 0, 20 * scale, enabled ? rgba(245, 211, 123) : rgba(151, 133, 93), new Size(width, height)); label.overflow = Label.Overflow.SHRINK;
-    return btn;
+    const section = mountKitSection(this.host, parent, 'BattleChallengeDialogAllySection', x, y, width, height, scale, 0.2);
+    this.sectionTitle(section, 'BattleChallengeDialogAllyTitle', `我方阵容  ${formation.length}/5`, width, height, scale, rgba(236, 210, 148));
+    if (formation.length === 0) {
+      const empty = this.host.addChildLabel(section, 'BattleChallengeDialogAllyText', '点击「布阵」选择出战英雄', 0, -10 * scale, 18 * scale, rgba(190, 172, 136), new Size(width - 60 * scale, 26 * scale));
+      empty.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    const heroes = formation.slice(0, 5);
+    const size = Math.min(78 * scale, (height - 70 * scale) * 0.7, (width - 60 * scale) / heroes.length - 12 * scale);
+    const step = size + 14 * scale;
+    const rowY = -8 * scale;
+    heroes.forEach((hero, index) => {
+      const cx = (index - (heroes.length - 1) / 2) * step;
+      const cell = this.host.addChildPlainNode(section, `BattleChallengeDialogAlly_${index}`, cx, rowY + 10 * scale, size, size);
+      const color = RARITY_COLORS[(hero.rarity || '').toUpperCase()] ?? rgba(200, 170, 110);
+      const g = cell.addComponent(Graphics);
+      const portrait = resolveC1812HeroResultPortraitPath(hero.spineAsset ?? hero.portraitAsset);
+      // 没有头像图的英雄(SR/R act 系):稀有度色暗底 + 名字首字(与守卫战统计行同口径)
+      g.fillColor = portrait ? rgba(16, 13, 14, 235) : rgba(Math.round(color.r * 0.42), Math.round(color.g * 0.42), Math.round(color.b * 0.42), 245);
+      g.circle(0, 0, size / 2);
+      g.fill();
+      if (!portrait || !this.host.addSprite('Portrait', portrait, 0, 0, size * 0.86, size * 0.86, cell)) {
+        const glyph = this.host.addChildLabel(cell, 'Glyph', Array.from(safeText(hero.heroName))[0] ?? '?', 0, 0, 30 * scale, rgba(255, 244, 222), new Size(size * 0.8, size * 0.8));
+        glyph.overflow = Label.Overflow.SHRINK;
+        glyph.enableOutline = true; glyph.outlineColor = rgba(10, 8, 6, 240); glyph.outlineWidth = Math.max(1, 1.8 * scale);
+      }
+      // 稀有度色描边环(画在头像之上)
+      const ring = this.host.addChildPlainNode(cell, 'Ring', 0, 0, size, size).addComponent(Graphics);
+      ring.strokeColor = color;
+      ring.lineWidth = Math.max(2, 2.6 * scale);
+      ring.circle(0, 0, size / 2 - 1.5 * scale);
+      ring.stroke();
+      const name = this.host.addChildLabel(section, `BattleChallengeDialogAllyName_${index}`, safeText(hero.heroName), cx, rowY + 10 * scale - size / 2 - 16 * scale, 15 * scale, rgba(214, 194, 152), new Size(step - 2 * scale, 22 * scale));
+      name.overflow = Label.Overflow.SHRINK;
+    });
   }
 }
