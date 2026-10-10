@@ -421,8 +421,11 @@ const GUARD_WHEEL_SECTOR_ICON: Record<GuardWheelSector, string> = {
   teamAtk: 'ui/common/ai/ic_quest_dungeon/spriteFrame',
   jackpot: 'ui/hero/ai/star_filled/spriteFrame',
 };
+/** 左上「统计」按钮底图(开局预热,HUD 只建一次)。 */
+const GUARD_STATS_BUTTON_ART = 'ui/common/ai/bag_button_dark/spriteFrame';
 /** 开局预热的宝箱/轮盘贴图:mountSprite 未命中缓存走异步,首箱 28 枚金币/8 个扇区图标会晚 0.3~1.3s 才显示。 */
 const GUARD_CHEST_SPRITE_PRELOAD = [
+  GUARD_STATS_BUTTON_ART,
   'ui/guard/chest_closed/spriteFrame', 'ui/guard/chest_open/spriteFrame', 'ui/codex/ai/chest_ready/spriteFrame', 'ui/codex/ai/chest_opened/spriteFrame',
   'ui/guard/cast_flash/spriteFrame', 'ui/guard/coin_gold/spriteFrame', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 'ui/battle/c1812/effects/hit_ring/spriteFrame',
   'ui/common/ai/star_orange/spriteFrame', 'ui/common/ai/star_red/spriteFrame', 'ui/hero/ai/refine_panel_bg/spriteFrame', 'ui/hero/ai/btn_star_up/spriteFrame',
@@ -1731,17 +1734,11 @@ export class LobbyGuardBattleRenderer {
     // 水晶生命已挪到水晶头顶(renderCrystal,2026-09-28);左上只留"统计"按钮。
     // 左侧改版(2026-09-02 用户拍板参考图):去掉职业计数竖条,换"统计"按钮展开每英雄输出贡献
     const stripTop = height / 2 - 20;
-    const statsBtnW = 88;
+    // 2026-10-10 全界面美化:圆角平涂框换背包同款暗铁按钮切图(bag_button_dark 512×158,按原比 3.24 等比)
     const statsBtnH = 38;
+    const statsBtnW = Math.round(statsBtnH * (512 / 158));
     const statsBtn = this.host.addChildPlainNode(hud, 'GuardStatsButton', -width / 2 + 24 + statsBtnW / 2, stripTop - statsBtnH / 2, statsBtnW, statsBtnH);
-    const sbG = statsBtn.addComponent(Graphics);
-    sbG.fillColor = rgba(24, 18, 12, 225);
-    sbG.roundRect(-statsBtnW / 2, -statsBtnH / 2, statsBtnW, statsBtnH, 8);
-    sbG.fill();
-    sbG.strokeColor = rgba(214, 168, 92, 220);
-    sbG.lineWidth = 1.6;
-    sbG.roundRect(-statsBtnW / 2, -statsBtnH / 2, statsBtnW, statsBtnH, 8);
-    sbG.stroke();
+    this.mountSprite(statsBtn, 'Art', GUARD_STATS_BUTTON_ART, 0, 0, statsBtnW, statsBtnH);
     const sbLabel = this.host.addChildLabel(statsBtn, 'Text', '统计', 0, 0, 17, rgba(244, 220, 166, 252), new Size(statsBtnW - 8, 22));
     sbLabel.enableOutline = true;
     sbLabel.outlineColor = rgba(12, 8, 6, 255);
@@ -1799,7 +1796,8 @@ export class LobbyGuardBattleRenderer {
     this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
     const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
     track.addComponent(Graphics);
-    const hintText = this.host.addChildLabel(hud, 'GuardHintText', '拖动同名同星英雄合成升星(最高 5★)· 拖到水晶出售回金', 0, -height / 2 + 16, 15, rgba(196, 180, 150, 200), new Size(width * 0.6, 21));
+    // 2026-10-10 全界面巡检:原来居中横跨下排格子(手机字号抬到 20 后压在格子上);挪到下排格子与「强化」钮之间的空档,文案收短
+    const hintText = this.host.addChildLabel(hud, 'GuardHintText', '同名同星英雄可合成升星 · 拖到水晶出售', width * 0.07, -height / 2 + 16, 15, rgba(196, 180, 150, 200), new Size(width * 0.26, 21));
     hintText.overflow = Label.Overflow.SHRINK;
   }
 
@@ -9719,7 +9717,9 @@ export class LobbyGuardBattleRenderer {
       this.mountSprite(overlay, 'GuardEndTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -endDividerX, endTitleY, endDividerW, endDividerW * (76 / 390));
       this.mountSprite(overlay, 'GuardEndTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', endDividerX, endTitleY, endDividerW, endDividerW * (73 / 392));
     }
-    this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
+    // 2026-10-10 全界面巡检:手机上标题(34 号)与本行贴得太近叠字 → 本行至少落在标题中线下 52,后面几行跟着下移同样距离
+    const endDetailShift = Math.min(0, (-height * 0.02 + panelH / 2 - 76 - 52) - height * 0.12);
+    this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12 + endDetailShift, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
     // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER)。
     if (rush && sim) {
       const layers = guardTrialLayers(sim);
@@ -9739,10 +9739,10 @@ export class LobbyGuardBattleRenderer {
         const nearMiss = next
           ? `本场 ${current.tierName}(${current.tierCode})档 · 再多 ${Math.ceil((next.minScore - score) / 100)} 层升 ${next.tierName}(${next.tierCode})档!`
           : `本场 ${current.tierName}(${current.tierCode})档 · 已是最高档!`;
-        this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(width * 0.72, 22));
+        this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08 + endDetailShift, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(width * 0.72, 22));
       }
     }
-    this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04, 18, rgba(196, 182, 152), new Size(width * 0.7, 24));
+    this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04 + endDetailShift, 18, rgba(196, 182, 152), new Size(width * 0.7, 24));
   }
 
   /** 结算回执到达:更新覆盖层为奖励与返回按钮。 */

@@ -3833,8 +3833,15 @@ export class LobbyHeroDetailPanelRenderer {
       const loading = this.host.addChildLabel(panel, 'WearLoading', '装备列表读取中…', 0, (listTop + listBottom) / 2, 18 * scale, rgba(170, 158, 132), new Size(width - 44 * scale, 22 * scale));
       loading.overflow = Label.Overflow.SHRINK;
     } else if (candidates.length <= 0) {
-      const empty = this.host.addChildLabel(panel, 'WearEmpty', selectedSlot ? '该部位暂无可用装备' : '点击上方部位或立绘旁装备格查看候选', 0, (listTop + listBottom) / 2, 18 * scale, rgba(150, 140, 120), new Size(width - 44 * scale, 22 * scale));
+      // 2026-10-10 全界面美化:空态加徽章图标 + 两行说明(原来大块空面板里只有一行灰字)
+      const midY = (listTop + listBottom) / 2;
+      this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + 40 * scale, 76 * scale, 76 * scale, panel);
+      const emptyTitle = selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备';
+      const emptyText = selectedSlot ? '主线首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格';
+      const empty = this.host.addChildLabel(panel, 'WearEmpty', emptyTitle, 0, midY - 14 * scale, 20 * scale, rgba(232, 208, 156), new Size(width - 44 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
+      const emptySub = this.host.addChildLabel(panel, 'WearEmptyHint', emptyText, 0, midY - 42 * scale, 16 * scale, rgba(160, 146, 118), new Size(width - 44 * scale, 22 * scale));
+      emptySub.overflow = Label.Overflow.SHRINK;
     } else {
       this.renderWearEquipGrid(panel, hero, candidates, state.busy, state.selectedEquipId, width - 40 * scale, listTop, listBottom, scale, -width / 2 - 10 * scale, height / 2 - 70 * scale);
     }
