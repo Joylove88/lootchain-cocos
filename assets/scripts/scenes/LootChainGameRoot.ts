@@ -6999,7 +6999,14 @@ export class LootChainGameRoot extends Component {
       })),
     ];
     // 守卫战本局会用到的怪物骨骼 / 特效骨骼 / 贴图也在这道门里顺序读完(2026-10-06:此前进场第一帧集中解码上传,手机卡死几秒)
-    const extra = this.lobbyGuardBattleRenderer.collectBattlePrewarmResources(this.currentLobbyBattleState());
+    const collected = this.lobbyGuardBattleRenderer.collectBattlePrewarmResources(this.currentLobbyBattleState());
+    // 2026-10-10 真机剖析(adb 连手机 Chrome):"后面才用到"的怪物 / 大招 / 法术特效挪到战斗中后台读,
+    // 首次解析骨骼(wasm,大招一套 200~460ms)和上传贴图全落在交战里——手机上 139 次长帧有 137 次是这类主线程长任务。
+    // 改回全部在加载门里读完、解析完:进场多等几秒,换战斗全程不再有首次解析卡顿。
+    const extra = {
+      spine: collected.spine.concat(collected.deferredSpine),
+      sprites: collected.sprites.concat(collected.deferredSprites),
+    };
     const extraTotal = extra.spine.length + extra.sprites.length;
     let baseTotal = 0;
     let extraStarted = false;
@@ -7041,11 +7048,10 @@ export class LootChainGameRoot extends Component {
         finished = true;
         clearTimeout(timer);
         onProgress(baseTotal + extraTotal, baseTotal + extraTotal);
-        // 后面波次 / 技能才用到的资源进场后在开场倒计时里后台读(2026-10-09 加载门拆分)
-        this.prewarmDeferredBattleResources(extra.deferredSpine, extra.deferredSprites);
         resolve();
       };
-      const timer = setTimeout(finish, 20000);
+      // 兜底放行:手机上骨骼解析 + 贴图上传全在门里做,留足时间(超时后迟到的资源照常在战斗中补上)
+      const timer = setTimeout(finish, 40000);
       const pump = (): void => {
         if (finished) {
           return;
@@ -7099,62 +7105,6 @@ export class LootChainGameRoot extends Component {
       };
       pump();
     }));
-  }
-
-  /** 后台预读令牌:每次进场换一个,旧队列自行退出(同一时间只跑一条)。 */
-  private deferredBattlePrewarmToken = 0;
-
-  /**
-   * 进场后按顺序把"后面才会用到"的战斗资源读进内存(2026-10-09 加载门拆分):串行、每项之间让出一轮事件循环,
-   * 骨骼顺带做 wasm 解析与大招附件裁剪(与加载门同一套处理);切出战斗视图即停。首波一般 10 秒后才来,排在前面的
-   * 后续波次怪物在此之前就能读完;真没赶上的走原有的占位色块回退。
-   */
-  private prewarmDeferredBattleResources(spinePaths: readonly string[], spritePaths: readonly string[]): void {
-    this.deferredBattlePrewarmToken += 1;
-    const token = this.deferredBattlePrewarmToken;
-    const tasks: Array<{ path: string; kind: 'spine' | 'sprite' }> = [];
-    spinePaths.forEach((path) => tasks.push({ path, kind: 'spine' }));
-    spritePaths.forEach((path) => tasks.push({ path, kind: 'sprite' }));
-    let cursor = 0;
-    const next = (): void => {
-      while (cursor < tasks.length) {
-        if (token !== this.deferredBattlePrewarmToken || !this.isValid || this.currentView !== 'battle') {
-          return;
-        }
-        // 只在波间 / 开场倒计时读:骨骼 wasm 解析与贴图上传一次 100~400ms,落在交战中就是一次顿挫(2026-10-09 用户录屏归因)
-        if (!this.lobbyGuardBattleRenderer.isBetweenWaves()) {
-          setTimeout(next, 400);
-          return;
-        }
-        const task = tasks[cursor];
-        cursor += 1;
-        const cached = task.kind === 'spine' ? resources.get(task.path, sp.SkeletonData) : resources.get(task.path, SpriteFrame);
-        if (cached) {
-          continue;
-        }
-        const after = (): void => {
-          setTimeout(next, 0);
-        };
-        if (task.kind === 'spine') {
-          resources.load(task.path, sp.SkeletonData, (error, data) => {
-            if (!error && data) {
-              try {
-                const runtime = resolveBattleUnitSpineRuntimeData(data);
-                prepareBattleFxData(data, runtime, resolveBattleFxHiddenSlotsForEffect(task.path.split('/').pop() ?? ''));
-              } catch (parseError) {
-                void parseError;
-              }
-            }
-            after();
-          });
-        } else {
-          resources.load(task.path, SpriteFrame, () => after());
-        }
-        return;
-      }
-    };
-    // 进场后先让首帧与开场演出稳住再开始
-    setTimeout(next, 800);
   }
 
   private fillLobbyFormationWithDefaultHeroes(): void {

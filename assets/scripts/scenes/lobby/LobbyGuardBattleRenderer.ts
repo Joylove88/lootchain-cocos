@@ -3160,15 +3160,6 @@ export class LobbyGuardBattleRenderer {
     return `第 ${sim.wave}/${sim.maxWave} 波 · 击杀 ${sim.killCount} · 水晶 ${Math.ceil(sim.crystalHp)}/${sim.crystalMaxHp}`;
   }
 
-  /** 当前是否处于波间 / 开场倒计时(没有怪在推进):后台预读只挑这种时候做。没有模拟 / 已结束也算"空闲"。 */
-  isBetweenWaves(): boolean {
-    const sim = this.sim;
-    if (!sim) {
-      return true;
-    }
-    return sim.phase !== 'wave' || sim.paused || !!sim.pendingChoice;
-  }
-
   /** 齿轮:暂停战斗并打开设置面板(已结束/弹层中不响应)。 */
   private openBattleSettings(): void {
     if (!this.root || !this.sim || this.settingsOpen || this.battleEnded()) {
@@ -7506,7 +7497,7 @@ export class LobbyGuardBattleRenderer {
    * - spine / sprites:首波就会用到的——关卡背景、石台、首波怪物(第 1~2 波全是普通怪;车轮战 BOSS 开场即到)、
    *   上阵英雄的普攻贴图 / 普攻骨骼特效、辅助职业的护盾 / 回血特效。加载门只等这些。
    * - deferredSpine / deferredSprites:后面才会出现的——其余种类的怪(按出现先后排序)、战技 / 大招 / 词条特效、
-   *   法术 / BOSS / 号角 / 宝箱 / 远程怪弹道。进场后在开场倒计时里按顺序后台读(prewarmDeferredBattleResources)。
+   *   法术 / BOSS / 号角 / 宝箱 / 远程怪弹道。2026-10-10 真机剖析后两档都在加载门里读完(战斗中首次解析骨骼会卡几百毫秒),分档只用于排进度顺序。
    */
   collectBattlePrewarmResources(battleState: LobbyBattlePanelState): { spine: string[]; sprites: string[]; deferredSpine: string[]; deferredSprites: string[] } {
     const spine = new Set<string>();
