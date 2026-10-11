@@ -9390,8 +9390,10 @@ export class LobbyGuardBattleRenderer {
         const ratio = Math.max(0, monster.hp / monster.maxHp);
         let hpDirty = true;
         {
-          // BOSS 血条:头顶高度量定之前每 tick 都要走测量;量定后只在血量像素或文字变了才重画
-          const bossKey = Math.round(hpTransform.width * ratio) * 1e6 + Math.ceil(monster.hp) % 1e6;
+          // BOSS 血条:头顶高度量定之前每 tick 都要走测量;量定后只在血量像素或文字变了才重画。
+          // 2026-10-11:数字按 1/500 血量量化——原来每一下命中都换一次数字,整条 Graphics 重画 + 文字重新栅格化上传,BOSS 战里一秒好几次
+          const hpStep = Math.max(1, Math.round(monster.maxHp / 500));
+          const bossKey = Math.round(hpTransform.width * ratio) * 1e6 + Math.ceil(monster.hp / hpStep) % 1e6;
           hpDirty = !view.hpBarLocked || view.hpDrawnKey !== bossKey;
           view.hpDrawnKey = bossKey;
         }
