@@ -8,7 +8,7 @@ SAMPLE = r"""(() => { const cc = window.__cc, r = window.__gr; const dev = cc.di
   return JSON.stringify({ tris: dev.numTris, dc: dev.numDrawCalls, loops, fx, mon: r.sim ? r.sim.monsters.filter(m => !m.dead).length : -1, zones: r.sim ? r.sim.zones.map(z => z.kind) : null }); })()"""
 CAST = r"""(() => { const r = window.__gr; const cast = r.castSpell ? 'castSpell' : null; r.sim.spellEnergy = r.sim.spellEnergyMax; r.sim.gold += 500;
   const slot = r.root && r.root.getChildByName('GuardSpellBar') && r.root.getChildByName('GuardSpellBar').getChildByName('Spell_quake');
-  if (slot) { slot.emit(window.__cc.Node.EventType.TOUCH_END); return 'tap'; } return 'no slot'; })()"""
+  if (slot) { const E = window.__cc.Node.EventType; slot.emit(E.TOUCH_START); slot.emit(E.TOUCH_END); return 'tap zones=' + r.sim.zones.length + ' energy=' + Math.round(r.sim.spellEnergy); } return 'no slot'; })()"""
 async def main():
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={base.PROFILE}', '--no-first-run', '--window-size=1000,500', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     try:
