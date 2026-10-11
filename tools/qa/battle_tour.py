@@ -9,7 +9,8 @@ import boss_bar_cdp as base
 args = sys.argv[1:]
 TAG = args[0]
 VIEWS = [a for a in args[1:] if 'x' in a and not a.startswith('--')]
-JS_BATTLE = open(os.path.join(base.HERE, 'js_battle2.js'), encoding='utf-8').read()
+# 正式包(7460)没有 TS 模块可 import,用 release 版进战脚本(不挂 window.__M);--ui-check 里需要模型函数时从渲染器实例拿
+JS_BATTLE = open(os.path.join(base.HERE, 'js_battle_release.js' if os.environ.get('PREVIEW_PORT') == '7460' else 'js_battle2.js'), encoding='utf-8').read()
 SHOTS = os.path.join(base.SCRATCH, 'shots', 'tour')
 os.makedirs(SHOTS, exist_ok=True)
 UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36'
@@ -93,7 +94,7 @@ async def main():
                     # 用阵容池(pool)而不是场上英雄:开局还没召唤时 heroes 为空
                     print(vp, 'stats seed', await ev("(async () => { const r = window.__gr; const codes = (r.sim.pool || []).map(p => p.heroCode).slice(0, 6); codes.forEach((c, i) => { r.sim.heroDamage[c] = 2400 - i * 310; }); r.statsPanelOpen = true; r.refreshStatsPanel(true); await new Promise(z => setTimeout(z, 1800)); return codes.length + ':' + Object.keys(r.sim.heroDamage).length; })()"), flush=True)
                     await shot('ui_stats')
-                    await ev("(async () => { const r = window.__gr, M = window.__M; r.statsPanelOpen = false; r.refreshStatsPanel(true); r.sim.spellEnergy = r.sim.spellEnergyMax; M.guardCastSpell(r.sim, 'quake'); await new Promise(z => setTimeout(z, 900)); return 1; })()")
+                    await ev("(async () => { const r = window.__gr, M = window.__M; r.statsPanelOpen = false; r.refreshStatsPanel(true); r.sim.spellEnergy = r.sim.spellEnergyMax; if (M && M.guardCastSpell) { M.guardCastSpell(r.sim, 'quake'); } await new Promise(z => setTimeout(z, 900)); return !!M; })()")
                     await shot('ui_quake_mid')
                     await asyncio.sleep(1.4)
                     await shot('ui_quake_late')
