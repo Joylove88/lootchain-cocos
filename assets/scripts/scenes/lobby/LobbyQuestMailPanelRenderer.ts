@@ -16,6 +16,7 @@ import {
   resources,
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO, PlayerQuestSummaryVO, PlayerQuestVO, QuestRewardItemVO } from '../../types/QuestTypes';
@@ -279,7 +280,7 @@ export class LobbyQuestMailPanelRenderer {
     this.host.addSprite('FooterDividerR', QUEST_UI_ASSETS.dividerRight, footDivGap, footerY, footDivW, footDivW * (71 / 224), panel);
 
     if (state.loading && !state.summary) {
-      this.centerHint(panel, '任务读取中…', rgba(214, 196, 156, 235), scale);
+      mountKitLoading(this.host, panel, 0, 0, scale, '任务读取中…');
       return;
     }
     if (state.error && !state.summary) {
@@ -293,7 +294,7 @@ export class LobbyQuestMailPanelRenderer {
     }
     this.lastQuestGroup = group;
     if (this.artPending(this.questArtPaths(quests), () => this.rerenderQuestIfOpen())) {
-      this.centerHint(panel, '任务读取中…', rgba(214, 196, 156, 235), scale);
+      mountKitLoading(this.host, panel, 0, 0, scale, '任务读取中…');
       return;
     }
     // 行列表:外包大框(2026-09-10 用户反馈:参考图层次感,行整体缩进)+Mask+ScrollView 单列滚动。
@@ -367,7 +368,7 @@ export class LobbyQuestMailPanelRenderer {
       QUEST_UI_ASSETS.dividerLeft, QUEST_UI_ASSETS.dividerRight,
     ]);
     if (this.artPending(artPaths, () => this.rerenderQuestIfOpen())) {
-      this.centerHint(panel, '任务读取中…', rgba(214, 196, 156, 235), 1.2, hintY);
+      mountKitLoading(this.host, panel, 0, hintY, 1.2, '任务读取中…');
       return;
     }
     this.addQuestTabButton(panel, '日常任务', state.tab === 'DAILY', tabX0, tabY, tabW, 1, () => this.host.setLobbyQuestTab('DAILY'));
@@ -392,7 +393,7 @@ export class LobbyQuestMailPanelRenderer {
     }
 
     if (state.loading && !state.summary) {
-      this.centerHint(panel, '任务读取中…', rgba(214, 196, 156, 235), 1.2, hintY);
+      mountKitLoading(this.host, panel, 0, hintY, 1.2, '任务读取中…');
       return;
     }
     if (state.error && !state.summary) {

@@ -30,6 +30,7 @@ import {
 import { LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 
@@ -257,7 +258,12 @@ export class LobbyGuardCrystalDialogRenderer {
     const bodyBottom = phone ? -panelH / 2 + 48 : -panelH / 2 + 84 * scale;
     const info = state.info;
     if (!info || this.host.isGuardCrystalAssetsLoading()) {
-      this.host.addChildLabel(panel, 'LobbyGuardCrystalLoading', state.loading || info ? '读取中…' : '守卫水晶暂不可用', 0, (bodyTop + bodyBottom) / 2, FONT.body * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 26 * scale));
+      // 2026-10-11 统一读取态(UiKit.mountKitLoading);不可用仍用一行提示
+      if (state.loading || info) {
+        mountKitLoading(this.host, panel, 0, (bodyTop + bodyBottom) / 2, scale, '水晶读取中…');
+      } else {
+        this.host.addChildLabel(panel, 'LobbyGuardCrystalLoading', '守卫水晶暂不可用', 0, (bodyTop + bodyBottom) / 2, FONT.body * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 26 * scale));
+      }
       this.renderNotice(panel, state, panelW, panelH, scale);
       return;
     }

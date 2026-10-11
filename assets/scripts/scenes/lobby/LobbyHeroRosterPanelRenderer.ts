@@ -25,6 +25,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_TAB_SELECTED_ASSET, starBandAssetOf, starBandTextRgb, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitLoading } from '../UiKit';
 
 /** 顶栏信息板图标(2026-09-27):拥有=英雄导航徽章,战力=金星。 */
 const LOBBY_HERO_ROSTER_TOP_ICON_HERO = 'ui/lobby/ai/nav_hero/spriteFrame';
@@ -494,7 +495,7 @@ export class LobbyHeroRosterPanelRenderer {
     this.drawCardStage(parent, bodyCenterX, bodyCenterY, bodyWidth, bodyHeight, scale);
 
     if (state.loading && state.heroes.length === 0) {
-      this.renderEmpty(parent, bodyCenterX, bodyCenterY, bodyWidth, bodyHeight, scale, '英雄队列读取中，请稍候。');
+      mountKitLoading(this.host, parent, bodyCenterX, bodyCenterY, scale, '英雄读取中…');
       return;
     }
     if (state.heroes.length === 0) {

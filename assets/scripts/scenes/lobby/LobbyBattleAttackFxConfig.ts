@@ -258,6 +258,10 @@ export const LOBBY_UI_FX: {
   heroStarUp: LobbyUiFxSpec | null;
   /** 英雄升级成功:同挂点青蓝光柱(A49-031),与升星拉开档次。 */
   heroLevelUp: LobbyUiFxSpec | null;
+  /** 战力飘字底衬:金色符文法阵 + 金光柱(A47-391)。 */
+  powerSurge: LobbyUiFxSpec;
+  /** 统一读取态转圈:蓝色细弧光环(A49-153)。 */
+  loadingRing: LobbyUiFxSpec;
   /** 领奖 / 购买到账:飘字起点一次性金色四芒星(A49-089,全编目最轻)。 */
   rewardClaim: LobbyUiFxSpec | null;
   /** 守卫战结算胜利标题背后:金色光丝聚拢再炸开(A49-397)。 */
@@ -268,6 +272,10 @@ export const LOBBY_UI_FX: {
   gachaRareCard: { effect: 'v2_a49_373', animation: 'idle1', size: 1.5, loop: false, holdMs: 1000 },
   heroStarUp: { effect: 'v2_a49_032', animation: 'shengxing', size: 1.15, loop: false, holdMs: 2600 },
   heroLevelUp: { effect: 'v2_a49_031', animation: 'shengji', size: 1.1, loop: false, holdMs: 2200 },
+  // 战力飘字底衬:金色符文法阵 + 金光柱冲起(升级 / 升星 / 穿装备 战力变动时在飘字下方一次性播,2026-10-11 用户「战力漂浮一定要醒目」)
+  powerSurge: { effect: 'v2_a47_391', animation: 'action1', size: 1.0, loop: false, holdMs: 1400 },
+  // 统一读取态转圈(2026-10-11):蓝色细弧光环星点循环(能量条同款素材)
+  loadingRing: { effect: 'v2_a49_153', animation: 'action', size: 1.0, loop: true, holdMs: 0 },
   rewardClaim: { effect: 'v2_a49_089', animation: 'animation', size: 1.0, loop: false, holdMs: 700 },
   victoryTitle: { effect: 'v2_a49_397', animation: 'idle3', size: 1.0, loop: false, holdMs: 1700 },
   dungeonHotspot: { effect: 'v2_a49_180', animation: 'action', size: 1.0, loop: true, holdMs: 0 },

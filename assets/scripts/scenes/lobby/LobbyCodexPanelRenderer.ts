@@ -29,6 +29,7 @@ import type { QuestRewardItemVO } from '../../types/QuestTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitLoading } from '../UiKit';
 
 /** 图鉴页素材(2026-09-15):复用任务弹框/背包/英雄卡素材;宝箱三态为图鉴专属(用户自出图,缺图退手绘)。 */
 const CODEX_UI_ASSETS = {
@@ -616,7 +617,7 @@ export class LobbyCodexPanelRenderer {
     const bodyHeight = Math.max(120 * scale, bodyTop - bodyBottom);
     const bodyCenterY = (bodyTop + bodyBottom) / 2;
     if (state.loading && state.items.length === 0) {
-      this.renderEmpty(parent, width, bodyCenterY, scale, '图鉴读取中,请稍候。');
+      mountKitLoading(this.host, parent, 0, bodyCenterY, scale, '图鉴读取中…');
       return;
     }
     const items = this.visibleItems(state);

@@ -32,6 +32,7 @@ import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { PHONE_DIALOG_CONTENT_PAD, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 
@@ -194,7 +195,7 @@ export class LobbyDailyDungeonPanelRenderer {
 
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
     if (state.loading && !state.summary) {
-      this.addCenterHint(panel, '正在读取每日副本…', rgba(214, 196, 156, 235), scale);
+      mountKitLoading(this.host, panel, 0, 10 * scale, scale, '副本读取中…');
     } else if (state.error && !state.summary) {
       this.addCenterHint(panel, `读取失败：${state.error}`, rgba(255, 150, 130, 235), scale);
       this.renderRetryButton(panel, scale);

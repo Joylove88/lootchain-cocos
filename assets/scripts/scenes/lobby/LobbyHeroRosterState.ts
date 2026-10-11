@@ -15,6 +15,16 @@ export class LobbyHeroRosterState {
     return this.revision;
   }
 
+  /** 升级 / 升星接口返回后本地先落账(等级 / 战力),让按钮与特效不用等五次回读(2026-10-11)。 */
+  patchHero(heroId: number, patch: Partial<Pick<LobbyHeroItemVO, 'level' | 'power' | 'star'>>): void {
+    const hero = this.panelState.heroes.find((item) => item.id === heroId);
+    if (!hero) {
+      return;
+    }
+    Object.assign(hero, patch);
+    this.revision += 1;
+  }
+
   reset(): void {
     // 切换账号时清空上一位玩家的英雄队列，避免主角卡短暂串号显示。
     this.panelState = {

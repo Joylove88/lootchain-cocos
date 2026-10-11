@@ -3295,34 +3295,57 @@ export class LootChainGameRoot extends Component {
     void this.runLobbyHeroLevelUp(hero.id, hero.heroName);
   }
 
+  /**
+   * 英雄升级(2026-10-11 用户反馈「升级中等了 3 秒,而且成功特效先播了」):
+   * 原流程在接口返回后串行回读 资料→名册→背包→冒险→详情 五次,按钮一直「升级中」,而庆祝特效挂在第一次重绘上,
+   * 于是特效先于「升级成功」出现。改为:接口一回来就是成功时刻——本地先把等级 / 战力写进名册状态,
+   * 立刻恢复按钮 + 庆祝特效 + 战力飘字 + 音效 + 提示(同一帧);五次回读放到后台,回来后再静默整刷。
+   */
   private async runLobbyHeroLevelUp(heroId: number, heroName: string): Promise<void> {
-    let levelUpPowerDelta = 0;
     try {
       const beforePower = this.currentLobbyHeroDetailHero()?.power ?? 0;
       const result = await this.api.hero.levelUp(heroId);
-      levelUpPowerDelta = result.power - beforePower;
+      // 成功时刻:本地只落等级(接口的 power 是等级基础战力,不含装备,直接写会把 2187 显示成 307),
+      // 按钮解锁 + 庆祝特效 + 音效 + 提示同帧;战力增量等名册回读后按真实总战力算,再出飘字
+      this.lobbyHeroRosterState.patchHero(heroId, { level: result.level });
+      this.lobbyHeroLevelUpBusyId = null;
       this.lobbyHeroCelebration = 'levelUp';
-      const userId = this.currentLobbyProfile().userId;
-      await this.loadLobbyProfile(userId);
-      await this.loadLobbyHeroRoster(true);
-      await this.loadLobbyBag(true);
-      await this.loadLobbyAdventure(true);
-      // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
-      await this.loadLobbyHeroDetail(heroId);
-      const powerGain = Math.max(0, result.power - beforePower);
       lobbyGuide.markVisited('levelup');
       gameAudio.sfx('level_up');
-      this.setStatus(`${heroName} 升级成功：Lv.${result.level}，战力 ${this.formatInteger(result.power)}${powerGain > 0 ? `（+${this.formatInteger(powerGain)}）` : ''}，已回读英雄、背包、资源和主线引导。`);
+      this.setStatus(`${heroName} 升级成功：Lv.${result.level}`);
+      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
+        this.renderCurrentView();
+      }
+      // 后台回读:名册一回来就按总战力出飘字(持久层,不受后续整刷影响),其余静默刷新
+      void this.reloadAfterHeroLevelUp(heroId, heroName, beforePower);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       gameAudio.sfx('ui_error');
       this.setStatus(`英雄升级失败：${message}`);
-    } finally {
       this.lobbyHeroLevelUpBusyId = null;
       if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
         this.renderCurrentView();
       }
-      this.spawnPowerDeltaFloat(levelUpPowerDelta);
+    }
+  }
+
+  private async reloadAfterHeroLevelUp(heroId: number, heroName: string, beforePower: number): Promise<void> {
+    try {
+      await this.loadLobbyHeroRoster(true);
+      const after = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? beforePower;
+      const gain = after - beforePower;
+      if (gain !== 0) {
+        this.setStatus(`${heroName} 升级成功：战力 ${this.formatInteger(after)}（${gain > 0 ? '+' : ''}${this.formatInteger(gain)}）`);
+        this.spawnPowerDeltaFloat(gain);
+      }
+      const userId = this.currentLobbyProfile().userId;
+      await Promise.all([this.loadLobbyProfile(userId), this.loadLobbyBag(true), this.loadLobbyAdventure(true)]);
+      await this.loadLobbyHeroDetail(heroId);
+    } catch (error) {
+      void error;
+    }
+    if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
+      this.renderCurrentView();
     }
   }
 
@@ -6483,6 +6506,11 @@ export class LootChainGameRoot extends Component {
 
   private addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel = 10): Node {
     return this.uiPrimitiveFactory.addChildBeveledPanelNode(parent, name, x, y, width, height, fill, stroke, bevel);
+  }
+
+  /** 统一读取态的转圈光环(UiKit.mountKitLoading 用):蓝色细弧光环循环(与能量条同款 v2_a49_153)。 */
+  private mountLoadingSpinner(parent: Node, sizePx: number): boolean {
+    return mountLobbySpineFx(this as unknown as import('./lobby/LobbyUiSpineFx').LobbyUiSpineFxHost, parent, LOBBY_UI_FX.loadingRing, 0, 0, sizePx, true, 0) !== null;
   }
 
   private addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node {

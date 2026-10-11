@@ -1171,34 +1171,73 @@ export class LobbyHeroDetailPanelRenderer {
     });
   }
 
+  /**
+   * 战力变动飘字(2026-10-11 用户「战力漂浮一定要醒目」改版):
+   * 1) 底衬:金色符文法阵升起金光柱(powerSurge,一次性 1.4s)在文字下方先亮;
+   * 2) 暗底金边胶囊牌 + 44 号大字「战力 +N」,弹出时 1.35→1.0 回弹,再缓慢上浮;
+   * 3) 停留 0.6s 后淡出,全程约 2.2s;负值用红字、无底衬。
+   * 挂在持久浮层,不参与内容根清理;升级流程改为接口返回即出(见 GameRoot.runLobbyHeroLevelUp)。
+   */
   spawnPowerDeltaFloat(delta: number): void {
     if (!Number.isFinite(delta) || Math.trunc(delta) === 0) {
       return;
     }
     const value = Math.trunc(delta);
+    const positive = value > 0;
     const floatLayer = this.ensureFloatLayer();
     const node = new Node(`LobbyPowerDeltaFloat_${Date.now()}`);
     node.layer = this.host.node.layer;
     floatLayer.addChild(node);
-    node.setPosition(new Vec3(0, 120, 0));
-    node.addComponent(UITransform).setContentSize(new Size(420, 60));
-    const label = node.addComponent(Label);
-    // formatInteger 对负数会钳成 0,这里用 abs+手动符号,保证 "-238" 正确显示。
-    label.string = `战力 ${value > 0 ? '+' : '-'}${formatInteger(Math.abs(value))}`;
-    label.fontSize = 40;
-    label.lineHeight = 48;
-    label.color = value > 0 ? rgba(118, 232, 120, 255) : rgba(240, 92, 70, 255);
-    label.enableOutline = true;
-    label.outlineColor = rgba(0, 0, 0, 235);
-    label.outlineWidth = 3;
+    // 挂屏幕中上(舞台立绘与右栏之间的空当),不压立绘脸部
+    node.setPosition(new Vec3(0, 150, 0));
+    node.addComponent(UITransform).setContentSize(new Size(520, 120));
     const opacity = node.addComponent(UIOpacity);
     opacity.opacity = 255;
+    if (positive) {
+      // 底衬金光柱:挂在浮层上的独立兄弟节点——mountLobbySpineFx 到期会销毁传入的父节点,不能挂进飘字节点里(否则飘字 0.7s 就没了)
+      const fxHolder = new Node(`LobbyPowerSurge_${Date.now()}`);
+      fxHolder.layer = this.host.node.layer;
+      floatLayer.addChild(fxHolder);
+      fxHolder.setPosition(new Vec3(0, 110, 0));
+      fxHolder.addComponent(UITransform).setContentSize(new Size(10, 10));
+      node.setSiblingIndex(floatLayer.children.length - 1);
+      mountLobbySpineFx(this.host, fxHolder, LOBBY_UI_FX.powerSurge, 0, 0, 300, false, LOBBY_UI_FX.powerSurge.holdMs);
+    }
+    // 牌子:暗底 + 金边胶囊,正值金、负值红
+    const plateW = 360;
+    const plateH = 68;
+    const plate = this.host.addChildPlainNode(node, 'Plate', 0, 0, plateW, plateH);
+    const g = plate.addComponent(Graphics);
+    g.fillColor = rgba(14, 10, 8, 225);
+    g.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
+    g.fill();
+    g.strokeColor = positive ? rgba(255, 214, 110, 240) : rgba(255, 120, 96, 240);
+    g.lineWidth = 2.2;
+    g.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
+    g.stroke();
+    g.strokeColor = positive ? rgba(255, 240, 190, 120) : rgba(255, 180, 160, 100);
+    g.lineWidth = 1;
+    g.roundRect(-plateW / 2 + 4, -plateH / 2 + 4, plateW - 8, plateH - 8, plateH / 2 - 4);
+    g.stroke();
+    const label = this.host.addChildLabel(plate, 'Text', `战力 ${positive ? '+' : '-'}${formatInteger(Math.abs(value))}`, 0, 1, 44, positive ? rgba(255, 226, 130, 255) : rgba(255, 110, 90, 255), new Size(plateW - 24, plateH));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(40, 20, 4, 255);
+    label.outlineWidth = 3;
+    // 弹出回弹 → 停留 → 上浮淡出
+    plate.setScale(0.6, 0.6, 1);
+    tween(plate)
+      .to(0.16, { scale: new Vec3(1.35, 1.35, 1) }, { easing: 'quadOut' })
+      .to(0.14, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
+      .start();
     tween(node)
-      .by(1.4, { position: new Vec3(0, 96, 0) })
+      .delay(0.65)
+      .by(1.3, { position: new Vec3(0, 120, 0) }, { easing: 'sineOut' })
       .start();
     tween(opacity)
-      .delay(0.55)
-      .to(0.85, { opacity: 0 })
+      .delay(1.1)
+      .to(0.9, { opacity: 0 })
       .call(() => {
         if (node.isValid) {
           node.destroy();

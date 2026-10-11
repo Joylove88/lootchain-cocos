@@ -244,3 +244,31 @@ export function mountKitBackdrop(host: UiKitHost, parent: Node, width: number, h
   graphics.fill();
   return node;
 }
+
+/**
+ * 统一的面板读取态(2026-10-11 用户:英雄 / 限时副本 / 水晶 / 图鉴 / 任务 的加载提示各不相同):
+ * 四角金饰框 + 蓝色细弧光环转圈(v2_a49_153,与能量条同款素材)+ 标题「读取中…」+ 副行说明。
+ * 光环骨骼没就绪时只画框和文字(不画手绘圈,免得闪一下再换)。
+ */
+export interface UiKitLoadingHost extends UiKitHost {
+  mountLoadingSpinner?(parent: Node, sizePx: number): boolean;
+}
+
+export function mountKitLoading(host: UiKitLoadingHost, parent: Node, x: number, y: number, scale: number, title = '读取中…', detail = '首次打开需要下载素材,之后直接从本地读取'): Node {
+  const w = Math.min(520 * scale, 520);
+  const h = 190 * scale;
+  const box = mountKitSection(host, parent, 'KitLoading', x, y, w, h, scale, 0.2);
+  const spinnerSize = 56 * scale;
+  const spinner = host.addChildPlainNode(box, 'Spinner', 0, h / 2 - 54 * scale, spinnerSize, spinnerSize);
+  if (!(host.mountLoadingSpinner && host.mountLoadingSpinner(spinner, spinnerSize))) {
+    spinner.destroy();
+  }
+  const titleLabel = host.addChildLabel(box, 'Title', title, 0, -2 * scale, 22 * scale, rgba(248, 222, 160), new Size(w - 60 * scale, 30 * scale));
+  titleLabel.overflow = Label.Overflow.SHRINK;
+  titleLabel.enableOutline = true;
+  titleLabel.outlineColor = rgba(0, 0, 0, 220);
+  titleLabel.outlineWidth = Math.max(1, 1.5 * scale);
+  const detailLabel = host.addChildLabel(box, 'Detail', detail, 0, -36 * scale, 15 * scale, rgba(170, 154, 122), new Size(w - 60 * scale, 22 * scale));
+  detailLabel.overflow = Label.Overflow.SHRINK;
+  return box;
+}

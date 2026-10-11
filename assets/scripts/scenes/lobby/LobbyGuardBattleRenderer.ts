@@ -1152,6 +1152,10 @@ export class LobbyGuardBattleRenderer {
     battle_scene_night_forest: 0.406,
     battle_scene_molten_core: 0.403,
     battle_scene_final_throne: 0.438,
+    // 限时副本新图(2026-10-11):先用回退图的地平线,出图落位后用 tools/qa 量一遍再改
+    battle_scene_daily_awaken: 0.45,
+    battle_scene_daily_arcane: 0.487,
+    battle_scene_daily_abyss: 0.381,
   };
 
   /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景图名;非主线或越界回退矿脉图。 */
@@ -1162,18 +1166,51 @@ export class LobbyGuardBattleRenderer {
    */
   static resolveBattleBgmKey(stageCode: string | null | undefined): string {
     const matched = /^MAIN_(\d+)_\d+$/.exec((stageCode ?? '').toUpperCase());
-    const scene = (matched ? LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])] : undefined) ?? 'battle_scene_guard_mine';
+    const daily = /^DAILY_([A-Z]+)_\d+$/.exec((stageCode ?? '').toUpperCase());
+    const dailyScene = daily ? LobbyGuardBattleRenderer.DAILY_SCENE_BG[daily[1]]?.fallback : undefined;
+    const scene = (matched ? LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])] : undefined) ?? dailyScene ?? 'battle_scene_guard_mine';
     return `bgm_battle_${scene.replace(/^battle_scene_/, '')}`;
   }
+
+  /**
+   * 限时副本四主题战场背景(2026-10-11 用户:四张地图都用熔火矿脉):按关卡码 DAILY_<主题>_<档> 取图。
+   * 熔火矿脉沿用矿脉图;觉醒之门 / 秘法圣殿 / 深渊裂隙 三张为新出图(battle_scene_daily_*,2048×1152,地平线量后填 SCENE_BG_HORIZON),
+   * 图未落位前回退到风格最近的现有章节图,不会黑屏。
+   */
+  private static readonly DAILY_SCENE_BG: Record<string, { asset: string; fallback: string }> = {
+    FORGE: { asset: 'battle_scene_guard_mine', fallback: 'battle_scene_guard_mine' },
+    AWAKEN: { asset: 'battle_scene_daily_awaken', fallback: 'battle_scene_ash_cathedral' },
+    ARCANE: { asset: 'battle_scene_daily_arcane', fallback: 'battle_scene_void_harbor' },
+    ABYSS: { asset: 'battle_scene_daily_abyss', fallback: 'battle_scene_blood_moon' },
+  };
 
   private resolveSceneBgName(): string {
     const fallback = 'battle_scene_guard_mine';
     const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
+    const daily = /^DAILY_([A-Z]+)_\d+$/.exec(stageCode);
+    if (daily) {
+      const entry = LobbyGuardBattleRenderer.DAILY_SCENE_BG[daily[1]];
+      if (!entry) {
+        return fallback;
+      }
+      // 新图是否已入库:精灵缓存里有或能解析到就用,否则回退
+      return this.uiAssetKnown(`ui/battle/${entry.asset}/spriteFrame`) ? entry.asset : entry.fallback;
+    }
     const matched = /^MAIN_(\d+)_\d+$/.exec(stageCode);
     if (!matched) {
       return fallback;
     }
     return LobbyGuardBattleRenderer.CHAPTER_SCENE_BG[Number(matched[1])] ?? fallback;
+  }
+
+  /** 资源是否存在于包内(resources 的 uuid 表);用来决定新背景图未落位时走回退。 */
+  private uiAssetKnown(path: string): boolean {
+    try {
+      return !!resources.getInfoWithPath(path.replace(/\/spriteFrame$/, ''), SpriteFrame) || !!resources.getInfoWithPath(path, SpriteFrame);
+    } catch (error) {
+      void error;
+      return false;
+    }
   }
 
   private resolveSceneBgPath(): string {
@@ -4089,11 +4126,8 @@ export class LobbyGuardBattleRenderer {
     } else {
       this.prewarmAttackSpineFx(frameSpec);
     }
-    const orbHolder = this.host.addChildPlainNode(holder, 'EnergyOrb', -barW / 2, -1, 10, 10);
-    const orbSpec = GUARD_ENERGY_BAR_FX.orb;
-    if (!this.spawnOverlaySpineFx(orbHolder, orbSpec, 0, 0, barH * 2.3, 0, true)) {
-      this.prewarmAttackSpineFx(orbSpec);
-    }
+    // 2026-10-11 用户:「把能量条右面的蓝色圆圈去掉看看」——能量头光环关掉,只留金框流光 + 双层填充
+    void holder;
   }
 
   private refreshSpellBar(): void {
@@ -4127,17 +4161,7 @@ export class LobbyGuardBattleRenderer {
       eg.roundRect(-barW / 2, -r, barW, h, r);
       eg.stroke();
     }
-    // 能量头光环跟着填充末端走(每 1% 挪一次,避免每 tick 设位置);满能量放大 1.35 倍
-    const fx = bar.getChildByName('EnergyFx');
-    const orb = fx?.getChildByName('EnergyOrb');
-    if (orb && orb.isValid) {
-      const orbKey = `${Math.round((fillW / barW) * 100)}:${full ? 1 : 0}`;
-      if (!this.sameDrawKey(orb, orbKey)) {
-        orb.setPosition(-barW / 2 + fillW, 0, 0);
-        const k = full ? 1.35 : 1;
-        orb.setScale(k, k, 1);
-      }
-    }
+
     const text = bar.getChildByName('EnergyText')?.getComponent(Label);
     const energyString = `水晶能量 ${Math.floor(energy)} / ${sim.spellEnergyMax}`;
     if (text && text.string !== energyString) {
@@ -7769,7 +7793,6 @@ export class LobbyGuardBattleRenderer {
     addFxTo(deferredSpine, GUARD_MARK_FX.burst);
     // 法术能量条特效(2026-10-11):开局就要显示,放进必读组
     addFxTo(spine, GUARD_ENERGY_BAR_FX.frame);
-    addFxTo(spine, GUARD_ENERGY_BAR_FX.orb);
     // 强化三选一卡牌底图(每张 413×690):第一次强化时才上传显卡会顿 100ms 以上,进场后台先读
     Object.values(GUARD_PERK_CARD_STYLE).forEach((style) => deferredSprites.add(style.frame));
     GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
