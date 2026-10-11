@@ -1153,9 +1153,9 @@ export class LobbyGuardBattleRenderer {
     battle_scene_molten_core: 0.403,
     battle_scene_final_throne: 0.438,
     // 限时副本新图(2026-10-11):先用回退图的地平线,出图落位后用 tools/qa 量一遍再改
-    battle_scene_daily_awaken: 0.45,
-    battle_scene_daily_arcane: 0.487,
-    battle_scene_daily_abyss: 0.381,
+    battle_scene_daily_awaken: 0.493,
+    battle_scene_daily_arcane: 0.479,
+    battle_scene_daily_abyss: 0.424,
   };
 
   /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景图名;非主线或越界回退矿脉图。 */
@@ -1174,7 +1174,7 @@ export class LobbyGuardBattleRenderer {
 
   /**
    * 限时副本四主题战场背景(2026-10-11 用户:四张地图都用熔火矿脉):按关卡码 DAILY_<主题>_<档> 取图。
-   * 熔火矿脉沿用矿脉图;觉醒之门 / 秘法圣殿 / 深渊裂隙 三张为新出图(battle_scene_daily_*,2048×1152,地平线量后填 SCENE_BG_HORIZON),
+   * 熔火矿脉沿用矿脉图;觉醒之门 / 秘法圣殿 / 深渊裂隙 三张为新出图(battle_scene_daily_*,1672×941 等比铺满,地平线已用 tools/qa/scene_horizon.py 量过),
    * 图未落位前回退到风格最近的现有章节图,不会黑屏。
    */
   private static readonly DAILY_SCENE_BG: Record<string, { asset: string; fallback: string }> = {
