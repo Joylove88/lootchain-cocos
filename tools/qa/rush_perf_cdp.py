@@ -136,6 +136,9 @@ async def main():
             await call('Runtime.enable'); await call('Page.enable')
             await call('Network.setUserAgentOverride', {'userAgent': UA, 'platform': 'Android'})
             await call('Emulation.setTouchEmulationEnabled', {'enabled': True, 'maxTouchPoints': 5})
+            if os.environ.get('CPU_THROTTLE'):
+                # 近似手机 CPU(2026-10-11):桌面 CPU 降速 N 倍
+                await call('Emulation.setCPUThrottlingRate', {'rate': float(os.environ['CPU_THROTTLE'])})
             await call('Emulation.setDeviceMetricsOverride', {'width': 915, 'height': 412, 'deviceScaleFactor': 2.6, 'mobile': True,
                                                               'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
             await call('Page.addScriptToEvaluateOnNewDocument', {'source': PRE})

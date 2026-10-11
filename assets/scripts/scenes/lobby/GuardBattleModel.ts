@@ -2362,7 +2362,10 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
  * 落地啃水晶后视为落地目标,近战可打——避免"怪在啃水晶、近战全程发呆"。
  */
 function guardMeleeCanHit(monster: GuardMonster): boolean {
-  return monster.kind !== 'flying' || monster.x <= GUARD_CRYSTAL_REACH_X + 0.01;
+  // 2026-10-11 用户反馈「怪物不是飞行怪物,虽然有翅膀但是走路的」:飞行类骨骼(small_bat / small_raven / crow_reaper)
+  // 只有跑步动画,画面上是走过来的,近战却全程打不到 → 取消飞行免疫近战,统一按地面怪处理。
+  void monster;
+  return true;
 }
 
 /**
@@ -2795,7 +2798,9 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
     }
   }
   // 狙击手·猎首:优先锁精英/BOSS,其次血量最高的怪。
-  if (target && purpleSuffix === 'headhunt') {
+  // 2026-10-11 用户反馈「怪物靠近水晶,英雄没有优先攻击靠近的怪物」:有怪已贴到水晶跟前时先清它,猎首不抢目标
+  const crystalThreatened = !!target && target.x <= GUARD_CRYSTAL_REACH_X + 1;
+  if (target && purpleSuffix === 'headhunt' && !crystalThreatened) {
     const inRange = state.monsters.filter((monster) => !monster.greedy && guardCanHit(hero, monster, profile.rangeCells));
     const priority = inRange.filter((monster) => monster.kind === 'elite' || monster.kind === 'boss').sort((a, b) => a.x - b.x || a.monsterId - b.monsterId)[0]
       ?? [...inRange].sort((a, b) => b.hp - a.hp || a.monsterId - b.monsterId)[0];
@@ -3211,7 +3216,9 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
 
 /** 地面怪(飞行途中的飞行怪不踩陷阱,落地啃水晶后才算)。 */
 function guardOnGround(monster: GuardMonster): boolean {
-  return monster.kind !== 'flying' || monster.x <= GUARD_CRYSTAL_REACH_X + 0.01;
+  // 同 guardMeleeCanHit:飞行类怪画面上是走路的,陷阱照常触发(2026-10-11)
+  void monster;
+  return true;
 }
 
 function guardTickTraps(state: GuardBattleState): void {

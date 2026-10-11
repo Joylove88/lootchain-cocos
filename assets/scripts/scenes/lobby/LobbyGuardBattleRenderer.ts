@@ -2113,7 +2113,7 @@ export class LobbyGuardBattleRenderer {
     const previewText = hud.getChildByName('GuardPreviewText')?.getComponent(Label);
     if (previewText) {
       if (sim.phase === 'prep' && sim.nextWaveSpawns) {
-        const kindNames: Record<string, string> = { normal: '小怪', fast: '快速', tank: '肉盾', flying: '飞行', shooter: '远程', elite: '精英', boss: 'BOSS' };
+        const kindNames: Record<string, string> = { normal: '小怪', fast: '快速', tank: '肉盾', flying: '翼魔', shooter: '远程', elite: '精英', boss: 'BOSS' };
         const summary = guardSummarizeSpawns(sim.nextWaveSpawns);
         previewText.string = '下一波: ' + Object.entries(summary).map(([kind, count]) => `${kindNames[kind] ?? kind}×${count}`).join(' ');
       } else {
@@ -9245,7 +9245,8 @@ export class LobbyGuardBattleRenderer {
       if (!view.node.isValid) {
         continue;
       }
-      const flyLift = monster.kind === 'flying' ? this.unitSize() * 0.45 : 0;
+      // 2026-10-11:飞行类怪只有跑步动画,抬高 0.45 格后像悬空走路,改为贴地(规则也按地面怪)
+      const flyLift = 0;
       // 区域化散布:同车道内确定性 y 抖动(±0.32 车道高)+ sim 侧速度抖动,怪群成片不成线。
       const jitterY = monster.kind === 'boss' ? 0 : this.monsterJitterY(monster);
       // 受击顶退(打击感):红闪期间向后小位移,随时间衰减
