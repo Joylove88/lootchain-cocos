@@ -1291,6 +1291,35 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
+  /**
+   * 设皮肤但不作废共享动画缓存(2026-10-11 真机剖析:_updateCache / updateToFrame 占主线程 25%+)。
+   * 引擎 Skeleton.setSkin 末尾会调 invalidAnimationCache → 把这种骨骼**所有**已算好的共享帧全部作废,
+   * 于是每刷一只怪,全场同类怪的动画都被重算一遍,共享缓存等于白做。这里直接给底层骨骼 / 烘焙实例设皮肤
+   * 并记下 _skinName(新建缓存时引擎会用它),跳过作废。非缓存模式(英雄 / BOSS)仍走引擎原路径。
+   */
+  private static setSkinKeepCache(skeleton: sp.Skeleton, skin: string): void {
+    const inner = skeleton as unknown as {
+      _skeleton?: { setSkinByName(name: string): void; setSlotsToSetupPose(): void } | null;
+      _instance?: { setSkin(name: string): void } | null;
+      _animCache?: { setSkin(name: string): void } | null;
+      _skinName?: string;
+    };
+    try {
+      if (skeleton.isAnimationCached() && inner._skeleton && inner._instance) {
+        inner._skeleton.setSkinByName(skin);
+        inner._instance.setSkin(skin);
+        inner._animCache?.setSkin(skin);
+        inner._skinName = skin;
+        inner._skeleton.setSlotsToSetupPose();
+        return;
+      }
+    } catch (error) {
+      void error;
+    }
+    skeleton.setSkin(skin);
+    skeleton.setSlotsToSetupPose();
+  }
+
   private static readonly DAMAGE_FONT_BUCKETS = new Map<number, string>();
 
   /** 伤害数字字体名:同一缩放同一名字(共享字形);缩放变了换成多一个尾随空格的同字体名(浏览器渲染相同,引擎缓存键不同)。 */
@@ -8198,8 +8227,7 @@ export class LobbyGuardBattleRenderer {
         // S196 怪物骨骼没有 default 皮肤,全部附件挂在具名皮肤里——不 setSkin 就一个附件都不画(怪物隐形根因,2026-08-25)。
         const skin = resolveBattleUnitSpineSkinName(data, runtimeData);
         if (skin) {
-          skeleton.setSkin(skin);
-          skeleton.setSlotsToSetupPose();
+          LobbyGuardBattleRenderer.setSkinKeepCache(skeleton, skin);
         }
         let idle: string;
         let attack: string;
