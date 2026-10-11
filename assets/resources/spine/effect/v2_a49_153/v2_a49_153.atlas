@@ -1,0 +1,83 @@
+
+E20996.png
+size: 1024, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+1_0000
+  rotate: false
+  xy: 880, 121
+  size: 109, 132
+  orig: 648, 648
+  offset: 255, 255
+  index: -1
+1_0001
+  rotate: false
+  xy: 138, 125
+  size: 125, 128
+  orig: 648, 648
+  offset: 255, 254
+  index: -1
+1_0002
+  rotate: false
+  xy: 2, 127
+  size: 134, 126
+  orig: 648, 648
+  offset: 257, 253
+  index: -1
+1_0003
+  rotate: false
+  xy: 2, 4
+  size: 130, 121
+  orig: 648, 648
+  offset: 263, 254
+  index: -1
+1_0004
+  rotate: false
+  xy: 651, 124
+  size: 114, 129
+  orig: 648, 648
+  offset: 280, 254
+  index: -1
+1_0005
+  rotate: false
+  xy: 767, 118
+  size: 111, 135
+  orig: 648, 648
+  offset: 284, 256
+  index: -1
+1_0006
+  rotate: false
+  xy: 534, 126
+  size: 115, 127
+  orig: 648, 648
+  offset: 279, 266
+  index: -1
+1_0007
+  rotate: false
+  xy: 401, 140
+  size: 131, 113
+  orig: 648, 648
+  offset: 262, 280
+  index: -1
+1_0008
+  rotate: false
+  xy: 265, 140
+  size: 134, 113
+  orig: 648, 648
+  offset: 256, 281
+  index: -1
+1_0009
+  rotate: false
+  xy: 134, 2
+  size: 122, 121
+  orig: 648, 648
+  offset: 255, 272
+  index: -1
+1_0010
+  rotate: false
+  xy: 265, 5
+  size: 108, 133
+  orig: 648, 648
+  offset: 255, 259
+  index: -1

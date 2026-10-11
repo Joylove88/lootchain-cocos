@@ -69,6 +69,10 @@ async def main():
                 await shot('login_account')
                 print(vp, 'login', await ev(base.JS_LOGIN, 120), flush=True)
                 print(vp, 'battle', (await ev(JS_BATTLE, 600) or '')[:120], flush=True)
+                for _ in range(40):
+                    if (await ev("!!(window.__root && window.__root.currentView === 'battle' && window.__gr && window.__gr.sim)")) is True:
+                        break
+                    await asyncio.sleep(1)
                 await asyncio.sleep(3)
                 if await ev("!!(window.__gr && window.__gr.sim && window.__gr.sim.pendingChoice)"):
                     await shot('choice')
@@ -77,6 +81,22 @@ async def main():
                 await ev("(() => { const r = window.__gr; if (r.sim.pendingChoice) window.__M.guardSkipChoice(r.sim); return 1; })()")
                 await asyncio.sleep(2)
                 await shot('hud')
+                if '--ui-check' in args:
+                    for _ in range(20):
+                        if (await ev("!!(window.__gr && window.__gr.sim && window.__gr.sim.heroes.length > 0)")) is True:
+                            break
+                        await asyncio.sleep(1)
+                    # 2026-10-11 用户反馈项:能量条特效 / 召唤只显示金币 / 强化去掉第 n 次 / 统计按钮与静态头像 / 震荡持续域
+                    await ev("(async () => { const r = window.__gr, M = window.__M; r.sim.gold += 3000; r.sim.spellEnergy = r.sim.spellEnergyMax; await new Promise(z => setTimeout(z, 700)); return 1; })()")
+                    await shot('ui_full_energy')
+                    # 先让每个英雄记上输出,统计面板才有行(头像用静态裁图)
+                    # 用阵容池(pool)而不是场上英雄:开局还没召唤时 heroes 为空
+                    print(vp, 'stats seed', await ev("(async () => { const r = window.__gr; const codes = (r.sim.pool || []).map(p => p.heroCode).slice(0, 6); codes.forEach((c, i) => { r.sim.heroDamage[c] = 2400 - i * 310; }); r.statsPanelOpen = true; r.refreshStatsPanel(true); await new Promise(z => setTimeout(z, 1800)); return codes.length + ':' + Object.keys(r.sim.heroDamage).length; })()"), flush=True)
+                    await shot('ui_stats')
+                    await ev("(async () => { const r = window.__gr, M = window.__M; r.statsPanelOpen = false; r.refreshStatsPanel(true); r.sim.spellEnergy = r.sim.spellEnergyMax; M.guardCastSpell(r.sim, 'quake'); await new Promise(z => setTimeout(z, 900)); return 1; })()")
+                    await shot('ui_quake_mid')
+                    await asyncio.sleep(1.4)
+                    await shot('ui_quake_late')
                 # 强化触发三选一(词条只从强化来)
                 await ev("(async () => { const r = window.__gr; r.sim.gold += 2000; window.__M.guardEnhance(r.sim); await new Promise(z => setTimeout(z, 2000)); return !!r.sim.pendingChoice; })()")
                 await shot('choice')

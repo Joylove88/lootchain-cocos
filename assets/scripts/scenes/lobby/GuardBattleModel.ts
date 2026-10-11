@@ -114,7 +114,10 @@ export type GuardHitKind = 'main' | 'multi' | 'spread' | 'pierce' | 'splash' | '
 /** 持续区域(灼烧区/旋风):确定性推进与跳伤,渲染层按 state.zones 绘制。 */
 export interface GuardZone {
   zoneId: number;
-  kind: 'burn' | 'cyclone';
+  /** spellQuake / spellThunder:法术留下的持续伤害域(2026-10-11 用户「群体技能放出来一下子就没了」),视觉由法术特效循环承担。 */
+  kind: 'burn' | 'cyclone' | 'spellQuake' | 'spellThunder';
+  /** 精英 / BOSS 跳伤倍率(神雷域 2;缺省 1)。 */
+  eliteMult?: number;
   x: number;
   radiusCells: number;
   /** 每跳伤害(施放时按施放者攻击折算固定)。 */
@@ -421,21 +424,23 @@ export interface GuardSpellLevelRow {
   dmgMult: number;
   /** 展示尺寸倍率(每级都放大,让玩家一眼看出等级)。 */
   fxScale: number;
+  /** 震荡 / 神雷:施放后留下的持续伤害域时长(ms),随等级增加;0 = 无。 */
+  durationMs: number;
 }
 const GUARD_SPELL_ROW_BASE: GuardSpellLevelRow = {
   radius: 0, dmg: 0, knockback: 0, ms: 0, healPct: 0, aspd: 1, goldMult: 1, echoDmg: 0, stunMs: 0, floorMs: 0, shatterDmg: 0,
-  chain: 0, boltCount: 0, boltDmg: 0, boostMs: 0, jackpotEvery: 0, pushRange: 0, reflectDmg: 0, cdCutMs: 0, dmgMult: 1, fxScale: 1,
+  chain: 0, boltCount: 0, boltDmg: 0, boostMs: 0, jackpotEvery: 0, pushRange: 0, reflectDmg: 0, cdCutMs: 0, dmgMult: 1, fxScale: 1, durationMs: 0,
 };
 const spellRow = (patch: Partial<GuardSpellLevelRow>): GuardSpellLevelRow => Object.assign({}, GUARD_SPELL_ROW_BASE, patch);
 const GUARD_SPELL_FX_SCALE = [1, 1.15, 1.3, 1.45, 1.6];
 export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
   quake: [
-    spellRow({ dmg: 0.6, knockback: GUARD_SPELL_QUAKE_KNOCKBACK_LV1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
+    spellRow({ dmg: 0.6, knockback: GUARD_SPELL_QUAKE_KNOCKBACK_LV1, fxScale: GUARD_SPELL_FX_SCALE[0], durationMs: 1500 }),
     // 震荡 Lv1 已经吃满收益(实测比不放法术主线 +20~33pp),加伤害反而略亏;等级预算给击退 / 震慑,伤害只小涨。
-    spellRow({ dmg: 0.62, knockback: 1.4, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ dmg: 0.64, knockback: 1.6, echoDmg: 0.15, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ dmg: 0.66, knockback: 1.8, echoDmg: 0.2, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ dmg: 0.68, knockback: 2.0, echoDmg: 0.25, stunMs: 1200, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    spellRow({ dmg: 0.62, knockback: 1.4, fxScale: GUARD_SPELL_FX_SCALE[1], durationMs: 1700 }),
+    spellRow({ dmg: 0.64, knockback: 1.6, echoDmg: 0.15, fxScale: GUARD_SPELL_FX_SCALE[2], durationMs: 1900 }),
+    spellRow({ dmg: 0.66, knockback: 1.8, echoDmg: 0.2, fxScale: GUARD_SPELL_FX_SCALE[3], durationMs: 2100 }),
+    spellRow({ dmg: 0.68, knockback: 2.0, echoDmg: 0.25, stunMs: 1200, fxScale: GUARD_SPELL_FX_SCALE[4], durationMs: 2400 }),
   ],
   frost: [
     spellRow({ radius: GUARD_SPELL_FROST_RADIUS, ms: GUARD_SPELL_FROST_MS, fxScale: GUARD_SPELL_FX_SCALE[0] }),
@@ -445,11 +450,11 @@ export const GUARD_SPELL_LEVELS: Record<GuardSpellId, GuardSpellLevelRow[]> = {
     spellRow({ radius: 2.4, ms: 4200, floorMs: 5000, shatterDmg: 0.12, fxScale: GUARD_SPELL_FX_SCALE[4] }),
   ],
   thunder: [
-    spellRow({ radius: GUARD_SPELL_THUNDER_RADIUS, dmg: 2.5, fxScale: GUARD_SPELL_FX_SCALE[0] }),
-    spellRow({ radius: 1.3, dmg: 2.6, fxScale: GUARD_SPELL_FX_SCALE[1] }),
-    spellRow({ radius: 1.4, dmg: 2.7, chain: 2, fxScale: GUARD_SPELL_FX_SCALE[2] }),
-    spellRow({ radius: 1.5, dmg: 2.8, chain: 3, fxScale: GUARD_SPELL_FX_SCALE[3] }),
-    spellRow({ radius: 1.6, dmg: 2.9, chain: 3, boltCount: 8, boltDmg: 0.2, fxScale: GUARD_SPELL_FX_SCALE[4] }),
+    spellRow({ radius: GUARD_SPELL_THUNDER_RADIUS, dmg: 2.5, fxScale: GUARD_SPELL_FX_SCALE[0], durationMs: 2000 }),
+    spellRow({ radius: 1.3, dmg: 2.6, fxScale: GUARD_SPELL_FX_SCALE[1], durationMs: 2250 }),
+    spellRow({ radius: 1.4, dmg: 2.7, chain: 2, fxScale: GUARD_SPELL_FX_SCALE[2], durationMs: 2500 }),
+    spellRow({ radius: 1.5, dmg: 2.8, chain: 3, fxScale: GUARD_SPELL_FX_SCALE[3], durationMs: 2750 }),
+    spellRow({ radius: 1.6, dmg: 2.9, chain: 3, boltCount: 8, boltDmg: 0.2, fxScale: GUARD_SPELL_FX_SCALE[4], durationMs: 3000 }),
   ],
   goldrush: [
     spellRow({ goldMult: 1, fxScale: GUARD_SPELL_FX_SCALE[0] }),
@@ -528,6 +533,9 @@ export function guardSpellDescribe(id: GuardSpellId, level: number): string {
     if (r.stunMs > 0) {
       text += `「震慑」眩晕非 BOSS ${fmtSec(r.stunMs)} 秒,BOSS 读条必断。`;
     }
+    if (r.durationMs > 0) {
+      text += `震荡持续 ${fmtSec(r.durationMs)} 秒,期间全场每 0.5 秒再受 6% 伤害。`;
+    }
     return text;
   }
   if (id === 'frost') {
@@ -547,6 +555,9 @@ export function guardSpellDescribe(id: GuardSpellId, level: number): string {
     }
     if (r.boltCount > 0) {
       text += `「九重雷劫」再降 ${r.boltCount} 道神雷,每道 ${fmtPct(r.boltDmg)}。`;
+    }
+    if (r.durationMs > 0) {
+      text += `雷域持续 ${fmtSec(r.durationMs)} 秒,范围内每 0.4 秒追加 9% 伤害(精英 / BOSS 双倍)。`;
     }
     return text;
   }
@@ -595,6 +606,7 @@ export function guardSpellNextDiff(id: GuardSpellId, level: number): { changes: 
   };
   add('范围', a.radius, b.radius, (v) => `${fmtNum(v)} 格`);
   add('伤害', a.dmg, b.dmg, fmtPct);
+  add('持续', a.durationMs, b.durationMs, (v) => `${fmtSec(v)} 秒`);
   add('击退', a.knockback, b.knockback, (v) => `${fmtNum(v)} 格`);
   add(id === 'frost' ? '冻结' : id === 'aegis' ? '无敌' : '持续', a.ms, b.ms, (v) => `${fmtSec(v)} 秒`);
   add('回血', a.healPct, b.healPct, fmtPct);
@@ -3006,10 +3018,11 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         if (zone.slowMs > 0) {
           monster.slowUntilMs = Math.max(monster.slowUntilMs, state.timeMs + zone.slowMs);
         }
+        const tickDamage = (monster.kind === 'elite' || monster.kind === 'boss') && zone.eliteMult ? zone.tickDamage * zone.eliteMult : zone.tickDamage;
         if (zone.casterHeroCode) {
-          state.heroDamage[zone.casterHeroCode] = (state.heroDamage[zone.casterHeroCode] ?? 0) + zone.tickDamage;
+          state.heroDamage[zone.casterHeroCode] = (state.heroDamage[zone.casterHeroCode] ?? 0) + tickDamage;
         }
-        damageMonster(state, monster, zone.tickDamage, null, zone.casterHeroCode ?? null);
+        damageMonster(state, monster, tickDamage, null, zone.casterHeroCode ?? null);
       }
       if (hitIds.length > 0) {
         state.events.push({ type: 'zoneTick', timeMs: state.timeMs, zoneId: zone.zoneId, amount: zone.tickDamage, heroCode: zone.casterHeroCode, monsterIds: hitIds });
@@ -3434,6 +3447,10 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
     if (row.echoDmg > 0) {
       state.spellPending.push({ atMs: state.timeMs + GUARD_SPELL_ECHO_DELAY_MS, kind: 'quakeEcho', spellId: id, x: 0, amount: Math.round(unit * row.echoDmg), ids: [] });
     }
+    if (row.durationMs > 0) {
+      // 持续震荡域:全场每 0.5s 再震 6%(2026-10-11 用户:群体技能要有持续时间,范围内持续受伤,时长随等级涨;首版 12% 过 docs/39 闸门 C/E 超标,减半)
+      state.zones.push({ zoneId: state.nextZoneId++, kind: 'spellQuake', x: GUARD_SPAWN_X / 2, radiusCells: GUARD_SPAWN_X, tickDamage: Math.max(1, Math.round(amount * 0.06)), tickMs: 500, nextTickAtMs: state.timeMs + 500, untilMs: state.timeMs + row.durationMs, speedCellsPerSec: 0, slowMs: 0 });
+    }
   } else if (id === 'frost' && target) {
     for (const monster of alive) {
       if (Math.abs(monster.x - target.x) > row.radius) {
@@ -3471,6 +3488,10 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
         chainIds.push(monster.monsterId);
         damageMonster(state, monster, monster.kind === 'elite' || monster.kind === 'boss' ? chainAmount * 2 : chainAmount, null);
       }
+    }
+    if (row.durationMs > 0) {
+      // 雷域:落点范围内每 0.4s 追加 9%(精英 / BOSS 双倍),持续时长随等级涨(首版 18% 闸门超标,减半)
+      state.zones.push({ zoneId: state.nextZoneId++, kind: 'spellThunder', x: target.x, radiusCells: row.radius, tickDamage: Math.max(1, Math.round(amount * 0.09)), tickMs: 400, nextTickAtMs: state.timeMs + 400, untilMs: state.timeMs + row.durationMs, speedCellsPerSec: 0, slowMs: 0, eliteMult: 2 });
     }
     for (let i = 0; i < row.boltCount; i += 1) {
       state.spellPending.push({ atMs: state.timeMs + GUARD_SPELL_BOLT_START_MS + i * GUARD_SPELL_BOLT_INTERVAL_MS, kind: 'thunderBolt', spellId: id, x: target.x, amount: Math.round(unit * row.boltDmg), ids: [] });

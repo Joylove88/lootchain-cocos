@@ -211,6 +211,12 @@ function resolveHeroAssetFallback(heroCode: string): HeroAssetFallback | null {
   return HERO_ASSET_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
 }
 
+/** 英雄名册卡立绘路径(不带 /spriteFrame);守卫战统计 / 词条卡头像用它裁头部静态图(2026-10-11)。 */
+export function resolveHeroCardArtPath(heroCode: string | null | undefined): string | null {
+  const art = heroCode ? resolveHeroAssetFallback(heroCode)?.cardBackgroundAsset : undefined;
+  return art ? art : null;
+}
+
 function resolveHeroClassFallback(heroCode: string): string | null {
   return HERO_CLASS_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
 }

@@ -217,6 +217,9 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a49_089:animation': { w: 163, h: 156, cx: 2, cy: 2 },
   'v2_a49_206:action': { w: 359, h: 312, cx: 11, cy: 44 },
   'v2_a49_212:action': { w: 446, h: 323, cx: -2, cy: -31 },
+  // 法术能量条(2026-10-11):金色圆角框流光(A49-394 idle 1s 循环)+ 蓝色细弧光环星点(A49-153 action 0.67s 循环)
+  'v2_a49_394:idle': { w: 300, h: 103, cx: 1, cy: -5 },
+  'v2_a49_153:action': { w: 135, h: 135, cx: 1, cy: 99 },
   'v2_a49_373:idle1': { w: 222, h: 201, cx: -16, cy: 5 },
   'v2_a49_392:idle': { w: 210, h: 211, cx: 6, cy: 5 },
   'v2_a49_448:idle': { w: 727, h: 373, cx: 16, cy: 907 },

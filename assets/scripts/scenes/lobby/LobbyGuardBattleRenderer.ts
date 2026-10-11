@@ -9,6 +9,8 @@ import {
   HorizontalTextAlignment,
   Label,
   Mask,
+  Vec2,
+  Rect,
   Node,
   profiler,
   resources,
@@ -134,8 +136,9 @@ import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_ENERGY_BAR_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
+import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
 
@@ -570,6 +573,8 @@ export class LobbyGuardBattleRenderer {
   private mountedLayoutKey = '';
   /** 统计面板当前行序签名(英雄码顺序):不变时只刷数值与横条,不重建头像/骨骼。 */
   private statsPanelSignature = '';
+  /** 统计行头像退到首字底时置位:立绘到货后下一次刷新强制重建行(2026-10-11 静态头像)。 */
+  private statsAvatarPending = false;
   private paintedCellsKey = '';
   private layoutUiScale = 1;
   /** 金币 HUD 滚动显示值(-1=未初始化)与在场飞行金币计数。 */
@@ -1764,11 +1769,12 @@ export class LobbyGuardBattleRenderer {
     // 左侧改版(2026-09-02 用户拍板参考图):去掉职业计数竖条,换"统计"按钮展开每英雄输出贡献
     const stripTop = height / 2 - 20;
     // 2026-10-10 全界面美化:圆角平涂框换背包同款暗铁按钮切图(bag_button_dark 512×158,按原比 3.24 等比)
-    const statsBtnH = 38;
+    // 2026-10-11 用户:「统计」太小 → 加大一档
+    const statsBtnH = 54;
     const statsBtnW = Math.round(statsBtnH * (512 / 158));
     const statsBtn = this.host.addChildPlainNode(hud, 'GuardStatsButton', -width / 2 + 24 + statsBtnW / 2, stripTop - statsBtnH / 2, statsBtnW, statsBtnH);
     this.mountSprite(statsBtn, 'Art', GUARD_STATS_BUTTON_ART, 0, 0, statsBtnW, statsBtnH);
-    const sbLabel = this.host.addChildLabel(statsBtn, 'Text', '统计', 0, 0, 17, rgba(244, 220, 166, 252), new Size(statsBtnW - 8, 22));
+    const sbLabel = this.host.addChildLabel(statsBtn, 'Text', '统计', 0, 0, 24, rgba(244, 220, 166, 252), new Size(statsBtnW * 0.7, 32));
     sbLabel.enableOutline = true;
     sbLabel.outlineColor = rgba(12, 8, 6, 255);
     sbLabel.outlineWidth = 2;
@@ -1868,10 +1874,11 @@ export class LobbyGuardBattleRenderer {
       .slice(0, 8);
     const maxDamage = Math.max(1, entries[0]?.damage ?? 1);
     const signature = entries.map((entry) => entry.heroCode).join('|') || '-';
-    if (existing && existing.isValid && signature === this.statsPanelSignature) {
+    if (existing && existing.isValid && signature === this.statsPanelSignature && !this.statsAvatarPending) {
       this.updateStatsPanelRows(existing, entries, maxDamage);
       return;
     }
+    this.statsAvatarPending = false;
     if (existing) {
       existing.destroy();
     }
@@ -1993,11 +2000,73 @@ export class LobbyGuardBattleRenderer {
    * 在圆形遮罩窗口里挂一个放大的骨骼、把脚底压到窗口下方使头部落进窗口(不动素材,纯显示裁切);
    * 骨骼到位前先显示稀有度色底 + 名字首字(loadSpineInto 成功后会销毁该占位)。
    */
+  /**
+   * 名册卡立绘的头部裁切框(原图像素,x/y/w/h;2026-10-11 用 PIL 按 alpha 包围盒自动估算后目视复核)。
+   * 统计行 / 词条卡头像用它从立绘里裁一块静态头像(用户:「统计里的头像弄成静态图」),不再挂小骨骼。
+   */
+  private static readonly HERO_HEAD_CROPS: Record<string, [number, number, number, number]> = {
+    Belladonna_Illust: [324, 426, 295, 295], Carmilla_center: [346, 83, 276, 276], Eulenspigel_Illust: [334, 457, 289, 289], HeylelS01_Illust: [306, 448, 305, 305],
+    IshmaelA_Illust: [330, 403, 378, 378], Ishmael_center: [357, 110, 369, 369], LucienA_Illust: [311, 326, 393, 393], Lucrecia_Illust: [582, 433, 290, 290],
+    Nuu_Illust: [195, 3, 289, 289], Simone_Illust: [409, 352, 353, 353], Sphinx_Illust: [363, 362, 270, 270],
+    npc_1001: [184, 0, 254, 254], npc_1002: [164, 3, 210, 210], npc_1003: [124, 0, 138, 138], npc_1004: [140, 0, 318, 318], npc_1008: [227, 40, 391, 391],
+    npc_1012: [153, 10, 203, 203], npc_1016: [112, 18, 231, 231], npc_1028: [149, 56, 281, 281], npc_1036: [153, 110, 292, 292], npc_1037: [168, 192, 396, 396],
+    npc_1038: [164, 70, 265, 265], npc_21006: [103, 62, 321, 321],
+  };
+
+  /** 把名册立绘裁成头像贴进 size×size 的圆角窗口;图没读到 / 没有裁切表返回 false。 */
+  private mountHeadCrop(parent: Node, artPath: string, size: number): boolean {
+    const key = artPath.split('/').pop() ?? '';
+    const crop = LobbyGuardBattleRenderer.HERO_HEAD_CROPS[key];
+    if (!crop) {
+      return false;
+    }
+    const clip = this.host.addChildPlainNode(parent, 'HeadClip', 0, 0, size, size);
+    const mask = clip.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_STENCIL;
+    const mg = clip.getComponent(Graphics) ?? clip.addComponent(Graphics);
+    mg.roundRect(-size / 2, -size / 2, size, size, 7);
+    mg.fill();
+    const sprite = this.host.addSprite('Img', `${artPath}/spriteFrame`, 0, 0, size, size, clip);
+    const base = sprite?.spriteFrame;
+    if (!sprite || !base || !base.isValid || !base.texture) {
+      clip.destroy();
+      return false;
+    }
+    // 源帧可能被裁过透明边:先算原图左上角在贴图里的坐标,再加上裁切框
+    const originX = base.rect.x - ((base.originalSize.width - base.rect.width) / 2 + base.offset.x);
+    const originY = base.rect.y - ((base.originalSize.height - base.rect.height) / 2 - base.offset.y);
+    const texW = base.texture.width;
+    const texH = base.texture.height;
+    const x = Math.max(0, Math.min(texW - 1, Math.round(originX + crop[0])));
+    const y = Math.max(0, Math.min(texH - 1, Math.round(originY + crop[1])));
+    const w = Math.max(1, Math.min(texW - x, crop[2]));
+    const h = Math.max(1, Math.min(texH - y, crop[3]));
+    const sub = new SpriteFrame();
+    sub.texture = base.texture;
+    sub.rect = new Rect(x, y, w, h);
+    sub.originalSize = new Size(w, h);
+    sub.offset = new Vec2(0, 0);
+    sprite.type = Sprite.Type.SIMPLE;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.spriteFrame = sub;
+    sprite.node.getComponent(UITransform)?.setContentSize(size, size);
+    return true;
+  }
+
   private mountStatsAvatar(parent: Node, entry: { name: string; rarity: string; ally: BattlePresentationUnitSnapshot | null }, size: number): void {
     const portrait = resolveC1812HeroResultPortraitPath(entry.ally?.spineAsset ?? entry.ally?.portraitAsset);
     if (portrait) {
       this.mountSprite(parent, 'Img', portrait, 0, 0, size, size);
       return;
+    }
+    // 2026-10-11 用户「统计里的头像弄成静态图」:SR/R(act 系)没有头像图的,用名册立绘裁头部;图未就绪再退首字底(不再挂小骨骼)
+    const cardArt = resolveHeroCardArtPath(entry.ally?.heroCode ?? entry.ally?.unitKey ?? null);
+    if (cardArt) {
+      if (this.mountHeadCrop(parent, cardArt, size)) {
+        return;
+      }
+      // 立绘还没到:先画首字底,下一次刷新(≥500ms 后)重建行,图到了就换成头像
+      this.statsAvatarPending = true;
     }
     const fallback = this.host.addChildPlainNode(parent, 'Fallback', 0, 0, size, size);
     const fg = fallback.addComponent(Graphics);
@@ -2009,16 +2078,7 @@ export class LobbyGuardBattleRenderer {
     initial.enableOutline = true;
     initial.outlineColor = rgba(10, 8, 6, 255);
     initial.outlineWidth = 2;
-    const resource = entry.ally ? resolveBattleUnitSpineResource(entry.ally) : null;
-    if (!resource || !entry.ally) {
-      return;
-    }
-    const window = this.host.addChildPlainNode(parent, 'Window', 0, 0, size, size);
-    const mask = window.addComponent(Mask);
-    mask.type = Mask.Type.GRAPHICS_ELLIPSE;
-    // 骨骼按 2.6 倍窗口高挂;英雄立绘头部约在总高 82%~96%,脚底下压 0.86 倍骨骼高后头部正好落在窗口中心附近。
-    const spineSize = size * 2.6;
-    this.loadSpineInto(window, fallback, resource, spineSize, false, undefined, { allyUnit: entry.ally, footY: -spineSize * 0.86 });
+    // (旧版此处在圆形遮罩窗口里挂放大的骨骼露头;2026-10-11 改静态图后不再需要)
   }
 
   private refreshWaveTrack(): void {
@@ -2135,7 +2195,8 @@ export class LobbyGuardBattleRenderer {
     }
     const summonCost = this.root?.getChildByName('GuardSummonButton')?.getChildByName('GuardSummonCost')?.getComponent(Label);
     if (summonCost) {
-      summonCost.string = `${guardCurrentSummonCost(sim)} · 下次 ${Math.min(300, guardCurrentSummonCost(sim) + 10)}`;
+      // 2026-10-11 用户:召唤钮只显示当前所需金币
+      summonCost.string = `${guardCurrentSummonCost(sim)}`;
     }
     this.refreshWaveTrack();
     this.refreshStatsPanel(false);
@@ -2157,7 +2218,14 @@ export class LobbyGuardBattleRenderer {
       const gold = guardGoldCardChance(sim);
       // 按钮内文字区很窄:有金卡候选时只显示概率(玩家最关心的数),否则显示第几次。
       const goldText = !gold.available ? '' : gold.forced ? '大招必出!' : `大招 ${Math.round(gold.chance * 100)}%`;
-      enhanceDesc.string = nextEnhanceCost === null ? '词条已选满' : goldText || `第 ${sim.enhanceLevel + 1} 次`;
+      // 2026-10-11 用户:中间「第 n 次」一行移除;只在有金卡概率 / 已选满时才显示中间行
+      enhanceDesc.string = nextEnhanceCost === null ? '词条已选满' : goldText;
+      // 中间行为空时金币数上提到中线,按钮不留空洞
+      const enhanceCostNode = enhanceCost?.node;
+      if (enhanceCostNode) {
+        const parentH = enhanceCostNode.parent?.getComponent(UITransform)?.height ?? 0;
+        enhanceCostNode.setPosition(enhanceCostNode.position.x, enhanceDesc.string ? -parentH * 0.3 : -parentH * 0.17, 0);
+      }
       enhanceDesc.color = gold.available && gold.forced ? rgba(255, 220, 120, 255) : rgba(232, 214, 180, 240);
     }
     if (enhanceCost) {
@@ -2332,7 +2400,8 @@ export class LobbyGuardBattleRenderer {
     title.outlineColor = rgba(60, 26, 8, 255);
     title.outlineWidth = 3;
     LobbyGuardBattleRenderer.hudCharCache(title, true);
-    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 16, rgba(255, 224, 140, 250), new Size(w * 0.72, 22));
+    // 2026-10-11 用户:只显示当前所需金币 → 字号 16→22,居中在标题下
+    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 22, rgba(255, 224, 140, 250), new Size(w * 0.6, 28));
     cost.enableOutline = true;
     cost.outlineColor = rgba(50, 22, 8, 255);
     cost.outlineWidth = 2;
@@ -3942,8 +4011,11 @@ export class LobbyGuardBattleRenderer {
     const bar = this.host.addChildPlainNode(root, 'GuardSpellBar', this.spellBarCenterX(), this.spellBarY(), barW, size + 60);
     const hudScale = this.bottomHudScale();
     bar.setScale(hudScale, hudScale, 1);
-    const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 14);
+    // 2026-10-11 美化:条加高到 18,底下铺金框流光特效,填充末端挂蓝色光环「能量头」(refreshSpellBar 里定位)
+    const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 18);
     energyBg.addComponent(Graphics);
+    const energyFx = this.host.addChildPlainNode(bar, 'EnergyFx', 0, size / 2 + 26, barW, 18);
+    this.mountEnergyBarFx(energyFx, barW, 18);
     const energyText = this.host.addChildLabel(bar, 'EnergyText', '', -barW / 2, size / 2 + 46, 15, rgba(170, 220, 255), new Size(barW, 20), HorizontalTextAlignment.LEFT);
     energyText.enableOutline = true;
     energyText.outlineColor = rgba(10, 16, 28, 255);
@@ -3995,6 +4067,35 @@ export class LobbyGuardBattleRenderer {
     this.refreshSpellBar();
   }
 
+  /** 能量条特效:金框流光铺满条(用 sizePx=条宽,再按条高压扁)+ 蓝色光环「能量头」。特效没就绪时先预热,就绪后 refreshSpellBar 下一次重建时挂上。 */
+  private mountEnergyBarFx(holder: Node, barW: number, barH: number): void {
+    const frameSpec = GUARD_ENERGY_BAR_FX.frame;
+    const frameReady = this.attackSpineFxReady.get(frameSpec.effect);
+    if (frameReady) {
+      // 金框原始亮区 300×103:宽按条宽缩放,高单独按 (条高 + 14) 压,角仍是圆角
+      const fitW = (barW + 14) / frameReady.w;
+      const fitH = (barH + 18) / frameReady.h;
+      const node = this.host.addChildPlainNode(holder, 'EnergyFrame', -frameReady.cx * fitW, -frameReady.cy * fitH, 10, 10);
+      node.setScale(fitW, fitH, 1);
+      const skeleton = node.addComponent(sp.Skeleton);
+      LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
+      skeleton.premultipliedAlpha = false;
+      skeleton.skeletonData = frameReady.data;
+      try {
+        skeleton.setAnimation(0, frameReady.animation, true);
+      } catch (error) {
+        void error;
+      }
+    } else {
+      this.prewarmAttackSpineFx(frameSpec);
+    }
+    const orbHolder = this.host.addChildPlainNode(holder, 'EnergyOrb', -barW / 2, -1, 10, 10);
+    const orbSpec = GUARD_ENERGY_BAR_FX.orb;
+    if (!this.spawnOverlaySpineFx(orbHolder, orbSpec, 0, 0, barH * 2.3, 0, true)) {
+      this.prewarmAttackSpineFx(orbSpec);
+    }
+  }
+
   private refreshSpellBar(): void {
     const sim = this.sim;
     const bar = this.root?.getChildByName('GuardSpellBar');
@@ -4005,18 +4106,37 @@ export class LobbyGuardBattleRenderer {
     const barW = this.spellBarWidth();
     const energy = sim.spellEnergy;
     const eg = bar.getChildByName('Energy')?.getComponent(Graphics);
-    if (eg && !this.sameDrawKey(eg.node, `${Math.round(barW)}:${Math.round(Math.max(6, barW * (energy / sim.spellEnergyMax)))}`)) {
+    const fillW = Math.max(8, barW * Math.min(1, energy / sim.spellEnergyMax));
+    const full = energy >= sim.spellEnergyMax;
+    if (eg && !this.sameDrawKey(eg.node, `${Math.round(barW)}:${Math.round(fillW)}:${full ? 1 : 0}`)) {
+      // 2026-10-11 美化:深底 + 双层蓝填充(下深上亮,顶部一道高光)+ 满能量转金白;外框由 EnergyFx 的金框流光承担
+      const h = 18;
+      const r = h / 2;
       eg.clear();
-      eg.fillColor = rgba(8, 10, 18, 215);
-      eg.roundRect(-barW / 2, -7, barW, 14, 7);
+      eg.fillColor = rgba(6, 9, 20, 225);
+      eg.roundRect(-barW / 2, -r, barW, h, r);
       eg.fill();
-      eg.fillColor = rgba(90, 170, 255, 245);
-      eg.roundRect(-barW / 2, -7, Math.max(6, barW * (energy / sim.spellEnergyMax)), 14, 7);
+      eg.fillColor = full ? rgba(255, 214, 120, 250) : rgba(40, 120, 230, 250);
+      eg.roundRect(-barW / 2 + 2, -r + 2, Math.max(4, fillW - 4), h - 4, r - 2);
       eg.fill();
-      eg.strokeColor = rgba(150, 200, 255, 200);
-      eg.lineWidth = 1.5;
-      eg.roundRect(-barW / 2, -7, barW, 14, 7);
+      eg.fillColor = full ? rgba(255, 244, 200, 170) : rgba(140, 210, 255, 160);
+      eg.roundRect(-barW / 2 + 2, 0, Math.max(4, fillW - 4), r - 3, r - 3);
+      eg.fill();
+      eg.strokeColor = full ? rgba(255, 230, 150, 220) : rgba(120, 180, 255, 170);
+      eg.lineWidth = 1.2;
+      eg.roundRect(-barW / 2, -r, barW, h, r);
       eg.stroke();
+    }
+    // 能量头光环跟着填充末端走(每 1% 挪一次,避免每 tick 设位置);满能量放大 1.35 倍
+    const fx = bar.getChildByName('EnergyFx');
+    const orb = fx?.getChildByName('EnergyOrb');
+    if (orb && orb.isValid) {
+      const orbKey = `${Math.round((fillW / barW) * 100)}:${full ? 1 : 0}`;
+      if (!this.sameDrawKey(orb, orbKey)) {
+        orb.setPosition(-barW / 2 + fillW, 0, 0);
+        const k = full ? 1.35 : 1;
+        orb.setScale(k, k, 1);
+      }
     }
     const text = bar.getChildByName('EnergyText')?.getComponent(Label);
     const energyString = `水晶能量 ${Math.floor(energy)} / ${sim.spellEnergyMax}`;
@@ -4528,7 +4648,9 @@ export class LobbyGuardBattleRenderer {
     if (id === 'quake') {
       gameAudio.sfx('wheel_stop');
       this.shakeField(12 + (level - 1));
-      if (!spineAt(GUARD_SPELL_FX.quake, crystalX, crystalY, row.fxScale)) {
+      // 持续震荡域(2026-10-11):特效循环播到持续时长结束,不再一闪而过
+      const quakeSpec = row.durationMs > 0 ? { ...GUARD_SPELL_FX.quake, loop: true } : GUARD_SPELL_FX.quake;
+      if (!spineAt(quakeSpec, crystalX, crystalY, row.fxScale, row.durationMs > 0 ? row.durationMs : GUARD_SPELL_FX.quake.holdMs)) {
         flashAt(crystalX, crystalY, 'ui/guard/cast_flash/spriteFrame', unit * 4 * row.fxScale, rgba(140, 210, 255), 0.8, 40);
       }
       const wave = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/c1812/effects/hit_ring/spriteFrame', crystalX, crystalY, unit, unit, rgba(150, 220, 255));
@@ -4566,7 +4688,9 @@ export class LobbyGuardBattleRenderer {
       } else {
         gameAudio.sfx('chest_land');
         this.shakeField(8 + (level - 1));
-        if (!spineAt(GUARD_SPELL_FX.thunder, px, py, radiusMult)) {
+        // 雷域(2026-10-11):落雷特效循环到持续时长结束,范围内持续落雷
+        const thunderSpec = row.durationMs > 0 ? { ...GUARD_SPELL_FX.thunder, loop: true } : GUARD_SPELL_FX.thunder;
+        if (!spineAt(thunderSpec, px, py, radiusMult, row.durationMs > 0 ? row.durationMs : GUARD_SPELL_FX.thunder.holdMs)) {
           const bolt = this.mountSprite(field, 'GuardSpellFx', 'ui/battle/attack/atk_abyss_rift/spriteFrame', px, py + unit * 2.4, unit * 4.6, unit * 1.6, rgba(220, 235, 255));
           bolt.setSiblingIndex(field.children.length - 1);
           bolt.angle = -62;
@@ -7618,6 +7742,12 @@ export class LobbyGuardBattleRenderer {
       const portrait = resolveC1812HeroResultPortraitPath(ally.spineAsset ?? ally.portraitAsset);
       if (portrait) {
         sprites.add(portrait);
+      } else {
+        // 没有头像图的 SR/R:统计 / 词条卡头像从名册立绘裁头部(2026-10-11),立绘要进战斗预读,否则首开统计只能显示首字
+        const cardArt = resolveHeroCardArtPath(ally.heroCode ?? ally.unitKey);
+        if (cardArt) {
+          deferredSprites.add(`${cardArt}/spriteFrame`);
+        }
       }
       addFxTo(spine, resolveHeroAttackSpineFx(heroCode));
       if (role === 'support') {
@@ -7637,6 +7767,9 @@ export class LobbyGuardBattleRenderer {
     guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));
     addFxTo(deferredSpine, GUARD_MARK_FX.ring);
     addFxTo(deferredSpine, GUARD_MARK_FX.burst);
+    // 法术能量条特效(2026-10-11):开局就要显示,放进必读组
+    addFxTo(spine, GUARD_ENERGY_BAR_FX.frame);
+    addFxTo(spine, GUARD_ENERGY_BAR_FX.orb);
     // 强化三选一卡牌底图(每张 413×690):第一次强化时才上传显卡会顿 100ms 以上,进场后台先读
     Object.values(GUARD_PERK_CARD_STYLE).forEach((style) => deferredSprites.add(style.frame));
     GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
@@ -7685,6 +7818,14 @@ export class LobbyGuardBattleRenderer {
           return;
         }
         this.attackSpineFxReady.set(spec.effect, { spec, data, animation, w: bounds.w, h: bounds.h, cx: bounds.cx, cy: bounds.cy });
+        if (spec.effect === GUARD_ENERGY_BAR_FX.frame.effect || spec.effect === GUARD_ENERGY_BAR_FX.orb.effect) {
+          // 能量条特效晚到:只重挂特效层,不重建整条法术栏
+          const fx = this.root?.getChildByName('GuardSpellBar')?.getChildByName('EnergyFx');
+          if (fx && fx.isValid) {
+            fx.removeAllChildren();
+            this.mountEnergyBarFx(fx, this.spellBarWidth(), 18);
+          }
+        }
       } catch (error) {
         void error;
       }
@@ -8092,6 +8233,10 @@ export class LobbyGuardBattleRenderer {
           g.ellipse(0, 0, radiusPx * 0.72, radiusPx * 0.21);
           g.stroke();
         }
+      } else if (zone.kind === 'spellQuake' || zone.kind === 'spellThunder') {
+        // 法术持续域(2026-10-11):视觉由法术特效本体循环到期承担(playSpellFx),区域节点只做结算,不画东西
+        node.angle = 0;
+        node.setScale(1, 1, 1);
       } else {
         // 旋风素材化(2026-09-02 用户拍板 image2 方向):透明漩涡贴图子节点自旋,父节点压扁成地面椭圆
         node.angle = 0;

@@ -242,6 +242,15 @@ export const LOBBY_CRYSTAL_FX = {
 // ── 大厅其它 UI 特效位(docs/29 v3,2026-09-27 用户:"整个游戏系统中需要的 UI 特效的,可以在 UI 特效中找最合适的")──
 // null = 该位置暂不放;尺寸 = 目标尺寸 × size。
 export interface LobbyUiFxSpec { effect: string; animation: string; size: number; loop: boolean; holdMs: number }
+/**
+ * 法术能量条特效(2026-10-11 用户「水晶能量需要美化,弄成带特效的」):
+ * frame = 金色圆角矩形描边流光,铺满整条(按条宽拉伸,高度跟条高);
+ * orb = 蓝色细弧光环 + 星点,挂在当前能量末端当「能量头」,随填充移动;满能量时放大并常亮。
+ */
+export const GUARD_ENERGY_BAR_FX = {
+  frame: { effect: 'v2_a49_394', animation: 'idle', size: 1 },
+  orb: { effect: 'v2_a49_153', animation: 'action', size: 1 },
+};
 export const LOBBY_UI_FX: {
   /** 召唤结果 UR / SSR 卡翻出时的一次性稀有度爆闪(A49-373 蓝金星芒)。 */
   gachaRareCard: LobbyUiFxSpec | null;
