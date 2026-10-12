@@ -954,7 +954,12 @@ export class LootChainGameRoot extends Component {
       syncDesignResolutionToViewport();
       const nextKey = this.makeLayoutKey();
       if (this.layoutKey && this.layoutKey !== nextKey) {
-        this.renderCurrentView();
+        // 养成流程压制期:layoutKey 含各 loader 版本号与养成忙标记,回读期间每翻一次都会整页重建——统一攒到特效播完
+        if (this.isHeroGrowthRenderHeld()) {
+          this.heroGrowthRenderPending = true;
+        } else {
+          this.renderCurrentView();
+        }
       } else if (this.renderDeferredForInput) {
         this.renderCurrentView();
       }
@@ -1530,6 +1535,11 @@ export class LootChainGameRoot extends Component {
 
   private refreshLobbyOverlay(): void {
     if (this.isLobbyScenePageView(this.currentView)) {
+      // 养成流程压制期(见 heroGrowthHoldUntil):回读到货只记待刷,等特效播完统一刷一次
+      if (this.isHeroGrowthRenderHeld()) {
+        this.heroGrowthRenderPending = true;
+        return;
+      }
       this.renderCurrentView();
       return;
     }
@@ -3231,7 +3241,8 @@ export class LootChainGameRoot extends Component {
       if (this.lobbyHeroDetailHeroId === heroId) {
         this.lobbyHeroDetailData = detail;
         if (this.currentView === 'heroDetail') {
-          this.renderCurrentView();
+          // 养成回读期间走压制(见 heroGrowthHoldUntil),其余照常整刷
+          this.refreshLobbyOverlay();
         }
       }
     } catch (error) {
@@ -3291,7 +3302,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroLevelUpBusyId = hero.id;
     this.setStatus(`${hero.heroName} 升级请求提交中...`);
-    this.renderCurrentView();
+    this.markHeroDockPending();
     void this.runLobbyHeroLevelUp(hero.id, hero.heroName);
   }
 
@@ -3309,33 +3320,95 @@ export class LootChainGameRoot extends Component {
       // 按钮解锁 + 庆祝特效 + 音效 + 提示同帧;战力增量等名册回读后按真实总战力算,再出飘字
       this.lobbyHeroRosterState.patchHero(heroId, { level: result.level });
       this.lobbyHeroLevelUpBusyId = null;
-      this.lobbyHeroCelebration = 'levelUp';
       lobbyGuide.markVisited('levelup');
       gameAudio.sfx('level_up');
       this.setStatus(`${heroName} 升级成功：Lv.${result.level}`);
-      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
-        this.renderCurrentView();
-      }
-      // 后台回读:名册一回来就按总战力出飘字(持久层,不受后续整刷影响),其余静默刷新
-      void this.reloadAfterHeroLevelUp(heroId, heroName, beforePower);
+      // 2026-10-12 用户录屏"点升级骨骼和特效都卡一下":成功时刻只做局部(按钮解锁 + 贴着英雄的庆祝特效),不整页重绘
+      this.celebrateHeroGrowth('levelUp');
+      // 后台回读:名册一回来就按总战力出飘字(持久层),整页刷新推迟到特效播完
+      void this.reloadAfterHeroGrowth(heroId, heroName, beforePower, '升级成功');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       gameAudio.sfx('ui_error');
       this.setStatus(`英雄升级失败：${message}`);
       this.lobbyHeroLevelUpBusyId = null;
-      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
-        this.renderCurrentView();
-      }
+      this.releaseHeroDock();
     }
   }
 
-  private async reloadAfterHeroLevelUp(heroId: number, heroName: string, beforePower: number): Promise<void> {
+  /** 养成成功后的庆祝特效播放截止时刻:整页刷新排在它之后,别把冻帧砸在特效中间。 */
+  private heroGrowthFxUntil = 0;
+  private heroDetailRefreshToken = 0;
+  /**
+   * 养成流程中的整刷压制截止时刻(2026-10-12 用户录屏"点升级骨骼和特效卡一下"):
+   * 回读的资料 / 名册 / 背包 / 冒险 / 详情每到一份都经 refreshLobbyOverlay 整页重建,一次升级实测 17 次整刷;
+   * 压制期内到货只记"待刷",由 scheduleHeroDetailRefresh 统一刷一次;带截止时刻兜底,流程异常也不会一直压着。
+   */
+  private heroGrowthHoldUntil = 0;
+  private heroGrowthRenderPending = false;
+
+  private isHeroGrowthRenderHeld(): boolean {
+    return this.currentView === 'heroDetail' && Date.now() < this.heroGrowthHoldUntil;
+  }
+
+  /** 养成按钮按下:只把底部按钮切成"处理中"(局部)并开启整刷压制;详情页不在就按老路整刷。 */
+  private markHeroDockPending(): void {
+    if (this.currentView === 'heroDetail' && this.lobbyHeroDetailPanelRenderer.setDockPending(true)) {
+      this.heroGrowthHoldUntil = Date.now() + 8000;
+      return;
+    }
+    this.renderCurrentView();
+  }
+
+  /** 养成成功时刻:按钮解锁 + 庆祝特效(锚在立绘、挂持久层),都不整页重绘;详情页没活着就打标记走整刷路径。 */
+  private celebrateHeroGrowth(kind: 'starUp' | 'awaken' | 'levelUp'): void {
+    const renderer = this.lobbyHeroDetailPanelRenderer;
+    if (this.currentView === 'heroDetail' && renderer.setDockPending(false) && renderer.playHeroCelebration(kind)) {
+      this.heroGrowthFxUntil = Date.now() + (kind === 'levelUp' ? 2400 : 2800);
+      return;
+    }
+    this.lobbyHeroCelebration = kind;
+    if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
+      this.renderCurrentView();
+    }
+  }
+
+  /** 养成失败 / 未执行:只解锁按钮,压制期内攒下的整刷照常补一次。 */
+  private releaseHeroDock(): void {
+    if (this.currentView === 'heroDetail' && this.lobbyHeroDetailPanelRenderer.setDockPending(false)) {
+      this.scheduleHeroDetailRefresh();
+      return;
+    }
+    this.heroGrowthHoldUntil = 0;
+    if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
+      this.renderCurrentView();
+    }
+  }
+
+  /** 回读完成后的整页刷新:推迟到庆祝特效播完;连点多次只排最后一次,还在处理中就交给下一轮。 */
+  private scheduleHeroDetailRefresh(): void {
+    const token = ++this.heroDetailRefreshToken;
+    const delay = Math.max(0, this.heroGrowthFxUntil - Date.now());
+    setTimeout(() => {
+      if (token !== this.heroDetailRefreshToken || this.lobbyHeroLevelUpBusyId !== null) {
+        return; // 连点中:交给最后一轮
+      }
+      this.heroGrowthHoldUntil = 0;
+      this.heroGrowthRenderPending = false;
+      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
+        this.renderCurrentView();
+      }
+    }, delay);
+  }
+
+  /** 升级 / 升星成功后的后台回读:名册一回来就出战力飘字,其余静默刷新,最后排一次整页刷新。 */
+  private async reloadAfterHeroGrowth(heroId: number, heroName: string, beforePower: number, verb: string): Promise<void> {
     try {
       await this.loadLobbyHeroRoster(true);
       const after = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? beforePower;
       const gain = after - beforePower;
       if (gain !== 0) {
-        this.setStatus(`${heroName} 升级成功：战力 ${this.formatInteger(after)}（${gain > 0 ? '+' : ''}${this.formatInteger(gain)}）`);
+        this.setStatus(`${heroName} ${verb}：战力 ${this.formatInteger(after)}（${gain > 0 ? '+' : ''}${this.formatInteger(gain)}）`);
         this.spawnPowerDeltaFloat(gain);
       }
       const userId = this.currentLobbyProfile().userId;
@@ -3344,9 +3417,7 @@ export class LootChainGameRoot extends Component {
     } catch (error) {
       void error;
     }
-    if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
-      this.renderCurrentView();
-    }
+    this.scheduleHeroDetailRefresh();
   }
 
   // 一键升级:循环调用升级接口直到失败(材料不足/等级上限),最多 50 次;结束后统一回读。
@@ -3362,7 +3433,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroLevelUpBusyId = hero.id;
     this.setStatus(`${hero.heroName} 一键升级中...`);
-    this.renderCurrentView();
+    this.markHeroDockPending();
     void this.runLobbyHeroAutoLevelUp(hero.id, hero.heroName);
   }
 
@@ -3398,10 +3469,9 @@ export class LootChainGameRoot extends Component {
         this.setStatus(`一键升级未执行：${stopReason || '材料不足或已达上限'}`);
       }
       this.lobbyHeroLevelUpBusyId = null;
-      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
-        this.renderCurrentView();
-      }
-      this.spawnPowerDeltaFloat(lastPower - beforePower);
+      const afterPower = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? lastPower;
+      this.releaseHeroDock();
+      this.spawnPowerDeltaFloat(afterPower - beforePower);
     }
   }
 
@@ -3418,7 +3488,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroLevelUpBusyId = hero.id;
     this.setStatus(`${hero.heroName} 觉醒请求提交中...`);
-    this.renderCurrentView();
+    this.markHeroDockPending();
     void this.runLobbyHeroAwaken(hero.id, hero.heroName);
   }
 
@@ -3443,10 +3513,14 @@ export class LootChainGameRoot extends Component {
       gameAudio.sfx(ok ? 'level_up' : 'ui_error');
       this.setStatus(ok ? `${heroName} 觉醒成功！大招等级上限提升，战力 ${this.formatInteger(lastPower)}。` : `觉醒失败：${failReason}`);
       this.lobbyHeroLevelUpBusyId = null;
-      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
-        this.renderCurrentView();
+      const afterPower = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? lastPower;
+      if (ok) {
+        this.celebrateHeroGrowth('awaken');
+        this.scheduleHeroDetailRefresh();
+      } else {
+        this.releaseHeroDock();
       }
-      this.spawnPowerDeltaFloat(lastPower - beforePower);
+      this.spawnPowerDeltaFloat(afterPower - beforePower);
     }
   }
 
@@ -3472,7 +3546,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroLevelUpBusyId = hero.id;
     this.setStatus(`${hero.heroName} ${auto ? '一键升星' : '升星'}请求提交中...`);
-    this.renderCurrentView();
+    this.markHeroDockPending();
     void this.runLobbyHeroStarUp(hero.id, hero.heroName, auto);
   }
 
@@ -3496,25 +3570,22 @@ export class LootChainGameRoot extends Component {
         }
       }
     } finally {
-      const userId = this.currentLobbyProfile().userId;
-      await this.loadLobbyProfile(userId);
-      await this.loadLobbyHeroRoster(true);
-      await this.loadLobbyBag(true);
-      // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
-      await this.loadLobbyHeroDetail(heroId);
+      // 2026-10-12:接口一回来就是成功时刻(同升级):局部解锁 + 贴着英雄的升星特效;回读与整页刷新放后台
+      this.lobbyHeroLevelUpBusyId = null;
       if (ups > 0) {
+        if (lastStar !== null) {
+          this.lobbyHeroRosterState.patchHero(heroId, { star: lastStar });
+        }
         gameAudio.sfx('level_up');
-        this.lobbyHeroCelebration = 'starUp';
-        this.setStatus(`${heroName} 升星 +${ups}${lastStar !== null ? `，当前 ${lastStar} 星` : ''}，战力 ${this.formatInteger(lastPower)}${stopReason ? `（已停止：${stopReason}）` : ''}`);
+        this.setStatus(`${heroName} 升星 +${ups}${lastStar !== null ? `，当前 ${lastStar} 星` : ''}${stopReason ? `（已停止：${stopReason}）` : ''}`);
+        this.celebrateHeroGrowth('starUp');
+        void this.reloadAfterHeroGrowth(heroId, heroName, beforePower, '升星成功');
       } else {
         gameAudio.sfx('ui_error');
         this.setStatus(`升星未执行：${stopReason || '碎片或金币不足'}`);
+        this.releaseHeroDock();
       }
-      this.lobbyHeroLevelUpBusyId = null;
-      if (this.currentView === 'heroDetail' || this.currentView === 'heroes') {
-        this.renderCurrentView();
-      }
-      this.spawnPowerDeltaFloat(lastPower - beforePower);
+      void lastPower;
     }
   }
 

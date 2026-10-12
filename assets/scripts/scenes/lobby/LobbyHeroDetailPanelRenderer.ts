@@ -23,7 +23,7 @@ import {
   view,
 } from 'cc';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
-import { mountLobbySpineFx } from './LobbyUiSpineFx';
+import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
@@ -386,6 +386,11 @@ export class LobbyHeroDetailPanelRenderer {
   /** 当前挂着的英雄立绘舞台(含 spine)及其复用键;整页重绘前由 stashArtStage() 摘下暂存,重绘时键一致就原样挂回。 */
   private artStageNode: Node | null = null;
   private artStageKey = '';
+  /**
+   * 底部养成坞按钮(升级 / 一键升级 / 升星 / 一键升星):点按钮与接口返回时只局部切换"处理中"态,不整页重绘
+   * (2026-10-12 用户录屏:点升级时骨骼与特效卡一下——整页重建几百个节点会冻住一帧)。
+   */
+  private dockButtons: Array<{ node: Node; label: Label; art: Sprite | null; idleText: string; pendingText: string; idleEnabled: boolean; dim: boolean }> = [];
   private artStageStash: { node: Node; key: string } | null = null;
   private equipDialogNode: Node | null = null;
   private wearTooltipNode: Node | null = null;
@@ -430,6 +435,7 @@ export class LobbyHeroDetailPanelRenderer {
       return;
     }
     this.detailArtWarmed = true;
+    prewarmLobbySpineFx([LOBBY_UI_FX.heroLevelUp, LOBBY_UI_FX.heroStarUp].filter((spec): spec is NonNullable<typeof spec> => !!spec));
     const probe = new Node('HeroDetailArtWarm');
     probe.layer = this.host.node.layer;
     HERO_DETAIL_PRELOAD_ASSETS.forEach((asset) => this.host.addSprite('Warm', asset, 0, 0, 2, 2, probe));
@@ -1188,21 +1194,15 @@ export class LobbyHeroDetailPanelRenderer {
     const node = new Node(`LobbyPowerDeltaFloat_${Date.now()}`);
     node.layer = this.host.node.layer;
     floatLayer.addChild(node);
-    // 挂屏幕中上(舞台立绘与右栏之间的空当),不压立绘脸部
-    node.setPosition(new Vec3(0, 150, 0));
+    // 锚在英雄头顶(立绘舞台顶部往下一点),手机 / PC 布局同一套;舞台不在(名册页)回落屏幕中上。
+    // 2026-10-12 用户录屏:原先固定挂屏幕中央,手机上离英雄半屏远;金光柱底衬去掉——升级 / 升星各自只剩一个庆祝特效。
+    const anchor = this.heroStageAnchor(floatLayer);
+    const k = anchor ? clamp(anchor.width / 420, 0.62, 1) : 1;
+    node.setPosition(new Vec3(anchor ? anchor.x : 0, anchor ? anchor.y + anchor.height * 0.42 : 150, 0));
+    node.setScale(k, k, 1);
     node.addComponent(UITransform).setContentSize(new Size(520, 120));
     const opacity = node.addComponent(UIOpacity);
     opacity.opacity = 255;
-    if (positive) {
-      // 底衬金光柱:挂在浮层上的独立兄弟节点——mountLobbySpineFx 到期会销毁传入的父节点,不能挂进飘字节点里(否则飘字 0.7s 就没了)
-      const fxHolder = new Node(`LobbyPowerSurge_${Date.now()}`);
-      fxHolder.layer = this.host.node.layer;
-      floatLayer.addChild(fxHolder);
-      fxHolder.setPosition(new Vec3(0, 110, 0));
-      fxHolder.addComponent(UITransform).setContentSize(new Size(10, 10));
-      node.setSiblingIndex(floatLayer.children.length - 1);
-      mountLobbySpineFx(this.host, fxHolder, LOBBY_UI_FX.powerSurge, 0, 0, 300, false, LOBBY_UI_FX.powerSurge.holdMs);
-    }
     // 牌子:暗底 + 金边胶囊,正值金、负值红
     const plateW = 360;
     const plateH = 68;
@@ -1233,7 +1233,7 @@ export class LobbyHeroDetailPanelRenderer {
       .start();
     tween(node)
       .delay(0.65)
-      .by(1.3, { position: new Vec3(0, 120, 0) }, { easing: 'sineOut' })
+      .by(1.3, { position: new Vec3(0, 110 * k, 0) }, { easing: 'sineOut' })
       .start();
     tween(opacity)
       .delay(1.1)
@@ -1244,6 +1244,70 @@ export class LobbyHeroDetailPanelRenderer {
         }
       })
       .start();
+  }
+
+  /** 立绘舞台在持久浮层坐标系里的位置与尺寸(飘字 / 庆祝特效都锚在这里);舞台不在树上返回 null。 */
+  private heroStageAnchor(floatLayer: Node): { x: number; y: number; width: number; height: number } | null {
+    const stage = this.artStageNode;
+    if (!stage || !this.isNodeAlive(stage) || !stage.activeInHierarchy) {
+      return null;
+    }
+    const stageTransform = stage.getComponent(UITransform);
+    const layerTransform = floatLayer.getComponent(UITransform);
+    if (!stageTransform || !layerTransform) {
+      return null;
+    }
+    const local = layerTransform.convertToNodeSpaceAR(stage.worldPosition);
+    return { x: local.x, y: local.y, width: stageTransform.width, height: stageTransform.height };
+  }
+
+  /**
+   * 升星 / 觉醒 / 升级的一次性庆祝特效(docs/29 v3):挂在持久浮层、锚在立绘舞台——整页重绘不会把它清掉,
+   * 手机 / PC 布局都贴着英雄;同一时刻只播一个。舞台不在(名册页)返回 false,调用方自己决定是否整刷。
+   */
+  playHeroCelebration(kind: 'starUp' | 'awaken' | 'levelUp'): boolean {
+    const spec = kind === 'levelUp' ? LOBBY_UI_FX.heroLevelUp : LOBBY_UI_FX.heroStarUp;
+    const floatLayer = this.ensureFloatLayer();
+    const anchor = this.heroStageAnchor(floatLayer);
+    if (!spec || !anchor) {
+      return false;
+    }
+    const previous = floatLayer.getChildByName('LobbyHeroDetailCelebrateFx');
+    if (previous && previous.isValid) {
+      previous.destroy();
+    }
+    const holder = this.host.addChildPlainNode(floatLayer, 'LobbyHeroDetailCelebrateFx', anchor.x, anchor.y - anchor.height * 0.08, 10, 10);
+    holder.setSiblingIndex(0);
+    mountLobbySpineFx(this.host, holder, spec, 0, 0, anchor.height * spec.size, spec.loop, spec.holdMs);
+    setTimeout(() => {
+      if (holder.isValid) {
+        holder.destroy();
+      }
+    }, spec.holdMs + 300);
+    return true;
+  }
+
+  /** 底部养成坞按钮切换"处理中"态(局部,不整页重绘);面板上没有活着的按钮返回 false。 */
+  setDockPending(pending: boolean): boolean {
+    this.dockButtons = this.dockButtons.filter((entry) => this.isNodeAlive(entry.node) && entry.node.activeInHierarchy);
+    if (this.dockButtons.length === 0) {
+      return false;
+    }
+    for (const entry of this.dockButtons) {
+      const enabled = !pending && entry.idleEnabled;
+      const dimmed = !enabled || entry.dim;
+      entry.label.string = pending ? entry.pendingText : entry.idleText;
+      entry.label.color = dimmed ? rgba(166, 158, 142) : rgba(255, 240, 200);
+      const button = entry.node.getComponent(Button);
+      if (button) {
+        button.interactable = enabled;
+      }
+      if (entry.art) {
+        entry.art.grayscale = dimmed;
+        entry.art.color = dimmed ? rgba(150, 146, 140, 255) : rgba(255, 255, 255, 255);
+      }
+    }
+    return true;
   }
 
   private renderHeader(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
@@ -1824,7 +1888,7 @@ export class LobbyHeroDetailPanelRenderer {
       stash.node.setPosition(x, y, 0);
       this.artStageNode = stash.node;
       this.artStageKey = key;
-      this.mountHeroCelebrationFx(parent, x, y, height);
+      this.mountHeroCelebrationFx();
       return;
     }
     this.dropArtStageStash();
@@ -1839,18 +1903,15 @@ export class LobbyHeroDetailPanelRenderer {
 
     const fallbackPortrait = this.renderStaticHeroPortrait(stage, hero, width, height, scale);
     this.renderHeroSpinePreview(stage, hero, fallbackPortrait, width, height, scale);
-    this.mountHeroCelebrationFx(parent, x, y, height);
+    this.mountHeroCelebrationFx();
   }
 
-  /** 升星 / 觉醒 / 升级成功后的一次性庆祝特效(docs/29 v3):立绘舞台复用暂存节点时也要播,所以挂在舞台旁的独立节点上。 */
-  private mountHeroCelebrationFx(parent: Node, x: number, y: number, height: number): void {
+  /** 整页重绘路径上的庆祝(觉醒 / 名册页回落):渲染时消费一次性标记,播法与 playHeroCelebration 同一套。 */
+  private mountHeroCelebrationFx(): void {
     const celebration = this.host.consumeLobbyHeroCelebration?.() ?? null;
-    const celebrateSpec = celebration === 'levelUp' ? LOBBY_UI_FX.heroLevelUp : celebration ? LOBBY_UI_FX.heroStarUp : null;
-    if (!celebrateSpec) {
-      return;
+    if (celebration) {
+      this.playHeroCelebration(celebration);
     }
-    const fxHolder = this.host.addChildPlainNode(parent, 'LobbyHeroDetailCelebrateFx', x, y - height * 0.08, 10, 10);
-    mountLobbySpineFx(this.host, fxHolder, celebrateSpec, 0, 0, height * celebrateSpec.size, celebrateSpec.loop, celebrateSpec.holdMs);
   }
 
   private renderStaticHeroPortrait(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): Node {
@@ -4286,10 +4347,9 @@ export class LobbyHeroDetailPanelRenderer {
     }
     this.renderCostDock(panel, 'Star', width, height, scale, view);
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
-    const enabled = !pending && !maxed;
     this.renderDockButtons(panel, width, height, scale, [
-      { name: 'StarUpButton', labelName: 'Label', text: pending ? '处理中' : maxed ? '已满星' : '升 星', enabled, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
-      { name: 'StarUpAutoButton', labelName: 'Label', text: pending ? '处理中' : maxed ? '已满星' : '一键升星', enabled, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
+      { name: 'StarUpButton', labelName: 'Label', idleText: maxed ? '已满星' : '升 星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
+      { name: 'StarUpAutoButton', labelName: 'Label', idleText: maxed ? '已满星' : '一键升星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
     ]);
   }
 
@@ -4339,11 +4399,11 @@ export class LobbyHeroDetailPanelRenderer {
     const view = this.resolveLevelUpCostView(hero);
     this.renderCostDock(panel, 'LobbyHeroDetailLevelUp', width, height, scale, view);
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
-    const enabled = !pending && view.blocked !== 'cap';
+    const idleEnabled = view.blocked !== 'cap';
     const dim = view.blocked === 'lack';
     this.renderDockButtons(panel, width, height, scale, [
-      { name: 'LobbyHeroDetailLevelUpButton', labelName: 'LobbyHeroDetailLevelUpButtonLabel', text: pending ? '升级中' : '升 级', enabled, dim, clickableWhenDisabled: true, onClick: () => this.host.levelUpLobbyHero(hero.id) },
-      { name: 'LobbyHeroDetailLevelUpAutoButton', labelName: 'LobbyHeroDetailLevelUpAutoButtonLabel', text: pending ? '处理中' : '一键升级', enabled, dim, clickableWhenDisabled: true, onClick: () => this.host.autoLevelUpLobbyHero(hero.id) },
+      { name: 'LobbyHeroDetailLevelUpButton', labelName: 'LobbyHeroDetailLevelUpButtonLabel', idleText: '升 级', pendingText: '升级中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.levelUpLobbyHero(hero.id) },
+      { name: 'LobbyHeroDetailLevelUpAutoButton', labelName: 'LobbyHeroDetailLevelUpAutoButtonLabel', idleText: '一键升级', pendingText: '处理中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.autoLevelUpLobbyHero(hero.id) },
     ]);
   }
 
@@ -4405,20 +4465,23 @@ export class LobbyHeroDetailPanelRenderer {
    * 底部双按钮(红 = 单次,暗 = 一键):按钮图是一体构图,只等比缩放——两枚同高、各按自身宽高比取宽,分别在左右半栏居中;
    * 离面板底边留 18~22 的呼吸距。clickableWhenDisabled:升级按钮保留 Button 组件(新手引导要找它),仅置灰不可点。
    */
-  private renderDockButtons(panel: Node, width: number, height: number, scale: number, buttons: { name: string; labelName: string; text: string; enabled: boolean; clickableWhenDisabled: boolean; dim?: boolean; onClick: () => void }[]): void {
+  private renderDockButtons(panel: Node, width: number, height: number, scale: number, buttons: { name: string; labelName: string; idleText: string; pendingText: string; pending: boolean; idleEnabled: boolean; clickableWhenDisabled: boolean; dim?: boolean; onClick: () => void }[]): void {
     const phone = !!this.phoneFrame;
+    this.dockButtons = [];
     const colGap = 12 * scale;
     const colW = (width - 48 * scale - colGap) / 2;
     const btnH = Math.min((phone ? 54 : 58) * scale, colW / HERO_BTN_LEVEL_ASPECT);
     const btnY = -height / 2 + (phone ? 18 : 23) * scale + btnH / 2;
     buttons.forEach((spec, index) => {
+      const enabled = !spec.pending && spec.idleEnabled;
+      const text = spec.pending ? spec.pendingText : spec.idleText;
       const aspect = index === 0 ? HERO_BTN_LEVEL_ASPECT : HERO_BTN_LEVEL_AUTO_ASPECT;
       const btnW = btnH * aspect;
       const x = (index === 0 ? -1 : 1) * (colGap / 2 + colW / 2);
       const btn = this.host.addChildPlainNode(panel, spec.name, x, btnY, btnW, btnH);
       const art = this.host.addSprite(`${spec.name}Art`, index === 0 ? HERO_AI_BTN_LEVEL_ASSET : HERO_AI_BTN_LEVEL_AUTO_ASSET, 0, 0, btnW, btnH, btn);
       // bt2-hero-refine:不可用(已到上限 / 处理中)或材料不足时按钮去色压暗,和上方"已达上限 / 还差 N"的文字不再打架。
-      const dimmed = !spec.enabled || spec.dim === true;
+      const dimmed = !enabled || spec.dim === true;
       if (!art) {
         const bg = btn.addComponent(Graphics);
         bg.fillColor = dimmed ? rgba(42, 36, 32, 225) : index === 0 ? rgba(122, 42, 30, 235) : rgba(26, 21, 18, 235);
@@ -4432,17 +4495,19 @@ export class LobbyHeroDetailPanelRenderer {
         art.grayscale = true;
         art.color = rgba(150, 146, 140, 255);
       }
-      if (spec.enabled || spec.clickableWhenDisabled) {
+      // 监听常驻、只切 interactable:接口返回后 setDockPending(false) 局部解锁时按钮要能直接再点
+      if (spec.idleEnabled || spec.clickableWhenDisabled) {
         const component = btn.addComponent(Button);
-        component.interactable = spec.enabled;
+        component.interactable = enabled;
       }
-      if (spec.enabled) {
+      if (spec.idleEnabled) {
         btn.on(Button.EventType.CLICK, spec.onClick, this);
         this.host.applyImageButtonFeedback(btn, 1.025, 0.97);
       }
-      const label = this.host.addChildLabel(btn, spec.labelName, spec.text, 0, 1 * scale, 20 * scale, dimmed ? rgba(166, 158, 142) : rgba(255, 240, 200), new Size(btnW - 56 * scale, btnH - 8 * scale));
+      const label = this.host.addChildLabel(btn, spec.labelName, text, 0, 1 * scale, 20 * scale, dimmed ? rgba(166, 158, 142) : rgba(255, 240, 200), new Size(btnW - 56 * scale, btnH - 8 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, true);
+      this.dockButtons.push({ node: btn, label, art, idleText: spec.idleText, pendingText: spec.pendingText, idleEnabled: spec.idleEnabled, dim: spec.dim === true });
     });
   }
 
