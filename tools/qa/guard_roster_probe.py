@@ -62,7 +62,12 @@ async def main():
             await call('Page.navigate', {'url': base.PAGE})
             await asyncio.sleep(8)
             print(await ev(base.JS_BOOT, 900))
-            print(await ev(base.JS_LOGIN, 120))
+            for _try in range(3):  # 首访整包预读期间点登录常被吞,失败就等一会儿重试
+                res = await ev(base.JS_LOGIN, 120)
+                print(res, flush=True)
+                if 'view=lobby' in str(res):
+                    break
+                await asyncio.sleep(10)
             await asyncio.sleep(3)
             print('battle', await ev(JS_BATTLE, 300), flush=True)
             print('roster', await ev(ROSTER), flush=True)
