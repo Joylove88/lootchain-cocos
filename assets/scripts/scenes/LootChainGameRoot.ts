@@ -3712,6 +3712,7 @@ export class LootChainGameRoot extends Component {
       await this.loadLobbyBag(true);
       const powerDelta = result.power - beforePower;
       const deltaText = powerDelta === 0 ? '' : powerDelta > 0 ? `（+${this.formatInteger(powerDelta)}）` : `（${this.formatInteger(powerDelta)}）`;
+      gameAudio.sfx('forge_success');
       this.setStatus(`${heroName} 洗练完成：战力 ${this.formatInteger(result.power)}${deltaText}，锁定 ${lockedIds.length} 条词条已保留。`);
       // 被锁词条在服务端原行保留(id 不变),锁定状态延续到下一次洗练,直到玩家手动解锁(2026-09-21 用户反馈);
       // 弹窗保持打开方便连续洗练,关闭弹窗时再整刷底层面板。
@@ -3719,6 +3720,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyHeroRefineDirty = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      gameAudio.sfx('ui_error');
       this.setStatus(`洗练失败：${message}`);
     } finally {
       this.lobbyHeroRefineBusyId = null;
@@ -3729,7 +3731,7 @@ export class LootChainGameRoot extends Component {
       } else if (this.currentView === 'heroes') {
         this.renderCurrentView();
       }
-      this.spawnPowerDeltaFloat(refinePowerDelta);
+      this.spawnPowerDeltaFloat(refinePowerDelta, 'dialog');
     }
   }
 
@@ -4104,15 +4106,17 @@ export class LootChainGameRoot extends Component {
       await this.loadLobbyProfile(this.currentLobbyProfile().userId);
       await this.loadLobbyHeroRoster(true);
       powerDelta = (result.power ?? this.lobbyHeroPowerById(heroId)) - beforePower;
+      gameAudio.sfx('level_up');
       this.setStatus(`终极技能升至 Lv.${result.ultimateSkillLevel}。`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      gameAudio.sfx('ui_error');
       this.setStatus(`终极技能升级失败：${message}`);
     } finally {
       this.lobbyHeroUltimateBusy = false;
       this.endHeroDetailMutation();
       this.renderCurrentView();
-      this.spawnPowerDeltaFloat(powerDelta);
+      this.spawnPowerDeltaFloat(powerDelta, 'dialog');
     }
   }
 
@@ -4201,7 +4205,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyHeroEquipBusy = false;
       this.endHeroDetailMutation();
       this.refreshLobbyHeroEquipDialog();
-      this.spawnPowerDeltaFloat(powerDelta);
+      this.spawnPowerDeltaFloat(powerDelta, 'dialog');
     }
   }
 
@@ -6915,8 +6919,8 @@ export class LootChainGameRoot extends Component {
   }
 
   // 战力变动浮字:委托渲染器实现(UI 原语不允许出现在 GameRoot,见 check-layout)。
-  private spawnPowerDeltaFloat(delta: number): void {
-    this.lobbyHeroDetailPanelRenderer.spawnPowerDeltaFloat(delta);
+  private spawnPowerDeltaFloat(delta: number, placement: 'hero' | 'dialog' = 'hero'): void {
+    this.lobbyHeroDetailPanelRenderer.spawnPowerDeltaFloat(delta, placement);
   }
 
   // 奖励飘字(背包使用等):委托渲染器(UI 原语不进 GameRoot)。
