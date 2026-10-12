@@ -7,7 +7,7 @@ fx_pack_v2 的部分素材按黑底叠加设计,序列帧(如火墙)在矩形边
    火墙原图自带竖直切边 / 中缝:上半段按行水平模糊(--blur 像素半径);
    另外整帧铺着一层低不透明度薄雾(alpha 20~60),帧边一带把它渐隐(亮的法阵 / 火焰 alpha 高,保留);
 2) 暗色像素按亮度降不透明度:法阵中心的暗紫圆盘在黑底上看不见,灰地面上成了一块暗斑 → 接近叠加发光观感;
-3) 整张图转预乘透明(RGB×A),代码侧把该 effect 加进 battleFxPremultiplied 名单。
+3) 整张图转预乘透明(RGB×A)并在图集头写 pma: true(出包压缩据此跳过),代码侧把该 effect 加进 battleFxPremultiplied 名单。
 首次运行把原图备份到 素材原始备份/<备份目录>/<code>/,之后总是从备份重算,可重复执行。
 用法:python tools/qa/fxprev/fx_feather_tex.py <code> <备份目录名> [--min-w 200] [--blur 3] [--write]"""
 import glob, os, shutil, sys
@@ -84,4 +84,15 @@ for p in pngs:
         al = img[..., 3:4] / 255.0
         out = np.concatenate([img[..., :3] * al, img[..., 3:4]], axis=-1)
         Image.fromarray((out + 0.5).clip(0, 255).astype(np.uint8), 'RGBA').save(p, optimize=True)
+# 图集头标 pma: true:出包 PNG 压缩(compress-build-png.py)靠它跳过预乘图,
+# 否则调色板量化按直通透明处理,透明区冒出绿色矩形(2026-10-13 用户手机实测夜烬女王战技)
+atlas = os.path.join(d, code + '.atlas')
+text = open(atlas, encoding='utf-8', newline='').read()
+if WRITE and 'pma: true' not in text:
+    nl = chr(13) + chr(10) if chr(13) + chr(10) in text else chr(10)
+    lines = text.split(nl)
+    at = next(i for i, ln in enumerate(lines) if ln.strip().startswith('repeat:'))
+    lines.insert(at + 1, 'pma: true')
+    open(atlas, 'w', encoding='utf-8', newline='').write(nl.join(lines))
+    print('atlas header: pma: true')
 print('WRITTEN' if WRITE else 'dry-run', 'backup:', bak)

@@ -315,3 +315,68 @@ square game item icon, dark vignette background filling the whole square, center
 - 强化页:enhance_ring(环形展示)/ slot_frame(装备格·材料卡)/ forge_anvil(材料石台)/ btn_forge(强化按钮)/ icon_bless_stone·icon_guard_rune(强化保护面板+材料卡)/ 部位图标(左列/环内/页签);
 - 合成页:fuse_altar(三槽祭坛)/ btn_forge(合成按钮);分解页:slot_frame 系;
 - 高阶强化石用背包 C 组 #64 icon_enhance_high(+10 以上材料卡自动切换)。
+
+---
+
+## 八、限时副本战场背景重做 + 主题石台(2026-10-13)
+
+用户反馈:觉醒之门、深渊裂隙两张图左右两侧有雕像 / 枯树 / 骨堆等大件障碍物,和左侧守卫水晶、右侧刷怪口冲突;
+英雄脚下石台全图统一是熔岩石台,和非熔岩主题不搭。熔火矿脉、秘法圣殿两张保留不动。
+
+### 战场构图硬约束(两张背景都要满足)
+- 16:9,至少 2560×1440(1672×941 也可),不要透明底。
+- **地平线在画面上沿往下约 42%~48%**;地平线以下是可战斗的地面,占画面下方一半多。
+- **地面从左边缘到右边缘完全开阔平坦**:左侧约 15% 宽度放守卫水晶,左半部是 2 排×6 格英雄站位,怪物从右边缘沿地面走进来。
+  地平线以下不能有雕像、柱子、树、骨堆、碎石块、旗杆等任何竖立物,两侧也不能有前景遮挡。
+- 竖立的建筑 / 雕像只能出现在**地平线以上的远景**,而且要小、要虚化,两侧远景压低,不能高出画面上沿 1/3。
+- 地面纹理低对比、中等偏暗,单位与特效要看得清;不要大面积强反光、积水镜面或高亮符文铺满地面。
+- 视觉焦点在正中远处(远景大门 / 裂隙),左右对称感弱一点没关系,但两侧不能比中间更抢眼。
+- 不要人物、怪物、文字、水印、UI。
+
+### 背景 1:觉醒之门(battle_scene_daily_awaken.png,放 `assets/resources/ui/battle/`,同名覆盖,旧图已备份到 素材原始备份/daily-scene-bg-20261013)
+
+英文:
+```
+Dark fantasy side-view battle arena background for a mobile tower-defense RPG, 16:9 wide shot, camera at low eye level. A vast open ancient stone plaza of weathered pale grey flagstones with thin worn gold inlay lines, flat and completely unobstructed from the left edge to the right edge across the entire lower half of the image. The horizon sits about 45% down from the top. Far away in the exact center, a colossal sealed golden Gate of Awakening built into a cathedral facade, a single thin vertical beam of holy golden light rising from the gate seam, soft god rays and drifting golden dust motes. The distant background on both sides is only low, hazy silhouettes of ruined colonnades and broken arches dissolving into pale mist, small and far away, never taller than the gate. No statues, pillars, rocks, banners or any standing objects on the ground plane, no foreground props at the left or right edges. Muted grey-gold palette with cool shadow, overcast sky with a faint warm glow behind the gate, low-contrast matte floor texture so characters and spell effects read clearly, painterly AAA mobile game quality, no characters, no monsters, no text, no watermark, no UI.
+```
+中文:
+```
+暗黑奇幻手游塔防战斗场景背景,横版 16:9 远景,低机位平视。一片辽阔开阔的古代石砌广场,灰白风化石板地面,石缝里有磨损的细金色嵌线,从画面最左到最右整片平坦、没有任何遮挡,占画面下方一半以上。地平线在画面上沿往下约 45% 处。正中央远处是一座巨大的封印金色"觉醒之门",嵌在大教堂立面里,门缝中升起一道细细的竖直金色圣光,周围有柔和光束和飘浮的金色尘埃。两侧远景只有低矮、被淡雾虚化的残破柱廊与断拱剪影,又小又远,不能比大门高。地面上不要雕像、柱子、石块、旗帜等任何竖立物,左右两侧画面边缘不要前景道具。整体灰金色调、阴影偏冷,阴天天空、大门后有微弱暖光,地面纹理低对比哑光,保证角色和技能特效清晰可读,3A 手游绘画质感,不要人物、怪物、文字、水印、UI。
+```
+
+### 背景 2:深渊裂隙(battle_scene_daily_abyss.png,同上目录,同名覆盖)
+
+英文:
+```
+Dark fantasy side-view battle arena background for a mobile tower-defense RPG, 16:9 wide shot, camera at low eye level. A vast flat plain of charred black basalt slabs with thin glowing crimson cracks, open and completely unobstructed from the left edge to the right edge across the entire lower half of the image. The horizon sits about 45% down from the top. Far away in the exact center, a gigantic vertical abyssal rift tearing open the blood-red sky, swirling crimson energy and falling ember particles pouring out of it, distant red lightning. The distant background on both sides is only low, hazy silhouettes of jagged black spires and a far-off ruined dark citadel fading into red smoke, small and far away. No dead trees, bones, skulls, spikes, banners, rocks or any standing objects on the ground plane, no foreground props at the left or right edges. Black and deep crimson palette, red rim light from the rift, low-contrast matte floor texture with only sparse fine glowing cracks so characters and spell effects read clearly, painterly AAA mobile game quality, no characters, no monsters, no text, no watermark, no UI.
+```
+中文:
+```
+暗黑奇幻手游塔防战斗场景背景,横版 16:9 远景,低机位平视。一片辽阔平坦的焦黑玄武岩石板平原,石板间有细细发光的深红裂纹,从画面最左到最右整片开阔、没有任何遮挡,占画面下方一半以上。地平线在画面上沿往下约 45% 处。正中央远处一道巨大的竖直"深渊裂隙"撕开血红色天空,裂隙里涌出旋转的深红能量和飘落的火星,远处有红色闪电。两侧远景只有低矮、被红雾虚化的锯齿黑色尖峰和远方残破暗黑城堡剪影,又小又远。地面上不要枯树、骨头、骷髅、尖刺、旗帜、石块等任何竖立物,左右两侧画面边缘不要前景道具。黑 + 深红主色,裂隙打出红色轮廓光,地面纹理低对比哑光、只有稀疏的细发光裂纹,保证角色和技能特效清晰可读,3A 手游绘画质感,不要人物、怪物、文字、水印、UI。
+```
+
+### 主题石台(英雄脚下地块,6 张,放 `assets/resources/ui/guard/`)
+
+**一定把现有 `assets/resources/ui/guard/ghud_cell_tile.png` 作为参考图一起给生图工具**,要求"保持完全相同的形状、俯视角度、厚度比例和构图,只换材质与配色"。
+规格:384×288(或等比更大,如 1536×1152),**透明底**(不支持透明就用纯绿 #00FF00 底,我来抠),石台居中、四周留少量空白,无文字。
+每个主题两张:常态 `ghud_cell_tile_<主题>.png`,选中发光态 `ghud_cell_tile_<主题>_active.png`(同一石台,边框和台面整体发光,四周带一圈柔和光晕)。
+熔火矿脉继续用现有熔岩石台;代码已接好:新图放进去后限时副本自动换皮,没放的主题回退熔岩石台。
+
+通用前缀(英文):
+```
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, ornate metal rim with small corner ornaments, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness and composition as the reference image, only material and colors changed, centered, transparent background, no text, no watermark,
+```
+| 命名 | 主题追加描述(英文,接在通用前缀后) |
+|---|---|
+| ghud_cell_tile_awaken.png | weathered pale grey marble top with fine cracks, antique gold rim and gold inlaid circular sun emblem, faint warm golden glow in the cracks, holy ancient temple style |
+| ghud_cell_tile_awaken_active.png | same pale marble and gold pedestal, rim and emblem glowing bright radiant gold, soft golden halo light around the whole tile, sparkling light particles |
+| ghud_cell_tile_arcane.png | polished dark blue-black obsidian top, silver rim with violet gem corners, glowing faint blue-violet arcane rune circle in the center, mystical sanctum style |
+| ghud_cell_tile_arcane_active.png | same obsidian and silver pedestal, rune circle and rim glowing bright blue-violet, soft violet magical halo around the whole tile, floating rune sparkles |
+| ghud_cell_tile_abyss.png | charred black basalt top with thin glowing crimson cracks, dark wrought-iron rim with small bone-like spikes at the corners, crimson circular sigil in the center, hellish abyss style |
+| ghud_cell_tile_abyss_active.png | same basalt and iron pedestal, cracks, sigil and rim glowing intense crimson red, soft red halo glow around the whole tile, ember particles |
+
+中文版(同样带参考图):
+- 通用:游戏UI素材,一块圆角方形石台,3/4 俯视角,厚石板能看到正面和侧面厚度,金属包边、四角小饰件,台面中央一圈圆形雕刻纹章,**形状、角度、厚度、构图与参考图完全一致,只换材质和配色**,居中,透明底,无文字无水印。
+- 觉醒之门 常态:风化灰白大理石台面带细裂纹,古金包边与金色太阳纹章,裂纹里微弱暖金光,神圣古神殿风格;发光态:同款石台,包边与纹章亮金色发光,整块石台外一圈柔和金色光晕和闪烁光点。
+- 秘法圣殿 常态:抛光蓝黑黑曜石台面,银色包边、四角紫色宝石,中央淡淡发光的蓝紫色符文法阵,神秘圣殿风格;发光态:同款石台,法阵与包边亮蓝紫色发光,外圈柔和紫色魔法光晕和漂浮符文光点。
+- 深渊裂隙 常态:焦黑玄武岩台面带细细发光深红裂纹,暗色铁艺包边、四角骨刺状小饰件,中央深红圆形魔印,地狱深渊风格;发光态:同款石台,裂纹、魔印和包边强烈深红发光,外圈柔和红色光晕和火星。

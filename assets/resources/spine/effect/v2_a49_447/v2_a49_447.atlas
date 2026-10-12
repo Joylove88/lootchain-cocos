@@ -4,6 +4,7 @@ size: 2048, 2048
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
+pma: true
 eff/yechawang_skill_b_sub_05
   rotate: false
   xy: 814, 1360

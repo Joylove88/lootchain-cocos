@@ -1226,6 +1226,29 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
+  /**
+   * 英雄脚下石台按地图主题换皮(2026-10-13 用户:"英雄脚下地块跟随主题风格"):
+   * 限时副本 觉醒之门 / 秘法圣殿 / 深渊裂隙 用 ui/guard/ghud_cell_tile_<主题>[_active](384×288 透明底),
+   * 熔火矿脉与主线沿用熔岩石台;主题图未入库时回退熔岩石台。
+   */
+  private static readonly DAILY_CELL_TILE: Record<string, string> = {
+    AWAKEN: 'ghud_cell_tile_awaken',
+    ARCANE: 'ghud_cell_tile_arcane',
+    ABYSS: 'ghud_cell_tile_abyss',
+  };
+
+  private cellTilePath(active: boolean): string {
+    const base = active ? 'ui/guard/ghud_cell_tile_active/spriteFrame' : 'ui/guard/ghud_cell_tile/spriteFrame';
+    const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
+    const daily = /^DAILY_([A-Z]+)_\d+$/.exec(stageCode);
+    const name = daily ? LobbyGuardBattleRenderer.DAILY_CELL_TILE[daily[1]] : undefined;
+    if (!name) {
+      return base;
+    }
+    const themed = `ui/guard/${name}${active ? '_active' : ''}/spriteFrame`;
+    return this.uiAssetKnown(themed) ? themed : base;
+  }
+
   private resolveSceneBgPath(): string {
     return `ui/battle/${this.resolveSceneBgName()}/spriteFrame`;
   }
@@ -1733,7 +1756,7 @@ export class LobbyGuardBattleRenderer {
       const locked = guardCellUnlockRank(cell) >= sim.unlockedCells;
       const card = this.host.addChildPlainNode(field, 'GuardCellCard', tile.x, tile.y, tile.w, tile.h);
       card.setSiblingIndex(1);
-      this.mountSprite(card, 'Img', 'ui/guard/ghud_cell_tile/spriteFrame', 0, 0, tile.w, tile.h);
+      this.mountSprite(card, 'Img', this.cellTilePath(false), 0, 0, tile.w, tile.h);
       const cardOpacity = card.addComponent(UIOpacity);
       cardOpacity.opacity = locked ? 105 : 235;
       if (locked) {
@@ -7739,8 +7762,8 @@ export class LobbyGuardBattleRenderer {
     // 进场第一眼就要的图排最前:关卡背景(加载页也拿它当底图)、石台格子、标题横幅
     const sprites = new Set<string>([
       this.resolveSceneBgPath(),
-      'ui/guard/ghud_cell_tile/spriteFrame',
-      'ui/guard/ghud_cell_tile_active/spriteFrame',
+      this.cellTilePath(false),
+      this.cellTilePath(true),
       'ui/battle/ai/battle_bg_cathedral/spriteFrame',
       'ui/common/ai/title_banner_new/spriteFrame',
     ]);
@@ -8546,7 +8569,7 @@ export class LobbyGuardBattleRenderer {
     g.stroke();
     // 选中格高亮:金光踏台(踏台改版配套,2026-09-02)
     const tile = this.cellTileRect(hero.cell);
-    this.mountSprite(layer, 'SelectedCard', 'ui/guard/ghud_cell_tile_active/spriteFrame', tile.x, tile.y, tile.w * 1.1, tile.h * 1.1);
+    this.mountSprite(layer, 'SelectedCard', this.cellTilePath(true), tile.x, tile.y, tile.w * 1.1, tile.h * 1.1);
     this.showHeroInfo(hero);
   }
 
