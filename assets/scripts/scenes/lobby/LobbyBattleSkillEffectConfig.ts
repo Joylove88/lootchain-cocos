@@ -29,8 +29,9 @@ export interface BattleSkillEffectSpec {
    * speed = 播放倍速(缺省 1)。不填 = 整段播完。
    * 2026-10-05 用户「有的大招一闪就没,还是要长一点」:每个大招上屏时长不少于约 1.7 秒——优先把片段取长,取不长的放慢;
    * 慢放不低于 0.8 倍(更慢像慢镜头,2026-10-06 用户「实机看着假」)。
+   * 战技灼烧区(循环到期):start→end 播一遍后在 loopFrom→end 循环(跳过起手小火苗,只循环满状态段)。
    */
-  clip?: { start: number; end: number; speed?: number };
+  clip?: { start: number; end: number; speed?: number; loopFrom?: number };
 }
 
 // ── 英雄大招特效(heroCode → spec)──
@@ -115,7 +116,9 @@ const HERO_GUARD_SKILL_EFFECTS: Record<string, BattleSkillEffectSpec> = {
   SR_ABYSS_06: { effect: 'v2_a47_444', animation: 'action3', anchor: 'target', scale: 1.0, offsetY: 10 }, // melee(A47-444,1.033s)
   R_SCOUT_03: { effect: 'v2_a47_073', animation: 'idle', anchor: 'target', scale: 1.0, offsetY: 10 }, // melee(A47-073,1.133s)
   UR_EVELYN: { effect: 'v2_a47_481', animation: 'action1', anchor: 'target', scale: 1.1, offsetY: 0 }, // control(A47-481,1.967s)
-  SSR_LIVIA: { effect: 'v2_a47_420', animation: 'action', anchor: 'target', scale: 1.1, offsetY: 0 }, // ranged(A47-420,5.333s)
+  // 2026-10-12 用户「夜烬女王的战技不好看」:原 A47-420 橙色火龙卷与她的大招(hu_008 烈焰龙卷)撞型,
+  // 换 A49-447 紫焰火环 + 旋转涟漪法阵(夜烬 = 紫粉幽焰);0~1.9s 是起手小火苗,跳过,满状态 2.8~4.3s 循环
+  SSR_LIVIA: { effect: 'v2_a49_447', animation: 'idle', anchor: 'target', scale: 1.2, offsetY: 0, clip: { start: 1.9, end: 4.3, loopFrom: 2.8 } }, // ranged(A49-447,4.933s)
   SR_WITCH_03: { effect: 'v2_a47_217', animation: 'effect_debuff', anchor: 'target', scale: 1.1, offsetY: 0 }, // ranged(A47-217,2.1s)
   R_CULT_05: { effect: 'v2_a47_125', animation: 'idle', anchor: 'target', scale: 1.1, offsetY: 0 }, // ranged(A47-125,3.333s)
   UR_AURELIA: { effect: 'v2_a47_490', animation: 'action1', anchor: 'target', scale: 1.1, offsetY: 0 }, // ranged(A47-490,2.2s)
@@ -243,6 +246,7 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a47_274:effect_xihe_jineng_di': { w: 148, h: 148, cx: -5, cy: 76 },
   'v2_a47_391:action1': { w: 468, h: 390, cx: -2, cy: 106 },
   'v2_a47_420:action': { w: 491, h: 494, cx: 2, cy: -42 },
+  'v2_a49_447:idle': { w: 807, h: 510, cx: -464, cy: 383 },
   'v2_a47_427:action': { w: 232, h: 310, cx: 0, cy: 27 },
   'v2_a47_429:action': { w: 508, h: 657, cx: 9, cy: 123 },
   'v2_a47_444:action3': { w: 1380, h: 1533, cx: -99, cy: 406 },
@@ -416,8 +420,11 @@ export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): s
  * 处理脚本 scratchpad fxprev/hu_fix_tex.py,同时给整帧铺满的烟尘序列帧做了椭圆柔边——那才是"灰棕色硬边矩形"的真凶),
  * 挂骨骼时必须同步 premultipliedAlpha=true;旧特效包(fx_pack_v2 / 早期批次)仍是非预乘,保持 false。
  */
+/** 图集经 fx_feather_tex.py 羽化 + 转预乘的单套 v2 特效(2026-10-12 起)。 */
+const PREMULTIPLIED_V2_EFFECTS = new Set(['v2_a49_447']);
+
 export function battleFxPremultiplied(effectCode: string): boolean {
-  return effectCode.startsWith('hu_');
+  return effectCode.startsWith('hu_') || PREMULTIPLIED_V2_EFFECTS.has(effectCode);
 }
 
 /** 本配置引用到的全部 effect_code(去重;供入库校验/预热用)。 */

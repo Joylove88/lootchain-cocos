@@ -219,6 +219,13 @@ const GUARD_FX_SAFE = { left: -0.48, right: 0.48, bottom: -0.28, top: 0.39 };
 /** 骨骼特效同屏名额:战技与大招分开计数,大招永远有位置(不再被挤成一颗紫色技能弹)。 */
 const GUARD_SKILL_FX_MAX_LIVE = 4;
 const GUARD_ULT_FX_MAX_LIVE = 2;
+/**
+ * 灼烧区循环特效单独计名额(2026-10-12 用户:"有些英雄的战技地上是个红色的圆圈,没看到特效"):
+ * 灼烧区要循环到期(4 秒+),此前与瞬发战技共用 4 个名额,几名远程同时放就占满,后放的只剩余烬环。
+ */
+const GUARD_ZONE_FX_MAX_LIVE = 6;
+/** 名额满时灼烧区排队,隔这么久重试一次补播特效(不再画红圈)。 */
+const GUARD_ZONE_FX_RETRY_MS = 200;
 /** 大招压暗节流(同时多个大招只压一次)。 */
 const GUARD_ULT_DIM_INTERVAL_MS = 2000;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
@@ -556,6 +563,7 @@ export class LobbyGuardBattleRenderer {
   /** 技能特效包围盒缓存(effect:anim → 宽高+原点偏移),与在场技能特效计数。 */
   private readonly guardFxBoundsCache = new Map<string, { w: number; h: number; cx: number; cy: number } | null>();
   private skillFxLive = 0;
+  private zoneFxLive = 0;
   private ultFxLive = 0;
   private lastUltDimAt = 0;
   /** 在场技能特效瞄准器(step 逐帧驱动:锁定目标方向,目标死亡自动转向最近怪物)。 */
@@ -590,8 +598,8 @@ export class LobbyGuardBattleRenderer {
   private lastStatsRefreshMs = 0;
   /** 普攻弹幕(远程/控制;打击感系统 2026-08-26)。 */
   private readonly projectiles: GuardProjectile[] = [];
-  /** 未觉醒战技放出的灼烧区(没有专属特效本体,由区域节点自己画余烬环)。 */
-  private plainBurnZones = new Set<number>();
+  /** 特效名额满 / 被限流的灼烧区:排队等名额补播循环特效(值 = 下次重试的 Date.now())。 */
+  private plainBurnZones = new Map<number, number>();
   /** 水晶头顶血条上次绘制的数值(没变不重画)。 */
   private crystalHpPaintedKey = '';
   /** 普攻 Spine 飞行特效(fx_pack)的就绪表:开局按阵容预热,数据 + 动画名 + 实测包围盒齐了才用,否则回退贴图弹道。 */
@@ -645,6 +653,7 @@ export class LobbyGuardBattleRenderer {
     this.exitConfirmOpen = false;
     this.rangeShownUnitId = null;
     this.skillFxLive = 0;
+    this.zoneFxLive = 0;
     this.ultFxLive = 0;
     this.lastUltDimAt = 0;
     this.spellLv5Shown.clear();
@@ -1000,6 +1009,7 @@ export class LobbyGuardBattleRenderer {
     this.projectiles.length = 0;
     this.guardFxAimers.clear();
     this.skillFxLive = 0;
+    this.zoneFxLive = 0;
     this.ultFxLive = 0;
     this.lastUltDimAt = 0;
     this.beamFxLive = 0;
@@ -2698,7 +2708,7 @@ export class LobbyGuardBattleRenderer {
               // 大招名额满:除了金色保底弹,落点补金色冲击环;灼烧区画余烬环,不会什么都看不到
               this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 200, 90), true);
               if (skillZone && skillZone.kind === 'burn') {
-                this.plainBurnZones.add(skillZone.zoneId);
+                this.plainBurnZones.set(skillZone.zoneId, 0);
               }
             }
           } else if (target && caster) {
@@ -2708,7 +2718,7 @@ export class LobbyGuardBattleRenderer {
             if (!played) {
               this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 190, 120), false);
               if (skillZone && skillZone.kind === 'burn') {
-                this.plainBurnZones.add(skillZone.zoneId);
+                this.plainBurnZones.set(skillZone.zoneId, 0);
               }
             }
           }
@@ -8197,6 +8207,11 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const live = new Set(sim.zones.map((zone: GuardZone) => zone.zoneId));
+    for (const zoneId of Array.from(this.plainBurnZones.keys())) {
+      if (!live.has(zoneId)) {
+        this.plainBurnZones.delete(zoneId);
+      }
+    }
     for (const [zoneId, node] of [...Array.from(this.zoneViews)]) {
       if (!live.has(zoneId)) {
         if (node.isValid) {
@@ -8247,17 +8262,13 @@ export class LobbyGuardBattleRenderer {
         // 区域节点只保留结算用途,不画任何东西。
         node.angle = 0;
         node.setScale(1, 1, 1);
-        if (this.plainBurnZones.has(zone.zoneId)) {
-          // 未觉醒的战技没有特效本体:只画一圈脉动的余烬细环标出灼烧范围(不填充,不是当初那块黄椭圆)。
-          const pulse = 0.5 + 0.5 * Math.sin(sim.timeMs / 160);
-          g.strokeColor = rgba(255, 140, 70, 110 + Math.round(90 * pulse));
-          g.lineWidth = 3;
-          g.ellipse(0, 0, radiusPx, radiusPx * 0.3);
-          g.stroke();
-          g.strokeColor = rgba(255, 210, 140, 60 + Math.round(60 * pulse));
-          g.lineWidth = 1.5;
-          g.ellipse(0, 0, radiusPx * 0.72, radiusPx * 0.21);
-          g.stroke();
+        const retryAt = this.plainBurnZones.get(zone.zoneId);
+        if (retryAt !== undefined && Date.now() >= retryAt) {
+          // 特效名额满时没播出来的灼烧区:不画红圈(2026-10-12 用户反馈),等名额空出来补播施放者的战技循环特效
+          this.plainBurnZones.set(zone.zoneId, Date.now() + GUARD_ZONE_FX_RETRY_MS);
+          if (this.retryBurnZoneFx(sim, zone)) {
+            this.plainBurnZones.delete(zone.zoneId);
+          }
         }
       } else if (zone.kind === 'spellQuake' || zone.kind === 'spellThunder') {
         // 法术持续域(2026-10-11):视觉由法术特效本体循环到期承担(playSpellFx),区域节点只做结算,不画东西
@@ -8672,6 +8683,27 @@ export class LobbyGuardBattleRenderer {
   // ── 技能击特效(2026-08-25 用户拍板):束状=从英雄身前沿攻击方向延伸、锁定怪物方向;爆点=贴在目标身上;
   //    目标死亡自动转向最近存活怪(guardFxAimers 逐帧驱动)。──
   /** 返回 false = 被限流只放了保底技能弹(调用方可补冲击环等轻量表现)。group.spec 指定特效(战技),缺省取专属大招。 */
+  /** 排队中的灼烧区补播施放者战技循环特效;剩余不足 0.6 秒就不补了(返回 true 出队)。 */
+  private retryBurnZoneFx(sim: GuardBattleState, zone: GuardZone): boolean {
+    if (zone.untilMs - sim.timeMs < 600 || !zone.casterHeroCode) {
+      return true;
+    }
+    if (this.zoneFxLive >= GUARD_ZONE_FX_MAX_LIVE) {
+      return false;
+    }
+    const caster = sim.heroes.find((entry) => entry.heroCode === zone.casterHeroCode) ?? null;
+    if (!caster) {
+      return true;
+    }
+    let target: GuardMonster | null = null;
+    for (const entry of sim.monsters) {
+      if (!entry.dead && (!target || Math.abs(entry.x - zone.x) < Math.abs(target.x - zone.x))) {
+        target = entry;
+      }
+    }
+    return this.spawnGuardSkillFx(zone.casterHeroCode, caster.cell, target, { zone, spec: resolveHeroGuardSkillEffect(zone.casterHeroCode, caster.role), internal: true });
+  }
+
   private spawnGuardSkillFx(
     heroCode: string,
     heroCell: number | null,
@@ -8686,8 +8718,12 @@ export class LobbyGuardBattleRenderer {
     // 不带 spec = 专属大招(2026-10-01):与战技分开计名额,不吃同英雄 1.6s 冷却与束状名额——大招永远完整播放,
     // 只有大招名额也满了才退成金色保底弹(紫色保底弹 = 战技)。internal = 大招播完把灼烧区交还给战技循环,不算新出手。
     const isUlt = !group?.spec;
+    const zoneLoop = !isUlt && group?.zone?.kind === 'burn';
+    const liveFull = isUlt
+      ? this.ultFxLive >= GUARD_ULT_FX_MAX_LIVE
+      : zoneLoop ? this.zoneFxLive >= GUARD_ZONE_FX_MAX_LIVE : this.skillFxLive >= GUARD_SKILL_FX_MAX_LIVE;
     // 被限流时不再静默吞掉:保底从英雄身前发一颗大号技能弹(纯表现)——归属永远可见(2026-09-02 用户验收)
-    if (isUlt ? this.ultFxLive >= GUARD_ULT_FX_MAX_LIVE : this.skillFxLive >= GUARD_SKILL_FX_MAX_LIVE) {
+    if (liveFull) {
       if (!group?.internal) {
         this.spawnSkillBolt(heroCell, monster, isUlt);
       }
@@ -8698,7 +8734,7 @@ export class LobbyGuardBattleRenderer {
     const spec: BattleSkillEffectSpec = group?.spec ?? resolveHeroUltEffect(heroCode, ally?.heroClass ?? null);
     // 表现限流(视频验收):同英雄 1.6s 内只放一次完整特效;束状同屏最多 1 条;被限流走保底技能弹。
     const now = Date.now();
-    if (!isUlt && !group?.internal && now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
+    if (!isUlt && !zoneLoop && !group?.internal && now - (this.heroFxLastAt.get(heroCode) ?? -1e9) < GUARD_HERO_FX_COOLDOWN_MS) {
       this.spawnSkillBolt(heroCell, monster);
       return false;
     }
@@ -8734,6 +8770,8 @@ export class LobbyGuardBattleRenderer {
     skeleton.premultipliedAlpha = battleFxPremultiplied(spec.effect);
     if (isUlt) {
       this.ultFxLive += 1;
+    } else if (zoneLoop) {
+      this.zoneFxLive += 1;
     } else {
       this.skillFxLive += 1;
     }
@@ -8751,6 +8789,8 @@ export class LobbyGuardBattleRenderer {
       this.guardFxAimers.delete(node);
       if (isUlt) {
         this.ultFxLive = Math.max(0, this.ultFxLive - 1);
+      } else if (zoneLoop) {
+        this.zoneFxLive = Math.max(0, this.zoneFxLive - 1);
       } else {
         this.skillFxLive = Math.max(0, this.skillFxLive - 1);
       }
@@ -9010,7 +9050,22 @@ export class LobbyGuardBattleRenderer {
           });
         } else if (anchorMode === 'zone' && !isUlt) {
           // 灼烧区:循环播放,aim 内按 zone.untilMs 到期释放
-          skeleton.setAnimation(0, animationName, true);
+          const zoneClip = spec.clip;
+          if (zoneClip && zoneClip.end > zoneClip.start) {
+            // 带片段:起手段播一遍,再只循环满状态段(TrackEntry.animationStart/End 限定动画时间轴)
+            const intro = skeleton.setAnimation(0, animationName, false);
+            if (intro) {
+              intro.animationStart = zoneClip.start;
+              intro.animationEnd = zoneClip.end;
+            }
+            const steady = skeleton.addAnimation(0, animationName, true, 0);
+            if (steady) {
+              steady.animationStart = Math.min(zoneClip.end - 0.1, Math.max(zoneClip.start, zoneClip.loopFrom ?? zoneClip.start));
+              steady.animationEnd = zoneClip.end;
+            }
+          } else {
+            skeleton.setAnimation(0, animationName, true);
+          }
         } else {
           skeleton.setAnimation(0, animationName, false);
           let finished = false;
@@ -9025,7 +9080,7 @@ export class LobbyGuardBattleRenderer {
             if (isUlt && zone && zone.kind === 'burn' && live && live.timeMs < zone.untilMs && live.zones.some((entry) => entry.zoneId === zone.zoneId)) {
               const handed = this.spawnGuardSkillFx(heroCode, heroCell, resolveTarget(), { zone, spec: resolveHeroGuardSkillEffect(heroCode, role), internal: true });
               if (!handed) {
-                this.plainBurnZones.add(zone.zoneId);
+                this.plainBurnZones.set(zone.zoneId, 0);
               }
             }
           };
