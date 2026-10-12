@@ -10,6 +10,8 @@ import boss_bar_cdp as base
 TAG = sys.argv[1]
 VP = next((a for a in sys.argv[2:] if 'x' in a and not a.startswith('--')), '915x412m')
 STAR = '--star' in sys.argv
+# --js "<表达式>":不点按钮,直接在页面里执行该表达式触发操作(r=window.__root, hero=当前详情英雄),用于弹窗里的大招升级 / 洗练
+JS_TRIGGER = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == '--js' and i + 1 < len(sys.argv)), None)
 mobile = VP.endswith('m')
 W, H = [int(v) for v in VP.rstrip('m').split('x')]
 SHOTS = os.path.join(base.SCRATCH, 'shots', 'tour')
@@ -101,7 +103,10 @@ async def main():
             print('install', await ev(INSTALL))
             print('pos before', await ev(POS), flush=True)
             await shot('before')
-            print('tap', await ev(TAP.replace('__BTN__', 'StarUpButton' if STAR else 'LobbyHeroDetailLevelUpButton')), flush=True)
+            if JS_TRIGGER:
+                print('trigger', await ev("(() => { const r = window.__root; const hero = r.currentLobbyHeroDetailHero(); window.__probe.t0 = performance.now(); window.__probe.frames.length = 0; window.__probe.renders.length = 0; " + JS_TRIGGER + "; return 'ok'; })()"), flush=True)
+            else:
+                print('tap', await ev(TAP.replace('__BTN__', 'StarUpButton' if STAR else 'LobbyHeroDetailLevelUpButton')), flush=True)
             await asyncio.sleep(0.4)
             print('pos +0.4s', await ev(POS), flush=True)
             await shot('t04')

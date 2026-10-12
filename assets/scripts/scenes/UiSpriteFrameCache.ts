@@ -77,6 +77,8 @@ import {
 } from './C1812CommonUiAssets';
 
 export interface UiSpriteFrameCacheHost {
+  /** 补图到货整刷(可缺省=直接 renderCurrentView);GameRoot 用它在英雄养成压制期把整刷攒起来。 */
+  refreshForSpriteArrival?(): void;
   node: Node;
   renderCurrentView(): void;
 }
@@ -323,7 +325,11 @@ export class UiSpriteFrameCache {
         return;
       }
       if (this.isHostNodeAlive()) {
-        this.host.renderCurrentView();
+        if (this.host.refreshForSpriteArrival) {
+          this.host.refreshForSpriteArrival();
+        } else {
+          this.host.renderCurrentView();
+        }
       }
     }, 90);
   }

@@ -956,6 +956,8 @@ export class LootChainGameRoot extends Component {
       if (this.layoutKey && this.layoutKey !== nextKey) {
         // 养成流程压制期:layoutKey 含各 loader 版本号与养成忙标记,回读期间每翻一次都会整页重建——统一攒到特效播完
         if (this.isHeroGrowthRenderHeld()) {
+          // 吞掉这次翻转(更新快照),压制结束后不再因它补刷;需要刷的由流程自己安排
+          this.layoutKey = nextKey;
           this.heroGrowthRenderPending = true;
         } else {
           this.renderCurrentView();
@@ -3351,6 +3353,31 @@ export class LootChainGameRoot extends Component {
     return this.currentView === 'heroDetail' && Date.now() < this.heroGrowthHoldUntil;
   }
 
+  /** 详情页其它写操作(大招升级 / 洗练 / 穿卸装备)的回读窗口:同样压住回读期间的整刷。 */
+  private beginHeroDetailMutation(): void {
+    if (this.currentView === 'heroDetail') {
+      this.heroGrowthHoldUntil = Date.now() + 8000;
+    }
+  }
+
+  /**
+   * 窗口结束:弹窗类操作底层面板由"关闭弹窗时整刷"兜底,这里不补刷;
+   * 再留 1.5 秒缓冲——loader 的"到货整刷"常在 await 返回之后才触发,不留会在流程收尾后再整刷一次。
+   */
+  private endHeroDetailMutation(): void {
+    this.heroGrowthHoldUntil = Date.now() + 1500;
+    this.heroGrowthRenderPending = false;
+  }
+
+  /** 补图到货整刷(UiSpriteFrameCache):压制期内攒起来,其余照常。 */
+  private refreshForSpriteArrival(): void {
+    if (this.isHeroGrowthRenderHeld()) {
+      this.heroGrowthRenderPending = true;
+      return;
+    }
+    this.renderCurrentView();
+  }
+
   /** 养成按钮按下:只把底部按钮切成"处理中"(局部)并开启整刷压制;详情页不在就按老路整刷。 */
   private markHeroDockPending(): void {
     if (this.currentView === 'heroDetail' && this.lobbyHeroDetailPanelRenderer.setDockPending(true)) {
@@ -3672,6 +3699,8 @@ export class LootChainGameRoot extends Component {
 
   private async runLobbyHeroRefine(heroId: number, heroName: string): Promise<void> {
     let refinePowerDelta = 0;
+    // 弹窗级刷新 + 压住回读整刷:底层面板由关闭弹窗时(lobbyHeroRefineDirty)整刷兜底
+    this.beginHeroDetailMutation();
     try {
       const beforePower = this.currentLobbyHeroDetailHero()?.power ?? 0;
       const lockedIds = [...Array.from(this.lobbyHeroRefineLockedIds)];
@@ -3693,6 +3722,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`洗练失败：${message}`);
     } finally {
       this.lobbyHeroRefineBusyId = null;
+      this.endHeroDetailMutation();
       if (this.currentView === 'heroDetail') {
         // 只做弹窗级刷新:新词条/持有量/消耗即时更新,背景 spine 不重播。
         this.refreshLobbyHeroRefineDialog();
@@ -4064,6 +4094,8 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroUltimateBusy = true;
     this.renderCurrentView();
+    // 回读期间的整刷全部压住(原先背包 / 资料 / 名册回读要整页重建八九次),结束只刷一次
+    this.beginHeroDetailMutation();
     let powerDelta = 0;
     try {
       const beforePower = this.lobbyHeroPowerById(heroId);
@@ -4078,6 +4110,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`终极技能升级失败：${message}`);
     } finally {
       this.lobbyHeroUltimateBusy = false;
+      this.endHeroDetailMutation();
       this.renderCurrentView();
       this.spawnPowerDeltaFloat(powerDelta);
     }
@@ -4145,6 +4178,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroEquipBusy = true;
     this.refreshLobbyHeroEquipDialog();
+    this.beginHeroDetailMutation();
     const beforePower = hero.power;
     let powerDelta = 0;
     try {
@@ -4165,6 +4199,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`装备操作失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
+      this.endHeroDetailMutation();
       this.refreshLobbyHeroEquipDialog();
       this.spawnPowerDeltaFloat(powerDelta);
     }
