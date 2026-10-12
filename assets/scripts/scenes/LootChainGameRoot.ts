@@ -2213,6 +2213,7 @@ export class LootChainGameRoot extends Component {
     let powerDelta = 0;
     this.lobbyHeroEquipBusy = true;
     this.renderCurrentView();
+    this.beginSceneMutation();
     try {
       const result = await this.api.equipment.reroll(equipmentId);
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -2229,6 +2230,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`洗练失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
+      this.endSceneMutation();
       this.renderCurrentView();
       this.spawnPowerDeltaFloat(powerDelta);
     }
@@ -2283,6 +2285,7 @@ export class LootChainGameRoot extends Component {
     let powerDelta = 0;
     this.lobbyHeroEquipBusy = true;
     this.renderCurrentView();
+    this.beginSceneMutation();
     try {
       await op();
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -2299,6 +2302,7 @@ export class LootChainGameRoot extends Component {
     } finally {
       this.lobbyHeroEquipBusy = false;
       this.lobbyForgeGemPickSlot = null;
+      this.endSceneMutation();
       this.renderCurrentView();
       this.spawnPowerDeltaFloat(powerDelta);
     }
@@ -2333,6 +2337,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyHeroEquipBusy = true;
     this.renderCurrentView();
     let flash: { ok: boolean; text: string } | null = null;
+    this.beginSceneMutation();
     try {
       const result = await this.api.equipment.fuse(ids, this.lobbyEquipFuseUseLuckStone);
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -2357,6 +2362,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyHeroEquipBusy = false;
       // 材料已消耗(成功得新件/失败返还 1 件均为新 id),清空三槽再重绘。
       this.lobbyForgeFuseSlotIds = [];
+      this.endSceneMutation();
       this.renderCurrentView();
       if (flash && this.currentView === 'forge') {
         this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text);
@@ -2394,6 +2400,7 @@ export class LootChainGameRoot extends Component {
     let flash: { ok: boolean; text: string } | null = null;
     let finalLevel = startLevel;
     let attempts = 0;
+    this.beginSceneMutation();
     try {
       // 单轮最多 20 次尝试兜底,防止服务器异常回执导致死循环。
       while (attempts < 20) {
@@ -2431,6 +2438,7 @@ export class LootChainGameRoot extends Component {
         console.warn('[LootChain] auto enhance refresh failed:', error);
       }
       this.lobbyHeroEquipBusy = false;
+      this.endSceneMutation();
       this.renderCurrentView();
       this.spawnPowerDeltaFloat(this.lobbyHeroPowerById(equipHeroId) - beforePower);
       if (flash && this.currentView === 'forge') {
@@ -2494,6 +2502,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroEquipBusy = true;
     this.renderCurrentView();
+    this.beginSceneMutation();
     try {
       const result = await this.api.equipment.decompose(ids);
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -2515,6 +2524,7 @@ export class LootChainGameRoot extends Component {
     } finally {
       this.lobbyHeroEquipBusy = false;
       this.lobbyForgeDecomposeSelectedIds.clear();
+      this.endSceneMutation();
       this.renderCurrentView();
     }
   }
@@ -2587,6 +2597,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyBagActionBusy = true;
     let rewardMessages: string[] = [];
+    this.beginSceneMutation();
     try {
       const result = await this.api.bag.use(itemCode, 1);
       rewardMessages = result.effectMessages ?? [];
@@ -2598,6 +2609,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`使用失败：${message}`);
     } finally {
       this.lobbyBagActionBusy = false;
+      this.endSceneMutation();
       this.renderCurrentView();
       // 获得内容飘字(必须在整刷之后;挂持久浮层不受重绘清理)。
       this.spawnRewardFloats(rewardMessages);
@@ -2648,6 +2660,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyBagActionBusy = true;
+    this.beginSceneMutation();
     try {
       const result = await this.api.bag.compose(itemCode, times);
       this.lobbyBagComposeItemCode = null;
@@ -2661,6 +2674,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`合成失败：${message}`);
     } finally {
       this.lobbyBagActionBusy = false;
+      this.endSceneMutation();
       this.renderCurrentView();
     }
   }
@@ -2726,6 +2740,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyBagSellError = '';
     this.renderCurrentView();
     let floats: string[] = [];
+    this.beginSceneMutation();
     try {
       const result = await this.api.bag.sell(itemCode, this.lobbyBagSellCount, this.lobbyBagSellRequestId);
       this.lobbyBagSellItemCode = null;
@@ -2743,6 +2758,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyBagSellError = `出售失败:${message}`;
     } finally {
       this.lobbyBagActionBusy = false;
+      this.endSceneMutation();
       this.renderCurrentView();
       if (floats.length > 0) {
         this.spawnRewardFloats(floats);
@@ -3348,23 +3364,33 @@ export class LootChainGameRoot extends Component {
    */
   private heroGrowthHoldUntil = 0;
   private heroGrowthRenderPending = false;
+  /** 压制只对发起操作的那个功能页生效;中途切页就恢复正常整刷。 */
+  private heroGrowthHoldView: ViewName | null = null;
 
   private isHeroGrowthRenderHeld(): boolean {
-    return this.currentView === 'heroDetail' && Date.now() < this.heroGrowthHoldUntil;
+    return this.currentView === this.heroGrowthHoldView && Date.now() < this.heroGrowthHoldUntil;
   }
 
-  /** 详情页其它写操作(大招升级 / 洗练 / 穿卸装备)的回读窗口:同样压住回读期间的整刷。 */
-  private beginHeroDetailMutation(): void {
-    if (this.currentView === 'heroDetail') {
+  private startSceneHold(): void {
+    if (this.isLobbyScenePageView(this.currentView)) {
+      this.heroGrowthHoldView = this.currentView;
       this.heroGrowthHoldUntil = Date.now() + 8000;
     }
   }
 
   /**
-   * 窗口结束:弹窗类操作底层面板由"关闭弹窗时整刷"兜底,这里不补刷;
+   * 功能页写操作(英雄养成 / 锻造 / 背包 / 装备)的回读窗口:压住回读期间的整刷,流程结尾自己整刷一次。
+   * 2026-10-12:锻造洗练 / 宝石一次操作原先整页重建约 10 次(每份回读到货经 refreshLobbyOverlay + 每帧 layoutKey 翻转各刷一次)。
+   */
+  private beginSceneMutation(): void {
+    this.startSceneHold();
+  }
+
+  /**
+   * 窗口结束:流程随后自己整刷(或弹窗级刷新 + 关弹窗整刷兜底),这里不补刷;
    * 再留 1.5 秒缓冲——loader 的"到货整刷"常在 await 返回之后才触发,不留会在流程收尾后再整刷一次。
    */
-  private endHeroDetailMutation(): void {
+  private endSceneMutation(): void {
     this.heroGrowthHoldUntil = Date.now() + 1500;
     this.heroGrowthRenderPending = false;
   }
@@ -3381,7 +3407,7 @@ export class LootChainGameRoot extends Component {
   /** 养成按钮按下:只把底部按钮切成"处理中"(局部)并开启整刷压制;详情页不在就按老路整刷。 */
   private markHeroDockPending(): void {
     if (this.currentView === 'heroDetail' && this.lobbyHeroDetailPanelRenderer.setDockPending(true)) {
-      this.heroGrowthHoldUntil = Date.now() + 8000;
+      this.startSceneHold();
       return;
     }
     this.renderCurrentView();
@@ -3700,7 +3726,7 @@ export class LootChainGameRoot extends Component {
   private async runLobbyHeroRefine(heroId: number, heroName: string): Promise<void> {
     let refinePowerDelta = 0;
     // 弹窗级刷新 + 压住回读整刷:底层面板由关闭弹窗时(lobbyHeroRefineDirty)整刷兜底
-    this.beginHeroDetailMutation();
+    this.beginSceneMutation();
     try {
       const beforePower = this.currentLobbyHeroDetailHero()?.power ?? 0;
       const lockedIds = [...Array.from(this.lobbyHeroRefineLockedIds)];
@@ -3724,7 +3750,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`洗练失败：${message}`);
     } finally {
       this.lobbyHeroRefineBusyId = null;
-      this.endHeroDetailMutation();
+      this.endSceneMutation();
       if (this.currentView === 'heroDetail') {
         // 只做弹窗级刷新:新词条/持有量/消耗即时更新,背景 spine 不重播。
         this.refreshLobbyHeroRefineDialog();
@@ -3815,6 +3841,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyHeroEquipBusy = true;
     const beforePower = hero.power;
     let powerDelta = 0;
+    this.beginSceneMutation();
     try {
       if (this.lobbyEquipmentItems.length <= 0) {
         await this.loadLobbyEquipmentList();
@@ -3867,6 +3894,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`一键装备操作失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
+      this.endSceneMutation();
       if (this.currentView === 'heroDetail') {
         // 装备/战力已变化,底层格子与名牌需要同步:整刷一次(一键操作低频,spine 重播可接受)。
         this.renderCurrentView();
@@ -3928,6 +3956,7 @@ export class LootChainGameRoot extends Component {
     const beforePower = this.lobbyHeroPowerById(equipHeroId);
     let powerDelta = 0;
     let flash: { ok: boolean; text: string } | null = null;
+    this.beginSceneMutation();
     try {
       const result = await this.api.equipment.enhance(equipmentId, this.lobbyEquipEnhanceUseBless, this.lobbyEquipEnhanceUseGuard);
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -3955,6 +3984,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`强化失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
+      this.endSceneMutation();
       this.refreshLobbyHeroEquipDialog();
       this.spawnPowerDeltaFloat(powerDelta);
       if (flash && this.currentView === 'forge') {
@@ -3982,6 +4012,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroEquipBusy = true;
     this.refreshLobbyHeroEquipDialog();
+    this.beginSceneMutation();
     try {
       const result = await this.api.equipment.decompose([candidates[0].id]);
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -3995,6 +4026,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`分解失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
+      this.endSceneMutation();
       this.refreshLobbyHeroEquipDialog();
     }
   }
@@ -4041,6 +4073,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroEquipBusy = true;
     this.refreshLobbyHeroEquipDialog();
+    this.beginSceneMutation();
     try {
       const result = await this.api.equipment.fuse(materials.map((item) => item.id), this.lobbyEquipFuseUseLuckStone);
       this.lobbyEquipmentItems = await this.api.equipment.list();
@@ -4060,6 +4093,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`合成失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
+      this.endSceneMutation();
       this.refreshLobbyHeroEquipDialog();
     }
   }
@@ -4097,7 +4131,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyHeroUltimateBusy = true;
     this.renderCurrentView();
     // 回读期间的整刷全部压住(原先背包 / 资料 / 名册回读要整页重建八九次),结束只刷一次
-    this.beginHeroDetailMutation();
+    this.beginSceneMutation();
     let powerDelta = 0;
     try {
       const beforePower = this.lobbyHeroPowerById(heroId);
@@ -4114,7 +4148,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`终极技能升级失败：${message}`);
     } finally {
       this.lobbyHeroUltimateBusy = false;
-      this.endHeroDetailMutation();
+      this.endSceneMutation();
       this.renderCurrentView();
       this.spawnPowerDeltaFloat(powerDelta, 'dialog');
     }
@@ -4182,7 +4216,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyHeroEquipBusy = true;
     this.refreshLobbyHeroEquipDialog();
-    this.beginHeroDetailMutation();
+    this.beginSceneMutation();
     const beforePower = hero.power;
     let powerDelta = 0;
     try {
@@ -4203,7 +4237,7 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`装备操作失败：${message}`);
     } finally {
       this.lobbyHeroEquipBusy = false;
-      this.endHeroDetailMutation();
+      this.endSceneMutation();
       this.refreshLobbyHeroEquipDialog();
       this.spawnPowerDeltaFloat(powerDelta, 'dialog');
     }

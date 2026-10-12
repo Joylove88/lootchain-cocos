@@ -12,6 +12,8 @@ VP = next((a for a in sys.argv[2:] if 'x' in a and not a.startswith('--')), '915
 STAR = '--star' in sys.argv
 # --js "<表达式>":不点按钮,直接在页面里执行该表达式触发操作(r=window.__root, hero=当前详情英雄),用于弹窗里的大招升级 / 洗练
 JS_TRIGGER = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == '--js' and i + 1 < len(sys.argv)), None)
+# --open "<表达式>":替代默认的打开英雄详情(如进锻造 / 背包页),表达式里可用 r=window.__root
+JS_OPEN = next((sys.argv[i + 1] for i, a in enumerate(sys.argv) if a == '--open' and i + 1 < len(sys.argv)), None)
 mobile = VP.endswith('m')
 W, H = [int(v) for v in VP.rstrip('m').split('x')]
 SHOTS = os.path.join(base.SCRATCH, 'shots', 'tour')
@@ -97,7 +99,10 @@ async def main():
                     break
                 await asyncio.sleep(10)
             await asyncio.sleep(2)
-            print('detail', await ev(OPEN_DETAIL), flush=True)
+            if JS_OPEN:
+                print('open', await ev("(async () => { const r = window.__root; " + JS_OPEN + "; await new Promise(z => setTimeout(z, 6000)); return r.currentView; })()"), flush=True)
+            else:
+                print('detail', await ev(OPEN_DETAIL), flush=True)
             if STAR:
                 print('tab', await ev(SWITCH_STAR), flush=True)
             print('install', await ev(INSTALL))
