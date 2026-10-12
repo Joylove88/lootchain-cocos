@@ -13,6 +13,7 @@ import type {
   PlayerBattleSkillEffectVO,
   PlayerBattleStartDTO,
   PlayerBattleStartVO,
+  GuardMonsterRosterEntryVO,
 } from '../types/BattleTypes';
 import type {
   CrystalMineVO,
@@ -295,6 +296,31 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
     readonlyEconomy,
     guardrails: sanitizeTextArray(readArray(data, 'guardrails', 10), MAX_TEXT),
     guardCrystal: normalizeGuardCrystal(data.guardCrystal),
+    guardMonsters: readArray(data, 'guardMonsters', 40).map(normalizeGuardMonster).filter((m): m is GuardMonsterRosterEntryVO => m !== null),
+  };
+}
+
+const GUARD_MONSTER_KINDS = ['normal', 'fast', 'tank', 'flying', 'shooter', 'elite', 'boss'];
+
+/** 出场名单项:怪种只认已知值,骨骼路径必须是 spine/monster/<目录>/<文件>(只含安全字符),体型钳 0.3~3;不合格项丢弃。 */
+function normalizeGuardMonster(raw: unknown): GuardMonsterRosterEntryVO | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const kind = typeof raw.guardKind === 'string' ? raw.guardKind.trim().toLowerCase() : '';
+  const spineAsset = typeof raw.spineAsset === 'string' ? raw.spineAsset.trim() : '';
+  if (GUARD_MONSTER_KINDS.indexOf(kind) < 0 || !/^spine\/monster\/[a-z0-9_]+\/[A-Za-z0-9_\-\[\]]+$/.test(spineAsset)) {
+    return null;
+  }
+  const scale = Number(raw.displayScale);
+  const bossSkill = raw.bossSkill === 'volley' ? 'volley' : raw.bossSkill === 'smash' ? 'smash' : null;
+  return {
+    monsterCode: readText(raw, 'monsterCode', 64, ''),
+    monsterName: readText(raw, 'monsterName', 64, ''),
+    guardKind: kind as GuardMonsterRosterEntryVO['guardKind'],
+    spineAsset,
+    displayScale: Number.isFinite(scale) ? Math.max(0.3, Math.min(3, scale)) : 1,
+    bossSkill,
   };
 }
 

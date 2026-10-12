@@ -1150,6 +1150,39 @@ export function guardSummarizeSpawns(spawns: Array<{ kind: GuardMonsterKind }> |
   return summary;
 }
 
+/** 守卫战出场名单(docs/40 P2):怪种 → 骨骼目录名列表;缺的怪种用内置 MONSTER_PROFILE。 */
+export type GuardMonsterRoster = Partial<Record<GuardMonsterKind, string[]>>;
+
+/**
+ * 服务端下发的出场名单(后台副本阵容)落到客户端:骨骼文件名 / 体型校准 / BOSS 技能类型登记进运行时表,返回怪种分组。
+ * 同一骨骼目录在内置表里已有值时以服务端为准(两边同源 monster_template,正常一致)。
+ */
+export function guardApplyMonsterRoster(
+  entries: ReadonlyArray<{ guardKind: string; spineAsset: string; displayScale: number; bossSkill?: GuardBossSkillKind | null }> | null | undefined,
+): GuardMonsterRoster {
+  const roster: GuardMonsterRoster = {};
+  for (const entry of entries ?? []) {
+    const match = /^spine\/monster\/([a-z0-9_]+)\/(.+)$/.exec(entry.spineAsset || '');
+    const kind = entry.guardKind as GuardMonsterKind;
+    if (!match || !MONSTER_PROFILE[kind]) {
+      continue;
+    }
+    const code = match[1];
+    GUARD_MONSTER_SPINE_FILE[code] = match[2];
+    if (Number.isFinite(entry.displayScale) && entry.displayScale > 0) {
+      GUARD_MONSTER_DB_SCALE[code] = entry.displayScale;
+    }
+    if (kind === 'boss' && entry.bossSkill) {
+      GUARD_BOSS_SKILL_TYPE[code] = entry.bossSkill;
+    }
+    const list = roster[kind] ?? (roster[kind] = []);
+    if (list.indexOf(code) < 0) {
+      list.push(code);
+    }
+  }
+  return roster;
+}
+
 /** 本局抽样后的皮肤表里挑一套(表缺项时退回全表)。 */
 function pickMonsterSpineCode(state: GuardBattleState, kind: GuardMonsterKind): string {
   const codes = state.monsterSpineCodes?.[kind] ?? MONSTER_PROFILE[kind].spineCodes;
@@ -1160,11 +1193,13 @@ function pickMonsterSpineCode(state: GuardBattleState, kind: GuardMonsterKind): 
  * 按种子为每种怪抽 variety 套皮肤(独立 rng 流,不影响其它随机序列;同一 seedText 永远同一结果,
  * 所以开战前的加载门与建场后的 sim 能算出同一份表)。
  */
-export function guardPickMonsterSpineCodes(seedText: string, variety: number): Record<GuardMonsterKind, string[]> {
+export function guardPickMonsterSpineCodes(seedText: string, variety: number, roster?: GuardMonsterRoster | null): Record<GuardMonsterKind, string[]> {
   const rng = createGuardRng((guardHashSeed(seedText || 'guard') ^ 0x9e3779b9) >>> 0);
   const out = {} as Record<GuardMonsterKind, string[]>;
   (Object.keys(MONSTER_PROFILE) as GuardMonsterKind[]).forEach((kind) => {
-    const all = MONSTER_PROFILE[kind].spineCodes.slice();
+    // 后台出场名单优先(docs/40 P2),该怪种没配则用内置表;只换外观,独立 rng 流不影响 sim 随机序列。
+    const configured = roster?.[kind];
+    const all = (configured && configured.length > 0 ? configured : MONSTER_PROFILE[kind].spineCodes).slice();
     const take = Math.max(1, Math.min(all.length, Math.round(variety)));
     for (let i = all.length - 1; i > 0; i -= 1) {
       const j = Math.floor(rng() * (i + 1));
@@ -1238,6 +1273,8 @@ export function createGuardBattle(
      * 手机每局每种怪只抽 1 套(按种子抽,同一局确定),开战前只预载这几套。
      */
     monsterVariety?: number;
+    /** 后台出场名单(docs/40 P2,guardApplyMonsterRoster 的返回值);缺省 = 内置怪种表。 */
+    monsterRoster?: GuardMonsterRoster | null;
     /** 守卫水晶养成快照(docs/38,开战回执 guardCrystal;缺省=1 级无加成、只解锁 3 个基础法术)。 */
     crystal?: {
       level?: number;
@@ -1307,7 +1344,7 @@ export function createGuardBattle(
     freeEnhance: 0,
     enhanceCost: GUARD_ENHANCE_PRICES[0],
     choiceRng: createGuardRng((seed ^ 0x5bd1e995) >>> 0),
-    monsterSpineCodes: guardPickMonsterSpineCodes(seedText, opts?.monsterVariety ?? 3),
+    monsterSpineCodes: guardPickMonsterSpineCodes(seedText, opts?.monsterVariety ?? 3, opts?.monsterRoster),
     heroPerks: {},
     whiteStacks: {},
     goldSeen: 0,

@@ -93,6 +93,8 @@ export interface PlayerBattleStartVO {
   guardrails: string[];
   /** 开战时守卫水晶等级与效果快照(docs/38);旧服务端/旧会话没有该字段,按 1 级。 */
   guardCrystal?: import('./GuardCrystalTypes').GuardCrystalEffectVO | null;
+  /** 守卫战本关出场怪物名单(docs/40 P2,后台副本阵容;空 = 客户端内置怪种表)。 */
+  guardMonsters?: GuardMonsterRosterEntryVO[];
 }
 
 export interface PlayerBattleSettlementVO {
@@ -150,4 +152,15 @@ export interface PlayerBattleRecentVO {
   recordedTime: string;
   message: string;
   guardrails: string[];
+}
+
+/** 守卫战出场怪物(服务端 dungeon_monster_config × monster_template)。只影响外观与 BOSS 技能类型,不影响数值曲线。 */
+export interface GuardMonsterRosterEntryVO {
+  monsterCode: string;
+  monsterName: string;
+  guardKind: 'normal' | 'fast' | 'tank' | 'flying' | 'shooter' | 'elite' | 'boss';
+  /** spine/monster/<目录>/<文件>。 */
+  spineAsset: string;
+  displayScale: number;
+  bossSkill: 'smash' | 'volley' | null;
 }

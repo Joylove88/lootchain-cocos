@@ -119,6 +119,7 @@ import {
   type GuardMonster,
   type GuardPoolHero,
   guardPickMonsterSpineCodes,
+  guardApplyMonsterRoster,
 } from './GuardBattleModel';
 import { resolveLobbyBattlePresentationSnapshot, type BattlePresentationSnapshot, type BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 import {
@@ -815,6 +816,8 @@ export class LobbyGuardBattleRenderer {
       {
         monsterScale: this.resolveMainMonsterScale(stageCode),
         monsterVariety: LobbyGuardBattleRenderer.monsterVariety(),
+        // 后台副本阵容 = 本关出场名单(docs/40 P2);与加载门同一份名单,保证预载的皮肤就是 sim 会抽到的。
+        monsterRoster: guardApplyMonsterRoster(battleState.start?.guardMonsters),
         // 限时副本小怪数量 ×3(2026-09-11 用户拍板);BOSS/精英在波次编排循环外单独 push,不受此倍率影响。
         spawnCountMult: isMain ? 2 : isDaily ? 3 : 1,
         monsterHpMult: isMain || isDaily ? 3 : 1,
@@ -7739,7 +7742,7 @@ export class LobbyGuardBattleRenderer {
     const stageCode = (start.stageCode ?? '').toUpperCase();
     const rushMode = stageCode.startsWith('DAILY_') && stageCode.endsWith('_3');
     const seedText = `${start.serverSeed ?? ''}:${start.battleNo ?? ''}`;
-    const codesByKind = guardPickMonsterSpineCodes(seedText, LobbyGuardBattleRenderer.monsterVariety());
+    const codesByKind = guardPickMonsterSpineCodes(seedText, LobbyGuardBattleRenderer.monsterVariety(), guardApplyMonsterRoster(start.guardMonsters));
     type MonsterKind = keyof typeof codesByKind;
     // 首波会出现的怪进加载门;其余按波次出现先后排队后台读(快/坦克第 3 波起,精英第 4 波,飞行第 4 波起,远程第 6 波起,BOSS 末波)
     const firstWaveKinds: MonsterKind[] = rushMode ? ['normal', 'boss'] : ['normal'];
