@@ -1262,7 +1262,22 @@ export class LobbyGuardBattleRenderer {
     const ratio = LobbyGuardBattleRenderer.SCENE_BG_HORIZON[this.resolveSceneBgName()] ?? 0.39;
     const cover = Math.max(this.layoutWidth / 2048, height / 1152);
     const bgH = 1152 * cover;
-    return bgH * (1 - ratio) - height / 2;
+    return this.sceneBgCenterY(bgH, height) + bgH * (0.5 - ratio);
+  }
+
+  /**
+   * 背景超出屏幕的高度从上面裁掉多少(0~1):1 = 底边贴屏幕底、只裁上面(默认,各章节图按此调好);
+   * 0 = 顶边贴屏幕顶、只裁地面。宽屏手机(比 16:9 更宽)cover 铺满后图比屏幕高,
+   * 焦点在上方远景的图默认会被裁掉主体(2026-10-13 用户:"觉醒之门背景压太高,后面的门显示不全")。
+   */
+  private static readonly SCENE_BG_TOP_CROP: Record<string, number> = {
+    battle_scene_daily_awaken: 0,
+  };
+
+  /** 背景节点中心 Y(屏幕坐标,向上为正);背景、加载底图、地平线三处共用。 */
+  private sceneBgCenterY(bgH: number, height: number): number {
+    const topCrop = LobbyGuardBattleRenderer.SCENE_BG_TOP_CROP[this.resolveSceneBgName()] ?? 1;
+    return ((bgH - height) / 2) * (2 * topCrop - 1);
   }
 
   /** 加载页底图:本关战场背景按 cover 铺满并压暗(与正式背景同一张图、同一套几何,进场不会跳)。 */
@@ -1270,7 +1285,7 @@ export class LobbyGuardBattleRenderer {
     const cover = Math.max(width / 2048, height / 1152);
     const bgW = 2048 * cover;
     const bgH = 1152 * cover;
-    this.mountSprite(root, 'GuardLoadingBg', this.resolveSceneBgPath(), 0, (bgH - height) / 2, bgW, bgH, rgba(112, 104, 98, 255));
+    this.mountSprite(root, 'GuardLoadingBg', this.resolveSceneBgPath(), 0, this.sceneBgCenterY(bgH, height), bgW, bgH, rgba(112, 104, 98, 255));
   }
 
   private mountBackground(root: Node): void {
@@ -1282,7 +1297,7 @@ export class LobbyGuardBattleRenderer {
     const cover = Math.max(width / bgSrcW, height / bgSrcH);
     const bgW = bgSrcW * cover;
     const bgH = bgSrcH * cover;
-    this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, (bgH - height) / 2, bgW, bgH);
+    this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, this.sceneBgCenterY(bgH, height), bgW, bgH);
     // 顶部压暗改羽化渐变(2026-09-15 用户反馈平涂半透明黑带太难看):上沿最深、向下平滑透明,没有硬边。
     const shadeH = height * 0.15;
     this.mountSoftShade(root, 'GuardTopShade', 0, height / 2 - shadeH / 2, width, shadeH, 'top-fade');

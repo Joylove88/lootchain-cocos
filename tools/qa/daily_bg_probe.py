@@ -21,6 +21,8 @@ SWAP = r"""(async () => { const cc = window.__cc, r = window.__gr, root = window
   const res = await new Promise(z => cc.resources.load(path, cc.SpriteFrame, (e, f) => z(e ? 'ERR ' + e.message : f)));
   if (typeof res === 'string') return JSON.stringify({ name, path, hy, load: res });
   if (n) n.getComponent(cc.Sprite).spriteFrame = res;
+  // 背景上下裁切按图走(SCENE_BG_TOP_CROP,2026-10-13):换图后按新口径重摆背景节点
+  if (n && r.sceneBgCenterY) { const H = r.layoutHeight, W = r.layoutWidth, bgH = 1152 * Math.max(W / 2048, H / 1152); n.setPosition(0, r.sceneBgCenterY(bgH, H), 0); }
   // 石台按主题换皮(2026-10-13):改完关卡码后重画格子,让新石台进截图
   try { r.paintLanesAndGrid(); } catch (e) { void e; }
   await new Promise(z => setTimeout(z, 1800));
