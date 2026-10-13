@@ -355,28 +355,41 @@ Dark fantasy side-view battle arena background for a mobile tower-defense RPG, 1
 暗黑奇幻手游塔防战斗场景背景,横版 16:9 远景,低机位平视。一片辽阔平坦的焦黑玄武岩石板平原,石板间有细细发光的深红裂纹,从画面最左到最右整片开阔、没有任何遮挡,占画面下方一半以上。地平线在画面上沿往下约 45% 处。正中央远处一道巨大的竖直"深渊裂隙"撕开血红色天空,裂隙里涌出旋转的深红能量和飘落的火星,远处有红色闪电。两侧远景只有低矮、被红雾虚化的锯齿黑色尖峰和远方残破暗黑城堡剪影,又小又远。地面上不要枯树、骨头、骷髅、尖刺、旗帜、石块等任何竖立物,左右两侧画面边缘不要前景道具。黑 + 深红主色,裂隙打出红色轮廓光,地面纹理低对比哑光、只有稀疏的细发光裂纹,保证角色和技能特效清晰可读,3A 手游绘画质感,不要人物、怪物、文字、水印、UI。
 ```
 
-### 主题石台(英雄脚下地块,6 张,放 `assets/resources/ui/guard/`)
+### 主题石台(英雄脚下地块,6 张,放 `assets/resources/ui/guard/`)——v2 已生成入库
 
-**一定把现有 `assets/resources/ui/guard/ghud_cell_tile.png` 作为参考图一起给生图工具**,要求"保持完全相同的形状、俯视角度、厚度比例和构图,只换材质与配色"。
-规格:384×288(或等比更大,如 1536×1152),**透明底**(不支持透明就用纯绿 #00FF00 底,我来抠),石台居中、四周留少量空白,无文字。
-每个主题两张:常态 `ghud_cell_tile_<主题>.png`,选中发光态 `ghud_cell_tile_<主题>_active.png`(同一石台,边框和台面整体发光,四周带一圈柔和光晕)。
-熔火矿脉继续用现有熔岩石台;代码已接好:新图放进去后限时副本自动换皮,没放的主题回退熔岩石台。
+2026-10-13 用户:"地块要符合风格,也要突出显示,不和背景融合,参考熔火矿脉的地块"。
+v1 按主题配色(白石台放白地面、蓝黑放蓝黑、黑红放黑红)全部和地面糊在一起,已作废(备份在 素材原始备份/guard-cell-tiles-20261013/*_v1_original.png)。
+v2 口径:**三套统一粗亮古金边作轮廓(同熔岩石台),台面明暗与各自地面反着来**——浅地面配深台面、深地面配浅台面。
+生成方式:Codex(ChatGPT 订阅)`codex exec -m gpt-5.5 -i ghud_cell_tile.png -`(提示词走 stdin),出 1448×1086 透明底,等比缩到 384×288。
 
-通用前缀(英文):
+完整英文提示词(通用前缀 + 主题描述):
+
+**ghud_cell_tile_awaken.png**
 ```
-Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, ornate metal rim with small corner ornaments, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness and composition as the reference image, only material and colors changed, centered, transparent background, no text, no watermark,
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, it sits on a PALE GREY marble floor, so make the top face DARK: deep warm bronze-brown weathered granite with fine glowing golden cracks, bright gold inlaid sun emblem, holy ancient temple style, clearly darker than a pale floor
 ```
-| 命名 | 主题追加描述(英文,接在通用前缀后) |
-|---|---|
-| ghud_cell_tile_awaken.png | weathered pale grey marble top with fine cracks, antique gold rim and gold inlaid circular sun emblem, faint warm golden glow in the cracks, holy ancient temple style |
-| ghud_cell_tile_awaken_active.png | same pale marble and gold pedestal, rim and emblem glowing bright radiant gold, soft golden halo light around the whole tile, sparkling light particles |
-| ghud_cell_tile_arcane.png | polished dark blue-black obsidian top, silver rim with violet gem corners, glowing faint blue-violet arcane rune circle in the center, mystical sanctum style |
-| ghud_cell_tile_arcane_active.png | same obsidian and silver pedestal, rune circle and rim glowing bright blue-violet, soft violet magical halo around the whole tile, floating rune sparkles |
-| ghud_cell_tile_abyss.png | charred black basalt top with thin glowing crimson cracks, dark wrought-iron rim with small bone-like spikes at the corners, crimson circular sigil in the center, hellish abyss style |
-| ghud_cell_tile_abyss_active.png | same basalt and iron pedestal, cracks, sigil and rim glowing intense crimson red, soft red halo glow around the whole tile, ember particles |
 
-中文版(同样带参考图):
-- 通用:游戏UI素材,一块圆角方形石台,3/4 俯视角,厚石板能看到正面和侧面厚度,金属包边、四角小饰件,台面中央一圈圆形雕刻纹章,**形状、角度、厚度、构图与参考图完全一致,只换材质和配色**,居中,透明底,无文字无水印。
-- 觉醒之门 常态:风化灰白大理石台面带细裂纹,古金包边与金色太阳纹章,裂纹里微弱暖金光,神圣古神殿风格;发光态:同款石台,包边与纹章亮金色发光,整块石台外一圈柔和金色光晕和闪烁光点。
-- 秘法圣殿 常态:抛光蓝黑黑曜石台面,银色包边、四角紫色宝石,中央淡淡发光的蓝紫色符文法阵,神秘圣殿风格;发光态:同款石台,法阵与包边亮蓝紫色发光,外圈柔和紫色魔法光晕和漂浮符文光点。
-- 深渊裂隙 常态:焦黑玄武岩台面带细细发光深红裂纹,暗色铁艺包边、四角骨刺状小饰件,中央深红圆形魔印,地狱深渊风格;发光态:同款石台,裂纹、魔印和包边强烈深红发光,外圈柔和红色光晕和火星。
+**ghud_cell_tile_awaken_active.png**
+```
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, same dark bronze-granite pedestal with bright gold rim, the cracks, sun emblem and rim glowing radiant gold, soft golden halo light around the whole tile, sparkling light particles
+```
+
+**ghud_cell_tile_arcane.png**
+```
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, it sits on a DARK NAVY-BLACK reflective floor, so make the top face LIGHT: pale silver-lavender moonstone with a soft pearly sheen, glowing bright cyan-violet arcane rune circle in the center, small violet gems on the gold rim, mystical sanctum style, clearly lighter than a dark blue floor
+```
+
+**ghud_cell_tile_arcane_active.png**
+```
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, same pale moonstone pedestal with bright gold rim, rune circle and rim glowing intense cyan-violet, soft violet magical halo around the whole tile, floating rune sparkles
+```
+
+**ghud_cell_tile_abyss.png**
+```
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, it sits on a near-BLACK cracked basalt floor, so make the top face LIGHTER: ash-grey weathered volcanic stone with bright glowing crimson cracks and a crimson sigil in the center, warm gold-bronze rim with small bone-like spikes at the corners, hellish abyss style, clearly lighter than a black floor
+```
+
+**ghud_cell_tile_abyss_active.png**
+```
+Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, same ash-grey volcanic pedestal with gold-bronze rim, cracks, sigil and rim glowing intense crimson red, soft red halo glow around the whole tile, ember particles
+```
