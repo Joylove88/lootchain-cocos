@@ -78,6 +78,9 @@ async def main():
             print(await ev(base.JS_LOGIN, 120))
             await asyncio.sleep(3)
             print('battle', await ev(JS_BATTLE, 300), flush=True)
+            print('topshade', await ev(r"""(() => { const cc = window.__cc; let n = null; const w = x => { if (n) return; if (x.name === 'GuardTopShade') { n = x; return; } x.children.forEach(w); }; w(cc.director.getScene());
+  if (!n) return 'none'; const sp = n.getComponent(cc.Sprite), g = n.getComponent(cc.Graphics), ut = n.getComponent(cc.UITransform);
+  return JSON.stringify({ sprite: !!sp, frame: !!(sp && sp.spriteFrame), tex: sp && sp.spriteFrame && sp.spriteFrame.texture ? sp.spriteFrame.texture.width + 'x' + sp.spriteFrame.texture.height : null, graphics: !!g, size: ut ? [Math.round(ut.width), Math.round(ut.height)] : null, y: Math.round(n.position.y), sib: n.getSiblingIndex() }); })()""", 30), flush=True)
             await asyncio.sleep(2)
             for theme in ('AWAKEN', 'ARCANE', 'ABYSS', 'FORGE'):
                 print(theme, await ev(SWAP % f'DAILY_{theme}_1', 120), flush=True)

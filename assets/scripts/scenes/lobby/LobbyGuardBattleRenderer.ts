@@ -1299,7 +1299,8 @@ export class LobbyGuardBattleRenderer {
     const bgH = bgSrcH * cover;
     this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, this.sceneBgCenterY(bgH, height), bgW, bgH);
     // 顶部压暗改羽化渐变(2026-09-15 用户反馈平涂半透明黑带太难看):上沿最深、向下平滑透明,没有硬边。
-    const shadeH = height * 0.15;
+    // 2026-10-13 用户:「顶部遮盖层不好看」——暗带改为真正的上深下浅渐变,并拉高到 22% 让过渡更缓
+    const shadeH = height * 0.22;
     this.mountSoftShade(root, 'GuardTopShade', 0, height / 2 - shadeH / 2, width, shadeH, 'top-fade');
   }
 
@@ -1449,12 +1450,14 @@ export class LobbyGuardBattleRenderer {
         const data = new Uint8Array(pw * ph * 4);
         for (let py = 0; py < ph; py += 1) {
           for (let px = 0; px < pw; px += 1) {
-            // 纹理行 0 在底部:v=0 底、v=1 顶
+            // uploadData 的行 0 在纹理顶部(2026-10-13 实测:原先按"行 0 在底部"写,顶部暗带上下颠倒,
+            // 最暗处落在下沿成一道硬边,觉醒之门亮天空上尤其明显)。v=0 顶、v=1 底。
             const u = (px + 0.5) / pw;
             const v = (py + 0.5) / ph;
             let alpha: number;
             if (style === 'top-fade') {
-              alpha = 0.66 * Math.pow(v, 1.7);
+              // 顶边最深,向下按 (1-v)^2.2 收到 0:尾段斜率趋零,没有可见的下沿
+              alpha = 0.6 * Math.pow(1 - v, 2.2);
             } else if (style === 'flat') {
               alpha = 1;
             } else {
