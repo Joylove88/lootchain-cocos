@@ -1166,9 +1166,9 @@ export class LobbyGuardBattleRenderer {
     battle_scene_molten_core: 0.403,
     battle_scene_final_throne: 0.438,
     // 限时副本新图(2026-10-11):先用回退图的地平线,出图落位后用 tools/qa 量一遍再改
-    battle_scene_daily_awaken: 0.493,
+    battle_scene_daily_awaken: 0.395, // 2026-10-13 重生成(地面左右开阔),scene_horizon 实测 0.392
     battle_scene_daily_arcane: 0.479,
-    battle_scene_daily_abyss: 0.424,
+    battle_scene_daily_abyss: 0.396, // 2026-10-13 重生成(地面左右开阔),scene_horizon 实测 0.396
   };
 
   /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景图名;非主线或越界回退矿脉图。 */

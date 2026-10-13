@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""限时副本三张新战场背景(battle_scene_daily_awaken/arcane/abyss)落位自验:进 MAIN_1_1 后把 start.stageCode 改成 DAILY_*_1,
+"""限时副本三张新战场背景 + 主题石台(battle_scene_daily_awaken/arcane/abyss)落位自验:进 MAIN_1_1 后把 start.stageCode 改成 DAILY_*_1,
 看 resolveSceneBgName 是否选到新图(不是回退图)、horizonPy 是否取到量好的地平线,再把 GuardSceneBg 换成该图截图目视。
 用法:PREVIEW_PORT=7456 python daily_bg_probe.py <tag> [915x412m]"""
 import asyncio, base64, json, os, subprocess, sys, time, urllib.request
@@ -21,7 +21,9 @@ SWAP = r"""(async () => { const cc = window.__cc, r = window.__gr, root = window
   const res = await new Promise(z => cc.resources.load(path, cc.SpriteFrame, (e, f) => z(e ? 'ERR ' + e.message : f)));
   if (typeof res === 'string') return JSON.stringify({ name, path, hy, load: res });
   if (n) n.getComponent(cc.Sprite).spriteFrame = res;
-  await new Promise(z => setTimeout(z, 600));
+  // 石台按主题换皮(2026-10-13):改完关卡码后重画格子,让新石台进截图
+  try { r.paintLanesAndGrid(); } catch (e) { void e; }
+  await new Promise(z => setTimeout(z, 1800));
   return JSON.stringify({ name, path, hy, tex: res.texture.width + 'x' + res.texture.height, swapped: !!n }); })()"""
 
 
