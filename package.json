@@ -71,7 +71,8 @@
     "repair:preview-battle-motion-r22": "node ./scripts/repair-preview-battle-motion-r22.mjs",
     "diagnose:battle-visual-teleport": "node ./scripts/diagnose-battle-visual-teleport.cjs",
     "repair:preview-battle-soonfx-root-motion": "node ./scripts/repair-preview-battle-soonfx-root-motion.mjs",
-    "check:battle-soonfx-model": "node ./scripts/check-battle-soonfx-model.mjs"
+    "check:battle-soonfx-model": "node ./scripts/check-battle-soonfx-model.mjs",
+    "emu": "node ./scripts/android-emu.mjs"
   },
   "dependencies": {
     "playwright": "^1.61.0"

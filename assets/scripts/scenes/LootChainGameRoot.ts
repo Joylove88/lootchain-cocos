@@ -28,6 +28,9 @@ import {
   Vec3,
   view,
   dynamicAtlasManager,
+  EventKeyboard,
+  KeyCode,
+  game,
 } from 'cc';
 import { AppConfig } from '../app/AppConfig';
 import { isPhoneDesign, isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
@@ -66,7 +69,7 @@ import { AdaptiveStageLayoutResolver, type AdaptiveStageLayoutHost } from './Ada
 import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
-import { mountKitBackdrop, type UiKitHost } from './UiKit';
+import { mountKitBackdrop, mountKitButton, mountKitSection, type UiKitHost } from './UiKit';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
 import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
 import type { ProfileRenameState } from './lobby/LobbyProfileDialogRenderer';
@@ -561,6 +564,10 @@ export class LootChainGameRoot extends Component {
     this.preloadUiSprites();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.on(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
+    // 安卓返回键(第二阶段):只在原生包监听
+    if (sys.isNative) {
+      input.on(Input.EventType.KEY_UP, this.onNativeKeyUp, this);
+    }
     // 首次进入加载屏(2026-10-04 起):Web/H5 先按清单整包下载进浏览器缓存,再把登录+大厅界面图读进内存;
     // 之后刷新不再下载。原生包资源在安装包里,直接进。战斗必用素材与各页面素材在登录页亮出后后台读进内存。
     this.runBootPreload();
@@ -1013,6 +1020,7 @@ export class LootChainGameRoot extends Component {
   onDestroy(): void {
     input.off(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.off(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
+    input.off(Input.EventType.KEY_UP, this.onNativeKeyUp, this);
     this.loginFlow.cancel();
     this.protagonistCreateFlow.cancel();
     this.lobbyLoadingFlow.cancel();
@@ -1886,6 +1894,110 @@ export class LootChainGameRoot extends Component {
     this.lobbyMailPanelOpen = false;
     this.lobbyMorePanelOpen = false;
     this.lobbyPlaceholderDialog = null;
+  }
+
+  // ── 安卓返回键(2026-10-14 第二阶段)──
+
+  private onNativeKeyUp(event: EventKeyboard): void {
+    // 引擎在没接手柄时把安卓返回键按名字 "Backspace" 上报,JS 收到的是 BACKSPACE(8),不是 MOBILE_BACK(模拟器实测)
+    if (event.keyCode !== KeyCode.MOBILE_BACK && event.keyCode !== KeyCode.BACKSPACE) {
+      return;
+    }
+    if (isTextInputActive()) {
+      return;
+    }
+    this.handleNativeBack();
+  }
+
+  /**
+   * 返回键优先级:启动预载中不响应 → 「退出游戏」确认开着则关掉 → 守卫战(退出确认 / 设置 / ×)→
+   * 最上层弹层的关闭按钮(弹层根节点名以 Overlay / Dialog 结尾,在其中找名字以 Close 结尾且可点的节点)→
+   * 功能页回大厅 → 大厅弹「退出游戏」确认。
+   */
+  private handleNativeBack(): void {
+    if (this.bootPreloadActive) {
+      return;
+    }
+    const contentRoot = this.ensureContentRoot();
+    const exitConfirm = contentRoot.getChildByName('NativeExitConfirm');
+    if (exitConfirm && exitConfirm.isValid) {
+      exitConfirm.destroy();
+      return;
+    }
+    if (this.currentView === 'battle' && this.lobbyGuardBattleRenderer.handleBackKey()) {
+      return;
+    }
+    if (this.closeTopOverlayByBack(contentRoot)) {
+      return;
+    }
+    if (this.isLobbyScenePageView(this.currentView)) {
+      this.returnToLobbyFromScenePage();
+      return;
+    }
+    if (this.currentView === 'lobby' || this.currentView === 'login') {
+      this.openNativeExitConfirm();
+    }
+  }
+
+  /** 从最上层(最后挂上去)的弹层里找关闭按钮点一下;弹层本身挂了点击关闭(半透明遮罩)也算。 */
+  private closeTopOverlayByBack(contentRoot: Node): boolean {
+    const overlays = contentRoot.children.filter((child) => child.activeInHierarchy && /(Overlay|Dialog)$/.test(child.name) && child.name !== 'NativeExitConfirm');
+    for (let i = overlays.length - 1; i >= 0; i--) {
+      const overlay = overlays[i];
+      let close: Node | null = null;
+      const walk = (node: Node): void => {
+        if (!node.activeInHierarchy) {
+          return;
+        }
+        if (/Close(Button|Btn)?$/.test(node.name) && node !== overlay) {
+          close = node;
+        }
+        node.children.forEach(walk);
+      };
+      walk(overlay);
+      const target: Node | null = close ?? (overlay.getComponent(Button) ? overlay : null);
+      if (target) {
+        if (target.getComponent(Button)) {
+          target.emit(Button.EventType.CLICK, target.getComponent(Button));
+        } else {
+          target.emit(Node.EventType.TOUCH_END);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 大厅 / 登录页按返回键:「退出游戏?」确认框(再按一次返回 = 取消)。 */
+  private openNativeExitConfirm(): void {
+    const layout = this.resolveLayout();
+    const scale = Math.max(0.8, Math.min(1.2, layout.uiScale));
+    const root = this.createUiNode('NativeExitConfirm');
+    root.setPosition(new Vec3((layout.stageLeft + layout.stageRight) / 2, (layout.stageTop + layout.stageBottom) / 2, 0));
+    root.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    root.addComponent(BlockInputEvents);
+    const dim = root.addComponent(Graphics);
+    dim.fillColor = new Color(0, 0, 0, 170);
+    dim.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
+    dim.fill();
+    const w = 520 * scale;
+    const h = 260 * scale;
+    mountKitSection(this as unknown as UiKitHost, root, 'Panel', 0, 0, w, h, scale);
+    const title = this.addChildLabel(root, 'Title', '退出游戏', 0, h * 0.26, 30 * scale, new Color(236, 202, 122, 255), new Size(w * 0.8, 40 * scale));
+    title.isBold = true;
+    this.addChildLabel(root, 'Body', '确定要退出 LootChain 吗?', 0, h * 0.04, 20 * scale, new Color(240, 230, 206, 255), new Size(w * 0.85, 30 * scale));
+    const btnW = 180 * scale;
+    const btnH = 58 * scale;
+    const close = (): void => {
+      if (root.isValid) {
+        root.destroy();
+      }
+    };
+    mountKitButton(this as unknown as UiKitHost, root, 'Cancel', '取消', -w * 0.22, -h * 0.28, btnW, btnH, scale, 'secondary', close);
+    mountKitButton(this as unknown as UiKitHost, root, 'Confirm', '退出', w * 0.22, -h * 0.28, btnW, btnH, scale, 'primary', () => {
+      close();
+      game.end();
+    });
   }
 
   private returnToLobbyFromScenePage(): void {

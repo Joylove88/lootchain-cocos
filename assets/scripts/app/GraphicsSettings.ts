@@ -1,5 +1,5 @@
-import { director, game, sys, view } from 'cc';
-import { HTML5 } from 'cc/env';
+import { director, game, native, sys, view } from 'cc';
+import { HTML5, NATIVE } from 'cc/env';
 
 /**
  * 画面设置(2026-10-05 用户:「设置里加个画面设置,流畅模式 / 极致模式;帧率 30 / 60 / 120 切换」)。
@@ -10,6 +10,7 @@ import { HTML5 } from 'cc/env';
  *   window.__lcMaxDevicePixelRatio(见 LC_MAX_DEVICE_PIXEL_RATIO);Creator 预览里引擎没打补丁,极致仍封顶 2。
  * - 电脑:流畅 = DPR 封顶 1.25,极致 = 原生 DPR(电脑屏 CSS 短边本来就 ≥ 720,不按短边算)。
  * - 帧率单独可调:30 / 60 / 120(120 需要高刷屏,普通屏实际仍是 60)。
+ * - 安卓原生包(2026-10-14):同样按短边 720 / 1080,由 AppActivity 把渲染缓冲区缩小后硬件放大(setFixedSize),触摸同比换算。
  * 默认:手机 = 流畅 + 30 帧,电脑 = 极致 + 60 帧。存 localStorage,启动时套用。
  */
 export type GraphicsMode = 'smooth' | 'ultra';
@@ -107,6 +108,35 @@ export function applyGraphicsSettings(): void {
     void error;
   }
   applyPixelRatio();
+  applyNativeRenderScale();
+}
+
+const ANDROID_ACTIVITY = 'com/cocos/game/AppActivity';
+
+/** 安卓原生包:按档位设渲染短边(Java 侧存本地,下次启动建画布前就生效)。 */
+function applyNativeRenderScale(): void {
+  if (!NATIVE || sys.os !== sys.OS.ANDROID) {
+    return;
+  }
+  try {
+    native.reflection.callStaticMethod(ANDROID_ACTIVITY, 'setRenderShortSide', '(I)V', PHONE_SHORT_SIDE[getGraphicsMode()]);
+  } catch (error) {
+    void error;
+  }
+}
+
+/** 安卓原生包当前的渲染缩放(渲染缓冲区 / 屏幕);其它平台恒为 1。按屏幕像素给出的量(刘海安全区)要乘它。 */
+export function nativeRenderScale(): number {
+  if (!NATIVE || sys.os !== sys.OS.ANDROID) {
+    return 1;
+  }
+  try {
+    const scale = Number(native.reflection.callStaticMethod(ANDROID_ACTIVITY, 'getRenderScale', '()F'));
+    return scale > 0 && scale <= 1 ? scale : 1;
+  } catch (error) {
+    void error;
+    return 1;
+  }
 }
 
 /** 目标渲染倍率(相对 CSS 像素):手机按画布短边目标反推,电脑按旧策略;都不超过设备原生值、不低于 1。 */

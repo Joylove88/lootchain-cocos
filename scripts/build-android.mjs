@@ -71,6 +71,18 @@ if (!skipBuild) {
 } else {
   step('1/4 跳过 Creator 构建(--skip-build)');
 }
+// 关 Cocos 自带启动图(同网页出包 release-web.mjs disableSplashScreen):原生包读 data/src/settings.json
+{
+  const settingsFile = path.join(ROOT, 'build', config.outputName || 'android', 'data', 'src', 'settings.json');
+  if (fs.existsSync(settingsFile)) {
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    if (settings.splashScreen && settings.splashScreen.totalTime !== 0) {
+      settings.splashScreen.totalTime = 0;
+      fs.writeFileSync(settingsFile, JSON.stringify(settings));
+      console.log('[android] 启动图已关闭:data/src/settings.json splashScreen.totalTime = 0');
+    }
+  }
+}
 if (!fs.existsSync(path.join(PROJ, 'gradlew.bat'))) {
   fail(`没找到原生工程 ${PROJ}(Creator 构建没生成 proj 目录)`);
 }

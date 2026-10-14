@@ -609,6 +609,26 @@ export class LobbyGuardBattleRenderer {
   /** 紫卡触发喊话节流(每单位 2.5s 一次,防刷屏)。 */
   private perkShoutAt = new Map<number, number>();
 
+  /**
+   * 安卓返回键(2026-10-14):退出确认开着 → 关掉(=取消);设置面板开着 → 关掉;否则同右上角 ×(开战中弹退出确认)。
+   * 返回 true 表示已处理。
+   */
+  handleBackKey(): boolean {
+    if (!this.isMounted()) {
+      return false;
+    }
+    if (this.exitConfirmOpen) {
+      this.closeExitConfirm();
+      return true;
+    }
+    if (this.settingsOpen) {
+      this.closeBattleSettings();
+      return true;
+    }
+    this.requestExitBattle();
+    return true;
+  }
+
   isMounted(): boolean {
     return !!this.root && this.root.isValid;
   }

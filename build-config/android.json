@@ -8,8 +8,8 @@
   "packages": {
     "android": {
       "packageName": "com.lootchain.silentgods",
-      "apiLevel": 26,
-      "appABIs": ["arm64-v8a"],
+      "apiLevel": 34,
+      "appABIs": ["arm64-v8a", "x86_64"],
       "orientation": {
         "portrait": false,
         "upsideDown": false,
