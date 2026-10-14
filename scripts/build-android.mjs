@@ -94,6 +94,15 @@ if (!fs.existsSync(path.join(PROJ, 'gradlew.bat'))) {
 }
 
 step('2/4 Gradle 编译 APK(debug)');
+// 调试包是增量打包:旧 APK 在时只改动变化的条目,删掉的旧条目留成空洞不回收(2026-10-15 换 ASTC 后 APK 内容 434MB、文件却 760MB)。
+// 先删旧 APK 逼它整包重写,出来的就是紧凑大小。
+for (const dir of [path.join(PROJ, 'build', config.name || 'LootChain', 'outputs', 'apk', 'debug'), path.join(PROJ, 'app', 'build', 'outputs', 'apk', 'debug')]) {
+  if (fs.existsSync(dir)) {
+    for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.apk'))) {
+      fs.rmSync(path.join(dir, name));
+    }
+  }
+}
 fs.writeFileSync(path.join(PROJ, 'local.properties'), `sdk.dir=${SDK.replace(/\\/g, '/')}\n`);
 const gradleEnv = { ...process.env, JAVA_HOME, ANDROID_HOME: SDK, ANDROID_SDK_ROOT: SDK };
 // cmd 在部分环境不搜当前目录(NoDefaultCurrentDirectoryInExePath),gradlew.bat 必须给完整路径
