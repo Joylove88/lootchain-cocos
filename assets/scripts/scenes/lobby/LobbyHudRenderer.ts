@@ -205,6 +205,7 @@ export class LobbyHudRenderer {
     // 大目标(高卡片类)→ 贴合轮廓的金色描边框+四角亮角标,配合暗层聚光;小按钮 → image2 椭圆光圈。
     const bigTarget = targetH > 220 || targetH / Math.max(1, targetW) > 1.15;
     let ringHalfV: number;
+    let ringHalfH: number;
     if (bigTarget) {
       const frameW = targetW + 16;
       const frameH = targetH + 16;
@@ -239,6 +240,7 @@ export class LobbyHudRenderer {
           .to(0.7, { opacity: 255 }))
         .start();
       ringHalfV = frameH / 2;
+      ringHalfH = frameW / 2;
     } else {
       const ringW = targetW * 1.3 + 18;
       const ringH = targetH * 1.5 + 14;
@@ -256,6 +258,7 @@ export class LobbyHudRenderer {
           .to(0.7, { scale: new Vec3(1, 1, 1) }))
         .start();
       ringHalfV = ringH / 2;
+      ringHalfH = ringW / 2;
     }
     // 方向:目标上方放箭头+气泡;顶部空间不足则翻到下方(箭头转 180° 指上)。
     const pointerH = 66 * scale;
@@ -264,11 +267,15 @@ export class LobbyHudRenderer {
     const bubbleH = bubbleW * (320 / 768);
     const needed = ringHalfV + pointerH + bubbleH + 26 * scale;
     const above = local.y + needed < layout.stageTop - 6;
+    // 上下都放不下(英雄卡这类很高的目标,手机布局下气泡掉出屏幕,2026-10-15 安卓真机):改放目标左 / 右侧,箭头横指
+    const below = local.y - needed > layout.stageBottom + 6;
+    const side = !above && !below ? (local.x < (layout.stageLeft + layout.stageRight) / 2 ? 1 : -1) : 0;
     const dir = above ? 1 : -1;
-    // 指引箭头(image2 素材,默认朝下;翻转时角度 180):上下浮动
-    const pointerY = local.y + dir * (ringHalfV + pointerH / 2 + 6 * scale);
-    const pointerHolder = this.addChildPlainNode(overlay, 'GuidePointer', local.x, pointerY, pointerW, pointerH);
-    pointerHolder.angle = above ? 0 : 180;
+    // 指引箭头(image2 素材,默认朝下;翻转时角度 180,横放 ±90):上下 / 左右浮动
+    const pointerX = side !== 0 ? local.x + side * (ringHalfH + pointerH / 2 + 6 * scale) : local.x;
+    const pointerY = side !== 0 ? local.y : local.y + dir * (ringHalfV + pointerH / 2 + 6 * scale);
+    const pointerHolder = this.addChildPlainNode(overlay, 'GuidePointer', pointerX, pointerY, pointerW, pointerH);
+    pointerHolder.angle = side > 0 ? -90 : side < 0 ? 90 : above ? 0 : 180;
     if (!this.host.addSprite('GuidePointerArt', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH, pointerHolder)) {
       const pg = pointerHolder.addComponent(Graphics);
       pg.fillColor = rgba(255, 214, 110, 240);
@@ -278,14 +285,20 @@ export class LobbyHudRenderer {
       pg.close();
       pg.fill();
     }
+    const bobX = side !== 0 ? pointerX + side * 10 * scale : pointerX;
+    const bobY = side !== 0 ? pointerY : pointerY + dir * 10 * scale;
     tween(pointerHolder)
       .repeatForever(tween()
-        .to(0.55, { position: new Vec3(local.x, pointerY + dir * 10 * scale, 0) })
-        .to(0.55, { position: new Vec3(local.x, pointerY, 0) }))
+        .to(0.55, { position: new Vec3(bobX, bobY, 0) })
+        .to(0.55, { position: new Vec3(pointerX, pointerY, 0) }))
       .start();
     // 气泡板(image2 素材,空板+叠字;缺图回退圆角矩形)
-    const bubbleY = pointerY + dir * (pointerH / 2 + bubbleH / 2 + 6 * scale);
-    const bubbleX = Math.max(layout.stageLeft + bubbleW / 2 + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
+    const bubbleY = side !== 0
+      ? Math.max(layout.stageBottom + bubbleH / 2 + 8, Math.min(layout.stageTop - bubbleH / 2 - 8, local.y))
+      : pointerY + dir * (pointerH / 2 + bubbleH / 2 + 6 * scale);
+    const bubbleX = side !== 0
+      ? pointerX + side * (pointerH / 2 + bubbleW / 2 + 6 * scale)
+      : Math.max(layout.stageLeft + bubbleW / 2 + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
     const bubble = this.addChildPlainNode(overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH);
     if (!this.host.addSprite('GuideBubbleArt', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH, bubble)) {
       const bg = bubble.addComponent(Graphics);

@@ -70,6 +70,7 @@ import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
 import { mountKitBackdrop, mountKitButton, mountKitSection, type UiKitHost } from './UiKit';
+import { nativeUnderlayVideoSupported } from '../app/NativeUnderlayVideo';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
 import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
 import type { ProfileRenameState } from './lobby/LobbyProfileDialogRenderer';
@@ -5267,7 +5268,12 @@ export class LootChainGameRoot extends Component {
     this.gachaResultMode = pending.mode;
     this.currentView = 'gachaSummon';
     this.renderCurrentView();
-    this.setStatus(pending.highestRarity === 'SSR' || pending.highestRarity === 'UR' ? '高阶契约响应，播放稀有召唤影像。' : '契约响应完成，播放召唤影像。');
+    // 安卓原生视频垫在画面下面,状态行会浮在视频上(网页端被视频盖住看不到):原生不出这行
+    if (!nativeUnderlayVideoSupported()) {
+      this.setStatus(pending.highestRarity === 'SSR' || pending.highestRarity === 'UR' ? '高阶契约响应，播放稀有召唤影像。' : '契约响应完成，播放召唤影像。');
+    } else {
+      this.setStatus('');
+    }
   }
 
   private finishGachaSummonVideoScene(): void {

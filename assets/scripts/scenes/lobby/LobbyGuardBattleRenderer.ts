@@ -10084,7 +10084,9 @@ export class LobbyGuardBattleRenderer {
     }
     // 2026-10-10 全界面巡检:手机上标题(34 号)与本行贴得太近叠字 → 本行至少落在标题中线下 52,后面几行跟着下移同样距离
     const endDetailShift = Math.min(0, (-height * 0.02 + panelH / 2 - 76 - 52) - height * 0.12);
-    this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12 + endDetailShift, 20, rgba(226, 210, 180), new Size(width * 0.7, 28));
+    // 文字宽以面板内宽为上限(2026-10-15 安卓真机:按屏宽 70% 算,20:9 手机上结算说明伸出框外),放不下先折行再缩字
+    const endTextW = this.endOverlayTextWidth();
+    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12 + endDetailShift, 20, rgba(226, 210, 180), new Size(endTextW, 28)), false);
     // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER)。
     if (rush && sim) {
       const layers = guardTrialLayers(sim);
@@ -10104,10 +10106,21 @@ export class LobbyGuardBattleRenderer {
         const nearMiss = next
           ? `本场 ${current.tierName}(${current.tierCode})档 · 再多 ${Math.ceil((next.minScore - score) / 100)} 层升 ${next.tierName}(${next.tierCode})档!`
           : `本场 ${current.tierName}(${current.tierCode})档 · 已是最高档!`;
-        this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08 + endDetailShift, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(width * 0.72, 22));
+        this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08 + endDetailShift, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(endTextW, 22)), false);
       }
     }
-    this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04 + endDetailShift, 18, rgba(196, 182, 152), new Size(width * 0.7, 24));
+    // 结算说明可能很长(服务端文案):两行高的框,折行 + 缩字;中线下移半行,上沿仍对齐原来的单行位置
+    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04 + endDetailShift - 12, 18, rgba(196, 182, 152), new Size(endTextW, 48)), true);
+  }
+
+  /** 结算面板(宽 = 高 × 1.65,高 = 布局高 × 0.56)的文字可用宽度。 */
+  private endOverlayTextWidth(): number {
+    return Math.min(this.layoutWidth * 0.7, this.layoutHeight * 0.56 * 1.65 * 0.84);
+  }
+
+  private fitEndLabel(label: Label, wrap: boolean): void {
+    label.enableWrapText = wrap;
+    label.overflow = Label.Overflow.SHRINK;
   }
 
   /** 结算回执到达:更新覆盖层为奖励与返回按钮。 */
@@ -10138,7 +10151,7 @@ export class LobbyGuardBattleRenderer {
     }
     const rewards = (settlement.rewardItems ?? []).slice(0, 6).map((item) => `${item.resourceName ?? item.resourceCode} ×${item.amount}`).join('  ');
     if (rewards) {
-      this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05, 19, rgba(255, 226, 150), new Size(this.layoutWidth * 0.7, 26));
+      this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05 - 12, 19, rgba(255, 226, 150), new Size(this.endOverlayTextWidth(), 50)), true);
     }
     const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 236);
     this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
