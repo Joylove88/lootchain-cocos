@@ -445,3 +445,18 @@ Match the STYLE of the illustration box on the right side of the attached refere
 - **spell_art_warhorn**:`Spell "Berserk Warhorn": a great ornate war horn blown at the center, waves of crimson-orange battle fury radiating outward, red flames licking the floor, heroic silhouettes charging. Accent color: crimson and orange fire.`
 
 另:法术详情演示框通用底图 spell_preview_bg(暗色法阵场景,专属插画缺图时退回):见 gen_spell_bg.py 同风格提示词。
+
+---
+
+## 十、启动加载页背景(2026-10-14,4 张 16:9,随机一张,放 `assets/resources/ui/boot/boot_bg_<n>.png`,入库缩到 1536×864)
+
+通用前缀:
+```
+Dark fantasy mobile game loading screen background, landscape 16:9, painterly AAA quality, gothic abyss theme, obsidian black and deep crimson with antique gold accents, cinematic wide shot, the CENTER of the image kept darker and uncluttered so a title and progress bar can be placed over it, strong vignette toward the edges, no characters in the foreground, no text, no watermark, no UI. 
+```
+- **boot_bg_1**:`A colossal sealed demonic gate at the far end of a black fortress hall, ember particles drifting in the air, faint crimson light leaking through the gate seam.`
+- **boot_bg_2**:`A ruined gothic cathedral at night seen from the nave, broken stained-glass windows with cold moonlight beams, rows of dying candles along the sides, wet stone floor reflections.`
+- **boot_bg_3**:`A vast abyssal chasm under a blood-red sky, jagged obsidian spires on both sides, a distant dark citadel on the horizon, red lightning far away, dust haze.`
+- **boot_bg_4**:`A glowing blue crystal altar deep inside a dark mine cavern, blue light cast on black rock walls, small crystals embedded in the stone, mist near the floor.`
+
+加 1 张:把 `BOOT_BG_COUNT` 加 1 并按序号命名即可;中心必须留暗(标题 / 进度条压在中间)。

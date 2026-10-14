@@ -198,6 +198,9 @@ type PendingGachaDraw = {
 // 首次访问阻塞预载只拿登录 + 大厅界面图(约 15MB);大厅亮出后后台静默预取守卫战必用的战斗 HUD/怪物骨骼;
 // 其余(英雄骨骼、技能特效、抽卡/锻造/背包等各页面素材)全部在真正用到时按需下载,经 Service Worker 存本地。
 const BOOT_PRELOAD_UI_DIRS = ['ui/login', 'ui/common', 'ui/lobby'] as const;
+/** 启动加载页背景(2026-10-14 用户:加载界面要背景图,多张随机):ui/boot/boot_bg_1..N,16:9 横图,PC / 手机都按 cover 铺满。 */
+const BOOT_BG_COUNT = 4;
+const BOOT_BG_SIZE = { w: 1536, h: 864 };
 const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard', 'ui/battle/c1812'] as const;
 /**
  * 手机进战斗前释放的页面图目录(2026-10-09,见 UiSpriteFrameCache.releaseIdleTextures):战斗及其结算 / 设置弹层都不会用到的页面。
@@ -566,6 +569,42 @@ export class LootChainGameRoot extends Component {
   /** 启动预载进行中:拦截一切 renderCurrentView(保护加载屏,防提前放行)。 */
   private bootPreloadActive = false;
 
+  /**
+   * 加载页背景:随机一张 boot_bg_n 按 cover 铺满舞台(16:9 横图,手机横屏更宽时裁上下、PC 更窄时裁左右),
+   * 上面压一层中心最深的暗罩保证标题 / 进度条可读;图是单独一个小文件,首访也几秒内到,到了淡入,没到就留深色底。
+   */
+  private mountBootBackground(root: Node, layout: UiLayout, centerX: number, centerY: number): void {
+    const index = 1 + Math.floor(Math.random() * BOOT_BG_COUNT);
+    const path = `ui/boot/boot_bg_${index}/spriteFrame`;
+    const holder = this.addChildPlainNode(root, 'BootLoadingBg', centerX, centerY, layout.width, layout.height);
+    holder.setSiblingIndex(0);
+    const holderOpacity = holder.addComponent(UIOpacity);
+    holderOpacity.opacity = 0;
+    resources.load(path, SpriteFrame, (error, frame) => {
+      if (error || !frame || !holder.isValid) {
+        return;
+      }
+      const cover = Math.max(layout.width / BOOT_BG_SIZE.w, layout.height / BOOT_BG_SIZE.h);
+      const sprite = this.addSprite('Img', path, 0, 0, BOOT_BG_SIZE.w * cover, BOOT_BG_SIZE.h * cover, holder);
+      if (!sprite) {
+        return;
+      }
+      // 暗罩:四层叠加的椭圆,中心最深(标题区),边缘透出画面
+      const shade = this.addChildPlainNode(holder, 'Shade', 0, 0, layout.width, layout.height);
+      const g = shade.addComponent(Graphics);
+      g.fillColor = new Color(4, 3, 6, 110);
+      g.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
+      g.fill();
+      for (let i = 3; i >= 1; i--) {
+        const k = i / 3;
+        g.fillColor = new Color(4, 3, 6, 45);
+        g.ellipse(0, 0, layout.width * 0.42 * k, layout.height * 0.36 * k);
+        g.fill();
+      }
+      tween(holderOpacity).to(0.6, { opacity: 255 }).start();
+    });
+  }
+
   /** 启动预载:纯程序绘制加载屏 → 登录+大厅界面图(BOOT_PRELOAD_UI_DIRS)→ 进登录。任何目录失败只告警不拦门。 */
   private runBootPreload(): void {
     this.bootPreloadActive = true;
@@ -590,6 +629,7 @@ export class LootChainGameRoot extends Component {
     bg.rect(-coverWidth / 2, -coverWidth / 2, coverWidth, coverWidth);
     bg.fill();
     root.addComponent(BlockInputEvents);
+    this.mountBootBackground(root, layout, centerX, centerY);
     const title = this.addChildLabel(root, 'BootLoadingTitle', 'LOOTCHAIN', centerX, centerY + 96 * scale, 52 * scale, new Color(245, 210, 122, 255), new Size(720 * scale, 66 * scale));
     title.isBold = true;
     this.addChildLabel(root, 'BootLoadingSub', 'SILENT GODS', centerX, centerY + 54 * scale, 17 * scale, new Color(196, 168, 112, 220), new Size(400 * scale, 24 * scale));
