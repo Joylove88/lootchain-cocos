@@ -2785,7 +2785,8 @@ export class LobbyGuardBattleRenderer {
         }
         // 群体直击技能(2026-09-11 用户反馈"技能打怪没伤害"):每只命中怪金色大号飘字+红闪,
         // 外加一次节流小震屏——此前技能只播特效不出数字,观感像空放。
-        if (event.monsterIds && event.monsterIds.length > 0) {
+        // 2026-10-14 起近战改分段结算:施放事件不带伤害(只带范围 / 锚点),飘字由 heroSkillHit 逐段出
+        if (event.monsterIds && event.monsterIds.length > 0 && (event.amount ?? 0) > 0) {
           event.monsterIds.forEach((hitId, index) => {
             const hitView = this.monsterViews.get(hitId);
             if (!hitView || !hitView.node.isValid) {
@@ -2800,6 +2801,22 @@ export class LobbyGuardBattleRenderer {
             this.lastSkillShakeAt = now;
             this.shakeField(5);
           }
+        }
+      } else if (event.type === 'heroSkillHit') {
+        // 近战战技 / 大招的分段打击(2026-10-14):与特效里每一次打击同步,逐只金色大号飘字 + 红闪 + 节流震屏
+        (event.monsterIds ?? []).forEach((hitId, index) => {
+          const hitView = this.monsterViews.get(hitId);
+          if (!hitView || !hitView.node.isValid) {
+            return;
+          }
+          const jitterX = ((event.timeMs + index * 37) % 48) - 24;
+          this.queueDamage(hitId, event.amount ?? 0, true, hitView.node.position.x + jitterX, hitView.node.position.y);
+          this.flashMonster(hitId);
+        });
+        const hitNow = Date.now();
+        if (hitNow - this.lastSkillShakeAt > 450) {
+          this.lastSkillShakeAt = hitNow;
+          this.shakeField(4);
         }
       } else if (event.type === 'zoneTick') {
         // 区域跳伤(火海/旋风):每跳逐只红闪;飘字隔一跳出一次(每 0.5s 一跳,20 只怪全飘会糊屏)。

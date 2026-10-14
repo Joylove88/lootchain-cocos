@@ -223,6 +223,8 @@ export interface GuardEvent {
     | 'summon' | 'merge' | 'superMerge' | 'kill' | 'waveStart' | 'crystalHit' | 'victory' | 'defeat' | 'heroAttack'
     | 'chestDrop' | 'chestOpen' | 'levelUp' | 'bossCastStart' | 'bossCastHit' | 'bossCastInterrupt' | 'crystalSkill' | 'enhance' | 'cellsUnlock' | 'heroSkill' | 'sellHero' | 'bossSkill'
     | 'zoneTick' | 'ultUnlock' | 'perkGain' | 'perkProc' | 'freeEnhance'
+    // 近战战技 / 大招的分段打击(2026-10-14):amount=本段每只伤害,monsterIds=本段命中
+    | 'heroSkillHit'
     // 辅助周期治疗水晶(2026-09-24 表现层:水晶回血特效 + 绿色飘字);amount=实际回复量(满血时不发)。
     | 'crystalHeal'
     // docs/37:战技蓄满进入手动窗口 / 提前开战(amount=奖励金币)。
@@ -816,6 +818,8 @@ export interface GuardBattleState {
   spellPending: Array<{ atMs: number; kind: 'quakeEcho' | 'frostShatter' | 'thunderBolt'; spellId: GuardSpellId; x: number; amount: number; ids: number[] }>;
   /** 冰封「霜冻地面」(docs/39 冰封 Lv3+):落点范围持续减速,不造成伤害(不走区域 zone 的跳伤路径)。 */
   frostFloors: Array<{ x: number; radius: number; untilMs: number; nextTickMs: number }>;
+  /** 近战战技 / 大招待结算的分段打击(按特效打击时刻排期,范围在施放时定死;2026-10-14)。 */
+  skillHits: Array<{ atMs: number; unitId: number; heroCode: string; fromX: number; toX: number; damage: number; knock: number }>;
   /** 车道陷阱(docs/37 G)。 */
   traps: GuardTrap[];
   nextTrapId: number;
@@ -1408,6 +1412,7 @@ export function createGuardBattle(
     goldrushCasts: 0,
     spellPending: [],
     frostFloors: [],
+    skillHits: [],
     traps: [],
     nextTrapId: 1,
   };
@@ -2438,6 +2443,27 @@ function guardZoneCenterFromFront(frontX: number, width: number): number {
   return Math.min(GUARD_SPAWN_X, frontX + width * 0.25);
 }
 
+/**
+ * 近战战技 / 大招的打击时刻(秒,自施放起;2026-10-14 用户:「特效里有二次攻击画面,实际只结算一次伤害」)。
+ * 由 tools/qa/fxprev/hits_measure.py 渲染各英雄特效片段、按亮度突增找打击帧量出;总伤害按段数平分,
+ * 每段打"当时仍在范围里的活怪"(范围在施放时定死,走进来的怪也挨后面几段)。换特效后要重量这张表。
+ */
+export const GUARD_MELEE_SKILL_HITS: Record<string, { skill: number[]; ult: number[] }> = {
+  UR_NYX: { skill: [0.17], ult: [0.63, 1.13, 1.6] },
+  SSR_RON: { skill: [0], ult: [0.5, 1.43, 2.03] },
+  SR_ABYSS_06: { skill: [0.33], ult: [0.1, 0.6, 2.13] },
+  R_SCOUT_03: { skill: [0.33], ult: [0.75] },
+  UR_ARTHAS: { skill: [0.13], ult: [0.33, 1.93, 2.9, 3.67] },
+  SSR_MICHAEL: { skill: [0.03], ult: [0.27, 0.63] },
+  SR_BLADE_04: { skill: [0.37], ult: [0.54, 1.29] },
+  R_PATROL_01: { skill: [0], ult: [0.43] },
+  UR_ATLAS: { skill: [0.17], ult: [2.3] },
+  SSR_KANE: { skill: [0.13], ult: [0.47, 1.07, 1.57] },
+  SR_PALADIN_02: { skill: [0.13], ult: [0.53, 1.1] },
+  R_GUARD_07: { skill: [0.07, 0.43], ult: [0.37, 1.88] },
+};
+const GUARD_MELEE_SKILL_HITS_FALLBACK = { skill: [0.15], ult: [0.3, 0.9] };
+
 function guardMeleeCanHit(monster: GuardMonster): boolean {
   // 2026-10-11 用户反馈「怪物不是飞行怪物,虽然有翅膀但是走路的」:飞行类骨骼(small_bat / small_raven / crow_reaper)
   // 只有跑步动画,画面上是走过来的,近战却全程打不到 → 取消飞行免疫近战,统一按地面怪处理。
@@ -2472,17 +2498,22 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mul
     const areaFromX = front.x;
     const areaToX = Math.min(GUARD_SPAWN_X, front.x + guardSkillAreaCells('melee', hero.heroCode));
     const targets = state.monsters.filter((monster) => !monster.dead && guardMeleeCanHit(monster) && monster.x >= areaFromX && monster.x <= areaToX);
+    // 分段:伤害 / 击退在各打击时刻结算(guardTickSkillHits),施放事件只带范围与锚点给渲染层起特效
+    const schedule = GUARD_MELEE_SKILL_HITS[hero.heroCode] ?? GUARD_MELEE_SKILL_HITS_FALLBACK;
+    const hitTimes = (ultLv > 0 ? schedule.ult : schedule.skill).slice(0, 4);
+    const segments = Math.max(1, hitTimes.length);
     // 2.0 → 1.8(2026-10-14):覆盖范围改为「首怪起向后铺」后命中更多,同种子 N=400 回归把主动玩家胜率拉回基线 ±4pp
     const damage = Math.round(attack * 1.8 * ultMult);
+    const segDamage = Math.max(1, Math.round(damage / segments));
+    const segKnock = (0.35 * ultExtent) / segments;
     // 特效锚点取命中群按 x 排序的中位怪(2026-09-11 用户反馈:锚在数组首怪时横扫画到射程外的怪身上,
     // "看着打右边、掉血在左边");中位锚点让斩击艺术覆盖命中簇本身。
     const sortedByX = [...targets].sort((a, b) => a.x - b.x);
     const anchorId = sortedByX[Math.floor(sortedByX.length / 2)].monsterId;
-    for (const monster of targets) {
-      monster.x = Math.min(GUARD_SPAWN_X, monster.x + 0.35 * ultExtent);
-      damageMonster(state, monster, damage, hero);
+    for (const t of (hitTimes.length > 0 ? hitTimes : [0])) {
+      state.skillHits.push({ atMs: state.timeMs + Math.round(t * 1000), unitId: hero.unitId, heroCode: hero.heroCode, fromX: areaFromX, toX: areaToX, damage: segDamage, knock: segKnock });
     }
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId), areaFromX, areaToX, ultLv, manual: cast.manual, chained: cast.chained });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId), areaFromX, areaToX, ultLv, manual: cast.manual, chained: cast.chained });
     return true;
   }
   if (hero.role === 'ranged') {
@@ -3117,6 +3148,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   for (const hero of state.heroes) {
     heroTick(state, hero, dtMs);
   }
+  guardTickSkillHits(state);
   // 尸体延迟清理(渲染层要播死亡),3s 后移除。
   state.monsters = state.monsters.filter((monster) => !monster.dead || state.timeMs - monster.diedAtMs < 3000);
   return state.phase;
@@ -3398,6 +3430,36 @@ function guardAegisFilter(state: GuardBattleState, damage: number, attacker: Gua
 }
 
 /** 推进法术延时追加效果(余震 / 冰碎 / 九重雷劫);确定性:按入队顺序、到点即结算,目标按固定规则选。 */
+/** 近战战技 / 大招的分段打击:到点打范围内仍存活的怪(施放者已被卖掉 / 合成时伤害照算,记在原英雄名下)。 */
+function guardTickSkillHits(state: GuardBattleState): void {
+  if (state.skillHits.length === 0) {
+    return;
+  }
+  const due = state.skillHits.filter((entry) => entry.atMs <= state.timeMs);
+  if (due.length === 0) {
+    return;
+  }
+  state.skillHits = state.skillHits.filter((entry) => entry.atMs > state.timeMs);
+  for (const entry of due) {
+    const hero = state.heroes.find((unit) => unit.unitId === entry.unitId) ?? null;
+    const hitIds: number[] = [];
+    for (const monster of state.monsters) {
+      if (monster.dead || !guardMeleeCanHit(monster) || monster.x < entry.fromX || monster.x > entry.toX) {
+        continue;
+      }
+      hitIds.push(monster.monsterId);
+      monster.x = Math.min(GUARD_SPAWN_X, monster.x + entry.knock);
+      if (!hero) {
+        state.heroDamage[entry.heroCode] = (state.heroDamage[entry.heroCode] ?? 0) + entry.damage;
+      }
+      damageMonster(state, monster, entry.damage, hero, hero ? null : entry.heroCode);
+    }
+    if (hitIds.length > 0) {
+      state.events.push({ type: 'heroSkillHit', timeMs: state.timeMs, heroCode: entry.heroCode, amount: entry.damage, monsterIds: hitIds });
+    }
+  }
+}
+
 function guardTickSpellPending(state: GuardBattleState): void {
   if (state.spellPending.length === 0) {
     return;

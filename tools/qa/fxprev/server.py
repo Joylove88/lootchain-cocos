@@ -3,7 +3,8 @@
 import http.server, os, sys, urllib.parse, socketserver
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FX = os.environ.get('FX_ROOT') or r'D:\骨骼动画素材\fx_pack_v2\fx42'
+# normpath:FX_ROOT 用正斜杠传进来时,下面的 startswith 越界检查会把所有文件判成越界(2026-10-14)
+FX = os.path.normpath(os.environ.get('FX_ROOT') or r'D:\骨骼动画素材\fx_pack_v2\fx42')
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 
 
