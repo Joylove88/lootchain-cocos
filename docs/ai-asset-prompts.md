@@ -430,3 +430,18 @@ Reproduce the UNSELECTED tab button from the attached reference (the dim one lab
 Reproduce the EIGHT-POINTED STAR ORNAMENT at the top-left of the attached reference (next to the title 守卫水晶): an antique gold eight-pointed star with thin radiating lines and small diamond accents, centered, nothing else, transparent background, no text, no watermark.
 ```
 
+
+### 法术专属插画(2026-10-14,六张 4:3 不透明,入库缩到 1024×768,放 `ui/crystal/ai/spell_art_<id>.png`)
+
+通用前缀:
+```
+Match the STYLE of the illustration box on the right side of the attached reference (dark painterly game spell illustration, low camera angle on a dark gothic stone arena, dark enemy silhouettes, dramatic glow, deep obsidian and navy palette with one strong accent color, no text, no UI, no watermark). 
+```
+- **spell_art_quake**:`Spell "Crystal Quake": a cluster of huge glowing BLUE crystal spikes erupting from the cracked stone floor at the center, blue shockwave rings spreading outward, several dark enemy silhouettes being thrown back by the blast. Accent color: electric blue.`
+- **spell_art_frost**:`Spell "Frost Seal": an icy blast freezing the arena, a ring of jagged ice shards on the floor, frozen enemy silhouettes locked in ice, swirling snow and frost mist. Accent color: pale ice blue and white.`
+- **spell_art_thunder**:`Spell "Heavenly Thunder": massive violet-blue lightning bolts striking down from a storm sky into the arena floor, blinding impact flash, scorched cracks, enemy silhouettes staggering. Accent color: violet lightning.`
+- **spell_art_goldrush**:`Spell "Gold Rush": a geyser of glowing gold coins and gold nuggets bursting up from a fissure in the floor, warm golden light, coins scattered everywhere. Accent color: warm gold.`
+- **spell_art_aegis**:`Spell "Holy Aegis": a radiant golden-white barrier dome shielding a glowing blue crystal on a pedestal, holy light rays, enemy silhouettes blocked outside the dome. Accent color: holy gold and white.`
+- **spell_art_warhorn**:`Spell "Berserk Warhorn": a great ornate war horn blown at the center, waves of crimson-orange battle fury radiating outward, red flames licking the floor, heroic silhouettes charging. Accent color: crimson and orange fire.`
+
+另:法术详情演示框通用底图 spell_preview_bg(暗色法阵场景,专属插画缺图时退回):见 gen_spell_bg.py 同风格提示词。

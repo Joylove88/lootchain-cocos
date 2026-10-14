@@ -105,6 +105,7 @@ export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' 
 const GUARD_CRYSTAL_UI_ASSETS = [
   // 2026-10-14 v4 整页版新素材(Codex 按参考图重出):场景底图 / 水晶 v2 / 等级牌 v2 / 页签 v2 / 题头八角星
   'crystal_scene_bg', 'crystal_art_v2', 'level_plate_v2', 'tab_on_v2', 'tab_off_v2', 'title_emblem_v2', 'spell_preview_bg',
+  'spell_art_quake', 'spell_art_frost', 'spell_art_thunder', 'spell_art_goldrush', 'spell_art_aegis', 'spell_art_warhorn',
   'btn_level_up', 'btn_cost_up', 'inner_panel_bg', 'stat_row_bg', 'section_emblem',
   'stat_hp', 'stat_gold', 'stat_power', 'stat_energy', 'stat_energy_max', 'stat_slots',
   'spell_quake', 'spell_frost', 'spell_thunder', 'spell_goldrush', 'spell_aegis',

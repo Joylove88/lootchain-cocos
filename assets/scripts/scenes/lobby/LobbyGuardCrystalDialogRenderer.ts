@@ -112,8 +112,12 @@ const SCENE_BG = { path: CUI('crystal_scene_bg'), w: 1672, h: 941 };
 /** 水晶立绘 v2(蓝水晶 + 黑色尖刺台座);v2 未入库时退回 v1(515×798 熔岩基座版)。 */
 const CRYSTAL_ART = { path: CUI('crystal_art_v2'), aspect: 1024 / 585, fallback: { path: CUI('crystal_art'), aspect: 798 / 515 } };
 const TITLE_EMBLEM = { path: CUI('title_emblem_v2'), aspect: 512 / 512 };
-/** 法术详情演示框底图(暗色法阵场景,特效叠在上面循环)。 */
+/** 法术详情演示框通用底图(暗色法阵场景);2026-10-14 用户要求每个法术各一张专属插画 → 优先 SPELL_ART,缺图退回这张。 */
 const SPELL_PREVIEW_BG = { path: CUI('spell_preview_bg'), w: 1024, h: 768 };
+const SPELL_ART: Record<GuardSpellId, string> = {
+  quake: CUI('spell_art_quake'), frost: CUI('spell_art_frost'), thunder: CUI('spell_art_thunder'),
+  goldrush: CUI('spell_art_goldrush'), aegis: CUI('spell_art_aegis'), warhorn: CUI('spell_art_warhorn'),
+};
 /** 等级牌 550×177、页签 选中 440×122 / 未选中 512×122、升级按钮 573×180、法术页升级按钮(带晶体图标)527×154。 */
 const LEVEL_PLATE = { path: CUI('level_plate_v2'), aspect: 193 / 1024, fallback: { path: CUI('level_plate'), aspect: 177 / 550 } };
 const TAB_ON = { path: CUI('tab_on_v2'), aspect: 195 / 1024, fallback: { path: CUI('tab_on'), aspect: 122 / 440 } };
@@ -1118,7 +1122,8 @@ export class LobbyGuardCrystalDialogRenderer {
     const fxBox = this.host.addChildPlainNode(card, 'FxBox', 0, cursor - fxH / 2, innerW, fxH);
     // 底图 cover 铺满会超出框,用 Mask 按框矩形裁掉(手画遮边会画到卡片外面,2026-10-14 截图)
     fxBox.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
-    const fxBg = this.host.addSprite('Bg', SPELL_PREVIEW_BG.path, 0, 0, innerW, fxH, fxBox);
+    // 专属插画(1024×768,与通用底图同尺寸)优先,缺图退回通用法阵底图
+    const fxBg = this.host.addSprite('Bg', SPELL_ART[id], 0, 0, innerW, fxH, fxBox) ?? this.host.addSprite('Bg', SPELL_PREVIEW_BG.path, 0, 0, innerW, fxH, fxBox);
     if (!fxBg) {
       const fg = fxBox.addComponent(Graphics);
       fg.fillColor = rgba(6, 8, 14, 250);
@@ -1140,7 +1145,8 @@ export class LobbyGuardCrystalDialogRenderer {
     fr.stroke();
     const spellFx = GUARD_SPELL_FX[id];
     const fxHolder = this.host.addChildPlainNode(fxBox, 'Fx', 0, 0, 10, 10);
-    const fxMounted = this.mountSpineFx(fxHolder, spellFx, 0, -fxH * 0.06, Math.min(innerW, fxH) * 0.95, true, 0);
+    // 有插画时特效缩小到 0.7 叠在插画上,别把画盖死
+    const fxMounted = this.mountSpineFx(fxHolder, spellFx, 0, -fxH * 0.06, Math.min(innerW, fxH) * (fxBg ? 0.7 : 0.95), true, 0);
     if (!fxMounted) {
       this.mountSpellIcon(fxBox, 'Icon', id, 0, 0, Math.min(innerW, fxH) * 0.6, !open);
     }
