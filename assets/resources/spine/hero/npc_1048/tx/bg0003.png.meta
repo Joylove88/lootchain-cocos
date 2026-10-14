@@ -37,6 +37,10 @@
     "type": "texture",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "ab22dff2-6f3d-4f84-8c3a-62b8d47ae463@6c48a"
+    "redirect": "ab22dff2-6f3d-4f84-8c3a-62b8d47ae463@6c48a",
+    "compressSettings": {
+      "useCompressTexture": true,
+      "presetId": "lc-android-astc6"
+    }
   }
 }

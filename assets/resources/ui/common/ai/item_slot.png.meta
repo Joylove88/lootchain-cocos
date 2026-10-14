@@ -64,17 +64,17 @@
         "trimType": "none",
         "vertices": {
           "rawPosition": [
-            -128.0,
-            -169.0,
+            -128,
+            -169,
             0,
-            128.0,
-            -169.0,
+            128,
+            -169,
             0,
-            -128.0,
-            169.0,
+            -128,
+            169,
             0,
-            128.0,
-            169.0,
+            128,
+            169,
             0
           ],
           "indexes": [
@@ -106,13 +106,13 @@
             1
           ],
           "minPos": [
-            -128.0,
-            -169.0,
+            -128,
+            -169,
             0
           ],
           "maxPos": [
-            128.0,
-            169.0,
+            128,
+            169,
             0
           ]
         }
@@ -129,6 +129,10 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": true,
-    "redirect": "4484eb77-2174-4add-a0ed-ab16494302d0@6c48a"
+    "redirect": "4484eb77-2174-4add-a0ed-ab16494302d0@6c48a",
+    "compressSettings": {
+      "useCompressTexture": true,
+      "presetId": "lc-android-astc4"
+    }
   }
 }

@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyCompressSettings } from './android-texture-compress.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CREATOR_EXE = process.env.COCOS_CREATOR_EXE || 'D:/office app/cocos/editors/Creator/3.8.8/CocosCreator.exe';
@@ -63,6 +64,11 @@ if (!skipBuild && editorRunning()) {
 const commit = git(['rev-parse', '--short', 'HEAD']) || 'nogit';
 
 if (!skipBuild) {
+  // ASTC 贴图(只配安卓的预设,网页仍出 PNG):新加的图 meta 里没有压缩设置,出包前补上;改了 meta 记得一起提交
+  const { changed } = applyCompressSettings({ apply: true, log: (line) => console.log(line) });
+  if (changed > 0) {
+    console.log(`[android] 给 ${changed} 张新图补了 ASTC 压缩设置,记得提交这些 .meta`);
+  }
   step('1/4 Creator 命令行生成安卓原生工程');
   const code = run(CREATOR_EXE, ['--project', ROOT, '--build', `configPath=${CONFIG}`]);
   if (code !== CREATOR_BUILD_OK) {

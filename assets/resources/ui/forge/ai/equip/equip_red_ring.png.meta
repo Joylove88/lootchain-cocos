@@ -129,6 +129,10 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": true,
-    "redirect": "693bf9f8-1348-4194-b322-14753fbc92a7@6c48a"
+    "redirect": "693bf9f8-1348-4194-b322-14753fbc92a7@6c48a",
+    "compressSettings": {
+      "useCompressTexture": true,
+      "presetId": "lc-android-astc4"
+    }
   }
 }
