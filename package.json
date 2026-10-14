@@ -21,6 +21,7 @@
     "compress:build": "python ./scripts/compress-build-png.py build/web-mobile",
     "check:loose-spread": "node ./scripts/check-loose-spread.cjs",
     "release:web": "node ./scripts/release-web.mjs",
+    "build:android": "node ./scripts/build-android.mjs",
     "repair:preview-cc": "node ./scripts/repair-preview-cc-chunk.mjs",
     "repair:preview-battle": "node ./scripts/repair-preview-battle-runtime.mjs",
     "repair:preview-stage13u": "node ./scripts/repair-preview-stage13u.mjs",

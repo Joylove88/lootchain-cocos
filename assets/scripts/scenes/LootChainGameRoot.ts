@@ -140,7 +140,7 @@ import type { PlayerBattleStartVO } from '../types/BattleTypes';
 import type { LobbyNoticePanelState } from '../types/LobbyNoticeTypes';
 import type { GachaDrawResultVO, GachaPoolVO } from '../types/GachaTypes';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../types/ProtagonistTypes';
-import { LoginVideoBackground } from '../../resources/login-bg/scripts/login/LoginVideoBackground';
+import { LoginVideoBackground } from '../login-bg/login/LoginVideoBackground';
 
 const { ccclass, property } = _decorator;
 

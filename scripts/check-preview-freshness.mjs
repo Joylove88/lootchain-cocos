@@ -144,7 +144,7 @@ const REQUIRED_CHUNKS = [
     tokens: ['LobbySettingsSceneContent', 'LobbySettingsSceneFrame', 'LobbySettingsBackButton', 'LobbySettingsLanguageButton_', 'setLobbyLanguage(language', 'renderSceneBackButton'],
   },
   {
-    source: 'assets/resources/login-bg/scripts/login/LoginVideoBackground.ts',
+    source: 'assets/scripts/login-bg/login/LoginVideoBackground.ts',
     tokens: ['resumeForLoginView', 'schedulePosterHideFallback', 'hidePosterForVideo', 'this.posterOpacity.opacity = 0', 'this.tryPlayVideo()'],
   },
   {

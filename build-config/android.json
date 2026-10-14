@@ -1,0 +1,34 @@
+{
+  "platform": "android",
+  "name": "LootChain",
+  "outputName": "android",
+  "debug": true,
+  "sourceMaps": false,
+  "md5Cache": false,
+  "packages": {
+    "android": {
+      "packageName": "com.lootchain.silentgods",
+      "apiLevel": 26,
+      "appABIs": ["arm64-v8a"],
+      "orientation": {
+        "portrait": false,
+        "upsideDown": false,
+        "landscapeRight": true,
+        "landscapeLeft": true
+      },
+      "useDebugKeystore": true,
+      "renderBackEnd": {
+        "vulkan": false,
+        "gles3": true,
+        "gles2": true
+      },
+      "sdkPath": "D:/android-sdk",
+      "ndkPath": "D:/android-sdk/ndk/23.2.8568313",
+      "javaHome": "C:/Program Files/Eclipse Adoptium/jdk-21.0.10.7-hotspot",
+      "appBundle": false,
+      "androidInstant": false,
+      "maxAspectRatio": "2.4",
+      "resizeableActivity": true
+    }
+  }
+}

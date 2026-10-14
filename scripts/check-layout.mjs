@@ -150,7 +150,7 @@ const required = [
   'assets/scripts/scenes/lobby/LobbyResourceLoader.ts',
   'assets/scripts/scenes/lobby/LobbyResourceLoader.ts.meta',
   'assets/scripts/scenes/LootChainLoginEffectLayer.ts',
-  'assets/resources/login-bg/scripts/login/LoginVideoBackground.ts',
+  'assets/scripts/login-bg/login/LoginVideoBackground.ts',
   'assets/resources/lobby/lobby_bg_poster.jpg',
   'assets/resources/lobby/lobby_bg_poster.jpg.meta',
   'assets/resources/lobby/lobby_bg_loop.mp4',
