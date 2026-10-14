@@ -253,6 +253,9 @@ export interface GuardEvent {
   skillName?: string;
   /** heroSkill(群体直击)/zoneTick(区域跳伤):本次被命中的全部怪物 id,渲染层逐只飘伤害(2026-09-11)。 */
   monsterIds?: number[];
+  /** heroSkill(近战横扫):判定范围 [areaFromX, areaToX](格),渲染层按它摆放 / 缩放特效,所见即所得(2026-10-14)。 */
+  areaFromX?: number;
+  areaToX?: number;
   /** bossSkill:smash=近战重踏,volley=远程投射(渲染层分表现)。 */
   skillKind?: GuardBossSkillKind;
   /** heroAttack:本次出手的全部命中(主弹在首位);渲染层按它演多发弹道与逐只飘字。 */
@@ -872,9 +875,9 @@ export const GUARD_ROLE_PROFILE: Record<GuardHeroRole, { rangeCells: number; int
 };
 /** 主动技能(2★ 解锁,自动施放;参考蔚蓝星球主动技,2026-08-26 用户拍板"参考此图按横板做")。 */
 export const GUARD_HERO_SKILL: Record<GuardHeroRole, { name: string; cdMs: number; desc: string }> = {
-  melee: { name: '裂地横扫', cdMs: 12_000, desc: '对覆盖范围内所有敌人造成 200% 攻击,并击退 0.35 格' },
-  ranged: { name: '烈焰领域', cdMs: 15_000, desc: '在最前方敌人脚下生成灼烧区,4 秒内每 0.5 秒造成 50% 攻击' },
-  control: { name: '飓风呼啸', cdMs: 18_000, desc: '召唤缓慢推进的旋风,5 秒内每 0.5 秒对触及敌人造成 60% 攻击并减速' },
+  melee: { name: '裂地横扫', cdMs: 12_000, desc: '以最前方敌人为起点,横扫其身后 3~4.5 格(随稀有度)内所有敌人,造成 180% 攻击并击退 0.35 格' },
+  ranged: { name: '烈焰领域', cdMs: 15_000, desc: '在最前方敌人处生成 2.4~3.6 格宽(随稀有度)的灼烧区,4 秒内每 0.5 秒对区内敌人造成 30% 攻击' },
+  control: { name: '飓风呼啸', cdMs: 18_000, desc: '在最前方敌人处召唤 2~3.2 格宽(随稀有度)的旋风,5 秒内每 0.5 秒对触及敌人造成 36% 攻击并减速' },
   support: { name: '圣辉涌泉', cdMs: 20_000, desc: '水晶回复 6% 生命,全队攻速 +20% 持续 4 秒' },
 };
 /** 首个主动技能的开场预热(召唤后 6s 才可首放)。 */
@@ -2410,6 +2413,31 @@ function spawnMonster(state: GuardBattleState, kind: GuardMonsterKind, lane: num
  * 近战能否命中该怪(2026-09-11):飞行怪在飞行途中免疫近战(阵容检查器),
  * 落地啃水晶后视为落地目标,近战可打——避免"怪在啃水晶、近战全程发呆"。
  */
+/**
+ * 战技 / 大招覆盖宽度(格,沿通道方向,上下两路全覆盖;2026-10-14 用户拍板):
+ * 「第一只怪进入射程就以它为起点,技能覆盖范围内的所有活怪都受伤,即使不在射程内」。
+ * 不设命中只数上限;强度靠伤害倍率调。稀有度取英雄编码前缀(UR_/SSR_/SR_/R_)。
+ */
+export const GUARD_SKILL_AREA_CELLS: Record<'melee' | 'ranged' | 'control', Record<string, number>> = {
+  melee: { R: 3.0, SR: 3.5, SSR: 4.0, UR: 4.5 },
+  ranged: { R: 2.4, SR: 2.8, SSR: 3.2, UR: 3.6 },
+  control: { R: 2.0, SR: 2.4, SSR: 2.8, UR: 3.2 },
+};
+
+export function guardSkillAreaCells(role: 'melee' | 'ranged' | 'control', heroCode: string | null | undefined): number {
+  const table = GUARD_SKILL_AREA_CELLS[role];
+  const tier = (heroCode || '').split('_')[0].toUpperCase();
+  return table[tier] ?? table.R;
+}
+
+/**
+ * 持续区域(灼烧区 / 旋风)的中心:范围从第一只怪身前 1/4 宽处开始、向出怪口铺 3/4 宽——
+ * 起点仍以第一只怪为准,但留出它继续往水晶走的那一段,不至于一放下首怪就走出区域。
+ */
+function guardZoneCenterFromFront(frontX: number, width: number): number {
+  return Math.min(GUARD_SPAWN_X, frontX + width * 0.25);
+}
+
 function guardMeleeCanHit(monster: GuardMonster): boolean {
   // 2026-10-11 用户反馈「怪物不是飞行怪物,虽然有翅膀但是走路的」:飞行类骨骼(small_bat / small_raven / crow_reaper)
   // 只有跑步动画,画面上是走过来的,近战却全程打不到 → 取消飞行免疫近战,统一按地面怪处理。
@@ -2430,13 +2458,22 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mul
   const ultMult = GUARD_ULT_DAMAGE_MULT[ultLv] ?? 1;
   const ultExtent = ultLv >= 3 ? GUARD_ULT_LV3_EXTENT : 1;
   if (hero.role === 'melee') {
-    // 2026-09-11 用户拍板:横扫打覆盖范围内全部敌人(此前硬编码只打本车道,与普攻
-    // laneLocked=false 不一致,观感"特效扫过一片却只有一只掉血")。飞行怪落地啃水晶后可被打。
-    const targets = state.monsters.filter((monster) => !monster.dead && guardMeleeCanHit(monster) && monster.x <= profile.rangeCells);
-    if (targets.length === 0) {
+    // 2026-10-14 用户拍板:第一只进入近战射程的怪为起点,向出怪口延伸 GUARD_SKILL_AREA_CELLS 宽,
+    // 范围内全部活怪受伤(后面挨着、还没进射程的也算);此前是"射程 6.9 格内全部",特效画到射程外的怪却不掉血。
+    let front: GuardMonster | null = null;
+    for (const monster of state.monsters) {
+      if (!monster.dead && guardMeleeCanHit(monster) && monster.x <= profile.rangeCells && (!front || monster.x < front.x)) {
+        front = monster;
+      }
+    }
+    if (!front) {
       return false;
     }
-    const damage = Math.round(attack * 2.0 * ultMult);
+    const areaFromX = front.x;
+    const areaToX = Math.min(GUARD_SPAWN_X, front.x + guardSkillAreaCells('melee', hero.heroCode));
+    const targets = state.monsters.filter((monster) => !monster.dead && guardMeleeCanHit(monster) && monster.x >= areaFromX && monster.x <= areaToX);
+    // 2.0 → 1.8(2026-10-14):覆盖范围改为「首怪起向后铺」后命中更多,同种子 N=400 回归把主动玩家胜率拉回基线 ±4pp
+    const damage = Math.round(attack * 1.8 * ultMult);
     // 特效锚点取命中群按 x 排序的中位怪(2026-09-11 用户反馈:锚在数组首怪时横扫画到射程外的怪身上,
     // "看着打右边、掉血在左边");中位锚点让斩击艺术覆盖命中簇本身。
     const sortedByX = [...targets].sort((a, b) => a.x - b.x);
@@ -2445,7 +2482,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mul
       monster.x = Math.min(GUARD_SPAWN_X, monster.x + 0.35 * ultExtent);
       damageMonster(state, monster, damage, hero);
     }
-    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId), ultLv, manual: cast.manual, chained: cast.chained });
+    state.events.push({ type: 'heroSkill', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, skillName: skill.name, amount: damage, monsterId: anchorId, monsterIds: targets.map((monster) => monster.monsterId), areaFromX, areaToX, ultLv, manual: cast.manual, chained: cast.chained });
     return true;
   }
   if (hero.role === 'ranged') {
@@ -2462,12 +2499,15 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mul
     if (!front) {
       return false;
     }
+    // 灼烧区宽度按稀有度(2026-10-14):R 2.4 格(即旧版半径 1.2)… UR 3.6 格;起点以首怪为准
+    const burnWidth = guardSkillAreaCells('ranged', hero.heroCode);
     const zone: GuardZone = {
       zoneId: state.nextZoneId++,
       kind: 'burn',
-      x: front.x,
-      radiusCells: 1.2,
-      tickDamage: Math.max(1, Math.round(attack * 0.5 * ultMult)),
+      x: guardZoneCenterFromFront(front.x, burnWidth),
+      radiusCells: burnWidth / 2,
+      // 0.5 → 0.3(2026-10-14):灼烧区按稀有度加宽 + 起点后移,怪在区内更久,跳伤下调保持强度
+      tickDamage: Math.max(1, Math.round(attack * 0.3 * ultMult)),
       tickMs: 500,
       nextTickAtMs: state.timeMs + 250,
       untilMs: state.timeMs + 4000 * ultExtent,
@@ -2492,12 +2532,15 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mul
     if (!front) {
       return false;
     }
+    // 旋风宽度按稀有度(2026-10-14):R 2.0 格(即旧版半径 1.0)… UR 3.2 格;起点以首怪为准
+    const cycloneWidth = guardSkillAreaCells('control', hero.heroCode);
     const zone: GuardZone = {
       zoneId: state.nextZoneId++,
       kind: 'cyclone',
-      x: front.x,
-      radiusCells: 1.0,
-      tickDamage: Math.max(1, Math.round(attack * 0.6 * ultMult)),
+      x: guardZoneCenterFromFront(front.x, cycloneWidth),
+      radiusCells: cycloneWidth / 2,
+      // 0.6 → 0.36(2026-10-14):同灼烧区口径
+      tickDamage: Math.max(1, Math.round(attack * 0.36 * ultMult)),
       tickMs: 500,
       nextTickAtMs: state.timeMs + 600,
       untilMs: state.timeMs + 5000 * ultExtent,

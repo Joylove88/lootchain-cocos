@@ -2744,7 +2744,7 @@ export class LobbyGuardBattleRenderer {
         if (typeof event.monsterId === 'number' && event.heroCode) {
           const target = sim.monsters.find((entry) => entry.monsterId === event.monsterId);
           if (target && awakened) {
-            const played = this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone });
+            const played = this.spawnGuardSkillFx(event.heroCode, caster?.cell ?? null, target, { monsterIds: event.monsterIds, zone: skillZone, area: typeof event.areaFromX === 'number' && typeof event.areaToX === 'number' ? { fromX: event.areaFromX, toX: event.areaToX } : undefined });
             if (!played) {
               // 大招名额满:除了金色保底弹,落点补金色冲击环;灼烧区画余烬环,不会什么都看不到
               this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 200, 90), true);
@@ -2755,7 +2755,7 @@ export class LobbyGuardBattleRenderer {
           } else if (target && caster) {
             // 战技(docs/29 v3):通用战技骨骼特效(近战横扫 / 远程灼烧区本体 / 控制旋风本体),被限流时回退技能弹 + 冲击环。
             const skillSpec = resolveHeroGuardSkillEffect(event.heroCode, caster.role);
-            const played = this.spawnGuardSkillFx(event.heroCode, caster.cell, target, { monsterIds: event.monsterIds, zone: skillZone, spec: skillSpec });
+            const played = this.spawnGuardSkillFx(event.heroCode, caster.cell, target, { monsterIds: event.monsterIds, zone: skillZone, spec: skillSpec, area: typeof event.areaFromX === 'number' && typeof event.areaToX === 'number' ? { fromX: event.areaFromX, toX: event.areaToX } : undefined });
             if (!played) {
               this.spawnCellBurst(this.xToPx(target.x), this.monsterY(target.lane, target.x), rgba(255, 190, 120), false);
               if (skillZone && skillZone.kind === 'burn') {
@@ -8749,7 +8749,7 @@ export class LobbyGuardBattleRenderer {
     heroCode: string,
     heroCell: number | null,
     monster: GuardMonster | null,
-    group?: { monsterIds?: number[]; zone?: GuardZone | null; spec?: BattleSkillEffectSpec; anchorAt?: { x: number; y: number }; internal?: boolean },
+    group?: { monsterIds?: number[]; zone?: GuardZone | null; spec?: BattleSkillEffectSpec; anchorAt?: { x: number; y: number }; internal?: boolean; area?: { fromX: number; toX: number } },
   ): boolean {
     const field = this.fieldNode;
     const sim = this.sim;
@@ -8930,7 +8930,9 @@ export class LobbyGuardBattleRenderer {
         // 2026-09-12 用户反馈图 2:横斩从英雄身前"飞"过去、半张在屏幕左下——技能不再飞行,直接锁在目标上:
         // zone=灼烧区中心循环播到区域到期(区域本体就是特效);group=群体命中簇中心、宽度拉到覆盖全部命中怪
         //(特效覆盖处即掉血处);target=贴住单个目标(目标死亡转最近怪)。束状(凤凰)照旧从英雄身前指向目标。
-        const anchorMode: 'fixed' | 'zone' | 'group' | 'target' = group?.anchorAt ? 'fixed' : zone ? 'zone' : hitIds.length > 1 ? 'group' : 'target';
+        // 近战横扫带判定范围(2026-10-14):哪怕只命中一只也按范围铺开,特效覆盖处 = 掉血处
+        const area = group?.area ?? null;
+        const anchorMode: 'fixed' | 'zone' | 'group' | 'target' = group?.anchorAt ? 'fixed' : zone ? 'zone' : (area || hitIds.length > 1) ? 'group' : 'target';
         let burstFit = isUlt ? Math.min(ultWant, ultClampFit) : baseFit;
         let groupX = 0;
         let groupY = 0;
@@ -8950,8 +8952,17 @@ export class LobbyGuardBattleRenderer {
             count += 1;
           }
           groupX = (minX + maxX) / 2;
-          groupY = sumY / Math.max(1, count) + this.unitSize() * 0.1;
-          if (isUlt) {
+          groupY = (count > 0 ? sumY / count : this.walkwayY()) + this.unitSize() * 0.1;
+          if (area) {
+            // 所见即所得:特效亮区横向正好铺满判定范围 [fromX, toX],中心对准范围中点
+            const ax0 = this.xToPx(area.fromX);
+            const ax1 = this.xToPx(area.toX);
+            const areaPx = Math.max(u * 0.8, ax1 - ax0);
+            groupX = (ax0 + ax1) / 2;
+            burstFit = isUlt
+              ? Math.min(ultClampFit, areaPx / Math.max(8, core.w))
+              : Math.min(GUARD_FX_GROUP_UPSCALE_CAP, areaPx / extentW);
+          } else if (isUlt) {
             // 大招:亮核横向盖住整个命中簇
             burstFit = Math.min(ultClampFit, Math.max(ultWant, (maxX - minX + u * 1.2) / Math.max(8, core.w)));
           } else {
