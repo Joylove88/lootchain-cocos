@@ -9,6 +9,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 import { mountKitButton, mountKitSection } from '../UiKit';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
+import { mountHeroAvatar } from './HeroHeadCrop';
 export interface BattleChallengeDialogHost { node: Node; createUiNode(name: string): Node; addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node; addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node; addChildLabel(parent: Node, name: string, text: string, x: number, y: number, fontSize: number, color: Color, contentSize?: Size, horizontalAlign?: HorizontalTextAlignment): Label; addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null; applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void; openFormation(stageCode: string): void; startBattle(stageCode: string): void; closeChallengeDialog(): void; }
 
 const CLOSE_ASSET = 'ui/common/ai/button_close/spriteFrame';
@@ -184,15 +185,24 @@ export class BattleChallengeDialogRenderer {
       const cell = this.host.addChildPlainNode(section, `BattleChallengeDialogAlly_${index}`, cx, rowY + 10 * scale, size, size);
       const color = RARITY_COLORS[(hero.rarity || '').toUpperCase()] ?? rgba(200, 170, 110);
       const g = cell.addComponent(Graphics);
-      const portrait = resolveC1812HeroResultPortraitPath(hero.spineAsset ?? hero.portraitAsset);
-      // 没有头像图的英雄(SR/R act 系):稀有度色暗底 + 名字首字(与守卫战统计行同口径)
-      g.fillColor = portrait ? rgba(16, 13, 14, 235) : rgba(Math.round(color.r * 0.42), Math.round(color.g * 0.42), Math.round(color.b * 0.42), 245);
+      // 2026-10-15 用户「挑战弹窗的头像换成真头像」→「头像直接调用 GPT 订阅模式生成」:生成头像优先(HeroHeadCrop),
+      // 没有就从名册立绘裁头部,再没有才用旧结算头像;图到之前先显示稀有度色暗底 + 名字首字
+      g.fillColor = rgba(Math.round(color.r * 0.42), Math.round(color.g * 0.42), Math.round(color.b * 0.42), 245);
       g.circle(0, 0, size / 2);
       g.fill();
-      if (!portrait || !this.host.addSprite('Portrait', portrait, 0, 0, size * 0.86, size * 0.86, cell)) {
-        const glyph = this.host.addChildLabel(cell, 'Glyph', Array.from(safeText(hero.heroName))[0] ?? '?', 0, 0, 30 * scale, rgba(255, 244, 222), new Size(size * 0.8, size * 0.8));
-        glyph.overflow = Label.Overflow.SHRINK;
-        glyph.enableOutline = true; glyph.outlineColor = rgba(10, 8, 6, 240); glyph.outlineWidth = Math.max(1, 1.8 * scale);
+      const glyph = this.host.addChildLabel(cell, 'Glyph', Array.from(safeText(hero.heroName))[0] ?? '?', 0, 0, 30 * scale, rgba(255, 244, 222), new Size(size * 0.8, size * 0.8));
+      glyph.overflow = Label.Overflow.SHRINK;
+      glyph.enableOutline = true; glyph.outlineColor = rgba(10, 8, 6, 240); glyph.outlineWidth = Math.max(1, 1.8 * scale);
+      const avatarReady = (): void => {
+        if (glyph.node.isValid) {
+          glyph.node.destroy();
+        }
+      };
+      if (!mountHeroAvatar(cell, hero.heroCode, size * 0.92, 'circle', avatarReady)) {
+        const portrait = resolveC1812HeroResultPortraitPath(hero.spineAsset ?? hero.portraitAsset);
+        if (portrait && this.host.addSprite('Portrait', portrait, 0, 0, size * 0.86, size * 0.86, cell)) {
+          avatarReady();
+        }
       }
       // 稀有度色描边环(画在头像之上)
       const ring = this.host.addChildPlainNode(cell, 'Ring', 0, 0, size, size).addComponent(Graphics);

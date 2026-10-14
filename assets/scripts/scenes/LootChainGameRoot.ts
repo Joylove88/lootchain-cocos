@@ -71,6 +71,7 @@ import { UiContentRootController, type UiContentRootHost } from './UiContentRoot
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
 import { mountKitBackdrop, mountKitButton, mountKitSection, type UiKitHost } from './UiKit';
 import { nativeUnderlayVideoSupported } from '../app/NativeUnderlayVideo';
+import { preloadHeroAvatars } from './lobby/HeroHeadCrop';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
 import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
 import type { ProfileRenameState } from './lobby/LobbyProfileDialogRenderer';
@@ -563,6 +564,8 @@ export class LootChainGameRoot extends Component {
     this.api.http.onAuthExpired = () => this.handleAuthExpired();
     this.currentView = 'login';
     this.preloadUiSprites();
+    // 英雄头像(挑战弹窗 / 守卫战统计):22 张小图,开局预读,打开时不闪首字
+    preloadHeroAvatars();
     input.on(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
     input.on(Input.EventType.TOUCH_START, this.tryPlayLobbyVideo, this);
     // 安卓返回键(第二阶段):只在原生包监听

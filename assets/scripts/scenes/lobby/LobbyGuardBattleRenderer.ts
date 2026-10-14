@@ -139,6 +139,7 @@ import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringF
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_ENERGY_BAR_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
+import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAvatarPath } from './HeroHeadCrop';
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
@@ -2111,23 +2112,10 @@ export class LobbyGuardBattleRenderer {
    * 在圆形遮罩窗口里挂一个放大的骨骼、把脚底压到窗口下方使头部落进窗口(不动素材,纯显示裁切);
    * 骨骼到位前先显示稀有度色底 + 名字首字(loadSpineInto 成功后会销毁该占位)。
    */
-  /**
-   * 名册卡立绘的头部裁切框(原图像素,x/y/w/h;2026-10-11 用 PIL 按 alpha 包围盒自动估算后目视复核)。
-   * 统计行 / 词条卡头像用它从立绘里裁一块静态头像(用户:「统计里的头像弄成静态图」),不再挂小骨骼。
-   */
-  private static readonly HERO_HEAD_CROPS: Record<string, [number, number, number, number]> = {
-    Belladonna_Illust: [324, 426, 295, 295], Carmilla_center: [346, 83, 276, 276], Eulenspigel_Illust: [334, 457, 289, 289], HeylelS01_Illust: [306, 448, 305, 305],
-    IshmaelA_Illust: [330, 403, 378, 378], Ishmael_center: [357, 110, 369, 369], LucienA_Illust: [311, 326, 393, 393], Lucrecia_Illust: [582, 433, 290, 290],
-    Nuu_Illust: [195, 3, 289, 289], Simone_Illust: [409, 352, 353, 353], Sphinx_Illust: [363, 362, 270, 270],
-    npc_1001: [184, 0, 254, 254], npc_1002: [164, 3, 210, 210], npc_1003: [124, 0, 138, 138], npc_1004: [140, 0, 318, 318], npc_1008: [227, 40, 391, 391],
-    npc_1012: [153, 10, 203, 203], npc_1016: [112, 18, 231, 231], npc_1028: [149, 56, 281, 281], npc_1036: [153, 110, 292, 292], npc_1037: [168, 192, 396, 396],
-    npc_1038: [164, 70, 265, 265], npc_21006: [103, 62, 321, 321],
-  };
-
   /** 把名册立绘裁成头像贴进 size×size 的圆角窗口;图没读到 / 没有裁切表返回 false。 */
   private mountHeadCrop(parent: Node, artPath: string, size: number): boolean {
-    const key = artPath.split('/').pop() ?? '';
-    const crop = LobbyGuardBattleRenderer.HERO_HEAD_CROPS[key];
+    // 裁切表与切帧逻辑在 HeroHeadCrop(挑战弹窗共用)
+    const crop = heroHeadCropOf(artPath);
     if (!crop) {
       return false;
     }
@@ -2138,25 +2126,11 @@ export class LobbyGuardBattleRenderer {
     mg.roundRect(-size / 2, -size / 2, size, size, 7);
     mg.fill();
     const sprite = this.host.addSprite('Img', `${artPath}/spriteFrame`, 0, 0, size, size, clip);
-    const base = sprite?.spriteFrame;
-    if (!sprite || !base || !base.isValid || !base.texture) {
+    const sub = sprite?.spriteFrame ? buildHeroHeadCropFrame(sprite.spriteFrame, crop) : null;
+    if (!sprite || !sub) {
       clip.destroy();
       return false;
     }
-    // 源帧可能被裁过透明边:先算原图左上角在贴图里的坐标,再加上裁切框
-    const originX = base.rect.x - ((base.originalSize.width - base.rect.width) / 2 + base.offset.x);
-    const originY = base.rect.y - ((base.originalSize.height - base.rect.height) / 2 - base.offset.y);
-    const texW = base.texture.width;
-    const texH = base.texture.height;
-    const x = Math.max(0, Math.min(texW - 1, Math.round(originX + crop[0])));
-    const y = Math.max(0, Math.min(texH - 1, Math.round(originY + crop[1])));
-    const w = Math.max(1, Math.min(texW - x, crop[2]));
-    const h = Math.max(1, Math.min(texH - y, crop[3]));
-    const sub = new SpriteFrame();
-    sub.texture = base.texture;
-    sub.rect = new Rect(x, y, w, h);
-    sub.originalSize = new Size(w, h);
-    sub.offset = new Vec2(0, 0);
     sprite.type = Sprite.Type.SIMPLE;
     sprite.sizeMode = Sprite.SizeMode.CUSTOM;
     sprite.spriteFrame = sub;
@@ -2165,6 +2139,12 @@ export class LobbyGuardBattleRenderer {
   }
 
   private mountStatsAvatar(parent: Node, entry: { name: string; rarity: string; ally: BattlePresentationUnitSnapshot | null }, size: number): void {
+    // 2026-10-15:GPT 生成头像优先(与挑战弹窗同一套,进游戏时已预读);图还没到就照旧走下面的结算头像 / 立绘裁头 / 首字
+    const heroCode = entry.ally?.heroCode ?? entry.ally?.unitKey ?? null;
+    const avatarPath = resolveHeroAvatarPath(heroCode);
+    if (avatarPath && resources.get(avatarPath, SpriteFrame) && mountHeroAvatar(parent, heroCode, size, 'round')) {
+      return;
+    }
     const portrait = resolveC1812HeroResultPortraitPath(entry.ally?.spineAsset ?? entry.ally?.portraitAsset);
     if (portrait) {
       this.mountSprite(parent, 'Img', portrait, 0, 0, size, size);
