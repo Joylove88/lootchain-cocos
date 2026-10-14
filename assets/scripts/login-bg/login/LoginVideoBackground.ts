@@ -13,8 +13,16 @@ import {
     sys,
     view,
     input,
-    Input
+    Input,
+    game,
+    Game
 } from 'cc';
+import {
+    nativeUnderlayVideoSupported,
+    playNativeUnderlayVideo,
+    stopNativeUnderlayVideo,
+    type NativeUnderlayVideoState
+} from '../../app/NativeUnderlayVideo';
 
 const { ccclass, property } = _decorator;
 
@@ -44,6 +52,20 @@ export class LoginVideoBackground extends Component {
     private assetLoadTicket = 0;
     private layoutCheckTimer = 0;
     private posterFallbackScheduled = false;
+    /** 安卓原生垫底视频的资源路径(原生不用 VideoPlayer 组件,见 NativeUnderlayVideo)。 */
+    private nativeVideoPath = '';
+    private readonly onNativeVideoState = (state: NativeUnderlayVideoState): void => {
+        if (state === 'playing') {
+            this.onVideoPlaying();
+            return;
+        }
+        // 出错 / 切后台被收掉:海报顶上,别露黑底
+        this.fadingPoster = false;
+        this.posterHidden = false;
+        if (this.posterOpacity) {
+            this.posterOpacity.opacity = 255;
+        }
+    };
 
     onLoad() {
         if (!this.video) {
@@ -56,12 +78,14 @@ export class LoginVideoBackground extends Component {
         }
 
         // 安卓 / 原生(2026-10-14):原生 VideoPlayer 是一层系统控件,永远浮在游戏画面之上,会把登录界面整个盖住;
-        // 原生上不播视频,只保留首帧海报(同一画面)。第二阶段再做视频垫底(stayOnBottom + 透明画布)。
+        // 组件本身停用,改由 NativeUnderlayVideo 在游戏画面下面播(安卓);其它原生平台只留首帧海报。
+        // 注意本组件和 VideoPlayer 挂在同一个节点上:只关组件,不能停用节点(会触发 onDisable 把垫底视频停掉)。
         if (sys.isNative) {
-            this.video.node.active = false;
+            this.video.enabled = false;
             if (this.posterOpacity) {
                 this.posterOpacity.opacity = 255;
             }
+            game.on(Game.EVENT_SHOW, this.onGameShow, this);
             this.applyResponsiveBackground(true);
             return;
         }
@@ -105,6 +129,7 @@ export class LoginVideoBackground extends Component {
         this.node.active = true;
         if (sys.isNative) {
             this.applyResponsiveBackground(false);
+            this.playNativeVideo();
             return;
         }
         if (this.video) {
@@ -185,7 +210,14 @@ export class LoginVideoBackground extends Component {
         }
     }
 
+    onDisable() {
+        // 离开登录页(节点停用):收掉原生垫底视频
+        stopNativeUnderlayVideo(this.onNativeVideoState);
+    }
+
     onDestroy() {
+        game.off(Game.EVENT_SHOW, this.onGameShow, this);
+        stopNativeUnderlayVideo(this.onNativeVideoState);
         if (this.video) {
             this.video.node.off(VideoPlayer.EventType.READY_TO_PLAY, this.onVideoReady, this);
             this.video.node.off(VideoPlayer.EventType.PLAYING, this.onVideoPlaying, this);
@@ -257,9 +289,27 @@ export class LoginVideoBackground extends Component {
         this.posterOpacity?.node.getComponent(UITransform)?.setContentSize(contentSize);
     }
 
+    /** 回前台:切后台时系统收掉了视频表面,登录页还开着就重新播。 */
+    private onGameShow() {
+        if (this.node.activeInHierarchy) {
+            this.playNativeVideo();
+        }
+    }
+
+    private playNativeVideo() {
+        if (!this.nativeVideoPath || !this.node.activeInHierarchy) return;
+        playNativeUnderlayVideo(this.nativeVideoPath, true, this.onNativeVideoState);
+    }
+
     private loadVideoClip(path: string, ticket: number) {
-        // 原生不播视频,也不必把 80MB 级的视频读进内存
-        if (!this.video || sys.isNative) return;
+        // 原生:不加载视频资源(引擎原生加载 mp4 会失败),只把路径交给安卓 MediaPlayer 直接读包内文件
+        if (sys.isNative) {
+            if (!nativeUnderlayVideoSupported()) return;
+            this.nativeVideoPath = path;
+            this.playNativeVideo();
+            return;
+        }
+        if (!this.video) return;
 
         try {
             this.video.stop();

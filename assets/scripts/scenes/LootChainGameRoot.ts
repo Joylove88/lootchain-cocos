@@ -1927,6 +1927,14 @@ export class LootChainGameRoot extends Component {
     if (this.currentView === 'battle' && this.lobbyGuardBattleRenderer.handleBackKey()) {
       return;
     }
+    // 召唤视频播放中:返回键 = 跳过
+    if (this.currentView === 'gachaSummon') {
+      this.finishGachaSummonVideoScene();
+      return;
+    }
+    if (this.closeLobbyLayerByBack()) {
+      return;
+    }
     if (this.closeTopOverlayByBack(contentRoot)) {
       return;
     }
@@ -1937,6 +1945,68 @@ export class LootChainGameRoot extends Component {
     if (this.currentView === 'lobby' || this.currentView === 'login') {
       this.openNativeExitConfirm();
     }
+  }
+
+  /**
+   * 返回键:按「最内层弹窗 → 大厅面板 → 召唤子页」顺序关掉当前开着的一层,返回 true 表示关了。
+   * 大厅面板节点名不统一(LobbyQuestDim 等),靠节点名找不到,这里直接按状态位调各自的关闭函数(模拟器实测任务面板按返回直接弹了退出确认)。
+   */
+  private closeLobbyLayerByBack(): boolean {
+    const layers: Array<[boolean, () => void]> = [
+      [this.legalDocumentKey !== null, () => this.closeLegalDocument()],
+      [this.loginLanguageDialogOpen, () => this.closeLoginLanguageDialog()],
+      [Boolean(this.lobbyShopDialog), () => this.closeLobbyShopDialog()],
+      [Boolean(this.lobbyGuardCrystalDialog), () => this.closeGuardCrystalDialog()],
+      [Boolean(this.lobbyPlaceholderDialog), () => this.closeLobbyPlaceholderDialog()],
+      [this.profileRename.open && !this.profileRename.busy, () => this.closeProfileRename()],
+      [this.lobbyEquipEnhanceTargetId !== null, () => this.closeLobbyEquipEnhanceDialog()],
+      [this.lobbyEquipFuseDialogOpen, () => this.closeLobbyEquipFuseDialog()],
+      [this.lobbyHeroEquipDialogOpen, () => this.closeLobbyHeroEquipDialog()],
+      [this.lobbyHeroRefineDialogOpen, () => this.closeLobbyHeroRefineDialog()],
+      [this.lobbyHeroUltimateDialogOpen, () => this.closeLobbyHeroUltimateDialog()],
+      [this.lobbyForgeRerollOpen, () => this.closeLobbyForgeRerollDialog()],
+      [this.lobbyBagComposeItemCode !== null, () => this.closeLobbyBagComposeDialog()],
+      [this.lobbyBagSellItemCode !== null && !this.lobbyBagActionBusy, () => this.closeLobbyBagSellDialog()],
+      [this.lobbyTokenFurnaceState.open, () => this.closeLobbyTokenFurnace()],
+      [this.lobbyProfileOpen, () => this.closePlayerProfileDialog()],
+      [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
+      [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
+      [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
+      [this.lobbyNoticePanelOpen, () => this.closeLobbyNoticePanel()],
+      [this.lobbySettingsPanelOpen, () => this.closeLobbySettingsPanel()],
+      [this.lobbyHeroDetailHeroId !== null, () => this.closeLobbyHeroDetailPanel()],
+      [this.lobbyHeroRosterPanelOpen, () => this.closeLobbyHeroRosterPanel()],
+      [this.lobbyCodexPanelOpen, () => this.closeLobbyCodexPanel()],
+      [this.lobbyFormationPanelOpen, () => this.closeLobbyFormationPanel()],
+      [this.lobbyBattlePreviewPanelOpen, () => this.closeLobbyBattlePreviewPanel()],
+      [this.lobbyForgePanelOpen, () => this.closeLobbyForgePanel()],
+      [this.lobbyBagPanelOpen, () => this.closeLobbyBagPanel()],
+      [this.lobbyDailyDungeonPanelOpen, () => this.closeLobbyDailyDungeonPanel()],
+      [this.lobbyAdventurePanelOpen, () => this.closeLobbyAdventurePanel()],
+    ];
+    for (const [open, close] of layers) {
+      if (open) {
+        close();
+        return true;
+      }
+    }
+    if (this.currentView === 'gachaResult') {
+      this.closeGachaMockResultScene();
+      return true;
+    }
+    if (this.currentView === 'gachaReveal') {
+      this.closeGachaMockRevealScene();
+      return true;
+    }
+    if (this.isGachaActionSceneView(this.currentView)) {
+      this.closeGachaActionScene();
+      return true;
+    }
+    if (this.currentView === 'gacha') {
+      this.closeGachaScene();
+      return true;
+    }
+    return false;
   }
 
   /** 从最上层(最后挂上去)的弹层里找关闭按钮点一下;弹层本身挂了点击关闭(半透明遮罩)也算。 */
@@ -6719,8 +6789,9 @@ export class LootChainGameRoot extends Component {
     }
     for (const video of node.getComponents(VideoPlayer)) {
       // 原生 VideoPlayer 浮在游戏画面之上会盖住登录界面:原生上不播(LoginVideoBackground 已改显示海报)
+      // 只关组件:同节点上的 LoginVideoBackground 负责原生垫底视频,停用节点会把它也停掉
       if (sys.isNative) {
-        video.node.active = false;
+        video.enabled = false;
         continue;
       }
       try {

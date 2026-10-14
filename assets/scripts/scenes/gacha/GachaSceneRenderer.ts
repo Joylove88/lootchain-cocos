@@ -28,6 +28,7 @@ import { C1812_BUTTON_DISABLED_ASSET, C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_R
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { clamp, LOBBY_C1812_RESOURCE_ICON_ASSETS, rgba, type UiLayout } from '../lobby/LobbyHudTypes';
+import { nativeUnderlayVideoSupported, playNativeUnderlayVideo, stopNativeUnderlayVideo, type NativeUnderlayVideoState } from '../../app/NativeUnderlayVideo';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { GachaDrawItemVO, GachaDrawLogVO, GachaDrawResultVO, GachaPityVO, GachaPoolDetailVO } from '../../types/GachaTypes';
 import type { LobbyBagPanelState } from '../../types/BagTypes';
@@ -1594,13 +1595,17 @@ export class GachaSceneRenderer {
     const videoCoverSize = this.resolveSummonVideoCoverSize(layout);
     const videoNode = this.host.addChildPlainNode(parent, 'GachaSummonVideoPlayer', 0, 0, videoCoverSize.width, videoCoverSize.height);
     videoNode.getComponent(UITransform)?.setContentSize(videoCoverSize);
-    const videoPlayer = videoNode.addComponent(VideoPlayer);
-    videoPlayer.resourceType = VideoPlayer.ResourceType.LOCAL;
-    videoPlayer.playOnAwake = false;
-    videoPlayer.loop = false;
-    videoPlayer.keepAspectRatio = true;
-    videoPlayer.mute = true;
-    videoPlayer.volume = 0;
+    // 安卓原生:引擎 VideoPlayer 浮在最上层会盖住「跳过」,改由 NativeUnderlayVideo 在游戏画面下面播,首帧出来后撤掉黑底露出视频
+    const nativeVideo = nativeUnderlayVideoSupported();
+    const videoPlayer = nativeVideo ? null : videoNode.addComponent(VideoPlayer);
+    if (videoPlayer) {
+      videoPlayer.resourceType = VideoPlayer.ResourceType.LOCAL;
+      videoPlayer.playOnAwake = false;
+      videoPlayer.loop = false;
+      videoPlayer.keepAspectRatio = true;
+      videoPlayer.mute = true;
+      videoPlayer.volume = 0;
+    }
 
     const audioNode = this.host.addChildPlainNode(parent, 'GachaSummonCallAudio', 0, 0, 1, 1);
     const audioSource = audioNode.addComponent(AudioSource);
@@ -1619,15 +1624,40 @@ export class GachaSceneRenderer {
       }
     };
 
+    const onNativeVideoState = (state: NativeUnderlayVideoState): void => {
+      if (finished) {
+        return;
+      }
+      if (state === 'playing') {
+        videoStarted = true;
+        loadingOpacity.opacity = 0;
+        if (this.isNodeAlive(backdrop)) {
+          backdrop.active = false;
+        }
+        tryPlayAudio();
+        return;
+      }
+      if (state === 'completed') {
+        finishOnce('completed');
+        return;
+      }
+      this.host.setStatus('召唤视频播放异常，返回召唤结果。');
+      finishOnce(state === 'stopped' ? 'video-stopped' : 'video-error');
+    };
+
     const finishOnce = (reason: string) => {
       if (finished) {
         return;
       }
       finished = true;
-      try {
-        videoPlayer.stop();
-      } catch {
-        // VideoPlayer may already be stopped after COMPLETED.
+      if (videoPlayer) {
+        try {
+          videoPlayer.stop();
+        } catch {
+          // VideoPlayer may already be stopped after COMPLETED.
+        }
+      } else {
+        stopNativeUnderlayVideo(onNativeVideoState);
       }
       try {
         audioSource.stop();
@@ -1637,6 +1667,10 @@ export class GachaSceneRenderer {
       console.info(`[Gacha] summon video finished: ${videoResource}, reason=${reason}`);
       this.host.finishGachaSummonVideoScene();
     };
+    // 场景被整页重绘 / 切走时(跳过、返回键、断线回登录)一并收掉原生视频
+    if (nativeVideo) {
+      videoNode.once(Node.EventType.NODE_DESTROYED, () => stopNativeUnderlayVideo(onNativeVideoState));
+    }
 
     videoNode.on(VideoPlayer.EventType.PLAYING, () => {
       videoStarted = true;
@@ -1649,8 +1683,15 @@ export class GachaSceneRenderer {
       finishOnce('video-error');
     }, this);
 
+    // 原生:不加载视频资源(引擎原生加载 mp4 会失败),路径直接交给安卓 MediaPlayer
+    if (!videoPlayer) {
+      if (!playNativeUnderlayVideo(videoResource, false, onNativeVideoState)) {
+        this.host.setStatus('召唤视频播放失败，返回召唤结果。');
+        finishOnce('video-play-failed');
+      }
+    }
     resources.load(videoResource, VideoClip, (error: Error | null, clip: VideoClip | null) => {
-      if (finished || !this.isNodeAlive(videoNode)) {
+      if (!videoPlayer || finished || !this.isNodeAlive(videoNode)) {
         return;
       }
       if (error || !clip) {

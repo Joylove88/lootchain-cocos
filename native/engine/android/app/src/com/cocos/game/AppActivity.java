@@ -29,12 +29,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Matrix;
+import android.graphics.PixelFormat;
+import android.media.MediaPlayer;
+import android.util.Log;
+import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
 
 import com.cocos.service.SDKWrapper;
 import com.cocos.lib.CocosActivity;
+import com.cocos.lib.CocosHelper;
+import com.cocos.lib.JsbBridgeWrapper;
 
 public class AppActivity extends CocosActivity {
 
@@ -61,6 +71,10 @@ public class AppActivity extends CocosActivity {
 
         SurfaceView surface = getSurfaceView();
         if (surface != null) {
+            // 垫底视频(登录 / 召唤):游戏画面放到媒体层并透明,视频 SurfaceView 插在它下面;
+            // 画面空白处 alpha 本来就是 0(网页 stayOnBottom 同一套),平时下面是黑底,显示不变。必须在挂上窗口前设。
+            surface.setZOrderMediaOverlay(true);
+            surface.getHolder().setFormat(PixelFormat.TRANSLUCENT);
             surface.setOnTouchListener((v, event) -> {
                 if (sRenderScale >= 0.999f) {
                     return processMotionEvent(event);
@@ -114,6 +128,152 @@ public class AppActivity extends CocosActivity {
         activity.runOnUiThread(activity::applyRenderScale);
     }
 
+    // ── 垫底视频(第二阶段,2026-10-14)──
+    // 引擎原生 VideoPlayer 写死 setZOrderOnTop,会盖住全部界面(登录页整个被盖、召唤视频的「跳过」点不到)。
+    // 这里自己用 MediaPlayer + SurfaceView 放在游戏画面下面播;事件经 JsbBridgeWrapper 发回 JS(事件名 lcVideo)。
+
+    private static final String VIDEO_EVENT = "lcVideo";
+    private static final String TAG = "LootChainVideo";
+    private SurfaceView mVideoView;
+    private MediaPlayer mVideoPlayer;
+    private int mVideoToken = 0;
+
+    /** JS 反射调用:播放垫底视频。path = fileUtils.fullPathForFilename 的结果(@assets/… 或绝对路径)。 */
+    public static void playUnderlayVideo(String path, boolean loop) {
+        AppActivity activity = sInstance;
+        if (activity != null) {
+            activity.runOnUiThread(() -> activity.startUnderlayVideo(path, loop));
+        }
+    }
+
+    /** JS 反射调用:停止并移除垫底视频。 */
+    public static void stopUnderlayVideo() {
+        Log.i(TAG, "stop");
+        AppActivity activity = sInstance;
+        if (activity != null) {
+            activity.runOnUiThread(activity::releaseUnderlayVideo);
+        }
+    }
+
+    private void sendVideoEvent(int token, String state) {
+        if (token != mVideoToken) {
+            return;
+        }
+        final String arg = token + ":" + state;
+        CocosHelper.runOnGameThread(() -> JsbBridgeWrapper.getInstance().dispatchEventToScript(VIDEO_EVENT, arg));
+    }
+
+    private void startUnderlayVideo(String path, boolean loop) {
+        releaseUnderlayVideo();
+        SurfaceView gl = getSurfaceView();
+        if (gl == null || !(gl.getParent() instanceof ViewGroup)) {
+            return;
+        }
+        final int token = ++mVideoToken;
+        Log.i(TAG, "play " + path + (loop ? " (loop)" : ""));
+        final ViewGroup parent = (ViewGroup) gl.getParent();
+        final SurfaceView view = new SurfaceView(this);
+        mVideoView = view;
+        parent.addView(view, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        view.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                if (token != mVideoToken || mVideoPlayer != null) {
+                    return;
+                }
+                MediaPlayer player = new MediaPlayer();
+                mVideoPlayer = player;
+                try {
+                    String file = path.startsWith("@assets/") ? path.substring("@assets/".length()) : path;
+                    if (file.startsWith("/")) {
+                        player.setDataSource(file);
+                    } else {
+                        AssetFileDescriptor afd = getAssets().openFd(file);
+                        player.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                        afd.close();
+                    }
+                    player.setDisplay(holder);
+                    player.setVolume(0f, 0f);
+                    player.setLooping(loop);
+                    player.setOnPreparedListener(mp -> {
+                        if (token != mVideoToken) {
+                            return;
+                        }
+                        coverVideo(view, mp.getVideoWidth(), mp.getVideoHeight());
+                        mp.start();
+                    });
+                    player.setOnInfoListener((mp, what, extra) -> {
+                        if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
+                            sendVideoEvent(token, "playing");
+                        }
+                        return false;
+                    });
+                    player.setOnCompletionListener(mp -> {
+                        if (!loop) {
+                            sendVideoEvent(token, "completed");
+                        }
+                    });
+                    player.setOnErrorListener((mp, what, extra) -> {
+                        Log.w(TAG, "video error " + what + "/" + extra + " " + path);
+                        sendVideoEvent(token, "error");
+                        return true;
+                    });
+                    player.prepareAsync();
+                } catch (Exception e) {
+                    Log.w(TAG, "video open failed: " + path, e);
+                    sendVideoEvent(token, "error");
+                }
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                // 切后台时表面被销毁:直接收掉,回前台由 JS 视需要重新播放
+                if (token == mVideoToken && mVideoPlayer != null) {
+                    sendVideoEvent(token, "stopped");
+                    releaseUnderlayVideo();
+                }
+            }
+        });
+    }
+
+    /** 等比铺满(cover):按视频宽高比放大到盖住整个游戏画面,超出部分由父布局裁掉。 */
+    private void coverVideo(SurfaceView view, int videoW, int videoH) {
+        SurfaceView gl = getSurfaceView();
+        if (gl == null || videoW <= 0 || videoH <= 0) {
+            return;
+        }
+        int w = gl.getWidth();
+        int h = gl.getHeight();
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        float scale = Math.max((float) w / videoW, (float) h / videoH);
+        view.setLayoutParams(new FrameLayout.LayoutParams(Math.round(videoW * scale), Math.round(videoH * scale), Gravity.CENTER));
+    }
+
+    private void releaseUnderlayVideo() {
+        mVideoToken++;
+        if (mVideoPlayer != null) {
+            try {
+                mVideoPlayer.stop();
+            } catch (Exception ignored) {
+                // 还没 prepare 完就停:忽略
+            }
+            mVideoPlayer.release();
+            mVideoPlayer = null;
+        }
+        if (mVideoView != null) {
+            if (mVideoView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) mVideoView.getParent()).removeView(mVideoView);
+            }
+            mVideoView = null;
+        }
+    }
+
     /** JS 反射调用:当前渲染缩放(安全区等按视图像素给出的量要乘它)。 */
     public static float getRenderScale() {
         return sRenderScale;
@@ -144,6 +304,7 @@ public class AppActivity extends CocosActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        releaseUnderlayVideo();
         if (sInstance == this) {
             sInstance = null;
         }
