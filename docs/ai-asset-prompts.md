@@ -393,3 +393,40 @@ Game UI asset, a single square stone pedestal tile with rounded corners seen fro
 ```
 Game UI asset, a single square stone pedestal tile with rounded corners seen from a 3/4 top-down view, thick slab with visible front and side edges, a THICK BRIGHT polished antique-gold metal rim around the top edge and gold corner ornaments exactly like the reference image, a circular engraved emblem in the center of the top face, exactly the same shape, angle, thickness, rim and composition as the reference image, only the stone material and accent colors change. The tile must stand out strongly from the battlefield floor it sits on: strong value contrast, crisp dark outline under the rim, slightly brighter rim highlights, clean readable silhouette. Centered, transparent background, no text, no watermark, same ash-grey volcanic pedestal with gold-bronze rim, cracks, sigil and rim glowing intense crimson red, soft red halo glow around the whole tile, ember particles
 ```
+
+---
+
+## 九、守卫水晶弹窗整页版 v4(2026-10-14,Codex 按参考图重出,放 `assets/resources/ui/crystal/ai/`)
+
+用户新参考图(升级页 / 法术页,原件在 素材原始备份/crystal-ui-v4-20261014 旁的会话 images 12/13)。每张都把参考图作为 -i 附件,提示词英文;透明件入库前裁到有效区再等比缩到 1024 宽。
+
+**crystal_scene_bg.png**(参考 ref_upgrade,landscape 16:9 (1672x941 or wider), opaque)
+```
+Reproduce the BACKGROUND ENVIRONMENT of the attached reference image as a full-screen game UI backdrop: a vast dark gothic cathedral interior at night, tall black stone pillars and pointed arches, rows of lit candles and candelabras on both sides, wet dark stone floor with faint reflections, warm amber candle light far away, and a cold blue glow rising from the floor in the left third where the crystal would stand. Remove the crystal, the pedestal, every UI panel, button and all text: the left third is an empty stage lit blue, the right two thirds are darker and slightly out of focus so panels can sit on top. Same palette and mood as the reference, painterly AAA quality, no characters, no text, no watermark.
+```
+
+**crystal_art_v2.png**(参考 ref_upgrade,portrait about 2:3 (e.g. 1024x1536), transparent background)
+```
+Reproduce the CRYSTAL AND ITS PEDESTAL from the attached reference image as one standalone transparent game asset: a large glowing blue crystal cluster with one tall central spire and smaller shards, rising from an ornate black gothic pedestal shaped like a spiked obsidian chalice with sharp upward thorns, antique gold trim lines and a small gold cross emblem on its front, blue light cast on the pedestal, a few floating blue sparks. Front view, centered, nothing else, fully transparent background, no text, no watermark.
+```
+
+**level_plate_v2.png**(参考 ref_upgrade,wide landscape about 3:1 (e.g. 1536x512), transparent background)
+```
+Reproduce the DARK NAME PLATE that sits under the crystal in the attached reference (the plate showing "Lv.5"): a wide hexagonal plate with pointed left and right ends, obsidian black fill, thin antique gold double border with small gold ornaments at the two pointed ends, completely EMPTY center (no text, no number), transparent background, no watermark.
+```
+
+**tab_on_v2.png**(参考 ref_spells,wide landscape about 4:1 (e.g. 1536x384), transparent background)
+```
+Reproduce the SELECTED tab button from the attached reference (the bright one labeled 法术装备): a wide low rectangle, dark obsidian fill, bright antique gold ornamental border with small corner flourishes and a faint gold inner glow, completely empty center (no text), transparent background, no watermark.
+```
+
+**tab_off_v2.png**(参考 ref_spells,wide landscape about 4:1 (e.g. 1536x384), transparent background)
+```
+Reproduce the UNSELECTED tab button from the attached reference (the dim one labeled 水晶升级): a wide low rectangle, dark obsidian fill, thin dim grey-gold border with small corner flourishes, no glow, completely empty center (no text), transparent background, no watermark.
+```
+
+**title_emblem_v2.png**(参考 ref_upgrade,square (1024x1024), transparent background)
+```
+Reproduce the EIGHT-POINTED STAR ORNAMENT at the top-left of the attached reference (next to the title 守卫水晶): an antique gold eight-pointed star with thin radiating lines and small diamond accents, centered, nothing else, transparent background, no text, no watermark.
+```
+

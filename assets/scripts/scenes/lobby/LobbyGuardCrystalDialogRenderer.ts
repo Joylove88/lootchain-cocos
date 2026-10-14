@@ -109,12 +109,12 @@ const CUI = (name: string): string => `ui/crystal/ai/${name}/spriteFrame`;
 /** 场景底图(夜间教堂,左侧蓝光舞台),按 cover 铺满舞台。 */
 const SCENE_BG = { path: CUI('crystal_scene_bg'), w: 1672, h: 941 };
 /** 水晶立绘 v2(蓝水晶 + 黑色尖刺台座);v2 未入库时退回 v1(515×798 熔岩基座版)。 */
-const CRYSTAL_ART = { path: CUI('crystal_art_v2'), aspect: 1536 / 1024, fallback: { path: CUI('crystal_art'), aspect: 798 / 515 } };
-const TITLE_EMBLEM = { path: CUI('title_emblem_v2'), aspect: 1 };
+const CRYSTAL_ART = { path: CUI('crystal_art_v2'), aspect: 1024 / 585, fallback: { path: CUI('crystal_art'), aspect: 798 / 515 } };
+const TITLE_EMBLEM = { path: CUI('title_emblem_v2'), aspect: 512 / 512 };
 /** 等级牌 550×177、页签 选中 440×122 / 未选中 512×122、升级按钮 573×180、法术页升级按钮(带晶体图标)527×154。 */
-const LEVEL_PLATE = { path: CUI('level_plate_v2'), aspect: 512 / 1536, fallback: { path: CUI('level_plate'), aspect: 177 / 550 } };
-const TAB_ON = { path: CUI('tab_on_v2'), aspect: 384 / 1536, fallback: { path: CUI('tab_on'), aspect: 122 / 440 } };
-const TAB_OFF = { path: CUI('tab_off_v2'), aspect: 384 / 1536, fallback: { path: CUI('tab_off'), aspect: 122 / 512 } };
+const LEVEL_PLATE = { path: CUI('level_plate_v2'), aspect: 193 / 1024, fallback: { path: CUI('level_plate'), aspect: 177 / 550 } };
+const TAB_ON = { path: CUI('tab_on_v2'), aspect: 195 / 1024, fallback: { path: CUI('tab_on'), aspect: 122 / 440 } };
+const TAB_OFF = { path: CUI('tab_off_v2'), aspect: 159 / 1024, fallback: { path: CUI('tab_off'), aspect: 122 / 512 } };
 interface ArtSpec { path: string; aspect: number; fallback?: { path: string; aspect: number } }
 const BTN_LEVEL_UP = { path: CUI('btn_level_up'), aspect: 180 / 573 };
 const BTN_COST_UP = { path: CUI('btn_cost_up'), aspect: 154 / 527 };
@@ -364,10 +364,22 @@ export class LobbyGuardCrystalDialogRenderer {
     const level = this.host.addChildLabel(plate, 'Text', `Lv.${info.level}`, 0, 1 * scale, FONT.title * 0.9 * scale, CREAM_TEXT, new Size(plateW * 0.7, FONT.title * scale));
     level.isBold = true;
     this.outline(level, scale, rgba(10, 20, 40, 255));
-    // 进度条 + 「n / 30 级」
+    // 进度条 + 「n / 30 级」+ 解锁提示 底下垫一层柔和暗底:场景底图这块是亮蓝光地板,直接写字看不清
     const barW = 0.21 * W;
     const barH = 0.012 * H;
     const barY = T - 0.785 * H;
+    const shadeW = w * 0.98;
+    const shadeTop = barY + 0.03 * H;
+    const shadeBottom = T - 0.95 * H;
+    const shade = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLowerShade', x, (shadeTop + shadeBottom) / 2, shadeW, shadeTop - shadeBottom);
+    const sg = shade.addComponent(Graphics);
+    for (let i = 4; i >= 1; i--) {
+      // 四层叠加的圆角矩形,外圈透明度递减,近似羽化
+      const k = i / 4;
+      sg.fillColor = rgba(4, 4, 8, Math.round(70 * (1 - k) + 40));
+      sg.roundRect(-shadeW * k / 2, -(shadeTop - shadeBottom) * k / 2, shadeW * k, (shadeTop - shadeBottom) * k, 0.04 * H);
+      sg.fill();
+    }
     const bar = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBar', x, barY, barW, barH);
     const g = bar.addComponent(Graphics);
     g.fillColor = rgba(24, 32, 52, 240);
@@ -382,6 +394,7 @@ export class LobbyGuardCrystalDialogRenderer {
     g.stroke();
     const cap = this.host.addChildLabel(panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, T - 0.822 * H, FONT.body * scale, CREAM_TEXT, new Size(barW + 40 * scale, this.lh(24, scale)));
     cap.overflow = Label.Overflow.SHRINK;
+    this.outline(cap, scale, rgba(6, 6, 10, 255));
     // 下一级解锁提示(最多两行),两侧花边(参考图)
     const hints: string[] = [];
     const nextUnlock = info.next ? GUARD_SPELL_IDS.find((id) => (info.next?.unlockedSpells ?? []).indexOf(id) >= 0 && (info.current.unlockedSpells ?? []).indexOf(id) < 0) : undefined;
@@ -397,6 +410,7 @@ export class LobbyGuardCrystalDialogRenderer {
     hints.slice(0, 2).forEach((text, index) => {
       const hint = this.host.addChildLabel(panel, `LobbyGuardCrystalNextUnlock${index}`, text, x, cursor, FONT.body * scale, GOLD_TEXT, new Size(w * 0.8, this.lh(24, scale)));
       hint.overflow = Label.Overflow.SHRINK;
+      this.outline(hint, scale, rgba(6, 6, 10, 255));
       if (index === 0) {
         const half = Math.min(0.11 * W, text.length * FONT.body * scale * 0.52);
         const ornW = 0.034 * W;
