@@ -32,7 +32,6 @@ import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 
 /**
  * 守卫水晶养成弹窗(docs/38):左侧水晶立绘坐在发光台座上 + 等级徽章 + 进度条 + 下一级解锁提示;右侧两个页签——
@@ -91,7 +90,6 @@ export interface LobbyGuardCrystalDialogHost {
   formatInteger(value: number | null | undefined): string;
 }
 
-const PANEL_FRAME = { path: 'ui/hero/ai/refine_panel_bg/spriteFrame', aspect: 1086 / 1448 };
 const TITLE_DIVIDER_L = { path: 'ui/common/ai/title_divider_left/spriteFrame', aspect: 76 / 390 };
 const TITLE_DIVIDER_R = { path: 'ui/common/ai/title_divider_right/spriteFrame', aspect: 73 / 392 };
 const CLOSE_BUTTON = { path: 'ui/common/ai/button_close/spriteFrame', aspect: 161 / 155 };
@@ -99,22 +97,30 @@ const LOCK_ICON = { path: 'ui/common/ai/ic_lock/spriteFrame', aspect: 192 / 135 
 const GOLD_ICON = 'ui/common/ai/ic_gold_medium/spriteFrame';
 /** 守卫晶核图标(背包同一张,LobbyBagPanelRenderer.BAG_AI_ITEM_ICON_ASSETS.GUARD_CORE)。 */
 const CORE_ICON = 'ui/bag/ai/icon_guard_core/spriteFrame';
-const FONT = { title: 34, body: 18, name: 20, amount: 28, small: 16, tiny: 15 };
+/**
+ * 字号层级(2026-10-14 用户「字体看着很乱」统一):title 页题 42 / section 小节与页签 22 / value 数值 22 / body 正文与行名 18 /
+ * small 次要 16 / tiny 注释 14 / button 按钮 24;全部乘 scale。颜色只用五种:金(标题 / 数值 / 强调)、米白(正文)、绿(提升)、灰(次要)、红(不足)。
+ */
+const FONT = { title: 42, section: 22, value: 22, body: 18, name: 20, small: 16, tiny: 14, button: 24 };
 
 // ── 2026-09-30 用户新素材 ui/crystal/ai(原图备份 asset-src/ai-raw/crystal-ui-20260930,中文名已改英文)──
 const CUI = (name: string): string => `ui/crystal/ai/${name}/spriteFrame`;
-/** 水晶立绘(含熔岩基座),515×798。 */
-const CRYSTAL_ART = { path: CUI('crystal_art'), aspect: 798 / 515 };
+// ── 2026-10-14 v4(用户新参考图,Codex 按参考图重出):整页场景底图 / 水晶 + 黑色哥特台座 / 等级牌 / 页签 / 题头八角星 ──
+/** 场景底图(夜间教堂,左侧蓝光舞台),按 cover 铺满舞台。 */
+const SCENE_BG = { path: CUI('crystal_scene_bg'), w: 1672, h: 941 };
+/** 水晶立绘 v2(蓝水晶 + 黑色尖刺台座);v2 未入库时退回 v1(515×798 熔岩基座版)。 */
+const CRYSTAL_ART = { path: CUI('crystal_art_v2'), aspect: 1536 / 1024, fallback: { path: CUI('crystal_art'), aspect: 798 / 515 } };
+const TITLE_EMBLEM = { path: CUI('title_emblem_v2'), aspect: 1 };
 /** 等级牌 550×177、页签 选中 440×122 / 未选中 512×122、升级按钮 573×180、法术页升级按钮(带晶体图标)527×154。 */
-const LEVEL_PLATE = { path: CUI('level_plate'), aspect: 177 / 550 };
-const TAB_ON = { path: CUI('tab_on'), aspect: 122 / 440 };
-const TAB_OFF = { path: CUI('tab_off'), aspect: 122 / 512 };
+const LEVEL_PLATE = { path: CUI('level_plate_v2'), aspect: 512 / 1536, fallback: { path: CUI('level_plate'), aspect: 177 / 550 } };
+const TAB_ON = { path: CUI('tab_on_v2'), aspect: 384 / 1536, fallback: { path: CUI('tab_on'), aspect: 122 / 440 } };
+const TAB_OFF = { path: CUI('tab_off_v2'), aspect: 384 / 1536, fallback: { path: CUI('tab_off'), aspect: 122 / 512 } };
+interface ArtSpec { path: string; aspect: number; fallback?: { path: string; aspect: number } }
 const BTN_LEVEL_UP = { path: CUI('btn_level_up'), aspect: 180 / 573 };
 const BTN_COST_UP = { path: CUI('btn_cost_up'), aspect: 154 / 527 };
 /** 九宫格素材:源尺寸 + 边距(源像素)。显示时按目标高度等比缩放、只横向/纵向拉中段,角饰不变形。 */
 const INNER_PANEL = { path: CUI('inner_panel_bg'), w: 1948, h: 1259, inset: { l: 110, r: 110, t: 110, b: 110 } };
 const STAT_ROW = { path: CUI('stat_row_bg'), w: 1066, h: 84, inset: { l: 60, r: 60, t: 0, b: 0 } };
-const PREVIEW_BOX = { path: CUI('preview_box'), w: 716, h: 156, inset: { l: 150, r: 40, t: 0, b: 0 } };
 const SECTION_EMBLEM = { path: CUI('section_emblem'), aspect: 121 / 107 };
 /** 法术图标(圆形带框的新素材);狂战号角暂无新图,沿用旧图 + 程序画框。 */
 const SPELL_ICON: Record<GuardSpellId, string> = {
@@ -148,10 +154,11 @@ const SPELL_DETAIL: Record<GuardSpellId, string> = {
  * 内部基准 scale 按可用高度定(电脑版 840 高面板里内容区约 582),左栏立绘区加宽、右栏随屏宽变宽,
  * 法术列表改 3 列 × 2 行(宽而矮的内容区放 2 列 × 3 行会把卡片压扁),法术详情框加高放下两行描述。
  */
-const PHONE_BODY_REF_H = 582;
-const GOLD_TEXT = rgba(255, 226, 150);
-const GREEN_TEXT = rgba(150, 240, 160);
-const DIM_TEXT = rgba(190, 172, 140);
+const GOLD_TEXT = rgba(236, 202, 122);
+const CREAM_TEXT = rgba(240, 230, 206);
+const GREEN_TEXT = rgba(140, 236, 150);
+const DIM_TEXT = rgba(176, 160, 136);
+const RED_TEXT = rgba(255, 122, 100);
 
 export class LobbyGuardCrystalDialogRenderer {
   /** 本次渲染是否手机全屏版(render 开头确定)。 */
@@ -172,136 +179,154 @@ export class LobbyGuardCrystalDialogRenderer {
     if (!state) {
       return;
     }
-    const uiScale = Math.max(0.62, Math.min(1, layout.uiScale));
+    // 2026-10-14 用户参考图 v4:弹窗改成整页——教堂场景底图铺满舞台、左上题头 + 右上货币栏 + 关闭,
+    // 左 1/3 水晶舞台,右 2/3 页签 + 内面板;电脑与手机同一套比例(按舞台宽高取位,字号乘 scale)。
+    const phone = isPhoneDesign();
+    this.phone = phone;
+    const W = layout.stageWidth;
+    const H = layout.stageHeight;
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const scale = Math.max(0.8, Math.min(1.25, H / 820));
     const overlay = this.host.createUiNode('LobbyGuardCrystalOverlay');
     overlay.setPosition(new Vec3(centerX, centerY, 0));
     overlay.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     overlay.addComponent(BlockInputEvents);
     const dim = overlay.addComponent(Graphics);
-    dim.fillColor = rgba(0, 0, 0, 176);
+    dim.fillColor = rgba(4, 3, 6, 255);
     dim.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     dim.fill();
-    overlay.addComponent(Button);
-    overlay.on(Button.EventType.CLICK, () => this.host.closeGuardCrystalDialog(), this);
-
-    // 2026-09-30 用户对照参考图:弹窗要占满屏幕主体(参考图约 80% 宽)。外框 refine_panel_bg 顶部有冠饰只能等比,
-    // 所以按"高度顶到舞台 94%"定尺寸;内部所有尺寸统一乘 scale = panelW / 1120(旧版基准宽),字号 / 图标 / 卡片一起放大。
-    // 手机:全屏(铺满舞台留安全边距),程序画框;scale 按内容区可用高度定。
-    const phone = isPhoneDesign();
-    this.phone = phone;
-    let panelW: number;
-    let panelH: number;
-    let scale: number;
-    if (phone) {
-      const size = resolvePhoneDialogSize(layout);
-      panelW = size.width;
-      panelH = size.height;
-      scale = Math.max(0.8, Math.min(1.1, (panelH - 158) / PHONE_BODY_REF_H));
-    } else {
-      panelW = Math.min(1400 * uiScale, layout.stageWidth - 32 * uiScale);
-      panelH = panelW * PANEL_FRAME.aspect;
-      if (panelH > layout.stageHeight * 0.94) {
-        panelH = layout.stageHeight * 0.94;
-        panelW = panelH / PANEL_FRAME.aspect;
-      }
-      scale = panelW / 1120;
-    }
-    const panel = this.host.addChildPlainNode(overlay, 'LobbyGuardCrystalPanel', 0, 0, panelW, panelH);
+    const panel = this.host.addChildPlainNode(overlay, 'LobbyGuardCrystalPanel', 0, 0, W, H);
     panel.addComponent(BlockInputEvents);
-    if (phone) {
-      drawPhoneDialogFrame(this.host, panel, panelW, panelH, 98);
-    } else {
-      this.host.addSprite('LobbyGuardCrystalFrame', PANEL_FRAME.path, 0, 0, panelW, panelH, panel);
+    const L = -W / 2;
+    const T = H / 2;
+
+    // 场景底图(参考图:夜间哥特教堂 + 左侧蓝光舞台),cover 铺满;没图时深色兜底
+    const cover = Math.max(W / SCENE_BG.w, H / SCENE_BG.h);
+    const bg = this.host.addSprite('LobbyGuardCrystalSceneBg', SCENE_BG.path, 0, 0, SCENE_BG.w * cover, SCENE_BG.h * cover, panel);
+    if (!bg) {
+      const g = panel.addComponent(Graphics);
+      g.fillColor = rgba(10, 8, 12, 255);
+      g.rect(-W / 2, -H / 2, W, H);
+      g.fill();
     }
 
-    const closeSize = phone ? 52 : 44 * scale;
-    const closeX = phone ? panelW / 2 - 46 : panelW / 2 - 64 * scale;
-    const closeY = phone ? panelH / 2 - 50 : panelH / 2 - 62 * scale;
+    // 题头:八角星徽记 + 「守卫水晶」+ 英文题词(参考图左上)
+    const emblemH = 0.075 * H;
+    const emblemX = L + 0.05 * W;
+    const emblemY = T - 0.072 * H;
+    const emblem = this.host.addSprite('LobbyGuardCrystalTitleEmblem', TITLE_EMBLEM.path, emblemX, emblemY, emblemH / TITLE_EMBLEM.aspect, emblemH, panel)
+      ?? this.host.addSprite('LobbyGuardCrystalTitleEmblem', SECTION_EMBLEM.path, emblemX, emblemY, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
+    void emblem;
+    const titleX = L + 0.088 * W;
+    const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', '守卫水晶', titleX, T - 0.06 * H, FONT.title * scale, GOLD_TEXT, new Size(0.24 * W, FONT.title * scale + 8), HorizontalTextAlignment.LEFT);
+    title.isBold = true;
+    this.outline(title, scale, rgba(40, 24, 8, 255));
+    const tagline = this.host.addChildLabel(panel, 'LobbyGuardCrystalTagline', 'THE CRYSTAL PROTECTS  OUR LAST LIGHT', titleX + 2 * scale, T - 0.108 * H, FONT.tiny * scale, DIM_TEXT, new Size(0.24 * W, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+    tagline.overflow = Label.Overflow.SHRINK;
+
+    // 右上:货币栏(金币 / 守卫晶核)+ 关闭
+    const closeSize = 0.052 * H;
+    const closeX = L + 0.972 * W;
+    const closeY = T - 0.052 * H;
     const close = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalClose', closeX, closeY, closeSize, closeSize * CLOSE_BUTTON.aspect);
     this.host.addSprite('LobbyGuardCrystalCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => this.host.closeGuardCrystalDialog(), this);
     this.host.applyImageButtonFeedback(close, 1.08, 0.94);
-
-    const titleY = phone ? panelH / 2 - 38 : panelH / 2 - 106 * scale;
-    const titleSize = phone ? FONT.title : 40 * scale;
-    const titleText = '守卫水晶';
-    // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户),副标题排在牌右侧
-    let phoneTitleRight = 0;
-    if (phone) {
-      phoneTitleRight = addPhoneDialogTitle(this.host, panel, panelW, panelH, titleText, 49);
-    } else {
-      const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', titleText, 0, titleY, titleSize, GOLD_TEXT, new Size(panelW * 0.6, titleSize + 10 * scale));
-      title.isBold = true;
-      this.outline(title, scale, rgba(60, 30, 10, 255));
-      const dividerW = 150 * scale;
-      const dividerX = (titleText.length * titleSize) / 2 + 22 * scale + dividerW / 2;
-      this.host.addSprite('LobbyGuardCrystalDividerL', TITLE_DIVIDER_L.path, -dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_L.aspect, panel);
-      this.host.addSprite('LobbyGuardCrystalDividerR', TITLE_DIVIDER_R.path, dividerX, titleY, dividerW, dividerW * TITLE_DIVIDER_R.aspect, panel);
-    }
-    const subtitleText = state.tab === 'spells'
-      ? '拖动法术到装备格即可出战;花金币与守卫晶核升级法术,范围更大、效果更多'
-      : '花金币与守卫晶核升级水晶:守卫战里水晶更坚固、开局更富、法术更强';
-    const subtitle = this.host.addChildLabel(panel, 'LobbyGuardCrystalSubtitle', subtitleText, 0, titleY - (phone ? 38 : 44 * scale), FONT.body * scale, rgba(212, 190, 150, 235), new Size(panelW * (phone ? 0.7 : 0.8), 24 * scale));
-    if (phone) {
-      const subLeft = phoneTitleRight + 18;
-      const subW = panelW / 2 - 96 - subLeft;
-      subtitle.node.setPosition(subLeft + subW / 2, panelH / 2 - 49, 0);
-      subtitle.node.getComponent(UITransform)?.setContentSize(subW, 30);
-      subtitle.horizontalAlign = HorizontalTextAlignment.LEFT;
-    }
-    subtitle.overflow = Label.Overflow.SHRINK;
-
-    const bodyTop = phone ? panelH / 2 - 110 : titleY - 68 * scale;
-    const bodyBottom = phone ? -panelH / 2 + 48 : -panelH / 2 + 84 * scale;
     const info = state.info;
+    if (info) {
+      this.renderCurrencyBar(panel, info, closeX - closeSize / 2 - 0.018 * W, closeY, scale, W, H);
+    }
+
+    const bodyTop = T - 0.165 * H;
+    const bodyBottom = -T + 0.05 * H;
     if (!info || this.host.isGuardCrystalAssetsLoading()) {
       // 2026-10-11 统一读取态(UiKit.mountKitLoading);不可用仍用一行提示
       if (state.loading || info) {
-        mountKitLoading(this.host, panel, 0, (bodyTop + bodyBottom) / 2, scale, '水晶读取中…');
+        mountKitLoading(this.host, panel, 0, 0, scale, '水晶读取中…');
       } else {
-        this.host.addChildLabel(panel, 'LobbyGuardCrystalLoading', '守卫水晶暂不可用', 0, (bodyTop + bodyBottom) / 2, FONT.body * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 26 * scale));
+        this.host.addChildLabel(panel, 'LobbyGuardCrystalLoading', '守卫水晶暂不可用', 0, 0, FONT.body * scale, CREAM_TEXT, new Size(W * 0.6, 26 * scale));
       }
-      this.renderNotice(panel, state, panelW, panelH, scale);
+      this.renderNotice(panel, state, W, H, scale);
       return;
     }
-    // 左 33% 水晶展示区,右 60% 页签内容(参考图 2026-09-30:左立绘、右页签 + 内面板 + 底部说明框与按钮)。
-    // 外框 refine_panel_bg 实测:外侧透明 + 边框约占宽度 5.5%(源图 80/1448 px),内容两侧各留 7.5%(84 * scale),
-    // 否则右侧内面板 / 按钮会盖住外框边线(2026-09-30 用户截图指出)。
-    const sideMargin = phone ? PHONE_DIALOG_CONTENT_PAD : 84 * scale;
-    const leftW = (phone ? 340 : 300) * scale;
-    const leftX = -panelW / 2 + sideMargin + leftW / 2;
-    const rightW = panelW - sideMargin * 2 - leftW - 12 * scale;
-    const rightX = panelW / 2 - sideMargin - rightW / 2;
-    this.renderCrystal(panel, info, state, leftX, leftW, bodyTop, bodyBottom, scale);
-    const contentTop = this.renderTabs(panel, state, info, rightX, rightW, bodyTop, scale);
-    const footerH = (phone ? 100 : 86) * scale;
-    const footerY = bodyBottom + footerH / 2;
-    const innerTop = contentTop;
-    const innerBottom = bodyBottom + footerH + 12 * scale;
+    // 左 1/3 水晶舞台(参考图水晶中心在 19% 宽处),右 62% 内容列(35.5% → 97.5%)
+    const leftX = L + 0.19 * W;
+    const leftW = 0.3 * W;
+    const rightLeft = L + 0.355 * W;
+    const rightRight = L + 0.975 * W;
+    const rightW = rightRight - rightLeft;
+    const rightX = (rightLeft + rightRight) / 2;
+    this.renderCrystal(panel, info, state, leftX, leftW, scale, W, H);
+    this.renderTabs(panel, state, info, rightLeft, scale, W, H);
     if (state.tab === 'spells') {
-      // 2026-10-14 参考图重排:法术页整块内面板,左列装备格 + 列表,右列详情卡(含升级按钮),不再有底部横条
-      this.renderSpellsPage(panel, state, info, rightX, rightW, innerTop, bodyBottom, scale);
+      this.renderSpellsPage(panel, state, info, rightX, rightW, bodyTop, bodyBottom, scale);
     } else {
-      this.renderStats(panel, info, rightX, rightW, innerTop, innerBottom, scale);
+      const footerH = 0.105 * H;
+      const footerY = -T + 0.08 * H + footerH / 2;
+      const innerBottom = footerY + footerH / 2 + 0.03 * H;
+      this.renderStats(panel, info, rightX, rightW, bodyTop, innerBottom, scale);
       this.renderUpgradeFooter(panel, info, state, rightX, rightW, footerY, footerH, scale);
     }
-    this.renderNotice(panel, state, panelW, panelH, scale);
+    this.renderNotice(panel, state, W, H, scale);
     if (state.busy) {
-      const cover = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalBusy', 0, 0, panelW, panelH);
-      cover.addComponent(BlockInputEvents);
+      const coverNode = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalBusy', 0, 0, W, H);
+      coverNode.addComponent(BlockInputEvents);
     }
   }
 
-  /** 左侧:星云背景光 + 漩涡法阵 + 新水晶立绘 + 等级牌 + 进度条 + 下一级解锁提示 + 题词。 */
-  private renderCrystal(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, top: number, bottom: number, scale: number): void {
-    const areaH = top - bottom;
-    const artH = Math.min(areaH * (this.phone ? 0.64 : 0.72), 420 * scale);
-    const artW = artH / CRYSTAL_ART.aspect;
-    const artY = top - artH / 2 - 4 * scale;
-    // 台座法阵 + 背景光效(新批次 UI 骨骼特效);显式压到立绘之下
+  /** 新素材缺时退回旧素材:按高度等比,宽随所用素材的宽高比。返回所用素材的宽高比(没图返回 null)。 */
+  private spriteByHeight(parent: Node, name: string, spec: ArtSpec, x: number, y: number, h: number): { sprite: Sprite; aspect: number } | null {
+    const primary = this.host.addSprite(name, spec.path, x, y, h / spec.aspect, h, parent);
+    if (primary) {
+      return { sprite: primary, aspect: spec.aspect };
+    }
+    if (spec.fallback) {
+      const fallback = this.host.addSprite(name, spec.fallback.path, x, y, h / spec.fallback.aspect, h, parent);
+      if (fallback) {
+        return { sprite: fallback, aspect: spec.fallback.aspect };
+      }
+    }
+    return null;
+  }
+
+  /** 右上货币栏(参考图 2):深色胶囊 + 图标 + 数额,右对齐排到关闭按钮左侧。 */
+  private renderCurrencyBar(panel: Node, info: GuardCrystalInfoVO, rightEdge: number, y: number, scale: number, W: number, H: number): void {
+    const capH = 0.046 * H;
+    const capW = Math.max(0.1 * W, 120 * scale);
+    const gap = 0.012 * W;
+    const items: Array<{ key: string; icon: string; value: number }> = [
+      { key: 'Core', icon: CORE_ICON, value: Number(info.coreBalance ?? 0) },
+      { key: 'Gold', icon: GOLD_ICON, value: Number(info.goldBalance ?? 0) },
+    ];
+    let cursor = rightEdge;
+    items.forEach((item) => {
+      const cx = cursor - capW / 2;
+      cursor -= capW + gap;
+      const cap = this.host.addChildPlainNode(panel, `LobbyGuardCrystalCurrency${item.key}`, cx, y, capW, capH);
+      const g = cap.addComponent(Graphics);
+      g.fillColor = rgba(10, 8, 8, 225);
+      g.roundRect(-capW / 2, -capH / 2, capW, capH, capH / 2);
+      g.fill();
+      g.strokeColor = rgba(190, 150, 80, 220);
+      g.lineWidth = 1.5;
+      g.roundRect(-capW / 2, -capH / 2, capW, capH, capH / 2);
+      g.stroke();
+      const iconSize = capH * 0.8;
+      this.host.addSprite('Icon', item.icon, -capW / 2 + iconSize / 2 + 4 * scale, 0, iconSize, iconSize, cap);
+      const text = this.host.addChildLabel(cap, 'Text', this.host.formatInteger(item.value), -capW / 2 + iconSize + 10 * scale, 0, FONT.body * scale, CREAM_TEXT, new Size(capW - iconSize - 16 * scale, capH), HorizontalTextAlignment.LEFT);
+      text.overflow = Label.Overflow.SHRINK;
+      text.isBold = true;
+    });
+  }
+
+  /** 左侧水晶舞台(参考图):背景光 + 法阵 + 立绘 + 等级牌 + 进度条 + 「n / 30 级」+ 下一级解锁提示(两侧花边)。 */
+  private renderCrystal(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, scale: number, W: number, H: number): void {
+    const T = H / 2;
+    const artTop = T - 0.17 * H;
+    const artH = 0.53 * H;
+    const artY = artTop - artH / 2;
     const pedestalHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPedestal', x, artY - artH * 0.4, 10, 10);
     const pedestalMounted = this.mountSpineFx(pedestalHolder, LOBBY_CRYSTAL_FX.pedestal, 0, 0, artH * LOBBY_CRYSTAL_FX.pedestal.size, true, 0);
     if (!pedestalMounted) {
@@ -312,9 +337,7 @@ export class LobbyGuardCrystalDialogRenderer {
     }
     const auraHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalGlow', x, artY + artH * 0.1, 10, 10);
     this.mountSpineFx(auraHolder, LOBBY_CRYSTAL_FX.aura, 0, 0, artH * LOBBY_CRYSTAL_FX.aura.size, true, 0);
-    auraHolder.setSiblingIndex(1);
-    pedestalHolder.setSiblingIndex(2);
-    const art = this.host.addSprite('LobbyGuardCrystalArt', CRYSTAL_ART.path, x, artY, artW, artH, panel);
+    const art = this.spriteByHeight(panel, 'LobbyGuardCrystalArt', CRYSTAL_ART, x, artY, artH)?.sprite ?? null;
     if (art) {
       tween(art.node).repeatForever(tween().to(1.6, { position: new Vec3(x, artY + 5 * scale, 0) }, { easing: 'sineInOut' }).to(1.6, { position: new Vec3(x, artY, 0) }, { easing: 'sineInOut' })).start();
       if (state.flashLevel !== null) {
@@ -332,19 +355,19 @@ export class LobbyGuardCrystalDialogRenderer {
         }
       }
     }
-    // 等级牌(新素材,等比):压在立绘底座下沿
-    const plateW = Math.min(w * 0.82, 230 * scale);
-    const plateH = plateW * LEVEL_PLATE.aspect;
-    const plateY = artY - artH / 2 + plateH * 0.12;
-    const plate = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBadge', x, plateY, plateW, plateH);
-    this.host.addSprite('Art', LEVEL_PLATE.path, 0, 0, plateW, plateH, plate);
-    const level = this.host.addChildLabel(plate, 'Text', `Lv.${info.level}`, 0, 1 * scale, 34 * scale, rgba(225, 238, 255), new Size(plateW * 0.7, 40 * scale));
+    // 等级牌:压在台座下沿(参考图 Lv.5 牌在 70% 高处)
+    const plateH = 0.062 * H;
+    const plateY = T - 0.705 * H;
+    const plate = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBadge', x, plateY, plateH / LEVEL_PLATE.aspect, plateH);
+    const plateArt = this.spriteByHeight(plate, 'Art', LEVEL_PLATE, 0, 0, plateH);
+    const plateW = plateH / (plateArt?.aspect ?? LEVEL_PLATE.aspect);
+    const level = this.host.addChildLabel(plate, 'Text', `Lv.${info.level}`, 0, 1 * scale, FONT.title * 0.9 * scale, CREAM_TEXT, new Size(plateW * 0.7, FONT.title * scale));
     level.isBold = true;
     this.outline(level, scale, rgba(10, 20, 40, 255));
-    // 进度条
-    const barW = Math.min(250 * scale, w - 24 * scale);
-    const barH = 12 * scale;
-    const barY = plateY - plateH / 2 - 20 * scale;
+    // 进度条 + 「n / 30 级」
+    const barW = 0.21 * W;
+    const barH = 0.012 * H;
+    const barY = T - 0.785 * H;
     const bar = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBar', x, barY, barW, barH);
     const g = bar.addComponent(Graphics);
     g.fillColor = rgba(24, 32, 52, 240);
@@ -357,8 +380,9 @@ export class LobbyGuardCrystalDialogRenderer {
     g.lineWidth = 1.5;
     g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
     g.stroke();
-    const cap = this.host.addChildLabel(panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, barY - 22 * scale, FONT.small * scale, rgba(215, 200, 170), new Size(barW + 40 * scale, this.lh(22, scale)));
+    const cap = this.host.addChildLabel(panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, T - 0.822 * H, FONT.body * scale, CREAM_TEXT, new Size(barW + 40 * scale, this.lh(24, scale)));
     cap.overflow = Label.Overflow.SHRINK;
+    // 下一级解锁提示(最多两行),两侧花边(参考图)
     const hints: string[] = [];
     const nextUnlock = info.next ? GUARD_SPELL_IDS.find((id) => (info.next?.unlockedSpells ?? []).indexOf(id) >= 0 && (info.current.unlockedSpells ?? []).indexOf(id) < 0) : undefined;
     if (nextUnlock) {
@@ -369,46 +393,44 @@ export class LobbyGuardCrystalDialogRenderer {
     } else if (info.nextSlotLevel) {
       hints.push(`Lv.${info.nextSlotLevel} 解锁第 ${this.slotsOf(info) + 1} 个法术格`);
     }
-    let cursor = barY - 48 * scale;
+    let cursor = T - 0.872 * H;
     hints.slice(0, 2).forEach((text, index) => {
-      const hint = this.host.addChildLabel(panel, `LobbyGuardCrystalNextUnlock${index}`, text, x, cursor, FONT.body * scale, GREEN_TEXT, new Size(w, 24 * scale));
+      const hint = this.host.addChildLabel(panel, `LobbyGuardCrystalNextUnlock${index}`, text, x, cursor, FONT.body * scale, GOLD_TEXT, new Size(w * 0.8, this.lh(24, scale)));
       hint.overflow = Label.Overflow.SHRINK;
-      cursor -= 26 * scale;
+      if (index === 0) {
+        const half = Math.min(0.11 * W, text.length * FONT.body * scale * 0.52);
+        const ornW = 0.034 * W;
+        this.host.addSprite('LobbyGuardCrystalHintOrnL', TITLE_DIVIDER_L.path, x - half - ornW / 2, cursor, ornW, ornW * TITLE_DIVIDER_L.aspect, panel);
+        this.host.addSprite('LobbyGuardCrystalHintOrnR', TITLE_DIVIDER_R.path, x + half + ornW / 2, cursor, ornW, ornW * TITLE_DIVIDER_R.aspect, panel);
+      }
+      cursor -= this.lh(26, scale);
     });
-    // 题词:「水晶不灭,光明不息。」两侧细金线
-    const quoteY = Math.max(bottom + 14 * scale, cursor - 10 * scale);
-    const quote = this.host.addChildLabel(panel, 'LobbyGuardCrystalQuote', '「水晶不灭,光明不息。」', x, quoteY, FONT.tiny * scale, rgba(180, 160, 124), new Size(w, this.lh(22, scale)));
-    quote.overflow = Label.Overflow.SHRINK;
-    // 两侧坠饰用现成的标题花边素材(与「守卫水晶」标题两侧同一套,2026-09-30 用户指定)
-    const half = 84 * scale;
-    const ornW = 64 * scale;
-    this.host.addSprite('LobbyGuardCrystalQuoteOrnL', TITLE_DIVIDER_L.path, x - half - ornW / 2, quoteY, ornW, ornW * TITLE_DIVIDER_L.aspect, panel);
-    this.host.addSprite('LobbyGuardCrystalQuoteOrnR', TITLE_DIVIDER_R.path, x + half + ornW / 2, quoteY, ornW, ornW * TITLE_DIVIDER_R.aspect, panel);
   }
 
-  /** 右侧页签(新素材 选中 / 未选中,等比)。返回页签下方内容区顶边。 */
-  private renderTabs(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, x: number, w: number, top: number, scale: number): number {
-    const tabH = 50 * scale;
-    const y = top - tabH / 2;
-    const gap = 14 * scale;
+  /** 右侧页签(参考图:选中 = 亮金边深底,未选中 = 暗边),与内面板左边对齐。 */
+  private renderTabs(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, left: number, scale: number, W: number, H: number): void {
+    const tabH = 0.064 * H;
+    const y = H / 2 - 0.112 * H;
+    const gap = 0.012 * W;
     const tabs: Array<{ key: LobbyGuardCrystalDialogState['tab']; text: string }> = [
       { key: 'upgrade', text: '水晶升级' },
       { key: 'spells', text: `法术装备 ${this.loadoutOf(info).length}/${this.slotsOf(info)}` },
     ];
-    const widths = tabs.map((tab) => tabH / (state.tab === tab.key ? TAB_ON.aspect : TAB_OFF.aspect));
-    // 页签与下方内面板左边对齐(略缩进 24),参考图同款(2026-09-30 用户:"选项卡要向左偏移,与下面的属性框对齐")
-    let cursor = x - w / 2 + 24 * scale;
-    tabs.forEach((tab, index) => {
+    let cursor = left + 0.01 * W;
+    tabs.forEach((tab) => {
       const active = state.tab === tab.key;
-      const tabW = widths[index];
+      const spec = active ? TAB_ON : TAB_OFF;
+      const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, 0, y, 10, tabH);
+      const art = this.spriteByHeight(node, 'Art', spec, 0, 0, tabH);
+      const tabW = tabH / (art?.aspect ?? spec.aspect);
+      node.getComponent(UITransform)?.setContentSize(tabW, tabH);
       const tx = cursor + tabW / 2;
+      node.setPosition(tx, y, 0);
       cursor += tabW + gap;
-      const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, tx, y, tabW, tabH);
-      this.host.addSprite('Art', active ? TAB_ON.path : TAB_OFF.path, 0, 0, tabW, tabH, node);
-      const label = this.host.addChildLabel(node, 'Text', tab.text, 0, 0, 22 * scale, active ? rgba(255, 244, 214) : rgba(214, 198, 166), new Size(tabW - 24 * scale, 28 * scale));
-      label.isBold = active;
+      const label = this.host.addChildLabel(node, 'Text', tab.text, 0, 0, FONT.section * scale, active ? GOLD_TEXT : DIM_TEXT, new Size(tabW - 24 * scale, 30 * scale));
+      label.isBold = true;
       label.overflow = Label.Overflow.SHRINK;
-      this.outline(label, scale, active ? rgba(80, 48, 10, 255) : rgba(10, 8, 6, 255));
+      this.outline(label, scale, rgba(10, 8, 6, 255));
       if (!active) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => {
@@ -422,7 +444,6 @@ export class LobbyGuardCrystalDialogRenderer {
         this.host.applyImageButtonFeedback(node, 1.04, 0.96);
       }
     });
-    return y - tabH / 2 - 10 * scale;
   }
 
   /**
@@ -481,7 +502,7 @@ export class LobbyGuardCrystalDialogRenderer {
     const emblemH = 50 * scale;
     this.host.addSprite('LobbyGuardCrystalEmblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, headY, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
     const textX = left + emblemH / SECTION_EMBLEM.aspect + 12 * scale;
-    const head = this.host.addChildLabel(panel, 'LobbyGuardCrystalStatsTitle', '水晶属性提升', textX, headY + 10 * scale, 22 * scale, GOLD_TEXT, new Size(220 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+    const head = this.host.addChildLabel(panel, 'LobbyGuardCrystalStatsTitle', '水晶属性提升', textX, headY + 10 * scale, FONT.section * scale, GOLD_TEXT, new Size(220 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
     head.isBold = true;
     const sub = this.host.addChildLabel(panel, 'LobbyGuardCrystalStatsSub', '每一次升级,都让水晶在黑暗中更加璀璨', textX, headY - 14 * scale, FONT.tiny * scale, DIM_TEXT, new Size(w * 0.5, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
     sub.overflow = Label.Overflow.SHRINK;
@@ -492,11 +513,11 @@ export class LobbyGuardCrystalDialogRenderer {
     // 手机端增量字被抬到 20 号,列再往里收,别压到属性条右端花边
     const colDelta = right - (this.phone ? 46 : 34) * scale;
     const lvText = next ? `Lv.${info.level}` : `Lv.${info.level} · 满级`;
-    const lvCur = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadCur', lvText, colCur, headY, 24 * scale, GOLD_TEXT, new Size(140 * scale, 30 * scale));
+    const lvCur = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadCur', lvText, colCur, headY, FONT.section * scale, GOLD_TEXT, new Size(140 * scale, 30 * scale));
     lvCur.isBold = true;
     if (next) {
-      this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadArrow', '→', colArrow, headY, 24 * scale, GOLD_TEXT, new Size(40 * scale, 30 * scale));
-      const lvNext = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadNext', `Lv.${info.level + 1}`, colNext, headY, 24 * scale, GOLD_TEXT, new Size(120 * scale, 30 * scale));
+      this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadArrow', '→', colArrow, headY, FONT.section * scale, GOLD_TEXT, new Size(40 * scale, 30 * scale));
+      const lvNext = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadNext', `Lv.${info.level + 1}`, colNext, headY, FONT.section * scale, GOLD_TEXT, new Size(120 * scale, 30 * scale));
       lvNext.isBold = true;
     }
     const divY = headY - emblemH / 2 - 8 * scale;
@@ -514,8 +535,9 @@ export class LobbyGuardCrystalDialogRenderer {
     ];
     const rowsTop = divY - 10 * scale;
     const avail = rowsTop - (bottom + 16 * scale);
-    const gap = 6 * scale;
-    const rowH = Math.min(46 * scale, (avail - gap * (rows.length - 1)) / rows.length);
+    // 参考图六行属性条撑满面板(行高约面板高 1/8),不再封顶在 46
+    const gap = 10 * scale;
+    const rowH = Math.min(64 * scale, (avail - gap * (rows.length - 1)) / rows.length);
     const rowW = w - pad * 2;
     rows.forEach((row, index) => {
       const y = rowsTop - rowH / 2 - index * (rowH + gap);
@@ -524,23 +546,23 @@ export class LobbyGuardCrystalDialogRenderer {
       const iconH = rowH * 0.74;
       const iconW = Math.min(iconH / icon.aspect, iconH * 1.4);
       this.host.addSprite(`Icon${row.key}`, icon.path, left + 30 * scale, y, iconW, iconW * icon.aspect, panel);
-      const rowName = this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + 62 * scale, y, FONT.body * scale, rgba(240, 230, 206), new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+      const rowName = this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + 62 * scale, y, FONT.body * scale, CREAM_TEXT, new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
       rowName.isBold = true;
       const curValue = row.read(current);
-      const cur = this.host.addChildLabel(panel, `LobbyGuardCrystalRowCur${row.key}`, row.fmt(curValue), colCur, y, FONT.name * scale, GOLD_TEXT, new Size(120 * scale, 26 * scale));
+      const cur = this.host.addChildLabel(panel, `LobbyGuardCrystalRowCur${row.key}`, row.fmt(curValue), colCur, y, FONT.value * scale, CREAM_TEXT, new Size(120 * scale, 26 * scale));
       cur.isBold = true;
       if (next) {
         const nextValue = row.read(next);
         const changed = nextValue !== curValue;
-        this.host.addChildLabel(panel, `LobbyGuardCrystalRowArrow${row.key}`, '→', colArrow, y, FONT.body * scale, rgba(170, 150, 110), new Size(40 * scale, 26 * scale));
-        const nextLabel = this.host.addChildLabel(panel, `LobbyGuardCrystalRowNext${row.key}`, row.fmt(nextValue), colNext, y, FONT.name * scale, changed ? GREEN_TEXT : rgba(200, 186, 160), new Size(120 * scale, 26 * scale));
+        this.host.addChildLabel(panel, `LobbyGuardCrystalRowArrow${row.key}`, '→', colArrow, y, FONT.body * scale, DIM_TEXT, new Size(40 * scale, 26 * scale));
+        const nextLabel = this.host.addChildLabel(panel, `LobbyGuardCrystalRowNext${row.key}`, row.fmt(nextValue), colNext, y, FONT.value * scale, changed ? GREEN_TEXT : DIM_TEXT, new Size(120 * scale, 26 * scale));
         nextLabel.isBold = changed;
-        this.host.addChildLabel(panel, `LobbyGuardCrystalRowDelta${row.key}`, changed ? `(${row.delta(nextValue - curValue)})` : '(—)', colDelta, y, FONT.tiny * scale, changed ? rgba(150, 240, 160, 220) : rgba(160, 146, 120), new Size(80 * scale, this.lh(22, scale)));
+        this.host.addChildLabel(panel, `LobbyGuardCrystalRowDelta${row.key}`, changed ? `(${row.delta(nextValue - curValue)})` : '(—)', colDelta, y, FONT.small * scale, changed ? GREEN_TEXT : DIM_TEXT, new Size(80 * scale, this.lh(22, scale)));
       }
     });
   }
 
-  /** 「水晶升级」底部:说明框(升级消耗:金币 / 守卫晶核 需要+持有,不足标红 + 来源)+ 升级按钮。 */
+  /** 「水晶升级」底部(参考图):深底金边说明框「升级消耗 [金币] 7,500 [晶核] 25 / 15」+ 红色大按钮「升级至 Lv.6」。 */
   private renderUpgradeFooter(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, y: number, h: number, scale: number): void {
     const gold = Number(info.goldBalance ?? 0);
     const core = Number(info.coreBalance ?? 0);
@@ -549,40 +571,46 @@ export class LobbyGuardCrystalDialogRenderer {
     const maxed = info.level >= info.maxLevel || info.nextUpgradeGold === null;
     const goldOk = gold >= goldCost;
     const coreOk = core >= coreCost;
-    const btnW = Math.min(w * 0.4, h / BTN_LEVEL_UP.aspect);
+    const btnW = Math.min(w * 0.42, h / BTN_LEVEL_UP.aspect);
     const btnH = btnW * BTN_LEVEL_UP.aspect;
-    const gap = 14 * scale;
+    const gap = 0.018 * w;
     const boxW = w - btnW - gap;
     const boxX = x - w / 2 + boxW / 2;
-    const box = this.mountSliced(panel, 'LobbyGuardCrystalPreviewBox', PREVIEW_BOX, boxX, y, boxW, h);
-    void box;
-    const k = h / PREVIEW_BOX.h;
-    const textLeft = boxX - boxW / 2 + 118 * k;
-    const textW = boxW - 118 * k - 16 * scale;
-    const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalPreviewTitle', maxed ? '已升到满级' : '升级消耗', textLeft, y + h * 0.26, FONT.small * scale, GOLD_TEXT, new Size(textW, this.lh(22, scale)), HorizontalTextAlignment.LEFT);
+    const box = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPreviewBox', boxX, y, boxW, h);
+    const g = box.addComponent(Graphics);
+    g.fillColor = rgba(12, 9, 8, 215);
+    g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
+    g.fill();
+    g.strokeColor = rgba(190, 146, 76, 210);
+    g.lineWidth = 1.5;
+    g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
+    g.stroke();
+    const pad = 18 * scale;
+    const title = this.host.addChildLabel(box, 'Title', maxed ? '已升到满级' : '升级消耗', -boxW / 2 + pad, h * 0.14, FONT.body * scale, GOLD_TEXT, new Size(110 * scale, this.lh(26, scale)), HorizontalTextAlignment.LEFT);
     title.isBold = true;
     if (!maxed) {
-      const items: Array<{ key: string; icon: string; need: number; have: number; ok: boolean }> = [
-        { key: 'Gold', icon: GOLD_ICON, need: goldCost, have: gold, ok: goldOk },
-        { key: 'Core', icon: CORE_ICON, need: coreCost, have: core, ok: coreOk },
+      const items: Array<{ key: string; icon: string; text: string; ok: boolean }> = [
+        { key: 'Gold', icon: GOLD_ICON, text: this.host.formatInteger(goldCost), ok: goldOk },
+        { key: 'Core', icon: CORE_ICON, text: `${this.host.formatInteger(core)} / ${this.host.formatInteger(coreCost)}`, ok: coreOk },
       ];
-      const itemW = textW / 2;
-      items.forEach((item, index) => {
-        const ix = textLeft + index * itemW;
-        const iconSize = 24 * scale;
-        this.host.addSprite(`LobbyGuardCrystalCostIcon${item.key}`, item.icon, ix + iconSize / 2, y - 2 * scale, iconSize, iconSize, panel);
-        const text = this.host.addChildLabel(panel, `LobbyGuardCrystalCost${item.key}`, `${this.host.formatInteger(item.need)} / ${this.host.formatInteger(item.have)}`, ix + iconSize + 6 * scale, y - 2 * scale, FONT.small * scale, item.ok ? rgba(236, 224, 196) : rgba(255, 130, 110), new Size(itemW - iconSize - 10 * scale, this.lh(22, scale)), HorizontalTextAlignment.LEFT);
+      const iconSize = 30 * scale;
+      let cursor = -boxW / 2 + pad + 110 * scale;
+      items.forEach((item) => {
+        this.host.addSprite(`CostIcon${item.key}`, item.icon, cursor + iconSize / 2, h * 0.14, iconSize, iconSize, box);
+        const textW = (item.key === 'Gold' ? 110 : 130) * scale;
+        const text = this.host.addChildLabel(box, `Cost${item.key}`, item.text, cursor + iconSize + 6 * scale, h * 0.14, FONT.value * scale, item.ok ? CREAM_TEXT : RED_TEXT, new Size(textW, this.lh(28, scale)), HorizontalTextAlignment.LEFT);
         text.overflow = Label.Overflow.SHRINK;
-        text.isBold = !item.ok;
+        text.isBold = true;
+        cursor += iconSize + textW + 14 * scale;
       });
     }
-    const source = this.host.addChildLabel(panel, 'LobbyGuardCrystalCoreSource', maxed ? '水晶已达当前版本上限' : '守卫晶核:主线关卡首次通关、每日副本胜利获得', textLeft, y - h * 0.28, 13 * scale, DIM_TEXT, new Size(textW, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+    const source = this.host.addChildLabel(box, 'Source', maxed ? '水晶已达当前版本上限' : '守卫晶核:主线关卡首次通关、每日副本胜利获得', -boxW / 2 + pad, -h * 0.26, FONT.tiny * scale, DIM_TEXT, new Size(boxW - pad * 2, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
     source.overflow = Label.Overflow.SHRINK;
 
     const btnX = x + w / 2 - btnW / 2;
     const button = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalUpgrade', btnX, y, btnW, btnH);
     this.host.addSprite('LobbyGuardCrystalUpgradeArt', BTN_LEVEL_UP.path, 0, 0, btnW, btnH, button);
-    const label = this.host.addChildLabel(button, 'LobbyGuardCrystalUpgradeLabel', maxed ? '已满级' : `升到 Lv.${info.level + 1}`, 0, 0, 24 * scale, rgba(255, 238, 200), new Size(btnW * 0.66, 32 * scale));
+    const label = this.host.addChildLabel(button, 'LobbyGuardCrystalUpgradeLabel', maxed ? '已满级' : `升级至 Lv.${info.level + 1}`, 0, 0, FONT.button * scale, rgba(255, 240, 210), new Size(btnW * 0.66, 34 * scale));
     label.overflow = Label.Overflow.SHRINK;
     label.isBold = true;
     this.outline(label, scale, rgba(60, 12, 8, 255));
@@ -692,10 +720,10 @@ export class LobbyGuardCrystalDialogRenderer {
     const emblemH = 26 * scale;
     this.host.addSprite(`${key}Emblem`, SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, y, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
     const textX = left + emblemH / SECTION_EMBLEM.aspect + 8 * scale;
-    const head = this.host.addChildLabel(panel, `${key}Title`, text, textX, y, 21 * scale, GOLD_TEXT, new Size(220 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+    const head = this.host.addChildLabel(panel, `${key}Title`, text, textX, y, FONT.section * scale, GOLD_TEXT, new Size(220 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
     head.isBold = true;
     if (note) {
-      const noteLabel = this.host.addChildLabel(panel, `${key}Note`, note, right, y, FONT.tiny * scale, DIM_TEXT, new Size(Math.max(120 * scale, (right - textX) * 0.7), this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
+      const noteLabel = this.host.addChildLabel(panel, `${key}Note`, note, right, y, FONT.small * scale, DIM_TEXT, new Size(Math.max(120 * scale, (right - textX) * 0.7), this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
       noteLabel.overflow = Label.Overflow.SHRINK;
     }
   }
@@ -750,11 +778,11 @@ export class LobbyGuardCrystalDialogRenderer {
       } else if (!open) {
         this.host.addSprite('Lock', LOCK_ICON.path, 0, 0, socket * 0.34, socket * 0.34 * LOCK_ICON.aspect, node);
       } else {
-        this.host.addChildLabel(node, 'Empty', '拖入', 0, 0, FONT.small * scale, rgba(150, 130, 100), new Size(socket, 22 * scale));
+        this.host.addChildLabel(node, 'Empty', '拖入', 0, 0, FONT.small * scale, DIM_TEXT, new Size(socket, 22 * scale));
       }
       this.drawIndexDiamond(node, `${i + 1}`, 0, socket * 0.5, 26 * scale, open, scale);
       const caption = open ? (id ? GUARD_SPELLS[id].name : '空格位') : `Lv.${info.nextSlotLevel} 解锁`;
-      const cap = this.host.addChildLabel(panel, `LobbyGuardCrystalSocketName_${i}`, caption, sx, socketY - socket / 2 - 14 * scale, FONT.small * scale, open ? rgba(240, 228, 200) : rgba(255, 170, 120), new Size(spacing, this.lh(22, scale)));
+      const cap = this.host.addChildLabel(panel, `LobbyGuardCrystalSocketName_${i}`, caption, sx, socketY - socket / 2 - 14 * scale, FONT.small * scale, open ? CREAM_TEXT : DIM_TEXT, new Size(spacing, this.lh(22, scale)));
       cap.overflow = Label.Overflow.SHRINK;
       cap.isBold = !!id;
       if (open && id && state.noticeGood && state.notice.indexOf('已保存') >= 0 && i === target) {
@@ -806,10 +834,10 @@ export class LobbyGuardCrystalDialogRenderer {
       const textX = -w / 2 + 16 * scale + iconSize;
       const pillW = (open ? 68 : 86) * scale;
       const textW = w - iconSize - pillW - 36 * scale;
-      const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, rowH * 0.22, FONT.name * scale, open ? rgba(244, 232, 204) : rgba(170, 156, 136), new Size(textW, this.lh(24, scale)), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, rowH * 0.22, FONT.name * scale, open ? CREAM_TEXT : DIM_TEXT, new Size(textW, this.lh(24, scale)), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
       name.isBold = true;
-      const brief = this.host.addChildLabel(card, 'Brief', LobbyGuardCrystalDialogRenderer.SPELL_BRIEF[id], textX, -rowH * 0.22, FONT.tiny * scale, open ? rgba(200, 186, 160) : rgba(140, 128, 112), new Size(textW, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+      const brief = this.host.addChildLabel(card, 'Brief', LobbyGuardCrystalDialogRenderer.SPELL_BRIEF[id], textX, -rowH * 0.22, FONT.small * scale, DIM_TEXT, new Size(textW, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
       brief.overflow = Label.Overflow.SHRINK;
       // 右端:已装备胶囊 / 解锁等级 + 锁 / 等级小字
       const spellLv = this.spellLevelOf(info, id);
@@ -818,7 +846,7 @@ export class LobbyGuardCrystalDialogRenderer {
       if (!open) {
         const lockW = 20 * scale;
         this.host.addSprite('Lock', LOCK_ICON.path, w / 2 - 12 * scale - lockW / 2, 0, lockW, lockW * LOCK_ICON.aspect, card);
-        const unlockText = this.host.addChildLabel(card, 'Unlock', `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, w / 2 - 16 * scale - lockW - pillW / 2, 0, FONT.tiny * scale, rgba(200, 176, 130), new Size(pillW, this.lh(20, scale)), HorizontalTextAlignment.RIGHT);
+        const unlockText = this.host.addChildLabel(card, 'Unlock', `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, w / 2 - 16 * scale - lockW - pillW / 2, 0, FONT.small * scale, DIM_TEXT, new Size(pillW, this.lh(20, scale)), HorizontalTextAlignment.RIGHT);
         unlockText.overflow = Label.Overflow.SHRINK;
       } else if (equipped) {
         const pill = this.host.addChildPlainNode(card, 'Equipped', pillX, 0, pillW, pillH);
@@ -834,7 +862,7 @@ export class LobbyGuardCrystalDialogRenderer {
         pillText.overflow = Label.Overflow.SHRINK;
         pillText.isBold = true;
       } else {
-        const lvText = this.host.addChildLabel(card, 'Lv', `Lv.${spellLv.level}`, pillX, 0, FONT.small * scale, rgba(190, 176, 150), new Size(pillW, this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
+        const lvText = this.host.addChildLabel(card, 'Lv', `Lv.${spellLv.level}`, pillX, 0, FONT.small * scale, DIM_TEXT, new Size(pillW, this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
         lvText.overflow = Label.Overflow.SHRINK;
       }
       if (open && this.spellUpgradable(info, spellLv)) {
@@ -1027,7 +1055,7 @@ export class LobbyGuardCrystalDialogRenderer {
     this.host.addSprite('Emblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, cursor - titleH / 2, emblemH / SECTION_EMBLEM.aspect, emblemH, card);
     const lvW = 66 * scale;
     const lvH = 24 * scale;
-    const name = this.host.addChildLabel(card, 'Name', def.name, left + emblemH / SECTION_EMBLEM.aspect + 8 * scale, cursor - titleH / 2, 22 * scale, GOLD_TEXT, new Size(innerW - lvW - emblemH - 20 * scale, titleH), HorizontalTextAlignment.LEFT);
+    const name = this.host.addChildLabel(card, 'Name', def.name, left + emblemH / SECTION_EMBLEM.aspect + 8 * scale, cursor - titleH / 2, FONT.section * scale, GOLD_TEXT, new Size(innerW - lvW - emblemH - 20 * scale, titleH), HorizontalTextAlignment.LEFT);
     name.isBold = true;
     name.overflow = Label.Overflow.SHRINK;
     if (open) {
@@ -1071,16 +1099,16 @@ export class LobbyGuardCrystalDialogRenderer {
       this.mountSpellIcon(fxBox, 'Icon', id, 0, 0, fxH * 0.6, !open);
     }
     // 能量角标放演示框右上角,不压特效落点
-    const fxCap = this.host.addChildLabel(fxBox, 'Cap', open ? `能量 ${def.cost}` : `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁 · 能量 ${def.cost}`, innerW / 2 - 8 * scale, fxH / 2 - 12 * scale, FONT.tiny * scale, rgba(160, 210, 255), new Size(innerW * 0.6, this.lh(20, scale)), HorizontalTextAlignment.RIGHT);
+    const fxCap = this.host.addChildLabel(fxBox, 'Cap', open ? `能量 ${def.cost}` : `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁 · 能量 ${def.cost}`, innerW / 2 - 8 * scale, fxH / 2 - 12 * scale, FONT.small * scale, DIM_TEXT, new Size(innerW * 0.6, this.lh(20, scale)), HorizontalTextAlignment.RIGHT);
     fxCap.overflow = Label.Overflow.SHRINK;
     cursor -= fxH + 8 * scale;
 
     // 当前等级描述(docs/39:与战斗同一张表)
     const descH = Math.min(h * 0.17, 62 * scale);
     // LEFT 对齐时工厂把 x 当文字框左边(resolveAlignedLabelX),所以传 left 而不是 0
-    const desc = this.host.addChildLabel(card, 'Desc', guardSpellDescribe(id, spellLv.level), left, cursor - descH / 2, 13 * scale, rgba(222, 210, 186), new Size(innerW, descH), HorizontalTextAlignment.LEFT);
+    const desc = this.host.addChildLabel(card, 'Desc', guardSpellDescribe(id, spellLv.level), left, cursor - descH / 2, FONT.small * scale, CREAM_TEXT, new Size(innerW, descH), HorizontalTextAlignment.LEFT);
     desc.enableWrapText = true;
-    desc.lineHeight = this.phone ? Math.max(desc.fontSize + 1, 15 * scale) : 15 * scale;
+    desc.lineHeight = Math.max(desc.fontSize + 2, 18 * scale);
     desc.verticalAlign = VerticalTextAlignment.TOP;
     desc.overflow = Label.Overflow.SHRINK;
     cursor -= descH + 6 * scale;
@@ -1106,12 +1134,12 @@ export class LobbyGuardCrystalDialogRenderer {
         rg.fillColor = rgba(255, 214, 140, index % 2 === 0 ? 14 : 6);
         rg.roundRect(-innerW / 2, -(rowH - 2 * scale) / 2, innerW, rowH - 2 * scale, 3 * scale);
         rg.fill();
-        const label = this.host.addChildLabel(card, `DiffLabel${index}`, entry.label, left + 4 * scale, y, FONT.tiny * scale, rgba(222, 210, 186), new Size(innerW * 0.34, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+        const label = this.host.addChildLabel(card, `DiffLabel${index}`, entry.label, left + 4 * scale, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.34, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
         label.overflow = Label.Overflow.SHRINK;
-        const cur = this.host.addChildLabel(card, `DiffCur${index}`, entry.cur, left + innerW * 0.52, y, FONT.tiny * scale, rgba(236, 224, 196), new Size(innerW * 0.26, this.lh(20, scale)));
+        const cur = this.host.addChildLabel(card, `DiffCur${index}`, entry.cur, left + innerW * 0.52, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.26, this.lh(20, scale)));
         cur.overflow = Label.Overflow.SHRINK;
-        this.host.addChildLabel(card, `DiffArrow${index}`, '→', left + innerW * 0.7, y, FONT.tiny * scale, rgba(170, 150, 110), new Size(innerW * 0.1, this.lh(20, scale)));
-        const nextLabel = this.host.addChildLabel(card, `DiffNext${index}`, entry.next, right - innerW * 0.12, y, FONT.tiny * scale, GREEN_TEXT, new Size(innerW * 0.24, this.lh(20, scale)));
+        this.host.addChildLabel(card, `DiffArrow${index}`, '→', left + innerW * 0.7, y, FONT.small * scale, DIM_TEXT, new Size(innerW * 0.1, this.lh(20, scale)));
+        const nextLabel = this.host.addChildLabel(card, `DiffNext${index}`, entry.next, right - innerW * 0.12, y, FONT.small * scale, GREEN_TEXT, new Size(innerW * 0.24, this.lh(20, scale)));
         nextLabel.overflow = Label.Overflow.SHRINK;
         nextLabel.isBold = true;
         cursor -= rowH;
@@ -1127,7 +1155,7 @@ export class LobbyGuardCrystalDialogRenderer {
       maxedLabel.isBold = true;
       cursor -= rowH;
     } else {
-      const lockedLabel = this.host.addChildLabel(card, 'DiffHead', `守卫水晶升到 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, 0, cursor - rowH / 2, FONT.small * scale, rgba(230, 190, 120), new Size(innerW, this.lh(22, scale)));
+      const lockedLabel = this.host.addChildLabel(card, 'DiffHead', `守卫水晶升到 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, 0, cursor - rowH / 2, FONT.small * scale, GOLD_TEXT, new Size(innerW, this.lh(22, scale)));
       lockedLabel.isBold = true;
       cursor -= rowH;
     }
@@ -1154,7 +1182,7 @@ export class LobbyGuardCrystalDialogRenderer {
       items.forEach((item, index) => {
         const ix = left + index * itemW + 4 * scale;
         this.host.addSprite(`CostIcon${item.key}`, item.icon, ix + iconSize / 2, costY, iconSize, iconSize, card);
-        const text = this.host.addChildLabel(card, `Cost${item.key}`, this.host.formatInteger(item.need), ix + iconSize + 4 * scale, costY, FONT.small * scale, item.ok ? rgba(236, 224, 196) : rgba(255, 130, 110), new Size(itemW - iconSize - 12 * scale, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+        const text = this.host.addChildLabel(card, `Cost${item.key}`, this.host.formatInteger(item.need), ix + iconSize + 4 * scale, costY, FONT.body * scale, item.ok ? CREAM_TEXT : RED_TEXT, new Size(itemW - iconSize - 12 * scale, this.lh(22, scale)), HorizontalTextAlignment.LEFT);
         text.overflow = Label.Overflow.SHRINK;
         text.isBold = true;
       });
@@ -1224,7 +1252,7 @@ export class LobbyGuardCrystalDialogRenderer {
     pg.lineWidth = 1.5;
     pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 6 * scale);
     pg.stroke();
-    const pillLabel = this.host.addChildLabel(pill, 'Text', pillText, 0, 0, FONT.tiny * scale, action ? rgba(255, 238, 200) : slotIndex >= 0 ? GOLD_TEXT : rgba(190, 176, 150), new Size(pillW - 8 * scale, pillH));
+    const pillLabel = this.host.addChildLabel(pill, 'Text', pillText, 0, 0, FONT.small * scale, action ? rgba(255, 238, 200) : slotIndex >= 0 ? GOLD_TEXT : DIM_TEXT, new Size(pillW - 8 * scale, pillH));
     pillLabel.overflow = Label.Overflow.SHRINK;
     pillLabel.isBold = true;
     if (action && !state.busy) {
@@ -1321,7 +1349,7 @@ export class LobbyGuardCrystalDialogRenderer {
     if (!state.notice) {
       return;
     }
-    const label = this.host.addChildLabel(panel, 'LobbyGuardCrystalNotice', state.notice, 0, -panelH / 2 + (this.phone ? 26 : 58 * scale), FONT.body * scale, state.noticeGood ? GREEN_TEXT : rgba(255, 130, 110), new Size(panelW * 0.6, 26 * scale));
+    const label = this.host.addChildLabel(panel, 'LobbyGuardCrystalNotice', state.notice, 0, -panelH / 2 + 0.03 * panelH, FONT.body * scale, state.noticeGood ? GREEN_TEXT : RED_TEXT, new Size(panelW * 0.6, 26 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, scale, rgba(10, 8, 6, 255));
   }

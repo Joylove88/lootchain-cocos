@@ -103,7 +103,9 @@ export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' 
 
 /** 守卫水晶弹窗专用新素材(ui/crystal/ai,2026-09-30 参考图改版):首次打开弹窗时整组拉,齐了再画,避免空框闪一下。 */
 const GUARD_CRYSTAL_UI_ASSETS = [
-  'crystal_art', 'level_plate', 'tab_on', 'tab_off', 'btn_level_up', 'btn_cost_up', 'inner_panel_bg', 'stat_row_bg', 'preview_box', 'section_emblem',
+  // 2026-10-14 v4 整页版新素材(Codex 按参考图重出):场景底图 / 水晶 v2 / 等级牌 v2 / 页签 v2 / 题头八角星
+  'crystal_scene_bg', 'crystal_art_v2', 'level_plate_v2', 'tab_on_v2', 'tab_off_v2', 'title_emblem_v2',
+  'btn_level_up', 'btn_cost_up', 'inner_panel_bg', 'stat_row_bg', 'section_emblem',
   'stat_hp', 'stat_gold', 'stat_power', 'stat_energy', 'stat_energy_max', 'stat_slots',
   'spell_quake', 'spell_frost', 'spell_thunder', 'spell_goldrush', 'spell_aegis',
 ].map((name) => `ui/crystal/ai/${name}/spriteFrame`).concat([
