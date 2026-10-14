@@ -14,6 +14,7 @@ HELPERS = r"""
   const find = name => { let f = null; const w = n => { if (f) return; if (n.name === name) { f = n; return; } n.children.forEach(w); }; w(cc.director.getScene()); return f; };
   const text = name => { const n = find(name); const l = n && n.getComponent(cc.Label); return l ? l.string : null; };
   const waitIdle = async () => { for (let i = 0; i < 60 && root.lobbyGuardCrystalDialog && root.lobbyGuardCrystalDialog.busy; i++) await sleep(150); await sleep(500); };
+  const tap = n => { n.emit(cc.Node.EventType.TOUCH_START, {}); n.emit(cc.Node.EventType.TOUCH_END, {}); };
   const boxOf = n => { const t = n.getComponent(cc.UITransform); const p = n.worldPosition; return { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(t.width), h: Math.round(t.height) }; };
 """
 
@@ -48,7 +49,7 @@ JS_SPELLUP = "(async () => {" + HELPERS + r"""
   root.lobbyGuardCrystalDialog.notice = '';
   find('LobbyGuardCrystalTab_spells').emit(cc.Button.EventType.CLICK);
   await sleep(700);
-  find('LobbyGuardCrystalSpell_thunder').emit(cc.Button.EventType.CLICK);
+  tap(find('LobbyGuardCrystalSpell_thunder'));
   await sleep(700);
   const before = (root.lobbyGuardCrystalDialog.info.spells || []).find(s => s.spellId === 'thunder');
   const lab = find('LobbyGuardCrystalUpgradeLabel');
@@ -84,11 +85,32 @@ JS_SPELLS_TAB = "(async () => {" + HELPERS + r"""
 })()"""
 
 JS_SELECT = (lambda spell: "(async () => {" + HELPERS + r"""
-  find('LobbyGuardCrystalSpell_%s').emit(cc.Button.EventType.CLICK);
+  tap(find('LobbyGuardCrystalSpell_%s'));
   await sleep(600);
   const det = find('LobbyGuardCrystalSpellDetail');
   const panel = find('LobbyGuardCrystalPanel');
   return JSON.stringify({ detail: boxOf(det), panel: boxOf(panel), action: det.getChildByName('Action').getChildByName('Text').getComponent(cc.Label).string });
+})()""" % spell)
+
+JS_DRAG = (lambda spell, idx: "(async () => {" + HELPERS + r"""
+  const row = find('LobbyGuardCrystalSpell_%s'), socket = find('LobbyGuardCrystalSocket_%d');
+  if (!row || !socket) return 'no node';
+  const from = row.worldPosition.clone(), to = socket.worldPosition.clone();
+  const mk = (x, y, dx, dy) => ({ getUILocation: () => ({ x, y }), getUIDelta: () => ({ x: dx, y: dy }) });
+  row.emit(cc.Node.EventType.TOUCH_START, {});
+  const steps = 8; let px = from.x, py = from.y;
+  for (let i = 1; i <= steps; i++) { const nx = from.x + (to.x - from.x) * i / steps, ny = from.y + (to.y - from.y) * i / steps; row.emit(cc.Node.EventType.TOUCH_MOVE, mk(nx, ny, nx - px, ny - py)); px = nx; py = ny; await sleep(40); }
+  const ghost = find('LobbyGuardCrystalDragGhost'); const hover = socket.getChildByName('Hover');
+  window.__dragMid = JSON.stringify({ ghost: ghost ? boxOf(ghost) : null, hoverOn: !!(hover && hover.active) });
+  return window.__dragMid;
+})()""" % (spell, idx))
+
+JS_DROP = (lambda spell: "(async () => {" + HELPERS + r"""
+  const row = find('LobbyGuardCrystalSpell_%s');
+  row.emit(cc.Node.EventType.TOUCH_END, {});
+  await waitIdle();
+  const d = root.lobbyGuardCrystalDialog;
+  return JSON.stringify({ notice: d.notice, loadout: d.info.current.spellLoadout, selected: d.selectedSpell, target: d.targetSlot });
 })()""" % spell)
 
 JS_ACTION = "(async () => {" + HELPERS + r"""
@@ -100,7 +122,7 @@ JS_ACTION = "(async () => {" + HELPERS + r"""
 })()"""
 
 JS_SOCKET = (lambda idx: "(async () => {" + HELPERS + r"""
-  find('LobbyGuardCrystalSocket_%d').emit(cc.Button.EventType.CLICK);
+  tap(find('LobbyGuardCrystalSocket_%d'));
   await sleep(500);
   return JSON.stringify({ target: root.lobbyGuardCrystalDialog.targetSlot, selected: root.lobbyGuardCrystalDialog.selectedSpell });
 })()""" % idx)
@@ -180,7 +202,13 @@ async def main():
                         f.write(base64.b64decode(data))
                     print('shot', name)
 
-            await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            # --phone:手机横屏尺寸(915×412 CSS,DPR 2,触摸 UA),走弹窗的全屏手机布局
+            if '--phone' in sys.argv:
+                await call('Emulation.setDeviceMetricsOverride', {'width': 915, 'height': 412, 'deviceScaleFactor': 2, 'mobile': True, 'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
+                await call('Emulation.setTouchEmulationEnabled', {'enabled': True, 'maxTouchPoints': 5})
+                await call('Network.setUserAgentOverride', {'userAgent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36', 'platform': 'Android'})
+            else:
+                await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             await asyncio.sleep(10)
             print('boot:', await ev(base.JS_BOOT, 330))
             print('login:', await ev(base.JS_LOGIN, 90))
@@ -212,6 +240,11 @@ async def main():
             await snap('spells_replaced0')
             print('selectWarhorn:', await ev(JS_SELECT('warhorn'), 30))
             await snap('spells_locked')
+            # 拖拽装备(2026-10-14):把「九天神雷」行拖到 1 号格,中途截幽灵 + 高亮环,松手后看 loadout
+            print('dragMid:', await ev(JS_DRAG('thunder', 0), 30))
+            await snap('spells_drag_mid')
+            print('drop:', await ev(JS_DROP('thunder'), 60))
+            await snap('spells_dropped')
             if not SKIP_BATTLE:
                 print('battle:', await ev(JS_BATTLE, 120))
                 await asyncio.sleep(1.5)
