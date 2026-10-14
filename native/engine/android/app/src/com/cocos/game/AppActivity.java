@@ -279,6 +279,27 @@ public class AppActivity extends CocosActivity {
         return sRenderScale;
     }
 
+    /**
+     * JS 反射调用:游戏视图的 CSS 尺寸 "宽,高"(像素 ÷ 屏幕密度),与手机浏览器 innerWidth/innerHeight 同口径。
+     * 引擎在安卓上 devicePixelRatio 写死 1,JS 拿到的是物理像素,手机会被当成电脑屏、界面小 1.5 倍(2026-10-15 真机)。
+     */
+    public static String getViewCssSize() {
+        AppActivity activity = sInstance;
+        if (activity == null) {
+            return "";
+        }
+        android.util.DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
+        float density = metrics.density > 0 ? metrics.density : 1f;
+        SurfaceView surface = activity.getSurfaceView();
+        int w = surface != null ? surface.getWidth() : 0;
+        int h = surface != null ? surface.getHeight() : 0;
+        if (w <= 0 || h <= 0) {
+            w = metrics.widthPixels;
+            h = metrics.heightPixels;
+        }
+        return (w / density) + "," + (h / density);
+    }
+
     /** JS 反射调用:屏幕物理短边像素(画质档位按它算目标)。 */
     public static int getScreenShortSide() {
         AppActivity activity = sInstance;

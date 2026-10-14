@@ -1,4 +1,5 @@
-import { ResolutionPolicy, screen, sys, view } from 'cc';
+import { native, ResolutionPolicy, screen, sys, view } from 'cc';
+import { NATIVE } from 'cc/env';
 
 /**
  * H5/PC 全屏适配——仅横屏(2026-10-02 用户拍板:竖版效果不行、素材不好做,H5 只支持横屏)。
@@ -23,7 +24,39 @@ const MAX_ASPECT = 2800 / 1080;
  * 读浏览器窗口 innerWidth/innerHeight;手机竖握时引擎会把画布转成横屏(规则 = isMobile 且 宽 <= 高,与引擎 screen-adapter 一致),此时对调宽高。
  * 不能直接读引擎 screen.windowSize:Creator 预览页的游戏框按设计分辨率比例排版,设计分辨率又按它算,会互相放大(2026-10-02 PC 预览画面被裁切)。
  */
+/** 安卓原生:视图 CSS 尺寸按窗口像素尺寸缓存(每帧都会调,反射只在尺寸变化时做一次)。 */
+let nativeCssKey = '';
+let nativeCssSize: { width: number; height: number } | null = null;
+
+function androidViewCssSize(): { width: number; height: number } | null {
+  const ws = screen.windowSize;
+  const key = ws ? `${ws.width}x${ws.height}` : '';
+  if (key === nativeCssKey) {
+    return nativeCssSize;
+  }
+  try {
+    const raw = String(native.reflection.callStaticMethod('com/cocos/game/AppActivity', 'getViewCssSize', '()Ljava/lang/String;') ?? '');
+    const [w, h] = raw.split(',').map(Number);
+    if (w > 0 && h > 0) {
+      // 只缓存成功结果:Java 侧还没就绪时下一帧再问
+      nativeCssKey = key;
+      nativeCssSize = { width: Math.round(Math.max(w, h)), height: Math.round(Math.min(w, h)) };
+      return nativeCssSize;
+    }
+  } catch (error) {
+    void error;
+  }
+  return null;
+}
+
 export function viewportCssSize(): { width: number; height: number } | null {
+  // 安卓原生:引擎 devicePixelRatio 写死 1,innerWidth 是物理像素;改按屏幕密度换算成 CSS 尺寸,手机才会走 720 设计高(界面放大)
+  if (NATIVE && sys.os === sys.OS.ANDROID) {
+    const css = androidViewCssSize();
+    if (css) {
+      return css;
+    }
+  }
   const runtime = globalThis as { innerWidth?: number; innerHeight?: number };
   let width = runtime.innerWidth || 0;
   let height = runtime.innerHeight || 0;
