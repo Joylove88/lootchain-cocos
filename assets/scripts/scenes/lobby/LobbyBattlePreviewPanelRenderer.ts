@@ -22,6 +22,7 @@ import {
   UIOpacity,
   Vec3,
   tween,
+  sys,
 } from 'cc';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
 import { isDailyDungeonStageCode } from '../../api/BattleApi';
@@ -6655,6 +6656,12 @@ export class LobbyBattlePreviewPanelRenderer {
   private measureBattleSkillEffectBounds(skeleton: sp.Skeleton, animationName: string, cacheKey: string): { w: number; h: number; cx: number; cy: number } | null {
     if (this.battleSkillFxBoundsCache.has(cacheKey)) {
       return this.battleSkillFxBoundsCache.get(cacheKey) ?? null;
+    }
+    // 原生(安卓)的 Spine 是 C++ 实现,updateWorldTransform / computeWorldVertices 参数不合法时直接断言中止进程(try/catch 接不住,
+    // 2026-10-14 安卓真机一开战就崩);这类实时测量只是兜底(主要靠 BATTLE_FX_MEASURED_BOUNDS 实测表),原生上直接跳过。
+    if (sys.isNative) {
+      this.battleSkillFxBoundsCache.set(cacheKey, null);
+      return null;
     }
     let result: { w: number; h: number; cx: number; cy: number } | null = null;
     try {

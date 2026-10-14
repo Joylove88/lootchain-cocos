@@ -6606,6 +6606,11 @@ export class LootChainGameRoot extends Component {
       background.resumeForLoginView();
     }
     for (const video of node.getComponents(VideoPlayer)) {
+      // 原生 VideoPlayer 浮在游戏画面之上会盖住登录界面:原生上不播(LoginVideoBackground 已改显示海报)
+      if (sys.isNative) {
+        video.node.active = false;
+        continue;
+      }
       try {
         video.mute = true;
         video.volume = 0;

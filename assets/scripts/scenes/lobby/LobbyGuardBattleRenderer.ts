@@ -9208,6 +9208,12 @@ export class LobbyGuardBattleRenderer {
     if (this.guardFxBoundsCache.has(cacheKey)) {
       return this.guardFxBoundsCache.get(cacheKey) ?? null;
     }
+    // 原生(安卓)的 Spine 是 C++ 实现,updateWorldTransform / computeWorldVertices 参数不合法时直接断言中止进程(try/catch 接不住,
+    // 2026-10-14 安卓真机一开战就崩);这类实时测量只是兜底(主要靠 BATTLE_FX_MEASURED_BOUNDS 实测表),原生上直接跳过。
+    if (sys.isNative) {
+      this.guardFxBoundsCache.set(cacheKey, null);
+      return null;
+    }
     let extent: { w: number; h: number; cx: number; cy: number } | null = null;
     try {
       skeleton.setAnimation(0, animationName, false);
@@ -9803,6 +9809,10 @@ export class LobbyGuardBattleRenderer {
     const fromBuffer = this.measureRenderedTopY(skeleton);
     if (fromBuffer !== null) {
       return fromBuffer;
+    }
+    // 原生:下面走 spine-core computeWorldVertices,C++ 断言会中止进程,跳过
+    if (sys.isNative) {
+      return null;
     }
     const raw = (skeleton as unknown as { _skeleton?: unknown })._skeleton as {
       slots?: Array<{ getAttachment?: () => unknown; bone?: unknown }>;

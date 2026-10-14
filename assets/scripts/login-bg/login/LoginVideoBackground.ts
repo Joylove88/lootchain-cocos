@@ -10,6 +10,7 @@ import {
     VideoPlayer,
     VideoClip,
     UIOpacity,
+    sys,
     view,
     input,
     Input
@@ -54,6 +55,17 @@ export class LoginVideoBackground extends Component {
             return;
         }
 
+        // 安卓 / 原生(2026-10-14):原生 VideoPlayer 是一层系统控件,永远浮在游戏画面之上,会把登录界面整个盖住;
+        // 原生上不播视频,只保留首帧海报(同一画面)。第二阶段再做视频垫底(stayOnBottom + 透明画布)。
+        if (sys.isNative) {
+            this.video.node.active = false;
+            if (this.posterOpacity) {
+                this.posterOpacity.opacity = 255;
+            }
+            this.applyResponsiveBackground(true);
+            return;
+        }
+
         // 背景视频只负责画面，必须静音，避免浏览器自动播放拦截
         this.video.mute = true;
         this.video.volume = 0;
@@ -91,6 +103,10 @@ export class LoginVideoBackground extends Component {
 
     public resumeForLoginView() {
         this.node.active = true;
+        if (sys.isNative) {
+            this.applyResponsiveBackground(false);
+            return;
+        }
         if (this.video) {
             this.video.node.active = true;
         }
@@ -99,7 +115,7 @@ export class LoginVideoBackground extends Component {
     }
 
     private tryPlayVideo() {
-        if (!this.video) return;
+        if (!this.video || sys.isNative) return;
 
         try {
             this.video.mute = true;
@@ -242,7 +258,8 @@ export class LoginVideoBackground extends Component {
     }
 
     private loadVideoClip(path: string, ticket: number) {
-        if (!this.video) return;
+        // 原生不播视频,也不必把 80MB 级的视频读进内存
+        if (!this.video || sys.isNative) return;
 
         try {
             this.video.stop();
