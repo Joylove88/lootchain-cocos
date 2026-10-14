@@ -5,6 +5,7 @@ import {
   Graphics,
   HorizontalTextAlignment,
   Label,
+  Mask,
   Node,
   Size,
   Sprite,
@@ -111,6 +112,8 @@ const SCENE_BG = { path: CUI('crystal_scene_bg'), w: 1672, h: 941 };
 /** 水晶立绘 v2(蓝水晶 + 黑色尖刺台座);v2 未入库时退回 v1(515×798 熔岩基座版)。 */
 const CRYSTAL_ART = { path: CUI('crystal_art_v2'), aspect: 1024 / 585, fallback: { path: CUI('crystal_art'), aspect: 798 / 515 } };
 const TITLE_EMBLEM = { path: CUI('title_emblem_v2'), aspect: 512 / 512 };
+/** 法术详情演示框底图(暗色法阵场景,特效叠在上面循环)。 */
+const SPELL_PREVIEW_BG = { path: CUI('spell_preview_bg'), w: 1024, h: 768 };
 /** 等级牌 550×177、页签 选中 440×122 / 未选中 512×122、升级按钮 573×180、法术页升级按钮(带晶体图标)527×154。 */
 const LEVEL_PLATE = { path: CUI('level_plate_v2'), aspect: 193 / 1024, fallback: { path: CUI('level_plate'), aspect: 177 / 550 } };
 const TAB_ON = { path: CUI('tab_on_v2'), aspect: 195 / 1024, fallback: { path: CUI('tab_on'), aspect: 122 / 440 } };
@@ -434,10 +437,13 @@ export class LobbyGuardCrystalDialogRenderer {
     tabs.forEach((tab) => {
       const active = state.tab === tab.key;
       const spec = active ? TAB_ON : TAB_OFF;
-      const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, 0, y, 10, tabH);
-      const art = this.spriteByHeight(node, 'Art', spec, 0, 0, tabH);
-      const tabW = tabH / (art?.aspect ?? spec.aspect);
-      node.getComponent(UITransform)?.setContentSize(tabW, tabH);
+      // 两个页签同宽(0.17W),高度按各自素材比例(选中款边框粗、略高,正好像凸起)
+      const tabW = 0.17 * W;
+      const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, 0, y, tabW, tabH);
+      const primary = this.host.addSprite('Art', spec.path, 0, 0, tabW, tabW * spec.aspect, node);
+      if (!primary && spec.fallback) {
+        this.host.addSprite('Art', spec.fallback.path, 0, 0, tabW, tabW * spec.fallback.aspect, node);
+      }
       const tx = cursor + tabW / 2;
       node.setPosition(tx, y, 0);
       cursor += tabW + gap;
@@ -824,9 +830,10 @@ export class LobbyGuardCrystalDialogRenderer {
     this.sectionHead(panel, 'LobbyGuardCrystalList', '法术列表', left, right, listHeadY, scale, '拖到上方格位即可装备');
     this.drawDivider(panel, 'LobbyGuardCrystalListDivider', x, listHeadY - 18 * scale, w);
     const gridTop = listHeadY - 28 * scale;
-    const gap = 6 * scale;
+    // 行距 14、行高上限 56(2026-10-14 用户:列表紧挨在一起太紧凑)
+    const gap = 14 * scale;
     const rowsN = GUARD_SPELL_IDS.length;
-    const rowH = Math.min(50 * scale, (gridTop - bottom - gap * (rowsN - 1)) / rowsN);
+    const rowH = Math.min(56 * scale, (gridTop - bottom - gap * (rowsN - 1)) / rowsN);
     GUARD_SPELL_IDS.forEach((id, index) => {
       const cy = gridTop - rowH / 2 - index * (rowH + gap);
       const open = unlocked.indexOf(id) >= 0;
@@ -842,42 +849,37 @@ export class LobbyGuardCrystalDialogRenderer {
       g.lineWidth = selected ? 2.5 : 1.2;
       g.roundRect(-w / 2, -rowH / 2, w, rowH, 6 * scale);
       g.stroke();
-      const iconSize = rowH * 0.84;
-      const iconX = -w / 2 + 8 * scale + iconSize / 2;
+      const iconSize = rowH * 0.78;
+      const iconX = -w / 2 + 14 * scale + iconSize / 2;
       this.mountSpellIcon(card, 'Icon', id, iconX, 0, iconSize, !open);
-      const textX = -w / 2 + 16 * scale + iconSize;
-      const pillW = (open ? 68 : 86) * scale;
+      const textX = -w / 2 + 26 * scale + iconSize;
+      const pillW = 96 * scale;
       const textW = w - iconSize - pillW - 36 * scale;
       const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, rowH * 0.22, FONT.name * scale, open ? CREAM_TEXT : DIM_TEXT, new Size(textW, this.lh(24, scale)), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
       name.isBold = true;
       const brief = this.host.addChildLabel(card, 'Brief', LobbyGuardCrystalDialogRenderer.SPELL_BRIEF[id], textX, -rowH * 0.22, FONT.small * scale, DIM_TEXT, new Size(textW, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
       brief.overflow = Label.Overflow.SHRINK;
-      // 右端:已装备胶囊 / 解锁等级 + 锁 / 等级小字
+      // 右端统一成同宽胶囊(2026-10-14 第二轮:三种状态样式不一显得乱):已装备 = 金边金字;未装备 = 灰边「Lv.n」;未解锁 = 灰边「Lv.n 解锁」+ 小锁
       const spellLv = this.spellLevelOf(info, id);
-      const pillH = 24 * scale;
-      const pillX = w / 2 - 10 * scale - pillW / 2;
+      const pillH = 26 * scale;
+      const pillX = w / 2 - 14 * scale - pillW / 2;
+      const pill = this.host.addChildPlainNode(card, 'StatePill', pillX, 0, pillW, pillH);
+      const pg = pill.addComponent(Graphics);
+      pg.fillColor = equipped ? rgba(44, 30, 12, 245) : rgba(18, 14, 12, 230);
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 5 * scale);
+      pg.fill();
+      pg.strokeColor = equipped ? rgba(220, 176, 96, 240) : rgba(110, 96, 72, 200);
+      pg.lineWidth = 1.5;
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 5 * scale);
+      pg.stroke();
+      const pillText = !open ? `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : equipped ? '已装备' : `Lv.${spellLv.level}`;
+      const lockW = open ? 0 : 16 * scale;
+      const pillLabel = this.host.addChildLabel(pill, 'Text', pillText, -lockW / 2, 0, FONT.small * scale, equipped ? GOLD_TEXT : DIM_TEXT, new Size(pillW - 8 * scale - lockW, pillH));
+      pillLabel.overflow = Label.Overflow.SHRINK;
+      pillLabel.isBold = equipped;
       if (!open) {
-        const lockW = 20 * scale;
-        this.host.addSprite('Lock', LOCK_ICON.path, w / 2 - 12 * scale - lockW / 2, 0, lockW, lockW * LOCK_ICON.aspect, card);
-        const unlockText = this.host.addChildLabel(card, 'Unlock', `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, w / 2 - 16 * scale - lockW - pillW / 2, 0, FONT.small * scale, DIM_TEXT, new Size(pillW, this.lh(20, scale)), HorizontalTextAlignment.RIGHT);
-        unlockText.overflow = Label.Overflow.SHRINK;
-      } else if (equipped) {
-        const pill = this.host.addChildPlainNode(card, 'Equipped', pillX, 0, pillW, pillH);
-        const pg = pill.addComponent(Graphics);
-        pg.fillColor = rgba(44, 30, 12, 245);
-        pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 4 * scale);
-        pg.fill();
-        pg.strokeColor = rgba(220, 176, 96, 240);
-        pg.lineWidth = 1.5;
-        pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 4 * scale);
-        pg.stroke();
-        const pillText = this.host.addChildLabel(pill, 'Text', '已装备', 0, 0, FONT.tiny * scale, GOLD_TEXT, new Size(pillW - 6 * scale, pillH));
-        pillText.overflow = Label.Overflow.SHRINK;
-        pillText.isBold = true;
-      } else {
-        const lvText = this.host.addChildLabel(card, 'Lv', `Lv.${spellLv.level}`, pillX, 0, FONT.small * scale, DIM_TEXT, new Size(pillW, this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
-        lvText.overflow = Label.Overflow.SHRINK;
+        this.host.addSprite('Lock', LOCK_ICON.path, pillW / 2 - 6 * scale - lockW / 2, 0, lockW, lockW * LOCK_ICON.aspect, pill);
       }
       if (open && this.spellUpgradable(info, spellLv)) {
         const dot = this.host.addChildPlainNode(card, 'RedDot', w / 2 - 6 * scale, rowH / 2 - 6 * scale, 12 * scale, 12 * scale);
@@ -1035,9 +1037,9 @@ export class LobbyGuardCrystalDialogRenderer {
   }
 
   /**
-   * 右列「法术详情」卡(参考图):名称 + 等级牌 → 特效演示框(循环播该法术在守卫战里的真实骨骼特效,
-   * 2026-10-14 用户:「法术详情界面中可以展示对应技能特效播放」)→ 当前等级描述 → 下一级对照表(逐项 当前 → 下一级)
-   * → 升级花费 → 升级按钮 + 装备状态 / 装备按钮。
+   * 右列「法术详情」卡(参考图;2026-10-14 第二轮「法术页还是乱」重排):自下而上先排定按钮 / 花费 / 对照表 / 描述的高度,
+   * 剩下的高度全部给特效演示框(参考图里插画占卡片近一半,不再留空白);演示框铺通用法阵底图(spell_preview_bg),
+   * 法术的战斗骨骼特效循环播在上面;能量并入标题行,不再孤零零挂在框角。
    */
   private renderSpellDetail(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, x: number, w: number, top: number, bottom: number, scale: number): void {
     const id = state.selectedSpell ?? 'quake';
@@ -1057,21 +1059,40 @@ export class LobbyGuardCrystalDialogRenderer {
     g.lineWidth = 1.5;
     g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
     g.stroke();
-    const pad = 12 * scale;
+    const pad = 14 * scale;
     const left = -w / 2 + pad;
     const right = w / 2 - pad;
     const innerW = w - pad * 2;
-    let cursor = h / 2 - pad;
 
-    // 标题行:徽记 + 名 + 右侧等级牌
-    const titleH = 30 * scale;
+    // ── 自下而上定高 ──
+    const btnW = Math.min(innerW * 0.6, 200 * scale);
+    const btnH = btnW * BTN_COST_UP.aspect;
+    const costH = this.lh(26, scale);
+    const diff = open ? guardSpellNextDiff(id, spellLv.level) : null;
+    const rowH = this.lh(24, scale);
+    const tableRows = open && diff ? Math.min(3, diff.changes.length) + (diff.unlock ? 1 : 0) : 0;
+    const tableH = rowH + 4 * scale + tableRows * rowH;
+    const descH = this.lh(this.phone ? 66 : 58, scale);
+    const titleH = 32 * scale;
+    const gapS = 8 * scale;
+    const fixedH = titleH + gapS + descH + gapS + tableH + gapS + costH + gapS + btnH;
+    const fxH = Math.max(90 * scale, h - pad * 2 - fixedH - gapS);
+
+    // 标题行:徽记 + 名 + 「能量 n」 + 等级牌
+    let cursor = h / 2 - pad;
     const emblemH = 26 * scale;
     this.host.addSprite('Emblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, cursor - titleH / 2, emblemH / SECTION_EMBLEM.aspect, emblemH, card);
     const lvW = 66 * scale;
     const lvH = 24 * scale;
-    const name = this.host.addChildLabel(card, 'Name', def.name, left + emblemH / SECTION_EMBLEM.aspect + 8 * scale, cursor - titleH / 2, FONT.section * scale, GOLD_TEXT, new Size(innerW - lvW - emblemH - 20 * scale, titleH), HorizontalTextAlignment.LEFT);
+    const energyW = 78 * scale;
+    const nameX = left + emblemH / SECTION_EMBLEM.aspect + 8 * scale;
+    const name = this.host.addChildLabel(card, 'Name', def.name, nameX, cursor - titleH / 2, FONT.section * scale, GOLD_TEXT, new Size(innerW - lvW - energyW - emblemH - 24 * scale, titleH), HorizontalTextAlignment.LEFT);
     name.isBold = true;
     name.overflow = Label.Overflow.SHRINK;
+    // 未解锁时右侧是「Lv.n 解锁」长文字,能量再往左让一截
+    const rightTextW = open ? lvW : lvW + 34 * scale;
+    const energy = this.host.addChildLabel(card, 'Energy', `能量 ${def.cost}`, right - rightTextW - 12 * scale, cursor - titleH / 2, FONT.small * scale, DIM_TEXT, new Size(energyW, this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
+    energy.overflow = Label.Overflow.SHRINK;
     if (open) {
       const maxed = spellLv.level >= GUARD_SPELL_MAX_LEVEL;
       const tier = guardSpellTier(spellLv.level);
@@ -1084,97 +1105,98 @@ export class LobbyGuardCrystalDialogRenderer {
       lg.lineWidth = 1.5;
       lg.roundRect(-lvW / 2, -lvH / 2, lvW, lvH, lvH / 2);
       lg.stroke();
-      const lvText = this.host.addChildLabel(lvPill, 'Text', maxed ? 'Lv.5 满' : `Lv.${spellLv.level}`, 0, 0, 15 * scale, maxed ? rgba(255, 230, 140) : rgba(240, 228, 200), new Size(lvW - 6 * scale, lvH));
+      const lvText = this.host.addChildLabel(lvPill, 'Text', maxed ? 'Lv.5 满' : `Lv.${spellLv.level}`, 0, 0, FONT.tiny * scale, maxed ? rgba(255, 230, 140) : CREAM_TEXT, new Size(lvW - 6 * scale, lvH));
       lvText.isBold = true;
       lvText.overflow = Label.Overflow.SHRINK;
+    } else {
+      const lockPill = this.host.addChildLabel(card, 'Level', `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, right, cursor - titleH / 2, FONT.tiny * scale, DIM_TEXT, new Size(rightTextW, lvH), HorizontalTextAlignment.RIGHT);
+      lockPill.overflow = Label.Overflow.SHRINK;
     }
-    cursor -= titleH + 6 * scale;
-    this.drawDivider(card, 'Divider', 0, cursor, innerW);
-    cursor -= 10 * scale;
+    cursor -= titleH + gapS;
 
-    // 特效演示框:深底 + 中心冷光,循环播法术的战斗特效(与 LobbyGuardBattleRenderer.playSpellFx 同一套素材)
-    const fxH = Math.min(h * 0.34, innerW * 0.72);
+    // 特效演示框:通用法阵底图(缺图时深底 + 椭圆冷光)+ 战斗骨骼特效循环;四周金线细框
     const fxBox = this.host.addChildPlainNode(card, 'FxBox', 0, cursor - fxH / 2, innerW, fxH);
-    const fg = fxBox.addComponent(Graphics);
-    fg.fillColor = rgba(6, 8, 14, 250);
-    fg.roundRect(-innerW / 2, -fxH / 2, innerW, fxH, 6 * scale);
-    fg.fill();
-    fg.fillColor = rgba(60, 110, 200, 34);
-    fg.ellipse(0, -fxH * 0.1, innerW * 0.34, fxH * 0.3);
-    fg.fill();
-    fg.strokeColor = rgba(120, 96, 60, 180);
-    fg.lineWidth = 1;
-    fg.roundRect(-innerW / 2, -fxH / 2, innerW, fxH, 6 * scale);
-    fg.stroke();
+    // 底图 cover 铺满会超出框,用 Mask 按框矩形裁掉(手画遮边会画到卡片外面,2026-10-14 截图)
+    fxBox.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    const fxBg = this.host.addSprite('Bg', SPELL_PREVIEW_BG.path, 0, 0, innerW, fxH, fxBox);
+    if (!fxBg) {
+      const fg = fxBox.addComponent(Graphics);
+      fg.fillColor = rgba(6, 8, 14, 250);
+      fg.roundRect(-innerW / 2, -fxH / 2, innerW, fxH, 6 * scale);
+      fg.fill();
+      fg.fillColor = rgba(60, 110, 200, 34);
+      fg.ellipse(0, -fxH * 0.12, innerW * 0.34, fxH * 0.26);
+      fg.fill();
+    } else {
+      // 底图按 cover 等比铺满,超出框的部分由 Mask 裁掉
+      const coverK = Math.max(innerW / SPELL_PREVIEW_BG.w, fxH / SPELL_PREVIEW_BG.h);
+      fxBg.node.getComponent(UITransform)?.setContentSize(SPELL_PREVIEW_BG.w * coverK, SPELL_PREVIEW_BG.h * coverK);
+    }
+    const frame = this.host.addChildPlainNode(fxBox, 'Frame', 0, 0, innerW, fxH);
+    const fr = frame.addComponent(Graphics);
+    fr.strokeColor = rgba(170, 130, 70, 200);
+    fr.lineWidth = 1.5;
+    fr.rect(-innerW / 2, -fxH / 2, innerW, fxH);
+    fr.stroke();
     const spellFx = GUARD_SPELL_FX[id];
     const fxHolder = this.host.addChildPlainNode(fxBox, 'Fx', 0, 0, 10, 10);
-    const fxMounted = this.mountSpineFx(fxHolder, spellFx, 0, -fxH * 0.08, Math.min(innerW, fxH) * 0.92, true, 0);
+    const fxMounted = this.mountSpineFx(fxHolder, spellFx, 0, -fxH * 0.06, Math.min(innerW, fxH) * 0.95, true, 0);
     if (!fxMounted) {
-      this.mountSpellIcon(fxBox, 'Icon', id, 0, 0, fxH * 0.6, !open);
+      this.mountSpellIcon(fxBox, 'Icon', id, 0, 0, Math.min(innerW, fxH) * 0.6, !open);
     }
-    // 能量角标放演示框右上角,不压特效落点
-    const fxCap = this.host.addChildLabel(fxBox, 'Cap', open ? `能量 ${def.cost}` : `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁 · 能量 ${def.cost}`, innerW / 2 - 8 * scale, fxH / 2 - 12 * scale, FONT.small * scale, DIM_TEXT, new Size(innerW * 0.6, this.lh(20, scale)), HorizontalTextAlignment.RIGHT);
-    fxCap.overflow = Label.Overflow.SHRINK;
-    cursor -= fxH + 8 * scale;
+    frame.setSiblingIndex(fxBox.children.length - 1);
+    cursor -= fxH + gapS;
 
-    // 当前等级描述(docs/39:与战斗同一张表)
-    const descH = Math.min(h * 0.17, 62 * scale);
-    // LEFT 对齐时工厂把 x 当文字框左边(resolveAlignedLabelX),所以传 left 而不是 0
+    // 当前等级描述
     const desc = this.host.addChildLabel(card, 'Desc', guardSpellDescribe(id, spellLv.level), left, cursor - descH / 2, FONT.small * scale, CREAM_TEXT, new Size(innerW, descH), HorizontalTextAlignment.LEFT);
     desc.enableWrapText = true;
-    desc.lineHeight = Math.max(desc.fontSize + 2, 18 * scale);
+    desc.lineHeight = Math.max(desc.fontSize + 3, 19 * scale);
     desc.verticalAlign = VerticalTextAlignment.TOP;
     desc.overflow = Label.Overflow.SHRINK;
-    cursor -= descH + 6 * scale;
+    cursor -= descH + gapS;
 
-    // 下一级对照表:标题 Lv.a → Lv.b;每项 名 当前 → 下一级(绿);解锁新效果单独一行(金)
-    const diff = open ? guardSpellNextDiff(id, spellLv.level) : null;
-    const rowH = 22 * scale;
+    // 下一级对照表(标题行 + 逐项);满级 / 未解锁各一行
+    this.drawDivider(card, 'TableDivider', 0, cursor + 2 * scale, innerW);
     if (open && diff) {
-      const header = this.host.addChildLabel(card, 'DiffHead', `Lv.${spellLv.level}   →   Lv.${spellLv.level + 1}`, 0, cursor - rowH / 2, FONT.small * scale, GOLD_TEXT, new Size(innerW, this.lh(22, scale)));
+      const header = this.host.addChildLabel(card, 'DiffHead', `Lv.${spellLv.level}   →   Lv.${spellLv.level + 1}`, 0, cursor - rowH / 2, FONT.body * scale, GOLD_TEXT, new Size(innerW, rowH));
       header.isBold = true;
-      cursor -= rowH + 2 * scale;
+      cursor -= rowH + 4 * scale;
       const entries = diff.changes.slice(0, 3).map((change) => {
         const arrow = change.lastIndexOf('→');
         const head = arrow >= 0 ? change.slice(0, arrow) : change;
         const next = arrow >= 0 ? change.slice(arrow + 1) : '';
-        // 格式「名 值→值」,名是单词、值可能带单位空格(1.2 格),所以按第一个空格切
         const space = head.indexOf(' ');
         return { label: space >= 0 ? head.slice(0, space) : head, cur: space >= 0 ? head.slice(space + 1).trim() : '', next: next.trim() };
       });
       entries.forEach((entry, index) => {
         const y = cursor - rowH / 2;
-        const rg = this.host.addChildPlainNode(card, `DiffRow${index}`, 0, y, innerW, rowH - 2 * scale).addComponent(Graphics);
-        rg.fillColor = rgba(255, 214, 140, index % 2 === 0 ? 14 : 6);
-        rg.roundRect(-innerW / 2, -(rowH - 2 * scale) / 2, innerW, rowH - 2 * scale, 3 * scale);
+        const rg = this.host.addChildPlainNode(card, `DiffRow${index}`, 0, y, innerW, rowH - 3 * scale).addComponent(Graphics);
+        rg.fillColor = rgba(255, 214, 140, index % 2 === 0 ? 16 : 7);
+        rg.roundRect(-innerW / 2, -(rowH - 3 * scale) / 2, innerW, rowH - 3 * scale, 3 * scale);
         rg.fill();
-        const label = this.host.addChildLabel(card, `DiffLabel${index}`, entry.label, left + 4 * scale, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.34, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+        const label = this.host.addChildLabel(card, `DiffLabel${index}`, entry.label, left + 6 * scale, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.3, rowH), HorizontalTextAlignment.LEFT);
         label.overflow = Label.Overflow.SHRINK;
-        const cur = this.host.addChildLabel(card, `DiffCur${index}`, entry.cur, left + innerW * 0.52, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.26, this.lh(20, scale)));
+        const cur = this.host.addChildLabel(card, `DiffCur${index}`, entry.cur, left + innerW * 0.5, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.26, rowH));
         cur.overflow = Label.Overflow.SHRINK;
-        this.host.addChildLabel(card, `DiffArrow${index}`, '→', left + innerW * 0.7, y, FONT.small * scale, DIM_TEXT, new Size(innerW * 0.1, this.lh(20, scale)));
-        const nextLabel = this.host.addChildLabel(card, `DiffNext${index}`, entry.next, right - innerW * 0.12, y, FONT.small * scale, GREEN_TEXT, new Size(innerW * 0.24, this.lh(20, scale)));
+        this.host.addChildLabel(card, `DiffArrow${index}`, '→', left + innerW * 0.68, y, FONT.small * scale, DIM_TEXT, new Size(innerW * 0.1, rowH));
+        const nextLabel = this.host.addChildLabel(card, `DiffNext${index}`, entry.next, right - innerW * 0.13, y, FONT.small * scale, GREEN_TEXT, new Size(innerW * 0.26, rowH));
         nextLabel.overflow = Label.Overflow.SHRINK;
         nextLabel.isBold = true;
         cursor -= rowH;
       });
       if (diff.unlock) {
-        const unlock = this.host.addChildLabel(card, 'DiffUnlock', `解锁「${diff.unlock}」`, 0, cursor - rowH / 2, FONT.tiny * scale, rgba(255, 214, 110), new Size(innerW, this.lh(20, scale)));
+        const unlock = this.host.addChildLabel(card, 'DiffUnlock', `解锁「${diff.unlock}」`, 0, cursor - rowH / 2, FONT.small * scale, rgba(255, 214, 110), new Size(innerW, rowH));
         unlock.overflow = Label.Overflow.SHRINK;
         unlock.isBold = true;
         cursor -= rowH;
       }
-    } else if (open) {
-      const maxedLabel = this.host.addChildLabel(card, 'DiffHead', '已达最高等级', 0, cursor - rowH / 2, FONT.small * scale, GOLD_TEXT, new Size(innerW, this.lh(22, scale)));
-      maxedLabel.isBold = true;
-      cursor -= rowH;
     } else {
-      const lockedLabel = this.host.addChildLabel(card, 'DiffHead', `守卫水晶升到 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, 0, cursor - rowH / 2, FONT.small * scale, GOLD_TEXT, new Size(innerW, this.lh(22, scale)));
-      lockedLabel.isBold = true;
+      const line = this.host.addChildLabel(card, 'DiffHead', open ? '已达最高等级' : `守卫水晶升到 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, 0, cursor - rowH / 2, FONT.body * scale, GOLD_TEXT, new Size(innerW, rowH));
+      line.isBold = true;
       cursor -= rowH;
     }
 
-    // 底部:花费行 + 升级按钮 + 装备状态 / 装备按钮(贴卡底排)
+    // 底部:花费行 + 升级按钮 + 装备状态 / 装备按钮(贴卡底)
     const gold = Number(info.goldBalance ?? 0);
     const core = Number(info.coreBalance ?? 0);
     const maxed = spellLv.level >= GUARD_SPELL_MAX_LEVEL || spellLv.nextGold === null;
@@ -1182,12 +1204,10 @@ export class LobbyGuardCrystalDialogRenderer {
     const coreCost = spellLv.nextCore ?? 0;
     const gateLevel = spellLv.needCrystalLevel ?? 0;
     const gated = !maxed && gateLevel > info.level;
-    const btnW = Math.min(innerW * 0.62, 190 * scale);
-    const btnH = btnW * BTN_COST_UP.aspect;
     const btnY = -h / 2 + pad + btnH / 2;
     if (open && !maxed && spellLv.available) {
-      const costY = btnY + btnH / 2 + 14 * scale;
-      const iconSize = (this.phone ? 24 : 20) * scale;
+      const costY = btnY + btnH / 2 + gapS + costH / 2;
+      const iconSize = 22 * scale;
       const items: Array<{ key: string; icon: string; need: number; ok: boolean }> = [
         { key: 'Gold', icon: GOLD_ICON, need: goldCost, ok: gold >= goldCost },
         { key: 'Core', icon: CORE_ICON, need: coreCost, ok: core >= coreCost },
@@ -1196,7 +1216,7 @@ export class LobbyGuardCrystalDialogRenderer {
       items.forEach((item, index) => {
         const ix = left + index * itemW + 4 * scale;
         this.host.addSprite(`CostIcon${item.key}`, item.icon, ix + iconSize / 2, costY, iconSize, iconSize, card);
-        const text = this.host.addChildLabel(card, `Cost${item.key}`, this.host.formatInteger(item.need), ix + iconSize + 4 * scale, costY, FONT.body * scale, item.ok ? CREAM_TEXT : RED_TEXT, new Size(itemW - iconSize - 12 * scale, this.lh(22, scale)), HorizontalTextAlignment.LEFT);
+        const text = this.host.addChildLabel(card, `Cost${item.key}`, this.host.formatInteger(item.need), ix + iconSize + 6 * scale, costY, FONT.body * scale, item.ok ? CREAM_TEXT : RED_TEXT, new Size(itemW - iconSize - 12 * scale, costH), HorizontalTextAlignment.LEFT);
         text.overflow = Label.Overflow.SHRINK;
         text.isBold = true;
       });
@@ -1243,12 +1263,12 @@ export class LobbyGuardCrystalDialogRenderer {
     if (!open) {
       pillText = '未解锁';
     } else if (slotIndex >= 0) {
-      pillText = `已装备\n第${slotIndex + 1}格`;
+      pillText = `已装备 · 第${slotIndex + 1}格`;
     } else if (loadout.length < slots) {
       pillText = '装备';
       action = () => this.host.setGuardCrystalLoadout(loadout.concat([id]));
     } else {
-      pillText = `装备到\n第${target + 1}格`;
+      pillText = `装备到第${target + 1}格`;
       action = () => {
         const next = loadout.slice();
         next[target] = id;
@@ -1256,7 +1276,7 @@ export class LobbyGuardCrystalDialogRenderer {
       };
     }
     const pillW = innerW - btnW - 8 * scale;
-    const pillH = btnH * 0.78;
+    const pillH = btnH * 0.72;
     const pill = this.host.addChildPlainNode(card, 'Action', right - pillW / 2, btnY, pillW, pillH);
     const pg = pill.addComponent(Graphics);
     pg.fillColor = action ? rgba(130, 34, 22, 245) : slotIndex >= 0 ? rgba(30, 22, 12, 240) : rgba(40, 32, 24, 230);
