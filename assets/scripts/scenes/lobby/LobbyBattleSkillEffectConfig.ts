@@ -220,8 +220,7 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a49_089:animation': { w: 163, h: 156, cx: 2, cy: 2 },
   'v2_a49_206:action': { w: 359, h: 312, cx: 11, cy: 44 },
   'v2_a49_212:action': { w: 446, h: 323, cx: -2, cy: -31 },
-  // 法术能量条(2026-10-11):金色圆角框流光(A49-394 idle 1s 循环)+ 蓝色细弧光环星点(A49-153 action 0.67s 循环)
-  'v2_a49_394:idle': { w: 300, h: 103, cx: 1, cy: -5 },
+  // 蓝色细弧光环星点(A49-153 action 0.67s 循环):统一读取态转圈(原能量条金框 A49-394 已于 2026-10-15 改为程序圆角金边)
   'v2_a49_153:action': { w: 135, h: 135, cx: 1, cy: 99 },
   'v2_a49_373:idle1': { w: 222, h: 201, cx: -16, cy: 5 },
   'v2_a49_392:idle': { w: 210, h: 211, cx: 6, cy: 5 },
@@ -368,10 +367,6 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'fx_650079_mieshizhiyuan_texiao:skill': { w: 592, h: 552, cx: 137, cy: 95 },
   'fx_650059_specialhit:hit': { w: 362, h: 290, cx: 10, cy: 2 },
   'fx_63001_yanguang_texiao:skill1': { w: 922, h: 636, cx: 48, cy: 271 },
-  // 布阵脚底光环(2026-10-15,bounds_measure.py 量):A47-345 金色透视地面法阵 / A47-464 淡金同心环
-  'v2_a47_345:action': { w: 760, h: 351, cx: 1, cy: 2 },
-  'v2_a47_464:idle3': { w: 1226, h: 418, cx: -14, cy: -115 },
-  'v2_a49_486:idle1': { w: 272, h: 268, cx: 9, cy: -10 },
 };
 
 /** 查实测包围盒(key = effect:animation 小写);没有返回 null。 */
