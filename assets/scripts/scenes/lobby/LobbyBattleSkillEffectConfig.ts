@@ -368,6 +368,9 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'fx_650079_mieshizhiyuan_texiao:skill': { w: 592, h: 552, cx: 137, cy: 95 },
   'fx_650059_specialhit:hit': { w: 362, h: 290, cx: 10, cy: 2 },
   'fx_63001_yanguang_texiao:skill1': { w: 922, h: 636, cx: 48, cy: 271 },
+  // 布阵脚底光环(2026-10-15,bounds_measure.py 量):A47-345 金色透视地面法阵 / A47-464 淡金同心环
+  'v2_a47_345:action': { w: 760, h: 351, cx: 1, cy: 2 },
+  'v2_a47_464:idle3': { w: 1226, h: 418, cx: -14, cy: -115 },
 };
 
 /** 查实测包围盒(key = effect:animation 小写);没有返回 null。 */

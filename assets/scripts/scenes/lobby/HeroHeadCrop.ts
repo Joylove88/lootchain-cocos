@@ -35,18 +35,22 @@ export function preloadHeroAvatars(): void {
   });
 }
 
-/** 在 parent 中心挂圆形 / 圆角方形遮罩窗口,里面放一张 size×size 的图。 */
-function mountMaskedFrame(parent: Node, frame: SpriteFrame, size: number, shape: 'circle' | 'round'): void {
+/**
+ * 在 parent 中心挂一张 size×size 的图:circle = 圆形遮罩,round = 圆角方形遮罩,
+ * square = 不加遮罩(外面有卡框盖边;布阵网格里卡片多,省掉逐张模板遮罩)。
+ */
+function mountMaskedFrame(parent: Node, frame: SpriteFrame, size: number, shape: 'circle' | 'round' | 'square'): void {
   const clip = new Node('HeadClip');
   clip.layer = parent.layer;
   parent.addChild(clip);
   clip.addComponent(UITransform).setContentSize(size, size);
-  const mask = clip.addComponent(Mask);
   if (shape === 'circle') {
     // 圆形用 Mask 自带椭圆(按节点尺寸生成):自绘 Graphics 的模板遮罩在这里没生效(安卓模拟器实测方图四角伸出圆圈)
+    const mask = clip.addComponent(Mask);
     mask.type = Mask.Type.GRAPHICS_ELLIPSE;
     mask.segments = 48;
-  } else {
+  } else if (shape === 'round') {
+    const mask = clip.addComponent(Mask);
     mask.type = Mask.Type.GRAPHICS_STENCIL;
     const mg = clip.getComponent(Graphics) ?? clip.addComponent(Graphics);
     mg.roundRect(-size / 2, -size / 2, size, size, Math.max(4, size * 0.1));
@@ -76,7 +80,7 @@ function withFrame(path: string, done: (frame: SpriteFrame | null) => void): voi
  * 英雄头像:生成头像优先,没有则从立绘裁头部。两者都没有返回 false(调用方自己画占位)。
  * 图在缓存里同步挂好;否则异步,到了再挂并回调 onReady(调用方据此撤掉首字占位)。
  */
-export function mountHeroAvatar(parent: Node, heroCode: string | null | undefined, size: number, shape: 'circle' | 'round', onReady?: () => void): boolean {
+export function mountHeroAvatar(parent: Node, heroCode: string | null | undefined, size: number, shape: 'circle' | 'round' | 'square', onReady?: () => void): boolean {
   const avatar = resolveHeroAvatarPath(heroCode);
   if (!avatar) {
     return mountHeroHeadCrop(parent, heroCode, size, shape, onReady);
@@ -135,7 +139,7 @@ export function buildHeroHeadCropFrame(base: SpriteFrame, crop: [number, number,
  * 在 parent 中心挂一个 size×size 的英雄头像(圆形或圆角方形窗口)。英雄没有立绘 / 裁切框时返回 false(调用方自己画占位)。
  * 立绘已在缓存则同步挂好;否则异步加载,到了再挂并回调 onReady(调用方据此撤掉首字占位)。
  */
-export function mountHeroHeadCrop(parent: Node, heroCode: string | null | undefined, size: number, shape: 'circle' | 'round', onReady?: () => void): boolean {
+export function mountHeroHeadCrop(parent: Node, heroCode: string | null | undefined, size: number, shape: 'circle' | 'round' | 'square', onReady?: () => void): boolean {
   const artPath = resolveHeroCardArtPath(heroCode);
   const crop = artPath ? heroHeadCropOf(artPath) : null;
   if (!artPath || !crop) {
