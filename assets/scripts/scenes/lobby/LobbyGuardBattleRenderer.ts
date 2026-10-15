@@ -2139,10 +2139,12 @@ export class LobbyGuardBattleRenderer {
   }
 
   private mountStatsAvatar(parent: Node, entry: { name: string; rarity: string; ally: BattlePresentationUnitSnapshot | null }, size: number): void {
-    // 2026-10-15:GPT 生成头像优先(与挑战弹窗同一套,进游戏时已预读);图还没到就照旧走下面的结算头像 / 立绘裁头 / 首字
+    // 2026-10-15 用户「其他界面的头像也统一换成新生成的」:有 GPT 生成头像的一律用它(进游戏 / 进战斗已预读;
+    // 万一还没到,先垫首字底,图到了盖上来)
     const heroCode = entry.ally?.heroCode ?? entry.ally?.unitKey ?? null;
-    const avatarPath = resolveHeroAvatarPath(heroCode);
-    if (avatarPath && resources.get(avatarPath, SpriteFrame) && mountHeroAvatar(parent, heroCode, size, 'round')) {
+    if (resolveHeroAvatarPath(heroCode)) {
+      this.mountInitialFallback(parent, entry, size);
+      mountHeroAvatar(parent, heroCode, size, 'round', () => parent.getChildByName('Fallback')?.destroy());
       return;
     }
     const portrait = resolveC1812HeroResultPortraitPath(entry.ally?.spineAsset ?? entry.ally?.portraitAsset);
@@ -2159,6 +2161,12 @@ export class LobbyGuardBattleRenderer {
       // 立绘还没到:先画首字底,下一次刷新(≥500ms 后)重建行,图到了就换成头像
       this.statsAvatarPending = true;
     }
+    this.mountInitialFallback(parent, entry, size);
+    // (旧版此处在圆形遮罩窗口里挂放大的骨骼露头;2026-10-11 改静态图后不再需要)
+  }
+
+  /** 头像未就绪时的占位:稀有度色底 + 名字首字。 */
+  private mountInitialFallback(parent: Node, entry: { name: string; rarity: string }, size: number): void {
     const fallback = this.host.addChildPlainNode(parent, 'Fallback', 0, 0, size, size);
     const fg = fallback.addComponent(Graphics);
     const tint = GUARD_RARITY_TINT[entry.rarity] ?? rgba(90, 80, 70, 255);
@@ -2169,7 +2177,6 @@ export class LobbyGuardBattleRenderer {
     initial.enableOutline = true;
     initial.outlineColor = rgba(10, 8, 6, 255);
     initial.outlineWidth = 2;
-    // (旧版此处在圆形遮罩窗口里挂放大的骨骼露头;2026-10-11 改静态图后不再需要)
   }
 
   private refreshWaveTrack(): void {
@@ -7833,9 +7840,12 @@ export class LobbyGuardBattleRenderer {
       const heroCode = (ally.heroCode ?? ally.unitKey).toUpperCase();
       const role = resolveGuardRole(ally.heroCode ?? ally.unitKey, ally.heroClass);
       sprites.add(resolveAttackFxSpritePath(resolveHeroAttackFx(heroCode, ally.heroClass ?? null, role === 'melee')));
-      // 统计面板 / 英雄详情里的头像(413×693):第一次打开面板时才上传显卡会顿一下,进场就读
+      // 统计面板 / 词条卡头像:第一次打开面板时才上传显卡会顿一下,进场就读;2026-10-15 起有生成头像的读它
+      const avatarPath = resolveHeroAvatarPath(ally.heroCode ?? ally.unitKey);
       const portrait = resolveC1812HeroResultPortraitPath(ally.spineAsset ?? ally.portraitAsset);
-      if (portrait) {
+      if (avatarPath) {
+        sprites.add(avatarPath);
+      } else if (portrait) {
         sprites.add(portrait);
       } else {
         // 没有头像图的 SR/R:统计 / 词条卡头像从名册立绘裁头部(2026-10-11),立绘要进战斗预读,否则首开统计只能显示首字

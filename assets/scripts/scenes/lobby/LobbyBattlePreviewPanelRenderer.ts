@@ -24,6 +24,7 @@ import {
   tween,
   sys,
 } from 'cc';
+import { mountHeroAvatar } from './HeroHeadCrop';
 import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
 import { isDailyDungeonStageCode } from '../../api/BattleApi';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
@@ -4459,10 +4460,14 @@ export class LobbyBattlePreviewPanelRenderer {
       graphics.close();
       graphics.fill();
       // C1812 英雄头像(named 骨骼可用):盖住上方的圆+剪影占位;SR/R 无对应头像时保留占位绘制。
-      const deckPortraitPath = resolveBattleResultPortraitPath(hero);
-      if (deckPortraitPath) {
-        const portraitSize = Math.min(cardWidth - 12 * scale, cardHeight * 0.52);
-        this.host.addSprite(`LobbyBattleStage12HeroCardPortrait_${index}`, deckPortraitPath, 0, -3 * scale, portraitSize, portraitSize, card);
+      // 2026-10-15 用户「其他界面的头像也统一换成新生成的」:GPT 生成头像优先,没有再用旧结算头像
+      const portraitSize = Math.min(cardWidth - 12 * scale, cardHeight * 0.52);
+      const portraitHolder = this.host.addChildPlainNode(card, `LobbyBattleStage12HeroCardPortrait_${index}`, 0, -3 * scale, portraitSize, portraitSize);
+      if (!mountHeroAvatar(portraitHolder, hero.heroCode ?? hero.unitKey, portraitSize, 'round')) {
+        const deckPortraitPath = resolveBattleResultPortraitPath(hero);
+        if (deckPortraitPath) {
+          this.host.addSprite('Img', deckPortraitPath, 0, 0, portraitSize, portraitSize, portraitHolder);
+        }
       }
       graphics.fillColor = rgba(0, 0, 0, 76);
       graphics.rect(-cardWidth / 2 + 7 * scale, cardHeight / 2 - 27 * scale, cardWidth - 14 * scale, 20 * scale);
