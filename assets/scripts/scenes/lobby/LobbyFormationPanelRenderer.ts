@@ -82,13 +82,6 @@ const FORMATION_CARD_FRAME_PX = 256;
 const FORMATION_CARD_FRAME_INSET = 34;
 const FORMATION_HALO_FX = { effect: 'v2_a47_345', animation: 'action' };
 // 第二轮(2026-10-15 用户「整体还是比较丑,右侧栏也需要美化」):右栏专用素材(GPT 按原型拆)——面板框 / 页签两态 / 已上阵缎带 / 战力剑图标
-const FORMATION_PANEL_FRAME_ASSET = 'ui/formation/ai/panel_frame/spriteFrame';
-/** 面板框素材像素尺寸与九宫格内边(顶部含宝石冠饰,内边更大)。 */
-const FORMATION_PANEL_FRAME_PX_W = 512;
-const FORMATION_PANEL_FRAME_PX_H = 768;
-const FORMATION_PANEL_FRAME_INSET_TOP = 72;
-const FORMATION_PANEL_FRAME_INSET_SIDE = 50;
-const FORMATION_PANEL_FRAME_INSET_BOTTOM = 60;
 const FORMATION_TAB_ON_ASSET = 'ui/formation/ai/tab_on/spriteFrame';
 const FORMATION_TAB_OFF_ASSET = 'ui/formation/ai/tab_off/spriteFrame';
 const FORMATION_RIBBON_ASSET = 'ui/formation/ai/deployed_ribbon/spriteFrame';
