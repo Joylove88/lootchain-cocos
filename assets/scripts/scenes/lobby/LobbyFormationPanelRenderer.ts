@@ -55,8 +55,6 @@ const FR = {
   pedestal: `${REF_DIR}pedestal/spriteFrame`,
   nameplate: `${REF_DIR}nameplate/spriteFrame`,
   unequip: `${REF_DIR}btn_unequip/spriteFrame`,
-  btnDark: `${REF_DIR}btn_dark/spriteFrame`,
-  btnRed: `${REF_DIR}btn_red/spriteFrame`,
   iconSwords: `${REF_DIR}icon_swords/spriteFrame`,
   panelFrame: `${REF_DIR}panel_frame/spriteFrame`,
   tabOn: `${REF_DIR}tab_on/spriteFrame`,
@@ -64,8 +62,10 @@ const FR = {
   boxDark: `${REF_DIR}box_dark/spriteFrame`,
   btnSquare: `${REF_DIR}btn_square/spriteFrame`,
 } as const;
-/** 新背景(参考图同款大教堂)里水晶中心在图宽 33% 处:放大 + 平移到英雄站位中心。 */
-const FORMATION_BG_CRYSTAL_X = 0.33;
+/** 背景(用户 2026-10-15:「背景 UI 像之前那样」→ 换回第三版重画的大教堂,水晶在图宽 27.8% 处、左三分之二都亮)。 */
+const FORMATION_BG_CRYSTAL_X = 0.278;
+/** 背景最多放大到 1.2:再大水晶会占到三分之一屏高(用户嫌过);对不齐时英雄组就近。 */
+const FORMATION_BG_MAX_SCALE = 1.2;
 /** 职业图标(用户「不需要阵营,按职业分」):名牌第二行 + 英雄卡底行。 */
 const FORMATION_CLASS_ICONS: Record<string, string> = {
   战士: `${REF_DIR}class_warrior/spriteFrame`,
@@ -199,12 +199,13 @@ export class LobbyFormationPanelRenderer {
     dim.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     // 背景:参考图同款大教堂(水晶在图宽 33%),等比铺满全窗口;放大到水晶能对准英雄站位中心(左右都不露底)
     const heroesFromScreenLeft = centerX + geo.heroesCenterX + layout.width / 2;
-    const bgWidth = bgCover * Math.max(1, heroesFromScreenLeft / (FORMATION_BG_CRYSTAL_X * bgCover));
+    const bgWidth = bgCover * Math.min(FORMATION_BG_MAX_SCALE, Math.max(1.04, heroesFromScreenLeft / (FORMATION_BG_CRYSTAL_X * bgCover)));
     const bgHeight = bgWidth / bgAspect;
     const wantX = centerX + geo.heroesCenterX - (FORMATION_BG_CRYSTAL_X - 0.5) * bgWidth;
     const bgX = Math.max(layout.width / 2 - bgWidth / 2, Math.min(wantX, -layout.width / 2 + bgWidth / 2));
     const dimGraphics = dim.addComponent(Graphics);
-    const bgY = layout.height / 2 - bgHeight / 2;
+    // 旧背景水晶在图高 30% 处:垂直居中裁(顶对齐会把地面裁掉、水晶落到英雄身后)
+    const bgY = 0;
     if (!this.host.addSprite('LobbyFormationSceneBgSprite', FR.bg, bgX, bgY, bgWidth, bgHeight, dim)
       && !this.host.addSprite('LobbyFormationSceneBgSprite', FORMATION_BATTLE_BG_ASSET, 0, 0, bgCover, bgCover / bgAspect, dim)) {
       dimGraphics.fillColor = rgba(10, 7, 8, 250);
@@ -228,7 +229,6 @@ export class LobbyFormationPanelRenderer {
     const panel = this.host.addChildPlainNode(panelGroup, 'LobbyFormationSceneFrame', 0, 0, stageWidth, stageHeight);
     this.renderHeader(panel, state, selectedStageCode, selectedHeroIds);
     this.renderBody(panel, state, selectedHeroIds);
-    this.renderFooter(panel, selectedStageCode, state);
     this.renderCloseButton(panel);
   }
 
@@ -246,7 +246,7 @@ export class LobbyFormationPanelRenderer {
     const panelRight = right - 22 * u;
     const panelLeft = panelRight - 515 * u;
     const fieldRight = panelLeft - 5 * u;
-    const slotSpacing = Math.min(262 * u * b, (fieldRight - left - 240 * u * b) / 3);
+    const slotSpacing = Math.min(262 * u * Math.min(b, 1.1), (fieldRight - left - 240 * u * b) / 3);
     const halfSpan = 1.5 * slotSpacing + 115 * u * b;
     const heroesMinX = left + halfSpan + 6 * u;
     const heroesMaxX = Math.max(heroesMinX, fieldRight - halfSpan);
@@ -432,8 +432,8 @@ export class LobbyFormationPanelRenderer {
     og.fill();
     const boxW = Math.min(680 * u, (g.right - g.left) * 0.8);
     const boxH = 330 * u;
-    const k = boxW / 488;
-    if (!this.addSliced(overlay, 'Frame', FR.panelFrame, 0, k, 500 * k, boxH + 136 * k, k, [60, 60, 130, 130])) {
+    const k = boxW / 485;
+    if (!this.addSliced(overlay, 'Frame', FR.panelFrame, 0, k, 500 * k, boxH + 50 * k, k, [50, 50, 70, 70])) {
       og.fillColor = rgba(14, 12, 12, 245);
       og.rect(-boxW / 2, -boxH / 2, boxW, boxH);
       og.fill();
@@ -478,7 +478,7 @@ export class LobbyFormationPanelRenderer {
   private renderFormationBattlefield(parent: Node, slots: Array<LobbyHeroItemVO | null>): void {
     const g = this.geo;
     const field = this.host.addChildPlainNode(parent, 'LobbyFormationBattlefieldScene', 0, 0, g.right - g.left, g.top - g.bottom);
-    const feetY = g.bottom + (326 + 133 * (g.b - 1)) * g.u;
+    const feetY = g.bottom + (212 + 60 * g.b) * g.u;
     slots.forEach((hero, index) => {
       this.renderFormationSlot(field, hero ?? null, index, g.heroesCenterX + (index - 1.5) * g.slotSpacing, feetY);
     });
@@ -841,9 +841,9 @@ export class LobbyFormationPanelRenderer {
     const pw = g.panelRight - g.panelLeft;
     const ph = g.panelTop - g.panelBottom;
     const panel = this.host.addChildPlainNode(parent, 'LobbyFormationHeroPicker', (g.panelLeft + g.panelRight) / 2, (g.panelTop + g.panelBottom) / 2, pw, ph);
-    // 面板框素材 500×973:金线矩形在 (6..494, 69..906),上下宝石凸在线外 —— 金线矩形对齐面板矩形
-    const k = pw / 488;
-    if (!this.addSliced(panel, 'LobbyFormationPickerFrame', FR.panelFrame, 0, k, 500 * k, ph + 136 * k, k, [60, 60, 130, 130])) {
+    // 面板框素材 500×821(2026-10-15 按参考图重出,细金线):金线矩形在 (7..492, 24..795),上下宝石凸在线外 —— 金线矩形对齐面板矩形
+    const k = pw / 485;
+    if (!this.addSliced(panel, 'LobbyFormationPickerFrame', FR.panelFrame, 0, k, 500 * k, ph + 50 * k, k, [50, 50, 70, 70])) {
       const fg = panel.addComponent(Graphics);
       fg.fillColor = rgba(16, 15, 16, 238);
       fg.rect(-pw / 2, -ph / 2, pw, ph);
@@ -1222,32 +1222,6 @@ export class LobbyFormationPanelRenderer {
   }
 
   /** 底部三钮(参考图 y=853,相对英雄组中心 -313 / -41 / +279):刷新英雄、查看英雄(暗金)+ 挑战(红)。 */
-  private renderFooter(parent: Node, stageCode: string, state: LobbyHeroRosterPanelState): void {
-    const g = this.geo;
-    const u = g.u;
-    const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
-    const footerHidden = this.host.isLobbyFormationFooterHidden?.() ?? false;
-    // 从英雄界面进入=纯布阵场景,不显示"战力不足";只有深渊入口才提示。战力不足只红字提示,不拦截挑战。
-    const powerShort = !footerHidden && power.rosterLoaded && power.recommendedPower > 0 && !power.enough;
-    if (powerShort) {
-      const note = this.host.addChildLabel(parent, 'LobbyFormationBoundaryNote', `战力不足（还差 ${formatInteger(power.powerGap)}），仍可挑战。`, g.heroesCenterX, g.top - 110 * u, 18 * u, rgba(255, 110, 100, 235), new Size(640 * u, 26 * u));
-      note.overflow = Label.Overflow.SHRINK;
-      this.applyOutline(note, u, true);
-    }
-    if (footerHidden) {
-      // 从英雄界面进入:纯布阵场景,不显示挑战钮。
-      return;
-    }
-    // 底行:只剩一个居中的大「挑战」(战力横匾在顶部)
-    const ub = u * g.b;
-    const previewEnabled = this.canOpenBattlePreview(state, stageCode);
-    const previewLabel = previewEnabled ? '挑战' : state.loading ? '读取中' : '不可出战';
-    const preview = this.addFooterButton(parent, 'LobbyFormationBattlePreviewButton', previewLabel, FR.iconSwords, g.heroesCenterX, g.bottom + 88 * u, 360 * ub, 94 * ub, 'red', previewEnabled);
-    if (previewEnabled) {
-      preview.on(Button.EventType.CLICK, () => this.host.openLobbyBattlePreviewPanel(stageCode), this);
-    }
-  }
-
   /** 战力横匾:剑图标 / 阵容战力 / 数值 | 已上阵 n/4(素材 710×120,两端金饰各占宽 7.5%)。 */
   private renderPowerBanner(parent: Node, x: number, y: number, bannerW: number, bannerH: number, u: number, power: LobbyFormationPowerSnapshot, footerHidden: boolean, selectedCount: number): void {
     const banner = this.host.addChildPlainNode(parent, 'LobbyFormationPowerBanner', x, y, bannerW, bannerH);
@@ -1300,49 +1274,6 @@ export class LobbyFormationPanelRenderer {
     button.addComponent(Button);
     button.on(Button.EventType.CLICK, () => this.host.closeLobbyFormationPanel(), this);
     this.host.applyImageButtonFeedback(button, 1.06, 0.94);
-  }
-
-  private canOpenBattlePreview(state: LobbyHeroRosterPanelState, stageCode: string): boolean {
-    // 战斗预演只要求:有可上阵英雄、关卡有效、英雄接口无错误、英雄队列已加载。
-    // 战力不足也允许进入挑战(策划 2026-07-10):不再用 power.enough 拦截,只在提示行红字提醒。
-    const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
-    return /^MAIN_\d+_\d+$/.test(stageCode) && !state.error && this.visibleHeroes(state.heroes).length > 0 && power.rosterLoaded;
-  }
-
-  private addFooterButton(parent: Node, name: string, text: string, iconPath: string, x: number, y: number, width: number, height: number, style: 'dark' | 'red', enabled: boolean): Node {
-    const u = this.geo.u * this.geo.b;
-    const button = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    const red = style === 'red' && enabled;
-    // 暗金钮素材 541×140、红钮 636×160:两端尖饰在九宫格左右区,中段拉伸
-    const art = red
-      ? this.addSliced(button, `${name}Art`, FR.btnRed, 0, 0, width, height, height / 160, [96, 96, 60, 50])
-      : this.addSliced(button, `${name}Art`, FR.btnDark, 0, 0, width, height, height / 140, [84, 84, 40, 40]);
-    if (!art) {
-      const graphics = button.addComponent(Graphics);
-      graphics.fillColor = red ? rgba(120, 22, 18, 238) : rgba(18, 15, 14, 230);
-      graphics.roundRect(-width / 2, -height * 0.36, width, height * 0.72, 6 * u);
-      graphics.fill();
-      graphics.strokeColor = enabled ? rgba(206, 160, 86, 220) : rgba(106, 84, 47, 142);
-      graphics.lineWidth = Math.max(1, 1.4 * u);
-      graphics.roundRect(-width / 2, -height * 0.36, width, height * 0.72, 6 * u);
-      graphics.stroke();
-    }
-    // 图标在左(参考图约距左端 22%),文字偏右
-    const iconSize = height * (red ? 0.6 : 0.58);
-    const icon = this.host.addSprite(`${name}Icon`, iconPath, -width / 2 + width * (red ? 0.25 : 0.22), 0, iconSize, iconSize, button);
-    if (icon && !enabled) {
-      icon.node.addComponent(UIOpacity).opacity = 110;
-    }
-    const label = this.host.addChildLabel(button, `${name}Label`, text, width * (red ? 0.08 : 0.12), 0, (red ? 28 : 24) * u, enabled ? rgba(255, 238, 206) : rgba(151, 133, 93), new Size(width * 0.5, height * 0.6));
-    label.overflow = Label.Overflow.SHRINK;
-    label.isBold = red;
-    this.applyOutline(label, u, true);
-    const buttonComponent = button.addComponent(Button);
-    buttonComponent.interactable = enabled;
-    if (enabled) {
-      this.host.applyImageButtonFeedback(button, 1.025, 0.975);
-    }
-    return button;
   }
 
   /** 九宫格不变形缩放:节点按素材像素空间尺寸建(目标尺寸 / k),整体 setScale(k);insets = 左 / 右 / 上 / 下(素材像素)。 */
