@@ -181,11 +181,15 @@ export class LobbyFormationPanelRenderer {
     const bgAspect = 1920 / 1080;
     // 2026-10-15 用户「背景图向左移一下,中间的水晶被右侧栏压住」「右侧太暗」:背景重画成水晶在图宽 27.8% 处、
     // 左三分之二两侧都有光;放大 8% 后把水晶对到战场区正中(左缘不露底时就近),右三分之一在侧边栏后面
+    // 再一轮(用户「水晶最好在中间两个英雄之间」):原 8% 放大时左缘贴死、水晶右移不到位——
+    // 按英雄站位中心(= 场景区左缘到侧栏左缘的中点)反推所需放大倍数,让水晶正好落在中间两位英雄之间
     const bgCover = layout.width / layout.height > bgAspect ? layout.width : layout.height * bgAspect;
-    const bgWidth = bgCover * 1.08;
+    const heroCenterX = (-panelWidth / 2 + fieldRight) / 2;
+    const heroCenterFromScreenLeft = centerX + heroCenterX + layout.width / 2;
+    const bgWidth = bgCover * Math.max(1.08, heroCenterFromScreenLeft / (0.278 * bgCover));
     const bgHeight = bgWidth / bgAspect;
     const crystalFromCenter = (0.278 - 0.5) * bgWidth;
-    const wantX = centerX + this.battlefieldCenterX - crystalFromCenter;
+    const wantX = centerX + heroCenterX - crystalFromCenter;
     // 左缘不能露底:背景左边至少到屏幕左缘
     const bgX = Math.max(-layout.width / 2 + bgWidth / 2 - (bgWidth - layout.width), Math.min(wantX, -layout.width / 2 + bgWidth / 2));
     const dimGraphics = dim.addComponent(Graphics);
@@ -960,17 +964,19 @@ export class LobbyFormationPanelRenderer {
     const avatarWidth = width - inset * 2;
     const avatarHeight = height - metaHeight - inset;
     const avatarY = height / 2 - inset - avatarHeight / 2;
-    const avatarHolder = this.host.addChildPlainNode(card, 'Avatar', 0, avatarY, avatarWidth, avatarHeight);
+    // 头像容器延伸到底行(Lv / 战力)下面,底行只压一层半透明暗条(用户「黑带稍微透明下」)
+    const holderHeight = height - inset * 2;
+    const avatarHolder = this.host.addChildPlainNode(card, 'Avatar', 0, 0, avatarWidth, holderHeight);
     const ag = avatarHolder.addComponent(Graphics);
     ag.fillColor = rgba(Math.round(rarityColor.r * 0.3), Math.round(rarityColor.g * 0.3), Math.round(rarityColor.b * 0.3), 255);
-    ag.rect(-avatarWidth / 2, -avatarHeight / 2, avatarWidth, avatarHeight);
+    ag.rect(-avatarWidth / 2, -holderHeight / 2, avatarWidth, holderHeight);
     ag.fill();
-    const glyph = this.host.addChildLabel(avatarHolder, 'Glyph', Array.from(safeText(hero.heroName))[0] ?? '?', 0, 0, avatarWidth * 0.42, rgba(255, 244, 222), new Size(avatarWidth, avatarHeight));
+    const glyph = this.host.addChildLabel(avatarHolder, 'Glyph', Array.from(safeText(hero.heroName))[0] ?? '?', 0, avatarY, avatarWidth * 0.42, rgba(255, 244, 222), new Size(avatarWidth, avatarHeight));
     glyph.overflow = Label.Overflow.SHRINK;
     // 头像方图铺满头像区(cover):边长取头像区宽高较大者,顶对齐、水平居中,超出部分由 Mask 裁掉
     avatarHolder.addComponent(Mask);
-    const avatarSide = Math.max(avatarWidth, avatarHeight);
-    const square = this.host.addChildPlainNode(avatarHolder, 'Square', 0, avatarHeight / 2 - avatarSide / 2, avatarSide, avatarSide);
+    const avatarSide = Math.max(avatarWidth, holderHeight);
+    const square = this.host.addChildPlainNode(avatarHolder, 'Square', 0, holderHeight / 2 - avatarSide / 2, avatarSide, avatarSide);
     mountHeroAvatar(square, hero.heroCode, avatarSide, 'square', () => {
       if (glyph.node.isValid) {
         glyph.node.destroy();
@@ -998,6 +1004,13 @@ export class LobbyFormationPanelRenderer {
     // 底行:Lv(左)/ 剑图标 + 战力(右)。卡框四角饰纹会压住两端:左右各收进卡宽 11%
     const metaY = -height / 2 + metaHeight / 2 + inset * 0.4;
     const metaEdge = width / 2 - width * 0.11;
+    const metaBandHeight = avatarY - avatarHeight / 2 + holderHeight / 2;
+    const metaBand = this.host.addChildPlainNode(card, 'MetaBand', 0, -holderHeight / 2 + metaBandHeight / 2, avatarWidth, metaBandHeight);
+    const mg = metaBand.addComponent(Graphics);
+    mg.fillColor = rgba(4, 3, 6, 150);
+    mg.rect(-avatarWidth / 2, -metaBandHeight / 2, avatarWidth, metaBandHeight);
+    mg.fill();
+    metaBand.setSiblingIndex(shade.getSiblingIndex() + 1);
     const level = this.host.addChildLabel(card, 'Level', `Lv.${hero.level}`, -metaEdge, metaY, 14 * scale, rgba(220, 202, 162), new Size(width * 0.34, metaHeight), HorizontalTextAlignment.LEFT);
     level.overflow = Label.Overflow.SHRINK;
     // 战力:数字先按实际字宽排版(过万显示「1.2万」,超出上限再缩字),图标贴在数字左边——数值变长也不会和图标叠在一起
