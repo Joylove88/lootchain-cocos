@@ -228,7 +228,7 @@ export class LobbyFormationPanelRenderer {
     const panel = this.host.addChildPlainNode(panelGroup, 'LobbyFormationSceneFrame', 0, 0, stageWidth, stageHeight);
     this.renderHeader(panel, state, selectedStageCode, selectedHeroIds);
     this.renderBody(panel, state, selectedHeroIds);
-    this.renderFooter(panel, selectedStageCode, state, selectedHeroIds.length);
+    this.renderFooter(panel, selectedStageCode, state);
     this.renderCloseButton(panel);
   }
 
@@ -365,8 +365,6 @@ export class LobbyFormationPanelRenderer {
 
   /** 顶行(参考图 y=48):左上恶魔徽章标题牌「编队」+ 「?」说明钮;中间战力横匾(剑图标 / 阵容战力 / 数值 | 已上阵 n/4)。 */
   private renderHeader(parent: Node, state: LobbyHeroRosterPanelState, stageCode: string, selectedHeroIds: number[]): void {
-    void stageCode;
-    void selectedHeroIds;
     const g = this.geo;
     const u = g.u * g.b;
     const rowY = g.top - 48 * u;
@@ -404,6 +402,12 @@ export class LobbyFormationPanelRenderer {
     help.addComponent(Button);
     help.on(Button.EventType.CLICK, () => this.toggleFormationHelp(parent), this);
     this.host.applyImageButtonFeedback(help, 1.06, 0.94);
+    // 战力横匾:顶部正中(参考图 670~1120,贴右栏左侧),窄屏时不压「?」钮
+    const bannerH = 66 * u;
+    const bannerW = bannerH * (710 / 120);
+    const bannerX = Math.max(helpX + helpSize / 2 + 18 * u + bannerW / 2, g.panelLeft - 14 * u - bannerW / 2);
+    const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
+    this.renderPowerBanner(parent, bannerX, rowY, bannerW, bannerH, u, power, this.host.isLobbyFormationFooterHidden?.() ?? false, selectedHeroIds.length);
 
     if (state.loading || state.error) {
       const statusText = state.loading ? '正在读取可上阵英雄...' : '英雄队列暂不可用，当前不能进入战斗。';
@@ -561,7 +565,7 @@ export class LobbyFormationPanelRenderer {
     // 下阵钮(参考图 120×36,名牌下方)
     const btnW = 122 * u;
     const btnH = 38 * u;
-    const unequip = this.host.addChildPlainNode(slot, 'LobbyFormationActorUnequip', 0, -140 * u, btnW, btnH);
+    const unequip = this.host.addChildPlainNode(slot, 'LobbyFormationActorUnequip', 0, -130 * u, btnW, btnH);
     if (!this.addSliced(unequip, 'Art', FR.unequip, 0, 0, btnW, btnH, btnH / 80, [18, 18, 18, 18])) {
       const ug = unequip.addComponent(Graphics);
       ug.fillColor = rgba(106, 20, 18, 238);
@@ -1140,7 +1144,7 @@ export class LobbyFormationPanelRenderer {
     rarityTag.overflow = Label.Overflow.SHRINK;
     rarityTag.isBold = true;
     this.applyOutline(rarityTag, u, true);
-    const rowY = -height / 2 + 42 * u;
+    const rowY = -height / 2 + 46 * u;
     const level = this.host.addChildLabel(card, 'Level', `Lv.${hero.level}`, -width / 2 + 10 * u, rowY, 15 * u, rgba(228, 216, 192), new Size(78 * u, 22 * u), HorizontalTextAlignment.LEFT);
     level.overflow = Label.Overflow.SHRINK;
     this.applyOutline(level, u, false);
@@ -1148,7 +1152,7 @@ export class LobbyFormationPanelRenderer {
     if (classIcon) {
       this.host.addSprite('Class', classIcon, width / 2 - 24 * u, rowY + 3 * u, 38 * u, 38 * u, card);
     }
-    this.renderStars(card, 0, -height / 2 + 20 * u, hero.star, 20 * u, 22 * u);
+    this.renderStars(card, 0, -height / 2 + 22 * u, hero.star, 20 * u, 22 * u);
     // 稀有度卡框:在 256px 帧空间里九宫格拉伸到卡片比例,再整体缩放(角饰不变形)
     const frameK = width / FORMATION_CARD_FRAME_PX;
     const framePath = FORMATION_CARD_FRAME_ASSETS[rarity] ?? FORMATION_CARD_FRAME_ASSETS.R;
@@ -1218,7 +1222,7 @@ export class LobbyFormationPanelRenderer {
   }
 
   /** 底部三钮(参考图 y=853,相对英雄组中心 -313 / -41 / +279):刷新英雄、查看英雄(暗金)+ 挑战(红)。 */
-  private renderFooter(parent: Node, stageCode: string, state: LobbyHeroRosterPanelState, selectedCount: number): void {
+  private renderFooter(parent: Node, stageCode: string, state: LobbyHeroRosterPanelState): void {
     const g = this.geo;
     const u = g.u;
     const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
@@ -1230,25 +1234,15 @@ export class LobbyFormationPanelRenderer {
       note.overflow = Label.Overflow.SHRINK;
       this.applyOutline(note, u, true);
     }
-    // 底行(参考图 y=853):左边原是刷新 / 查看英雄两钮,用户要求去掉,改放战力横匾;右边挑战钮
-    const y = g.bottom + 88 * u;
-    const cx = g.heroesCenterX;
-    const ub = u * g.b;
-    const previewEnabled = !footerHidden && this.canOpenBattlePreview(state, stageCode);
-    const bannerH = 66 * ub;
-    const bannerW = Math.min(bannerH * (710 / 120), 520 * ub);
-    // 从英雄界面进入(无挑战钮)横匾居中;否则横匾在左、挑战在右,两者整体居中于英雄组
-    const previewW = 326 * ub;
-    const gap = 28 * ub;
-    const groupW = footerHidden ? bannerW : bannerW + gap + previewW;
-    const bannerX = cx - groupW / 2 + bannerW / 2;
-    this.renderPowerBanner(parent, bannerX, y, bannerW, bannerH, ub, power, footerHidden, selectedCount);
     if (footerHidden) {
       // 从英雄界面进入:纯布阵场景,不显示挑战钮。
       return;
     }
+    // 底行:只剩一个居中的大「挑战」(战力横匾在顶部)
+    const ub = u * g.b;
+    const previewEnabled = this.canOpenBattlePreview(state, stageCode);
     const previewLabel = previewEnabled ? '挑战' : state.loading ? '读取中' : '不可出战';
-    const preview = this.addFooterButton(parent, 'LobbyFormationBattlePreviewButton', previewLabel, FR.iconSwords, cx + groupW / 2 - previewW / 2, y, previewW, 86 * ub, 'red', previewEnabled);
+    const preview = this.addFooterButton(parent, 'LobbyFormationBattlePreviewButton', previewLabel, FR.iconSwords, g.heroesCenterX, g.bottom + 88 * u, 360 * ub, 94 * ub, 'red', previewEnabled);
     if (previewEnabled) {
       preview.on(Button.EventType.CLICK, () => this.host.openLobbyBattlePreviewPanel(stageCode), this);
     }
