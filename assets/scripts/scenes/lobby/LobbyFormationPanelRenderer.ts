@@ -479,15 +479,20 @@ export class LobbyFormationPanelRenderer {
     const g = this.geo;
     const field = this.host.addChildPlainNode(parent, 'LobbyFormationBattlefieldScene', 0, 0, g.right - g.left, g.top - g.bottom);
     const feetY = g.bottom + (212 + 60 * g.b) * g.u;
-    slots.forEach((hero, index) => {
-      this.renderFormationSlot(field, hero ?? null, index, g.heroesCenterX + (index - 1.5) * g.slotSpacing, feetY);
+    // 用户 2026-10-15「英雄位置按之前那样」:浅弧——两端两位略靠后(脚底高 48u、整体 0.93 倍),中间两位靠前;
+    // 两端先画、中间后画,石台和名牌互不遮挡
+    [0, 3, 1, 2].forEach((index) => {
+      const outer = index === 0 || index === 3;
+      this.renderFormationSlot(field, slots[index] ?? null, index, g.heroesCenterX + (index - 1.5) * g.slotSpacing, feetY + (outer ? 48 * g.u * g.b : 0), outer ? 0.93 : 1);
     });
   }
 
-  private renderFormationSlot(parent: Node, hero: LobbyHeroItemVO | null, index: number, x: number, feetY: number): void {
+  private renderFormationSlot(parent: Node, hero: LobbyHeroItemVO | null, index: number, x: number, feetY: number, depth: number): void {
     const g = this.geo;
     const u = g.u * g.b;
     const slot = this.host.addChildPlainNode(parent, `LobbyFormationActorStand_${index}`, x, feetY, 240 * u, 40 * u);
+    // 站位整体(石台 / 英雄 / 名牌 / 下阵钮)按景深缩放,脚底点不动
+    slot.setScale(depth, depth, 1);
     // 石台(金边 + 顶面金光):顶面椭圆中心约在素材高 26% 处,对到脚底
     const pedW = 222 * u;
     const pedH = pedW * (203 / 420);
