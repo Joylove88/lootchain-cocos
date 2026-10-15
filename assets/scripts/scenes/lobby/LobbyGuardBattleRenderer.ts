@@ -137,7 +137,7 @@ import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_ENERGY_BAR_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAvatarPath } from './HeroHeadCrop';
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
@@ -486,6 +486,25 @@ interface GuardWheelParts {
   lastIdx: number;
   cards: Node[];
   closeShown: boolean;
+}
+
+/** 以原点为中心的胶囊形闭合路径(两端半圆用 16 段折线),供描边用。 */
+function pillStrokePath(g: Graphics, width: number, height: number): void {
+  const r = height / 2;
+  const half = Math.max(0, width / 2 - r);
+  const segments = 16;
+  g.moveTo(-half, r);
+  g.lineTo(half, r);
+  for (let i = 1; i <= segments; i += 1) {
+    const a = Math.PI / 2 - (Math.PI * i) / segments;
+    g.lineTo(half + Math.cos(a) * r, Math.sin(a) * r);
+  }
+  g.lineTo(-half, -r);
+  for (let i = 1; i <= segments; i += 1) {
+    const a = -Math.PI / 2 - (Math.PI * i) / segments;
+    g.lineTo(-half + Math.cos(a) * r, Math.sin(a) * r);
+  }
+  g.close();
 }
 
 export class LobbyGuardBattleRenderer {
@@ -4126,7 +4145,7 @@ export class LobbyGuardBattleRenderer {
     const bar = this.host.addChildPlainNode(root, 'GuardSpellBar', this.spellBarCenterX(), this.spellBarY(), barW, size + 60);
     const hudScale = this.bottomHudScale();
     bar.setScale(hudScale, hudScale, 1);
-    // 2026-10-11 美化:条加高到 18,底下铺金框流光特效,填充末端挂蓝色光环「能量头」(refreshSpellBar 里定位)
+    // 2026-10-11 美化:条加高到 18;2026-10-15 金框改为条体自身的圆角金边 + 沿边绕行的流光 / 星芒(mountEnergyBarFx)
     const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 18);
     energyBg.addComponent(Graphics);
     const energyFx = this.host.addChildPlainNode(bar, 'EnergyFx', 0, size / 2 + 26, barW, 18);
@@ -4183,29 +4202,82 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 能量条特效:金框流光铺满条(用 sizePx=条宽,再按条高压扁)+ 蓝色光环「能量头」。特效没就绪时先预热,就绪后 refreshSpellBar 下一次重建时挂上。 */
+  /**
+   * 2026-10-15 用户「包裹能量条的长方形特效要圆角,并融合能量条的边框」:原 A49-394 是直角切角的序列帧框,
+   * 怎么缩放都出不了圆角,而且比条体大一圈、和条边框是两条线。改为:金边框 + 外发光由 refreshSpellBar 直接画在
+   * 条体圆角边上(同一条线);这里只挂两道沿圆角边框绕行的流光(烘焙光弹精灵)+ 三颗轮流闪的星芒,
+   * 全是普通精灵,无骨骼、无遮罩、不逐帧重画 Graphics。
+   */
   private mountEnergyBarFx(holder: Node, barW: number, barH: number): void {
-    const frameSpec = GUARD_ENERGY_BAR_FX.frame;
-    const frameReady = this.attackSpineFxReady.get(frameSpec.effect);
-    if (frameReady) {
-      // 金框原始亮区 300×103:宽按条宽缩放,高单独按 (条高 + 14) 压,角仍是圆角
-      const fitW = (barW + 14) / frameReady.w;
-      const fitH = (barH + 18) / frameReady.h;
-      const node = this.host.addChildPlainNode(holder, 'EnergyFrame', -frameReady.cx * fitW, -frameReady.cy * fitH, 10, 10);
-      node.setScale(fitW, fitH, 1);
-      const skeleton = node.addComponent(sp.Skeleton);
-      LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
-      skeleton.premultipliedAlpha = false;
-      skeleton.skeletonData = frameReady.data;
-      try {
-        skeleton.setAnimation(0, frameReady.animation, true);
-      } catch (error) {
-        void error;
+    const r = barH / 2;
+    const straight = Math.max(0, barW - barH);
+    const arc = Math.PI * r;
+    const perimeter = straight * 2 + arc * 2;
+    // 沿圆角框顺时针取点(从上沿左端起):返回坐标 + 前进方向角(度),光弹头朝前进方向
+    const pointAt = (s0: number): { x: number; y: number; angle: number } => {
+      let d = ((s0 % perimeter) + perimeter) % perimeter;
+      if (d < straight) {
+        return { x: -straight / 2 + d, y: r, angle: 0 };
       }
-    } else {
-      this.prewarmAttackSpineFx(frameSpec);
+      d -= straight;
+      if (d < arc) {
+        const a = Math.PI / 2 - d / r;
+        return { x: straight / 2 + Math.cos(a) * r, y: Math.sin(a) * r, angle: ((a - Math.PI / 2) * 180) / Math.PI };
+      }
+      d -= arc;
+      if (d < straight) {
+        return { x: straight / 2 - d, y: -r, angle: 180 };
+      }
+      d -= straight;
+      const a = -Math.PI / 2 - d / r;
+      return { x: -straight / 2 + Math.cos(a) * r, y: Math.sin(a) * r, angle: ((a - Math.PI / 2) * 180) / Math.PI };
+    };
+    const streakFrame = boltFrame(new Color(255, 214, 130, 255), 130, 140);
+    const period = Math.max(3, perimeter / 170);
+    [0, 0.5].forEach((phase, index) => {
+      if (!streakFrame) {
+        return;
+      }
+      const streak = this.host.addChildPlainNode(holder, `EnergyStreak_${index}`, 0, 0, 10, 10);
+      this.mountBakedSprite(streak, streakFrame, -BOLT_SIZE.originX * 0.8, 0, BOLT_SIZE.w * 0.8, barH * 0.95);
+      const place = (t: number): void => {
+        const pt = pointAt((t + phase) * perimeter);
+        streak.setPosition(pt.x, pt.y, 0);
+        streak.angle = pt.angle;
+      };
+      place(0);
+      const proxy = { t: 0 };
+      const tw: Tween<{ t: number }> = tween(proxy)
+        .repeatForever(tween(proxy).set({ t: 0 }).to(period, { t: 1 }, {
+          onUpdate: () => {
+            if (!streak.isValid) {
+              tw.stop();
+              return;
+            }
+            place(proxy.t);
+          },
+        }))
+        .start();
+    });
+    // 星芒:落在上下两条直边上随机位置,轮流放大闪一下
+    const sparkleFrame = impactFrame(new Color(255, 236, 190, 255));
+    for (let i = 0; i < 3 && sparkleFrame; i += 1) {
+      const sparkle = this.host.addChildPlainNode(holder, `EnergySparkle_${i}`, 0, 0, 10, 10);
+      this.mountBakedSprite(sparkle, sparkleFrame, 0, 0, barH * 1.2, barH * 1.2);
+      sparkle.setScale(0, 0, 1);
+      const reposition = (): void => {
+        const top = Math.random() < 0.5;
+        sparkle.setPosition(-straight / 2 + Math.random() * straight, top ? r : -r, 0);
+      };
+      tween(sparkle)
+        .delay(0.4 + i * 0.9)
+        .repeatForever(tween(sparkle)
+          .call(reposition)
+          .to(0.28, { scale: new Vec3(1, 1, 1) })
+          .to(0.4, { scale: new Vec3(0, 0, 1) })
+          .delay(1.4 + Math.random() * 1.2))
+        .start();
     }
-    // 2026-10-11 用户:「把能量条右面的蓝色圆圈去掉看看」——能量头光环关掉,只留金框流光 + 双层填充
-    void holder;
   }
 
   private refreshSpellBar(): void {
@@ -4225,6 +4297,17 @@ export class LobbyGuardBattleRenderer {
       const h = 18;
       const r = h / 2;
       eg.clear();
+      // 2026-10-15:金边框 + 外发光直接画在条体圆角边上(先画外发光,内半边被深底盖住),流光 / 星芒见 mountEnergyBarFx。
+      // 描边不用 roundRect:半径 = 半高时两端留零长度竖边,描边会在左右端算出尖刺 → 两端半圆用折线自己画
+      eg.lineJoin = Graphics.LineJoin.ROUND;
+      eg.lineWidth = 7;
+      eg.strokeColor = full ? rgba(255, 210, 110, 70) : rgba(255, 190, 90, 45);
+      pillStrokePath(eg, barW, h);
+      eg.stroke();
+      eg.lineWidth = 4;
+      eg.strokeColor = full ? rgba(255, 220, 130, 120) : rgba(255, 200, 110, 80);
+      pillStrokePath(eg, barW, h);
+      eg.stroke();
       eg.fillColor = rgba(6, 9, 20, 225);
       eg.roundRect(-barW / 2, -r, barW, h, r);
       eg.fill();
@@ -4234,9 +4317,9 @@ export class LobbyGuardBattleRenderer {
       eg.fillColor = full ? rgba(255, 244, 200, 170) : rgba(140, 210, 255, 160);
       eg.roundRect(-barW / 2 + 2, 0, Math.max(4, fillW - 4), r - 3, r - 3);
       eg.fill();
-      eg.strokeColor = full ? rgba(255, 230, 150, 220) : rgba(120, 180, 255, 170);
-      eg.lineWidth = 1.2;
-      eg.roundRect(-barW / 2, -r, barW, h, r);
+      eg.strokeColor = full ? rgba(255, 240, 190, 250) : rgba(255, 222, 150, 235);
+      eg.lineWidth = 1.6;
+      pillStrokePath(eg, barW, h);
       eg.stroke();
     }
 
@@ -7872,8 +7955,6 @@ export class LobbyGuardBattleRenderer {
     guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));
     addFxTo(deferredSpine, GUARD_MARK_FX.ring);
     addFxTo(deferredSpine, GUARD_MARK_FX.burst);
-    // 法术能量条特效(2026-10-11):开局就要显示,放进必读组
-    addFxTo(spine, GUARD_ENERGY_BAR_FX.frame);
     // 强化三选一卡牌底图(每张 413×690):第一次强化时才上传显卡会顿 100ms 以上,进场后台先读
     Object.values(GUARD_PERK_CARD_STYLE).forEach((style) => deferredSprites.add(style.frame));
     GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
@@ -7922,14 +8003,6 @@ export class LobbyGuardBattleRenderer {
           return;
         }
         this.attackSpineFxReady.set(spec.effect, { spec, data, animation, w: bounds.w, h: bounds.h, cx: bounds.cx, cy: bounds.cy });
-        if (spec.effect === GUARD_ENERGY_BAR_FX.frame.effect || spec.effect === GUARD_ENERGY_BAR_FX.orb.effect) {
-          // 能量条特效晚到:只重挂特效层,不重建整条法术栏
-          const fx = this.root?.getChildByName('GuardSpellBar')?.getChildByName('EnergyFx');
-          if (fx && fx.isValid) {
-            fx.removeAllChildren();
-            this.mountEnergyBarFx(fx, this.spellBarWidth(), 18);
-          }
-        }
       } catch (error) {
         void error;
       }
