@@ -112,8 +112,6 @@ interface FormationGeometry {
   panelTop: number;
   panelBottom: number;
   heroesCenterX: number;
-  /** 窗口水平中心(面板坐标):舞台被安全区收窄时与 0 不同。 */
-  screenCenterX: number;
   /** 英雄组中心可取范围(4 个站位 + 名牌不出战场区)。 */
   heroesMinX: number;
   heroesMaxX: number;
@@ -172,7 +170,7 @@ export class LobbyFormationPanelRenderer {
   private rebuildHeroPicker: (() => void) | null = null;
   private lastFormationSpineFailureReason = '资源解析失败';
   private geo: FormationGeometry = {
-    u: 1, b: 1, scale: 1, left: 0, right: 0, top: 0, bottom: 0, panelLeft: 0, panelRight: 0, panelTop: 0, panelBottom: 0, heroesCenterX: 0, screenCenterX: 0, heroesMinX: 0, heroesMaxX: 0, slotSpacing: 0,
+    u: 1, b: 1, scale: 1, left: 0, right: 0, top: 0, bottom: 0, panelLeft: 0, panelRight: 0, panelTop: 0, panelBottom: 0, heroesCenterX: 0, heroesMinX: 0, heroesMaxX: 0, slotSpacing: 0,
   };
 
   constructor(private readonly host: LobbyFormationPanelHost) {}
@@ -188,7 +186,6 @@ export class LobbyFormationPanelRenderer {
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
     const geo = this.resolveGeometry(stageWidth, stageHeight, scale);
-    geo.screenCenterX = -centerX;
     this.geo = geo;
     const bgAspect = 1672 / 941;
     const bgCover = layout.width / layout.height > bgAspect ? layout.width : layout.height * bgAspect;
@@ -269,7 +266,6 @@ export class LobbyFormationPanelRenderer {
       panelTop: top - 62 * u,
       panelBottom: bottom + 36 * u,
       heroesCenterX,
-      screenCenterX: 0,
       heroesMinX,
       heroesMaxX,
       slotSpacing,
@@ -411,10 +407,10 @@ export class LobbyFormationPanelRenderer {
     // 战力横匾:顶部正中(参考图 670~1120,贴右栏左侧),窄屏时不压「?」钮
     const bannerH = 66 * u;
     const bannerW = bannerH * (710 / 120);
-    // 用户 2026-10-15「阵容战力居中」:屏幕水平居中,左不压「?」钮、右不压右栏
+    // 用户 2026-10-15「阵容战力居中」→「再向左移一些」:放在「?」钮与右栏之间空白区的正中(比屏幕中心略偏左)
     const bannerMinX = helpX + helpSize / 2 + 18 * u + bannerW / 2;
     const bannerMaxX = g.panelLeft - 14 * u - bannerW / 2;
-    const bannerX = Math.max(bannerMinX, Math.min(g.screenCenterX, bannerMaxX));
+    const bannerX = bannerMaxX > bannerMinX ? (bannerMinX + bannerMaxX) / 2 : bannerMinX;
     const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
     this.renderPowerBanner(parent, bannerX, rowY, bannerW, bannerH, u, power, this.host.isLobbyFormationFooterHidden?.() ?? false, selectedHeroIds.length);
 
