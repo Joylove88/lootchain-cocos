@@ -371,6 +371,7 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   // 布阵脚底光环(2026-10-15,bounds_measure.py 量):A47-345 金色透视地面法阵 / A47-464 淡金同心环
   'v2_a47_345:action': { w: 760, h: 351, cx: 1, cy: 2 },
   'v2_a47_464:idle3': { w: 1226, h: 418, cx: -14, cy: -115 },
+  'v2_a49_486:idle1': { w: 272, h: 268, cx: 9, cy: -10 },
 };
 
 /** 查实测包围盒(key = effect:animation 小写);没有返回 null。 */
