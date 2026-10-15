@@ -56,6 +56,7 @@ const FR = {
   nameplate: `${REF_DIR}nameplate/spriteFrame`,
   unequip: `${REF_DIR}btn_unequip/spriteFrame`,
   iconSwords: `${REF_DIR}icon_swords/spriteFrame`,
+  iconPower: `${REF_DIR}icon_power/spriteFrame`,
   panelFrame: `${REF_DIR}panel_frame/spriteFrame`,
   tabOn: `${REF_DIR}tab_on/spriteFrame`,
   tabOff: `${REF_DIR}tab_off/spriteFrame`,
@@ -111,6 +112,8 @@ interface FormationGeometry {
   panelTop: number;
   panelBottom: number;
   heroesCenterX: number;
+  /** 窗口水平中心(面板坐标):舞台被安全区收窄时与 0 不同。 */
+  screenCenterX: number;
   /** 英雄组中心可取范围(4 个站位 + 名牌不出战场区)。 */
   heroesMinX: number;
   heroesMaxX: number;
@@ -169,7 +172,7 @@ export class LobbyFormationPanelRenderer {
   private rebuildHeroPicker: (() => void) | null = null;
   private lastFormationSpineFailureReason = '资源解析失败';
   private geo: FormationGeometry = {
-    u: 1, b: 1, scale: 1, left: 0, right: 0, top: 0, bottom: 0, panelLeft: 0, panelRight: 0, panelTop: 0, panelBottom: 0, heroesCenterX: 0, heroesMinX: 0, heroesMaxX: 0, slotSpacing: 0,
+    u: 1, b: 1, scale: 1, left: 0, right: 0, top: 0, bottom: 0, panelLeft: 0, panelRight: 0, panelTop: 0, panelBottom: 0, heroesCenterX: 0, screenCenterX: 0, heroesMinX: 0, heroesMaxX: 0, slotSpacing: 0,
   };
 
   constructor(private readonly host: LobbyFormationPanelHost) {}
@@ -185,6 +188,7 @@ export class LobbyFormationPanelRenderer {
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
     const geo = this.resolveGeometry(stageWidth, stageHeight, scale);
+    geo.screenCenterX = -centerX;
     this.geo = geo;
     const bgAspect = 1672 / 941;
     const bgCover = layout.width / layout.height > bgAspect ? layout.width : layout.height * bgAspect;
@@ -244,7 +248,8 @@ export class LobbyFormationPanelRenderer {
     const top = stageHeight / 2;
     const bottom = -stageHeight / 2;
     const panelRight = right - 22 * u;
-    const panelLeft = panelRight - 515 * u;
+    // 手机右栏也放大 b(英雄卡太窄时名字 / Lv / 战力挤在一起,字号下限 20)
+    const panelLeft = panelRight - 515 * u * b;
     const fieldRight = panelLeft - 5 * u;
     const slotSpacing = Math.min(262 * u * Math.min(b, 1.1), (fieldRight - left - 240 * u * b) / 3);
     const halfSpan = 1.5 * slotSpacing + 115 * u * b;
@@ -264,6 +269,7 @@ export class LobbyFormationPanelRenderer {
       panelTop: top - 62 * u,
       panelBottom: bottom + 36 * u,
       heroesCenterX,
+      screenCenterX: 0,
       heroesMinX,
       heroesMaxX,
       slotSpacing,
@@ -370,7 +376,7 @@ export class LobbyFormationPanelRenderer {
     const rowY = g.top - 48 * u;
     const plaqueH = 92 * u;
     const plaqueW = plaqueH * (564 / 180);
-    const plaqueX = g.left + 10 * u + plaqueW / 2;
+    const plaqueX = g.left + 2 * u + plaqueW / 2;
     const plaque = this.host.addChildPlainNode(parent, 'LobbyFormationTitlePlaque', plaqueX, rowY, plaqueW, plaqueH);
     if (!this.host.addSprite('Art', FR.titlePlaque, 0, 0, plaqueW, plaqueH, plaque)) {
       const pg = plaque.addComponent(Graphics);
@@ -405,7 +411,10 @@ export class LobbyFormationPanelRenderer {
     // 战力横匾:顶部正中(参考图 670~1120,贴右栏左侧),窄屏时不压「?」钮
     const bannerH = 66 * u;
     const bannerW = bannerH * (710 / 120);
-    const bannerX = Math.max(helpX + helpSize / 2 + 18 * u + bannerW / 2, g.panelLeft - 14 * u - bannerW / 2);
+    // 用户 2026-10-15「阵容战力居中」:屏幕水平居中,左不压「?」钮、右不压右栏
+    const bannerMinX = helpX + helpSize / 2 + 18 * u + bannerW / 2;
+    const bannerMaxX = g.panelLeft - 14 * u - bannerW / 2;
+    const bannerX = Math.max(bannerMinX, Math.min(g.screenCenterX, bannerMaxX));
     const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
     this.renderPowerBanner(parent, bannerX, rowY, bannerW, bannerH, u, power, this.host.isLobbyFormationFooterHidden?.() ?? false, selectedHeroIds.length);
 
@@ -478,7 +487,7 @@ export class LobbyFormationPanelRenderer {
   private renderFormationBattlefield(parent: Node, slots: Array<LobbyHeroItemVO | null>): void {
     const g = this.geo;
     const field = this.host.addChildPlainNode(parent, 'LobbyFormationBattlefieldScene', 0, 0, g.right - g.left, g.top - g.bottom);
-    const feetY = g.bottom + (212 + 60 * g.b) * g.u;
+    const feetY = g.bottom + (150 + 60 * g.b) * g.u;
     // 用户 2026-10-15「英雄位置按之前那样」:浅弧——两端两位略靠后(脚底高 48u、整体 0.93 倍),中间两位靠前;
     // 两端先画、中间后画,石台和名牌互不遮挡
     [0, 3, 1, 2].forEach((index) => {
@@ -842,7 +851,7 @@ export class LobbyFormationPanelRenderer {
       parent.getChildByName('LobbyFormationCloseButton')?.setSiblingIndex(parent.children.length - 1);
     };
     const g = this.geo;
-    const u = g.u;
+    const u = g.u * g.b;
     const pw = g.panelRight - g.panelLeft;
     const ph = g.panelTop - g.panelBottom;
     const panel = this.host.addChildPlainNode(parent, 'LobbyFormationHeroPicker', (g.panelLeft + g.panelRight) / 2, (g.panelTop + g.panelBottom) / 2, pw, ph);
@@ -927,11 +936,15 @@ export class LobbyFormationPanelRenderer {
       empty.overflow = Label.Overflow.SHRINK;
     } else {
       const columns = this.pickerDense ? 4 : 3;
-      const gapX = this.pickerDense ? 12 * u : 26 * u;
-      const gapY = this.pickerDense ? 12 * u : 18 * u;
+      const gapX = this.pickerDense ? 12 * u : 18 * u;
+      const gapY = this.pickerDense ? 12 * u : 16 * u;
       const gridW = 457 * u;
       const cardW = (gridW - gapX * (columns - 1)) / columns;
-      const cardH = cardW * (185 / 135);
+      // 大卡模式(用户 2026-10-15「英雄列表要像之前那样」):不足 7 个排 2 行、否则 3 行,卡高铺满可视区(竖长卡,头像更大),
+      // 多出的行上下滑动;宽高比夹在 1.3~1.75。小卡模式保持参考图 135:185。
+      const fitRows = Math.max(2, Math.min(3, Math.ceil(visible.length / columns)));
+      const fillH = (listHeight - 8 * u - gapY * (fitRows - 1)) / fitRows;
+      const cardH = this.pickerDense ? cardW * (185 / 135) : Math.max(cardW * 1.3, Math.min(cardW * 1.75, fillH));
       const rowStep = cardH + gapY;
       const listWidth = gridW + 16 * u;
       const listNode = this.host.addChildPlainNode(panel, 'LobbyFormationHeroPickerList', 0, gridBottom + listHeight / 2, listWidth, listHeight);
@@ -987,7 +1000,7 @@ export class LobbyFormationPanelRenderer {
   }
 
   private renderPickerSortBar(panel: Node, orderX: number, dropX: number, densityX: number, y: number, height: number): void {
-    const u = this.geo.u;
+    const u = this.geo.u * this.geo.b;
     const gold = rgba(226, 186, 112, 240);
     // 升 / 降序钮:三道横线,降序上长下短
     const order = this.addPickerSquareButton(panel, 'LobbyFormationSortOrder', orderX, y, 60 * u, height);
@@ -1056,7 +1069,7 @@ export class LobbyFormationPanelRenderer {
   }
 
   private addPickerSquareButton(parent: Node, name: string, x: number, y: number, width: number, height: number): Node {
-    const u = this.geo.u;
+    const u = this.geo.u * this.geo.b;
     const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
     if (!this.addSliced(node, 'Art', FR.btnSquare, 0, 0, width, height, height / 96, [24, 24, 24, 24])) {
       const g = node.addComponent(Graphics);
@@ -1075,7 +1088,7 @@ export class LobbyFormationPanelRenderer {
 
   /** 排序下拉选项:在下拉框上方展开一列。 */
   private renderPickerSortMenu(panel: Node, x: number, bottomY: number): void {
-    const u = this.geo.u;
+    const u = this.geo.u * this.geo.b;
     const optW = 286 * u;
     const optH = 46 * u;
     const menuH = optH * FORMATION_SORT_OPTIONS.length + 10 * u;
@@ -1143,21 +1156,42 @@ export class LobbyFormationPanelRenderer {
         glyph.node.destroy();
       }
     });
-    // 底部暗渐变(只覆盖 Lv / 职业行到卡底,逐 1.5 单位细条 smoothstep,无台阶)
-    this.addBottomShade(card, innerW, height * 0.36, -innerH / 2, 205);
+    // 底部暗渐变(名字 + Lv / 战力两行到卡底,逐 1.5 单位细条 smoothstep,无台阶)
+    this.addBottomShade(card, innerW, Math.min(height * 0.42, 82 * u), -innerH / 2, 215);
     const rarityTag = this.host.addChildLabel(card, 'Rarity', rarity || '—', -width / 2 + 9 * u, height / 2 - 17 * u, 19 * u, rarityColor, new Size(60 * u, 24 * u), HorizontalTextAlignment.LEFT);
     rarityTag.overflow = Label.Overflow.SHRINK;
     rarityTag.isBold = true;
     this.applyOutline(rarityTag, u, true);
-    const rowY = -height / 2 + 46 * u;
-    const level = this.host.addChildLabel(card, 'Level', `Lv.${hero.level}`, -width / 2 + 10 * u, rowY, 15 * u, rgba(228, 216, 192), new Size(78 * u, 22 * u), HorizontalTextAlignment.LEFT);
+    const name = this.host.addChildLabel(card, 'Name', safeText(hero.heroName), 0, -height / 2 + 50 * u, 17 * u, selected ? rgba(255, 236, 176) : rgba(244, 230, 204), new Size(innerW - 10 * u, 24 * u));
+    name.overflow = Label.Overflow.SHRINK;
+    name.isBold = true;
+    this.applyOutline(name, u, true);
+    // 底行:Lv(左)/ 剑图标 + 战力(右);卡框四角饰纹会压住两端,左右各收进卡宽 9%
+    const metaY = -height / 2 + 22 * u;
+    const metaEdge = width / 2 - width * 0.09;
+    const metaH = 22 * u;
+    const level = this.host.addChildLabel(card, 'Level', `Lv.${hero.level}`, -metaEdge, metaY, 15 * u, rgba(220, 204, 168), new Size(width * 0.36, metaH), HorizontalTextAlignment.LEFT);
     level.overflow = Label.Overflow.SHRINK;
     this.applyOutline(level, u, false);
-    const classIcon = this.resolveClassIcon(hero);
-    if (classIcon) {
-      this.host.addSprite('Class', classIcon, width / 2 - 24 * u, rowY + 3 * u, 38 * u, 38 * u, card);
+    // 战力:先按实际字宽排版(过万显示「1.2万」),超出上限再缩字;图标贴在数字左边,数值变长也不会叠在一起
+    const powerText = formatPowerShort(hero.power);
+    const power = this.host.addChildLabel(card, 'Power', powerText, 0, metaY, 15 * u, rgba(255, 214, 130), new Size(width * 0.42, metaH));
+    power.overflow = Label.Overflow.NONE;
+    power.updateRenderData(true);
+    const powerMax = width * 0.42;
+    const powerTransform = power.node.getComponent(UITransform);
+    let powerWidth = powerTransform ? powerTransform.width : powerMax;
+    if (powerWidth > powerMax) {
+      power.overflow = Label.Overflow.SHRINK;
+      powerTransform?.setContentSize(powerMax, metaH);
+      powerWidth = powerMax;
     }
-    this.renderStars(card, 0, -height / 2 + 22 * u, hero.star, 20 * u, 22 * u);
+    power.node.setPosition(metaEdge - powerWidth / 2, metaY, 0);
+    this.applyOutline(power, u, false);
+    const iconSize = 18 * u;
+    if (!this.host.addSprite('PowerIcon', FR.iconPower, metaEdge - powerWidth - 3 * u - iconSize / 2, metaY, iconSize, iconSize, card)) {
+      power.string = `战 ${powerText}`;
+    }
     // 稀有度卡框:在 256px 帧空间里九宫格拉伸到卡片比例,再整体缩放(角饰不变形)
     const frameK = width / FORMATION_CARD_FRAME_PX;
     const framePath = FORMATION_CARD_FRAME_ASSETS[rarity] ?? FORMATION_CARD_FRAME_ASSETS.R;
@@ -1343,6 +1377,18 @@ export class LobbyFormationPanelRenderer {
     label.outlineColor = rgba(0, 0, 0, strong ? 226 : 190);
     label.outlineWidth = Math.max(1, (strong ? 1.4 : 1) * scale);
   }
+}
+
+/** 卡片上的短战力:过万显示「1.2万 / 12万」,过亿显示「1.2亿」,其余千分位。 */
+function formatPowerShort(value: number | null | undefined): string {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+  if (numeric >= 100000000) {
+    return `${(numeric / 100000000).toFixed(1).replace(/\.0$/, '')}亿`;
+  }
+  if (numeric >= 10000) {
+    return `${(numeric / 10000).toFixed(numeric >= 100000 ? 0 : 1).replace(/\.0$/, '')}万`;
+  }
+  return formatInteger(numeric);
 }
 
 function formatInteger(value: number | null | undefined): string {
