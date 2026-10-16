@@ -17,6 +17,7 @@ import {
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
+import { mountRefHeaderBand, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_KIT, refCardFrameK } from '../UiRefKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO, PlayerQuestSummaryVO, PlayerQuestVO, QuestRewardItemVO } from '../../types/QuestTypes';
@@ -346,7 +347,7 @@ export class LobbyQuestMailPanelRenderer {
     group.addComponent(BlockInputEvents);
     this.lastQuestGroup = group;
     const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
-    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H);
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true });
     this.addPhoneHeader(panel, '任务', panelWidth, panelHeight, () => this.host.closeLobbyQuestPanel());
 
     const outerW = panelWidth - PHONE_DIALOG_CONTENT_PAD * 2;
@@ -497,13 +498,25 @@ export class LobbyQuestMailPanelRenderer {
     this.addAssetCloseButton(panel, panelWidth / 2 - 50, titleY, 52 / 46, onClose);
   }
 
-  /** 手机列表井:压暗的内凹底 + 暗金细框 + 上沿亮金线(页签坐在这条线上)。 */
-  private drawPhoneListWell(panel: Node, name: string, x: number, y: number, width: number, height: number): void {
+  /**
+   * 手机列表井:压暗的内凹底 + 细金框(2026-10-17 界面统一,原型套件 card_frame_open;缺图退回暗金细框 + 上沿亮金线)。
+   * bandH > 0 时在框内顶部嵌暗红标题带(压在金线下),返回带心 y(井局部坐标)。
+   */
+  private drawPhoneListWell(panel: Node, name: string, x: number, y: number, width: number, height: number, bandH = 0): number {
     const well = this.host.addChildPlainNode(panel, name, x, y, width, height);
     const g = well.addComponent(Graphics);
-    g.fillColor = rgba(4, 3, 5, 190);
+    g.fillColor = rgba(4, 3, 5, 176);
     g.roundRect(-width / 2, -height / 2, width, height, 8);
     g.fill();
+    if (mountRefSliced(this.host, well, 'Frame', REF_KIT.cardFrameOpen, 0, 0, width, height)) {
+      const fk = refCardFrameK(width, height);
+      const bandY = height / 2 - REF_CARD_FRAME_LINE.top * fk - bandH / 2;
+      if (bandH > 0) {
+        mountRefHeaderBand(this.host, well, 'Band', 0, bandY, width - REF_CARD_FRAME_LINE.side * fk * 2, bandH, 1);
+      }
+      raiseRefFrame(well);
+      return bandY;
+    }
     // 上沿内阴影(井口向下的暗带)
     for (let i = 0; i < 4; i++) {
       g.fillColor = rgba(0, 0, 0, 84 - i * 20);
@@ -522,11 +535,14 @@ export class LobbyQuestMailPanelRenderer {
     g.lineWidth = 1.2;
     g.roundRect(-width / 2, -height / 2, width, height, 8);
     g.stroke();
+    return height / 2 - 4 - bandH / 2;
   }
 
   private addPhoneFooterMotto(panel: Node, footerY: number, panelWidth: number): void {
-    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 20, rgba(176, 160, 130, 205), new Size(Math.min(420, panelWidth * 0.4), 28));
+    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 20, rgba(214, 196, 160, 235), new Size(Math.min(420, panelWidth * 0.4), 28));
     footer.overflow = Label.Overflow.SHRINK;
+    // 大厅背景地面中线有高光倒影,描边防止字被冲淡(2026-10-17)
+    this.outline(footer, 1, false);
     const footDivW = 150;
     const footDivGap = 190 + footDivW / 2;
     this.host.addSprite('FooterDividerL', QUEST_UI_ASSETS.dividerLeft, -footDivGap, footerY, footDivW, footDivW * (71 / 224), panel);
@@ -591,6 +607,14 @@ export class LobbyQuestMailPanelRenderer {
       gg.fillColor = rgba(255, 214, 128, 150);
       gg.rect(-gw / 2 + 10, gh / 2 - 1.5, gw - 20, 1.5);
       gg.fill();
+      gg.strokeColor = rgba(255, 196, 92, 70);
+      gg.lineWidth = 6;
+      gg.roundRect(-gw / 2 - 2, -gh / 2 - 2, gw + 4, gh + 4, 6);
+      gg.stroke();
+      gg.strokeColor = rgba(255, 220, 130, 235);
+      gg.lineWidth = 2;
+      gg.roundRect(-gw / 2, -gh / 2, gw, gh, 5);
+      gg.stroke();
     }
   }
 
@@ -995,20 +1019,23 @@ export class LobbyQuestMailPanelRenderer {
     group.addComponent(BlockInputEvents);
     this.lastMailNodes = [dim, group];
     const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
-    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H);
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true });
     this.addPhoneHeader(panel, '邮件', panelWidth, panelHeight, () => this.host.closeLobbyMailPanel());
 
     const outerW = panelWidth - PHONE_DIALOG_CONTENT_PAD * 2;
     const headerBottom = panelHeight / 2 - 6 - PHONE_HEADER_H;
     const anyClaimable = state.mails.some((mail) => !mail.claimed && mail.attachments.length > 0);
-    // 小结行(左:封数 / 未读;右:附件提示)→ 列表井 → 底部(一键领取 或 标语)
-    const captionY = headerBottom - 30;
-    const listTop = headerBottom - 56;
+    // 列表框(顶部暗红标题带 = 小结行:左封数 / 未读,右附件提示)→ 底部(一键领取 或 标语)
+    const wellTop = headerBottom - 14;
+    const bandH = 52;
     const footerY = -panelHeight / 2 + (anyClaimable ? 48 : 30);
     const listBottom = footerY + (anyClaimable ? 42 : 24);
+    const wellH = wellTop - listBottom;
+    const bandY = this.drawPhoneListWell(panel, 'MailListFrame', 0, listBottom + wellH / 2, outerW, wellH, bandH);
+    const captionY = listBottom + wellH / 2 + bandY;
+    const listTop = captionY - bandH / 2 - 6;
     const listHeight = listTop - listBottom;
     const hintY = listBottom + listHeight / 2;
-    this.drawPhoneListWell(panel, 'MailListFrame', 0, listBottom + listHeight / 2, outerW, listHeight);
 
     // 首开素材闸门(同任务页):没到齐只画框 +「读取中」
     const artPaths = [
@@ -1028,10 +1055,13 @@ export class LobbyQuestMailPanelRenderer {
 
     if (state.mails.length > 0) {
       const unread = state.mails.filter((mail) => !mail.read).length;
-      const caption = this.host.addChildLabel(panel, 'MailCount', `共 ${state.mails.length} 封${unread > 0 ? ` · 未读 ${unread}` : ''}`, -outerW / 2 + 20, captionY, 20, rgba(206, 190, 154, 240), new Size(320, 30), HorizontalTextAlignment.LEFT);
+      const caption = this.host.addChildLabel(panel, 'MailCount', `共 ${state.mails.length} 封${unread > 0 ? ` · 未读 ${unread}` : ''}`, -outerW / 2 + 48, captionY, 22, rgba(255, 226, 160, 255), new Size(320, 30), HorizontalTextAlignment.LEFT);
       caption.overflow = Label.Overflow.SHRINK;
-      const tip = this.host.addChildLabel(panel, 'MailTip', anyClaimable ? '有附件待领取' : '附件已全部领取', outerW / 2 - 20, captionY, 20, anyClaimable ? rgba(255, 214, 120, 255) : rgba(160, 148, 124, 220), new Size(320, 30), HorizontalTextAlignment.RIGHT);
+      caption.isBold = true;
+      this.outline(caption, 1, true);
+      const tip = this.host.addChildLabel(panel, 'MailTip', anyClaimable ? '有附件待领取' : '附件已全部领取', outerW / 2 - 48, captionY, 20, anyClaimable ? rgba(255, 214, 120, 255) : rgba(214, 196, 160, 235), new Size(320, 30), HorizontalTextAlignment.RIGHT);
       tip.overflow = Label.Overflow.SHRINK;
+      this.outline(tip, 1, false);
     }
 
     if (anyClaimable) {
@@ -1124,7 +1154,7 @@ export class LobbyQuestMailPanelRenderer {
         const markSize = Math.min(150, spare - 120);
         const mark = this.host.addSprite('MailWatermark', QUEST_UI_ASSETS.mailIcon, 0, endY - 34 - (spare - 64) / 2, markSize, markSize * (110 / 112), contentNode);
         if (mark) {
-          mark.color = rgba(255, 255, 255, 30);
+          mark.color = rgba(255, 214, 140, 56);
         }
       }
     }
@@ -1177,8 +1207,8 @@ export class LobbyQuestMailPanelRenderer {
     const iconSize = 64;
     const iconX = -width / 2 + 48 + iconSize / 2;
     const iconArt = this.host.addSprite('MailIcon', QUEST_UI_ASSETS.mailIcon, iconX, 0, iconSize, iconSize * (110 / 112), row);
-    if (iconArt && !unread && !pending) {
-      iconArt.color = rgba(170, 170, 170, 255);
+    if (iconArt) {
+      iconArt.color = !unread && !pending ? rgba(196, 176, 136, 255) : rgba(255, 222, 150, 255);
     }
     if (unread) {
       const dot = this.host.addChildPlainNode(row, 'UnreadDot', iconX + iconSize / 2 - 7, iconSize / 2 - 7, 16, 16);

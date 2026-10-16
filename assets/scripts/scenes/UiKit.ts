@@ -1,4 +1,5 @@
 import { Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite } from 'cc';
+import { REF_HALL_BG } from './UiRefKit';
 import { rgba } from './lobby/LobbyHudTypes';
 
 /**
@@ -226,8 +227,9 @@ export function mountKitSection(host: UiKitHost, parent: Node, name: string, x: 
   return node;
 }
 
-const KIT_BACKDROP_ASSET = 'ui/battle/ai/battle_bg_cathedral/spriteFrame';
-const KIT_BACKDROP_ASPECT = 1920 / 1080;
+// 2026-10-17:换无棋盘格的哥特大厅图(原血色大教堂图四周烘焙了假透明棋盘格)
+const KIT_BACKDROP_ASSET = REF_HALL_BG.path;
+const KIT_BACKDROP_ASPECT = REF_HALL_BG.ratio;
 
 /**
  * 电脑端弹层的整窗背景(2026-10-10:设置 / 更多 / 邮件 / 公告在电脑上背后是纯黑 + 一团红光):

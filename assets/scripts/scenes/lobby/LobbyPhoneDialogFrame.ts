@@ -1,9 +1,10 @@
 import { Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UITransform } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
+import { REF_HALL_BG } from '../UiRefKit';
 
-/** 全屏弹框的实景背景(与背包页同一张血色大教堂,1920×1080;等比铺满后由遮罩裁掉上下)。 */
-const PHONE_DIALOG_BACKDROP_ASSET = 'ui/battle/ai/battle_bg_cathedral/spriteFrame';
-const PHONE_DIALOG_BACKDROP_ASPECT = 1920 / 1080;
+/** 全屏弹框的实景背景(与背包页同一张哥特大厅,2026-10-17 换掉四周带假棋盘格的血色大教堂;等比铺满后由遮罩裁切)。 */
+const PHONE_DIALOG_BACKDROP_ASSET = REF_HALL_BG.path;
+const PHONE_DIALOG_BACKDROP_ASPECT = REF_HALL_BG.ratio;
 /** 左上角标题牌(与英雄 / 背包等功能页同款,596×201 一体构图,只能等比)。 */
 const PHONE_DIALOG_TITLE_BANNER_ASSET = 'ui/common/ai/title_banner_new/spriteFrame';
 
@@ -56,6 +57,7 @@ export function drawPhoneDialogFrame(
   width: number,
   height: number,
   headerH = 0,
+  options: { bare?: boolean } = {},
 ): void {
   // 2026-10-05 用户「旋转宝箱 / 水晶 / 任务界面都没有背景 UI」:垫一张实景背景(等比铺满 + 遮罩裁切),
   // 外框与压暗画在它上面的子节点里;背景图还没读到时退回原来的纯色底。
@@ -77,7 +79,8 @@ export function drawPhoneDialogFrame(
   const radius = 14;
   const left = -width / 2;
   const top = height / 2;
-  g.fillColor = hasBackdrop ? rgba(6, 4, 7, 186) : rgba(13, 10, 10, 250);
+  // bare(2026-10-17 任务 / 邮件 / 商店按原型):背景压暗减轻、不画整屏金框,内容各自坐在细金框面板里
+  g.fillColor = hasBackdrop ? rgba(6, 4, 7, options.bare ? 112 : 186) : rgba(13, 10, 10, 250);
   g.roundRect(left, -height / 2, width, height, radius);
   g.fill();
   const headerBottom = top - 6 - headerH;
@@ -105,6 +108,9 @@ export function drawPhoneDialogFrame(
       g.rect(-lineW / 2 + (lineW / segs) * i, headerBottom - 1, lineW / segs + 0.5, 2);
       g.fill();
     }
+  }
+  if (options.bare) {
+    return;
   }
   g.strokeColor = rgba(214, 168, 92, 235);
   g.lineWidth = 2.4;

@@ -21,6 +21,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
+import { mountRefHeaderBand, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_KIT, refCardFrameK } from '../UiRefKit';
 
 /**
  * 货币商店弹窗(2026-09-22 用户拍板"你来设计",docs/33):
@@ -209,7 +210,7 @@ export class LobbyShopDialogRenderer {
     // 面板自己吞掉点击:点面板不关闭,点外面暗幕才关闭。
     panel.addComponent(BlockInputEvents);
     if (phone) {
-      drawPhoneDialogFrame(this.host, panel, panelW, panelH, PHONE_GEO.titleBand * scale);
+      drawPhoneDialogFrame(this.host, panel, panelW, panelH, PHONE_GEO.titleBand * scale, { bare: true });
     } else {
       this.host.addSprite('LobbyShopPanelFrame', PANEL_FRAME.path, 0, 0, panelW, panelH, panel);
     }
@@ -282,7 +283,6 @@ export class LobbyShopDialogRenderer {
     }
     if (phone) {
       this.renderPhoneBalances(panel, state.kind, catalog, profile, diamond, panelW, panelH, scale);
-      this.renderPhoneBodyWell(panel, panelW, bodyTop, bodyBottom, scale);
     }
     if (!catalog) {
       this.host.addChildLabel(panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, (bodyTop + bodyBottom) / 2, FONT.body * scale, rgba(200, 186, 160), new Size(panelW * 0.6, 26 * scale));
@@ -329,28 +329,6 @@ export class LobbyShopDialogRenderer {
   }
 
   /** 手机:卡片区垫一块内凹底板(深底 + 金色上沿线 + 细边),不再是整块平黑。 */
-  private renderPhoneBodyWell(panel: Node, panelW: number, top: number, bottom: number, scale: number): void {
-    const w = panelW - 36 * scale;
-    const h = top - bottom + 12 * scale;
-    const well = this.host.addChildPlainNode(panel, 'LobbyShopBodyWell', 0, (top + bottom) / 2, w, h);
-    const g = well.addComponent(Graphics);
-    g.fillColor = rgba(0, 0, 0, 120);
-    g.roundRect(-w / 2, -h / 2, w, h, 14 * scale);
-    g.fill();
-    g.fillColor = rgba(120, 78, 30, 26);
-    g.roundRect(-w / 2, 0, w, h / 2, 14 * scale);
-    g.fill();
-    g.strokeColor = rgba(170, 128, 62, 120);
-    g.lineWidth = Math.max(1, 1.4 * scale);
-    g.roundRect(-w / 2, -h / 2, w, h, 14 * scale);
-    g.stroke();
-    g.strokeColor = rgba(240, 200, 120, 190);
-    g.lineWidth = Math.max(1, 2 * scale);
-    g.moveTo(-w * 0.3, h / 2);
-    g.lineTo(w * 0.3, h / 2);
-    g.stroke();
-  }
-
   /** 各页内容区需要的宽与高(决定面板尺寸):金币一排 4 卡;体力 左状态 + 右两卡;充值 3×2 两排。 */
   private contentNeeds(kind: LobbyShopKind, catalog: ShopCatalogVO | null, scale: number): { w: number; h: number } {
     if (!catalog) {
@@ -429,18 +407,8 @@ export class LobbyShopDialogRenderer {
       // 左栏信息框:深底 + 金边 + 小标题,体力状态不再悬在空处
       const boxW = panelW * 0.4;
       const boxH = (top - bottom) * 0.9;
-      const box = this.host.addChildPlainNode(panel, 'LobbyShopStaminaBox', leftX, centerY, boxW, boxH);
-      const bx = box.addComponent(Graphics);
-      bx.fillColor = rgba(20, 14, 12, 215);
-      bx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 12 * scale);
-      bx.fill();
-      bx.strokeColor = rgba(190, 146, 72, 190);
-      bx.lineWidth = Math.max(1, 1.6 * scale);
-      bx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 12 * scale);
-      bx.stroke();
-      const caption = this.host.addChildLabel(box, 'Caption', '当前体力', 0, boxH / 2 - 26 * scale, 22 * scale, rgba(250, 222, 158), new Size(boxW * 0.6, 30 * scale));
-      caption.isBold = true;
-      this.outline(caption, scale, rgba(30, 14, 6, 255));
+      // 2026-10-17 界面统一:细金框 + 暗红标题带「当前体力」(原型)
+      const box = mountRefTitledPanel(this.host, panel, 'LobbyShopStaminaBox', leftX, centerY, boxW, boxH, scale, '当前体力', { bandH: 50 * scale, fill: rgba(14, 10, 10, 226) }).node;
       if (catalog.stamina > catalog.maxStamina) {
         const over = this.host.addChildLabel(box, 'Over', `已超出上限 +${catalog.stamina - catalog.maxStamina}`, 0, -boxH / 2 + 24 * scale, 20 * scale, rgba(150, 240, 160), new Size(boxW * 0.8, 28 * scale));
         over.overflow = Label.Overflow.SHRINK;
@@ -499,6 +467,7 @@ export class LobbyShopDialogRenderer {
     const quotaText = offer.dailyLimit > 0 ? `今日已购 ${offer.usedToday}/${offer.dailyLimit} 次 · 还可购买 ${remaining} 次` : '体力购买暂未开放';
     const quota = this.host.addChildLabel(panel, 'LobbyShopStaminaQuota', quotaText, rightX, grid.slots[0].y + 14 * scale - (grid.cardW * TALLEST_FRAME) / 2 - 22 * scale, FONT.small * scale, remaining > 0 ? rgba(206, 194, 168) : rgba(255, 170, 150), new Size(panelW * 0.46, this.lh(22, scale)));
     quota.overflow = Label.Overflow.SHRINK;
+    this.outline(quota, scale, rgba(10, 6, 4, 255));
   }
 
   // ── 钻石充值:6 档 3×2,图标 少量 → 中量 → 大量 → 宝箱;赠送最高的一档标"最划算";ONLINE 时顶部一行支付方式 ──
@@ -715,18 +684,32 @@ export class LobbyShopDialogRenderer {
     bg.fillColor = rgba(12, 10, 14, 236);
     bg.roundRect(-cardW / 2 + 6 * scale, -cardH / 2 + 6 * scale, cardW - 12 * scale, cardH - 12 * scale, 10 * scale);
     bg.fill();
-    // 上半区档位色淡染(名字带 + 图标区),下半区留深底衬数字
-    bg.fillColor = rgba(frame.tint[0], frame.tint[1], frame.tint[2], 26);
-    bg.roundRect(-cardW / 2 + 10 * scale, cardH * 0.02, cardW - 20 * scale, cardH * 0.46, 8 * scale);
-    bg.fill();
-    this.host.addSprite(`${name}Frame`, frame.path, 0, 0, cardW, cardH, card);
-    const inner = cardW * 0.86;
-    const nameLabel = this.host.addChildLabel(card, `${name}Name`, spec.name, 0, cardH * 0.405, FONT.cardName * scale, rgba(255, 238, 190), new Size(inner, 26 * scale));
-    nameLabel.overflow = Label.Overflow.SHRINK;
-    this.outline(nameLabel, scale, rgba(20, 10, 6, 255));
-    const iconBox = cardW * 0.5;
+    let nameY = cardH * 0.405;
+    let iconBox = cardW * 0.5;
     const iconY = cardH * 0.155;
-    this.drawGlow(card, `${name}Glow`, 0, iconY, iconBox * 0.62, frame.tint, scale);
+    /** 标题带下沿(参考图版):「最划算」斜角标挂在它下面,不压名字。 */
+    let bandBottom: number | null = null;
+    if (mountRefSliced(this.host, card, 'Frame', REF_KIT.cardFrameOpen, 0, 0, cardW, cardH)) {
+      const fk = refCardFrameK(cardW, cardH);
+      const bandH = Math.min(44 * scale, cardH * 0.14);
+      nameY = cardH / 2 - REF_CARD_FRAME_LINE.top * fk - bandH / 2;
+      bandBottom = nameY - bandH / 2;
+      mountRefHeaderBand(this.host, card, `${name}Band`, 0, nameY, cardW - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
+      raiseRefFrame(card);
+      iconBox = cardW * 0.56;
+    } else {
+      // 原档位框:上半区档位色淡染(名字带 + 图标区)+ 图标背后光盘
+      bg.fillColor = rgba(frame.tint[0], frame.tint[1], frame.tint[2], 26);
+      bg.roundRect(-cardW / 2 + 10 * scale, cardH * 0.02, cardW - 20 * scale, cardH * 0.46, 8 * scale);
+      bg.fill();
+      this.host.addSprite(`${name}Frame`, frame.path, 0, 0, cardW, cardH, card);
+      this.drawGlow(card, `${name}Glow`, 0, iconY, iconBox * 0.62, frame.tint, scale);
+    }
+    const inner = cardW * 0.86;
+    const nameLabel = this.host.addChildLabel(card, `${name}Name`, spec.name, 0, nameY, FONT.cardName * scale, rgba(255, 238, 190), new Size(inner, 26 * scale));
+    nameLabel.overflow = Label.Overflow.SHRINK;
+    nameLabel.isBold = true;
+    this.outline(nameLabel, scale, rgba(20, 10, 6, 255));
     this.addTierIcon(card, `${name}Icon`, spec.iconKey, 0, iconY, iconBox);
     if (spec.badge) {
       const badge = this.host.addChildLabel(card, `${name}Badge`, spec.badge, iconBox * 0.42, iconY + iconBox * 0.34, FONT.cardName * scale, rgba(255, 238, 150), new Size(iconBox * 0.6, 26 * scale));
@@ -778,7 +761,8 @@ export class LobbyShopDialogRenderer {
       // 左上角斜角标:深红底金边,压在卡框角上
       const rw = Math.max(92 * scale, spec.ribbon.length * 22 * scale + 26 * scale);
       const rh = 32 * scale;
-      const ribbon = this.host.addChildPlainNode(card, `${name}Ribbon`, -cardW / 2 + rw * 0.36, cardH / 2 - rh * 0.5, rw, rh);
+      const ribbonY = bandBottom !== null ? bandBottom - rh * 0.62 : cardH / 2 - rh * 0.5;
+      const ribbon = this.host.addChildPlainNode(card, `${name}Ribbon`, -cardW / 2 + rw * 0.36, ribbonY, rw, rh);
       ribbon.angle = 14;
       const rg = ribbon.addComponent(Graphics);
       rg.fillColor = rgba(150, 24, 20, 250);
