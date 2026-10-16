@@ -25,6 +25,8 @@ export const REF_KIT = {
   dialogFrame: { path: 'ui/common/ref/dialog_frame/spriteFrame', w: 1000, h: 632, inset: [120, 120, 90, 90] } as RefKitItem,
   titlePlaque: { path: 'ui/common/ref/title_plaque_wings/spriteFrame', w: 627, h: 160, inset: [0, 0, 0, 0] } as RefKitItem,
   cardFrame: { path: 'ui/common/ref/card_frame/spriteFrame', w: 900, h: 159, inset: [60, 60, 40, 40] } as RefKitItem,
+  /** 内芯镂空版(只留金线与角花):标题带垫在它下面,金线 / 角花压在红底上无缝衔接(2026-10-16)。 */
+  cardFrameOpen: { path: 'ui/common/ref/card_frame_open/spriteFrame', w: 900, h: 159, inset: [60, 60, 40, 40] } as RefKitItem,
   iconRing: { path: 'ui/common/ref/icon_ring/spriteFrame', w: 256, h: 256, inset: [0, 0, 0, 0] } as RefKitItem,
   statBar: { path: 'ui/common/ref/stat_bar/spriteFrame', w: 900, h: 85, inset: [60, 60, 30, 30] } as RefKitItem,
   btnPrimary: { path: 'ui/common/ref/btn_primary/spriteFrame', w: 757, h: 160, inset: [160, 160, 60, 60] } as RefKitItem,
@@ -35,6 +37,73 @@ export const REF_KIT = {
 };
 
 export const REF_CLOSE_ASSET = 'ui/formation/ref/btn_close/spriteFrame';
+/** 金边暗行 / 选中亮金行(锻造列表行素材,水晶属性行、法术列表、终极技能弹窗共用)。 */
+export const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
+export const REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
+export const REF_ICON_RING_ASSET = 'ui/common/ref/icon_ring/spriteFrame';
+export const REF_SECTION_EMBLEM = { path: 'ui/crystal/ai/section_emblem/spriteFrame', aspect: 121 / 107 };
+/** 标题带铺到的位置(素材像素,外侧亮金线所在行):带子垫在镂空边框下面,金线压住带子边缘,不留缝。 */
+export const REF_CARD_FRAME_LINE = { top: 6, side: 6 };
+
+/** 把框节点里的边框(Frame)提到最上层:先画的标题带就会被金线 / 角花压住。 */
+export function raiseRefFrame(frameHost: Node): void {
+  const frame = frameHost.getChildByName('Frame');
+  if (frame) {
+    frame.setSiblingIndex(frameHost.children.length - 1);
+  }
+}
+
+/** cardFrame 在给定框尺寸下的九宫格缩放系数(与 mountRefSliced 同算法)。 */
+export function refCardFrameK(width: number, height: number): number {
+  return Math.min(width / REF_KIT.cardFrame.w, height / REF_KIT.cardFrame.h, 1);
+}
+
+function fillRefDiamond(host: RefKitHost, parent: Node, x: number, y: number, r: number, color: Color): void {
+  const g = host.addChildPlainNode(parent, 'Diamond', x, y, r * 2, r * 2).addComponent(Graphics);
+  g.fillColor = color;
+  g.moveTo(0, r);
+  g.lineTo(r, 0);
+  g.lineTo(0, -r);
+  g.lineTo(-r, 0);
+  g.close();
+  g.fill();
+}
+
+/**
+ * 标题带(守卫水晶页定的样式,2026-10-16):整条暗红实底 + 左侧提亮渐变 + 底边金线 + 金线两端菱形点。
+ * 放在细金框里时,顶边 / 两侧对齐 REF_CARD_FRAME_LINE(带子压在框之上,框内芯不透明)。
+ */
+export function mountRefHeaderBand(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
+  const band = host.addChildPlainNode(parent, name, x, y, w, h);
+  const g = band.addComponent(Graphics);
+  g.fillColor = rgba(62, 16, 12, 232);
+  g.rect(-w / 2, -h / 2, w, h);
+  g.fill();
+  const steps = 24;
+  for (let i = 0; i < steps; i += 1) {
+    const t = i / steps;
+    const alpha = Math.round(110 * (1 - t) * (1 - t));
+    if (alpha <= 0) {
+      continue;
+    }
+    g.fillColor = rgba(150, 38, 26, alpha);
+    g.rect(-w / 2 + (w * i) / steps, -h / 2, w / steps, h);
+    g.fill();
+  }
+  g.strokeColor = rgba(214, 170, 92, 230);
+  g.lineWidth = Math.max(1.5, 1.6 * scale);
+  g.moveTo(-w / 2, -h / 2);
+  g.lineTo(w / 2, -h / 2);
+  g.stroke();
+  g.strokeColor = rgba(214, 170, 92, 90);
+  g.lineWidth = 1;
+  g.moveTo(-w / 2, h / 2);
+  g.lineTo(w / 2, h / 2);
+  g.stroke();
+  fillRefDiamond(host, band, -w / 2, -h / 2, 5 * scale, rgba(236, 196, 112));
+  fillRefDiamond(host, band, w / 2, -h / 2, 5 * scale, rgba(236, 196, 112));
+  return band;
+}
 
 /** 九宫格不变形缩放:缺图返回 null(调用方自行兜底)。k 不超过 1(素材不放大,只缩)。 */
 export function mountRefSliced(host: RefKitHost, parent: Node, name: string, item: RefKitItem, x: number, y: number, width: number, height: number, maxK = 1): Node | null {

@@ -26,6 +26,7 @@ import { LOBBY_UI_FX } from '../lobby/LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from '../lobby/LobbyUiSpineFx';
 import { C1812_BUTTON_DISABLED_ASSET, C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, C1812_POPUP_FRAME_PARCHMENT_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
 import { safeText } from '../UiTextFormatter';
+import { drawRefPanelFallback, mountRefHeaderBand, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_KIT, REF_ROW, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { clamp, LOBBY_C1812_RESOURCE_ICON_ASSETS, rgba, type UiLayout } from '../lobby/LobbyHudTypes';
 import { nativeUnderlayVideoSupported, playNativeUnderlayVideo, stopNativeUnderlayVideo, type NativeUnderlayVideoState } from '../../app/NativeUnderlayVideo';
@@ -94,6 +95,25 @@ import { equipIconAssetByCode, equipSlotKeyByCode } from '../lobby/EquipIconAsse
 import { resolveBagStyleItemIconAsset } from '../lobby/LobbyBagPanelRenderer';
 import { heroCardArtProfileByCode } from '../lobby/HeroCardArtAssets';
 import { renderLockGlyph } from '../UiLockGlyph';
+
+const GACHA_REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
+const GACHA_REF_SQUARE: RefKitItem = { path: 'ui/formation/ref/btn_square/spriteFrame', w: 96, h: 96, inset: [24, 24, 24, 24] };
+const GACHA_CHECK_GOLD_ASSET = 'ui/formation/check_gold/spriteFrame';
+
+/** 概率提升卡稀有度标签色(与布阵卡片同口径)。 */
+function gachaRarityTagColor(rarity: string): ReturnType<typeof rgba> {
+  const key = (rarity || '').trim().toUpperCase();
+  if (key === 'UR') {
+    return rgba(255, 108, 72);
+  }
+  if (key === 'SSR') {
+    return rgba(255, 184, 72);
+  }
+  if (key === 'SR') {
+    return rgba(206, 126, 255);
+  }
+  return rgba(110, 166, 255);
+}
 
 export type GachaPreviewResultMode = 'once' | 'ten';
 
@@ -193,6 +213,7 @@ export class GachaSceneRenderer {
     // 全屏页面必须吞掉底层大厅输入，避免召唤按钮或功能图标穿透到大厅热点。
     root.addComponent(BlockInputEvents);
 
+    this.upPanelTop = null;
     this.renderBackground(root, layout);
     this.renderTopBar(root, layout, scale);
     if (layout.safeWidth < 900 || layout.safeHeight < 520) {
@@ -1268,12 +1289,20 @@ export class GachaSceneRenderer {
     const gap = 22 * scale;
     const totalHeight = GACHA_RIGHT_ACTIONS.length * actionSize + (GACHA_RIGHT_ACTIONS.length - 1) * gap;
     const x = layout.stageRight - 86 * scale;
+    this.renderUpPreview(parent, layout, scale, selectedPool, state);
     let cursorY = (layout.stageTop + layout.stageBottom) / 2 + totalHeight / 2 - actionSize / 2;
+    // 有概率提升卡时,「跳过动画」在卡正上方;图标列底(含下方文字约 30)压到它就整体上移
+    if (this.upPanelTop !== null) {
+      const reservedTop = this.upPanelTop + (12 + 46 + 14) * scale;
+      const columnBottom = cursorY - totalHeight + actionSize / 2 - 30 * scale;
+      if (columnBottom < reservedTop) {
+        cursorY += reservedTop - columnBottom;
+      }
+    }
     for (const action of this.resolveRightActions(selectedPool)) {
       this.renderActionButton(parent, action.key, action.label, action.note, x, cursorY, actionSize, scale);
       cursorY -= actionSize + gap;
     }
-    this.renderUpPreview(parent, layout, scale, selectedPool, state);
   }
 
   private renderActionButton(parent: Node, key: GachaActionKey, label: string, note: string, x: number, y: number, size: number, scale: number): void {
@@ -1356,7 +1385,14 @@ export class GachaSceneRenderer {
     }));
   }
 
-  /** 概率提升卡(2026-09-26 接真实数据):当前卡池的 UP 英雄按稀有度分行列出;没有 UP 的卡池不显示。 */
+  /** 概率提升卡顶边 y(本次渲染;没有卡时为 null):「跳过动画」放在它正上方。 */
+  private upPanelTop: number | null = null;
+
+  /**
+   * 概率提升卡(2026-09-26 接真实数据):当前卡池的 UP 英雄按稀有度分行列出;没有 UP 的卡池不显示。
+   * 2026-10-16 用户「跳过动画和概率重合了,并且这两个没有样式」:换水晶页同款——细金框 + 顶部暗红标题带,
+   * 每行「稀有度色标签 + 英雄名」。
+   */
   private renderUpPreview(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool, state: GachaSceneState): void {
     const detail = state.poolDetail;
     if (!detail || (selectedPool.poolCode && detail.pool?.poolCode && detail.pool.poolCode !== selectedPool.poolCode)) {
@@ -1374,21 +1410,63 @@ export class GachaSceneRenderer {
         const key = safeText(item.rarity);
         byRarity.set(key, [...(byRarity.get(key) ?? []), safeText(item.rewardName || item.rewardCode)]);
       });
-    const lines = Array.from(byRarity.entries()).slice(0, 3).map(([rarity, names]) => `${rarity}  ${names.join('、')}`);
-    // 两名 UR 全名约 18 字,卡宽按此留足,避免 SHRINK 把字缩太小。
-    const width = 360 * scale;
-    const lineHeight = 26 * scale;
-    const height = 56 * scale + lines.length * lineHeight;
+    // 卡宽 = 十连按钮右缘(舞台中心 +408)到舞台右缘的可用宽度,封顶 380;不再压到「召唤10次」按钮上
+    const stageCenterX = (layout.stageLeft + layout.stageRight) / 2;
+    const tenButtonRight = stageCenterX + (372 + 72) / 2 * scale + 372 / 2 * scale;
+    const width = Math.max(240 * scale, Math.min(380 * scale, layout.stageRight - 22 * scale - (tenButtonRight + 16 * scale)));
+    const lineHeight = 30 * scale;
+    const bandH = 42 * scale;
+    // 同稀有度的名字一行放不下就逐个换行(稀有度标签只在首行),最多 4 行;避免 SHRINK 把长名缩成小字
+    const fontSize = 18 * scale;
+    const textW = width - 106 * scale;
+    const lines: Array<{ rarity: string; text: string }> = [];
+    byRarity.forEach((names, rarity) => {
+      let current = '';
+      names.forEach((name) => {
+        const joined = current ? `${current}、${name}` : name;
+        if (current && joined.length * fontSize > textW) {
+          lines.push({ rarity: lines.some((line) => line.rarity === rarity) ? '' : rarity, text: `${current}、` });
+          current = name;
+        } else {
+          current = joined;
+        }
+      });
+      if (current) {
+        lines.push({ rarity: lines.some((line) => line.rarity === rarity) ? '' : rarity, text: current });
+      }
+    });
+    lines.splice(4);
+    const height = bandH + 22 * scale + lines.length * lineHeight + 14 * scale;
     const x = layout.stageRight - width / 2 - 22 * scale;
     const y = layout.stageBottom + height / 2 + 26 * scale;
-    const panel = this.host.addChildBeveledPanelNode(parent, 'GachaUpPreviewPanel', x, y, width, height, rgba(8, 7, 8, 206), rgba(184, 134, 57, 184), 12 * scale);
-    const title = this.host.addChildLabel(panel, 'GachaUpTitle', '概率提升', 0, height / 2 - 24 * scale, 21 * scale, rgba(245, 213, 139), new Size(width - 28 * scale, 30 * scale));
+    const panel = this.host.addChildPlainNode(parent, 'GachaUpPreviewPanel', x, y, width, height);
+    const back = panel.addComponent(Graphics);
+    back.fillColor = rgba(10, 9, 12, 228);
+    back.roundRect(-width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 8 * scale);
+    back.fill();
+    if (!mountRefSliced(this.host, panel, 'Frame', REF_KIT.cardFrameOpen, 0, 0, width, height)) {
+      drawRefPanelFallback(panel, width, height, scale);
+    }
+    const fk = refCardFrameK(width, height);
+    const bandY = height / 2 - REF_CARD_FRAME_LINE.top * fk - bandH / 2;
+    mountRefHeaderBand(this.host, panel, 'Band', 0, bandY, width - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
+    raiseRefFrame(panel);
+    const title = this.host.addChildLabel(panel, 'GachaUpTitle', '概率提升', -width / 2 + 24 * scale, bandY, 21 * scale, rgba(255, 222, 140), new Size(width * 0.6, 30 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
+    title.isBold = true;
     this.applyOutline(title, scale, true);
-    lines.forEach((text, index) => {
-      const line = this.host.addChildLabel(panel, `GachaUpLine_${index}`, text, 0, height / 2 - 56 * scale - index * lineHeight, 17 * scale, rgba(226, 196, 132), new Size(width - 28 * scale, lineHeight));
+    lines.forEach(({ rarity, text }, index) => {
+      const ly = bandY - bandH / 2 - 14 * scale - lineHeight / 2 - index * lineHeight;
+      if (rarity) {
+        const tag = this.host.addChildLabel(panel, `GachaUpTag_${index}`, rarity, -width / 2 + 24 * scale, ly, fontSize, gachaRarityTagColor(rarity), new Size(56 * scale, lineHeight), HorizontalTextAlignment.LEFT);
+        tag.overflow = Label.Overflow.SHRINK;
+        tag.isBold = true;
+        this.applyOutline(tag, scale, true);
+      }
+      const line = this.host.addChildLabel(panel, `GachaUpLine_${index}`, text, -width / 2 + 82 * scale, ly, fontSize, rgba(236, 222, 196), new Size(textW, lineHeight), HorizontalTextAlignment.LEFT);
       line.overflow = Label.Overflow.SHRINK;
     });
+    this.upPanelTop = y + height / 2;
   }
 
   private renderBottomSummonBar(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool, state: GachaSceneState): void {
@@ -1405,40 +1483,38 @@ export class GachaSceneRenderer {
     const tenCost = this.resolveSummonCostText(selectedPool, 'ten');
     this.renderSummonButton(parent, layout, 'once', 'GachaSummonOnceButton', freeSingle ? '免费召唤' : selectedPool.buttonSingleText ?? '召唤1次', singleCost, onceX, y, buttonWidth, buttonHeight, scale, false, selectedPool, state);
     this.renderSummonButton(parent, layout, 'ten', 'GachaSummonTenButton', selectedPool.buttonTenText ?? '召唤10次', tenCost, tenX, y, buttonWidth, buttonHeight, scale, true, selectedPool, state);
-    this.renderSkipAnimationToggle(parent, tenX + buttonWidth / 2 + 96 * scale, y, scale);
+    // 「跳过动画」:有概率提升卡时放在卡正上方(右对齐),没有时放右下角;不再和十连按钮右侧的卡重叠
+    const toggleW = 168 * scale;
+    const toggleH = 46 * scale;
+    const toggleX = layout.stageRight - 22 * scale - toggleW / 2;
+    const toggleY = this.upPanelTop !== null ? this.upPanelTop + 12 * scale + toggleH / 2 : Math.max(y, layout.stageBottom + 26 * scale + toggleH / 2);
+    this.renderSkipAnimationToggle(parent, toggleX, toggleY, toggleW, toggleH, scale);
   }
 
   // 跳过动画勾选(偏好持久化):勾选后召唤不播放视频直接出结果;播放中右上另有跳过钮。
-  private renderSkipAnimationToggle(parent: Node, x: number, y: number, scale: number): void {
+  private renderSkipAnimationToggle(parent: Node, x: number, y: number, boxW: number, boxH: number, scale: number): void {
     const enabled = this.host.isGachaSkipAnimationEnabled();
-    const boxW = 150 * scale;
-    const boxH = 46 * scale;
     const node = this.host.addChildPlainNode(parent, 'GachaSkipAnimToggle', x, y, boxW, boxH);
-    const g = node.addComponent(Graphics);
-    g.fillColor = enabled ? rgba(56, 40, 15, 238) : rgba(20, 18, 16, 220);
-    g.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 9 * scale);
-    g.fill();
-    g.strokeColor = enabled ? rgba(244, 200, 104, 240) : rgba(140, 118, 80, 180);
-    g.lineWidth = (enabled ? 2 : 1.4) * scale;
-    g.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 9 * scale);
-    g.stroke();
-    g.fillColor = enabled ? rgba(190, 142, 48, 245) : rgba(12, 11, 10, 235);
-    g.roundRect(-boxW / 2 + 10 * scale, -11 * scale, 22 * scale, 22 * scale, 5 * scale);
-    g.fill();
-    g.strokeColor = enabled ? rgba(252, 224, 150, 250) : rgba(140, 120, 88, 200);
-    g.lineWidth = 1.5 * scale;
-    g.roundRect(-boxW / 2 + 10 * scale, -11 * scale, 22 * scale, 22 * scale, 5 * scale);
-    g.stroke();
-    if (enabled) {
-      g.strokeColor = rgba(30, 20, 8, 255);
-      g.lineWidth = 2.6 * scale;
-      g.moveTo(-boxW / 2 + 15 * scale, 0);
-      g.lineTo(-boxW / 2 + 19 * scale, -5 * scale);
-      g.lineTo(-boxW / 2 + 27 * scale, 6 * scale);
-      g.stroke();
+    // 底:套件金边暗行(勾选时换亮金行);勾选框:暗金方钮 + 金色对勾(与布阵已上阵金勾同款)
+    const bg: RefKitItem = enabled ? GACHA_REF_ROW_SELECTED : REF_ROW;
+    if (!mountRefSliced(this.host, node, 'Bg', bg, 0, 0, boxW, boxH)) {
+      drawRefPanelFallback(node, boxW, boxH, scale);
     }
-    const label = this.host.addChildLabel(node, 'GachaSkipAnimLabel', '跳过动画', -boxW / 2 + 40 * scale, 0, 17 * scale, enabled ? rgba(250, 226, 160) : rgba(206, 190, 158), new Size(boxW - 46 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+    const boxSize = 26 * scale;
+    const boxX = -boxW / 2 + 16 * scale + boxSize / 2;
+    const box = this.host.addChildPlainNode(node, 'Box', boxX, 0, boxSize, boxSize);
+    if (!mountRefSliced(this.host, box, 'Art', GACHA_REF_SQUARE, 0, 0, boxSize, boxSize, 2)) {
+      const g = box.addComponent(Graphics);
+      g.fillColor = rgba(12, 11, 10, 235);
+      g.roundRect(-boxSize / 2, -boxSize / 2, boxSize, boxSize, 5 * scale);
+      g.fill();
+    }
+    if (enabled) {
+      this.host.addSprite('Check', GACHA_CHECK_GOLD_ASSET, 0, 0, boxSize * 1.05, boxSize * 1.05, box);
+    }
+    const label = this.host.addChildLabel(node, 'GachaSkipAnimLabel', '跳过动画', boxX + boxSize / 2 + 10 * scale, 0, 18 * scale, enabled ? rgba(255, 230, 170) : rgba(214, 200, 172), new Size(boxW - boxSize - 40 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
+    label.isBold = enabled;
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.host.toggleGachaSkipAnimation(), this);
     this.host.applyImageButtonFeedback(node, 1.03, 0.97);

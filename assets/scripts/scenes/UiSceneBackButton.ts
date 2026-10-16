@@ -11,6 +11,7 @@ import {
 } from 'cc';
 import { isPhoneDesign } from '../app/ScreenAdapter';
 import { rgba, type UiLayout } from './lobby/LobbyHudTypes';
+import { compactResourceValue } from './UiTextFormatter';
 
 // 旧资产路径保留供布局守护基线引用;实际渲染用 AI 圆形关闭钮。
 export const SCENE_BACK_BUTTON_LEGACY_ASSET = 'ui/common/scene_back_button/spriteFrame';
@@ -238,6 +239,9 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
   let cursorX = rightX - rightInset * scale - capWidth / 2;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
+    // 2026-10-16 用户:「所有界面的顶部货币数字加单位,和大厅保持一致」——纯数字统一转大厅同款短格式(4.9M / 125.3K)
+    const rawValue = String(entry.value ?? '');
+    const displayValue = /^[\d,]+$/.test(rawValue) ? compactResourceValue(Number(rawValue.replace(/,/g, ''))) : rawValue;
     const chip = host.addChildPlainNode(parent, `TopCurrency_${entry.key}`, cursorX, barY, capWidth, capHeight);
     if (!host.addSprite(`TopCurrencyCapsule_${entry.key}`, SCENE_CURRENCY_BAR_ASSET, 0, 0, capWidth, capHeight, chip)) {
       const graphics = chip.addComponent(Graphics);
@@ -251,7 +255,7 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
     const iconSize = capHeight * 0.56;
     host.addSprite(`TopCurrencyIcon_${entry.key}`, entry.icon, -capWidth / 2 + capWidth * 0.171 + 7 * scale, 0, iconSize, iconSize, chip);
     // 数字框:左缘让开图标、右缘离「+」留一段空(原 -0.20w~0.30w,长数字缩放后贴着「+」,2026-10-04 用户)
-    const value = host.addChildLabel(chip, `TopCurrencyValue_${entry.key}`, entry.value, capWidth * 0.035, 0, 18 * scale, rgba(245, 222, 168), new Size(capWidth * 0.45, 22 * scale));
+    const value = host.addChildLabel(chip, `TopCurrencyValue_${entry.key}`, displayValue, capWidth * 0.035, 0, 18 * scale, rgba(245, 222, 168), new Size(capWidth * 0.45, 22 * scale));
     value.overflow = Label.Overflow.SHRINK;
     value.enableOutline = true;
     value.outlineColor = rgba(0, 0, 0, 220);

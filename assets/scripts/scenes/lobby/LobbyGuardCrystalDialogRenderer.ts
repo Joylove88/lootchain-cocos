@@ -32,7 +32,7 @@ import { GUARD_SPELL_FX, LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
-import { mountRefButton, mountRefSliced, REF_CLOSE_ASSET, REF_KIT, type RefKitItem } from '../UiRefKit';
+import { mountRefButton, mountRefHeaderBand, mountRefSliced, REF_CLOSE_ASSET, REF_KIT, type RefKitItem } from '../UiRefKit';
 import { renderTopCurrencyBar } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 
@@ -138,8 +138,8 @@ const REF_TAB_OFF: RefKitItem = { path: 'ui/formation/ref/tab_off/spriteFrame', 
 const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
 const REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
 const REF_ICON_RING = 'ui/common/ref/icon_ring/spriteFrame';
-/** 细金框金线内侧到框边的距离(素材像素):标题带贴到这里,不留缝。 */
-const CARD_FRAME_LINE = { top: 13, side: 15 };
+/** 标题带铺到的位置(素材像素):与 UiRefKit.REF_CARD_FRAME_LINE 同口径,带子垫在镂空边框下。 */
+const CARD_FRAME_LINE = { top: 6, side: 6 };
 /** 场景底图里地面法阵中心:图宽 18.5%、图高 78%(水晶脚底对准这里)。 */
 const SCENE_FLOOR = { x: 0.185, y: 0.78 };
 /** 法术图标(圆形带框的新素材);狂战号角暂无新图,沿用旧图 + 程序画框。 */
@@ -329,36 +329,6 @@ export class LobbyGuardCrystalDialogRenderer {
     return null;
   }
 
-  /** 右上货币栏(参考图 2):深色胶囊 + 图标 + 数额,右对齐排到关闭按钮左侧。 */
-  private renderCurrencyBar(panel: Node, info: GuardCrystalInfoVO, rightEdge: number, y: number, scale: number, W: number, H: number): void {
-    const capH = 0.046 * H;
-    const capW = Math.max(0.1 * W, 120 * scale);
-    const gap = 0.012 * W;
-    const items: Array<{ key: string; icon: string; value: number }> = [
-      { key: 'Core', icon: CORE_ICON, value: Number(info.coreBalance ?? 0) },
-      { key: 'Gold', icon: GOLD_ICON, value: Number(info.goldBalance ?? 0) },
-    ];
-    let cursor = rightEdge;
-    items.forEach((item) => {
-      const cx = cursor - capW / 2;
-      cursor -= capW + gap;
-      const cap = this.host.addChildPlainNode(panel, `LobbyGuardCrystalCurrency${item.key}`, cx, y, capW, capH);
-      const g = cap.addComponent(Graphics);
-      g.fillColor = rgba(10, 8, 8, 225);
-      g.roundRect(-capW / 2, -capH / 2, capW, capH, capH / 2);
-      g.fill();
-      g.strokeColor = rgba(190, 150, 80, 220);
-      g.lineWidth = 1.5;
-      g.roundRect(-capW / 2, -capH / 2, capW, capH, capH / 2);
-      g.stroke();
-      const iconSize = capH * 0.8;
-      this.host.addSprite('Icon', item.icon, -capW / 2 + iconSize / 2 + 4 * scale, 0, iconSize, iconSize, cap);
-      const text = this.host.addChildLabel(cap, 'Text', this.host.formatInteger(item.value), -capW / 2 + iconSize + 10 * scale, 0, FONT.body * scale, CREAM_TEXT, new Size(capW - iconSize - 16 * scale, capH), HorizontalTextAlignment.LEFT);
-      text.overflow = Label.Overflow.SHRINK;
-      text.isBold = true;
-    });
-  }
-
   /** 左侧水晶舞台(参考图):背景光 + 法阵 + 立绘 + 等级牌 + 进度条 + 「n / 30 级」+ 下一级解锁提示(两侧花边)。 */
   private renderCrystal(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, scale: number, W: number, H: number): void {
     const T = H / 2;
@@ -542,7 +512,7 @@ export class LobbyGuardCrystalDialogRenderer {
     back.fillColor = rgba(10, 9, 12, 218);
     back.roundRect(-(w - 8) / 2, -(h - 8) / 2, w - 8, h - 8, 8);
     back.fill();
-    if (mountRefSliced(this.host, node, 'Frame', REF_KIT.cardFrame, 0, 0, w, h)) {
+    if (mountRefSliced(this.host, node, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
       return node;
     }
     // 角饰按约 26% 原尺寸显示(≈28px):再大会压住面板里的小标题。
@@ -805,36 +775,7 @@ export class LobbyGuardCrystalDialogRenderer {
    * 整条暗红实底 + 左侧提亮渐变 + 底边金线 + 金线两端菱形点;标题字放大加粗压在上面。
    */
   private drawHeaderBand(parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
-    const band = this.host.addChildPlainNode(parent, name, x, y, w, h);
-    const g = band.addComponent(Graphics);
-    // 整条实心暗红打底(用户:「红色没有填充满」),左侧再叠一层提亮,形成左亮右暗但填满的标题带
-    g.fillColor = rgba(62, 16, 12, 232);
-    g.rect(-w / 2, -h / 2, w, h);
-    g.fill();
-    const steps = 24;
-    for (let i = 0; i < steps; i += 1) {
-      const t = i / steps;
-      const alpha = Math.round(110 * (1 - t) * (1 - t));
-      if (alpha <= 0) {
-        continue;
-      }
-      g.fillColor = rgba(150, 38, 26, alpha);
-      g.rect(-w / 2 + (w * i) / steps, -h / 2, w / steps, h);
-      g.fill();
-    }
-    g.strokeColor = rgba(214, 170, 92, 230);
-    g.lineWidth = Math.max(1.5, 1.6 * scale);
-    g.moveTo(-w / 2, -h / 2);
-    g.lineTo(w / 2, -h / 2);
-    g.stroke();
-    g.strokeColor = rgba(214, 170, 92, 90);
-    g.lineWidth = 1;
-    g.moveTo(-w / 2, h / 2);
-    g.lineTo(w / 2, h / 2);
-    g.stroke();
-    this.fillDiamond(band, -w / 2, -h / 2, 5 * scale, 5 * scale, rgba(236, 196, 112));
-    this.fillDiamond(band, w / 2, -h / 2, 5 * scale, 5 * scale, rgba(236, 196, 112));
-    return band;
+    return mountRefHeaderBand(this.host, parent, name, x, y, w, h, scale);
   }
 
   /** 细金框(REF_KIT.cardFrame)在给定框尺寸下的九宫格缩放系数(与 mountRefSliced 同算法)。 */
@@ -847,7 +788,9 @@ export class LobbyGuardCrystalDialogRenderer {
    * 带子顶边 / 两侧正好停在金线内侧,不盖金线也不留缝。
    */
   private tuckUnderFrame(frameHost: Node, band: Node): void {
-    band.setSiblingIndex(frameHost.children.length - 1);
+    // 边框已换内芯镂空版:带子放在边框下一层,金线 / 角花压在红底上(2026-10-16「红色和边框的角完美衔接」)
+    const frame = frameHost.getChildByName('Frame');
+    band.setSiblingIndex(frame ? frame.getSiblingIndex() : frameHost.children.length - 1);
   }
 
   /** 小节标题:徽记 + 金字;右侧可带一行灰字。 */
@@ -1202,7 +1145,7 @@ export class LobbyGuardCrystalDialogRenderer {
     g.fillColor = rgba(12, 9, 8, 215);
     g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
     g.fill();
-    if (!mountRefSliced(this.host, card, 'Frame', REF_KIT.cardFrame, 0, 0, w, h)) {
+    if (!mountRefSliced(this.host, card, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
       g.strokeColor = rgba(190, 146, 76, 210);
       g.lineWidth = 1.5;
       g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
