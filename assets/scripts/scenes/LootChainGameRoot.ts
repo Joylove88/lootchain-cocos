@@ -2459,7 +2459,8 @@ export class LootChainGameRoot extends Component {
       const names = (result.item.specialAffixes ?? []).map((affix) => `${affix.special ? '★' : ''}${affix.name}+${affix.value}${affix.percent ? '%' : ''}`).join(' / ');
       this.setStatus(`洗练完成：${result.item.equipName} → ${names || '无词条'}`);
       if (this.currentView === 'forge') {
-        this.lobbyForgePanelRenderer.spawnForgeFlash(true, '洗练完成 · 词条已刷新', 'reroll');
+        // 洗练弹窗里直接看得到新词条:特效对准弹窗中部、不叠文字牌
+        this.lobbyForgePanelRenderer.spawnForgeFlash(true, '洗练完成 · 词条已刷新', 'reroll', { plate: false, sizeMult: 1.3 });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2616,7 +2617,8 @@ export class LootChainGameRoot extends Component {
       this.endSceneMutation();
       this.renderCurrentView();
       if (flash && this.currentView === 'forge') {
-        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text, flash.ok ? 'fuseSuccess' : 'fail');
+        // 合成结果弹窗已写明成败与新装备:特效对准弹窗图标、不叠文字牌
+        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text, flash.ok ? 'fuseSuccess' : 'fail', { plate: false, sizeMult: 0.8 });
       }
     }
   }

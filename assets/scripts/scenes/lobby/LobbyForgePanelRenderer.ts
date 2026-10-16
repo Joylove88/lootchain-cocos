@@ -388,6 +388,10 @@ export class LobbyForgePanelRenderer {
     const dialogH = full ? full.h : (300 + Math.max(1, affixes.length) * 34) * scale;
     const q = equipQualityColor(item.quality);
     const dialog = this.host.addChildBeveledPanelNode(dim, 'ForgeRerollDialog', 0, 0, dialogW, dialogH, rgba(12, 9, 8, 250), rgba(214, 168, 82, 235), 14 * scale);
+    // 洗练结果特效对准弹窗中部(新词条列表);弹窗与面板同心,不随导航栏偏移
+    this.fxAnchor = { x: 0, y: 0 };
+    // 飘字放在装备名与词条列表之间的空档(手机全屏弹窗放上方会压到「词条洗练」标题)
+    this.powerAnchor = { x: 0, y: dialogH / 2 - (phone ? 90 : 70) * scale - (phone ? 64 : 50) * scale };
     const title = this.host.addChildLabel(dialog, 'ForgeRerollTitle', '词条洗练', 0, dialogH / 2 - (phone ? 44 : 38) * scale, (phone ? 34 : 26) * scale, rgba(250, 216, 120), new Size(dialogW - 40 * scale, (phone ? 44 : 36) * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
@@ -599,6 +603,9 @@ export class LobbyForgePanelRenderer {
     // 新装备展示:大图标格 + 名称 + 属性。
     const cellSize = Math.min(100 * scale * k, h * 0.25);
     const cell = this.host.addChildPlainNode(dialog, 'ForgeFuseResultCell', 0, h * 0.075, cellSize, cellSize);
+    // 合成结果特效对准弹窗里的新装备图标(弹窗与面板同心、不随手机导航栏偏移;2026-10-16 用户「合成特效位置变了」)
+    this.fxAnchor = { x: 0, y: h * 0.075 };
+    this.powerAnchor = null;
     const cg = cell.addComponent(Graphics);
     cg.fillColor = rgba(Math.round(q.r * 0.22 + 8), Math.round(q.g * 0.22 + 8), Math.round(q.b * 0.22 + 8), 245);
     cg.roundRect(-cellSize / 2, -cellSize / 2, cellSize, cellSize, 12 * scale);
@@ -2866,14 +2873,23 @@ export class LobbyForgePanelRenderer {
    * 锻造结果特效(2026-10-16 换素材库骨骼特效,见 FORGE_RESULT_FX):挂持久浮层(整页刷新不清),
    * 特效居中在展示环处,结果文字牌放在特效下方;特效没有包围盒 / 加载失败时退回原先的程序光芒。
    */
-  spawnForgeFlash(success: boolean, text: string, kind: ForgeFxKind = success ? 'success' : 'fail'): void {
+  spawnForgeFlash(success: boolean, text: string, kind: ForgeFxKind = success ? 'success' : 'fail', opts: { plate?: boolean; sizeMult?: number } = {}): void {
     const node = this.host.createPersistentFxNode(`LobbyForgeFlash_${Date.now()}`);
     node.setPosition(new Vec3(this.fxAnchor.x, this.fxAnchor.y, 0));
     node.addComponent(UITransform).setContentSize(new Size(640, 640));
     const spec = FORGE_RESULT_FX[kind];
-    const fx = mountLobbySpineFx(this.host, node, spec, 0, spec.offsetY ?? 0, 420 * spec.size, false, spec.holdMs, 'ForgeResultFx');
+    const fx = mountLobbySpineFx(this.host, node, spec, 0, spec.offsetY ?? 0, 420 * spec.size * (opts.sizeMult ?? 1), false, spec.holdMs, 'ForgeResultFx');
     if (!fx) {
       this.drawForgeFlashFallback(node, success);
+    }
+    // 结果弹窗自带标题与装备名(合成)时不再叠文字牌,免得盖住弹窗内容
+    if (opts.plate === false) {
+      setTimeout(() => {
+        if (node.isValid) {
+          node.destroy();
+        }
+      }, spec.holdMs + 150);
+      return;
     }
     const plate = this.host.addChildPlainNode(node, 'ForgeFlashPlate', 0, -150, 440, 60);
     const pg = plate.addComponent(Graphics);
