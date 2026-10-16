@@ -1240,8 +1240,9 @@ export class LobbyGuardCrystalDialogRenderer {
     fr.stroke();
     const spellFx = GUARD_SPELL_FX[id];
     const fxHolder = this.host.addChildPlainNode(fxBox, 'Fx', 0, 0, 10, 10);
-    // 有插画时特效缩小到 0.7 叠在插画上,别把画盖死
-    const fxMounted = this.mountSpineFx(fxHolder, spellFx, 0, -fxH * 0.06, Math.min(innerW, fxH) * (fxBg ? 0.7 : 0.95), true, 0);
+    // 特效按演示框铺开(长边≈框宽,超出部分由 Mask 裁掉)叠在插画上。2026-10-16 用户「法术技能特效没了,只有贴图」:
+    // 插画框封顶 36% 后再按短边 × 0.7 缩,特效只剩插画中间一小团,看起来像没播
+    const fxMounted = this.mountSpineFx(fxHolder, spellFx, 0, -fxH * 0.04, Math.min(innerW * 0.95, fxH * 1.35), true, 0);
     if (!fxMounted) {
       this.mountSpellIcon(fxBox, 'Icon', id, 0, 0, Math.min(innerW, fxH) * 0.6, !open);
     }

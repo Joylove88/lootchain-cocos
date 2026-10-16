@@ -6793,7 +6793,12 @@ export class LobbyBattlePreviewPanelRenderer {
       if (clip && clip.end > clip.start && !spec.loop) {
         const speed = Math.max(0.25, clip.speed ?? 1);
         skeleton.timeScale = 1;
-        skeleton.updateAnimation(Math.max(0, clip.start));
+        if (sys.isNative) {
+          // 原生(安卓)上 updateAnimation 不推进动画,片段会从头播(2026-10-16 真机);直接设轨道时间到片段起点
+          track.trackTime = Math.max(0, clip.start);
+        } else {
+          skeleton.updateAnimation(Math.max(0, clip.start));
+        }
         skeleton.timeScale = speed;
         tween(node).delay((clip.end - clip.start) / speed).call(() => onComplete()).start();
       }

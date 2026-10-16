@@ -9219,7 +9219,7 @@ export class LobbyGuardBattleRenderer {
             skeleton.setAnimation(0, animationName, true);
           }
         } else {
-          skeleton.setAnimation(0, animationName, false);
+          const mainEntry = skeleton.setAnimation(0, animationName, false);
           let finished = false;
           const finish = (): void => {
             if (finished) {
@@ -9242,7 +9242,13 @@ export class LobbyGuardBattleRenderer {
           if (clip && clip.end > clip.start) {
             const speed = Math.max(0.25, clip.speed ?? 1);
             skeleton.timeScale = 1;
-            skeleton.updateAnimation(Math.max(0, clip.start));
+            if (sys.isNative && mainEntry) {
+              // 原生(安卓)上 Skeleton.updateAnimation 不推进动画(2026-10-16 真机:米迦勒大招从头播,雷云"往下掉"的入场段被播出来),
+              // 直接把轨道时间设到片段起点;网页端保持原路径(已验收的画面不动)
+              mainEntry.trackTime = Math.max(0, clip.start);
+            } else {
+              skeleton.updateAnimation(Math.max(0, clip.start));
+            }
             skeleton.timeScale = speed;
             // 角色本体部件与压暗黑底已在骨骼数据上裁掉(prepareBattleFxData),不再逐帧过滤
             const playSec = (clip.end - clip.start) / speed;
