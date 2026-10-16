@@ -1,0 +1,46 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "61c72cd6-d5f9-44a1-8b56-3cb0de545a7b",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "61c72cd6-d5f9-44a1-8b56-3cb0de545a7b@6c48a",
+      "displayName": "E54114",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "repeat",
+        "wrapModeT": "repeat",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "61c72cd6-d5f9-44a1-8b56-3cb0de545a7b",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "texture",
+    "fixAlphaTransparencyArtifacts": false,
+    "hasAlpha": true,
+    "redirect": "61c72cd6-d5f9-44a1-8b56-3cb0de545a7b@6c48a",
+    "compressSettings": {
+      "useCompressTexture": true,
+      "presetId": "lc-android-astc4"
+    }
+  }
+}

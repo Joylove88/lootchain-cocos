@@ -13,11 +13,11 @@ import json
 
 import websockets
 
-WS = 'ws://127.0.0.1:43086/00010002-0003-4004-8005-000600070008'
+WS_TMPL = 'ws://127.0.0.1:{port}/00010002-0003-4004-8005-000600070008'
 
 
-async def run(expr: str, timeout: float) -> None:
-    async with websockets.connect(WS, max_size=None, open_timeout=10) as ws:
+async def run(expr: str, timeout: float, port: int) -> None:
+    async with websockets.connect(WS_TMPL.format(port=port), max_size=None, open_timeout=10) as ws:
         msg_id = 0
 
         async def call(method: str, params: dict | None = None) -> dict:
@@ -49,9 +49,10 @@ def main() -> None:
     parser.add_argument('expr', nargs='?')
     parser.add_argument('--file')
     parser.add_argument('--timeout', type=float, default=30)
+    parser.add_argument('--port', type=int, default=43086, help='logcat 搜 Debugger listening 看实际端口(被占用时会顺延,如 43087)')
     args = parser.parse_args()
     expr = open(args.file, encoding='utf-8').read() if args.file else args.expr
-    asyncio.run(run(expr, args.timeout))
+    asyncio.run(run(expr, args.timeout, args.port))
 
 
 if __name__ == '__main__':

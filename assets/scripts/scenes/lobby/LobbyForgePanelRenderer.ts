@@ -36,6 +36,8 @@ import {
 import { equipIconAssetByCode } from './EquipIconAssets';
 import { parseGemCode, gemOpenSlots, gemUnsocketGold, gemIconAsset, GEM_TIER_QUALITY } from './EquipDetailCard';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { FORGE_RESULT_FX, type ForgeFxKind } from './LobbyBattleAttackFxConfig';
+import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 
 // AI 素材钩子(生成后按路径导入,meta 改 sprite-frame 即自动换装;缺图时走 Graphics 兜底)。
 // 2026-10-15 按 GPT 原型(参考用户给的强化界面参考图)重做:熔炉背景 / 展示环 / 导航徽章 / 材料框 / 列表行 / 等级金牌(ui/forge/ref),
@@ -206,6 +208,8 @@ export interface LobbyForgePanelHost {
   autoEnhanceLobbyEquipment(equipmentId: number): void;
   closeLobbyForgePanel(): void;
   createUiNode(name: string): Node;
+  /** 持久浮层(挂根 Canvas,不随整页刷新清理)上建节点:锻造结果特效用。 */
+  createPersistentFxNode(name: string): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addChildLabel(
@@ -244,6 +248,11 @@ export class LobbyForgePanelRenderer {
   private phoneOverlays: Array<(root: Node) => void> = [];
 
   constructor(private readonly host: LobbyForgePanelHost) {}
+
+  /** 打开锻造页时预热结果特效数据(首次强化不等加载)。 */
+  prewarmForgeFx(): void {
+    prewarmLobbySpineFx(Object.values(FORGE_RESULT_FX));
+  }
 
   render(layout: UiLayout): void {
     const scale = Math.max(0.62, Math.min(1, layout.uiScale));
@@ -1623,6 +1632,13 @@ export class LobbyForgePanelRenderer {
       .call(() => {
         onDone();
       })
+      // 2026-10-16:锻造页单次操作不再先整页重绘,锤击节点(含全屏防连点遮罩)不会被顺带清掉,播完自己销毁
+      .delay(0.35)
+      .call(() => {
+        if (node.isValid) {
+          node.destroy();
+        }
+      })
       .start();
   }
 
@@ -2830,20 +2846,62 @@ export class LobbyForgePanelRenderer {
    * 结果闪光:成功=金色光爆(中心光斑+8 道光芒),失败=灰色淡闪;文字随光缩放淡出后自毁。
    * 由 GameRoot 在整页重绘之后调用,叠加在最新画面之上。
    */
-  spawnForgeFlash(success: boolean, text: string): void {
-    const node = this.host.createUiNode(`LobbyForgeFlash_${Date.now()}`);
+  /**
+   * 锻造结果特效(2026-10-16 换素材库骨骼特效,见 FORGE_RESULT_FX):挂持久浮层(整页刷新不清),
+   * 特效居中在展示环处,结果文字牌放在特效下方;特效没有包围盒 / 加载失败时退回原先的程序光芒。
+   */
+  spawnForgeFlash(success: boolean, text: string, kind: ForgeFxKind = success ? 'success' : 'fail'): void {
+    const node = this.host.createPersistentFxNode(`LobbyForgeFlash_${Date.now()}`);
     node.setPosition(new Vec3(0, 30, 0));
     node.addComponent(UITransform).setContentSize(new Size(640, 640));
+    const spec = FORGE_RESULT_FX[kind];
+    const fx = mountLobbySpineFx(this.host, node, spec, 0, spec.offsetY ?? 0, 420 * spec.size, false, spec.holdMs, 'ForgeResultFx');
+    if (!fx) {
+      this.drawForgeFlashFallback(node, success);
+    }
+    const plate = this.host.addChildPlainNode(node, 'ForgeFlashPlate', 0, -150, 440, 60);
+    const pg = plate.addComponent(Graphics);
+    pg.fillColor = rgba(12, 9, 7, 196);
+    pg.roundRect(-220, -30, 440, 60, 14);
+    pg.fill();
+    pg.strokeColor = success ? rgba(214, 170, 92, 220) : rgba(150, 146, 150, 200);
+    pg.lineWidth = 2;
+    pg.roundRect(-220, -30, 440, 60, 14);
+    pg.stroke();
+    const label = this.host.addChildLabel(plate, 'ForgeFlashText', text, 0, 0, 32, success ? rgba(255, 226, 150) : rgba(220, 214, 206), new Size(420, 50));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(0, 0, 0, 235);
+    label.outlineWidth = 2.4;
+    const opacity = plate.addComponent(UIOpacity);
+    opacity.opacity = 0;
+    plate.setScale(new Vec3(0.7, 0.7, 1));
+    tween(plate).to(0.18, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
+    tween(opacity)
+      .to(0.12, { opacity: 255 })
+      .delay(Math.max(0.6, spec.holdMs / 1000 - 0.5))
+      .to(0.35, { opacity: 0 })
+      .start();
+    const lifeMs = Math.max(spec.holdMs, 1100) + 150;
+    setTimeout(() => {
+      if (node.isValid) {
+        node.destroy();
+      }
+    }, lifeMs);
+  }
+
+  /** 骨骼特效不可用时的兜底:中心光斑 + 8 道光芒(原 spawnForgeFlash 画法)。 */
+  private drawForgeFlashFallback(node: Node, success: boolean): void {
     const color = success ? { r: 255, g: 214, b: 110 } : { r: 168, g: 168, b: 178 };
-    const g = node.addComponent(Graphics);
-    // 中心光斑。
+    const holder = this.host.addChildPlainNode(node, 'ForgeFlashRays', 0, 0, 640, 640);
+    const g = holder.addComponent(Graphics);
     g.fillColor = rgba(color.r, color.g, color.b, success ? 132 : 84);
     g.circle(0, 0, 96);
     g.fill();
     g.fillColor = rgba(255, 246, 214, success ? 190 : 90);
     g.circle(0, 0, 46);
     g.fill();
-    // 8 道光芒(细长菱形)。
     const rayCount = 8;
     for (let index = 0; index < rayCount; index += 1) {
       const angle = (Math.PI * 2 * index) / rayCount + Math.PI / 8;
@@ -2859,24 +2917,10 @@ export class LobbyForgePanelRenderer {
       g.close();
       g.fill();
     }
-    const label = this.host.addChildLabel(node, 'ForgeFlashText', text, 0, 0, 38, rgba(success ? 255 : 224, success ? 236 : 216, success ? 178 : 200), new Size(620, 60));
-    label.overflow = Label.Overflow.SHRINK;
-    label.enableOutline = true;
-    label.outlineColor = rgba(0, 0, 0, 235);
-    label.outlineWidth = 2.4;
-    const opacity = node.addComponent(UIOpacity);
-    opacity.opacity = 0;
-    node.setScale(new Vec3(0.55, 0.55, 1));
-    tween(opacity)
-      .to(0.12, { opacity: 255 })
-      .delay(success ? 0.5 : 0.35)
-      .to(0.4, { opacity: 0 })
-      .call(() => node.destroy())
-      .start();
-    tween(node)
-      .to(0.55, { scale: new Vec3(success ? 1.35 : 1.1, success ? 1.35 : 1.1, 1) })
-      .to(0.45, { scale: new Vec3(success ? 1.5 : 1.16, success ? 1.5 : 1.16, 1) })
-      .start();
+    const op = holder.addComponent(UIOpacity);
+    holder.setScale(new Vec3(0.55, 0.55, 1));
+    tween(holder).to(0.55, { scale: new Vec3(success ? 1.35 : 1.1, success ? 1.35 : 1.1, 1) }).start();
+    tween(op).delay(0.6).to(0.4, { opacity: 0 }).start();
   }
 
   private applyOutline(label: Label, scale: number, strong: boolean): void {

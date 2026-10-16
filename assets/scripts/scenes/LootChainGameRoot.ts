@@ -2306,6 +2306,7 @@ export class LootChainGameRoot extends Component {
   // 强化/合成走英雄详情同源 mutation;分解/合成支持按具体装备 id 批量提交;本页无英雄上下文,穿卸仍走英雄详情。
   private openLobbyForgePanel(preselectEquipId: number | null = null, returnHeroId: number | null = null): void {
     this.uiSpriteFrameCache.preloadGroup('forge');
+    this.lobbyForgePanelRenderer.prewarmForgeFx();
     this.closeAllLobbyScenePanelFlags();
     this.lobbyForgeReturnHeroId = returnHeroId;
     this.lobbyForgePanelOpen = true;
@@ -2438,19 +2439,28 @@ export class LootChainGameRoot extends Component {
     const beforePower = this.lobbyHeroPowerById(equipHeroId);
     let powerDelta = 0;
     this.lobbyHeroEquipBusy = true;
-    this.renderCurrentView();
+    // 2026-10-16 卡顿优化:锻造页单次操作不再先整页重绘「处理中」(结果提示会被推迟);连点仍被 busy 拦住
+    if (this.currentView !== 'forge') {
+      this.renderCurrentView();
+    }
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.reroll(equipmentId);
-      this.lobbyEquipmentItems = await this.api.equipment.list();
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyHeroRoster(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+        this.loadLobbyHeroRoster(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
       const names = (result.item.specialAffixes ?? []).map((affix) => `${affix.special ? '★' : ''}${affix.name}+${affix.value}${affix.percent ? '%' : ''}`).join(' / ');
       this.setStatus(`洗练完成：${result.item.equipName} → ${names || '无词条'}`);
+      if (this.currentView === 'forge') {
+        this.lobbyForgePanelRenderer.spawnForgeFlash(true, '洗练完成 · 词条已刷新', 'reroll');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.setStatus(`洗练失败：${message}`);
@@ -2510,18 +2520,27 @@ export class LootChainGameRoot extends Component {
     const beforePower = this.lobbyHeroPowerById(equipHeroId);
     let powerDelta = 0;
     this.lobbyHeroEquipBusy = true;
-    this.renderCurrentView();
+    // 2026-10-16 卡顿优化:锻造页单次操作不再先整页重绘「处理中」(结果提示会被推迟);连点仍被 busy 拦住
+    if (this.currentView !== 'forge') {
+      this.renderCurrentView();
+    }
     this.beginSceneMutation();
     try {
       await op();
-      this.lobbyEquipmentItems = await this.api.equipment.list();
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyHeroRoster(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+        this.loadLobbyHeroRoster(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
       this.setStatus(`宝石${verb}完成。`);
+      if (this.currentView === 'forge') {
+        this.lobbyForgePanelRenderer.spawnForgeFlash(true, `宝石${verb}成功`, 'gem');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.setStatus(`宝石${verb}失败：${message}`);
@@ -2561,15 +2580,21 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyHeroEquipBusy = true;
-    this.renderCurrentView();
+    if (this.currentView !== 'forge') {
+      this.renderCurrentView();
+    }
     let flash: { ok: boolean; text: string } | null = null;
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.fuse(ids, this.lobbyEquipFuseUseLuckStone);
-      this.lobbyEquipmentItems = await this.api.equipment.list();
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       // 弹结果框(展示新装备/返还件),闪光作为辅助氛围。
       this.lobbyForgeFuseResult = { success: result.success, chance: result.chance, item: result.resultItem };
       if (result.success) {
@@ -2591,7 +2616,7 @@ export class LootChainGameRoot extends Component {
       this.endSceneMutation();
       this.renderCurrentView();
       if (flash && this.currentView === 'forge') {
-        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text);
+        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text, flash.ok ? 'fuseSuccess' : 'fail');
       }
     }
   }
@@ -2654,11 +2679,15 @@ export class LootChainGameRoot extends Component {
       }
     } finally {
       try {
-        this.lobbyEquipmentItems = await this.api.equipment.list();
         // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-        await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-        await this.loadLobbyBag(true);
-        await this.loadLobbyHeroRoster(true);
+        // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+        const [equipItems] = await Promise.all([
+          this.api.equipment.list(),
+          this.loadLobbyProfile(this.currentLobbyProfile().userId),
+          this.loadLobbyBag(true),
+          this.loadLobbyHeroRoster(true),
+        ]);
+        this.lobbyEquipmentItems = equipItems;
         this.lobbyHeroEquipDirty = true;
       } catch (error) {
         console.warn('[LootChain] auto enhance refresh failed:', error);
@@ -2727,14 +2756,21 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyHeroEquipBusy = true;
-    this.renderCurrentView();
+    // 2026-10-16 卡顿优化:锻造页单次操作不再先整页重绘「处理中」(结果提示会被推迟);连点仍被 busy 拦住
+    if (this.currentView !== 'forge') {
+      this.renderCurrentView();
+    }
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.decompose(ids);
-      this.lobbyEquipmentItems = await this.api.equipment.list();
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       this.setStatus(`分解完成：${result.count} 件 → 强化石 ×${this.formatInteger(result.stonesGained)}。`);
       // 分解结果改弹窗展示(获得明细+已拥有),替代原中央闪光。
       this.lobbyForgeDecomposeResult = {
@@ -2827,8 +2863,11 @@ export class LootChainGameRoot extends Component {
     try {
       const result = await this.api.bag.use(itemCode, 1);
       rewardMessages = result.effectMessages ?? [];
-      await this.loadLobbyBag(true);
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      await Promise.all([
+        this.loadLobbyBag(true),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+      ]);
       this.setStatus(`使用成功：${rewardMessages.join('、') || itemCode}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -3683,7 +3722,8 @@ export class LootChainGameRoot extends Component {
   /** 升级 / 升星成功后的后台回读:名册一回来就出战力飘字,其余静默刷新,最后排一次整页刷新。 */
   private async reloadAfterHeroGrowth(heroId: number, heroName: string, beforePower: number, verb: string): Promise<void> {
     try {
-      await this.loadLobbyHeroRoster(true);
+      // 名册与详情互不依赖,并行回读(2026-10-16 用户「升级升星数值延迟变化」:原先 名册→资料/背包/冒险→详情 三轮串行)
+      await Promise.all([this.loadLobbyHeroRoster(true), this.loadLobbyHeroDetail(heroId)]);
       const after = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? beforePower;
       const gain = after - beforePower;
       if (gain !== 0) {
@@ -3692,7 +3732,6 @@ export class LootChainGameRoot extends Component {
       }
       const userId = this.currentLobbyProfile().userId;
       await Promise.all([this.loadLobbyProfile(userId), this.loadLobbyBag(true), this.loadLobbyAdventure(true)]);
-      await this.loadLobbyHeroDetail(heroId);
     } catch (error) {
       void error;
     }
@@ -3736,12 +3775,15 @@ export class LootChainGameRoot extends Component {
       }
     } finally {
       const userId = this.currentLobbyProfile().userId;
-      await this.loadLobbyProfile(userId);
-      await this.loadLobbyHeroRoster(true);
-      await this.loadLobbyBag(true);
-      await this.loadLobbyAdventure(true);
       // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
-      await this.loadLobbyHeroDetail(heroId);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      await Promise.all([
+        this.loadLobbyProfile(userId),
+        this.loadLobbyHeroRoster(true),
+        this.loadLobbyBag(true),
+        this.loadLobbyAdventure(true),
+        this.loadLobbyHeroDetail(heroId),
+      ]);
       if (ups > 0) {
         this.setStatus(`${heroName} 一键升级 +${ups} 级${lastLevel !== null ? `，Lv.${lastLevel}` : ''}，战力 ${this.formatInteger(lastPower)}${stopReason ? `（已停止：${stopReason}）` : ''}`);
       } else {
@@ -3784,11 +3826,14 @@ export class LootChainGameRoot extends Component {
       failReason = error instanceof Error ? error.message : String(error);
     } finally {
       const userId = this.currentLobbyProfile().userId;
-      await this.loadLobbyProfile(userId);
-      await this.loadLobbyHeroRoster(true);
-      await this.loadLobbyBag(true);
       // 详情回读必须等待:放飞会在浮字之后再整刷一次,把浮字节点清掉。
-      await this.loadLobbyHeroDetail(heroId);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      await Promise.all([
+        this.loadLobbyProfile(userId),
+        this.loadLobbyHeroRoster(true),
+        this.loadLobbyBag(true),
+        this.loadLobbyHeroDetail(heroId),
+      ]);
       gameAudio.sfx(ok ? 'level_up' : 'ui_error');
       this.setStatus(ok ? `${heroName} 觉醒成功！大招等级上限提升，战力 ${this.formatInteger(lastPower)}。` : `觉醒失败：${failReason}`);
       this.lobbyHeroLevelUpBusyId = null;
@@ -3958,14 +4003,17 @@ export class LootChainGameRoot extends Component {
       const lockedIds = [...Array.from(this.lobbyHeroRefineLockedIds)];
       const result = await this.api.hero.refine(heroId, lockedIds);
       refinePowerDelta = result.power - beforePower;
-      const userId = this.currentLobbyProfile().userId;
-      await this.loadLobbyProfile(userId);
-      await this.loadLobbyHeroRoster(true);
-      await this.loadLobbyBag(true);
       const powerDelta = result.power - beforePower;
       const deltaText = powerDelta === 0 ? '' : powerDelta > 0 ? `（+${this.formatInteger(powerDelta)}）` : `（${this.formatInteger(powerDelta)}）`;
       gameAudio.sfx('forge_success');
       this.setStatus(`${heroName} 洗练完成：战力 ${this.formatInteger(result.power)}${deltaText}，锁定 ${lockedIds.length} 条词条已保留。`);
+      const userId = this.currentLobbyProfile().userId;
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      await Promise.all([
+        this.loadLobbyProfile(userId),
+        this.loadLobbyHeroRoster(true),
+        this.loadLobbyBag(true),
+      ]);
       // 被锁词条在服务端原行保留(id 不变),锁定状态延续到下一次洗练,直到玩家手动解锁(2026-09-21 用户反馈);
       // 弹窗保持打开方便连续洗练,关闭弹窗时再整刷底层面板。
       this.pruneLobbyHeroRefineLocks();
@@ -4107,8 +4155,12 @@ export class LootChainGameRoot extends Component {
         }
       }
       if (applied > 0) {
-        this.lobbyEquipmentItems = await this.api.equipment.list();
-        await this.loadLobbyHeroRoster(true);
+        // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+        const [equipItems] = await Promise.all([
+          this.api.equipment.list(),
+          this.loadLobbyHeroRoster(true),
+        ]);
+        this.lobbyEquipmentItems = equipItems;
         const fresh = this.currentLobbyHeroDetailHero();
         powerDelta = (fresh?.power ?? hero.power) - beforePower;
         this.setStatus(`${hero.heroName} 一键${kind === 'equip' ? '穿戴' : '卸下'} ${applied} 件完成，战力 ${this.formatInteger(fresh?.power ?? hero.power)}。`);
@@ -4176,22 +4228,21 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyHeroEquipBusy = true;
-    this.refreshLobbyHeroEquipDialog();
+    // 2026-10-16 卡顿优化:锻造页点强化不再先整页重绘一次「处理中」(调试包实测 279ms,结果提示被推迟);连点仍被 busy 拦住
+    if (this.currentView !== 'forge') {
+      this.refreshLobbyHeroEquipDialog();
+    }
     // 战力浮字按"装备所属英雄"结算:锻造页强化已穿装备同样能看到战力变动(成功+/降级-)。
     const equipHeroId = this.lobbyEquipmentItems.find((item) => item.id === equipmentId)?.heroId ?? null;
     const beforePower = this.lobbyHeroPowerById(equipHeroId);
     let powerDelta = 0;
-    let flash: { ok: boolean; text: string } | null = null;
+    let flashUntil = 0;
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.enhance(equipmentId, this.lobbyEquipEnhanceUseBless, this.lobbyEquipEnhanceUseGuard);
-      this.lobbyEquipmentItems = await this.api.equipment.list();
-      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
-      await this.loadLobbyHeroRoster(true);
-      this.lobbyHeroEquipDirty = true;
-      powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
+      // 2026-10-16 用户「锻造强化延迟提示成功加战力」:原先等 装备列表→资料→背包→名册 四次串行回读完才出结果。
+      // 改为接口一回来就出音效 + 闪字 + 提示(结果以强化接口为准);回读并行放后面,整页刷新等闪字播完再做(整刷会清掉闪字)。
+      let flash: { ok: boolean; text: string };
       if (result.success) {
         gameAudio.sfx('forge_success');
         this.setStatus(`强化成功：+${result.levelBefore} → +${result.levelAfter}（成功率 ${Math.round(result.chance * 100)}%）。`);
@@ -4205,17 +4256,32 @@ export class LootChainGameRoot extends Component {
         this.setStatus(`强化失败（等级保留 +${result.levelAfter}，成功率 ${Math.round(result.chance * 100)}%）。`);
         flash = { ok: false, text: `强化失败 · 保留 +${result.levelAfter}` };
       }
+      if (this.currentView === 'forge') {
+        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text, result.success ? 'success' : result.downgraded ? 'downgrade' : 'fail');
+        flashUntil = Date.now() + 1050;
+      }
+      // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。四份互不依赖,并行。
+      const [items] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+        this.loadLobbyHeroRoster(true),
+      ]);
+      this.lobbyEquipmentItems = items;
+      this.lobbyHeroEquipDirty = true;
+      powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.setStatus(`强化失败：${message}`);
     } finally {
+      const wait = flashUntil - Date.now();
+      if (wait > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, wait));
+      }
       this.lobbyHeroEquipBusy = false;
       this.endSceneMutation();
       this.refreshLobbyHeroEquipDialog();
       this.spawnPowerDeltaFloat(powerDelta);
-      if (flash && this.currentView === 'forge') {
-        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text);
-      }
     }
   }
 
@@ -4241,10 +4307,14 @@ export class LootChainGameRoot extends Component {
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.decompose([candidates[0].id]);
-      this.lobbyEquipmentItems = await this.api.equipment.list();
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       this.lobbyHeroEquipDirty = true;
       this.setStatus(`分解完成：获得强化石 ×${this.formatInteger(result.stonesGained)}。`);
     } catch (error) {
@@ -4302,10 +4372,14 @@ export class LootChainGameRoot extends Component {
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.fuse(materials.map((item) => item.id), this.lobbyEquipFuseUseLuckStone);
-      this.lobbyEquipmentItems = await this.api.equipment.list();
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyBag(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyBag(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       this.lobbyHeroEquipDirty = true;
       if (result.success) {
         gameAudio.sfx('forge_success');
@@ -4362,12 +4436,17 @@ export class LootChainGameRoot extends Component {
     try {
       const beforePower = this.lobbyHeroPowerById(heroId);
       const result = await this.api.hero.ultimateUp(heroId);
-      await this.loadLobbyBag(true);
-      await this.loadLobbyProfile(this.currentLobbyProfile().userId);
-      await this.loadLobbyHeroRoster(true);
-      powerDelta = (result.power ?? this.lobbyHeroPowerById(heroId)) - beforePower;
+      powerDelta = (result.power ?? beforePower) - beforePower;
       gameAudio.sfx('level_up');
       this.setStatus(`终极技能升至 Lv.${result.ultimateSkillLevel}。`);
+      this.spawnPowerDeltaFloat(powerDelta, 'dialog');
+      powerDelta = 0;
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      await Promise.all([
+        this.loadLobbyBag(true),
+        this.loadLobbyProfile(this.currentLobbyProfile().userId),
+        this.loadLobbyHeroRoster(true),
+      ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       gameAudio.sfx('ui_error');
@@ -4453,8 +4532,12 @@ export class LootChainGameRoot extends Component {
       }
       this.lobbyHeroEquipDirty = true;
       // 回读装备列表(穿戴归属变化)+ 英雄花名册(战力已由服务器重算)。
-      this.lobbyEquipmentItems = await this.api.equipment.list();
-      await this.loadLobbyHeroRoster(true);
+      // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+      const [equipItems] = await Promise.all([
+        this.api.equipment.list(),
+        this.loadLobbyHeroRoster(true),
+      ]);
+      this.lobbyEquipmentItems = equipItems;
       const fresh = this.currentLobbyHeroDetailHero();
       powerDelta = (fresh?.power ?? beforePower) - beforePower;
       this.setStatus(`${hero.heroName} ${kind === 'equip' ? '穿戴' : '卸下'}装备完成，战力 ${this.formatInteger(fresh?.power ?? hero.power)}。`);
@@ -6621,11 +6704,15 @@ export class LootChainGameRoot extends Component {
 
   private async refreshReadonlyAssetsAfterGacha(): Promise<void> {
     const userId = this.currentLobbyProfile().userId;
-    await this.loadLobbyProfile(userId);
-    await this.loadLobbyHeroRoster(true);
     // 结果卡详情要读装备属性/材料持有:抽完顺带回读背包与装备列表。
-    await this.loadLobbyBag(true);
-    this.lobbyEquipmentItems = await this.api.equipment.list();
+    // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
+    const [equipItems] = await Promise.all([
+      this.api.equipment.list(),
+      this.loadLobbyProfile(userId),
+      this.loadLobbyHeroRoster(true),
+      this.loadLobbyBag(true),
+    ]);
+    this.lobbyEquipmentItems = equipItems;
     if (this.currentView === 'gacha' || this.currentView === 'gachaResult' || this.isGachaActionSceneView(this.currentView)) {
       this.renderCurrentView();
     }
@@ -7211,6 +7298,22 @@ export class LootChainGameRoot extends Component {
     if (next && next.id !== this.lobbyHeroDetailHeroId) {
       this.openLobbyHeroDetail(next.id);
     }
+  }
+
+  /** 持久浮层建节点(挂根 Canvas 下的 LobbyPowerFloatLayer,与战力飘字同层;整页刷新不清,节点自己到期销毁)。 */
+  private createPersistentFxNode(name: string): Node {
+    let layer = this.node.getChildByName('LobbyPowerFloatLayer');
+    if (!layer) {
+      layer = new Node('LobbyPowerFloatLayer');
+      layer.layer = this.node.layer;
+      this.node.addChild(layer);
+      layer.addComponent(UITransform).setContentSize(new Size(10, 10));
+    }
+    layer.setSiblingIndex(this.node.children.length - 1);
+    const node = new Node(name);
+    node.layer = this.node.layer;
+    layer.addChild(node);
+    return node;
   }
 
   private createUiNode(name: string): Node {

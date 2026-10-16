@@ -272,6 +272,26 @@ export const LOBBY_UI_FX: {
   dungeonHotspot: { effect: 'v2_a49_180', animation: 'action', size: 1.0, loop: true, holdMs: 0 },
 };
 
+// ── 锻造结果特效(2026-10-16 用户「锻造的全部成功或者失败的特效从素材库找好看的替换」)──
+// 原先是 Graphics 画的光斑 + 8 道光芒。size = 相对 420 设计像素的倍率;holdMs = 一次性播完的时长。
+export type ForgeFxKind = 'success' | 'fail' | 'downgrade' | 'fuseSuccess' | 'reroll' | 'gem';
+/** startAt:跳过素材开头空白(秒);offsetY:相对展示环中心的竖直偏移(设计像素)。 */
+export const FORGE_RESULT_FX: Record<ForgeFxKind, LobbyUiFxSpec & { startAt?: number; offsetY?: number }> = {
+  // 强化 / 自动强化成功:金圈收拢 → 火焰光罩炸开 + 火星飞散(A47-059,锻造感最强)
+  success: { effect: 'v2_a47_059', animation: 'idle', size: 1.3, loop: false, holdMs: 1500 },
+  // 失败(等级保留)/ 合成失败:一团灰烟噗地散掉(A49-459)
+  fail: { effect: 'v2_a49_459', animation: 'idle', size: 0.95, loop: false, holdMs: 900 },
+  // 失败并降级:重物砸地掀灰尘留地裂(A49-442,原长 4.5s 压到 2s)
+  // 素材前 1.3s 空白、亮区中心偏上(含末尾地裂):从 1.2s 起播,整体下移贴近台面
+  downgrade: { effect: 'v2_a49_442', animation: 'idle', size: 1.1, loop: false, holdMs: 2300, startAt: 1.2, offsetY: -90 },
+  // 合成成功:金色光丝旋转聚拢再炸开(A49-397,结算胜利同款)
+  fuseSuccess: { effect: 'v2_a49_397', animation: 'idle3', size: 1.35, loop: false, holdMs: 1700 },
+  // 词条洗练完成:银白光环旋转 + 金弧 + 星芒(A49-213)
+  reroll: { effect: 'v2_a49_213', animation: 'action', size: 0.95, loop: false, holdMs: 1400 },
+  // 宝石镶嵌 / 拆卸:金橙火花迸溅(A47-419)
+  gem: { effect: 'v2_a47_419', animation: 'action', size: 0.9, loop: false, holdMs: 700 },
+};
+
 // ── 宝箱 / 开箱轮盘(2026-09-27 用户反馈:"宝箱和转盘效果太简单,不够酷炫")──
 // fx_pack 引擎内实拍挑选(scratchpad probe_any_cdp / fx_measure_cdp):同一 effect 只能登记一个动画(就绪表按 effect 键)。
 export const GUARD_CHEST_FX = {

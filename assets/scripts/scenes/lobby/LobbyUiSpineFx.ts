@@ -11,6 +11,8 @@ import { loadSharedSpineData } from './SpineDataStore';
 export interface LobbyUiSpineFxSpec {
   effect: string;
   animation: string;
+  /** 从动画第几秒开始播(跳过素材开头的空白段);设 TrackEntry.trackTime,原生 / 网页都生效。 */
+  startAt?: number;
 }
 
 export interface LobbyUiSpineFxHost {
@@ -47,11 +49,15 @@ export function mountLobbySpineFx(host: LobbyUiSpineFxHost, parent: Node, spec: 
       const wanted = spec.animation.toLowerCase();
       const animation = names.find((entry) => entry.toLowerCase() === wanted) ?? names[0];
       skeleton.skeletonData = data;
+      const startAt = Math.max(0, spec.startAt ?? 0);
       if (!loop) {
-        const duration = Math.max(0.12, skeleton.findAnimation(animation)?.duration ?? 0.6);
+        const duration = Math.max(0.12, (skeleton.findAnimation(animation)?.duration ?? 0.6) - startAt);
         skeleton.timeScale = Math.max(0.5, duration / (Math.max(120, holdMs) / 1000));
       }
-      skeleton.setAnimation(0, animation, loop);
+      const entry = skeleton.setAnimation(0, animation, loop);
+      if (entry && startAt > 0) {
+        entry.trackTime = startAt;
+      }
     } catch (error) {
       void error;
     }

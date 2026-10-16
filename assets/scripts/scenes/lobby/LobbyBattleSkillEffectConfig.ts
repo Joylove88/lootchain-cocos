@@ -255,6 +255,12 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a49_032:shengxing': { w: 983, h: 2284, cx: -19, cy: 910 },
   'v2_a49_180:action': { w: 410, h: 407, cx: -8, cy: -1 },
   'v2_a49_397:idle3': { w: 757, h: 614, cx: 1, cy: 8 },
+  // 锻造结果特效(2026-10-16,fx_pack_v2 render.jsonl 实测亮区)
+  'v2_a47_059:idle': { w: 319, h: 346, cx: -1, cy: 66 },
+  'v2_a47_419:action': { w: 479, h: 589, cx: 33, cy: -22 },
+  'v2_a49_213:action': { w: 216, h: 219, cx: -1, cy: 1 },
+  'v2_a49_442:idle': { w: 776, h: 595, cx: 193, cy: 733 },
+  'v2_a49_459:idle': { w: 286, h: 284, cx: 16, cy: 234 },
   'v2_s681_1001:attackall': { w: 1296, h: 810, cx: 99, cy: 322 },
   'v2_s681_1006:skill01_2': { w: 1736, h: 750, cx: 62, cy: 214 },
   'v2_s681_1007:skill02': { w: 1445, h: 850, cx: 232, cy: 243 },
