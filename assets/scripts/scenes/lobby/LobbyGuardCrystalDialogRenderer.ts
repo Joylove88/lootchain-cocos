@@ -138,6 +138,8 @@ const REF_TAB_OFF: RefKitItem = { path: 'ui/formation/ref/tab_off/spriteFrame', 
 const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
 const REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
 const REF_ICON_RING = 'ui/common/ref/icon_ring/spriteFrame';
+/** 细金框金线内侧到框边的距离(素材像素):标题带贴到这里,不留缝。 */
+const CARD_FRAME_LINE = { top: 13, side: 15 };
 /** 场景底图里地面法阵中心:图宽 18.5%、图高 78%(水晶脚底对准这里)。 */
 const SCENE_FLOOR = { x: 0.185, y: 0.78 };
 /** 法术图标(圆形带框的新素材);狂战号角暂无新图,沿用旧图 + 程序画框。 */
@@ -562,16 +564,19 @@ export class LobbyGuardCrystalDialogRenderer {
 
   /** 「水晶升级」内面板:标题行(徽记 + 水晶属性提升 + 副标 + Lv.a → Lv.b)+ 六行属性条。 */
   private renderStats(panel: Node, info: GuardCrystalInfoVO, x: number, w: number, top: number, bottom: number, scale: number): void {
-    this.mountInnerPanel(panel, 'LobbyGuardCrystalStatsPanel', x, top, w, bottom);
+    const statsPanel = this.mountInnerPanel(panel, 'LobbyGuardCrystalStatsPanel', x, top, w, bottom);
     const current = info.current;
     const next = info.next;
     const pad = 30 * scale;
     const left = x - w / 2 + pad;
     const right = x + w / 2 - pad;
     // 标题行:标题带(深红渐变 + 金线)+ 大号亮金粗体标题 + 副标,和下面的属性行拉开层级
+    // 标题带顶边贴面板金线内侧、左右到金线(用户 2026-10-16:红色与边框之间有缝)
     const bandH = 70 * scale;
-    const headY = top - 14 * scale - bandH / 2;
-    this.drawHeaderBand(panel, 'LobbyGuardCrystalStatsBand', x, headY, w - pad, bandH, scale);
+    const fk = this.cardFrameK(w, top - bottom);
+    const headY = top - CARD_FRAME_LINE.top * fk - bandH / 2;
+    const statsBand = this.drawHeaderBand(statsPanel, 'LobbyGuardCrystalStatsBand', 0, headY - (top + bottom) / 2, w - CARD_FRAME_LINE.side * fk * 2, bandH, scale);
+    this.tuckUnderFrame(statsPanel, statsBand);
     const emblemH = 52 * scale;
     this.host.addSprite('LobbyGuardCrystalEmblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, headY, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
     const textX = left + emblemH / SECTION_EMBLEM.aspect + 12 * scale;
@@ -778,7 +783,8 @@ export class LobbyGuardCrystalDialogRenderer {
 
   /** 页面:整块内面板;左 53% 装备格 + 列表,右 47% 详情卡。 */
   private renderSpellsPage(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, x: number, w: number, top: number, bottom: number, scale: number): void {
-    this.mountInnerPanel(panel, 'LobbyGuardCrystalSpellsPanel', x, top, w, bottom);
+    const spellsPanel = this.mountInnerPanel(panel, 'LobbyGuardCrystalSpellsPanel', x, top, w, bottom);
+    const fk = this.cardFrameK(w, top - bottom);
     this.sockets = [];
     this.dragGhost = null;
     const loadout = this.loadoutOf(info);
@@ -794,7 +800,13 @@ export class LobbyGuardCrystalDialogRenderer {
     const rightColX = x + w / 2 - pad - rightColW / 2;
     const colTop = top - 22 * scale;
     const colBottom = bottom + 20 * scale;
-    this.renderSpellColumn(panel, state, info, leftColX, leftColW, colTop, colBottom, scale);
+    this.renderSpellColumn(panel, state, info, leftColX, leftColW, colTop, colBottom, scale, {
+      host: spellsPanel,
+      cx: x,
+      cy: (top + bottom) / 2,
+      top: top - CARD_FRAME_LINE.top * fk,
+      left: x - w / 2 + CARD_FRAME_LINE.side * fk,
+    });
     this.renderSpellDetail(panel, state, info, rightColX, rightColW, colTop, colBottom, scale);
   }
 
@@ -802,7 +814,7 @@ export class LobbyGuardCrystalDialogRenderer {
    * 标题带(2026-10-16 用户「标题要和下面列表做出层级区分,现在看着不像标题」):
    * 整条暗红实底 + 左侧提亮渐变 + 底边金线 + 金线两端菱形点;标题字放大加粗压在上面。
    */
-  private drawHeaderBand(parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): void {
+  private drawHeaderBand(parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
     const band = this.host.addChildPlainNode(parent, name, x, y, w, h);
     const g = band.addComponent(Graphics);
     // 整条实心暗红打底(用户:「红色没有填充满」),左侧再叠一层提亮,形成左亮右暗但填满的标题带
@@ -832,11 +844,42 @@ export class LobbyGuardCrystalDialogRenderer {
     g.stroke();
     this.fillDiamond(band, -w / 2, -h / 2, 5 * scale, 5 * scale, rgba(236, 196, 112));
     this.fillDiamond(band, w / 2, -h / 2, 5 * scale, 5 * scale, rgba(236, 196, 112));
+    return band;
+  }
+
+  /** 细金框(REF_KIT.cardFrame)在给定框尺寸下的九宫格缩放系数(与 mountRefSliced 同算法)。 */
+  private cardFrameK(w: number, h: number): number {
+    return Math.min(w / REF_KIT.cardFrame.w, h / REF_KIT.cardFrame.h, 1);
+  }
+
+  /**
+   * 标题带放进框节点、压在边框(Frame)之上:卡框素材内芯是不透明暗底,放在下面红色会被盖暗;
+   * 带子顶边 / 两侧正好停在金线内侧,不盖金线也不留缝。
+   */
+  private tuckUnderFrame(frameHost: Node, band: Node): void {
+    band.setSiblingIndex(frameHost.children.length - 1);
   }
 
   /** 小节标题:徽记 + 金字;右侧可带一行灰字。 */
-  private sectionHead(panel: Node, key: string, text: string, left: number, right: number, y: number, scale: number, note?: string): void {
-    this.drawHeaderBand(panel, `${key}Band`, (left + right) / 2, y, right - left, 38 * scale, scale);
+  private sectionHead(
+    panel: Node,
+    key: string,
+    text: string,
+    left: number,
+    right: number,
+    y: number,
+    scale: number,
+    note?: string,
+    flush?: { host: Node; cx: number; cy: number; left: number },
+  ): void {
+    if (flush) {
+      // 左边延伸到面板金线,带子放进面板节点、压在边框下面
+      const bandLeft = flush.left;
+      const band = this.drawHeaderBand(flush.host, `${key}Band`, (bandLeft + right) / 2 - flush.cx, y - flush.cy, right - bandLeft, 38 * scale, scale);
+      this.tuckUnderFrame(flush.host, band);
+    } else {
+      this.drawHeaderBand(panel, `${key}Band`, (left + right) / 2, y, right - left, 38 * scale, scale);
+    }
     const emblemH = 30 * scale;
     this.host.addSprite(`${key}Emblem`, SECTION_EMBLEM.path, left + 6 * scale + emblemH / SECTION_EMBLEM.aspect / 2, y, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
     const textX = left + 6 * scale + emblemH / SECTION_EMBLEM.aspect + 8 * scale;
@@ -850,7 +893,17 @@ export class LobbyGuardCrystalDialogRenderer {
   }
 
   /** 左列:装备格一排(编号 + 圆章 + 名)+ 六行法术列表(图标 / 名 / 简介 / 状态);列表行与装备格都可拖。 */
-  private renderSpellColumn(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, x: number, w: number, top: number, bottom: number, scale: number): void {
+  private renderSpellColumn(
+    panel: Node,
+    state: LobbyGuardCrystalDialogState,
+    info: GuardCrystalInfoVO,
+    x: number,
+    w: number,
+    top: number,
+    bottom: number,
+    scale: number,
+    flush?: { host: Node; cx: number; cy: number; top: number; left: number },
+  ): void {
     const slots = this.slotsOf(info);
     const loadout = this.loadoutOf(info);
     const unlocked = this.unlockedOf(info);
@@ -859,8 +912,9 @@ export class LobbyGuardCrystalDialogRenderer {
     const target = state.targetSlot >= 0 && state.targetSlot < slots ? state.targetSlot : slots - 1;
 
     // 已装备的法术
-    const headY = top - 19 * scale;
-    this.sectionHead(panel, 'LobbyGuardCrystalLoadout', '已装备的法术', left, right, headY, scale, `${loadout.length}/${slots}`);
+    // 首个标题带贴面板顶边与左侧金线(放在边框下一层),其余内容跟着它往下排
+    const headY = flush ? flush.top - 19 * scale : top - 19 * scale;
+    this.sectionHead(panel, 'LobbyGuardCrystalLoadout', '已装备的法术', left, right, headY, scale, `${loadout.length}/${slots}`, flush);
     const socket = Math.min(74 * scale, w / 4.6);
     const shown = slots + (info.nextSlotLevel ? 1 : 0);
     const spacing = Math.min(132 * scale, w / Math.max(3, shown));
@@ -1184,8 +1238,11 @@ export class LobbyGuardCrystalDialogRenderer {
     const fxH = Math.max(90 * scale, h - pad * 2 - fixedH - gapS);
 
     // 标题行:徽记 + 名 + 「能量 n」 + 等级牌
-    let cursor = h / 2 - pad;
-    this.drawHeaderBand(card, 'TitleBand', 0, cursor - titleH / 2, innerW + 8 * scale, titleH + 8 * scale, scale);
+    const ck = this.cardFrameK(w, h);
+    const bandH = titleH + 12 * scale;
+    let cursor = h / 2 - CARD_FRAME_LINE.top * ck - 6 * scale;
+    const titleBand = this.drawHeaderBand(card, 'TitleBand', 0, h / 2 - CARD_FRAME_LINE.top * ck - bandH / 2, w - CARD_FRAME_LINE.side * ck * 2, bandH, scale);
+    this.tuckUnderFrame(card, titleBand);
     const emblemH = 28 * scale;
     this.host.addSprite('Emblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, cursor - titleH / 2, emblemH / SECTION_EMBLEM.aspect, emblemH, card);
     const lvW = 66 * scale;
@@ -1219,7 +1276,7 @@ export class LobbyGuardCrystalDialogRenderer {
       const lockPill = this.host.addChildLabel(card, 'Level', `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁`, right, cursor - titleH / 2, FONT.tiny * scale, DIM_TEXT, new Size(rightTextW, lvH), HorizontalTextAlignment.RIGHT);
       lockPill.overflow = Label.Overflow.SHRINK;
     }
-    cursor -= titleH + gapS;
+    cursor -= titleH + 6 * scale + gapS;
 
     // 特效演示框:通用法阵底图(缺图时深底 + 椭圆冷光)+ 战斗骨骼特效循环;四周金线细框
     const fxBox = this.host.addChildPlainNode(card, 'FxBox', 0, cursor - fxH / 2, innerW, fxH);
