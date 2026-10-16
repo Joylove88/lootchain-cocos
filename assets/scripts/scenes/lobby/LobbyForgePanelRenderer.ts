@@ -240,6 +240,9 @@ export class LobbyForgePanelRenderer {
   private phone = false;
   private overlayRoot: Node | null = null;
   private bodyOffsetX = 0;
+  /** 本次渲染的锻造结果特效挂点 / 战力飘字挂点(面板坐标 = 内容根坐标):各页签按自己的主体区域写入。 */
+  private fxAnchor = { x: 0, y: 30 };
+  private powerAnchor: { x: number; y: number } | null = null;
   // 整页面板尺寸(手机全屏弹窗按它铺满;页签内容拿到的是扣掉导航栏后的 body 宽)。
   private stageW = 0;
   private stageH = 0;
@@ -248,6 +251,11 @@ export class LobbyForgePanelRenderer {
   private phoneOverlays: Array<(root: Node) => void> = [];
 
   constructor(private readonly host: LobbyForgePanelHost) {}
+
+  /** 战力飘字挂点(锻造页主体区域上方);当前页签没写入时返回 null,调用方走默认位置。 */
+  forgePowerAnchor(): { x: number; y: number } | null {
+    return this.powerAnchor;
+  }
 
   /** 打开锻造页时预热结果特效数据(首次强化不等加载)。 */
   prewarmForgeFx(): void {
@@ -311,6 +319,8 @@ export class LobbyForgePanelRenderer {
     const railReserve = phone ? FORGE_PHONE_RAIL_W * scale + 10 * scale : 0;
     const tabWidth = panelWidth - railReserve;
     this.bodyOffsetX = -railReserve / 2;
+    this.fxAnchor = { x: this.bodyOffsetX, y: 30 };
+    this.powerAnchor = null;
     const body = phone ? this.host.addChildPlainNode(panel, 'LobbyForgeBody', this.bodyOffsetX, 0, tabWidth, panelHeight) : panel;
     // 强化页(参考图版):顶部为货币胶囊栏(金币/钻石/强化石),材料展示在中央石台;合成/分解页保留材料持有栏。
     if (forge.tab === 'enhance') {
@@ -1345,6 +1355,8 @@ export class LobbyForgePanelRenderer {
     const materialsTop = contentBottom + 172 * scale + 62 * scale;
     const ringTopGap = phone ? 4 * scale : Math.max(4 * scale, (contentTop - materialsTop - groupH) / 2);
     const ringCy = contentTop - ringSize / 2 - ringTopGap;
+    this.fxAnchor = { x: ringCx + this.bodyOffsetX, y: ringCy };
+    this.powerAnchor = { x: ringCx + this.bodyOffsetX, y: ringCy + ringSize / 2 + 30 * scale };
     const ring = this.host.addChildPlainNode(parent, 'ForgeEnhRing', ringCx, ringCy, ringSize, ringSize);
     if (!this.host.addSprite('ForgeEnhRingArt', FORGE_REF_EMBLEM_RING_ASSET, 0, 0, ringSize, ringSize, ring)
       && !this.host.addSprite('ForgeEnhRingArt', FORGE_AI_ENHANCE_RING_ASSET, 0, 0, ringSize, ringSize, ring)) {
@@ -1665,6 +1677,8 @@ export class LobbyForgePanelRenderer {
       : Math.min(780 * scale, panelWidth - 400 * scale);
     const altarH = altarW / FORGE_ALTAR_RATIO;
     const altarCy = contentTop - altarH / 2 - 2 * scale;
+    this.fxAnchor = { x: this.bodyOffsetX, y: altarCy };
+    this.powerAnchor = { x: this.bodyOffsetX, y: altarCy + altarH / 2 + 20 * scale };
     const altar = this.host.addChildPlainNode(parent, 'ForgeFuseAltar', 0, altarCy, altarW, altarH);
     const altarArt = this.host.addSprite('ForgeFuseAltarArt', FORGE_AI_FUSE_ALTAR_ASSET, 0, 0, altarW, altarH, altar);
     if (!altarArt) {
@@ -1939,6 +1953,8 @@ export class LobbyForgePanelRenderer {
     const sideCx = panelWidth / 2 - 28 * scale - sideW / 2;
     const sideH = contentTop - contentBottom;
     const sideCy = (contentTop + contentBottom) / 2;
+    this.fxAnchor = { x: sideCx + this.bodyOffsetX, y: sideCy + sideH * 0.18 };
+    this.powerAnchor = { x: sideCx + this.bodyOffsetX, y: contentTop - 40 * scale };
     const side = this.host.addChildPlainNode(parent, 'ForgeGemSidePanel', sideCx, sideCy, sideW, sideH);
     const sg = side.addComponent(Graphics);
     sg.fillColor = rgba(12, 10, 9, 232);
@@ -2852,7 +2868,7 @@ export class LobbyForgePanelRenderer {
    */
   spawnForgeFlash(success: boolean, text: string, kind: ForgeFxKind = success ? 'success' : 'fail'): void {
     const node = this.host.createPersistentFxNode(`LobbyForgeFlash_${Date.now()}`);
-    node.setPosition(new Vec3(0, 30, 0));
+    node.setPosition(new Vec3(this.fxAnchor.x, this.fxAnchor.y, 0));
     node.addComponent(UITransform).setContentSize(new Size(640, 640));
     const spec = FORGE_RESULT_FX[kind];
     const fx = mountLobbySpineFx(this.host, node, spec, 0, spec.offsetY ?? 0, 420 * spec.size, false, spec.holdMs, 'ForgeResultFx');
@@ -2864,11 +2880,12 @@ export class LobbyForgePanelRenderer {
     pg.fillColor = rgba(12, 9, 7, 196);
     pg.roundRect(-220, -30, 440, 60, 14);
     pg.fill();
-    pg.strokeColor = success ? rgba(214, 170, 92, 220) : rgba(150, 146, 150, 200);
+    // 文字牌描边:成功金 / 失败灰 / 降级暗红(与普通失败拉开档次)
+    pg.strokeColor = success ? rgba(214, 170, 92, 220) : kind === 'downgrade' ? rgba(176, 58, 46, 230) : rgba(150, 146, 150, 200);
     pg.lineWidth = 2;
     pg.roundRect(-220, -30, 440, 60, 14);
     pg.stroke();
-    const label = this.host.addChildLabel(plate, 'ForgeFlashText', text, 0, 0, 32, success ? rgba(255, 226, 150) : rgba(220, 214, 206), new Size(420, 50));
+    const label = this.host.addChildLabel(plate, 'ForgeFlashText', text, 0, 0, 32, success ? rgba(255, 226, 150) : kind === 'downgrade' ? rgba(255, 150, 132) : rgba(220, 214, 206), new Size(420, 50));
     label.overflow = Label.Overflow.SHRINK;
     label.isBold = true;
     label.enableOutline = true;

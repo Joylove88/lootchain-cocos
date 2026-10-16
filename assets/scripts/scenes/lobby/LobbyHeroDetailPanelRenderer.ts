@@ -1235,7 +1235,7 @@ export class LobbyHeroDetailPanelRenderer {
    * 3) 停留 0.6s 后淡出,全程约 2.2s;负值用红字、无底衬。
    * 挂在持久浮层,不参与内容根清理;升级流程改为接口返回即出(见 GameRoot.runLobbyHeroLevelUp)。
    */
-  spawnPowerDeltaFloat(delta: number, placement: 'hero' | 'dialog' = 'hero'): void {
+  spawnPowerDeltaFloat(delta: number, placement: 'hero' | 'dialog' = 'hero', at: { x: number; y: number } | null = null): void {
     if (!Number.isFinite(delta) || Math.trunc(delta) === 0) {
       return;
     }
@@ -1248,7 +1248,8 @@ export class LobbyHeroDetailPanelRenderer {
     // 锚在英雄头顶(立绘舞台顶部往下一点),手机 / PC 布局同一套;舞台不在(名册页)回落屏幕中上。
     // 2026-10-12 用户录屏:原先固定挂屏幕中央,手机上离英雄半屏远;金光柱底衬去掉——升级 / 升星各自只剩一个庆祝特效。
     // 弹窗里的操作(洗练 / 大招升级 / 穿卸装备)立绘被弹窗盖住:飘字改在屏幕中央偏上,不再从弹窗左上角的标题处冒出
-    const anchor = placement === 'dialog' ? null : this.heroStageAnchor(floatLayer);
+    // 显式挂点(锻造页:对准中间区域,2026-10-16 用户「战力漂浮没有和两边框居中」)优先
+    const anchor = at ? { x: at.x, y: at.y, width: 420, height: 0 } : placement === 'dialog' ? null : this.heroStageAnchor(floatLayer);
     const k = anchor ? clamp(anchor.width / 420, 0.62, 1) : 1;
     node.setPosition(new Vec3(anchor ? anchor.x : 0, anchor ? anchor.y + anchor.height * 0.42 : placement === 'dialog' ? 40 : 150, 0));
     node.setScale(k, k, 1);

@@ -1,0 +1,90 @@
+
+skeleton.png
+size: 2048, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+shenjiang_jingmai_jineng_chuxian_00
+  rotate: false
+  xy: 1734, 601
+  size: 289, 288
+  orig: 600, 600
+  offset: 155, 159
+  index: -1
+shenjiang_jingmai_jineng_chuxian_01
+  rotate: false
+  xy: 451, 457
+  size: 433, 432
+  orig: 600, 600
+  offset: 83, 87
+  index: -1
+shenjiang_jingmai_jineng_chuxian_02
+  rotate: false
+  xy: 2, 2
+  size: 441, 440
+  orig: 600, 600
+  offset: 79, 83
+  index: -1
+shenjiang_jingmai_jineng_chuxian_03
+  rotate: false
+  xy: 2, 444
+  size: 447, 445
+  orig: 600, 600
+  offset: 76, 80
+  index: -1
+shenjiang_jingmai_jineng_chuxian_04
+  rotate: false
+  xy: 886, 457
+  size: 433, 432
+  orig: 600, 600
+  offset: 83, 87
+  index: -1
+shenjiang_jingmai_jineng_chuxian_05
+  rotate: false
+  xy: 1321, 479
+  size: 411, 410
+  orig: 600, 600
+  offset: 94, 99
+  index: -1
+shenjiang_jingmai_jineng_chuxian_06
+  rotate: false
+  xy: 1734, 356
+  size: 231, 243
+  orig: 600, 600
+  offset: 183, 180
+  index: -1
+shenjiang_jingmai_jineng_chuxian_07
+  rotate: false
+  xy: 1321, 246
+  size: 230, 231
+  orig: 600, 600
+  offset: 183, 191
+  index: -1
+shenjiang_jingmai_jineng_chuxian_08
+  rotate: false
+  xy: 451, 227
+  size: 226, 228
+  orig: 600, 600
+  offset: 181, 187
+  index: -1
+shenjiang_jingmai_jineng_chuxian_09
+  rotate: false
+  xy: 679, 244
+  size: 208, 211
+  orig: 600, 600
+  offset: 188, 197
+  index: -1
+shenjiang_jingmai_jineng_chuxian_10
+  rotate: false
+  xy: 889, 259
+  size: 204, 196
+  orig: 600, 600
+  offset: 189, 203
+  index: -1
+shenjiang_jingmai_jineng_chuxian_11
+  rotate: false
+  xy: 1095, 270
+  size: 195, 185
+  orig: 600, 600
+  offset: 196, 209
+  index: -1

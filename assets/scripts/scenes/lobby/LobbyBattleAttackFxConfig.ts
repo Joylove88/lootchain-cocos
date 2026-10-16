@@ -279,11 +279,13 @@ export type ForgeFxKind = 'success' | 'fail' | 'downgrade' | 'fuseSuccess' | 're
 export const FORGE_RESULT_FX: Record<ForgeFxKind, LobbyUiFxSpec & { startAt?: number; offsetY?: number }> = {
   // 强化 / 自动强化成功:金圈收拢 → 火焰光罩炸开 + 火星飞散(A47-059,锻造感最强)
   success: { effect: 'v2_a47_059', animation: 'idle', size: 1.3, loop: false, holdMs: 1500 },
-  // 失败(等级保留)/ 合成失败:一团灰烟噗地散掉(A49-459)
-  fail: { effect: 'v2_a49_459', animation: 'idle', size: 0.95, loop: false, holdMs: 900 },
+  // 失败(等级保留)/ 合成失败:冷青白光一闪后散成细灰尘淡掉,「能量泄了」(A49-413,金色成功 A49-475 的同套冷色版)
+  // 2026-10-16 用户「失败的特效不好看」:原 A49-459 卡通灰烟弃用;三视角评审一致首选
+  fail: { effect: 'v2_a49_413', animation: 'idle', size: 0.9, loop: false, holdMs: 900 },
   // 失败并降级:重物砸地掀灰尘留地裂(A49-442,原长 4.5s 压到 2s)
-  // 素材前 1.3s 空白、亮区中心偏上(含末尾地裂):从 1.2s 起播,整体下移贴近台面
-  downgrade: { effect: 'v2_a49_442', animation: 'idle', size: 1.1, loop: false, holdMs: 2300, startAt: 1.2, offsetY: -90 },
+  // 失败并降级:暗紫能量爆开后化作诅咒般的紫烟散掉,比普通失败(冷青)重一档(A47-375;原 0.5s 放慢到 0.8s)
+  // A47-064 碎片版实机开头一大团白闪压过一切,弃用
+  downgrade: { effect: 'v2_a47_375', animation: 'action1', size: 0.95, loop: false, holdMs: 800 },
   // 合成成功:金色光丝旋转聚拢再炸开(A49-397,结算胜利同款)
   fuseSuccess: { effect: 'v2_a49_397', animation: 'idle3', size: 1.35, loop: false, holdMs: 1700 },
   // 词条洗练完成:银白光环旋转 + 金弧 + 星芒(A49-213)

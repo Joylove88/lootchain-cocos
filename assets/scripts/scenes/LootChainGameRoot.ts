@@ -7278,7 +7278,9 @@ export class LootChainGameRoot extends Component {
 
   // 战力变动浮字:委托渲染器实现(UI 原语不允许出现在 GameRoot,见 check-layout)。
   private spawnPowerDeltaFloat(delta: number, placement: 'hero' | 'dialog' = 'hero'): void {
-    this.lobbyHeroDetailPanelRenderer.spawnPowerDeltaFloat(delta, placement);
+    // 锻造页没有英雄立绘舞台:飘字对准锻造中间区域(展示环 / 祭坛 / 孔位面板上方)
+    const at = this.currentView === 'forge' && placement === 'hero' ? this.lobbyForgePanelRenderer.forgePowerAnchor() : null;
+    this.lobbyHeroDetailPanelRenderer.spawnPowerDeltaFloat(delta, placement, at);
   }
 
   // 奖励飘字(背包使用等):委托渲染器(UI 原语不进 GameRoot)。

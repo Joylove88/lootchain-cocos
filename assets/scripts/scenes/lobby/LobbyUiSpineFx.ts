@@ -54,6 +54,10 @@ export function mountLobbySpineFx(host: LobbyUiSpineFxHost, parent: Node, spec: 
         const duration = Math.max(0.12, (skeleton.findAnimation(animation)?.duration ?? 0.6) - startAt);
         skeleton.timeScale = Math.max(0.5, duration / (Math.max(120, holdMs) / 1000));
       }
+      // 共享缓存模式按缓存帧从 0 播,trackTime 不生效:要跳播的特效改实时计算
+      if (startAt > 0) {
+        skeleton.setAnimationCacheMode(sp.Skeleton.AnimationCacheMode.REALTIME);
+      }
       const entry = skeleton.setAnimation(0, animation, loop);
       if (entry && startAt > 0) {
         entry.trackTime = startAt;
