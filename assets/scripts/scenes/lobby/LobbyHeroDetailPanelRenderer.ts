@@ -751,7 +751,8 @@ export class LobbyHeroDetailPanelRenderer {
     const frame = this.phoneFrame;
     // 弹窗框素材有顶 / 底中央宝石,不能单向拉伸:宽高锁成素材比例(放大最多 1.3),可用区按手机全屏框 / 电脑 1200×780 取
     const maxW = frame ? frame.dialogWidth : Math.min(1200 * scale, panelWidth - 60 * scale);
-    const maxH = frame ? frame.dialogHeight : Math.min(780 * scale, panelHeight - 40 * scale);
+    // 手机全屏框:标题牌压在弹窗顶边往上凸约 36,框高留出这截,否则标题牌被屏幕上沿裁掉(2026-10-16 真机)
+    const maxH = frame ? frame.dialogHeight - 84 * scale : Math.min(780 * scale, panelHeight - 40 * scale);
     const frameAspect = REF_KIT.dialogFrame.w / REF_KIT.dialogFrame.h;
     const w = Math.min(maxW, maxH * frameAspect);
     const h = w / frameAspect;
