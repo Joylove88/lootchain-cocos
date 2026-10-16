@@ -32,6 +32,8 @@ import { GUARD_SPELL_FX, LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
+import { mountRefButton, mountRefSliced, REF_CLOSE_ASSET, REF_KIT, type RefKitItem } from '../UiRefKit';
+import { renderTopCurrencyBar } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 
 /**
@@ -129,6 +131,13 @@ const BTN_COST_UP = { path: CUI('btn_cost_up'), aspect: 154 / 527 };
 const INNER_PANEL = { path: CUI('inner_panel_bg'), w: 1948, h: 1259, inset: { l: 110, r: 110, t: 110, b: 110 } };
 const STAT_ROW = { path: CUI('stat_row_bg'), w: 1066, h: 84, inset: { l: 60, r: 60, t: 0, b: 0 } };
 const SECTION_EMBLEM = { path: CUI('section_emblem'), aspect: 121 / 107 };
+// 2026-10-16 用户「水晶界面和其他界面风格不太像」:换成布阵 / 锻造同一套素材(标题牌、关闭钮、页签、细金框、列表行、红金按钮)
+const REF_TITLE_PLAQUE = { path: 'ui/formation/ref/title_plaque/spriteFrame', aspect: 564 / 180 };
+const REF_TAB_ON: RefKitItem = { path: 'ui/formation/ref/tab_on/spriteFrame', w: 309, h: 64, inset: [20, 20, 20, 20] };
+const REF_TAB_OFF: RefKitItem = { path: 'ui/formation/ref/tab_off/spriteFrame', w: 252, h: 64, inset: [20, 20, 20, 20] };
+const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
+/** 场景底图里地面法阵中心:图宽 18.5%、图高 78%(水晶脚底对准这里)。 */
+const SCENE_FLOOR = { x: 0.185, y: 0.78 };
 /** 法术图标(圆形带框的新素材);狂战号角暂无新图,沿用旧图 + 程序画框。 */
 const SPELL_ICON: Record<GuardSpellId, string> = {
   quake: CUI('spell_quake'),
@@ -171,6 +180,9 @@ export class LobbyGuardCrystalDialogRenderer {
   /** 本次渲染是否手机全屏版(render 开头确定)。 */
   private phone = false;
 
+  /** 场景地面法阵中心的 y(面板坐标),render 时按底图位置算。 */
+  private floorY = 0;
+
   constructor(private readonly host: LobbyGuardCrystalDialogHost) {}
 
   /**
@@ -210,7 +222,11 @@ export class LobbyGuardCrystalDialogRenderer {
 
     // 场景底图(参考图:夜间哥特教堂 + 左侧蓝光舞台),cover 铺满;没图时深色兜底
     const cover = Math.max(W / SCENE_BG.w, H / SCENE_BG.h);
-    const bg = this.host.addSprite('LobbyGuardCrystalSceneBg', SCENE_BG.path, 0, 0, SCENE_BG.w * cover, SCENE_BG.h * cover, panel);
+    const bgH = SCENE_BG.h * cover;
+    // 地面法阵目标落在舞台 76% 高处;底图比舞台高时(手机 20:9)整体上挪,挪动量不超过可裁余量
+    const bgY = Math.max(-(bgH - H) / 2, Math.min((bgH - H) / 2, (SCENE_FLOOR.y - 0.5) * bgH - 0.26 * H));
+    this.floorY = bgY + (0.5 - SCENE_FLOOR.y) * bgH;
+    const bg = this.host.addSprite('LobbyGuardCrystalSceneBg', SCENE_BG.path, 0, bgY, SCENE_BG.w * cover, bgH, panel);
     if (!bg) {
       const g = panel.addComponent(Graphics);
       g.fillColor = rgba(10, 8, 12, 255);
@@ -218,32 +234,43 @@ export class LobbyGuardCrystalDialogRenderer {
       g.fill();
     }
 
-    // 题头:八角星徽记 + 「守卫水晶」+ 英文题词(参考图左上)
-    const emblemH = 0.075 * H;
-    const emblemX = L + 0.05 * W;
-    const emblemY = T - 0.072 * H;
-    const emblem = this.host.addSprite('LobbyGuardCrystalTitleEmblem', TITLE_EMBLEM.path, emblemX, emblemY, emblemH / TITLE_EMBLEM.aspect, emblemH, panel)
-      ?? this.host.addSprite('LobbyGuardCrystalTitleEmblem', SECTION_EMBLEM.path, emblemX, emblemY, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
-    void emblem;
-    const titleX = L + 0.088 * W;
-    const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', '守卫水晶', titleX, T - 0.06 * H, FONT.title * scale, GOLD_TEXT, new Size(0.24 * W, FONT.title * scale + 8), HorizontalTextAlignment.LEFT);
-    title.isBold = true;
-    this.outline(title, scale, rgba(40, 24, 8, 255));
-    const tagline = this.host.addChildLabel(panel, 'LobbyGuardCrystalTagline', 'THE CRYSTAL PROTECTS  OUR LAST LIGHT', titleX + 2 * scale, T - 0.108 * H, FONT.tiny * scale, DIM_TEXT, new Size(0.24 * W, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
-    tagline.overflow = Label.Overflow.SHRINK;
+    // 题头:恶魔徽章标题牌 +「守卫水晶」(与布阵 / 锻造同款);缺图退回八角星徽记 + 金字
+    const plaqueH = 0.098 * H;
+    const plaqueW = plaqueH * REF_TITLE_PLAQUE.aspect;
+    const plaqueX = L + 0.006 * W + plaqueW / 2;
+    const plaqueY = T - 0.052 * H;
+    const plaque = this.host.addSprite('LobbyGuardCrystalTitlePlaque', REF_TITLE_PLAQUE.path, plaqueX, plaqueY, plaqueW, plaqueH, panel);
+    if (plaque) {
+      const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', '守卫水晶', plaqueX + plaqueW * 0.05, plaqueY, 32 * scale, rgba(244, 222, 176), new Size(plaqueW * 0.46, 44 * scale));
+      title.overflow = Label.Overflow.SHRINK;
+      title.isBold = true;
+      this.outline(title, scale, rgba(20, 12, 6, 255));
+    } else {
+      const emblemH = 0.075 * H;
+      this.host.addSprite('LobbyGuardCrystalTitleEmblem', TITLE_EMBLEM.path, L + 0.05 * W, plaqueY, emblemH / TITLE_EMBLEM.aspect, emblemH, panel);
+      const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', '守卫水晶', L + 0.088 * W, plaqueY, FONT.title * scale, GOLD_TEXT, new Size(0.24 * W, FONT.title * scale + 8), HorizontalTextAlignment.LEFT);
+      title.isBold = true;
+      this.outline(title, scale, rgba(40, 24, 8, 255));
+    }
 
     // 右上:货币栏(金币 / 守卫晶核)+ 关闭
     const closeSize = 0.052 * H;
     const closeX = L + 0.972 * W;
     const closeY = T - 0.052 * H;
-    const close = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalClose', closeX, closeY, closeSize, closeSize * CLOSE_BUTTON.aspect);
-    this.host.addSprite('LobbyGuardCrystalCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
+    const close = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalClose', closeX, closeY, closeSize * 1.25, closeSize * 1.25);
+    if (!this.host.addSprite('LobbyGuardCrystalCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize * 1.25, closeSize * 1.25, close)) {
+      this.host.addSprite('LobbyGuardCrystalCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
+    }
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => this.host.closeGuardCrystalDialog(), this);
     this.host.applyImageButtonFeedback(close, 1.08, 0.94);
     const info = state.info;
     if (info) {
-      this.renderCurrencyBar(panel, info, closeX - closeSize / 2 - 0.018 * W, closeY, scale, W, H);
+      // 货币胶囊:与锻造 / 英雄页同款顶栏(bag_currency_bar)
+      renderTopCurrencyBar(this.host, panel, W / 2, H / 2, scale, [
+        { key: 'gold', icon: GOLD_ICON, value: this.host.formatInteger(Number(info.goldBalance ?? 0)) },
+        { key: 'core', icon: CORE_ICON, value: this.host.formatInteger(Number(info.coreBalance ?? 0)) },
+      ], (W / 2 - (closeX - closeSize * 0.75)) / scale + 10);
     }
 
     const bodyTop = T - 0.165 * H;
@@ -331,10 +358,18 @@ export class LobbyGuardCrystalDialogRenderer {
   /** 左侧水晶舞台(参考图):背景光 + 法阵 + 立绘 + 等级牌 + 进度条 + 「n / 30 级」+ 下一级解锁提示(两侧花边)。 */
   private renderCrystal(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, scale: number, W: number, H: number): void {
     const T = H / 2;
-    const artTop = T - 0.17 * H;
+    // 用户 2026-10-16「左侧水晶没有贴在地面上」:立绘底边(台座尖脚)落到场景地面法阵中心,去掉上下浮动
+    const floorY = Math.max(T - 0.78 * H, Math.min(T - 0.72 * H, this.floorY));
     const artH = 0.53 * H;
-    const artY = artTop - artH / 2;
-    const pedestalHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPedestal', x, artY - artH * 0.4, 10, 10);
+    const artY = floorY + artH / 2 - 0.015 * H;
+    // 接触阴影:台座尖脚下一圈柔和暗椭圆,让立绘「踩」在地面上
+    const contact = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalContactShadow', x, floorY + 0.004 * H, w, 0.06 * H).addComponent(Graphics);
+    [1, 0.75, 0.5].forEach((k) => {
+      contact.fillColor = rgba(0, 0, 4, 70);
+      contact.ellipse(0, 0, w * 0.36 * k, 0.026 * H * k);
+      contact.fill();
+    });
+    const pedestalHolder = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPedestal', x, floorY, 10, 10);
     const pedestalMounted = this.mountSpineFx(pedestalHolder, LOBBY_CRYSTAL_FX.pedestal, 0, 0, artH * LOBBY_CRYSTAL_FX.pedestal.size, true, 0);
     if (!pedestalMounted) {
       const pg = pedestalHolder.addComponent(Graphics);
@@ -346,7 +381,6 @@ export class LobbyGuardCrystalDialogRenderer {
     this.mountSpineFx(auraHolder, LOBBY_CRYSTAL_FX.aura, 0, 0, artH * LOBBY_CRYSTAL_FX.aura.size, true, 0);
     const art = this.spriteByHeight(panel, 'LobbyGuardCrystalArt', CRYSTAL_ART, x, artY, artH)?.sprite ?? null;
     if (art) {
-      tween(art.node).repeatForever(tween().to(1.6, { position: new Vec3(x, artY + 5 * scale, 0) }, { easing: 'sineInOut' }).to(1.6, { position: new Vec3(x, artY, 0) }, { easing: 'sineInOut' })).start();
       if (state.flashLevel !== null) {
         art.node.setScale(0.9, 0.9, 1);
         tween(art.node).to(0.18, { scale: new Vec3(1.08, 1.08, 1) }, { easing: 'backOut' }).to(0.16, { scale: Vec3.ONE }).start();
@@ -364,7 +398,8 @@ export class LobbyGuardCrystalDialogRenderer {
     }
     // 等级牌:压在台座下沿(参考图 Lv.5 牌在 70% 高处)
     const plateH = 0.062 * H;
-    const plateY = T - 0.705 * H;
+    // 等级牌放在台座下方(不再挡住尖脚),水晶直接踩在地面法阵上
+    const plateY = floorY - 0.052 * H;
     const plate = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBadge', x, plateY, plateH / LEVEL_PLATE.aspect, plateH);
     const plateArt = this.spriteByHeight(plate, 'Art', LEVEL_PLATE, 0, 0, plateH);
     const plateW = plateH / (plateArt?.aspect ?? LEVEL_PLATE.aspect);
@@ -374,10 +409,10 @@ export class LobbyGuardCrystalDialogRenderer {
     // 进度条 + 「n / 30 级」+ 解锁提示 底下垫一层柔和暗底:场景底图这块是亮蓝光地板,直接写字看不清
     const barW = 0.21 * W;
     const barH = 0.012 * H;
-    const barY = T - 0.785 * H;
+    const barY = plateY - 0.056 * H;
     const shadeW = w * 0.98;
     const shadeTop = barY + 0.03 * H;
-    const shadeBottom = T - 0.95 * H;
+    const shadeBottom = T - 0.985 * H;
     const shade = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLowerShade', x, (shadeTop + shadeBottom) / 2, shadeW, shadeTop - shadeBottom);
     const sg = shade.addComponent(Graphics);
     for (let i = 4; i >= 1; i--) {
@@ -399,7 +434,7 @@ export class LobbyGuardCrystalDialogRenderer {
     g.lineWidth = 1.5;
     g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
     g.stroke();
-    const cap = this.host.addChildLabel(panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, T - 0.822 * H, FONT.body * scale, CREAM_TEXT, new Size(barW + 40 * scale, this.lh(24, scale)));
+    const cap = this.host.addChildLabel(panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, barY - 0.03 * H, FONT.body * scale, CREAM_TEXT, new Size(barW + 40 * scale, this.lh(24, scale)));
     cap.overflow = Label.Overflow.SHRINK;
     this.outline(cap, scale, rgba(6, 6, 10, 255));
     // 下一级解锁提示(最多两行),两侧花边(参考图)
@@ -413,7 +448,7 @@ export class LobbyGuardCrystalDialogRenderer {
     } else if (info.nextSlotLevel) {
       hints.push(`Lv.${info.nextSlotLevel} 解锁第 ${this.slotsOf(info) + 1} 个法术格`);
     }
-    let cursor = T - 0.872 * H;
+    let cursor = barY - 0.07 * H;
     hints.slice(0, 2).forEach((text, index) => {
       const hint = this.host.addChildLabel(panel, `LobbyGuardCrystalNextUnlock${index}`, text, x, cursor, FONT.body * scale, GOLD_TEXT, new Size(w * 0.8, this.lh(24, scale)));
       hint.overflow = Label.Overflow.SHRINK;
@@ -444,14 +479,16 @@ export class LobbyGuardCrystalDialogRenderer {
       // 两个页签同宽(0.17W),高度按各自素材比例(选中款边框粗、略高,正好像凸起)
       const tabW = 0.17 * W;
       const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, 0, y, tabW, tabH);
-      const primary = this.host.addSprite('Art', spec.path, 0, 0, tabW, tabW * spec.aspect, node);
-      if (!primary && spec.fallback) {
-        this.host.addSprite('Art', spec.fallback.path, 0, 0, tabW, tabW * spec.fallback.aspect, node);
+      if (!mountRefSliced(this.host, node, 'Art', active ? REF_TAB_ON : REF_TAB_OFF, 0, 0, tabW, tabH * 0.86, 2)) {
+        const primary = this.host.addSprite('Art', spec.path, 0, 0, tabW, tabW * spec.aspect, node);
+        if (!primary && spec.fallback) {
+          this.host.addSprite('Art', spec.fallback.path, 0, 0, tabW, tabW * spec.fallback.aspect, node);
+        }
       }
       const tx = cursor + tabW / 2;
       node.setPosition(tx, y, 0);
       cursor += tabW + gap;
-      const label = this.host.addChildLabel(node, 'Text', tab.text, 0, 0, FONT.section * scale, active ? GOLD_TEXT : DIM_TEXT, new Size(tabW - 24 * scale, 30 * scale));
+      const label = this.host.addChildLabel(node, 'Text', tab.text, 0, 0, FONT.section * scale, active ? rgba(255, 240, 206) : rgba(196, 188, 172), new Size(tabW - 24 * scale, 30 * scale));
       label.isBold = true;
       label.overflow = Label.Overflow.SHRINK;
       this.outline(label, scale, rgba(10, 8, 6, 255));
@@ -496,6 +533,14 @@ export class LobbyGuardCrystalDialogRenderer {
   private mountInnerPanel(panel: Node, name: string, x: number, top: number, w: number, bottom: number): Node {
     const h = top - bottom;
     const node = this.host.addChildPlainNode(panel, name, x, (top + bottom) / 2, w, h);
+    // 2026-10-16:套件细金框(与锻造 / 布阵面板一致),内里垫实底压住场景
+    const back = this.host.addChildPlainNode(node, 'Back', 0, 0, w - 8, h - 8).addComponent(Graphics);
+    back.fillColor = rgba(10, 9, 12, 218);
+    back.roundRect(-(w - 8) / 2, -(h - 8) / 2, w - 8, h - 8, 8);
+    back.fill();
+    if (mountRefSliced(this.host, node, 'Frame', REF_KIT.cardFrame, 0, 0, w, h)) {
+      return node;
+    }
     // 角饰按约 26% 原尺寸显示(≈28px):再大会压住面板里的小标题。
     const k = Math.min(0.26, Math.min(w / INNER_PANEL.w, h / INNER_PANEL.h));
     const sprite = this.host.addSprite('Art', INNER_PANEL.path, 0, 0, w / k, h / k, node);
@@ -535,7 +580,7 @@ export class LobbyGuardCrystalDialogRenderer {
     const colArrow = x + w * 0.2;
     const colNext = x + w * 0.3;
     // 手机端增量字被抬到 20 号,列再往里收,别压到属性条右端花边
-    const colDelta = right - (this.phone ? 46 : 34) * scale;
+    const colDelta = right - (this.phone ? 64 : 56) * scale;
     const lvText = next ? `Lv.${info.level}` : `Lv.${info.level} · 满级`;
     const lvCur = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadCur', lvText, colCur, headY, FONT.section * scale, GOLD_TEXT, new Size(140 * scale, 30 * scale));
     lvCur.isBold = true;
@@ -565,12 +610,18 @@ export class LobbyGuardCrystalDialogRenderer {
     const rowW = w - pad * 2;
     rows.forEach((row, index) => {
       const y = rowsTop - rowH / 2 - index * (rowH + gap);
-      this.mountSliced(panel, `LobbyGuardCrystalRow${row.key}`, STAT_ROW, x, y, rowW, rowH);
+      // 2026-10-16 用户「开局能量图标左边超出边框」「每行内容左右缩进」:行底换细金边暗行;
+      // 图标按宽高比装进 rowH×0.66 的方框(宽图标按宽缩),整行内容左右各缩进 22
+      if (!mountRefSliced(this.host, panel, `LobbyGuardCrystalRow${row.key}`, REF_ROW, x, y, rowW, rowH)) {
+        this.mountSliced(panel, `LobbyGuardCrystalRow${row.key}`, STAT_ROW, x, y, rowW, rowH);
+      }
       const icon = STAT_ICON[row.key];
-      const iconH = rowH * 0.74;
-      const iconW = Math.min(iconH / icon.aspect, iconH * 1.4);
-      this.host.addSprite(`Icon${row.key}`, icon.path, left + 30 * scale, y, iconW, iconW * icon.aspect, panel);
-      const rowName = this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + 62 * scale, y, FONT.body * scale, CREAM_TEXT, new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+      const iconBox = rowH * 0.66;
+      const iconW = icon.aspect >= 1 ? iconBox / icon.aspect : iconBox;
+      const iconH = icon.aspect >= 1 ? iconBox : iconBox * icon.aspect;
+      const rowInset = 22 * scale;
+      this.host.addSprite(`Icon${row.key}`, icon.path, left + rowInset + iconBox / 2, y, iconW, iconH, panel);
+      const rowName = this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + rowInset + iconBox + 12 * scale, y, FONT.body * scale, CREAM_TEXT, new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
       rowName.isBold = true;
       const curValue = row.read(current);
       const cur = this.host.addChildLabel(panel, `LobbyGuardCrystalRowCur${row.key}`, row.fmt(curValue), colCur, y, FONT.value * scale, CREAM_TEXT, new Size(120 * scale, 26 * scale));
@@ -602,14 +653,16 @@ export class LobbyGuardCrystalDialogRenderer {
     const boxX = x - w / 2 + boxW / 2;
     const box = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPreviewBox', boxX, y, boxW, h);
     const g = box.addComponent(Graphics);
-    g.fillColor = rgba(12, 9, 8, 215);
+    g.fillColor = rgba(10, 9, 12, 218);
     g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
     g.fill();
-    g.strokeColor = rgba(190, 146, 76, 210);
-    g.lineWidth = 1.5;
-    g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
-    g.stroke();
-    const pad = 18 * scale;
+    if (!mountRefSliced(this.host, box, 'Frame', REF_KIT.cardFrame, 0, 0, boxW, h)) {
+      g.strokeColor = rgba(190, 146, 76, 210);
+      g.lineWidth = 1.5;
+      g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
+      g.stroke();
+    }
+    const pad = 28 * scale;
     const title = this.host.addChildLabel(box, 'Title', maxed ? '已升到满级' : '升级消耗', -boxW / 2 + pad, h * 0.14, FONT.body * scale, GOLD_TEXT, new Size(110 * scale, this.lh(26, scale)), HorizontalTextAlignment.LEFT);
     title.isBold = true;
     if (!maxed) {
@@ -632,12 +685,12 @@ export class LobbyGuardCrystalDialogRenderer {
     source.overflow = Label.Overflow.SHRINK;
 
     const btnX = x + w / 2 - btnW / 2;
-    const button = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalUpgrade', btnX, y, btnW, btnH);
-    this.host.addSprite('LobbyGuardCrystalUpgradeArt', BTN_LEVEL_UP.path, 0, 0, btnW, btnH, button);
-    const label = this.host.addChildLabel(button, 'LobbyGuardCrystalUpgradeLabel', maxed ? '已满级' : `升级至 Lv.${info.level + 1}`, 0, 0, FONT.button * scale, rgba(255, 240, 210), new Size(btnW * 0.66, 34 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    label.isBold = true;
-    this.outline(label, scale, rgba(60, 12, 8, 255));
+    // 红金主钮(套件,与终极技能 / 锻造同款);缺图退回原按钮图
+    const refBtnH = Math.min(h, btnW / 3.6);
+    const button = mountRefButton(this.host, panel, 'LobbyGuardCrystalUpgrade', maxed ? '已满级' : `升级至 Lv.${info.level + 1}`, btnX, y, btnW, refBtnH, scale, 'primary', undefined, { fontSize: FONT.button * scale });
+    if (!button.getChildByName('Art')) {
+      this.host.addSprite('LobbyGuardCrystalUpgradeArt', BTN_LEVEL_UP.path, 0, 0, btnW, btnH, button);
+    }
     this.bindUpgradeButton(button, info, state, maxed, goldOk, coreOk, gold, core, goldCost, coreCost);
   }
 

@@ -116,6 +116,9 @@ const GUARD_CRYSTAL_UI_ASSETS = [
   'ui/bag/ai/icon_guard_core/spriteFrame', 'ui/battle/ai/buff_atk/spriteFrame',
   // docs/39 法术等级:卡片档位徽记 Ⅰ / Ⅱ / Ⅲ
   'ui/daily/ai/tier_1/spriteFrame', 'ui/daily/ai/tier_2/spriteFrame', 'ui/daily/ai/tier_3/spriteFrame',
+  // 2026-10-16 风格统一:布阵 / 锻造同款标题牌、关闭、页签、细金框、列表行、红金按钮、顶栏货币胶囊
+  'ui/formation/ref/title_plaque/spriteFrame', 'ui/formation/ref/btn_close/spriteFrame', 'ui/formation/ref/tab_on/spriteFrame', 'ui/formation/ref/tab_off/spriteFrame',
+  'ui/forge/ref/row_normal/spriteFrame', 'ui/common/ref/card_frame/spriteFrame', 'ui/common/ref/btn_primary/spriteFrame', 'ui/common/ai/bag_currency_bar/spriteFrame',
 ]);
 
 export class UiSpriteFrameCache {
