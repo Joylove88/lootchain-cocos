@@ -767,16 +767,6 @@ export class LobbyGuardCrystalDialogRenderer {
 
   // ── 法术装备页(2026-10-14 用户参考图重排:左「已装备的法术」+「法术列表」竖排,右「法术详情」卡;拖拽装备;详情里循环播战斗特效)──
 
-  /** 一行列表里的法术一句话简介(详情里再按等级给完整描述)。 */
-  private static readonly SPELL_BRIEF: Record<GuardSpellId, string> = {
-    quake: '对全体敌人造成伤害',
-    frost: '减速并附带冰冻',
-    thunder: '召唤天雷打击敌人',
-    goldrush: '获取大量金币',
-    aegis: '生成护盾保护水晶',
-    warhorn: '提升我方单位攻速',
-  };
-
   /** 本次渲染的装备格(拖拽落点判定用;每次整刷重建)。 */
   private sockets: Array<{ index: number; node: Node; open: boolean; id: GuardSpellId | undefined; hover: Node | null; size: number }> = [];
   private dragGhost: Node | null = null;
@@ -915,10 +905,11 @@ export class LobbyGuardCrystalDialogRenderer {
     // 首个标题带贴面板顶边与左侧金线(放在边框下一层),其余内容跟着它往下排
     const headY = flush ? flush.top - 19 * scale : top - 19 * scale;
     this.sectionHead(panel, 'LobbyGuardCrystalLoadout', '已装备的法术', left, right, headY, scale, `${loadout.length}/${slots}`, flush);
-    const socket = Math.min(74 * scale, w / 4.6);
+    // 2026-10-16 用户「法术装备界面有些挤」:装备格缩小一档,上下与两条标题带拉开
+    const socket = Math.min(64 * scale, w / 5);
     const shown = slots + (info.nextSlotLevel ? 1 : 0);
     const spacing = Math.min(132 * scale, w / Math.max(3, shown));
-    const socketY = headY - 34 * scale - socket / 2;
+    const socketY = headY - 19 * scale - 26 * scale - socket / 2;
     for (let i = 0; i < shown; i++) {
       const sx = x + (i - (shown - 1) / 2) * spacing;
       const open = i < slots;
@@ -982,13 +973,14 @@ export class LobbyGuardCrystalDialogRenderer {
     }
 
     // 法术列表
-    const listHeadY = socketY - socket / 2 - 42 * scale;
+    const listHeadY = socketY - socket / 2 - 56 * scale;
     this.sectionHead(panel, 'LobbyGuardCrystalList', '法术列表', left, right, listHeadY, scale, '拖到上方格位即可装备');
-    const gridTop = listHeadY - 28 * scale;
+    const gridTop = listHeadY - 19 * scale - 12 * scale;
     // 行距 14、行高上限 56(2026-10-14 用户:列表紧挨在一起太紧凑)
-    const gap = 14 * scale;
+    const gap = 10 * scale;
     const rowsN = GUARD_SPELL_IDS.length;
-    const rowH = Math.min(56 * scale, (gridTop - bottom - gap * (rowsN - 1)) / rowsN);
+    // 列表行改单行(图标 / 名 / 状态),简介在右侧详情卡里已有完整描述;行高按可用高度铺满,封顶 52
+    const rowH = Math.min(52 * scale, (gridTop - bottom - gap * (rowsN - 1)) / rowsN);
     GUARD_SPELL_IDS.forEach((id, index) => {
       const cy = gridTop - rowH / 2 - index * (rowH + gap);
       const open = unlocked.indexOf(id) >= 0;
@@ -1012,11 +1004,9 @@ export class LobbyGuardCrystalDialogRenderer {
       const textX = -w / 2 + 32 * scale + iconSize;
       const pillW = 96 * scale;
       const textW = w - iconSize - pillW - 36 * scale;
-      const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, rowH * 0.22, FONT.name * scale, open ? CREAM_TEXT : DIM_TEXT, new Size(textW, this.lh(24, scale)), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(card, 'Name', GUARD_SPELLS[id].name, textX, 0, FONT.name * scale, open ? CREAM_TEXT : DIM_TEXT, new Size(textW, this.lh(26, scale)), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
       name.isBold = true;
-      const brief = this.host.addChildLabel(card, 'Brief', LobbyGuardCrystalDialogRenderer.SPELL_BRIEF[id], textX, -rowH * 0.22, FONT.small * scale, DIM_TEXT, new Size(textW, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
-      brief.overflow = Label.Overflow.SHRINK;
       // 右端统一成同宽胶囊(2026-10-14 第二轮:三种状态样式不一显得乱):已装备 = 金边金字;未装备 = 灰边「Lv.n」;未解锁 = 灰边「Lv.n 解锁」+ 小锁
       const spellLv = this.spellLevelOf(info, id);
       const pillH = 26 * scale;
@@ -1218,7 +1208,7 @@ export class LobbyGuardCrystalDialogRenderer {
       g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
       g.stroke();
     }
-    const pad = 16 * scale;
+    const pad = 22 * scale;
     const left = -w / 2 + pad;
     const right = w / 2 - pad;
     const innerW = w - pad * 2;
@@ -1228,14 +1218,16 @@ export class LobbyGuardCrystalDialogRenderer {
     const btnH = btnW * BTN_COST_UP.aspect;
     const costH = this.lh(26, scale);
     const diff = open ? guardSpellNextDiff(id, spellLv.level) : null;
-    const rowH = this.lh(24, scale);
+    const rowH = this.lh(27, scale);
     const tableRows = open && diff ? Math.min(3, diff.changes.length) + (diff.unlock ? 1 : 0) : 0;
     const tableH = rowH + 4 * scale + tableRows * rowH;
     const descH = this.lh(this.phone ? 66 : 58, scale);
     const titleH = 36 * scale;
-    const gapS = 8 * scale;
-    const fixedH = titleH + gapS + descH + gapS + tableH + gapS + costH + gapS + btnH;
-    const fxH = Math.max(90 * scale, h - pad * 2 - fixedH - gapS);
+    // 插画封顶卡高 36%(以前吃掉全部剩余高度,文字区挤成一团);省出来的高度匀给 5 处段间距
+    const baseGap = 10 * scale;
+    const fixedH = titleH + descH + tableH + costH + btnH + baseGap * 5;
+    const fxH = Math.max(90 * scale, Math.min(h * 0.36, h - pad * 2 - fixedH));
+    const gapS = baseGap + Math.max(0, h - pad * 2 - fixedH - fxH) / 5;
 
     // 标题行:徽记 + 名 + 「能量 n」 + 等级牌
     const ck = this.cardFrameK(w, h);
