@@ -277,7 +277,7 @@ export class LobbyForgePanelRenderer {
       // 轻压暗保留暖色炉火氛围(对齐参考图):整体薄罩 + 顶部/两侧暗角,中下部熔炉透光。
       const shadeNode = this.host.addChildPlainNode(panel, 'LobbyForgeBackdropShade', 0, 0, panelWidth, panelHeight);
       const shade = shadeNode.addComponent(Graphics);
-      shade.fillColor = rgba(4, 3, 5, 96);
+      shade.fillColor = rgba(4, 3, 5, 136);
       shade.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
       shade.fill();
       shade.fillColor = rgba(0, 0, 0, 40);
@@ -993,9 +993,11 @@ export class LobbyForgePanelRenderer {
       const textX = -innerW / 2 + frameSize + 20 * scale;
       const textW = innerW - frameSize - 40 * scale;
       const equippedMark = item.heroId != null ? ' [已穿]' : '';
-      const name = this.host.addChildLabel(row, 'ForgeEnhRowName', `${safeText(item.equipName)}${equippedMark}`, textX, 22 * scale, 20 * scale, rgba(q.r, q.g, q.b, 255), new Size(textW, 28 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(row, 'ForgeEnhRowName', `${safeText(item.equipName)}${equippedMark}`, textX, 22 * scale, 22 * scale, rgba(q.r, q.g, q.b, 255), new Size(textW, 30 * scale), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const levelLine = this.host.addChildLabel(row, 'ForgeEnhRowLevel', `强化等级 +${level}`, textX, 0, 19 * scale, rgba(196, 182, 148), new Size(textW, 24 * scale), HorizontalTextAlignment.LEFT);
+      name.isBold = true;
+      this.applyOutline(name, scale, false);
+      const levelLine = this.host.addChildLabel(row, 'ForgeEnhRowLevel', `强化等级 +${level}`, textX, 0, 19 * scale, rgba(218, 204, 172), new Size(textW, 24 * scale), HorizontalTextAlignment.LEFT);
       levelLine.overflow = Label.Overflow.SHRINK;
       this.renderStarRow(row, 'ForgeEnhRowStar', level, textX + 8 * scale, -22 * scale, 13 * scale, scale);
       if (canEnhanceNow(item)) {
@@ -1095,7 +1097,7 @@ export class LobbyForgePanelRenderer {
       const innerLeft = rightX - rightW / 2 + 18 * scale;
       const innerRight = rightX + rightW / 2 - 18 * scale;
       const bigY = levelY + levelH / 2 - (phone ? 66 : 76) * scale;
-      const big = this.host.addChildLabel(parent, 'ForgeEnhLevelBig', target ? `+${level}` : '—', innerLeft, bigY, (phone ? 40 : 48) * scale, rgba(252, 222, 140), new Size(rightW * 0.45, 56 * scale), HorizontalTextAlignment.LEFT);
+      const big = this.host.addChildLabel(parent, 'ForgeEnhLevelBig', target ? `+${level}` : '—', innerLeft, bigY, (phone ? 42 : 54) * scale, rgba(252, 222, 140), new Size(rightW * 0.45, 60 * scale), HorizontalTextAlignment.LEFT);
       big.overflow = Label.Overflow.SHRINK;
       big.isBold = true;
       this.applyOutline(big, scale, true);
@@ -1135,20 +1137,22 @@ export class LobbyForgePanelRenderer {
       rows.push({ label: '强化属性', cur: `×${factorNowR.toFixed(1)}`, next: maxed ? '—' : `×${factorNextR.toFixed(1)}`, curColor: rgba(232, 128, 104), nextColor: maxed ? rgba(150, 140, 120) : rgba(140, 220, 140) });
       rows.forEach((row, index) => {
         const y = lineY - 10 * scale - levelRowH / 2 - index * levelRowH;
-        const l = this.host.addChildLabel(parent, `ForgeEnhLevelRowL_${index}`, row.label, innerLeft, y, 19 * scale, rgba(196, 182, 148), new Size(rightW * 0.32, 26 * scale), HorizontalTextAlignment.LEFT);
+        const l = this.host.addChildLabel(parent, `ForgeEnhLevelRowL_${index}`, row.label, innerLeft, y, 20 * scale, rgba(222, 208, 176), new Size(rightW * 0.32, 26 * scale), HorizontalTextAlignment.LEFT);
         l.overflow = Label.Overflow.SHRINK;
-        const c = this.host.addChildLabel(parent, `ForgeEnhLevelRowC_${index}`, row.cur, rightX + rightW * 0.1, y, 19 * scale, row.curColor, new Size(rightW * 0.26, 26 * scale), HorizontalTextAlignment.RIGHT);
+        const c = this.host.addChildLabel(parent, `ForgeEnhLevelRowC_${index}`, row.cur, rightX + rightW * 0.1, y, 20 * scale, row.curColor, new Size(rightW * 0.26, 26 * scale), HorizontalTextAlignment.RIGHT);
         c.overflow = Label.Overflow.SHRINK;
+        c.isBold = true;
         const m = this.host.addChildLabel(parent, `ForgeEnhLevelRowM_${index}`, '›', rightX + rightW * 0.16, y, 19 * scale, rgba(150, 132, 100), new Size(20 * scale, 26 * scale));
         m.overflow = Label.Overflow.SHRINK;
-        const n = this.host.addChildLabel(parent, `ForgeEnhLevelRowN_${index}`, row.next, innerRight, y, 19 * scale, row.nextColor, new Size(rightW * 0.26, 26 * scale), HorizontalTextAlignment.RIGHT);
+        const n = this.host.addChildLabel(parent, `ForgeEnhLevelRowN_${index}`, row.next, innerRight, y, 20 * scale, row.nextColor, new Size(rightW * 0.26, 26 * scale), HorizontalTextAlignment.RIGHT);
         n.overflow = Label.Overflow.SHRINK;
+        n.isBold = true;
       });
       // 状态行:成功率 / 失败惩罚,满级提示
       const statusY = lineY - 10 * scale - rows.length * levelRowH - 16 * scale;
       const chanceNow = Math.min(1, (ENHANCE_CHANCES[Math.min(level, ENHANCE_MAX_LEVEL - 1)] ?? 0.1) + (enhance.useBless ? 0.2 : 0));
       const statusText = !target ? '← 从左侧选择要强化的装备' : maxed ? '已达到强化上限' : `成功率 ${Math.round(chanceNow * 100)}% · ${level >= 5 ? (enhance.useGuard ? '失败不降级（护符）' : '失败强化等级 -1') : '失败不降级'}`;
-      const status = this.host.addChildLabel(parent, 'ForgeEnhLevelStatus', statusText, rightX, statusY, 18 * scale, maxed ? rgba(236, 206, 150) : level >= 5 && !enhance.useGuard ? rgba(232, 150, 120) : rgba(214, 200, 166), new Size(rightW - 32 * scale, 26 * scale));
+      const status = this.host.addChildLabel(parent, 'ForgeEnhLevelStatus', statusText, rightX, statusY, 19 * scale, maxed ? rgba(236, 206, 150) : level >= 5 && !enhance.useGuard ? rgba(232, 150, 120) : rgba(214, 200, 166), new Size(rightW - 32 * scale, 26 * scale));
       status.overflow = Label.Overflow.SHRINK;
     }
 
@@ -1199,7 +1203,7 @@ export class LobbyForgePanelRenderer {
       const heldLabel = this.host.addChildLabel(iconFrame, `${name}Held`, `x${formatInteger(held)}`, 10 * scale, -22 * scale, 17 * scale, rgba(238, 220, 170), new Size(40 * scale, 20 * scale), HorizontalTextAlignment.RIGHT);
       heldLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(heldLabel, scale, true);
-      const titleLabel = this.host.addChildLabel(rowNode, `${name}Title`, title, -rowW / 2 + 84 * scale, 16 * scale, 20 * scale, rgba(240, 224, 184), new Size(rowW - 140 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      const titleLabel = this.host.addChildLabel(rowNode, `${name}Title`, title, -rowW / 2 + 84 * scale, 16 * scale, 22 * scale, rgba(246, 232, 196), new Size(rowW - 140 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
       titleLabel.overflow = Label.Overflow.SHRINK;
       const descLabel = this.host.addChildLabel(rowNode, `${name}Desc`, desc, -rowW / 2 + 84 * scale, -14 * scale, 19 * scale, rgba(178, 164, 134), new Size(rowW - 140 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
       descLabel.overflow = Label.Overflow.SHRINK;
@@ -1267,7 +1271,7 @@ export class LobbyForgePanelRenderer {
           hg.roundRect(-rowW / 2, -(previewRowH - 4 * scale) / 2, rowW, previewRowH - 4 * scale, 6 * scale);
           hg.fill();
         }
-        const levelText = this.host.addChildLabel(parent, `ForgeEnhPreviewLv_${rowLevel}`, `+${rowLevel}`, rightX - rowW / 2 + 12 * scale, y, 20 * scale, rgba(250, 222, 150), new Size(40 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+        const levelText = this.host.addChildLabel(parent, `ForgeEnhPreviewLv_${rowLevel}`, `+${rowLevel}`, rightX - rowW / 2 + 12 * scale, y, 22 * scale, rgba(250, 222, 150), new Size(40 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
         levelText.overflow = Label.Overflow.SHRINK;
         const factor = 1 + 0.1 * rowLevel;
         if (primary) {
@@ -1297,6 +1301,21 @@ export class LobbyForgePanelRenderer {
     const baseChance = ENHANCE_CHANCES[Math.min(level, ENHANCE_MAX_LEVEL - 1)] ?? 0.1;
     const chance = Math.min(1, baseChance + (enhance.useBless ? 0.2 : 0));
 
+    // 2026-10-16 用户「中间区域背景再暗一点,主次不分」:中栏整条垫暗罩(上浅下深),信息层从炉火里跳出来
+    {
+      const shadeW = centerR - centerL + 12 * scale;
+      const shadeH = contentTop - contentBottom;
+      const centerShade = this.host.addChildPlainNode(parent, 'ForgeEnhCenterShade', cx, (contentTop + contentBottom) / 2, shadeW, shadeH);
+      const csg = centerShade.addComponent(Graphics);
+      csg.fillColor = rgba(4, 3, 5, 120);
+      csg.roundRect(-shadeW / 2, -shadeH / 2, shadeW, shadeH, 14 * scale);
+      csg.fill();
+      [0.8, 0.6, 0.4].forEach((part) => {
+        csg.fillColor = rgba(4, 3, 5, 36);
+        csg.roundRect(-shadeW / 2, -shadeH / 2, shadeW, shadeH * part, 14 * scale);
+        csg.fill();
+      });
+    }
     // 材料石台(forge_anvil):最先创建 = 最底层,对比面板/成功率/材料卡全部盖在它上面,不再遮挡信息。
     const anvilW = Math.min(800 * scale, centerR - centerL);
     const anvilH = anvilW / FORGE_ANVIL_RATIO;
@@ -1371,8 +1390,9 @@ export class LobbyForgePanelRenderer {
       bng.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 6 * scale);
       bng.stroke();
     }
-    const nameLabel = this.host.addChildLabel(plate, 'ForgeEnhName', safeText(target.equipName), 0, plateH * 0.18, 24 * scale, rgba(tq.r, tq.g, tq.b, 255), new Size(plateW * 0.8, 32 * scale));
+    const nameLabel = this.host.addChildLabel(plate, 'ForgeEnhName', safeText(target.equipName), 0, plateH * 0.18, 26 * scale, rgba(tq.r, tq.g, tq.b, 255), new Size(plateW * 0.8, 34 * scale));
     nameLabel.overflow = Label.Overflow.SHRINK;
+    nameLabel.isBold = true;
     this.applyOutline(nameLabel, scale, true);
     const starSize = 18 * scale;
     this.renderStarRow(plate, 'ForgeEnhNameStar', level, -2 * (starSize + 3 * scale), -plateH * 0.2, starSize, scale);
@@ -1435,10 +1455,11 @@ export class LobbyForgePanelRenderer {
         this.host.addSprite(`ForgeEnhMatIcon_${cardDef.key}`, cardDef.icon, 0, 0, 56 * scale, 56 * scale, frame);
       }
       const countText = cardDef.key === 'gold' ? formatInteger(cardDef.need) : `${formatInteger(cardDef.need)}/${formatInteger(cardDef.held)}`;
-      const count = this.host.addChildLabel(card, `ForgeEnhMatCount_${cardDef.key}`, countText, 0, -30 * scale, 20 * scale, lacking ? rgba(236, 92, 70) : rgba(242, 240, 235), new Size(cardW + 10 * scale, 25 * scale));
+      const count = this.host.addChildLabel(card, `ForgeEnhMatCount_${cardDef.key}`, countText, 0, -30 * scale, 22 * scale, lacking ? rgba(236, 92, 70) : rgba(250, 248, 240), new Size(cardW + 10 * scale, 27 * scale));
       count.overflow = Label.Overflow.SHRINK;
+      count.isBold = true;
       this.applyOutline(count, scale, true);
-      const nameText = this.host.addChildLabel(card, `ForgeEnhMatName_${cardDef.key}`, cardDef.label, 0, -52 * scale, 20 * scale, rgba(232, 204, 150), new Size(cardW + 10 * scale, 24 * scale));
+      const nameText = this.host.addChildLabel(card, `ForgeEnhMatName_${cardDef.key}`, cardDef.label, 0, -53 * scale, 20 * scale, rgba(246, 230, 190), new Size(cardW + 10 * scale, 24 * scale));
       nameText.overflow = Label.Overflow.SHRINK;
       this.applyOutline(nameText, scale, false);
     });
@@ -1498,7 +1519,7 @@ export class LobbyForgePanelRenderer {
       rbg.lineTo(-repeatW / 2 + 30 * scale, 7 * scale);
       rbg.stroke();
     }
-    const repeatLabel = this.host.addChildLabel(repeatBox, 'ForgeEnhRepeatLabel', '连续强化 ⓘ', -repeatW / 2 + 44 * scale, 0, 20 * scale, forge.autoRepeat ? rgba(250, 226, 160) : rgba(216, 200, 166), new Size(repeatW - 50 * scale, 32 * scale), HorizontalTextAlignment.LEFT);
+    const repeatLabel = this.host.addChildLabel(repeatBox, 'ForgeEnhRepeatLabel', '连续强化 ⓘ', -repeatW / 2 + 44 * scale, 0, 21 * scale, forge.autoRepeat ? rgba(250, 226, 160) : rgba(216, 200, 166), new Size(repeatW - 50 * scale, 32 * scale), HorizontalTextAlignment.LEFT);
     repeatLabel.overflow = Label.Overflow.SHRINK;
     if (!state.busy) {
       repeatBox.addComponent(Button);
