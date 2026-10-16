@@ -226,6 +226,12 @@ export interface TopCurrencyEntry {
 
 const TOP_CURRENCY_SHOP_KIND: Record<string, 'gold' | 'stamina' | 'diamond'> = { gold: 'gold', diamond: 'diamond', stamina: 'stamina' };
 
+/** 顶栏货币显示文字:纯数字(含千分位逗号)转大厅同款短格式(4.9M / 125.3K),其余原样。 */
+export function formatTopCurrencyValue(value: unknown): string {
+  const rawValue = String(value ?? '');
+  return /^[\d,]+$/.test(rawValue) ? compactResourceValue(Number(rawValue.replace(/,/g, ''))) : rawValue;
+}
+
 export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, rightX: number, topY: number, scale: number, entries: TopCurrencyEntry[], rightInset = 150): void {
   if (!host.addChildLabel || !host.addSprite) {
     return;
@@ -240,8 +246,7 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     // 2026-10-16 用户:「所有界面的顶部货币数字加单位,和大厅保持一致」——纯数字统一转大厅同款短格式(4.9M / 125.3K)
-    const rawValue = String(entry.value ?? '');
-    const displayValue = /^[\d,]+$/.test(rawValue) ? compactResourceValue(Number(rawValue.replace(/,/g, ''))) : rawValue;
+    const displayValue = formatTopCurrencyValue(entry.value);
     const chip = host.addChildPlainNode(parent, `TopCurrency_${entry.key}`, cursorX, barY, capWidth, capHeight);
     if (!host.addSprite(`TopCurrencyCapsule_${entry.key}`, SCENE_CURRENCY_BAR_ASSET, 0, 0, capWidth, capHeight, chip)) {
       const graphics = chip.addComponent(Graphics);

@@ -3601,17 +3601,24 @@ export class LootChainGameRoot extends Component {
     try {
       const beforePower = this.currentLobbyHeroDetailHero()?.power ?? 0;
       const result = await this.api.hero.levelUp(heroId);
-      // 成功时刻:本地只落等级(接口的 power 是等级基础战力,不含装备,直接写会把 2187 显示成 307),
-      // 按钮解锁 + 庆祝特效 + 音效 + 提示同帧;战力增量等名册回读后按真实总战力算,再出飘字
-      this.lobbyHeroRosterState.patchHero(heroId, { level: result.level });
+      // 成功时刻:接口的 level / power 已是最终值(后端 UserHeroServiceImpl 重算时含装备 / 强化 / 词条 / 宝石,与名册同源;
+      // 2026-10-16 排查核实,原「power 不含装备」的注释已过时)。保险起见 power 比升级前还低就不写,等名册回读纠正
+      const powerOk = Number.isFinite(result.power) && result.power >= beforePower;
+      this.lobbyHeroRosterState.patchHero(heroId, powerOk ? { level: result.level, power: result.power } : { level: result.level });
       this.lobbyHeroLevelUpBusyId = null;
       lobbyGuide.markVisited('levelup');
       gameAudio.sfx('level_up');
       this.setStatus(`${heroName} 升级成功：Lv.${result.level}`);
       // 2026-10-12 用户录屏"点升级骨骼和特效都卡一下":成功时刻只做局部(按钮解锁 + 贴着英雄的庆祝特效),不整页重绘
       this.celebrateHeroGrowth('levelUp');
-      // 后台回读:名册一回来就按总战力出飘字(持久层),整页刷新推迟到特效播完
-      void this.reloadAfterHeroGrowth(heroId, heroName, beforePower, '升级成功');
+      // 2026-10-16:名牌 Lv / 战力同帧就地改字(原先要等 2.4s 后的整页重建),战力飘字也同时出,不再"先飘字、数字后变"
+      this.lobbyHeroDetailPanelRenderer.patchGrowthNumbers(heroId);
+      const floatShown = powerOk && result.power !== beforePower;
+      if (floatShown) {
+        this.spawnPowerDeltaFloat(result.power - beforePower);
+      }
+      // 后台回读:属性 / 升级坞到货即就地更新,整页刷新仍推迟到特效播完(兜底对账)
+      void this.reloadAfterHeroGrowth(heroId, heroName, beforePower, '升级成功', floatShown);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       gameAudio.sfx('ui_error');
@@ -3722,7 +3729,7 @@ export class LootChainGameRoot extends Component {
   }
 
   /** 升级 / 升星成功后的后台回读:名册一回来就出战力飘字,其余静默刷新,最后排一次整页刷新。 */
-  private async reloadAfterHeroGrowth(heroId: number, heroName: string, beforePower: number, verb: string): Promise<void> {
+  private async reloadAfterHeroGrowth(heroId: number, heroName: string, beforePower: number, verb: string, floatShown = false): Promise<void> {
     try {
       // 名册与详情互不依赖,并行回读(2026-10-16 用户「升级升星数值延迟变化」:原先 名册→资料/背包/冒险→详情 三轮串行)
       await Promise.all([this.loadLobbyHeroRoster(true), this.loadLobbyHeroDetail(heroId)]);
@@ -3730,10 +3737,20 @@ export class LootChainGameRoot extends Component {
       const gain = after - beforePower;
       if (gain !== 0) {
         this.setStatus(`${heroName} ${verb}：战力 ${this.formatInteger(after)}（${gain > 0 ? '+' : ''}${this.formatInteger(gain)}）`);
-        this.spawnPowerDeltaFloat(gain);
+        // 接口返回时已飘过字就不再飘第二次;名册值与接口值不同时下面就地改字纠正
+        if (!floatShown) {
+          this.spawnPowerDeltaFloat(gain);
+        }
       }
+      // 名册(属性 / 总战力)与详情(下一级消耗)到货:就地改属性格与名牌、局部重建升级坞,不等整页刷新
+      this.lobbyHeroDetailPanelRenderer.patchGrowthNumbers(heroId);
+      this.lobbyHeroDetailPanelRenderer.rebuildLevelUpDockOnly(heroId);
       const userId = this.currentLobbyProfile().userId;
-      await Promise.all([this.loadLobbyProfile(userId), this.loadLobbyBag(true), this.loadLobbyAdventure(true)]);
+      // 资料 / 背包到货:顶部金币与经验书持有量就地改字;冒险数据与数字无关,不再拖住收尾
+      void this.loadLobbyAdventure(true);
+      await Promise.all([this.loadLobbyProfile(userId), this.loadLobbyBag(true)]);
+      this.lobbyHeroDetailPanelRenderer.patchFooterHoldings();
+      this.lobbyHeroDetailPanelRenderer.rebuildLevelUpDockOnly(heroId);
     } catch (error) {
       void error;
     }
@@ -3899,19 +3916,26 @@ export class LootChainGameRoot extends Component {
       // 2026-10-12:接口一回来就是成功时刻(同升级):局部解锁 + 贴着英雄的升星特效;回读与整页刷新放后台
       this.lobbyHeroLevelUpBusyId = null;
       if (ups > 0) {
-        if (lastStar !== null) {
-          this.lobbyHeroRosterState.patchHero(heroId, { star: lastStar });
-        }
+        // 2026-10-16:战力同帧就地改字 + 飘字(接口 power 与名册同源);星级带 / 升星页是结构变化,仍由特效后的整页刷新更新
+        const powerOk = Number.isFinite(lastPower) && lastPower >= beforePower;
+        this.lobbyHeroRosterState.patchHero(heroId, {
+          ...(lastStar !== null ? { star: lastStar } : {}),
+          ...(powerOk ? { power: lastPower } : {}),
+        });
         gameAudio.sfx('level_up');
         this.setStatus(`${heroName} 升星 +${ups}${lastStar !== null ? `，当前 ${lastStar} 星` : ''}${stopReason ? `（已停止：${stopReason}）` : ''}`);
         this.celebrateHeroGrowth('starUp');
-        void this.reloadAfterHeroGrowth(heroId, heroName, beforePower, '升星成功');
+        this.lobbyHeroDetailPanelRenderer.patchGrowthNumbers(heroId);
+        const floatShown = powerOk && lastPower !== beforePower;
+        if (floatShown) {
+          this.spawnPowerDeltaFloat(lastPower - beforePower);
+        }
+        void this.reloadAfterHeroGrowth(heroId, heroName, beforePower, '升星成功', floatShown);
       } else {
         gameAudio.sfx('ui_error');
         this.setStatus(`升星未执行：${stopReason || '碎片或金币不足'}`);
         this.releaseHeroDock();
       }
-      void lastPower;
     }
   }
 

@@ -37,7 +37,7 @@ import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkill
 import { isGuardT0Hero } from './GuardBattleModel';
 import { equipIconAssetByCode } from './EquipIconAssets';
 import { compactResourceValue, safeText } from '../UiTextFormatter';
-import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
+import { formatTopCurrencyValue, renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, starBandAssetOf, starBandTextRgbOf, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 import { patchBattleUnitSpineRuntimeEnums, type BattleUnitSpineRuntimeData } from './LobbyBattleUnitSpineRuntime';
@@ -531,6 +531,87 @@ export class LobbyHeroDetailPanelRenderer {
         this.renderEquipEnhanceDialog(panelGroup, panelWidth, panelHeight, scale);
       }
     }
+  }
+
+  /** 在详情面板组里按节点名找第一个匹配的节点(局部更新用)。 */
+  private findInDetail(name: string): Node | null {
+    const ctx = this.detailRenderContext;
+    if (!ctx || !this.isNodeAlive(ctx.panelGroup)) {
+      return null;
+    }
+    let found: Node | null = null;
+    ctx.panelGroup.walk((node) => {
+      if (!found && node.name === name) {
+        found = node;
+      }
+    });
+    return found;
+  }
+
+  /**
+   * 养成成功后的局部数字更新(2026-10-16 用户「点升级后要等 3~6 秒数值才变化」:数据 0.6s 内已到,数字却要等特效播完的整页重建):
+   * 只改名牌「Lv.N」「战力 N」与属性格数值(有变化才写,原生端每次改字都要重新生成文字贴图),不建节点、不碰立绘与特效。
+   * 不是当前详情英雄 / 面板已不在时什么都不做并返回 false(调用方仍有延后整刷兜底)。
+   */
+  patchGrowthNumbers(heroId: number): boolean {
+    const hero = this.host.currentLobbyHeroDetailHero();
+    if (!hero || hero.id !== heroId || !this.detailRenderContext || !this.isNodeAlive(this.detailRenderContext.panelGroup)) {
+      return false;
+    }
+    const setText = (node: Node | null, text: string): void => {
+      const label = node?.getComponent(Label);
+      if (label && label.string !== text) {
+        label.string = text;
+      }
+    };
+    setText(this.findInDetail('LobbyHeroDetailLevel'), `Lv.${hero.level}`);
+    setText(this.findInDetail('LobbyHeroDetailPower'), `战力 ${formatInteger(hero.power)}`);
+    const grid = this.findInDetail('LobbyHeroDetailAttributeGrid');
+    if (grid) {
+      resolveAttributes(hero).slice(0, 6).forEach((attr, index) => {
+        setText(grid.getChildByName(`LobbyHeroDetailAttribute_${index}`)?.getChildByName('LobbyHeroDetailAttributeValue') ?? null, attr.value);
+      });
+    }
+    return true;
+  }
+
+  /** 顶部持有资源(金币 / 英雄经验书)就地改字:资料 / 背包回读到货后调用,不整页重建。 */
+  patchFooterHoldings(): void {
+    const profile = this.host.currentLobbyProfile();
+    const bag = this.host.currentLobbyBagState();
+    const bookCount = bag.groups.flatMap((group) => group.items).find((item) => item.itemCode === 'HERO_EXP_BOOK')?.itemCount ?? 0;
+    const setText = (name: string, raw: string): void => {
+      const label = this.findInDetail(name)?.getComponent(Label);
+      const text = formatTopCurrencyValue(raw);
+      if (label && label.string !== text) {
+        label.string = text;
+      }
+    };
+    setText('TopCurrencyValue_gold', formatDecimalValue(profile.gold));
+    setText('TopCurrencyValue_books', formatInteger(bookCount));
+  }
+
+  /**
+   * 只重建属性页底部升级坞(消耗带 + 提示行 + 升级 / 一键升级按钮,约十个节点):详情回读到货后「升至 Lv.N+1」、消耗、
+   * 不足标红、到上限置灰随之更新;形状变化(到上限 / 提示行出现消失)也由原绘制函数自己处理。面板不在或不是当前英雄返回 false。
+   */
+  rebuildLevelUpDockOnly(heroId: number): boolean {
+    const hero = this.host.currentLobbyHeroDetailHero();
+    const ctx = this.detailRenderContext;
+    if (!hero || hero.id !== heroId || !ctx) {
+      return false;
+    }
+    const button = this.findInDetail('LobbyHeroDetailLevelUpButton');
+    const panel = button?.parent ?? null;
+    const size = panel?.getComponent(UITransform)?.contentSize;
+    if (!panel || !size || !this.isNodeAlive(panel)) {
+      return false;
+    }
+    panel.children
+      .filter((child) => child.name.startsWith('LobbyHeroDetailLevelUp'))
+      .forEach((child) => child.destroy());
+    this.renderLevelUpDock(panel, hero, size.width, size.height, ctx.scale);
+    return true;
   }
 
   /** 只重建装备弹窗(选部位/穿卸/列表加载完成时调用),背景 spine 不重播;面板未渲染时返回 false 回退整刷。 */
