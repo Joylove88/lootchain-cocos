@@ -625,6 +625,8 @@ export class LobbyGuardBattleRenderer {
   /** 普攻 Spine 飞行特效(fx_pack)的就绪表:开局按阵容预热,数据 + 动画名 + 实测包围盒齐了才用,否则回退贴图弹道。 */
   private readonly attackSpineFxReady = new Map<string, { spec: { effect: string; animation: string; size: number }; data: sp.SkeletonData; animation: string; w: number; h: number; cx: number; cy: number }>();
   private readonly attackSpineFxPending = new Set<string>();
+  /** 预热时战场未建好的重试次数(按 effect)。 */
+  private readonly attackSpineFxRetry = new Map<string, number>();
   private attackHitFxLive = 0;
   /** 紫卡触发喊话节流(每单位 2.5s 一次,防刷屏)。 */
   private perkShoutAt = new Map<number, number>();
@@ -667,6 +669,8 @@ export class LobbyGuardBattleRenderer {
   }
 
   unmount(): void {
+    // 预热重试计数按局清零(渲染器是单例,不清会跨局累计到上限后不再重试)
+    this.attackSpineFxRetry.clear();
     this.clearSpellTipTimer();
     this.stopFrameLoop();
     if (this.root && this.root.isValid) {
@@ -7977,8 +7981,7 @@ export class LobbyGuardBattleRenderer {
     this.attackSpineFxPending.add(spec.effect);
     loadSharedSpineData(resolveAttackSpineFxResource(spec), null, 'GuardAttackFx', (data) => {
       this.attackSpineFxPending.delete(spec.effect);
-      const field = this.fieldNode;
-      if (!data || !field || !field.isValid || this.attackSpineFxReady.has(spec.effect)) {
+      if (!data || this.attackSpineFxReady.has(spec.effect)) {
         return;
       }
       try {
@@ -7990,6 +7993,27 @@ export class LobbyGuardBattleRenderer {
         patchBattleUnitSpineRuntimeEnums(data, runtimeData);
         const wanted = spec.animation.trim().toLowerCase();
         const animation = names.find((name) => name.toLowerCase() === wanted) ?? names[0];
+        // 2026-10-16 安卓真机「第一次放法术是贴图、第二次才是特效」:开战预热早于建场,加载门已缓存数据时这里同步回调,
+        // 战场节点还不存在,原先直接 return 且不重试。有实测包围盒的(法术 / 普攻 / BOSS 等绝大多数)不需要探针,直接登记就绪。
+        const tableBounds = lookupBattleFxBounds(spec.effect, animation);
+        if (tableBounds) {
+          this.attackSpineFxReady.set(spec.effect, { spec, data, animation, w: tableBounds.w, h: tableBounds.h, cx: tableBounds.cx, cy: tableBounds.cy });
+          return;
+        }
+        const field = this.fieldNode;
+        if (!field || !field.isValid) {
+          // 需要现场测量但战场还没建好:稍后重试(有上限,战斗已关闭则放弃)
+          const tries = (this.attackSpineFxRetry.get(spec.effect) ?? 0) + 1;
+          this.attackSpineFxRetry.set(spec.effect, tries);
+          if (tries <= 20) {
+            setTimeout(() => {
+              if (this.sim) {
+                this.prewarmAttackSpineFx(spec);
+              }
+            }, 100);
+          }
+          return;
+        }
         const probe = this.host.addChildPlainNode(field, 'GuardAttackFxProbe', -99999, -99999, 10, 10);
         const skeleton = probe.addComponent(sp.Skeleton);
         skeleton.premultipliedAlpha = false;

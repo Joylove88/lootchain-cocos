@@ -260,6 +260,9 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a47_419:action': { w: 479, h: 589, cx: 33, cy: -22 },
   'v2_a49_213:action': { w: 216, h: 219, cx: -1, cy: 1 },
   'v2_a49_413:idle': { w: 326, h: 327, cx: 2, cy: 2 },
+  // 金矿爆发金币堆(烘焙版 A49-005,只算金币 = GUARD_GOLD_PILE_SPINE.heap[0])。原先缺表项:原生不做现场测量,
+  // 安卓上永远登记不进就绪表,每次施放都退回静态金币图(2026-10-16 排查工作流确认);spawnGoldPile 自己按 heap 缩放,这里只为登记就绪
+  'v2_a49_005c:jiangli_2': { w: 648, h: 158, cx: -10, cy: -21 },
   'v2_a47_375:action1': { w: 392, h: 341, cx: 25, cy: 1 },
   'v2_s681_1001:attackall': { w: 1296, h: 810, cx: 99, cy: 322 },
   'v2_s681_1006:skill01_2': { w: 1736, h: 750, cx: 62, cy: 214 },
