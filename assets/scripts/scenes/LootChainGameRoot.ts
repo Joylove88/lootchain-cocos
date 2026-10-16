@@ -3751,6 +3751,10 @@ export class LootChainGameRoot extends Component {
       await Promise.all([this.loadLobbyProfile(userId), this.loadLobbyBag(true)]);
       this.lobbyHeroDetailPanelRenderer.patchFooterHoldings();
       this.lobbyHeroDetailPanelRenderer.rebuildLevelUpDockOnly(heroId);
+      if (this.lobbyHeroDetailTab === 'star') {
+        // 碎片持有量 / 金币到货:升星页消耗与按钮态按新数据重建(星星行不变也一并重建,开销小)
+        this.lobbyHeroDetailPanelRenderer.rebuildStarViewsOnly(heroId);
+      }
     } catch (error) {
       void error;
     }
@@ -3926,6 +3930,8 @@ export class LootChainGameRoot extends Component {
         this.setStatus(`${heroName} 升星 +${ups}${lastStar !== null ? `，当前 ${lastStar} 星` : ''}${stopReason ? `（已停止：${stopReason}）` : ''}`);
         this.celebrateHeroGrowth('starUp');
         this.lobbyHeroDetailPanelRenderer.patchGrowthNumbers(heroId);
+        // 2026-10-16 用户「升星变化还是太慢」:星星行 / 升星页同帧原地重建,不再等 2.8s 后的整页重建
+        this.lobbyHeroDetailPanelRenderer.rebuildStarViewsOnly(heroId);
         const floatShown = powerOk && lastPower !== beforePower;
         if (floatShown) {
           this.spawnPowerDeltaFloat(lastPower - beforePower);

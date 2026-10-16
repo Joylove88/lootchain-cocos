@@ -392,6 +392,9 @@ export class LobbyHeroDetailPanelRenderer {
    * 底部养成坞按钮(升级 / 一键升级 / 升星 / 一键升星):点按钮与接口返回时只局部切换"处理中"态,不整页重绘
    * (2026-10-12 用户录屏:点升级时骨骼与特效卡一下——整页重建几百个节点会冻住一帧)。
    */
+  /** 上次绘制名牌星星行 / 升星页面板的参数(升星后原地重建用;每次整页渲染开头清空)。 */
+  private starRowArgs: { parent: Node; x: number; y: number; maxWidth: number; scale: number } | null = null;
+  private starPanelArgs: { parent: Node; x: number; y: number; width: number; height: number; scale: number } | null = null;
   private dockButtons: Array<{ node: Node; label: Label; art: Sprite | null; idleText: string; pendingText: string; idleEnabled: boolean; dim: boolean }> = [];
   private artStageStash: { node: Node; key: string } | null = null;
   private equipDialogNode: Node | null = null;
@@ -445,6 +448,8 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   render(layout: UiLayout): void {
+    this.starRowArgs = null;
+    this.starPanelArgs = null;
     const hero = this.host.currentLobbyHeroDetailHero();
     if (!hero) {
       this.dropArtStageStash();
@@ -573,6 +578,55 @@ export class LobbyHeroDetailPanelRenderer {
       });
     }
     return true;
+  }
+
+  /**
+   * 升星后原地重建星级相关的几块(2026-10-16 用户「升星变化还是太慢」):名牌星星行、升星页面板(星级对照 / 解锁行 / 觉醒卡 /
+   * 碎片与金币消耗 / 按钮)、升星页顶栏碎片与金币。原先只能等特效后的整页重建(+2.8s)。不是当前英雄 / 节点已不在时跳过该块。
+   */
+  rebuildStarViewsOnly(heroId: number): boolean {
+    const hero = this.host.currentLobbyHeroDetailHero();
+    if (!hero || hero.id !== heroId || !this.detailRenderContext || !this.isNodeAlive(this.detailRenderContext.panelGroup)) {
+      return false;
+    }
+    const row = this.starRowArgs;
+    if (row && this.isNodeAlive(row.parent)) {
+      row.parent.children
+        .filter((child) => child.name.startsWith('LobbyHeroDetailStar_') || child.name === 'LobbyHeroDetailStarNum')
+        .forEach((child) => child.destroy());
+      this.renderStarRow(row.parent, hero, row.x, row.y, row.maxWidth, row.scale);
+    }
+    const sp = this.starPanelArgs;
+    if (sp && this.isNodeAlive(sp.parent)) {
+      const old = sp.parent.children.filter((child) => child.name === 'LobbyHeroDetailStarPanel');
+      const index = old.length > 0 ? old[0].getSiblingIndex() : -1;
+      old.forEach((child) => child.destroy());
+      this.renderStarPanel(sp.parent, hero, sp.x, sp.y, sp.width, sp.height, sp.scale);
+      // destroy 在帧末才生效:新面板是刚追加在末尾、且不在旧列表里的那个,放回原层级(不盖住导航 / 弹窗)
+      const fresh = sp.parent.children.filter((child) => child.name === 'LobbyHeroDetailStarPanel' && old.indexOf(child) < 0);
+      if (index >= 0 && fresh.length > 0) {
+        fresh[0].setSiblingIndex(index);
+      }
+      this.patchStarHoldings(hero);
+    }
+    return true;
+  }
+
+  /** 升星页顶栏(金币 / 本英雄碎片)就地改字。 */
+  private patchStarHoldings(hero: LobbyHeroItemVO): void {
+    const profile = this.host.currentLobbyProfile();
+    const bag = this.host.currentLobbyBagState();
+    const fragCode = `HERO_FRAGMENT:${(hero.heroCode || '').toUpperCase()}`;
+    const owned = bag.groups.flatMap((group) => group.items).find((item) => (item.itemCode || '').toUpperCase() === fragCode)?.itemCount ?? 0;
+    const setText = (name: string, raw: string): void => {
+      const label = this.findInDetail(name)?.getComponent(Label);
+      const text = formatTopCurrencyValue(raw);
+      if (label && label.string !== text) {
+        label.string = text;
+      }
+    };
+    setText('TopCurrencyValue_gold', formatDecimalValue(profile.gold));
+    setText('TopCurrencyValue_shard', formatInteger(owned));
   }
 
   /** 顶部持有资源(金币 / 英雄经验书)就地改字:资料 / 背包回读到货后调用,不整页重建。 */
@@ -1514,6 +1568,7 @@ export class LobbyHeroDetailPanelRenderer {
         cursor += part.w + gap;
       });
     }
+    this.starRowArgs = { parent: plate, x: textShift, y: -plateHeight * 0.28, maxWidth: plateWidth * 0.6, scale };
     this.renderStarRow(plate, hero, textShift, -plateHeight * 0.28, plateWidth * 0.6, scale);
     // 左右切换英雄:AI 箭头图优先,缺图回退程序圆钮。
     const renderSwitchArrow = (name: string, direction: number) => {
@@ -4321,6 +4376,7 @@ export class LobbyHeroDetailPanelRenderer {
   // 升星页右栏(bt-hero-beautify 2026-10-04 重排):区块标题 → 星级对照带(当前星 ››› 下一星,左右对称)→ 觉醒卡 →
   // 「升星解锁」被动列表(图标 + 名称 + 触发标签 + 状态胶囊 + 描述)→ 底部消耗带 + 双按钮。
   private renderStarPanel(parent: Node, hero: LobbyHeroItemVO, x: number, y: number, width: number, height: number, scale: number): void {
+    this.starPanelArgs = { parent, x, y, width, height, scale };
     const panel = this.host.addChildPlainNode(parent, 'LobbyHeroDetailStarPanel', x, y, width, height);
     const pg = panel.addComponent(Graphics);
     pg.fillColor = rgba(6, 6, 8, 198);
