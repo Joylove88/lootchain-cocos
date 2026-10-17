@@ -57,15 +57,18 @@ export function drawPhoneDialogFrame(
   width: number,
   height: number,
   headerH = 0,
-  options: { bare?: boolean } = {},
+  options: { bare?: boolean; coverW?: number; coverH?: number } = {},
 ): void {
   // 2026-10-05 用户「旋转宝箱 / 水晶 / 任务界面都没有背景 UI」:垫一张实景背景(等比铺满 + 遮罩裁切),
   // 外框与压暗画在它上面的子节点里;背景图还没读到时退回原来的纯色底。
   let frameNode = node;
   let hasBackdrop = false;
+  // bare + cover:背景按整屏(含安全边距)铺满,原型里背景是通屏的,两侧不留黑边
+  const clipW = options.bare && options.coverW ? Math.max(width, options.coverW) : width - 10;
+  const clipH = options.bare && options.coverH ? Math.max(height, options.coverH) : height - 10;
   if (host.addSprite) {
-    const clip = host.addChildPlainNode(node, 'PhoneFrameBackdrop', 0, 0, width - 10, height - 10);
-    const coverW = Math.max(width, height * PHONE_DIALOG_BACKDROP_ASPECT);
+    const clip = host.addChildPlainNode(node, 'PhoneFrameBackdrop', 0, 0, clipW, clipH);
+    const coverW = Math.max(clipW, clipH * PHONE_DIALOG_BACKDROP_ASPECT);
     const art = host.addSprite('Art', PHONE_DIALOG_BACKDROP_ASSET, 0, 0, coverW, coverW / PHONE_DIALOG_BACKDROP_ASPECT, clip);
     if (art) {
       clip.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
@@ -80,8 +83,14 @@ export function drawPhoneDialogFrame(
   const left = -width / 2;
   const top = height / 2;
   // bare(2026-10-17 任务 / 邮件 / 商店按原型):背景压暗减轻、不画整屏金框,内容各自坐在细金框面板里
-  g.fillColor = hasBackdrop ? rgba(6, 4, 7, options.bare ? 112 : 186) : rgba(13, 10, 10, 250);
-  g.roundRect(left, -height / 2, width, height, radius);
+  if (options.bare && hasBackdrop) {
+    // 原型背景明亮(烛光 / 旗帜看得清),只轻压一层
+    g.fillColor = rgba(6, 4, 7, 72);
+    g.rect(-clipW / 2, -clipH / 2, clipW, clipH);
+  } else {
+    g.fillColor = hasBackdrop ? rgba(6, 4, 7, options.bare ? 112 : 186) : rgba(13, 10, 10, 250);
+    g.roundRect(left, -height / 2, width, height, radius);
+  }
   g.fill();
   const headerBottom = top - 6 - headerH;
   if (headerH > 0) {
@@ -110,6 +119,17 @@ export function drawPhoneDialogFrame(
     }
   }
   if (options.bare) {
+    if (headerH > 0) {
+      const gem = host.addChildPlainNode(frameNode, 'PhoneFrameGem_header', 0, headerBottom, 16, 9);
+      const gg = gem.addComponent(Graphics);
+      gg.fillColor = rgba(236, 196, 118, 250);
+      gg.moveTo(0, 4.5);
+      gg.lineTo(8, 0);
+      gg.lineTo(0, -4.5);
+      gg.lineTo(-8, 0);
+      gg.close();
+      gg.fill();
+    }
     return;
   }
   g.strokeColor = rgba(214, 168, 92, 235);

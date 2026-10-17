@@ -59,14 +59,16 @@ export const BAG_AI_OP_ICON_USE_ASSET = 'ui/common/ai/ic_use/spriteFrame';
 export const BAG_AI_OP_ICON_FORGE_ASSET = 'ui/common/ai/ic_forge/spriteFrame';
 export const BAG_AI_OP_ICON_SHARE_ASSET = 'ui/common/ai/ic_share/spriteFrame';
 export const BAG_AI_OP_ICON_GOLD_ASSET = 'ui/bag/ai/icon_gold/spriteFrame';
+// 2026-10-17 按原型重出的提亮版分类图标(ui/bag/ref,同款造型、金色高光更亮);门票单独一枚。
 export const BAG_AI_SIDEBAR_ICON_ASSETS: Record<string, string> = {
-  ALL: 'ui/common/ai/bag_ic_all/spriteFrame',
-  GACHA_TICKET: 'ui/common/ai/bag_ic_item/spriteFrame',
-  HERO_FRAGMENT: 'ui/common/ai/bag_ic_shard/spriteFrame',
-  CURRENCY_BOX: 'ui/common/ai/bag_ic_misc/spriteFrame',
-  MATERIAL: 'ui/common/ai/bag_ic_material/spriteFrame',
-  EQUIPMENT: 'ui/common/ai/bag_ic_equip/spriteFrame',
-  CONSUMABLE: 'ui/common/ai/bag_ic_consume/spriteFrame',
+  ALL: 'ui/bag/ref/rail_all/spriteFrame',
+  GACHA_TICKET: 'ui/bag/ref/rail_gacha_ticket/spriteFrame',
+  HERO_FRAGMENT: 'ui/bag/ref/rail_hero_fragment/spriteFrame',
+  CURRENCY_BOX: 'ui/bag/ref/rail_currency_box/spriteFrame',
+  MATERIAL: 'ui/bag/ref/rail_material/spriteFrame',
+  EQUIPMENT: 'ui/bag/ref/rail_equipment/spriteFrame',
+  CONSUMABLE: 'ui/bag/ref/rail_consumable/spriteFrame',
+  TICKET: 'ui/bag/ref/rail_ticket/spriteFrame',
 };
 
 // C 组物品图标(ui/bag/ai):itemCode 精确映射优先,再按类型/稀有度规则,最后回退旧水晶图。
@@ -201,11 +203,12 @@ function bagItemTypeIconAsset(itemType: string): string {
 
 // 格框金属线配色:中性哑光金属混入稀有度色(保留品质辨识但不花哨,参考图1的干净线框)。
 function bagRarityFrameBandColor(rarity: string): { r: number; g: number; b: number } {
+  // 2026-10-17 按原型:格框以古金为主、只带一点稀有度色(原来一半稀有度色,蓝紫框太跳)
   const tint = bagRarityGlowColor(rarity);
   return {
-    r: Math.round(tint.r * 0.5 + 132 * 0.5),
-    g: Math.round(tint.g * 0.5 + 122 * 0.5),
-    b: Math.round(tint.b * 0.5 + 106 * 0.5),
+    r: Math.round(tint.r * 0.28 + 190 * 0.72),
+    g: Math.round(tint.g * 0.28 + 150 * 0.72),
+    b: Math.round(tint.b * 0.28 + 86 * 0.72),
   };
 }
 
@@ -307,13 +310,16 @@ export class LobbyBagPanelRenderer {
       18 * scale,
     );
     // 实景背景垫底 + 轻压暗(2026-10-17 界面统一:换无棋盘格的哥特大厅图,等比 cover,不再拉伸变形)。
-    const bgW = Math.max(panelWidth, panelHeight * REF_HALL_BG.ratio);
+    // 按整屏(含安全边距)铺满,原型通屏不留黑边;压暗减轻到能看清烛光 / 旗帜
+    const coverW = Math.max(panelWidth, layout.width + Math.abs(centerX) * 2);
+    const coverH = Math.max(panelHeight, layout.height + Math.abs(centerY) * 2);
+    const bgW = Math.max(coverW, coverH * REF_HALL_BG.ratio);
     this.host.addSprite('LobbyBagSceneBackdrop', REF_HALL_BG.path, 0, 0, bgW, bgW / REF_HALL_BG.ratio, panel)
       ?? this.host.addSprite('LobbyBagSceneBackdrop', 'ui/battle/ai/battle_bg_cathedral/spriteFrame', 0, 0, panelWidth, panelHeight, panel);
     const shade = this.host.addChildPlainNode(panel, 'LobbyBagSceneShade', 0, 0, panelWidth, panelHeight);
     const shadeGraphics = shade.addComponent(Graphics);
-    shadeGraphics.fillColor = rgba(4, 3, 6, 110);
-    shadeGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    shadeGraphics.fillColor = rgba(4, 3, 6, 84);
+    shadeGraphics.rect(-coverW / 2, -coverH / 2, coverW, coverH);
     shadeGraphics.fill();
     // 顶部装饰(横梁/副标题/chips)移除:左上标题+顶部货币展示+右上关闭。
     this.renderBagCurrencyBar(panel, panelWidth, panelHeight, scale);
@@ -487,12 +493,13 @@ export class LobbyBagPanelRenderer {
         rowGraphics.stroke();
       }
       // 图标 + 名称 + 右对齐计数。
-      const iconSize = Math.min(40 * scale, rowH - 10 * scale);
+      // 原型的分类图标大而亮(约行高 80%)
+      const iconSize = Math.min(52 * scale, rowH - 6 * scale);
       this.host.addSprite(`LobbyBagGroupIcon_${index}`, bagSidebarIconAsset(row.key), -rowWidth / 2 + 16 * scale + iconSize / 2, 0, iconSize, iconSize, rowNode);
-      const label = this.host.addChildLabel(rowNode, `LobbyBagGroupLabel_${index}`, row.label, -rowWidth / 2 + 28 * scale + iconSize, 0, 21 * scale, selected ? rgba(255, 230, 172) : rgba(222, 202, 160), new Size(rowWidth - iconSize - 100 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      const label = this.host.addChildLabel(rowNode, `LobbyBagGroupLabel_${index}`, row.label, -rowWidth / 2 + 28 * scale + iconSize, 0, 21 * scale, selected ? rgba(255, 230, 172) : rgba(235, 222, 196), new Size(rowWidth - iconSize - 100 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, selected);
-      const countLabel = this.host.addChildLabel(rowNode, `LobbyBagGroupCount_${index}`, formatCompact(row.count), rowWidth / 2 - 20 * scale, 0, 18 * scale, selected ? rgba(252, 222, 150) : rgba(196, 174, 130), new Size(64 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
+      const countLabel = this.host.addChildLabel(rowNode, `LobbyBagGroupCount_${index}`, formatCompact(row.count), rowWidth / 2 - 20 * scale, 0, 18 * scale, selected ? rgba(252, 222, 150) : rgba(218, 205, 178), new Size(64 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
       countLabel.overflow = Label.Overflow.SHRINK;
       rowNode.addComponent(Button);
       this.host.applyImageButtonFeedback(rowNode, 1.02, 0.985);
@@ -518,8 +525,14 @@ export class LobbyBagPanelRenderer {
 
     // 方形格阵:稀有度边框 + 物品图标 + 右下数量;左右让开细金框与滚动条。
     const gap = 10 * scale;
-    const cellAreaWidth = width - 64 * scale;
-    const cellSize = Math.min(92 * scale, Math.max(72 * scale, cellAreaWidth / 8 - gap));
+    const cellAreaWidth = width - (isPhoneDesign() ? 96 : 64) * scale;
+    let cellSize = Math.min(92 * scale, Math.max(72 * scale, cellAreaWidth / 8 - gap));
+    if (isPhoneDesign()) {
+      // 手机按原型一屏正好 9 列 × 4 行(不露半行):宽、高两头取小
+      // 视口(gridTop + 8 → 底部说明上沿)再扣上下选中光环余量 8 + 8
+      const availH = panelInfo.bodyTop - 22 * scale - (-height / 2 + height * 0.155 + 14 * scale);
+      cellSize = Math.min((cellAreaWidth - 8 * gap) / 9, (availH - 3 * gap) / 4);
+    }
     const columns = Math.max(1, Math.floor((cellAreaWidth + gap) / (cellSize + gap)));
     const gridTop = panelInfo.bodyTop - 14 * scale;
     const footerReserve = height * 0.155;
@@ -529,7 +542,7 @@ export class LobbyBagPanelRenderer {
     // (触屏拖动 + 鼠标滚轮,电脑/手机通用),原来只画首屏几行、其余只给「已显示 N/M 件」提示。
     // 视口上下各留选中光环外扩余量;下沿让开板内说明文字。重绘(点格子开详情等)按分类记住滚动位置。
     const ringPad = 8 * scale;
-    const viewportBottom = -height / 2 + footerReserve + 14 * scale;
+    let viewportBottom = -height / 2 + footerReserve + 14 * scale;
     const viewportWidth = innerWidth + ringPad * 2;
     const shownItems = items.slice(0, BAG_GRID_RENDER_CAP);
     const hiddenCount = items.length - shownItems.length;
@@ -538,6 +551,10 @@ export class LobbyBagPanelRenderer {
     const neededHeight = ringPad * 2 + rows * cellSize + Math.max(0, rows - 1) * gap + hintHeight;
     // 视口上沿贴标题带下沿(容量签在带内,滚动的格子不会从签底下露出来)。
     const viewportTop = gridTop + ringPad;
+    if (isPhoneDesign()) {
+      // 原型:一屏正好 4 整行(不露半截格子),下沿就停在第 4 行下
+      viewportBottom = Math.max(viewportBottom, viewportTop - (4 * cellSize + 3 * gap + ringPad * 2));
+    }
     const viewportHeight = Math.max(cellSize + ringPad * 2, viewportTop - viewportBottom);
     const contentHeight = Math.max(viewportHeight, neededHeight);
     const viewport = this.host.addChildPlainNode(grid, 'LobbyBagItemGridScroll', 0, (viewportTop + viewportBottom) / 2, viewportWidth, viewportHeight);
@@ -561,7 +578,7 @@ export class LobbyBagPanelRenderer {
       this.renderItemCard(content, item, index, item.itemCode === selectedItem.itemCode, startX + column * (cellSize + gap), startY - row * (cellSize + gap), cellSize, cellSize, scale);
     });
     if (hiddenCount > 0) {
-      const more = this.host.addChildLabel(content, 'LobbyBagMoreHint', `已显示 ${shownItems.length}/${items.length} 件 · 用左侧分类筛选查看其余`, 0, -contentHeight / 2 + ringPad + hintHeight / 2, 17 * scale, rgba(186, 168, 132), new Size(viewportWidth - 24 * scale, 24 * scale));
+      const more = this.host.addChildLabel(content, 'LobbyBagMoreHint', `已显示 ${shownItems.length}/${items.length} 件 · 用左侧分类筛选查看其余`, 0, -contentHeight / 2 + ringPad + hintHeight / 2, 17 * scale, rgba(212, 201, 179), new Size(viewportWidth - 24 * scale, 24 * scale));
       more.overflow = Label.Overflow.SHRINK;
     }
 
@@ -603,13 +620,13 @@ export class LobbyBagPanelRenderer {
     }
 
     if (items.length === 0) {
-      const empty = this.host.addChildLabel(grid, 'LobbyBagGridEmptyHint', '该分类暂无道具', 0, 0, 19 * scale, rgba(180, 160, 122), new Size(width - 40 * scale, 26 * scale));
+      const empty = this.host.addChildLabel(grid, 'LobbyBagGridEmptyHint', '该分类暂无道具', 0, 0, 19 * scale, rgba(208, 196, 173), new Size(width - 40 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
       this.applyOutline(empty, scale, false);
     }
 
     // 底部说明与刷新移入板内(不遮下边框)。
-    const note = this.host.addChildLabel(grid, 'LobbyBagBoundaryNote', '点击道具查看详情、获取途径,可使用的道具可直接使用或合成。', 0, -height / 2 + height * 0.155, 17 * scale, rgba(214, 194, 152), new Size(width - width * 0.14, 24 * scale));
+    const note = this.host.addChildLabel(grid, 'LobbyBagBoundaryNote', '点击道具查看详情、获取途径,可使用的道具可直接使用或合成。', 0, -height / 2 + height * 0.155, 17 * scale, rgba(230, 217, 191), new Size(width - width * 0.14, 24 * scale));
     note.overflow = Label.Overflow.SHRINK;
     this.applyOutline(note, scale, false);
     mountRefButton(this.host, grid, 'LobbyBagReloadButton', state.loading ? '读取中' : '刷新', 0, -height / 2 + height * 0.085, 176 * scale, 50 * scale, scale, state.loading ? 'disabled' : 'secondary',
@@ -687,8 +704,10 @@ export class LobbyBagPanelRenderer {
       highlightGraphics.roundRect(-size / 2 - 2 * scale, -size / 2 - 2 * scale, size + 4 * scale, size + 4 * scale, 7 * scale);
       highlightGraphics.stroke();
     }
-    const count = this.host.addChildLabel(card, 'LobbyBagItemCount', formatCompact(safeNumber(item.itemCount)), size / 2 - 8 * scale, -size / 2 + 12 * scale, 16 * scale, rgba(240, 218, 156), new Size(size - 14 * scale, 18 * scale), HorizontalTextAlignment.RIGHT);
+    // 数量:原型字更大更白(2026-10-17 用户「字体看着也有些暗」)
+    const count = this.host.addChildLabel(card, 'LobbyBagItemCount', formatCompact(safeNumber(item.itemCount)), size / 2 - 7 * scale, -size / 2 + 13 * scale, 18 * scale, rgba(252, 240, 212), new Size(size - 12 * scale, 22 * scale), HorizontalTextAlignment.RIGHT);
     count.overflow = Label.Overflow.SHRINK;
+    count.lineHeight = count.fontSize;
     this.applyOutline(count, scale, true);
   }
 
@@ -782,7 +801,7 @@ export class LobbyBagPanelRenderer {
 
     // 拥有数量行(参考图):左标签右数值。
     const ownedY = height / 2 - height * 0.348;
-    const ownedLabel = this.host.addChildLabel(detail, 'LobbyBagDetailOwnedLabel', '拥有数量', contentLeft, ownedY, 19 * scale, rgba(224, 200, 150), new Size(contentWidth * 0.5, 22 * scale), HorizontalTextAlignment.LEFT);
+    const ownedLabel = this.host.addChildLabel(detail, 'LobbyBagDetailOwnedLabel', '拥有数量', contentLeft, ownedY, 19 * scale, rgba(236, 221, 190), new Size(contentWidth * 0.5, 22 * scale), HorizontalTextAlignment.LEFT);
     ownedLabel.overflow = Label.Overflow.SHRINK;
     const ownedValue = this.host.addChildLabel(detail, 'LobbyBagDetailOwnedValue', formatCompact(safeNumber(item.itemCount)), contentRight - contentWidth * 0.25, ownedY, 19 * scale, rgba(255, 232, 168), new Size(contentWidth * 0.5, 22 * scale), HorizontalTextAlignment.RIGHT);
     ownedValue.overflow = Label.Overflow.SHRINK;
@@ -794,9 +813,9 @@ export class LobbyBagPanelRenderer {
     // 用途整行(2026-07-24 接配置表 use_desc;老数据缺失回退效果类型码):长文案整行展示不再挤两列格。
     const rowStep = height * 0.044;
     const useRowY = height / 2 - height * 0.39;
-    const useTitle = this.host.addChildLabel(detail, 'LobbyBagDetailUseTitle', '用途', contentLeft, useRowY, 19 * scale, rgba(224, 200, 150), new Size(contentWidth * 0.18, 22 * scale), HorizontalTextAlignment.LEFT);
+    const useTitle = this.host.addChildLabel(detail, 'LobbyBagDetailUseTitle', '用途', contentLeft, useRowY, 19 * scale, rgba(236, 221, 190), new Size(contentWidth * 0.18, 22 * scale), HorizontalTextAlignment.LEFT);
     useTitle.overflow = Label.Overflow.SHRINK;
-    const useValue = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), contentLeft + contentWidth * 0.16, useRowY, 19 * scale, rgba(198, 180, 142), new Size(contentWidth * 0.82, 20 * scale), HorizontalTextAlignment.LEFT);
+    const useValue = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), contentLeft + contentWidth * 0.16, useRowY, 19 * scale, rgba(220, 208, 185), new Size(contentWidth * 0.82, 20 * scale), HorizontalTextAlignment.LEFT);
     useValue.overflow = Label.Overflow.SHRINK;
     separatorGraphics.moveTo(contentLeft, useRowY - rowStep / 2);
     separatorGraphics.lineTo(contentRight, useRowY - rowStep / 2);
@@ -814,9 +833,9 @@ export class LobbyBagPanelRenderer {
         }
         const cellX = colIndex === 0 ? contentLeft : contentLeft + contentWidth * 0.54;
         const cellY = rowsTopY - rowIndex * rowStep;
-        const titleLabel = this.host.addChildLabel(detail, `LobbyBagDetailRowTitle_${rowIndex}_${colIndex}`, cellTitle, cellX, cellY, 19 * scale, rgba(224, 200, 150), new Size(contentWidth * 0.18, 22 * scale), HorizontalTextAlignment.LEFT);
+        const titleLabel = this.host.addChildLabel(detail, `LobbyBagDetailRowTitle_${rowIndex}_${colIndex}`, cellTitle, cellX, cellY, 19 * scale, rgba(236, 221, 190), new Size(contentWidth * 0.18, 22 * scale), HorizontalTextAlignment.LEFT);
         titleLabel.overflow = Label.Overflow.SHRINK;
-        const valueLabel = this.host.addChildLabel(detail, `LobbyBagDetailRowValue_${rowIndex}_${colIndex}`, cellValue, cellX + contentWidth * 0.16, cellY, 19 * scale, rgba(198, 180, 142), new Size(contentWidth * (colIndex === 0 ? 0.36 : 0.3), 18 * scale), HorizontalTextAlignment.LEFT);
+        const valueLabel = this.host.addChildLabel(detail, `LobbyBagDetailRowValue_${rowIndex}_${colIndex}`, cellValue, cellX + contentWidth * 0.16, cellY, 19 * scale, rgba(220, 208, 185), new Size(contentWidth * (colIndex === 0 ? 0.36 : 0.3), 18 * scale), HorizontalTextAlignment.LEFT);
         valueLabel.overflow = Label.Overflow.SHRINK;
       });
       // 每段信息行之间加淡金分隔线。
@@ -827,7 +846,7 @@ export class LobbyBagPanelRenderer {
 
     // 获取途径:标题 + 最多 3 条途径行,长文案自动按字数拆条,字号与上方属性行一致。
     const sourceTitleY = rowsTopY - rowCells.length * rowStep - height * 0.024;
-    const sourceTitle = this.host.addChildLabel(detail, 'LobbyBagSourceRowLabel', '获取途径', contentLeft, sourceTitleY, 19 * scale, rgba(224, 200, 150), new Size(contentWidth * 0.6, 22 * scale), HorizontalTextAlignment.LEFT);
+    const sourceTitle = this.host.addChildLabel(detail, 'LobbyBagSourceRowLabel', '获取途径', contentLeft, sourceTitleY, 19 * scale, rgba(236, 221, 190), new Size(contentWidth * 0.6, 22 * scale), HorizontalTextAlignment.LEFT);
     sourceTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(sourceTitle, scale, false);
     const segments = this.resolveSourceSegments(item, state);
@@ -868,7 +887,7 @@ export class LobbyBagPanelRenderer {
       rowGraphics.lineTo(chevronX + chevronHalf * 0.62, 0);
       rowGraphics.lineTo(chevronX - chevronHalf * 0.62, chevronHalf);
       rowGraphics.stroke();
-      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -sourceRowWidth / 2 + 18 * scale, 0, 19 * scale, rgba(216, 200, 164), new Size(sourceRowWidth - 72 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -sourceRowWidth / 2 + 18 * scale, 0, 19 * scale, rgba(231, 221, 199), new Size(sourceRowWidth - 72 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
       segLabel.overflow = Label.Overflow.SHRINK;
       platesBottom = rowY - sourceRowHeight / 2;
     });
@@ -1006,9 +1025,9 @@ export class LobbyBagPanelRenderer {
     const infoTop = iconY - iconSize / 2 - 22 * scale;
     infoRows.forEach(([rowTitle, rowValue, strong], index) => {
       const rowY = infoTop - infoRowHeight / 2 - index * infoRowHeight;
-      const titleLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoTitle_${index}`, rowTitle, left, rowY, 20 * scale, rgba(224, 200, 150), new Size(leftWidth * 0.42, 28 * scale), HorizontalTextAlignment.LEFT);
+      const titleLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoTitle_${index}`, rowTitle, left, rowY, 20 * scale, rgba(236, 221, 190), new Size(leftWidth * 0.42, 28 * scale), HorizontalTextAlignment.LEFT);
       titleLabel.overflow = Label.Overflow.SHRINK;
-      const valueLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoValue_${index}`, rowValue, left + leftWidth, rowY, (strong ? 28 : 20) * scale, strong ? rgba(255, 232, 168) : rgba(206, 188, 150), new Size(leftWidth * 0.58, 34 * scale), HorizontalTextAlignment.RIGHT);
+      const valueLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoValue_${index}`, rowValue, left + leftWidth, rowY, (strong ? 28 : 20) * scale, strong ? rgba(255, 232, 168) : rgba(225, 213, 190), new Size(leftWidth * 0.58, 34 * scale), HorizontalTextAlignment.RIGHT);
       valueLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(valueLabel, scale, strong);
       lineGraphics.moveTo(left, rowY - infoRowHeight / 2);
@@ -1030,7 +1049,7 @@ export class LobbyBagPanelRenderer {
     useTitle.overflow = Label.Overflow.SHRINK;
     this.applyOutline(useTitle, scale, false);
     const useBoxHeight = 64 * scale;
-    const useValue = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), rightLeft, useTitleY - 22 * scale - useBoxHeight / 2, 20 * scale, rgba(206, 190, 154), new Size(rightWidth, useBoxHeight), HorizontalTextAlignment.LEFT);
+    const useValue = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), rightLeft, useTitleY - 22 * scale - useBoxHeight / 2, 20 * scale, rgba(225, 215, 192), new Size(rightWidth, useBoxHeight), HorizontalTextAlignment.LEFT);
     useValue.enableWrapText = true;
     useValue.overflow = Label.Overflow.SHRINK;
     const useLineY = useTitleY - 22 * scale - useBoxHeight - 10 * scale;
@@ -1069,7 +1088,7 @@ export class LobbyBagPanelRenderer {
       rowGraphics.lineWidth = Math.max(1.5, 1.5 * scale);
       rowGraphics.rect(-rightWidth / 2, -sourceRowHeight / 2, rightWidth, sourceRowHeight);
       rowGraphics.stroke();
-      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -rightWidth / 2 + 20 * scale, 0, 20 * scale, rgba(216, 200, 164), new Size(rightWidth - 40 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -rightWidth / 2 + 20 * scale, 0, 20 * scale, rgba(231, 221, 199), new Size(rightWidth - 40 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
       segLabel.overflow = Label.Overflow.SHRINK;
     });
 
@@ -1162,7 +1181,7 @@ export class LobbyBagPanelRenderer {
       lineGraphics.moveTo(-textWidth / 2, rowY + rowHeight / 2);
       lineGraphics.lineTo(textWidth / 2, rowY + rowHeight / 2);
       lineGraphics.stroke();
-      const titleLabel = this.host.addChildLabel(card, `LobbyBagShowcaseRowTitle_${index}`, rowTitle, -textWidth / 2, rowY, 20 * scale, rgba(224, 200, 150), new Size(textWidth * 0.5, 28 * scale), HorizontalTextAlignment.LEFT);
+      const titleLabel = this.host.addChildLabel(card, `LobbyBagShowcaseRowTitle_${index}`, rowTitle, -textWidth / 2, rowY, 20 * scale, rgba(236, 221, 190), new Size(textWidth * 0.5, 28 * scale), HorizontalTextAlignment.LEFT);
       titleLabel.overflow = Label.Overflow.SHRINK;
       const valueLabel = this.host.addChildLabel(card, `LobbyBagShowcaseRowValue_${index}`, rowValue, textWidth / 2, rowY, 20 * scale, rgba(255, 232, 168), new Size(textWidth * 0.5, 28 * scale), HorizontalTextAlignment.RIGHT);
       valueLabel.overflow = Label.Overflow.SHRINK;
@@ -1254,7 +1273,7 @@ export class LobbyBagPanelRenderer {
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     this.addDialogTitleDividers(dialog, 'LobbyBagComposeTitleDivider', h / 2 - 32 * scale, 2 * 24 * scale, w, scale);
-    const ruleRow = this.host.addChildLabel(dialog, 'LobbyBagComposeRule', `${safeText(item.itemName)} ×${rule.need} → ${rule.targetLabel} ×1`, 0, h / 2 - 66 * scale, 18 * scale, rgba(214, 196, 158), new Size(w - 52 * scale, 24 * scale));
+    const ruleRow = this.host.addChildLabel(dialog, 'LobbyBagComposeRule', `${safeText(item.itemName)} ×${rule.need} → ${rule.targetLabel} ×1`, 0, h / 2 - 66 * scale, 18 * scale, rgba(230, 218, 195), new Size(w - 52 * scale, 24 * scale));
     ruleRow.overflow = Label.Overflow.SHRINK;
 
     // 组数选择:[-] N 组 [+] [最大]
@@ -1270,7 +1289,7 @@ export class LobbyBagPanelRenderer {
       bg.strokeColor = enabled ? rgba(214, 176, 100, 225) : rgba(110, 96, 70, 150);
       bg.lineWidth = 1.5 * scale;
       bg.stroke();
-      const bl = this.host.addChildLabel(btn, 'Label', textValue, 0, 0, 20 * scale, enabled ? rgba(244, 222, 168) : rgba(150, 138, 116), new Size(bw - 8 * scale, bh - 8 * scale));
+      const bl = this.host.addChildLabel(btn, 'Label', textValue, 0, 0, 20 * scale, enabled ? rgba(244, 222, 168) : rgba(190, 182, 169), new Size(bw - 8 * scale, bh - 8 * scale));
       bl.overflow = Label.Overflow.SHRINK;
       if (enabled) {
         btn.addComponent(Button);
@@ -1289,9 +1308,9 @@ export class LobbyBagPanelRenderer {
     costRow.overflow = Label.Overflow.SHRINK;
 
     // 合成前/后对比。
-    const beforeRow = this.host.addChildLabel(dialog, 'LobbyBagComposeBefore', `合成前：${safeText(item.itemName)} ×${formatCompact(held)} · ${rule.targetLabel} ×${formatCompact(targetHeld)}`, -w / 2 + 30 * scale, h / 2 - 196 * scale, 17 * scale, rgba(196, 182, 152), new Size(w - 60 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const beforeRow = this.host.addChildLabel(dialog, 'LobbyBagComposeBefore', `合成前：${safeText(item.itemName)} ×${formatCompact(held)} · ${rule.targetLabel} ×${formatCompact(targetHeld)}`, -w / 2 + 30 * scale, h / 2 - 196 * scale, 17 * scale, rgba(218, 210, 191), new Size(w - 60 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     beforeRow.overflow = Label.Overflow.SHRINK;
-    const afterRow = this.host.addChildLabel(dialog, 'LobbyBagComposeAfter', `合成后：${safeText(item.itemName)} ×${formatCompact(held - rule.need * safeTimes)} · ${rule.targetLabel} ×${formatCompact(targetHeld + safeTimes)}`, -w / 2 + 30 * scale, h / 2 - 226 * scale, 17 * scale, rgba(170, 220, 150), new Size(w - 60 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+    const afterRow = this.host.addChildLabel(dialog, 'LobbyBagComposeAfter', `合成后：${safeText(item.itemName)} ×${formatCompact(held - rule.need * safeTimes)} · ${rule.targetLabel} ×${formatCompact(targetHeld + safeTimes)}`, -w / 2 + 30 * scale, h / 2 - 226 * scale, 17 * scale, rgba(202, 233, 190), new Size(w - 60 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     afterRow.overflow = Label.Overflow.SHRINK;
 
     const buttonW = 190 * scale;
@@ -1319,7 +1338,7 @@ export class LobbyBagPanelRenderer {
       xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
       xg.fill();
     }
-    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 20 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 20 * scale, rgba(228, 218, 200), new Size(buttonW - 46 * scale, buttonH * 0.7));
     cancelLabel.overflow = Label.Overflow.SHRINK;
   }
 
@@ -1370,7 +1389,7 @@ export class LobbyBagPanelRenderer {
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     this.addDialogTitleDividers(dialog, 'LobbyBagSellTitleDivider', h / 2 - 34 * scale, 2 * 26 * scale, w, scale);
-    const priceRow = this.host.addChildLabel(dialog, 'LobbyBagSellPrice', `${safeText(item.itemName)}  ·  单价 ${formatMoney(unitPrice)} 金币  ·  持有 ×${formatCompact(held)}`, 0, h / 2 - 72 * scale, 18 * scale, rgba(214, 196, 158), new Size(w - 52 * scale, 24 * scale));
+    const priceRow = this.host.addChildLabel(dialog, 'LobbyBagSellPrice', `${safeText(item.itemName)}  ·  单价 ${formatMoney(unitPrice)} 金币  ·  持有 ×${formatCompact(held)}`, 0, h / 2 - 72 * scale, 18 * scale, rgba(230, 218, 195), new Size(w - 52 * scale, 24 * scale));
     priceRow.overflow = Label.Overflow.SHRINK;
 
     // 数量选择:[−] N 个 [＋] [+10] [最大]
@@ -1386,7 +1405,7 @@ export class LobbyBagPanelRenderer {
       bg.strokeColor = on ? rgba(214, 176, 100, 225) : rgba(110, 96, 70, 150);
       bg.lineWidth = 1.5 * scale;
       bg.stroke();
-      const bl = this.host.addChildLabel(btn, 'Label', textValue, 0, 0, 20 * scale, on ? rgba(244, 222, 168) : rgba(150, 138, 116), new Size(bw - 8 * scale, bh - 8 * scale));
+      const bl = this.host.addChildLabel(btn, 'Label', textValue, 0, 0, 20 * scale, on ? rgba(244, 222, 168) : rgba(190, 182, 169), new Size(bw - 8 * scale, bh - 8 * scale));
       bl.overflow = Label.Overflow.SHRINK;
       if (on) {
         btn.addComponent(Button);
@@ -1405,7 +1424,7 @@ export class LobbyBagPanelRenderer {
     const gainRow = this.host.addChildLabel(dialog, 'LobbyBagSellGain', `出售 ×${formatCompact(count)}  →  获得 ${formatMoney(unitPrice * count)} 金币`, 0, h / 2 - 174 * scale, 22 * scale, rgba(250, 214, 120), new Size(w - 52 * scale, 30 * scale));
     gainRow.overflow = Label.Overflow.SHRINK;
     this.applyOutline(gainRow, scale, true);
-    const afterRow = this.host.addChildLabel(dialog, 'LobbyBagSellAfter', `出售后剩余 ×${formatCompact(held - count)}  ·  出售后不可撤销`, 0, h / 2 - 210 * scale, 16 * scale, rgba(190, 172, 140), new Size(w - 52 * scale, 22 * scale));
+    const afterRow = this.host.addChildLabel(dialog, 'LobbyBagSellAfter', `出售后剩余 ×${formatCompact(held - count)}  ·  出售后不可撤销`, 0, h / 2 - 210 * scale, 16 * scale, rgba(215, 204, 184), new Size(w - 52 * scale, 22 * scale));
     afterRow.overflow = Label.Overflow.SHRINK;
     if (sellState.error) {
       const err = this.host.addChildLabel(dialog, 'LobbyBagSellError', sellState.error, 0, h / 2 - 240 * scale, 16 * scale, rgba(255, 128, 110), new Size(w - 52 * scale, 22 * scale));
@@ -1438,7 +1457,7 @@ export class LobbyBagPanelRenderer {
       xg.roundRect(-buttonW / 2, -buttonH / 2, buttonW, buttonH, 9 * scale);
       xg.fill();
     }
-    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 22 * scale, rgba(212, 196, 166), new Size(buttonW - 46 * scale, buttonH * 0.7));
+    const cancelLabel = this.host.addChildLabel(cancel, 'Label', '取消', 0, 1 * scale, 22 * scale, rgba(228, 218, 200), new Size(buttonW - 46 * scale, buttonH * 0.7));
     cancelLabel.overflow = Label.Overflow.SHRINK;
     if (enabled) {
       cancel.addComponent(Button);
@@ -1517,7 +1536,7 @@ export class LobbyBagPanelRenderer {
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
 
-    const cost = this.host.addChildLabel(dialog, 'LobbyBagComposeResultCost', `消耗：${this.bagComposeItemLabel(result.sourceCode)} ×${formatCompact(result.usedCount)}`, 0, h / 2 - 226 * scale, 17 * scale, rgba(196, 182, 152), new Size(w * 0.82, 24 * scale));
+    const cost = this.host.addChildLabel(dialog, 'LobbyBagComposeResultCost', `消耗：${this.bagComposeItemLabel(result.sourceCode)} ×${formatCompact(result.usedCount)}`, 0, h / 2 - 226 * scale, 17 * scale, rgba(218, 210, 191), new Size(w * 0.82, 24 * scale));
     cost.overflow = Label.Overflow.SHRINK;
 
     const bag = this.host.currentLobbyBagState();
@@ -1594,7 +1613,7 @@ export class LobbyBagPanelRenderer {
       this.host.applyImageButtonFeedback(button, 1.025, 0.97);
     }
     // 文字居中于板体净区(源图约 35%~92% 区段)。
-    const label = this.host.addChildLabel(button, `${name}Label`, text, art ? width * 0.135 : 0, 0, 20 * scale, enabled ? rgba(255, 240, 200) : rgba(147, 134, 111), new Size(art ? width * 0.56 : width - 14 * scale, height - 6 * scale));
+    const label = this.host.addChildLabel(button, `${name}Label`, text, art ? width * 0.135 : 0, 0, 20 * scale, enabled ? rgba(255, 240, 200) : rgba(188, 180, 166), new Size(art ? width * 0.56 : width - 14 * scale, height - 6 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
     return button;
@@ -1608,7 +1627,7 @@ export class LobbyBagPanelRenderer {
     graphics.fill();
     graphics.strokeColor = rgba(148, 110, 56, 124);
     graphics.stroke();
-    const label = this.host.addChildLabel(box, 'LobbyBagEmptyText', text, 0, 12 * scale, 20 * scale, rgba(213, 193, 151), new Size(width - 128 * scale, 48 * scale));
+    const label = this.host.addChildLabel(box, 'LobbyBagEmptyText', text, 0, 12 * scale, 20 * scale, rgba(229, 217, 191), new Size(width - 128 * scale, 48 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, false);
     // P1.5 深红宽按钮做空状态主操作:重新读取背包。

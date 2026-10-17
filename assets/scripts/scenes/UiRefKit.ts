@@ -41,7 +41,15 @@ export const REF_CLOSE_ASSET = 'ui/formation/ref/btn_close/spriteFrame';
  * 哥特大厅实景背景(2026-10-17 GPT 生成,1870×841,不透明):背包 / 任务 / 邮件 / 商店 / 弹层整窗背景共用。
  * 替换原血色大教堂图(battle_bg_cathedral 四周烘焙了一圈假透明棋盘格,铺满时边缘露出灰白方格)。只能等比 cover。
  */
-export const REF_HALL_BG = { path: 'ui/common/ref/hall_bg/spriteFrame', ratio: 1870 / 841 };
+// v2(同日):按原型重出的暖色版(烛台 / 红旗 / 铁链 / 湿地面金色倒影),旧冷色 hall_bg 已不用
+export const REF_HALL_BG = { path: 'ui/common/ref/hall_bg_v2/spriteFrame', ratio: 1870 / 841 };
+/**
+ * 2026-10-17 v2 按原型逐件 GPT 出(原图备份 素材原始备份/ui-unify-v2-20261017):
+ * 暗金矩形钮底(角饰 + 细金边)/ 古铜金实心钮 / 两端尖饰的说明长条;九宫格内边手工量(角饰 / 尖饰整块留在角里)。
+ */
+export const REF_PLATE_DARK: RefKitItem = { path: 'ui/common/ref/plate_dark/spriteFrame', w: 696, h: 150, inset: [70, 70, 40, 40] };
+export const REF_PLATE_BRONZE: RefKitItem = { path: 'ui/common/ref/plate_bronze/spriteFrame', w: 568, h: 150, inset: [30, 30, 30, 30] };
+export const REF_INFO_BANNER: RefKitItem = { path: 'ui/common/ref/info_banner/spriteFrame', w: 1112, h: 120, inset: [96, 96, 30, 30] };
 /** 金边暗行 / 选中亮金行(锻造列表行素材,水晶属性行、法术列表、终极技能弹窗共用)。 */
 export const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
 export const REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
@@ -113,6 +121,31 @@ export function mountRefHeaderBand(host: RefKitHost, parent: Node, name: string,
 /** 九宫格不变形缩放:缺图返回 null(调用方自行兜底)。k 不超过 1(素材不放大,只缩)。 */
 export function mountRefSliced(host: RefKitHost, parent: Node, name: string, item: RefKitItem, x: number, y: number, width: number, height: number, maxK = 1): Node | null {
   const k = Math.min(width / item.w, height / item.h, maxK);
+  const holder = host.addChildPlainNode(parent, name, x, y, width / k, height / k);
+  holder.setScale(k, k, 1);
+  const sprite = host.addSprite(`${name}Art`, item.path, 0, 0, width / k, height / k, holder);
+  if (!sprite || !sprite.spriteFrame) {
+    holder.destroy();
+    return null;
+  }
+  const sf = sprite.spriteFrame;
+  sf.insetLeft = item.inset[0];
+  sf.insetRight = item.inset[1];
+  sf.insetTop = item.inset[2];
+  sf.insetBottom = item.inset[3];
+  sprite.type = Sprite.Type.SLICED;
+  return holder;
+}
+
+/**
+ * 横条类九宫格(按钮底 / 说明长条):缩放系数按高度定(k = h / 素材高,≤ maxK),两端饰件横竖同比、不被拉长;
+ * 宽度不够放下两端时退回按宽度缩。缺图返回 null。
+ */
+export function mountRefPlate(host: RefKitHost, parent: Node, name: string, item: RefKitItem, x: number, y: number, width: number, height: number, maxK = 1): Node | null {
+  let k = Math.min(height / item.h, maxK);
+  if (width / k < item.inset[0] + item.inset[1] + 2) {
+    k = width / (item.inset[0] + item.inset[1] + 2);
+  }
   const holder = host.addChildPlainNode(parent, name, x, y, width / k, height / k);
   holder.setScale(k, k, 1);
   const sprite = host.addSprite(`${name}Art`, item.path, 0, 0, width / k, height / k, holder);
@@ -214,7 +247,45 @@ export function drawRefCheckbox(host: RefKitHost, parent: Node, name: string, x:
   return node;
 }
 
-export type RefButtonKind = 'primary' | 'secondary' | 'disabled';
+/** 原型的矩形钮(一键放入 / 一键全选 / 清空 / 镶嵌):dark = 暗金底,bronze = 古铜金实心;不可用时半透明、不接点击。 */
+export function mountRefPlateButton(
+  host: RefKitHost,
+  parent: Node,
+  name: string,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  u: number,
+  kind: 'dark' | 'bronze',
+  enabled: boolean,
+  onClick?: () => void,
+  options: { fontSize?: number } = {},
+): Node {
+  const button = host.addChildPlainNode(parent, name, x, y, width, height);
+  if (!mountRefPlate(host, button, 'Art', kind === 'bronze' ? REF_PLATE_BRONZE : REF_PLATE_DARK, 0, 0, width, height)) {
+    drawRefPanelFallback(button, width, height, u, kind === 'bronze' ? rgba(112, 74, 32, 240) : rgba(18, 15, 14, 230));
+  }
+  if (!enabled) {
+    (button.getComponent(UIOpacity) ?? button.addComponent(UIOpacity)).opacity = 140;
+  }
+  const label = host.addChildLabel(button, 'Label', text, 0, 0, options.fontSize ?? 20 * u, !enabled ? rgba(218, 210, 194) : kind === 'bronze' ? rgba(255, 242, 214) : rgba(246, 230, 196), new Size(width * 0.84, height * 0.7));
+  label.overflow = Label.Overflow.SHRINK;
+  label.isBold = kind === 'bronze';
+  label.enableOutline = true;
+  label.outlineColor = rgba(0, 0, 0, 226);
+  label.outlineWidth = Math.max(1, 1.4 * u);
+  if (enabled && onClick) {
+    button.addComponent(Button);
+    button.on(Button.EventType.CLICK, onClick);
+    host.applyImageButtonFeedback(button, 1.03, 0.97);
+  }
+  return button;
+}
+
+/** primaryDisabled:红金主钮底压暗(原型里不可用的「合成 / 分解」仍是红钮,只是发暗)。 */
+export type RefButtonKind = 'primary' | 'secondary' | 'disabled' | 'primaryDisabled';
 
 /** 原型套件按钮:红金主钮 / 暗金副钮 / 灰态(副钮底 + 半透明);文字框收到中间 70%(两端尖饰);可带左侧图标。 */
 export function mountRefButton(
@@ -232,12 +303,20 @@ export function mountRefButton(
   options: { fontSize?: number; iconPath?: string; iconSize?: number } = {},
 ): Node {
   const button = host.addChildPlainNode(parent, name, x, y, width, height);
-  const item = kind === 'primary' ? REF_KIT.btnPrimary : REF_KIT.btnSecondary;
+  const red = kind === 'primary' || kind === 'primaryDisabled';
+  const item = red ? REF_KIT.btnPrimary : REF_KIT.btnSecondary;
   if (!mountRefSliced(host, button, 'Art', item, 0, 0, width, height)) {
-    drawRefPanelFallback(button, width, height, u, kind === 'primary' ? rgba(120, 22, 18, 238) : rgba(18, 15, 14, 230));
+    drawRefPanelFallback(button, width, height, u, red ? rgba(120, 22, 18, 238) : rgba(18, 15, 14, 230));
   }
   if (kind === 'disabled') {
     (button.getComponent(UIOpacity) ?? button.addComponent(UIOpacity)).opacity = 150;
+  } else if (kind === 'primaryDisabled') {
+    button.getChildByName('Art')?.walk((child) => {
+      const sprite = child.getComponent(Sprite);
+      if (sprite) {
+        sprite.color = rgba(150, 120, 116, 255);
+      }
+    });
   }
   const fontSize = options.fontSize ?? 26 * u;
   let labelX = 0;
@@ -248,7 +327,9 @@ export function mountRefButton(
       labelX = width * 0.07;
     }
   }
-  const label = host.addChildLabel(button, 'Label', text, labelX, 0, fontSize, kind === 'disabled' ? rgba(190, 172, 140) : rgba(255, 238, 206), new Size(width * (labelX ? 0.5 : 0.7), height * 0.6));
+  const label = host.addChildLabel(button, 'Label', text, labelX, 0, fontSize, kind === 'disabled' || kind === 'primaryDisabled' ? rgba(223, 212, 196) : rgba(255, 238, 206), new Size(width * (labelX ? 0.5 : 0.7), height * 0.72));
+  // 单行钮字:行高 = 字号(默认字号 + 8 会超出文字框,被 SHRINK 整体压小)
+  label.lineHeight = label.fontSize;
   label.overflow = Label.Overflow.SHRINK;
   label.isBold = kind === 'primary';
   label.enableOutline = true;

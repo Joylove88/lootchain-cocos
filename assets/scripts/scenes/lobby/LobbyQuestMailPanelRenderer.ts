@@ -17,7 +17,7 @@ import {
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
-import { mountRefHeaderBand, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_KIT, refCardFrameK } from '../UiRefKit';
+import { mountRefHeaderBand, mountRefPlate, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW_SELECTED, REF_SECTION_EMBLEM, refCardFrameK } from '../UiRefKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO, PlayerQuestSummaryVO, PlayerQuestVO, QuestRewardItemVO } from '../../types/QuestTypes';
@@ -42,9 +42,10 @@ const QUEST_UI_ASSETS = {
   titleDividerRight: 'ui/common/ai/title_divider_right/spriteFrame',
   /** 手机全屏行底 795×127(两端尖饰、中段平直;与资料页同款用法:横向九宫格 + 整体等比缩到行高)。 */
   rowBg: 'ui/profile/ai/row_bg/spriteFrame',
-  /** 图标槽 200×193(.meta 已设九宫格 46,近正方形等比显示)。 */
-  iconSlot: 'ui/common/ai/bag_slot/spriteFrame',
-  mailIcon: 'ui/lobby/ai/lhud_btn_mail/spriteFrame',
+  /** 图标槽:金边方框(锻造参考套件 slot_frame 192×192,2026-10-17 按原型换掉暗色 bag_slot)。 */
+  iconSlot: 'ui/forge/ref/slot_frame/spriteFrame',
+  /** 金环信封徽章(2026-10-17 按原型逐件出,行首图标与空白处水印共用)。 */
+  mailIcon: 'ui/common/ref/mail_emblem/spriteFrame',
 };
 /**
  * 行底九宫格 inset(bt2_quest_refine:按裁边后的 rect 780×115 计,原图 x 7..787)。
@@ -273,7 +274,7 @@ export class LobbyQuestMailPanelRenderer {
 
     // 底部标语+饰线(2026-09-10 用户反馈:上移 20px,饰线拉长)。
     const footerY = phone ? -panelHeight / 2 + 26 : -panelHeight * 0.415 + 20 * scale;
-    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 14 * scale, rgba(190, 174, 144, 215), new Size(panelWidth * 0.5, phone ? 26 : 20 * scale));
+    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 14 * scale, rgba(215, 205, 186, 240), new Size(panelWidth * 0.5, phone ? 26 : 20 * scale));
     footer.overflow = Label.Overflow.SHRINK;
     const footDivW = 132 * scale;
     const footDivGap = 122 * scale + footDivW / 2;
@@ -347,7 +348,7 @@ export class LobbyQuestMailPanelRenderer {
     group.addComponent(BlockInputEvents);
     this.lastQuestGroup = group;
     const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
-    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true });
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true, coverW: layout.width + Math.abs(centerX) * 2, coverH: layout.height + Math.abs(centerY) * 2 });
     this.addPhoneHeader(panel, '任务', panelWidth, panelHeight, () => this.host.closeLobbyQuestPanel());
 
     const outerW = panelWidth - PHONE_DIALOG_CONTENT_PAD * 2;
@@ -381,7 +382,7 @@ export class LobbyQuestMailPanelRenderer {
       const done = quests.filter((quest) => quest.claimed || quest.claimable).length;
       const ready = quests.filter((quest) => quest.claimable && !quest.claimed).length;
       const rightX = outerW / 2 - 20;
-      const doneLabel = this.host.addChildLabel(panel, 'QuestDoneCount', `${state.tab === 'DAILY' ? '今日完成' : '已达成'} ${done}/${quests.length}`, rightX, tabY - 2, 20, rgba(206, 190, 154, 240), new Size(190, 30), HorizontalTextAlignment.RIGHT);
+      const doneLabel = this.host.addChildLabel(panel, 'QuestDoneCount', `${state.tab === 'DAILY' ? '今日完成' : '已达成'} ${done}/${quests.length}`, rightX, tabY - 2, 20, rgba(225, 215, 192, 240), new Size(190, 30), HorizontalTextAlignment.RIGHT);
       doneLabel.overflow = Label.Overflow.SHRINK;
       if (ready > 0) {
         // 紧跟在完成度文字左侧(按字数估宽:汉字 20、数字 / 符号约 11)
@@ -539,7 +540,7 @@ export class LobbyQuestMailPanelRenderer {
   }
 
   private addPhoneFooterMotto(panel: Node, footerY: number, panelWidth: number): void {
-    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 20, rgba(214, 196, 160, 235), new Size(Math.min(420, panelWidth * 0.4), 28));
+    const footer = this.host.addChildLabel(panel, 'FooterMotto', '于黑暗中前行 · 以意志铸就荣耀', 0, footerY, 20, rgba(230, 218, 196, 240), new Size(Math.min(420, panelWidth * 0.4), 28));
     footer.overflow = Label.Overflow.SHRINK;
     // 大厅背景地面中线有高光倒影,描边防止字被冲淡(2026-10-17)
     this.outline(footer, 1, false);
@@ -682,7 +683,7 @@ export class LobbyQuestMailPanelRenderer {
   /** 图标槽(bag_slot 近正方形等比)+ 居中图标;缺槽图退暗底圆角。 */
   private mountIconSlot(parent: Node, name: string, x: number, y: number, size: number, iconPath: string | null, iconRatio: number, iconH: number): void {
     const slot = this.host.addChildPlainNode(parent, name, x, y, size, size);
-    if (!this.host.addSprite('Slot', QUEST_UI_ASSETS.iconSlot, 0, 0, size, size * (193 / 200), slot)) {
+    if (!this.host.addSprite('Slot', QUEST_UI_ASSETS.iconSlot, 0, 0, size, size, slot)) {
       const g = slot.addComponent(Graphics);
       g.fillColor = rgba(10, 9, 10, 230);
       g.roundRect(-size / 2, -size / 2, size, size, 8);
@@ -703,11 +704,11 @@ export class LobbyQuestMailPanelRenderer {
   private addRewardChip(parent: Node, name: string, item: QuestRewardItemVO, left: number, y: number, width: number, height: number, dim: boolean): void {
     const chip = this.host.addChildPlainNode(parent, name, left + width / 2, y, width, height);
     const g = chip.addComponent(Graphics);
-    g.fillColor = rgba(0, 0, 0, 120);
+    g.fillColor = rgba(6, 5, 6, 200);
     g.roundRect(-width / 2, -height / 2, width, height, 7);
     g.fill();
-    g.strokeColor = rgba(150, 116, 64, dim ? 90 : 150);
-    g.lineWidth = 1;
+    g.strokeColor = rgba(196, 156, 86, dim ? 130 : 210);
+    g.lineWidth = 1.4;
     g.roundRect(-width / 2, -height / 2, width, height, 7);
     g.stroke();
     const icon = resolveRewardIcon(item);
@@ -722,7 +723,7 @@ export class LobbyQuestMailPanelRenderer {
       }
     }
     const textLeft = icon ? iconCx + iconBox / 2 + 8 : -width / 2 + 12;
-    const label = this.host.addChildLabel(chip, 'Text', `${item.name}×${item.amount}`, textLeft, 0, 20, dim ? rgba(176, 162, 132, 230) : rgba(255, 226, 150, 250), new Size(width / 2 - 8 - textLeft, 28), HorizontalTextAlignment.LEFT);
+    const label = this.host.addChildLabel(chip, 'Text', `${item.name}×${item.amount}`, textLeft, 0, 20, dim ? rgba(206, 197, 179, 240) : rgba(255, 226, 150, 250), new Size(width / 2 - 8 - textLeft, 28), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
   }
 
@@ -751,10 +752,11 @@ export class LobbyQuestMailPanelRenderer {
 
     const textLeft = slotX + slotSize / 2 + 16;
     const textW = Math.max(120, barX - barW / 2 - 18 - textLeft);
-    const name = this.host.addChildLabel(row, 'Name', quest.questName, textLeft, height * 0.19, 23, quest.claimed ? rgba(190, 176, 142, 235) : rgba(248, 226, 166, 255), new Size(textW, 30), HorizontalTextAlignment.LEFT);
+    const name = this.host.addChildLabel(row, 'Name', quest.questName, textLeft, height * 0.19, 24, quest.claimed ? rgba(215, 206, 185, 240) : rgba(255, 232, 176, 255), new Size(textW, 32), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
+    name.isBold = true;
     this.outline(name, 1, true);
-    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', textLeft, -height * 0.2, 20, rgba(176, 162, 136, 225), new Size(textW, 28), HorizontalTextAlignment.LEFT);
+    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', textLeft, -height * 0.2, 20, rgba(206, 197, 181, 240), new Size(textW, 28), HorizontalTextAlignment.LEFT);
     desc.overflow = Label.Overflow.SHRINK;
 
     // 进度条 + 上方进度数字
@@ -778,7 +780,7 @@ export class LobbyQuestMailPanelRenderer {
     const btn = this.host.addChildPlainNode(row, claimable ? 'LobbyQuestClaimReady' : 'Claim', btnX, 0, btnW, btnH);
     this.mountClaimButtonArt(btn, btnW, btnH, !quest.claimed && claimable, quest.claimed);
     const btnText = quest.claimed ? '已领取' : claiming === quest.questCode ? '领取中…' : quest.claimable ? '领取' : '未完成';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 22, quest.claimed ? rgba(150, 138, 118) : claimable ? rgba(255, 236, 190) : rgba(170, 156, 130), new Size(btnW - 30, btnH - 8));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 22, quest.claimed ? rgba(202, 195, 181) : claimable ? rgba(255, 236, 190) : rgba(232, 218, 188), new Size(btnW * 0.66, btnH - 8));
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, 1, claimable);
     if (claimable) {
@@ -790,6 +792,18 @@ export class LobbyQuestMailPanelRenderer {
 
   /** 领取钮底图(红底金框 571×203 / 暗牌 393×142,按宽等比);缺图退手绘。 */
   private mountClaimButtonArt(btn: Node, btnW: number, btnH: number, active: boolean, claimed: boolean): void {
+    if (!active && mountRefPlate(this.host, btn, 'ArtRef', REF_INFO_BANNER, 0, 0, btnW, btnH)) {
+      // 2026-10-17 按原型:未完成 / 已领取 = 两端尖饰的暗底金边长条;已领取再压暗一档
+      if (claimed) {
+        btn.getChildByName('ArtRef')?.walk((child) => {
+          const sprite = child.getComponent(Sprite);
+          if (sprite) {
+            sprite.color = rgba(170, 160, 146, 255);
+          }
+        });
+      }
+      return;
+    }
     const artH = active ? btnW * (203 / 571) : btnW * (142 / 393);
     if (this.host.addSprite('Art', active ? QUEST_UI_ASSETS.btnClaim : QUEST_UI_ASSETS.btnDisabled, 0, 0, btnW, artH, btn)) {
       return;
@@ -835,7 +849,7 @@ export class LobbyQuestMailPanelRenderer {
     const name = this.host.addChildLabel(row, 'Name', quest.questName, textLeft, height / 2 - 22 * scale * fs, 19 * scale * fs, rgba(245, 222, 160, 250), new Size(width * 0.26, 26 * scale * fs), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
     this.outline(name, scale, true);
-    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', textLeft, -height / 2 + 18 * scale * fs, 15 * scale * fs, rgba(186, 172, 144, 225), new Size(width * 0.28, 21 * scale * fs), HorizontalTextAlignment.LEFT);
+    const desc = this.host.addChildLabel(row, 'Desc', quest.questDesc ?? '', textLeft, -height / 2 + 18 * scale * fs, 15 * scale * fs, rgba(212, 204, 186, 240), new Size(width * 0.28, 21 * scale * fs), HorizontalTextAlignment.LEFT);
     desc.overflow = Label.Overflow.SHRINK;
 
     // 进度条(素材金框+满格绿填充 FILLED 水平裁剪;缺图退手绘)。
@@ -846,7 +860,7 @@ export class LobbyQuestMailPanelRenderer {
     const barY = -8 * scale;
     const ratio = quest.targetCount > 0 ? Math.min(1, quest.progress / quest.targetCount) : 0;
     this.mountProgressBar(row, barX, barY, barW, ratio, quest.claimable || quest.claimed, false);
-    const progress = this.host.addChildLabel(row, 'Progress', `${quest.progress}/${quest.targetCount}`, barX, barY + barH / 2 + 13 * scale * fs, 15 * scale * fs, rgba(206, 192, 160, 235), new Size(barW + 30 * scale, phone ? 26 : 20 * scale));
+    const progress = this.host.addChildLabel(row, 'Progress', `${quest.progress}/${quest.targetCount}`, barX, barY + barH / 2 + 13 * scale * fs, 15 * scale * fs, rgba(225, 216, 196, 240), new Size(barW + 30 * scale, phone ? 26 : 20 * scale));
     progress.overflow = Label.Overflow.SHRINK;
 
     // 奖励区:最多两行 图标+文字(金币按量分大小堆;无图标纯文字)。
@@ -881,7 +895,7 @@ export class LobbyQuestMailPanelRenderer {
       bgB.stroke();
     }
     const btnText = quest.claimed ? '已领取' : claiming === quest.questCode ? '领取中…' : quest.claimable ? '领取' : '未完成';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 18 * scale * fs, quest.claimed ? rgba(150, 138, 118) : claimable ? rgba(255, 236, 190) : rgba(170, 156, 130), new Size(btnW - 12 * scale, btnH));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 18 * scale * fs, quest.claimed ? rgba(190, 182, 170) : claimable ? rgba(255, 236, 190) : rgba(202, 194, 178), new Size(btnW - 12 * scale, btnH));
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, scale, claimable);
     if (claimable) {
@@ -905,7 +919,7 @@ export class LobbyQuestMailPanelRenderer {
       g.roundRect(-width / 2, -height / 2, width, height, 8 * scale);
       g.stroke();
     }
-    const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 20 * scale, active ? rgba(255, 231, 166) : rgba(200, 182, 142), new Size(width - 24 * scale, 28 * scale));
+    const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 20 * scale, active ? rgba(255, 231, 166) : rgba(221, 210, 185), new Size(width - 24 * scale, 28 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, scale, active);
     btn.addComponent(Button);
@@ -915,10 +929,11 @@ export class LobbyQuestMailPanelRenderer {
 
   /** 素材化关闭钮(金圈X);缺图退回文字 ✕。 */
   private addAssetCloseButton(parent: Node, x: number, y: number, scale: number, onClose: () => void): void {
-    const size = 46 * scale;
+    // 2026-10-17 按原型放大 1.3 倍
+    const size = 46 * scale * 1.3;
     const btn = this.host.addChildPlainNode(parent, 'CloseBtn', x, y, size, size);
     if (!this.host.addSprite('Art', QUEST_UI_ASSETS.close, 0, 0, size * (155 / 161), size, btn)) {
-      const label = this.host.addChildLabel(btn, 'Text', '✕', 0, 0, 22 * scale, rgba(214, 190, 150, 240), new Size(size, size));
+      const label = this.host.addChildLabel(btn, 'Text', '✕', 0, 0, 22 * scale, rgba(230, 215, 190, 240), new Size(size, size));
       this.outline(label, scale, false);
     }
     btn.addComponent(Button);
@@ -1019,7 +1034,7 @@ export class LobbyQuestMailPanelRenderer {
     group.addComponent(BlockInputEvents);
     this.lastMailNodes = [dim, group];
     const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
-    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true });
+    drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true, coverW: layout.width + Math.abs(centerX) * 2, coverH: layout.height + Math.abs(centerY) * 2 });
     this.addPhoneHeader(panel, '邮件', panelWidth, panelHeight, () => this.host.closeLobbyMailPanel());
 
     const outerW = panelWidth - PHONE_DIALOG_CONTENT_PAD * 2;
@@ -1028,8 +1043,8 @@ export class LobbyQuestMailPanelRenderer {
     // 列表框(顶部暗红标题带 = 小结行:左封数 / 未读,右附件提示)→ 底部(一键领取 或 标语)
     const wellTop = headerBottom - 14;
     const bandH = 52;
-    const footerY = -panelHeight / 2 + (anyClaimable ? 48 : 30);
-    const listBottom = footerY + (anyClaimable ? 42 : 24);
+    const footerY = -panelHeight / 2 + 30;
+    const listBottom = footerY + 24;
     const wellH = wellTop - listBottom;
     const bandY = this.drawPhoneListWell(panel, 'MailListFrame', 0, listBottom + wellH / 2, outerW, wellH, bandH);
     const captionY = listBottom + wellH / 2 + bandY;
@@ -1055,37 +1070,37 @@ export class LobbyQuestMailPanelRenderer {
 
     if (state.mails.length > 0) {
       const unread = state.mails.filter((mail) => !mail.read).length;
-      const caption = this.host.addChildLabel(panel, 'MailCount', `共 ${state.mails.length} 封${unread > 0 ? ` · 未读 ${unread}` : ''}`, -outerW / 2 + 48, captionY, 22, rgba(255, 226, 160, 255), new Size(320, 30), HorizontalTextAlignment.LEFT);
+      // 标题带:✦ 徽记 + 封数 / 未读(左);✦ 附件提示 + 一键领取(右,没有可领时灰态,原型)
+      const emblemH = 28;
+      const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
+      const leftX = -outerW / 2 + 40;
+      this.host.addSprite('MailCountEmblem', REF_SECTION_EMBLEM.path, leftX + emblemW / 2, captionY, emblemW, emblemH, panel);
+      const caption = this.host.addChildLabel(panel, 'MailCount', `共 ${state.mails.length} 封${unread > 0 ? ` · 未读 ${unread}` : ''}`, leftX + emblemW + 10, captionY, 22, rgba(255, 226, 160, 255), new Size(320, 30), HorizontalTextAlignment.LEFT);
       caption.overflow = Label.Overflow.SHRINK;
       caption.isBold = true;
       this.outline(caption, 1, true);
-      const tip = this.host.addChildLabel(panel, 'MailTip', anyClaimable ? '有附件待领取' : '附件已全部领取', outerW / 2 - 48, captionY, 20, anyClaimable ? rgba(255, 214, 120, 255) : rgba(214, 196, 160, 235), new Size(320, 30), HorizontalTextAlignment.RIGHT);
-      tip.overflow = Label.Overflow.SHRINK;
-      this.outline(tip, 1, false);
-    }
-
-    if (anyClaimable) {
-      // 一键领取:素材红钮(571×203 等比)贴底居中
-      const btnW = 208;
-      const btnH = btnW * (203 / 571);
-      const btn = this.host.addChildPlainNode(panel, 'ClaimAll', 0, footerY, btnW, btnH);
-      this.mountClaimButtonArt(btn, btnW, btnH, true, false);
-      const label = this.host.addChildLabel(btn, 'Text', state.claiming === -1 ? '领取中…' : '一键领取', 0, 0, 24, rgba(255, 236, 190), new Size(btnW - 56, btnH - 16));
-      label.overflow = Label.Overflow.SHRINK;
-      this.outline(label, 1, true);
-      if (state.claiming === null) {
+      const btnW = 168;
+      const btnH = 42;
+      const btnX = outerW / 2 - 34 - btnW / 2;
+      const claimAll = anyClaimable && state.claiming === null;
+      const btn = this.host.addChildPlainNode(panel, 'ClaimAll', btnX, captionY, btnW, btnH);
+      this.mountClaimButtonArt(btn, btnW, btnH, anyClaimable, !anyClaimable);
+      const btnLabel = this.host.addChildLabel(btn, 'Text', state.claiming === -1 ? '领取中…' : '一键领取', 0, 0, 21, anyClaimable ? rgba(255, 236, 190) : rgba(206, 199, 185), new Size(btnW * 0.64, btnH - 8));
+      btnLabel.overflow = Label.Overflow.SHRINK;
+      this.outline(btnLabel, 1, anyClaimable);
+      if (claimAll) {
         btn.addComponent(Button);
         btn.on(Button.EventType.CLICK, () => this.host.claimAllLobbyMails(), this);
         this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
       }
-      // 钮两侧花饰(与标语同款),底部不空
-      const footDivW = 150;
-      const footDivGap = btnW / 2 + 36 + footDivW / 2;
-      this.host.addSprite('FooterDividerL', QUEST_UI_ASSETS.dividerLeft, -footDivGap, footerY, footDivW, footDivW * (71 / 224), panel);
-      this.host.addSprite('FooterDividerR', QUEST_UI_ASSETS.dividerRight, footDivGap, footerY, footDivW, footDivW * (71 / 224), panel);
-    } else {
-      this.addPhoneFooterMotto(panel, footerY, panelWidth);
+      const tipRight = btnX - btnW / 2 - 16;
+      const tip = this.host.addChildLabel(panel, 'MailTip', anyClaimable ? '有附件待领取' : '附件已全部领取', tipRight, captionY, 20, anyClaimable ? rgba(255, 214, 120, 255) : rgba(226, 210, 176, 240), new Size(260, 30), HorizontalTextAlignment.RIGHT);
+      tip.overflow = Label.Overflow.SHRINK;
+      this.outline(tip, 1, false);
+      const tipEmblemX = tipRight - (anyClaimable ? 6 : 7) * 20 - 14 - emblemW / 2;
+      this.host.addSprite('MailTipEmblem', REF_SECTION_EMBLEM.path, tipEmblemX, captionY, emblemW, emblemH, panel);
     }
+    this.addPhoneFooterMotto(panel, footerY, panelWidth);
 
     if (state.loading && state.mails.length === 0) {
       this.centerHint(panel, '邮件读取中…', rgba(214, 196, 156, 235), 1.2, hintY);
@@ -1139,22 +1154,20 @@ export class LobbyQuestMailPanelRenderer {
     const spare = viewH - used;
     if (spare >= 64) {
       const endY = -used - 30;
-      const endLabel = this.host.addChildLabel(contentNode, 'MailEnd', '没有更多邮件', 0, endY, 20, rgba(140, 128, 106, 210), new Size(200, 28));
+      const endLabel = this.host.addChildLabel(contentNode, 'MailEnd', '没有更多邮件', 0, endY, 22, rgba(226, 210, 176, 240), new Size(220, 30));
       endLabel.overflow = Label.Overflow.SHRINK;
       const divW = 120;
       const divGap = 84 + divW / 2;
       const divL = this.host.addSprite('MailEndDivL', QUEST_UI_ASSETS.dividerLeft, -divGap, endY, divW, divW * (71 / 224), contentNode);
       const divR = this.host.addSprite('MailEndDivR', QUEST_UI_ASSETS.dividerRight, divGap, endY, divW, divW * (71 / 224), contentNode);
-      [divL, divR].forEach((sprite) => {
-        if (sprite) {
-          sprite.color = rgba(255, 255, 255, 150);
-        }
-      });
+      void divL;
+      void divR;
       if (spare >= 250) {
-        const markSize = Math.min(150, spare - 120);
-        const mark = this.host.addSprite('MailWatermark', QUEST_UI_ASSETS.mailIcon, 0, endY - 34 - (spare - 64) / 2, markSize, markSize * (110 / 112), contentNode);
+        // 空白处金环信封徽章(原型:清楚可见,不是淡水印)
+        const markSize = Math.min(176, spare - 110);
+        const mark = this.host.addSprite('MailWatermark', QUEST_UI_ASSETS.mailIcon, 0, endY - 34 - (spare - 64) / 2, markSize, markSize, contentNode);
         if (mark) {
-          mark.color = rgba(255, 214, 140, 56);
+          mark.color = rgba(255, 255, 255, 215);
         }
       }
     }
@@ -1201,14 +1214,25 @@ export class LobbyQuestMailPanelRenderer {
     const unread = !mail.read;
     const hasAttachment = mail.attachments.length > 0;
     const pending = hasAttachment && !mail.claimed;
-    this.mountPhoneRowBg(row, width, height, pending ? 'ready' : unread ? 'normal' : 'dim');
+    const bgOk = pending
+      ? mountRefSliced(this.host, row, 'Bg', REF_ROW_SELECTED, 0, 0, width, height)
+      : mountRefPlate(this.host, row, 'Bg', REF_PLATE_DARK, 0, 0, width, height, 0.7);
+    if (!bgOk) {
+      this.mountPhoneRowBg(row, width, height, pending ? 'ready' : unread ? 'normal' : 'dim');
+    } else if (!pending) {
+      // 原型:行内芯近黑,只留金边角饰亮(暗金钮底放大后内芯偏棕)
+      const core = this.host.addChildPlainNode(row, 'Core', 0, 0, width - 36, height - 22).addComponent(Graphics);
+      core.fillColor = rgba(4, 3, 4, 150);
+      core.rect(-(width - 36) / 2, -(height - 22) / 2, width - 36, height - 22);
+      core.fill();
+    }
 
     // 信封图标(大厅邮件钮同款圆徽 112×110 等比);未读右上角红点
     const iconSize = 64;
     const iconX = -width / 2 + 48 + iconSize / 2;
-    const iconArt = this.host.addSprite('MailIcon', QUEST_UI_ASSETS.mailIcon, iconX, 0, iconSize, iconSize * (110 / 112), row);
-    if (iconArt) {
-      iconArt.color = !unread && !pending ? rgba(196, 176, 136, 255) : rgba(255, 222, 150, 255);
+    const iconArt = this.host.addSprite('MailIcon', QUEST_UI_ASSETS.mailIcon, iconX, 0, iconSize, iconSize, row);
+    if (iconArt && !unread && !pending) {
+      iconArt.color = rgba(226, 216, 196, 255);
     }
     if (unread) {
       const dot = this.host.addChildPlainNode(row, 'UnreadDot', iconX + iconSize / 2 - 7, iconSize / 2 - 7, 16, 16);
@@ -1228,18 +1252,19 @@ export class LobbyQuestMailPanelRenderer {
       this.addRewardChip(row, `Attach_${index}`, item, m.chipsLeft + index * (m.chipW + m.chipGap), 0, m.chipW, btnH, mail.claimed);
     });
     if (m.extra > 0) {
-      const more = this.host.addChildLabel(row, 'AttachMore', `+${m.extra}`, m.chipsRight + 6, 0, 20, mail.claimed ? rgba(160, 148, 124, 220) : rgba(236, 208, 150, 245), new Size(40, 28), HorizontalTextAlignment.LEFT);
+      const more = this.host.addChildLabel(row, 'AttachMore', `+${m.extra}`, m.chipsRight + 6, 0, 20, mail.claimed ? rgba(196, 189, 174, 240) : rgba(236, 208, 150, 245), new Size(40, 28), HorizontalTextAlignment.LEFT);
       more.overflow = Label.Overflow.SHRINK;
     }
 
     // 标题一行 + 正文(单行时与任务行同一排法;多行时标题上移、正文自动换行,4 行还放不下才缩字)
     const titleY = m.lines <= 1 ? 19 : height / 2 - 27;
-    const title = this.host.addChildLabel(row, 'Title', mail.title, m.textLeft, titleY, 23, mail.claimed && !unread ? rgba(200, 186, 150, 240) : rgba(248, 226, 166, 255), new Size(m.textW, 30), HorizontalTextAlignment.LEFT);
+    const title = this.host.addChildLabel(row, 'Title', mail.title, m.textLeft, titleY, 24, mail.claimed && !unread ? rgba(236, 220, 186, 250) : rgba(255, 232, 176, 255), new Size(m.textW, 32), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
+    title.isBold = true;
     this.outline(title, 1, true);
     const contentH = m.lines <= 1 ? 28 : m.lines * 25 + 2;
     const contentY = m.lines <= 1 ? -19 : titleY - 16 - contentH / 2;
-    const content = this.host.addChildLabel(row, 'Content', mail.content, m.textLeft, contentY, 20, rgba(176, 162, 136, 225), new Size(m.textW, contentH), HorizontalTextAlignment.LEFT);
+    const content = this.host.addChildLabel(row, 'Content', mail.content, m.textLeft, contentY, 20, rgba(206, 197, 181, 240), new Size(m.textW, contentH), HorizontalTextAlignment.LEFT);
     if (m.lines > 1) {
       content.enableWrapText = true;
       content.lineHeight = 25;
@@ -1250,7 +1275,7 @@ export class LobbyQuestMailPanelRenderer {
     const btn = this.host.addChildPlainNode(row, 'Claim', m.btnX, 0, m.btnW, btnH);
     this.mountClaimButtonArt(btn, m.btnW, btnH, claimable, mail.claimed || !hasAttachment);
     const btnText = !hasAttachment ? '无附件' : mail.claimed ? '已领取' : claiming === mail.mailId ? '领取中…' : '领取';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 22, mail.claimed || !hasAttachment ? rgba(150, 138, 118) : claimable ? rgba(255, 236, 190) : rgba(170, 156, 130), new Size(m.btnW - 30, btnH - 8));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 22, mail.claimed || !hasAttachment ? rgba(225, 217, 202) : claimable ? rgba(255, 236, 190) : rgba(226, 212, 182), new Size(m.btnW * 0.66, btnH - 8));
     label.overflow = Label.Overflow.SHRINK;
     this.outline(label, 1, claimable);
     if (claimable) {
@@ -1275,7 +1300,7 @@ export class LobbyQuestMailPanelRenderer {
     const title = this.host.addChildLabel(row, 'Title', `${unread ? '● ' : ''}${mail.title}`, -width / 2 + 16 * scale, height / 2 - 16 * scale, 18 * scale, rgba(245, 222, 160, 250), new Size(width * 0.6, 24 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.outline(title, scale, unread);
-    const content = this.host.addChildLabel(row, 'Content', mail.content, -width / 2 + 16 * scale, -1 * scale, 15 * scale, rgba(190, 176, 148, 230), new Size(width * 0.62, 21 * scale), HorizontalTextAlignment.LEFT);
+    const content = this.host.addChildLabel(row, 'Content', mail.content, -width / 2 + 16 * scale, -1 * scale, 15 * scale, rgba(215, 206, 189, 240), new Size(width * 0.62, 21 * scale), HorizontalTextAlignment.LEFT);
     content.overflow = Label.Overflow.SHRINK;
     const attachText = mail.attachments.length > 0
       ? `附件:${mail.attachments.map((item) => `${item.name}×${item.amount}`).join(' ')}`
@@ -1297,7 +1322,7 @@ export class LobbyQuestMailPanelRenderer {
     bg.roundRect(-btnW / 2, -btnH / 2, btnW, btnH, 6 * scale);
     bg.stroke();
     const btnText = !hasAttachment ? '无附件' : mail.claimed ? '已领取' : claiming === mail.mailId ? '领取中…' : '领取';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 16 * scale, mail.claimed || !hasAttachment ? rgba(140, 128, 108) : rgba(255, 236, 190), new Size(btnW - 8 * scale, btnH));
+    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 16 * scale, mail.claimed || !hasAttachment ? rgba(184, 176, 164) : rgba(255, 236, 190), new Size(btnW - 8 * scale, btnH));
     label.overflow = Label.Overflow.SHRINK;
     if (claimable) {
       btn.addComponent(Button);
@@ -1323,7 +1348,7 @@ export class LobbyQuestMailPanelRenderer {
 
   private addCloseButton(parent: Node, x: number, y: number, scale: number, onClose: () => void): void {
     const btn = this.host.addChildPlainNode(parent, 'CloseBtn', x, y, 40 * scale, 40 * scale);
-    const label = this.host.addChildLabel(btn, 'Text', '✕', 0, 0, 22 * scale, rgba(214, 190, 150, 240), new Size(40 * scale, 40 * scale));
+    const label = this.host.addChildLabel(btn, 'Text', '✕', 0, 0, 22 * scale, rgba(230, 215, 190, 240), new Size(40 * scale, 40 * scale));
     this.outline(label, scale, false);
     btn.addComponent(Button);
     btn.on(Button.EventType.CLICK, onClose, this);

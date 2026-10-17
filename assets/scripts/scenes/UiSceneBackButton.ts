@@ -71,7 +71,8 @@ export function renderSceneBackButton(
   host.applyImageButtonFeedback(button, 1.04, 0.96);
 
   // AI 圆形关闭钮是正方图:按短边显示为圆钮,点击热区保持原横向尺寸。
-  const closeSize = Math.min(buttonWidth, buttonHeight) * 1.16;
+  // 2026-10-17 按原型放大 1.3 倍(右上圆形金环关闭钮更醒目)
+  const closeSize = Math.min(buttonWidth, buttonHeight) * 1.16 * 1.3;
   const sprite = host.addSprite?.('SceneBackButtonArt', SCENE_BACK_BUTTON_ASSET, 0, 0, closeSize, closeSize, button);
   if (!sprite) {
     drawFallbackBackButton(button, buttonWidth, buttonHeight, buttonScale);
