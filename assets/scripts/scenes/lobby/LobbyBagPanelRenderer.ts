@@ -22,7 +22,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { mountRefButton, mountRefSliced, mountRefTitledPanel, REF_HALL_BG, REF_KIT, REF_ROW, REF_ROW_SELECTED } from '../UiRefKit';
+import { mountRefButton, mountRefHeaderBand, mountRefOrnateDialog, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
 export const BAG_C1812_ITEM_SLOT_ASSET = 'ui/common/ai/item_slot/spriteFrame';
@@ -318,7 +318,8 @@ export class LobbyBagPanelRenderer {
       ?? this.host.addSprite('LobbyBagSceneBackdrop', 'ui/battle/ai/battle_bg_cathedral/spriteFrame', 0, 0, panelWidth, panelHeight, panel);
     const shade = this.host.addChildPlainNode(panel, 'LobbyBagSceneShade', 0, 0, panelWidth, panelHeight);
     const shadeGraphics = shade.addComponent(Graphics);
-    shadeGraphics.fillColor = rgba(4, 3, 6, 84);
+    // 2026-10-19 用户「背景太显眼,字和物品没有主次」:压暗加重(84 → 128),面板后再加一层暗底
+    shadeGraphics.fillColor = rgba(4, 3, 6, 128);
     shadeGraphics.rect(-coverW / 2, -coverH / 2, coverW, coverH);
     shadeGraphics.fill();
     // 顶部装饰(横梁/副标题/chips)移除:左上标题+顶部货币展示+右上关闭。
@@ -437,7 +438,7 @@ export class LobbyBagPanelRenderer {
 
   // 分类侧栏(2026-10-17 界面统一,按 GPT 原型):细金框面板 + 金边暗行(选中亮金行),图标 + 名称 + 右对齐计数,可点过滤。
   private renderGroupRail(parent: Node, groups: ItemTypeBagGroupVO[], x: number, y: number, width: number, height: number, scale: number): void {
-    const rail = mountRefTitledPanel(this.host, parent, 'LobbyBagGroupRail', x, y, width, height, scale, '', { fill: rgba(10, 8, 8, 200) }).node;
+    const rail = mountRefTitledPanel(this.host, parent, 'LobbyBagGroupRail', x, y, width, height, scale, '', { fill: rgba(10, 8, 8, 232) }).node;
 
     const totalCount = groups.reduce((sum, group) => sum + group.items.reduce((inner, item) => inner + safeNumber(item.itemCount), 0), 0);
     const rowWidth = width - 30 * scale;
@@ -512,7 +513,7 @@ export class LobbyBagPanelRenderer {
 
   private renderItemGrid(parent: Node, items: BagItemEntryVO[], selectedItem: BagItemEntryVO, x: number, y: number, width: number, height: number, scale: number, totalItems: number, state: LobbyBagPanelState): void {
     // 2026-10-17 界面统一(GPT 原型):细金框面板 + 暗红标题带(徽记 + 当前分类名),容量签放在标题带右端。
-    const panelInfo = mountRefTitledPanel(this.host, parent, 'LobbyBagItemGrid', x, y, width, height, scale, this.selectedGroupTitle(state.groups), { center: false, bandH: 52 * scale, fill: rgba(10, 8, 8, 200) });
+    const panelInfo = mountRefTitledPanel(this.host, parent, 'LobbyBagItemGrid', x, y, width, height, scale, this.selectedGroupTitle(state.groups), { center: false, bandH: 52 * scale, fill: rgba(10, 8, 8, 232) });
     const grid = panelInfo.node;
     const capWidth = 196 * scale;
     const capHeight = 38 * scale;
@@ -934,7 +935,7 @@ export class LobbyBagPanelRenderer {
     const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, slots[2][0], slots[2][1], buttonWidth, buttonHeight, scale, !state.sourceLoading);
     sourceButton.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
     const sellable = !isVirtualEntry && safeNumber(item.sellGold) > 0 && safeNumber(item.itemCount) > 0;
-    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', BAG_AI_OP_ICON_GOLD_ASSET, slots[3][0], slots[3][1], buttonWidth, buttonHeight, scale, sellable);
+    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', BAG_AI_OP_ICON_GOLD_ASSET, slots[3][0], slots[3][1], buttonWidth, buttonHeight, scale, sellable, true);
     if (sellable) {
       sellButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagSellDialog(item.itemCode), this);
     }
@@ -948,21 +949,22 @@ export class LobbyBagPanelRenderer {
     }
   }
 
-  // 手机全屏详情(2026-10-02 用户拍板「横屏弹框都调整成全屏」):程序绘制面板铺满舞台(竖框素材不做非等比拉伸),
-  // 左列大图标 + 拥有/堆叠/出售价/过期,右列用途(可两行)+ 获取途径条 + 底部一排 4 个操作钮。
+  // 手机全屏详情(2026-10-19 按 GPT 原型重做):厚雕花金框 + 「物品详情」标题带 + 右上关闭;
+  // 左列 = 大格(品质框 + 柔光)+ 大号名 + 稀有度签 + 四条金边信息行;右列 = 「用途」「获取途径」两块标题带面板 + 底部四钮(主操作红金)。
   private renderDetailPopupPhone(parent: Node, item: BagItemEntryVO, rect: PhoneDialogRect, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
     const width = rect.width;
     const height = rect.height;
     const dim = this.host.addChildPlainNode(parent, 'LobbyBagDetailPopupDim', 0, 0, panelWidth, panelHeight);
     const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 190);
+    dimGraphics.fillColor = rgba(0, 0, 0, 130);
     dimGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
     dimGraphics.fill();
     dim.addComponent(BlockInputEvents);
 
-    const detail = this.host.addChildPlainNode(parent, 'LobbyBagItemDetail', rect.x, rect.y, width, height);
+    // 弹窗实底半透明(原型透出后面的背包页)
+    const shell = mountRefOrnateDialog(this.host, parent, 'LobbyBagItemDetail', rect.x, rect.y, width, height, scale, rgba(12, 9, 10, 200));
+    const detail = shell.node;
     detail.addComponent(BlockInputEvents);
-    this.drawPhoneDialogPanel(detail, width, height, scale);
     const closePopup = (): void => {
       this.detailPopupOpen = false;
       if (detail.isValid) {
@@ -973,127 +975,166 @@ export class LobbyBagPanelRenderer {
       }
       this.host.clearLobbyBagSelection();
     };
-    const closeSize = 58 * scale;
-    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', width / 2 - 44 * scale, height / 2 - 42 * scale, closeSize + 10 * scale, closeSize + 10 * scale);
-    this.host.addSprite('LobbyBagDetailCloseArt', BAG_AI_CLOSE_BUTTON_ASSET, 0, 0, closeSize, closeSize, closeButton);
+    // 标题带
+    const bandH = 64 * scale;
+    const headY = shell.innerTop - bandH / 2;
+    mountRefHeaderBand(this.host, detail, 'LobbyBagDetailBand', 0, headY, shell.innerW, bandH, scale);
+    raiseRefFrame(detail);
+    const titleSize = 34 * scale;
+    const titleText = '物品详情';
+    const emblemH = 38 * scale;
+    const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
+    const titleW = titleText.length * titleSize;
+    this.host.addSprite('LobbyBagDetailEmblem', REF_SECTION_EMBLEM.path, -titleW / 2 - 12 * scale - emblemW / 2, headY, emblemW, emblemH, detail);
+    const title = this.host.addChildLabel(detail, 'LobbyBagDetailTitle', titleText, 0, headY, titleSize, rgba(255, 226, 150), new Size(titleW + 20 * scale, titleSize * 1.3));
+    title.isBold = true;
+    title.lineHeight = titleSize;
+    this.applyOutline(title, scale, true);
+    const closeSize = 62 * scale;
+    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', shell.innerW / 2 - closeSize / 2 - 6 * scale, headY, closeSize + 10 * scale, closeSize + 10 * scale);
+    if (!this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, closeButton)) {
+      this.host.addSprite('LobbyBagDetailCloseArt', BAG_AI_CLOSE_BUTTON_ASSET, 0, 0, closeSize * 0.84, closeSize * 0.84, closeButton);
+    }
     closeButton.addComponent(Button);
     this.host.applyImageButtonFeedback(closeButton, 1.08, 0.92);
     closeButton.on(Button.EventType.CLICK, closePopup, this);
 
-    // 顶栏:名称(标题 34)+ 稀有度·类型,左对齐;下方金色细分隔线。
-    const pad = 36 * scale;
-    const left = -width / 2 + pad;
-    const right = width / 2 - pad;
-    const title = this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), left, height / 2 - 42 * scale, 34 * scale, rgba(248, 220, 153), new Size(width - pad * 2 - 120 * scale, 44 * scale), HorizontalTextAlignment.LEFT);
-    title.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(title, scale, true);
-    const subtitle = this.host.addChildLabel(detail, 'LobbyBagDetailSubtitle', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, left, height / 2 - 80 * scale, 20 * scale, this.rarityColor(item.rarity), new Size(width * 0.5, 26 * scale), HorizontalTextAlignment.LEFT);
-    subtitle.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(subtitle, scale, false);
-    const lines = this.host.addChildPlainNode(detail, 'LobbyBagDetailSeparators', 0, 0, width, height);
-    const lineGraphics = lines.addComponent(Graphics);
-    lineGraphics.strokeColor = rgba(206, 168, 104, 90);
-    lineGraphics.lineWidth = Math.max(1, 1.2 * scale);
-    const headerLineY = height / 2 - 104 * scale;
-    lineGraphics.moveTo(left, headerLineY);
-    lineGraphics.lineTo(right, headerLineY);
-    lineGraphics.stroke();
+    // 两列
+    const pad = 28 * scale;
+    const left = -shell.innerW / 2 + pad;
+    const right = shell.innerW / 2 - pad;
+    const bodyTop = headY - bandH / 2 - 14 * scale;
+    const bodyBottom = shell.innerBottom + 16 * scale;
+    const bodyH = bodyTop - bodyBottom;
+    const leftWidth = Math.min(420 * scale, (right - left) * 0.36);
+    const gutter = 20 * scale;
+    const leftCx = left + leftWidth / 2;
+    const rightLeft = left + leftWidth + gutter;
+    const rightWidth = right - rightLeft;
+    const rightCx = rightLeft + rightWidth / 2;
 
-    const bodyTop = headerLineY - 18 * scale;
-    const bodyBottom = -height / 2 + pad * 0.8;
-    const leftWidth = width * 0.3;
-    const gutter = 44 * scale;
-    // 左列:大图标 + 4 行信息(拥有数量用数额 28 字号)。
+    // ── 左列:大格 + 名 + 稀有度签 + 信息行 ──
     const infoRows: Array<[string, string, boolean]> = [
       ['拥有数量', formatCompact(safeNumber(item.itemCount)), true],
       ['堆叠', formatCompact(safeNumber(item.maxStack)), false],
       ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', false],
       ['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久', false],
     ];
-    const infoRowHeight = 50 * scale;
-    const iconSize = Math.max(96 * scale, Math.min(leftWidth * 0.6, 220 * scale, bodyTop - bodyBottom - infoRows.length * infoRowHeight - 30 * scale));
-    const iconX = left + leftWidth / 2;
-    const iconY = bodyTop - iconSize / 2 - 4 * scale;
-    this.host.addSprite('LobbyBagDetailSlotArt', BAG_AI_SLOT_BASE_ASSET, iconX, iconY, iconSize, iconSize, detail);
+    const iconSize = Math.min(leftWidth * 0.78, bodyH * 0.5);
+    const nameBlockH = 74 * scale;
+    const infoRowH = Math.max(34 * scale, Math.min(44 * scale, (bodyH - iconSize - nameBlockH - 32 * scale) / infoRows.length));
+    const iconCy = bodyTop - iconSize / 2;
+    const rarity = this.rarityColor(item.rarity);
+    const glow = this.host.addChildPlainNode(detail, 'LobbyBagDetailGlow', leftCx, iconCy, iconSize * 1.5, iconSize * 1.5).addComponent(Graphics);
+    for (const [k, a] of [[0.74, 14], [0.62, 20], [0.5, 28]] as Array<[number, number]>) {
+      glow.fillColor = rgba(rarity.r, rarity.g, rarity.b, a);
+      glow.circle(0, 0, iconSize * k);
+      glow.fill();
+    }
+    if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, leftCx, iconCy, iconSize, iconSize, detail)) {
+      this.host.addSprite('LobbyBagDetailSlotArt', BAG_AI_SLOT_BASE_ASSET, leftCx, iconCy, iconSize, iconSize, detail);
+    }
     const popupIcon = bagItemIconAsset(item);
     if (popupIcon) {
-      this.host.addSprite('LobbyBagDetailIcon', popupIcon, iconX, iconY, iconSize * 0.86, iconSize * 0.86, detail);
+      this.host.addSprite('LobbyBagDetailIcon', popupIcon, leftCx, iconCy, iconSize * 0.74, iconSize * 0.74, detail);
     } else {
-      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), iconX, iconY, iconSize * 0.68, iconSize * 0.68, detail);
+      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), leftCx, iconCy, iconSize * 0.6, iconSize * 0.6, detail);
     }
-    this.addCleanSlotFrame(detail, 'LobbyBagDetailRarityFrame', iconX, iconY, iconSize, scale * 1.4, item.rarity);
-    const infoTop = iconY - iconSize / 2 - 22 * scale;
+    // 左上角稀有度字母
+    const rarityTag = this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), leftCx - iconSize / 2 + 16 * scale, iconCy + iconSize / 2 - 18 * scale, 24 * scale, rarity, new Size(44 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
+    rarityTag.isBold = true;
+    rarityTag.lineHeight = rarityTag.fontSize;
+    this.applyOutline(rarityTag, scale, true);
+    const nameY = iconCy - iconSize / 2 - 24 * scale;
+    const nameLabel = this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), leftCx, nameY, 36 * scale, rgba(255, 228, 160), new Size(leftWidth, 44 * scale));
+    nameLabel.overflow = Label.Overflow.SHRINK;
+    nameLabel.isBold = true;
+    nameLabel.lineHeight = nameLabel.fontSize;
+    this.applyOutline(nameLabel, scale, true);
+    // 稀有度签(品质色描边胶囊)
+    const chipText = `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`;
+    const chipW = chipText.length * 20 * scale * 0.9 + 40 * scale;
+    const chipH = 32 * scale;
+    const chip = this.host.addChildPlainNode(detail, 'LobbyBagDetailSubtitleChip', leftCx, nameY - 36 * scale, chipW, chipH);
+    const cg = chip.addComponent(Graphics);
+    cg.fillColor = rgba(Math.round(rarity.r * 0.2), Math.round(rarity.g * 0.2), Math.round(rarity.b * 0.2), 230);
+    cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
+    cg.fill();
+    cg.strokeColor = rgba(rarity.r, rarity.g, rarity.b, 220);
+    cg.lineWidth = Math.max(1, 1.4 * scale);
+    cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
+    cg.stroke();
+    const subtitle = this.host.addChildLabel(chip, 'LobbyBagDetailSubtitle', chipText, 0, 0, 20 * scale, rarity, new Size(chipW - 10 * scale, chipH));
+    subtitle.overflow = Label.Overflow.SHRINK;
+    subtitle.lineHeight = subtitle.fontSize;
+    // 信息行(金边暗行)
+    const infoTop = nameY - 36 * scale - chipH / 2 - 12 * scale;
     infoRows.forEach(([rowTitle, rowValue, strong], index) => {
-      const rowY = infoTop - infoRowHeight / 2 - index * infoRowHeight;
-      const titleLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoTitle_${index}`, rowTitle, left, rowY, 20 * scale, rgba(236, 221, 190), new Size(leftWidth * 0.42, 28 * scale), HorizontalTextAlignment.LEFT);
-      titleLabel.overflow = Label.Overflow.SHRINK;
-      const valueLabel = this.host.addChildLabel(detail, `LobbyBagDetailInfoValue_${index}`, rowValue, left + leftWidth, rowY, (strong ? 28 : 20) * scale, strong ? rgba(255, 232, 168) : rgba(225, 213, 190), new Size(leftWidth * 0.58, 34 * scale), HorizontalTextAlignment.RIGHT);
+      const rowY = infoTop - infoRowH / 2 - index * (infoRowH + 4 * scale);
+      const row = this.host.addChildPlainNode(detail, `LobbyBagDetailInfoRow_${index}`, leftCx, rowY, leftWidth, infoRowH);
+      if (!mountRefSliced(this.host, row, 'Bg', REF_ROW, 0, 0, leftWidth, infoRowH)) {
+        const rg = row.addComponent(Graphics);
+        rg.fillColor = rgba(16, 14, 13, 225);
+        rg.roundRect(-leftWidth / 2, -infoRowH / 2, leftWidth, infoRowH, 6 * scale);
+        rg.fill();
+      }
+      const titleLabel = this.host.addChildLabel(row, 'Title', rowTitle, -leftWidth / 2 + 18 * scale, 0, 22 * scale, rgba(240, 226, 200), new Size(leftWidth * 0.42, 28 * scale), HorizontalTextAlignment.LEFT);
+      titleLabel.lineHeight = titleLabel.fontSize;
+      const valueLabel = this.host.addChildLabel(row, 'Value', rowValue, leftWidth / 2 - 18 * scale, 0, (strong ? 30 : 23) * scale, strong ? rgba(255, 222, 130) : rgba(244, 234, 212), new Size(leftWidth * 0.5, 36 * scale), HorizontalTextAlignment.RIGHT);
       valueLabel.overflow = Label.Overflow.SHRINK;
+      valueLabel.isBold = strong;
+      valueLabel.lineHeight = valueLabel.fontSize;
       this.applyOutline(valueLabel, scale, strong);
-      lineGraphics.moveTo(left, rowY - infoRowHeight / 2);
-      lineGraphics.lineTo(left + leftWidth, rowY - infoRowHeight / 2);
-      lineGraphics.stroke();
     });
-    // 两列竖分隔线。
-    const dividerX = left + leftWidth + gutter / 2;
-    lineGraphics.moveTo(dividerX, bodyTop);
-    lineGraphics.lineTo(dividerX, bodyBottom);
-    lineGraphics.stroke();
 
-    // 右列:用途(两行内自动换行缩放)→ 获取途径条 → 底部操作钮一排。
-    const rightLeft = left + leftWidth + gutter;
-    const rightWidth = right - rightLeft;
-    const rightCenterX = rightLeft + rightWidth / 2;
-    const useTitleY = bodyTop - 16 * scale;
-    const useTitle = this.host.addChildLabel(detail, 'LobbyBagDetailUseTitle', '用途', rightLeft, useTitleY, 22 * scale, rgba(236, 206, 146), new Size(rightWidth * 0.5, 30 * scale), HorizontalTextAlignment.LEFT);
-    useTitle.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(useTitle, scale, false);
-    const useBoxHeight = 64 * scale;
-    const useValue = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), rightLeft, useTitleY - 22 * scale - useBoxHeight / 2, 20 * scale, rgba(225, 215, 192), new Size(rightWidth, useBoxHeight), HorizontalTextAlignment.LEFT);
-    useValue.enableWrapText = true;
-    useValue.overflow = Label.Overflow.SHRINK;
-    const useLineY = useTitleY - 22 * scale - useBoxHeight - 10 * scale;
-    lineGraphics.moveTo(rightLeft, useLineY);
-    lineGraphics.lineTo(right, useLineY);
-    lineGraphics.stroke();
-
-    const buttonGap = 14 * scale;
-    const buttonWidth = (rightWidth - buttonGap * 3) / 4;
-    // 操作钮素材 220×68:按原比例定高(一体构图只等比)。
-    const buttonHeight = Math.min(72 * scale, buttonWidth * (68 / 220));
-    const buttonY = bodyBottom + buttonHeight / 2;
-
-    const sourceTitleY = useLineY - 30 * scale;
-    const sourceTitle = this.host.addChildLabel(detail, 'LobbyBagSourceRowLabel', '获取途径', rightLeft, sourceTitleY, 22 * scale, rgba(236, 206, 146), new Size(rightWidth * 0.5, 30 * scale), HorizontalTextAlignment.LEFT);
-    sourceTitle.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(sourceTitle, scale, false);
-    const sourceRowHeight = 50 * scale;
+    // ── 右列:用途 / 获取途径 面板 + 底部四钮 ──
+    const buttonGap = 12 * scale;
+    const buttonW = (rightWidth - buttonGap * 3) / 4;
+    const buttonH = Math.min(66 * scale, buttonW * 0.34);
+    const buttonY = bodyBottom + buttonH / 2;
+    const panelsBottom = buttonY + buttonH / 2 + 12 * scale;
+    const useH = Math.min(150 * scale, (bodyTop - panelsBottom) * 0.38);
+    const usePanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailUsePanel', rightCx, bodyTop - useH / 2, rightWidth, useH, scale, '用途', { bandH: 46 * scale, fontSize: 23 * scale, center: false, fill: rgba(10, 8, 9, 190) });
+    const useText = this.host.addChildLabel(usePanel.node, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), -rightWidth / 2 + 20 * scale, (usePanel.bodyTop - useH / 2) / 2, 23 * scale, rgba(244, 234, 212), new Size(rightWidth - 40 * scale, usePanel.bodyTop + useH / 2 - 16 * scale), HorizontalTextAlignment.LEFT);
+    useText.enableWrapText = true;
+    useText.lineHeight = 32 * scale;
+    useText.overflow = Label.Overflow.SHRINK;
+    const srcTop = bodyTop - useH - 10 * scale;
+    const srcH = srcTop - panelsBottom;
+    const srcPanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailSourcePanel', rightCx, srcTop - srcH / 2, rightWidth, srcH, scale, '获取途径', { bandH: 46 * scale, fontSize: 23 * scale, center: false, fill: rgba(10, 8, 9, 190) });
+    const sourceRowH = 64 * scale;
     const sourceRowGap = 10 * scale;
-    const rowsTop = sourceTitleY - 24 * scale;
-    const rowsFloor = buttonY + buttonHeight / 2 + 18 * scale;
-    const maxSourceRows = Math.max(1, Math.min(4, Math.floor((rowsTop - rowsFloor + sourceRowGap) / (sourceRowHeight + sourceRowGap))));
+    const rowsTop = srcPanel.bodyTop - 10 * scale;
+    const rowsFloor = -srcH / 2 + 10 * scale;
+    const maxSourceRows = Math.max(1, Math.min(4, Math.floor((rowsTop - rowsFloor + sourceRowGap) / (sourceRowH + sourceRowGap))));
     const segments = this.resolveSourceSegments(item, state, 34);
     const visibleSegments = segments.slice(0, maxSourceRows);
     if (segments.length > maxSourceRows) {
       visibleSegments[maxSourceRows - 1] = `${visibleSegments[maxSourceRows - 1]}…`;
     }
+    const srcRowW = rightWidth - 28 * scale;
     visibleSegments.forEach((segment, index) => {
-      const rowY = rowsTop - sourceRowHeight / 2 - index * (sourceRowHeight + sourceRowGap);
-      const rowNode = this.host.addChildPlainNode(detail, `LobbyBagSourceRowPlate_${index}`, rightCenterX, rowY, rightWidth, sourceRowHeight);
-      const rowGraphics = rowNode.addComponent(Graphics);
-      rowGraphics.fillColor = rgba(26, 21, 17, 224);
-      rowGraphics.rect(-rightWidth / 2, -sourceRowHeight / 2, rightWidth, sourceRowHeight);
-      rowGraphics.fill();
-      rowGraphics.strokeColor = rgba(186, 160, 114, 255);
-      rowGraphics.lineWidth = Math.max(1.5, 1.5 * scale);
-      rowGraphics.rect(-rightWidth / 2, -sourceRowHeight / 2, rightWidth, sourceRowHeight);
-      rowGraphics.stroke();
-      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -rightWidth / 2 + 20 * scale, 0, 20 * scale, rgba(231, 221, 199), new Size(rightWidth - 40 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      const rowY = rowsTop - sourceRowH / 2 - index * (sourceRowH + sourceRowGap);
+      const rowNode = this.host.addChildPlainNode(srcPanel.node, `LobbyBagSourceRowPlate_${index}`, 0, rowY, srcRowW, sourceRowH);
+      if (!mountRefSliced(this.host, rowNode, 'Bg', REF_ROW, 0, 0, srcRowW, sourceRowH)) {
+        const rowGraphics = rowNode.addComponent(Graphics);
+        rowGraphics.fillColor = rgba(26, 21, 17, 224);
+        rowGraphics.roundRect(-srcRowW / 2, -sourceRowH / 2, srcRowW, sourceRowH, 6 * scale);
+        rowGraphics.fill();
+      }
+      const ringSize = sourceRowH * 0.84;
+      this.host.addSprite('Ring', REF_ICON_RING_ASSET, -srcRowW / 2 + 12 * scale + ringSize / 2, 0, ringSize, ringSize, rowNode);
+      this.host.addSprite('Ic', BAG_AI_OP_ICON_SOURCE_ASSET, -srcRowW / 2 + 12 * scale + ringSize / 2, 0, ringSize * 0.56, ringSize * 0.56, rowNode);
+      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -srcRowW / 2 + 24 * scale + ringSize, 0, 22 * scale, rgba(244, 234, 212), new Size(srcRowW - ringSize - 80 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
       segLabel.overflow = Label.Overflow.SHRINK;
+      segLabel.lineHeight = segLabel.fontSize;
+      const arrow = this.host.addChildLabel(rowNode, 'Arrow', '›', srcRowW / 2 - 22 * scale, 2 * scale, 30 * scale, rgba(255, 222, 130), new Size(30 * scale, 36 * scale));
+      arrow.isBold = true;
+      arrow.lineHeight = arrow.fontSize;
     });
 
-    this.renderDetailActions(detail, item, state, scale, buttonWidth, buttonHeight, [0, 1, 2, 3].map((index) => [
-      rightLeft + buttonWidth / 2 + index * (buttonWidth + buttonGap),
+    this.renderDetailActions(detail, item, state, scale, buttonW, buttonH, [0, 1, 2, 3].map((index) => [
+      rightLeft + buttonW / 2 + index * (buttonW + buttonGap),
       buttonY,
     ] as [number, number]));
   }
@@ -1587,35 +1628,14 @@ export class LobbyBagPanelRenderer {
     return ['点击「来源」读取获取途径'];
   }
 
-  private addDetailActionButton(parent: Node, name: string, text: string, iconAsset: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean): Node {
-    const button = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    // 禁用态同样上铁板底,用透明度压暗表达不可用(不加乘色)。
-    // 整图绘制保持原设构图(SLICED 源像素圆槽在小显示宽下会占掉大半,板体被挤右)。
-    const art = this.host.addSprite(`${name}Art`, BAG_AI_ACTION_BUTTON_ASSET, 0, 0, width, height, button);
-    if (art) {
-      // 圆槽中心约在源图宽 21.5% 处,图标随构图比例定位。
-      this.host.addSprite(`${name}Icon`, iconAsset, -width / 2 + width * 0.215, 0, height * 0.56, height * 0.56, button);
-      if (!enabled) {
-        const dimmed = button.addComponent(UIOpacity);
-        dimmed.opacity = 128;
-      }
-    } else {
-      const graphics = button.addComponent(Graphics);
-      graphics.fillColor = enabled ? rgba(22, 18, 17, 224) : rgba(20, 18, 18, 126);
-      graphics.rect(-width / 2, -height / 2, width, height);
-      graphics.fill();
-      graphics.strokeColor = enabled ? rgba(184, 138, 62, 210) : rgba(107, 91, 66, 130);
-      graphics.stroke();
-    }
-    const component = button.addComponent(Button);
+  private addDetailActionButton(parent: Node, name: string, text: string, iconAsset: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean, primary = false): Node {
+    // 2026-10-19 按原型:主操作红金钮 / 其余暗金副钮 / 不可用压暗;图标在字左侧
+    const button = mountRefButton(this.host, parent, name, text, x, y, width, height, scale, !enabled ? 'disabled' : primary ? 'primary' : 'secondary', undefined, { fontSize: 24 * scale, iconPath: iconAsset, iconSize: height * 0.52 });
+    const component = button.getComponent(Button) ?? button.addComponent(Button);
     component.interactable = enabled;
     if (enabled) {
       this.host.applyImageButtonFeedback(button, 1.025, 0.97);
     }
-    // 文字居中于板体净区(源图约 35%~92% 区段)。
-    const label = this.host.addChildLabel(button, `${name}Label`, text, art ? width * 0.135 : 0, 0, 20 * scale, enabled ? rgba(255, 240, 200) : rgba(188, 180, 166), new Size(art ? width * 0.56 : width - 14 * scale, height - 6 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(label, scale, false);
     return button;
   }
 

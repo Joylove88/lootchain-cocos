@@ -128,7 +128,7 @@ import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
 import { LobbyGuardCrystalDialogRenderer, type LobbyGuardCrystalDialogHost, type LobbyGuardCrystalDialogState } from './lobby/LobbyGuardCrystalDialogRenderer';
-import { LOBBY_UI_FX } from './lobby/LobbyBattleAttackFxConfig';
+import { LOBBY_UI_FX, type ForgeFxKind } from './lobby/LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './lobby/LobbyUiSpineFx';
 
 /** 购买动效飞行图标数量档(2026-09-22 用户:不同包飞的量不同——少量/中量/大量,宝箱档最多)。 */
@@ -2650,35 +2650,52 @@ export class LootChainGameRoot extends Component {
     const beforePower = this.lobbyHeroPowerById(equipHeroId);
     this.lobbyHeroEquipBusy = true;
     this.renderCurrentView();
-    let flash: { ok: boolean; text: string } | null = null;
     let finalLevel = startLevel;
     let attempts = 0;
+    let successes = 0;
+    let ending: 'fail' | 'max' | 'cap' | 'error' = 'cap';
+    let errorText = '';
+    // 2026-10-19 用户「连续强化没有音效和特效」:逐锤反馈(锤击音 + 火花环 + 「+N」浮字,名牌就地改数),
+    // 每锤至少 420ms 保持打铁节奏;整轮结束按净变化总结(升了 = 成功 / 没变 = 失败 / 降了 = 降级)
+    const strikeKeys = ['forge_strike', 'forge_strike2', 'forge_strike3'];
+    const stepMinMs = 420;
     this.beginSceneMutation();
     try {
       // 单轮最多 20 次尝试兜底,防止服务器异常回执导致死循环。
       while (attempts < 20) {
-        attempts += 1;
+        const stepStart = Date.now();
         const result = await this.api.equipment.enhance(equipmentId, this.lobbyEquipEnhanceUseBless, this.lobbyEquipEnhanceUseGuard);
+        const wait = stepMinMs - (Date.now() - stepStart);
+        if (wait > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, wait));
+        }
         finalLevel = result.levelAfter;
+        if (this.currentView === 'forge') {
+          gameAudio.sfx(strikeKeys[attempts % strikeKeys.length], result.success ? 0.9 : 0.7);
+          if (!result.success) {
+            gameAudio.sfx('ui_error', 0.55);
+          }
+          this.lobbyForgePanelRenderer.spawnEnhanceStepFx(result.success, result.levelAfter, attempts);
+          this.lobbyForgePanelRenderer.patchEnhanceLevel(result.levelAfter);
+        }
+        attempts += 1;
+        if (result.success) {
+          successes += 1;
+        }
         if (!result.success) {
-          flash = { ok: false, text: `自动强化在 +${result.levelBefore} 失败 · 停在 +${result.levelAfter}` };
+          ending = 'fail';
           break;
         }
         if (result.levelAfter >= 20) {
-          flash = { ok: true, text: `自动强化完成 · 已满级 +${result.levelAfter}` };
+          ending = 'max';
           break;
         }
       }
-      if (!flash) {
-        flash = { ok: true, text: `自动强化 · +${startLevel} → +${finalLevel}` };
-      }
-      this.setStatus(`自动强化结束：+${startLevel} → +${finalLevel}（尝试 ${attempts} 次）。`);
+      this.setStatus(`连续强化结束：${successes} 成功 / ${attempts - successes} 失败，+${startLevel} → +${finalLevel}${ending === 'max' ? '（已满级）' : ''}。`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.setStatus(`自动强化中断（+${startLevel} → +${finalLevel}）：${message}`);
-      if (finalLevel !== startLevel) {
-        flash = { ok: finalLevel > startLevel, text: `自动强化中断 · +${startLevel} → +${finalLevel}` };
-      }
+      ending = 'error';
+      errorText = error instanceof Error ? error.message : String(error);
+      this.setStatus(`连续强化中断（+${startLevel} → +${finalLevel}）：${errorText}`);
     } finally {
       try {
         // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。
@@ -2698,8 +2715,21 @@ export class LootChainGameRoot extends Component {
       this.endSceneMutation();
       this.renderCurrentView();
       this.spawnPowerDeltaFloat(this.lobbyHeroPowerById(equipHeroId) - beforePower);
-      if (flash && this.currentView === 'forge') {
-        this.lobbyForgePanelRenderer.spawnForgeFlash(flash.ok, flash.text);
+      // 整轮总结:净升 → 成功特效;净没变 → 失败;净降 → 降级(失败触发了掉级)
+      const net = finalLevel - startLevel;
+      if (this.currentView === 'forge' && (attempts > 0 || ending === 'error')) {
+        const kind: ForgeFxKind = net > 0 ? 'success' : net < 0 ? 'downgrade' : 'fail';
+        gameAudio.sfx(net > 0 ? 'forge_success' : 'ui_error');
+        const text = ending === 'error'
+          ? `连续强化中断 · +${startLevel} → +${finalLevel}`
+          : ending === 'max'
+            ? `连续强化完成 · 已满级 +${finalLevel}`
+            : net > 0
+              ? `连续强化 ${attempts} 锤 · +${startLevel} → +${finalLevel}`
+              : net < 0
+                ? `连续强化失败 · 降至 +${finalLevel}`
+                : `连续强化失败 · 保留 +${finalLevel}`;
+        this.lobbyForgePanelRenderer.spawnForgeFlash(net > 0, text, kind);
       }
     }
   }

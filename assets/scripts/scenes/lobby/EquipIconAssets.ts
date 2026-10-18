@@ -80,6 +80,15 @@ export function equipSlotKeyByCode(equipCode: string | null | undefined): string
 }
 
 /** 装备编码 → 图标 spriteFrame 路径;未登记(未来新装备)返回 null,调用方回退部位图标/线稿。 */
+/** 按稀有度 + 部位取装备图(合成页预览「下一稀有度同部位」产物用;GOLD 稀有度文件名为 orange)。 */
+export function equipIconAssetByQualitySlot(quality: string | null | undefined, slot: string | null | undefined): string | null {
+  const color: Record<string, string> = { WHITE: 'white', GREEN: 'green', BLUE: 'blue', PURPLE: 'purple', GOLD: 'orange', RED: 'red' };
+  const part: Record<string, string> = { WEAPON: 'weapon', HELMET: 'helmet', CHEST: 'chest', BOOTS: 'boots', RING: 'ring', NECKLACE: 'neck', NECK: 'neck' };
+  const c = color[(quality || '').toUpperCase()];
+  const p = part[(slot || '').toUpperCase()];
+  return c && p ? `${EQUIP_ICON_DIR}/equip_${c}_${p}/spriteFrame` : null;
+}
+
 export function equipIconAssetByCode(equipCode: string | null | undefined): string | null {
   if (!equipCode) {
     return null;

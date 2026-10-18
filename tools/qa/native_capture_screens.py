@@ -25,6 +25,10 @@ SCREENS = [
     ('forge_fuse', "root.openLobbyForgePanel(); setTimeout(() => root.selectLobbyForgeTab('fuse'), 600);", 4.0),
     ('forge_decompose', "root.openLobbyForgePanel(); setTimeout(() => root.selectLobbyForgeTab('decompose'), 600);", 4.0),
     ('forge_gem', "root.openLobbyForgePanel(); setTimeout(() => root.selectLobbyForgeTab('gem'), 600);", 4.0),
+    # 终极技能升级弹窗:挑一个大招未满级的英雄 → 英雄详情 → 技能页 → 弹窗
+    ('ult', "const all=root.lobbyHeroRosterLoader.currentState().heroes.filter(h=>h.id>0); const h=all.find(h=>(h.ultimateSkillLevel||1)<5)||all.find(h=>h.awakenStatus===1 && (h.ultimateSkillLevel||1)<10)||all[0]; root.openLobbyHeroDetail(h.id); setTimeout(() => { root.selectLobbyHeroDetailTab('skill'); setTimeout(() => root.openLobbyHeroUltimateDialog(), 700); }, 1500);", 5.0),
+    # 背包物品详情弹窗:打开背包后点第一件有自定义图标的道具
+    ('bag_detail', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/ENHANCE_STONE|FUSION_LUCK/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.refreshLobbyOverlay(); }, 1500);", 4.5),
 ]
 
 

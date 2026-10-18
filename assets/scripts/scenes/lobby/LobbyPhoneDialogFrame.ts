@@ -85,7 +85,8 @@ export function drawPhoneDialogFrame(
   // bare(2026-10-17 任务 / 邮件 / 商店按原型):背景压暗减轻、不画整屏金框,内容各自坐在细金框面板里
   if (options.bare && hasBackdrop) {
     // 原型背景明亮(烛光 / 旗帜看得清),只轻压一层
-    g.fillColor = rgba(6, 4, 7, 72);
+    // 2026-10-19 背景压暗加重(72 → 112):任务 / 邮件 / 商店的字与卡片要压过背景
+    g.fillColor = rgba(6, 4, 7, 112);
     g.rect(-clipW / 2, -clipH / 2, clipW, clipH);
   } else {
     g.fillColor = hasBackdrop ? rgba(6, 4, 7, options.bare ? 112 : 186) : rgba(13, 10, 10, 250);

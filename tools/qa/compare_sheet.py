@@ -14,6 +14,7 @@ ROW_NAMES = {
     'bag': '背包', 'quest': '任务', 'mail': '邮件',
     'shop_gold': '金币商店', 'shop_stamina': '体力补充', 'shop_diamond': '钻石充值',
     'forge_fuse': '锻造·合成', 'forge_decompose': '锻造·分解', 'forge_gem': '锻造·宝石',
+    'ult': '终极技能升级', 'bag_detail': '物品详情',
 }
 
 

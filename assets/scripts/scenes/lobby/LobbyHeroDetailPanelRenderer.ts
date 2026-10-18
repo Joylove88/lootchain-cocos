@@ -25,7 +25,7 @@ import {
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefPanelFallback, mountRefButton, mountRefHeaderBand, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, refCardFrameK } from '../UiRefKit';
+import { drawRefPanelFallback, mountRefButton, mountRefHeaderBand, mountRefOrnateDialog, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT_EMBLEM_RING_ASSET, REF_ULT_SIGIL_ASSET, refCardFrameK } from '../UiRefKit';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
@@ -873,38 +873,29 @@ export class LobbyHeroDetailPanelRenderer {
   // + 底部消耗/持有行 + 确认洗练(红金)/取消(暗色) + 右上关闭。锁定与消耗逻辑不变,服务器权威结算。
   // 终极技能升级弹窗(P6):当前/上限、伤害倍率变化、材料四行(不足红)、升级/关闭;成功后弹窗保持打开便于连升。
   // 2026-10-16 用户「还是不好看,没有层次,弹框外是黑屏;以水晶界面为准统一风格」:改成水晶页同款——
-  // 细金框面板 + 顶部暗红标题带(标题 / 副标 / 关闭)+ 亮金技能卡 + 金边信息行 + 「升级消耗」小标题带 + 红金 / 暗金双钮;
-  // 外层只半透明压暗,看得到后面的英雄页。
+  // 2026-10-19 按 GPT 原型重做(用户「缺少层次感和质感」):厚雕花金框 + 顶部暗红标题带(居中标题 / 副标 / 关闭);
+  // 左上 = 焦点:大徽章环里的技能图 + 大号技能名 + 描述;左下 = 等级 / 倍率面板(钻格 + 大号倍率);
+  // 右 = 「升级消耗 · 升至 Lv.N」面板(图标环 / 名称 / 需求 / 持有,不足红);底部红金「升级」+ 暗金「关闭」。
   private renderUltimateUpDialog(parent: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number, scale: number): void {
     const ult = this.host.currentLobbyHeroUltimateState();
     const dim = this.host.addChildPlainNode(parent, 'LobbyHeroUltimateDim', 0, 0, panelWidth, panelHeight);
     const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 140);
+    dimGraphics.fillColor = rgba(0, 0, 0, 120);
     dimGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
     dimGraphics.fill();
     dim.addComponent(BlockInputEvents);
 
     const frame = this.phoneFrame;
-    const w = frame ? Math.min(frame.dialogWidth, 1180 * scale) : Math.min(1000 * scale, panelWidth - 80 * scale);
-    const h = frame ? frame.dialogHeight : Math.min(720 * scale, panelHeight - 60 * scale);
-    const dialog = this.host.addChildPlainNode(dim, 'LobbyHeroUltimateDialog', 0, 0, w, h);
-    const back = dialog.addComponent(Graphics);
-    back.fillColor = rgba(10, 9, 12, 242);
-    back.roundRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 8 * scale);
-    back.fill();
-    if (!mountRefSliced(this.host, dialog, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
-      back.strokeColor = rgba(196, 150, 76, 220);
-      back.lineWidth = Math.max(1, 1.6 * scale);
-      back.roundRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 8 * scale);
-      back.stroke();
-    }
-    const fk = refCardFrameK(w, h);
-    const innerTop = h / 2 - REF_CARD_FRAME_LINE.top * fk;
-    const innerW = w - REF_CARD_FRAME_LINE.side * fk * 2;
-    const pad = 34 * scale;
-    const left = -w / 2 + pad;
-    const right = w / 2 - pad;
-    const cw = w - pad * 2;
+    const w = frame ? Math.min(frame.dialogWidth, 1240 * scale) : Math.min(1060 * scale, panelWidth - 80 * scale);
+    const h = frame ? frame.dialogHeight : Math.min(740 * scale, panelHeight - 60 * scale);
+    // 弹窗实底半透明(原型透出后面的英雄页与烛光)
+    const shell = mountRefOrnateDialog(this.host, dim, 'LobbyHeroUltimateDialog', 0, 0, w, h, scale, rgba(12, 9, 10, 196));
+    const dialog = shell.node;
+    const innerW = shell.innerW;
+    const pad = 30 * scale;
+    const left = -innerW / 2 + pad;
+    const right = innerW / 2 - pad;
+    const cw = innerW - pad * 2;
 
     const current = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
     const awakened = hero.awakenStatus === 1;
@@ -913,27 +904,33 @@ export class LobbyHeroDetailPanelRenderer {
     const capped = !maxed && current >= cap;
     const cost = maxed || capped ? null : ultimateUpCost(current + 1);
     const nextLevel = Math.min(ULTIMATE_MAX_LEVEL, current + 1);
+    // 到当前上限时也列出下一级消耗(原型如此),只是按钮不可点
+    const costShown = maxed ? null : ultimateUpCost(nextLevel);
     const bag = this.host.currentLobbyBagState();
     const held = (code: string): number => Number(bag.groups.flatMap((group) => group.items).find((entry) => (entry.itemCode || '').toUpperCase() === code)?.itemCount ?? 0);
     const gold = Number(this.host.currentLobbyProfile().gold) || 0;
 
-    // ── 标题带:徽记 + 「终极技能升级」+ 副标(英雄 · 当前 / 上限),右端关闭 ──
+    // ── 标题带:居中大标题 + 副标;右端关闭 ──
     const bandH = 78 * scale;
-    const headY = innerTop - bandH / 2;
+    const headY = shell.innerTop - bandH / 2;
     mountRefHeaderBand(this.host, dialog, 'LobbyHeroUltimateBand', 0, headY, innerW, bandH, scale);
     raiseRefFrame(dialog);
-    const emblemH = 52 * scale;
+    const emblemH = 40 * scale;
     const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
-    this.host.addSprite('LobbyHeroUltimateEmblem', REF_SECTION_EMBLEM.path, left + emblemW / 2, headY, emblemW, emblemH, dialog);
-    const textX = left + emblemW + 12 * scale;
-    const title = this.host.addChildLabel(dialog, 'LobbyHeroUltimateTitle', '终极技能升级', textX, headY + 13 * scale, 28 * scale, rgba(255, 222, 140), new Size(cw * 0.6, 36 * scale), HorizontalTextAlignment.LEFT);
+    const titleText = '终极技能升级';
+    const titleSize = 36 * scale;
+    const titleW = titleText.length * titleSize;
+    this.host.addSprite('LobbyHeroUltimateEmblem', REF_SECTION_EMBLEM.path, -titleW / 2 - 14 * scale - emblemW / 2, headY + 12 * scale, emblemW, emblemH, dialog);
+    const title = this.host.addChildLabel(dialog, 'LobbyHeroUltimateTitle', titleText, 0, headY + 12 * scale, titleSize, rgba(255, 226, 150), new Size(titleW + 20 * scale, titleSize * 1.3));
     title.overflow = Label.Overflow.SHRINK;
     title.isBold = true;
+    title.lineHeight = titleSize;
     this.applyOutline(title, scale, true);
-    const sub = this.host.addChildLabel(dialog, 'LobbyHeroUltimateSub', `${safeText(hero.heroName)} · 当前 Lv.${current} / 上限 Lv.${cap}${awakened ? '' : '（觉醒后 Lv.10）'}`, textX, headY - 18 * scale, 17 * scale, rgba(214, 192, 156), new Size(cw * 0.7, 24 * scale), HorizontalTextAlignment.LEFT);
+    const sub = this.host.addChildLabel(dialog, 'LobbyHeroUltimateSub', `${safeText(hero.heroName)} · 当前 Lv.${current} / 上限 Lv.${cap}${awakened ? '' : '（觉醒后 Lv.10）'}`, 0, headY - 20 * scale, 20 * scale, rgba(232, 214, 180), new Size(cw * 0.8, 28 * scale));
     sub.overflow = Label.Overflow.SHRINK;
-    const closeSize = 58 * scale;
-    const close = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateClose', right - closeSize / 2 + 6 * scale, headY, closeSize, closeSize);
+    sub.lineHeight = sub.fontSize;
+    const closeSize = 62 * scale;
+    const close = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateClose', right - closeSize / 2 + 10 * scale, headY, closeSize, closeSize);
     if (!this.host.addSprite('Art', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, close)) {
       this.host.addSprite('Art', 'ui/common/ai/button_close/spriteFrame', 0, 0, closeSize * 0.84, closeSize * 0.84, close);
     }
@@ -941,63 +938,85 @@ export class LobbyHeroDetailPanelRenderer {
     close.on(Button.EventType.CLICK, () => this.host.closeLobbyHeroUltimateDialog(), this);
     this.host.applyImageButtonFeedback(close, 1.08, 0.94);
 
-    // 底部双钮位置先定,中间各段在标题带与按钮之间按可用高度排
-    const buttonH = 70 * scale;
-    const buttonW = 280 * scale;
-    const buttonY = -h / 2 + 34 * scale + buttonH / 2;
-    let y = headY - bandH / 2 - 20 * scale;
-    const rowGap = 12 * scale;
+    // ── 版面:底部双钮 → 中间两列(左 58% 技能 + 等级倍率;右 42% 升级消耗) ──
+    const buttonH = 68 * scale;
+    const buttonW = Math.min(310 * scale, cw * 0.32);
+    const buttonY = shell.innerBottom + 16 * scale + buttonH / 2;
+    const bodyTop = headY - bandH / 2 - 12 * scale;
+    const bodyBottom = buttonY + buttonH / 2 + 12 * scale;
+    const bodyH = bodyTop - bodyBottom;
+    const colGap = 16 * scale;
+    const leftW = cw * 0.58 - colGap / 2;
+    const rightW = cw - leftW - colGap;
+    const leftCx = left + leftW / 2;
+    const rightCx = right - rightW / 2;
 
-    // ── 技能卡:亮金行 + 金环图标 + 名称 · 标签 + 描述 ──
+    // ── 焦点:大徽章环 + 技能图,右侧大号技能名 / 标签 / 描述 ──
     const ultSkill = resolveSkills(hero).find((skill) => skill.kind === 'ultimate') ?? null;
-    if (ultSkill) {
-      const cardH = 116 * scale;
-      const card = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateSkillCard', 0, y - cardH / 2, cw, cardH);
-      if (!mountRefSliced(this.host, card, 'Bg', REF_ROW_SELECTED, 0, 0, cw, cardH)) {
-        drawRefPanelFallback(card, cw, cardH, scale);
-      }
-      const ringSize = 92 * scale;
-      const iconX = -cw / 2 + 26 * scale + ringSize / 2;
-      const iconSize = ringSize * 0.64;
-      const iconBack = this.host.addChildPlainNode(card, 'IconBack', iconX, 0, iconSize, iconSize).addComponent(Graphics);
-      iconBack.fillColor = rgba(7, 7, 8, 230);
-      iconBack.circle(0, 0, iconSize / 2 + 2 * scale);
+    // 焦点徽章按原型比例:约占弹窗高 38%
+    const skillBlockH = Math.min(300 * scale, bodyH * 0.6);
+    const ringSize = Math.min(skillBlockH * 1.1, leftW * 0.46);
+    const ringCx = left + ringSize / 2 + 6 * scale;
+    const ringCy = bodyTop - skillBlockH / 2;
+    // 徽章背后的暖色柔光(两层同心圆)
+    const glow = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateGlow', ringCx, ringCy, ringSize * 1.5, ringSize * 1.5).addComponent(Graphics);
+    glow.fillColor = rgba(220, 70, 30, 40);
+    glow.circle(0, 0, ringSize * 0.74);
+    glow.fill();
+    glow.fillColor = rgba(255, 120, 50, 60);
+    glow.circle(0, 0, ringSize * 0.52);
+    glow.fill();
+    const iconSize = ringSize * 0.54;
+    if (!this.host.addSprite('LobbyHeroUltimateSigil', REF_ULT_SIGIL_ASSET, ringCx, ringCy, ringSize * 0.76, ringSize * 0.76, dialog)) {
+      const iconBack = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateIconBack', ringCx, ringCy, iconSize, iconSize).addComponent(Graphics);
+      iconBack.fillColor = rgba(7, 6, 8, 235);
+      iconBack.circle(0, 0, iconSize * 0.62 + 3 * scale);
       iconBack.fill();
-      this.drawSkillIcon(card, iconX, 0, iconSize, scale, 0);
-      this.host.addSprite('IconRing', REF_ICON_RING_ASSET, iconX, 0, ringSize, ringSize, card);
-      const skillTextX = iconX + ringSize / 2 + 18 * scale;
-      const skillTextW = cw / 2 - skillTextX - 24 * scale;
-      const skillName = this.host.addChildLabel(card, 'Name', `${safeText(ultSkill.name)}  ·  ${safeText(ultSkill.tag)}`, skillTextX, cardH * 0.22, 22 * scale, rgba(255, 224, 150), new Size(skillTextW, 30 * scale), HorizontalTextAlignment.LEFT);
+      this.drawSkillIcon(dialog, ringCx, ringCy, iconSize, scale, 0);
+    }
+    if (!this.host.addSprite('LobbyHeroUltimateRing', REF_ULT_EMBLEM_RING_ASSET, ringCx, ringCy, ringSize, ringSize, dialog)) {
+      this.host.addSprite('LobbyHeroUltimateRing', REF_ICON_RING_ASSET, ringCx, ringCy, ringSize, ringSize, dialog);
+    }
+    const skillTextX = ringCx + ringSize / 2 + 18 * scale;
+    const skillTextW = left + leftW - skillTextX;
+    if (ultSkill) {
+      const nameSize = 34 * scale;
+      const skillName = this.host.addChildLabel(dialog, 'LobbyHeroUltimateSkillName', `${safeText(ultSkill.name)} · ${safeText(ultSkill.tag)}`, skillTextX, ringCy + skillBlockH * 0.22, nameSize, rgba(255, 226, 150), new Size(skillTextW, nameSize * 1.3), HorizontalTextAlignment.LEFT);
       skillName.overflow = Label.Overflow.SHRINK;
       skillName.isBold = true;
+      skillName.lineHeight = nameSize;
       this.applyOutline(skillName, scale, true);
-      const skillDesc = this.host.addChildLabel(card, 'Desc', safeText(ultSkill.description), skillTextX, -cardH * 0.17, 18 * scale, rgba(226, 212, 184), new Size(skillTextW, 48 * scale), HorizontalTextAlignment.LEFT);
-      skillDesc.lineHeight = 24 * scale;
-      skillDesc.overflow = Label.Overflow.SHRINK;
-      y -= cardH + rowGap;
+      const desc = this.host.addChildLabel(dialog, 'LobbyHeroUltimateSkillDesc', safeText(ultSkill.description), skillTextX, ringCy - skillBlockH * 0.14, 22 * scale, rgba(240, 230, 208), new Size(skillTextW, skillBlockH * 0.5), HorizontalTextAlignment.LEFT);
+      desc.enableWrapText = true;
+      desc.lineHeight = 30 * scale;
+      desc.overflow = Label.Overflow.SHRINK;
     }
 
-    // ── 信息行(金边暗行):技能等级(钻格)/ 伤害倍率 ──
-    const infoH = 58 * scale;
-    const infoRow = (name: string, cy: number): Node => {
-      const row = this.host.addChildPlainNode(dialog, name, 0, cy, cw, infoH);
-      if (!mountRefSliced(this.host, row, 'Bg', REF_ROW, 0, 0, cw, infoH)) {
-        drawRefPanelFallback(row, cw, infoH, scale);
-      }
-      return row;
-    };
-    const levelRow = infoRow('LobbyHeroUltimatePips', y - infoH / 2);
-    const levelLabel = this.host.addChildLabel(levelRow, 'Label', '技能等级', -cw / 2 + 26 * scale, 0, 19 * scale, rgba(232, 220, 196), new Size(120 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
-    levelLabel.overflow = Label.Overflow.SHRINK;
+    // ── 等级 / 倍率面板(细金框,两行,中间金线分隔) ──
+    const statsTop = bodyTop - skillBlockH - 12 * scale;
+    const hintH = maxed || capped ? 30 * scale : 0;
+    const statsH = statsTop - bodyBottom - hintH - (hintH ? 8 * scale : 0);
+    const boxGap = 10 * scale;
+    const rowH = (statsH - boxGap) / 2;
+    const stats = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateStats', leftCx, statsTop - statsH / 2, leftW, statsH);
+    mountRefTitledPanel(this.host, stats, 'LevelBox', 0, statsH / 2 - rowH / 2, leftW, rowH, scale, '', { fill: rgba(10, 8, 9, 200) });
+    mountRefTitledPanel(this.host, stats, 'ScaleBox', 0, -statsH / 2 + rowH / 2, leftW, rowH, scale, '', { fill: rgba(10, 8, 9, 200) });
+    const sLeft = -leftW / 2 + 22 * scale;
+    const sRight = leftW / 2 - 22 * scale;
+    // 行 1:技能等级 + 钻格 + 右侧状态
+    const row1 = statsH / 2 - rowH / 2;
+    const levelLabel = this.host.addChildLabel(stats, 'LevelLabel', '技能等级', sLeft, row1 + rowH * 0.24, 24 * scale, rgba(255, 226, 150), new Size(180 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
     levelLabel.isBold = true;
-    const pipSize = 26 * scale;
-    const pipGap = 8 * scale;
+    levelLabel.lineHeight = levelLabel.fontSize;
+    this.applyOutline(levelLabel, scale, false);
+    const pipSize = Math.min(34 * scale, (leftW * 0.6) / ULTIMATE_MAX_LEVEL);
+    const pipGap = pipSize * 0.3;
     const pipsW = ULTIMATE_MAX_LEVEL * pipSize + (ULTIMATE_MAX_LEVEL - 1) * pipGap;
     for (let level = 1; level <= ULTIMATE_MAX_LEVEL; level += 1) {
-      const px = -pipsW / 2 + pipSize / 2 + (level - 1) * (pipSize + pipGap);
+      const px = sLeft + pipSize / 2 + (level - 1) * (pipSize + pipGap);
       const lit = level <= current;
       const target = !lit && !!cost && level === nextLevel;
-      const pipSprite = this.host.addSprite(`Pip_${level}`, lit ? REF_KIT.pipOn.path : target ? REF_KIT.pipMid.path : REF_KIT.pipOff.path, px, 0, pipSize, pipSize, levelRow);
+      const pipSprite = this.host.addSprite(`Pip_${level}`, lit ? REF_KIT.pipOn.path : target ? REF_KIT.pipMid.path : REF_KIT.pipOff.path, px, row1 - rowH * 0.2, pipSize, pipSize, stats);
       if (pipSprite && !lit && level > cap) {
         pipSprite.node.addComponent(UIOpacity).opacity = 110;
       }
@@ -1005,58 +1024,77 @@ export class LobbyHeroDetailPanelRenderer {
         tween(pipSprite.node).repeatForever(tween(pipSprite.node).to(0.6, { scale: new Vec3(1.18, 1.18, 1) }).to(0.6, { scale: new Vec3(1, 1, 1) })).start();
       }
     }
+    void pipsW;
     const levelText = maxed ? '已满级' : capped ? '觉醒后解锁' : `Lv.${current}  →  Lv.${nextLevel}`;
-    const levelValue = this.host.addChildLabel(levelRow, 'Value', levelText, cw / 2 - 26 * scale, 0, 20 * scale, maxed || capped ? rgba(226, 132, 110) : rgba(255, 222, 140), new Size(170 * scale, 26 * scale), HorizontalTextAlignment.RIGHT);
+    const levelValue = this.host.addChildLabel(stats, 'LevelValue', levelText, sRight, row1 - rowH * 0.2, 22 * scale, maxed || capped ? rgba(236, 140, 118) : rgba(255, 226, 150), new Size(leftW * 0.34, 30 * scale), HorizontalTextAlignment.RIGHT);
     levelValue.overflow = Label.Overflow.SHRINK;
     levelValue.isBold = true;
-    y -= infoH + rowGap * 0.6;
-
-    const scaleRow = infoRow('LobbyHeroUltimateScale', y - infoH / 2);
-    const scaleLabel = this.host.addChildLabel(scaleRow, 'Label', '伤害倍率', -cw / 2 + 26 * scale, 0, 19 * scale, rgba(232, 220, 196), new Size(120 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
-    scaleLabel.overflow = Label.Overflow.SHRINK;
+    levelValue.lineHeight = levelValue.fontSize;
+    // 行 2:伤害倍率 + 当前 → 下一级(下一级大号亮金)+ 每级增量
+    const row2 = -statsH / 2 + rowH / 2;
+    const scaleLabel = this.host.addChildLabel(stats, 'ScaleLabel', '伤害倍率', sLeft, row2 + rowH * 0.26, 24 * scale, rgba(255, 226, 150), new Size(180 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
     scaleLabel.isBold = true;
+    scaleLabel.lineHeight = scaleLabel.fontSize;
+    this.applyOutline(scaleLabel, scale, false);
     const currentPct = Math.round(260 * ultimateDamageScale(current));
     const nextPct = Math.round(260 * ultimateDamageScale(nextLevel));
-    const scaleValue = this.host.addChildLabel(scaleRow, 'Value', cost ? `${currentPct}%  →  ${nextPct}%` : `${currentPct}%`, 0, 0, 28 * scale, rgba(255, 222, 130), new Size(cw * 0.46, infoH - 8 * scale));
-    scaleValue.overflow = Label.Overflow.SHRINK;
-    scaleValue.isBold = true;
-    this.applyOutline(scaleValue, scale, true);
-    const perLevel = this.host.addChildLabel(scaleRow, 'Per', `每级 +${Math.round(260 * 0.15)}%`, cw / 2 - 26 * scale, 0, 17 * scale, rgba(160, 228, 150), new Size(130 * scale, 24 * scale), HorizontalTextAlignment.RIGHT);
-    perLevel.overflow = Label.Overflow.SHRINK;
-    y -= infoH + rowGap * 1.6;
-
-    // ── 升级消耗:小标题带 + 材料行(图标 / 名称 / 需求 / 持有,不足红) ──
-    let canUp = false;
-    if (maxed || capped) {
-      const hint = this.host.addChildLabel(dialog, 'LobbyHeroUltimateHint', maxed ? '终极技能已达最高等级。' : '已达当前上限，觉醒后可继续提升至 Lv.10。', 0, (y + buttonY + buttonH / 2) / 2, 20 * scale, rgba(226, 132, 110), new Size(cw, 30 * scale));
+    const bigSize = 46 * scale;
+    const smallSize = 28 * scale;
+    const valueY = row2 - rowH * 0.18;
+    if (costShown) {
+      const curText = `${currentPct}%`;
+      const arrow = '  →  ';
+      const nextText = `${nextPct}%`;
+      const curW = curText.length * smallSize * 0.62;
+      const arrowW = arrow.length * smallSize * 0.5;
+      const nextW = nextText.length * bigSize * 0.62;
+      let x = sLeft + 8 * scale;
+      const cur = this.host.addChildLabel(stats, 'ScaleCur', curText, x, valueY, smallSize, rgba(236, 224, 200), new Size(curW + 8 * scale, smallSize * 1.3), HorizontalTextAlignment.LEFT);
+      cur.isBold = true;
+      cur.lineHeight = smallSize;
+      x += curW + 6 * scale;
+      const arr = this.host.addChildLabel(stats, 'ScaleArrow', arrow, x, valueY, smallSize, rgba(214, 170, 92), new Size(arrowW + 8 * scale, smallSize * 1.3), HorizontalTextAlignment.LEFT);
+      arr.lineHeight = smallSize;
+      x += arrowW + 6 * scale;
+      const nxt = this.host.addChildLabel(stats, 'ScaleNext', nextText, x, valueY, bigSize, rgba(255, 222, 130), new Size(nextW + 10 * scale, bigSize * 1.3), HorizontalTextAlignment.LEFT);
+      nxt.isBold = true;
+      nxt.lineHeight = bigSize;
+      this.applyOutline(nxt, scale, true);
+    } else {
+      const only = this.host.addChildLabel(stats, 'ScaleCur', `${currentPct}%`, sLeft + 8 * scale, valueY, bigSize, rgba(255, 222, 130), new Size(leftW * 0.5, bigSize * 1.3), HorizontalTextAlignment.LEFT);
+      only.isBold = true;
+      only.lineHeight = bigSize;
+      this.applyOutline(only, scale, true);
+    }
+    const perLevel = this.host.addChildLabel(stats, 'ScalePer', `每级 +${Math.round(260 * 0.15)}%`, sRight, valueY, 21 * scale, rgba(160, 228, 150), new Size(160 * scale, 28 * scale), HorizontalTextAlignment.RIGHT);
+    perLevel.lineHeight = perLevel.fontSize;
+    if (hintH) {
+      const hint = this.host.addChildLabel(dialog, 'LobbyHeroUltimateHint', maxed ? '终极技能已达最高等级。' : '已达当前上限，觉醒后可继续提升至 Lv.10。', leftCx, bodyBottom + hintH / 2, 21 * scale, rgba(240, 130, 110), new Size(leftW, hintH));
       hint.overflow = Label.Overflow.SHRINK;
-    } else if (cost) {
+      hint.lineHeight = hint.fontSize;
+      this.applyOutline(hint, scale, false);
+    }
+
+    // ── 右栏:升级消耗面板(标题带 + 材料行) ──
+    let canUp = false;
+    const costPanel = mountRefTitledPanel(this.host, dialog, 'LobbyHeroUltimateCost', rightCx, bodyTop - bodyH / 2, rightW, bodyH, scale, costShown ? `升级消耗 · 升至 Lv.${nextLevel}` : '升级消耗', { bandH: 52 * scale, fontSize: 24 * scale, center: false, fill: rgba(10, 8, 9, 200) });
+    const costNode = costPanel.node;
+    if (costShown) {
       const rows: Array<{ icon: string; label: string; need: number; have: number }> = [
-        { icon: 'ui/bag/ai/icon_expbook/spriteFrame', label: '终极技能卷轴', need: cost.scroll, have: held('ULT_SCROLL') },
-        { icon: 'ui/bag/ai/icon_gold/spriteFrame', label: '金币', need: cost.gold, have: gold },
-        { icon: 'ui/bag/ai/icon_boss_mark/spriteFrame', label: 'BOSS印记', need: cost.bossMark, have: held('BOSS_MARK') },
-        { icon: 'ui/bag/ai/icon_bound_diamond/spriteFrame', label: '深渊结晶', need: cost.abyssCrystal, have: held('ABYSS_CRYSTAL') },
+        { icon: 'ui/bag/ai/icon_expbook/spriteFrame', label: '终极技能卷轴', need: costShown.scroll, have: held('ULT_SCROLL') },
+        { icon: 'ui/bag/ai/icon_gold/spriteFrame', label: '金币', need: costShown.gold, have: gold },
+        { icon: 'ui/bag/ai/icon_boss_mark/spriteFrame', label: 'BOSS印记', need: costShown.bossMark, have: held('BOSS_MARK') },
+        { icon: 'ui/bag/ai/icon_bound_diamond/spriteFrame', label: '深渊结晶', need: costShown.abyssCrystal, have: held('ABYSS_CRYSTAL') },
       ].filter((row) => row.need > 0);
-      canUp = rows.every((row) => row.have >= row.need);
-      const costBandH = 42 * scale;
-      mountRefHeaderBand(this.host, dialog, 'LobbyHeroUltimateCostBand', 0, y - costBandH / 2, cw, costBandH, scale);
-      const costTitle = this.host.addChildLabel(dialog, 'LobbyHeroUltimateCostTitle', `升级消耗 · 升至 Lv.${nextLevel}`, left + 18 * scale, y - costBandH / 2, 21 * scale, rgba(255, 222, 140), new Size(cw * 0.6, 30 * scale), HorizontalTextAlignment.LEFT);
-      costTitle.overflow = Label.Overflow.SHRINK;
-      costTitle.isBold = true;
-      this.applyOutline(costTitle, scale, true);
-      y -= costBandH + rowGap * 0.7;
-      const cols = rows.length > 2 ? 2 : 1;
-      const lines = Math.ceil(rows.length / cols);
-      const avail = y - (buttonY + buttonH / 2 + 18 * scale);
-      const cellGap = 10 * scale;
-      const cellH = Math.max(40 * scale, Math.min(52 * scale, (avail - (lines - 1) * cellGap) / lines));
-      const cellW = (cw - (cols - 1) * 14 * scale) / cols;
+      canUp = !!cost && rows.every((row) => row.have >= row.need);
+      const listTop = costPanel.bodyTop - 10 * scale;
+      const listBottom = -bodyH / 2 + 12 * scale;
+      const cellGap = 8 * scale;
+      const cellH = Math.min(68 * scale, (listTop - listBottom - (rows.length - 1) * cellGap) / Math.max(1, rows.length));
+      const cellW = rightW - 24 * scale;
       rows.forEach((row, index) => {
-        const col = index % cols;
-        const line = Math.floor(index / cols);
-        const cx = -cw / 2 + cellW / 2 + col * (cellW + 14 * scale);
-        const cy = y - cellH / 2 - line * (cellH + cellGap);
-        const cell = this.host.addChildPlainNode(dialog, `Cost_${index}`, cx, cy, cellW, cellH);
+        const cy = listTop - cellH / 2 - index * (cellH + cellGap);
+        const cell = this.host.addChildPlainNode(costNode, `Cost_${index}`, 0, cy, cellW, cellH);
         const enough = row.have >= row.need;
         if (!mountRefSliced(this.host, cell, 'Bg', REF_ROW, 0, 0, cellW, cellH)) {
           drawRefPanelFallback(cell, cellW, cellH, scale);
@@ -1068,20 +1106,30 @@ export class LobbyHeroDetailPanelRenderer {
           warn.roundRect(-cellW / 2 + 3, -cellH / 2 + 3, cellW - 6, cellH - 6, 6 * scale);
           warn.stroke();
         }
-        const iconSize = 30 * scale;
-        this.host.addSprite('Icon', row.icon, -cellW / 2 + 22 * scale + iconSize / 2, 0, iconSize, iconSize, cell);
-        const nameLabel = this.host.addChildLabel(cell, 'Name', row.label, -cellW / 2 + 30 * scale + iconSize, 0, 19 * scale, rgba(232, 220, 196), new Size(cellW * 0.42, 26 * scale), HorizontalTextAlignment.LEFT);
+        // 材料图标坐金环
+        const ringR = Math.min(cellH * 0.82, 48 * scale);
+        const iconCx = -cellW / 2 + 14 * scale + ringR / 2;
+        this.host.addSprite('Ring', REF_ICON_RING_ASSET, iconCx, 0, ringR, ringR, cell);
+        this.host.addSprite('Icon', row.icon, iconCx, 0, ringR * 0.6, ringR * 0.6, cell);
+        const nameLabel = this.host.addChildLabel(cell, 'Name', row.label, iconCx + ringR / 2 + 12 * scale, 0, 23 * scale, rgba(244, 232, 208), new Size(cellW * 0.44, 30 * scale), HorizontalTextAlignment.LEFT);
         nameLabel.overflow = Label.Overflow.SHRINK;
-        const amountLabel = this.host.addChildLabel(cell, 'Amount', `${formatInteger(row.need)} / ${compactResourceValue(row.have)}`, cellW / 2 - 22 * scale, 0, 19 * scale, enough ? rgba(250, 238, 210) : rgba(240, 112, 92), new Size(cellW * 0.46, 26 * scale), HorizontalTextAlignment.RIGHT);
+        nameLabel.lineHeight = nameLabel.fontSize;
+        const amountLabel = this.host.addChildLabel(cell, 'Amount', `${formatInteger(row.need)} / ${compactResourceValue(row.have)}`, cellW / 2 - 16 * scale, 0, 24 * scale, enough ? rgba(190, 236, 180) : rgba(244, 112, 92), new Size(cellW * 0.42, 30 * scale), HorizontalTextAlignment.RIGHT);
         amountLabel.overflow = Label.Overflow.SHRINK;
         amountLabel.isBold = true;
+        amountLabel.lineHeight = amountLabel.fontSize;
+        this.applyOutline(amountLabel, scale, false);
       });
+    } else {
+      const note = this.host.addChildLabel(costNode, 'Note', '已达最高等级\n无需再消耗材料', 0, (costPanel.bodyTop - bodyH / 2) / 2 - 10 * scale, 22 * scale, rgba(214, 200, 172), new Size(rightW - 40 * scale, 80 * scale));
+      note.enableWrapText = true;
+      note.lineHeight = 30 * scale;
     }
 
     // ── 底部双钮:红金「升级」+ 暗金「关闭」 ──
     const confirmEnabled = canUp && !ult.busy;
-    mountRefButton(this.host, dialog, 'LobbyHeroUltimateConfirm', ult.busy ? '处理中…' : '升级', -buttonW / 2 - 24 * scale, buttonY, buttonW, buttonH, scale, confirmEnabled ? 'primary' : 'disabled', confirmEnabled ? () => this.host.confirmLobbyHeroUltimateUp(hero.id) : undefined);
-    mountRefButton(this.host, dialog, 'LobbyHeroUltimateClose2', '关闭', buttonW / 2 + 24 * scale, buttonY, buttonW, buttonH, scale, 'secondary', () => this.host.closeLobbyHeroUltimateDialog());
+    mountRefButton(this.host, dialog, 'LobbyHeroUltimateConfirm', ult.busy ? '处理中…' : '升级', -buttonW / 2 - 20 * scale, buttonY, buttonW, buttonH, scale, confirmEnabled ? 'primary' : 'primaryDisabled', confirmEnabled ? () => this.host.confirmLobbyHeroUltimateUp(hero.id) : undefined, { fontSize: 30 * scale });
+    mountRefButton(this.host, dialog, 'LobbyHeroUltimateClose2', '关闭', buttonW / 2 + 20 * scale, buttonY, buttonW, buttonH, scale, 'secondary', () => this.host.closeLobbyHeroUltimateDialog(), { fontSize: 30 * scale });
   }
 
   private renderRefineDialog(parent: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number, scale: number): void {

@@ -50,6 +50,48 @@ export const REF_HALL_BG = { path: 'ui/common/ref/hall_bg_v2/spriteFrame', ratio
 export const REF_PLATE_DARK: RefKitItem = { path: 'ui/common/ref/plate_dark/spriteFrame', w: 696, h: 150, inset: [70, 70, 40, 40] };
 export const REF_PLATE_BRONZE: RefKitItem = { path: 'ui/common/ref/plate_bronze/spriteFrame', w: 568, h: 150, inset: [30, 30, 30, 30] };
 export const REF_INFO_BANNER: RefKitItem = { path: 'ui/common/ref/info_banner/spriteFrame', w: 1112, h: 120, inset: [96, 96, 30, 30] };
+/**
+ * 2026-10-19 终极技能 / 物品详情弹窗(GPT 按原型逐件出):厚雕花金框(大角饰 + 顶冠,内芯透明,九宫格内边取到角饰外)、
+ * 大招徽章环(中心透明放技能图)、物品详情大格框。尺寸在 install 后量过回填。
+ */
+export const REF_ORNATE_FRAME: RefKitItem = { path: 'ui/common/ref/ornate_frame/spriteFrame', w: 1600, h: 977, inset: [200, 200, 200, 120] };
+/** 厚框的内缘(素材像素,实测:顶带 96..131 / 侧带 29..71 / 底带 872..908,顶冠伸到 0):标题带 / 内容从这里起算。 */
+export const REF_ORNATE_FRAME_EDGE = { top: 131, side: 71, bottom: 105 };
+/** 厚框外缘(素材像素):实底只填到带子外沿,顶冠 / 角饰之外保持透明。 */
+export const REF_ORNATE_FRAME_OUTER = { top: 96, side: 29, bottom: 69 };
+export const REF_ULT_EMBLEM_RING_ASSET = 'ui/common/ref/ult_emblem_ring/spriteFrame';
+export const REF_DETAIL_SLOT_FRAME_ASSET = 'ui/common/ref/detail_slot_frame/spriteFrame';
+/** 大招火焰纹章(终极技能弹窗焦点,原型裁出;圆盘带边缘柔光,放在 ult_emblem_ring 环心)。 */
+export const REF_ULT_SIGIL_ASSET = 'ui/common/ref/ult_sigil/spriteFrame';
+
+/**
+ * 厚雕花金框弹窗壳:实底 + 厚框(缺图退细金框),返回内缘(局部坐标)供标题带 / 内容排版。
+ * 框按九宫格等比缩(k = min(w/1600, h/1000, 1)),大角饰整块留在角里。
+ */
+export function mountRefOrnateDialog(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number, fill = rgba(10, 9, 12, 244)): { node: Node; innerTop: number; innerBottom: number; innerW: number } {
+  const node = host.addChildPlainNode(parent, name, x, y, w, h);
+  // 框按九宫格缩到 46%(量原型:角饰约 94 素材像素 ≈ 1600 宽的 6%;整比例画会吃掉近 1/4 高度)
+  const maxK = 0.46;
+  const k = Math.min(w / REF_ORNATE_FRAME.w, h / REF_ORNATE_FRAME.h, maxK);
+  const back = host.addChildPlainNode(node, 'Back', 0, 0, w, h).addComponent(Graphics);
+  back.fillColor = fill;
+  const bx = -w / 2 + REF_ORNATE_FRAME_OUTER.side * k + 4;
+  const bTop = h / 2 - REF_ORNATE_FRAME_OUTER.top * k - 4;
+  const bBottom = -h / 2 + REF_ORNATE_FRAME_OUTER.bottom * k + 4;
+  back.roundRect(bx, bBottom, w - (REF_ORNATE_FRAME_OUTER.side * k + 4) * 2, bTop - bBottom, 8 * scale);
+  back.fill();
+  if (mountRefSliced(host, node, 'Frame', REF_ORNATE_FRAME, 0, 0, w, h, maxK)) {
+    return { node, innerTop: h / 2 - REF_ORNATE_FRAME_EDGE.top * k, innerBottom: -h / 2 + REF_ORNATE_FRAME_EDGE.bottom * k, innerW: w - REF_ORNATE_FRAME_EDGE.side * k * 2 };
+  }
+  // 缺厚框:实底铺满再退细金框
+  back.roundRect(-w / 2 + 6, -h / 2 + 6, w - 12, h - 12, 10 * scale);
+  back.fill();
+  if (!mountRefSliced(host, node, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
+    drawRefPanelFallback(node, w, h, scale, rgba(0, 0, 0, 0));
+  }
+  const fk = refCardFrameK(w, h);
+  return { node, innerTop: h / 2 - REF_CARD_FRAME_LINE.top * fk, innerBottom: -h / 2 + REF_CARD_FRAME_LINE.top * fk, innerW: w - REF_CARD_FRAME_LINE.side * fk * 2 };
+}
 /** 金边暗行 / 选中亮金行(锻造列表行素材,水晶属性行、法术列表、终极技能弹窗共用)。 */
 export const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
 export const REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
