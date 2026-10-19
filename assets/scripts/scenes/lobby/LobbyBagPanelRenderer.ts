@@ -22,7 +22,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { mountRefButton, mountRefHeaderBand, mountRefOrnateDialog, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM } from '../UiRefKit';
+import { mountRefButton, mountRefDialogBackdrop, mountRefHeaderBand, mountRefOrnateDialog, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
 export const BAG_C1812_ITEM_SLOT_ASSET = 'ui/common/ai/item_slot/spriteFrame';
@@ -949,22 +949,37 @@ export class LobbyBagPanelRenderer {
     }
   }
 
-  // 手机全屏详情(2026-10-19 按 GPT 原型重做):厚雕花金框 + 「物品详情」标题带 + 右上关闭;
-  // 左列 = 大格(品质框 + 柔光)+ 大号名 + 稀有度签 + 四条金边信息行;右列 = 「用途」「获取途径」两块标题带面板 + 底部四钮(主操作红金)。
+  // 手机全屏详情(2026-10-19 按 GPT 原型 1:1):原型 1870×841,弹窗 x 284..1586(宽 1302)、y 52..785(高 733);
+  // 所有元素按原型像素 × u 摆放;内部垫实景底图;左列 大格(380..693 × 169..434)+ 名 + 稀有度签 + 四行信息(y 537..755);
+  // 右列 用途面板(772..1553 × 161..350)+ 获取途径面板(y 376..630)+ 四钮(y 678..755)。
   private renderDetailPopupPhone(parent: Node, item: BagItemEntryVO, rect: PhoneDialogRect, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
-    const width = rect.width;
-    const height = rect.height;
+    const PW = 1302;
+    const PH = 733;
+    let width = Math.min(rect.width, panelWidth * (PW / 1870));
+    let height = width * (PH / PW);
+    if (height > rect.height) {
+      height = rect.height;
+      width = height * (PW / PH);
+    }
+    const u = width / PW;
+    const X = (px: number): number => (px - 284 - PW / 2) * u;
+    const Y = (py: number): number => (PH / 2 - (py - 52)) * u;
+    const S = (v: number): number => v * u;
+    const tight = (label: Label): Label => {
+      label.lineHeight = label.fontSize;
+      return label;
+    };
     const dim = this.host.addChildPlainNode(parent, 'LobbyBagDetailPopupDim', 0, 0, panelWidth, panelHeight);
     const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 130);
+    dimGraphics.fillColor = rgba(0, 0, 0, 180);
     dimGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
     dimGraphics.fill();
     dim.addComponent(BlockInputEvents);
 
-    // 弹窗实底半透明(原型透出后面的背包页)
-    const shell = mountRefOrnateDialog(this.host, parent, 'LobbyBagItemDetail', rect.x, rect.y, width, height, scale, rgba(12, 9, 10, 200));
+    const shell = mountRefOrnateDialog(this.host, parent, 'LobbyBagItemDetail', 0, 0, width, height, scale, rgba(10, 8, 9, 212));
     const detail = shell.node;
     detail.addComponent(BlockInputEvents);
+    mountRefDialogBackdrop(this.host, detail, REF_DETAIL_INNER_BG, 0, Y((126 + 780) / 2), width - S(14), S(780 - 126), 60);
     const closePopup = (): void => {
       this.detailPopupOpen = false;
       if (detail.isValid) {
@@ -975,87 +990,56 @@ export class LobbyBagPanelRenderer {
       }
       this.host.clearLobbyBagSelection();
     };
-    // 标题带
-    const bandH = 64 * scale;
-    const headY = shell.innerTop - bandH / 2;
-    mountRefHeaderBand(this.host, detail, 'LobbyBagDetailBand', 0, headY, shell.innerW, bandH, scale);
+    // 标题带 y 66..123,标题 (935, 94) 字高 40;关闭 (1555, 92) 径 72
+    const bandH = S(57);
+    const headY = Y(94.5);
+    mountRefHeaderBand(this.host, detail, 'LobbyBagDetailBand', 0, headY, width - S(14), bandH, scale);
     raiseRefFrame(detail);
-    const titleSize = 34 * scale;
+    const titleSize = S(40);
     const titleText = '物品详情';
-    const emblemH = 38 * scale;
-    const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
     const titleW = titleText.length * titleSize;
-    this.host.addSprite('LobbyBagDetailEmblem', REF_SECTION_EMBLEM.path, -titleW / 2 - 12 * scale - emblemW / 2, headY, emblemW, emblemH, detail);
-    const title = this.host.addChildLabel(detail, 'LobbyBagDetailTitle', titleText, 0, headY, titleSize, rgba(255, 226, 150), new Size(titleW + 20 * scale, titleSize * 1.3));
+    const emblemH = S(44);
+    const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
+    this.host.addSprite('LobbyBagDetailEmblem', REF_SECTION_EMBLEM.path, X(935) - titleW / 2 - S(18) - emblemW / 2, headY, emblemW, emblemH, detail);
+    const title = tight(this.host.addChildLabel(detail, 'LobbyBagDetailTitle', titleText, X(935), headY, titleSize, rgba(255, 228, 156), new Size(titleW + S(20), titleSize * 1.3)));
     title.isBold = true;
-    title.lineHeight = titleSize;
     this.applyOutline(title, scale, true);
-    const closeSize = 62 * scale;
-    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', shell.innerW / 2 - closeSize / 2 - 6 * scale, headY, closeSize + 10 * scale, closeSize + 10 * scale);
-    if (!this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, closeButton)) {
-      this.host.addSprite('LobbyBagDetailCloseArt', BAG_AI_CLOSE_BUTTON_ASSET, 0, 0, closeSize * 0.84, closeSize * 0.84, closeButton);
+    const closeSize = S(72);
+    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', X(1555), Y(92), closeSize + S(10), closeSize + S(10));
+    if (!this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, closeButton)) {
+      this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, closeButton);
     }
     closeButton.addComponent(Button);
     this.host.applyImageButtonFeedback(closeButton, 1.08, 0.92);
     closeButton.on(Button.EventType.CLICK, closePopup, this);
 
-    // 两列
-    const pad = 28 * scale;
-    const left = -shell.innerW / 2 + pad;
-    const right = shell.innerW / 2 - pad;
-    const bodyTop = headY - bandH / 2 - 14 * scale;
-    const bodyBottom = shell.innerBottom + 16 * scale;
-    const bodyH = bodyTop - bodyBottom;
-    const leftWidth = Math.min(420 * scale, (right - left) * 0.36);
-    const gutter = 20 * scale;
-    const leftCx = left + leftWidth / 2;
-    const rightLeft = left + leftWidth + gutter;
-    const rightWidth = right - rightLeft;
-    const rightCx = rightLeft + rightWidth / 2;
-
-    // ── 左列:大格 + 名 + 稀有度签 + 信息行 ──
-    const infoRows: Array<[string, string, boolean]> = [
-      ['拥有数量', formatCompact(safeNumber(item.itemCount)), true],
-      ['堆叠', formatCompact(safeNumber(item.maxStack)), false],
-      ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', false],
-      ['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久', false],
-    ];
-    const iconSize = Math.min(leftWidth * 0.78, bodyH * 0.5);
-    const nameBlockH = 74 * scale;
-    const infoRowH = Math.max(34 * scale, Math.min(44 * scale, (bodyH - iconSize - nameBlockH - 32 * scale) / infoRows.length));
-    const iconCy = bodyTop - iconSize / 2;
+    // ── 左列:大格 380..693 × 169..434(心 (536, 301) 边 313) ──
+    const slot = S(313);
+    const slotCx = X(536.5);
+    const slotCy = Y(301.5);
     const rarity = this.rarityColor(item.rarity);
-    const glow = this.host.addChildPlainNode(detail, 'LobbyBagDetailGlow', leftCx, iconCy, iconSize * 1.5, iconSize * 1.5).addComponent(Graphics);
-    for (const [k, a] of [[0.74, 14], [0.62, 20], [0.5, 28]] as Array<[number, number]>) {
-      glow.fillColor = rgba(rarity.r, rarity.g, rarity.b, a);
-      glow.circle(0, 0, iconSize * k);
-      glow.fill();
-    }
-    if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, leftCx, iconCy, iconSize, iconSize, detail)) {
-      this.host.addSprite('LobbyBagDetailSlotArt', BAG_AI_SLOT_BASE_ASSET, leftCx, iconCy, iconSize, iconSize, detail);
+    if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, slotCx, slotCy, slot, slot, detail)) {
+      this.host.addSprite('LobbyBagDetailSlotArt', BAG_AI_SLOT_BASE_ASSET, slotCx, slotCy, slot, slot, detail);
     }
     const popupIcon = bagItemIconAsset(item);
     if (popupIcon) {
-      this.host.addSprite('LobbyBagDetailIcon', popupIcon, leftCx, iconCy, iconSize * 0.74, iconSize * 0.74, detail);
+      this.host.addSprite('LobbyBagDetailIcon', popupIcon, slotCx, slotCy, slot * 0.76, slot * 0.76, detail);
     } else {
-      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), leftCx, iconCy, iconSize * 0.6, iconSize * 0.6, detail);
+      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), slotCx, slotCy, slot * 0.6, slot * 0.6, detail);
     }
-    // 左上角稀有度字母
-    const rarityTag = this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), leftCx - iconSize / 2 + 16 * scale, iconCy + iconSize / 2 - 18 * scale, 24 * scale, rarity, new Size(44 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
+    // 左上角稀有度字母 (437, 205) 字高 44
+    const rarityTag = tight(this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), X(420), Y(205), S(44), rarity, new Size(S(70), S(52)), HorizontalTextAlignment.LEFT));
     rarityTag.isBold = true;
-    rarityTag.lineHeight = rarityTag.fontSize;
     this.applyOutline(rarityTag, scale, true);
-    const nameY = iconCy - iconSize / 2 - 24 * scale;
-    const nameLabel = this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), leftCx, nameY, 36 * scale, rgba(255, 228, 160), new Size(leftWidth, 44 * scale));
+    // 名 (536, 474) 字高 44;签 (536, 518) 高 32
+    const nameLabel = tight(this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), X(536), Y(474), S(44), rgba(255, 232, 170), new Size(S(430), S(54))));
     nameLabel.overflow = Label.Overflow.SHRINK;
     nameLabel.isBold = true;
-    nameLabel.lineHeight = nameLabel.fontSize;
     this.applyOutline(nameLabel, scale, true);
-    // 稀有度签(品质色描边胶囊)
     const chipText = `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`;
-    const chipW = chipText.length * 20 * scale * 0.9 + 40 * scale;
-    const chipH = 32 * scale;
-    const chip = this.host.addChildPlainNode(detail, 'LobbyBagDetailSubtitleChip', leftCx, nameY - 36 * scale, chipW, chipH);
+    const chipW = S(chipText.length * 22 + 50);
+    const chipH = S(32);
+    const chip = this.host.addChildPlainNode(detail, 'LobbyBagDetailSubtitleChip', X(536), Y(518), chipW, chipH);
     const cg = chip.addComponent(Graphics);
     cg.fillColor = rgba(Math.round(rarity.r * 0.2), Math.round(rarity.g * 0.2), Math.round(rarity.b * 0.2), 230);
     cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
@@ -1064,79 +1048,78 @@ export class LobbyBagPanelRenderer {
     cg.lineWidth = Math.max(1, 1.4 * scale);
     cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
     cg.stroke();
-    const subtitle = this.host.addChildLabel(chip, 'LobbyBagDetailSubtitle', chipText, 0, 0, 20 * scale, rarity, new Size(chipW - 10 * scale, chipH));
-    subtitle.overflow = Label.Overflow.SHRINK;
-    subtitle.lineHeight = subtitle.fontSize;
-    // 信息行(金边暗行)
-    const infoTop = nameY - 36 * scale - chipH / 2 - 12 * scale;
-    infoRows.forEach(([rowTitle, rowValue, strong], index) => {
-      const rowY = infoTop - infoRowH / 2 - index * (infoRowH + 4 * scale);
-      const row = this.host.addChildPlainNode(detail, `LobbyBagDetailInfoRow_${index}`, leftCx, rowY, leftWidth, infoRowH);
-      if (!mountRefSliced(this.host, row, 'Bg', REF_ROW, 0, 0, leftWidth, infoRowH)) {
-        const rg = row.addComponent(Graphics);
-        rg.fillColor = rgba(16, 14, 13, 225);
-        rg.roundRect(-leftWidth / 2, -infoRowH / 2, leftWidth, infoRowH, 6 * scale);
-        rg.fill();
+    tight(this.host.addChildLabel(chip, 'LobbyBagDetailSubtitle', chipText, 0, 0, S(22), rarity, new Size(chipW - S(10), chipH)));
+    // 信息块:金框 330..745 × 537..755;四行心 y 572 / 622 / 672 / 722(行高 50);图标 (362) 径 28;名 (392);值右对齐 (727)
+    const infoW = S(745 - 330);
+    const infoH = S(755 - 537);
+    const infoCx = X((330 + 745) / 2);
+    const infoBox = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailInfoBox', infoCx, Y((537 + 755) / 2), infoW, infoH, scale, '', { fill: rgba(8, 6, 8, 190) }).node;
+    const infoRows: Array<[string, string, string, boolean]> = [
+      ['拥有数量', formatCompact(safeNumber(item.itemCount)), 'ui/common/ref/ic_owned/spriteFrame', true],
+      ['堆叠', formatCompact(safeNumber(item.maxStack)), 'ui/common/ref/ic_stack/spriteFrame', false],
+      ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', 'ui/common/ref/ic_price/spriteFrame', false],
+      ['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久', 'ui/common/ref/ic_expire/spriteFrame', false],
+    ];
+    const lines = this.host.addChildPlainNode(infoBox, 'Lines', 0, 0, infoW, infoH).addComponent(Graphics);
+    lines.strokeColor = rgba(214, 170, 92, 110);
+    lines.lineWidth = Math.max(1, 1.2 * scale);
+    infoRows.forEach(([rowTitle, rowValue, icon, strong], index) => {
+      const cy = Y(572 + index * 50) - Y((537 + 755) / 2);
+      if (index > 0) {
+        lines.moveTo(-infoW / 2 + S(14), cy + S(25));
+        lines.lineTo(infoW / 2 - S(14), cy + S(25));
+        lines.stroke();
       }
-      const titleLabel = this.host.addChildLabel(row, 'Title', rowTitle, -leftWidth / 2 + 18 * scale, 0, 22 * scale, rgba(240, 226, 200), new Size(leftWidth * 0.42, 28 * scale), HorizontalTextAlignment.LEFT);
-      titleLabel.lineHeight = titleLabel.fontSize;
-      const valueLabel = this.host.addChildLabel(row, 'Value', rowValue, leftWidth / 2 - 18 * scale, 0, (strong ? 30 : 23) * scale, strong ? rgba(255, 222, 130) : rgba(244, 234, 212), new Size(leftWidth * 0.5, 36 * scale), HorizontalTextAlignment.RIGHT);
+      this.host.addSprite(`Ic_${index}`, icon, -infoW / 2 + S(32), cy, S(30), S(30), infoBox);
+      tight(this.host.addChildLabel(infoBox, `Title_${index}`, rowTitle, -infoW / 2 + S(62), cy, S(24), rgba(240, 226, 200), new Size(S(180), S(32)), HorizontalTextAlignment.LEFT));
+      const valueLabel = tight(this.host.addChildLabel(infoBox, `Value_${index}`, rowValue, infoW / 2 - S(18), cy, S(strong ? 36 : 26), strong ? rgba(255, 222, 130) : rgba(244, 234, 212), new Size(S(220), S(44)), HorizontalTextAlignment.RIGHT));
       valueLabel.overflow = Label.Overflow.SHRINK;
       valueLabel.isBold = strong;
-      valueLabel.lineHeight = valueLabel.fontSize;
       this.applyOutline(valueLabel, scale, strong);
     });
 
-    // ── 右列:用途 / 获取途径 面板 + 底部四钮 ──
-    const buttonGap = 12 * scale;
-    const buttonW = (rightWidth - buttonGap * 3) / 4;
-    const buttonH = Math.min(66 * scale, buttonW * 0.34);
-    const buttonY = bodyBottom + buttonH / 2;
-    const panelsBottom = buttonY + buttonH / 2 + 12 * scale;
-    const useH = Math.min(150 * scale, (bodyTop - panelsBottom) * 0.38);
-    const usePanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailUsePanel', rightCx, bodyTop - useH / 2, rightWidth, useH, scale, '用途', { bandH: 46 * scale, fontSize: 23 * scale, center: false, fill: rgba(10, 8, 9, 190) });
-    const useText = this.host.addChildLabel(usePanel.node, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), -rightWidth / 2 + 20 * scale, (usePanel.bodyTop - useH / 2) / 2, 23 * scale, rgba(244, 234, 212), new Size(rightWidth - 40 * scale, usePanel.bodyTop + useH / 2 - 16 * scale), HorizontalTextAlignment.LEFT);
+    // ── 右列:用途面板 772..1553 × 161..350(带 y 161..210);获取途径面板 y 376..630(带 376..427);按钮 y 678..755 ──
+    const rightW = S(1553 - 772);
+    const rightCx = X((772 + 1553) / 2);
+    const usePanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailUsePanel', rightCx, Y((161 + 350) / 2), rightW, S(350 - 161), scale, '用途', { bandH: S(49), fontSize: S(28), center: false, fill: rgba(8, 6, 8, 170) });
+    const useText = this.host.addChildLabel(usePanel.node, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), -rightW / 2 + S(40), Y(280) - Y((161 + 350) / 2), S(26), rgba(246, 236, 214), new Size(rightW - S(80), S(110)), HorizontalTextAlignment.LEFT);
     useText.enableWrapText = true;
-    useText.lineHeight = 32 * scale;
+    useText.lineHeight = S(36);
     useText.overflow = Label.Overflow.SHRINK;
-    const srcTop = bodyTop - useH - 10 * scale;
-    const srcH = srcTop - panelsBottom;
-    const srcPanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailSourcePanel', rightCx, srcTop - srcH / 2, rightWidth, srcH, scale, '获取途径', { bandH: 46 * scale, fontSize: 23 * scale, center: false, fill: rgba(10, 8, 9, 190) });
-    const sourceRowH = 64 * scale;
-    const sourceRowGap = 10 * scale;
-    const rowsTop = srcPanel.bodyTop - 10 * scale;
-    const rowsFloor = -srcH / 2 + 10 * scale;
-    const maxSourceRows = Math.max(1, Math.min(4, Math.floor((rowsTop - rowsFloor + sourceRowGap) / (sourceRowH + sourceRowGap))));
+    const srcPanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailSourcePanel', rightCx, Y((376 + 630) / 2), rightW, S(630 - 376), scale, '获取途径', { bandH: S(51), fontSize: S(28), center: false, fill: rgba(8, 6, 8, 170) });
+    // 来源行:800..1528 × 高 80;行心 y 483 / 578;图环 (850) 径 70;文字 (915) 字高 26;箭头环 (1485) 径 52
     const segments = this.resolveSourceSegments(item, state, 34);
-    const visibleSegments = segments.slice(0, maxSourceRows);
-    if (segments.length > maxSourceRows) {
-      visibleSegments[maxSourceRows - 1] = `${visibleSegments[maxSourceRows - 1]}…`;
+    const visibleSegments = segments.slice(0, 2);
+    if (segments.length > 2) {
+      visibleSegments[1] = `${visibleSegments[1]}…`;
     }
-    const srcRowW = rightWidth - 28 * scale;
+    const srcRowW = S(1528 - 800);
+    const srcRowH = S(80);
     visibleSegments.forEach((segment, index) => {
-      const rowY = rowsTop - sourceRowH / 2 - index * (sourceRowH + sourceRowGap);
-      const rowNode = this.host.addChildPlainNode(srcPanel.node, `LobbyBagSourceRowPlate_${index}`, 0, rowY, srcRowW, sourceRowH);
-      if (!mountRefSliced(this.host, rowNode, 'Bg', REF_ROW, 0, 0, srcRowW, sourceRowH)) {
+      const cy = Y(483 + index * 95) - Y((376 + 630) / 2);
+      const rowNode = this.host.addChildPlainNode(srcPanel.node, `LobbyBagSourceRowPlate_${index}`, X((800 + 1528) / 2) - rightCx, cy, srcRowW, srcRowH);
+      if (!mountRefSliced(this.host, rowNode, 'Bg', REF_ROW, 0, 0, srcRowW, srcRowH)) {
         const rowGraphics = rowNode.addComponent(Graphics);
         rowGraphics.fillColor = rgba(26, 21, 17, 224);
-        rowGraphics.roundRect(-srcRowW / 2, -sourceRowH / 2, srcRowW, sourceRowH, 6 * scale);
+        rowGraphics.roundRect(-srcRowW / 2, -srcRowH / 2, srcRowW, srcRowH, 6 * scale);
         rowGraphics.fill();
       }
-      const ringSize = sourceRowH * 0.84;
-      this.host.addSprite('Ring', REF_ICON_RING_ASSET, -srcRowW / 2 + 12 * scale + ringSize / 2, 0, ringSize, ringSize, rowNode);
-      this.host.addSprite('Ic', BAG_AI_OP_ICON_SOURCE_ASSET, -srcRowW / 2 + 12 * scale + ringSize / 2, 0, ringSize * 0.56, ringSize * 0.56, rowNode);
-      const segLabel = this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -srcRowW / 2 + 24 * scale + ringSize, 0, 22 * scale, rgba(244, 234, 212), new Size(srcRowW - ringSize - 80 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
+      const ring = S(70);
+      const ringX = -srcRowW / 2 + S(50);
+      this.host.addSprite('Ring', REF_ICON_RING_ASSET, ringX, 0, ring, ring, rowNode);
+      this.host.addSprite('Ic', BAG_AI_OP_ICON_SOURCE_ASSET, ringX, 0, ring * 0.56, ring * 0.56, rowNode);
+      const segLabel = tight(this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -srcRowW / 2 + S(115), 0, S(26), rgba(246, 236, 214), new Size(S(540), S(34)), HorizontalTextAlignment.LEFT));
       segLabel.overflow = Label.Overflow.SHRINK;
-      segLabel.lineHeight = segLabel.fontSize;
-      const arrow = this.host.addChildLabel(rowNode, 'Arrow', '›', srcRowW / 2 - 22 * scale, 2 * scale, 30 * scale, rgba(255, 222, 130), new Size(30 * scale, 36 * scale));
+      const arrowRing = S(52);
+      const arrowX = srcRowW / 2 - S(43);
+      this.host.addSprite('ArrowRing', REF_ICON_RING_ASSET, arrowX, 0, arrowRing, arrowRing, rowNode);
+      const arrow = tight(this.host.addChildLabel(rowNode, 'Arrow', '›', arrowX + S(2), S(3), S(34), rgba(255, 222, 130), new Size(arrowRing, arrowRing)));
       arrow.isBold = true;
-      arrow.lineHeight = arrow.fontSize;
     });
-
-    this.renderDetailActions(detail, item, state, scale, buttonW, buttonH, [0, 1, 2, 3].map((index) => [
-      rightLeft + buttonW / 2 + index * (buttonW + buttonGap),
-      buttonY,
-    ] as [number, number]));
+    // 四钮:心 x 865 / 1068 / 1258 / 1468,y 717,宽 170 高 72
+    const buttonW = S(170);
+    const buttonH = S(72);
+    this.renderDetailActions(detail, item, state, scale, buttonW, buttonH, [865, 1068, 1258, 1468].map((px) => [X(px), Y(717)] as [number, number]));
   }
 
   // 手机全屏确认弹窗壳:底板铺满舞台;withShowcase 时左侧留道具展示列。返回右侧控件区中心 X 与放大倍数 k
@@ -1630,7 +1613,7 @@ export class LobbyBagPanelRenderer {
 
   private addDetailActionButton(parent: Node, name: string, text: string, iconAsset: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean, primary = false): Node {
     // 2026-10-19 按原型:主操作红金钮 / 其余暗金副钮 / 不可用压暗;图标在字左侧
-    const button = mountRefButton(this.host, parent, name, text, x, y, width, height, scale, !enabled ? 'disabled' : primary ? 'primary' : 'secondary', undefined, { fontSize: 24 * scale, iconPath: iconAsset, iconSize: height * 0.52 });
+    const button = mountRefButton(this.host, parent, name, text, x, y, width, height, scale, !enabled ? 'disabled' : primary ? 'primary' : 'secondary', undefined, { fontSize: height * 0.4, iconPath: iconAsset, iconSize: height * 0.52 });
     const component = button.getComponent(Button) ?? button.addComponent(Button);
     component.interactable = enabled;
     if (enabled) {

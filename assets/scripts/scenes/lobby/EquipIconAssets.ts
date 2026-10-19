@@ -80,6 +80,16 @@ export function equipSlotKeyByCode(equipCode: string | null | undefined): string
 }
 
 /** 装备编码 → 图标 spriteFrame 路径;未登记(未来新装备)返回 null,调用方回退部位图标/线稿。 */
+/** 透明底展示插画(2026-10-19 GPT 按图标抠出,ui/forge/showcase/<同名文件>;宝石页底座 / 以后详情大图用)。 */
+const EQUIP_SHOWCASE_DIR = 'ui/forge/showcase';
+export function equipShowcaseAssetByCode(equipCode: string | null | undefined): string | null {
+  if (!equipCode) {
+    return null;
+  }
+  const file = EQUIP_ICON_FILES[equipCode.trim().toUpperCase()];
+  return file ? `${EQUIP_SHOWCASE_DIR}/${file}/spriteFrame` : null;
+}
+
 /** 按稀有度 + 部位取装备图(合成页预览「下一稀有度同部位」产物用;GOLD 稀有度文件名为 orange)。 */
 export function equipIconAssetByQualitySlot(quality: string | null | undefined, slot: string | null | undefined): string | null {
   const color: Record<string, string> = { WHITE: 'white', GREEN: 'green', BLUE: 'blue', PURPLE: 'purple', GOLD: 'orange', RED: 'red' };

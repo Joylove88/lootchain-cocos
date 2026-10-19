@@ -46,7 +46,7 @@ import {
   LOBBY_HERO_DETAIL_PROTAGONIST_ASSET,
 } from './lobby/LobbyHeroDetailPanelRenderer';
 import { LOBBY_HERO_ROSTER_BACKDROP_ASSET, LOBBY_HERO_ROSTER_CARD_ASSETS } from './lobby/LobbyHeroRosterPanelRenderer';
-import { FORGE_PRELOAD_ASSETS } from './lobby/LobbyForgePanelRenderer';
+import { FORGE_PRELOAD_ASSETS, FORGE_PRELOAD_ASSETS_V3 } from './lobby/LobbyForgePanelRenderer';
 import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
 import { EQUIP_ICON_ALL_ASSETS } from './lobby/EquipIconAssets';
@@ -236,6 +236,7 @@ export class UiSpriteFrameCache {
       case 'forge':
         // 2026-07-22:锻造页近百张图原先逐张到货触发整刷;现在第一次开锻造时整组一起拉,到货合并整刷。
         FORGE_PRELOAD_ASSETS.forEach((asset) => track(asset));
+        FORGE_PRELOAD_ASSETS_V3.forEach((asset) => track(asset));
         EQUIP_ICON_ALL_ASSETS.forEach((asset) => track(asset));
         BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => track(asset));
         break;

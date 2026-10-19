@@ -1,4 +1,4 @@
-import { Button, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UIOpacity, type Color } from 'cc';
+import { Button, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UIOpacity, UITransform, type Color } from 'cc';
 import { rgba } from './lobby/LobbyHudTypes';
 
 /**
@@ -29,8 +29,8 @@ export const REF_KIT = {
   cardFrameOpen: { path: 'ui/common/ref/card_frame_open/spriteFrame', w: 900, h: 159, inset: [60, 60, 40, 40] } as RefKitItem,
   iconRing: { path: 'ui/common/ref/icon_ring/spriteFrame', w: 256, h: 256, inset: [0, 0, 0, 0] } as RefKitItem,
   statBar: { path: 'ui/common/ref/stat_bar/spriteFrame', w: 900, h: 85, inset: [60, 60, 30, 30] } as RefKitItem,
-  btnPrimary: { path: 'ui/common/ref/btn_primary/spriteFrame', w: 757, h: 160, inset: [160, 160, 60, 60] } as RefKitItem,
-  btnSecondary: { path: 'ui/common/ref/btn_secondary/spriteFrame', w: 725, h: 160, inset: [150, 150, 60, 60] } as RefKitItem,
+  btnPrimary: { path: 'ui/common/ref/btn_primary/spriteFrame', w: 1344, h: 326, inset: [160, 160, 60, 60] } as RefKitItem,
+  btnSecondary: { path: 'ui/common/ref/btn_secondary/spriteFrame', w: 1344, h: 317, inset: [150, 150, 60, 60] } as RefKitItem,
   pipOn: { path: 'ui/common/ref/pip_on/spriteFrame', w: 96, h: 96, inset: [0, 0, 0, 0] } as RefKitItem,
   pipMid: { path: 'ui/common/ref/pip_mid/spriteFrame', w: 96, h: 96, inset: [0, 0, 0, 0] } as RefKitItem,
   pipOff: { path: 'ui/common/ref/pip_off/spriteFrame', w: 96, h: 96, inset: [0, 0, 0, 0] } as RefKitItem,
@@ -54,15 +54,59 @@ export const REF_INFO_BANNER: RefKitItem = { path: 'ui/common/ref/info_banner/sp
  * 2026-10-19 终极技能 / 物品详情弹窗(GPT 按原型逐件出):厚雕花金框(大角饰 + 顶冠,内芯透明,九宫格内边取到角饰外)、
  * 大招徽章环(中心透明放技能图)、物品详情大格框。尺寸在 install 后量过回填。
  */
-export const REF_ORNATE_FRAME: RefKitItem = { path: 'ui/common/ref/ornate_frame/spriteFrame', w: 1600, h: 977, inset: [200, 200, 200, 120] };
-/** 厚框的内缘(素材像素,实测:顶带 96..131 / 侧带 29..71 / 底带 872..908,顶冠伸到 0):标题带 / 内容从这里起算。 */
-export const REF_ORNATE_FRAME_EDGE = { top: 131, side: 71, bottom: 105 };
-/** 厚框外缘(素材像素):实底只填到带子外沿,顶冠 / 角饰之外保持透明。 */
-export const REF_ORNATE_FRAME_OUTER = { top: 96, side: 29, bottom: 69 };
+// 2026-10-19 换细线版(原型框线 2~5px、角饰小;厚框 ornate_frame 怎么缩都糊):1600×916,边带 ~23px,角饰约 160,顶冠伸到 4
+export const REF_ORNATE_FRAME: RefKitItem = { path: 'ui/common/ref/ornate_frame_thin/spriteFrame', w: 1600, h: 916, inset: [180, 180, 160, 110] };
+/** 框内缘(素材像素,实测:顶带 73..95 / 侧带 32..77 / 底带 842..863):标题带 / 内容从这里起算。 */
+export const REF_ORNATE_FRAME_EDGE = { top: 95, side: 77, bottom: 74 };
+/** 框外缘(素材像素):实底只填到带子外沿,顶冠 / 角饰之外保持透明。 */
+export const REF_ORNATE_FRAME_OUTER = { top: 73, side: 32, bottom: 53 };
 export const REF_ULT_EMBLEM_RING_ASSET = 'ui/common/ref/ult_emblem_ring/spriteFrame';
 export const REF_DETAIL_SLOT_FRAME_ASSET = 'ui/common/ref/detail_slot_frame/spriteFrame';
 /** 大招火焰纹章(终极技能弹窗焦点,原型裁出;圆盘带边缘柔光,放在 ult_emblem_ring 环心)。 */
 export const REF_ULT_SIGIL_ASSET = 'ui/common/ref/ult_sigil/spriteFrame';
+/** 2026-10-19 1:1 还原批:大招徽章一体图(环 + 纹章,无外圈)、金环关闭钮、两个弹窗的内部实景底图(cover 裁切)。 */
+export const REF_ULT_EMBLEM_FULL_ASSET = 'ui/common/ref/ult_emblem_full/spriteFrame';
+export const REF_CLOSE_RING_ASSET = 'ui/common/ref/close_ring/spriteFrame';
+export const REF_ULT_INNER_BG = { path: 'ui/common/ref/ult_inner_bg/spriteFrame', ratio: 2.35 };
+/** 终极技能弹窗专项件(2026-10-19,原型整块裁出让 GPT 重绘;尺寸由 install 回填)。 */
+export const REF_ULT = {
+  dialogBg: { path: 'ui/common/ref/ult_dialog_bg/spriteFrame', w: 1284, h: 751 },
+  // v3(10-19):GPT 带原比例(暗红宽 / 高 ≈ 原型 6.1)+ 两端棘刺花饰(最外 90 列淡出接框顶线)+ 底中小宝石(取自 ult_frame 底中饰件);
+  //   1420×235,暗红本体(含暗角,在花饰下方行量)x 301..1118 / y 57..193;花饰杆心 y ≈ 110,挂上后压在框顶线上
+  titleBand: { path: 'ui/common/ref/ult_title_band/spriteFrame', w: 1420, h: 235, inset: [301, 302, 60, 40] } as RefKitItem,
+  titleBandCore: { x0: 301, x1: 1118, y0: 57, y1: 193 },
+  titleStar: 'ui/common/ref/ult_title_star/spriteFrame',
+  // 细双线框(按原型照抄):1600×936,金线外沿 x 12..1589 / y 21..917;整张按弹窗矩形非等比缩(各向差 <3%)
+  frame: { path: 'ui/common/ref/ult_frame/spriteFrame', w: 1600, h: 936, line: { left: 12, right: 1589, top: 21, bottom: 917 } },
+  statBox: { path: 'ui/common/ref/ult_stat_box/spriteFrame', w: 1360, h: 310, inset: [60, 60, 50, 50] } as RefKitItem,
+  costPanel: { path: 'ui/common/ref/ult_cost_panel/spriteFrame', w: 1190, h: 650, inset: [60, 60, 120, 40] } as RefKitItem,
+  costRow: { path: 'ui/common/ref/ult_cost_row/spriteFrame', w: 1080, h: 122, inset: [30, 30, 30, 30] } as RefKitItem,
+  btnPrimary: { path: 'ui/common/ref/ult_btn_primary/spriteFrame', w: 1344, h: 326, inset: [340, 340, 60, 60] } as RefKitItem,
+  btnSecondary: { path: 'ui/common/ref/ult_btn_secondary/spriteFrame', w: 1344, h: 317, inset: [340, 340, 60, 60] } as RefKitItem,
+};
+export const REF_DETAIL_INNER_BG = { path: 'ui/common/ref/detail_inner_bg/spriteFrame', ratio: 1.95 };
+
+/**
+ * 在厚框弹窗内部垫一张实景底图(原型的弹窗不是纯色底):按内缘矩形 cover 裁切(Mask),再压一层半透明暗罩保证可读。
+ * innerRect 为弹窗局部坐标(中心 cx/cy,宽高 w/h)。
+ */
+export function mountRefDialogBackdrop(host: RefKitHost, dialog: Node, bg: { path: string; ratio: number }, cx: number, cy: number, w: number, h: number, veilAlpha = 96): void {
+  const clip = host.addChildPlainNode(dialog, 'InnerBackdrop', cx, cy, w, h);
+  const coverW = Math.max(w, h * bg.ratio);
+  const art = host.addSprite('Art', bg.path, 0, 0, coverW, coverW / bg.ratio, clip);
+  if (!art) {
+    clip.destroy();
+    return;
+  }
+  clip.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+  const veil = host.addChildPlainNode(dialog, 'InnerVeil', cx, cy, w, h).addComponent(Graphics);
+  veil.fillColor = rgba(6, 4, 6, veilAlpha);
+  veil.rect(-w / 2, -h / 2, w, h);
+  veil.fill();
+  // 底图 / 暗罩放到框之下(Back 之上)
+  clip.setSiblingIndex(1);
+  veil.node.setSiblingIndex(2);
+}
 
 /**
  * 厚雕花金框弹窗壳:实底 + 厚框(缺图退细金框),返回内缘(局部坐标)供标题带 / 内容排版。
@@ -70,22 +114,38 @@ export const REF_ULT_SIGIL_ASSET = 'ui/common/ref/ult_sigil/spriteFrame';
  */
 export function mountRefOrnateDialog(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number, fill = rgba(10, 9, 12, 244)): { node: Node; innerTop: number; innerBottom: number; innerW: number } {
   const node = host.addChildPlainNode(parent, name, x, y, w, h);
-  // 框按九宫格缩到 46%(量原型:角饰约 94 素材像素 ≈ 1600 宽的 6%;整比例画会吃掉近 1/4 高度)
-  const maxK = 0.46;
-  const k = Math.min(w / REF_ORNATE_FRAME.w, h / REF_ORNATE_FRAME.h, maxK);
+  // 细线框素材 1600×916:金线矩形在 x 46..1553 / y 73..863(外侧线),顶冠伸到 0、底尖到 916。
+  // 把「金线矩形」对准弹窗矩形(w×h):k = w / 1507,整张框按 k 放,中心按顶冠 / 底尖不对称量上移;
+  // 这样弹窗边 = 金线,内容不会压线;顶冠自然伸出弹窗顶 73k,底尖伸出 53k。
+  const LINE = { left: 46, right: 1553, top: 73, bottom: 863 };
+  const lineW = LINE.right - LINE.left;
+  const lineH = LINE.bottom - LINE.top;
+  const k = Math.min(w / lineW, h / lineH);
+  const artW = REF_ORNATE_FRAME.w * k;
+  const artH = REF_ORNATE_FRAME.h * k;
+  // 金线矩形中心在素材里的位置 → 弹窗中心应对准它
+  const lineCx = ((LINE.left + LINE.right) / 2 - REF_ORNATE_FRAME.w / 2) * k;
+  const lineCy = (REF_ORNATE_FRAME.h / 2 - (LINE.top + LINE.bottom) / 2) * k;
   const back = host.addChildPlainNode(node, 'Back', 0, 0, w, h).addComponent(Graphics);
   back.fillColor = fill;
-  const bx = -w / 2 + REF_ORNATE_FRAME_OUTER.side * k + 4;
-  const bTop = h / 2 - REF_ORNATE_FRAME_OUTER.top * k - 4;
-  const bBottom = -h / 2 + REF_ORNATE_FRAME_OUTER.bottom * k + 4;
-  back.roundRect(bx, bBottom, w - (REF_ORNATE_FRAME_OUTER.side * k + 4) * 2, bTop - bBottom, 8 * scale);
+  back.roundRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 6 * scale);
   back.fill();
-  if (mountRefSliced(host, node, 'Frame', REF_ORNATE_FRAME, 0, 0, w, h, maxK)) {
-    return { node, innerTop: h / 2 - REF_ORNATE_FRAME_EDGE.top * k, innerBottom: -h / 2 + REF_ORNATE_FRAME_EDGE.bottom * k, innerW: w - REF_ORNATE_FRAME_EDGE.side * k * 2 };
+  const frameHolder = host.addChildPlainNode(node, 'Frame', -lineCx, -lineCy, artW, artH);
+  const sprite = host.addSprite('FrameArt', REF_ORNATE_FRAME.path, 0, 0, artW, artH, frameHolder);
+  if (sprite && sprite.spriteFrame) {
+    // 九宫格:角饰整块留在角里,直边拉伸;节点按素材像素空间建 + setScale(k)
+    const sf = sprite.spriteFrame;
+    sf.insetLeft = REF_ORNATE_FRAME.inset[0];
+    sf.insetRight = REF_ORNATE_FRAME.inset[1];
+    sf.insetTop = REF_ORNATE_FRAME.inset[2];
+    sf.insetBottom = REF_ORNATE_FRAME.inset[3];
+    sprite.type = Sprite.Type.SLICED;
+    sprite.node.getComponent(UITransform)?.setContentSize(new Size(artW / k, artH / k));
+    sprite.node.setScale(k, k, 1);
+    const lineT = 22 * k; // 金线自身厚度(外线到内线)
+    return { node, innerTop: h / 2 - lineT, innerBottom: -h / 2 + lineT, innerW: w - lineT * 2 };
   }
-  // 缺厚框:实底铺满再退细金框
-  back.roundRect(-w / 2 + 6, -h / 2 + 6, w - 12, h - 12, 10 * scale);
-  back.fill();
+  frameHolder.destroy();
   if (!mountRefSliced(host, node, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
     drawRefPanelFallback(node, w, h, scale, rgba(0, 0, 0, 0));
   }
@@ -163,6 +223,32 @@ export function mountRefHeaderBand(host: RefKitHost, parent: Node, name: string,
 /** 九宫格不变形缩放:缺图返回 null(调用方自行兜底)。k 不超过 1(素材不放大,只缩)。 */
 export function mountRefSliced(host: RefKitHost, parent: Node, name: string, item: RefKitItem, x: number, y: number, width: number, height: number, maxK = 1): Node | null {
   const k = Math.min(width / item.w, height / item.h, maxK);
+  const holder = host.addChildPlainNode(parent, name, x, y, width / k, height / k);
+  holder.setScale(k, k, 1);
+  const sprite = host.addSprite(`${name}Art`, item.path, 0, 0, width / k, height / k, holder);
+  if (!sprite || !sprite.spriteFrame) {
+    holder.destroy();
+    return null;
+  }
+  const sf = sprite.spriteFrame;
+  sf.insetLeft = item.inset[0];
+  sf.insetRight = item.inset[1];
+  sf.insetTop = item.inset[2];
+  sf.insetBottom = item.inset[3];
+  sprite.type = Sprite.Type.SLICED;
+  return holder;
+}
+
+/**
+ * 框类九宫格按宽度定比例(k = 宽 / 素材宽,≤ maxK):头带、角饰、金线缩进在不同高度的框里保持同一尺寸,只拉中段。
+ * mountRefSliced 取宽高较小的比例,矮框会把整张图(连同头带)一起缩小,头带里的标题就溢出(10-19 终极技能消耗面板 2 行时)。
+ * 高度放不下上下切片时退回按高度缩。缺图返回 null。
+ */
+export function mountRefSlicedByWidth(host: RefKitHost, parent: Node, name: string, item: RefKitItem, x: number, y: number, width: number, height: number, maxK = 1): Node | null {
+  let k = Math.min(width / item.w, maxK);
+  if (height / k < item.inset[2] + item.inset[3] + 2) {
+    k = height / (item.inset[2] + item.inset[3] + 2);
+  }
   const holder = host.addChildPlainNode(parent, name, x, y, width / k, height / k);
   holder.setScale(k, k, 1);
   const sprite = host.addSprite(`${name}Art`, item.path, 0, 0, width / k, height / k, holder);
