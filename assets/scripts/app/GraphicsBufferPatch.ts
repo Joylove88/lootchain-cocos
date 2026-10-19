@@ -1,5 +1,5 @@
 import { gfx, Graphics, Node, RenderingSubMesh, sp, Sprite } from 'cc';
-import { HTML5 } from 'cc/env';
+import { HTML5, NATIVE } from 'cc/env';
 
 /**
  * 引擎 Graphics 显存补丁(2026-10-07 用户「战斗一卡一卡的,流畅和极致都卡」)。
@@ -110,6 +110,78 @@ export function installGraphicsBufferPatch(): void {
 }
 
 /**
+ * 安卓原生:Graphics 节点停用再启用后不再绘制(2026-10-20 背包刷新后格子稀有度描边 / 遮罩 / 面板底色全部消失)。
+ *
+ * 根因(引擎 3.8.8 原生路径):UIRenderer.onDisable 一律调 destroyRenderData() ——
+ * ① renderEntity.clearRenderDrawInfos() 把原生 RenderEntity 上的动态 drawInfo 弹掉;
+ * ② RenderData.remove(_renderData) 把这份 MeshRenderData 的顶点 / 索引计数清零。
+ * Sprite / Label 启用时会自己重建渲染数据,Graphics 不会:impl 里路径(pathLength)和 renderDataList 都还在,
+ * 但原生实体上已没有 drawInfo,Batcher2d 遍历不到它,设 _isNeedUploadData / markForUpdateRenderData 都没用,
+ * 只有 clear() 后重画(重新 requestRenderData)才恢复。网页端 Graphics 每帧走 _render → commitModel,不依赖 drawInfo,所以不复现。
+ * 另外每次 onEnable 都会先设 ui-base 再设 ui-graphics 材质,旧材质实例被销毁,而 drawInfo / 子模型还指着旧实例。
+ *
+ * 触发场景:UiContentRootController 把可复用面板"摘下暂存"(节点停用)再挂回;任何 active=false→true 的 Graphics 同理。
+ *
+ * 补丁(只在原生生效):停用时不销毁 Graphics 的渲染数据(实体 enabled=false 已足够让它不画,销毁路径 onDestroy → impl.clear()
+ * 照常回收);启用时把 renderData / 子模型的材质换成当前实例并标记重新上传,保留的顶点数据原样再提交。
+ */
+type NativeGraphicsInternals = {
+  impl: { _renderDataList?: Array<{ material: unknown }> } | null;
+  model: { subModels?: unknown[]; setSubModelMaterial?: (idx: number, mat: unknown) => void } | null;
+  _isNeedUploadData?: boolean;
+  destroyRenderData?: () => void;
+  getMaterialInstance(idx: number): unknown;
+  markForUpdateRenderData(enable?: boolean): void;
+};
+
+export function installNativeGraphicsReenablePatch(): void {
+  const proto = Graphics.prototype as unknown as Record<string, unknown>;
+  if (!NATIVE || proto.__lcNativeReenablePatched) {
+    return;
+  }
+  const originalDisable = proto.onDisable as ((this: NativeGraphicsInternals) => void) | undefined;
+  const originalEnable = proto.onEnable as ((this: NativeGraphicsInternals) => void) | undefined;
+  if (typeof originalDisable !== 'function' || typeof originalEnable !== 'function') {
+    console.warn('[LootChain] native Graphics re-enable patch skipped: engine internals changed');
+    return;
+  }
+  proto.__lcNativeReenablePatched = true;
+  const keepRenderData = (): void => { /* 停用期间保留渲染数据 */ };
+
+  proto.onDisable = function onDisable(this: NativeGraphicsInternals): void {
+    // 只屏蔽这一次调用里的 destroyRenderData(实例上临时遮住原型方法),其余停用逻辑照旧
+    this.destroyRenderData = keepRenderData;
+    try {
+      originalDisable.call(this);
+    } finally {
+      delete this.destroyRenderData;
+    }
+  };
+
+  proto.onEnable = function onEnable(this: NativeGraphicsInternals): void {
+    originalEnable.call(this);
+    // 注意不能调 impl.getRenderDataList():列表为空时它会顺手 requestRenderData
+    const list = this.impl?._renderDataList;
+    if (!list || list.length === 0) {
+      return;
+    }
+    const material = this.getMaterialInstance(0);
+    for (const renderData of list) {
+      renderData.material = material;
+    }
+    const model = this.model;
+    const subModelCount = model?.subModels?.length ?? 0;
+    if (model && typeof model.setSubModelMaterial === 'function') {
+      for (let i = 0; i < subModelCount; i += 1) {
+        model.setSubModelMaterial(i, material);
+      }
+    }
+    this._isNeedUploadData = true;
+    this.markForUpdateRenderData();
+  };
+}
+
+/**
  * 引擎 sp.Skeleton 每次设置 skeletonData 都会为挂点功能给全部骨骼建"路径名 → 序号"索引(_indexBoneSockets):
  * 逐骨骼向上走到根拼字符串,每一级都是几次 wasm 边界调用。满屏大招骨骼 600~980 根骨头,一次几万次调用、50~130ms。
  * 本项目目前不用挂点:没有挂点时推迟建索引,等真正需要(querySockets / 设置挂点)时再按原逻辑建,功能不变。
@@ -201,9 +273,10 @@ export function installSpriteReleasedFrameGuard(): void {
   };
 }
 
-/** 启动时调用:Graphics 显存按需增长 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护。 */
+/** 启动时调用:Graphics 显存按需增长 + 原生 Graphics 停用重启后保持绘制 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护。 */
 export function installEnginePerfPatches(): void {
   installGraphicsBufferPatch();
+  installNativeGraphicsReenablePatch();
   installSpineSocketIndexPatch();
   installSiblingIndexGuard();
   installSpriteReleasedFrameGuard();
