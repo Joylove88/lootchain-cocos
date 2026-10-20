@@ -1,5 +1,5 @@
 // 安卓调试包一键出包(2026-10-14 安卓第一阶段):Creator 命令行按 build-config/android.json 生成原生工程,
-// 再用 Gradle 编出 APK,拷到 build/release/lootchain-android-<日期>-<commit>-debug.apk。
+// 再用 Gradle 编出 APK,拷到 build/release/lootchain-android-<日期>-<commit>-debug.apk(调试包、正式包各只留最近 3 个)。
 // 用法:npm run build:android                 (完整构建)
 //       npm run build:android -- --skip-build  (只重跑 Gradle,改了原生工程 / 只想重编时用)
 //       npm run build:android -- --install     (编完用 adb 装到已连接的手机,并做 8081 反向端口转发)
@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyCompressSettings } from './android-texture-compress.mjs';
+import { KEEP_RELEASE_PACKAGES, pruneOldPackages } from './prune-release.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CREATOR_EXE = process.env.COCOS_CREATOR_EXE || 'D:/office app/cocos/editors/Creator/3.8.8/CocosCreator.exe';
@@ -144,6 +145,11 @@ const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '').replac
 const target = path.join(RELEASE_DIR, `lootchain-android-${stamp}-${commit}-${variant}.apk`);
 fs.copyFileSync(apk, target);
 console.log(`[android] APK:${target}(${(fs.statSync(target).size / 1048576).toFixed(1)} MB)`);
+// 调试包、正式包分开留:连出几个调试包不会把给人试玩的正式包挤掉
+const pruned = pruneOldPackages(RELEASE_DIR, new RegExp(`^lootchain-android-.+-${variant}\\.apk$`));
+if (pruned.length > 0) {
+  console.log(`[android] 清掉 ${pruned.length} 个旧 ${variant} 包,build/release 只留最近 ${KEEP_RELEASE_PACKAGES} 个`);
+}
 
 if (install) {
   step('4/4 安装到手机 + 8081 反向端口转发');

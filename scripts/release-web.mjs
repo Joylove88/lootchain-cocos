@@ -3,12 +3,13 @@
 //   → 核对"同名改内容"的文件 → 写整包下载清单 asset-manifest.json → 打 tar.gz。
 // 用法:npm run release:web            (完整流程)
 //       npm run release:web -- --skip-build   (只对现有 build/web-mobile 做后处理并打包)
-// 产物:build/release/lootchain-web-<日期时间>-<commit>.tar.gz,服务器上解压到站点目录即可(见 docs/35)。
+// 产物:build/release/lootchain-web-<日期时间>-<commit>.tar.gz,服务器上解压到站点目录即可(见 docs/35);只留最近 3 个。
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { KEEP_RELEASE_PACKAGES, pruneOldPackages } from './prune-release.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_DIR = path.join(ROOT, 'build', 'web-mobile');
@@ -277,4 +278,8 @@ if (run(tarExe, ['-czf', archive, '--exclude', './png-compress-report.json', '-C
 }
 const sizeMb = (fs.statSync(archive).size / 1024 / 1024).toFixed(1);
 console.log(`\n[release] 完成:${archive}(${sizeMb} MB)`);
+const pruned = pruneOldPackages(RELEASE_DIR, /^lootchain-web-.+\.tar\.gz$/);
+if (pruned.length > 0) {
+  console.log(`[release] 清掉 ${pruned.length} 个旧网页包,build/release 只留最近 ${KEEP_RELEASE_PACKAGES} 个`);
+}
 console.log('[release] 上传到服务器后按 docs/35 的"发版"步骤解压并切换 current 链接。');
