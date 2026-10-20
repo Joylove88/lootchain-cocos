@@ -1,3 +1,4 @@
+import { REF_BAG_DLG, REF_DETAIL, REF_ULT } from './UiRefKit';
 import { isTextInputActive } from '../app/ScreenAdapter';
 import {
   Node,
@@ -99,6 +100,23 @@ export interface UiSpriteFrameOverrides {
 const GROUP_GATE_WINDOW_MS = 20000;
 
 /** 按玩法页分组的 UI 图预载(第一次打开对应页面时拉)。 */
+const BAG_DETAIL_PRELOAD_ASSETS: string[] = [
+  REF_DETAIL.headerBand.path,
+  ...['n', 'r', 'sr', 'ssr'].map((tag) => `ui/bag/ref/card_frame_${tag}/spriteFrame`),
+  ...['n', 'r', 'sr', 'ssr'].map((tag) => `ui/bag/ref/card_bg_${tag}/spriteFrame`),
+  REF_DETAIL.arrow,
+  REF_DETAIL.namePlate.path,
+  'ui/common/solid_white/spriteFrame',
+  REF_DETAIL.sectionPanel.path,
+  REF_BAG_DLG.headerBand.path, REF_BAG_DLG.roundBtn, REF_BAG_DLG.chip, REF_BAG_DLG.sliderTrack.path, REF_BAG_DLG.sliderFill.path, REF_BAG_DLG.sliderKnob,
+  REF_BAG_DLG.resultPanel.path, REF_BAG_DLG.arrow, REF_BAG_DLG.icPouch, REF_BAG_DLG.icPouches,
+  ...Object.values(REF_DETAIL.btnPlate),
+  ...Object.values(REF_DETAIL.btnIcon),
+  ...(['summon', 'daily', 'main', 'tower', 'shop', 'quest', 'event', 'forge', 'guard', 'other'] as const).map((kind) => REF_DETAIL.sourceIcon(kind)),
+  REF_ULT.frame.path, REF_ULT.statBox.path, REF_ULT.costPanel.path, REF_ULT.costRow.path, REF_ULT.btnPrimary.path, REF_ULT.btnSecondary.path,
+  'ui/common/ref/ult_title_star/spriteFrame',
+];
+
 export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle' | 'crystal';
 
 /** 守卫水晶弹窗专用新素材(ui/crystal/ai,2026-09-30 参考图改版):首次打开弹窗时整组拉,齐了再画,避免空框闪一下。 */
@@ -232,6 +250,8 @@ export class UiSpriteFrameCache {
         Object.values(BAG_C1812_ITEM_TYPE_ICON_ASSETS).forEach((asset) => track(asset));
         BAG_ITEM_ICON_PRELOAD_ASSETS.forEach((asset) => track(asset));
         EQUIP_ICON_ALL_ASSETS.forEach((asset) => track(asset));
+        // 物品详情(10-19 原型 1:1):只拉不拦,背包首开不多等;点开详情时多半已到
+        BAG_DETAIL_PRELOAD_ASSETS.forEach((asset) => request(asset));
         break;
       case 'forge':
         // 2026-07-22:锻造页近百张图原先逐张到货触发整刷;现在第一次开锻造时整组一起拉,到货合并整刷。

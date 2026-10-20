@@ -1971,6 +1971,7 @@ export class LootChainGameRoot extends Component {
       [this.lobbyForgeRerollOpen, () => this.closeLobbyForgeRerollDialog()],
       [this.lobbyBagComposeItemCode !== null, () => this.closeLobbyBagComposeDialog()],
       [this.lobbyBagSellItemCode !== null && !this.lobbyBagActionBusy, () => this.closeLobbyBagSellDialog()],
+      [this.lobbyBagUseItemCode !== null && !this.lobbyBagActionBusy, () => this.closeLobbyBagUseDialog()],
       [this.lobbyTokenFurnaceState.open, () => this.closeLobbyTokenFurnace()],
       [this.lobbyProfileOpen, () => this.closePlayerProfileDialog()],
       [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
@@ -2277,6 +2278,7 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyBagComposeResult = null;
     this.lobbyBagSellItemCode = null;
+    this.lobbyBagUseItemCode = null;
     this.returnToLobbyFromScenePage();
   }
 
@@ -2879,12 +2881,54 @@ export class LootChainGameRoot extends Component {
 
   private lobbyBagActionBusy = false;
 
+  // 使用(2026-10-20 用户):只有 1 个直接使用;多于 1 个弹「使用道具」数量窗(选数量 / 全部使用)。
   private useLobbyBagItem(itemCode: string): void {
-    void this.runLobbyBagUse(itemCode);
+    const held = Number(this.currentLobbyBagState().groups.flatMap((group) => group.items).find((entry) => entry.itemCode === itemCode)?.itemCount ?? 0) || 0;
+    if (held <= 1) {
+      void this.runLobbyBagUse(itemCode, 1);
+      return;
+    }
+    this.lobbyBagUseItemCode = itemCode;
+    this.lobbyBagUseCount = 1;
+    this.renderCurrentView();
   }
 
-  // 使用道具:服务器结算效果(金币/钻石/体力/礼包/材料箱),回读背包+资料;弹窗保持打开看新数量。
-  private async runLobbyBagUse(itemCode: string): Promise<void> {
+  private lobbyBagUseItemCode: string | null = null;
+  private lobbyBagUseCount = 1;
+
+  private currentLobbyBagUseState(): { itemCode: string | null; count: number; busy: boolean } {
+    return { itemCode: this.lobbyBagUseItemCode, count: this.lobbyBagUseCount, busy: this.lobbyBagActionBusy };
+  }
+
+  private setLobbyBagUseCount(count: number): void {
+    this.lobbyBagUseCount = Math.max(1, Math.min(9999, Math.trunc(count) || 1));
+    this.renderCurrentView();
+  }
+
+  private closeLobbyBagUseDialog(): void {
+    if (this.lobbyBagActionBusy) {
+      return;
+    }
+    this.lobbyBagUseItemCode = null;
+    this.renderCurrentView();
+  }
+
+  /** all = 「全部使用」:按当前持有数提交。 */
+  private confirmLobbyBagUse(all: boolean): void {
+    const itemCode = this.lobbyBagUseItemCode;
+    if (!itemCode) {
+      return;
+    }
+    const held = Number(this.currentLobbyBagState().groups.flatMap((group) => group.items).find((entry) => entry.itemCode === itemCode)?.itemCount ?? 0) || 0;
+    const count = all ? held : Math.min(held, this.lobbyBagUseCount);
+    if (count <= 0) {
+      return;
+    }
+    void this.runLobbyBagUse(itemCode, count);
+  }
+
+  // 使用道具:服务器结算效果(金币/钻石/体力/礼包/材料箱),回读背包+资料;详情弹窗保持打开看新数量,用光则关掉。
+  private async runLobbyBagUse(itemCode: string, count: number): Promise<void> {
     if (this.lobbyBagActionBusy) {
       this.setStatus('背包操作处理中，请勿重复点击。');
       return;
@@ -2892,9 +2936,16 @@ export class LootChainGameRoot extends Component {
     this.lobbyBagActionBusy = true;
     let rewardMessages: string[] = [];
     this.beginSceneMutation();
+    this.renderCurrentView();
     try {
-      const result = await this.api.bag.use(itemCode, 1);
+      const held = Number(this.currentLobbyBagState().groups.flatMap((group) => group.items).find((entry) => entry.itemCode === itemCode)?.itemCount ?? 0) || 0;
+      const result = await this.api.bag.use(itemCode, count);
       rewardMessages = result.effectMessages ?? [];
+      this.lobbyBagUseItemCode = null;
+      if (held - count <= 0) {
+        this.lobbyBagPanelRenderer.closeDetailPopup();
+        this.lobbyBagLoader.clearSelection();
+      }
       // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
       await Promise.all([
         this.loadLobbyBag(true),
@@ -2979,6 +3030,7 @@ export class LootChainGameRoot extends Component {
   private clearLobbyBagSelection(): void {
     this.lobbyBagComposeItemCode = null;
     this.lobbyBagSellItemCode = null;
+    this.lobbyBagUseItemCode = null;
     this.lobbyBagLoader.clearSelection();
   }
 

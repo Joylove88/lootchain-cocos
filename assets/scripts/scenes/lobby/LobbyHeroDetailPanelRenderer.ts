@@ -25,7 +25,7 @@ import {
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefPanelFallback, mountRefButton, mountRefHeaderBand, mountRefSliced, mountRefSlicedByWidth, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, REF_ULT_EMBLEM_FULL_ASSET, refCardFrameK, type RefKitItem } from '../UiRefKit';
+import { drawRefPanelFallback, mountRefButton, mountRefHeaderBand, mountRefLineFrame, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, REF_ULT_EMBLEM_FULL_ASSET, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
@@ -111,6 +111,7 @@ export const HERO_DETAIL_PRELOAD_ASSETS: string[] = [
   'ui/common/ref/ult_emblem_full/spriteFrame',
   'ui/common/ref/close_ring/spriteFrame',
   'ui/common/ref/ult_title_star/spriteFrame',
+  'ui/common/solid_white/spriteFrame',
   'ui/crystal/ai/section_emblem/spriteFrame',
   'ui/bag/ai/icon_boss_mark/spriteFrame',
   'ui/bag/ai/icon_bound_diamond/spriteFrame',
@@ -893,11 +894,17 @@ export class LobbyHeroDetailPanelRenderer {
   // 标题带 / 数值框 / 消耗面板 / 材料行 / 双钮 = 原型整块裁出重绘;字号 = 原型字高 ÷ 0.72。
   private renderUltimateUpDialog(parent: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number, scale: number): void {
     const ult = this.host.currentLobbyHeroUltimateState();
-    const dim = this.host.addChildPlainNode(parent, 'LobbyHeroUltimateDim', 0, 0, panelWidth, panelHeight);
-    const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 170);
-    dimGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
-    dimGraphics.fill();
+    // 遮罩同物品详情:铺满整屏(含刘海安全区外两侧),只让弹窗亮
+    const dimW = Math.max(panelWidth, view.getVisibleSize().width) * 1.6;
+    const dimH = panelHeight * 1.6;
+    const dim = this.host.addChildPlainNode(parent, 'LobbyHeroUltimateDim', 0, 0, dimW, dimH);
+    // 纯色贴图做遮罩(原生端 Graphics 在同级重建后会不画,见 UiRefKit.mountRefSolid)
+    if (!mountRefSolid(this.host, dim, 'Fill', 0, 0, dimW, dimH, rgba(0, 0, 0, 85))) {
+      const dimGraphics = dim.addComponent(Graphics);
+      dimGraphics.fillColor = rgba(0, 0, 0, 85);
+      dimGraphics.rect(-dimW / 2, -dimH / 2, dimW, dimH);
+      dimGraphics.fill();
+    }
     dim.addComponent(BlockInputEvents);
 
     // 原型整屏 1870×841(= 20:9)按屏等比映射:u = 屏高 / 841;弹窗框(双金线外沿)实测 x 295..1579 / y 91..804,
@@ -929,16 +936,8 @@ export class LobbyHeroDetailPanelRenderer {
       back.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
       back.fill();
     }
-    // 2) 细双线框(按原型照抄的 ult_frame):金线外沿矩形 = 弹窗矩形;横竖各自缩(各向差 <3%,宝石看不出变形),
-    //    比九宫格好——边中点的宝石饰件在九宫格里会被拉伸
-    const FR = REF_ULT.frame;
-    const sx = w / (FR.line.right - FR.line.left);
-    const sy = h / (FR.line.bottom - FR.line.top);
-    const lineCx = ((FR.line.left + FR.line.right) / 2 - FR.w / 2) * sx;
-    const lineCy = (FR.h / 2 - (FR.line.top + FR.line.bottom) / 2) * sy;
-    const shellFrame = this.host.addChildPlainNode(dialog, 'FrameHolder', -lineCx, -lineCy, FR.w, FR.h);
-    shellFrame.setScale(sx, sy, 1);
-    this.host.addSprite('Frame', FR.path, 0, 0, FR.w, FR.h, shellFrame);
+    // 2) 细双线框(按原型照抄的 ult_frame):金线外沿矩形 = 弹窗矩形
+    mountRefLineFrame(this.host, dialog, 'FrameHolder', w, h);
 
     const current = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
     const awakened = hero.awakenStatus === 1;

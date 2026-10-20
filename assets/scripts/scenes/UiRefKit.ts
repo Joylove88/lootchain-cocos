@@ -69,6 +69,66 @@ export const REF_ULT_EMBLEM_FULL_ASSET = 'ui/common/ref/ult_emblem_full/spriteFr
 export const REF_CLOSE_RING_ASSET = 'ui/common/ref/close_ring/spriteFrame';
 export const REF_ULT_INNER_BG = { path: 'ui/common/ref/ult_inner_bg/spriteFrame', ratio: 2.35 };
 /** 终极技能弹窗专项件(2026-10-19,原型整块裁出让 GPT 重绘;尺寸由 install 回填)。 */
+const REF_ULT_COST_PANEL_GEOM = { w: 1190, h: 650, inset: [60, 60, 120, 40] as [number, number, number, number] };
+
+// 背包物品详情(2026-10-19 按原型 1:1 第二轮):通栏标题带 / 稀有度物品卡框 / 来源圆徽 / 圆形箭头 / 按钮图标(GPT 照原型出,polish/v3/gen_bag_detail.py)
+export type RefDetailSourceKind = 'summon' | 'daily' | 'main' | 'tower' | 'shop' | 'quest' | 'event' | 'forge' | 'guard' | 'other';
+export const REF_DETAIL = {
+  // 2218×246:暗红本体 y 91..183(不含金边;顶冠两侧补过织纹到原型比例 1302 / 54);按「本体高 = 原型 54」等比整张挂,宽正好 = 框宽
+  headerBand: { path: 'ui/common/ref/detail_header_band/spriteFrame', w: 2218, h: 246, bodyY0: 91, bodyY1: 183 },
+  // 512×512,内开口 x 57..454 / y 85..447(顶冠在上,开口中心比图心低 10);R 蓝原图,N / SR / SSR 程序换发光色相
+  cardFrame: { w: 512, h: 512, open: { x0: 57, x1: 454, y0: 85, y1: 447 } },
+  cardFramePath: (rarity: string): string => {
+    const key = (rarity || '').toUpperCase();
+    const tag = key === 'UR' || key === 'SSR' ? 'ssr' : key === 'SR' || key === 'EPIC' ? 'sr' : key === 'R' || key === 'RARE' ? 'r' : 'n';
+    return `ui/bag/ref/card_frame_${tag}/spriteFrame`;
+  },
+  // 物品卡内底:暗场景 + 地面符文法阵(R 蓝原图,其余程序换色),512 方图,不透明
+  cardBgPath: (rarity: string): string => {
+    const key = (rarity || '').toUpperCase();
+    const tag = key === 'UR' || key === 'SSR' ? 'ssr' : key === 'SR' || key === 'EPIC' ? 'sr' : key === 'R' || key === 'RARE' ? 'r' : 'n';
+    return `ui/bag/ref/card_bg_${tag}/spriteFrame`;
+  },
+  // 名牌:暗带 + 上下细金线 + 两端金箭羽,1200×180;按钮底板(照原型,干净无翼饰):启用暗金 / 主操作红 / 不可用灰
+  namePlate: { path: 'ui/bag/ref/name_plate/spriteFrame', w: 1200, h: 180 },
+  btnPlate: { dark: 'ui/bag/ref/btn_plate_dark/spriteFrame', red: 'ui/bag/ref/btn_plate_red/spriteFrame', grey: 'ui/bag/ref/btn_plate_grey/spriteFrame' },
+  // 分区面板:终极技能消耗面板去掉头带左侧自带小星(物品详情自己放大四芒星在右侧,避免双星)
+  sectionPanel: { ...REF_ULT_COST_PANEL_GEOM, path: 'ui/bag/ref/section_panel/spriteFrame' } as RefKitItem,
+  arrow: 'ui/bag/ref/detail_arrow/spriteFrame',
+  sourceIcon: (kind: RefDetailSourceKind): string => `ui/bag/ref/src_${kind}/spriteFrame`,
+  btnIcon: { use: 'ui/bag/ref/ic_btn_use/spriteFrame', fuse: 'ui/bag/ref/ic_btn_fuse/spriteFrame', source: 'ui/bag/ref/ic_btn_source/spriteFrame', sell: 'ui/bag/ref/ic_btn_sell/spriteFrame' },
+};
+
+// 背包二级弹窗(使用 / 出售 / 合成,2026-10-20 按原型):短版标题带 + 数量选择件 + 出售结果框 + 合成箭头 + 按钮图标
+export const REF_BAG_DLG = {
+  // 1426×246,暗红本体 y 91..183(由 detail_header_band 去掉顶冠两侧各 396 列织纹,比例 15.5)
+  headerBand: { path: 'ui/common/ref/dialog_header_band/spriteFrame', w: 1426, h: 246, bodyY0: 91, bodyY1: 183 },
+  roundBtn: 'ui/bag/ref/dlg_round_btn/spriteFrame',
+  chip: 'ui/bag/ref/dlg_chip/spriteFrame',
+  sliderTrack: { path: 'ui/bag/ref/dlg_slider_track/spriteFrame', w: 1000, h: 33, inset: [18, 18, 0, 0] } as RefKitItem,
+  sliderFill: { path: 'ui/bag/ref/dlg_slider_fill/spriteFrame', w: 1000, h: 32, inset: [18, 18, 0, 0] } as RefKitItem,
+  sliderKnob: 'ui/bag/ref/dlg_slider_knob/spriteFrame',
+  resultPanel: { path: 'ui/bag/ref/dlg_result_panel/spriteFrame', w: 1000, h: 146, inset: [48, 48, 0, 0] } as RefKitItem,
+  arrow: 'ui/bag/ref/dlg_arrow/spriteFrame',
+  icPouch: 'ui/bag/ref/ic_btn_pouch/spriteFrame',
+  icPouches: 'ui/bag/ref/ic_btn_pouches/spriteFrame',
+};
+
+/** 来源文案 → 圆徽类别(按关键词;先匹配更具体的「爬塔 / 召唤」)。 */
+export function refDetailSourceKind(text: string): RefDetailSourceKind {
+  const t = text || '';
+  if (/爬塔|深渊/.test(t)) return 'tower';
+  if (/召唤|抽卡/.test(t)) return 'summon';
+  if (/每日|副本|矿脉/.test(t)) return 'daily';
+  if (/主线|关卡|首通/.test(t)) return 'main';
+  if (/商店|购买|充值|兑换/.test(t)) return 'shop';
+  if (/任务|活跃|日常|周常|签到/.test(t)) return 'quest';
+  if (/活动|运营|限时|限定/.test(t)) return 'event';
+  if (/分解|合成|锻造|强化/.test(t)) return 'forge';
+  if (/守卫|晶核/.test(t)) return 'guard';
+  return 'other';
+}
+
 export const REF_ULT = {
   dialogBg: { path: 'ui/common/ref/ult_dialog_bg/spriteFrame', w: 1284, h: 751 },
   // v3(10-19):GPT 带原比例(暗红宽 / 高 ≈ 原型 6.1)+ 两端棘刺花饰(最外 90 列淡出接框顶线)+ 底中小宝石(取自 ult_frame 底中饰件);
@@ -90,7 +150,7 @@ export const REF_DETAIL_INNER_BG = { path: 'ui/common/ref/detail_inner_bg/sprite
  * 在厚框弹窗内部垫一张实景底图(原型的弹窗不是纯色底):按内缘矩形 cover 裁切(Mask),再压一层半透明暗罩保证可读。
  * innerRect 为弹窗局部坐标(中心 cx/cy,宽高 w/h)。
  */
-export function mountRefDialogBackdrop(host: RefKitHost, dialog: Node, bg: { path: string; ratio: number }, cx: number, cy: number, w: number, h: number, veilAlpha = 96): void {
+export function mountRefDialogBackdrop(host: RefKitHost, dialog: Node, bg: { path: string; ratio: number }, cx: number, cy: number, w: number, h: number, veilAlpha = 96, inPlace = false): void {
   const clip = host.addChildPlainNode(dialog, 'InnerBackdrop', cx, cy, w, h);
   const coverW = Math.max(w, h * bg.ratio);
   const art = host.addSprite('Art', bg.path, 0, 0, coverW, coverW / bg.ratio, clip);
@@ -99,10 +159,13 @@ export function mountRefDialogBackdrop(host: RefKitHost, dialog: Node, bg: { pat
     return;
   }
   clip.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
-  const veil = host.addChildPlainNode(dialog, 'InnerVeil', cx, cy, w, h).addComponent(Graphics);
-  veil.fillColor = rgba(6, 4, 6, veilAlpha);
-  veil.rect(-w / 2, -h / 2, w, h);
-  veil.fill();
+  const veilNode = host.addChildPlainNode(dialog, 'InnerVeil', cx, cy, w, h);
+  refSolidFill(host, veilNode, w, h, rgba(6, 4, 6, veilAlpha));
+  const veil = { node: veilNode };
+  if (inPlace) {
+    // 局部透景(如物品详情「用途」正文区):留在调用时的层级,盖在面板之上
+    return;
+  }
   // 底图 / 暗罩放到框之下(Back 之上)
   clip.setSiblingIndex(1);
   veil.node.setSiblingIndex(2);
@@ -126,10 +189,7 @@ export function mountRefOrnateDialog(host: RefKitHost, parent: Node, name: strin
   // 金线矩形中心在素材里的位置 → 弹窗中心应对准它
   const lineCx = ((LINE.left + LINE.right) / 2 - REF_ORNATE_FRAME.w / 2) * k;
   const lineCy = (REF_ORNATE_FRAME.h / 2 - (LINE.top + LINE.bottom) / 2) * k;
-  const back = host.addChildPlainNode(node, 'Back', 0, 0, w, h).addComponent(Graphics);
-  back.fillColor = fill;
-  back.roundRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 6 * scale);
-  back.fill();
+  refSolidFill(host, host.addChildPlainNode(node, 'Back', 0, 0, w, h), w - 4, h - 4, fill, 6 * scale);
   const frameHolder = host.addChildPlainNode(node, 'Frame', -lineCx, -lineCy, artW, artH);
   const sprite = host.addSprite('FrameArt', REF_ORNATE_FRAME.path, 0, 0, artW, artH, frameHolder);
   if (sprite && sprite.spriteFrame) {
@@ -240,6 +300,51 @@ export function mountRefSliced(host: RefKitHost, parent: Node, name: string, ite
 }
 
 /**
+ * 纯色块(白色 8×8 贴图着色):代替 Graphics 画遮罩 / 分隔线 / 底色。
+ * 2026-10-19 安卓原生实测:弹窗里的 Graphics 在同级节点(背包格子的 ScrollView 遮罩等)重建后不再绘制,
+ * 遮罩 / 分隔线整块消失(运行时 clear + 重画又能显示);Sprite 不受影响。缺图返回 null(调用方可退回 Graphics)。
+ */
+export const REF_SOLID_WHITE = 'ui/common/solid_white/spriteFrame';
+export function mountRefSolid(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, color: Color): Sprite | null {
+  const sprite = host.addSprite(name, REF_SOLID_WHITE, x, y, w, h, parent);
+  if (sprite) {
+    sprite.color = color;
+  }
+  return sprite;
+}
+
+/** 大面积底色 / 暗罩:优先纯色贴图(原生端常驻 Graphics 刷新后会丢,见 mountRefSolid),缺图退回 Graphics(圆角仅兜底时有)。 */
+function refSolidFill(host: RefKitHost, node: Node, w: number, h: number, color: Color, radius = 0): void {
+  if (mountRefSolid(host, node, 'Fill', 0, 0, w, h, color)) {
+    return;
+  }
+  const g = node.addComponent(Graphics);
+  g.fillColor = color;
+  if (radius > 0) {
+    g.roundRect(-w / 2, -h / 2, w, h, radius);
+  } else {
+    g.rect(-w / 2, -h / 2, w, h);
+  }
+  g.fill();
+}
+
+/**
+ * 细双线金框(REF_ULT.frame):金线外沿矩形 = 给定弹窗矩形(w × h,中心 0,0);横竖各自缩(各向差 <3%,宝石看不出变形),
+ * 比九宫格好——边中点的宝石饰件在九宫格里会被拉伸。终极技能弹窗 / 物品详情共用。
+ */
+export function mountRefLineFrame(host: RefKitHost, parent: Node, name: string, w: number, h: number): Node {
+  const FR = REF_ULT.frame;
+  const sx = w / (FR.line.right - FR.line.left);
+  const sy = h / (FR.line.bottom - FR.line.top);
+  const lineCx = ((FR.line.left + FR.line.right) / 2 - FR.w / 2) * sx;
+  const lineCy = (FR.h / 2 - (FR.line.top + FR.line.bottom) / 2) * sy;
+  const holder = host.addChildPlainNode(parent, name, -lineCx, -lineCy, FR.w, FR.h);
+  holder.setScale(sx, sy, 1);
+  host.addSprite('Frame', FR.path, 0, 0, FR.w, FR.h, holder);
+  return holder;
+}
+
+/**
  * 框类九宫格按宽度定比例(k = 宽 / 素材宽,≤ maxK):头带、角饰、金线缩进在不同高度的框里保持同一尺寸,只拉中段。
  * mountRefSliced 取宽高较小的比例,矮框会把整张图(连同头带)一起缩小,头带里的标题就溢出(10-19 终极技能消耗面板 2 行时)。
  * 高度放不下上下切片时退回按高度缩。缺图返回 null。
@@ -319,10 +424,7 @@ export function mountRefTitledPanel(
   options: { bandH?: number; fontSize?: number; center?: boolean; fill?: Color } = {},
 ): { node: Node; bodyTop: number; bandY: number } {
   const node = host.addChildPlainNode(parent, name, x, y, w, h);
-  const back = host.addChildPlainNode(node, 'Back', 0, 0, w, h).addComponent(Graphics);
-  back.fillColor = options.fill ?? rgba(10, 8, 8, 226);
-  back.roundRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 8 * scale);
-  back.fill();
+  refSolidFill(host, host.addChildPlainNode(node, 'Back', 0, 0, w, h), w - 8, h - 8, options.fill ?? rgba(10, 8, 8, 226), 8 * scale);
   if (!mountRefSliced(host, node, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
     drawRefPanelFallback(node, w, h, scale, rgba(0, 0, 0, 0));
   }

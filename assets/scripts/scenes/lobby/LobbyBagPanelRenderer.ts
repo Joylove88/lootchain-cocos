@@ -13,6 +13,8 @@ import {
   UIOpacity,
   UITransform,
   Vec3,
+  view,
+  type EventTouch,
 } from 'cc';
 import { equipIconAssetByCode } from './EquipIconAssets';
 import { parseGemCode } from './EquipDetailCard';
@@ -22,7 +24,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { mountRefButton, mountRefDialogBackdrop, mountRefHeaderBand, mountRefOrnateDialog, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM } from '../UiRefKit';
+import { mountRefButton, mountRefDialogBackdrop, mountRefHeaderBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
 export const BAG_C1812_ITEM_SLOT_ASSET = 'ui/common/ai/item_slot/spriteFrame';
@@ -50,6 +52,22 @@ export const BAG_AI_SIDEBAR_PANEL_ASSET = 'ui/common/ai/bag_sidebar/spriteFrame'
 export const BAG_AI_TAB_ACTIVE_ASSET = 'ui/common/ai/bag_tab_active/spriteFrame';
 export const BAG_AI_GRID_PANEL_ASSET = 'ui/common/ai/bag_grid_panel/spriteFrame';
 export const BAG_AI_DETAIL_FRAME_ASSET = 'ui/common/ai/item_detail_frame/spriteFrame';
+// 背包页背景暗罩(纯色贴图);2026-10-20 用户「背包界面背景没有调暗」,以原型实测亮度定
+const BAG_SCENE_SHADE_ALPHA = 120;
+/** 使用后获得物的简称(只给「使用 ×N → 获得 X」用;具体数额由服务端结算后飘字)。 */
+function bagUseRewardLabel(item: BagItemEntryVO): string {
+  const effect = (item.useEffectType || '').toUpperCase();
+  const map: Record<string, string> = { ADD_GOLD: '金币', ADD_DIAMOND: '钻石', ADD_STAMINA: '体力', ADD_HERO_EXP: '英雄经验', RANDOM_REWARD: '随机奖励', FIXED_REWARD: '礼包奖励' };
+  return map[effect] ?? '道具效果';
+}
+
+/** 合成产物尚未持有时卡框用的稀有度:源稀有度升一档。 */
+function bagComposeTargetRarity(rarity: string | null | undefined): string {
+  const order = ['N', 'R', 'SR', 'SSR', 'UR'];
+  const i = order.indexOf((rarity || 'N').toUpperCase());
+  return order[Math.min(order.length - 1, Math.max(0, i) + 1)];
+}
+
 export const BAG_AI_SOURCE_ROW_ASSET = 'ui/common/ai/item_source_row/spriteFrame';
 export const BAG_AI_ACTION_BUTTON_ASSET = 'ui/common/ai/item_action_button/spriteFrame';
 export const BAG_AI_SELL_BUTTON_ASSET = 'ui/common/ai/item_sell_button/spriteFrame';
@@ -237,6 +255,11 @@ export interface LobbyBagPanelHost {
   closeLobbyBagSellDialog(): void;
   setLobbyBagSellCount(count: number): void;
   confirmLobbyBagSell(): void;
+  /** 使用数量窗(2026-10-20):多于 1 个时弹出;confirm(all) 全部使用按持有数提交。 */
+  currentLobbyBagUseState(): { itemCode: string | null; count: number; busy: boolean };
+  setLobbyBagUseCount(count: number): void;
+  closeLobbyBagUseDialog(): void;
+  confirmLobbyBagUse(all: boolean): void;
   reloadLobbyBagItemSource(itemCode: string): void;
   refreshLobbyOverlay?(): void;
   currentLobbyProfile?(): PlayerLobbyProfileVO;
@@ -268,6 +291,8 @@ export class LobbyBagPanelRenderer {
   private gridScrollKey = '';
   // 手机全屏弹窗区域(相对背包场景中心,已扣安全边距);电脑为 null,走原居中弹窗。每次 render 重算。
   private phoneDialogRect: PhoneDialogRect | null = null;
+  /** 物品详情所在面板尺寸(二级弹窗按同一整屏映射算 u)。 */
+  private phoneDetailPanelSize: { w: number; h: number } | null = null;
 
   /** 道具卖光后关掉详情弹窗(否则会回落显示列表第一件)。 */
   closeDetailPopup(): void {
@@ -317,11 +342,14 @@ export class LobbyBagPanelRenderer {
     this.host.addSprite('LobbyBagSceneBackdrop', REF_HALL_BG.path, 0, 0, bgW, bgW / REF_HALL_BG.ratio, panel)
       ?? this.host.addSprite('LobbyBagSceneBackdrop', 'ui/battle/ai/battle_bg_cathedral/spriteFrame', 0, 0, panelWidth, panelHeight, panel);
     const shade = this.host.addChildPlainNode(panel, 'LobbyBagSceneShade', 0, 0, panelWidth, panelHeight);
-    const shadeGraphics = shade.addComponent(Graphics);
-    // 2026-10-19 用户「背景太显眼,字和物品没有主次」:压暗加重(84 → 128),面板后再加一层暗底
-    shadeGraphics.fillColor = rgba(4, 3, 6, 128);
-    shadeGraphics.rect(-coverW / 2, -coverH / 2, coverW, coverH);
-    shadeGraphics.fill();
+    // 2026-10-19 用户「背景太显眼」「背包界面背景没有调暗」:暗罩原是 Graphics,原生端面板局部刷新后不再绘制(实际一直没压暗),
+    // 改纯色贴图;缺图才退 Graphics
+    if (!mountRefSolid(this.host, shade, 'Fill', 0, 0, coverW, coverH, rgba(4, 3, 6, BAG_SCENE_SHADE_ALPHA))) {
+      const shadeGraphics = shade.addComponent(Graphics);
+      shadeGraphics.fillColor = rgba(4, 3, 6, BAG_SCENE_SHADE_ALPHA);
+      shadeGraphics.rect(-coverW / 2, -coverH / 2, coverW, coverH);
+      shadeGraphics.fill();
+    }
     // 顶部装饰(横梁/副标题/chips)移除:左上标题+顶部货币展示+右上关闭。
     this.renderBagCurrencyBar(panel, panelWidth, panelHeight, scale);
     this.renderBagBody(panel, panelWidth, panelHeight, scale, state);
@@ -369,10 +397,12 @@ export class LobbyBagPanelRenderer {
     const composeResultSig = composeResult ? `cres:${composeResult.targetCode}:${composeResult.gainedCount}:${composeResult.usedCount}` : 'nocres';
     const sellState = this.host.currentLobbyBagSellState();
     const sellSig = sellState.itemCode ? `sell:${sellState.itemCode}:${sellState.count}:${sellState.busy ? 1 : 0}:${sellState.error}` : 'nosell';
+    const useState = this.host.currentLobbyBagUseState();
+    const useSig = useState.itemCode ? `use:${useState.itemCode}:${useState.count}:${useState.busy ? 1 : 0}` : 'nouse';
     const groups = state.groups
       .map((group) => `${group.itemType}#${group.items.map((item) => `${item.itemCode}:${item.itemCount}:${item.rarity ?? ''}`).join(',')}`)
       .join('|');
-    return `${this.selectedGroupKey}|${flags}|${wallet}|${state.selectedItemCode ?? ''}|${popup}|${composeSig}|${composeResultSig}|${sellSig}|${groups}`;
+    return `${this.selectedGroupKey}|${flags}|${wallet}|${state.selectedItemCode ?? ''}|${popup}|${composeSig}|${composeResultSig}|${sellSig}|${useSig}|${groups}`;
   }
 
   private createUiNode(name: string): Node {
@@ -909,12 +939,12 @@ export class LobbyBagPanelRenderer {
   }
 
   // 详情操作钮(使用/合成/来源/出售,按 slots 顺序摆放)+ 挂在其上的出售/合成确认弹窗;电脑 2×2、手机一排 4 个共用。
-  private renderDetailActions(detail: Node, item: BagItemEntryVO, state: LobbyBagPanelState, scale: number, buttonWidth: number, buttonHeight: number, slots: Array<[number, number]>): void {
+  private renderDetailActions(detail: Node, item: BagItemEntryVO, state: LobbyBagPanelState, scale: number, buttonWidth: number, buttonHeight: number, slots: Array<[number, number]>, plate = false): void {
     // 使用(2026-07-24 开放):金币/钻石/体力/固定礼包/随机箱可直接用;经验书走英雄页,虚拟条目(装备/碎片)不可用。
     const usableEffects = ['ADD_GOLD', 'ADD_DIAMOND', 'ADD_STAMINA', 'RANDOM_REWARD', 'FIXED_REWARD'];
     const isVirtualEntry = (item.itemCode || '').includes(':');
     const canUse = !isVirtualEntry && usableEffects.includes((item.useEffectType || '').toUpperCase()) && safeNumber(item.itemCount) > 0;
-    const useButton = this.addDetailActionButton(detail, 'LobbyBagUseButton', '使用', BAG_AI_OP_ICON_USE_ASSET, slots[0][0], slots[0][1], buttonWidth, buttonHeight, scale, canUse);
+    const useButton = this.addDetailActionButton(detail, 'LobbyBagUseButton', '使用', plate ? REF_DETAIL.btnIcon.use : BAG_AI_OP_ICON_USE_ASSET, slots[0][0], slots[0][1], buttonWidth, buttonHeight, scale, canUse, false, plate);
     if (canUse) {
       useButton.on(Button.EventType.CLICK, () => this.host.useLobbyBagItem(item.itemCode), this);
     }
@@ -928,14 +958,18 @@ export class LobbyBagPanelRenderer {
     };
     const composeNeed = composeRules[(item.itemCode || '').toUpperCase()];
     const canCompose = composeNeed != null && safeNumber(item.itemCount) >= composeNeed;
-    const composeButton = this.addDetailActionButton(detail, 'LobbyBagComposeButton', '合成', BAG_AI_OP_ICON_FORGE_ASSET, slots[1][0], slots[1][1], buttonWidth, buttonHeight, scale, canCompose);
+    const composeButton = this.addDetailActionButton(detail, 'LobbyBagComposeButton', '合成', plate ? REF_DETAIL.btnIcon.fuse : BAG_AI_OP_ICON_FORGE_ASSET, slots[1][0], slots[1][1], buttonWidth, buttonHeight, scale, canCompose, false, plate);
     if (canCompose) {
       composeButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagComposeDialog(item.itemCode), this);
     }
-    const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, slots[2][0], slots[2][1], buttonWidth, buttonHeight, scale, !state.sourceLoading);
-    sourceButton.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
+    // 「来源」按钮(2026-10-20 用户:界面已展示获取途径,不需要):手机详情去掉,只留 使用 / 合成 / 出售;读取失败改为点途径行重试
+    if (!plate) {
+      const sourceButton = this.addDetailActionButton(detail, 'LobbyBagSourceButton', state.sourceLoading ? '读取中' : '来源', BAG_AI_OP_ICON_SOURCE_ASSET, slots[2][0], slots[2][1], buttonWidth, buttonHeight, scale, !state.sourceLoading);
+      sourceButton.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
+    }
+    const sellSlot = plate ? slots[2] : slots[3];
     const sellable = !isVirtualEntry && safeNumber(item.sellGold) > 0 && safeNumber(item.itemCount) > 0;
-    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', BAG_AI_OP_ICON_GOLD_ASSET, slots[3][0], slots[3][1], buttonWidth, buttonHeight, scale, sellable, true);
+    const sellButton = this.addDetailActionButton(detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', plate ? REF_DETAIL.btnIcon.sell : BAG_AI_OP_ICON_GOLD_ASSET, sellSlot[0], sellSlot[1], buttonWidth, buttonHeight, scale, sellable, true, plate);
     if (sellable) {
       sellButton.on(Button.EventType.CLICK, () => this.host.openLobbyBagSellDialog(item.itemCode), this);
     }
@@ -947,39 +981,56 @@ export class LobbyBagPanelRenderer {
     if (composeState.itemCode === item.itemCode) {
       this.renderComposeDialog(detail.parent ?? detail, item, composeState.times, scale);
     }
+    const useState = this.host.currentLobbyBagUseState();
+    if (useState.itemCode === item.itemCode && plate) {
+      this.renderPhoneUseDialog(detail.parent ?? detail, item, useState, scale);
+    }
   }
 
-  // 手机全屏详情(2026-10-19 按 GPT 原型 1:1):原型 1870×841,弹窗 x 284..1586(宽 1302)、y 52..785(高 733);
-  // 所有元素按原型像素 × u 摆放;内部垫实景底图;左列 大格(380..693 × 169..434)+ 名 + 稀有度签 + 四行信息(y 537..755);
-  // 右列 用途面板(772..1553 × 161..350)+ 获取途径面板(y 376..630)+ 四钮(y 678..755)。
+  // 手机全屏详情(2026-10-19 按原型 1:1 第二轮):原型整屏 1870×841(= 20:9)按屏等比,u = 屏高 / 841(宽取整屏可见宽,刘海机面板宽已扣安全区);
+  // 框(双金线外沿)x 285..1587 / y 64..784;通栏标题带暗红 y 66..120 贴框顶线内侧;左列 物品卡(开口 405..670 × 180..435)+ 名 + 稀有度签 + 四行信息(330..745 × 537..755);
+  // 右列 用途面板(772..1553 × 161..350)+ 获取途径面板(376..630,行心 485 / 580)+ 四钮(心 867 / 1065 / 1260 / 1460,y 717)。
   private renderDetailPopupPhone(parent: Node, item: BagItemEntryVO, rect: PhoneDialogRect, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
-    const PW = 1302;
-    const PH = 733;
-    let width = Math.min(rect.width, panelWidth * (PW / 1870));
-    let height = width * (PH / PW);
-    if (height > rect.height) {
-      height = rect.height;
-      width = height * (PW / PH);
-    }
-    const u = width / PW;
-    const X = (px: number): number => (px - 284 - PW / 2) * u;
-    const Y = (py: number): number => (PH / 2 - (py - 52)) * u;
+    void rect;
+    this.phoneDetailPanelSize = { w: panelWidth, h: panelHeight };
+    const FL = 285;
+    const FRt = 1587;
+    const FT = 64;
+    const FB = 784;
+    const screenW = Math.max(panelWidth, view.getVisibleSize().width);
+    const u = Math.min(panelHeight / 841, screenW / 1870, (panelWidth * 0.98) / (FRt - FL));
+    const width = (FRt - FL) * u;
+    const height = (FB - FT) * u;
+    const fcx = (FL + FRt) / 2;
+    const fcy = (FT + FB) / 2;
+    const X = (px: number): number => (px - fcx) * u;
+    const Y = (py: number): number => (fcy - py) * u;
     const S = (v: number): number => v * u;
     const tight = (label: Label): Label => {
       label.lineHeight = label.fontSize;
       return label;
     };
-    const dim = this.host.addChildPlainNode(parent, 'LobbyBagDetailPopupDim', 0, 0, panelWidth, panelHeight);
-    const dimGraphics = dim.addComponent(Graphics);
-    dimGraphics.fillColor = rgba(0, 0, 0, 180);
-    dimGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
-    dimGraphics.fill();
+    // 遮罩(原型:只有弹窗亮,背包整体压暗):铺满整屏(含刘海安全区外两侧);不透明度 85 = 实测弹窗外亮度 33 → 15,与原型 16 一致
+    const dimW = Math.max(panelWidth, screenW) * 1.6;
+    const dimH = panelHeight * 1.6;
+    const dim = this.host.addChildPlainNode(parent, 'LobbyBagDetailPopupDim', 0, 0, dimW, dimH);
+    if (!mountRefSolid(this.host, dim, 'Fill', 0, 0, dimW, dimH, rgba(0, 0, 0, 85))) {
+      const dimGraphics = dim.addComponent(Graphics);
+      dimGraphics.fillColor = rgba(0, 0, 0, 85);
+      dimGraphics.rect(-dimW / 2, -dimH / 2, dimW, dimH);
+      dimGraphics.fill();
+    }
     dim.addComponent(BlockInputEvents);
 
-    const shell = mountRefOrnateDialog(this.host, parent, 'LobbyBagItemDetail', 0, 0, width, height, scale, rgba(10, 8, 9, 212));
-    const detail = shell.node;
+    const detail = this.host.addChildPlainNode(parent, 'LobbyBagItemDetail', (fcx - 935) * u, (420.5 - fcy) * u, width, height);
     detail.addComponent(BlockInputEvents);
-    mountRefDialogBackdrop(this.host, detail, REF_DETAIL_INNER_BG, 0, Y((126 + 780) / 2), width - S(14), S(780 - 126), 60);
+    // 底:实景底图(原型能透出教堂场景)+ 轻暗罩;再盖细双线金框
+    const back = detail.addComponent(Graphics);
+    back.fillColor = rgba(10, 8, 9, 236);
+    back.rect(-width / 2, -height / 2, width, height);
+    back.fill();
+    mountRefDialogBackdrop(this.host, detail, REF_DETAIL_INNER_BG, 0, 0, width, height, 44);
+    mountRefLineFrame(this.host, detail, 'LobbyBagDetailFrame', width, height);
     const closePopup = (): void => {
       this.detailPopupOpen = false;
       if (detail.isValid) {
@@ -990,22 +1041,19 @@ export class LobbyBagPanelRenderer {
       }
       this.host.clearLobbyBagSelection();
     };
-    // 标题带 y 66..123,标题 (935, 94) 字高 40;关闭 (1555, 92) 径 72
-    const bandH = S(57);
-    const headY = Y(94.5);
-    mountRefHeaderBand(this.host, detail, 'LobbyBagDetailBand', 0, headY, width - S(14), bandH, scale);
-    raiseRefFrame(detail);
-    const titleSize = S(40);
-    const titleText = '物品详情';
-    const titleW = titleText.length * titleSize;
-    const emblemH = S(44);
-    const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
-    this.host.addSprite('LobbyBagDetailEmblem', REF_SECTION_EMBLEM.path, X(935) - titleW / 2 - S(18) - emblemW / 2, headY, emblemW, emblemH, detail);
-    const title = tight(this.host.addChildLabel(detail, 'LobbyBagDetailTitle', titleText, X(935), headY, titleSize, rgba(255, 228, 156), new Size(titleW + S(20), titleSize * 1.3)));
+    // 通栏标题带:素材本体 y 84..192 ↔ 原型 66..120,整张等比挂(宽 = 框宽);标题 (959, 93) 字高 ~36;四芒星 (832, 92);关闭 (1551, 93) 径 72
+    const HB = REF_DETAIL.headerBand;
+    const hk = S(120 - 66) / (HB.bodyY1 - HB.bodyY0);
+    const bandY = Y(66) - (HB.h / 2 - HB.bodyY0) * hk;
+    if (!this.host.addSprite('LobbyBagDetailBand', HB.path, 0, bandY, HB.w * hk, HB.h * hk, detail)) {
+      mountRefHeaderBand(this.host, detail, 'LobbyBagDetailBand', 0, Y(93), width - S(14), S(54), scale);
+    }
+    this.host.addSprite('LobbyBagDetailEmblem', 'ui/common/ref/ult_title_star/spriteFrame', X(832), Y(92), S(74), S(74), detail);
+    const title = tight(this.host.addChildLabel(detail, 'LobbyBagDetailTitle', '物品详情'.split('').join(String.fromCharCode(0x2009)), X(959), Y(93), S(40), rgba(255, 228, 156), new Size(S(260), S(52))));
     title.isBold = true;
     this.applyOutline(title, scale, true);
     const closeSize = S(72);
-    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', X(1555), Y(92), closeSize + S(10), closeSize + S(10));
+    const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', X(1551), Y(93), closeSize + S(10), closeSize + S(10));
     if (!this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, closeButton)) {
       this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, closeButton);
     }
@@ -1013,113 +1061,143 @@ export class LobbyBagPanelRenderer {
     this.host.applyImageButtonFeedback(closeButton, 1.08, 0.92);
     closeButton.on(Button.EventType.CLICK, closePopup, this);
 
-    // ── 左列:大格 380..693 × 169..434(心 (536, 301) 边 313) ──
-    const slot = S(313);
-    const slotCx = X(536.5);
-    const slotCy = Y(301.5);
+    // ── 左列物品卡:原型内开口 405..670 × 180..435;卡框素材开口 x 57..454 → 整图按开口宽定比例 ──
     const rarity = this.rarityColor(item.rarity);
-    if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, slotCx, slotCy, slot, slot, detail)) {
-      this.host.addSprite('LobbyBagDetailSlotArt', BAG_AI_SLOT_BASE_ASSET, slotCx, slotCy, slot, slot, detail);
+    const CF = REF_DETAIL.cardFrame;
+    const ck = S(670 - 405) / (CF.open.x1 - CF.open.x0);
+    const openCx = X((405 + 670) / 2);
+    const openCy = Y((180 + 435) / 2);
+    const openW = S(670 - 405);
+    const openH = S(435 - 180);
+    // 开口底:暗底 → 稀有度色符文法阵底图(原型石头脚下的发光法阵)→ 轻暗罩(底图偏亮,压一压免得抢物品图)
+    const glow = this.host.addChildPlainNode(detail, 'LobbyBagDetailGlow', openCx, openCy, openW, openH).addComponent(Graphics);
+    glow.fillColor = rgba(6, 6, 10, 230);
+    glow.rect(-openW / 2, -openH / 2, openW, openH);
+    glow.fill();
+    const bgSide = Math.max(openW, openH);
+    if (this.host.addSprite('LobbyBagDetailCardBg', REF_DETAIL.cardBgPath(item.rarity), openCx, openCy, bgSide, bgSide, detail)) {
+      const veil = this.host.addChildPlainNode(detail, 'LobbyBagDetailCardVeil', openCx, openCy, bgSide, bgSide).addComponent(Graphics);
+      veil.fillColor = rgba(4, 4, 8, 70);
+      veil.rect(-bgSide / 2, -bgSide / 2, bgSide, bgSide);
+      veil.fill();
     }
     const popupIcon = bagItemIconAsset(item);
+    const iconSize = Math.min(openW, openH) * 0.92;
     if (popupIcon) {
-      this.host.addSprite('LobbyBagDetailIcon', popupIcon, slotCx, slotCy, slot * 0.76, slot * 0.76, detail);
+      this.host.addSprite('LobbyBagDetailIcon', popupIcon, openCx, openCy, iconSize, iconSize, detail);
     } else {
-      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), slotCx, slotCy, slot * 0.6, slot * 0.6, detail);
+      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), openCx, openCy, iconSize * 0.7, iconSize * 0.7, detail);
     }
-    // 左上角稀有度字母 (437, 205) 字高 44
-    const rarityTag = tight(this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), X(420), Y(205), S(44), rarity, new Size(S(70), S(52)), HorizontalTextAlignment.LEFT));
+    const frameCy = openCy + ((CF.open.y0 + CF.open.y1) / 2 - CF.h / 2) * ck;
+    if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL.cardFramePath(item.rarity), openCx, frameCy, CF.w * ck, CF.h * ck, detail)) {
+      this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, openCx, openCy, S(313), S(313), detail);
+    }
+    // 左上角稀有度字母 (437, 205)
+    const rarityTag = tight(this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), X(420), Y(207), S(40), rarity, new Size(S(130), S(48)), HorizontalTextAlignment.LEFT));
+    rarityTag.enableWrapText = false;
+    rarityTag.overflow = Label.Overflow.SHRINK;
     rarityTag.isBold = true;
+    rarityTag.isItalic = true;
     this.applyOutline(rarityTag, scale, true);
-    // 名 (536, 474) 字高 44;签 (536, 518) 高 32
-    const nameLabel = tight(this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), X(536), Y(474), S(44), rgba(255, 232, 170), new Size(S(430), S(54))));
+    // 名 (537, 475) 垫名牌(原型:暗带 + 上下细金线 + 两端金箭羽,x 322..752);稀有度签 (537, 519):暗条 + 两侧细金线,字为稀有度色
+    this.host.addSprite('LobbyBagDetailNamePlate', REF_DETAIL.namePlate.path, X(537), Y(475), S(430), S(58), detail);
+    const nameLabel = tight(this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), X(537), Y(475), S(42), rgba(255, 232, 170), new Size(S(400), S(52))));
     nameLabel.overflow = Label.Overflow.SHRINK;
     nameLabel.isBold = true;
     this.applyOutline(nameLabel, scale, true);
     const chipText = `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`;
-    const chipW = S(chipText.length * 22 + 50);
+    const chipW = S(250);
     const chipH = S(32);
-    const chip = this.host.addChildPlainNode(detail, 'LobbyBagDetailSubtitleChip', X(536), Y(518), chipW, chipH);
-    const cg = chip.addComponent(Graphics);
-    cg.fillColor = rgba(Math.round(rarity.r * 0.2), Math.round(rarity.g * 0.2), Math.round(rarity.b * 0.2), 230);
-    cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
-    cg.fill();
-    cg.strokeColor = rgba(rarity.r, rarity.g, rarity.b, 220);
-    cg.lineWidth = Math.max(1, 1.4 * scale);
-    cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
-    cg.stroke();
-    tight(this.host.addChildLabel(chip, 'LobbyBagDetailSubtitle', chipText, 0, 0, S(22), rarity, new Size(chipW - S(10), chipH)));
-    // 信息块:金框 330..745 × 537..755;四行心 y 572 / 622 / 672 / 722(行高 50);图标 (362) 径 28;名 (392);值右对齐 (727)
-    const infoW = S(745 - 330);
-    const infoH = S(755 - 537);
-    const infoCx = X((330 + 745) / 2);
-    const infoBox = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailInfoBox', infoCx, Y((537 + 755) / 2), infoW, infoH, scale, '', { fill: rgba(8, 6, 8, 190) }).node;
+    const chip = this.host.addChildPlainNode(detail, 'LobbyBagDetailSubtitleChip', X(537), Y(521), chipW, chipH);
+    const lineH = Math.max(1, S(1.6));
+    mountRefSolid(this.host, chip, 'Fill', 0, 0, chipW, chipH, rgba(4, 6, 12, 170));
+    mountRefSolid(this.host, chip, 'LineL', -chipW / 2 - S(39), 0, S(62), lineH, rgba(214, 170, 92, 160));
+    mountRefSolid(this.host, chip, 'LineR', chipW / 2 + S(39), 0, S(62), lineH, rgba(214, 170, 92, 160));
+    tight(this.host.addChildLabel(chip, 'LobbyBagDetailSubtitle', chipText, 0, 0, S(24), rarity, new Size(chipW - S(10), chipH)));
+    // 信息块:金框 312..752 × 538..772(按宽挂,金线缩进约 9);四行心 y 586 / 632 / 678 / 724(行距 46,上下各留 ~25);图标 (356) 径 32;名 (392);值右对齐 (724)
+    const infoW = S(752 - 312);
+    const infoH = S(772 - 538);
+    const infoCx = X((312 + 752) / 2);
+    const infoCy = Y((538 + 772) / 2);
+    const infoBox = this.host.addChildPlainNode(detail, 'LobbyBagDetailInfoBox', infoCx, infoCy, infoW, infoH);
+    mountRefSolid(this.host, infoBox, 'Fill', 0, 0, infoW - S(12), infoH - S(12), rgba(8, 6, 8, 200));
+    mountRefSlicedByWidth(this.host, infoBox, 'Frame', REF_ULT.statBox, 0, 0, infoW, infoH);
     const infoRows: Array<[string, string, string, boolean]> = [
       ['拥有数量', formatCompact(safeNumber(item.itemCount)), 'ui/common/ref/ic_owned/spriteFrame', true],
       ['堆叠', formatCompact(safeNumber(item.maxStack)), 'ui/common/ref/ic_stack/spriteFrame', false],
       ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', 'ui/common/ref/ic_price/spriteFrame', false],
       ['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久', 'ui/common/ref/ic_expire/spriteFrame', false],
     ];
-    const lines = this.host.addChildPlainNode(infoBox, 'Lines', 0, 0, infoW, infoH).addComponent(Graphics);
-    lines.strokeColor = rgba(214, 170, 92, 110);
-    lines.lineWidth = Math.max(1, 1.2 * scale);
     infoRows.forEach(([rowTitle, rowValue, icon, strong], index) => {
-      const cy = Y(572 + index * 50) - Y((537 + 755) / 2);
+      const cy = Y(586 + index * 46) - infoCy;
       if (index > 0) {
-        lines.moveTo(-infoW / 2 + S(14), cy + S(25));
-        lines.lineTo(infoW / 2 - S(14), cy + S(25));
-        lines.stroke();
+        mountRefSolid(this.host, infoBox, `Sep_${index}`, 0, cy + S(23), infoW - S(60), Math.max(1, S(1.4)), rgba(214, 170, 92, 95));
       }
-      this.host.addSprite(`Ic_${index}`, icon, -infoW / 2 + S(32), cy, S(30), S(30), infoBox);
-      tight(this.host.addChildLabel(infoBox, `Title_${index}`, rowTitle, -infoW / 2 + S(62), cy, S(24), rgba(240, 226, 200), new Size(S(180), S(32)), HorizontalTextAlignment.LEFT));
-      const valueLabel = tight(this.host.addChildLabel(infoBox, `Value_${index}`, rowValue, infoW / 2 - S(18), cy, S(strong ? 36 : 26), strong ? rgba(255, 222, 130) : rgba(244, 234, 212), new Size(S(220), S(44)), HorizontalTextAlignment.RIGHT));
+      this.host.addSprite(`Ic_${index}`, icon, X(356) - infoCx, cy, S(32), S(32), infoBox);
+      tight(this.host.addChildLabel(infoBox, `Title_${index}`, rowTitle, X(392) - infoCx, cy, S(24), rgba(240, 226, 200), new Size(S(180), S(30)), HorizontalTextAlignment.LEFT));
+      const valueLabel = tight(this.host.addChildLabel(infoBox, `Value_${index}`, rowValue, X(724) - infoCx, cy, S(strong ? 32 : 24), strong ? rgba(255, 222, 130) : rgba(244, 234, 212), new Size(S(220), S(40)), HorizontalTextAlignment.RIGHT));
       valueLabel.overflow = Label.Overflow.SHRINK;
       valueLabel.isBold = strong;
       this.applyOutline(valueLabel, scale, strong);
     });
 
-    // ── 右列:用途面板 772..1553 × 161..350(带 y 161..210);获取途径面板 y 376..630(带 376..427);按钮 y 678..755 ──
+    // ── 右列两块面板:沿用终极技能消耗面板(暗红头带 + 星徽 + 金框);头带高按原型 49 定比例(k ≤ 0.505),中段横向拉 ──
     const rightW = S(1553 - 772);
     const rightCx = X((772 + 1553) / 2);
-    const usePanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailUsePanel', rightCx, Y((161 + 350) / 2), rightW, S(350 - 161), scale, '用途', { bandH: S(49), fontSize: S(28), center: false, fill: rgba(8, 6, 8, 170) });
-    const useText = this.host.addChildLabel(usePanel.node, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), -rightW / 2 + S(40), Y(280) - Y((161 + 350) / 2), S(26), rgba(246, 236, 214), new Size(rightW - S(80), S(110)), HorizontalTextAlignment.LEFT);
+    const panelK = (55 / 97) * u;
+    const mountSection = (name: string, y0: number, y1: number, text: string): void => {
+      const cy = Y((y0 + y1) / 2);
+      if (!mountRefSlicedByWidth(this.host, detail, name, REF_DETAIL.sectionPanel, rightCx, cy, rightW, S(y1 - y0), panelK)) {
+        mountRefTitledPanel(this.host, detail, name, rightCx, cy, rightW, S(y1 - y0), scale, '', { bandH: S(49), fill: rgba(8, 6, 8, 190) });
+      }
+      // 头带心 = y0 + (8 + 105) / 2 × (55 / 97);左侧大四芒星(原型 ~46 高)盖住面板素材自带的小星
+      this.host.addSprite(`${name}Star`, 'ui/common/ref/ult_title_star/spriteFrame', X(828), Y(y0 + 32), S(54), S(54), detail);
+      const t = tight(this.host.addChildLabel(detail, `${name}Title`, text, X(872), Y(y0 + 32), S(30), rgba(255, 232, 170), new Size(S(300), S(36)), HorizontalTextAlignment.LEFT));
+      t.isBold = true;
+      this.applyOutline(t, scale, true);
+    };
+    mountSection('LobbyBagDetailUsePanel', 154, 352, '用途');
+    // 用途正文区透出场景(原型:正文背后是暗化的教堂画面)
+    mountRefDialogBackdrop(this.host, detail, REF_DETAIL_INNER_BG, rightCx, Y((216 + 343) / 2), rightW - S(22), S(343 - 216), 36, true);
+    const useText = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), X(812), Y(282), S(28), rgba(250, 242, 222), new Size(S(700), S(110)), HorizontalTextAlignment.LEFT);
     useText.enableWrapText = true;
     useText.lineHeight = S(36);
     useText.overflow = Label.Overflow.SHRINK;
-    const srcPanel = mountRefTitledPanel(this.host, detail, 'LobbyBagDetailSourcePanel', rightCx, Y((376 + 630) / 2), rightW, S(630 - 376), scale, '获取途径', { bandH: S(51), fontSize: S(28), center: false, fill: rgba(8, 6, 8, 170) });
-    // 来源行:800..1528 × 高 80;行心 y 483 / 578;图环 (850) 径 70;文字 (915) 字高 26;箭头环 (1485) 径 52
+    this.applyOutline(useText, scale, false);
+    mountSection('LobbyBagDetailSourcePanel', 371, 640, '获取途径');
+    // 来源行:800..1528 × 高 80;行心 y 485 / 580;圆徽 (850) 径 80;文字 (918);箭头 (1488) 径 58
     const segments = this.resolveSourceSegments(item, state, 34);
     const visibleSegments = segments.slice(0, 2);
     if (segments.length > 2) {
       visibleSegments[1] = `${visibleSegments[1]}…`;
     }
     const srcRowW = S(1528 - 800);
-    const srcRowH = S(80);
+    const srcRowH = S(86);
+    const rowCx = X((800 + 1528) / 2);
     visibleSegments.forEach((segment, index) => {
-      const cy = Y(483 + index * 95) - Y((376 + 630) / 2);
-      const rowNode = this.host.addChildPlainNode(srcPanel.node, `LobbyBagSourceRowPlate_${index}`, X((800 + 1528) / 2) - rightCx, cy, srcRowW, srcRowH);
-      if (!mountRefSliced(this.host, rowNode, 'Bg', REF_ROW, 0, 0, srcRowW, srcRowH)) {
-        const rowGraphics = rowNode.addComponent(Graphics);
-        rowGraphics.fillColor = rgba(26, 21, 17, 224);
-        rowGraphics.roundRect(-srcRowW / 2, -srcRowH / 2, srcRowW, srcRowH, 6 * scale);
-        rowGraphics.fill();
+      const cy = Y(484 + index * 98);
+      const rowNode = this.host.addChildPlainNode(detail, `LobbyBagSourceRowPlate_${index}`, rowCx, cy, srcRowW, srcRowH);
+      if (!mountRefSlicedByWidth(this.host, rowNode, 'Bg', REF_ULT.costRow, 0, 0, srcRowW, srcRowH)) {
+        mountRefSliced(this.host, rowNode, 'Bg', REF_ROW, 0, 0, srcRowW, srcRowH);
       }
-      const ring = S(70);
-      const ringX = -srcRowW / 2 + S(50);
-      this.host.addSprite('Ring', REF_ICON_RING_ASSET, ringX, 0, ring, ring, rowNode);
-      this.host.addSprite('Ic', BAG_AI_OP_ICON_SOURCE_ASSET, ringX, 0, ring * 0.56, ring * 0.56, rowNode);
-      const segLabel = tight(this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, -srcRowW / 2 + S(115), 0, S(26), rgba(246, 236, 214), new Size(S(540), S(34)), HorizontalTextAlignment.LEFT));
+      const medal = S(80);
+      const medalX = X(850) - rowCx;
+      if (!this.host.addSprite('Medal', REF_DETAIL.sourceIcon(refDetailSourceKind(segment)), medalX, 0, medal, medal, rowNode)) {
+        this.host.addSprite('Ring', REF_ICON_RING_ASSET, medalX, 0, medal * 0.9, medal * 0.9, rowNode);
+      }
+      const segLabel = tight(this.host.addChildLabel(rowNode, `LobbyBagSourceDesc_${index}`, segment, X(918) - rowCx, 0, S(26), rgba(246, 236, 214), new Size(S(520), S(34)), HorizontalTextAlignment.LEFT));
       segLabel.overflow = Label.Overflow.SHRINK;
-      const arrowRing = S(52);
-      const arrowX = srcRowW / 2 - S(43);
-      this.host.addSprite('ArrowRing', REF_ICON_RING_ASSET, arrowX, 0, arrowRing, arrowRing, rowNode);
-      const arrow = tight(this.host.addChildLabel(rowNode, 'Arrow', '›', arrowX + S(2), S(3), S(34), rgba(255, 222, 130), new Size(arrowRing, arrowRing)));
-      arrow.isBold = true;
+      if (state.sourceItemCode === item.itemCode && state.sourceError) {
+        rowNode.addComponent(Button);
+        rowNode.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
+      }
+      const arrowX = X(1488) - rowCx;
+      if (!this.host.addSprite('Arrow', REF_DETAIL.arrow, arrowX, 0, S(58), S(58), rowNode)) {
+        this.host.addSprite('ArrowRing', REF_ICON_RING_ASSET, arrowX, 0, S(52), S(52), rowNode);
+      }
     });
-    // 四钮:心 x 865 / 1068 / 1258 / 1468,y 717,宽 170 高 72
-    const buttonW = S(170);
-    const buttonH = S(72);
-    this.renderDetailActions(detail, item, state, scale, buttonW, buttonH, [865, 1068, 1258, 1468].map((px) => [X(px), Y(717)] as [number, number]));
+    // 三钮(去掉「来源」后):右列 772..1553 三等分,心 x 902 / 1162 / 1423,y 717;照原型干净底板 196 × 72(暗金 / 红 / 灰)+ 原型图标
+    this.renderDetailActions(detail, item, state, scale, S(196), S(72), [902, 1162, 1423].map((px) => [X(px), Y(717)] as [number, number]), true);
   }
 
   // 手机全屏确认弹窗壳:底板铺满舞台;withShowcase 时左侧留道具展示列。返回右侧控件区中心 X 与放大倍数 k
@@ -1250,6 +1328,10 @@ export class LobbyBagPanelRenderer {
     if (!rule) {
       return;
     }
+    if (this.phoneDialogRect) {
+      this.renderPhoneComposeDialog(parent, item, rule, times, scale);
+      return;
+    }
     const held = safeNumber(item.itemCount);
     const maxTimes = Math.max(1, Math.min(500, Math.floor(held / rule.need)));
     const safeTimes = Math.max(1, Math.min(maxTimes, times));
@@ -1264,7 +1346,8 @@ export class LobbyBagPanelRenderer {
     og.fill();
 
     let dialog: Node;
-    const phone = this.phoneDialogRect;
+    // 手机已在函数开头分走(renderPhone*Dialog),这里只剩桌面;保留旧分支以防 phoneDialogRect 在别处被置空后重入
+    const phone = this.phoneDialogRect as PhoneDialogRect | null;
     if (phone) {
       // 手机全屏:左列「源材料 → 产物」展示,右侧控件按原设计尺寸 × k 放大排布。
       const shell = this.addPhoneConfirmShell(overlay, 'LobbyBagComposeDialog', phone, 470, 360, scale);
@@ -1366,8 +1449,398 @@ export class LobbyBagPanelRenderer {
     cancelLabel.overflow = Label.Overflow.SHRINK;
   }
 
+  // ───────── 手机二级弹窗(2026-10-20 按原型 1:1:proto/bag_use|bag_sell|bag_compose.png)─────────
+  // 原型整屏 1870×841 等比(u 与物品详情同算法,取 renderDetailPopupPhone 记下的面板尺寸);外框 = 细双线金框,短版通栏标题带,
+  // 背后整屏压暗(压在物品详情之上)。数量选择统一为:圆形 − / 数字框 / 圆形 + / 小钮(+10、最大)+ 金色滑条。
+  private phoneDialogMap(FL: number, FR: number, FT: number, FB: number): { u: number; X: (px: number) => number; Y: (py: number) => number; S: (v: number) => number; w: number; h: number; cx: number; cy: number } {
+    const size = this.phoneDetailPanelSize ?? { w: 1600, h: 720 };
+    const screenW = Math.max(size.w, view.getVisibleSize().width);
+    const u = Math.min(size.h / 841, screenW / 1870, (size.w * 0.98) / (FR - FL));
+    const fcx = (FL + FR) / 2;
+    const fcy = (FT + FB) / 2;
+    return {
+      u,
+      X: (px: number): number => (px - fcx) * u,
+      Y: (py: number): number => (fcy - py) * u,
+      S: (v: number): number => v * u,
+      w: (FR - FL) * u,
+      h: (FB - FT) * u,
+      cx: (fcx - 935) * u,
+      cy: (420.5 - fcy) * u,
+    };
+  }
+
+  /** 弹窗壳:整屏压暗 + 实底 + 实景底图 + 细双线框 + 短版标题带(暗红本体 y bandY0..bandY1)+ 四芒星标题 + 关闭钮。返回弹窗节点(坐标系 = 弹窗中心)。 */
+  private mountPhoneSubDialog(parent: Node, name: string, map: ReturnType<LobbyBagPanelRenderer['phoneDialogMap']>, FT: number, bandY0: number, bandY1: number, title: string, closeX: number, onClose: () => void, scale: number): Node {
+    const { X, Y, S, w, h, cx, cy } = map;
+    const size = this.phoneDetailPanelSize ?? { w: 1600, h: 720 };
+    const dimW = Math.max(size.w, view.getVisibleSize().width) * 1.6;
+    const dimH = size.h * 1.6;
+    const dim = this.host.addChildPlainNode(parent, `${name}Dim`, 0, 0, dimW, dimH);
+    // 二级弹窗压在物品详情之上:压暗 210,详情退成背景(原型里只看得到弹窗)
+    mountRefSolid(this.host, dim, 'Fill', 0, 0, dimW, dimH, rgba(0, 0, 0, 210));
+    dim.addComponent(BlockInputEvents);
+    const dialog = this.host.addChildPlainNode(dim, name, cx, cy, w, h);
+    dialog.addComponent(BlockInputEvents);
+    mountRefSolid(this.host, dialog, 'Back', 0, 0, w, h, rgba(10, 8, 9, 244));
+    mountRefDialogBackdrop(this.host, dialog, REF_DETAIL_INNER_BG, 0, 0, w, h, 215, true);
+    mountRefLineFrame(this.host, dialog, 'Frame', w, h);
+    // 标题带:短版素材本体 y 91..183,宽 = 弹窗宽(素材比例 15.5,和原型 15~17 接近,高度随宽)
+    const HB = REF_BAG_DLG.headerBand;
+    const hk = w / HB.w;
+    const bodyH = (HB.bodyY1 - HB.bodyY0) * hk;
+    const bodyCy = Y((bandY0 + bandY1) / 2);
+    // 素材本体中心比图心低 ((y0 + y1) / 2 - h / 2) 像素 → 整图中心 = 本体中心上移这么多
+    this.host.addSprite('Band', HB.path, 0, bodyCy + ((HB.bodyY0 + HB.bodyY1) / 2 - HB.h / 2) * hk, HB.w * hk, HB.h * hk, dialog);
+    void bodyH;
+    void FT;
+    const titleSize = S(36);
+    const titleText = title.split('').join(String.fromCharCode(0x2009));
+    const titleW = title.length * titleSize * 1.12;
+    this.host.addSprite('Star', 'ui/common/ref/ult_title_star/spriteFrame', -titleW / 2 - S(30), bodyCy, S(56), S(56), dialog);
+    const titleLabel = this.host.addChildLabel(dialog, 'Title', titleText, S(8), bodyCy, titleSize, rgba(255, 228, 156), new Size(titleW + S(30), S(48)));
+    titleLabel.lineHeight = titleLabel.fontSize;
+    titleLabel.isBold = true;
+    this.applyOutline(titleLabel, scale, true);
+    const closeSize = S(62);
+    const close = this.host.addChildPlainNode(dialog, 'Close', X(closeX), bodyCy, closeSize + S(10), closeSize + S(10));
+    this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, close);
+    close.addComponent(Button);
+    this.host.applyImageButtonFeedback(close, 1.08, 0.92);
+    close.on(Button.EventType.CLICK, onClose, this);
+    return dialog;
+  }
+
+  /** 物品卡:稀有度法阵底 + 物品图 + 稀有度卡框 + 左上稀有度字母 + 右下 ×N(原型开口 x0..x1 × y0..y1)。 */
+  private mountPhoneItemCard(dialog: Node, item: BagItemEntryVO, map: ReturnType<LobbyBagPanelRenderer['phoneDialogMap']>, x0: number, x1: number, y0: number, y1: number, badge: string, scale: number): void {
+    const { X, Y, S } = map;
+    const openW = S(x1 - x0);
+    const openH = S(y1 - y0);
+    const ocx = X((x0 + x1) / 2);
+    const ocy = Y((y0 + y1) / 2);
+    const side = Math.max(openW, openH);
+    mountRefSolid(this.host, dialog, `CardBack_${item.itemCode}`, ocx, ocy, openW, openH, rgba(6, 6, 10, 235));
+    this.host.addSprite('CardBg', REF_DETAIL.cardBgPath(item.rarity), ocx, ocy, side, side, dialog);
+    mountRefSolid(this.host, dialog, 'CardVeil', ocx, ocy, openW, openH, rgba(4, 4, 8, 60));
+    const icon = bagItemIconAsset(item);
+    const iconSize = Math.min(openW, openH) * 0.86;
+    if (icon) {
+      this.host.addSprite('CardIcon', icon, ocx, ocy, iconSize, iconSize, dialog);
+    } else {
+      this.host.addSprite('CardIcon', bagItemTypeIconAsset(item.itemType), ocx, ocy, iconSize * 0.7, iconSize * 0.7, dialog);
+    }
+    const CF = REF_DETAIL.cardFrame;
+    const ck = openW / (CF.open.x1 - CF.open.x0);
+    this.host.addSprite('CardFrame', REF_DETAIL.cardFramePath(item.rarity), ocx, ocy + ((CF.open.y0 + CF.open.y1) / 2 - CF.h / 2) * ck, CF.w * ck, CF.h * ck, dialog);
+    const rarity = this.rarityColor(item.rarity);
+    const letter = this.host.addChildLabel(dialog, 'CardRarity', safeText(item.rarity || 'N'), ocx - openW / 2 + S(14), ocy + openH / 2 - S(28), S(34), rarity, new Size(S(110), S(42)), HorizontalTextAlignment.LEFT);
+    letter.lineHeight = letter.fontSize;
+    letter.isBold = true;
+    letter.isItalic = true;
+    letter.enableWrapText = false;
+    this.applyOutline(letter, scale, true);
+    if (badge) {
+      const b = this.host.addChildLabel(dialog, 'CardBadge', badge, ocx + openW / 2 - S(12), ocy - openH / 2 + S(24), S(28), rgba(255, 246, 228), new Size(S(160), S(36)), HorizontalTextAlignment.RIGHT);
+      b.lineHeight = b.fontSize;
+      b.isBold = true;
+      this.applyOutline(b, scale, true);
+    }
+  }
+
+  /** 数量选择行:圆形 − / 数字框 / 圆形 + / 小钮若干;y = 行心(原型坐标)。 */
+  private mountPhoneStepper(dialog: Node, map: ReturnType<LobbyBagPanelRenderer['phoneDialogMap']>, y: number, minusX: number, fieldX0: number, fieldX1: number, plusX: number, round: number, chipH: number, valueText: string,
+    canMinus: boolean, canPlus: boolean, onMinus: () => void, onPlus: () => void, chips: Array<{ x0: number; x1: number; text: string; enabled: boolean; onClick: () => void }>, scale: number): void {
+    const { X, Y, S } = map;
+    const cy = Y(y);
+    const roundBtn = (name: string, x: number, glyph: string, enabled: boolean, onClick: () => void): void => {
+      const node = this.host.addChildPlainNode(dialog, name, X(x), cy, S(round), S(round));
+      this.host.addSprite('Art', REF_BAG_DLG.roundBtn, 0, 0, S(round), S(round), node);
+      const g = this.host.addChildLabel(node, 'Glyph', glyph, 0, S(2), S(round * 0.62), enabled ? rgba(255, 236, 190) : rgba(130, 122, 110), new Size(S(round), S(round)));
+      g.lineHeight = g.fontSize;
+      g.isBold = true;
+      if (enabled) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, onClick, this);
+        this.host.applyImageButtonFeedback(node, 1.08, 0.92);
+      } else {
+        node.addComponent(UIOpacity).opacity = 150;
+      }
+    };
+    roundBtn('Minus', minusX, '−', canMinus, onMinus);
+    roundBtn('Plus', plusX, '+', canPlus, onPlus);
+    const fw = S(fieldX1 - fieldX0);
+    const fh = S(chipH);
+    const field = this.host.addChildPlainNode(dialog, 'Field', X((fieldX0 + fieldX1) / 2), cy, fw, fh);
+    mountRefSolid(this.host, field, 'Fill', 0, 0, fw - S(6), fh - S(6), rgba(6, 5, 6, 230));
+    mountRefSlicedByWidth(this.host, field, 'Frame', REF_ULT.costRow, 0, 0, fw, fh);
+    const v = this.host.addChildLabel(field, 'Value', valueText, 0, 0, S(30), rgba(255, 244, 222), new Size(fw - S(16), fh));
+    v.lineHeight = v.fontSize;
+    v.overflow = Label.Overflow.SHRINK;
+    v.isBold = true;
+    chips.forEach((chip, index) => {
+      const cw = S(chip.x1 - chip.x0);
+      const node = this.host.addChildPlainNode(dialog, `Chip_${index}`, X((chip.x0 + chip.x1) / 2), cy, cw, fh);
+      this.host.addSprite('Art', REF_BAG_DLG.chip, 0, 0, cw, fh, node);
+      const t = this.host.addChildLabel(node, 'Label', chip.text, 0, 0, S(26), chip.enabled ? rgba(255, 236, 190) : rgba(150, 142, 128), new Size(cw - S(10), fh));
+      t.lineHeight = t.fontSize;
+      t.overflow = Label.Overflow.SHRINK;
+      t.isBold = true;
+      if (chip.enabled) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, chip.onClick, this);
+        this.host.applyImageButtonFeedback(node, 1.05, 0.95);
+      } else {
+        node.addComponent(UIOpacity).opacity = 160;
+      }
+    });
+  }
+
+  /** 金色滑条:左右端标 min / max;拖动或点按改数量(松手才提交,拖动中只挪滑块与预览)。 */
+  private mountPhoneSlider(dialog: Node, map: ReturnType<LobbyBagPanelRenderer['phoneDialogMap']>, y: number, minLabelX: number, x0: number, x1: number, maxLabelX: number, min: number, max: number, value: number, enabled: boolean, onSet: (v: number) => void, scale: number): void {
+    const { X, Y, S } = map;
+    const cy = Y(y);
+    const trackW = S(x1 - x0);
+    const trackH = S(16);
+    const left = X(x0);
+    const lab = (name: string, x: number, text: string): void => {
+      const l = this.host.addChildLabel(dialog, name, text, X(x), cy, S(24), rgba(226, 214, 192), new Size(S(90), S(30)));
+      l.lineHeight = l.fontSize;
+    };
+    lab('SliderMin', minLabelX, formatCompact(min));
+    lab('SliderMax', maxLabelX, formatCompact(max));
+    const track = this.host.addChildPlainNode(dialog, 'SliderTrack', X((x0 + x1) / 2), cy, trackW, S(48));
+    mountRefPlate(this.host, track, 'Track', REF_BAG_DLG.sliderTrack, 0, 0, trackW, trackH);
+    const ratio = max > min ? (value - min) / (max - min) : 1;
+    const fillW = Math.max(trackH, trackW * ratio);
+    const fill = this.host.addChildPlainNode(track, 'FillHolder', -trackW / 2 + fillW / 2, 0, fillW, trackH);
+    mountRefPlate(this.host, fill, 'Fill', REF_BAG_DLG.sliderFill, 0, 0, fillW, trackH);
+    const knob = this.host.addSprite('Knob', REF_BAG_DLG.sliderKnob, -trackW / 2 + trackW * ratio, 0, S(38), S(38), track);
+    if (!enabled || max <= min) {
+      return;
+    }
+    const valueAt = (worldX: number): number => {
+      const ut = track.getComponent(UITransform);
+      const local = ut ? ut.convertToNodeSpaceAR(new Vec3(worldX, 0, 0)).x : 0;
+      const r = Math.max(0, Math.min(1, (local + trackW / 2) / trackW));
+      return Math.round(min + r * (max - min));
+    };
+    let pending = value;
+    const preview = (v: number): void => {
+      pending = v;
+      const r = (v - min) / (max - min);
+      knob?.node.setPosition(new Vec3(-trackW / 2 + trackW * r, 0, 0));
+    };
+    track.on(Node.EventType.TOUCH_START, (e: EventTouch) => preview(valueAt(e.getUILocation().x)), this);
+    track.on(Node.EventType.TOUCH_MOVE, (e: EventTouch) => preview(valueAt(e.getUILocation().x)), this);
+    track.on(Node.EventType.TOUCH_END, () => onSet(pending), this);
+    track.on(Node.EventType.TOUCH_CANCEL, () => onSet(pending), this);
+    void left;
+    void scale;
+  }
+
+  /** 两侧带细金线的居中说明行(原型:合成消耗行 / 弹窗分隔)。 */
+  private mountPhoneRuledLine(dialog: Node, map: ReturnType<LobbyBagPanelRenderer['phoneDialogMap']>, y: number, x0: number, x1: number, gap: number): void {
+    const { X, Y, S } = map;
+    const lineH = Math.max(1, S(1.4));
+    const cx = X((x0 + x1) / 2);
+    const half = S(x1 - x0) / 2;
+    const seg = half - S(gap);
+    if (seg > 0) {
+      mountRefSolid(this.host, dialog, 'RuleL', cx - S(gap) - seg / 2, Y(y), seg, lineH, rgba(214, 170, 92, 150));
+      mountRefSolid(this.host, dialog, 'RuleR', cx + S(gap) + seg / 2, Y(y), seg, lineH, rgba(214, 170, 92, 150));
+    }
+  }
+
+  // 使用道具(原型 bag_use:框 440..1430 × 100..712)
+  private renderPhoneUseDialog(parent: Node, item: BagItemEntryVO, useState: { itemCode: string | null; count: number; busy: boolean }, scale: number): void {
+    const held = safeNumber(item.itemCount);
+    if (held <= 1) {
+      return;
+    }
+    const map = this.phoneDialogMap(440, 1430, 100, 712);
+    const { X, Y, S } = map;
+    const count = Math.max(1, Math.min(held, useState.count));
+    const busy = useState.busy;
+    const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagUseDialog', map, 100, 110, 165, '使用道具', 1404, () => this.host.closeLobbyBagUseDialog(), scale);
+    this.mountPhoneItemCard(dialog, item, map, 508, 752, 218, 452, `×${formatCompact(held)}`, scale);
+    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(630), Y(500), S(34), rgba(255, 232, 170), new Size(S(300), S(42)));
+    name.lineHeight = name.fontSize;
+    name.isBold = true;
+    name.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(name, scale, true);
+    mountRefSolid(this.host, dialog, 'NameRule', X(630), Y(523), S(270), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
+    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(630), Y(546), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
+    tag.lineHeight = tag.fontSize;
+    // 说明框 815..1392 × 205..302
+    const descW = S(1392 - 815);
+    const descH = S(302 - 205);
+    const desc = this.host.addChildPlainNode(dialog, 'Desc', X((815 + 1392) / 2), Y((205 + 302) / 2), descW, descH);
+    mountRefSolid(this.host, desc, 'Fill', 0, 0, descW - S(6), descH - S(6), rgba(8, 6, 7, 210));
+    mountRefSlicedByWidth(this.host, desc, 'Frame', REF_ULT.costRow, 0, 0, descW, descH);
+    const descText = this.host.addChildLabel(desc, 'Text', safeText(item.useDesc || '使用后获得道具效果'), -descW / 2 + S(24), 0, S(26), rgba(246, 236, 214), new Size(descW - S(48), descH - S(16)), HorizontalTextAlignment.LEFT);
+    descText.enableWrapText = true;
+    descText.lineHeight = S(34);
+    descText.overflow = Label.Overflow.SHRINK;
+    const set = (v: number): void => this.host.setLobbyBagUseCount(Math.max(1, Math.min(held, v)));
+    this.mountPhoneStepper(dialog, map, 355, 845, 895, 1068, 1113, 58, 52, formatCompact(count), !busy && count > 1, !busy && count < held, () => set(count - 1), () => set(count + 1), [
+      { x0: 1165, x1: 1270, text: '+10', enabled: !busy && count < held, onClick: () => set(count + 10) },
+      { x0: 1287, x1: 1392, text: '最大', enabled: !busy && count < held, onClick: () => set(held) },
+    ], scale);
+    this.mountPhoneSlider(dialog, map, 418, 822, 852, 1345, 1378, 1, held, count, !busy, set, scale);
+    this.mountPhoneRuledLine(dialog, map, 466, 815, 1392, 30);
+    this.host.addSprite('RuleGem', 'ui/common/ref/ult_title_star/spriteFrame', X(1104), Y(466), S(26), S(26), dialog);
+    const sum = this.host.addChildLabel(dialog, 'Summary', `使用 ×${formatCompact(count)}  →  获得 ${bagUseRewardLabel(item)}`, X(1104), Y(508), S(30), rgba(255, 214, 120), new Size(S(560), S(40)));
+    sum.lineHeight = sum.fontSize;
+    sum.isBold = true;
+    sum.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(sum, scale, true);
+    const remain = this.host.addChildLabel(dialog, 'Remain', `使用后剩余 ×${formatCompact(held - count)}`, X(1104), Y(556), S(22), rgba(190, 180, 164), new Size(S(500), S(30)));
+    remain.lineHeight = remain.fontSize;
+    const use = this.addDetailPlateButton(dialog, 'UseConfirm', busy ? '使用中…' : '使用', REF_BAG_DLG.icPouch, X(645), Y(640), S(280), S(72), scale, !busy, true);
+    use.on(Button.EventType.CLICK, () => this.host.confirmLobbyBagUse(false), this);
+    const all = this.addDetailPlateButton(dialog, 'UseAll', '全部使用', REF_BAG_DLG.icPouches, X(962), Y(640), S(285), S(72), scale, !busy, false);
+    all.on(Button.EventType.CLICK, () => this.host.confirmLobbyBagUse(true), this);
+    const cancel = this.addDetailPlateButton(dialog, 'UseCancel', '取消', '', X(1258), Y(640), S(243), S(72), scale, !busy, false);
+    cancel.on(Button.EventType.CLICK, () => this.host.closeLobbyBagUseDialog(), this);
+  }
+
+  // 出售道具(原型 bag_sell:框 383..1490 × 92..752)
+  private renderPhoneSellDialog(parent: Node, item: BagItemEntryVO, sellState: { itemCode: string | null; count: number; busy: boolean; error: string }, scale: number): void {
+    const held = safeNumber(item.itemCount);
+    const unitPrice = safeNumber(item.sellGold);
+    if (held <= 0 || unitPrice <= 0) {
+      return;
+    }
+    const maxCount = Math.max(1, Math.min(9999, held));
+    const count = Math.max(1, Math.min(maxCount, sellState.count));
+    const busy = sellState.busy;
+    const map = this.phoneDialogMap(383, 1490, 92, 752);
+    const { X, Y, S } = map;
+    const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagSellDialog', map, 92, 98, 158, '出售道具', 1432, () => this.host.closeLobbyBagSellDialog(), scale);
+    this.mountPhoneItemCard(dialog, item, map, 458, 712, 212, 505, `×${formatCompact(held)}`, scale);
+    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(585), Y(570), S(36), rgba(255, 232, 170), new Size(S(300), S(44)));
+    name.lineHeight = name.fontSize;
+    name.isBold = true;
+    name.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(name, scale, true);
+    mountRefSolid(this.host, dialog, 'NameRule', X(585), Y(595), S(210), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
+    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(585), Y(620), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
+    tag.lineHeight = tag.fontSize;
+    mountRefSolid(this.host, dialog, 'VDivider', X(770), Y(465), Math.max(1, S(1.4)), S(550), rgba(214, 170, 92, 70));
+    // 单价 / 持有两行 790..1440
+    const rowW = S(1440 - 790);
+    const rowH = S(70);
+    ([['单价', `${formatMoney(unitPrice)} 金币`, 'ui/common/ref/ic_price/spriteFrame', 229], ['持有', `×${formatCompact(held)}`, 'ui/common/ref/ic_stack/spriteFrame', 310]] as Array<[string, string, string, number]>).forEach(([k, v, icon, y], index) => {
+      const row = this.host.addChildPlainNode(dialog, `Row_${index}`, X((790 + 1440) / 2), Y(y), rowW, rowH);
+      mountRefSolid(this.host, row, 'Fill', 0, 0, rowW - S(6), rowH - S(6), rgba(10, 8, 8, 200));
+      mountRefSlicedByWidth(this.host, row, 'Frame', REF_ULT.costRow, 0, 0, rowW, rowH);
+      this.host.addSprite('Icon', icon, X(835) - X((790 + 1440) / 2), 0, S(48), S(48), row);
+      const kl = this.host.addChildLabel(row, 'Key', k, X(892) - X((790 + 1440) / 2), 0, S(26), rgba(240, 226, 200), new Size(S(200), S(34)), HorizontalTextAlignment.LEFT);
+      kl.lineHeight = kl.fontSize;
+      const vl = this.host.addChildLabel(row, 'Value', v, X(1412) - X((790 + 1440) / 2), 0, S(28), rgba(255, 232, 170), new Size(S(260), S(36)), HorizontalTextAlignment.RIGHT);
+      vl.lineHeight = vl.fontSize;
+      vl.isBold = true;
+    });
+    const set = (v: number): void => this.host.setLobbyBagSellCount(Math.max(1, Math.min(maxCount, v)));
+    this.mountPhoneStepper(dialog, map, 405, 828, 878, 1020, 1068, 60, 62, formatCompact(count), !busy && count > 1, !busy && count < maxCount, () => set(count - 1), () => set(count + 1), [
+      { x0: 1123, x1: 1270, text: '+10', enabled: !busy && count < maxCount, onClick: () => set(count + 10) },
+      { x0: 1293, x1: 1440, text: '最大', enabled: !busy && count < maxCount, onClick: () => set(maxCount) },
+    ], scale);
+    this.mountPhoneSlider(dialog, map, 480, 812, 845, 1372, 1420, 1, maxCount, count, !busy, set, scale);
+    // 结果框 790..1440 × 530..612
+    const resW = S(1440 - 790);
+    const resH = S(612 - 530);
+    const res = this.host.addChildPlainNode(dialog, 'Result', X((790 + 1440) / 2), Y(571), resW, resH);
+    if (!mountRefPlate(this.host, res, 'Art', REF_BAG_DLG.resultPanel, 0, 0, resW, resH)) {
+      mountRefSlicedByWidth(this.host, res, 'Art', REF_ULT.costRow, 0, 0, resW, resH);
+    }
+    const rx = (px: number): number => X(px) - X((790 + 1440) / 2);
+    this.host.addSprite('Coin', 'ui/common/ref/ic_price/spriteFrame', rx(848), 0, S(60), S(60), res);
+    const seg = (n: string, x: number, text: string, size: number, color: Color, align: HorizontalTextAlignment, bold = false): void => {
+      const l = this.host.addChildLabel(res, n, text, rx(x), 0, S(size), color, new Size(S(240), S(size * 1.3)), align);
+      l.lineHeight = l.fontSize;
+      l.isBold = bold;
+      l.enableWrapText = false;
+      this.applyOutline(l, scale, bold);
+    };
+    seg('Sell', 900, `出售 ×${formatCompact(count)}`, 28, rgba(246, 236, 214), HorizontalTextAlignment.LEFT);
+    seg('Arrow', 1075, '→', 28, rgba(246, 236, 214), HorizontalTextAlignment.CENTER);
+    seg('Gain', 1118, '获得', 28, rgba(246, 236, 214), HorizontalTextAlignment.LEFT);
+    seg('Gold', 1243, formatMoney(unitPrice * count), 52, rgba(255, 214, 120), HorizontalTextAlignment.CENTER, true);
+    seg('Unit', 1312, '金币', 28, rgba(246, 236, 214), HorizontalTextAlignment.LEFT);
+    const remain = this.host.addChildLabel(dialog, 'Remain', sellState.error || `出售后剩余 ×${formatCompact(held - count)} · 出售后不可撤销`, X(1115), Y(637), S(21), sellState.error ? rgba(255, 128, 110) : rgba(190, 180, 164), new Size(S(640), S(28)));
+    remain.lineHeight = remain.fontSize;
+    remain.overflow = Label.Overflow.SHRINK;
+    const sell = this.addDetailPlateButton(dialog, 'SellConfirm', busy ? '出售中…' : '出售', REF_DETAIL.btnIcon.sell, X(957), Y(702), S(305), S(66), scale, !busy, true);
+    sell.on(Button.EventType.CLICK, () => this.host.confirmLobbyBagSell(), this);
+    const cancel = this.addDetailPlateButton(dialog, 'SellCancel', '取消', '', X(1287), Y(702), S(255), S(66), scale, !busy, false);
+    cancel.on(Button.EventType.CLICK, () => this.host.closeLobbyBagSellDialog(), this);
+  }
+
+  // 材料合成(原型 bag_compose:框 525..1345 × 68..780)
+  private renderPhoneComposeDialog(parent: Node, item: BagItemEntryVO, rule: { need: number; target: string; targetLabel: string }, times: number, scale: number): void {
+    const held = safeNumber(item.itemCount);
+    const maxTimes = Math.max(1, Math.min(500, Math.floor(held / rule.need)));
+    const safeTimes = Math.max(1, Math.min(maxTimes, times));
+    const bag = this.host.currentLobbyBagState();
+    const targetEntry = bag.groups.flatMap((group) => group.items).find((entry) => (entry.itemCode || '').toUpperCase() === rule.target);
+    const targetHeld = safeNumber(targetEntry?.itemCount ?? 0);
+    const targetItem = targetEntry ?? ({ ...item, itemCode: rule.target, itemName: rule.targetLabel, itemCount: 0, rarity: bagComposeTargetRarity(item.rarity) } as BagItemEntryVO);
+    const map = this.phoneDialogMap(525, 1345, 68, 780);
+    const { X, Y, S } = map;
+    const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagComposeDialog', map, 68, 72, 125, '材料合成', 1316, () => this.host.closeLobbyBagComposeDialog(), scale);
+    this.mountPhoneItemCard(dialog, item, map, 695, 865, 160, 330, `×${rule.need}`, scale);
+    this.mountPhoneItemCard(dialog, targetItem, map, 1010, 1180, 160, 330, '×1', scale);
+    this.host.addSprite('Arrow', REF_BAG_DLG.arrow, X(937), Y(248), S(72), S(72), dialog);
+    const cardName = (n: string, x: number, text: string): void => {
+      const l = this.host.addChildLabel(dialog, n, text, X(x), Y(366), S(28), rgba(255, 236, 196), new Size(S(240), S(36)));
+      l.lineHeight = l.fontSize;
+      l.isBold = true;
+      l.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(l, scale, true);
+    };
+    cardName('SrcName', 780, safeText(item.itemName));
+    cardName('DstName', 1095, rule.targetLabel);
+    const cap = this.host.addChildLabel(dialog, 'Caption', `每 ${rule.need} 个合成 1 个`, X(935), Y(394), S(22), rgba(150, 190, 255), new Size(S(300), S(28)));
+    cap.lineHeight = cap.fontSize;
+    const set = (v: number): void => this.host.setLobbyBagComposeTimes(Math.max(1, Math.min(maxTimes, v)));
+    this.mountPhoneStepper(dialog, map, 452, 670, 738, 958, 1020, 56, 52, `${formatCompact(safeTimes)} 组`, safeTimes > 1, safeTimes < maxTimes, () => set(safeTimes - 1), () => set(safeTimes + 1), [
+      { x0: 1097, x1: 1225, text: `最大 ${formatCompact(maxTimes)}`, enabled: safeTimes < maxTimes, onClick: () => set(maxTimes) },
+    ], scale);
+    this.mountPhoneSlider(dialog, map, 505, 627, 660, 1210, 1240, 1, maxTimes, safeTimes, true, set, scale);
+    // 合成前 / 后对比框 570..1300 × 533..633
+    const cmpW = S(1300 - 570);
+    const cmpH = S(633 - 533);
+    const cmp = this.host.addChildPlainNode(dialog, 'Compare', X(935), Y(583), cmpW, cmpH);
+    mountRefSolid(this.host, cmp, 'Fill', 0, 0, cmpW - S(10), cmpH - S(10), rgba(8, 6, 8, 210));
+    mountRefSlicedByWidth(this.host, cmp, 'Frame', REF_ULT.costRow, 0, 0, cmpW, cmpH);
+    mountRefSolid(this.host, cmp, 'Sep', 0, 0, cmpW - S(40), Math.max(1, S(1.2)), rgba(214, 170, 92, 80));
+    mountRefSolid(this.host, cmp, 'VSep', X(728) - X(935), 0, Math.max(1, S(1.2)), cmpH - S(30), rgba(214, 170, 92, 80));
+    const after = held - rule.need * safeTimes;
+    ([['合成前', `${safeText(item.itemName)} ×${formatCompact(held)} · ${rule.targetLabel} ×${formatCompact(targetHeld)}`, 562, rgba(236, 228, 210)],
+      ['合成后', `${safeText(item.itemName)} ×${formatCompact(after)} · ${rule.targetLabel} ×${formatCompact(targetHeld + safeTimes)}`, 607, rgba(170, 230, 160)]] as Array<[string, string, number, Color]>).forEach(([k, v, y, color], index) => {
+      const kl = this.host.addChildLabel(cmp, `Key_${index}`, k, X(650) - X(935), Y(y) - Y(583), S(24), color, new Size(S(130), S(30)));
+      kl.lineHeight = kl.fontSize;
+      const vl = this.host.addChildLabel(cmp, `Val_${index}`, v, X(768) - X(935), Y(y) - Y(583), S(25), color, new Size(S(500), S(30)), HorizontalTextAlignment.LEFT);
+      vl.lineHeight = vl.fontSize;
+      vl.overflow = Label.Overflow.SHRINK;
+    });
+    this.mountPhoneRuledLine(dialog, map, 660, 590, 1280, 250);
+    const sum = this.host.addChildLabel(dialog, 'Summary', `消耗 ${safeText(item.itemName)} ×${formatCompact(rule.need * safeTimes)}  →  获得 ${rule.targetLabel} ×${formatCompact(safeTimes)}`, X(935), Y(660), S(24), rgba(255, 220, 150), new Size(S(480), S(30)));
+    sum.lineHeight = sum.fontSize;
+    sum.overflow = Label.Overflow.SHRINK;
+    const go = this.addDetailPlateButton(dialog, 'ComposeConfirm', '合成', REF_DETAIL.btnIcon.fuse, X(772), Y(722), S(275), S(66), scale, true, true);
+    go.on(Button.EventType.CLICK, () => this.host.composeLobbyBagItem(item.itemCode, safeTimes), this);
+    const cancel = this.addDetailPlateButton(dialog, 'ComposeCancel', '取消', REF_CLOSE_RING_ASSET, X(1097), Y(722), S(275), S(66), scale, true, false);
+    cancel.on(Button.EventType.CLICK, () => this.host.closeLobbyBagComposeDialog(), this);
+  }
+
   // 出售确认弹窗(2026-09-25):单价 + 数量选择(−/＋/+10/最大)+ 获得金币 + 出售后剩余;确认才提交,出售不可撤销。
   private renderSellDialog(parent: Node, item: BagItemEntryVO, sellState: { itemCode: string | null; count: number; busy: boolean; error: string }, scale: number): void {
+    if (this.phoneDialogRect) {
+      this.renderPhoneSellDialog(parent, item, sellState, scale);
+      return;
+    }
     const held = safeNumber(item.itemCount);
     const unitPrice = safeNumber(item.sellGold);
     if (held <= 0 || unitPrice <= 0) {
@@ -1384,7 +1857,8 @@ export class LobbyBagPanelRenderer {
     og.fill();
 
     let dialog: Node;
-    const phone = this.phoneDialogRect;
+    // 手机已在函数开头分走(renderPhone*Dialog),这里只剩桌面;保留旧分支以防 phoneDialogRect 在别处被置空后重入
+    const phone = this.phoneDialogRect as PhoneDialogRect | null;
     if (phone) {
       // 手机全屏:左列道具展示(大图标 + 单价/持有),右侧控件按原设计尺寸 × k 放大排布。
       const shell = this.addPhoneConfirmShell(overlay, 'LobbyBagSellDialog', phone, 500, 380, scale);
@@ -1592,7 +2066,7 @@ export class LobbyBagPanelRenderer {
       return ['来源读取中...'];
     }
     if (state.sourceItemCode === item.itemCode && state.sourceError) {
-      return ['来源读取失败,点击「来源」重试'];
+      return ['来源读取失败,点击此处重试'];
     }
     if (state.sourceItemCode === item.itemCode && state.sourceDesc) {
       const raw = safeText(state.sourceDesc).split(/[;；。\n]+/).map((part) => part.trim()).filter((part) => part.length > 0);
@@ -1608,10 +2082,40 @@ export class LobbyBagPanelRenderer {
       });
       return segments;
     }
-    return ['点击「来源」读取获取途径'];
+    return ['获取途径读取中...'];
   }
 
-  private addDetailActionButton(parent: Node, name: string, text: string, iconAsset: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean, primary = false): Node {
+  // 手机详情四钮(2026-10-19 原型 1:1 第二版):照原型的干净底板(启用暗金 / 主操作红 / 不可用灰,无翼饰挂件)整张贴;
+  // 图标在板内左 1/4 处居中(原型图标心 ≈ 板左起 26%),字心在右侧 +16%,字号 0.42 高
+  private addDetailPlateButton(parent: Node, name: string, text: string, iconAsset: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean, primary: boolean): Node {
+    const holder = this.host.addChildPlainNode(parent, name, x, y, width, height);
+    const platePath = !enabled ? REF_DETAIL.btnPlate.grey : primary ? REF_DETAIL.btnPlate.red : REF_DETAIL.btnPlate.dark;
+    if (!this.host.addSprite('Art', platePath, 0, 0, width, height, holder)) {
+      holder.destroy();
+      return mountRefButton(this.host, parent, name, text, x, y, width, height, scale, !enabled ? 'disabled' : primary ? 'primary' : 'secondary', undefined, { fontSize: height * 0.4, iconPath: iconAsset, iconSize: height * 0.52 });
+    }
+    const icon = iconAsset ? this.host.addSprite('Icon', iconAsset, -width * 0.24, 0, height * 0.66, height * 0.66, holder) : null;
+    const label = this.host.addChildLabel(holder, 'Label', text, iconAsset ? width * 0.16 : 0, 0, height * 0.42, enabled ? rgba(255, 240, 210) : rgba(170, 164, 156), new Size(width * 0.46, height * 0.56));
+    label.lineHeight = label.fontSize;
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    this.applyOutline(label, scale, true);
+    if (!enabled && icon) {
+      icon.grayscale = true;
+      (icon.node.getComponent(UIOpacity) ?? icon.node.addComponent(UIOpacity)).opacity = 170;
+    }
+    const component = holder.addComponent(Button);
+    component.interactable = enabled;
+    if (enabled) {
+      this.host.applyImageButtonFeedback(holder, 1.025, 0.97);
+    }
+    return holder;
+  }
+
+  private addDetailActionButton(parent: Node, name: string, text: string, iconAsset: string, x: number, y: number, width: number, height: number, scale: number, enabled: boolean, primary = false, plate = false): Node {
+    if (plate) {
+      return this.addDetailPlateButton(parent, name, text, iconAsset, x, y, width, height, scale, enabled, primary);
+    }
     // 2026-10-19 按原型:主操作红金钮 / 其余暗金副钮 / 不可用压暗;图标在字左侧
     const button = mountRefButton(this.host, parent, name, text, x, y, width, height, scale, !enabled ? 'disabled' : primary ? 'primary' : 'secondary', undefined, { fontSize: height * 0.4, iconPath: iconAsset, iconSize: height * 0.52 });
     const component = button.getComponent(Button) ?? button.addComponent(Button);
