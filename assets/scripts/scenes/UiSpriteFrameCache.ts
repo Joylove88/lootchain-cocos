@@ -1,4 +1,4 @@
-import { REF_BAG_DLG, REF_DETAIL, REF_ULT } from './UiRefKit';
+import { REF_BAG_DLG, REF_DETAIL, REF_SECTION_BAND, REF_TITLE_STAR, REF_ULT } from './UiRefKit';
 import { isTextInputActive } from '../app/ScreenAdapter';
 import {
   Node,
@@ -211,6 +211,9 @@ export class UiSpriteFrameCache {
   }
 
   private forEachGroupAsset(group: UiPreloadGroup, track: (path: string) => void, request: (path: string) => void): void {
+    // 分区标题带标准件(各页面标题带共用):只拉不拦
+    request(REF_SECTION_BAND);
+    request(REF_TITLE_STAR);
     switch (group) {
       case 'heroes':
         // 详情页大图只拉不拦:名册首开先等卡面相关的图,详情页用到时多半已到。

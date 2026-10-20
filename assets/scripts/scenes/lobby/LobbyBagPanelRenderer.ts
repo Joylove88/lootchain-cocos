@@ -1571,8 +1571,14 @@ export class LobbyBagPanelRenderer {
     const fw = S(fieldX1 - fieldX0);
     const fh = S(chipH);
     const field = this.host.addChildPlainNode(dialog, 'Field', X((fieldX0 + fieldX1) / 2), cy, fw, fh);
-    mountRefSolid(this.host, field, 'Fill', 0, 0, fw - S(6), fh - S(6), rgba(6, 5, 6, 230));
-    mountRefSlicedByWidth(this.host, field, 'Frame', REF_ULT.costRow, 0, 0, fw, fh);
+    // 数字框:暗底 + 四边金线(原型是完整细金框;九宫格行条在窄框里按宽缩,上下线细到看不见,改纯色线)
+    const line = Math.max(1.5, S(2));
+    const gold = rgba(200, 156, 84, 230);
+    mountRefSolid(this.host, field, 'Fill', 0, 0, fw - line * 2, fh - line * 2, rgba(6, 5, 6, 235));
+    mountRefSolid(this.host, field, 'LineT', 0, fh / 2 - line / 2, fw, line, gold);
+    mountRefSolid(this.host, field, 'LineB', 0, -fh / 2 + line / 2, fw, line, gold);
+    mountRefSolid(this.host, field, 'LineL', -fw / 2 + line / 2, 0, line, fh, gold);
+    mountRefSolid(this.host, field, 'LineR', fw / 2 - line / 2, 0, line, fh, gold);
     const v = this.host.addChildLabel(field, 'Value', valueText, 0, 0, S(30), rgba(255, 244, 222), new Size(fw - S(16), fh));
     v.lineHeight = v.fontSize;
     v.overflow = Label.Overflow.SHRINK;
@@ -1662,14 +1668,15 @@ export class LobbyBagPanelRenderer {
     const count = Math.max(1, Math.min(held, useState.count));
     const busy = useState.busy;
     const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagUseDialog', map, 100, 110, 165, '使用道具', 1404, () => this.host.closeLobbyBagUseDialog(), scale);
-    this.mountPhoneItemCard(dialog, item, map, 508, 752, 218, 452, `×${formatCompact(held)}`, scale);
-    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(630), Y(500), S(34), rgba(255, 232, 170), new Size(S(300), S(42)));
+    // 2026-10-20 用户:整个图标框缩小 10%(开口 244×234 → 220×210,心不变),名字跟着上移
+    this.mountPhoneItemCard(dialog, item, map, 520, 740, 230, 440, `×${formatCompact(held)}`, scale);
+    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(630), Y(488), S(34), rgba(255, 232, 170), new Size(S(300), S(42)));
     name.lineHeight = name.fontSize;
     name.isBold = true;
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
-    mountRefSolid(this.host, dialog, 'NameRule', X(630), Y(523), S(270), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
-    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(630), Y(546), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
+    mountRefSolid(this.host, dialog, 'NameRule', X(630), Y(511), S(270), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
+    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(630), Y(534), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
     tag.lineHeight = tag.fontSize;
     // 说明框 815..1392 × 205..302
     const descW = S(1392 - 815);
@@ -1717,14 +1724,15 @@ export class LobbyBagPanelRenderer {
     const map = this.phoneDialogMap(383, 1490, 92, 752);
     const { X, Y, S } = map;
     const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagSellDialog', map, 92, 98, 158, '出售道具', 1432, () => this.host.closeLobbyBagSellDialog(), scale);
-    this.mountPhoneItemCard(dialog, item, map, 458, 712, 212, 505, `×${formatCompact(held)}`, scale);
-    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(585), Y(570), S(36), rgba(255, 232, 170), new Size(S(300), S(44)));
+    // 卡与「使用道具」同大(开口 220×210),卡 + 名字整块在左列竖向居中
+    this.mountPhoneItemCard(dialog, item, map, 475, 695, 290, 500, `×${formatCompact(held)}`, scale);
+    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(585), Y(548), S(36), rgba(255, 232, 170), new Size(S(300), S(44)));
     name.lineHeight = name.fontSize;
     name.isBold = true;
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
-    mountRefSolid(this.host, dialog, 'NameRule', X(585), Y(595), S(210), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
-    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(585), Y(620), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
+    mountRefSolid(this.host, dialog, 'NameRule', X(585), Y(571), S(210), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
+    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(585), Y(594), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
     tag.lineHeight = tag.fontSize;
     mountRefSolid(this.host, dialog, 'VDivider', X(770), Y(465), Math.max(1, S(1.4)), S(550), rgba(214, 170, 92, 70));
     // 单价 / 持有两行 790..1440
@@ -1789,11 +1797,12 @@ export class LobbyBagPanelRenderer {
     const map = this.phoneDialogMap(525, 1345, 68, 780);
     const { X, Y, S } = map;
     const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagComposeDialog', map, 68, 72, 125, '材料合成', 1316, () => this.host.closeLobbyBagComposeDialog(), scale);
-    this.mountPhoneItemCard(dialog, item, map, 695, 865, 160, 330, `×${rule.need}`, scale);
-    this.mountPhoneItemCard(dialog, targetItem, map, 1010, 1180, 160, 330, '×1', scale);
-    this.host.addSprite('Arrow', REF_BAG_DLG.arrow, X(937), Y(248), S(72), S(72), dialog);
+    // 2026-10-20 用户:道具框下移 10;「每 N 个合成 1 个」与卡名保持 8 间距
+    this.mountPhoneItemCard(dialog, item, map, 695, 865, 170, 340, `×${rule.need}`, scale);
+    this.mountPhoneItemCard(dialog, targetItem, map, 1010, 1180, 170, 340, '×1', scale);
+    this.host.addSprite('Arrow', REF_BAG_DLG.arrow, X(937), Y(258), S(72), S(72), dialog);
     const cardName = (n: string, x: number, text: string): void => {
-      const l = this.host.addChildLabel(dialog, n, text, X(x), Y(366), S(28), rgba(255, 236, 196), new Size(S(240), S(36)));
+      const l = this.host.addChildLabel(dialog, n, text, X(x), Y(376), S(28), rgba(255, 236, 196), new Size(S(240), S(36)));
       l.lineHeight = l.fontSize;
       l.isBold = true;
       l.overflow = Label.Overflow.SHRINK;
@@ -1801,13 +1810,13 @@ export class LobbyBagPanelRenderer {
     };
     cardName('SrcName', 780, safeText(item.itemName));
     cardName('DstName', 1095, rule.targetLabel);
-    const cap = this.host.addChildLabel(dialog, 'Caption', `每 ${rule.need} 个合成 1 个`, X(935), Y(394), S(22), rgba(150, 190, 255), new Size(S(300), S(28)));
+    const cap = this.host.addChildLabel(dialog, 'Caption', `每 ${rule.need} 个合成 1 个`, X(935), Y(409), S(22), rgba(150, 190, 255), new Size(S(300), S(28)));
     cap.lineHeight = cap.fontSize;
     const set = (v: number): void => this.host.setLobbyBagComposeTimes(Math.max(1, Math.min(maxTimes, v)));
-    this.mountPhoneStepper(dialog, map, 452, 670, 738, 958, 1020, 56, 52, `${formatCompact(safeTimes)} 组`, safeTimes > 1, safeTimes < maxTimes, () => set(safeTimes - 1), () => set(safeTimes + 1), [
+    this.mountPhoneStepper(dialog, map, 460, 670, 738, 958, 1020, 56, 52, `${formatCompact(safeTimes)} 组`, safeTimes > 1, safeTimes < maxTimes, () => set(safeTimes - 1), () => set(safeTimes + 1), [
       { x0: 1097, x1: 1225, text: `最大 ${formatCompact(maxTimes)}`, enabled: safeTimes < maxTimes, onClick: () => set(maxTimes) },
     ], scale);
-    this.mountPhoneSlider(dialog, map, 505, 627, 660, 1210, 1240, 1, maxTimes, safeTimes, true, set, scale);
+    this.mountPhoneSlider(dialog, map, 511, 627, 660, 1210, 1240, 1, maxTimes, safeTimes, true, set, scale);
     // 合成前 / 后对比框 570..1300 × 533..633
     const cmpW = S(1300 - 570);
     const cmpH = S(633 - 533);

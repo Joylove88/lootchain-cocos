@@ -244,12 +244,21 @@ function fillRefDiamond(host: RefKitHost, parent: Node, x: number, y: number, r:
   g.fill();
 }
 
+/** 分区标题带标准(物品详情分区头带裁出,930×103)与标题前四芒星。 */
+export const REF_SECTION_BAND = 'ui/common/ref/section_band/spriteFrame';
+export const REF_TITLE_STAR = 'ui/common/ref/ult_title_star/spriteFrame';
+
 /**
  * 标题带(守卫水晶页定的样式,2026-10-16):整条暗红实底 + 左侧提亮渐变 + 底边金线 + 金线两端菱形点。
  * 放在细金框里时,顶边 / 两侧对齐 REF_CARD_FRAME_LINE(带子压在框之上,框内芯不透明)。
  */
 export function mountRefHeaderBand(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
   const band = host.addChildPlainNode(parent, name, x, y, w, h);
+  // 2026-10-20 用户「物品详情的红色标题不错,其他界面也以这个标准调整」:统一用物品详情分区头带同款贴图
+  // (上双金线 + 暗红织纹 + 下金线,横向均匀可拉伸);贴图未到货时退回下面的程序带
+  if (host.addSprite('Art', REF_SECTION_BAND, 0, 0, w, h, band)) {
+    return band;
+  }
   const g = band.addComponent(Graphics);
   g.fillColor = rgba(62, 16, 12, 232);
   g.rect(-w / 2, -h / 2, w, h);
@@ -439,12 +448,16 @@ export function mountRefTitledPanel(
   mountRefHeaderBand(host, node, 'Band', 0, bandY, w - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
   raiseRefFrame(node);
   const fontSize = options.fontSize ?? 24 * scale;
-  const emblemH = bandH * 0.6;
-  const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
+  // 标题前徽记:同物品详情分区头的大四芒星(约 1 倍带高,上下略出带);缺图退回旧小徽记
+  const starSize = bandH * 1.05;
+  const emblemH = starSize;
+  const emblemW = starSize;
   const textW = Math.max(fontSize, Math.min(w - emblemW - 60 * scale, title.length * fontSize * 1.05));
   const gap = 10 * scale;
   const emblemX = options.center === false ? -w / 2 + 22 * scale + emblemW / 2 : -(emblemW + gap + textW) / 2 + emblemW / 2;
-  host.addSprite(`${name}Emblem`, REF_SECTION_EMBLEM.path, emblemX, bandY, emblemW, emblemH, node);
+  if (!host.addSprite(`${name}Emblem`, REF_TITLE_STAR, emblemX, bandY, emblemW, emblemH, node)) {
+    host.addSprite(`${name}Emblem`, REF_SECTION_EMBLEM.path, emblemX, bandY, bandH * 0.6 / REF_SECTION_EMBLEM.aspect, bandH * 0.6, node);
+  }
   const label = host.addChildLabel(node, `${name}Title`, title, emblemX + emblemW / 2 + gap + textW / 2, bandY, fontSize, rgba(255, 222, 140), new Size(textW + 8 * scale, bandH - 8 * scale));
   label.overflow = Label.Overflow.SHRINK;
   label.isBold = true;
