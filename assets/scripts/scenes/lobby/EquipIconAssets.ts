@@ -91,6 +91,12 @@ export function equipShowcaseAssetByCode(equipCode: string | null | undefined): 
 }
 
 /** 按稀有度 + 部位取装备图(合成页预览「下一稀有度同部位」产物用;GOLD 稀有度文件名为 orange)。 */
+/** 稀有度 + 部位 → 透明展示图(ui/forge/showcase 与图标同名);合成页产物预览用。 */
+export function equipShowcaseAssetByQualitySlot(quality: string | null | undefined, slot: string | null | undefined): string | null {
+  const icon = equipIconAssetByQualitySlot(quality, slot);
+  return icon ? icon.replace(`${EQUIP_ICON_DIR}/`, 'ui/forge/showcase/') : null;
+}
+
 export function equipIconAssetByQualitySlot(quality: string | null | undefined, slot: string | null | undefined): string | null {
   const color: Record<string, string> = { WHITE: 'white', GREEN: 'green', BLUE: 'blue', PURPLE: 'purple', GOLD: 'orange', RED: 'red' };
   const part: Record<string, string> = { WEAPON: 'weapon', HELMET: 'helmet', CHEST: 'chest', BOOTS: 'boots', RING: 'ring', NECKLACE: 'neck', NECK: 'neck' };

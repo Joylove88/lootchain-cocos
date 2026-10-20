@@ -23,6 +23,10 @@ ULT_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyHeroRo
           "if (all.length>0) {{ clearInterval(t); const h={pick}; root.openLobbyHeroDetail(h.id); "
           "setTimeout(() => {{ root.selectLobbyHeroDetailTab('skill'); setTimeout(() => root.openLobbyHeroUltimateDialog(), 800); }}, 1500); }} "
           "else if (n>40) clearInterval(t); }}, 250);")
+# 英雄详情页签:挑名册第一个英雄(id>0)→ 详情 → 页签
+HERO_TAB_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyHeroRosterLoader.currentState().heroes.filter(h=>h.id>0); "
+               "if (all.length>0) {{ clearInterval(t); root.openLobbyHeroDetail(all[0].id); setTimeout(() => root.selectLobbyHeroDetailTab('{tab}'), 1500); }} "
+               "else if (n>40) clearInterval(t); }}, 250);")
 SCREENS = [
     ('bag', "root.openLobbyBagPanel();", 3.0),
     ('quest', "root.openLobbyQuestPanel();", 3.0),
@@ -37,6 +41,9 @@ SCREENS = [
     ('ult', ULT_JS.format(pick="all.find(h=>(h.ultimateSkillLevel||1)<5)||all.find(h=>h.awakenStatus===1 && (h.ultimateSkillLevel||1)<10)||all[0]"), 6.0),
     # 终极技能(到上限态):挑 ultimateSkillLevel>=5 且未觉醒的英雄,与原型 Lv5/5 同态
     ('ult_capped', ULT_JS.format(pick="all.find(h=>(h.ultimateSkillLevel||1)>=5 && h.awakenStatus!==1)||all[0]"), 6.0),
+    # 英雄详情:属性页(六件装备格)与装备页(装备列表),装备图标改版前后对照用
+    ('hero_attr', HERO_TAB_JS.format(tab='attr'), 5.0),
+    ('hero_equip', HERO_TAB_JS.format(tab='equip'), 5.0),
     # 背包物品详情弹窗:打开背包后点第一件有自定义图标的道具
     ('bag_detail', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/ENHANCE_STONE|FUSION_LUCK/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.refreshLobbyOverlay(); }, 1500);", 4.5),
 ]
