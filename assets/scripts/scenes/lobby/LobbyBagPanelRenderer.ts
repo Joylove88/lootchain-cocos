@@ -1670,13 +1670,13 @@ export class LobbyBagPanelRenderer {
     const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagUseDialog', map, 100, 110, 165, '使用道具', 1404, () => this.host.closeLobbyBagUseDialog(), scale);
     // 2026-10-20 用户:整个图标框缩小 10%(开口 244×234 → 220×210,心不变),名字跟着上移
     this.mountPhoneItemCard(dialog, item, map, 520, 740, 230, 440, `×${formatCompact(held)}`, scale);
-    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(630), Y(488), S(34), rgba(255, 232, 170), new Size(S(300), S(42)));
+    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(630), Y(493), S(34), rgba(255, 232, 170), new Size(S(300), S(42)));
     name.lineHeight = name.fontSize;
     name.isBold = true;
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
-    mountRefSolid(this.host, dialog, 'NameRule', X(630), Y(511), S(270), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
-    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(630), Y(534), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
+    mountRefSolid(this.host, dialog, 'NameRule', X(630), Y(516), S(270), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
+    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(630), Y(539), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
     tag.lineHeight = tag.fontSize;
     // 说明框 815..1392 × 205..302
     const descW = S(1392 - 815);
@@ -1724,15 +1724,17 @@ export class LobbyBagPanelRenderer {
     const map = this.phoneDialogMap(383, 1490, 92, 752);
     const { X, Y, S } = map;
     const dialog = this.mountPhoneSubDialog(parent, 'LobbyBagSellDialog', map, 92, 98, 158, '出售道具', 1432, () => this.host.closeLobbyBagSellDialog(), scale);
-    // 卡与「使用道具」同大(开口 220×210),卡 + 名字整块在左列竖向居中
-    this.mountPhoneItemCard(dialog, item, map, 475, 695, 290, 500, `×${formatCompact(held)}`, scale);
-    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(585), Y(548), S(36), rgba(255, 232, 170), new Size(S(300), S(44)));
+    // 2026-10-20 用户「出售里上下左右间距太大」:按「使用道具」的留白对齐 —— 卡离左框线 80、离标题带底 65,
+    // 左列 383..770 里居中 → 开口 463..707 × 223..456(比例同使用卡 220:210),名字紧跟卡下
+    // 10-20 再调:卡下移 5,名字与卡间距再加 5
+    this.mountPhoneItemCard(dialog, item, map, 463, 707, 228, 461, `×${formatCompact(held)}`, scale);
+    const name = this.host.addChildLabel(dialog, 'Name', safeText(item.itemName), X(585), Y(514), S(36), rgba(255, 232, 170), new Size(S(300), S(44)));
     name.lineHeight = name.fontSize;
     name.isBold = true;
     name.overflow = Label.Overflow.SHRINK;
     this.applyOutline(name, scale, true);
-    mountRefSolid(this.host, dialog, 'NameRule', X(585), Y(571), S(210), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
-    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(585), Y(594), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
+    mountRefSolid(this.host, dialog, 'NameRule', X(585), Y(537), S(210), Math.max(1, S(1.4)), rgba(214, 170, 92, 140));
+    const tag = this.host.addChildLabel(dialog, 'Tag', `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`, X(585), Y(560), S(24), this.rarityColor(item.rarity), new Size(S(280), S(30)));
     tag.lineHeight = tag.fontSize;
     mountRefSolid(this.host, dialog, 'VDivider', X(770), Y(465), Math.max(1, S(1.4)), S(550), rgba(214, 170, 92, 70));
     // 单价 / 持有两行 790..1440
