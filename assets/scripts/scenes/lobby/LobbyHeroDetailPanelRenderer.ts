@@ -1905,30 +1905,35 @@ export class LobbyHeroDetailPanelRenderer {
         lg.fill();
         const cell = this.host.addChildPlainNode(parent, `LobbyHeroDetailArtEquip_${code}`, x, cy, slotSize, slotSize);
         const g = cell.addComponent(Graphics);
-        if (equipped) {
+        // 2026-10-20 新装备图标自带稀有度发光框:已穿且有图标时满格贴图标,不再画八角框 / 铆钉(双层框)
+        const artIcon = equipped ? equipIconAssetByCode(equipped.equipCode) : null;
+        const framedArt = artIcon ? this.host.addSprite('ArtEquipIcon', artIcon, 0, 0, slotSize, slotSize, cell) : null;
+        if (equipped && !framedArt) {
           // 品质外晕
           g.strokeColor = rgba(q.r, q.g, q.b, 60);
           g.lineWidth = 10 * scale;
           traceOctagon(g, slotSize, -2 * scale);
           g.stroke();
         }
-        g.fillColor = rgba(10, 9, 8, 225);
-        traceOctagon(g, slotSize, 0);
-        g.fill();
-        g.fillColor = equipped ? rgba(Math.round(q.r * 0.22 + 14), Math.round(q.g * 0.22 + 14), Math.round(q.b * 0.22 + 14), 240) : rgba(22, 20, 18, 240);
-        traceOctagon(g, slotSize, 4 * scale);
-        g.fill();
-        g.strokeColor = rgba(q.r, q.g, q.b, equipped ? 240 : 140);
-        g.lineWidth = (equipped ? 3 : 2) * scale;
-        traceOctagon(g, slotSize, 0);
-        g.stroke();
-        // 四角铆钉
-        g.fillColor = equipped ? rgba(255, 224, 150, 230) : rgba(120, 108, 90, 200);
-        const stud = slotSize / 2 - cut * 0.55;
-        for (const sx of [-1, 1]) {
-          for (const sy of [-1, 1]) {
-            g.circle(sx * stud, sy * stud, 2.4 * scale);
-            g.fill();
+        if (!framedArt) {
+          g.fillColor = rgba(10, 9, 8, 225);
+          traceOctagon(g, slotSize, 0);
+          g.fill();
+          g.fillColor = equipped ? rgba(Math.round(q.r * 0.22 + 14), Math.round(q.g * 0.22 + 14), Math.round(q.b * 0.22 + 14), 240) : rgba(22, 20, 18, 240);
+          traceOctagon(g, slotSize, 4 * scale);
+          g.fill();
+          g.strokeColor = rgba(q.r, q.g, q.b, equipped ? 240 : 140);
+          g.lineWidth = (equipped ? 3 : 2) * scale;
+          traceOctagon(g, slotSize, 0);
+          g.stroke();
+          // 四角铆钉
+          g.fillColor = equipped ? rgba(255, 224, 150, 230) : rgba(120, 108, 90, 200);
+          const stud = slotSize / 2 - cut * 0.55;
+          for (const sx of [-1, 1]) {
+            for (const sy of [-1, 1]) {
+              g.circle(sx * stud, sy * stud, 2.4 * scale);
+              g.fill();
+            }
           }
         }
         // 部位小签(左上):暗底圆角签收在框线以内,不再压在切角 / 铆钉上。
@@ -1951,9 +1956,7 @@ export class LobbyHeroDetailPanelRenderer {
           this.attachEnhanceGlow(cell, slotSize, slotSize, scale, equipped.enhanceLevel ?? 0);
           cell.on(Node.EventType.MOUSE_ENTER, () => this.showEquipTooltip(parent, equipped, side === 'left' ? x - slotSize / 2 - 10 * scale : x + slotSize / 2 + 10 * scale, cy, side, scale), this);
           cell.on(Node.EventType.MOUSE_LEAVE, () => this.hideWearTooltip(), this);
-          const artIcon = equipIconAssetByCode(equipped.equipCode);
-          const artShown = artIcon ? this.host.addSprite('ArtEquipIcon', artIcon, 0, 4 * scale, slotSize * 0.8, slotSize * 0.8, cell) : null;
-          if (!artShown) {
+          if (!framedArt) {
             this.drawEquipPartGlyph(cell, code, slotSize * 0.3, 4 * scale, rgba(q.r, q.g, q.b, 230), scale);
           }
           // 名字压底(品质色)
@@ -4368,20 +4371,29 @@ export class LobbyHeroDetailPanelRenderer {
   private renderWearEquipCell(parent: Node, name: string, item: EquipmentItemVO, hero: LobbyHeroItemVO, x: number, y: number, cell: number, scale: number, highlighted: boolean): Node {
     const q = equipQualityColor(item.quality);
     const node = this.host.addChildPlainNode(parent, name, x, y, cell, cell);
-    const g = node.addComponent(Graphics);
-    const frameArt = this.host.addSprite(`${name}FrameArt`, HERO_WEAR_GRID_FRAME_ASSET, 0, 0, cell, cell, node);
-    if (!frameArt) {
-      g.fillColor = rgba(Math.round(q.r * 0.18 + 8), Math.round(q.g * 0.18 + 8), Math.round(q.b * 0.18 + 8), 238);
-      g.roundRect(-cell / 2, -cell / 2, cell, cell, 9 * scale);
-      g.fill();
-    }
-    g.strokeColor = highlighted ? rgba(248, 206, 110, 250) : rgba(q.r, q.g, q.b, frameArt ? 165 : 190);
-    g.lineWidth = (highlighted ? 3 : frameArt ? 1.3 : 1.6) * scale;
-    g.roundRect(-cell / 2, -cell / 2, cell, cell, 9 * scale);
-    g.stroke();
+    // 2026-10-20 新装备图标自带稀有度发光框:有图标就满格贴,不再外套金色雕花框 / 品质描边(双层框);选中仍画金色描边
     const iconAsset = equipIconAssetByCode(item.equipCode);
-    if (iconAsset) {
-      this.host.addSprite(`${name}Icon`, iconAsset, 0, 6 * scale, cell * 0.72, cell * 0.72, node);
+    const iconShown = iconAsset ? this.host.addSprite(`${name}Icon`, iconAsset, 0, 0, cell, cell, node) : null;
+    const g = this.host.addChildPlainNode(node, `${name}Stroke`, 0, 0, cell, cell).addComponent(Graphics);
+    if (iconShown) {
+      if (highlighted) {
+        g.strokeColor = rgba(248, 206, 110, 250);
+        g.lineWidth = 3 * scale;
+        g.roundRect(-cell / 2, -cell / 2, cell, cell, 7 * scale);
+        g.stroke();
+      }
+    } else {
+      const frameArt = this.host.addSprite(`${name}FrameArt`, HERO_WEAR_GRID_FRAME_ASSET, 0, 0, cell, cell, node);
+      frameArt?.node.setSiblingIndex(0);
+      if (!frameArt) {
+        g.fillColor = rgba(Math.round(q.r * 0.18 + 8), Math.round(q.g * 0.18 + 8), Math.round(q.b * 0.18 + 8), 238);
+        g.roundRect(-cell / 2, -cell / 2, cell, cell, 9 * scale);
+        g.fill();
+      }
+      g.strokeColor = highlighted ? rgba(248, 206, 110, 250) : rgba(q.r, q.g, q.b, frameArt ? 165 : 190);
+      g.lineWidth = (highlighted ? 3 : frameArt ? 1.3 : 1.6) * scale;
+      g.roundRect(-cell / 2, -cell / 2, cell, cell, 9 * scale);
+      g.stroke();
     }
     const stripW = cell - 6 * scale;
     const strip = this.host.addChildPlainNode(node, `${name}Strip`, 0, -cell / 2 + 13 * scale, stripW, 20 * scale);
