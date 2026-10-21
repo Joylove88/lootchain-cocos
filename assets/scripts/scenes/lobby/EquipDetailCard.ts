@@ -278,7 +278,7 @@ export function renderEquipDetailCard(host: EquipCardHost, parent: Node, item: E
       // 空孔灰化降透明,避免被误读成已镶宝石。
       const socketed = parseGemCode((item.gems ?? [])[i]);
       if (socketed) {
-        host.addSprite('CardGemIcon', gemIconAsset(socketed.type), barLeft + barW * 0.09 + 30 * scale, cursor, 42 * scale, 42 * scale, tip);
+        host.addSprite('CardGemIcon', gemIconAsset(socketed.type, socketed.tier), barLeft + barW * 0.09 + 30 * scale, cursor, 42 * scale, 42 * scale, tip);
       } else {
         const emptyIcon = host.addSprite('CardGemIcon', 'ui/equip/gem_t1/spriteFrame', barLeft + barW * 0.09 + 30 * scale, cursor, 38 * scale, 38 * scale, tip);
         if (emptyIcon) {
@@ -322,11 +322,13 @@ export function renderEquipDetailCard(host: EquipCardHost, parent: Node, item: E
 /** 第 i 孔(0基)对应阶的品质键:绿/蓝/紫/橙/红。 */
 export const GEM_TIER_QUALITY: string[] = ['GREEN', 'BLUE', 'PURPLE', 'GOLD', 'RED'];
 const GEM_TYPE_DEFS: Record<string, { label: string; attr: string; base: number }> = {
-  HP: { label: '血玉', attr: '生命', base: 60 },
-  ATK: { label: '锋晶', attr: '攻击', base: 10 },
-  DEF: { label: '铁髓', attr: '防御', base: 8 },
+  // 2026-10-21 改名(sql/135):血玉/锋晶/铁髓 → 赤魂石/焰锋石/苍岩石,阶用前缀 碎/纯/璀/炽/神
+  HP: { label: '赤魂石', attr: '生命', base: 60 },
+  ATK: { label: '焰锋石', attr: '攻击', base: 10 },
+  DEF: { label: '苍岩石', attr: '防御', base: 8 },
 };
-const GEM_ROMAN = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ'];
+/** 宝石阶称前缀(Ⅰ~Ⅴ 阶)。 */
+export const GEM_TIER_PREFIX = ['碎', '纯', '璀', '炽', '神'];
 
 export interface GemInfo {
   code: string;
@@ -356,7 +358,7 @@ export function parseGemCode(code: string | null | undefined): GemInfo | null {
     code: parts.join('_'),
     type: parts[1],
     tier,
-    label: `${def.label}·${GEM_ROMAN[tier - 1]}`,
+    label: `${GEM_TIER_PREFIX[tier - 1]}·${def.label}`,
     attrText: `${def.attr}+${value}${tier === 5 ? ' · 全属性+2%' : ''}`,
     value,
   };
@@ -408,15 +410,10 @@ export function equipItemPowerScore(item: EquipmentItemVO): number {
 }
 
 /** 宝石图标按类型(2026-07-27 定稿):血玉=红晶(t5图)/锋晶=橙晶(t4图)/铁髓=蓝晶(t2图);同类型各阶共用一图,阶靠名称与颜色区分。 */
-export function gemIconAsset(type: string): string {
-  switch ((type || '').toUpperCase()) {
-    case 'HP':
-      return 'ui/equip/gem_t5/spriteFrame';
-    case 'ATK':
-      return 'ui/equip/gem_t4/spriteFrame';
-    default:
-      return 'ui/equip/gem_t2/spriteFrame';
-  }
+export function gemIconAsset(type: string, tier = 1): string {
+  // 2026-10-21 新宝石:3 种 × 5 阶各一张透明裸宝石(ui/equip/gems/gem_{hp|atk|def}_{1..5}),阶越高切工越繁、光越盛
+  const t = (type || '').toUpperCase() === 'HP' ? 'hp' : (type || '').toUpperCase() === 'ATK' ? 'atk' : 'def';
+  return `ui/equip/gems/gem_${t}_${Math.max(1, Math.min(5, Math.round(tier) || 1))}/spriteFrame`;
 }
 
 /** 拆卸金币:100×2^(阶-1)(镜像服务端)。 */

@@ -104,22 +104,22 @@ export const BAG_AI_ITEM_ICON_ASSETS: Record<string, string> = {
   ENHANCE_STONE_HIGH: 'ui/bag/ai/icon_enhance_high/spriteFrame',
   ENHANCE_BLESS_STONE: 'ui/forge/ai/icon_bless_stone/spriteFrame',
   ENHANCE_GUARD_RUNE: 'ui/forge/ai/icon_guard_rune/spriteFrame',
-  // P5 宝石图标按类型(血玉=红t5/锋晶=橙t4/铁髓=蓝t2,同类型各阶共用一图;阶看名称与稀有度框色)。
-  GEM_HP_1: 'ui/equip/gem_t5/spriteFrame',
-  GEM_HP_2: 'ui/equip/gem_t5/spriteFrame',
-  GEM_HP_3: 'ui/equip/gem_t5/spriteFrame',
-  GEM_HP_4: 'ui/equip/gem_t5/spriteFrame',
-  GEM_HP_5: 'ui/equip/gem_t5/spriteFrame',
-  GEM_ATK_1: 'ui/equip/gem_t4/spriteFrame',
-  GEM_ATK_2: 'ui/equip/gem_t4/spriteFrame',
-  GEM_ATK_3: 'ui/equip/gem_t4/spriteFrame',
-  GEM_ATK_4: 'ui/equip/gem_t4/spriteFrame',
-  GEM_ATK_5: 'ui/equip/gem_t4/spriteFrame',
-  GEM_DEF_1: 'ui/equip/gem_t2/spriteFrame',
-  GEM_DEF_2: 'ui/equip/gem_t2/spriteFrame',
-  GEM_DEF_3: 'ui/equip/gem_t2/spriteFrame',
-  GEM_DEF_4: 'ui/equip/gem_t2/spriteFrame',
-  GEM_DEF_5: 'ui/equip/gem_t2/spriteFrame',
+  // 宝石图标(2026-10-21 新做):3 种 × 5 阶各一张(赤魂石红 / 焰锋石橙金 / 苍岩石蓝,阶越高切工越繁)。
+  GEM_HP_1: 'ui/equip/gems/gem_hp_1/spriteFrame',
+  GEM_HP_2: 'ui/equip/gems/gem_hp_2/spriteFrame',
+  GEM_HP_3: 'ui/equip/gems/gem_hp_3/spriteFrame',
+  GEM_HP_4: 'ui/equip/gems/gem_hp_4/spriteFrame',
+  GEM_HP_5: 'ui/equip/gems/gem_hp_5/spriteFrame',
+  GEM_ATK_1: 'ui/equip/gems/gem_atk_1/spriteFrame',
+  GEM_ATK_2: 'ui/equip/gems/gem_atk_2/spriteFrame',
+  GEM_ATK_3: 'ui/equip/gems/gem_atk_3/spriteFrame',
+  GEM_ATK_4: 'ui/equip/gems/gem_atk_4/spriteFrame',
+  GEM_ATK_5: 'ui/equip/gems/gem_atk_5/spriteFrame',
+  GEM_DEF_1: 'ui/equip/gems/gem_def_1/spriteFrame',
+  GEM_DEF_2: 'ui/equip/gems/gem_def_2/spriteFrame',
+  GEM_DEF_3: 'ui/equip/gems/gem_def_3/spriteFrame',
+  GEM_DEF_4: 'ui/equip/gems/gem_def_4/spriteFrame',
+  GEM_DEF_5: 'ui/equip/gems/gem_def_5/spriteFrame',
   HERO_EXP_BOOK: 'ui/bag/ai/icon_expbook/spriteFrame',
   HERO_CONTRACT_TICKET: 'ui/bag/ai/icon_ticket_hero/spriteFrame',
   LIMITED_CONTRACT_TICKET: 'ui/bag/ai/icon_ticket_limited/spriteFrame',
@@ -1157,8 +1157,8 @@ export class LobbyBagPanelRenderer {
       this.applyOutline(t, scale, true);
     };
     mountSection('LobbyBagDetailUsePanel', 154, 352, '用途');
-    // 用途正文区透出场景(原型:正文背后是暗化的教堂画面)
-    mountRefDialogBackdrop(this.host, detail, REF_DETAIL_INNER_BG, rightCx, Y((216 + 343) / 2), rightW - S(22), S(343 - 216), 36, true);
+    // 用途正文区透出场景(原型:正文背后是暗化的教堂画面);2026-10-21 用户「描述背景暗一些,字更清楚」→ 暗罩 36 → 150
+    mountRefDialogBackdrop(this.host, detail, REF_DETAIL_INNER_BG, rightCx, Y((216 + 343) / 2), rightW - S(22), S(343 - 216), 150, true);
     const useText = this.host.addChildLabel(detail, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), X(812), Y(282), S(28), rgba(250, 242, 222), new Size(S(700), S(110)), HorizontalTextAlignment.LEFT);
     useText.enableWrapText = true;
     useText.lineHeight = S(36);
@@ -1311,18 +1311,18 @@ export class LobbyBagPanelRenderer {
     const rules: Record<string, { need: number; target: string; targetLabel: string }> = {
       ENHANCE_STONE: { need: 10, target: 'ENHANCE_STONE_HIGH', targetLabel: '高阶强化石' },
       LOW_ENHANCE_STONE: { need: 1, target: 'ENHANCE_STONE', targetLabel: '强化石' },
-      GEM_HP_1: { need: 3, target: 'GEM_HP_2', targetLabel: '血玉·Ⅱ' },
-      GEM_HP_2: { need: 3, target: 'GEM_HP_3', targetLabel: '血玉·Ⅲ' },
-      GEM_HP_3: { need: 3, target: 'GEM_HP_4', targetLabel: '血玉·Ⅳ' },
-      GEM_HP_4: { need: 3, target: 'GEM_HP_5', targetLabel: '血玉·Ⅴ' },
-      GEM_ATK_1: { need: 3, target: 'GEM_ATK_2', targetLabel: '锋晶·Ⅱ' },
-      GEM_ATK_2: { need: 3, target: 'GEM_ATK_3', targetLabel: '锋晶·Ⅲ' },
-      GEM_ATK_3: { need: 3, target: 'GEM_ATK_4', targetLabel: '锋晶·Ⅳ' },
-      GEM_ATK_4: { need: 3, target: 'GEM_ATK_5', targetLabel: '锋晶·Ⅴ' },
-      GEM_DEF_1: { need: 3, target: 'GEM_DEF_2', targetLabel: '铁髓·Ⅱ' },
-      GEM_DEF_2: { need: 3, target: 'GEM_DEF_3', targetLabel: '铁髓·Ⅲ' },
-      GEM_DEF_3: { need: 3, target: 'GEM_DEF_4', targetLabel: '铁髓·Ⅳ' },
-      GEM_DEF_4: { need: 3, target: 'GEM_DEF_5', targetLabel: '铁髓·Ⅴ' },
+      GEM_HP_1: { need: 3, target: 'GEM_HP_2', targetLabel: '纯·赤魂石' },
+      GEM_HP_2: { need: 3, target: 'GEM_HP_3', targetLabel: '璀·赤魂石' },
+      GEM_HP_3: { need: 3, target: 'GEM_HP_4', targetLabel: '炽·赤魂石' },
+      GEM_HP_4: { need: 3, target: 'GEM_HP_5', targetLabel: '神·赤魂石' },
+      GEM_ATK_1: { need: 3, target: 'GEM_ATK_2', targetLabel: '纯·焰锋石' },
+      GEM_ATK_2: { need: 3, target: 'GEM_ATK_3', targetLabel: '璀·焰锋石' },
+      GEM_ATK_3: { need: 3, target: 'GEM_ATK_4', targetLabel: '炽·焰锋石' },
+      GEM_ATK_4: { need: 3, target: 'GEM_ATK_5', targetLabel: '神·焰锋石' },
+      GEM_DEF_1: { need: 3, target: 'GEM_DEF_2', targetLabel: '纯·苍岩石' },
+      GEM_DEF_2: { need: 3, target: 'GEM_DEF_3', targetLabel: '璀·苍岩石' },
+      GEM_DEF_3: { need: 3, target: 'GEM_DEF_4', targetLabel: '炽·苍岩石' },
+      GEM_DEF_4: { need: 3, target: 'GEM_DEF_5', targetLabel: '神·苍岩石' },
     };
     const rule = rules[(item.itemCode || '').toUpperCase()];
     if (!rule) {
