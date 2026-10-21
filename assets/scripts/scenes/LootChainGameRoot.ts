@@ -49,7 +49,7 @@ import {
   type AssetManifest,
 } from '../app/AssetOfflineCache';
 import { PREVIEW } from 'cc/env';
-import { applyGraphicsSettings } from '../app/GraphicsSettings';
+import { applyGraphicsSettings, installInteractionFrameBoost } from '../app/GraphicsSettings';
 import { installEnginePerfPatches } from '../app/GraphicsBufferPatch';
 import { resolveBattleUnitSpineRuntimeData } from './lobby/LobbyBattleUnitSpineRuntime';
 import { prepareBattleFxData } from './lobby/BattleFxSlotFilter';
@@ -549,8 +549,9 @@ export class LootChainGameRoot extends Component {
       // 精灵一上屏就抛「Cannot read properties of null (reading 'width')」,大厅绘制中断(2026-10-07 用户手机卡在「资源加载中 100%」的真凶)
       dynamicAtlasManager.enabled = false;
     }
-    // 画面设置(流畅 / 极致 + 帧率):启动时套用上次的选择
+    // 画面设置(流畅 / 极致 + 帧率):启动时套用上次的选择;交互期间提到 60 帧(滚动丝滑)
     applyGraphicsSettings();
+    installInteractionFrameBoost();
     // 有输入框的界面不自动进全屏(进全屏会收掉输入法);登录首页可以(主按钮已抬到浏览器退出全屏提示条之上)
     setFullscreenGate(() => !isTextInputActive() && ['loginAccount', 'loading', 'protagonistCreate'].indexOf(this.currentView) < 0);
     // 仅横屏(2026-10-02 用户拍板):手机竖握时引擎旋转画布显示横屏;构建配置也设了 landscape,这里保证预览与任何构建都生效。

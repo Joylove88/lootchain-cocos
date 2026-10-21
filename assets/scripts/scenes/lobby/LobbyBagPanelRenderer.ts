@@ -24,7 +24,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { mountRefButton, mountRefDialogBackdrop, mountRefHeaderBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
+import { mountRefScrollBar, mountRefButton, mountRefDialogBackdrop, mountRefHeaderBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
 export const BAG_C1812_ITEM_SLOT_ASSET = 'ui/common/ai/item_slot/spriteFrame';
@@ -628,19 +628,9 @@ export class LobbyBagPanelRenderer {
       const thumbHeight = Math.max(36 * scale, trackHeight * (viewportHeight / contentHeight));
       const barWidth = 5 * scale;
       const barX = Math.min(width / 2 - width * 0.035, viewportWidth / 2 + 10 * scale);
-      const bar = this.host.addChildPlainNode(grid, 'LobbyBagItemGridScrollBar', barX, viewport.position.y, barWidth, trackHeight);
-      const barGraphics = bar.addComponent(Graphics);
-      const drawBar = (): void => {
-        const offset = Math.min(maxOffset, Math.max(0, content.position.y - contentBaseY));
-        const thumbTop = trackHeight / 2 - (trackHeight - thumbHeight) * (offset / maxOffset);
-        barGraphics.clear();
-        barGraphics.fillColor = rgba(60, 50, 38, 150);
-        barGraphics.roundRect(-barWidth / 2, -trackHeight / 2, barWidth, trackHeight, barWidth / 2);
-        barGraphics.fill();
-        barGraphics.fillColor = rgba(214, 176, 104, 220);
-        barGraphics.roundRect(-barWidth / 2, thumbTop - thumbHeight, barWidth, thumbHeight, barWidth / 2);
-        barGraphics.fill();
-      };
+      // 2026-10-21 滚动卡顿:拇指改贴图,滚动时只挪位置(不再每帧重画 Graphics)
+      const updateBar = mountRefScrollBar(this.host, grid, 'LobbyBagItemGridScrollBar', barX, viewport.position.y, barWidth, trackHeight, thumbHeight);
+      const drawBar = (): void => updateBar(Math.min(maxOffset, Math.max(0, content.position.y - contentBaseY)) / maxOffset);
       drawBar();
       viewport.on(ScrollView.EventType.SCROLLING, () => {
         this.gridScrollY = content.position.y;

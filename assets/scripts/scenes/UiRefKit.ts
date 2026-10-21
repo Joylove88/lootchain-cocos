@@ -587,3 +587,20 @@ export function mountRefButton(
   }
   return button;
 }
+
+/**
+ * 细滚动条(2026-10-21 滚动卡顿优化):轨道 + 拇指两块纯色贴图,滚动时只改拇指位置,不再每帧 clear / 重画 Graphics(原生上重建网格很贵)。
+ * 返回 update(progress 0..1)。
+ */
+export function mountRefScrollBar(host: RefKitHost, parent: Node, name: string, x: number, y: number, barW: number, trackH: number, thumbH: number): (progress: number) => void {
+  const bar = host.addChildPlainNode(parent, name, x, y, barW, trackH);
+  mountRefSolid(host, bar, 'Track', 0, 0, barW, trackH, rgba(60, 50, 38, 150));
+  const thumb = mountRefSolid(host, bar, 'Thumb', 0, trackH / 2 - thumbH / 2, barW, thumbH, rgba(214, 176, 104, 220));
+  return (progress: number): void => {
+    if (!thumb || !thumb.node.isValid) {
+      return;
+    }
+    const p = Math.min(1, Math.max(0, progress));
+    thumb.node.setPosition(0, trackH / 2 - thumbH / 2 - (trackH - thumbH) * p, 0);
+  };
+}

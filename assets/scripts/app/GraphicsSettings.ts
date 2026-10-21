@@ -1,4 +1,4 @@
-import { director, game, native, sys, view } from 'cc';
+import { director, game, input, Input, native, ScrollView, sys, view } from 'cc';
 import { HTML5, NATIVE } from 'cc/env';
 
 /**
@@ -100,10 +100,75 @@ export function setGraphicsFrameRate(fps: number): void {
   applyGraphicsSettings();
 }
 
+/**
+ * 交互提帧(2026-10-21 用户「所有界面滚动不丝滑」):手机默认流畅档锁 30 帧,拖动列表一顿一顿。
+ * 手指按下 / 拖动 / 滚轮时临时提到 60 帧(设置本来 ≥ 60 不动),最后一次输入后 1.5 秒(惯性滑完)回落到设置帧率;静止界面照旧省电。
+ */
+const BOOST_FPS = 60;
+const BOOST_HOLD_MS = 1500;
+let boostUntil = 0;
+let boostTimer: ReturnType<typeof setTimeout> | null = null;
+let boostInstalled = false;
+
+function nowMs(): number {
+  return Date.now();
+}
+
+function scheduleBoostRevert(): void {
+  if (boostTimer !== null) {
+    return;
+  }
+  const wait = Math.max(50, boostUntil - nowMs());
+  boostTimer = setTimeout(() => {
+    boostTimer = null;
+    if (nowMs() < boostUntil) {
+      scheduleBoostRevert();
+      return;
+    }
+    game.frameRate = getGraphicsFrameRate();
+  }, wait);
+}
+
+export function boostFrameRate(): void {
+  if (getGraphicsFrameRate() >= BOOST_FPS) {
+    return;
+  }
+  boostUntil = nowMs() + BOOST_HOLD_MS;
+  if (game.frameRate !== BOOST_FPS) {
+    game.frameRate = BOOST_FPS;
+  }
+  scheduleBoostRevert();
+}
+
+/**
+ * 全局输入监听收不到被 UI 节点吞掉的触摸(滚动区正是吞触摸的),所以直接包 ScrollView 的拖动 / 惯性 / 滚轮入口;
+ * 再加一层全局输入兜底(点在空白处等)。
+ */
+export function installInteractionFrameBoost(): void {
+  if (boostInstalled) {
+    return;
+  }
+  boostInstalled = true;
+  const proto = ScrollView.prototype as unknown as Record<string, unknown>;
+  ['_onTouchBegan', '_onTouchMoved', '_onTouchEnded', '_onTouchCancelled', '_onMouseWheel', '_processAutoScrolling', '_startAutoScroll'].forEach((key) => {
+    const original = proto[key];
+    if (typeof original !== 'function') {
+      return;
+    }
+    proto[key] = function (this: unknown, ...args: unknown[]): unknown {
+      boostFrameRate();
+      return (original as (...a: unknown[]) => unknown).apply(this, args);
+    };
+  });
+  input.on(Input.EventType.TOUCH_START, boostFrameRate);
+  input.on(Input.EventType.TOUCH_MOVE, boostFrameRate);
+  input.on(Input.EventType.MOUSE_WHEEL, boostFrameRate);
+}
+
 /** 套用当前设置:帧率 + 渲染分辨率。启动时调一次,设置变更时再调。 */
 export function applyGraphicsSettings(): void {
   try {
-    game.frameRate = getGraphicsFrameRate();
+    game.frameRate = nowMs() < boostUntil ? Math.max(BOOST_FPS, getGraphicsFrameRate()) : getGraphicsFrameRate();
   } catch (error) {
     void error;
   }

@@ -327,6 +327,32 @@ const GEM_TYPE_DEFS: Record<string, { label: string; attr: string; base: number 
   ATK: { label: '焰锋石', attr: '攻击', base: 10 },
   DEF: { label: '苍岩石', attr: '防御', base: 8 },
 };
+/**
+ * 部位限定宝石类型(2026-10-21 用户拍板,服务端 GemConfig.allowedGemType 镜像):武器 / 戒指 → 焰锋石 ATK;头盔 / 项链 → 赤魂石 HP;胸甲 / 鞋子 → 苍岩石 DEF。
+ */
+export function gemTypeForSlot(slot: string | null | undefined): 'ATK' | 'HP' | 'DEF' | null {
+  switch ((slot || '').toUpperCase()) {
+    case 'WEAPON':
+    case 'RING':
+      return 'ATK';
+    case 'HELMET':
+    case 'NECKLACE':
+      return 'HP';
+    case 'CHEST':
+    case 'BOOTS':
+      return 'DEF';
+    default:
+      return null;
+  }
+}
+
+/** 宝石类型显示:名称 / 属性 / 主色(行内提示、弹窗说明用)。 */
+export const GEM_TYPE_DISPLAY: Record<'ATK' | 'HP' | 'DEF', { name: string; attr: string; hex: string }> = {
+  ATK: { name: '焰锋石', attr: '攻击', hex: '#F6A44C' },
+  HP: { name: '赤魂石', attr: '生命', hex: '#F06A62' },
+  DEF: { name: '苍岩石', attr: '防御', hex: '#6EAEF4' },
+};
+
 /** 宝石阶称前缀(Ⅰ~Ⅴ 阶)。 */
 export const GEM_TIER_PREFIX = ['碎', '纯', '璀', '炽', '神'];
 
