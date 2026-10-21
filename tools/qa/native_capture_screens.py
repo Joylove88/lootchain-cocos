@@ -14,7 +14,7 @@ import websockets
 
 WS = 'ws://127.0.0.1:{port}/00010002-0003-4004-8005-000600070008'
 ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.getComponent('LootChainGameRoot'); if(c) root=c; } });"
-RESET_JS = "try { root.closeAllLobbyScenePanelFlags && root.closeAllLobbyScenePanelFlags(); } catch (e) {} try { root.lobbyShopDialogKind = null; } catch (e) {} try { root.currentView = 'lobby'; root.renderCurrentView(); } catch (e) {}"
+RESET_JS = "['closeGuardCrystalDialog','closeLobbyTokenFurnace','closeLobbyDailyDungeonPanel','closeLobbyAdventurePanel','closeLobbyFormationPanel','closeLobbyCodexPanel','closeLobbyHeroRosterPanel','closeGachaScene','closeLobbyNoticePanel','closeLobbySettingsPanel','closeLobbyMorePanel','closePlayerProfileDialog'].forEach((k) => { try { root[k] && root[k](); } catch (e) {} }); try { root.closeLobbyHeroDetailPanel && root.closeLobbyHeroDetailPanel(); } catch (e) {} try { root.closeAllLobbyScenePanelFlags && root.closeAllLobbyScenePanelFlags(); } catch (e) {} try { root.lobbyShopDialogKind = null; } catch (e) {} try { root.currentView = 'lobby'; root.renderCurrentView(); } catch (e) {}"
 # 锻造页签:打开 → 轮询到 forge 视图 → 切页签 → 轮询 lobbyForgeTab 到位再放手(首开有素材加载门,定时器会抢跑)
 FORGE_TAB_JS = ("root.openLobbyForgePanel(); let n=0; const t=setInterval(() => {{ n++; if (root.currentView==='forge' && root.lobbyForgeTab!=='{tab}') {{ root.selectLobbyForgeTab('{tab}'); }} "
                 "if ((root.currentView==='forge' && root.lobbyForgeTab==='{tab}' && n>8) || n>60) clearInterval(t); }}, 250);")
@@ -44,6 +44,20 @@ SCREENS = [
     # 英雄详情:属性页(六件装备格)与装备页(装备列表),装备图标改版前后对照用
     ('hero_attr', HERO_TAB_JS.format(tab='attr'), 5.0),
     ('hero_equip', HERO_TAB_JS.format(tab='equip'), 5.0),
+    # 2026-10-21 按钮字留白全量排查补充的界面
+    ('hero_roster', "root.openLobbyHeroRosterPanel();", 3.5),
+    ('hero_refine', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => root.openLobbyHeroRefineDialog(), 1800);"), 5.0),
+    ('codex', "root.openLobbyCodexPanel();", 3.5),
+    ('formation', "root.openLobbyFormationPanel();", 4.0),
+    ('adventure', "root.openLobbyAdventurePanel();", 3.5),
+    ('daily', "root.openLobbyDailyDungeonPanel();", 3.5),
+    ('crystal', "root.openGuardCrystalDialog();", 4.0),
+    ('token_furnace', "root.openLobbyTokenFurnace();", 3.5),
+    ('gacha', "root.openLobbyGachaScene();", 5.0),
+    ('settings', "root.openLobbySettingsPanel();", 2.5),
+    ('more', "root.openLobbyMorePanel();", 2.5),
+    ('notice', "root.openLobbyNoticePanel();", 3.0),
+    ('profile', "root.openPlayerProfileDialog();", 2.5),
     # 背包物品详情弹窗:打开背包后点第一件有自定义图标的道具
     ('bag_detail', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/ENHANCE_STONE|FUSION_LUCK/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.refreshLobbyOverlay(); }, 1500);", 4.5),
 ]

@@ -46,6 +46,22 @@ export function phoneReadableFontSize(size: number): number {
   return currentDesignHeight() < DESKTOP_DESIGN_HEIGHT ? Math.max(size, PHONE_MIN_FONT_SIZE) : size;
 }
 
+/** 按钮 / 页签字的手机下限(2026-10-21 用户:按钮里的字撑满了按钮,要上下留空,字号像原型那样即可;正文仍按 PHONE_MIN_FONT_SIZE)。 */
+export const BUTTON_LABEL_MIN_FONT_SIZE = 17;
+
+/**
+ * 按钮 / 页签文字上下留空:字号不超过按钮高 × ratio(原型约 0.44~0.46),手机端不低于 BUTTON_LABEL_MIN_FONT_SIZE;
+ * 行高 = 字号(否则 SHRINK 按行高把字再压小)。只会缩小,不会放大。
+ */
+export function fitButtonLabel(label: Label, buttonHeight: number, ratio = 0.46): void {
+  const floor = currentDesignHeight() < DESKTOP_DESIGN_HEIGHT ? BUTTON_LABEL_MIN_FONT_SIZE : 12;
+  const target = Math.round(Math.max(floor, Math.min(label.fontSize, buttonHeight * ratio)));
+  if (target < label.fontSize) {
+    label.fontSize = target;
+  }
+  label.lineHeight = label.fontSize;
+}
+
 export class UiPrimitiveFactory {
   constructor(
     private readonly host: UiPrimitiveFactoryHost,

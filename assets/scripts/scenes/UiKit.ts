@@ -1,6 +1,7 @@
 import { Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite } from 'cc';
 import { REF_HALL_BG } from './UiRefKit';
 import { rgba } from './lobby/LobbyHudTypes';
+import { fitButtonLabel } from './UiPrimitiveFactory';
 
 /**
  * 全局 UI 套件(2026-10-10 全界面美化):把商店 / 水晶 / 任务里已验收的切图收成几种通用部件,
@@ -139,6 +140,7 @@ export function mountKitButton(
   const color = kind === 'primary' ? rgba(255, 232, 178) : kind === 'secondary' ? rgba(240, 210, 140) : rgba(150, 138, 118);
   const label = host.addChildLabel(button, `${name}Label`, text, 0, kind === 'primary' ? 1 * scale : 0, fontSize * scale, color, new Size(textWidth, height * 0.7));
   label.overflow = Label.Overflow.SHRINK;
+  fitButtonLabel(label, height);
   outline(label, scale);
   if (kind !== 'disabled') {
     button.addComponent(Button);
@@ -171,6 +173,7 @@ export function mountKitToggle(
   }
   const label = host.addChildLabel(button, `${name}Label`, text, 0, 0, fontSize * scale, active ? rgba(255, 236, 180) : rgba(186, 170, 140), new Size(width * 0.76, height * 0.74));
   label.overflow = Label.Overflow.SHRINK;
+  fitButtonLabel(label, height);
   outline(label, scale);
   button.addComponent(Button);
   button.on(Button.EventType.CLICK, onClick);
@@ -199,6 +202,7 @@ export function mountKitTab(
   }
   const label = host.addChildLabel(button, `${name}Label`, text, 0, 0, fontSize * scale, active ? rgba(255, 230, 170) : rgba(206, 188, 150), new Size(width * 0.74, height * 0.74));
   label.overflow = Label.Overflow.SHRINK;
+  fitButtonLabel(label, height);
   outline(label, scale);
   if (onClick) {
     button.addComponent(Button);

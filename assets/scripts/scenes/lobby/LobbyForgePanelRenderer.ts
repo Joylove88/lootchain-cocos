@@ -23,7 +23,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefCheckbox, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
+import { drawRefCheckbox, drawRefPanelFallback, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
 import {
   describeEquipAttrs,
   equipQualityColor,
@@ -37,6 +37,7 @@ import {
 import { equipIconAssetByCode, equipIconAssetByQualitySlot, equipShowcaseAssetByCode, equipShowcaseAssetByQualitySlot } from './EquipIconAssets';
 import { parseGemCode, gemOpenSlots, gemUnsocketGold, gemIconAsset, GEM_TIER_QUALITY } from './EquipDetailCard';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { fitButtonLabel } from '../UiPrimitiveFactory';
 import { FORGE_RESULT_FX, type ForgeFxKind } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 
@@ -81,11 +82,20 @@ const FORGE_FUSE_ARROW = `${FORGE_REF_DIR}fuse_arrow/spriteFrame`;
 const FORGE_FUSE_SOFT_SHADE = `${FORGE_REF_DIR}fuse_soft_shade/spriteFrame`;
 const FORGE_FUSE_VIGNETTE = `${FORGE_REF_DIR}fuse_vignette/spriteFrame`;
 const FORGE_FUSE_LUCK_GEM = `${FORGE_REF_DIR}fuse_luck_gem/spriteFrame`;
+// 2026-10-20 分解页按 10-19 原型 1:1:去 UI 整屏背景、右栏熔炉插画(456×388 原型框)、筛选签(中性白边供染色 / 选中金边)、勾、提示章、标签底
+const FORGE_DEC_BG = { path: `${FORGE_REF_DIR}dec_bg/spriteFrame`, w: 1870, h: 841 };
+const FORGE_DEC_FURNACE = `${FORGE_REF_DIR}dec_furnace/spriteFrame`;
+const FORGE_DEC_CHIP: RefKitItem = { path: `${FORGE_REF_DIR}dec_chip/spriteFrame`, w: 451, h: 100, inset: [30, 30, 0, 0] };
+const FORGE_DEC_CHIP_ON: RefKitItem = { path: `${FORGE_REF_DIR}dec_chip_on/spriteFrame`, w: 441, h: 100, inset: [30, 30, 0, 0] };
+const FORGE_DEC_CHECK = `${FORGE_REF_DIR}dec_check/spriteFrame`;
+const FORGE_DEC_WARN = `${FORGE_REF_DIR}dec_warn/spriteFrame`;
+const FORGE_DEC_TAG = `${FORGE_REF_DIR}dec_tag/spriteFrame`;
 /** 2026-10-19 新素材并入锻造首开预载组(与 FORGE_PRELOAD_ASSETS 一起到货合并整刷,首开不再空着)。 */
 export const FORGE_PRELOAD_ASSETS_V3: readonly string[] = [
   FORGE_REF_FUSE_PORTAL.path, FORGE_REF_FUSE_SLOT_ASSET, FORGE_REF_DEC_CRUCIBLE.path, FORGE_REF_GEM_PEDESTAL.path,
   FORGE_REF_GEM_MEDALLION_EMPTY_ASSET, FORGE_REF_GEM_MEDALLION_FULL_ASSET, ...Object.values(FORGE_REF_CELL_FRAMES),
   FORGE_FUSE_BG.path, FORGE_FUSE_NAME_PLATE.path, FORGE_FUSE_LUCK_ROW.path, FORGE_FUSE_LUCK_GEM, ...FORGE_FUSE_BEAMS, FORGE_FUSE_SPARK, FORGE_FUSE_ARROW, FORGE_FUSE_SOFT_SHADE, FORGE_FUSE_VIGNETTE,
+  FORGE_DEC_BG.path, FORGE_DEC_FURNACE, FORGE_DEC_CHIP.path, FORGE_DEC_CHIP_ON.path, FORGE_DEC_CHECK, FORGE_DEC_WARN, FORGE_DEC_TAG,
 ];
 export const FORGE_AI_ANVIL_ASSET = 'ui/forge/ai/forge_anvil/spriteFrame';
 export const FORGE_AI_FUSE_ALTAR_ASSET = 'ui/forge/ai/fuse_altar/spriteFrame';
@@ -351,6 +361,14 @@ export class LobbyForgePanelRenderer {
     // 合成页:原型去 UI 后的整屏背景(祭坛 + 金环)盖在通用熔炉背景上,不压暗(用户认可原型的亮度);左侧控件按同一 k 对齐
     this.fuseBgK = 0;
     this.fuseBgShown = false;
+    if (forge.tab === 'decompose') {
+      // 2026-10-20 分解页按原型 1:1:原型去 UI 背景(熔炉大厅 + 熔岩地面),与合成页同一 k 映射;面板压在上面,背景只薄罩
+      const dk = Math.max(coverW / FORGE_DEC_BG.w, coverH / FORGE_DEC_BG.h);
+      if (this.host.addSprite('LobbyForgeDecBg', FORGE_DEC_BG.path, 0, 0, FORGE_DEC_BG.w * dk, FORGE_DEC_BG.h * dk, panel)) {
+        this.fuseBgK = dk;
+        mountRefSolid(this.host, panel, 'LobbyForgeDecVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 60));
+      }
+    }
     if (forge.tab === 'fuse') {
       const fk = Math.max(coverW / FORGE_FUSE_BG.w, coverH / FORGE_FUSE_BG.h);
       this.fuseBgK = fk;
@@ -1938,7 +1956,7 @@ export class LobbyForgePanelRenderer {
       mountRefPlate(this.host, holder, 'Art', item, 0, 0, FS(w), FS(h));
       const label = this.host.addChildLabel(holder, 'Label', text, 0, FS(1), FS(30), enabled ? rgba(255, 240, 210) : rgba(206, 194, 176), new Size(FS(w) * 0.6, FS(h) * 0.7));
       label.isBold = true;
-      label.lineHeight = label.fontSize;
+      fitButtonLabel(label, FS(h), 0.4);
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, true);
       if (enabled) {
@@ -2456,127 +2474,160 @@ export class LobbyForgePanelRenderer {
         || (a.enhanceLevel ?? 0) - (b.enhanceLevel ?? 0)
         || a.slot.localeCompare(b.slot));
 
-    // ── 版面:左 70% 一整块面板(筛选 + 网格 + 底条);右 30%「分解概览」 ──
-    // 原型 1870 中内容区为 0..1700(右侧 170 是导航栏,本页 panelWidth 已扣掉),按 1700 等比、原点取内容区中心
-    const u = panelWidth / 1700;
-    const PS = (v: number): number => v * u;
-    const PX = (px: number): number => (px - 850) * u;
-    const sideW = PS(447);
-    const leftW = PS(1166);
-    const leftCx = PX(644);
-    const sideCx = PX(1487.5);
-    const sideH = contentTop - contentBottom;
-    const cy = (contentTop + contentBottom) / 2;
-    const leftPanel = mountRefTitledPanel(this.host, parent, 'ForgeDecGridFrame', leftCx, cy, leftW, sideH, scale, '', { fill: rgba(18, 13, 11, 218) }).node;
-    const innerW = leftW - 28 * scale;
+    // ── 2026-10-20 按 10-19 原型 1:1:整屏原型坐标 1870×841(与合成页同一 k / 中心),左栏 75..1245、右栏 1260..1720,上下 95..815 ──
+    // 手机导航栏占右缘:右栏右缘 = min(1720, 导航栏左缘 - 14);差额先让左栏左移(最多 35,原型左边留得出),再按 6:4 分摊给左右栏宽
+    const k = this.fuseBgK > 0 ? this.fuseBgK : Math.min(this.stageW / 1870, this.stageH / 841);
+    const FX = (px: number): number => (px - 935) * k - this.bodyOffsetX;
+    const FY = (py: number): number => (420.5 - py) * k;
+    const FS = (v: number): number => v * k;
+    const railLeftPx = this.phone ? (this.stageW / 2 - 6 * scale - FORGE_PHONE_RAIL_W * scale) / k + 935 : 1870;
+    const rightR = Math.min(1720, railLeftPx - 14);
+    const short = Math.max(0, 1720 - rightR);
+    const leftL = 75 - Math.min(35, short);
+    const rem = short - Math.min(35, short);
+    const rightW = 460 - rem * 0.4;
+    const rightL = rightR - rightW;
+    const leftR = rightL - 15;
+    const sxL = (leftR - leftL) / 1170;
+    const sxR = rightW / 460;
+    // 左栏内原型横坐标 → 面板局部;右栏同理
+    const panelTop = 95;
+    const panelBottom = 815;
+    const panelH = FS(panelBottom - panelTop);
+    const panelCy = FY((panelTop + panelBottom) / 2);
+    const leftCx = FX((leftL + leftR) / 2);
+    const LX = (px: number): number => FX(leftL + (px - 75) * sxL) - leftCx;
+    const LY = (py: number): number => FY(py) - panelCy;
+    const LS = (v: number): number => FS(v * sxL);
+    const rightCx = FX((rightL + rightR) / 2);
+    const RX = (px: number): number => FX(rightL + (px - 1260) * sxR) - rightCx;
+    const RS = (v: number): number => FS(v * sxR);
+    const shade = (name: string, cx: number, cy: number, w: number, h: number, alpha: number): void => {
+      const sh = this.host.addSprite(name, FORGE_FUSE_SOFT_SHADE, cx, cy, w, h, parent);
+      if (sh) {
+        sh.color = rgba(0, 0, 0, alpha);
+      }
+    };
+    // 层次:两块面板外一圈柔边投影 + 实底(背景透不上来)
+    shade('ForgeDecGridShadow', leftCx, panelCy - FS(8), FS((leftR - leftL) + 90), panelH + FS(90), 215);
+    shade('ForgeDecSideShadow', rightCx, panelCy - FS(8), FS(rightW + 90), panelH + FS(90), 215);
+    const leftPanel = mountRefTitledPanel(this.host, parent, 'ForgeDecGridFrame', leftCx, panelCy, FS(leftR - leftL), panelH, scale, '', { fill: rgba(10, 8, 7, 238) }).node;
 
-    // 筛选两行(面板内):标签 + 稀有度色签
-    const rowH = 42 * scale;
-    const rowGap = 6 * scale;
-    const chipH = 32 * scale;
-    const makeChip = (bar: Node, name: string, x: number, w: number, text: string, on: boolean, tint: { r: number; g: number; b: number } | null, onClick: () => void) => {
-      const chip = this.host.addChildPlainNode(bar, name, x + w / 2, 0, w, chipH);
-      const g = chip.addComponent(Graphics);
-      g.fillColor = on ? rgba(124, 28, 20, 248) : rgba(20, 17, 15, 235);
-      g.roundRect(-w / 2, -chipH / 2, w, chipH, 6 * scale);
-      g.fill();
-      if (on) {
-        g.fillColor = rgba(196, 64, 40, 90);
-        g.roundRect(-w / 2 + 3 * scale, 0, w - 6 * scale, chipH / 2 - 3 * scale, 4 * scale);
+    // 筛选两行:标签「稀有度:」「强化状态:」(x 100,字 24)+ 签(稀有度签 112×42 步 126;强化签 128 / 138 / 138)
+    const chip = (name: string, px: number, py: number, w: number, text: string, on: boolean, tint: { r: number; g: number; b: number } | null, onClick: () => void): void => {
+      // px = 屏幕原型横坐标(签左缘),不按左栏宽等比
+      const cw = FS(w);
+      const ch = FS(44);
+      const holder = this.host.addChildPlainNode(leftPanel, name, FX(px + w / 2) - leftCx, LY(py), cw, ch);
+      const plate = mountRefPlate(this.host, holder, 'Plate', on ? FORGE_DEC_CHIP_ON : FORGE_DEC_CHIP, 0, 0, cw, ch);
+      const plateSprite = plate?.getChildByName('PlateArt')?.getComponent(Sprite) ?? null;
+      if (plateSprite && !on) {
+        plateSprite.color = tint ? rgba(tint.r, tint.g, tint.b, 255) : rgba(176, 164, 146, 255);
+      }
+      if (!plate) {
+        const g = holder.addComponent(Graphics);
+        g.fillColor = on ? rgba(60, 40, 16, 248) : rgba(20, 17, 15, 235);
+        g.roundRect(-cw / 2, -ch / 2, cw, ch, 6 * scale);
         g.fill();
+        g.strokeColor = on ? rgba(248, 206, 110, 245) : rgba(tint?.r ?? 170, tint?.g ?? 150, tint?.b ?? 120, 220);
+        g.lineWidth = (on ? 2.2 : 1.4) * scale;
+        g.roundRect(-cw / 2, -ch / 2, cw, ch, 6 * scale);
+        g.stroke();
       }
-      g.strokeColor = on ? rgba(248, 206, 110, 245) : rgba(tint?.r ?? 150, tint?.g ?? 126, tint?.b ?? 92, on ? 245 : 190);
-      g.lineWidth = (on ? 2.2 : 1.4) * scale;
-      g.roundRect(-w / 2, -chipH / 2, w, chipH, 6 * scale);
-      g.stroke();
-      const label = this.host.addChildLabel(chip, `${name}Label`, text, 0, 0, 18 * scale, on ? rgba(255, 234, 176) : rgba(tint?.r ?? 226, tint?.g ?? 214, tint?.b ?? 186, 255), new Size(w - 6 * scale, chipH - 4 * scale));
+      const lift = (c: number): number => Math.round(c + (255 - c) * 0.25);
+      const color = on ? rgba(255, 246, 226) : tint ? rgba(lift(tint.r), lift(tint.g), lift(tint.b), 255) : rgba(236, 228, 212);
+      const label = this.host.addChildLabel(holder, 'Label', text, 0, -FS(1), FS(20), color, new Size(cw - FS(16), ch * 0.7));
       label.overflow = Label.Overflow.SHRINK;
-      label.lineHeight = label.fontSize;
-      if (on) {
-        this.applyOutline(label, scale, false);
-      } else {
-        chip.addComponent(Button);
-        chip.on(Button.EventType.CLICK, onClick, this);
-        this.host.applyImageButtonFeedback(chip);
+      fitButtonLabel(label, ch, 0.44);
+      label.isBold = on;
+      this.applyOutline(label, scale, false);
+      if (!on) {
+        holder.addComponent(Button);
+        holder.on(Button.EventType.CLICK, onClick, this);
+        this.host.applyImageButtonFeedback(holder);
       }
-      return x + w + 8 * scale;
     };
-    const makeFilterRow = (name: string, y: number, tag: string): { bar: Node; startX: number } => {
-      const bar = this.host.addChildPlainNode(leftPanel, name, 0, y, innerW, rowH);
-      const tagLabel = this.host.addChildLabel(bar, `${name}Tag`, tag, -innerW / 2 + 10 * scale, 0, 19 * scale, rgba(255, 226, 150), new Size(90 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
-      tagLabel.isBold = true;
-      tagLabel.lineHeight = tagLabel.fontSize;
-      this.applyOutline(tagLabel, scale, false);
-      return { bar, startX: -innerW / 2 + 100 * scale };
+    const filterTag = (name: string, text: string, py: number): void => {
+      const tag = this.host.addChildLabel(leftPanel, name, text, FX(leftL + 34) - leftCx, LY(py), FS(22), rgba(242, 214, 150), new Size(FS(108), FS(34)), HorizontalTextAlignment.LEFT);
+      tag.lineHeight = tag.fontSize;
+      tag.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(tag, scale, false);
     };
-    const filterTop = sideH / 2 - 10 * scale;
-    const rarityRow = makeFilterRow('ForgeDecFilterBar', filterTop - rowH / 2, '稀有度');
-    let chipX = rarityRow.startX;
-    chipX = makeChip(rarityRow.bar, 'ForgeDecFilterAll', chipX, 70 * scale, '全部', forge.decomposeRarity === null, null, () => this.host.setLobbyForgeDecomposeRarity(null));
-    EQUIP_QUALITY_ORDER.forEach((quality) => {
-      chipX = makeChip(rarityRow.bar, `ForgeDecFilter_${quality}`, chipX, 70 * scale, equipQualityLabel(quality), forge.decomposeRarity === quality, equipQualityColor(quality), () => this.host.setLobbyForgeDecomposeRarity(quality));
+    // 2026-10-21 用户「分解背包框上下左右内容全部贴着边框」:四边统一内缩 PAD(原型像素,从框外缘量,扣掉金框线与角饰后约留 24)
+    // 以下 QX / QY 用屏幕原型坐标(左栏实际 leftL..leftR),不再按 1170 等比,保证四边留白一致
+    const PAD = 34;
+    const QX = (px: number): number => FX(px) - leftCx;
+    const QY = LY;
+    const innerL = leftL + PAD;
+    const innerR = leftR - PAD;
+    const chipH = 44;
+    const row1Y = panelTop + PAD + chipH / 2;
+    const row2Y = row1Y + chipH + 10;
+    filterTag('ForgeDecFilterTag', '稀有度:', row1Y);
+    filterTag('ForgeDecEnhTag', '强化状态:', row2Y);
+    const chipX0 = innerL + 112;
+    chip('ForgeDecFilterAll', chipX0, row1Y, 108, '全部', forge.decomposeRarity === null, null, () => this.host.setLobbyForgeDecomposeRarity(null));
+    EQUIP_QUALITY_ORDER.forEach((quality, index) => {
+      chip(`ForgeDecFilter_${quality}`, chipX0 + (index + 1) * 120, row1Y, 108, equipQualityLabel(quality), forge.decomposeRarity === quality, equipQualityColor(quality), () => this.host.setLobbyForgeDecomposeRarity(quality));
     });
-    const enhRow = makeFilterRow('ForgeDecEnhBar', filterTop - rowH - rowGap - rowH / 2, '强化状态');
-    chipX = enhRow.startX;
-    chipX = makeChip(enhRow.bar, 'ForgeDecEnhAll', chipX, 70 * scale, '全部', forge.decomposeEnhance === 'all', null, () => this.host.setLobbyForgeDecomposeEnhance('all'));
-    chipX = makeChip(enhRow.bar, 'ForgeDecEnhZero', chipX, 88 * scale, '未强化', forge.decomposeEnhance === 'zero', null, () => this.host.setLobbyForgeDecomposeEnhance('zero'));
-    makeChip(enhRow.bar, 'ForgeDecEnhPlus', chipX, 88 * scale, '已强化', forge.decomposeEnhance === 'plus', null, () => this.host.setLobbyForgeDecomposeEnhance('plus'));
-    // 筛选与网格之间一道金线
-    const sep = this.host.addChildPlainNode(leftPanel, 'ForgeDecSep', 0, filterTop - 2 * rowH - rowGap - 6 * scale, innerW, 2).addComponent(Graphics);
-    sep.strokeColor = rgba(214, 170, 92, 140);
-    sep.lineWidth = Math.max(1, 1.2 * scale);
-    sep.moveTo(-innerW / 2, 0);
-    sep.lineTo(innerW / 2, 0);
-    sep.stroke();
+    chip('ForgeDecEnhAll', chipX0, row2Y, 108, '全部', forge.decomposeEnhance === 'all', null, () => this.host.setLobbyForgeDecomposeEnhance('all'));
+    chip('ForgeDecEnhZero', chipX0 + 120, row2Y, 128, '未强化', forge.decomposeEnhance === 'zero', null, () => this.host.setLobbyForgeDecomposeEnhance('zero'));
+    chip('ForgeDecEnhPlus', chipX0 + 260, row2Y, 128, '已强化', forge.decomposeEnhance === 'plus', null, () => this.host.setLobbyForgeDecomposeEnhance('plus'));
+    // 筛选与网格之间一道金线(两端淡出,左右同 PAD)
+    const sepY = row2Y + chipH / 2 + 14;
+    const sepW = FS(innerR - innerL);
+    const sep = this.host.addChildPlainNode(leftPanel, 'ForgeDecSep', QX((innerL + innerR) / 2), QY(sepY), sepW, 2).addComponent(Graphics);
+    for (let i = 0; i < 24; i += 1) {
+      const t = i / 23;
+      const a = Math.round(150 * Math.min(1, Math.min(t, 1 - t) * 5));
+      sep.strokeColor = rgba(214, 170, 92, a);
+      sep.lineWidth = Math.max(1, 1.2 * scale);
+      sep.moveTo(-sepW / 2 + (sepW * i) / 24, 0);
+      sep.lineTo(-sepW / 2 + (sepW * (i + 1)) / 24, 0);
+      sep.stroke();
+    }
 
-    // 网格(面板内,9 列整行;底条让出 56)
-    const footerH = 56 * scale;
-    const gridTop = filterTop - 2 * rowH - rowGap - 16 * scale;
-    const gridBottom = -sideH / 2 + footerH + 6 * scale;
-    // 原型:9 列 × 4 行,格 105 间 20(高度不够时等比收)
-    const gridW = innerW - PS(20);
+    // 底部两钮(右对齐,底边留 PAD)
+    const btnH = 50;
+    const btnY = panelBottom - PAD - btnH / 2;
+    // 网格:9 列,格间 14;格边长取「宽能放 9 列(右侧留 16 给滚动条)」与「高能放 4 整行」中较小的,视口在分隔线与底钮之间居中
     const columns = 9;
-    const fit = Math.min(1, (gridTop - gridBottom - PS(10)) / (4 * PS(105) + 3 * PS(20)));
-    const gap = PS(20) * fit;
-    const cell = PS(105) * fit;
-    const rows = Math.max(1, Math.floor((gridTop - gridBottom + gap) / (cell + gap)));
-    const capacity = columns * rows;
+    const gapPx = 14;
+    const gridAreaTop = sepY + 12;
+    const gridAreaBottom = btnY - btnH / 2 - 14;
+    const cellPx = Math.min((innerR - 16 - innerL - gapPx * (columns - 1)) / columns, (gridAreaBottom - gridAreaTop - gapPx * 3) / 4);
+    const cell = FS(cellPx);
+    const stepX = FS(cellPx + gapPx);
+    const stepY = stepX;
+    const gridWpx = cellPx * columns + gapPx * (columns - 1);
+    const gridHpx = cellPx * 4 + gapPx * 3;
+    const gridTopPx = gridAreaTop + (gridAreaBottom - gridAreaTop - gridHpx) / 2;
+    const gridTopY = QY(gridTopPx - 4);
+    const gridBottomY = QY(gridTopPx + gridHpx + 4);
+    const gridCx = QX(innerL + gridWpx / 2);
+    const gridW = FS(gridWpx);
     if (pool.length <= 0) {
-      const empty = this.host.addChildLabel(leftPanel, 'ForgeDecEmpty', '当前筛选下没有可分解的未穿戴装备', 0, (gridTop + gridBottom) / 2, 20 * scale, rgba(190, 184, 171), new Size(gridW, 30 * scale));
+      const empty = this.host.addChildLabel(leftPanel, 'ForgeDecEmpty', '当前筛选下没有可分解的未穿戴装备', gridCx, (gridTopY + gridBottomY) / 2, FS(22), rgba(190, 184, 171), new Size(gridW, FS(32)));
       empty.lineHeight = empty.fontSize;
     }
-    const decGrid = this.phoneGrid(leftPanel, 'ForgeDecGrid', pool.length, columns, capacity, -6 * scale, columns * (cell + gap) - gap, gridTop, gridBottom, cell, gap, scale);
-    pool.slice(0, decGrid.count).forEach((item, index) => {
-      const pos = decGrid.position(index);
-      const isSelected = selected.has(item.id);
-      const node = this.renderEquipCell(decGrid.parent, `ForgeDecCell_${item.id}`, item, pos.x, pos.y, cell, scale, isSelected);
-      if (isSelected) {
-        // 右上角金勾圈(原型)
-        const r = 13 * scale;
-        const mark = this.host.addChildPlainNode(node, 'ForgeDecCellMark', cell / 2 - r - 2 * scale, cell / 2 - r - 2 * scale, r * 2, r * 2);
-        const mg = mark.addComponent(Graphics);
-        mg.fillColor = rgba(230, 170, 60, 255);
-        mg.circle(0, 0, r);
-        mg.fill();
-        mg.strokeColor = rgba(255, 236, 170, 255);
-        mg.lineWidth = Math.max(1, 1.5 * scale);
-        mg.circle(0, 0, r);
-        mg.stroke();
-        mg.strokeColor = rgba(40, 24, 8, 255);
-        mg.lineWidth = Math.max(2, 3 * scale);
-        mg.moveTo(-r * 0.45, 0);
-        mg.lineTo(-r * 0.1, -r * 0.38);
-        mg.lineTo(r * 0.5, r * 0.36);
-        mg.stroke();
-      }
+    const shownCount = Math.min(pool.length, FORGE_PHONE_GRID_CAP);
+    const gridRows = Math.ceil(shownCount / columns);
+    const gridPad = FS(4);
+    const moreH = pool.length > shownCount ? FS(30) : 0;
+    const gridContentH = gridPad * 2 + Math.max(0, gridRows - 1) * stepY + (gridRows > 0 ? cell : 0) + moreH;
+    const gridScroll = this.addPhoneScroll(leftPanel, 'ForgeDecGrid', gridCx, gridTopY, gridBottomY, gridW + FS(10), gridContentH, scale);
+    pool.slice(0, shownCount).forEach((item, index) => {
+      const x = -gridW / 2 + cell / 2 + (index % columns) * stepX;
+      const y = gridScroll.topY - gridPad - cell / 2 - Math.floor(index / columns) * stepY;
+      const node = this.renderDecomposeCell(gridScroll.content, `ForgeDecCell_${item.id}`, item, x, y, cell, scale, selected.has(item.id), FS);
       if (!state.busy) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => this.host.toggleLobbyForgeDecomposeSelect(item.id), this);
         this.host.applyImageButtonFeedback(node, 1.03, 0.97);
       }
     });
-    if (pool.length > decGrid.count) {
-      const more = this.host.addChildLabel(decGrid.moreParent, 'ForgeDecMore', `共 ${pool.length} 件,显示前 ${decGrid.count} 件(可用筛选缩小范围)`, decGrid.moreX, decGrid.moreY, 16 * scale, rgba(190, 184, 171), new Size(gridW, 24 * scale));
+    if (pool.length > shownCount) {
+      const more = this.host.addChildLabel(gridScroll.content, 'ForgeDecMore', `共 ${pool.length} 件,显示前 ${shownCount} 件(可用筛选缩小范围)`, 0, gridScroll.topY - gridContentH + gridPad + moreH / 2, FS(18), rgba(190, 184, 171), new Size(gridW, FS(26)));
       more.lineHeight = more.fontSize;
     }
 
@@ -2594,102 +2645,127 @@ export class LobbyForgePanelRenderer {
     const blessRange = sumRange(DECOMPOSE_BLESS_RANGE);
     const runeRange = sumRange(DECOMPOSE_RUNE_RANGE);
 
-    // 底条(面板内):已选统计 + 一键全选 / 清空
-    const footerY = -sideH / 2 + footerH / 2 + 2 * scale;
-    const smallW = 132 * scale;
-    const summary = this.host.addChildLabel(leftPanel, 'ForgeDecSummary', `已选 ${chosen.length} 件 · 预计强化石 ~${formatInteger(estimate)}（单次上限 20 件）`, -innerW / 2 + 10 * scale, footerY, 19 * scale, rgba(255, 226, 150), new Size(innerW - smallW * 2 - 40 * scale, 28 * scale), HorizontalTextAlignment.LEFT);
-    summary.overflow = Label.Overflow.SHRINK;
-    summary.lineHeight = summary.fontSize;
-    this.applyOutline(summary, scale, false);
-    const visibleIds = pool.slice(0, decGrid.count).map((item) => item.id);
-    const clearX = innerW / 2 - smallW / 2;
-    mountRefPlateButton(this.host, leftPanel, 'ForgeDecSelectAll', '一键全选', clearX - smallW - 10 * scale, footerY, smallW, 44 * scale, scale, 'dark', !state.busy && visibleIds.length > 0, () => this.host.setLobbyForgeDecomposeSelection(visibleIds), { fontSize: 19 * scale });
-    mountRefPlateButton(this.host, leftPanel, 'ForgeDecClear', '清空', clearX, footerY, smallW, 44 * scale, scale, 'dark', !state.busy && chosen.length > 0, () => this.host.setLobbyForgeDecomposeSelection([]), { fontSize: 19 * scale });
+    // 底条:只留右侧一键全选 / 清空(2026-10-21 用户:左下统计不需要,右栏已有);字上下留空
+    const visibleIds = pool.slice(0, shownCount).map((item) => item.id);
+    const plateButton = (host: Node, name: string, text: string, cx: number, cy: number, w: number, h: number, item: RefKitItem, enabled: boolean, fontSize: number, onClick: () => void): void => {
+      const holder = this.host.addChildPlainNode(host, name, cx, cy, w, h);
+      if (!mountRefPlate(this.host, holder, 'Art', item, 0, 0, w, h)) {
+        drawRefPanelFallback(holder, w, h, scale);
+      }
+      const label = this.host.addChildLabel(holder, 'Label', text, 0, FS(1), fontSize, enabled ? rgba(255, 240, 210) : rgba(176, 166, 150), new Size(w * (item === REF_PLATE_DARK ? 0.84 : 0.66), h * 0.7));
+      label.isBold = true;
+      label.overflow = Label.Overflow.SHRINK;
+      fitButtonLabel(label, h, item === REF_PLATE_DARK ? 0.44 : 0.4);
+      this.applyOutline(label, scale, true);
+      if (enabled) {
+        holder.addComponent(Button);
+        holder.on(Button.EventType.CLICK, onClick, this);
+        this.host.applyImageButtonFeedback(holder, 1.03, 0.97);
+      } else {
+        holder.addComponent(UIOpacity).opacity = 190;
+      }
+    };
+    plateButton(leftPanel, 'ForgeDecClear', '清空', QX(innerR - 90), QY(btnY), FS(180), FS(btnH), REF_PLATE_DARK, !state.busy && chosen.length > 0, FS(23), () => this.host.setLobbyForgeDecomposeSelection([]));
+    plateButton(leftPanel, 'ForgeDecSelectAll', '一键全选', QX(innerR - 180 - 16 - 95), QY(btnY), FS(190), FS(btnH), REF_PLATE_DARK, !state.busy && visibleIds.length > 0, FS(23), () => this.host.setLobbyForgeDecomposeSelection(visibleIds));
 
-    // ── 右:「分解概览」(熔炉插画 + 大号已选 + 预计获得 + 材料小卡 + 按钮) ──
-    const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeDecSidePanel', sideCx, cy, sideW, sideH, scale, '分解概览', { bandH: 48 * scale, fontSize: 24 * scale, fill: rgba(18, 13, 11, 230) });
+    // ── 右栏「分解概览」:红标题带(105..160)+ 熔炉插画铺满 162..545 + 已选 / 预计获得 + 可能获得材料 + 提示 + 两钮 ──
+    const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeDecSidePanel', rightCx, panelCy, FS(rightW), panelH, scale, '分解概览', { bandH: FS(56), fontSize: FS(32), fill: rgba(10, 8, 7, 242) });
     const side = sidePanel.node;
-    this.fxAnchor = { x: sideCx + this.bodyOffsetX, y: cy + sideH * 0.12 };
-    this.powerAnchor = { x: sideCx + this.bodyOffsetX, y: contentTop - 40 * scale };
-    const inner = sideW - 28 * scale;
-    // 底部两钮
-    const confirmW = Math.min(inner, 240 * scale);
-    const confirmH = confirmW / 3.9;
-    const batchH = 44 * scale;
-    const batchY = -sideH / 2 + 12 * scale + batchH / 2;
-    const confirmY = batchY + batchH / 2 + 10 * scale + confirmH / 2;
-    mountRefPlateButton(this.host, side, 'ForgeDecBatchButton', '批量分解设置', 0, batchY, confirmW, batchH, scale, 'dark', !state.busy, () => this.host.setLobbyForgeDecomposeBatchOpen(true), { fontSize: 19 * scale });
-    this.renderPrimaryButton(side, 'ForgeDecConfirm', state.busy ? '分解中…' : `分 解${chosen.length > 0 ? `（${chosen.length}）` : ''}`, 0, confirmY, confirmW, scale, !state.busy && chosen.length > 0, () => this.host.decomposeLobbyForgeSelected());
-    // 上部:熔炉插画(右上)+ 已选装备大号(左上)
-    const topY = sidePanel.bodyTop - 6 * scale;
-    const warnY = confirmY + confirmH / 2 + 18 * scale;
-    const avail = topY - warnY;
-    const artH = Math.min(avail * 0.5, sideW * 0.7 * (FORGE_REF_DEC_CRUCIBLE.h / FORGE_REF_DEC_CRUCIBLE.w));
-    const artW = artH * (FORGE_REF_DEC_CRUCIBLE.w / FORGE_REF_DEC_CRUCIBLE.h);
-    this.host.addSprite('ForgeDecCrucible', FORGE_REF_DEC_CRUCIBLE.path, inner / 2 - artW / 2 + 4 * scale, topY - artH / 2, artW, artH, side);
-    // 文字层压在熔炉图之上,且给它垫一小块暗底防止被炉火冲淡
-    const chosenTag = this.host.addChildLabel(side, 'ForgeDecSideChosenTag', '已选装备', -inner / 2 + 8 * scale, topY - 18 * scale, 22 * scale, rgba(255, 226, 150), new Size(inner * 0.5, 28 * scale), HorizontalTextAlignment.LEFT);
-    this.applyOutline(chosenTag, scale, true);
-    chosenTag.isBold = true;
-    chosenTag.lineHeight = chosenTag.fontSize;
-    this.applyOutline(chosenTag, scale, false);
-    this.layoutInlineSegments(side, 'ForgeDecSideChosenNum', [
-      { text: `${chosen.length}`, color: rgba(255, 222, 130), size: 54 * scale },
-      { text: ` /20 件`, color: rgba(236, 224, 200), size: 24 * scale },
-    ], -inner / 2 + (inner - artW) / 2, topY - 60 * scale, scale);
-    // 预计获得:金边行(强化石图标 + 名 + 大数)
-    const gainTag = this.host.addChildLabel(side, 'ForgeDecSideGainTag', '预计获得', -inner / 2 + 8 * scale, topY - artH - 14 * scale, 17 * scale, rgba(226, 214, 186), new Size(inner, 24 * scale), HorizontalTextAlignment.LEFT);
-    gainTag.lineHeight = gainTag.fontSize;
-    const gainRowH = Math.min(56 * scale, avail * 0.2);
-    const gainRowY = topY - artH - 30 * scale - gainRowH / 2;
-    const gainRow = this.host.addChildPlainNode(side, 'ForgeDecGainRow', 0, gainRowY, inner, gainRowH);
-    if (!mountRefSliced(this.host, gainRow, 'Art', REF_ROW_SELECTED, 0, 0, inner, gainRowH)) {
-      const gg = gainRow.addComponent(Graphics);
-      gg.fillColor = rgba(22, 18, 14, 235);
-      gg.roundRect(-inner / 2, -gainRowH / 2, inner, gainRowH, 7 * scale);
-      gg.fill();
+    this.fxAnchor = { x: rightCx + this.bodyOffsetX, y: FY(330) };
+    this.powerAnchor = { x: rightCx + this.bodyOffsetX, y: FY(200) };
+    const furnace = this.host.addSprite('ForgeDecFurnace', FORGE_DEC_FURNACE, RX(1490), LY(353), RS(450), FS(386), side);
+    if (furnace) {
+      furnace.node.setSiblingIndex(2);
+    } else {
+      this.host.addSprite('ForgeDecCrucible', FORGE_REF_DEC_CRUCIBLE.path, RX(1560), LY(330), RS(280), RS(280) * (FORGE_REF_DEC_CRUCIBLE.h / FORGE_REF_DEC_CRUCIBLE.w), side);
     }
-    const stoneIcon = gainRowH * 0.82;
-    this.host.addSprite('ForgeDecSideStoneIcon', BAG_ICON_ENHANCE_STONE_ASSET, -inner / 2 + 14 * scale + stoneIcon / 2, 0, stoneIcon, stoneIcon, gainRow);
-    const stoneName = this.host.addChildLabel(gainRow, 'ForgeDecSideStoneName', '强化石', -inner / 2 + 24 * scale + stoneIcon, 0, 20 * scale, rgba(236, 224, 200), new Size(inner * 0.4, 26 * scale), HorizontalTextAlignment.LEFT);
+    // 小标签(左金竖条 + 向右淡出的暗底):已选装备 (1278..1420, 183..222)、预计获得 (1283..1398, 412..442)
+    // 字色取自原型:已选装备亮金 (252,240,150)、预计获得暖金 (240,216,135)
+    const sideTag = (name: string, text: string, px: number, py: number, w: number, h: number, size: number, color: Color): void => {
+      const tagW = RS(w);
+      const tagH = FS(h);
+      const tagX = RX(px) + tagW / 2;
+      if (!this.host.addSprite(`${name}Bg`, FORGE_DEC_TAG, tagX, LY(py), tagW, tagH, side)) {
+        mountRefSolid(this.host, side, `${name}Bg`, tagX, LY(py), tagW, tagH, rgba(0, 0, 0, 150));
+      }
+      const label = this.host.addChildLabel(side, name, text, RX(px) + RS(16), LY(py) - FS(1), FS(size), color, new Size(tagW, tagH), HorizontalTextAlignment.LEFT);
+      label.lineHeight = label.fontSize;
+      label.isBold = true;
+      this.applyOutline(label, scale, true);
+    };
+    sideTag('ForgeDecChosenTag', '已选装备', 1278, 203, 160, 40, 25, rgba(255, 236, 150));
+    // 大号已选:「3」52 金 + 「/20 件」34 白(左对齐 x 1322,y 252)
+    this.addRichLine(side, 'ForgeDecChosenNum', `<color=#FFC24A><size=${Math.round(FS(54))}>${chosen.length}</size></color><color=#F4ECDC><size=${Math.round(FS(34))}> /20 件</size></color>`, RX(1322), LY(252), FS(34), RS(300), 0);
+    sideTag('ForgeDecGainTag', '预计获得', 1283, 427, 140, 34, 22, rgba(244, 218, 138));
+    // 预计获得行:图标框 1333..1405 × 452..526 + 暗行 1405..1675(强化石 30 / 数字 44)
+    const gainY = LY(489);
+    mountRefSolid(this.host, side, 'ForgeDecGainRowBg', RX(1540), gainY, RS(270), FS(70), rgba(6, 5, 5, 205));
+    const gainLine = this.host.addChildPlainNode(side, 'ForgeDecGainRowLine', RX(1540), gainY, RS(270), FS(70)).addComponent(Graphics);
+    gainLine.strokeColor = rgba(150, 118, 70, 150);
+    gainLine.lineWidth = Math.max(1, 1.2 * scale);
+    gainLine.rect(-RS(135), -FS(35), RS(270), FS(70));
+    gainLine.stroke();
+    const iconBox = this.host.addChildPlainNode(side, 'ForgeDecGainIconBox', RX(1369), gainY, FS(74), FS(74));
+    mountRefSolid(this.host, iconBox, 'Bg', 0, 0, FS(74), FS(74), rgba(16, 13, 12, 245));
+    const ib = this.host.addChildPlainNode(iconBox, 'Line', 0, 0, FS(74), FS(74)).addComponent(Graphics);
+    ib.strokeColor = rgba(196, 156, 92, 220);
+    ib.lineWidth = Math.max(1, 1.6 * scale);
+    ib.roundRect(-FS(37), -FS(37), FS(74), FS(74), FS(6));
+    ib.stroke();
+    this.host.addSprite('ForgeDecGainIcon', BAG_ICON_ENHANCE_STONE_ASSET, 0, 0, FS(66), FS(66), iconBox);
+    const stoneName = this.host.addChildLabel(side, 'ForgeDecGainName', '强化石', RX(1430), gainY, FS(30), rgba(244, 234, 214), new Size(RS(130), FS(40)), HorizontalTextAlignment.LEFT);
     stoneName.lineHeight = stoneName.fontSize;
-    const stoneNum = this.host.addChildLabel(gainRow, 'ForgeDecSideStoneNum', `${formatInteger(estimate)}`, inner / 2 - 16 * scale, 0, 32 * scale, rgba(255, 222, 130), new Size(inner * 0.36, 40 * scale), HorizontalTextAlignment.RIGHT);
+    stoneName.isBold = true;
+    this.applyOutline(stoneName, scale, true);
+    const stoneNum = this.host.addChildLabel(side, 'ForgeDecGainNum', `${formatInteger(estimate)}`, RX(1580), gainY, FS(44), rgba(255, 226, 150), new Size(RS(150), FS(52)));
     stoneNum.isBold = true;
     stoneNum.lineHeight = stoneNum.fontSize;
+    stoneNum.overflow = Label.Overflow.SHRINK;
     this.applyOutline(stoneNum, scale, true);
-    // 可能获得材料:两张小卡
-    const bonusTagY = gainRowY - gainRowH / 2 - 18 * scale;
-    this.addPanelTitle(side, 'ForgeDecSideBonusTag', '可能获得材料', 0, bonusTagY, inner, scale);
+    // 可能获得材料(y 562,两侧细金线 + 菱形)
+    this.addPanelTitle(side, 'ForgeDecBonusTag', '可能获得材料', RX(1490), LY(562), RS(420), scale);
     const bonusDefs: Array<{ key: string; icon: string; label: string; range: [number, number] }> = [
       { key: 'bless', icon: FORGE_AI_BLESS_ICON_ASSET, label: '祝福石', range: blessRange },
       { key: 'rune', icon: FORGE_AI_GUARD_ICON_ASSET, label: '守护符', range: runeRange },
     ];
-    const cardGap = 10 * scale;
-    const cardW = (inner - cardGap) / 2;
-    const cardTop = bonusTagY - 16 * scale;
-    const cardH = Math.max(44 * scale, Math.min(60 * scale, cardTop - warnY - 30 * scale));
     bonusDefs.forEach((def, index) => {
-      const cx = -inner / 2 + cardW / 2 + index * (cardW + cardGap);
-      const card = this.host.addChildPlainNode(side, `ForgeDecSideBonus_${def.key}`, cx, cardTop - cardH / 2, cardW, cardH);
-      if (!mountRefSliced(this.host, card, 'Art', REF_ROW, 0, 0, cardW, cardH)) {
-        const cg = card.addComponent(Graphics);
-        cg.fillColor = rgba(16, 14, 13, 230);
-        cg.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 7 * scale);
-        cg.fill();
+      const px = index === 0 ? 1290 : 1493;
+      const cw = RS(195);
+      const chh = FS(80);
+      const card = this.host.addChildPlainNode(side, `ForgeDecBonus_${def.key}`, RX(px) + cw / 2, LY(625), cw, chh);
+      if (!mountRefSliced(this.host, card, 'Art', REF_ROW, 0, 0, cw, chh)) {
+        drawRefPanelFallback(card, cw, chh, scale);
       }
-      const icon = cardH * 0.74;
-      this.host.addSprite(`ForgeDecSideBonusIcon_${def.key}`, def.icon, -cardW / 2 + 12 * scale + icon / 2, 0, icon, icon, card);
-      const nameLabel = this.host.addChildLabel(card, `ForgeDecSideBonusName_${def.key}`, def.label, -cardW / 2 + 20 * scale + icon, cardH * 0.2, 16 * scale, rgba(226, 214, 186), new Size(cardW - icon - 30 * scale, 22 * scale), HorizontalTextAlignment.LEFT);
-      nameLabel.overflow = Label.Overflow.SHRINK;
+      const icon = FS(58);
+      this.host.addSprite(`ForgeDecBonusIcon_${def.key}`, def.icon, -cw / 2 + RS(16) + icon / 2, 0, icon, icon, card);
+      const textX = -cw / 2 + RS(16) + icon + RS(14);
+      const nameLabel = this.host.addChildLabel(card, `ForgeDecBonusName_${def.key}`, def.label, textX, FS(16), FS(20), rgba(240, 214, 146), new Size(cw - icon - RS(40), FS(26)), HorizontalTextAlignment.LEFT);
       nameLabel.lineHeight = nameLabel.fontSize;
+      nameLabel.overflow = Label.Overflow.SHRINK;
       const rangeText = def.range[1] <= 0 ? 'x0' : `x${def.range[0]}~${def.range[1]}`;
-      const rangeLabel = this.host.addChildLabel(card, `ForgeDecSideBonusRange_${def.key}`, rangeText, -cardW / 2 + 20 * scale + icon, -cardH * 0.22, 19 * scale, rgba(255, 222, 130), new Size(cardW - icon - 30 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
+      const rangeLabel = this.host.addChildLabel(card, `ForgeDecBonusRange_${def.key}`, rangeText, textX, -FS(15), FS(28), rgba(250, 244, 230), new Size(cw - icon - RS(40), FS(34)), HorizontalTextAlignment.LEFT);
       rangeLabel.isBold = true;
       rangeLabel.lineHeight = rangeLabel.fontSize;
+      rangeLabel.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(rangeLabel, scale, true);
     });
-    const warn = this.host.addChildLabel(side, 'ForgeDecSideWarn', '！高品质装备分解可获得更多材料', 0, warnY, 16 * scale, rgba(241, 178, 154), new Size(inner, 24 * scale));
-    warn.overflow = Label.Overflow.SHRINK;
+    // 提示(y 686):金色感叹章 + 橙金字
+    const warnIcon = FS(26);
+    const warnText = '高品质装备分解可获得更多材料';
+    const warnSize = FS(19);
+    const warnW = warnIcon + FS(8) + warnText.length * warnSize;
+    const warnX0 = RX(1490) - warnW / 2;
+    if (!this.host.addSprite('ForgeDecWarnIcon', FORGE_DEC_WARN, warnX0 + warnIcon / 2, LY(686), warnIcon, warnIcon, side)) {
+      const wl = this.host.addChildLabel(side, 'ForgeDecWarnIcon', '!', warnX0 + warnIcon / 2, LY(686), FS(20), rgba(255, 196, 90), new Size(warnIcon, warnIcon));
+      wl.isBold = true;
+    }
+    const warn = this.host.addChildLabel(side, 'ForgeDecSideWarn', warnText, warnX0 + warnIcon + FS(8), LY(686), warnSize, rgba(244, 196, 120), new Size(warnText.length * warnSize + FS(10), FS(28)), HorizontalTextAlignment.LEFT);
     warn.lineHeight = warn.fontSize;
+    warn.overflow = Label.Overflow.SHRINK;
+    this.applyOutline(warn, scale, false);
+    // 两钮:分解(红翼 1278..1495 × 720..793)/ 批量分解设置(暗金 1515..1700 × 728..788)
+    plateButton(side, 'ForgeDecConfirm', state.busy ? '分解中…' : '分 解', RX(1386), LY(756), RS(222), FS(78), REF_ULT.btnPrimary, !state.busy && chosen.length > 0, FS(32), () => this.host.decomposeLobbyForgeSelected());
+    plateButton(side, 'ForgeDecBatchButton', '批量分解设置', RX(1607), LY(758), RS(190), FS(60), REF_PLATE_DARK, !state.busy, FS(21), () => this.host.setLobbyForgeDecomposeBatchOpen(true));
 
     // 批量分解设置弹窗:按规则快速勾选(≤20 件)。
     if (forge.decomposeBatchOpen) {
@@ -3066,6 +3142,52 @@ export class LobbyForgePanelRenderer {
   }
 
   // 背包式方块单元:品质底/描边 + 部位图标 + 底部名字条 + 右上 +N + 左上"穿"标;强化/分解网格共用。
+  private renderDecomposeCell(parent: Node, name: string, item: EquipmentItemVO, x: number, y: number, cell: number, scale: number, picked: boolean, FS: (v: number) => number): Node {
+    const iconAsset = equipIconAssetByCode(item.equipCode);
+    if (!iconAsset) {
+      return this.renderEquipCell(parent, name, item, x, y, cell, scale, picked);
+    }
+    const node = this.host.addChildPlainNode(parent, name, x, y, cell, cell);
+    if (picked) {
+      const glow = this.host.addChildPlainNode(node, 'Glow', 0, 0, cell, cell).addComponent(Graphics);
+      for (const [pad, alpha, width] of [[5, 60, 8], [2.5, 120, 4]] as Array<[number, number, number]>) {
+        glow.strokeColor = rgba(255, 196, 90, alpha);
+        glow.lineWidth = FS(width);
+        glow.roundRect(-cell / 2 - FS(pad), -cell / 2 - FS(pad), cell + FS(pad) * 2, cell + FS(pad) * 2, FS(10));
+        glow.stroke();
+      }
+    }
+    this.host.addSprite(`${name}Icon`, iconAsset, 0, 0, cell, cell, node);
+    const q = equipQualityColor(item.quality);
+    const stripH = FS(26);
+    mountRefSolid(this.host, node, `${name}Strip`, 0, -cell / 2 + FS(6) + stripH / 2, cell - FS(10), stripH, rgba(0, 0, 0, 150));
+    const lift = (c: number): number => Math.round(c + (255 - c) * 0.55);
+    const nm = this.host.addChildLabel(node, `${name}Name`, safeText(item.equipName), 0, -cell / 2 + FS(6) + stripH / 2, FS(19), rgba(lift(q.r), lift(q.g), lift(q.b), 255), new Size(cell - FS(12), stripH));
+    nm.enableWrapText = false;
+    nm.overflow = Label.Overflow.SHRINK;
+    nm.lineHeight = nm.fontSize;
+    this.applyOutline(nm, scale, true);
+    const level = item.enhanceLevel ?? 0;
+    if (level > 0) {
+      const badge = this.host.addChildLabel(node, `${name}Level`, `+${level}`, cell / 2 - FS(8), cell / 2 - FS(18), FS(24), rgba(255, 244, 220), new Size(FS(50), FS(30)), HorizontalTextAlignment.RIGHT);
+      badge.isBold = true;
+      badge.overflow = Label.Overflow.SHRINK;
+      this.applyOutline(badge, scale, true);
+    }
+    if (picked) {
+      const frame = this.host.addChildPlainNode(node, 'PickFrame', 0, 0, cell, cell).addComponent(Graphics);
+      frame.strokeColor = rgba(255, 214, 120, 255);
+      frame.lineWidth = FS(3.5);
+      frame.roundRect(-cell / 2, -cell / 2, cell, cell, FS(8));
+      frame.stroke();
+      if (!this.host.addSprite(`${name}Check`, FORGE_DEC_CHECK, 0, FS(6), cell * 0.5, cell * 0.5, node)) {
+        const ck = this.host.addChildLabel(node, `${name}Check`, '✓', 0, FS(6), FS(44), rgba(255, 214, 120), new Size(cell * 0.5, cell * 0.5));
+        this.applyOutline(ck, scale, true);
+      }
+    }
+    return node;
+  }
+
   private renderEquipCell(parent: Node, name: string, item: EquipmentItemVO, x: number, y: number, cell: number, scale: number, highlighted: boolean): Node {
     const q = equipQualityColor(item.quality);
     const node = this.host.addChildPlainNode(parent, name, x, y, cell, cell);

@@ -95,6 +95,7 @@ import { equipIconAssetByCode, equipSlotKeyByCode } from '../lobby/EquipIconAsse
 import { resolveBagStyleItemIconAsset } from '../lobby/LobbyBagPanelRenderer';
 import { heroCardArtProfileByCode } from '../lobby/HeroCardArtAssets';
 import { renderLockGlyph } from '../UiLockGlyph';
+import { fitButtonLabel } from '../UiPrimitiveFactory';
 
 const GACHA_REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
 const GACHA_REF_SQUARE: RefKitItem = { path: 'ui/formation/ref/btn_square/spriteFrame', w: 96, h: 96, inset: [24, 24, 24, 24] };
@@ -1514,6 +1515,7 @@ export class GachaSceneRenderer {
     }
     const label = this.host.addChildLabel(node, 'GachaSkipAnimLabel', '跳过动画', boxX + boxSize / 2 + 10 * scale, 0, 18 * scale, enabled ? rgba(255, 230, 170) : rgba(214, 200, 172), new Size(boxW - boxSize - 40 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(label, boxH);
     label.isBold = enabled;
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.host.toggleGachaSkipAnimation(), this);

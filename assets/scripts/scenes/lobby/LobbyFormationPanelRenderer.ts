@@ -35,6 +35,7 @@ import { loadSharedSpineData } from './SpineDataStore';
 import { mountHeroAvatar } from './HeroHeadCrop';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
+import { fitButtonLabel } from '../UiPrimitiveFactory';
 
 const FORMATION_SPINE_RUNTIME_RETRY_DELAYS_MS = [180, 420, 900];
 const FORMATION_BATTLE_BG_ASSET: string = 'ui/battle/battle_scene_cathedral/spriteFrame';
@@ -584,6 +585,7 @@ export class LobbyFormationPanelRenderer {
     }
     const unequipLabel = this.host.addChildLabel(unequip, 'Label', '下阵', 0, 0, 19 * u, rgba(255, 228, 206), new Size(btnW - 16 * u, btnH));
     unequipLabel.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(unequipLabel, btnH);
     this.applyOutline(unequipLabel, u, true);
     unequip.addComponent(Button);
     unequip.on(Button.EventType.CLICK, () => this.host.toggleLobbyFormationHero(hero.id), this);
@@ -894,6 +896,7 @@ export class LobbyFormationPanelRenderer {
       }
       const tabLabel = this.host.addChildLabel(tabNode, 'Label', tab.label, 0, 0, 18 * u, active ? rgba(255, 240, 206) : rgba(190, 184, 172), new Size(tabW - 8 * u, 26 * u));
       tabLabel.overflow = Label.Overflow.SHRINK;
+      fitButtonLabel(tabLabel, tabH);
       tabLabel.isBold = active;
       this.applyOutline(tabLabel, u, false);
       tabNode.addComponent(Button);

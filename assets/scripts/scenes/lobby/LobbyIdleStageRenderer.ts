@@ -498,7 +498,7 @@ export class LobbyIdleStageRenderer {
     if (summary) {
       const claiming = this.host.isIdleClaiming?.() === true;
       const claimEnabled = summary.claimable && !claiming;
-      const claimButton = this.host.addChildPlainNode(panel, 'LobbyIdleClaimButton', 0, -panelHeight / 2 + 62 * scale, panelWidth - 48 * scale, 44 * scale);
+      const claimButton = this.host.addChildPlainNode(panel, 'LobbyIdleClaimButton', 0, -panelHeight / 2 + 64 * scale, panelWidth - 48 * scale, 44 * scale);
       const claimArt = this.host.addSprite('LobbyIdleClaimButtonArt', BAG_AI_BUTTON_CRIMSON_ASSET, 0, 0, panelWidth - 48 * scale, 44 * scale, claimButton);
       if (!claimArt) {
         const claimGraphics = claimButton.addComponent(Graphics);
@@ -519,7 +519,7 @@ export class LobbyIdleStageRenderer {
       }
       const autoOn = this.host.isAutoChallengeEnabled?.() === true;
       // 自动挑战开关:水晶页签同款金 / 暗开关切图(UiKit)
-      mountKitToggle(this.host, panel, 'LobbyIdleAutoToggle', autoOn ? '自动挑战 · 开' : '自动挑战 · 关', 0, -panelHeight / 2 + 24 * scale, panelWidth - 48 * scale, 32 * scale, scale, autoOn,
+      mountKitToggle(this.host, panel, 'LobbyIdleAutoToggle', autoOn ? '自动挑战 · 开' : '自动挑战 · 关', 0, -panelHeight / 2 + 22 * scale, panelWidth - 48 * scale, 36 * scale, scale, autoOn,
         () => this.host.toggleAutoChallenge?.(), 16);
     } else {
       const note = this.host.addChildLabel(panel, 'LobbyIdleRewardNote', '登录后自动同步挂机产出', 0, -panelHeight / 2 + 18 * scale, 16 * scale, rgba(150, 132, 96), new Size(panelWidth - 20 * scale, 19 * scale));

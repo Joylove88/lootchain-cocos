@@ -1,5 +1,6 @@
 import { Button, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UIOpacity, UITransform, type Color } from 'cc';
 import { rgba } from './lobby/LobbyHudTypes';
+import { fitButtonLabel } from './UiPrimitiveFactory';
 
 /**
  * 2026-10-15 「参考图风格」UI 套件:终极技能弹窗 / 锻造界面按 GPT 原型逐件拆出的素材(ui/common/ref、ui/forge/ref)。
@@ -515,6 +516,7 @@ export function mountRefPlateButton(
   }
   const label = host.addChildLabel(button, 'Label', text, 0, 0, options.fontSize ?? 20 * u, !enabled ? rgba(218, 210, 194) : kind === 'bronze' ? rgba(255, 242, 214) : rgba(246, 230, 196), new Size(width * 0.84, height * 0.7));
   label.overflow = Label.Overflow.SHRINK;
+  fitButtonLabel(label, height);
   label.isBold = kind === 'bronze';
   label.enableOutline = true;
   label.outlineColor = rgba(0, 0, 0, 226);
@@ -571,8 +573,8 @@ export function mountRefButton(
     }
   }
   const label = host.addChildLabel(button, 'Label', text, labelX, 0, fontSize, kind === 'disabled' || kind === 'primaryDisabled' ? rgba(223, 212, 196) : rgba(255, 238, 206), new Size(width * (labelX ? 0.5 : 0.7), height * 0.72));
-  // 单行钮字:行高 = 字号(默认字号 + 8 会超出文字框,被 SHRINK 整体压小)
-  label.lineHeight = label.fontSize;
+  // 单行钮字:行高 = 字号(默认字号 + 8 会超出文字框,被 SHRINK 整体压小);上下留空
+  fitButtonLabel(label, height);
   label.overflow = Label.Overflow.SHRINK;
   label.isBold = kind === 'primary';
   label.enableOutline = true;

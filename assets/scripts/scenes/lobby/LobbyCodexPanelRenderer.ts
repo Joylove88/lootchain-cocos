@@ -30,6 +30,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
+import { fitButtonLabel } from '../UiPrimitiveFactory';
 
 /** 图鉴页素材(2026-09-15):复用任务弹框/背包/英雄卡素材;宝箱三态为图鉴专属(用户自出图,缺图退手绘)。 */
 const CODEX_UI_ASSETS = {
@@ -552,6 +553,7 @@ export class LobbyCodexPanelRenderer {
     }
     const label = this.host.addChildLabel(toggle, 'Text', '仅看未收集', boxX + boxSize + 8 * scale, 0, font, state.unownedOnly ? rgba(255, 228, 160) : rgba(226, 208, 168), new Size(textW, toggleH), HorizontalTextAlignment.LEFT);
     label.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(label, toggleH);
     this.applyOutline(label, scale, false);
     toggle.addComponent(Button);
     this.host.applyImageButtonFeedback(toggle, 1.03, 0.97);
@@ -573,6 +575,7 @@ export class LobbyCodexPanelRenderer {
     }
     const label = this.host.addChildLabel(btn, 'Text', text, 0, 0, 23 * scale, active ? rgba(255, 231, 166) : rgba(200, 182, 142), new Size(width - 16 * scale, 30 * scale));
     label.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(label, height);
     this.applyOutline(label, scale, active);
     btn.addComponent(Button);
     btn.on(Button.EventType.CLICK, onClick, this);

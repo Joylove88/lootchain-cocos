@@ -43,6 +43,7 @@ import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 import { patchBattleUnitSpineRuntimeEnums, type BattleUnitSpineRuntimeData } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { fitButtonLabel } from '../UiPrimitiveFactory';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -2760,7 +2761,7 @@ export class LobbyHeroDetailPanelRenderer {
     const attrTitleY = height / 2 - (phone ? 29 : 40) * scale;
     this.addSectionTitle(panel, 'LobbyHeroDetailAttrSection', '基础属性', width, attrTitleY, scale);
     const detailBtnW = (phone ? 108 : 96) * scale;
-    const detailBtnH = (phone ? 30 : 34) * scale;
+    const detailBtnH = (phone ? 36 : 34) * scale;
     const detailBtn = this.host.addChildPlainNode(panel, 'LobbyHeroDetailAttrDetailBtn', width / 2 - 24 * scale - detailBtnW / 2, attrTitleY, detailBtnW, detailBtnH);
     if (!this.host.addSprite('LobbyHeroDetailAttrDetailBtnArt', HERO_AI_BTN_ATTR_DETAIL_ASSET, 0, 0, detailBtnW, detailBtnH, detailBtn)) {
       const bg = detailBtn.addComponent(Graphics);
@@ -2773,6 +2774,7 @@ export class LobbyHeroDetailPanelRenderer {
     }
     const detailLabel = this.host.addChildLabel(detailBtn, 'Label', '属性详情', 0, 0, 16 * scale, rgba(232, 210, 164), new Size(detailBtnW - 10 * scale, 20 * scale));
     detailLabel.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(detailLabel, detailBtnH);
     detailBtn.addComponent(Button);
     detailBtn.on(Button.EventType.CLICK, () => this.showAttrDetailPopup(panel, hero, scale), this);
     this.host.applyImageButtonFeedback(detailBtn);
@@ -2834,7 +2836,7 @@ export class LobbyHeroDetailPanelRenderer {
     this.addSectionTitle(parent, 'LobbyHeroDetailAffixSection', '特性加成', width, affixTitleY, scale);
     if ((hero.affixes ?? []).length > 0) {
       const refineW = 76 * scale;
-      const refineH = 26 * scale;
+      const refineH = (phone ? 34 : 26) * scale;
       const refineBtn = this.host.addChildPlainNode(parent, 'LobbyHeroDetailRefineEntry', width / 2 - sideInset - refineW / 2, affixTitleY, refineW, refineH);
       const g = refineBtn.addComponent(Graphics);
       g.fillColor = rgba(96, 34, 26, 220);
@@ -2845,6 +2847,7 @@ export class LobbyHeroDetailPanelRenderer {
       g.stroke();
       const label = this.host.addChildLabel(refineBtn, 'LobbyHeroDetailRefineEntryLabel', '洗练', 0, 0, 16 * scale, rgba(244, 214, 150), new Size(refineW - 12 * scale, refineH - 4 * scale));
       label.overflow = Label.Overflow.SHRINK;
+      fitButtonLabel(label, refineH);
       refineBtn.addComponent(Button);
       refineBtn.on(Button.EventType.CLICK, () => this.host.openLobbyHeroRefineDialog(), this);
       this.host.applyImageButtonFeedback(refineBtn);
@@ -3951,6 +3954,7 @@ export class LobbyHeroDetailPanelRenderer {
     ug.stroke();
     const upLabel = this.host.addChildLabel(upBtn, 'Label', maxed ? '已满级' : capped ? '已达上限' : '升 级', 0, 0, fontSize * scale, blocked ? rgba(172, 160, 136) : rgba(252, 226, 168), new Size(upW - 10 * scale, 26 * scale));
     upLabel.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(upLabel, upH);
     this.applyOutline(upLabel, scale, false);
     if (maxed) {
       return;
@@ -4144,7 +4148,7 @@ export class LobbyHeroDetailPanelRenderer {
     if (phone) {
       // 手机:一键穿戴 / 一键卸下放标题条右侧(立绘顶部是标题横幅),高度收进标题条内。
       const quickW = 112 * scale;
-      const quickH = 30 * scale;
+      const quickH = 36 * scale;
       const quickY = height / 2 - 29 * scale;
       const makeQuick = (name: string, text: string, x: number, fill: { r: number; g: number; b: number }, onClick: () => void) => {
         const btn = this.host.addChildPlainNode(panel, name, x, quickY, quickW, quickH);
@@ -4157,6 +4161,7 @@ export class LobbyHeroDetailPanelRenderer {
         g.stroke();
         const label = this.host.addChildLabel(btn, `${name}Label`, state.busy ? '处理中' : text, 0, 0, 19 * scale, rgba(250, 232, 184), new Size(quickW - 14 * scale, quickH - 4 * scale));
         label.overflow = Label.Overflow.SHRINK;
+        fitButtonLabel(label, quickH);
         this.applyOutline(label, scale, true);
         if (!state.busy) {
           btn.addComponent(Button);
@@ -4185,6 +4190,7 @@ export class LobbyHeroDetailPanelRenderer {
       g.stroke();
       const chipLabel = this.host.addChildLabel(chip, 'Label', slot.label, 0, 0, 17 * scale, selected ? rgba(250, 226, 160) : rgba(196, 182, 148), new Size(chipW - 6 * scale, 22 * scale));
       chipLabel.overflow = Label.Overflow.SHRINK;
+      fitButtonLabel(chipLabel, chipH);
       chip.addComponent(Button);
       this.applyPointerCursor(chip);
       chip.on(Button.EventType.CLICK, () => {
@@ -4306,6 +4312,7 @@ export class LobbyHeroDetailPanelRenderer {
     const btnText = busy ? '处理中' : onThisHero ? '卸下' : levelLocked ? `需Lv.${selected.requiredLevel}` : onOtherHero ? '转移' : '穿戴';
     const btnLabel = this.host.addChildLabel(actionBtn, 'Label', btnText, 0, 0, 18 * scale, rgba(248, 226, 168), new Size(btnW - 10 * scale, btnH - 6 * scale));
     btnLabel.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(btnLabel, btnH);
     if (!busy && !(levelLocked && !onThisHero)) {
       actionBtn.addComponent(Button);
       actionBtn.on(Button.EventType.CLICK, () => {
@@ -4327,6 +4334,7 @@ export class LobbyHeroDetailPanelRenderer {
     eg.stroke();
     const enhLabel = this.host.addChildLabel(enhBtn, 'Label', '强化', 0, 0, 17 * scale, rgba(248, 224, 168), new Size(enhW - 8 * scale, btnH - 6 * scale));
     enhLabel.overflow = Label.Overflow.SHRINK;
+    fitButtonLabel(enhLabel, btnH);
     if (!busy) {
       enhBtn.addComponent(Button);
       enhBtn.on(Button.EventType.CLICK, () => this.host.openLobbyEquipEnhanceDialog(selected.id), this);
