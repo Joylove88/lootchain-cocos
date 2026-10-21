@@ -98,6 +98,8 @@ const FORGE_GEM_LOCK = `${FORGE_REF_DIR}gem_lock/spriteFrame`;
 const FORGE_GEM_SOCKET_DIM = `${FORGE_REF_DIR}gem_socket_dim/spriteFrame`;
 const FORGE_GEM_NUM_BADGE = `${FORGE_REF_DIR}gem_num_badge/spriteFrame`;
 const FORGE_GEM_NAME_PLATE = `${FORGE_REF_DIR}gem_name_plate/spriteFrame`;
+/** 裸宝石(从带框宝石图标裁出的宝石芯,勋章 / 孔位行里用,避免框套框)。 */
+const gemCoreAsset = (type: string): string => `${FORGE_REF_DIR}gem_core_${(type || '').toLowerCase() === 'hp' ? 'hp' : (type || '').toLowerCase() === 'atk' ? 'atk' : 'def'}/spriteFrame`;
 /** 2026-10-19 新素材并入锻造首开预载组(与 FORGE_PRELOAD_ASSETS 一起到货合并整刷,首开不再空着)。 */
 export const FORGE_PRELOAD_ASSETS_V3: readonly string[] = [
   FORGE_REF_FUSE_PORTAL.path, FORGE_REF_FUSE_SLOT_ASSET, FORGE_REF_DEC_CRUCIBLE.path, FORGE_REF_GEM_PEDESTAL.path,
@@ -105,6 +107,7 @@ export const FORGE_PRELOAD_ASSETS_V3: readonly string[] = [
   FORGE_FUSE_BG.path, FORGE_FUSE_NAME_PLATE.path, FORGE_FUSE_LUCK_ROW.path, FORGE_FUSE_LUCK_GEM, ...FORGE_FUSE_BEAMS, FORGE_FUSE_SPARK, FORGE_FUSE_ARROW, FORGE_FUSE_SOFT_SHADE, FORGE_FUSE_VIGNETTE,
   FORGE_DEC_BG.path, FORGE_DEC_FURNACE, FORGE_DEC_CHIP.path, FORGE_DEC_CHIP_ON.path, FORGE_DEC_CHECK, FORGE_DEC_WARN, FORGE_DEC_TAG,
   FORGE_GEM_BG.path, FORGE_GEM_STAGE, FORGE_GEM_LOCK, FORGE_GEM_SOCKET_DIM, FORGE_GEM_NUM_BADGE, FORGE_GEM_NAME_PLATE,
+  gemCoreAsset('hp'), gemCoreAsset('atk'), gemCoreAsset('def'),
 ];
 export const FORGE_AI_ANVIL_ASSET = 'ui/forge/ai/forge_anvil/spriteFrame';
 export const FORGE_AI_FUSE_ALTAR_ASSET = 'ui/forge/ai/fuse_altar/spriteFrame';
@@ -2242,12 +2245,11 @@ export class LobbyForgePanelRenderer {
         }
       } else {
         if (info) {
-          const tq = equipQualityColor(GEM_TIER_QUALITY[info.tier - 1]);
-          const glow = medalNode.addComponent(Graphics);
-          glow.fillColor = rgba(tq.r, tq.g, tq.b, 120);
-          glow.circle(0, 0, size * 0.3);
-          glow.fill();
-          this.host.addSprite('Gem', gemIconAsset(info.type), 0, 0, size * 0.46, size * 0.46, medalNode);
+          // 原型:勋章芯暗底 + 大宝石填满芯(约 0.62 径),不加彩色光圈
+          mountRefSolid(this.host, medalNode, 'GemBack', 0, 0, size * 0.5, size * 0.5, rgba(14, 10, 10, 235));
+          if (!this.host.addSprite('Gem', gemCoreAsset(info.type), 0, 0, size * 0.5, size * 0.5, medalNode)) {
+            this.host.addSprite('Gem', gemIconAsset(info.type), 0, 0, size * 0.66, size * 0.66, medalNode);
+          }
         }
         this.host.addSprite('Ring', info ? FORGE_REF_GEM_MEDALLION_FULL_ASSET : FORGE_REF_GEM_MEDALLION_EMPTY_ASSET, 0, 0, size, size, medalNode);
       }
@@ -2298,17 +2300,20 @@ export class LobbyForgePanelRenderer {
         continue;
       }
       if (info) {
-        this.host.addSprite('GemArt', gemIconAsset(info.type), lx(1058), 0, iconSize, iconSize, row);
+        if (!this.host.addSprite('GemArt', gemCoreAsset(info.type), lx(1058), 0, iconSize, iconSize, row)) {
+          this.host.addSprite('GemArt', gemIconAsset(info.type), lx(1058), 0, iconSize * 1.3, iconSize * 1.3, row);
+        }
         const gemLabel = info.label.replace('·', ' ');
         const attr = info.attrText.replace(/\+/g, ' +');
         this.addRichLine(row, 'GemName', `<color=#FAF0A5>${gemLabel}</color><color=#C8C0B0>  ·  </color><color=#FAEC64>${attr}</color>`, textX, textY, FS(20), RS(340), 0);
         // 拆卸(红铜钮 1455..1575)+ 金币 + 费用白字
-        const unsocket = mountRefPlateButton(this.host, row, 'UnsocketBtn', '拆卸', lx(1515), 0, RS(120), FS(34), scale, 'dark', !state.busy,
+        // 原型:红铜实心钮(铜钮底染红)
+        const unsocket = mountRefPlateButton(this.host, row, 'UnsocketBtn', '拆卸', lx(1515), 0, RS(120), FS(34), scale, 'bronze', !state.busy,
           () => this.host.unsocketLobbyForgeGem(selected.id, i), { fontSize: FS(20) });
         unsocket.getChildByName('Art')?.walk((child) => {
           const sp = child.getComponent(Sprite);
           if (sp) {
-            sp.color = rgba(255, 168, 140, 255);
+            sp.color = rgba(255, 140, 112, 255);
           }
         });
         this.host.addSprite('CostIcon', BAG_ICON_GOLD_ASSET, lx(1600), 0, FS(24), FS(24), row);
