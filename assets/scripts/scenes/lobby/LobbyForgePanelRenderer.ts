@@ -2236,8 +2236,7 @@ export class LobbyForgePanelRenderer {
     const shownCount = Math.min(pool.length, FORGE_PHONE_GRID_CAP);
     const gridRows = Math.ceil(shownCount / columns);
     const gridPad = FS(4);
-    const moreH = pool.length > shownCount ? FS(30) : 0;
-    const gridContentH = gridPad * 2 + Math.max(0, gridRows - 1) * step + (gridRows > 0 ? cell : 0) + moreH;
+    const gridContentH = gridPad * 2 + Math.max(0, gridRows - 1) * step + (gridRows > 0 ? cell : 0);
     const gridScroll = this.addPhoneScroll(leftPanel.node, 'ForgeGemGrid', gridCx, gridTop, gridBottom, gridW + FS(10), gridContentH, scale);
     pool.slice(0, shownCount).forEach((item, index) => {
       const x = -gridW / 2 + cell / 2 + (index % columns) * step;
@@ -2249,10 +2248,7 @@ export class LobbyForgePanelRenderer {
         this.host.applyImageButtonFeedback(node, 1.03, 0.97);
       }
     });
-    if (pool.length > shownCount) {
-      const more = this.host.addChildLabel(gridScroll.content, 'ForgeGemMore', `共 ${pool.length} 件,显示前 ${shownCount} 件`, 0, gridScroll.topY - gridContentH + gridPad + moreH / 2, FS(18), rgba(190, 184, 171), new Size(gridW, FS(26)));
-      more.lineHeight = more.fontSize;
-    }
+    // 2026-10-21 用户:宝石页列表最下方的「共 N 件,显示前 N 件」统计去掉
 
     // ── 右:「宝石镶嵌」面板:舞台插画铺 138..534(底座在图里)、名牌 (1310,161)、靴子立在底座、四枚勋章(序号在勋章上方)+ V 锁章、五行孔位 ──
     const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeGemSidePanel', rightCx, panelCy, FS(rightW), panelH, scale, '宝石镶嵌', { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 242) });
