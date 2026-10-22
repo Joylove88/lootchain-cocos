@@ -1183,7 +1183,8 @@ export class LobbyForgePanelRenderer {
       const row = this.host.addChildPlainNode(scroll.content, `ForgeEnhanceRow_${item.id}`, 0, cy, rowW, rowH);
       mountRefSliced(this.host, row, 'Bg', selected ? FORGE_REF_ROW_SELECTED : FORGE_REF_ROW_NORMAL, 0, 0, rowW, rowH);
       const RXr = (px: number): number => FS(px - 88) - rowW / 2;
-      const iconSize = FS(78);
+      // 图标 70 < 行高 86:行底素材内缘有 ~6px 暗带,78 时会盖住图标最外圈的细稀有度描边(用户:橙装边框丢失);留 8 落在平区
+      const iconSize = FS(70);
       const iconArt = equipIconAssetByCode(item.equipCode);
       if (!iconArt || !this.host.addSprite('Icon', iconArt, RXr(137), 0, iconSize, iconSize, row)) {
         this.addEquipIcon(row, 'Icon', item.equipCode, item.slot, iconSize, scale);

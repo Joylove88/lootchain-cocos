@@ -107,6 +107,8 @@ export interface EquipEnhanceResultVO {
   downgraded: boolean;
   stoneCost: number;
   goldCost: number;
+  /** 强化后所属英雄战力(未穿戴 / 旧服务端为 null):特效播完立即飘战力差,不等回读。 */
+  heroPowerAfter?: number | null;
 }
 
 export interface EquipDecomposeResultVO {

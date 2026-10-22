@@ -4352,6 +4352,7 @@ export class LootChainGameRoot extends Component {
     const beforePower = this.lobbyHeroPowerById(equipHeroId);
     let powerDelta = 0;
     let flashUntil = 0;
+    let floated = false;
     this.beginSceneMutation();
     try {
       const result = await this.api.equipment.enhance(equipmentId, this.lobbyEquipEnhanceUseBless, this.lobbyEquipEnhanceUseGuard);
@@ -4376,12 +4377,23 @@ export class LootChainGameRoot extends Component {
         flashUntil = Date.now() + 1050;
       }
       // 金币/材料已被服务端扣减:回读资料,让顶部与锻造页的金币同步减少(2026-09-22 用户反馈)。四份互不依赖,并行。
-      const [items] = await Promise.all([
+      const reads = Promise.all([
         this.api.equipment.list(),
         this.loadLobbyProfile(this.currentLobbyProfile().userId),
         this.loadLobbyBag(true),
         this.loadLobbyHeroRoster(true),
       ]);
+      // 2026-10-22 用户「特效完后卡 1~2 秒才飘战力」:真凶是飘字要等上面四次回读(手机上 1~2 秒)。
+      // 服务端已随结果返回强化后英雄战力,特效一播完立刻飘,回读只服务后面的整页重建。
+      if (typeof result.heroPowerAfter === 'number') {
+        const wait = flashUntil - Date.now();
+        if (wait > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, wait));
+        }
+        this.spawnPowerDeltaFloat(result.heroPowerAfter - beforePower);
+        floated = true;
+      }
+      const [items] = await reads;
       this.lobbyEquipmentItems = items;
       this.lobbyHeroEquipDirty = true;
       powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
@@ -4395,8 +4407,11 @@ export class LootChainGameRoot extends Component {
       }
       this.lobbyHeroEquipBusy = false;
       this.endSceneMutation();
+      // 飘字是瞬时覆盖层,不依赖整页重建:先飘(旧服务端没返回战力时的兜底)再重建
+      if (!floated) {
+        this.spawnPowerDeltaFloat(powerDelta);
+      }
       this.refreshLobbyHeroEquipDialog();
-      this.spawnPowerDeltaFloat(powerDelta);
     }
   }
 
