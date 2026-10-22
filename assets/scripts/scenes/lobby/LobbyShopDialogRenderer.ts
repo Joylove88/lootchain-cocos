@@ -21,7 +21,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
-import { mountRefButton, mountRefHeaderBand, mountRefSectionDiamond, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_ICON_RING_ASSET, REF_KIT, refCardFrameK } from '../UiRefKit';
+import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_ICON_RING_ASSET, REF_KIT, REF_SECTION_EMBLEM, REF_TITLE_STAR, refCardFrameK } from '../UiRefKit';
 
 /**
  * 货币商店弹窗(2026-09-22 用户拍板"你来设计",docs/33):
@@ -488,7 +488,7 @@ export class LobbyShopDialogRenderer {
       // 左栏信息框:细金框 + 暗红标题带「当前体力」(原型),与右侧卡片同高
       const boxW = panelW * 0.4;
       const boxH = cardH;
-      const box = mountRefTitledPanel(this.host, panel, 'LobbyShopStaminaBox', leftX, leftCy, boxW, boxH, scale, '当前体力', { bandH: cardH * 0.11, fontSize: cardH * 0.066, fill: rgba(14, 10, 10, 200) }).node;
+      const box = mountRefTitledPanel(this.host, panel, 'LobbyShopStaminaBox', leftX, leftCy, boxW, boxH, scale, '当前体力', { bandH: cardH * 0.11, fontSize: cardH * 0.066, fill: rgba(14, 10, 10, 200), legacyRed: true }).node;
       if (catalog.stamina > catalog.maxStamina) {
         const over = this.host.addChildLabel(box, 'Over', `已超出上限 +${catalog.stamina - catalog.maxStamina}`, 0, -boxH / 2 + 24 * scale, 20 * scale, rgba(150, 240, 160), new Size(boxW * 0.8, 28 * scale));
         over.overflow = Label.Overflow.SHRINK;
@@ -826,13 +826,16 @@ export class LobbyShopDialogRenderer {
       const bandH = cardH * L.bandHF;
       nameY = cardH / 2 - REF_CARD_FRAME_LINE.top * fk - bandH / 2;
       bandBottom = nameY - bandH / 2;
-      mountRefHeaderBand(this.host, card, `${name}Band`, 0, nameY, cardW - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale, { center: true });
+      mountRefTitleBand(this.host, card, `${name}Band`, 0, nameY, cardW - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
       raiseRefFrame(card);
       // 标题带左侧徽记:2026-10-20 用户「商店卡片的星也换成大四芒星」,与其它分区标题带同款(约 1 倍带高);缺图退回旧小徽记
       const textHalf = (spec.name.length * fs.name * 0.85) / 2;
-      // 2026-10-22 A 方案:内层标题带改暗带 + 金线,四芒星换小金菱形
-      const diamond = Math.max(10 * scale, bandH * 0.32);
-      mountRefSectionDiamond(this.host, card, `${name}Emblem`, -textHalf - 10 * scale - diamond / 2, nameY, diamond);
+      const starSize = bandH * 1.05;
+      if (!this.host.addSprite(`${name}Emblem`, REF_TITLE_STAR, -textHalf - 8 * scale - starSize / 2, nameY, starSize, starSize, card)) {
+        const emblemH = bandH * 0.62;
+        const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
+        this.host.addSprite(`${name}Emblem`, REF_SECTION_EMBLEM.path, -textHalf - 12 * scale - emblemW / 2, nameY, emblemW, emblemH, card);
+      }
       nameW = cardW * 0.64;
     }
     const nameLabel = this.host.addChildLabel(card, `${name}Name`, spec.name, 0, nameY, fs.name, rgba(255, 236, 196), new Size(nameW, fs.name * 1.4));

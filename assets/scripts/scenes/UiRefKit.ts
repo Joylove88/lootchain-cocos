@@ -482,7 +482,7 @@ export function mountRefTitledPanel(
   h: number,
   scale: number,
   title: string,
-  options: { bandH?: number; fontSize?: number; center?: boolean; fill?: Color } = {},
+  options: { bandH?: number; fontSize?: number; center?: boolean; fill?: Color; legacyRed?: boolean } = {},
 ): { node: Node; bodyTop: number; bandY: number } {
   const node = host.addChildPlainNode(parent, name, x, y, w, h);
   refSolidFill(host, host.addChildPlainNode(node, 'Back', 0, 0, w, h), w - 8, h - 8, options.fill ?? rgba(10, 8, 8, 226), 8 * scale);
@@ -497,6 +497,28 @@ export function mountRefTitledPanel(
   }
   const bandH = options.bandH ?? 50 * scale;
   const bandY = innerTop - bandH / 2;
+  if (options.legacyRed) {
+    // 2026-10-22 用户「强化 / 背包 / 体力补充 / 合成 / 分解 / 宝石 这些恢复」:这几页保留原红带 + 大四芒星 + 居中金字
+    mountRefTitleBand(host, node, 'Band', 0, bandY, w - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
+    raiseRefFrame(node);
+    const legacyFont = options.fontSize ?? 24 * scale;
+    const starSize = bandH * 1.05;
+    const emblemH = starSize;
+    const emblemW = starSize;
+    const legacyTextW = Math.max(legacyFont, Math.min(w - emblemW - 60 * scale, title.length * legacyFont * 1.05));
+    const gap = 10 * scale;
+    const emblemX = options.center === false ? -w / 2 + 22 * scale + emblemW / 2 : -(emblemW + gap + legacyTextW) / 2 + emblemW / 2;
+    if (!host.addSprite(`${name}Emblem`, REF_TITLE_STAR, emblemX, bandY, emblemW, emblemH, node)) {
+      host.addSprite(`${name}Emblem`, REF_SECTION_EMBLEM.path, emblemX, bandY, bandH * 0.6 / REF_SECTION_EMBLEM.aspect, bandH * 0.6, node);
+    }
+    const legacyLabel = host.addChildLabel(node, `${name}Title`, title, emblemX + emblemW / 2 + gap + legacyTextW / 2, bandY, legacyFont, rgba(255, 222, 140), new Size(legacyTextW + 8 * scale, bandH - 8 * scale));
+    legacyLabel.overflow = Label.Overflow.SHRINK;
+    legacyLabel.isBold = true;
+    legacyLabel.enableOutline = true;
+    legacyLabel.outlineColor = rgba(0, 0, 0, 226);
+    legacyLabel.outlineWidth = Math.max(1, 1.4 * scale);
+    return { node, bodyTop: bandY - bandH / 2, bandY };
+  }
   mountRefHeaderBand(host, node, 'Band', 0, bandY, w - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
   raiseRefFrame(node);
   const fontSize = options.fontSize ?? 24 * scale;

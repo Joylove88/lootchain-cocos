@@ -550,7 +550,7 @@ export class LobbyBagPanelRenderer {
 
   private renderItemGrid(parent: Node, items: BagItemEntryVO[], selectedItem: BagItemEntryVO, x: number, y: number, width: number, height: number, scale: number, totalItems: number, state: LobbyBagPanelState): void {
     // 2026-10-17 界面统一(GPT 原型):细金框面板 + 暗红标题带(徽记 + 当前分类名),容量签放在标题带右端。
-    const panelInfo = mountRefTitledPanel(this.host, parent, 'LobbyBagItemGrid', x, y, width, height, scale, this.selectedGroupTitle(state.groups), { center: false, bandH: 52 * scale, fill: rgba(10, 8, 8, 232) });
+    const panelInfo = mountRefTitledPanel(this.host, parent, 'LobbyBagItemGrid', x, y, width, height, scale, this.selectedGroupTitle(state.groups), { center: false, bandH: 52 * scale, fill: rgba(10, 8, 8, 232), legacyRed: true });
     const grid = panelInfo.node;
     const capWidth = 196 * scale;
     const capHeight = 38 * scale;

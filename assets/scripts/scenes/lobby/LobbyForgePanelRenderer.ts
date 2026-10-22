@@ -24,7 +24,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem, mountRefHeaderBand, mountRefSectionDiamond } from '../UiRefKit';
+import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
 import {
   describeEquipAttrs,
   equipQualityColor,
@@ -1119,14 +1119,13 @@ export class LobbyForgePanelRenderer {
     const PX = (px: number): number => LX(px) - listCx;
     const PY = (py: number): number => FY(py) - listCy;
     // 标题带(原型 99..140 暗红底,字离带左 30、上下居中)+ 带下金线;页签行下再一条金线(一级分类与列表分隔)
-    // 2026-10-22 A 方案:内层标题 = 暗带 + 渐隐金线 + 小金菱形(外层页面标题不动)
-    mountRefHeaderBand(this.host, listPanel, 'HeaderBand', PX((listL + listR) / 2), PY(120), listW - FS(14), FS(44), scale);
-    mountRefSectionDiamond(this.host, listPanel, 'HeaderDiamond', PX(100), PY(120), FS(15));
+    mountRefSolid(this.host, listPanel, 'HeaderBand', PX((listL + listR) / 2), PY(119.5), listW - FS(14), FS(41), rgba(76, 12, 10, 235));
     const goldLine = (name: string, py: number): void => {
       mountRefSolid(this.host, listPanel, name, PX((listL + listR) / 2), PY(py), listW - FS(22), Math.max(1, FS(1.5)), rgba(214, 170, 92, 150));
     };
+    goldLine('HeaderLine', 141);
     goldLine('TabLine', 210);
-    label(listPanel, 'ForgeEnhListHeader', `选择装备（${items.length}）`, PX(118), PY(120), FS(24), rgba(236, 200, 128), FS(300), HorizontalTextAlignment.LEFT, true);
+    label(listPanel, 'ForgeEnhListHeader', `选择装备（${items.length}）`, PX(105), PY(120), FS(24), rgba(244, 228, 186), FS(300), HorizontalTextAlignment.LEFT, true);
     // 部位页签:全部(92..170)+ 6 部位(图标 + 字),选中 = 金边签
     const tabY = PY(175);
     const tabH = FS(60);
@@ -1268,7 +1267,7 @@ export class LobbyForgePanelRenderer {
     const rightPanel = (name: string, title: string, y0: number, y1: number): { node: Node; QY: (py: number) => number; QX: (px: number) => number; bodyTop: number } => {
       const cy = FY((y0 + y1) / 2);
       shadow(`${name}Shadow`, rightCx, cy, rightW, FS(y1 - y0));
-      const panel = mountRefTitledPanel(this.host, parent, name, rightCx, cy, rightW, FS(y1 - y0), scale, title, { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 242) });
+      const panel = mountRefTitledPanel(this.host, parent, name, rightCx, cy, rightW, FS(y1 - y0), scale, title, { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 242), legacyRed: true });
       return { node: panel.node, QY: (py: number) => FY(py) - cy, QX: (px: number) => RX(px) - rightCx, bodyTop: panel.bodyTop };
     };
     const statRowW = RS(490);
@@ -1900,7 +1899,7 @@ export class LobbyForgePanelRenderer {
     if (sideShadow) {
       sideShadow.color = rgba(0, 0, 0, 215);
     }
-    const side = mountRefTitledPanel(this.host, parent, 'ForgeFuseGroupsFrame', sideCx, FY((88 + 788) / 2), sideW, sideH, scale, '可合成装备', { bandH: FS(56), fontSize: FS(30), center: false, fill: rgba(10, 8, 7, 242) });
+    const side = mountRefTitledPanel(this.host, parent, 'ForgeFuseGroupsFrame', sideCx, FY((88 + 788) / 2), sideW, sideH, scale, '可合成装备', { bandH: FS(56), fontSize: FS(30), center: false, fill: rgba(10, 8, 7, 242), legacyRed: true });
     const rowL = sideL + 15;
     const rowR = sideR - 15;
     const rowW = FS(rowR - rowL);
@@ -2056,7 +2055,7 @@ export class LobbyForgePanelRenderer {
 
     // ── 左:「可镶嵌装备」面板 + 8 列新图标网格(四边内缩 PAD,右侧留滚动条);格名白字、穿戴绿「穿」角标、选中金框 ──
     const leftW = FS(leftR - leftL);
-    const leftPanel = mountRefTitledPanel(this.host, parent, 'ForgeGemGridFrame', leftCx, panelCy, leftW, panelH, scale, '可镶嵌装备', { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 240) });
+    const leftPanel = mountRefTitledPanel(this.host, parent, 'ForgeGemGridFrame', leftCx, panelCy, leftW, panelH, scale, '可镶嵌装备', { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 240), legacyRed: true });
     const PAD = 26;
     const columns = 8;
     const gapPx = 10;
@@ -2091,7 +2090,7 @@ export class LobbyForgePanelRenderer {
     // 2026-10-21 用户:宝石页列表最下方的「共 N 件,显示前 N 件」统计去掉
 
     // ── 右:「宝石镶嵌」面板:舞台插画铺 138..534(底座在图里)、名牌 (1310,161)、靴子立在底座、四枚勋章(序号在勋章上方)+ V 锁章、五行孔位 ──
-    const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeGemSidePanel', rightCx, panelCy, FS(rightW), panelH, scale, '宝石镶嵌', { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 242) });
+    const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeGemSidePanel', rightCx, panelCy, FS(rightW), panelH, scale, '宝石镶嵌', { bandH: FS(46), fontSize: FS(26), fill: rgba(10, 8, 7, 242), legacyRed: true });
     const side = sidePanel.node;
     this.fxAnchor = { x: rightCx + this.bodyOffsetX, y: FY(330) };
     this.powerAnchor = { x: rightCx + this.bodyOffsetX, y: FY(200) };
@@ -2606,7 +2605,7 @@ export class LobbyForgePanelRenderer {
     plateButton(leftPanel, 'ForgeDecSelectAll', '一键全选', QX(innerR - 180 - 16 - 95), QY(btnY), FS(190), FS(btnH), REF_PLATE_DARK, !state.busy && visibleIds.length > 0, FS(23), () => this.host.setLobbyForgeDecomposeSelection(visibleIds));
 
     // ── 右栏「分解概览」:红标题带(105..160)+ 熔炉插画铺满 162..545 + 已选 / 预计获得 + 可能获得材料 + 提示 + 两钮 ──
-    const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeDecSidePanel', rightCx, panelCy, FS(rightW), panelH, scale, '分解概览', { bandH: FS(56), fontSize: FS(32), fill: rgba(10, 8, 7, 242) });
+    const sidePanel = mountRefTitledPanel(this.host, parent, 'ForgeDecSidePanel', rightCx, panelCy, FS(rightW), panelH, scale, '分解概览', { bandH: FS(56), fontSize: FS(32), fill: rgba(10, 8, 7, 242), legacyRed: true });
     const side = sidePanel.node;
     this.fxAnchor = { x: rightCx + this.bodyOffsetX, y: FY(330) };
     this.powerAnchor = { x: rightCx + this.bodyOffsetX, y: FY(200) };
