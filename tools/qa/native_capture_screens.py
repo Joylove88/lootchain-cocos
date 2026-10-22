@@ -45,6 +45,9 @@ SCREENS = [
     # 英雄详情:属性页(六件装备格)与装备页(装备列表),装备图标改版前后对照用
     ('hero_attr', HERO_TAB_JS.format(tab='attr'), 5.0),
     ('hero_equip', HERO_TAB_JS.format(tab='equip'), 5.0),
+    # 2026-10-22 英雄详情页打磨:技能 / 升星页签
+    ('hero_skill', HERO_TAB_JS.format(tab='skill'), 5.0),
+    ('hero_star', HERO_TAB_JS.format(tab='star'), 5.0),
     # 2026-10-21 按钮字留白全量排查补充的界面
     ('hero_roster', "root.openLobbyHeroRosterPanel();", 3.5),
     ('hero_refine', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => root.openLobbyHeroRefineDialog(), 1800);"), 5.0),

@@ -2797,7 +2797,8 @@ export class LobbyHeroDetailPanelRenderer {
     const phone = !!this.phoneFrame;
     const growthY = height / 2 - (phone ? 175 : 196) * scale;
     const sideInset = 24 * scale;
-    const chips = resolveGrowthChips(hero);
+    // 2026-10-22 去重复:大招等级在下方技能卡已有(大招 · LvN/上限),养成签只留 幸运 / 觉醒
+    const chips = resolveGrowthChips(hero).filter((chip) => chip.label !== '大招');
     const chipGap = 10 * scale;
     const chipH = (phone ? 28 : 26) * scale;
     const chipW = (width - sideInset * 2 - chipGap * (chips.length - 1)) / chips.length;
@@ -2880,18 +2881,17 @@ export class LobbyHeroDetailPanelRenderer {
       const cy = topY - rowH / 2 - row * (rowH + rowGap);
       const card = this.host.addChildPlainNode(parent, `LobbyHeroDetailAffixCard_${index}`, cx, cy, cardWidth, rowH);
       const q = affixQualityColor(affix.quality);
+      // 2026-10-22 打磨:行底与「基础属性」格同款(暗底 + 细金描边),品质竖条画在同一个 Graphics 里
+      // (原来同节点挂两个 Graphics,第二个挂不上 → 行底丢失、与上方属性格不统一)
       const g = card.addComponent(Graphics);
-      g.fillColor = rgba(Math.round(q.r * 0.2 + 8), Math.round(q.g * 0.2 + 8), Math.round(q.b * 0.2 + 8), 214);
-      g.roundRect(-cardWidth / 2, -rowH / 2, cardWidth, rowH, Math.min(7 * scale, rowH / 2));
+      g.fillColor = rgba(12, 10, 10, 172);
+      g.rect(-cardWidth / 2, -rowH / 2, cardWidth, rowH);
       g.fill();
-      g.strokeColor = rgba(q.r, q.g, q.b, 168);
-      g.lineWidth = 2 * scale;
+      g.strokeColor = rgba(124, 93, 50, 118);
       g.stroke();
-      // 品质竖条(左侧强调)。
-      const bar = card.addComponent(Graphics);
-      bar.fillColor = rgba(q.r, q.g, q.b, 235);
-      bar.rect(-cardWidth / 2, -rowH / 2, 5 * scale, rowH);
-      bar.fill();
+      g.fillColor = rgba(q.r, q.g, q.b, 235);
+      g.rect(-cardWidth / 2, -rowH / 2, 4 * scale, rowH);
+      g.fill();
       const shortLabel = HERO_AFFIX_SHORT_LABELS[affix.code] ?? safeText(affix.name || affix.code);
       const value = Math.round((affix.value ?? 0) * 10) / 10;
       // 词条名暗色、数值亮白(右对齐贴品质字母前),形成"名-值-品质"三段可扫读结构。
@@ -2899,9 +2899,9 @@ export class LobbyHeroDetailPanelRenderer {
       const phone = !!this.phoneFrame;
       const valueW = cardWidth * (phone ? 0.3 : 0.34);
       const nameW = phone ? Math.max(40 * scale, cardWidth - 72 * scale - valueW) : cardWidth * 0.54;
-      const name = this.host.addChildLabel(card, 'LobbyHeroDetailAffixName', shortLabel, -cardWidth / 2 + 14 * scale, 0, 15 * scale, rgba(198, 184, 150), new Size(nameW, rowH - 6 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(card, 'LobbyHeroDetailAffixName', shortLabel, -cardWidth / 2 + 14 * scale, 0, 17 * scale, rgba(178, 158, 118), new Size(nameW, 24 * scale), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const valueLabel = this.host.addChildLabel(card, 'LobbyHeroDetailAffixValue', heroAffixValueText(affix.code, affix.value ?? 0), cardWidth / 2 - (phone ? 52 : 54) * scale, 0, 16 * scale, rgba(244, 232, 198), new Size(valueW, rowH - 6 * scale), HorizontalTextAlignment.RIGHT);
+      const valueLabel = this.host.addChildLabel(card, 'LobbyHeroDetailAffixValue', heroAffixValueText(affix.code, affix.value ?? 0), cardWidth / 2 - (phone ? 52 : 54) * scale, 0, 18 * scale, rgba(244, 232, 200), new Size(valueW, 24 * scale), HorizontalTextAlignment.RIGHT);
       valueLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(valueLabel, scale, false);
       const tag = this.host.addChildLabel(card, 'LobbyHeroDetailAffixQuality', safeText(affix.quality), cardWidth / 2 - (phone ? 10 : 22) * scale, 0, 16 * scale, rgba(q.r, q.g, q.b, 255), new Size((phone ? 38 : 34) * scale, rowH - 6 * scale), HorizontalTextAlignment.RIGHT);
@@ -3979,7 +3979,8 @@ export class LobbyHeroDetailPanelRenderer {
     const shownCount = Math.min(skills.length, 5);
     const rowGap = (phone ? 9 : 7) * scale;
     // 大招行独立加高(两行描述不贴边),其余行均分;行位按累计高度排布。
-    const ultimateExtra = 22 * scale;
+    // 2026-10-22 打磨:文字左缘右移后大招描述在手机上折成三行,大招行再加高 16
+    const ultimateExtra = (this.phoneFrame ? 38 : 22) * scale;
     // 手机:描述字号被抬到 20,行高上限放宽到 84 才放得下两行描述(名称 26 + 描述 + 上下各 8 内距)。
     const baseRowHeight = Math.min((phone ? 84 : 62) * scale, Math.max(38 * scale, (listHeight - 16 * scale - rowGap * (shownCount - 1) - ultimateExtra) / shownCount));
     let rowCursorY = listHeight / 2 - 8 * scale;
@@ -4030,15 +4031,21 @@ export class LobbyHeroDetailPanelRenderer {
       const nameColor = locked ? rgba(150, 140, 120) : isUltimate ? rgba(252, 224, 150) : rgba(242, 214, 146);
       const ultUpgradable = isUltimate && !hero.protagonist;
       // 文字右缘:普通行贴卡片内距(与大招按钮右缘同一条线),大招行让出按钮。
-      const skillTextWidth = width - (ultUpgradable ? 240 : 122) * scale;
-      const nameY = rowHeight / 2 - (phone ? 21 : 16) * scale;
+      // 2026-10-22 打磨:文字左缘离图标槽 14(原 4,大招描述贴着图标);名称 24 > 描述 20(原名称被 26 高的框 SHRINK 到 18,反比描述小)
+      const textLeft = -width / 2 + 96 * scale;
+      const skillTextWidth = width - (ultUpgradable ? 250 : 132) * scale;
+      const nameY = rowHeight / 2 - (phone ? 22 : 16) * scale;
+      const nameFont = (phone ? 24 : 18) * scale;
       // 名称(金)与标签(暗金,右对齐)分开:一眼先读到技能名,标签退为次要信息。
-      const name = this.host.addChildLabel(row, 'LobbyHeroDetailSkillName', skill.name, -width / 2 + 86 * scale, nameY, 18 * scale, nameColor, new Size(skillTextWidth * 0.5, 22 * scale), HorizontalTextAlignment.LEFT);
+      const name = this.host.addChildLabel(row, 'LobbyHeroDetailSkillName', skill.name, textLeft, nameY, nameFont, nameColor, new Size(skillTextWidth * 0.5, nameFont + 8 * scale), HorizontalTextAlignment.LEFT);
+      name.lineHeight = name.fontSize;
       name.overflow = Label.Overflow.SHRINK;
+      name.isBold = !locked;
       this.applyOutline(name, scale, false);
-      const tagLabel = this.host.addChildLabel(row, 'LobbyHeroDetailSkillTag', skill.tag, -width / 2 + 86 * scale + skillTextWidth, nameY, 15 * scale, locked ? rgba(150, 140, 118) : isUltimate ? rgba(236, 200, 140) : rgba(190, 166, 116), new Size(skillTextWidth * 0.48, 22 * scale), HorizontalTextAlignment.RIGHT);
+      const tagLabel = this.host.addChildLabel(row, 'LobbyHeroDetailSkillTag', skill.tag, textLeft + skillTextWidth, nameY, 15 * scale, locked ? rgba(150, 140, 118) : isUltimate ? rgba(236, 200, 140) : rgba(190, 166, 116), new Size(skillTextWidth * 0.48, nameFont + 8 * scale), HorizontalTextAlignment.RIGHT);
+      tagLabel.lineHeight = tagLabel.fontSize;
       tagLabel.overflow = Label.Overflow.SHRINK;
-      const desc = this.host.addChildLabel(row, 'LobbyHeroDetailSkillDesc', skill.description, -width / 2 + 86 * scale, (phone ? -14 : -8) * scale, 15 * scale, locked ? rgba(140, 130, 112) : rgba(190, 173, 133), new Size(skillTextWidth, rowHeight - (phone ? 44 : 26) * scale), HorizontalTextAlignment.LEFT);
+      const desc = this.host.addChildLabel(row, 'LobbyHeroDetailSkillDesc', skill.description, textLeft, (phone ? -15 : -8) * scale, 15 * scale, locked ? rgba(140, 130, 112) : rgba(182, 166, 128), new Size(skillTextWidth, rowHeight - (phone ? 46 : 26) * scale), HorizontalTextAlignment.LEFT);
       if (ultUpgradable) {
         // 大招升级入口(P6):行右侧按钮,打开材料弹窗。
         const upW = 92 * scale;
@@ -4529,10 +4536,11 @@ export class LobbyHeroDetailPanelRenderer {
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
     const listTitleY = awakenTop - awakenShift - 2 * scale - 17 * scale;
     this.addSectionTitle(panel, 'StarUnlockSection', '升星解锁', width, listTitleY, scale);
-    const rowH = (phone ? 54 : 62) * scale;
-    const rowStride = rowH + (phone ? 6 : 8) * scale;
+    // 2026-10-22 打磨:两行字原来顶着行框上下沿(54 高放两行 20 号字),加高到 62、行距收到 4
+    const rowH = (phone ? 58 : 62) * scale;
+    const rowStride = rowH + (phone ? 2 : 8) * scale;
     const nameY = (phone ? 13 : 15) * scale;
-    const descY = (phone ? -13 : -13) * scale;
+    const descY = (phone ? -14 : -13) * scale;
     const rowsTop = listTitleY - 17 * scale - 6 * scale;
     unlockStars.forEach((needStar, index) => {
       const ry = rowsTop - rowH / 2 - index * rowStride;
@@ -4580,7 +4588,9 @@ export class LobbyHeroDetailPanelRenderer {
       const textX = -rowW / 2 + 64 * scale;
       const textRight = pillX - pillW / 2 - 10 * scale;
       const textW = textRight - textX;
-      const nameLabel = this.host.addChildLabel(row, 'Name', skill ? skill.name : `被动技能 ${index + 1}`, textX, nameY, 18 * scale, unlocked ? rgba(248, 222, 160) : rgba(176, 164, 138), new Size(textW * 0.5, 24 * scale), HorizontalTextAlignment.LEFT);
+      const nameLabel = this.host.addChildLabel(row, 'Name', skill ? skill.name : `被动技能 ${index + 1}`, textX, nameY, (phone ? 22 : 18) * scale, unlocked ? rgba(248, 222, 160) : rgba(176, 164, 138), new Size(textW * 0.5, 26 * scale), HorizontalTextAlignment.LEFT);
+      nameLabel.lineHeight = nameLabel.fontSize;
+      nameLabel.isBold = unlocked;
       nameLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(nameLabel, scale, false);
       // 标签只留触发口径("被动 · 45% 触发" / "★4 解锁 · 42% 触发" → "45% 触发"),解锁星级已由右侧胶囊表达。
@@ -4589,7 +4599,8 @@ export class LobbyHeroDetailPanelRenderer {
         const tagLabel = this.host.addChildLabel(row, 'Tag', tagText, textRight, nameY, 15 * scale, unlocked ? rgba(206, 180, 124) : rgba(150, 140, 118), new Size(textW * 0.46, 22 * scale), HorizontalTextAlignment.RIGHT);
         tagLabel.overflow = Label.Overflow.SHRINK;
       }
-      const descLabel = this.host.addChildLabel(row, 'Desc', skill ? skill.description : '升星解锁本被动技能。', textX, descY, 15 * scale, unlocked ? rgba(210, 196, 164) : rgba(140, 130, 112), new Size(rowW / 2 - 12 * scale - textX, (phone ? 26 : 22) * scale), HorizontalTextAlignment.LEFT);
+      const descLabel = this.host.addChildLabel(row, 'Desc', skill ? skill.description : '升星解锁本被动技能。', textX, descY, 15 * scale, unlocked ? rgba(198, 184, 152) : rgba(140, 130, 112), new Size(rowW / 2 - 12 * scale - textX, (phone ? 24 : 22) * scale), HorizontalTextAlignment.LEFT);
+      descLabel.lineHeight = descLabel.fontSize;
       descLabel.overflow = Label.Overflow.SHRINK;
     });
     // 底部消耗带:同名碎片(背包 HERO_FRAGMENT:<heroCode>)+ 金币,数值为 hero_star_config 镜像;不足只把对应数字标红,不再重复写"材料不足"。
@@ -4705,15 +4716,29 @@ export class LobbyHeroDetailPanelRenderer {
     const bandW = width - 44 * scale;
     const bandH = (phone ? 32 : 30) * scale;
     const bandY = bottom + (hasHint ? (phone ? 121 : 127) : (phone ? 104 : 108)) * scale;
-    const band = this.host.addChildPlainNode(panel, `${name}CostBand`, 0, bandY, bandW, bandH);
-    const g = band.addComponent(Graphics);
+    // 2026-10-22 打磨:有提示行时底框向下包住提示行(标题行 + 提示行同一个框,四边留白一致),不再一条胶囊 + 框外飘一行字
+    const hintY = bottom + (phone ? 90 : 97) * scale;
+    const hintH = (phone ? 26 : 20) * scale;
+    const boxTop = bandY + bandH / 2 + 4 * scale;
+    const boxBottom = hasHint ? hintY - hintH / 2 - 6 * scale : bandY - bandH / 2 - 4 * scale;
+    const boxH = boxTop - boxBottom;
+    const boxNode = this.host.addChildPlainNode(panel, `${name}CostBox`, 0, (boxTop + boxBottom) / 2, bandW, boxH);
+    const g = boxNode.addComponent(Graphics);
     g.fillColor = rgba(10, 8, 8, 190);
-    g.roundRect(-bandW / 2, -bandH / 2, bandW, bandH, bandH / 2);
+    g.roundRect(-bandW / 2, -boxH / 2, bandW, boxH, 10 * scale);
     g.fill();
     g.strokeColor = rgba(150, 118, 66, 130);
     g.lineWidth = 1 * scale;
-    g.roundRect(-bandW / 2, -bandH / 2, bandW, bandH, bandH / 2);
+    g.roundRect(-bandW / 2, -boxH / 2, bandW, boxH, 10 * scale);
     g.stroke();
+    if (hasHint) {
+      // 标题行与提示行之间一道细分隔线
+      g.strokeColor = rgba(150, 118, 66, 70);
+      g.moveTo(-bandW / 2 + 24 * scale, bandY - bandH / 2 - 1 * scale - (boxTop + boxBottom) / 2);
+      g.lineTo(bandW / 2 - 24 * scale, bandY - bandH / 2 - 1 * scale - (boxTop + boxBottom) / 2);
+      g.stroke();
+    }
+    const band = this.host.addChildPlainNode(panel, `${name}CostBand`, 0, bandY, bandW, bandH);
     const fontSize = (phone ? 20 : 17) * scale;
     const iconSize = (phone ? 26 : 24) * scale;
     const iconGap = 4 * scale;
@@ -4743,7 +4768,7 @@ export class LobbyHeroDetailPanelRenderer {
       });
     }
     if (hasHint) {
-      const hint = this.host.addChildLabel(panel, `${name}Est`, view.hint, 0, bottom + (phone ? 90 : 97) * scale, 15 * scale, rgba(186, 170, 134), new Size(width - 48 * scale, (phone ? 26 : 20) * scale));
+      const hint = this.host.addChildLabel(panel, `${name}Est`, view.hint, 0, hintY, 15 * scale, rgba(186, 170, 134), new Size(bandW - 32 * scale, hintH));
       hint.overflow = Label.Overflow.SHRINK;
     }
   }
