@@ -36,6 +36,7 @@ import {
   LOBBY_HERO_DETAIL_BACKDROP_ASSET,
 } from './LobbyHeroDetailPanelRenderer';
 import { equipIconAssetByCode, equipIconAssetByQualitySlot, equipShowcaseAssetByCode, equipShowcaseAssetByQualitySlot } from './EquipIconAssets';
+import { mountEquipIconBacking } from './EquipRarityShine';
 import { parseGemCode, gemOpenSlots, gemUnsocketGold, gemIconAsset, gemTypeForSlot, GEM_TIER_QUALITY, GEM_TYPE_DISPLAY } from './EquipDetailCard';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
@@ -1186,6 +1187,9 @@ export class LobbyForgePanelRenderer {
       // 图标 70 < 行高 86:行底素材内缘有 ~6px 暗带,78 时会盖住图标最外圈的细稀有度描边(用户:橙装边框丢失);留 8 落在平区
       const iconSize = FS(70);
       const iconArt = equipIconAssetByCode(item.equipCode);
+      if (iconArt) {
+        mountEquipIconBacking(this.host, row, 'IconBacking', iconSize, item.equipCode, { x: RXr(137) });
+      }
       if (!iconArt || !this.host.addSprite('Icon', iconArt, RXr(137), 0, iconSize, iconSize, row)) {
         this.addEquipIcon(row, 'Icon', item.equipCode, item.slot, iconSize, scale);
       }
@@ -1716,6 +1720,9 @@ export class LobbyForgePanelRenderer {
       if (item && q) {
         // 原型:放入后是稀有度发光框图标(新图标自带框,满格贴)+ 右上「+N」+ 下方暗底名签(稀有度色字)
         const iconArt = equipIconAssetByCode(item.equipCode);
+        if (iconArt) {
+          mountEquipIconBacking(this.host, slot, `ForgeFuseSlotIconBacking_${index}`, slotSize, item.equipCode);
+        }
         if (!iconArt || !this.host.addSprite(`ForgeFuseSlotIcon_${index}`, iconArt, 0, 0, slotSize, slotSize, slot)) {
           const frame = FORGE_REF_CELL_FRAMES[(item.quality || '').toUpperCase()];
           if (!frame || !this.host.addSprite(`ForgeFuseSlotArt_${index}`, frame, 0, 0, slotSize * 1.08, slotSize * 1.08, slot)) {
@@ -2916,6 +2923,7 @@ export class LobbyForgePanelRenderer {
     const equipAsset = equipIconAssetByCode(equipCode);
     if (equipAsset) {
       const iconW = box * 0.96;
+      mountEquipIconBacking(this.host, parent, `${name}Backing`, iconW, equipCode, { y: offsetY });
       if (this.host.addSprite(name, equipAsset, 0, offsetY, iconW, iconW, parent)) {
         return;
       }
@@ -3085,6 +3093,7 @@ export class LobbyForgePanelRenderer {
       return this.renderEquipCell(parent, name, item, x, y, cell, scale, picked);
     }
     const node = this.host.addChildPlainNode(parent, name, x, y, cell, cell);
+    mountEquipIconBacking(this.host, node, `${name}IconBacking`, cell, item.equipCode);
     if (picked) {
       const glow = this.host.addChildPlainNode(node, 'Glow', 0, 0, cell, cell).addComponent(Graphics);
       for (const [pad, alpha, width] of [[5, 60, 8], [2.5, 120, 4]] as Array<[number, number, number]>) {
@@ -3205,6 +3214,9 @@ export class LobbyForgePanelRenderer {
     const box = this.host.addChildPlainNode(parent, name, x, y, size, size);
     // 原型列表:新图标自带稀有度发光框,满格贴,不再套色调底
     const framedIcon = showcase ? equipIconAssetByCode(item.equipCode) : null;
+    if (framedIcon) {
+      mountEquipIconBacking(this.host, box, `${name}Backing`, size, item.equipCode);
+    }
     if (framedIcon && this.host.addSprite(`${name}Art`, framedIcon, 0, 0, size, size, box)) {
       return;
     }

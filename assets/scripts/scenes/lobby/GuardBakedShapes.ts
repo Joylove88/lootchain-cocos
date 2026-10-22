@@ -236,3 +236,45 @@ export function whiteRingFrame(rx: number, ry: number, lineWidth: number): Sprit
 export function ringFrameSize(rx: number, ry: number, lineWidth: number): { w: number; h: number } {
   return { w: Math.ceil(rx * 2 + lineWidth + 4), h: Math.ceil(ry * 2 + lineWidth + 4) };
 }
+
+/** 装备图标暗底(透明底图标的垫底):128 方、圆角 10,色 (14,14,17)。 */
+export function equipPlateFrame(): SpriteFrame | null {
+  return bake('equip-plate', 128, 128, (c) => {
+    c.fillRoundRectAt(0, 0, 128, 128, 10, [14 / 255, 14 / 255, 17 / 255, 1]);
+  });
+}
+
+/** 橙 / 红装背景辉光:中心亮向外柔和衰减(10 层同心椭圆叠加),128 方。 */
+export function equipGlowFrame(color: Color): SpriteFrame | null {
+  return bake(key('equip-glow', color), 128, 128, (c) => {
+    for (let i = 10; i >= 1; i -= 1) {
+      const r = 6 + (58 * i) / 10;
+      c.fillEllipse(0, 0, r, r, rgbaOf(color, 22));
+    }
+    c.fillEllipse(0, 0, 14, 14, rgbaOf(color, 40));
+  });
+}
+
+/** 橙 / 红装斜向扫光序列帧:96 方画布,一道(或两道)45° 柔光带从左扫到右,画布天然裁掉越界部分(无需遮罩)。 */
+export function equipSweepFrames(color: Color, double: boolean): SpriteFrame[] {
+  const frames: SpriteFrame[] = [];
+  const count = 14;
+  const w = 96;
+  for (let i = 0; i < count; i += 1) {
+    const frame = bake(key('equip-sweep', color, `:${double ? 2 : 1}:${i}`), w, w, (c) => {
+      const t = i / (count - 1);
+      const cx = -w * 0.95 + t * w * 1.9;
+      const bands = double ? [cx, cx - w * 0.3] : [cx];
+      for (const bx of bands) {
+        // 三层叠加做软边:宽淡 → 窄亮
+        c.strokeLine(bx - w, -w, bx + w, w, w * 0.3, rgbaOf(color, 40));
+        c.strokeLine(bx - w, -w, bx + w, w, w * 0.16, rgbaOf(color, 60));
+        c.strokeLine(bx - w, -w, bx + w, w, w * 0.06, rgbaOf(color, 110));
+      }
+    });
+    if (frame) {
+      frames.push(frame);
+    }
+  }
+  return frames;
+}

@@ -17,6 +17,7 @@ import {
   type EventTouch,
 } from 'cc';
 import { equipIconAssetByCode } from './EquipIconAssets';
+import { mountEquipIconBacking } from './EquipRarityShine';
 import { parseGemCode } from './EquipDetailCard';
 import type { BagItemEntryVO, ItemTypeBagGroupVO, LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
@@ -155,6 +156,12 @@ export const BAG_ITEM_ICON_PRELOAD_ASSETS: readonly string[] = [
   ...Object.values(BAG_AI_SHARD_ICON_ASSETS),
   'ui/bag/ai/icon_gold_chest/spriteFrame',
 ];
+
+/** 背包条目若是装备(EQUIP:<equipCode>)返回装备编码,否则 null。 */
+function bagEquipCode(item: BagItemEntryVO): string | null {
+  const code = (item.itemCode || '').toUpperCase();
+  return code.startsWith('EQUIP:') && equipIconAssetByCode(code.slice(6)) ? code.slice(6) : null;
+}
 
 function bagItemIconAsset(item: BagItemEntryVO): string | null {
   const code = (item.itemCode || '').toUpperCase();
@@ -706,6 +713,10 @@ export class LobbyBagPanelRenderer {
     if (customIcon) {
       // C 组道具图与装备真图(v2)均为自带暗渐晕底的不透明方图,统一直出;加载失败回退类型图标。
       const iconW = size * 0.84;
+      // 装备图标是透明底:先垫暗底(橙 / 红装带背景流光),再贴装备图
+      if (bagEquipCode(item)) {
+        mountEquipIconBacking(this.host, card, 'LobbyBagItemIconBacking', iconW, bagEquipCode(item));
+      }
       customIconShown = !!this.host.addSprite('LobbyBagItemIcon', customIcon, 0, 0, iconW, iconW, card);
     }
     if (!customIconShown) {
@@ -1074,6 +1085,9 @@ export class LobbyBagPanelRenderer {
     const popupIcon = bagItemIconAsset(item);
     const iconSize = Math.min(openW, openH) * 0.92;
     if (popupIcon) {
+      if (bagEquipCode(item)) {
+        mountEquipIconBacking(this.host, detail, 'LobbyBagDetailIconBacking', iconSize, bagEquipCode(item), { x: openCx, y: openCy });
+      }
       this.host.addSprite('LobbyBagDetailIcon', popupIcon, openCx, openCy, iconSize, iconSize, detail);
     } else {
       this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), openCx, openCy, iconSize * 0.7, iconSize * 0.7, detail);
@@ -1230,6 +1244,9 @@ export class LobbyBagPanelRenderer {
       this.host.addSprite(`LobbyBagShowcaseSlot_${index}`, BAG_AI_SLOT_BASE_ASSET, cellX, cellY, cellSize, cellSize, card);
       const icon = bagItemIconAsset(cell.item);
       if (icon) {
+        if (bagEquipCode(cell.item)) {
+          mountEquipIconBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize * 0.86, bagEquipCode(cell.item), { x: cellX, y: cellY });
+        }
         this.host.addSprite(`LobbyBagShowcaseIcon_${index}`, icon, cellX, cellY, cellSize * 0.86, cellSize * 0.86, card);
       } else {
         this.host.addSprite(`LobbyBagShowcaseTypeIcon_${index}`, bagItemTypeIconAsset(cell.item.itemType), cellX, cellY, cellSize * 0.68, cellSize * 0.68, card);
@@ -1515,6 +1532,9 @@ export class LobbyBagPanelRenderer {
     const icon = bagItemIconAsset(item);
     const iconSize = Math.min(openW, openH) * 0.86;
     if (icon) {
+      if (bagEquipCode(item)) {
+        mountEquipIconBacking(this.host, dialog, 'CardIconBacking', iconSize, bagEquipCode(item), { x: ocx, y: ocy });
+      }
       this.host.addSprite('CardIcon', icon, ocx, ocy, iconSize, iconSize, dialog);
     } else {
       this.host.addSprite('CardIcon', bagItemTypeIconAsset(item.itemType), ocx, ocy, iconSize * 0.7, iconSize * 0.7, dialog);

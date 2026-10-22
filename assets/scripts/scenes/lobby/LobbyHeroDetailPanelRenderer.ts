@@ -36,6 +36,7 @@ import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveHeroPassiveUnlockStars, ultimateCap, ultimateUpCost, ultimateDamageScale, ULTIMATE_MAX_LEVEL } from './LobbyBattleHeroSkillConfig';
 import { isGuardT0Hero } from './GuardBattleModel';
 import { equipIconAssetByCode } from './EquipIconAssets';
+import { mountEquipIconBacking } from './EquipRarityShine';
 import { compactResourceValue, safeText } from '../UiTextFormatter';
 import { formatTopCurrencyValue, renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, starBandAssetOf, starBandTextRgbOf, starDisplayV3 } from '../C1812CommonUiAssets';
@@ -1908,6 +1909,9 @@ export class LobbyHeroDetailPanelRenderer {
         const g = cell.addComponent(Graphics);
         // 2026-10-20 新装备图标自带稀有度发光框:已穿且有图标时满格贴图标,不再画八角框 / 铆钉(双层框)
         const artIcon = equipped ? equipIconAssetByCode(equipped.equipCode) : null;
+        if (artIcon && equipped) {
+          mountEquipIconBacking(this.host, cell, 'ArtEquipIconBacking', slotSize, equipped.equipCode);
+        }
         const framedArt = artIcon ? this.host.addSprite('ArtEquipIcon', artIcon, 0, 0, slotSize, slotSize, cell) : null;
         if (equipped && !framedArt) {
           // 品质外晕
@@ -4381,6 +4385,9 @@ export class LobbyHeroDetailPanelRenderer {
     const node = this.host.addChildPlainNode(parent, name, x, y, cell, cell);
     // 2026-10-20 新装备图标自带稀有度发光框:有图标就满格贴,不再外套金色雕花框 / 品质描边(双层框);选中仍画金色描边
     const iconAsset = equipIconAssetByCode(item.equipCode);
+    if (iconAsset) {
+      mountEquipIconBacking(this.host, node, `${name}IconBacking`, cell, item.equipCode);
+    }
     const iconShown = iconAsset ? this.host.addSprite(`${name}Icon`, iconAsset, 0, 0, cell, cell, node) : null;
     const g = this.host.addChildPlainNode(node, `${name}Stroke`, 0, 0, cell, cell).addComponent(Graphics);
     if (iconShown) {

@@ -92,6 +92,7 @@ import {
   type GachaRevealStep,
 } from './GachaSceneConfig';
 import { equipIconAssetByCode, equipSlotKeyByCode } from '../lobby/EquipIconAssets';
+import { mountEquipIconBacking } from '../lobby/EquipRarityShine';
 import { resolveBagStyleItemIconAsset } from '../lobby/LobbyBagPanelRenderer';
 import { heroCardArtProfileByCode } from '../lobby/HeroCardArtAssets';
 import { renderLockGlyph } from '../UiLockGlyph';
@@ -2201,6 +2202,7 @@ export class GachaSceneRenderer {
     const equipAsset = item.equipCode ? equipIconAssetByCode(item.equipCode) : null;
     if (equipAsset) {
       const equipW = Math.min(width * 0.78, slotSize * 1.16);
+      mountEquipIconBacking(this.host, node, 'GachaResultEquipIconBacking', equipW, item.equipCode, { y: centerY });
       this.host.addSprite('GachaResultEquipIcon', equipAsset, 0, centerY, equipW, equipW, node);
     } else if (item.heroArt) {
       // 英雄立绘:矩形遮罩内显示。npc 紧裁图等比 contain 贴底;Illust 方图按可见高放大 + 焦点偏移(与花名册同参数)。
