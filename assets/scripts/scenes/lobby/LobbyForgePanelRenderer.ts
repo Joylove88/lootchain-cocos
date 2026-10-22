@@ -101,7 +101,8 @@ const FORGE_GEM_NUM_BADGE = `${FORGE_REF_DIR}gem_num_badge/spriteFrame`;
 const FORGE_GEM_NAME_PLATE = `${FORGE_REF_DIR}gem_name_plate/spriteFrame`;
 // 2026-10-21 强化页按原型 A 版 1:1:去 UI 背景(铁砧台 + 战锤 + 锁链)、部位页签图标、属性图标、筛选 / 排序小图标
 // 2026-10-22 去 AI 感试验:安静版背景(降饱和 / 压高光 / 两侧面板区轻模糊),原图留作 enh_bg 可回退
-const FORGE_ENH_BG = { path: `${FORGE_REF_DIR}enh_bg_calm/spriteFrame`, w: 1870, h: 841 };
+// 2026-10-22 用户选 B「烟与影」:安静工坊(冷窗光 + 一点余烬),铁砧台面在原型 y≈450;enh_bg / enh_bg_calm 留作回退
+const FORGE_ENH_BG = { path: `${FORGE_REF_DIR}enh_bg_smoke/spriteFrame`, w: 1870, h: 841 };
 const FORGE_ENH_SLOT_ICONS: Record<string, string> = {
   WEAPON: `${FORGE_REF_DIR}enh_slot_weapon/spriteFrame`,
   HELMET: `${FORGE_REF_DIR}enh_slot_helmet/spriteFrame`,
@@ -405,7 +406,7 @@ export class LobbyForgePanelRenderer {
       const ek = Math.max(coverW / FORGE_ENH_BG.w, coverH / FORGE_ENH_BG.h);
       if (this.host.addSprite('LobbyForgeEnhBg', FORGE_ENH_BG.path, 0, 0, FORGE_ENH_BG.w * ek, FORGE_ENH_BG.h * ek, panel)) {
         this.fuseBgK = ek;
-        mountRefSolid(this.host, panel, 'LobbyForgeEnhVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 70));
+        mountRefSolid(this.host, panel, 'LobbyForgeEnhVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 40));
       }
     }
     if (forge.tab === 'gem') {
@@ -1377,11 +1378,12 @@ export class LobbyForgePanelRenderer {
     // 装备立在铁砧台上:心 (865,330),高 330
     // 装备后垫一层暖色柔光(背景压暗后装备要亮起来,主次分明)
     const showcase = equipShowcaseAssetByCode(target.equipCode);
-    if (!showcase || !this.host.addSprite('ForgeEnhShowcase', showcase, cx, FY(330), FS(330), FS(330), parent)) {
-      this.addEquipIcon(parent, 'ForgeEnhShowcase', target.equipCode, target.slot, FS(220), scale, FY(340));
+    // 装备立在铁砧台面上(台面受光边 y≈450,靴底压在 455)
+    if (!showcase || !this.host.addSprite('ForgeEnhShowcase', showcase, cx, FY(292), FS(330), FS(330), parent)) {
+      this.addEquipIcon(parent, 'ForgeEnhShowcase', target.equipCode, target.slot, FS(220), scale, FY(300));
     }
-    this.fxAnchor = { x: cx + this.bodyOffsetX, y: FY(380) };
-    this.powerAnchor = { x: cx + this.bodyOffsetX, y: FY(200) };
+    this.fxAnchor = { x: cx + this.bodyOffsetX, y: FY(340) };
+    this.powerAnchor = { x: cx + this.bodyOffsetX, y: FY(160) };
     // 信息区暗底(原型:名牌 ~ 消耗说明这一段压在暗色上,文字从熔岩里跳出来)
     const stageShade = this.host.addSprite('ForgeEnhStageShade', FORGE_FUSE_SOFT_SHADE, cx, FY(625), FS(600), FS(330), parent);
     if (stageShade) {
