@@ -25,7 +25,7 @@ import {
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefPanelFallback, mountRefButton, mountRefHeaderBand, mountRefLineFrame, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, REF_ULT_EMBLEM_FULL_ASSET, refCardFrameK, type RefKitItem } from '../UiRefKit';
+import { drawRefPanelFallback, mountRefButton, mountRefTitleBand, mountRefLineFrame, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, REF_ULT_EMBLEM_FULL_ASSET, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
@@ -970,7 +970,7 @@ export class LobbyHeroDetailPanelRenderer {
       strip.rect(-stripW / 2, -S(150 - 118) / 2, stripW, S(150 - 118));
       strip.fill();
     } else {
-      mountRefHeaderBand(this.host, dialog, 'TitleBand', X(940), Y(106), S(600), S(96), scale);
+      mountRefTitleBand(this.host, dialog, 'TitleBand', X(940), Y(106), S(600), S(96), scale);
     }
     const starSize = S(52);
     if (!this.host.addSprite('LobbyHeroUltimateEmblem', REF_ULT.titleStar, X(787), Y(89), starSize, starSize, dialog)) {
@@ -1092,13 +1092,8 @@ export class LobbyHeroDetailPanelRenderer {
     const costH = S(costBottom - 369);
     const costCx = X((998 + 1574) / 2);
     const costCy = Y((369 + costBottom) / 2);
-    if (!mountRefSlicedByWidth(this.host, dialog, 'LobbyHeroUltimateCost', REF_ULT.costPanel, costCx, costCy, costW, costH)) {
-      mountRefTitledPanel(this.host, dialog, 'LobbyHeroUltimateCost', costCx, costCy, costW, costH, scale, '', { bandH: S(46), fill: rgba(8, 6, 8, 200) });
-      mountRefHeaderBand(this.host, dialog, 'LobbyHeroUltimateCostBand', costCx, Y(395), costW - S(12), S(46), scale);
-    }
-    const costTitle = tight(this.host.addChildLabel(dialog, 'LobbyHeroUltimateCostTitle', costShown ? `升级消耗 · 升至 Lv.${nextLevel}` : '升级消耗', X(1046), Y(396), S(25), rgba(255, 232, 170), new Size(S(480), S(30)), HorizontalTextAlignment.LEFT));
-    costTitle.isBold = true;
-    this.applyOutline(costTitle, scale, true);
+    // 2026-10-22 A 方案:内层「升级消耗」不再用自带红头带的整图面板,改细金框 + 暗带渐隐金线标题
+    mountRefTitledPanel(this.host, dialog, 'LobbyHeroUltimateCost', costCx, costCy, costW, costH, scale, costShown ? `升级消耗 · 升至 Lv.${nextLevel}` : '升级消耗', { bandH: S(50), fontSize: S(25), fill: rgba(8, 6, 8, 200) });
     if (costShown) {
       const rows = costRows;
       canUp = !!cost && rows.every((row) => row.have >= row.need);

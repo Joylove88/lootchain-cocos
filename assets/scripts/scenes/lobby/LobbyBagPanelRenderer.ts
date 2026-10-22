@@ -25,7 +25,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { mountRefScrollBar, mountRefButton, mountRefDialogBackdrop, mountRefHeaderBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
+import { mountRefScrollBar, mountRefButton, mountRefDialogBackdrop, mountRefTitleBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
 export const BAG_C1812_ITEM_SLOT_ASSET = 'ui/common/ai/item_slot/spriteFrame';
@@ -1053,7 +1053,7 @@ export class LobbyBagPanelRenderer {
     const hk = S(120 - 66) / (HB.bodyY1 - HB.bodyY0);
     const bandY = Y(66) - (HB.h / 2 - HB.bodyY0) * hk;
     if (!this.host.addSprite('LobbyBagDetailBand', HB.path, 0, bandY, HB.w * hk, HB.h * hk, detail)) {
-      mountRefHeaderBand(this.host, detail, 'LobbyBagDetailBand', 0, Y(93), width - S(14), S(54), scale);
+      mountRefTitleBand(this.host, detail, 'LobbyBagDetailBand', 0, Y(93), width - S(14), S(54), scale);
     }
     this.host.addSprite('LobbyBagDetailEmblem', 'ui/common/ref/ult_title_star/spriteFrame', X(832), Y(92), S(74), S(74), detail);
     const title = tight(this.host.addChildLabel(detail, 'LobbyBagDetailTitle', '物品详情'.split('').join(String.fromCharCode(0x2009)), X(959), Y(93), S(40), rgba(255, 228, 156), new Size(S(260), S(52))));
@@ -1164,14 +1164,9 @@ export class LobbyBagPanelRenderer {
     const panelK = (55 / 97) * u;
     const mountSection = (name: string, y0: number, y1: number, text: string): void => {
       const cy = Y((y0 + y1) / 2);
-      if (!mountRefSlicedByWidth(this.host, detail, name, REF_DETAIL.sectionPanel, rightCx, cy, rightW, S(y1 - y0), panelK)) {
-        mountRefTitledPanel(this.host, detail, name, rightCx, cy, rightW, S(y1 - y0), scale, '', { bandH: S(49), fill: rgba(8, 6, 8, 190) });
-      }
-      // 头带心 = y0 + (8 + 105) / 2 × (55 / 97);左侧大四芒星(原型 ~46 高)盖住面板素材自带的小星
-      this.host.addSprite(`${name}Star`, 'ui/common/ref/ult_title_star/spriteFrame', X(828), Y(y0 + 32), S(54), S(54), detail);
-      const t = tight(this.host.addChildLabel(detail, `${name}Title`, text, X(872), Y(y0 + 32), S(30), rgba(255, 232, 170), new Size(S(300), S(36)), HorizontalTextAlignment.LEFT));
-      t.isBold = true;
-      this.applyOutline(t, scale, true);
+      // 2026-10-22 A 方案:内层分区不再用自带红头带的整图面板,改细金框 + 暗带渐隐金线标题(外层「物品详情」红带不动)
+      void panelK;
+      mountRefTitledPanel(this.host, detail, name, rightCx, cy, rightW, S(y1 - y0), scale, text, { bandH: S(58), fontSize: S(30), fill: rgba(8, 6, 8, 190) });
     };
     mountSection('LobbyBagDetailUsePanel', 154, 352, '用途');
     // 用途正文区透出场景(原型:正文背后是暗化的教堂画面);2026-10-21 用户「描述背景暗一些,字更清楚」→ 暗罩 36 → 150

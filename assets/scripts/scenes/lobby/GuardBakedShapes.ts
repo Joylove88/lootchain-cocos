@@ -67,6 +67,12 @@ class Canvas {
     this.each((x, y) => (lineWidth / 2 - Math.abs(Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * unit) / aa + 0.5, color);
   }
 
+  /** 菱形填充(中心 cx, cy,半对角 r)。 */
+  fillDiamond(cx: number, cy: number, r: number, color: Rgba): void {
+    const aa = 1 / SUPERSAMPLE;
+    this.each((x, y) => ((r - (Math.abs(x - cx) + Math.abs(y - cy))) * Math.SQRT1_2) / aa + 0.5, color);
+  }
+
   /** 圆角矩形描边(中心在 cx, cy;w/h/radius 指描边中线)。 */
   strokeRoundRectAt(cx: number, cy: number, w: number, h: number, radius: number, lineWidth: number, color: Rgba): void {
     const aa = 1 / SUPERSAMPLE;
@@ -299,6 +305,32 @@ export function itemRarityRingFrame(color: Color): SpriteFrame | null {
   return bake(key('item-ring', color), 128, 128, (c) => {
     c.strokeRoundRectAt(0, 0, 128 - 6.5, 128 - 6.5, 10.25, 0.6, [0, 0, 0, 160 / 255]);
     c.strokeRoundRectAt(0, 0, 128 - 11, 128 - 11, 8, 4, rgbaOf(color, 255));
+  });
+}
+
+/**
+ * 分区标题渐隐线(白,按 sprite.color 着色):128×4;symmetric=false 从左向右渐隐,true 中间亮、两端渐隐。
+ * 2026-10-22 内层分区标题 A 方案。
+ */
+export function sectionFadeLineFrame(symmetric: boolean): SpriteFrame | null {
+  return bake(`section-fade:${symmetric ? 'sym' : 'ltr'}`, 128, 4, (c) => {
+    const n = 64;
+    for (let i = 0; i < n; i += 1) {
+      const t = (i + 0.5) / n;
+      const a = symmetric ? Math.pow(1 - Math.abs(t - 0.5) * 2, 0.7) : Math.max(0, 1 - t * 1.12);
+      if (a <= 0.01) {
+        continue;
+      }
+      c.fillRoundRectAt(-64 + (i + 0.5) * 2, 0, 2.02, 4, 0, [1, 1, 1, a]);
+    }
+  });
+}
+
+/** 分区标题小金菱形(金面 + 暗芯),32 方,自带颜色不着色。 */
+export function sectionDiamondFrame(): SpriteFrame | null {
+  return bake('section-diamond', 32, 32, (c) => {
+    c.fillDiamond(0, 0, 15, [236 / 255, 200 / 255, 128 / 255, 1]);
+    c.fillDiamond(0, 0, 7, [90 / 255, 60 / 255, 30 / 255, 1]);
   });
 }
 

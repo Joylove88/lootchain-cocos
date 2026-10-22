@@ -26,7 +26,7 @@ import { LOBBY_UI_FX } from '../lobby/LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from '../lobby/LobbyUiSpineFx';
 import { C1812_BUTTON_DISABLED_ASSET, C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, C1812_POPUP_FRAME_PARCHMENT_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
 import { safeText } from '../UiTextFormatter';
-import { drawRefPanelFallback, mountRefHeaderBand, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_KIT, REF_ROW, refCardFrameK, type RefKitItem } from '../UiRefKit';
+import { drawRefPanelFallback, mountRefHeaderBand, mountRefSectionDiamond, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_KIT, REF_ROW, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { clamp, LOBBY_C1812_RESOURCE_ICON_ASSETS, rgba, type UiLayout } from '../lobby/LobbyHudTypes';
 import { nativeUnderlayVideoSupported, playNativeUnderlayVideo, stopNativeUnderlayVideo, type NativeUnderlayVideoState } from '../../app/NativeUnderlayVideo';
@@ -1453,7 +1453,8 @@ export class GachaSceneRenderer {
     const bandY = height / 2 - REF_CARD_FRAME_LINE.top * fk - bandH / 2;
     mountRefHeaderBand(this.host, panel, 'Band', 0, bandY, width - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
     raiseRefFrame(panel);
-    const title = this.host.addChildLabel(panel, 'GachaUpTitle', '概率提升', -width / 2 + 24 * scale, bandY, 21 * scale, rgba(255, 222, 140), new Size(width * 0.6, 30 * scale), HorizontalTextAlignment.LEFT);
+    mountRefSectionDiamond(this.host, panel, 'GachaUpDiamond', -width / 2 + 24 * scale + 6 * scale, bandY, 12 * scale);
+    const title = this.host.addChildLabel(panel, 'GachaUpTitle', '概率提升', -width / 2 + 46 * scale, bandY, 21 * scale, rgba(236, 200, 128), new Size(width * 0.6, 30 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     title.isBold = true;
     this.applyOutline(title, scale, true);

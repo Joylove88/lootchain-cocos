@@ -24,7 +24,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
+import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem, mountRefHeaderBand, mountRefSectionDiamond } from '../UiRefKit';
 import {
   describeEquipAttrs,
   equipQualityColor,
@@ -1119,13 +1119,14 @@ export class LobbyForgePanelRenderer {
     const PX = (px: number): number => LX(px) - listCx;
     const PY = (py: number): number => FY(py) - listCy;
     // 标题带(原型 99..140 暗红底,字离带左 30、上下居中)+ 带下金线;页签行下再一条金线(一级分类与列表分隔)
-    mountRefSolid(this.host, listPanel, 'HeaderBand', PX((listL + listR) / 2), PY(119.5), listW - FS(14), FS(41), rgba(76, 12, 10, 235));
+    // 2026-10-22 A 方案:内层标题 = 暗带 + 渐隐金线 + 小金菱形(外层页面标题不动)
+    mountRefHeaderBand(this.host, listPanel, 'HeaderBand', PX((listL + listR) / 2), PY(120), listW - FS(14), FS(44), scale);
+    mountRefSectionDiamond(this.host, listPanel, 'HeaderDiamond', PX(100), PY(120), FS(15));
     const goldLine = (name: string, py: number): void => {
       mountRefSolid(this.host, listPanel, name, PX((listL + listR) / 2), PY(py), listW - FS(22), Math.max(1, FS(1.5)), rgba(214, 170, 92, 150));
     };
-    goldLine('HeaderLine', 141);
     goldLine('TabLine', 210);
-    label(listPanel, 'ForgeEnhListHeader', `选择装备（${items.length}）`, PX(105), PY(120), FS(24), rgba(244, 228, 186), FS(300), HorizontalTextAlignment.LEFT, true);
+    label(listPanel, 'ForgeEnhListHeader', `选择装备（${items.length}）`, PX(118), PY(120), FS(24), rgba(236, 200, 128), FS(300), HorizontalTextAlignment.LEFT, true);
     // 部位页签:全部(92..170)+ 6 部位(图标 + 字),选中 = 金边签
     const tabY = PY(175);
     const tabH = FS(60);

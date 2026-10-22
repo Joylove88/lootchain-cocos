@@ -1,6 +1,7 @@
 import { Button, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UIOpacity, UITransform, type Color } from 'cc';
 import { rgba } from './lobby/LobbyHudTypes';
 import { fitButtonLabel } from './UiPrimitiveFactory';
+import { sectionDiamondFrame, sectionFadeLineFrame } from './lobby/GuardBakedShapes';
 
 /**
  * 2026-10-15 「参考图风格」UI 套件:终极技能弹窗 / 锻造界面按 GPT 原型逐件拆出的素材(ui/common/ref、ui/forge/ref)。
@@ -253,7 +254,57 @@ export const REF_TITLE_STAR = 'ui/common/ref/ult_title_star/spriteFrame';
  * 标题带(守卫水晶页定的样式,2026-10-16):整条暗红实底 + 左侧提亮渐变 + 底边金线 + 金线两端菱形点。
  * 放在细金框里时,顶边 / 两侧对齐 REF_CARD_FRAME_LINE(带子压在框之上,框内芯不透明)。
  */
-export function mountRefHeaderBand(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
+/** 内层分区标题字色(A 方案金)。 */
+export const REF_SECTION_TITLE_COLOR = rgba(236, 200, 128);
+
+/**
+ * 内层分区标题带(2026-10-22 用户定 A 方案:外层大标题保持红带,内层改「暗带 + 渐隐金线」做出层次):
+ * 比面板正文略亮一档的暗棕实底 + 顶边一丝高光 + 底边金线(默认从左向右渐隐;center=true 时中间亮两端隐,配居中标题)。
+ * 标题前徽记用 mountRefSectionDiamond(小金菱形),不再用大四芒星。全部普通精灵,原生端安全。
+ */
+export function mountRefHeaderBand(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number, options: { center?: boolean } = {}): Node {
+  const band = host.addChildPlainNode(parent, name, x, y, w, h);
+  if (!mountRefSolid(host, band, 'Fill', 0, 0, w, h, rgba(38, 30, 24, 238))) {
+    const g = band.addComponent(Graphics);
+    g.fillColor = rgba(38, 30, 24, 238);
+    g.rect(-w / 2, -h / 2, w, h);
+    g.fill();
+  }
+  mountRefSolid(host, band, 'TopLight', 0, h / 2 - Math.max(1, scale) / 2, w, Math.max(1, scale), rgba(255, 220, 160, 38));
+  const lineH = Math.max(2, 2.2 * scale);
+  const fade = sectionFadeLineFrame(!!options.center);
+  if (fade) {
+    const node = host.addChildPlainNode(band, 'GoldLine', 0, -h / 2 + lineH / 2, w, lineH);
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.spriteFrame = fade;
+    sprite.color = rgba(236, 200, 128, 235);
+    node.getComponent(UITransform)?.setContentSize(w, lineH);
+  } else {
+    mountRefSolid(host, band, 'GoldLine', 0, -h / 2 + lineH / 2, w, lineH, rgba(236, 200, 128, 150));
+  }
+  return band;
+}
+
+/** 内层分区标题前的小金菱形(中心 x, y;size = 对角长)。 */
+export function mountRefSectionDiamond(host: RefKitHost, parent: Node, name: string, x: number, y: number, size: number): Node {
+  const frame = sectionDiamondFrame();
+  const node = host.addChildPlainNode(parent, name, x, y, size, size);
+  if (frame) {
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.spriteFrame = frame;
+    node.getComponent(UITransform)?.setContentSize(size, size);
+  } else {
+    fillRefDiamond(host, node, 0, 0, size / 2, rgba(236, 200, 128));
+  }
+  return node;
+}
+
+/** 弹窗 / 页面外层大标题带(红):2026-10-22 起只给外层用,内层分区一律走 mountRefHeaderBand(A 款)。 */
+export function mountRefTitleBand(host: RefKitHost, parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
   const band = host.addChildPlainNode(parent, name, x, y, w, h);
   // 2026-10-20 用户「物品详情的红色标题不错,其他界面也以这个标准调整」:统一用物品详情分区头带同款贴图
   // (上双金线 + 暗红织纹 + 下金线,横向均匀可拉伸);贴图未到货时退回下面的程序带
@@ -449,17 +500,14 @@ export function mountRefTitledPanel(
   mountRefHeaderBand(host, node, 'Band', 0, bandY, w - REF_CARD_FRAME_LINE.side * fk * 2, bandH, scale);
   raiseRefFrame(node);
   const fontSize = options.fontSize ?? 24 * scale;
-  // 标题前徽记:同物品详情分区头的大四芒星(约 1 倍带高,上下略出带);缺图退回旧小徽记
-  const starSize = bandH * 1.05;
-  const emblemH = starSize;
-  const emblemW = starSize;
-  const textW = Math.max(fontSize, Math.min(w - emblemW - 60 * scale, title.length * fontSize * 1.05));
-  const gap = 10 * scale;
-  const emblemX = options.center === false ? -w / 2 + 22 * scale + emblemW / 2 : -(emblemW + gap + textW) / 2 + emblemW / 2;
-  if (!host.addSprite(`${name}Emblem`, REF_TITLE_STAR, emblemX, bandY, emblemW, emblemH, node)) {
-    host.addSprite(`${name}Emblem`, REF_SECTION_EMBLEM.path, emblemX, bandY, bandH * 0.6 / REF_SECTION_EMBLEM.aspect, bandH * 0.6, node);
-  }
-  const label = host.addChildLabel(node, `${name}Title`, title, emblemX + emblemW / 2 + gap + textW / 2, bandY, fontSize, rgba(255, 222, 140), new Size(textW + 8 * scale, bandH - 8 * scale));
+  // 2026-10-22 A 方案:左对齐——小金菱形 + 金字(内层分区与外层红色大标题拉开层次;center 选项不再居中)
+  const diamond = Math.max(10 * scale, bandH * 0.34);
+  const diamondX = -w / 2 + REF_CARD_FRAME_LINE.side * fk + 14 * scale + diamond / 2;
+  mountRefSectionDiamond(host, node, `${name}Emblem`, diamondX, bandY, diamond);
+  const textLeft = diamondX + diamond / 2 + 10 * scale;
+  const textW = Math.max(fontSize, w / 2 - textLeft - 16 * scale);
+  // LEFT 对齐时 addChildLabel 的 x 是文字框左沿(resolveAlignedLabelX 会自己加半宽)
+  const label = host.addChildLabel(node, `${name}Title`, title, textLeft, bandY, fontSize, REF_SECTION_TITLE_COLOR, new Size(textW, bandH - 8 * scale), HorizontalTextAlignment.LEFT);
   label.overflow = Label.Overflow.SHRINK;
   label.isBold = true;
   label.enableOutline = true;

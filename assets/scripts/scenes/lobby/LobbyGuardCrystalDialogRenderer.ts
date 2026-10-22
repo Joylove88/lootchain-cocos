@@ -32,7 +32,7 @@ import { GUARD_SPELL_FX, LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
-import { mountRefButton, mountRefHeaderBand, mountRefSliced, REF_CLOSE_ASSET, REF_KIT, type RefKitItem } from '../UiRefKit';
+import { mountRefButton, mountRefHeaderBand, mountRefSectionDiamond, mountRefSliced, REF_CLOSE_ASSET, REF_KIT, type RefKitItem } from '../UiRefKit';
 import { renderTopCurrencyBar } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 
@@ -548,7 +548,7 @@ export class LobbyGuardCrystalDialogRenderer {
     const statsBand = this.drawHeaderBand(statsPanel, 'LobbyGuardCrystalStatsBand', 0, headY - (top + bottom) / 2, w - CARD_FRAME_LINE.side * fk * 2, bandH, scale);
     this.tuckUnderFrame(statsPanel, statsBand);
     const emblemH = 52 * scale;
-    this.host.addSprite('LobbyGuardCrystalEmblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, headY, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
+    mountRefSectionDiamond(this.host, panel, 'LobbyGuardCrystalEmblem', left + emblemH / SECTION_EMBLEM.aspect / 2, headY, bandH * 0.32);
     const textX = left + emblemH / SECTION_EMBLEM.aspect + 12 * scale;
     const head = this.host.addChildLabel(panel, 'LobbyGuardCrystalStatsTitle', '水晶属性提升', textX, headY + 11 * scale, 27 * scale, rgba(255, 222, 140), new Size(260 * scale, 34 * scale), HorizontalTextAlignment.LEFT);
     head.isBold = true;
@@ -814,7 +814,7 @@ export class LobbyGuardCrystalDialogRenderer {
       this.drawHeaderBand(panel, `${key}Band`, (left + right) / 2, y, right - left, 38 * scale, scale);
     }
     const emblemH = 30 * scale;
-    this.host.addSprite(`${key}Emblem`, SECTION_EMBLEM.path, left + 6 * scale + emblemH / SECTION_EMBLEM.aspect / 2, y, emblemH / SECTION_EMBLEM.aspect, emblemH, panel);
+    mountRefSectionDiamond(this.host, panel, `${key}Emblem`, left + 6 * scale + emblemH / SECTION_EMBLEM.aspect / 2, y, 14 * scale);
     const textX = left + 6 * scale + emblemH / SECTION_EMBLEM.aspect + 8 * scale;
     const head = this.host.addChildLabel(panel, `${key}Title`, text, textX, y, 24 * scale, rgba(255, 222, 140), new Size(220 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
     head.isBold = true;
@@ -1179,7 +1179,7 @@ export class LobbyGuardCrystalDialogRenderer {
     const titleBand = this.drawHeaderBand(card, 'TitleBand', 0, h / 2 - CARD_FRAME_LINE.top * ck - bandH / 2, w - CARD_FRAME_LINE.side * ck * 2, bandH, scale);
     this.tuckUnderFrame(card, titleBand);
     const emblemH = 28 * scale;
-    this.host.addSprite('Emblem', SECTION_EMBLEM.path, left + emblemH / SECTION_EMBLEM.aspect / 2, cursor - titleH / 2, emblemH / SECTION_EMBLEM.aspect, emblemH, card);
+    mountRefSectionDiamond(this.host, card, 'Emblem', left + emblemH / SECTION_EMBLEM.aspect / 2, cursor - titleH / 2, 14 * scale);
     const lvW = 66 * scale;
     const lvH = 24 * scale;
     const energyW = 78 * scale;
