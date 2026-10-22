@@ -74,7 +74,8 @@ const FORGE_REF_CELL_FRAMES: Record<string, string> = {
   RED: `${FORGE_REF_DIR}cell_red/spriteFrame`,
 };
 // 2026-10-20 合成页按 10-19 原型 1:1:原型去 UI 后的整屏背景(祭坛 / 金环在图里;ring = 金环圆心 / 半径,原型坐标)、名牌、概率石行、绿宝石
-const FORGE_FUSE_BG = { path: `${FORGE_REF_DIR}fuse_bg/spriteFrame`, w: 1870, h: 841, ring: { cx: 590, cy: 385, r: 115 } };
+// 2026-10-22 去 AI 感:三页背景按 B「烟与影」重出(*_smoke),旧图留作回退;新合成背景的金环实测 (605,310) r160(内缘),比旧环大且靠上
+const FORGE_FUSE_BG = { path: `${FORGE_REF_DIR}fuse_bg_smoke/spriteFrame`, w: 1870, h: 841, ring: { cx: 605, cy: 310, r: 160 } };
 const FORGE_FUSE_NAME_PLATE = { path: `${FORGE_REF_DIR}fuse_name_plate/spriteFrame`, w: 900, h: 185 };
 const FORGE_FUSE_LUCK_ROW: RefKitItem = { path: `${FORGE_REF_DIR}fuse_luck_row/spriteFrame`, w: 1200, h: 132, inset: [36, 36, 0, 0] };
 const FORGE_FUSE_BEAMS = ['beam_a', 'beam_b', 'beam_c'].map((n) => `${FORGE_REF_DIR}fuse_${n}/spriteFrame`);
@@ -84,8 +85,8 @@ const FORGE_FUSE_SOFT_SHADE = `${FORGE_REF_DIR}fuse_soft_shade/spriteFrame`;
 const FORGE_FUSE_VIGNETTE = `${FORGE_REF_DIR}fuse_vignette/spriteFrame`;
 const FORGE_FUSE_LUCK_GEM = `${FORGE_REF_DIR}fuse_luck_gem/spriteFrame`;
 // 2026-10-20 分解页按 10-19 原型 1:1:去 UI 整屏背景、右栏熔炉插画(456×388 原型框)、筛选签(中性白边供染色 / 选中金边)、勾、提示章、标签底
-const FORGE_DEC_BG = { path: `${FORGE_REF_DIR}dec_bg/spriteFrame`, w: 1870, h: 841 };
-const FORGE_DEC_FURNACE = `${FORGE_REF_DIR}dec_furnace/spriteFrame`;
+const FORGE_DEC_BG = { path: `${FORGE_REF_DIR}dec_bg_smoke/spriteFrame`, w: 1870, h: 841 };
+const FORGE_DEC_FURNACE = `${FORGE_REF_DIR}dec_furnace_smoke/spriteFrame`;
 const FORGE_DEC_CHIP: RefKitItem = { path: `${FORGE_REF_DIR}dec_chip/spriteFrame`, w: 451, h: 100, inset: [30, 30, 0, 0] };
 const FORGE_DEC_CHIP_ON: RefKitItem = { path: `${FORGE_REF_DIR}dec_chip_on/spriteFrame`, w: 441, h: 100, inset: [30, 30, 0, 0] };
 const FORGE_DEC_CHECK = `${FORGE_REF_DIR}dec_check/spriteFrame`;
@@ -93,8 +94,8 @@ const FORGE_DEC_WARN = `${FORGE_REF_DIR}dec_warn/spriteFrame`;
 const FORGE_DEC_TAG = `${FORGE_REF_DIR}dec_tag/spriteFrame`;
 // 2026-10-21 宝石页按 10-19 原型 1:1:去 UI 整屏背景、右栏舞台(含底座,732×396 原型框)、V 孔锁章、行内暗空槽、序号圆章、名牌底
 const REF_TITLE_STAR_ASSET = 'ui/common/ref/ult_title_star/spriteFrame';
-const FORGE_GEM_BG = { path: `${FORGE_REF_DIR}gem_bg/spriteFrame`, w: 1870, h: 841 };
-const FORGE_GEM_STAGE = `${FORGE_REF_DIR}gem_stage/spriteFrame`;
+const FORGE_GEM_BG = { path: `${FORGE_REF_DIR}gem_bg_smoke/spriteFrame`, w: 1870, h: 841 };
+const FORGE_GEM_STAGE = `${FORGE_REF_DIR}gem_stage_smoke/spriteFrame`;
 const FORGE_GEM_LOCK = `${FORGE_REF_DIR}gem_lock/spriteFrame`;
 const FORGE_GEM_SOCKET_DIM = `${FORGE_REF_DIR}gem_socket_dim/spriteFrame`;
 const FORGE_GEM_NUM_BADGE = `${FORGE_REF_DIR}gem_num_badge/spriteFrame`;
@@ -414,7 +415,7 @@ export class LobbyForgePanelRenderer {
       const gk = Math.max(coverW / FORGE_GEM_BG.w, coverH / FORGE_GEM_BG.h);
       if (this.host.addSprite('LobbyForgeGemBg', FORGE_GEM_BG.path, 0, 0, FORGE_GEM_BG.w * gk, FORGE_GEM_BG.h * gk, panel)) {
         this.fuseBgK = gk;
-        mountRefSolid(this.host, panel, 'LobbyForgeGemVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 105));
+        mountRefSolid(this.host, panel, 'LobbyForgeGemVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 40));
       }
     }
     if (forge.tab === 'decompose') {
@@ -422,7 +423,7 @@ export class LobbyForgePanelRenderer {
       const dk = Math.max(coverW / FORGE_DEC_BG.w, coverH / FORGE_DEC_BG.h);
       if (this.host.addSprite('LobbyForgeDecBg', FORGE_DEC_BG.path, 0, 0, FORGE_DEC_BG.w * dk, FORGE_DEC_BG.h * dk, panel)) {
         this.fuseBgK = dk;
-        mountRefSolid(this.host, panel, 'LobbyForgeDecVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 105));
+        mountRefSolid(this.host, panel, 'LobbyForgeDecVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 40));
       }
     }
     if (forge.tab === 'fuse') {
@@ -431,12 +432,12 @@ export class LobbyForgePanelRenderer {
       this.fuseBgShown = !!this.host.addSprite('LobbyForgeFuseBg', FORGE_FUSE_BG.path, 0, 0, FORGE_FUSE_BG.w * fk, FORGE_FUSE_BG.h * fk, panel);
       if (this.fuseBgShown) {
         // 2026-10-20 用户「背景调暗些,不然主次不分」:整体薄罩 + 以法阵圆心为中心的暗角(中心透明,四周 / 右栏后最暗)
-        mountRefSolid(this.host, panel, 'LobbyForgeFuseVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 95));
+        mountRefSolid(this.host, panel, 'LobbyForgeFuseVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 40));
         const vig = FORGE_FUSE_BG.ring;
         const vigSize = 2920 * fk;
         const vigSprite = this.host.addSprite('LobbyForgeFuseVignette', FORGE_FUSE_VIGNETTE, (vig.cx - 935) * fk, (420.5 - vig.cy) * fk, vigSize, vigSize, panel);
         if (vigSprite) {
-          vigSprite.color = rgba(0, 0, 0, 190);
+          vigSprite.color = rgba(0, 0, 0, 110);
         }
       }
     }
@@ -1654,10 +1655,12 @@ export class LobbyForgePanelRenderer {
     this.powerAnchor = { x: ringCx + this.bodyOffsetX, y: FY(470) };
 
     // 三槽:左 / 顶 / 右(原型 (277,364) / (591,123) / (912,364),边 112);能量线先画(压在槽之下)
+    // 新背景的环更大更靠上:两侧槽放到祭坛基座两旁(y 470),顶槽放环尖上方(y 95),都避开环
+    // 顶槽骑在环顶(环顶 y150,槽心 135 → 槽底 191 压住环顶 40,"材料流入环"),槽顶 79 不碰货币栏(底 ~70);两侧槽在祭坛基座两旁
     const slotPos = [
-      { x: FX(277), y: FY(364) },
-      { x: FX(591), y: FY(123) },
-      { x: FX(912), y: FY(364) },
+      { x: FX(300), y: FY(470) },
+      { x: FX(605), y: FY(135) },
+      { x: FX(910), y: FY(470) },
     ];
     // 连线(2026-10-20 用户「做成和原型一样,动态特效」):波浪电光,起点 = 槽框内缘,终点 = 金环外缘(原型坐标)
     const beamEnds: Array<[number, number, number, number]> = [
@@ -1665,11 +1668,8 @@ export class LobbyForgePanelRenderer {
       [591, 214, 591, 262],
       [848, 364, 720, 372],
     ];
-    beamEnds.forEach(([x1, y1, x2, y2], index) => {
-      if (slotItems[index]) {
-        this.mountFuseBeam(parent, `ForgeFuseBeam_${index}`, FX(x1), FY(y1), FX(x2), FY(y2), FS(index === 1 ? 52 : 66), index * 0.18);
-      }
-    });
+    // 2026-10-22 去 AI 感:电光全部关掉(新环几何下顶槽紧贴环尖,线段只剩几像素;满屏特效也是 AI 味来源)
+    void beamEnds;
     if (!this.fuseBgShown) {
       // 背景未到货:旧传送门图兜底,环心对准同一点
       const portalW = FS(ring.r * 2) / FORGE_REF_FUSE_PORTAL.ringDF;
@@ -1678,12 +1678,12 @@ export class LobbyForgePanelRenderer {
     }
     // 环心:产物预览(下一稀有度同部位);没放满时淡显问号,中心对准金环圆心
     // 产物:透明展示图(ui/forge/showcase,和图标同名);缺图退方形图标
-    const previewSize = FS(ring.r * 2 * 0.92);
+    const previewSize = FS(ring.r * 2 * 0.78);
     const previewAsset = ready ? equipShowcaseAssetByQualitySlot(nextQuality, slotItems[0].slot) ?? equipIconAssetByQualitySlot(nextQuality, slotItems[0].slot) : null;
     // 环心压暗(亮紫漩涡抢眼,产物显暗)+ 产物背后淡紫柔光
     const ringShade = this.host.addSprite('ForgeFuseRingShade', FORGE_FUSE_SOFT_SHADE, ringCx, ringCy, FS(ring.r * 2.1), FS(ring.r * 2.1), parent);
     if (ringShade) {
-      ringShade.color = rgba(0, 0, 0, 175);
+      ringShade.color = rgba(0, 0, 0, 90);
     }
     if (previewAsset) {
       const art = this.host.addSprite('ForgeFusePreview', previewAsset, ringCx, ringCy, previewSize, previewSize, parent);
@@ -1728,16 +1728,19 @@ export class LobbyForgePanelRenderer {
         this.applyOutline(lv, scale, true);
         const nameW = FS(128);
         const nameH = FS(30);
-        const chip = this.host.addChildPlainNode(parent, `ForgeFuseSlotChip_${index}`, pos.x, pos.y - FS(74), nameW, nameH);
-        const cg = chip.addComponent(Graphics);
-        cg.fillColor = rgba(6, 5, 8, 225);
-        cg.roundRect(-nameW / 2, -nameH / 2, nameW, nameH, FS(6));
-        cg.fill();
-        const nm = this.host.addChildLabel(chip, 'Name', safeText(item.equipName), 0, 0, FS(22), rgba(q.r, q.g, q.b, 255), new Size(nameW - FS(8), nameH));
-        nm.overflow = Label.Overflow.SHRINK;
-        nm.lineHeight = nm.fontSize;
-        nm.isBold = true;
-        this.applyOutline(nm, scale, false);
+        // 顶槽不挂名签(上方是货币栏、下方是环尖,两头都没位置;三件同名,两侧槽已标);两侧槽名签在槽下
+        if (index !== 1) {
+          const chip = this.host.addChildPlainNode(parent, `ForgeFuseSlotChip_${index}`, pos.x, pos.y - FS(74), nameW, nameH);
+          const cg = chip.addComponent(Graphics);
+          cg.fillColor = rgba(6, 5, 8, 225);
+          cg.roundRect(-nameW / 2, -nameH / 2, nameW, nameH, FS(6));
+          cg.fill();
+          const nm = this.host.addChildLabel(chip, 'Name', safeText(item.equipName), 0, 0, FS(22), rgba(q.r, q.g, q.b, 255), new Size(nameW - FS(8), nameH));
+          nm.overflow = Label.Overflow.SHRINK;
+          nm.lineHeight = nm.fontSize;
+          nm.isBold = true;
+          this.applyOutline(nm, scale, false);
+        }
         if (!state.busy) {
           slot.addComponent(Button);
           slot.on(Button.EventType.CLICK, () => this.host.setLobbyForgeFuseSlots(slotIds.filter((id) => id !== item.id)), this);
@@ -2087,7 +2090,7 @@ export class LobbyForgePanelRenderer {
     if (stage) {
       stage.node.setSiblingIndex(2);
       // 2026-10-22 用户:舞台背景调暗,主次分明(靴子 / 勋章在上层保持原亮度)
-      stage.color = rgba(135, 128, 128, 255);
+      stage.color = rgba(235, 232, 232, 255);
     } else {
       this.host.addSprite('ForgeGemPedestal', FORGE_REF_GEM_PEDESTAL.path, RX(1310), LY(470), RS(520), RS(520) * (FORGE_REF_GEM_PEDESTAL.h / FORGE_REF_GEM_PEDESTAL.w), side);
     }
@@ -2602,7 +2605,7 @@ export class LobbyForgePanelRenderer {
     if (furnace) {
       furnace.node.setSiblingIndex(2);
       // 2026-10-22 用户:熔炉背景调暗,上面的「已选 / 预计获得」更清楚
-      furnace.color = rgba(172, 164, 162, 255);
+      furnace.color = rgba(235, 232, 232, 255);
     } else {
       this.host.addSprite('ForgeDecCrucible', FORGE_REF_DEC_CRUCIBLE.path, RX(1560), LY(330), RS(280), RS(280) * (FORGE_REF_DEC_CRUCIBLE.h / FORGE_REF_DEC_CRUCIBLE.w), side);
     }
