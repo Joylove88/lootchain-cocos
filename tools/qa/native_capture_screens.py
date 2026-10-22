@@ -34,6 +34,7 @@ SCREENS = [
     ('shop_gold', "root.openLobbyShopDialog('gold');", 2.5),
     ('shop_stamina', "root.openLobbyShopDialog('stamina');", 2.5),
     ('shop_diamond', "root.openLobbyShopDialog('diamond');", 2.5),
+    ('forge_enhance', FORGE_TAB_JS.format(tab='enhance'), 5.0),
     ('forge_fuse', FORGE_TAB_JS.format(tab='fuse'), 5.0),
     ('forge_decompose', FORGE_TAB_JS.format(tab='decompose'), 5.0),
     ('forge_gem', FORGE_TAB_JS.format(tab='gem'), 5.0),
@@ -81,6 +82,23 @@ def main() -> None:
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     only = set(filter(None, args.only.split(',')))
+    # 2026-10-22 冻结保护:fresh 启动后立刻 RESET + 开面板会触发「首开偶发渲染冻结」(已销毁 Label 留在脏列表,渲染线程每帧抛
+    # this component should not be invalid!,画面停在上一帧、JS 照跑,截到的全是旧图)。先等钱包 / 装备到齐,再确认帧计数在走;不走就报错退出,让调用方 force-stop 重开。
+    ready_expr = f"(() => {{ {ROOT_JS} if (!root) return 'noroot'; const g = Number(root.currentLobbyProfile().gold) || 0; const n = root.currentLobbyHeroEquipState().items.length; return (g > 0 && n > 0) ? 'ready' : 'loading ' + g + ' ' + n; }})()"
+    for _ in range(40):
+        try:
+            if 'ready' in asyncio.run(evaluate(args.port, ready_expr)):
+                break
+        except Exception:
+            pass
+        time.sleep(1.5)
+    frames_expr = 'cc.director.getTotalFrames()'
+    f1 = asyncio.run(evaluate(args.port, frames_expr))
+    time.sleep(1.0)
+    f2 = asyncio.run(evaluate(args.port, frames_expr))
+    if f1 == f2:
+        print(f'FROZEN: 帧计数 {f1} 没在走(渲染冻结),请 force-stop 重开应用后再截', flush=True)
+        raise SystemExit(2)
     for key, js, wait in SCREENS:
         if only and key not in only:
             continue
