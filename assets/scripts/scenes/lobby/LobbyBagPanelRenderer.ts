@@ -702,17 +702,17 @@ export class LobbyBagPanelRenderer {
     }, this);
     this.host.applyImageButtonFeedback(card, 1.03, 0.975);
 
-    if (!this.host.addSprite('LobbyBagItemSlotArt', BAG_AI_SLOT_BASE_ASSET, 0, 0, size, size, card)) {
+    const customIcon = bagItemIconAsset(item);
+    // 2026-10-22 用户「背包物品两个框,移除外部框」:有图标时图标自带暗底 + 稀有度描边,不再画格底与外层稀有度格框
+    if (!customIcon && !this.host.addSprite('LobbyBagItemSlotArt', BAG_AI_SLOT_BASE_ASSET, 0, 0, size, size, card)) {
       const graphics = card.addComponent(Graphics);
       graphics.fillColor = rgba(9, 9, 12, 208);
       graphics.roundRect(-size / 2, -size / 2, size, size, 5 * scale);
       graphics.fill();
     }
-    const customIcon = bagItemIconAsset(item);
     let customIconShown = false;
     if (customIcon) {
-      // C 组道具图与装备真图(v2)均为自带暗渐晕底的不透明方图,统一直出;加载失败回退类型图标。
-      const iconW = size * 0.84;
+      const iconW = size;
       // 装备图标是透明底:先垫暗底(橙 / 红装带背景流光),再贴装备图
       if (bagEquipCode(item)) {
         mountEquipIconBacking(this.host, card, 'LobbyBagItemIconBacking', iconW, bagEquipCode(item));
@@ -723,9 +723,12 @@ export class LobbyBagPanelRenderer {
       customIconShown = !!this.host.addSprite('LobbyBagItemIcon', customIcon, 0, 0, iconW, iconW, card);
     }
     if (!customIconShown) {
+      if (customIcon) {
+        this.host.addSprite('LobbyBagItemSlotArt', BAG_AI_SLOT_BASE_ASSET, 0, 0, size, size, card);
+      }
       this.host.addSprite('LobbyBagItemTypeIcon', bagItemTypeIconAsset(item.itemType), 0, 0, size * 0.66, size * 0.66, card);
+      this.addCleanSlotFrame(card, 'LobbyBagItemRarityFrame', 0, 0, size, scale, item.rarity);
     }
-    this.addCleanSlotFrame(card, 'LobbyBagItemRarityFrame', 0, 0, size, scale, item.rarity);
     if (selected) {
       // 选中态:程序画金色描边环(外柔光+内亮线)。item_slot_glow 中心不透明,整图叠加会盖住道具图,弃用。
       const highlight = this.host.addChildPlainNode(card, 'LobbyBagItemSlotHighlight', 0, 0, size + 12 * scale, size + 12 * scale);
@@ -1074,19 +1077,22 @@ export class LobbyBagPanelRenderer {
     const openW = S(670 - 405);
     const openH = S(435 - 180);
     // 开口底:暗底 → 稀有度色符文法阵底图(原型石头脚下的发光法阵)→ 轻暗罩(底图偏亮,压一压免得抢物品图)
-    const glow = this.host.addChildPlainNode(detail, 'LobbyBagDetailGlow', openCx, openCy, openW, openH).addComponent(Graphics);
-    glow.fillColor = rgba(6, 6, 10, 230);
-    glow.rect(-openW / 2, -openH / 2, openW, openH);
-    glow.fill();
-    const bgSide = Math.max(openW, openH);
-    if (this.host.addSprite('LobbyBagDetailCardBg', REF_DETAIL.cardBgPath(item.rarity), openCx, openCy, bgSide, bgSide, detail)) {
-      const veil = this.host.addChildPlainNode(detail, 'LobbyBagDetailCardVeil', openCx, openCy, bgSide, bgSide).addComponent(Graphics);
-      veil.fillColor = rgba(4, 4, 8, 70);
-      veil.rect(-bgSide / 2, -bgSide / 2, bgSide, bgSide);
-      veil.fill();
-    }
     const popupIcon = bagItemIconAsset(item);
-    const iconSize = Math.min(openW, openH) * 0.92;
+    // 2026-10-22 用户「背包详情两个框,移除外部的」:有图标时只留图标自带的暗底 + 稀有度描边,不画法阵底 / 金卡框 / 左上稀有度字母
+    if (!popupIcon) {
+      const glow = this.host.addChildPlainNode(detail, 'LobbyBagDetailGlow', openCx, openCy, openW, openH).addComponent(Graphics);
+      glow.fillColor = rgba(6, 6, 10, 230);
+      glow.rect(-openW / 2, -openH / 2, openW, openH);
+      glow.fill();
+      const bgSide = Math.max(openW, openH);
+      if (this.host.addSprite('LobbyBagDetailCardBg', REF_DETAIL.cardBgPath(item.rarity), openCx, openCy, bgSide, bgSide, detail)) {
+        const veil = this.host.addChildPlainNode(detail, 'LobbyBagDetailCardVeil', openCx, openCy, bgSide, bgSide).addComponent(Graphics);
+        veil.fillColor = rgba(4, 4, 8, 70);
+        veil.rect(-bgSide / 2, -bgSide / 2, bgSide, bgSide);
+        veil.fill();
+      }
+    }
+    const iconSize = popupIcon ? Math.min(openW, openH) * 1.04 : Math.min(openW, openH) * 0.92;
     if (popupIcon) {
       if (bagEquipCode(item)) {
         mountEquipIconBacking(this.host, detail, 'LobbyBagDetailIconBacking', iconSize, bagEquipCode(item), { x: openCx, y: openCy });
@@ -1097,17 +1103,19 @@ export class LobbyBagPanelRenderer {
     } else {
       this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), openCx, openCy, iconSize * 0.7, iconSize * 0.7, detail);
     }
-    const frameCy = openCy + ((CF.open.y0 + CF.open.y1) / 2 - CF.h / 2) * ck;
-    if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL.cardFramePath(item.rarity), openCx, frameCy, CF.w * ck, CF.h * ck, detail)) {
-      this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, openCx, openCy, S(313), S(313), detail);
+    if (!popupIcon) {
+      const frameCy = openCy + ((CF.open.y0 + CF.open.y1) / 2 - CF.h / 2) * ck;
+      if (!this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL.cardFramePath(item.rarity), openCx, frameCy, CF.w * ck, CF.h * ck, detail)) {
+        this.host.addSprite('LobbyBagDetailSlotArt', REF_DETAIL_SLOT_FRAME_ASSET, openCx, openCy, S(313), S(313), detail);
+      }
+      // 左上角稀有度字母 (437, 205);有图标时稀有度看描边色 + 名下「SSR · 材料」签
+      const rarityTag = tight(this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), X(420), Y(207), S(40), rarity, new Size(S(130), S(48)), HorizontalTextAlignment.LEFT));
+      rarityTag.enableWrapText = false;
+      rarityTag.overflow = Label.Overflow.SHRINK;
+      rarityTag.isBold = true;
+      rarityTag.isItalic = true;
+      this.applyOutline(rarityTag, scale, true);
     }
-    // 左上角稀有度字母 (437, 205)
-    const rarityTag = tight(this.host.addChildLabel(detail, 'LobbyBagDetailRarityLetter', safeText(item.rarity || 'N'), X(420), Y(207), S(40), rarity, new Size(S(130), S(48)), HorizontalTextAlignment.LEFT));
-    rarityTag.enableWrapText = false;
-    rarityTag.overflow = Label.Overflow.SHRINK;
-    rarityTag.isBold = true;
-    rarityTag.isItalic = true;
-    this.applyOutline(rarityTag, scale, true);
     // 名 (537, 475) 垫名牌(原型:暗带 + 上下细金线 + 两端金箭羽,x 322..752);稀有度签 (537, 519):暗条 + 两侧细金线,字为稀有度色
     this.host.addSprite('LobbyBagDetailNamePlate', REF_DETAIL.namePlate.path, X(537), Y(475), S(430), S(58), detail);
     const nameLabel = tight(this.host.addChildLabel(detail, 'LobbyBagDetailName', safeText(item.itemName), X(537), Y(475), S(42), rgba(255, 232, 170), new Size(S(400), S(52))));
@@ -1246,19 +1254,20 @@ export class LobbyBagPanelRenderer {
     const cellY = Math.min(height / 2 - 30 * scale, groupHeight / 2) - cellSize / 2;
     cells.forEach((cell, index) => {
       const cellX = cells.length > 1 ? (index === 0 ? -1 : 1) * (arrowWidth / 2 + cellSize / 2) : 0;
-      this.host.addSprite(`LobbyBagShowcaseSlot_${index}`, BAG_AI_SLOT_BASE_ASSET, cellX, cellY, cellSize, cellSize, card);
       const icon = bagItemIconAsset(cell.item);
       if (icon) {
+        // 单框:图标自带暗底 + 稀有度描边,不画格底 / 外层格框
         if (bagEquipCode(cell.item)) {
-          mountEquipIconBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize * 0.86, bagEquipCode(cell.item), { x: cellX, y: cellY });
+          mountEquipIconBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize, bagEquipCode(cell.item), { x: cellX, y: cellY });
         } else {
-          mountItemRarityBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize * 0.86, cell.item.rarity, { x: cellX, y: cellY });
+          mountItemRarityBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize, cell.item.rarity, { x: cellX, y: cellY });
         }
-        this.host.addSprite(`LobbyBagShowcaseIcon_${index}`, icon, cellX, cellY, cellSize * 0.86, cellSize * 0.86, card);
+        this.host.addSprite(`LobbyBagShowcaseIcon_${index}`, icon, cellX, cellY, cellSize, cellSize, card);
       } else {
+        this.host.addSprite(`LobbyBagShowcaseSlot_${index}`, BAG_AI_SLOT_BASE_ASSET, cellX, cellY, cellSize, cellSize, card);
         this.host.addSprite(`LobbyBagShowcaseTypeIcon_${index}`, bagItemTypeIconAsset(cell.item.itemType), cellX, cellY, cellSize * 0.68, cellSize * 0.68, card);
+        this.addCleanSlotFrame(card, `LobbyBagShowcaseFrame_${index}`, cellX, cellY, cellSize, scale * 1.3, cell.item.rarity);
       }
-      this.addCleanSlotFrame(card, `LobbyBagShowcaseFrame_${index}`, cellX, cellY, cellSize, scale * 1.3, cell.item.rarity);
       const badge = this.host.addChildLabel(card, `LobbyBagShowcaseBadge_${index}`, cell.badge, cellX + cellSize / 2 - 10 * scale, cellY - cellSize / 2 + 18 * scale, 22 * scale, rgba(255, 236, 180), new Size(cellSize - 16 * scale, 28 * scale), HorizontalTextAlignment.RIGHT);
       badge.overflow = Label.Overflow.SHRINK;
       this.applyOutline(badge, scale, true);
@@ -1533,11 +1542,14 @@ export class LobbyBagPanelRenderer {
     const ocx = X((x0 + x1) / 2);
     const ocy = Y((y0 + y1) / 2);
     const side = Math.max(openW, openH);
-    mountRefSolid(this.host, dialog, `CardBack_${item.itemCode}`, ocx, ocy, openW, openH, rgba(6, 6, 10, 235));
-    this.host.addSprite('CardBg', REF_DETAIL.cardBgPath(item.rarity), ocx, ocy, side, side, dialog);
-    mountRefSolid(this.host, dialog, 'CardVeil', ocx, ocy, openW, openH, rgba(4, 4, 8, 60));
     const icon = bagItemIconAsset(item);
-    const iconSize = Math.min(openW, openH) * 0.86;
+    // 2026-10-22 单框:有图标时只留图标自带的暗底 + 稀有度描边
+    if (!icon) {
+      mountRefSolid(this.host, dialog, `CardBack_${item.itemCode}`, ocx, ocy, openW, openH, rgba(6, 6, 10, 235));
+      this.host.addSprite('CardBg', REF_DETAIL.cardBgPath(item.rarity), ocx, ocy, side, side, dialog);
+      mountRefSolid(this.host, dialog, 'CardVeil', ocx, ocy, openW, openH, rgba(4, 4, 8, 60));
+    }
+    const iconSize = icon ? Math.min(openW, openH) * 1.04 : Math.min(openW, openH) * 0.86;
     if (icon) {
       if (bagEquipCode(item)) {
         mountEquipIconBacking(this.host, dialog, 'CardIconBacking', iconSize, bagEquipCode(item), { x: ocx, y: ocy });
@@ -1548,16 +1560,18 @@ export class LobbyBagPanelRenderer {
     } else {
       this.host.addSprite('CardIcon', bagItemTypeIconAsset(item.itemType), ocx, ocy, iconSize * 0.7, iconSize * 0.7, dialog);
     }
-    const CF = REF_DETAIL.cardFrame;
-    const ck = openW / (CF.open.x1 - CF.open.x0);
-    this.host.addSprite('CardFrame', REF_DETAIL.cardFramePath(item.rarity), ocx, ocy + ((CF.open.y0 + CF.open.y1) / 2 - CF.h / 2) * ck, CF.w * ck, CF.h * ck, dialog);
-    const rarity = this.rarityColor(item.rarity);
-    const letter = this.host.addChildLabel(dialog, 'CardRarity', safeText(item.rarity || 'N'), ocx - openW / 2 + S(14), ocy + openH / 2 - S(28), S(34), rarity, new Size(S(110), S(42)), HorizontalTextAlignment.LEFT);
-    letter.lineHeight = letter.fontSize;
-    letter.isBold = true;
-    letter.isItalic = true;
-    letter.enableWrapText = false;
-    this.applyOutline(letter, scale, true);
+    if (!icon) {
+      const CF = REF_DETAIL.cardFrame;
+      const ck = openW / (CF.open.x1 - CF.open.x0);
+      this.host.addSprite('CardFrame', REF_DETAIL.cardFramePath(item.rarity), ocx, ocy + ((CF.open.y0 + CF.open.y1) / 2 - CF.h / 2) * ck, CF.w * ck, CF.h * ck, dialog);
+      const rarity = this.rarityColor(item.rarity);
+      const letter = this.host.addChildLabel(dialog, 'CardRarity', safeText(item.rarity || 'N'), ocx - openW / 2 + S(14), ocy + openH / 2 - S(28), S(34), rarity, new Size(S(110), S(42)), HorizontalTextAlignment.LEFT);
+      letter.lineHeight = letter.fontSize;
+      letter.isBold = true;
+      letter.isItalic = true;
+      letter.enableWrapText = false;
+      this.applyOutline(letter, scale, true);
+    }
     if (badge) {
       const b = this.host.addChildLabel(dialog, 'CardBadge', badge, ocx + openW / 2 - S(12), ocy - openH / 2 + S(24), S(28), rgba(255, 246, 228), new Size(S(160), S(36)), HorizontalTextAlignment.RIGHT);
       b.lineHeight = b.fontSize;
