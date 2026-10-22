@@ -1,5 +1,5 @@
 import { Color, Node, Sprite, SpriteFrame, UIOpacity, UITransform, Vec3, tween, Tween } from 'cc';
-import { equipGlowFrame, equipPlateFrame, equipSweepFrames } from './GuardBakedShapes';
+import { equipGlowFrame, equipPlateFrame, equipSweepFrames, itemRarityRingFrame } from './GuardBakedShapes';
 import { equipQualityColorByCode } from './EquipIconAssets';
 
 /**
@@ -120,3 +120,64 @@ export function mountEquipIconBacking(
   }
   return layer;
 }
+
+/** 道具稀有度 → 描边色(与装备图标烘焙描边实测色一致:白 / 绿 / 蓝 / 紫 / 橙 / 红)。 */
+const ITEM_RING_COLORS: Record<string, Color> = {
+  WHITE: new Color(218, 222, 227, 255),
+  GREEN: new Color(59, 208, 108, 255),
+  BLUE: new Color(53, 128, 248, 255),
+  PURPLE: new Color(165, 71, 247, 255),
+  ORANGE: new Color(251, 163, 49, 255),
+  RED: new Color(236, 50, 43, 255),
+};
+
+export function itemRarityRingColor(rarity: string | null | undefined): Color {
+  switch ((rarity || '').toUpperCase()) {
+    case 'UR':
+    case 'RED':
+    case 'MYTHIC':
+      return ITEM_RING_COLORS.RED;
+    case 'SSR':
+    case 'GOLD':
+    case 'ORANGE':
+    case 'LEGENDARY':
+      return ITEM_RING_COLORS.ORANGE;
+    case 'SR':
+    case 'EPIC':
+    case 'PURPLE':
+      return ITEM_RING_COLORS.PURPLE;
+    case 'R':
+    case 'RARE':
+    case 'BLUE':
+      return ITEM_RING_COLORS.BLUE;
+    case 'GREEN':
+    case 'UNCOMMON':
+      return ITEM_RING_COLORS.GREEN;
+    default:
+      return ITEM_RING_COLORS.WHITE;
+  }
+}
+
+/**
+ * 材料 / 道具图标垫底(2026-10-22 用户定 A 方案:材料与装备同款「暗底 + 稀有度细描边」)。
+ * 材料图标素材是透明本体(占画布 ~86%),这里在 box 边长处画暗底 + 稀有度描边;描边落在图标透明边距里,不压本体。
+ * 必须在 addSprite 图标之前调用(同级节点按创建顺序绘制)。
+ */
+export function mountItemRarityBacking(
+  host: EquipShineHost,
+  parent: Node,
+  name: string,
+  box: number,
+  rarity: string | null | undefined,
+  opts: { x?: number; y?: number } = {},
+): Node | null {
+  if (!(box > 0)) {
+    return null;
+  }
+  const layer = host.addChildPlainNode(parent, name, opts.x ?? 0, opts.y ?? 0, box, box);
+  const plateSize = box * PLATE_FRAC;
+  mountBaked(host, layer, 'Plate', equipPlateFrame(), 0, 0, plateSize, plateSize);
+  mountBaked(host, layer, 'Ring', itemRarityRingFrame(itemRarityRingColor(rarity)), 0, 0, box, box);
+  return layer;
+}
+

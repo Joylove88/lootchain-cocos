@@ -67,6 +67,18 @@ class Canvas {
     this.each((x, y) => (lineWidth / 2 - Math.abs(Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * unit) / aa + 0.5, color);
   }
 
+  /** 圆角矩形描边(中心在 cx, cy;w/h/radius 指描边中线)。 */
+  strokeRoundRectAt(cx: number, cy: number, w: number, h: number, radius: number, lineWidth: number, color: Rgba): void {
+    const aa = 1 / SUPERSAMPLE;
+    const r = Math.min(radius, w / 2, h / 2);
+    this.each((x, y) => {
+      const qx = Math.abs(x - cx) - (w / 2 - r);
+      const qy = Math.abs(y - cy) - (h / 2 - r);
+      const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+      return (lineWidth / 2 - Math.abs(d)) / aa + 0.5;
+    }, color);
+  }
+
   /** 圆角矩形填充(中心在 cx, cy);radius 为 0 时是直角矩形。 */
   fillRoundRectAt(cx: number, cy: number, w: number, h: number, radius: number, color: Rgba): void {
     const aa = 1 / SUPERSAMPLE;
@@ -278,3 +290,15 @@ export function equipSweepFrames(color: Color, double: boolean): SpriteFrame[] {
   }
   return frames;
 }
+
+/**
+ * 道具稀有度描边(材料图标 A 方案,2026-10-22):128 方画布,与装备图标烘焙描边同比例——
+ * 512 版描边外沿内缩 14、宽 16、外圆角 40,外侧 2px 暗线;换算到 128:中线内缩 5.5、宽 4、中线圆角 8;暗线中线 3.25、宽 0.5。
+ */
+export function itemRarityRingFrame(color: Color): SpriteFrame | null {
+  return bake(key('item-ring', color), 128, 128, (c) => {
+    c.strokeRoundRectAt(0, 0, 128 - 6.5, 128 - 6.5, 10.25, 0.6, [0, 0, 0, 160 / 255]);
+    c.strokeRoundRectAt(0, 0, 128 - 11, 128 - 11, 8, 4, rgbaOf(color, 255));
+  });
+}
+

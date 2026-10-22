@@ -17,7 +17,7 @@ import {
   type EventTouch,
 } from 'cc';
 import { equipIconAssetByCode } from './EquipIconAssets';
-import { mountEquipIconBacking } from './EquipRarityShine';
+import { mountEquipIconBacking, mountItemRarityBacking } from './EquipRarityShine';
 import { parseGemCode } from './EquipDetailCard';
 import type { BagItemEntryVO, ItemTypeBagGroupVO, LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
@@ -716,6 +716,9 @@ export class LobbyBagPanelRenderer {
       // 装备图标是透明底:先垫暗底(橙 / 红装带背景流光),再贴装备图
       if (bagEquipCode(item)) {
         mountEquipIconBacking(this.host, card, 'LobbyBagItemIconBacking', iconW, bagEquipCode(item));
+      } else {
+        // 材料 / 道具(A 方案):暗底 + 稀有度细描边,与装备同款
+        mountItemRarityBacking(this.host, card, 'LobbyBagItemIconBacking', iconW, item.rarity);
       }
       customIconShown = !!this.host.addSprite('LobbyBagItemIcon', customIcon, 0, 0, iconW, iconW, card);
     }
@@ -1087,6 +1090,8 @@ export class LobbyBagPanelRenderer {
     if (popupIcon) {
       if (bagEquipCode(item)) {
         mountEquipIconBacking(this.host, detail, 'LobbyBagDetailIconBacking', iconSize, bagEquipCode(item), { x: openCx, y: openCy });
+      } else {
+        mountItemRarityBacking(this.host, detail, 'LobbyBagDetailIconBacking', iconSize, item.rarity, { x: openCx, y: openCy });
       }
       this.host.addSprite('LobbyBagDetailIcon', popupIcon, openCx, openCy, iconSize, iconSize, detail);
     } else {
@@ -1246,6 +1251,8 @@ export class LobbyBagPanelRenderer {
       if (icon) {
         if (bagEquipCode(cell.item)) {
           mountEquipIconBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize * 0.86, bagEquipCode(cell.item), { x: cellX, y: cellY });
+        } else {
+          mountItemRarityBacking(this.host, card, `LobbyBagShowcaseIconBacking_${index}`, cellSize * 0.86, cell.item.rarity, { x: cellX, y: cellY });
         }
         this.host.addSprite(`LobbyBagShowcaseIcon_${index}`, icon, cellX, cellY, cellSize * 0.86, cellSize * 0.86, card);
       } else {
@@ -1534,6 +1541,8 @@ export class LobbyBagPanelRenderer {
     if (icon) {
       if (bagEquipCode(item)) {
         mountEquipIconBacking(this.host, dialog, 'CardIconBacking', iconSize, bagEquipCode(item), { x: ocx, y: ocy });
+      } else {
+        mountItemRarityBacking(this.host, dialog, 'CardIconBacking', iconSize, item.rarity, { x: ocx, y: ocy });
       }
       this.host.addSprite('CardIcon', icon, ocx, ocy, iconSize, iconSize, dialog);
     } else {
