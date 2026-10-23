@@ -1657,11 +1657,13 @@ export class LobbyHeroDetailPanelRenderer {
       graphics.fill();
     }
     const textShift = plateArt ? plateWidth * 0.07 : 0;
-    const title = this.host.addChildLabel(plate, 'LobbyHeroDetailName', safeText(hero.heroName), textShift, plateHeight * 0.24, 26 * scale, rgba(252, 225, 156), new Size(plateWidth * 0.72, 34 * scale));
+    // 2026-10-23 原型名牌:三行向中心收,名字不贴上框、星不贴下框
+    const rowK = this.proto ? 0.82 : 1;
+    const title = this.host.addChildLabel(plate, 'LobbyHeroDetailName', safeText(hero.heroName), textShift, plateHeight * 0.24 * rowK, 26 * scale, rgba(252, 225, 156), new Size(plateWidth * 0.72, 34 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
     // 名称下金色分割线(divider_line_l 素材,缺图退程序线)。
-    const lineY = plateHeight * 0.11;
+    const lineY = plateHeight * 0.11 * rowK;
     if (!this.host.addSprite('LobbyHeroDetailNameLine', 'ui/hero/ai/divider_line_l/spriteFrame', textShift, lineY, plateWidth * 0.58, 4 * scale, plate)) {
       const lg = plate.addComponent(Graphics);
       lg.strokeColor = rgba(190, 152, 84, 200);
@@ -1670,7 +1672,7 @@ export class LobbyHeroDetailPanelRenderer {
       lg.lineTo(textShift + plateWidth * 0.29, lineY);
       lg.stroke();
     }
-    const metaY = -plateHeight * 0.04;
+    const metaY = -plateHeight * 0.04 * rowK;
     const rarityText = safeText(hero.rarity || 'R');
     const rarityLabel = this.host.addChildLabel(plate, 'LobbyHeroDetailRarity', rarityText, textShift - plateWidth * 0.22, metaY, 22 * scale, this.rarityColor(hero.rarity), new Size(plateWidth * 0.18, 30 * scale));
     rarityLabel.overflow = Label.Overflow.SHRINK;
@@ -1734,12 +1736,16 @@ export class LobbyHeroDetailPanelRenderer {
         this.host.addSprite('LobbyHeroDetailPowerIcon', HERO_PROTO_IC_POWER, px - pw / 2 - iconS / 2 - 2 * scale, metaY, iconS, iconS, plate);
       }
     }
-    this.starRowArgs = { parent: plate, x: textShift, y: -plateHeight * 0.28, maxWidth: plateWidth * 0.6, scale };
-    this.renderStarRow(plate, hero, textShift, -plateHeight * 0.28, plateWidth * 0.6, scale);
+    this.starRowArgs = { parent: plate, x: textShift, y: -plateHeight * 0.28 * rowK, maxWidth: plateWidth * 0.6, scale };
+    this.renderStarRow(plate, hero, textShift, -plateHeight * 0.28 * rowK, plateWidth * 0.6, scale);
     // 左右切换英雄:AI 箭头图优先,缺图回退程序圆钮。
     const renderSwitchArrow = (name: string, direction: number) => {
       const arrowSize = 64 * scale;
-      const ax = plateX + (plateWidth / 2 + 46 * scale) * (direction >= 0 ? 1 : -1);
+      let ax = plateX + (plateWidth / 2 + 46 * scale) * (direction >= 0 ? 1 : -1);
+      if (this.proto && frame && direction >= 0) {
+        // 原型名牌放大后右箭头不能压到右栏
+        ax = Math.min(ax, frame.infoX - frame.infoWidth / 2 - arrowSize / 2 - 6 * scale);
+      }
       const arrow = this.host.addChildPlainNode(parent, name, ax, plateY, arrowSize, arrowSize);
       // 暗色圆衬底:箭头素材线条较淡,垫底提对比。
       const arrowBack = this.host.addChildPlainNode(arrow, `${name}Back`, 0, 0, arrowSize, arrowSize);
@@ -1847,7 +1853,7 @@ export class LobbyHeroDetailPanelRenderer {
     const RX = (px: number): number => width / 2 - (1870 - px) * k;
     const protoInfoW = Math.min(784 * k, width * 0.44);
     const protoInfoRight = RX(1856);
-    const protoPlateW = 420 * k;
+    const protoPlateW = 440 * k;
     const protoGround = FY(646);
     const protoArtTop = height / 2 - 6 * scale;
     const protoArtH = Math.max(240 * scale, (protoArtTop - protoGround) / 0.93);
@@ -4298,8 +4304,8 @@ export class LobbyHeroDetailPanelRenderer {
       // 2026-10-23 与属性 / 技能 / 升星原型统一:雕花细金框 + 红带金星标题(装备页内容不变)
       const { PX, PY, PS } = this.protoPanelMap(width, height);
       this.protoBoxes(panel, PY, width, [[84, 822]])();
-      this.protoSectionBand(panel, 'WearSection', '装备', PY(115), width - PS(22), PS(54), PX(1092), this.protoFont(30));
-      quickYOverride = PY(115);
+      this.protoSectionBand(panel, 'WearSection', '装备', PY(113), width - PS(22), PS(50), PX(1092), this.protoFont(30));
+      quickYOverride = PY(113);
     } else {
       const pg = panel.addComponent(Graphics);
       pg.fillColor = rgba(6, 6, 8, 198);
@@ -5333,9 +5339,12 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   /** 分区头带:红带 + 大四芒星 + 左对齐金字(原型)。 */
-  private protoSectionBand(parent: Node, name: string, title: string, y: number, w: number, h: number, leftX: number, fontSize: number): void {
+  private protoSectionBand(parent: Node, name: string, title: string, y: number, w: number, h: number, leftX: number, fontSizeIn: number): void {
+    let fontSize = fontSizeIn;
     mountRefTitleBand(this.host, parent, `${name}Band`, 0, y, w, h, 1);
-    const starH = h * 1.12;
+    // 2026-10-23 用户「标题框内的文字没有做上下缩进」:字高封顶带高 52%,上下各留 ≥ 24%
+    fontSize = Math.min(fontSize, Math.max(20, h * 0.52));
+    const starH = h * 1.0;
     const starW = starH;
     if (!this.host.addSprite(`${name}Star`, HERO_PROTO_BAND_STAR, leftX + starW / 2, y, starW, starH, parent)) {
       this.host.addSprite(`${name}Star`, HERO_AI_SECTION_STAR_ASSET, leftX + starW / 2, y, starH * (232 / 244), starH, parent);
@@ -5484,18 +5493,18 @@ export class LobbyHeroDetailPanelRenderer {
     const panel = this.protoPanelShell(parent, 'LobbyHeroDetailInfoPanel', x, y, width, height);
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height);
     const F = (v: number): number => this.protoFont(v);
-    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 334], [342, 538], [546, 822]]);
+    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 334], [342, 548], [556, 822]]);
     const bandW = width - PS(22);
     const colW = PW(360);
     const colX = [PX(1278), PX(1650)];
     // ① 基础属性
-    this.protoSectionBand(panel, 'LobbyHeroDetailAttrSection', '基础属性', PY(111), bandW, PS(46), PX(1092), F(30));
-    this.protoPlateButton(panel, 'LobbyHeroDetailAttrDetailBtn', '属性详情', PX(1720), PY(111), PW(150), PS(36), F(21), () => this.showAttrDetailPopup(panel, hero, scale));
+    this.protoSectionBand(panel, 'LobbyHeroDetailAttrSection', '基础属性', PY(113), bandW, PS(50), PX(1092), F(30));
+    this.protoPlateButton(panel, 'LobbyHeroDetailAttrDetailBtn', '属性详情', PX(1720), PY(113), PW(150), PS(36), F(21), () => this.showAttrDetailPopup(panel, hero, scale));
     const grid = this.host.addChildPlainNode(panel, 'LobbyHeroDetailAttributeGrid', 0, 0, width, height);
     resolveAttributes(hero).slice(0, 6).forEach((attr, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const cell = this.protoRow(grid, `LobbyHeroDetailAttribute_${index}`, colX[col], PY(160 + row * 46), colW, PS(42));
+      const cell = this.protoRow(grid, `LobbyHeroDetailAttribute_${index}`, colX[col], PY(164 + row * 46), colW, PS(42));
       const left = -colW / 2;
       const icon = HERO_AI_STAT_ICON_ASSETS[attr.label];
       if (icon) {
@@ -5506,7 +5515,7 @@ export class LobbyHeroDetailPanelRenderer {
     });
     resolveGrowthChips(hero).filter((chip) => chip.label !== '大招').slice(0, 2).forEach((chip, index) => {
       const awakenable = chip.label === '觉醒' && this.isHeroAwakenable(hero);
-      const node = this.protoRow(panel, `LobbyHeroDetailGrowthChip_${index}`, colX[index], PY(301), colW, PS(42), awakenable);
+      const node = this.protoRow(panel, `LobbyHeroDetailGrowthChip_${index}`, colX[index], PY(305), colW, PS(42), awakenable);
       const text = awakenable ? '可觉醒' : chip.value;
       const font = F(21);
       const iconS = PS(32);
@@ -5527,17 +5536,17 @@ export class LobbyHeroDetailPanelRenderer {
       }
     });
     // ② 特性加成
-    this.protoSectionBand(panel, 'LobbyHeroDetailAffixSection', '特性加成', PY(369), bandW, PS(46), PX(1092), F(30));
+    this.protoSectionBand(panel, 'LobbyHeroDetailAffixSection', '特性加成', PY(371), bandW, PS(50), PX(1092), F(30));
     const affixes = (hero.affixes ?? []).slice(0, 6);
     if (affixes.length > 0) {
-      this.protoPlateButton(panel, 'LobbyHeroDetailRefineEntry', '洗练', PX(1730), PY(369), PW(130), PS(36), F(21), () => this.host.openLobbyHeroRefineDialog(), 'red');
+      this.protoPlateButton(panel, 'LobbyHeroDetailRefineEntry', '洗练', PX(1730), PY(371), PW(130), PS(36), F(21), () => this.host.openLobbyHeroRefineDialog(), 'red');
     } else {
       this.protoText(panel, 'LobbyHeroDetailAffixEmpty', '暂无词条(洗练系统开放后可获得 / 重铸)', 0, PY(452), F(20), rgba(170, 160, 140), width - PS(80));
     }
     affixes.forEach((affix, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const cell = this.protoRow(panel, `LobbyHeroDetailAffixCard_${index}`, colX[col], PY(419 + row * 46), colW, PS(42));
+      const cell = this.protoRow(panel, `LobbyHeroDetailAffixCard_${index}`, colX[col], PY(423 + row * 45), colW, PS(41));
       const q = affixQualityColor(affix.quality);
       const left = -colW / 2;
       mountRefSolid(this.host, cell, 'Bar', left + PS(8), 0, PS(4), PS(28), rgba(q.r, q.g, q.b, 245));
@@ -5548,15 +5557,15 @@ export class LobbyHeroDetailPanelRenderer {
       this.protoText(cell, 'LobbyHeroDetailAffixQuality', safeText(affix.quality), colW / 2 - PS(28), 0, F(22), rgba(q.r, q.g, q.b, 255), PS(44), HorizontalTextAlignment.CENTER, true);
     });
     // ③ 技能:大招卡
-    this.protoSectionBand(panel, 'LobbyHeroDetailSkillSection', '技能', PY(573), bandW, PS(46), PX(1092), F(30));
-    const all = this.protoText(panel, 'LobbyHeroDetailSkillAll', '全部技能 ›', PX(1806), PY(573), F(21), rgba(244, 218, 156), PW(220), HorizontalTextAlignment.RIGHT, true);
+    this.protoSectionBand(panel, 'LobbyHeroDetailSkillSection', '技能', PY(584), bandW, PS(48), PX(1092), F(30));
+    const all = this.protoText(panel, 'LobbyHeroDetailSkillAll', '全部技能 ›', PX(1806), PY(584), F(21), rgba(244, 218, 156), PW(220), HorizontalTextAlignment.RIGHT, true);
     all.node.addComponent(Button);
     all.node.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroDetailTab('skill'), this);
     const ult = resolveSkills(hero).find((skill) => skill.kind === 'ultimate') ?? null;
     if (ult) {
       const cardW = PW(736);
       const cardH = PS(64);
-      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(634), cardW, cardH, true);
+      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(643), cardW, cardH, true);
       mountRefSolid(this.host, card, 'Tint', 0, 0, cardW - PS(12), cardH - PS(12), rgba(96, 14, 12, 190));
       const left = -cardW / 2;
       this.host.addSprite('Icon', ult.icon ?? resolveUltimateEmblemAsset(hero), left + PS(48), 0, PS(70), PS(70), card);
@@ -5568,14 +5577,14 @@ export class LobbyHeroDetailPanelRenderer {
     }
     // ④ 升级消耗框 + 双钮
     const view = this.resolveLevelUpCostView(hero);
-    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(712), PW(736), view.hint ? PS(80) : PS(56));
+    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(718), PW(736), view.hint ? PS(72) : PS(52));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     const idleEnabled = view.blocked !== 'cap';
     const dim = view.blocked === 'lack';
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'LobbyHeroDetailLevelUpButton', labelName: 'LobbyHeroDetailLevelUpButtonLabel', idleText: '升 级', pendingText: '升级中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.levelUpLobbyHero(hero.id) },
       { name: 'LobbyHeroDetailLevelUpAutoButton', labelName: 'LobbyHeroDetailLevelUpAutoButtonLabel', idleText: '一键升级', pendingText: '处理中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.autoLevelUpLobbyHero(hero.id) },
-    ], { cy: PY(786), h: PS(54), cx: [PX(1284), PX(1624)], w: [PW(300), PW(300)] });
+    ], { cy: PY(788), h: PS(52), cx: [PX(1284), PX(1624)], w: [PW(300), PW(300)] });
     finishFrames();
   }
 
@@ -5644,88 +5653,91 @@ export class LobbyHeroDetailPanelRenderer {
     const panel = this.protoPanelShell(parent, 'LobbyHeroDetailStarPanel', x, y, width, height);
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height, 1046, 1810);
     const F = (v: number): number => this.protoFont(v);
-    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 291], [299, 822]]);
+    // 2026-10-23 用户「看着好乱好挤压」:减元素不硬塞——觉醒卡压成单行、解锁行只留两行(名称 + 触发 | 状态;说明),箭头放到两框之间
+    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 274], [282, 822]]);
     const star = Math.max(1, Math.min(STAR_MAX, Math.trunc(hero.star || 1)));
     const maxed = star >= STAR_MAX;
     const bandW = width - PS(22);
-    // ① 升星对照
-    this.protoSectionBand(panel, 'StarSection', '升星', PY(111), bandW, PS(46), PX(1062), F(30));
-    const curBox = this.protoRow(panel, 'StarCurBox', PX(1254), PY(167), PW(372), PS(58));
-    const starSize = { star: PS(46), font: F(30) };
-    this.renderStarGroup(curBox, 'StarCur', star, 0, 0, PW(372) - PS(24), 1, starSize);
-    this.protoText(panel, 'StarArrow', '›››', PX(1405), PY(167), F(36), maxed ? rgba(140, 126, 100) : rgba(250, 210, 112), PW(70), HorizontalTextAlignment.CENTER, true);
-    const nextBox = this.protoRow(panel, 'StarNextBox', PX(1618), PY(167), PW(330), PS(58), !maxed);
+    const rowW = PW(736);
+    const dim = rgba(170, 156, 128);
+    // ① 升星对照:当前 | ››› | 下一星
+    this.protoSectionBand(panel, 'StarSection', '升星', PY(113), bandW, PS(50), PX(1062), F(30));
+    const starSize = { star: PS(42), font: F(28) };
+    const curBox = this.protoRow(panel, 'StarCurBox', PX(1240), PY(174), PW(344), PS(56));
+    this.renderStarGroup(curBox, 'StarCur', star, 0, 0, PW(344) - PS(30), 1, starSize);
+    this.protoText(panel, 'StarArrow', '›››', PX(1431), PY(174), F(30), maxed ? rgba(140, 126, 100) : rgba(250, 210, 112), PW(40), HorizontalTextAlignment.CENTER, true);
+    const nextBox = this.protoRow(panel, 'StarNextBox', PX(1620), PY(174), PW(336), PS(56), !maxed);
     if (maxed) {
       this.protoText(nextBox, 'StarNext', '已满星', 0, 0, F(24), rgba(206, 192, 160), PW(300), HorizontalTextAlignment.CENTER, true);
     } else {
-      this.renderStarGroup(nextBox, 'StarNext', star + 1, 0, 0, PW(330) - PS(24), 1, starSize);
+      this.renderStarGroup(nextBox, 'StarNext', star + 1, 0, 0, PW(336) - PS(30), 1, starSize);
     }
-    // ② 觉醒卡
+    // ② 觉醒:单行(锁 / 星徽 + 「觉醒」+ 效果;条件交给右侧胶囊)
     const awakened = (hero.awakenStatus ?? 0) > 0;
     const ready = !awakened && star >= AWAKEN_COST.minStar;
-    const aw = this.protoRow(panel, 'StarAwakenCard', PX(1427), PY(242), PW(736), PS(76), ready);
-    const awLeft = -PW(736) / 2;
-    const awSlot = this.host.addChildPlainNode(aw, 'IconSlot', awLeft + PS(44), 0, PS(54), PS(54)).addComponent(Graphics);
-    awSlot.fillColor = rgba(8, 7, 8, 235);
-    awSlot.circle(0, 0, PS(26));
-    awSlot.fill();
-    awSlot.strokeColor = rgba(150, 120, 70, 200);
-    awSlot.lineWidth = 1.4;
-    awSlot.circle(0, 0, PS(26));
-    awSlot.stroke();
-    if (ready || awakened || !renderLockGlyph(this.host, aw, 'Lock', awLeft + PS(44), 0, PS(34), true)) {
-      this.host.addSprite('Emblem', HERO_AI_SECTION_STAR_ASSET, awLeft + PS(44), 0, PS(40), PS(42), aw);
+    const aw = this.protoRow(panel, 'StarAwakenCard', PX(1427), PY(240), rowW, PS(52), ready);
+    const awLeft = -rowW / 2;
+    if (ready || awakened || !renderLockGlyph(this.host, aw, 'Lock', awLeft + PS(36), 0, PS(30), true)) {
+      this.host.addSprite('Emblem', HERO_AI_SECTION_STAR_ASSET, awLeft + PS(36), 0, PS(32), PS(34), aw);
     }
-    const awTitle = awakened ? '觉醒 · 已觉醒' : ready ? '觉醒 · 可觉醒!' : `觉醒 · 满 ${AWAKEN_COST.minStar}★ 可觉醒`;
-    this.protoText(aw, 'Name', awTitle, awLeft + PS(86), PS(15), F(21), ready ? rgba(250, 226, 160) : awakened ? rgba(220, 236, 200) : rgba(214, 200, 170), PW(400), HorizontalTextAlignment.LEFT, ready);
-    this.protoText(aw, 'Desc', awakened ? `大招等级上限 Lv.${ultimateCap(true)} · 属性已增强` : `大招上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)} · 属性增强`, awLeft + PS(86), -PS(15), F(20), rgba(196, 184, 156), PW(480), HorizontalTextAlignment.LEFT);
+    const awName = '觉醒';
+    const awNameW = estimateTextWidth(awName, F(22)) * 1.08 + 6;
+    this.protoText(aw, 'Name', awName, awLeft + PS(66), 0, F(22), ready ? rgba(252, 228, 166) : rgba(236, 222, 194), awNameW, HorizontalTextAlignment.LEFT, true);
+    const awDesc = awakened ? `大招上限 Lv.${ultimateCap(true)} · 属性已增强` : `大招上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)} · 属性增强`;
+    this.protoText(aw, 'Desc', awDesc, awLeft + PS(66) + awNameW + PS(16), 0, F(20), dim, rowW * 0.55, HorizontalTextAlignment.LEFT);
     if (ready) {
-      const btn = mountRefButton(this.host, aw, 'StarAwakenButton', '觉 醒', PW(736) / 2 - PW(90), 0, PW(140), PS(46), scale, 'primary', () => this.openAwakenDialog(hero), { fontSize: F(21) });
-      this.drawRedDot(btn, 'StarAwakenButtonDot', PW(64), PS(18), scale);
+      const btn = this.protoPlateButton(aw, 'StarAwakenButton', '觉 醒', rowW / 2 - PW(80), 0, PW(128), PS(38), F(21), () => this.openAwakenDialog(hero), 'red');
+      this.drawRedDot(btn, 'StarAwakenButtonDot', PW(58), PS(16), scale);
     } else {
-      this.protoPill(aw, 'StatePill', awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`, PW(736) / 2 - PW(86), PS(15), PW(150), PS(32), awakened ? 'green' : 'dim', F(20));
+      this.protoPill(aw, 'StatePill', awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`, rowW / 2 - PW(80), 0, PW(132), PS(32), awakened ? 'green' : 'dim', F(19));
     }
-    // ③ 升星解锁
-    this.protoSectionBand(panel, 'StarUnlockSection', '升星解锁', PY(326), bandW, PS(46), PX(1062), F(29));
+    // ③ 升星解锁:两行——名称 + 触发率(暗小字,紧跟名称)| 状态胶囊;说明
+    this.protoSectionBand(panel, 'StarUnlockSection', '升星解锁', PY(311), bandW, PS(50), PX(1062), F(29));
     const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity);
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
-    const rowYs = [392, 468, 544, 620];
+    const rowYs = [382, 466, 550, 634];
     unlockStars.slice(0, 4).forEach((needStar, index) => {
       const unlocked = star >= needStar;
       const skill = passives[index] ?? null;
-      const rowW = PW(736);
-      const row = this.protoRow(panel, `StarUnlockRow_${index}`, PX(1427), PY(rowYs[index]), rowW, PS(72), unlocked);
+      const rowH = PS(76);
+      const row = this.protoRow(panel, `StarUnlockRow_${index}`, PX(1427), PY(rowYs[index]), rowW, rowH, unlocked);
       const left = -rowW / 2;
+      const iconX = left + PS(50);
       if (unlocked && skill) {
-        this.protoSkillIcon(row, 'Skill', left + PS(48), 0, PS(54), skill, index + 1, false);
+        this.protoSkillIcon(row, 'Skill', iconX, 0, PS(58), skill, index + 1, false);
       } else {
-        const slot = this.host.addChildPlainNode(row, 'IconSlot', left + PS(48), 0, PS(50), PS(50)).addComponent(Graphics);
+        const slot = this.host.addChildPlainNode(row, 'IconSlot', iconX, 0, PS(52), PS(52)).addComponent(Graphics);
         slot.fillColor = rgba(8, 7, 8, 235);
-        slot.circle(0, 0, PS(24));
+        slot.circle(0, 0, PS(25));
         slot.fill();
         slot.strokeColor = rgba(150, 120, 70, 200);
         slot.lineWidth = 1.4;
-        slot.circle(0, 0, PS(24));
+        slot.circle(0, 0, PS(25));
         slot.stroke();
-        renderLockGlyph(this.host, row, 'Lock', left + PS(48), 0, PS(32), true);
+        renderLockGlyph(this.host, row, 'Lock', iconX, 0, PS(32), true);
       }
-      this.protoText(row, 'Name', skill ? skill.name : `被动技能 ${index + 1}`, left + PS(96), PS(16), F(22), unlocked ? rgba(252, 228, 170) : rgba(222, 208, 182), PW(220), HorizontalTextAlignment.LEFT, true);
+      const textL = left + PS(100);
+      const lineY = PS(17);
+      const nameText = skill ? skill.name : `被动技能 ${index + 1}`;
+      const nameFont = F(23);
+      const nameW = estimateTextWidth(nameText, nameFont) * 1.08 + 6;
+      this.protoText(row, 'Name', nameText, textL, lineY, nameFont, unlocked ? rgba(252, 228, 170) : rgba(232, 220, 196), nameW, HorizontalTextAlignment.LEFT, true);
       const trigger = skill && skill.tag ? safeText(skill.tag.split(' · ').pop() ?? '') : '';
       if (trigger && !/解锁|待配置/.test(trigger)) {
-        this.protoText(row, 'Tag', trigger, PX(1632) - PX(1427), PS(16), F(20), unlocked ? rgba(232, 204, 140) : rgba(186, 172, 140), PW(160), HorizontalTextAlignment.RIGHT);
+        this.protoText(row, 'Tag', trigger, textL + nameW + PS(12), lineY, F(19), unlocked ? rgba(214, 186, 128) : dim, PW(180), HorizontalTextAlignment.LEFT);
       }
-      this.protoPill(row, 'StatePill', unlocked ? '已解锁' : `★${needStar} 解锁`, PX(1720) - PX(1427), PS(16), PW(124), PS(30), unlocked ? 'green' : 'gold', F(19));
-      this.protoText(row, 'Desc', skill ? skill.description : '升星解锁本被动技能。', left + PS(96), -PS(16), F(20), unlocked ? rgba(222, 208, 178) : rgba(176, 166, 144), rowW - PS(120), HorizontalTextAlignment.LEFT);
+      this.protoPill(row, 'StatePill', unlocked ? '已解锁' : `★${needStar} 解锁`, rowW / 2 - PW(80), lineY, PW(128), PS(32), unlocked ? 'green' : 'gold', F(19));
+      this.protoText(row, 'Desc', skill ? skill.description : '升星解锁本被动技能。', textL, -lineY, F(20), unlocked ? rgba(214, 200, 170) : rgba(178, 166, 142), rowW - PS(130), HorizontalTextAlignment.LEFT);
     });
-    // ④ 消耗框 + 双钮
+    // ④ 消耗框(单行)+ 双钮
     const view = this.resolveStarCostView(hero, star, maxed);
     const starHint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
-    this.renderProtoCostDock(panel, 'Star', view, PX(1427), starHint ? PY(700) : PY(692), PW(736), starHint ? PS(62) : PS(48));
+    this.renderProtoCostDock(panel, 'Star', view, PX(1427), starHint ? PY(710) : PY(706), rowW, starHint ? PS(62) : PS(50));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'StarUpButton', labelName: 'Label', idleText: maxed ? '已满星' : '升 星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
       { name: 'StarUpAutoButton', labelName: 'Label', idleText: maxed ? '已满星' : '一键升星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
-    ], { cy: PY(770), h: PS(58), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
+    ], { cy: PY(775), h: PS(56), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
     finishFrames();
   }
 
