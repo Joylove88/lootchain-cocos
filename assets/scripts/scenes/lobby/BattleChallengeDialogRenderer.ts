@@ -1,5 +1,5 @@
 import {
-  BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UITransform, Vec3,
+  BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UIOpacity, UITransform, Vec3,
 } from 'cc';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
@@ -28,7 +28,7 @@ const RARITY_COLORS: Record<string, Color> = {
 };
 
 /**
- * 关卡挑战确认弹框(敌方阵容 / 奖励 / 我方阵容 / 布阵 / 挑战)。
+ * 关卡挑战确认弹框(守卫目标 / 首通奖励 / 我方阵容 / 布阵 / 挑战)。
  * 2026-10-10 全界面美化:原来是黑底平框 + 文字清单 + 字母 X;改为全屏实景框(电脑居中大框)、金饰标题、
  * 区块换四角金饰框,奖励改图标格、我方阵容改头像排,关闭钮与按钮换切图。
  */
@@ -89,7 +89,7 @@ export class BattleChallengeDialogRenderer {
     const bodyHeight = bodyTop - bodyBottom;
     const bodyMid = (bodyTop + bodyBottom) / 2;
     const half = (bodyHeight - gap) / 2;
-    this.renderEnemySection(panel, leftX, bodyMid, colWidth, bodyHeight, ts, stage);
+    this.renderEnemySection(panel, leftX, bodyMid, colWidth, bodyHeight, ts, stage, formation);
     this.renderRewardSection(panel, rightX, bodyTop - half / 2, colWidth, half, ts, stage);
     this.renderAllySection(panel, rightX, bodyBottom + half / 2, colWidth, half, ts, formation);
 
@@ -120,37 +120,62 @@ export class BattleChallengeDialogRenderer {
     g.stroke();
   }
 
-  private renderEnemySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO): void {
+  /**
+   * 左栏:守卫目标(2026-10-24 策划审核 P0-2:主线已全是守卫战——10 波守水晶、上阵 4 人、不分前后排,
+   * 旧 5v5 的"敌方阵容 / 克制环 / 击败全部敌人"作废)。怪物强度 = 推荐战力对比当前阵容战力。
+   */
+  private renderEnemySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO, formation: LobbyHeroItemVO[]): void {
     const section = mountKitSection(this.host, parent, 'BattleChallengeDialogEnemySection', x, y, width, height, scale, 0.2);
-    this.sectionTitle(section, 'BattleChallengeDialogEnemyTitle', '敌方阵容', width, height, scale, rgba(250, 156, 120));
-    const summaryText = safeText(stage.enemySummary);
-    const enemy = this.host.addChildLabel(section, 'BattleChallengeDialogEnemySummary', summaryText || '未知敌人', 0, height / 2 - 76 * scale, 20 * scale, rgba(232, 212, 178), new Size(width - 60 * scale, 56 * scale));
-    enemy.overflow = Label.Overflow.SHRINK;
-    // 职业克制提示:按敌方阵容给出针对性配队建议,让每一关都成为一道可解的小谜题。
-    const enemyLooksRanged = /法|弓|射|术|巫|远程/.test(summaryText);
-    const counterAdvice = enemyLooksRanged ? '敌方偏远程 · 推荐上刺客切后排' : '敌方偏近战 · 推荐法师/射手输出';
-    const tip = this.host.addChildPlainNode(section, 'BattleChallengeDialogCounterBox', 0, 4 * scale, width - 60 * scale, 66 * scale);
+    this.sectionTitle(section, 'BattleChallengeDialogEnemyTitle', '守卫目标', width, height, scale, rgba(250, 156, 120));
+    const goal = this.host.addChildLabel(section, 'BattleChallengeDialogEnemySummary', '守住水晶 · 抵挡 10 波怪物', 0, height / 2 - 76 * scale, 21 * scale, rgba(236, 216, 180), new Size(width - 60 * scale, 30 * scale));
+    goal.overflow = Label.Overflow.SHRINK;
+    const recommended = Math.max(0, Math.trunc(Number(stage.recommendedPower) || 0));
+    const teamPower = formation.slice(0, 4).reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0);
+    const ratio = recommended > 0 ? teamPower / recommended : 1;
+    const grade = ratio >= 1.2 ? { text: '轻松', color: rgba(140, 220, 140) } : ratio >= 0.9 ? { text: '标准', color: rgba(255, 216, 130) } : { text: '困难', color: rgba(240, 120, 96) };
+    const boxW = width - 60 * scale;
+    const tip = this.host.addChildPlainNode(section, 'BattleChallengeDialogCounterBox', 0, 4 * scale, boxW, 72 * scale);
     const tg = tip.addComponent(Graphics);
     tg.fillColor = rgba(60, 22, 14, 150);
-    tg.roundRect(-(width - 60 * scale) / 2, -33 * scale, width - 60 * scale, 66 * scale, 8 * scale);
+    tg.roundRect(-boxW / 2, -36 * scale, boxW, 72 * scale, 8 * scale);
     tg.fill();
-    const advice = this.host.addChildLabel(tip, 'BattleChallengeDialogCounterAdvice', counterAdvice, 0, 13 * scale, 19 * scale, rgba(255, 216, 130), new Size(width - 80 * scale, 26 * scale)); advice.overflow = Label.Overflow.SHRINK;
-    const counterRule = this.host.addChildLabel(tip, 'BattleChallengeDialogCounterRule', '克制:近战 → 刺客 → 远程 → 近战(伤害 +30%)', 0, -15 * scale, 16 * scale, rgba(190, 170, 132), new Size(width - 80 * scale, 22 * scale)); counterRule.overflow = Label.Overflow.SHRINK;
+    const advice = this.host.addChildLabel(tip, 'BattleChallengeDialogCounterAdvice', `怪物强度 · ${grade.text}`, 0, 15 * scale, 20 * scale, grade.color, new Size(boxW - 20 * scale, 28 * scale));
+    advice.overflow = Label.Overflow.SHRINK;
+    const powerLine = this.host.addChildLabel(tip, 'BattleChallengeDialogCounterRule', `阵容战力 ${formatGrouped(teamPower)} / 推荐 ${formatGrouped(recommended)}`, 0, -16 * scale, 17 * scale, rgba(206, 186, 148), new Size(boxW - 20 * scale, 24 * scale));
+    powerLine.overflow = Label.Overflow.SHRINK;
     const condY = -height / 2 + 74 * scale;
     const condTitle = this.host.addChildLabel(section, 'BattleChallengeDialogCondTitle', '通关条件', 0, condY + 24 * scale, 20 * scale, rgba(226, 178, 92), new Size(width - 40 * scale, 26 * scale)); condTitle.overflow = Label.Overflow.SHRINK;
-    const cond = this.host.addChildLabel(section, 'BattleChallengeDialogCondText', `击败全部敌方单位 · 推荐战力 ${stage.recommendedPower.toLocaleString('en-US')}`, 0, condY - 8 * scale, 18 * scale, rgba(210, 192, 152), new Size(width - 60 * scale, 26 * scale)); cond.overflow = Label.Overflow.SHRINK;
+    const cond = this.host.addChildLabel(section, 'BattleChallengeDialogCondText', '第 10 波结束时水晶未被击破', 0, condY - 8 * scale, 18 * scale, rgba(210, 192, 152), new Size(width - 60 * scale, 26 * scale)); cond.overflow = Label.Overflow.SHRINK;
   }
 
   private renderRewardSection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO): void {
     const section = mountKitSection(this.host, parent, 'BattleChallengeDialogRewardSection', x, y, width, height, scale, 0.2);
-    this.sectionTitle(section, 'BattleChallengeDialogRewardTitle', '奖励预览', width, height, scale, rgba(244, 210, 140));
-    const rewards = stage.rewardPreview.length > 0 ? stage.rewardPreview.slice(0, 5).map((r) => safeText(r)) : ['金币'];
-    const slot = Math.min(84 * scale, (height - 64 * scale) * 0.72, (width - 60 * scale) / rewards.length - 14 * scale);
+    // 首通奖励只发一次(重复挑战无奖励、不耗体力):已领取时格子压暗并写明,不再让玩家以为能重复拿
+    const claimed = stage.growthSourceStatus === 'FIRST_CLEAR_USED_UP';
+    this.sectionTitle(section, 'BattleChallengeDialogRewardTitle', claimed ? '首通奖励 · 已领取' : '首通奖励', width, height, scale, claimed ? rgba(170, 156, 128) : rgba(244, 210, 140));
+    const staminaText = claimed ? '重复挑战无奖励 · 不消耗体力' : '消耗体力 6 · 仅首通扣除';
+    const stamina = this.host.addChildLabel(section, 'BattleChallengeDialogStamina', staminaText, 0, -height / 2 + 26 * scale, 16 * scale, claimed ? rgba(170, 156, 128) : rgba(214, 194, 152), new Size(width - 60 * scale, 22 * scale));
+    stamina.overflow = Label.Overflow.SHRINK;
+    const rewards = stage.rewardPreview.slice(0, 5).map((r) => safeText(r));
+    if (rewards.length === 0) {
+      const none = this.host.addChildLabel(section, 'BattleChallengeDialogRewardNone', '本关无首通奖励', 0, 0, 18 * scale, rgba(190, 172, 136), new Size(width - 60 * scale, 26 * scale));
+      none.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    // 奖励格 + 名字整组排在标题下沿与底部体力说明行之间(上下各不贴)
+    const areaTop = height / 2 - 50 * scale;
+    const areaBottom = -height / 2 + 42 * scale;
+    const slot = Math.min(80 * scale, (areaTop - areaBottom - 30 * scale) * 0.96, (width - 60 * scale) / rewards.length - 14 * scale);
     const step = slot + 16 * scale;
-    const rowY = -12 * scale;
+    const groupTop = (areaTop + areaBottom) / 2 + (slot + 30 * scale) / 2;
+    const slotY = groupTop - slot / 2;
+    const nameY = groupTop - slot - 17 * scale;
     rewards.forEach((text, index) => {
       const cx = (index - (rewards.length - 1) / 2) * step;
-      const cell = this.host.addChildPlainNode(section, `BattleChallengeDialogReward_${index}`, cx, rowY + 10 * scale, slot, slot);
+      const cell = this.host.addChildPlainNode(section, `BattleChallengeDialogReward_${index}`, cx, slotY, slot, slot);
+      if (claimed) {
+        (cell.getComponent(UIOpacity) ?? cell.addComponent(UIOpacity)).opacity = 110;
+      }
       if (!this.host.addSprite('Slot', REWARD_SLOT_ASSET, 0, 0, slot, slot, cell)) {
         const g = cell.addComponent(Graphics);
         g.fillColor = rgba(20, 16, 14, 220); g.roundRect(-slot / 2, -slot / 2, slot, slot, 6 * scale); g.fill();
@@ -163,20 +188,20 @@ export class BattleChallengeDialogRenderer {
         glyph.overflow = Label.Overflow.SHRINK;
         glyph.enableOutline = true; glyph.outlineColor = rgba(0, 0, 0, 220); glyph.outlineWidth = Math.max(1, 1.4 * scale);
       }
-      const name = this.host.addChildLabel(section, `BattleChallengeDialogRewardName_${index}`, text, cx, rowY + 10 * scale - slot / 2 - 16 * scale, 16 * scale, rgba(214, 194, 152), new Size(step - 4 * scale, 22 * scale));
+      const name = this.host.addChildLabel(section, `BattleChallengeDialogRewardName_${index}`, text, cx, nameY, 16 * scale, rgba(214, 194, 152), new Size(step - 4 * scale, 22 * scale));
       name.overflow = Label.Overflow.SHRINK;
     });
   }
 
   private renderAllySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, formation: LobbyHeroItemVO[]): void {
     const section = mountKitSection(this.host, parent, 'BattleChallengeDialogAllySection', x, y, width, height, scale, 0.2);
-    this.sectionTitle(section, 'BattleChallengeDialogAllyTitle', `我方阵容  ${formation.length}/5`, width, height, scale, rgba(236, 210, 148));
+    this.sectionTitle(section, 'BattleChallengeDialogAllyTitle', `我方阵容  ${Math.min(4, formation.length)}/4`, width, height, scale, rgba(236, 210, 148));
     if (formation.length === 0) {
       const empty = this.host.addChildLabel(section, 'BattleChallengeDialogAllyText', '点击「布阵」选择出战英雄', 0, -10 * scale, 18 * scale, rgba(190, 172, 136), new Size(width - 60 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
       return;
     }
-    const heroes = formation.slice(0, 5);
+    const heroes = formation.slice(0, 4);
     const size = Math.min(78 * scale, (height - 70 * scale) * 0.7, (width - 60 * scale) / heroes.length - 12 * scale);
     const step = size + 14 * scale;
     const rowY = -8 * scale;
@@ -214,4 +239,9 @@ export class BattleChallengeDialogRenderer {
       name.overflow = Label.Overflow.SHRINK;
     });
   }
+}
+
+function formatGrouped(value: number): string {
+  // 原生 toLocaleString 不出千分位,手动分组
+  return String(Math.max(0, Math.trunc(value))).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }

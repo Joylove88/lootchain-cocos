@@ -674,7 +674,7 @@ export class LobbyShopDialogRenderer {
   private renderChannelRow(panel: Node, channels: ShopRechargeChannelVO[], selectedCode: string, y: number, scale: number, busy: boolean): void {
     const chipH = 40 * scale;
     const gap = 16 * scale;
-    const widths = channels.map((channel) => Math.max(120 * scale, (channel.channelName.length * FONT.body + 48) * scale));
+    const widths = channels.map((channel) => Math.max(120 * scale, (payChannelDisplayName(channel.channelName).length * FONT.body + 48) * scale));
     const labelW = 96 * scale;
     const total = labelW + widths.reduce((sum, width) => sum + width, 0) + gap * channels.length;
     let x = -total / 2;
@@ -699,7 +699,7 @@ export class LobbyShopDialogRenderer {
       g.lineWidth = Math.max(1, (active ? 2.2 : 1.4) * scale);
       g.roundRect(-width / 2, -chipH / 2, width, chipH, chipH / 2);
       g.stroke();
-      const text = this.host.addChildLabel(chip, `LobbyShopChannelText_${channel.channelCode}`, channel.channelName, 0, 0, FONT.body * scale,
+      const text = this.host.addChildLabel(chip, `LobbyShopChannelText_${channel.channelCode}`, payChannelDisplayName(channel.channelName), 0, 0, FONT.body * scale,
         active ? rgba(255, 238, 190) : rgba(210, 196, 170), new Size(width - 16 * scale, chipH));
       text.overflow = Label.Overflow.SHRINK;
       if (active) {
@@ -1048,4 +1048,16 @@ export class LobbyShopDialogRenderer {
     label.outlineColor = color;
     label.outlineWidth = Math.max(1, 2 * scale);
   }
+}
+
+/**
+ * 支付渠道给玩家看的名字(2026-10-24 策划审核 P0-5:后台渠道内部名「支付宝2」原样显示,像测试 / 钓鱼页)。
+ * 去掉内部编号后缀与括注;后台补 display_name 字段前先在客户端兜底。
+ */
+function payChannelDisplayName(raw: string): string {
+  const name = String(raw ?? '')
+    .replace(/[(（][^)）]*[)）]/g, '')
+    .replace(/[-_\s]*(?:\d+|测试|test|TEST|备用)$/u, '')
+    .trim();
+  return name || String(raw ?? '');
 }

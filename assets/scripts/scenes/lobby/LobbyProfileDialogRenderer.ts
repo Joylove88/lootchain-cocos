@@ -19,6 +19,7 @@ import { renderSceneBackButton } from '../UiSceneBackButton';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitTab } from '../UiKit';
+import { TOKEN_FURNACE_ENABLED } from '../../api/TokenApi';
 
 export interface LobbyProfileDialogHost {
   node: Node;
@@ -439,29 +440,26 @@ export class LobbyProfileDialogRenderer {
   private buildRows(profile: PlayerLobbyProfileVO): ProfileRowSpec[][] {
     const progress = profile.levelProgress;
     const ratio = progress?.nextLevelNeedExp ? Math.max(0, Math.min(1, (progress.currentExp ?? 0) / progress.nextLevelNeedExp)) : undefined;
-    const statusOk = /正常|normal|active/i.test(profile.accountStatus ?? '');
     const walletAddress = safeText(profile.walletAddress || '');
+    // 2026-10-24 自查去重:「经验 x/y」与「下一级」进度条重复、「账号状态」与头部重复,两行去掉后重新配对
     return [
       [
         { label: '等级', value: `Lv.${profile.playerLevel}` },
-        { label: '经验', value: this.profileExpSummary(profile) },
-      ],
-      [
         { label: '下一级', value: this.profileNextLevelText(profile), progress: ratio, progressText: ratio === undefined ? undefined : this.profileExpSummary(profile).replace('/', ' / ') },
+      ],
+      [
         { label: '英雄上限', value: this.profileHeroLevelCapText(profile) },
-      ],
-      [
         { label: '战力', value: this.host.formatInteger(profile.combatPower) },
-        { label: '体力', value: `${this.host.formatInteger(profile.stamina)}/${this.host.formatInteger(profile.maxStamina)}` },
       ],
       [
-        { label: '账号状态', value: profile.accountStatus, valueColor: statusOk ? rgba(120, 224, 150) : undefined },
+        { label: '体力', value: `${this.host.formatInteger(profile.stamina)}/${this.host.formatInteger(profile.maxStamina)}` },
         { label: '登录方式', value: loginMethodLabel(profile.loginMethod) },
       ],
-      [
+      // 熔炉下架期间不展示钱包(TOKEN_FURNACE_ENABLED)
+      ...(TOKEN_FURNACE_ENABLED ? [[
         { label: '钱包绑定', value: profile.walletBound ? '已绑定' : '未绑定' },
         { label: '钱包地址', value: this.maskWalletAddress(profile.walletAddress), copyText: walletAddress || undefined },
-      ],
+      ]] : []),
       [
         { label: '深渊爬塔', value: this.profileTowerFloorText() },
         { label: '挂机产出', value: this.profileIdleRateText() },

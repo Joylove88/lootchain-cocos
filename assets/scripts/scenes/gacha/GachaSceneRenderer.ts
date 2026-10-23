@@ -1277,7 +1277,9 @@ export class GachaSceneRenderer {
     // 装备池保底词按装备品质命名,英雄池保持英雄称谓。
     const isEquipPool = ((selectedPool.poolCode ?? selectedPool.id) || '').toUpperCase().includes('EQUIP');
     if (!priority) {
-      return isEquipPool ? '再召唤 40 次必得 橙色传说装备' : '再召唤 30 次必得 传说英雄';
+      // 2026-10-24 策划审核 P0-3:没有保底数据时不能写死「再召唤 30 / 40 次必得」——普通池只出 R/SR、本就无保底,写死即虚假宣传;
+      // 只展示卡池自己的保底说明,没有就如实写不设保底
+      return safeText(selectedPool.guaranteeNote || '').trim() || '本池不设保底';
     }
     const left = Math.max(0, priority.pityCount - priority.counter);
     const rarityText = isEquipPool

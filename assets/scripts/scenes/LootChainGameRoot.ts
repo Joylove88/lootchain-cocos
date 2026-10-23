@@ -125,6 +125,7 @@ import { LobbyNoticePanelRenderer, type LobbyNoticePanelHost } from './lobby/Lob
 import { LobbyDailyDungeonPanelRenderer, type LobbyDailyDungeonPanelHost } from './lobby/LobbyDailyDungeonPanelRenderer';
 import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
+import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
 import { LobbyGuardCrystalDialogRenderer, type LobbyGuardCrystalDialogHost, type LobbyGuardCrystalDialogState } from './lobby/LobbyGuardCrystalDialogRenderer';
@@ -4855,6 +4856,9 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyTokenFurnace(): void {
+    if (!TOKEN_FURNACE_ENABLED) {
+      return;
+    }
     this.lobbyTokenFurnaceState = { ...this.lobbyTokenFurnaceState, open: true, actionMessage: '', actionError: false };
     this.loadLobbyTokenFurnaceSummary(true);
     this.renderCurrentLobbyScenePage();

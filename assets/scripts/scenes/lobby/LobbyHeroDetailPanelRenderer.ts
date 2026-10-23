@@ -235,6 +235,7 @@ const HERO_AI_STAT_ICON_ASSETS: Record<string, string> = {
   速度: 'ui/hero/ai/stat_spd/spriteFrame',
   暴击: 'ui/hero/ai/stat_crit/spriteFrame',
   韧性: 'ui/hero/ai/stat_tough/spriteFrame',
+  暴伤: 'ui/hero/proto/sk_splash/spriteFrame',
 };
 export const HERO_C1812_GRADE_CREST_ASSETS: Record<string, string> = {
   R: 'ui/hero/c1812/grade_crest_r/spriteFrame',
@@ -6042,7 +6043,7 @@ export class LobbyHeroDetailPanelRenderer {
       防御: { base: hero.attrDefense ?? Math.round(power * 0.22 + level * 36 + star * 108), equip: 0, affix: 0, percent: false },
       速度: { base: hero.attrSpeed ?? 112 + star * 3, equip: 0, affix: 0, percent: false },
       暴击: { base: hero.attrCrit ?? 14 + star * 2, equip: 0, affix: 0, percent: true },
-      韧性: { base: 10 + star * 2, equip: 0, affix: 0, percent: true },
+      暴伤: { base: HERO_BASE_CRIT_DAMAGE_PCT, equip: 0, affix: 0, percent: true },
     };
     this.host.currentLobbyHeroEquipState().items.forEach((item) => {
       if (item.heroId !== hero.id) {
@@ -6054,13 +6055,13 @@ export class LobbyHeroDetailPanelRenderer {
       out.速度.equip += item.attrSpeed ?? 0;
       out.暴击.equip += item.attrCrit ?? 0;
     });
-    const affixStat: Record<string, string> = { HP_BONUS: '生命', ATK_BONUS: '攻击', DEF_BONUS: '防御', SPD_BONUS: '速度', CRIT_RATE: '暴击' };
+    const affixStat: Record<string, string> = { HP_BONUS: '生命', ATK_BONUS: '攻击', DEF_BONUS: '防御', SPD_BONUS: '速度', CRIT_RATE: '暴击', CRIT_DMG: '暴伤' };
     (hero.affixes ?? []).forEach((affix) => {
       const code = (affix.code || '').toUpperCase();
       const stat = affixStat[code];
       if (stat) {
         // 比率类词条点数 ÷10 = 百分比(heroAffixValueText 同口径)
-        out[stat].affix += code === 'CRIT_RATE' ? (Number(affix.value) || 0) / 10 : Number(affix.value) || 0;
+        out[stat].affix += code === 'CRIT_RATE' || code === 'CRIT_DMG' ? (Number(affix.value) || 0) / 10 : Number(affix.value) || 0;
       }
     });
     return out;
@@ -6110,7 +6111,7 @@ export class LobbyHeroDetailPanelRenderer {
     const sources = this.resolveAttrSources(hero);
     const fmt = (stat: string, v: number): string => (sources[stat].percent ? `${Math.round(v * 10) / 10}%` : formatInteger(Math.round(v)));
     const total = (stat: string): number => sources[stat].base + sources[stat].equip + sources[stat].affix;
-    const stats = ['生命', '攻击', '防御', '速度', '暴击', '韧性'];
+    const stats = ['生命', '攻击', '防御', '速度', '暴击', '暴伤'];
     if (!sources[this.protoAttrSourceStat]) {
       this.protoAttrSourceStat = '生命';
     }
@@ -6807,6 +6808,16 @@ function resolveGrowthChips(hero: LobbyHeroItemVO): { label: string; value: stri
   ];
 }
 
+/** 英雄基础暴击伤害(%):守卫战暴击倍率 = 1.5 + 暴击伤害词条(docs/41 局外属性接入守卫)。 */
+export const HERO_BASE_CRIT_DAMAGE_PCT = 150;
+
+/** 比率类词条合计(点数 ÷10 = 百分比,heroAffixValueText 同口径)。 */
+export function heroAffixPointsPct(hero: LobbyHeroItemVO, code: string): number {
+  return (hero.affixes ?? [])
+    .filter((affix) => (affix.code || '').toUpperCase() === code)
+    .reduce((sum, affix) => sum + (Number(affix.value) || 0) / 10, 0);
+}
+
 export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] {
   const star = Math.max(1, hero.star);
   const level = Math.max(1, hero.level);
@@ -6824,7 +6835,8 @@ export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] 
     { label: '防御', value: formatInteger(defense) },
     { label: '速度', value: `${speed}` },
     { label: '暴击', value: `${crit}%` },
-    { label: '韧性', value: `${10 + star * 2}%` },
+    // 2026-10-24 策划审核 P0-4:「韧性」是客户端按星级编的数(服务端无此属性、战斗不用),换成真实参与守卫战暴击的「暴伤」
+    { label: '暴伤', value: `${Math.round((HERO_BASE_CRIT_DAMAGE_PCT + heroAffixPointsPct(hero, 'CRIT_DMG')) * 10) / 10}%` },
   ];
 }
 

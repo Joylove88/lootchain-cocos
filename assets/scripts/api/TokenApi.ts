@@ -17,6 +17,12 @@ import {
 const MAX_TEXT = 128;
 const MAX_ORDERS = 10;
 
+/**
+ * 矿晶熔炉(矿晶兑代币)对玩家开放开关。2026-10-24 用户拍板「熔炉先下架」:上链(P金-3)已搁置,
+ * 不再收钱包地址、不再提交兑换单;入口(副本矿脉条胶囊)与资料页钱包两行一起隐藏。后端接口保留。
+ */
+export const TOKEN_FURNACE_ENABLED = false;
+
 /** 矿晶兑代币 API(P金-2 链下):钱包绑定 + 兑换申请 + 摘要。链上发放在 P金-3。 */
 export class TokenApi {
   constructor(private readonly http: HttpClient) {}

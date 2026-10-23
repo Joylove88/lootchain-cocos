@@ -34,6 +34,7 @@ import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { TOKEN_FURNACE_ENABLED } from '../../api/TokenApi';
 import { PHONE_DIALOG_CONTENT_PAD, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 
 export interface LobbyDailyDungeonPanelHost {
@@ -877,7 +878,8 @@ export class LobbyDailyDungeonPanelRenderer {
     // 文案让出右端给两个矿晶功能胶囊(熔炉/输出榜):同主题聚合在矿脉条内,不再孤悬顶部。
     // 手机:文字框精确夹在感叹号与胶囊之间(原固定 56% 宽在 20 号字下会伸到胶囊底下)。
     const phoneTextLeft = -barWidth / 2 + barWidth * 0.06 + iconSize * 1.1 + 8 * scale;
-    const phoneTextRight = rightEdge - pillW * 2 - pillGap - 10 * scale;
+    const pillCount = TOKEN_FURNACE_ENABLED ? 2 : 1;
+    const phoneTextRight = rightEdge - pillW * pillCount - (pillCount - 1) * pillGap - 10 * scale;
     const text = this.host.addChildLabel(
       bar,
       'LobbyDailyFooterText',
@@ -889,7 +891,9 @@ export class LobbyDailyDungeonPanelRenderer {
       new Size(phone ? phoneTextRight - phoneTextLeft : barWidth * 0.56, 22 * scale),
     );
     text.overflow = Label.Overflow.SHRINK;
-    this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
+    if (TOKEN_FURNACE_ENABLED) {
+      this.renderFooterPill(bar, 'LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, 0, pillW, pillH, scale, () => this.host.openLobbyTokenFurnace?.());
+    }
     this.renderFooterPill(bar, 'LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, 0, pillW, pillH, scale, () => {
       this.rankPopupOpen = true;
       this.host.loadLobbyCrystalRankSummary?.();
@@ -931,7 +935,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const pillGap = 6 * scale;
     const rightEdge = barWidth / 2 - barWidth * 0.04;
     const textLeft = iconX + iconSize * 0.6 + 8 * scale;
-    const textRight = rightEdge - pillW * 2 - pillGap - 8 * scale;
+    const textRight = rightEdge - pillW * (TOKEN_FURNACE_ENABLED ? 2 : 1) - (TOKEN_FURNACE_ENABLED ? pillGap : 0) - 8 * scale;
     const label = this.host.addChildLabel(bar, 'LobbyDailyFooterText', text, (textLeft + textRight) / 2, 0, 20 * scale, color, new Size(Math.max(60 * scale, textRight - textLeft), 28 * scale));
     label.overflow = Label.Overflow.SHRINK;
     const artPill = (name: string, caption: string, x: number, onClick: () => void): void => {
@@ -952,7 +956,9 @@ export class LobbyDailyDungeonPanelRenderer {
       pill.on(Button.EventType.CLICK, onClick, this);
       this.host.applyImageButtonFeedback(pill, 1.05, 0.95);
     };
-    artPill('LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, () => this.host.openLobbyTokenFurnace?.());
+    if (TOKEN_FURNACE_ENABLED) {
+      artPill('LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, () => this.host.openLobbyTokenFurnace?.());
+    }
     artPill('LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, () => {
       this.rankPopupOpen = true;
       this.host.loadLobbyCrystalRankSummary?.();
