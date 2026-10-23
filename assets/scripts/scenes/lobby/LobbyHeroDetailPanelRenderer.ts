@@ -4597,8 +4597,10 @@ export class LobbyHeroDetailPanelRenderer {
       g.roundRect(-cell / 2, -cell / 2, cell, cell, 9 * scale);
       g.stroke();
     }
-    const stripW = cell - 6 * scale;
-    const strip = this.host.addChildPlainNode(node, `${name}Strip`, 0, -cell / 2 + 13 * scale, stripW, 20 * scale);
+    // 2026-10-23 用户「装备背包里的底部边框丢失」:名条收进图标描边内侧(底边留 8%),四边框都露出
+    const inset = iconShown ? cell * 0.08 : 3 * scale;
+    const stripW = iconShown ? cell * 0.84 : cell - 6 * scale;
+    const strip = this.host.addChildPlainNode(node, `${name}Strip`, 0, -cell / 2 + inset + 10 * scale, stripW, 20 * scale);
     const sg = strip.addComponent(Graphics);
     sg.fillColor = rgba(6, 5, 5, 205);
     sg.roundRect(-stripW / 2, -10 * scale, stripW, 20 * scale, 5 * scale);
@@ -4607,7 +4609,7 @@ export class LobbyHeroDetailPanelRenderer {
     nm.overflow = Label.Overflow.SHRINK;
     const level = item.enhanceLevel ?? 0;
     if (level > 0) {
-      const badge = this.host.addChildLabel(node, `${name}Level`, `+${level}`, cell / 2 - 6 * scale, cell / 2 - 13 * scale, 17 * scale, rgba(250, 224, 150), new Size(36 * scale, 24 * scale), HorizontalTextAlignment.RIGHT);
+      const badge = this.host.addChildLabel(node, `${name}Level`, `+${level}`, cell / 2 - inset - 3 * scale, cell / 2 - inset - 10 * scale, 17 * scale, rgba(250, 224, 150), new Size(36 * scale, 24 * scale), HorizontalTextAlignment.RIGHT);
       badge.overflow = Label.Overflow.SHRINK;
       this.applyOutline(badge, scale, true);
     }
@@ -4615,7 +4617,7 @@ export class LobbyHeroDetailPanelRenderer {
     const wornOnOther = item.heroId != null && !wornOnThis;
     if (wornOnThis || wornOnOther) {
       const wornW = 24 * scale;
-      const worn = this.host.addChildPlainNode(node, `${name}Worn`, -cell / 2 + wornW / 2 + 4 * scale, cell / 2 - 13 * scale, wornW, 18 * scale);
+      const worn = this.host.addChildPlainNode(node, `${name}Worn`, -cell / 2 + inset + wornW / 2 + 1 * scale, cell / 2 - inset - 10 * scale, wornW, 18 * scale);
       const wg = worn.addComponent(Graphics);
       wg.fillColor = wornOnThis ? rgba(30, 52, 34, 238) : rgba(28, 40, 58, 238);
       wg.roundRect(-wornW / 2, -9 * scale, wornW, 18 * scale, 4 * scale);
@@ -5654,8 +5656,10 @@ export class LobbyHeroDetailPanelRenderer {
       // 胶囊左缘与名称至少空 26;右侧(大招行让出已达上限钮)放不下时收窄胶囊,不压名称
       const pillLeft = Math.max(PX(1458) - PX(1427), textL + nameW + PS(26));
       const pillRight = cardW / 2 - (isUlt ? PW(170) : PS(16));
-      const pillW = Math.max(PW(110), Math.min(Math.max(estimateTextWidth(skill.tag, F(20)) + PS(40), PW(150)), pillRight - pillLeft));
-      this.protoPill(card, 'Tag', skill.tag, pillLeft + pillW / 2, nameY, pillW, PS(36), 'gold', F(20));
+      // 2026-10-23 用户「技能页的触发率也去掉」:标签只留类型 / 解锁条件 / 常驻 / 大招等级
+      const tagText = skill.tag.split(' · ').filter((part) => !/\d+(\.\d+)?%\s*触发/.test(part)).join(' · ') || skill.tag;
+      const pillW = Math.max(PW(110), Math.min(Math.max(estimateTextWidth(tagText, F(20)) + PS(40), PW(120)), pillRight - pillLeft));
+      this.protoPill(card, 'Tag', tagText, pillLeft + pillW / 2, nameY, pillW, PS(36), 'gold', F(20));
       let desc = skill.description;
       let note = '';
       const noteMark = desc.indexOf('◆');
