@@ -5531,14 +5531,17 @@ export class LobbyHeroDetailPanelRenderer {
       }
       return;
     }
-    const hasHint = hint.length > 0;
-    const titleY = hasHint ? h * 0.22 : 0;
+    // 2026-10-23 用户「升级区域变了」:两行挤 / 设备尺寸稍有差别就压到上方大招卡 → 一律单行
+    const shortHint = hint.replace(/^当前材料约?/, '');
+    const hintFont = this.protoFont(19);
+    const titleY = 0;
     {
       const iconS = font * 1.3;
       const segGap = font * 1.1;
       const titleW = estimateTextWidth(view.title, font);
       const costWs = view.costs.map((cost) => iconS + 6 + estimateTextWidth(cost.text, font));
-      const total = titleW + costWs.reduce((sum, cw) => sum + cw + segGap, 0);
+      const hintW = shortHint ? estimateTextWidth(shortHint, hintFont) * 1.02 + segGap : 0;
+      const total = titleW + costWs.reduce((sum, cw) => sum + cw + segGap, 0) + hintW;
       let cursor = -total / 2;
       this.protoText(box, `${name}Cost`, view.title, cursor, titleY, font, rgba(246, 222, 160), titleW + 10, HorizontalTextAlignment.LEFT, true);
       cursor += titleW + segGap;
@@ -5547,11 +5550,9 @@ export class LobbyHeroDetailPanelRenderer {
         this.protoText(box, `${name}CostValue_${index}`, cost.text, cursor + iconS + 6, titleY, font, cost.lack ? rgba(244, 108, 88) : rgba(246, 236, 210), costWs[index] - iconS, HorizontalTextAlignment.LEFT, true);
         cursor += costWs[index] + segGap;
       });
-    }
-    if (hasHint) {
-      const est = this.protoText(box, `${name}Est`, hint, 0, -h * 0.24, 18, rgba(178, 164, 136), w - 40);
-      est.fontSize = 18;
-      est.lineHeight = 18;
+      if (shortHint) {
+        this.protoText(box, `${name}Est`, shortHint, cursor, titleY, hintFont, rgba(178, 164, 136), hintW, HorizontalTextAlignment.LEFT);
+      }
     }
   }
 
@@ -5676,8 +5677,8 @@ export class LobbyHeroDetailPanelRenderer {
     const ult = resolveSkills(hero).find((skill) => skill.kind === 'ultimate') ?? null;
     if (ult) {
       const cardW = PW(736);
-      const cardH = PS(54);
-      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(660), cardW, cardH, false);
+      const cardH = PS(50);
+      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(665), cardW, cardH, false);
       this.protoGoldEdge(card, cardW, cardH);
       const left = -cardW / 2;
       this.host.addSprite('Icon', ult.icon ?? resolveUltimateEmblemAsset(hero), left + PS(44), 0, PS(60), PS(60), card);
@@ -5689,7 +5690,7 @@ export class LobbyHeroDetailPanelRenderer {
     }
     // ④ 升级消耗框 + 双钮
     const view = this.resolveLevelUpCostView(hero);
-    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(720), PW(736), view.costs.length > 0 && view.hint && !/^还差/.test(view.hint) ? PS(60) : PS(48));
+    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(722), PW(736), PS(48));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     const idleEnabled = view.blocked !== 'cap';
     const dim = view.blocked === 'lack';
@@ -5844,7 +5845,8 @@ export class LobbyHeroDetailPanelRenderer {
     // ④ 消耗框(单行)+ 双钮
     const view = this.resolveStarCostView(hero, star, maxed);
     const starHint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
-    this.renderProtoCostDock(panel, 'Star', view, PX(1427), starHint ? PY(698) : PY(694), rowW, starHint ? PS(56) : PS(46));
+    this.renderProtoCostDock(panel, 'Star', view, PX(1427), PY(696), rowW, PS(48));
+    void starHint;
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'StarUpButton', labelName: 'Label', idleText: maxed ? '已满星' : '升 星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
