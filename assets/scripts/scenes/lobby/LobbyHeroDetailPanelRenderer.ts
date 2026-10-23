@@ -37,6 +37,7 @@ import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkill
 import { isGuardT0Hero } from './GuardBattleModel';
 import { equipIconAssetByCode } from './EquipIconAssets';
 import { mountEquipIconBacking } from './EquipRarityShine';
+import { equipGlowFrame } from './GuardBakedShapes';
 import { compactResourceValue, safeText } from '../UiTextFormatter';
 import { formatTopCurrencyValue, renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, starBandAssetOf, starBandTextRgbOf, starDisplayV3 } from '../C1812CommonUiAssets';
@@ -148,6 +149,9 @@ const HERO_PROTO_IC_LUCK = `${HERO_PROTO_DIR}ic_luck/spriteFrame`;
 const HERO_PROTO_IC_AWAKEN = `${HERO_PROTO_DIR}ic_awaken/spriteFrame`;
 const HERO_PROTO_IC_POWER = `${HERO_PROTO_DIR}ic_power/spriteFrame`;
 const HERO_PROTO_BAND_STAR = `${HERO_PROTO_DIR}band_star/spriteFrame`;
+/** 中心透明、四周渐黑的径向暗角(锻造合成页同款)/ 白色柔边矩形(着黑当投影)。 */
+const HERO_PROTO_VIGNETTE = 'ui/forge/ref/fuse_vignette/spriteFrame';
+const HERO_PROTO_SOFT_SHADE = 'ui/forge/ref/fuse_soft_shade/spriteFrame';
 /** 词条图标:按词条名关键字取属性图标(掉落类用宝箱)。 */
 function heroAffixIconOf(label: string): string {
   if (/掉落|战利品/.test(label)) {
@@ -557,8 +561,27 @@ export class LobbyHeroDetailPanelRenderer {
       this.host.addSprite('LobbyHeroDetailBackdropSprite', LOBBY_HERO_DETAIL_BACKDROP_ASSET, 0, 0, panelWidth, panelHeight, panel);
       this.drawPanelShade(panel, panelWidth, panelHeight, scale);
     } else {
-      // 原型背景本身已压暗,只薄罩一层让右栏 / 页签更跳
-      mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(0, 0, 0, 30));
+      // 2026-10-23 用户「背景图应该暗一些,要做到主次分明」:整体压暗 + 以英雄为中心的径向暗角 + 右栏背后再压一层;英雄身后留一团暖光,主体最亮
+      const pk = protoBgK;
+      mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(0, 0, 0, 105));
+      const vig = this.host.addSprite('LobbyHeroDetailProtoVignette', HERO_PROTO_VIGNETTE, (700 - 935) * pk, (420.5 - 430) * pk, 1500 * pk, 1150 * pk, panel);
+      if (vig) {
+        vig.color = rgba(0, 0, 0, 215);
+      }
+      for (let i = 0; i < 6; i += 1) {
+        const bandW = panelWidth * 0.06;
+        mountRefSolid(this.host, panel, `LobbyHeroDetailProtoRightShade_${i}`, panelWidth / 2 - bandW * (i + 0.5), 0, bandW, panelHeight, rgba(0, 0, 0, 90 - i * 14));
+      }
+      const glowFrame = equipGlowFrame(new Color(232, 168, 104, 255));
+      if (glowFrame) {
+        const glow = this.host.addChildPlainNode(panel, 'LobbyHeroDetailProtoHeroLight', (700 - 935) * pk, (420.5 - 400) * pk, 620 * pk, 760 * pk);
+        const gs = glow.addComponent(Sprite);
+        gs.sizeMode = Sprite.SizeMode.CUSTOM;
+        gs.trim = false;
+        gs.spriteFrame = glowFrame;
+        glow.getComponent(UITransform)?.setContentSize(620 * pk, 760 * pk);
+        (glow.getComponent(UIOpacity) ?? glow.addComponent(UIOpacity)).opacity = 70;
+      }
     }
     this.compactLayout = compact;
     if (this.phoneFrame) {
@@ -5260,6 +5283,11 @@ export class LobbyHeroDetailPanelRenderer {
     if (!mountRefSliced(this.host, node, 'Bg', selected ? REF_ROW_SELECTED : REF_ROW, 0, 0, w, h)) {
       mountRefSolid(this.host, node, 'Bg', 0, 0, w, h, rgba(16, 13, 12, 230));
     }
+    if (!selected) {
+      mountRefSolid(this.host, node, 'Fill', 0, 0, w - 8, h - 8, rgba(40, 31, 24, 120));
+    }
+    mountRefSolid(this.host, node, 'Hi', 0, h / 2 - 4, w - 14, 1.2, rgba(255, 226, 170, selected ? 60 : 34));
+    mountRefSolid(this.host, node, 'Lo', 0, -h / 2 + 4, w - 14, 1.2, rgba(0, 0, 0, 120));
     return node;
   }
 
@@ -5275,7 +5303,22 @@ export class LobbyHeroDetailPanelRenderer {
   private protoBoxes(panel: Node, PY: (py: number) => number, w: number, ranges: Array<[number, number]>): () => void {
     ranges.forEach(([top, bottom], index) => {
       const h = PY(top) - PY(bottom);
-      mountRefSolid(this.host, panel, `BoxBack_${index}`, 0, (PY(top) + PY(bottom)) / 2, w - 8, h - 8, rgba(8, 6, 6, 226));
+      const cy = (PY(top) + PY(bottom)) / 2;
+      // 投影:柔边矩形着黑,略向下偏,箱子从背景里浮出来
+      const shade = this.host.addSprite(`BoxShadow_${index}`, HERO_PROTO_SOFT_SHADE, 0, cy - 8, w + 46, h + 46, panel);
+      if (shade) {
+        shade.color = rgba(0, 0, 0, 190);
+      }
+      mountRefSolid(this.host, panel, `BoxBack_${index}`, 0, cy, w - 8, h - 8, rgba(9, 7, 6, 242));
+      // 顶部暖色受光,向下渐隐(质感:箱底不是一块死黑)
+      const steps = 8;
+      const lit = Math.min(h * 0.55, 160);
+      for (let i = 0; i < steps; i += 1) {
+        const sh = lit / steps;
+        mountRefSolid(this.host, panel, `BoxLit_${index}_${i}`, 0, PY(top) - 4 - sh * (i + 0.5), w - 10, sh + 0.5, rgba(70, 44, 30, Math.round(54 * (1 - i / steps))));
+      }
+      // 底部内阴影
+      mountRefSolid(this.host, panel, `BoxFoot_${index}`, 0, PY(bottom) + 4 + 10, w - 10, 20, rgba(0, 0, 0, 70));
     });
     return () => {
       ranges.forEach(([top, bottom], index) => {
@@ -5300,10 +5343,10 @@ export class LobbyHeroDetailPanelRenderer {
     this.protoText(parent, `${name}Title`, title, leftX + starW + 14, y, fontSize, rgba(255, 228, 156), w * 0.5, HorizontalTextAlignment.LEFT, true);
   }
 
-  private protoPlateButton(parent: Node, name: string, text: string, x: number, y: number, w: number, h: number, fontSize: number, onClick: () => void): Node {
+  private protoPlateButton(parent: Node, name: string, text: string, x: number, y: number, w: number, h: number, fontSize: number, onClick: () => void, tone: 'bronze' | 'red' = 'bronze'): Node {
     const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
     const g = node.addComponent(Graphics);
-    g.fillColor = rgba(40, 30, 20, 245);
+    g.fillColor = tone === 'red' ? rgba(104, 22, 16, 248) : rgba(40, 30, 20, 245);
     g.roundRect(-w / 2, -h / 2, w, h, 8);
     g.fill();
     g.strokeColor = rgba(206, 164, 92, 235);
@@ -5364,8 +5407,10 @@ export class LobbyHeroDetailPanelRenderer {
   /** 消耗框:标题行(标题 + 图标数字,不足标红)+ 可选提示行,同一个框。 */
   private renderProtoCostDock(panel: Node, name: string, view: HeroDockCostView, cx: number, cy: number, w: number, h: number): void {
     const box = this.protoRow(panel, `${name}CostBox`, cx, cy, w, h);
-    const hasHint = view.hint.length > 0;
-    const titleY = hasHint ? h * 0.21 : 0;
+    // 2026-10-23 去重复信息:不足的数字已标红,不再另起一行写「还差 N …」
+    const hint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
+    const hasHint = hint.length > 0;
+    const titleY = hasHint ? h * 0.2 : 0;
     const font = this.protoFont(24);
     if (view.costs.length <= 0) {
       this.protoText(box, `${name}Cost`, view.title, 0, titleY, font, rgba(246, 226, 180), w - 40, HorizontalTextAlignment.CENTER, true);
@@ -5385,7 +5430,7 @@ export class LobbyHeroDetailPanelRenderer {
       });
     }
     if (hasHint) {
-      this.protoText(box, `${name}Est`, view.hint, 0, -h * 0.22, this.protoFont(19), rgba(200, 184, 150), w - 40);
+      this.protoText(box, `${name}Est`, hint, 0, -h * 0.2, this.protoFont(19), rgba(178, 164, 136), w - 40);
     }
   }
 
@@ -5439,29 +5484,29 @@ export class LobbyHeroDetailPanelRenderer {
     const panel = this.protoPanelShell(parent, 'LobbyHeroDetailInfoPanel', x, y, width, height);
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height);
     const F = (v: number): number => this.protoFont(v);
-    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 347], [353, 553], [559, 822]]);
+    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 334], [342, 538], [546, 822]]);
     const bandW = width - PS(22);
     const colW = PW(360);
     const colX = [PX(1278), PX(1650)];
     // ① 基础属性
-    this.protoSectionBand(panel, 'LobbyHeroDetailAttrSection', '基础属性', PY(115), bandW, PS(54), PX(1092), F(30));
-    this.protoPlateButton(panel, 'LobbyHeroDetailAttrDetailBtn', '属性详情', PX(1720), PY(116), PW(150), PS(40), F(21), () => this.showAttrDetailPopup(panel, hero, scale));
+    this.protoSectionBand(panel, 'LobbyHeroDetailAttrSection', '基础属性', PY(111), bandW, PS(46), PX(1092), F(30));
+    this.protoPlateButton(panel, 'LobbyHeroDetailAttrDetailBtn', '属性详情', PX(1720), PY(111), PW(150), PS(36), F(21), () => this.showAttrDetailPopup(panel, hero, scale));
     const grid = this.host.addChildPlainNode(panel, 'LobbyHeroDetailAttributeGrid', 0, 0, width, height);
     resolveAttributes(hero).slice(0, 6).forEach((attr, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const cell = this.protoRow(grid, `LobbyHeroDetailAttribute_${index}`, colX[col], PY(171 + row * 44), colW, PS(40));
+      const cell = this.protoRow(grid, `LobbyHeroDetailAttribute_${index}`, colX[col], PY(160 + row * 46), colW, PS(42));
       const left = -colW / 2;
       const icon = HERO_AI_STAT_ICON_ASSETS[attr.label];
       if (icon) {
         this.host.addSprite('LobbyHeroDetailAttributeIcon', icon, left + PS(32), 0, PS(38), PS(38), cell);
       }
-      this.protoText(cell, 'LobbyHeroDetailAttributeLabel', attr.label, left + PS(60), 0, F(21), rgba(218, 200, 164), colW * 0.42, HorizontalTextAlignment.LEFT);
-      this.protoText(cell, 'LobbyHeroDetailAttributeValue', attr.value, colW / 2 - PS(20), 0, F(22), rgba(250, 242, 220), colW * 0.42, HorizontalTextAlignment.RIGHT);
+      this.protoText(cell, 'LobbyHeroDetailAttributeLabel', attr.label, left + PS(64), 0, F(21), rgba(192, 174, 142), colW * 0.42, HorizontalTextAlignment.LEFT);
+      this.protoText(cell, 'LobbyHeroDetailAttributeValue', attr.value, colW / 2 - PS(22), 0, F(22), rgba(255, 248, 232), colW * 0.42, HorizontalTextAlignment.RIGHT, true);
     });
     resolveGrowthChips(hero).filter((chip) => chip.label !== '大招').slice(0, 2).forEach((chip, index) => {
       const awakenable = chip.label === '觉醒' && this.isHeroAwakenable(hero);
-      const node = this.protoRow(panel, `LobbyHeroDetailGrowthChip_${index}`, colX[index], PY(312), colW, PS(42), awakenable);
+      const node = this.protoRow(panel, `LobbyHeroDetailGrowthChip_${index}`, colX[index], PY(301), colW, PS(42), awakenable);
       const text = awakenable ? '可觉醒' : chip.value;
       const font = F(21);
       const iconS = PS(32);
@@ -5471,9 +5516,9 @@ export class LobbyHeroDetailPanelRenderer {
       let cur = -(iconS + gap + labelW + gap + valueW) / 2;
       this.host.addSprite('Icon', chip.label === '幸运' ? HERO_PROTO_IC_LUCK : HERO_PROTO_IC_AWAKEN, cur + iconS / 2, 0, iconS, iconS, node);
       cur += iconS + gap;
-      this.protoText(node, 'Label', chip.label, cur, 0, font, rgba(218, 200, 164), labelW + 8, HorizontalTextAlignment.LEFT);
+      this.protoText(node, 'Label', chip.label, cur, 0, font, rgba(192, 174, 142), labelW + 8, HorizontalTextAlignment.LEFT);
       cur += labelW + gap;
-      this.protoText(node, 'Value', text, cur, 0, font, awakenable ? rgba(255, 220, 140) : rgba(250, 242, 220), valueW + 8, HorizontalTextAlignment.LEFT, awakenable);
+      this.protoText(node, 'Value', text, cur, 0, font, awakenable ? rgba(255, 220, 140) : rgba(255, 248, 232), valueW + 8, HorizontalTextAlignment.LEFT, true);
       if (awakenable) {
         this.drawRedDot(node, 'Dot', colW / 2 - PS(10), PS(14), scale);
         node.addComponent(Button);
@@ -5482,36 +5527,36 @@ export class LobbyHeroDetailPanelRenderer {
       }
     });
     // ② 特性加成
-    this.protoSectionBand(panel, 'LobbyHeroDetailAffixSection', '特性加成', PY(382), bandW, PS(52), PX(1092), F(30));
+    this.protoSectionBand(panel, 'LobbyHeroDetailAffixSection', '特性加成', PY(369), bandW, PS(46), PX(1092), F(30));
     const affixes = (hero.affixes ?? []).slice(0, 6);
     if (affixes.length > 0) {
-      mountRefButton(this.host, panel, 'LobbyHeroDetailRefineEntry', '洗练', PX(1730), PY(382), PW(140), PS(42), scale, 'primary', () => this.host.openLobbyHeroRefineDialog(), { fontSize: F(21) });
+      this.protoPlateButton(panel, 'LobbyHeroDetailRefineEntry', '洗练', PX(1730), PY(369), PW(130), PS(36), F(21), () => this.host.openLobbyHeroRefineDialog(), 'red');
     } else {
-      this.protoText(panel, 'LobbyHeroDetailAffixEmpty', '暂无词条(洗练系统开放后可获得 / 重铸)', 0, PY(460), F(20), rgba(170, 160, 140), width - PS(80));
+      this.protoText(panel, 'LobbyHeroDetailAffixEmpty', '暂无词条(洗练系统开放后可获得 / 重铸)', 0, PY(452), F(20), rgba(170, 160, 140), width - PS(80));
     }
     affixes.forEach((affix, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const cell = this.protoRow(panel, `LobbyHeroDetailAffixCard_${index}`, colX[col], PY(434 + row * 44), colW, PS(40));
+      const cell = this.protoRow(panel, `LobbyHeroDetailAffixCard_${index}`, colX[col], PY(419 + row * 46), colW, PS(42));
       const q = affixQualityColor(affix.quality);
       const left = -colW / 2;
       mountRefSolid(this.host, cell, 'Bar', left + PS(8), 0, PS(4), PS(28), rgba(q.r, q.g, q.b, 245));
       const shortLabel = HERO_AFFIX_SHORT_LABELS[affix.code] ?? safeText(affix.name || affix.code);
       this.host.addSprite('Icon', heroAffixIconOf(shortLabel), left + PS(36), 0, PS(34), PS(34), cell);
-      this.protoText(cell, 'LobbyHeroDetailAffixName', shortLabel, left + PS(60), 0, F(20), rgba(222, 206, 172), colW * 0.42, HorizontalTextAlignment.LEFT);
-      this.protoText(cell, 'LobbyHeroDetailAffixValue', heroAffixValueText(affix.code, affix.value ?? 0), colW / 2 - PS(58), 0, F(21), rgba(250, 242, 220), colW * 0.3, HorizontalTextAlignment.RIGHT);
+      this.protoText(cell, 'LobbyHeroDetailAffixName', shortLabel, left + PS(64), 0, F(20), rgba(192, 174, 142), colW * 0.42, HorizontalTextAlignment.LEFT);
+      this.protoText(cell, 'LobbyHeroDetailAffixValue', heroAffixValueText(affix.code, affix.value ?? 0), colW / 2 - PS(58), 0, F(21), rgba(255, 248, 232), colW * 0.3, HorizontalTextAlignment.RIGHT, true);
       this.protoText(cell, 'LobbyHeroDetailAffixQuality', safeText(affix.quality), colW / 2 - PS(28), 0, F(22), rgba(q.r, q.g, q.b, 255), PS(44), HorizontalTextAlignment.CENTER, true);
     });
     // ③ 技能:大招卡
-    this.protoSectionBand(panel, 'LobbyHeroDetailSkillSection', '技能', PY(583), bandW, PS(52), PX(1092), F(30));
-    const all = this.protoText(panel, 'LobbyHeroDetailSkillAll', '全部技能 ›', PX(1806), PY(583), F(21), rgba(244, 218, 156), PW(220), HorizontalTextAlignment.RIGHT, true);
+    this.protoSectionBand(panel, 'LobbyHeroDetailSkillSection', '技能', PY(573), bandW, PS(46), PX(1092), F(30));
+    const all = this.protoText(panel, 'LobbyHeroDetailSkillAll', '全部技能 ›', PX(1806), PY(573), F(21), rgba(244, 218, 156), PW(220), HorizontalTextAlignment.RIGHT, true);
     all.node.addComponent(Button);
     all.node.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroDetailTab('skill'), this);
     const ult = resolveSkills(hero).find((skill) => skill.kind === 'ultimate') ?? null;
     if (ult) {
       const cardW = PW(736);
-      const cardH = PS(68);
-      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(641), cardW, cardH, true);
+      const cardH = PS(64);
+      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(634), cardW, cardH, true);
       mountRefSolid(this.host, card, 'Tint', 0, 0, cardW - PS(12), cardH - PS(12), rgba(96, 14, 12, 190));
       const left = -cardW / 2;
       this.host.addSprite('Icon', ult.icon ?? resolveUltimateEmblemAsset(hero), left + PS(48), 0, PS(70), PS(70), card);
@@ -5523,14 +5568,14 @@ export class LobbyHeroDetailPanelRenderer {
     }
     // ④ 升级消耗框 + 双钮
     const view = this.resolveLevelUpCostView(hero);
-    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(713), PW(736), view.hint ? PS(64) : PS(44));
+    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(712), PW(736), view.hint ? PS(80) : PS(56));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     const idleEnabled = view.blocked !== 'cap';
     const dim = view.blocked === 'lack';
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'LobbyHeroDetailLevelUpButton', labelName: 'LobbyHeroDetailLevelUpButtonLabel', idleText: '升 级', pendingText: '升级中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.levelUpLobbyHero(hero.id) },
       { name: 'LobbyHeroDetailLevelUpAutoButton', labelName: 'LobbyHeroDetailLevelUpAutoButtonLabel', idleText: '一键升级', pendingText: '处理中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.autoLevelUpLobbyHero(hero.id) },
-    ], { cy: PY(777), h: PS(56), cx: [PX(1284), PX(1624)], w: [PW(300), PW(300)] });
+    ], { cy: PY(786), h: PS(54), cx: [PX(1284), PX(1624)], w: [PW(300), PW(300)] });
     finishFrames();
   }
 
@@ -5541,7 +5586,7 @@ export class LobbyHeroDetailPanelRenderer {
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height, 1046, 1810, 444);
     const F = (v: number): number => this.protoFont(v);
     const finishFrames = this.protoBoxes(panel, PY, width, [[66, 822]]);
-    this.protoSectionBand(panel, 'LobbyHeroDetailSkillSection', '技能', PY(101), width - PS(22), PS(56), PX(1062), F(30));
+    this.protoSectionBand(panel, 'LobbyHeroDetailSkillSection', '技能', PY(97), width - PS(22), PS(50), PX(1062), F(30));
     const skills = resolveSkills(hero).slice(0, 5);
     let top = 140;
     skills.forEach((skill, index) => {
@@ -5599,17 +5644,17 @@ export class LobbyHeroDetailPanelRenderer {
     const panel = this.protoPanelShell(parent, 'LobbyHeroDetailStarPanel', x, y, width, height);
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height, 1046, 1810);
     const F = (v: number): number => this.protoFont(v);
-    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 296], [302, 822]]);
+    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 291], [299, 822]]);
     const star = Math.max(1, Math.min(STAR_MAX, Math.trunc(hero.star || 1)));
     const maxed = star >= STAR_MAX;
     const bandW = width - PS(22);
     // ① 升星对照
-    this.protoSectionBand(panel, 'StarSection', '升星', PY(108), bandW, PS(54), PX(1062), F(30));
-    const curBox = this.protoRow(panel, 'StarCurBox', PX(1254), PY(177), PW(372), PS(64));
+    this.protoSectionBand(panel, 'StarSection', '升星', PY(111), bandW, PS(46), PX(1062), F(30));
+    const curBox = this.protoRow(panel, 'StarCurBox', PX(1254), PY(167), PW(372), PS(58));
     const starSize = { star: PS(46), font: F(30) };
     this.renderStarGroup(curBox, 'StarCur', star, 0, 0, PW(372) - PS(24), 1, starSize);
-    this.protoText(panel, 'StarArrow', '›››', PX(1405), PY(177), F(36), maxed ? rgba(140, 126, 100) : rgba(250, 210, 112), PW(70), HorizontalTextAlignment.CENTER, true);
-    const nextBox = this.protoRow(panel, 'StarNextBox', PX(1618), PY(177), PW(330), PS(64), !maxed);
+    this.protoText(panel, 'StarArrow', '›››', PX(1405), PY(167), F(36), maxed ? rgba(140, 126, 100) : rgba(250, 210, 112), PW(70), HorizontalTextAlignment.CENTER, true);
+    const nextBox = this.protoRow(panel, 'StarNextBox', PX(1618), PY(167), PW(330), PS(58), !maxed);
     if (maxed) {
       this.protoText(nextBox, 'StarNext', '已满星', 0, 0, F(24), rgba(206, 192, 160), PW(300), HorizontalTextAlignment.CENTER, true);
     } else {
@@ -5618,7 +5663,7 @@ export class LobbyHeroDetailPanelRenderer {
     // ② 觉醒卡
     const awakened = (hero.awakenStatus ?? 0) > 0;
     const ready = !awakened && star >= AWAKEN_COST.minStar;
-    const aw = this.protoRow(panel, 'StarAwakenCard', PX(1427), PY(253), PW(736), PS(72), ready);
+    const aw = this.protoRow(panel, 'StarAwakenCard', PX(1427), PY(242), PW(736), PS(76), ready);
     const awLeft = -PW(736) / 2;
     const awSlot = this.host.addChildPlainNode(aw, 'IconSlot', awLeft + PS(44), 0, PS(54), PS(54)).addComponent(Graphics);
     awSlot.fillColor = rgba(8, 7, 8, 235);
@@ -5641,15 +5686,15 @@ export class LobbyHeroDetailPanelRenderer {
       this.protoPill(aw, 'StatePill', awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`, PW(736) / 2 - PW(86), PS(15), PW(150), PS(32), awakened ? 'green' : 'dim', F(20));
     }
     // ③ 升星解锁
-    this.protoSectionBand(panel, 'StarUnlockSection', '升星解锁', PY(325), bandW, PS(48), PX(1062), F(29));
+    this.protoSectionBand(panel, 'StarUnlockSection', '升星解锁', PY(326), bandW, PS(46), PX(1062), F(29));
     const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity);
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
-    const rowYs = [383, 456, 529, 602];
+    const rowYs = [392, 468, 544, 620];
     unlockStars.slice(0, 4).forEach((needStar, index) => {
       const unlocked = star >= needStar;
       const skill = passives[index] ?? null;
       const rowW = PW(736);
-      const row = this.protoRow(panel, `StarUnlockRow_${index}`, PX(1427), PY(rowYs[index]), rowW, PS(66), unlocked);
+      const row = this.protoRow(panel, `StarUnlockRow_${index}`, PX(1427), PY(rowYs[index]), rowW, PS(72), unlocked);
       const left = -rowW / 2;
       if (unlocked && skill) {
         this.protoSkillIcon(row, 'Skill', left + PS(48), 0, PS(54), skill, index + 1, false);
@@ -5664,22 +5709,23 @@ export class LobbyHeroDetailPanelRenderer {
         slot.stroke();
         renderLockGlyph(this.host, row, 'Lock', left + PS(48), 0, PS(32), true);
       }
-      this.protoText(row, 'Name', skill ? skill.name : `被动技能 ${index + 1}`, left + PS(96), PS(15), F(22), unlocked ? rgba(252, 228, 170) : rgba(222, 208, 182), PW(220), HorizontalTextAlignment.LEFT, true);
+      this.protoText(row, 'Name', skill ? skill.name : `被动技能 ${index + 1}`, left + PS(96), PS(16), F(22), unlocked ? rgba(252, 228, 170) : rgba(222, 208, 182), PW(220), HorizontalTextAlignment.LEFT, true);
       const trigger = skill && skill.tag ? safeText(skill.tag.split(' · ').pop() ?? '') : '';
       if (trigger && !/解锁|待配置/.test(trigger)) {
-        this.protoText(row, 'Tag', trigger, PX(1632) - PX(1427), PS(15), F(20), unlocked ? rgba(232, 204, 140) : rgba(186, 172, 140), PW(160), HorizontalTextAlignment.RIGHT);
+        this.protoText(row, 'Tag', trigger, PX(1632) - PX(1427), PS(16), F(20), unlocked ? rgba(232, 204, 140) : rgba(186, 172, 140), PW(160), HorizontalTextAlignment.RIGHT);
       }
-      this.protoPill(row, 'StatePill', unlocked ? '已解锁' : `★${needStar} 解锁`, PX(1720) - PX(1427), PS(15), PW(124), PS(30), unlocked ? 'green' : 'gold', F(19));
-      this.protoText(row, 'Desc', skill ? skill.description : '升星解锁本被动技能。', left + PS(96), -PS(15), F(20), unlocked ? rgba(222, 208, 178) : rgba(176, 166, 144), rowW - PS(120), HorizontalTextAlignment.LEFT);
+      this.protoPill(row, 'StatePill', unlocked ? '已解锁' : `★${needStar} 解锁`, PX(1720) - PX(1427), PS(16), PW(124), PS(30), unlocked ? 'green' : 'gold', F(19));
+      this.protoText(row, 'Desc', skill ? skill.description : '升星解锁本被动技能。', left + PS(96), -PS(16), F(20), unlocked ? rgba(222, 208, 178) : rgba(176, 166, 144), rowW - PS(120), HorizontalTextAlignment.LEFT);
     });
     // ④ 消耗框 + 双钮
     const view = this.resolveStarCostView(hero, star, maxed);
-    this.renderProtoCostDock(panel, 'Star', view, PX(1427), PY(684), PW(736), view.hint ? PS(66) : PS(44));
+    const starHint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
+    this.renderProtoCostDock(panel, 'Star', view, PX(1427), starHint ? PY(700) : PY(692), PW(736), starHint ? PS(62) : PS(48));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'StarUpButton', labelName: 'Label', idleText: maxed ? '已满星' : '升 星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
       { name: 'StarUpAutoButton', labelName: 'Label', idleText: maxed ? '已满星' : '一键升星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
-    ], { cy: PY(764), h: PS(60), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
+    ], { cy: PY(770), h: PS(58), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
     finishFrames();
   }
 
