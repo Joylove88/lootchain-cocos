@@ -34,3 +34,12 @@ ev "root.lobbyHeroRosterPanelRenderer.selectHeroClassFilter('全部'); return 'o
 P="周报截图/2026-10-23_英雄名册重设计/proto/hero_roster_B.png"
 [ -f "$D/roster_all.png" ] && PYTHONIOENCODING=utf-8 python tools/qa/proto_compare.py "$P" "$D/roster_all.png" "$D/cmp" 0,0,1,1 0.17,0.08,1,0.5 0,0,0.2,1 | tail -1
 ls "$D"
+# 属性详情 / 洗练弹窗(英雄 133)
+ev "root.openLobbyHeroDetail(133); return 'ok';"; sleep 9
+ev "root.selectLobbyHeroDetailTab('attr'); return 'ok';"; sleep 3
+ev "const r=root.lobbyHeroDetailPanelRenderer; const c=r.detailRenderContext; r.showAttrDetailPopup(c.panelGroup, root.currentLobbyHeroDetailHero(), c.scale); return 'ok';"; sleep 1; shot attr_detail
+ev "root.selectLobbyHeroDetailTab('attr'); return 'ok';"; sleep 3
+ev "root.openLobbyHeroRefineDialog(); return 'ok';"; sleep 4; shot refine
+Q="周报截图/2026-10-23_属性详情洗练重设计/proto"
+[ -f "$D/attr_detail.png" ] && PYTHONIOENCODING=utf-8 python tools/qa/proto_compare.py "$Q/attr_A.png" "$D/attr_detail.png" "$D/cmp_attr" 0.18,0.04,0.82,0.98 | tail -1
+[ -f "$D/refine.png" ] && PYTHONIOENCODING=utf-8 python tools/qa/proto_compare.py "$Q/refine_B.png" "$D/refine.png" "$D/cmp_refine" 0.15,0.05,0.85,0.96 | tail -1

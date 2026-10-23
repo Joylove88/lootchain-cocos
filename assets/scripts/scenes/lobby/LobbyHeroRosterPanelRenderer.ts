@@ -7,7 +7,6 @@ import {
   Label,
   Mask,
   Node,
-  Rect,
   resources,
   ScrollView,
   Size,
@@ -18,7 +17,6 @@ import {
   tween,
   UIOpacity,
   UITransform,
-  Vec2,
   Vec3,
 } from 'cc';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -31,6 +29,7 @@ import { mountKitLoading } from '../UiKit';
 import { renderTopCurrencyBar } from '../UiSceneBackButton';
 import { mountRefSliced, mountRefSolid, mountRefTitleBand, REF_KIT, REF_ULT } from '../UiRefKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { mountCoverArt, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import {
   HERO_PROTO_BAND_STAR,
@@ -184,16 +183,8 @@ const USE_HERO_ROSTER_EXTERNAL_PORTRAITS = false;
 
 /**
  * 2026-10-23 名册(手机)原型 B 1:1:左栏职业页签 + 红头带面板 + 4 列横版半身卡。
- * 卡面 = 以名册立绘为参考由 GPT 生成的横版半身插画(ui/hero/roster/<英雄码>,原图备份 素材原始备份/hero-roster-card-20261023);
- * 没有横版卡面的新英雄退回名册立绘顶部裁切。
+ * 卡面 = 横版半身插画(HeroHeadCrop.HERO_ROSTER_ART_CODES);没有横版卡面的新英雄退回名册立绘顶部裁切。
  */
-const HERO_ROSTER_PROTO_ART_DIR = 'ui/hero/roster';
-const HERO_ROSTER_PROTO_ART_CODES: ReadonlySet<string> = new Set([
-  'R_PATROL_01', 'R_ACOLY_02', 'R_SCOUT_03', 'R_CULT_05', 'R_RANGER_06', 'R_GUARD_07',
-  'SR_PRIEST_01', 'SR_PALADIN_02', 'SR_WITCH_03', 'SR_BLADE_04', 'SR_SNIPER_05', 'SR_ABYSS_06',
-  'SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON',
-  'UR_ARTHAS', 'UR_ATLAS', 'UR_AURELIA', 'UR_NYX', 'UR_SERAPHINA', 'UR_EVELYN',
-]);
 /** 职业图标(原型左栏裁局部重绘):页签与卡片右上角圆章共用。 */
 const HERO_ROSTER_PROTO_CLASS_ICONS: Record<string, string> = {
   全部: `${HERO_PROTO_DIR}cls_all/spriteFrame`,
@@ -254,7 +245,6 @@ export class LobbyHeroRosterPanelRenderer {
   private readonly missingCardBackgroundLogs = new Set<string>();
   /** 原型版:最近点开的英雄卡高亮金框(返回名册时一眼找回刚才那张)。 */
   private lastOpenedHeroId: number | null = null;
-  private readonly protoArtFrames = new Map<string, SpriteFrame>();
 
   constructor(private readonly host: LobbyHeroRosterPanelHost) {}
 
@@ -1321,9 +1311,9 @@ export class LobbyHeroRosterPanelRenderer {
     const paths = new Set<string>();
     const phone = isPhoneDesign();
     heroes.forEach((hero) => {
-      const code = safeText(hero.heroCode).trim().toUpperCase();
-      if (phone && HERO_ROSTER_PROTO_ART_CODES.has(code)) {
-        paths.add(`${HERO_ROSTER_PROTO_ART_DIR}/${code}/spriteFrame`);
+      const wide = phone ? resolveHeroRosterArtPath(hero.heroCode) : null;
+      if (wide) {
+        paths.add(wide);
         return;
       }
       const path = this.resolveHeroCardBackgroundAssetPath(hero);
@@ -1427,12 +1417,11 @@ export class LobbyHeroRosterPanelRenderer {
     const FY = (py: number): number => (420.5 - py) * k;
     const PF = (v: number): number => Math.max(20, v * k);
 
-    // 背景:与英雄详情同一张去 UI 哥特大厅,整体压暗 + 径向暗角,卡墙是主体
+    // 背景:与英雄详情同一张去 UI 哥特大厅,轻压暗 + 径向暗角(2026-10-23 用户「背景太黑了」:96 / 200 → 0 / 100)
     this.host.addSprite('LobbyHeroRosterProtoBg', HERO_PROTO_BG.path, 0, 0, HERO_PROTO_BG.w * k, HERO_PROTO_BG.h * k, panel);
-    mountRefSolid(this.host, panel, 'LobbyHeroRosterProtoVeil', 0, 0, width, height, rgba(0, 0, 0, 96));
     const vig = this.host.addSprite('LobbyHeroRosterProtoVignette', HERO_PROTO_VIGNETTE, 0, 0, 2000 * k, 1150 * k, panel);
     if (vig) {
-      vig.color = rgba(0, 0, 0, 200);
+      vig.color = rgba(0, 0, 0, 100);
     }
 
     const profile = this.host.currentLobbyProfile?.();
@@ -1702,68 +1691,14 @@ export class LobbyHeroRosterPanelRenderer {
     }
   }
 
-  /**
-   * 卡面插画:cover 裁切成子帧直接挂(不用逐卡模板遮罩)。横版卡面居中裁;退回立绘时取顶部(头胸)。
-   * 缓存命中同步挂,避免闪一帧空卡(resources.load 命中仍异步)。
-   */
+  /** 卡面插画:cover 裁切子帧直接挂(不用逐卡模板遮罩)。横版卡面居中裁;退回立绘时贴顶取头胸。 */
   private mountProtoCardArt(holder: Node, hero: LobbyHeroItemVO, w: number, h: number): void {
-    const code = safeText(hero.heroCode).trim().toUpperCase();
-    const wide = HERO_ROSTER_PROTO_ART_CODES.has(code);
-    const base = wide ? `${HERO_ROSTER_PROTO_ART_DIR}/${code}` : this.resolveHeroCardBackgroundAssetPath(hero);
-    if (!base) {
-      return;
+    const wide = resolveHeroRosterArtPath(hero.heroCode);
+    const base = this.resolveHeroCardBackgroundAssetPath(hero);
+    const path = wide ?? (base ? `${base}/spriteFrame` : null);
+    if (path) {
+      mountCoverArt(holder, path, w, h, !wide);
     }
-    const path = `${base}/spriteFrame`;
-    const apply = (frame: SpriteFrame | null): void => {
-      if (!frame || !holder.isValid) {
-        return;
-      }
-      const sub = this.protoCoverFrame(path, frame, w / h, wide);
-      if (!sub) {
-        return;
-      }
-      const node = this.host.addChildPlainNode(holder, 'Img', 0, 0, w, h);
-      const sprite = node.addComponent(Sprite);
-      sprite.type = Sprite.Type.SIMPLE;
-      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-      sprite.trim = false;
-      sprite.spriteFrame = sub;
-      node.getComponent(UITransform)?.setContentSize(w, h);
-    };
-    const cached = resources.get(path, SpriteFrame);
-    if (cached && cached.isValid) {
-      apply(cached);
-      return;
-    }
-    resources.load(path, SpriteFrame, (error, frame) => apply(error ? null : frame));
-  }
-
-  private protoCoverFrame(path: string, base: SpriteFrame, aspect: number, centered: boolean): SpriteFrame | null {
-    const key = `${path}|${aspect.toFixed(3)}`;
-    const hit = this.protoArtFrames.get(key);
-    if (hit && hit.isValid && hit.texture === base.texture) {
-      return hit;
-    }
-    if (!base.isValid || !base.texture) {
-      return null;
-    }
-    const rect = base.rect;
-    let cw = rect.width;
-    let ch = cw / aspect;
-    if (ch > rect.height) {
-      ch = rect.height;
-      cw = ch * aspect;
-    }
-    // 立绘(竖版全身)只取顶部头胸:裁框贴顶;横版卡面居中
-    const cx = rect.x + (rect.width - cw) / 2;
-    const cy = centered ? rect.y + (rect.height - ch) / 2 : rect.y;
-    const sub = new SpriteFrame();
-    sub.texture = base.texture;
-    sub.rect = new Rect(Math.round(cx), Math.round(cy), Math.round(cw), Math.round(ch));
-    sub.originalSize = new Size(Math.round(cw), Math.round(ch));
-    sub.offset = new Vec2(0, 0);
-    this.protoArtFrames.set(key, sub);
-    return sub;
   }
 
   /** 布阵入口(原型右下红金大钮 + 战旗图标)。 */

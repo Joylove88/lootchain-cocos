@@ -21,6 +21,78 @@ export function resolveHeroAvatarPath(heroCode: string | null | undefined): stri
   return HERO_AVATAR_CODES.has(code) ? `${HERO_AVATAR_DIR}/${code}/spriteFrame` : null;
 }
 
+/**
+ * 横版半身卡面(2026-10-23 名册原型 B):以名册立绘为参考生成的 16:9 插画(768×432),
+ * 名册卡 / 属性详情头条 / 洗练左卡共用;新英雄生成卡面后加进来(原图备份 素材原始备份/hero-roster-card-20261023)。
+ */
+export const HERO_ROSTER_ART_DIR = 'ui/hero/roster';
+export const HERO_ROSTER_ART_CODES: ReadonlySet<string> = new Set([
+  'R_PATROL_01', 'R_ACOLY_02', 'R_SCOUT_03', 'R_CULT_05', 'R_RANGER_06', 'R_GUARD_07',
+  'SR_PRIEST_01', 'SR_PALADIN_02', 'SR_WITCH_03', 'SR_BLADE_04', 'SR_SNIPER_05', 'SR_ABYSS_06',
+  'SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON',
+  'UR_ARTHAS', 'UR_ATLAS', 'UR_AURELIA', 'UR_NYX', 'UR_SERAPHINA', 'UR_EVELYN',
+]);
+
+/** 横版卡面路径(带 /spriteFrame);没有生成的英雄返回 null。 */
+export function resolveHeroRosterArtPath(heroCode: string | null | undefined): string | null {
+  const code = (heroCode ?? '').trim().toUpperCase();
+  return HERO_ROSTER_ART_CODES.has(code) ? `${HERO_ROSTER_ART_DIR}/${code}/spriteFrame` : null;
+}
+
+const coverFrameCache = new Map<string, SpriteFrame>();
+/**
+ * cover 裁切子帧:按目标宽高比从源帧里切一块(横向 / 纵向居中,top=true 时贴顶取头胸),直接挂 Sprite,不用模板遮罩。
+ * 同一 (路径, 比例, 对齐) 复用;源贴图被释放重读后自动重建。
+ */
+export function buildCoverSubFrame(key: string, base: SpriteFrame, aspect: number, top = false): SpriteFrame | null {
+  const cacheKey = `${key}|${aspect.toFixed(3)}|${top ? 1 : 0}`;
+  const hit = coverFrameCache.get(cacheKey);
+  if (hit && hit.isValid && hit.texture === base.texture) {
+    return hit;
+  }
+  if (!base || !base.isValid || !base.texture) {
+    return null;
+  }
+  const rect = base.rect;
+  let cw = rect.width;
+  let ch = cw / aspect;
+  if (ch > rect.height) {
+    ch = rect.height;
+    cw = ch * aspect;
+  }
+  const sub = new SpriteFrame();
+  sub.texture = base.texture;
+  sub.rect = new Rect(Math.round(rect.x + (rect.width - cw) / 2), Math.round(top ? rect.y : rect.y + (rect.height - ch) / 2), Math.round(cw), Math.round(ch));
+  sub.originalSize = new Size(Math.round(cw), Math.round(ch));
+  sub.offset = new Vec2(0, 0);
+  coverFrameCache.set(cacheKey, sub);
+  return sub;
+}
+
+/** 在 parent 中心挂一张 w×h 的 cover 裁切图(缓存命中同步挂,否则异步);path 带 /spriteFrame。 */
+export function mountCoverArt(parent: Node, path: string, w: number, h: number, top = false): void {
+  withFrame(path, (frame) => {
+    if (!frame || !parent.isValid) {
+      return;
+    }
+    const sub = buildCoverSubFrame(path, frame, w / h, top);
+    if (!sub) {
+      return;
+    }
+    const img = new Node('CoverArt');
+    img.layer = parent.layer;
+    parent.addChild(img);
+    img.setSiblingIndex(0);
+    img.addComponent(UITransform).setContentSize(w, h);
+    const sprite = img.addComponent(Sprite);
+    sprite.type = Sprite.Type.SIMPLE;
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.spriteFrame = sub;
+    img.getComponent(UITransform)?.setContentSize(w, h);
+  });
+}
+
 let avatarsPreloaded = false;
 /** 进大厅后预读全部头像(22 张小图),挑战弹窗 / 统计打开时直接有图、不闪首字。 */
 export function preloadHeroAvatars(): void {
