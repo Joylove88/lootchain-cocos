@@ -5517,12 +5517,23 @@ export class LobbyHeroDetailPanelRenderer {
     const box = this.protoRow(panel, `${name}CostBox`, cx, cy, w, h);
     // 2026-10-23 去重复信息:不足的数字已标红,不再另起一行写「还差 N …」
     const hint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
-    const hasHint = hint.length > 0;
-    const titleY = hasHint ? h * 0.2 : 0;
     const font = this.protoFont(24);
     if (view.costs.length <= 0) {
-      this.protoText(box, `${name}Cost`, view.title, 0, titleY, font, rgba(246, 226, 180), w - 40, HorizontalTextAlignment.CENTER, true);
-    } else {
+      // 无消耗(已达上限 / 已满星):标题 + 提示并成一行(标题亮、提示暗),不再两行挤在一个框里
+      const hintFont = this.protoFont(19);
+      const tW = estimateTextWidth(view.title, font) * 1.05;
+      const hW = hint ? estimateTextWidth(hint, hintFont) * 1.02 : 0;
+      const gap = hint ? font * 0.9 : 0;
+      const left = -(tW + gap + hW) / 2;
+      this.protoText(box, `${name}Cost`, view.title, hint ? left + tW / 2 : 0, 0, font, rgba(246, 226, 180), hint ? tW + 8 : w - 40, HorizontalTextAlignment.CENTER, true);
+      if (hint) {
+        this.protoText(box, `${name}Est`, hint, left + tW + gap + hW / 2, 0, hintFont, rgba(178, 164, 136), hW + 8);
+      }
+      return;
+    }
+    const hasHint = hint.length > 0;
+    const titleY = hasHint ? h * 0.22 : 0;
+    {
       const iconS = font * 1.3;
       const segGap = font * 1.1;
       const titleW = estimateTextWidth(view.title, font);
@@ -5538,7 +5549,9 @@ export class LobbyHeroDetailPanelRenderer {
       });
     }
     if (hasHint) {
-      this.protoText(box, `${name}Est`, hint, 0, -h * 0.2, this.protoFont(19), rgba(178, 164, 136), w - 40);
+      const est = this.protoText(box, `${name}Est`, hint, 0, -h * 0.24, 18, rgba(178, 164, 136), w - 40);
+      est.fontSize = 18;
+      est.lineHeight = 18;
     }
   }
 
@@ -5664,7 +5677,7 @@ export class LobbyHeroDetailPanelRenderer {
     if (ult) {
       const cardW = PW(736);
       const cardH = PS(54);
-      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(662), cardW, cardH, false);
+      const card = this.protoRow(panel, 'LobbyHeroDetailUltCard', PX(1464), PY(660), cardW, cardH, false);
       this.protoGoldEdge(card, cardW, cardH);
       const left = -cardW / 2;
       this.host.addSprite('Icon', ult.icon ?? resolveUltimateEmblemAsset(hero), left + PS(44), 0, PS(60), PS(60), card);
@@ -5676,14 +5689,14 @@ export class LobbyHeroDetailPanelRenderer {
     }
     // ④ 升级消耗框 + 双钮
     const view = this.resolveLevelUpCostView(hero);
-    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(727), PW(736), view.hint ? PS(62) : PS(48));
+    this.renderProtoCostDock(panel, 'LobbyHeroDetailLevelUp', view, PX(1464), PY(720), PW(736), view.costs.length > 0 && view.hint && !/^还差/.test(view.hint) ? PS(60) : PS(48));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     const idleEnabled = view.blocked !== 'cap';
     const dim = view.blocked === 'lack';
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'LobbyHeroDetailLevelUpButton', labelName: 'LobbyHeroDetailLevelUpButtonLabel', idleText: '升 级', pendingText: '升级中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.levelUpLobbyHero(hero.id) },
       { name: 'LobbyHeroDetailLevelUpAutoButton', labelName: 'LobbyHeroDetailLevelUpAutoButtonLabel', idleText: '一键升级', pendingText: '处理中', pending, idleEnabled, dim, clickableWhenDisabled: true, onClick: () => this.host.autoLevelUpLobbyHero(hero.id) },
-    ], { cy: PY(790), h: PS(50), cx: [PX(1284), PX(1624)], w: [PW(300), PW(300)] });
+    ], { cy: PY(786), h: PS(62), cx: [PX(1284), PX(1624)], w: [PW(300), PW(300)] });
     finishFrames();
   }
 
@@ -5836,7 +5849,7 @@ export class LobbyHeroDetailPanelRenderer {
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'StarUpButton', labelName: 'Label', idleText: maxed ? '已满星' : '升 星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
       { name: 'StarUpAutoButton', labelName: 'Label', idleText: maxed ? '已满星' : '一键升星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
-    ], { cy: PY(762), h: PS(54), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
+    ], { cy: PY(764), h: PS(62), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
     finishFrames();
   }
 
