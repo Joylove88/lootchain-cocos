@@ -36,7 +36,7 @@ import { GRAPHICS_FRAME_RATES, getGraphicsFrameRate, getGraphicsMode, graphicsCa
 import { addPhoneDialogTitle, drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 import type { UiLayout } from './LobbyHudTypes';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
-import type { LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
+import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
 import {
   createGuardBattle,
   guardBanishChoice,
@@ -117,6 +117,7 @@ import {
   type GuardZone,
   type GuardHeroUnit,
   type GuardMonster,
+  type GuardOutsideStats,
   type GuardPoolHero,
   guardPickMonsterSpineCodes,
   guardApplyMonsterRoster,
@@ -142,6 +143,8 @@ import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAvatarPath } from './HeroHeadCrop';
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
+import { heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources } from './HeroCombatStats';
+import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
@@ -158,6 +161,8 @@ export interface LobbyGuardBattleHost {
   node: Node;
   currentLobbyBattleState(): LobbyBattlePanelState;
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
+  /** 局外属性合计用的已穿戴装备(docs/41;缺省 = 只算基础 + 特性)。 */
+  currentLobbyHeroEquipState?(): { items: EquipmentItemVO[] };
   /** 主线 P5 难度曲线用:取关卡 recommendedPower(缺省可不实现,难度回落基线)。 */
   currentLobbyAdventureState?(): { adventure: { chapters: Array<{ stages: Array<{ stageCode: string; recommendedPower: number }> }> } | null };
   /** 输出试炼档位表(P3b near-miss 提示,缺省=不展示)。 */
@@ -835,6 +840,26 @@ export class LobbyGuardBattleRenderer {
     return Math.max(0.25, Math.min(6, stage.recommendedPower / GUARD_MAIN_POWER_BASELINE));
   }
 
+  /**
+   * 局外属性(docs/41 A 方案):与属性详情「属性来源」同口径(HeroCombatStats:基础 + 装备 + 特性)。
+   * 攻击仍取开战回执的 attack(后端已含装备 / 宝石),这里只补攻击加成特性;找不到名册英雄时不带(按旧口径)。
+   */
+  private resolveGuardOutsideStats(hero: LobbyHeroItemVO | null, ultimateSkillLevel: number | undefined): GuardOutsideStats | undefined {
+    if (!hero) {
+      return undefined;
+    }
+    const sources = resolveHeroCombatSources(hero, this.host.currentLobbyHeroEquipState?.().items ?? []);
+    return {
+      hp: heroCombatTotal(sources.生命),
+      defense: heroCombatTotal(sources.防御),
+      speed: heroCombatTotal(sources.速度),
+      critPct: heroCombatTotal(sources.暴击),
+      critDmgPct: heroCombatTotal(sources.暴伤),
+      ultLevel: Math.max(1, Math.trunc(ultimateSkillLevel ?? hero.ultimateSkillLevel ?? 1)),
+      atkBonusPct: heroAffixSumPct(hero, 'ATK_BONUS'),
+    };
+  }
+
   // ── 建场 ──
   private mount(battleState: LobbyBattlePanelState, layout: UiLayout): void {
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
@@ -851,6 +876,7 @@ export class LobbyGuardBattleRenderer {
         role: resolveGuardRole(ally.heroCode ?? ally.unitKey, ally.heroClass),
         baseAttack: Math.max(10, Math.round((ally.attack ?? 40) * GUARD_BASE_ATTACK_SCALE)),
         sourceIndex: index,
+        outside: this.resolveGuardOutsideStats(heroes.find((hero) => hero.id === ally.sourceHeroId) ?? null, ally.ultimateSkillLevel),
       }));
     // 难度从 stageCode 取:DAILY 三档后缀(Ⅰ=10 波,Ⅱ=20 波,Ⅲ=BOSS 车轮战);
     // 主线 MAIN_*(P5,2026-09-03 用户拍板)=难度Ⅰ同款 10 波 + 关卡难度曲线缩放怪物强度。

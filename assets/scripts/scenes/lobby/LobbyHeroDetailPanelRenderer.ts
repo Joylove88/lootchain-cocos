@@ -46,6 +46,7 @@ import { patchBattleUnitSpineRuntimeEnums, type BattleUnitSpineRuntimeData } fro
 import { loadSharedSpineData } from './SpineDataStore';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, resolveHeroRosterArtPath } from './HeroHeadCrop';
+import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, resolveHeroCombatSources, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
@@ -6032,39 +6033,9 @@ export class LobbyHeroDetailPanelRenderer {
     }
   }
 
-  /** 属性来源:基础(英雄等级 / 星级)+ 装备(穿戴装备该项合计,已含强化)+ 特性(平值词条)。 */
-  private resolveAttrSources(hero: LobbyHeroItemVO): Record<string, { base: number; equip: number; affix: number; percent: boolean }> {
-    const star = Math.max(1, hero.star);
-    const level = Math.max(1, hero.level);
-    const power = Math.max(0, hero.power);
-    const out: Record<string, { base: number; equip: number; affix: number; percent: boolean }> = {
-      生命: { base: hero.attrHp ?? Math.round(power * 1.55 + level * 120 + star * 420), equip: 0, affix: 0, percent: false },
-      攻击: { base: hero.attrAttack ?? Math.round(power * 0.32 + level * 42 + star * 135), equip: 0, affix: 0, percent: false },
-      防御: { base: hero.attrDefense ?? Math.round(power * 0.22 + level * 36 + star * 108), equip: 0, affix: 0, percent: false },
-      速度: { base: hero.attrSpeed ?? 112 + star * 3, equip: 0, affix: 0, percent: false },
-      暴击: { base: hero.attrCrit ?? 14 + star * 2, equip: 0, affix: 0, percent: true },
-      暴伤: { base: HERO_BASE_CRIT_DAMAGE_PCT, equip: 0, affix: 0, percent: true },
-    };
-    this.host.currentLobbyHeroEquipState().items.forEach((item) => {
-      if (item.heroId !== hero.id) {
-        return;
-      }
-      out.生命.equip += item.attrHp ?? 0;
-      out.攻击.equip += item.attrAttack ?? 0;
-      out.防御.equip += item.attrDefense ?? 0;
-      out.速度.equip += item.attrSpeed ?? 0;
-      out.暴击.equip += item.attrCrit ?? 0;
-    });
-    const affixStat: Record<string, string> = { HP_BONUS: '生命', ATK_BONUS: '攻击', DEF_BONUS: '防御', SPD_BONUS: '速度', CRIT_RATE: '暴击', CRIT_DMG: '暴伤' };
-    (hero.affixes ?? []).forEach((affix) => {
-      const code = (affix.code || '').toUpperCase();
-      const stat = affixStat[code];
-      if (stat) {
-        // 比率类词条点数 ÷10 = 百分比(heroAffixValueText 同口径)
-        out[stat].affix += code === 'CRIT_RATE' || code === 'CRIT_DMG' ? (Number(affix.value) || 0) / 10 : Number(affix.value) || 0;
-      }
-    });
-    return out;
+  /** 属性来源:基础(英雄等级 / 星级)+ 装备(穿戴装备该项合计,已含强化)+ 特性(词条,点数 ÷10 = %)。与守卫战同一口径(HeroCombatStats)。 */
+  private resolveAttrSources(hero: LobbyHeroItemVO): Record<string, HeroCombatStatSource> {
+    return resolveHeroCombatSources(hero, this.host.currentLobbyHeroEquipState().items);
   }
 
   private protoAttrSourceStat = '生命';
@@ -6729,16 +6700,13 @@ const HERO_AFFIX_SHORT_LABELS: Record<string, string> = {
   DROP_RATE: '战利品掉落率',
 };
 
-// 特性值显示口径(2026-07-22,docs/06):后端词条值为统一"点数"(8~200);
-// 比率类词条按 点数÷10 显示为百分比(暴击率133点→+13.3%,战斗接入时同口径),平值类直接 +点数。
-const HERO_AFFIX_PERCENT_CODES = new Set(['CRIT_RATE', 'CRIT_DMG', 'SKILL_POW', 'LIFESTEAL', 'BOSS_DMG', 'ABYSS_INC', 'DROP_RATE']);
+// 特性值显示口径:后端词条值为统一"点数"(8~200),一律按 点数÷10 显示为百分比(暴击率133点→+13.3%)。
+// 2026-10-24(docs/41):攻击 / 生命 / 防御 / 速度加成原按平值 +103 显示——后端战力把点数缩到 0.04 倍计入,平值口径会让
+// 一条词条比英雄自身攻击还高;接入守卫战后统一成「基础 + 装备」的百分比加成(HeroCombatStats)。
 function heroAffixValueText(code: string, rawValue: number): string {
-  const safe = Math.round((Number(rawValue) || 0) * 10) / 10;
-  if (HERO_AFFIX_PERCENT_CODES.has((code || '').toUpperCase())) {
-    const pct = Math.round(safe) / 10;
-    return `+${Number.isInteger(pct) ? pct.toFixed(0) : pct.toFixed(1)}%`;
-  }
-  return `+${safe}`;
+  void code;
+  const pct = Math.round(heroAffixPct(rawValue) * 10) / 10;
+  return `+${Number.isInteger(pct) ? pct.toFixed(0) : pct.toFixed(1)}%`;
 }
 
 // 装备品质顺序与显示名(装备 2.0);导出供锻造工坊页复用,与服务器 PlayerEquipmentServiceImpl 常量对齐。
@@ -6808,16 +6776,6 @@ function resolveGrowthChips(hero: LobbyHeroItemVO): { label: string; value: stri
   ];
 }
 
-/** 英雄基础暴击伤害(%):守卫战暴击倍率 = 1.5 + 暴击伤害词条(docs/41 局外属性接入守卫)。 */
-export const HERO_BASE_CRIT_DAMAGE_PCT = 150;
-
-/** 比率类词条合计(点数 ÷10 = 百分比,heroAffixValueText 同口径)。 */
-export function heroAffixPointsPct(hero: LobbyHeroItemVO, code: string): number {
-  return (hero.affixes ?? [])
-    .filter((affix) => (affix.code || '').toUpperCase() === code)
-    .reduce((sum, affix) => sum + (Number(affix.value) || 0) / 10, 0);
-}
-
 export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] {
   const star = Math.max(1, hero.star);
   const level = Math.max(1, hero.level);
@@ -6836,7 +6794,7 @@ export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] 
     { label: '速度', value: `${speed}` },
     { label: '暴击', value: `${crit}%` },
     // 2026-10-24 策划审核 P0-4:「韧性」是客户端按星级编的数(服务端无此属性、战斗不用),换成真实参与守卫战暴击的「暴伤」
-    { label: '暴伤', value: `${Math.round((HERO_BASE_CRIT_DAMAGE_PCT + heroAffixPointsPct(hero, 'CRIT_DMG')) * 10) / 10}%` },
+    { label: '暴伤', value: `${Math.round((HERO_BASE_CRIT_DAMAGE_PCT + heroAffixSumPct(hero, 'CRIT_DMG')) * 10) / 10}%` },
   ];
 }
 

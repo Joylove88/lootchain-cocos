@@ -77,6 +77,26 @@ export interface GuardPoolHero {
   baseAttack: number;
   /** 渲染层用:骨骼/立绘沿用现有解析(直接透传 snapshot ally)。 */
   sourceIndex: number;
+  /** 局外属性(docs/41 A 方案);缺省 = 不生效,与改版前逐位一致。 */
+  outside?: GuardOutsideStats;
+}
+
+/**
+ * 局外属性合计(HeroCombatStats 同口径:基础 + 装备 + 特性)。docs/41(2026-10-24 用户拍板 A):
+ * 守卫战原来只读攻击,生命 / 防御 / 速度 / 暴击 / 暴伤 / 大招等级都不起作用却计入战力。
+ */
+export interface GuardOutsideStats {
+  hp: number;
+  defense: number;
+  speed: number;
+  /** 暴击率(%) */
+  critPct: number;
+  /** 暴击伤害(%),≥100 */
+  critDmgPct: number;
+  /** 大招(终极技能)等级 1..10 */
+  ultLevel: number;
+  /** 攻击加成(%,特性 ATK_BONUS;局外攻击本身已含装备,由 baseAttack 带入) */
+  atkBonusPct: number;
 }
 
 export interface GuardHeroUnit {
@@ -99,6 +119,8 @@ export interface GuardHeroUnit {
   /** 奥蕾莉亚·追猎之翎:连续命中同一目标的叠层(其他英雄恒 0)。 */
   focusTargetId: number | null;
   focusStacks: number;
+  /** 局外暴击的确定性累加器(每次出手 += 暴击率,满 1 必暴;docs/41)。 */
+  critAcc?: number;
 }
 
 /** 每个英雄编码的词条状态(docs/32):蓝卡层数、紫卡层数(每英雄 1 条)、专属大招觉醒等级。 */
@@ -755,6 +777,8 @@ export interface GuardBattleState {
   nextZoneId: number;
   /** 怪物强度缩放(主线 P5 难度曲线;每日副本恒 1)。 */
   monsterScale: number;
+  /** 局外防御折算的啃咬减伤乘数(1 = 不减;docs/41)。 */
+  outsideBiteMult: number;
   /** 每波怪物数量倍率(主线 2;每日 1)。 */
   spawnCountMult: number;
   /** 怪物血量额外倍率(只乘 HP;主线收紧用)。 */
@@ -866,6 +890,33 @@ export const GUARD_MAX_STAR = 5;
 // 2.2→1.75(2026-08-28 用户拍板:合成升星攻击翻倍太多):5★≈9.4×(原 23×)。
 export const GUARD_STAR_ATTACK_MULT = 1.75;
 export const GUARD_CRYSTAL_MAX_HP = 1600;
+
+// ── docs/41 局外属性接入(2026-10-24 用户拍板 A 方案) ──
+/** 生命:上阵英雄生命合计 × 本系数加到水晶生命(封顶 +100% 基础水晶)。 */
+export const GUARD_OUTSIDE_HP_TO_CRYSTAL = 0.1;
+export const GUARD_OUTSIDE_HP_CAP = 1.0;
+/** 防御:啃咬减伤 = Σ防御 / (Σ防御 + K),封顶 50%。 */
+export const GUARD_OUTSIDE_DEF_K = 600;
+export const GUARD_OUTSIDE_DEF_CAP = 0.5;
+/** 速度:出手间隔 ÷ (1 + 速度 / K),封顶 +50%。 */
+export const GUARD_OUTSIDE_SPD_K = 150;
+export const GUARD_OUTSIDE_SPD_CAP = 0.5;
+/** 暴击率封顶;暴击倍率 = 暴伤 / 100(与词条会心取高,不相乘)。 */
+export const GUARD_OUTSIDE_CRIT_CAP = 0.75;
+/** 大招等级:战技伤害 ×(1 + 本系数 ×(等级 − 1))。 */
+export const GUARD_OUTSIDE_ULT_STEP = 0.1;
+/** 怪物血量补偿:接入后全体玩家都变强,按「新手 R 阵容胜率 / 波次不变」校准(tools/qa/guard_sim,N=300:基线 78% / 5.68 波 → 1.05 时 79% / 5.74 波)。 */
+export const GUARD_OUTSIDE_MONSTER_COMP = 1.05;
+
+function guardOutsideOf(state: { pool: GuardPoolHero[] }, heroCode: string): GuardOutsideStats | null {
+  const code = heroCode.toUpperCase();
+  return state.pool.find((entry) => entry.heroCode.toUpperCase() === code)?.outside ?? null;
+}
+
+function guardOutsideSpeedMult(state: GuardBattleState, heroCode: string): number {
+  const outside = guardOutsideOf(state, heroCode);
+  return outside ? 1 + Math.min(GUARD_OUTSIDE_SPD_CAP, Math.max(0, outside.speed) / GUARD_OUTSIDE_SPD_K) : 1;
+}
 
 // 覆盖范围(2026-08-25 用户拍板:同类型英雄攻击范围与所站格子无关)——rangeCells=从水晶起算的覆盖距离,
 // 怪物走进 [0, rangeCells] 即可被打;近战仍锁本车道。近战 6 / 远程 10(全跑道)/ 控制 8。
@@ -1306,12 +1357,18 @@ export function createGuardBattle(
   const monsterHpMult = Math.max(0.5, Math.min(10, opts?.monsterHpMult ?? 1));
   const monsterBiteMult = Math.max(0.5, Math.min(10, opts?.monsterBiteMult ?? Math.sqrt(monsterHpMult)));
   const minionHpMult = Math.max(0.5, Math.min(20, opts?.minionHpMult ?? 1));
+  // 局外属性(docs/41):有任何一名上阵英雄带 outside 才生效,否则与改版前逐位一致
+  const outsideHeroes = pool.map((entry) => entry.outside).filter((entry): entry is GuardOutsideStats => !!entry);
+  const outsideActive = outsideHeroes.length > 0;
+  const outsideDef = outsideHeroes.reduce((sum, entry) => sum + Math.max(0, entry.defense), 0);
+  const outsideHp = outsideHeroes.reduce((sum, entry) => sum + Math.max(0, entry.hp), 0);
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
   const baseCrystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   // 水晶养成(docs/38):数值都做了钳制,防旧服务端/异常快照把战斗打穿。
   const crystal = opts?.crystal ?? null;
   const clampNum = (value: number | undefined, max: number): number => Math.max(0, Math.min(max, Number(value ?? 0) || 0));
-  const crystalHp = Math.round(baseCrystalHp * (1 + clampNum(crystal?.crystalHpPct, 200) / 100));
+  const crystalHp = Math.round(baseCrystalHp * (1 + clampNum(crystal?.crystalHpPct, 200) / 100)
+    + (outsideActive ? Math.min(baseCrystalHp * GUARD_OUTSIDE_HP_CAP, outsideHp * GUARD_OUTSIDE_HP_TO_CRYSTAL) : 0));
   const unlockedSpells = GUARD_SPELL_IDS.filter((id) => GUARD_DEFAULT_SPELL_LOADOUT.indexOf(id) >= 0 || (crystal?.unlockedSpells ?? []).indexOf(id) >= 0);
   const spellEnergyMax = GUARD_SPELL_ENERGY_MAX + clampNum(crystal?.energyMaxBonus, 100);
   const spellSlots = Math.max(1, Math.min(GUARD_MAX_SPELL_SLOTS, Math.round(Number(crystal?.spellSlots ?? 0)) || GUARD_BASE_SPELL_SLOTS));
@@ -1375,9 +1432,10 @@ export function createGuardBattle(
     nextZoneId: 1,
     monsterScale,
     spawnCountMult,
-    monsterHpMult,
+    monsterHpMult: outsideActive ? monsterHpMult * GUARD_OUTSIDE_MONSTER_COMP : monsterHpMult,
     monsterBiteMult,
     minionHpMult,
+    outsideBiteMult: outsideActive ? 1 - Math.min(GUARD_OUTSIDE_DEF_CAP, outsideDef / (outsideDef + GUARD_OUTSIDE_DEF_K)) : 1,
     heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
@@ -1653,7 +1711,8 @@ export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUni
   const resonanceMult = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ATK_MULT : 1;
   // 狂战号角「狂怒」(docs/39 Lv5):号角期间全队伤害 ×1.15;未解锁 / 号角结束时为 1(不影响旧口径)。
   const hornMult = state.warhornUntilMs > state.timeMs ? state.warhornDmgMult : 1;
-  return Math.max(1, Math.round(base * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult * resonanceMult * hornMult));
+  const outsideAtkMult = 1 + Math.max(0, pool?.outside?.atkBonusPct ?? 0) / 100;
+  return Math.max(1, Math.round(base * outsideAtkMult * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult * resonanceMult * hornMult));
 }
 
 // ── P2:XP(击杀经验只累计等级,不再弹词条,2026-09-19)──
@@ -2477,7 +2536,8 @@ function guardMeleeCanHit(monster: GuardMonster): boolean {
  */
 function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mult: number; manual: boolean; chained: boolean } = { mult: 1, manual: false, chained: false }): boolean {
   const profile = GUARD_ROLE_PROFILE[hero.role];
-  const attack = guardHeroAttackValue(state, hero) * cast.mult;
+  const outsideUlt = guardOutsideOf(state, hero.heroCode)?.ultLevel ?? 1;
+  const attack = guardHeroAttackValue(state, hero) * cast.mult * (1 + GUARD_OUTSIDE_ULT_STEP * Math.max(0, outsideUlt - 1));
   const skill = GUARD_HERO_SKILL[hero.role];
   // 金卡觉醒(docs/32 §5.1 方案 A):战技升级为专属大招——伤害/回复 ×1.5(Lv2 ×1.95),Lv3 击退/持续 +50%。
   const ultLv = guardHeroPerks(state, hero.heroCode).ultLv;
@@ -2669,9 +2729,19 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
   // 技能击(2★ 起每第 4 次出手);辅助沿用现状不触发。
   const skillProc = hero.role !== 'support' && hero.star >= 2 && hero.attackCount % 4 === 0;
   let strike = skillProc ? skillMult : 1;
-  const crit = critMult > 1 && hero.attackCount % GUARD_CRIT_EVERY === 0;
+  let crit = critMult > 1 && hero.attackCount % GUARD_CRIT_EVERY === 0;
   if (crit) {
     strike = Math.max(strike, critMult);
+  }
+  // 局外暴击(docs/41):确定性累加,每次出手 += 暴击率,满 1 必暴;倍率 = 暴伤,与词条会心取高
+  const outside = guardOutsideOf(state, hero.heroCode);
+  if (outside && outside.critPct > 0) {
+    hero.critAcc = (hero.critAcc ?? 0) + Math.min(GUARD_OUTSIDE_CRIT_CAP, outside.critPct / 100);
+    if (hero.critAcc >= 1) {
+      hero.critAcc -= 1;
+      crit = true;
+      strike = Math.max(strike, Math.max(1, outside.critDmgPct / 100));
+    }
   }
   if (suffix === 'execute' && target.hp / target.maxHp < purpleValue) {
     const full = purpleValue <= 0.2 ? 1.5 : purpleValue <= 0.25 ? 1.75 : 2.0;
@@ -2856,7 +2926,7 @@ function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): v
   const surgeDiv = state.supportSurgeUntilMs > state.timeMs ? GUARD_SUPPORT_SURGE_ATKSPD : 1;
   const resonanceDiv = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ASPD_MULT : 1;
   const hornDiv = state.warhornUntilMs > state.timeMs ? state.warhornAspd : 1;
-  const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv / resonanceDiv / hornDiv;
+  const interval = profile.intervalMs / guardPermanentFrequency(state, hero.heroCode) / surgeDiv / resonanceDiv / hornDiv / guardOutsideSpeedMult(state, hero.heroCode);
   const heroProfile = guardHeroProfileOf(state, hero.heroCode);
   const purpleSuffix = perks.purple > 0 ? heroProfile.purple?.suffix ?? '' : '';
   const purpleValue = perks.purple > 0 && heroProfile.purple ? heroProfile.purple.values[perks.purple - 1] : 0;
@@ -3091,7 +3161,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
       monster.attackCooldownMs -= dtMs;
       if (monster.attackCooldownMs <= 0) {
         monster.attackCooldownMs = MONSTER_ATTACK_INTERVAL_MS;
-        const bite = guardAegisFilter(state, monster.crystalDamage, monster);
+        // 局外防御减伤(docs/41);无局外属性时乘数为 1,原样
+        const bite = guardAegisFilter(state, state.outsideBiteMult < 1 ? Math.max(1, Math.round(monster.crystalDamage * state.outsideBiteMult)) : monster.crystalDamage, monster);
         state.crystalHp = Math.max(0, state.crystalHp - bite);
         state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: bite });
         if ((state.heroPerks.UR_ATLAS?.purple ?? 0) > 0 && state.heroes.some((hero) => hero.heroCode.toUpperCase() === 'UR_ATLAS')) {

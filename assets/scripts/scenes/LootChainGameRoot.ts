@@ -3196,6 +3196,8 @@ export class LootChainGameRoot extends Component {
     const reuseExistingBattleState = this.isLobbyBattleFlowBusyForStage(resolvedStageCode);
     const fillDefaultFormationForDirectChallenge = this.currentView !== 'formation';
     this.selectedLobbyStageCode = resolvedStageCode;
+    // 守卫战按局外属性合计建场(docs/41,含装备):开战前确保装备列表在手,开战回执回来时一般已到
+    this.ensureLobbyEquipmentForBattle();
     if (!reuseExistingBattleState) {
       this.lobbyBattleFlow.prepare(this.selectedLobbyStageCode);
     }
@@ -4615,6 +4617,12 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentView();
   }
 
+  private ensureLobbyEquipmentForBattle(): void {
+    if (this.lobbyEquipmentItems.length === 0 && !this.lobbyEquipmentLoading) {
+      void this.loadLobbyEquipmentList();
+    }
+  }
+
   private async loadLobbyEquipmentList(): Promise<void> {
     if (this.lobbyEquipmentLoading) {
       return;
@@ -4794,6 +4802,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     // 编队只保存在本地；变更阵容后必须废弃旧 battle start 快照，下一次预演重新按当前 heroIds 创建会话。
+    this.ensureLobbyEquipmentForBattle();
     this.lobbyBattleFlow.prepare(stageCode);
   }
 
