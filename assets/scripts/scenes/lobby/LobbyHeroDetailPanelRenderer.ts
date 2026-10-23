@@ -122,7 +122,7 @@ export const HERO_DETAIL_PRELOAD_ASSETS: string[] = [
 // 技能图标:项目里没有逐技能图标素材(原先是程序画的暗红圆 + 十字,看起来像空圈),
 // 改为按效果类型借用属性圆徽(stat_*),大招用红底金环 + 四芒星徽。
 // 2026-10-22 英雄详情原型 1:1:被动技能按效果类型各一枚圆徽(金边暗芯 + 发光符号),与原型技能页同款
-const HERO_PROTO_DIR = 'ui/hero/proto/';
+export const HERO_PROTO_DIR = 'ui/hero/proto/';
 const HERO_SKILL_ICON_BY_EFFECT: Record<string, string> = {
   lifesteal: `${HERO_PROTO_DIR}sk_lifesteal/spriteFrame`,
   truePierce: `${HERO_PROTO_DIR}sk_truePierce/spriteFrame`,
@@ -136,9 +136,9 @@ const HERO_SKILL_ICON_BY_EFFECT: Record<string, string> = {
   speed: `${HERO_PROTO_DIR}sk_speed/spriteFrame`,
 };
 /** 原型去 UI 背景(哥特大厅 + 顶光 + 法阵底座),整屏 1870×841,与页签 / 右栏同一 k 映射。 */
-const HERO_PROTO_BG = { path: `${HERO_PROTO_DIR}hero_bg/spriteFrame`, w: 1870, h: 841 };
-const HERO_PROTO_TAB_ON = `${HERO_PROTO_DIR}tab_on/spriteFrame`;
-const HERO_PROTO_TAB_OFF = `${HERO_PROTO_DIR}tab_off/spriteFrame`;
+export const HERO_PROTO_BG = { path: `${HERO_PROTO_DIR}hero_bg/spriteFrame`, w: 1870, h: 841 };
+export const HERO_PROTO_TAB_ON = `${HERO_PROTO_DIR}tab_on/spriteFrame`;
+export const HERO_PROTO_TAB_OFF = `${HERO_PROTO_DIR}tab_off/spriteFrame`;
 const HERO_PROTO_NAV_ICONS: Record<'attr' | 'equip' | 'skill' | 'star', string> = {
   attr: `${HERO_PROTO_DIR}nav_attr/spriteFrame`,
   equip: `${HERO_PROTO_DIR}nav_equip/spriteFrame`,
@@ -147,8 +147,8 @@ const HERO_PROTO_NAV_ICONS: Record<'attr' | 'equip' | 'skill' | 'star', string> 
 };
 const HERO_PROTO_IC_LUCK = `${HERO_PROTO_DIR}ic_luck/spriteFrame`;
 const HERO_PROTO_IC_AWAKEN = `${HERO_PROTO_DIR}ic_awaken/spriteFrame`;
-const HERO_PROTO_IC_POWER = `${HERO_PROTO_DIR}ic_power/spriteFrame`;
-const HERO_PROTO_BAND_STAR = `${HERO_PROTO_DIR}band_star/spriteFrame`;
+export const HERO_PROTO_IC_POWER = `${HERO_PROTO_DIR}ic_power/spriteFrame`;
+export const HERO_PROTO_BAND_STAR = `${HERO_PROTO_DIR}band_star/spriteFrame`;
 /** 装备页部位页签(原型裁图重画):选中 = 暖铜金拉丝底 + 亮金双框;未选 = 深炭底 + 暗铜细框。 */
 const HERO_PROTO_TAB2 = { on: `${HERO_PROTO_DIR}tab2_on/spriteFrame`, off: `${HERO_PROTO_DIR}tab2_off/spriteFrame` };
 /** 详情卡属性行金色字形图标(原型:剑 / 八芒星,无圆底)。 */
@@ -160,7 +160,7 @@ const HERO_PROTO_GLYPH: Record<string, string> = {
   暴击: `${HERO_PROTO_DIR}g_crit/spriteFrame`,
 };
 /** 稀有度徽章(盾徽 + 刻字,2026-10-23 新设计):N / R / SR / SSR / UR;EX 用 UR。 */
-function heroRarityBadgeAsset(rarity: string | null | undefined): string {
+export function heroRarityBadgeAsset(rarity: string | null | undefined): string {
   const key = (rarity || 'R').toUpperCase();
   const k = key === 'EX' ? 'UR' : ['N', 'R', 'SR', 'SSR', 'UR'].includes(key) ? key : 'R';
   return `${HERO_PROTO_DIR}rar_${k}/spriteFrame`;
@@ -179,8 +179,8 @@ const PROTO_BAND_CORE_DY = PROTO_BAND_H * 0.058;
 /** 原型装备页头带快捷钮:尖头金丝框铭牌(暗铜 650×160 / 暗蓝 622×160),等比显示。 */
 const HERO_PROTO_QBTN = { bronze: { path: `${HERO_PROTO_DIR}qbtn_bronze/spriteFrame`, aspect: 650 / 160 }, blue: { path: `${HERO_PROTO_DIR}qbtn_blue/spriteFrame`, aspect: 622 / 160 } };
 /** 中心透明、四周渐黑的径向暗角(锻造合成页同款)/ 白色柔边矩形(着黑当投影)。 */
-const HERO_PROTO_VIGNETTE = 'ui/forge/ref/fuse_vignette/spriteFrame';
-const HERO_PROTO_SOFT_SHADE = 'ui/forge/ref/fuse_soft_shade/spriteFrame';
+export const HERO_PROTO_VIGNETTE = 'ui/forge/ref/fuse_vignette/spriteFrame';
+export const HERO_PROTO_SOFT_SHADE = 'ui/forge/ref/fuse_soft_shade/spriteFrame';
 /** 词条图标:按词条名关键字取属性图标(掉落类用宝箱)。 */
 function heroAffixIconOf(label: string): string {
   if (/掉落|战利品/.test(label)) {

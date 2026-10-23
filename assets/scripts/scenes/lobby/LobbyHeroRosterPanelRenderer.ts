@@ -7,6 +7,7 @@ import {
   Label,
   Mask,
   Node,
+  Rect,
   resources,
   ScrollView,
   Size,
@@ -17,6 +18,7 @@ import {
   tween,
   UIOpacity,
   UITransform,
+  Vec2,
   Vec3,
 } from 'cc';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -26,6 +28,21 @@ import { renderSceneBackButton } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_TAB_SELECTED_ASSET, starBandAssetOf, starBandTextRgb, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
+import { renderTopCurrencyBar } from '../UiSceneBackButton';
+import { mountRefSliced, mountRefSolid, mountRefTitleBand, REF_KIT, REF_ULT } from '../UiRefKit';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
+import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
+import {
+  HERO_PROTO_BAND_STAR,
+  HERO_PROTO_BG,
+  HERO_PROTO_DIR,
+  HERO_PROTO_IC_POWER,
+  HERO_PROTO_SOFT_SHADE,
+  HERO_PROTO_TAB_OFF,
+  HERO_PROTO_TAB_ON,
+  HERO_PROTO_VIGNETTE,
+  heroRarityBadgeAsset,
+} from './LobbyHeroDetailPanelRenderer';
 
 /** 顶栏信息板图标(2026-09-27):拥有=英雄导航徽章,战力=金星。 */
 const LOBBY_HERO_ROSTER_TOP_ICON_HERO = 'ui/lobby/ai/nav_hero/spriteFrame';
@@ -38,7 +55,8 @@ export const LOBBY_HERO_ROSTER_CARD_ASSETS = [
 ];
 
 const HERO_FILTER_ALL = '全部';
-const HERO_CLASS_FILTER_ORDER = ['战士', '辅助', '刺客', '法师', '射手', '坦克'];
+// 2026-10-23 名册原型 B:页签顺序 全部 / 战士 / 法师 / 坦克 / 刺客 / 射手 / 辅助
+const HERO_CLASS_FILTER_ORDER = ['战士', '法师', '坦克', '刺客', '射手', '辅助'];
 const HERO_CLASS_KEY_ALIASES: Record<string, string> = {
   '战士': '战士',
   '戰士': '战士',
@@ -164,6 +182,33 @@ const HERO_ROSTER_RARITY_DISPLAY_ORDER: Record<string, number> = {
 
 const USE_HERO_ROSTER_EXTERNAL_PORTRAITS = false;
 
+/**
+ * 2026-10-23 名册(手机)原型 B 1:1:左栏职业页签 + 红头带面板 + 4 列横版半身卡。
+ * 卡面 = 以名册立绘为参考由 GPT 生成的横版半身插画(ui/hero/roster/<英雄码>,原图备份 素材原始备份/hero-roster-card-20261023);
+ * 没有横版卡面的新英雄退回名册立绘顶部裁切。
+ */
+const HERO_ROSTER_PROTO_ART_DIR = 'ui/hero/roster';
+const HERO_ROSTER_PROTO_ART_CODES: ReadonlySet<string> = new Set([
+  'R_PATROL_01', 'R_ACOLY_02', 'R_SCOUT_03', 'R_CULT_05', 'R_RANGER_06', 'R_GUARD_07',
+  'SR_PRIEST_01', 'SR_PALADIN_02', 'SR_WITCH_03', 'SR_BLADE_04', 'SR_SNIPER_05', 'SR_ABYSS_06',
+  'SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON',
+  'UR_ARTHAS', 'UR_ATLAS', 'UR_AURELIA', 'UR_NYX', 'UR_SERAPHINA', 'UR_EVELYN',
+]);
+/** 职业图标(原型左栏裁局部重绘):页签与卡片右上角圆章共用。 */
+const HERO_ROSTER_PROTO_CLASS_ICONS: Record<string, string> = {
+  全部: `${HERO_PROTO_DIR}cls_all/spriteFrame`,
+  战士: `${HERO_PROTO_DIR}cls_warrior/spriteFrame`,
+  法师: `${HERO_PROTO_DIR}cls_mage/spriteFrame`,
+  坦克: `${HERO_PROTO_DIR}cls_tank/spriteFrame`,
+  刺客: `${HERO_PROTO_DIR}cls_assassin/spriteFrame`,
+  射手: `${HERO_PROTO_DIR}cls_archer/spriteFrame`,
+  辅助: `${HERO_PROTO_DIR}cls_support/spriteFrame`,
+};
+const HERO_ROSTER_PROTO_IC_OWNED = `${HERO_PROTO_DIR}ic_owned/spriteFrame`;
+const HERO_ROSTER_PROTO_IC_BANNER = `${HERO_PROTO_DIR}ic_banner/spriteFrame`;
+/** 可觉醒门槛(与英雄详情 AWAKEN_COST.minStar 同口径):卡片红点只标确定可操作的养成。 */
+const HERO_ROSTER_AWAKEN_MIN_STAR = 10;
+
 export interface LobbyHeroRosterPanelHost {
   node: Node;
   currentLobbyHeroRosterState(): LobbyHeroRosterPanelState;
@@ -172,6 +217,7 @@ export interface LobbyHeroRosterPanelHost {
   openLobbyFormationPanel(stageCode?: string, origin?: string): void;
   refreshLobbyOverlay?(): void;
   openLobbyHeroDetail(heroId: number): void;
+  currentLobbyProfile?(): PlayerLobbyProfileVO;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -206,6 +252,9 @@ export class LobbyHeroRosterPanelRenderer {
   private readonly cardBackgroundFrames = new Map<string, SpriteFrame>();
   private readonly cardBackgroundLoadCallbacks = new Map<string, Array<(frame: SpriteFrame | null) => void>>();
   private readonly missingCardBackgroundLogs = new Set<string>();
+  /** 原型版:最近点开的英雄卡高亮金框(返回名册时一眼找回刚才那张)。 */
+  private lastOpenedHeroId: number | null = null;
+  private readonly protoArtFrames = new Map<string, SpriteFrame>();
 
   constructor(private readonly host: LobbyHeroRosterPanelHost) {}
 
@@ -242,6 +291,13 @@ export class LobbyHeroRosterPanelRenderer {
       rgba(0, 0, 0, 0),
       14 * scale,
     );
+    if (isPhoneDesign()) {
+      const filterTabs = this.resolveHeroFilterTabs(state.heroes, state.heroClassOptions);
+      this.ensureSelectedHeroClass(filterTabs);
+      this.renderProto(panel, panelWidth, panelHeight, scale, state, filterTabs);
+      renderSceneBackButton(this.host, panelGroup, layout, 'LobbyHeroRosterBackButton', () => this.host.closeLobbyHeroRosterPanel(), scale, '英雄');
+      return;
+    }
     if (!this.host.addSprite('LobbyHeroRosterBackdropSprite', LOBBY_HERO_ROSTER_BACKDROP_ASSET, 0, 0, panelWidth, panelHeight, panel)) {
       this.drawFallbackBackdrop(panel, panelWidth, panelHeight, scale);
     }
@@ -275,7 +331,7 @@ export class LobbyHeroRosterPanelRenderer {
         hero.protagonist ? 1 : 0,
       ].join(':'))
       .join(',');
-    return `${this.selectedHeroClass}|${flags}|${options}|${state.heroes.length}|${heroes}`;
+    return `${this.selectedHeroClass}|${this.lastOpenedHeroId ?? ''}|${flags}|${options}|${state.heroes.length}|${heroes}`;
   }
 
   private createUiNode(name: string): Node {
@@ -1263,7 +1319,13 @@ export class LobbyHeroRosterPanelRenderer {
   /** 名册卡面立绘的 SpriteFrame 路径(首开名册时进 heroes 组一起等,避免卡片先空着)。 */
   cardArtSpriteFramePaths(heroes: readonly LobbyHeroItemVO[]): string[] {
     const paths = new Set<string>();
+    const phone = isPhoneDesign();
     heroes.forEach((hero) => {
+      const code = safeText(hero.heroCode).trim().toUpperCase();
+      if (phone && HERO_ROSTER_PROTO_ART_CODES.has(code)) {
+        paths.add(`${HERO_ROSTER_PROTO_ART_DIR}/${code}/spriteFrame`);
+        return;
+      }
       const path = this.resolveHeroCardBackgroundAssetPath(hero);
       if (path) {
         paths.add(`${path}/spriteFrame`);
@@ -1356,6 +1418,378 @@ export class LobbyHeroRosterPanelRenderer {
     return new Color(stroke.r, stroke.g, stroke.b, 92);
   }
 
+  // ───────────── 2026-10-23 名册(手机)原型 B 1:1 ─────────────
+  // 整屏原型 1870×841,k 取 cover;左栏贴左缘(LX)、面板右缘贴右缘(RX),纵向按中心映射(FY)。
+  private renderProto(panel: Node, width: number, height: number, scale: number, state: LobbyHeroRosterPanelState, tabs: string[]): void {
+    const k = Math.max(width / 1870, height / 841);
+    const LX = (px: number): number => -width / 2 + px * k;
+    const RX = (px: number): number => width / 2 - (1870 - px) * k;
+    const FY = (py: number): number => (420.5 - py) * k;
+    const PF = (v: number): number => Math.max(20, v * k);
+
+    // 背景:与英雄详情同一张去 UI 哥特大厅,整体压暗 + 径向暗角,卡墙是主体
+    this.host.addSprite('LobbyHeroRosterProtoBg', HERO_PROTO_BG.path, 0, 0, HERO_PROTO_BG.w * k, HERO_PROTO_BG.h * k, panel);
+    mountRefSolid(this.host, panel, 'LobbyHeroRosterProtoVeil', 0, 0, width, height, rgba(0, 0, 0, 96));
+    const vig = this.host.addSprite('LobbyHeroRosterProtoVignette', HERO_PROTO_VIGNETTE, 0, 0, 2000 * k, 1150 * k, panel);
+    if (vig) {
+      vig.color = rgba(0, 0, 0, 200);
+    }
+
+    const profile = this.host.currentLobbyProfile?.();
+    if (profile) {
+      renderTopCurrencyBar(this.host, panel, width / 2, height / 2, scale, [
+        { key: 'gold', icon: 'ui/bag/ai/icon_gold/spriteFrame', value: String(Number(profile.gold) || 0) },
+        { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: String(Number(profile.diamond) || 0) },
+      ], 130);
+    }
+
+    this.renderProtoRail(panel, tabs, LX, FY, PF, k);
+
+    // 主面板:暗底 + 投影,框最后挂(空心框压在卡墙之上不挡内容)
+    const boxL = LX(347);
+    const boxR = RX(1803);
+    const boxT = FY(86);
+    const boxB = FY(820);
+    const boxW = boxR - boxL;
+    const boxH = boxT - boxB;
+    const boxX = (boxL + boxR) / 2;
+    const boxY = (boxT + boxB) / 2;
+    const shade = this.host.addSprite('LobbyHeroRosterProtoBoxShadow', HERO_PROTO_SOFT_SHADE, boxX, boxY - 8, boxW + 46, boxH + 46, panel);
+    if (shade) {
+      shade.color = rgba(0, 0, 0, 190);
+    }
+    mountRefSolid(this.host, panel, 'LobbyHeroRosterProtoBoxBack', boxX, boxY, boxW - 8, boxH - 8, rgba(9, 7, 6, 238));
+
+    this.renderProtoGrid(panel, state, LX, RX, FY, PF, k, scale);
+    this.renderProtoHeader(panel, state, boxX, boxW, LX, RX, FY, PF, k);
+
+    if (!mountRefSliced(this.host, panel, 'LobbyHeroRosterProtoBoxFrame', REF_KIT.cardFrameOpen, boxX, boxY, boxW, boxH)) {
+      const g = this.host.addChildPlainNode(panel, 'LobbyHeroRosterProtoBoxFrame', boxX, boxY, boxW, boxH).addComponent(Graphics);
+      g.strokeColor = rgba(196, 152, 82, 220);
+      g.lineWidth = 2;
+      g.rect(-boxW / 2 + 2, -boxH / 2 + 2, boxW - 4, boxH - 4);
+      g.stroke();
+    }
+    this.renderProtoFormationButton(panel, RX, FY, PF, k);
+  }
+
+  /** 左栏职业页签(英雄详情页签同款牌 + 职业金章):全部 / 战士 / 法师 / 坦克 / 刺客 / 射手 / 辅助。 */
+  private renderProtoRail(panel: Node, tabs: string[], LX: (px: number) => number, FY: (py: number) => number, PF: (v: number) => number, k: number): void {
+    const step = tabs.length > 1 ? Math.min(91.7, (710 - 160) / (tabs.length - 1)) : 0;
+    const tabH = Math.min(84, step - 6) * k;
+    tabs.forEach((tab, index) => {
+      const active = this.isHeroClassTabActive(tab);
+      const node = this.host.addChildPlainNode(panel, `LobbyHeroRosterFilterTab_${index}`, LX(186), FY(160 + index * step), 226 * k, tabH);
+      // 两张牌宽高比不同(选中 411×160 / 未选 477×160):按同一宽度等比显示
+      const artW = 232 * k;
+      const artH = Math.min(tabH * 1.1, artW / (active ? 411 / 160 : 477 / 160));
+      if (!this.host.addSprite('Art', active ? HERO_PROTO_TAB_ON : HERO_PROTO_TAB_OFF, 0, 0, artW, artH, node)) {
+        const g = node.addComponent(Graphics);
+        g.fillColor = active ? rgba(96, 30, 24, 240) : rgba(18, 15, 14, 230);
+        g.roundRect(-113 * k, -tabH / 2, 226 * k, tabH, 8 * k);
+        g.fill();
+      }
+      const icon = HERO_ROSTER_PROTO_CLASS_ICONS[tab === HERO_FILTER_ALL ? HERO_FILTER_ALL : this.normalizeHeroClassKey(tab)];
+      if (icon) {
+        this.host.addSprite('Icon', icon, (128 - 186) * k, 0, 60 * k, 60 * k, node);
+      }
+      this.protoText(node, 'Label', tab, (218 - 186) * k, 0, PF(28), active ? rgba(255, 236, 184) : rgba(226, 210, 176), 104 * k, HorizontalTextAlignment.CENTER, true);
+      if (!active) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, () => this.selectHeroClassFilter(tab), this);
+        this.host.applyImageButtonFeedback(node, 1.025, 0.97);
+      }
+    });
+  }
+
+  /** 面板头带:红带 + 四芒星 + 「英雄名册」,右侧信息牌 拥有 N | 总战力 X。 */
+  private renderProtoHeader(panel: Node, state: LobbyHeroRosterPanelState, boxX: number, boxW: number, LX: (px: number) => number, RX: (px: number) => number, FY: (py: number) => number, PF: (v: number) => number, k: number): void {
+    const bandH = 60 * k;
+    const bandY = FY(114);
+    mountRefTitleBand(this.host, panel, 'LobbyHeroRosterProtoBand', boxX, bandY, boxW - 14 * k, bandH, 1);
+    const coreY = bandY - bandH * 0.058;
+    const starH = bandH * 0.72;
+    this.host.addSprite('LobbyHeroRosterProtoBandStar', HERO_PROTO_BAND_STAR, LX(404), coreY, starH, starH, panel);
+    this.protoText(panel, 'LobbyHeroRosterProtoTitle', '英雄名册', LX(404) + starH / 2 + 14 * k, coreY, Math.min(PF(32), Math.max(20, bandH * 0.46)), rgba(255, 228, 156), 260 * k, HorizontalTextAlignment.LEFT, true);
+
+    // 信息牌(原型 x 1310..1770):暗底细金框,标签暗、数值亮
+    const plateL = RX(1310);
+    const plateR = RX(1770);
+    const plateW = plateR - plateL;
+    const plateH = 42 * k;
+    const plate = this.host.addChildPlainNode(panel, 'LobbyHeroRosterProtoInfo', (plateL + plateR) / 2, coreY, plateW, plateH);
+    const g = plate.addComponent(Graphics);
+    g.fillColor = rgba(12, 9, 8, 236);
+    g.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 6 * k);
+    g.fill();
+    g.strokeColor = rgba(176, 136, 74, 210);
+    g.lineWidth = 1.4;
+    g.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 6 * k);
+    g.stroke();
+    // addChildLabel 左对齐时 x 即文字框左沿
+    const PX = (px: number): number => -plateW / 2 + (px - 1310) * k;
+    const leftText = (name: string, text: string, px: number, w: number, size: number, color: Color, bold = false): void => {
+      this.protoText(plate, name, text, PX(px), 0, size, color, w * k, HorizontalTextAlignment.LEFT, bold);
+    };
+    const power = state.heroes.reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0);
+    const dim = rgba(196, 178, 146);
+    const bright = rgba(252, 234, 192);
+    this.host.addSprite('OwnedIcon', HERO_ROSTER_PROTO_IC_OWNED, PX(1352), 0, 34 * k, 34 * k, plate);
+    leftText('OwnedLabel', '拥有', 1380, 50, PF(20), dim);
+    leftText('OwnedValue', `${state.heroes.length}`, 1434, 64, PF(24), bright, true);
+    mountRefSolid(this.host, plate, 'Divider', PX(1512), 0, 1.4, plateH - 16 * k, rgba(176, 136, 74, 150));
+    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, PX(1570), 0, 32 * k, 32 * k, plate);
+    leftText('PowerLabel', '总战力', 1598, 68, PF(20), dim);
+    leftText('PowerValue', formatGroupedInteger(power), 1670, 92, PF(24), bright, true);
+  }
+
+  /** 卡墙:4 列横版卡(原型卡 331×220、列距 24、行距 18),纵向滚动;底部留出布阵按钮的位置。 */
+  private renderProtoGrid(panel: Node, state: LobbyHeroRosterPanelState, LX: (px: number) => number, RX: (px: number) => number, FY: (py: number) => number, PF: (v: number) => number, k: number, scale: number): void {
+    const gridL = LX(376);
+    const gridR = RX(1772);
+    const gridW = gridR - gridL;
+    const viewT = FY(146);
+    const viewB = FY(814);
+    const viewH = viewT - viewB;
+    const viewX = (gridL + gridR) / 2;
+    const viewY = (viewT + viewB) / 2;
+    if (state.loading && state.heroes.length === 0) {
+      mountKitLoading(this.host, panel, viewX, viewY, scale, '英雄读取中…');
+      return;
+    }
+    const heroes = this.filterHeroesBySelectedClass(this.sortHeroesForRosterDisplay(state.heroes));
+    if (heroes.length === 0) {
+      this.renderEmpty(panel, viewX, viewY, gridW, viewH, scale, state.heroes.length === 0 ? '当前暂无可展示的已拥有英雄。' : '暂无该职业英雄');
+      return;
+    }
+    const columns = 4;
+    const gap = 24 * k;
+    const rowGap = 18 * k;
+    const cardW = (gridW - gap * (columns - 1)) / columns;
+    const cardH = 220 * k;
+    const topPad = 12 * k;
+    const bottomPad = 120 * k;
+    const rows = Math.ceil(heroes.length / columns);
+    const contentH = Math.max(viewH, topPad + rows * cardH + (rows - 1) * rowGap + bottomPad);
+    const viewW = gridW + 16 * k;
+    const viewport = this.host.addChildPlainNode(panel, 'LobbyHeroRosterScrollView', viewX, viewY, viewW, viewH);
+    const mask = viewport.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
+    const scrollView = viewport.addComponent(ScrollView);
+    scrollView.horizontal = false;
+    scrollView.vertical = contentH > viewH + 0.5;
+    scrollView.inertia = true;
+    scrollView.elastic = true;
+    scrollView.cancelInnerEvents = true;
+    const content = this.host.addChildPlainNode(viewport, 'LobbyHeroRosterScrollContent', 0, (viewH - contentH) / 2, viewW, contentH);
+    scrollView.content = content;
+    const startX = -gridW / 2 + cardW / 2;
+    const startY = contentH / 2 - topPad - cardH / 2;
+    const buildCard = (hero: LobbyHeroItemVO, index: number): void => {
+      if (!content.isValid) {
+        return;
+      }
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      this.renderProtoCard(content, hero, index, startX + col * (cardW + gap), startY - row * (cardH + rowGap), cardW, cardH, PF, k, scale);
+    };
+    // 首屏两行同步建好,其余按行分帧(同旧版口径,避免进入时整墙同帧构建)
+    const initialSyncCount = Math.min(heroes.length, columns * 2);
+    for (let i = 0; i < initialSyncCount; i += 1) {
+      buildCard(heroes[i], i);
+    }
+    let deferBatch = 0;
+    for (let i = initialSyncCount; i < heroes.length; i += columns) {
+      deferBatch += 1;
+      const batchStart = i;
+      tween(content)
+        .delay(deferBatch * HERO_ROSTER_CARD_DEFER_STEP_SECONDS)
+        .call(() => {
+          for (let j = batchStart; j < Math.min(batchStart + columns, heroes.length); j += 1) {
+            buildCard(heroes[j], j);
+          }
+        })
+        .start();
+    }
+  }
+
+  /**
+   * 原型卡(331×220):半身插画铺满 → 底部压暗 → 星行压在插画底边 → 名字条 → Lv | 剑 + 战力;
+   * 左上稀有度盾徽、右上职业圆章、可觉醒红点;外框空心细金框,最近点开的那张换亮金双线。
+   */
+  private renderProtoCard(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, w: number, h: number, PF: (v: number) => number, k: number, scale: number): void {
+    const card = this.host.addChildPlainNode(parent, `LobbyHeroRosterCard_${index}`, x, y, w, h);
+    card.addComponent(Button);
+    card.on(Button.EventType.CLICK, () => {
+      this.lastOpenedHeroId = hero.id;
+      this.host.openLobbyHeroDetail(hero.id);
+    }, this);
+    this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+    const T = (py: number): number => h / 2 - py * k;
+
+    mountRefSolid(this.host, card, 'Back', 0, 0, w - 6, h - 6, rgba(14, 11, 10, 255));
+    const art = this.host.addChildPlainNode(card, 'Art', 0, 0, w - 8, h - 8);
+    this.mountProtoCardArt(art, hero, w - 8, h - 8);
+    // 底部压暗(名字 / 数值区读得清,插画在上 2/3 露全)
+    const shadeH = h * 0.5;
+    const steps = 10;
+    for (let i = 0; i < steps; i += 1) {
+      const sh = shadeH / steps;
+      mountRefSolid(this.host, card, `Shade_${i}`, 0, -h / 2 + 4 + sh * (i + 0.5), w - 8, sh + 0.5, rgba(6, 5, 4, Math.round(236 * Math.pow(1 - i / steps, 1.4))));
+    }
+    mountRefSolid(this.host, card, 'NameBand', 0, T(171), w - 12, 28 * k, rgba(10, 8, 7, 170));
+    mountRefSolid(this.host, card, 'NameLineTop', 0, T(156), w - 24, 1.2, rgba(196, 156, 86, 150));
+    mountRefSolid(this.host, card, 'NameLineBottom', 0, T(186), w - 24, 1.2, rgba(196, 156, 86, 90));
+
+    const stars = starDisplayV3(hero.star);
+    const starSize = 21 * k;
+    const starGap = 3 * k;
+    const starX0 = -(stars.count * starSize + Math.max(0, stars.count - 1) * starGap) / 2 + starSize / 2;
+    for (let i = 0; i < stars.count; i += 1) {
+      this.host.addSprite(`Star_${i}`, starBandAssetOf(stars.color), starX0 + i * (starSize + starGap), T(146), starSize, starSize, card);
+    }
+    this.protoText(card, 'Name', safeText(hero.heroName), 0, T(171), PF(23), rgba(250, 226, 170), w - 44 * k, HorizontalTextAlignment.CENTER, true);
+    this.protoText(card, 'Level', formatHeroCardLevel(hero.level), -w / 2 + 43 * k, T(200), PF(20), rgba(236, 222, 190), 100 * k, HorizontalTextAlignment.LEFT);
+    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, w / 2 - 127 * k, T(200), 26 * k, 26 * k, card);
+    this.protoText(card, 'Power', formatGroupedInteger(hero.power), w / 2 - 42 * k, T(200), PF(21), rgba(250, 232, 190), 96 * k, HorizontalTextAlignment.RIGHT, true);
+
+    if (!mountRefSliced(this.host, card, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
+      const fg = this.host.addChildPlainNode(card, 'Frame', 0, 0, w, h).addComponent(Graphics);
+      fg.strokeColor = rgba(176, 136, 74, 220);
+      fg.lineWidth = 1.6;
+      fg.rect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4);
+      fg.stroke();
+    }
+    if (this.lastOpenedHeroId === hero.id) {
+      const sg = this.host.addChildPlainNode(card, 'Selected', 0, 0, w, h).addComponent(Graphics);
+      sg.strokeColor = rgba(238, 196, 104, 255);
+      sg.lineWidth = 2.4;
+      sg.roundRect(-w / 2 + 1.5, -h / 2 + 1.5, w - 3, h - 3, 4);
+      sg.stroke();
+      sg.strokeColor = rgba(255, 230, 160, 110);
+      sg.lineWidth = 1;
+      sg.roundRect(-w / 2 + 5, -h / 2 + 5, w - 10, h - 10, 3);
+      sg.stroke();
+    }
+
+    this.host.addSprite('RarityBadge', heroRarityBadgeAsset(hero.rarity), -w / 2 + 38 * k, T(32), 68 * k, 68 * k, card);
+    const ringD = 46 * k;
+    const ring = this.host.addChildPlainNode(card, 'ClassRing', w / 2 - 33 * k, T(31), ringD, ringD);
+    const rg = ring.addComponent(Graphics);
+    rg.fillColor = rgba(14, 11, 9, 232);
+    rg.circle(0, 0, ringD / 2 - 1);
+    rg.fill();
+    rg.strokeColor = rgba(196, 156, 86, 230);
+    rg.lineWidth = 1.6;
+    rg.circle(0, 0, ringD / 2 - 1);
+    rg.stroke();
+    const cls = this.resolveHeroClass(hero);
+    const clsIcon = cls ? HERO_ROSTER_PROTO_CLASS_ICONS[this.normalizeHeroClassKey(cls)] : undefined;
+    if (clsIcon) {
+      this.host.addSprite('ClassIcon', clsIcon, 0, 0, ringD * 0.7, ringD * 0.7, ring);
+    } else {
+      this.protoText(ring, 'ClassText', this.resolveHeroClassBadgeText(hero), 0, 0, PF(18), rgba(240, 220, 170), ringD, HorizontalTextAlignment.CENTER, true);
+    }
+    if ((hero.awakenStatus ?? 0) <= 0 && Math.trunc(hero.star || 1) >= HERO_ROSTER_AWAKEN_MIN_STAR) {
+      const dot = this.host.addChildPlainNode(card, 'RedDot', w / 2 - 6 * k, h / 2 - 4 * k, 16 * scale, 16 * scale);
+      const dg = dot.addComponent(Graphics);
+      dg.fillColor = rgba(230, 52, 40, 255);
+      dg.circle(0, 0, 6.5 * scale);
+      dg.fill();
+      dg.strokeColor = rgba(255, 226, 180, 240);
+      dg.lineWidth = 1.5 * scale;
+      dg.stroke();
+    }
+  }
+
+  /**
+   * 卡面插画:cover 裁切成子帧直接挂(不用逐卡模板遮罩)。横版卡面居中裁;退回立绘时取顶部(头胸)。
+   * 缓存命中同步挂,避免闪一帧空卡(resources.load 命中仍异步)。
+   */
+  private mountProtoCardArt(holder: Node, hero: LobbyHeroItemVO, w: number, h: number): void {
+    const code = safeText(hero.heroCode).trim().toUpperCase();
+    const wide = HERO_ROSTER_PROTO_ART_CODES.has(code);
+    const base = wide ? `${HERO_ROSTER_PROTO_ART_DIR}/${code}` : this.resolveHeroCardBackgroundAssetPath(hero);
+    if (!base) {
+      return;
+    }
+    const path = `${base}/spriteFrame`;
+    const apply = (frame: SpriteFrame | null): void => {
+      if (!frame || !holder.isValid) {
+        return;
+      }
+      const sub = this.protoCoverFrame(path, frame, w / h, wide);
+      if (!sub) {
+        return;
+      }
+      const node = this.host.addChildPlainNode(holder, 'Img', 0, 0, w, h);
+      const sprite = node.addComponent(Sprite);
+      sprite.type = Sprite.Type.SIMPLE;
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      sprite.trim = false;
+      sprite.spriteFrame = sub;
+      node.getComponent(UITransform)?.setContentSize(w, h);
+    };
+    const cached = resources.get(path, SpriteFrame);
+    if (cached && cached.isValid) {
+      apply(cached);
+      return;
+    }
+    resources.load(path, SpriteFrame, (error, frame) => apply(error ? null : frame));
+  }
+
+  private protoCoverFrame(path: string, base: SpriteFrame, aspect: number, centered: boolean): SpriteFrame | null {
+    const key = `${path}|${aspect.toFixed(3)}`;
+    const hit = this.protoArtFrames.get(key);
+    if (hit && hit.isValid && hit.texture === base.texture) {
+      return hit;
+    }
+    if (!base.isValid || !base.texture) {
+      return null;
+    }
+    const rect = base.rect;
+    let cw = rect.width;
+    let ch = cw / aspect;
+    if (ch > rect.height) {
+      ch = rect.height;
+      cw = ch * aspect;
+    }
+    // 立绘(竖版全身)只取顶部头胸:裁框贴顶;横版卡面居中
+    const cx = rect.x + (rect.width - cw) / 2;
+    const cy = centered ? rect.y + (rect.height - ch) / 2 : rect.y;
+    const sub = new SpriteFrame();
+    sub.texture = base.texture;
+    sub.rect = new Rect(Math.round(cx), Math.round(cy), Math.round(cw), Math.round(ch));
+    sub.originalSize = new Size(Math.round(cw), Math.round(ch));
+    sub.offset = new Vec2(0, 0);
+    this.protoArtFrames.set(key, sub);
+    return sub;
+  }
+
+  /** 布阵入口(原型右下红金大钮 + 战旗图标)。 */
+  private renderProtoFormationButton(panel: Node, RX: (px: number) => number, FY: (py: number) => number, PF: (v: number) => number, k: number): void {
+    const w = 312 * k;
+    const h = 80 * k;
+    const btn = this.host.addChildPlainNode(panel, 'LobbyHeroRosterFormationButton', RX(1615), FY(732), w, h);
+    if (!mountRefSliced(this.host, btn, 'Art', REF_ULT.btnPrimary, 0, 0, w, h)) {
+      this.host.addSprite('Art', C1812_BUTTON_PRIMARY_ASSET, 0, 0, w, w * (84 / 240), btn);
+    }
+    this.host.addSprite('Icon', HERO_ROSTER_PROTO_IC_BANNER, -54 * k, 0, 50 * k, 50 * k, btn);
+    this.protoText(btn, 'LobbyHeroRosterFormationButtonLabel', '布阵', 30 * k, 1, Math.min(PF(36), h * 0.46), rgba(255, 240, 210), 110 * k, HorizontalTextAlignment.CENTER, true);
+    btn.addComponent(Button);
+    this.host.applyImageButtonFeedback(btn, 1.03, 0.97);
+    btn.on(Button.EventType.CLICK, () => this.host.openLobbyFormationPanel(undefined, 'roster'), this);
+  }
+
+  private protoText(parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.CENTER, bold = false): Label {
+    const label = this.host.addChildLabel(parent, name, text, x, y, size, color, new Size(Math.max(10, w), size + 10), align);
+    label.lineHeight = label.fontSize;
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = bold;
+    this.applyOutline(label, 1, bold);
+    return label;
+  }
+
   private applyOutline(label: Label, scale: number, strong: boolean): void {
     label.enableOutline = true;
     label.outlineColor = rgba(0, 0, 0, strong ? 232 : 190);
@@ -1383,6 +1817,12 @@ function starText(star: number): string {
   const progress = ((Math.min(15, real) - 1) % 3) + 1;
   const bar = `${'★'.repeat(progress)}${'☆'.repeat(3 - progress)}`;
   return real > 3 ? `${bar} ${real}星` : bar;
+}
+
+function formatGroupedInteger(value: number): string {
+  // 原生 toLocaleString 不出千分位,手动分组
+  const safe = Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0;
+  return String(safe).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 function formatHeroCardLevel(level: number): string {
