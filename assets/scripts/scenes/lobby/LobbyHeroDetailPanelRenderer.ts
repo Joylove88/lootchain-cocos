@@ -5756,7 +5756,7 @@ export class LobbyHeroDetailPanelRenderer {
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height, 1046, 1810);
     const F = (v: number): number => this.protoFont(v);
     // 2026-10-23 用户「看着好乱好挤压」:减元素不硬塞——觉醒卡压成单行、解锁行只留两行(名称 + 触发 | 状态;说明),箭头放到两框之间
-    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 266], [274, 822]]);
+    const finishFrames = this.protoBoxes(panel, PY, width, [[84, 276], [284, 822]]);
     const star = Math.max(1, Math.min(STAR_MAX, Math.trunc(hero.star || 1)));
     const maxed = star >= STAR_MAX;
     const bandW = width - PS(22);
@@ -5777,7 +5777,7 @@ export class LobbyHeroDetailPanelRenderer {
     // ② 觉醒:单行(锁 / 星徽 + 「觉醒」+ 效果;条件交给右侧胶囊)
     const awakened = (hero.awakenStatus ?? 0) > 0;
     const ready = !awakened && star >= AWAKEN_COST.minStar;
-    const aw = this.protoRow(panel, 'StarAwakenCard', PX(1427), PY(236), rowW, PS(46), ready);
+    const aw = this.protoRow(panel, 'StarAwakenCard', PX(1427), PY(239), rowW, PS(46), ready);
     const awLeft = -rowW / 2;
     if (ready || awakened || !renderLockGlyph(this.host, aw, 'Lock', awLeft + PS(36), 0, PS(30), true)) {
       this.host.addSprite('Emblem', HERO_AI_SECTION_STAR_ASSET, awLeft + PS(36), 0, PS(32), PS(34), aw);
@@ -5794,10 +5794,10 @@ export class LobbyHeroDetailPanelRenderer {
       this.protoPill(aw, 'StatePill', awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`, rowW / 2 - PW(80), 0, PW(132), PS(32), awakened ? 'green' : 'dim', F(19));
     }
     // ③ 升星解锁:两行——名称 + 触发率(暗小字,紧跟名称)| 状态胶囊;说明
-    this.protoSectionBand(panel, 'StarUnlockSection', '升星解锁', PY(312), bandW, PS(PROTO_BAND_H), PX(1062), F(29));
+    this.protoSectionBand(panel, 'StarUnlockSection', '升星解锁', PY(322), bandW, PS(PROTO_BAND_H), PX(1062), F(29));
     const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity);
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
-    const rowYs = [386, 464, 542, 620];
+    const rowYs = [394, 471, 548, 625];
     unlockStars.slice(0, 4).forEach((needStar, index) => {
       const unlocked = star >= needStar;
       const skill = passives[index] ?? null;
@@ -5831,12 +5831,12 @@ export class LobbyHeroDetailPanelRenderer {
     // ④ 消耗框(单行)+ 双钮
     const view = this.resolveStarCostView(hero, star, maxed);
     const starHint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
-    this.renderProtoCostDock(panel, 'Star', view, PX(1427), starHint ? PY(692) : PY(688), rowW, starHint ? PS(58) : PS(48));
+    this.renderProtoCostDock(panel, 'Star', view, PX(1427), starHint ? PY(698) : PY(694), rowW, starHint ? PS(56) : PS(46));
     const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
     this.renderDockButtons(panel, width, height, scale, [
       { name: 'StarUpButton', labelName: 'Label', idleText: maxed ? '已满星' : '升 星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.starUpLobbyHero(hero.id) },
       { name: 'StarUpAutoButton', labelName: 'Label', idleText: maxed ? '已满星' : '一键升星', pendingText: '处理中', pending, idleEnabled: !maxed, dim: view.blocked === 'lack', clickableWhenDisabled: false, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
-    ], { cy: PY(756), h: PS(56), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
+    ], { cy: PY(762), h: PS(54), cx: [PX(1252), PX(1602)], w: [PW(296), PW(300)] });
     finishFrames();
   }
 
