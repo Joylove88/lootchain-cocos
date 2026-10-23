@@ -6057,18 +6057,19 @@ export class LobbyHeroDetailPanelRenderer {
         shell.dim.destroy();
       }
     };
-    shell = this.protoDialogShell(root, 'LobbyHeroAttrDetailPanel', [378, 55, 1497, 797], [62, 135], '属性详情', 872, 40, close, panelWidth, panelHeight, 90);
+    // 2026-10-24 用户「名称挤压了」:标题带加高到 58..152(红芯约 73..148),主标题 / 英雄名各占一行不碰金线
+    shell = this.protoDialogShell(root, 'LobbyHeroAttrDetailPanel', [378, 55, 1497, 797], [58, 152], '属性详情', 872, 36, close, panelWidth, panelHeight, 95);
     const { dim, dialog, X, Y } = shell;
     dim.addComponent(Button);
     dim.on(Button.EventType.CLICK, close, this);
-    this.protoText(dialog, 'SubTitle', safeText(hero.heroName), X(943), Y(124), F(18), rgba(236, 222, 198), S(400));
-    this.protoDialogClose(dialog, X(1450), Y(102), S(54), close);
+    this.protoText(dialog, 'SubTitle', safeText(hero.heroName), X(943), Y(131), F(18), rgba(236, 222, 198), S(400));
+    this.protoDialogClose(dialog, X(1450), Y(105), S(54), close);
 
     // 头条
-    const strip = this.protoDialogBox(dialog, 'HeroStrip', X, Y, [420, 148, 1450, 258], null, 0);
+    const strip = this.protoDialogBox(dialog, 'HeroStrip', X, Y, [420, 162, 1450, 262], null, 0);
     const stripW = S(1450 - 420);
     const artW = S(285);
-    const artH = S(104);
+    const artH = S(94);
     const art = this.host.addChildPlainNode(strip.node, 'Art', -stripW / 2 + S(3) + artW / 2, 0, artW, artH);
     // 扁条(≈2.7:1)居中裁会切头:贴顶取头胸
     this.mountHeroWideArt(art, hero, artW, artH, true);
@@ -6078,11 +6079,11 @@ export class LobbyHeroDetailPanelRenderer {
     }
     mountRefSolid(this.host, art, 'FadeEnd', artW / 2, 0, S(6), artH, rgba(8, 6, 5, 236));
     const sX = (px: number): number => X(px) - X(935);
-    this.host.addSprite('Badge', heroRarityBadgeAsset(hero.rarity), sX(765), 0, S(92), S(92), strip.node);
-    this.protoText(strip.node, 'Name', safeText(hero.heroName), sX(838), S(18), F(30), rgba(255, 236, 196), S(560), HorizontalTextAlignment.LEFT, true);
-    this.protoText(strip.node, 'Level', `Lv.${Math.max(1, Math.trunc(hero.level || 1))}`, sX(838), -S(27), F(24), rgba(232, 218, 190), S(110), HorizontalTextAlignment.LEFT);
-    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, sX(962), -S(27), S(34), S(34), strip.node);
-    this.protoText(strip.node, 'Power', `战力 ${formatInteger(hero.power)}`, sX(990), -S(27), F(24), rgba(255, 236, 196), S(300), HorizontalTextAlignment.LEFT, true);
+    this.host.addSprite('Badge', heroRarityBadgeAsset(hero.rarity), sX(765), 0, S(86), S(86), strip.node);
+    this.protoText(strip.node, 'Name', safeText(hero.heroName), sX(838), S(17), F(30), rgba(255, 236, 196), S(560), HorizontalTextAlignment.LEFT, true);
+    this.protoText(strip.node, 'Level', `Lv.${Math.max(1, Math.trunc(hero.level || 1))}`, sX(838), -S(24), F(24), rgba(232, 218, 190), S(110), HorizontalTextAlignment.LEFT);
+    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, sX(962), -S(24), S(34), S(34), strip.node);
+    this.protoText(strip.node, 'Power', `战力 ${formatInteger(hero.power)}`, sX(990), -S(24), F(24), rgba(255, 236, 196), S(300), HorizontalTextAlignment.LEFT, true);
     strip.finish();
 
     // 左:战斗属性(合计 = 基础 + 装备 + 特性)

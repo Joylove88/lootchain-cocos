@@ -35,7 +35,7 @@ P="周报截图/2026-10-23_英雄名册重设计/proto/hero_roster_B.png"
 [ -f "$D/roster_all.png" ] && PYTHONIOENCODING=utf-8 python tools/qa/proto_compare.py "$P" "$D/roster_all.png" "$D/cmp" 0,0,1,1 0.17,0.08,1,0.5 0,0,0.2,1 | tail -1
 ls "$D"
 # 属性详情 / 洗练弹窗(英雄 133)
-ev "root.openLobbyHeroDetail(133); return 'ok';"; sleep 9
+ev "root.openLobbyHeroDetail(133); return 'ok';"; sleep 14
 ev "root.selectLobbyHeroDetailTab('attr'); return 'ok';"; sleep 3
 ev "const r=root.lobbyHeroDetailPanelRenderer; const c=r.detailRenderContext; r.showAttrDetailPopup(c.panelGroup, root.currentLobbyHeroDetailHero(), c.scale); return 'ok';"; sleep 1; shot attr_detail
 ev "root.selectLobbyHeroDetailTab('attr'); return 'ok';"; sleep 3

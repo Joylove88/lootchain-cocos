@@ -1493,27 +1493,46 @@ export class LobbyHeroRosterPanelRenderer {
 
   /** 面板头带:红带 + 四芒星 + 「英雄名册」,右侧信息牌 拥有 N | 总战力 X。 */
   private renderProtoHeader(panel: Node, state: LobbyHeroRosterPanelState, boxX: number, boxW: number, LX: (px: number) => number, RX: (px: number) => number, FY: (py: number) => number, PF: (v: number) => number, k: number): void {
-    const bandH = 60 * k;
-    const bandY = FY(114);
+    // 2026-10-24 用户「标题框再高一些」:60 → 74(原型 86..160)
+    const bandH = 74 * k;
+    const bandY = FY(123);
     mountRefTitleBand(this.host, panel, 'LobbyHeroRosterProtoBand', boxX, bandY, boxW - 14 * k, bandH, 1);
     const coreY = bandY - bandH * 0.058;
-    const starH = bandH * 0.72;
+    const starH = bandH * 0.66;
     this.host.addSprite('LobbyHeroRosterProtoBandStar', HERO_PROTO_BAND_STAR, LX(404), coreY, starH, starH, panel);
     this.protoText(panel, 'LobbyHeroRosterProtoTitle', '英雄名册', LX(404) + starH / 2 + 14 * k, coreY, Math.min(PF(32), Math.max(20, bandH * 0.46)), rgba(255, 228, 156), 260 * k, HorizontalTextAlignment.LEFT, true);
 
-    // 信息牌(原型 x 1310..1770):暗底细金框,标签暗、数值亮
+    // 信息牌(原型 x 1310..1772):切角暗底 + 内外双金线;图标大、标签浅米、数值白粗(2026-10-24 用户:样式与原型对齐)
     const plateL = RX(1310);
-    const plateR = RX(1770);
+    const plateR = RX(1772);
     const plateW = plateR - plateL;
-    const plateH = 42 * k;
+    const plateH = 50 * k;
     const plate = this.host.addChildPlainNode(panel, 'LobbyHeroRosterProtoInfo', (plateL + plateR) / 2, coreY, plateW, plateH);
     const g = plate.addComponent(Graphics);
-    g.fillColor = rgba(12, 9, 8, 236);
-    g.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 6 * k);
+    const chamfer = (inset: number): void => {
+      const hw = plateW / 2 - inset;
+      const hh = plateH / 2 - inset;
+      const c = 9 * k;
+      g.moveTo(-hw + c, hh);
+      g.lineTo(hw - c, hh);
+      g.lineTo(hw, hh - c);
+      g.lineTo(hw, -hh + c);
+      g.lineTo(hw - c, -hh);
+      g.lineTo(-hw + c, -hh);
+      g.lineTo(-hw, -hh + c);
+      g.lineTo(-hw, hh - c);
+      g.close();
+    };
+    g.fillColor = rgba(14, 10, 8, 242);
+    chamfer(0);
     g.fill();
-    g.strokeColor = rgba(176, 136, 74, 210);
-    g.lineWidth = 1.4;
-    g.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, 6 * k);
+    g.strokeColor = rgba(204, 162, 88, 235);
+    g.lineWidth = 1.6;
+    chamfer(1);
+    g.stroke();
+    g.strokeColor = rgba(132, 98, 54, 190);
+    g.lineWidth = 1;
+    chamfer(4.5 * k);
     g.stroke();
     // addChildLabel 左对齐时 x 即文字框左沿
     const PX = (px: number): number => -plateW / 2 + (px - 1310) * k;
@@ -1521,15 +1540,15 @@ export class LobbyHeroRosterPanelRenderer {
       this.protoText(plate, name, text, PX(px), 0, size, color, w * k, HorizontalTextAlignment.LEFT, bold);
     };
     const power = state.heroes.reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0);
-    const dim = rgba(196, 178, 146);
-    const bright = rgba(252, 234, 192);
-    this.host.addSprite('OwnedIcon', HERO_ROSTER_PROTO_IC_OWNED, PX(1352), 0, 34 * k, 34 * k, plate);
-    leftText('OwnedLabel', '拥有', 1380, 50, PF(20), dim);
-    leftText('OwnedValue', `${state.heroes.length}`, 1434, 64, PF(24), bright, true);
-    mountRefSolid(this.host, plate, 'Divider', PX(1512), 0, 1.4, plateH - 16 * k, rgba(176, 136, 74, 150));
-    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, PX(1570), 0, 32 * k, 32 * k, plate);
-    leftText('PowerLabel', '总战力', 1598, 68, PF(20), dim);
-    leftText('PowerValue', formatGroupedInteger(power), 1670, 92, PF(24), bright, true);
+    const label = rgba(226, 212, 184);
+    const bright = rgba(255, 248, 232);
+    this.host.addSprite('OwnedIcon', HERO_ROSTER_PROTO_IC_OWNED, PX(1352), 0, 42 * k, 42 * k, plate);
+    leftText('OwnedLabel', '拥有', 1381, 52, PF(22), label);
+    leftText('OwnedValue', `${state.heroes.length}`, 1436, 64, PF(26), bright, true);
+    mountRefSolid(this.host, plate, 'Divider', PX(1510), 0, 1.4, plateH - 20 * k, rgba(176, 136, 74, 160));
+    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, PX(1570), 0, 40 * k, 40 * k, plate);
+    leftText('PowerLabel', '总战力', 1601, 72, PF(22), label);
+    leftText('PowerValue', formatGroupedInteger(power), 1674, 92, PF(26), bright, true);
   }
 
   /** 卡墙:4 列横版卡(原型卡 331×220、列距 24、行距 18),纵向滚动;底部留出布阵按钮的位置。 */
@@ -1537,7 +1556,7 @@ export class LobbyHeroRosterPanelRenderer {
     const gridL = LX(376);
     const gridR = RX(1772);
     const gridW = gridR - gridL;
-    const viewT = FY(146);
+    const viewT = FY(164);
     const viewB = FY(814);
     const viewH = viewT - viewB;
     const viewX = (gridL + gridR) / 2;
