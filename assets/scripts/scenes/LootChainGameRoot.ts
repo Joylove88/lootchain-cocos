@@ -3578,6 +3578,7 @@ export class LootChainGameRoot extends Component {
     lobbyGuide.markVisited('herocard');
     this.lobbyHeroDetailHeroId = hero.id;
     this.lobbyHeroDetailTab = 'attr';
+    this.lobbyHeroDetailPanelRenderer.resetAttrDetailPopup();
     // 切换英雄时重置洗练/装备弹窗,避免跨英雄残留状态。
     this.lobbyHeroRefineDialogOpen = false;
     this.lobbyHeroRefineLockedIds.clear();

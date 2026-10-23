@@ -471,6 +471,11 @@ export class LobbyHeroDetailPanelRenderer {
   // 洗练弹窗局部刷新上下文:锁定切换/确认只重建弹窗节点,不整面板重渲染(避免背景 spine 动画重播)。
   private detailRenderContext: { panelGroup: Node; panelWidth: number; panelHeight: number; scale: number } | null = null;
   private refineDialogNode: Node | null = null;
+  /**
+   * 属性详情弹窗开着的英雄(2026-10-24 用户:刚进详情头几秒页面会整刷一次,把已打开的属性详情关掉)。
+   * 弹窗不在宿主状态里,整刷后按这个标记重新弹出;点关闭 / 重新进入详情页时清掉。
+   */
+  private attrDetailHeroId: number | null = null;
   /** 觉醒确认弹窗打开中的英雄(整页重绘后按它补开,不会被补图/刷新关掉)。 */
   private awakenConfirmHeroId: number | null = null;
   private awakenDialogNode: Node | null = null;
@@ -639,6 +644,13 @@ export class LobbyHeroDetailPanelRenderer {
       this.renderUltimateUpDialog(panelGroup, hero, panelWidth, panelHeight, scale);
     }
     this.awakenDialogNode = null;
+    if (this.attrDetailHeroId !== null) {
+      if (this.attrDetailHeroId === hero.id) {
+        this.showAttrDetailPopup(panelGroup, hero, scale);
+      } else {
+        this.attrDetailHeroId = null;
+      }
+    }
     if (this.awakenConfirmHeroId !== null) {
       if (this.awakenConfirmHeroId === hero.id && this.isHeroAwakenable(hero)) {
         this.renderAwakenDialog(panelGroup, hero, panelWidth, panelHeight, scale);
@@ -3944,7 +3956,13 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   // 属性详情弹窗:全量属性 + 养成信息(幸运/觉醒/大招),点任意处关闭。
+  /** 重新进入 / 切换英雄详情时调用:不把上一次开着的属性详情带过来。 */
+  resetAttrDetailPopup(): void {
+    this.attrDetailHeroId = null;
+  }
+
   private showAttrDetailPopup(parent: Node, hero: LobbyHeroItemVO, scale: number): void {
+    this.attrDetailHeroId = hero.id;
     // 手机全屏:浮层改挂到场景内容根(右栏之后才画的名牌/页签/标题横幅/返回键不再盖在弹窗上)。
     const phoneRoot = this.phoneFrame && this.detailRenderContext && this.isNodeAlive(this.detailRenderContext.panelGroup) ? this.detailRenderContext.panelGroup : null;
     if (this.proto && phoneRoot && this.detailRenderContext) {
@@ -3965,6 +3983,7 @@ export class LobbyHeroDetailPanelRenderer {
       this.renderPhoneAttrDetail(overlay, hero, frame, attrs, chips, scale, phoneRoot ? 0 : -frame.infoX, phoneRoot ? 0 : -frame.infoY);
       overlay.addComponent(Button);
       overlay.on(Button.EventType.CLICK, () => {
+        this.attrDetailHeroId = null;
         if (overlay.isValid) {
           overlay.destroy();
         }
@@ -4005,6 +4024,7 @@ export class LobbyHeroDetailPanelRenderer {
     hint.overflow = Label.Overflow.SHRINK;
     overlay.addComponent(Button);
     overlay.on(Button.EventType.CLICK, () => {
+      this.attrDetailHeroId = null;
       if (overlay.isValid) {
         overlay.destroy();
       }
@@ -6053,23 +6073,23 @@ export class LobbyHeroDetailPanelRenderer {
     const { S, F } = this.protoDialogMap();
     let shell: { dim: Node; dialog: Node; X: (px: number) => number; Y: (py: number) => number } | null = null;
     const close = (): void => {
+      this.attrDetailHeroId = null;
       if (shell && shell.dim.isValid) {
         shell.dim.destroy();
       }
     };
-    // 2026-10-24 用户「名称挤压了」:标题带加高到 58..152(红芯约 73..148),主标题 / 英雄名各占一行不碰金线
-    shell = this.protoDialogShell(root, 'LobbyHeroAttrDetailPanel', [378, 55, 1497, 797], [58, 152], '属性详情', 872, 36, close, panelWidth, panelHeight, 95);
+    // 2026-10-24 用户「有两个名称冲突了」:标题带不再放英雄名(下面头条已有),单行标题居中于红芯
+    shell = this.protoDialogShell(root, 'LobbyHeroAttrDetailPanel', [378, 55, 1497, 797], [62, 140], '属性详情', 872, 36, close, panelWidth, panelHeight);
     const { dim, dialog, X, Y } = shell;
     dim.addComponent(Button);
     dim.on(Button.EventType.CLICK, close, this);
-    this.protoText(dialog, 'SubTitle', safeText(hero.heroName), X(943), Y(131), F(18), rgba(236, 222, 198), S(400));
-    this.protoDialogClose(dialog, X(1450), Y(105), S(54), close);
+    this.protoDialogClose(dialog, X(1450), Y(101), S(54), close);
 
     // 头条
-    const strip = this.protoDialogBox(dialog, 'HeroStrip', X, Y, [420, 162, 1450, 262], null, 0);
+    const strip = this.protoDialogBox(dialog, 'HeroStrip', X, Y, [420, 152, 1450, 262], null, 0);
     const stripW = S(1450 - 420);
     const artW = S(285);
-    const artH = S(94);
+    const artH = S(104);
     const art = this.host.addChildPlainNode(strip.node, 'Art', -stripW / 2 + S(3) + artW / 2, 0, artW, artH);
     // 扁条(≈2.7:1)居中裁会切头:贴顶取头胸
     this.mountHeroWideArt(art, hero, artW, artH, true);
