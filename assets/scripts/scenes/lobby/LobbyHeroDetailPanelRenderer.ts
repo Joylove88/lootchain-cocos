@@ -28,7 +28,7 @@ import { mountKitButton, mountKitSection } from '../UiKit';
 import { drawRefPanelFallback, mountRefButton, mountRefTitleBand, mountRefLineFrame, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_TITLE_STAR, REF_ULT, REF_ULT_EMBLEM_FULL_ASSET, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
-import { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
+import { equipItemPowerScore, equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
 import { renderLockGlyph } from '../UiLockGlyph';
 export { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS } from './EquipDetailCard';
 import type { LobbyBagPanelState } from '../../types/BagTypes';
@@ -149,6 +149,8 @@ const HERO_PROTO_IC_LUCK = `${HERO_PROTO_DIR}ic_luck/spriteFrame`;
 const HERO_PROTO_IC_AWAKEN = `${HERO_PROTO_DIR}ic_awaken/spriteFrame`;
 const HERO_PROTO_IC_POWER = `${HERO_PROTO_DIR}ic_power/spriteFrame`;
 const HERO_PROTO_BAND_STAR = `${HERO_PROTO_DIR}band_star/spriteFrame`;
+/** 原型装备页头带快捷钮:尖头金丝框铭牌(暗铜 650×160 / 暗蓝 622×160),等比显示。 */
+const HERO_PROTO_QBTN = { bronze: { path: `${HERO_PROTO_DIR}qbtn_bronze/spriteFrame`, aspect: 650 / 160 }, blue: { path: `${HERO_PROTO_DIR}qbtn_blue/spriteFrame`, aspect: 622 / 160 } };
 /** 中心透明、四周渐黑的径向暗角(锻造合成页同款)/ 白色柔边矩形(着黑当投影)。 */
 const HERO_PROTO_VIGNETTE = 'ui/forge/ref/fuse_vignette/spriteFrame';
 const HERO_PROTO_SOFT_SHADE = 'ui/forge/ref/fuse_soft_shade/spriteFrame';
@@ -592,7 +594,8 @@ export class LobbyHeroDetailPanelRenderer {
       this.renderDesktop(panel, hero, panelWidth, panelHeight, scale);
     }
     this.renderHeader(panel, hero, panelWidth, panelHeight, scale);
-    if (this.host.currentLobbyHeroDetailTab() === 'attr') {
+    const footerTab = this.host.currentLobbyHeroDetailTab();
+    if (footerTab === 'attr' || (this.proto && footerTab === 'equip')) {
       this.renderFooter(panel, hero, panelWidth, panelHeight, scale);
     }
     // 本次重绘没用上的暂存立绘(换了英雄/尺寸变了)在这里销毁,不留孤儿节点。
@@ -2126,6 +2129,13 @@ export class LobbyHeroDetailPanelRenderer {
         };
         if (equipped) {
           this.attachEnhanceGlow(cell, slotSize, slotSize, scale, equipped.enhanceLevel ?? 0);
+          if (this.proto && this.host.currentLobbyHeroEquipState().selectedSlot === code) {
+            const hl = this.host.addChildPlainNode(cell, 'ArtEquipSelected', 0, 0, slotSize + 8 * scale, slotSize + 8 * scale).addComponent(Graphics);
+            hl.strokeColor = rgba(255, 214, 120, 245);
+            hl.lineWidth = 3 * scale;
+            hl.roundRect(-slotSize / 2 - 3 * scale, -slotSize / 2 - 3 * scale, slotSize + 6 * scale, slotSize + 6 * scale, 8 * scale);
+            hl.stroke();
+          }
           cell.on(Node.EventType.MOUSE_ENTER, () => this.showEquipTooltip(parent, equipped, side === 'left' ? x - slotSize / 2 - 10 * scale : x + slotSize / 2 + 10 * scale, cy, side, scale), this);
           cell.on(Node.EventType.MOUSE_LEAVE, () => this.hideWearTooltip(), this);
           if (!framedArt) {
@@ -4336,7 +4346,35 @@ export class LobbyHeroDetailPanelRenderer {
       title.overflow = Label.Overflow.SHRINK;
       this.applyOutline(title, scale, true);
     }
-    if (phone) {
+    if (protoWear && quickYOverride !== null) {
+      const { PS, PW } = this.protoPanelMap(width, height);
+      const quickY = quickYOverride;
+      const busy = state.busy;
+      void PW;
+      // 2026-10-23 原型:尖头金丝框铭牌钮,比头带矮(带高 ~80%),字高 ~钮高 48%,右缘收进面板金框内
+      const qh = PS(40);
+      const w1 = qh * HERO_PROTO_QBTN.bronze.aspect;
+      const w2 = qh * HERO_PROTO_QBTN.blue.aspect;
+      const x2 = width / 2 - PS(20) - w2 / 2;
+      const x1 = x2 - w2 / 2 - PS(8) - w1 / 2;
+      const quick = (name: string, text: string, x: number, w: number, art: string, onClick: () => void): void => {
+        const btn = this.host.addChildPlainNode(panel, name, x, quickY, w, qh);
+        if (!this.host.addSprite('Art', art, 0, 0, w, qh, btn)) {
+          const g = btn.addComponent(Graphics);
+          g.fillColor = rgba(40, 30, 20, 245);
+          g.roundRect(-w / 2, -qh / 2, w, qh, 8);
+          g.fill();
+        }
+        this.protoText(btn, 'Label', busy ? '处理中' : text, 0, 1, Math.max(20, qh * 0.48), rgba(246, 232, 200), w * 0.66, HorizontalTextAlignment.CENTER, true);
+        if (!busy) {
+          btn.addComponent(Button);
+          btn.on(Button.EventType.CLICK, onClick, this);
+          this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
+        }
+      };
+      quick('LobbyHeroDetailOneClickEquip', '一键穿戴', x1, w1, HERO_PROTO_QBTN.bronze.path, () => this.host.oneClickEquipLobbyHero(hero.id));
+      quick('LobbyHeroDetailOneClickUnequip', '一键卸下', x2, w2, HERO_PROTO_QBTN.blue.path, () => this.host.oneClickUnequipLobbyHero(hero.id));
+    } else if (phone) {
       // 手机:一键穿戴 / 一键卸下放标题条右侧(立绘顶部是标题横幅),高度收进标题条内。
       const quickW = 112 * scale;
       const quickH = 36 * scale;
@@ -4364,6 +4402,10 @@ export class LobbyHeroDetailPanelRenderer {
       makeQuick('LobbyHeroDetailOneClickEquip', '一键穿戴', width / 2 - 24 * scale - quickW * 1.5 - 8 * scale, { r: 132, g: 88, b: 26 }, () => this.host.oneClickEquipLobbyHero(hero.id));
     }
     const items = state.items;
+    if (protoWear) {
+      this.renderProtoWearBody(panel, hero, width, height, scale);
+      return;
+    }
     const chipGap = 6 * scale;
     const chipW = (width - 44 * scale - 5 * chipGap) / 6;
     const chipH = 40 * scale;
@@ -5384,10 +5426,10 @@ export class LobbyHeroDetailPanelRenderer {
     this.protoText(parent, `${name}Title`, title, leftX + 6 + starW + 12, coreY, fontSize, rgba(255, 228, 156), w * 0.5, HorizontalTextAlignment.LEFT, true);
   }
 
-  private protoPlateButton(parent: Node, name: string, text: string, x: number, y: number, w: number, h: number, fontSize: number, onClick: () => void, tone: 'bronze' | 'red' = 'bronze'): Node {
+  private protoPlateButton(parent: Node, name: string, text: string, x: number, y: number, w: number, h: number, fontSize: number, onClick: () => void, tone: 'bronze' | 'red' | 'blue' = 'bronze'): Node {
     const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
     const g = node.addComponent(Graphics);
-    g.fillColor = tone === 'red' ? rgba(104, 22, 16, 248) : rgba(40, 30, 20, 245);
+    g.fillColor = tone === 'red' ? rgba(104, 22, 16, 248) : tone === 'blue' ? rgba(22, 36, 58, 248) : rgba(40, 30, 20, 245);
     g.roundRect(-w / 2, -h / 2, w, h, 8);
     g.fill();
     g.strokeColor = rgba(206, 164, 92, 235);
@@ -5815,6 +5857,273 @@ export class LobbyHeroDetailPanelRenderer {
       view.blocked = 'lack';
     }
     return view;
+  }
+
+  /** 原型大按钮:REF_ULT 红金(primary)/ 暗铜(secondary)九宫格 + 粗体字(字高 ≤ 钮高 42%)。 */
+  private protoBigButton(parent: Node, name: string, text: string, x: number, y: number, w: number, h: number, kind: 'primary' | 'secondary', enabled: boolean, onClick: () => void): Node {
+    const btn = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    const holder = mountRefSliced(this.host, btn, 'Art', kind === 'primary' ? REF_ULT.btnPrimary : REF_ULT.btnSecondary, 0, 0, w, h);
+    const art = holder ? holder.getComponentInChildren(Sprite) : null;
+    if (!holder) {
+      const g = btn.addComponent(Graphics);
+      g.fillColor = kind === 'primary' ? rgba(122, 42, 30, 235) : rgba(40, 30, 20, 235);
+      g.roundRect(-w / 2, -h / 2, w, h, 9);
+      g.fill();
+    } else if (art && !enabled) {
+      art.grayscale = true;
+      art.color = rgba(150, 146, 140, 255);
+    }
+    this.protoText(btn, 'Label', text, 0, 1, Math.max(20, h * 0.42), enabled ? rgba(255, 240, 210) : rgba(170, 162, 146), w * 0.62, HorizontalTextAlignment.CENTER, true);
+    if (enabled) {
+      btn.addComponent(Button);
+      btn.on(Button.EventType.CLICK, onClick, this);
+      this.host.applyImageButtonFeedback(btn, 1.03, 0.97);
+    }
+    return btn;
+  }
+
+  /** 装备平属性 → [图标, 名称, 值](按攻 / 生命 / 防 / 速 / 暴 顺序,只列非 0)。 */
+  private protoEquipStats(item: EquipmentItemVO): Array<{ icon: string; label: string; value: string }> {
+    const out: Array<{ icon: string; label: string; value: string }> = [];
+    const push = (v: number, label: string): void => {
+      if (v > 0) {
+        out.push({ icon: HERO_AI_STAT_ICON_ASSETS[label] ?? HERO_AI_STAT_ICON_ASSETS['攻击'], label, value: `+${formatInteger(v)}` });
+      }
+    };
+    push(item.attrAttack ?? 0, '攻击');
+    push(item.attrHp ?? 0, '生命');
+    push(item.attrDefense ?? 0, '防御');
+    push(item.attrSpeed ?? 0, '速度');
+    push(item.attrCrit ?? 0, '暴击');
+    return out;
+  }
+
+  /** 装备特殊词缀文字(实例词条 + 特级效果)。 */
+  private protoEquipAffixes(item: EquipmentItemVO): Array<{ text: string; color: Color }> {
+    const out: Array<{ text: string; color: Color }> = [];
+    (item.specialAffixes ?? []).forEach((affix) => {
+      const tierColor: Record<string, Color> = {
+        GREEN: rgba(132, 214, 132), BLUE: rgba(110, 168, 236), PURPLE: rgba(186, 132, 236), ORANGE: rgba(244, 170, 76), CRIMSON: rgba(240, 96, 80),
+      };
+      const value = affix.value ? ` +${affix.value}${affix.percent ? '%' : ''}` : '';
+      out.push({ text: `${affix.special ? '★ ' : ''}${safeText(affix.name)}${value}`, color: tierColor[(affix.tier || '').toUpperCase()] ?? rgba(232, 218, 190) });
+    });
+    const effects = safeText(item.specialEffectsJson ?? '');
+    if (effects.includes('combo') && !out.some((entry) => entry.text.includes('连击'))) {
+      out.push({ text: '连击', color: rgba(236, 222, 194) });
+    }
+    if (effects.includes('execute') && !out.some((entry) => entry.text.includes('斩杀'))) {
+      out.push({ text: '斩杀', color: rgba(236, 222, 194) });
+    }
+    return out;
+  }
+
+  /** 装备页右栏主体(原型 B,原型右栏 1046..1836):部位页签 → 左列表(滚动)+ 右详情卡。 */
+  private renderProtoWearBody(panel: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
+    const state = this.host.currentLobbyHeroEquipState();
+    const { PX, PY, PS, PW } = this.protoPanelMap(width, height, 1046, 1836);
+    const F = (v: number): number => this.protoFont(v);
+    // ① 部位页签
+    const tabsL = PX(1062);
+    const tabsR = PX(1820);
+    const tabGap = PS(6);
+    const tabW = (tabsR - tabsL - tabGap * 5) / 6;
+    HERO_EQUIP_SLOTS.forEach((slot, index) => {
+      const selected = state.selectedSlot === slot.code;
+      const chip = this.protoRow(panel, `WearSlotChip_${slot.code}`, tabsL + tabW / 2 + index * (tabW + tabGap), PY(178), tabW, PS(44), selected);
+      this.protoText(chip, 'Label', slot.label, 0, 0, F(21), selected ? rgba(255, 228, 160) : rgba(206, 192, 160), tabW - PS(12), HorizontalTextAlignment.CENTER, selected);
+      chip.addComponent(Button);
+      this.applyPointerCursor(chip);
+      chip.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = null;
+        this.host.selectLobbyHeroEquipSlot(slot.code);
+      }, this);
+    });
+    const items = state.items;
+    const selectedSlot = state.selectedSlot;
+    const candidates = selectedSlot ? items.filter((item) => item.slot === selectedSlot) : [];
+    const listL = PX(1062);
+    const listR = PX(1400);
+    const listW = listR - listL;
+    const listCx = (listL + listR) / 2;
+    const areaTop = PY(212);
+    const areaBottom = PY(806);
+    if (state.loading && items.length <= 0) {
+      this.protoText(panel, 'WearLoading', '装备列表读取中…', 0, (areaTop + areaBottom) / 2, F(21), rgba(176, 164, 138), width - PS(60));
+      return;
+    }
+    if (candidates.length <= 0) {
+      const midY = (areaTop + areaBottom) / 2;
+      this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + PS(56), PS(110), PS(110), panel);
+      this.protoText(panel, 'WearEmpty', selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备', 0, midY - PS(16), F(23), rgba(236, 214, 164), width - PS(60), HorizontalTextAlignment.CENTER, true);
+      this.protoText(panel, 'WearEmptyHint', selectedSlot ? '主线首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格', 0, midY - PS(52), F(20), rgba(166, 152, 124), width - PS(60));
+      return;
+    }
+    // 列表顺序(原型):本英雄已穿在前,其余按稀有度高→低、强化高→低、战力高→低
+    const qRank: Record<string, number> = { MYTHIC: 7, RED: 6, GOLD: 5, ORANGE: 5, PURPLE: 4, BLUE: 3, GREEN: 2, WHITE: 1 };
+    const rankOf = (item: EquipmentItemVO): number => qRank[(item.quality || '').toUpperCase()] ?? 0;
+    candidates.sort((a, b) => Number(b.heroId === hero.id) - Number(a.heroId === hero.id) || rankOf(b) - rankOf(a) || (b.enhanceLevel ?? 0) - (a.enhanceLevel ?? 0) || equipItemPowerScore(b) - equipItemPowerScore(a));
+    const selected = candidates.find((entry) => entry.id === state.selectedEquipId) ?? candidates.find((entry) => entry.heroId === hero.id) ?? candidates[0];
+    // ② 左列表(滚动):行 92 / 步距 99(原型)
+    const rowH = PS(92);
+    const rowStep = PS(99);
+    const viewH = areaTop - areaBottom;
+    const contentH = Math.max(viewH, candidates.length * rowStep - (rowStep - rowH));
+    const viewport = this.host.addChildPlainNode(panel, 'WearGridScrollView', listCx, (areaTop + areaBottom) / 2, listW + PS(6), viewH);
+    const mask = viewport.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
+    const scrollView = viewport.addComponent(ScrollView);
+    scrollView.horizontal = false;
+    scrollView.vertical = true;
+    scrollView.inertia = true;
+    scrollView.elastic = true;
+    scrollView.cancelInnerEvents = true;
+    const content = this.host.addChildPlainNode(viewport, 'WearGridScrollContent', 0, (viewH - contentH) / 2, listW + PS(6), contentH);
+    scrollView.content = content;
+    candidates.forEach((item, index) => {
+      const isSel = item.id === selected.id;
+      const q = equipQualityColor(item.quality);
+      const nameColor = rgba(Math.min(255, q.r + 30), Math.min(255, q.g + 30), Math.min(255, q.b + 30));
+      const cy = contentH / 2 - rowH / 2 - index * rowStep;
+      const row = this.protoRow(content, `WearCell_${item.id}`, 0, cy, listW, rowH, isSel);
+      const left = -listW / 2;
+      const iconS = PS(86);
+      const iconX = left + PS(10) + iconS / 2;
+      const icon = equipIconAssetByCode(item.equipCode);
+      if (icon) {
+        mountEquipIconBacking(this.host, row, 'IconBacking', iconS, item.equipCode, { x: iconX });
+        this.host.addSprite('Icon', icon, iconX, 0, iconS, iconS, row);
+      }
+      const wornOnThis = item.heroId === hero.id;
+      const wornOnOther = item.heroId != null && !wornOnThis;
+      if (wornOnThis || wornOnOther) {
+        const tagW = PS(28);
+        const tag = this.host.addChildPlainNode(row, 'Worn', iconX - iconS / 2 + tagW / 2 + iconS * 0.07, iconS / 2 - PS(12) - iconS * 0.07, tagW, PS(24));
+        const tg = tag.addComponent(Graphics);
+        tg.fillColor = wornOnThis ? rgba(30, 64, 38, 245) : rgba(28, 44, 70, 245);
+        tg.roundRect(-tagW / 2, -PS(12), tagW, PS(24), 4);
+        tg.fill();
+        this.protoText(tag, 'Label', wornOnThis ? '穿' : '他', 0, 0, F(17), wornOnThis ? rgba(176, 232, 178) : rgba(176, 204, 240), tagW, HorizontalTextAlignment.CENTER, true);
+      }
+      const textL = iconX + iconS / 2 + PS(16);
+      const nameText = safeText(item.equipName);
+      const nameFont = F(22);
+      const nameW = estimateTextWidth(nameText, nameFont) * 1.06 + 6;
+      this.protoText(row, 'Name', nameText, textL, PS(17), nameFont, nameColor, Math.min(nameW, listW / 2 - textL - PS(10)), HorizontalTextAlignment.LEFT, true);
+      const level = item.enhanceLevel ?? 0;
+      if (level > 0) {
+        this.protoText(row, 'Level', `+${level}`, textL + nameW + PS(8), PS(17), F(20), nameColor, PS(56), HorizontalTextAlignment.LEFT, true);
+      }
+      const main = this.protoEquipStats(item)[0];
+      if (main) {
+        this.protoText(row, 'Stat', `${main.label}  ${main.value}`, textL, -PS(17), F(20), rgba(196, 182, 152), listW / 2 - textL - PS(10), HorizontalTextAlignment.LEFT);
+      }
+      row.addComponent(Button);
+      this.applyPointerCursor(row);
+      row.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = null;
+        this.host.selectLobbyHeroWearEquip(item.id);
+      }, this);
+    });
+    // ③ 右详情卡
+    const cardL = PX(1412);
+    const cardR = PX(1820);
+    const cardW = cardR - cardL;
+    const cardCx = (cardL + cardR) / 2;
+    const cardH = areaTop - areaBottom;
+    const card = this.host.addChildPlainNode(panel, 'WearDetailCard', cardCx, (areaTop + areaBottom) / 2, cardW, cardH);
+    mountRefSolid(this.host, card, 'Back', 0, 0, cardW - 8, cardH - 8, rgba(14, 11, 9, 240));
+    const CY = (py: number): number => PY(py) - (areaTop + areaBottom) / 2;
+    const q = equipQualityColor(selected.quality);
+    const nameColor = rgba(Math.min(255, q.r + 30), Math.min(255, q.g + 30), Math.min(255, q.b + 30));
+    const bigS = PS(120);
+    const bigIcon = equipIconAssetByCode(selected.equipCode);
+    const rune = this.host.addChildPlainNode(card, 'BigIconRune', 0, CY(290), bigS * 2, bigS * 1.6).addComponent(Graphics);
+    rune.strokeColor = rgba(150, 112, 62, 70);
+    rune.lineWidth = 1.4;
+    rune.circle(0, 0, bigS * 0.78);
+    rune.stroke();
+    rune.strokeColor = rgba(150, 112, 62, 40);
+    rune.circle(0, 0, bigS * 0.68);
+    rune.stroke();
+    for (let i = 0; i < 12; i += 1) {
+      const a = (i / 12) * Math.PI * 2;
+      rune.moveTo(Math.cos(a) * bigS * 0.68, Math.sin(a) * bigS * 0.68);
+      rune.lineTo(Math.cos(a) * bigS * 0.78, Math.sin(a) * bigS * 0.78);
+    }
+    rune.stroke();
+    if (bigIcon) {
+      mountEquipIconBacking(this.host, card, 'BigIconBacking', bigS, selected.equipCode, { y: CY(290) });
+      this.host.addSprite('BigIcon', bigIcon, 0, CY(290), bigS, bigS, card);
+    }
+    this.protoText(card, 'Name', safeText(selected.equipName), 0, CY(380), F(26), nameColor, cardW - PS(30), HorizontalTextAlignment.CENTER, true);
+    const tierText = (selected.tier ?? 1) > 1 ? `${selected.tier}阶 · ` : '';
+    this.protoText(card, 'Rarity', `${tierText}${equipQualityLabel(selected.quality)}   +${selected.enhanceLevel ?? 0}`, 0, CY(414), F(20), rgba(q.r, q.g, q.b, 255), cardW - PS(30));
+    mountRefSolid(this.host, card, 'Divider', 0, CY(436), cardW - PS(60), 1.2, rgba(206, 160, 84, 120));
+    const stats = this.protoEquipStats(selected);
+    const affixes = this.protoEquipAffixes(selected);
+    // 纵向预算:属性行 + (词缀标题 + 词缀行) + 战力行 塞进 470..712
+    // 词缀两列排(3 条 = 2 行),行高不被压成细条
+    const affixLines = Math.ceil(affixes.length / 2);
+    const slots = stats.length + (affixes.length > 0 ? 1 + affixLines : 0) + 1;
+    const step = Math.min(48, (714 - 448) / Math.max(1, slots));
+    const rowHh = Math.min(40, step - 6);
+    let cursor = 448 + step / 2;
+    const rowW = cardW - PS(32);
+    stats.forEach((stat, index) => {
+      // 原型:属性行是无框的柔暗底 + 底边细线(不是带框铭牌)
+      const r = this.host.addChildPlainNode(card, `Stat_${index}`, 0, CY(cursor), rowW, PS(rowHh));
+      mountRefSolid(this.host, r, 'Fill', 0, 0, rowW, PS(rowHh), rgba(26, 20, 16, 200));
+      mountRefSolid(this.host, r, 'Line', 0, -PS(rowHh) / 2 + 0.6, rowW, 1.2, rgba(120, 92, 56, 90));
+      this.host.addSprite('Icon', stat.icon, -rowW / 2 + PS(26), 0, PS(28), PS(28), r);
+      this.protoText(r, 'Label', stat.label, -rowW / 2 + PS(52), 0, F(20), rgba(196, 180, 148), rowW * 0.5, HorizontalTextAlignment.LEFT);
+      this.protoText(r, 'Value', stat.value, rowW / 2 - PS(16), 0, F(21), rgba(255, 248, 232), rowW * 0.4, HorizontalTextAlignment.RIGHT, true);
+      cursor += step;
+    });
+    if (affixes.length > 0) {
+      const band = this.host.addChildPlainNode(card, 'AffixBand', 0, CY(cursor), rowW, PS(rowHh));
+      mountRefSolid(this.host, band, 'Fill', 0, 0, rowW, PS(rowHh), rgba(40, 24, 16, 230));
+      mountRefSolid(this.host, band, 'Line', 0, -PS(rowHh) / 2 + 1, rowW, 1.2, rgba(206, 150, 80, 150));
+      this.host.addSprite('Star', HERO_PROTO_BAND_STAR, -rowW / 2 + PS(22), 0, PS(26), PS(26), band);
+      this.protoText(band, 'Title', '特殊词缀', -rowW / 2 + PS(44), 0, F(20), rgba(246, 214, 150), rowW * 0.6, HorizontalTextAlignment.LEFT, true);
+      cursor += step;
+      for (let line = 0; line < affixLines; line += 1) {
+        [0, 1].forEach((col) => {
+          const affix = affixes[line * 2 + col];
+          if (affix) {
+            this.protoText(card, `Affix_${line * 2 + col}`, affix.text, -rowW / 2 + PS(30) + col * rowW / 2, CY(cursor), F(20), affix.color, rowW / 2 - PS(36), HorizontalTextAlignment.LEFT);
+          }
+        });
+        cursor += step;
+      }
+    }
+    // 战力:已穿 = 本件贡献;未穿 = 与本英雄同部位当前装备的差值
+    const worn = items.find((entry) => entry.heroId === hero.id && entry.slot === selected.slot) ?? null;
+    const onThisHero = selected.heroId === hero.id;
+    const score = equipItemPowerScore(selected);
+    const delta = onThisHero ? score : score - (worn ? equipItemPowerScore(worn) : 0);
+    const powerBox = this.host.addChildPlainNode(card, 'PowerBox', 0, CY(cursor), rowW, PS(rowHh));
+    mountRefSolid(this.host, powerBox, 'Fill', 0, 0, rowW, PS(rowHh), delta >= 0 ? rgba(16, 30, 20, 235) : rgba(42, 18, 14, 235));
+    mountRefSolid(this.host, powerBox, 'Top', 0, PS(rowHh) / 2 - 1, rowW, 1.2, delta >= 0 ? rgba(110, 190, 110, 90) : rgba(220, 110, 90, 90));
+    this.protoText(powerBox, 'Text', `战力  ${delta >= 0 ? '+' : ''}${formatInteger(delta)}`, 0, 0, F(23), delta >= 0 ? rgba(150, 232, 140) : rgba(244, 118, 96), rowW - PS(20), HorizontalTextAlignment.CENTER, true);
+    // 按钮:强化(暗铜)+ 主操作(红金:穿戴 / 卸下 / 转移 / 需 Lv)
+    const busy = state.busy;
+    const levelLocked = (selected.requiredLevel ?? 1) > Math.max(1, hero.level);
+    const onOtherHero = selected.heroId != null && !onThisHero;
+    const actionText = busy ? '处理中' : onThisHero ? '卸下' : levelLocked ? `需Lv.${selected.requiredLevel}` : onOtherHero ? '转移' : '穿戴';
+    const btnW = (cardW - PS(40)) / 2;
+    const btnH = PS(62);
+    this.protoBigButton(card, 'WearBarEnhance', '强化', -btnW / 2 - PS(6), CY(762), btnW, btnH, 'secondary', !busy, () => this.host.openLobbyEquipEnhanceDialog(selected.id));
+    this.protoBigButton(card, 'WearBarAction', actionText, btnW / 2 + PS(6), CY(762), btnW, btnH, 'primary', !busy && !(levelLocked && !onThisHero), () => {
+      if (onThisHero) {
+        this.host.unequipLobbyHeroEquipment(selected.id);
+      } else {
+        this.host.equipLobbyHeroEquipment(selected.id);
+      }
+    });
+    if (!mountRefSliced(this.host, card, 'Frame', REF_KIT.cardFrameOpen, 0, 0, cardW, cardH)) {
+      this.drawInfoPanelFrame(card, 'Frame', cardW, cardH, 1);
+    }
   }
 
   private applyOutline(label: Label, scale: number, strong: boolean): void {
