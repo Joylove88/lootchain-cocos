@@ -3329,6 +3329,11 @@ export class LootChainGameRoot extends Component {
     this.lobbyBattleFlow.completePresentationEarlyAndSettle();
   }
 
+  // docs/43 服务端复演:守卫战结算附带操作记录。
+  private resolveGuardReplayPayload(): string | null {
+    return this.isGuardBattleActive() ? this.lobbyGuardBattleRenderer.resolveReplayPayload() : null;
+  }
+
   // 输出试炼(难度Ⅲ):结算上报击破层数,委托战斗渲染器(与层数血条同口径,含手动大招)。
   private resolveTrialLayersCleared(): number | null {
     // 守卫模式(难度Ⅲ车轮战)层数从守卫 sim 取;其余沿用旧回放口径。

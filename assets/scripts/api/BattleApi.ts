@@ -1,4 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
+import { guardRawHeroFromLineupJson, normalizeGuardCrystalSnapshot, normalizeGuardMonsterEntry } from '../scenes/lobby/GuardReplay';
 import type {
   PlayerBattleCurrencyChangeVO,
   PlayerBattleEnemyVO,
@@ -297,6 +298,8 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
     guardrails: sanitizeTextArray(readArray(data, 'guardrails', 10), MAX_TEXT),
     guardCrystal: normalizeGuardCrystal(data.guardCrystal),
     guardMonsters: readArray(data, 'guardMonsters', 40).map(normalizeGuardMonster).filter((m): m is GuardMonsterRosterEntryVO => m !== null),
+    guardRecommendedPower: Number.isFinite(Number(data.guardRecommendedPower)) && Number(data.guardRecommendedPower) > 0 ? Number(data.guardRecommendedPower) : null,
+    guardChestScript: data.guardChestScript === true,
   };
 }
 
@@ -304,62 +307,14 @@ const GUARD_MONSTER_KINDS = ['normal', 'fast', 'tank', 'flying', 'shooter', 'eli
 
 /** 出场名单项:怪种只认已知值,骨骼路径必须是 spine/monster/<目录>/<文件>(只含安全字符),体型钳 0.3~3;不合格项丢弃。 */
 function normalizeGuardMonster(raw: unknown): GuardMonsterRosterEntryVO | null {
-  if (!isRecord(raw)) {
-    return null;
-  }
-  const kind = typeof raw.guardKind === 'string' ? raw.guardKind.trim().toLowerCase() : '';
-  const spineAsset = typeof raw.spineAsset === 'string' ? raw.spineAsset.trim() : '';
-  if (GUARD_MONSTER_KINDS.indexOf(kind) < 0 || !/^spine\/monster\/[a-z0-9_]+\/[A-Za-z0-9_\-\[\]]+$/.test(spineAsset)) {
-    return null;
-  }
-  const scale = Number(raw.displayScale);
-  const bossSkill = raw.bossSkill === 'volley' ? 'volley' : raw.bossSkill === 'smash' ? 'smash' : null;
-  return {
-    monsterCode: readText(raw, 'monsterCode', 64, ''),
-    monsterName: readText(raw, 'monsterName', 64, ''),
-    guardKind: kind as GuardMonsterRosterEntryVO['guardKind'],
-    spineAsset,
-    displayScale: Number.isFinite(scale) ? Math.max(0.3, Math.min(3, scale)) : 1,
-    bossSkill,
-  };
+  // docs/43:与服务端复演共用 GuardReplay.normalizeGuardMonsterEntry
+  return normalizeGuardMonsterEntry(raw) as GuardMonsterRosterEntryVO | null;
 }
 
 /** 开战水晶快照(docs/38):数值钳到合理范围,法术只认已知 id,出战法术只认已解锁的;缺失/格式不对返回 null(sim 按 1 级)。 */
 function normalizeGuardCrystal(raw: unknown): PlayerBattleStartVO['guardCrystal'] {
-  if (!isRecord(raw)) {
-    return null;
-  }
-  const num = (key: string, max: number): number => {
-    const value = Number(raw[key]);
-    return Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : 0;
-  };
-  const known = ['quake', 'frost', 'thunder', 'goldrush', 'aegis', 'warhorn'];
-  const spells = Array.isArray(raw.unlockedSpells)
-    ? raw.unlockedSpells.filter((id): id is string => typeof id === 'string' && known.indexOf(id) >= 0).slice(0, known.length)
-    : [];
-  const slots = num('spellSlots', 5);
-  const loadout = Array.isArray(raw.spellLoadout)
-    ? raw.spellLoadout.filter((id): id is string => typeof id === 'string' && spells.indexOf(id) >= 0).slice(0, 5)
-    : [];
-  // 法术等级(docs/39):只认已解锁法术,钳到 1..5,缺项 = 1。白名单式校验——不在这里放行,战斗里会全员按 Lv1 打。
-  const spellLevels: Record<string, number> = {};
-  const rawLevels = isRecord(raw.spellLevels) ? raw.spellLevels : null;
-  for (const id of spells) {
-    const value = rawLevels ? Number(rawLevels[id]) : NaN;
-    spellLevels[id] = Number.isFinite(value) ? Math.max(1, Math.min(5, Math.round(value))) : 1;
-  }
-  return {
-    level: Math.max(1, num('level', 999)),
-    crystalHpPct: num('crystalHpPct', 200),
-    startGold: num('startGold', 1000),
-    spellPowerPct: num('spellPowerPct', 300),
-    startEnergy: num('startEnergy', 150),
-    energyMaxBonus: num('energyMaxBonus', 100),
-    unlockedSpells: spells,
-    spellSlots: slots > 0 ? slots : undefined,
-    spellLoadout: loadout,
-    spellLevels,
-  };
+  // docs/43:与服务端复演共用 GuardReplay.normalizeGuardCrystalSnapshot
+  return normalizeGuardCrystalSnapshot(raw) as PlayerBattleStartVO['guardCrystal'];
 }
 
 function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
@@ -595,6 +550,8 @@ function normalizeLineupHero(item: unknown): PlayerBattleLineupHeroVO {
     equipEffects: parseBattleEquipEffects(item),
     // P6 终极技能等级:漏读会让快照恒回退 1 → 手动大招伤害倍率永远是 Lv.1(2026-08-04 审计发现)。
     ultimateSkillLevel: readInteger(item.ultimateSkillLevel, 1, 99),
+    // docs/43:守卫战建场原始属性(与服务端复演同一份解析)
+    guardRaw: guardRawHeroFromLineupJson(item),
   };
 }
 

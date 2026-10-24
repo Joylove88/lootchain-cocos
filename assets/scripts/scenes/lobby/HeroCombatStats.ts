@@ -6,7 +6,7 @@ import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
  * 属性详情「属性来源」与守卫战建场共用这一份口径:面板上写的数,就是守卫战里用的数。
  *
  * - 基础:后端下发的有效属性(base_* × 等级 / 星系数,attrHp 等)。
- * - 装备:已穿戴装备的平属性合计(item.attrHp 等,已含强化)。
+ * - 装备:已穿戴装备的平属性合计(item.attrHp 等 ×(1 + 0.1 × 强化),与后端 guardStats 同口径)。
  * - 特性(词条):点数 ÷10 = 百分比。生命 / 攻击 / 防御 / 速度加成按「基础 + 装备」的百分比加成;
  *   暴击率、暴击伤害是百分点直加。后端战力本就把词条点数缩到 0.04 倍计入,按平值 +103 显示是口径错误。
  */
@@ -55,11 +55,13 @@ export function resolveHeroCombatSources(hero: LobbyHeroItemVO, equipItems: read
     if (item.heroId !== hero.id) {
       return;
     }
-    out.生命.equip += item.attrHp ?? 0;
-    out.攻击.equip += item.attrAttack ?? 0;
-    out.防御.equip += item.attrDefense ?? 0;
-    out.速度.equip += item.attrSpeed ?? 0;
-    out.暴击.equip += item.attrCrit ?? 0;
+    // 装备平属性 ×(1 + 0.1 × 强化):与后端开战回执 guardStats / 战力口径一致(docs/43)
+    const enhance = 1 + 0.1 * Math.max(0, Number(item.enhanceLevel) || 0);
+    out.生命.equip += Math.round((item.attrHp ?? 0) * enhance);
+    out.攻击.equip += Math.round((item.attrAttack ?? 0) * enhance);
+    out.防御.equip += Math.round((item.attrDefense ?? 0) * enhance);
+    out.速度.equip += Math.round((item.attrSpeed ?? 0) * enhance);
+    out.暴击.equip += Math.round((item.attrCrit ?? 0) * enhance);
   });
   (hero.affixes ?? []).forEach((affix) => {
     const code = (affix.code || '').toUpperCase();

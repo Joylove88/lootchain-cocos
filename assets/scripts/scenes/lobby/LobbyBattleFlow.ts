@@ -27,6 +27,8 @@ export interface LobbyBattleFlowHost {
   preloadBattleSessionAssets?(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void>;
   // 输出试炼(难度Ⅲ):结算上报击破层数(与战斗内层数血条同口径,含手动大招);非试炼/异常返回 null。
   resolveTrialLayersCleared?(): number | null;
+  /** 守卫战操作记录(docs/43);非守卫战返回 null。 */
+  resolveGuardReplayPayload?(): string | null;
   // 矿境守卫(docs/30):守卫模式激活时由守卫 sim 提供胜负;'PENDING'=守卫局仍在进行(禁止演出计时器自动结算);
   // null=非守卫模式(回退旧回放口径)。
   resolveGuardBattleOutcome?(): 'WIN' | 'LOSE' | 'PENDING' | null;
@@ -253,6 +255,7 @@ export class LobbyBattleFlow {
         roundCount: 3,
         clientChecksum: currentStart.serverSeed.slice(0, 32),
         trialLayers: this.host.resolveTrialLayersCleared?.() ?? null,
+        guardReplay: this.host.resolveGuardReplayPayload?.() ?? null,
       };
       const settlement = await this.battleApi.settleBattle(currentStart.battleNo, dto);
       if (!this.isCurrent(currentTicket)) {

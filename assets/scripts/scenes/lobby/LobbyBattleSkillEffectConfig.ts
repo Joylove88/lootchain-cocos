@@ -495,8 +495,11 @@ export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): s
  * 处理脚本 scratchpad fxprev/hu_fix_tex.py,同时给整帧铺满的烟尘序列帧做了椭圆柔边——那才是"灰棕色硬边矩形"的真凶),
  * 挂骨骼时必须同步 premultipliedAlpha=true;旧特效包(fx_pack_v2 / 早期批次)仍是非预乘,保持 false。
  */
-/** 图集经 fx_feather_tex.py 羽化 + 转预乘的单套 v2 特效(2026-10-12 起)。 */
-const PREMULTIPLIED_V2_EFFECTS = new Set(['v2_a49_447']);
+/**
+ * 图集经 fx_feather_tex.py 羽化 + 转预乘的单套 v2 特效(2026-10-12 起)。
+ * v2_s576_022(守卫被动眩晕雷柱,2026-10-24):原图集有按黑底叠加设计的暗色残影光柱,普通混合下淡出成一条黑竖条;只做去暗 + 预乘(--min-w 9999 不羽化)。
+ */
+const PREMULTIPLIED_V2_EFFECTS = new Set(['v2_a49_447', 'v2_s576_022']);
 
 export function battleFxPremultiplied(effectCode: string): boolean {
   return effectCode.startsWith('hu_') || PREMULTIPLIED_V2_EFFECTS.has(effectCode);

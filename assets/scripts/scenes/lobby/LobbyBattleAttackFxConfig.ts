@@ -179,11 +179,12 @@ export function resolveGuardPerkProcFx(perkId: string | null | undefined): { eff
 
 // ── 升星被动触发特效(docs/41 §6,2026-10-24 用户:「这些效果的特效你也需要加上,找合适的」)──
 // 全部复用已入库、同语义的词条触发特效(同 effect + 同动画,就绪表不新增键):
-// 冰封=伊芙琳深寒冰刺 / 眩晕=深渊行者暗紫电链 / 溅射=祷言回响金色爆点 / 真伤=斥候割喉暗蓝刺击 / 反伤=圣骑士惩戒光锤。
+// 冰封=伊芙琳深寒冰刺 / 眩晕=九天神雷落雷(缩小) / 溅射=祷言回响金色爆点 / 真伤=斥候割喉暗蓝刺击 / 反伤=圣骑士惩戒光锤。
 // 吸血走水晶小圣环(GUARD_SUPPORT_FX.crystalHealSmall),护盾走圣光壁垒法阵(GUARD_SPELL_FX.aegis)缩小短播。
 export const GUARD_PASSIVE_FX: Record<'freeze' | 'stun' | 'splash' | 'truePierce' | 'reflect', { effect: string; animation: string; size: number }> = {
   freeze: { effect: 'fx_14601_xuenv_hit', animation: 'skill2_hit', size: 1.35 },
-  stun: { effect: 'fx_14003_leige_hit', animation: 'Skill2_hit2', size: 1.25 },
+  // 眩晕:原用深渊行者暗紫电链(fx_14003 Skill2_hit2),战场实录里渲染成暗色方框(2026-10-24),改九天神雷落雷缩小打在怪身上
+  stun: { effect: 'v2_s576_022', animation: 'E705_Special_SkillUltra_sd', size: 1.5 },
   splash: { effect: 'fx_13001_shenghui_hit', animation: 'hit', size: 1.1 },
   truePierce: { effect: 'fx_43001_daozei_hit', animation: 'skill_hit', size: 1.35 },
   reflect: { effect: 'fx_45014_shengqishi_hit', animation: 'Skill_hit_down', size: 1.3 },

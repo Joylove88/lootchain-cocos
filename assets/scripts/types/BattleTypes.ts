@@ -15,6 +15,8 @@ export interface PlayerBattleSettleDTO {
   clientChecksum: string;
   /** 输出试炼(难度Ⅲ):击破的 BOSS 层数(0~60,含手动大招伤害);非试炼关为 null。服务端封顶防作弊。 */
   trialLayers?: number | null;
+  /** 守卫战操作记录(docs/43):JSON {v, inputs};服务端据此复演,以复演胜负 / 层数为准。 */
+  guardReplay?: string | null;
 }
 
 // 战斗特殊属性(概率触发技能):type=lifesteal/truePierce/freeze/stun/splash/reflect。来自后端 effects_json。
@@ -58,6 +60,8 @@ export interface PlayerBattleLineupHeroVO {
   equipEffects?: PlayerBattleEquipEffectVO[];
   // 终极技能等级(P6):手动大招伤害倍率 ×(1+0.15×(Lv-1));缺省=旧服务端未下发,按 1 处理。
   ultimateSkillLevel?: number;
+  /** 守卫战建场原始属性(docs/43,由回执 guardStats 解析;客户端与服务端复演同一份)。旧服务端缺省。 */
+  guardRaw?: import('../scenes/lobby/GuardReplay').GuardRawHero | null;
 }
 
 export interface PlayerBattleEnemyVO {
@@ -95,6 +99,10 @@ export interface PlayerBattleStartVO {
   guardCrystal?: import('./GuardCrystalTypes').GuardCrystalEffectVO | null;
   /** 守卫战本关出场怪物名单(docs/40 P2,后台副本阵容;空 = 客户端内置怪种表)。 */
   guardMonsters?: GuardMonsterRosterEntryVO[];
+  /** 主线关卡推荐战力(docs/43:守卫怪物强度缩放以服务端开战时的值为准);每日副本 / 旧服务端为空。 */
+  guardRecommendedPower?: number | null;
+  /** 新手宝箱脚本档位本局是否认可(玩家前 3 场守卫战)。 */
+  guardChestScript?: boolean;
 }
 
 export interface PlayerBattleSettlementVO {

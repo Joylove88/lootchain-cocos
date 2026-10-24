@@ -22,6 +22,7 @@
     "check:loose-spread": "node ./scripts/check-loose-spread.cjs",
     "release:web": "node ./scripts/release-web.mjs",
     "build:android": "node ./scripts/build-android.mjs",
+    "build:guard-replay": "node ./tools/guard-replay/build.mjs",
     "repair:preview-cc": "node ./scripts/repair-preview-cc-chunk.mjs",
     "repair:preview-battle": "node ./scripts/repair-preview-battle-runtime.mjs",
     "repair:preview-stage13u": "node ./scripts/repair-preview-stage13u.mjs",

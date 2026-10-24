@@ -133,8 +133,6 @@ export interface GuardHeroUnit {
   /** 奥蕾莉亚·追猎之翎:连续命中同一目标的叠层(其他英雄恒 0)。 */
   focusTargetId: number | null;
   focusStacks: number;
-  /** 局外暴击的确定性累加器(每次出手 += 暴击率,满 1 必暴;docs/41)。 */
-  critAcc?: number;
 }
 
 /** 每个英雄编码的词条状态(docs/32):蓝卡层数、紫卡层数(每英雄 1 条)、专属大招觉醒等级。 */
@@ -185,6 +183,8 @@ export interface GuardMonster {
   stunnedUntilMs: number;
   /** 被动冻结 / 眩晕后的免控截止(精英 / BOSS 用,防止被锁死;docs/41 §6)。 */
   ccImmuneUntilMs?: number;
+  /** 被动冻结的截止(纯表现:渲染层冰蓝染色;行为同眩晕,走 stunnedUntilMs)。 */
+  frozenUntilMs?: number;
   spawnedWave: number;
   /** 渲染层骨骼资源名(spine/monster/<code>)。 */
   spineCode: string;
@@ -334,10 +334,21 @@ export interface GuardEvent {
 }
 
 /** 玩家战斗内操作记录(docs/37 §1-5:为服务端复演留口子;t=sim 时间,v=目标 id)。 */
+/**
+ * 玩家操作记录(docs/43 服务端复演):局内时间 t + 操作类型 k + 参数。所有改变局面的玩家操作都经下面的导出函数,
+ * 成功时自动入 state.inputs;服务端用同一份模型从同一种子按 t 重放这些操作,复算胜负 / 层数。
+ */
+export type GuardInputKind =
+  | 'summon' | 'drag' | 'sell' | 'enhance' | 'choose' | 'skip' | 'reroll' | 'banish' | 'chest' | 'crystal'
+  | 'spell' | 'trap' | 'mark' | 'skill' | 'callWave' | 'pickup' | 'loadout' | 'auto';
 export interface GuardInput {
   t: number;
-  k: 'mark' | 'skill' | 'callWave' | 'pickup' | 'spell' | 'trap';
+  k: GuardInputKind;
   v: number;
+  /** 附加数值参数(拖动目标格 / 法术落点 [车道, x] / 陷阱 x / 宝箱脚本档位)。 */
+  a?: number[];
+  /** 文本参数(出战法术列表)。 */
+  s?: string;
 }
 
 // ── docs/37 F 水晶法术栏 ──
@@ -799,8 +810,8 @@ export interface GuardBattleState {
   monsterScale: number;
   /** 局外防御折算的啃咬减伤乘数(1 = 不减;docs/41)。 */
   outsideBiteMult: number;
-  /** 升星被动的确定性累加器:英雄编码 → 各被动(与 passives 下标对齐);合成重抽身份不清零。 */
-  passiveAcc: Record<string, number[]>;
+  /** 升星被动 / 局外暴击的独立随机流(serverSeed 派生,复演同序列;不占用召唤 / 三选一等主随机流)。 */
+  passiveRng: () => number;
   /** 能量护盾剩余量(波次开始按上阵英雄护盾被动套上,先于水晶生命扣)。 */
   crystalShield: number;
   /** 每波怪物数量倍率(主线 2;每日 1)。 */
@@ -969,26 +980,33 @@ function guardPassiveFlat(passives: readonly GuardPassive[] | undefined, type: '
   return (passives ?? []).filter((entry) => entry.type === type).reduce((sum, entry) => sum + Math.max(0, entry.magnitude), 0);
 }
 
-/** 概率被动的确定性判定:累加器 += 触发率,满 1 触发并扣 1。 */
-function guardPassiveRoll(state: GuardBattleState, heroCode: string, index: number, chance: number): boolean {
-  const code = heroCode.toUpperCase();
-  const acc = state.passiveAcc[code] ?? (state.passiveAcc[code] = []);
-  acc[index] = (acc[index] ?? 0) + Math.max(0, Math.min(0.95, chance));
-  if (acc[index] >= 1) {
-    acc[index] -= 1;
-    return true;
+/**
+ * 守卫战里被动触发率 = 配置触发率(baseChance × 稀有度)× 本系数;控制类(冻结 / 眩晕)再封顶。
+ * 2026-10-24 用户「看起来像是每次必触发」:触发率沿用 5v5 回合制(一回合一刀),守卫战每人约 1 秒一刀,原样搬过来过密。
+ */
+export const GUARD_PASSIVE_CHANCE_SCALE = 0.5;
+export const GUARD_PASSIVE_CONTROL_CHANCE_CAP = 0.2;
+
+/** 概率被动判定:独立随机流掷骰(真随机观感;同种子复演结果一致)。 */
+function guardPassiveRoll(state: GuardBattleState, type: GuardPassiveType, chance: number): boolean {
+  let p = Math.max(0, Math.min(0.95, chance)) * GUARD_PASSIVE_CHANCE_SCALE;
+  if (type === 'freeze' || type === 'stun') {
+    p = Math.min(p, GUARD_PASSIVE_CONTROL_CHANCE_CAP);
   }
-  return false;
+  return state.passiveRng() < p;
 }
 
 /** 冻结 / 眩晕套到怪身上(精英 / BOSS 减半 + 免控期);返回是否生效。 */
-function guardPassiveControl(state: GuardBattleState, monster: GuardMonster, seconds: number): boolean {
+function guardPassiveControl(state: GuardBattleState, monster: GuardMonster, seconds: number, frozen = false): boolean {
   if (monster.dead || (monster.ccImmuneUntilMs ?? 0) > state.timeMs) {
     return false;
   }
   const tough = monster.kind === 'elite' || monster.kind === 'boss';
   const ms = Math.round(seconds * 1000 * (tough ? GUARD_PASSIVE_CC_BOSS_MULT : 1));
   monster.stunnedUntilMs = Math.max(monster.stunnedUntilMs, state.timeMs + ms);
+  if (frozen) {
+    monster.frozenUntilMs = Math.max(monster.frozenUntilMs ?? 0, state.timeMs + ms);
+  }
   if (tough) {
     monster.ccImmuneUntilMs = state.timeMs + ms + GUARD_PASSIVE_CC_IMMUNE_MS;
   }
@@ -1513,7 +1531,7 @@ export function createGuardBattle(
     monsterBiteMult,
     minionHpMult,
     outsideBiteMult: outsideActive ? 1 - Math.min(GUARD_OUTSIDE_DEF_CAP, outsideDef / (outsideDef + GUARD_OUTSIDE_DEF_K)) : 1,
-    passiveAcc: {},
+    passiveRng: createGuardRng((seed ^ 0x6c8e9cf5) >>> 0),
     crystalShield: 0,
     heroDamage: {},
     supportSurgeUntilMs: 0,
@@ -1579,7 +1597,7 @@ export function guardCurrentSummonCost(state: GuardBattleState): number {
 }
 
 /** 召唤:金币够+有空格 → 随机池英雄 1 星放随机空格,费用递增。free=宝箱奖励召唤(不扣费不涨价)。 */
-export function guardSummon(state: GuardBattleState, free = false): GuardHeroUnit | null {
+function guardSummonImpl(state: GuardBattleState, free = false): GuardHeroUnit | null {
   if (state.phase === 'victory' || state.phase === 'defeat') {
     return null;
   }
@@ -1643,7 +1661,7 @@ export function guardEnhanceBlocked(state: GuardBattleState): GuardEnhanceBlock 
  * 强化(2026-09-18 改版):付当前价 → 立刻弹词条三选一(必选,可刷新/放逐,不可跳过);不再直接加攻击。
  * 标准模式封顶 11 次(价格表长度):无上限强化=局内无限成长,账号养成失去闸门意义;rush 不封顶(层数爬升靠它)。
  */
-export function guardEnhance(state: GuardBattleState): boolean {
+function guardEnhanceImpl(state: GuardBattleState): boolean {
   if (guardEnhanceBlocked(state)) {
     return false;
   }
@@ -1678,7 +1696,7 @@ export function guardEnhance(state: GuardBattleState): boolean {
 
 /** 出售英雄(2026-08-26:格满且无可合成的死局解法——拖到水晶出售回金)。返回回收金币,不可售返回 null。
  *  回收价 = 当前召唤费 × 40% × 2^(星级-1)(近似投入成本的四成)。 */
-export function guardSellHero(state: GuardBattleState, cell: number): number | null {
+function guardSellHeroImpl(state: GuardBattleState, cell: number): number | null {
   if (state.phase === 'victory' || state.phase === 'defeat') {
     return null;
   }
@@ -1694,7 +1712,7 @@ export function guardSellHero(state: GuardBattleState, cell: number): number | n
 }
 
 /** 拖拽:目标空格=换位;同名同星=合成(10% 超阶 +2 星);其余无操作。返回操作类型。 */
-export function guardDragTo(state: GuardBattleState, fromCell: number, toCell: number): 'move' | 'merge' | 'superMerge' | 'none' {
+function guardDragToImpl(state: GuardBattleState, fromCell: number, toCell: number): 'move' | 'merge' | 'superMerge' | 'none' {
   if (fromCell === toCell) {
     return 'none';
   }
@@ -2218,7 +2236,7 @@ function afterChoiceResolved(state: GuardBattleState, chosen: GuardChoiceOption 
   state.pendingChoice = null;
 }
 
-export function guardChooseOption(state: GuardBattleState, index: number): boolean {
+function guardChooseOptionImpl(state: GuardBattleState, index: number): boolean {
   const option = state.pendingChoice?.[index];
   if (!option) {
     return false;
@@ -2229,7 +2247,7 @@ export function guardChooseOption(state: GuardBattleState, index: number): boole
 }
 
 /** 跳过=换 50 金币;强化弹出的词条不可跳过(现在只有强化这一个来源,此函数恒返回 false,保留供回退)。 */
-export function guardSkipChoice(state: GuardBattleState): boolean {
+function guardSkipChoiceImpl(state: GuardBattleState): boolean {
   if (!state.pendingChoice || state.choiceSource === 'enhance') {
     return false;
   }
@@ -2239,7 +2257,7 @@ export function guardSkipChoice(state: GuardBattleState): boolean {
 }
 
 /** 刷新:只重摇非金格;金卡仍是金卡但重抽英雄归属;不重判金卡位、不动任何保底计数。 */
-export function guardRerollChoice(state: GuardBattleState): boolean {
+function guardRerollChoiceImpl(state: GuardBattleState): boolean {
   if (!state.pendingChoice || state.rerollLeft <= 0) {
     return false;
   }
@@ -2251,7 +2269,7 @@ export function guardRerollChoice(state: GuardBattleState): boolean {
 }
 
 /** 放逐:只替换被放逐的那一格(其余两格原样保留);金卡不可放逐;按实例 id 记,本局不再出现。 */
-export function guardBanishChoice(state: GuardBattleState, index: number): boolean {
+function guardBanishChoiceImpl(state: GuardBattleState, index: number): boolean {
   const option = state.pendingChoice?.[index];
   if (!state.pendingChoice || !option || option.locked || state.banishLeft <= 0) {
     return false;
@@ -2287,7 +2305,7 @@ export interface GuardChestReward {
  * 豪华箱(BOSS 掉落)固定 5 连、金币件翻倍,不吃新手脚本。
  * 返回逐件奖励(渲染层轮盘演出逐件揭示);奖励立即入账。
  */
-export function guardOpenChest(state: GuardBattleState, chestId: number, scriptTier?: 1 | 3 | 5): { tier: number; rewards: GuardChestReward[]; grade: GuardChestGrade } | null {
+function guardOpenChestImpl(state: GuardBattleState, chestId: number, scriptTier?: 1 | 3 | 5): { tier: number; rewards: GuardChestReward[]; grade: GuardChestGrade } | null {
   const chestIndex = state.chests.findIndex((chest) => chest.chestId === chestId);
   if (chestIndex < 0) {
     return null;
@@ -2313,7 +2331,7 @@ export function guardOpenChest(state: GuardBattleState, chestId: number, scriptT
       state.gold += amount;
       rewards.push({ kind: 'gold', amount, label: `战斗金币 +${amount}` });
     } else if (roll < 0.75) {
-      const unit = guardSummon(state, true);
+      const unit = guardSummonImpl(state, true);
       const unitName = unit ? state.pool.find((entry) => entry.heroCode === unit.heroCode)?.displayName ?? unit.heroCode : '';
       rewards.push(unit
         ? { kind: 'summon', amount: 1, label: `免费召唤:${unitName}` }
@@ -2335,7 +2353,7 @@ export function guardCrystalSkillReady(state: GuardBattleState): boolean {
   return state.timeMs >= state.crystalSkillReadyMs;
 }
 
-export function guardUseCrystalSkill(state: GuardBattleState): boolean {
+function guardUseCrystalSkillImpl(state: GuardBattleState): boolean {
   if (!guardCrystalSkillReady(state) || state.phase === 'victory' || state.phase === 'defeat') {
     return false;
   }
@@ -2813,15 +2831,11 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
   if (crit) {
     strike = Math.max(strike, critMult);
   }
-  // 局外暴击(docs/41):确定性累加,每次出手 += 暴击率,满 1 必暴;倍率 = 暴伤,与词条会心取高
+  // 局外暴击(docs/41):按暴击率掷骰(独立随机流,复演一致);倍率 = 暴伤,与词条会心取高
   const outside = guardOutsideOf(state, hero.heroCode);
-  if (outside && outside.critPct > 0) {
-    hero.critAcc = (hero.critAcc ?? 0) + Math.min(GUARD_OUTSIDE_CRIT_CAP, outside.critPct / 100);
-    if (hero.critAcc >= 1) {
-      hero.critAcc -= 1;
-      crit = true;
-      strike = Math.max(strike, Math.max(1, outside.critDmgPct / 100));
-    }
+  if (outside && outside.critPct > 0 && state.passiveRng() < Math.min(GUARD_OUTSIDE_CRIT_CAP, outside.critPct / 100)) {
+    crit = true;
+    strike = Math.max(strike, Math.max(1, outside.critDmgPct / 100));
   }
   if (suffix === 'execute' && target.hp / target.maxHp < purpleValue) {
     const full = purpleValue <= 0.2 ? 1.5 : purpleValue <= 0.25 ? 1.75 : 2.0;
@@ -2994,7 +3008,8 @@ function guardApplyAttackPassives(state: GuardBattleState, hero: GuardHeroUnit, 
     if (passive.type === 'atkUp' || passive.type === 'hpUp' || passive.type === 'reflect') {
       return;
     }
-    if (!guardPassiveRoll(state, hero.heroCode, index, passive.chance)) {
+    void index;
+    if (!guardPassiveRoll(state, passive.type, passive.chance)) {
       return;
     }
     if (passive.type === 'truePierce') {
@@ -3013,7 +3028,7 @@ function guardApplyAttackPassives(state: GuardBattleState, hero: GuardHeroUnit, 
         state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, passive: passive.type, monsterIds: near.map((monster) => monster.monsterId), amount });
       }
     } else if (passive.type === 'freeze' || passive.type === 'stun') {
-      if (guardPassiveControl(state, target, passive.magnitude)) {
+      if (guardPassiveControl(state, target, passive.magnitude, passive.type === 'freeze')) {
         state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, passive: passive.type, monsterIds: [target.monsterId], amount: Math.round(passive.magnitude * 10) / 10 });
       }
     } else if (passive.type === 'lifesteal') {
@@ -3035,7 +3050,8 @@ function guardApplyReflectPassives(state: GuardBattleState, attacker: GuardMonst
     }
     seen.push(code);
     guardPassivesOf(state, code).forEach((passive, index) => {
-      if (passive.type !== 'reflect' || attacker.dead || !guardPassiveRoll(state, code, index, passive.chance)) {
+      void index;
+      if (passive.type !== 'reflect' || attacker.dead || !guardPassiveRoll(state, 'reflect', passive.chance)) {
         return;
       }
       const amount = Math.max(1, Math.round(guardCodeAttackValue(state, code) * Math.max(0, passive.magnitude) * GUARD_PASSIVE_REFLECT_SCALE));
@@ -3440,10 +3456,9 @@ function guardRollResonance(state: GuardBattleState, forWave: number): void {
 }
 
 /** 集火标记:点怪=标记它;再点同一只或传 null=取消。返回当前标记 id。 */
-export function guardMarkMonster(state: GuardBattleState, monsterId: number | null): number | null {
+function guardMarkMonsterImpl(state: GuardBattleState, monsterId: number | null): number | null {
   const monster = monsterId === null ? null : state.monsters.find((entry) => entry.monsterId === monsterId && !entry.dead) ?? null;
   state.markedMonsterId = !monster || state.markedMonsterId === monster.monsterId ? null : monster.monsterId;
-  state.inputs.push({ t: state.timeMs, k: 'mark', v: state.markedMonsterId ?? -1 });
   return state.markedMonsterId;
 }
 
@@ -3456,7 +3471,7 @@ export function guardHeroSkillPending(state: GuardBattleState, hero: GuardHeroUn
  * 玩家手动释放战技(docs/37 B):蓄满即可点,+25%;与另一名英雄的手动战技间隔 ≤1.5s 构成合击再 ×1.3。
  * 返回 null=未就绪或当前没有可打目标。
  */
-export function guardCastHeroSkillNow(state: GuardBattleState, unitId: number): { chained: boolean } | null {
+function guardCastHeroSkillNowImpl(state: GuardBattleState, unitId: number): { chained: boolean } | null {
   const hero = state.heroes.find((entry) => entry.unitId === unitId);
   if (!hero || !guardHeroSkillUnlocked(state, hero) || state.timeMs < hero.skillReadyMs || state.paused || state.phase === 'victory' || state.phase === 'defeat') {
     return null;
@@ -3472,7 +3487,6 @@ export function guardCastHeroSkillNow(state: GuardBattleState, unitId: number): 
   hero.skillReadyMs = state.timeMs + GUARD_HERO_SKILL[hero.role].cdMs * (GUARD_ULT_CD_MULT[perks.ultLv] ?? 1) - waited;
   hero.skillPendingSinceMs = 0;
   state.lastManualSkill = { heroCode: hero.heroCode, atMs: state.timeMs };
-  state.inputs.push({ t: state.timeMs, k: 'skill', v: unitId });
   return { chained };
 }
 
@@ -3525,7 +3539,7 @@ function guardFireFieldEvents(state: GuardBattleState): void {
 }
 
 /** 点流星矿晶:落地后、碎掉前可拾取。返回得到的金币,不可拾取返回 null。 */
-export function guardCollectPickup(state: GuardBattleState, pickupId: number): number | null {
+function guardCollectPickupImpl(state: GuardBattleState, pickupId: number): number | null {
   const index = state.pickups.findIndex((pickup) => pickup.pickupId === pickupId);
   if (index < 0 || state.paused || state.phase === 'victory' || state.phase === 'defeat') {
     return null;
@@ -3538,7 +3552,6 @@ export function guardCollectPickup(state: GuardBattleState, pickupId: number): n
   const gold = Math.round(pickup.gold * (1 + state.mods.goldGainPct / 100));
   state.gold += gold;
   state.events.push({ type: 'meteorCollect', timeMs: state.timeMs, pickupId, amount: gold });
-  state.inputs.push({ t: state.timeMs, k: 'pickup', v: pickupId });
   return gold;
 }
 
@@ -3563,7 +3576,7 @@ export function guardTrapBlockReason(state: GuardBattleState, kind: GuardTrapKin
 }
 
 /** 放置陷阱(docs/37 G)。成功返回陷阱。 */
-export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: number): GuardTrap | null {
+function guardPlaceTrapImpl(state: GuardBattleState, kind: GuardTrapKind, x: number): GuardTrap | null {
   if (guardTrapBlockReason(state, kind, x) !== null) {
     return null;
   }
@@ -3572,7 +3585,6 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
   const trap: GuardTrap = { trapId: state.nextTrapId++, kind, x, wavesLeft: def.waves, nextTickAtMs: state.timeMs + GUARD_TRAP_TICK_MS };
   state.traps.push(trap);
   state.events.push({ type: 'trapPlace', timeMs: state.timeMs, trapId: trap.trapId, trapKind: kind, x, amount: def.cost });
-  state.inputs.push({ t: state.timeMs, k: 'trap', v: GUARD_TRAP_KINDS.indexOf(kind) });
   return trap;
 }
 
@@ -3796,7 +3808,7 @@ export function guardSpellCastable(state: GuardBattleState, id: GuardSpellId): b
  * 施放水晶法术(docs/37 F)。target:冰封/九天神雷的落点(x,格;lane 仅供表现层定位)。
  * 返回是否施放成功;成功时扣能量并发 spellCast 事件(monsterIds=命中的怪)。
  */
-export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target?: { lane: number; x: number }): boolean {
+function guardCastSpellImpl(state: GuardBattleState, id: GuardSpellId, target?: { lane: number; x: number }): boolean {
   if (!guardSpellCastable(state, id)) {
     return false;
   }
@@ -3921,12 +3933,11 @@ export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target
   }
   state.spellEnergy -= def.cost;
   state.events.push({ type: 'spellCast', timeMs: state.timeMs, spellId: id, lane: target?.lane, x: target?.x, amount, monsterIds: hitIds, level, tier: guardSpellTier(level), jackpot, chainIds });
-  state.inputs.push({ t: state.timeMs, k: 'spell', v: GUARD_SPELL_IDS.indexOf(id) });
   return true;
 }
 
 /** 设置出战法术(去重、只认已解锁的 id、最多 state.spellSlots 个,不足按解锁顺序补满)。 */
-export function guardSetSpellLoadout(state: GuardBattleState, ids: string[]): GuardSpellId[] {
+function guardSetSpellLoadoutImpl(state: GuardBattleState, ids: string[]): GuardSpellId[] {
   const picked = guardResolveSpellLoadout(ids, state.unlockedSpells, state.spellSlots);
   state.spellLoadout = picked;
   return picked;
@@ -3953,7 +3964,7 @@ export function guardCallWaveReward(state: GuardBattleState): number {
 }
 
 /** 提前开战(docs/37 E):立刻开下一波,按剩余运营时间给金币。返回奖励金币,不可提前返回 null。 */
-export function guardCallNextWave(state: GuardBattleState): number | null {
+function guardCallNextWaveImpl(state: GuardBattleState): number | null {
   const reward = guardCallWaveReward(state);
   if (reward <= 0) {
     return null;
@@ -3964,9 +3975,163 @@ export function guardCallNextWave(state: GuardBattleState): number | null {
   }
   state.gold += reward;
   state.events.push({ type: 'callWave', timeMs: state.timeMs, amount: reward, wave: state.wave + 1 });
-  state.inputs.push({ t: state.timeMs, k: 'callWave', v: state.wave + 1 });
   startWave(state);
   return reward;
 }
 
 // 2026-09-18 强化改词条:见 GUARD_ENHANCE_PRICES / guardEnhance。
+
+// ── docs/43 玩家操作入口(记录 + 调用实现)──
+// 渲染层 / 复演只调这些导出函数;成功才记录,失败的点击不进记录(复演时同样会失败,结果一致)。
+function guardRecord(state: GuardBattleState, k: GuardInputKind, v: number, a?: number[], text?: string): void {
+  const input: GuardInput = { t: state.timeMs, k, v };
+  if (a && a.length > 0) {
+    input.a = a;
+  }
+  if (text !== undefined) {
+    input.s = text;
+  }
+  state.inputs.push(input);
+}
+
+export function guardSummon(state: GuardBattleState, free = false): GuardHeroUnit | null {
+  const unit = guardSummonImpl(state, free);
+  if (unit && !free) {
+    guardRecord(state, 'summon', 0);
+  }
+  return unit;
+}
+
+export function guardDragTo(state: GuardBattleState, fromCell: number, toCell: number): 'move' | 'merge' | 'superMerge' | 'none' {
+  const result = guardDragToImpl(state, fromCell, toCell);
+  if (result !== 'none') {
+    guardRecord(state, 'drag', fromCell, [toCell]);
+  }
+  return result;
+}
+
+export function guardSellHero(state: GuardBattleState, cell: number): number | null {
+  const result = guardSellHeroImpl(state, cell);
+  if (result !== null) {
+    guardRecord(state, 'sell', cell);
+  }
+  return result;
+}
+
+export function guardEnhance(state: GuardBattleState): boolean {
+  const ok = guardEnhanceImpl(state);
+  if (ok) {
+    guardRecord(state, 'enhance', 0);
+  }
+  return ok;
+}
+
+export function guardChooseOption(state: GuardBattleState, index: number): boolean {
+  const ok = guardChooseOptionImpl(state, index);
+  if (ok) {
+    guardRecord(state, 'choose', index);
+  }
+  return ok;
+}
+
+export function guardSkipChoice(state: GuardBattleState): boolean {
+  const ok = guardSkipChoiceImpl(state);
+  if (ok) {
+    guardRecord(state, 'skip', 0);
+  }
+  return ok;
+}
+
+export function guardRerollChoice(state: GuardBattleState): boolean {
+  const ok = guardRerollChoiceImpl(state);
+  if (ok) {
+    guardRecord(state, 'reroll', 0);
+  }
+  return ok;
+}
+
+export function guardBanishChoice(state: GuardBattleState, index: number): boolean {
+  const ok = guardBanishChoiceImpl(state, index);
+  if (ok) {
+    guardRecord(state, 'banish', index);
+  }
+  return ok;
+}
+
+export function guardOpenChest(state: GuardBattleState, chestId: number, scriptTier?: 1 | 3 | 5): { tier: number; rewards: GuardChestReward[]; grade: GuardChestGrade } | null {
+  const result = guardOpenChestImpl(state, chestId, scriptTier);
+  if (result) {
+    guardRecord(state, 'chest', chestId, scriptTier ? [scriptTier] : undefined);
+  }
+  return result;
+}
+
+export function guardUseCrystalSkill(state: GuardBattleState): boolean {
+  const ok = guardUseCrystalSkillImpl(state);
+  if (ok) {
+    guardRecord(state, 'crystal', 0);
+  }
+  return ok;
+}
+
+export function guardCastSpell(state: GuardBattleState, id: GuardSpellId, target?: { lane: number; x: number }): boolean {
+  const ok = guardCastSpellImpl(state, id, target);
+  if (ok) {
+    guardRecord(state, 'spell', GUARD_SPELL_IDS.indexOf(id), target ? [target.lane, target.x] : undefined);
+  }
+  return ok;
+}
+
+export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: number): GuardTrap | null {
+  const trap = guardPlaceTrapImpl(state, kind, x);
+  if (trap) {
+    guardRecord(state, 'trap', GUARD_TRAP_KINDS.indexOf(kind), [x]);
+  }
+  return trap;
+}
+
+export function guardMarkMonster(state: GuardBattleState, monsterId: number | null): number | null {
+  const result = guardMarkMonsterImpl(state, monsterId);
+  // 记「请求的目标」而不是结果:点同一只 = 取消,复演时同样的请求得到同样的切换
+  guardRecord(state, 'mark', monsterId ?? -1);
+  return result;
+}
+
+export function guardCastHeroSkillNow(state: GuardBattleState, unitId: number): { chained: boolean } | null {
+  const result = guardCastHeroSkillNowImpl(state, unitId);
+  if (result) {
+    guardRecord(state, 'skill', unitId);
+  }
+  return result;
+}
+
+export function guardCollectPickup(state: GuardBattleState, pickupId: number): number | null {
+  const gold = guardCollectPickupImpl(state, pickupId);
+  if (gold !== null) {
+    guardRecord(state, 'pickup', pickupId);
+  }
+  return gold;
+}
+
+export function guardCallNextWave(state: GuardBattleState): number | null {
+  const reward = guardCallNextWaveImpl(state);
+  if (reward !== null) {
+    guardRecord(state, 'callWave', state.wave);
+  }
+  return reward;
+}
+
+export function guardSetSpellLoadout(state: GuardBattleState, ids: string[]): GuardSpellId[] {
+  const loadout = guardSetSpellLoadoutImpl(state, ids);
+  guardRecord(state, 'loadout', loadout.length, undefined, loadout.join(','));
+  return loadout;
+}
+
+/** 战技「蓄满立即自动释放」设置(局内可切换,影响释放时机,要进记录)。 */
+export function guardSetSkillAuto(state: GuardBattleState, on: boolean): void {
+  if (state.skillAutoImmediate === on) {
+    return;
+  }
+  state.skillAutoImmediate = on;
+  guardRecord(state, 'auto', on ? 1 : 0);
+}

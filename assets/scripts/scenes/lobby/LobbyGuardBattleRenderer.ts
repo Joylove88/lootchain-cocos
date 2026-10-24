@@ -58,6 +58,7 @@ import {
   guardRerollChoice,
   guardSkipChoice,
   guardSellHero,
+  guardSetSkillAuto,
   guardSummarizeSpawns,
   guardSummon,
   guardTick,
@@ -146,6 +147,7 @@ import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAva
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources } from './HeroCombatStats';
+import { buildGuardPool, GUARD_REPLAY_VERSION, resolveGuardStageSetup, type GuardRawHero } from './GuardReplay';
 import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveUnlockedPassiveCount } from './LobbyBattleHeroSkillConfig';
 
 const GUARD_PASSIVE_TYPES: GuardPassiveType[] = ['lifesteal', 'truePierce', 'freeze', 'stun', 'splash', 'reflect', 'atkUp', 'hpUp'];
@@ -241,9 +243,6 @@ const GUARD_ZONE_FX_RETRY_MS = 200;
 const GUARD_ULT_DIM_INTERVAL_MS = 2000;
 /** 局外攻击 → 局内 1 星基础攻击折算(平衡口径:atk60≈成型阵容,见 guard_harness)。 */
 const GUARD_BASE_ATTACK_SCALE = 1.0;
-/** 主线 P5 难度锚点:monsterScale = 关卡 recommendedPower / 本基线。2800≈MAIN_3_12(难度Ⅰ在当前验收阵容下的平衡点);
- * 全 393 层曲线 740→12000 → 缩放 0.26→4.3,钳制 [0.25, 6]。 */
-const GUARD_MAIN_POWER_BASELINE = 2800;
 const GUARD_ROLE_LABEL: Record<string, string> = { melee: '近战', ranged: '远程', support: '辅助', control: '控制' };
 /** 统计面板无头像图时的占位底色(按稀有度)。 */
 const GUARD_RARITY_TINT: Record<string, Color> = {
@@ -332,6 +331,8 @@ interface GuardUnitView {
   deathAnim: string;
   /** 受击红闪截止时刻(打击感,2026-08-26)。 */
   hitFlashUntil: number;
+  /** 受击闪色(缺省红;升星被动用自己的颜色:破甲红 / 溅射金 / 反伤白金,docs/41 §6)。 */
+  hitFlashColor?: Color;
   /** 小怪血条(2026-10-09,共享条层里的两个白贴图精灵:底 / 填充);满血隐藏,受伤才建。 */
   hpBg?: Node;
   hpFill?: Node;
@@ -431,6 +432,13 @@ const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 const GUARD_GREEDY_TINT = new Color(255, 214, 120, 255);
 // 减速染色加深(2026-09-02:去掉雪星挂件后本体染色是唯一标记,压低红绿通道让"结冰感"更明显)
 const GUARD_SLOW_TINT_COLOR = new Color(96, 168, 255, 255);
+/** 升星被动受击闪色(docs/41 §6)。 */
+const GUARD_PASSIVE_PIERCE_FLASH = new Color(255, 90, 80, 255);
+const GUARD_PASSIVE_SPLASH_FLASH = new Color(255, 214, 120, 255);
+const GUARD_PASSIVE_REFLECT_FLASH = new Color(255, 245, 200, 255);
+const GUARD_PASSIVE_LIFESTEAL_FLASH = new Color(255, 120, 140, 255);
+/** 被动冻结染色:冰蓝(比减速的淡蓝更重)。 */
+const GUARD_FROZEN_TINT_COLOR = new Color(160, 228, 255, 255);
 
 // ── 开箱轮盘(2026-09-27 重做)──
 type GuardWheelSector = 'gold' | 'summon' | 'teamAtk' | 'jackpot';
@@ -674,6 +682,15 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 难度Ⅲ(车轮战)层数 = BOSS 击杀 + 波次,走现有 trialLayers 结算通道;非试炼模式 null。 */
+  /** docs/43:本局操作记录(结算上报,服务端复演);没有 sim 返回 null。 */
+  resolveReplayPayload(): string | null {
+    const sim = this.sim;
+    if (!sim) {
+      return null;
+    }
+    return JSON.stringify({ v: GUARD_REPLAY_VERSION, inputs: sim.inputs });
+  }
+
   resolveTrialLayers(): number | null {
     return this.sim && this.sim.mode === 'rush' ? guardTrialLayers(this.sim) : null;
   }
@@ -830,19 +847,16 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  /** 主线 P5 难度曲线:monsterScale=关卡 recommendedPower/GUARD_MAIN_POWER_BASELINE;每日副本与查无关卡时恒 1。 */
-  private resolveMainMonsterScale(stageCode: string): number {
+  /** 旧服务端回执没有 guardRecommendedPower 时,从爬塔面板取关卡推荐战力(每日副本 / 查无关卡返回 null)。 */
+  private resolveMainRecommendedPower(stageCode: string): number | null {
     if (!/^MAIN_\d+_\d+$/.test(stageCode)) {
-      return 1;
+      return null;
     }
     const adventure = this.host.currentLobbyAdventureState?.().adventure;
     const stage = adventure?.chapters
       .flatMap((chapter) => chapter.stages)
       .find((entry) => entry.stageCode.toUpperCase() === stageCode);
-    if (!stage || !(stage.recommendedPower > 0)) {
-      return 1;
-    }
-    return Math.max(0.25, Math.min(6, stage.recommendedPower / GUARD_MAIN_POWER_BASELINE));
+    return stage && stage.recommendedPower > 0 ? stage.recommendedPower : null;
   }
 
   /**
@@ -898,7 +912,16 @@ export class LobbyGuardBattleRenderer {
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroes);
     this.snapshot = snapshot;
     // 上阵 4 英雄(2026-08-26 用户拍板:5→4,同名副本更聚焦,高星可成)。
-    const pool: GuardPoolHero[] = snapshot.allies
+    // docs/43:回执带 guardStats 时按服务端原始属性建池(与服务端复演同一函数、同一阵容顺序);旧服务端走下面的本地口径
+    const lineup = battleState.start?.lineup ?? [];
+    const raws = lineup.slice(0, 4).map((entry) => entry.guardRaw ?? null);
+    const serverPool = raws.length > 0 && raws.every((raw) => !!raw)
+      ? buildGuardPool(raws as GuardRawHero[]).map((hero, index) => {
+        const allyIndex = snapshot.allies.findIndex((ally) => ally.sourceHeroId === lineup[index].heroId);
+        return { ...hero, displayName: allyIndex >= 0 ? snapshot.allies[allyIndex].displayName : hero.displayName, sourceIndex: allyIndex >= 0 ? allyIndex : index };
+      })
+      : null;
+    const pool: GuardPoolHero[] = serverPool ?? snapshot.allies
       .filter((ally) => ally.power > 0 && !ally.unitKey.includes('empty'))
       .slice(0, 4)
       .map((ally, index) => ({
@@ -913,33 +936,32 @@ export class LobbyGuardBattleRenderer {
     // 难度从 stageCode 取:DAILY 三档后缀(Ⅰ=10 波,Ⅱ=20 波,Ⅲ=BOSS 车轮战);
     // 主线 MAIN_*(P5,2026-09-03 用户拍板)=难度Ⅰ同款 10 波 + 关卡难度曲线缩放怪物强度。
     const stageCode = (battleState.start?.stageCode ?? '').toUpperCase();
-    const isDaily = stageCode.startsWith('DAILY_');
-    const isMain = /^MAIN_\d+_\d+$/.test(stageCode);
-    const rushMode = isDaily && stageCode.endsWith('_3');
+    // docs/43:关卡参数与服务端复演同一函数;推荐战力以开战回执为准,旧服务端回退爬塔面板
+    const stage = resolveGuardStageSetup(stageCode, battleState.start?.guardRecommendedPower ?? this.resolveMainRecommendedPower(stageCode));
     // 主线难度包(P5a2,2026-09-04 用户拍板"怪量翻倍/血量翻几倍"):怪量×2(击杀金币减半保持收入中性)、
     // 血量×3(啃咬 √3)、标准模式局内强化词条封顶 11 次(sim 内价格表)。
     // 限时副本三档(2026-09-11 用户拍板"太容易击杀"):怪物血量同样 ×3,怪量不变。
     this.sim = createGuardBattle(
       pool,
       `${battleState.start?.serverSeed ?? ''}:${battleState.start?.battleNo ?? ''}`,
-      rushMode ? 999 : isDaily && stageCode.endsWith('_2') ? 20 : 10,
-      rushMode ? 'rush' : 'standard',
+      stage.maxWave,
+      stage.mode,
       {
-        monsterScale: this.resolveMainMonsterScale(stageCode),
+        monsterScale: stage.monsterScale,
         monsterVariety: LobbyGuardBattleRenderer.monsterVariety(),
         // 后台副本阵容 = 本关出场名单(docs/40 P2);与加载门同一份名单,保证预载的皮肤就是 sim 会抽到的。
         monsterRoster: guardApplyMonsterRoster(battleState.start?.guardMonsters),
         // 限时副本小怪数量 ×3(2026-09-11 用户拍板);BOSS/精英在波次编排循环外单独 push,不受此倍率影响。
-        spawnCountMult: isMain ? 2 : isDaily ? 3 : 1,
-        monsterHpMult: isMain || isDaily ? 3 : 1,
-        monsterBiteMult: isDaily ? 1 : undefined,
+        spawnCountMult: stage.spawnCountMult,
+        monsterHpMult: stage.monsterHpMult,
+        monsterBiteMult: stage.monsterBiteMult,
         // 限时副本小怪总计 ×10(2026-09-11 用户拍板;BOSS/精英维持 ×3):3 × 10/3。
-        minionHpMult: isDaily ? 10 / 3 : 1,
+        minionHpMult: stage.minionHpMult,
         // 守卫水晶养成快照(docs/38):服务端开战时下发,客户端不信本地(本机调试可覆盖法术等级,见 withLocalSpellLevelOverride)。
         crystal: this.withLocalSpellLevelOverride(battleState.start?.guardCrystal ?? null),
       },
     );
-    this.sim.skillAutoImmediate = this.skillAutoImmediate;
+    guardSetSkillAuto(this.sim, this.skillAutoImmediate);
     this.interactHints.clear();
     this.resonanceUnits.clear();
     this.prewarmAttackFx(pool);
@@ -955,7 +977,7 @@ export class LobbyGuardBattleRenderer {
     this.overlayShown = false;
 
     this.buildSceneTree(layout, stageCode);
-    this.host.setStatus(rushMode ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
+    this.host.setStatus(stage.mode === 'rush' ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:召唤英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
     this.tickAccumulatorMs = 0;
     this.startFrameLoop();
@@ -3603,7 +3625,7 @@ export class LobbyGuardBattleRenderer {
           this.skillAutoImmediate = index === 1;
           writeGuardPref(GUARD_PREF_SKILL_AUTO, this.skillAutoImmediate ? '1' : '0');
           if (this.sim) {
-            this.sim.skillAutoImmediate = this.skillAutoImmediate;
+            guardSetSkillAuto(this.sim, this.skillAutoImmediate);
           }
         },
       },
@@ -7650,8 +7672,91 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 一次性骨骼爆点(普攻命中 / 专属词条触发共用):未就绪时补预热并返回 false,由调用方回退。 */
+  /**
+   * 眩晕星星(docs/41 §6):头顶一圈 3 颗金星绕圈转(椭圆轨道 = 父节点压扁 + 星星反向拉回),跟着怪走,眩晕结束销毁。
+   * 头顶高度按怪物体型(monsterHeadOffsetY),BOSS 头上也对得准。
+   */
+  private mountStunStars(view: GuardUnitView, monster: GuardMonster): void {
+    const unit = this.unitSize();
+    const radius = unit * 0.34 * Math.min(2, Math.sqrt(GUARD_MONSTER_DISPLAY_SCALE[monster.kind] ?? 1));
+    // 小怪锚血条位置(已按体型校准、贴着头顶);monsterHeadOffsetY 对矮胖小怪高估一截,2026-10-24 实录星星悬在头顶上方约一格
+    const starY = monster.kind !== 'boss' && view.hpBarOffsetY !== undefined ? view.hpBarOffsetY + unit * 0.12 : this.monsterHeadOffsetY(monster) - unit * 0.02;
+    const holder = this.host.addChildPlainNode(view.node, 'GuardStunStars', view.centerOffsetX ?? 0, starY, radius * 2.4, radius * 2.4);
+    holder.setScale(1, 0.42, 1);
+    const ring = this.host.addChildPlainNode(holder, 'Ring', 0, 0, radius * 2.4, radius * 2.4);
+    // 2026-10-24 实录:0.2 格的星星在手机上只有十来个像素,看不出来;放大到 0.36 格
+    const size = unit * 0.36;
+    for (let i = 0; i < 3; i += 1) {
+      const angle = (Math.PI * 2 * i) / 3;
+      const star = this.host.addChildPlainNode(ring, `Star_${i}`, Math.cos(angle) * radius, Math.sin(angle) * radius, size, size);
+      this.mountSprite(star, 'Img', 'ui/hero/ai/star_filled/spriteFrame', 0, 0, size, size);
+      star.setScale(1, 1 / 0.42, 1);
+    }
+    tween(ring).repeatForever(tween().by(0.9, { angle: -360 })).start();
+    // 星星自身也要跟着反转,保持正立
+    ring.children.forEach((star) => tween(star).repeatForever(tween().by(0.9, { angle: 360 })).start());
+  }
+
+  /** 被动受击闪色(破甲红 / 溅射金 / 反伤白金):比普通受击红闪长一点,一眼看出是被动打的。 */
+  private flashMonsterColor(monsterId: number, color: Color, ms: number): void {
+    const view = this.monsterViews.get(monsterId);
+    if (!view || !view.skeleton || !view.skeleton.isValid || view.lastAnimKey === 'dead' || view.lastAnimKey === 'escaped') {
+      return;
+    }
+    view.hitFlashUntil = Date.now() + ms;
+    view.hitFlashColor = color;
+    view.skeleton.color = color;
+    setTimeout(() => {
+      if (view.hitFlashUntil <= Date.now()) {
+        view.hitFlashColor = undefined;
+      }
+    }, ms + 30);
+  }
+
+  /** 吸血:一颗血珠从怪身上飞回水晶(0.45s),到了水晶亮小圣环。 */
+  private spawnLifestealOrb(fromX: number, fromY: number): void {
+    const field = this.fieldNode;
+    if (!field) {
+      return;
+    }
+    const center = this.crystalFxCenter();
+    const size = this.unitSize() * 0.22;
+    const orb = this.host.addChildPlainNode(field, 'GuardLifestealOrb', fromX, fromY, size, size);
+    const g = orb.addComponent(Graphics);
+    g.fillColor = rgba(255, 70, 70, 120);
+    g.circle(0, 0, size * 0.5);
+    g.fill();
+    g.fillColor = rgba(255, 150, 150, 255);
+    g.circle(0, 0, size * 0.28);
+    g.fill();
+    const midX = (fromX + center.x) / 2;
+    const midY = Math.max(fromY, center.y) + this.unitSize() * 0.9;
+    const t = { k: 0 };
+    tween(t)
+      .to(0.45, { k: 1 }, {
+        easing: 'sineIn',
+        onUpdate: () => {
+          if (!orb.isValid) {
+            return;
+          }
+          const k = t.k;
+          const x = (1 - k) * (1 - k) * fromX + 2 * (1 - k) * k * midX + k * k * center.x;
+          const y = (1 - k) * (1 - k) * fromY + 2 * (1 - k) * k * midY + k * k * center.y;
+          orb.setPosition(x, y, 0);
+        },
+      })
+      .call(() => {
+        if (orb.isValid) {
+          orb.destroy();
+        }
+        this.spawnSpineBurstFx(GUARD_SUPPORT_FX.crystalHealSmall, center.x, center.y - this.unitSize() * 0.1, 0.8, 800, true);
+      })
+      .start();
+  }
+
   /** 升星被动触发表现(docs/41 §6):受影响的怪身上播对应特效 + 短字;同类型 180ms 内只播一次,防刷屏。 */
   private readonly passiveFxAt: Record<string, number> = {};
+  private readonly passiveLabelAt: Record<string, number> = {};
   private playPassiveProcFx(event: GuardEvent): void {
     const type = event.passive ?? '';
     const now = Date.now();
@@ -7661,8 +7766,17 @@ export class LobbyGuardBattleRenderer {
     this.passiveFxAt[type] = now;
     if (type === 'lifesteal') {
       const center = this.crystalFxCenter();
-      this.spawnSpineBurstFx(GUARD_SUPPORT_FX.crystalHealSmall, center.x, center.y - this.unitSize() * 0.1, 0.8, 800);
-      this.spawnFloater(center.x, center.y + this.unitSize() * 0.45, `吸血 +${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 140, 140), 18);
+      const source = this.monsterViews.get((event.monsterIds ?? [])[0] ?? -1);
+      if (source && source.node.isValid) {
+        this.flashMonsterColor((event.monsterIds ?? [])[0], GUARD_PASSIVE_LIFESTEAL_FLASH, 160);
+        this.spawnLifestealOrb(source.node.position.x, source.node.position.y + this.unitSize() * 0.3);
+      } else {
+        this.spawnSpineBurstFx(GUARD_SUPPORT_FX.crystalHealSmall, center.x, center.y - this.unitSize() * 0.1, 0.8, 800, true);
+      }
+      if (now - (this.passiveLabelAt.lifesteal ?? 0) >= 800) {
+        this.passiveLabelAt.lifesteal = now;
+        this.spawnFloater(center.x, center.y + this.unitSize() * 0.45, `吸血 +${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 140, 140), 18);
+      }
       return;
     }
     const spec = (GUARD_PASSIVE_FX as Record<string, { effect: string; animation: string; size: number }>)[type] ?? null;
@@ -7679,14 +7793,26 @@ export class LobbyGuardBattleRenderer {
       }
       const x = view.node.position.x;
       const y = view.node.position.y;
-      if (!this.spawnSpineBurstFx(spec, x, y, 1)) {
+      // 身体反应:破甲红闪 / 溅射金闪 / 反伤白金闪(冻结 / 眩晕走持续状态表现:定格 + 冰蓝 / 放慢 + 头顶星星)
+      const bodyFlash = type === 'truePierce' ? GUARD_PASSIVE_PIERCE_FLASH : type === 'splash' ? GUARD_PASSIVE_SPLASH_FLASH : type === 'reflect' ? GUARD_PASSIVE_REFLECT_FLASH : null;
+      if (bodyFlash) {
+        this.flashMonsterColor(monsterId, bodyFlash, 220);
+      }
+      // 被动触发已按类型 180ms 节流,不吃普攻爆点的同屏名额(激战时名额被普攻占满,被动特效会被整段丢掉)
+      if (!this.spawnSpineBurstFx(spec, x, y, 1, 550, true)) {
+        // 还没就绪:当场补预热(下一次就有骨骼特效),这一次先闪光
+        if (spec) {
+          this.prewarmAttackSpineFx(spec);
+        }
         this.spawnImpactFlash(x, y, label[type]?.color ?? rgba(255, 220, 160));
       }
       // 溅射伤害已并入 heroAttack 的 hits(随普攻飘字);反伤不在普攻里,单独飘
       if (type === 'reflect') {
         this.queueDamage(monsterId, event.amount ?? 0, false, x + ((index * 31) % 30) - 15, y);
       }
-      if (index === 0 && label[type]) {
+      // 提示字同类型 0.8 秒内只出一次(特效照播):多只怪 / 多名英雄同时触发时不再满屏重复
+      if (index === 0 && label[type] && now - (this.passiveLabelAt[type] ?? 0) >= 800) {
+        this.passiveLabelAt[type] = now;
         // 同一只怪同时触发几种被动时字会叠在一起:按类型错开高度 / 左右
         const slot: Record<string, [number, number]> = { freeze: [0.62, -0.42], stun: [0.92, 0.38], truePierce: [0.4, 0.42], reflect: [0.78, -0.1] };
         const [dy, dx] = slot[type] ?? [0.6, 0];
@@ -7721,7 +7847,8 @@ export class LobbyGuardBattleRenderer {
       pooled = this.host.addChildPlainNode(field, 'GuardAttackHitFx', 0, 0, 10, 10);
       skeleton = pooled.addComponent(sp.Skeleton);
       LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
-      skeleton.premultipliedAlpha = false;
+      // 池按特效分,建节点时按图集定一次预乘(眩晕雷柱 v2_s576_022 去黑残影后是预乘图集)
+      skeleton.premultipliedAlpha = battleFxPremultiplied(hitSpec.effect);
       skeleton.skeletonData = ready.data;
     }
     const node = pooled;
@@ -7772,7 +7899,7 @@ export class LobbyGuardBattleRenderer {
     node.setScale(fit, fit * squash, 1);
     const skeleton = node.addComponent(sp.Skeleton);
     LobbyGuardBattleRenderer.useSharedFxCache(skeleton);
-    skeleton.premultipliedAlpha = false;
+    skeleton.premultipliedAlpha = battleFxPremultiplied(spec.effect);
     skeleton.skeletonData = ready.data;
     let duration = 0.6;
     try {
@@ -7933,14 +8060,10 @@ export class LobbyGuardBattleRenderer {
       if (perkFx) {
         this.prewarmAttackSpineFx(perkFx);
       }
-      // 升星被动触发特效(docs/41 §6):只预热这名英雄已解锁的那几种
-      (entry.outside?.passives ?? []).forEach((passive) => {
-        const passiveFx = (GUARD_PASSIVE_FX as Record<string, { effect: string; animation: string; size: number }>)[passive.type];
-        if (passiveFx) {
-          this.prewarmAttackSpineFx(passiveFx);
-        }
-      });
     }
+    // 升星被动触发特效(docs/41 §6):5 套小特效都与词条特效同 effect 键,开局统一预热(2026-10-24 用户「特效未体现在受击怪物身上」:
+    // 原先只按已解锁被动预热,一旦漏热触发时 spawnSpineBurstFx 直接返回 false 只剩闪光)
+    Object.values(GUARD_PASSIVE_FX).forEach((spec) => this.prewarmAttackSpineFx(spec));
     // 辅助英雄在池子里就预热"圣辉涌泉"三件套(光罩 / 水晶大回血 / 周期小回血),首次施放不缺帧。
     if (pool.some((entry) => entry.role === 'support')) {
       this.prewarmAttackSpineFx(GUARD_SUPPORT_FX.allyShield);
@@ -9852,6 +9975,10 @@ export class LobbyGuardBattleRenderer {
         // 死亡演出:有死亡动画播动画后淡出,否则淡出下沉(打击感 2026-08-26)
         if (view.lastAnimKey !== 'dead') {
           view.lastAnimKey = 'dead';
+          if (view.skeleton && view.skeleton.isValid) {
+            view.skeleton.timeScale = 1;
+          }
+          view.node.getChildByName('GuardStunStars')?.destroy();
           view.node.getChildByName('GuardMarkReticle')?.destroy();
           // 死亡瞬间去掉血条(视频验收:'血没空就死'的错觉=死时血条残留旧值);直接销毁,尸体留场 3 秒期间不再占显存
           view.node.getChildByName('GuardMonsterHp')?.destroy();
@@ -9877,9 +10004,16 @@ export class LobbyGuardBattleRenderer {
       // 状态表现:受击红闪 > 减速冰蓝染色 > 正常。
       // 减速只染本体不加挂件(2026-09-02 用户反馈:雪星+蓝雾看着像技能,改成怪物身体变冰蓝一眼看出被减速)。
       const slowed = monster.slowUntilMs > sim.timeMs;
-      const stunned = monster.stunnedUntilMs > sim.timeMs;
+      const frozen = (monster.frozenUntilMs ?? 0) > sim.timeMs;
+      const stunned = monster.stunnedUntilMs > sim.timeMs && !frozen;
       if (view.skeleton && view.skeleton.isValid) {
-        view.skeleton.color = view.hitFlashUntil > Date.now() ? GUARD_HIT_FLASH_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : monster.greedy ? GUARD_GREEDY_TINT : GUARD_SPINE_WHITE;
+        // 被动冻结(docs/41 §6):整只怪冻成冰蓝,比减速的淡蓝更重,冻结期间一直保持
+        view.skeleton.color = view.hitFlashUntil > Date.now() ? (view.hitFlashColor ?? GUARD_HIT_FLASH_COLOR) : frozen ? GUARD_FROZEN_TINT_COLOR : slowed ? GUARD_SLOW_TINT_COLOR : monster.greedy ? GUARD_GREEDY_TINT : GUARD_SPINE_WHITE;
+        // 2026-10-24 用户「眩晕怪物应该停下来头顶冒星星,冻结也是停下来身体变蓝」:冻结动作定格,眩晕动作放慢到近乎静止
+        const ccScale = frozen ? 0 : stunned ? 0.12 : 1;
+        if (view.skeleton.timeScale !== ccScale) {
+          view.skeleton.timeScale = ccScale;
+        }
       }
       if (monster.greedy && !view.node.getChildByName('GuardGreedyBag')) {
         this.mountGreedyBag(view);
@@ -9899,12 +10033,11 @@ export class LobbyGuardBattleRenderer {
       } else if (reticle) {
         reticle.destroy();
       }
-      let stunMark = view.node.getChildByName('GuardStunMark');
-      if (stunned && !stunMark) {
-        stunMark = this.host.addChildPlainNode(view.node, 'GuardStunMark', 0, this.unitSize() * 0.52, 40, 40);
-        this.mountSprite(stunMark, 'Img', 'ui/battle/ai/buff_stun/spriteFrame', 0, 0, 40, 40);
-      } else if (!stunned && stunMark) {
-        stunMark.destroy();
+      const stunStars = view.node.getChildByName('GuardStunStars');
+      if (stunned && !stunStars) {
+        this.mountStunStars(view, monster);
+      } else if (!stunned && stunStars) {
+        stunStars.destroy();
       }
       if (monster.kind !== 'boss') {
         // 小怪血条只在可见长度变了才动(2026-10-05:此前 40 只怪每帧各重画一次;2026-10-09 改共享条层精灵,满血不显示)
