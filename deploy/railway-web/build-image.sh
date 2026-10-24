@@ -25,10 +25,30 @@ for f in index.html sw.js version.json; do
 done
 cp "$HERE/Dockerfile" "$HERE/default.conf.template" "$CTX/"
 
+# 按相对路径的 cksum 散到 16 个目录,每个目录一层(路径不变的文件始终落在同一层)
+BUCKETS=16
+python - "$CTX" "$BUCKETS" <<'PY'
+import os, shutil, sys, zlib
+ctx, n = sys.argv[1], int(sys.argv[2])
+src = os.path.join(ctx, 'web')
+for root, _, files in os.walk(src):
+    for name in files:
+        rel = os.path.relpath(os.path.join(root, name), src).replace('\\', '/')
+        dst = os.path.join(ctx, 'web_%02d' % (zlib.crc32(rel.encode()) % n), rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.move(os.path.join(root, name), dst)
+shutil.rmtree(src)
+PY
+for b in $(seq 0 $((BUCKETS - 1))); do
+  n=$(printf 'web_%02d' "$b")
+  [ -d "$CTX/$n" ] && echo "COPY $n/ /usr/share/nginx/html/" >> "$CTX/Dockerfile"
+done
+
 docker build -t "$IMAGE:$VERSION" -t "$IMAGE:latest" "$CTX"
 echo "built $IMAGE:$VERSION"
 if [ "$PUSH" = "--push" ]; then
-  docker push "$IMAGE:$VERSION"
+  # 本机代理偶发断线:整体重试,已推上去的层会跳过
+  for i in 1 2 3 4 5; do docker push "$IMAGE:$VERSION" && break; echo "push retry $i"; sleep 5; done
   docker push "$IMAGE:latest"
   echo "pushed $IMAGE:$VERSION"
 fi
