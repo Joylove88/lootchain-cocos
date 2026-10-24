@@ -130,7 +130,7 @@ export class LobbyMorePanelRenderer {
       for (const battle of battles) {
         const win = battle.result === 'WIN';
         const when = (battle.recordedTime ?? '').replace('T', ' ').slice(5, 16);
-        const line = `${when}  ${this.host.lobbyStageDisplayLabel?.(battle.stageCode) ?? '主线关卡'}`;
+        const line = `${when}  ${this.host.lobbyStageDisplayLabel?.(battle.stageCode) ?? '冒险关卡'}`;
         const row = this.host.addChildLabel(panel, `BattleRow_${battle.battleNo}`, line, -panelWidth / 2 + 42 * scale, cursor, 16 * scale, rgba(196, 178, 140, 225), new Size(panelWidth * 0.62, 22 * scale), HorizontalTextAlignment.LEFT);
         row.overflow = Label.Overflow.SHRINK;
         const verdict = this.host.addChildLabel(panel, `BattleVerdict_${battle.battleNo}`, win ? '胜利' : '失败', panelWidth / 2 - 60 * scale, cursor, 16 * scale, win ? rgba(150, 226, 130, 235) : rgba(240, 120, 100, 235), new Size(60 * scale, 22 * scale));
@@ -251,7 +251,7 @@ export class LobbyMorePanelRenderer {
       bg.fill();
       const win = battle.result === 'WIN';
       const when = (battle.recordedTime ?? '').replace('T', ' ').slice(5, 16);
-      const line = `${when}  ${this.host.lobbyStageDisplayLabel?.(battle.stageCode) ?? '主线关卡'}`;
+      const line = `${when}  ${this.host.lobbyStageDisplayLabel?.(battle.stageCode) ?? '冒险关卡'}`;
       const row = this.host.addChildLabel(panel, `BattleRow_${battle.battleNo}`, line, rightL + 16, y, 20, rgba(196, 178, 140, 225), new Size(rightW - 120, 30), HorizontalTextAlignment.LEFT);
       row.overflow = Label.Overflow.SHRINK;
       const verdict = this.host.addChildLabel(panel, `BattleVerdict_${battle.battleNo}`, win ? '胜利' : '失败', rightR - 50, y, 20, win ? rgba(150, 226, 130, 235) : rgba(240, 120, 100, 235), new Size(80, 30));

@@ -1420,7 +1420,7 @@ export class LobbyDailyDungeonPanelRenderer {
     ry -= stRowH + 6 * scale;
     this.furnaceInfoRow(card, 'FurnaceStGate', rightX, ry - stRowH / 2, rowW, stRowH, scale, DAILY_IC_LOCK_ASSET, gateOk ? '兑换权限已解锁' : (summary.ineligibleReason ?? '兑换权限未解锁'), rgba(236, 222, 190, 245), { status: gateOk ? 'ok' : 'bad' });
     ry -= stRowH + 6 * scale;
-    this.furnaceInfoRow(card, 'FurnaceStCap', rightX, ry - stRowH / 2, rowW, stRowH, scale, null, gateOk ? `今日额度 ${trimNum(summary.todayExchangedToken)}/${trimNum(summary.dailyTokenCap)} ${summary.tokenSymbol}` : '今日额度:解锁后按爬塔进度开放', rgba(236, 222, 190, 245), { status: gateOk && summary.todayExchangedToken < summary.dailyTokenCap ? 'ok' : gateOk ? 'bad' : null });
+    this.furnaceInfoRow(card, 'FurnaceStCap', rightX, ry - stRowH / 2, rowW, stRowH, scale, null, gateOk ? `今日额度 ${trimNum(summary.todayExchangedToken)}/${trimNum(summary.dailyTokenCap)} ${summary.tokenSymbol}` : '今日额度:解锁后按冒险进度开放', rgba(236, 222, 190, 245), { status: gateOk && summary.todayExchangedToken < summary.dailyTokenCap ? 'ok' : gateOk ? 'bad' : null });
     ry -= stRowH + 10 * scale;
     // 绑定/换绑 小按钮(右对齐)
     const bindBtnW = rowW * 0.42;

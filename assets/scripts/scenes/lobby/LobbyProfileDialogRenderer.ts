@@ -461,7 +461,7 @@ export class LobbyProfileDialogRenderer {
         { label: '钱包地址', value: this.maskWalletAddress(profile.walletAddress), copyText: walletAddress || undefined },
       ]] : []),
       [
-        { label: '深渊爬塔', value: this.profileTowerFloorText() },
+        { label: '冒险', value: this.profileTowerFloorText() },
         { label: '挂机产出', value: this.profileIdleRateText() },
       ],
     ];

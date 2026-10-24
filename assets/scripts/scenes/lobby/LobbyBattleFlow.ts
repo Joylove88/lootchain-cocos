@@ -117,7 +117,7 @@ export class LobbyBattleFlow {
     this.state.assetsLoadedCount = 0;
     this.state.assetsTotalCount = 0;
     if (!selectedStageCode) {
-      this.state.error = '关卡选择已失效，请重新选择主线关卡。';
+      this.state.error = '关卡选择已失效，请重新选择冒险关卡。';
       this.host.setStatus(this.state.error);
     }
     this.bump();
@@ -130,7 +130,7 @@ export class LobbyBattleFlow {
       this.state.starting = false;
       this.state.settling = false;
       this.state.stageCode = '';
-      this.state.error = '关卡选择已失效，请重新选择主线关卡。';
+      this.state.error = '关卡选择已失效，请重新选择冒险关卡。';
       this.state.start = null;
       this.state.settlement = null;
       this.state.presentationStep = 0;
@@ -266,7 +266,7 @@ export class LobbyBattleFlow {
       }
       this.state.settlement = settlement;
       this.state.settling = false;
-      this.host.setStatus(settlement.message || (settlement.rewardGranted ? '主线首通结算完成。' : '战斗记录完成，未产生奖励。'));
+      this.host.setStatus(settlement.message || (settlement.rewardGranted ? '冒险首通结算完成。' : '战斗记录完成，未产生奖励。'));
       this.host.onBattleSettlementRecorded?.();
     } catch (error) {
       if (!this.isCurrent(currentTicket)) {

@@ -36,7 +36,7 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
   if (state.starting) {
     return {
       phase: 'creatingSession',
-      title: '主线战斗',
+      title: '冒险战斗',
       subtitle: '正在创建后端战斗会话...',
       boundaryText: '已创建 battle session；战斗演出完成后自动提交后端结算。',
       timelineText: '会话创建中',
@@ -52,7 +52,7 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
   if (state.settling) {
     return {
       phase: 'resultRecording',
-      title: '主线战斗',
+      title: '冒险战斗',
       subtitle: '正在整理本地战斗表现...',
       boundaryText: '当前只展示视觉结果；客户端不提交奖励、体力或进度。',
       timelineText: '视觉结果整理中',
@@ -82,10 +82,10 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
       title: realMainline ? '首通结算完成' : dailyDungeon ? '每日副本完成' : '战斗记录完成',
       subtitle: `关卡 ${settlement.stageCode} / ${settlement.settlementMode} / ${settlement.message}`,
       boundaryText: realMainline
-        ? '返回大厅后会刷新体力、背包、主线进度和最近战斗记录。'
+        ? '返回大厅后会刷新体力、背包、冒险进度和最近战斗记录。'
         : dailyDungeon
           ? '返回大厅后会刷新剩余次数、体力与背包；开放次数内可再次挑战。'
-          : '返回大厅后可在深渊爬塔查看最近记录；本次未产生奖励、体力或进度变更。',
+          : '返回大厅后可在冒险查看最近记录；本次未产生奖励、体力或进度变更。',
       timelineText: realMainline ? '首通结算完成' : dailyDungeon ? '每日副本结算完成' : '记录完成',
       logLines: [
         `Battle：${settlement.battleNo}`,
@@ -94,7 +94,7 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
         `结果：${settlement.result} / 状态：${settlement.status}`,
         `奖励：${rewardLine}`,
         `${staminaLine}；${progressLine}`,
-        '下一步：返回大厅，进入深渊爬塔查看最近挑战记录。',
+        '下一步：返回大厅，进入冒险查看最近挑战记录。',
       ],
       // 结算回执只展示后端结算结果，不承担任何客户端发奖职责。
       settlementReceiptLines: [
@@ -104,7 +104,7 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
         staminaLine,
         progressLine,
       ],
-      nextStepText: realMainline ? `返回大厅后会看到 ${settlement.mainlineProgress?.unlockedStageCode || '下一关'} 解锁，并回读背包与体力。` : '返回大厅后，深渊爬塔面板会展示本关最近记录。',
+      nextStepText: realMainline ? `返回大厅后会看到 ${settlement.mainlineProgress?.unlockedStageCode || '下一关'} 解锁，并回读背包与体力。` : '返回大厅后，冒险面板会展示本关最近记录。',
       actionLabel: '返回大厅',
       actionNodeName: 'LobbyBattleReturnLobbyButton',
       actionEnabled: true,
@@ -134,9 +134,9 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
     const complete = state.presentationComplete;
     return {
       phase: 'roundPlaying',
-      title: '主线战斗',
+      title: '冒险战斗',
       subtitle: complete ? `关卡 ${state.start.stageCode} / 战斗表现已结束` : `关卡 ${state.start.stageCode} / 战斗进行中`,
-      boundaryText: '战斗演出完成后自动提交结算；奖励、体力与主线进度以服务端回执为准。',
+      boundaryText: '战斗演出完成后自动提交结算；奖励、体力与冒险进度以服务端回执为准。',
       timelineText: complete ? '视觉完成 / 提交结算' : round.timelineText,
       logLines: [
         `服务器种子：${state.start.serverSeed.slice(0, 12)}...`,
@@ -153,9 +153,9 @@ export function resolveLobbyBattlePresentationState(state: LobbyBattlePanelState
   }
   return {
     phase: 'ready',
-    title: '主线战斗',
+    title: '冒险战斗',
     subtitle: `目标关卡 ${state.stageCode || '未选择'} / 准备创建战斗会话，胜利后自动提交结算。`,
-    boundaryText: '点击开始只创建 battle session；本轮不提交奖励、体力或主线进度结算。',
+    boundaryText: '点击开始只创建 battle session；本轮不提交奖励、体力或冒险进度结算。',
     timelineText: '等待开始',
     logLines: ['我方编队已就绪。', '点击开始后由后端生成战斗会话。'],
     actionLabel: '开始战斗',

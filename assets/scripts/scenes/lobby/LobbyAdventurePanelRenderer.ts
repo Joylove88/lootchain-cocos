@@ -119,7 +119,7 @@ export class LobbyAdventurePanelRenderer {
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
     this.renderBody(panel, panelWidth, panelHeight, scale, state);
     this.renderFooter(panel, panelWidth, panelHeight, scale);
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyAdventureBackButton', () => { this.resetChallengeDialog(); this.host.closeLobbyAdventurePanel(); }, scale, '深渊爬塔', '挑战 BOSS 推进层数，层数越高挂机产出越高；挑战失败不掉层。\n\n战力不足时，先在英雄页升级、穿戴并强化装备，再回来挑战。');
+    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyAdventureBackButton', () => { this.resetChallengeDialog(); this.host.closeLobbyAdventurePanel(); }, scale, '冒险', '挑战 BOSS 推进层数，层数越高挂机产出越高；挑战失败不掉层。\n\n战力不足时，先在英雄页升级、穿戴并强化装备，再回来挑战。');
     // 整页重绘会清掉打开中的挑战弹框:按记录重建(内容按最新数据)。
     // 不能用 isValid 判断旧弹框还在不在——destroy 要到帧末才生效,同一帧里旧节点仍报 valid,随后才消失。
     const pending = this.pendingChallengeStageCode;
@@ -143,12 +143,12 @@ export class LobbyAdventurePanelRenderer {
 
     const adventure = state.adventure;
     const statusText = state.loading
-      ? '正在读取爬塔进度…'
+      ? '正在读取冒险进度…'
       : state.error
-        ? '爬塔数据读取失败,请点刷新重试。'
+        ? '冒险数据读取失败,请点刷新重试。'
         : adventure
           ? safeText(adventure.recommendationText)
-          : '等待主线数据';
+          : '等待冒险数据';
     const status = this.host.addChildLabel(
       parent,
       'LobbyAdventureStatus',
@@ -178,11 +178,11 @@ export class LobbyAdventurePanelRenderer {
     const bodyHeight = Math.max(160 * scale, top - bottom);
     const bodyWidth = width - 76 * scale;
     if (state.loading && !state.adventure) {
-      this.renderEmpty(parent, bodyWidth, bodyHeight, scale, '主线地图读取中，请稍候。');
+      this.renderEmpty(parent, bodyWidth, bodyHeight, scale, '冒险地图读取中，请稍候。');
       return;
     }
     if (!state.adventure) {
-      this.renderEmpty(parent, bodyWidth, bodyHeight, scale, '爬塔数据读取失败,请点刷新重试。');
+      this.renderEmpty(parent, bodyWidth, bodyHeight, scale, '冒险数据读取失败,请点刷新重试。');
       return;
     }
 
@@ -532,7 +532,7 @@ export class LobbyAdventurePanelRenderer {
             ? latest.rewardGranted && latest.economyApplied
               ? `${latest.result} · ${latest.stageCode} 首通奖励已结算`
               : `${latest.result} · 无奖励记录 · 只读展示`
-            : '完成一次主线挑战后会在这里显示记录。';
+            : '完成一次冒险挑战后会在这里显示记录。';
     const cardWidth = width - 38 * scale;
     const cardHeight = 54 * scale;
     const card = this.host.addChildPlainNode(parent, 'LobbyAdventureRecentBattleSummaryCard', 0, -height / 2 + 118 * scale, cardWidth, cardHeight);
@@ -602,7 +602,7 @@ export class LobbyAdventurePanelRenderer {
       return '仅预览';
     }
     if (stage.lockReasonCode === 'PROGRESS_REQUIRED') {
-      return '主线未达';
+      return '冒险未达';
     }
     return '等级不足';
   }

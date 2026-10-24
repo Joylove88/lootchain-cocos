@@ -28,6 +28,7 @@ HERO_TAB_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyH
                "if (all.length>0) {{ clearInterval(t); root.openLobbyHeroDetail(all[0].id); setTimeout(() => root.selectLobbyHeroDetailTab('{tab}'), 1500); }} "
                "else if (n>40) clearInterval(t); }}, 250);")
 SCREENS = [
+    ('lobby', "void 0;", 2.5),
     ('bag', "root.openLobbyBagPanel();", 3.0),
     ('quest', "root.openLobbyQuestPanel();", 3.0),
     ('mail', "root.openLobbyMailPanel();", 3.0),

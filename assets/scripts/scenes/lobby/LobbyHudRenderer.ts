@@ -127,7 +127,7 @@ export class LobbyHudRenderer {
     const questEntry = { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,去领取!' };
     const heroCardEntry = { targets: ['LobbyHeroRosterCard_0'], text: '点击英雄,查看详情' };
     const config: Record<string, Partial<Record<string, { targets: string[]; text: string }>>> = {
-      TOWER: { lobby: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_爬塔'], text: '点这里,开始你的第一场矿境守卫战!' } },
+      TOWER: { lobby: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_冒险'], text: '点这里,开始你的第一场矿境守卫战!' } },
       SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去圣契召唤,今天有免费召唤!' } },
       DRAW: { lobby: summonEntry, gacha: { targets: ['GachaSummonOnceButton'], text: '点击免费召唤,获得新英雄!' } },
       HERO: { lobby: { ...heroEntry, text: '英雄到手!去看看你的队伍' } },
@@ -707,7 +707,7 @@ export class LobbyHudRenderer {
     const actions = [
       // 公告已收进"更多"(2026-09-06):微型条改挂"更多"入口(设置/邮箱在窄屏因此可达)。
       { label: '更多', detail: '', notice: false },
-      { label: '爬塔', detail: '', adventure: true },
+      { label: '冒险', detail: '', adventure: true },
       { label: '英雄', detail: '', heroRoster: true },
       { label: '背包', detail: '', bag: true },
       { label: '召唤', detail: '', gacha: true },
@@ -918,10 +918,10 @@ export class LobbyHudRenderer {
     const recent = this.resolveLobbyGoalRecentBattle(battleState.recentBattles, stage?.stageCode ?? null);
     if (adventureState.loading && !adventure) {
       return {
-        title: '同步主线目标',
-        stageLine: '主线状态读取中',
+        title: '同步冒险目标',
+        stageLine: '冒险状态读取中',
         recentLine: '正在读取最近战斗记录',
-        boundaryLine: '正在同步主线进度…',
+        boundaryLine: '正在同步冒险进度…',
         actionLabel: '加载中',
         disabled: true,
         tone: 'loading',
@@ -929,29 +929,29 @@ export class LobbyHudRenderer {
     }
     if (adventureState.error && !adventure) {
       return {
-        title: '主线目标异常',
-        stageLine: '爬塔状态暂时不可用',
+        title: '冒险目标异常',
+        stageLine: '冒险状态暂时不可用',
         recentLine: battleState.recentError ? '最近记录也读取异常' : this.formatRecentBattleLine(recent, false, ''),
-        boundaryLine: '进入爬塔面板可重新读取。',
-        actionLabel: '进入爬塔',
+        boundaryLine: '进入冒险面板可重新读取。',
+        actionLabel: '进入冒险',
         disabled: false,
         tone: 'error',
       };
     }
     if (!adventure || !stage) {
       return {
-        title: '开始爬塔',
-        stageLine: '正在读取爬塔进度…',
+        title: '开始冒险',
+        stageLine: '正在读取冒险进度…',
         recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
-        boundaryLine: '编好英雄队伍,进入爬塔挑战首层。',
-        actionLabel: '进入爬塔',
+        boundaryLine: '编好英雄队伍,进入冒险挑战首层。',
+        actionLabel: '进入冒险',
         disabled: false,
         tone: 'empty',
       };
     }
     if (!stage.unlocked) {
       return {
-        title: '主线目标未解锁',
+        title: '冒险目标未解锁',
         stageLine: this.goalStageLine(stage),
         recentLine: `状态：${stage.statusLabel || '查看解锁条件'}`,
         boundaryLine: '通关前一层后即可挑战。',
@@ -965,7 +965,7 @@ export class LobbyHudRenderer {
       stageLine: this.goalStageLine(stage),
       recentLine: this.formatRecentBattleLine(recent, battleState.recentLoading, battleState.recentError),
       boundaryLine: '击败本层首领即可领取首通奖励,解锁下一层。',
-      actionLabel: recent ? '继续爬塔' : '进入爬塔',
+      actionLabel: recent ? '继续冒险' : '进入冒险',
       disabled: false,
       tone: recent ? 'recent' : 'ready',
     };
@@ -996,10 +996,10 @@ export class LobbyHudRenderer {
       return '最近记录同步中';
     }
     if (error && !recent) {
-      return '最近记录读取异常，可从爬塔面板重试';
+      return '最近记录读取异常，可从冒险面板重试';
     }
     if (!recent) {
-      return '尚无战斗记录，先完成一次主线挑战';
+      return '尚无战斗记录，先完成一次冒险挑战';
     }
     // 2026-09-25 占位清理:不再露出关卡代码/英文结果/"无奖励记录"等内部口径。
     const rewardTag = recent.rewardGranted && recent.economyApplied ? ' · 已领首通奖励' : '';
@@ -1016,13 +1016,13 @@ export class LobbyHudRenderer {
     if (floor > 0) {
       return `第 ${floor} 层`;
     }
-    return /^DAILY_/i.test(stageCode.trim()) ? '限时副本' : '主线关卡';
+    return /^DAILY_/i.test(stageCode.trim()) ? '限时副本' : '冒险关卡';
   }
 
   /** 给其它面板(如"更多"里的最近战报)用的关卡称呼:爬塔关带"深渊爬塔"前缀。 */
   stageDisplayLabel(stageCode: string): string {
     const label = this.stageFloorLabel(stageCode);
-    return label.startsWith('第 ') ? `深渊爬塔 ${label}` : label;
+    return label.startsWith('第 ') ? `冒险 ${label}` : label;
   }
 
   private battleResultLabel(result: string): string {
@@ -1039,7 +1039,7 @@ export class LobbyHudRenderer {
       return;
     }
     this.openLobbyAdventurePanel();
-    this.setStatus(`${goal.stageLine}：已打开深渊爬塔；战斗胜利后自动提交结算。`);
+    this.setStatus(`${goal.stageLine}：已打开冒险；战斗胜利后自动提交结算。`);
   }
 
   private drawLobbyGoalTrackerPanel(graphics: Graphics, width: number, height: number, scale: number, tone: LobbyNextGoalTone): void {
@@ -1619,7 +1619,7 @@ export class LobbyHudRenderer {
       this.openLobbyGachaScene();
       return;
     }
-    if (label === '战役') {
+    if (label === '冒险') {
       this.openLobbyBattleMapFromDungeonEntry(label);
       this.playLobbyClickEffect(parent, x, y, scale);
       return;
@@ -1835,7 +1835,7 @@ export class LobbyHudRenderer {
     if (this.host.addSprite('LobbyAdventureArt', 'ui/lobby/ai/lhud_btn_tower/spriteFrame', width / 2 - artW / 2, 0, artW, height, node)) {
       const textLeft = width / 2 - artW + height * 1.06;
       const textW = artW - height * 1.28;
-      const artTitle = this.addChildLabel(node, 'LobbyAdventureTitle', '深渊爬塔 »', textLeft + textW / 2, height * 0.16, height * 0.34, rgba(252, 228, 170), new Size(textW, height * 0.42), HorizontalTextAlignment.CENTER);
+      const artTitle = this.addChildLabel(node, 'LobbyAdventureTitle', '冒险 »', textLeft + textW / 2, height * 0.16, height * 0.34, rgba(252, 228, 170), new Size(textW, height * 0.42), HorizontalTextAlignment.CENTER);
       artTitle.overflow = Label.Overflow.SHRINK;
       this.applyLobbyResourceTextStyle(artTitle, scale, true);
       const artChapter = this.addChildLabel(node, 'LobbyAdventureChapter', this.resolveAdventureCtaText(), textLeft + textW / 2, -height * 0.2, height * 0.2, rgba(233, 196, 148), new Size(textW, height * 0.3), HorizontalTextAlignment.CENTER);
@@ -1868,7 +1868,7 @@ export class LobbyHudRenderer {
     graphics.lineTo(width / 2 - 42 * scale, height / 2 - 9 * scale);
     graphics.stroke();
     this.addLobbyCompass(node, -width / 2 + 48 * scale, 0, 66 * scale, scale * 0.78);
-    const title = this.addChildLabel(node, 'LobbyAdventureTitle', '深渊爬塔', -width / 2 + 104 * scale, 14 * scale, 31 * scale, rgba(249, 220, 166), new Size(width - 130 * scale, 38 * scale), HorizontalTextAlignment.LEFT);
+    const title = this.addChildLabel(node, 'LobbyAdventureTitle', '冒险', -width / 2 + 104 * scale, 14 * scale, 31 * scale, rgba(249, 220, 166), new Size(width - 130 * scale, 38 * scale), HorizontalTextAlignment.LEFT);
     title.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(title, scale, true);
     const chapter = this.addChildLabel(node, 'LobbyAdventureChapter', this.resolveAdventureCtaText(), -width / 2 + 104 * scale, -20 * scale, 20 * scale, rgba(223, 185, 126), new Size(width - 130 * scale, 27 * scale), HorizontalTextAlignment.LEFT);
@@ -1880,12 +1880,12 @@ export class LobbyHudRenderer {
     const state = this.host.currentLobbyAdventureState();
     const adventure = state.adventure;
     if (state.loading && !adventure) {
-      return '主线读取中';
+      return '冒险读取中';
     }
     if (!adventure) {
-      return '主线 1-1 暗影城门';
+      return '冒险 1-1 暗影城门';
     }
-    return `主线 ${adventure.recommendedStageName}`;
+    return `冒险 ${adventure.recommendedStageName}`;
   }
 
   private addLobbyBottomNav(parent: Node, x: number, y: number, width: number, height: number, scale: number): void {

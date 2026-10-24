@@ -106,7 +106,7 @@ export class BattleStageMapRenderer {
     scrimGraphics.fill();
 
     // 顶部章节标题
-    const chapterName = activeChapter ? safeText(activeChapter.chapterName) : '主线章节';
+    const chapterName = activeChapter ? safeText(activeChapter.chapterName) : '冒险章节';
     const chapterSubtitle = activeChapter ? safeText(activeChapter.subtitle) : '';
     const titleNode = this.host.addChildPlainNode(map, 'BattleStageMapChapterTitle', 0, height / 2 - 30 * scale, width - 40 * scale, 40 * scale);
     const titleLabel = this.host.addChildLabel(titleNode, 'BattleStageMapChapterName', chapterName, 0, 6 * scale, 24 * scale, rgba(252, 225, 158), new Size(width - 60 * scale, 30 * scale));

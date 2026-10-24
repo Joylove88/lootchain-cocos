@@ -281,7 +281,7 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
   const stageCode = readStageCode(data, 'stageCode');
   const readonlyEconomy = data.readonlyEconomy === true;
   if (!readonlyEconomy && !isRealMainlineStage(stageCode) && !isDailyDungeonStageCode(stageCode)) {
-    throw new Error('战斗会话响应格式错误：只有年度主线 MAIN_1_1 至 MAIN_25_16 可进入真实首通结算');
+    throw new Error('战斗会话响应格式错误：只有冒险 MAIN_1_1 至 MAIN_25_16 可进入真实首通结算');
   }
   if (stageCode !== expectedStageCode) {
     throw new Error(`战斗会话关卡不一致：请求 ${expectedStageCode}，返回 ${stageCode}`);
@@ -362,7 +362,7 @@ function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
     staminaCost: readInteger(data.staminaCost, 0, 999),
     staminaBefore: readNullableInteger(data.staminaBefore, 0, 99999),
     staminaAfter: readNullableInteger(data.staminaAfter, 0, 99999),
-    message: readText(data, 'message', 180, isRealSettlementMode(settlementMode) ? '主线首通结算完成' : '战斗记录完成，奖励未开放'),
+    message: readText(data, 'message', 180, isRealSettlementMode(settlementMode) ? '冒险首通结算完成' : '战斗记录完成，奖励未开放'),
     rewardPreview: sanitizeTextArray(readArray(data, 'rewardPreview', 6), 80),
     rewardItems,
     currencyChanges,
@@ -452,7 +452,7 @@ function normalizeMainlineProgress(value: unknown): PlayerBattleMainlineProgress
     return null;
   }
   if (!isRecord(value)) {
-    throw new Error('战斗主线进度响应格式错误：进度不是对象');
+    throw new Error('战斗冒险进度响应格式错误：进度不是对象');
   }
   return {
     beforeStageCode: readText(value, 'beforeStageCode', MAX_TEXT, ''),
@@ -669,7 +669,7 @@ function normalizeMainStageCode(stageCode: string): string {
     throw new Error('战斗关卡必须显式返回 MAIN_数字_数字，不允许默认兜底');
   }
   if (annualMainlineStageOrder(value) <= 0) {
-    throw new Error('战斗关卡超出年度主线 MAIN_1_1 至 MAIN_25_16 范围');
+    throw new Error('战斗关卡超出冒险 MAIN_1_1 至 MAIN_25_16 范围');
   }
   return value;
 }

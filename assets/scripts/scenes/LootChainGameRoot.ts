@@ -3141,7 +3141,7 @@ export class LootChainGameRoot extends Component {
     }
     const stage = this.findLobbyAdventureStage(resolvedStageCode);
     if (!stage) {
-      this.setStatus('该主线关卡暂不可选，请刷新爬塔面板。');
+      this.setStatus('该冒险关卡暂不可选，请刷新冒险面板。');
       return;
     }
     if (!this.canOpenLobbyBattleEntryStage(stage)) {
@@ -3164,7 +3164,7 @@ export class LootChainGameRoot extends Component {
     }
     const stage = this.findLobbyAdventureStage(resolvedStageCode);
     if (!stage) {
-      this.setStatus('该主线关卡暂不可选，请刷新爬塔面板。');
+      this.setStatus('该冒险关卡暂不可选，请刷新冒险面板。');
       return;
     }
     if (this.canOpenLobbyBattleEntryStage(stage)) {
@@ -3188,7 +3188,7 @@ export class LootChainGameRoot extends Component {
     }
     const stage = this.findLobbyAdventureStage(resolvedStageCode);
     if (!stage) {
-      this.setStatus('该主线关卡暂不可选，请刷新爬塔面板。');
+      this.setStatus('该冒险关卡暂不可选，请刷新冒险面板。');
       this.openLobbyAdventurePanel();
       return;
     }
@@ -3416,7 +3416,7 @@ export class LootChainGameRoot extends Component {
     }
     const stage = this.findLobbyAdventureStage(resolvedStageCode);
     if (!stage) {
-      this.setStatus('该主线关卡暂不可选，请刷新爬塔面板。');
+      this.setStatus('该冒险关卡暂不可选，请刷新冒险面板。');
       this.openLobbyAdventurePanel();
       return;
     }
@@ -7838,7 +7838,7 @@ export class LootChainGameRoot extends Component {
   private rejectInvalidLobbyStageSelection(): void {
     // 关卡丢失或非法时必须回到冒险选择，避免未来多关卡阶段误打默认 MAIN_1_1。
     this.selectedLobbyStageCode = null;
-    this.setStatus('关卡选择已失效，请重新选择主线关卡。');
+    this.setStatus('关卡选择已失效，请重新选择冒险关卡。');
     if (this.currentView === 'lobby') {
       this.openLobbyAdventurePanel();
     }

@@ -60,13 +60,13 @@ export const PROTAGONIST_FORM_OPTIONS: ProtagonistFormOption[] = [
   {
     code: 'defense',
     label: '防御形态',
-    detail: '完成主线剧情后解锁。',
+    detail: '完成冒险剧情后解锁。',
     unlocked: false,
   },
   {
     code: 'support',
     label: '辅助形态',
-    detail: '获得主线圣契道具后解锁。',
+    detail: '获得冒险圣契道具后解锁。',
     unlocked: false,
   },
 ];

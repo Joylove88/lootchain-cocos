@@ -109,7 +109,7 @@ export class ProtagonistCreateFlow {
       this.host.setStatus('攻击形态已默认解锁。');
       return;
     }
-    this.host.setStatus('该形态需要通过主线剧情道具解锁。');
+    this.host.setStatus('该形态需要通过冒险剧情道具解锁。');
   }
 
   async submitCreate(): Promise<void> {

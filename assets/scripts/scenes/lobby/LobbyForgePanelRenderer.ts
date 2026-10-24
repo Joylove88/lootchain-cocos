@@ -849,7 +849,7 @@ export class LobbyForgePanelRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(0, 0, 0, 220);
     title.outlineWidth = Math.max(1, 1.5 * scale);
-    const sub = this.host.addChildLabel(card, 'LobbyForgeEmptyText', '主线首通与装备召唤均可获取装备', 0, cardH / 2 - 140 * scale, 18 * scale, rgba(215, 204, 181), new Size(cardW - 60 * scale, 26 * scale));
+    const sub = this.host.addChildLabel(card, 'LobbyForgeEmptyText', '冒险首通与装备召唤均可获取装备', 0, cardH / 2 - 140 * scale, 18 * scale, rgba(215, 204, 181), new Size(cardW - 60 * scale, 26 * scale));
     sub.overflow = Label.Overflow.SHRINK;
     if (this.host.openLobbyGachaScene) {
       mountKitButton(this.host, card, 'LobbyForgeEmptyGacha', '去召唤', 0, -cardH / 2 + 40 * scale, 200 * scale, 54 * scale, scale, 'primary', () => this.host.openLobbyGachaScene?.());
@@ -2311,7 +2311,7 @@ export class LobbyForgePanelRenderer {
       t1.lineHeight = t1.fontSize;
       t1.isBold = true;
       this.applyOutline(t1, scale, true);
-      const t2 = this.host.addChildLabel(dialog, 'EmptyHint', '爬塔 BOSS 首通、分解炽红装备可获得宝石', 0, cy - FS(62), FS(21), rgba(168, 168, 168), new Size(w - PAD * 2, FS(30)));
+      const t2 = this.host.addChildLabel(dialog, 'EmptyHint', '冒险 BOSS 首通、分解炽红装备可获得宝石', 0, cy - FS(62), FS(21), rgba(168, 168, 168), new Size(w - PAD * 2, FS(30)));
       t2.lineHeight = t2.fontSize;
       return;
     }

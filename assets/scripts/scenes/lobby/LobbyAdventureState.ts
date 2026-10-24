@@ -49,7 +49,7 @@ export class LobbyAdventureState {
     this.panelState = {
       loading: false,
       loaded: false,
-      error: message || '爬塔主线读取失败',
+      error: message || '冒险读取失败',
       adventure: null,
     };
     this.revision += 1;

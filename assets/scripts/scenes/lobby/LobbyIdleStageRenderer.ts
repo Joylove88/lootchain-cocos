@@ -113,7 +113,7 @@ export class LobbyIdleStageRenderer {
     const plateHeight = plateWidth * (391 / 657);
     const plateY = height / 2 - plateHeight * 0.46;
     if (this.host.addSprite('LobbyIdleFloorBanner', 'ui/lobby/ai/lhud_title_banner/spriteFrame', 0, plateY, plateWidth, plateHeight, parent)) {
-      const label = this.host.addChildLabel(parent, 'LobbyIdleFloorLabel', `深渊爬塔 · 第 ${floor} 层`, 0, plateY - plateHeight * 0.17, 24 * scale, rgba(255, 232, 168), new Size(plateWidth * 0.62, 30 * scale));
+      const label = this.host.addChildLabel(parent, 'LobbyIdleFloorLabel', `冒险 · 第 ${floor} 层`, 0, plateY - plateHeight * 0.17, 24 * scale, rgba(255, 232, 168), new Size(plateWidth * 0.62, 30 * scale));
       label.overflow = Label.Overflow.SHRINK;
       this.applyOutline(label, scale, true);
       return;
@@ -121,7 +121,7 @@ export class LobbyIdleStageRenderer {
     const fallbackWidth = Math.min(320 * scale, width * 0.3);
     const fallbackHeight = fallbackWidth * (268 / 800);
     this.host.addSprite('LobbyIdleFloorBanner', C1812_TITLE_BANNER_ASSET, 0, height / 2 - 96 * scale, fallbackWidth, fallbackHeight, parent);
-    const label = this.host.addChildLabel(parent, 'LobbyIdleFloorLabel', `深渊爬塔 · 第 ${floor} 层`, 0, height / 2 - 96 * scale, 20 * scale, rgba(255, 232, 168), new Size(fallbackWidth - 60 * scale, 26 * scale));
+    const label = this.host.addChildLabel(parent, 'LobbyIdleFloorLabel', `冒险 · 第 ${floor} 层`, 0, height / 2 - 96 * scale, 20 * scale, rgba(255, 232, 168), new Size(fallbackWidth - 60 * scale, 26 * scale));
     label.overflow = Label.Overflow.SHRINK;
     this.applyOutline(label, scale, true);
   }

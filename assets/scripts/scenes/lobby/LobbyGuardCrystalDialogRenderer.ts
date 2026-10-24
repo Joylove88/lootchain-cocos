@@ -662,7 +662,7 @@ export class LobbyGuardCrystalDialogRenderer {
         cursor += iconSize + textW + 14 * scale;
       });
     }
-    const source = this.host.addChildLabel(box, 'Source', maxed ? '水晶已达当前版本上限' : '守卫晶核:主线关卡首次通关、每日副本胜利获得', -boxW / 2 + pad, -h * 0.26, FONT.tiny * scale, DIM_TEXT, new Size(boxW - pad * 2, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
+    const source = this.host.addChildLabel(box, 'Source', maxed ? '水晶已达当前版本上限' : '守卫晶核:冒险关卡首次通关、每日副本胜利获得', -boxW / 2 + pad, -h * 0.26, FONT.tiny * scale, DIM_TEXT, new Size(boxW - pad * 2, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
     source.overflow = Label.Overflow.SHRINK;
 
     const btnX = x + w / 2 - btnW / 2;

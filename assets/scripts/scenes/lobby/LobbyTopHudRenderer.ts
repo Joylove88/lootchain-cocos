@@ -566,7 +566,7 @@ export class LobbyTopHudRenderer {
       return `当前值：${item.value}。体力来自只读玩家资料；购买、领取和恢复加速入口暂未开放。`;
     }
     if (item.key === 'crystal') {
-      return `当前值：${item.value}。矿晶是打金结算积分：限时副本掉落、爬塔里程碑与输出周榜产出;`
+      return `当前值：${item.value}。矿晶是打金结算积分：限时副本掉落、冒险里程碑与输出周榜产出;`
         + '后续可兑换官方代币(矿晶熔炉,分期开放)。';
     }
     return `当前值：${item.value}。该资源当前为大厅视觉占位，待只读资产汇总接口开放后再接入真实数量。`;

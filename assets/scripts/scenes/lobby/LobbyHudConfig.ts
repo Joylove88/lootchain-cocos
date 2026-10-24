@@ -25,7 +25,7 @@ export const LOBBY_SCENE_HOTSPOTS: LobbySceneHotspotConfig[] = [
   { label: '圣契召唤', x: 0.172, y: 0.393, width: 136, hot: false, hitX: 0.167, hitY: 0.405, hitW: 0.09, hitH: 0.15 },
   // 2026-09-25 占位清理:公会 / 排行榜 / 旅者集会 / 深渊之门 未实装,先下架;熔铸工坊接锻造,商店接货币商店。
   { label: '熔铸工坊', x: 0.388, y: 0.342, width: 136, hot: false, hitX: 0.39, hitY: 0.342, hitW: 0.105, hitH: 0.135 },
-  { label: '战役', x: 0.746, y: 0.372, width: 112, hot: false, hitX: 0.748, hitY: 0.355, hitW: 0.11, hitH: 0.135 },
+  { label: '冒险', x: 0.746, y: 0.372, width: 112, hot: false, hitX: 0.748, hitY: 0.355, hitW: 0.11, hitH: 0.135 },
   { label: '商店', x: 0.564, y: 0.274, width: 110, hot: false, hitX: 0.565, hitY: 0.255, hitW: 0.09, hitH: 0.1 },
 ];
 

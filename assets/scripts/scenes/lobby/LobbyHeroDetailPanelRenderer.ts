@@ -3155,7 +3155,7 @@ export class LobbyHeroDetailPanelRenderer {
     this.renderStarRow(parent, hero, 0, height / 2 - 70 * scale, width - sideInset * 2, scale);
     const formText = hero.protagonist ? safeText(hero.formLabel || '攻击形态') : '已拥有英雄';
     this.addBadge(parent, 'LobbyHeroDetailForm', formText, width / 2 - sideInset - formWidth / 2, topY, formWidth, 30 * scale, rgba(172, 54, 42), scale);
-    const source = this.host.addChildLabel(parent, 'LobbyHeroDetailSource', hero.protagonist ? '主角不进入抽卡池；防御/辅助形态后续由主线道具解锁。' : `${sourceLabel(hero.sourceType)} / 只读展示`, 0, height / 2 - 72 * scale, 17 * scale, rgba(191, 171, 121), new Size(width - 44 * scale, 28 * scale));
+    const source = this.host.addChildLabel(parent, 'LobbyHeroDetailSource', hero.protagonist ? '主角不进入抽卡池；防御/辅助形态后续由冒险道具解锁。' : `${sourceLabel(hero.sourceType)} / 只读展示`, 0, height / 2 - 72 * scale, 17 * scale, rgba(191, 171, 121), new Size(width - 44 * scale, 28 * scale));
     source.node.setPosition(new Vec3(0, height / 2 - 104 * scale, 0));
     source.overflow = Label.Overflow.SHRINK;
   }
@@ -4499,7 +4499,7 @@ export class LobbyHeroDetailPanelRenderer {
       const midY = (listTop + listBottom) / 2;
       this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + 52 * scale, 110 * scale, 110 * scale, panel);
       const emptyTitle = selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备';
-      const emptyText = selectedSlot ? '主线首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格';
+      const emptyText = selectedSlot ? '冒险首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格';
       const empty = this.host.addChildLabel(panel, 'WearEmpty', emptyTitle, 0, midY - 14 * scale, 20 * scale, rgba(232, 208, 156), new Size(width - 44 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
       const emptySub = this.host.addChildLabel(panel, 'WearEmptyHint', emptyText, 0, midY - 42 * scale, 16 * scale, rgba(160, 146, 118), new Size(width - 44 * scale, 22 * scale));
@@ -6467,7 +6467,7 @@ export class LobbyHeroDetailPanelRenderer {
       const midY = (areaTop + areaBottom) / 2;
       this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + PS(56), PS(110), PS(110), panel);
       this.protoText(panel, 'WearEmpty', selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备', 0, midY - PS(16), F(23), rgba(236, 214, 164), width - PS(60), HorizontalTextAlignment.CENTER, true);
-      this.protoText(panel, 'WearEmptyHint', selectedSlot ? '主线首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格', 0, midY - PS(52), F(20), rgba(166, 152, 124), width - PS(60));
+      this.protoText(panel, 'WearEmptyHint', selectedSlot ? '冒险首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格', 0, midY - PS(52), F(20), rgba(166, 152, 124), width - PS(60));
       return;
     }
     // 列表顺序(原型):本英雄已穿在前,其余按稀有度高→低、强化高→低、战力高→低
@@ -6857,7 +6857,7 @@ export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
       { name: '圣契裁决', tag: '大招 · 默认', description: '守卫战 2★ 解锁；蓄满后点击英雄手动释放伤害 +25%，不点自动释放。', kind: 'ultimate', icon: resolveUltimateEmblemAsset(hero) },
       { name: '圣契斩击', tag: '普攻', description: '攻击形态默认开放，对单体目标造成暗金斩击伤害。', icon: HERO_SKILL_ICON_BY_EFFECT.atkUp },
       { name: '誓约战意', tag: '被动', description: '主角在队首时提升本次预演的压制感与生存展示。', icon: HERO_SKILL_ICON_BY_EFFECT.splash },
-      { name: '守御/祷言形态', tag: '锁定', description: '防御形态与辅助形态后续通过主线剧情道具解锁。', locked: true },
+      { name: '守御/祷言形态', tag: '锁定', description: '防御形态与辅助形态后续通过冒险剧情道具解锁。', locked: true },
     ];
   }
   const kit: HeroDetailSkill[] = [];
