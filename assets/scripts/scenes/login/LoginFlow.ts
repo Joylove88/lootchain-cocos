@@ -73,6 +73,11 @@ export class LoginFlow {
         this.finishAuth(ticket, token);
         return;
       }
+      // 线上(https)不走模拟登录:服务端已关 dev-login,回退只会给玩家一串开发报错(2026-10-24 Railway 首测)
+      if (this.isOnlineSite()) {
+        this.host.setStatus(account ? '请输入密码。' : '请输入账号和密码;没有账号请先注册。');
+        return;
+      }
       // dev 回退:密码留空+数字账号=模拟登录(生产由服务端 dev-login-enabled 开关关闭)。
       const userId = this.resolveDevUserId(account || String(this.config.defaultDevUserId));
       this.host.setStatus('Login request: ' + this.config.apiBaseUrl);
@@ -160,7 +165,19 @@ export class LoginFlow {
     return this.config.defaultDevUserId;
   }
 
+  /** 线上站点:接口走 https 同域(AppConfig 生产口径);本机 / 局域网 / 安卓联调都是 http。 */
+  private isOnlineSite(): boolean {
+    return this.config.apiBaseUrl.startsWith('https://');
+  }
+
   private formatApiError(error: unknown, fallbackBaseUrl: string): string {
+    if (this.isOnlineSite()) {
+      // 线上只给玩家看业务提示(账号或密码错误等),不露接口地址 / 本机端口
+      if (error instanceof ApiError && error.message) {
+        return '登录失败:' + error.message;
+      }
+      return '登录失败:网络异常,请稍后重试。';
+    }
     // 保留请求地址和错误码，方便在 Cocos 预览里直接定位服务是否启动。
     if (error instanceof ApiError) {
       const requestUrl = error.requestUrl || fallbackBaseUrl + '/api/player/auth/dev-login';
