@@ -1139,16 +1139,20 @@ export class LobbyBagPanelRenderer {
     const infoBox = this.host.addChildPlainNode(detail, 'LobbyBagDetailInfoBox', infoCx, infoCy, infoW, infoH);
     mountRefSolid(this.host, infoBox, 'Fill', 0, 0, infoW - S(12), infoH - S(12), rgba(8, 6, 8, 200));
     mountRefSlicedByWidth(this.host, infoBox, 'Frame', REF_ULT.statBox, 0, 0, infoW, infoH);
+    // 2026-10-25 策划审核 P2-6:"堆叠 999.9K"对玩家没意义,去掉;过期只在有期限时显示(永久不写)。行在框内居中
     const infoRows: Array<[string, string, string, boolean]> = [
       ['拥有数量', formatCompact(safeNumber(item.itemCount)), 'ui/common/ref/ic_owned/spriteFrame', true],
-      ['堆叠', formatCompact(safeNumber(item.maxStack)), 'ui/common/ref/ic_stack/spriteFrame', false],
       ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', 'ui/common/ref/ic_price/spriteFrame', false],
-      ['过期', item.expireTime ? safeText(String(item.expireTime)) : '永久', 'ui/common/ref/ic_expire/spriteFrame', false],
     ];
+    if (item.expireTime) {
+      infoRows.push(['过期', safeText(String(item.expireTime)), 'ui/common/ref/ic_expire/spriteFrame', false]);
+    }
+    const infoStep = 56;
+    const infoTop = (538 + 772) / 2 - (infoRows.length - 1) * infoStep / 2;
     infoRows.forEach(([rowTitle, rowValue, icon, strong], index) => {
-      const cy = Y(586 + index * 46) - infoCy;
+      const cy = Y(infoTop + index * infoStep) - infoCy;
       if (index > 0) {
-        mountRefSolid(this.host, infoBox, `Sep_${index}`, 0, cy + S(23), infoW - S(60), Math.max(1, S(1.4)), rgba(214, 170, 92, 95));
+        mountRefSolid(this.host, infoBox, `Sep_${index}`, 0, cy + S(infoStep / 2), infoW - S(60), Math.max(1, S(1.4)), rgba(214, 170, 92, 95));
       }
       this.host.addSprite(`Ic_${index}`, icon, X(356) - infoCx, cy, S(32), S(32), infoBox);
       tight(this.host.addChildLabel(infoBox, `Title_${index}`, rowTitle, X(392) - infoCx, cy, S(24), rgba(240, 226, 200), new Size(S(180), S(30)), HorizontalTextAlignment.LEFT));

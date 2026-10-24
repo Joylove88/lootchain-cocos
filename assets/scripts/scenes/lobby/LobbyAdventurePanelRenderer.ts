@@ -143,9 +143,9 @@ export class LobbyAdventurePanelRenderer {
 
     const adventure = state.adventure;
     const statusText = state.loading
-      ? '正在读取主线推荐...'
+      ? '正在读取爬塔进度…'
       : state.error
-        ? '主线推荐暂不可用，当前不进入战斗。'
+        ? '爬塔数据读取失败,请点刷新重试。'
         : adventure
           ? safeText(adventure.recommendationText)
           : '等待主线数据';
@@ -182,7 +182,7 @@ export class LobbyAdventurePanelRenderer {
       return;
     }
     if (!state.adventure) {
-      this.renderEmpty(parent, bodyWidth, bodyHeight, scale, '主线地图暂不可用；不会进入战斗或结算。');
+      this.renderEmpty(parent, bodyWidth, bodyHeight, scale, '爬塔数据读取失败,请点刷新重试。');
       return;
     }
 

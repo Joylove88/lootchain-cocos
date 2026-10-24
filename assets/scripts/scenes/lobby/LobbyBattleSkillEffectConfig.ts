@@ -498,8 +498,9 @@ export function resolveBattleSkillEffectResource(spec: BattleSkillEffectSpec): s
 /**
  * 图集经 fx_feather_tex.py 羽化 + 转预乘的单套 v2 特效(2026-10-12 起)。
  * v2_s576_022(守卫被动眩晕雷柱,2026-10-24):原图集有按黑底叠加设计的暗色残影光柱,普通混合下淡出成一条黑竖条;只做去暗 + 预乘(--min-w 9999 不羽化)。
+ * fx_14003_leige_hit(深渊行者·相位突袭,2026-10-25):每个爆点外围一圈大面积半透明暗晕,战场上成暗色方块;同样去暗 + 预乘。
  */
-const PREMULTIPLIED_V2_EFFECTS = new Set(['v2_a49_447', 'v2_s576_022']);
+const PREMULTIPLIED_V2_EFFECTS = new Set(['v2_a49_447', 'v2_s576_022', 'fx_14003_leige_hit']);
 
 export function battleFxPremultiplied(effectCode: string): boolean {
   return effectCode.startsWith('hu_') || PREMULTIPLIED_V2_EFFECTS.has(effectCode);

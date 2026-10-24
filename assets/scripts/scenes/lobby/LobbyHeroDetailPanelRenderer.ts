@@ -34,7 +34,7 @@ export { equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS } from './EquipD
 import type { LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveHeroPassiveUnlockStars, ultimateCap, ultimateUpCost, ultimateDamageScale, ULTIMATE_MAX_LEVEL } from './LobbyBattleHeroSkillConfig';
-import { isGuardT0Hero } from './GuardBattleModel';
+import { GUARD_OUTSIDE_ULT_STEP, GUARD_PASSIVE_LIFESTEAL_SCALE, GUARD_PASSIVE_PIERCE_BONUS, GUARD_PASSIVE_REFLECT_SCALE, GUARD_PASSIVE_SHIELD_SCALE, GUARD_PASSIVE_SPLASH_COUNT } from './GuardBattleModel';
 import { equipIconAssetByCode } from './EquipIconAssets';
 import { mountEquipIconBacking } from './EquipRarityShine';
 import { equipGlowFrame } from './GuardBakedShapes';
@@ -6121,15 +6121,16 @@ export class LobbyHeroDetailPanelRenderer {
     const gW = S(1455 - 963);
     const luck = typeof hero.luckValue === 'number' ? hero.luckValue : 0;
     const awaken = typeof hero.awakenStatus === 'number' ? hero.awakenStatus : 0;
-    const ult = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
+    // 2026-10-25 策划审核 P2-5:去掉"大招 Lv"一行(技能页已有,重复信息),三行在框内居中
     const growthRows: Array<{ label: string; value: string; icon: string | null }> = [
       { label: '幸运', value: `${luck}`, icon: HERO_PROTO_IC_LUCK },
       { label: '觉醒', value: awaken > 0 ? `${awaken} 阶` : '未觉醒', icon: HERO_PROTO_IC_AWAKEN },
-      { label: '大招', value: `Lv${ult}`, icon: HERO_AI_STAT_ICON_ASSETS['韧性'] },
       { label: '星级', value: `${Math.max(1, Math.trunc(hero.star || 1))} 星`, icon: 'ui/hero/ai/star_filled/spriteFrame' },
     ];
+    const growthStep = 58;
+    const growthTop = (357 + 357 + 3 * 51) / 2 - (growthRows.length - 1) * growthStep / 2;
     growthRows.forEach((entry, index) => {
-      const row = this.protoRow(growth.node, `Row_${index}`, 0, Y(357 + index * 51) - gcy, gW, S(44));
+      const row = this.protoRow(growth.node, `Row_${index}`, 0, Y(growthTop + index * growthStep) - gcy, gW, S(44));
       if (entry.icon) {
         this.host.addSprite('Icon', entry.icon, -gW / 2 + S(32), 0, S(34), S(34), row);
       }
@@ -6853,7 +6854,7 @@ export function resolveUltimateEmblemAsset(hero: Pick<LobbyHeroItemVO, 'heroCode
 export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   if (hero.protagonist) {
     return [
-      { name: '圣契裁决', tag: '大招 · 默认', description: '能量集满后手动释放的核心技能,默认解锁。', kind: 'ultimate', icon: resolveUltimateEmblemAsset(hero) },
+      { name: '圣契裁决', tag: '大招 · 默认', description: '守卫战 2★ 解锁；蓄满后点击英雄手动释放伤害 +25%，不点自动释放。', kind: 'ultimate', icon: resolveUltimateEmblemAsset(hero) },
       { name: '圣契斩击', tag: '普攻', description: '攻击形态默认开放，对单体目标造成暗金斩击伤害。', icon: HERO_SKILL_ICON_BY_EFFECT.atkUp },
       { name: '誓约战意', tag: '被动', description: '主角在队首时提升本次预演的压制感与生存展示。', icon: HERO_SKILL_ICON_BY_EFFECT.splash },
       { name: '守御/祷言形态', tag: '锁定', description: '防御形态与辅助形态后续通过主线剧情道具解锁。', locked: true },
@@ -6869,12 +6870,14 @@ export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   const ultAwakened = hero.awakenStatus === 1;
   const ultPct = Math.round(260 * ultimateDamageScale(ultLevel));
   const ultStepPct = Math.round(260 * ultimateDamageScale(2)) - Math.round(260 * ultimateDamageScale(1));
-  // T0 标识(2026-09-07 专属技能体系):每稀有度一名"档位天花板",描述里点明毕业定位。
-  const t0Suffix = isGuardT0Hero(hero.heroCode) ? ' ◆本稀有度天花板·毕业之选' : '';
+  // 2026-10-25 策划审核 P1-10/11:按守卫战实际机制写(docs/37 B 战技 + docs/41 大招等级每级 +10%);
+  // 去掉"本稀有度天花板 · 毕业之选"——像在宣布满级即毕业,也等于公开同稀有度其他英雄是次选。
+  void ultPct;
+  void ultStepPct;
   kit.push({
     name: ultName,
     tag: `大招 · Lv${ultLevel}/${ultimateCap(ultAwakened)}`,
-    description: `能量集满后手动释放,造成 ${ultPct}% 攻击伤害,每升 1 级 +${ultStepPct}%。${t0Suffix}`,
+    description: `守卫战 2★ 解锁；蓄满后点击英雄手动释放伤害 +25%，不点自动释放。每升 1 级伤害 +${Math.round(GUARD_OUTSIDE_ULT_STEP * 100)}%。`,
     kind: 'ultimate',
     icon: resolveUltimateEmblemAsset(hero),
   });
@@ -6918,7 +6921,9 @@ function resolveHeroSpecialSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   if (shieldScope) {
     const scope = shieldScope === 'team' ? '全体' : '单体';
     const pct = Math.round(resolveEnergyShieldHpRatio(shieldScope, hero.rarity) * 100);
-    skills.push({ name: '能量护盾', tag: scope, description: `开场为${scope}我方叠一层护盾（约最大生命 ${pct}%），受击先扣盾再扣血。`, icon: HERO_SKILL_ICON_BY_EFFECT.shield });
+    void scope;
+    // 守卫战:每波开始给水晶套盾 = 英雄生命 × 护盾比例 × GUARD_PASSIVE_SHIELD_SCALE(docs/41 §6)
+    skills.push({ name: '能量护盾', tag: scope, description: `每波开始为守卫水晶套一层护盾（约本英雄生命的 ${Math.round(pct * GUARD_PASSIVE_SHIELD_SCALE)}%），水晶受击先扣盾。`, icon: HERO_SKILL_ICON_BY_EFFECT.shield });
   }
   effects.forEach((effect) => {
     const chance = Math.round(resolveSkillTriggerChance(effect.baseChance, hero.rarity) * 100);
@@ -6934,18 +6939,19 @@ function describeHeroSkillEffect(effect: { type: string; magnitude: number }, ch
   const tag = `${chancePercent}% 触发`;
   const pct = Math.round(effect.magnitude * 100);
   switch (effect.type) {
+    // 2026-10-25 策划审核 P1-10:原"命中概率…"是删触发率后剩下的病句;数值按守卫战实际结算(docs/41 §6 GUARD_PASSIVE_*)
     case 'lifesteal':
-      return { name: '吸血', tag, description: `命中概率回复自身生命，回血量为该次伤害的 ${pct}%。` };
+      return { name: '吸血', tag, description: `命中时有几率为守卫水晶回复生命，回复量为该次伤害的 ${Math.max(1, Math.round(pct * GUARD_PASSIVE_LIFESTEAL_SCALE))}%。` };
     case 'truePierce':
-      return { name: '真伤穿透', tag, description: '命中概率无视目标防御，造成真实伤害。' };
+      return { name: '真伤穿透', tag, description: `命中时有几率追加 ${Math.round(effect.magnitude * GUARD_PASSIVE_PIERCE_BONUS * 100)}% 伤害，对精英 / 首领再提高一半。` };
     case 'freeze':
-      return { name: '冰封冻结', tag, description: `命中概率冻结目标 ${effect.magnitude} 秒，期间无法行动。` };
+      return { name: '冰封冻结', tag, description: `命中时有几率冻结目标 ${effect.magnitude} 秒，期间无法行动；精英 / 首领减半。` };
     case 'stun':
-      return { name: '眩晕', tag, description: `命中概率眩晕目标 ${effect.magnitude} 秒，期间无法行动。` };
+      return { name: '眩晕', tag, description: `命中时有几率眩晕目标 ${effect.magnitude} 秒，期间无法行动；精英 / 首领减半。` };
     case 'splash':
-      return { name: '溅射', tag, description: `命中概率对相邻敌人追加 ${pct}% 伤害。` };
+      return { name: '溅射', tag, description: `命中时有几率对附近 ${GUARD_PASSIVE_SPLASH_COUNT} 名敌人各造成该次伤害的 ${pct}%。` };
     case 'reflect':
-      return { name: '荆棘反弹', tag, description: `受击概率反弹 ${pct}% 伤害给攻击者。` };
+      return { name: '荆棘反弹', tag, description: `水晶被啃咬时有几率反击，造成攻击力 ${Math.round(effect.magnitude * GUARD_PASSIVE_REFLECT_SCALE * 100)}% 的伤害。` };
     case 'atkUp':
       return { name: '力量强化', tag: '常驻', description: `攻击力提升 ${pct}%，解锁后战斗中永久生效。` };
     case 'hpUp':

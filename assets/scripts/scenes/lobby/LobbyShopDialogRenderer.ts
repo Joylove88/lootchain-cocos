@@ -659,7 +659,8 @@ export class LobbyShopDialogRenderer {
         amount: this.host.formatInteger(tier.diamondTotal),
         unit: '钻石',
         amountColor: rgba(170, 215, 255),
-        tag: tier.diamondBonus > 0 ? `赠 ${this.host.formatInteger(tier.diamondBonus)}` : '',
+        // 大字已是到账总数(含赠送),标签写"含赠"——原"赠 30"读起来像另外再送(2026-10-25 策划审核 P1-18)
+        tag: tier.diamondBonus > 0 ? `含赠 ${this.host.formatInteger(tier.diamondBonus)}` : '',
         tagHighlight: best,
         ribbon: best ? '最划算' : undefined,
         price: `¥ ${Number.isInteger(price) ? price : price.toFixed(2)}`,

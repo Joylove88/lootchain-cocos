@@ -50,6 +50,8 @@ SCREENS = [
     ('hero_star', HERO_TAB_JS.format(tab='star'), 5.0),
     # 2026-10-21 按钮字留白全量排查补充的界面
     ('hero_roster', "root.openLobbyHeroRosterPanel();", 3.5),
+    # 2026-10-25 属性详情弹窗:英雄详情属性页后置 attrDetailHeroId 再整刷(弹窗随整刷恢复)
+    ('attr_detail', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => { root.selectLobbyHeroDetailTab('attr'); setTimeout(() => { root.lobbyHeroDetailPanelRenderer.attrDetailHeroId = all[0].id; root.renderCurrentView(); }, 1200); }, 1500);"), 6.0),
     ('hero_refine', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => root.openLobbyHeroRefineDialog(), 1800);"), 5.0),
     ('codex', "root.openLobbyCodexPanel();", 3.5),
     ('formation', "root.openLobbyFormationPanel();", 4.0),

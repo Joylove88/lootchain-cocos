@@ -1650,11 +1650,12 @@ export class LobbyHeroRosterPanelRenderer {
     mountRefSolid(this.host, card, 'NameLineBottom', 0, T(186), w - 24, 1.2, rgba(196, 156, 86, 90));
 
     const stars = starDisplayV3(hero.star);
-    const starSize = 21 * k;
-    const starGap = 3 * k;
+    // 2026-10-25 策划审核 P2-14:21 → 28,手机上看得清;中心上移到 140,下沿不压名字带上方金线(156)
+    const starSize = 28 * k;
+    const starGap = 2 * k;
     const starX0 = -(stars.count * starSize + Math.max(0, stars.count - 1) * starGap) / 2 + starSize / 2;
     for (let i = 0; i < stars.count; i += 1) {
-      this.host.addSprite(`Star_${i}`, starBandAssetOf(stars.color), starX0 + i * (starSize + starGap), T(146), starSize, starSize, card);
+      this.host.addSprite(`Star_${i}`, starBandAssetOf(stars.color), starX0 + i * (starSize + starGap), T(140), starSize, starSize, card);
     }
     this.protoText(card, 'Name', safeText(hero.heroName), 0, T(171), PF(23), rgba(250, 226, 170), w - 44 * k, HorizontalTextAlignment.CENTER, true);
     this.protoText(card, 'Level', formatHeroCardLevel(hero.level), -w / 2 + 43 * k, T(200), PF(20), rgba(236, 222, 190), 100 * k, HorizontalTextAlignment.LEFT);

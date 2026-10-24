@@ -581,6 +581,8 @@ export class LootChainGameRoot extends Component {
 
   /** 启动预载进行中:拦截一切 renderCurrentView(保护加载屏,防提前放行)。 */
   private bootPreloadActive = false;
+  /** 启动下载期间收到的状态提示(如"登录已过期"):先不显示,加载屏收起、登录页出来后再补(2026-10-25 策划审核 P2-13)。 */
+  private pendingBootStatus: string | null = null;
 
   /**
    * 加载页背景:随机一张 boot_bg_n 按 cover 铺满舞台(16:9 横图,手机横屏更宽时裁上下、PC 更窄时裁左右),
@@ -709,6 +711,7 @@ export class LootChainGameRoot extends Component {
       if (!this.resumeSessionIntoLobby()) {
         this.renderCurrentView();
       }
+      this.flushPendingBootStatus();
       // 登录页亮出后后台预取守卫战必用素材(不阻塞、低并发)。
       this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
     };
@@ -822,6 +825,7 @@ export class LootChainGameRoot extends Component {
       if (!this.resumeSessionIntoLobby()) {
         this.renderCurrentView();
       }
+      this.flushPendingBootStatus();
       // 2026-09-18 用户反馈:跳过预载屏后进战场怪物骨骼要现加载现解析 → 登录页亮出后后台预取战斗必用素材。
       // 2026-10-05:素材已在本地时立刻开始(实测登录后马上点冒险 / 背包仍要等 0.7~1.8s),否则等 1.5s 不和首屏抢网络。
       // 编辑器预览不算"本地":手机连电脑预览时素材走局域网,同时发几十个请求会把登录页自己的图挤失败(2026-10-05 用户实测)。
@@ -7287,7 +7291,20 @@ export class LootChainGameRoot extends Component {
     this.statusPresenter.add(text, layout, y);
   }
 
+  private flushPendingBootStatus(): void {
+    const pending = this.pendingBootStatus;
+    this.pendingBootStatus = null;
+    if (pending) {
+      this.setStatus(pending);
+    }
+  }
+
   private setStatus(text: string): void {
+    // 启动下载屏还在:不和下载进度同屏,登录页出来后再显示
+    if (this.bootPreloadActive) {
+      this.pendingBootStatus = text;
+      return;
+    }
     // 2026-09-24 用户:大厅(及大厅功能页)底部不显示这行蓝色状态字;结果反馈由各弹窗自己的横幅 / 提示承担。
     if (this.isLobbyViewActive()) {
       this.statusPresenter.clear();
