@@ -132,8 +132,8 @@ const DAILY_REWARD_FALLBACK_NOTES: Record<string, string> = {
   GOLD: '通用货币：装备强化、合成、洗练与英雄升级等消耗。',
   ENHANCE_STONE: '锻造强化装备的基础材料（+1 至 +10）。',
   ENHANCE_STONE_HIGH: '+10 以上强化所需的高阶强化材料。',
-  DEEP_REFORGE_STONE: '英雄词条洗练（重铸）消耗的深渊重铸石。',
-  EQUIP_REROLL_STONE: '装备词条洗练材料（锻造工坊洗练页）。',
+  DEEP_REFORGE_STONE: '英雄特性洗练消耗的深渊重铸石。',
+  EQUIP_REROLL_STONE: '装备词缀洗练材料（锻造工坊词缀洗练）。',
   FUSION_LUCK_STONE: '装备合成成功率 +20%（锻造工坊合成页勾选）。',
 };
 
@@ -218,7 +218,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const phoneHelp = isPhoneDesign()
       ? `每天轮换开放不同主题。\n\n每次挑战消耗体力 ${state.summary?.staminaCost ?? 8};每个主题每天 ${state.summary?.themes?.[0]?.timesPerDay ?? 2} 次,胜利才计次。\n\n难度越高奖励越好;难度Ⅲ「输出试炼」按限时输出档位发矿晶。`
       : '';
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '限时副本', phoneHelp);
+    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyDailyBackButton', () => this.host.closeLobbyDailyDungeonPanel(), scale, '每日副本', phoneHelp);
     // 手机全屏熔炉要盖住左上返回钮 / 右上关闭钮(否则两个关闭入口叠在一起),所以挂到 panelGroup 最上层(与 panel 同心)
     if (state.summary && this.host.currentLobbyTokenFurnaceState?.().open && isPhoneDesign()) {
       this.renderTokenFurnacePopup(panelGroup, panelWidth, panelHeight, scale);
@@ -239,7 +239,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const title = this.host.addChildLabel(
       parent,
       'LobbyDailyTitle',
-      '限时副本 · 每日轮换',
+      '每日副本 · 每日轮换',
       0,
       height / 2 - 40 * scale,
       28 * scale,
@@ -248,7 +248,7 @@ export class LobbyDailyDungeonPanelRenderer {
     );
     title.overflow = Label.Overflow.SHRINK;
     const titleY = height / 2 - 40 * scale;
-    const dividerInner = this.estimateHalfTextWidth('限时副本 · 每日轮换', 28 * scale) + 10 * scale;
+    const dividerInner = this.estimateHalfTextWidth('每日副本 · 每日轮换', 28 * scale) + 10 * scale;
     const dividerWidth = Math.min(150 * scale, width / 2 - 320 * scale - dividerInner);
     if (dividerWidth >= 40 * scale) {
       const leftDivider = this.host.addSprite('LobbyDailyTitleDividerL', TITLE_DIVIDER_LEFT_ASSET, -dividerInner - dividerWidth / 2, titleY, dividerWidth, dividerWidth * TITLE_DIVIDER_LEFT_ASPECT, parent);
@@ -858,7 +858,7 @@ export class LobbyDailyDungeonPanelRenderer {
     const iconSize = barHeight * 0.5;
     this.host.addSprite('LobbyDailyFooterIcon', DAILY_IC_NOTICE_ASSET, -barWidth / 2 + iconSize / 2 + barWidth * 0.06, 0, iconSize * (87 / 83), iconSize, bar);
     // 矿脉文案(P金-1c,docs/27):余量=全服分池预算合计-已产出;未解锁提示门槛。
-    let footerText = '限时副本奖励丰厚，每日轮换不同主题，挑战更高难度可获得更稀有奖励！';
+    let footerText = '每日副本奖励丰厚，每日轮换不同主题，挑战更高难度可获得更稀有奖励！';
     let footerColor = rgba(224, 202, 158, 240);
     if (mine) {
       if (!mine.unlocked) {

@@ -12,6 +12,7 @@ export type ItemSourceTarget =
   | { type: 'shop'; kind: 'gold' }
   | { type: 'forge'; tab: 'decompose' }
   | { type: 'quest' }
+  | { type: 'codex' }
   | { type: 'idle' };
 
 export interface ItemSourceRoute {
@@ -68,6 +69,8 @@ const ROUTES: Record<string, ItemSourceRoute[]> = {
     { kind: 'tower', title: '挂机收益', desc: '大厅挂机持续产出金币', target: { type: 'idle' } },
     daily('FORGE', '每日副本奖励'),
   ],
+  // docs/45 §14:绑钻目前只来自图鉴激活奖励(sql/112)
+  BOUND_DIAMOND: [{ kind: 'event', title: '英雄图鉴', desc: '激活英雄图鉴领取绑钻', target: { type: 'codex' } }],
   LEVEL_CAP: [adventure('冒险首通获得玩家经验,提升英雄等级上限')],
 };
 

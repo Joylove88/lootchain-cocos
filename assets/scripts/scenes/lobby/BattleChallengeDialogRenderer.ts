@@ -156,7 +156,10 @@ export class BattleChallengeDialogRenderer {
     const staminaText = claimed ? '重复挑战无奖励 · 不消耗体力' : '消耗体力 6 · 仅首通扣除';
     const stamina = this.host.addChildLabel(section, 'BattleChallengeDialogStamina', staminaText, 0, -height / 2 + 26 * scale, 16 * scale, claimed ? rgba(170, 156, 128) : rgba(214, 194, 152), new Size(width - 60 * scale, 22 * scale));
     stamina.overflow = Label.Overflow.SHRINK;
-    const rewards = stage.rewardPreview.slice(0, 5).map((r) => safeText(r));
+    // docs/45 §13:优先读与结算同源的首通奖励(带数量),旧服务端回退名字列表
+    const sourced = (stage.firstClearRewards ?? []).slice(0, 5);
+    const rewards = sourced.length > 0 ? sourced.map((r) => safeText(r.resourceName)) : stage.rewardPreview.slice(0, 5).map((r) => safeText(r));
+    const amounts = sourced.map((r) => r.amount);
     if (rewards.length === 0) {
       const none = this.host.addChildLabel(section, 'BattleChallengeDialogRewardNone', '本关无首通奖励', 0, 0, 18 * scale, rgba(190, 172, 136), new Size(width - 60 * scale, 26 * scale));
       none.overflow = Label.Overflow.SHRINK;
@@ -187,6 +190,13 @@ export class BattleChallengeDialogRenderer {
         const glyph = this.host.addChildLabel(cell, 'Glyph', /经验/.test(text) ? 'EXP' : Array.from(text)[0] ?? '?', 0, 0, 22 * scale, rgba(255, 220, 140), new Size(slot * 0.8, slot * 0.6));
         glyph.overflow = Label.Overflow.SHRINK;
         glyph.enableOutline = true; glyph.outlineColor = rgba(0, 0, 0, 220); glyph.outlineWidth = Math.max(1, 1.4 * scale);
+      }
+      // 数量压在格子右下角(与每日副本奖励格同款),格下只写名称,名字字号才一致
+      const amount = amounts[index];
+      if (amount) {
+        const count = this.host.addChildLabel(cell, 'Count', `×${formatGrouped(amount)}`, slot * 0.06, -slot * 0.32, 15 * scale, rgba(248, 236, 210), new Size(slot * 0.86, 20 * scale), HorizontalTextAlignment.RIGHT);
+        count.overflow = Label.Overflow.SHRINK;
+        count.enableOutline = true; count.outlineColor = rgba(0, 0, 0, 230); count.outlineWidth = Math.max(1, 1.4 * scale);
       }
       const name = this.host.addChildLabel(section, `BattleChallengeDialogRewardName_${index}`, text, cx, nameY, 16 * scale, rgba(214, 194, 152), new Size(step - 4 * scale, 22 * scale));
       name.overflow = Label.Overflow.SHRINK;

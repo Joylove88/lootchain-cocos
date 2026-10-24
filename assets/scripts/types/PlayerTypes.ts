@@ -28,6 +28,8 @@ export interface PlayerLobbyProfileVO {
   maxStamina: number;
   gold?: DecimalValue | null;
   diamond?: DecimalValue | null;
+  /** 绑钻(普通召唤消耗;docs/45 §14)。旧服务端缺省。 */
+  boundDiamond?: DecimalValue | null;
   /** 矿晶(打金结算积分,docs/27 P金-1a)。 */
   sacredCrystal?: DecimalValue | null;
   /** 英雄总战力(全部英雄之和,只做展示)。 */

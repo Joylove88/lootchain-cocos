@@ -72,6 +72,7 @@ function cloneAdventure(adventure: LobbyAdventureVO): LobbyAdventureVO {
       stages: chapter.stages.map((stage) => ({
         ...stage,
         rewardPreview: [...stage.rewardPreview],
+        firstClearRewards: stage.firstClearRewards?.map((reward) => ({ ...reward })),
       })),
     })),
   };

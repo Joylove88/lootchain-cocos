@@ -119,7 +119,7 @@ const FORGE_ENH_ATTR_ICONS: Record<string, string> = {
   防御力: `${FORGE_REF_DIR}enh_attr_def/spriteFrame`,
   速度: `${FORGE_REF_DIR}enh_attr_spd/spriteFrame`,
   暴击: `${FORGE_REF_DIR}enh_attr_crit/spriteFrame`,
-  强化属性: `${FORGE_REF_DIR}enh_attr_mult/spriteFrame`,
+  强化加成: `${FORGE_REF_DIR}enh_attr_mult/spriteFrame`,
 };
 const FORGE_ENH_FUNNEL = `${FORGE_REF_DIR}enh_ic_funnel/spriteFrame`;
 const FORGE_ENH_SORT = `${FORGE_REF_DIR}enh_ic_sort/spriteFrame`;
@@ -549,7 +549,7 @@ export class LobbyForgePanelRenderer {
   private renderRerollDialog(parent: Node, item: EquipmentItemVO, busy: boolean, panelWidth: number, panelHeight: number, scale: number): void {
     void panelHeight;
     const affixes = item.specialAffixes ?? [];
-    const shell = this.mountForgeDialogShell(parent, 'ForgeRerollDialog', panelWidth, 1000, 640, '词条洗练', scale, () => this.host.closeLobbyForgeRerollDialog());
+    const shell = this.mountForgeDialogShell(parent, 'ForgeRerollDialog', panelWidth, 1000, 640, '词缀洗练', scale, () => this.host.closeLobbyForgeRerollDialog());
     const { dialog, FS, w, h } = shell;
     const PAD = FS(44);
     const q = equipQualityColor(item.quality);
@@ -573,7 +573,7 @@ export class LobbyForgePanelRenderer {
     const rowGap = FS(10);
     let cursor = nameY - FS(40) - rowH / 2;
     if (affixes.length === 0) {
-      const empty = this.host.addChildLabel(dialog, 'ForgeRerollEmpty', '词条生成中,重新打开面板刷新。', 0, cursor, FS(22), rgba(200, 192, 176), new Size(rowW, FS(32)));
+      const empty = this.host.addChildLabel(dialog, 'ForgeRerollEmpty', '词缀生成中,重新打开面板刷新。', 0, cursor, FS(22), rgba(200, 192, 176), new Size(rowW, FS(32)));
       empty.lineHeight = empty.fontSize;
       cursor -= rowH + rowGap;
     }
@@ -608,7 +608,7 @@ export class LobbyForgePanelRenderer {
     const costY = hintY + FS(40);
     const icon = FS(36);
     const costParts: Array<{ icon: string; text: string; ok: boolean }> = [
-      { icon: 'ui/bag/ai/icon_reroll_stone/spriteFrame', text: `洗练石 ×1(持有 ${formatInteger(stoneHeld)})`, ok: stoneHeld >= 1 },
+      { icon: 'ui/bag/ai/icon_reroll_stone/spriteFrame', text: `词缀洗练石 ×1(持有 ${formatInteger(stoneHeld)})`, ok: stoneHeld >= 1 },
       { icon: BAG_ICON_GOLD_ASSET, text: `金币 ×${formatInteger(goldCost)}`, ok: goldHeld >= goldCost },
     ];
     costParts.forEach((part, index) => {
@@ -618,7 +618,7 @@ export class LobbyForgePanelRenderer {
       t.lineHeight = t.fontSize;
       this.applyOutline(t, scale, false);
     });
-    const hint = this.host.addChildLabel(dialog, 'ForgeRerollHint', '整件重随全部词条;特级词条(连击 / 斩杀线等)橙装 10% / 红装 20% 概率', 0, hintY, FS(19), rgba(168, 160, 146), new Size(w - PAD * 2, FS(28)));
+    const hint = this.host.addChildLabel(dialog, 'ForgeRerollHint', '整件重随全部词缀;特级词缀(连击 / 斩杀线等)橙装 10% / 红装 20% 概率', 0, hintY, FS(19), rgba(168, 160, 146), new Size(w - PAD * 2, FS(28)));
     hint.lineHeight = hint.fontSize;
     hint.overflow = Label.Overflow.SHRINK;
     const btn = (bName: string, text: string, x: number, bw: number, item2: RefKitItem, enabled: boolean, onClick: () => void): void => {
@@ -1285,7 +1285,7 @@ export class LobbyForgePanelRenderer {
         const factorNow = 1 + 0.1 * level;
         const factorNext = 1 + 0.1 * (level + 1);
         const rows = attrDefs.slice(0, 2).map((entry) => ({ label: entry.label, cur: formatInteger(Math.round(entry.value * factorNow)), next: formatInteger(Math.round(entry.value * factorNext)) }));
-        rows.push({ label: '强化属性', cur: `×${factorNow.toFixed(1)}`, next: `×${factorNext.toFixed(1)}` });
+        rows.push({ label: '强化加成', cur: `+${level * 10}%`, next: `+${(level + 1) * 10}%` });
         rows.forEach((row, index) => {
           // 原型:行 201..240 / 246..287 / 292..335(高 40 步 45.5),这里行高取 44 留足上下白;图标 1245、名 1287、当前值右缘 1505、箭头 1545、下一级右缘 1612、上箭头框 1677
           const y = QY(228 + index * 46);
@@ -1427,7 +1427,7 @@ export class LobbyForgePanelRenderer {
       const lacking = held < need;
       mountRefSliced(this.host, costBox, `${key}Frame`, FORGE_REF_SLOT_FRAME, cxo(iconX), 0, FS(62), FS(62));
       this.host.addSprite(`${key}Icon`, icon, cxo(iconX), 0, FS(48), FS(48), costBox);
-      label(costBox, `${key}Count`, showHeld ? `${formatInteger(need)} / ${formatInteger(held)}` : formatInteger(need), cxo(iconX + 45), FS(12), FS(22), lacking ? rgba(240, 100, 80) : rgba(252, 248, 236), FS(130), HorizontalTextAlignment.LEFT, true);
+      label(costBox, `${key}Count`, showHeld ? `${formatInteger(held)}/${formatInteger(need)}` : formatInteger(need), cxo(iconX + 45), FS(12), FS(22), lacking ? rgba(240, 100, 80) : rgba(252, 248, 236), FS(130), HorizontalTextAlignment.LEFT, true);
       label(costBox, `${key}Name`, name, cxo(iconX + 45), -FS(16), FS(16), rgba(200, 192, 174), FS(130), HorizontalTextAlignment.LEFT);
     };
     costItem('Stone', 720, usesHighStone ? BAG_ICON_ENHANCE_STONE_HIGH_ASSET : BAG_ICON_ENHANCE_STONE_ASSET, stoneCost, stoneHeldOf(level), usesHighStone ? '高阶强化石' : '强化石', true);
@@ -1443,10 +1443,10 @@ export class LobbyForgePanelRenderer {
     const strikeThen = (action: () => void) => this.playEnhanceStrike(cx + this.bodyOffsetX, FY(380), scale, action);
     const shortfall: string[] = [];
     if (goldHeld < goldCost) {
-      shortfall.push(`金币 ${formatInteger(goldHeld)}/${formatInteger(goldCost)}(还差 ${formatInteger(goldCost - goldHeld)})`);
+      shortfall.push(`金币 还差 ${formatInteger(goldCost - goldHeld)}`);
     }
     if (stoneHeldOf(level) < stoneCost) {
-      shortfall.push(`强化石 ${formatInteger(stoneHeldOf(level))}/${formatInteger(stoneCost)}`);
+      shortfall.push(`${usesHighStone ? '高阶强化石' : '强化石'} ${formatInteger(stoneHeldOf(level))}/${formatInteger(stoneCost)}`);
     }
     if (enhance.useBless && blessHeld < 1) {
       shortfall.push('祝福石不足');
@@ -1485,7 +1485,7 @@ export class LobbyForgePanelRenderer {
     const rerollable = ['PURPLE', 'GOLD', 'RED'].includes((target.quality || '').toUpperCase());
     const reroll = this.host.addChildPlainNode(parent, 'ForgeEnhReroll', FX(645), btnY, FS(180), FS(56));
     mountRefPlate(this.host, reroll, 'Art', REF_ULT.btnSecondary, 0, 0, FS(180), FS(56));
-    const rerollLabel = label(reroll, 'Label', rerollable ? '洗练词条' : '紫装起可洗', 0, FS(1), FS(19), rerollable ? rgba(250, 236, 206) : rgba(176, 166, 150), FS(110), HorizontalTextAlignment.CENTER, true);
+    const rerollLabel = label(reroll, 'Label', rerollable ? '词缀洗练' : '紫装起可洗', 0, FS(1), FS(19), rerollable ? rgba(250, 236, 206) : rgba(176, 166, 150), FS(110), HorizontalTextAlignment.CENTER, true);
     fitButtonLabel(rerollLabel, FS(56), 0.36);
     if (rerollable && !state.busy) {
       reroll.addComponent(Button);

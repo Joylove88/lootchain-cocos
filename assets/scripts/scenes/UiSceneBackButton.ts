@@ -238,6 +238,7 @@ const TOP_CURRENCY_SOURCE: Record<string, { key: string; name: string }> = {
   rune: { key: 'ENHANCE_GUARD_RUNE', name: '强化护符' },
   core: { key: 'GUARD_CORE', name: '守卫晶核' },
   books: { key: 'HERO_EXP_BOOK', name: '英雄经验书' },
+  bound: { key: 'BOUND_DIAMOND', name: '绑钻' },
 };
 
 /** 顶栏货币显示文字:纯数字(含千分位逗号)转大厅同款短格式(4.9M / 125.3K),其余原样。 */

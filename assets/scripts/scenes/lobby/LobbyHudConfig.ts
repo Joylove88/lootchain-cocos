@@ -14,8 +14,8 @@ import {
 export const LOBBY_SYSTEM_ICONS: LobbySystemIconKey[] = ['menu'];
 
 export const LOBBY_ACTIVITY_ITEMS: LobbyActivityItemConfig[] = [
-  { icon: 'event', title: '限时副本', subline: '每日轮换', hot: false },
-  { icon: 'summon', title: '深渊召唤', subline: '真实召唤', hot: false },
+  { icon: 'event', title: '每日副本', subline: '每日轮换', hot: false },
+  { icon: 'summon', title: '圣契召唤', subline: '英雄与装备召唤', hot: false },
   // 2026-09-25 占位清理:圣契之路 / 黑市 / 首充礼包 未实装,先下架,做好再放回。
 ];
 

@@ -470,7 +470,11 @@ export class LobbyAdventurePanelRenderer {
     this.addDetailLine(panel, 'LobbyAdventureEnemy', `敌方：${safeText(stage.enemySummary)}`, 0, height / 2 - 198 * scale, width, scale);
     const rewardTitle = this.host.addChildLabel(panel, 'LobbyAdventureRewardTitle', this.stageRewardTitle(stage), -width / 2 + 20 * scale, height / 2 - 234 * scale, 18 * scale, rgba(221, 173, 85), new Size(width - 40 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     rewardTitle.overflow = Label.Overflow.SHRINK;
-    const rewards = stage.rewardPreview.length > 0 ? stage.rewardPreview : ['当前阶段不发放奖励；仅展示关卡配置占位'];
+    // docs/45 §13:与结算同源的首通奖励带数量;旧服务端回退名字列表;没有奖励如实写
+    const sourced = stage.firstClearRewards ?? [];
+    const rewards = sourced.length > 0
+      ? sourced.map((reward) => `${reward.resourceName} ×${Math.round(reward.amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`)
+      : stage.rewardPreview.length > 0 ? stage.rewardPreview : ['本层无首通奖励'];
     rewards.slice(0, 4).forEach((reward, index) => {
       this.addDetailLine(panel, `LobbyAdventureReward_${index}`, `· ${safeText(reward)}`, 0, height / 2 - (262 + index * 24) * scale, width, scale);
     });

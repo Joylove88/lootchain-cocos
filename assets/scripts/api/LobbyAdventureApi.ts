@@ -79,6 +79,15 @@ function normalizeStage(item: unknown): LobbyAdventureStageVO | null {
     recommendedPower: readInteger(item.recommendedPower, 0, Number.MAX_SAFE_INTEGER),
     enemySummary: readText(item, 'enemySummary', 180, '敌情待确认'),
     rewardPreview: sanitizeTextArray(readArray(item, 'rewardPreview', MAX_REWARD_PREVIEW), 64),
+    firstClearRewards: readArray(item, 'firstClearRewards', 8)
+      .filter(isRecord)
+      .map((reward) => ({
+        resourceType: readText(reward, 'resourceType', 24, ''),
+        resourceCode: readText(reward, 'resourceCode', 64, ''),
+        resourceName: readText(reward, 'resourceName', 32, ''),
+        amount: Number(reward.amount) || 0,
+      }))
+      .filter((reward) => reward.resourceName && reward.amount > 0 && !reward.resourceCode.toUpperCase().includes('EX_')),
     statusLabel: readText(item, 'statusLabel', 32, item.unlocked === true ? '可预览' : '锁定'),
     unlockHint: readText(item, 'unlockHint', 120, item.unlocked === true ? '已达成进入条件' : '暂未满足进入条件'),
     lockReasonCode: readText(item, 'lockReasonCode', 32, item.unlocked === true ? 'NONE' : 'PROGRESS_REQUIRED'),

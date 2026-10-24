@@ -128,7 +128,7 @@ export const GACHA_SUMMON_VIDEO_FALLBACK_SECONDS = 5.5;
 
 // 当前为抽奖系统视觉预览配置，所有数据都只在客户端展示，不代表真实卡池概率或奖励。
 export const GACHA_PREVIEW_POOLS: GachaPreviewPool[] = [
-  { id: 'limited', title: '暗渊之主', subline: '限定召唤预览', rarity: 'SSR', active: true, locked: false },
+  { id: 'limited', title: '暗渊之主', subline: 'UP 英雄概率提升', rarity: 'SSR', active: true, locked: false },
   { id: 'hero', title: '永夜祭司', subline: '英雄召唤预览', rarity: 'SR', active: false, locked: false },
   { id: 'normal', title: '亡语者', subline: '普通召唤预览', rarity: 'R', active: false, locked: false },
 ];

@@ -610,10 +610,21 @@ export class LobbyGuardCrystalDialogRenderer {
       if (next) {
         const nextValue = row.read(next);
         const changed = nextValue !== curValue;
+        if (!changed) {
+          // docs/45 §26:不变行只留当前值,箭头 / 下一级 / 增量三列合成一个灰字,一眼看出本级升了哪几项
+          const same = this.host.addChildLabel(panel, `LobbyGuardCrystalRowSame${row.key}`, '本级不变', (colArrow + colDelta) / 2, y, FONT.small * scale, DIM_TEXT, new Size(Math.abs(colDelta - colArrow) + 80 * scale, this.lh(22, scale)));
+          same.overflow = Label.Overflow.SHRINK;
+          return;
+        }
+        // 有提升的行:左缘 4px 金色竖条
+        const bar = this.host.addChildPlainNode(panel, `LobbyGuardCrystalRowMark${row.key}`, left + 13 * scale, y, 4 * scale, rowH * 0.62).addComponent(Graphics);
+        bar.fillColor = rgba(236, 192, 96, 240);
+        bar.roundRect(-2 * scale, -rowH * 0.31, 4 * scale, rowH * 0.62, 2 * scale);
+        bar.fill();
         this.host.addChildLabel(panel, `LobbyGuardCrystalRowArrow${row.key}`, '→', colArrow, y, FONT.body * scale, DIM_TEXT, new Size(40 * scale, 26 * scale));
-        const nextLabel = this.host.addChildLabel(panel, `LobbyGuardCrystalRowNext${row.key}`, row.fmt(nextValue), colNext, y, FONT.value * scale, changed ? GREEN_TEXT : DIM_TEXT, new Size(120 * scale, 26 * scale));
-        nextLabel.isBold = changed;
-        this.host.addChildLabel(panel, `LobbyGuardCrystalRowDelta${row.key}`, changed ? `(${row.delta(nextValue - curValue)})` : '(—)', colDelta, y, FONT.small * scale, changed ? GREEN_TEXT : DIM_TEXT, new Size(80 * scale, this.lh(22, scale)));
+        const nextLabel = this.host.addChildLabel(panel, `LobbyGuardCrystalRowNext${row.key}`, row.fmt(nextValue), colNext, y, FONT.value * scale, GREEN_TEXT, new Size(120 * scale, 26 * scale));
+        nextLabel.isBold = true;
+        this.host.addChildLabel(panel, `LobbyGuardCrystalRowDelta${row.key}`, `(${row.delta(nextValue - curValue)})`, colDelta, y, FONT.small * scale, GREEN_TEXT, new Size(80 * scale, this.lh(22, scale)));
       }
     });
   }

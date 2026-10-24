@@ -9,6 +9,8 @@ export interface LobbyAdventureStageVO {
   recommendedPower: number;
   enemySummary: string;
   rewardPreview: string[];
+  /** 首通奖励(与结算同源,带数量;docs/45 §13)。旧服务端缺省,回退 rewardPreview 名字列表。 */
+  firstClearRewards?: LobbyAdventureRewardItemVO[];
   statusLabel: string;
   unlockHint: string;
   lockReasonCode: 'NONE' | 'LEVEL_REQUIRED' | 'PROGRESS_REQUIRED' | 'PHASE_LOCKED' | string;
@@ -21,6 +23,14 @@ export interface LobbyAdventureStageVO {
   growthSourceStatus: string;
   growthSourceHint: string;
   repeatableExpAvailable: boolean;
+}
+
+/** 冒险首通奖励一项。 */
+export interface LobbyAdventureRewardItemVO {
+  resourceType: string;
+  resourceCode: string;
+  resourceName: string;
+  amount: number;
 }
 
 /** 大厅爬塔章节只读展示项。 */

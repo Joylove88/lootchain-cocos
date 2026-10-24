@@ -112,6 +112,7 @@ import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/Lobby
 import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFormationPowerSnapshot } from './lobby/LobbyFormationPanelRenderer';
 import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
 import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
+import { openConfirmPopup } from './lobby/ConfirmPopup';
 import type { ItemSourceTarget } from './lobby/ItemSourceRoutes';
 import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
@@ -2502,10 +2503,10 @@ export class LootChainGameRoot extends Component {
       this.lobbyEquipmentItems = equipItems;
       powerDelta = this.lobbyHeroPowerById(equipHeroId) - beforePower;
       const names = (result.item.specialAffixes ?? []).map((affix) => `${affix.special ? '★' : ''}${affix.name}+${affix.value}${affix.percent ? '%' : ''}`).join(' / ');
-      this.setStatus(`洗练完成：${result.item.equipName} → ${names || '无词条'}`);
+      this.setStatus(`洗练完成：${result.item.equipName} → ${names || '无词缀'}`);
       if (this.currentView === 'forge') {
         // 洗练弹窗里直接看得到新词条:特效对准弹窗中部、不叠文字牌
-        this.lobbyForgePanelRenderer.spawnForgeFlash(true, '洗练完成 · 词条已刷新', 'reroll', { plate: false, sizeMult: 1.3 });
+        this.lobbyForgePanelRenderer.spawnForgeFlash(true, '洗练完成 · 词缀已刷新', 'reroll', { plate: false, sizeMult: 1.3 });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2577,6 +2578,9 @@ export class LootChainGameRoot extends Component {
         return;
       case 'idle':
         this.returnToLobbyFromScenePage();
+        return;
+      case 'codex':
+        this.openLobbyCodexPanel();
         return;
     }
   }
@@ -4189,7 +4193,7 @@ export class LootChainGameRoot extends Component {
     } else {
       // 服务端约束:最多锁到剩 1 条可随机;客户端同步限制,超限提示。
       if (this.lobbyHeroRefineLockedIds.size >= Math.max(0, affixes.length - 1)) {
-        this.setStatus('需保留至少 1 条词条可洗练。');
+        this.setStatus('需保留至少 1 条特性可洗练。');
         return;
       }
       this.lobbyHeroRefineLockedIds.add(attrId);
@@ -4225,7 +4229,7 @@ export class LootChainGameRoot extends Component {
       const powerDelta = result.power - beforePower;
       const deltaText = powerDelta === 0 ? '' : powerDelta > 0 ? `（+${this.formatInteger(powerDelta)}）` : `（${this.formatInteger(powerDelta)}）`;
       gameAudio.sfx('forge_success');
-      this.setStatus(`${heroName} 洗练完成：战力 ${this.formatInteger(result.power)}${deltaText}，锁定 ${lockedIds.length} 条词条已保留。`);
+      this.setStatus(`${heroName} 洗练完成：战力 ${this.formatInteger(result.power)}${deltaText}，锁定 ${lockedIds.length} 条特性已保留。`);
       const userId = this.currentLobbyProfile().userId;
       // 回读并行(互不依赖;2026-10-16 卡顿优化,原先逐个串行等待)
       await Promise.all([
@@ -4747,6 +4751,31 @@ export class LootChainGameRoot extends Component {
 
   private equipLobbyHeroEquipment(equipmentId: number): void {
     void this.runLobbyHeroEquipMutation(equipmentId, 'equip');
+  }
+
+  /** 名册里的英雄简要(装备角标头像 / 转移确认用);EX / 查不到返回 null。 */
+  private lobbyHeroBriefById(heroId: number): { heroCode: string; heroName: string } | null {
+    const hero = this.lobbyHeroRosterLoader.currentState().heroes.find((item) => item.id === heroId);
+    return hero ? { heroCode: hero.heroCode, heroName: hero.heroName } : null;
+  }
+
+  /** 把穿在别的英雄身上的装备转给当前英雄:先确认(docs/45 §17),对方该部位会空出。 */
+  private transferLobbyHeroEquipment(equipmentId: number): void {
+    const item = this.lobbyEquipmentItems.find((entry) => entry.id === equipmentId);
+    const target = this.currentLobbyHeroDetailHero();
+    const owner = item?.heroId != null ? this.lobbyHeroBriefById(item.heroId) : null;
+    if (!item || !target || !owner) {
+      this.equipLobbyHeroEquipment(equipmentId);
+      return;
+    }
+    openConfirmPopup(this as unknown as Parameters<typeof openConfirmPopup>[0], this.ensureContentRoot(), {
+      title: '转移装备',
+      message: `「${item.equipName}」正穿在 ${owner.heroName} 身上,
+转移后对方该部位会空出。
+确定转移给 ${target.heroName}?`,
+      confirmText: '转移',
+      onConfirm: () => this.equipLobbyHeroEquipment(equipmentId),
+    });
   }
 
   private unequipLobbyHeroEquipment(equipmentId: number): void {
@@ -5587,9 +5616,33 @@ export class LootChainGameRoot extends Component {
           return;
         }
         const pending = this.pendingGachaDraw;
-        const message = error instanceof Error ? error.message : String(error);
+        const pool = this.gachaSceneState.pools.find((item) => item.poolCode === pending.poolCode);
+        const raw = error instanceof Error ? error.message : String(error);
+        const message = pool ? this.friendlyGachaCostError(pool, pending.drawCount, raw) : raw;
         this.presentPendingGachaDrawFailure(ticket, message);
       });
+  }
+
+  /**
+   * 服务端扣费失败只回"余额不足或货币账户并发更新失败";按卡池货币改成玩家能看懂的话(docs/45 §14),
+   * 绑钻不足时顺带弹获取途径(图鉴激活英雄)。
+   */
+  private friendlyGachaCostError(pool: GachaPreviewPool, drawCount: 1 | 10, raw: string): string {
+    if (!/余额不足/.test(raw)) {
+      return raw;
+    }
+    const profile = this.currentLobbyProfile();
+    const codes = [pool.backupCostCode, pool.primaryCostCode, pool.costCode].map((code) => (code ?? '').toUpperCase());
+    const need = drawCount === 10 ? (pool.backupTenCost ?? pool.tenCost) : (pool.backupSingleCost ?? pool.singleCost);
+    if (codes.indexOf('BOUND_DIAMOND') >= 0) {
+      const held = Math.floor(Number(profile.boundDiamond ?? 0) || 0);
+      this.openItemSourcePopup({ key: 'BOUND_DIAMOND', name: '绑钻', owned: held, need: Number(need) || undefined });
+      return `绑钻不足${need != null ? `:需要 ${need},当前 ${held}` : ''}。绑钻可通过图鉴激活英雄获得`;
+    }
+    if (codes.indexOf('DIAMOND') >= 0) {
+      return `钻石不足${need != null ? `:需要 ${need}` : ''}`;
+    }
+    return raw;
   }
 
   private presentPendingGachaDrawVideo(ticket: number): void {

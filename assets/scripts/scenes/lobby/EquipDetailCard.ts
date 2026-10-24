@@ -222,7 +222,7 @@ export function renderEquipDetailCard(host: EquipCardHost, parent: Node, item: E
     for (let i = 0; i < affixSlotCount; i += 1) {
       host.addSprite('CardAffixBullet', `ui/equip/ic_affix_t${Math.max(1, tierIndex)}/spriteFrame`, -w / 2 + 44 * scale, cursor, 15 * scale, 17 * scale, tip);
       const tc = tierColors[tierIndex];
-      const row = host.addChildLabel(tip, 'CardAffixRow', `未觉醒词条 · 洗练可至${equipQualityLabel(item.quality).replace('装', '')}档`, -w / 2 + 60 * scale, cursor, 17 * scale, rgba(tc.r, tc.g, tc.b, 190), new Size(w - 90 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
+      const row = host.addChildLabel(tip, 'CardAffixRow', `未觉醒词缀 · 洗练可至${equipQualityLabel(item.quality).replace('装', '')}档`, -w / 2 + 60 * scale, cursor, 17 * scale, rgba(tc.r, tc.g, tc.b, 190), new Size(w - 90 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
       row.overflow = Label.Overflow.SHRINK;
       cursor -= 26 * scale;
     }

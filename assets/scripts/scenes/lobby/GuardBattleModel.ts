@@ -2074,7 +2074,7 @@ function guardDescribeWhite(state: GuardBattleState, id: GuardWhitePerkId): { ti
     case 'gen_team_atk': return { title: `全队攻击 +${value}%`, detail: '立即生效,可叠加' };
     case 'gen_team_aspd': return { title: `全队攻速 +${value}%`, detail: '缩短出手间隔,可叠加' };
     case 'gen_gold_gain': return { title: `金币获取 +${value}%`, detail: '击杀金币加成,可叠加' };
-    case 'gen_summon_discount': return { title: `召唤费 -${value}`, detail: '召唤更便宜(下限 30)' };
+    case 'gen_summon_discount': return { title: `招募费 -${value}`, detail: '招募更便宜(下限 30)' };
     case 'gen_thorns': return { title: `水晶荆棘 +${value}%`, detail: '啃水晶的怪反伤更痛,可叠加' };
     default: return { title: `水晶修复 ${value}%`, detail: '立即回复水晶生命' };
   }
@@ -2334,7 +2334,7 @@ function guardOpenChestImpl(state: GuardBattleState, chestId: number, scriptTier
       const unit = guardSummonImpl(state, true);
       const unitName = unit ? state.pool.find((entry) => entry.heroCode === unit.heroCode)?.displayName ?? unit.heroCode : '';
       rewards.push(unit
-        ? { kind: 'summon', amount: 1, label: `免费召唤:${unitName}` }
+        ? { kind: 'summon', amount: 1, label: `免费招募:${unitName}` }
         : { kind: 'gold', amount: 100, label: '阵地已满 → 金币 +100' });
       if (!unit) {
         state.gold += 100;

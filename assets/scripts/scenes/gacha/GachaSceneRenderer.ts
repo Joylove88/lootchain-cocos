@@ -365,8 +365,9 @@ export class GachaSceneRenderer {
     renderSceneBackButton(this.host, parent, layout, backName, onBack, scale, titleText);
 
     const profile = this.host.currentLobbyProfile();
-    // 召唤页顶部只展示召唤相关通货(钻石);样式走全局统一货币胶囊(背包基准)。
+    // 召唤页顶部只展示召唤相关通货:绑钻(普通召唤消耗,docs/45 §14)+ 钻石;样式走全局统一货币胶囊(背包基准)。
     renderTopCurrencyBar(this.host, parent, layout.stageRight, layout.stageTop, scale, [
+      { key: 'bound', icon: 'ui/bag/ai/icon_bound_diamond/spriteFrame', value: compactValue(profile.boundDiamond) },
       { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: compactValue(profile.diamond) },
     ], 130);
   }
@@ -1283,8 +1284,8 @@ export class GachaSceneRenderer {
     }
     const left = Math.max(0, priority.pityCount - priority.counter);
     const rarityText = isEquipPool
-      ? (priority.rarity === 'UR' ? '炽红神话装备' : priority.rarity === 'SSR' ? '橙色传说装备' : priority.rarity === 'SR' ? '紫色史诗装备' : `${priority.rarity} 级装备`)
-      : (priority.rarity === 'UR' ? '神话英雄' : priority.rarity === 'SSR' ? '传说英雄' : `${priority.rarity}英雄`);
+      ? (priority.rarity === 'UR' ? '红装' : priority.rarity === 'SSR' ? '橙装' : priority.rarity === 'SR' ? '紫装' : `${priority.rarity} 级装备`)
+      : `${priority.rarity} 英雄`;
     return `再召唤 ${left} 次必得 ${rarityText}`;
   }
 
@@ -1488,6 +1489,7 @@ export class GachaSceneRenderer {
     const tenCost = this.resolveSummonCostText(selectedPool, 'ten');
     this.renderSummonButton(parent, layout, 'once', 'GachaSummonOnceButton', freeSingle ? '免费召唤' : selectedPool.buttonSingleText ?? '召唤1次', singleCost, onceX, y, buttonWidth, buttonHeight, scale, false, selectedPool, state);
     this.renderSummonButton(parent, layout, 'ten', 'GachaSummonTenButton', selectedPool.buttonTenText ?? '召唤10次', tenCost, tenX, y, buttonWidth, buttonHeight, scale, true, selectedPool, state);
+    // 扣费顺序说明在顶部卡池公告(notice_text)里已有,这里不再重复(docs/45 §14,sql/140 补"不会消耗钻石")
     // 「跳过动画」:有概率提升卡时放在卡正上方(右对齐),没有时放右下角;不再和十连按钮右侧的卡重叠
     const toggleW = 168 * scale;
     const toggleH = 46 * scale;
@@ -1555,13 +1557,13 @@ export class GachaSceneRenderer {
   private costCodeLabel(costCode: string | null | undefined): string {
     const code = (costCode ?? '').toUpperCase();
     if (code === 'LIMITED_CONTRACT_TICKET') {
-      return '限定券';
+      return '限定契约券';
     }
     if (code === 'HERO_CONTRACT_TICKET') {
-      return '英雄券';
+      return '英雄契约券';
     }
     if (code === 'NORMAL_CONTRACT_TICKET') {
-      return '普通券';
+      return '普通契约券';
     }
     if (code === 'BOUND_DIAMOND') {
       return '绑钻';
@@ -1633,7 +1635,7 @@ export class GachaSceneRenderer {
     parts.forEach((part, index) => {
       const cx = centers[index];
       const isFreeText = part.includes('免费');
-      const iconAsset = part.includes('券') ? GACHA_COST_TICKET_ICON_ASSET : part.includes('金币') ? GACHA_COST_GOLD_ICON_ASSET : GACHA_COST_DIAMOND_ICON_ASSET;
+      const iconAsset = part.includes('券') ? GACHA_COST_TICKET_ICON_ASSET : part.includes('金币') ? GACHA_COST_GOLD_ICON_ASSET : part.includes('绑钻') ? 'ui/bag/ai/icon_bound_diamond/spriteFrame' : GACHA_COST_DIAMOND_ICON_ASSET;
       // 估宽:CJK 全宽、数字符号半宽,用于图标贴文字左缘。
       let est = 0;
       for (const ch of part) {
@@ -2486,8 +2488,8 @@ export class GachaSceneRenderer {
       ENHANCE_STONE: '锻造强化装备的基础材料（+1 至 +10）。',
       ENHANCE_STONE_HIGH: '+10 以上强化所需的高阶强化材料。',
       HERO_EXP_BOOK: '英雄升级经验书，在英雄详情升级页消耗。',
-      DEEP_REFORGE_STONE: '英雄词条洗练（重铸）消耗的深渊重铸石。',
-      EQUIP_REROLL_STONE: '装备词条洗练材料（后续版本开放）。',
+      DEEP_REFORGE_STONE: '英雄特性洗练消耗的深渊重铸石。',
+      EQUIP_REROLL_STONE: '装备词缀洗练材料（锻造工坊词缀洗练）。',
       FUSION_LUCK_STONE: '装备合成成功率 +20%（锻造工坊合成页勾选）。',
       ENHANCE_BLESS_STONE: '强化成功率 +20%（锻造工坊强化页勾选）。',
       ENHANCE_GUARD_RUNE: '强化失败不掉级的守护符（锻造工坊强化页勾选）。',

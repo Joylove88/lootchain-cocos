@@ -41,6 +41,7 @@ import { lobbyGuide, type GuideFlag } from '../../guide/GuideManager';
 import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
+import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday } from './ItemSourceRoutes';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
@@ -1053,7 +1054,7 @@ export class LobbyHudRenderer {
     if (floor > 0) {
       return `第 ${floor} 层`;
     }
-    return /^DAILY_/i.test(stageCode.trim()) ? '限时副本' : '冒险关卡';
+    return /^DAILY_/i.test(stageCode.trim()) ? '每日副本' : '冒险关卡';
   }
 
   /** 给其它面板(如"更多"里的最近战报)用的关卡称呼:爬塔关带"深渊爬塔"前缀。 */
@@ -1208,7 +1209,7 @@ export class LobbyHudRenderer {
     group.addComponent(UITransform).setContentSize(new Size(itemWidth, totalHeight));
     let cursorY = totalHeight / 2 - itemHeight / 2;
     for (const item of items) {
-      this.addLobbyActivityItem(group, item.icon, item.title, item.subline, item.hot || this.activityBadge(item.icon), 0, cursorY, itemWidth, itemHeight, scale);
+      this.addLobbyActivityItem(group, item.icon, item.title, this.activitySubline(item.icon, item.subline), item.hot || this.activityBadge(item.icon), 0, cursorY, itemWidth, itemHeight, scale);
       cursorY -= itemHeight + gap;
     }
   }
@@ -1768,6 +1769,24 @@ export class LobbyHudRenderer {
     graphics.lineTo(-width / 2, -height / 2 + 15 * scale + yOffset);
     graphics.lineTo(-width / 2 + 4 * scale, height / 2 - 8 * scale + yOffset);
     graphics.close();
+  }
+
+  /** 活动栏副标题(docs/45 §22 / §28):每日副本写今日开放主题;圣契召唤有免费单抽时写"今日免费 1 次"。 */
+  private activitySubline(icon: string, fallback: string): string {
+    if (icon === 'event') {
+      const open = (Object.keys(DAILY_THEME_OPEN_DAYS) as Array<keyof typeof DAILY_THEME_OPEN_DAYS>).filter((theme) => dailyThemeOpenToday(theme));
+      if (open.length >= 4) {
+        return '今日全部开放';
+      }
+      if (open.length > 0) {
+        return `今日:${open.map((theme) => open.length > 1 ? DAILY_THEME_OPEN_DAYS[theme].name.slice(0, 2) : DAILY_THEME_OPEN_DAYS[theme].name).join(' · ')}`;
+      }
+      return fallback;
+    }
+    if (icon === 'summon') {
+      return this.host.currentLobbyBadges?.()?.gachaFree ? '今日免费 1 次' : fallback;
+    }
+    return fallback;
   }
 
   private lobbyStateBadgeText(subline: string): string {
