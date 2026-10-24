@@ -30,7 +30,10 @@ export interface PlayerLobbyProfileVO {
   diamond?: DecimalValue | null;
   /** 矿晶(打金结算积分,docs/27 P金-1a)。 */
   sacredCrystal?: DecimalValue | null;
+  /** 英雄总战力(全部英雄之和,只做展示)。 */
   combatPower: number;
+  /** 阵容战力(冒险编队前 4 人,与推荐战力同口径;docs/45 §4)。旧服务端缺省。 */
+  lineupPower?: number | null;
   status?: number | null;
   accountStatus: string;
   walletBound: boolean;

@@ -216,7 +216,8 @@ export class LobbyAdventurePanelRenderer {
     const title = this.host.addChildLabel(card, 'LobbyAdventureMapActionTitle', safeText(stage.stageName), 0, cardHeight / 2 - 26 * scale, 24 * scale, rgba(248, 219, 151), new Size(cardWidth - 36 * scale, 30 * scale));
     title.overflow = Label.Overflow.SHRINK;
     this.applyOutline(title, scale, true);
-    const powerLine = this.host.addChildLabel(card, 'LobbyAdventureMapActionPower', this.stagePowerLine(stage), 0, cardHeight / 2 - 52 * scale, 16 * scale, rgba(206, 186, 140), new Size(cardWidth - 36 * scale, 22 * scale));
+    const powerStatus = this.stagePowerStatus(stage);
+    const powerLine = this.host.addChildLabel(card, 'LobbyAdventureMapActionPower', powerStatus.text, 0, cardHeight / 2 - 52 * scale, 16 * scale, powerStatus.color, new Size(cardWidth - 36 * scale, 22 * scale));
     powerLine.overflow = Label.Overflow.SHRINK;
     const buttonWidth = Math.min(210 * scale, cardWidth - 40 * scale);
     const action = this.resolveStageAction(stage);
@@ -564,17 +565,30 @@ export class LobbyAdventurePanelRenderer {
   }
 
   private stagePowerLine(stage: LobbyAdventureStageVO): string {
+    return this.stagePowerStatus(stage).text;
+  }
+
+  /**
+   * 阵容战力三档(docs/45 §23,2026-10-25 策划审核 P2-12):≥ 推荐 = 可挑战(绿);闸门 ~ 推荐 = 可挑战(偏难)(琥珀);
+   * 低于闸门 = 战力不足(红)。原来"还差 N"让玩家以为进不去,实际 40% 就能开战。
+   */
+  private stagePowerStatus(stage: LobbyAdventureStageVO): { text: string; color: Color } {
     const power = this.host.currentLobbyFormationPowerSnapshot(stage.stageCode);
+    const neutral = rgba(206, 186, 140);
     if (!power.rosterLoaded) {
-      return `战力：推荐 ${formatInteger(stage.recommendedPower)}；英雄队列读取中`;
+      return { text: `推荐战力 ${formatInteger(stage.recommendedPower)} · 英雄读取中`, color: neutral };
     }
     if (power.recommendedPower <= 0) {
-      return `战力：当前阵容 ${formatInteger(power.currentPower)}；推荐战力读取中`;
+      return { text: `阵容战力 ${formatInteger(power.currentPower)} · 推荐战力读取中`, color: neutral };
     }
+    const head = `推荐战力 ${formatInteger(power.recommendedPower)} · 当前 ${formatInteger(power.currentPower)}`;
     if (power.enough) {
-      return `战力：当前阵容 ${formatInteger(power.currentPower)} / 推荐 ${formatInteger(power.recommendedPower)}，达标`;
+      return { text: `${head} · 可挑战`, color: rgba(140, 220, 120) };
     }
-    return `战力：当前阵容 ${formatInteger(power.currentPower)} / 推荐 ${formatInteger(power.recommendedPower)}，还差 ${formatInteger(power.powerGap)}`;
+    if (power.canChallenge) {
+      return { text: `${head} · 可挑战(偏难)`, color: rgba(255, 200, 110) };
+    }
+    return { text: `战力不足:至少需要 ${formatInteger(power.minPower)} 才能挑战`, color: rgba(255, 110, 96) };
   }
 
   private stageRewardTitle(stage: LobbyAdventureStageVO): string {
@@ -596,7 +610,7 @@ export class LobbyAdventurePanelRenderer {
       if (!power.rosterLoaded) {
         return '读取英雄';
       }
-      return power.enough ? '编队确认' : '去升级英雄';
+      return power.canChallenge ? '编队确认' : '去升级英雄';
     }
     if (stage.unlocked || stage.lockReasonCode === 'PHASE_LOCKED' || stage.growthSourceStatus === 'FIRST_CLEAR_USED_UP') {
       return '仅预览';
@@ -615,7 +629,8 @@ export class LobbyAdventurePanelRenderer {
     if (!power.rosterLoaded) {
       return { label: '读取英雄', enabled: false, kind: 'disabled' };
     }
-    if (!power.enough) {
+    // 低于开战软闸才拦(服务端同口径);40%~100% 可以挑战,只是偏难
+    if (!power.canChallenge) {
       return { label: '去升级英雄', enabled: true, kind: 'upgrade' };
     }
     return { label: '编队确认', enabled: true, kind: 'formation' };

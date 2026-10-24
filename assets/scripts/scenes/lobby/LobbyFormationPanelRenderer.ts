@@ -155,6 +155,9 @@ export interface LobbyFormationPowerSnapshot {
   recommendedPower: number;
   powerGap: number;
   enough: boolean;
+  /** 开战软闸(docs/45 §23):阵容战力 ≥ 推荐 × powerGateRatio 才能开战;minPower = 闸门值。 */
+  canChallenge: boolean;
+  minPower: number;
   rosterLoaded: boolean;
   selectedCount: number;
 }

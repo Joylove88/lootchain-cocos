@@ -23,7 +23,10 @@ export type GuideStep =
   | 'CLAIM'
   | 'DONE';
 
-type GuideFlag = 'summon' | 'draw' | 'hero' | 'herocard' | 'levelup' | 'quest' | 'claim';
+export type GuideFlag =
+  | 'summon' | 'draw' | 'hero' | 'herocard' | 'levelup' | 'quest' | 'claim'
+  // 2026-10-25 策划审核 P1-22(docs/45 §15):冒险前 3 层局内各教一个操作 + 局外软引导,各自只出一次
+  | 'battleMerge' | 'battlePerk' | 'battleSpell' | 'formation' | 'equip' | 'daily' | 'crystal';
 
 class LobbyGuideManager {
   private userId = 0;
@@ -74,6 +77,11 @@ class LobbyGuideManager {
       return 'CLAIM';
     }
     return 'DONE';
+  }
+
+  /** 软引导 / 局内引导是否已出过(未绑定玩家时按已完成,不打扰)。 */
+  isDone(flag: GuideFlag): boolean {
+    return this.userId <= 0 || this.visited(flag);
   }
 
   /** 当前是否处于免费单抽引导步(gacha 页自动选中免费池用)。 */

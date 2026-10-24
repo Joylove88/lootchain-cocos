@@ -46,7 +46,7 @@ import { patchBattleUnitSpineRuntimeEnums, type BattleUnitSpineRuntimeData } fro
 import { loadSharedSpineData } from './SpineDataStore';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, resolveHeroRosterArtPath } from './HeroHeadCrop';
-import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, resolveHeroCombatSources, type HeroCombatStatSource } from './HeroCombatStats';
+import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
@@ -218,10 +218,22 @@ function estimateTextWidth(text: string, fontSize: number): number {
   return w;
 }
 
+/** 消耗项的获取途径(docs/45 §6):不足时点它弹获取途径小窗。 */
+interface HeroCostSource {
+  key: string;
+  name: string;
+  rarity?: string;
+  owned?: number;
+  need?: number;
+  note?: string;
+}
+
 interface HeroDockCostView {
   title: string;
-  costs: { icon: string; text: string; lack: boolean }[];
+  costs: { icon: string; text: string; lack: boolean; source?: HeroCostSource }[];
   hint: string;
+  /** 整个消耗框可点的获取途径(等级上限:去冒险提升玩家等级)。 */
+  boxSource?: HeroCostSource;
   /** 'cap' = 已到上限(按钮置灰不可点);'lack' = 材料不足(按钮压暗,仍可点,由服务器回提示)。 */
   blocked?: 'cap' | 'lack';
 }
@@ -270,6 +282,8 @@ const HERO_DETAIL_SPINE_RUNTIME_RETRY_DELAYS_MS = [180, 420, 900];
 export interface HeroDetailAttribute {
   label: string;
   value: string;
+  /** 合计高于基础(装备 / 特性在生效):主面板数字标浅绿。 */
+  boosted?: boolean;
 }
 
 export interface HeroDetailSkill {
@@ -360,6 +374,8 @@ function formatAwakenAmount(value: number): string {
 }
 
 export interface LobbyHeroDetailPanelHost {
+  /** 获取途径小窗(docs/45 §6-7)。 */
+  openItemSourcePopup?(options: HeroCostSource): void;
   node: Node;
   currentLobbyHeroDetailHero(): LobbyHeroItemVO | null;
   /** 刚完成的养成动作(升星 / 觉醒 / 升级),渲染层播一次庆祝特效后即清空(docs/29 v3)。 */
@@ -706,7 +722,7 @@ export class LobbyHeroDetailPanelRenderer {
     setText(this.findInDetail('LobbyHeroDetailPower'), `战力 ${formatInteger(hero.power)}`);
     const grid = this.findInDetail('LobbyHeroDetailAttributeGrid');
     if (grid) {
-      resolveAttributes(hero).slice(0, 6).forEach((attr, index) => {
+      resolveAttributeTotals(hero, this.host.currentLobbyHeroEquipState().items).slice(0, 6).forEach((attr, index) => {
         setText(grid.getChildByName(`LobbyHeroDetailAttribute_${index}`)?.getChildByName('LobbyHeroDetailAttributeValue') ?? null, attr.value);
       });
     }
@@ -2036,7 +2052,7 @@ export class LobbyHeroDetailPanelRenderer {
     const shardIcon = `ui/bag/ai/icon_shard_${['r', 'sr', 'ssr', 'ur'].includes(shardTier) ? shardTier : 'n'}/spriteFrame`;
     renderTopCurrencyBar(this.host, parent, width / 2, height / 2, scale, [
       { key: 'gold', icon: 'ui/bag/ai/icon_gold/spriteFrame', value: formatDecimalValue(starProfile.gold) },
-      { key: 'shard', icon: shardIcon, value: formatInteger(starFragOwned) },
+      { key: 'shard', icon: shardIcon, value: formatInteger(starFragOwned), source: { key: `FRAGMENT:${(hero.heroCode || '').toUpperCase()}`, name: `${hero.heroName}碎片`, rarity: hero.rarity || '' } },
     ], 130);
   }
 
@@ -2984,7 +3000,7 @@ export class LobbyHeroDetailPanelRenderer {
     // 区块标题:星徽 + 基础属性 + 右侧"属性详情"按钮(参考图2)。
     const phone = !!this.phoneFrame;
     const attrTitleY = height / 2 - (phone ? 29 : 40) * scale;
-    this.addSectionTitle(panel, 'LobbyHeroDetailAttrSection', '基础属性', width, attrTitleY, scale);
+    this.addSectionTitle(panel, 'LobbyHeroDetailAttrSection', '属性', width, attrTitleY, scale);
     const detailBtnW = (phone ? 108 : 96) * scale;
     const detailBtnH = (phone ? 36 : 34) * scale;
     const detailBtn = this.host.addChildPlainNode(panel, 'LobbyHeroDetailAttrDetailBtn', width / 2 - 24 * scale - detailBtnW / 2, attrTitleY, detailBtnW, detailBtnH);
@@ -4089,7 +4105,7 @@ export class LobbyHeroDetailPanelRenderer {
     const rowStep = (phone ? 34 : 30) * scale;
     const cellH = (phone ? 30 : 27) * scale;
     const grid = this.host.addChildPlainNode(parent, 'LobbyHeroDetailAttributeGrid', 0, height / 2 - (phone ? 101 : 115) * scale, width - 48 * scale, 86 * scale);
-    const attrs = resolveAttributes(hero);
+    const attrs = resolveAttributeTotals(hero, this.host.currentLobbyHeroEquipState().items);
     const cellWidth = (width - 64 * scale) / 2;
     attrs.slice(0, 6).forEach((attr, index) => {
       const column = index % 2;
@@ -5054,6 +5070,7 @@ export class LobbyHeroDetailPanelRenderer {
         const value = this.host.addChildLabel(band, `${name}CostValue_${index}`, cost.text, textX, 0, fontSize, cost.lack ? rgba(244, 118, 96) : rgba(240, 228, 196), new Size(costWs[index] - iconSize - iconGap + 10 * scale, bandH - 4 * scale), HorizontalTextAlignment.LEFT);
         value.overflow = Label.Overflow.SHRINK;
         this.applyOutline(value, scale, false);
+        this.mountCostSourceHit(band, `${name}CostHit_${index}`, cost, cursor + costWs[index] / 2, 0, costWs[index] + 10 * scale, bandH);
         cursor += costWs[index] + segGap;
       });
     }
@@ -5160,7 +5177,14 @@ export class LobbyHeroDetailPanelRenderer {
     const cap = detail.heroLevelCap ?? 0;
     if (cap > 0 && level >= cap) {
       // 已到上限时不再显示"一键升级:材料读取中…"(上限态服务器不下发下一级消耗,旧文案会一直停在读取中)。
-      return { title: `已达等级上限 Lv.${cap}`, costs: [], hint: '提升玩家等级可解锁更高上限', blocked: 'cap' };
+      const playerLevel = this.host.currentLobbyProfile().playerLevel ?? 1;
+      return {
+        title: `已达等级上限 Lv.${cap}`,
+        costs: [],
+        hint: '去冒险提升玩家等级 ›',
+        blocked: 'cap',
+        boxSource: { key: 'LEVEL_CAP', name: '英雄等级上限', note: `玩家等级 Lv.${playerLevel},冒险首通获得玩家经验` },
+      };
     }
     const books = detail.nextLevelExpBookCost ?? null;
     const gold = detail.nextLevelGoldCost ?? null;
@@ -5188,8 +5212,8 @@ export class LobbyHeroDetailPanelRenderer {
     return {
       title: `升至 Lv.${level + 1}`,
       costs: [
-        { icon: 'ui/bag/ai/icon_expbook/spriteFrame', text: `x${formatInteger(books)}`, lack: lackBooks },
-        { icon: 'ui/bag/ai/icon_gold/spriteFrame', text: formatInteger(gold), lack: lackGold },
+        { icon: 'ui/bag/ai/icon_expbook/spriteFrame', text: `x${formatInteger(books)}`, lack: lackBooks, source: { key: 'HERO_EXP_BOOK', name: '英雄经验书', owned: ownedBooks, need: books } },
+        { icon: 'ui/bag/ai/icon_gold/spriteFrame', text: formatInteger(gold), lack: lackGold, source: { key: 'GOLD', name: '金币', owned: ownedGold, need: gold } },
       ],
       hint,
       blocked: est > level ? undefined : lackBooks || lackGold ? 'lack' : undefined,
@@ -5548,9 +5572,16 @@ export class LobbyHeroDetailPanelRenderer {
   /** 消耗框:标题行(标题 + 图标数字,不足标红)+ 可选提示行,同一个框。 */
   private renderProtoCostDock(panel: Node, name: string, view: HeroDockCostView, cx: number, cy: number, w: number, h: number): void {
     const box = this.protoRow(panel, `${name}CostBox`, cx, cy, w, h);
-    // 2026-10-23 去重复信息:不足的数字已标红,不再另起一行写「还差 N …」
-    const hint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? '' : view.hint;
+    // 2026-10-23 去重复信息:不足的数字已标红,不再另起一行写「还差 N …」;2026-10-25 改成提示红字可点(docs/45 §6)
+    const lackSource = view.costs.some((cost) => cost.lack && cost.source) && !!this.host.openItemSourcePopup;
+    const hint = /^还差/.test(view.hint) && view.costs.some((cost) => cost.lack) ? (lackSource ? '点红字查看获取途径 ›' : '') : view.hint;
     const font = this.protoFont(24);
+    if (view.boxSource && this.host.openItemSourcePopup) {
+      const source = view.boxSource;
+      box.addComponent(Button);
+      box.on(Button.EventType.CLICK, () => this.host.openItemSourcePopup?.(source), this);
+      this.host.applyImageButtonFeedback(box, 1.02, 0.98);
+    }
     if (view.costs.length <= 0) {
       // 无消耗(已达上限 / 已满星):标题 + 提示并成一行(标题亮、提示暗),不再两行挤在一个框里
       const hintFont = this.protoFont(19);
@@ -5581,12 +5612,25 @@ export class LobbyHeroDetailPanelRenderer {
       view.costs.forEach((cost, index) => {
         this.host.addSprite(`${name}CostIcon_${index}`, cost.icon, cursor + iconS / 2, titleY, iconS, iconS, box);
         this.protoText(box, `${name}CostValue_${index}`, cost.text, cursor + iconS + 6, titleY, font, cost.lack ? rgba(244, 108, 88) : rgba(246, 236, 210), costWs[index] - iconS, HorizontalTextAlignment.LEFT, true);
+        this.mountCostSourceHit(box, `${name}CostHit_${index}`, cost, cursor + costWs[index] / 2, titleY, costWs[index] + 12, h);
         cursor += costWs[index] + segGap;
       });
       if (shortHint) {
         this.protoText(box, `${name}Est`, shortHint, cursor, titleY, hintFont, rgba(178, 164, 136), hintW, HorizontalTextAlignment.LEFT);
       }
     }
+  }
+
+  /** 不足的消耗项盖一层透明点击区:点开获取途径小窗(docs/45 §6)。够用的项不挂,避免误触。 */
+  private mountCostSourceHit(parent: Node, name: string, cost: { lack: boolean; source?: HeroCostSource }, x: number, y: number, w: number, h: number): void {
+    const source = cost.source;
+    if (!cost.lack || !source || !this.host.openItemSourcePopup) {
+      return;
+    }
+    const hit = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    hit.addComponent(Button);
+    hit.on(Button.EventType.CLICK, () => this.host.openItemSourcePopup?.(source), this);
+    this.host.applyImageButtonFeedback(hit, 1.04, 0.96);
   }
 
   /** 左页签:雕花牌(选中红绒金框 / 未选暗石牌)+ 图标 + 字(原型)。 */
@@ -5643,11 +5687,13 @@ export class LobbyHeroDetailPanelRenderer {
     const bandW = width - PS(22);
     const colW = PW(360);
     const colX = [PX(1278), PX(1650)];
-    // ① 基础属性
-    this.protoSectionBand(panel, 'LobbyHeroDetailAttrSection', '基础属性', PY(122), bandW, PS(PROTO_BAND_H), PX(1092), F(30));
+    // ① 属性(合计:基础 + 装备 + 特性,docs/45 §1)
+    this.protoSectionBand(panel, 'LobbyHeroDetailAttrSection', '属性', PY(122), bandW, PS(PROTO_BAND_H), PX(1092), F(30));
     this.protoPlateButton(panel, 'LobbyHeroDetailAttrDetailBtn', '属性详情', PX(1716), PY(122 + PROTO_BAND_CORE_DY), PW(150), PS(PROTO_BAND_BTN_H), PROTO_BAND_BTN_FONT, () => this.showAttrDetailPopup(panel, hero, scale));
+    const equipState = this.host.currentLobbyHeroEquipState();
+    this.protoText(panel, 'LobbyHeroDetailAttrScopeHint', equipState.loading && equipState.items.length === 0 ? '装备读取中' : '含装备与特性', PX(1626), PY(122 + PROTO_BAND_CORE_DY), F(16), rgba(170, 156, 128), PW(160), HorizontalTextAlignment.RIGHT);
     const grid = this.host.addChildPlainNode(panel, 'LobbyHeroDetailAttributeGrid', 0, 0, width, height);
-    resolveAttributes(hero).slice(0, 6).forEach((attr, index) => {
+    resolveAttributeTotals(hero, equipState.items).slice(0, 6).forEach((attr, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
       const cell = this.protoRow(grid, `LobbyHeroDetailAttribute_${index}`, colX[col], PY(180 + row * 44), colW, PS(40));
@@ -5657,7 +5703,7 @@ export class LobbyHeroDetailPanelRenderer {
         this.host.addSprite('LobbyHeroDetailAttributeIcon', icon, left + PS(32), 0, PS(38), PS(38), cell);
       }
       this.protoText(cell, 'LobbyHeroDetailAttributeLabel', attr.label, left + PS(64), 0, F(21), rgba(192, 174, 142), colW * 0.42, HorizontalTextAlignment.LEFT);
-      this.protoText(cell, 'LobbyHeroDetailAttributeValue', attr.value, colW / 2 - PS(22), 0, F(22), rgba(255, 248, 232), colW * 0.42, HorizontalTextAlignment.RIGHT, true);
+      this.protoText(cell, 'LobbyHeroDetailAttributeValue', attr.value, colW / 2 - PS(22), 0, F(22), attr.boosted ? rgba(170, 232, 160) : rgba(255, 248, 232), colW * 0.42, HorizontalTextAlignment.RIGHT, true);
     });
     resolveGrowthChips(hero).filter((chip) => chip.label !== '大招').slice(0, 2).forEach((chip, index) => {
       const awakenable = chip.label === '觉醒' && this.isHeroAwakenable(hero);
@@ -5904,8 +5950,8 @@ export class LobbyHeroDetailPanelRenderer {
     const shardIcon = `ui/bag/ai/icon_shard_${['r', 'sr', 'ssr', 'ur'].includes(shardTier) ? shardTier : 'n'}/spriteFrame`;
     view.title = `升至 ${star + 1}★`;
     view.costs = [
-      { icon: shardIcon, text: `${formatInteger(fragOwned)}/${formatInteger(fragNeed)}`, lack: fragOwned < fragNeed },
-      { icon: 'ui/bag/ai/icon_gold/spriteFrame', text: formatInteger(goldNeed), lack: goldOwned < goldNeed },
+      { icon: shardIcon, text: `${formatInteger(fragOwned)}/${formatInteger(fragNeed)}`, lack: fragOwned < fragNeed, source: { key: `FRAGMENT:${(hero.heroCode || '').toUpperCase()}`, name: `${hero.heroName}碎片`, rarity: hero.rarity || '', owned: fragOwned, need: fragNeed } },
+      { icon: 'ui/bag/ai/icon_gold/spriteFrame', text: formatInteger(goldNeed), lack: goldOwned < goldNeed, source: { key: 'GOLD', name: '金币', owned: goldOwned, need: goldNeed } },
     ];
     let estStar = star;
     let fragLeft = fragOwned;
@@ -6775,6 +6821,21 @@ function resolveGrowthChips(hero: LobbyHeroItemVO): { label: string; value: stri
     { label: '觉醒', value: awaken > 0 ? `${awaken} 阶` : '未觉醒' },
     { label: '大招', value: `Lv${ult}` },
   ];
+}
+
+/**
+ * 主面板 6 格的合计值(2026-10-25 策划审核 P1-1,docs/45 §1):基础 + 装备 + 特性,与属性详情 / 守卫战同一口径(HeroCombatStats)。
+ * 原来主面板只显示基础值(攻击 55,实际 190),养成效果看不到。
+ */
+export function resolveAttributeTotals(hero: LobbyHeroItemVO, equipItems: readonly EquipmentItemVO[]): HeroDetailAttribute[] {
+  const sources = resolveHeroCombatSources(hero, equipItems);
+  const keys: HeroCombatStatKey[] = ['生命', '攻击', '防御', '速度', '暴击', '暴伤'];
+  return keys.map((key) => {
+    const src = sources[key];
+    const total = heroCombatTotal(src);
+    const value = src.percent ? `${Math.round(total * 10) / 10}%` : formatInteger(Math.round(total));
+    return { label: key, value, boosted: src.equip + src.affix > 0.0001 };
+  });
 }
 
 export function resolveAttributes(hero: LobbyHeroItemVO): HeroDetailAttribute[] {

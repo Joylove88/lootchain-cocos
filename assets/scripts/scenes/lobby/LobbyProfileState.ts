@@ -110,6 +110,7 @@ export class LobbyProfileState {
       gold: 0,
       diamond: 0,
       combatPower: 0,
+      lineupPower: 0,
       status: null,
       accountStatus: this.profileError ? '资料占位' : '读取中',
       walletBound: false,
@@ -140,6 +141,8 @@ export class LobbyProfileState {
       gold: normalizeCurrency(profile.gold),
       diamond: normalizeCurrency(profile.diamond),
       combatPower: positiveInteger(profile.combatPower, 0),
+      // 旧服务端没有阵容战力时回退英雄总战力
+      lineupPower: positiveInteger(profile.lineupPower ?? profile.combatPower, 0),
       status: profile.status ?? null,
       accountStatus: safeText(profile.accountStatus || '未知'),
       walletBound: Boolean(profile.walletBound),

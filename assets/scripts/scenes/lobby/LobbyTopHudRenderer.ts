@@ -176,7 +176,8 @@ export class LobbyTopHudRenderer {
     const powerLabel = this.addChildLabel(
       panel,
       'LobbyPlayerPower',
-      `战力 ${this.formatInteger(profile.combatPower)}`,
+      // 阵容战力(冒险编队 4 人,与推荐战力同口径;docs/45 §4)
+      `阵容战力 ${this.formatInteger(profile.lineupPower ?? profile.combatPower)}`,
       textX,
       panelTop - 128 * hudScale,
       22 * hudScale,

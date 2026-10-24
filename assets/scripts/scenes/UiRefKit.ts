@@ -119,7 +119,7 @@ export const REF_BAG_DLG = {
 /** 来源文案 → 圆徽类别(按关键词;先匹配更具体的「爬塔 / 召唤」)。 */
 export function refDetailSourceKind(text: string): RefDetailSourceKind {
   const t = text || '';
-  if (/爬塔|深渊/.test(t)) return 'tower';
+  if (/冒险|爬塔|深渊/.test(t)) return 'tower'; // 2026-10-25 主线统一叫「冒险」
   if (/召唤|抽卡/.test(t)) return 'summon';
   if (/每日|副本|矿脉/.test(t)) return 'daily';
   if (/主线|关卡|首通/.test(t)) return 'main';

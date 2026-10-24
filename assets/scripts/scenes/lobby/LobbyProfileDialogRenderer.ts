@@ -449,11 +449,12 @@ export class LobbyProfileDialogRenderer {
       ],
       [
         { label: '英雄上限', value: this.profileHeroLevelCapText(profile) },
-        { label: '战力', value: this.host.formatInteger(profile.combatPower) },
+        { label: '阵容战力', value: this.host.formatInteger(profile.lineupPower ?? profile.combatPower) },
       ],
       [
         { label: '体力', value: `${this.host.formatInteger(profile.stamina)}/${this.host.formatInteger(profile.maxStamina)}` },
-        { label: '登录方式', value: loginMethodLabel(profile.loginMethod) },
+        // 2026-10-25 策划审核 P1-5:两种战力分开写;登录方式价值低,让位给英雄总战力
+        { label: '英雄总战力', value: this.host.formatInteger(profile.combatPower) },
       ],
       // 熔炉下架期间不展示钱包(TOKEN_FURNACE_ENABLED)
       ...(TOKEN_FURNACE_ENABLED ? [[

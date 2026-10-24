@@ -512,6 +512,22 @@ export class LobbyIdleStageRenderer {
       const claimLabel = this.host.addChildLabel(claimButton, 'LobbyIdleClaimButtonLabel', claiming ? '领取中…' : '领取收益', 0, 0, 20 * scale, rgba(255, 238, 196), new Size(panelWidth - 80 * scale, 26 * scale));
       claimLabel.overflow = Label.Overflow.SHRINK;
       this.applyOutline(claimLabel, scale, true);
+      // 收益已攒满上限(再挂也不涨):右上角亮红点(docs/45 §5),与大厅其它红点同款菱形
+      if (claimEnabled && summary.capSeconds > 0 && summary.accruedSeconds >= summary.capSeconds) {
+        const dotSize = 6 * scale;
+        const dot = this.host.addChildPlainNode(claimButton, 'LobbyIdleFullDot', (panelWidth - 48 * scale) / 2 - 10 * scale, 22 * scale - 6 * scale, dotSize * 2, dotSize * 2);
+        const dg = dot.addComponent(Graphics);
+        dg.fillColor = rgba(188, 28, 38, 235);
+        dg.moveTo(0, dotSize);
+        dg.lineTo(dotSize, 0);
+        dg.lineTo(0, -dotSize);
+        dg.lineTo(-dotSize, 0);
+        dg.close();
+        dg.fill();
+        dg.strokeColor = rgba(255, 91, 76, 210);
+        dg.lineWidth = Math.max(1, dotSize * 0.18);
+        dg.stroke();
+      }
       claimButton.addComponent(Button);
       if (claimEnabled) {
         this.host.applyImageButtonFeedback(claimButton, 1.04, 0.96);

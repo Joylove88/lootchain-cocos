@@ -100,6 +100,8 @@ export interface LobbyNavItemConfig {
 
 export interface LobbyHudHost {
   node: Node;
+  /** 大厅红点汇总(docs/45 §5);未加载时 null(全部不亮)。 */
+  currentLobbyBadges?(): import('../../api/LobbyBadgeApi').LobbyBadges | null;
   currentLobbyProfile(): PlayerLobbyProfileVO;
   currentLobbyAdventureState(): LobbyAdventurePanelState;
   /** 每日免费单抽今日是否可用(true/false=已知,null=未加载);引导 DRAW 步只在确认免费时才上硬遮罩,防锁死。 */

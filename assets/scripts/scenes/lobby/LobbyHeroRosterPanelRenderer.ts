@@ -1545,10 +1545,11 @@ export class LobbyHeroRosterPanelRenderer {
     this.host.addSprite('OwnedIcon', HERO_ROSTER_PROTO_IC_OWNED, PX(1352), 0, 42 * k, 42 * k, plate);
     leftText('OwnedLabel', '拥有', 1381, 52, PF(22), label);
     leftText('OwnedValue', `${state.heroes.length}`, 1436, 64, PF(26), bright, true);
-    mountRefSolid(this.host, plate, 'Divider', PX(1510), 0, 1.4, plateH - 20 * k, rgba(176, 136, 74, 160));
-    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, PX(1570), 0, 40 * k, 40 * k, plate);
-    leftText('PowerLabel', '总战力', 1601, 72, PF(22), label);
-    leftText('PowerValue', formatGroupedInteger(power), 1674, 92, PF(26), bright, true);
+    // 2026-10-25 策划审核 P1-5:名册是全部英雄之和,叫"英雄总战力"(和推荐战力比较的只有阵容战力);标签多两个字,战力组左移
+    mountRefSolid(this.host, plate, 'Divider', PX(1490), 0, 1.4, plateH - 20 * k, rgba(176, 136, 74, 160));
+    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, PX(1528), 0, 40 * k, 40 * k, plate);
+    leftText('PowerLabel', '英雄总战力', 1554, 112, PF(22), label);
+    leftText('PowerValue', formatGroupedInteger(power), 1668, 98, PF(26), bright, true);
   }
 
   /** 卡墙:4 列横版卡(原型卡 331×220、列距 24、行距 18),纵向滚动;底部留出布阵按钮的位置。 */

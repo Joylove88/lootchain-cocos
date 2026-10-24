@@ -11,6 +11,7 @@ import { HeroApi } from './HeroApi';
 import { IdleApi } from './IdleApi';
 import { LobbyCodexApi } from './LobbyCodexApi';
 import { LobbyAdventureApi } from './LobbyAdventureApi';
+import { LobbyBadgeApi } from './LobbyBadgeApi';
 import { LobbyHeroApi } from './LobbyHeroApi';
 import { LobbyTeamApi } from './LobbyTeamApi';
 import { LobbyNoticeApi } from './LobbyNoticeApi';
@@ -40,6 +41,7 @@ export class LootChainApi {
   readonly lobbyHero = new LobbyHeroApi(this.http);
   readonly lobbyTeam = new LobbyTeamApi(this.http);
   readonly lobbyAdventure = new LobbyAdventureApi(this.http);
+  readonly lobbyBadge = new LobbyBadgeApi(this.http);
   readonly battle = new BattleApi(this.http);
   readonly gacha = new GachaApi(this.http);
   readonly hero = new HeroApi(this.http);

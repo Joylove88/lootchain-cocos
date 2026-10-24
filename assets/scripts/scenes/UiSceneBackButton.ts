@@ -38,6 +38,8 @@ export interface SceneBackButtonHost {
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   /** 货币商店入口(docs/33,2026-09-22):有它时,货币胶囊的金币/钻石/体力可点开对应购买弹窗。 */
   openLobbyShopDialog?(kind: 'gold' | 'stamina' | 'diamond'): void;
+  /** 获取途径小窗(docs/45 §6-7):非商店货币的胶囊点开它,不再是点了没反应的"+"。 */
+  openItemSourcePopup?(options: { key: string; name: string; rarity?: string }): void;
 }
 
 /**
@@ -221,11 +223,22 @@ export interface TopCurrencyEntry {
   key: string;
   icon: string;
   value: string;
-  /** 自定义点击;缺省时 gold/diamond/stamina 三个键自动接货币商店。 */
+  /** 自定义点击;缺省时 gold/diamond/stamina 三个键自动接货币商店,其余键接获取途径小窗。 */
   onTap?: () => void;
+  /** 获取途径:缺省按 key 查 TOP_CURRENCY_SOURCE(碎片这类带英雄的由调用方给)。 */
+  source?: { key: string; name: string; rarity?: string };
 }
 
 const TOP_CURRENCY_SHOP_KIND: Record<string, 'gold' | 'stamina' | 'diamond'> = { gold: 'gold', diamond: 'diamond', stamina: 'stamina' };
+/** 胶囊简写键 → 获取途径(物品编码 + 名称);2026-10-25 策划审核 P1-8:这些胶囊的"+"原来点了没反应。 */
+const TOP_CURRENCY_SOURCE: Record<string, { key: string; name: string }> = {
+  stone: { key: 'ENHANCE_STONE', name: '强化石' },
+  luck: { key: 'FUSION_LUCK_STONE', name: '合成概率石' },
+  bless: { key: 'ENHANCE_BLESS_STONE', name: '强化祝福石' },
+  rune: { key: 'ENHANCE_GUARD_RUNE', name: '强化护符' },
+  core: { key: 'GUARD_CORE', name: '守卫晶核' },
+  books: { key: 'HERO_EXP_BOOK', name: '英雄经验书' },
+};
 
 /** 顶栏货币显示文字:纯数字(含千分位逗号)转大厅同款短格式(4.9M / 125.3K),其余原样。 */
 export function formatTopCurrencyValue(value: unknown): string {
@@ -267,7 +280,13 @@ export function renderTopCurrencyBar(host: SceneBackButtonHost, parent: Node, ri
     value.outlineColor = rgba(0, 0, 0, 220);
     value.outlineWidth = Math.max(1, 1.4 * scale);
     const shopKind = TOP_CURRENCY_SHOP_KIND[entry.key];
-    const onTap = entry.onTap ?? (shopKind && host.openLobbyShopDialog ? () => host.openLobbyShopDialog?.(shopKind) : null);
+    const source = entry.source ?? TOP_CURRENCY_SOURCE[entry.key];
+    const onTap = entry.onTap
+      ?? (shopKind && host.openLobbyShopDialog ? () => host.openLobbyShopDialog?.(shopKind) : null)
+      ?? (source && host.openItemSourcePopup ? () => host.openItemSourcePopup?.(source) : null);
+    if (!onTap) {
+      console.warn('[LootChain] top currency capsule without action:', entry.key);
+    }
     if (onTap) {
       chip.addComponent(Button);
       chip.on(Button.EventType.CLICK, onTap);

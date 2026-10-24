@@ -48,6 +48,8 @@ export interface LobbyAdventureVO {
   chapters: LobbyAdventureChapterVO[];
   // 已通关最高关卡编码(真实爬塔层数);未通关为空。挂机层显示据此,不用"下一关"的推荐关。
   maxCompletedStageCode: string;
+  /** 开战战力软闸比例:阵容战力 ≥ 推荐战力 × 本值才能开战(后端下发,旧服务端缺省 0.4)。 */
+  powerGateRatio: number;
 }
 
 /** 冒险地图面板渲染所需的本地状态快照。 */

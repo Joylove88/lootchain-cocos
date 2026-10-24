@@ -111,6 +111,8 @@ import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/Lobby
 import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/LobbyForgePanelRenderer';
 import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFormationPowerSnapshot } from './lobby/LobbyFormationPanelRenderer';
 import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
+import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
+import type { ItemSourceTarget } from './lobby/ItemSourceRoutes';
 import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
 import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
@@ -1069,6 +1071,7 @@ export class LootChainGameRoot extends Component {
     this.renderCurrentViewInner();
     // 整页重绘会清空 UI 根,商店弹窗是覆盖层:重绘完再挂回去(最后挂 = 最上层)。
     this.syncLobbyShopOverlay();
+    this.restoreItemSourcePopup();
   }
 
   private renderCurrentViewInner(): void {
@@ -1702,6 +1705,8 @@ export class LootChainGameRoot extends Component {
 
   private renderLobbyFormationPanel(layout: UiLayout): void {
     this.lobbyFormationPanelRenderer.render(layout);
+    // 布阵页软引导(docs/45 §15):第一次进来讲上阵与阵容战力
+    this.lobbyHudRenderer.mountGuideOverlay(layout, 'formation');
   }
 
   private renderLobbyHeroDetailPanel(layout: UiLayout): void {
@@ -2086,6 +2091,38 @@ export class LootChainGameRoot extends Component {
     this.lobbyDailyDungeonPanelOpen = false;
     this.currentView = 'lobby';
     this.renderCurrentView();
+    // 从功能页回来:刚做过的操作可能改变红点(领了任务 / 升了星 / 打了副本)
+    void this.loadLobbyBadges(true);
+  }
+
+  /** 大厅红点(docs/45 §5):进大厅 / 从功能页返回时拉;30 秒内重复调用走缓存;值变了才重画大厅。 */
+  private lobbyBadges: import('../api/LobbyBadgeApi').LobbyBadges | null = null;
+  private lobbyBadgesAt = 0;
+  private lobbyBadgesLoading = false;
+
+  private currentLobbyBadges(): import('../api/LobbyBadgeApi').LobbyBadges | null {
+    return this.lobbyBadges;
+  }
+
+  private async loadLobbyBadges(force = false): Promise<void> {
+    if (this.lobbyBadgesLoading || (!force && Date.now() - this.lobbyBadgesAt < 30_000)) {
+      return;
+    }
+    this.lobbyBadgesLoading = true;
+    try {
+      const next = await this.api.lobbyBadge.badges();
+      const changed = JSON.stringify(next) !== JSON.stringify(this.lobbyBadges);
+      this.lobbyBadges = next;
+      this.lobbyBadgesAt = Date.now();
+      if (changed && this.currentView === 'lobby' && !this.bootPreloadActive) {
+        this.renderCurrentView();
+      }
+    } catch (error) {
+      // 红点是提示性信息:失败不打扰玩家,下次进大厅再拉
+      console.warn('[LootChain] lobby badges load failed:', error);
+    } finally {
+      this.lobbyBadgesLoading = false;
+    }
   }
 
   private renderCurrentLobbyScenePage(): void {
@@ -2489,6 +2526,59 @@ export class LootChainGameRoot extends Component {
   private clearLobbyForgeFuseResult(): void {
     this.lobbyForgeFuseResult = null;
     this.renderCurrentView();
+  }
+
+  /** 获取途径小窗(docs/45 §6-7):卡点 / 资源胶囊"+"统一入口。整页重建会清掉它,重建后按 itemSourcePopupState 恢复。 */
+  private itemSourcePopupState: { options: ItemSourcePopupOptions; view: string } | null = null;
+
+  private openItemSourcePopup(options: ItemSourcePopupOptions): void {
+    const state: ItemSourcePopupOptions = { ...options, onClose: () => { this.itemSourcePopupState = null; } };
+    this.itemSourcePopupState = { options: state, view: this.currentView };
+    openItemSourcePopup(this as unknown as Parameters<typeof openItemSourcePopup>[0], this.ensureContentRoot(), state);
+  }
+
+  /** 同一页面整页重建后补挂;切到别的页面就丢弃(不跟着玩家跑)。 */
+  private restoreItemSourcePopup(): void {
+    const state = this.itemSourcePopupState;
+    if (!state) {
+      return;
+    }
+    if (state.view !== this.currentView) {
+      this.itemSourcePopupState = null;
+      return;
+    }
+    if (!this.ensureContentRoot().getChildByName('ItemSourcePopup')) {
+      openItemSourcePopup(this as unknown as Parameters<typeof openItemSourcePopup>[0], this.ensureContentRoot(), state.options);
+    }
+  }
+
+  /** 获取途径"前往":关掉当前页面再跳到对应玩法(召唤预选卡池、锻造切分解页)。 */
+  private navigateItemSource(target: ItemSourceTarget): void {
+    switch (target.type) {
+      case 'gacha':
+        this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: target.poolCode };
+        this.openLobbyGachaScene();
+        return;
+      case 'adventure':
+        this.openLobbyAdventurePanel();
+        return;
+      case 'daily':
+        this.openLobbyDailyDungeonPanel();
+        return;
+      case 'shop':
+        this.openLobbyShopDialog(target.kind);
+        return;
+      case 'forge':
+        this.openLobbyForgePanel();
+        this.selectLobbyForgeTab(target.tab);
+        return;
+      case 'quest':
+        this.openLobbyQuestPanel();
+        return;
+      case 'idle':
+        this.returnToLobbyFromScenePage();
+        return;
+    }
   }
 
   private selectLobbyForgeTab(tab: 'enhance' | 'fuse' | 'decompose' | 'gem'): void {
@@ -3438,6 +3528,7 @@ export class LootChainGameRoot extends Component {
     if (!this.lobbyFormationPanelOpen) {
       return;
     }
+    lobbyGuide.markVisited('formation');
     this.returnToLobbyFromScenePage();
   }
 
@@ -4612,6 +4703,9 @@ export class LootChainGameRoot extends Component {
   }
 
   private selectLobbyHeroDetailTab(tab: 'attr' | 'equip' | 'skill' | 'star'): void {
+    if (tab === 'equip') {
+      lobbyGuide.markVisited('equip');
+    }
     if (this.lobbyHeroDetailTab === tab) {
       return;
     }
@@ -4720,11 +4814,16 @@ export class LootChainGameRoot extends Component {
     const stage = resolvedStageCode ? this.findLobbyAdventureStage(resolvedStageCode) : null;
     const recommendedPower = Math.max(0, Math.trunc(stage?.recommendedPower ?? 0));
     const powerGap = Math.max(0, recommendedPower - currentPower);
+    // 开战软闸比例由冒险接口下发(服务端 MainlineStageRules.POWER_GATE_RATIO),旧服务端缺省 0.4
+    const gateRatio = this.lobbyAdventureLoader.currentState().adventure?.powerGateRatio ?? 0.4;
+    const minPower = Math.ceil(recommendedPower * gateRatio);
     return {
       currentPower,
       recommendedPower,
       powerGap,
       enough: recommendedPower <= 0 || currentPower >= recommendedPower,
+      canChallenge: recommendedPower <= 0 || currentPower >= minPower,
+      minPower,
       rosterLoaded: roster.loaded && !roster.loading && !roster.error,
       selectedCount: selectedHeroIds.length,
     };
@@ -4993,6 +5092,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyDailyDungeonPanel(): void {
+    lobbyGuide.markVisited('daily');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyDailyDungeonPanelOpen = true;
     this.currentView = 'dailyDungeon';
@@ -6018,6 +6118,7 @@ export class LootChainGameRoot extends Component {
     if (!this.isLobbyViewActive()) {
       return;
     }
+    lobbyGuide.markVisited('crystal');
     this.lobbyGuardCrystalDialog = {
       info: this.lobbyGuardCrystalDialog?.info ?? null,
       loading: true,
@@ -7089,6 +7190,7 @@ export class LootChainGameRoot extends Component {
       console.error('[LootChain] render lobby failed', error);
     }
     void this.loadIdleSummary();
+    void this.loadLobbyBadges();
     // 登录态就绪后建立通知长连接(幂等;断线自动重连)。
     this.playerWsClient.connect();
   }

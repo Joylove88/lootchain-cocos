@@ -40,6 +40,7 @@ function validateLobbyAdventure(data: unknown): LobbyAdventureVO {
     guardrails: sanitizeTextArray(readArray(data, 'guardrails', 8), 160),
     chapters,
     maxCompletedStageCode: readText(data, 'maxCompletedStageCode', MAX_TEXT_LENGTH, ''),
+    powerGateRatio: typeof data.powerGateRatio === 'number' && data.powerGateRatio > 0 && data.powerGateRatio <= 1 ? data.powerGateRatio : 0.4,
   };
 }
 

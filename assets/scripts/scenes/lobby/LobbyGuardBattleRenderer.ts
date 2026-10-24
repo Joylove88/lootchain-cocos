@@ -152,6 +152,7 @@ import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkill
 
 const GUARD_PASSIVE_TYPES: GuardPassiveType[] = ['lifesteal', 'truePierce', 'freeze', 'stun', 'splash', 'reflect', 'atkUp', 'hpUp'];
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
+import { lobbyGuide } from '../../guide/GuideManager';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
 
 /** 守卫场逐英雄体型微调(乘在共享 EXTRA 表之上):罗恩共享表 1.55 后格子里仍偏小,守卫再 +20%(2026-09-02 用户)。 */
@@ -171,7 +172,7 @@ export interface LobbyGuardBattleHost {
   /** 局外属性合计用的已穿戴装备(docs/41;缺省 = 只算基础 + 特性)。 */
   currentLobbyHeroEquipState?(): { items: EquipmentItemVO[] };
   /** 主线 P5 难度曲线用:取关卡 recommendedPower(缺省可不实现,难度回落基线)。 */
-  currentLobbyAdventureState?(): { adventure: { chapters: Array<{ stages: Array<{ stageCode: string; recommendedPower: number }> }> } | null };
+  currentLobbyAdventureState?(): { adventure: { chapters: Array<{ stages: Array<{ stageCode: string; recommendedPower: number }> }>; maxCompletedStageCode?: string } | null };
   /** 输出试炼档位表(P3b near-miss 提示,缺省=不展示)。 */
   currentTrialOutputTiers?(): Array<{ tierCode: string; tierName: string; minScore: number }>;
   settleLobbyBattleSession(): void;
@@ -963,6 +964,8 @@ export class LobbyGuardBattleRenderer {
     );
     guardSetSkillAuto(this.sim, this.skillAutoImmediate);
     this.interactHints.clear();
+    this.battleGuide = this.resolveBattleGuide(stageCode);
+    this.battleGuidePhase = 0;
     this.resonanceUnits.clear();
     this.prewarmAttackFx(pool);
     if (this.sim && this.sim.spellLoadout.indexOf('goldrush') >= 0) {
@@ -2671,6 +2674,164 @@ export class LobbyGuardBattleRenderer {
     text.outlineWidth = 2;
   }
 
+  /**
+   * 冒险前 3 层局内引导(2026-10-25 策划审核 P1-22,docs/45 §15):第 1 层教合成、第 2 层教战术三选一(+出售)、
+   * 第 3 层教法术(+首领读条集火打断)。只在首次挑战、非老玩家、该条没出过时出现;纯表现层,不碰 sim,复演不受影响。
+   */
+  private battleGuide: 'merge' | 'perk' | 'spell' | null = null;
+  private battleGuidePhase = 0;
+  private battleGuideHoldUntil = 0;
+
+  private resolveBattleGuide(stageCode: string): 'merge' | 'perk' | 'spell' | null {
+    const kind = stageCode === 'MAIN_1_1' ? 'merge' : stageCode === 'MAIN_1_2' ? 'perk' : stageCode === 'MAIN_1_3' ? 'spell' : null;
+    if (!kind) {
+      return null;
+    }
+    const flag = kind === 'merge' ? 'battleMerge' : kind === 'perk' ? 'battlePerk' : 'battleSpell';
+    if (lobbyGuide.isDone(flag)) {
+      return null;
+    }
+    // 已打过本层 / 冒险进度过第 5 层(老玩家)不出
+    const cleared = LobbyGuardBattleRenderer.mainStageOrder(this.host.currentLobbyAdventureState?.()?.adventure?.maxCompletedStageCode ?? '');
+    if (cleared >= LobbyGuardBattleRenderer.mainStageOrder(stageCode) || cleared >= 5) {
+      return null;
+    }
+    return kind;
+  }
+
+  /** MAIN_c_s → 冒险层序(第 1 章 9 层,之后每章 16 层);非冒险关返回 0。 */
+  private static mainStageOrder(stageCode: string): number {
+    const match = /^MAIN_(\d+)_(\d+)$/.exec((stageCode || '').toUpperCase());
+    if (!match) {
+      return 0;
+    }
+    const chapter = Number(match[1]);
+    const stage = Number(match[2]);
+    return chapter <= 1 ? stage : 9 + (chapter - 2) * 16 + stage;
+  }
+
+  /** 引导提示:手指 + 气泡(复用首战召唤引导素材);anchor 为目标顶部(战场 root 坐标),无 anchor 时只出气泡(上方居中)。 */
+  private mountGuideHint(name: string, text: string, anchor: { x: number; y: number } | null): void {
+    const root = this.root;
+    if (!root || root.getChildByName(name)) {
+      return;
+    }
+    const layoutW = root.getComponent(UITransform)?.width ?? 1600;
+    const layoutH = root.getComponent(UITransform)?.height ?? 900;
+    const holder = this.host.addChildPlainNode(root, name, 0, 0, 10, 10);
+    holder.setSiblingIndex(root.children.length - 1);
+    const bubbleW = Math.min(460, layoutW * 0.42);
+    const bubbleH = bubbleW * (320 / 768);
+    // 气泡固定在战场中部空地(不压顶部波次横幅 / 统计钮,也不盖住手指);手指单独指向目标
+    const bubbleX = 0;
+    const bubbleY = layoutH * 0.06;
+    if (anchor) {
+      const pointerH = 78;
+      const pointerW = pointerH * (192 / 256);
+      const pointerY = Math.min(layoutH / 2 - 130, anchor.y + pointerH / 2 + 8);
+      const pointer = this.host.addChildPlainNode(holder, 'Pointer', anchor.x, pointerY, pointerW, pointerH);
+      this.mountSprite(pointer, 'Img', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH);
+      tween(pointer)
+        .repeatForever(tween()
+          .to(0.55, { position: new Vec3(anchor.x, pointerY + 12, 0) })
+          .to(0.55, { position: new Vec3(anchor.x, pointerY, 0) }))
+        .start();
+    }
+    const bubble = this.host.addChildPlainNode(holder, 'Bubble', bubbleX, bubbleY, bubbleW, bubbleH);
+    this.mountSprite(bubble, 'Img', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH);
+    const label = this.host.addChildLabel(bubble, 'Text', text, 0, 0, 20, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
+    label.overflow = Label.Overflow.SHRINK;
+    label.enableWrapText = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(12, 8, 6, 255);
+    label.outlineWidth = 2;
+  }
+
+  private dropGuideHint(name: string): void {
+    this.root?.getChildByName(name)?.destroy();
+  }
+
+  /** 每步推进局内引导(只读 sim)。 */
+  private stepBattleGuide(sim: GuardBattleState): void {
+    const guide = this.battleGuide;
+    if (!guide || !this.root) {
+      return;
+    }
+    const now = Date.now();
+    if (guide === 'merge') {
+      // 场上第一次出现同名同星两人:指向其中一人,合成出 2★ 后撤掉
+      if (sim.heroes.some((hero) => hero.star >= 2)) {
+        this.dropGuideHint('GuardGuideMerge');
+        lobbyGuide.markVisited('battleMerge');
+        this.battleGuide = null;
+        return;
+      }
+      if (!this.root.getChildByName('GuardGuideMerge') && sim.heroes.length > 0 && !this.root.getChildByName('GuardGuideHint')) {
+        const pair = sim.heroes.find((hero) => sim.heroes.some((other) => other.unitId !== hero.unitId && other.heroCode === hero.heroCode && other.star === hero.star));
+        const view = pair ? this.heroViews.get(pair.unitId) : undefined;
+        if (view && view.node.isValid) {
+          this.mountGuideHint('GuardGuideMerge', '同名同星的英雄拖到一起,合成升星!', { x: view.node.position.x, y: view.node.position.y + this.unitSize() * 0.9 });
+        }
+      }
+      return;
+    }
+    if (guide === 'perk') {
+      if (this.battleGuidePhase === 0 && sim.pendingChoice) {
+        this.mountGuideHint('GuardGuidePerk', '守住一波送一次免费战术:三选一,挑一张!', null);
+        this.battleGuidePhase = 1;
+      } else if (this.battleGuidePhase === 1) {
+        // 选择弹层盖在上面时把气泡提到最上层
+        const node = this.root.getChildByName('GuardGuidePerk');
+        node?.setSiblingIndex(this.root.children.length - 1);
+        if (!sim.pendingChoice) {
+          this.dropGuideHint('GuardGuidePerk');
+          this.mountGuideHint('GuardGuideSell', '用不上的英雄拖到水晶上可以出售,换回金币', this.crystalGuideAnchor());
+          this.battleGuidePhase = 2;
+          this.battleGuideHoldUntil = now + 6000;
+        }
+      } else if (this.battleGuidePhase === 2 && now >= this.battleGuideHoldUntil) {
+        this.dropGuideHint('GuardGuideSell');
+        lobbyGuide.markVisited('battlePerk');
+        this.battleGuide = null;
+      }
+      return;
+    }
+    // spell:能量第一次够放任一已带法术 → 指向法术栏;施放(或 10 秒)后撤;首领第一次读条提示集火打断
+    if (this.battleGuidePhase === 0) {
+      const affordable = sim.spellLoadout.some((id) => sim.unlockedSpells.indexOf(id) >= 0 && sim.spellEnergy >= (GUARD_SPELLS[id]?.cost ?? Number.MAX_SAFE_INTEGER));
+      const bar = this.root.getChildByName('GuardSpellBar');
+      if (affordable && bar) {
+        const barH = bar.getComponent(UITransform)?.height ?? 120;
+        this.mountGuideHint('GuardGuideSpell', '能量够了!按住法术拖到怪物群上施放', { x: bar.position.x, y: bar.position.y + barH / 2 });
+        this.battleGuidePhase = 1;
+        this.battleGuideHoldUntil = now + 10000;
+      }
+    } else if (this.battleGuidePhase === 1) {
+      const cast = sim.inputs.some((input) => input.k === 'spell');
+      if (cast || now >= this.battleGuideHoldUntil) {
+        this.dropGuideHint('GuardGuideSpell');
+        this.battleGuidePhase = 2;
+      }
+    } else if (this.battleGuidePhase === 2 && sim.bossCast) {
+      const bossView = this.monsterViews.get(sim.bossCast.monsterId);
+      if (bossView && bossView.node.isValid) {
+        this.mountGuideHint('GuardGuideBoss', '首领在蓄力!点它集火,打断蓄力', { x: bossView.node.position.x, y: bossView.node.position.y + this.unitSize() * 1.6 });
+        this.battleGuidePhase = 3;
+        this.battleGuideHoldUntil = now + 6000;
+      }
+    } else if (this.battleGuidePhase === 3 && (now >= this.battleGuideHoldUntil || !sim.bossCast)) {
+      this.dropGuideHint('GuardGuideBoss');
+      lobbyGuide.markVisited('battleSpell');
+      this.battleGuide = null;
+    }
+  }
+
+  /** 水晶上方(出售引导指向)。 */
+  private crystalGuideAnchor(): { x: number; y: number } | null {
+    const center = this.crystalFxCenter();
+    return { x: center.x, y: center.y + this.unitSize() * 1.2 };
+  }
+
   private stepErrorShown = false;
   private perfStatsShown = false;
 
@@ -2715,6 +2876,7 @@ export class LobbyGuardBattleRenderer {
     if (sim.heroes.length > 0) {
       this.root?.getChildByName('GuardGuideHint')?.destroy();
     }
+    this.stepBattleGuide(sim);
     this.syncHeroes();
     this.syncResonance();
     this.syncMonsters();

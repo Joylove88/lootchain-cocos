@@ -37,7 +37,7 @@ import {
   type UiLayout,
 } from './LobbyHudTypes';
 import { gameAudio } from '../../audio/GameAudio';
-import { lobbyGuide } from '../../guide/GuideManager';
+import { lobbyGuide, type GuideFlag } from '../../guide/GuideManager';
 import { LOBBY_C1812_NAV_ICON_ASSETS } from '../C1812CommonUiAssets';
 import { LobbyTopHudRenderer } from './LobbyTopHudRenderer';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
@@ -105,7 +105,7 @@ export class LobbyHudRenderer {
    * 按(步骤,当前视图)查表:大厅指入口按钮,面板内指向具体动作按钮(免费单抽/英雄卡/升级/领取)。
    * 未列出的视图不打扰(玩家跑偏自己返回,主路径页面上引导自动续上)。步骤见 GuideManager。
    */
-  mountGuideOverlay(layout: UiLayout, view: 'lobby' | 'gacha' | 'heroes' | 'heroDetail' | 'quest'): void {
+  mountGuideOverlay(layout: UiLayout, view: 'lobby' | 'gacha' | 'heroes' | 'heroDetail' | 'quest' | 'formation'): void {
     this.findLobbyNode('LobbyGuideOverlay')?.destroy();
     const profile = this.host.currentLobbyProfile();
     lobbyGuide.bind(profile.userId);
@@ -119,16 +119,19 @@ export class LobbyHudRenderer {
     const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
     const veteran = recommendedIndex >= 5;
     const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
-    if (step === 'DONE') {
+    // 硬引导走完后才轮到软引导(docs/45 §15):一次只出一条,不加暗层,点气泡关闭
+    const soft = step === 'DONE' ? this.resolveSoftGuide(view, adventure.maxCompletedStageCode ?? '') : null;
+    if (step === 'DONE' && !soft) {
       return;
     }
-    const summonEntry = { targets: ['LobbyHotspot_圣契召唤', 'LobbyCompactAction_召唤'], text: '去圣契召唤,今天有免费召唤!' };
+    // 场景热点(圣契召唤牌匾)已不渲染(大厅改挂机演出):先指左侧活动栏的召唤入口,否则引导找不到目标会卡在这一步(2026-10-25)
+    const summonEntry = { targets: ['LobbyActivityItem_summon', 'LobbyHotspot_圣契召唤', 'LobbyCompactAction_召唤'], text: '去召唤,今天有免费召唤!' };
     const heroEntry = { targets: ['LobbyNavItem_hero', 'LobbyCompactAction_英雄'], text: '去英雄页,给英雄升级变强!' };
     const questEntry = { targets: ['LobbyNavItem_quest'], text: '每日任务白拿奖励,去领取!' };
     const heroCardEntry = { targets: ['LobbyHeroRosterCard_0'], text: '点击英雄,查看详情' };
     const config: Record<string, Partial<Record<string, { targets: string[]; text: string }>>> = {
       TOWER: { lobby: { targets: ['LobbyAdventureButton', 'LobbyCompactAction_冒险'], text: '点这里,开始你的第一场矿境守卫战!' } },
-      SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去圣契召唤,今天有免费召唤!' } },
+      SUMMON: { lobby: { ...summonEntry, text: '首胜达成!去召唤,今天有免费召唤!' } },
       DRAW: { lobby: summonEntry, gacha: { targets: ['GachaSummonOnceButton'], text: '点击免费召唤,获得新英雄!' } },
       HERO: { lobby: { ...heroEntry, text: '英雄到手!去看看你的队伍' } },
       HERO_CARD: { lobby: heroEntry, heroes: heroCardEntry },
@@ -140,7 +143,7 @@ export class LobbyHudRenderer {
       QUEST: { lobby: questEntry },
       CLAIM: { lobby: questEntry, quest: { targets: ['LobbyQuestClaimReady'], text: '任务完成了,点击领取奖励!' } },
     };
-    const entry = config[step]?.[view];
+    const entry = soft ?? config[step]?.[view];
     if (!entry) {
       return;
     }
@@ -191,7 +194,7 @@ export class LobbyHudRenderer {
       ['DimRight', (holeR + halfW) / 2, local.y, Math.max(0, halfW - holeR), holeT - holeB],
     ];
     for (const [name, bx, by, bw, bh] of blocks) {
-      if (bw <= 0 || bh <= 0) {
+      if (soft || bw <= 0 || bh <= 0) {
         continue;
       }
       const block = this.addChildPlainNode(overlay, `Guide${name}`, bx, by, bw, bh);
@@ -313,6 +316,40 @@ export class LobbyHudRenderer {
     const text = this.addChildLabel(bubble, 'GuideText', entry.text, 0, 0, 19 * scale, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
     text.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(text, scale, true);
+    if (soft) {
+      // 软引导:点气泡即关闭并记为已看过;点高亮的入口本身也会在对应页面记为已看过
+      bubble.addComponent(Button);
+      bubble.on(Button.EventType.CLICK, () => {
+        lobbyGuide.markVisited(soft.flag);
+        overlay.destroy();
+      }, this);
+    }
+  }
+
+  /**
+   * 局外软引导(2026-10-25 策划审核 P1-22,docs/45 §15),各自只出一次:
+   * 大厅按 有未穿戴装备 → 水晶可升级 → 每日副本已开放(通关第 10 层)的顺序取一条;布阵页第一次进入讲阵容战力。
+   */
+  private resolveSoftGuide(view: string, maxCompletedStageCode: string): { targets: string[]; text: string; flag: GuideFlag } | null {
+    if (view === 'formation') {
+      return lobbyGuide.isDone('formation') ? null : { targets: ['LobbyFormationPowerBanner'], text: '拖英雄到格子上阵,最多 4 人;阵容战力和推荐战力比一比', flag: 'formation' };
+    }
+    if (view !== 'lobby') {
+      return null;
+    }
+    const badges = this.host.currentLobbyBadges?.() ?? null;
+    if (badges && badges.unwornEquip > 0 && !lobbyGuide.isDone('equip')) {
+      return { targets: ['LobbyNavItem_hero'], text: '获得了装备!去英雄详情给英雄穿上', flag: 'equip' };
+    }
+    if (badges && badges.crystalUpgradable && !lobbyGuide.isDone('crystal')) {
+      return { targets: ['LobbyNavItem_crystal'], text: '水晶可以升级了:用金币和晶核升级,解锁更多法术', flag: 'crystal' };
+    }
+    const match = /^MAIN_(\d+)_(\d+)$/.exec((maxCompletedStageCode || '').toUpperCase());
+    const order = match ? (Number(match[1]) <= 1 ? Number(match[2]) : 9 + (Number(match[1]) - 2) * 16 + Number(match[2])) : 0;
+    if (order >= 10 && !lobbyGuide.isDone('daily')) {
+      return { targets: ['LobbyActivityItem_event'], text: '每日副本开放了:每天不同主题,产出养成材料', flag: 'daily' };
+    }
+    return null;
   }
 
   private get node(): Node {
@@ -669,7 +706,7 @@ export class LobbyHudRenderer {
     const name = this.addChildLabel(node, 'LobbyMicroPlayerName', profile.displayName, textLeft, 2 * unit, 13 * unit, rgba(250, 226, 164), new Size(textWidth, 16 * unit), HorizontalTextAlignment.LEFT);
     name.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(name, unit, true);
-    const power = this.addChildLabel(node, 'LobbyMicroPlayerPower', `战力 ${this.host.formatInteger(profile.combatPower)}`, textLeft, -16 * unit, 11 * unit, rgba(224, 190, 112), new Size(textWidth, 14 * unit), HorizontalTextAlignment.LEFT);
+    const power = this.addChildLabel(node, 'LobbyMicroPlayerPower', `阵容战力 ${this.host.formatInteger(profile.lineupPower ?? profile.combatPower)}`, textLeft, -16 * unit, 11 * unit, rgba(224, 190, 112), new Size(textWidth, 14 * unit), HorizontalTextAlignment.LEFT);
     power.overflow = Label.Overflow.SHRINK;
     this.applyLobbyResourceTextStyle(power, unit, false);
   }
@@ -1171,7 +1208,7 @@ export class LobbyHudRenderer {
     group.addComponent(UITransform).setContentSize(new Size(itemWidth, totalHeight));
     let cursorY = totalHeight / 2 - itemHeight / 2;
     for (const item of items) {
-      this.addLobbyActivityItem(group, item.icon, item.title, item.subline, item.hot, 0, cursorY, itemWidth, itemHeight, scale);
+      this.addLobbyActivityItem(group, item.icon, item.title, item.subline, item.hot || this.activityBadge(item.icon), 0, cursorY, itemWidth, itemHeight, scale);
       cursorY -= itemHeight + gap;
     }
   }
@@ -1903,7 +1940,7 @@ export class LobbyHudRenderer {
     graphics.stroke();
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index];
-      this.addLobbyNavItem(node, item.key, item.label, item.hot, -width / 2 + slot * index + slot / 2, 6 * scale, slot, height, scale);
+      this.addLobbyNavItem(node, item.key, item.label, item.hot || this.navBadge(item.key), -width / 2 + slot * index + slot / 2, 6 * scale, slot, height, scale);
     }
   }
 
@@ -2338,6 +2375,41 @@ export class LobbyHudRenderer {
     this.applyLobbyResourceTextStyle(channel, scale, false);
     const text = this.addChildLabel(node, 'LobbyChatText', 'LootChain: 欢迎来到LootChain的世界！', -width / 2 + 102 * scale, 0, 18 * scale, rgba(178, 169, 130), new Size(width - 110 * scale, 24 * scale), HorizontalTextAlignment.LEFT);
     text.overflow = Label.Overflow.SHRINK;
+  }
+
+  /** 底部导航红点(docs/45 §5):英雄 = 编队有人可升级 / 升星;水晶 = 可升级;图鉴 / 任务 = 有可领取。背包 / 锻造 / 商店不标。 */
+  private navBadge(key: string): boolean {
+    const badges = this.host.currentLobbyBadges?.() ?? null;
+    if (!badges) {
+      return false;
+    }
+    switch (key) {
+      case 'hero':
+        return badges.heroGrowable;
+      case 'crystal':
+        return badges.crystalUpgradable;
+      case 'codex':
+        return badges.codex > 0;
+      case 'quest':
+        return badges.quest > 0;
+      default:
+        return false;
+    }
+  }
+
+  /** 活动栏红点:每日副本今天还有次数且体力够;召唤有免费单抽或够一次十连。 */
+  private activityBadge(icon: string): boolean {
+    const badges = this.host.currentLobbyBadges?.() ?? null;
+    if (!badges) {
+      return false;
+    }
+    if (icon === 'event') {
+      return badges.dailyDungeonLeft > 0;
+    }
+    if (icon === 'summon') {
+      return badges.gachaFree || badges.gachaTicketTen;
+    }
+    return false;
   }
 
   private addLobbyRedDot(parent: Node, x: number, y: number, size: number, visible: boolean): void {
