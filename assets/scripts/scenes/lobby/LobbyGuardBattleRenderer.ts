@@ -118,6 +118,8 @@ import {
   type GuardHeroUnit,
   type GuardMonster,
   type GuardOutsideStats,
+  type GuardPassive,
+  type GuardPassiveType,
   type GuardPoolHero,
   guardPickMonsterSpineCodes,
   guardApplyMonsterRoster,
@@ -138,12 +140,15 @@ import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
-import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
+import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_PASSIVE_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
 import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAvatarPath } from './HeroHeadCrop';
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources } from './HeroCombatStats';
+import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveUnlockedPassiveCount } from './LobbyBattleHeroSkillConfig';
+
+const GUARD_PASSIVE_TYPES: GuardPassiveType[] = ['lifesteal', 'truePierce', 'freeze', 'stun', 'splash', 'reflect', 'atkUp', 'hpUp'];
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guardBluePerkName, resolveGuardHeroPerkProfile, type GuardPerkRarity } from './GuardPerkConfig';
 
@@ -844,12 +849,39 @@ export class LobbyGuardBattleRenderer {
    * 局外属性(docs/41 A 方案):与属性详情「属性来源」同口径(HeroCombatStats:基础 + 装备 + 特性)。
    * 攻击仍取开战回执的 attack(后端已含装备 / 宝石),这里只补攻击加成特性;找不到名册英雄时不带(按旧口径)。
    */
-  private resolveGuardOutsideStats(hero: LobbyHeroItemVO | null, ultimateSkillLevel: number | undefined): GuardOutsideStats | undefined {
+  private resolveGuardOutsideStats(hero: LobbyHeroItemVO | null, ally: BattlePresentationUnitSnapshot): GuardOutsideStats | undefined {
     if (!hero) {
       return undefined;
     }
     const sources = resolveHeroCombatSources(hero, this.host.currentLobbyHeroEquipState?.().items ?? []);
+    const ultimateSkillLevel = ally.ultimateSkillLevel;
+    // 升星被动(docs/41 §6):有序 = [护盾?, ...概率 / 常驻效果],按星级解锁前 N 条;技能配置以开战回执(后端 hero_battle_skill_config)为准,缺省回退客户端占位表
+    const rarity = ally.rarity || hero.rarity;
+    const config = ally.skillConfig ?? null;
+    const fallback = resolveBattleHeroSkillProfile(hero.heroCode);
+    const shieldScope = config ? config.energyShieldScope : fallback.energyShield?.scope ?? null;
+    const effects = config ? config.effects : fallback.effects ?? [];
+    const ordered: Array<{ kind: 'shield' } | { kind: 'effect'; type: string; baseChance: number; magnitude: number }> = [
+      ...(shieldScope ? [{ kind: 'shield' as const }] : []),
+      ...effects.map((effect) => ({ kind: 'effect' as const, type: effect.type, baseChance: effect.baseChance, magnitude: effect.magnitude })),
+    ];
+    const unlocked = ordered.slice(0, resolveUnlockedPassiveCount(rarity, ally.star ?? hero.star));
+    const passives: GuardPassive[] = [];
+    let shieldRatio = 0;
+    unlocked.forEach((entry) => {
+      if (entry.kind === 'shield') {
+        shieldRatio = shieldScope ? resolveEnergyShieldHpRatio(shieldScope, rarity) : 0;
+        return;
+      }
+      if (GUARD_PASSIVE_TYPES.indexOf(entry.type as GuardPassiveType) < 0) {
+        return;
+      }
+      const flat = entry.type === 'atkUp' || entry.type === 'hpUp';
+      passives.push({ type: entry.type as GuardPassiveType, chance: flat ? 1 : resolveSkillTriggerChance(entry.baseChance, rarity), magnitude: entry.magnitude });
+    });
     return {
+      passives,
+      shieldRatio,
       hp: heroCombatTotal(sources.生命),
       defense: heroCombatTotal(sources.防御),
       speed: heroCombatTotal(sources.速度),
@@ -876,7 +908,7 @@ export class LobbyGuardBattleRenderer {
         role: resolveGuardRole(ally.heroCode ?? ally.unitKey, ally.heroClass),
         baseAttack: Math.max(10, Math.round((ally.attack ?? 40) * GUARD_BASE_ATTACK_SCALE)),
         sourceIndex: index,
-        outside: this.resolveGuardOutsideStats(heroes.find((hero) => hero.id === ally.sourceHeroId) ?? null, ally.ultimateSkillLevel),
+        outside: this.resolveGuardOutsideStats(heroes.find((hero) => hero.id === ally.sourceHeroId) ?? null, ally),
       }));
     // 难度从 stageCode 取:DAILY 三档后缀(Ⅰ=10 波,Ⅱ=20 波,Ⅲ=BOSS 车轮战);
     // 主线 MAIN_*(P5,2026-09-03 用户拍板)=难度Ⅰ同款 10 波 + 关卡难度曲线缩放怪物强度。
@@ -3024,6 +3056,13 @@ export class LobbyGuardBattleRenderer {
           this.shakeField(9);
           this.spawnFloater(this.xToPx(4), this.walkwayY() + this.layoutHeight * 0.18, '龙焰爆!', rgba(255, 170, 90), 24);
         }
+      } else if (event.type === 'passiveProc') {
+        this.playPassiveProcFx(event);
+      } else if (event.type === 'crystalShield') {
+        // 能量护盾被动:波次开始水晶处壁垒法阵短播 + 金字护盾量
+        const center = this.crystalFxCenter();
+        this.spawnSpineBurstFx(GUARD_SPELL_FX.aegis, center.x + this.unitSize() * 1.0, center.y + this.unitSize() * 0.3, 0.6, 1400, true);
+        this.spawnFloater(center.x, center.y + this.unitSize() * 0.55, `护盾 +${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 226, 150), 20);
       } else if (event.type === 'crystalHeal') {
         // 辅助周期治疗水晶:小圣光升起 + 绿色飘字(≥1.2s 一次,多辅助不叠)。
         const now = Date.now();
@@ -7611,6 +7650,51 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 一次性骨骼爆点(普攻命中 / 专属词条触发共用):未就绪时补预热并返回 false,由调用方回退。 */
+  /** 升星被动触发表现(docs/41 §6):受影响的怪身上播对应特效 + 短字;同类型 180ms 内只播一次,防刷屏。 */
+  private readonly passiveFxAt: Record<string, number> = {};
+  private playPassiveProcFx(event: GuardEvent): void {
+    const type = event.passive ?? '';
+    const now = Date.now();
+    if (now - (this.passiveFxAt[type] ?? 0) < 180) {
+      return;
+    }
+    this.passiveFxAt[type] = now;
+    if (type === 'lifesteal') {
+      const center = this.crystalFxCenter();
+      this.spawnSpineBurstFx(GUARD_SUPPORT_FX.crystalHealSmall, center.x, center.y - this.unitSize() * 0.1, 0.8, 800);
+      this.spawnFloater(center.x, center.y + this.unitSize() * 0.45, `吸血 +${this.formatDamageValue(event.amount ?? 0)}`, rgba(255, 140, 140), 18);
+      return;
+    }
+    const spec = (GUARD_PASSIVE_FX as Record<string, { effect: string; animation: string; size: number }>)[type] ?? null;
+    const label: Record<string, { text: string; color: Color }> = {
+      freeze: { text: '冻结', color: rgba(160, 220, 255) },
+      stun: { text: '眩晕', color: rgba(255, 226, 120) },
+      truePierce: { text: '破甲', color: rgba(255, 130, 110) },
+      reflect: { text: '反伤', color: rgba(255, 220, 160) },
+    };
+    (event.monsterIds ?? []).slice(0, 3).forEach((monsterId, index) => {
+      const view = this.monsterViews.get(monsterId);
+      if (!view || !view.node.isValid) {
+        return;
+      }
+      const x = view.node.position.x;
+      const y = view.node.position.y;
+      if (!this.spawnSpineBurstFx(spec, x, y, 1)) {
+        this.spawnImpactFlash(x, y, label[type]?.color ?? rgba(255, 220, 160));
+      }
+      // 溅射伤害已并入 heroAttack 的 hits(随普攻飘字);反伤不在普攻里,单独飘
+      if (type === 'reflect') {
+        this.queueDamage(monsterId, event.amount ?? 0, false, x + ((index * 31) % 30) - 15, y);
+      }
+      if (index === 0 && label[type]) {
+        // 同一只怪同时触发几种被动时字会叠在一起:按类型错开高度 / 左右
+        const slot: Record<string, [number, number]> = { freeze: [0.62, -0.42], stun: [0.92, 0.38], truePierce: [0.4, 0.42], reflect: [0.78, -0.1] };
+        const [dy, dx] = slot[type] ?? [0.6, 0];
+        this.spawnFloater(x + this.unitSize() * dx, y + this.unitSize() * dy, label[type].text, label[type].color, 18);
+      }
+    });
+  }
+
   private spawnSpineBurstFx(hitSpec: { effect: string; animation: string; size: number } | null, x: number, y: number, scale: number, holdMs = 500, force = false): boolean {
     const field = this.fieldNode;
     if (!field || !hitSpec) {
@@ -7849,6 +7933,13 @@ export class LobbyGuardBattleRenderer {
       if (perkFx) {
         this.prewarmAttackSpineFx(perkFx);
       }
+      // 升星被动触发特效(docs/41 §6):只预热这名英雄已解锁的那几种
+      (entry.outside?.passives ?? []).forEach((passive) => {
+        const passiveFx = (GUARD_PASSIVE_FX as Record<string, { effect: string; animation: string; size: number }>)[passive.type];
+        if (passiveFx) {
+          this.prewarmAttackSpineFx(passiveFx);
+        }
+      });
     }
     // 辅助英雄在池子里就预热"圣辉涌泉"三件套(光罩 / 水晶大回血 / 周期小回血),首次施放不缺帧。
     if (pool.some((entry) => entry.role === 'support')) {
@@ -7980,6 +8071,7 @@ export class LobbyGuardBattleRenderer {
     });
     Object.values(GUARD_BOSS_FX).forEach((spec) => addFxTo(rushMode ? spine : deferredSpine, spec));
     Object.values(GUARD_SPELL_FX).forEach((spec) => addFxTo(deferredSpine, spec));
+    Object.values(GUARD_PASSIVE_FX).forEach((spec) => addFxTo(deferredSpine, spec));
     addFxTo(deferredSpine, GUARD_WARHORN_BURST_FX);
     Object.values(GUARD_CHEST_FX).forEach((spec) => addFxTo(deferredSpine, spec));
     guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));

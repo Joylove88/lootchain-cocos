@@ -1,8 +1,26 @@
 // 由导出的账号英雄数据生成回归用例:node gen_cases.mjs <roster.json> <out.json> [withOutside=1] [scales=0.5,1,1.5,2,3]
+// 第 5 参 = 构建目录(含 LobbyBattleHeroSkillConfig.mjs)时按星级带上已解锁的升星被动(docs/41 §6)。
 // roster.json:{heroes:[{code,rarity,cls,level,star,power,hp,atk,def,spd,crit,ult,affixes:[{code,value}]}], equip:[...], formation:[heroId]}
 // 局外属性口径同 assets/scripts/scenes/lobby/HeroCombatStats.ts(基础 + 装备 + 特性,特性点数 ÷10 = %)。
 import fs from 'fs';
-const [rosterFile, outFile, withOutsideArg, scalesArg] = process.argv.slice(2);
+import path from 'path';
+import { pathToFileURL } from 'url';
+const [rosterFile, outFile, withOutsideArg, scalesArg, skillBuildDir] = process.argv.slice(2);
+const SK = skillBuildDir ? await import(pathToFileURL(path.resolve(skillBuildDir, 'LobbyBattleHeroSkillConfig.mjs')).href) : null;
+function passivesOf(h) {
+  if (!SK) return { passives: [], shieldRatio: 0 };
+  const prof = SK.resolveBattleHeroSkillProfile(h.code);
+  const ordered = [...(prof.energyShield ? [{ shield: prof.energyShield.scope }] : []), ...(prof.effects || [])];
+  const unlocked = ordered.slice(0, SK.resolveUnlockedPassiveCount(h.rarity, h.star));
+  let shieldRatio = 0;
+  const passives = [];
+  for (const e of unlocked) {
+    if (e.shield) { shieldRatio = SK.resolveEnergyShieldHpRatio(e.shield, h.rarity); continue; }
+    const flat = e.type === 'atkUp' || e.type === 'hpUp';
+    passives.push({ type: e.type, chance: flat ? 1 : SK.resolveSkillTriggerChance(e.baseChance, h.rarity), magnitude: e.magnitude });
+  }
+  return { passives, shieldRatio };
+}
 const withOutside = withOutsideArg !== '0';
 const scales = (scalesArg || '0.5,1,1.5,2,3').split(',').map(Number);
 const d = JSON.parse(fs.readFileSync(rosterFile, 'utf8'));
@@ -14,7 +32,7 @@ function poolHero(h, i) {
   const spd = (h.spd + eqSum(h, 'spd')) * (1 + pct(h, 'SPD_BONUS') / 100);
   const entry = { heroCode: h.code, displayName: h.code, rarity: h.rarity, heroClass: h.cls, baseAttack: Math.max(10, Math.round(h.atk + eqSum(h, 'atk'))), sourceIndex: i };
   if (withOutside) {
-    entry.outside = { hp, defense: def, speed: spd, critPct: h.crit + eqSum(h, 'crit') + pct(h, 'CRIT_RATE'), critDmgPct: 150 + pct(h, 'CRIT_DMG'), ultLevel: h.ult || 1, atkBonusPct: pct(h, 'ATK_BONUS') };
+    entry.outside = { hp, defense: def, speed: spd, critPct: h.crit + eqSum(h, 'crit') + pct(h, 'CRIT_RATE'), critDmgPct: 150 + pct(h, 'CRIT_DMG'), ultLevel: h.ult || 1, atkBonusPct: pct(h, 'ATK_BONUS'), ...passivesOf(h) };
   }
   return entry;
 }

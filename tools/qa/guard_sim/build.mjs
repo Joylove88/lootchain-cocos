@@ -14,7 +14,10 @@ if (!out) {
   process.exit(1);
 }
 fs.mkdirSync(out, { recursive: true });
-for (const name of ['GuardBattleModel', 'GuardPerkConfig']) {
+for (const name of ['GuardBattleModel', 'GuardPerkConfig', 'LobbyBattleHeroSkillConfig']) {
+  if (!fs.existsSync(path.join(srcDir, `${name}.ts`))) {
+    continue;
+  }
   const src = fs.readFileSync(path.join(srcDir, `${name}.ts`), 'utf8');
   const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
     .replace(/from '\.\/(GuardBattleModel|GuardPerkConfig)'/g, "from './$1.mjs'");

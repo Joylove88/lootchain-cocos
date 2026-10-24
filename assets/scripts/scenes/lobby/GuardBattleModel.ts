@@ -97,6 +97,20 @@ export interface GuardOutsideStats {
   ultLevel: number;
   /** 攻击加成(%,特性 ATK_BONUS;局外攻击本身已含装备,由 baseAttack 带入) */
   atkBonusPct: number;
+  /** 已解锁的升星被动(docs/41 §6;按星级解锁顺序;chance 已乘稀有度系数)。 */
+  passives?: GuardPassive[];
+  /** 能量护盾被动(占英雄生命比例,已按稀有度 / 单体全体取值);0 = 无。 */
+  shieldRatio?: number;
+}
+
+/** 升星被动在守卫战里的效果(docs/41 §6):概率类按出手次数确定性累加触发,常驻类开局生效。 */
+export type GuardPassiveType = 'lifesteal' | 'truePierce' | 'freeze' | 'stun' | 'splash' | 'reflect' | 'atkUp' | 'hpUp';
+export interface GuardPassive {
+  type: GuardPassiveType;
+  /** 实际触发率 0..0.95(baseChance × 稀有度系数;常驻类为 1)。 */
+  chance: number;
+  /** 效果量:吸血 / 溅射 / 反伤 / 攻击 / 生命 = 比例;冻结 / 眩晕 = 秒;真伤 = 系数(1 = 标准)。 */
+  magnitude: number;
 }
 
 export interface GuardHeroUnit {
@@ -169,6 +183,8 @@ export interface GuardMonster {
   slowUntilMs: number;
   /** BOSS 读条被打断后的踉跄(不移动不读条)。 */
   stunnedUntilMs: number;
+  /** 被动冻结 / 眩晕后的免控截止(精英 / BOSS 用,防止被锁死;docs/41 §6)。 */
+  ccImmuneUntilMs?: number;
   spawnedWave: number;
   /** 渲染层骨骼资源名(spine/monster/<code>)。 */
   spineCode: string;
@@ -258,8 +274,12 @@ export interface GuardEvent {
     // docs/39 法术等级:延时 / 追加效果(余震 / 冰碎 / 九重雷劫单道 / 圣光反震),spellEcho.echoKind 区分。
     | 'spellEcho'
     // docs/37 G:陷阱放置 / 尖刺跳伤 / 符文爆炸 / 耐久耗尽。
-    | 'trapPlace' | 'trapTick' | 'trapBoom' | 'trapExpire';
+    | 'trapPlace' | 'trapTick' | 'trapBoom' | 'trapExpire'
+    // docs/41 §6:升星被动触发(passive=类型,monsterIds=受影响的怪,amount=伤害 / 回复量)/ 能量护盾在波次开始时套上(amount=护盾量)。
+    | 'passiveProc' | 'crystalShield';
   timeMs: number;
+  /** passiveProc:被动类型(GuardPassiveType)。 */
+  passive?: string;
   heroCode?: string;
   star?: number;
   cell?: number;
@@ -779,6 +799,10 @@ export interface GuardBattleState {
   monsterScale: number;
   /** 局外防御折算的啃咬减伤乘数(1 = 不减;docs/41)。 */
   outsideBiteMult: number;
+  /** 升星被动的确定性累加器:英雄编码 → 各被动(与 passives 下标对齐);合成重抽身份不清零。 */
+  passiveAcc: Record<string, number[]>;
+  /** 能量护盾剩余量(波次开始按上阵英雄护盾被动套上,先于水晶生命扣)。 */
+  crystalShield: number;
   /** 每波怪物数量倍率(主线 2;每日 1)。 */
   spawnCountMult: number;
   /** 怪物血量额外倍率(只乘 HP;主线收紧用)。 */
@@ -916,6 +940,59 @@ function guardOutsideOf(state: { pool: GuardPoolHero[] }, heroCode: string): Gua
 function guardOutsideSpeedMult(state: GuardBattleState, heroCode: string): number {
   const outside = guardOutsideOf(state, heroCode);
   return outside ? 1 + Math.min(GUARD_OUTSIDE_SPD_CAP, Math.max(0, outside.speed) / GUARD_OUTSIDE_SPD_K) : 1;
+}
+
+// ── docs/41 §6 升星被动 ──
+/** 溅射:主目标 ±本格数内最近 2 只,各吃主伤害 × 溅射比例。 */
+export const GUARD_PASSIVE_SPLASH_RADIUS = 1.2;
+export const GUARD_PASSIVE_SPLASH_COUNT = 2;
+/** 真伤穿透:守卫战的怪没有防御,改为该击伤害 +本比例 × 系数(对精英 / BOSS 再 ×1.5)。 */
+export const GUARD_PASSIVE_PIERCE_BONUS = 0.4;
+/** 冻结 / 眩晕:精英 / BOSS 时长减半,且之后本时长内免控(防被锁死、BOSS 读条仍能起)。 */
+export const GUARD_PASSIVE_CC_BOSS_MULT = 0.5;
+export const GUARD_PASSIVE_CC_IMMUNE_MS = 4000;
+/** 吸血:回复水晶 = 伤害 × 吸血比例 × 本系数,与词条回血共用每波上限(水晶最大生命 8%)。 */
+export const GUARD_PASSIVE_LIFESTEAL_SCALE = 0.15;
+/** 反伤:被啃时反弹 = 该英雄攻击 × 反伤比例 × 本系数。 */
+export const GUARD_PASSIVE_REFLECT_SCALE = 3;
+/** 能量护盾:每波开始套 = 英雄生命 × 护盾比例 × 本系数(多名英雄取和,上限水晶最大生命 20%)。 */
+export const GUARD_PASSIVE_SHIELD_SCALE = 0.5;
+export const GUARD_PASSIVE_SHIELD_CAP = 0.2;
+
+/** 某英雄编码的已解锁被动(含常驻类)。 */
+function guardPassivesOf(state: GuardBattleState, heroCode: string): GuardPassive[] {
+  return guardOutsideOf(state, heroCode)?.passives ?? [];
+}
+
+/** 常驻被动合计(攻击 / 生命加成比例)。 */
+function guardPassiveFlat(passives: readonly GuardPassive[] | undefined, type: 'atkUp' | 'hpUp'): number {
+  return (passives ?? []).filter((entry) => entry.type === type).reduce((sum, entry) => sum + Math.max(0, entry.magnitude), 0);
+}
+
+/** 概率被动的确定性判定:累加器 += 触发率,满 1 触发并扣 1。 */
+function guardPassiveRoll(state: GuardBattleState, heroCode: string, index: number, chance: number): boolean {
+  const code = heroCode.toUpperCase();
+  const acc = state.passiveAcc[code] ?? (state.passiveAcc[code] = []);
+  acc[index] = (acc[index] ?? 0) + Math.max(0, Math.min(0.95, chance));
+  if (acc[index] >= 1) {
+    acc[index] -= 1;
+    return true;
+  }
+  return false;
+}
+
+/** 冻结 / 眩晕套到怪身上(精英 / BOSS 减半 + 免控期);返回是否生效。 */
+function guardPassiveControl(state: GuardBattleState, monster: GuardMonster, seconds: number): boolean {
+  if (monster.dead || (monster.ccImmuneUntilMs ?? 0) > state.timeMs) {
+    return false;
+  }
+  const tough = monster.kind === 'elite' || monster.kind === 'boss';
+  const ms = Math.round(seconds * 1000 * (tough ? GUARD_PASSIVE_CC_BOSS_MULT : 1));
+  monster.stunnedUntilMs = Math.max(monster.stunnedUntilMs, state.timeMs + ms);
+  if (tough) {
+    monster.ccImmuneUntilMs = state.timeMs + ms + GUARD_PASSIVE_CC_IMMUNE_MS;
+  }
+  return true;
 }
 
 // 覆盖范围(2026-08-25 用户拍板:同类型英雄攻击范围与所站格子无关)——rangeCells=从水晶起算的覆盖距离,
@@ -1361,7 +1438,7 @@ export function createGuardBattle(
   const outsideHeroes = pool.map((entry) => entry.outside).filter((entry): entry is GuardOutsideStats => !!entry);
   const outsideActive = outsideHeroes.length > 0;
   const outsideDef = outsideHeroes.reduce((sum, entry) => sum + Math.max(0, entry.defense), 0);
-  const outsideHp = outsideHeroes.reduce((sum, entry) => sum + Math.max(0, entry.hp), 0);
+  const outsideHp = outsideHeroes.reduce((sum, entry) => sum + Math.max(0, entry.hp) * (1 + guardPassiveFlat(entry.passives, 'hpUp')), 0);
   // 长局(难度Ⅱ 20 波)水晶加厚:波数每多 1 波 +60,漏怪容错随局长同步放大;rush 保持基准(水晶量=层数上限的节奏阀)。
   const baseCrystalHp = GUARD_CRYSTAL_MAX_HP + (mode === 'standard' ? Math.max(0, maxWave - 10) * 60 : 0);
   // 水晶养成(docs/38):数值都做了钳制,防旧服务端/异常快照把战斗打穿。
@@ -1436,6 +1513,8 @@ export function createGuardBattle(
     monsterBiteMult,
     minionHpMult,
     outsideBiteMult: outsideActive ? 1 - Math.min(GUARD_OUTSIDE_DEF_CAP, outsideDef / (outsideDef + GUARD_OUTSIDE_DEF_K)) : 1,
+    passiveAcc: {},
+    crystalShield: 0,
     heroDamage: {},
     supportSurgeUntilMs: 0,
     unlockedCells: GUARD_START_CELLS,
@@ -1711,7 +1790,7 @@ export function guardHeroAttackValue(state: GuardBattleState, hero: GuardHeroUni
   const resonanceMult = state.resonanceCells.indexOf(hero.cell) >= 0 ? GUARD_RESONANCE_ATK_MULT : 1;
   // 狂战号角「狂怒」(docs/39 Lv5):号角期间全队伤害 ×1.15;未解锁 / 号角结束时为 1(不影响旧口径)。
   const hornMult = state.warhornUntilMs > state.timeMs ? state.warhornDmgMult : 1;
-  const outsideAtkMult = 1 + Math.max(0, pool?.outside?.atkBonusPct ?? 0) / 100;
+  const outsideAtkMult = (1 + Math.max(0, pool?.outside?.atkBonusPct ?? 0) / 100) * (1 + guardPassiveFlat(pool?.outside?.passives, 'atkUp'));
   return Math.max(1, Math.round(base * outsideAtkMult * profile.damageScale * Math.pow(GUARD_STAR_ATTACK_MULT, hero.star - 1) * (1 + teamPct / 100) * t0Mult * rarityMult * perkMult * resonanceMult * hornMult));
 }
 
@@ -2416,6 +2495,7 @@ function startWave(state: GuardBattleState): void {
   state.events.push({ type: 'waveStart', timeMs: state.timeMs, wave: state.wave });
   guardScheduleFieldEvents(state);
   state.perkHealThisWave = 0;
+  guardApplyWaveShield(state);
   // 契约魔女·血契:她有单位在场的波次开始时扣水晶(单局 ≤12%,不低于 10%;车轮战该卡不入池)。
   const witch = state.heroPerks.SR_WITCH_03;
   if (witch && witch.purple > 0 && state.mode !== 'rush' && state.heroes.some((hero) => hero.heroCode.toUpperCase() === 'SR_WITCH_03')) {
@@ -2879,6 +2959,7 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
     }
   });
 
+  guardApplyAttackPassives(state, hero, target, others, resolved);
   const mainAmount = resolved[0]?.amount ?? 0;
   state.events.push({
     type: 'heroAttack',
@@ -2896,6 +2977,90 @@ function resolveBasicAttack(state: GuardBattleState, hero: GuardHeroUnit, target
   });
   for (const hit of resolved) {
     damageMonster(state, hit.monster, hit.amount, hero, null, true);
+  }
+}
+
+/**
+ * 普攻命中时的升星被动(docs/41 §6):溅射 / 真伤 / 冻结 / 眩晕 / 吸血;每条被动独立累加触发。
+ * 真伤直接加在主命中上;溅射作为追加命中并入本次结算(不吃次数类硬钳,系数已在被动里)。
+ */
+function guardApplyAttackPassives(state: GuardBattleState, hero: GuardHeroUnit, target: GuardMonster, others: GuardMonster[], resolved: Array<{ monster: GuardMonster; amount: number; kind: GuardHitKind }>): void {
+  const passives = guardPassivesOf(state, hero.heroCode);
+  if (passives.length === 0 || resolved.length === 0) {
+    return;
+  }
+  const main = resolved[0];
+  passives.forEach((passive, index) => {
+    if (passive.type === 'atkUp' || passive.type === 'hpUp' || passive.type === 'reflect') {
+      return;
+    }
+    if (!guardPassiveRoll(state, hero.heroCode, index, passive.chance)) {
+      return;
+    }
+    if (passive.type === 'truePierce') {
+      const tough = target.kind === 'elite' || target.kind === 'boss';
+      const extra = Math.round(main.amount * GUARD_PASSIVE_PIERCE_BONUS * Math.max(0, passive.magnitude) * (tough ? 1.5 : 1));
+      main.amount += extra;
+      state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, passive: passive.type, monsterIds: [target.monsterId], amount: extra });
+    } else if (passive.type === 'splash') {
+      const near = others
+        .filter((monster) => !monster.dead && Math.abs(monster.x - target.x) <= GUARD_PASSIVE_SPLASH_RADIUS)
+        .sort((a, b) => Math.abs(a.x - target.x) - Math.abs(b.x - target.x) || a.monsterId - b.monsterId)
+        .slice(0, GUARD_PASSIVE_SPLASH_COUNT);
+      const amount = Math.round(main.amount * Math.max(0, passive.magnitude));
+      if (near.length > 0 && amount > 0) {
+        near.forEach((monster) => resolved.push({ monster, amount, kind: 'splash' }));
+        state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, passive: passive.type, monsterIds: near.map((monster) => monster.monsterId), amount });
+      }
+    } else if (passive.type === 'freeze' || passive.type === 'stun') {
+      if (guardPassiveControl(state, target, passive.magnitude)) {
+        state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, passive: passive.type, monsterIds: [target.monsterId], amount: Math.round(passive.magnitude * 10) / 10 });
+      }
+    } else if (passive.type === 'lifesteal') {
+      const healed = guardPerkHeal(state, main.amount * Math.max(0, passive.magnitude) * GUARD_PASSIVE_LIFESTEAL_SCALE);
+      if (healed > 0) {
+        state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: hero.heroCode, cell: hero.cell, passive: passive.type, monsterIds: [target.monsterId], amount: healed });
+      }
+    }
+  });
+}
+
+/** 被啃时的反伤被动:场上带反伤的英雄编码各自累加触发,反弹给啃咬的怪。 */
+function guardApplyReflectPassives(state: GuardBattleState, attacker: GuardMonster): void {
+  const seen: string[] = [];
+  for (const unit of state.heroes) {
+    const code = unit.heroCode.toUpperCase();
+    if (seen.indexOf(code) >= 0) {
+      continue;
+    }
+    seen.push(code);
+    guardPassivesOf(state, code).forEach((passive, index) => {
+      if (passive.type !== 'reflect' || attacker.dead || !guardPassiveRoll(state, code, index, passive.chance)) {
+        return;
+      }
+      const amount = Math.max(1, Math.round(guardCodeAttackValue(state, code) * Math.max(0, passive.magnitude) * GUARD_PASSIVE_REFLECT_SCALE));
+      state.events.push({ type: 'passiveProc', timeMs: state.timeMs, heroCode: code, cell: unit.cell, passive: 'reflect', monsterIds: [attacker.monsterId], amount });
+      damageMonster(state, attacker, amount, unit, null, false, false);
+    });
+  }
+}
+
+/** 波次开始:能量护盾被动给水晶套盾(上阵英雄生命 × 护盾比例 × 系数,合计封顶)。 */
+function guardApplyWaveShield(state: GuardBattleState): void {
+  let total = 0;
+  for (const entry of state.pool) {
+    const outside = entry.outside;
+    if (outside && (outside.shieldRatio ?? 0) > 0) {
+      total += Math.max(0, outside.hp) * (1 + guardPassiveFlat(outside.passives, 'hpUp')) * (outside.shieldRatio ?? 0) * GUARD_PASSIVE_SHIELD_SCALE;
+    }
+  }
+  if (total <= 0) {
+    return;
+  }
+  const shield = Math.round(Math.min(state.crystalMaxHp * GUARD_PASSIVE_SHIELD_CAP, total));
+  if (shield > state.crystalShield) {
+    state.crystalShield = shield;
+    state.events.push({ type: 'crystalShield', timeMs: state.timeMs, amount: shield });
   }
 }
 
@@ -3165,6 +3330,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         const bite = guardAegisFilter(state, state.outsideBiteMult < 1 ? Math.max(1, Math.round(monster.crystalDamage * state.outsideBiteMult)) : monster.crystalDamage, monster);
         state.crystalHp = Math.max(0, state.crystalHp - bite);
         state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: bite });
+        guardApplyReflectPassives(state, monster);
         if ((state.heroPerks.UR_ATLAS?.purple ?? 0) > 0 && state.heroes.some((hero) => hero.heroCode.toUpperCase() === 'UR_ATLAS')) {
           state.riposteSeals = Math.min(3, state.riposteSeals + 1);
         }
@@ -3496,6 +3662,12 @@ function guardAegisFilter(state: GuardBattleState, damage: number, attacker: Gua
       damageMonster(state, attacker, reflect, null, null, false, false);
     }
     return 0;
+  }
+  // 能量护盾(docs/41 §6):先扣护盾
+  if (state.crystalShield > 0 && damage > 0) {
+    const absorbed = Math.min(state.crystalShield, damage);
+    state.crystalShield -= absorbed;
+    return damage - absorbed;
   }
   return damage;
 }
