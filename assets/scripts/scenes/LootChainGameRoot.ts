@@ -1620,6 +1620,10 @@ export class LootChainGameRoot extends Component {
 
   private renderLobbyHud(layout: UiLayout): void {
     if (LOBBY_TOWN_ENABLED) {
+      // 素材组还在下载(整页路径已画了加载闸门):HUD 局部刷新也不能把世界挂回来,否则队伍和摇杆压在加载条上
+      if (this.uiSpriteFrameCache.groupProgress('town')) {
+        return;
+      }
       // 世界节点可能还挂在内容根(HUD 局部刷新)、或刚被整页重绘摘下(挂回)、或从未建过(重建)
       const restored = this.lobbyTownRenderer.isMounted() || this.contentRootController.restoreNodes([LobbyTownRenderer.WORLD_NODE_NAME]);
       this.lobbyTownRenderer.render(layout, restored);

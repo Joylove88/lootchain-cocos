@@ -60,8 +60,40 @@ export const TOWN_LAMPS: ReadonlyArray<{ x: number; y: number }> = [
   { x: 0, y: -40 },
 ];
 
+/** 装饰物:flat=贴地纹样(不参与前后遮挡、不挡路);block=占地矩形(挡路,从脚线往上)。 */
+export type TownPropKey = 'emblem' | 'tree' | 'crates' | 'bench';
+export interface TownPropConfig {
+  key: TownPropKey;
+  x: number;
+  y: number;
+  width: number;
+  flat?: boolean;
+  block?: { w: number; d: number };
+}
+export function townPropAsset(key: TownPropKey): string {
+  return `${TOWN_ASSET_DIR}/${key}/spriteFrame`;
+}
+export const TOWN_PROPS: readonly TownPropConfig[] = [
+  // 广场中央黄铜罗盘纹样(贴地)
+  { key: 'emblem', x: 0, y: -330, width: 620, flat: true },
+  // 盆栽树:后排建筑之间、前排建筑之间、中排两侧
+  { key: 'tree', x: -820, y: 600, width: 170, block: { w: 110, d: 60 } },
+  { key: 'tree', x: 820, y: 600, width: 170, block: { w: 110, d: 60 } },
+  { key: 'tree', x: -1000, y: -600, width: 170, block: { w: 110, d: 60 } },
+  { key: 'tree', x: 1000, y: -600, width: 170, block: { w: 110, d: 60 } },
+  { key: 'tree', x: 540, y: -1020, width: 170, block: { w: 110, d: 60 } },
+  { key: 'tree', x: -1300, y: 220, width: 170, block: { w: 110, d: 60 } },
+  // 货箱堆:商行门侧、工坊门侧
+  { key: 'crates', x: -1780, y: -1040, width: 200, block: { w: 150, d: 70 } },
+  { key: 'crates', x: 1900, y: -420, width: 200, block: { w: 150, d: 70 } },
+  // 石凳:广场两侧
+  { key: 'bench', x: -560, y: -470, width: 200, block: { w: 170, d: 40 } },
+  { key: 'bench', x: 560, y: -470, width: 200, block: { w: 170, d: 40 } },
+];
+
 export const TOWN_ASSET_PATHS: readonly string[] = [
   TOWN_GROUND_ASSET,
   TOWN_LAMP_ASSET,
   ...TOWN_BUILDINGS.map((building) => townBuildingAsset(building.key)),
+  ...(['emblem', 'tree', 'crates', 'bench'] as TownPropKey[]).map((key) => townPropAsset(key)),
 ];

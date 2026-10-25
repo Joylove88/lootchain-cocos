@@ -105,7 +105,8 @@ def main():
                 ww = max(1, round(obj.width * hh / obj.height))
                 out = obj.resize((ww, hh), Image.LANCZOS)
             else:
-                k = 1024 / max(obj.size)
+                # 小件装饰(树 / 货箱 / 石凳)显示才 200 世界单位,512 够用,省显存
+                k = (512 if name in ('tree', 'crates', 'bench') else 1024) / max(obj.size)
                 out = obj.resize((max(1, round(obj.width * k)), max(1, round(obj.height * k))), Image.LANCZOS)
         dst = os.path.join(DST, name + '.png')
         out.save(dst)

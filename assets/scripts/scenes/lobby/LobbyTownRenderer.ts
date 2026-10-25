@@ -46,9 +46,11 @@ import {
   TOWN_LAMPS,
   TOWN_LAMP_ASSET,
   TOWN_MAP,
+  TOWN_PROPS,
   TOWN_SPAWN,
   TOWN_WALK_BOUNDS,
   townBuildingAsset,
+  townPropAsset,
   type TownBuildingConfig,
   type TownBuildingKey,
 } from './LobbyTownConfig';
@@ -117,6 +119,8 @@ export class LobbyTownRenderer {
   private trail: Vec2[] = [];
   private buildings: TownBuildingEntity[] = [];
   private lampNodes: Node[] = [];
+  /** 非贴地装饰(树 / 货箱 / 石凳):参与前后遮挡。 */
+  private propNodes: Array<{ node: Node; y: number }> = [];
   private camX: number = TOWN_SPAWN.x;
   private camY: number = TOWN_SPAWN.y;
   private orderKey = '';
@@ -153,6 +157,7 @@ export class LobbyTownRenderer {
     this.ensureGround();
     this.ensureBuildings();
     this.ensureLamps();
+    this.ensureProps();
     this.ensureParty();
     if (layoutChanged) {
       this.world?.setScale(this.k, this.k, 1);
@@ -175,6 +180,7 @@ export class LobbyTownRenderer {
     this.followers = [];
     this.buildings = [];
     this.lampNodes = [];
+    this.propNodes = [];
     this.trail = [];
     this.partySignature = '';
     this.camX = TOWN_SPAWN.x;
@@ -198,6 +204,7 @@ export class LobbyTownRenderer {
     this.entityRoot = this.host.addChildPlainNode(world, 'Entities', 0, 0, TOWN_MAP.width, TOWN_MAP.height);
     this.buildings = [];
     this.lampNodes = [];
+    this.propNodes = [];
     this.leader = null;
     this.followers = [];
     this.trail = [];
@@ -222,7 +229,14 @@ export class LobbyTownRenderer {
           continue;
         }
         // 图没到时 addSprite 返回 null(并在到货后触发整刷),下次 render 再补
-        this.host.addSprite(name, TOWN_GROUND_ASSET, x0 + c * TOWN_GROUND_TILE + TOWN_GROUND_TILE / 2, y0 + r * TOWN_GROUND_TILE + TOWN_GROUND_TILE / 2, TOWN_GROUND_TILE + 1, TOWN_GROUND_TILE + 1, root);
+        const tile = this.host.addSprite(name, TOWN_GROUND_ASSET, x0 + c * TOWN_GROUND_TILE + TOWN_GROUND_TILE / 2, y0 + r * TOWN_GROUND_TILE + TOWN_GROUND_TILE / 2, TOWN_GROUND_TILE + 1, TOWN_GROUND_TILE + 1, root);
+        if (tile) {
+          // 每格明暗微调(按格子坐标取伪随机),打散平铺的重复感;地砖永远排最底
+          const h = ((c * 73856093) ^ (r * 19349663)) >>> 0;
+          const v = 216 + (h % 40);
+          tile.color = rgba(v, v, v, 255);
+          tile.node.setSiblingIndex(0);
+        }
       }
     }
     if (!root.getChildByName('Vignette')) {
@@ -277,6 +291,43 @@ export class LobbyTownRenderer {
         }
       }
     }
+  }
+
+  private ensureProps(): void {
+    const ground = this.groundRoot;
+    const entities = this.entityRoot;
+    if (!ground || !ground.isValid || !entities || !entities.isValid) {
+      return;
+    }
+    TOWN_PROPS.forEach((prop, index) => {
+      const name = `TownProp_${index}`;
+      const parent = prop.flat ? ground : entities;
+      if (parent.getChildByName(name)) {
+        return;
+      }
+      const node = this.host.addChildPlainNode(parent, name, prop.x, prop.y, prop.width, prop.width);
+      const sprite = this.host.addSprite('Art', townPropAsset(prop.key), 0, 0, prop.width, prop.width, node);
+      if (!sprite) {
+        node.destroy();
+        return;
+      }
+      const frame = sprite.spriteFrame;
+      const ow = frame?.originalSize.width ?? 1;
+      const oh = frame?.originalSize.height ?? 1;
+      const h = prop.width * (oh / Math.max(1, ow));
+      sprite.node.getComponent(UITransform)?.setContentSize(new Size(prop.width, h));
+      if (prop.flat) {
+        // 贴地:中心对齐,排在地砖之后、压暗层之前
+        sprite.node.setPosition(0, 0, 0);
+        const vignette = ground.getChildByName('Vignette');
+        if (vignette) {
+          node.setSiblingIndex(vignette.getSiblingIndex());
+        }
+        return;
+      }
+      sprite.node.setPosition(0, h / 2, 0);
+      this.propNodes.push({ node, y: prop.y });
+    });
   }
 
   private mountPlate(parent: Node, cfg: TownBuildingConfig, y: number, badge: boolean): Node {
@@ -665,6 +716,15 @@ export class LobbyTownRenderer {
         return false;
       }
     }
+    for (const prop of TOWN_PROPS) {
+      if (!prop.block) {
+        continue;
+      }
+      const halfW = prop.block.w / 2 + ACTOR_RADIUS * 0.4;
+      if (x > prop.x - halfW && x < prop.x + halfW && y > prop.y - ACTOR_RADIUS * 0.3 && y < prop.y + prop.block.d) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -709,6 +769,11 @@ export class LobbyTownRenderer {
     for (const lamp of this.lampNodes) {
       if (lamp.isValid) {
         items.push({ node: lamp, y: lamp.position.y });
+      }
+    }
+    for (const prop of this.propNodes) {
+      if (prop.node.isValid) {
+        items.push({ node: prop.node, y: prop.y });
       }
     }
     for (const actor of [this.leader, ...this.followers]) {
