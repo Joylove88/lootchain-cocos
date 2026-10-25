@@ -113,6 +113,7 @@ import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFo
 import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
 import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
 import { openConfirmPopup } from './lobby/ConfirmPopup';
+import { LobbyTownRenderer, type LobbyTownHost } from './lobby/LobbyTownRenderer';
 import type { ItemSourceTarget } from './lobby/ItemSourceRoutes';
 import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
@@ -255,6 +256,8 @@ const LOGIN_SCENE_LEGACY_NODE_NAMES = [
 const LOGIN_SCENE_STAGE_NODE_NAMES = [...LOGIN_SCENE_BACKGROUND_NODE_NAMES, ...LOGIN_SCENE_LEGACY_NODE_NAMES] as const;
 
 const LOBBY_BACKGROUND_NODE_NAMES = ['Lobby_BG_Poster', 'Lobby_BG_Video', 'Lobby_BG_Fallback'] as const;
+// 主城跑图(2026-10-25 用户拍板):大厅改成可走动小镇;false 回到旧的挂机演出大厅。
+const LOBBY_TOWN_ENABLED = true;
 // 场景页复用暂存单位(离开时整组摘下,回来内容签名不变则原样挂回)。
 const LOBBY_HERO_ROSTER_REUSE_NODE_NAMES = ['LobbyHeroRosterDim', 'LobbyHeroRosterSceneContent'] as const;
 const LOBBY_BAG_REUSE_NODE_NAMES = ['LobbyBagDim', 'LobbyBagSceneContent'] as const;
@@ -346,6 +349,7 @@ export class LootChainGameRoot extends Component {
   // 矿境守卫(docs/30 P1 原型):限时副本难度Ⅰ切新玩法,其余关卡仍走旧回放。
   private readonly lobbyGuardBattleRenderer = new LobbyGuardBattleRenderer(this as unknown as LobbyGuardBattleHost);
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
+  private readonly lobbyTownRenderer = new LobbyTownRenderer(this as unknown as LobbyTownHost);
   private readonly lobbyQuestMailPanelRenderer = new LobbyQuestMailPanelRenderer(this as unknown as import('./lobby/LobbyQuestMailPanelRenderer').LobbyQuestMailHost);
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
@@ -1028,6 +1032,9 @@ export class LootChainGameRoot extends Component {
     }
     this.updateGachaConfigRefresh(deltaTime);
     this.updateLobbyPosterFade(deltaTime);
+    if (LOBBY_TOWN_ENABLED && this.currentView === 'lobby') {
+      this.lobbyTownRenderer.step(deltaTime);
+    }
   }
 
   onDestroy(): void {
@@ -1312,6 +1319,8 @@ export class LootChainGameRoot extends Component {
         return 'adventure';
       case 'gacha':
         return 'gacha';
+      case 'lobby':
+        return LOBBY_TOWN_ENABLED ? 'town' : null;
       default:
         return null;
     }
@@ -1347,7 +1356,7 @@ export class LootChainGameRoot extends Component {
     mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
-      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材',
+      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材', town: '正在加载主城',
     };
     this.addChildLabel(panel, 'SceneAssetLoadingTitle', titles[group], centerX, centerY + 40 * scale, 28 * scale, new Color(245, 214, 140, 255), new Size(520 * scale, 40 * scale));
     const barWidth = Math.min(460 * scale, layout.width * 0.5);
@@ -1398,6 +1407,22 @@ export class LootChainGameRoot extends Component {
 
   private renderLobby(): void {
     this.currentView = 'lobby';
+    if (LOBBY_TOWN_ENABLED) {
+      // 复用登记是懒加载的(名册页首开才登记):世界节点必须在第一次整页重绘前登记,否则会被 clear() 销毁、位置重置
+      this.ensureReusableScenesRegistered();
+      // 跑图大厅:地面 / 建筑整组到齐再画(首次进大厅会短暂显示读取),没有旧视频背景
+      this.uiSpriteFrameCache.preloadGroup('town');
+      const townLayout = this.renderBase();
+      if (!this.renderSceneAssetGate(townLayout)) {
+        this.renderLobbyHud(townLayout);
+      }
+      gameAudio.bgm('bgm_lobby');
+      if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
+        this.ownedHeroCardArtPrefetched = true;
+        this.scheduleOnce(() => void this.prefetchOwnedHeroCardArt(), 3);
+      }
+      return;
+    }
     const layout = this.renderBase();
     // 大厅只保留主界面 HUD；功能入口统一进入独立逻辑场景，不再作为弹框覆盖大厅。
     this.renderLobbyBackground(layout);
@@ -1594,6 +1619,13 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderLobbyHud(layout: UiLayout): void {
+    if (LOBBY_TOWN_ENABLED) {
+      // 世界节点可能还挂在内容根(HUD 局部刷新)、或刚被整页重绘摘下(挂回)、或从未建过(重建)
+      const restored = this.lobbyTownRenderer.isMounted() || this.contentRootController.restoreNodes([LobbyTownRenderer.WORLD_NODE_NAME]);
+      this.lobbyTownRenderer.render(layout, restored);
+      this.lobbyHudRenderer.renderTown(layout, this.lobbyTownRenderer);
+      return;
+    }
     this.lobbyHudRenderer.render(layout);
   }
 
@@ -1647,6 +1679,7 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbyBottomHud');
     this.removeNodeFromContent('LobbyCompactActionEntrances');
     this.removeNodeFromContent('LobbyCompactSceneEntrances');
+    this.removeNodeFromContent('LobbyTownHud');
     this.removeLobbyAdventurePanel();
     this.removeLobbyBagPanel();
     this.removeLobbyBattlePreviewPanel();
@@ -1747,6 +1780,8 @@ export class LootChainGameRoot extends Component {
     // 登记后,这些顶层节点在任何销毁路径(clear/clearExcept/removeNode)都改为摘下暂存而非销毁。
     this.contentRootController.registerReusableNodes(LOBBY_HERO_ROSTER_REUSE_NODE_NAMES);
     this.contentRootController.registerReusableNodes(LOBBY_BAG_REUSE_NODE_NAMES);
+    // 跑图世界节点整页重绘时摘下暂存,回大厅原样挂回(位置 / 骨骼动画不丢)
+    this.contentRootController.registerReusableNodes([LobbyTownRenderer.WORLD_NODE_NAME]);
   }
 
   private renderLobbyNoticePanel(layout: UiLayout): void {
@@ -7064,6 +7099,7 @@ export class LootChainGameRoot extends Component {
   // 会话级切换(登录/加载)清空复用缓存,避免复用到失效或上个账号的旧节点。
   private invalidateReusableScenes(): void {
     this.contentRootController.dropAllStashed();
+    this.lobbyTownRenderer.reset();
     this.lobbyHeroRosterReuseSignature = null;
     this.lobbyBagReuseSignature = null;
   }

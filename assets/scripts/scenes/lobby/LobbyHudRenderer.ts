@@ -44,6 +44,7 @@ import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday } from './ItemSourceRoutes';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
+import type { LobbyTownRenderer, TownGuideTarget } from './LobbyTownRenderer';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
 export type { LobbyHudHost } from './LobbyHudTypes';
@@ -99,6 +100,55 @@ export class LobbyHudRenderer {
     this.renderCompactGoalTracker(layout);
     this.renderCompactActionEntrances(layout);
     this.mountGuideOverlay(layout, 'lobby');
+  }
+
+  /**
+   * 主城跑图版大厅 HUD(2026-10-25):顶栏(头像 / 货币 / 菜单)照旧,其余入口都是城里的建筑;
+   * 摇杆 / 进入钮 / 底栏 / 小地图由跑图渲染器画;新手引导不再上暗层,改成"前往某建筑"的追踪条 + 队长头顶指针。
+   */
+  renderTown(layout: UiLayout, town: LobbyTownRenderer): void {
+    this.topHudRenderer.render(layout);
+    town.renderHud(layout, this.resolveTownGuideTarget());
+  }
+
+  /** 跑图模式下引导指向的建筑:硬引导按步骤查表,走完后轮到软引导(装备 → 水晶 → 每日副本)。 */
+  resolveTownGuideTarget(): TownGuideTarget | null {
+    const profile = this.host.currentLobbyProfile();
+    lobbyGuide.bind(profile.userId);
+    const adventure = this.host.currentLobbyAdventureState().adventure;
+    if (!adventure) {
+      return null;
+    }
+    const stages = adventure.chapters.flatMap((chapter) => chapter.stages);
+    const recommended = this.normalizeMainStageCode(adventure.recommendedStageCode) ?? '';
+    const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended.toUpperCase());
+    const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
+    const veteran = recommendedIndex >= 5;
+    const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
+    switch (step) {
+      case 'TOWER':
+        return { building: 'gate', text: '开始你的第一场矿境守卫战' };
+      case 'SUMMON':
+        return { building: 'temple', text: '首胜达成!今天有免费召唤' };
+      case 'DRAW':
+        return { building: 'temple', text: '今天有免费召唤' };
+      case 'HERO':
+        return { building: 'camp', text: '英雄到手!去看看你的队伍' };
+      case 'HERO_CARD':
+      case 'LEVEL_UP':
+        return { building: 'camp', text: '给英雄升级变强' };
+      case 'QUEST':
+      case 'CLAIM':
+        return { building: 'guild', text: '每日任务白拿奖励' };
+      default:
+        break;
+    }
+    const soft = this.resolveSoftGuide('lobby', adventure.maxCompletedStageCode ?? '');
+    if (!soft) {
+      return null;
+    }
+    const building = soft.flag === 'equip' ? 'camp' : soft.flag === 'crystal' ? 'crystal' : soft.flag === 'daily' ? 'tower' : null;
+    return building ? { building, text: soft.text, flag: soft.flag } : null;
   }
 
   /**
