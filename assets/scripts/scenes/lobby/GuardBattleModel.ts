@@ -4245,7 +4245,8 @@ function guardRaidUnit(state: GuardBattleState): GuardMonster | null {
 
 function guardRaidLocked(state: GuardBattleState): boolean {
   const raider = state.raider;
-  return !raider || state.timeMs < raider.actionUntilMs || state.timeMs < raider.staggerUntilMs;
+  // 受击硬直不再锁操作(2026-10-25 实测:3 个守卫连打时每下 160ms 硬直把进攻方定死,一刀都出不来);staggerUntilMs 只给表现层播受击
+  return !raider || state.timeMs < raider.actionUntilMs;
 }
 
 /** 移动方向(0 停 / 1..8);只在方向变化时记录,复演时按 t 回放。 */
@@ -4307,7 +4308,7 @@ export function guardRaidSkill(state: GuardBattleState, id: number): boolean {
 export function guardRaidDodge(state: GuardBattleState): boolean {
   const raider = state.raider;
   const unit = guardRaidUnit(state);
-  if (!raider || !unit || state.phase !== 'wave' || state.timeMs < raider.dodgeReadyMs || state.timeMs < raider.staggerUntilMs) {
+  if (!raider || !unit || state.phase !== 'wave' || state.timeMs < raider.dodgeReadyMs) {
     return false;
   }
   // 翻滚可以打断普攻后摇(不能打断技能)
