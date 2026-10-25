@@ -63,7 +63,9 @@ import {
  * 角色只翻左右(现有英雄骨骼全是侧面视角);动画有 run 用 run,没有就 idle 走。
  */
 export interface LobbyTownHost extends LobbyHudHost {
-  /** docs/47 P0:掠夺原型直达(验收手感期间「冒险之门」走这里)。 */
+  /** docs/48:冒险之门 = 矿境面板(NPC 矿列表 → 掠夺)。 */
+  openLobbyRaidPanel?(): void;
+  /** docs/47 P0:本地掠夺原型(无服务端时的回退)。 */
   startRaidPrototype?(): void;
   currentIdleSummary?(): PlayerIdleSummaryVO | null;
   isIdleClaiming?(): boolean;
@@ -855,7 +857,9 @@ export class LobbyTownRenderer {
     switch (near.action) {
       case 'adventure':
         // docs/47(2026-10-26 用户拍板):冒险之门 = 矿境掠夺;原守卫战(冒险关卡)挪到秘境试炼塔「特殊玩法 · 守卫战」
-        if (this.host.startRaidPrototype) {
+        if (this.host.openLobbyRaidPanel) {
+          this.host.openLobbyRaidPanel();
+        } else if (this.host.startRaidPrototype) {
           this.host.startRaidPrototype();
         } else {
           this.host.openLobbyAdventurePanel();

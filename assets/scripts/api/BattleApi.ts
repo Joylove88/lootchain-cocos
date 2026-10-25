@@ -1,4 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
+import { isRaidStageCode, type RaidSetupDefenderVO, type RaidSetupVO } from '../types/RaidTypes';
 import { guardRawHeroFromLineupJson, normalizeGuardCrystalSnapshot, normalizeGuardMonsterEntry } from '../scenes/lobby/GuardReplay';
 import type {
   PlayerBattleCurrencyChangeVO,
@@ -131,6 +132,8 @@ function validateCrystalRankSummary(data: unknown): CrystalRankSummaryVO {
 // 每日材料副本(P7b):关卡码 DAILY_{THEME}_{TIER};结算模式 DAILY_DUNGEON。
 const DAILY_STAGE_PATTERN = /^DAILY_(AWAKEN|FORGE|ARCANE|ABYSS)_[1-3]$/;
 const DAILY_SETTLEMENT_MODE = 'DAILY_DUNGEON';
+/** 矿境掠夺 PVE 结算模式(docs/48,后端 RaidStageRules.SETTLEMENT_MODE)。 */
+const RAID_SETTLEMENT_MODE = 'RAID_PVE';
 
 // 结算奖励安全边界采用「黑名单」而非白名单:只拦支付(钻石/USDT)、链上/未开放的 EX 代币、直发英雄/碎片——
 // 这些当前阶段绝不该经战斗结算下发,出现即视为后端配置错误。其余(金币/装备/宝石/材料/技能与觉醒道具/矿晶等
@@ -153,6 +156,17 @@ function assertSafeDailyRewards(rewardItems: PlayerBattleRewardItemVO[]): void {
     const code = item.resourceCode.toUpperCase();
     if (isBlockedSettlementResource(type, code) || item.amount <= 0) {
       throw new Error('每日副本结算响应包含未开放奖励资源');
+    }
+  }
+}
+
+/** 掠夺奖励:金币 / 矿晶 / 材料 + 首通绑定钻石放行;支付 / 链上 / EX / 直发英雄 / 真钻仍拦。 */
+function assertSafeRaidRewards(rewardItems: PlayerBattleRewardItemVO[]): void {
+  for (const item of rewardItems) {
+    const type = item.resourceType.toUpperCase();
+    const code = item.resourceCode.toUpperCase();
+    if ((code !== 'BOUND_DIAMOND' && isBlockedSettlementResource(type, code)) || item.amount <= 0) {
+      throw new Error('掠夺结算响应包含未开放奖励资源');
     }
   }
 }
@@ -280,7 +294,7 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
   }
   const stageCode = readStageCode(data, 'stageCode');
   const readonlyEconomy = data.readonlyEconomy === true;
-  if (!readonlyEconomy && !isRealMainlineStage(stageCode) && !isDailyDungeonStageCode(stageCode)) {
+  if (!readonlyEconomy && !isRealMainlineStage(stageCode) && !isDailyDungeonStageCode(stageCode) && !isRaidStageCode(stageCode)) {
     throw new Error('战斗会话响应格式错误：只有冒险 MAIN_1_1 至 MAIN_25_16 可进入真实首通结算');
   }
   if (stageCode !== expectedStageCode) {
@@ -300,6 +314,37 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
     guardMonsters: readArray(data, 'guardMonsters', 40).map(normalizeGuardMonster).filter((m): m is GuardMonsterRosterEntryVO => m !== null),
     guardRecommendedPower: Number.isFinite(Number(data.guardRecommendedPower)) && Number(data.guardRecommendedPower) > 0 ? Number(data.guardRecommendedPower) : null,
     guardChestScript: data.guardChestScript === true,
+    // docs/48:矿境掠夺建场参数(服务端算好;与复演同一份解析)
+    raid: normalizeRaidSetup(data.raid),
+  };
+}
+
+function normalizeRaidSetup(raw: unknown): RaidSetupVO | null {
+  if (!isRecord(raw) || !isRecord(raw.raider)) {
+    return null;
+  }
+  const defenders: RaidSetupDefenderVO[] = [];
+  for (const entry of readArray(raw, 'defenders', 6)) {
+    if (!isRecord(entry) || !isRecord(entry.hero)) {
+      continue;
+    }
+    defenders.push({
+      cell: readInteger(entry.cell, 0, 11),
+      hp: readInteger(entry.hp, 1, Number.MAX_SAFE_INTEGER),
+      hero: normalizeLineupHero(entry.hero),
+      spineAsset: readOptionalText(entry, 'spineAsset', MAX_TEXT),
+      portraitAsset: readOptionalText(entry, 'portraitAsset', MAX_TEXT),
+    });
+  }
+  if (defenders.length === 0) {
+    return null;
+  }
+  return {
+    stageCode: readText(raw, 'stageCode', MAX_TEXT, ''),
+    timeLimitMs: readInteger(raw.timeLimitMs, 10_000, 600_000),
+    crystalHp: readInteger(raw.crystalHp, 1, Number.MAX_SAFE_INTEGER),
+    raider: { heroCode: readText(raw.raider, 'heroCode', MAX_TEXT, ''), attack: readInteger(raw.raider.attack, 1, Number.MAX_SAFE_INTEGER), hp: readInteger(raw.raider.hp, 1, Number.MAX_SAFE_INTEGER) },
+    defenders,
   };
 }
 
@@ -341,6 +386,12 @@ function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
       throw new Error('战斗结算响应格式错误：每日副本结算字段不完整');
     }
     assertSafeDailyRewards(rewardItems);
+  } else if (settlementMode === RAID_SETTLEMENT_MODE) {
+    // 矿境掠夺 PVE(docs/48):胜利每次发奖,首通才推进(progressApplied 可为 0)。
+    if (!isRaidStageCode(stageCode) || !rewardGranted || readonlyEconomy || !economyApplied) {
+      throw new Error('战斗结算响应格式错误：掠夺结算字段不完整');
+    }
+    assertSafeRaidRewards(rewardItems);
   } else {
     const config = realMainlineSettlementForStage(stageCode);
     if (!config || settlementMode !== config.settlementMode || !rewardGranted || readonlyEconomy || !economyApplied || !progressApplied) {
@@ -417,13 +468,13 @@ function validateRecentBattle(item: unknown): PlayerBattleRecentVO {
 
 function readSettlementMode(record: UnknownRecord): string {
   const mode = readText(record, 'settlementMode', 32, 'NO_REWARD');
-  if (mode === 'NO_REWARD' || mode === DAILY_SETTLEMENT_MODE || isRealSettlementMode(mode)) {
+  if (mode === 'NO_REWARD' || mode === DAILY_SETTLEMENT_MODE || mode === RAID_SETTLEMENT_MODE || isRealSettlementMode(mode)) {
     return mode;
   }
   throw new Error(`战斗结算响应包含未开放模式：${mode}`);
 }
 
-function normalizeRewardItem(item: unknown): PlayerBattleRewardItemVO {
+export function normalizeRewardItem(item: unknown): PlayerBattleRewardItemVO {
   if (!isRecord(item)) {
     throw new Error('战斗奖励响应格式错误：奖励项不是对象');
   }
@@ -662,7 +713,7 @@ function readStageCode(record: UnknownRecord, key: string): string {
 
 function normalizeMainStageCode(stageCode: string): string {
   const value = (stageCode || '').trim().toUpperCase();
-  if (isDailyDungeonStageCode(value)) {
+  if (isDailyDungeonStageCode(value) || isRaidStageCode(value)) {
     return value;
   }
   if (!/^MAIN_\d+_\d+$/.test(value)) {

@@ -8316,5 +8316,13 @@ function formatBattleStageDisplayName(stageCode: string | null | undefined): str
   if (match && DAILY_THEME_DISPLAY_NAMES[match[1]]) {
     return `${DAILY_THEME_DISPLAY_NAMES[match[1]]} · 难度${['', 'Ⅰ', 'Ⅱ', 'Ⅲ'][Number(match[2])]}`;
   }
+  // 矿境掠夺(docs/48):矿区名由面板数据决定,这里只给加载页一个可读称呼
+  const raid = /^RAID_(\d+)$/.exec(value);
+  if (raid) {
+    return `矿境 · 第 ${raid[1]} 座矿`;
+  }
+  if (value === 'RAID_P0') {
+    return '矿境掠夺';
+  }
   return value;
 }

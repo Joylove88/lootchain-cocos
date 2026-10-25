@@ -150,7 +150,7 @@ import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAva
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources } from './HeroCombatStats';
-import { buildGuardPool, GUARD_REPLAY_VERSION, resolveGuardStageSetup, type GuardRawHero } from './GuardReplay';
+import { buildGuardPoolForSetup, GUARD_REPLAY_VERSION, guardRaidSetupFromStart, guardStartRaidFromSetup, resolveGuardStageSetup, type GuardRawHero } from './GuardReplay';
 import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveUnlockedPassiveCount } from './LobbyBattleHeroSkillConfig';
 
 const GUARD_PASSIVE_TYPES: GuardPassiveType[] = ['lifesteal', 'truePierce', 'freeze', 'stun', 'splash', 'reflect', 'atkUp', 'hpUp'];
@@ -550,6 +550,8 @@ export class LobbyGuardBattleRenderer {
   private sim: GuardBattleState | null = null;
   /** docs/47 P0 掠夺模式的进攻侧控制器(非掠夺局为 null)。 */
   private raid: GuardRaidController | null = null;
+  /** 服务端掠夺(回执带 raid 建场):正常结算发奖;本地原型(RAID_P0)不结算。 */
+  private serverRaid = false;
   /** 掠夺进攻方的 monsterId(-1 = 非掠夺):掉血飘字由 GuardRaidController 负责,这里的 queueDamage 要跳过它。 */
   private raiderMonsterId = -1;
   private simBattleNo = '';
@@ -925,10 +927,14 @@ export class LobbyGuardBattleRenderer {
     // 上阵 4 英雄(2026-08-26 用户拍板:5→4,同名副本更聚焦,高星可成)。
     // docs/43:回执带 guardStats 时按服务端原始属性建池(与服务端复演同一函数、同一阵容顺序);旧服务端走下面的本地口径
     const lineup = battleState.start?.lineup ?? [];
+    // docs/48 矿境掠夺:NPC 守卫的原始属性也进池(顺延在阵容之后,与表现快照 / 复演同序)
+    const raidSetup = guardRaidSetupFromStart(battleState.start?.raid ?? null);
     const raws = lineup.slice(0, 4).map((entry) => entry.guardRaw ?? null);
     const serverPool = raws.length > 0 && raws.every((raw) => !!raw)
-      ? buildGuardPool(raws as GuardRawHero[]).map((hero, index) => {
-        const allyIndex = snapshot.allies.findIndex((ally) => ally.sourceHeroId === lineup[index].heroId);
+      ? buildGuardPoolForSetup(raws as GuardRawHero[], raidSetup).map((hero, index) => {
+        const allyIndex = index < lineup.length
+          ? snapshot.allies.findIndex((ally) => ally.sourceHeroId === lineup[index].heroId)
+          : snapshot.allies.findIndex((ally) => ally.unitKey === `npc-${hero.heroCode}-${index - lineup.length}`);
         return { ...hero, displayName: allyIndex >= 0 ? snapshot.allies[allyIndex].displayName : hero.displayName, sourceIndex: allyIndex >= 0 ? allyIndex : index };
       })
       : null;
@@ -976,8 +982,14 @@ export class LobbyGuardBattleRenderer {
     this.raid?.dispose();
     this.raid = null;
     this.raiderMonsterId = -1;
+    this.serverRaid = !!raidSetup;
     if (stage.mode === 'raid') {
-      this.setupRaid(this.sim, pool);
+      if (raidSetup) {
+        guardStartRaidFromSetup(this.sim, raidSetup);
+        this.mountRaidController(this.sim);
+      } else {
+        this.setupRaid(this.sim, pool);
+      }
     }
     this.interactHints.clear();
     this.battleGuide = this.resolveBattleGuide(stageCode);
@@ -1022,6 +1034,11 @@ export class LobbyGuardBattleRenderer {
       { heroCode: leader.heroCode, attack: raiderAttack, hp: hpOf(leader, 6, 4000), crystalHp: raiderAttack * 20 },
       defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: Math.max(hpOf(hero, 2, 0), raiderAttack * 8) })),
     );
+    this.mountRaidController(sim);
+  }
+
+  /** 掠夺控制器(docs/48:服务端建场与本地原型共用)。 */
+  private mountRaidController(sim: GuardBattleState): void {
     this.raiderMonsterId = sim.raider?.monsterId ?? -1;
     this.raid = new GuardRaidController({
       host: this.host,
@@ -3024,8 +3041,8 @@ export class LobbyGuardBattleRenderer {
       this.showEndOverlay(phase === 'victory');
       if (!this.settleRequested) {
         this.settleRequested = true;
-        // docs/47 P0 掠夺原型本地模拟,不结算(覆盖层自带返回)
-        if (sim.mode !== 'raid') {
+        // 本地掠夺原型(RAID_P0)不结算(覆盖层自带返回);服务端掠夺(docs/48)照常结算发奖
+        if (sim.mode !== 'raid' || this.serverRaid) {
           setTimeout(() => this.host.settleLobbyBattleSession(), 700);
         }
       }
@@ -10766,8 +10783,9 @@ export class LobbyGuardBattleRenderer {
       }
     }
     // 结算说明可能很长(服务端文案):两行高的框,折行 + 缩字;中线下移半行,上沿仍对齐原来的单行位置
-    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndSettle', raid ? 'P0 原型:本地模拟,不结算、不发奖' : '正在提交结算…', 0, height * 0.04 + endDetailShift - 12, 18, rgba(196, 182, 152), new Size(endTextW, 48)), true);
-    if (raid) {
+    const localRaid = raid && !this.serverRaid;
+    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndSettle', localRaid ? 'P0 原型:本地模拟,不结算、不发奖' : '正在提交结算…', 0, height * 0.04 + endDetailShift - 12, 18, rgba(196, 182, 152), new Size(endTextW, 48)), true);
+    if (localRaid) {
       const backW = 220;
       const backH = 60;
       const back = this.host.addChildPlainNode(overlay, 'GuardRaidBack', 0, -height * 0.1 + endDetailShift, backW, backH);

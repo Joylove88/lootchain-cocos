@@ -5,6 +5,7 @@ import { BagApi } from './BagApi';
 import { EquipmentApi } from './EquipmentApi';
 import { GuardCrystalApi } from './GuardCrystalApi';
 import { BattleApi } from './BattleApi';
+import { RaidApi } from './RaidApi';
 import { GachaApi } from './GachaApi';
 import { GiftApi } from './GiftApi';
 import { HeroApi } from './HeroApi';
@@ -43,6 +44,7 @@ export class LootChainApi {
   readonly lobbyAdventure = new LobbyAdventureApi(this.http);
   readonly lobbyBadge = new LobbyBadgeApi(this.http);
   readonly battle = new BattleApi(this.http);
+  readonly raid = new RaidApi(this.http);
   readonly gacha = new GachaApi(this.http);
   readonly hero = new HeroApi(this.http);
   readonly bag = new BagApi(this.http);

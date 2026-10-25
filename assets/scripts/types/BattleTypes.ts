@@ -103,6 +103,8 @@ export interface PlayerBattleStartVO {
   guardRecommendedPower?: number | null;
   /** 新手宝箱脚本档位本局是否认可(玩家前 3 场守卫战)。 */
   guardChestScript?: boolean;
+  /** 矿境掠夺建场参数(docs/48;RAID_n 关卡由服务端算好,其他关卡 / 本地原型为空)。 */
+  raid?: import('./RaidTypes').RaidSetupVO | null;
 }
 
 export interface PlayerBattleSettlementVO {

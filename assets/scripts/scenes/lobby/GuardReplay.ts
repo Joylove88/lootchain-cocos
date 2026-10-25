@@ -24,6 +24,7 @@ import {
   guardRaidDodge,
   guardRaidMove,
   guardRaidSkill,
+  guardStartRaid,
   guardSetSpellLoadout,
   guardSkipChoice,
   guardSummon,
@@ -177,20 +178,47 @@ export function resolveGuardStageSetup(stageCode: string, recommendedPower: numb
 }
 
 /** 复演所需的全部服务端已知输入(开战会话里都有)。 */
+/** 矿境掠夺建场参数(docs/48):服务端算好的进攻方 / 守卫 / 水晶,客户端与复演只认它。 */
+export interface GuardRaidSetup {
+  crystalHp: number;
+  raider: { heroCode: string; attack: number; hp: number };
+  defenders: Array<{ cell: number; hp: number; raw: GuardRawHero }>;
+}
+
 export interface GuardReplaySetup {
   seedText: string;
   stageCode: string;
   recommendedPower: number | null;
   lineup: GuardRawHero[];
+  /** 掠夺建场(RAID_n);守卫战 / 本地原型为 null。 */
+  raid?: GuardRaidSetup | null;
   monsterRoster: GuardMonsterRoster | null;
   crystal: GuardCrystalSnapshot | null;
   /** 新手宝箱脚本档位是否认可(服务端:玩家前 3 场守卫战)。 */
   allowChestScript: boolean;
 }
 
-export function createGuardBattleFromSetup(setup: GuardReplaySetup, pool: GuardPoolHero[] = buildGuardPool(setup.lineup)): GuardBattleState {
+/** 建池:阵容(上阵 ≤4)+ 掠夺 NPC 守卫(顺延在阵容之后、不受 4 人上限;sourceIndex 对应表现快照 lineup + npc 的顺序)。 */
+export function buildGuardPoolForSetup(lineup: readonly GuardRawHero[], raid: GuardRaidSetup | null | undefined): GuardPoolHero[] {
+  const pool = buildGuardPool(lineup);
+  if (!raid) {
+    return pool;
+  }
+  return pool.concat(raid.defenders.map((defender, index) => buildGuardPoolHero(defender.raw, pool.length + index)));
+}
+
+/** 掠夺开局:进攻方 = 回执里的 raider,守卫 = 回执里的 defenders(池里按 heroCode 找属性)。 */
+export function guardStartRaidFromSetup(state: GuardBattleState, raid: GuardRaidSetup): void {
+  guardStartRaid(
+    state,
+    { heroCode: raid.raider.heroCode, attack: raid.raider.attack, hp: raid.raider.hp, crystalHp: raid.crystalHp },
+    raid.defenders.map((defender) => ({ heroCode: defender.raw.heroCode, cell: defender.cell, star: defender.raw.star, hp: defender.hp })),
+  );
+}
+
+export function createGuardBattleFromSetup(setup: GuardReplaySetup, pool: GuardPoolHero[] = buildGuardPoolForSetup(setup.lineup, setup.raid)): GuardBattleState {
   const stage = resolveGuardStageSetup(setup.stageCode, setup.recommendedPower);
-  return createGuardBattle(pool, setup.seedText, stage.maxWave, stage.mode, {
+  const state = createGuardBattle(pool, setup.seedText, stage.maxWave, stage.mode, {
     monsterScale: stage.monsterScale,
     spawnCountMult: stage.spawnCountMult,
     monsterHpMult: stage.monsterHpMult,
@@ -199,6 +227,10 @@ export function createGuardBattleFromSetup(setup: GuardReplaySetup, pool: GuardP
     monsterRoster: setup.monsterRoster,
     crystal: setup.crystal ?? null,
   });
+  if (stage.mode === 'raid' && setup.raid) {
+    guardStartRaidFromSetup(state, setup.raid);
+  }
+  return state;
 }
 
 /** 把一条记录的操作作用到局面上(与渲染层调用同一批导出函数)。 */
@@ -473,5 +505,34 @@ export function guardReplaySetupFromStart(start: unknown, allowChestScript: bool
     monsterRoster: guardApplyMonsterRoster(roster),
     crystal: normalizeGuardCrystalSnapshot(start.guardCrystal),
     allowChestScript,
+    raid: guardRaidSetupFromStart(start.raid),
+  };
+}
+
+/** 回执 raid 字段解析(与 BattleApi 的解析互不依赖:复演端只认这里)。 */
+export function guardRaidSetupFromStart(raw: unknown): GuardRaidSetup | null {
+  if (!guardIsRecord(raw) || !guardIsRecord(raw.raider)) {
+    return null;
+  }
+  const defenders: Array<{ cell: number; hp: number; raw: GuardRawHero }> = [];
+  for (const entry of Array.isArray(raw.defenders) ? raw.defenders.slice(0, 6) : []) {
+    if (!guardIsRecord(entry)) {
+      continue;
+    }
+    // 服务端原始 JSON(hero.guardStats)或客户端 BattleApi 已解析的 VO(hero.guardRaw)都认
+    const heroRecord = guardIsRecord(entry.hero) ? entry.hero : null;
+    const hero = guardRawHeroFromLineupJson(entry.hero) ?? (heroRecord && guardIsRecord(heroRecord.guardRaw) ? (heroRecord.guardRaw as unknown as GuardRawHero) : null);
+    if (!hero) {
+      continue;
+    }
+    defenders.push({ cell: Math.max(0, Math.min(11, Math.trunc(guardNum(entry.cell)))), hp: Math.max(1, Math.round(guardNum(entry.hp, 1))), raw: hero });
+  }
+  if (defenders.length === 0) {
+    return null;
+  }
+  return {
+    crystalHp: Math.max(1, Math.round(guardNum(raw.crystalHp, 1))),
+    raider: { heroCode: guardText(raw.raider.heroCode).toUpperCase(), attack: Math.max(1, Math.round(guardNum(raw.raider.attack, 1))), hp: Math.max(1, Math.round(guardNum(raw.raider.hp, 1))) },
+    defenders,
   };
 }

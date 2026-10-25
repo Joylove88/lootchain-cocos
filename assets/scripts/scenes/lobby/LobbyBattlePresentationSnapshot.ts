@@ -191,7 +191,8 @@ export function resolveLobbyBattlePresentationSnapshot(state: LobbyBattlePanelSt
 function buildLobbyBattlePresentationSnapshot(state: LobbyBattlePanelState, heroes: LobbyHeroItemVO[]): BattlePresentationSnapshot {
   const start = state.start;
   const rosterById = new Map(heroes.map((hero) => [hero.id, hero]));
-  const allies = fillUnits(resolveAllies(start, heroes, rosterById), 'ally');
+  // docs/48 矿境掠夺:NPC 守卫也进友军快照(骨骼 / 名字 / 预载按英雄码解析),追加在 5 个固定友军槽之后
+  const allies = fillUnits(resolveAllies(start, heroes, rosterById), 'ally').concat(resolveRaidDefenderAllies(start));
   const enemies = fillUnits(resolveEnemies(start), 'enemy');
   const stageCode = start?.stageCode || state.stageCode || 'MAIN_1_1';
   // 输出试炼(难度Ⅲ,docs/27 v3):BOSS 体型放大成压场"巨兽"(配合渲染上限 3.5)。
@@ -233,6 +234,20 @@ function resolveAllies(start: PlayerBattleStartVO | null, heroes: LobbyHeroItemV
     .sort((a, b) => b.power - a.power)
     .slice(0, 5)
     .map((hero, index) => fromRosterHero(hero, index));
+}
+
+function resolveRaidDefenderAllies(start: PlayerBattleStartVO | null): BattlePresentationUnitSnapshot[] {
+  return (start?.raid?.defenders ?? []).map((defender, index) => {
+    const unit = fromLineupHero(defender.hero, 5 + index, undefined);
+    return {
+      ...unit,
+      unitKey: `npc-${defender.hero.heroCode}-${index}`,
+      leader: false,
+      subline: `守卫 Lv.${defender.hero.level}`,
+      spineAsset: defender.spineAsset ?? unit.spineAsset ?? null,
+      portraitAsset: defender.portraitAsset ?? unit.portraitAsset ?? null,
+    };
+  });
 }
 
 function resolveEnemies(start: PlayerBattleStartVO | null): BattlePresentationUnitSnapshot[] {
