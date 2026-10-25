@@ -9,7 +9,7 @@ export type ItemSourceTarget =
   | { type: 'gacha'; poolCode: string }
   | { type: 'adventure' }
   | { type: 'daily'; theme: 'AWAKEN' | 'FORGE' | 'ARCANE' | 'ABYSS' }
-  | { type: 'shop'; kind: 'gold' }
+  | { type: 'shop'; kind: 'gold' | 'rune' }
   | { type: 'forge'; tab: 'decompose' }
   | { type: 'quest' }
   | { type: 'codex' }
@@ -62,7 +62,13 @@ const ROUTES: Record<string, ItemSourceRoute[]> = {
   EQUIP_REROLL_STONE: [daily('ARCANE', '秘法圣殿Ⅱ起掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   FUSION_LUCK_STONE: [daily('ARCANE', '秘法圣殿掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   ENHANCE_BLESS_STONE: [gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
-  ENHANCE_GUARD_RUNE: [gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
+  // docs/45 §12:+10 以上的核心消耗品 → 商店限购在前;分解橙装 35% / 红装 80% 附带护符
+  ENHANCE_GUARD_RUNE: [
+    { kind: 'shop', title: '商店 · 强化护符', desc: '80 钻石 / 张,每日限购 5 张', target: { type: 'shop', kind: 'rune' } },
+    daily('FORGE', '熔火矿脉Ⅲ 胜利概率掉落'),
+    { kind: 'forge', title: '锻造 · 分解', desc: '分解橙装 / 红装概率附带', target: { type: 'forge', tab: 'decompose' } },
+    gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出'),
+  ],
   GUARD_CORE: [adventure('冒险首通奖励'), daily('FORGE', '每日副本胜利获得')],
   GOLD: [
     { kind: 'shop', title: '金币商店', desc: '用钻石兑换金币', target: { type: 'shop', kind: 'gold' } },

@@ -22,6 +22,17 @@ export interface ShopStaminaOfferVO {
   maxCountPerBuy: number;
 }
 
+/** 强化护符购买(docs/45 §12):80 钻 / 张,每日限购。 */
+export interface ShopRuneOfferVO {
+  diamondCost: number;
+  /** 每日上限张数(0=未开放)。 */
+  dailyLimit: number;
+  usedToday: number;
+  maxCountPerBuy: number;
+  /** 当前持有。 */
+  held: number;
+}
+
 export interface ShopRechargeTierVO {
   code: string;
   name: string;
@@ -47,6 +58,8 @@ export interface ShopCatalogVO {
   payMode?: ShopPayMode;
   /** 可选充值通道(ONLINE 才有,第一个为默认)。 */
   rechargeChannels?: ShopRechargeChannelVO[];
+  /** 强化护符购买。旧服务端缺省。 */
+  runeOffer?: ShopRuneOfferVO | null;
 }
 
 export type ShopPayMode = 'MOCK' | 'ONLINE' | 'NONE';

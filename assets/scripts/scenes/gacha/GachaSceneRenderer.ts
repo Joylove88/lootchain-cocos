@@ -2492,7 +2492,7 @@ export class GachaSceneRenderer {
       EQUIP_REROLL_STONE: '装备词缀洗练材料（锻造工坊词缀洗练）。',
       FUSION_LUCK_STONE: '装备合成成功率 +20%（锻造工坊合成页勾选）。',
       ENHANCE_BLESS_STONE: '强化成功率 +20%（锻造工坊强化页勾选）。',
-      ENHANCE_GUARD_RUNE: '强化失败不掉级的守护符（锻造工坊强化页勾选）。',
+      ENHANCE_GUARD_RUNE: '强化 +5 起失败不掉级的护符（锻造工坊强化页勾选）。',
     };
     return {
       category: `材料 · ${item.rarity}`,

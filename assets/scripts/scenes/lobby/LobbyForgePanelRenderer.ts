@@ -208,10 +208,16 @@ const FORGE_PHONE_RAIL_W = 96;
 const FORGE_PHONE_GRID_CAP = 120;
 
 // 强化规则(与服务器 PlayerEquipmentServiceImpl 对齐):上限 +20;+1~+10 耗强化石×(等级+1),
-// +11~+20 耗高阶强化石×(等级-9);成功率 +11 起每级 -2%(下限 10%)。改数值必须两端同步。
+// +11~+20 耗高阶强化石×(等级-9);成功率冲 +13 起按 DNF 曲线走低(冲 +20 只剩 1.8%,2026-10-25)。改数值必须两端同步。
 const ENHANCE_MAX_LEVEL = 20;
 const ENHANCE_HIGH_FROM_LEVEL = 10;
-const ENHANCE_CHANCES = [1, 1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.28, 0.26, 0.24, 0.22, 0.2, 0.18, 0.16, 0.14, 0.12, 0.1];
+const ENHANCE_CHANCES = [1, 1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.28, 0.26, 0.207, 0.173, 0.136, 0.101, 0.072, 0.054, 0.036, 0.018];
+
+/** 成功率显示:≥10% 取整,低于 10% 保留一位小数(+16 起 7.2% / 5.4% / 3.6% / 1.8%,取整会失真)。 */
+function formatChancePct(chance: number): string {
+  const pct = chance * 100;
+  return pct >= 10 || pct === 0 ? `${Math.round(pct)}%` : `${pct.toFixed(1)}%`;
+}
 
 // 分解产出预估(与服务器 DECOMPOSE_BASE_STONES + 投入 50% 返还同公式;权威结果以服务器回执为准)。
 const DECOMPOSE_BASE_STONES: Record<string, number> = { WHITE: 1, GREEN: 2, BLUE: 4, PURPLE: 8, GOLD: 16, RED: 32 };
@@ -486,7 +492,7 @@ export class LobbyForgePanelRenderer {
       this.renderForgeNav(panel, forge.tab, state.items, panelWidth, panelHeight, scale);
     }
 
-    renderSceneBackButton(this.host, group, layout, 'LobbyForgeBackButton', () => this.host.closeLobbyForgePanel(), scale, forge.tab === 'enhance' ? '强化' : forge.tab === 'fuse' ? '合成' : forge.tab === 'gem' ? '宝石' : '分解', '强化：消耗强化石与金币提升装备等级，+10 起改用高阶强化石，上限 +20；+5 起失败会降 1 级，守护符可保级，祝福石 +20% 成功率。\n\n合成：3 件同部位同稀有度装备合成 1 件更高稀有度装备。\n\n分解：拆解多余装备返还强化石（含部分强化投入），炽红装备附带宝石。\n\n宝石：按装备稀有度开孔（绿1~红5），第 i 孔镶 i 阶宝石；低阶宝石 3 合 1 升阶（背包 → 合成）。');
+    renderSceneBackButton(this.host, group, layout, 'LobbyForgeBackButton', () => this.host.closeLobbyForgePanel(), scale, forge.tab === 'enhance' ? '强化' : forge.tab === 'fuse' ? '合成' : forge.tab === 'gem' ? '宝石' : '分解', '强化：消耗强化石与金币提升装备等级，+10 起改用高阶强化石，上限 +20；+5 起失败会降 1 级，强化护符可保级（商店每日限购），+10 以上成功率越来越低（冲 +20 仅 1.8%），祝福石 +20% 成功率。\n\n合成：3 件同部位同稀有度装备合成 1 件更高稀有度装备。\n\n分解：拆解多余装备返还强化石（含部分强化投入），炽红装备附带宝石。\n\n宝石：按装备稀有度开孔（绿1~红5），第 i 孔镶 i 阶宝石；低阶宝石 3 合 1 升阶（背包 → 合成）。');
     // 手机全屏弹层压在标题/关闭钮/导航栏之上(group 与 panel 同心,坐标通用)。
     this.phoneOverlays.forEach((draw) => draw(group));
     this.phoneOverlays = [];
@@ -1313,10 +1319,10 @@ export class LobbyForgePanelRenderer {
           }
         });
         const chanceNow = Math.min(1, (ENHANCE_CHANCES[Math.min(level, ENHANCE_MAX_LEVEL - 1)] ?? 0.1) + (enhance.useBless ? 0.2 : 0));
-        const failText = level < 5 ? '<color=#8CE68C>失败不降级</color>' : enhance.useGuard ? '<color=#8CE68C>失败不降级(守护符)</color>' : '<color=#F07060>失败强化等级 -1</color>';
+        const failText = level < 5 ? '<color=#8CE68C>失败不降级</color>' : enhance.useGuard ? '<color=#8CE68C>失败不降级(强化护符)</color>' : '<color=#F07060>失败强化等级 -1</color>';
         this.addRichLine(node, 'ForgeEnhLevelStatus', maxed
           ? '<color=#ECCE96>已达到强化上限 +20</color>'
-          : `<color=#F07060>成功率 </color><color=#FFFFFF><size=${Math.round(FS(25))}>${Math.round(chanceNow * 100)}%</size></color><color=#C8BCA6>   ·   </color>${failText}`, QX(1462), QY(367) - FS(4), FS(20), rightW - FS(40));
+          : `<color=#F07060>成功率 </color><color=#FFFFFF><size=${Math.round(FS(25))}>${formatChancePct(chanceNow)}</size></color><color=#C8BCA6>   ·   </color>${failText}`, QX(1462), QY(367) - FS(4), FS(20), rightW - FS(40));
       }
     }
     // 强化保护
@@ -1341,7 +1347,7 @@ export class LobbyForgePanelRenderer {
         }
       };
       protectRow('ForgeEnhBlessRow', 495, FORGE_AI_BLESS_ICON_ASSET, blessHeld, '祝福石保护', '成功率 +20%', enhance.useBless, () => this.host.toggleLobbyEquipEnhanceBless());
-      protectRow('ForgeEnhGuardRow', 573, FORGE_AI_GUARD_ICON_ASSET, guardHeld, '守护符保护', '失败不降级', enhance.useGuard, () => this.host.toggleLobbyEquipEnhanceGuard());
+      protectRow('ForgeEnhGuardRow', 573, FORGE_AI_GUARD_ICON_ASSET, guardHeld, '护符保护', '失败不降级', enhance.useGuard, () => this.host.toggleLobbyEquipEnhanceGuard());
     }
     // 强化等级预览:下一级 + 下一个 5 的倍数 + 20(去重,最多 3 行)
     {
@@ -1452,7 +1458,7 @@ export class LobbyForgePanelRenderer {
       shortfall.push('祝福石不足');
     }
     if (enhance.useGuard && guardHeld < 1) {
-      shortfall.push('守护符不足');
+      shortfall.push('强化护符不足');
     }
     const shortfallText = `强化材料不足:${shortfall.join(' · ')}`;
     const onShortfall = !state.busy && !maxed && !materialsOk ? () => this.host.reportForgeMaterialShortfall(shortfallText, goldHeld < goldCost) : undefined;
@@ -2664,7 +2670,7 @@ export class LobbyForgePanelRenderer {
     this.addPanelTitle(side, 'ForgeDecBonusTag', '可能获得材料', RX(1490), LY(562), RS(420), scale);
     const bonusDefs: Array<{ key: string; icon: string; label: string; range: [number, number] }> = [
       { key: 'bless', icon: FORGE_AI_BLESS_ICON_ASSET, label: '祝福石', range: blessRange },
-      { key: 'rune', icon: FORGE_AI_GUARD_ICON_ASSET, label: '守护符', range: runeRange },
+      { key: 'rune', icon: FORGE_AI_GUARD_ICON_ASSET, label: '护符', range: runeRange },
     ];
     bonusDefs.forEach((def, index) => {
       const px = index === 0 ? 1290 : 1493;

@@ -32,7 +32,7 @@ import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel,
  * 价格带钻石图标;2026-09-24 去掉底部余额行,改成醒目的结果横幅);字号按限时副本面板口径(标题 34、正文 18、卡名 20、数额 28)。
  * 作为全屏覆盖层挂在当前视图之上(大厅 / 锻造等功能页都能开),数据与写入全走服务端 ShopApi;购买成功由根节点做飘字 + 飞币动效。
  */
-export type LobbyShopKind = 'gold' | 'stamina' | 'diamond';
+export type LobbyShopKind = 'gold' | 'stamina' | 'diamond' | 'rune';
 
 export interface LobbyShopDialogState {
   kind: LobbyShopKind;
@@ -51,6 +51,7 @@ export interface LobbyShopDialogHost {
   /** fromWorld=被点卡片的世界坐标,成功后动效从这里起飞。 */
   buyShopGold(tierCode: string, fromWorld?: Vec3): void;
   buyShopStamina(count: number, fromWorld?: Vec3): void;
+  buyShopRune(count: number, fromWorld?: Vec3): void;
   rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void;
   selectShopRechargeChannel(channelCode: string): void;
   createUiNode(name: string): Node;
@@ -98,9 +99,10 @@ const ICONS: Record<string, SpriteSpec> = {
   diamond: { path: 'ui/bag/ai/icon_diamond/spriteFrame', aspect: 1 },
   chest: { path: 'ui/codex/ai/chest_ready/spriteFrame', aspect: 1 },
   stamina: { path: 'ui/bag/ai/icon_stamina/spriteFrame', aspect: 1 },
+  rune: { path: 'ui/forge/ai/icon_guard_rune/spriteFrame', aspect: 1 },
 };
 
-const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '体力补充', diamond: '钻石充值' };
+const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '体力补充', diamond: '钻石充值', rune: '强化护符' };
 
 /**
  * 档位卡样式(2026-10-17 v2 用户「更还原原型图:金币图、宝箱图、边框都要一样」):
@@ -189,7 +191,7 @@ const SIDE_PAD = 80;
 /** 卡片框最高的高宽比(排版预留)。 */
 const TALLEST_FRAME = Math.max(...TIER_FRAMES.map((frame) => frame.aspect));
 /** 各页卡宽上限与每排张数。 */
-const CARD_W = { gold: 224, stamina: 196, diamond: 210 };
+const CARD_W = { gold: 224, stamina: 196, diamond: 210, rune: 196 };
 const GAP = { col: 32, row: 26 };
 /** 钻石页支付方式行占的高度(ONLINE 且有通道时)。 */
 const CHANNEL_ROW_H = 58;
@@ -200,7 +202,7 @@ const CHANNEL_ROW_H = 58;
 // 2026-10-05 用户「上面部分不太好看」:标题带改单行(标题牌 · 说明 · 余额同一行),高 104 → 88
 const PHONE_GEO = { headerH: 104, footerH: 84, noticeY: 42, sidePad: 28, gapCol: 18, titleBand: 88 };
 // 2026-10-04 用户「每个充值的框都放大」:卡宽上限放开,实际由可用高度决定(框素材只能等比);钻石 6 档一排放不下时横向滑动。
-const PHONE_CARD_W = { gold: 380, stamina: 340, diamond: 340 };
+const PHONE_CARD_W = { gold: 380, stamina: 340, diamond: 340, rune: 340 };
 const PHONE_TEXT_SCALE_MAX = 1.6;
 
 interface TierCardSpec {
@@ -326,7 +328,9 @@ export class LobbyShopDialogRenderer {
       ? '用钻石换取金币,档位越高赠送越多'
       : state.kind === 'stamina'
         ? `${catalog?.staminaOffer.diamondCost ?? 60} 钻石 = ${catalog?.staminaOffer.staminaGain ?? 30} 体力 · 每 5 分钟自然回复 1 点`
-        : this.payMode(catalog) === 'ONLINE'
+        : state.kind === 'rune'
+          ? `${catalog?.runeOffer?.diamondCost ?? 80} 钻石 / 张 · 强化 +5 起失败不掉级,+10 以上必备`
+          : this.payMode(catalog) === 'ONLINE'
           ? '选择支付方式后点击档位,在新窗口完成付款,到账后钻石自动发放'
           : this.payMode(catalog) === 'MOCK'
             ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
@@ -366,6 +370,8 @@ export class LobbyShopDialogRenderer {
       this.renderGoldTiers(panel, catalog, panelW, bodyTop, bodyBottom, scale, state.busy, diamond);
     } else if (state.kind === 'stamina') {
       this.renderStamina(panel, catalog, panelW, bodyTop, bodyBottom, scale, state.busy, diamond);
+    } else if (state.kind === 'rune') {
+      this.renderRune(panel, catalog, panelW, bodyTop, bodyBottom, scale, state.busy, diamond);
     } else {
       this.renderRechargeTiers(panel, catalog, state, panelW, bodyTop, bodyBottom, scale);
     }
@@ -389,6 +395,8 @@ export class LobbyShopDialogRenderer {
       const stamina = catalog ? catalog.stamina : Number(profile.stamina ?? 0);
       const maxStamina = catalog ? catalog.maxStamina : Number(profile.maxStamina ?? 0);
       entries.push({ key: 'stamina', icon: ICONS.stamina.path, value: `${stamina}/${maxStamina}` });
+    } else if (kind === 'rune') {
+      entries.push({ key: 'rune', icon: ICONS.rune.path, value: this.host.formatInteger(Number(catalog?.runeOffer?.held ?? 0)) });
     }
     entries.push({ key: 'diamond', icon: ICONS.diamond.path, value: this.host.formatInteger(diamond) });
     const capW = 158 * scale;
@@ -412,7 +420,7 @@ export class LobbyShopDialogRenderer {
       const n = Math.max(1, catalog.goldTiers.length);
       return { w: (n * CARD_W.gold + (n - 1) * GAP.col) * scale, h: (CARD_W.gold * GOLD_CARD.aspect + 40) * scale };
     }
-    if (kind === 'stamina') {
+    if (kind === 'stamina' || kind === 'rune') {
       return { w: 940 * scale, h: (CARD_W.stamina * PLAIN_CARD.aspect + 90) * scale };
     }
     const rows = Math.ceil(catalog.rechargeTiers.length / 3);
@@ -570,6 +578,66 @@ export class LobbyShopDialogRenderer {
       this.host.addSprite('LobbyShopStaminaQuotaDivL', TITLE_DIVIDER_L.path, quotaX - divGap, quotaY, divW, divW * TITLE_DIVIDER_L.aspect, panel);
       this.host.addSprite('LobbyShopStaminaQuotaDivR', TITLE_DIVIDER_R.path, quotaX + divGap, quotaY, divW, divW * TITLE_DIVIDER_R.aspect, panel);
     }
+  }
+
+  // ── 强化护符(docs/45 §12):左侧持有数 + 规则说明,右侧 1 张 / 5 张两张卡,版式与体力页一致 ──
+  private renderRune(panel: Node, catalog: ShopCatalogVO, panelW: number, top: number, bottom: number, scale: number, busy: boolean, diamond: number): void {
+    const offer = catalog.runeOffer ?? { diamondCost: 80, dailyLimit: 0, usedToday: 0, maxCountPerBuy: 5, held: 0 };
+    const remaining = Math.max(0, offer.dailyLimit - offer.usedToday);
+    const centerY = (top + bottom) / 2;
+    const leftX = -panelW * 0.25;
+    const rightX = panelW * 0.2;
+    // 第二张卡按今日剩余额度卖(买过 1 张后不会整张灰掉),额度用完回到上限张数显示"已达上限"
+    const bulk = remaining > 1 ? Math.min(offer.maxCountPerBuy, remaining) : offer.maxCountPerBuy;
+    const packs = [1, bulk].filter((count, index, all) => count >= 1 && all.indexOf(count) === index);
+    const grid = this.tierGrid(panelW * 0.5, top, bottom + (this.phone ? 40 * scale : 0), scale, packs.length, packs.length, (this.phone ? PHONE_CARD_W.rune : CARD_W.rune) * scale, PLAIN_CARD.aspect);
+    const cardCy = grid.slots[0].y + 14 * scale;
+    const cardH = grid.cardW * PLAIN_CARD.aspect;
+    const leftCy = this.phone ? cardCy : centerY;
+    const iconBox = Math.min(150 * scale, (top - bottom) * 0.4);
+    if (this.phone) {
+      mountRefTitledPanel(this.host, panel, 'LobbyShopRuneBox', leftX, leftCy, panelW * 0.4, cardH, scale, '当前持有', { bandH: cardH * 0.11, fontSize: cardH * 0.066, fill: rgba(14, 10, 10, 200), legacyRed: true });
+    }
+    // 纵向比例与体力页同口径:徽章 42% / 数值 66.5% / 两行说明 78%、85%
+    const lat = (f: number): number => leftCy + cardH / 2 - cardH * f;
+    const medal = Math.min(cardH * 0.55, panelW * 0.26);
+    this.drawGlow(panel, 'LobbyShopRuneGlow', leftX, lat(0.42), medal * 0.36, [255, 196, 96], scale);
+    this.host.addSprite('LobbyShopRuneRing', REF_ICON_RING_ASSET, leftX, lat(0.42), medal, medal, panel);
+    this.fitSprite(panel, 'LobbyShopRuneIcon', ICONS.rune, leftX, lat(0.42), this.phone ? medal * 0.62 : iconBox * 0.9);
+    const value = this.host.addChildLabel(panel, 'LobbyShopRuneValue', `持有 ${this.host.formatInteger(offer.held)} 张`, leftX, lat(0.665), this.phone ? cardH * 0.068 : FONT.big * scale, rgba(255, 214, 130), new Size(panelW * 0.4, cardH * 0.09));
+    this.outline(value, scale, rgba(40, 24, 6, 255));
+    const notes = ['强化 +5 起失败掉 1 级,勾选护符本次不掉级', '每日副本·熔火矿脉Ⅲ 胜利有概率掉落'];
+    notes.forEach((text, index) => {
+      const note = this.host.addChildLabel(panel, `LobbyShopRuneNote_${index}`, text, leftX, this.phone ? lat(0.78 + index * 0.07) : centerY - (90 + index * 26) * scale, this.phone ? cardH * 0.046 : FONT.small * scale, rgba(222, 210, 184), new Size(panelW * 0.38, this.phone ? cardH * 0.065 : this.lh(22, scale)));
+      note.overflow = Label.Overflow.SHRINK;
+      this.outline(note, scale, rgba(10, 6, 4, 255));
+    });
+    packs.forEach((count, index) => {
+      const slot = grid.slots[index];
+      const cost = offer.diamondCost * count;
+      const sellable = offer.dailyLimit > 0 && count <= remaining;
+      this.buildTierCard(panel, `LobbyShopRuneBuy_${count}`, rightX + slot.x, slot.y + 14 * scale, grid.cardW, STAMINA_CARD, scale, {
+        textScale: this.cardTextScale(grid.cardW, CARD_W.rune * scale),
+        name: `购买 ${count} 张`,
+        iconKey: 'rune',
+        amount: `+${count}`,
+        unit: '强化护符',
+        amountColor: rgba(255, 214, 130),
+        tag: '',
+        price: offer.dailyLimit <= 0 ? '暂未开放' : sellable ? this.host.formatInteger(cost) : '今日已达上限',
+        priceIcon: offer.dailyLimit > 0 && sellable ? ICONS.diamond : undefined,
+        enabled: !busy && sellable,
+        dimmed: !sellable || diamond < cost,
+        badge: count > 1 ? `×${count}` : undefined,
+        onTap: (from) => this.host.buyShopRune(count, from),
+      });
+    });
+    const quotaText = offer.dailyLimit > 0 ? `今日已购 ${offer.usedToday}/${offer.dailyLimit} 张 · 还可购买 ${remaining} 张` : '强化护符购买暂未开放';
+    const quotaY = cardCy - cardH / 2 - 28 * scale;
+    const quotaX = this.phone ? 0 : rightX;
+    const quota = this.host.addChildLabel(panel, 'LobbyShopRuneQuota', quotaText, quotaX, quotaY, this.phone ? 25 * scale : FONT.small * scale, remaining > 0 ? rgba(232, 218, 190) : rgba(255, 170, 150), new Size(panelW * 0.5, this.phone ? 34 * scale : this.lh(26, scale)));
+    quota.overflow = Label.Overflow.SHRINK;
+    this.outline(quota, scale, rgba(10, 6, 4, 255));
   }
 
   // ── 钻石充值:6 档 3×2,图标 少量 → 中量 → 大量 → 宝箱;赠送最高的一档标"最划算";ONLINE 时顶部一行支付方式 ──
@@ -935,6 +1003,13 @@ export class LobbyShopDialogRenderer {
    * 体力 = 金环徽章(icon_ring)+ 药剂 + 暖光,与原型一致。
    */
   private addTierIllustration(parent: Node, name: string, iconKey: string, artKey: string | undefined, cx: number, cy: number, maxW: number, maxH: number, scale: number, ringK = 1.02): void {
+    if (iconKey === 'rune') {
+      const ring = Math.min(maxW * 0.86, maxH * ringK);
+      this.drawGlow(parent, `${name}Glow`, cx, cy, ring * 0.36, [255, 196, 96], scale);
+      this.host.addSprite(`${name}Ring`, REF_ICON_RING_ASSET, cx, cy, ring, ring, parent);
+      this.fitSprite(parent, name, ICONS.rune, cx, cy, ring * 0.62);
+      return;
+    }
     if (iconKey === 'stamina') {
       const ring = Math.min(maxW * 0.86, maxH * ringK);
       this.drawGlow(parent, `${name}Glow`, cx, cy, ring * 0.36, [255, 120, 90], scale);

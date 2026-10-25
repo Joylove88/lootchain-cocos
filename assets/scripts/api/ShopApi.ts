@@ -18,6 +18,10 @@ export class ShopApi {
     return this.http.post<unknown>('/api/player/shop/stamina/buy', { count }).then(expectRecord<ShopPurchaseResultVO>('购买体力'));
   }
 
+  buyRune(count: number): Promise<ShopPurchaseResultVO> {
+    return this.http.post<unknown>('/api/player/shop/rune/buy', { count }).then(expectRecord<ShopPurchaseResultVO>('购买强化护符'));
+  }
+
   /** 充值下单;channelCode 为空时服务端取默认通道(docs/34)。 */
   recharge(tierCode: string, channelCode?: string | null): Promise<ShopRechargeResultVO> {
     return this.http.post<unknown>('/api/player/shop/recharge', channelCode ? { tierCode, channelCode } : { tierCode }).then(expectRecord<ShopRechargeResultVO>('钻石充值'));

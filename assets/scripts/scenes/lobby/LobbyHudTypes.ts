@@ -142,7 +142,7 @@ export interface LobbyHudHost {
   /** 所有未开放大厅入口统一交给根节点弹窗处理，保持占位行为一致。 */
   openLobbyPlaceholderDialog(title: string, detail?: string): void;
   /** 货币商店(docs/33,2026-09-22):点顶部金币/体力/钻石打开对应购买弹窗。 */
-  openLobbyShopDialog?(kind: 'gold' | 'stamina' | 'diamond'): void;
+  openLobbyShopDialog?(kind: 'gold' | 'stamina' | 'diamond' | 'rune'): void;
   /** 底部导航「水晶」(2026-09-27 用户拍板替换「圣契」):守卫水晶养成弹窗(docs/38)。 */
   openGuardCrystalDialog?(): void;
   createUiNode(name: string): Node;

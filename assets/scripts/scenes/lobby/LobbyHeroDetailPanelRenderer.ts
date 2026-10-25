@@ -3588,13 +3588,13 @@ export class LobbyHeroDetailPanelRenderer {
 
     const stoneCost = usesHighStone ? level - 9 : level + 1;
     const goldCost = 100 * Math.pow(2, Math.floor(level / 3));
-    const baseChance = [1, 1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.28, 0.26, 0.24, 0.22, 0.2, 0.18, 0.16, 0.14, 0.12, 0.1][Math.min(level, 19)] ?? 0.1;
+    const baseChance = [1, 1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.28, 0.26, 0.207, 0.173, 0.136, 0.101, 0.072, 0.054, 0.036, 0.018][Math.min(level, 19)] ?? 0.1;
     const chance = Math.min(1, baseChance + (enhance.useBless ? 0.2 : 0));
     const bag = this.host.currentLobbyBagState();
     const bagCount = (code: string) => bag.groups.flatMap((group) => group.items).find((entry) => entry.itemCode === code)?.itemCount ?? 0;
     const costLine = this.host.addChildLabel(dialog, 'EnhCost', maxed ? '' : `消耗:${usesHighStone ? '高阶强化石' : '强化石'} ×${stoneCost}（持有 ${formatInteger(bagCount(usesHighStone ? 'ENHANCE_STONE_HIGH' : 'ENHANCE_STONE'))}）· 金币 ${formatInteger(goldCost)}`, 0, dialogHeight / 2 - 132 * scale, 18 * scale, rgba(238, 208, 144), new Size(dialogWidth - 48 * scale, 22 * scale));
     costLine.overflow = Label.Overflow.SHRINK;
-    const chanceLine = this.host.addChildLabel(dialog, 'EnhChance', maxed ? '' : `成功率 ${Math.round(chance * 100)}%${level >= 5 ? '（失败将降 1 级,可用护符抵消）' : '（失败不降级）'}`, 0, dialogHeight / 2 - 160 * scale, 18 * scale, level >= 5 ? rgba(230, 150, 110) : rgba(196, 182, 148), new Size(dialogWidth - 48 * scale, 22 * scale));
+    const chanceLine = this.host.addChildLabel(dialog, 'EnhChance', maxed ? '' : `成功率 ${chance * 100 >= 10 ? Math.round(chance * 100) : (chance * 100).toFixed(1)}%${level >= 5 ? '（失败将降 1 级,可用护符抵消）' : '（失败不降级）'}`, 0, dialogHeight / 2 - 160 * scale, 18 * scale, level >= 5 ? rgba(230, 150, 110) : rgba(196, 182, 148), new Size(dialogWidth - 48 * scale, 22 * scale));
     chanceLine.overflow = Label.Overflow.SHRINK;
 
     // 祝福石/护符开关行。

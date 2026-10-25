@@ -6464,6 +6464,12 @@ export class LootChainGameRoot extends Component {
     void this.runLobbyShopAction(() => this.api.shop.buyStamina(safeCount), { kind: 'stamina', amount: gain, fromWorld: fromWorld ?? null, volume: safeCount >= 5 ? 'some' : 'few' });
   }
 
+  private buyShopRune(count: number, fromWorld?: Vec3): void {
+    const safeCount = Math.max(1, Math.floor(count));
+    // 护符进背包(锻造页读背包数),买完回读背包;不飞货币动效
+    void this.runLobbyShopAction(() => this.api.shop.buyRune(safeCount), { kind: 'diamond', amount: 0, fromWorld: fromWorld ?? null, volume: 'few' }, () => this.loadLobbyBag(true));
+  }
+
   private rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void {
     const catalog = this.lobbyShopDialog?.catalog;
     const tier = catalog?.rechargeTiers.find((entry) => entry.code === tierCode);
@@ -6626,6 +6632,7 @@ export class LootChainGameRoot extends Component {
   private async runLobbyShopAction(
     action: () => Promise<{ message: string; mockPaid?: boolean }>,
     fly: { kind: 'gold' | 'stamina' | 'diamond'; amount: number; fromWorld: Vec3 | null; volume: LobbyShopFlyVolume },
+    afterSuccess?: () => Promise<unknown>,
   ): Promise<void> {
     const dialog = this.lobbyShopDialog;
     if (!dialog || dialog.busy) {
@@ -6643,6 +6650,9 @@ export class LootChainGameRoot extends Component {
       this.setStatus(result.message);
       gameAudio.sfx('coin');
       await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+      if (afterSuccess) {
+        await afterSuccess().catch(() => undefined);
+      }
       if (this.lobbyShopDialog === dialog) {
         const catalog = await this.api.shop.catalog();
         if (this.lobbyShopDialog === dialog) {
