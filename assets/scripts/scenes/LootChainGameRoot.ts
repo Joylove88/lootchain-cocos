@@ -2366,6 +2366,12 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbyProfileSceneContent');
   }
 
+  /** 特殊玩法 · 守卫战(docs/47,2026-10-26):从秘境试炼塔面板进原冒险关卡面板;试炼塔标记清掉,返回时直接回大厅。 */
+  private openLobbySpecialGuardBattle(): void {
+    this.lobbyDailyDungeonPanelOpen = false;
+    this.openLobbyAdventurePanel();
+  }
+
   private openLobbyAdventurePanel(): void {
     this.uiSpriteFrameCache.preloadGroup('adventure');
     this.closeAllLobbyScenePanelFlags();

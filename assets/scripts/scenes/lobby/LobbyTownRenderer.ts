@@ -854,7 +854,7 @@ export class LobbyTownRenderer {
     }
     switch (near.action) {
       case 'adventure':
-        // docs/47 P0 验收期:冒险之门直接进掠夺原型;验收后改回冒险面板
+        // docs/47(2026-10-26 用户拍板):冒险之门 = 矿境掠夺;原守卫战(冒险关卡)挪到秘境试炼塔「特殊玩法 · 守卫战」
         if (this.host.startRaidPrototype) {
           this.host.startRaidPrototype();
         } else {

@@ -47,6 +47,8 @@ export interface LobbyDailyDungeonPanelHost {
   reloadLobbyDailyDungeonSummary(): void;
   /** 只允许提交 DAILY_{THEME}_{TIER} 关卡码;真正的开放日/次数/解锁校验以后端为准。 */
   startLobbyDailyDungeonBattle(stageCode: string): void;
+  /** 特殊玩法 · 守卫战(docs/47,2026-10-26):冒险之门改进掠夺后,原守卫战(冒险关卡面板)从这里进。 */
+  openLobbySpecialGuardBattle?(): void;
   /** 难度选中态存在渲染器实例里;切换选中后整页重绘,刷新行高亮与卡底按钮。 */
   refreshLobbyDailyDungeonPanel(): void;
   /** 奖励详情弹框读背包配置(useDesc/稀有度/已拥有);未加载时降级为客户端兜底文案。 */
@@ -195,6 +197,7 @@ export class LobbyDailyDungeonPanelRenderer {
     this.rewardTooltipSticky = false;
 
     this.renderHeader(panel, panelWidth, panelHeight, scale, state);
+    this.renderSpecialModeButton(panel, panelWidth, panelHeight, scale);
     if (state.loading && !state.summary) {
       mountKitLoading(this.host, panel, 0, 10 * scale, scale, '副本读取中…');
     } else if (state.error && !state.summary) {
@@ -281,6 +284,36 @@ export class LobbyDailyDungeonPanelRenderer {
         { key: 'stamina', icon: DAILY_STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}` },
       ]);
     }
+  }
+
+  /** 「特殊玩法 · 守卫战」入口(2026-10-26 用户拍板:冒险之门改进掠夺,原守卫战挪到这里):电脑在卡带下方居中,手机在顶栏中间。 */
+  private renderSpecialModeButton(parent: Node, width: number, height: number, scale: number): void {
+    const phone = isPhoneDesign();
+    if (!this.host.openLobbySpecialGuardBattle || phone) {
+      // 手机:入口做成顶部矿脉信息条里的胶囊(renderPhoneMineBar),这里只管电脑端
+      return;
+    }
+    // 电脑:底部左侧空位(矿晶说明条 + 输出榜在底部中段;顶栏左段会被「每日副本」返回横幅压住);手机:顶栏中间。
+    const buttonWidth = (phone ? 250 : 280) * scale;
+    const buttonHeight = (phone ? 44 : 44) * scale;
+    const x = phone ? 0 : -width / 2 + 190 * scale;
+    const y = phone ? height / 2 - 36 * scale : -height / 2 + 32 * scale;
+    const button = this.host.addChildPlainNode(parent, 'LobbyDailySpecialModeButton', x, y, buttonWidth, buttonHeight);
+    if (!this.host.addSprite('LobbyDailySpecialModeButtonBg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, buttonWidth, buttonHeight, button)) {
+      const g = button.addComponent(Graphics);
+      g.fillColor = rgba(122, 32, 26, 235);
+      g.roundRect(-buttonWidth / 2, -buttonHeight / 2, buttonWidth, buttonHeight, 5 * scale);
+      g.fill();
+    }
+    const label = this.host.addChildLabel(button, 'Label', '特殊玩法 · 守卫战', 0, 0, (phone ? 22 : 20) * scale, rgba(255, 240, 205, 255), new Size(buttonWidth - 16 * scale, (phone ? 32 : 26) * scale));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(60, 10, 8, 255);
+    label.outlineWidth = Math.max(1, 2 * scale);
+    button.addComponent(Button);
+    button.on(Button.EventType.CLICK, () => this.host.openLobbySpecialGuardBattle?.(), this);
+    this.host.applyImageButtonFeedback(button, 1.04, 0.96);
   }
 
   private estimateHalfTextWidth(text: string, fontSize: number): number {
@@ -935,29 +968,35 @@ export class LobbyDailyDungeonPanelRenderer {
     const pillGap = 6 * scale;
     const rightEdge = barWidth / 2 - barWidth * 0.04;
     const textLeft = iconX + iconSize * 0.6 + 8 * scale;
-    const textRight = rightEdge - pillW * (TOKEN_FURNACE_ENABLED ? 2 : 1) - (TOKEN_FURNACE_ENABLED ? pillGap : 0) - 8 * scale;
+    // 「特殊玩法·守卫战」胶囊(2026-10-26):比普通胶囊宽 1.7 倍,放在输出榜左侧;熔炉开着时再往左排
+    const specialW = this.host.openLobbySpecialGuardBattle ? pillW * 1.7 : 0;
+    const specialGap = specialW > 0 ? pillGap : 0;
+    const textRight = rightEdge - pillW - specialW - specialGap - (TOKEN_FURNACE_ENABLED ? pillW + pillGap : 0) - 8 * scale;
     const label = this.host.addChildLabel(bar, 'LobbyDailyFooterText', text, (textLeft + textRight) / 2, 0, 20 * scale, color, new Size(Math.max(60 * scale, textRight - textLeft), 28 * scale));
     label.overflow = Label.Overflow.SHRINK;
-    const artPill = (name: string, caption: string, x: number, onClick: () => void): void => {
-      const pill = this.host.addChildPlainNode(bar, name, x, 0, pillW, pillH);
-      if (!this.host.addSprite(`${name}Bg`, 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, pillW, pillH, pill)) {
+    const artPill = (name: string, caption: string, x: number, onClick: () => void, w = pillW): void => {
+      const pill = this.host.addChildPlainNode(bar, name, x, 0, w, pillH);
+      if (!this.host.addSprite(`${name}Bg`, 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, w, pillH, pill)) {
         const g = pill.addComponent(Graphics);
         g.fillColor = rgba(38, 24, 16, 235);
-        g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+        g.roundRect(-w / 2, -pillH / 2, w, pillH, pillH / 2);
         g.fill();
         g.strokeColor = rgba(214, 168, 92, 225);
         g.lineWidth = Math.max(1, 1.3 * scale);
-        g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
+        g.roundRect(-w / 2, -pillH / 2, w, pillH, pillH / 2);
         g.stroke();
       }
-      const cap = this.host.addChildLabel(pill, `${name}Label`, caption, 0, 0, 20 * scale, rgba(255, 234, 176, 255), new Size(pillW * 0.74, pillH - 6 * scale));
+      const cap = this.host.addChildLabel(pill, `${name}Label`, caption, 0, 0, 20 * scale, rgba(255, 234, 176, 255), new Size(w * 0.8, pillH - 6 * scale));
       cap.overflow = Label.Overflow.SHRINK;
       pill.addComponent(Button);
       pill.on(Button.EventType.CLICK, onClick, this);
       this.host.applyImageButtonFeedback(pill, 1.05, 0.95);
     };
+    if (specialW > 0) {
+      artPill('LobbyDailySpecialPill', '特殊玩法·守卫战', rightEdge - pillW - pillGap - specialW / 2, () => this.host.openLobbySpecialGuardBattle?.(), specialW);
+    }
     if (TOKEN_FURNACE_ENABLED) {
-      artPill('LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW * 1.5 - pillGap, () => this.host.openLobbyTokenFurnace?.());
+      artPill('LobbyDailyFurnacePill', '矿晶熔炉', rightEdge - pillW - pillGap - specialW - specialGap - pillW / 2, () => this.host.openLobbyTokenFurnace?.());
     }
     artPill('LobbyDailyRankPill', '输出榜', rightEdge - pillW / 2, () => {
       this.rankPopupOpen = true;

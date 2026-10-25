@@ -127,7 +127,8 @@ export class LobbyHudRenderer {
     const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
     switch (step) {
       case 'TOWER':
-        return { building: 'gate', text: '开始你的第一场矿境守卫战' };
+        // 2026-10-26:守卫战挪到秘境试炼塔「特殊玩法」,首战引导改指过去
+        return { building: 'tower', text: '特殊玩法:打你的第一场守卫战' };
       case 'SUMMON':
         return { building: 'temple', text: '首胜达成!今天有免费召唤' };
       case 'DRAW':
