@@ -1013,10 +1013,12 @@ export class LobbyGuardBattleRenderer {
     const cells = [2, 8, 4, 10];
     const hpOf = (hero: GuardPoolHero, mult: number, floor: number): number => Math.max(floor, Math.round((hero.outside?.hp ?? hero.baseAttack * 8) * mult));
     sim.unlockedCells = GUARD_GRID_CELLS;
+    // 守卫血量跟进攻方攻击挂钩:至少吃 8 下普攻(约一套半连段),账号等级低时不会出现"下限血量把人定死"(2026-10-25 QA 账号实测)
+    const raiderAttack = Math.round(leader.baseAttack * 1.6);
     guardStartRaid(
       sim,
-      { heroCode: leader.heroCode, attack: Math.round(leader.baseAttack * 1.6), hp: hpOf(leader, 6, 4000) },
-      defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: hpOf(hero, 2, 2200) })),
+      { heroCode: leader.heroCode, attack: raiderAttack, hp: hpOf(leader, 6, 4000) },
+      defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: Math.max(hpOf(hero, 2, 0), raiderAttack * 8) })),
     );
     this.raiderMonsterId = sim.raider?.monsterId ?? -1;
     this.raid = new GuardRaidController({
