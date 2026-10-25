@@ -17,7 +17,7 @@ ev "root.startRaidPrototype(); return 'raid';"; sleep 12
 ev "return 'view=' + root.currentView + ' mounted=' + (gr && gr.isMounted()) + ' raid=' + !!raid + ' mode=' + (sim && sim.mode);"
 state; shot raid_start
 # 向左冲 2.2 秒(KEY_A = 65)
-hold 65 2200; sleep 2.6; state; shot raid_approach
+hold 65 1100; sleep 1.5; state; shot raid_approach
 # 普攻 x3(每次间隔 0.35s,连段窗口内)
 press raid.attackPressedAt; sleep 0.35; press raid.attackPressedAt; sleep 0.35; press raid.attackPressedAt; sleep 0.25; shot raid_combo; sleep 0.6; state
 # 技能 0 重斩

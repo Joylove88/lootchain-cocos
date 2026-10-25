@@ -58,6 +58,8 @@ export interface GuardRaidBridge {
   /** 进攻方斩中守卫时的命中特效(英雄专属)。 */
   hitFx(heroCode: string, x: number, y: number, scale: number): void;
   attackSfx(heroCode: string): void;
+  openSettings(): void;
+  mountSprite(parent: Node, name: string, path: string, x: number, y: number, w: number, h: number): Node;
 }
 
 const rgba = (r: number, g: number, b: number, a = 255): Color => new Color(r, g, b, a);
@@ -96,6 +98,8 @@ export class GuardRaidController {
   private toY = 0;
   private hpDrawnKey = '';
   private timerLabel: Label | null = null;
+  private guardsLabel: Label | null = null;
+  private crystalLabel: Label | null = null;
   private hintLabel: Label | null = null;
   /** 顿帧截止(Date.now 毫秒):期间模拟不前进,只有画面。 */
   hitStopUntil = 0;
@@ -105,37 +109,90 @@ export class GuardRaidController {
   // ── HUD ──
 
   mountHud(root: Node): void {
-    const { width, height, uiScale } = this.bridge.layout();
+    const { width, height } = this.bridge.layout();
     const phone = isPhoneDesign();
-    const s = Math.max(0.7, Math.min(1.1, uiScale)) * (phone ? 1.15 : 1);
     const hud = this.bridge.host.addChildPlainNode(root, 'GuardRaidHud', 0, 0, width, height);
-    this.renderJoystick(hud, width, height, s);
-    this.renderButtons(hud, width, height, s);
-    // 计时写进顶部横幅(顶掉防守侧的"第 N 波");防守侧的合成提示 / 波次进度条不显示
+    // 原守卫战 HUD(统计 / 波次横幅 / 金币 / 设置 / 关闭 / 提示)整体隐藏:掠夺按原型 v1 自己画(2026-10-26)
     const guardHud = root.getChildByName('GuardHud');
-    this.timerLabel = guardHud?.getChildByName('GuardTopBanner')?.getChildByName('GuardWaveText')?.getComponent(Label) ?? null;
-    if (!this.timerLabel) {
-      this.timerLabel = this.bridge.host.addChildLabel(hud, 'GuardRaidTimer', '', 0, height / 2 - 70 * s, 22 * s, rgba(255, 232, 170), new Size(240 * s, 30 * s));
+    if (guardHud) {
+      guardHud.active = false;
     }
-    const hint = guardHud?.getChildByName('GuardHintText');
-    if (hint) {
-      hint.active = false;
-    }
-    const track = guardHud?.getChildByName('GuardWaveTrack');
-    if (track) {
-      track.active = false;
-    }
+    this.renderTopBar(hud, width, height);
+    this.renderJoystick(hud, width, height);
+    this.renderButtons(hud, width, height);
     if (!phone) {
-      this.hintLabel = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', 'WASD 移动 · J / 空格 普攻 · K / Shift 翻滚 · U I O 技能', 0, -height / 2 + 14 * s, 15 * s, rgba(214, 200, 170, 220), new Size(width * 0.8, 22 * s));
+      this.hintLabel = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', 'WASD 移动 · J / 空格 普攻 · K / Shift 翻滚 · U I O 技能', 0, -height / 2 + height * 0.018, height * 0.016, rgba(190, 178, 150, 150), new Size(width * 0.6, height * 0.024));
     }
     this.bindInput();
   }
 
-  private renderJoystick(hud: Node, width: number, height: number, s: number): void {
-    const radius = 70 * s;
+  /** 顶部窄条(原型 v1):深色底 + 细金边,三段「剩余 m:ss | 守卫 a/n | 水晶 p%」;右上暂停 / 设置两个圆钮。 */
+  private renderTopBar(hud: Node, width: number, height: number): void {
+    const host = this.bridge.host;
+    const barW = height * 0.749;
+    const barH = height * 0.065;
+    const barY = height / 2 - height * 0.068;
+    const bar = host.addChildPlainNode(hud, 'GuardRaidTopBar', 0, barY, barW, barH);
+    const g = bar.addComponent(Graphics);
+    g.fillColor = rgba(14, 11, 10, 215);
+    g.roundRect(-barW / 2, -barH / 2, barW, barH, barH * 0.18);
+    g.fill();
+    g.strokeColor = rgba(196, 154, 86, 220);
+    g.lineWidth = Math.max(1.2, height * 0.0016);
+    g.roundRect(-barW / 2, -barH / 2, barW, barH, barH * 0.18);
+    g.stroke();
+    g.strokeColor = rgba(196, 154, 86, 120);
+    for (const sx of [-barW / 6, barW / 6]) {
+      g.moveTo(sx, -barH * 0.26);
+      g.lineTo(sx, barH * 0.26);
+    }
+    g.stroke();
+    const font = height * 0.029;
+    const mkText = (name: string, x: number): Label => {
+      const label = host.addChildLabel(bar, name, '', x, 0, font, rgba(255, 226, 160, 252), new Size(barW / 3 - 10, barH));
+      label.overflow = Label.Overflow.SHRINK;
+      label.enableOutline = true;
+      label.outlineColor = rgba(12, 8, 6, 255);
+      label.outlineWidth = 2;
+      return label;
+    };
+    this.timerLabel = mkText('GuardRaidTimer', -barW / 3);
+    this.guardsLabel = mkText('GuardRaidGuards', 0);
+    this.crystalLabel = mkText('GuardRaidCrystal', barW / 3);
+    // 暂停 / 设置(都打开战斗设置,设置里本来就是"已暂停")
+    const r = height * 0.038;
+    const mkRound = (name: string, x: number): Node => {
+      const node = host.addChildPlainNode(hud, name, x, barY, r * 2, r * 2);
+      const cg = node.addComponent(Graphics);
+      cg.fillColor = rgba(14, 11, 10, 215);
+      cg.circle(0, 0, r);
+      cg.fill();
+      cg.strokeColor = rgba(196, 154, 86, 220);
+      cg.lineWidth = Math.max(1.2, height * 0.0016);
+      cg.circle(0, 0, r);
+      cg.stroke();
+      node.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
+        event.propagationStopped = true;
+        this.bridge.openSettings();
+      }, this);
+      host.applyImageButtonFeedback(node, 1.06, 0.94);
+      return node;
+    };
+    const pause = mkRound('GuardRaidPause', width / 2 - height * 0.184);
+    const pg = host.addChildPlainNode(pause, 'Glyph', 0, 0, r * 2, r * 2).addComponent(Graphics);
+    pg.fillColor = rgba(230, 196, 120, 240);
+    pg.rect(-r * 0.3, -r * 0.34, r * 0.2, r * 0.68);
+    pg.rect(r * 0.1, -r * 0.34, r * 0.2, r * 0.68);
+    pg.fill();
+    const gear = mkRound('GuardRaidSettings', width / 2 - height * 0.071);
+    this.bridge.mountSprite(gear, 'Icon', 'ui/battle/ai/ghud_btn_settings/spriteFrame', 0, 0, r * 2, r * 2);
+  }
+
+  private renderJoystick(hud: Node, width: number, height: number): void {
+    const radius = height * 0.118;
     this.joyRadius = radius;
-    const homeX = -width / 2 + 150 * s;
-    const homeY = -height / 2 + 150 * s;
+    const homeX = -width / 2 + height * 0.226;
+    const homeY = -height / 2 + height * 0.19;
     this.joyHome = new Vec3(homeX, homeY, 0);
     const padW = width * 0.45;
     const padH = height * 0.7;
@@ -146,13 +203,28 @@ export class GuardRaidController {
     bg.circle(0, 0, radius);
     bg.fill();
     bg.strokeColor = rgba(196, 154, 86, 150);
-    bg.lineWidth = Math.max(1.5, 2 * s);
+    bg.lineWidth = Math.max(1.5, height * 0.002);
     bg.circle(0, 0, radius);
     bg.stroke();
+    // 四向小箭头(原型 v1)
+    bg.fillColor = rgba(200, 190, 170, 150);
+    const a = height * 0.016;
+    const d = radius * 0.78;
+    const tri = (cx: number, cy: number, dx: number, dy: number): void => {
+      bg.moveTo(cx + dx * a, cy + dy * a);
+      bg.lineTo(cx - dy * a * 0.9 - dx * a * 0.6, cy + dx * a * 0.9 - dy * a * 0.6);
+      bg.lineTo(cx + dy * a * 0.9 - dx * a * 0.6, cy - dx * a * 0.9 - dy * a * 0.6);
+      bg.close();
+    };
+    tri(0, d, 0, 1);
+    tri(0, -d, 0, -1);
+    tri(d, 0, 1, 0);
+    tri(-d, 0, -1, 0);
+    bg.fill();
     const knob = this.bridge.host.addChildPlainNode(base, 'Knob', 0, 0, radius, radius);
     const kg = knob.addComponent(Graphics);
     kg.fillColor = rgba(226, 206, 160, 200);
-    kg.circle(0, 0, radius * 0.42);
+    kg.circle(0, 0, height * 0.045);
     kg.fill();
     this.joyBase = base;
     this.joyKnob = knob;
@@ -199,19 +271,22 @@ export class GuardRaidController {
     pad.on(Node.EventType.TOUCH_CANCEL, release, this);
   }
 
-  private renderButtons(hud: Node, width: number, height: number, s: number): void {
+  /** 动作钮(原型 v1,全部按屏高定尺寸、按屏高定离右缘距离,任何宽高比下按钮簇形状不变)。 */
+  private renderButtons(hud: Node, width: number, height: number): void {
     const host = this.bridge.host;
-    const mk = (name: string, x: number, y: number, size: number, label: string, fill: Color, onPress: () => void): { node: Node; dim: UIOpacity } => {
+    const right = width / 2;
+    const bottom = -height / 2;
+    const mk = (name: string, x: number, y: number, size: number, label: string, font: number, fill: Color, onPress: () => void): { node: Node; dim: UIOpacity } => {
       const node = host.addChildPlainNode(hud, name, x, y, size, size);
       const g = node.addComponent(Graphics);
       g.fillColor = fill;
       g.circle(0, 0, size / 2);
       g.fill();
       g.strokeColor = rgba(214, 170, 92, 240);
-      g.lineWidth = Math.max(2, 2.5 * s);
+      g.lineWidth = Math.max(2, height * 0.0028);
       g.circle(0, 0, size / 2);
       g.stroke();
-      const text = host.addChildLabel(node, 'Label', label, 0, 0, size * 0.26, rgba(255, 236, 190), new Size(size * 0.9, size * 0.4));
+      const text = host.addChildLabel(node, 'Label', label, 0, 0, font, rgba(255, 236, 190), new Size(size * 0.92, font * 1.4));
       text.isBold = true;
       text.enableOutline = true;
       text.outlineColor = rgba(20, 10, 4, 255);
@@ -225,16 +300,16 @@ export class GuardRaidController {
       host.applyImageButtonFeedback(node, 1.06, 0.94);
       return { node, dim };
     };
-    const ax = width / 2 - 120 * s;
-    const ay = -height / 2 + 130 * s;
-    mk('GuardRaidAttack', ax, ay, 130 * s, '普攻', rgba(120, 28, 24, 230), () => { this.attackPressedAt = Date.now(); });
-    this.dodgeButton = mk('GuardRaidDodge', ax - 150 * s, ay - 10 * s, 84 * s, '翻滚', rgba(26, 40, 70, 230), () => { this.dodgePressedAt = Date.now(); });
+    mk('GuardRaidAttack', right - height * 0.196, bottom + height * 0.197, height * 0.226, '普攻', height * 0.052, rgba(108, 22, 20, 235), () => { this.attackPressedAt = Date.now(); });
+    this.dodgeButton = mk('GuardRaidDodge', right - height * 0.446, bottom + height * 0.185, height * 0.142, '翻滚', height * 0.03, rgba(24, 38, 70, 235), () => { this.dodgePressedAt = Date.now(); });
     this.skillButtons = [];
-    const arc: Array<[number, number]> = [[-120, 110], [-30, 150], [70, 120]];
+    const slots: Array<[number, number]> = [[0.404, 0.364], [0.256, 0.429], [0.095, 0.388]];
     GUARD_RAID_SKILLS.forEach((spec, index) => {
-      const [ox, oy] = arc[index];
-      const button = mk(`GuardRaidSkill_${index}`, ax + ox * s, ay + oy * s, 78 * s, spec.name, rgba(60, 36, 90, 230), () => { this.skillPressedAt[index] = Date.now(); });
-      const cd = host.addChildLabel(button.node, 'Cd', '', 0, -78 * s * 0.36, 16 * s, rgba(255, 220, 140), new Size(70 * s, 20 * s));
+      const [fromRight, fromBottom] = slots[index];
+      const size = height * 0.13;
+      const button = mk(`GuardRaidSkill_${index}`, right - height * fromRight, bottom + height * fromBottom, size, spec.name, height * 0.029, rgba(58, 34, 90, 235), () => { this.skillPressedAt[index] = Date.now(); });
+      button.node.getChildByName('Label')?.setPosition(0, size * 0.1, 0);
+      const cd = host.addChildLabel(button.node, 'Cd', '', 0, -size * 0.22, height * 0.02, rgba(255, 220, 140), new Size(size * 0.9, height * 0.026));
       cd.enableOutline = true;
       cd.outlineColor = rgba(20, 10, 4, 255);
       cd.outlineWidth = 2;
@@ -465,7 +540,7 @@ export class GuardRaidController {
     this.fromY = this.toY = py;
     this.facing = unit.facing ?? -1;
     // 头顶血条
-    const hp = this.bridge.host.addChildPlainNode(node, 'GuardRaiderHp', 0, unitSize * 0.78, 120, 10);
+    const hp = this.bridge.host.addChildPlainNode(node, 'GuardRaiderHp', 0, unitSize * 0.62, this.barW(), this.barH());
     hp.addComponent(Graphics);
     return view;
   }
@@ -558,14 +633,20 @@ export class GuardRaidController {
     const hpKey = `${Math.ceil(unit.hp)}/${unit.maxHp}`;
     if (hpKey !== this.hpDrawnKey) {
       this.hpDrawnKey = hpKey;
-      this.drawBar(view.node.getChildByName('GuardRaiderHp'), 120, 10, unit.hp / Math.max(1, unit.maxHp), rgba(90, 220, 120, 250));
+      this.drawBar(view.node.getChildByName('GuardRaiderHp'), this.barW(), this.barH(), unit.hp / Math.max(1, unit.maxHp), rgba(90, 220, 120, 250));
     }
     this.syncHeroes(sim);
     this.syncButtons(sim);
     if (this.timerLabel && this.timerLabel.isValid) {
       const left = Math.max(0, GUARD_RAID_TIME_LIMIT_MS - sim.timeMs);
+      this.timerLabel.string = `剩余 ${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')}`;
+    }
+    if (this.guardsLabel && this.guardsLabel.isValid) {
       const alive = sim.heroes.filter((hero) => !hero.dead).length;
-      this.timerLabel.string = `掠夺 ${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')} · 守卫 ${alive}/${sim.heroes.length}`;
+      this.guardsLabel.string = `守卫 ${alive}/${sim.heroes.length}`;
+    }
+    if (this.crystalLabel && this.crystalLabel.isValid) {
+      this.crystalLabel.string = `水晶 ${Math.round((sim.crystalHp / Math.max(1, sim.crystalMaxHp)) * 100)}%`;
     }
   }
 
@@ -578,6 +659,15 @@ export class GuardRaidController {
     const a = Math.max(0, Math.min(1, alpha));
     const jiggle = view.hitFlashUntil > Date.now() ? ((view.hitFlashUntil - Date.now()) / 110) * 6 * (this.facing < 0 ? 1 : -1) : 0;
     view.node.setPosition(this.fromX + (this.toX - this.fromX) * a + jiggle, this.fromY + (this.toY - this.fromY) * a, 0);
+  }
+
+  /** 血条尺寸按屏高定(原型 v1:约 100×9 @ 841 高)。 */
+  private barW(): number {
+    return this.bridge.layout().height * 0.115;
+  }
+
+  private barH(): number {
+    return Math.max(6, this.bridge.layout().height * 0.011);
   }
 
   private drawBar(node: Node | null, w: number, h: number, ratio: number, fill: Color): void {
@@ -611,15 +701,37 @@ export class GuardRaidController {
       }
       let bar = view.node.getChildByName('GuardRaidHeroHp');
       if (!bar) {
-        bar = this.bridge.host.addChildPlainNode(view.node, 'GuardRaidHeroHp', 0, unitSize * 0.72, 96, 9);
+        bar = this.bridge.host.addChildPlainNode(view.node, 'GuardRaidHeroHp', 0, unitSize * 0.5, this.barW(), this.barH());
         bar.addComponent(Graphics);
         (view as GuardUnitView & { raidHpKey?: string }).raidHpKey = '';
+        // 原型 v1:守卫头顶只有名字 + 绿血条,没有星级 / 攻击数字 / 职业色圈;脚下柔和影子
+        for (const name of ['GuardHeroStar', 'GuardHeroAtk', 'GuardHeroRing']) {
+          const child = view.node.getChildByName(name);
+          if (child) {
+            child.active = false;
+          }
+        }
+        const nameNode = view.node.getChildByName('GuardHeroName');
+        nameNode?.setPosition(0, unitSize * 0.66, 0);
+        const nameLabel = nameNode?.getComponent(Label);
+        if (nameLabel) {
+          nameLabel.fontSize = this.bridge.layout().height * 0.02;
+        }
+        const size = this.bridge.heroDisplaySize();
+        this.bridge.mountShade(view.node, 'GuardRaidHeroShadow', 0, -size * 0.42, size * 0.7, Math.max(6, size * 0.14))?.setSiblingIndex(0);
+      }
+      // 守卫战的技能冷却条 / 旧血条每 tick 由渲染器补建:掠夺里一律藏掉(原型 v1 只有名字 + 绿血条)
+      for (const key of ['hpBg', 'hpFill', 'cdBg', 'cdFill'] as const) {
+        const barNode = view[key];
+        if (barNode && barNode.isValid && barNode.active) {
+          barNode.active = false;
+        }
       }
       const key = `${Math.ceil(hero.hp)}/${hero.maxHp ?? 1}${hero.dead ? 'd' : ''}`;
       const tagged = view as GuardUnitView & { raidHpKey?: string; raidDead?: boolean };
       if (tagged.raidHpKey !== key) {
         tagged.raidHpKey = key;
-        this.drawBar(bar, 96, 9, hero.hp / Math.max(1, hero.maxHp ?? 1), hero.dead ? rgba(90, 90, 90, 200) : rgba(240, 90, 70, 250));
+        this.drawBar(bar, this.barW(), this.barH(), hero.hp / Math.max(1, hero.maxHp ?? 1), hero.dead ? rgba(90, 90, 90, 200) : rgba(90, 220, 120, 250));
       }
       if (view.skeleton && view.skeleton.isValid && !hero.dead) {
         view.skeleton.color = view.hitFlashUntil > Date.now() ? FLASH : WHITE;
@@ -674,7 +786,7 @@ export class GuardRaidController {
       const left = raider.skillReadyMs[index] - sim.timeMs;
       const ready = left <= 0;
       button.dim.opacity = ready ? 255 : 130;
-      button.cd.string = ready ? '' : `${(left / 1000).toFixed(1)}s`;
+      button.cd.string = ready ? '' : `${Math.ceil(left / 1000)}秒`;
     });
     if (this.dodgeButton && this.dodgeButton.node.isValid) {
       const left = raider.dodgeReadyMs - sim.timeMs;

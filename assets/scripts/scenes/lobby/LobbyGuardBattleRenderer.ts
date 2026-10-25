@@ -103,6 +103,7 @@ import {
   GUARD_MAX_STAR,
   GUARD_GRID_CELLS,
   GUARD_GRID_COLS,
+  guardCellX,
   GUARD_GRID_ROWS,
   GUARD_HERO_SKILL,
   GUARD_MONSTER_DB_SCALE,
@@ -1010,7 +1011,8 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const defense = pool.length > 1 ? pool.slice(1) : pool;
-    const cells = [2, 8, 4, 10];
+    // 守卫站位(原型 v1):三四个人前后错开,不排成一列
+    const cells = [1, 8, 3, 10];
     const hpOf = (hero: GuardPoolHero, mult: number, floor: number): number => Math.max(floor, Math.round((hero.outside?.hp ?? hero.baseAttack * 8) * mult));
     sim.unlockedCells = GUARD_GRID_CELLS;
     // 守卫血量跟进攻方攻击挂钩:至少吃 8 下普攻(约一套半连段),账号等级低时不会出现"下限血量把人定死"(2026-10-25 QA 账号实测)
@@ -1028,11 +1030,7 @@ export class LobbyGuardBattleRenderer {
       unitSize: () => this.unitSize(),
       heroDisplaySize: () => this.heroDisplaySize(),
       xToPx: (x) => this.xToPx(x),
-      laneY: (laneF, x) => {
-        const top = this.monsterY(0, x);
-        const bottom = this.monsterY(1, x);
-        return top + (bottom - top) * laneF;
-      },
+      laneY: (laneF) => this.raidLaneY(laneF),
       cellCenter: (cell) => this.cellCenter(cell),
       heroViews: () => this.heroViews,
       allyFor: (heroCode) => this.snapshot?.allies.find((ally) => (ally.heroCode ?? ally.unitKey).toUpperCase() === heroCode.toUpperCase()) ?? null,
@@ -1041,6 +1039,8 @@ export class LobbyGuardBattleRenderer {
       spawnFloater: (x, y, text, color, fontSize) => this.spawnFloater(x, y, text, color, fontSize),
       shakeField: (amplitude) => this.shakeField(amplitude),
       hitFx: (heroCode, x, y, scale) => this.spawnRaidHitFx(heroCode, x, y, scale),
+      openSettings: () => this.openBattleSettings(),
+      mountSprite: (parent, name, path, x, y, w, h) => this.mountSprite(parent, name, path, x, y, w, h),
       attackSfx: (heroCode) => gameAudio.sfx(this.resolveRaidSfxKey(heroCode), 0.6),
     });
   }
@@ -1363,6 +1363,7 @@ export class LobbyGuardBattleRenderer {
    */
   private static readonly SCENE_BG_HORIZON: Record<string, number> = {
     battle_scene_guard_mine: 0.39,
+    battle_scene_raid_mine: 0.40, // 掠夺矿洞(2026-10-26,scene_horizon 实测)
     battle_scene_shadow_keep: 0.425,
     battle_scene_ash_cathedral: 0.45,
     battle_scene_blood_moon: 0.381,
@@ -1406,6 +1407,10 @@ export class LobbyGuardBattleRenderer {
   private resolveSceneBgName(): string {
     const fallback = 'battle_scene_guard_mine';
     const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
+    if (/^RAID_/.test(stageCode)) {
+      // 矿境掠夺(原型 v1,2026-10-26):别人的矿洞,去格子的石板地面
+      return this.uiAssetKnown('ui/battle/battle_scene_raid_mine/spriteFrame') ? 'battle_scene_raid_mine' : fallback;
+    }
     const daily = /^DAILY_([A-Z]+)_\d+$/.exec(stageCode);
     if (daily) {
       const entry = LobbyGuardBattleRenderer.DAILY_SCENE_BG[daily[1]];
@@ -1824,8 +1829,14 @@ export class LobbyGuardBattleRenderer {
     const h = Math.min(this.layoutHeight * 0.32, this.layoutWidth * 0.2);
     const w = h * (299 / 652);
     const x = -this.layoutWidth * 0.488 + w / 2;
-    const y = this.walkwayY() + h * 0.12;
+    // 掠夺(原型 v1):水晶抬高到走道上沿,让出左下角给摇杆
+    const y = this.walkwayY() + h * (this.isRaidStage() ? 0.45 : 0.12);
     return { x, y, w, h };
+  }
+
+  /** 当前是否矿境掠夺(建场时 sim 可能还没建好,按关卡码判)。 */
+  private isRaidStage(): boolean {
+    return this.sim?.mode === 'raid' || /^RAID_/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
   }
   /** 第一列格心 x:紧贴水晶右缘 + 英雄半宽 + 小间隙。 */
   private firstCellX(): number {
@@ -1908,7 +1919,18 @@ export class LobbyGuardBattleRenderer {
   private cellCenter(cell: number): { x: number; y: number } {
     const col = cell % GUARD_GRID_COLS;
     const row = Math.floor(cell / GUARD_GRID_COLS);
+    if (this.isRaidStage()) {
+      // 掠夺:x 与模拟坐标一致(进攻方挥刀范围所见即所得),上下两排在走道里错开站(原型 v1)
+      return { x: this.xToPx(guardCellX(cell)), y: this.raidLaneY(row === 0 ? 0.25 : 0.75) };
+    }
     return { x: this.firstCellX() + col * this.cellPitchPx(), y: this.laneToPy(row) };
+  }
+
+  /** 掠夺走道 Y:上排格位线(0)→ 下排格位线(1)整段线性,不随 x 收窄。 */
+  private raidLaneY(laneF: number): number {
+    const top = this.laneToPy(0);
+    const bottom = this.laneToPy(1);
+    return top + (bottom - top) * laneF;
   }
 
   private cellAtPosition(px: number, py: number): number | null {
@@ -1974,6 +1996,11 @@ export class LobbyGuardBattleRenderer {
     // 锁图标/解锁提示压低 sibling,不再盖到路过的怪物身上。
     for (const stale of field.children.filter((child) => child.name === 'GuardLockIcon' || child.name === 'GuardCellCard')) {
       stale.destroy();
+    }
+    if (sim.mode === 'raid') {
+      // 掠夺(原型 v1,2026-10-26):没有格子,守卫直接站在矿洞地面上
+      field.getChildByName('GuardLockHint')?.destroy();
+      return;
     }
     for (let cell = 0; cell < GUARD_GRID_CELLS; cell += 1) {
       const tile = this.cellTileRect(cell);

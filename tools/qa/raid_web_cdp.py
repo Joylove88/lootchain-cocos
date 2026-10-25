@@ -88,7 +88,7 @@ async def main():
             await call('Input.dispatchMouseEvent', {'type': 'mouseReleased', 'x': 800, 'y': 200, 'button': 'left', 'clickCount': 1})
             print('start', await ev(STATE), flush=True)
             await shot('raid_web_start')
-            await key('KeyA', 'a', 65, 1800)
+            await key('KeyA', 'a', 65, 1000)
             await asyncio.sleep(0.4)
             print('after A', await ev(STATE), flush=True)
             for _ in range(3):

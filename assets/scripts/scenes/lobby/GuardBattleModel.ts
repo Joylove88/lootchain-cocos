@@ -230,6 +230,9 @@ export interface GuardRaider {
   staggerUntilMs: number;
 }
 export const GUARD_RAID_TIME_LIMIT_MS = 180_000;
+/** 进攻方出生 x 与可走到的最右 x(原型 v1:出生在画面约 2/3 处,右侧留给动作钮,不许走到按钮底下)。 */
+export const GUARD_RAID_SPAWN_X = 7.0;
+export const GUARD_RAID_MAX_X = 8.0;
 export const GUARD_RAID_MOVE_X = 3.2;
 export const GUARD_RAID_MOVE_LANE = 1.6;
 export const GUARD_RAID_COMBO_WINDOW_MS = 700;
@@ -4205,7 +4208,7 @@ export function guardStartRaid(
     monsterId: state.nextMonsterId++,
     kind: 'tank',
     lane: 0,
-    x: GUARD_SPAWN_X - 1.8,
+    x: GUARD_RAID_SPAWN_X,
     hp,
     maxHp: hp,
     speedCellsPerSec: 0,
@@ -4297,7 +4300,7 @@ export function guardRaidSkill(state: GuardBattleState, id: number): boolean {
   raider.comboUntilMs = 0;
   if (spec.dash) {
     const facing = unit.facing ?? -1;
-    unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_SPAWN_X - 0.3, unit.x + facing * spec.dash));
+    unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_RAID_MAX_X, unit.x + facing * spec.dash));
   }
   if (spec.iframeMs) {
     raider.dodgeUntilMs = Math.max(raider.dodgeUntilMs, state.timeMs + spec.iframeMs);
@@ -4329,7 +4332,7 @@ export function guardRaidDodge(state: GuardBattleState): boolean {
   const vec = guardRaidDirVector(raider.moveDir);
   const dx = vec.x !== 0 || vec.y !== 0 ? vec.x : (unit.facing ?? -1);
   const dy = vec.y;
-  unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_SPAWN_X - 0.3, unit.x + dx * GUARD_RAID_DODGE_DIST));
+  unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_RAID_MAX_X, unit.x + dx * GUARD_RAID_DODGE_DIST));
   unit.laneF = Math.max(0, Math.min(1, (unit.laneF ?? 0.5) - dy * 0.5));
   unit.lane = Math.round(unit.laneF);
   state.events.push({ type: 'raidDodge', timeMs: state.timeMs, monsterId: unit.monsterId });
@@ -4358,9 +4361,10 @@ function guardRaidTick(state: GuardBattleState, dtMs: number): boolean {
     if (vec.x !== 0) {
       unit.facing = vec.x < 0 ? -1 : 1;
     }
-    unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_SPAWN_X - 0.3, unit.x + vec.x * GUARD_RAID_MOVE_X * (dtMs / 1000)));
+    unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_RAID_MAX_X, unit.x + vec.x * GUARD_RAID_MOVE_X * (dtMs / 1000)));
     // 英雄区(x<5)走道变窄:上下只能小幅移动
-    const laneSpan = unit.x >= 5 ? 1 : 0.35;
+    // 掠夺场景没有格子(原型 v1,2026-10-26):整条走道上下都能走
+    const laneSpan = 1;
     const center = 0.5;
     const laneF = (unit.laneF ?? 0.5) - vec.y * GUARD_RAID_MOVE_LANE * (dtMs / 1000);
     unit.laneF = Math.max(center - laneSpan / 2, Math.min(center + laneSpan / 2, laneF));
@@ -4402,6 +4406,11 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
       continue;
     }
     const dx = guardCellX(hero.cell) - unit.x;
+    // 上下错位:守卫上排站 laneF 0.25、下排 0.75;进攻方离这一排太远(>0.45)打不到,得走到同一排(2026-10-26 去格子后的纵深)
+    const heroLaneF = Math.floor(hero.cell / GUARD_GRID_COLS) === 0 ? 0.25 : 0.75;
+    if (Math.abs(heroLaneF - (unit.laneF ?? 0.5)) > 0.45) {
+      continue;
+    }
     // 身前 reach 格、身后 0.3 格;旋风斩前后都算
     const inFront = around ? Math.abs(dx) <= reach : facing < 0 ? dx <= 0.3 && dx >= -reach : dx >= -0.3 && dx <= reach;
     if (!inFront) {
