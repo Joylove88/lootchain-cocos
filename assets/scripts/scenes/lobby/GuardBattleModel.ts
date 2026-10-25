@@ -4166,11 +4166,16 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
 /** 建好的 sim 切成掠夺局:放守卫(有血量)+ 放进攻方;phase 直接进 wave。defense 的 heroCode 必须在 pool 里。 */
 export function guardStartRaid(
   state: GuardBattleState,
-  raider: { heroCode: string; attack: number; hp: number },
+  raider: { heroCode: string; attack: number; hp: number; crystalHp?: number },
   defense: Array<{ heroCode: string; cell: number; star: number; hp: number }>,
 ): void {
   state.mode = 'raid';
   state.phase = 'wave';
+  if (raider.crystalHp && raider.crystalHp > 0) {
+    // P0:水晶血量按进攻方攻击定(约 20 下普攻),不用守卫战的水晶等级血量(QA 账号 1689 血要砍 70 下)
+    state.crystalMaxHp = Math.round(raider.crystalHp);
+    state.crystalHp = state.crystalMaxHp;
+  }
   state.wave = 1;
   state.waveStartedAtMs = state.timeMs;
   state.nextWaveSpawns = [];

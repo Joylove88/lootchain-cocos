@@ -1017,7 +1017,7 @@ export class LobbyGuardBattleRenderer {
     const raiderAttack = Math.round(leader.baseAttack * 1.6);
     guardStartRaid(
       sim,
-      { heroCode: leader.heroCode, attack: raiderAttack, hp: hpOf(leader, 6, 4000) },
+      { heroCode: leader.heroCode, attack: raiderAttack, hp: hpOf(leader, 6, 4000), crystalHp: raiderAttack * 20 },
       defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: Math.max(hpOf(hero, 2, 0), raiderAttack * 8) })),
     );
     this.raiderMonsterId = sim.raider?.monsterId ?? -1;
