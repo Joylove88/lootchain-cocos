@@ -549,6 +549,8 @@ export class LobbyGuardBattleRenderer {
   private sim: GuardBattleState | null = null;
   /** docs/47 P0 掠夺模式的进攻侧控制器(非掠夺局为 null)。 */
   private raid: GuardRaidController | null = null;
+  /** 掠夺进攻方的 monsterId(-1 = 非掠夺):掉血飘字由 GuardRaidController 负责,这里的 queueDamage 要跳过它。 */
+  private raiderMonsterId = -1;
   private simBattleNo = '';
   /**
    * 战斗循环挂在引擎帧事件上(2026-10-07 用户「战斗一卡一卡的,流畅和极致 120 帧都卡」):
@@ -712,6 +714,7 @@ export class LobbyGuardBattleRenderer {
     this.fieldNode = null;
     this.raid?.dispose();
     this.raid = null;
+    this.raiderMonsterId = -1;
     this.sim = null;
     this.simBattleNo = '';
     this.snapshot = null;
@@ -971,6 +974,7 @@ export class LobbyGuardBattleRenderer {
     guardSetSkillAuto(this.sim, this.skillAutoImmediate);
     this.raid?.dispose();
     this.raid = null;
+    this.raiderMonsterId = -1;
     if (stage.mode === 'raid') {
       this.setupRaid(this.sim, pool);
     }
@@ -1012,8 +1016,9 @@ export class LobbyGuardBattleRenderer {
     guardStartRaid(
       sim,
       { heroCode: leader.heroCode, attack: Math.round(leader.baseAttack * 1.6), hp: hpOf(leader, 6, 4000) },
-      defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: hpOf(hero, 1.2, 500) })),
+      defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: hpOf(hero, 2, 2200) })),
     );
+    this.raiderMonsterId = sim.raider?.monsterId ?? -1;
     this.raid = new GuardRaidController({
       host: this.host,
       field: () => this.fieldNode,
@@ -1033,7 +1038,23 @@ export class LobbyGuardBattleRenderer {
       mountShade: (parent, name, x, y, width, height) => this.mountSoftShade(parent, name, x, y, width, height, 'blob'),
       spawnFloater: (x, y, text, color, fontSize) => this.spawnFloater(x, y, text, color, fontSize),
       shakeField: (amplitude) => this.shakeField(amplitude),
+      hitFx: (heroCode, x, y, scale) => this.spawnRaidHitFx(heroCode, x, y, scale),
+      attackSfx: (heroCode) => gameAudio.sfx(this.resolveRaidSfxKey(heroCode), 0.6),
     });
+  }
+
+  /** 掠夺(docs/47 P0):进攻方斩中守卫的命中特效——先用英雄专属 fx_pack 命中骨骼,没就绪退静态斩击图(2026-10-25 用户「特效都没了」)。 */
+  private spawnRaidHitFx(heroCode: string, x: number, y: number, scale: number): void {
+    if (!heroCode || this.spawnAttackHitFx(heroCode, x, y, scale)) {
+      return;
+    }
+    const ally = this.snapshot?.allies.find((entry) => (entry.heroCode ?? entry.unitKey).toUpperCase() === heroCode.toUpperCase()) ?? null;
+    this.spawnStrikeFx(resolveHeroAttackFx(heroCode, ally?.heroClass ?? null, true), x, y, scale);
+  }
+
+  private resolveRaidSfxKey(heroCode: string): string {
+    const ally = this.snapshot?.allies.find((entry) => (entry.heroCode ?? entry.unitKey).toUpperCase() === heroCode.toUpperCase()) ?? null;
+    return resolveHeroAttackSfxKey(heroCode, ally?.heroClass ?? null, true);
   }
 
   private startFrameLoop(): void {
@@ -2952,6 +2973,11 @@ export class LobbyGuardBattleRenderer {
     this.stepBattleGuide(sim);
     this.syncHeroes();
     this.raid?.sync(sim);
+    const raiderView = this.raid?.raiderView();
+    if (raiderView && !this.monsterViews.has(raiderView.monsterId)) {
+      // 进攻方也登记进怪物视图表:守卫的弹道 / 斩击 / 技能特效才找得到目标(2026-10-25 用户「攻击弹道、特效都没了」)
+      this.monsterViews.set(raiderView.monsterId, raiderView.view);
+    }
     this.syncResonance();
     this.syncMonsters();
     this.syncChests();
@@ -7459,7 +7485,14 @@ export class LobbyGuardBattleRenderer {
       // 死怪在 sim.monsters 里还会留几秒:照样取它的位置(伤害在出手时已结算,目标常常在弹体出手那一刻就已经死了,
       // 只认活怪的话弹体一出手就没有落点,会直接在英雄身上爆开)。
       const target = sim.monsters.find((entry) => entry.monsterId === proj.targetId) ?? null;
-      if (target) {
+      if (target && target.player) {
+        // 掠夺进攻方:位置由 GuardRaidController 插值,直接瞄它的节点
+        const raiderView = this.monsterViews.get(target.monsterId);
+        if (raiderView && raiderView.node.isValid) {
+          proj.aimX = raiderView.node.position.x;
+          proj.aimY = raiderView.node.position.y + this.unitSize() * 0.12;
+        }
+      } else if (target) {
         proj.aimX = this.xToPx(target.x);
         proj.aimY = this.monsterY(target.lane, target.x) + this.monsterJitterY(target) * this.monsterSpread(target.x) + this.unitSize() * 0.12;
       }
@@ -7509,6 +7542,10 @@ export class LobbyGuardBattleRenderer {
   private liveDamageFloaters = 0;
 
   private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
+    if (targetId === this.raiderMonsterId) {
+      // 进攻方掉血由 GuardRaidController 按折算后的实际数值飘(heroAttack 的 amount 是折算前的)
+      return;
+    }
     const big = skill || amount >= 1000;
     // 精简模式(战斗设置):只留暴击/大额与打在 BOSS 身上的数字;水晶掉血走 spawnFloater,不受影响。
     if (this.damageNumbersLite && !big && this.sim?.monsters.find((entry) => entry.monsterId === targetId)?.kind !== 'boss') {

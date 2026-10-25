@@ -55,6 +55,9 @@ export interface GuardRaidBridge {
   mountShade(parent: Node, name: string, x: number, y: number, width: number, height: number): Node | null;
   spawnFloater(x: number, y: number, text: string, color: Color, fontSize?: number): void;
   shakeField(amplitude: number): void;
+  /** 进攻方斩中守卫时的命中特效(英雄专属)。 */
+  hitFx(heroCode: string, x: number, y: number, scale: number): void;
+  attackSfx(heroCode: string): void;
 }
 
 const rgba = (r: number, g: number, b: number, a = 255): Color => new Color(r, g, b, a);
@@ -69,6 +72,11 @@ export class GuardRaidController {
   private joyBase: Node | null = null;
   private joyKnob: Node | null = null;
   private joyHome = new Vec3();
+  // 插值区间:上一 tick 前的位置 → 本 tick 位置(只在真的跑了 tick 的帧更新)
+  private prevX = 0;
+  private prevLaneF = 0.5;
+  private lastSyncedTimeMs = -1;
+  private raiderId = -1;
   private joyRadius = 70;
   private attackPressedAt = 0;
   private dodgePressedAt = 0;
@@ -301,6 +309,11 @@ export class GuardRaidController {
     if (sim.phase !== 'wave' || !sim.raider) {
       return;
     }
+    const unit = this.raiderUnit(sim);
+    if (unit) {
+      this.prevX = unit.x;
+      this.prevLaneF = unit.laneF ?? 0.5;
+    }
     guardRaidMove(sim, this.moveDir());
     const now = Date.now();
     if (this.dodgePressedAt && now - this.dodgePressedAt <= INPUT_BUFFER_MS) {
@@ -336,6 +349,9 @@ export class GuardRaidController {
     for (const event of events) {
       switch (event.type) {
         case 'raidSwing':
+          if (sim.raider) {
+            this.bridge.attackSfx(sim.raider.heroCode);
+          }
           this.playOneShot(event.level === 3 ? (this.names?.skill1 ?? this.names?.attack) : this.names?.attack, event.level === 3 ? 460 : 280, sim);
           break;
         case 'raidSkill': {
@@ -361,6 +377,7 @@ export class GuardRaidController {
           const heavy = !!event.crit;
           if (view && view.node.isValid) {
             view.hitFlashUntil = Date.now() + (heavy ? 140 : 90);
+            this.bridge.hitFx(sim.raider?.heroCode ?? '', view.node.position.x - (this.facing < 0 ? -1 : 1) * this.bridge.unitSize() * 0.1, view.node.position.y + this.bridge.unitSize() * 0.25, heavy ? 1.15 : 0.85);
             this.bridge.spawnFloater(view.node.position.x, view.node.position.y + this.bridge.unitSize() * 0.55, `-${event.amount ?? 0}`, heavy ? rgba(255, 196, 80) : rgba(255, 236, 200), heavy ? 24 : 18);
             // 受击顶退:往远离进攻方的方向顶一下再弹回
             const push = (this.facing < 0 ? -1 : 1) * (heavy ? 14 : 7);
@@ -403,6 +420,11 @@ export class GuardRaidController {
 
   // ── 进攻方视图 ──
 
+  /** 进攻方视图(渲染器把它登记进怪物视图表,守卫的弹道 / 特效才能瞄到它)。 */
+  raiderView(): { monsterId: number; view: GuardUnitView } | null {
+    return this.view && this.view.node.isValid && this.raiderId >= 0 ? { monsterId: this.raiderId, view: this.view } : null;
+  }
+
   private raiderUnit(sim: GuardBattleState): GuardMonster | null {
     const id = sim.raider?.monsterId;
     return id === undefined ? null : sim.monsters.find((monster) => monster.monsterId === id) ?? null;
@@ -437,6 +459,8 @@ export class GuardRaidController {
       this.bridge.loadSpine(node, fallback, resource, size, true, view, ally);
     }
     this.view = view;
+    this.prevX = unit.x;
+    this.prevLaneF = unit.laneF ?? 0.5;
     this.fromX = this.toX = px;
     this.fromY = this.toY = py;
     this.facing = unit.facing ?? -1;
@@ -493,11 +517,16 @@ export class GuardRaidController {
       return;
     }
     this.resolveNames();
-    // 位置目标(帧间插值在 frame() 里)
-    this.fromX = this.toX;
-    this.fromY = this.toY;
-    this.toX = this.bridge.xToPx(unit.x);
-    this.toY = this.bridge.laneY(unit.laneF ?? 0.5, unit.x);
+    this.raiderId = unit.monsterId;
+    // 位置目标(帧间插值在 frame() 里)。只在真的跑了 tick 的帧才换插值区间:原先每帧都把 from 推到 to,
+    // 没跑 tick 的帧直接跳到段尾、跑了 tick 的帧又从段尾慢慢插 → 一跳一慢(2026-10-25 用户「移动有点飘」)。
+    if (sim.timeMs !== this.lastSyncedTimeMs) {
+      this.lastSyncedTimeMs = sim.timeMs;
+      this.fromX = this.bridge.xToPx(this.prevX);
+      this.fromY = this.bridge.laneY(this.prevLaneF, this.prevX);
+      this.toX = this.bridge.xToPx(unit.x);
+      this.toY = this.bridge.laneY(unit.laneF ?? 0.5, unit.x);
+    }
     // 朝向:骨骼镜像加载(scale.x<0 = 朝左)
     const facing = unit.facing ?? -1;
     if (facing !== this.facing) {
@@ -522,6 +551,8 @@ export class GuardRaidController {
     }
     if (view.skeleton && view.skeleton.isValid) {
       view.skeleton.color = view.hitFlashUntil > Date.now() ? FLASH : WHITE;
+      // 跑步动画按地面速度加速,不然像在冰上滑
+      view.skeleton.timeScale = Date.now() < this.oneShotUntil ? 1 : this.loopAnim && this.loopAnim === this.names?.move ? 1.3 : 1;
     }
     // 自己的血条
     const hpKey = `${Math.ceil(unit.hp)}/${unit.maxHp}`;

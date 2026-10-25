@@ -230,7 +230,7 @@ export interface GuardRaider {
   staggerUntilMs: number;
 }
 export const GUARD_RAID_TIME_LIMIT_MS = 180_000;
-export const GUARD_RAID_MOVE_X = 2.6;
+export const GUARD_RAID_MOVE_X = 3.2;
 export const GUARD_RAID_MOVE_LANE = 1.6;
 export const GUARD_RAID_COMBO_WINDOW_MS = 700;
 /** 普攻三段:锁时 / 命中时刻 / 倍率 / 身前触及(格)。 */
@@ -251,7 +251,7 @@ export const GUARD_RAID_DODGE_DIST = 1.1;
 export const GUARD_RAID_CRYSTAL_MULT = 0.7;
 export const GUARD_RAID_STAGGER_MS = 160;
 /** 守卫打进攻方的伤害倍率:守卫数值按"打一群怪"配的,直接打单人 10 秒就死;先压到 25%(离线冒烟:4 守卫全火力下约 40 秒),手感验收后再调。 */
-export const GUARD_RAID_INCOMING_MULT = 0.25;
+export const GUARD_RAID_INCOMING_MULT = 0.3;
 
 /** 宝箱档次:精英掉普通箱(跳奖 1/3/5 连)、BOSS 掉豪华箱(固定 5 连、金币翻倍)——2026-09-18 用户拍板。 */
 export type GuardChestGrade = 'normal' | 'deluxe';

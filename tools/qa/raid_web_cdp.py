@@ -9,7 +9,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base.SCRATCH, 'raid_web
 os.makedirs(OUT, exist_ok=True)
 ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.getComponent('LootChainGameRoot'); if(c) root=c; } }); const gr=root&&root.lobbyGuardBattleRenderer; const raid=gr&&gr.raid; const sim=gr&&gr.sim;"
 JS_CC = r"""(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms)); let cc = null; for (let i = 0; i < 30 && !cc; i++) { try { cc = await System.import('cc'); } catch (e) { await sleep(1500); } } if (!cc) return 'cc import failed'; window.__cc = cc; return 'ok'; })()"""
-STATE = "const u=sim.monsters.find(m=>m.player); return JSON.stringify({phase:sim.phase, t:Math.round(sim.timeMs), x:u&&+u.x.toFixed(2), hp:u&&Math.round(u.hp), heroes:sim.heroes.map(h=>Math.round(h.hp||0)+(h.dead?'X':'')), crystal:Math.round(sim.crystalHp), inputs:sim.inputs.length, keys:[...raid.keys]});"
+STATE = "const u=sim.monsters.find(m=>m.player); return JSON.stringify({phase:sim.phase, t:Math.round(sim.timeMs), x:u&&+u.x.toFixed(2), hp:u&&Math.round(u.hp), heroes:sim.heroes.map(h=>Math.round(h.hp||0)+(h.dead?'X':'')), crystal:Math.round(sim.crystalHp), inputs:sim.inputs.length, proj:(gr.projectiles||[]).length, raiderInViews:!!(sim.raider&&gr.monsterViews.get(sim.raider.monsterId)), keys:[...raid.keys]});"
 
 
 def js(body):
@@ -102,9 +102,15 @@ async def main():
             await key('KeyK', 'k', 75, 60)
             await asyncio.sleep(0.6)
             print('after U,K', await ev(STATE), flush=True)
-            for _ in range(30):
+            peak = 0
+            for i in range(30):
                 await key('KeyJ', 'j', 74, 50)
                 await asyncio.sleep(0.35)
+                if i in (6, 12, 18):
+                    st = await ev(STATE)
+                    print('mid', i, st, flush=True)
+                    if '"proj":0' not in st:
+                        await shot(f'raid_web_mid{i}')
             print('after spam', await ev(STATE), flush=True)
             await shot('raid_web_fight')
     finally:
