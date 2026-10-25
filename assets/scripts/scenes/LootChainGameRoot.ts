@@ -146,7 +146,7 @@ import type { LobbyBagPanelState } from '../types/BagTypes';
 import type { LobbyBattlePanelState } from './lobby/LobbyBattleState';
 import type { LobbyCodexClaimPayload, LobbyCodexPanelState, LobbyCodexRarityFilter } from '../types/LobbyCodexTypes';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../types/LobbyHeroTypes';
-import type { PlayerBattleStartVO } from '../types/BattleTypes';
+import type { PlayerBattleLineupHeroVO, PlayerBattleStartVO } from '../types/BattleTypes';
 import type { LobbyNoticePanelState } from '../types/LobbyNoticeTypes';
 import type { GachaDrawResultVO, GachaPoolVO } from '../types/GachaTypes';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../types/ProtagonistTypes';
@@ -1463,7 +1463,62 @@ export class LootChainGameRoot extends Component {
   // (P5,2026-09-03 用户拍板:主线=难度Ⅰ同款 10 波,怪物按关卡 recommendedPower 曲线缩放;旧回放保留给挂机战报)。
   private isGuardBattleStage(stageCode: string | null | undefined): boolean {
     const code = (stageCode || '').trim();
-    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code);
+    // RAID_*:docs/47 掠夺(P0 原型本地开局)
+    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code) || /^RAID_/i.test(code);
+  }
+
+  /**
+   * docs/47 P0 掠夺原型(2026-10-25):不经服务端,阵容第 1 人进攻(玩家操控),其余当守卫;不结算、不发奖。
+   * 主城「冒险之门」暂时直达这里,验收手感后再接真实流程。
+   */
+  private startRaidPrototype(): void {
+    const roster = this.lobbyHeroRosterLoader.currentState().heroes
+      .filter((hero) => hero.id > 0 && !hero.protagonist && hero.rarity.toUpperCase() !== 'EX' && !hero.heroCode.toUpperCase().startsWith('EX_'));
+    const byId = new Map(roster.map((hero) => [hero.id, hero]));
+    const picked = this.resolveLobbyFormationHeroIds().map((id) => byId.get(id)).filter((hero): hero is LobbyHeroItemVO => !!hero);
+    const heroes = (picked.length > 0 ? picked : [...roster].sort((a, b) => b.power - a.power)).slice(0, 4);
+    if (heroes.length === 0) {
+      this.setStatus('没有可上阵的英雄,先去召唤。');
+      return;
+    }
+    const lineup: PlayerBattleLineupHeroVO[] = heroes.map((hero, index) => ({
+      heroId: hero.id,
+      heroCode: hero.heroCode,
+      heroName: hero.heroName,
+      rarity: hero.rarity,
+      level: hero.level,
+      star: hero.star,
+      power: hero.power,
+      attack: Math.max(10, Math.round(hero.attrAttack ?? hero.power / 8)),
+      leader: index === 0,
+      protagonist: false,
+      sourceType: 'OWNED',
+      portraitAsset: hero.portraitAsset ?? null,
+      spineAsset: hero.spineAsset ?? null,
+      spineUuid: hero.spineUuid ?? null,
+      ultimateSkillLevel: hero.ultimateSkillLevel ?? 1,
+    }));
+    const start: PlayerBattleStartVO = {
+      battleNo: `RAID-P0-${Date.now()}`,
+      stageCode: 'RAID_P0',
+      status: 'ACTIVE',
+      serverSeed: `${Date.now()}`,
+      lineup,
+      enemyPreview: [],
+      expireTime: '',
+      readonlyEconomy: true,
+      guardrails: ['P0 原型:本地模拟,不结算、不发奖'],
+      guardCrystal: null,
+      guardMonsters: [],
+      guardRecommendedPower: null,
+    };
+    this.selectedLobbyStageCode = 'RAID_P0';
+    this.closeAllLobbyScenePanelFlags();
+    this.lobbyBattlePreviewPanelOpen = true;
+    this.currentView = 'battle';
+    this.renderBattleScene();
+    gameAudio.bgm(LobbyGuardBattleRenderer.resolveBattleBgmKey('MAIN_1_1'));
+    void this.lobbyBattleFlow.startLocal(start);
   }
 
   /** 当前战斗的场景 BGM 键(关卡码来源与 isGuardBattleActive 同口径)。 */

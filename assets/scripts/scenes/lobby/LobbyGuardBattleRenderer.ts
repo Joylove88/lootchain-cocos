@@ -59,6 +59,7 @@ import {
   guardSkipChoice,
   guardSellHero,
   guardSetSkillAuto,
+  guardStartRaid,
   guardSummarizeSpawns,
   guardSummon,
   guardTick,
@@ -137,6 +138,7 @@ import {
   resolveBattleUnitSpineSkinName,
 } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
+import { GuardRaidController } from './GuardRaidController';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
@@ -311,7 +313,7 @@ function writeGuardPref(key: string, value: string): void {
   }
 }
 
-interface GuardUnitView {
+export interface GuardUnitView {
   /** 小怪血条上次画出的可见长度(像素;-1=满血不画),没变就不重画。 */
   hpDrawnKey?: number;
   node: Node;
@@ -545,6 +547,8 @@ export class LobbyGuardBattleRenderer {
   /** 同一路径在途的贴图加载合并:石台格子等同帧挂 6 次原先发 6 个加载任务(加载门实测排队到最后)。 */
   private readonly spriteLoadWaiters = new Map<string, Array<(frame: SpriteFrame) => void>>();
   private sim: GuardBattleState | null = null;
+  /** docs/47 P0 掠夺模式的进攻侧控制器(非掠夺局为 null)。 */
+  private raid: GuardRaidController | null = null;
   private simBattleNo = '';
   /**
    * 战斗循环挂在引擎帧事件上(2026-10-07 用户「战斗一卡一卡的,流畅和极致 120 帧都卡」):
@@ -706,6 +710,8 @@ export class LobbyGuardBattleRenderer {
     }
     this.root = null;
     this.fieldNode = null;
+    this.raid?.dispose();
+    this.raid = null;
     this.sim = null;
     this.simBattleNo = '';
     this.snapshot = null;
@@ -963,6 +969,11 @@ export class LobbyGuardBattleRenderer {
       },
     );
     guardSetSkillAuto(this.sim, this.skillAutoImmediate);
+    this.raid?.dispose();
+    this.raid = null;
+    if (stage.mode === 'raid') {
+      this.setupRaid(this.sim, pool);
+    }
     this.interactHints.clear();
     this.battleGuide = this.resolveBattleGuide(stageCode);
     this.battleGuidePhase = 0;
@@ -980,10 +991,49 @@ export class LobbyGuardBattleRenderer {
     this.overlayShown = false;
 
     this.buildSceneTree(layout, stageCode);
-    this.host.setStatus(stage.mode === 'rush' ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:招募英雄,守住矿晶水晶!');
+    this.host.setStatus(stage.mode === 'raid' ? '掠夺:冲进矿境打碎水晶!摇杆移动 · 普攻连段 · 翻滚有无敌帧' : stage.mode === 'rush' ? '输出试炼·BOSS 车轮战:击杀一只更强一只,层数换输出分!' : '矿境守卫:招募英雄,守住矿晶水晶!');
     this.lastTickWallMs = Date.now();
     this.tickAccumulatorMs = 0;
     this.startFrameLoop();
+  }
+
+  /**
+   * docs/47 P0 掠夺原型:阵容第 1 人进攻(玩家操控),其余当守卫固定站 2 / 4 列两排;数值先按局外属性粗配,手感验收后再调。
+   */
+  private setupRaid(sim: GuardBattleState, pool: GuardPoolHero[]): void {
+    const leader = pool[0];
+    if (!leader) {
+      return;
+    }
+    const defense = pool.length > 1 ? pool.slice(1) : pool;
+    const cells = [2, 8, 4, 10];
+    const hpOf = (hero: GuardPoolHero, mult: number, floor: number): number => Math.max(floor, Math.round((hero.outside?.hp ?? hero.baseAttack * 8) * mult));
+    sim.unlockedCells = GUARD_GRID_CELLS;
+    guardStartRaid(
+      sim,
+      { heroCode: leader.heroCode, attack: Math.round(leader.baseAttack * 1.6), hp: hpOf(leader, 6, 4000) },
+      defense.slice(0, 4).map((hero, index) => ({ heroCode: hero.heroCode, cell: cells[index], star: 2, hp: hpOf(hero, 1.2, 500) })),
+    );
+    this.raid = new GuardRaidController({
+      host: this.host,
+      field: () => this.fieldNode,
+      layout: () => ({ width: this.layoutWidth, height: this.layoutHeight, uiScale: this.layoutUiScale }),
+      unitSize: () => this.unitSize(),
+      heroDisplaySize: () => this.heroDisplaySize(),
+      xToPx: (x) => this.xToPx(x),
+      laneY: (laneF, x) => {
+        const top = this.monsterY(0, x);
+        const bottom = this.monsterY(1, x);
+        return top + (bottom - top) * laneF;
+      },
+      cellCenter: (cell) => this.cellCenter(cell),
+      heroViews: () => this.heroViews,
+      allyFor: (heroCode) => this.snapshot?.allies.find((ally) => (ally.heroCode ?? ally.unitKey).toUpperCase() === heroCode.toUpperCase()) ?? null,
+      loadSpine: (node, fallback, resource, size, mirror, view, ally) => this.loadSpineInto(node, fallback, resource, size, mirror, view, { allyUnit: ally }),
+      mountShade: (parent, name, x, y, width, height) => this.mountSoftShade(parent, name, x, y, width, height, 'blob'),
+      spawnFloater: (x, y, text, color, fontSize) => this.spawnFloater(x, y, text, color, fontSize),
+      shakeField: (amplitude) => this.shakeField(amplitude),
+    });
   }
 
   private startFrameLoop(): void {
@@ -1023,6 +1073,7 @@ export class LobbyGuardBattleRenderer {
       }
       this.updateProjectiles(frameMs);
       this.interpolateMonsterViews(now);
+      this.raid?.frame((now - this.lastTickWallMs + this.tickAccumulatorMs) / TICK_MS);
       this.followHeroBars();
     } catch (error) {
       // 战斗循环出异常时不再静默(否则画面像"卡死"却没有任何线索):底部提示一次,便于截图反馈
@@ -1083,12 +1134,17 @@ export class LobbyGuardBattleRenderer {
     this.paintLanesAndGrid();
     this.renderCrystal();
     this.renderHud();
-    this.renderSummonButton();
-    this.renderCallWaveButton();
-    this.renderSpellBar();
-    // 2026-09-28 用户:"陷阱移除掉吧,不然太挤了"——战场底栏不再挂陷阱按钮 / 托盘(模型保留,无入口即不会放置)。
-    this.renderEnhanceButton();
-    this.renderCrystalSkillButton();
+    if (this.sim?.mode === 'raid') {
+      // docs/47 P0:进攻侧只有摇杆 / 普攻 / 技能 / 翻滚,防守侧的召唤 / 战术 / 法术栏不出现
+      this.raid?.mountHud(root);
+    } else {
+      this.renderSummonButton();
+      this.renderCallWaveButton();
+      this.renderSpellBar();
+      // 2026-09-28 用户:"陷阱移除掉吧,不然太挤了"——战场底栏不再挂陷阱按钮 / 托盘(模型保留,无入口即不会放置)。
+      this.renderEnhanceButton();
+      this.renderCrystalSkillButton();
+    }
     // 新手引导(P1,2026-09-05):首战 MAIN_1_1 指向召唤按钮的强提示(image2 箭头+气泡),首次召唤后消失(step 里检测)。
     // 重排布局时若已召唤过就不再补建,避免引导气泡闪回。
     const ended = this.sim?.phase === 'victory' || this.sim?.phase === 'defeat';
@@ -2375,7 +2431,8 @@ export class LobbyGuardBattleRenderer {
       }
     }
     const waveText = hud.getChildByName('GuardTopBanner')?.getChildByName('GuardWaveText')?.getComponent(Label);
-    if (waveText) {
+    if (waveText && sim.mode !== 'raid') {
+      // 掠夺模式这行由 GuardRaidController 写计时
       if (sim.mode === 'rush') {
         const leftSec = Math.max(0, Math.ceil((GUARD_RUSH_TIME_LIMIT_MS - sim.timeMs) / 1000));
         waveText.string = `车轮战 层数 ${guardTrialLayers(sim)} · BOSS×${sim.bossKills} · 剩余 ${Math.floor(leftSec / 60)}:${String(leftSec % 60).padStart(2, '0')}`;
@@ -2853,6 +2910,11 @@ export class LobbyGuardBattleRenderer {
     // 子 tick=100ms 模拟时间,且不结转余数 → 模拟时间系统性快 1.5~2 倍,英雄出手频率随之偏快、
     // 攻击动画被反复打断重播,观感"动画播两次只掉一次血")。改为余数累积,模拟与真实严格一致。
     const now = Date.now();
+    if (this.raid && this.raid.hitStopUntil > now) {
+      // 打击顿帧(docs/47 P0):几十毫秒内模拟停住、画面不动,时间不累积
+      this.lastTickWallMs = now;
+      return;
+    }
     const elapsed = Math.min(1000, Math.max(0, now - this.lastTickWallMs));
     this.lastTickWallMs = now;
     // 补算上限 MAX_CATCHUP_TICKS:一次长帧后不再集中补跑十几个 tick(事件 / 飘字 / 特效扎堆 → 下一次卡顿),多出的时间丢掉
@@ -2870,6 +2932,7 @@ export class LobbyGuardBattleRenderer {
         }
       }
       this.tickAccumulatorMs -= TICK_MS;
+      this.raid?.beforeTick(sim);
       phase = guardTick(sim, TICK_MS);
       ticks += 1;
     }
@@ -2877,6 +2940,7 @@ export class LobbyGuardBattleRenderer {
       this.tickAccumulatorMs = TICK_MS - 1;
     }
     this.floatersThisStep = 0;
+    this.raid?.afterTick(sim, sim.events);
     this.consumeEvents();
     for (const aim of this.guardFxAimers.values()) {
       aim();
@@ -2887,6 +2951,7 @@ export class LobbyGuardBattleRenderer {
     }
     this.stepBattleGuide(sim);
     this.syncHeroes();
+    this.raid?.sync(sim);
     this.syncResonance();
     this.syncMonsters();
     this.syncChests();
@@ -2904,7 +2969,10 @@ export class LobbyGuardBattleRenderer {
       this.showEndOverlay(phase === 'victory');
       if (!this.settleRequested) {
         this.settleRequested = true;
-        setTimeout(() => this.host.settleLobbyBattleSession(), 700);
+        // docs/47 P0 掠夺原型本地模拟,不结算(覆盖层自带返回)
+        if (sim.mode !== 'raid') {
+          setTimeout(() => this.host.settleLobbyBattleSession(), 700);
+        }
       }
     }
   }
@@ -10091,6 +10159,10 @@ export class LobbyGuardBattleRenderer {
       }
     }
     for (const monster of sim.monsters) {
+      if (monster.player) {
+        // 掠夺模式的进攻方由 GuardRaidController 画
+        continue;
+      }
       let view = this.monsterViews.get(monster.monsterId);
       if (!view) {
         view = this.createMonsterView(monster);
@@ -10570,13 +10642,16 @@ export class LobbyGuardBattleRenderer {
     g.fill();
     const sim = this.sim;
     const rush = sim?.mode === 'rush';
+    const raid = sim?.mode === 'raid';
     const panelH = height * 0.56;
     this.paintOverlayPanel(overlay, panelH * 1.65, panelH, -height * 0.02);
-    const title = rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
+    const title = raid ? (victory ? '掠夺成功!' : '掠夺失败') : rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
     const detail = sim
-      ? rush
-        ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
-        : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+      ? raid
+        ? `击倒守卫 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 水晶剩余 ${Math.round((sim.crystalHp / sim.crystalMaxHp) * 100)}% · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+        : rush
+          ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+          : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
       : '';
     if ((victory || rush) && LOBBY_UI_FX.victoryTitle) {
       // docs/29 v3:胜利标题背后金色光丝聚拢再炸开(一次性);失败不放
@@ -10625,7 +10700,24 @@ export class LobbyGuardBattleRenderer {
       }
     }
     // 结算说明可能很长(服务端文案):两行高的框,折行 + 缩字;中线下移半行,上沿仍对齐原来的单行位置
-    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndSettle', '正在提交结算…', 0, height * 0.04 + endDetailShift - 12, 18, rgba(196, 182, 152), new Size(endTextW, 48)), true);
+    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndSettle', raid ? 'P0 原型:本地模拟,不结算、不发奖' : '正在提交结算…', 0, height * 0.04 + endDetailShift - 12, 18, rgba(196, 182, 152), new Size(endTextW, 48)), true);
+    if (raid) {
+      const backW = 220;
+      const backH = 60;
+      const back = this.host.addChildPlainNode(overlay, 'GuardRaidBack', 0, -height * 0.1 + endDetailShift, backW, backH);
+      const bg = back.addComponent(Graphics);
+      bg.fillColor = rgba(120, 28, 24, 240);
+      bg.roundRect(-backW / 2, -backH / 2, backW, backH, 10);
+      bg.fill();
+      bg.strokeColor = rgba(214, 170, 92, 240);
+      bg.lineWidth = 2;
+      bg.roundRect(-backW / 2, -backH / 2, backW, backH, 10);
+      bg.stroke();
+      const label = this.host.addChildLabel(back, 'Label', '返回主城', 0, 1, 24, rgba(255, 236, 190), new Size(backW - 20, 32));
+      label.isBold = true;
+      back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
+      this.host.applyImageButtonFeedback(back, 1.04, 0.96);
+    }
   }
 
   /** 结算面板(宽 = 高 × 1.65,高 = 布局高 × 0.56)的文字可用宽度。 */

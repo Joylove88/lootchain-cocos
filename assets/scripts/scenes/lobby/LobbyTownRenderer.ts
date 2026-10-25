@@ -63,6 +63,8 @@ import {
  * 角色只翻左右(现有英雄骨骼全是侧面视角);动画有 run 用 run,没有就 idle 走。
  */
 export interface LobbyTownHost extends LobbyHudHost {
+  /** docs/47 P0:掠夺原型直达(验收手感期间「冒险之门」走这里)。 */
+  startRaidPrototype?(): void;
   currentIdleSummary?(): PlayerIdleSummaryVO | null;
   isIdleClaiming?(): boolean;
   claimIdleReward?(): void;
@@ -851,7 +853,14 @@ export class LobbyTownRenderer {
       lobbyGuide.markVisited(this.guide.flag);
     }
     switch (near.action) {
-      case 'adventure': this.host.openLobbyAdventurePanel(); return;
+      case 'adventure':
+        // docs/47 P0 验收期:冒险之门直接进掠夺原型;验收后改回冒险面板
+        if (this.host.startRaidPrototype) {
+          this.host.startRaidPrototype();
+        } else {
+          this.host.openLobbyAdventurePanel();
+        }
+        return;
       case 'gacha': this.host.openLobbyGachaScene(); return;
       case 'forge': this.host.openLobbyForgePanel(); return;
       case 'daily': this.host.openLobbyDailyDungeonPanel(); return;

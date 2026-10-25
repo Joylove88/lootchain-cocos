@@ -65,7 +65,7 @@ export type GuardHeroRole = 'melee' | 'ranged' | 'support' | 'control';
 export type GuardMonsterKind = 'normal' | 'fast' | 'tank' | 'flying' | 'shooter' | 'elite' | 'boss';
 export type GuardPhase = 'prep' | 'wave' | 'victory' | 'defeat';
 /** standard=波次通关(难度Ⅰ 10 波/Ⅱ 20 波);rush=难度Ⅲ BOSS 车轮战(无尽,水晶碎即结算层数,不判负)。 */
-export type GuardMode = 'standard' | 'rush';
+export type GuardMode = 'standard' | 'rush' | 'raid';
 
 /** 上阵英雄(召唤池条目):由 battle start 回执 lineup 折算。 */
 export interface GuardPoolHero {
@@ -133,6 +133,10 @@ export interface GuardHeroUnit {
   /** 奥蕾莉亚·追猎之翎:连续命中同一目标的叠层(其他英雄恒 0)。 */
   focusTargetId: number | null;
   focusStacks: number;
+  /** 掠夺模式(docs/47 P0):守卫英雄有血量,被进攻方打空就倒下(尸体留场,不再出手)。 */
+  hp?: number;
+  maxHp?: number;
+  dead?: boolean;
 }
 
 /** 每个英雄编码的词条状态(docs/32):蓝卡层数、紫卡层数(每英雄 1 条)、专属大招觉醒等级。 */
@@ -198,7 +202,56 @@ export interface GuardMonster {
   aegisReflectReadyMs?: number;
   dead: boolean;
   diedAtMs: number;
+  /** 掠夺模式:玩家操控的进攻英雄(位置由输入驱动,不自动啃水晶、不吃荆棘)。 */
+  player?: boolean;
+  /** 玩家单位的连续车道坐标 0..1(渲染用;lane 取四舍五入供守卫锁定)。 */
+  laneF?: number;
+  /** 朝向:-1 朝水晶(屏幕左),1 朝出怪口。 */
+  facing?: 1 | -1;
 }
+
+// ── docs/47 P0 掠夺模式:进攻方 ──
+export type GuardRaidHitKind = 'combo1' | 'combo2' | 'combo3' | 'skill0' | 'skill1' | 'skill2';
+export interface GuardRaider {
+  monsterId: number;
+  heroCode: string;
+  attack: number;
+  /** 当前移动方向 0=停,1..8 顺时针从上起(1 上 2 右上 3 右 4 右下 5 下 6 左下 7 左 8 左上)。 */
+  moveDir: number;
+  comboStep: number;
+  comboUntilMs: number;
+  /** 动作锁(出手 / 技能 / 翻滚中不能移动、不能再出手)。 */
+  actionUntilMs: number;
+  pendingHits: Array<{ atMs: number; kind: GuardRaidHitKind }>;
+  dodgeUntilMs: number;
+  dodgeReadyMs: number;
+  skillReadyMs: [number, number, number];
+  /** 被守卫击中后的短暂硬直。 */
+  staggerUntilMs: number;
+}
+export const GUARD_RAID_TIME_LIMIT_MS = 180_000;
+export const GUARD_RAID_MOVE_X = 2.6;
+export const GUARD_RAID_MOVE_LANE = 1.6;
+export const GUARD_RAID_COMBO_WINDOW_MS = 700;
+/** 普攻三段:锁时 / 命中时刻 / 倍率 / 身前触及(格)。 */
+export const GUARD_RAID_COMBO: ReadonlyArray<{ lockMs: number; hitMs: number; mult: number; reach: number }> = [
+  { lockMs: 280, hitMs: 120, mult: 1.0, reach: 1.35 },
+  { lockMs: 280, hitMs: 120, mult: 1.0, reach: 1.35 },
+  { lockMs: 460, hitMs: 200, mult: 1.9, reach: 1.6 },
+];
+/** 三个技能:重斩 / 突进斩 / 旋风斩。 */
+export const GUARD_RAID_SKILLS: ReadonlyArray<{ name: string; cdMs: number; lockMs: number; hits: number[]; mult: number; reach: number; dash?: number; around?: boolean; iframeMs?: number }> = [
+  { name: '重斩', cdMs: 5000, lockMs: 560, hits: [280], mult: 2.6, reach: 1.9 },
+  { name: '突进斩', cdMs: 7000, lockMs: 340, hits: [80], mult: 1.4, reach: 1.2, dash: 2.4, iframeMs: 340 },
+  { name: '旋风斩', cdMs: 10000, lockMs: 900, hits: [160, 420, 680], mult: 0.85, reach: 1.5, around: true },
+];
+export const GUARD_RAID_DODGE_MS = 360;
+export const GUARD_RAID_DODGE_CD_MS = 1300;
+export const GUARD_RAID_DODGE_DIST = 1.1;
+export const GUARD_RAID_CRYSTAL_MULT = 0.7;
+export const GUARD_RAID_STAGGER_MS = 160;
+/** 守卫打进攻方的伤害倍率:守卫数值按"打一群怪"配的,直接打单人 10 秒就死;先压到 25%(离线冒烟:4 守卫全火力下约 40 秒),手感验收后再调。 */
+export const GUARD_RAID_INCOMING_MULT = 0.25;
 
 /** 宝箱档次:精英掉普通箱(跳奖 1/3/5 连)、BOSS 掉豪华箱(固定 5 连、金币翻倍)——2026-09-18 用户拍板。 */
 export type GuardChestGrade = 'normal' | 'deluxe';
@@ -276,7 +329,9 @@ export interface GuardEvent {
     // docs/37 G:陷阱放置 / 尖刺跳伤 / 符文爆炸 / 耐久耗尽。
     | 'trapPlace' | 'trapTick' | 'trapBoom' | 'trapExpire'
     // docs/41 §6:升星被动触发(passive=类型,monsterIds=受影响的怪,amount=伤害 / 回复量)/ 能量护盾在波次开始时套上(amount=护盾量)。
-    | 'passiveProc' | 'crystalShield';
+    | 'passiveProc' | 'crystalShield'
+    // docs/47 P0 掠夺:进攻方出手(level=连段 / 技能序号)/ 命中守卫(cell + amount,crit=重击)/ 守卫倒下 / 翻滚 / 进攻方受伤
+    | 'raidSwing' | 'raidSkill' | 'raidHit' | 'heroDead' | 'raidDodge' | 'raidHurt';
   timeMs: number;
   /** passiveProc:被动类型(GuardPassiveType)。 */
   passive?: string;
@@ -340,7 +395,9 @@ export interface GuardEvent {
  */
 export type GuardInputKind =
   | 'summon' | 'drag' | 'sell' | 'enhance' | 'choose' | 'skip' | 'reroll' | 'banish' | 'chest' | 'crystal'
-  | 'spell' | 'trap' | 'mark' | 'skill' | 'callWave' | 'pickup' | 'loadout' | 'auto';
+  | 'spell' | 'trap' | 'mark' | 'skill' | 'callWave' | 'pickup' | 'loadout' | 'auto'
+  // docs/47 P0 掠夺:移动方向 / 普攻 / 技能 / 翻滚
+  | 'rmove' | 'ratk' | 'rskill' | 'rdodge';
 export interface GuardInput {
   t: number;
   k: GuardInputKind;
@@ -847,6 +904,8 @@ export interface GuardBattleState {
   eventRng: () => number;
   /** 玩家操作日志。 */
   inputs: GuardInput[];
+  /** docs/47 P0 掠夺模式的进攻方;非掠夺局为 null。 */
+  raider: GuardRaider | null;
   /** 战场事件:本波待触发(波开始时用 eventRng 排好)、场上流星矿晶、已出现的偷金鼠数。 */
   pendingFieldEvents: Array<{ kind: 'meteor' | 'greedy'; atMs: number; lane: number; x: number }>;
   pickups: GuardPickup[];
@@ -1544,6 +1603,7 @@ export function createGuardBattle(
     lastManualSkill: null,
     eventRng: createGuardRng((seed ^ 0x27d4eb2f) >>> 0),
     inputs: [],
+    raider: null,
     pendingFieldEvents: [],
     pickups: [],
     nextPickupId: 1,
@@ -2470,6 +2530,10 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
   if (monster.dead) {
     return;
   }
+  if (monster.player) {
+    guardDamageRaider(state, monster, damage);
+    return;
+  }
   // 集火标记(docs/37 A):被标记目标受伤 +20%;普攻已在结算时乘过(飘字数值一致),这里不重复乘。
   if (!markApplied) {
     damage = Math.round(damage * guardMarkMult(state, monster));
@@ -3204,14 +3268,18 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
     return state.phase;
   }
   state.timeMs += dtMs;
-  if (state.timeMs >= (state.mode === 'rush' ? GUARD_RUSH_TIME_LIMIT_MS : GUARD_TIME_LIMIT_MS)) {
+  if (state.timeMs >= (state.mode === 'rush' ? GUARD_RUSH_TIME_LIMIT_MS : state.mode === 'raid' ? GUARD_RAID_TIME_LIMIT_MS : GUARD_TIME_LIMIT_MS)) {
     // rush(输出试炼)没有失败:到时按完成收口,层数即成绩。
     state.phase = state.mode === 'rush' ? 'victory' : 'defeat';
     state.events.push({ type: state.mode === 'rush' ? 'victory' : 'defeat', timeMs: state.timeMs });
     return state.phase;
   }
-  // 波次推进:prep(波间窗口)→ wave;首波在 GUARD_WAVE_INTERMISSION_MS 后开。
-  if (state.phase === 'prep') {
+  // 波次推进:prep(波间窗口)→ wave;首波在 GUARD_WAVE_INTERMISSION_MS 后开。掠夺模式没有波次(进攻方就是"怪")。
+  if (state.mode === 'raid') {
+    if (guardRaidTick(state, dtMs)) {
+      return state.phase;
+    }
+  } else if (state.phase === 'prep') {
     if (!state.nextWaveSpawns) {
       // prep 期生成下一波构成(供预告条;startWave 消费,保持确定性)。
       state.nextWaveSpawns = guardWaveComposition(state.wave + 1, state.rng, state.maxWave, state.mode, state.spawnCountMult);
@@ -3318,7 +3386,7 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   // 怪物:行进/啃水晶(shooter 站远程位;BOSS 读条或踉跄中不移动)。
   const thornsPerSec = (GUARD_CRYSTAL_THORNS_BASE + GUARD_CRYSTAL_THORNS_PER_WAVE * state.wave) * (1 + state.mods.thornsPct / 100);
   for (const monster of state.monsters) {
-    if (monster.dead) {
+    if (monster.dead || monster.player) {
       continue;
     }
     const standX = monster.kind === 'shooter' ? GUARD_SHOOTER_STAND_X : GUARD_CRYSTAL_REACH_X;
@@ -3397,8 +3465,11 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
   guardTickSpellPending(state);
   guardTickFrostFloors(state);
   guardTickTraps(state);
-  // 英雄出手。
+  // 英雄出手(掠夺模式倒下的守卫不再出手)。
   for (const hero of state.heroes) {
+    if (hero.dead) {
+      continue;
+    }
     heroTick(state, hero, dtMs);
   }
   guardTickSkillHits(state);
@@ -4088,6 +4159,287 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
     guardRecord(state, 'trap', GUARD_TRAP_KINDS.indexOf(kind), [x]);
   }
   return trap;
+}
+
+// ── docs/47 P0 掠夺模式 ──
+
+/** 建好的 sim 切成掠夺局:放守卫(有血量)+ 放进攻方;phase 直接进 wave。defense 的 heroCode 必须在 pool 里。 */
+export function guardStartRaid(
+  state: GuardBattleState,
+  raider: { heroCode: string; attack: number; hp: number },
+  defense: Array<{ heroCode: string; cell: number; star: number; hp: number }>,
+): void {
+  state.mode = 'raid';
+  state.phase = 'wave';
+  state.wave = 1;
+  state.waveStartedAtMs = state.timeMs;
+  state.nextWaveSpawns = [];
+  state.heroes = defense.map((entry) => {
+    const pool = state.pool.find((hero) => hero.heroCode === entry.heroCode) ?? state.pool[0];
+    const hp = Math.max(1, Math.round(entry.hp));
+    return {
+      unitId: state.nextUnitId++,
+      heroCode: entry.heroCode,
+      star: Math.max(1, Math.min(GUARD_MAX_STAR, entry.star)),
+      cell: entry.cell,
+      role: pool?.role ?? 'melee',
+      attackCooldownMs: 600,
+      lastAttackAtMs: 0,
+      lastTargetId: null,
+      attackCount: 0,
+      skillReadyMs: state.timeMs + 4000,
+      focusTargetId: null,
+      focusStacks: 0,
+      hp,
+      maxHp: hp,
+      dead: false,
+    };
+  });
+  const hp = Math.max(1, Math.round(raider.hp));
+  const monster: GuardMonster = {
+    monsterId: state.nextMonsterId++,
+    kind: 'tank',
+    lane: 0,
+    x: GUARD_SPAWN_X - 1.8,
+    hp,
+    maxHp: hp,
+    speedCellsPerSec: 0,
+    crystalDamage: 0,
+    attackCooldownMs: 0,
+    slowUntilMs: 0,
+    stunnedUntilMs: 0,
+    spawnedWave: 1,
+    spineCode: `raider:${raider.heroCode}`,
+    skillReadyMs: 0,
+    dead: false,
+    diedAtMs: 0,
+    player: true,
+    laneF: 0.5,
+    facing: -1,
+  };
+  state.monsters.push(monster);
+  state.raider = {
+    monsterId: monster.monsterId,
+    heroCode: raider.heroCode,
+    attack: Math.max(1, Math.round(raider.attack)),
+    moveDir: 0,
+    comboStep: 0,
+    comboUntilMs: 0,
+    actionUntilMs: 0,
+    pendingHits: [],
+    dodgeUntilMs: 0,
+    dodgeReadyMs: 0,
+    skillReadyMs: [0, 0, 0],
+    staggerUntilMs: 0,
+  };
+}
+
+function guardRaidUnit(state: GuardBattleState): GuardMonster | null {
+  const raider = state.raider;
+  if (!raider) {
+    return null;
+  }
+  const unit = state.monsters.find((monster) => monster.monsterId === raider.monsterId) ?? null;
+  return unit && !unit.dead ? unit : null;
+}
+
+function guardRaidLocked(state: GuardBattleState): boolean {
+  const raider = state.raider;
+  return !raider || state.timeMs < raider.actionUntilMs || state.timeMs < raider.staggerUntilMs;
+}
+
+/** 移动方向(0 停 / 1..8);只在方向变化时记录,复演时按 t 回放。 */
+export function guardRaidMove(state: GuardBattleState, dir: number): boolean {
+  const raider = state.raider;
+  const next = Math.max(0, Math.min(8, Math.round(dir)));
+  if (!raider || raider.moveDir === next) {
+    return false;
+  }
+  raider.moveDir = next;
+  guardRecord(state, 'rmove', next);
+  return true;
+}
+
+export function guardRaidAttack(state: GuardBattleState): boolean {
+  const raider = state.raider;
+  const unit = guardRaidUnit(state);
+  if (!raider || !unit || guardRaidLocked(state) || state.phase !== 'wave') {
+    return false;
+  }
+  const step = state.timeMs < raider.comboUntilMs ? (raider.comboStep % 3) + 1 : 1;
+  const spec = GUARD_RAID_COMBO[step - 1];
+  raider.comboStep = step;
+  raider.comboUntilMs = state.timeMs + spec.lockMs + GUARD_RAID_COMBO_WINDOW_MS;
+  raider.actionUntilMs = state.timeMs + spec.lockMs;
+  raider.pendingHits.push({ atMs: state.timeMs + spec.hitMs, kind: `combo${step}` as GuardRaidHitKind });
+  state.events.push({ type: 'raidSwing', timeMs: state.timeMs, level: step, monsterId: unit.monsterId });
+  guardRecord(state, 'ratk', 0);
+  return true;
+}
+
+export function guardRaidSkill(state: GuardBattleState, id: number): boolean {
+  const raider = state.raider;
+  const unit = guardRaidUnit(state);
+  const index = Math.max(0, Math.min(2, Math.round(id)));
+  const spec = GUARD_RAID_SKILLS[index];
+  if (!raider || !unit || !spec || guardRaidLocked(state) || state.phase !== 'wave' || state.timeMs < raider.skillReadyMs[index]) {
+    return false;
+  }
+  raider.skillReadyMs[index] = state.timeMs + spec.cdMs;
+  raider.actionUntilMs = state.timeMs + spec.lockMs;
+  raider.comboStep = 0;
+  raider.comboUntilMs = 0;
+  if (spec.dash) {
+    const facing = unit.facing ?? -1;
+    unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_SPAWN_X - 0.3, unit.x + facing * spec.dash));
+  }
+  if (spec.iframeMs) {
+    raider.dodgeUntilMs = Math.max(raider.dodgeUntilMs, state.timeMs + spec.iframeMs);
+  }
+  for (const hitMs of spec.hits) {
+    raider.pendingHits.push({ atMs: state.timeMs + hitMs, kind: `skill${index}` as GuardRaidHitKind });
+  }
+  state.events.push({ type: 'raidSkill', timeMs: state.timeMs, level: index, monsterId: unit.monsterId, skillName: spec.name });
+  guardRecord(state, 'rskill', index);
+  return true;
+}
+
+export function guardRaidDodge(state: GuardBattleState): boolean {
+  const raider = state.raider;
+  const unit = guardRaidUnit(state);
+  if (!raider || !unit || state.phase !== 'wave' || state.timeMs < raider.dodgeReadyMs || state.timeMs < raider.staggerUntilMs) {
+    return false;
+  }
+  // 翻滚可以打断普攻后摇(不能打断技能)
+  if (state.timeMs < raider.actionUntilMs && raider.pendingHits.some((hit) => hit.kind.startsWith('skill'))) {
+    return false;
+  }
+  raider.pendingHits = [];
+  raider.comboStep = 0;
+  raider.comboUntilMs = 0;
+  raider.actionUntilMs = state.timeMs + GUARD_RAID_DODGE_MS;
+  raider.dodgeUntilMs = state.timeMs + GUARD_RAID_DODGE_MS;
+  raider.dodgeReadyMs = state.timeMs + GUARD_RAID_DODGE_CD_MS;
+  const vec = guardRaidDirVector(raider.moveDir);
+  const dx = vec.x !== 0 || vec.y !== 0 ? vec.x : (unit.facing ?? -1);
+  const dy = vec.y;
+  unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_SPAWN_X - 0.3, unit.x + dx * GUARD_RAID_DODGE_DIST));
+  unit.laneF = Math.max(0, Math.min(1, (unit.laneF ?? 0.5) - dy * 0.5));
+  unit.lane = Math.round(unit.laneF);
+  state.events.push({ type: 'raidDodge', timeMs: state.timeMs, monsterId: unit.monsterId });
+  guardRecord(state, 'rdodge', 0);
+  return true;
+}
+
+/** 方向码 → 单位向量(x:+1 朝出怪口 / -1 朝水晶;y:+1 上排 / -1 下排)。 */
+function guardRaidDirVector(dir: number): { x: number; y: number } {
+  const table: Array<[number, number]> = [[0, 0], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]];
+  const [x, y] = table[dir] ?? [0, 0];
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
+
+/** 掠夺模式每 tick:移动 + 到点的打击;返回 true = 本 tick 已分出胜负。 */
+function guardRaidTick(state: GuardBattleState, dtMs: number): boolean {
+  const raider = state.raider;
+  const unit = guardRaidUnit(state);
+  if (!raider || !unit) {
+    return false;
+  }
+  // 移动(动作锁 / 硬直中不动)
+  if (!guardRaidLocked(state) && raider.moveDir > 0) {
+    const vec = guardRaidDirVector(raider.moveDir);
+    if (vec.x !== 0) {
+      unit.facing = vec.x < 0 ? -1 : 1;
+    }
+    unit.x = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_SPAWN_X - 0.3, unit.x + vec.x * GUARD_RAID_MOVE_X * (dtMs / 1000)));
+    // 英雄区(x<5)走道变窄:上下只能小幅移动
+    const laneSpan = unit.x >= 5 ? 1 : 0.35;
+    const center = 0.5;
+    const laneF = (unit.laneF ?? 0.5) - vec.y * GUARD_RAID_MOVE_LANE * (dtMs / 1000);
+    unit.laneF = Math.max(center - laneSpan / 2, Math.min(center + laneSpan / 2, laneF));
+    unit.lane = Math.round(unit.laneF);
+  }
+  // 到点的打击
+  if (raider.pendingHits.length > 0) {
+    const due = raider.pendingHits.filter((hit) => hit.atMs <= state.timeMs);
+    if (due.length > 0) {
+      raider.pendingHits = raider.pendingHits.filter((hit) => hit.atMs > state.timeMs);
+      for (const hit of due) {
+        guardRaidResolveHit(state, raider, unit, hit.kind);
+      }
+    }
+  }
+  return (state.phase as GuardPhase) === 'victory' || (state.phase as GuardPhase) === 'defeat';
+}
+
+function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit: GuardMonster, kind: GuardRaidHitKind): void {
+  let mult: number;
+  let reach: number;
+  let around = false;
+  if (kind.startsWith('combo')) {
+    const spec = GUARD_RAID_COMBO[Number(kind.slice(5)) - 1];
+    mult = spec.mult;
+    reach = spec.reach;
+  } else {
+    const spec = GUARD_RAID_SKILLS[Number(kind.slice(5))];
+    mult = spec.mult;
+    reach = spec.reach;
+    around = !!spec.around;
+  }
+  const facing = unit.facing ?? -1;
+  const heavy = kind === 'combo3' || kind.startsWith('skill');
+  const damage = Math.max(1, Math.round(raider.attack * mult));
+  let hitAny = false;
+  for (const hero of state.heroes) {
+    if (hero.dead || hero.hp === undefined) {
+      continue;
+    }
+    const dx = guardCellX(hero.cell) - unit.x;
+    // 身前 reach 格、身后 0.3 格;旋风斩前后都算
+    const inFront = around ? Math.abs(dx) <= reach : facing < 0 ? dx <= 0.3 && dx >= -reach : dx >= -0.3 && dx <= reach;
+    if (!inFront) {
+      continue;
+    }
+    hitAny = true;
+    hero.hp = Math.max(0, hero.hp - damage);
+    state.events.push({ type: 'raidHit', timeMs: state.timeMs, cell: hero.cell, heroCode: hero.heroCode, amount: damage, crit: heavy, monsterId: unit.monsterId });
+    if (hero.hp <= 0) {
+      hero.dead = true;
+      state.events.push({ type: 'heroDead', timeMs: state.timeMs, cell: hero.cell, heroCode: hero.heroCode });
+    }
+  }
+  // 身前没有守卫、贴着水晶、朝向水晶:打水晶
+  if (!hitAny && facing < 0 && unit.x <= GUARD_CRYSTAL_REACH_X + 0.55) {
+    const crystalDamage = Math.max(1, Math.round(damage * GUARD_RAID_CRYSTAL_MULT));
+    state.crystalHp = Math.max(0, state.crystalHp - crystalDamage);
+    state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: unit.monsterId, amount: crystalDamage });
+    if (state.crystalHp <= 0) {
+      state.phase = 'victory';
+      state.events.push({ type: 'victory', timeMs: state.timeMs });
+    }
+  }
+}
+
+/** 进攻方受伤:无敌帧内免伤;打空血 = 掠夺失败。 */
+function guardDamageRaider(state: GuardBattleState, unit: GuardMonster, damage: number): void {
+  const raider = state.raider;
+  if (!raider) {
+    return;
+  }
+  if (state.timeMs < raider.dodgeUntilMs) {
+    return;
+  }
+  const amount = Math.max(1, Math.round(damage * GUARD_RAID_INCOMING_MULT));
+  unit.hp = Math.max(0, unit.hp - amount);
+  raider.staggerUntilMs = Math.max(raider.staggerUntilMs, state.timeMs + GUARD_RAID_STAGGER_MS);
+  state.events.push({ type: 'raidHurt', timeMs: state.timeMs, monsterId: unit.monsterId, amount });
+  if (unit.hp <= 0) {
+    unit.dead = true;
+    unit.diedAtMs = state.timeMs;
+    state.phase = 'defeat';
+    state.events.push({ type: 'defeat', timeMs: state.timeMs });
+  }
 }
 
 export function guardMarkMonster(state: GuardBattleState, monsterId: number | null): number | null {

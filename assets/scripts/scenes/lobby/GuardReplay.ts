@@ -20,6 +20,10 @@ import {
   guardRerollChoice,
   guardSellHero,
   guardSetSkillAuto,
+  guardRaidAttack,
+  guardRaidDodge,
+  guardRaidMove,
+  guardRaidSkill,
   guardSetSpellLoadout,
   guardSkipChoice,
   guardSummon,
@@ -156,6 +160,10 @@ export function resolveGuardStageSetup(stageCode: string, recommendedPower: numb
   const isDaily = code.startsWith('DAILY_');
   const isMain = /^MAIN_\d+_\d+$/.test(code);
   const rush = isDaily && code.endsWith('_3');
+  // docs/47 P0:掠夺原型关卡(RAID_*)——波次不用,模式 raid 由 guardStartRaid 切入
+  if (code.startsWith('RAID_')) {
+    return { maxWave: 1, mode: 'raid', monsterScale: 1, spawnCountMult: 1, monsterHpMult: 1, monsterBiteMult: undefined, minionHpMult: 1 };
+  }
   const scale = isMain && recommendedPower && recommendedPower > 0 ? Math.max(0.25, Math.min(6, recommendedPower / GUARD_MAIN_POWER_BASELINE)) : 1;
   return {
     maxWave: rush ? 999 : isDaily && code.endsWith('_2') ? 20 : 10,
@@ -231,6 +239,11 @@ export function guardApplyInput(state: GuardBattleState, input: GuardInput, allo
     case 'pickup': guardCollectPickup(state, input.v); break;
     case 'loadout': guardSetSpellLoadout(state, (input.s ?? '').split(',').filter((id) => id.length > 0)); break;
     case 'auto': guardSetSkillAuto(state, input.v === 1); break;
+    // docs/47 P0 掠夺
+    case 'rmove': guardRaidMove(state, input.v); break;
+    case 'ratk': guardRaidAttack(state); break;
+    case 'rskill': guardRaidSkill(state, input.v); break;
+    case 'rdodge': guardRaidDodge(state); break;
     default: break;
   }
 }

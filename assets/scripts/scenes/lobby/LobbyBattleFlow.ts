@@ -219,6 +219,46 @@ export class LobbyBattleFlow {
     }
   }
 
+  /** docs/47 P0 掠夺原型:本地开一局(不经服务端),只走资产加载门;不结算、不发奖。 */
+  async startLocal(start: PlayerBattleStartVO): Promise<void> {
+    const currentTicket = ++this.ticket;
+    this.clearPresentationTimers();
+    this.state.starting = false;
+    this.state.settling = false;
+    this.state.stageCode = start.stageCode;
+    this.state.error = '';
+    this.state.start = start;
+    this.state.settlement = null;
+    this.state.presentationStep = 0;
+    this.state.presentationElapsedMs = 0;
+    this.state.presentationStartedAtMs = 0;
+    this.state.presentationComplete = false;
+    if (this.host.preloadBattleSessionAssets) {
+      this.state.assetsLoading = true;
+      this.state.assetsLoadedCount = 0;
+      this.state.assetsTotalCount = 0;
+      this.bump();
+      try {
+        await this.host.preloadBattleSessionAssets(start, (loaded, total) => {
+          if (!this.isCurrent(currentTicket)) {
+            return;
+          }
+          this.state.assetsLoadedCount = loaded;
+          this.state.assetsTotalCount = total;
+          this.bump();
+        });
+      } catch {
+        // 预载异常不阻塞进战
+      }
+      if (!this.isCurrent(currentTicket)) {
+        return;
+      }
+      this.state.assetsLoading = false;
+    }
+    this.state.presentationStartedAtMs = Date.now();
+    this.bump();
+  }
+
   // 视觉胜负确认(敌方全灭弹结算框)即提前收口演出并提交结算,消除"胜利框到自动结算"的空窗:
   // 空窗期离场会清计时器导致 settle 永不提交,玩家看到胜利却拿不到奖励、主线不推进。
   completePresentationEarlyAndSettle(): void {
