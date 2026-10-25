@@ -520,8 +520,7 @@ export class GuardRaidController {
     const px = this.bridge.xToPx(unit.x);
     const py = this.bridge.laneY(unit.laneF ?? 0.5, unit.x);
     const node = this.bridge.host.addChildPlainNode(field, 'GuardRaider', px, py, size, size);
-    const shade = this.bridge.mountShade(node, 'GuardRaiderShadow', 0, -unitSize * 0.45, unitSize * 0.7, Math.max(6, unitSize * 0.15));
-    shade?.setSiblingIndex(0);
+    this.mountShadow(node, 'GuardRaiderShadow', -unitSize * 0.45, unitSize * 0.7, Math.max(6, unitSize * 0.15));
     const fallback = this.bridge.host.addChildPlainNode(node, 'GuardRaiderFallback', 0, 0, size * 0.5, size * 0.7);
     const g = fallback.addComponent(Graphics);
     g.fillColor = rgba(90, 60, 110, 220);
@@ -661,6 +660,16 @@ export class GuardRaidController {
     view.node.setPosition(this.fromX + (this.toX - this.fromX) * a + jiggle, this.fromY + (this.toY - this.fromY) * a, 0);
   }
 
+  /** 脚下柔影:Graphics 椭圆。不用渲染器的运行时生成纹理 blob 软影——安卓原生上那张纹理画出来是一圈金色光环(2026-10-26 模拟器实测)。 */
+  private mountShadow(parent: Node, name: string, y: number, w: number, h: number): void {
+    const node = this.bridge.host.addChildPlainNode(parent, name, 0, y, w, h);
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(6, 4, 4, 110);
+    g.ellipse(0, 0, w / 2, h / 2);
+    g.fill();
+    node.setSiblingIndex(0);
+  }
+
   /** 血条尺寸按屏高定(原型 v1:约 100×9 @ 841 高)。 */
   private barW(): number {
     return this.bridge.layout().height * 0.115;
@@ -718,7 +727,7 @@ export class GuardRaidController {
           nameLabel.fontSize = this.bridge.layout().height * 0.02;
         }
         const size = this.bridge.heroDisplaySize();
-        this.bridge.mountShade(view.node, 'GuardRaidHeroShadow', 0, -size * 0.42, size * 0.7, Math.max(6, size * 0.14))?.setSiblingIndex(0);
+        this.mountShadow(view.node, 'GuardRaidHeroShadow', -size * 0.42, size * 0.7, Math.max(6, size * 0.14));
       }
       // 守卫战的技能冷却条 / 旧血条每 tick 由渲染器补建:掠夺里一律藏掉(原型 v1 只有名字 + 绿血条)
       for (const key of ['hpBg', 'hpFill', 'cdBg', 'cdFill'] as const) {
