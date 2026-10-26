@@ -317,7 +317,7 @@ export class LobbyRaidPanelRenderer {
       ring.stroke();
       const name = this.host.addChildLabel(card, `DefenderName_${index}`, defender.heroName || defender.heroCode, x, rowY - avatar / 2 - 12 * scale, (phone ? 17 : 14) * scale, rgba(220, 206, 176, 240), new Size(slotW * 0.98, 20 * scale));
       name.overflow = Label.Overflow.SHRINK;
-      const stars = this.host.addChildLabel(card, `DefenderStar_${index}`, '★'.repeat(Math.max(1, Math.min(5, defender.star))), x, rowY - avatar / 2 - 30 * scale, (phone ? 15 : 13) * scale, rgba(255, 220, 110, 250), new Size(slotW, 18 * scale));
+      const stars = this.host.addChildLabel(card, `DefenderStar_${index}`, defender.star > 5 ? `★${defender.star}` : '★'.repeat(Math.max(1, defender.star)), x, rowY - avatar / 2 - 30 * scale, (phone ? 15 : 13) * scale, rgba(255, 220, 110, 250), new Size(slotW, 18 * scale));
       stars.overflow = Label.Overflow.SHRINK;
     });
     y = rowY - avatar / 2 - 48 * scale;
@@ -590,7 +590,9 @@ export class LobbyRaidPanelRenderer {
       bg.lineWidth = Math.max(1, 1.2 * scale);
       bg.roundRect(-slot / 2, -slot / 2, slot, slot, 4 * scale);
       bg.stroke();
-      const star = this.host.addChildLabel(row, `DefStar_${index}`, '★'.repeat(Math.max(1, Math.min(5, defender.star))), x, -h * 0.36, height * 0.016, rgba(255, 220, 110, 250), new Size(slot * 1.4, height * 0.02));
+      // 星级可到 10+:超过 5 颗用「★N」数字,不然一行星挤成串
+      const starText = defender.star > 5 ? `★${defender.star}` : '★'.repeat(Math.max(1, defender.star));
+      const star = this.host.addChildLabel(row, `DefStar_${index}`, starText, x, -h * 0.36, height * 0.016, rgba(255, 220, 110, 250), new Size(slot * 1.1, height * 0.02));
       star.overflow = Label.Overflow.SHRINK;
     });
     // 掠夺
