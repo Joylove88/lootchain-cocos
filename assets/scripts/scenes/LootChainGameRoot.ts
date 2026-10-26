@@ -1057,8 +1057,18 @@ export class LootChainGameRoot extends Component {
     this.updateLobbyPosterFade(deltaTime);
     if (LOBBY_TOWN_ENABLED && this.currentView === 'lobby') {
       this.lobbyTownRenderer.step(deltaTime);
+      // docs/50:切图那一刻素材组还在加载会被加载门挡住、地图没建;加载完没人补刷 → 地图一直空着。这里兜底补一次(1 秒限频)
+      if (!this.lobbyTownRenderer.isMounted() && !this.uiSpriteFrameCache.groupProgress('town')) {
+        const now = Date.now();
+        if (now - this.townRemountAt > 1000) {
+          this.townRemountAt = now;
+          this.renderCurrentView();
+        }
+      }
     }
   }
+
+  private townRemountAt = 0;
 
   onDestroy(): void {
     input.off(Input.EventType.MOUSE_DOWN, this.tryPlayLobbyVideo, this);
@@ -6678,8 +6688,9 @@ export class LootChainGameRoot extends Component {
       return;
     }
     if (dialog.mode === 'train') {
+      // §14 即时战斗:训练用幼鼠就在训练场里,直接上去打
       this.closeWorldDialog();
-      this.startWorldFieldBattle('FIELD_VILLAGE_T');
+      this.setStatus('幼鼠就在训练场里 · J 普攻 / K L I 技能 / Shift 翻滚');
       return;
     }
     dialog.busy = true;
@@ -6864,7 +6875,37 @@ export class LootChainGameRoot extends Component {
     })();
   }
 
-  // 野外怪群开战(docs/50 §5.2):碰到明雷怪直接开战,不走编队确认页
+  // 野外即时战斗(docs/50 §14):地图上直接打,只登记遭遇 / 上报清怪
+
+  private async engageWorldField(stageCode: string): Promise<import('./lobby/LobbyTownRenderer').TownFieldEncounter | null> {
+    try {
+      const heroIds = this.currentLobbyFormationHeroIds().length > 0
+        ? this.currentLobbyFormationHeroIds()
+        : this.currentLobbyHeroRosterState().heroes.filter((hero) => hero.id > 0 && !hero.protagonist).sort((a, b) => b.power - a.power).slice(0, 4).map((hero) => hero.id);
+      return await this.api.world.engageField(stageCode, heroIds, heroIds[0] ?? null);
+    } catch (error) {
+      this.setStatus((error as Error)?.message || '野外遭遇失败');
+      return null;
+    }
+  }
+
+  private clearWorldField(encounterId: number, stageCode: string): void {
+    void (async () => {
+      try {
+        const result = await this.api.world.clearField(encounterId);
+        this.worldState = result.state;
+        const rewardText = result.rewards.map((item) => `${item.resourceName} ×${item.amount}`).join('  ');
+        this.setStatus([result.message, rewardText].filter(Boolean).join(' · '));
+        void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+        this.refreshLobbyViewPreservingBackground();
+      } catch (error) {
+        console.warn('[World] field clear failed', stageCode, error);
+        this.setStatus((error as Error)?.message || '清怪结算失败');
+      }
+    })();
+  }
+
+  // 野外怪群开战(docs/50 §5.2,旧):碰到明雷怪切战斗场景;§14 起野外改即时战斗,保留给以后需要切场景的特殊怪
 
   private startWorldFieldBattle(stageCode: string): void {
     if (!isFieldStageCode(stageCode)) {

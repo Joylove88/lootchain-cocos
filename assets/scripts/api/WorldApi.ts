@@ -35,6 +35,62 @@ export class WorldApi {
   claimBounty(slot: number): Promise<WorldActionResultVO> {
     return this.http.post<unknown>('/api/player/world/bounty/claim', { slot }).then(validateAction);
   }
+
+  /** docs/50 §14 野外即时战斗:登记遭遇(阵容同开战)。 */
+  engageField(stageCode: string, heroIds: number[], leaderHeroId: number | null): Promise<FieldEncounterVO> {
+    return this.http.post<unknown>('/api/player/world/field/engage', { stageCode, heroIds, leaderHeroId, requestId: `field-${Date.now()}` }).then(validateEncounter);
+  }
+
+  clearField(encounterId: number): Promise<FieldClearVO> {
+    return this.http.post<unknown>('/api/player/world/field/clear', { encounterId }).then((data) => {
+      if (!isRecord(data)) {
+        throw new Error('清怪结算响应格式错误');
+      }
+      return {
+        rewards: readArray(data, 'rewards', 16).map(validateReward),
+        capped: data.capped === true,
+        message: readText(data, 'message', 80, ''),
+        state: validateState(data.state),
+      };
+    });
+  }
+}
+
+export interface FieldEncounterVO {
+  encounterId: number;
+  stageCode: string;
+  raiderAttack: number;
+  raiderHp: number;
+  monsters: Array<{ monsterCode: string; monsterName: string; hp: number; hit: number; ranged: boolean }>;
+}
+
+export interface FieldClearVO {
+  rewards: WorldRewardItemVO[];
+  capped: boolean;
+  message: string;
+  state: WorldStateVO;
+}
+
+function validateEncounter(data: unknown): FieldEncounterVO {
+  if (!isRecord(data)) {
+    throw new Error('野外遭遇响应格式错误');
+  }
+  return {
+    encounterId: readInteger(data.encounterId, 1, Number.MAX_SAFE_INTEGER),
+    stageCode: readText(data, 'stageCode', 32, ''),
+    raiderAttack: readInteger(data.raiderAttack, 1, Number.MAX_SAFE_INTEGER),
+    raiderHp: readInteger(data.raiderHp, 1, Number.MAX_SAFE_INTEGER),
+    monsters: readArray(data, 'monsters', 8).map((entry) => {
+      const record = isRecord(entry) ? entry : {};
+      return {
+        monsterCode: readText(record, 'monsterCode', 32, ''),
+        monsterName: readText(record, 'monsterName', 32, ''),
+        hp: readInteger(record.hp, 1, Number.MAX_SAFE_INTEGER),
+        hit: readInteger(record.hit, 1, Number.MAX_SAFE_INTEGER),
+        ranged: record.ranged === true,
+      };
+    }),
+  };
 }
 
 function validateReward(entry: unknown): WorldRewardItemVO {

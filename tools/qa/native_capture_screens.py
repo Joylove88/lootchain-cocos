@@ -14,7 +14,7 @@ import websockets
 
 WS = 'ws://127.0.0.1:{port}/00010002-0003-4004-8005-000600070008'
 ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.getComponent('LootChainGameRoot'); if(c) root=c; } });"
-RESET_JS = "['closeGuardCrystalDialog','closeLobbyTokenFurnace','closeLobbyDailyDungeonPanel','closeLobbyAdventurePanel','closeLobbyFormationPanel','closeLobbyCodexPanel','closeLobbyHeroRosterPanel','closeGachaScene','closeLobbyNoticePanel','closeLobbySettingsPanel','closeLobbyMorePanel','closePlayerProfileDialog'].forEach((k) => { try { root[k] && root[k](); } catch (e) {} }); try { root.closeLobbyHeroDetailPanel && root.closeLobbyHeroDetailPanel(); } catch (e) {} try { root.closeAllLobbyScenePanelFlags && root.closeAllLobbyScenePanelFlags(); } catch (e) {} try { root.lobbyShopDialogKind = null; } catch (e) {} try { root.currentView = 'lobby'; root.renderCurrentView(); } catch (e) {}"
+RESET_JS = "['closeGuardCrystalDialog','closeLobbyTokenFurnace','closeLobbyDailyDungeonPanel','closeLobbyAdventurePanel','closeLobbyFormationPanel','closeLobbyCodexPanel','closeLobbyHeroRosterPanel','closeGachaScene','closeLobbyNoticePanel','closeLobbySettingsPanel','closeLobbyMorePanel','closePlayerProfileDialog'].forEach((k) => { try { root[k] && root[k](); } catch (e) {} }); try { root.closeLobbyHeroDetailPanel && root.closeLobbyHeroDetailPanel(); } catch (e) {} try { root.closeAllLobbyScenePanelFlags && root.closeAllLobbyScenePanelFlags(); } catch (e) {} try { root.lobbyShopDialogKind = null; } catch (e) {} try { root.worldMapPanel = null; root.worldBountyPanel = null; root.worldDialog = null; root.lobbyRaidPanelOpen = false; } catch (e) {} try { root.currentView = 'lobby'; root.renderCurrentView(); } catch (e) {}"
 # 锻造页签:打开 → 轮询到 forge 视图 → 切页签 → 轮询 lobbyForgeTab 到位再放手(首开有素材加载门,定时器会抢跑)
 FORGE_TAB_JS = ("root.openLobbyForgePanel(); let n=0; const t=setInterval(() => {{ n++; if (root.currentView==='forge' && root.lobbyForgeTab!=='{tab}') {{ root.selectLobbyForgeTab('{tab}'); }} "
                 "if ((root.currentView==='forge' && root.lobbyForgeTab==='{tab}' && n>8) || n>60) clearInterval(t); }}, 250);")
@@ -29,6 +29,12 @@ HERO_TAB_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyH
                "else if (n>40) clearInterval(t); }}, 250);")
 SCREENS = [
     ('lobby', "void 0;", 2.5),
+    # docs/50 跑图世界 / 矿境(2026-10-26 补)
+    ('world_map', "root.openWorldMapPanel(); setTimeout(() => root.selectWorldMapPoint('GRAY'), 600);", 3.5),
+    ('world_bounty', "root.openWorldBountyPanel();", 3.0),
+    ('world_dialog', "root.openWorldNpcDialog('BOARD');", 2.5),
+    ('raid_npc', "root.openLobbyRaidPanel(); setTimeout(() => root.selectLobbyRaidTab('npc'), 2500);", 6.0),
+    ('raid_pvp', "root.openLobbyRaidPanel(); setTimeout(() => root.selectLobbyRaidTab('pvp'), 2500);", 6.0),
     ('bag', "root.openLobbyBagPanel();", 3.0),
     ('quest', "root.openLobbyQuestPanel();", 3.0),
     ('mail', "root.openLobbyMailPanel();", 3.0),

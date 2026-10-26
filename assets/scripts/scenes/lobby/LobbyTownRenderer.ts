@@ -68,6 +68,17 @@ export interface LobbyTownHost extends LobbyHudHost {
   activateWorldWaypoint?(code: WorldMapCode): void;
   openWorldQuestTracker?(): void;
   openWorldBountyPanel?(): void;
+  /** docs/50 §14 野外即时战斗:登记遭遇(下发数值)/ 清怪上报 / 队长倒下。 */
+  engageWorldField?(stageCode: string): Promise<TownFieldEncounter | null>;
+  clearWorldField?(encounterId: number, stageCode: string): void;
+}
+
+export interface TownFieldEncounter {
+  encounterId: number;
+  stageCode: string;
+  raiderAttack: number;
+  raiderHp: number;
+  monsters: Array<{ monsterCode: string; monsterName: string; hp: number; hit: number; ranged: boolean }>;
 }
 
 export interface TownGuideTarget {
@@ -147,6 +158,20 @@ interface TownMonster {
   idleAnim: string;
   moveAnim: string;
   moving: boolean;
+  /** docs/50 §14 即时战斗:遭遇下发后才有血量;0 = 未登记。 */
+  hp: number;
+  maxHp: number;
+  hit: number;
+  ranged: boolean;
+  dead: boolean;
+  diedAt: number;
+  nextAttackAt: number;
+  windupUntil: number;
+  attackAnim: string;
+  deathAnim: string;
+  hpBar: Graphics | null;
+  hpDrawn: number;
+  flashUntil: number;
 }
 
 type TownInteract =
@@ -209,6 +234,26 @@ export class LobbyTownRenderer {
   private channelBar: { node: Node; fill: Graphics; label: Label; w: number; h: number } | null = null;
   private bannerUntil = 0;
   private respawnCheckAt = 0;
+  // docs/50 §14 野外即时战斗
+  private readonly encounters = new Map<string, { id: number; pending: boolean }>();
+  private raiderAttack = 0;
+  private leaderHp = 0;
+  private leaderMaxHp = 0;
+  private leaderDead = false;
+  private lastHurtAt = 0;
+  private comboStep = 0;
+  private comboUntil = 0;
+  private actionUntil = 0;
+  private dashUntil = 0;
+  private dashSpeed = 0;
+  private dashDir = { x: 1, y: 0 };
+  private iframesUntil = 0;
+  private dodgeReadyAt = 0;
+  private readonly skillReadyAt = [0, 0, 0];
+  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number } }> = [];
+  private leaderActionAnim = false;
+  private leaderHpBar: Graphics | null = null;
+  private combatButtons: Array<{ node: Node; cd: Label | null; index: number }> = [];
 
   constructor(private readonly host: LobbyTownHost) {}
 
@@ -228,6 +273,14 @@ export class LobbyTownRenderer {
     this.battleLock = false;
     this.channel = null;
     this.bannerUntil = Date.now() + 2600;
+    this.encounters.clear();
+    this.pendingHits = [];
+    this.leaderDead = false;
+    this.actionUntil = 0;
+    this.dashUntil = 0;
+    if (this.leaderMaxHp > 0) {
+      this.leaderHp = this.leaderMaxHp;
+    }
     if (this.world && this.world.isValid) {
       this.world.destroy();
     }
@@ -768,6 +821,19 @@ export class LobbyTownRenderer {
     }
     if (event.keyCode === KeyCode.KEY_E || event.keyCode === KeyCode.SPACE || event.keyCode === KeyCode.ENTER) {
       this.enterNearBuilding();
+      return;
+    }
+    // docs/50 §14 野外即时战斗(和掠夺同一套键位):J 普攻 / K L I 技能 / Shift 翻滚
+    if (this.def.camps.length === 0) {
+      return;
+    }
+    switch (event.keyCode) {
+      case KeyCode.KEY_J: this.leaderAttack(); break;
+      case KeyCode.KEY_K: this.leaderSkill(0); break;
+      case KeyCode.KEY_L: this.leaderSkill(1); break;
+      case KeyCode.KEY_I: this.leaderSkill(2); break;
+      case KeyCode.SHIFT_LEFT: case KeyCode.SHIFT_RIGHT: this.leaderDodge(); break;
+      default: break;
     }
   }
 
@@ -804,6 +870,7 @@ export class LobbyTownRenderer {
     const clamped = Math.min(0.05, Math.max(0, dt));
     this.stepLeader(clamped);
     this.stepFollowers(clamped);
+    this.stepCombat(clamped);
     this.stepMonsters(clamped);
     if (Date.now() >= this.respawnCheckAt) {
       this.respawnCheckAt = Date.now() + 2000;
@@ -826,7 +893,26 @@ export class LobbyTownRenderer {
     if (!leader || !leader.node.isValid) {
       return;
     }
-    const v = this.inputVector();
+    let v = this.inputVector();
+    const nowMs = Date.now();
+    if (this.leaderDead || (nowMs < this.actionUntil && nowMs >= this.dashUntil)) {
+      v = { x: 0, y: 0 };
+    }
+    if (nowMs < this.dashUntil) {
+      // 翻滚 / 突进:按冲刺方向强制位移
+      const dashSpeed = this.dashSpeed;
+      const nx = leader.x + this.dashDir.x * dashSpeed * dt;
+      const ny = leader.y + this.dashDir.y * dashSpeed * dt * 0.8;
+      if (this.walkable(nx, leader.y)) {
+        leader.x = nx;
+      }
+      if (this.walkable(leader.x, ny)) {
+        leader.y = ny;
+      }
+      leader.node.setPosition(leader.x, leader.y, 0);
+      this.pushTrail(leader);
+      return;
+    }
     const moving = v.x !== 0 || v.y !== 0;
     if (moving) {
       // 俯视 3/4:纵向视觉距离短,速度打八折更自然
@@ -842,15 +928,13 @@ export class LobbyTownRenderer {
       if (v.x !== 0) {
         this.setActorFacing(leader, v.x > 0 ? 1 : -1);
       }
-      const last = this.trail[this.trail.length - 1];
-      if (!last || Math.hypot(last.x - leader.x, last.y - leader.y) >= FOLLOW_SAMPLE) {
-        this.trail.push(new Vec2(leader.x, leader.y));
-        if (this.trail.length > 400) {
-          this.trail.splice(0, this.trail.length - 400);
-        }
-      }
+      this.pushTrail(leader);
     }
-    if (leader.moving !== moving) {
+    if (nowMs < this.actionUntil) {
+      return;
+    }
+    if (leader.moving !== moving || this.leaderActionAnim) {
+      this.leaderActionAnim = false;
       leader.moving = moving;
       this.applyActorAnimation(leader);
     }
@@ -877,6 +961,16 @@ export class LobbyTownRenderer {
       py = p.y;
     }
     return null;
+  }
+
+  private pushTrail(leader: TownActor): void {
+    const last = this.trail[this.trail.length - 1];
+    if (!last || Math.hypot(last.x - leader.x, last.y - leader.y) >= FOLLOW_SAMPLE) {
+      this.trail.push(new Vec2(leader.x, leader.y));
+      if (this.trail.length > 400) {
+        this.trail.splice(0, this.trail.length - 400);
+      }
+    }
   }
 
   private stepFollowers(dt: number): void {
@@ -1194,6 +1288,7 @@ export class LobbyTownRenderer {
     this.renderMinimap(hud, layout, scale);
     this.renderQuestTracker(hud, layout, scale, world);
     this.renderRecallButton(hud, layout, scale, world);
+    this.renderCombatButtons(hud, layout, scale);
     this.renderAreaBanner(hud, layout, scale);
     // 任务追踪条在左侧;旧的顶部追踪条只在旧引导时出现
     this.renderGuideTracker(hud, layout, scale, effectiveGuide === questGuide ? null : effectiveGuide);
@@ -1302,9 +1397,11 @@ export class LobbyTownRenderer {
   }
 
   private renderEnterButton(hud: Node, layout: UiLayout, scale: number): void {
-    const size = 128 * scale;
-    const x = layout.stageRight - 110 * scale;
-    const y = layout.stageBottom + 150 * scale;
+    // 有怪群的图右下是战斗按钮簇,交互钮挪到按钮簇左上方并缩小
+    const combat = this.def.camps.length > 0;
+    const size = (combat ? 100 : 128) * scale;
+    const x = layout.stageRight - (combat ? 470 : 110) * scale;
+    const y = layout.stageBottom + (combat ? 300 : 150) * scale;
     const button = this.host.addChildPlainNode(hud, 'LobbyTownEnterButton', x, y, size, size);
     const g = button.addComponent(Graphics);
     g.fillColor = rgba(16, 10, 10, 225);
@@ -1787,7 +1884,10 @@ export class LobbyTownRenderer {
     const monster: TownMonster = {
       camp, node, x, y, homeX: x, homeY: y, tx: x, ty: y, nextPickAt: Date.now() + 500 + Math.random() * 1500,
       facing: -1, baseScale: 1, skeleton: null, spineNode: null, idleAnim: '', moveAnim: '', moving: false,
+      hp: 0, maxHp: 0, hit: 1, ranged: false, dead: false, diedAt: 0, nextAttackAt: 0, windupUntil: 0,
+      attackAnim: '', deathAnim: '', hpBar: null, hpDrawn: -1, flashUntil: 0,
     };
+    monster.hpBar = this.host.addChildPlainNode(node, 'HpBar', 0, target + 4, 110, 12).addComponent(Graphics);
     if (!camp.spine) {
       return monster;
     }
@@ -1814,6 +1914,8 @@ export class LobbyTownRenderer {
         const names = (runtime?.animations ?? []).map((item) => item.name);
         monster.idleAnim = names.find((name) => /idle|stand|wait/i.test(name)) ?? names[0] ?? '';
         monster.moveAnim = names.find((name) => /run|walk|move/i.test(name)) ?? monster.idleAnim;
+        monster.attackAnim = names.find((name) => /atk|attack/i.test(name) && !/hit|hurt/i.test(name)) ?? '';
+        monster.deathAnim = names.find((name) => /die|dead|death/i.test(name)) ?? '';
         const height = Math.max(40, runtime?.height ?? 200);
         const dir = camp.spine.split('/')[2] ?? '';
         monster.baseScale = (target * (GUARD_MONSTER_DB_SCALE[dir] ?? 1)) / height;
@@ -1830,7 +1932,10 @@ export class LobbyTownRenderer {
     return monster;
   }
 
-  /** 明雷怪:营地里游走;队长进警戒圈就追;碰到 = 开这一营的战斗(docs/50 §5.1)。 */
+  /**
+   * 明雷怪(docs/50 §14 即时战斗):营地里游走;队长进警戒圈 → 登记遭遇并追击;
+   * 近战贴身、远程保持距离,蓄力 0.35 秒后出手;死了播死亡 / 淡出,一营全灭上报清怪。
+   */
   private stepMonsters(dt: number): void {
     const leader = this.leader;
     if (!leader || this.monsters.length === 0) {
@@ -1841,17 +1946,37 @@ export class LobbyTownRenderer {
       if (!monster.node.isValid) {
         continue;
       }
+      if (monster.dead) {
+        continue;
+      }
       const camp = monster.camp;
       const toLeader = Math.hypot(leader.x - monster.x, leader.y - monster.y);
-      const leashed = Math.hypot(monster.x - camp.x, monster.y - camp.y) > camp.radius + 320;
+      const leashed = Math.hypot(monster.x - camp.x, monster.y - camp.y) > camp.radius + 520;
+      const engaged = this.encounters.has(camp.stageCode);
+      const chasing = !this.leaderDead && !leashed && (toLeader < MONSTER_AGGRO_RADIUS || (engaged && toLeader < MONSTER_AGGRO_RADIUS * 2.2));
       let speed = MONSTER_WANDER_SPEED;
-      if (!this.battleLock && toLeader < MONSTER_AGGRO_RADIUS && !leashed) {
-        monster.tx = leader.x;
-        monster.ty = leader.y;
+      if (chasing) {
+        if (!engaged) {
+          this.engageCamp(camp.stageCode);
+        }
+        // 近战停在身前 70,远程停在 300 外
+        const keep = monster.ranged ? 300 : 70;
+        const dxL = monster.x - leader.x;
+        const dyL = monster.y - leader.y;
+        const len = Math.max(1, Math.hypot(dxL, dyL));
+        monster.tx = leader.x + (dxL / len) * keep;
+        monster.ty = leader.y + (dyL / len) * keep * 0.6;
         speed = MONSTER_CHASE_SPEED;
+        this.tryMonsterAttack(monster, toLeader, now);
       } else if (leashed) {
         monster.tx = monster.homeX;
         monster.ty = monster.homeY;
+        speed = MONSTER_CHASE_SPEED;
+        // 脱战回营:血回满(遭遇留着,下次再打照旧登记)
+        if (monster.maxHp > 0 && monster.hp < monster.maxHp) {
+          monster.hp = monster.maxHp;
+          this.drawMonsterHp(monster);
+        }
       } else if (now >= monster.nextPickAt) {
         const angle = Math.random() * Math.PI * 2;
         const r = Math.random() * camp.radius;
@@ -1859,10 +1984,11 @@ export class LobbyTownRenderer {
         monster.ty = camp.y + Math.sin(angle) * r * 0.6;
         monster.nextPickAt = now + 1800 + Math.random() * 2600;
       }
+      const winding = now < monster.windupUntil;
       const dx = monster.tx - monster.x;
       const dy = monster.ty - monster.y;
       const dist = Math.hypot(dx, dy);
-      const moving = dist > 6;
+      const moving = !winding && dist > 6;
       if (moving) {
         const step = Math.min(dist, speed * dt);
         const nx = monster.x + (dx / dist) * step;
@@ -1874,30 +2000,35 @@ export class LobbyTownRenderer {
         } else {
           monster.nextPickAt = now;
         }
-        if (Math.abs(dx) > 3) {
-          const facing: 1 | -1 = dx > 0 ? 1 : -1;
-          if (facing !== monster.facing) {
-            monster.facing = facing;
-            monster.spineNode?.setScale(monster.baseScale * MONSTER_ART_FACING * facing, monster.baseScale, 1);
-          }
+      }
+      const faceX = chasing ? leader.x - monster.x : dx;
+      if (Math.abs(faceX) > 3) {
+        const facing: 1 | -1 = faceX > 0 ? 1 : -1;
+        if (facing !== monster.facing) {
+          monster.facing = facing;
+          monster.spineNode?.setScale(monster.baseScale * MONSTER_ART_FACING * facing, monster.baseScale, 1);
         }
       }
-      if (moving !== monster.moving && monster.skeleton && monster.skeleton.isValid) {
+      if (!winding && moving !== monster.moving && monster.skeleton && monster.skeleton.isValid) {
         monster.moving = moving;
         const anim = moving ? monster.moveAnim : monster.idleAnim;
         if (anim) {
           monster.skeleton.setAnimation(0, anim, true);
         }
       }
-      if (!this.battleLock && toLeader < MONSTER_CONTACT_RADIUS) {
-        this.battleLock = true;
-        this.keys.clear();
-        this.joy = { active: false, id: -1, dx: 0, dy: 0 };
-        this.channel = null;
-        this.host.startWorldFieldBattle?.(camp.stageCode);
-        return;
+      // 受击闪白
+      if (monster.skeleton && monster.skeleton.isValid) {
+        const flash = now < monster.flashUntil;
+        monster.skeleton.color = flash ? rgba(255, 150, 150, 255) : rgba(255, 255, 255, 255);
       }
     }
+    // 死亡淡出 1.2 秒后移除
+    for (const monster of this.monsters) {
+      if (monster.dead && now - monster.diedAt > 1200 && monster.node.isValid) {
+        monster.node.destroy();
+      }
+    }
+    this.monsters = this.monsters.filter((monster) => monster.node.isValid);
   }
 
   // ── docs/50:任务追踪 / 回城 / 读条 / 区域横幅 ──
@@ -2012,8 +2143,9 @@ export class LobbyTownRenderer {
       return;
     }
     const size = 84 * scale;
-    const x = layout.stageRight - 110 * scale;
-    const y = layout.stageBottom + 300 * scale;
+    // 小地图下方(右下是战斗按钮簇)
+    const x = layout.stageRight - 90 * scale;
+    const y = layout.stageTop - 300 * scale;
     const button = this.host.addChildPlainNode(hud, 'LobbyWorldRecall', x, y, size, size);
     const g = button.addComponent(Graphics);
     g.fillColor = rgba(16, 10, 10, 225);
@@ -2132,6 +2264,454 @@ export class LobbyTownRenderer {
     label.isBold = true;
     const opacity = node.addComponent(UIOpacity);
     tween(opacity).delay(Math.max(0.2, left / 1000 - 0.6)).to(0.6, { opacity: 0 }).call(() => node.isValid && node.destroy()).start();
+  }
+
+  // ── docs/50 §14:野外即时战斗 ──
+
+  private static readonly COMBO = [{ mult: 1.0, lockMs: 300 }, { mult: 1.15, lockMs: 300 }, { mult: 1.8, lockMs: 420 }];
+  private static readonly SKILLS = [
+    { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, lockMs: 480, dash: 0 },
+    { name: '突进斩', mult: 2.0, reach: 120, around: false, cdMs: 7000, lockMs: 320, dash: 280 },
+    { name: '旋风斩', mult: 1.6, reach: 220, around: true, cdMs: 9000, lockMs: 520, dash: 0 },
+  ];
+
+  private engageCamp(stageCode: string): void {
+    if (this.encounters.has(stageCode) || !this.host.engageWorldField) {
+      return;
+    }
+    this.encounters.set(stageCode, { id: 0, pending: true });
+    void this.host.engageWorldField(stageCode).then((encounter) => {
+      if (!encounter) {
+        this.encounters.delete(stageCode);
+        return;
+      }
+      this.encounters.set(stageCode, { id: encounter.encounterId, pending: false });
+      // 队长数值以服务端为准;最大血量变了按比例换算当前血
+      if (encounter.raiderHp > 0 && encounter.raiderHp !== this.leaderMaxHp) {
+        const ratio = this.leaderMaxHp > 0 ? this.leaderHp / this.leaderMaxHp : 1;
+        this.leaderMaxHp = encounter.raiderHp;
+        this.leaderHp = Math.max(1, Math.round(this.leaderMaxHp * ratio));
+      }
+      this.raiderAttack = encounter.raiderAttack;
+      const mine = this.monsters.filter((monster) => monster.camp.stageCode === stageCode && !monster.dead);
+      mine.forEach((monster, index) => {
+        const spec = encounter.monsters[index] ?? encounter.monsters[0];
+        if (!spec) {
+          return;
+        }
+        monster.maxHp = spec.hp;
+        monster.hp = spec.hp;
+        monster.hit = spec.hit;
+        monster.ranged = spec.ranged;
+        this.drawMonsterHp(monster);
+      });
+      this.drawLeaderHp();
+    });
+  }
+
+  private ensureLeaderStats(): void {
+    if (this.leaderMaxHp > 0) {
+      return;
+    }
+    // 第一次遭遇前的占位(遭遇下发后按服务端换算)
+    this.leaderMaxHp = 4000;
+    this.leaderHp = 4000;
+  }
+
+  private leaderAttack(): void {
+    if (!this.canAct()) {
+      return;
+    }
+    const now = Date.now();
+    this.comboStep = now < this.comboUntil ? (this.comboStep % 3) + 1 : 1;
+    const spec = LobbyTownRenderer.COMBO[this.comboStep - 1];
+    this.actionUntil = now + spec.lockMs;
+    this.comboUntil = now + 700;
+    this.pendingHits.push({ at: now + 120, mult: spec.mult, reach: 170, around: false, heavy: this.comboStep === 3 });
+    this.playLeaderAction(this.comboStep === 3 ? 'skill1' : 'attack');
+  }
+
+  private leaderSkill(index: number): void {
+    if (!this.canAct()) {
+      return;
+    }
+    const now = Date.now();
+    if (now < this.skillReadyAt[index]) {
+      return;
+    }
+    const spec = LobbyTownRenderer.SKILLS[index];
+    this.skillReadyAt[index] = now + spec.cdMs;
+    this.actionUntil = now + spec.lockMs;
+    this.comboUntil = 0;
+    const leader = this.leader!;
+    if (spec.dash > 0) {
+      // 突进:沿朝向冲 dash 距离,冲过的路径上都算命中
+      this.dashDir = { x: leader.facing, y: 0 };
+      this.dashSpeed = spec.dash / 0.2;
+      this.dashUntil = now + 200;
+      this.pendingHits.push({ at: now + 200, mult: spec.mult, reach: spec.reach, around: false, heavy: true, dashLine: { x0: leader.x, y0: leader.y, x1: leader.x + leader.facing * spec.dash, y1: leader.y } });
+    } else {
+      this.pendingHits.push({ at: now + 160, mult: spec.mult, reach: spec.reach, around: spec.around, heavy: true });
+    }
+    this.playLeaderAction(index === 0 ? 'skill2' : index === 1 ? 'skill1' : 'skill3');
+  }
+
+  private leaderDodge(): void {
+    const leader = this.leader;
+    const now = Date.now();
+    if (!leader || this.leaderDead || now < this.dodgeReadyAt || now < this.dashUntil) {
+      return;
+    }
+    const v = this.inputVector();
+    const len = Math.hypot(v.x, v.y);
+    this.dashDir = len > 0.1 ? { x: v.x / len, y: v.y / len } : { x: leader.facing, y: 0 };
+    if (this.dashDir.x !== 0) {
+      this.setActorFacing(leader, this.dashDir.x > 0 ? 1 : -1);
+    }
+    this.dashSpeed = 220 / 0.25;
+    this.dashUntil = now + 250;
+    this.actionUntil = now + 250;
+    this.iframesUntil = now + 400;
+    this.dodgeReadyAt = now + 1200;
+    this.comboUntil = 0;
+  }
+
+  private canAct(): boolean {
+    const now = Date.now();
+    return !!this.leader && !this.leaderDead && now >= this.actionUntil && now >= this.dashUntil && this.def.camps.length > 0;
+  }
+
+  private playLeaderAction(kind: 'attack' | 'skill1' | 'skill2' | 'skill3'): void {
+    const leader = this.leader;
+    const skeleton = leader?.skeleton;
+    const names = leader?.names;
+    if (!leader || !skeleton || !skeleton.isValid || !names) {
+      return;
+    }
+    const anim = names[kind] || names.attack || names.idle;
+    if (!anim) {
+      return;
+    }
+    skeleton.setAnimation(0, anim, false);
+    leader.anim = anim;
+    this.leaderActionAnim = true;
+  }
+
+  private stepCombat(dt: number): void {
+    const leader = this.leader;
+    if (!leader || this.def.camps.length === 0) {
+      return;
+    }
+    this.ensureLeaderStats();
+    const now = Date.now();
+    // 到点的打击
+    if (this.pendingHits.length > 0) {
+      const due = this.pendingHits.filter((hit) => hit.at <= now);
+      this.pendingHits = this.pendingHits.filter((hit) => hit.at > now);
+      for (const hit of due) {
+        this.resolveLeaderHit(hit);
+      }
+    }
+    // 脱战回血:4 秒没挨打,每秒回 8%
+    if (!this.leaderDead && this.leaderHp < this.leaderMaxHp && now - this.lastHurtAt > 4000) {
+      this.leaderHp = Math.min(this.leaderMaxHp, this.leaderHp + this.leaderMaxHp * 0.08 * dt);
+      this.drawLeaderHp();
+    }
+    this.refreshCombatButtons(now);
+  }
+
+  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number } }): void {
+    const leader = this.leader;
+    if (!leader) {
+      return;
+    }
+    const attack = Math.max(1, this.raiderAttack || 20);
+    const damage = Math.max(1, Math.round(attack * hit.mult));
+    for (const monster of this.monsters) {
+      if (monster.dead || !monster.node.isValid) {
+        continue;
+      }
+      const dx = monster.x - leader.x;
+      const dy = monster.y - leader.y;
+      let inRange: boolean;
+      if (hit.dashLine) {
+        const minX = Math.min(hit.dashLine.x0, hit.dashLine.x1) - 60;
+        const maxX = Math.max(hit.dashLine.x0, hit.dashLine.x1) + 60;
+        inRange = monster.x >= minX && monster.x <= maxX && Math.abs(monster.y - hit.dashLine.y0) <= 90;
+      } else if (hit.around) {
+        inRange = Math.hypot(dx, dy * 1.4) <= hit.reach;
+      } else {
+        inRange = dx * leader.facing >= -40 && Math.abs(dx) <= hit.reach && Math.abs(dy) <= 95;
+      }
+      if (!inRange) {
+        continue;
+      }
+      if (!this.encounters.has(monster.camp.stageCode)) {
+        this.engageCamp(monster.camp.stageCode);
+      }
+      monster.flashUntil = Date.now() + 120;
+      if (monster.maxHp <= 0) {
+        // 遭遇还没回来:只出受击,不扣血
+        continue;
+      }
+      monster.hp = Math.max(0, monster.hp - damage);
+      this.spawnFloater(monster.x, monster.y + (monster.camp.elite ? 230 : 130), `${damage}`, hit.heavy ? rgba(255, 210, 90) : rgba(255, 245, 230), hit.heavy ? 34 : 26);
+      this.drawMonsterHp(monster);
+      if (monster.hp <= 0) {
+        this.killMonster(monster);
+      }
+    }
+  }
+
+  private killMonster(monster: TownMonster): void {
+    monster.dead = true;
+    monster.diedAt = Date.now();
+    monster.hpBar?.clear();
+    if (monster.skeleton && monster.skeleton.isValid && monster.deathAnim) {
+      monster.skeleton.setAnimation(0, monster.deathAnim, false);
+    }
+    const opacity = monster.node.getComponent(UIOpacity) ?? monster.node.addComponent(UIOpacity);
+    tween(opacity).delay(0.5).to(0.6, { opacity: 0 }).start();
+    const stageCode = monster.camp.stageCode;
+    const alive = this.monsters.some((item) => item.camp.stageCode === stageCode && !item.dead);
+    if (!alive) {
+      const encounter = this.encounters.get(stageCode);
+      this.encounters.delete(stageCode);
+      this.campRespawnAt.set(stageCode, Date.now() + MONSTER_RESPAWN_MS);
+      if (encounter && encounter.id > 0) {
+        this.host.clearWorldField?.(encounter.id, stageCode);
+      }
+    }
+  }
+
+  private tryMonsterAttack(monster: TownMonster, toLeader: number, now: number): void {
+    if (monster.maxHp <= 0 || this.leaderDead) {
+      return;
+    }
+    const range = monster.ranged ? 420 : 105;
+    if (monster.windupUntil > 0 && now >= monster.windupUntil) {
+      monster.windupUntil = 0;
+      // 出手:蓄力结束仍在范围内才命中;翻滚无敌期躲开
+      if (toLeader <= range + 30 && now >= this.iframesUntil) {
+        this.hurtLeader(monster.hit);
+      } else if (now < this.iframesUntil) {
+        this.spawnFloater(this.leader!.x, this.leader!.y + 240, '闪避', rgba(150, 220, 255), 24);
+      }
+      if (monster.skeleton && monster.skeleton.isValid) {
+        monster.moving = false;
+        monster.skeleton.setAnimation(0, monster.idleAnim || monster.moveAnim, true);
+      }
+      return;
+    }
+    if (monster.windupUntil === 0 && toLeader <= range && now >= monster.nextAttackAt) {
+      monster.windupUntil = now + 350;
+      monster.nextAttackAt = now + (monster.camp.elite ? 1100 : monster.ranged ? 1900 : 1300);
+      if (monster.skeleton && monster.skeleton.isValid && monster.attackAnim) {
+        monster.skeleton.setAnimation(0, monster.attackAnim, false);
+      }
+    }
+  }
+
+  private hurtLeader(amount: number): void {
+    const leader = this.leader;
+    if (!leader || this.leaderDead) {
+      return;
+    }
+    this.leaderHp = Math.max(0, this.leaderHp - amount);
+    this.lastHurtAt = Date.now();
+    this.spawnFloater(leader.x, leader.y + 240, `-${amount}`, rgba(255, 90, 80), 28);
+    if (leader.skeleton && leader.skeleton.isValid) {
+      leader.skeleton.color = rgba(255, 140, 140, 255);
+      setTimeout(() => leader.skeleton && leader.skeleton.isValid && (leader.skeleton.color = rgba(255, 255, 255, 255)), 120);
+    }
+    this.drawLeaderHp();
+    if (this.leaderHp <= 0) {
+      this.onLeaderDown();
+    }
+  }
+
+  /** 队长倒下:2 秒后回本图传送阵满血复活;交战中的怪群回满血(不掉东西)。 */
+  private onLeaderDown(): void {
+    const leader = this.leader;
+    if (!leader) {
+      return;
+    }
+    this.leaderDead = true;
+    this.pendingHits = [];
+    this.host.setStatus('你倒下了…将在传送阵复活');
+    const names = leader.names;
+    if (leader.skeleton && leader.skeleton.isValid && names?.death) {
+      leader.skeleton.setAnimation(0, names.death, false);
+    }
+    setTimeout(() => {
+      if (!this.leader || this.leader !== leader || !leader.node.isValid) {
+        return;
+      }
+      const wp = this.def.waypoint;
+      const x = wp.x + 40;
+      const y = wp.y - 150;
+      for (const actor of [leader, ...this.followers]) {
+        actor.x = x;
+        actor.y = y;
+        actor.node.setPosition(x, y, 0);
+      }
+      this.trail = [new Vec2(x, y)];
+      for (const monster of this.monsters) {
+        if (!monster.dead && monster.maxHp > 0) {
+          monster.hp = monster.maxHp;
+          monster.windupUntil = 0;
+          this.drawMonsterHp(monster);
+        }
+      }
+      this.leaderHp = this.leaderMaxHp;
+      this.leaderDead = false;
+      leader.anim = null;
+      this.applyActorAnimation(leader, true);
+      this.drawLeaderHp();
+      this.applyCamera(true);
+    }, 2000);
+  }
+
+  private drawMonsterHp(monster: TownMonster): void {
+    const g = monster.hpBar;
+    if (!g || !g.isValid) {
+      return;
+    }
+    const ratio = monster.maxHp > 0 ? monster.hp / monster.maxHp : 1;
+    const key = Math.round(ratio * 100);
+    if (key === monster.hpDrawn) {
+      return;
+    }
+    monster.hpDrawn = key;
+    g.clear();
+    if (monster.maxHp <= 0 || monster.dead) {
+      return;
+    }
+    const w = monster.camp.elite ? 150 : 100;
+    g.fillColor = rgba(10, 6, 6, 220);
+    g.rect(-w / 2 - 2, -6, w + 4, 12);
+    g.fill();
+    g.fillColor = monster.camp.elite ? rgba(240, 170, 50, 255) : rgba(220, 60, 50, 255);
+    g.rect(-w / 2, -4, w * ratio, 8);
+    g.fill();
+  }
+
+  private drawLeaderHp(): void {
+    const leader = this.leader;
+    if (!leader || !leader.node.isValid) {
+      return;
+    }
+    if (!this.leaderHpBar || !this.leaderHpBar.isValid) {
+      this.leaderHpBar = this.host.addChildPlainNode(leader.node, 'LeaderHp', 0, HERO_SLOT_H + 22, 130, 14).addComponent(Graphics);
+    }
+    const g = this.leaderHpBar;
+    g.clear();
+    if (this.leaderMaxHp <= 0 || this.leaderHp >= this.leaderMaxHp) {
+      return;
+    }
+    const w = 120;
+    const ratio = Math.max(0, this.leaderHp / this.leaderMaxHp);
+    g.fillColor = rgba(10, 6, 6, 220);
+    g.rect(-w / 2 - 2, -6, w + 4, 12);
+    g.fill();
+    g.fillColor = ratio > 0.3 ? rgba(90, 210, 110, 255) : rgba(230, 80, 60, 255);
+    g.rect(-w / 2, -4, w * ratio, 8);
+    g.fill();
+  }
+
+  private spawnFloater(x: number, y: number, text: string, color: ReturnType<typeof rgba>, size: number): void {
+    const root = this.entityRoot;
+    if (!root || !root.isValid) {
+      return;
+    }
+    const label = this.host.addChildLabel(root, 'Floater', text, x + (Math.random() - 0.5) * 30, y, size, color, new Size(200, size * 1.4));
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(20, 8, 4, 255);
+    label.outlineWidth = 3;
+    label.node.setSiblingIndex(root.children.length - 1);
+    const opacity = label.node.addComponent(UIOpacity);
+    tween(label.node).by(0.7, { position: new Vec3(0, 70, 0) }).start();
+    tween(opacity).delay(0.35).to(0.35, { opacity: 0 }).call(() => label.node.isValid && label.node.destroy()).start();
+  }
+
+  /** 右下战斗按钮簇(原型 p6 同款:大普攻 + 三技能 + 翻滚;电脑端挂按键角标)。 */
+  private renderCombatButtons(hud: Node, layout: UiLayout, scale: number): void {
+    this.combatButtons = [];
+    if (this.def.camps.length === 0) {
+      return;
+    }
+    const right = layout.stageRight;
+    const bottom = layout.stageBottom;
+    const showKeys = !isPhoneDesign();
+    const mk = (name: string, x: number, y: number, size: number, text: string, font: number, fill: ReturnType<typeof rgba>, key: string, onPress: () => void, index: number): void => {
+      const node = this.host.addChildPlainNode(hud, name, x, y, size, size);
+      const g = node.addComponent(Graphics);
+      g.fillColor = fill;
+      g.circle(0, 0, size / 2);
+      g.fill();
+      g.strokeColor = rgba(214, 170, 92, 240);
+      g.lineWidth = Math.max(2, 2.5 * scale);
+      g.circle(0, 0, size / 2);
+      g.stroke();
+      const label = this.host.addChildLabel(node, 'Label', text, 0, index >= 0 ? size * 0.08 : 0, font, rgba(255, 236, 190), new Size(size * 0.92, font * 1.4));
+      label.isBold = true;
+      label.enableOutline = true;
+      label.outlineColor = rgba(20, 10, 4, 255);
+      label.outlineWidth = 2;
+      let cd: Label | null = null;
+      if (index >= 0) {
+        cd = this.host.addChildLabel(node, 'Cd', '', 0, -size * 0.24, font * 0.75, rgba(255, 220, 140), new Size(size, font));
+      }
+      if (showKeys) {
+        const r = size * 0.15;
+        const bw = key.length > 1 ? r * (1.2 + key.length * 0.62) : r * 2;
+        const badge = this.host.addChildPlainNode(node, 'KeyHint', size * 0.36 - (bw / 2 - r) * 0.5, size * 0.36, bw, r * 2);
+        const bg = badge.addComponent(Graphics);
+        bg.fillColor = rgba(14, 12, 10, 235);
+        bg.roundRect(-bw / 2, -r, bw, r * 2, r);
+        bg.fill();
+        bg.strokeColor = rgba(214, 170, 92, 240);
+        bg.lineWidth = 1.5;
+        bg.roundRect(-bw / 2, -r, bw, r * 2, r);
+        bg.stroke();
+        const k = this.host.addChildLabel(badge, 'Key', key, 0, 0, key.length > 1 ? r * 0.9 : r * 1.15, rgba(255, 236, 190), new Size(bw - r * 0.5, r * 1.6));
+        k.isBold = true;
+      }
+      node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
+        event.propagationStopped = true;
+        onPress();
+      }, this);
+      this.host.applyImageButtonFeedback(node, 1.06, 0.94);
+      this.combatButtons.push({ node, cd, index });
+    };
+    mk('LobbyFieldAttack', right - 140 * scale, bottom + 150 * scale, 150 * scale, '普攻', 34 * scale, rgba(108, 22, 20, 235), 'J', () => this.leaderAttack(), -1);
+    const skills = LobbyTownRenderer.SKILLS;
+    mk('LobbyFieldSkill0', right - 300 * scale, bottom + 110 * scale, 96 * scale, skills[0].name, 20 * scale, rgba(58, 34, 90, 235), 'K', () => this.leaderSkill(0), 0);
+    mk('LobbyFieldSkill1', right - 280 * scale, bottom + 250 * scale, 96 * scale, skills[1].name, 20 * scale, rgba(58, 34, 90, 235), 'L', () => this.leaderSkill(1), 1);
+    mk('LobbyFieldSkill2', right - 150 * scale, bottom + 320 * scale, 96 * scale, skills[2].name, 20 * scale, rgba(58, 34, 90, 235), 'I', () => this.leaderSkill(2), 2);
+    mk('LobbyFieldDodge', right - 420 * scale, bottom + 90 * scale, 86 * scale, '翻滚', 22 * scale, rgba(24, 38, 70, 235), 'Shift', () => this.leaderDodge(), -2);
+  }
+
+  private refreshCombatButtons(now: number): void {
+    for (const button of this.combatButtons) {
+      if (!button.node.isValid) {
+        continue;
+      }
+      const readyAt = button.index >= 0 ? this.skillReadyAt[button.index] : button.index === -2 ? this.dodgeReadyAt : 0;
+      const left = Math.max(0, readyAt - now);
+      if (button.cd && button.cd.isValid) {
+        const text = left > 0 ? `${Math.ceil(left / 1000)}` : '';
+        if (button.cd.string !== text) {
+          button.cd.string = text;
+        }
+      }
+      const opacity = button.node.getComponent(UIOpacity) ?? button.node.addComponent(UIOpacity);
+      const want = left > 0 || this.leaderDead ? 140 : 255;
+      if (opacity.opacity !== want) {
+        opacity.opacity = want;
+      }
+    }
   }
 }
 

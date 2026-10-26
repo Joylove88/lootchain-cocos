@@ -30,8 +30,10 @@ def js(body):
 
 
 async def main():
-    profile = base.PROFILE + '_world_' + MODE
-    shutil.rmtree(profile, ignore_errors=True)
+    # 浏览器环境复用(首访整包下载约 500MB,每次重下太慢);FRESH=1 才清空
+    profile = base.PROFILE + '_world'
+    if os.environ.get('FRESH') == '1':
+        shutil.rmtree(profile, ignore_errors=True)
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
                              '--window-size=1600,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     try:
@@ -98,6 +100,12 @@ async def main():
             await call('Page.navigate', {'url': base.PAGE})
             r = await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             print('cc', r.get('result', {}).get('result', {}).get('value'), flush=True)
+            # 首访:等启动下载(整包)结束再登录——真实玩家下载完之前进不了登录页
+            for _ in range(600):
+                if await ev("return root && !root.bootPreloadActive ? 'done' : 'boot';") == 'done':
+                    break
+                await asyncio.sleep(2)
+            print('boot preload done', flush=True)
             view = ''
             for _ in range(240):
                 view = await ev("return root ? root.currentView : 'noroot';")
@@ -118,10 +126,11 @@ async def main():
                     break
                 await asyncio.sleep(2)
             print('world', w, flush=True)
-            for _ in range(90):
+            for _ in range(300):
                 if await ev("return root.uiSpriteFrameCache.groupProgress('town') ? 'loading' : 'done';") == 'done':
                     break
                 await asyncio.sleep(2)
+            print('assets ready', flush=True)
             for _ in range(45):
                 ok = await ev("return JSON.stringify({b:t.buildings.filter(b=>b.sprite).length, n:t.npcNodes.length, m:t.monsters.length, spines:[t.leader,...t.followers].filter(a=>a&&a.skeleton).length});")
                 if '"spines":4' in ok:
@@ -176,6 +185,56 @@ async def main():
                 await fight('woods1')
                 print('after woods1', await world(), flush=True)
                 await shot('woods_after')
+            elif MODE == 'probe':
+                c = "const c=root.uiSpriteFrameCache; const w=c.groupWaits.get('town'); "
+                for i in range(1):
+                    print('gate', i, await ev(c + "return JSON.stringify({prog:c.groupProgress('town'), pending:w?Array.from(w.pending).slice(0,6):null, size:w&&w.pending.size, inflight:c.inFlight!==undefined?c.inFlight:(c.loading?c.loading.size:'?'), queue:c.queue?c.queue.length:'?', failed:Array.from(c.failedSpriteFrames||[]).slice(0,5)});"), flush=True)
+                    await asyncio.sleep(10)
+                await ev("root.travelWorldMap('WOODS', null); return 1;")
+                await asyncio.sleep(10)
+                print('probe1', await ev("return JSON.stringify({view:root.currentView, map:t.currentMapCode(), world:!!t.world, mounted:t.isMounted(), ground:t.groundRoot&&t.groundRoot.children.length, ent:t.entityRoot&&t.entityRoot.children.length, leader:!!t.leader, prog:root.uiSpriteFrameCache.groupProgress('town')});"), flush=True)
+                print('render', await ev("try { root.renderCurrentView(); return 'ok world=' + !!t.world + ' bg=' + root.lobbyBackgroundController.isRendered(); } catch(e) { return 'ERR ' + (e.stack||e).toString().slice(0,800); }"), flush=True)
+                print('hud', await ev("try { root.renderLobbyHud(root.resolveLayout()); return 'ok world=' + !!t.world; } catch(e) { return 'ERR ' + (e.stack||e).toString().slice(0,800); }"), flush=True)
+                print('town render', await ev("try { t.render(root.resolveLayout(), true); return 'ok world=' + !!t.world; } catch(e) { return 'ERR ' + (e.stack||e).toString().slice(0,800); }"), flush=True)
+                print('probe2', await ev("return JSON.stringify({world:!!t.world, ground:t.groundRoot&&t.groundRoot.children.length, ent:t.entityRoot&&t.entityRoot.children.length, leader:!!t.leader});"), flush=True)
+                await shot('probe')
+            elif MODE == 'fight':
+                # docs/50 §14 地图即时战斗:机器人走向最近的怪、J 连打、偶尔技能 / 翻滚
+                FBOT = ("window.__fieldBot = setInterval(()=>{ try { " + ROOT_JS + " const L=t.leader; if(!L) return; "
+                        "const alive=t.monsters.filter(m=>!m.dead && m.camp.stageCode===window.__target); [65,68,87,83].forEach(k=>t.keys.delete(k)); "
+                        "if(!alive.length) return; const m=alive.reduce((a,b)=>Math.hypot(b.x-L.x,b.y-L.y)<Math.hypot(a.x-L.x,a.y-L.y)?b:a); "
+                        "const dx=m.x-L.x, dy=m.y-L.y; if(Math.abs(dx)>130||Math.abs(dy)>60){ if(Math.abs(dx)>110) t.keys.add(dx<0?65:68); if(Math.abs(dy)>50) t.keys.add(dy>0?87:83); } "
+                        "else { if((dx>0?1:-1)!==L.facing){ t.keys.add(dx<0?65:68); setTimeout(()=>[65,68].forEach(k=>t.keys.delete(k)),40);} t.leaderAttack(); if(Math.random()<0.08) t.leaderSkill(Math.floor(Math.random()*3)); } } catch(e){} }, 120); return 'bot';")
+                target_map = os.environ.get('FMAP', 'WOODS')
+                camps = os.environ.get('FCAMPS', 'FIELD_WOODS_1,FIELD_WOODS_2,FIELD_WOODS_E').split(',')
+                await ev(f"root.travelWorldMap('{target_map}', null); return 1;")
+                for _ in range(300):
+                    ok = await ev("const g=t.groundRoot; const tiles=g?g.children.filter(c=>c.name.startsWith('Tile_')).length:0; const sp=t.monsters.filter(m=>m.skeleton).length; return (tiles>20 && t.leader && t.leader.skeleton && sp>=3) ? 'ok' : 'wait '+tiles+' '+sp;")
+                    if ok == 'ok':
+                        break
+                    await asyncio.sleep(2)
+                print('map ready', ok, flush=True)
+                await asyncio.sleep(3)
+                await shot('fight_map')
+                await ev(FBOT)
+                for camp in camps:
+                    await ev(f"window.__target='{camp}'; t.campRespawnAt.delete('{camp}'); t.ensureMonsters(); const c=t.def.camps.find(c=>c.stageCode==='{camp}'); t.leader.x=c.x-260; t.leader.y=c.y; t.leader.node.setPosition(t.leader.x,t.leader.y,0); t.trail=[]; return 1;")
+                    t0 = time.time()
+                    shot_done = False
+                    while time.time() - t0 < 90:
+                        st = await ev(f"const ms=t.monsters.filter(m=>m.camp.stageCode==='{camp}'); return JSON.stringify({{alive:ms.filter(m=>!m.dead).length, hp:ms.map(m=>m.hp+'/'+m.maxHp), lhp:Math.round(t.leaderHp)+'/'+t.leaderMaxHp, dead:t.leaderDead, enc:t.encounters.has('{camp}'), resp:t.campRespawnAt.has('{camp}')}});")
+                        if not shot_done and time.time() - t0 > 4:
+                            await shot(f'fight_{camp}')
+                            shot_done = True
+                        if '"resp":true' in st:
+                            break
+                        await asyncio.sleep(1)
+                    print(camp, round(time.time() - t0, 1), 's', st, flush=True)
+                    await asyncio.sleep(2.5)
+                    print('status', await ev("return root.lobbyStatusText || (root.statusLabel && root.statusLabel.string) || '';"), flush=True)
+                await ev("clearInterval(window.__fieldBot); return 1;")
+                print('world', await world(), flush=True)
+                await shot('fight_after')
             elif MODE == 'hunt':
                 await ev("root.travelWorldMap('GRAY', null); return 1;")
                 await asyncio.sleep(6)
