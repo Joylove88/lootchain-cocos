@@ -103,6 +103,10 @@ export const RAID_UI_ASSET_PATHS: readonly string[] = [
   RAID_ART.btnSecondary,
   RAID_ART.btnSmall,
   RAID_ART.btnDisabled,
+  // 信息卡奖励 / 详情卡常用图标:进面板就有图
+  'ui/bag/ai/icon_gold/spriteFrame',
+  'ui/bag/ai/icon_sacred_crystal/spriteFrame',
+  'ui/bag/ai/icon_bound_diamond/spriteFrame',
   ...[0, 1, 2, 3, 4, 5].map((index) => RAID_ART.zoneThumb(index)),
 ];
 const PROTO_W = 1870;
@@ -733,8 +737,12 @@ export class LobbyRaidPanelRenderer {
     this.renderRewardRow(parent, 'LobbyRaidInfoReward', selected.rewardPreview, m, 530, [1500, 1680], 62);
     this.divider(parent, 'LobbyRaidInfoDiv4', m, 1440, 1828, 575);
     if (selected.firstClearRewards.length > 0) {
-      this.label(parent, 'LobbyRaidInfoFirstTitle', selected.cleared ? '首通(已领)' : '首通', m.X(1455), m.Y(612), m.S(27), selected.cleared ? DIM_TEXT : rgba(226, 204, 160, 255), m.HX(150), HorizontalTextAlignment.LEFT);
-      this.renderRewardRow(parent, 'LobbyRaidInfoFirst', selected.firstClearRewards, m, 612, [1580], 50);
+      // 已领不再挤进标题(会被图标盖住):标题固定「首通」,数量后面挂灰色「已领取」,图标置灰
+      this.label(parent, 'LobbyRaidInfoFirstTitle', '首通', m.X(1455), m.Y(612), m.S(27), selected.cleared ? DIM_TEXT : rgba(226, 204, 160, 255), m.HX(110), HorizontalTextAlignment.LEFT);
+      this.renderRewardRow(parent, 'LobbyRaidInfoFirst', selected.firstClearRewards, m, 612, [1580], 50, selected.cleared);
+      if (selected.cleared) {
+        this.label(parent, 'LobbyRaidInfoFirstClaimed', '已领取', m.X(1828), m.Y(612), m.S(23), DIM_TEXT, m.HX(110), HorizontalTextAlignment.RIGHT);
+      }
     }
     const button = this.host.addChildPlainNode(parent, 'LobbyRaidStartButton', m.X(1645), m.Y(690), m.S(392), m.S(72));
     this.paintButton(button, m.S(392), m.S(72), m.ks, selected.unlocked ? '掠夺' : '未解锁', m.S(40), selected.unlocked ? 'primary' : 'disabled');
@@ -745,17 +753,85 @@ export class LobbyRaidPanelRenderer {
     this.label(parent, 'LobbyRaidInfoNote', selected.unlocked ? `消耗体力 ${selected.staminaCost}(胜利才扣)` : '先掠夺上一座矿', m.X(1645), m.Y(757), m.S(23), BODY_TEXT, m.HX(400));
   }
 
-  /** 奖励行:图标中心在 xs[i],「×N」紧跟图标右侧。 */
-  private renderRewardRow(parent: Node, prefix: string, rewards: PlayerBattleRewardItemVO[], m: ProtoMap, y: number, xs: number[], icon: number): void {
+  /** 奖励行:图标中心在 xs[i],「×N」紧跟图标右侧;点图标或数量弹详情卡(用户:不然不知道是啥)。 */
+  private renderRewardRow(parent: Node, prefix: string, rewards: PlayerBattleRewardItemVO[], m: ProtoMap, y: number, xs: number[], icon: number, dimmed = false): void {
     rewards.slice(0, xs.length).forEach((reward, index) => {
       const x = m.X(xs[index]);
       const size = m.S(icon);
       const asset = resolveBagStyleItemIconAsset(reward.resourceCode, reward.resourceType);
-      if (!asset || !this.host.addSprite(`${prefix}Icon_${index}`, asset, x, m.Y(y), size, size, parent)) {
+      const sprite = asset ? this.host.addSprite(`${prefix}Icon_${index}`, asset, x, m.Y(y), size, size, parent) : null;
+      if (sprite) {
+        if (dimmed) {
+          sprite.grayscale = true;
+          sprite.node.addComponent(UIOpacity).opacity = 150;
+        }
+      } else {
         this.label(parent, `${prefix}Txt_${index}`, (reward.resourceName || reward.resourceCode).slice(0, 1), x, m.Y(y), size * 0.5, GOLD_TEXT, size);
       }
-      this.label(parent, `${prefix}Amount_${index}`, `×${Math.round(reward.amount)}`, x + size / 2 + m.S(12), m.Y(y), m.S(27), BODY_TEXT, m.HX(110), HorizontalTextAlignment.LEFT);
+      this.label(parent, `${prefix}Amount_${index}`, `×${Math.round(reward.amount)}`, x + size / 2 + m.S(12), m.Y(y), m.S(27), dimmed ? DIM_TEXT : BODY_TEXT, m.HX(110), HorizontalTextAlignment.LEFT);
+      // 点击区:图标 + 数量整块(手指好点),再点一次或点别处收起
+      const hitW = size + m.S(12) + m.S(80);
+      const hit = this.host.addChildPlainNode(parent, `${prefix}Hit_${index}`, x - size / 2 + hitW / 2, m.Y(y), hitW, Math.max(size, m.S(56)));
+      hit.on(Node.EventType.TOUCH_END, () => this.toggleRewardTip(parent, reward, asset, x, m.Y(y), size, m), this);
     });
+  }
+
+  private rewardTipKey = '';
+
+  /** 奖励详情卡:图标 + 名称 + 类型·数量 + 用途;放在图标上方(放不下就下方)并夹在面板内,底下铺一层透明点击层负责收起。 */
+  private toggleRewardTip(panel: Node, reward: PlayerBattleRewardItemVO, asset: string | null, x: number, y: number, size: number, m: ProtoMap): void {
+    const key = `${reward.resourceCode}@${Math.round(x)},${Math.round(y)}`;
+    const open = this.rewardTipKey === key && !!panel.getChildByName('LobbyRaidRewardTip');
+    this.closeRewardTip(panel);
+    if (open) {
+      return;
+    }
+    this.rewardTipKey = key;
+    const pt = panel.getComponent(UITransform);
+    const pw = pt?.width ?? 1600;
+    const ph = pt?.height ?? 800;
+    const catcher = this.host.addChildPlainNode(panel, 'LobbyRaidRewardTipCatcher', 0, 0, pw * 2, ph * 2);
+    catcher.addComponent(BlockInputEvents);
+    catcher.on(Node.EventType.TOUCH_END, () => this.closeRewardTip(panel), this);
+    const cw = m.S(420);
+    const ch = m.S(180);
+    const cx = Math.max(-pw / 2 + cw / 2 + m.S(10), Math.min(pw / 2 - cw / 2 - m.S(10), x));
+    const above = y + size / 2 + ch / 2 + m.S(14);
+    const cy = above + ch / 2 > ph / 2 - m.S(10) ? y - size / 2 - ch / 2 - m.S(14) : above;
+    const card = this.host.addChildPlainNode(panel, 'LobbyRaidRewardTip', cx, cy, cw, ch);
+    card.addComponent(BlockInputEvents);
+    card.on(Node.EventType.TOUCH_END, () => this.closeRewardTip(panel), this);
+    // 底色要完全不透:先垫一层实心底再画框(单层在原生端会透出下面的字)
+    const solid = this.host.addChildPlainNode(card, 'Solid', 0, 0, cw, ch).addComponent(Graphics);
+    solid.fillColor = rgba(12, 10, 9, 255);
+    solid.rect(-cw / 2 + m.S(3), -ch / 2 + m.S(3), cw - m.S(6), ch - m.S(6));
+    solid.fill();
+    this.ornateFrame(this.host.addChildPlainNode(card, 'Frame', 0, 0, cw, ch).addComponent(Graphics), cw, ch, m.S(10), rgba(14, 12, 11, 255), rgba(214, 170, 96, 245), rgba(110, 84, 46, 220), Math.max(1.5, m.S(2)));
+    const iconSize = m.S(76);
+    const iconX = -cw / 2 + m.S(24) + iconSize / 2;
+    const iconY = ch / 2 - m.S(18) - iconSize / 2;
+    if (!asset || !this.host.addSprite('Icon', asset, iconX, iconY, iconSize, iconSize, card)) {
+      this.label(card, 'IconTxt', (reward.resourceName || reward.resourceCode).slice(0, 1), iconX, iconY, iconSize * 0.5, GOLD_TEXT, iconSize);
+    }
+    const textX = iconX + iconSize / 2 + m.S(16);
+    const textW = cw / 2 - m.S(18) - textX;
+    const name = this.label(card, 'Name', reward.resourceName || reward.resourceCode, textX, iconY + m.S(16), m.S(28), rgba(255, 232, 176, 255), textW, HorizontalTextAlignment.LEFT, true);
+    name.enableOutline = true;
+    name.outlineColor = rgba(20, 10, 6, 255);
+    name.outlineWidth = Math.max(1, m.S(2));
+    this.label(card, 'Meta', `${rewardTypeLabel(reward.resourceType)} · 数量 ×${Math.round(reward.amount)}`, textX, iconY - m.S(20), m.S(21), rgba(214, 200, 166, 245), textW, HorizontalTextAlignment.LEFT);
+    // LEFT 对齐的 x 是左沿
+    const desc = this.host.addChildLabel(card, 'Desc', rewardDescLine(reward.resourceCode), -cw / 2 + m.S(22), -ch / 2 + m.S(40), m.S(20), rgba(196, 186, 164, 240), new Size(cw - m.S(44), m.S(60)), HorizontalTextAlignment.LEFT);
+    desc.overflow = Label.Overflow.SHRINK;
+    desc.enableWrapText = true;
+  }
+
+  private closeRewardTip(panel: Node): void {
+    for (const child of panel.children.slice()) {
+      if (child.name === 'LobbyRaidRewardTip' || child.name === 'LobbyRaidRewardTipCatcher') {
+        child.destroy();
+      }
+    }
   }
 
   // ── 公用 ──
@@ -843,4 +919,39 @@ export class LobbyRaidPanelRenderer {
     }
     return `${Math.floor(minutes / (60 * 24))} 天前`;
   }
+}
+
+function rewardTypeLabel(type: string | undefined): string {
+  const t = (type || '').toUpperCase();
+  if (t === 'CURRENCY') {
+    return '货币';
+  }
+  if (t === 'EQUIP') {
+    return '装备';
+  }
+  if (t === 'HERO_FRAGMENT') {
+    return '英雄碎片';
+  }
+  return '材料 / 道具';
+}
+
+/** 奖励用途说明(只写已上线的用途;熔炉已下架,矿晶不写兑换)。 */
+function rewardDescLine(code: string | undefined): string {
+  const c = (code || '').toUpperCase();
+  if (c === 'GOLD') {
+    return '通用货币,用于英雄升级、锻造与商店购买。';
+  }
+  if (c === 'SACRED_CRYSTAL') {
+    return '矿境的核心资源,存进你的矿库。真人矿掠夺抢的就是矿库里的矿晶,记得开盾保护。';
+  }
+  if (c === 'BOUND_DIAMOND') {
+    return '用于普通召唤(契约券不足时扣绑钻),不能代替钻石。';
+  }
+  if (c === 'DIAMOND') {
+    return '高级货币,用于高级召唤、商店与购买保护盾。';
+  }
+  if (c === 'STAMINA') {
+    return '进入冒险与矿境时消耗,随时间自动恢复。';
+  }
+  return '战斗产出道具,详情可在背包查看。';
 }

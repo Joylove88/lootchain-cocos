@@ -96,8 +96,8 @@ export const BAG_AI_ITEM_ICON_ASSETS: Record<string, string> = {
   DIAMOND: 'ui/bag/ai/icon_diamond/spriteFrame',
   BOUND_DIAMOND: 'ui/bag/ai/icon_bound_diamond/spriteFrame',
   STAMINA: 'ui/bag/ai/icon_stamina/spriteFrame',
-  // 矿晶(P金-1c,docs/27):暂用宝石图标,正式图标待出(遗留项)。
-  SACRED_CRYSTAL: 'ui/common/ai/ic_diamond_gem/spriteFrame',
+  // 矿晶(P金-1c,docs/27):2026-10-26 换正式图标(熔岩矿石上的红色原生晶簇,和钻石 / 绑钻轮廓区分开)。
+  SACRED_CRYSTAL: 'ui/bag/ai/icon_sacred_crystal/spriteFrame',
   LOW_ENHANCE_STONE: 'ui/bag/ai/icon_enhance_low/spriteFrame',
   HIGH_ENHANCE_STONE: 'ui/bag/ai/icon_enhance_high/spriteFrame',
   // 强化道具精确映射(否则会掉进 includes('ENHANCE') 分支错拿强化石图):

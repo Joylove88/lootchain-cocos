@@ -8,6 +8,7 @@
   e_report_icons.png 800×400  剑 / 盾(黑底)→ ic_report_attack / ic_report_defend(192×192,亮度抠透明)
   h/i/j/k_btn_*.png  分级按钮(黑底)→ btn_primary / btn_secondary / btn_small / btn_disabled(高 120,外部黑底抠透明 + 九宫格边距)
   l_back_banner.png  「<」返回横幅(黑底)→ back_banner(高 140,外部黑底抠透明)
+  m_icon_crystal.png 矿晶货币图标(黑底)→ ui/bag/ai/icon_sacred_crystal(160×160,外部黑底抠透明,居中留 4px 边)
 用法:python tools/qa/raid_install_assets.py [--only a,b,c,d,e]
 """
 import io
@@ -168,6 +169,25 @@ def main():
         if name in BUTTON_SLICES:
             write_slice(path, *BUTTON_SLICES[name])
         mark_unimported(path)
+    # 矿晶正式图标(2026-10-26 用户「矿晶图标跟钻石很像」):原先借用召唤钻石图 ic_diamond_gem
+    src_path = os.path.join(SRC, 'm_icon_crystal.png')
+    if want('m') and os.path.exists(src_path):
+        im = outside_alpha(Image.open(src_path), thresh=30)
+        # 外缘零星火星会把包围盒撑大:按亮区(alpha>200 的连片主体)重算包围盒
+        a = np.asarray(im.getchannel('A'))
+        rows = np.where((a > 200).sum(axis=1) > a.shape[1] * 0.04)[0]
+        cols = np.where((a > 200).sum(axis=0) > a.shape[0] * 0.04)[0]
+        im = im.crop((cols.min(), rows.min(), cols.max() + 1, rows.max() + 1))
+        side = 152
+        k = side / max(im.width, im.height)
+        im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+        canvas = Image.new('RGBA', (160, 160), (0, 0, 0, 0))
+        canvas.alpha_composite(im, ((160 - im.width) // 2, (160 - im.height) // 2))
+        dst = os.path.join(ROOT, 'assets', 'resources', 'ui', 'bag', 'ai', 'icon_sacred_crystal.png')
+        canvas.save(dst, optimize=True)
+        write_meta(dst, 'icon_sacred_crystal', 160, 160)
+        mark_unimported(dst)
+        print('installed icon_sacred_crystal', canvas.size)
 
 
 if __name__ == '__main__':

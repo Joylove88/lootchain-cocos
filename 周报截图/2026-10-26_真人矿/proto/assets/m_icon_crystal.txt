@@ -1,0 +1,5 @@
+Game item icon for a currency called "矿晶" (mine crystal ore), dark fantasy mobile RPG, same painted realistic style, lighting and level of detail as the reference gold coin icon (image 2).
+Subject: a compact chunk of dark volcanic ore rock as the base, with a cluster of 4-5 rough natural raw crimson-red crystals growing out of it at different angles (like the crystal cluster in reference image 1), crystals are uncut natural prisms with rough broken tips, NOT a faceted cut gemstone, NOT a diamond shape. Thin glowing orange-red magma veins in the rock, soft inner red glow in the crystals, a few tiny sparkles.
+Silhouette: wide rocky base at the bottom, spiky crystal tips pointing up, overall fits in a square, centered, fills about 85% of the frame.
+Pure flat black background (#000000), no shadow on the background, no frame, no text, no border, no chains, no blue or purple colors.
+Square image 1024x1024.

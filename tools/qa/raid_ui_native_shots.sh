@@ -14,3 +14,10 @@ ev "const s=root.currentLobbyRaidPvpState ? root.currentLobbyRaidPvpState() : nu
 shot raid_pvp
 ev "root.selectLobbyRaidTab('npc'); return 'npc';"; sleep 4
 shot raid_npc
+# 奖励详情卡(真实点击):选中已首通的 6 号矿 → 点矿晶图标 → 点空白收起 → 点首通图标
+ev "root.selectLobbyRaidStage('RAID_6'); return 'r6';"; sleep 3
+shot raid_npc_cleared
+$E shell input tap 2040 680; sleep 2; shot raid_tip_crystal
+$E shell input tap 1200 900; sleep 2
+$E shell input tap 1926 786; sleep 2; shot raid_tip_first
+$E shell input tap 1200 900; sleep 1
