@@ -1,7 +1,7 @@
 import { BlockInputEvents, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UIOpacity, UITransform, Vec3 } from 'cc';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { PlayerBattleRewardItemVO } from '../../types/BattleTypes';
-import type { RaidStagesVO, RaidStageVO } from '../../types/RaidTypes';
+import type { RaidPvpCandidateVO, RaidPvpHomeVO, RaidPvpReportVO, RaidStagesVO, RaidStageVO } from '../../types/RaidTypes';
 import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { mountKitLoading } from '../UiKit';
@@ -19,6 +19,17 @@ export interface LobbyRaidPanelState {
   error: string;
   stages: RaidStagesVO | null;
   selectedStageCode: string;
+  /** 页签:真人矿(默认)/ NPC 矿。 */
+  tab: 'pvp' | 'npc';
+  version: number;
+}
+
+/** 真人矿页数据(docs/49)。 */
+export interface LobbyRaidPvpState {
+  loading: boolean;
+  error: string;
+  home: RaidPvpHomeVO | null;
+  buying: boolean;
   version: number;
 }
 
@@ -30,6 +41,12 @@ export interface LobbyRaidPanelHost {
   reloadLobbyRaidStages(): void;
   selectLobbyRaidStage(stageCode: string): void;
   startLobbyRaidBattle(stageCode: string): void;
+  currentLobbyRaidPvpState(): LobbyRaidPvpState;
+  selectLobbyRaidTab(tab: 'pvp' | 'npc'): void;
+  reloadLobbyRaidPvp(refresh: boolean): void;
+  buyLobbyRaidShield(): void;
+  /** 掠夺真人矿 / 复仇(revengeOf = 被打的战报 id)。 */
+  startLobbyRaidPvp(defenderUserId: number, revengeOf?: number | null): void;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -87,7 +104,10 @@ export class LobbyRaidPanelRenderer {
         { key: 'stamina', icon: STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}` },
       ]);
     }
-    if (state.loading && !state.stages) {
+    this.renderTabs(panel, panelWidth, panelHeight, scale, state.tab);
+    if (state.tab === 'pvp') {
+      this.renderPvp(panel, panelWidth, panelHeight, scale, this.host.currentLobbyRaidPvpState());
+    } else if (state.loading && !state.stages) {
       mountKitLoading(this.host, panel, 0, 10 * scale, scale, '矿境读取中…');
     } else if (state.error && !state.stages) {
       const hint = this.host.addChildLabel(panel, 'LobbyRaidError', `读取失败:${state.error}`, 0, 20 * scale, 18 * scale, rgba(255, 150, 130, 235), new Size(panelWidth * 0.7, 26 * scale));
@@ -377,6 +397,314 @@ export class LobbyRaidPanelRenderer {
     g.moveTo(-cardW * 0.45, 0);
     g.lineTo(cardW * 0.45, 0);
     g.stroke();
+  }
+
+
+  // ── 页签 ──
+
+  private renderTabs(parent: Node, width: number, height: number, scale: number, active: 'pvp' | 'npc'): void {
+    const phone = isPhoneDesign();
+    const font = height * 0.032;
+    const baseX = -width / 2 + width * (phone ? 0.33 : 0.3);
+    const y = height / 2 - height * (phone ? 0.052 : 0.045);
+    const tabs: Array<{ key: 'pvp' | 'npc'; label: string }> = [{ key: 'pvp', label: '真人矿' }, { key: 'npc', label: 'NPC 矿' }];
+    tabs.forEach((tab, index) => {
+      const x = baseX + index * width * 0.11;
+      const node = this.host.addChildPlainNode(parent, `LobbyRaidTab_${tab.key}`, x, y, width * 0.1, font * 1.8);
+      const label = this.host.addChildLabel(node, 'Label', tab.label, 0, 0, font, tab.key === active ? GOLD_TEXT : DIM_TEXT, new Size(width * 0.1, font * 1.4));
+      label.isBold = tab.key === active;
+      if (tab.key === active) {
+        const line = node.addComponent(Graphics);
+        line.strokeColor = rgba(236, 196, 110, 250);
+        line.lineWidth = Math.max(2, height * 0.004);
+        line.moveTo(-width * 0.04, -font * 0.8);
+        line.lineTo(width * 0.04, -font * 0.8);
+        line.stroke();
+      }
+      node.on(Node.EventType.TOUCH_END, () => this.host.selectLobbyRaidTab(tab.key), this);
+      this.host.applyImageButtonFeedback(node, 1.03, 0.97);
+    });
+  }
+
+  // ── 真人矿(原型 pvp_v1:左「我的矿」/ 中「可掠夺的矿」/ 右「战报」)──
+
+  private renderPvp(parent: Node, width: number, height: number, scale: number, state: LobbyRaidPvpState): void {
+    if (state.loading && !state.home) {
+      mountKitLoading(this.host, parent, 0, 10 * scale, scale, '真人矿读取中…');
+      return;
+    }
+    if (state.error && !state.home) {
+      const hint = this.host.addChildLabel(parent, 'LobbyRaidPvpError', `读取失败:${state.error}`, 0, 20 * scale, height * 0.024, rgba(255, 150, 130, 235), new Size(width * 0.7, height * 0.03));
+      hint.overflow = Label.Overflow.SHRINK;
+      const w = width * 0.12;
+      const h = height * 0.06;
+      const button = this.host.addChildPlainNode(parent, 'LobbyRaidPvpRetry', 0, -height * 0.05, w, h);
+      this.paintButton(button, w, h, scale, '重试', height * 0.026);
+      button.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(false), this);
+      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+      return;
+    }
+    const home = state.home;
+    if (!home) {
+      return;
+    }
+    const phone = isPhoneDesign();
+    const top = height / 2 - height * (phone ? 0.11 : 0.1);
+    const bottom = -height / 2 + height * 0.02;
+    this.renderPvpMine(parent, width, height, scale, home, state, top, bottom);
+    this.renderPvpCandidates(parent, width, height, scale, home, top, bottom);
+    this.renderPvpReports(parent, width, height, scale, home, top, bottom);
+  }
+
+  private renderPvpMine(parent: Node, width: number, height: number, scale: number, home: RaidPvpHomeVO, state: LobbyRaidPvpState, top: number, bottom: number): void {
+    const cardW = width * 0.21;
+    const cardH = top - bottom;
+    const card = this.host.addChildBeveledPanelNode(parent, 'LobbyRaidPvpMine', -width / 2 + width * 0.012 + cardW / 2, (top + bottom) / 2, cardW, cardH, rgba(14, 12, 12, 236), GOLD_LINE, 12 * scale);
+    let y = cardH / 2 - height * 0.04;
+    const title = this.host.addChildLabel(card, 'Title', '我的矿', 0, y, height * 0.034, GOLD_TEXT, new Size(cardW * 0.9, height * 0.045));
+    title.isBold = true;
+    y -= height * 0.04;
+    this.drawDivider(card, y, cardW, scale);
+    const iconSize = Math.min(cardW * 0.5, cardH * 0.26);
+    y -= height * 0.03 + iconSize / 2;
+    const icon = resolveBagStyleItemIconAsset('SACRED_CRYSTAL', 'CURRENCY');
+    if (!icon || !this.host.addSprite('Crystal', icon, 0, y, iconSize, iconSize, card)) {
+      const g = this.host.addChildPlainNode(card, 'CrystalFallback', 0, y, iconSize, iconSize).addComponent(Graphics);
+      g.fillColor = rgba(90, 60, 140, 240);
+      g.circle(0, 0, iconSize / 2);
+      g.fill();
+    }
+    y -= iconSize / 2 + height * 0.04;
+    const crystal = this.host.addChildLabel(card, 'Crystal', `矿库 ${home.myCrystal.toLocaleString()}`, 0, y, height * 0.038, GOLD_TEXT, new Size(cardW * 0.94, height * 0.05));
+    crystal.isBold = true;
+    crystal.overflow = Label.Overflow.SHRINK;
+    y -= height * 0.05;
+    const power = this.host.addChildLabel(card, 'Power', `阵容战力 ${home.lineupPower.toLocaleString()}`, 0, y, height * 0.024, rgba(220, 206, 176, 240), new Size(cardW * 0.94, height * 0.032));
+    power.overflow = Label.Overflow.SHRINK;
+    y -= height * 0.05;
+    const shieldLeft = home.shieldUntil ? this.msUntil(home.shieldUntil) : 0;
+    const protectLeft = home.protectUntil ? this.msUntil(home.protectUntil) : 0;
+    const shieldText = shieldLeft > 0 ? `保护盾:剩余 ${this.formatLeft(shieldLeft)}` : protectLeft > 0 ? `新手保护:剩余 ${this.formatLeft(protectLeft)}` : '无盾:矿可能被掠夺';
+    const shield = this.host.addChildLabel(card, 'Shield', shieldText, 0, y, height * 0.022, shieldLeft > 0 || protectLeft > 0 ? rgba(140, 230, 150, 250) : rgba(255, 170, 120, 250), new Size(cardW * 0.94, height * 0.03));
+    shield.overflow = Label.Overflow.SHRINK;
+    const buttonH = Math.min(height * 0.065, cardH * 0.1);
+    const buttonW = Math.min(cardW * 0.86, buttonH * (740 / 211));
+    const buttonY = -cardH / 2 + height * 0.03 + height * 0.03 + buttonH / 2;
+    const button = this.host.addChildPlainNode(card, 'LobbyRaidShieldBuy', 0, buttonY, buttonW, buttonH);
+    this.paintButton(button, buttonW, buttonH, scale, state.buying ? '购买中…' : `买 1 天盾 · ${home.shieldPrice} 钻`, height * 0.024);
+    if (home.canBuyShield && !state.buying) {
+      button.on(Node.EventType.TOUCH_END, () => this.host.buyLobbyRaidShield(), this);
+      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+    } else {
+      button.addComponent(UIOpacity).opacity = 120;
+    }
+    const note = this.host.addChildLabel(card, 'Note', home.canBuyShield ? `被打赢自动得 8 小时盾` : home.shieldNote, 0, -cardH / 2 + height * 0.024, height * 0.018, rgba(190, 178, 150, 220), new Size(cardW * 0.94, height * 0.026));
+    note.overflow = Label.Overflow.SHRINK;
+  }
+
+  private renderPvpCandidates(parent: Node, width: number, height: number, scale: number, home: RaidPvpHomeVO, top: number, bottom: number): void {
+    const left = -width / 2 + width * 0.24;
+    const right = width / 2 - width * 0.245;
+    const areaW = right - left;
+    const titleY = top - height * 0.03;
+    const title = this.host.addChildLabel(parent, 'LobbyRaidPvpTitle', '可掠夺的矿', left + width * 0.01, titleY, height * 0.034, GOLD_TEXT, new Size(areaW * 0.5, height * 0.045), HorizontalTextAlignment.LEFT);
+    title.isBold = true;
+    const refreshW = width * 0.09;
+    const refreshH = height * 0.055;
+    const refresh = this.host.addChildPlainNode(parent, 'LobbyRaidPvpRefresh', right - refreshW / 2, titleY, refreshW, refreshH);
+    this.paintButton(refresh, refreshW, refreshH, scale, '换一批', height * 0.024);
+    refresh.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(true), this);
+    this.host.applyImageButtonFeedback(refresh, 1.04, 0.96);
+    const rowsTop = titleY - height * 0.045;
+    const rows = Math.max(1, home.candidates.length);
+    const gap = height * 0.012;
+    const rowH = Math.min(height * 0.135, (rowsTop - bottom - gap * (rows - 1)) / rows);
+    if (home.candidates.length === 0) {
+      const empty = this.host.addChildLabel(parent, 'LobbyRaidPvpEmpty', '暂时没有可掠夺的矿,点「换一批」或稍后再来', (left + right) / 2, (rowsTop + bottom) / 2, height * 0.024, DIM_TEXT, new Size(areaW, height * 0.03));
+      empty.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    home.candidates.forEach((candidate, index) => {
+      const y = rowsTop - rowH / 2 - index * (rowH + gap);
+      this.renderPvpCandidateRow(parent, candidate, (left + right) / 2, y, areaW, rowH, height, scale, home);
+    });
+  }
+
+  private renderPvpCandidateRow(parent: Node, candidate: RaidPvpCandidateVO, cx: number, cy: number, w: number, h: number, height: number, scale: number, home: RaidPvpHomeVO): void {
+    const row = this.host.addChildPlainNode(parent, `LobbyRaidPvpRow_${candidate.userId}`, cx, cy, w, h);
+    const g = row.addComponent(Graphics);
+    g.fillColor = rgba(14, 12, 12, 225);
+    g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
+    g.fill();
+    g.strokeColor = rgba(120, 96, 56, 190);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
+    g.stroke();
+    const blocked = candidate.attackedRecently;
+    const textColor = blocked ? DIM_TEXT : rgba(236, 224, 196, 250);
+    // 头像(用第一个守卫的头像代表对方阵容)
+    const avatar = h * 0.62;
+    const avatarX = -w / 2 + h * 0.5;
+    const holder = this.host.addChildPlainNode(row, 'Avatar', avatarX, 0, avatar, avatar);
+    const ring = holder.addComponent(Graphics);
+    ring.fillColor = rgba(30, 26, 24, 255);
+    ring.circle(0, 0, avatar / 2);
+    ring.fill();
+    const art = resolveHeroAvatarPath(candidate.defenders[0]?.heroCode);
+    if (!art || !this.host.addSprite('Art', art, 0, 0, avatar * 0.92, avatar * 0.92, holder)) {
+      const initial = this.host.addChildLabel(holder, 'Initial', candidate.nickname.slice(0, 1), 0, 0, avatar * 0.4, textColor, new Size(avatar, avatar * 0.6));
+      initial.isBold = true;
+    }
+    ring.strokeColor = rgba(196, 154, 86, 230);
+    ring.lineWidth = Math.max(1.2, 2 * scale);
+    ring.circle(0, 0, avatar / 2);
+    ring.stroke();
+    // 昵称 / 等级
+    const nameX = avatarX + avatar / 2 + w * 0.02;
+    const name = this.host.addChildLabel(row, 'Name', candidate.nickname, nameX, h * 0.18, height * 0.028, blocked ? DIM_TEXT : GOLD_TEXT, new Size(w * 0.16, height * 0.036), HorizontalTextAlignment.LEFT);
+    name.overflow = Label.Overflow.SHRINK;
+    name.isBold = true;
+    const level = this.host.addChildLabel(row, 'Level', `Lv.${candidate.level}`, nameX, -h * 0.2, height * 0.022, textColor, new Size(w * 0.16, height * 0.03), HorizontalTextAlignment.LEFT);
+    level.overflow = Label.Overflow.SHRINK;
+    // 战力 / 矿库
+    const statX = nameX + w * 0.17;
+    const power = this.host.addChildLabel(row, 'Power', `阵容战力 ${candidate.lineupPower.toLocaleString()}`, statX, h * 0.18, height * 0.024, textColor, new Size(w * 0.28, height * 0.032), HorizontalTextAlignment.LEFT);
+    power.overflow = Label.Overflow.SHRINK;
+    const crystal = this.host.addChildLabel(row, 'Crystal', blocked ? `${home.staminaCost > 0 ? '' : ''}24 小时内已打过` : `矿库 ${candidate.crystal.toLocaleString()} · 可抢 ${candidate.stealPreview.toLocaleString()}`, statX, -h * 0.2, height * 0.022, blocked ? rgba(255, 150, 130, 235) : textColor, new Size(w * 0.28, height * 0.03), HorizontalTextAlignment.LEFT);
+    crystal.overflow = Label.Overflow.SHRINK;
+    // 守卫头像 ×3
+    const slot = h * 0.56;
+    const defendersLeft = statX + w * 0.29;
+    candidate.defenders.slice(0, 3).forEach((defender, index) => {
+      const x = defendersLeft + index * (slot + w * 0.012) + slot / 2;
+      const box = this.host.addChildPlainNode(row, `Def_${index}`, x, h * 0.08, slot, slot);
+      const bg = box.addComponent(Graphics);
+      bg.fillColor = rgba(30, 26, 24, 255);
+      bg.roundRect(-slot / 2, -slot / 2, slot, slot, 4 * scale);
+      bg.fill();
+      const defArt = resolveHeroAvatarPath(defender.heroCode);
+      if (!defArt || !this.host.addSprite('Art', defArt, 0, 0, slot * 0.94, slot * 0.94, box)) {
+        this.host.addChildLabel(box, 'Txt', (defender.heroName || defender.heroCode).slice(0, 1), 0, 0, slot * 0.4, textColor, new Size(slot, slot * 0.6));
+      }
+      bg.strokeColor = rgba(120, 96, 56, 200);
+      bg.lineWidth = Math.max(1, 1.2 * scale);
+      bg.roundRect(-slot / 2, -slot / 2, slot, slot, 4 * scale);
+      bg.stroke();
+      const star = this.host.addChildLabel(row, `DefStar_${index}`, '★'.repeat(Math.max(1, Math.min(5, defender.star))), x, -h * 0.36, height * 0.016, rgba(255, 220, 110, 250), new Size(slot * 1.4, height * 0.02));
+      star.overflow = Label.Overflow.SHRINK;
+    });
+    // 掠夺
+    const buttonH = h * 0.42;
+    const buttonW = Math.min(w * 0.13, buttonH * (740 / 211));
+    const button = this.host.addChildPlainNode(row, 'Attack', w / 2 - buttonW / 2 - w * 0.015, 0, buttonW, buttonH);
+    this.paintButton(button, buttonW, buttonH, scale, '掠夺', height * 0.026);
+    if (blocked) {
+      button.addComponent(UIOpacity).opacity = 110;
+    } else {
+      button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidPvp(candidate.userId, null), this);
+      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+    }
+  }
+
+  private renderPvpReports(parent: Node, width: number, height: number, scale: number, home: RaidPvpHomeVO, top: number, bottom: number): void {
+    const cardW = width * 0.225;
+    const cardH = top - bottom;
+    const card = this.host.addChildBeveledPanelNode(parent, 'LobbyRaidPvpReports', width / 2 - width * 0.012 - cardW / 2, (top + bottom) / 2, cardW, cardH, rgba(14, 12, 12, 236), GOLD_LINE, 12 * scale);
+    let y = cardH / 2 - height * 0.04;
+    const title = this.host.addChildLabel(card, 'Title', '战报', 0, y, height * 0.034, GOLD_TEXT, new Size(cardW * 0.9, height * 0.045));
+    title.isBold = true;
+    y -= height * 0.04;
+    this.drawDivider(card, y, cardW, scale);
+    const rowH = height * 0.105;
+    const maxRows = Math.max(1, Math.floor((y - (-cardH / 2 + height * 0.02)) / rowH));
+    const reports = home.reports.slice(0, maxRows);
+    if (reports.length === 0) {
+      const empty = this.host.addChildLabel(card, 'Empty', '还没有战报,去掠夺一座矿吧', 0, y - rowH, height * 0.02, DIM_TEXT, new Size(cardW * 0.9, height * 0.03));
+      empty.overflow = Label.Overflow.SHRINK;
+      return;
+    }
+    reports.forEach((report, index) => {
+      const rowY = y - rowH / 2 - index * rowH;
+      this.renderPvpReportRow(card, report, rowY, cardW, rowH, height, scale);
+    });
+  }
+
+  private renderPvpReportRow(card: Node, report: RaidPvpReportVO, cy: number, cardW: number, rowH: number, height: number, scale: number): void {
+    const attack = report.role === 'ATTACK';
+    const won = report.result === 'WIN';
+    const tagW = height * 0.04;
+    const tag = this.host.addChildPlainNode(card, `ReportTag_${report.id}`, -cardW / 2 + height * 0.012 + tagW / 2, cy, tagW, tagW);
+    const tg = tag.addComponent(Graphics);
+    tg.fillColor = attack ? rgba(110, 40, 30, 240) : rgba(30, 50, 90, 240);
+    tg.circle(0, 0, tagW / 2);
+    tg.fill();
+    this.host.addChildLabel(tag, 'Txt', attack ? '攻' : '守', 0, 0, tagW * 0.5, rgba(255, 236, 190, 255), new Size(tagW, tagW * 0.7));
+    const textX = -cardW / 2 + height * 0.012 + tagW + height * 0.01;
+    const textW = cardW - tagW - height * 0.04 - (report.canRevenge ? height * 0.1 : 0);
+    const head = this.host.addChildLabel(card, `ReportHead_${report.id}`, attack ? `掠夺 ${report.opponentName}` : `被 ${report.opponentName} 掠夺`, textX, cy + rowH * 0.2, height * 0.021, rgba(236, 224, 196, 250), new Size(textW, height * 0.028), HorizontalTextAlignment.LEFT);
+    head.overflow = Label.Overflow.SHRINK;
+    const delta = report.crystalDelta;
+    const line = `${won ? '胜' : '败'} ${delta >= 0 ? '+' : ''}${delta.toLocaleString()} 矿晶 · ${this.formatAgo(report.createdAt)}`;
+    const body = this.host.addChildLabel(card, `ReportBody_${report.id}`, line, textX, cy - rowH * 0.2, height * 0.019, won ? rgba(140, 230, 150, 250) : rgba(255, 150, 130, 250), new Size(textW, height * 0.026), HorizontalTextAlignment.LEFT);
+    body.overflow = Label.Overflow.SHRINK;
+    if (report.canRevenge) {
+      const bw = height * 0.085;
+      const bh = height * 0.045;
+      const button = this.host.addChildPlainNode(card, `ReportRevenge_${report.id}`, cardW / 2 - bw / 2 - height * 0.012, cy, bw, bh);
+      this.paintButton(button, bw, bh, scale, '复仇', height * 0.02);
+      button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidPvp(report.opponentUserId, report.id), this);
+      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+    }
+    const sep = this.host.addChildPlainNode(card, `ReportSep_${report.id}`, 0, cy - rowH / 2, cardW * 0.9, 2);
+    const sg = sep.addComponent(Graphics);
+    sg.strokeColor = rgba(120, 96, 56, 90);
+    sg.lineWidth = 1;
+    sg.moveTo(-cardW * 0.45, 0);
+    sg.lineTo(cardW * 0.45, 0);
+    sg.stroke();
+  }
+
+  private paintButton(button: Node, w: number, h: number, scale: number, text: string, font: number): void {
+    if (!this.host.addSprite('Bg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, w, h, button)) {
+      const g = button.addComponent(Graphics);
+      g.fillColor = rgba(122, 32, 26, 235);
+      g.roundRect(-w / 2, -h / 2, w, h, 5 * scale);
+      g.fill();
+    }
+    const label = this.host.addChildLabel(button, 'Label', text, 0, 0, font, rgba(255, 240, 205, 255), new Size(w - 10 * scale, font * 1.4));
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(60, 10, 8, 255);
+    label.outlineWidth = Math.max(1, 2 * scale);
+  }
+
+  private msUntil(iso: string): number {
+    const t = Date.parse(iso.includes('T') ? iso : iso.replace(' ', 'T'));
+    return Number.isFinite(t) ? t - Date.now() : 0;
+  }
+
+  private formatLeft(ms: number): string {
+    const minutes = Math.max(0, Math.round(ms / 60000));
+    if (minutes >= 60 * 24) {
+      return `${Math.floor(minutes / (60 * 24))} 天 ${Math.floor((minutes % (60 * 24)) / 60)} 小时`;
+    }
+    return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`;
+  }
+
+  private formatAgo(iso: string): string {
+    if (!iso) {
+      return '';
+    }
+    const ms = -this.msUntil(iso);
+    const minutes = Math.max(0, Math.round(ms / 60000));
+    if (minutes < 60) {
+      return `${Math.max(1, minutes)} 分钟前`;
+    }
+    if (minutes < 60 * 24) {
+      return `${Math.floor(minutes / 60)} 小时前`;
+    }
+    return `${Math.floor(minutes / (60 * 24))} 天前`;
   }
 
   private renderRetryButton(parent: Node, scale: number): void {

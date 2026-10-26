@@ -129,8 +129,8 @@ import { LobbyNoticePanelRenderer, type LobbyNoticePanelHost } from './lobby/Lob
 import { LobbyDailyDungeonPanelRenderer, type LobbyDailyDungeonPanelHost } from './lobby/LobbyDailyDungeonPanelRenderer';
 import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
-import { isRaidStageCode } from '../types/RaidTypes';
-import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState } from './lobby/LobbyRaidPanelRenderer';
+import { isRaidBattleStageCode, isRaidPvpStageCode, isRaidStageCode, raidPvpStageCode } from '../types/RaidTypes';
+import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
@@ -402,8 +402,10 @@ export class LootChainGameRoot extends Component {
   private lobbyDailyDungeonTicket = 0;
   // 矿境掠夺 PVE(docs/48):NPC 矿面板
   private readonly lobbyRaidPanelRenderer = new LobbyRaidPanelRenderer(this as unknown as LobbyRaidPanelHost);
-  private lobbyRaidState: LobbyRaidPanelState = { loading: false, error: '', stages: null, selectedStageCode: '', version: 0 };
+  private lobbyRaidState: LobbyRaidPanelState = { loading: false, error: '', stages: null, selectedStageCode: '', tab: 'pvp', version: 0 };
   private lobbyRaidTicket = 0;
+  private lobbyRaidPvpState: LobbyRaidPvpState = { loading: false, error: '', home: null, buying: false, version: 0 };
+  private lobbyRaidPvpTicket = 0;
   private lobbyRaidPanelOpen = false;
   // 矿晶输出周榜(P金-1c):面板内弹窗按需拉取。
   private lobbyCrystalRankState: import('../types/DailyDungeonTypes').LobbyCrystalRankState = { loading: false, error: '', summary: null, version: 0 };
@@ -1472,7 +1474,7 @@ export class LootChainGameRoot extends Component {
   private isGuardBattleStage(stageCode: string | null | undefined): boolean {
     const code = (stageCode || '').trim();
     // RAID_*:docs/47 掠夺(P0 原型本地开局)
-    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code) || /^RAID_/i.test(code);
+    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code) || /^RAID(PVP)?_/i.test(code);
   }
 
   /**
@@ -5255,6 +5257,105 @@ export class LootChainGameRoot extends Component {
     this.currentView = 'raid';
     this.renderCurrentView();
     void this.loadLobbyRaidStages(true);
+    void this.loadLobbyRaidPvp(false);
+  }
+
+  // ── 真人矿(docs/49)──
+
+  private currentLobbyRaidPvpState(): LobbyRaidPvpState {
+    return this.lobbyRaidPvpState;
+  }
+
+  private selectLobbyRaidTab(tab: 'pvp' | 'npc'): void {
+    if (this.lobbyRaidState.tab === tab) {
+      return;
+    }
+    this.lobbyRaidState = { ...this.lobbyRaidState, tab, version: this.lobbyRaidState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private reloadLobbyRaidPvp(refresh: boolean): void {
+    void this.loadLobbyRaidPvp(refresh);
+  }
+
+  private async loadLobbyRaidPvp(refresh: boolean): Promise<void> {
+    if (this.lobbyRaidPvpState.loading) {
+      return;
+    }
+    const ticket = ++this.lobbyRaidPvpTicket;
+    this.lobbyRaidPvpState = { ...this.lobbyRaidPvpState, loading: true, error: '', version: this.lobbyRaidPvpState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    try {
+      const home = await this.api.raid.pvpHome(refresh);
+      if (ticket !== this.lobbyRaidPvpTicket) {
+        return;
+      }
+      this.lobbyRaidPvpState = { loading: false, error: '', home, buying: false, version: this.lobbyRaidPvpState.version + 1 };
+    } catch (error) {
+      if (ticket !== this.lobbyRaidPvpTicket) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyRaidPvpState = { ...this.lobbyRaidPvpState, loading: false, error: message, version: this.lobbyRaidPvpState.version + 1 };
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  private buyLobbyRaidShield(): void {
+    if (this.lobbyRaidPvpState.buying) {
+      return;
+    }
+    this.lobbyRaidPvpState = { ...this.lobbyRaidPvpState, buying: true, version: this.lobbyRaidPvpState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    void this.api.raid.buyShield().then((home) => {
+      this.lobbyRaidPvpState = { loading: false, error: '', home, buying: false, version: this.lobbyRaidPvpState.version + 1 };
+      this.setStatus('已购买 1 天保护盾');
+      void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lobbyRaidPvpState = { ...this.lobbyRaidPvpState, buying: false, version: this.lobbyRaidPvpState.version + 1 };
+      this.setStatus(`买盾失败:${message}`);
+    }).finally(() => this.renderCurrentLobbyScenePage());
+  }
+
+  /** 掠夺真人矿 / 复仇:走编队确认 → battles/start(RAIDPVP_<对方>[_R<战报>]);盾 / 保护 / 冷却 / 战力闸由后端裁决。 */
+  private startLobbyRaidPvp(defenderUserId: number, revengeOf?: number | null): void {
+    if (!(defenderUserId > 0)) {
+      return;
+    }
+    this.openLobbyBattlePreviewPanel(raidPvpStageCode(defenderUserId, revengeOf));
+  }
+
+  private syntheticRaidPvpStage(stageCode: string): LobbyAdventureStageVO {
+    const match = /^RAIDPVP_(\d+)/i.exec(stageCode.trim());
+    const defenderId = match ? Number(match[1]) : 0;
+    const home = this.lobbyRaidPvpState.home;
+    const candidate = home?.candidates.find((entry) => entry.userId === defenderId) ?? null;
+    const report = home?.reports.find((entry) => entry.opponentUserId === defenderId) ?? null;
+    const name = candidate?.nickname ?? report?.opponentName ?? `玩家 ${defenderId}`;
+    return {
+      stageCode,
+      stageName: `掠夺 ${name} 的矿`,
+      orderNo: 0,
+      unlocked: true,
+      recommended: false,
+      requiredLevel: 0,
+      recommendedPower: candidate?.lineupPower ?? 0,
+      enemySummary: candidate ? `守卫 ${candidate.defenders.map((defender) => defender.heroName).join(' / ')}` : '对方防守阵',
+      rewardPreview: candidate ? [`矿晶 ×${candidate.stealPreview}(抢对方矿库 ${home?.stealPct ?? 10}%)`] : [],
+      statusLabel: '真人矿',
+      unlockHint: '',
+      lockReasonCode: 'NONE',
+      levelGap: 0,
+      requiredLevelNeedExp: 0,
+      expToRequiredLevel: 0,
+      nextGuidanceTitle: '',
+      nextGuidanceText: '',
+      growthSourceSummary: '',
+      growthSourceStatus: '',
+      growthSourceHint: '',
+      repeatableExpAvailable: false,
+    };
   }
 
   private closeLobbyRaidPanel(): void {
@@ -5310,7 +5411,7 @@ export class LootChainGameRoot extends Component {
         return;
       }
       const selected = stages.stages.some((stage) => stage.stageCode === this.lobbyRaidState.selectedStageCode) ? this.lobbyRaidState.selectedStageCode : stages.nextStageCode;
-      this.lobbyRaidState = { loading: false, error: '', stages, selectedStageCode: selected, version: this.lobbyRaidState.version + 1 };
+      this.lobbyRaidState = { loading: false, error: '', stages, selectedStageCode: selected, tab: this.lobbyRaidState.tab, version: this.lobbyRaidState.version + 1 };
     } catch (error) {
       if (ticket !== this.lobbyRaidTicket) {
         return;
@@ -7920,7 +8021,7 @@ export class LootChainGameRoot extends Component {
 
   private resolveLobbyStageCode(stageCode?: string | null): string | null {
     const value = (stageCode ?? '').trim().toUpperCase();
-    return /^MAIN_\d+_\d+$/.test(value) || isDailyDungeonStageCode(value) || isRaidStageCode(value) ? value : null;
+    return /^MAIN_\d+_\d+$/.test(value) || isDailyDungeonStageCode(value) || isRaidBattleStageCode(value) ? value : null;
   }
 
   private resolveDefaultLobbyFormationStageCode(): string | null {
@@ -7944,6 +8045,9 @@ export class LootChainGameRoot extends Component {
     if (isRaidStageCode(stageCode)) {
       return this.syntheticRaidStage(stageCode);
     }
+    if (isRaidPvpStageCode(stageCode)) {
+      return this.syntheticRaidPvpStage(stageCode);
+    }
     const adventure = this.lobbyAdventureLoader.currentState().adventure;
     if (!adventure) {
       return null;
@@ -7954,7 +8058,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private canOpenLobbyBattleEntryStage(stage: LobbyAdventureStageVO | null): boolean {
-    return !!stage && stage.unlocked && (isAnnualMainlineStage(stage.stageCode) || isDailyDungeonStageCode(stage.stageCode) || isRaidStageCode(stage.stageCode));
+    return !!stage && stage.unlocked && (isAnnualMainlineStage(stage.stageCode) || isDailyDungeonStageCode(stage.stageCode) || isRaidBattleStageCode(stage.stageCode));
   }
 
   // 每日副本没有爬塔配置节点,为战斗入口合成只读 stage;开放日/次数/解锁的权威校验在后端 battles/start。

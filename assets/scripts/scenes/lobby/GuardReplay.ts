@@ -162,7 +162,7 @@ export function resolveGuardStageSetup(stageCode: string, recommendedPower: numb
   const isMain = /^MAIN_\d+_\d+$/.test(code);
   const rush = isDaily && code.endsWith('_3');
   // docs/47 P0:掠夺原型关卡(RAID_*)——波次不用,模式 raid 由 guardStartRaid 切入
-  if (code.startsWith('RAID_')) {
+  if (/^RAID(PVP)?_/.test(code)) {
     return { maxWave: 1, mode: 'raid', monsterScale: 1, spawnCountMult: 1, monsterHpMult: 1, monsterBiteMult: undefined, minionHpMult: 1 };
   }
   const scale = isMain && recommendedPower && recommendedPower > 0 ? Math.max(0.25, Math.min(6, recommendedPower / GUARD_MAIN_POWER_BASELINE)) : 1;

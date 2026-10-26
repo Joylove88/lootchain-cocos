@@ -52,3 +52,57 @@ export interface RaidSetupVO {
 export function isRaidStageCode(stageCode: string | null | undefined): boolean {
   return /^RAID_\d{1,3}$/i.test((stageCode ?? '').trim());
 }
+
+/** 真人矿关卡码 RAIDPVP_<对方 userId>[_R<战报 id>](docs/49)。 */
+export function isRaidPvpStageCode(stageCode: string | null | undefined): boolean {
+  return /^RAIDPVP_\d{1,12}(_R\d{1,12})?$/i.test((stageCode ?? '').trim());
+}
+
+/** NPC 矿或真人矿:都走掠夺战斗流。 */
+export function isRaidBattleStageCode(stageCode: string | null | undefined): boolean {
+  return isRaidStageCode(stageCode) || isRaidPvpStageCode(stageCode);
+}
+
+export function raidPvpStageCode(defenderUserId: number, revengeOf?: number | null): string {
+  return `RAIDPVP_${Math.trunc(defenderUserId)}${revengeOf ? `_R${Math.trunc(revengeOf)}` : ''}`;
+}
+
+/** 真人矿页(GET /api/player/raid/pvp/home)。 */
+export interface RaidPvpCandidateVO {
+  userId: number;
+  nickname: string;
+  level: number;
+  lineupPower: number;
+  crystal: number;
+  stealPreview: number;
+  attackedRecently: boolean;
+  defenders: RaidDefenderPreviewVO[];
+}
+
+export interface RaidPvpReportVO {
+  id: number;
+  battleNo: string;
+  role: 'ATTACK' | 'DEFEND';
+  opponentUserId: number;
+  opponentName: string;
+  opponentLevel: number;
+  result: string;
+  crystalDelta: number;
+  createdAt: string;
+  canRevenge: boolean;
+}
+
+export interface RaidPvpHomeVO {
+  myCrystal: number;
+  lineupPower: number;
+  shieldUntil: string | null;
+  protectUntil: string | null;
+  shieldPrice: number;
+  canBuyShield: boolean;
+  shieldNote: string;
+  stealPct: number;
+  penaltyPct: number;
+  staminaCost: number;
+  candidates: RaidPvpCandidateVO[];
+  reports: RaidPvpReportVO[];
+}

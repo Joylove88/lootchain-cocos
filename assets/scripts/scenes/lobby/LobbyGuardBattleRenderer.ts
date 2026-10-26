@@ -1424,7 +1424,7 @@ export class LobbyGuardBattleRenderer {
   private resolveSceneBgName(): string {
     const fallback = 'battle_scene_guard_mine';
     const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
-    if (/^RAID_/.test(stageCode)) {
+    if (/^RAID(PVP)?_/.test(stageCode)) {
       // 矿境掠夺(原型 v1,2026-10-26):别人的矿洞,去格子的石板地面
       return this.uiAssetKnown('ui/battle/battle_scene_raid_mine/spriteFrame') ? 'battle_scene_raid_mine' : fallback;
     }
@@ -1853,7 +1853,7 @@ export class LobbyGuardBattleRenderer {
 
   /** 当前是否矿境掠夺(建场时 sim 可能还没建好,按关卡码判)。 */
   private isRaidStage(): boolean {
-    return this.sim?.mode === 'raid' || /^RAID_/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
+    return this.sim?.mode === 'raid' || /^RAID(PVP)?_/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
   }
   /** 第一列格心 x:紧贴水晶右缘 + 英雄半宽 + 小间隙。 */
   private firstCellX(): number {

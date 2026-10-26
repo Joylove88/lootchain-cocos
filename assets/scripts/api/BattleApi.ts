@@ -1,5 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
-import { isRaidStageCode, type RaidSetupDefenderVO, type RaidSetupVO } from '../types/RaidTypes';
+import { isRaidBattleStageCode, type RaidSetupDefenderVO, type RaidSetupVO } from '../types/RaidTypes';
 import { guardRawHeroFromLineupJson, normalizeGuardCrystalSnapshot, normalizeGuardMonsterEntry } from '../scenes/lobby/GuardReplay';
 import type {
   PlayerBattleCurrencyChangeVO,
@@ -132,8 +132,9 @@ function validateCrystalRankSummary(data: unknown): CrystalRankSummaryVO {
 // 每日材料副本(P7b):关卡码 DAILY_{THEME}_{TIER};结算模式 DAILY_DUNGEON。
 const DAILY_STAGE_PATTERN = /^DAILY_(AWAKEN|FORGE|ARCANE|ABYSS)_[1-3]$/;
 const DAILY_SETTLEMENT_MODE = 'DAILY_DUNGEON';
-/** 矿境掠夺 PVE 结算模式(docs/48,后端 RaidStageRules.SETTLEMENT_MODE)。 */
+/** 矿境掠夺结算模式(docs/48 NPC 矿 RAID_PVE / docs/49 真人矿 RAID_PVP)。 */
 const RAID_SETTLEMENT_MODE = 'RAID_PVE';
+const RAID_PVP_SETTLEMENT_MODE = 'RAID_PVP';
 
 // 结算奖励安全边界采用「黑名单」而非白名单:只拦支付(钻石/USDT)、链上/未开放的 EX 代币、直发英雄/碎片——
 // 这些当前阶段绝不该经战斗结算下发,出现即视为后端配置错误。其余(金币/装备/宝石/材料/技能与觉醒道具/矿晶等
@@ -294,7 +295,7 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
   }
   const stageCode = readStageCode(data, 'stageCode');
   const readonlyEconomy = data.readonlyEconomy === true;
-  if (!readonlyEconomy && !isRealMainlineStage(stageCode) && !isDailyDungeonStageCode(stageCode) && !isRaidStageCode(stageCode)) {
+  if (!readonlyEconomy && !isRealMainlineStage(stageCode) && !isDailyDungeonStageCode(stageCode) && !isRaidBattleStageCode(stageCode)) {
     throw new Error('战斗会话响应格式错误：只有冒险 MAIN_1_1 至 MAIN_25_16 可进入真实首通结算');
   }
   if (stageCode !== expectedStageCode) {
@@ -386,9 +387,9 @@ function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
       throw new Error('战斗结算响应格式错误：每日副本结算字段不完整');
     }
     assertSafeDailyRewards(rewardItems);
-  } else if (settlementMode === RAID_SETTLEMENT_MODE) {
-    // 矿境掠夺 PVE(docs/48):胜利每次发奖,首通才推进(progressApplied 可为 0)。
-    if (!isRaidStageCode(stageCode) || !rewardGranted || readonlyEconomy || !economyApplied) {
+  } else if (settlementMode === RAID_SETTLEMENT_MODE || settlementMode === RAID_PVP_SETTLEMENT_MODE) {
+    // 矿境掠夺(docs/48 NPC / docs/49 真人):胜利每次发奖,首通才推进(progressApplied 可为 0)。
+    if (!isRaidBattleStageCode(stageCode) || !rewardGranted || readonlyEconomy || !economyApplied) {
       throw new Error('战斗结算响应格式错误：掠夺结算字段不完整');
     }
     assertSafeRaidRewards(rewardItems);
@@ -468,7 +469,7 @@ function validateRecentBattle(item: unknown): PlayerBattleRecentVO {
 
 function readSettlementMode(record: UnknownRecord): string {
   const mode = readText(record, 'settlementMode', 32, 'NO_REWARD');
-  if (mode === 'NO_REWARD' || mode === DAILY_SETTLEMENT_MODE || mode === RAID_SETTLEMENT_MODE || isRealSettlementMode(mode)) {
+  if (mode === 'NO_REWARD' || mode === DAILY_SETTLEMENT_MODE || mode === RAID_SETTLEMENT_MODE || mode === RAID_PVP_SETTLEMENT_MODE || isRealSettlementMode(mode)) {
     return mode;
   }
   throw new Error(`战斗结算响应包含未开放模式：${mode}`);
@@ -713,7 +714,7 @@ function readStageCode(record: UnknownRecord, key: string): string {
 
 function normalizeMainStageCode(stageCode: string): string {
   const value = (stageCode || '').trim().toUpperCase();
-  if (isDailyDungeonStageCode(value) || isRaidStageCode(value)) {
+  if (isDailyDungeonStageCode(value) || isRaidBattleStageCode(value)) {
     return value;
   }
   if (!/^MAIN_\d+_\d+$/.test(value)) {

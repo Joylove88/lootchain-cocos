@@ -8324,5 +8324,8 @@ function formatBattleStageDisplayName(stageCode: string | null | undefined): str
   if (value === 'RAID_P0') {
     return '矿境掠夺';
   }
+  if (/^RAIDPVP_/.test(value)) {
+    return '掠夺真人矿';
+  }
   return value;
 }
