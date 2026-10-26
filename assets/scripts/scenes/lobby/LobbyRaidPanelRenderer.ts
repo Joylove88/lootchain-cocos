@@ -79,7 +79,16 @@ const RAID_ART = {
   zoneThumb: (index: number) => `ui/raid/zone_thumb_${index + 1}/spriteFrame`,
   attack: 'ui/raid/ic_report_attack/spriteFrame',
   defend: 'ui/raid/ic_report_defend/spriteFrame',
+  backBanner: 'ui/raid/back_banner/spriteFrame',
+  btnPrimary: 'ui/raid/btn_primary/spriteFrame',
+  btnSecondary: 'ui/raid/btn_secondary/spriteFrame',
+  btnSmall: 'ui/raid/btn_small/spriteFrame',
+  btnDisabled: 'ui/raid/btn_disabled/spriteFrame',
 };
+/** 按钮层级(2026-10-26 用户「按钮全是一样的,应该根据主次做不同的按钮」):主操作 / 次级 / 小按钮 / 不可点。 */
+type RaidButtonStyle = 'primary' | 'secondary' | 'small' | 'disabled';
+/** 分级按钮素材统一 120 高(tools/qa/raid_install_assets.py)。 */
+const RAID_BUTTON_SRC_H = 120;
 /** 矿境面板整组素材(UiSpriteFrameCache 预载组 'raid':首开等齐再画)。 */
 export const RAID_UI_ASSET_PATHS: readonly string[] = [
   RAID_ART.backdrop,
@@ -89,19 +98,25 @@ export const RAID_UI_ASSET_PATHS: readonly string[] = [
   RAID_ART.nodeOff,
   RAID_ART.attack,
   RAID_ART.defend,
+  RAID_ART.backBanner,
+  RAID_ART.btnPrimary,
+  RAID_ART.btnSecondary,
+  RAID_ART.btnSmall,
+  RAID_ART.btnDisabled,
   ...[0, 1, 2, 3, 4, 5].map((index) => RAID_ART.zoneThumb(index)),
 ];
 const PROTO_W = 1870;
 const PROTO_H = 841;
 const STAGES_PER_ZONE = 10;
 const GOLD_LINE = rgba(176, 134, 70, 235);
-const GOLD_DIM = rgba(120, 96, 56, 170);
+const GOLD_DIM = rgba(150, 118, 66, 225);
 const GOLD_TEXT = rgba(240, 216, 160, 255);
 const BODY_TEXT = rgba(232, 222, 200, 250);
 const DIM_TEXT = rgba(160, 150, 130, 235);
 const GREEN_TEXT = rgba(120, 220, 140, 250);
 const RED_TEXT = rgba(240, 90, 80, 250);
 const CARD_FILL = rgba(12, 10, 10, 196);
+const LOCK_GREY = rgba(118, 116, 112, 235);
 
 /** 千分位(安卓原生 toLocaleString 不分组)。 */
 function fmt(value: number): string {
@@ -136,7 +151,7 @@ interface ProtoMap {
 function protoMap(width: number, height: number): ProtoMap {
   const kx = width / PROTO_W;
   const ky = height / PROTO_H;
-  const ks = Math.min(kx, ky);
+  const ks = Math.min(ky, kx * 1.1);
   return {
     X: (px) => -width / 2 + px * kx,
     Y: (py) => height / 2 - py * ky,
@@ -186,6 +201,7 @@ export class LobbyRaidPanelRenderer {
         { key: 'stamina', icon: STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}` },
       ]);
     }
+    this.renderBackBanner(panel, m);
     this.renderTabs(panel, panelWidth, m, state.tab);
     if (state.tab === 'pvp') {
       this.renderPvp(panel, panelWidth, scale, m, this.host.currentLobbyRaidPvpState());
@@ -203,7 +219,8 @@ export class LobbyRaidPanelRenderer {
     const phoneHelp = isPhoneDesign()
       ? '真人矿:挑一个玩家的矿,打倒守卫、砸碎水晶就抢走对方矿库的 10%;输了赔自己矿库的 5%。被打赢自动得 8 小时盾,也可以花钻买盾。\n\nNPC 矿:练手与保底收入,每座胜利扣 6 体力,首通有绑定钻石。'
       : '';
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyRaidBackButton', () => this.host.closeLobbyRaidPanel(), scale, '矿境', phoneHelp);
+    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyRaidBackButton', () => this.host.closeLobbyRaidPanel(), scale, '', '');
+    void phoneHelp;
   }
 
   private resolveSelected(state: LobbyRaidPanelState): RaidStageVO | null {
@@ -216,12 +233,38 @@ export class LobbyRaidPanelRenderer {
       ?? stages[0];
   }
 
+  /** 原型左上「< 矿境」返回横幅(原型 x 15..355,y 4..76):点了关面板。 */
+  private backBannerRight = 0;
+
+  private renderBackBanner(parent: Node, m: ProtoMap): void {
+    const h = m.S(72);
+    const w = h * (642 / 140);
+    const x = m.X(15) + w / 2;
+    const y = m.Y(40);
+    this.backBannerRight = x + w / 2;
+    const node = this.host.addChildPlainNode(parent, 'LobbyRaidBackBanner', x, y, w, h);
+    if (!this.host.addSprite('Art', RAID_ART.backBanner, 0, 0, w, h, node)) {
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(110, 20, 18, 240);
+      g.rect(-w / 2, -h / 2, w, h);
+      g.fill();
+      this.label(node, 'Chevron', '<', -w / 2 + w * 0.15, 0, m.S(40), rgba(250, 236, 200, 255), w * 0.12, HorizontalTextAlignment.CENTER, true);
+    }
+    const title = this.label(node, 'Title', '矿境', w * 0.06, m.S(1), m.S(36), rgba(250, 232, 190, 255), w * 0.5, HorizontalTextAlignment.CENTER, true);
+    title.enableOutline = true;
+    title.outlineColor = rgba(40, 6, 4, 255);
+    title.outlineWidth = Math.max(1, m.S(2));
+    node.on(Node.EventType.TOUCH_END, () => this.host.closeLobbyRaidPanel(), this);
+    this.host.applyImageButtonFeedback(node, 1.03, 0.97);
+  }
+
   // ── 页签(原型 pvp_v1:返回横幅右侧「真人矿 | NPC 矿」,选中金色 + 下方金线)──
 
   private renderTabs(parent: Node, width: number, m: ProtoMap, active: 'pvp' | 'npc'): void {
-    // 手机的返回横幅 + 「?」比原型宽:页签整体右移到横幅之后
-    const bannerRight = -width / 2 + width * (isPhoneDesign() ? 0.255 : 0.17);
-    const shift = Math.max(0, bannerRight + m.S(30) - m.X(318));
+    // 横幅在页签之前画好,页签紧跟横幅右侧(原型间距 ≈ 40)
+    const bannerRight = this.backBannerRight || m.X(355);
+    const shift = Math.max(0, bannerRight + m.S(40) - m.X(318));
+    void width;
     const tabs: Array<{ key: 'pvp' | 'npc'; label: string; x: number }> = [
       { key: 'pvp', label: '真人矿', x: 383 },
       { key: 'npc', label: 'NPC 矿', x: 555 },
@@ -232,12 +275,21 @@ export class LobbyRaidPanelRenderer {
       const label = this.host.addChildLabel(node, 'Label', tab.label, 0, m.S(2), m.S(32), on ? GOLD_TEXT : DIM_TEXT, new Size(m.S(150), m.S(44)));
       label.isBold = on;
       if (on) {
+        // 原型:中间亮、两端渐隐的金线 + 下方一层淡辉光
         const line = node.addComponent(Graphics);
-        line.strokeColor = rgba(232, 190, 104, 250);
-        line.lineWidth = Math.max(2, m.S(3));
-        line.moveTo(-m.S(80), -m.S(30));
-        line.lineTo(m.S(80), -m.S(30));
-        line.stroke();
+        const half = m.S(88);
+        const seg = 16;
+        for (let i = 0; i < seg; i += 1) {
+          const t = Math.abs((i + 0.5) / seg - 0.5) * 2;
+          const a = Math.round(250 * (1 - t * t));
+          const x0 = -half + (2 * half * i) / seg;
+          line.fillColor = rgba(240, 196, 104, a);
+          line.rect(x0, -m.S(31), (2 * half) / seg + 0.5, Math.max(2, m.S(3)));
+          line.fill();
+          line.fillColor = rgba(240, 180, 90, Math.round(a * 0.22));
+          line.rect(x0, -m.S(36), (2 * half) / seg + 0.5, m.S(5));
+          line.fill();
+        }
       }
       node.on(Node.EventType.TOUCH_END, () => this.host.selectLobbyRaidTab(tab.key), this);
       this.host.applyImageButtonFeedback(node, 1.03, 0.97);
@@ -254,12 +306,43 @@ export class LobbyRaidPanelRenderer {
     return this.host.addChildBeveledPanelNode(parent, name, r.cx, r.cy, r.w, r.h, fill, GOLD_LINE, m.S(12));
   }
 
+  /** 原型行框:四角斜切、外圈金线、内缩一圈暗金线。 */
+  private ornateFrame(g: Graphics, w: number, h: number, cut: number, fill: Color, line: Color, inner: Color, lw: number): void {
+    const path = (inset: number): void => {
+      const x0 = -w / 2 + inset;
+      const x1 = w / 2 - inset;
+      const y0 = -h / 2 + inset;
+      const y1 = h / 2 - inset;
+      const c = Math.max(0, cut - inset * 0.6);
+      g.moveTo(x0 + c, y1);
+      g.lineTo(x1 - c, y1);
+      g.lineTo(x1, y1 - c);
+      g.lineTo(x1, y0 + c);
+      g.lineTo(x1 - c, y0);
+      g.lineTo(x0 + c, y0);
+      g.lineTo(x0, y0 + c);
+      g.lineTo(x0, y1 - c);
+      g.close();
+    };
+    path(0);
+    g.fillColor = fill;
+    g.fill();
+    path(0);
+    g.strokeColor = line;
+    g.lineWidth = lw;
+    g.stroke();
+    path(lw * 2.6);
+    g.strokeColor = inner;
+    g.lineWidth = Math.max(1, lw * 0.6);
+    g.stroke();
+  }
+
   /** 原型分隔线(可带中心菱形)。 */
   private divider(parent: Node, name: string, m: ProtoMap, x0: number, x1: number, y: number, diamond = false): void {
     const node = this.host.addChildPlainNode(parent, name, 0, 0, 2, 2);
     const g = node.addComponent(Graphics);
     g.strokeColor = GOLD_DIM;
-    g.lineWidth = Math.max(1, m.S(1.4));
+    g.lineWidth = Math.max(1.5, m.S(2));
     g.moveTo(m.X(x0), m.Y(y));
     g.lineTo(m.X(x1), m.Y(y));
     g.stroke();
@@ -312,11 +395,10 @@ export class LobbyRaidPanelRenderer {
     const art = this.rect(m, 28, 171, 425, 818);
     const clip = this.host.addChildPlainNode(parent, 'LobbyRaidPvpMineArt', art.cx, art.cy, art.w, art.h);
     clip.addComponent(Mask);
-    // 插画(600×1068)里矿晶中心在 38% 高处,要落在裁切区 20% 高处:sh ≥ 1.29h 才能盖满下沿
-    const cover = Math.max(art.w / 600, (art.h * 1.3) / 1068);
-    const sw = 600 * cover;
-    const sh = 1068 * cover;
-    this.host.addSprite('Art', RAID_ART.mineCard, 0, art.h * 0.3 - sh * 0.12, sw, sh, clip);
+    // 插画(600×1068)只裁掉顶上 10% 的洞顶:矿晶(插画 15%~50%)整颗露在卡面上半;sh ≥ 1.12h 盖满下沿
+    const sh = Math.max(art.h * 1.12, (art.w * 1068) / 600);
+    const sw = (sh * 600) / 1068;
+    this.host.addSprite('Art', RAID_ART.mineCard, 0, art.h / 2 + sh * 0.1 - sh / 2, sw, sh, clip);
     this.label(parent, 'LobbyRaidPvpMineTitle', '我的矿', m.X(227), m.Y(137), m.S(34), GOLD_TEXT, m.HX(300), HorizontalTextAlignment.CENTER, true);
     this.divider(parent, 'LobbyRaidPvpMineDiv1', m, 60, 395, 170);
     // 「矿库 17,922」:小字「矿库」+ 大号数字,整体居中
@@ -343,12 +425,12 @@ export class LobbyRaidPanelRenderer {
     this.host.addSprite('LobbyRaidPvpShieldIcon', RAID_ART.defend, m.X(82), m.Y(598), m.S(46), m.S(46), parent);
     this.label(parent, 'LobbyRaidPvpShield', shieldText, m.X(118), m.Y(600), m.S(26), guarded ? GREEN_TEXT : rgba(255, 170, 120, 250), m.HX(300), HorizontalTextAlignment.LEFT);
     const button = this.host.addChildPlainNode(parent, 'LobbyRaidShieldBuy', m.X(227), m.Y(682), m.S(276), m.S(64));
-    this.paintButton(button, m.S(276), m.S(64), m.ks, state.buying ? '购买中…' : `买 1 天盾 · ${home.shieldPrice} 钻`, m.S(26));
-    if (home.canBuyShield && !state.buying) {
+    const canBuy = home.canBuyShield && !state.buying;
+    this.paintButton(button, m.S(276), m.S(64), m.ks, state.buying ? '购买中…' : `买 1 天盾 · ${home.shieldPrice} 钻`, m.S(26), canBuy ? 'secondary' : 'disabled');
+    if (canBuy) {
       button.on(Node.EventType.TOUCH_END, () => this.host.buyLobbyRaidShield(), this);
       this.host.applyImageButtonFeedback(button, 1.04, 0.96);
     } else {
-      button.addComponent(UIOpacity).opacity = 120;
       if (!state.buying) {
         this.label(parent, 'LobbyRaidShieldNote', home.shieldNote, m.X(227), m.Y(735), m.S(20), DIM_TEXT, m.HX(360));
       }
@@ -360,7 +442,7 @@ export class LobbyRaidPanelRenderer {
     this.card(parent, 'LobbyRaidPvpList', m, 441, 99, 1413, 820);
     this.label(parent, 'LobbyRaidPvpTitle', '可掠夺的矿', m.X(485), m.Y(137), m.S(32), GOLD_TEXT, m.HX(300), HorizontalTextAlignment.LEFT, true);
     const refresh = this.host.addChildPlainNode(parent, 'LobbyRaidPvpRefresh', m.X(1300), m.Y(137), m.S(190), m.S(56));
-    this.paintButton(refresh, m.S(190), m.S(56), m.ks, '换一批', m.S(26));
+    this.paintButton(refresh, m.S(190), m.S(56), m.ks, '换一批', m.S(26), 'secondary');
     refresh.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(true), this);
     this.host.applyImageButtonFeedback(refresh, 1.04, 0.96);
     if (home.candidates.length === 0) {
@@ -378,14 +460,7 @@ export class LobbyRaidPanelRenderer {
     const id = candidate.userId;
     const r = this.rect(m, L, top, R, top + 117);
     const row = this.host.addChildPlainNode(parent, `LobbyRaidPvpRow_${id}`, r.cx, r.cy, r.w, r.h);
-    const g = row.addComponent(Graphics);
-    g.fillColor = rgba(18, 15, 13, 235);
-    g.roundRect(-r.w / 2, -r.h / 2, r.w, r.h, m.S(8));
-    g.fill();
-    g.strokeColor = rgba(150, 116, 62, 220);
-    g.lineWidth = Math.max(1, m.S(1.6));
-    g.roundRect(-r.w / 2, -r.h / 2, r.w, r.h, m.S(8));
-    g.stroke();
+    this.ornateFrame(row.addComponent(Graphics), r.w, r.h, m.S(10), rgba(22, 18, 15, 235), rgba(168, 128, 66, 235), rgba(90, 70, 40, 200), Math.max(1.2, m.S(1.8)));
     const blocked = candidate.attackedRecently;
     const text = blocked ? DIM_TEXT : BODY_TEXT;
     // 圆头像(金环):对方阵容第一个英雄
@@ -417,10 +492,8 @@ export class LobbyRaidPanelRenderer {
       this.label(parent, `LobbyRaidPvpDefStar_${id}_${index}`, starText(defender.star), x, m.Y(mid + 38), m.S(20), rgba(250, 210, 90, 250), m.HX(76));
     });
     const button = this.host.addChildPlainNode(parent, `LobbyRaidPvpAttack_${id}`, m.X(L + 874), m.Y(mid), m.S(120), m.S(48));
-    this.paintButton(button, m.S(120), m.S(48), m.ks, '掠夺', m.S(26));
-    if (blocked) {
-      button.addComponent(UIOpacity).opacity = 110;
-    } else {
+    this.paintButton(button, m.S(120), m.S(48), m.ks, '掠夺', m.S(26), blocked ? 'disabled' : 'secondary');
+    if (!blocked) {
       button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidPvp(candidate.userId, null), this);
       this.host.applyImageButtonFeedback(button, 1.04, 0.96);
     }
@@ -436,7 +509,7 @@ export class LobbyRaidPanelRenderer {
       return;
     }
     const reports = home.reports.slice(0, 6);
-    reports.forEach((report, index) => this.renderPvpReportRow(parent, report, m, 225 + index * 108, index < reports.length - 1));
+    reports.forEach((report, index) => this.renderPvpReportRow(parent, report, m, 225 + index * 108, true));
   }
 
   private renderPvpReportRow(parent: Node, report: RaidPvpReportVO, m: ProtoMap, cy: number, separator: boolean): void {
@@ -454,7 +527,7 @@ export class LobbyRaidPanelRenderer {
     this.label(parent, `LobbyRaidPvpReportAgo_${id}`, this.formatAgo(report.createdAt), m.X(timeRight), m.Y(cy + 22), m.S(21), DIM_TEXT, m.HX(120), HorizontalTextAlignment.RIGHT);
     if (report.canRevenge) {
       const button = this.host.addChildPlainNode(parent, `LobbyRaidPvpRevenge_${id}`, m.X(1788), m.Y(cy), m.S(96), m.S(50));
-      this.paintButton(button, m.S(96), m.S(50), m.ks, '复仇', m.S(24));
+      this.paintButton(button, m.S(96), m.S(50), m.ks, '复仇', m.S(24), 'small');
       button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidPvp(report.opponentUserId, report.id), this);
       this.host.applyImageButtonFeedback(button, 1.04, 0.96);
     }
@@ -485,15 +558,17 @@ export class LobbyRaidPanelRenderer {
       const unlocked = zone.stages.some((stage) => stage.unlocked);
       const node = this.host.addChildPlainNode(parent, `LobbyRaidZone_${index}`, r.cx, r.cy, r.w, r.h);
       const g = node.addComponent(Graphics);
-      g.fillColor = rgba(24, 22, 22, 245);
+      g.fillColor = unlocked ? rgba(26, 23, 22, 245) : rgba(22, 22, 22, 240);
       g.rect(-r.w / 2, -r.h / 2, r.w, r.h);
       g.fill();
       // 右半缩略图(原型 x ≈ 200..365)+ 左缘渐隐
       const thumbW = m.HX(170);
       const thumbClip = this.host.addChildPlainNode(node, 'ThumbClip', r.w / 2 - thumbW / 2 - m.S(3), 0, thumbW, r.h - m.S(6));
       thumbClip.addComponent(Mask);
-      if (this.host.addSprite('Thumb', RAID_ART.zoneThumb(index), 0, 0, thumbW, thumbW, thumbClip)) {
-        thumbClip.addComponent(UIOpacity).opacity = active ? 255 : unlocked ? 190 : 120;
+      const thumb = this.host.addSprite('Thumb', RAID_ART.zoneThumb(index), 0, 0, thumbW, thumbW, thumbClip);
+      if (thumb) {
+        thumb.grayscale = !unlocked;
+        thumbClip.addComponent(UIOpacity).opacity = active ? 255 : unlocked ? 200 : 150;
         const fade = this.host.addChildPlainNode(thumbClip, 'Fade', 0, 0, thumbW, r.h).addComponent(Graphics);
         for (let i = 0; i < 8; i += 1) {
           fade.fillColor = rgba(24, 22, 22, Math.round(245 * (1 - i / 8)));
@@ -501,31 +576,24 @@ export class LobbyRaidPanelRenderer {
           fade.fill();
         }
       }
+      // 原型:整圈斜切角双线框;选中亮金加粗,未解锁整行灰
       const border = this.host.addChildPlainNode(node, 'Border', 0, 0, r.w, r.h).addComponent(Graphics);
-      border.strokeColor = active ? rgba(236, 196, 110, 255) : rgba(110, 96, 74, 200);
-      border.lineWidth = Math.max(1, m.S(active ? 2.6 : 1.6));
-      border.rect(-r.w / 2, -r.h / 2, r.w, r.h);
-      border.stroke();
-      // 四角金饰
-      const c = m.S(14);
-      border.strokeColor = active ? rgba(250, 214, 130, 255) : rgba(150, 126, 84, 220);
-      border.lineWidth = Math.max(1.5, m.S(3));
-      for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
-        const x = (sx * r.w) / 2;
-        const y = (sy * r.h) / 2;
-        border.moveTo(x - sx * c, y);
-        border.lineTo(x, y);
-        border.lineTo(x, y - sy * c);
-      }
-      border.stroke();
-      const name = this.host.addChildLabel(node, 'Name', zone.name, -r.w / 2 + m.HX(33), 0, m.S(34), active ? rgba(250, 236, 200, 255) : unlocked ? BODY_TEXT : DIM_TEXT, new Size(m.HX(200), m.S(46)), HorizontalTextAlignment.LEFT);
+      this.ornateFrame(border, r.w, r.h, m.S(9), rgba(0, 0, 0, 0),
+        active ? rgba(246, 206, 120, 255) : unlocked ? rgba(176, 140, 80, 235) : rgba(120, 118, 112, 235),
+        active ? rgba(150, 110, 50, 230) : unlocked ? rgba(96, 76, 46, 210) : rgba(70, 70, 68, 210),
+        Math.max(1.5, m.S(active ? 3 : 2)));
+      const name = this.host.addChildLabel(node, 'Name', zone.name, -r.w / 2 + m.HX(33), 0, m.S(34), active ? rgba(250, 236, 200, 255) : unlocked ? BODY_TEXT : LOCK_GREY, new Size(m.HX(200), m.S(46)), HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
       name.isBold = active;
       name.enableOutline = true;
       name.outlineColor = rgba(10, 6, 4, 255);
       name.outlineWidth = Math.max(1, m.S(2));
       if (!unlocked) {
-        this.host.addSprite('Lock', LOCK_ICON_ASSET, m.X(328) - r.cx, 0, m.S(38), m.S(38), node);
+        const lock = this.host.addSprite('Lock', LOCK_ICON_ASSET, m.X(328) - r.cx, 0, m.S(38), m.S(38), node);
+        if (lock) {
+          lock.grayscale = true;
+          lock.color = rgba(190, 190, 190, 255);
+        }
       }
       node.on(Node.EventType.TOUCH_END, () => {
         const target = zone.stages.find((stage) => stage.unlocked && !stage.cleared) ?? zone.stages.find((stage) => stage.unlocked) ?? zone.stages[0];
@@ -618,7 +686,16 @@ export class LobbyRaidPanelRenderer {
         lg.fillColor = rgba(14, 14, 16, 235);
         lg.circle(0, 0, badgeR);
         lg.fill();
-        this.host.addSprite('Lock', LOCK_ICON_ASSET, 0, 0, badgeR * 1.2, badgeR * 1.2, holder);
+        lg.strokeColor = rgba(120, 118, 112, 220);
+        lg.lineWidth = Math.max(1, m.S(1.5));
+        lg.circle(0, 0, badgeR);
+        lg.stroke();
+        // 原型:暗圆底 + 银白锁
+        const lock = this.host.addSprite('Lock', LOCK_ICON_ASSET, 0, 0, badgeR * 1.2, badgeR * 1.2, holder);
+        if (lock) {
+          lock.grayscale = true;
+          lock.color = rgba(235, 235, 235, 255);
+        }
       }
       const name = this.host.addChildLabel(parent, `LobbyRaidMineName_${stage.orderNo}`, `${(stage.orderNo - 1) % STAGES_PER_ZONE + 1}号矿`, cx, cy - m.S(92), m.S(26), stage.unlocked || current ? rgba(246, 238, 220, 255) : rgba(210, 204, 192, 240), new Size(m.S(170), m.S(36)));
       name.overflow = Label.Overflow.SHRINK;
@@ -644,7 +721,7 @@ export class LobbyRaidPanelRenderer {
     selected.defenders.slice(0, 3).forEach((defender, index) => {
       const x = xs[index] ?? 1645;
       this.mountRingAvatar(parent, `LobbyRaidInfoDef_${index}`, defender.heroCode, defender.heroName, m.X(x), m.Y(235), m.S(122), m, false);
-      this.label(parent, `LobbyRaidInfoDefName_${index}`, defender.heroName || defender.heroCode, m.X(x), m.Y(322), m.S(23), BODY_TEXT, m.HX(136));
+      this.label(parent, `LobbyRaidInfoDefName_${index}`, defender.heroName || defender.heroCode, m.X(x), m.Y(322), m.S(23), rgba(236, 228, 210, 255), m.HX(136));
       this.label(parent, `LobbyRaidInfoDefStar_${index}`, starText(defender.star), m.X(x), m.Y(352), m.S(24), rgba(250, 210, 90, 250), m.HX(136));
     });
     this.divider(parent, 'LobbyRaidInfoDiv2', m, 1440, 1828, 377);
@@ -652,20 +729,18 @@ export class LobbyRaidPanelRenderer {
     const enough = lineupPower >= selected.recommendedPower;
     this.label(parent, 'LobbyRaidInfoPower', `推荐战力 ${selected.recommendedPower} / 当前 ${lineupPower}`, m.X(cx), m.Y(408), m.S(25), enough ? GREEN_TEXT : rgba(255, 170, 120, 250), m.HX(400));
     this.divider(parent, 'LobbyRaidInfoDiv3', m, 1440, 1828, 437);
-    this.label(parent, 'LobbyRaidInfoRewardTitle', '掠夺奖励', m.X(1455), m.Y(470), m.S(27), GOLD_TEXT, m.HX(200), HorizontalTextAlignment.LEFT);
+    this.label(parent, 'LobbyRaidInfoRewardTitle', '掠夺奖励', m.X(1455), m.Y(470), m.S(27), rgba(226, 204, 160, 255), m.HX(200), HorizontalTextAlignment.LEFT);
     this.renderRewardRow(parent, 'LobbyRaidInfoReward', selected.rewardPreview, m, 530, [1500, 1680], 62);
     this.divider(parent, 'LobbyRaidInfoDiv4', m, 1440, 1828, 575);
     if (selected.firstClearRewards.length > 0) {
-      this.label(parent, 'LobbyRaidInfoFirstTitle', selected.cleared ? '首通(已领)' : '首通', m.X(1455), m.Y(612), m.S(27), selected.cleared ? DIM_TEXT : GOLD_TEXT, m.HX(150), HorizontalTextAlignment.LEFT);
+      this.label(parent, 'LobbyRaidInfoFirstTitle', selected.cleared ? '首通(已领)' : '首通', m.X(1455), m.Y(612), m.S(27), selected.cleared ? DIM_TEXT : rgba(226, 204, 160, 255), m.HX(150), HorizontalTextAlignment.LEFT);
       this.renderRewardRow(parent, 'LobbyRaidInfoFirst', selected.firstClearRewards, m, 612, [1580], 50);
     }
     const button = this.host.addChildPlainNode(parent, 'LobbyRaidStartButton', m.X(1645), m.Y(690), m.S(392), m.S(72));
-    this.paintButton(button, m.S(392), m.S(72), m.ks, selected.unlocked ? '掠夺' : '未解锁', m.S(40));
+    this.paintButton(button, m.S(392), m.S(72), m.ks, selected.unlocked ? '掠夺' : '未解锁', m.S(40), selected.unlocked ? 'primary' : 'disabled');
     if (selected.unlocked) {
       button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidBattle(selected.stageCode), this);
       this.host.applyImageButtonFeedback(button, 1.04, 0.96);
-    } else {
-      button.addComponent(UIOpacity).opacity = 120;
     }
     this.label(parent, 'LobbyRaidInfoNote', selected.unlocked ? `消耗体力 ${selected.staminaCost}(胜利才扣)` : '先掠夺上一座矿', m.X(1645), m.Y(757), m.S(23), BODY_TEXT, m.HX(400));
   }
@@ -705,18 +780,30 @@ export class LobbyRaidPanelRenderer {
     }
   }
 
-  private paintButton(button: Node, w: number, h: number, k: number, text: string, font: number): void {
-    if (!this.host.addSprite('Bg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, w, h, button)) {
+  private paintButton(button: Node, w: number, h: number, k: number, text: string, font: number, style: RaidButtonStyle): void {
+    const asset = style === 'primary' ? RAID_ART.btnPrimary : style === 'small' ? RAID_ART.btnSmall : style === 'disabled' ? RAID_ART.btnDisabled : RAID_ART.btnSecondary;
+    // 两端带雕花:九宫格拉伸(边距写在素材 meta 里),按钮宽高比和素材不同也不变形
+    // 九宫格边距按素材像素画(不随节点缩放):先按素材 120 高排版再整体缩到按钮高,雕花 / 金边随按钮等比
+    const tiered = this.host.addSprite('Bg', asset, 0, 0, w, h, button);
+    const bg = tiered ?? this.host.addSprite('Bg', C1812_BUTTON_PRIMARY_ASSET, 0, 0, w, h, button);
+    if (tiered) {
+      const f = RAID_BUTTON_SRC_H / h;
+      tiered.type = Sprite.Type.SLICED;
+      tiered.sizeMode = Sprite.SizeMode.CUSTOM;
+      tiered.node.getComponent(UITransform)?.setContentSize(w * f, RAID_BUTTON_SRC_H);
+      tiered.node.setScale(1 / f, 1 / f, 1);
+    } else if (!bg) {
       const g = button.addComponent(Graphics);
-      g.fillColor = rgba(122, 32, 26, 235);
+      g.fillColor = style === 'disabled' ? rgba(60, 60, 60, 235) : rgba(122, 32, 26, 235);
       g.roundRect(-w / 2, -h / 2, w, h, 5 * k);
       g.fill();
     }
-    const label = this.host.addChildLabel(button, 'Label', text, 0, 0, font, rgba(255, 242, 214, 255), new Size(w - 14 * k, font * 1.4));
+    const textColor = style === 'disabled' ? rgba(176, 172, 164, 255) : style === 'primary' ? rgba(255, 238, 196, 255) : rgba(255, 242, 214, 255);
+    const label = this.host.addChildLabel(button, 'Label', text, 0, style === 'primary' ? k * 1 : 0, font, textColor, new Size(w * (style === 'primary' ? 0.7 : 0.78), font * 1.4));
     label.overflow = Label.Overflow.SHRINK;
     label.isBold = true;
     label.enableOutline = true;
-    label.outlineColor = rgba(60, 10, 8, 255);
+    label.outlineColor = style === 'disabled' ? rgba(20, 20, 20, 255) : rgba(60, 10, 8, 255);
     label.outlineWidth = Math.max(1, 2 * k);
   }
 
@@ -724,7 +811,7 @@ export class LobbyRaidPanelRenderer {
     const w = 180 * scale;
     const h = 46 * scale;
     const button = this.host.addChildPlainNode(parent, 'LobbyRaidRetry', 0, -40 * scale, w, h);
-    this.paintButton(button, w, h, scale, '重试', 20 * scale);
+    this.paintButton(button, w, h, scale, '重试', 20 * scale, 'secondary');
     button.on(Node.EventType.TOUCH_END, onClick, this);
     this.host.applyImageButtonFeedback(button, 1.04, 0.96);
   }

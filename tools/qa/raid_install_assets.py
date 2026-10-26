@@ -6,8 +6,11 @@
   c_mine_nodes.png  1200×600  两个圆形矿口(黑底)→ mine_node_on / mine_node_off(512×512,圆形 alpha)
   d_zone_thumbs.png 1800×300  六格 → zone_thumb_1..6(256×256)
   e_report_icons.png 800×400  剑 / 盾(黑底)→ ic_report_attack / ic_report_defend(192×192,亮度抠透明)
+  h/i/j/k_btn_*.png  分级按钮(黑底)→ btn_primary / btn_secondary / btn_small / btn_disabled(高 120,外部黑底抠透明 + 九宫格边距)
+  l_back_banner.png  「<」返回横幅(黑底)→ back_banner(高 140,外部黑底抠透明)
 用法:python tools/qa/raid_install_assets.py [--only a,b,c,d,e]
 """
+import io
 import os
 import sys
 
@@ -17,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFilter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from town_install_assets import write_meta  # noqa: E402
 
+NL = chr(10)
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 SRC = os.path.join(ROOT, '周报截图', '2026-10-26_真人矿', 'proto', 'assets')
 DST = os.path.join(ROOT, 'assets', 'resources', 'ui', 'raid')
@@ -55,6 +59,57 @@ def largest_bbox(im, thresh=28):
     if len(xs) == 0:
         return (0, 0, im.width, im.height)
     return (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
+
+
+def outside_alpha(im, thresh=40, core=None):
+    """黑底按钮:只把和四角连通的暗像素当背景(按钮内部的暗红不受影响),边缘 1px 柔化。"""
+    rgb = im.convert('RGB')
+    arr = np.asarray(rgb)
+    dark = Image.fromarray(np.where(arr.max(axis=2) < thresh, 255, 0).astype(np.uint8), 'L').copy()
+    for corner in ((0, 0), (dark.width - 1, 0), (0, dark.height - 1), (dark.width - 1, dark.height - 1)):
+        if dark.getpixel(corner) == 255:
+            ImageDraw.floodfill(dark, corner, 128)
+    outside = np.asarray(dark) == 128
+    if core:
+        # 雕花框内芯的暗红会经框缝和外部黑底连通:内芯矩形(相对亮区包围盒)强制不透明
+        bx0, by0, bx1, by1 = Image.fromarray(np.where(outside, 0, 255).astype(np.uint8), 'L').getbbox()
+        bw, bh = bx1 - bx0, by1 - by0
+        outside = outside.copy()
+        outside[round(by0 + bh * core[1]):round(by0 + bh * core[3]), round(bx0 + bw * core[0]):round(bx0 + bw * core[2])] = False
+    alpha = Image.fromarray(np.where(outside, 0, 255).astype(np.uint8), 'L').filter(ImageFilter.GaussianBlur(0.8))
+    out = rgb.copy()
+    out.putalpha(alpha)
+    box = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
+    return out.crop(box)
+
+
+# 九宫格边距(按归一后 120 高的像素):左右 = 端头雕花内沿,上下 = 金边厚度
+BUTTON_SLICES = {
+    'btn_primary': (70, 30),
+    'btn_secondary': (64, 26),
+    'btn_small': (52, 30),
+    'btn_disabled': (64, 26),
+}
+
+
+def write_slice(path, lr, tb):
+    import json
+    meta_path = path + '.meta'
+    m = json.load(io.open(meta_path, encoding='utf-8'))
+    sf = m['subMetas']['f9941']['userData']
+    sf['borderLeft'] = sf['borderRight'] = lr
+    sf['borderTop'] = sf['borderBottom'] = tb
+    io.open(meta_path, 'w', encoding='utf-8', newline=NL).write(json.dumps(m, ensure_ascii=False, indent=2) + NL)
+
+
+def mark_unimported(path):
+    import json
+    meta_path = path + '.meta'
+    m = json.load(io.open(meta_path, encoding='utf-8'))
+    m['imported'] = False
+    for sub in m.get('subMetas', {}).values():
+        sub['imported'] = False
+    io.open(meta_path, 'w', encoding='utf-8', newline=NL).write(json.dumps(m, ensure_ascii=False, indent=2) + NL)
 
 
 def main():
@@ -99,6 +154,20 @@ def main():
             cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
             box = (max(0, cx - side // 2), max(0, cy - side // 2), min(part.width, cx + side // 2), min(part.height, cy + side // 2))
             save(name, luminance_alpha(part.crop(box), 192))
+    # v3(2026-10-26 用户「按钮全是一样的,应该根据主次做不同的按钮」+「返回横幅带 <」)
+    for key, src, name, height in (('h', 'h_btn_primary', 'btn_primary', 120), ('i', 'i_btn_secondary', 'btn_secondary', 120),
+                                   ('j', 'j_btn_small', 'btn_small', 120), ('k', 'k_btn_disabled', 'btn_disabled', 120),
+                                   ('l', 'l_back_banner', 'back_banner', 140)):
+        src_path = os.path.join(SRC, src + '.png')
+        if not want(key) or not os.path.exists(src_path):
+            continue
+        im = outside_alpha(Image.open(src_path), core=(0.07, 0.2, 0.9, 0.82) if key == 'l' else None)
+        im = im.resize((round(im.width * height / im.height), height), Image.LANCZOS)
+        save(name, im)
+        path = os.path.join(DST, name + '.png')
+        if name in BUTTON_SLICES:
+            write_slice(path, *BUTTON_SLICES[name])
+        mark_unimported(path)
 
 
 if __name__ == '__main__':
