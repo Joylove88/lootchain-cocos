@@ -1399,9 +1399,10 @@ export class LobbyTownRenderer {
   private renderEnterButton(hud: Node, layout: UiLayout, scale: number): void {
     // 有怪群的图右下是战斗按钮簇,交互钮挪到按钮簇左上方并缩小
     const combat = this.def.camps.length > 0;
-    const size = (combat ? 100 : 128) * scale;
-    const x = layout.stageRight - (combat ? 470 : 110) * scale;
-    const y = layout.stageBottom + (combat ? 300 : 150) * scale;
+    const cs = combat ? this.combatScale(scale) : scale;
+    const size = (combat ? 100 : 128) * cs;
+    const x = layout.stageRight - (combat ? 470 : 110) * cs;
+    const y = layout.stageBottom + (combat ? 300 : 150) * cs;
     const button = this.host.addChildPlainNode(hud, 'LobbyTownEnterButton', x, y, size, size);
     const g = button.addComponent(Graphics);
     g.fillColor = rgba(16, 10, 10, 225);
@@ -1479,7 +1480,14 @@ export class LobbyTownRenderer {
     const itemW = 150 * scale;
     const barW = itemW * items.length + 40 * scale;
     const barH = 92 * scale;
-    const bar = this.host.addChildPlainNode(hud, 'LobbyTownBottomBar', (layout.stageLeft + layout.stageRight) / 2, layout.stageBottom + barH / 2 + 6 * scale, barW, barH);
+    let barX = (layout.stageLeft + layout.stageRight) / 2;
+    if (this.def.camps.length > 0) {
+      // 右下战斗按钮簇(最左是翻滚,离右缘约 470)让开;左边别压到摇杆(约 260)
+      const cs = this.combatScale(scale);
+      const maxRight = layout.stageRight - 480 * cs;
+      barX = Math.max(layout.stageLeft + 270 * scale + barW / 2, Math.min(barX, maxRight - barW / 2));
+    }
+    const bar = this.host.addChildPlainNode(hud, 'LobbyTownBottomBar', barX, layout.stageBottom + barH / 2 + 6 * scale, barW, barH);
     if (!this.host.addSprite('Bg', 'ui/lobby/ai/nav_bar_bg/spriteFrame', 0, 0, barW * 1.25, barH * 1.5, bar)) {
       const g = bar.addComponent(Graphics);
       g.fillColor = rgba(8, 6, 8, 200);
@@ -2143,9 +2151,9 @@ export class LobbyTownRenderer {
       return;
     }
     const size = 84 * scale;
-    // 小地图下方(右下是战斗按钮簇)
-    const x = layout.stageRight - 90 * scale;
-    const y = layout.stageTop - 300 * scale;
+    // 左侧任务追踪条下方(右下是战斗按钮簇,右上是小地图)
+    const x = layout.stageLeft + 70 * scale;
+    const y = layout.stageTop - 380 * scale;
     const button = this.host.addChildPlainNode(hud, 'LobbyWorldRecall', x, y, size, size);
     const g = button.addComponent(Graphics);
     g.fillColor = rgba(16, 10, 10, 225);
@@ -2641,6 +2649,8 @@ export class LobbyTownRenderer {
     if (this.def.camps.length === 0) {
       return;
     }
+    // 手机整体 HUD 已放大 1.25:按钮簇单独收一点,免得压到小地图 / 底栏
+    scale = this.combatScale(scale);
     const right = layout.stageRight;
     const bottom = layout.stageBottom;
     const showKeys = !isPhoneDesign();
@@ -2691,6 +2701,10 @@ export class LobbyTownRenderer {
     mk('LobbyFieldSkill1', right - 280 * scale, bottom + 250 * scale, 96 * scale, skills[1].name, 20 * scale, rgba(58, 34, 90, 235), 'L', () => this.leaderSkill(1), 1);
     mk('LobbyFieldSkill2', right - 150 * scale, bottom + 320 * scale, 96 * scale, skills[2].name, 20 * scale, rgba(58, 34, 90, 235), 'I', () => this.leaderSkill(2), 2);
     mk('LobbyFieldDodge', right - 420 * scale, bottom + 90 * scale, 86 * scale, '翻滚', 22 * scale, rgba(24, 38, 70, 235), 'Shift', () => this.leaderDodge(), -2);
+  }
+
+  private combatScale(scale: number): number {
+    return isPhoneDesign() ? scale * 0.82 : scale;
   }
 
   private refreshCombatButtons(now: number): void {
