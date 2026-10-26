@@ -35,7 +35,8 @@ export const TOWN_MAP = { width: 4400, height: 2600 } as const;
 export const TOWN_WALK_BOUNDS = { left: -2050, right: 2050, bottom: -1150, top: 880 } as const;
 export const TOWN_SPAWN = { x: 0, y: -380 } as const;
 /** 地面平铺贴图一格的世界尺寸。 */
-export const TOWN_GROUND_TILE = 512;
+/** 地面平铺边长(世界单位)。2026-10-26 换俯视斜铺石砖无缝图(原 512 大方砖像立起来的墙);一张图横向约 5 块石砖,360 时单块约 70,接近原型。 */
+export const TOWN_GROUND_TILE = 360;
 
 export const TOWN_BUILDINGS: readonly TownBuildingConfig[] = [
   // 后排

@@ -1,0 +1,5 @@
+Seamless tileable ground texture for a dark fantasy RPG town plaza, seen from the SAME high 3/4 camera angle as the reference image (camera looking down about 50 degrees), so the ground clearly reads as a FLAT horizontal floor, not a wall.
+Paving: dark blue-grey slate flagstones laid in a diagonal isometric pattern like the reference: each stone is a foreshortened rhombus / parallelogram, clearly wider than it is tall, slightly irregular sizes, beveled worn edges, thin dark recessed seams (no gold lines, no bright grout). About 10 stones across the image width.
+Surface: subtle cold moonlight sheen on stone tops, slight variation between stones (a few lighter, a few darker, very faint cracks and dust), low contrast overall, colours matching the reference (deep navy / slate grey, value mostly dark).
+Even, uniform lighting across the whole image: no vignette, no light spot, no shadows, no objects, no characters, no text, no magic circles, no border.
+Must tile seamlessly on all four edges. Square image.

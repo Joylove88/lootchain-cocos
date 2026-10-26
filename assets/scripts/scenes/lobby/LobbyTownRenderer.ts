@@ -91,6 +91,12 @@ interface TownActor {
   baseScaleX: number;
   baseScaleY: number;
   anim: string | null;
+  /** 程序画的脚底椭圆影;骨骼自带影子插槽(Shadow / ying)时清掉,避免脚下两个影子。 */
+  shadow: Graphics | null;
+  /** 跟随者:连续没位移的时长,超过阈值才切待机(防跑 / 停动画来回闪)。 */
+  idleFor: number;
+  /** 跟随者:反方向累计位移,超过阈值才翻面(防左右闪)。 */
+  faceAcc: number;
 }
 
 interface TownBuildingEntity {
@@ -98,6 +104,8 @@ interface TownBuildingEntity {
   node: Node;
   plate: Node | null;
   sprite: Sprite | null;
+  /** 队伍走到建筑后面被挡住时把建筑淡成半透明(当前不透明度,逐帧逼近目标)。 */
+  fade: number;
 }
 
 const HERO_SLOT_W = 180;
@@ -105,6 +113,10 @@ const HERO_SLOT_H = 230;
 const LEADER_SPEED = 340;
 const FOLLOW_SAMPLE = 8;
 const FOLLOW_GAP_SAMPLES = 16;
+/** 队员之间沿队长足迹的间距(世界单位);出生站位也用它,起步不会往回走。 */
+const FOLLOW_SPACING = 112;
+/** 被挡住时建筑的不透明度。 */
+const BUILDING_SEE_THROUGH_OPACITY = 120;
 const INTERACT_RADIUS = 180;
 const ACTOR_RADIUS = 26;
 const WORLD_NODE_NAME = 'LobbyTownWorld';
@@ -235,10 +247,7 @@ export class LobbyTownRenderer {
         // 图没到时 addSprite 返回 null(并在到货后触发整刷),下次 render 再补
         const tile = this.host.addSprite(name, TOWN_GROUND_ASSET, x0 + c * TOWN_GROUND_TILE + TOWN_GROUND_TILE / 2, y0 + r * TOWN_GROUND_TILE + TOWN_GROUND_TILE / 2, TOWN_GROUND_TILE + 1, TOWN_GROUND_TILE + 1, root);
         if (tile) {
-          // 每格明暗微调(按格子坐标取伪随机),打散平铺的重复感;地砖永远排最底
-          const h = ((c * 73856093) ^ (r * 19349663)) >>> 0;
-          const v = 216 + (h % 40);
-          tile.color = rgba(v, v, v, 255);
+          // 无缝贴图不再逐格调明暗(会把平铺格子暴露出来);地砖永远排最底
           tile.node.setSiblingIndex(0);
         }
       }
@@ -271,7 +280,7 @@ export class LobbyTownRenderer {
       let entity = this.buildings.find((item) => item.cfg.key === cfg.key);
       if (!entity || !entity.node.isValid) {
         const node = this.host.addChildPlainNode(root, `TownBuilding_${cfg.key}`, cfg.x, cfg.y, cfg.footprint.w, cfg.footprint.d);
-        entity = { cfg, node, plate: null, sprite: null };
+        entity = { cfg, node, plate: null, sprite: null, fade: 255 };
         this.buildings = this.buildings.filter((item) => item.cfg.key !== cfg.key).concat(entity);
       }
       if (!entity.sprite || !entity.sprite.isValid) {
@@ -460,8 +469,14 @@ export class LobbyTownRenderer {
     }
     this.leader = this.createActor(root, party[0], 0, keepX, keepY, keepFacing);
     for (let i = 1; i < party.length; i += 1) {
-      this.followers.push(this.createActor(root, party[i], i, keepX - keepFacing * i * 70, keepY - 6 * i, keepFacing));
+      this.followers.push(this.createActor(root, party[i], i, keepX - keepFacing * i * FOLLOW_SPACING, keepY, keepFacing));
     }
+    // 预铺一条从最后一名队员到队长的直线足迹:起步时队员沿它走,不会先跑回出生点
+    const tail = party.length * FOLLOW_SPACING;
+    for (let d = tail; d > 0; d -= FOLLOW_SAMPLE) {
+      this.trail.push(new Vec2(keepX - keepFacing * d, keepY));
+    }
+    this.trail.push(new Vec2(keepX, keepY));
     this.orderKey = '';
     this.camX = keepX;
     this.camY = keepY;
@@ -473,7 +488,7 @@ export class LobbyTownRenderer {
     shadow.fillColor = rgba(0, 0, 0, 120);
     shadow.ellipse(0, 2, HERO_SLOT_W * 0.3, 8);
     shadow.fill();
-    const actor: TownActor = { node, x, y, facing, moving: false, skeleton: null, spineNode: null, names: null, baseScaleX: 1, baseScaleY: 1, anim: null };
+    const actor: TownActor = { node, x, y, facing, moving: false, skeleton: null, spineNode: null, names: null, baseScaleX: 1, baseScaleY: 1, anim: null, shadow, idleFor: 0, faceAcc: 0 };
     const unit = this.toUnit(hero);
     const resourcePath = resolveBattleUnitSpineResource(unit);
     if (!resourcePath) {
@@ -510,6 +525,11 @@ export class LobbyTownRenderer {
         spineNode.setPosition(pos.x, pos.y + HERO_SLOT_H * 0.44, 0);
         actor.names = resolveBattleUnitSpineAnimationNames(data, unit);
         actor.skeleton = skeleton;
+        // 英雄骨骼大多自带脚底影子插槽:有就不再叠程序椭圆影(否则脚下两个影子,且骨骼有横向偏移会错开)
+        if (actor.shadow && skeletonHasShadowSlot(data)) {
+          actor.shadow.clear();
+          actor.shadow = null;
+        }
         actor.spineNode = spineNode;
         this.applyActorAnimation(actor, true);
       } catch (error) {
@@ -638,6 +658,7 @@ export class LobbyTownRenderer {
     const clamped = Math.min(0.05, Math.max(0, dt));
     this.stepLeader(clamped);
     this.stepFollowers(clamped);
+    this.updateBuildingSeeThrough(clamped);
     this.applyCamera(false, clamped);
     this.sortEntities(false);
     this.updateNearBuilding();
@@ -680,26 +701,66 @@ export class LobbyTownRenderer {
     }
   }
 
+  /** 从队长当前位置沿足迹往回量 distance 的点(按弧长插值);足迹不够长返回 null。 */
+  private trailPoint(distance: number): Vec2 | null {
+    const leader = this.leader;
+    if (!leader) {
+      return null;
+    }
+    let px = leader.x;
+    let py = leader.y;
+    let left = distance;
+    for (let i = this.trail.length - 1; i >= 0; i -= 1) {
+      const p = this.trail[i];
+      const seg = Math.hypot(p.x - px, p.y - py);
+      if (seg >= left && seg > 0) {
+        const t = left / seg;
+        return new Vec2(px + (p.x - px) * t, py + (p.y - py) * t);
+      }
+      left -= seg;
+      px = p.x;
+      py = p.y;
+    }
+    return null;
+  }
+
   private stepFollowers(dt: number): void {
     this.followers.forEach((actor, index) => {
       if (!actor.node.isValid) {
         return;
       }
-      const back = (index + 1) * FOLLOW_GAP_SAMPLES;
-      const target = this.trail[this.trail.length - 1 - back];
-      let moving = false;
+      // 旧做法追离散采样点:追上就停 → 切待机,队长再走 8px 又切跑步,动画来回闪;朝向按单帧 dx 翻,也会闪。
+      // 现在按弧长在足迹上取连续目标点,平滑逼近;动画 / 朝向都加防抖。
+      const target = this.trailPoint((index + 1) * FOLLOW_SPACING);
+      let stepX = 0;
+      let stepLen = 0;
       if (target) {
         const dx = target.x - actor.x;
         const dy = target.y - actor.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 3) {
-          const step = Math.min(dist, LEADER_SPEED * 1.15 * dt);
-          actor.x += (dx / dist) * step;
-          actor.y += (dy / dist) * step;
+        if (dist > 0.5) {
+          stepLen = Math.min(dist, LEADER_SPEED * 1.35 * dt);
+          stepX = (dx / dist) * stepLen;
+          actor.x += stepX;
+          actor.y += (dy / dist) * stepLen;
           actor.node.setPosition(actor.x, actor.y, 0);
-          moving = true;
-          if (Math.abs(dx) > 2) {
-            this.setActorFacing(actor, dx > 0 ? 1 : -1);
+        }
+      }
+      if (stepLen > LEADER_SPEED * 0.12 * dt) {
+        actor.idleFor = 0;
+      } else {
+        actor.idleFor += dt;
+      }
+      const moving = actor.idleFor < 0.16;
+      if (Math.abs(stepX) > 0.05) {
+        const dir: 1 | -1 = stepX > 0 ? 1 : -1;
+        if (dir === actor.facing) {
+          actor.faceAcc = 0;
+        } else {
+          actor.faceAcc += Math.abs(stepX);
+          if (actor.faceAcc > 12) {
+            actor.faceAcc = 0;
+            this.setActorFacing(actor, dir);
           }
         }
       }
@@ -708,6 +769,35 @@ export class LobbyTownRenderer {
         this.applyActorAnimation(actor);
       }
     });
+  }
+
+  /** 队伍走到建筑后面、被建筑图盖住时,把建筑淡成半透明(看得见人);走出来恢复。 */
+  private updateBuildingSeeThrough(dt: number): void {
+    const party = [this.leader, ...this.followers].filter((actor): actor is TownActor => !!actor && actor.node.isValid);
+    const t = 1 - Math.exp(-10 * dt);
+    for (const building of this.buildings) {
+      const sprite = building.sprite;
+      if (!sprite || !sprite.isValid) {
+        continue;
+      }
+      const size = sprite.node.getComponent(UITransform);
+      const artW = size?.width ?? building.cfg.width;
+      const artH = size?.height ?? building.cfg.width;
+      const covered = party.some((actor) => actor.y > building.cfg.y
+        && Math.abs(actor.x - building.cfg.x) < artW * 0.42
+        && actor.y < building.cfg.y + artH * 0.85);
+      const want = covered ? BUILDING_SEE_THROUGH_OPACITY : 255;
+      if (Math.abs(building.fade - want) < 1) {
+        if (building.fade === want) {
+          continue;
+        }
+        building.fade = want;
+      } else {
+        building.fade += (want - building.fade) * t;
+      }
+      const opacity = sprite.node.getComponent(UIOpacity) ?? sprite.node.addComponent(UIOpacity);
+      opacity.opacity = Math.round(building.fade);
+    }
   }
 
   private walkable(x: number, y: number): boolean {
@@ -1232,5 +1322,15 @@ export class LobbyTownRenderer {
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
     holder.angle = angle;
     // 指针挂在队长头顶,随队长翻面时不能跟着镜像:holder 不在 spine 下,无需处理
+  }
+}
+
+/** 骨骼是否自带脚底影子插槽(命名 Shadow / ying 等)。 */
+function skeletonHasShadowSlot(data: sp.SkeletonData): boolean {
+  try {
+    const runtime = data.getRuntimeData(true) as unknown as { slots?: Array<{ name?: string }> } | null;
+    return !!runtime?.slots?.some((slot) => /^(shadow|ying|yingzi)$/i.test((slot.name || '').trim()));
+  } catch {
+    return false;
   }
 }
