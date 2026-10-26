@@ -66,6 +66,13 @@ def main():
     if want('a') and os.path.exists(os.path.join(SRC, 'a_mine_card.png')):
         im = Image.open(os.path.join(SRC, 'a_mine_card.png')).convert('RGB')
         save('pvp_mine_card', im.resize((720, 800), Image.LANCZOS))
+    # v2(2026-10-26 用户「UI 和原型不一样」):整卡插画(矿晶 + 亮矿洞,铺满卡片)替换 a;全屏矿洞底图
+    if want('f') and os.path.exists(os.path.join(SRC, 'f_mine_card_full.png')):
+        im = Image.open(os.path.join(SRC, 'f_mine_card_full.png')).convert('RGB')
+        save('pvp_mine_card', im.resize((600, round(600 * im.height / im.width)), Image.LANCZOS))
+    if want('g') and os.path.exists(os.path.join(SRC, 'g_backdrop.png')):
+        im = Image.open(os.path.join(SRC, 'g_backdrop.png')).convert('RGB')
+        save('raid_backdrop', im.resize((1600, round(1600 * im.height / im.width)), Image.LANCZOS))
     if want('b') and os.path.exists(os.path.join(SRC, 'b_npc_map.png')):
         im = Image.open(os.path.join(SRC, 'b_npc_map.png')).convert('RGB')
         save('npc_map_bg', im.resize((1200, 675), Image.LANCZOS))
