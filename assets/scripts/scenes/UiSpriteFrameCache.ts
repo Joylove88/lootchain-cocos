@@ -50,6 +50,7 @@ import { LOBBY_HERO_ROSTER_BACKDROP_ASSET, LOBBY_HERO_ROSTER_CARD_ASSETS } from 
 import { FORGE_PRELOAD_ASSETS, FORGE_PRELOAD_ASSETS_V3 } from './lobby/LobbyForgePanelRenderer';
 import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { TOWN_ASSET_PATHS } from './lobby/LobbyTownConfig';
+import { WORLD_ASSET_PATHS } from './lobby/LobbyWorldMaps';
 import { RAID_UI_ASSET_PATHS } from './lobby/LobbyRaidPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
 import { EQUIP_ICON_ALL_ASSETS } from './lobby/EquipIconAssets';
@@ -305,6 +306,8 @@ export class UiSpriteFrameCache {
       case 'town':
         // 主城跑图(2026-10-25):地面 / 9 栋建筑 / 路灯整组等齐再画,HUD 小件只拉不拦
         TOWN_ASSET_PATHS.forEach((asset) => track(asset));
+        // docs/50:新手村 / 野区 / 世界地图素材同组(新号首进就在晨风村)
+        WORLD_ASSET_PATHS.forEach((asset) => track(asset));
         ['ui/guide/lguide_pointer/spriteFrame', 'ui/lobby/ai/nav_bar_bg/spriteFrame', 'ui/lobby/ai/lhud_btn_mail/spriteFrame',
           'ui/bag/ai/icon_gold/spriteFrame', 'ui/lobby/ai/nav_bag/spriteFrame'].forEach((asset) => request(asset));
         break;

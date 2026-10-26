@@ -138,6 +138,7 @@ import {
   resolveBattleUnitSpineScale,
   resolveBattleUnitSpineSkinName,
 } from './LobbyBattleUnitSpineRuntime';
+import { worldMapOfStage } from './LobbyWorldMaps';
 import { loadSharedSpineData } from './SpineDataStore';
 import { GuardRaidController } from './GuardRaidController';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
@@ -333,6 +334,8 @@ export interface GuardUnitView {
   attackAnim: string;
   /** 死亡动画名(怪物,有则死亡时播放)。 */
   deathAnim: string;
+  /** 跑步动画名(野外清怪模式的怪物追击时播;docs/50)。 */
+  moveAnim?: string;
   /** 受击红闪截止时刻(打击感,2026-08-26)。 */
   hitFlashUntil: number;
   /** 受击闪色(缺省红;升星被动用自己的颜色:破甲红 / 溅射金 / 反伤白金,docs/41 §6)。 */
@@ -1429,7 +1432,12 @@ export class LobbyGuardBattleRenderer {
   private resolveSceneBgName(): string {
     const fallback = 'battle_scene_guard_mine';
     const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
-    if (/^RAID(PVP)?_/.test(stageCode)) {
+    const fieldDef = /^FIELD_/.test(stageCode) ? worldMapOfStage(stageCode) : null;
+    if (fieldDef?.battleBg && this.uiAssetKnown(`ui/battle/${fieldDef.battleBg}/spriteFrame`)) {
+      // 野外(docs/50):按所在地图的横版背景
+      return fieldDef.battleBg;
+    }
+    if (/^(RAID(PVP)?|FIELD)_/.test(stageCode)) {
       // 矿境掠夺(原型 v1,2026-10-26):别人的矿洞,去格子的石板地面
       return this.uiAssetKnown('ui/battle/battle_scene_raid_mine/spriteFrame') ? 'battle_scene_raid_mine' : fallback;
     }
@@ -1858,7 +1866,7 @@ export class LobbyGuardBattleRenderer {
 
   /** 当前是否矿境掠夺(建场时 sim 可能还没建好,按关卡码判)。 */
   private isRaidStage(): boolean {
-    return this.sim?.mode === 'raid' || /^RAID(PVP)?_/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
+    return this.sim?.mode === 'raid' || /^(RAID(PVP)?|FIELD)_/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
   }
   /** 第一列格心 x:紧贴水晶右缘 + 英雄半宽 + 小间隙。 */
   private firstCellX(): number {
@@ -1942,6 +1950,13 @@ export class LobbyGuardBattleRenderer {
     const col = cell % GUARD_GRID_COLS;
     const row = Math.floor(cell / GUARD_GRID_COLS);
     if (this.isRaidStage()) {
+      // 野外清怪(docs/50):怪物会追人,站位用模型里的实时位置
+      if (this.sim?.raidClear) {
+        const hero = this.sim.heroes.find((item) => item.cell === cell);
+        if (hero && hero.fx !== undefined) {
+          return { x: this.xToPx(hero.fx), y: this.raidLaneY(hero.flane ?? 0.5) };
+        }
+      }
       // 掠夺:x 与模拟坐标一致(进攻方挥刀范围所见即所得),上下两排在走道里错开站(原型 v1)
       return { x: this.xToPx(guardCellX(cell)), y: this.raidLaneY(row === 0 ? 0.25 : 0.75) };
     }
@@ -2056,6 +2071,10 @@ export class LobbyGuardBattleRenderer {
   private renderCrystal(): void {
     const field = this.fieldNode;
     if (!field) {
+      return;
+    }
+    // 野外清怪(docs/50):没有水晶
+    if (this.sim?.raidClear) {
       return;
     }
     // 1:1 复刻:新水晶素材(ghud_cell 同批,299×652 熔岩基座蓝晶簇);位置见 crystalGeom()
@@ -8692,6 +8711,9 @@ export class LobbyGuardBattleRenderer {
       if (this.dragFromCell !== hero.cell) {
         const center = this.cellCenter(hero.cell);
         view.node.setPosition(center.x, center.y, 0);
+        if (sim.raidClear && !hero.dead) {
+          this.syncClearMonsterAnim(sim, hero, view, center.x);
+        }
       }
       const starLabel = view.node.getChildByName('GuardHeroStar')?.getComponent(Label);
       if (starLabel) {
@@ -9058,7 +9080,21 @@ export class LobbyGuardBattleRenderer {
     fg.roundRect(-size * 0.31, -size * 0.4, size * 0.62, size * 0.8, 8);
     fg.fill();
     const pendingView: GuardUnitView = { node, spineReady: false, lastAnimKey: '', skeleton: null, idleAnim: '', attackAnim: '', deathAnim: '', hitFlashUntil: 0 };
-    this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
+    const monsterSpine = this.sim?.raidClear && ally?.spineAsset && ally.spineAsset.startsWith('spine/monster/') ? ally.spineAsset : null;
+    if (monsterSpine) {
+      // 野外清怪(docs/50):防守方是怪物——按怪物骨骼挂(自动挑皮肤 / 怪物体型校准 / 默认镜像朝左),不走英雄解析
+      const dir = monsterSpine.split('/')[2] ?? '';
+      const elite = (pool?.rarity ?? 'N') !== 'N';
+      const targetH = size * (elite ? 1.5 : 0.95) * (GUARD_MONSTER_DB_SCALE[dir] ?? 1);
+      pendingView.faceLeft = true;
+      this.loadSpineInto(node, fallback, monsterSpine, size, true, pendingView, {
+        calibratedScale: (rawBoundsHeight) => targetH / rawBoundsHeight,
+        footY: -size * 0.42,
+        enemyAnimNames: true,
+      });
+    } else {
+      this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
+    }
     // 名字宽度钳到格距内+SHRINK(视频验收:相邻列名字连成乱串);定位词收进详情卡,不再挤标签
     const nameLabel = this.host.addChildLabel(node, 'GuardHeroName', pool?.displayName ?? hero.heroCode, 0, size * 0.6, 15, rgba(236, 224, 196), new Size(this.cellPitchPx() * 0.94, 20));
     nameLabel.overflow = Label.Overflow.SHRINK;
@@ -9181,6 +9217,7 @@ export class LobbyGuardBattleRenderer {
           view.skeleton = skeleton;
           view.idleAnim = idle;
           view.attackAnim = attack;
+          view.moveAnim = rawNames.find((name) => /run|walk|move/i.test(name) && !/hit|hurt|dead|die/i.test(name)) ?? '';
           if (opts?.enemyAnimNames) {
             const mappedNames = resolveBattleUnitSpineAnimationNames(data, this.toGuardEnemyUnit(resource));
             view.deathAnim = mappedNames.death ?? '';
@@ -9204,6 +9241,24 @@ export class LobbyGuardBattleRenderer {
         });
       }
     }, 4000);
+  }
+
+  /** 野外清怪(docs/50):怪物一直朝向进攻方;移动中播跑步,停下 / 出手后回待机。 */
+  private syncClearMonsterAnim(sim: GuardBattleState, hero: GuardHeroUnit, view: GuardUnitView, heroX: number): void {
+    const raider = sim.monsters.find((monster) => monster.player && !monster.dead);
+    if (raider) {
+      this.faceHeroToward(view, heroX, this.xToPx(raider.x));
+    }
+    const skeleton = view.skeleton;
+    if (!view.spineReady || !skeleton || !skeleton.isValid || !view.moveAnim || (view.attackHoldUntil ?? 0) > Date.now()) {
+      return;
+    }
+    const want = hero.moving ? 'clear-move' : 'clear-idle';
+    if (view.lastAnimKey === want) {
+      return;
+    }
+    view.lastAnimKey = want;
+    skeleton.setAnimation(0, hero.moving ? view.moveAnim : view.idleAnim, true);
   }
 
   /** 攻击动画:播一次 attack 再接回 idle(骨骼未就绪时静默跳过)。 */
@@ -10733,9 +10788,12 @@ export class LobbyGuardBattleRenderer {
     const raid = sim?.mode === 'raid';
     const panelH = height * 0.56;
     this.paintOverlayPanel(overlay, panelH * 1.65, panelH, -height * 0.02);
-    const title = raid ? (victory ? '掠夺成功!' : '掠夺失败') : rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
+    const clear = !!sim?.raidClear;
+    const title = clear ? (victory ? '清除完成!' : '撤退…') : raid ? (victory ? '掠夺成功!' : '掠夺失败') : rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
     const detail = sim
-      ? raid
+      ? clear
+        ? `击败 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+        : raid
         ? `击倒守卫 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 水晶剩余 ${Math.round((sim.crystalHp / sim.crystalMaxHp) * 100)}% · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
         : rush
           ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
@@ -10850,7 +10908,7 @@ export class LobbyGuardBattleRenderer {
       this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05 - 12, 19, rgba(255, 226, 150), new Size(this.endOverlayTextWidth(), 50)), true);
     }
     const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 236);
-    this.host.addChildLabel(back, 'GuardEndBackLabel', '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
+    this.host.addChildLabel(back, 'GuardEndBackLabel', this.sim?.raidClear ? '返回地图' : '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
     back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
   }
 }

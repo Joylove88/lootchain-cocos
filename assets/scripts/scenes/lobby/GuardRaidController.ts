@@ -662,10 +662,11 @@ export class GuardRaidController {
     }
     if (this.guardsLabel && this.guardsLabel.isValid) {
       const alive = sim.heroes.filter((hero) => !hero.dead).length;
-      this.guardsLabel.string = `守卫 ${alive}/${sim.heroes.length}`;
+      // 野外清怪(docs/50 原型 p6):「剩余敌人 a/n」,没有水晶
+      this.guardsLabel.string = sim.raidClear ? `剩余敌人 ${alive}/${sim.heroes.length}` : `守卫 ${alive}/${sim.heroes.length}`;
     }
     if (this.crystalLabel && this.crystalLabel.isValid) {
-      this.crystalLabel.string = `水晶 ${Math.round((sim.crystalHp / Math.max(1, sim.crystalMaxHp)) * 100)}%`;
+      this.crystalLabel.string = sim.raidClear ? '野外' : `水晶 ${Math.round((sim.crystalHp / Math.max(1, sim.crystalMaxHp)) * 100)}%`;
     }
   }
 

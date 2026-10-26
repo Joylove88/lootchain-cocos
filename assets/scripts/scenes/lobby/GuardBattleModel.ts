@@ -137,6 +137,14 @@ export interface GuardHeroUnit {
   hp?: number;
   maxHp?: number;
   dead?: boolean;
+  /** 野外清怪模式(docs/50):怪物站位不再固定在格子上,会追玩家;fx = 走道 x(格),flane = 走道纵深 0..1。 */
+  fx?: number;
+  flane?: number;
+  /** 清怪模式:朝向(1 右 / -1 左)与本 tick 是否在移动(渲染层播跑 / 待机)。 */
+  facing?: 1 | -1;
+  moving?: boolean;
+  /** 清怪模式:每一击对进攻方的最终伤害(服务端按进攻方血量折算下发,不走守卫普攻公式)。 */
+  clearHit?: number;
 }
 
 /** 每个英雄编码的词条状态(docs/32):蓝卡层数、紫卡层数(每英雄 1 条)、专属大招觉醒等级。 */
@@ -255,6 +263,15 @@ export const GUARD_RAID_CRYSTAL_MULT = 0.7;
 export const GUARD_RAID_STAGGER_MS = 160;
 /** 守卫打进攻方的伤害倍率:守卫数值按"打一群怪"配的,直接打单人 10 秒就死;先压到 25%(离线冒烟:4 守卫全火力下约 40 秒),手感验收后再调。 */
 export const GUARD_RAID_INCOMING_MULT = 0.3;
+/** 野外清怪模式(docs/50):近战怪贴身距离 / 远程怪射程(格)、移速(格/秒)、纵深移速、进场后多久开始追。 */
+export const GUARD_CLEAR_MELEE_REACH = 0.85;
+export const GUARD_CLEAR_RANGED_REACH = 4.2;
+export const GUARD_CLEAR_MELEE_SPEED = 1.9;
+export const GUARD_CLEAR_RANGED_SPEED = 1.3;
+export const GUARD_CLEAR_LANE_SPEED = 1.0;
+export const GUARD_CLEAR_AGGRO_DELAY_MS = 900;
+/** 清怪模式怪物出手间隔倍率(比守卫英雄慢一点,给玩家留躲的窗口)。 */
+export const GUARD_CLEAR_ATTACK_INTERVAL_MULT = 1.35;
 
 /** 宝箱档次:精英掉普通箱(跳奖 1/3/5 连)、BOSS 掉豪华箱(固定 5 连、金币翻倍)——2026-09-18 用户拍板。 */
 export type GuardChestGrade = 'normal' | 'deluxe';
@@ -909,6 +926,8 @@ export interface GuardBattleState {
   inputs: GuardInput[];
   /** docs/47 P0 掠夺模式的进攻方;非掠夺局为 null。 */
   raider: GuardRaider | null;
+  /** 野外清怪模式(docs/50):没有水晶,防守方(怪物)全灭即胜;怪物会追击进攻方。 */
+  raidClear?: boolean;
   /** 战场事件:本波待触发(波开始时用 eventRng 排好)、场上流星矿晶、已出现的偷金鼠数。 */
   pendingFieldEvents: Array<{ kind: 'meteor' | 'greedy'; atMs: number; lane: number; x: number }>;
   pickups: GuardPickup[];
@@ -3148,6 +3167,10 @@ function guardApplyWaveShield(state: GuardBattleState): void {
 }
 
 function heroTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): void {
+  if (state.raidClear) {
+    guardClearMonsterTick(state, hero, dtMs);
+    return;
+  }
   const profile = GUARD_ROLE_PROFILE[hero.role];
   const perks = guardHeroPerks(state, hero.heroCode);
   // 战技:2★ 解锁;金卡觉醒为专属大招后冷却缩短(docs/32 §5.1 方案 A)。
@@ -4169,12 +4192,17 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
 /** 建好的 sim 切成掠夺局:放守卫(有血量)+ 放进攻方;phase 直接进 wave。defense 的 heroCode 必须在 pool 里。 */
 export function guardStartRaid(
   state: GuardBattleState,
-  raider: { heroCode: string; attack: number; hp: number; crystalHp?: number },
-  defense: Array<{ heroCode: string; cell: number; star: number; hp: number }>,
+  raider: { heroCode: string; attack: number; hp: number; crystalHp?: number; clear?: boolean },
+  defense: Array<{ heroCode: string; cell: number; star: number; hp: number; hit?: number }>,
 ): void {
   state.mode = 'raid';
   state.phase = 'wave';
-  if (raider.crystalHp && raider.crystalHp > 0) {
+  state.raidClear = !!raider.clear;
+  if (state.raidClear) {
+    // 野外清怪:没有水晶(渲染层不画);血量置 1 只为不触发任何「水晶归零」分支
+    state.crystalMaxHp = 1;
+    state.crystalHp = 1;
+  } else if (raider.crystalHp && raider.crystalHp > 0) {
     // P0:水晶血量按进攻方攻击定(约 20 下普攻),不用守卫战的水晶等级血量(QA 账号 1689 血要砍 70 下)
     state.crystalMaxHp = Math.round(raider.crystalHp);
     state.crystalHp = state.crystalMaxHp;
@@ -4201,6 +4229,13 @@ export function guardStartRaid(
       hp,
       maxHp: hp,
       dead: false,
+      ...(state.raidClear ? {
+        fx: guardCellX(entry.cell),
+        flane: Math.floor(entry.cell / GUARD_GRID_COLS) === 0 ? 0.25 : 0.75,
+        facing: -1 as const,
+        moving: false,
+        clearHit: Math.max(1, Math.round(entry.hit ?? 1)),
+      } : {}),
     };
   });
   const hp = Math.max(1, Math.round(raider.hp));
@@ -4405,9 +4440,9 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
     if (hero.dead || hero.hp === undefined) {
       continue;
     }
-    const dx = guardCellX(hero.cell) - unit.x;
+    const dx = (hero.fx ?? guardCellX(hero.cell)) - unit.x;
     // 上下错位:守卫上排站 laneF 0.25、下排 0.75;进攻方离这一排太远(>0.45)打不到,得走到同一排(2026-10-26 去格子后的纵深)
-    const heroLaneF = Math.floor(hero.cell / GUARD_GRID_COLS) === 0 ? 0.25 : 0.75;
+    const heroLaneF = hero.flane ?? (Math.floor(hero.cell / GUARD_GRID_COLS) === 0 ? 0.25 : 0.75);
     if (Math.abs(heroLaneF - (unit.laneF ?? 0.5)) > 0.45) {
       continue;
     }
@@ -4424,6 +4459,14 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
       state.events.push({ type: 'heroDead', timeMs: state.timeMs, cell: hero.cell, heroCode: hero.heroCode });
     }
   }
+  // 野外清怪:怪全倒 = 胜利(没有水晶)
+  if (state.raidClear) {
+    if (state.heroes.length > 0 && state.heroes.every((hero) => hero.dead)) {
+      state.phase = 'victory';
+      state.events.push({ type: 'victory', timeMs: state.timeMs });
+    }
+    return;
+  }
   // 身前没有守卫、贴着水晶、朝向水晶:打水晶
   if (!hitAny && facing < 0 && unit.x <= GUARD_CRYSTAL_REACH_X + 0.55) {
     const crystalDamage = Math.max(1, Math.round(damage * GUARD_RAID_CRYSTAL_MULT));
@@ -4434,6 +4477,80 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
       state.events.push({ type: 'victory', timeMs: state.timeMs });
     }
   }
+}
+
+/**
+ * 野外清怪模式的怪物(docs/50):进场 0.9s 后开始追进攻方;近战贴身(同一纵深)再出手,远程保持 2~4 格放箭。
+ * 只用确定性运算(复演逐位一致);伤害走 resolveBasicAttack → guardDamageRaider(承伤倍率同掠夺)。
+ */
+function guardClearMonsterTick(state: GuardBattleState, hero: GuardHeroUnit, dtMs: number): void {
+  const unit = guardRaidUnit(state);
+  if (!unit || hero.dead) {
+    hero.moving = false;
+    return;
+  }
+  const ranged = hero.role === 'ranged' || hero.role === 'control';
+  const reach = ranged ? GUARD_CLEAR_RANGED_REACH : GUARD_CLEAR_MELEE_REACH;
+  const x = hero.fx ?? guardCellX(hero.cell);
+  const lane = hero.flane ?? 0.5;
+  const raiderLane = unit.laneF ?? 0.5;
+  const dx = unit.x - x;
+  hero.facing = dx >= 0 ? 1 : -1;
+  let moved = 0;
+  if (state.timeMs - state.waveStartedAtMs >= GUARD_CLEAR_AGGRO_DELAY_MS) {
+    const step = (ranged ? GUARD_CLEAR_RANGED_SPEED : GUARD_CLEAR_MELEE_SPEED) * (dtMs / 1000);
+    let nx = x;
+    if (ranged) {
+      // 远程:离太近往后撤,太远往前压
+      if (Math.abs(dx) > reach - 0.2) {
+        nx = x + Math.sign(dx) * Math.min(step, Math.abs(dx) - (reach - 0.4));
+      } else if (Math.abs(dx) < 1.8) {
+        nx = x - Math.sign(dx || 1) * step * 0.7;
+      }
+    } else if (Math.abs(dx) > reach * 0.8) {
+      // 近战:贴到进攻方身前 reach*0.8 处
+      nx = x + Math.sign(dx) * Math.min(step, Math.abs(dx) - reach * 0.8);
+    }
+    nx = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_RAID_MAX_X, nx));
+    // 纵深:近战对齐进攻方(按序号错开一点不叠在一起),远程只缓慢靠拢
+    const spread = ((hero.unitId % 3) - 1) * 0.12;
+    const wantLane = Math.max(0, Math.min(1, raiderLane + (ranged ? spread * 2 : spread)));
+    const laneStep = GUARD_CLEAR_LANE_SPEED * (ranged ? 0.5 : 1) * (dtMs / 1000);
+    const dl = wantLane - lane;
+    const nl = Math.abs(dl) <= laneStep ? wantLane : lane + Math.sign(dl) * laneStep;
+    moved = Math.abs(nx - x) + Math.abs(nl - lane);
+    hero.fx = nx;
+    hero.flane = nl;
+  }
+  hero.moving = moved > 0.0005;
+  hero.attackCooldownMs -= dtMs;
+  if (hero.attackCooldownMs > 0) {
+    return;
+  }
+  const inRange = Math.abs(unit.x - (hero.fx ?? x)) <= reach && (ranged || Math.abs(raiderLane - (hero.flane ?? lane)) <= 0.35);
+  if (!inRange || state.timeMs - state.waveStartedAtMs < GUARD_CLEAR_AGGRO_DELAY_MS) {
+    return;
+  }
+  hero.attackCooldownMs = GUARD_ROLE_PROFILE[hero.role].intervalMs * GUARD_CLEAR_ATTACK_INTERVAL_MULT;
+  hero.lastAttackAtMs = state.timeMs;
+  hero.lastTargetId = unit.monsterId;
+  hero.attackCount += 1;
+  const amount = Math.max(1, Math.round(hero.clearHit ?? 1));
+  // 表现层照常按 heroAttack 播出手动画 / 弹道;数值直接用下发的最终伤害(抵掉 guardDamageRaider 里的承伤倍率)
+  state.events.push({
+    type: 'heroAttack',
+    timeMs: state.timeMs,
+    heroCode: hero.heroCode,
+    monsterId: unit.monsterId,
+    amount,
+    cell: hero.cell,
+    skillProc: false,
+    crit: false,
+    giantLv: 0,
+    pattern: guardHeroProfileOf(state, hero.heroCode).archetype,
+    hits: [{ monsterId: unit.monsterId, amount, kind: 'main' }],
+  });
+  guardDamageRaider(state, unit, amount / GUARD_RAID_INCOMING_MULT);
 }
 
 /** 进攻方受伤:无敌帧内免伤;打空血 = 掠夺失败。 */

@@ -8327,5 +8327,10 @@ function formatBattleStageDisplayName(stageCode: string | null | undefined): str
   if (/^RAIDPVP_/.test(value)) {
     return '掠夺真人矿';
   }
+  // 野外怪群(docs/50)
+  const field = /^FIELD_([A-Z]+)_/.exec(value);
+  if (field) {
+    return field[1] === 'WOODS' ? '村外林地' : field[1] === 'GRAY' ? '灰岩荒原' : '野外';
+  }
   return value;
 }

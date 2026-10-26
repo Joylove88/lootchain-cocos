@@ -39,6 +39,8 @@ export interface RaidSetupDefenderVO {
   /** 模板表现资源(NPC 不在玩家名册里,骨骼 / 立绘靠它们解析)。 */
   spineAsset?: string | null;
   portraitAsset?: string | null;
+  /** 野外清怪(docs/50):这只怪每一击对进攻方的最终伤害。 */
+  hit?: number;
 }
 
 export interface RaidSetupVO {
@@ -47,6 +49,8 @@ export interface RaidSetupVO {
   crystalHp: number;
   raider: { heroCode: string; attack: number; hp: number };
   defenders: RaidSetupDefenderVO[];
+  /** 野外清怪模式(docs/50):无水晶,怪全灭即胜。 */
+  clear?: boolean;
 }
 
 export function isRaidStageCode(stageCode: string | null | undefined): boolean {
@@ -58,9 +62,14 @@ export function isRaidPvpStageCode(stageCode: string | null | undefined): boolea
   return /^RAIDPVP_\d{1,12}(_R\d{1,12})?$/i.test((stageCode ?? '').trim());
 }
 
-/** NPC 矿或真人矿:都走掠夺战斗流。 */
+/** 野外怪群关卡码 FIELD_<地图>_<营地>(docs/50),例:FIELD_WOODS_1、FIELD_GRAY_E。 */
+export function isFieldStageCode(stageCode: string | null | undefined): boolean {
+  return /^FIELD_[A-Z]{2,12}_[A-Z0-9]{1,3}$/i.test((stageCode ?? '').trim());
+}
+
+/** NPC 矿、真人矿或野外怪群:都走掠夺(动作)战斗流。 */
 export function isRaidBattleStageCode(stageCode: string | null | undefined): boolean {
-  return isRaidStageCode(stageCode) || isRaidPvpStageCode(stageCode);
+  return isRaidStageCode(stageCode) || isRaidPvpStageCode(stageCode) || isFieldStageCode(stageCode);
 }
 
 export function raidPvpStageCode(defenderUserId: number, revengeOf?: number | null): string {

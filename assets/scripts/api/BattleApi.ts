@@ -135,6 +135,8 @@ const DAILY_SETTLEMENT_MODE = 'DAILY_DUNGEON';
 /** 矿境掠夺结算模式(docs/48 NPC 矿 RAID_PVE / docs/49 真人矿 RAID_PVP)。 */
 const RAID_SETTLEMENT_MODE = 'RAID_PVE';
 const RAID_PVP_SETTLEMENT_MODE = 'RAID_PVP';
+/** 野外怪群结算模式(docs/50)。 */
+const FIELD_SETTLEMENT_MODE = 'FIELD';
 
 // 结算奖励安全边界采用「黑名单」而非白名单:只拦支付(钻石/USDT)、链上/未开放的 EX 代币、直发英雄/碎片——
 // 这些当前阶段绝不该经战斗结算下发,出现即视为后端配置错误。其余(金币/装备/宝石/材料/技能与觉醒道具/矿晶等
@@ -335,12 +337,14 @@ function normalizeRaidSetup(raw: unknown): RaidSetupVO | null {
       hero: normalizeLineupHero(entry.hero),
       spineAsset: readOptionalText(entry, 'spineAsset', MAX_TEXT),
       portraitAsset: readOptionalText(entry, 'portraitAsset', MAX_TEXT),
+      hit: typeof entry.hit === 'number' ? readInteger(entry.hit, 1, Number.MAX_SAFE_INTEGER) : undefined,
     });
   }
   if (defenders.length === 0) {
     return null;
   }
   return {
+    clear: raw.clear === true,
     stageCode: readText(raw, 'stageCode', MAX_TEXT, ''),
     timeLimitMs: readInteger(raw.timeLimitMs, 10_000, 600_000),
     crystalHp: readInteger(raw.crystalHp, 1, Number.MAX_SAFE_INTEGER),
@@ -387,7 +391,7 @@ function validateBattleSettlement(data: unknown): PlayerBattleSettlementVO {
       throw new Error('战斗结算响应格式错误：每日副本结算字段不完整');
     }
     assertSafeDailyRewards(rewardItems);
-  } else if (settlementMode === RAID_SETTLEMENT_MODE || settlementMode === RAID_PVP_SETTLEMENT_MODE) {
+  } else if (settlementMode === RAID_SETTLEMENT_MODE || settlementMode === RAID_PVP_SETTLEMENT_MODE || settlementMode === FIELD_SETTLEMENT_MODE) {
     // 矿境掠夺(docs/48 NPC / docs/49 真人):胜利每次发奖,首通才推进(progressApplied 可为 0)。
     if (!isRaidBattleStageCode(stageCode) || !rewardGranted || readonlyEconomy || !economyApplied) {
       throw new Error('战斗结算响应格式错误：掠夺结算字段不完整');
@@ -469,7 +473,7 @@ function validateRecentBattle(item: unknown): PlayerBattleRecentVO {
 
 function readSettlementMode(record: UnknownRecord): string {
   const mode = readText(record, 'settlementMode', 32, 'NO_REWARD');
-  if (mode === 'NO_REWARD' || mode === DAILY_SETTLEMENT_MODE || mode === RAID_SETTLEMENT_MODE || mode === RAID_PVP_SETTLEMENT_MODE || isRealSettlementMode(mode)) {
+  if (mode === 'NO_REWARD' || mode === DAILY_SETTLEMENT_MODE || mode === RAID_SETTLEMENT_MODE || mode === RAID_PVP_SETTLEMENT_MODE || mode === FIELD_SETTLEMENT_MODE || isRealSettlementMode(mode)) {
     return mode;
   }
   throw new Error(`战斗结算响应包含未开放模式：${mode}`);

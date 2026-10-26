@@ -129,7 +129,10 @@ import { LobbyNoticePanelRenderer, type LobbyNoticePanelHost } from './lobby/Lob
 import { LobbyDailyDungeonPanelRenderer, type LobbyDailyDungeonPanelHost } from './lobby/LobbyDailyDungeonPanelRenderer';
 import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
-import { isRaidBattleStageCode, isRaidPvpStageCode, isRaidStageCode, raidPvpStageCode } from '../types/RaidTypes';
+import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStageCode, raidPvpStageCode } from '../types/RaidTypes';
+import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
+import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
+import { worldMapDef, worldMapOfStage, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
@@ -353,6 +356,16 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyGuardBattleRenderer = new LobbyGuardBattleRenderer(this as unknown as LobbyGuardBattleHost);
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
   private readonly lobbyTownRenderer = new LobbyTownRenderer(this as unknown as LobbyTownHost);
+  /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
+  private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
+  private worldState: WorldStateVO | null = null;
+  private worldLoading = false;
+  private worldInitDone = false;
+  private worldDialog: WorldDialogState | null = null;
+  private worldMapPanel: WorldMapPanelState | null = null;
+  private worldBountyPanel: WorldBountyPanelState | null = null;
+  /** 正在打的野外怪群(战后交回地图)。 */
+  private worldFieldStage: string | null = null;
   private readonly lobbyQuestMailPanelRenderer = new LobbyQuestMailPanelRenderer(this as unknown as import('./lobby/LobbyQuestMailPanelRenderer').LobbyQuestMailHost);
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
@@ -1368,7 +1381,7 @@ export class LootChainGameRoot extends Component {
     mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
-      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材', town: '正在加载主城',
+      forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材', town: '正在加载世界',
       raid: '正在加载矿境',
     };
     this.addChildLabel(panel, 'SceneAssetLoadingTitle', titles[group], centerX, centerY + 40 * scale, 28 * scale, new Color(245, 214, 140, 255), new Size(520 * scale, 40 * scale));
@@ -1425,6 +1438,9 @@ export class LootChainGameRoot extends Component {
       this.ensureReusableScenesRegistered();
       // 跑图大厅:地面 / 建筑整组到齐再画(首次进大厅会短暂显示读取),没有旧视频背景
       this.uiSpriteFrameCache.preloadGroup('town');
+      if (!this.worldState && !this.worldLoading && this.api.tokenStore.tokenValue()) {
+        void this.loadWorldState();
+      }
       const townLayout = this.renderBase();
       if (!this.renderSceneAssetGate(townLayout)) {
         this.renderLobbyHud(townLayout);
@@ -1477,7 +1493,7 @@ export class LootChainGameRoot extends Component {
   private isGuardBattleStage(stageCode: string | null | undefined): boolean {
     const code = (stageCode || '').trim();
     // RAID_*:docs/47 掠夺(P0 原型本地开局)
-    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code) || /^RAID(PVP)?_/i.test(code);
+    return /^DAILY_[A-Z]+_[123]$/i.test(code) || /^MAIN_\d+_\d+$/i.test(code) || /^(RAID(PVP)?|FIELD)_/i.test(code);
   }
 
   /**
@@ -2206,6 +2222,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private returnToLobbyFromScenePage(): void {
+    // docs/50:召唤 / 升级 / 编队回来,养成类剧情任务进度可能变了
+    void this.loadWorldState();
     this.closeAllLobbyScenePanelFlags();
     this.lobbyDailyDungeonPanelOpen = false;
     this.currentView = 'lobby';
@@ -3569,6 +3587,12 @@ export class LootChainGameRoot extends Component {
 
   private returnToLobbyFromBattlePreview(): void {
     const lastBattleStageCode = this.selectedLobbyStageCode ?? '';
+    if (this.worldFieldStage && isFieldStageCode(lastBattleStageCode)) {
+      // docs/50:野外怪群打完回到地图原处;赢了这群 60 秒后刷新,输了被推离营地
+      const settlement = this.currentLobbyBattleState().settlement;
+      this.lobbyTownRenderer.onFieldBattleEnd(lastBattleStageCode, settlement?.result === 'WIN');
+      this.worldFieldStage = null;
+    }
     // 回到大厅时结束战斗表现计时，并回读只读大厅数据，保证闭环后的 HUD 与入口状态是最新快照。
     // 2026-10-10 用户手机上「点确认退出没反应」(电脑复现不了):每一步单独兜底,任何一步出错都继续往下走、
     // 一定切回大厅,并把第一处错误显示在状态栏(截图即可定位)。
@@ -6485,11 +6509,425 @@ export class LootChainGameRoot extends Component {
         this.lobbyGuardCrystalDialog.spellFlash = null;
       }
     }
+    this.syncWorldOverlays();
     this.raiseLobbyCurrencyFlies();
     this.syncLegalDocumentOverlay();
   }
 
   // ── 守卫水晶养成(docs/38)──
+
+  // ── docs/50 跑图世界:新手村 / 主城 / 野区 ──
+
+  private currentWorldState(): WorldStateVO | null {
+    return this.worldState;
+  }
+
+  private currentWorldMapCode(): WorldMapCode {
+    return this.lobbyTownRenderer.currentMapCode();
+  }
+
+  private currentWorldDialog(): WorldDialogState | null {
+    return this.worldDialog;
+  }
+
+  private currentWorldMapPanel(): WorldMapPanelState | null {
+    return this.worldMapPanel;
+  }
+
+  private currentWorldBountyPanel(): WorldBountyPanelState | null {
+    return this.worldBountyPanel;
+  }
+
+  private worldMapStorageKey(): string {
+    return `lc_world_map_${this.currentLobbyProfile().userId ?? 0}`;
+  }
+
+  private async loadWorldState(): Promise<void> {
+    if (this.worldLoading || !this.api.tokenStore.tokenValue()) {
+      return;
+    }
+    this.worldLoading = true;
+    try {
+      const state = await this.api.world.state();
+      this.applyWorldState(state);
+    } catch (error) {
+      console.warn('[World] state failed', error);
+    } finally {
+      this.worldLoading = false;
+    }
+  }
+
+  private applyWorldState(state: WorldStateVO): void {
+    const first = !this.worldInitDone;
+    this.worldState = state;
+    if (first) {
+      this.worldInitDone = true;
+      // 开局所在地图:新手村阶段 → 晨风村;出村后 → 上次所在的地图(仍开放)否则主城
+      let target: WorldMapCode = state.stage === 'VILLAGE' ? 'VILLAGE' : 'CITY';
+      if (state.stage === 'CITY') {
+        try {
+          const saved = sys.localStorage.getItem(this.worldMapStorageKey()) as WorldMapCode | null;
+          if (saved && state.maps.some((map) => map.mapCode === saved && map.unlocked)) {
+            target = saved;
+          }
+        } catch {
+          // 本地存储不可用:回主城
+        }
+      }
+      if (target !== this.lobbyTownRenderer.currentMapCode()) {
+        this.lobbyTownRenderer.enterMap(target);
+        if (this.currentView === 'lobby') {
+          this.renderCurrentView();
+        }
+        return;
+      }
+    }
+    if (this.currentView === 'lobby') {
+      this.refreshLobbyViewPreservingBackground();
+    }
+  }
+
+  /** 世界操作统一入口:成功换状态 + 提示 + 奖励飘字;失败提示原因。 */
+  private async runWorldAction(run: () => Promise<import('../types/WorldTypes').WorldActionResultVO>): Promise<boolean> {
+    try {
+      const result = await run();
+      this.worldState = result.state;
+      const rewardText = result.rewards.map((item: WorldRewardItemVO) => `${item.resourceName} ×${item.amount}`).join('  ');
+      if (result.message || rewardText) {
+        this.setStatus([result.message, rewardText].filter(Boolean).join(' · '));
+      }
+      if (result.rewards.length > 0) {
+        void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+        void this.loadLobbyBag(true);
+      }
+      return true;
+    } catch (error) {
+      this.setStatus((error as Error)?.message || '操作失败,请重试');
+      return false;
+    }
+  }
+
+  // NPC 对话(原型 p4)
+
+  private openWorldNpcDialog(npc: WorldNpcCode): void {
+    const dialog = this.resolveWorldDialog(npc);
+    this.worldDialog = dialog;
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+  }
+
+  /** 和这个 NPC 有关的任务:可交付 > 对话目标 > 可接 > 养成去做 > 训练 > 进行中 > 闲聊。 */
+  private resolveWorldDialog(npc: WorldNpcCode): WorldDialogState {
+    const quests = this.worldState?.quests ?? [];
+    const pick = (mode: WorldDialogState['mode'], code: string): WorldDialogState => ({ npc, mode, questCode: code, busy: false });
+    const done = quests.find((quest) => quest.state === 'DONE' && quest.turnInNpc === npc);
+    if (done) {
+      return pick('claim', done.code);
+    }
+    const talk = quests.find((quest) => quest.state === 'ACCEPTED' && quest.objective === 'TALK' && quest.objectiveTarget === npc);
+    if (talk) {
+      return pick('claim', talk.code);
+    }
+    const offer = quests.find((quest) => quest.state === 'AVAILABLE' && quest.acceptNpc === npc);
+    if (offer) {
+      return pick('offer', offer.code);
+    }
+    const grow = quests.find((quest) => quest.state === 'ACCEPTED' && quest.objective === 'GROW' && quest.turnInNpc === npc);
+    if (grow) {
+      return pick('grow', grow.code);
+    }
+    const train = quests.find((quest) => quest.state === 'ACCEPTED' && quest.objectiveTarget === 'stage:FIELD_VILLAGE_T');
+    if (train && npc === 'INSTRUCTOR') {
+      return pick('train', train.code);
+    }
+    const pending = quests.find((quest) => quest.state === 'ACCEPTED' && (quest.turnInNpc === npc || quest.acceptNpc === npc));
+    if (pending) {
+      return pick('progress', pending.code);
+    }
+    return pick('idle', '');
+  }
+
+  private closeWorldDialog(): void {
+    if (!this.worldDialog) {
+      return;
+    }
+    this.worldDialog = null;
+    gameAudio.sfx('panel_close');
+    this.syncLobbyShopOverlay();
+  }
+
+  private worldDialogPrimary(): void {
+    const dialog = this.worldDialog;
+    if (!dialog || dialog.busy) {
+      return;
+    }
+    const quest = this.worldState?.quests.find((item) => item.code === dialog.questCode) ?? null;
+    if (!quest) {
+      this.closeWorldDialog();
+      return;
+    }
+    if (dialog.mode === 'grow') {
+      this.closeWorldDialog();
+      if (quest.objectiveTarget === 'GACHA_DRAW') {
+        this.openLobbyGachaScene();
+      } else if (quest.objectiveTarget === 'HERO_LEVEL_UP') {
+        this.openLobbyHeroRosterPanel();
+      } else if (quest.objectiveTarget === 'TEAM_SAVE') {
+        this.openLobbyFormationPanel(undefined, 'roster');
+      }
+      return;
+    }
+    if (dialog.mode === 'train') {
+      this.closeWorldDialog();
+      this.startWorldFieldBattle('FIELD_VILLAGE_T');
+      return;
+    }
+    dialog.busy = true;
+    this.syncLobbyShopOverlay();
+    void (async () => {
+      let ok: boolean;
+      if (dialog.mode === 'offer') {
+        ok = await this.runWorldAction(() => this.api.world.acceptQuest(quest.code));
+      } else {
+        // 交任务:对话类目标先上报再领
+        if (quest.state === 'ACCEPTED' && quest.objective === 'TALK') {
+          ok = await this.runWorldAction(() => this.api.world.reportQuest(quest.code, 'TALK', quest.objectiveTarget));
+          if (!ok) {
+            dialog.busy = false;
+            this.syncLobbyShopOverlay();
+            return;
+          }
+        }
+        ok = await this.runWorldAction(() => this.api.world.claimQuest(quest.code));
+        if (ok) {
+          gameAudio.sfx('reward');
+        }
+      }
+      if (!ok) {
+        dialog.busy = false;
+        this.syncLobbyShopOverlay();
+        return;
+      }
+      // 出村:领完「远行」直接从村口传送阵去主城
+      if (dialog.mode === 'claim' && quest.code === 'V10') {
+        this.worldDialog = null;
+        this.syncLobbyShopOverlay();
+        this.lobbyTownRenderer.startChannel(3, '前往主城…', () => this.travelWorldMap('CITY', null));
+        return;
+      }
+      // 同一个 NPC 还有下一段(接了就能交 / 交了有新的):接着说
+      const next = this.resolveWorldDialog(dialog.npc);
+      this.worldDialog = next.mode === 'idle' || next.mode === 'progress' ? null : next;
+      this.syncLobbyShopOverlay();
+      this.refreshLobbyViewPreservingBackground();
+    })();
+  }
+
+  // 世界地图(原型 p3 B 版)
+
+  private openWorldMapPanel(): void {
+    this.worldMapPanel = { tab: 0, selected: null, region: null };
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+  }
+
+  private closeWorldMapPanel(): void {
+    this.worldMapPanel = null;
+    gameAudio.sfx('panel_close');
+    this.syncLobbyShopOverlay();
+  }
+
+  private selectWorldMapTab(tab: number): void {
+    if (!this.worldMapPanel) {
+      return;
+    }
+    this.worldMapPanel = { tab: Math.max(0, Math.min(WORLD_TABS.length - 1, tab)), selected: null, region: null };
+    this.syncLobbyShopOverlay();
+  }
+
+  private selectWorldMapPoint(code: string | null): void {
+    if (!this.worldMapPanel) {
+      return;
+    }
+    this.worldMapPanel = { ...this.worldMapPanel, selected: code };
+    this.syncLobbyShopOverlay();
+  }
+
+  private selectWorldMapRegion(region: string | null): void {
+    if (!this.worldMapPanel) {
+      return;
+    }
+    this.worldMapPanel = { ...this.worldMapPanel, region };
+    this.syncLobbyShopOverlay();
+  }
+
+  /** 点世界地图「传送」:关面板 → 3 秒读条(移动打断)→ 换图到目标图传送阵旁。 */
+  private teleportWorldMap(code: WorldMapCode): void {
+    const map = this.worldState?.maps.find((item) => item.mapCode === code);
+    if (!map?.unlocked) {
+      this.setStatus(map?.lockReason || '地图未开放');
+      return;
+    }
+    this.worldMapPanel = null;
+    this.syncLobbyShopOverlay();
+    this.lobbyTownRenderer.startChannel(3, `传送至 ${map.mapName}…`, () => this.travelWorldMap(code, null));
+  }
+
+  /** 换图(出口 / 传送 / 回城):目标图未开放就提示;spawn 缺省 = 目标图传送阵旁。 */
+  private travelWorldMap(code: WorldMapCode, spawn: { x: number; y: number } | null, reach?: string): void {
+    const map = this.worldState?.maps.find((item) => item.mapCode === code);
+    if (this.worldState && !map?.unlocked) {
+      this.setStatus(map?.lockReason || '地图未开放');
+      return;
+    }
+    if (reach) {
+      const quest = this.worldState?.quests.find((item) => item.state === 'ACCEPTED' && item.objective === 'REACH' && item.objectiveTarget === reach);
+      if (quest) {
+        void this.runWorldAction(() => this.api.world.reportQuest(quest.code, 'REACH', reach));
+      }
+    }
+    const def = worldMapDef(code);
+    const arrive = spawn ?? { x: def.waypoint.x + 40, y: def.waypoint.y - 150 };
+    this.lobbyTownRenderer.enterMap(code, arrive);
+    try {
+      sys.localStorage.setItem(this.worldMapStorageKey(), code);
+    } catch {
+      // 忽略
+    }
+    if (this.currentView === 'lobby') {
+      this.renderCurrentView();
+    }
+    // 到一张新图:落脚点那座传送阵自动激活
+    if (map && !map.activated) {
+      this.activateWorldWaypoint(code);
+    }
+  }
+
+  private activateWorldWaypoint(code: WorldMapCode): void {
+    void (async () => {
+      const ok = await this.runWorldAction(() => this.api.world.activateWaypoint(code));
+      if (ok) {
+        this.refreshLobbyViewPreservingBackground();
+      }
+    })();
+  }
+
+  /** 左侧任务追踪条:打开世界地图并选中任务所在地图。 */
+  private openWorldQuestTracker(): void {
+    const quests = this.worldState?.quests ?? [];
+    const quest = quests.find((item) => item.state === 'DONE') ?? quests.find((item) => item.state === 'ACCEPTED') ?? quests.find((item) => item.state === 'AVAILABLE');
+    this.worldMapPanel = { tab: 0, selected: quest?.map ?? this.lobbyTownRenderer.currentMapCode(), region: null };
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+  }
+
+  // 佣兵公会悬赏(原型 p5)
+
+  private openWorldBountyPanel(): void {
+    if (!this.worldState?.villageDone) {
+      this.openLobbyQuestPanel();
+      return;
+    }
+    this.worldBountyPanel = { busy: false };
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+  }
+
+  private closeWorldBountyPanel(): void {
+    this.worldBountyPanel = null;
+    gameAudio.sfx('panel_close');
+    this.syncLobbyShopOverlay();
+  }
+
+  private acceptWorldBounty(slot: number): void {
+    this.runWorldBountyAction(() => this.api.world.acceptBounty(slot));
+  }
+
+  private claimWorldBounty(slot: number): void {
+    this.runWorldBountyAction(() => this.api.world.claimBounty(slot));
+  }
+
+  private runWorldBountyAction(run: () => Promise<import('../types/WorldTypes').WorldActionResultVO>): void {
+    const panel = this.worldBountyPanel;
+    if (!panel || panel.busy) {
+      return;
+    }
+    panel.busy = true;
+    this.syncLobbyShopOverlay();
+    void (async () => {
+      await this.runWorldAction(run);
+      if (this.worldBountyPanel) {
+        this.worldBountyPanel.busy = false;
+      }
+      this.syncLobbyShopOverlay();
+      this.refreshLobbyViewPreservingBackground();
+    })();
+  }
+
+  // 野外怪群开战(docs/50 §5.2):碰到明雷怪直接开战,不走编队确认页
+
+  private startWorldFieldBattle(stageCode: string): void {
+    if (!isFieldStageCode(stageCode)) {
+      return;
+    }
+    this.worldFieldStage = stageCode;
+    this.worldDialog = null;
+    this.worldMapPanel = null;
+    this.worldBountyPanel = null;
+    this.openLobbyBattlePreviewPanel(stageCode);
+    if (this.currentView === 'battle') {
+      this.startLobbyBattleSession();
+    } else {
+      this.worldFieldStage = null;
+      this.lobbyTownRenderer.onFieldBattleEnd(stageCode, false);
+    }
+  }
+
+  private syntheticFieldStage(stageCode: string): LobbyAdventureStageVO {
+    const def = worldMapOfStage(stageCode);
+    const camp = def?.camps.find((item) => item.stageCode === stageCode) ?? null;
+    return {
+      stageCode,
+      stageName: camp ? `${def?.name ?? ''} · ${camp.label}` : stageCode,
+      orderNo: 0,
+      unlocked: true,
+      recommended: false,
+      requiredLevel: 0,
+      recommendedPower: 0,
+      enemySummary: camp ? `${camp.label} Lv.${camp.level}` : '野外怪群',
+      rewardPreview: [],
+      statusLabel: '野外',
+      unlockHint: '',
+      lockReasonCode: 'NONE',
+      levelGap: 0,
+      requiredLevelNeedExp: 0,
+      expToRequiredLevel: 0,
+      nextGuidanceTitle: '',
+      nextGuidanceText: '',
+      growthSourceSummary: '',
+      growthSourceStatus: '',
+      growthSourceHint: '',
+      repeatableExpAvailable: false,
+    };
+  }
+
+  /** 三个浮层随大厅重绘重挂(不在大厅视图时不挂)。 */
+  private syncWorldOverlays(): void {
+    this.removeNodeFromContent(LobbyWorldOverlayRenderer.DIALOG);
+    this.removeNodeFromContent(LobbyWorldOverlayRenderer.MAP);
+    this.removeNodeFromContent(LobbyWorldOverlayRenderer.BOUNTY);
+    if (this.currentView !== 'lobby') {
+      return;
+    }
+    const layout = this.resolveLayout();
+    if (this.worldMapPanel) {
+      this.lobbyWorldOverlayRenderer.renderMap(layout);
+    } else if (this.worldBountyPanel) {
+      this.lobbyWorldOverlayRenderer.renderBounty(layout);
+    } else if (this.worldDialog) {
+      this.lobbyWorldOverlayRenderer.renderDialog(layout);
+    }
+  }
 
   private currentGuardCrystalState(): LobbyGuardCrystalDialogState | null {
     return this.lobbyGuardCrystalDialog;
@@ -7339,6 +7777,7 @@ export class LootChainGameRoot extends Component {
   }
 
   private refreshLobbyReadonlyStateAfterBattle(): void {
+    void this.loadWorldState();
     const profile = this.currentLobbyProfile();
     void this.loadLobbyProfile(profile.userId);
     void this.loadLobbyAdventure(true);
@@ -8056,6 +8495,9 @@ export class LootChainGameRoot extends Component {
     }
     if (isRaidPvpStageCode(stageCode)) {
       return this.syntheticRaidPvpStage(stageCode);
+    }
+    if (isFieldStageCode(stageCode)) {
+      return this.syntheticFieldStage(stageCode);
     }
     const adventure = this.lobbyAdventureLoader.currentState().adventure;
     if (!adventure) {

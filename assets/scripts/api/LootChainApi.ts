@@ -5,6 +5,7 @@ import { BagApi } from './BagApi';
 import { EquipmentApi } from './EquipmentApi';
 import { GuardCrystalApi } from './GuardCrystalApi';
 import { BattleApi } from './BattleApi';
+import { WorldApi } from './WorldApi';
 import { RaidApi } from './RaidApi';
 import { GachaApi } from './GachaApi';
 import { GiftApi } from './GiftApi';
@@ -45,6 +46,8 @@ export class LootChainApi {
   readonly lobbyBadge = new LobbyBadgeApi(this.http);
   readonly battle = new BattleApi(this.http);
   readonly raid = new RaidApi(this.http);
+  /** docs/50 新手村 / 主城 / 野区。 */
+  readonly world = new WorldApi(this.http);
   readonly gacha = new GachaApi(this.http);
   readonly hero = new HeroApi(this.http);
   readonly bag = new BagApi(this.http);

@@ -123,7 +123,9 @@ export class LobbyHudRenderer {
     const recommended = this.normalizeMainStageCode(adventure.recommendedStageCode) ?? '';
     const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended.toUpperCase());
     const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
-    const veteran = recommendedIndex >= 5;
+    // docs/50:跑图世界上线后由剧情任务带路(新手村),旧的硬引导链不再出现,只保留软引导
+    const worldActive = !!(this.host as unknown as { currentWorldState?: () => unknown }).currentWorldState?.();
+    const veteran = recommendedIndex >= 5 || worldActive;
     const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
     switch (step) {
       case 'TOWER':
@@ -169,7 +171,9 @@ export class LobbyHudRenderer {
     const recommended = this.normalizeMainStageCode(adventure.recommendedStageCode) ?? '';
     const recommendedIndex = stages.findIndex((stage) => stage.stageCode.toUpperCase() === recommended.toUpperCase());
     const firstBattleDone = recommended !== '' && recommended.toUpperCase() !== 'MAIN_1_1';
-    const veteran = recommendedIndex >= 5;
+    // docs/50:跑图世界上线后由剧情任务带路(新手村),旧的硬引导链不再出现,只保留软引导
+    const worldActive = !!(this.host as unknown as { currentWorldState?: () => unknown }).currentWorldState?.();
+    const veteran = recommendedIndex >= 5 || worldActive;
     const step = lobbyGuide.resolveStep(firstBattleDone, veteran);
     // 硬引导走完后才轮到软引导(docs/45 §15):一次只出一条,不加暗层,点气泡关闭
     const soft = step === 'DONE' ? this.resolveSoftGuide(view, adventure.maxCompletedStageCode ?? '') : null;

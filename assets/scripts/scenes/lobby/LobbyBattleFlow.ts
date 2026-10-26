@@ -490,7 +490,7 @@ function normalizeStageCode(stageCode: string): string | null {
   const value = (stageCode || '').trim().toUpperCase();
   // 每日材料副本(P7b)与主线共用同一条战斗流;DAILY 码由后端做开放日/次数/解锁校验。
   // 矿境掠夺(docs/48):RAID_n 与主线 / 每日共用同一条战斗流,解锁 / 体力 / 战力闸由后端 battles/start 裁决。
-  return /^MAIN_\d+_\d+$/.test(value) || /^DAILY_[A-Z]+_[1-3]$/.test(value) || /^RAID_\d{1,3}$/.test(value) || /^RAIDPVP_\d{1,12}(_R\d{1,12})?$/.test(value) ? value : null;
+  return /^MAIN_\d+_\d+$/.test(value) || /^DAILY_[A-Z]+_[1-3]$/.test(value) || /^RAID_\d{1,3}$/.test(value) || /^RAIDPVP_\d{1,12}(_R\d{1,12})?$/.test(value) || /^FIELD_[A-Z]{2,12}_[A-Z0-9]{1,3}$/.test(value) ? value : null;
 }
 
 function createRequestId(prefix: string): string {
