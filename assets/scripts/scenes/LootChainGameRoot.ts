@@ -3483,7 +3483,9 @@ export class LootChainGameRoot extends Component {
       if (this.lobbyGuardBattleRenderer.isMounted()) {
         this.lobbyGuardBattleRenderer.onBattleStateBump();
         const battleState = this.currentLobbyBattleState();
-        if (!battleState.start || battleState.assetsLoading) {
+        // 2026-10-26 修「矿境部署中 100% 卡住不进场」:挂着的是加载占位页时 isMounted 也为真,
+        // 资源读完那次 bump 只刷结算层、不建场——平时靠某张图晚到触发整刷才进去,资源全在缓存时就永远卡住。
+        if (!battleState.start || battleState.assetsLoading || !this.lobbyGuardBattleRenderer.isBattleLive()) {
           this.lobbyGuardBattleRenderer.render(layout);
         }
       } else {

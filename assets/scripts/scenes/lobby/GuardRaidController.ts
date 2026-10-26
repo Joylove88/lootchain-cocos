@@ -121,7 +121,7 @@ export class GuardRaidController {
     this.renderJoystick(hud, width, height);
     this.renderButtons(hud, width, height);
     if (!phone) {
-      this.hintLabel = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', 'WASD 移动 · J / 空格 普攻 · K / Shift 翻滚 · U I O 技能', 0, -height / 2 + height * 0.018, height * 0.016, rgba(190, 178, 150, 150), new Size(width * 0.6, height * 0.024));
+      this.hintLabel = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', 'WASD / 方向键 移动 · J 普攻 · K L I 技能 · Shift 翻滚', 0, -height / 2 + height * 0.018, height * 0.016, rgba(190, 178, 150, 150), new Size(width * 0.6, height * 0.024));
     }
     this.bindInput();
   }
@@ -276,7 +276,8 @@ export class GuardRaidController {
     const host = this.bridge.host;
     const right = width / 2;
     const bottom = -height / 2;
-    const mk = (name: string, x: number, y: number, size: number, label: string, font: number, fill: Color, onPress: () => void): { node: Node; dim: UIOpacity } => {
+    const showKeys = !isPhoneDesign();
+    const mk = (name: string, x: number, y: number, size: number, label: string, font: number, fill: Color, onPress: () => void, keyHint = ''): { node: Node; dim: UIOpacity } => {
       const node = host.addChildPlainNode(hud, name, x, y, size, size);
       const g = node.addComponent(Graphics);
       g.fillColor = fill;
@@ -291,6 +292,24 @@ export class GuardRaidController {
       text.enableOutline = true;
       text.outlineColor = rgba(20, 10, 4, 255);
       text.outlineWidth = 2;
+      if (showKeys && keyHint) {
+        // 电脑端:按钮右上角挂按键角标(手机不显示)
+        const r = Math.max(height * 0.016, size * 0.15);
+        // 单字母画圆,多字母(Shift)画胶囊,字不溢出
+        const bw = keyHint.length > 1 ? r * (1.2 + keyHint.length * 0.62) : r * 2;
+        const badge = host.addChildPlainNode(node, 'KeyHint', size * 0.36 - (bw / 2 - r) * 0.5, size * 0.36, bw, r * 2);
+        const bg = badge.addComponent(Graphics);
+        bg.fillColor = rgba(14, 12, 10, 235);
+        bg.roundRect(-bw / 2, -r, bw, r * 2, r);
+        bg.fill();
+        bg.strokeColor = rgba(214, 170, 92, 240);
+        bg.lineWidth = Math.max(1, height * 0.0018);
+        bg.roundRect(-bw / 2, -r, bw, r * 2, r);
+        bg.stroke();
+        const k = host.addChildLabel(badge, 'Key', keyHint, 0, 0, keyHint.length > 1 ? r * 0.9 : r * 1.15, rgba(255, 236, 190), new Size(bw - r * 0.5, r * 1.6));
+        k.isBold = true;
+        k.overflow = Label.Overflow.SHRINK;
+      }
       const dim = node.addComponent(UIOpacity);
       // 按下即生效(不等抬起):动作游戏的按钮不能有抬起延迟
       node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
@@ -300,14 +319,14 @@ export class GuardRaidController {
       host.applyImageButtonFeedback(node, 1.06, 0.94);
       return { node, dim };
     };
-    mk('GuardRaidAttack', right - height * 0.196, bottom + height * 0.197, height * 0.226, '普攻', height * 0.052, rgba(108, 22, 20, 235), () => { this.attackPressedAt = Date.now(); });
-    this.dodgeButton = mk('GuardRaidDodge', right - height * 0.446, bottom + height * 0.185, height * 0.142, '翻滚', height * 0.03, rgba(24, 38, 70, 235), () => { this.dodgePressedAt = Date.now(); });
+    mk('GuardRaidAttack', right - height * 0.196, bottom + height * 0.197, height * 0.226, '普攻', height * 0.052, rgba(108, 22, 20, 235), () => { this.attackPressedAt = Date.now(); }, 'J');
+    this.dodgeButton = mk('GuardRaidDodge', right - height * 0.446, bottom + height * 0.185, height * 0.142, '翻滚', height * 0.03, rgba(24, 38, 70, 235), () => { this.dodgePressedAt = Date.now(); }, 'Shift');
     this.skillButtons = [];
     const slots: Array<[number, number]> = [[0.404, 0.364], [0.256, 0.429], [0.095, 0.388]];
     GUARD_RAID_SKILLS.forEach((spec, index) => {
       const [fromRight, fromBottom] = slots[index];
       const size = height * 0.13;
-      const button = mk(`GuardRaidSkill_${index}`, right - height * fromRight, bottom + height * fromBottom, size, spec.name, height * 0.029, rgba(58, 34, 90, 235), () => { this.skillPressedAt[index] = Date.now(); });
+      const button = mk(`GuardRaidSkill_${index}`, right - height * fromRight, bottom + height * fromBottom, size, spec.name, height * 0.029, rgba(58, 34, 90, 235), () => { this.skillPressedAt[index] = Date.now(); }, ['K', 'L', 'I'][index] ?? '');
       button.node.getChildByName('Label')?.setPosition(0, size * 0.1, 0);
       const cd = host.addChildLabel(button.node, 'Cd', '', 0, -size * 0.22, height * 0.02, rgba(255, 220, 140), new Size(size * 0.9, height * 0.026));
       cd.enableOutline = true;
@@ -345,11 +364,12 @@ export class GuardRaidController {
     this.keys.add(event.keyCode);
     const now = Date.now();
     switch (event.keyCode) {
+      // 2026-10-26 用户:「攻击、技能键绑定 J K L,翻滚键绑定 Shift」→ J 普攻 / K 技能一 / L 技能二 / I 技能三(J K L 只够两个技能)/ Shift 翻滚;空格、数字键 1 2 3 保留作备用
       case KeyCode.KEY_J: case KeyCode.SPACE: this.attackPressedAt = now; break;
-      case KeyCode.KEY_K: case KeyCode.SHIFT_LEFT: case KeyCode.SHIFT_RIGHT: this.dodgePressedAt = now; break;
-      case KeyCode.KEY_U: case KeyCode.DIGIT_1: this.skillPressedAt[0] = now; break;
-      case KeyCode.KEY_I: case KeyCode.DIGIT_2: this.skillPressedAt[1] = now; break;
-      case KeyCode.KEY_O: case KeyCode.DIGIT_3: this.skillPressedAt[2] = now; break;
+      case KeyCode.SHIFT_LEFT: case KeyCode.SHIFT_RIGHT: this.dodgePressedAt = now; break;
+      case KeyCode.KEY_K: case KeyCode.DIGIT_1: this.skillPressedAt[0] = now; break;
+      case KeyCode.KEY_L: case KeyCode.DIGIT_2: this.skillPressedAt[1] = now; break;
+      case KeyCode.KEY_I: case KeyCode.DIGIT_3: this.skillPressedAt[2] = now; break;
       default: break;
     }
   }

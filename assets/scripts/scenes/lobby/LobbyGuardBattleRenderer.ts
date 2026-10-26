@@ -683,6 +683,11 @@ export class LobbyGuardBattleRenderer {
     return !!this.root && this.root.isValid;
   }
 
+  /** 真正在打的一局(不是「正在进入 / 部署中」的占位页)。 */
+  isBattleLive(): boolean {
+    return this.isMounted() && !!this.sim;
+  }
+
   /** 结算胜负供 LobbyBattleFlow 使用;未分出前 null(flow 兜底旧逻辑,不应发生)。 */
   resolveOutcome(): 'WIN' | 'LOSE' | null {
     if (!this.sim) {
