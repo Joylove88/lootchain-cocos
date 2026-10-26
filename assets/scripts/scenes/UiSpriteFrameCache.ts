@@ -50,6 +50,7 @@ import { LOBBY_HERO_ROSTER_BACKDROP_ASSET, LOBBY_HERO_ROSTER_CARD_ASSETS } from 
 import { FORGE_PRELOAD_ASSETS, FORGE_PRELOAD_ASSETS_V3 } from './lobby/LobbyForgePanelRenderer';
 import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { TOWN_ASSET_PATHS } from './lobby/LobbyTownConfig';
+import { RAID_UI_ASSET_PATHS } from './lobby/LobbyRaidPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
 import { EQUIP_ICON_ALL_ASSETS } from './lobby/EquipIconAssets';
 import { BAG_ITEM_ICON_PRELOAD_ASSETS } from './lobby/LobbyBagPanelRenderer';
@@ -118,7 +119,7 @@ const BAG_DETAIL_PRELOAD_ASSETS: string[] = [
   'ui/common/ref/ult_title_star/spriteFrame',
 ];
 
-export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle' | 'crystal' | 'town';
+export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle' | 'crystal' | 'town' | 'raid';
 
 /** 守卫水晶弹窗专用新素材(ui/crystal/ai,2026-09-30 参考图改版):首次打开弹窗时整组拉,齐了再画,避免空框闪一下。 */
 const GUARD_CRYSTAL_UI_ASSETS = [
@@ -296,6 +297,10 @@ export class UiSpriteFrameCache {
         break;
       case 'crystal':
         GUARD_CRYSTAL_UI_ASSETS.forEach((asset) => track(asset));
+        break;
+      case 'raid':
+        // 矿境面板(2026-10-26 原型 1:1):矿晶插画 / 矿洞地图 / 矿口 / 矿区缩略图 / 战报图标整组等齐再画
+        RAID_UI_ASSET_PATHS.forEach((asset) => track(asset));
         break;
       case 'town':
         // 主城跑图(2026-10-25):地面 / 9 栋建筑 / 路灯整组等齐再画,HUD 小件只拉不拦

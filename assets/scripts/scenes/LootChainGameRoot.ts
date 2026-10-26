@@ -1327,6 +1327,8 @@ export class LootChainGameRoot extends Component {
         return 'bag';
       case 'adventure':
         return 'adventure';
+      case 'raid':
+        return 'raid';
       case 'gacha':
         return 'gacha';
       case 'lobby':
@@ -1367,6 +1369,7 @@ export class LootChainGameRoot extends Component {
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
       forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材', town: '正在加载主城',
+      raid: '正在加载矿境',
     };
     this.addChildLabel(panel, 'SceneAssetLoadingTitle', titles[group], centerX, centerY + 40 * scale, 28 * scale, new Color(245, 214, 140, 255), new Size(520 * scale, 40 * scale));
     const barWidth = Math.min(460 * scale, layout.width * 0.5);
@@ -1662,6 +1665,9 @@ export class LootChainGameRoot extends Component {
       return;
     }
     if (this.currentView === 'raid') {
+      if (this.renderSceneAssetGate(layout)) {
+        return;
+      }
       this.lobbyRaidPanelRenderer.render(layout);
       return;
     }
@@ -5252,6 +5258,7 @@ export class LootChainGameRoot extends Component {
   // ── 矿境掠夺 PVE(docs/48)──
 
   private openLobbyRaidPanel(): void {
+    this.uiSpriteFrameCache.preloadGroup('raid');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyRaidPanelOpen = true;
     this.currentView = 'raid';
