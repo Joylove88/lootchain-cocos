@@ -69,6 +69,8 @@ export interface TownPropConfig {
   y: number;
   width: number;
   flat?: boolean;
+  /** 贴地纹样的纵向压缩(俯视透视):正视图的圆要压成横椭圆才像平放在地上;不填 = 1。 */
+  tilt?: number;
   block?: { w: number; d: number };
 }
 export function townPropAsset(key: TownPropKey): string {
@@ -76,7 +78,8 @@ export function townPropAsset(key: TownPropKey): string {
 }
 export const TOWN_PROPS: readonly TownPropConfig[] = [
   // 广场中央黄铜罗盘纹样(贴地)
-  { key: 'emblem', x: 0, y: -330, width: 620, flat: true },
+  // 2026-10-26 用户「圆盘像立着」:按地砖透视(横 1 : 竖 ≈0.56)压扁
+  { key: 'emblem', x: 0, y: -330, width: 720, flat: true, tilt: 0.56 },
   // 盆栽树:后排建筑之间、前排建筑之间、中排两侧
   { key: 'tree', x: -820, y: 600, width: 170, block: { w: 110, d: 60 } },
   { key: 'tree', x: 820, y: 600, width: 170, block: { w: 110, d: 60 } },

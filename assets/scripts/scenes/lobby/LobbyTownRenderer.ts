@@ -327,7 +327,7 @@ export class LobbyTownRenderer {
       const frame = sprite.spriteFrame;
       const ow = frame?.originalSize.width ?? 1;
       const oh = frame?.originalSize.height ?? 1;
-      const h = prop.width * (oh / Math.max(1, ow));
+      const h = prop.width * (oh / Math.max(1, ow)) * (prop.flat ? prop.tilt ?? 1 : 1);
       sprite.node.getComponent(UITransform)?.setContentSize(new Size(prop.width, h));
       if (prop.flat) {
         // 贴地:中心对齐,排在地砖之后、压暗层之前
