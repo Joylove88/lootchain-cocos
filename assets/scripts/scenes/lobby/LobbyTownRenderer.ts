@@ -2572,12 +2572,15 @@ export class LobbyTownRenderer {
     }
     const P = townProtoFrame(layout);
     const node = this.host.addChildPlainNode(hud, 'LobbyLevelToast', P.C(935), P.Y(230), P.S(360), P.S(80));
-    const label = this.host.addChildLabel(node, 'Label', `Lv.${level} ↑`, 0, 0, P.S(46), rgba(255, 220, 120), new Size(P.S(360), P.S(64)));
+    // 10-28 用户:「这个是什么等级」→ 写明是玩家等级;副行写这一级实际带来的东西(英雄等级上限 = 玩家等级 + 10,服务端 levelProgress.maxHeroLevel)
+    const label = this.host.addChildLabel(node, 'Label', `玩家等级 Lv.${level} ↑`, 0, 0, P.S(40), rgba(255, 220, 120), new Size(P.S(520), P.S(60)));
     label.isBold = true;
     label.enableOutline = true;
     label.outlineColor = rgba(60, 24, 4, 255);
     label.outlineWidth = Math.max(2, P.S(3));
-    const sub = this.host.addChildLabel(node, 'Sub', '等级提升', 0, -P.S(40), P.S(20), rgba(246, 232, 200), new Size(P.S(200), P.S(28)));
+    const profile = this.host.currentLobbyProfile();
+    const heroCap = profile.levelProgress?.maxHeroLevel ?? level + 10;
+    const sub = this.host.addChildLabel(node, 'Sub', `英雄等级上限提升至 Lv.${heroCap}`, 0, -P.S(38), P.S(20), rgba(246, 232, 200), new Size(P.S(420), P.S(28)));
     sub.enableOutline = true;
     sub.outlineColor = rgba(0, 0, 0, 230);
     sub.outlineWidth = 2;
