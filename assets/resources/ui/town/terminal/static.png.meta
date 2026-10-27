@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "782c53e5-543d-40fb-854f-115a8bc416ea",
+  "uuid": "d824f8c5-9737-4b00-830f-9386b08178b0",
   "files": [
     ".json",
     ".png"
@@ -10,8 +10,8 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "782c53e5-543d-40fb-854f-115a8bc416ea@6c48a",
-      "displayName": "t_shop",
+      "uuid": "d824f8c5-9737-4b00-830f-9386b08178b0@6c48a",
+      "displayName": "static",
       "id": "6c48a",
       "name": "texture",
       "userData": {
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "782c53e5-543d-40fb-854f-115a8bc416ea",
+        "imageUuidOrDatabaseUri": "d824f8c5-9737-4b00-830f-9386b08178b0",
         "visible": false
       },
       "ver": "1.0.22",
@@ -34,8 +34,8 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "782c53e5-543d-40fb-854f-115a8bc416ea@f9941",
-      "displayName": "t_shop",
+      "uuid": "d824f8c5-9737-4b00-830f-9386b08178b0@f9941",
+      "displayName": "static",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
@@ -45,10 +45,10 @@
         "offsetY": 0,
         "trimX": 0,
         "trimY": 0,
-        "width": 256,
-        "height": 225,
-        "rawWidth": 256,
-        "rawHeight": 225,
+        "width": 1870,
+        "height": 841,
+        "rawWidth": 1870,
+        "rawHeight": 841,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -59,22 +59,22 @@
         "pivotY": 0.5,
         "meshType": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "782c53e5-543d-40fb-854f-115a8bc416ea@6c48a",
+        "imageUuidOrDatabaseUri": "d824f8c5-9737-4b00-830f-9386b08178b0@6c48a",
         "atlasUuid": "",
         "trimType": "none",
         "vertices": {
           "rawPosition": [
-            -128,
-            -112.5,
+            -935,
+            -420.5,
             0,
-            128,
-            -112.5,
+            935,
+            -420.5,
             0,
-            -128,
-            112.5,
+            -935,
+            420.5,
             0,
-            128,
-            112.5,
+            935,
+            420.5,
             0
           ],
           "indexes": [
@@ -87,12 +87,12 @@
           ],
           "uv": [
             0,
-            225,
-            256,
-            225,
+            841,
+            1870,
+            841,
             0,
             0,
-            256,
+            1870,
             0
           ],
           "nuv": [
@@ -106,13 +106,13 @@
             1
           ],
           "minPos": [
-            -128,
-            -112.5,
+            -935,
+            -420.5,
             0
           ],
           "maxPos": [
-            128,
-            112.5,
+            935,
+            420.5,
             0
           ]
         }
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": true,
-    "redirect": "782c53e5-543d-40fb-854f-115a8bc416ea@6c48a",
+    "redirect": "d824f8c5-9737-4b00-830f-9386b08178b0@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "lc-android-astc4"

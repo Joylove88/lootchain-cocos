@@ -63,19 +63,19 @@ export class LobbyTopHudRenderer {
     // 终端红点:里面任一入口有红点(英雄可养成 / 任务可领 / 挂机可领 / 免费召唤)
     const terminalHot = !!badges && (badges.heroGrowable || (badges.quest ?? 0) > 0) || !!idle?.claimable;
     const items: Array<{ key: string; label: string; icon: string; px: number; hot: boolean; strong: boolean; onTap: () => void }> = [
-      { key: 'summon', label: '召唤', icon: TOWN_HUD_ASSETS.icSummon, px: 1487, hot: !!badges && (badges.gachaFree || badges.gachaTicketTen), strong: false, onTap: () => this.host.openLobbyGachaScene() },
-      { key: 'shop', label: '商店', icon: TOWN_HUD_ASSETS.icShop, px: 1590, hot: false, strong: false, onTap: () => this.host.openLobbyShopDialog?.('gold') },
-      { key: 'mail', label: '邮件', icon: TOWN_HUD_ASSETS.icMail, px: 1697, hot: unread > 0, strong: false, onTap: () => this.host.openLobbyMailPanel?.() },
-      { key: 'terminal', label: '终端', icon: TOWN_HUD_ASSETS.icTerminal, px: 1800, hot: terminalHot, strong: true, onTap: () => this.host.openLobbyTerminalPanel?.() },
+      { key: 'summon', label: '召唤', icon: TOWN_HUD_ASSETS.icSummon, px: 1465, hot: !!badges && (badges.gachaFree || badges.gachaTicketTen), strong: false, onTap: () => this.host.openLobbyGachaScene() },
+      { key: 'shop', label: '商店', icon: TOWN_HUD_ASSETS.icShop, px: 1572, hot: false, strong: false, onTap: () => this.host.openLobbyShopDialog?.('gold') },
+      { key: 'mail', label: '邮件', icon: TOWN_HUD_ASSETS.icMail, px: 1682, hot: unread > 0, strong: false, onTap: () => this.host.openLobbyMailPanel?.() },
+      { key: 'terminal', label: '终端', icon: TOWN_HUD_ASSETS.icTerminal, px: 1792, hot: terminalHot, strong: true, onTap: () => this.host.openLobbyTerminalPanel?.() },
     ];
     let mounted = 0;
     for (const item of items) {
-      const d = P.S(item.strong ? 84 : 78);
+      const d = P.S(item.strong ? 78 : 72);
       const node = this.addChildPlainNode(group, `LobbySystemIcon_${item.key}`, P.R(item.px), P.Y(66), d, d);
       mountRingBase(this.host, node, d * 1.12, item.strong);
       mounted += 1;
-      this.addFitIcon(node, item.icon, P.S(54));
-      const text = this.addChildLabel(node, 'Label', item.label, 0, -P.S(item.strong ? 46 : 42), P.S(19), rgba(246, 236, 214), new Size(P.S(80), P.S(26)));
+      this.addFitIcon(node, item.icon, P.S(item.strong ? 46 : 44));
+      const text = this.addChildLabel(node, 'Label', item.label, 0, -P.S(49), P.S(20), rgba(246, 236, 214), new Size(P.S(80), P.S(26)));
       text.enableOutline = true;
       text.outlineColor = rgba(0, 0, 0, 230);
       text.outlineWidth = Math.max(1, P.S(2));

@@ -1510,7 +1510,12 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTerminalOpen = false;
-    this.removeNodeFromContent(LobbyTerminalPanelRenderer.NODE_NAME);
+    // 先藏再下一帧销毁:整张静态大图正在本帧绘制时直接销毁,调试包会撞 gfx-validator 断言(10-27 开关终端后切图崩)
+    const node = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
+    if (node) {
+      node.active = false;
+      this.scheduleOnce(() => node.isValid && node.destroy(), 0);
+    }
   }
 
   private runLobbyTerminalAction(action: LobbyTerminalAction): void {

@@ -1,15 +1,20 @@
 """原型在上 / 实机在下 的整屏对比图 + 局部放大对比(给用户看)。
-用法:python tools/qa/proto_stack.py <proto.png> <shot.png> <out_prefix> [x0,y0,x1,y1 ...]   (局部框用 0..1 比例,按原型坐标)
+用法:python tools/qa/proto_stack.py <proto.png> <shot.png> <out_prefix> [--inset=0.0592] [x0,y0,x1,y1 ...]   (局部框用 0..1 比例,按原型坐标;--inset 两侧裁掉安全区)
 实机按宽度对齐原型;局部框在两张图上按同一比例裁。
 """
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-proto_path, shot_path, out = sys.argv[1:4]
-boxes = [tuple(float(v) for v in b.split(',')) for b in sys.argv[4:]]
+args = [a for a in sys.argv[1:] if not a.startswith('--inset=')]
+inset = next((float(a.split('=')[1]) for a in sys.argv[1:] if a.startswith('--inset=')), 0.0)
+proto_path, shot_path, out = args[:3]
+boxes = [tuple(float(v) for v in b.split(',')) for b in args[3:]]
 proto = Image.open(proto_path).convert('RGB')
 shot = Image.open(shot_path).convert('RGB')
+if inset > 0:
+    # --inset=比例:截图两侧各裁掉这么多(手机安全区内缩),再和原型对齐
+    shot = shot.crop((round(shot.width * inset), 0, round(shot.width * (1 - inset)), shot.height))
 W = 1600
 p = proto.resize((W, round(proto.height * W / proto.width)), Image.LANCZOS)
 s = shot.resize((W, round(shot.height * W / shot.width)), Image.LANCZOS)

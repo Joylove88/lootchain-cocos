@@ -76,9 +76,6 @@ export const TOWN_HUD_ASSETS = {
   icSummon: `${HUD}/ic_summon/spriteFrame`,
   /** 左实右淡的白色渐变条(程序生成,着色后当追踪条暗衬底) */
   fadeBand: `${HUD}/fade_band/spriteFrame`,
-  icGear: `${HUD}/ic_gear/spriteFrame`,
-  icGift: `${HUD}/ic_gift/spriteFrame`,
-  icNotice: `${HUD}/ic_notice/spriteFrame`,
 } as const;
 
 /** 小地图建筑图标(按主城建筑 key);野外图没有建筑,只画怪群点。 */
@@ -96,24 +93,12 @@ export const TOWN_MINIMAP_BUILDING_ICONS: Record<string, string> = {
 
 export const TOWN_HUD_ASSET_PATHS: string[] = Object.values(TOWN_HUD_ASSETS);
 
-/** docs/51 终端(proto_terminal_v2):功能格图标 + 框。 */
-const T = HUD;
-export const TERMINAL_TILE_ICONS: Record<string, string> = {
-  heroes: `${T}/t_hero/spriteFrame`, formation: `${T}/t_formation/spriteFrame`, bag: `${T}/t_bag/spriteFrame`, forge: `${T}/t_forge/spriteFrame`, gacha: `${T}/t_summon/spriteFrame`,
-  adventure: `${T}/t_adventure/spriteFrame`, daily: `${T}/t_tower/spriteFrame`, crystal: `${T}/t_crystal/spriteFrame`, codex: `${T}/t_codex/spriteFrame`, quest: `${T}/t_quest/spriteFrame`,
-  shop: `${T}/t_shop/spriteFrame`, guild: `${T}/t_guild/spriteFrame`, idle: `${T}/t_idle/spriteFrame`, worldmap: `${T}/t_worldmap/spriteFrame`, rank: `${T}/t_rank/spriteFrame`,
-};
-/** 终端框件:全部复用现成 UiRefKit(名片 = 弹窗框、格子 = 数值框 + 暗条、底栏 = 暗金牌、关闭 = 全局关闭钮)。 */
+/** docs/51 终端:原型整张静态底层 + 头像环覆盖层(tools/qa/terminal_proto_extract.py 产出,1:1 还原)。 */
 export const TERMINAL_ASSETS = {
-  tileFrame: 'ui/common/ref/ult_stat_box/spriteFrame',
-  tileStrip: 'ui/common/ref/stat_bar/spriteFrame',
-  cardPanel: 'ui/common/ref/dialog_frame/spriteFrame',
-  bottomStrip: 'ui/common/ref/plate_dark/spriteFrame',
-  btnClose: 'ui/common/ai/button_close/spriteFrame',
-  /** 虚化夜城背景(GPT 出,1870×841) */
-  background: `${T}/terminal_bg/spriteFrame`,
+  staticLayer: 'ui/town/terminal/static/spriteFrame',
+  ringOverlay: 'ui/town/terminal/ring_overlay/spriteFrame',
 } as const;
-export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_TILE_ICONS).concat(Object.values(TERMINAL_ASSETS));
+export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_ASSETS);
 
 
 /** 圆钮底座:暗铁圆盘 + 尖刺金环(hot = 外加一圈细金线强调,不用光晕)。 */

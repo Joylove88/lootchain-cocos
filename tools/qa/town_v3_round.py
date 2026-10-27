@@ -82,37 +82,56 @@ def main() -> None:
     ap.add_argument('out')
     ap.add_argument('--login', default='guidetest02')
     ap.add_argument('--skip', default='', help='跳过的步骤:town,terminal,field(逗号分隔)')
+    ap.add_argument('--keep-cutout', action='store_true', help='保留模拟器刘海安全区(默认把安全区当成整屏,和原型 1:1 对比)')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     subprocess.run(ADB + ['forward', 'tcp:43086', 'tcp:43086'], capture_output=True)
     subprocess.run(ADB + ['reverse', 'tcp:8081', 'tcp:8081'], capture_output=True)
+    # 先用 /json(不 attach 调试器)探到 inspector 起来,再只 attach 一次:每次 attach 后 0.2 秒内都可能撞 gfx-validator 断言
+    import urllib.request
+    for _ in range(60):
+        try:
+            urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json', timeout=2).read()
+            break
+        except Exception:
+            time.sleep(1.5)
+    time.sleep(3)
     view = wait_for("return root && (root.currentView === 'login' || root.currentView === 'lobby') ? 'view=' + root.currentView : 'wait';", 'view=')
     if 'view=login' in view:
         pw = os.environ.get('QA_PASS', 'pass1234')
         ev(f"root.loginFlow.setInputs({{string:'{args.login}'}}, {{string:'{pw}'}}); try {{ root.loginFlow.acceptedAgreement = true; }} catch(e){{}} root.run(() => root.loginFlow.login()); return 'login';")
         print('login', args.login, flush=True)
+    if not args.keep_cutout:
+        # 这台 AVD(sdk_gphone64 API 34)自带顶部 136px 挖孔,横屏时 HUD 两侧各内缩 ~95 设计 px;无刘海手机没有这一截。
+        # 对比原型时把安全区打成整屏(只改测试进程里的 sys.getSafeAreaRect),再整刷一次布局
+        print('cutout', ev("const vs = cc.view.getVisibleSize(); cc.sys.getSafeAreaRect = () => cc.rect(0, 0, vs.width, vs.height); setTimeout(() => root.renderCurrentView(), 50); return 'patched';"), flush=True)
+        time.sleep(2)
     print('world', wait_for("return (root.currentView === 'lobby' && t && t.isMounted() && root.worldState) ? 'ready' : 'wait ' + root.currentView;", 'ready', 60), flush=True)
+    if not args.keep_cutout:
+        print('stage', ev("const L = t.hudLayout; return L ? Math.round(L.stageLeft) + '..' + Math.round(L.stageRight) + ' of ' + L.width : 'nolayout';"), flush=True)
 
     # 追踪条要有内容:没有进行中的剧情 / 悬赏就接一条悬赏(本地 QA 账号)
-    print('bounty', ev("const w = root.worldState; const has = (w.bounties || []).some(b => b.state === 'ACCEPTED' || b.state === 'DONE'); if (!has && (w.bounties || []).length) { const b = w.bounties.find(x => x.state === 'OPEN'); root.api.world.acceptBounty(b.slot).then(r => { root.worldState = r.state; root.renderCurrentView(); }); return 'accept ' + b.slot; } return 'has';"), flush=True)
+    print('bounty', ev("const w = root.worldState; const has = (w.bounties || []).some(b => b.state === 'ACCEPTED' || b.state === 'DONE'); if (!has && (w.bounties || []).length) { const b = w.bounties.find(x => x.state === 'OPEN'); root.api.world.acceptBounty(b.slot).then(r => { root.worldState = r.state; setTimeout(() => root.renderCurrentView(), 50); }); return 'accept ' + b.slot; } return 'has';"), flush=True)
     time.sleep(2)
-    # 1) 主城:站在传送阵罗盘上,靠公告板一侧(出两条提示)
-    ev("root.travelWorldMap('CITY', null); return 1;")
-    wait_for("return t.currentMapCode() === 'CITY' && t.leader ? 'ok' : 'wait';", 'ok')
-    time.sleep(6)
-    print('city', ev("const w = t.def.waypoint; tp(w.x + 120, w.y - 40); return JSON.stringify(t.nearbyInteracts().map(i => i.key));"), flush=True)
-    time.sleep(2.5)
-    shot(args.out, 'town')
+    # 1) 主城:站在传送阵罗盘上,靠公告板一侧(出两条提示)。已在该图就不再切(调试包切图偶发 gfx-validator 崩)
+    if 'town' not in args.skip:
+        ev("if (t.currentMapCode() !== 'CITY') setTimeout(() => root.travelWorldMap('CITY', null), 50); return 1;")
+        wait_for("return t.currentMapCode() === 'CITY' && t.leader ? 'ok' : 'wait';", 'ok')
+        time.sleep(6)
+        print('city', ev("const w = t.def.waypoint; tp(w.x + 120, w.y - 40); return JSON.stringify(t.nearbyInteracts().map(i => i.key));"), flush=True)
+        time.sleep(2.5)
+        shot(args.out, 'town')
 
     # 2) 终端
     if 'terminal' not in args.skip:
-        ev("root.openLobbyTerminalPanel(); return 1;")
+        ev("setTimeout(() => root.openLobbyTerminalPanel(), 50); return 1;")
         time.sleep(3)
         shot(args.out, 'terminal')
-        ev("root.closeLobbyTerminalPanel(); return 1;")
+        ev("setTimeout(() => root.closeLobbyTerminalPanel(), 50); return 1;")
+        time.sleep(1)
 
     # 3) 灰岩荒原:站到精英营地旁,锁精英,连打 + 技能,队友进战
-    ev("root.travelWorldMap('GRAY', null); return 1;")
+    ev("if (t.currentMapCode() !== 'GRAY') setTimeout(() => root.travelWorldMap('GRAY', null), 50); return 1;")
     wait_for("return t.currentMapCode() === 'GRAY' && t.leader && t.monsters.length > 0 ? 'ok' : 'wait';", 'ok')
     time.sleep(5)
     print('field', ev("const camp = t.def.camps.find(c => c.elite) || t.def.camps[0]; tp(camp.x - 230, camp.y); t.engageCamp(camp.stageCode); return camp.stageCode;"), flush=True)

@@ -1571,14 +1571,12 @@ export class LobbyTownRenderer {
     void scale;
     const P = townProtoFrame(layout);
     const field = this.def.camps.length > 0;
-    // 尖刺金环(现成 icon_ring):环外沿 0.43d、内孔 0.36d;名牌 = 暗金牌压在环下沿
-    const outer = P.S(field ? 120 : 96);
-    const ringD = outer / 0.43;
-    const k = (ringD * 0.36) / 156;
-    const cx = P.L(field ? 160 : 141);
-    const cy = P.Y(field ? 126 : 118);
+    // 原型 proto_field_v1 量得:圆心 (160,120)、外沿 r 118、暗带 r 106..116 两侧细金线、顶上一枚金菱尖;名牌 216×38 中心在圆心下 111
+    const outer = P.S(field ? 118 : 105);
+    const cx = P.L(field ? 160 : 165);
+    const cy = P.Y(field ? 120 : 118);
     const node = this.host.addChildPlainNode(hud, 'LobbyTownMinimap', cx, cy, outer * 2, outer * 2);
-    const holeR = 156 * k;
+    const holeR = outer * (106 / 118);
     const area = this.host.addChildPlainNode(node, 'MapArea', 0, 0, holeR * 2, holeR * 2);
     const mask = area.addComponent(Mask);
     mask.type = Mask.Type.GRAPHICS_ELLIPSE;
@@ -1603,9 +1601,10 @@ export class LobbyTownRenderer {
       shade.rect(-def.width * mapScale * 0.55, -def.height * mapScale * 0.55, def.width * mapScale * 1.1, def.height * mapScale * 1.1);
       shade.fill();
     } else {
-      // 野外:用本图地面贴图平铺成地形底(原型是真实地表缩略,不是纯色),再压暗让标记跳出来
+      // 野外:原型样式的地形(灰地 + 地表纹理 + 深色岩块团),圆边压暗
       this.mountMinimapTerrain(content, def, mapScale);
     }
+    this.mountMinimapVignette(area, holeR);
     const marks = this.host.addChildPlainNode(content, 'Marks', 0, 0, def.width * mapScale, def.height * mapScale).addComponent(Graphics);
     if (!cityBg) {
       // 地标:岩堆 / 残墙 / 枯树画成小三角(原型小地图上的灰三角)
@@ -1635,7 +1634,7 @@ export class LobbyTownRenderer {
     marks.stroke();
     for (const camp of def.camps) {
       marks.fillColor = camp.elite ? rgba(246, 200, 70, 245) : rgba(220, 54, 44, 245);
-      marks.circle(camp.x * mapScale, camp.y * mapScale, Math.max(3, P.S(camp.elite ? 6 : 4.5)));
+      marks.circle(camp.x * mapScale, camp.y * mapScale, Math.max(3, P.S(camp.elite ? 7 : 6)));
       marks.fill();
     }
     for (const building of def.buildings) {
@@ -1661,13 +1660,13 @@ export class LobbyTownRenderer {
       mg.fill();
     }
     this.minimapMe = me;
-    this.host.addSprite('Ring', TOWN_HUD_ASSETS.ringSpiked, 0, 0, ringD, ringD, node);
+    this.drawMinimapRing(node, outer);
     const plateText = field && def.levelText ? `${def.name} ${def.levelText}` : def.name;
-    const plateW = P.S(field ? 210 : 120);
-    const plateH = P.S(36);
-    const plateY = -outer - P.S(4);
+    const plateW = P.S(field ? 216 : 140);
+    const plateH = P.S(field ? 38 : 36);
+    const plateY = -outer * (field ? 111 / 118 : 94 / 105);
     mountRefSliced(this.host, node, 'Plate', REF_PLATE_DARK, 0, plateY, plateW, plateH);
-    const title = this.host.addChildLabel(node, 'Title', plateText, 0, plateY, P.S(field ? 19 : 21), rgba(246, 232, 200), new Size(plateW - P.S(24), P.S(28)));
+    const title = this.host.addChildLabel(node, 'Title', plateText, 0, plateY, P.S(22), rgba(246, 232, 200), new Size(plateW - P.S(28), P.S(30)));
     title.overflow = Label.Overflow.SHRINK;
     title.isBold = true;
     title.enableOutline = true;
@@ -1681,40 +1680,134 @@ export class LobbyTownRenderer {
     this.updateMinimap();
   }
 
+  /** 小地图圆环(原型):暗带 + 两侧细金线 + 顶上金菱尖。outer = 外沿半径。 */
+  private drawMinimapRing(node: Node, outer: number): void {
+    const g = this.host.addChildPlainNode(node, 'Ring', 0, 0, outer * 2.4, outer * 2.4).addComponent(Graphics);
+    const k = outer / 118;
+    // 暗带偏蓝灰(原型是铁灰带,和圆内灰地分得开),内侧一道浅高光
+    g.strokeColor = rgba(58, 60, 68, 255);
+    g.lineWidth = 10 * k;
+    g.circle(0, 0, 111 * k);
+    g.stroke();
+    g.strokeColor = rgba(92, 94, 102, 255);
+    g.lineWidth = Math.max(1, 1.5 * k);
+    g.circle(0, 0, 109 * k);
+    g.stroke();
+    // 分段刻线(原型环带上每 30° 一道)
+    g.strokeColor = rgba(34, 35, 40, 255);
+    g.lineWidth = Math.max(1, 1.5 * k);
+    for (let i = 0; i < 12; i += 1) {
+      const a = (i * Math.PI) / 6 + Math.PI / 12;
+      g.moveTo(Math.cos(a) * 106 * k, Math.sin(a) * 106 * k);
+      g.lineTo(Math.cos(a) * 116 * k, Math.sin(a) * 116 * k);
+    }
+    g.stroke();
+    g.strokeColor = rgba(226, 186, 106, 255);
+    g.lineWidth = Math.max(2, 3 * k);
+    g.circle(0, 0, 117 * k);
+    g.stroke();
+    g.lineWidth = Math.max(1.5, 2.2 * k);
+    g.circle(0, 0, 105.5 * k);
+    g.stroke();
+    // 顶上金菱尖(高 26、宽 16,尖朝上)
+    g.fillColor = rgba(226, 184, 100, 255);
+    g.moveTo(0, 130 * k);
+    g.lineTo(8 * k, 112 * k);
+    g.lineTo(0, 104 * k);
+    g.lineTo(-8 * k, 112 * k);
+    g.close();
+    g.fill();
+    g.fillColor = rgba(255, 236, 190, 255);
+    g.moveTo(0, 126 * k);
+    g.lineTo(3 * k, 113 * k);
+    g.lineTo(-3 * k, 113 * k);
+    g.close();
+    g.fill();
+  }
+
+  /** 圆边压暗:几圈低透明度描边叠出向边缘渐暗(原型圆内四周暗)。 */
+  private mountMinimapVignette(area: Node, holeR: number): void {
+    const g = this.host.addChildPlainNode(area, 'Vignette', 0, 0, holeR * 2, holeR * 2).addComponent(Graphics);
+    for (let i = 0; i < 5; i += 1) {
+      const w = holeR * 0.05;
+      g.strokeColor = rgba(8, 8, 10, 16);
+      g.lineWidth = w * (i + 1) * 2;
+      g.circle(0, 0, holeR - w * (i + 1));
+      g.stroke();
+    }
+  }
+
   /**
-   * 小地图地形底(原型样式:灰色地面 + 深色岩块团,不是贴图缩略——缩小后的地面贴图只剩噪点):
-   * 圆里底色铺成岩色(地图外看起来是山石);可走区域铺灰;大件装饰处画几团叠加的深色圆当岩块。
+   * 小地图地形底(原型:灰色地表带纹理 + 深色岩块团,地图外也是山石,没有方形边界):
+   * 整块铺灰 → 本图地面贴图放大平铺做纹理(半透明)→ 大件装饰处叠几团两色圆当岩块。
    */
   private mountMinimapTerrain(content: Node, def: WorldMapDef, mapScale: number): void {
     const w = def.width * mapScale;
     const h = def.height * mapScale;
-    const g = this.host.addChildPlainNode(content, 'Terrain', 0, 0, w, h).addComponent(Graphics);
     const big = Math.max(w, h) * 2;
-    g.fillColor = rgba(34, 33, 32, 255);
-    g.rect(-big / 2, -big / 2, big, big);
-    g.fill();
-    const wl = def.walk.left * mapScale;
-    const wr = def.walk.right * mapScale;
-    const wb = def.walk.bottom * mapScale;
-    const wt = def.walk.top * mapScale;
-    g.fillColor = rgba(84, 81, 76, 255);
-    g.roundRect(wl, wb, wr - wl, wt - wb, Math.min(wr - wl, wt - wb) * 0.08);
-    g.fill();
-    // 固定种子,每次画出来一样
+    const holder = this.host.addChildPlainNode(content, 'Terrain', 0, 0, big, big);
+    const base = holder.addComponent(Graphics);
+    base.fillColor = rgba(108, 110, 114, 255);
+    base.rect(-big / 2, -big / 2, big, big);
+    base.fill();
+    const tex = this.host.addSprite('Tex', def.ground, 0, 0, big, big, holder);
+    const frame = tex?.spriteFrame;
+    if (tex && frame) {
+      // 一格铺成约 1/3 圆径,看得出是地表纹理而不是噪点
+      const k = (w * 0.28) / Math.max(1, frame.originalSize.width);
+      tex.type = Sprite.Type.TILED;
+      tex.sizeMode = Sprite.SizeMode.CUSTOM;
+      tex.node.setScale(k, k, 1);
+      tex.node.getComponent(UITransform)?.setContentSize(big / k, big / k);
+      tex.color = rgba(255, 255, 255, 80);
+    }
+    const g = this.host.addChildPlainNode(holder, 'Rocks', 0, 0, big, big).addComponent(Graphics);
     let seed = 7;
     const rand = (): number => {
       seed = (seed * 16807) % 2147483647;
       return seed / 2147483647;
     };
-    g.fillColor = rgba(46, 45, 43, 255);
+    const blobs: Array<[number, number, number]> = [];
     for (const prop of def.props) {
       if (prop.flat || prop.width < 160) {
         continue;
       }
       const r = prop.width * mapScale * 0.42;
       for (let i = 0; i < 3; i += 1) {
-        g.circle(prop.x * mapScale + (rand() - 0.5) * r * 1.4, prop.y * mapScale + (rand() - 0.5) * r, r * (0.6 + rand() * 0.5));
+        blobs.push([prop.x * mapScale + (rand() - 0.5) * r * 1.4, prop.y * mapScale + (rand() - 0.5) * r, r * (0.6 + rand() * 0.5)]);
       }
+    }
+    // 地图外一圈:密集岩块(原型圆边全是山石)
+    const wl = def.walk.left * mapScale;
+    const wr = def.walk.right * mapScale;
+    const wb = def.walk.bottom * mapScale;
+    const wt = def.walk.top * mapScale;
+    const step = w * 0.035;
+    for (let x = wl - step * 6; x <= wr + step * 6; x += step) {
+      for (const y of [wt + step * 1.5, wt + step * 3.5, wb - step * 1.5, wb - step * 3.5]) {
+        blobs.push([x + (rand() - 0.5) * step, y + (rand() - 0.5) * step, step * (0.7 + rand() * 0.6)]);
+      }
+    }
+    for (let y = wb - step * 4; y <= wt + step * 4; y += step) {
+      for (const x of [wl - step * 1.5, wl - step * 3.5, wr + step * 1.5, wr + step * 3.5]) {
+        blobs.push([x + (rand() - 0.5) * step, y + (rand() - 0.5) * step, step * (0.7 + rand() * 0.6)]);
+      }
+    }
+    // 两色:外圈偏蓝灰的软边,里面深色
+    g.fillColor = rgba(66, 70, 78, 150);
+    for (const [x, y, r] of blobs) {
+      g.ellipse(x, y, r * 1.25, r * 1.05);
+    }
+    g.fill();
+    // 左上亮边(原型岩块顶面偏亮)
+    g.fillColor = rgba(104, 106, 112, 255);
+    for (const [x, y, r] of blobs) {
+      g.ellipse(x - r * 0.12, y + r * 0.14, r * 1.02, r * 0.9);
+    }
+    g.fill();
+    g.fillColor = rgba(48, 52, 60, 255);
+    for (const [x, y, r] of blobs) {
+      g.ellipse(x, y, r, r * 0.86);
     }
     g.fill();
   }
@@ -3499,7 +3592,7 @@ export class LobbyTownRenderer {
     g.clear();
     const color = flash ? rgba(255, 255, 255, 255) : ratio > 0.5 ? rgba(96, 200, 72, 255) : ratio > 0.3 ? rgba(226, 190, 60, 255) : rgba(226, 70, 52, 255);
     g.fillColor = color;
-    g.rect(-bar.w / 2, -bar.h / 2, bar.w * ratio, bar.h);
+    g.roundRect(-bar.w / 2, -bar.h / 2, Math.max(bar.h, bar.w * ratio), bar.h, bar.h * 0.25);
     g.fill();
     // 顶部一道亮线,不至于一整块死色
     g.fillColor = rgba(255, 255, 255, 50);
@@ -3658,28 +3751,27 @@ export class LobbyTownRenderer {
       return;
     }
     const P = townProtoFrame(layout);
-    const w = P.S(425);
-    const h = P.S(15);
-    const node = this.host.addChildPlainNode(hud, 'LobbyFieldLeaderBar', P.C(918), P.Y(786), w + P.S(40), P.S(40));
+    // 原型实测:条 707..1118、名字右沿 692、数字左沿 1140
+    const w = P.S(411);
+    const h = P.S(16);
+    const node = this.host.addChildPlainNode(hud, 'LobbyFieldLeaderBar', P.C(912.5), P.Y(786), w + P.S(40), P.S(40));
+    // 原型:圆角暗槽 + 2px 金边,填充留 2px 内缩
     const groove = node.addComponent(Graphics);
-    groove.fillColor = rgba(10, 8, 6, 220);
-    groove.rect(-w / 2, -h / 2, w, h);
+    groove.fillColor = rgba(12, 10, 8, 235);
+    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), P.S(5));
     groove.fill();
-    // 框在下、填充在上(info_banner 中间是不透明暗底,填充先画会被盖住)
-    if (!mountRefSliced(this.host, node, 'Frame', { path: TOWN_HUD_ASSETS.barFrame, w: 1112, h: 120, inset: [96, 96, 30, 30] }, 0, 0, w + P.S(56), P.S(34))) {
-      groove.strokeColor = rgba(200, 160, 90, 230);
-      groove.lineWidth = 2;
-      groove.rect(-w / 2, -h / 2, w, h);
-      groove.stroke();
-    }
+    groove.strokeColor = rgba(214, 172, 96, 255);
+    groove.lineWidth = Math.max(1.5, P.S(2));
+    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), P.S(5));
+    groove.stroke();
     const fill = this.host.addChildPlainNode(node, 'Fill', 0, 0, w, h).addComponent(Graphics);
     const hero = leader.hero;
-    const name = this.host.addChildLabel(node, 'Name', `${safeText(hero.heroName)} Lv.${hero.level}`, -w / 2 - P.S(44), P.S(1), P.S(22), rgba(246, 236, 214), new Size(P.S(220), P.S(30)), HorizontalTextAlignment.RIGHT);
+    const name = this.host.addChildLabel(node, 'Name', `${safeText(hero.heroName)} Lv.${hero.level}`, -w / 2 - P.S(15), P.S(1), P.S(22), rgba(246, 236, 214), new Size(P.S(220), P.S(30)), HorizontalTextAlignment.RIGHT);
     name.overflow = Label.Overflow.SHRINK;
     name.enableOutline = true;
     name.outlineColor = rgba(0, 0, 0, 230);
     name.outlineWidth = 2;
-    const text = this.host.addChildLabel(node, 'Hp', '', w / 2 + P.S(44), P.S(1), P.S(19), rgba(236, 226, 206), new Size(P.S(200), P.S(28)), HorizontalTextAlignment.LEFT);
+    const text = this.host.addChildLabel(node, 'Hp', '', w / 2 + P.S(22), P.S(1), P.S(19), rgba(236, 226, 206), new Size(P.S(200), P.S(28)), HorizontalTextAlignment.LEFT);
     text.overflow = Label.Overflow.SHRINK;
     text.enableOutline = true;
     text.outlineColor = rgba(0, 0, 0, 230);
