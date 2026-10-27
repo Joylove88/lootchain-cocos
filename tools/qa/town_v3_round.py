@@ -134,6 +134,9 @@ def main() -> None:
     ev("if (t.currentMapCode() !== 'GRAY') setTimeout(() => root.travelWorldMap('GRAY', null), 50); return 1;")
     wait_for("return t.currentMapCode() === 'GRAY' && t.leader && t.monsters.length > 0 ? 'ok' : 'wait';", 'ok')
     time.sleep(5)
+    # 精英可能刚被打死还没刷:先把队伍挪远、清掉刷新计时、补刷一次,再回来
+    print('respawn', ev("const camp = t.def.camps.find(c => c.elite) || t.def.camps[0]; if (!t.monsters.some(m => m.camp.stageCode === camp.stageCode && !m.dead)) { t.monsters.filter(m => m.camp.stageCode === camp.stageCode).forEach(m => m.node.isValid && m.node.destroy()); t.monsters = t.monsters.filter(m => m.node.isValid); t.campRespawnAt.delete(camp.stageCode); tp(camp.x - 1200, camp.y); t.ensureMonsters(); return 'respawned ' + t.monsters.filter(m => m.camp.stageCode === camp.stageCode).length; } return 'alive';"), flush=True)
+    time.sleep(1.5)
     print('field', ev("const camp = t.def.camps.find(c => c.elite) || t.def.camps[0]; tp(camp.x - 230, camp.y); t.engageCamp(camp.stageCode); return camp.stageCode;"), flush=True)
     time.sleep(2.5)
     ev("window.__v3bot && clearInterval(window.__v3bot); let n = 0; window.__v3bot = setInterval(() => { try { "
@@ -147,6 +150,27 @@ def main() -> None:
     time.sleep(1.2)
     shot(args.out, 'field_b')
     ev("window.__v3bot && clearInterval(window.__v3bot); return 1;")
+    if 'p2' in args.skip:
+        return
+    # 4) docs/51 P2:破防(直接把精英打到破防)→ 换队长(Alt+1 同款 swapLeader)→ 打死精英掉战利品 → 走近出「拾取 · 战利品」→ 拾取结算
+    print('stagger', ev("const e = t.monsters.find(m => m.camp.elite && !m.dead); if (!e) return 'no elite'; t.setLockTarget(e); t.staggerMonster(e, Date.now()); return 'ok ' + e.stagger;"), flush=True)
+    time.sleep(0.8)
+    shot(args.out, 'field_stagger')
+    print('swap', ev("const before = t.leader.hero.heroName; t.swapReadyAt = 0; t.swapLeader(0); return before + ' -> ' + t.leader.hero.heroName + ' hp ' + Math.round(t.leaderHp) + '/' + t.leaderMaxHp;"), flush=True)
+    time.sleep(1.2)
+    shot(args.out, 'field_swap')
+    print('kill', ev("const e = t.monsters.find(m => m.camp.elite && !m.dead); if (!e) return 'no elite'; e.hp = 1; t.damageMonster(e, 5, true, false); return 'loots ' + t.loots.length;"), flush=True)
+    time.sleep(1.5)
+    print('near', ev("const l = t.loots[0]; if (!l) return 'no loot'; tp(l.x - 110, l.y); return JSON.stringify(t.nearbyInteracts().map(i => i.kind));"), flush=True)
+    time.sleep(1.5)
+    shot(args.out, 'field_loot')
+    # 挂钩奖励回调:记下服务端发了什么,再按原样飘字
+    ev("if (!t.__origShow) { t.__origShow = t.showLootRewards; t.showLootRewards = function (items, capped) { window.__lootRewards = { items, capped }; return t.__origShow(items, capped); }; } window.__lootRewards = null; return 1;")
+    print('pickup', ev("const l = t.loots[0]; if (!l) return 'no loot'; t.pickupLoot(l); return 'picked, left ' + t.loots.length;"), flush=True)
+    time.sleep(1.1)
+    shot(args.out, 'field_picked')
+    time.sleep(2)
+    print('after', ev("return JSON.stringify({ loots: t.loots.length, lv: root.worldState && root.worldState.playerLevel, encounters: t.encounters.size, rewards: window.__lootRewards });"), flush=True)
 
 
 if __name__ == '__main__':

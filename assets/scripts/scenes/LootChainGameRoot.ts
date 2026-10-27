@@ -6972,13 +6972,15 @@ export class LootChainGameRoot extends Component {
     }
   }
 
-  private clearWorldField(encounterId: number, stageCode: string): void {
+  private clearWorldField(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number }>, capped: boolean) => void): void {
     void (async () => {
       try {
         const result = await this.api.world.clearField(encounterId);
         this.worldState = result.state;
         const rewardText = result.rewards.map((item) => `${item.resourceName} ×${item.amount}`).join('  ');
         this.setStatus([result.message, rewardText].filter(Boolean).join(' · '));
+        // docs/51 P2:大厅不显示底部状态字,拾取战利品的奖励由跑图层在队长头上飘字
+        onRewards?.(result.rewards.map((item) => ({ name: item.resourceName, amount: item.amount })), result.capped);
         void this.loadLobbyProfile(this.currentLobbyProfile().userId);
         this.refreshLobbyViewPreservingBackground();
       } catch (error) {
