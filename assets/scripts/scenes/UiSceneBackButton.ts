@@ -20,6 +20,9 @@ export const SCENE_BACK_BUTTON_ASSET = 'ui/common/ai/button_close/spriteFrame';
 export const SCENE_TITLE_BANNER_ASSET = 'ui/common/ai/title_banner_new/spriteFrame';
 // 标题右侧问号帮助钮(可选,传 helpText 即显示;点击弹说明浮层)。
 export const SCENE_HELP_BUTTON_ASSET = 'ui/common/ai/btn_help/spriteFrame';
+/** 2026-10-27 UI 审核:全游戏返回入口统一成「< 标题」红横幅(同矿境 / 世界地图),横幅本身可点返回。 */
+export const SCENE_BACK_BANNER_ASSET = 'ui/common/ai/back_banner_chevron/spriteFrame';
+const SCENE_BACK_BANNER_ASPECT = 642 / 140;
 
 export interface SceneBackButtonHost {
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -79,15 +82,38 @@ export function renderSceneBackButton(
   if (!sprite) {
     drawFallbackBackButton(button, buttonWidth, buttonHeight, buttonScale);
   }
-  renderBackTitle(host, parent, layout, buttonScale, titleText, helpText);
+  renderBackTitle(host, parent, layout, buttonScale, titleText, helpText, onClick);
   return button;
 }
 
-function renderBackTitle(host: SceneBackButtonHost, parent: Node, layout: UiLayout, scale: number, titleText: string, helpText: string): void {
+function renderBackTitle(host: SceneBackButtonHost, parent: Node, layout: UiLayout, scale: number, titleText: string, helpText: string, onClick?: () => void): void {
   if (!titleText || !host.addChildLabel) {
     return;
   }
   const titleY = layout.stageTop - 42 * scale;
+  // 统一样式:「< 标题」红横幅(素材在 ui/common,启动即预载),横幅可点返回
+  const chevronH = 70 * scale;
+  const chevronW = chevronH * SCENE_BACK_BANNER_ASPECT;
+  const chevronX = layout.stageLeft + 14 * scale + chevronW / 2;
+  const holder = host.addChildPlainNode(parent, 'SceneBackTitleBanner', chevronX, titleY, chevronW, chevronH);
+  if (host.addSprite?.('Art', SCENE_BACK_BANNER_ASSET, 0, 0, chevronW, chevronH, holder)) {
+    const title = host.addChildLabel(holder, 'SceneBackTitle', titleText, chevronW * 0.06, 1 * scale, 32 * scale, rgba(250, 232, 190), new Size(chevronW * 0.52, 44 * scale));
+    title.overflow = Label.Overflow.SHRINK;
+    title.isBold = true;
+    title.enableOutline = true;
+    title.outlineColor = rgba(40, 6, 4, 255);
+    title.outlineWidth = Math.max(1, 2 * scale);
+    if (onClick) {
+      holder.addComponent(Button);
+      holder.on(Button.EventType.CLICK, onClick);
+      host.applyImageButtonFeedback(holder, 1.03, 0.97);
+    }
+    if (helpText) {
+      renderHelpButton(host, parent, layout, chevronX + chevronW / 2, titleY, scale, titleText, helpText);
+    }
+    return;
+  }
+  holder.destroy();
   // 新横幅整图等比(不再纵向拉伸);左侧徽记占约 0.22 宽,文字中心压在牌身(约 0.59 处)。
   const bannerWidth = Math.max(250 * scale, titleText.length * 52 * scale + 72 * scale);
   const bannerHeight = bannerWidth * (201 / 596);

@@ -450,7 +450,18 @@ export class LobbyRaidPanelRenderer {
     refresh.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(true), this);
     this.host.applyImageButtonFeedback(refresh, 1.04, 0.96);
     if (home.candidates.length === 0) {
-      this.label(parent, 'LobbyRaidPvpEmpty', '暂时没有可掠夺的矿,点「换一批」或稍后再来', m.X(927), m.Y(450), m.S(24), DIM_TEXT, m.HX(860));
+      // 空状态(2026-10-27 UI 审核:原先中间只有一行小字):灰矿口插图 + 标题 + 说明 + 大号「换一批」
+      const art = this.host.addSprite('LobbyRaidPvpEmptyArt', RAID_ART.nodeOff, m.X(927), m.Y(330), m.S(200), m.S(200), parent);
+      if (art) {
+        art.grayscale = true;
+        art.node.addComponent(UIOpacity).opacity = 200;
+      }
+      this.label(parent, 'LobbyRaidPvpEmptyTitle', '附近暂时没有可掠夺的矿', m.X(927), m.Y(480), m.S(32), BODY_TEXT, m.HX(800), HorizontalTextAlignment.CENTER, true);
+      this.label(parent, 'LobbyRaidPvpEmptyDesc', '有保护盾、新手保护期内、或 24 小时内打过的矿不会出现', m.X(927), m.Y(530), m.S(24), DIM_TEXT, m.HX(820));
+      const again = this.host.addChildPlainNode(parent, 'LobbyRaidPvpEmptyRefresh', m.X(927), m.Y(620), m.S(320), m.S(68));
+      this.paintButton(again, m.S(320), m.S(68), m.ks, '换一批', m.S(32), 'primary');
+      again.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(true), this);
+      this.host.applyImageButtonFeedback(again, 1.04, 0.96);
       return;
     }
     const tops = [175, 300, 427, 553, 679];

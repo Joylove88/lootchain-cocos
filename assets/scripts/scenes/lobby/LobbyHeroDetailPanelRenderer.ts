@@ -1120,6 +1120,8 @@ export class LobbyHeroDetailPanelRenderer {
     sub.overflow = Label.Overflow.SHRINK;
     const closeSize = S(74);
     const close = this.host.addChildPlainNode(dialog, 'LobbyHeroUltimateClose', X(1514), Y(142), closeSize, closeSize);
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    close.getComponent(UITransform)?.setContentSize((closeSize) * 1.7, (closeSize) * 1.7);
     if (!this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, close)) {
       this.host.addSprite('Art', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, close);
     }
@@ -6042,6 +6044,8 @@ export class LobbyHeroDetailPanelRenderer {
 
   private protoDialogClose(dialog: Node, x: number, y: number, size: number, onClose: () => void): void {
     const close = this.host.addChildPlainNode(dialog, 'Close', x, y, size, size);
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    close.getComponent(UITransform)?.setContentSize((size) * 1.7, (size) * 1.7);
     if (!this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, size, size, close)) {
       this.host.addSprite('Art', REF_CLOSE_ASSET, 0, 0, size, size, close);
     }

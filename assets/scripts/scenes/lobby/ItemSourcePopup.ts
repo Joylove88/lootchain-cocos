@@ -1,4 +1,4 @@
-import { BlockInputEvents, Button, Color, HorizontalTextAlignment, Label, Node, Size, view } from 'cc';
+import { BlockInputEvents, Button, Color, HorizontalTextAlignment, Label, Node, Size, UITransform, view } from 'cc';
 import { mountRefButton, mountRefOrnateDialog, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitleBand, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_DETAIL, REF_ICON_RING_ASSET, REF_ROW, REF_ULT, type RefKitHost } from '../UiRefKit';
 import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday, resolveItemSourceRoutes, type ItemSourceTarget } from './ItemSourceRoutes';
 
@@ -67,6 +67,8 @@ export function openItemSourcePopup(host: ItemSourcePopupHost, root: Node, optio
   title.overflow = Label.Overflow.SHRINK;
   title.isBold = true;
   const close = host.addChildPlainNode(dialog.node, 'Close', w / 2 - S(40), top - S(40), S(56), S(56));
+  // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+  close.getComponent(UITransform)?.setContentSize((S(56)) * 1.7, (S(56)) * 1.7);
   host.addSprite('Ring', REF_CLOSE_RING_ASSET, 0, 0, S(56), S(56), close);
   host.addSprite('X', REF_CLOSE_ASSET, 0, 0, S(30), S(30), close);
   close.addComponent(Button);

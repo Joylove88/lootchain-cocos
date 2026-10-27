@@ -544,6 +544,8 @@ export class LobbyForgePanelRenderer {
     this.applyOutline(title, scale, true);
     const closeSize = FS(56);
     const close = this.host.addChildPlainNode(dialog, 'Close', w / 2 - FS(36) - closeSize / 2, bandCy, closeSize + FS(10), closeSize + FS(10));
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    close.getComponent(UITransform)?.setContentSize((closeSize) * 1.7, (closeSize) * 1.7);
     this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, close);
     close.addComponent(Button);
     this.host.applyImageButtonFeedback(close, 1.08, 0.92);
@@ -2296,6 +2298,8 @@ export class LobbyForgePanelRenderer {
     this.applyOutline(title, scale, true);
     const closeSize = FS(56);
     const close = this.host.addChildPlainNode(dialog, 'Close', w / 2 - PAD - closeSize / 2, bandCy, closeSize + FS(10), closeSize + FS(10));
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    close.getComponent(UITransform)?.setContentSize((closeSize) * 1.7, (closeSize) * 1.7);
     this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, close);
     close.addComponent(Button);
     this.host.applyImageButtonFeedback(close, 1.08, 0.92);
@@ -2754,6 +2758,8 @@ export class LobbyForgePanelRenderer {
     this.applyOutline(title, scale, true);
     const closeSize = FS(56);
     const close = this.host.addChildPlainNode(dialog, 'Close', w / 2 - PAD - closeSize / 2, bandCy, closeSize + FS(10), closeSize + FS(10));
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    close.getComponent(UITransform)?.setContentSize((closeSize) * 1.7, (closeSize) * 1.7);
     this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, close);
     close.addComponent(Button);
     this.host.applyImageButtonFeedback(close, 1.08, 0.92);
@@ -3114,7 +3120,8 @@ export class LobbyForgePanelRenderer {
     const stripH = FS(26);
     mountRefSolid(this.host, node, `${name}Strip`, 0, -cell / 2 + FS(6) + stripH / 2, cell - FS(10), stripH, rgba(0, 0, 0, 150));
     const lift = (c: number): number => Math.round(c + (255 - c) * 0.55);
-    const nm = this.host.addChildLabel(node, `${name}Name`, safeText(item.equipName), 0, -cell / 2 + FS(6) + stripH / 2, FS(19), opts.whiteName ? rgba(232, 230, 220) : rgba(lift(q.r), lift(q.g), lift(q.b), 255), new Size(cell - FS(12), stripH));
+    // 2026-10-27 UI 审核:手机上装备名太小 → 下限 17(SHRINK 兜底长名)
+    const nm = this.host.addChildLabel(node, `${name}Name`, safeText(item.equipName), 0, -cell / 2 + FS(6) + stripH / 2, isPhoneDesign() ? Math.max(17, FS(19)) : FS(19), opts.whiteName ? rgba(232, 230, 220) : rgba(lift(q.r), lift(q.g), lift(q.b), 255), new Size(cell - FS(12), stripH));
     nm.enableWrapText = false;
     nm.overflow = Label.Overflow.SHRINK;
     nm.lineHeight = nm.fontSize;

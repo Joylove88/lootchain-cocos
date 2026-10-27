@@ -1,4 +1,4 @@
-import { BlockInputEvents, Button, Color, Label, Size, view, type Node } from 'cc';
+import { BlockInputEvents, Button, Color, Label, Size, UITransform, view, type Node } from 'cc';
 import { mountRefButton, mountRefOrnateDialog, mountRefSolid, mountRefTitleBand, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, type RefKitHost } from '../UiRefKit';
 
 /**
@@ -40,6 +40,8 @@ export function openConfirmPopup(host: RefKitHost, root: Node, options: ConfirmP
   title.overflow = Label.Overflow.SHRINK;
   title.isBold = true;
   const x = host.addChildPlainNode(dialog.node, 'Close', w / 2 - S(40), top - S(40), S(56), S(56));
+  // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+  x.getComponent(UITransform)?.setContentSize((S(56)) * 1.7, (S(56)) * 1.7);
   host.addSprite('Ring', REF_CLOSE_RING_ASSET, 0, 0, S(56), S(56), x);
   host.addSprite('X', REF_CLOSE_ASSET, 0, 0, S(30), S(30), x);
   x.addComponent(Button);

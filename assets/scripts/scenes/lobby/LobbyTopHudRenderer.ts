@@ -12,6 +12,7 @@ import {
   Vec3,
   tween,
 } from 'cc';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { lootChainI18n } from '../../i18n/LootChainI18n';
 import { SCENE_CURRENCY_BAR_ASSET } from '../UiSceneBackButton';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
@@ -152,7 +153,7 @@ export class LobbyTopHudRenderer {
       `Lv.${profile.playerLevel}`,
       textX,
       panelTop - 52 * hudScale,
-      21 * hudScale,
+      phoneMinFont(21 * hudScale, 20),
       rgba(226, 201, 145),
       new Size(118 * hudScale, 30 * hudScale),
       HorizontalTextAlignment.LEFT,
@@ -180,7 +181,7 @@ export class LobbyTopHudRenderer {
       `阵容战力 ${this.formatInteger(profile.lineupPower ?? profile.combatPower)}`,
       textX,
       panelTop - 128 * hudScale,
-      22 * hudScale,
+      phoneMinFont(22 * hudScale, 20),
       rgba(224, 190, 112),
       new Size(textWidth, 32 * hudScale),
       HorizontalTextAlignment.LEFT,
@@ -194,7 +195,7 @@ export class LobbyTopHudRenderer {
       this.expBadgeText(profile),
       panelLeft + 80 * hudScale,
       panelTop - 160 * hudScale,
-      17 * hudScale,
+      phoneMinFont(17 * hudScale, 18),
       rgba(245, 210, 122),
       new Size(92 * hudScale, 26 * hudScale),
     );
@@ -792,4 +793,9 @@ export class LobbyTopHudRenderer {
     graphics.lineWidth = Math.max(1, size * 0.18);
     graphics.stroke();
   }
+}
+
+/** 手机端字号下限(2026-10-27 UI 审核:头像栏等级 / 战力在手机上缩到 15 号左右,看不清)。 */
+function phoneMinFont(size: number, min: number): number {
+  return isPhoneDesign() ? Math.max(size, min) : size;
 }

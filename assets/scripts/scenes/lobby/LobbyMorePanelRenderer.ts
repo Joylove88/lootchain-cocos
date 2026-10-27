@@ -184,7 +184,7 @@ export class LobbyMorePanelRenderer {
     const dividerInner = 34 + 22;
     this.host.addSprite('TitleDividerL', TITLE_DIVIDER_LEFT_ASSET, -dividerInner - dividerW / 2, titleY, dividerW, dividerW * TITLE_DIVIDER_LEFT_ASPECT, panel);
     this.host.addSprite('TitleDividerR', TITLE_DIVIDER_RIGHT_ASSET, dividerInner + dividerW / 2, titleY, dividerW, dividerW * TITLE_DIVIDER_RIGHT_ASPECT, panel);
-    this.addCloseButton(panel, panelWidth / 2 - 46, titleY, 1.3);
+    this.addCloseButton(panel, panelWidth / 2 - 50, titleY, 1.15);
 
     const bodyTop = panelHeight / 2 - 6 - headerH - 22;
     const footY = -panelHeight / 2 + 30;
@@ -353,9 +353,13 @@ export class LobbyMorePanelRenderer {
   }
 
   private addCloseButton(parent: Node, x: number, y: number, scale: number): void {
-    const btn = this.host.addChildPlainNode(parent, 'CloseBtn', x, y, 40 * scale, 40 * scale);
-    const label = this.host.addChildLabel(btn, 'Text', '✕', 0, 0, 22 * scale, rgba(214, 190, 150, 240), new Size(40 * scale, 40 * scale));
-    this.outline(label, scale, false);
+    // 2026-10-27 UI 审核:统一成全游戏的圆形关闭按钮(原来是文字 ✕,样式不一、点击区小)
+    const size = 56 * scale;
+    const btn = this.host.addChildPlainNode(parent, 'CloseBtn', x, y, size * 1.5, size * 1.5);
+    if (!this.host.addSprite('Art', 'ui/common/ai/button_close/spriteFrame', 0, 0, size, size, btn)) {
+      const label = this.host.addChildLabel(btn, 'Text', '✕', 0, 0, 22 * scale, rgba(214, 190, 150, 240), new Size(40 * scale, 40 * scale));
+      this.outline(label, scale, false);
+    }
     btn.addComponent(Button);
     btn.on(Button.EventType.CLICK, () => this.host.closeLobbyMorePanel(), this);
     this.host.applyImageButtonFeedback(btn, 1.1, 0.92);

@@ -197,7 +197,7 @@ export class LobbyWorldOverlayRenderer {
     return node;
   }
 
-  private rewardRow(parent: Node, rewards: WorldRewardItemVO[], x0: number, y: number, k: number, maxW: number): void {
+  private rewardRow(parent: Node, rewards: WorldRewardItemVO[], x0: number, y: number, k: number, maxW: number, textColor: Color = BODY, amountOnly = false): void {
     const icon = 54 * k;
     const cell = Math.min(maxW / Math.max(1, rewards.length), 150 * k);
     rewards.slice(0, 4).forEach((reward, index) => {
@@ -215,7 +215,8 @@ export class LobbyWorldOverlayRenderer {
       if (!asset || !this.host.addSprite('Icon', asset, 0, 0, icon, icon, box)) {
         this.label(box, 'Txt', reward.resourceType === 'PLAYER_EXP' ? 'EXP' : (reward.resourceName || '?').slice(0, 2), 0, 0, 20 * k, rgba(140, 230, 140), icon);
       }
-      this.label(parent, `RewardAmt_${index}`, `${reward.resourceName} ×${reward.amount}`, cx, y - icon / 2 - 12 * k, 17 * k, BODY, cell);
+      // 窄格(悬赏纸)只写数量:名字 + 数量塞不下会被压成芝麻字,名字看图标 / 点开详情
+      this.label(parent, `RewardAmt_${index}`, amountOnly ? `×${reward.amount}` : `${reward.resourceName} ×${reward.amount}`, cx, y - icon / 2 - (amountOnly ? 16 : 12) * k, (amountOnly ? 22 : 17) * k, textColor, cell);
     });
   }
 
@@ -641,7 +642,7 @@ export class LobbyWorldOverlayRenderer {
     stamp.stroke();
     this.label(card, 'Diff', bounty.difficulty, w / 2 - 60 * k, h / 2 - 64 * k, 26 * k, stampColor, 50 * k, HorizontalTextAlignment.CENTER, true);
     // 怪物插画(立绘)
-    const artH = h * 0.34;
+    const artH = h * 0.29;
     const art = this.host.addChildPlainNode(card, 'ArtClip', 0, h / 2 - 110 * k - artH / 2, w - 70 * k, artH);
     art.addComponent(Mask);
     const sprite = this.host.addSprite('Art', `monster/${bounty.monsterCode.toLowerCase()}/spriteFrame`, 0, 0, artH * 1.1, artH * 1.1, art);
@@ -653,16 +654,17 @@ export class LobbyWorldOverlayRenderer {
     this.label(card, 'Goal', target, 0, lineY - 20 * k, 21 * k, ink, w - 70 * k);
     this.label(card, 'Place', `地点:${WORLD_MAPS[bounty.map as WorldMapCode]?.name ?? bounty.map}`, 0, lineY - 56 * k, 20 * k, ink, w - 70 * k);
     this.label(card, 'RewardTitle', '奖励', -w / 2 + 60 * k, lineY - 92 * k, 20 * k, ink, 80 * k, HorizontalTextAlignment.CENTER, true);
-    const rewardBox = this.host.addChildPlainNode(card, 'Rewards', 0, lineY - 150 * k, w - 60 * k, 100 * k);
-    this.rewardRow(rewardBox, bounty.rewards, -(w - 60 * k) / 2, 0, k * 0.9, w - 60 * k);
-    const btnY = -h / 2 + 76 * k;
-    const btnW = w * 0.62;
+    const rewardBox = this.host.addChildPlainNode(card, 'Rewards', 0, lineY - 140 * k, w - 60 * k, 100 * k);
+    // 羊皮纸上用深色墨字(浅色字看不清);数量行与按钮留出间距(2026-10-27 UI 审核:数量被「接取」按钮盖住)
+    this.rewardRow(rewardBox, bounty.rewards, -(w - 60 * k) / 2, 0, k * 0.9, w - 60 * k, rgba(70, 40, 24), true);
+    const btnY = -h / 2 + 62 * k;
+    const btnW = w * 0.58;
     if (bounty.state === 'OPEN') {
-      this.button(card, 'Btn', 0, btnY, btnW, 60 * k, busy ? '请稍候…' : '接取', busy ? 'disabled' : 'primary', busy ? null : () => this.host.acceptWorldBounty(bounty.slot));
+      this.button(card, 'Btn', 0, btnY, btnW, 54 * k, busy ? '请稍候…' : '接取', busy ? 'disabled' : 'primary', busy ? null : () => this.host.acceptWorldBounty(bounty.slot));
     } else if (bounty.state === 'DONE') {
-      this.button(card, 'Btn', 0, btnY, btnW, 60 * k, busy ? '请稍候…' : '领取奖励', busy ? 'disabled' : 'primary', busy ? null : () => this.host.claimWorldBounty(bounty.slot));
+      this.button(card, 'Btn', 0, btnY, btnW, 54 * k, busy ? '请稍候…' : '领取奖励', busy ? 'disabled' : 'primary', busy ? null : () => this.host.claimWorldBounty(bounty.slot));
     } else {
-      this.button(card, 'Btn', 0, btnY, btnW, 60 * k, bounty.state === 'CLAIMED' ? '已完成' : '进行中', 'disabled', null);
+      this.button(card, 'Btn', 0, btnY, btnW, 54 * k, bounty.state === 'CLAIMED' ? '已完成' : '进行中', 'disabled', null);
     }
   }
 }

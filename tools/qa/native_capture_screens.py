@@ -35,6 +35,8 @@ SCREENS = [
     ('world_dialog', "root.openWorldNpcDialog('BOARD');", 2.5),
     ('raid_npc', "root.openLobbyRaidPanel(); setTimeout(() => root.selectLobbyRaidTab('npc'), 2500);", 6.0),
     ('raid_pvp', "root.openLobbyRaidPanel(); setTimeout(() => root.selectLobbyRaidTab('pvp'), 2500);", 6.0),
+    ('world_field', "root.travelWorldMap('WOODS', null);", 8.0),
+    ('world_city', "root.travelWorldMap('CITY', null);", 8.0),
     ('bag', "root.openLobbyBagPanel();", 3.0),
     ('quest', "root.openLobbyQuestPanel();", 3.0),
     ('mail', "root.openLobbyMailPanel();", 3.0),

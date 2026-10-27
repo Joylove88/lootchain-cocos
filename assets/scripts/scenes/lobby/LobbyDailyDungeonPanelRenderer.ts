@@ -575,7 +575,9 @@ export class LobbyDailyDungeonPanelRenderer {
       g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, 6 * scale);
       g.fill();
     }
-    const lockText = this.host.addChildLabel(bar, 'ThemeLockText', text, 0, 0, 19 * scale, rgba(206, 190, 156, 240), new Size(barWidth * 0.76, 24 * scale));
+    // 2026-10-27 UI 审核:手机上这行缩到看不清 → 字号下限 20、宽度放到 90%
+    const lockFont = isPhoneDesign() ? Math.max(20, 19 * scale) : 19 * scale;
+    const lockText = this.host.addChildLabel(bar, 'ThemeLockText', text, 0, 0, lockFont, rgba(206, 190, 156, 240), new Size(barWidth * 0.9, lockFont * 1.3));
     lockText.overflow = Label.Overflow.SHRINK;
   }
 

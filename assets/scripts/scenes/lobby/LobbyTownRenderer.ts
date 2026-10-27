@@ -1276,7 +1276,8 @@ export class LobbyTownRenderer {
     this.hudScale = scale;
     const world = this.host.currentWorldState?.() ?? null;
     const questGuide = this.resolveQuestGuide(world);
-    const effectiveGuide = world?.stage === 'VILLAGE' ? questGuide : guide ?? questGuide;
+    // 跑图世界只用剧情任务带路(2026-10-27 UI 审核:顶部旧引导条和左侧追踪条同时出现、指向不同)
+    const effectiveGuide = world ? questGuide : guide;
     this.guide = effectiveGuide;
     const hud = this.host.createUiNode('LobbyTownHud');
     hud.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
@@ -2044,10 +2045,20 @@ export class LobbyTownRenderer {
   /** 当前剧情任务 → 引导目标点(本图 NPC / 怪群 / 传送阵;目标在别的图就指向本图传送阵或出口)。 */
   private resolveQuestGuide(world: WorldStateVO | null): TownGuideTarget | null {
     const quest = this.primaryQuest(world);
-    if (!quest || quest.state === 'LOCKED') {
+    if (!quest) {
       return null;
     }
     const def = this.def;
+    if (quest.state === 'LOCKED') {
+      // 等级不够接下一条剧情(2026-10-27 UI 审核):指去村外林地打怪升级
+      if (this.mapCode === 'WOODS') {
+        const camp = def.camps[0];
+        return camp ? { building: '', point: { x: camp.x, y: camp.y, label: camp.label }, text: `打怪升到 Lv.${quest.minLevel}` } : null;
+      }
+      const exit = def.exits.find((item) => item.toMap === 'WOODS');
+      const point = exit ? { x: exit.x, y: exit.y, label: exit.label } : { x: def.waypoint.x, y: def.waypoint.y, label: '传送阵 · 去村外林地' };
+      return { building: '', point, text: `去村外林地打怪升到 Lv.${quest.minLevel}` };
+    }
     const npcPoint = (code: string): { x: number; y: number; label: string } | null => {
       const npc = def.npcs.find((item) => item.code === code);
       if (npc) {
@@ -2106,21 +2117,24 @@ export class LobbyTownRenderer {
   private renderQuestTracker(hud: Node, layout: UiLayout, scale: number, world: WorldStateVO | null): void {
     const quest = this.primaryQuest(world);
     const bounties = (world?.bounties ?? []).filter((item) => item.state === 'ACCEPTED' || item.state === 'DONE');
-    const rows: Array<{ tag: string; text: string; color: ReturnType<typeof rgba> }> = [];
+    // 剧情行两行:主行只放任务名 + 进度 / 状态,描述降到副行(整句塞一行会被 SHRINK 压到看不清)
+    const rows: Array<{ tag: string; text: string; sub: string; color: ReturnType<typeof rgba> }> = [];
     if (quest) {
       const progress = quest.objective === 'KILL' || quest.objective === 'COLLECT' ? ` ${Math.min(quest.progress, quest.target)}/${quest.target}` : '';
-      const status = quest.state === 'DONE' ? '(可交付)' : quest.state === 'AVAILABLE' ? '(可接取)' : quest.state === 'LOCKED' ? `(Lv.${quest.minLevel} 可接)` : '';
-      rows.push({ tag: '剧情', text: `${quest.name} · ${quest.desc.replace(/[。.]$/, '')}${progress}${status}`, color: rgba(255, 214, 120) });
+      const status = quest.state === 'DONE' ? ' · 可交付' : quest.state === 'AVAILABLE' ? ' · 可接取' : quest.state === 'LOCKED' ? ` · Lv.${quest.minLevel} 可接` : '';
+      const sub = quest.state === 'LOCKED' ? '先去村外林地打怪升级' : quest.desc.replace(/[。.]$/, '');
+      rows.push({ tag: '剧情', text: `${quest.name}${progress}${status}`, sub, color: rgba(255, 214, 120) });
     }
     for (const bounty of bounties.slice(0, 2)) {
-      rows.push({ tag: '悬赏', text: `${bounty.name} ${Math.min(bounty.progress, bounty.target)}/${bounty.target}${bounty.state === 'DONE' ? '(可领取)' : ''}`, color: rgba(140, 200, 255) });
+      rows.push({ tag: '悬赏', text: `${bounty.name} ${Math.min(bounty.progress, bounty.target)}/${bounty.target}${bounty.state === 'DONE' ? ' · 可领取' : ''}`, sub: '', color: rgba(140, 200, 255) });
     }
     if (rows.length === 0) {
       return;
     }
-    const w = Math.min(430 * scale, layout.stageWidth * 0.34);
-    const rowH = 40 * scale;
-    const h = rows.length * rowH + 14 * scale;
+    // 2026-10-27 UI 审核:追踪条字号 18→22(手机下限)、条加宽
+    const w = Math.min(520 * scale, layout.stageWidth * 0.38);
+    const rowH = (row: { sub: string }) => (row.sub ? 74 : 46) * scale;
+    const h = rows.reduce((sum, row) => sum + rowH(row), 0) + 14 * scale;
     const x = layout.stageLeft + 24 * scale + w / 2;
     const y = layout.stageTop - 170 * scale - h / 2;
     const node = this.host.addChildPlainNode(hud, 'LobbyWorldQuestTracker', x, y, w, h);
@@ -2132,12 +2146,18 @@ export class LobbyTownRenderer {
     g.lineWidth = Math.max(1, 1.5 * scale);
     g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
     g.stroke();
+    let top = h / 2 - 7 * scale;
     rows.forEach((row, index) => {
-      const ry = h / 2 - 7 * scale - rowH * index - rowH / 2;
-      const tag = this.host.addChildLabel(node, `Tag_${index}`, row.tag, -w / 2 + 34 * scale, ry, 18 * scale, row.color, new Size(56 * scale, 26 * scale));
+      const ry = top - 23 * scale;
+      top -= rowH(row);
+      const tag = this.host.addChildLabel(node, `Tag_${index}`, row.tag, -w / 2 + 38 * scale, ry, 22 * scale, row.color, new Size(60 * scale, 30 * scale));
       tag.isBold = true;
-      const text = this.host.addChildLabel(node, `Text_${index}`, row.text, -w / 2 + 66 * scale, ry, 18 * scale, rgba(240, 228, 204), new Size(w - 80 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+      const text = this.host.addChildLabel(node, `Text_${index}`, row.text, -w / 2 + 74 * scale, ry, 22 * scale, rgba(240, 228, 204), new Size(w - 88 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
       text.overflow = Label.Overflow.SHRINK;
+      if (row.sub) {
+        const sub = this.host.addChildLabel(node, `Sub_${index}`, row.sub, -w / 2 + 74 * scale, ry - 28 * scale, 18 * scale, rgba(196, 184, 160), new Size(w - 88 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
+        sub.overflow = Label.Overflow.SHRINK;
+      }
     });
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.host.openWorldQuestTracker?.(), this);
@@ -2152,8 +2172,9 @@ export class LobbyTownRenderer {
     }
     const size = 84 * scale;
     // 左侧任务追踪条下方(右下是战斗按钮簇,右上是小地图)
+    // 紧贴追踪条下沿(原先 -380 在手机上压到摇杆)
     const x = layout.stageLeft + 70 * scale;
-    const y = layout.stageTop - 380 * scale;
+    const y = layout.stageTop - 292 * scale;
     const button = this.host.addChildPlainNode(hud, 'LobbyWorldRecall', x, y, size, size);
     const g = button.addComponent(Graphics);
     g.fillColor = rgba(16, 10, 10, 225);

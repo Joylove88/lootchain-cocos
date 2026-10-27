@@ -1061,6 +1061,8 @@ export class LobbyBagPanelRenderer {
     this.applyOutline(title, scale, true);
     const closeSize = S(72);
     const closeButton = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', X(1551), Y(93), closeSize + S(10), closeSize + S(10));
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    closeButton.getComponent(UITransform)?.setContentSize((closeSize) * 1.7, (closeSize) * 1.7);
     if (!this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, closeButton)) {
       this.host.addSprite('LobbyBagDetailCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize, closeSize, closeButton);
     }
@@ -1526,6 +1528,8 @@ export class LobbyBagPanelRenderer {
     this.applyOutline(titleLabel, scale, true);
     const closeSize = S(62);
     const close = this.host.addChildPlainNode(dialog, 'Close', X(closeX), bodyCy, closeSize + S(10), closeSize + S(10));
+    // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
+    close.getComponent(UITransform)?.setContentSize((closeSize) * 1.7, (closeSize) * 1.7);
     this.host.addSprite('Art', REF_CLOSE_RING_ASSET, 0, 0, closeSize, closeSize, close);
     close.addComponent(Button);
     this.host.applyImageButtonFeedback(close, 1.08, 0.92);

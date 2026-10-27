@@ -56,12 +56,22 @@ async def main():
                 if v in ('login', 'lobby'):
                     break
                 await asyncio.sleep(2)
-            if v != 'lobby':
+            # 后端重启后浏览器里的旧会话会失效:一律先退出再登录
+            if v == 'lobby':
+                await ev("root.logoutToLoginPage(); return 1;")
+                await asyncio.sleep(5)
+                v = 'login'
+            # 退出后登录页要过一会儿才接得住输入:登不进就重试
+            for attempt in range(4):
+                if v == 'lobby':
+                    break
                 await ev(f"root.loginFlow.setInputs({{string:'{USER}'}}, {{string:'{PASS}'}}); try {{ root.loginFlow.acceptedAgreement = true; }} catch(e){{}} root.run(() => root.loginFlow.login()); return 1;")
-                for _ in range(60):
-                    if await ev("return root.currentView;") == 'lobby':
+                for _ in range(20):
+                    v = await ev("return root.currentView;")
+                    if v == 'lobby':
                         break
                     await asyncio.sleep(2)
+                print('login attempt', attempt, v, flush=True)
             await asyncio.sleep(10)
             for key, js, wait in SCREENS:
                 if ONLY and key not in ONLY:
