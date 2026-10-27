@@ -1,0 +1,17 @@
+Generate ONE image: a polished UI mockup of the full-screen "邮件" (mailbox) screen for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841). Image 1 is our approved "terminal" menu mockup: KEEP exactly its art style (muted matte hand-painted dark fantasy, blackened iron panels with thin ornate antique-gold edges and small spiky corner ornaments, low saturation, restrained lighting, blurred dark gothic city background with warm windows). Image 2 is the current mailbox we are replacing: it is flat and has no visual hierarchy — do NOT copy its layout. All text Simplified Chinese exactly as written.
+
+New layout = clear two-column hierarchy (list on the left, detail on the right):
+1. Top: a red-and-gold title banner at the top-left reading "邮件" with a small "<" back glyph on its left; top-right a round gold-ring close button (X). Between them a thin gold line.
+2. LEFT column (about 36% width): a tall dark iron panel listing mails. Panel header row: "收件箱  3 / 20" on the left and a small gold pill "未读 2" on the right. Below, 3 mail rows, each a dark card with thin gold edge:
+   - row 1 (SELECTED: brighter gold border and a warm highlight strip on its left edge): a small round envelope icon with a red unread dot, title "玩家等级 Lv.20 升级礼包", under it grey small text "系统 · 今天 20:14", and at the right end a small gold tag "附件".
+   - row 2: envelope icon, title "悬赏结算 · 清剿岩蜥", grey "佣兵公会 · 昨天", small gold tag "附件".
+   - row 3 (read, dimmer): open-envelope icon, title "欢迎来到圣契大陆", grey "系统 · 10-20", no tag.
+   Panel bottom: two buttons side by side: a dark-iron secondary button "删除已读" and a red-and-gold primary button "一键领取".
+3. RIGHT column (about 60% width): a taller dark iron panel = the detail of the selected mail:
+   - header band: big title "玩家等级 Lv.20 升级礼包", under it small grey "发件人:系统    2026-10-28 20:14    有效期:永久".
+   - thin gold divider with a small diamond ornament in the middle.
+   - body text in a lighter paragraph: "等级提升至 Lv.20,升级礼包已送达,领取附件即可。\n英雄等级上限同步提升至 Lv.30。"
+   - a section label "附件" with a short gold line, then a row of 4 square item slots (dark tile, thin gold rim, count at bottom-right): gold coins "6000", blue diamond "240", red enhancement stone "6", a brighter high-tier enhancement stone "2".
+   - bottom-right of the panel: one large red-and-gold primary button "领取附件"; bottom-left a small dark text button "删除".
+4. Very bottom center of the screen, outside the panels: tiny grey text "于黑暗中前行 · 以意志铸就荣耀".
+Clean, generous spacing, strong contrast between the selected row, the panel headers and the body; readable at phone size. Output only the single finished mockup image, no annotations.
