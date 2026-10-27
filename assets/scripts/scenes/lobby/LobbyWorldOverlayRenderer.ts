@@ -43,6 +43,7 @@ export interface LobbyWorldOverlayHost {
   selectWorldMapPoint(code: string | null): void;
   selectWorldMapRegion(region: string | null): void;
   teleportWorldMap(code: WorldMapCode): void;
+  worldTeleportNote?(): string;
   closeWorldBountyPanel(): void;
   acceptWorldBounty(slot: number): void;
   claimWorldBounty(slot: number): void;
@@ -550,7 +551,7 @@ export class LobbyWorldOverlayRenderer {
     const canGo = status.unlocked && !status.isCurrent;
     const text = status.isCurrent ? '当前所在' : status.unlocked ? '传送' : status.reason || '未开放';
     this.button(node, 'Go', 0, -bh / 2 + 66 * k, bw - 70 * k, 66 * k, text, canGo ? 'primary' : 'disabled', canGo ? () => this.host.teleportWorldMap(point.code as WorldMapCode) : null);
-    this.label(node, 'Note', canGo ? '免费 · 读条 3 秒' : '', 0, -bh / 2 + 22 * k, 17 * k, DIM, bw - 40 * k);
+    this.label(node, 'Note', canGo ? (this.host.worldTeleportNote?.() ?? '免费 · 读条 5 秒') : '', 0, -bh / 2 + 22 * k, 17 * k, DIM, bw - 40 * k);
   }
 
   // ── 佣兵公会悬赏(原型 p5) ──

@@ -1787,6 +1787,19 @@ export class LobbyTownRenderer {
     title.outlineColor = rgba(0, 0, 0, 230);
     title.outlineWidth = Math.max(1, P.S(2));
     this.minimapBottomY = cy + plateY - plateH / 2;
+    // 圆环右侧偏下(约 4 点前)小圆钮「传送」:任何地方都能打开世界地图传送(10-28);再往下会压地名牌和追踪条
+    const mapBtnD = P.S(field ? 58 : 52);
+    const ang = -Math.PI / 9;
+    const mapBtn = this.host.addChildPlainNode(hud, 'LobbyTownWorldMapBtn', cx + Math.cos(ang) * outer * 1.14, cy + Math.sin(ang) * outer * 1.14, mapBtnD + P.S(30), mapBtnD + P.S(30));
+    mountRingBase(this.host, mapBtn, mapBtnD * 1.12);
+    this.addFitSprite('Icon', TOWN_HUD_ASSETS.iconPortal, 0, 0, mapBtnD * 0.6, mapBtnD * 0.6, mapBtn);
+    const mapBtnLabel = this.host.addChildLabel(mapBtn, 'Label', '传送', 0, -mapBtnD * 0.5 - P.S(10), P.S(18), rgba(244, 232, 206), new Size(P.S(80), P.S(24)));
+    mapBtnLabel.enableOutline = true;
+    mapBtnLabel.outlineColor = rgba(0, 0, 0, 230);
+    mapBtnLabel.outlineWidth = 2;
+    mapBtn.addComponent(Button);
+    mapBtn.on(Button.EventType.CLICK, () => this.host.openWorldMapPanel?.(), this);
+    this.host.applyImageButtonFeedback(mapBtn, 1.08, 0.94);
     node.addComponent(Button);
     node.on(Button.EventType.CLICK, () => this.host.openWorldMapPanel?.(), this);
     this.host.applyImageButtonFeedback(node, 1.02, 0.98);
@@ -2680,6 +2693,17 @@ export class LobbyTownRenderer {
   }
 
   /** 读条:传送 3 秒 / 回城 5 秒;任何移动输入打断。 */
+  /**
+   * 世界地图传送口径(10-28 用户录屏:精英点走 15 秒回传送阵才传送):任何地方都能传;
+   * 站在传送阵上 0 秒(立即),别处读条 5 秒;交战中(有怪在打)不能传。返回 -1 = 不能传。
+   */
+  teleportChannelSec(): number {
+    if (this.inCombat && this.def.camps.length > 0) {
+      return -1;
+    }
+    return this.nearbyInteracts().some((item) => item.kind === 'waypoint') ? 0 : 5;
+  }
+
   startChannel(seconds: number, label: string, onDone: () => void): void {
     const now = Date.now();
     this.channel = { startAt: now, endAt: now + seconds * 1000, label, onDone };

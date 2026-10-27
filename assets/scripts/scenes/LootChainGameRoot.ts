@@ -921,7 +921,8 @@ export class LootChainGameRoot extends Component {
     // 2026-10-05 实测:原先 6 个分组一次性发出几百个请求,玩家点开的界面排在队尾,要等十几秒才轮到。
     // 手机只预读轻的几组:锻造 / 召唤 / 英雄的大图解码后占几百 MB 显存,全读进来手机浏览器可能丢失画面或杀页面
     // (2026-10-05 用户手机战斗中卡死);这三页在手机上首开时再读(素材已在本地,不到 1 秒)。
-    const groups: UiPreloadGroup[] = sys.isMobile ? ['adventure', 'bag', 'crystal'] : ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
+    // 2026-10-28:安卓原生包贴图是 ASTC(显存约为 PNG 的 1/4),锻造也后台预读——首开不再等「正在加载锻造素材」;手机网页仍不读锻造
+    const groups: UiPreloadGroup[] = sys.isNative ? ['adventure', 'bag', 'forge', 'crystal'] : sys.isMobile ? ['adventure', 'bag', 'crystal'] : ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
     const paths: string[] = [];
     groups.forEach((group) => this.uiSpriteFrameCache.groupAssetPaths(group).forEach((path) => paths.push(path)));
     return paths;
@@ -6928,9 +6929,25 @@ export class LootChainGameRoot extends Component {
       this.setStatus(map?.lockReason || '地图未开放');
       return;
     }
+    const sec = this.lobbyTownRenderer.teleportChannelSec();
+    if (sec < 0) {
+      this.setStatus('战斗中无法传送');
+      return;
+    }
     this.worldMapPanel = null;
     this.syncLobbyShopOverlay();
-    this.lobbyTownRenderer.startChannel(3, `传送至 ${map.mapName}…`, () => this.travelWorldMap(code, null));
+    if (sec === 0) {
+      // 站在传送阵上:立即传送
+      this.travelWorldMap(code, null);
+      return;
+    }
+    this.lobbyTownRenderer.startChannel(sec, `传送至 ${map.mapName}…`, () => this.travelWorldMap(code, null));
+  }
+
+  /** 世界地图「传送」钮下的说明(传送阵上立即 / 别处读条 / 交战中不能传)。 */
+  worldTeleportNote(): string {
+    const sec = this.lobbyTownRenderer.teleportChannelSec();
+    return sec < 0 ? '战斗中无法传送' : sec === 0 ? '免费 · 站在传送阵上,立即传送' : `免费 · 读条 ${sec} 秒(站上传送阵可立即传送)`;
   }
 
   /** 换图(出口 / 传送 / 回城):目标图未开放就提示;spawn 缺省 = 目标图传送阵旁。 */

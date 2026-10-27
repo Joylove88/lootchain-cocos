@@ -97,7 +97,16 @@ export class LobbyTerminalPanelRenderer {
       { py: 682, value: this.host.compactResourceValue(Number(profile.diamond ?? 0)), shop: 'diamond' },
     ];
     for (const item of currencies) {
-      text(`Cur_${item.shop}`, item.value, 420, item.py, 22, rgba(246, 238, 222), 140, HorizontalTextAlignment.RIGHT);
+      if (item.shop === 'stamina') {
+        // 体力超上限(10-28 终端写成「1,164/120」看着像 bug):超出时数值金色 + 后面小号灰字「/ 120 上限」;没超照旧
+        const over = profile.stamina > profile.maxStamina;
+        const capText = over ? `/ ${this.host.formatInteger(profile.maxStamina)} 上限` : `/ ${this.host.formatInteger(profile.maxStamina)}`;
+        const capW = capText.length * 11 + 6;
+        text('Cur_stamina_cap', capText, 420, item.py + 1, 17, rgba(170, 160, 146), capW, HorizontalTextAlignment.RIGHT);
+        text('Cur_stamina', this.host.formatInteger(profile.stamina), 420 - capW - 4, item.py, 22, over ? rgba(255, 214, 110) : rgba(246, 238, 222), 120, HorizontalTextAlignment.RIGHT);
+      } else {
+        text(`Cur_${item.shop}`, item.value, 420, item.py, 22, rgba(246, 238, 222), 140, HorizontalTextAlignment.RIGHT);
+      }
       this.hit(root, `Plus_${item.shop}`, 441, item.py, 44, 44, P, () => {
         this.host.closeLobbyTerminalPanel();
         this.host.openLobbyShopDialog?.(item.shop);
