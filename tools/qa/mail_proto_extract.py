@@ -67,7 +67,7 @@ cut('envelope_read', (148, 468, 236, 556), circle=(192, 512, 43))
 cut('divider', (826, 246, 1740, 270), keep_bright=70)
 cut('attach_line', (896, 418, 992, 442), keep_bright=70)
 # 关闭钮(圆形抠出)
-cut('close', (1788, 3, 1872, 87), circle=(1830, 45, 41))
+cut('close', (1703, 9, 1779, 85), circle=(1741, 47, 36))
 
 # contact sheet
 sheet = Image.new('RGBA', (1900, 700), (96, 96, 102, 255))

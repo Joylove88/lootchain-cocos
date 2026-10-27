@@ -1099,8 +1099,8 @@ export class LobbyQuestMailPanelRenderer {
     const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
     drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true, coverW: layout.width + Math.abs(centerX) * 2, coverH: layout.height + Math.abs(centerY) * 2 });
     addPhoneDialogTitle(this.host, panel, panelWidth, panelHeight, '邮件', 6 + PHONE_HEADER_H / 2, 1.05, () => this.host.closeLobbyMailPanel());
-    const closeBtn = this.host.addChildPlainNode(panel, 'CloseBtn', XR(1830), Y(45), S(84), S(84));
-    if (!this.host.addSprite('Art', MAIL_KIT.close, 0, 0, S(84), S(84), closeBtn)) {
+    const closeBtn = this.host.addChildPlainNode(panel, 'CloseBtn', XR(1741), Y(47), S(92), S(92));
+    if (!this.host.addSprite('Art', MAIL_KIT.close, 0, 0, S(76), S(76), closeBtn)) {
       this.host.addSprite('Art', QUEST_UI_ASSETS.close, 0, 0, S(74) * (155 / 161), S(74), closeBtn);
     }
     closeBtn.addComponent(Button);

@@ -149,6 +149,11 @@ def main() -> None:
     shot(args.out, 'field')
     time.sleep(1.2)
     shot(args.out, 'field_b')
+    # 打击感连拍(10-28):每 0.25 秒一张,看弹道 / 命中 / 技能特效和动作是否连贯
+    for i in range(6):
+        time.sleep(0.25)
+        shot(args.out, f'field_burst_{i}')
+    print('anim', ev("const l = t.leader; return JSON.stringify({ anim: l && l.anim, oneShot: l && Math.round(l.oneShotEnd - Date.now()), fxReady: t.combatFxInst ? Array.from(t.combatFxInst.ready.keys()) : [], buffered: !!t.bufferedInput });"), flush=True)
     ev("window.__v3bot && clearInterval(window.__v3bot); return 1;")
     if 'p2' in args.skip:
         return

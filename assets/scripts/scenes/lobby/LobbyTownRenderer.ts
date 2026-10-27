@@ -46,6 +46,9 @@ import { REF_PLATE_DARK, mountRefSliced } from '../UiRefKit';
 import { TOWN_HUD_ASSETS, TOWN_MINIMAP_BUILDING_ICONS, mountRingBase, townProtoFrame } from './LobbyTownHudProto';
 import { GUARD_MONSTER_DB_SCALE } from './GuardBattleModel';
 import { mountHeroAvatar } from './HeroHeadCrop';
+import { TownCombatFx, resolveTownHeroFxKit, type TownHeroFxKit } from './LobbyTownCombatFx';
+import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
+import { gameAudio } from '../../audio/GameAudio';
 import { worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapExit, type WorldNpcCode } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
@@ -132,6 +135,9 @@ interface TownActor {
   thinkAt: number;
   /** §3 援护技(点头像放大招)就绪时间 */
   assistReadyAt: number;
+  /** 一次性动作(攻击 / 技能)播完的时刻;动作后已用 addAnimation 排好的循环动画名(播完不再 setAnimation 重播) */
+  oneShotEnd: number;
+  loopAfter: string | null;
 }
 
 interface TownBuildingEntity {
@@ -217,9 +223,20 @@ interface TownMonster {
   nameLabel: Label | null;
   /** 当前追打的队员(队长或队友) */
   victim: TownActor | null;
+  /** 伤害飘字防叠:450ms 内同一只怪的第 n 条往上 / 左右错开 */
+  floatAt: number;
+  floatSeq: number;
   /** docs/51 P2 破防条(只精英):受击累积 0..1,满了破防 3 秒(不动不攻、受伤 ×1.5),之后清零;2 秒没挨打开始回落 */
   stagger: number;
   staggeredUntil: number;
+  /** 动画防抖(10-28 用户:「怪物待命动作不连贯,像没播完又重播」):当前循环名 / 一次性动作锁到 / 上次切换时刻 */
+  curAnim: string;
+  animLockUntil: number;
+  moveSince: number;
+  /** 受击击退速度(世界单位 / 秒,逐帧衰减) */
+  kbVX: number;
+  /** 远程怪弹道特效(GUARD_MONSTER_PROJECTILE_FX) */
+  shotFx: { effect: string; animation: string; size: number } | null;
 }
 
 /** docs/51 P2 拾取:怪群清完掉落战利品袋,走到旁边出「拾取 · 战利品」提示,拾取时才向服务端结算发奖。 */
@@ -315,13 +332,24 @@ export class LobbyTownRenderer {
   private iframesUntil = 0;
   private dodgeReadyAt = 0;
   private readonly skillReadyAt = [0, 0, 0];
-  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number } }> = [];
+  // docs/51 打击感(10-28):特效 / 顿帧 / 震屏 / 连招输入缓冲
+  private combatFxInst: TownCombatFx | null = null;
+  private readonly fxKits = new Map<string, TownHeroFxKit>();
+  private hitStopUntil = 0;
+  private hitStopStart = 0;
+  private readonly pausedSkeletons: sp.Skeleton[] = [];
+  private shakeUntil = 0;
+  private shakeAmp = 0;
+  private shakeDur = 1;
+  private leaderActionStart = 0;
+  private bufferedInput: { kind: 'attack' } | { kind: 'skill'; index: number } | null = null;
+  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean }> = [];
   private leaderActionAnim = false;
   private combatButtons: Array<{ node: Node; cd: Label | null; mask: Graphics | null; index: number; size: number; drawn: number }> = [];
   // docs/51 队友自动战斗 / 目标锁定 / 野外 HUD
   private inCombat = false;
   private lastCombatAt = 0;
-  private companionHits: Array<{ at: number; target: TownMonster; damage: number; heavy: boolean }> = [];
+  private companionHits: Array<{ at: number; target: TownMonster; damage: number; heavy: boolean; actor?: TownActor; skillFx?: boolean }> = [];
   private lockTarget: TownMonster | null = null;
   private lockRing: Graphics | null = null;
   private lockArrow: Node | null = null;
@@ -763,6 +791,14 @@ export class LobbyTownRenderer {
     this.orderKey = '';
     this.camX = keepX;
     this.camY = keepY;
+    // 野外:预热全队的弹道 / 命中 / 技能特效(首发打出去就有,不是贴图)
+    if (this.def.camps.length > 0) {
+      for (const actor of [this.leader, ...this.followers]) {
+        if (actor) {
+          this.fx.prewarmKit(this.kitOf(actor));
+        }
+      }
+    }
   }
 
   private createActor(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, facing: 1 | -1): TownActor {
@@ -775,6 +811,7 @@ export class LobbyTownRenderer {
       node, x, y, facing, moving: false, skeleton: null, spineNode: null, names: null, baseScaleX: 1, baseScaleY: 1, anim: null, shadow, idleFor: 0, faceAcc: 0,
       hero, role: companionRole(hero.heroClass), hp: 0, maxHp: 0, attack: 0, down: false, downUntil: 0, nextAttackAt: 0, skillReadyAt: 0,
       actionUntil: 0, inAction: false, target: null, thinkAt: 0, assistReadyAt: Date.now() + COMPANION_ASSIST_CD_MS / 2,
+      oneShotEnd: 0, loopAfter: null,
     };
     const unit = this.toUnit(hero);
     const resourcePath = resolveBattleUnitSpineResource(unit);
@@ -812,6 +849,8 @@ export class LobbyTownRenderer {
         spineNode.setPosition(pos.x, pos.y + HERO_SLOT_H * 0.44, 0);
         actor.names = resolveBattleUnitSpineAnimationNames(data, unit);
         actor.skeleton = skeleton;
+        // 动作之间 0.08s 过渡混合:攻击 → 待机 / 跑 → 攻击不再硬切
+        mixAll(skeleton, [actor.names.idle, actor.names.move, actor.names.attack, actor.names.skill1, actor.names.skill2, actor.names.skill3, actor.names.ult], 0.08);
         // 英雄骨骼大多自带脚底影子插槽:有就不再叠程序椭圆影(否则脚下两个影子,且骨骼有横向偏移会错开)
         if (actor.shadow && skeletonHasShadowSlot(data)) {
           actor.shadow.clear();
@@ -967,6 +1006,10 @@ export class LobbyTownRenderer {
       return;
     }
     const clamped = Math.min(0.05, Math.max(0, dt));
+    if (this.stepHitStop(Date.now())) {
+      this.applyCamera(false, clamped);
+      return;
+    }
     this.stepLeader(clamped);
     this.stepFollowers(clamped);
     this.stepCombat(clamped);
@@ -1033,8 +1076,22 @@ export class LobbyTownRenderer {
     if (nowMs < this.actionUntil) {
       return;
     }
-    if (leader.moving !== moving || this.leaderActionAnim) {
-      this.leaderActionAnim = false;
+    if (this.leaderActionAnim) {
+      // 10-28 用户:「连续点击时英雄总会重复播放起手攻击,总是播放不完整」——原先锁 300ms 一到就切待机 / 下一下从头播。
+      // 现在过了取消点只有两种情况打断:按了移动(切跑)、缓冲了下一招(stepCombat 里接);否则让动作播完自然接上排好的循环
+      if (moving) {
+        this.leaderActionAnim = false;
+        this.endOneShot(leader);
+        leader.moving = true;
+        this.applyActorAnimation(leader, true);
+      } else if (nowMs >= leader.oneShotEnd) {
+        this.leaderActionAnim = false;
+        leader.moving = false;
+        this.endOneShot(leader);
+      }
+      return;
+    }
+    if (leader.moving !== moving) {
       leader.moving = moving;
       this.applyActorAnimation(leader);
     }
@@ -1088,9 +1145,7 @@ export class LobbyTownRenderer {
       }
       if (actor.inAction) {
         actor.inAction = false;
-        actor.anim = null;
-        actor.moving = false;
-        this.applyActorAnimation(actor, true);
+        this.endOneShot(actor);
       }
       // 旧做法追离散采样点:追上就停 → 切待机,队长再走 8px 又切跑步,动画来回闪;朝向按单帧 dx 翻,也会闪。
       // 现在按弧长在足迹上取连续目标点,平滑逼近;动画 / 朝向都加防抖。
@@ -1210,7 +1265,15 @@ export class LobbyTownRenderer {
     }
     const cx = (layout.stageLeft + layout.stageRight) / 2;
     const cy = (layout.stageTop + layout.stageBottom) / 2;
-    world.setPosition(cx - this.camX * this.k, cy - this.camY * this.k, 0);
+    let ox = 0;
+    let oy = 0;
+    const left = this.shakeUntil - Date.now();
+    if (left > 0) {
+      const k = (left / (this.shakeDur * 1000)) * this.shakeAmp;
+      ox = (Math.random() * 2 - 1) * k;
+      oy = (Math.random() * 2 - 1) * k * 0.6;
+    }
+    world.setPosition(cx - this.camX * this.k + ox, cy - this.camY * this.k + oy, 0);
   }
 
   /** 前后遮挡:脚线 y 越大越靠后,先画;只在顺序变化时重排兄弟索引。 */
@@ -1970,7 +2033,8 @@ export class LobbyTownRenderer {
     const dx = cfg.x - leader.x;
     const dy = cfg.y - leader.y;
     const near = Math.hypot(dx, dy) < INTERACT_RADIUS;
-    holder.active = !near;
+    // 10-28 录屏:战斗里橙色指引箭头和红色锁定箭头混在一起 → 交战中藏起来(指针是 Sprite,active 开关没有 Graphics 的坑)
+    holder.active = !near && !this.inCombat;
     if (this.trackerLabel && this.trackerLabel.isValid) {
       this.trackerLabel.string = near ? `到了「${cfg.label}」· 点交互提示` : `前往「${cfg.label}」· ${guide.text}`;
     }
@@ -2213,7 +2277,8 @@ export class LobbyTownRenderer {
       camp, node, x, y, homeX: x, homeY: y, tx: x, ty: y, nextPickAt: Date.now() + 500 + Math.random() * 1500,
       facing: -1, baseScale: 1, skeleton: null, spineNode: null, idleAnim: '', moveAnim: '', moving: false,
       hp: 0, maxHp: 0, hit: 1, ranged: false, dead: false, diedAt: 0, nextAttackAt: 0, windupUntil: 0,
-      attackAnim: '', deathAnim: '', hpBar: null, hpDrawn: -1, flashUntil: 0, lastHitAt: 0, hpKey: '', nameLabel: label, victim: null, stagger: 0, staggeredUntil: 0,
+      attackAnim: '', deathAnim: '', hpBar: null, hpDrawn: -1, flashUntil: 0, lastHitAt: 0, hpKey: '', nameLabel: label, victim: null, stagger: 0, staggeredUntil: 0, floatAt: 0, floatSeq: 0,
+      curAnim: '', animLockUntil: 0, moveSince: 0, kbVX: 0, shotFx: null,
     };
     // 点怪直接锁它
     node.on(Node.EventType.TOUCH_END, () => {
@@ -2256,8 +2321,14 @@ export class LobbyTownRenderer {
         spineNode.setScale(monster.baseScale * MONSTER_ART_FACING * monster.facing, monster.baseScale, 1);
         monster.skeleton = skeleton;
         monster.spineNode = spineNode;
+        mixAll(skeleton, [monster.idleAnim, monster.moveAnim, monster.attackAnim], 0.1);
+        monster.shotFx = resolveGuardMonsterProjectileFx(dir);
+        if (monster.shotFx) {
+          this.fx.prewarm(monster.shotFx);
+        }
         if (monster.idleAnim) {
           skeleton.setAnimation(0, monster.idleAnim, true);
+          monster.curAnim = monster.idleAnim;
         }
       } catch (error) {
         console.warn('[Town] monster spine failed', camp.spine, error);
@@ -2322,11 +2393,23 @@ export class LobbyTownRenderer {
         monster.ty = camp.y + Math.sin(angle) * r * 0.6;
         monster.nextPickAt = now + 1800 + Math.random() * 2600;
       }
-      const winding = now < monster.windupUntil || now < monster.staggeredUntil;
+      const winding = now < monster.windupUntil || now < monster.staggeredUntil || now < monster.animLockUntil;
       const dx = monster.tx - monster.x;
       const dy = monster.ty - monster.y;
       const dist = Math.hypot(dx, dy);
-      const moving = !winding && dist > 6;
+      // 回差:走着的 3 以内才停、停着的 16 以外才走(原先 6 一刀切,追击目标点抖动 → 跑 / 待机每帧来回切、待机动画反复从头播)
+      const moving = !winding && dist > (monster.moving ? 3 : 16);
+      // 击退:速度逐帧衰减
+      if (Math.abs(monster.kbVX) > 5) {
+        const kx = monster.x + monster.kbVX * dt;
+        if (this.walkable(kx, monster.y)) {
+          monster.x = kx;
+          monster.node.setPosition(monster.x, monster.y, 0);
+        }
+        monster.kbVX *= Math.exp(-14 * dt);
+      } else {
+        monster.kbVX = 0;
+      }
       if (moving) {
         const step = Math.min(dist, speed * dt);
         const nx = monster.x + (dx / dist) * step;
@@ -2347,18 +2430,21 @@ export class LobbyTownRenderer {
           monster.spineNode?.setScale(monster.baseScale * MONSTER_ART_FACING * facing, monster.baseScale, 1);
         }
       }
-      if (!winding && moving !== monster.moving && monster.skeleton && monster.skeleton.isValid) {
+      // 状态切换至少隔 160ms;一次性动作(攻击)锁期间不切
+      if (!winding && moving !== monster.moving && now - monster.moveSince > 160) {
         monster.moving = moving;
-        const anim = moving ? monster.moveAnim : monster.idleAnim;
-        if (anim) {
-          monster.skeleton.setAnimation(0, anim, true);
-        }
+        monster.moveSince = now;
+        this.setMonsterLoop(monster, moving);
       }
       this.drawMonsterHp(monster);
-      // 受击闪白
+      // 受击闪红(只在变化时写颜色)
       if (monster.skeleton && monster.skeleton.isValid) {
         const flash = now < monster.flashUntil;
-        monster.skeleton.color = flash ? rgba(255, 150, 150, 255) : rgba(255, 255, 255, 255);
+        const want = flash ? 1 : 0;
+        if ((monster as unknown as { __flash?: number }).__flash !== want) {
+          (monster as unknown as { __flash?: number }).__flash = want;
+          monster.skeleton.color = flash ? rgba(255, 120, 110, 255) : rgba(255, 255, 255, 255);
+        }
       }
     }
     // 死亡淡出 1.2 秒后移除
@@ -2686,12 +2772,43 @@ export class LobbyTownRenderer {
 
   // ── docs/50 §14:野外即时战斗 ──
 
-  private static readonly COMBO = [{ mult: 1.0, lockMs: 300 }, { mult: 1.15, lockMs: 300 }, { mult: 1.8, lockMs: 420 }];
-  private static readonly SKILLS = [
-    { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, lockMs: 480, dash: 0 },
-    { name: '突进斩', mult: 2.0, reach: 120, around: false, cdMs: 7000, lockMs: 320, dash: 280 },
-    { name: '旋风斩', mult: 1.6, reach: 220, around: true, cdMs: 9000, lockMs: 520, dash: 0 },
+  /**
+   * 三段普攻(10-28 打击感):每段用不同动作(attack → skill1 → skill2,骨骼没有就退回 attack),
+   * 伤害落在动作 38% 处(出手帧附近),70% 处是取消点(可接下一段 / 移动),动作必须播到取消点,连点只进缓冲、不再从头重播。
+   * cap = 单段最长时长(超过的动作加速播,不拖手感)。
+   */
+  private static readonly COMBO: Array<{ kind: 'attack' | 'skill1' | 'skill2'; mult: number; reach: number; cap: number; heavy: boolean }> = [
+    { kind: 'attack', mult: 1.0, reach: 170, cap: 620, heavy: false },
+    { kind: 'skill1', mult: 1.15, reach: 180, cap: 680, heavy: false },
+    { kind: 'skill2', mult: 1.8, reach: 200, cap: 820, heavy: true },
   ];
+  private static readonly SKILLS = [
+    { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, cap: 900, dash: 0, anim: 'skill3' as const },
+    { name: '突进斩', mult: 2.0, reach: 120, around: false, cdMs: 7000, cap: 700, dash: 280, anim: 'skill1' as const },
+    { name: '旋风斩', mult: 1.6, reach: 220, around: true, cdMs: 9000, cap: 1000, dash: 0, anim: 'ult' as const },
+  ];
+
+  private get fx(): TownCombatFx {
+    if (!this.combatFxInst) {
+      this.combatFxInst = new TownCombatFx(this.host);
+    }
+    return this.combatFxInst;
+  }
+
+  private kitOf(actor: TownActor): TownHeroFxKit {
+    const key = `${actor.hero.heroCode}:${actor.role}`;
+    let kit = this.fxKits.get(key);
+    if (!kit) {
+      kit = resolveTownHeroFxKit(actor.hero.heroCode, actor.hero.heroClass, actor.role);
+      this.fxKits.set(key, kit);
+    }
+    return kit;
+  }
+
+  /** 队长正在出招(取消点前 / 突进中)。 */
+  private leaderBusy(now: number): boolean {
+    return now < this.actionUntil || now < this.dashUntil;
+  }
 
   private engageCamp(stageCode: string): void {
     if (this.encounters.has(stageCode) || !this.host.engageWorldField) {
@@ -2758,32 +2875,52 @@ export class LobbyTownRenderer {
   }
 
   private leaderAttack(): void {
-    if (!this.canAct()) {
+    const now = Date.now();
+    if (!this.leader || this.leaderDead || this.def.camps.length === 0) {
       return;
     }
-    const now = Date.now();
+    if (this.leaderBusy(now)) {
+      // 出招前 120ms 内的连点算手抖不缓冲;之后按的进缓冲,到取消点自动接下一段
+      if (now - this.leaderActionStart > 120) {
+        this.bufferedInput = { kind: 'attack' };
+      }
+      return;
+    }
     this.comboStep = now < this.comboUntil ? (this.comboStep % 3) + 1 : 1;
     const spec = LobbyTownRenderer.COMBO[this.comboStep - 1];
-    this.actionUntil = now + spec.lockMs;
-    this.comboUntil = now + 700;
-    this.magnetToTarget(170);
-    this.pendingHits.push({ at: now + 120, mult: spec.mult, reach: 170, around: false, heavy: this.comboStep === 3 });
-    this.playLeaderAction(this.comboStep === 3 ? 'skill1' : 'attack');
+    const leader = this.leader;
+    this.magnetToTarget(spec.reach);
+    const dur = this.playLeaderAction(spec.kind, spec.cap);
+    this.leaderActionStart = now;
+    this.actionUntil = now + dur * 0.7;
+    this.comboUntil = now + dur + 450;
+    const ranged = leader.role !== 'melee';
+    this.pendingHits.push({ at: now + dur * 0.38, mult: spec.mult, reach: spec.reach, around: false, heavy: spec.heavy, ranged });
+    gameAudio.sfx(resolveHeroAttackSfxKey(leader.hero.heroCode, leader.hero.heroClass, !ranged), spec.heavy ? 0.8 : 0.6);
   }
 
   private leaderSkill(index: number): void {
-    if (!this.canAct()) {
+    const now = Date.now();
+    if (!this.leader || this.leaderDead || this.def.camps.length === 0) {
       return;
     }
-    const now = Date.now();
+    if (this.leaderBusy(now)) {
+      if (now - this.leaderActionStart > 120 && now >= this.skillReadyAt[index]) {
+        this.bufferedInput = { kind: 'skill', index };
+      }
+      return;
+    }
     if (now < this.skillReadyAt[index]) {
       return;
     }
     const spec = LobbyTownRenderer.SKILLS[index];
     this.skillReadyAt[index] = now + spec.cdMs;
-    this.actionUntil = now + spec.lockMs;
     this.comboUntil = 0;
-    const leader = this.leader!;
+    const leader = this.leader;
+    const dur = this.playLeaderAction(spec.anim, spec.cap);
+    this.leaderActionStart = now;
+    this.actionUntil = now + dur * 0.8;
+    gameAudio.sfx(resolveHeroSkillSfxKey(leader.hero.heroCode), 0.8);
     if (spec.dash > 0) {
       // 突进:朝锁定目标(没有就沿朝向)冲 dash 距离,冲过的路径上都算命中
       const target = this.ensureLockTarget();
@@ -2799,14 +2936,13 @@ export class LobbyTownRenderer {
       this.dashUntil = now + 200;
       const x1 = leader.x + this.dashDir.x * dist;
       const y1 = leader.y + this.dashDir.y * dist * 0.8;
-      this.pendingHits.push({ at: now + 200, mult: spec.mult, reach: spec.reach, around: false, heavy: true, dashLine: { x0: leader.x, y0: leader.y, x1, y1 } });
+      this.pendingHits.push({ at: now + 200, mult: spec.mult, reach: spec.reach, around: false, heavy: true, skill: index, dashLine: { x0: leader.x, y0: leader.y, x1, y1 } });
     } else {
       if (!spec.around) {
         this.magnetToTarget(spec.reach);
       }
-      this.pendingHits.push({ at: now + 160, mult: spec.mult, reach: spec.reach, around: spec.around, heavy: true });
+      this.pendingHits.push({ at: now + dur * 0.42, mult: spec.mult, reach: spec.reach, around: spec.around, heavy: true, skill: index });
     }
-    this.playLeaderAction(index === 0 ? 'skill2' : index === 1 ? 'skill1' : 'skill3');
   }
 
   private leaderDodge(): void {
@@ -2827,6 +2963,9 @@ export class LobbyTownRenderer {
     this.iframesUntil = now + 400;
     this.dodgeReadyAt = now + 1200;
     this.comboUntil = 0;
+    this.bufferedInput = null;
+    this.leaderActionAnim = false;
+    this.endOneShot(leader);
   }
 
   private canAct(): boolean {
@@ -2834,26 +2973,223 @@ export class LobbyTownRenderer {
     return !!this.leader && !this.leaderDead && now >= this.actionUntil && now >= this.dashUntil && this.def.camps.length > 0;
   }
 
-  private playLeaderAction(kind: 'attack' | 'skill1' | 'skill2' | 'skill3'): void {
+  /** 队长出招,返回本段动作的实际时长(ms,已按 cap 加速)。没骨骼时按 cap 计。 */
+  private playLeaderAction(kind: 'attack' | 'skill1' | 'skill2' | 'skill3' | 'ult', capMs: number): number {
     const leader = this.leader;
-    if (leader && this.playActorAction(leader, kind)) {
-      this.leaderActionAnim = true;
+    if (!leader) {
+      return capMs;
     }
+    const dur = this.playActorAction(leader, kind, capMs);
+    if (dur > 0) {
+      this.leaderActionAnim = true;
+      return dur;
+    }
+    return capMs;
   }
 
-  private playActorAction(actor: TownActor, kind: 'attack' | 'skill1' | 'skill2' | 'skill3' | 'ult'): boolean {
+  /**
+   * 一次性动作:setAnimation(动作) + addAnimation(播完接的循环),整段播完、不被下一帧的待机 / 跑步覆盖。
+   * capMs > 0 时超长动作加速到 capMs 内;返回实际时长 ms(0 = 没播)。
+   */
+  private playActorAction(actor: TownActor, kind: 'attack' | 'skill1' | 'skill2' | 'skill3' | 'ult', capMs = 0): number {
     const skeleton = actor.skeleton;
     const names = actor.names;
     if (!skeleton || !skeleton.isValid || !names) {
-      return false;
+      return 0;
     }
     const anim = names[kind] || names.attack || names.idle;
     if (!anim) {
-      return false;
+      return 0;
     }
-    skeleton.setAnimation(0, anim, false);
+    let lengthMs = 600;
+    try {
+      lengthMs = Math.max(150, (skeleton.findAnimation(anim)?.duration ?? 0.6) * 1000);
+    } catch (error) {
+      void error;
+    }
+    const speed = capMs > 0 && lengthMs > capMs ? lengthMs / capMs : 1;
+    const loop = (actor.moving ? names.move || names.idle : names.idle) || null;
+    try {
+      skeleton.setAnimation(0, anim, false);
+      if (loop) {
+        skeleton.addAnimation(0, loop, true, 0);
+      }
+      skeleton.timeScale = speed;
+    } catch (error) {
+      void error;
+      return 0;
+    }
     actor.anim = anim;
-    return true;
+    actor.loopAfter = loop;
+    const dur = lengthMs / speed;
+    actor.oneShotEnd = Date.now() + dur;
+    return dur;
+  }
+
+  /** 一次性动作结束:动画已经自己接上排好的循环,这里只同步记录、恢复播放速度(不再 setAnimation 重播)。 */
+  private endOneShot(actor: TownActor): void {
+    actor.anim = actor.loopAfter ?? null;
+    actor.oneShotEnd = 0;
+    if (actor.skeleton && actor.skeleton.isValid && actor.skeleton.timeScale !== 1) {
+      actor.skeleton.timeScale = 1;
+    }
+  }
+
+  // ── docs/51 打击感:命中反馈 / 顿帧 / 震屏 ──
+
+  /** 怪物身体中心(世界坐标 y)。 */
+  private monsterBodyY(monster: TownMonster): number {
+    return monster.y + (monster.camp.elite ? 120 : 70);
+  }
+
+  /**
+   * 命中反馈:专属命中特效(没有就贴斩击图)+ 受击闪白 + 形变 + 击退;by = 打出这一下的人(队长 / 队友)。
+   * 队长的命中再加顿帧 + 震屏 + 打击音;队友的只出特效和击退(频率高,全加会糊)。
+   */
+  private impactMonster(monster: TownMonster, by: TownActor, heavy: boolean, leaderHit: boolean): void {
+    const root = this.entityRoot;
+    if (!root || !root.isValid || monster.dead) {
+      return;
+    }
+    const kit = this.kitOf(by);
+    const bodyY = this.monsterBodyY(monster);
+    const dir = monster.x >= by.x ? 1 : -1;
+    const scale = (heavy ? 1.25 : 1) * (leaderHit ? 1 : 0.8) * (monster.camp.elite ? 1.2 : 1);
+    const hit = kit.spine?.hit;
+    const hitNode = hit ? this.fx.play(root, hit, monster.x - dir * 10, bodyY, 150 * hit.size * scale, { flipX: dir < 0 }) : null;
+    if (!hitNode && by.role === 'melee') {
+      this.fx.strikeSprite(root, kit.strike, monster.x - dir * 10, bodyY, 150 * kit.strike.size * scale, dir > 0 ? -12 : 12);
+    }
+    monster.flashUntil = Date.now() + (heavy ? 130 : 80);
+    // 受击形变:横向压扁 / 纵向拉伸一下再回弹
+    const spine = monster.spineNode;
+    if (spine && spine.isValid) {
+      const sx = monster.baseScale * MONSTER_ART_FACING * monster.facing;
+      const sy = monster.baseScale;
+      Tween.stopAllByTarget(spine);
+      spine.setScale(sx * (heavy ? 0.86 : 0.92), sy * (heavy ? 1.1 : 1.05), 1);
+      tween(spine).to(heavy ? 0.12 : 0.08, { scale: new Vec3(sx, sy, 1) }, { easing: 'quadOut' }).start();
+    }
+    // 击退:精英只退一点
+    if (monster.staggeredUntil <= Date.now() || heavy) {
+      monster.kbVX += dir * (heavy ? 620 : 300) * (monster.camp.elite ? 0.3 : 1);
+    }
+    if (leaderHit) {
+      this.hitStop(heavy ? 85 : 45);
+      this.shake(heavy ? 9 : 4, heavy ? 0.18 : 0.1);
+      gameAudio.sfx(heavy ? 'chest_land' : 'merge', heavy ? 0.7 : 0.4);
+    }
+  }
+
+  /** 顿帧:这几十毫秒里全场骨骼停住、逻辑不推进(计时在恢复时整体后移)。 */
+  private hitStop(ms: number): void {
+    const now = Date.now();
+    this.hitStopUntil = Math.max(this.hitStopUntil, now + ms);
+  }
+
+  private shake(amp: number, sec: number): void {
+    const now = Date.now();
+    if (now < this.shakeUntil && this.shakeAmp > amp) {
+      return;
+    }
+    this.shakeAmp = amp;
+    this.shakeDur = sec;
+    this.shakeUntil = now + sec * 1000;
+  }
+
+  /** 顿帧开始 / 结束:暂停 / 恢复骨骼;结束时把所有按 Date.now() 记的计时往后挪顿帧时长,出招节奏不被吃掉。 */
+  private stepHitStop(now: number): boolean {
+    if (now < this.hitStopUntil) {
+      if (this.pausedSkeletons.length === 0) {
+        this.hitStopStart = now;
+        for (const skeleton of this.combatSkeletons()) {
+          if (skeleton.timeScale > 0) {
+            this.pausedSkeletons.push(skeleton);
+            (skeleton as unknown as { __ts: number }).__ts = skeleton.timeScale;
+            skeleton.timeScale = 0;
+          }
+        }
+      }
+      return true;
+    }
+    if (this.pausedSkeletons.length > 0) {
+      for (const skeleton of this.pausedSkeletons) {
+        if (skeleton.isValid) {
+          skeleton.timeScale = (skeleton as unknown as { __ts?: number }).__ts ?? 1;
+        }
+      }
+      this.pausedSkeletons.length = 0;
+      const delta = now - this.hitStopStart;
+      this.actionUntil += delta;
+      this.comboUntil += delta;
+      this.dashUntil += delta;
+      this.iframesUntil += delta;
+      this.leaderActionStart += delta;
+      this.pendingHits.forEach((hit) => { hit.at += delta; });
+      this.companionHits.forEach((hit) => { hit.at += delta; });
+      for (const actor of [this.leader, ...this.followers]) {
+        if (actor) {
+          if (actor.oneShotEnd > 0) {
+            actor.oneShotEnd += delta;
+          }
+          actor.actionUntil += delta;
+        }
+      }
+      for (const monster of this.monsters) {
+        monster.windupUntil = monster.windupUntil > 0 ? monster.windupUntil + delta : 0;
+        monster.animLockUntil += delta;
+      }
+    }
+    return false;
+  }
+
+  private combatSkeletons(): sp.Skeleton[] {
+    const out: sp.Skeleton[] = [];
+    for (const actor of [this.leader, ...this.followers]) {
+      if (actor?.skeleton && actor.skeleton.isValid) {
+        out.push(actor.skeleton);
+      }
+    }
+    for (const monster of this.monsters) {
+      if (monster.skeleton && monster.skeleton.isValid && !monster.dead) {
+        out.push(monster.skeleton);
+      }
+    }
+    return out;
+  }
+
+  /** 怪物循环动画:只在名字真变了才 setAnimation(同名不重播)。 */
+  private setMonsterLoop(monster: TownMonster, moving: boolean): void {
+    const skeleton = monster.skeleton;
+    if (!skeleton || !skeleton.isValid) {
+      return;
+    }
+    const anim = moving ? monster.moveAnim || monster.idleAnim : monster.idleAnim || monster.moveAnim;
+    if (anim && anim !== monster.curAnim) {
+      skeleton.setAnimation(0, anim, true);
+      monster.curAnim = anim;
+    }
+  }
+
+  /** 怪物一次性动作(攻击):整段播完再接循环;锁动画期间移动 / 待机切换不打断。 */
+  private playMonsterOneShot(monster: TownMonster, anim: string): void {
+    const skeleton = monster.skeleton;
+    if (!skeleton || !skeleton.isValid || !anim) {
+      return;
+    }
+    try {
+      skeleton.setAnimation(0, anim, false);
+      const loop = monster.idleAnim || monster.moveAnim;
+      if (loop) {
+        skeleton.addAnimation(0, loop, true, 0);
+      }
+      const len = Math.max(0.2, skeleton.findAnimation(anim)?.duration ?? 0.6);
+      monster.animLockUntil = Date.now() + len * 1000;
+      monster.curAnim = loop;
+      monster.moving = false;
+    } catch (error) {
+      void error;
+    }
   }
 
   // ── docs/51 §7 目标锁定 ──
@@ -3065,18 +3401,18 @@ export class LobbyTownRenderer {
       wantX = target.x + side * keep;
       wantY = target.y + (index - 1) * 26;
     } else {
-      const dx = actor.x - target.x;
-      const dy = actor.y - target.y;
-      const len = Math.max(1, Math.hypot(dx, dy));
-      wantX = target.x + (dx / len) * keep;
-      wantY = target.y + (dy / len) * keep * 0.5 + (index - 1) * 30;
+      // 10-28 录屏:两个远程队友同方向同距离叠在一起 → 按编号在「目标 → 自己」方向上各偏 50°
+      const base = Math.atan2(actor.y - target.y, actor.x - target.x);
+      const angle = base + (index - 1) * 0.87;
+      wantX = target.x + Math.cos(angle) * keep;
+      wantY = target.y + Math.sin(angle) * keep * 0.5;
     }
     const busy = now < actor.actionUntil;
     const mx = wantX - actor.x;
     const my = wantY - actor.y;
     const md = Math.hypot(mx, my);
     let moving = false;
-    if (!busy && md > 14) {
+    if (!busy && md > (actor.moving ? 8 : 26)) {
       const step = Math.min(md, LEADER_SPEED * 1.1 * dt);
       const nx = actor.x + (mx / md) * step;
       const ny = actor.y + (my / md) * step * 0.85;
@@ -3095,7 +3431,7 @@ export class LobbyTownRenderer {
     }
     if (actor.inAction && !busy) {
       actor.inAction = false;
-      actor.anim = null;
+      this.endOneShot(actor);
     }
     if (!busy && actor.moving !== moving) {
       actor.moving = moving;
@@ -3137,15 +3473,19 @@ export class LobbyTownRenderer {
   /** 队友出手:普攻 / 小技能(冷却好就放);辅助优先给血量最低的队员回血。 */
   private companionAct(actor: TownActor, target: TownMonster, now: number): void {
     const cadence = actor.role === 'melee' ? 1000 : actor.role === 'ranged' ? 1300 : 1500;
-    actor.nextAttackAt = now + cadence * (0.9 + Math.random() * 0.2);
-    actor.actionUntil = now + 420;
     actor.inAction = true;
     if (actor.role === 'support' && now >= actor.skillReadyAt) {
       const hurt = this.partyMembers().filter((member) => this.memberHpRatio(member) < 0.6).sort((a, b) => this.memberHpRatio(a) - this.memberHpRatio(b))[0];
       if (hurt) {
         actor.skillReadyAt = now + 6000;
-        this.playActorAction(actor, 'skill1');
+        const dur = this.playActorAction(actor, 'skill1', 1100) || 600;
+        actor.actionUntil = now + dur;
+        actor.nextAttackAt = now + Math.max(cadence, dur + 150);
         this.healMember(hurt, Math.round(actor.attack * 2.4));
+        if (this.entityRoot) {
+          const kit = this.kitOf(actor);
+          this.fx.play(this.entityRoot, kit.skill, hurt.x, hurt.y + 90, 240 * kit.skill.scale);
+        }
         return;
       }
     }
@@ -3153,44 +3493,38 @@ export class LobbyTownRenderer {
     if (skill) {
       actor.skillReadyAt = now + 6000 + Math.random() * 2000;
     }
-    this.playActorAction(actor, skill ? 'skill1' : 'attack');
+    // 动作整段播完再允许走位 / 出下一下(原先锁 420ms 就切回待机,攻击动作只播一半)
+    const dur = this.playActorAction(actor, skill ? 'skill1' : 'attack', skill ? 1000 : 750) || 500;
+    actor.actionUntil = now + dur;
+    actor.nextAttackAt = now + Math.max(cadence * (0.9 + Math.random() * 0.2), dur + 120);
     const damage = Math.max(1, Math.round(actor.attack * (skill ? 2.2 : 1) * (0.92 + Math.random() * 0.16)));
     if (actor.role === 'melee') {
-      this.companionHits.push({ at: now + 180, target, damage, heavy: skill });
+      this.companionHits.push({ at: now + dur * 0.4, target, damage, heavy: skill, actor, skillFx: skill });
     } else {
-      this.fireProjectile(actor, target, damage, skill);
+      this.fireProjectile(actor, target, damage, skill, dur * 0.35);
     }
   }
 
-  /** 远程弹道:一颗发光小球飞到目标,到了才结算伤害。 */
-  private fireProjectile(actor: TownActor, target: TownMonster, damage: number, heavy: boolean): void {
+  /** 远程弹道:英雄专属骨骼弹道(没有 / 没就绪退回专属贴图)飞到目标,到了才结算伤害和命中特效。 */
+  private fireProjectile(actor: TownActor, target: TownMonster, damage: number, heavy: boolean, releaseMs = 160): void {
     const root = this.entityRoot;
     const now = Date.now();
     const sx = actor.x + actor.facing * 30;
     const sy = actor.y + 110;
     const ex = target.x;
-    const ey = target.y + (target.camp.elite ? 120 : 70);
+    const ey = this.monsterBodyY(target);
     const travel = Math.max(120, Math.min(420, (Math.hypot(ex - sx, ey - sy) / 1500) * 1000));
-    this.companionHits.push({ at: now + 160 + travel, target, damage, heavy });
+    // 伤害按时间结算(顿帧时 companionHits 会整体后移);弹道只管表现
+    this.companionHits.push({ at: now + releaseMs + travel, target, damage, heavy, actor, skillFx: heavy });
     if (!root || !root.isValid) {
       return;
     }
-    const node = this.host.addChildPlainNode(root, 'Bolt', sx, sy, 40, 40);
-    const g = node.addComponent(Graphics);
-    const mage = /法师/.test(safeText(actor.hero.heroClass)) || actor.role === 'support';
-    const core = mage ? rgba(150, 200, 255, 255) : rgba(255, 220, 130, 255);
-    const glow = mage ? rgba(80, 140, 255, 110) : rgba(255, 170, 60, 110);
-    g.fillColor = glow;
-    g.circle(0, 0, heavy ? 16 : 11);
-    g.fill();
-    g.fillColor = core;
-    g.circle(0, 0, heavy ? 8 : 5);
-    g.fill();
-    node.setSiblingIndex(root.children.length - 1);
-    // 出手前 0.16 秒先藏起来:用不透明度,不用 active(原生端 Graphics 停用再启用会出问题)
-    const fade = node.addComponent(UIOpacity);
-    fade.opacity = 0;
-    tween(node).delay(0.16).call(() => { fade.opacity = 255; }).to(travel / 1000, { position: new Vec3(ex, ey, 0) }).call(() => node.isValid && node.destroy()).start();
+    const kit = this.kitOf(actor);
+    setTimeout(() => {
+      if (root.isValid && !target.dead) {
+        this.fx.projectile(root, kit, sx, sy, ex, ey, travel, heavy ? 190 : 150, () => undefined);
+      }
+    }, releaseMs);
   }
 
   private partyMembers(): TownActor[] {
@@ -3273,7 +3607,12 @@ export class LobbyTownRenderer {
     }
     if (actor.role === 'support') {
       actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
-      this.playActorAction(actor, 'ult');
+      this.playActorAction(actor, 'ult', 1200);
+      if (this.entityRoot) {
+        const kit = this.kitOf(actor);
+        this.fx.play(this.entityRoot, kit.skill, actor.x, actor.y + 100, 460 * kit.skill.scale);
+      }
+      gameAudio.sfx(resolveHeroSkillSfxKey(actor.hero.heroCode), 0.9);
       for (const member of this.partyMembers()) {
         this.healMember(member, Math.round((member === this.leader ? this.leaderMaxHp : member.maxHp) * 0.3));
       }
@@ -3297,15 +3636,22 @@ export class LobbyTownRenderer {
       actor.node.setPosition(actor.x, actor.y, 0);
       this.setActorFacing(actor, side > 0 ? -1 : 1);
     }
-    actor.actionUntil = now + 700;
     actor.inAction = true;
     actor.target = target;
-    this.playActorAction(actor, 'ult');
+    const dur = this.playActorAction(actor, 'ult', 1200) || 700;
+    actor.actionUntil = now + dur;
     const damage = Math.max(1, Math.round(actor.attack * 4.5));
+    const kit = this.kitOf(actor);
+    gameAudio.sfx(resolveHeroSkillSfxKey(actor.hero.heroCode), 0.9);
+    if (this.entityRoot) {
+      this.fx.play(this.entityRoot, kit.skill, target.x, this.monsterBodyY(target) + kit.skill.offsetY, 420 * kit.skill.scale, { flipX: actor.x > target.x });
+    }
+    this.shake(12, 0.28);
+    this.hitStop(110);
     if (actor.role === 'melee') {
-      this.companionHits.push({ at: now + 260, target, damage, heavy: true });
+      this.companionHits.push({ at: now + dur * 0.4, target, damage, heavy: true, actor });
     } else {
-      this.fireProjectile(actor, target, damage, true);
+      this.fireProjectile(actor, target, damage, true, dur * 0.35);
     }
     this.spawnFloater(actor.x, actor.y + 270, '援护!', rgba(255, 214, 110), 26);
   }
@@ -3436,8 +3782,25 @@ export class LobbyTownRenderer {
       this.companionHits = this.companionHits.filter((hit) => hit.at > now);
       for (const hit of due) {
         if (!hit.target.dead && hit.target.node.isValid) {
+          if (hit.actor) {
+            this.impactMonster(hit.target, hit.actor, hit.heavy, false);
+            if (hit.skillFx && this.entityRoot) {
+              const kit = this.kitOf(hit.actor);
+              this.fx.play(this.entityRoot, kit.skill, hit.target.x, this.monsterBodyY(hit.target) + kit.skill.offsetY, 260 * kit.skill.scale);
+            }
+          }
           this.damageMonster(hit.target, hit.damage, hit.heavy, true);
         }
+      }
+    }
+    // 缓冲的下一招:到取消点就接(连点 = 一段接一段完整打出)
+    if (this.bufferedInput && !this.leaderBusy(now) && !this.leaderDead) {
+      const input = this.bufferedInput;
+      this.bufferedInput = null;
+      if (input.kind === 'attack') {
+        this.leaderAttack();
+      } else {
+        this.leaderSkill(input.index);
       }
     }
     // 脱战回血:4 秒没挨打,每秒回 8%
@@ -3481,13 +3844,46 @@ export class LobbyTownRenderer {
     this.refreshPartyHud(now);
   }
 
-  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number } }): void {
+  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean }): void {
     const leader = this.leader;
     if (!leader) {
       return;
     }
     const attack = Math.max(1, this.raiderAttack || 20);
     const damage = Math.max(1, Math.round(attack * hit.mult));
+    const root = this.entityRoot;
+    const kit = this.kitOf(leader);
+    if (hit.skill !== undefined && root) {
+      // 技能:专属战技特效(target = 落在锁定目标 / 前方;self = 绕自身),再加一记重震
+      const target = this.ensureLockTarget();
+      const self = kit.skill.anchor === 'self' || hit.around;
+      const fxX = self || !target ? leader.x + (self ? 0 : leader.facing * 150) : target.x;
+      const fxY = self || !target ? leader.y + 90 : this.monsterBodyY(target);
+      const size = (hit.skill === 2 ? 420 : 340) * kit.skill.scale;
+      this.fx.play(root, kit.skill, fxX, fxY + kit.skill.offsetY, size, { flipX: leader.facing < 0 });
+      this.shake(10, 0.22);
+    }
+    if (hit.ranged && hit.skill === undefined && root) {
+      // 远程普攻:专属弹道飞到锁定目标,到了才结算伤害和命中特效
+      const target = this.ensureLockTarget();
+      const sx = leader.x + leader.facing * 40;
+      const sy = leader.y + 120;
+      if (!target || Math.hypot(target.x - leader.x, target.y - leader.y) > 520) {
+        this.fx.projectile(root, kit, sx, sy, sx + leader.facing * 420, sy, 260, 170, () => undefined);
+        return;
+      }
+      const ex = target.x;
+      const ey = this.monsterBodyY(target);
+      const travel = Math.max(120, Math.min(380, (Math.hypot(ex - sx, ey - sy) / 1600) * 1000));
+      this.fx.projectile(root, kit, sx, sy, ex, ey, travel, 170, () => {
+        if (!target.dead && target.node.isValid && this.leader === leader) {
+          this.impactMonster(target, leader, hit.heavy, true);
+          this.damageMonster(target, damage, hit.heavy, false);
+        }
+      });
+      return;
+    }
+    let landed = false;
     for (const monster of this.monsters) {
       if (monster.dead || !monster.node.isValid) {
         continue;
@@ -3517,7 +3913,13 @@ export class LobbyTownRenderer {
       if (!this.lockTarget) {
         this.setLockTarget(monster);
       }
+      this.impactMonster(monster, leader, hit.heavy || hit.skill !== undefined, !landed);
+      landed = true;
       this.damageMonster(monster, damage, hit.heavy, false);
+    }
+    if (!landed && hit.skill === undefined && root) {
+      // 挥空也要有刀光:在身前贴一记斩击图
+      this.fx.strikeSprite(root, kit.strike, leader.x + leader.facing * 110, leader.y + 100, 150 * kit.strike.size * 0.8, leader.facing > 0 ? -10 : 10);
     }
   }
 
@@ -3528,11 +3930,11 @@ export class LobbyTownRenderer {
     monster.staggeredUntil = now + STAGGER_MS;
     monster.windupUntil = 0;
     monster.nextAttackAt = now + STAGGER_MS + 400;
-    if (monster.skeleton && monster.skeleton.isValid) {
-      monster.moving = false;
-      monster.skeleton.setAnimation(0, monster.idleAnim || monster.moveAnim, true);
-    }
+    monster.moving = false;
+    monster.animLockUntil = 0;
+    this.setMonsterLoop(monster, false);
     this.spawnFloater(monster.x, monster.y + 260, '破防!', rgba(255, 230, 120), 34);
+    this.shake(8, 0.2);
     this.refreshEliteBar();
   }
 
@@ -3557,12 +3959,18 @@ export class LobbyTownRenderer {
       }
     }
     monster.hp = Math.max(0, monster.hp - damage);
-    const y = monster.y + (monster.camp.elite ? 230 : 130);
+    // 10-28 录屏:三条 -588 叠成一团、9855 盖住名字 → 同一只怪 450ms 内的飘字按序号上抬 + 左右交错
+    monster.floatSeq = now - monster.floatAt < 450 ? monster.floatSeq + 1 : 0;
+    monster.floatAt = now;
+    const seq = monster.floatSeq;
+    const lift = seq * 26;
+    const sway = (seq % 2 === 0 ? 1 : -1) * Math.ceil(seq / 2) * 34;
+    const y = monster.y + (monster.camp.elite ? 230 : 130) + lift;
     if (companion) {
       // 队友伤害小一号、颜色偏淡,和队长区分
-      this.spawnFloater(monster.x + 30, y - 20, `${damage}`, heavy ? rgba(255, 226, 150) : rgba(236, 226, 200), heavy ? 24 : 20);
+      this.spawnFloater(monster.x + 30 + sway, y - 20, `${damage}`, heavy ? rgba(255, 226, 150) : rgba(236, 226, 200), heavy ? 24 : 20);
     } else {
-      this.spawnFloater(monster.x, y, `${damage}`, heavy ? rgba(255, 210, 90) : rgba(255, 245, 230), heavy ? 34 : 28);
+      this.spawnFloater(monster.x + sway, y, `${damage}`, heavy ? rgba(255, 210, 90) : rgba(255, 245, 230), heavy ? 34 : 28);
     }
     this.drawMonsterHp(monster);
     if (monster.hp <= 0) {
@@ -3724,22 +4132,37 @@ export class LobbyTownRenderer {
       monster.windupUntil = 0;
       // 出手:蓄力结束仍在范围内才命中;队长翻滚无敌期躲开
       const dodged = victim === this.leader && now < this.iframesUntil;
-      if (toVictim <= range + 30 && !dodged) {
+      const hits = toVictim <= range + 30 && !dodged;
+      if (monster.ranged && this.entityRoot) {
+        // 远程怪:弹道飞到目标,到了才扣血(原先直接扣,看不出被什么打了)
+        const root = this.entityRoot;
+        const sx = monster.x + monster.facing * 30;
+        const sy = this.monsterBodyY(monster);
+        const ex = victim.x;
+        const ey = victim.y + 110;
+        const travel = Math.max(140, Math.min(420, (Math.hypot(ex - sx, ey - sy) / 1300) * 1000));
+        const shot = monster.shotFx ? this.fx.play(root, monster.shotFx, sx, sy, 150 * monster.shotFx.size, { loop: true, angle: (Math.atan2(ey - sy, ex - sx) * 180) / Math.PI }) : null;
+        if (shot) {
+          tween(shot).to(travel / 1000, { position: new Vec3(ex, ey, 0) }).call(() => shot.isValid && shot.destroy()).start();
+        }
+        setTimeout(() => {
+          if (hits && !this.leaderDead && victim.node.isValid) {
+            this.hurtActor(victim, monster.hit);
+          }
+        }, travel);
+      } else if (hits) {
         this.hurtActor(victim, monster.hit);
-      } else if (dodged) {
-        this.spawnFloater(victim.x, victim.y + 240, '闪避', rgba(150, 220, 255), 24);
       }
-      if (monster.skeleton && monster.skeleton.isValid) {
-        monster.moving = false;
-        monster.skeleton.setAnimation(0, monster.idleAnim || monster.moveAnim, true);
+      if (dodged) {
+        this.spawnFloater(victim.x, victim.y + 240, '闪避', rgba(150, 220, 255), 24);
       }
       return;
     }
     if (monster.windupUntil === 0 && toVictim <= range && now >= monster.nextAttackAt) {
       monster.windupUntil = now + 350;
       monster.nextAttackAt = now + (monster.camp.elite ? 1100 : monster.ranged ? 1900 : 1300);
-      if (monster.skeleton && monster.skeleton.isValid && monster.attackAnim) {
-        monster.skeleton.setAnimation(0, monster.attackAnim, false);
+      if (monster.attackAnim) {
+        this.playMonsterOneShot(monster, monster.attackAnim);
       }
     }
   }
@@ -3770,12 +4193,16 @@ export class LobbyTownRenderer {
     }
     this.leaderHp = Math.max(0, this.leaderHp - amount);
     this.lastHurtAt = Date.now();
+    this.shake(3, 0.1);
     this.spawnFloater(leader.x, leader.y + 240, `-${amount}`, rgba(255, 90, 80), 28);
     if (leader.skeleton && leader.skeleton.isValid) {
       leader.skeleton.color = rgba(255, 140, 140, 255);
       setTimeout(() => leader.skeleton && leader.skeleton.isValid && (leader.skeleton.color = rgba(255, 255, 255, 255)), 120);
     }
-    this.leaderHitFlashUntil = Date.now() + 180;
+    // 10-28 录屏:连续受击每次都重触发,血条一直白 → 闪过一次后 600ms 内不再闪
+    if (Date.now() > this.leaderHitFlashUntil + 600) {
+      this.leaderHitFlashUntil = Date.now() + 160;
+    }
     this.drawLeaderHp();
     if (this.leaderHp <= 0) {
       this.onLeaderDown();
@@ -3906,13 +4333,20 @@ export class LobbyTownRenderer {
     if (!root || !root.isValid) {
       return;
     }
-    const label = this.host.addChildLabel(root, 'Floater', text, x + (Math.random() - 0.5) * 30, y, size, color, new Size(260, size * 1.4));
+    // 宽按字数给(10-28 录屏:「操控 · 圣光审判者·米迦勒」塞进 260 宽被 SHRINK 压成一团)
+    const width = Math.max(260, text.length * size * 1.15 + 40);
+    const label = this.host.addChildLabel(root, 'Floater', text, x + (Math.random() - 0.5) * 30, y, size, color, new Size(width, size * 1.4));
     label.isBold = true;
     label.enableOutline = true;
     label.outlineColor = rgba(20, 8, 4, 255);
     label.outlineWidth = 3;
     label.node.setSiblingIndex(root.children.length - 1);
     const opacity = label.node.addComponent(UIOpacity);
+    if (size >= 28) {
+      // 重击 / 队长伤害:先放大再落回(打击感)
+      label.node.setScale(1.6, 1.6, 1);
+      tween(label.node).to(0.09, { scale: new Vec3(1, 1, 1) }, { easing: 'quadOut' }).start();
+    }
     tween(label.node).by(0.7, { position: new Vec3(0, 70, 0) }).start();
     tween(opacity).delay(0.35).to(0.35, { opacity: 0 }).call(() => label.node.isValid && label.node.destroy()).start();
   }
@@ -4277,6 +4711,22 @@ export class LobbyTownRenderer {
       g.rect(-bar.sw / 2 + (bar.sw * i) / 4 - 1, -bar.sh / 2, 2, bar.sh);
     }
     g.fill();
+  }
+}
+
+/** 一组动画两两设过渡混合(缺的 / 重名跳过)。 */
+function mixAll(skeleton: sp.Skeleton, anims: Array<string | null | undefined>, sec: number): void {
+  const list = Array.from(new Set(anims.filter((name): name is string => !!name)));
+  for (const a of list) {
+    for (const b of list) {
+      if (a !== b) {
+        try {
+          skeleton.setMix(a, b, sec);
+        } catch (error) {
+          void error;
+        }
+      }
+    }
   }
 }
 
