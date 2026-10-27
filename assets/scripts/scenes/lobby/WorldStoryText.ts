@@ -88,5 +88,5 @@ export const WORLD_NPC_IDLE: Record<WorldNpcCode, string> = {
   INSTRUCTOR: '翻滚躲开读条大招,是活下来的第一课。',
   PRIEST: '祭坛每天都会给你一次免费的召唤机会。',
   SMITH: '武器要勤磨,伙伴要勤练。',
-  BOARD: '公告板上暂时没有新的委托。',
+  BOARD: '公告板上暂时没有新的委托。想多赚些赏金,可以去旁边的佣兵公会看看今天的悬赏。',
 };

@@ -1454,6 +1454,7 @@ export class LootChainGameRoot extends Component {
       const townLayout = this.renderBase();
       if (!this.renderSceneAssetGate(townLayout)) {
         this.renderLobbyHud(townLayout);
+        this.remountLobbyQuestDialogIfOpen(townLayout);
       }
       gameAudio.bgm('bgm_lobby');
       if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
@@ -1466,12 +1467,24 @@ export class LootChainGameRoot extends Component {
     // 大厅只保留主界面 HUD；功能入口统一进入独立逻辑场景，不再作为弹框覆盖大厅。
     this.renderLobbyBackground(layout);
     this.renderLobbyHud(layout);
+    this.remountLobbyQuestDialogIfOpen(layout);
     // 大厅 BGM(音效底铺 2026-09-04):Web 自动播放被拦时,首次点击自动补播(GameAudio 内处理)。
     gameAudio.bgm('bgm_lobby');
     // 本会话第一次进大厅:稍后后台拉玩家已有英雄的名册卡面立绘(都是会用到的),首开名册基本不用等。
     if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
       this.ownedHeroCardArtPrefetched = true;
       this.scheduleOnce(() => void this.prefetchOwnedHeroCardArt(), 3);
+    }
+  }
+
+  /**
+   * 2026-10-27 UI 审核:整页重绘大厅(世界状态到货等)会清掉任务弹框节点,开关位却还开着,
+   * 再点「任务」被 openLobbyQuestPanel 的早退吞掉 = 点了没反应。开着就重挂。
+   */
+  private remountLobbyQuestDialogIfOpen(layout: UiLayout): void {
+    if (this.lobbyQuestPanelOpen && this.currentView === 'lobby') {
+      this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
+      this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
     }
   }
 

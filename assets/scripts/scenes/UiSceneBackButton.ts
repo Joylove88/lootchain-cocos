@@ -22,7 +22,7 @@ export const SCENE_TITLE_BANNER_ASSET = 'ui/common/ai/title_banner_new/spriteFra
 export const SCENE_HELP_BUTTON_ASSET = 'ui/common/ai/btn_help/spriteFrame';
 /** 2026-10-27 UI 审核:全游戏返回入口统一成「< 标题」红横幅(同矿境 / 世界地图),横幅本身可点返回。 */
 export const SCENE_BACK_BANNER_ASSET = 'ui/common/ai/back_banner_chevron/spriteFrame';
-const SCENE_BACK_BANNER_ASPECT = 642 / 140;
+export const SCENE_BACK_BANNER_ASPECT = 642 / 140;
 
 export interface SceneBackButtonHost {
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;

@@ -557,7 +557,8 @@ export class LobbyBagPanelRenderer {
     const capX = width / 2 - 44 * scale - capWidth / 2;
     const capNode = this.host.addChildPlainNode(grid, 'LobbyBagCapacity', capX, panelInfo.bandY, capWidth, capHeight);
     mountRefSliced(this.host, capNode, 'Art', REF_KIT.statBar, 0, 0, capWidth, capHeight);
-    const capLabel = this.host.addChildLabel(capNode, 'LobbyBagCapacityLabel', `容量 ${items.length}/${totalItems}`, 0, 0, 18 * scale, rgba(240, 214, 156), new Size(capWidth - 40 * scale, 24 * scale));
+    // 2026-10-27 UI 审核:背包没有格数上限,原「容量 55/55」像是背包满了;改成道具种数
+    const capLabel = this.host.addChildLabel(capNode, 'LobbyBagCapacityLabel', items.length === totalItems ? `共 ${totalItems} 种` : `${items.length} / 共 ${totalItems} 种`, 0, 0, 18 * scale, rgba(240, 214, 156), new Size(capWidth - 40 * scale, 24 * scale));
     capLabel.overflow = Label.Overflow.SHRINK;
     this.applyOutline(capLabel, scale, false);
 

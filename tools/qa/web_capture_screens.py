@@ -8,6 +8,7 @@ import boss_bar_cdp as base
 from native_capture_screens import SCREENS, ROOT_JS, RESET_JS
 
 OUT = sys.argv[1]
+PROBE = sys.argv[sys.argv.index('--probe') + 1] if '--probe' in sys.argv else None  # 每屏截图后求值并打印(排查用)
 ONLY = set(sys.argv[sys.argv.index('--only') + 1].split(',')) if '--only' in sys.argv else None
 os.makedirs(OUT, exist_ok=True)
 USER = os.environ.get('QA_USER', 'guidetest02')
@@ -60,7 +61,13 @@ async def main():
             if v == 'lobby':
                 await ev("root.logoutToLoginPage(); return 1;")
                 await asyncio.sleep(5)
-                v = 'login'
+                # 退出可能重载页面:window.__cc 会丢,重新取并等登录页
+                await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
+                for _ in range(60):
+                    v = await ev("return root && !root.bootPreloadActive ? root.currentView : null;")
+                    if v == 'login':
+                        break
+                    await asyncio.sleep(2)
             # 退出后登录页要过一会儿才接得住输入:登不进就重试
             for attempt in range(4):
                 if v == 'lobby':
@@ -72,6 +79,8 @@ async def main():
                         break
                     await asyncio.sleep(2)
                 print('login attempt', attempt, v, flush=True)
+            if v != 'lobby':
+                raise SystemExit('登录失败,不截图')
             await asyncio.sleep(10)
             for key, js, wait in SCREENS:
                 if ONLY and key not in ONLY:
@@ -89,6 +98,8 @@ async def main():
                 if 'result' in m:
                     open(os.path.join(OUT, f'{key}.png'), 'wb').write(base64.b64decode(m['result']['data']))
                     print('shot', key, flush=True)
+                if PROBE:
+                    print('probe', key, await ev(PROBE), flush=True)
     finally:
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True)
 

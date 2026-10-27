@@ -495,7 +495,7 @@ export class LobbyQuestMailPanelRenderer {
   private addPhoneHeader(panel: Node, text: string, panelWidth: number, panelHeight: number, onClose: () => void): void {
     const titleY = panelHeight / 2 - 6 - PHONE_HEADER_H / 2;
     // 标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户)
-    addPhoneDialogTitle(this.host, panel, panelWidth, panelHeight, text, 6 + PHONE_HEADER_H / 2);
+    addPhoneDialogTitle(this.host, panel, panelWidth, panelHeight, text, 6 + PHONE_HEADER_H / 2, 1.05, onClose);
     this.addAssetCloseButton(panel, panelWidth / 2 - 50, titleY, 52 / 46, onClose);
   }
 

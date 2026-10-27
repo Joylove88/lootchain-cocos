@@ -1,6 +1,7 @@
-import { Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UITransform } from 'cc';
+import { Button, Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UITransform } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { REF_HALL_BG } from '../UiRefKit';
+import { SCENE_BACK_BANNER_ASPECT, SCENE_BACK_BANNER_ASSET } from '../UiSceneBackButton';
 
 /** 全屏弹框的实景背景(与背包页同一张哥特大厅,2026-10-17 换掉四周带假棋盘格的血色大教堂;等比铺满后由遮罩裁切)。 */
 const PHONE_DIALOG_BACKDROP_ASSET = REF_HALL_BG.path;
@@ -12,6 +13,7 @@ export interface PhoneDialogFrameHost {
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addSprite?(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | Node | null;
   addChildLabel?(parent: Node, name: string, text: string, x: number, y: number, fontSize: number, color: Color, contentSize: Size, horizontalAlign?: HorizontalTextAlignment): Label;
+  applyImageButtonFeedback?(node: Node, hoverScale: number, pressScale: number): void;
 }
 
 /**
@@ -188,7 +190,27 @@ export function drawPhoneDialogFrame(
  * 全屏弹框左上角标题牌(与英雄 / 背包页的左上标题同款,2026-10-05 用户:弹框标题统一成这个样式)。
  * 牌心在弹框顶边下方 centerDrop 处;返回标题牌右缘 x(弹框坐标),调用方可在其右侧接着排页签 / 货币。
  */
-export function addPhoneDialogTitle(host: PhoneDialogFrameHost, panel: Node, width: number, height: number, title: string, centerDrop = 42, scale = 1.05): number {
+export function addPhoneDialogTitle(host: PhoneDialogFrameHost, panel: Node, width: number, height: number, title: string, centerDrop = 42, scale = 1.05, onBack?: () => void): number {
+  // 2026-10-27 UI 审核:能关的弹框标题统一成整页同款「< 标题」横幅(可点返回);结算类无返回语义的保留旧标题牌
+  if (onBack) {
+    const chevronH = 70 * (scale / 1.05);
+    const chevronW = chevronH * SCENE_BACK_BANNER_ASPECT;
+    const cx = -width / 2 + 8 + chevronW / 2;
+    const holder = host.addChildPlainNode(panel, 'PhoneDialogTitleBanner', cx, height / 2 - centerDrop, chevronW, chevronH);
+    if (host.addSprite?.('Art', SCENE_BACK_BANNER_ASSET, 0, 0, chevronW, chevronH, holder) && host.addChildLabel) {
+      const label = host.addChildLabel(holder, 'PhoneDialogTitle', title, chevronW * 0.06, 1, 32 * (scale / 1.05), rgba(250, 232, 190), new Size(chevronW * 0.52, 44));
+      label.overflow = Label.Overflow.SHRINK;
+      label.isBold = true;
+      label.enableOutline = true;
+      label.outlineColor = rgba(40, 6, 4, 255);
+      label.outlineWidth = 2;
+      holder.addComponent(Button);
+      holder.on(Button.EventType.CLICK, onBack);
+      host.applyImageButtonFeedback?.(holder, 1.03, 0.97);
+      return cx + chevronW / 2;
+    }
+    holder.destroy();
+  }
   const bannerW = Math.max(250 * scale, title.length * 52 * scale + 72 * scale);
   const bannerH = bannerW * (201 / 596);
   const x = -width / 2 + 8 + bannerW / 2;

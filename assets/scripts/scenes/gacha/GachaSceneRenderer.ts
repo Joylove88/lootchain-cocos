@@ -22,6 +22,7 @@ import {
   AudioSource,
   tween,
 } from 'cc';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { LOBBY_UI_FX } from '../lobby/LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from '../lobby/LobbyUiSpineFx';
 import { C1812_BUTTON_DISABLED_ASSET, C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, C1812_POPUP_FRAME_PARCHMENT_ASSET, C1812_TITLE_BANNER_ASSET } from '../C1812CommonUiAssets';
@@ -734,10 +735,12 @@ export class GachaSceneRenderer {
       const textLeft = circleX + iconH * 0.62;
       const textWidth = width / 2 - textLeft - 14 * scale;
       // 标题/副行收紧行距并作为整体在板内上下居中(±0.105 高)。
-      const title = this.host.addChildLabel(node, 'GachaPoolTitle', pool.title, textLeft, height * 0.105, 21 * scale, pool.active ? rgba(252, 224, 156) : rgba(212, 188, 138), new Size(textWidth, 26 * scale), HorizontalTextAlignment.LEFT);
+      // 2026-10-27 UI 审核:手机字号下限(原 21 / 15 × scale 在手机上只剩芝麻字)
+      const phone = isPhoneDesign();
+      const title = this.host.addChildLabel(node, 'GachaPoolTitle', pool.title, textLeft, height * 0.12, phone ? Math.max(22, 21 * scale) : 21 * scale, pool.active ? rgba(252, 224, 156) : rgba(212, 188, 138), new Size(textWidth, phone ? 30 : 26 * scale), HorizontalTextAlignment.LEFT);
       title.overflow = Label.Overflow.SHRINK;
       this.applyOutline(title, scale, true);
-      const subline = this.host.addChildLabel(node, 'GachaPoolSubline', pool.locked ? (pool.buttonDisabledReason ?? '锁定') : pool.subline, textLeft, -height * 0.105, 15 * scale, pool.locked ? rgba(151, 137, 110) : pool.active ? rgba(222, 172, 92) : rgba(178, 152, 106), new Size(textWidth, 20 * scale), HorizontalTextAlignment.LEFT);
+      const subline = this.host.addChildLabel(node, 'GachaPoolSubline', pool.locked ? (pool.buttonDisabledReason ?? '锁定') : pool.subline, textLeft, -height * 0.12, phone ? Math.max(18, 15 * scale) : 15 * scale, pool.locked ? rgba(151, 137, 110) : pool.active ? rgba(222, 172, 92) : rgba(178, 152, 106), new Size(textWidth, phone ? 24 : 20 * scale), HorizontalTextAlignment.LEFT);
       subline.overflow = Label.Overflow.SHRINK;
       return;
     }

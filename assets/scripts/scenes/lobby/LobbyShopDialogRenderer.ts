@@ -307,7 +307,7 @@ export class LobbyShopDialogRenderer {
     let phoneTitleRight = 0;
     if (phone) {
       // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户);余额胶囊挪到右上、关闭钮左侧
-      phoneTitleRight = addPhoneDialogTitle(this.host, panel, panelW, panelH, TITLE[state.kind], phoneRowDrop, 1.05 * scale);
+      phoneTitleRight = addPhoneDialogTitle(this.host, panel, panelW, panelH, TITLE[state.kind], phoneRowDrop, 1.05 * scale, () => this.host.closeLobbyShopDialog());
     } else {
       const title = this.host.addChildLabel(panel, 'LobbyShopTitle', TITLE[state.kind], 0, titleY, titleSize, rgba(255, 226, 150), new Size(panelW * 0.6, titleSize + 10 * scale));
       title.isBold = true;

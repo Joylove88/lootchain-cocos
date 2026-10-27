@@ -11,6 +11,7 @@ import {
   UITransform,
   Vec3,
 } from 'cc';
+import { isPhoneDesign } from '../../app/ScreenAdapter';
 import type { LobbyAdventureChapterVO, LobbyAdventurePanelState, LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton } from '../UiSceneBackButton';
@@ -209,7 +210,8 @@ export class LobbyAdventurePanelRenderer {
     if (!stage) {
       return;
     }
-    const cardWidth = Math.min(300 * scale, mapWidth * 0.34);
+    // 2026-10-27 UI 审核:手机字号抬到 20 后「推荐战力 · 当前 · 可挑战」一行被压小,卡加宽
+    const cardWidth = isPhoneDesign() ? Math.min(380 * scale, mapWidth * 0.4) : Math.min(300 * scale, mapWidth * 0.34);
     // 2026-10-10 全界面美化:卡底换四角金饰框、按钮换红金主按钮切图(UiKit)
     const cardHeight = 138 * scale;
     const card = mountKitSection(this.host, parent, 'LobbyAdventureMapActionCard', mapX + mapWidth / 2 - cardWidth / 2 - 14 * scale, mapY - mapHeight / 2 + cardHeight / 2 + 14 * scale, cardWidth, cardHeight, scale, 0.16);
