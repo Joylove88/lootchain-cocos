@@ -1,0 +1,18 @@
+Create a sprite sheet of 12 game HUD pieces, arranged in a 4 columns x 3 rows grid:
+1. Big attack button ring: round dark iron disc with a thick antique gold ring and four small ornate gold spikes at top, bottom, left, right (no icon, empty center).
+2. Skill button ring: medium round dark iron disc with a thin antique gold ring (no icon, empty center).
+3. Icon: a single golden longsword pointing up-right, engraved blade.
+4. Icon: a glowing golden crescent sword slash arc.
+5. Icon: a golden sword thrusting forward with motion streaks (dash strike).
+6. Icon: a golden spinning whirlwind of blades (circular slash).
+7. Icon: a small golden running figure dashing with speed lines (dodge).
+8. Icon: a golden crosshair / target reticle (circle with four ticks and a center dot).
+9. Icon: a brown leather coin pouch with a few gold coins.
+10. Icon: a sealed parchment envelope with a gold edge.
+11. Icon: a square golden rune tablet with a grid of small engraved glyph cells (main menu terminal).
+12. Icon: a glowing pale-blue triangular summoning sigil with an eye in the middle.
+Icons 3 to 12 have NO tile or disc behind them, only the object itself, similar size each.
+
+Rendering quality (most important): clean, refined, high-end mobile game UI asset rendering, like a polished commercial release. Smooth surfaces with soft, gradual gradients and crisp clean edges. Absolutely NO grain, NO noise, NO speckles, NO grunge, NO hammered / pitted / cracked / scratched / worn texture, NO stone cracks inside panels. Metal = smooth polished antique gold with clean soft highlights and a thin bevel; dark plates = smooth flat matte dark iron with only a very subtle vertical gradient. Restrained, readable detail (fewer, cleaner shapes). One consistent soft key light from the top-left. NO glow haze, NO sparkles, NO light rays, NO particles (a glowing rune or crystal may keep a soft glow only on its own surface).
+Colors: muted dark fantasy palette, blackened iron and antique gold, low saturation. Keep the same object designs as the attached reference, only cleaner and more refined. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 80px), all items in flat front view (no perspective tilt).

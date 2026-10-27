@@ -15,3 +15,6 @@ Thumbs.db
 
 # 2026-09-24 瘦身移出的未引用 PNG(git 历史里已有同内容,不重复入库;恢复见其中 MANIFEST.tsv)
 素材原始备份/unused-png-20260924/
+
+# 原型参考裁图(由原型截图裁出,只留本地,不进 git)
+tools/qa/proto_prompts/**/*.png

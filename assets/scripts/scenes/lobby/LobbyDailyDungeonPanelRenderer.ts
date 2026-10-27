@@ -158,6 +158,13 @@ export class LobbyDailyDungeonPanelRenderer {
     return this.host.lobbyStageDisplayLabel?.(stageCode) ?? '前置关卡';
   }
 
+  /** docs/51 终端「排行」:直接打开输出周榜弹窗。 */
+  openRankPopup(): void {
+    this.rankPopupOpen = true;
+    this.host.loadLobbyCrystalRankSummary?.();
+    this.host.refreshLobbyDailyDungeonPanel();
+  }
+
   render(layout: UiLayout): void {
     const state = this.host.currentLobbyDailyDungeonState();
     const scale = Math.max(0.68, Math.min(1, layout.uiScale));

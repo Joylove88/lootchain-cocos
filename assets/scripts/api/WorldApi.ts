@@ -62,6 +62,9 @@ export interface FieldEncounterVO {
   raiderAttack: number;
   raiderHp: number;
   monsters: Array<{ monsterCode: string; monsterName: string; hp: number; hit: number; ranged: boolean }>;
+  /** docs/51:怪血量按全队攻击折算;队友(AI 自动战斗)攻击 / 血量已按进攻方口径折算。旧服务端没有 → 0 / 空。 */
+  teamAttack: number;
+  companions: Array<{ heroId: number; heroCode: string; attack: number; hp: number }>;
 }
 
 export interface FieldClearVO {
@@ -88,6 +91,16 @@ function validateEncounter(data: unknown): FieldEncounterVO {
         hp: readInteger(record.hp, 1, Number.MAX_SAFE_INTEGER),
         hit: readInteger(record.hit, 1, Number.MAX_SAFE_INTEGER),
         ranged: record.ranged === true,
+      };
+    }),
+    teamAttack: data.teamAttack === undefined || data.teamAttack === null ? 0 : readInteger(data.teamAttack, 0, Number.MAX_SAFE_INTEGER),
+    companions: (Array.isArray(data.companions) ? readArray(data, 'companions', 4) : []).map((entry) => {
+      const record = isRecord(entry) ? entry : {};
+      return {
+        heroId: record.heroId === null || record.heroId === undefined ? 0 : readInteger(record.heroId, 0, Number.MAX_SAFE_INTEGER),
+        heroCode: readText(record, 'heroCode', 32, ''),
+        attack: readInteger(record.attack, 1, Number.MAX_SAFE_INTEGER),
+        hp: readInteger(record.hp, 1, Number.MAX_SAFE_INTEGER),
       };
     }),
   };

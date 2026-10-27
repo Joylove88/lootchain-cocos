@@ -1,0 +1,13 @@
+Create a sprite sheet of 9 game HUD icons, 3 columns x 3 rows grid, each icon about the same size:
+1. Treasure chest: wooden chest with gold bands and a small blue gem lock, lid slightly open with gold coins visible (no tile behind).
+2. Hero: golden knight helmet with cheek guards, on a dark rounded-square tile with clipped corners and a thin gold rim.
+3. Bag: brown leather backpack with buckles, on the same kind of dark tile.
+4. Forge: anvil with a hammer, on the same kind of dark tile.
+5. Summon: glowing pale-blue triangular summoning sigil with an eye in the middle, on the same kind of dark tile.
+6. Adventure: two crossed golden swords, on the same kind of dark tile.
+7. Quest: rolled parchment scroll with a red seal, on the same kind of dark tile.
+8. Portal: round swirling cyan-blue energy vortex (spiral galaxy-like portal), no tile, soft but contained glow.
+9. Notice button: round dark button with a gold ring and a parchment scroll icon in the middle.
+
+Style: match the attached reference crops exactly (they are cut from the approved UI mockup): muted matte hand-painted dark fantasy, blackened iron and worn antique gold, low saturation, crisp edges, game UI asset quality. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 60px), all items in flat front view (no perspective tilt).

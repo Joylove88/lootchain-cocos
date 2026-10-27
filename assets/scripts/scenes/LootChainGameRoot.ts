@@ -120,6 +120,7 @@ import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './l
 import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
 import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer';
 import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
+import { LobbyTerminalPanelRenderer, type LobbyTerminalAction, type LobbyTerminalPanelHost } from './lobby/LobbyTerminalPanelRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
@@ -367,6 +368,7 @@ export class LootChainGameRoot extends Component {
   /** 正在打的野外怪群(战后交回地图)。 */
   private worldFieldStage: string | null = null;
   private readonly lobbyQuestMailPanelRenderer = new LobbyQuestMailPanelRenderer(this as unknown as import('./lobby/LobbyQuestMailPanelRenderer').LobbyQuestMailHost);
+  private readonly lobbyTerminalPanelRenderer = new LobbyTerminalPanelRenderer(this as unknown as LobbyTerminalPanelHost);
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
@@ -528,6 +530,8 @@ export class LootChainGameRoot extends Component {
   private lobbyQuestPanelOpen = false;
   private lobbyMailPanelOpen = false;
   private lobbyMorePanelOpen = false;
+  /** docs/51:终端(大厅上的全屏覆盖层,整页重绘后重挂)。 */
+  private lobbyTerminalOpen = false;
   private lobbyGiftRedeeming = false;
   private lobbyQuestState: { loading: boolean; error: string; summary: import('../types/QuestTypes').PlayerQuestSummaryVO | null; tab: 'DAILY' | 'ACHIEVE'; claiming: string | null; version: number } = { loading: false, error: '', summary: null, tab: 'DAILY', claiming: null, version: 0 };
   private lobbyMailState: { loading: boolean; error: string; mails: import('../types/QuestTypes').PlayerMailVO[]; claiming: number | null; version: number } = { loading: false, error: '', mails: [], claiming: null, version: 0 };
@@ -1486,6 +1490,66 @@ export class LootChainGameRoot extends Component {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
       this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
     }
+    if (this.lobbyTerminalOpen && this.currentView === 'lobby') {
+      this.lobbyTerminalPanelRenderer.render(layout);
+    }
+  }
+
+  // ── 终端(docs/51 §2.1):右上「终端」打开;点格子先关终端再开对应功能 ──
+
+  private openLobbyTerminalPanel(): void {
+    if (this.lobbyTerminalOpen || this.currentView !== 'lobby') {
+      return;
+    }
+    this.lobbyTerminalOpen = true;
+    this.lobbyTerminalPanelRenderer.render(this.resolveLayout());
+  }
+
+  private closeLobbyTerminalPanel(): void {
+    if (!this.lobbyTerminalOpen) {
+      return;
+    }
+    this.lobbyTerminalOpen = false;
+    this.removeNodeFromContent(LobbyTerminalPanelRenderer.NODE_NAME);
+  }
+
+  private runLobbyTerminalAction(action: LobbyTerminalAction): void {
+    if (action === 'idle') {
+      const idle = this.currentIdleSummary();
+      if (idle && idle.claimable && !this.isIdleClaiming()) {
+        this.claimIdleReward();
+      } else {
+        this.setStatus(idle ? `挂机收益 金币 ${this.formatInteger(idle.goldPerHour)} / 时,累计到一定时长后可领取` : '挂机收益读取中…');
+      }
+      return;
+    }
+    this.closeLobbyTerminalPanel();
+    switch (action) {
+      case 'heroes': this.openLobbyHeroRosterPanel(); return;
+      case 'formation': this.openLobbyFormationPanel(); return;
+      case 'bag': this.openLobbyBagPanel(); return;
+      case 'forge': this.openLobbyForgePanel(); return;
+      case 'gacha': this.openLobbyGachaScene(); return;
+      case 'adventure': this.openLobbyRaidPanel(); return;
+      case 'daily': this.openLobbyDailyDungeonPanel(); return;
+      case 'crystal': this.openGuardCrystalDialog(); return;
+      case 'codex': this.openLobbyCodexPanel(); return;
+      case 'quest': this.openLobbyQuestPanel(); return;
+      case 'shop': this.openLobbyShopDialog('gold'); return;
+      case 'guild': this.openWorldBountyPanel(); return;
+      case 'worldmap': this.openWorldMapPanel(); return;
+      case 'rank':
+        this.openLobbyDailyDungeonPanel();
+        this.lobbyDailyDungeonPanelRenderer.openRankPopup();
+        return;
+      case 'mail': this.openLobbyMailPanel(); return;
+      case 'notice': this.openLobbyNoticePanel(); return;
+      case 'gift': this.openLobbyMorePanel(); return;
+      case 'settings': this.openLobbySettingsPanel(); return;
+      case 'logout': this.logoutToLoginPage(); return;
+      case 'profile': this.openPlayerProfileDialog(); return;
+      default: return;
+    }
   }
 
   private ownedHeroCardArtPrefetched = false;
@@ -2143,6 +2207,7 @@ export class LootChainGameRoot extends Component {
       [this.lobbyTokenFurnaceState.open, () => this.closeLobbyTokenFurnace()],
       [this.lobbyProfileOpen, () => this.closePlayerProfileDialog()],
       [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
+      [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
       [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
       [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
       [this.lobbyNoticePanelOpen, () => this.closeLobbyNoticePanel()],

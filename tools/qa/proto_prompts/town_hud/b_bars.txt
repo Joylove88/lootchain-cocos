@@ -1,0 +1,6 @@
+Create a sprite sheet of 2 game HUD frames, stacked vertically:
+1. Minimap frame: rounded-square frame (about 1:1) made of blackened iron with antique gold corner caps and a thin gold inner line, with a slim header strip along the top edge (empty, dark). The whole interior below the header is a fully transparent hole.
+2. Quick-bar dock: a long horizontal bar (about 9:1), dark iron body with a thin gold trim line along top and bottom, and ornate spiky dark-iron end caps with gold edges on both the left and right ends. Body slightly translucent dark. Empty.
+
+Style: match the attached reference crops exactly (they are cut from the approved UI mockup): muted matte hand-painted dark fantasy, blackened iron and worn antique gold, low saturation, crisp edges, game UI asset quality. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 60px), all items in flat front view (no perspective tilt).

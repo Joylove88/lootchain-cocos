@@ -1,0 +1,12 @@
+Create a sprite sheet of 8 game HUD frame pieces, arranged in a 4 columns x 2 rows grid:
+1. Circular minimap ring: a thin double ring of blackened iron and worn antique gold, with one small sharp gold compass spike on the top, and a small empty dark name plate with pointed gold ends attached over the bottom of the ring. The whole inside of the ring is a fully transparent hole.
+2. Small round button: a dark semi-matte iron disc with a thin worn-gold ring around it (no icon, empty center).
+3. Highlighted round button: the same small round button but with a brighter double gold ring and a soft warm golden outer glow (no icon, empty center).
+4. Interaction prompt bar: slim horizontal bar (about 5:1), dark translucent iron interior, thin worn-gold border with small rounded corners, empty.
+5. Highlighted prompt bar: the same bar with a brighter gold border and a faint warm glow, empty.
+6. Round portrait ring: thin worn-gold ring with one tiny star spike on the top; the inside is a fully transparent hole.
+7. Long thin bar frame: horizontal (about 12:1) empty dark groove with a thin gold border and small pointed gold arrow tips at both ends.
+8. Elite medallion: small diamond-shaped dark iron medallion with four gold spikes and a dark-red skull in the middle.
+
+Style: match the attached reference crops exactly (they are cut from the approved UI mockup): muted matte hand-painted dark fantasy, blackened iron and worn antique gold, low saturation, crisp edges, game UI asset quality. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 60px), all items in flat front view (no perspective tilt).

@@ -1,0 +1,7 @@
+Create a sprite sheet of 15 illustrated game menu icons, 5 columns x 3 rows grid, each icon about the same size, NO tile or frame behind any icon (only the object itself):
+row 1: golden knight helmet; three heraldic shields side by side (the middle one gold with a lion); brown leather backpack with buckles; anvil with a hammer; glowing pale-blue triangular summoning sigil with an eye.
+row 2: two crossed golden swords; a small gothic stone tower shrine with a glowing doorway; a glowing blue crystal cluster on a dark stone base; an open old book with a gold compass rose; a rolled parchment scroll with a red wax seal.
+row 3: a leather coin pouch with gold coins; a red war banner with crossed swords on a pole; a dark wooden treasure chest with gold bands and a blue gem lock; a folded parchment world map with a compass rose; a golden trophy cup with laurel leaves.
+
+Style: match the attached reference crops exactly (they are cut from the approved UI mockup): muted matte hand-painted dark fantasy, blackened iron and worn antique gold, low saturation, crisp edges, game UI asset quality. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 60px), all items in flat front view (no perspective tilt).

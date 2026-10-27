@@ -1,0 +1,11 @@
+Generate ONE image: a polished UI mockup for a dark-fantasy mobile action RPG, landscape phone 20:9 (about 1870x841). The attached image is our previous mockup: KEEP the exact same art style (muted matte hand-painted dark fantasy, blackened iron + worn antique gold, restrained lighting), the same isometric cobblestone town plaza with the glowing blue rune teleport circle on the bronze compass disc, the 4 chibi heroes standing on it (one leader in front, three companions behind), the notice board and the guild hall. Only change the HUD as described. All text Simplified Chinese exactly as written.
+
+HUD (small, flat, semi-transparent, generous margins, very clean):
+1. Top-left: the same CIRCULAR minimap (diameter about 150px) with thin dark-iron + gold ring, dark top-down town map, tiny gold building icons, cyan player arrow; tiny label "主城" under it. Below it a slim quest tracker with no heavy panel: small gold diamond + "荒原的威胁 0/5", under it smaller grey "Lv.10 可接 · 去村外林地升级"; a second row with a small blue diamond + "悬赏 · 清剿岩蜥 2/8".
+2. Top-right: one row of 4 small round icon buttons (about 56px, thin gold rings, tiny labels under): "召唤", "商店", "邮件" (small red dot), "终端" (grid / rune-tablet icon, slightly emphasized).
+3. INTERACTION PROMPTS: just to the right of the leader hero (not at the screen edge), a short vertical list of 2 slim horizontal prompt bars (about 260x52 each, dark translucent with a thin gold left accent): the top one highlighted with a brighter gold border: a small cyan portal icon + "传送 · 晨风村" and a tiny key hint "F" in a small square on its left; below it a dimmer bar with a small scroll icon + "查看 · 公告板".
+4. Bottom-left: a translucent floating joystick (faint dark stone ring with four tiny gold chevrons and a small bronze knob), very subtle.
+5. Bottom-right: EMPTY (no big button). Bottom center: EMPTY (no exp bar). No party portraits on the right side.
+NO currency bar, NO big player portrait frame, NO bottom function dock.
+
+Keep the teleport circle effect: thin ring of softly glowing cyan runes on the compass rim, faint inner glow, a few floating motes. Output only the single finished mockup image, no annotations.

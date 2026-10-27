@@ -17,6 +17,7 @@ import { lootChainI18n } from '../../i18n/LootChainI18n';
 import { SCENE_CURRENCY_BAR_ASSET } from '../UiSceneBackButton';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { LOBBY_SYSTEM_ICONS } from './LobbyHudConfig';
+import { TOWN_HUD_ASSETS, mountRingBase, townProtoFrame, type TownProtoFrame } from './LobbyTownHudProto';
 import { lobbyHudEdgeInset, lobbyHudScale, resolveLobbyHudModeSize, resolveLobbyPlayerInfoLayout } from './LobbyHudLayout';
 import {
   LOBBY_C1812_RESOURCE_ICON_ASSETS,
@@ -38,9 +39,74 @@ export class LobbyTopHudRenderer {
   constructor(private readonly host: LobbyHudHost) {}
 
   render(layout: UiLayout): void {
+    // 2026-10-27 主城 HUD 原型 v1:跑图大厅顶栏按原型 1:1;新素材缺图时退回旧版
+    if (this.renderTownTop(layout)) {
+      return;
+    }
     this.renderPlayerInfo(layout);
     this.renderResourceBar(layout);
     this.renderSystemIcons(layout);
+  }
+
+  /**
+   * docs/51 原型 v3(proto_town_v3):主界面不放角色框 / 货币条 / 经验条(都收进终端名片),
+   * 右上只留一排 4 个小圆钮:召唤 / 商店 / 邮件 / 终端(终端略强调)。缺素材回退旧顶栏。
+   */
+  private renderTownTop(layout: UiLayout): boolean {
+    const P = townProtoFrame(layout);
+    const group = this.createUiNode('LobbySystemIcons');
+    group.setPosition(new Vec3(0, 0, 0));
+    group.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    const badges = this.host.currentLobbyBadges?.() ?? null;
+    const unread = this.host.lobbyMailUnreadCount?.() ?? 0;
+    const idle = this.host.currentIdleSummary?.() ?? null;
+    // 终端红点:里面任一入口有红点(英雄可养成 / 任务可领 / 挂机可领 / 免费召唤)
+    const terminalHot = !!badges && (badges.heroGrowable || (badges.quest ?? 0) > 0) || !!idle?.claimable;
+    const items: Array<{ key: string; label: string; icon: string; px: number; hot: boolean; strong: boolean; onTap: () => void }> = [
+      { key: 'summon', label: '召唤', icon: TOWN_HUD_ASSETS.icSummon, px: 1487, hot: !!badges && (badges.gachaFree || badges.gachaTicketTen), strong: false, onTap: () => this.host.openLobbyGachaScene() },
+      { key: 'shop', label: '商店', icon: TOWN_HUD_ASSETS.icShop, px: 1590, hot: false, strong: false, onTap: () => this.host.openLobbyShopDialog?.('gold') },
+      { key: 'mail', label: '邮件', icon: TOWN_HUD_ASSETS.icMail, px: 1697, hot: unread > 0, strong: false, onTap: () => this.host.openLobbyMailPanel?.() },
+      { key: 'terminal', label: '终端', icon: TOWN_HUD_ASSETS.icTerminal, px: 1800, hot: terminalHot, strong: true, onTap: () => this.host.openLobbyTerminalPanel?.() },
+    ];
+    let mounted = 0;
+    for (const item of items) {
+      const d = P.S(item.strong ? 84 : 78);
+      const node = this.addChildPlainNode(group, `LobbySystemIcon_${item.key}`, P.R(item.px), P.Y(66), d, d);
+      mountRingBase(this.host, node, d * 1.12, item.strong);
+      mounted += 1;
+      this.addFitIcon(node, item.icon, P.S(54));
+      const text = this.addChildLabel(node, 'Label', item.label, 0, -P.S(item.strong ? 46 : 42), P.S(19), rgba(246, 236, 214), new Size(P.S(80), P.S(26)));
+      text.enableOutline = true;
+      text.outlineColor = rgba(0, 0, 0, 230);
+      text.outlineWidth = Math.max(1, P.S(2));
+      if (item.hot) {
+        // 原型红点是圆点(旧顶栏的菱形红点不用)
+        const dot = this.addChildPlainNode(node, 'LobbyRedDot', P.S(27), P.S(27), P.S(22), P.S(22)).addComponent(Graphics);
+        dot.fillColor = rgba(206, 28, 34, 255);
+        dot.circle(0, 0, P.S(9));
+        dot.fill();
+        dot.strokeColor = rgba(70, 8, 8, 255);
+        dot.lineWidth = Math.max(1, P.S(1.5));
+        dot.circle(0, 0, P.S(9));
+        dot.stroke();
+      }
+      node.addComponent(Button);
+      node.on(Button.EventType.CLICK, item.onTap, this);
+      this.applyImageButtonFeedback(node, 1.08, 0.94);
+    }
+    return mounted > 0;
+  }
+
+  /** 图标按原比例塞进 box × box。 */
+  private addFitIcon(parent: Node, asset: string, box: number): void {
+    const sprite = this.addSprite('Icon', asset, 0, 0, box, box, parent);
+    const frame = sprite?.spriteFrame;
+    if (!sprite || !frame) {
+      return;
+    }
+    const k = Math.min(box / Math.max(1, frame.originalSize.width), box / Math.max(1, frame.originalSize.height));
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.node.getComponent(UITransform)?.setContentSize(frame.originalSize.width * k, frame.originalSize.height * k);
   }
 
   private get node(): Node {

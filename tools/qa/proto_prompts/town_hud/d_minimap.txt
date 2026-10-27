@@ -1,0 +1,5 @@
+Create a sprite sheet of 10 small flat minimap marker icons in antique gold with a thin dark outline, 5 columns x 2 rows, each simple and readable at small size, front view:
+1. temple with columns and a triangular roof, 2. stone arched gate, 3. tall watchtower, 4. army tent camp, 5. pointed crystal, 6. anvil, 7. market stall with awning, 8. guild hall with a hanging banner, 9. domed hall with pillars, 10. a cyan-blue glowing navigation arrow (triangle pointer).
+
+Style: match the attached reference crops exactly (they are cut from the approved UI mockup): muted matte hand-painted dark fantasy, blackened iron and worn antique gold, low saturation, crisp edges, game UI asset quality. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 60px), all items in flat front view (no perspective tilt).

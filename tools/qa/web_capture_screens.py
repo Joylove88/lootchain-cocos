@@ -8,6 +8,7 @@ import boss_bar_cdp as base
 from native_capture_screens import SCREENS, ROOT_JS, RESET_JS
 
 OUT = sys.argv[1]
+GATE_WAIT = int(sys.argv[sys.argv.index('--gate-wait') + 1]) if '--gate-wait' in sys.argv else 40  # 首开素材加载门最多等几秒(首访整包下载时要拉长)
 PROBE = sys.argv[sys.argv.index('--probe') + 1] if '--probe' in sys.argv else None  # 每屏截图后求值并打印(排查用)
 ONLY = set(sys.argv[sys.argv.index('--only') + 1].split(',')) if '--only' in sys.argv else None
 os.makedirs(OUT, exist_ok=True)
@@ -18,6 +19,10 @@ JS_CC = r"""(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms
 
 async def main():
     profile = base.PROFILE + '_world'
+    if '--fresh' in sys.argv:
+        # 模拟首次访问:清空浏览器缓存 / 存储(冷启动素材时序问题只在这时出现)
+        import shutil
+        shutil.rmtree(profile, ignore_errors=True)
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
                              '--window-size=800,360', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     try:
@@ -90,7 +95,7 @@ async def main():
                 await ev(js + " return 1;")
                 await asyncio.sleep(wait * 2.2)
                 # 首开有素材加载门:等它过去
-                for _ in range(20):
+                for _ in range(max(1, GATE_WAIT // 2)):
                     if not await ev("return Object.keys(root.uiSpriteFrameCache.groupWaits ? Object.fromEntries(root.uiSpriteFrameCache.groupWaits) : {}).some(g=>root.uiSpriteFrameCache.groupProgress(g)) ? 1 : 0;"):
                         break
                     await asyncio.sleep(2)
@@ -99,7 +104,9 @@ async def main():
                     open(os.path.join(OUT, f'{key}.png'), 'wb').write(base64.b64decode(m['result']['data']))
                     print('shot', key, flush=True)
                 if PROBE:
-                    print('probe', key, await ev(PROBE), flush=True)
+                    # 探针可以是 async(内部可 await),结果按 JSON 字符串返回
+                    r = await call('Runtime.evaluate', {'expression': "(async()=>{ const cc=window.__cc; " + ROOT_JS + " " + PROBE + " })()", 'returnByValue': True, 'awaitPromise': True}, 300)
+                    print('probe', key, r.get('result', {}).get('result', {}).get('value'), flush=True)
     finally:
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True)
 

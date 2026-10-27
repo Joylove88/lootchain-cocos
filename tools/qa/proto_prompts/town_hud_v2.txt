@@ -1,0 +1,12 @@
+Generate ONE image: a polished UI mockup for a dark-fantasy mobile action RPG, landscape phone 20:9 (about 1870x841). The attached image is our previous approved mockup: KEEP the exact same art style (muted matte hand-painted dark fantasy, blackened iron + worn antique gold, restrained lighting), the same isometric cobblestone town plaza with the glowing blue rune teleport circle on the bronze compass disc, the 4 chibi heroes standing on it, the notice board and the guild hall. Only change the HUD LAYOUT to a minimalist open-world action-game layout (like modern open-world gacha action RPGs): most functions are hidden in a "terminal" menu, the main screen stays clean. All text Simplified Chinese exactly as written.
+
+HUD layout (keep everything small, flat, semi-transparent, generous margins):
+1. Top-left: a CIRCULAR minimap (diameter about 150px) with a thin dark-iron + gold ring, inside a dark top-down town map with tiny gold building icons and a cyan player arrow; under the circle a tiny label "主城". Directly below the minimap, a slim one-line quest tracker with no heavy panel: small gold quest diamond icon + "荒原的威胁 0/5", and under it in smaller grey text "Lv.10 可接 · 去村外林地升级".
+2. Top-right: one row of 4 small round icon buttons (about 56px) with thin gold rings and tiny labels under them: "召唤" (summon sigil), "商店" (coin pouch), "邮件" (envelope, small red dot), and the last one "终端" (a stylized grid / rune-tablet icon, slightly emphasized).
+3. Right side, vertically centered: a vertical column of 4 small square hero portrait slots (about 64px, dark frames with gold corners), each with a tiny number 1-4 at the left; the first slot slightly highlighted as the leader.
+4. Bottom center: a very thin experience bar (amber fill 80%) about 420px wide with "Lv.3" to its left and "EXP 80%" to its right, small text.
+5. Bottom-left: a translucent floating joystick: faint dark stone ring with four tiny gold chevrons and a small bronze knob, very subtle.
+6. Bottom-right: one large round interaction button with a dark iron rim, gold trim and a glowing cyan portal swirl, label "传送" on a small dark plate under it.
+NO currency bar, NO big player portrait frame, NO bottom function dock.
+
+Keep the teleport circle effect: thin ring of softly glowing cyan runes on the compass rim, faint inner glow, a few floating motes. Output only the single finished mockup image, no annotations.

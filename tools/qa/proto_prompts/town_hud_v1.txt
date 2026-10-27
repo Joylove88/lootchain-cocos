@@ -1,0 +1,20 @@
+Generate ONE image: a polished UI mockup (game screen prototype) for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841). The attached screenshot is the CURRENT town screen: keep the same isometric dark-cobblestone town plaza, the bronze compass-rose plaza disc in the middle, the 3 chibi heroes standing on it, the notice board, the guild hall building lower-left and the lamp posts. Only redesign the HUD overlay and add the teleport-circle effect. All UI text must be Simplified Chinese exactly as written below.
+
+Art direction (very important, avoid the generic "AI look"):
+- Muted, matte, hand-painted dark fantasy (Diablo-like). Dark iron / blackened bronze frames with thin worn gold trim, low saturation.
+- Restrained lighting: only the teleport circle glows. No rows of candles, no lens flare, no god rays, no sparkle spam, no wet reflections, no bloom everywhere.
+- Clean, readable, consistent perspective; HUD elements flat and crisp, semi-transparent dark plates (about 70% opacity) so the town stays visible. Generous safe margins (about 3% from the screen edges).
+
+HUD layout:
+1. Top-left PLAYER FRAME: round hero portrait (armored knight face) in a thick gold ring with a small red level badge "Lv.3" at its bottom; to the right on a dark plate that fades out to the right: name "圣契64" (white, bold), below it a sword icon + "战力 1,626" (gold), below that a thin experience bar 80% filled (amber) with tiny text "EXP 80%".
+2. Top-right CURRENCY ROW: three equal capsules with icon + value + small "+" button: red blood-crystal icon "120/120", gold coin "4.7M", purple diamond "924.5K". Right of them a small round menu button (three lines). Under the capsules, right-aligned, two small round icon buttons: envelope "邮件" with a red dot, and scroll "公告".
+3. MINIMAP under the top-right buttons: rounded-square map (not a circle) in an iron frame with gold corner caps; header strip reads "主城" and a small tag "Lv.1-60"; inside, a dark parchment top-down mini map with tiny building icons (temple, gate, tower, forge, camp, shop, guild) and a glowing cyan player arrow at the center plaza; a small button at its bottom-left corner labelled "世界地图".
+4. Left-middle QUEST TRACKER: a narrow semi-transparent panel with thin gold edge and a header tab "任务" with a collapse arrow. Entry 1: small gold tag "剧情", title "荒原的威胁 0/5", grey subline "Lv.10 可接 · 先去村外林地打怪升级". Entry 2: small blue tag "悬赏", title "清理鼠窝 3/10". Compact, does not cover the heroes.
+5. Bottom-left JOYSTICK: translucent dark stone ring with four small gold chevrons (up/down/left/right) and a metallic bronze thumb knob with subtle bevel.
+6. Bottom-right INTERACTION BUTTON: large round button with a dark iron rim and gold ring, inside a glowing cyan rune-portal icon, label under it "传送" on a small dark plate. Next to it, smaller, a round button "世界地图" with a folded-map icon.
+7. Bottom-center QUICK DOCK: slim dark iron bar with ornate end caps, six square-round icon buttons with labels under each: "英雄" (helmet), "背包" (leather bag), "锻造" (anvil and hammer), "召唤" (summoning sigil), "冒险" (crossed swords), "任务" (scroll, with red dot). On the left end of the dock, a slightly bigger treasure-chest button with a small gold label "挂机收益 +1,680" and a red dot.
+8. Building name plates in the world stay small dark plates with gold text: "公告板", "佣兵公会".
+
+TELEPORT CIRCLE EFFECT on the bronze compass disc in the plaza: a thin ring of softly glowing cyan-blue runes running along the outer rim of the disc (as if slowly rotating), a faint inner glow on the compass engravings, a very soft translucent shimmer rising only about one hero-height above the disc, and a handful (5-8) of small floating light motes. Elegant and restrained, it must clearly read as an active teleport circle without washing out the heroes.
+
+Output only the single finished mockup image, no annotations, no extra text outside the HUD.

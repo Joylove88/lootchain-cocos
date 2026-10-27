@@ -1,0 +1,17 @@
+Generate ONE image: a polished in-combat UI mockup for a dark-fantasy mobile action RPG, landscape phone 20:9 (about 1870x841). KEEP the exact art style of the attached reference mockup (muted matte hand-painted dark fantasy, blackened iron + worn antique gold, restrained lighting, chibi isometric characters). Scene: an open grey rocky wasteland field ("灰岩荒原") seen from the same 3/4 top-down angle, dry grass tufts and scattered boulders. All text Simplified Chinese exactly as written.
+
+Scene action (a party of 4 heroes fighting together at the same time):
+- Center: the player-controlled LEADER (armored knight with a sword and silver helmet) slashing at a large rock lizard monster; a small faint cyan ring under the leader's feet.
+- The large rock lizard is the LOCKED TARGET: under its feet a thin glowing RED lock-on ring (a rotating thin circle with four small inward-pointing red triangles), a small red downward arrow above its head, and above it its name "岩蜥 Lv.12" with a slim red HP bar (60% filled). Big white damage number "1,284" popping from it.
+- Three companions are ALSO attacking the same lizard: a shield warrior right beside it hitting it (smaller pale-yellow damage number "386"), an archer standing further back shooting a glowing arrow at it, a robed mage casting a small blue spell bolt at it (pale damage numbers "412").
+- Two other smaller lizards nearby WITHOUT name or HP bar (only a tiny thin HP bar under one of them that was hit).
+
+HUD (small, flat, semi-transparent, clean):
+1. Top-left: the same circular minimap (about 150px) with gold ring, dark field map, red enemy dots, cyan arrow; tiny label "灰岩荒原 Lv.12-14". Below it the slim quest tracker: gold diamond + "荒原的威胁 3/5".
+2. Top-center: an ELITE bar: small skull icon + "精英 · 灰岩巨蜥" and a long thin dark-red HP bar (about 560px, 45% filled) with a thin amber segmented bar under it (stagger gauge).
+3. Top-right: row of 4 small round buttons with tiny labels: "召唤", "商店", "邮件", "终端".
+4. Right side, vertically centered: a vertical column of 3 COMPANION SUPPORT portraits (round, about 76px, dark iron + gold ring), each with a slim green HP bar under the circle; slot 1 (shield warrior): the ring is FULL and glowing bright gold (ready), slot 2 (archer): a partial gold cooldown arc about 60% around the ring, slot 3 (mage): greyed out portrait with a small white countdown "4" (knocked out). Tiny key hints "1" "2" "3" at the left of each portrait.
+5. Bottom center: the LEADER HP bar: about 420px wide, green fill 72%, at its left "圣骑士 Lv.12", at its right small text "8,640 / 12,000".
+6. Bottom-left: translucent floating joystick, subtle.
+7. Bottom-right: combat button cluster: one large round attack button (sword icon, dark iron + gold rim), three medium round skill buttons arranged in an arc around it with illustrated skill icons (one showing a grey cooldown sector with "3"), one small dodge button (dash icon), and one small "切换目标" button (crosshair icon with tiny label "切换目标").
+NO currency bar, NO bottom dock. Output only the single finished mockup image, no annotations.

@@ -1,0 +1,2 @@
+Create ONE game effect texture: a perfect circle (top-down view, not tilted) ring of softly glowing cyan-blue magic runes, like the outer rune band of a teleport circle: two thin concentric glowing lines with a band of small glowing rune glyphs between them, evenly spaced all around. Soft restrained glow, no sparks, no lens flare. The center of the ring and everything outside it are fully transparent. Square image, the ring touching the edges.
+Output: real alpha transparent background, no checkerboard.

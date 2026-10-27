@@ -51,6 +51,8 @@ import { FORGE_PRELOAD_ASSETS, FORGE_PRELOAD_ASSETS_V3 } from './lobby/LobbyForg
 import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { TOWN_ASSET_PATHS } from './lobby/LobbyTownConfig';
 import { WORLD_ASSET_PATHS } from './lobby/LobbyWorldMaps';
+import { TERMINAL_ASSET_PATHS, TOWN_HUD_ASSET_PATHS } from './lobby/LobbyTownHudProto';
+import { TOWN_WAYPOINT_RING_ASSET } from './lobby/LobbyTownWaypointFx';
 import { RAID_UI_ASSET_PATHS } from './lobby/LobbyRaidPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
 import { EQUIP_ICON_ALL_ASSETS } from './lobby/EquipIconAssets';
@@ -308,8 +310,11 @@ export class UiSpriteFrameCache {
         TOWN_ASSET_PATHS.forEach((asset) => track(asset));
         // docs/50:新手村 / 野区 / 世界地图素材同组(新号首进就在晨风村)
         WORLD_ASSET_PATHS.forEach((asset) => track(asset));
-        ['ui/guide/lguide_pointer/spriteFrame', 'ui/lobby/ai/nav_bar_bg/spriteFrame', 'ui/lobby/ai/lhud_btn_mail/spriteFrame',
-          'ui/bag/ai/icon_gold/spriteFrame', 'ui/lobby/ai/nav_bag/spriteFrame'].forEach((asset) => request(asset));
+        // 2026-10-27 主城 HUD 原型 v1:角色框 / 小地图 / 摇杆 / 交互钮 / 快捷栏 + 传送阵符文环,整组等齐(否则首帧缺框)
+        TOWN_HUD_ASSET_PATHS.forEach((asset) => track(asset));
+        track(TOWN_WAYPOINT_RING_ASSET);
+        TERMINAL_ASSET_PATHS.forEach((asset) => track(asset));
+        ['ui/guide/lguide_pointer/spriteFrame', 'ui/lobby/ai/lhud_btn_mail/spriteFrame', 'ui/lobby/ai/lhud_btn_more/spriteFrame'].forEach((asset) => request(asset));
         break;
       default:
         break;

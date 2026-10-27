@@ -1,0 +1,10 @@
+Create a sprite sheet of 5 game UI frame pieces, arranged in a 3 columns x 2 rows grid (last cell empty):
+1. Menu tile frame: square dark iron tile with an ornate thin gold border, small gold corner ornaments, and a separate narrow dark label strip with gold edge across the bottom (empty, no icon, no text). Interior dark and empty.
+2. Tall player card panel: vertical dark iron panel (about 2:3) with thin ornate gold edges and small spiky gold corner ornaments, interior plain dark and empty.
+3. Long bottom strip: very wide horizontal dark iron bar (about 16:1) with thin gold edges and a small gold diamond ornament at the center of the top edge, interior empty.
+4. Round close button: dark iron disc with a gold ring and a gold X in the middle.
+5. Round power button: dark red disc with a gold ring and a gold power symbol in the middle.
+
+Rendering quality (most important): clean, refined, high-end mobile game UI asset rendering, like a polished commercial release. Smooth surfaces with soft, gradual gradients and crisp clean edges. Absolutely NO grain, NO noise, NO speckles, NO grunge, NO hammered / pitted / cracked / scratched / worn texture, NO stone cracks inside panels. Metal = smooth polished antique gold with clean soft highlights and a thin bevel; dark plates = smooth flat matte dark iron with only a very subtle vertical gradient. Restrained, readable detail (fewer, cleaner shapes). One consistent soft key light from the top-left. NO glow haze, NO sparkles, NO light rays, NO particles (a glowing rune or crystal may keep a soft glow only on its own surface).
+Colors: muted dark fantasy palette, blackened iron and antique gold, low saturation. Keep the same object designs as the attached reference, only cleaner and more refined. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 80px), all items in flat front view (no perspective tilt).

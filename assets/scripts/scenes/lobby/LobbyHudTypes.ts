@@ -123,6 +123,9 @@ export interface LobbyHudHost {
   openLobbyMailPanel?(): void;
   /** "更多"面板(2026-09-06):右上单入口收纳邮件/设置/公告/战报/兑换码。 */
   openLobbyMorePanel?(): void;
+  /** docs/51:右上「终端」全屏菜单(玩家名片 + 功能宫格)。 */
+  openLobbyTerminalPanel?(): void;
+  currentIdleSummary?(): import('../../types/IdleTypes').PlayerIdleSummaryVO | null;
   /** 邮件未读数(右上"更多"红点;未加载时 0)。 */
   lobbyMailUnreadCount?(): number;
   /** 图鉴入口走只读预览面板；该面板只读取大厅门面数据，不进入英雄养成。 */

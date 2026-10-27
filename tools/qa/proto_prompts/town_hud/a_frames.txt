@@ -1,0 +1,10 @@
+Create a sprite sheet of 6 game HUD frame pieces, arranged in a 3 columns x 2 rows grid:
+1. Round portrait frame: thick worn gold ring with four small sharp spikes (top, bottom, left, right) and a small dark-red level plaque attached to the bottom of the ring (plaque left empty). The inside of the ring is a fully transparent hole.
+2. Player name plate: wide horizontal dark iron plate (about 3:1) with a thin gold border; the right end is an ornate spiky gold flourish, the left end is plain and straight (it will tuck behind the portrait). Empty, semi-dark interior.
+3. Joystick base: dark translucent stone disc with a thin gold outer rim and four small gold chevron arrows pointing up, down, left, right near the rim. Center empty.
+4. Joystick knob: round bronze metal knob with fine radial brushed texture and a soft bevel.
+5. Interaction button rim: round dark iron ring with antique gold trim and four ornate gold spikes at top, bottom, left, right. The center inside the ring is a fully transparent hole.
+6. Small label plate: short horizontal dark plate with thin gold edge and tiny pointed ends (about 3:1), empty.
+
+Style: match the attached reference crops exactly (they are cut from the approved UI mockup): muted matte hand-painted dark fantasy, blackened iron and worn antique gold, low saturation, crisp edges, game UI asset quality. No text, no letters, no numbers anywhere.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop, no drop shadow on the background). Each item is separate, centered in its own grid cell with generous empty transparent space between items (at least 60px), all items in flat front view (no perspective tilt).

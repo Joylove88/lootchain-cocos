@@ -1,0 +1,7 @@
+Create a sprite sheet of 3 game system icons, 3 columns x 1 row grid:
+1. a settings gear cog in aged antique gold;
+2. a small wrapped gift box with a ribbon bow (dark red box, antique gold ribbon);
+3. a rolled notice parchment with a small gold pin (announcement).
+
+Style (most important): match the attached reference crops, which are cut from the approved UI mockup: realistic, finely detailed hand-painted dark fantasy ARPG icons (premium mobile ARPG quality). Materials look real: forged dark iron, aged antique gold that is DESATURATED and slightly dark (bronze-gold, not bright yellow), worn leather, parchment, with realistic soft metallic reflections and fine engraved detail. Surfaces are clean at small size: NO coarse grain, NO noise speckles, NO hammered / pitted texture, NO cracks. Also NOT cartoon: no thick outlines, no flat cel shading, no glossy plastic look, no oversaturated colors. One soft key light from the top-left, low saturation overall. NO glow haze, NO sparkles, NO light rays, NO particles (a rune, crystal or portal may keep a soft glow only on its own surface). No text, no letters, no numbers.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard, no backdrop). Each icon separate, centered in its own grid cell, similar size, generous empty transparent space between icons (at least 80px), NO tile, disc or frame behind any icon.

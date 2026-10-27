@@ -93,12 +93,26 @@ def main() -> None:
     ap.add_argument('--port', type=int, default=43086)
     ap.add_argument('--device', default='emulator-5554')
     ap.add_argument('--only', default='')
+    ap.add_argument('--login', default='', help='停在登录页时用这个本地 QA 账号登录(密码取 QA_PASS 环境变量)')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     only = set(filter(None, args.only.split(',')))
     # 2026-10-22 冻结保护:fresh 启动后立刻 RESET + 开面板会触发「首开偶发渲染冻结」(已销毁 Label 留在脏列表,渲染线程每帧抛
     # this component should not be invalid!,画面停在上一帧、JS 照跑,截到的全是旧图)。先等钱包 / 装备到齐,再确认帧计数在走;不走就报错退出,让调用方 force-stop 重开。
     ready_expr = f"(() => {{ {ROOT_JS} if (!root) return 'noroot'; const g = Number(root.currentLobbyProfile().gold) || 0; const n = root.currentLobbyHeroEquipState().items.length; return (g > 0 && n > 0) ? 'ready' : 'loading ' + g + ' ' + n; }})()"
+    if args.login:
+        pw = os.environ.get('QA_PASS', 'pass1234')
+        for _ in range(40):
+            try:
+                view = asyncio.run(evaluate(args.port, f"(() => {{ {ROOT_JS} return root ? root.currentView : null; }})()"))
+            except Exception:
+                view = 'null'
+            if '"login"' in view or '"lobby"' in view:
+                break
+            time.sleep(1.5)
+        if '"login"' in view:
+            asyncio.run(evaluate(args.port, f"(() => {{ {ROOT_JS} root.loginFlow.setInputs({{string:'{args.login}'}}, {{string:'{pw}'}}); try {{ root.loginFlow.acceptedAgreement = true; }} catch(e){{}} root.run(() => root.loginFlow.login()); return 1; }})()"))
+            print('login', args.login, flush=True)
     for _ in range(40):
         try:
             if 'ready' in asyncio.run(evaluate(args.port, ready_expr)):
