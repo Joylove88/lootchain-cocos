@@ -7741,6 +7741,14 @@ export class LootChainGameRoot extends Component {
     await this.lobbyProfileLoader.load(userId);
   }
 
+  /** docs/08 升级礼包:逢 5 级服务端投礼包邮件,等级涨了就回读邮件(不标已读)和红点,邮箱红点立刻亮。 */
+  onPlayerLevelUp(before: number, after: number): void {
+    if (Math.floor(after / 5) > Math.floor(before / 5)) {
+      void this.loadLobbyMails(false, false);
+      void this.loadLobbyBadges(true);
+    }
+  }
+
   private async loadLobbyNotices(force = false): Promise<void> {
     await this.lobbyNoticeLoader.load(force);
   }

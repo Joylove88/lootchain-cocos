@@ -171,6 +171,14 @@ def main() -> None:
     shot(args.out, 'field_picked')
     time.sleep(2)
     print('after', ev("return JSON.stringify({ loots: t.loots.length, lv: root.worldState && root.worldState.playerLevel, encounters: t.encounters.size, rewards: window.__lootRewards });"), flush=True)
+    # docs/08 升级礼包:升级后等 2 秒(资料 / 邮件回读)截一张带升级提示 + 邮箱红点的,再开邮箱看礼包邮件
+    time.sleep(2.5)
+    shot(args.out, 'field_levelup')
+    print('mails', ev("const ms = root.currentLobbyMailState().mails; return JSON.stringify(ms.slice(0, 3).map(m => ({ t: m.title, read: m.read, att: (m.attachments || []).map(a => a.name + 'x' + a.amount) })));"), flush=True)
+    ev("setTimeout(() => root.openLobbyMailPanel(), 50); return 1;")
+    time.sleep(3)
+    shot(args.out, 'mail_pack')
+    ev("setTimeout(() => root.closeLobbyMailPanel(), 50); return 1;")
 
 
 if __name__ == '__main__':

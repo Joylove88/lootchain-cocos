@@ -5,6 +5,8 @@ import { LobbyProfileState } from './LobbyProfileState';
 export interface LobbyProfileLoaderHost {
   isLobbyViewActive(): boolean;
   refreshLobbyOverlay(): void;
+  /** 玩家等级涨了(docs/08 升级礼包走邮件):回读邮件 / 红点。 */
+  onPlayerLevelUp?(before: number, after: number): void;
 }
 
 /**
@@ -56,6 +58,7 @@ export class LobbyProfileLoader {
     if (this.host.isLobbyViewActive()) {
       this.host.refreshLobbyOverlay();
     }
+    const levelBefore = this.profileState.currentProfile().playerLevel ?? 0;
     try {
       const profile = await this.profileApi.lobbyProfile();
       if (!this.isCurrentRequest(ticket, userId)) {
@@ -64,6 +67,10 @@ export class LobbyProfileLoader {
       // 如果用户已经重新登录，旧请求返回的数据直接丢弃。
       if (!this.profileState.applyLoadedProfile(userId, profile)) {
         return;
+      }
+      const levelAfter = profile.playerLevel ?? 0;
+      if (levelBefore > 0 && levelAfter > levelBefore) {
+        this.host.onPlayerLevelUp?.(levelBefore, levelAfter);
       }
     } catch (error) {
       if (!this.isCurrentRequest(ticket, userId)) {

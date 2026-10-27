@@ -2580,7 +2580,10 @@ export class LobbyTownRenderer {
     label.outlineWidth = Math.max(2, P.S(3));
     const profile = this.host.currentLobbyProfile();
     const heroCap = profile.levelProgress?.maxHeroLevel ?? level + 10;
-    const sub = this.host.addChildLabel(node, 'Sub', `英雄等级上限提升至 Lv.${heroCap}`, 0, -P.S(38), P.S(20), rgba(246, 232, 200), new Size(P.S(420), P.S(28)));
+    // 跨过 5 的倍数:服务端投了升级礼包邮件(docs/08),副行改提示去邮箱领
+    const gotPack = Math.floor(level / 5) > Math.floor(previous / 5);
+    const subText = gotPack ? `升级礼包已送到邮箱 · 英雄等级上限 Lv.${heroCap}` : `英雄等级上限提升至 Lv.${heroCap}`;
+    const sub = this.host.addChildLabel(node, 'Sub', subText, 0, -P.S(38), P.S(20), gotPack ? rgba(255, 214, 120) : rgba(246, 232, 200), new Size(P.S(520), P.S(28)));
     sub.enableOutline = true;
     sub.outlineColor = rgba(0, 0, 0, 230);
     sub.outlineWidth = 2;
