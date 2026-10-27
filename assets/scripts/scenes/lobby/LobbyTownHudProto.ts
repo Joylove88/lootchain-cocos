@@ -74,6 +74,8 @@ export const TOWN_HUD_ASSETS = {
   icMail: `${HUD}/ic_mail/spriteFrame`,
   icTerminal: `${HUD}/ic_terminal/spriteFrame`,
   icSummon: `${HUD}/ic_summon/spriteFrame`,
+  /** 左实右淡的白色渐变条(程序生成,着色后当追踪条暗衬底) */
+  fadeBand: `${HUD}/fade_band/spriteFrame`,
   icGear: `${HUD}/ic_gear/spriteFrame`,
   icGift: `${HUD}/ic_gift/spriteFrame`,
   icNotice: `${HUD}/ic_notice/spriteFrame`,
@@ -108,6 +110,8 @@ export const TERMINAL_ASSETS = {
   cardPanel: 'ui/common/ref/dialog_frame/spriteFrame',
   bottomStrip: 'ui/common/ref/plate_dark/spriteFrame',
   btnClose: 'ui/common/ai/button_close/spriteFrame',
+  /** 虚化夜城背景(GPT 出,1870×841) */
+  background: `${T}/terminal_bg/spriteFrame`,
 } as const;
 export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_TILE_ICONS).concat(Object.values(TERMINAL_ASSETS));
 

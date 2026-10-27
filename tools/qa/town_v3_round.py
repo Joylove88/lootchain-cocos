@@ -5,11 +5,14 @@
 """
 import argparse
 import asyncio
+import json
 import os
 import subprocess
 import time
 
-from native_capture_screens import ROOT_JS, evaluate
+import websockets
+
+from native_capture_screens import ROOT_JS, WS
 
 ADB = ['adb', '-s', 'emulator-5554']
 PORT = 43086
@@ -19,8 +22,38 @@ TELEPORT = ("const tp = (x, y) => { const all = [t.leader, ...t.followers]; all.
             "t.trail = [new cc.Vec2(x - 400, y), new cc.Vec2(x, y)]; t.applyCamera(true); };")
 
 
+class Inspector:
+    """整轮只连一次 inspector:调试包每次 Debugger attached 后 0.2 秒左右都可能撞 gfx-validator 断言崩溃(10-27 logcat 实测),
+    按次连接一轮要 attach 几十次,几乎必崩。"""
+
+    def __init__(self) -> None:
+        self.loop = asyncio.new_event_loop()
+        self.ws = None
+        self.seq = 0
+
+    def _connect(self) -> None:
+        self.ws = self.loop.run_until_complete(websockets.connect(WS.format(port=PORT), max_size=None, open_timeout=10, ping_interval=None))
+
+    def call(self, expr: str) -> str:
+        if self.ws is None:
+            self._connect()
+        self.seq += 1
+        my = self.seq
+
+        async def run() -> str:
+            await self.ws.send(json.dumps({'id': my, 'method': 'Runtime.evaluate', 'params': {'expression': expr, 'returnByValue': True}}))
+            while True:
+                data = json.loads(await asyncio.wait_for(self.ws.recv(), timeout=20))
+                if data.get('id') == my:
+                    return json.dumps(data.get('result', {}).get('result', {}).get('value'))
+        return self.loop.run_until_complete(run())
+
+
+INSPECTOR = Inspector()
+
+
 def ev(body: str) -> str:
-    return asyncio.run(evaluate(PORT, f"(() => {{ {T} {TELEPORT} try {{ {body} }} catch (e) {{ return 'err ' + e.message; }} }})()"))
+    return INSPECTOR.call(f"(() => {{ {T} {TELEPORT} try {{ {body} }} catch (e) {{ return 'err ' + e.message; }} }})()")
 
 
 def shot(out: str, name: str) -> None:
@@ -35,8 +68,9 @@ def wait_for(body: str, want: str, tries: int = 40, gap: float = 1.5) -> str:
     for _ in range(tries):
         try:
             res = ev(body)
-        except Exception as error:  # 应用刚启动 inspector 还没起来
+        except Exception as error:  # 应用刚启动 inspector 还没起来:下次重连
             res = f'exc {error}'
+            INSPECTOR.ws = None
         if want in res:
             return res
         time.sleep(gap)

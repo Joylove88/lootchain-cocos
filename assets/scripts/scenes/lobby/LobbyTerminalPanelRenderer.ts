@@ -1,6 +1,6 @@
 import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UITransform } from 'cc';
 import { rgba, LOBBY_C1812_RESOURCE_ICON_ASSETS, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
-import { mountRefSliced } from '../UiRefKit';
+import { REF_ORNATE_FRAME, mountRefSliced } from '../UiRefKit';
 import { TERMINAL_ASSETS, TERMINAL_TILE_ICONS as TILE_ICONS, TOWN_HUD_PROTO, TOWN_HUD_ASSETS, mountRingBase, type TownProtoFrame } from './LobbyTownHudProto';
 import { resolveHeroAvatarPath } from './HeroHeadCrop';
 
@@ -40,8 +40,11 @@ export class LobbyTerminalPanelRenderer {
     const root = this.host.createUiNode(LobbyTerminalPanelRenderer.NODE_NAME);
     root.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     root.addComponent(BlockInputEvents);
-    const dim = root.addComponent(Graphics);
-    dim.fillColor = rgba(8, 7, 9, 232);
+    // 背景:虚化的夜城(原型终端背后是模糊城景),按 1870:841 铺满再压一层暗;缺图时纯暗底
+    const cover = Math.max(layout.width / TOWN_HUD_PROTO.w, layout.height / TOWN_HUD_PROTO.h);
+    const bg = this.host.addSprite('Bg', TERMINAL_ASSETS.background, 0, 0, TOWN_HUD_PROTO.w * cover, TOWN_HUD_PROTO.h * cover, root);
+    const dim = this.host.addChildPlainNode(root, 'Dim', 0, 0, layout.width, layout.height).addComponent(Graphics);
+    dim.fillColor = rgba(8, 7, 9, bg ? 120 : 232);
     dim.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     dim.fill();
     this.renderHeader(root, layout, P);
@@ -227,6 +230,8 @@ export class LobbyTerminalPanelRenderer {
           g.roundRect(-tw / 2, -th / 2, tw, th, P.S(8));
           g.fill();
         }
+        // 细金线花边(现成 ornate_frame_thin,四角小饰件)压在暗底上,接近原型格子的边饰
+        mountRefSliced(this.host, node, 'Ornate', REF_ORNATE_FRAME, 0, 0, tw, th);
         // 底部标题暗条(现成 stat_bar)
         mountRefSliced(this.host, node, 'Strip', { path: TERMINAL_ASSETS.tileStrip, w: 900, h: 85, inset: [60, 60, 30, 30] }, 0, -th / 2 + P.S(25), tw - P.S(14), P.S(38));
         this.addFit(node, TILE_ICONS[tile.key], 0, P.S(18), P.S(134), P.S(124));

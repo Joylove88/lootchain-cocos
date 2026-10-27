@@ -222,6 +222,51 @@ const CITY: WorldMapDef = {
   exits: [],
 };
 
+/**
+ * 灰岩荒原贴地装饰(docs/51,10-27 用户:「地形只有个平面地板图,参考原型更真实」):
+ * 固定种子撒点——裂纹 / 碎石贴地,枯草 / 小石 / 岩堆 / 枯灌 / 骨堆立在地上(不挡路),大岩群沿上下边缘围一圈;
+ * 避开营地、传送阵、出生点,一局一局位置不变。
+ */
+function grayDecals(): WorldMapProp[] {
+  let seed = 20261027;
+  const rand = (): number => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const walk = { left: -2250, right: 2250, bottom: -1250, top: 1100 };
+  const keepOut: Array<[number, number, number]> = [[-1800, -420, 300], [-1900, -100, 220], [-800, 300, 300], [300, -380, 300], [1150, 450, 300], [1850, -350, 260]];
+  const free = (x: number, y: number): boolean => keepOut.every(([cx, cy, r]) => Math.hypot(x - cx, (y - cy) * 1.3) > r);
+  const out: WorldMapProp[] = [];
+  const scatter = (key: string, count: number, width: number, opts: { flat?: boolean; jitter?: number } = {}): void => {
+    let placed = 0;
+    for (let tries = 0; placed < count && tries < count * 20; tries += 1) {
+      const x = walk.left + 80 + rand() * (walk.right - walk.left - 160);
+      const y = walk.bottom + 80 + rand() * (walk.top - walk.bottom - 160);
+      if (!free(x, y)) {
+        continue;
+      }
+      const w = width * (1 - (opts.jitter ?? 0.25) + rand() * (opts.jitter ?? 0.25) * 2);
+      out.push({ asset: worldAsset(key), x: Math.round(x), y: Math.round(y), width: Math.round(w), ...(opts.flat ? { flat: true, tilt: 0.55 } : {}) });
+      placed += 1;
+    }
+  };
+  scatter('fld_g_crack', 16, 420, { flat: true });
+  scatter('fld_g_gravel', 16, 300, { flat: true });
+  scatter('fld_g_grass_l', 18, 130);
+  scatter('fld_g_grass_s', 24, 86);
+  scatter('fld_g_stones', 16, 120);
+  scatter('fld_g_rocks_s', 12, 170);
+  scatter('fld_g_boulders_m', 8, 280);
+  scatter('fld_g_shrub', 8, 160);
+  scatter('fld_g_bones', 3, 150);
+  // 上下边缘一圈大岩群(挡路,地图边界看起来是山石而不是空地)
+  for (let x = walk.left - 100; x <= walk.right + 100; x += 620) {
+    out.push({ asset: worldAsset('fld_g_boulders_l'), x: Math.round(x + (rand() - 0.5) * 160), y: walk.top + 120, width: 520, block: { w: 380, d: 80 } });
+    out.push({ asset: worldAsset('fld_g_boulders_l'), x: Math.round(x + 300 + (rand() - 0.5) * 160), y: walk.bottom - 60, width: 520, block: { w: 380, d: 80 } });
+  }
+  return out;
+}
+
 const GRAY: WorldMapDef = {
   code: 'GRAY',
   name: '灰岩荒原',
@@ -231,7 +276,8 @@ const GRAY: WorldMapDef = {
   walk: { left: -2250, right: 2250, bottom: -1250, top: 1100 },
   spawn: { x: -1900, y: -100 },
   ground: worldAsset('ground_wasteland'),
-  groundTile: 360,
+  // 10-27 换写实龟裂地面(1024 无缝):一格 900 世界单位,裂纹块大小接近原型
+  groundTile: 900,
   buildings: [],
   npcs: [],
   props: [
@@ -240,6 +286,7 @@ const GRAY: WorldMapDef = {
     ...[[-1100, 600], [700, -700], [1700, 300]].map(([x, y]) => ({ asset: worldAsset('fld_ruin_wall'), x, y, width: 420, block: { w: 320, d: 60 } })),
     ...[[-1300, -500], [0, 700], [2100, -400]].map(([x, y]) => ({ asset: worldAsset('fld_dead_tree'), x, y, width: 320, block: { w: 80, d: 40 } })),
     { asset: worldAsset('fld_bandit_camp'), x: 1250, y: 820, width: 620, block: { w: 480, d: 110 } },
+    ...grayDecals(),
   ],
   lamps: [],
   lampAsset: TOWN_LAMP_ASSET,

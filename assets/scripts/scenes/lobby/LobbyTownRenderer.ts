@@ -504,14 +504,14 @@ export class LobbyTownRenderer {
       }
     }
     if (!root.getChildByName('Vignette')) {
-      // 地图外沿压暗:四周一圈暗色渐变矩形(程序画),镜头到边时不露硬边
+      // 地图外沿压暗:四周一圈渐变(16 层低透明度叠出平滑过渡;10-27 用户:原来 6 层 × 70 叠成一条硬黑边)
       const g = this.host.addChildPlainNode(root, 'Vignette', 0, 0, def.width, def.height).addComponent(Graphics);
-      const band = 260;
+      const band = 220;
       const w = def.width;
       const h = def.height;
-      for (let i = 0; i < 6; i += 1) {
-        const inset = (band / 6) * i;
-        g.fillColor = rgba(4, 4, 8, 70);
+      for (let i = 0; i < 16; i += 1) {
+        const inset = (band / 16) * i;
+        g.fillColor = rgba(4, 4, 8, 9);
         g.rect(-w / 2 + inset, h / 2 - band + inset, w - inset * 2, band - inset);
         g.rect(-w / 2 + inset, -h / 2, w - inset * 2, band - inset);
         g.rect(-w / 2, -h / 2, band - inset, h);
@@ -1156,8 +1156,9 @@ export class LobbyTownRenderer {
     if (!world || !world.isValid || !layout) {
       return;
     }
-    const viewW = layout.stageWidth / this.k;
-    const viewH = layout.stageHeight / this.k;
+    // 用整屏宽高夹镜头(舞台比屏幕窄:手机刘海安全区),否则屏幕边缘会露出地图外的一条(10-27 用户:野外右侧黑边)
+    const viewW = Math.max(layout.width, layout.stageWidth) / this.k;
+    const viewH = Math.max(layout.height, layout.stageHeight) / this.k;
     const target = this.leader ?? this.def.spawn;
     const maxX = Math.max(0, this.def.width / 2 - viewW / 2);
     const maxY = Math.max(0, this.def.height / 2 - viewH / 2);
@@ -1309,7 +1310,7 @@ export class LobbyTownRenderer {
     const root = this.promptRoot;
     if (root && root.isValid && key !== this.nearKey) {
       this.nearKey = key;
-      root.removeAllChildren();
+      root.destroyAllChildren();
       const layout = this.hudLayout;
       if (layout && list.length > 0) {
         const P = townProtoFrame(layout);
@@ -1587,19 +1588,42 @@ export class LobbyTownRenderer {
     bg.circle(0, 0, holeR);
     bg.fill();
     const def = this.def;
-    // 圆里约看 2400 世界单位(原型:主城一圈建筑图标都在圆里;野外能看到几群怪)
-    const mapScale = (holeR * 2) / 2400;
+    // 圆里看多大范围:主城 3200 世界单位(原型一圈建筑图标都在圆里)、野外 2400(能看到几群怪)
+    const mapScale = (holeR * 2) / (field ? 2400 : 3200);
     this.minimapScale = mapScale;
     const content = this.host.addChildPlainNode(area, 'Content', 0, 0, def.width * mapScale, def.height * mapScale);
     this.minimapContent = content;
     const wx = def.waypoint.x * mapScale;
     const wy = def.waypoint.y * mapScale;
     const cityBg = this.mapCode === 'CITY' && !!this.host.addSprite('CityBg', TOWN_HUD_ASSETS.minimapCity, wx, wy, def.width * mapScale * 1.04, def.width * mapScale * 1.04, content);
+    if (cityBg) {
+      // 主城底图偏亮偏黄:压一层暗色(原型是暗色广场,金色建筑图标才跳得出来)
+      const shade = this.host.addChildPlainNode(content, 'CityShade', 0, 0, def.width * mapScale * 1.1, def.height * mapScale * 1.1).addComponent(Graphics);
+      shade.fillColor = rgba(12, 12, 16, 120);
+      shade.rect(-def.width * mapScale * 0.55, -def.height * mapScale * 0.55, def.width * mapScale * 1.1, def.height * mapScale * 1.1);
+      shade.fill();
+    } else {
+      // 野外:用本图地面贴图平铺成地形底(原型是真实地表缩略,不是纯色),再压暗让标记跳出来
+      this.mountMinimapTerrain(content, def, mapScale);
+    }
     const marks = this.host.addChildPlainNode(content, 'Marks', 0, 0, def.width * mapScale, def.height * mapScale).addComponent(Graphics);
     if (!cityBg) {
-      marks.fillColor = rgba(58, 54, 46, 235);
-      marks.rect(-def.width / 2 * mapScale, -def.height / 2 * mapScale, def.width * mapScale, def.height * mapScale);
-      marks.fill();
+      // 地标:岩堆 / 残墙 / 枯树画成小三角(原型小地图上的灰三角)
+      marks.fillColor = rgba(150, 140, 120, 200);
+      // 只标大件(岩群 / 残墙 / 枯树 / 营帐);碎石枯草这些贴地装饰不标,否则满图三角
+      for (const prop of def.props) {
+        if (prop.flat || prop.width < 250) {
+          continue;
+        }
+        const px = prop.x * mapScale;
+        const py = prop.y * mapScale;
+        const t = P.S(5);
+        marks.moveTo(px, py + t);
+        marks.lineTo(px + t, py - t * 0.7);
+        marks.lineTo(px - t, py - t * 0.7);
+        marks.close();
+        marks.fill();
+      }
       marks.strokeColor = rgba(150, 126, 84, 120);
       marks.lineWidth = Math.max(1, P.S(1.5));
       marks.circle(wx, wy, P.S(16));
@@ -1618,7 +1642,7 @@ export class LobbyTownRenderer {
       const icon = TOWN_MINIMAP_BUILDING_ICONS[building.key];
       const bx = building.x * mapScale;
       const by = (building.y + building.footprint.d / 2) * mapScale;
-      if (!icon || !this.addFitSprite(`Icon_${building.key}`, icon, bx, by, P.S(26), P.S(26), content)) {
+      if (!icon || !this.addFitSprite(`Icon_${building.key}`, icon, bx, by, P.S(30), P.S(30), content)) {
         marks.fillColor = rgba(214, 176, 100, 240);
         marks.rect(bx - P.S(4), by - P.S(3), P.S(8), P.S(6));
         marks.fill();
@@ -1655,6 +1679,44 @@ export class LobbyTownRenderer {
     this.host.applyImageButtonFeedback(node, 1.02, 0.98);
     this.minimapLastPos = null;
     this.updateMinimap();
+  }
+
+  /**
+   * 小地图地形底(原型样式:灰色地面 + 深色岩块团,不是贴图缩略——缩小后的地面贴图只剩噪点):
+   * 圆里底色铺成岩色(地图外看起来是山石);可走区域铺灰;大件装饰处画几团叠加的深色圆当岩块。
+   */
+  private mountMinimapTerrain(content: Node, def: WorldMapDef, mapScale: number): void {
+    const w = def.width * mapScale;
+    const h = def.height * mapScale;
+    const g = this.host.addChildPlainNode(content, 'Terrain', 0, 0, w, h).addComponent(Graphics);
+    const big = Math.max(w, h) * 2;
+    g.fillColor = rgba(34, 33, 32, 255);
+    g.rect(-big / 2, -big / 2, big, big);
+    g.fill();
+    const wl = def.walk.left * mapScale;
+    const wr = def.walk.right * mapScale;
+    const wb = def.walk.bottom * mapScale;
+    const wt = def.walk.top * mapScale;
+    g.fillColor = rgba(84, 81, 76, 255);
+    g.roundRect(wl, wb, wr - wl, wt - wb, Math.min(wr - wl, wt - wb) * 0.08);
+    g.fill();
+    // 固定种子,每次画出来一样
+    let seed = 7;
+    const rand = (): number => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    g.fillColor = rgba(46, 45, 43, 255);
+    for (const prop of def.props) {
+      if (prop.flat || prop.width < 160) {
+        continue;
+      }
+      const r = prop.width * mapScale * 0.42;
+      for (let i = 0; i < 3; i += 1) {
+        g.circle(prop.x * mapScale + (rand() - 0.5) * r * 1.4, prop.y * mapScale + (rand() - 0.5) * r, r * (0.6 + rand() * 0.5));
+      }
+    }
+    g.fill();
   }
 
   /** 按素材原比例塞进 boxW × boxH 的框(图标宽高比各不相同,直接拉伸会变形)。 */
@@ -2266,6 +2328,11 @@ export class LobbyTownRenderer {
     const left = P.L(44);
     const node = this.host.addChildPlainNode(hud, 'LobbyWorldQuestTracker', left + w / 2, top - h / 2, w, h);
     this.trackerBottomY = top - h;
+    // 暗色衬底:左实右淡的渐变条,比文字区上下各多出一点(原型追踪条下面压着一层暗影)
+    const band = this.host.addSprite('Backing', TOWN_HUD_ASSETS.fadeBand, -P.S(20), 0, w + P.S(110), h + P.S(40), node);
+    if (band) {
+      band.color = rgba(6, 5, 8, 150);
+    }
     let y = h / 2;
     rows.forEach((row, index) => {
       const lineY = y - P.S(18);
@@ -2745,8 +2812,12 @@ export class LobbyTownRenderer {
     const ry = rx * 0.34;
     const spin = (now / 1000) * 0.9;
     g.clear();
-    g.strokeColor = rgba(240, 60, 48, 220);
-    g.lineWidth = 3;
+    // 底下一层很淡的红色地光,让锁定圈在暗地面上跳出来(原型锁定圈很醒目)
+    g.fillColor = rgba(200, 30, 20, 38);
+    g.ellipse(0, 0, rx, ry);
+    g.fill();
+    g.strokeColor = rgba(246, 64, 50, 240);
+    g.lineWidth = 4.5;
     // 四段弧(留缺口转起来才看得出在转)
     for (let i = 0; i < 4; i += 1) {
       const a0 = spin + (i * Math.PI) / 2 + 0.18;
@@ -2766,16 +2837,16 @@ export class LobbyTownRenderer {
     g.fillColor = rgba(240, 60, 48, 235);
     for (let i = 0; i < 4; i += 1) {
       const a = -spin + (i * Math.PI) / 2;
-      const cx = Math.cos(a) * (rx + 10);
-      const cy = Math.sin(a) * (ry + 4);
+      const cx = Math.cos(a) * (rx + 12);
+      const cy = Math.sin(a) * (ry + 5);
       const ix = -Math.cos(a);
       const iy = -Math.sin(a) * 0.34;
       const il = Math.max(0.01, Math.hypot(ix, iy));
       const ux = ix / il;
       const uy = iy / il;
-      g.moveTo(cx + ux * 9, cy + uy * 9);
-      g.lineTo(cx - uy * 7, cy + ux * 7);
-      g.lineTo(cx + uy * 7, cy - ux * 7);
+      g.moveTo(cx + ux * 12, cy + uy * 12);
+      g.lineTo(cx - uy * 9, cy + ux * 9);
+      g.lineTo(cx + uy * 9, cy - ux * 9);
       g.close();
       g.fill();
     }
@@ -2966,8 +3037,10 @@ export class LobbyTownRenderer {
     g.circle(0, 0, heavy ? 8 : 5);
     g.fill();
     node.setSiblingIndex(root.children.length - 1);
-    node.active = false;
-    tween(node).delay(0.16).call(() => { node.active = true; }).to(travel / 1000, { position: new Vec3(ex, ey, 0) }).call(() => node.isValid && node.destroy()).start();
+    // 出手前 0.16 秒先藏起来:用不透明度,不用 active(原生端 Graphics 停用再启用会出问题)
+    const fade = node.addComponent(UIOpacity);
+    fade.opacity = 0;
+    tween(node).delay(0.16).call(() => { fade.opacity = 255; }).to(travel / 1000, { position: new Vec3(ex, ey, 0) }).call(() => node.isValid && node.destroy()).start();
   }
 
   private partyMembers(): TownActor[] {
@@ -3508,12 +3581,12 @@ export class LobbyTownRenderer {
       this.combatButtons.push({ node, cd, mask, index, size, drawn: -1 });
     };
     const A = TOWN_HUD_ASSETS;
-    mk('LobbyFieldAttack', 1668, 690, 165, true, A.icSword, 0.56, 'J', () => this.leaderAttack(), -1);
-    mk('LobbyFieldSkill0', 1560, 598, 92, false, A.icSlash, 0.74, 'K', () => this.leaderSkill(0), 0);
-    mk('LobbyFieldSkill1', 1666, 520, 92, false, A.icDash, 0.76, 'L', () => this.leaderSkill(1), 1);
-    mk('LobbyFieldSkill2', 1773, 590, 92, false, A.icWhirl, 0.74, 'I', () => this.leaderSkill(2), 2);
-    mk('LobbyFieldDodge', 1522, 712, 84, false, A.icDodge, 0.7, 'Shift', () => this.leaderDodge(), -2);
-    mk('LobbyFieldTarget', 1805, 700, 70, false, A.icTarget, 0.66, 'Tab', () => this.cycleLockTarget(), -3, '切换目标');
+    mk('LobbyFieldAttack', 1668, 690, 165, true, A.icSword, 0.62, 'J', () => this.leaderAttack(), -1);
+    mk('LobbyFieldSkill0', 1560, 598, 92, false, A.icSlash, 0.84, 'K', () => this.leaderSkill(0), 0);
+    mk('LobbyFieldSkill1', 1666, 520, 92, false, A.icDash, 0.86, 'L', () => this.leaderSkill(1), 1);
+    mk('LobbyFieldSkill2', 1773, 590, 92, false, A.icWhirl, 0.84, 'I', () => this.leaderSkill(2), 2);
+    mk('LobbyFieldDodge', 1522, 712, 84, false, A.icDodge, 0.78, 'Shift', () => this.leaderDodge(), -2);
+    mk('LobbyFieldTarget', 1805, 700, 70, false, A.icTarget, 0.72, 'Tab', () => this.cycleLockTarget(), -3, '切换目标');
   }
 
   private refreshCombatButtons(now: number): void {
@@ -3560,6 +3633,27 @@ export class LobbyTownRenderer {
   private renderLeaderBar(hud: Node, layout: UiLayout): void {
     this.leaderBar = null;
     const leader = this.leader;
+    // 野外队长脚下一圈青色细环(原型:一眼认出自己操控的是谁);主城不画。
+    // 不用 active 开关:原生端 Graphics 停用会销毁绘制数据,再启用后调试包切图触发 gfx-validator 断言 → 按地图重画 / 清空
+    if (leader && leader.node.isValid) {
+      let ring = leader.node.getChildByName('LeaderRing');
+      if (!ring) {
+        ring = this.host.addChildPlainNode(leader.node, 'LeaderRing', 0, 0, 160, 60);
+        ring.setSiblingIndex(0);
+        ring.addComponent(Graphics);
+      }
+      const g = ring.getComponent(Graphics)!;
+      g.clear();
+      if (this.def.camps.length > 0) {
+        g.fillColor = rgba(80, 200, 255, 34);
+        g.ellipse(0, 0, 56, 18);
+        g.fill();
+        g.strokeColor = rgba(110, 215, 255, 210);
+        g.lineWidth = 3;
+        g.ellipse(0, 0, 56, 18);
+        g.stroke();
+      }
+    }
     if (this.def.camps.length === 0 || !leader) {
       return;
     }
@@ -3740,8 +3834,11 @@ export class LobbyTownRenderer {
     }
     const target = this.lockTarget;
     const show = !!target && target.camp.elite && !target.dead;
-    if (bar.node.active !== show) {
-      bar.node.active = show;
+    // 显隐用不透明度(节点里有 Graphics,原生端 active 开关会销毁绘制数据,见队长脚环注释)
+    const opacity = bar.node.getComponent(UIOpacity) ?? bar.node.addComponent(UIOpacity);
+    const want = show ? 255 : 0;
+    if (opacity.opacity !== want) {
+      opacity.opacity = want;
     }
     if (!show || !target) {
       return;

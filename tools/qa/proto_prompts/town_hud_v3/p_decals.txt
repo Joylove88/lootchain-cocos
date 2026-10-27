@@ -1,0 +1,13 @@
+Create a sprite sheet of 10 ground decoration pieces for a dark-fantasy isometric action RPG grey rock wasteland map, viewed from the same 3/4 top-down camera as the attached reference crops (cut from our approved mockup), arranged in a 4 columns x 3 rows grid (last two cells empty):
+1. a large cluster of jagged dark grey boulders and rock slabs (cliff-like outcrop), wide;
+2. a medium cluster of grey boulders;
+3. a small pile of 3 to 4 rocks;
+4. two or three small flat stones;
+5. a big tuft of dry yellow-brown dead grass;
+6. a small tuft of dry dead grass;
+7. a twisted dead thorny shrub (small, leafless);
+8. a dark ground crack patch (a network of deep dry earth cracks, flat on the ground);
+9. a scattered gravel and pebble patch (flat on the ground);
+10. a small dried bone pile with a horned skull.
+Realistic hand-painted game assets matching the reference, finely detailed, desaturated cool grey-brown palette, soft light from the top-left with a soft contact shadow under each standing object (shadow part of the object). NO grain noise, NOT cartoon. No text.
+Output: ONE image with a fully TRANSPARENT background (real alpha, no checkerboard), each piece separate and centered in its own grid cell with generous empty space (at least 80px) between pieces.
