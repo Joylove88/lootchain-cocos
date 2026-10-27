@@ -12,12 +12,64 @@ import {
   Sprite,
   SpriteFrame,
   UITransform,
+  VerticalTextAlignment,
   Vec3,
   resources,
 } from 'cc';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
-import { mountRefHeaderBand, mountRefPlate, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW_SELECTED, REF_SECTION_EMBLEM, refCardFrameK } from '../UiRefKit';
+import { mountRefHeaderBand, mountRefPlate, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_INFO_BANNER, REF_KIT, REF_SECTION_EMBLEM, refCardFrameK, type RefKitItem } from '../UiRefKit';
+import { fitButtonLabel } from '../UiPrimitiveFactory';
+import { townProtoFrame } from './LobbyTownHudProto';
+
+/** 服务端邮件列表上限(PlayerMailServiceImpl.MAX_LIST 50),收件箱头「N / 50」用。 */
+const MAIL_LIST_MAX = 50;
+
+/** 邮箱 1:1 素材:全部从原型 proto_mail_v1 裁出(tools/qa/mail_proto_extract.py),九宫格 inset 按素材像素。 */
+const MAIL_DIR = 'ui/town/mail';
+const MAIL_KIT = {
+  panel: { path: `${MAIL_DIR}/panel/spriteFrame`, w: 993, h: 654, inset: [60, 60, 60, 60] } as RefKitItem,
+  btnPrimary: { path: `${MAIL_DIR}/btn_primary/spriteFrame`, w: 296, h: 82, inset: [36, 36, 0, 0] } as RefKitItem,
+  btnSecondary: { path: `${MAIL_DIR}/btn_secondary/spriteFrame`, w: 266, h: 82, inset: [36, 36, 0, 0] } as RefKitItem,
+  rowSelected: { path: `${MAIL_DIR}/row_selected/spriteFrame`, w: 616, h: 121, inset: [40, 40, 30, 30] } as RefKitItem,
+  rowNormal: { path: `${MAIL_DIR}/row_normal/spriteFrame`, w: 616, h: 121, inset: [40, 40, 30, 30] } as RefKitItem,
+  pill: { path: `${MAIL_DIR}/pill/spriteFrame`, w: 139, h: 44, inset: [20, 20, 0, 0] } as RefKitItem,
+  tag: { path: `${MAIL_DIR}/tag/spriteFrame`, w: 80, h: 41, inset: [16, 16, 0, 0] } as RefKitItem,
+  slot: { path: `${MAIL_DIR}/slot/spriteFrame`, w: 154, h: 154, inset: [30, 30, 30, 30] } as RefKitItem,
+  envelope: `${MAIL_DIR}/envelope/spriteFrame`,
+  envelopeRead: `${MAIL_DIR}/envelope_read/spriteFrame`,
+  divider: `${MAIL_DIR}/divider/spriteFrame`,
+  attachLine: `${MAIL_DIR}/attach_line/spriteFrame`,
+  close: `${MAIL_DIR}/close/spriteFrame`,
+};
+const MAIL_KIT_PATHS = [MAIL_KIT.panel.path, MAIL_KIT.btnPrimary.path, MAIL_KIT.btnSecondary.path, MAIL_KIT.rowSelected.path, MAIL_KIT.rowNormal.path, MAIL_KIT.pill.path, MAIL_KIT.tag.path, MAIL_KIT.slot.path,
+  MAIL_KIT.envelope, MAIL_KIT.envelopeRead, MAIL_KIT.divider, MAIL_KIT.attachLine, MAIL_KIT.close];
+
+/** 邮件时间:今天 → 「今天 20:14」,昨天 → 「昨天」,其余 → 「10-20」;full = 「2026-10-28 20:14」。 */
+function formatMailTime(iso: string | null, relative: boolean): string {
+  if (!iso) {
+    return '';
+  }
+  const t = new Date(iso.replace(' ', 'T'));
+  if (Number.isNaN(t.getTime())) {
+    return iso;
+  }
+  const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
+  const full = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+  if (!relative) {
+    return full;
+  }
+  const now = new Date();
+  const day = (x: Date): number => Math.floor((x.getTime() - x.getTimezoneOffset() * 60000) / 86400000);
+  const diff = day(now) - day(t);
+  if (diff <= 0) {
+    return `今天 ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+  }
+  if (diff === 1) {
+    return '昨天';
+  }
+  return `${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+}
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { addPhoneDialogTitle, PHONE_DIALOG_CONTENT_PAD, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import type { PlayerMailVO, PlayerQuestSummaryVO, PlayerQuestVO, QuestRewardItemVO } from '../../types/QuestTypes';
@@ -103,6 +155,11 @@ export interface LobbyQuestMailHost {
   setLobbyQuestTab(tab: 'DAILY' | 'ACHIEVE'): void;
   claimLobbyMail(mailId: number): void;
   claimAllLobbyMails(): void;
+  /** 邮箱重做(2026-10-28):选中 / 删除 */
+  selectLobbyMail(mailId: number): void;
+  currentLobbyMailSelectedId(): number | null;
+  deleteLobbyMail(mailId: number): void;
+  deleteReadLobbyMails(): void;
   currentLobbyQuestState(): { loading: boolean; error: string; summary: PlayerQuestSummaryVO | null; tab: 'DAILY' | 'ACHIEVE'; claiming: string | null };
   currentLobbyMailState(): { loading: boolean; error: string; mails: PlayerMailVO[]; claiming: number | null };
 }
@@ -1016,16 +1073,22 @@ export class LobbyQuestMailPanelRenderer {
   }
 
   /**
-   * 手机横屏全屏邮件(2026-10-02 用户「横屏模式下弹框都调整成全屏」):公共全屏框 + 标题带;
-   * 2026-10-04 美化(bt_mail_phone_v1 / bt2_quest_refine):与任务页同款——素材关闭钮、封数小结、列表井、素材行底、
-   * 附件小牌 + 素材领取钮;邮件行放进 Mask+ScrollView,封数多时上下滑动;一键领取贴底居中;
-   * 邮件少时列表下方补「没有更多邮件」收尾 + 淡信封水印,不留一大块空黑。
+   * 邮箱重做(docs/15 2026-10-28 用户:「没有层次分明」→ 原型 proto_mail_v1,1870×841,1:1):
+   * 左栏收件箱列表(每封一张卡:信封徽 + 未读红点 / 标题 / 发件人·时间 / 「附件」标签;选中的卡亮金边),底部「删除已读」「一键领取」;
+   * 右栏选中邮件详情(标题 / 发件人·时间·有效期 / 金线 / 正文 / 「附件」方格 + 数量 / 「删除」「领取附件」)。
+   * 坐标 = 原型像素 × u(u = 舞台高 / 841),左栏贴左、右栏贴右;选中即已读(红点消失),未读红点不再在打开时一次清光。
    */
   private renderMailPanelPhone(layout: UiLayout): void {
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
     const { width: panelWidth, height: panelHeight } = resolvePhoneDialogSize(layout);
     const state = this.host.currentLobbyMailState();
+    const P = townProtoFrame(layout);
+    // 原型坐标 → 面板局部坐标
+    const X = (px: number): number => P.L(px) - centerX;
+    const XR = (px: number): number => P.R(px) - centerX;
+    const Y = (py: number): number => P.Y(py) - centerY;
+    const S = (v: number): number => P.S(v);
 
     const dim = this.mountDim('LobbyMailDim', centerX, centerY, layout, () => this.host.closeLobbyMailPanel());
     const group = this.host.createUiNode('LobbyMailSceneContent');
@@ -1035,72 +1098,49 @@ export class LobbyQuestMailPanelRenderer {
     this.lastMailNodes = [dim, group];
     const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelWidth, panelHeight);
     drawPhoneDialogFrame(this.host, panel, panelWidth, panelHeight, PHONE_HEADER_H, { bare: true, coverW: layout.width + Math.abs(centerX) * 2, coverH: layout.height + Math.abs(centerY) * 2 });
-    this.addPhoneHeader(panel, '邮件', panelWidth, panelHeight, () => this.host.closeLobbyMailPanel());
+    addPhoneDialogTitle(this.host, panel, panelWidth, panelHeight, '邮件', 6 + PHONE_HEADER_H / 2, 1.05, () => this.host.closeLobbyMailPanel());
+    const closeBtn = this.host.addChildPlainNode(panel, 'CloseBtn', XR(1830), Y(45), S(84), S(84));
+    if (!this.host.addSprite('Art', MAIL_KIT.close, 0, 0, S(84), S(84), closeBtn)) {
+      this.host.addSprite('Art', QUEST_UI_ASSETS.close, 0, 0, S(74) * (155 / 161), S(74), closeBtn);
+    }
+    closeBtn.addComponent(Button);
+    closeBtn.on(Button.EventType.CLICK, () => this.host.closeLobbyMailPanel(), this);
+    this.host.applyImageButtonFeedback(closeBtn, 1.1, 0.92);
 
-    const outerW = panelWidth - PHONE_DIALOG_CONTENT_PAD * 2;
-    const headerBottom = panelHeight / 2 - 6 - PHONE_HEADER_H;
-    const anyClaimable = state.mails.some((mail) => !mail.claimed && mail.attachments.length > 0);
-    // 列表框(顶部暗红标题带 = 小结行:左封数 / 未读,右附件提示)→ 底部(一键领取 或 标语)
-    const wellTop = headerBottom - 14;
-    const bandH = 52;
-    const footerY = -panelHeight / 2 + 30;
-    const listBottom = footerY + 24;
-    const wellH = wellTop - listBottom;
-    const bandY = this.drawPhoneListWell(panel, 'MailListFrame', 0, listBottom + wellH / 2, outerW, wellH, bandH);
-    const captionY = listBottom + wellH / 2 + bandY;
-    const listTop = captionY - bandH / 2 - 6;
-    const listHeight = listTop - listBottom;
-    const hintY = listBottom + listHeight / 2;
-
-    // 首开素材闸门(同任务页):没到齐只画框 +「读取中」
-    const artPaths = [
-      QUEST_UI_ASSETS.rowBg, QUEST_UI_ASSETS.mailIcon, QUEST_UI_ASSETS.close, QUEST_UI_ASSETS.btnClaim, QUEST_UI_ASSETS.btnDisabled,
-      QUEST_UI_ASSETS.titleDividerLeft, QUEST_UI_ASSETS.titleDividerRight, QUEST_UI_ASSETS.dividerLeft, QUEST_UI_ASSETS.dividerRight,
-    ];
-    state.mails.forEach((mail) => mail.attachments.slice(0, 3).forEach((item) => {
+    // 首开素材闸门:原型裁件 + 附件图标到齐再画
+    const artPaths = [...MAIL_KIT_PATHS, QUEST_UI_ASSETS.mailIcon];
+    state.mails.forEach((mail) => mail.attachments.forEach((item) => {
       const icon = resolveRewardIcon(item);
       if (icon) {
         artPaths.push(icon.path);
       }
     }));
+    const hintY = Y(420);
     if (this.artPending(artPaths, () => this.rerenderMailIfOpen(layout))) {
       this.centerHint(panel, '邮件读取中…', rgba(214, 196, 156, 235), 1.2, hintY);
       return;
     }
+    this.addPhoneFooterMotto(panel, Y(795), panelWidth);
 
-    if (state.mails.length > 0) {
-      const unread = state.mails.filter((mail) => !mail.read).length;
-      // 标题带:✦ 徽记 + 封数 / 未读(左);✦ 附件提示 + 一键领取(右,没有可领时灰态,原型)
-      const emblemH = 28;
-      const emblemW = emblemH / REF_SECTION_EMBLEM.aspect;
-      const leftX = -outerW / 2 + 40;
-      this.host.addSprite('MailCountEmblem', REF_SECTION_EMBLEM.path, leftX + emblemW / 2, captionY, emblemW, emblemH, panel);
-      const caption = this.host.addChildLabel(panel, 'MailCount', `共 ${state.mails.length} 封${unread > 0 ? ` · 未读 ${unread}` : ''}`, leftX + emblemW + 10, captionY, 22, rgba(255, 226, 160, 255), new Size(320, 30), HorizontalTextAlignment.LEFT);
-      caption.overflow = Label.Overflow.SHRINK;
-      caption.isBold = true;
-      this.outline(caption, 1, true);
-      const btnW = 168;
-      const btnH = 42;
-      const btnX = outerW / 2 - 34 - btnW / 2;
-      const claimAll = anyClaimable && state.claiming === null;
-      const btn = this.host.addChildPlainNode(panel, 'ClaimAll', btnX, captionY, btnW, btnH);
-      this.mountClaimButtonArt(btn, btnW, btnH, anyClaimable, !anyClaimable);
-      const btnLabel = this.host.addChildLabel(btn, 'Text', state.claiming === -1 ? '领取中…' : '一键领取', 0, 0, 21, anyClaimable ? rgba(255, 236, 190) : rgba(206, 199, 185), new Size(btnW * 0.64, btnH - 8));
-      btnLabel.overflow = Label.Overflow.SHRINK;
-      this.outline(btnLabel, 1, anyClaimable);
-      if (claimAll) {
-        btn.addComponent(Button);
-        btn.on(Button.EventType.CLICK, () => this.host.claimAllLobbyMails(), this);
-        this.host.applyImageButtonFeedback(btn, 1.04, 0.96);
+    // 两个暗铁金边面板:左 100..760、右 785..1770,y 105..745
+    const leftW = S(660);
+    const rightW = XR(1770) - X(785);
+    const panelsH = S(640);
+    const panelsY = Y(425);
+    const left = this.host.addChildPlainNode(panel, 'Inbox', X(100) + leftW / 2, panelsY, leftW, panelsH);
+    const right = this.host.addChildPlainNode(panel, 'Detail', X(785) + rightW / 2, panelsY, rightW, panelsH);
+    for (const [node, w] of [[left, leftW], [right, rightW]] as Array<[Node, number]>) {
+      if (!mountRefSliced(this.host, node, 'Bg', MAIL_KIT.panel, 0, 0, w, panelsH)) {
+        const g = node.addComponent(Graphics);
+        g.fillColor = rgba(10, 9, 10, 236);
+        g.roundRect(-w / 2, -panelsH / 2, w, panelsH, S(10));
+        g.fill();
+        g.strokeColor = rgba(196, 154, 86, 230);
+        g.lineWidth = Math.max(1, S(2));
+        g.roundRect(-w / 2, -panelsH / 2, w, panelsH, S(10));
+        g.stroke();
       }
-      const tipRight = btnX - btnW / 2 - 16;
-      const tip = this.host.addChildLabel(panel, 'MailTip', anyClaimable ? '有附件待领取' : '附件已全部领取', tipRight, captionY, 20, anyClaimable ? rgba(255, 214, 120, 255) : rgba(226, 210, 176, 240), new Size(260, 30), HorizontalTextAlignment.RIGHT);
-      tip.overflow = Label.Overflow.SHRINK;
-      this.outline(tip, 1, false);
-      const tipEmblemX = tipRight - (anyClaimable ? 6 : 7) * 20 - 14 - emblemW / 2;
-      this.host.addSprite('MailTipEmblem', REF_SECTION_EMBLEM.path, tipEmblemX, captionY, emblemW, emblemH, panel);
     }
-    this.addPhoneFooterMotto(panel, footerY, panelWidth);
 
     if (state.loading && state.mails.length === 0) {
       this.centerHint(panel, '邮件读取中…', rgba(214, 196, 156, 235), 1.2, hintY);
@@ -1110,67 +1150,269 @@ export class LobbyQuestMailPanelRenderer {
       this.centerHint(panel, `读取失败:${state.error}`, rgba(255, 150, 130, 235), 1.2, hintY);
       return;
     }
+
+    // ── 左栏:收件箱 ──
+    const lx = (px: number): number => X(px) - (X(100) + leftW / 2);
+    const ly = (py: number): number => Y(py) - panelsY;
+    const unread = state.mails.filter((mail) => !mail.read).length;
+    const head = this.host.addChildLabel(left, 'Head', `收件箱    ${state.mails.length} / ${MAIL_LIST_MAX}`, lx(150), ly(150), S(26), rgba(246, 230, 196, 255), new Size(S(300), S(34)), HorizontalTextAlignment.LEFT);
+    head.isBold = true;
+    this.outline(head, 1, true);
+    const pillW = S(136);
+    const pillH = S(42);
+    const pill = this.host.addChildPlainNode(left, 'UnreadPill', lx(658), ly(150), pillW, pillH);
+    if (!mountRefSliced(this.host, pill, 'Bg', MAIL_KIT.pill, 0, 0, pillW, pillH)) {
+      const pg = pill.addComponent(Graphics);
+      pg.fillColor = rgba(14, 11, 9, 240);
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, S(6));
+      pg.fill();
+      pg.strokeColor = rgba(214, 172, 96, 240);
+      pg.lineWidth = Math.max(1, S(1.5));
+      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, S(6));
+      pg.stroke();
+    }
+    const pillText = this.host.addChildLabel(pill, 'Text', unread > 0 ? `未读 ${unread}` : '全部已读', 0, 0, S(20), rgba(255, 226, 160, 255), new Size(pillW - S(12), pillH));
+    pillText.overflow = Label.Overflow.SHRINK;
+
+    const anyClaimable = state.mails.some((mail) => !mail.claimed && mail.attachments.length > 0);
+    const anyDeletable = state.mails.some((mail) => mail.read && (mail.claimed || mail.attachments.length === 0));
+    const busy = state.claiming !== null;
+    this.mountMailButton(left, 'DeleteRead', state.claiming === -2 ? '处理中…' : '删除已读', lx(270), ly(688), S(266), S(82), false, anyDeletable && !busy, S(28), anyDeletable && !busy ? () => this.host.deleteReadLobbyMails() : undefined);
+    this.mountMailButton(left, 'ClaimAll', state.claiming === -1 ? '领取中…' : '一键领取', lx(580), ly(688), S(296), S(82), true, anyClaimable && !busy, S(30), anyClaimable && !busy ? () => this.host.claimAllLobbyMails() : undefined);
+
+    let selected = state.mails.find((mail) => mail.mailId === this.host.currentLobbyMailSelectedId()) ?? null;
+    if (!selected && state.mails.length > 0) {
+      selected = state.mails[0];
+    }
+
     if (state.mails.length === 0) {
-      const empty = this.host.addSprite('EmptyIcon', QUEST_UI_ASSETS.mailIcon, 0, hintY + 40, 96, 96 * (110 / 112), panel);
+      const empty = this.host.addSprite('EmptyIcon', QUEST_UI_ASSETS.mailIcon, 0, ly(380), S(120), S(120) * (110 / 112), left);
       if (empty) {
-        empty.color = rgba(200, 196, 188, 220);
+        empty.color = rgba(200, 196, 188, 200);
       }
-      this.centerHint(panel, '暂无邮件', rgba(196, 182, 152, 220), 1.3, hintY - 38);
+      const label = this.host.addChildLabel(left, 'EmptyText', '暂无邮件', 0, ly(470), S(24), rgba(196, 182, 152, 220), new Size(S(300), S(34)));
+      label.overflow = Label.Overflow.SHRINK;
+    } else {
+      // 列表:行 610×115、行距 130,从 y 195 起;超过 3 封 Mask + ScrollView 上下滑
+      const rowW = S(610);
+      const rowH = S(115);
+      const pitch = S(130);
+      const listTop = ly(195);
+      const listBottom = ly(630);
+      const viewH = listTop - listBottom;
+      const listNode = this.host.addChildPlainNode(left, 'MailList', 0, (listTop + listBottom) / 2, rowW + S(8), viewH);
+      listNode.addComponent(Mask);
+      const contentHeight = Math.max(viewH, state.mails.length * pitch - (pitch - rowH));
+      const contentNode = this.host.addChildPlainNode(listNode, 'MailListContent', 0, 0, rowW + S(8), contentHeight);
+      contentNode.getComponent(UITransform)?.setAnchorPoint(0.5, 1);
+      contentNode.setPosition(0, viewH / 2, 0);
+      const scroll = listNode.addComponent(ScrollView);
+      scroll.content = contentNode;
+      scroll.horizontal = false;
+      scroll.vertical = true;
+      scroll.inertia = true;
+      scroll.elastic = true;
+      state.mails.forEach((mail, index) => {
+        this.addMailCard(contentNode, mail, -index * pitch - rowH / 2, rowW, rowH, mail === selected, S);
+      });
+      if (contentHeight > viewH) {
+        this.attachScrollHints(left, listNode, scroll, (listTop + listBottom) / 2, rowW + S(8), viewH, contentHeight, leftW / 2 - S(14));
+      }
+    }
+
+    // ── 右栏:详情 ──
+    const rx = (px: number): number => X(px) - (X(785) + rightW / 2);
+    const ry = (py: number): number => Y(py) - panelsY;
+    if (!selected) {
+      const mark = this.host.addSprite('DetailEmpty', QUEST_UI_ASSETS.mailIcon, 0, ry(380), S(150), S(150) * (110 / 112), right);
+      if (mark) {
+        mark.color = rgba(200, 196, 188, 150);
+      }
+      const label = this.host.addChildLabel(right, 'DetailEmptyText', '没有更多邮件', 0, ry(490), S(24), rgba(196, 182, 152, 220), new Size(S(300), S(34)));
+      label.overflow = Label.Overflow.SHRINK;
       return;
     }
-
-    // 列表:Mask + ScrollView 单列滚动(行距 106);放不下时同任务页:露半行 + 渐隐 + 滚动条
-    const rowW = outerW - 24;
-    const padTop = 5;
-    const viewH = listHeight - 8;
-    const basePitch = 106;
-    const fit = Math.max(1, Math.floor((viewH - padTop + 6) / basePitch));
-    const rowPitch = state.mails.length > fit ? (viewH - padTop) / (fit + 0.42) : basePitch;
-    const listY = listBottom + listHeight / 2 - 1;
-    const listNode = this.host.addChildPlainNode(panel, 'MailList', 0, listY, rowW + 8, viewH);
-    listNode.addComponent(Mask);
-    // 正文超过两行的邮件行加高(列表里就是全文,不截断、不缩成小字)
-    const metrics = state.mails.map((mail) => this.mailRowMetrics(mail, rowW, rowPitch - 8));
-    const used = padTop + metrics.reduce((sum, item) => sum + rowPitch + item.extraH, 0);
-    const contentHeight = Math.max(viewH, used + padTop - 8);
-    const contentNode = this.host.addChildPlainNode(listNode, 'MailListContent', 0, 0, rowW + 8, contentHeight);
-    contentNode.getComponent(UITransform)?.setAnchorPoint(0.5, 1);
-    contentNode.setPosition(0, viewH / 2, 0);
-    const scroll = listNode.addComponent(ScrollView);
-    scroll.content = contentNode;
-    scroll.horizontal = false;
-    scroll.vertical = true;
-    scroll.inertia = true;
-    scroll.elastic = true;
-    let cursor = -padTop;
-    state.mails.forEach((mail, index) => {
-      const rowH = rowPitch - 8 + metrics[index].extraH;
-      this.addMailRowPhone(contentNode, mail, cursor - rowH / 2, rowW, rowH, state.claiming, metrics[index]);
-      cursor -= rowH + 8;
-    });
-    this.attachScrollHints(panel, listNode, scroll, listY, rowW + 8, viewH, contentHeight, outerW / 2 - 6);
-
-    // 邮件少:最后一行下面收个尾(花饰 +「没有更多邮件」),余下空间放一枚很淡的信封水印
-    const spare = viewH - used;
-    if (spare >= 64) {
-      const endY = -used - 30;
-      const endLabel = this.host.addChildLabel(contentNode, 'MailEnd', '没有更多邮件', 0, endY, 22, rgba(226, 210, 176, 240), new Size(220, 30));
-      endLabel.overflow = Label.Overflow.SHRINK;
-      const divW = 120;
-      const divGap = 84 + divW / 2;
-      const divL = this.host.addSprite('MailEndDivL', QUEST_UI_ASSETS.dividerLeft, -divGap, endY, divW, divW * (71 / 224), contentNode);
-      const divR = this.host.addSprite('MailEndDivR', QUEST_UI_ASSETS.dividerRight, divGap, endY, divW, divW * (71 / 224), contentNode);
-      void divL;
-      void divR;
-      if (spare >= 250) {
-        // 空白处金环信封徽章(原型:清楚可见,不是淡水印)
-        const markSize = Math.min(176, spare - 110);
-        const mark = this.host.addSprite('MailWatermark', QUEST_UI_ASSETS.mailIcon, 0, endY - 34 - (spare - 64) / 2, markSize, markSize, contentNode);
-        if (mark) {
-          mark.color = rgba(255, 255, 255, 215);
-        }
-      }
+    const innerL = rx(830);
+    const innerR = rx(1735);
+    const innerW = innerR - innerL;
+    const title = this.host.addChildLabel(right, 'Title', selected.title, innerL, ry(165), S(36), rgba(250, 240, 220, 255), new Size(innerW, S(46)), HorizontalTextAlignment.LEFT);
+    title.overflow = Label.Overflow.SHRINK;
+    title.isBold = true;
+    this.outline(title, 1, true);
+    const meta = this.host.addChildLabel(right, 'Meta', `发件人:系统      ${formatMailTime(selected.createTime, false)}      有效期:${selected.expireTime ? formatMailTime(selected.expireTime, false) : '永久'}`, innerL, ry(222), S(22), rgba(206, 197, 181, 240), new Size(innerW, S(30)), HorizontalTextAlignment.LEFT);
+    meta.overflow = Label.Overflow.SHRINK;
+    // 金线 + 中间小菱
+    if (!this.host.addSprite('Divider', MAIL_KIT.divider, (innerL + innerR) / 2, ry(258), innerW + S(10), S(24), right)) {
+      const div = this.host.addChildPlainNode(right, 'DividerFallback', (innerL + innerR) / 2, ry(258), innerW, S(14)).addComponent(Graphics);
+      div.fillColor = rgba(170, 132, 74, 190);
+      div.rect(-innerW / 2, -Math.max(0.5, S(0.75)), innerW, Math.max(1, S(1.5)));
+      div.fill();
     }
+    const body = this.host.addChildLabel(right, 'Body', selected.content, innerL, ry(300), S(26), rgba(236, 226, 206, 245), new Size(innerW, S(120)), HorizontalTextAlignment.LEFT);
+    body.enableWrapText = true;
+    body.lineHeight = S(44);
+    body.overflow = Label.Overflow.SHRINK;
+    body.node.getComponent(UITransform)?.setAnchorPoint(0, 1);
+    body.node.setPosition(innerL, ry(284), 0);
+    body.verticalAlign = VerticalTextAlignment.TOP;
+
+    const hasAttachment = selected.attachments.length > 0;
+    if (hasAttachment) {
+      const sec = this.host.addChildLabel(right, 'AttachLabel', '附件', innerL, ry(430), S(26), rgba(250, 236, 200, 255), new Size(S(120), S(34)), HorizontalTextAlignment.LEFT);
+      sec.isBold = true;
+      this.outline(sec, 1, true);
+      this.host.addSprite('AttachLine', MAIL_KIT.attachLine, innerL + S(114), ry(430), S(96), S(24), right);
+      // 附件格 150 方、间距 25,从 x 835 起;最多一行 5 格(更多的另起一行)
+      const box = S(150);
+      const gap = S(25);
+      selected.attachments.forEach((item, index) => {
+        const col = index % 5;
+        const row = Math.floor(index / 5);
+        this.addMailAttachmentSlot(right, item, innerL + S(5) + box / 2 + col * (box + gap), ry(530) - row * (box + gap), box, selected!.claimed, S);
+      });
+    } else {
+      const none = this.host.addChildLabel(right, 'NoAttach', '本邮件没有附件', innerL, ry(470), S(22), rgba(196, 182, 152, 220), new Size(innerW, S(30)), HorizontalTextAlignment.LEFT);
+      none.overflow = Label.Overflow.SHRINK;
+    }
+    const pending = hasAttachment && !selected.claimed;
+    const mailId = selected.mailId;
+    this.mountMailButton(right, 'Delete', '删除', rx(932), ry(688), S(195), S(82), false, !pending && !busy, S(28), !pending && !busy ? () => this.host.deleteLobbyMail(mailId) : undefined);
+    const claimText = !hasAttachment ? '无附件' : selected.claimed ? '已领取' : state.claiming === mailId ? '领取中…' : '领取附件';
+    this.mountMailButton(right, 'Claim', claimText, rx(1567), ry(686), S(335), S(82), true, pending && !busy, S(32), pending && !busy ? () => this.host.claimLobbyMail(mailId) : undefined);
+  }
+
+  /** 原型裁的红主钮 / 暗次钮(文字已抹平)+ 字;不可用时压暗。 */
+  private mountMailButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, primary: boolean, enabled: boolean, fontSize: number, onClick?: () => void): void {
+    const btn = this.host.addChildPlainNode(parent, name, x, y, width, height);
+    if (!mountRefSliced(this.host, btn, 'Art', primary ? MAIL_KIT.btnPrimary : MAIL_KIT.btnSecondary, 0, 0, width, height)) {
+      const g = btn.addComponent(Graphics);
+      g.fillColor = primary ? rgba(120, 22, 18, 238) : rgba(18, 15, 14, 230);
+      g.roundRect(-width / 2, -height / 2, width, height, 8);
+      g.fill();
+    }
+    if (!enabled) {
+      btn.getChildByName('Art')?.walk((child) => {
+        const sprite = child.getComponent(Sprite);
+        if (sprite) {
+          sprite.color = primary ? rgba(150, 120, 116, 255) : rgba(150, 146, 140, 255);
+        }
+      });
+    }
+    const label = this.host.addChildLabel(btn, 'Label', text, 0, 0, fontSize, enabled ? rgba(255, 238, 206) : rgba(210, 200, 186), new Size(width * 0.78, height * 0.72));
+    fitButtonLabel(label, height);
+    label.overflow = Label.Overflow.SHRINK;
+    label.isBold = primary;
+    this.outline(label, 1, primary);
+    if (onClick) {
+      btn.addComponent(Button);
+      btn.on(Button.EventType.CLICK, onClick, this);
+      this.host.applyImageButtonFeedback(btn, 1.03, 0.97);
+    }
+  }
+
+  /** 左栏一张邮件卡:信封徽(未读带红点;已读灰)/ 标题 / 发件人·时间 / 「附件」标签;选中亮金边。点卡 = 选中(并标已读)。 */
+  private addMailCard(parent: Node, mail: PlayerMailVO, y: number, width: number, height: number, selected: boolean, S: (v: number) => number): void {
+    const card = this.host.addChildPlainNode(parent, `MailCard_${mail.mailId}`, 0, y, width, height);
+    if (!mountRefSliced(this.host, card, 'Bg', selected ? MAIL_KIT.rowSelected : MAIL_KIT.rowNormal, 0, 0, width, height)) {
+      const g = card.addComponent(Graphics);
+      g.fillColor = selected ? rgba(40, 32, 18, 235) : rgba(16, 14, 14, 225);
+      g.roundRect(-width / 2, -height / 2, width, height, S(8));
+      g.fill();
+      g.strokeColor = selected ? rgba(240, 194, 104, 240) : rgba(120, 98, 62, 160);
+      g.lineWidth = Math.max(1, S(1.5));
+      g.roundRect(-width / 2, -height / 2, width, height, S(8));
+      g.stroke();
+    }
+    const unread = !mail.read;
+    const iconSize = S(88);
+    const iconX = -width / 2 + S(70);
+    if (!this.host.addSprite('MailIcon', unread ? MAIL_KIT.envelope : MAIL_KIT.envelopeRead, iconX, 0, iconSize, iconSize, card)) {
+      this.host.addSprite('MailIcon', QUEST_UI_ASSETS.mailIcon, iconX, 0, S(76), S(76) * (110 / 112), card);
+    }
+    if (unread) {
+      const dot = this.host.addChildPlainNode(card, 'UnreadDot', iconX + S(36), S(32), S(22), S(22)).addComponent(Graphics);
+      dot.fillColor = rgba(226, 48, 40, 255);
+      dot.circle(0, 0, S(10));
+      dot.fill();
+      dot.strokeColor = rgba(90, 10, 10, 220);
+      dot.lineWidth = Math.max(1, S(1.2));
+      dot.circle(0, 0, S(10));
+      dot.stroke();
+    }
+    const textL = -width / 2 + S(145);
+    const hasAttachment = mail.attachments.length > 0;
+    const tagW = S(74);
+    const textW = width / 2 - S(24) - (hasAttachment ? tagW + S(30) : 0) - textL;
+    const title = this.host.addChildLabel(card, 'Title', mail.title, textL, S(22), S(27), unread || selected ? rgba(255, 240, 210, 255) : rgba(226, 214, 190, 240), new Size(Math.max(S(200), width / 2 - S(24) - textL), S(36)), HorizontalTextAlignment.LEFT);
+    title.overflow = Label.Overflow.SHRINK;
+    title.isBold = true;
+    this.outline(title, 1, true);
+    const sub = this.host.addChildLabel(card, 'Sub', `系统 · ${formatMailTime(mail.createTime, true)}`, textL, -S(22), S(22), rgba(186, 178, 164, 235), new Size(textW, S(30)), HorizontalTextAlignment.LEFT);
+    sub.overflow = Label.Overflow.SHRINK;
+    if (hasAttachment) {
+      const tag = this.host.addChildPlainNode(card, 'AttachTag', width / 2 - S(24) - tagW / 2, -S(20), tagW, S(41));
+      if (!mountRefSliced(this.host, tag, 'Bg', MAIL_KIT.tag, 0, 0, tagW, S(41))) {
+        const tg = tag.addComponent(Graphics);
+        tg.fillColor = rgba(14, 11, 9, 240);
+        tg.roundRect(-tagW / 2, -S(18), tagW, S(36), S(5));
+        tg.fill();
+      }
+      if (mail.claimed) {
+        tag.getChildByName('Bg')?.walk((child) => {
+          const sprite = child.getComponent(Sprite);
+          if (sprite) {
+            sprite.color = rgba(150, 140, 126, 255);
+          }
+        });
+      }
+      const tagText = this.host.addChildLabel(tag, 'Text', mail.claimed ? '已领' : '附件', 0, 0, S(20), mail.claimed ? rgba(196, 186, 168, 240) : rgba(255, 226, 160, 255), new Size(tagW - S(8), S(30)));
+      tagText.overflow = Label.Overflow.SHRINK;
+    }
+    card.addComponent(Button);
+    card.on(Button.EventType.CLICK, () => this.host.selectLobbyMail(mail.mailId), this);
+    this.host.applyImageButtonFeedback(card, 1.015, 0.985);
+  }
+
+  /** 右栏附件格:暗底金边方格(现成 ult_stat_box 九宫格)+ 图标 + 右下数量;已领取整格压暗。 */
+  private addMailAttachmentSlot(parent: Node, item: QuestRewardItemVO, x: number, y: number, box: number, claimed: boolean, S: (v: number) => number): void {
+    const slot = this.host.addChildPlainNode(parent, `Attach_${item.code}`, x, y, box, box);
+    if (!mountRefSliced(this.host, slot, 'Frame', MAIL_KIT.slot, 0, 0, box, box)) {
+      const g = slot.addComponent(Graphics);
+      g.fillColor = rgba(12, 10, 10, 240);
+      g.roundRect(-box / 2, -box / 2, box, box, S(8));
+      g.fill();
+      g.strokeColor = rgba(196, 154, 86, 230);
+      g.lineWidth = Math.max(1, S(1.5));
+      g.roundRect(-box / 2, -box / 2, box, box, S(8));
+      g.stroke();
+    }
+    const icon = resolveRewardIcon(item);
+    const iconBox = box * 0.62;
+    if (icon) {
+      const w = icon.ratio >= 1 ? iconBox : iconBox * icon.ratio;
+      const h = icon.ratio >= 1 ? iconBox / icon.ratio : iconBox;
+      const art = this.host.addSprite('Icon', icon.path, 0, S(8), w, h, slot);
+      if (art && claimed) {
+        art.color = rgba(150, 146, 140, 255);
+      }
+    } else {
+      const name = this.host.addChildLabel(slot, 'Name', item.name, 0, S(8), S(20), rgba(236, 222, 190, 245), new Size(box - S(16), S(56)));
+      name.enableWrapText = true;
+      name.overflow = Label.Overflow.SHRINK;
+    }
+    const count = this.host.addChildLabel(slot, 'Count', this.formatAmount(item.amount), box / 2 - S(12), -box / 2 + S(18), S(22), claimed ? rgba(196, 186, 168, 240) : rgba(255, 244, 222, 255), new Size(box - S(16), S(28)), HorizontalTextAlignment.RIGHT);
+    count.isBold = true;
+    this.outline(count, 1, true);
+    if (claimed) {
+      const veil = this.host.addChildPlainNode(slot, 'Veil', 0, 0, box - S(8), box - S(8)).addComponent(Graphics);
+      veil.fillColor = rgba(0, 0, 0, 110);
+      veil.roundRect(-(box - S(8)) / 2, -(box - S(8)) / 2, box - S(8), box - S(8), S(6));
+      veil.fill();
+    }
+  }
+
+  private formatAmount(amount: number): string {
+    return amount >= 10000 ? `${Math.floor(amount / 1000)}k` : `${amount}`;
   }
 
   private rerenderMailIfOpen(layout: UiLayout): void {
@@ -1183,106 +1425,6 @@ export class LobbyQuestMailPanelRenderer {
     });
     this.lastMailNodes = [];
     this.renderMailPanelPhone(layout);
-  }
-
-  /** 手机邮件行的列位置 + 正文行数(先算好,列表据此给长正文的行加高)。 */
-  private mailRowMetrics(mail: PlayerMailVO, width: number, baseRowH: number): { btnW: number; btnX: number; chipW: number; chipGap: number; shownCount: number; extra: number; chipsLeft: number; chipsRight: number; textLeft: number; textW: number; lines: number; extraH: number } {
-    const btnW = 142;
-    const btnX = width / 2 - 46 - btnW / 2;
-    const t = Math.max(0, Math.min(1, (width - 1150) / 280));
-    const chipW = 158 + 26 * t;
-    const chipGap = 10;
-    // 宽屏最多 3 格、窄屏 2 格,多出的在小牌后面写 "+N"
-    const shownCount = Math.min(mail.attachments.length, t >= 0.5 ? 3 : 2);
-    const extra = mail.attachments.length - shownCount;
-    const chipsRight = btnX - btnW / 2 - 22 - (extra > 0 ? 46 : 0);
-    const chipsLeft = chipsRight - (shownCount > 0 ? shownCount * chipW + (shownCount - 1) * chipGap : 0);
-    const textLeft = -width / 2 + 48 + 64 + 18;
-    const textW = Math.max(160, chipsLeft - 22 - textLeft);
-    // 估宽:汉字 / 全角 20,其余约 11.5
-    let est = 0;
-    for (let i = 0; i < mail.content.length; i++) {
-      est += mail.content.charCodeAt(i) > 0x2e7f ? 20 : 11.5;
-    }
-    const lines = Math.max(1, Math.min(4, Math.ceil(est / (textW - 6))));
-    const extraH = lines >= 2 ? Math.max(0, 106 + (lines - 2) * 25 - baseRowH) : 0;
-    return { btnW, btnX, chipW, chipGap, shownCount, extra, chipsLeft, chipsRight, textLeft, textW, lines, extraH };
-  }
-
-  private addMailRowPhone(parent: Node, mail: PlayerMailVO, y: number, width: number, height: number, claiming: number | null, m: ReturnType<LobbyQuestMailPanelRenderer['mailRowMetrics']>): void {
-    const row = this.host.addChildPlainNode(parent, `MailRow_${mail.mailId}`, 0, y, width, height);
-    const unread = !mail.read;
-    const hasAttachment = mail.attachments.length > 0;
-    const pending = hasAttachment && !mail.claimed;
-    const bgOk = pending
-      ? mountRefSliced(this.host, row, 'Bg', REF_ROW_SELECTED, 0, 0, width, height)
-      : mountRefPlate(this.host, row, 'Bg', REF_PLATE_DARK, 0, 0, width, height, 0.7);
-    if (!bgOk) {
-      this.mountPhoneRowBg(row, width, height, pending ? 'ready' : unread ? 'normal' : 'dim');
-    } else if (!pending) {
-      // 原型:行内芯近黑,只留金边角饰亮(暗金钮底放大后内芯偏棕)
-      const core = this.host.addChildPlainNode(row, 'Core', 0, 0, width - 36, height - 22).addComponent(Graphics);
-      core.fillColor = rgba(4, 3, 4, 150);
-      core.rect(-(width - 36) / 2, -(height - 22) / 2, width - 36, height - 22);
-      core.fill();
-    }
-
-    // 信封图标(大厅邮件钮同款圆徽 112×110 等比);未读右上角红点
-    const iconSize = 64;
-    const iconX = -width / 2 + 48 + iconSize / 2;
-    const iconArt = this.host.addSprite('MailIcon', QUEST_UI_ASSETS.mailIcon, iconX, 0, iconSize, iconSize, row);
-    if (iconArt && !unread && !pending) {
-      iconArt.color = rgba(226, 216, 196, 255);
-    }
-    if (unread) {
-      const dot = this.host.addChildPlainNode(row, 'UnreadDot', iconX + iconSize / 2 - 7, iconSize / 2 - 7, 16, 16);
-      const dg = dot.addComponent(Graphics);
-      dg.fillColor = rgba(226, 58, 46, 255);
-      dg.circle(0, 0, 7);
-      dg.fill();
-      dg.strokeColor = rgba(255, 220, 170, 240);
-      dg.lineWidth = 1.5;
-      dg.circle(0, 0, 7);
-      dg.stroke();
-    }
-
-    // 右侧:附件小牌(+N)→ 领取钮
-    const btnH = 50;
-    mail.attachments.slice(0, m.shownCount).forEach((item, index) => {
-      this.addRewardChip(row, `Attach_${index}`, item, m.chipsLeft + index * (m.chipW + m.chipGap), 0, m.chipW, btnH, mail.claimed);
-    });
-    if (m.extra > 0) {
-      const more = this.host.addChildLabel(row, 'AttachMore', `+${m.extra}`, m.chipsRight + 6, 0, 20, mail.claimed ? rgba(196, 189, 174, 240) : rgba(236, 208, 150, 245), new Size(40, 28), HorizontalTextAlignment.LEFT);
-      more.overflow = Label.Overflow.SHRINK;
-    }
-
-    // 标题一行 + 正文(单行时与任务行同一排法;多行时标题上移、正文自动换行,4 行还放不下才缩字)
-    const titleY = m.lines <= 1 ? 19 : height / 2 - 27;
-    const title = this.host.addChildLabel(row, 'Title', mail.title, m.textLeft, titleY, 24, mail.claimed && !unread ? rgba(236, 220, 186, 250) : rgba(255, 232, 176, 255), new Size(m.textW, 32), HorizontalTextAlignment.LEFT);
-    title.overflow = Label.Overflow.SHRINK;
-    title.isBold = true;
-    this.outline(title, 1, true);
-    const contentH = m.lines <= 1 ? 28 : m.lines * 25 + 2;
-    const contentY = m.lines <= 1 ? -19 : titleY - 16 - contentH / 2;
-    const content = this.host.addChildLabel(row, 'Content', mail.content, m.textLeft, contentY, 20, rgba(206, 197, 181, 240), new Size(m.textW, contentH), HorizontalTextAlignment.LEFT);
-    if (m.lines > 1) {
-      content.enableWrapText = true;
-      content.lineHeight = 25;
-    }
-    content.overflow = Label.Overflow.SHRINK;
-
-    const claimable = pending && claiming === null;
-    const btn = this.host.addChildPlainNode(row, 'Claim', m.btnX, 0, m.btnW, btnH);
-    this.mountClaimButtonArt(btn, m.btnW, btnH, claimable, mail.claimed || !hasAttachment);
-    const btnText = !hasAttachment ? '无附件' : mail.claimed ? '已领取' : claiming === mail.mailId ? '领取中…' : '领取';
-    const label = this.host.addChildLabel(btn, 'Text', btnText, 0, 0, 22, mail.claimed || !hasAttachment ? rgba(225, 217, 202) : claimable ? rgba(255, 236, 190) : rgba(226, 212, 182), new Size(m.btnW * 0.66, btnH - 8));
-    label.overflow = Label.Overflow.SHRINK;
-    this.outline(label, 1, claimable);
-    if (claimable) {
-      btn.addComponent(Button);
-      btn.on(Button.EventType.CLICK, () => this.host.claimLobbyMail(mail.mailId), this);
-      this.host.applyImageButtonFeedback(btn, 1.05, 0.95);
-    }
   }
 
   private addMailRow(parent: Node, mail: PlayerMailVO, x: number, y: number, width: number, height: number, scale: number, claiming: number | null): void {

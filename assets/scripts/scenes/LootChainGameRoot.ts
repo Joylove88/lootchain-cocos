@@ -6373,7 +6373,9 @@ export class LootChainGameRoot extends Component {
     this.lobbyMailPanelOpen = true;
     this.currentView = 'mail';
     this.renderCurrentView();
-    void this.loadLobbyMails(true);
+    // 邮箱重做(2026-10-28):打开不再一次清光未读,点开哪封哪封已读
+    this.lobbyMailSelectedId = null;
+    void this.loadLobbyMails(true, false);
   }
 
   private closeLobbyMailPanel(): void {
@@ -6497,6 +6499,70 @@ export class LootChainGameRoot extends Component {
         this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
         gameAudio.sfx('ui_error');
         this.setStatus(`领取失败:${error instanceof Error ? error.message : String(error)}`);
+        this.renderCurrentLobbyScenePage();
+      });
+  }
+
+  /** 邮箱重做(docs/15 2026-10-28):当前选中的邮件(左栏点哪封右栏看哪封)。 */
+  private lobbyMailSelectedId: number | null = null;
+
+  selectLobbyMail(mailId: number): void {
+    if (this.lobbyMailSelectedId === mailId) {
+      return;
+    }
+    this.lobbyMailSelectedId = mailId;
+    const mail = this.lobbyMailState.mails.find((entry) => entry.mailId === mailId);
+    if (mail && !mail.read) {
+      // 选中即已读:本地立刻改,服务端 best-effort
+      this.lobbyMailState = { ...this.lobbyMailState, mails: this.lobbyMailState.mails.map((entry) => (entry.mailId === mailId ? { ...entry, read: true } : entry)), version: this.lobbyMailState.version + 1 };
+      void this.api.mail.markRead(mailId).catch(() => undefined);
+    }
+    this.renderCurrentLobbyScenePage();
+  }
+
+  currentLobbyMailSelectedId(): number | null {
+    return this.lobbyMailSelectedId;
+  }
+
+  deleteLobbyMail(mailId: number): void {
+    if (this.lobbyMailState.claiming !== null) {
+      return;
+    }
+    this.lobbyMailState = { ...this.lobbyMailState, claiming: -2, version: this.lobbyMailState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    void this.api.mail.remove(mailId)
+      .then(async () => {
+        if (this.lobbyMailSelectedId === mailId) {
+          this.lobbyMailSelectedId = null;
+        }
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        await this.loadLobbyMails(true, false);
+      })
+      .catch((error) => {
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        gameAudio.sfx('ui_error');
+        this.setStatus(`删除失败:${error instanceof Error ? error.message : String(error)}`);
+        this.renderCurrentLobbyScenePage();
+      });
+  }
+
+  deleteReadLobbyMails(): void {
+    if (this.lobbyMailState.claiming !== null) {
+      return;
+    }
+    this.lobbyMailState = { ...this.lobbyMailState, claiming: -2, version: this.lobbyMailState.version + 1 };
+    this.renderCurrentLobbyScenePage();
+    void this.api.mail.removeRead()
+      .then(async (count) => {
+        this.setStatus(`已删除 ${count} 封已读邮件`);
+        this.lobbyMailSelectedId = null;
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        await this.loadLobbyMails(true, false);
+      })
+      .catch((error) => {
+        this.lobbyMailState = { ...this.lobbyMailState, claiming: null, version: this.lobbyMailState.version + 1 };
+        gameAudio.sfx('ui_error');
+        this.setStatus(`删除失败:${error instanceof Error ? error.message : String(error)}`);
         this.renderCurrentLobbyScenePage();
       });
   }

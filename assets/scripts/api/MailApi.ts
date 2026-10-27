@@ -19,6 +19,17 @@ export class MailApi {
     return await this.http.post<unknown>('/api/player/mails/claim', { mailId }).then(expectRecord<PlayerMailVO>('邮件领取'));
   }
 
+  /** 删除一封(有未领附件的服务端拒绝)。 */
+  async remove(mailId: number): Promise<void> {
+    await this.http.post<unknown>('/api/player/mails/delete', { mailId });
+  }
+
+  /** 删除全部已读(跳过有未领附件的),返回封数。 */
+  async removeRead(): Promise<number> {
+    const count = await this.http.post<unknown>('/api/player/mails/delete-read', {});
+    return Number(count ?? 0);
+  }
+
   async claimAll(): Promise<number> {
     const count = await this.http.post<unknown>('/api/player/mails/claim-all', {});
     return Number(count ?? 0);
