@@ -5550,13 +5550,7 @@ export class LobbyHeroDetailPanelRenderer {
     affixes.forEach((affix, index) => {
       const shortLabel = HERO_AFFIX_SHORT_LABELS[affix.code] ?? safeText(affix.name || affix.code);
       const y = FY(394 + Math.floor(index / 2) * 36);
-      const q = affixQualityColor(affix.quality);
       row(root, 'LobbyHeroDetailAffix', index, shortLabel, shortLabel, heroAffixValueText(affix.code, affix.value ?? 0), y, GLASS_COLOR.text, index % 2 === 0 ? 1373 : 1695);
-      // 品质:图标左侧一根细色条(信息保留,不抢主次)
-      const bar = this.host.addSprite(`LobbyHeroDetailAffixQuality_${index}`, GLASS_ICON.accent, RX(index % 2 === 0 ? 1219 : 1501), y, S(3), S(20), root);
-      if (bar) {
-        bar.color = rgba(q.r, q.g, q.b, 255);
-      }
     });
     // ③ 技能:大招一行
     box('LobbyHeroDetailSkillBox', 507, 646);
