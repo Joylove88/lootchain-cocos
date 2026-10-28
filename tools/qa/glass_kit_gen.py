@@ -97,12 +97,13 @@ def save(name, im):
 def main():
     # 面板:64×64,圆角 12(九宫格边距 16)——设计尺寸 1:1,按 UI 缩放
     # 面板(10-28 v2 原型逐像素取色):内底偏冷青 (19,29,38),沿边一圈向内渐隐的内光(上沿最亮、左上角再亮一点),亮一档细边框
-    save('panel', shaded(64, 64, 12, panel_lit, outline=(74, 86, 100, 215), outline_w=1))
+    # 10-28 用户:面板 / 装备框也要不均匀光影(磨砂雾光成片、边框亮度沿边起伏);中段留宽,拉伸后仍是几片宽雾
+    save('panel', lit_block(192, 192, 12, panel_inner, (66, 78, 92, 210), (120, 134, 152, 235)))
     # 面板选中态(香槟描边 + 微染)
     # 选中态(10-28 v2 原型 合成右栏选中行取色):金边 + 左右强上下弱的暖金内光 + 暗中性中心(全站选中行 / 选中格共用)
     save('panel_sel', panel_sel_tex())
     # 装备框 / 物品格(原型合成槽位):浅灰亮边 + 冷色内光向中心渐暗
-    save('frame', shaded(64, 64, 12, frame_lit, outline=(146, 156, 174, 225), outline_w=2))
+    save('frame', lit_block(112, 112, 12, frame_inner, (110, 120, 138, 220), (182, 192, 210, 240), rim_w=2.0))
     # 行底(表格行 / 列表行):更淡
     save('row', rounded(64, 40, 8, (255, 255, 255, 10), outline=WHITE + (14,)))
     # 胶囊按钮 160×56(圆角 28;九宫格左右 28)
@@ -203,6 +204,62 @@ def _mix(c0, c1, t):
 def panel_lit(u, v, d):
     glow = math.exp(-d / 4.5) * (0.75 - 0.4 * v) + math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.18) * 0.35
     return _mix((19, 29, 38, 206), (62, 74, 88, 225), glow)
+
+
+def _haze(u, v, seed):
+    """低频"雾光"起伏 0..1(几组斜向正弦叠加,固定相位,可复现)。"""
+    t = math.pi * 2
+    return max(0.0, min(1.0, 0.5 + 0.24 * math.sin(t * (1.15 * u + 0.45 * v) + seed)
+                        + 0.16 * math.sin(t * (-0.6 * u + 1.5 * v) + seed * 2.1)
+                        + 0.10 * math.sin(t * (2.2 * u + 1.2 * v) + seed * 3.3)))
+
+
+def lit_block(n_w, n_h, r, inner, rim_lo, rim_hi, rim_w=1.4):
+    """不均匀光影圆角块:inner(u, v, dx, dy) -> rgba;边框颜色在 rim_lo..rim_hi 之间沿边起伏,左上角最亮。"""
+    Wp, Hp = n_w * SS, n_h * SS
+    im = Image.new('RGBA', (Wp, Hp), (0, 0, 0, 0))
+    px = im.load()
+    hw, hh = n_w / 2, n_h / 2
+    for yy in range(Hp):
+        y = (yy + 0.5) / SS - hh
+        v = (y + hh) / n_h
+        for xx in range(Wp):
+            x = (xx + 0.5) / SS - hw
+            u = (x + hw) / n_w
+            qx, qy = abs(x) - (hw - r), abs(y) - (hh - r)
+            sd = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - r
+            if sd > 0.5:
+                continue
+            c = inner(u, v, hw - abs(x), hh - abs(y))
+            if sd > -rim_w:
+                along = u if abs(y) / hh > abs(x) / hw else v
+                corner = math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.22)
+                t = min(1.0, 0.15 + 0.7 * _haze(along, along * 0.3 + 0.2, 1.3 if y < 0 else 4.1) ** 1.4 + 0.6 * corner)
+                c = _mix(c, _mix(rim_lo, rim_hi, t), 0.95)
+            if sd > -0.5:
+                c = c[:3] + (int(c[3] * max(0.0, 0.5 - sd)),)
+            px[xx, yy] = c
+    return im.resize((n_w, n_h), Image.LANCZOS)
+
+
+def panel_inner(u, v, dx, dy):
+    """面板:冷青底 (19,29,38),成片磨砂雾光(左上偏亮),沿边内光随位置起伏。"""
+    d = min(dx, dy)
+    haze = (0.5 + 0.28 * math.sin(math.pi * 2 * (0.8 * u + 0.35 * v) + 0.8) + 0.18 * math.sin(math.pi * 2 * (-0.4 * u + 0.9 * v) + 2.0)) ** 2 * (1.1 - 0.5 * v) * (1.15 - 0.4 * u)
+    along = u if dy < dx else v
+    edge = math.exp(-d / 5.0) * (0.35 + 0.65 * _haze(along, 0.5, 2.4)) * (0.85 - 0.35 * v)
+    corner = math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.2) * 0.4
+    return _mix((19, 29, 38, 206), (52, 64, 78, 222), min(1.0, 0.2 * haze + edge + corner))
+
+
+def frame_inner(u, v, dx, dy):
+    """装备框:暗心 (15,20,26),磨砂雾光成片、上下沿各一段亮,沿边内光起伏。"""
+    d = min(dx, dy)
+    haze = _haze(u, v, 2.0) ** 2
+    along = u if dy < dx else v
+    edge = math.exp(-d / 7.0) * (0.4 + 0.75 * _haze(along, 0.3, 0.9 if v < 0.5 else 3.7))
+    corner = math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.25) * 0.35
+    return _mix((15, 20, 26, 226), (50, 60, 74, 238), min(1.0, 0.35 * haze + edge + corner))
 
 
 def _edge_dist(u, v, w, h):
