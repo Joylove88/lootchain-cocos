@@ -1,4 +1,4 @@
-import { Button, Color, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite } from 'cc';
+import { Button, Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite } from 'cc';
 import type { UiKitHost } from './UiKit';
 import { fitButtonLabel } from './UiPrimitiveFactory';
 
@@ -48,6 +48,7 @@ export const GLASS_ICON = {
   navEquip: G('nav_equip'),
   navSkill: G('nav_skill'),
   navStar: G('nav_star'),
+  navFuse: G('nav_fuse'),
   arrowLeft: G('icon_arrow_l'),
   arrowRight: G('icon_arrow_r'),
   lock: G('lock'),
@@ -76,11 +77,22 @@ export const GLASS_PART_ICON: Record<string, string> = {
   NECKLACE: G('part_necklace'),
 };
 
+/** 锻造列表部位页签实心图标(原型 forge_b 抠,白色,运行时染色)。 */
+export const GLASS_FORGE_TAB_ICON: Record<string, string> = {
+  WEAPON: G('tab_weapon'),
+  HELMET: G('tab_helmet'),
+  CHEST: G('tab_chest'),
+  BOOTS: G('tab_boots'),
+  RING: G('tab_ring'),
+  NECKLACE: G('tab_necklace'),
+};
+
 export const GLASS_ASSET_PATHS: readonly string[] = [
   ...Object.values(GLASS_SLICES).map((item) => item.path),
   ...Object.values(GLASS_ICON),
   ...Object.values(GLASS_STAT_ICON),
   ...Object.values(GLASS_PART_ICON),
+  ...Object.values(GLASS_FORGE_TAB_ICON),
   G('lock'),
 ];
 
@@ -275,5 +287,28 @@ export function mountGlassClippedIcon(host: UiKitHost, parent: Node, name: strin
   const full = size / (1 - 2 * EQUIP_ICON_FRAME_INSET);
   host.addSprite('Icon', iconPath, 0, 0, full, full, clip);
   return clip;
+}
+
+/** 勾选框(原型:圆角方框 + 浅灰细边;勾上 = 香槟实底 + 深色对勾)。 */
+export function mountGlassCheckbox(host: UiKitHost, parent: Node, name: string, x: number, y: number, size: number, on: boolean): Node {
+  const node = host.addChildPlainNode(parent, name, x, y, size, size);
+  const g = node.addComponent(Graphics);
+  const r = size * 0.18;
+  g.fillColor = on ? new Color(227, 196, 138, 255) : new Color(18, 22, 29, 200);
+  g.roundRect(-size / 2, -size / 2, size, size, r);
+  g.fill();
+  g.strokeColor = on ? new Color(240, 220, 176, 255) : new Color(150, 160, 172, 220);
+  g.lineWidth = Math.max(1.2, size * 0.05);
+  g.roundRect(-size / 2, -size / 2, size, size, r);
+  g.stroke();
+  if (on) {
+    g.strokeColor = new Color(46, 34, 18, 255);
+    g.lineWidth = Math.max(2, size * 0.11);
+    g.moveTo(-size * 0.26, 0);
+    g.lineTo(-size * 0.06, -size * 0.2);
+    g.lineTo(size * 0.28, size * 0.2);
+    g.stroke();
+  }
+  return node;
 }
 

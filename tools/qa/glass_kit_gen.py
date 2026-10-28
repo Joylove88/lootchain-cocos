@@ -171,11 +171,17 @@ def extract_proto_icons():
     # 装备 / 升星页原型(hero_equip_b / hero_star_b):部位线稿(浅灰,运行时可染色)、铜锁(保留原色,含外圈细环)
     for proto_name, items in (('hero_equip_b.png', {'part_helmet': (367, 190, 26), 'part_chest': (367, 385, 26), 'part_boots': (367, 583, 26),
                                                     'part_ring': (1040, 387, 26), 'part_necklace': (1040, 583, 26)}),
-                              ('hero_star_b.png', {'lock': (1238, 256, 18)})):
+                              ('hero_star_b.png', {'lock': (1238, 256, 18)}),
+                              # 锻造原型 forge_b:右栏「合成」图标(避开右上红点)+ 列表部位页签实心图标
+                              ('forge_b.png', {'nav_fuse': (1795, 323, 26), 'tab_weapon': (180, 168, 20), 'tab_helmet': (250, 168, 20), 'tab_chest': (318, 168, 20),
+                                               'tab_boots': (388, 168, 20), 'tab_ring': (458, 168, 20), 'tab_necklace': (528, 168, 20)})):
         path = os.path.join(os.path.dirname(PROTO), proto_name)
         if not os.path.exists(path):
             continue
-        P = np.asarray(Image.open(path).convert('RGB')).astype(float)
+        img = Image.open(path).convert('RGB')
+        if img.size != (1870, 841):
+            img = img.resize((1870, 841), Image.LANCZOS)
+        P = np.asarray(img).astype(float)
         for key, (x, y, half) in items.items():
             if key == 'lock':
                 save(key, cut_keep(x, y, half, 30, 120))

@@ -174,7 +174,7 @@ const SCENE_HELP_PANEL_ASPECT = 543 / 926;
 // 说明浮层(2026-08-05 重排版):popup_frame_large 素材底;正文按空行拆段逐段渲染
 // (单个大 Label 长文本在 SHRINK 下对齐/溢出不可控,分段小块 LEFT 对齐稳定),
 // 段落间距呼吸;即建即显,点击关闭,整页重绘时随父节点销毁。
-function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiLayout, scale: number, titleText: string, helpText: string): void {
+export function showSceneHelpPopup(host: SceneBackButtonHost, parent: Node, layout: UiLayout, scale: number, titleText: string, helpText: string): void {
   if (!host.addChildLabel) {
     return;
   }
