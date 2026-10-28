@@ -33,7 +33,7 @@ export const GLASS_SLICES = {
   frameSel: slice('frame_sel', 112, 112, 18, 18),
   row: slice('row', 64, 40, 10, 10),
   pillPrimary: slice('pill_primary', 160, 56, 28, 27),
-  pillSecondary: slice('pill_secondary', 160, 56, 28, 27),
+  pillSecondary: slice('pill_secondary', 256, 56, 28, 27),
   pillDisabled: slice('pill_disabled', 160, 56, 28, 27),
   chip: slice('chip', 120, 44, 22, 21),
   tabActive: slice('tab_active', 120, 64, 18, 18),
@@ -44,7 +44,7 @@ export const GLASS_SLICES = {
   tagPill: slice('tag_pill', 120, 36, 18, 17),
   railSel: slice('rail_sel', 120, 114, 22, 22),
   // 10-28 锻造原型的光照款:次钮上中部一束光、材料不足哑光暗金、分类页签贴边内发光
-  pillSecondaryLit: slice('pill_secondary_lit', 160, 56, 28, 27),
+  pillSecondaryLit: slice('pill_secondary_lit', 256, 56, 28, 27),
   pillPrimaryDim: slice('pill_primary_dim', 160, 56, 28, 27),
   tabGlow: slice('tab_glow', 120, 64, 24, 24),
 };

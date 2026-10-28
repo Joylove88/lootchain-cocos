@@ -68,6 +68,23 @@ const BAG_COMPOSE_RULES: Record<string, number> = {
   GEM_ATK_1: 3, GEM_ATK_2: 3, GEM_ATK_3: 3, GEM_ATK_4: 3,
   GEM_DEF_1: 3, GEM_DEF_2: 3, GEM_DEF_3: 3, GEM_DEF_4: 3,
 };
+/** 背包合成配方:来源 → 产物(与 BAG_COMPOSE_RULES 的数量一致)。 */
+const BAG_COMPOSE_TARGETS: Record<string, { need: number; target: string; targetLabel: string }> = {
+  ENHANCE_STONE: { need: 10, target: 'ENHANCE_STONE_HIGH', targetLabel: '高阶强化石' },
+  LOW_ENHANCE_STONE: { need: 1, target: 'ENHANCE_STONE', targetLabel: '强化石' },
+  GEM_HP_1: { need: 3, target: 'GEM_HP_2', targetLabel: '纯·赤魂石' },
+  GEM_HP_2: { need: 3, target: 'GEM_HP_3', targetLabel: '璀·赤魂石' },
+  GEM_HP_3: { need: 3, target: 'GEM_HP_4', targetLabel: '炽·赤魂石' },
+  GEM_HP_4: { need: 3, target: 'GEM_HP_5', targetLabel: '神·赤魂石' },
+  GEM_ATK_1: { need: 3, target: 'GEM_ATK_2', targetLabel: '纯·焰锋石' },
+  GEM_ATK_2: { need: 3, target: 'GEM_ATK_3', targetLabel: '璀·焰锋石' },
+  GEM_ATK_3: { need: 3, target: 'GEM_ATK_4', targetLabel: '炽·焰锋石' },
+  GEM_ATK_4: { need: 3, target: 'GEM_ATK_5', targetLabel: '神·焰锋石' },
+  GEM_DEF_1: { need: 3, target: 'GEM_DEF_2', targetLabel: '纯·苍岩石' },
+  GEM_DEF_2: { need: 3, target: 'GEM_DEF_3', targetLabel: '璀·苍岩石' },
+  GEM_DEF_3: { need: 3, target: 'GEM_DEF_4', targetLabel: '炽·苍岩石' },
+  GEM_DEF_4: { need: 3, target: 'GEM_DEF_5', targetLabel: '神·苍岩石' },
+};
 /** 粗估文字宽(中文按字号、其余按 0.56 字号),标签胶囊定宽用。 */
 function estimateTextWidth(text: string, fontSize: number): number {
   let w = 0;
@@ -321,8 +338,6 @@ export class LobbyBagPanelRenderer {
   private phoneDialogRect: PhoneDialogRect | null = null;
   /** 物品详情所在面板尺寸(二级弹窗按同一整屏映射算 u)。 */
   private phoneDetailPanelSize: { w: number; h: number } | null = null;
-  /** 本次整刷的 uiScale(B 风格详情里沿用旧二级弹窗时要用)。 */
-  private lastScale = 1;
 
   /** 道具卖光后关掉详情弹窗(否则会回落显示列表第一件)。 */
   closeDetailPopup(): void {
@@ -334,7 +349,6 @@ export class LobbyBagPanelRenderer {
   render(layout: UiLayout): void {
     const state = this.host.currentLobbyBagState();
     const scale = Math.max(0.64, Math.min(1, layout.uiScale));
-    this.lastScale = scale;
     const panelWidth = Math.max(320 * scale, layout.stageWidth);
     const panelHeight = Math.max(280 * scale, layout.stageHeight);
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
@@ -609,9 +623,10 @@ export class LobbyBagPanelRenderer {
       this.selectedGroupKey = 'ALL';
     }
     // 左栏无底板:背景在这一侧压暗、向右渐隐(10-29 用户:背景亮扎眼,字和背景糊在一起;原型此处约 (26,26,30))
-    const shade = this.host.addSprite('LobbyBagRailShade', GLASS_ICON.shadeH, (LX(-80) + LX(600)) / 2, 0, LX(600) - LX(-80), panelHeight + S(40), parent);
+    // 10-29 用户「左栏背景的蜡烛抢风头」:压暗条平铺到栏右缘外(-80..410)再渐隐到 760
+    const shade = this.host.addSprite('LobbyBagRailShade', GLASS_ICON.shadeH, (LX(-80) + LX(760)) / 2, 0, LX(760) - LX(-80), panelHeight + S(40), parent);
     if (shade) {
-      shade.color = rgba(255, 255, 255, 165);
+      shade.color = rgba(255, 255, 255, 150);
     }
     // ── 左栏(45..375,行心 158 起步 81.5;分类多时压缩行距)──
     const step = Math.min(81.5, (775 - 118) / Math.max(1, rows.length));
@@ -1423,6 +1438,23 @@ export class LobbyBagPanelRenderer {
    * 左列 物品框 + 名 + 稀有度签 + 数量 / 售价小面板,右列 用途 / 获取途径 + 三钮(使用 / 合成 = 次钮,出售 = 主钮)。
    */
   private renderGlassDetail(parent: Node, item: BagItemEntryVO, panelWidth: number, panelHeight: number, state: LobbyBagPanelState): void {
+    // 二级弹窗(使用 / 出售 / 合成)打开时详情面板不画(原型:只剩压暗的背包 + 二级弹窗)
+    const sellState = this.host.currentLobbyBagSellState();
+    if (sellState.itemCode === item.itemCode) {
+      this.renderGlassSellDialog(parent, item, sellState, panelWidth, panelHeight);
+      return;
+    }
+    const composeState = this.host.currentLobbyBagComposeState();
+    const composeRule = BAG_COMPOSE_TARGETS[(item.itemCode || '').toUpperCase()];
+    if (composeState.itemCode === item.itemCode && composeRule) {
+      this.renderGlassComposeDialog(parent, item, composeRule, composeState.times, panelWidth, panelHeight);
+      return;
+    }
+    const useState = this.host.currentLobbyBagUseState();
+    if (useState.itemCode === item.itemCode) {
+      this.renderGlassUseDialog(parent, item, useState, panelWidth, panelHeight);
+      return;
+    }
     const { FX, FY, S, k } = glassProtoMap(panelWidth, panelHeight);
     const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
       const l = glassLabel(this.host, p, name, text, x, y, S(size), color, w, align, bold);
@@ -1562,20 +1594,308 @@ export class LobbyBagPanelRenderer {
       canCompose ? 'secondaryLit' : 'disabled', canCompose ? () => this.host.openLobbyBagComposeDialog(item.itemCode) : undefined, 23);
     mountGlassButton(this.host, detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', (X(1278) + X(1472)) / 2, btnY, X(1472) - X(1278), S(56), k,
       sellable ? 'primary' : 'primaryOff', sellable ? () => this.host.openLobbyBagSellDialog(item.itemCode) : undefined, 23);
+  }
 
-    // 二级弹窗(使用 / 出售 / 合成)沿用旧实现,待 B 原型确认后替换
-    const sellState = this.host.currentLobbyBagSellState();
-    if (sellState.itemCode === item.itemCode) {
-      this.renderSellDialog(parent, item, sellState, this.lastScale);
+  /** B 风格二级弹窗壳(原型 bag_use_b / bag_sell_b / bag_compose_b):压暗遮罩 + 双层玻璃 + 标题行 + 圆圈关闭 + 标题下细线。 */
+  private mountGlassSubDialog(parent: Node, name: string, panelWidth: number, panelHeight: number, x0: number, y0: number, x1: number, y1: number, title: string, onClose: () => void): {
+    dialog: Node; X: (px: number) => number; Y: (py: number) => number; S: (v: number) => number; k: number;
+    T: (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label;
+  } {
+    const { FX, FY, S, k } = glassProtoMap(panelWidth, panelHeight);
+    const screenW = Math.max(panelWidth, view.getVisibleSize().width);
+    const dim = this.host.addChildPlainNode(parent, `${name}Dim`, 0, 0, screenW * 1.6, panelHeight * 1.6);
+    mountRefSolid(this.host, dim, 'Fill', 0, 0, screenW * 1.6, panelHeight * 1.6, rgba(0, 0, 0, 115));
+    dim.addComponent(BlockInputEvents);
+    const cx = (FX(x0) + FX(x1)) / 2;
+    const cy = (FY(y0) + FY(y1)) / 2;
+    const w = FX(x1) - FX(x0);
+    const h = FY(y0) - FY(y1);
+    const dialog = mountGlassPanel(this.host, parent, name, cx, cy, w, h, k);
+    mountGlassSlice(this.host, dialog, 'GlassBase', GLASS_SLICES.panel, 0, 0, w, h, k)?.node.setSiblingIndex(0);
+    dialog.addComponent(BlockInputEvents);
+    const X = (px: number): number => FX(px) - cx;
+    const Y = (py: number): number => FY(py) - cy;
+    const T = (p: Node, n: string, text: string, x: number, y: number, size: number, color: Color, tw: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host, p, n, text, x, y, S(size), color, tw, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    mountGlassSectionHeader(this.host, dialog, `${name}Title`, title, X(x0 + 44), Y(y0 + 44), k, 30);
+    const close = this.host.addChildPlainNode(dialog, `${name}Close`, X(x1 - 48), Y(y0 + 44), S(96), S(96));
+    const ring = this.host.addChildPlainNode(close, 'Ring', 0, 0, S(58), S(58)).addComponent(Graphics);
+    ring.fillColor = rgba(24, 30, 38, 200);
+    ring.circle(0, 0, S(28));
+    ring.fill();
+    ring.strokeColor = rgba(150, 160, 176, 220);
+    ring.lineWidth = Math.max(1.2, S(1.6));
+    ring.circle(0, 0, S(28));
+    ring.stroke();
+    this.host.addSprite('X', GLASS_ICON.close, 0, 0, S(30), S(30), close);
+    close.addComponent(Button);
+    this.host.applyImageButtonFeedback(close, 1.08, 0.92);
+    close.on(Button.EventType.CLICK, onClose, this);
+    mountGlassLine(this.host, dialog, `${name}HeadLine`, (X(x0 + 42) + X(x1 - 42)) / 2, Y(y0 + 87), X(x1 - 42) - X(x0 + 42), Math.max(1, S(1.5)), rgba(52, 60, 72, 255));
+    return { dialog, X, Y, S, k, T };
+  }
+
+  /** B 风格物品框(弹窗左列):共用装备框 + 图标 + 右下数量 + 底部稀有度细线。 */
+  private mountGlassDialogItem(dialog: Node, name: string, item: BagItemEntryVO, x: number, y: number, w: number, h: number, k: number, S: (v: number) => number, badge: string): void {
+    const frame = mountGlassFrame(this.host, dialog, name, x, y, w, h, k);
+    const icon = bagItemIconAsset(item);
+    const size = Math.min(w, h) * 0.8;
+    if (icon && bagEquipCode(item)) {
+      mountGlassClippedIcon(this.host, frame, 'Icon', icon, 0, S(4), size * 0.92);
+    } else if (!icon || !this.host.addSprite('Icon', icon, 0, S(4), size, size, frame)) {
+      this.host.addSprite('TypeIcon', bagItemTypeIconAsset(item.itemType), 0, S(4), size * 0.8, size * 0.8, frame);
     }
-    const composeState = this.host.currentLobbyBagComposeState();
-    if (composeState.itemCode === item.itemCode) {
-      this.renderComposeDialog(parent, item, composeState.times, this.lastScale);
+    const key = (item.rarity || '').toUpperCase();
+    const q = key === 'UR' || key === 'SSR' ? rgba(240, 163, 52) : key === 'SR' || key === 'EPIC' ? rgba(186, 84, 246) : key === 'R' || key === 'RARE' ? rgba(52, 132, 242) : rgba(150, 158, 170);
+    mountGlassLine(this.host, frame, 'Rarity', 0, -h / 2 + S(4), w - S(10), Math.max(2, S(4)), q);
+    if (badge) {
+      const c = glassLabel(this.host, frame, 'Count', badge, w / 2 - S(14), -h / 2 + S(24), S(24), rgba(250, 250, 250), w - S(20), HorizontalTextAlignment.RIGHT, true);
+      c.fontSize = Math.round(S(24));
+      c.enableOutline = true;
+      c.outlineColor = rgba(0, 0, 0, 200);
+      c.outlineWidth = Math.max(1, Math.round(S(1.5)));
     }
-    const useState = this.host.currentLobbyBagUseState();
-    if (useState.itemCode === item.itemCode) {
-      this.renderPhoneUseDialog(parent, item, useState, this.lastScale);
+  }
+
+  /** 物品名 + 稀有度签(弹窗左列)。 */
+  private mountGlassDialogItemName(dialog: Node, item: BagItemEntryVO, x: number, nameY: number, tagY: number, S: (v: number) => number, k: number, T: (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label): void {
+    T(dialog, 'Name', safeText(item.itemName), x, nameY, 30, GLASS_COLOR.text, S(330), HorizontalTextAlignment.CENTER, true);
+    const key = (item.rarity || '').toUpperCase();
+    const tint = key === 'UR' || key === 'SSR' ? rgba(240, 170, 70) : key === 'SR' || key === 'EPIC' ? rgba(190, 120, 250) : key === 'R' || key === 'RARE' ? rgba(110, 160, 245) : rgba(182, 189, 205);
+    const text = `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`;
+    const tw = glassTagPillWidthOf(text, S(20), S(34), estimateTextWidth);
+    mountGlassTagPill(this.host, dialog, 'Tag', text, x - tw / 2, tagY, S(34), k, S(20), estimateTextWidth, tint);
+    const bg = dialog.getChildByName('Tag')?.getChildByName('Bg')?.getComponent(Sprite);
+    if (bg) {
+      bg.color = rgba(Math.min(255, 150 + tint.r / 3), Math.min(255, 150 + tint.g / 3), Math.min(255, 150 + tint.b / 3));
     }
+  }
+
+  /** B 风格数量行:圆形 − / 数字框 / 圆形 + / 若干小次钮(+10、最大)。坐标为原型 x。 */
+  private mountGlassStepper(dialog: Node, X: (px: number) => number, Y: (py: number) => number, S: (v: number) => number, k: number, y: number, minusX: number, fieldX0: number, fieldX1: number, plusX: number, value: string,
+    canMinus: boolean, canPlus: boolean, onMinus: () => void, onPlus: () => void, chips: Array<{ x0: number; x1: number; text: string; enabled: boolean; onClick: () => void }>): void {
+    const cy = Y(y);
+    const round = (name: string, x: number, plus: boolean, enabled: boolean, onClick: () => void): void => {
+      const node = this.host.addChildPlainNode(dialog, name, X(x), cy, S(64), S(64));
+      const g = this.host.addChildPlainNode(node, 'Ring', 0, 0, S(56), S(56)).addComponent(Graphics);
+      g.fillColor = rgba(30, 38, 48, 230);
+      g.circle(0, 0, S(26));
+      g.fill();
+      g.strokeColor = enabled ? rgba(140, 152, 168, 230) : rgba(80, 88, 100, 200);
+      g.lineWidth = Math.max(1.2, S(1.6));
+      g.circle(0, 0, S(26));
+      g.stroke();
+      const glyph = enabled ? rgba(240, 242, 246) : rgba(110, 118, 130);
+      mountGlassLine(this.host, node, 'H', 0, 0, S(18), Math.max(2, S(3)), glyph);
+      if (plus) {
+        mountGlassLine(this.host, node, 'V', 0, 0, Math.max(2, S(3)), S(18), glyph);
+      }
+      if (enabled) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, onClick, this);
+        this.host.applyImageButtonFeedback(node, 1.08, 0.92);
+      }
+    };
+    round('Minus', minusX, false, canMinus, onMinus);
+    round('Plus', plusX, true, canPlus, onPlus);
+    const fw = X(fieldX1) - X(fieldX0);
+    const fh = S(54);
+    const field = this.host.addChildPlainNode(dialog, 'Field', (X(fieldX0) + X(fieldX1)) / 2, cy, fw, fh);
+    const fg = field.addComponent(Graphics);
+    fg.fillColor = rgba(13, 17, 23, 240);
+    fg.roundRect(-fw / 2, -fh / 2, fw, fh, S(6));
+    fg.fill();
+    fg.strokeColor = rgba(96, 108, 124, 230);
+    fg.lineWidth = Math.max(1, S(1.4));
+    fg.roundRect(-fw / 2, -fh / 2, fw, fh, S(6));
+    fg.stroke();
+    const v = glassLabel(this.host, field, 'Value', value, 0, 0, S(26), GLASS_COLOR.text, fw - S(16), HorizontalTextAlignment.CENTER, true);
+    v.fontSize = Math.round(S(26));
+    chips.forEach((chip, index) => {
+      mountGlassButton(this.host, dialog, `Chip_${index}`, chip.text, (X(chip.x0) + X(chip.x1)) / 2, cy, X(chip.x1) - X(chip.x0), fh, k * 0.9,
+        chip.enabled ? 'secondary' : 'disabled', chip.enabled ? chip.onClick : undefined, 21);
+    });
+  }
+
+  /** B 风格滑条:细轨 + 香槟填充 + 圆钮;拖动 / 点按设值。labels 为 [左数字 x, 右数字 x](可省)。 */
+  private mountGlassSlider(dialog: Node, X: (px: number) => number, Y: (py: number) => number, S: (v: number) => number, y: number, x0: number, x1: number, min: number, max: number, value: number, enabled: boolean, onSet: (v: number) => void, labels?: [number, number]): void {
+    const cy = Y(y);
+    const trackW = X(x1) - X(x0);
+    const trackH = Math.max(3, S(7));
+    if (labels) {
+      const lab = (n: string, x: number, text: string): void => {
+        const l = glassLabel(this.host, dialog, n, text, X(x), cy, S(20), GLASS_COLOR.sub, S(80), HorizontalTextAlignment.CENTER);
+        l.fontSize = Math.round(S(20));
+      };
+      lab('SliderMin', labels[0], formatCompact(min));
+      lab('SliderMax', labels[1], formatCompact(max));
+    }
+    const track = this.host.addChildPlainNode(dialog, 'SliderTrack', (X(x0) + X(x1)) / 2, cy, trackW, S(48));
+    const tg = this.host.addChildPlainNode(track, 'Track', 0, 0, trackW, trackH).addComponent(Graphics);
+    tg.fillColor = rgba(44, 52, 64, 240);
+    tg.roundRect(-trackW / 2, -trackH / 2, trackW, trackH, trackH / 2);
+    tg.fill();
+    tg.strokeColor = rgba(78, 88, 102, 220);
+    tg.lineWidth = 1;
+    tg.roundRect(-trackW / 2, -trackH / 2, trackW, trackH, trackH / 2);
+    tg.stroke();
+    const ratio = max > min ? (value - min) / (max - min) : 1;
+    // 填充:左端锚定的容器按比例横向缩放(拖动时跟着走,不重画 Graphics)
+    const fillHolder = this.host.addChildPlainNode(track, 'FillHolder', -trackW / 2, 0, 1, trackH);
+    mountGlassLine(this.host, fillHolder, 'Fill', trackW / 2, 0, trackW, trackH, rgba(214, 180, 120, 255));
+    fillHolder.setScale(Math.max(0.001, ratio), 1, 1);
+    const knob = this.host.addChildPlainNode(track, 'Knob', -trackW / 2 + trackW * ratio, 0, S(34), S(34));
+    const kg = knob.addComponent(Graphics);
+    kg.fillColor = rgba(222, 190, 132, 255);
+    kg.circle(0, 0, S(14));
+    kg.fill();
+    kg.strokeColor = rgba(255, 236, 196, 255);
+    kg.lineWidth = Math.max(1.2, S(2));
+    kg.circle(0, 0, S(14));
+    kg.stroke();
+    if (!enabled || max <= min) {
+      return;
+    }
+    const valueAt = (worldX: number): number => {
+      const ut = track.getComponent(UITransform);
+      const local = ut ? ut.convertToNodeSpaceAR(new Vec3(worldX, 0, 0)).x : 0;
+      return Math.round(min + Math.max(0, Math.min(1, (local + trackW / 2) / trackW)) * (max - min));
+    };
+    let pending = value;
+    const preview = (v: number): void => {
+      pending = v;
+      const r = (v - min) / (max - min);
+      knob.setPosition(new Vec3(-trackW / 2 + trackW * r, 0, 0));
+      fillHolder.setScale(Math.max(0.001, r), 1, 1);
+    };
+    track.on(Node.EventType.TOUCH_START, (e: EventTouch) => preview(valueAt(e.getUILocation().x)), this);
+    track.on(Node.EventType.TOUCH_MOVE, (e: EventTouch) => preview(valueAt(e.getUILocation().x)), this);
+    track.on(Node.EventType.TOUCH_END, () => onSet(pending), this);
+    track.on(Node.EventType.TOUCH_CANCEL, () => onSet(pending), this);
+  }
+
+  /** B 风格「使用道具」(原型 bag_use_b,面板 407..1460 × 107..732)。 */
+  private renderGlassUseDialog(parent: Node, item: BagItemEntryVO, useState: { itemCode: string | null; count: number; busy: boolean }, panelWidth: number, panelHeight: number): void {
+    const held = safeNumber(item.itemCount);
+    const busy = useState.busy;
+    const count = Math.max(1, Math.min(held, useState.count));
+    const { dialog, X, Y, S, k, T } = this.mountGlassSubDialog(parent, 'LobbyBagUseDialog', panelWidth, panelHeight, 407, 107, 1460, 732, '使用道具', () => this.host.closeLobbyBagUseDialog());
+    this.mountGlassDialogItem(dialog, 'Item', item, X(622), Y(350.5), S(266), S(255), k, S, `×${formatCompact(held)}`);
+    this.mountGlassDialogItemName(dialog, item, X(621), Y(518), Y(564), S, k, T);
+    mountGlassLine(this.host, dialog, 'ColLine', X(798), (Y(220) + Y(595)) / 2, Math.max(1, S(1.5)), Y(220) - Y(595), rgba(46, 54, 66, 255));
+    const desc = mountGlassPanel(this.host, dialog, 'Desc', (X(824) + X(1420)) / 2, Y(267), X(1420) - X(824), S(94), k);
+    const dt = T(desc, 'Text', safeText(item.useDesc || '使用后获得道具效果'), X(846) - (X(824) + X(1420)) / 2, 0, 22, rgba(226, 230, 238), X(1400) - X(846));
+    dt.enableWrapText = true;
+    const set = (v: number): void => this.host.setLobbyBagUseCount(Math.max(1, Math.min(held, v)));
+    this.mountGlassStepper(dialog, X, Y, S, k, 371, 855, 903, 1075, 1120, formatCompact(count), !busy && count > 1, !busy && count < held, () => set(count - 1), () => set(count + 1), [
+      { x0: 1172, x1: 1284, text: '+10', enabled: !busy && count < held, onClick: () => set(count + 10) },
+      { x0: 1303, x1: 1418, text: '最大', enabled: !busy && count < held, onClick: () => set(held) },
+    ]);
+    this.mountGlassSlider(dialog, X, Y, S, 442, 875, 1363, 1, held, count, !busy, set, [839, 1403]);
+    mountGlassLine(this.host, dialog, 'MidLine', (X(824) + X(1420)) / 2, Y(490), X(1420) - X(824), Math.max(1, S(1.5)), rgba(46, 54, 66, 255));
+    T(dialog, 'Summary', `使用 ×${formatCompact(count)}  →  获得 ${bagUseRewardLabel(item)}`, X(1113), Y(530), 26, GLASS_COLOR.text, S(580), HorizontalTextAlignment.CENTER, true);
+    T(dialog, 'Remain', `使用后剩余 ×${formatCompact(held - count)}`, X(1113), Y(574), 20, GLASS_COLOR.sub, S(500), HorizontalTextAlignment.CENTER);
+    const btnY = Y(667);
+    mountGlassButton(this.host, dialog, 'UseCancel', '取消', (X(715) + X(947)) / 2, btnY, X(947) - X(715), S(58), k, busy ? 'disabled' : 'secondary', busy ? undefined : () => this.host.closeLobbyBagUseDialog(), 23);
+    mountGlassButton(this.host, dialog, 'UseAll', '全部使用', (X(962) + X(1192)) / 2, btnY, X(1192) - X(962), S(58), k, busy ? 'disabled' : 'secondary', busy ? undefined : () => this.host.confirmLobbyBagUse(true), 23);
+    mountGlassButton(this.host, dialog, 'UseConfirm', busy ? '使用中…' : '使用', (X(1205) + X(1434)) / 2, btnY, X(1434) - X(1205), S(58), k, busy ? 'primaryOff' : 'primary', busy ? undefined : () => this.host.confirmLobbyBagUse(false), 23);
+  }
+
+  /** B 风格「出售道具」(原型 bag_sell_b,面板 442..1428 × 107..732)。 */
+  private renderGlassSellDialog(parent: Node, item: BagItemEntryVO, sellState: { itemCode: string | null; count: number; busy: boolean; error: string }, panelWidth: number, panelHeight: number): void {
+    const held = safeNumber(item.itemCount);
+    const unitPrice = safeNumber(item.sellGold);
+    const busy = sellState.busy;
+    const maxCount = Math.max(1, Math.min(9999, held));
+    const count = Math.max(1, Math.min(maxCount, sellState.count));
+    const { dialog, X, Y, S, k, T } = this.mountGlassSubDialog(parent, 'LobbyBagSellDialog', panelWidth, panelHeight, 442, 107, 1428, 732, '出售道具', () => this.host.closeLobbyBagSellDialog());
+    this.mountGlassDialogItem(dialog, 'Item', item, X(635.5), Y(356), S(263), S(256), k, S, `×${formatCompact(held)}`);
+    this.mountGlassDialogItemName(dialog, item, X(633), Y(516), Y(559), S, k, T);
+    mountGlassLine(this.host, dialog, 'ColLine', X(815), (Y(215) + Y(620)) / 2, Math.max(1, S(1.5)), Y(215) - Y(620), rgba(46, 54, 66, 255));
+    const rowCx = (X(840) + X(1399)) / 2;
+    const rowW = X(1399) - X(840);
+    ([['单价', `${formatMoney(unitPrice)} 金币`, true, 248], ['持有', `×${formatCompact(held)}`, false, 327]] as Array<[string, string, boolean, number]>).forEach(([key, value, coin, y], index) => {
+      const row = mountGlassPanel(this.host, dialog, `Row_${index}`, rowCx, Y(y), rowW, S(62), k);
+      this.host.addSprite('Bar', GLASS_ICON.accent, X(862) - rowCx, 0, S(4), S(24), row);
+      T(row, 'Key', key, X(886) - rowCx, 0, 22, GLASS_COLOR.text, S(160));
+      const vl = T(row, 'Value', value, X(1368) - rowCx, 0, 22, GLASS_COLOR.text, S(220), HorizontalTextAlignment.RIGHT, true);
+      if (coin) {
+        this.host.addSprite('Coin', 'ui/common/ref/ic_price/spriteFrame', X(1368) - rowCx - estimateTextWidth(vl.string, vl.fontSize) - S(24), 0, S(32), S(32), row);
+      }
+    });
+    const set = (v: number): void => this.host.setLobbyBagSellCount(Math.max(1, Math.min(maxCount, v)));
+    this.mountGlassStepper(dialog, X, Y, S, k, 416, 868, 915, 1045, 1086, formatCompact(count), !busy && count > 1, !busy && count < maxCount, () => set(count - 1), () => set(count + 1), [
+      { x0: 1134, x1: 1257, text: '+10', enabled: !busy && count < maxCount, onClick: () => set(count + 10) },
+      { x0: 1277, x1: 1397, text: '最大', enabled: !busy && count < maxCount, onClick: () => set(maxCount) },
+    ]);
+    this.mountGlassSlider(dialog, X, Y, S, 480, 855, 1356, 1, maxCount, count, !busy, set);
+    mountGlassLine(this.host, dialog, 'MidLine', rowCx, Y(517), rowW, Math.max(1, S(1.5)), rgba(46, 54, 66, 255));
+    this.host.addSprite('SumBar', GLASS_ICON.accent, X(850), Y(558), S(4), S(26), dialog);
+    T(dialog, 'SumSell', `出售 ×${formatCompact(count)}`, X(870), Y(558), 22, GLASS_COLOR.text, S(150), HorizontalTextAlignment.LEFT, true);
+    T(dialog, 'SumArrow', '→', X(1011), Y(558), 22, GLASS_COLOR.sub, S(40), HorizontalTextAlignment.CENTER);
+    T(dialog, 'SumGain', '获得', X(1059), Y(558), 22, GLASS_COLOR.text, S(70), HorizontalTextAlignment.CENTER);
+    this.host.addSprite('SumCoin', 'ui/common/ref/ic_price/spriteFrame', X(1137), Y(558), S(36), S(36), dialog);
+    T(dialog, 'SumValue', formatMoney(unitPrice * count), X(1216), Y(556), 38, GLASS_COLOR.champagne, S(150), HorizontalTextAlignment.CENTER, true);
+    T(dialog, 'SumUnit', '金币', X(1309), Y(558), 22, GLASS_COLOR.text, S(70), HorizontalTextAlignment.CENTER);
+    T(dialog, 'Remain', sellState.error || `出售后剩余 ×${formatCompact(held - count)} · 出售后不可撤销`, X(1112), Y(610), 19, sellState.error ? rgba(255, 128, 110) : GLASS_COLOR.sub, S(620), HorizontalTextAlignment.CENTER);
+    const btnY = Y(677);
+    mountGlassButton(this.host, dialog, 'SellCancel', '取消', (X(856) + X(1110)) / 2, btnY, X(1110) - X(856), S(58), k, busy ? 'disabled' : 'secondary', busy ? undefined : () => this.host.closeLobbyBagSellDialog(), 23);
+    mountGlassButton(this.host, dialog, 'SellConfirm', busy ? '出售中…' : '出售', (X(1130) + X(1396)) / 2, btnY, X(1396) - X(1130), S(58), k, busy ? 'primaryOff' : 'primary', busy ? undefined : () => this.host.confirmLobbyBagSell(), 23);
+  }
+
+  /** B 风格「材料合成」(原型 bag_compose_b,面板 385..1487 × 128..711)。 */
+  private renderGlassComposeDialog(parent: Node, item: BagItemEntryVO, rule: { need: number; target: string; targetLabel: string }, times: number, panelWidth: number, panelHeight: number): void {
+    const held = safeNumber(item.itemCount);
+    const maxTimes = Math.max(1, Math.min(500, Math.floor(held / rule.need)));
+    const safeTimes = Math.max(1, Math.min(maxTimes, times));
+    const bag = this.host.currentLobbyBagState();
+    const targetEntry = bag.groups.flatMap((group) => group.items).find((entry) => (entry.itemCode || '').toUpperCase() === rule.target);
+    const targetHeld = safeNumber(targetEntry?.itemCount ?? 0);
+    const targetItem = targetEntry ?? ({ ...item, itemCode: rule.target, itemName: rule.targetLabel, itemCount: 0, rarity: bagComposeTargetRarity(item.rarity) } as BagItemEntryVO);
+    const { dialog, X, Y, S, k, T } = this.mountGlassSubDialog(parent, 'LobbyBagComposeDialog', panelWidth, panelHeight, 385, 128, 1487, 711, '材料合成', () => this.host.closeLobbyBagComposeDialog());
+    this.mountGlassDialogItem(dialog, 'Source', item, X(509), Y(365.5), S(176), S(177), k, S, `×${rule.need}`);
+    this.mountGlassDialogItem(dialog, 'Target', targetItem, X(771), Y(365.5), S(176), S(177), k, S, '×1');
+    T(dialog, 'SourceName', safeText(item.itemName), X(508), Y(489), 24, GLASS_COLOR.text, S(220), HorizontalTextAlignment.CENTER);
+    T(dialog, 'TargetName', rule.targetLabel, X(770), Y(489), 24, GLASS_COLOR.text, S(220), HorizontalTextAlignment.CENTER);
+    // 原型:香槟色粗箭头(字形「→」太细太小,改程序画:杆 + 两道箭羽)
+    const arrow = this.host.addChildPlainNode(dialog, 'Arrow', X(639), Y(370), S(56), S(48)).addComponent(Graphics);
+    arrow.strokeColor = GLASS_COLOR.champagne;
+    arrow.lineWidth = Math.max(2, S(4.5));
+    arrow.lineCap = Graphics.LineCap.ROUND;
+    arrow.lineJoin = Graphics.LineJoin.ROUND;
+    arrow.moveTo(-S(20), 0);
+    arrow.lineTo(S(18), 0);
+    arrow.moveTo(S(4), S(14));
+    arrow.lineTo(S(19), 0);
+    arrow.lineTo(S(4), -S(14));
+    arrow.stroke();
+    T(dialog, 'Caption', `每 ${rule.need} 个合成 1 个`, X(637), Y(560), 21, rgba(160, 178, 206), S(300), HorizontalTextAlignment.CENTER);
+    mountGlassLine(this.host, dialog, 'ColLine', X(890), (Y(230) + Y(680)) / 2, Math.max(1, S(1.5)), Y(230) - Y(680), rgba(46, 54, 66, 255));
+    mountGlassSectionHeader(this.host, dialog, 'TimesHeader', '合成数量', X(926), Y(249), k, 24);
+    const set = (v: number): void => this.host.setLobbyBagComposeTimes(Math.max(1, Math.min(maxTimes, v)));
+    this.mountGlassStepper(dialog, X, Y, S, k, 310, 953, 1014, 1217, 1272, `${formatCompact(safeTimes)} 组`, safeTimes > 1, safeTimes < maxTimes, () => set(safeTimes - 1), () => set(safeTimes + 1), [
+      { x0: 1324, x1: 1450, text: `最大 ${formatCompact(maxTimes)}`, enabled: safeTimes < maxTimes, onClick: () => set(maxTimes) },
+    ]);
+    this.mountGlassSlider(dialog, X, Y, S, 370, 962, 1403, 1, maxTimes, safeTimes, true, set, [930, 1434]);
+    const boxCx = (X(924) + X(1450)) / 2;
+    const box = mountGlassPanel(this.host, dialog, 'Compare', boxCx, (Y(409) + Y(528)) / 2, X(1450) - X(924), Y(409) - Y(528), k);
+    const boxCy = (Y(409) + Y(528)) / 2;
+    const after = held - rule.need * safeTimes;
+    ([['合成前', `${safeText(item.itemName)} ×${formatCompact(held)} · ${rule.targetLabel} ×${formatCompact(targetHeld)}`, GLASS_COLOR.text, 440],
+      ['合成后', `${safeText(item.itemName)} ×${formatCompact(after)} · ${rule.targetLabel} ×${formatCompact(targetHeld + safeTimes)}`, GLASS_COLOR.champagne, 496]] as Array<[string, string, Color, number]>).forEach(([key, value, color, y], index) => {
+      T(box, `Key_${index}`, key, X(946) - boxCx, Y(y) - boxCy, 20, GLASS_COLOR.sub, S(100));
+      T(box, `Val_${index}`, value, X(1085) - boxCx, Y(y) - boxCy, 20, color, X(1440) - X(1085));
+    });
+    mountGlassLine(this.host, box, 'RowLine', 0, (Y(440) + Y(496)) / 2 - boxCy, X(1430) - X(944), Math.max(1, S(1.2)), rgba(58, 66, 78, 255));
+    mountGlassLine(this.host, box, 'ColLine', X(1060) - boxCx, 0, Math.max(1, S(1.2)), Y(416) - Y(521), rgba(58, 66, 78, 255));
+    T(dialog, 'Summary', `消耗 ${safeText(item.itemName)} ×${formatCompact(rule.need * safeTimes)}  →  获得 ${rule.targetLabel} ×${formatCompact(safeTimes)}`, X(1187), Y(573), 21, GLASS_COLOR.text, S(560), HorizontalTextAlignment.CENTER);
+    const btnY = Y(648);
+    mountGlassButton(this.host, dialog, 'ComposeCancel', '取消', (X(919) + X(1178)) / 2, btnY, X(1178) - X(919), S(58), k, 'secondary', () => this.host.closeLobbyBagComposeDialog(), 23);
+    mountGlassButton(this.host, dialog, 'ComposeConfirm', '合成', (X(1197) + X(1456)) / 2, btnY, X(1456) - X(1197), S(58), k, 'primary', () => this.host.composeLobbyBagItem(item.itemCode, safeTimes), 23);
   }
 
   // 手机全屏确认弹窗壳:底板铺满舞台;withShowcase 时左侧留道具展示列。返回右侧控件区中心 X 与放大倍数 k
@@ -1692,22 +2012,7 @@ export class LobbyBagPanelRenderer {
 
   // 合成确认弹窗(2026-07-24):组数选择(-/+/最大)+ 消耗→产出 + 合成前/后对比;确认才真正提交。
   private renderComposeDialog(parent: Node, item: BagItemEntryVO, times: number, scale: number): void {
-    const rules: Record<string, { need: number; target: string; targetLabel: string }> = {
-      ENHANCE_STONE: { need: 10, target: 'ENHANCE_STONE_HIGH', targetLabel: '高阶强化石' },
-      LOW_ENHANCE_STONE: { need: 1, target: 'ENHANCE_STONE', targetLabel: '强化石' },
-      GEM_HP_1: { need: 3, target: 'GEM_HP_2', targetLabel: '纯·赤魂石' },
-      GEM_HP_2: { need: 3, target: 'GEM_HP_3', targetLabel: '璀·赤魂石' },
-      GEM_HP_3: { need: 3, target: 'GEM_HP_4', targetLabel: '炽·赤魂石' },
-      GEM_HP_4: { need: 3, target: 'GEM_HP_5', targetLabel: '神·赤魂石' },
-      GEM_ATK_1: { need: 3, target: 'GEM_ATK_2', targetLabel: '纯·焰锋石' },
-      GEM_ATK_2: { need: 3, target: 'GEM_ATK_3', targetLabel: '璀·焰锋石' },
-      GEM_ATK_3: { need: 3, target: 'GEM_ATK_4', targetLabel: '炽·焰锋石' },
-      GEM_ATK_4: { need: 3, target: 'GEM_ATK_5', targetLabel: '神·焰锋石' },
-      GEM_DEF_1: { need: 3, target: 'GEM_DEF_2', targetLabel: '纯·苍岩石' },
-      GEM_DEF_2: { need: 3, target: 'GEM_DEF_3', targetLabel: '璀·苍岩石' },
-      GEM_DEF_3: { need: 3, target: 'GEM_DEF_4', targetLabel: '炽·苍岩石' },
-      GEM_DEF_4: { need: 3, target: 'GEM_DEF_5', targetLabel: '神·苍岩石' },
-    };
+    const rules = BAG_COMPOSE_TARGETS;
     const rule = rules[(item.itemCode || '').toUpperCase()];
     if (!rule) {
       return;

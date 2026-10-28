@@ -112,7 +112,6 @@ def main():
     save('pill_primary', rounded(160, 56, 28, None, outline=(255, 240, 205, 150), gradient=(CHAMPAGNE_TOP + (255,), CHAMPAGNE_BOTTOM + (255,)), highlight=60))
     # 次按钮(原型取色):石板灰,上沿偏亮 (80,88,94) → 中段 (36,45,54),浅灰描边
     # 次按钮(10-28 v2 原型逐像素取色:强化 / 一键升星 / 技能升级 / 一键升级同一款):平涂 (37,46,54) + 浅灰蓝细边,上沿边略亮
-    save('pill_secondary', rounded(160, 56, 28, None, outline=(112, 126, 140, 230), outline_w=2, gradient=[(0.0, (40, 49, 58, 240)), (1.0, (36, 45, 53, 240))]))
     save('pill_disabled', rounded(160, 56, 28, (44, 48, 56, 150), outline=WHITE + (18,)))
     # 货币条 / 小标签:更暗的胶囊
     save('chip', rounded(120, 44, 22, (10, 12, 18, 175), outline=WHITE + (26,)))
@@ -143,14 +142,19 @@ def main():
     save('icon_arrow_r', line_icon(64, [[(0.36, 0.14), (0.66, 0.5), (0.36, 0.86)]], width=6.0))
     save('rail_sel', rail_selected())
     # 10-28 用户:锻造强化页的光照感(原型 forge_b 逐像素取色)
-    save('pill_secondary_lit', shaded(160, 56, 28, secondary_lit, outline=(112, 126, 140, 205), outline_w=2))
+    # 10-29 用户定为全站次钮标准(原型 bag_detail_b「使用 / 合成」):石板蓝灰 (43,54,65)、沿边一圈渐隐内光、边框亮度沿边起伏、磨砂雾感;
+    # 旧的平涂 pill_secondary 与中心一束光 pill_secondary_lit 统一成这一款(中段 200px 留宽,拉伸后仍有起伏)
+    pill = lit_block(256, 56, 28, pill_inner, (84, 98, 114, 225), (178, 192, 208, 245), rim_w=2.0)
+    save('pill_secondary', pill)
+    save('pill_secondary_lit', pill)
     save('pill_primary_dim', shaded(160, 56, 28, primary_dim, outline=(198, 172, 128, 235), outline_w=2))
     save('tab_glow', shaded(120, 64, 14, tab_glow, outline=(232, 206, 150, 245), outline_w=2))
     save('line_fade', fade_line(False))
-    # 左侧压暗渐隐条(背包左栏等无底板侧栏垫底):黑色,左 alpha 高、向右渐隐到 0
+    # 左侧压暗条(背包左栏等无底板侧栏垫底):左半段平铺、右半段渐隐到 0
     shade = Image.new('RGBA', (256, 4), (0, 0, 0, 0))
     for x in range(256):
-        a_ = int(255 * (1 - x / 255) ** 1.4)
+        t = x / 255
+        a_ = 255 if t < 0.5 else int(255 * ((1 - t) / 0.5) ** 1.3)  # 左半段平铺压暗,右半段渐隐
         for y in range(4):
             shade.putpixel((x, y), (8, 10, 14, a_))
     save('shade_h', shade)
@@ -243,7 +247,9 @@ def lit_block(n_w, n_h, r, inner, rim_lo, rim_hi, rim_w=1.4):
             if sd > -rim_w:
                 along = u if abs(y) / hh > abs(x) / hw else v
                 corner = math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.22)
-                t = min(1.0, 0.15 + 0.7 * _haze(along, along * 0.3 + 0.2, 1.3 if y < 0 else 4.1) ** 1.4 + 0.6 * corner)
+                # 相位只区分上沿 / 下沿;左右沿用同一相位(按上下半区切会在两侧中点出现接缝)
+                on_tb = abs(y) / hh > abs(x) / hw
+                t = min(1.0, 0.15 + 0.7 * _haze(along, along * 0.3 + 0.2, (1.3 if y < 0 else 4.1) if on_tb else 2.7) ** 1.4 + 0.6 * corner)
                 c = _mix(c, _mix(rim_lo, rim_hi, t), 0.95)
             if sd > -0.5:
                 c = c[:3] + (int(c[3] * max(0.0, 0.5 - sd)),)
@@ -269,15 +275,25 @@ def frame_inner(u, v, dx, dy):
     d = min(dx, dy)
     haze = _haze(u, v, 2.0) ** 2
     along = u if dy < dx else v
-    edge = math.exp(-d / 7.0) * (0.4 + 0.75 * _haze(along, 0.3, 0.9 if v < 0.5 else 3.7))
+    edge = math.exp(-d / 7.0) * (0.4 + 0.75 * _haze(along, 0.3, (0.9 if v < 0.5 else 3.7) if dy < dx else 2.3))
     corner = math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.25) * 0.35
     return _mix((15, 20, 26, 226), (50, 60, 74, 238), min(1.0, 0.35 * haze + edge + corner))
+
+
+def pill_inner(u, v, dx, dy):
+    """次钮内部:底 (40,50,61),沿边内光随位置起伏(两端更亮),上半部轻微提亮 + 磨砂雾光。"""
+    d = min(dx, dy)
+    along = u if dy < dx else v
+    edge = math.exp(-d / 6.0) * (0.35 + 0.75 * _haze(along, 0.4, (1.1 if v < 0.5 else 2.9) if dy < dx else 2.0))
+    ends = math.exp(-dx / 22.0) * 0.35
+    haze = 0.16 * _haze(u, v, 3.4) ** 2 + 0.08 * (1 - v)
+    return _mix((38, 48, 59, 246), (70, 84, 100, 250), min(1.0, edge + ends + haze))
 
 
 def frame_sel_inner(u, v, dx, dy):
     d = min(dx, dy)
     along = u if dy < dx else v
-    edge = math.exp(-d / 5.5) * (0.35 + 0.65 * _haze(along, 0.6, 1.7 if v < 0.5 else 3.2))
+    edge = math.exp(-d / 5.5) * (0.35 + 0.65 * _haze(along, 0.6, (1.7 if v < 0.5 else 3.2) if dy < dx else 2.5))
     return _mix((17, 21, 26, 230), (96, 76, 46, 240), min(1.0, edge + 0.12 * _haze(u, v, 2.6) ** 2))
 
 
