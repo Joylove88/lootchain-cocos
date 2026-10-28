@@ -246,9 +246,11 @@ export function mountGlassIconButton(host: UiKitHost, parent: Node, name: string
  * 全站标签统一用这个(10-28 用户:黑底无边框和原型不一致,其他界面都要统一)。
  */
 export function mountGlassTagPill(host: UiKitHost, parent: Node, name: string, text: string, leftX: number, y: number, height: number, k: number, fontSize: number, estimateWidth: (text: string, fontSize: number) => number, color: Color = GLASS_COLOR.sub): number {
-  const w = estimateWidth(text, fontSize) + 30 * k;
-  const node = host.addChildPlainNode(parent, name, leftX + w / 2, y, w, height);
-  mountGlassSlice(host, node, 'Bg', GLASS_SLICES.tagPill, 0, 0, w, height, k);
+  // 上下留白:胶囊高 ≥ 字号 × 1.7(手机字号下限 20 时原来 27 高的胶囊会让字贴边,10-28 用户);左右留白随高度走
+  const h = Math.max(height, fontSize * 1.7);
+  const w = estimateWidth(text, fontSize) + h * 0.9;
+  const node = host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
+  mountGlassSlice(host, node, 'Bg', GLASS_SLICES.tagPill, 0, 0, w, h, k);
   glassLabel(host, node, 'Text', text, 0, 0, fontSize, color, w - 10 * k, HorizontalTextAlignment.CENTER);
   return w;
 }
