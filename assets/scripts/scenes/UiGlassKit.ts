@@ -1,4 +1,4 @@
-import { Button, Color, HorizontalTextAlignment, Label, Node, Size, Sprite } from 'cc';
+import { Button, Color, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite } from 'cc';
 import type { UiKitHost } from './UiKit';
 import { fitButtonLabel } from './UiPrimitiveFactory';
 
@@ -34,6 +34,7 @@ export const GLASS_SLICES = {
   tabSel: slice('tab_sel', 120, 64, 18, 18),
   plate: slice('plate', 160, 88, 44, 43),
   tag: slice('tag', 48, 28, 8, 8),
+  tagPill: slice('tag_pill', 120, 36, 18, 17),
 };
 
 export const GLASS_ICON = {
@@ -239,3 +240,29 @@ export function mountGlassIconButton(host: UiKitHost, parent: Node, name: string
   host.applyImageButtonFeedback(node, 1.08, 0.94);
   return node;
 }
+
+/**
+ * 标签胶囊(「大招 · Lv.5/5」「★3 解锁」「已解锁」):原型的浅填充 + 细描边;leftX 为胶囊左沿,返回胶囊宽。
+ * 全站标签统一用这个(10-28 用户:黑底无边框和原型不一致,其他界面都要统一)。
+ */
+export function mountGlassTagPill(host: UiKitHost, parent: Node, name: string, text: string, leftX: number, y: number, height: number, k: number, fontSize: number, estimateWidth: (text: string, fontSize: number) => number, color: Color = GLASS_COLOR.sub): number {
+  const w = estimateWidth(text, fontSize) + 30 * k;
+  const node = host.addChildPlainNode(parent, name, leftX + w / 2, y, w, height);
+  mountGlassSlice(host, node, 'Bg', GLASS_SLICES.tagPill, 0, 0, w, height, k);
+  glassLabel(host, node, 'Text', text, 0, 0, fontSize, color, w - 10 * k, HorizontalTextAlignment.CENTER);
+  return w;
+}
+
+/** 装备图标素材自带圆角稀有度边框(在图标宽 2.7%~5.7% 处,内部透明):放进玻璃框时用遮罩裁掉,只露图标本体 —— 全站「图标只一层框」。 */
+export const EQUIP_ICON_FRAME_INSET = 0.065;
+
+/** 在 (x, y) 放一个裁掉自带边框的图标:size = 露出的可见边长(图标按 size / (1 - 2·inset) 放大后由矩形遮罩裁边)。 */
+export function mountGlassClippedIcon(host: UiKitHost, parent: Node, name: string, iconPath: string, x: number, y: number, size: number): Node {
+  const clip = host.addChildPlainNode(parent, name, x, y, size, size);
+  const mask = clip.addComponent(Mask);
+  mask.type = Mask.Type.GRAPHICS_RECT;
+  const full = size / (1 - 2 * EQUIP_ICON_FRAME_INSET);
+  host.addSprite('Icon', iconPath, 0, 0, full, full, clip);
+  return clip;
+}
+

@@ -48,7 +48,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, mountGlassClippedIcon, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -5858,12 +5858,8 @@ export class LobbyHeroDetailPanelRenderer {
 
   /** 灰色细描边小胶囊标签(「大招 · Lv.5/5」「★3 解锁」)。 */
   private glassTagPill(parent: Node, name: string, text: string, leftX: number, y: number, h: number, font: number, color: Color = GLASS_COLOR.sub): number {
-    const { S, k } = this.glassMap(1, 1);
-    const w = estimateTextWidth(text, font) + S(30);
-    const node = this.host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
-    mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.chip, 0, 0, w, h, k * 0.8);
-    glassLabel(this.host, node, 'Text', text, 0, 0, font, color, w - S(10), HorizontalTextAlignment.CENTER);
-    return w;
+    const { k } = this.glassMap(1, 1);
+    return mountGlassTagPill(this.host, parent, name, text, leftX, y, h, k, font, estimateTextWidth, color);
   }
 
   /** 技能页(B):一个整高面板「技能」,内含大招卡 + 被动卡(原型卡 1205..1816,首卡顶 150,高 135,间距 14)。 */
@@ -6129,8 +6125,7 @@ export class LobbyHeroDetailPanelRenderer {
         if (equipped) {
           const icon = equipIconAssetByCode(equipped.equipCode);
           if (icon) {
-            mountEquipIconBacking(this.host, cell, 'ArtEquipIconBacking', S(76), equipped.equipCode, { y: -S(4) });
-            this.host.addSprite('ArtEquipIcon', icon, 0, -S(4), S(76), S(76), cell);
+            mountGlassClippedIcon(this.host, cell, 'ArtEquipIcon', icon, 0, -S(4), S(80));
           } else {
             const glyph = this.host.addSprite('ArtEquipGlyph', GLASS_PART_ICON[code] ?? GLASS_PART_ICON.WEAPON, 0, -S(2), S(52), S(52), cell);
             if (glyph) {
@@ -6225,12 +6220,11 @@ export class LobbyHeroDetailPanelRenderer {
       const left = -listW / 2;
       const iconS = S(78);
       const iconX = left + S(10) + iconS / 2;
-      const frame = this.host.addChildPlainNode(row, 'IconFrame', iconX, 0, iconS, iconS);
-      mountGlassSlice(this.host, frame, 'Bg', GLASS_SLICES.row, 0, 0, iconS, iconS, k * 0.8);
       const icon = equipIconAssetByCode(item.equipCode);
       if (icon) {
-        mountEquipIconBacking(this.host, row, 'IconBacking', iconS - S(8), item.equipCode, { x: iconX });
-        this.host.addSprite('Icon', icon, iconX, 0, iconS - S(8), iconS - S(8), row);
+        // 一层框:图标素材自带的稀有度圆角框 + 暗底(不再外套玻璃框,10-28 用户「两个框」)
+        mountEquipIconBacking(this.host, row, 'IconBacking', iconS, item.equipCode, { x: iconX });
+        this.host.addSprite('Icon', icon, iconX, 0, iconS, iconS, row);
       }
       const wornOnThis = item.heroId === hero.id;
       const wornOnOther = item.heroId != null && !wornOnThis;
@@ -6265,14 +6259,20 @@ export class LobbyHeroDetailPanelRenderer {
     const CY = (py: number): number => FY(py) - oy;
     const q = equipQualityColor(selected.quality);
     const rarityColor = rgba(Math.min(255, q.r + 20), Math.min(255, q.g + 20), Math.min(255, q.b + 20));
-    const bigBox = this.host.addChildPlainNode(card, 'BigIconFrame', 0, CY(321), S(144), S(140));
-    mountGlassSlice(this.host, bigBox, 'Bg', GLASS_SLICES.row, 0, 0, S(144), S(140), k);
+    const stats = this.protoEquipStats(selected);
+    const affixes = this.protoEquipAffixes(selected);
+    // 原型(1 条属性):图标 144 框 / 名称 420 / 稀有度 456 / 分隔 484 / 属性起 497;属性 + 词缀超过 2 行时卡头收紧(图标 100)
+    const dense = stats.length + affixes.length > 2;
+    const head = dense
+      ? { icon: 289, box: 104, clip: 92, name: 362, rarity: 392, divider: 414, listTop: 424 }
+      : { icon: 321, box: 144, clip: 128, name: 420, rarity: 456, divider: 484, listTop: 497 };
+    const bigBox = this.host.addChildPlainNode(card, 'BigIconFrame', 0, CY(head.icon), S(head.box), S(head.box - 4));
+    mountGlassSlice(this.host, bigBox, 'Bg', GLASS_SLICES.panel, 0, 0, S(head.box), S(head.box - 4), k);
     const bigIcon = equipIconAssetByCode(selected.equipCode);
     if (bigIcon) {
-      mountEquipIconBacking(this.host, card, 'BigIconBacking', S(124), selected.equipCode, { y: CY(321) });
-      this.host.addSprite('BigIcon', bigIcon, 0, CY(321), S(124), S(124), card);
+      mountGlassClippedIcon(this.host, card, 'BigIcon', bigIcon, 0, CY(head.icon), S(head.clip));
     }
-    glassLabel(this.host, card, 'Name', safeText(selected.equipName), 0, CY(420), F(24), GLASS_COLOR.text, cardW - S(30), HorizontalTextAlignment.CENTER, true);
+    glassLabel(this.host, card, 'Name', safeText(selected.equipName), 0, CY(head.name), F(24), GLASS_COLOR.text, cardW - S(30), HorizontalTextAlignment.CENTER, true);
     const tierText = (selected.tier ?? 1) > 1 ? `${selected.tier}阶·` : '';
     const rName = `${tierText}${heroEquipRarityName(selected.quality)}`;
     const rFont = F(19);
@@ -6280,35 +6280,77 @@ export class LobbyHeroDetailPanelRenderer {
     const lvText = ` · +${selected.enhanceLevel ?? 0}`;
     const lW = estimateTextWidth(lvText, rFont);
     const rLeft = -(rW + lW) / 2;
-    glassLabel(this.host, card, 'Rarity', rName, rLeft, CY(456), rFont, rarityColor, rW + S(8));
-    glassLabel(this.host, card, 'RarityLv', lvText, rLeft + rW, CY(456), rFont, GLASS_COLOR.text, lW + S(8), HorizontalTextAlignment.LEFT, true);
-    this.host.addSprite('Divider', GLASS_ICON.divider, 0, CY(484), S(285), S(1.5), card);
-    const stats = this.protoEquipStats(selected);
-    const affixes = this.protoEquipAffixes(selected);
-    const lines = stats.length + affixes.length;
-    const step = Math.min(40, (548 - 500) / Math.max(1, lines) + 20);
-    let cursor = 517;
+    glassLabel(this.host, card, 'Rarity', rName, rLeft, CY(head.rarity), rFont, rarityColor, rW + S(8));
+    glassLabel(this.host, card, 'RarityLv', lvText, rLeft + rW, CY(head.rarity), rFont, GLASS_COLOR.text, lW + S(8), HorizontalTextAlignment.LEFT, true);
+    this.host.addSprite('Divider', GLASS_ICON.divider, 0, CY(head.divider), S(285), S(1.5), card);
+    const statStep = dense ? 35 : 40;
+    const affixStep = dense ? 30 : 34;
+    const listTop = head.listTop;
+    const contentPx = stats.length * statStep + (affixes.length > 0 ? 10 + affixes.length * affixStep : 0);
+    const powerBlock = 60;
+    const maxListPx = 674 - powerBlock - listTop;
+    const scroll = contentPx > maxListPx;
+    const listPx = scroll ? maxListPx : contentPx;
+    // 属性区:超出时 ScrollView + 矩形遮罩(属性 / 词缀多时上下滑动,不再被截掉)
+    const statView = this.host.addChildPlainNode(card, 'StatScrollView', 0, CY(listTop + listPx / 2), cardW - S(16), S(listPx));
+    let listRoot = statView;
+    let base = (py: number): number => CY(py) - CY(listTop + listPx / 2);
+    if (scroll) {
+      const mask = statView.addComponent(Mask);
+      mask.type = Mask.Type.GRAPHICS_RECT;
+      const scrollView = statView.addComponent(ScrollView);
+      scrollView.horizontal = false;
+      scrollView.vertical = true;
+      scrollView.inertia = true;
+      scrollView.elastic = true;
+      const content = this.host.addChildPlainNode(statView, 'StatScrollContent', 0, S(listPx) / 2 - S(contentPx) / 2, cardW - S(16), S(contentPx));
+      scrollView.content = content;
+      listRoot = content;
+      // 底沿渐隐 + 小箭头:提示下面还有属性可以上滑查看(遮罩外层,不随内容滚动)
+      const fade = this.host.addChildPlainNode(card, 'StatScrollFade', 0, CY(listTop + listPx) + S(14), cardW - S(16), S(28)).addComponent(Graphics);
+      for (let i = 0; i < 7; i += 1) {
+        fade.fillColor = rgba(20, 24, 31, 40 + i * 26);
+        fade.rect(-(cardW - S(16)) / 2, S(14) - S(4) * (i + 1), cardW - S(16), S(4));
+        fade.fill();
+      }
+      const more = this.host.addSprite('StatScrollMore', GLASS_ICON.chevron, 0, CY(listTop + listPx) + S(4), S(16), S(16), card);
+      if (more) {
+        more.node.angle = -90;
+        more.color = rgba(182, 189, 205, 200);
+      }
+      base = (py: number): number => S(contentPx) / 2 - S(py - listTop);
+    }
+    const ix = RX(1522) - cardCx;
+    let cursor = listTop + statStep / 2;
     stats.forEach((stat, index) => {
-      this.host.addSprite(`StatIcon_${index}`, stat.label === '攻击' ? GLASS_STAT_ICON.sword : (HERO_GLASS_STAT_ICONS[stat.label] ?? GLASS_STAT_ICON.sword), RX(1522) - cardCx, CY(cursor), S(36), S(36), card);
-      glassLabel(this.host, card, `StatLabel_${index}`, stat.label, RX(1553) - cardCx, CY(cursor), F(20), GLASS_COLOR.sub, S(120));
-      glassLabel(this.host, card, `StatValue_${index}`, stat.value, RX(1793) - cardCx, CY(cursor), F(21), GLASS_COLOR.text, S(120), HorizontalTextAlignment.RIGHT, true);
-      cursor += step;
+      this.host.addSprite(`StatIcon_${index}`, stat.label === '攻击' ? GLASS_STAT_ICON.sword : (HERO_GLASS_STAT_ICONS[stat.label] ?? GLASS_STAT_ICON.sword), ix, base(cursor), S(36), S(36), listRoot);
+      glassLabel(this.host, listRoot, `StatLabel_${index}`, stat.label, RX(1553) - cardCx, base(cursor), F(20), GLASS_COLOR.sub, S(120));
+      glassLabel(this.host, listRoot, `StatValue_${index}`, stat.value, RX(1793) - cardCx, base(cursor), F(21), GLASS_COLOR.text, S(120), HorizontalTextAlignment.RIGHT, true);
+      cursor += statStep;
     });
-    affixes.forEach((affix, index) => {
-      glassLabel(this.host, card, `Affix_${index}`, affix.text, RX(1522) - cardCx, CY(cursor), F(18), affix.color, cardW - S(40));
-      cursor += step * 0.85;
-    });
+    if (affixes.length > 0) {
+      cursor += 10 - statStep / 2 + affixStep / 2;
+      affixes.forEach((affix, index) => {
+        glassLabel(this.host, listRoot, `Affix_${index}`, affix.text, ix - S(10), base(cursor), F(18), affix.color, cardW - S(40));
+        cursor += affixStep;
+      });
+    }
+    cursor = listTop + listPx;
     // 战力:已穿 = 本件贡献;未穿 = 与本英雄同部位当前装备的差值
     const worn = items.find((entry) => entry.heroId === hero.id && entry.slot === selected.slot) ?? null;
     const onThisHero = selected.heroId === hero.id;
     const score = equipItemPowerScore(selected);
     const delta = onThisHero ? score : score - (worn ? equipItemPowerScore(worn) : 0);
-    const powerY = Math.max(cursor + 18, 572);
-    const powerBox = this.host.addChildPlainNode(card, 'PowerBox', 0, CY(Math.min(powerY, 650)), S(307), S(45));
-    const pb = mountGlassSlice(this.host, powerBox, 'Bg', GLASS_SLICES.row, 0, 0, S(307), S(45), k);
-    if (pb) {
-      pb.color = delta >= 0 ? rgba(140, 220, 150, 255) : rgba(240, 130, 110, 255);
-    }
+    const powerBox = this.host.addChildPlainNode(card, 'PowerBox', 0, CY(cursor + 8 + 22), S(307), S(45));
+    // 原型取色:墨绿底 (24,37,37) + 细边 (50,64,64);负值换暗红
+    const pg = powerBox.addComponent(Graphics);
+    pg.fillColor = delta >= 0 ? rgba(24, 37, 37, 240) : rgba(52, 24, 22, 235);
+    pg.roundRect(-S(307) / 2, -S(45) / 2, S(307), S(45), S(8));
+    pg.fill();
+    pg.strokeColor = delta >= 0 ? rgba(58, 78, 76, 255) : rgba(132, 70, 60, 230);
+    pg.lineWidth = Math.max(1, S(1.4));
+    pg.roundRect(-S(307) / 2, -S(45) / 2, S(307), S(45), S(8));
+    pg.stroke();
     glassLabel(this.host, powerBox, 'Text', `战力 ${delta >= 0 ? '+' : ''}${formatInteger(delta)}`, 0, 0, F(22), delta >= 0 ? GLASS_COLOR.green : GLASS_COLOR.red, S(280), HorizontalTextAlignment.CENTER, true);
     // ④ 强化 / 主操作(穿戴 / 卸下 / 转移 / 需 Lv)
     const levelLocked = (selected.requiredLevel ?? 1) > Math.max(1, hero.level);
