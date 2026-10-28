@@ -5964,23 +5964,24 @@ export class LobbyHeroDetailPanelRenderer {
     cmp('StarNextBox', 1547, 1810, maxed ? null : star + 1, !maxed);
     const awakened = (hero.awakenStatus ?? 0) > 0;
     const ready = !awakened && star >= AWAKEN_COST.minStar;
-    const lockCircle = (name: string, cx: number, cy: number, d: number, open: boolean): void => {
+    // 原型取色:圆内底 (18,23,29);升星解锁行是暖铜细边,觉醒行是浅灰细边
+    const lockCircle = (name: string, cx: number, cy: number, d: number, open: boolean, ring: Color): void => {
       const node = this.host.addChildPlainNode(root, name, cx, cy, d, d);
       const g = node.addComponent(Graphics);
-      g.fillColor = rgba(12, 15, 20, 220);
+      g.fillColor = rgba(18, 23, 29, 235);
       g.circle(0, 0, d / 2);
       g.fill();
-      g.strokeColor = rgba(255, 255, 255, 40);
-      g.lineWidth = 1.3;
+      g.strokeColor = ring;
+      g.lineWidth = Math.max(1.2, S(1.6));
       g.circle(0, 0, d / 2);
       g.stroke();
       if (open) {
         this.host.addSprite('Emblem', HERO_AI_SECTION_STAR_ASSET, 0, 0, d * 0.62, d * 0.62, node);
       } else {
-        this.host.addSprite('Lock', GLASS_ICON.lock, 0, 0, d * 0.72, d * 0.72, node);
+        this.host.addSprite('Lock', GLASS_ICON.lock, 0, 0, d * 0.68, d * 0.68, node);
       }
     };
-    lockCircle('StarAwakenLock', RX(1238), FY(257), S(52), ready || awakened);
+    lockCircle('StarAwakenLock', RX(1238), FY(257), S(52), ready || awakened, rgba(112, 112, 122, 235));
     glassLabel(this.host, root, 'StarAwakenName', '觉醒', RX(1280), FY(250), F(22), ready ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
     const awDesc = awakened ? `大招上限 Lv.${ultimateCap(true)} · 属性已增强` : `大招上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)} · 属性增强`;
     glassLabel(this.host, root, 'StarAwakenDesc', awDesc, RX(1280), FY(286), F(19), GLASS_COLOR.sub, S(380));
@@ -6012,7 +6013,7 @@ export class LobbyHeroDetailPanelRenderer {
       if (unlocked && skill) {
         this.glassSkillEmblem(root, `StarUnlockSkill_${index}`, RX(1246), FY(cy), S(Math.min(56, rowH - 14)), skill, index + 1, false);
       } else {
-        lockCircle(`StarUnlockLock_${index}`, RX(1246), FY(cy), S(Math.min(56, rowH - 14)), false);
+        lockCircle(`StarUnlockLock_${index}`, RX(1246), FY(cy), S(Math.min(56, rowH - 14)), false, rgba(170, 146, 116, 240));
       }
       // 每行标签离行顶分隔线同一间距(标签半高 17 + 留白 11):第一行的线和后面各行的线都画在行顶
       const titleY = FY(single ? cy - rowH * 0.2 : top + 28);
