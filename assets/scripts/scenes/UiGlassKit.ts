@@ -31,6 +31,8 @@ export const GLASS_SLICES = {
   frame: slice('frame', 112, 112, 18, 18),
   // 选中格:金边 + 浅暖内光 + 暗心(格子小,用选中行的宽暖光会整格发棕)
   frameSel: slice('frame_sel', 112, 112, 18, 18),
+  // 可领取 / 可操作的高亮行(原型 quest_b 首行):暖香槟玻璃 + 金边
+  rowReady: slice('row_ready', 256, 112, 44, 24),
   row: slice('row', 64, 40, 10, 10),
   pillPrimary: slice('pill_primary', 160, 56, 28, 27),
   pillSecondary: slice('pill_secondary', 256, 56, 28, 27),
@@ -471,7 +473,8 @@ export function mountGlassTopBar(
     const { l, r } = spans[index];
     mountGlassChip(host, parent, `${prefix}GlassChip_${chip.key}`, chip.icon, chip.value, (RX(l) + RX(r)) / 2, FY(rowY), RX(r) - RX(l), S(42), k);
   });
-  const divider = host.addSprite(`${prefix}GlassDivider`, GLASS_ICON.divider, RX(1752), FY(rowY), S(36), S(2), parent);
+  // 没有货币胶囊(任务页)就不画胶囊与关闭钮之间的竖线
+  const divider = chips.length > 0 ? host.addSprite(`${prefix}GlassDivider`, GLASS_ICON.divider, RX(1752), FY(rowY), S(36), S(2), parent) : null;
   if (divider) {
     divider.node.angle = 90;
   }

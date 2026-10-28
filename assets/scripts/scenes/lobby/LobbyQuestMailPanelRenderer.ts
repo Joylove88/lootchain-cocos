@@ -20,6 +20,7 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
 import { mountRefHeaderBand, mountRefPlate, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_INFO_BANNER, REF_KIT, REF_SECTION_EMBLEM, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassPanel, mountGlassScrollBar, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { townProtoFrame } from './LobbyTownHudProto';
 
 /** 服务端邮件列表上限(PlayerMailServiceImpl.MAX_LIST 50),收件箱头「N / 50」用。 */
@@ -109,6 +110,18 @@ const ROW_BG_INSET_RIGHT = 177;
 const PHONE_HEADER_H = 74;
 /** 首开等素材的最长时间:超过就照常画(缺图走手绘兜底),不让慢网一直停在加载态。 */
 const ART_GATE_WINDOW_MS = 8000;
+
+/** 2026-10-29 B 风格(毛玻璃)开关:手机任务页按原型 quest_b 1:1。 */
+const QUEST_GLASS = true;
+const QUEST_GLASS_BG = 'ui/common/ref/hall_bg_glass/spriteFrame';
+/** B 风格任务类型图标(原型 quest_b 抠的哑光金图标;野外清剿沿用原型「冒险」的交叉双剑)。 */
+const QUEST_GLASS_ICONS: Array<{ match: RegExp; path: string }> = [
+  { match: /登录|签到/, path: 'ui/glass/quest_login/spriteFrame' },
+  { match: /野外|清剿|冒险|爬塔|主线|战斗/, path: 'ui/glass/quest_field/spriteFrame' },
+  { match: /副本/, path: 'ui/glass/quest_dungeon/spriteFrame' },
+  { match: /召唤|抽卡/, path: 'ui/glass/quest_summon/spriteFrame' },
+  { match: /锻造|强化|洗练/, path: 'ui/glass/quest_forge/spriteFrame' },
+];
 
 /** 任务类型图标:按任务名/描述关键词匹配(ratio=宽/高,等比显示)。 */
 const QUEST_ICON_RULES: Array<{ match: RegExp; path: string; ratio: number }> = [
@@ -393,6 +406,10 @@ export class LobbyQuestMailPanelRenderer {
   // ── 手机横屏全屏任务(2026-10-04 用户「这几个界面需要美化」:bt_quest_phone_v1;同日审图后精修 bt2_quest_refine) ──
   // 结构:标题带 → 页签条(页签左贴列表框上沿 + 右侧完成度)→ 列表框(素材行底)→ 底部标语。
   private renderQuestPanelPhone(layout: UiLayout): void {
+    if (QUEST_GLASS) {
+      this.renderQuestPanelGlass(layout);
+      return;
+    }
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
     const { width: panelWidth, height: panelHeight } = resolvePhoneDialogSize(layout);
@@ -491,6 +508,173 @@ export class LobbyQuestMailPanelRenderer {
       this.addQuestRowPhone(contentNode, quest, -padTop - (rowPitch - 8) / 2 - index * rowPitch, rowW, rowPitch - 8, state.claiming, rewardCols);
     });
     this.attachScrollHints(panel, listNode, scroll, listY, rowW + 8, viewH, contentHeight, outerW / 2 - 6);
+  }
+
+  /**
+   * 2026-10-29 B 风格任务页(原型 quest_b 1:1,原型坐标 1870×841):整屏虚化大厅背景 + 共用顶栏(无货币)+ 两个页签 + 右侧完成度;
+   * 行 63..1810 高 112 步 127.5:可领取行 = 暖香槟玻璃 + 金边,其余玻璃行;图标框 + 名称 / 描述 + 进度数字 / 细条 + 奖励小框 + 领取主钮 / 未完成次钮。
+   */
+  private renderQuestPanelGlass(layout: UiLayout): void {
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panelW = layout.stageWidth;
+    const panelH = layout.stageHeight;
+    const state = this.host.currentLobbyQuestState();
+    const { LX, RX, FX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host as never, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    this.mountDim('LobbyQuestDim', centerX, centerY, layout, () => this.host.closeLobbyQuestPanel(), 200);
+    const group = this.host.createUiNode('LobbyQuestSceneContent');
+    group.setPosition(new Vec3(centerX, centerY, 0));
+    group.addComponent(UITransform).setContentSize(new Size(panelW, panelH));
+    group.addComponent(BlockInputEvents);
+    this.lastQuestGroup = group;
+    const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelW, panelH);
+    const coverW = layout.width + Math.abs(centerX) * 2;
+    const coverH = layout.height + Math.abs(centerY) * 2;
+    const bgW = Math.max(coverW, coverH * (1870 / 841));
+    this.host.addSprite('LobbyQuestGlassBg', QUEST_GLASS_BG, 0, 0, bgW, bgW / (1870 / 841), panel);
+    const close = (): void => this.host.closeLobbyQuestPanel();
+    mountGlassTopBar(this.host as never, panel, 'LobbyQuest', panelW, panelH, '任务', [], close, close);
+
+    // 页签 日常任务 58..305 / 成就 320..567,y 137(选中香槟,未选玻璃)
+    const tabs: Array<{ key: 'DAILY' | 'ACHIEVE'; text: string; x0: number; x1: number }> = [
+      { key: 'DAILY', text: '日常任务', x0: 58, x1: 305 },
+      { key: 'ACHIEVE', text: '成就', x0: 320, x1: 567 },
+    ];
+    tabs.forEach((tab) => {
+      const active = state.tab === tab.key;
+      const node = this.host.addChildPlainNode(panel, `QuestTab_${tab.key}`, (LX(tab.x0) + LX(tab.x1)) / 2, FY(137), LX(tab.x1) - LX(tab.x0), S(68));
+      mountGlassSlice(this.host as never, node, 'Bg', active ? GLASS_SLICES.tabActive : GLASS_SLICES.panel, 0, 0, LX(tab.x1) - LX(tab.x0), S(68), k);
+      T(node, 'Label', tab.text, 0, 0, 25, active ? GLASS_COLOR.onChampagne : GLASS_COLOR.text, LX(tab.x1) - LX(tab.x0) - S(20), HorizontalTextAlignment.CENTER, active);
+      if (!active) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, () => this.host.setLobbyQuestTab(tab.key), this);
+        this.host.applyImageButtonFeedback(node, 1.03, 0.97);
+      }
+    });
+    const quests = state.tab === 'DAILY' ? state.summary?.daily ?? [] : state.summary?.achievements ?? [];
+    if (quests.length > 0) {
+      const done = quests.filter((quest) => quest.claimed || quest.claimable).length;
+      const ready = quests.filter((quest) => quest.claimable && !quest.claimed).length;
+      const summary = `${ready > 0 ? `可领取 ${ready} · ` : ''}${state.tab === 'DAILY' ? '今日完成' : '已达成'} ${done}/${quests.length}`;
+      T(panel, 'QuestDoneCount', summary, RX(1807), FY(140), 24, GLASS_COLOR.sub, S(500), HorizontalTextAlignment.RIGHT);
+    }
+    const listCx = (LX(63) + RX(1810)) / 2;
+    const listTop = FY(190) + S(6);
+    const listBottom = FY(813) - S(6);
+    const hintY = (listTop + listBottom) / 2;
+    if (state.loading && !state.summary) {
+      T(panel, 'QuestLoading', '任务读取中…', listCx, hintY, 24, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    if (state.error && !state.summary) {
+      T(panel, 'QuestError', `读取失败:${state.error}`, listCx, hintY, 24, rgba(230, 140, 130), S(900), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    if (quests.length === 0) {
+      T(panel, 'QuestEmpty', '暂无任务', listCx, hintY, 24, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    // 列表:一屏 5 行(步 127.5),多了纵向滚动 + 灰色细滚动条
+    const rowW = RX(1810) - LX(63);
+    const rowH = S(112);
+    const step = S(127.5);
+    const viewH = listTop - listBottom;
+    const viewW = rowW + S(12);
+    const contentH = Math.max(viewH, S(6) * 2 + rowH + step * (quests.length - 1));
+    const viewport = this.host.addChildPlainNode(panel, 'QuestList', listCx, (listTop + listBottom) / 2, viewW, viewH);
+    viewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    const scroll = viewport.addComponent(ScrollView);
+    scroll.horizontal = false;
+    scroll.vertical = true;
+    scroll.inertia = true;
+    scroll.elastic = true;
+    scroll.cancelInnerEvents = true;
+    const baseY = (viewH - contentH) / 2;
+    const content = this.host.addChildPlainNode(viewport, 'QuestListContent', 0, baseY, viewW, contentH);
+    scroll.content = content;
+    quests.forEach((quest, index) => {
+      this.addQuestRowGlass(content, quest, contentH / 2 - S(6) - rowH / 2 - index * step, rowW, rowH, state.claiming, S, k, T);
+    });
+    const maxOffset = contentH - viewH;
+    if (maxOffset > 1) {
+      const trackH = viewH - S(16);
+      const update = mountGlassScrollBar(this.host as never, panel, 'QuestScrollBar', RX(1826), (listTop + listBottom) / 2, S(4), trackH, Math.max(S(40), trackH * (viewH / contentH)));
+      const draw = (): void => update(Math.min(maxOffset, Math.max(0, content.position.y - baseY)) / maxOffset);
+      draw();
+      viewport.on(ScrollView.EventType.SCROLLING, draw, this);
+    }
+  }
+
+  /** B 风格任务行(原型 quest_b;行内 x 用原型坐标 - 63 换算)。 */
+  private addQuestRowGlass(parent: Node, quest: PlayerQuestVO, y: number, rowW: number, rowH: number, claiming: string | null, S: (v: number) => number, k: number,
+    T: (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label): void {
+    const ready = quest.claimable && !quest.claimed;
+    const row = this.host.addChildPlainNode(parent, `QuestRow_${quest.questCode}`, 0, y, rowW, rowH);
+    mountGlassSlice(this.host as never, row, 'Bg', ready ? GLASS_SLICES.rowReady : GLASS_SLICES.panel, 0, 0, rowW, rowH, k);
+    const X = (px: number): number => S(px - 63) - rowW / 2;
+    const dy = (py: number): number => S(247 - py);
+    // 图标框 90..180(90×90)+ 原型抠的类型图标
+    mountGlassFrame(this.host as never, row, 'TypeSlot', X(135), 0, S(90), S(88), k);
+    const icon = QUEST_GLASS_ICONS.find((rule) => rule.match.test(`${quest.questName}${quest.questDesc ?? ''}`));
+    if (icon) {
+      this.host.addSprite('TypeIcon', icon.path, X(135), 0, S(62), S(62), row);
+    }
+    T(row, 'Name', quest.questName, X(217), dy(229), 30, quest.claimed ? GLASS_COLOR.sub : GLASS_COLOR.text, S(420), HorizontalTextAlignment.LEFT, true);
+    T(row, 'Desc', quest.questDesc ?? '', X(217), dy(269), 24, GLASS_COLOR.sub, S(440));
+    // 进度:数字 (828, 225) + 细条 672..983 × y 263(高 24)
+    const ratio = quest.targetCount > 0 ? Math.min(1, quest.progress / quest.targetCount) : 0;
+    T(row, 'Progress', `${quest.progress}/${quest.targetCount}`, X(828), dy(225), 24, GLASS_COLOR.text, S(200), HorizontalTextAlignment.CENTER);
+    const barW = S(311);
+    const barH = S(24);
+    // 轨道:浅灰细边 + 暗底胶囊(原型);用贴图拼,原生端 Graphics 描边在这里不出图
+    const bar = this.host.addChildPlainNode(row, 'Bar', X(827.5), dy(263), barW, barH);
+    mountGlassSlice(this.host as never, bar, 'Edge', GLASS_SLICES.pillSecondary, 0, 0, barW, barH, barH / 56);
+    const edge = bar.getChildByName('Edge')?.getComponent(Sprite);
+    if (edge) {
+      edge.color = rgba(200, 206, 214);
+    }
+    mountGlassSlice(this.host as never, bar, 'Track', GLASS_SLICES.chip, 0, 0, barW - S(4), barH - S(4), (barH - S(4)) / 44);
+    if (ratio > 0) {
+      const fw = Math.max(barH - S(6), (barW - S(6)) * ratio);
+      const fill = this.host.addChildPlainNode(bar, 'Fill', -barW / 2 + S(3) + fw / 2, 0, fw, barH - S(6));
+      mountGlassSlice(this.host as never, fill, 'Bg', GLASS_SLICES.pillPrimary, 0, 0, fw, barH - S(6), (barH - S(6)) / 56);
+    }
+    // 奖励小框(最多 2 个,1117 起,高 62,间距 12;单个宽 221,两个时 204 / 189 按字数)
+    const rewards = quest.rewards.slice(0, 2);
+    let left = 1117;
+    rewards.forEach((item, index) => {
+      const text = `${item.name ?? ''}×${this.formatAmount(item.amount)}`;
+      const w = rewards.length === 1 ? 221 : Math.max(180, 92 + text.length * 17);
+      const chip = mountGlassPanel(this.host as never, row, `Reward_${index}`, X(left + w / 2), 0, S(w), S(62), k);
+      const ri = resolveRewardIcon(item);
+      if (ri) {
+        const ih = S(42);
+        this.host.addSprite('Icon', ri.path, X(left + 36) - X(left + w / 2), 0, Math.min(S(48), ih * ri.ratio), Math.min(S(48), ih * ri.ratio) / ri.ratio, chip);
+      }
+      T(chip, 'Text', text, X(left + 70) - X(left + w / 2), 0, 23, quest.claimed ? GLASS_COLOR.sub : GLASS_COLOR.text, S(w - 80));
+      left += w + 12;
+    });
+    // 按钮:领取 1532..1790(主钮,高 64)/ 未完成 · 已领取 1568..1787(次钮,高 58)
+    const canClaim = ready && claiming === null;
+    const text = quest.claimed ? '已领取' : claiming === quest.questCode ? '领取中…' : quest.claimable ? '领取' : '未完成';
+    if (ready) {
+      const btn = mountGlassButton(this.host as never, row, canClaim ? 'LobbyQuestClaimReady' : 'Claim', text, X(1661), 0, S(258), S(64), k, canClaim ? 'primary' : 'primaryOff',
+        canClaim ? () => this.host.claimLobbyQuest(quest.questCode) : undefined, 26);
+      void btn;
+    } else {
+      mountGlassButton(this.host as never, row, 'Claim', text, X(1677.5), 0, S(219), S(58), k, 'disabled', undefined, 25);
+      const label = row.getChildByName('Claim')?.getChildByName('Label')?.getComponent(Label);
+      if (label && !quest.claimed) {
+        // 未完成:原型是白字(只是不可点);已领取用灰字
+        label.color = GLASS_COLOR.text;
+      }
+    }
   }
 
   private rerenderQuestIfOpen(): void {

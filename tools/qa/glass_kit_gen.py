@@ -103,6 +103,8 @@ def main():
     # 选中态(10-28 v2 原型 合成右栏选中行取色):金边 + 左右强上下弱的暖金内光 + 暗中性中心(全站选中行 / 选中格共用)
     save('panel_sel', panel_sel_tex())
     # 装备框 / 物品格(原型合成槽位):浅灰亮边 + 冷色内光向中心渐暗
+    # 可领取行(原型 quest_b 首行):整行暖香槟玻璃 (66,60,50) + 金边亮度沿边起伏 + 磨砂雾光
+    save('row_ready', lit_block(256, 112, 14, row_ready_inner, (150, 128, 88, 235), (236, 210, 152, 250), rim_w=2.0))
     save('frame', lit_block(112, 112, 12, frame_inner, (110, 120, 138, 220), (182, 192, 210, 240), rim_w=2.0))
     # 选中格(原型背包 / 分解 / 英雄装备选中格):金边沿边起伏 + 很浅的暖色内光 + 暗心(小格子用,选中行仍用 panel_sel)
     save('frame_sel', lit_block(112, 112, 12, frame_sel_inner, (190, 160, 104, 235), (246, 220, 162, 250), rim_w=2.2))
@@ -290,6 +292,14 @@ def pill_inner(u, v, dx, dy):
     return _mix((38, 48, 59, 246), (70, 84, 100, 250), min(1.0, edge + ends + haze))
 
 
+def row_ready_inner(u, v, dx, dy):
+    d = min(dx, dy)
+    along = u if dy < dx else v
+    edge = math.exp(-d / 6.0) * (0.35 + 0.7 * _haze(along, 0.5, (1.4 if v < 0.5 else 3.0) if dy < dx else 2.2))
+    haze = 0.3 * _haze(u, v, 1.9) ** 2 * (1.1 - 0.4 * v)
+    return _mix((58, 53, 45, 236), (98, 86, 64, 242), min(1.0, edge + haze))
+
+
 def frame_sel_inner(u, v, dx, dy):
     d = min(dx, dy)
     along = u if dy < dx else v
@@ -433,7 +443,10 @@ def extract_proto_icons():
                                              'bag_consume': (89, 486, 27), 'bag_fragment': (89, 569, 27), 'bag_box': (88, 649, 27), 'bag_pass': (88, 730, 27)}),
                               # 召唤原型 gacha_b:左栏卡池线稿(白)、右侧功能钮(连圆环保留原色)
                               ('gacha_b.png', {'pool_limited': (90, 161, 26), 'pool_hero': (89, 272, 26), 'pool_equip': (89, 385, 26), 'pool_normal': (89, 500, 28),
-                                               'gacha_act_info': (1680, 170, 35), 'gacha_act_record': (1680, 252, 35), 'gacha_act_pool': (1680, 335, 35)})):
+                                               'gacha_act_info': (1680, 170, 35), 'gacha_act_record': (1680, 252, 35), 'gacha_act_pool': (1680, 335, 35)}),
+                              # 任务原型 quest_b:行首类型图标(保留原色;框不抠,框用共用装备框)
+                              ('quest_b.png', {'quest_login': (134, 247, 31), 'quest_field': (134, 373, 31), 'quest_dungeon': (134, 500, 31),
+                                               'quest_summon': (134, 628, 31), 'quest_forge': (134, 755, 31)})):
         path = os.path.join(os.path.dirname(PROTO), proto_name)
         if not os.path.exists(path):
             continue
@@ -442,7 +455,7 @@ def extract_proto_icons():
             img = img.resize((1870, 841), Image.LANCZOS)
         P = np.asarray(img).astype(float)
         for key, (x, y, half) in items.items():
-            if key == 'lock' or key.startswith('gacha_act'):
+            if key == 'lock' or key.startswith('gacha_act') or key.startswith('quest_'):
                 save(key, cut_keep(x, y, half, 30, 120) if key == 'lock' else cut_keep(x, y, half, 14, 70))
             else:
                 save(key, cut(x, y, half, 18, 90, True))
