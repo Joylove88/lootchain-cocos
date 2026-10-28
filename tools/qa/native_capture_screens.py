@@ -76,6 +76,10 @@ SCREENS = [
     ('profile', "root.openPlayerProfileDialog();", 2.5),
     # 背包物品详情弹窗:打开背包后点第一件有自定义图标的道具
     ('bag_detail', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/ENHANCE_STONE|FUSION_LUCK/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.refreshLobbyOverlay(); }, 1500);", 4.5),
+    # 10-29 背包二级弹窗(使用 / 出售 / 合成):先开详情再直接置弹窗态
+    ('bag_use', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/EXP_BOOK/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.lobbyBagUseItemCode = it.itemCode; root.lobbyBagUseCount = 3; root.refreshLobbyOverlay(); }, 1500);", 4.5),
+    ('bag_sell', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/ENHANCE_STONE_HIGH/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.openLobbyBagSellDialog(it.itemCode); }, 1500);", 4.5),
+    ('bag_compose', "root.openLobbyBagPanel(); setTimeout(() => { const items=root.currentLobbyBagState().groups.flatMap(g=>g.items); const it=items.find(i=>/^LOW_ENHANCE_STONE$/.test(i.itemCode||''))||items[0]; root.lobbyBagPanelRenderer.detailPopupOpen = true; root.selectLobbyBagItem(it.itemCode); root.openLobbyBagComposeDialog(it.itemCode); }, 1500);", 4.5),
 ]
 
 

@@ -25,7 +25,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { glassLabel, glassProtoMap, GLASS_BAG_ICON, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassClippedIcon, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, GLASS_BAG_ICON, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassButton, mountGlassClippedIcon, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill, mountGlassTopBar } from '../UiGlassKit';
 import { mountRefScrollBar, mountRefButton, mountRefDialogBackdrop, mountRefTitleBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
@@ -60,6 +60,22 @@ const BAG_SCENE_SHADE_ALPHA = 120;
 const BAG_GLASS = true;
 /** B 风格背景:同一张哥特大厅图去饱和 / 偏冷 / 提亮 / 虚化(色调对齐原型 bag_b,其余整页界面共用)。 */
 const BAG_GLASS_BG = 'ui/common/ref/hall_bg_glass/spriteFrame';
+/** 背包合成规则(固定规则镜像,与服务器 COMPOSE_RULES 对齐):强化石x10→高阶x1 / 旧低阶石1:1并入 / 宝石 3 合 1。 */
+const BAG_COMPOSE_RULES: Record<string, number> = {
+  ENHANCE_STONE: 10,
+  LOW_ENHANCE_STONE: 1,
+  GEM_HP_1: 3, GEM_HP_2: 3, GEM_HP_3: 3, GEM_HP_4: 3,
+  GEM_ATK_1: 3, GEM_ATK_2: 3, GEM_ATK_3: 3, GEM_ATK_4: 3,
+  GEM_DEF_1: 3, GEM_DEF_2: 3, GEM_DEF_3: 3, GEM_DEF_4: 3,
+};
+/** 粗估文字宽(中文按字号、其余按 0.56 字号),标签胶囊定宽用。 */
+function estimateTextWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of Array.from(text)) {
+    w += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? fontSize : fontSize * 0.56;
+  }
+  return w;
+}
 /** 使用后获得物的简称(只给「使用 ×N → 获得 X」用;具体数额由服务端结算后飘字)。 */
 function bagUseRewardLabel(item: BagItemEntryVO): string {
   const effect = (item.useEffectType || '').toUpperCase();
@@ -305,6 +321,8 @@ export class LobbyBagPanelRenderer {
   private phoneDialogRect: PhoneDialogRect | null = null;
   /** 物品详情所在面板尺寸(二级弹窗按同一整屏映射算 u)。 */
   private phoneDetailPanelSize: { w: number; h: number } | null = null;
+  /** 本次整刷的 uiScale(B 风格详情里沿用旧二级弹窗时要用)。 */
+  private lastScale = 1;
 
   /** 道具卖光后关掉详情弹窗(否则会回落显示列表第一件)。 */
   closeDetailPopup(): void {
@@ -316,6 +334,7 @@ export class LobbyBagPanelRenderer {
   render(layout: UiLayout): void {
     const state = this.host.currentLobbyBagState();
     const scale = Math.max(0.64, Math.min(1, layout.uiScale));
+    this.lastScale = scale;
     const panelWidth = Math.max(320 * scale, layout.stageWidth);
     const panelHeight = Math.max(280 * scale, layout.stageHeight);
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
@@ -588,6 +607,11 @@ export class LobbyBagPanelRenderer {
     const rows = this.railRows(state.groups);
     if (this.selectedGroupKey !== 'ALL' && !rows.some((row) => row.key === this.selectedGroupKey)) {
       this.selectedGroupKey = 'ALL';
+    }
+    // 左栏无底板:背景在这一侧压暗、向右渐隐(10-29 用户:背景亮扎眼,字和背景糊在一起;原型此处约 (26,26,30))
+    const shade = this.host.addSprite('LobbyBagRailShade', GLASS_ICON.shadeH, (LX(-80) + LX(600)) / 2, 0, LX(600) - LX(-80), panelHeight + S(40), parent);
+    if (shade) {
+      shade.color = rgba(255, 255, 255, 165);
     }
     // ── 左栏(45..375,行心 158 起步 81.5;分类多时压缩行距)──
     const step = Math.min(81.5, (775 - 118) / Math.max(1, rows.length));
@@ -931,6 +955,10 @@ export class LobbyBagPanelRenderer {
   // 居中详情弹窗(参考图):遮罩点击或右上 X 关闭;用途/获取途径/操作按钮(只读禁用)/出售横幅。
   // 框整图非等比拉宽到参考图比例(角饰轻微加宽可接受),内容按比例内边距排布。
   private renderDetailPopup(parent: Node, item: BagItemEntryVO, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
+    if (BAG_GLASS && isPhoneDesign()) {
+      this.renderGlassDetail(parent, item, panelWidth, panelHeight, state);
+      return;
+    }
     if (this.phoneDialogRect) {
       this.renderDetailPopupPhone(parent, item, this.phoneDialogRect, panelWidth, panelHeight, scale, state);
       return;
@@ -1134,15 +1162,8 @@ export class LobbyBagPanelRenderer {
     if (canUse) {
       useButton.on(Button.EventType.CLICK, () => this.host.useLobbyBagItem(item.itemCode), this);
     }
-    // 合成(固定规则镜像,与服务器 COMPOSE_RULES 对齐):强化石x10→高阶x1 / 旧低阶石1:1并入。
-    const composeRules: Record<string, number> = {
-      ENHANCE_STONE: 10,
-      LOW_ENHANCE_STONE: 1,
-      GEM_HP_1: 3, GEM_HP_2: 3, GEM_HP_3: 3, GEM_HP_4: 3,
-      GEM_ATK_1: 3, GEM_ATK_2: 3, GEM_ATK_3: 3, GEM_ATK_4: 3,
-      GEM_DEF_1: 3, GEM_DEF_2: 3, GEM_DEF_3: 3, GEM_DEF_4: 3,
-    };
-    const composeNeed = composeRules[(item.itemCode || '').toUpperCase()];
+    // 合成(固定规则镜像,与服务器 COMPOSE_RULES 对齐)
+    const composeNeed = BAG_COMPOSE_RULES[(item.itemCode || '').toUpperCase()];
     const canCompose = composeNeed != null && safeNumber(item.itemCount) >= composeNeed;
     const composeButton = this.addDetailActionButton(detail, 'LobbyBagComposeButton', '合成', plate ? REF_DETAIL.btnIcon.fuse : BAG_AI_OP_ICON_FORGE_ASSET, slots[1][0], slots[1][1], buttonWidth, buttonHeight, scale, canCompose, false, plate);
     if (canCompose) {
@@ -1395,6 +1416,166 @@ export class LobbyBagPanelRenderer {
     });
     // 三钮(去掉「来源」后):右列 772..1553 三等分,心 x 902 / 1162 / 1423,y 717;照原型干净底板 196 × 72(暗金 / 红 / 灰)+ 原型图标
     this.renderDetailActions(detail, item, state, scale, S(196), S(72), [902, 1162, 1423].map((px) => [X(px), Y(717)] as [number, number]), true);
+  }
+
+  /**
+   * 2026-10-29 B 风格物品详情(原型 bag_detail_b 1:1,原型坐标 1870×841):整屏压暗 + 居中玻璃面板(361..1510 × 90..752);
+   * 左列 物品框 + 名 + 稀有度签 + 数量 / 售价小面板,右列 用途 / 获取途径 + 三钮(使用 / 合成 = 次钮,出售 = 主钮)。
+   */
+  private renderGlassDetail(parent: Node, item: BagItemEntryVO, panelWidth: number, panelHeight: number, state: LobbyBagPanelState): void {
+    const { FX, FY, S, k } = glassProtoMap(panelWidth, panelHeight);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    // 遮罩:原型弹窗外亮度约原来的 55%
+    const screenW = Math.max(panelWidth, view.getVisibleSize().width);
+    const dimW = screenW * 1.6;
+    const dimH = panelHeight * 1.6;
+    const dim = this.host.addChildPlainNode(parent, 'LobbyBagDetailPopupDim', 0, 0, dimW, dimH);
+    mountRefSolid(this.host, dim, 'Fill', 0, 0, dimW, dimH, rgba(0, 0, 0, 115));
+    dim.addComponent(BlockInputEvents);
+    const cx = (FX(361) + FX(1510)) / 2;
+    const cy = (FY(90) + FY(752)) / 2;
+    const detail = mountGlassPanel(this.host, parent, 'LobbyBagItemDetail', cx, cy, FX(1510) - FX(361), FY(90) - FY(752), k);
+    // 弹窗底再垫一层同款玻璃(叠起来约 96% 不透明):原型里弹窗后面的道具格看不见,单层会隐约透出来
+    const base = mountGlassSlice(this.host, detail, 'GlassBase', GLASS_SLICES.panel, 0, 0, FX(1510) - FX(361), FY(90) - FY(752), k);
+    base?.node.setSiblingIndex(0);
+    detail.addComponent(BlockInputEvents);
+    const X = (px: number): number => FX(px) - cx;
+    const Y = (py: number): number => FY(py) - cy;
+    const closePopup = (): void => {
+      this.detailPopupOpen = false;
+      if (detail.isValid) {
+        detail.destroy();
+      }
+      if (dim.isValid) {
+        dim.destroy();
+      }
+      this.host.clearLobbyBagSelection();
+    };
+    // 标题行 + 圆圈关闭钮 + 通栏细线
+    mountGlassSectionHeader(this.host, detail, 'LobbyBagDetailTitle', '物品详情', X(409), Y(135), k, 30);
+    const close = this.host.addChildPlainNode(detail, 'LobbyBagDetailCloseButton', X(1464), Y(134), S(96), S(96));
+    const ring = this.host.addChildPlainNode(close, 'Ring', 0, 0, S(58), S(58)).addComponent(Graphics);
+    ring.fillColor = rgba(24, 30, 38, 200);
+    ring.circle(0, 0, S(28));
+    ring.fill();
+    ring.strokeColor = rgba(150, 160, 176, 220);
+    ring.lineWidth = Math.max(1.2, S(1.6));
+    ring.circle(0, 0, S(28));
+    ring.stroke();
+    this.host.addSprite('X', GLASS_ICON.close, 0, 0, S(30), S(30), close);
+    close.addComponent(Button);
+    this.host.applyImageButtonFeedback(close, 1.08, 0.92);
+    close.on(Button.EventType.CLICK, closePopup, this);
+    mountGlassLine(this.host, detail, 'LobbyBagDetailHeadLine', (X(405) + X(1466)) / 2, Y(175), X(1466) - X(405), Math.max(1, S(1.5)), rgba(52, 60, 72, 255));
+
+    // ── 左列:物品框 473..729 × 211..460;名 (600, 491);稀有度签 (600, 532);数量 / 售价面板 405..795 × 567..708 ──
+    const frameCx = X(601);
+    const frameCy = Y(335.5);
+    const frame = mountGlassFrame(this.host, detail, 'LobbyBagDetailIconFrame', frameCx, frameCy, S(256), S(249), k);
+    const icon = bagItemIconAsset(item);
+    if (icon && bagEquipCode(item)) {
+      mountGlassClippedIcon(this.host, frame, 'LobbyBagDetailIcon', icon, 0, 0, S(196));
+    } else if (!icon || !this.host.addSprite('LobbyBagDetailIcon', icon, 0, 0, S(212), S(212), frame)) {
+      this.host.addSprite('LobbyBagDetailTypeIcon', bagItemTypeIconAsset(item.itemType), 0, 0, S(150), S(150), frame);
+    }
+    T(detail, 'LobbyBagDetailName', safeText(item.itemName), X(600), Y(491), 31, GLASS_COLOR.text, S(380), HorizontalTextAlignment.CENTER, true);
+    const rarityKey = (item.rarity || '').toUpperCase();
+    const tint = rarityKey === 'UR' || rarityKey === 'SSR' ? rgba(240, 170, 70) : rarityKey === 'SR' || rarityKey === 'EPIC' ? rgba(190, 120, 250) : rarityKey === 'R' || rarityKey === 'RARE' ? rgba(110, 160, 245) : rgba(182, 189, 205);
+    const tagText = `${safeText(item.rarity || 'N')} · ${itemTypeLabel(item.itemType)}`;
+    const tagFont = S(20);
+    const tagW = glassTagPillWidthOf(tagText, tagFont, S(34), estimateTextWidth);
+    mountGlassTagPill(this.host, detail, 'LobbyBagDetailSubtitleChip', tagText, X(600) - tagW / 2, Y(532), S(34), k, tagFont, estimateTextWidth, tint);
+    // 稀有度签底色带一点稀有度色(原型「SR · 材料」紫底紫边)
+    const tagBg = detail.getChildByName('LobbyBagDetailSubtitleChip')?.getChildByName('Bg')?.getComponent(Sprite);
+    if (tagBg) {
+      tagBg.color = rgba(Math.min(255, 150 + tint.r / 3), Math.min(255, 150 + tint.g / 3), Math.min(255, 150 + tint.b / 3));
+    }
+    const infoCx = X(600);
+    const infoCy = Y(637.5);
+    const infoBox = mountGlassPanel(this.host, detail, 'LobbyBagDetailInfoBox', infoCx, infoCy, S(390), S(141), k);
+    const infoRows: Array<[string, string, string, boolean]> = [
+      ['拥有数量', formatCompact(safeNumber(item.itemCount)), 'ui/common/ref/ic_owned/spriteFrame', true],
+      ['出售价', safeNumber(item.sellGold) > 0 ? `${formatMoney(item.sellGold)} 金币` : '不可出售', 'ui/common/ref/ic_price/spriteFrame', false],
+    ];
+    if (item.expireTime) {
+      infoRows.push(['过期', safeText(String(item.expireTime)), 'ui/common/ref/ic_expire/spriteFrame', false]);
+    }
+    const rowStep = infoRows.length > 2 ? 42 : 58;
+    const firstRow = 637.5 - (infoRows.length - 1) * rowStep / 2;
+    infoRows.forEach(([title, value, rowIcon, strong], index) => {
+      const ry = Y(firstRow + index * rowStep) - infoCy;
+      if (index > 0) {
+        mountGlassLine(this.host, infoBox, `Sep_${index}`, (X(430) + X(773)) / 2 - infoCx, ry + S(rowStep / 2), X(773) - X(430), Math.max(1, S(1.4)), rgba(58, 66, 78, 255));
+      }
+      this.host.addSprite(`Ic_${index}`, rowIcon, X(445) - infoCx, ry, S(32), S(32), infoBox);
+      T(infoBox, `Title_${index}`, title, X(486) - infoCx, ry, 22, GLASS_COLOR.text, S(160));
+      T(infoBox, `Value_${index}`, value, X(773) - infoCx, ry, strong ? 29 : 22, strong ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(200), HorizontalTextAlignment.RIGHT, strong);
+    });
+    mountGlassLine(this.host, detail, 'LobbyBagDetailColLine', X(820), (Y(200) + Y(718)) / 2, Math.max(1, S(1.5)), Y(200) - Y(718), rgba(46, 54, 66, 255));
+
+    // ── 右列:用途(标题 y 219;正文框 858..1466 × 255..340)/ 分隔线 y 364 / 获取途径(标题 y 404;行 858..1466,行心 482 / 582,高 84)──
+    const rightCx = (X(858) + X(1466)) / 2;
+    const rightW = X(1466) - X(858);
+    mountGlassSectionHeader(this.host, detail, 'LobbyBagDetailUse', '用途', X(860), Y(219), k, 26);
+    const useBox = mountGlassPanel(this.host, detail, 'LobbyBagDetailUseBox', rightCx, Y(297.5), rightW, S(85), k);
+    const useText = T(useBox, 'LobbyBagDetailUseValue', safeText(item.useDesc || item.useEffectType || '仅展示'), X(884) - rightCx, 0, 22, rgba(226, 230, 238), rightW - S(50));
+    useText.enableWrapText = true;
+    useText.getComponent(UITransform)?.setContentSize(rightW - S(50), S(76));
+    mountGlassLine(this.host, detail, 'LobbyBagDetailMidLine', rightCx, Y(364), rightW, Math.max(1, S(1.5)), rgba(46, 54, 66, 255));
+    mountGlassSectionHeader(this.host, detail, 'LobbyBagDetailSource', '获取途径', X(860), Y(404), k, 26);
+    const segments = this.resolveSourceSegments(item, state, 30);
+    const visible = segments.slice(0, 2);
+    if (segments.length > 2) {
+      visible[1] = `${visible[1]}…`;
+    }
+    visible.forEach((segment, index) => {
+      const ry = Y(482 + index * 100);
+      const row = mountGlassPanel(this.host, detail, `LobbyBagSourceRowPlate_${index}`, rightCx, ry, rightW, S(84), k);
+      this.host.addSprite('Medal', REF_DETAIL.sourceIcon(refDetailSourceKind(segment)), X(906) - rightCx, 0, S(66), S(66), row);
+      T(row, `LobbyBagSourceDesc_${index}`, segment, X(962) - rightCx, 0, 22, GLASS_COLOR.text, S(430));
+      const chev = this.host.addSprite('Chevron', GLASS_ICON.chevron, X(1432) - rightCx, 0, S(22), S(22), row);
+      if (chev) {
+        chev.color = rgba(214, 220, 230);
+      }
+      if (state.sourceItemCode === item.itemCode && state.sourceError) {
+        row.addComponent(Button);
+        row.on(Button.EventType.CLICK, () => this.host.reloadLobbyBagItemSource(item.itemCode), this);
+      }
+    });
+
+    // ── 三钮 y 690:使用 858..1052 / 合成 1070..1263(次钮)/ 出售 1278..1472(主钮)──
+    const usableEffects = ['ADD_GOLD', 'ADD_DIAMOND', 'ADD_STAMINA', 'RANDOM_REWARD', 'FIXED_REWARD'];
+    const isVirtualEntry = (item.itemCode || '').includes(':');
+    const canUse = !isVirtualEntry && usableEffects.includes((item.useEffectType || '').toUpperCase()) && safeNumber(item.itemCount) > 0;
+    const composeNeed = BAG_COMPOSE_RULES[(item.itemCode || '').toUpperCase()];
+    const canCompose = composeNeed != null && safeNumber(item.itemCount) >= composeNeed;
+    const sellable = !isVirtualEntry && safeNumber(item.sellGold) > 0 && safeNumber(item.itemCount) > 0;
+    const btnY = Y(690);
+    mountGlassButton(this.host, detail, 'LobbyBagUseButton', '使用', (X(858) + X(1052)) / 2, btnY, X(1052) - X(858), S(56), k,
+      canUse ? 'secondaryLit' : 'disabled', canUse ? () => this.host.useLobbyBagItem(item.itemCode) : undefined, 23);
+    mountGlassButton(this.host, detail, 'LobbyBagComposeButton', '合成', (X(1070) + X(1263)) / 2, btnY, X(1263) - X(1070), S(56), k,
+      canCompose ? 'secondaryLit' : 'disabled', canCompose ? () => this.host.openLobbyBagComposeDialog(item.itemCode) : undefined, 23);
+    mountGlassButton(this.host, detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', (X(1278) + X(1472)) / 2, btnY, X(1472) - X(1278), S(56), k,
+      sellable ? 'primary' : 'primaryOff', sellable ? () => this.host.openLobbyBagSellDialog(item.itemCode) : undefined, 23);
+
+    // 二级弹窗(使用 / 出售 / 合成)沿用旧实现,待 B 原型确认后替换
+    const sellState = this.host.currentLobbyBagSellState();
+    if (sellState.itemCode === item.itemCode) {
+      this.renderSellDialog(parent, item, sellState, this.lastScale);
+    }
+    const composeState = this.host.currentLobbyBagComposeState();
+    if (composeState.itemCode === item.itemCode) {
+      this.renderComposeDialog(parent, item, composeState.times, this.lastScale);
+    }
+    const useState = this.host.currentLobbyBagUseState();
+    if (useState.itemCode === item.itemCode) {
+      this.renderPhoneUseDialog(parent, item, useState, this.lastScale);
+    }
   }
 
   // 手机全屏确认弹窗壳:底板铺满舞台;withShowcase 时左侧留道具展示列。返回右侧控件区中心 X 与放大倍数 k

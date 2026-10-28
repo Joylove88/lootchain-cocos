@@ -67,6 +67,7 @@ export const GLASS_ICON = {
   lock: G('lock'),
   lineFade: G('line_fade'),
   lineFadeV: G('line_fade_v'),
+  shadeH: G('shade_h'),
 };
 
 /** 背包左栏分类线稿(原型 bag_b 抠的白色剪影,运行时染色)。 */

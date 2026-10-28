@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack item-detail popup (B style). The new mockup shows the SAME backpack screen dimmed behind, with a SMALLER confirm dialog in front of it (the item-detail popup is hidden). Keep exactly the same fonts, colours, frosted dark glass panel style (soft rounded corners, faint light outline, soft uneven edge light), title row (short champagne bar + white title), thin round close X, champagne-gold primary pill button and slate-grey secondary pill button.
+- SECOND image = another APPROVED screen: use it for the exact look of small components — one rounded frosted frame around an item icon (no double frames), small grey tag pills, thin dividers, number steppers.
+- THIRD image = our CURRENT (old style) version of this dialog. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon title, spiky gold frames, red buttons or gold ornaments.
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames. Icons muted and matte.
+
+DIALOG: a frosted dark glass panel centred on screen (about 50% width, 64% height). Title row on the left, thin round close "X" at the top right, a thin divider under the title row.
+LEFT part (about 36% of the dialog): the item icon in one rounded frosted frame (about 170px) with a small count "×{held}" at its bottom right, under it the item name in white and a small purple tag pill "SR · 材料".
+Title: "出售道具". Item: a dark red-veined crystal shard "高阶强化石", count "×2".
+RIGHT part: two info rows separated by a thin divider: "单价" ... "80 金币" (right aligned) and "持有" ... "×2" (right aligned). A quantity row: round "−", number field "1", round "+", small secondary pill "+10", small secondary pill "最大"; under it a thin slider track. A thin divider. A summary row: "出售 ×1" → "获得" a small gold-coin icon and "80" in champagne and "金币". A small grey line "出售后剩余 ×1 · 出售后不可撤销".
+Bottom right of the dialog: secondary pill "取消", primary pill "出售".
+Output only the single finished mockup image, no annotations.

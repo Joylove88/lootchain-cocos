@@ -147,6 +147,13 @@ def main():
     save('pill_primary_dim', shaded(160, 56, 28, primary_dim, outline=(198, 172, 128, 235), outline_w=2))
     save('tab_glow', shaded(120, 64, 14, tab_glow, outline=(232, 206, 150, 245), outline_w=2))
     save('line_fade', fade_line(False))
+    # 左侧压暗渐隐条(背包左栏等无底板侧栏垫底):黑色,左 alpha 高、向右渐隐到 0
+    shade = Image.new('RGBA', (256, 4), (0, 0, 0, 0))
+    for x in range(256):
+        a_ = int(255 * (1 - x / 255) ** 1.4)
+        for y in range(4):
+            shade.putpixel((x, y), (8, 10, 14, a_))
+    save('shade_h', shade)
     save('line_fade_v', fade_line(True))
     extract_proto_icons()
 
@@ -251,7 +258,10 @@ def panel_inner(u, v, dx, dy):
     along = u if dy < dx else v
     edge = math.exp(-d / 5.0) * (0.35 + 0.65 * _haze(along, 0.5, 2.4)) * (0.85 - 0.35 * v)
     corner = math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.2) * 0.4
-    return _mix((19, 29, 38, 206), (52, 64, 78, 222), min(1.0, 0.2 * haze + edge + corner))
+    # 10-29 用户:面板青蓝偏重、缺磨砂感 → 底色往中性收 (20,26,33);雾光加强、改中性奶白,上半部更明显
+    c = _mix((20, 26, 33, 208), (54, 62, 72, 222), min(1.0, edge + corner))
+    milk = min(1.0, 0.42 * haze * (1.25 - 0.7 * v))
+    return _mix(c, (62, 66, 72, 216), milk)
 
 
 def frame_inner(u, v, dx, dy):
