@@ -28,11 +28,15 @@ def rounded(w, h, r, fill, outline=None, outline_w=1, gradient=None, highlight=N
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, W - 1, H - 1), R, fill=255)
     body = Image.new('RGBA', (W, H), fill if gradient is None else (0, 0, 0, 0))
     if gradient is not None:
-        top, bottom = gradient
+        stops = gradient if isinstance(gradient, list) else [(0.0, gradient[0]), (1.0, gradient[1])]
         d = ImageDraw.Draw(body)
         for y in range(H):
             t = y / max(1, H - 1)
-            d.line([(0, y), (W, y)], fill=tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(4)))
+            for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+                if t0 <= t <= t1:
+                    u = (t - t0) / max(1e-6, t1 - t0)
+                    d.line([(0, y), (W, y)], fill=tuple(int(c0[i] * (1 - u) + c1[i] * u) for i in range(4)))
+                    break
     out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     out.paste(body, (0, 0), mask)
     if highlight:
@@ -98,13 +102,20 @@ def main():
     save('row', rounded(64, 40, 8, (255, 255, 255, 10), outline=WHITE + (14,)))
     # 胶囊按钮 160×56(圆角 28;九宫格左右 28)
     save('pill_primary', rounded(160, 56, 28, None, outline=(255, 240, 205, 150), gradient=(CHAMPAGNE_TOP + (255,), CHAMPAGNE_BOTTOM + (255,)), highlight=60))
-    save('pill_secondary', rounded(160, 56, 28, (34, 40, 52, 215), outline=WHITE + (46,), highlight=18))
+    # 次按钮(原型取色):石板灰,上沿偏亮 (80,88,94) → 中段 (36,45,54),浅灰描边
+    save('pill_secondary', rounded(160, 56, 28, None, outline=(160, 170, 180, 120), gradient=[(0.0, (82, 90, 98, 225)), (0.45, (40, 50, 59, 225)), (1.0, (38, 48, 57, 225))]))
     save('pill_disabled', rounded(160, 56, 28, (44, 48, 56, 150), outline=WHITE + (18,)))
     # 货币条 / 小标签:更暗的胶囊
     save('chip', rounded(120, 44, 22, (10, 12, 18, 175), outline=WHITE + (26,)))
     # 页签选中(竖排页签 / 分段页签共用):香槟渐变圆角 16
     save('tab_active', rounded(120, 64, 16, None, outline=(255, 240, 205, 140), gradient=(CHAMPAGNE_TOP + (255,), CHAMPAGNE_BOTTOM + (255,)), highlight=60))
     save('tab_idle', rounded(120, 64, 16, (34, 40, 52, 150), outline=WHITE + (26,)))
+    # 竖排页签选中(原型取色):哑光暗金三段渐变 (141,120,86) → (174,143,97) → (146,124,90),亮描边 (219,197,149)
+    save('tab_sel', rounded(120, 64, 16, None, outline=(219, 197, 149, 230), outline_w=1, gradient=[(0.0, (141, 120, 86, 240)), (0.5, (174, 143, 97, 240)), (1.0, (146, 124, 90, 240))]))
+    # 名牌(原型取色):深色 (15,18,24) 胶囊 + 淡描边
+    save('plate', rounded(160, 88, 44, (15, 18, 24, 228), outline=(120, 128, 140, 90)))
+    # 小标签(实底,运行时染色)
+    save('tag', rounded(48, 28, 7, (255, 255, 255, 255)))
     # 分区标题左侧竖条(4×24)
     save('accent_bar', rounded(4, 24, 2, CHAMPAGNE_TOP + (255,)))
     # 细分隔线(1px 白 12%,横向拉伸)
@@ -116,6 +127,42 @@ def main():
     save('icon_close', line_icon(64, [[(0.24, 0.24), (0.76, 0.76)], [(0.76, 0.24), (0.24, 0.76)]], width=3.6))
     save('icon_chevron', line_icon(32, [[(0.38, 0.22), (0.66, 0.5), (0.38, 0.78)]], width=2.6))
     save('icon_plus', line_icon(32, [[(0.5, 0.24), (0.5, 0.76)], [(0.24, 0.5), (0.76, 0.5)]], width=2.6))
+    # 名牌左右切换箭头(原型:粗白箭头)
+    save('icon_arrow_l', line_icon(64, [[(0.64, 0.14), (0.34, 0.5), (0.64, 0.86)]], width=6.0))
+    save('icon_arrow_r', line_icon(64, [[(0.36, 0.14), (0.66, 0.5), (0.36, 0.86)]], width=6.0))
+    extract_proto_icons()
+
+
+PROTO = os.path.join(ROOT, '周报截图', '2026-10-28_整体UI去AI感', 'proto', 'hero_b2.png')
+
+
+def extract_proto_icons():
+    """属性 / 页签图标直接从已确认的原型 hero_b2 抠剪影(原型面板底色均匀,按与底色的色差算透明度),显示尺寸与原型一致。
+    stat_* 保留原型暗金;nav_* 存白色剪影,运行时按选中 / 未选染色。"""
+    import numpy as np
+    if not os.path.exists(PROTO):
+        print('skip proto icons (no prototype file)')
+        return
+    P = np.asarray(Image.open(PROTO).convert('RGB')).astype(float)
+
+    def cut(cx, cy, half, lo, hi, white):
+        box = P[cy - half:cy + half, cx - half:cx + half]
+        bg = np.median(np.concatenate([box[0], box[-1], box[:, 0], box[:, -1]]), axis=0)
+        a = np.clip((np.sqrt(((box - bg) ** 2).sum(2)) - lo) / (hi - lo), 0, 1)
+        core = box[a > 0.85].reshape(-1, 3)
+        color = np.array([255, 255, 255]) if white else (np.median(core, axis=0) if len(core) > 5 else np.array([212, 177, 120]))
+        out = np.zeros(box.shape[:2] + (4,), np.uint8)
+        out[..., :3] = color
+        out[..., 3] = (a * 255).astype(np.uint8)
+        im = Image.fromarray(out, 'RGBA')
+        return im.resize((half * 4, half * 4), Image.LANCZOS)
+
+    stats = {'hp': (1235, 165), 'def': (1235, 201), 'crit': (1235, 237), 'luck': (1235, 273), 'atk': (1517, 165), 'spd': (1517, 201),
+             'awaken': (1517, 273), 'sword': (1235, 394), 'loot': (1517, 430)}
+    for key, (x, y) in stats.items():
+        save(f'stat_{key}', cut(x, y, 19, 20, 110, False))
+    for key, (x, y) in {'attr': (85, 159), 'equip': (85, 262), 'skill': (85, 365), 'star': (85, 468)}.items():
+        save(f'nav_{key}', cut(x, y, 24, 25, 120, True))
 
 
 if __name__ == '__main__':

@@ -31,6 +31,9 @@ export const GLASS_SLICES = {
   chip: slice('chip', 120, 44, 22, 21),
   tabActive: slice('tab_active', 120, 64, 18, 18),
   tabIdle: slice('tab_idle', 120, 64, 18, 18),
+  tabSel: slice('tab_sel', 120, 64, 18, 18),
+  plate: slice('plate', 160, 88, 44, 43),
+  tag: slice('tag', 48, 28, 8, 8),
 };
 
 export const GLASS_ICON = {
@@ -44,17 +47,33 @@ export const GLASS_ICON = {
   navEquip: G('nav_equip'),
   navSkill: G('nav_skill'),
   navStar: G('nav_star'),
+  arrowLeft: G('icon_arrow_l'),
+  arrowRight: G('icon_arrow_r'),
+};
+
+/** 属性小图标(直接从原型 hero_b2 抠的扁平暗金剪影,glass_kit_gen.extract_proto_icons)。 */
+export const GLASS_STAT_ICON = {
+  hp: G('stat_hp'),
+  def: G('stat_def'),
+  crit: G('stat_crit'),
+  luck: G('stat_luck'),
+  atk: G('stat_atk'),
+  spd: G('stat_spd'),
+  awaken: G('stat_awaken'),
+  sword: G('stat_sword'),
+  loot: G('stat_loot'),
 };
 
 export const GLASS_ASSET_PATHS: readonly string[] = [
   ...Object.values(GLASS_SLICES).map((item) => item.path),
   ...Object.values(GLASS_ICON),
+  ...Object.values(GLASS_STAT_ICON),
 ];
 
 /** 色板(原型取色)。 */
 export const GLASS_COLOR = {
   text: new Color(242, 242, 242, 255),
-  sub: new Color(163, 168, 179, 255),
+  sub: new Color(182, 189, 205, 255),
   dim: new Color(120, 126, 138, 255),
   champagne: new Color(227, 196, 138, 255),
   onChampagne: new Color(46, 34, 18, 255),

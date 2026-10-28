@@ -48,7 +48,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_STAT_ICON, GLASS_SLICES, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -251,24 +251,31 @@ const STAR_UP_GOLD_COSTS = [10000, 30000, 60000, 100000, 160000, 240000, 330000,
 const HERO_GLASS = true;
 /** B 风格属性小图标(原型 A 款暗金字形,沿用 ui/hero/proto 金色图,运行时染哑光暗金)。 */
 const HERO_GLASS_STAT_ICONS: Record<string, string> = {
-  生命: 'ui/hero/proto/g_hp/spriteFrame',
-  攻击: 'ui/hero/proto/g_atk/spriteFrame',
-  防御: 'ui/hero/proto/g_def/spriteFrame',
-  速度: 'ui/hero/proto/g_spd/spriteFrame',
-  暴击: 'ui/hero/proto/g_crit/spriteFrame',
-  暴伤: 'ui/hero/proto/g_crit/spriteFrame',
-  幸运: 'ui/hero/proto/ic_luck/spriteFrame',
-  觉醒: 'ui/hero/proto/ic_awaken/spriteFrame',
+  生命: GLASS_STAT_ICON.hp,
+  攻击: GLASS_STAT_ICON.atk,
+  防御: GLASS_STAT_ICON.def,
+  速度: GLASS_STAT_ICON.spd,
+  暴击: GLASS_STAT_ICON.crit,
+  暴伤: GLASS_STAT_ICON.crit,
+  幸运: GLASS_STAT_ICON.luck,
+  觉醒: GLASS_STAT_ICON.awaken,
 };
-const HERO_GLASS_ICON_TINT = new Color(214, 186, 132, 255);
+/** 名牌稀有度标签底色(原型 SSR = (146,129,166) 淡紫)。 */
+const HERO_GLASS_RARITY_TAG: Record<string, Color> = {
+  N: new Color(110, 116, 128, 255),
+  R: new Color(86, 124, 168, 255),
+  SR: new Color(116, 104, 170, 255),
+  SSR: new Color(146, 129, 166, 255),
+  UR: new Color(176, 112, 84, 255),
+};
 function heroGlassAffixIcon(label: string): string {
-  if (/暴击|暴伤/.test(label)) return HERO_GLASS_STAT_ICONS.暴击;
-  if (/生命|吸血|回复/.test(label)) return HERO_GLASS_STAT_ICONS.生命;
-  if (/防御|减伤|护盾/.test(label)) return HERO_GLASS_STAT_ICONS.防御;
-  if (/速度|攻速/.test(label)) return HERO_GLASS_STAT_ICONS.速度;
-  if (/幸运/.test(label)) return HERO_GLASS_STAT_ICONS.幸运;
-  if (/攻击|伤害|穿透/.test(label)) return HERO_GLASS_STAT_ICONS.攻击;
-  return heroAffixIconOf(label);
+  if (/掉落|战利品|金币/.test(label)) return GLASS_STAT_ICON.loot;
+  if (/暴击|暴伤/.test(label)) return GLASS_STAT_ICON.crit;
+  if (/生命|吸血|回复/.test(label)) return GLASS_STAT_ICON.hp;
+  if (/防御|减伤|护盾/.test(label)) return GLASS_STAT_ICON.def;
+  if (/速度|攻速/.test(label)) return GLASS_STAT_ICON.spd;
+  if (/幸运/.test(label)) return GLASS_STAT_ICON.luck;
+  return GLASS_STAT_ICON.sword;
 }
 const HERO_AI_STAT_ICON_ASSETS: Record<string, string> = {
   生命: 'ui/hero/ai/stat_hp/spriteFrame',
@@ -649,7 +656,7 @@ export class LobbyHeroDetailPanelRenderer {
       const pk = protoBgK;
       if (HERO_GLASS && this.phoneFrame) {
         // B 风格:背景本身已虚化压暗,只再压一层薄暗,保留大厅可见(原型 hero_b2)
-        mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(6, 8, 12, 70));
+        mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(6, 8, 12, 12));
       } else {
       mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(0, 0, 0, 105));
       const vig = this.host.addSprite('LobbyHeroDetailProtoVignette', HERO_PROTO_VIGNETTE, (700 - 935) * pk, (420.5 - 430) * pk, 1500 * pk, 1150 * pk, panel);
@@ -5486,10 +5493,7 @@ export class LobbyHeroDetailPanelRenderer {
   /** 暗金小图标(原型 A 款):沿用 ui/hero/proto 的金色字形,染成哑光暗金。 */
   private glassStatIcon(parent: Node, name: string, label: string, x: number, y: number, size: number): void {
     const path = HERO_GLASS_STAT_ICONS[label] ?? heroGlassAffixIcon(label);
-    const sprite = this.host.addSprite(name, path, x, y, size, size, parent);
-    if (sprite) {
-      sprite.color = HERO_GLASS_ICON_TINT;
-    }
+    this.host.addSprite(name, path, x, y, size, size, parent);
   }
 
   /** 属性页(B 风格):属性 / 特性加成 / 技能 / 升级 四块毛玻璃面板,右栏 x 1191..1829。 */
@@ -5507,7 +5511,8 @@ export class LobbyHeroDetailPanelRenderer {
     const row = (parentNode: Node, prefix: string, index: number, icon: string, label: string, value: string, y: number, valueColor: Color, valueX?: number): Label => {
       const col = index % 2;
       const cell = this.host.addChildPlainNode(parentNode, `${prefix}_${index}`, 0, 0, 10, 10);
-      this.glassStatIcon(cell, 'Icon', icon, RX(cols.icon[col]), y, S(26));
+      // 图标贴图是原型 38px 裁切框(含留白),按框尺寸显示 = 与原型 1:1
+      this.glassStatIcon(cell, 'Icon', icon, RX(cols.icon[col]), y, S(38));
       glassLabel(this.host, cell, 'Label', label, RX(cols.label[col]), y, F(20), GLASS_COLOR.sub, S(130));
       return glassLabel(this.host, cell, `${prefix}Value`, value, RX(valueX ?? cols.value[col]), y, F(22), valueColor, S(col === 0 ? 130 : 120), HorizontalTextAlignment.LEFT, true);
     };
@@ -5590,7 +5595,7 @@ export class LobbyHeroDetailPanelRenderer {
     const panelW = RX(1829) - RX(1191);
     mountGlassPanel(this.host, root, 'LobbyHeroDetailLevelUpBox', panelX, (FY(654) + FY(812)) / 2, panelW, FY(654) - FY(812), k);
     const view = this.resolveLevelUpCostView(hero);
-    const titleY = FY(686);
+    const titleY = FY(680);
     const levelMatch = /^(.*?)(Lv\.\d+)$/.exec(view.title);
     if (levelMatch) {
       const head = glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', levelMatch[1].trim(), RX(1233), titleY, F(24), GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
@@ -5600,7 +5605,7 @@ export class LobbyHeroDetailPanelRenderer {
       glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', view.title, RX(1233), titleY, F(22), view.blocked === 'cap' ? GLASS_COLOR.champagne : GLASS_COLOR.text, panelW - S(80), HorizontalTextAlignment.LEFT, true);
     }
     // 消耗:图标 + 名称 + 数量(不足标红,点开获取途径);上限态显示提示链接
-    const costY = FY(722);
+    const costY = FY(712);
     if (view.costs.length > 0) {
       const names = ['经验书', '金币'];
       let cur = RX(1233);
@@ -5639,7 +5644,7 @@ export class LobbyHeroDetailPanelRenderer {
     ];
     specs.forEach((spec) => {
       const enabled = !pending && idleEnabled;
-      const btn = mountGlassButton(this.host, root, spec.name, pending ? spec.pendingText : spec.idleText, spec.x, FY(768), spec.w, S(60), k,
+      const btn = mountGlassButton(this.host, root, spec.name, pending ? spec.pendingText : spec.idleText, spec.x, FY(772), spec.w, S(58), k,
         enabled || dim ? spec.kind : 'disabled', idleEnabled ? spec.onClick : undefined, 24);
       const label = btn.getChildByName('Label')?.getComponent(Label) ?? null;
       const art = btn.getChildByName('Pill')?.getComponent(Sprite) ?? null;
@@ -5661,7 +5666,8 @@ export class LobbyHeroDetailPanelRenderer {
   private glassStarText(hero: LobbyHeroItemVO): { text: string; color: Color } {
     const display = starDisplayV3(Math.max(1, Math.trunc(hero.star || 1)));
     const [r, g, b] = starBandTextRgbOf(display.color);
-    return { text: '★'.repeat(display.count), color: rgba(r, g, b) };
+    // 原型名牌星星是白色:第一轮(1~5 星)白,之后按档位色
+    return { text: '★'.repeat(display.count), color: display.color === 'green' ? rgba(252, 252, 252) : rgba(r, g, b) };
   }
 
   /** 左侧竖排页签(B):选中 = 香槟金圆角块 + 图标 + 字 + ›;其余只有图标和字。 */
@@ -5679,18 +5685,19 @@ export class LobbyHeroDetailPanelRenderer {
       const selected = entry.key === active;
       const node = this.host.addChildPlainNode(parent, `HeroDetailNav_${entry.key}`, LX(150), FY(entry.y), S(212), S(82));
       if (selected) {
-        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabActive, 0, 0, S(212), S(82), k);
+        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabSel, 0, 0, S(212), S(82), k);
       }
       const navIcon = { attr: GLASS_ICON.navAttr, equip: GLASS_ICON.navEquip, skill: GLASS_ICON.navSkill, star: GLASS_ICON.navStar }[entry.key];
-      const icon = this.host.addSprite('Icon', navIcon, LX(85) - LX(150), 0, S(38), S(38), node);
+      // 原型取色:选中图标 (210,191,164)、字白;未选图标 (165,171,188)、字 (195,203,217)
+      const icon = this.host.addSprite('Icon', navIcon, LX(85) - LX(150), 0, S(48), S(48), node);
       if (icon) {
-        icon.color = selected ? rgba(70, 52, 26) : rgba(205, 208, 214);
+        icon.color = selected ? rgba(222, 204, 176) : rgba(170, 176, 194);
       }
-      glassLabel(this.host, node, 'Label', entry.label, LX(128) - LX(150), 0, F(24), selected ? GLASS_COLOR.onChampagne : rgba(214, 217, 223), S(90), HorizontalTextAlignment.LEFT, selected);
+      glassLabel(this.host, node, 'Label', entry.label, LX(128) - LX(150), 0, F(24), selected ? rgba(253, 253, 252) : rgba(195, 203, 217), S(90), HorizontalTextAlignment.LEFT, selected);
       if (selected) {
         const chevron = this.host.addSprite('Chevron', GLASS_ICON.chevron, LX(233) - LX(150), 0, S(16), S(16), node);
         if (chevron) {
-          chevron.color = rgba(70, 52, 26);
+          chevron.color = rgba(236, 222, 196);
         }
       }
       if (entry.key === 'star' && starDot) {
@@ -5745,7 +5752,7 @@ export class LobbyHeroDetailPanelRenderer {
     const plateW = S(370);
     const plateH = S(88);
     const plate = this.host.addChildPlainNode(parent, 'LobbyHeroDetailIdentityPlate', FX(723), FY(746), plateW, plateH);
-    mountGlassSlice(this.host, plate, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, plateW, plateH, k);
+    mountGlassSlice(this.host, plate, 'Bg', GLASS_SLICES.plate, 0, 0, plateW, plateH, k);
     const nameText = safeText(hero.heroName);
     const nameFont = F(24);
     const tagW = S(52);
@@ -5754,10 +5761,9 @@ export class LobbyHeroDetailPanelRenderer {
     const line1 = S(18);
     const tag = this.host.addChildPlainNode(plate, 'LobbyHeroDetailRarityTag', -rowW / 2 + tagW / 2, line1, tagW, S(30));
     // 稀有度小标签:圆角实底(稀有度色压暗),白字
-    const tagBg = mountGlassSlice(this.host, tag, 'Bg', GLASS_SLICES.tabActive, 0, 0, tagW, S(30), k * 0.5);
-    const rc = this.rarityColor(hero.rarity);
+    const tagBg = mountGlassSlice(this.host, tag, 'Bg', GLASS_SLICES.tag, 0, 0, tagW, S(30), k);
     if (tagBg) {
-      tagBg.color = rgba(Math.round(rc.r * 0.62), Math.round(rc.g * 0.62), Math.round(rc.b * 0.62), 255);
+      tagBg.color = HERO_GLASS_RARITY_TAG[(hero.rarity || 'R').toUpperCase()] ?? HERO_GLASS_RARITY_TAG.R;
     }
     glassLabel(this.host, tag, 'Text', safeText(hero.rarity || 'R'), 0, 0, F(16), rgba(240, 236, 250), tagW - S(4), HorizontalTextAlignment.CENTER, true);
     glassLabel(this.host, plate, 'LobbyHeroDetailName', nameText, -rowW / 2 + tagW + S(14), line1, nameFont, GLASS_COLOR.text, S(250), HorizontalTextAlignment.LEFT, true);
@@ -5765,9 +5771,9 @@ export class LobbyHeroDetailPanelRenderer {
     const line2 = -S(18);
     const star = this.glassStarText(hero);
     const parts: Array<{ name: string; text: string; color: Color }> = [
-      { name: 'LobbyHeroDetailLevel', text: `Lv.${hero.level}`, color: GLASS_COLOR.sub },
+      { name: 'LobbyHeroDetailLevel', text: `Lv.${hero.level}`, color: rgba(249, 249, 250) },
       { name: 'LobbyHeroDetailMetaSep1', text: '|', color: GLASS_COLOR.dim },
-      { name: 'LobbyHeroDetailPower', text: `战力 ${formatInteger(hero.power)}`, color: GLASS_COLOR.sub },
+      { name: 'LobbyHeroDetailPower', text: `战力 ${formatInteger(hero.power)}`, color: rgba(249, 249, 250) },
       { name: 'LobbyHeroDetailMetaSep2', text: '|', color: GLASS_COLOR.dim },
       { name: 'LobbyHeroDetailGlassStars', text: star.text, color: star.color },
     ];
@@ -5781,7 +5787,7 @@ export class LobbyHeroDetailPanelRenderer {
     this.starRowArgs = null;
     ([-1, 1] as const).forEach((direction) => {
       const ax = FX(direction < 0 ? 500 : 946);
-      const arrow = mountGlassIconButton(this.host, parent, direction < 0 ? 'LobbyHeroDetailSwitchPrev' : 'LobbyHeroDetailSwitchNext', direction < 0 ? GLASS_ICON.back : GLASS_ICON.chevron, ax, FY(744), S(direction < 0 ? 30 : 26), S(70), () => this.host.switchLobbyHeroDetail(direction));
+      const arrow = mountGlassIconButton(this.host, parent, direction < 0 ? 'LobbyHeroDetailSwitchPrev' : 'LobbyHeroDetailSwitchNext', direction < 0 ? GLASS_ICON.arrowLeft : GLASS_ICON.arrowRight, ax, FY(744), S(44), S(80), () => this.host.switchLobbyHeroDetail(direction));
       void arrow;
     });
   }
