@@ -104,6 +104,8 @@ def main():
     save('panel_sel', panel_sel_tex())
     # 装备框 / 物品格(原型合成槽位):浅灰亮边 + 冷色内光向中心渐暗
     save('frame', lit_block(112, 112, 12, frame_inner, (110, 120, 138, 220), (182, 192, 210, 240), rim_w=2.0))
+    # 选中格(原型背包 / 分解 / 英雄装备选中格):金边沿边起伏 + 很浅的暖色内光 + 暗心(小格子用,选中行仍用 panel_sel)
+    save('frame_sel', lit_block(112, 112, 12, frame_sel_inner, (190, 160, 104, 235), (246, 220, 162, 250), rim_w=2.2))
     # 行底(表格行 / 列表行):更淡
     save('row', rounded(64, 40, 8, (255, 255, 255, 10), outline=WHITE + (14,)))
     # 胶囊按钮 160×56(圆角 28;九宫格左右 28)
@@ -262,6 +264,13 @@ def frame_inner(u, v, dx, dy):
     return _mix((15, 20, 26, 226), (50, 60, 74, 238), min(1.0, 0.35 * haze + edge + corner))
 
 
+def frame_sel_inner(u, v, dx, dy):
+    d = min(dx, dy)
+    along = u if dy < dx else v
+    edge = math.exp(-d / 5.5) * (0.35 + 0.65 * _haze(along, 0.6, 1.7 if v < 0.5 else 3.2))
+    return _mix((17, 21, 26, 230), (96, 76, 46, 240), min(1.0, edge + 0.12 * _haze(u, v, 2.6) ** 2))
+
+
 def _edge_dist(u, v, w, h):
     """到左右 / 上下边的距离(输出像素)。"""
     return min(u, 1 - u) * (w - 1), min(v, 1 - v) * (h - 1)
@@ -392,7 +401,10 @@ def extract_proto_icons():
                               ('hero_star_b.png', {'lock': (1238, 256, 18)}),
                               # 锻造原型 forge_b:右栏「合成」图标(避开右上红点)+ 列表部位页签实心图标
                               ('forge_b.png', {'nav_fuse': (1795, 323, 26), 'nav_gem': (1797, 625, 28), 'tab_weapon': (180, 168, 20), 'tab_helmet': (250, 168, 20), 'tab_chest': (318, 168, 20),
-                                               'tab_boots': (388, 168, 20), 'tab_ring': (458, 168, 20), 'tab_necklace': (528, 168, 20)})):
+                                               'tab_boots': (388, 168, 20), 'tab_ring': (458, 168, 20), 'tab_necklace': (528, 168, 20)}),
+                              # 背包原型 bag_b:左栏分类线稿(白色剪影,运行时染色;「全部」压在香槟底上同样按色差抠)
+                              ('bag_b.png', {'bag_all': (89, 158, 26), 'bag_material': (88, 244, 27), 'bag_equip': (89, 324, 27), 'bag_ticket': (89, 405, 27),
+                                             'bag_consume': (89, 486, 27), 'bag_fragment': (89, 569, 27), 'bag_box': (88, 649, 27), 'bag_pass': (88, 730, 27)})):
         path = os.path.join(os.path.dirname(PROTO), proto_name)
         if not os.path.exists(path):
             continue

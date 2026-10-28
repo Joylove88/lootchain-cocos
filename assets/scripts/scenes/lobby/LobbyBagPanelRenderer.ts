@@ -25,6 +25,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { glassLabel, glassProtoMap, GLASS_BAG_ICON, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassClippedIcon, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { mountRefScrollBar, mountRefButton, mountRefDialogBackdrop, mountRefTitleBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
@@ -55,6 +56,10 @@ export const BAG_AI_GRID_PANEL_ASSET = 'ui/common/ai/bag_grid_panel/spriteFrame'
 export const BAG_AI_DETAIL_FRAME_ASSET = 'ui/common/ai/item_detail_frame/spriteFrame';
 // 背包页背景暗罩(纯色贴图);2026-10-20 用户「背包界面背景没有调暗」,以原型实测亮度定
 const BAG_SCENE_SHADE_ALPHA = 120;
+/** 2026-10-29 B 风格(毛玻璃)开关:手机横屏背包主界面按原型 bag_b 1:1(物品详情等弹窗待原型确认后接入)。 */
+const BAG_GLASS = true;
+/** B 风格背景:同一张哥特大厅图去饱和 / 偏冷 / 提亮 / 虚化(色调对齐原型 bag_b,其余整页界面共用)。 */
+const BAG_GLASS_BG = 'ui/common/ref/hall_bg_glass/spriteFrame';
 /** 使用后获得物的简称(只给「使用 ×N → 获得 X」用;具体数额由服务端结算后飘字)。 */
 function bagUseRewardLabel(item: BagItemEntryVO): string {
   const effect = (item.useEffectType || '').toUpperCase();
@@ -346,26 +351,40 @@ export class LobbyBagPanelRenderer {
     const coverW = Math.max(panelWidth, layout.width + Math.abs(centerX) * 2);
     const coverH = Math.max(panelHeight, layout.height + Math.abs(centerY) * 2);
     const bgW = Math.max(coverW, coverH * REF_HALL_BG.ratio);
-    this.host.addSprite('LobbyBagSceneBackdrop', REF_HALL_BG.path, 0, 0, bgW, bgW / REF_HALL_BG.ratio, panel)
+    const glass = BAG_GLASS && isPhoneDesign();
+    this.host.addSprite('LobbyBagSceneBackdrop', glass ? BAG_GLASS_BG : REF_HALL_BG.path, 0, 0, bgW, bgW / REF_HALL_BG.ratio, panel)
       ?? this.host.addSprite('LobbyBagSceneBackdrop', 'ui/battle/ai/battle_bg_cathedral/spriteFrame', 0, 0, panelWidth, panelHeight, panel);
     const shade = this.host.addChildPlainNode(panel, 'LobbyBagSceneShade', 0, 0, panelWidth, panelHeight);
     // 2026-10-19 用户「背景太显眼」「背包界面背景没有调暗」:暗罩原是 Graphics,原生端面板局部刷新后不再绘制(实际一直没压暗),
     // 改纯色贴图;缺图才退 Graphics
-    if (!mountRefSolid(this.host, shade, 'Fill', 0, 0, coverW, coverH, rgba(4, 3, 6, BAG_SCENE_SHADE_ALPHA))) {
+    if (!glass && !mountRefSolid(this.host, shade, 'Fill', 0, 0, coverW, coverH, rgba(4, 3, 6, BAG_SCENE_SHADE_ALPHA))) {
       const shadeGraphics = shade.addComponent(Graphics);
       shadeGraphics.fillColor = rgba(4, 3, 6, BAG_SCENE_SHADE_ALPHA);
       shadeGraphics.rect(-coverW / 2, -coverH / 2, coverW, coverH);
       shadeGraphics.fill();
     }
     // 顶部装饰(横梁/副标题/chips)移除:左上标题+顶部货币展示+右上关闭。
-    this.renderBagCurrencyBar(panel, panelWidth, panelHeight, scale);
-    this.renderBagBody(panel, panelWidth, panelHeight, scale, state);
+    const closeBag = (): void => {
+      this.detailPopupOpen = false;
+      this.gridScrollY = null;
+      this.host.closeLobbyBagPanel();
+    };
+    if (glass) {
+      const profile = this.host.currentLobbyProfile?.();
+      mountGlassTopBar(this.host, panel, 'LobbyBag', panelWidth, panelHeight, '背包', profile ? [
+        { key: 'gold', icon: 'ui/bag/ai/icon_gold/spriteFrame', value: formatCompact(safeNumber(profile.gold)), width: 156 },
+        { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: formatCompact(safeNumber(profile.diamond)), width: 181 },
+      ] : [], closeBag, closeBag, { chipRight: 1716 });
+      this.renderGlassBag(panel, panelWidth, panelHeight, state);
+    } else {
+      this.renderBagCurrencyBar(panel, panelWidth, panelHeight, scale);
+      this.renderBagBody(panel, panelWidth, panelHeight, scale, state);
+    }
     const renderBackButton = (): void => {
-      renderSceneBackButton(this.host, panelGroup, layout, 'LobbyBagBackButton', () => {
-        this.detailPopupOpen = false;
-        this.gridScrollY = null;
-        this.host.closeLobbyBagPanel();
-      }, scale, '背包');
+      if (glass) {
+        return;
+      }
+      renderSceneBackButton(this.host, panelGroup, layout, 'LobbyBagBackButton', closeBag, scale, '背包');
     };
     // 手机(H5 横屏,2026-10-02 用户拍板):详情/合成/出售/合成结果弹窗铺满舞台,返回钮先画、被全屏弹窗盖住,
     // 免得与弹窗右上的关闭钮叠在同一位置误关整个背包。电脑保持原来居中弹窗 + 返回钮压在最上。
@@ -474,14 +493,9 @@ export class LobbyBagPanelRenderer {
   }
 
   // 分类侧栏(2026-10-17 界面统一,按 GPT 原型):细金框面板 + 金边暗行(选中亮金行),图标 + 名称 + 右对齐计数,可点过滤。
-  private renderGroupRail(parent: Node, groups: ItemTypeBagGroupVO[], x: number, y: number, width: number, height: number, scale: number): void {
-    const rail = mountRefTitledPanel(this.host, parent, 'LobbyBagGroupRail', x, y, width, height, scale, '', { fill: rgba(10, 8, 8, 232) }).node;
-
+  /** 左栏分类行:固定分类全集(参考图,没有道具也展示计数 0)+ 服务端额外分类追加。 */
+  private railRows(groups: ItemTypeBagGroupVO[]): Array<{ key: string; label: string; count: number }> {
     const totalCount = groups.reduce((sum, group) => sum + group.items.reduce((inner, item) => inner + safeNumber(item.itemCount), 0), 0);
-    const rowWidth = width - 30 * scale;
-    const railTopInset = 16 * scale;
-    const railBottomInset = 14 * scale;
-    const availableHeight = height - railTopInset - railBottomInset;
     // 固定分类全集(参考图):没有道具的分类也展示,计数 0;服务端有额外分类则追加。
     const presetGroups: Array<{ key: string; label: string }> = [
       { key: 'MATERIAL', label: '材料' },
@@ -510,6 +524,16 @@ export class LobbyBagPanelRenderer {
           count: group.items.reduce((sum, item) => sum + safeNumber(item.itemCount), 0),
         })),
     ];
+    return rows;
+  }
+
+  private renderGroupRail(parent: Node, groups: ItemTypeBagGroupVO[], x: number, y: number, width: number, height: number, scale: number): void {
+    const rail = mountRefTitledPanel(this.host, parent, 'LobbyBagGroupRail', x, y, width, height, scale, '', { fill: rgba(10, 8, 8, 232) }).node;
+    const rowWidth = width - 30 * scale;
+    const railTopInset = 16 * scale;
+    const railBottomInset = 14 * scale;
+    const availableHeight = height - railTopInset - railBottomInset;
+    const rows = this.railRows(groups);
     // 行高收紧(上限 72),从板顶顺排;行数按实际分类数分配(2026-10-02:手机设计高 720 下原按 7 行均分,
     // 服务端追加的第 8 类「门票」被截掉点不到)。
     const rowHeight = Math.min(72 * scale, availableHeight / Math.max(7, rows.length));
@@ -546,6 +570,160 @@ export class LobbyBagPanelRenderer {
         this.host.refreshLobbyOverlay?.();
       }, this);
     });
+  }
+
+  /**
+   * 2026-10-29 B 风格主界面(原型 bag_b 1:1,原型坐标 1870×841):左栏分类(无底板,选中 = 暗金块 + ›)、
+   * 右侧玻璃面板(分区标题 + 共 N 种 + 9 列格阵 + 底部说明);格子 = 共用装备框 + 图标 + 右下数量 + 底部稀有度细线。
+   */
+  private renderGlassBag(parent: Node, panelWidth: number, panelHeight: number, state: LobbyBagPanelState): void {
+    const { LX, FY, S, k } = glassProtoMap(panelWidth, panelHeight);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const items = flatItems(state.groups);
+    const rows = this.railRows(state.groups);
+    if (this.selectedGroupKey !== 'ALL' && !rows.some((row) => row.key === this.selectedGroupKey)) {
+      this.selectedGroupKey = 'ALL';
+    }
+    // ── 左栏(45..375,行心 158 起步 81.5;分类多时压缩行距)──
+    const step = Math.min(81.5, (775 - 118) / Math.max(1, rows.length));
+    const railCx = (LX(45) + LX(375)) / 2;
+    const railW = LX(375) - LX(45);
+    const ox = (px: number): number => LX(px) - railCx;
+    rows.forEach((row, index) => {
+      const selected = row.key === this.selectedGroupKey;
+      const node = this.host.addChildPlainNode(parent, `LobbyBagGroupRow_${index}`, railCx, FY(158 + index * step), railW, S(Math.min(80, step - 2)));
+      if (selected) {
+        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabSel, 0, 0, railW, S(80), k);
+      }
+      const icon = this.host.addSprite('Icon', GLASS_BAG_ICON[row.key] ?? GLASS_BAG_ICON.PASS, ox(89), 0, S(50), S(50), node);
+      if (icon) {
+        icon.color = selected ? rgba(246, 240, 228) : rgba(176, 184, 198);
+      }
+      T(node, `LobbyBagGroupLabel_${index}`, row.label, ox(137), 0, 23, selected ? rgba(253, 253, 252) : rgba(206, 212, 222), S(130), HorizontalTextAlignment.LEFT, selected);
+      T(node, `LobbyBagGroupCount_${index}`, formatCompact(row.count), ox(selected ? 334 : 346), 0, selected ? 20 : 22, selected ? rgba(246, 240, 228) : rgba(182, 189, 205), S(110), HorizontalTextAlignment.RIGHT);
+      if (selected) {
+        const chev = this.host.addSprite('Chevron', GLASS_ICON.chevron, ox(354), 0, S(18), S(18), node);
+        if (chev) {
+          chev.color = rgba(246, 240, 228);
+        }
+      } else {
+        node.addComponent(Button);
+        this.host.applyImageButtonFeedback(node, 1.02, 0.985);
+        node.on(Button.EventType.CLICK, () => {
+          this.selectedGroupKey = row.key;
+          this.host.refreshLobbyOverlay?.();
+        }, this);
+      }
+    });
+
+    // ── 右:玻璃面板(415..1830 × 92..795)──
+    const pCx = (LX(415) + LX(1830)) / 2;
+    const pCy = (FY(92) + FY(795)) / 2;
+    const grid = mountGlassPanel(this.host, parent, 'LobbyBagItemGrid', pCx, pCy, LX(1830) - LX(415), FY(92) - FY(795), k);
+    const PX = (px: number): number => LX(px) - pCx;
+    const PY = (py: number): number => FY(py) - pCy;
+    const filtered = this.selectedGroupKey === 'ALL'
+      ? items
+      : state.groups.find((group) => (group.itemType || '').toUpperCase() === this.selectedGroupKey)?.items ?? [];
+    const title = rows.find((row) => row.key === this.selectedGroupKey)?.label ?? '全部';
+    mountGlassSectionHeader(this.host, grid, 'LobbyBagGridHeader', title, PX(454), PY(130), k, 27);
+    T(grid, 'LobbyBagCapacityLabel', filtered.length === items.length ? `共 ${items.length} 种` : `${filtered.length} / 共 ${items.length} 种`, PX(1780), PY(130), 19, GLASS_COLOR.sub, S(260), HorizontalTextAlignment.RIGHT);
+    if (state.loading && items.length === 0) {
+      T(grid, 'LobbyBagGridEmptyHint', '背包读取中,请稍候。', 0, PY(440), 20, GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
+    } else if (filtered.length === 0) {
+      T(grid, 'LobbyBagGridEmptyHint', items.length === 0 ? (state.error || '当前背包暂无可展示道具。') : '该分类暂无道具', 0, PY(440), 20, GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+    }
+
+    // 格阵:9 列(格 131×127,步 149 / 142.5,首格左上 451,170);视口 = 4 整行,四周留选中外晕余量
+    const columns = 9;
+    const cellW = S(131);
+    const cellH = S(127);
+    const stepX = S(149);
+    const stepY = S(142.5);
+    const pad = S(10);
+    const shown = filtered.slice(0, BAG_GRID_RENDER_CAP);
+    const rowCount = Math.ceil(shown.length / columns);
+    const viewTop = PY(170) + pad;
+    const viewBottom = PY(170 + 3 * 142.5 + 127) - pad;
+    const viewW = stepX * (columns - 1) + cellW + pad * 2;
+    const viewH = viewTop - viewBottom;
+    const contentH = Math.max(viewH, rowCount * stepY - (stepY - cellH) + pad * 2);
+    const viewCx = (PX(451) + PX(451 + 8 * 149 + 131)) / 2;
+    const viewport = this.host.addChildPlainNode(grid, 'LobbyBagItemGridScroll', viewCx, (viewTop + viewBottom) / 2, viewW, viewH);
+    viewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    const scrollView = viewport.addComponent(ScrollView);
+    scrollView.horizontal = false;
+    scrollView.vertical = true;
+    scrollView.inertia = true;
+    scrollView.elastic = true;
+    scrollView.cancelInnerEvents = true;
+    const baseY = (viewH - contentH) / 2;
+    const content = this.host.addChildPlainNode(viewport, 'LobbyBagItemGridScrollContent', 0, baseY, viewW, contentH);
+    scrollView.content = content;
+    // 选中框只跟着当前打开详情的道具走(原型首格选中 = 详情默认项)
+    const selectedCode = state.selectedItemCode ?? shown[0]?.itemCode ?? null;
+    shown.forEach((item, index) => {
+      const x = -viewW / 2 + pad + cellW / 2 + (index % columns) * stepX;
+      const y = contentH / 2 - pad - cellH / 2 - Math.floor(index / columns) * stepY;
+      this.renderGlassItemCell(content, item, index, item.itemCode === selectedCode, x, y, cellW, cellH, k, S);
+    });
+    const maxOffset = Math.max(0, contentH - viewH);
+    if (this.gridScrollKey !== this.selectedGroupKey) {
+      this.gridScrollKey = this.selectedGroupKey;
+      this.gridScrollY = null;
+    }
+    if (this.gridScrollY !== null) {
+      content.setPosition(0, Math.min(baseY + maxOffset, Math.max(baseY, this.gridScrollY)));
+    }
+    if (maxOffset > 1) {
+      const trackH = viewH - pad * 2;
+      const thumbH = Math.max(S(40), trackH * (viewH / contentH));
+      const update = mountGlassScrollBar(this.host, grid, 'LobbyBagItemGridScrollBar', PX(1806), viewport.position.y, S(4), trackH, thumbH);
+      const draw = (): void => update(Math.min(maxOffset, Math.max(0, content.position.y - baseY)) / maxOffset);
+      draw();
+      viewport.on(ScrollView.EventType.SCROLLING, () => {
+        this.gridScrollY = content.position.y;
+        draw();
+      }, this);
+    } else {
+      this.gridScrollY = null;
+    }
+    T(grid, 'LobbyBagBoundaryNote', '点击道具查看详情、获取途径,可使用的道具可直接使用或合成。', PX(1083), PY(759), 19, GLASS_COLOR.sub, S(1200), HorizontalTextAlignment.CENTER);
+  }
+
+  /** B 风格道具格:共用装备框(选中 = 选中态)+ 图标 + 底部稀有度细线 + 右下数量;点击开详情。 */
+  private renderGlassItemCell(parent: Node, item: BagItemEntryVO, index: number, selected: boolean, x: number, y: number, w: number, h: number, k: number, S: (v: number) => number): void {
+    const cell = mountGlassFrame(this.host, parent, `LobbyBagItemCard_${index}`, x, y, w, h, k, selected);
+    const icon = bagItemIconAsset(item);
+    const iconSize = Math.min(w, h) * 0.88;
+    if (icon && bagEquipCode(item)) {
+      // 装备图标自带稀有度圆角框:裁掉自带框,只留格子这一层框(10-28 用户:图标只要一层框)
+      mountGlassClippedIcon(this.host, cell, 'LobbyBagItemIcon', icon, 0, S(3), iconSize * 0.92);
+    } else if (!icon || !this.host.addSprite('LobbyBagItemIcon', icon, 0, S(3), iconSize, iconSize, cell)) {
+      this.host.addSprite('LobbyBagItemTypeIcon', bagItemTypeIconAsset(item.itemType), 0, S(3), iconSize * 0.8, iconSize * 0.8, cell);
+    }
+    // 稀有度细线(原型取色,饱和):压在格子底边、几乎铺满格宽
+    const key = (item.rarity || '').toUpperCase();
+    const q = key === 'UR' || key === 'SSR' ? rgba(240, 163, 52) : key === 'SR' || key === 'EPIC' ? rgba(186, 84, 246) : key === 'R' || key === 'RARE' ? rgba(52, 132, 242) : rgba(150, 158, 170);
+    mountGlassLine(this.host, cell, 'Rarity', 0, -h / 2 + S(4), w - S(7), Math.max(2, S(4)), q);
+    const count = glassLabel(this.host, cell, 'LobbyBagItemCount', formatCompact(safeNumber(item.itemCount)), w / 2 - S(12), -h / 2 + S(19), S(21), rgba(250, 250, 250), w - S(16), HorizontalTextAlignment.RIGHT, true);
+    count.fontSize = Math.round(S(21));
+    count.lineHeight = count.fontSize + 2;
+    count.enableOutline = true;
+    count.outlineColor = rgba(0, 0, 0, 200);
+    count.outlineWidth = Math.max(1, Math.round(S(1.5)));
+    cell.addComponent(Button);
+    this.host.applyImageButtonFeedback(cell, 1.03, 0.975);
+    cell.on(Button.EventType.CLICK, () => {
+      this.detailPopupOpen = true;
+      this.host.selectLobbyBagItem(item.itemCode);
+      this.host.refreshLobbyOverlay?.();
+    }, this);
   }
 
   private renderItemGrid(parent: Node, items: BagItemEntryVO[], selectedItem: BagItemEntryVO, x: number, y: number, width: number, height: number, scale: number, totalItems: number, state: LobbyBagPanelState): void {

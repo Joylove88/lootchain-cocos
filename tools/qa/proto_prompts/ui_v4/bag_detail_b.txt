@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack screen (B style). The new mockup shows THIS SAME screen, dimmed by a dark translucent overlay, with an item-detail popup in front of it. Keep exactly the same background, fonts, colours, frosted dark glass panel style (soft rounded corners, faint light outline, soft uneven edge light), champagne-gold primary pill button and slate-grey secondary pill button.
+- SECOND image = another APPROVED screen: use it for the exact look of small components — one rounded frosted frame around an item icon (no double frames), section headers (short champagne bar + white title), list rows, small grey tag pills.
+- THIRD image = our CURRENT (old style) item-detail popup. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon title banner, spiky gold frames, glowing purple slot frame or round gold icon badges.
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames. Icons muted and matte; rarity shown only as small coloured text or a thin coloured line.
+
+POPUP: a large frosted dark glass panel centred on screen (about 62% width, 78% height), title row "物品详情" on the left in white with a short champagne bar, a thin round close "X" button at the top right.
+LEFT column (about 38% of the popup): a large item icon (dark red-veined crystal shard, "高阶强化石") inside one rounded frosted frame (about 190px), under it the name "高阶强化石" in white, under that a small purple tag pill "SR · 材料". Below, a small inset panel with two rows separated by a thin divider: "拥有数量" ... "2" (right aligned, champagne), "出售价" ... "80 金币" (right aligned).
+RIGHT column: section "用途" with one line of grey-white text "+10 以上高阶强化材料". Section "获取途径" with two list rows (each: a small muted round icon on the left, text, and a thin "›" chevron on the right): "装备召唤产出", "每日副本·熔火矿脉III(周一/四/日)".
+Bottom of the popup, right aligned: secondary pill "使用", secondary pill "合成", primary pill "出售".
+
+Output only the single finished mockup image, no annotations.

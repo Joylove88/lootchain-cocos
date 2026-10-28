@@ -28,7 +28,9 @@ export const GLASS_SLICES = {
   // 选中态(10-28 v2):金边 + 金边外晕 + 左右强上下弱的暖金内光 + 暗心;全站选中行 / 选中格共用
   panelSel: slice('panel_sel', 112, 112, 44, 24, 8),
   // 装备框 / 物品格(原型合成槽位):浅灰亮边 + 冷色内光向中心渐暗
-  frame: slice('frame', 64, 64, 18, 18),
+  frame: slice('frame', 112, 112, 18, 18),
+  // 选中格:金边 + 浅暖内光 + 暗心(格子小,用选中行的宽暖光会整格发棕)
+  frameSel: slice('frame_sel', 112, 112, 18, 18),
   row: slice('row', 64, 40, 10, 10),
   pillPrimary: slice('pill_primary', 160, 56, 28, 27),
   pillSecondary: slice('pill_secondary', 160, 56, 28, 27),
@@ -65,6 +67,18 @@ export const GLASS_ICON = {
   lock: G('lock'),
   lineFade: G('line_fade'),
   lineFadeV: G('line_fade_v'),
+};
+
+/** 背包左栏分类线稿(原型 bag_b 抠的白色剪影,运行时染色)。 */
+export const GLASS_BAG_ICON: Record<string, string> = {
+  ALL: G('bag_all'),
+  MATERIAL: G('bag_material'),
+  EQUIPMENT: G('bag_equip'),
+  GACHA_TICKET: G('bag_ticket'),
+  CONSUMABLE: G('bag_consume'),
+  HERO_FRAGMENT: G('bag_fragment'),
+  CURRENCY_BOX: G('bag_box'),
+  PASS: G('bag_pass'),
 };
 
 /** 属性小图标(直接从原型 hero_b2 抠的扁平暗金剪影,glass_kit_gen.extract_proto_icons)。 */
@@ -106,6 +120,7 @@ export const GLASS_ASSET_PATHS: readonly string[] = [
   ...Object.values(GLASS_STAT_ICON),
   ...Object.values(GLASS_PART_ICON),
   ...Object.values(GLASS_FORGE_TAB_ICON),
+  ...Object.values(GLASS_BAG_ICON),
   G('lock'),
 ];
 
@@ -145,10 +160,10 @@ export function mountGlassSlice(host: UiKitHost, parent: Node, name: string, ite
 }
 
 /** 毛玻璃面板(返回容器节点,内容挂在它下面;坐标以面板中心为原点)。 */
-/** 装备框 / 物品格(全站统一,10-28 用户):未选中 = frame(亮边 + 内光渐暗),选中 = panelSel。 */
+/** 装备框 / 物品格(全站统一,10-28 用户):未选中 = frame(亮边 + 内光渐暗),选中 = frameSel(金边 + 暗心)。 */
 export function mountGlassFrame(host: UiKitHost, parent: Node, name: string, x: number, y: number, width: number, height: number, k: number, selected = false): Node {
   const node = host.addChildPlainNode(parent, name, x, y, width, height);
-  mountGlassSlice(host, node, 'Glass', selected ? GLASS_SLICES.panelSel : GLASS_SLICES.frame, 0, 0, width, height, k);
+  mountGlassSlice(host, node, 'Glass', selected ? GLASS_SLICES.frameSel : GLASS_SLICES.frame, 0, 0, width, height, k);
   return node;
 }
 
@@ -366,3 +381,84 @@ export function mountGlassFadeLine(host: UiKitHost, parent: Node, name: string, 
   return sprite.node;
 }
 
+
+/** 原型坐标映射(1870×841):k 按"装得下"取;LX / RX 贴左右缘,FX / FY 以面板中心为原点。 */
+export function glassProtoMap(panelWidth: number, panelHeight: number): { k: number; LX: (px: number) => number; RX: (px: number) => number; FX: (px: number) => number; FY: (py: number) => number; S: (v: number) => number } {
+  const k = Math.min(panelWidth / 1870, panelHeight / 841);
+  return {
+    k,
+    LX: (px: number): number => -panelWidth / 2 + px * k,
+    RX: (px: number): number => panelWidth / 2 - (1870 - px) * k,
+    FX: (px: number): number => (px - 935) * k,
+    FY: (py: number): number => (420.5 - py) * k,
+    S: (v: number): number => v * k,
+  };
+}
+
+/**
+ * B 风格顶栏(各整页共用,原型 forge_b / bag_b):‹ + 标题(+ 可选 ?)左上;货币胶囊 + 竖分隔 + × 右上。
+ * chips 从右缘 chipRight(原型 x)往左排,宽按各原型实测;节点名带 prefix 便于自验脚本定位。
+ */
+export function mountGlassTopBar(
+  host: UiKitHost,
+  parent: Node,
+  prefix: string,
+  panelWidth: number,
+  panelHeight: number,
+  title: string,
+  chips: Array<{ key: string; icon: string; value: string; width: number }>,
+  onBack: () => void,
+  onClose: () => void,
+  opts: { chipRight?: number; onHelp?: () => void } = {},
+): void {
+  const { LX, RX, FY, S, k } = glassProtoMap(panelWidth, panelHeight);
+  mountGlassIconButton(host, parent, `${prefix}GlassBack`, GLASS_ICON.back, LX(68), FY(44), S(34), S(72), onBack);
+  const t = glassLabel(host, parent, `${prefix}GlassTitle`, title, LX(115), FY(44), S(34), GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+  t.fontSize = Math.round(S(34));
+  t.lineHeight = t.fontSize + 4;
+  if (opts.onHelp) {
+    let w = 0;
+    for (const ch of Array.from(title)) {
+      w += /[　-鿿＀-￯]/.test(ch) ? t.fontSize : t.fontSize * 0.56;
+    }
+    const help = host.addChildPlainNode(parent, `${prefix}GlassHelp`, LX(115) + w + S(40), FY(46), S(56), S(56));
+    const hg = help.addComponent(Graphics);
+    hg.strokeColor = new Color(170, 178, 192, 220);
+    hg.lineWidth = Math.max(1.2, S(1.6));
+    hg.circle(0, 0, S(18));
+    hg.stroke();
+    const q = glassLabel(host, help, 'Q', '?', 0, 0, S(22), new Color(200, 206, 216, 255), S(30), HorizontalTextAlignment.CENTER);
+    q.fontSize = Math.round(S(22));
+    help.addComponent(Button);
+    help.on(Button.EventType.CLICK, opts.onHelp);
+  }
+  let right = opts.chipRight ?? 1725;
+  const spans: Array<{ l: number; r: number }> = [];
+  for (let i = chips.length - 1; i >= 0; i -= 1) {
+    spans.unshift({ l: right - chips[i].width, r: right });
+    right -= chips[i].width + 14;
+  }
+  chips.forEach((chip, index) => {
+    const { l, r } = spans[index];
+    mountGlassChip(host, parent, `${prefix}GlassChip_${chip.key}`, chip.icon, chip.value, (RX(l) + RX(r)) / 2, FY(44), RX(r) - RX(l), S(42), k);
+  });
+  const divider = host.addSprite(`${prefix}GlassDivider`, GLASS_ICON.divider, RX(1752), FY(44), S(36), S(2), parent);
+  if (divider) {
+    divider.node.angle = 90;
+  }
+  mountGlassIconButton(host, parent, `${prefix}GlassClose`, GLASS_ICON.close, RX(1805), FY(43), S(36), S(72), onClose);
+}
+
+/** B 风格滚动条:淡灰轨道 + 灰白滑块;返回按进度(0..1)挪滑块的函数。 */
+export function mountGlassScrollBar(host: UiKitHost, parent: Node, name: string, x: number, y: number, barW: number, trackH: number, thumbH: number): (progress: number) => void {
+  const bar = host.addChildPlainNode(parent, name, x, y, barW, trackH);
+  mountGlassLine(host, bar, 'Track', 0, 0, barW, trackH, new Color(255, 255, 255, 18));
+  const thumb = mountGlassLine(host, bar, 'Thumb', 0, trackH / 2 - thumbH / 2, barW, thumbH, new Color(150, 160, 176, 170));
+  return (progress: number): void => {
+    if (!thumb.isValid) {
+      return;
+    }
+    const p = Math.min(1, Math.max(0, progress));
+    thumb.setPosition(0, trackH / 2 - thumbH / 2 - (trackH - thumbH) * p, 0);
+  };
+}
