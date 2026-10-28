@@ -241,13 +241,22 @@ export function mountGlassIconButton(host: UiKitHost, parent: Node, name: string
   return node;
 }
 
+/** 标签胶囊实际高度:上下留白,高 ≥ 字号 × 1.7(手机字号下限 20 时原来 27 高的胶囊会让字贴边,10-28 用户)。 */
+export function glassTagPillHeight(height: number, fontSize: number): number {
+  return Math.max(height, fontSize * 1.7);
+}
+
+/** 标签胶囊实际宽度(右对齐时先用它算左沿);左右留白随高度走。 */
+export function glassTagPillWidthOf(text: string, fontSize: number, height: number, estimateWidth: (text: string, fontSize: number) => number): number {
+  return estimateWidth(text, fontSize) + glassTagPillHeight(height, fontSize) * 0.9;
+}
+
 /**
  * 标签胶囊(「大招 · Lv.5/5」「★3 解锁」「已解锁」):原型的浅填充 + 细描边;leftX 为胶囊左沿,返回胶囊宽。
  * 全站标签统一用这个(10-28 用户:黑底无边框和原型不一致,其他界面都要统一)。
  */
 export function mountGlassTagPill(host: UiKitHost, parent: Node, name: string, text: string, leftX: number, y: number, height: number, k: number, fontSize: number, estimateWidth: (text: string, fontSize: number) => number, color: Color = GLASS_COLOR.sub): number {
-  // 上下留白:胶囊高 ≥ 字号 × 1.7(手机字号下限 20 时原来 27 高的胶囊会让字贴边,10-28 用户);左右留白随高度走
-  const h = Math.max(height, fontSize * 1.7);
+  const h = glassTagPillHeight(height, fontSize);
   const w = estimateWidth(text, fontSize) + h * 0.9;
   const node = host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
   mountGlassSlice(host, node, 'Bg', GLASS_SLICES.tagPill, 0, 0, w, h, k);

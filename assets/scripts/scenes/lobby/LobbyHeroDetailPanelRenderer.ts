@@ -48,7 +48,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, mountGlassClippedIcon, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -268,6 +268,10 @@ const HERO_GLASS_RARITY_TAG: Record<string, Color> = {
   SSR: new Color(146, 129, 166, 255),
   UR: new Color(176, 112, 84, 255),
 };
+/** 右对齐标签先算宽度(与 mountGlassTagPill 同口径)。 */
+function glassTagPillWidth(text: string, fontSize: number, height: number): number {
+  return glassTagPillWidthOf(text, fontSize, height, estimateTextWidth);
+}
 /** 中文按宽度手动断行(原生 Label 不做避头尾):行首遇到闭合标点就把它拉回上一行。 */
 function glassWrapCjk(text: string, fontSize: number, width: number): string {
   const noHead = '）)，,。.、；;：:！!？?％%」』】》';
@@ -5985,13 +5989,13 @@ export class LobbyHeroDetailPanelRenderer {
       this.drawRedDot(btn, 'StarAwakenButtonDot', S(60), S(14), 1);
     } else {
       const text = awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`;
-      const w = estimateTextWidth(text, F(18)) + S(30);
+      const w = glassTagPillWidth(text, F(18), S(34));
       this.glassTagPill(root, 'StarAwakenState', text, RX(1810) - w, FY(255), S(34), F(18), awakened ? GLASS_COLOR.green : GLASS_COLOR.sub);
     }
     // ② 升星解锁
     box('StarUnlockBox', 329, 607);
     mountGlassSectionHeader(this.host, root, 'StarUnlockSection', '升星解锁', RX(1217), FY(364), k, F(26) / k);
-    const divider = this.host.addSprite('StarUnlockDivider', GLASS_ICON.divider, col.x, FY(391), RX(1810) - RX(1210), S(1.5), root);
+    const divider = this.host.addSprite('StarUnlockDivider', GLASS_ICON.divider, col.x, FY(395), RX(1810) - RX(1210), S(1.5), root);
     void divider;
     const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity).slice(0, 4);
     const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
@@ -6010,14 +6014,15 @@ export class LobbyHeroDetailPanelRenderer {
       } else {
         lockCircle(`StarUnlockLock_${index}`, RX(1246), FY(cy), S(Math.min(56, rowH - 14)), false);
       }
-      const titleY = FY(single ? cy - rowH * 0.2 : top + 23);
+      // 每行标签离行顶分隔线同一间距(标签半高 17 + 留白 11):第一行的线和后面各行的线都画在行顶
+      const titleY = FY(single ? cy - rowH * 0.2 : top + 28);
       glassLabel(this.host, root, `StarUnlockName_${index}`, skill ? skill.name : `被动技能 ${index + 1}`, RX(1298), titleY, F(22), unlocked ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
       const pillText = unlocked ? '已解锁' : `★${needStar} 解锁`;
-      const pw = estimateTextWidth(pillText, F(18)) + S(30);
+      const pw = glassTagPillWidth(pillText, F(18), S(32));
       this.glassTagPill(root, `StarUnlockState_${index}`, pillText, RX(1810) - pw, titleY, S(32), F(18), unlocked ? GLASS_COLOR.green : GLASS_COLOR.sub);
       const descText = skill ? skill.description.split('◆')[0].trim() : '升星解锁本被动技能。';
-      const descTop = single ? cy : top + 42;
-      const descH = single ? rowH * 0.42 : rowH - 50;
+      const descTop = single ? cy : top + 48;
+      const descH = single ? rowH * 0.42 : rowH - 54;
       // 原生 Label 不做中文避头尾:按估算字宽手动断行,行首不落「）,。，、」等标点(原型断在「18%），」之后)
       const descW = RX(1790) - RX(1298);
       const d = this.host.addChildLabel(root, `StarUnlockDesc_${index}`, single ? descText : glassWrapCjk(descText, F(17), descW), RX(1298), FY(descTop + descH / 2), F(17), GLASS_COLOR.sub, new Size(descW, S(descH)), HorizontalTextAlignment.LEFT);
