@@ -22,7 +22,7 @@ import type { LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar, showSceneHelpPopup } from '../UiSceneBackButton';
-import { glassLabel, glassTagPillWidthOf, GLASS_COLOR, GLASS_FORGE_TAB_ICON, GLASS_ICON, GLASS_PART_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassButton, mountGlassCheckbox, mountGlassChip, mountGlassClippedIcon, mountGlassFadeLine, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill } from '../UiGlassKit';
+import { glassLabel, glassTagPillWidthOf, GLASS_COLOR, GLASS_FORGE_TAB_ICON, GLASS_ICON, GLASS_PART_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassButton, mountGlassCheckbox, mountGlassChip, mountGlassClippedIcon, mountGlassFrame, mountGlassFadeLine, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill } from '../UiGlassKit';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitButton, mountKitSection } from '../UiKit';
 import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
@@ -2117,7 +2117,7 @@ export class LobbyForgePanelRenderer {
   /** 玻璃格内放装备图标(裁掉自带框,一层框)+ 底部稀有度细线;size = 格边长。 */
   private glassItemCell(parent: Node, name: string, item: EquipmentItemVO, x: number, y: number, w: number, h: number, k: number, selected: boolean, scale: number): Node {
     const S = (v: number): number => v * k;
-    const cell = mountGlassPanel(this.host, parent, name, x, y, w, h, k, selected);
+    const cell = mountGlassFrame(this.host, parent, name, x, y, w, h, k, selected);
     const icon = equipIconAssetByCode(item.equipCode);
     const iconSize = Math.min(w, h) - S(18);
     if (icon) {
@@ -2167,7 +2167,7 @@ export class LobbyForgePanelRenderer {
     });
     this.fxAnchor = { x: FX(result.x), y: FY(result.y) };
     this.powerAnchor = { x: FX(result.x), y: FY(470) };
-    const resultNode = mountGlassPanel(this.host, parent, 'ForgeFuseResult', FX(result.x), FY(result.y), S(result.w), S(result.h), k);
+    const resultNode = mountGlassFrame(this.host, parent, 'ForgeFuseResult', FX(result.x), FY(result.y), S(result.w), S(result.h), k);
     const previewAsset = ready ? equipShowcaseAssetByQualitySlot(nextQuality, slotItems[0].slot) ?? equipIconAssetByQualitySlot(nextQuality, slotItems[0].slot) : null;
     if (previewAsset) {
       const art = this.host.addSprite('ForgeFusePreview', previewAsset, 0, 0, S(165), S(165), resultNode);
@@ -2191,7 +2191,7 @@ export class LobbyForgePanelRenderer {
           this.host.applyImageButtonFeedback(cell);
         }
       } else {
-        const cell = mountGlassPanel(this.host, parent, `ForgeFuseSlot_${index}`, FX(pos.x), FY(pos.y), S(136), S(132), k);
+        const cell = mountGlassFrame(this.host, parent, `ForgeFuseSlot_${index}`, FX(pos.x), FY(pos.y), S(136), S(132), k);
         T(cell, 'Plus', '+', 0, S(2), 58, rgba(214, 218, 226), S(80), HorizontalTextAlignment.CENTER);
       }
     });
@@ -2360,7 +2360,7 @@ export class LobbyForgePanelRenderer {
       const item = index < shownCount ? pool[index] : null;
       if (!item) {
         // 空格:淡玻璃框(原型下方空位)
-        const empty = mountGlassPanel(this.host, grid.content, `ForgeDecEmptyCell_${index}`, x, y, cellW, cellH, k);
+        const empty = mountGlassFrame(this.host, grid.content, `ForgeDecEmptyCell_${index}`, x, y, cellW, cellH, k);
         (empty.getComponent(UIOpacity) ?? empty.addComponent(UIOpacity)).opacity = 120;
         continue;
       }
@@ -2518,7 +2518,7 @@ export class LobbyForgePanelRenderer {
       this.glassGemSocket = null;
     }
     const big = this.host.addChildPlainNode(side, 'ForgeGemBigFrame', QX(1244), QY(262), S(186), S(178));
-    mountGlassSlice(this.host, big, 'Bg', GLASS_SLICES.panel, 0, 0, S(186), S(178), k);
+    mountGlassSlice(this.host, big, 'Bg', GLASS_SLICES.frame, 0, 0, S(186), S(178), k);
     const bigIcon = equipIconAssetByCode(selected.equipCode);
     if (bigIcon) {
       mountGlassClippedIcon(this.host, side, 'ForgeGemBigIcon', bigIcon, QX(1244), QY(262), S(164));

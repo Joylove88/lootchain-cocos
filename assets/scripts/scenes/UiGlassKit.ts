@@ -17,13 +17,18 @@ interface GlassSlice {
   r: number;
   t: number;
   b: number;
+  /** 贴图四周留给外晕的透明边(贴图像素):挂载时按同比例向外扩,本体仍对齐给定宽高。 */
+  pad?: number;
 }
 
-const slice = (name: string, w: number, h: number, lr: number, tb: number): GlassSlice => ({ path: G(name), w, h, l: lr, r: lr, t: tb, b: tb });
+const slice = (name: string, w: number, h: number, lr: number, tb: number, pad = 0): GlassSlice => ({ path: G(name), w, h, l: lr, r: lr, t: tb, b: tb, pad });
 
 export const GLASS_SLICES = {
   panel: slice('panel', 64, 64, 16, 16),
-  panelSel: slice('panel_sel', 64, 64, 16, 16),
+  // 选中态(10-28 v2):金边 + 金边外晕 + 左右强上下弱的暖金内光 + 暗心;全站选中行 / 选中格共用
+  panelSel: slice('panel_sel', 112, 112, 44, 24, 8),
+  // 装备框 / 物品格(原型合成槽位):浅灰亮边 + 冷色内光向中心渐暗
+  frame: slice('frame', 64, 64, 18, 18),
   row: slice('row', 64, 40, 10, 10),
   pillPrimary: slice('pill_primary', 160, 56, 28, 27),
   pillSecondary: slice('pill_secondary', 160, 56, 28, 27),
@@ -121,9 +126,10 @@ export const GLASS_COLOR = {
  * 宽 / 高小于左右(上下)边距之和时把 k 压小,保证不出现角饰重叠。
  */
 export function mountGlassSlice(host: UiKitHost, parent: Node, name: string, item: GlassSlice, x: number, y: number, width: number, height: number, k: number): Sprite | null {
-  const fit = Math.min(k, width / (item.l + item.r), height / (item.t + item.b));
+  const pad = item.pad ?? 0;
+  const fit = Math.min(k, width / Math.max(1, item.l + item.r - pad * 2), height / Math.max(1, item.t + item.b - pad * 2));
   const s = Math.max(0.05, fit);
-  const sprite = host.addSprite(name, item.path, x, y, width / s, height / s, parent);
+  const sprite = host.addSprite(name, item.path, x, y, width / s + pad * 2, height / s + pad * 2, parent);
   if (sprite) {
     const frame = sprite.spriteFrame;
     if (frame) {
@@ -139,6 +145,13 @@ export function mountGlassSlice(host: UiKitHost, parent: Node, name: string, ite
 }
 
 /** 毛玻璃面板(返回容器节点,内容挂在它下面;坐标以面板中心为原点)。 */
+/** 装备框 / 物品格(全站统一,10-28 用户):未选中 = frame(亮边 + 内光渐暗),选中 = panelSel。 */
+export function mountGlassFrame(host: UiKitHost, parent: Node, name: string, x: number, y: number, width: number, height: number, k: number, selected = false): Node {
+  const node = host.addChildPlainNode(parent, name, x, y, width, height);
+  mountGlassSlice(host, node, 'Glass', selected ? GLASS_SLICES.panelSel : GLASS_SLICES.frame, 0, 0, width, height, k);
+  return node;
+}
+
 export function mountGlassPanel(host: UiKitHost, parent: Node, name: string, x: number, y: number, width: number, height: number, k: number, selected = false): Node {
   const node = host.addChildPlainNode(parent, name, x, y, width, height);
   mountGlassSlice(host, node, 'Glass', selected ? GLASS_SLICES.panelSel : GLASS_SLICES.panel, 0, 0, width, height, k);

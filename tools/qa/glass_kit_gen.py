@@ -99,7 +99,10 @@ def main():
     # 面板(10-28 v2 原型逐像素取色):内底偏冷青 (19,29,38),沿边一圈向内渐隐的内光(上沿最亮、左上角再亮一点),亮一档细边框
     save('panel', shaded(64, 64, 12, panel_lit, outline=(74, 86, 100, 215), outline_w=1))
     # 面板选中态(香槟描边 + 微染)
-    save('panel_sel', rounded(64, 64, 12, (70, 60, 40, 150), outline=CHAMPAGNE_TOP + (210,), outline_w=2, highlight=20))
+    # 选中态(10-28 v2 原型 合成右栏选中行取色):金边 + 左右强上下弱的暖金内光 + 暗中性中心(全站选中行 / 选中格共用)
+    save('panel_sel', panel_sel_tex())
+    # 装备框 / 物品格(原型合成槽位):浅灰亮边 + 冷色内光向中心渐暗
+    save('frame', shaded(64, 64, 12, frame_lit, outline=(146, 156, 174, 225), outline_w=2))
     # 行底(表格行 / 列表行):更淡
     save('row', rounded(64, 40, 8, (255, 255, 255, 10), outline=WHITE + (14,)))
     # 胶囊按钮 160×56(圆角 28;九宫格左右 28)
@@ -200,6 +203,50 @@ def _mix(c0, c1, t):
 def panel_lit(u, v, d):
     glow = math.exp(-d / 4.5) * (0.75 - 0.4 * v) + math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.18) * 0.35
     return _mix((19, 29, 38, 206), (62, 74, 88, 225), glow)
+
+
+def _edge_dist(u, v, w, h):
+    """到左右 / 上下边的距离(输出像素)。"""
+    return min(u, 1 - u) * (w - 1), min(v, 1 - v) * (h - 1)
+
+
+def panel_sel_tex():
+    """选中块 112×112:中间 96×96 为本体(金边 + 暖金内光 + 暗心),四周 8px 留给金边外晕(九宫格左右 44 / 上下 24,运行时 pad 8)。"""
+    n, pad, w, r = 112, 8, 96, 12
+    N = n * SS
+    im = Image.new('RGBA', (N, N), (0, 0, 0, 0))
+    px = im.load()
+    half = w / 2
+    for yy in range(N):
+        y = (yy + 0.5) / SS - n / 2
+        for xx in range(N):
+            x = (xx + 0.5) / SS - n / 2
+            qx, qy = abs(x) - (half - r), abs(y) - (half - r)
+            sd = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - r
+            if sd > 0:
+                a = int(120 * math.exp(-sd / 2.6) * (0.8 + 0.4 * (y + n / 2) / n))
+                if a > 0:
+                    px[xx, yy] = (214, 168, 96, a)
+                continue
+            dx, dy = half - abs(x), half - abs(y)
+            v = (y + half) / w
+            glow = min(1.0, math.exp(-dx / 13.0) * 1.0 + 0.45 * math.exp(-dy / 4.5) * (0.8 + 0.4 * v))
+            c = _mix((26, 30, 33, 235), (124, 94, 54, 248), glow)
+            if sd > -2.0:
+                c = _mix(c, (234, 204, 148, 250), 0.92)
+            px[xx, yy] = c
+    return im.resize((n, n), Image.LANCZOS)
+
+
+def panel_sel_lit(u, v, d):
+    dx, dy = _edge_dist(u, v, 64, 64)
+    glow = min(1.0, math.exp(-dx / 6.0) + 0.38 * math.exp(-dy / 4.0) * (0.8 + 0.4 * v))
+    return _mix((27, 31, 34, 232), (112, 85, 48, 245), glow)
+
+
+def frame_lit(u, v, d):
+    glow = math.exp(-d / 7.0) * (0.9 + 0.2 * (1 - v)) + math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.2) * 0.25
+    return _mix((15, 20, 26, 228), (44, 53, 66, 238), glow)
 
 
 def secondary_lit(u, v, d):

@@ -48,7 +48,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassFrame, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -6140,7 +6140,7 @@ export class LobbyHeroDetailPanelRenderer {
         link.circle(FX(x1), cy, S(3.2));
         link.fill();
         const selected = state.selectedSlot === code;
-        const cell = mountGlassPanel(this.host, parent, `LobbyHeroDetailArtEquip_${code}`, cx, cy, w, h, k, selected);
+        const cell = mountGlassFrame(this.host, parent, `LobbyHeroDetailArtEquip_${code}`, cx, cy, w, h, k, selected);
         glassLabel(this.host, cell, 'ArtEquipSlotTag', slot.label, -w / 2 + S(14), h / 2 - S(20), F(18), GLASS_COLOR.text, S(70));
         if (equipped) {
           const icon = equipIconAssetByCode(equipped.equipCode);
