@@ -5898,7 +5898,8 @@ export class LobbyHeroDetailPanelRenderer {
       const nameW = Math.min(S(220), estimateTextWidth(nameLabel.string, nameFont));
       // 2026-10-23 用户「技能页的触发率也去掉」:标签只留类型 / 解锁条件 / 常驻 / 大招等级
       const tagText = skill.tag.split(' · ').filter((part) => !/\d+(\.\d+)?%\s*触发/.test(part)).join(' · ') || skill.tag;
-      this.glassTagPill(card, 'Tag', isUlt ? tagText.replace('Lv', 'Lv.') : tagText, L(1336) + nameW + S(20), titleY, S(32), F(18));
+      const tagLeft = L(1336) + nameW + S(20);
+      const tagW = this.glassTagPill(card, 'Tag', isUlt ? tagText.replace('Lv', 'Lv.') : tagText, tagLeft, titleY, S(32), F(18));
       let desc = skill.description;
       const noteMark = desc.indexOf('◆');
       if (noteMark >= 0) {
@@ -5916,7 +5917,10 @@ export class LobbyHeroDetailPanelRenderer {
         const current = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
         const maxed = current >= ULTIMATE_MAX_LEVEL;
         const capped = !maxed && current >= ultimateCap(hero.awakenStatus === 1);
-        mountGlassButton(this.host, card, 'SkillRowUltimateUp', maxed ? '已满级' : capped ? '已达上限' : '升级', L(1746), T(70), S(107), S(40), k,
+        // 原型:升级钮在卡片竖向中间;名字长把标签挤到钮的上方时(横向重叠),钮挪到卡片右下角避开标签
+        const btnW = S(107);
+        const clash = tagLeft + tagW > L(1746) - btnW / 2 - S(8);
+        mountGlassButton(this.host, card, 'SkillRowUltimateUp', maxed ? '已满级' : capped ? '已达上限' : '升级', L(1746), clash ? T(cardH - 30) : T(70), btnW, S(40), k,
           maxed || capped ? 'disabled' : 'secondary', () => this.host.openLobbyHeroUltimateDialog(), 20);
       }
     });
