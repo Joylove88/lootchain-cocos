@@ -1,0 +1,11 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED stamina-shop screen (B style). The new mockup is a sibling screen: keep EXACTLY the same background, top bar layout (back arrow + title + divider + grey subtitle; currency chips + close X on the right), the frosted dark glass product cards (soft rounded corners, faint light outline, soft uneven edge light), fonts, colours, the champagne-gold primary pill button and the slate-grey secondary pill button, green bonus tag pills.
+- SECOND image = another APPROVED screen, for small components (section header = short champagne bar + white title, thin dividers, tag pills, progress bar style).
+- THIRD image = our CURRENT (old style) version. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon banners, spiky gold frames, round gold medallions, glowing icons or red buttons.
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames. Painted item art muted and matte.
+SCREEN: "强化护符". Subtitle "80 钻石 / 张 · 强化 +5 起失败不掉级,+10 以上必备". Currency chips: a small muted rune-shield icon "0", diamond "924.5K".
+EXACTLY the same layout as the FIRST image. LEFT big glass card with section header "当前持有": a muted painted bronze rune shield (an engraved bronze shield with a glowing-less rune line, no medallion ring), text "持有 0 张" (white, the 0 in champagne), and two lines of small grey text "强化 +5 起失败掉 1 级,勾选护符本次不掉级" and "每日副本·熔火矿脉III 胜利有概率掉落". No progress bar.
+RIGHT two product cards: "购买 1 张" and "购买 5 张" (the second has a small "×5" tag), each with the rune shield art, a big "+1" / "+5" + small "强化护符", and a slate-grey secondary price pill with a small diamond icon "80" / "400" (both secondary, no champagne price button on this page).
+Bottom centre grey text "今日已购 0/5 张 · 还可购买 5 张".
+Output only the single finished mockup image, no annotations.

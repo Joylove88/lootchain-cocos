@@ -1,0 +1,7 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED gold-shop screen (B style). Reproduce it EXACTLY (same background, top bar, 4 frosted glass product cards, fonts, colours, buttons) and only ADD the result toast described below.
+- SECOND image = our CURRENT (old style) result toast, shown at the bottom of the screen. Use it ONLY to know what it says; do NOT copy its saturated filled pill with thick bright outline.
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles.
+TOAST: a slim frosted dark glass capsule centred horizontally just below the cards (about 30% of screen width, 52px tall), soft rounded ends, faint light outline with soft uneven edge light (same material as the cards). On its left a small round muted green check mark icon; text in white "购买成功", a thin grey dot separator, then a small gold-coin icon and "+11,000" in champagne and "金币" in white. Calm, readable, not a bright green bar.
+Output only the single finished mockup image, no annotations.

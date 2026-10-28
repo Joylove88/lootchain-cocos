@@ -469,7 +469,7 @@ export class LobbyShopDialogRenderer {
       this.renderGlassRecharge(panel, catalog, state, panelW, panelH);
     }
     if (state.notice) {
-      this.renderNoticeBanner(panel, state.notice, FY(800), panelW, scale);
+      this.renderGlassNotice(panel, state.notice, FY(798), panelW, panelH);
     } else {
       this.lastNotice = '';
     }
@@ -478,6 +478,108 @@ export class LobbyShopDialogRenderer {
       cover.addComponent(BlockInputEvents);
       const busyLabel = glassLabel(this.host as never, cover, 'LobbyShopBusyText', '处理中…', 0, FY(420), S(28), GLASS_COLOR.text, S(400), HorizontalTextAlignment.CENTER, true);
       busyLabel.fontSize = Math.round(S(28));
+    }
+  }
+
+  /**
+   * 2026-10-29 B 风格结果横幅(原型 shop_notice_ok_b / shop_notice_err_b):卡片同材质的玻璃胶囊居中,颜色只在小图标 / 细线上。
+   * 文案「标题:详情」拆开:成功 = 绿勾 + 标题 · 收益图标 + 香槟 +N + 单位(其余段灰字);失败 = 红「!」+ 左端暗红细线 + 标题 · 灰字原因;其余 = 香槟圆点 + 白字。
+   */
+  private renderGlassNotice(panel: Node, text: string, y: number, panelW: number, panelH: number): void {
+    const { S, k } = glassProtoMap(panelW, panelH);
+    const tone = /失败|不足|异常|拦截|超时|错误|不可用|不支持|不符|过期|频繁/.test(text) ? 'error' : /成功/.test(text) ? 'ok' : 'info';
+    const cut = text.search(/[:：]/);
+    const head = cut > 0 ? text.slice(0, cut) : text;
+    // 成功文案按逗号拆段(收益 / 消耗);失败 / 提示原因是一整句,不拆
+    const tail = cut > 0 ? text.slice(cut + 1).trim() : '';
+    const parts = !tail ? [] : tone === 'ok' ? tail.split(/[,，;；]/).map((part) => part.trim()).filter(Boolean) : [tail];
+    const font = Math.round(S(22));
+    const est = (t: string, f: number): number => {
+      let w = 0;
+      for (const ch of Array.from(t)) {
+        w += /[　-鿿＀-￯]/.test(ch) ? f : f * 0.56;
+      }
+      return w;
+    };
+    // 片段:[文字, 颜色, 是否加粗, 前置图标]
+    type Seg = { text: string; color: Color; bold?: boolean; icon?: SpriteSpec };
+    const segs: Seg[] = [{ text: head, color: GLASS_COLOR.text, bold: true }];
+    const gainIcon: Record<string, SpriteSpec> = { 金币: ICONS.gold_small, 钻石: ICONS.diamond, 体力: ICONS.stamina, 强化护符: ICONS.rune };
+    parts.forEach((part, index) => {
+      segs.push({ text: '·', color: GLASS_COLOR.sub });
+      const gain = tone === 'ok' && index === 0 ? /^(金币|钻石|体力|强化护符)\s*\+\s*(\d+)(.*)$/.exec(part) : null;
+      if (gain) {
+        segs.push({ text: `+${this.host.formatInteger(Number(gain[2]))}`, color: GLASS_COLOR.champagne, bold: true, icon: gainIcon[gain[1]] });
+        segs.push({ text: gain[1], color: GLASS_COLOR.text });
+        if (gain[3].trim()) {
+          segs.push({ text: gain[3].trim(), color: GLASS_COLOR.sub });
+        }
+      } else {
+        segs.push({ text: part, color: tone === 'ok' && index === 0 ? GLASS_COLOR.text : GLASS_COLOR.sub });
+      }
+    });
+    const gap = S(10);
+    const iconW = S(28);
+    const segW = segs.map((seg) => est(seg.text, font) + (seg.icon ? iconW + S(6) : 0));
+    const contentW = S(30) + gap + segW.reduce((a, b) => a + b, 0) + gap * (segs.length - 1);
+    const h = S(58);
+    const w = Math.min(panelW * 0.8, Math.max(S(420), contentW + S(64)));
+    const banner = this.host.addChildPlainNode(panel, 'LobbyShopNotice', 0, y, w, h);
+    // 两端全圆胶囊(原型):次钮同款光影贴图,按高度取缩放让圆角 = 高 / 2
+    mountGlassSlice(this.host as never, banner, 'Glass', GLASS_SLICES.pillSecondary, 0, 0, w, h, h / 56);
+    if (tone === 'error') {
+      // 失败:左端沿胶囊圆弧的一道暗红细线(Graphics.arc 逆时针取短弧)
+      const accent = this.host.addChildPlainNode(banner, 'Accent', -w / 2 + h / 2, 0, h, h).addComponent(Graphics);
+      accent.strokeColor = rgba(204, 70, 62, 235);
+      accent.lineWidth = Math.max(2, S(3.2));
+      accent.arc(0, 0, h / 2 - S(2.5), (Math.PI * 2) / 3, (Math.PI * 4) / 3, true);
+      accent.stroke();
+    }
+    let x = -Math.min(contentW, w - S(40)) / 2;
+    // 状态图标:细圆环 + 勾 / 「!」/ 圆点
+    const ic = this.host.addChildPlainNode(banner, 'Icon', x + S(15), 0, S(36), S(36)).addComponent(Graphics);
+    const iconColor = tone === 'ok' ? rgba(112, 196, 132) : tone === 'error' ? rgba(222, 96, 86) : GLASS_COLOR.champagne;
+    ic.strokeColor = iconColor;
+    ic.lineWidth = Math.max(2, S(2.8));
+    ic.lineCap = Graphics.LineCap.ROUND;
+    ic.lineJoin = Graphics.LineJoin.ROUND;
+    ic.circle(0, 0, S(15));
+    ic.stroke();
+    if (tone === 'ok') {
+      ic.moveTo(-S(7), 0);
+      ic.lineTo(-S(2), -S(5.5));
+      ic.lineTo(S(7.5), S(5.5));
+      ic.stroke();
+    } else if (tone === 'error') {
+      ic.moveTo(0, S(7.5));
+      ic.lineTo(0, -S(1.5));
+      ic.stroke();
+      ic.fillColor = iconColor;
+      ic.circle(0, -S(6.5), S(2));
+      ic.fill();
+    } else {
+      ic.fillColor = iconColor;
+      ic.circle(0, 0, S(4));
+      ic.fill();
+    }
+    x += S(30) + gap;
+    segs.forEach((seg, index) => {
+      if (seg.icon) {
+        this.host.addSprite(`SegIcon_${index}`, seg.icon.path, x + iconW / 2, 0, iconW, iconW * seg.icon.aspect, banner);
+        x += iconW + S(6);
+      }
+      const tw = est(seg.text, font);
+      const l = glassLabel(this.host as never, banner, `LobbyShopNoticeText_${index}`, seg.text, x, 0, font, seg.color, tw + S(16), HorizontalTextAlignment.LEFT, !!seg.bold);
+      l.fontSize = font;
+      x += tw + gap;
+    });
+    if (text !== this.lastNotice) {
+      this.lastNotice = text;
+      banner.setScale(0.9, 0.9, 1);
+      tween(banner)
+        .to(0.14, { scale: new Vec3(1.04, 1.04, 1) }, { easing: 'backOut' })
+        .to(0.1, { scale: new Vec3(1, 1, 1) })
+        .start();
     }
   }
 
