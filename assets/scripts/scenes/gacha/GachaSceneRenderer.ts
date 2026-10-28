@@ -102,8 +102,8 @@ import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_GACHA_ACTION_ICON, GLASS_
 
 /** 2026-10-29 B 风格(毛玻璃)开关:手机横屏召唤主界面按原型 gacha_b 1:1。 */
 const GACHA_GLASS = true;
-/** 召唤原图大教堂去饱和 / 提亮 / 压高光 / 轻虚化;比背包的大厅图层次多,人物身后的半透明黑烟能融进去(平灰底上会显出一块暗区)。 */
-const GACHA_GLASS_BG = { path: 'ui/gacha/gacha_bg_glass/spriteFrame', ratio: 1672 / 941 };
+/** B 风格整页背景:与背包共用的去饱和虚化大厅图(10-29 用户选定)。 */
+const GACHA_GLASS_BG = { path: 'ui/common/ref/hall_bg_glass/spriteFrame', ratio: 1870 / 841 };
 /** B 风格中央卡池骨骼放大倍数(原型人物约占屏高 72%)。 */
 const GACHA_GLASS_SPINE_BOOST = 1.75;
 /** 粗估文字宽(中文按字号、其余按 0.56 字号)。 */
@@ -1355,7 +1355,11 @@ export class GachaSceneRenderer {
     } else {
       T(root, 'GachaPityLine', pityText, FX(935), FY(95), 30, GLASS_COLOR.text, S(900), HorizontalTextAlignment.CENTER, true);
     }
-    T(root, 'GachaPhaseGuardNote', selectedPool.noticeText ?? '卡池信息由后端配置驱动。', FX(935), FY(137), 19, GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+    // 说明行压在人物头顶光效上(10-29 用户:看不清):字提亮 + 深色描边
+    const note = T(root, 'GachaPhaseGuardNote', selectedPool.noticeText ?? '卡池信息由后端配置驱动。', FX(935), FY(137), 19, rgba(220, 225, 234), S(900), HorizontalTextAlignment.CENTER);
+    note.enableOutline = true;
+    note.outlineColor = rgba(8, 10, 14, 230);
+    note.outlineWidth = Math.max(2, Math.round(S(2.5)));
 
     // ── 右侧功能钮(圆心 x 1680,y 170 / 252 / 335;字 x 1732)+ 跳过动画 (1680, 419)──
     this.resolveRightActions(selectedPool).forEach((action, index) => {
