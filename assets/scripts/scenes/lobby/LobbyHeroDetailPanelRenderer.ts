@@ -48,7 +48,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_STAT_ICON, GLASS_SLICES, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -268,6 +268,24 @@ const HERO_GLASS_RARITY_TAG: Record<string, Color> = {
   SSR: new Color(146, 129, 166, 255),
   UR: new Color(176, 112, 84, 255),
 };
+/** 中文按宽度手动断行(原生 Label 不做避头尾):行首遇到闭合标点就把它拉回上一行。 */
+function glassWrapCjk(text: string, fontSize: number, width: number): string {
+  const noHead = '）)，,。.、；;：:！!？?％%」』】》';
+  const lines: string[] = [];
+  let line = '';
+  for (const ch of Array.from(text)) {
+    if (line && estimateTextWidth(line + ch, fontSize) > width && !noHead.includes(ch)) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line += ch;
+    }
+  }
+  if (line) {
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
 function heroGlassAffixIcon(label: string): string {
   if (/掉落|战利品|金币/.test(label)) return GLASS_STAT_ICON.loot;
   if (/暴击|暴伤/.test(label)) return GLASS_STAT_ICON.crit;
@@ -2060,7 +2078,11 @@ export class LobbyHeroDetailPanelRenderer {
       // 2026-10-22 原型 1:1
       this.renderArtStage(parent, hero, frame.artX, frame.artY, frame.artWidth, frame.artHeight, scale);
       if (tab === 'equip') {
-        this.renderEquipSlotsAroundArt(parent, hero, frame.artX, frame.artY, frame.artWidth, frame.artHeight, scale);
+        if (HERO_GLASS) {
+          this.renderGlassEquipSlots(parent, hero, width, height);
+        } else {
+          this.renderEquipSlotsAroundArt(parent, hero, frame.artX, frame.artY, frame.artWidth, frame.artHeight, scale);
+        }
       }
       const { infoX, infoY, infoWidth, infoHeight } = frame;
       if (tab === 'attr') {
@@ -2070,10 +2092,18 @@ export class LobbyHeroDetailPanelRenderer {
           this.renderProtoAttrPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
         }
       } else if (tab === 'equip') {
-        this.renderWearablePanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
+        if (HERO_GLASS) {
+          this.renderGlassWearPanel(parent, hero, width, height);
+        } else {
+          this.renderWearablePanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
+        }
       } else if (tab === 'skill') {
         const k = this.proto.k;
-        this.renderProtoSkillPanel(parent, hero, infoX, infoY + 9 * k, infoWidth, infoHeight + 18 * k);
+        if (HERO_GLASS) {
+          this.renderGlassSkillPanel(parent, hero, width, height);
+        } else {
+          this.renderProtoSkillPanel(parent, hero, infoX, infoY + 9 * k, infoWidth, infoHeight + 18 * k);
+        }
       } else {
         this.renderStarCurrencyBar(parent, hero, width, height, scale);
         this.renderStarPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
@@ -5786,6 +5816,517 @@ export class LobbyHeroDetailPanelRenderer {
     });
   }
 
+  // ───────────── 2026-10-28 英雄详情 装备 / 技能 / 升星 B 风格(原型 hero_equip_b / hero_skill_b / hero_star_b 1:1) ─────────────
+
+  /** 右栏面板横向范围(原型 1191..1829)。 */
+  private glassColumn(width: number, height: number): { x: number; w: number } {
+    const { RX } = this.glassMap(width, height);
+    return { x: (RX(1191) + RX(1829)) / 2, w: RX(1829) - RX(1191) };
+  }
+
+  /** 圆形技能徽:暗底圆 + 图标 + 淡白描边;locked 加右下小锁。 */
+  private glassSkillEmblem(parent: Node, name: string, x: number, y: number, size: number, skill: HeroDetailSkill | null, index: number, locked: boolean): void {
+    const { S } = this.glassMap(1, 1);
+    const ring = this.host.addChildPlainNode(parent, `${name}Ring`, x, y, size, size);
+    const g = ring.addComponent(Graphics);
+    g.fillColor = rgba(10, 12, 16, 235);
+    g.circle(0, 0, size * 0.5);
+    g.fill();
+    if (!(skill?.icon && this.host.addSprite(`${name}Icon`, skill.icon, x, y, size * 0.94, size * 0.94, parent))) {
+      this.drawSkillIcon(parent, x, y, size * 0.6, 1, index, skill);
+    }
+    g.strokeColor = rgba(255, 255, 255, 46);
+    g.lineWidth = 1.4;
+    g.circle(0, 0, size * 0.5);
+    g.stroke();
+    if (locked) {
+      const badge = size * 0.46;
+      const bx = x + size * 0.34;
+      const by = y - size * 0.34;
+      const bg = this.host.addChildPlainNode(parent, `${name}LockBadge`, bx, by, badge, badge).addComponent(Graphics);
+      bg.fillColor = rgba(16, 19, 25, 245);
+      bg.circle(0, 0, badge * 0.5);
+      bg.fill();
+      bg.strokeColor = rgba(220, 224, 232, 190);
+      bg.lineWidth = 1.6;
+      bg.circle(0, 0, badge * 0.5);
+      bg.stroke();
+      this.host.addSprite(`${name}Lock`, GLASS_ICON.lock, bx, by, badge * 0.66, badge * 0.66, parent);
+    }
+    void S;
+  }
+
+  /** 灰色细描边小胶囊标签(「大招 · Lv.5/5」「★3 解锁」)。 */
+  private glassTagPill(parent: Node, name: string, text: string, leftX: number, y: number, h: number, font: number, color: Color = GLASS_COLOR.sub): number {
+    const { S, k } = this.glassMap(1, 1);
+    const w = estimateTextWidth(text, font) + S(30);
+    const node = this.host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
+    mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.chip, 0, 0, w, h, k * 0.8);
+    glassLabel(this.host, node, 'Text', text, 0, 0, font, color, w - S(10), HorizontalTextAlignment.CENTER);
+    return w;
+  }
+
+  /** 技能页(B):一个整高面板「技能」,内含大招卡 + 被动卡(原型卡 1205..1816,首卡顶 150,高 135,间距 14)。 */
+  private renderGlassSkillPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { RX, FY, S, F, k } = this.glassMap(width, height);
+    const col = this.glassColumn(width, height);
+    const root = this.host.addChildPlainNode(parent, 'LobbyHeroDetailSkillPanel', 0, 0, width, height);
+    mountGlassPanel(this.host, root, 'Box', col.x, (FY(86) + FY(811)) / 2, col.w, FY(86) - FY(811), k);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailSkillSection', '技能', RX(1217), FY(119), k, F(26) / k);
+    const skills = resolveSkills(hero).slice(0, 5);
+    const gap = 14;
+    const cardH = Math.min(135, (797 - 150 - gap * (skills.length - 1)) / Math.max(1, skills.length));
+    const cardX = (RX(1205) + RX(1816)) / 2;
+    const cardW = RX(1816) - RX(1205);
+    skills.forEach((skill, index) => {
+      const isUlt = skill.kind === 'ultimate';
+      const locked = skill.locked === true;
+      const top = 150 + index * (cardH + gap);
+      const card = mountGlassPanel(this.host, root, `LobbyHeroDetailSkillRow_${index}`, cardX, FY(top + cardH / 2), cardW, S(cardH), k);
+      if (locked) {
+        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 205;
+      }
+      const ox = cardX;
+      const oy = FY(top + cardH / 2);
+      const L = (px: number): number => RX(px) - ox;
+      const T = (dy: number): number => FY(top + dy) - oy;
+      const compact = cardH < 120;
+      this.glassSkillEmblem(card, 'Skill', L(1260), 0, S(Math.min(90, cardH - 30)), skill, index, locked);
+      const nameFont = F(24);
+      const titleY = T(compact ? cardH * 0.3 : 37);
+      const nameLabel = glassLabel(this.host, card, 'LobbyHeroDetailSkillName', skill.name, L(1336), titleY, nameFont, GLASS_COLOR.text, S(220), HorizontalTextAlignment.LEFT, true);
+      const nameW = Math.min(S(220), estimateTextWidth(nameLabel.string, nameFont));
+      // 2026-10-23 用户「技能页的触发率也去掉」:标签只留类型 / 解锁条件 / 常驻 / 大招等级
+      const tagText = skill.tag.split(' · ').filter((part) => !/\d+(\.\d+)?%\s*触发/.test(part)).join(' · ') || skill.tag;
+      this.glassTagPill(card, 'Tag', isUlt ? tagText.replace('Lv', 'Lv.') : tagText, L(1336) + nameW + S(20), titleY, S(32), F(18));
+      let desc = skill.description;
+      const noteMark = desc.indexOf('◆');
+      if (noteMark >= 0) {
+        desc = desc.slice(0, noteMark).trim();
+      }
+      const descRight = isUlt && !hero.protagonist ? 1684 : 1796;
+      const descTop = top + (compact ? cardH * 0.52 : 62);
+      const descH = compact ? cardH * 0.4 : 56;
+      const descLabel = this.host.addChildLabel(card, 'LobbyHeroDetailSkillDesc', desc, L(1338), FY(descTop + descH / 2) - oy, F(17), GLASS_COLOR.sub, new Size(RX(descRight) - RX(1338), S(descH)), HorizontalTextAlignment.LEFT);
+      descLabel.string = glassWrapCjk(desc, F(17), RX(descRight) - RX(1338));
+      descLabel.enableWrapText = true;
+      descLabel.lineHeight = descLabel.fontSize + 6;
+      descLabel.overflow = Label.Overflow.SHRINK;
+      if (isUlt && !hero.protagonist) {
+        const current = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
+        const maxed = current >= ULTIMATE_MAX_LEVEL;
+        const capped = !maxed && current >= ultimateCap(hero.awakenStatus === 1);
+        mountGlassButton(this.host, card, 'SkillRowUltimateUp', maxed ? '已满级' : capped ? '已达上限' : '升级', L(1746), T(70), S(107), S(40), k,
+          maxed || capped ? 'disabled' : 'secondary', () => this.host.openLobbyHeroUltimateDialog(), 20);
+      }
+    });
+  }
+
+  /** 升星页(B):升星对照 + 觉醒 / 升星解锁列表 / 升星块(同属性页升级块)。节点名 LobbyHeroDetailStarPanel(升星后原地重建)。 */
+  private renderGlassStarPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { RX, FY, S, F, k } = this.glassMap(width, height);
+    const col = this.glassColumn(width, height);
+    const root = this.host.addChildPlainNode(parent, 'LobbyHeroDetailStarPanel', 0, 0, width, height);
+    const star = Math.max(1, Math.min(STAR_MAX, Math.trunc(hero.star || 1)));
+    const maxed = star >= STAR_MAX;
+    const box = (name: string, top: number, bottom: number): void => {
+      mountGlassPanel(this.host, root, name, col.x, (FY(top) + FY(bottom)) / 2, col.w, FY(top) - FY(bottom), k);
+    };
+    const starText = (value: number): { text: string; color: Color } => {
+      const display = starDisplayV3(value);
+      const [r, g, b] = starBandTextRgbOf(display.color);
+      return { text: '★'.repeat(display.count), color: display.color === 'green' ? rgba(250, 250, 250) : rgba(r, g, b) };
+    };
+    // ① 升星对照 + 觉醒
+    box('StarBox', 86, 320);
+    mountGlassSectionHeader(this.host, root, 'StarSection', '升星', RX(1217), FY(120), k, F(26) / k);
+    const cmp = (name: string, l: number, r: number, value: number | null, highlight: boolean): void => {
+      const node = this.host.addChildPlainNode(root, name, (RX(l) + RX(r)) / 2, FY(182), RX(r) - RX(l), S(53));
+      mountGlassSlice(this.host, node, 'Bg', highlight ? GLASS_SLICES.panelSel : GLASS_SLICES.row, 0, 0, RX(r) - RX(l), S(53), k);
+      if (value === null) {
+        glassLabel(this.host, node, 'Text', '已满星', 0, 0, F(22), GLASS_COLOR.sub, RX(r) - RX(l) - S(20), HorizontalTextAlignment.CENTER, true);
+        return;
+      }
+      const st = starText(value);
+      const starColor = highlight && st.color.r === 250 ? GLASS_COLOR.champagne : st.color;
+      const font = F(24);
+      // 星字用大一号(原型星高 ≈ 字高 1.15 倍),间距与原型「★  ★」一致
+      const starFont = F(30);
+      const starStr = st.text.split('').join(' ');
+      const sw = estimateTextWidth(starStr, starFont) * 0.82;
+      const lw = estimateTextWidth(`${value}星`, font);
+      const left = -(sw + S(14) + lw) / 2;
+      glassLabel(this.host, node, 'Stars', starStr, left, 0, starFont, starColor, sw + S(10));
+      glassLabel(this.host, node, 'Text', `${value}星`, left + sw + S(14), 0, font, GLASS_COLOR.text, lw + S(10), HorizontalTextAlignment.LEFT, true);
+    };
+    cmp('StarCurBox', 1210, 1469, star, false);
+    glassLabel(this.host, root, 'StarArrow', '›››', (RX(1469) + RX(1547)) / 2, FY(182), F(26), maxed ? GLASS_COLOR.dim : GLASS_COLOR.champagne, S(60), HorizontalTextAlignment.CENTER, true);
+    cmp('StarNextBox', 1547, 1810, maxed ? null : star + 1, !maxed);
+    const awakened = (hero.awakenStatus ?? 0) > 0;
+    const ready = !awakened && star >= AWAKEN_COST.minStar;
+    const lockCircle = (name: string, cx: number, cy: number, d: number, open: boolean): void => {
+      const node = this.host.addChildPlainNode(root, name, cx, cy, d, d);
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(12, 15, 20, 220);
+      g.circle(0, 0, d / 2);
+      g.fill();
+      g.strokeColor = rgba(255, 255, 255, 40);
+      g.lineWidth = 1.3;
+      g.circle(0, 0, d / 2);
+      g.stroke();
+      if (open) {
+        this.host.addSprite('Emblem', HERO_AI_SECTION_STAR_ASSET, 0, 0, d * 0.62, d * 0.62, node);
+      } else {
+        this.host.addSprite('Lock', GLASS_ICON.lock, 0, 0, d * 0.72, d * 0.72, node);
+      }
+    };
+    lockCircle('StarAwakenLock', RX(1238), FY(257), S(52), ready || awakened);
+    glassLabel(this.host, root, 'StarAwakenName', '觉醒', RX(1280), FY(250), F(22), ready ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
+    const awDesc = awakened ? `大招上限 Lv.${ultimateCap(true)} · 属性已增强` : `大招上限 Lv.${ultimateCap(false)} → Lv.${ultimateCap(true)} · 属性增强`;
+    glassLabel(this.host, root, 'StarAwakenDesc', awDesc, RX(1280), FY(286), F(19), GLASS_COLOR.sub, S(380));
+    if (ready) {
+      const btn = mountGlassButton(this.host, root, 'StarAwakenButton', '觉醒', (RX(1676) + RX(1810)) / 2, FY(255), RX(1810) - RX(1676), S(38), k, 'primary', () => this.openAwakenDialog(hero), 20);
+      this.drawRedDot(btn, 'StarAwakenButtonDot', S(60), S(14), 1);
+    } else {
+      const text = awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`;
+      const w = estimateTextWidth(text, F(18)) + S(30);
+      this.glassTagPill(root, 'StarAwakenState', text, RX(1810) - w, FY(255), S(34), F(18), awakened ? GLASS_COLOR.green : GLASS_COLOR.sub);
+    }
+    // ② 升星解锁
+    box('StarUnlockBox', 329, 607);
+    mountGlassSectionHeader(this.host, root, 'StarUnlockSection', '升星解锁', RX(1217), FY(364), k, F(26) / k);
+    const divider = this.host.addSprite('StarUnlockDivider', GLASS_ICON.divider, col.x, FY(391), RX(1810) - RX(1210), S(1.5), root);
+    void divider;
+    const unlockStars = resolveHeroPassiveUnlockStars(hero.rarity).slice(0, 4);
+    const passives = resolveSkills(hero).filter((skill) => skill.kind !== 'ultimate');
+    const rowH = Math.min(117, (600 - 395) / Math.max(1, unlockStars.length));
+    unlockStars.forEach((needStar, index) => {
+      const unlocked = star >= needStar;
+      const skill = passives[index] ?? null;
+      const top = 395 + index * rowH;
+      const cy = top + rowH / 2;
+      const single = rowH < 80;
+      if (index > 0) {
+        this.host.addSprite(`StarUnlockSep_${index}`, GLASS_ICON.divider, col.x, FY(top), RX(1810) - RX(1210), S(1.2), root);
+      }
+      if (unlocked && skill) {
+        this.glassSkillEmblem(root, `StarUnlockSkill_${index}`, RX(1246), FY(cy), S(Math.min(56, rowH - 14)), skill, index + 1, false);
+      } else {
+        lockCircle(`StarUnlockLock_${index}`, RX(1246), FY(cy), S(Math.min(56, rowH - 14)), false);
+      }
+      const titleY = FY(single ? cy - rowH * 0.2 : top + 23);
+      glassLabel(this.host, root, `StarUnlockName_${index}`, skill ? skill.name : `被动技能 ${index + 1}`, RX(1298), titleY, F(22), unlocked ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
+      const pillText = unlocked ? '已解锁' : `★${needStar} 解锁`;
+      const pw = estimateTextWidth(pillText, F(18)) + S(30);
+      this.glassTagPill(root, `StarUnlockState_${index}`, pillText, RX(1810) - pw, titleY, S(32), F(18), unlocked ? GLASS_COLOR.green : GLASS_COLOR.sub);
+      const descText = skill ? skill.description.split('◆')[0].trim() : '升星解锁本被动技能。';
+      const descTop = single ? cy : top + 42;
+      const descH = single ? rowH * 0.42 : rowH - 50;
+      // 原生 Label 不做中文避头尾:按估算字宽手动断行,行首不落「）,。，、」等标点(原型断在「18%），」之后)
+      const descW = RX(1790) - RX(1298);
+      const d = this.host.addChildLabel(root, `StarUnlockDesc_${index}`, single ? descText : glassWrapCjk(descText, F(17), descW), RX(1298), FY(descTop + descH / 2), F(17), GLASS_COLOR.sub, new Size(descW, S(descH)), HorizontalTextAlignment.LEFT);
+      d.enableWrapText = !single;
+      d.lineHeight = d.fontSize + 6;
+      d.overflow = Label.Overflow.SHRINK;
+    });
+    // ③ 升星块:「升至 N★」+ 碎片 / 金币 + 一键升星 / 升星
+    box('StarCostBox', 617, 808);
+    const view = this.resolveStarCostView(hero, star, maxed);
+    const titleY = FY(651);
+    this.host.addSprite('StarCostBar', GLASS_ICON.accent, RX(1217), titleY, S(4), S(24), root);
+    const titleMatch = /^(升至)\s*(.+)$/.exec(view.title);
+    if (titleMatch) {
+      const head = glassLabel(this.host, root, 'StarCostTitle', titleMatch[1], RX(1231), titleY, F(24), GLASS_COLOR.text, S(80), HorizontalTextAlignment.LEFT, true);
+      glassLabel(this.host, root, 'StarCostTitleStar', titleMatch[2], RX(1231) + estimateTextWidth(head.string, F(24)) + S(8), titleY, F(24), GLASS_COLOR.champagne, S(120), HorizontalTextAlignment.LEFT, true);
+    } else {
+      glassLabel(this.host, root, 'StarCostTitle', view.title, RX(1233), titleY, F(24), maxed ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(300), HorizontalTextAlignment.LEFT, true);
+    }
+    const names = ['碎片', '金币'];
+    let cur = RX(1225);
+    view.costs.forEach((cost, index) => {
+      const item = this.host.addChildPlainNode(root, `StarCost_${index}`, cur + S(85), FY(698), S(180), S(34));
+      this.host.addSprite('Icon', cost.icon, -S(85) + S(13), 0, S(28), S(28), item);
+      const n = glassLabel(this.host, item, 'Name', names[index] ?? '', -S(85) + S(36), 0, F(19), GLASS_COLOR.sub, S(60));
+      glassLabel(this.host, item, 'Value', cost.text, -S(85) + S(36) + estimateTextWidth(n.string, F(19)) + S(10), 0, F(19), cost.lack ? GLASS_COLOR.red : GLASS_COLOR.text, S(110), HorizontalTextAlignment.LEFT, cost.lack);
+      if (cost.lack && cost.source && this.host.openItemSourcePopup) {
+        const source = cost.source;
+        item.addComponent(Button);
+        item.on(Button.EventType.CLICK, () => this.host.openItemSourcePopup?.(source), this);
+      }
+      cur += S(index === 0 ? 178 : 200);
+    });
+    if (view.hint) {
+      glassLabel(this.host, root, 'StarCostHint', view.hint.replace('当前材料', ''), RX(1800), FY(698), F(17), GLASS_COLOR.dim, S(240), HorizontalTextAlignment.RIGHT);
+    }
+    const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
+    const dim = view.blocked === 'lack';
+    this.dockButtons = [];
+    [
+      { name: 'StarUpAutoButton', idleText: maxed ? '已满星' : '一键升星', l: 1220, r: 1508, kind: 'secondary' as const, onClick: () => this.host.autoStarUpLobbyHero(hero.id) },
+      { name: 'StarUpButton', idleText: maxed ? '已满星' : '升星', l: 1517, r: 1806, kind: 'primary' as const, onClick: () => this.host.starUpLobbyHero(hero.id) },
+    ].forEach((spec) => {
+      const enabled = !pending && !maxed;
+      const btn = mountGlassButton(this.host, root, spec.name, pending ? '处理中' : spec.idleText, (RX(spec.l) + RX(spec.r)) / 2, FY(757), RX(spec.r) - RX(spec.l), S(58), k,
+        enabled ? spec.kind : 'disabled', maxed ? undefined : spec.onClick, 24);
+      const button = btn.getComponent(Button);
+      if (button) {
+        button.interactable = enabled;
+      }
+      if (dim) {
+        (btn.getComponent(UIOpacity) ?? btn.addComponent(UIOpacity)).opacity = 150;
+      }
+      const label = btn.getChildByName('Label')?.getComponent(Label) ?? null;
+      if (label) {
+        this.dockButtons.push({ node: btn, label, art: btn.getChildByName('Pill')?.getComponent(Sprite) ?? null, idleText: spec.idleText, pendingText: '处理中', idleEnabled: !maxed, dim, glass: spec.kind });
+      }
+    });
+  }
+
+  /** 装备页:立绘两侧 6 个毛玻璃装备格(原型 左列 x 367 / 右列 x 1040,行 y 188 / 385 / 582,格 120×122)+ 淡白引线。 */
+  private renderGlassEquipSlots(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { FX, FY, S, F, k } = this.glassMap(width, height);
+    const state = this.host.currentLobbyHeroEquipState();
+    const equippedBySlot = new Map<string, EquipmentItemVO>();
+    state.items.forEach((item) => {
+      if (item.heroId === hero.id) {
+        equippedBySlot.set(item.slot, item);
+      }
+    });
+    const slotByCode = new Map(HERO_EQUIP_SLOTS.map((slot) => [slot.code, slot]));
+    const columns: Array<{ side: 'left' | 'right'; x: number; codes: string[] }> = [
+      { side: 'left', x: 367, codes: ['HELMET', 'CHEST', 'BOOTS'] },
+      { side: 'right', x: 1040, codes: ['WEAPON', 'RING', 'NECKLACE'] },
+    ];
+    const rows = [188, 385, 582];
+    const w = S(120);
+    const h = S(122);
+    columns.forEach((column) => {
+      column.codes.forEach((code, index) => {
+        const slot = slotByCode.get(code) ?? { code, label: code };
+        const equipped = equippedBySlot.get(code) ?? null;
+        const cx = FX(column.x);
+        const cy = FY(rows[index]);
+        // 引线(原型):格子内侧边水平一段 → 小圆点 → 斜向身体;头盔 / 武器行斜向下,其余水平
+        const dir = column.side === 'left' ? 1 : -1;
+        const x0 = column.x + dir * 62;
+        const x1 = column.x + dir * 140;
+        const bend = index === 0 ? { x: column.x + dir * 205, y: rows[index] + 55 } : null;
+        const link = this.host.addChildPlainNode(parent, `LobbyHeroDetailArtEquipLink_${code}`, 0, 0, 10, 10).addComponent(Graphics);
+        link.strokeColor = rgba(225, 228, 236, 120);
+        link.lineWidth = Math.max(1, S(1.4));
+        link.moveTo(FX(x0), cy);
+        link.lineTo(FX(x1), cy);
+        if (bend) {
+          link.lineTo(FX(bend.x), FY(bend.y));
+        }
+        link.stroke();
+        link.fillColor = rgba(225, 228, 236, 190);
+        link.circle(FX(x1), cy, S(3.2));
+        link.fill();
+        const selected = state.selectedSlot === code;
+        const cell = mountGlassPanel(this.host, parent, `LobbyHeroDetailArtEquip_${code}`, cx, cy, w, h, k, selected);
+        glassLabel(this.host, cell, 'ArtEquipSlotTag', slot.label, -w / 2 + S(14), h / 2 - S(20), F(18), GLASS_COLOR.text, S(70));
+        if (equipped) {
+          const icon = equipIconAssetByCode(equipped.equipCode);
+          if (icon) {
+            mountEquipIconBacking(this.host, cell, 'ArtEquipIconBacking', S(76), equipped.equipCode, { y: -S(4) });
+            this.host.addSprite('ArtEquipIcon', icon, 0, -S(4), S(76), S(76), cell);
+          } else {
+            const glyph = this.host.addSprite('ArtEquipGlyph', GLASS_PART_ICON[code] ?? GLASS_PART_ICON.WEAPON, 0, -S(2), S(52), S(52), cell);
+            if (glyph) {
+              glyph.color = rgba(206, 210, 220, 230);
+            }
+          }
+          glassLabel(this.host, cell, 'ArtEquipEnhance', `+${equipped.enhanceLevel ?? 0}`, w / 2 - S(12), -h / 2 + S(16), F(18), GLASS_COLOR.text, S(50), HorizontalTextAlignment.RIGHT, true);
+        } else {
+          const glyph = this.host.addSprite('ArtEquipGlyph', GLASS_PART_ICON[code] ?? GLASS_PART_ICON.WEAPON, 0, S(2), S(52), S(52), cell);
+          if (glyph) {
+            glyph.color = rgba(176, 182, 196, 220);
+          }
+          glassLabel(this.host, cell, 'ArtEquipHint', '点击穿戴', 0, -h / 2 + S(19), F(17), GLASS_COLOR.sub, w - S(10), HorizontalTextAlignment.CENTER);
+        }
+        cell.addComponent(Button);
+        cell.on(Button.EventType.CLICK, () => {
+          this.touchTipEquipId = sys.isMobile && equipped ? equipped.id : null;
+          this.host.selectLobbyHeroEquipSlot(code);
+        }, this);
+        this.host.applyImageButtonFeedback(cell);
+      });
+    });
+  }
+
+  /** 装备页右栏(B):标题 + 一键穿戴 / 一键卸下;部位分段页签;左可穿列表(滚动)+ 右详情卡;强化 / 穿戴。 */
+  private renderGlassWearPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { RX, FY, S, F, k } = this.glassMap(width, height);
+    const col = this.glassColumn(width, height);
+    const state = this.host.currentLobbyHeroEquipState();
+    const root = this.host.addChildPlainNode(parent, 'LobbyHeroDetailWearPanel', 0, 0, width, height);
+    mountGlassPanel(this.host, root, 'Box', col.x, (FY(86) + FY(790)) / 2, col.w, FY(86) - FY(790), k);
+    mountGlassSectionHeader(this.host, root, 'WearSection', '装备', RX(1217), FY(119), k, F(26) / k);
+    const busy = state.busy;
+    mountGlassButton(this.host, root, 'LobbyHeroDetailOneClickEquip', busy ? '处理中' : '一键穿戴', (RX(1540) + RX(1670)) / 2, FY(121), RX(1670) - RX(1540), S(38), k, busy ? 'disabled' : 'secondary', () => this.host.oneClickEquipLobbyHero(hero.id), 18);
+    mountGlassButton(this.host, root, 'LobbyHeroDetailOneClickUnequip', busy ? '处理中' : '一键卸下', (RX(1681) + RX(1810)) / 2, FY(121), RX(1810) - RX(1681), S(38), k, busy ? 'disabled' : 'secondary', () => this.host.oneClickUnequipLobbyHero(hero.id), 18);
+    // ① 部位分段页签
+    HERO_EQUIP_SLOTS.forEach((slot, index) => {
+      const selected = state.selectedSlot === slot.code;
+      const l = 1210 + index * 101.2;
+      const chip = this.host.addChildPlainNode(root, `WearSlotChip_${slot.code}`, (RX(l) + RX(l + 94)) / 2, FY(180), RX(l + 94) - RX(l), S(44));
+      mountGlassSlice(this.host, chip, 'Bg', selected ? GLASS_SLICES.tabActive : GLASS_SLICES.tabIdle, 0, 0, RX(l + 94) - RX(l), S(44), k * 0.7);
+      glassLabel(this.host, chip, 'Label', slot.label, 0, 0, F(19), selected ? GLASS_COLOR.onChampagne : rgba(214, 218, 226), S(90), HorizontalTextAlignment.CENTER, selected);
+      chip.addComponent(Button);
+      chip.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = null;
+        this.host.selectLobbyHeroEquipSlot(slot.code);
+      }, this);
+    });
+    const items = state.items;
+    const selectedSlot = state.selectedSlot;
+    const candidates = selectedSlot ? items.filter((item) => item.slot === selectedSlot) : [];
+    const areaTop = FY(218);
+    const areaBottom = FY(700);
+    if (state.loading && items.length <= 0) {
+      glassLabel(this.host, root, 'WearLoading', '装备列表读取中…', col.x, (areaTop + areaBottom) / 2, F(21), GLASS_COLOR.sub, col.w - S(60), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    if (candidates.length <= 0) {
+      const midY = (areaTop + areaBottom) / 2;
+      glassLabel(this.host, root, 'WearEmpty', selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备', col.x, midY + S(16), F(23), GLASS_COLOR.text, col.w - S(60), HorizontalTextAlignment.CENTER, true);
+      glassLabel(this.host, root, 'WearEmptyHint', selectedSlot ? '野外精英与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格', col.x, midY - S(22), F(19), GLASS_COLOR.sub, col.w - S(60), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    // 列表顺序:本英雄已穿在前,其余按稀有度高→低、强化高→低、战力高→低
+    const qRank: Record<string, number> = { MYTHIC: 7, RED: 6, GOLD: 5, ORANGE: 5, PURPLE: 4, BLUE: 3, GREEN: 2, WHITE: 1 };
+    const rankOf = (item: EquipmentItemVO): number => qRank[(item.quality || '').toUpperCase()] ?? 0;
+    candidates.sort((a, b) => Number(b.heroId === hero.id) - Number(a.heroId === hero.id) || rankOf(b) - rankOf(a) || (b.enhanceLevel ?? 0) - (a.enhanceLevel ?? 0) || equipItemPowerScore(b) - equipItemPowerScore(a));
+    const selected = candidates.find((entry) => entry.id === state.selectedEquipId) ?? candidates.find((entry) => entry.heroId === hero.id) ?? candidates[0];
+    // ② 左列表(1205..1475,行 94 / 步距 100,超出滚动)
+    const listW = RX(1475) - RX(1205);
+    const listCx = (RX(1205) + RX(1475)) / 2;
+    const listBottom = FY(700);
+    const rowH = S(94);
+    const rowStep = S(100);
+    const viewH = areaTop - listBottom;
+    const contentH = Math.max(viewH, candidates.length * rowStep - (rowStep - rowH));
+    const viewport = this.host.addChildPlainNode(root, 'WearGridScrollView', listCx, (areaTop + listBottom) / 2, listW + S(8), viewH);
+    const mask = viewport.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
+    const scrollView = viewport.addComponent(ScrollView);
+    scrollView.horizontal = false;
+    scrollView.vertical = true;
+    scrollView.inertia = true;
+    scrollView.elastic = true;
+    scrollView.cancelInnerEvents = true;
+    const content = this.host.addChildPlainNode(viewport, 'WearGridScrollContent', 0, (viewH - contentH) / 2, listW + S(8), contentH);
+    scrollView.content = content;
+    candidates.forEach((item, index) => {
+      const isSel = item.id === selected.id;
+      const cy = contentH / 2 - rowH / 2 - index * rowStep;
+      const row = mountGlassPanel(this.host, content, `WearCell_${item.id}`, 0, cy, listW, rowH, k, isSel);
+      const left = -listW / 2;
+      const iconS = S(78);
+      const iconX = left + S(10) + iconS / 2;
+      const frame = this.host.addChildPlainNode(row, 'IconFrame', iconX, 0, iconS, iconS);
+      mountGlassSlice(this.host, frame, 'Bg', GLASS_SLICES.row, 0, 0, iconS, iconS, k * 0.8);
+      const icon = equipIconAssetByCode(item.equipCode);
+      if (icon) {
+        mountEquipIconBacking(this.host, row, 'IconBacking', iconS - S(8), item.equipCode, { x: iconX });
+        this.host.addSprite('Icon', icon, iconX, 0, iconS - S(8), iconS - S(8), row);
+      }
+      const wornOnThis = item.heroId === hero.id;
+      const wornOnOther = item.heroId != null && !wornOnThis;
+      if (wornOnThis || wornOnOther) {
+        const tagW = S(28);
+        const tag = this.host.addChildPlainNode(row, 'Worn', iconX - iconS / 2 + tagW / 2 + S(4), iconS / 2 - S(14), tagW, S(24));
+        const tg = tag.addComponent(Graphics);
+        tg.fillColor = wornOnThis ? rgba(30, 64, 38, 245) : rgba(28, 44, 70, 245);
+        tg.roundRect(-tagW / 2, -S(12), tagW, S(24), 4);
+        tg.fill();
+        this.mountWornTag(tag, wornOnThis, item.heroId, tagW, S(24), F(16));
+      }
+      const textL = iconX + iconS / 2 + S(14);
+      const level = item.enhanceLevel ?? 0;
+      const nameText = `${safeText(item.equipName)}${level > 0 ? ` +${level}` : ''}`;
+      glassLabel(this.host, row, 'Name', nameText, textL, S(18), F(20), GLASS_COLOR.text, listW / 2 - textL - S(8), HorizontalTextAlignment.LEFT, true);
+      this.host.addSprite('PowerIcon', GLASS_STAT_ICON.atk, textL + S(12), -S(17), S(30), S(30), row);
+      glassLabel(this.host, row, 'Stat', `战力 ${formatInteger(equipItemPowerScore(item))}`, textL + S(30), -S(17), F(18), GLASS_COLOR.sub, listW / 2 - textL - S(36));
+      row.addComponent(Button);
+      row.on(Button.EventType.CLICK, () => {
+        this.touchTipEquipId = null;
+        this.host.selectLobbyHeroWearEquip(item.id);
+      }, this);
+    });
+    // ③ 右详情卡(1486..1816 × 217..683)
+    const cardL = RX(1486);
+    const cardR = RX(1816);
+    const cardW = cardR - cardL;
+    const cardCx = (cardL + cardR) / 2;
+    const card = mountGlassPanel(this.host, root, 'WearDetailCard', cardCx, (FY(217) + FY(683)) / 2, cardW, FY(217) - FY(683), k);
+    const oy = (FY(217) + FY(683)) / 2;
+    const CY = (py: number): number => FY(py) - oy;
+    const q = equipQualityColor(selected.quality);
+    const rarityColor = rgba(Math.min(255, q.r + 20), Math.min(255, q.g + 20), Math.min(255, q.b + 20));
+    const bigBox = this.host.addChildPlainNode(card, 'BigIconFrame', 0, CY(321), S(144), S(140));
+    mountGlassSlice(this.host, bigBox, 'Bg', GLASS_SLICES.row, 0, 0, S(144), S(140), k);
+    const bigIcon = equipIconAssetByCode(selected.equipCode);
+    if (bigIcon) {
+      mountEquipIconBacking(this.host, card, 'BigIconBacking', S(124), selected.equipCode, { y: CY(321) });
+      this.host.addSprite('BigIcon', bigIcon, 0, CY(321), S(124), S(124), card);
+    }
+    glassLabel(this.host, card, 'Name', safeText(selected.equipName), 0, CY(420), F(24), GLASS_COLOR.text, cardW - S(30), HorizontalTextAlignment.CENTER, true);
+    const tierText = (selected.tier ?? 1) > 1 ? `${selected.tier}阶·` : '';
+    const rName = `${tierText}${heroEquipRarityName(selected.quality)}`;
+    const rFont = F(19);
+    const rW = estimateTextWidth(rName, rFont);
+    const lvText = ` · +${selected.enhanceLevel ?? 0}`;
+    const lW = estimateTextWidth(lvText, rFont);
+    const rLeft = -(rW + lW) / 2;
+    glassLabel(this.host, card, 'Rarity', rName, rLeft, CY(456), rFont, rarityColor, rW + S(8));
+    glassLabel(this.host, card, 'RarityLv', lvText, rLeft + rW, CY(456), rFont, GLASS_COLOR.text, lW + S(8), HorizontalTextAlignment.LEFT, true);
+    this.host.addSprite('Divider', GLASS_ICON.divider, 0, CY(484), S(285), S(1.5), card);
+    const stats = this.protoEquipStats(selected);
+    const affixes = this.protoEquipAffixes(selected);
+    const lines = stats.length + affixes.length;
+    const step = Math.min(40, (548 - 500) / Math.max(1, lines) + 20);
+    let cursor = 517;
+    stats.forEach((stat, index) => {
+      this.host.addSprite(`StatIcon_${index}`, stat.label === '攻击' ? GLASS_STAT_ICON.sword : (HERO_GLASS_STAT_ICONS[stat.label] ?? GLASS_STAT_ICON.sword), RX(1522) - cardCx, CY(cursor), S(36), S(36), card);
+      glassLabel(this.host, card, `StatLabel_${index}`, stat.label, RX(1553) - cardCx, CY(cursor), F(20), GLASS_COLOR.sub, S(120));
+      glassLabel(this.host, card, `StatValue_${index}`, stat.value, RX(1793) - cardCx, CY(cursor), F(21), GLASS_COLOR.text, S(120), HorizontalTextAlignment.RIGHT, true);
+      cursor += step;
+    });
+    affixes.forEach((affix, index) => {
+      glassLabel(this.host, card, `Affix_${index}`, affix.text, RX(1522) - cardCx, CY(cursor), F(18), affix.color, cardW - S(40));
+      cursor += step * 0.85;
+    });
+    // 战力:已穿 = 本件贡献;未穿 = 与本英雄同部位当前装备的差值
+    const worn = items.find((entry) => entry.heroId === hero.id && entry.slot === selected.slot) ?? null;
+    const onThisHero = selected.heroId === hero.id;
+    const score = equipItemPowerScore(selected);
+    const delta = onThisHero ? score : score - (worn ? equipItemPowerScore(worn) : 0);
+    const powerY = Math.max(cursor + 18, 572);
+    const powerBox = this.host.addChildPlainNode(card, 'PowerBox', 0, CY(Math.min(powerY, 650)), S(307), S(45));
+    const pb = mountGlassSlice(this.host, powerBox, 'Bg', GLASS_SLICES.row, 0, 0, S(307), S(45), k);
+    if (pb) {
+      pb.color = delta >= 0 ? rgba(140, 220, 150, 255) : rgba(240, 130, 110, 255);
+    }
+    glassLabel(this.host, powerBox, 'Text', `战力 ${delta >= 0 ? '+' : ''}${formatInteger(delta)}`, 0, 0, F(22), delta >= 0 ? GLASS_COLOR.green : GLASS_COLOR.red, S(280), HorizontalTextAlignment.CENTER, true);
+    // ④ 强化 / 主操作(穿戴 / 卸下 / 转移 / 需 Lv)
+    const levelLocked = (selected.requiredLevel ?? 1) > Math.max(1, hero.level);
+    const onOtherHero = selected.heroId != null && !onThisHero;
+    const actionText = busy ? '处理中' : onThisHero ? '卸下' : levelLocked ? `需Lv.${selected.requiredLevel}` : onOtherHero ? '转移' : '穿戴';
+    mountGlassButton(this.host, root, 'WearBarEnhance', '强化', (RX(1210) + RX(1503)) / 2, FY(742), RX(1503) - RX(1210), S(60), k, busy ? 'disabled' : 'secondary', () => this.host.openLobbyEquipEnhanceDialog(selected.id), 24);
+    const actionEnabled = !busy && !(levelLocked && !onThisHero);
+    mountGlassButton(this.host, root, 'WearBarAction', actionText, (RX(1513) + RX(1808)) / 2, FY(742), RX(1808) - RX(1513), S(60), k, actionEnabled ? 'primary' : 'disabled', () => {
+      if (onThisHero) {
+        this.host.unequipLobbyHeroEquipment(selected.id);
+      } else if (onOtherHero) {
+        this.host.transferLobbyHeroEquipment(selected.id);
+      } else {
+        this.host.equipLobbyHeroEquipment(selected.id);
+      }
+    }, 24);
+  }
+
   // ───────────── 2026-10-22 英雄详情(手机)原型 1:1 ─────────────
   /** 字号:原型 px → 设计 px,手机下限 20(phoneReadableFontSize 同口径)。 */
   private protoFont(v: number): number {
@@ -6234,6 +6775,11 @@ export class LobbyHeroDetailPanelRenderer {
 
   /** 升星页右栏(原型 1:1,原型右栏 1046..1810 横向映射)。节点名 LobbyHeroDetailStarPanel(升星后原地重建用)。 */
   private renderProtoStarPanel(parent: Node, hero: LobbyHeroItemVO, x: number, y: number, width: number, height: number, scale: number): void {
+    const parentSize = parent.getComponent(UITransform)?.contentSize;
+    if (HERO_GLASS && this.phoneFrame && parentSize) {
+      this.renderGlassStarPanel(parent, hero, parentSize.width, parentSize.height);
+      return;
+    }
     const panel = this.protoPanelShell(parent, 'LobbyHeroDetailStarPanel', x, y, width, height);
     const { PX, PY, PS, PW } = this.protoPanelMap(width, height, 1046, 1810);
     const F = (v: number): number => this.protoFont(v);

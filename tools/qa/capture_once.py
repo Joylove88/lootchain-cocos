@@ -34,6 +34,9 @@ def main() -> None:
         # 这台 AVD 自带顶部 136px 挖孔:安全区打成整屏再整刷,和原型 1:1 对比(只改测试进程)
         INSPECTOR.call(f"(() => {{ {ROOT_JS} const vs = cc.view.getVisibleSize(); cc.sys.getSafeAreaRect = () => cc.rect(0, 0, vs.width, vs.height); setTimeout(() => root.renderCurrentView(), 50); return 1; }})()")
         time.sleep(2)
+    # 模拟器重启后游戏可能先于 adb reverse 起来,首批请求失败(英雄列表为空):截图前补拉一次英雄 / 资料
+    INSPECTOR.call(f"(() => {{ {ROOT_JS} setTimeout(() => {{ try {{ root.loadLobbyHeroRoster && root.loadLobbyHeroRoster(); }} catch (e) {{}} }}, 50); return 1; }})()")
+    time.sleep(3)
     table = {key: (js, wait) for key, js, wait in SCREENS}
     for key in keys:
         js, wait = table[key]

@@ -133,6 +133,7 @@ def main():
     extract_proto_icons()
 
 
+P = None  # 当前抠图用的原型像素(extract_proto_icons 切换)
 PROTO = os.path.join(ROOT, '周报截图', '2026-10-28_整体UI去AI感', 'proto', 'hero_b2.png')
 
 
@@ -143,6 +144,7 @@ def extract_proto_icons():
     if not os.path.exists(PROTO):
         print('skip proto icons (no prototype file)')
         return
+    global P
     P = np.asarray(Image.open(PROTO).convert('RGB')).astype(float)
 
     def cut(cx, cy, half, lo, hi, white):
@@ -163,6 +165,33 @@ def extract_proto_icons():
         save(f'stat_{key}', cut(x, y, 19, 20, 110, False))
     for key, (x, y) in {'attr': (85, 159), 'equip': (85, 262), 'skill': (85, 365), 'star': (85, 468)}.items():
         save(f'nav_{key}', cut(x, y, 24, 25, 120, True))
+    # 装备 / 升星页原型(hero_equip_b / hero_star_b):部位线稿(浅灰,运行时可染色)、铜锁(保留原色,含外圈细环)
+    for proto_name, items in (('hero_equip_b.png', {'part_helmet': (367, 190, 26), 'part_chest': (367, 385, 26), 'part_boots': (367, 583, 26),
+                                                    'part_ring': (1040, 387, 26), 'part_necklace': (1040, 583, 26)}),
+                              ('hero_star_b.png', {'lock': (1238, 256, 18)})):
+        path = os.path.join(os.path.dirname(PROTO), proto_name)
+        if not os.path.exists(path):
+            continue
+        P = np.asarray(Image.open(path).convert('RGB')).astype(float)
+        for key, (x, y, half) in items.items():
+            if key == 'lock':
+                save(key, cut_keep(x, y, half, 30, 120))
+            else:
+                save(key, cut(x, y, half, 18, 90, True))
+
+
+def cut_keep(cx, cy, half, lo, hi):
+    """保留原色的抠图(锁这类多色小件)。"""
+    import numpy as np
+    box = P[cy - half:cy + half, cx - half:cx + half]
+    bg = np.median(np.concatenate([box[0], box[-1], box[:, 0], box[:, -1]]), axis=0)
+    a = np.clip((np.sqrt(((box - bg) ** 2).sum(2)) - lo) / (hi - lo), 0, 1)
+    # 半透明边缘反推前景色,避免发暗边
+    fg = np.clip((box - bg * (1 - a[..., None])) / np.maximum(a[..., None], 1e-3), 0, 255)
+    out = np.zeros(box.shape[:2] + (4,), np.uint8)
+    out[..., :3] = fg.astype(np.uint8)
+    out[..., 3] = (a * 255).astype(np.uint8)
+    return Image.fromarray(out, 'RGBA').resize((half * 4, half * 4), Image.LANCZOS)
 
 
 if __name__ == '__main__':

@@ -49,6 +49,7 @@ export const GLASS_ICON = {
   navStar: G('nav_star'),
   arrowLeft: G('icon_arrow_l'),
   arrowRight: G('icon_arrow_r'),
+  lock: G('lock'),
 };
 
 /** 属性小图标(直接从原型 hero_b2 抠的扁平暗金剪影,glass_kit_gen.extract_proto_icons)。 */
@@ -64,10 +65,22 @@ export const GLASS_STAT_ICON = {
   loot: G('stat_loot'),
 };
 
+/** 装备部位空格线稿(原型 hero_equip_b 抠,白色,运行时染色)+ 铜锁(原型 hero_star_b)。 */
+export const GLASS_PART_ICON: Record<string, string> = {
+  WEAPON: G('part_weapon'),
+  HELMET: G('part_helmet'),
+  CHEST: G('part_chest'),
+  BOOTS: G('part_boots'),
+  RING: G('part_ring'),
+  NECKLACE: G('part_necklace'),
+};
+
 export const GLASS_ASSET_PATHS: readonly string[] = [
   ...Object.values(GLASS_SLICES).map((item) => item.path),
   ...Object.values(GLASS_ICON),
   ...Object.values(GLASS_STAT_ICON),
+  ...Object.values(GLASS_PART_ICON),
+  G('lock'),
 ];
 
 /** 色板(原型取色)。 */
