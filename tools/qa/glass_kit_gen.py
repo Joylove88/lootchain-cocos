@@ -96,7 +96,8 @@ def save(name, im):
 
 def main():
     # 面板:64×64,圆角 12(九宫格边距 16)——设计尺寸 1:1,按 UI 缩放
-    save('panel', rounded(64, 64, 12, GLASS + (204,), outline=WHITE + (30,), highlight=14))
+    # 面板(10-28 v2 原型逐像素取色):内底偏冷青 (19,29,38),沿边一圈向内渐隐的内光(上沿最亮、左上角再亮一点),亮一档细边框
+    save('panel', shaded(64, 64, 12, panel_lit, outline=(74, 86, 100, 215), outline_w=1))
     # 面板选中态(香槟描边 + 微染)
     save('panel_sel', rounded(64, 64, 12, (70, 60, 40, 150), outline=CHAMPAGNE_TOP + (210,), outline_w=2, highlight=20))
     # 行底(表格行 / 列表行):更淡
@@ -194,6 +195,11 @@ def shaded(w, h, r, fn, outline=None, outline_w=1):
 def _mix(c0, c1, t):
     t = max(0.0, min(1.0, t))
     return tuple(int(c0[i] * (1 - t) + c1[i] * t) for i in range(len(c0)))
+
+
+def panel_lit(u, v, d):
+    glow = math.exp(-d / 4.5) * (0.75 - 0.4 * v) + math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.18) * 0.35
+    return _mix((19, 29, 38, 206), (62, 74, 88, 225), glow)
 
 
 def secondary_lit(u, v, d):
