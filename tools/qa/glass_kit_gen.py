@@ -211,31 +211,47 @@ def _edge_dist(u, v, w, h):
 
 
 def panel_sel_tex():
-    """选中块 112×112:中间 96×96 为本体(金边 + 暖金内光 + 暗心),四周 8px 留给金边外晕(九宫格左右 44 / 上下 24,运行时 pad 8)。"""
-    n, pad, w, r = 112, 8, 96, 12
-    N = n * SS
-    im = Image.new('RGBA', (N, N), (0, 0, 0, 0))
+    """选中块 256×112:中间 240×96 为本体,四周 8px 留给金边外晕(九宫格左右 44 / 上下 24,运行时 pad 8)。
+    10-28 用户:原型光影不均匀、像波纹——金边亮度沿边起伏(左上 / 右下最亮)、外晕一段亮一段淡、上下沿内光成块、
+    内底斜向缎面柔光带(右侧更亮);九宫格中段留宽(168 / 64px)让起伏拉伸后仍是几段宽波而不是被拉平。"""
+    nw, nh, pad, r = 256, 112, 8, 12
+    bw, bh = nw - pad * 2, nh - pad * 2
+    Wp, Hp = nw * SS, nh * SS
+    im = Image.new('RGBA', (Wp, Hp), (0, 0, 0, 0))
     px = im.load()
-    half = w / 2
-    for yy in range(N):
-        y = (yy + 0.5) / SS - n / 2
-        for xx in range(N):
-            x = (xx + 0.5) / SS - n / 2
-            qx, qy = abs(x) - (half - r), abs(y) - (half - r)
+    hw, hh = bw / 2, bh / 2
+    two_pi = math.pi * 2
+
+    def wave(t, phase):
+        return 0.5 + 0.32 * math.sin(two_pi * t * 1.6 + phase) + 0.18 * math.sin(two_pi * t * 3.9 + phase * 2.3)
+
+    for yy in range(Hp):
+        y = (yy + 0.5) / SS - nh / 2
+        v = (y + hh) / bh
+        for xx in range(Wp):
+            x = (xx + 0.5) / SS - nw / 2
+            u = (x + hw) / bw
+            qx, qy = abs(x) - (hw - r), abs(y) - (hh - r)
             sd = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) - r
+            # 沿边位置参数:上 / 下沿用 u,左右沿用 v;对角(左上 / 右下)额外提亮
+            along = u if abs(y) / hh > abs(x) / hw else v
+            corner = max(math.exp(-((u ** 2 + v ** 2) ** 0.5) / 0.16), math.exp(-(((1 - u) ** 2 + (1 - v) ** 2) ** 0.5) / 0.2))
+            rim = min(1.0, 0.25 + 0.8 * wave(along, 0.7 if y < 0 else 2.6) ** 1.3 + 0.55 * corner)
             if sd > 0:
-                a = int(120 * math.exp(-sd / 2.6) * (0.8 + 0.4 * (y + n / 2) / n))
+                a = int(150 * math.exp(-sd / 2.6) * rim)
                 if a > 0:
                     px[xx, yy] = (214, 168, 96, a)
                 continue
-            dx, dy = half - abs(x), half - abs(y)
-            v = (y + half) / w
-            glow = min(1.0, math.exp(-dx / 13.0) * 1.0 + 0.45 * math.exp(-dy / 4.5) * (0.8 + 0.4 * v))
-            c = _mix((26, 30, 33, 235), (124, 94, 54, 248), glow)
+            dx, dy = hw - abs(x), hh - abs(y)
+            side = math.exp(-dx / 13.0) * (0.75 + 0.45 * wave(v, 1.4 if x < 0 else 3.1))
+            topbot = math.exp(-dy / 7.0) * (0.1 + 0.95 * wave(u, 0.4 if y < 0 else 2.2) ** 1.6) * (0.8 + 0.4 * v)
+            sheen = (0.30 * max(0.0, math.sin(two_pi * (u * 0.85 + v * 0.45) * 1.15 - 0.9)) ** 2 + 0.14 * max(0.0, math.sin(two_pi * (u * 1.9 - v * 0.6) + 2.0)) ** 3) * (0.55 + 0.7 * u)
+            glow = min(1.0, side + topbot + sheen + 0.35 * corner)
+            c = _mix((30, 31, 32, 235), (124, 94, 54, 248), glow)
             if sd > -2.0:
-                c = _mix(c, (234, 204, 148, 250), 0.92)
+                c = _mix(c, _mix((176, 148, 100, 250), (246, 218, 160, 252), rim), 0.92)
             px[xx, yy] = c
-    return im.resize((n, n), Image.LANCZOS)
+    return im.resize((nw, nh), Image.LANCZOS)
 
 
 def panel_sel_lit(u, v, d):
