@@ -277,10 +277,21 @@ function glassWrapCjk(text: string, fontSize: number, width: number): string {
   const noHead = '）)，,。.、；;：:！!？?％%」』】》';
   const lines: string[] = [];
   let line = '';
+  const word = /[A-Za-z0-9+\-.%★]/;
   for (const ch of Array.from(text)) {
     if (line && estimateTextWidth(line + ch, fontSize) > width && !noHead.includes(ch)) {
-      lines.push(line);
-      line = ch;
+      // 不把「+25%」「Lv.5」这类数字串拆到两行:断点落在串中间时,把整串挪到下一行
+      let cut = line.length;
+      if (word.test(ch)) {
+        while (cut > 0 && word.test(line[cut - 1])) {
+          cut -= 1;
+        }
+        if (cut === 0) {
+          cut = line.length;
+        }
+      }
+      lines.push(line.slice(0, cut).trimEnd());
+      line = line.slice(cut) + ch;
     } else {
       line += ch;
     }
@@ -1773,7 +1784,7 @@ export class LobbyHeroDetailPanelRenderer {
       const dimmed = !enabled || entry.dim;
       entry.label.string = pending ? entry.pendingText : entry.idleText;
       entry.label.color = entry.glass
-        ? (!enabled ? GLASS_COLOR.dim : entry.glass === 'primary' ? GLASS_COLOR.onChampagne : GLASS_COLOR.text)
+        ? (!enabled ? (entry.glass === 'primary' ? rgba(110, 92, 64) : GLASS_COLOR.sub) : entry.glass === 'primary' ? GLASS_COLOR.onChampagne : GLASS_COLOR.text)
         : dimmed ? rgba(166, 158, 142) : rgba(255, 240, 200);
       const button = entry.node.getComponent(Button);
       if (button) {
@@ -5673,16 +5684,13 @@ export class LobbyHeroDetailPanelRenderer {
     specs.forEach((spec) => {
       const enabled = !pending && idleEnabled;
       const btn = mountGlassButton(this.host, root, spec.name, pending ? spec.pendingText : spec.idleText, spec.x, FY(772), spec.w, S(58), k,
-        enabled || dim ? spec.kind : 'disabled', idleEnabled ? spec.onClick : undefined, 24);
+        enabled || dim ? spec.kind : spec.kind === 'primary' ? 'primaryOff' : 'disabled', idleEnabled ? spec.onClick : undefined, 24);
       const label = btn.getChildByName('Label')?.getComponent(Label) ?? null;
       const art = btn.getChildByName('Pill')?.getComponent(Sprite) ?? null;
       if (!btn.getComponent(Button) && idleEnabled) {
         btn.addComponent(Button).interactable = enabled;
       } else if (btn.getComponent(Button)) {
         btn.getComponent(Button)!.interactable = enabled;
-      }
-      if (dim) {
-        (btn.getComponent(UIOpacity) ?? btn.addComponent(UIOpacity)).opacity = 150;
       }
       if (label) {
         this.dockButtons.push({ node: btn, label, art, idleText: spec.idleText, pendingText: spec.pendingText, idleEnabled, dim, glass: spec.kind });
@@ -5899,7 +5907,7 @@ export class LobbyHeroDetailPanelRenderer {
       // 2026-10-23 用户「技能页的触发率也去掉」:标签只留类型 / 解锁条件 / 常驻 / 大招等级
       const tagText = skill.tag.split(' · ').filter((part) => !/\d+(\.\d+)?%\s*触发/.test(part)).join(' · ') || skill.tag;
       const tagLeft = L(1336) + nameW + S(20);
-      const tagW = this.glassTagPill(card, 'Tag', isUlt ? tagText.replace('Lv', 'Lv.') : tagText, tagLeft, titleY, S(32), F(18));
+      const tagW = this.glassTagPill(card, 'Tag', isUlt ? tagText.replace('Lv', 'Lv.') : tagText, tagLeft, titleY, S(32), S(18));
       let desc = skill.description;
       const noteMark = desc.indexOf('◆');
       if (noteMark >= 0) {
@@ -5908,8 +5916,11 @@ export class LobbyHeroDetailPanelRenderer {
       const descRight = isUlt && !hero.protagonist ? 1684 : 1796;
       const descTop = top + (compact ? cardH * 0.52 : 62);
       const descH = compact ? cardH * 0.4 : 56;
-      const descLabel = this.host.addChildLabel(card, 'LobbyHeroDetailSkillDesc', desc, L(1338), FY(descTop + descH / 2) - oy, F(17), GLASS_COLOR.sub, new Size(RX(descRight) - RX(1338), S(descH)), HorizontalTextAlignment.LEFT);
-      descLabel.string = glassWrapCjk(desc, F(17), RX(descRight) - RX(1338));
+      // 描述按原型字号(约 15.5,不走手机 20 下限):原型大招描述两行,抬到 20 会挤成三行再被 SHRINK 缩小(10-28 用户)
+      const descFont = Math.round(S(isUlt ? 15.5 : 18));
+      const descLabel = this.host.addChildLabel(card, 'LobbyHeroDetailSkillDesc', desc, L(1338), FY(descTop + descH / 2) - oy, descFont, GLASS_COLOR.sub, new Size(RX(descRight) - RX(1338), S(descH)), HorizontalTextAlignment.LEFT);
+      descLabel.fontSize = descFont;
+      descLabel.string = glassWrapCjk(desc, descFont, RX(descRight) - RX(1338));
       descLabel.enableWrapText = true;
       descLabel.lineHeight = descLabel.fontSize + 6;
       descLabel.overflow = Label.Overflow.SHRINK;
@@ -5994,8 +6005,8 @@ export class LobbyHeroDetailPanelRenderer {
       this.drawRedDot(btn, 'StarAwakenButtonDot', S(60), S(14), 1);
     } else {
       const text = awakened ? '已觉醒' : `★${AWAKEN_COST.minStar} 解锁`;
-      const w = glassTagPillWidth(text, F(18), S(34));
-      this.glassTagPill(root, 'StarAwakenState', text, RX(1810) - w, FY(255), S(34), F(18), awakened ? GLASS_COLOR.green : GLASS_COLOR.sub);
+      const w = glassTagPillWidth(text, S(18), S(34));
+      this.glassTagPill(root, 'StarAwakenState', text, RX(1810) - w, FY(255), S(34), S(18), awakened ? GLASS_COLOR.green : GLASS_COLOR.sub);
     }
     // ② 升星解锁
     box('StarUnlockBox', 329, 607);
@@ -6023,14 +6034,16 @@ export class LobbyHeroDetailPanelRenderer {
       const titleY = FY(single ? cy - rowH * 0.2 : top + 28);
       glassLabel(this.host, root, `StarUnlockName_${index}`, skill ? skill.name : `被动技能 ${index + 1}`, RX(1298), titleY, F(22), unlocked ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
       const pillText = unlocked ? '已解锁' : `★${needStar} 解锁`;
-      const pw = glassTagPillWidth(pillText, F(18), S(32));
-      this.glassTagPill(root, `StarUnlockState_${index}`, pillText, RX(1810) - pw, titleY, S(32), F(18), unlocked ? GLASS_COLOR.green : GLASS_COLOR.sub);
+      const pw = glassTagPillWidth(pillText, S(18), S(32));
+      this.glassTagPill(root, `StarUnlockState_${index}`, pillText, RX(1810) - pw, titleY, S(32), S(18), unlocked ? GLASS_COLOR.green : GLASS_COLOR.sub);
       const descText = skill ? skill.description.split('◆')[0].trim() : '升星解锁本被动技能。';
       const descTop = single ? cy : top + 48;
       const descH = single ? rowH * 0.42 : rowH - 54;
       // 原生 Label 不做中文避头尾:按估算字宽手动断行,行首不落「）,。，、」等标点(原型断在「18%），」之后)
       const descW = RX(1790) - RX(1298);
-      const d = this.host.addChildLabel(root, `StarUnlockDesc_${index}`, single ? descText : glassWrapCjk(descText, F(17), descW), RX(1298), FY(descTop + descH / 2), F(17), GLASS_COLOR.sub, new Size(descW, S(descH)), HorizontalTextAlignment.LEFT);
+      const unlockFont = Math.round(S(17.5));
+      const d = this.host.addChildLabel(root, `StarUnlockDesc_${index}`, single ? descText : glassWrapCjk(descText, unlockFont, descW), RX(1298), FY(descTop + descH / 2), unlockFont, GLASS_COLOR.sub, new Size(descW, S(descH)), HorizontalTextAlignment.LEFT);
+      d.fontSize = unlockFont;
       d.enableWrapText = !single;
       d.lineHeight = d.fontSize + 6;
       d.overflow = Label.Overflow.SHRINK;
@@ -6073,13 +6086,10 @@ export class LobbyHeroDetailPanelRenderer {
     ].forEach((spec) => {
       const enabled = !pending && !maxed;
       const btn = mountGlassButton(this.host, root, spec.name, pending ? '处理中' : spec.idleText, (RX(spec.l) + RX(spec.r)) / 2, FY(757), RX(spec.r) - RX(spec.l), S(58), k,
-        enabled ? spec.kind : 'disabled', maxed ? undefined : spec.onClick, 24);
+        enabled ? spec.kind : spec.kind === 'primary' ? 'primaryOff' : 'disabled', maxed ? undefined : spec.onClick, 24);
       const button = btn.getComponent(Button);
       if (button) {
         button.interactable = enabled;
-      }
-      if (dim) {
-        (btn.getComponent(UIOpacity) ?? btn.addComponent(UIOpacity)).opacity = 150;
       }
       const label = btn.getChildByName('Label')?.getComponent(Label) ?? null;
       if (label) {
@@ -6368,7 +6378,7 @@ export class LobbyHeroDetailPanelRenderer {
     const actionText = busy ? '处理中' : onThisHero ? '卸下' : levelLocked ? `需Lv.${selected.requiredLevel}` : onOtherHero ? '转移' : '穿戴';
     mountGlassButton(this.host, root, 'WearBarEnhance', '强化', (RX(1210) + RX(1503)) / 2, FY(742), RX(1503) - RX(1210), S(60), k, busy ? 'disabled' : 'secondary', () => this.host.openLobbyEquipEnhanceDialog(selected.id), 24);
     const actionEnabled = !busy && !(levelLocked && !onThisHero);
-    mountGlassButton(this.host, root, 'WearBarAction', actionText, (RX(1513) + RX(1808)) / 2, FY(742), RX(1808) - RX(1513), S(60), k, actionEnabled ? 'primary' : 'disabled', () => {
+    mountGlassButton(this.host, root, 'WearBarAction', actionText, (RX(1513) + RX(1808)) / 2, FY(742), RX(1808) - RX(1513), S(60), k, actionEnabled ? 'primary' : 'primaryOff', () => {
       if (onThisHero) {
         this.host.unequipLobbyHeroEquipment(selected.id);
       } else if (onOtherHero) {

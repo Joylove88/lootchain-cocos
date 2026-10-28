@@ -4,6 +4,7 @@
 用法:python tools/qa/glass_kit_gen.py
 """
 import json
+import math
 import os
 import uuid
 
@@ -133,7 +134,98 @@ def main():
     # 名牌左右切换箭头(原型:粗白箭头)
     save('icon_arrow_l', line_icon(64, [[(0.64, 0.14), (0.34, 0.5), (0.64, 0.86)]], width=6.0))
     save('icon_arrow_r', line_icon(64, [[(0.36, 0.14), (0.66, 0.5), (0.36, 0.86)]], width=6.0))
+    save('rail_sel', rail_selected())
+    # 10-28 用户:锻造强化页的光照感(原型 forge_b 逐像素取色)
+    save('pill_secondary_lit', shaded(160, 56, 28, secondary_lit, outline=(112, 126, 140, 205), outline_w=2))
+    save('pill_primary_dim', shaded(160, 56, 28, primary_dim, outline=(198, 172, 128, 235), outline_w=2))
+    save('tab_glow', shaded(120, 64, 14, tab_glow, outline=(232, 206, 150, 245), outline_w=2))
+    save('line_fade', fade_line(False))
+    save('line_fade_v', fade_line(True))
     extract_proto_icons()
+
+
+def rail_selected():
+    """锻造右缘页签选中块(原型 forge_b 取色):左侧暗金 (150,122,82) 向右渐隐到竖条底色,左缘一道亮金竖边渐隐。"""
+    w, h, r = 120, 114, 16
+    W, H = w * SS, h * SS
+    mask = Image.new('L', (W, H), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, W - 1, H - 1), r * SS, fill=255)
+    body = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(body)
+    for x in range(W):
+        t = x / (W - 1)
+        c0, c1 = (150, 122, 82), (30, 32, 36)
+        d.line([(x, 0), (x, H)], fill=tuple(int(c0[i] * (1 - t) + c1[i] * t) for i in range(3)) + (int(240 * (1 - t) ** 1.2 + 20),))
+    out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    out.paste(body, (0, 0), mask)
+    edge = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(edge).rounded_rectangle((0, 0, W - 1, H - 1), r * SS, outline=(205, 170, 112, 235), width=2 * SS)
+    fade = Image.new('L', (W, H), 0)
+    fd = ImageDraw.Draw(fade)
+    for x in range(int(W * 0.35) + 1):
+        fd.line([(x, 0), (x, H)], fill=int(255 * (1 - x / (W * 0.35))))
+    edge.putalpha(Image.composite(edge.getchannel('A'), Image.new('L', (W, H), 0), fade))
+    out.alpha_composite(edge)
+    return out.resize((w, h), Image.LANCZOS)
+
+
+def shaded(w, h, r, fn, outline=None, outline_w=1):
+    """逐像素着色圆角块:fn(u, v, d) -> rgba,u/v 为 0..1 归一坐标,d 为到最近边的距离(输出像素)。"""
+    W, H, R = w * SS, h * SS, r * SS
+    mask = Image.new('L', (W, H), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, W - 1, H - 1), R, fill=255)
+    body = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    px = body.load()
+    for y in range(H):
+        v = y / (H - 1)
+        for x in range(W):
+            u = x / (W - 1)
+            d = min(x, W - 1 - x, y, H - 1 - y) / SS
+            px[x, y] = fn(u, v, d)
+    out = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    out.paste(body, (0, 0), mask)
+    if outline:
+        ol = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(ol).rounded_rectangle((0, 0, W - 1, H - 1), R, outline=outline, width=outline_w * SS)
+        out.alpha_composite(ol)
+    return out.resize((w, h), Image.LANCZOS)
+
+
+def _mix(c0, c1, t):
+    t = max(0.0, min(1.0, t))
+    return tuple(int(c0[i] * (1 - t) + c1[i] * t) for i in range(len(c0)))
+
+
+def secondary_lit(u, v, d):
+    """次钮(原型 词缀洗练 / 筛选 / 品质优先):边缘 / 下部 (22,29,37),上中部一束光 (43,55,67)。"""
+    light = math.exp(-((u - 0.47) / 0.30) ** 2) * (1 - 0.6 * v) + 0.18 * (1 - v)
+    return _mix((22, 29, 37), (44, 56, 68), light) + (242,)
+
+
+def primary_dim(u, v, d):
+    """材料不足主钮(原型):哑光暗金,上 (166,137,87) → 下 (124,98,62),左右边缘略亮。"""
+    c = _mix((166, 137, 87), (124, 98, 62), v)
+    edge = math.exp(-d / 10) * 0.12
+    return tuple(min(255, int(ch * (1 + edge))) for ch in c) + (255,)
+
+
+def tab_glow(u, v, d):
+    """分类页签选中(原型「全部」):中间暗金 (118,97,66),贴边一圈内发光,下沿更亮。"""
+    glow = math.exp(-d / 6.5) * (0.55 + 0.6 * v) + 0.12 * v
+    return _mix((118, 97, 66), (214, 176, 108), glow) + (245,)
+
+
+def fade_line(vertical):
+    """渐隐分割线(原型强化页名称 / 消耗线):1px 暗线压在 2px 亮线上,中间最实、两端淡出;运行时染色。"""
+    n = 256
+    im = Image.new('RGBA', (n, 3), (0, 0, 0, 0))
+    px = im.load()
+    for x in range(n):
+        p = 0.16 + 0.84 * math.sin(math.pi * x / (n - 1)) ** 1.1
+        px[x, 0] = (0, 0, 0, int(140 * p))
+        px[x, 1] = (255, 255, 255, int(255 * p))
+        px[x, 2] = (255, 255, 255, int(200 * p))
+    return im.transpose(Image.Transpose.ROTATE_90) if vertical else im
 
 
 P = None  # 当前抠图用的原型像素(extract_proto_icons 切换)
@@ -173,7 +265,7 @@ def extract_proto_icons():
                                                     'part_ring': (1040, 387, 26), 'part_necklace': (1040, 583, 26)}),
                               ('hero_star_b.png', {'lock': (1238, 256, 18)}),
                               # 锻造原型 forge_b:右栏「合成」图标(避开右上红点)+ 列表部位页签实心图标
-                              ('forge_b.png', {'nav_fuse': (1795, 323, 26), 'tab_weapon': (180, 168, 20), 'tab_helmet': (250, 168, 20), 'tab_chest': (318, 168, 20),
+                              ('forge_b.png', {'nav_fuse': (1795, 323, 26), 'nav_gem': (1797, 625, 28), 'tab_weapon': (180, 168, 20), 'tab_helmet': (250, 168, 20), 'tab_chest': (318, 168, 20),
                                                'tab_boots': (388, 168, 20), 'tab_ring': (458, 168, 20), 'tab_necklace': (528, 168, 20)})):
         path = os.path.join(os.path.dirname(PROTO), proto_name)
         if not os.path.exists(path):

@@ -35,6 +35,11 @@ export const GLASS_SLICES = {
   plate: slice('plate', 160, 88, 44, 43),
   tag: slice('tag', 48, 28, 8, 8),
   tagPill: slice('tag_pill', 120, 36, 18, 17),
+  railSel: slice('rail_sel', 120, 114, 22, 22),
+  // 10-28 锻造原型的光照款:次钮上中部一束光、材料不足哑光暗金、分类页签贴边内发光
+  pillSecondaryLit: slice('pill_secondary_lit', 160, 56, 28, 27),
+  pillPrimaryDim: slice('pill_primary_dim', 160, 56, 28, 27),
+  tabGlow: slice('tab_glow', 120, 64, 24, 24),
 };
 
 export const GLASS_ICON = {
@@ -49,9 +54,12 @@ export const GLASS_ICON = {
   navSkill: G('nav_skill'),
   navStar: G('nav_star'),
   navFuse: G('nav_fuse'),
+  navGem: G('nav_gem'),
   arrowLeft: G('icon_arrow_l'),
   arrowRight: G('icon_arrow_r'),
   lock: G('lock'),
+  lineFade: G('line_fade'),
+  lineFadeV: G('line_fade_v'),
 };
 
 /** 属性小图标(直接从原型 hero_b2 抠的扁平暗金剪影,glass_kit_gen.extract_proto_icons)。 */
@@ -164,7 +172,11 @@ export function glassLabel(
   return label;
 }
 
-export type GlassButtonKind = 'primary' | 'secondary' | 'disabled';
+/**
+ * disabled = 次按钮外观 + 灰字(不响应);primaryOff = 主按钮外观 + 暗一档的字(不响应)。
+ * 10-28 用户:不可用按钮「透明化过重导致看不清」——不可用也保持原型外观,只靠字色区分,不做半透明。
+ */
+export type GlassButtonKind = 'primary' | 'secondary' | 'disabled' | 'primaryOff' | 'secondaryLit' | 'primaryDim';
 
 /** 胶囊按钮:primary 香槟金实心深字 / secondary 半透明白字 / disabled 灰(不响应)。 */
 export function mountGlassButton(
@@ -182,15 +194,19 @@ export function mountGlassButton(
   fontSize = 24,
 ): Node {
   const node = host.addChildPlainNode(parent, name, x, y, width, height);
-  const item = kind === 'primary' ? GLASS_SLICES.pillPrimary : kind === 'secondary' ? GLASS_SLICES.pillSecondary : GLASS_SLICES.pillDisabled;
+  const item = kind === 'primary' || kind === 'primaryOff' ? GLASS_SLICES.pillPrimary
+    : kind === 'primaryDim' ? GLASS_SLICES.pillPrimaryDim
+      : kind === 'secondaryLit' ? GLASS_SLICES.pillSecondaryLit : GLASS_SLICES.pillSecondary;
   mountGlassSlice(host, node, 'Pill', item, 0, 0, width, height, k);
-  const color = kind === 'primary' ? GLASS_COLOR.onChampagne : kind === 'secondary' ? GLASS_COLOR.text : GLASS_COLOR.dim;
+  // primaryDim(材料不足):暗金底 + 米白字(原型 (238,226,202)),不再亮底亮字糊在一起
+  const color = kind === 'primary' ? GLASS_COLOR.onChampagne : kind === 'primaryOff' ? new Color(110, 92, 64, 255)
+    : kind === 'primaryDim' ? new Color(238, 226, 202, 255) : kind === 'secondary' || kind === 'secondaryLit' ? GLASS_COLOR.text : GLASS_COLOR.sub;
   const label = host.addChildLabel(node, 'Label', text, 0, 0, fontSize * k, color, new Size(width * 0.82, height * 0.8), HorizontalTextAlignment.CENTER);
   label.overflow = Label.Overflow.SHRINK;
-  label.isBold = kind === 'primary';
+  label.isBold = kind === 'primary' || kind === 'primaryOff';
   label.enableOutline = false;
   fitButtonLabel(label, height);
-  if (kind !== 'disabled') {
+  if (kind !== 'disabled' && kind !== 'primaryOff') {
     node.addComponent(Button);
     if (onClick) {
       node.on(Button.EventType.CLICK, onClick);
@@ -272,7 +288,10 @@ export function mountGlassTagPill(host: UiKitHost, parent: Node, name: string, t
   const w = estimateWidth(text, fontSize) + h * 0.9;
   const node = host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
   mountGlassSlice(host, node, 'Bg', GLASS_SLICES.tagPill, 0, 0, w, h, k);
-  glassLabel(host, node, 'Text', text, 0, 0, fontSize, color, w - 10 * k, HorizontalTextAlignment.CENTER);
+  // 字号按调用方给的原型字号写死(不走手机 20 下限,10-28 用户:标签比原型大)
+  const label = glassLabel(host, node, 'Text', text, 0, 0, fontSize, color, w - 10 * k, HorizontalTextAlignment.CENTER);
+  label.fontSize = Math.max(12, Math.round(fontSize));
+  label.lineHeight = label.fontSize + 4;
   return w;
 }
 
@@ -310,5 +329,27 @@ export function mountGlassCheckbox(host: UiKitHost, parent: Node, name: string, 
     g.stroke();
   }
   return node;
+}
+
+/** 细分割线(原型取色,Graphics 矩形;GLASS_ICON.divider 贴图太淡时用)。 */
+export function mountGlassLine(host: UiKitHost, parent: Node, name: string, x: number, y: number, width: number, height: number, color: Color): Node {
+  const node = host.addChildPlainNode(parent, name, x, y, Math.max(1, width), Math.max(1, height));
+  const g = node.addComponent(Graphics);
+  g.fillColor = color;
+  g.rect(-width / 2, -height / 2, width, height);
+  g.fill();
+  return node;
+}
+
+/** 渐隐分割线(原型强化页):中间最实、两端淡出,上压 1px 暗线;color 为最实处颜色,height 为亮线粗细。vertical 时 width 为粗细、height 为长度。 */
+export function mountGlassFadeLine(host: UiKitHost, parent: Node, name: string, x: number, y: number, width: number, height: number, color: Color, vertical = false): Node | null {
+  const w = vertical ? Math.max(2, width * 1.5) : width;
+  const h = vertical ? height : Math.max(2, height * 1.5);
+  const sprite = host.addSprite(name, vertical ? GLASS_ICON.lineFadeV : GLASS_ICON.lineFade, x, y, w, h, parent);
+  if (!sprite) {
+    return mountGlassLine(host, parent, name, x, y, vertical ? width : width, vertical ? height : height, color);
+  }
+  sprite.color = color;
+  return sprite.node;
 }
 

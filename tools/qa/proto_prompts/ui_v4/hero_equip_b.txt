@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED hero detail screen, "属性" (attributes) tab. Keep EXACTLY the same: background, the hero art (red-haired dark queen with a scythe) and her position, the name plate under her, the top bar (back arrow + "英雄", currency chips, close X), the left vertical tab list style, the frosted dark glass panel style (soft rounded corners, thin faint white outline), fonts, colours, the muted-gold flat stat icons, the champagne-gold primary pill button and the slate-grey secondary pill button.
+- SECOND image = our CURRENT (old style) version of this tab. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon banners, spiky gold frames or glowing icons.
+Change ONLY: the selected tab in the left list, and the content of the RIGHT column (same right column area as the first image: x about 1191..1829, below the top bar). The right column must use the same frosted glass panels with small section headers (thin champagne vertical bar + white title, optional grey "xxx ›" text link on the right), the same spacing rhythm, and the same text colours (white values, light grey-blue labels).
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames.
+Selected tab: "装备" (the 装备 tab gets the muted-gold selected pill; 属性 becomes a normal tab).
+Also show the 6 equipment slots around the hero art (keep the hero visible): three small rounded-square frosted glass slots on each side of the hero, connected to her by faint thin lines. Left side top to bottom: 头盔, 胸甲, 鞋子; right side top to bottom: 武器, 戒指, 项链. Each empty slot shows a faint white line drawing of the part and small grey text "点击穿戴"; the 武器 slot is equipped: a small dagger icon with a thin grey rarity line at the bottom and tiny text "+0".
+RIGHT column:
+1) Panel "装备" with two small pills on the right of the header: secondary "一键穿戴" and secondary "一键卸下". Under the header a row of 6 segmented tabs: 武器 (selected, champagne), 头盔, 胸甲, 鞋子, 戒指, 项链.
+2) Below, split into two parts inside the same panel: on the left a short list of wearable items (each row: small item icon in a rounded square, name, small sword icon + "战力 2"): one row "粗铁短剑" selected with a champagne outline; on the right a detail card: larger item icon, name "粗铁短剑", grey "普通 · +0", a thin divider, a stat row with a muted-gold sword icon "攻击  +1", and a highlighted line "战力 +2" in soft green.
+3) Bottom of the right column: secondary pill "强化" and primary pill "穿戴".
+Output only the single finished mockup image, no annotations.

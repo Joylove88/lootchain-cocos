@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED hero detail screen, "属性" (attributes) tab. Keep EXACTLY the same: background, the hero art (red-haired dark queen with a scythe) and her position, the name plate under her, the top bar (back arrow + "英雄", currency chips, close X), the left vertical tab list style, the frosted dark glass panel style (soft rounded corners, thin faint white outline), fonts, colours, the muted-gold flat stat icons, the champagne-gold primary pill button and the slate-grey secondary pill button.
+- SECOND image = our CURRENT (old style) version of this tab. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon banners, spiky gold frames or glowing icons.
+Change ONLY: the selected tab in the left list, and the content of the RIGHT column (same right column area as the first image: x about 1191..1829, below the top bar). The right column must use the same frosted glass panels with small section headers (thin champagne vertical bar + white title, optional grey "xxx ›" text link on the right), the same spacing rhythm, and the same text colours (white values, light grey-blue labels).
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames.
+Selected tab: "技能".
+RIGHT column, one tall frosted panel "技能" containing a vertical list of skill cards (each card = slightly lighter glass row with rounded corners):
+1) Ultimate card (larger, first): a round skill emblem icon on the left (keep it painted but matte), title "夜烬·焚世之焰", a small grey pill tag "大招 · Lv.5/5" next to the title, description in grey (2 lines): "守卫战 2★ 解锁；蓄满后点击英雄手动释放伤害 +25%，不点自动释放。每升 1 级伤害 +10%。", and on the right a small secondary pill "升级".
+2) Passive card: round emblem with a small lock badge, title "能量护盾", grey pill tag "★3 解锁 · 单体", grey description "每波开始为守卫水晶套一层护盾（约本英雄生命的 18%），水晶受击先扣盾。" — the whole card slightly dimmed (locked).
+3) Passive card: round emblem with lock badge, title "生命强化", grey pill tag "★6 解锁 · 常驻", grey description "最大生命提升 15%，解锁后战斗中永久生效。" — slightly dimmed (locked).
+Leave calm empty space below the cards inside the panel.
+Output only the single finished mockup image, no annotations.

@@ -22,7 +22,7 @@ import type { LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar, showSceneHelpPopup } from '../UiSceneBackButton';
-import { glassLabel, GLASS_COLOR, GLASS_FORGE_TAB_ICON, GLASS_ICON, GLASS_PART_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassButton, mountGlassCheckbox, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, glassTagPillWidthOf, GLASS_COLOR, GLASS_FORGE_TAB_ICON, GLASS_ICON, GLASS_PART_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassButton, mountGlassCheckbox, mountGlassChip, mountGlassClippedIcon, mountGlassFadeLine, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill } from '../UiGlassKit';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitButton, mountKitSection } from '../UiKit';
 import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
@@ -108,6 +108,8 @@ const FORGE_GEM_NAME_PLATE = `${FORGE_REF_DIR}gem_name_plate/spriteFrame`;
 const FORGE_ENH_BG = { path: `${FORGE_REF_DIR}enh_bg_smoke/spriteFrame`, w: 1870, h: 841 };
 /** B 风格:同一张铁砧背景提亮 / 降饱和 / 略偏冷 / 轻虚化(亮度对齐原型 forge_b)。 */
 const FORGE_ENH_GLASS_BG = `${FORGE_REF_DIR}enh_bg_glass/spriteFrame`;
+/** 合成页:同一张背景整体左移 245(台座落在下方材料格下,原型 forge_fuse_b)。 */
+const FORGE_FUSE_GLASS_BG = `${FORGE_REF_DIR}fuse_bg_glass/spriteFrame`;
 const FORGE_ENH_SLOT_ICONS: Record<string, string> = {
   WEAPON: `${FORGE_REF_DIR}enh_slot_weapon/spriteFrame`,
   HELMET: `${FORGE_REF_DIR}enh_slot_helmet/spriteFrame`,
@@ -355,6 +357,8 @@ export class LobbyForgePanelRenderer {
   private phone = false;
   private overlayRoot: Node | null = null;
   private bodyOffsetX = 0;
+  /** 本次整刷是否走 B 风格(滚动条换灰色细条)。 */
+  private glassMode = false;
   /** 合成页整屏背景的缩放(原型像素 → 屏幕)与是否已显示;左侧祭坛区按它定位,和背景对齐。 */
   private fuseBgK = 0;
   /** 强化页当前展示的装备(洗练弹窗用)。 */
@@ -445,7 +449,14 @@ export class LobbyForgePanelRenderer {
         }
       }
     }
-    if (forge.tab === 'gem') {
+    const glassShellBg = FORGE_GLASS && isPhoneDesign();
+    if (glassShellBg && forge.tab !== 'enhance') {
+      const gk = Math.max(coverW / FORGE_ENH_BG.w, coverH / FORGE_ENH_BG.h);
+      if (this.host.addSprite('LobbyForgeGlassBg', forge.tab === 'fuse' ? FORGE_FUSE_GLASS_BG : FORGE_ENH_GLASS_BG, 0, 0, FORGE_ENH_BG.w * gk, FORGE_ENH_BG.h * gk, panel)) {
+        this.fuseBgK = gk;
+      }
+    }
+    if (forge.tab === 'gem' && !glassShellBg) {
       // 2026-10-21 宝石页按原型 1:1:原型去 UI 背景(哥特熔炉大厅),同一 k 映射,薄罩
       const gk = Math.max(coverW / FORGE_GEM_BG.w, coverH / FORGE_GEM_BG.h);
       if (this.host.addSprite('LobbyForgeGemBg', FORGE_GEM_BG.path, 0, 0, FORGE_GEM_BG.w * gk, FORGE_GEM_BG.h * gk, panel)) {
@@ -453,7 +464,7 @@ export class LobbyForgePanelRenderer {
         mountRefSolid(this.host, panel, 'LobbyForgeGemVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 40));
       }
     }
-    if (forge.tab === 'decompose') {
+    if (forge.tab === 'decompose' && !glassShellBg) {
       // 2026-10-20 分解页按原型 1:1:原型去 UI 背景(熔炉大厅 + 熔岩地面),与合成页同一 k 映射;面板压在上面,背景只薄罩
       const dk = Math.max(coverW / FORGE_DEC_BG.w, coverH / FORGE_DEC_BG.h);
       if (this.host.addSprite('LobbyForgeDecBg', FORGE_DEC_BG.path, 0, 0, FORGE_DEC_BG.w * dk, FORGE_DEC_BG.h * dk, panel)) {
@@ -461,7 +472,7 @@ export class LobbyForgePanelRenderer {
         mountRefSolid(this.host, panel, 'LobbyForgeDecVeil', 0, 0, coverW, coverH, rgba(0, 0, 0, 40));
       }
     }
-    if (forge.tab === 'fuse') {
+    if (forge.tab === 'fuse' && !glassShellBg) {
       const fk = Math.max(coverW / FORGE_FUSE_BG.w, coverH / FORGE_FUSE_BG.h);
       this.fuseBgK = fk;
       this.fuseBgShown = !!this.host.addSprite('LobbyForgeFuseBg', FORGE_FUSE_BG.path, 0, 0, FORGE_FUSE_BG.w * fk, FORGE_FUSE_BG.h * fk, panel);
@@ -489,7 +500,9 @@ export class LobbyForgePanelRenderer {
     this.bodyOffsetX = -railReserve / 2;
     this.fxAnchor = { x: this.bodyOffsetX, y: 30 };
     this.powerAnchor = null;
-    const glassEnhance = FORGE_GLASS && phone && forge.tab === 'enhance';
+    const glassEnhance = FORGE_GLASS && phone;
+    this.lastLayout = layout;
+    this.glassMode = glassEnhance;
     if (glassEnhance) {
       this.bodyOffsetX = 0;
       this.fxAnchor = { x: 0, y: 30 };
@@ -498,11 +511,15 @@ export class LobbyForgePanelRenderer {
     // 强化页(参考图版):顶部为货币胶囊栏(金币/钻石/强化石),材料展示在中央石台;合成/分解/宝石页为五枚材料胶囊。
     if (glassEnhance) {
       const profile = this.host.currentLobbyProfile();
-      this.renderGlassTopBar(group, layout, '强化', [
-        { key: 'gold', icon: BAG_ICON_GOLD_ASSET, value: compactGlassNumber(Number(profile.gold) || 0) },
-        { key: 'diamond', icon: BAG_ICON_DIAMOND_ASSET, value: compactGlassNumber(Number(profile.diamond) || 0) },
-        { key: 'stone', icon: BAG_ICON_ENHANCE_STONE_HIGH_ASSET, value: compactGlassNumber(this.bagCount('ENHANCE_STONE_HIGH')) },
-      ], panelWidth, panelHeight, scale);
+      const gold = { key: 'gold', icon: BAG_ICON_GOLD_ASSET, value: compactGlassNumber(Number(profile.gold) || 0) };
+      const tabChips: Record<ForgeTab, Array<{ key: string; icon: string; value: string }>> = {
+        enhance: [gold, { key: 'diamond', icon: BAG_ICON_DIAMOND_ASSET, value: compactGlassNumber(Number(profile.diamond) || 0) }, { key: 'stone', icon: BAG_ICON_ENHANCE_STONE_HIGH_ASSET, value: compactGlassNumber(this.bagCount('ENHANCE_STONE_HIGH')) }],
+        fuse: [gold, { key: 'luck', icon: FORGE_LUCK_STONE_ICON_ASSET, value: compactGlassNumber(this.bagCount('FUSION_LUCK_STONE')) }],
+        decompose: [gold, { key: 'stone', icon: BAG_ICON_ENHANCE_STONE_ASSET, value: compactGlassNumber(this.bagCount('ENHANCE_STONE')) }, { key: 'bless', icon: FORGE_AI_BLESS_ICON_ASSET, value: compactGlassNumber(this.bagCount('ENHANCE_BLESS_STONE')) }, { key: 'rune', icon: FORGE_AI_GUARD_ICON_ASSET, value: compactGlassNumber(this.bagCount('ENHANCE_GUARD_RUNE')) }],
+        gem: [gold, { key: 'gemAtk', icon: gemIconAsset('ATK', 1), value: compactGlassNumber(this.bagCount('GEM_ATK_1')) }, { key: 'gemHp', icon: gemIconAsset('HP', 1), value: compactGlassNumber(this.bagCount('GEM_HP_1')) }],
+      };
+      const tabTitle: Record<ForgeTab, string> = { enhance: '强化', fuse: '合成', decompose: '分解', gem: '宝石' };
+      this.renderGlassTopBar(group, layout, tabTitle[forge.tab], tabChips[forge.tab], panelWidth, panelHeight, scale);
     } else if (forge.tab === 'enhance') {
       this.renderCurrencyBar(panel, panelWidth, panelHeight, scale);
     } else {
@@ -518,7 +535,15 @@ export class LobbyForgePanelRenderer {
     } else if (state.items.length <= 0) {
       this.renderEmptyCard(panel, scale);
     } else if (glassEnhance) {
-      this.renderGlassEnhanceTab(panel, state, forge, panelWidth, panelHeight, scale);
+      if (forge.tab === 'enhance') {
+        this.renderGlassEnhanceTab(panel, state, forge, panelWidth, panelHeight, scale);
+      } else if (forge.tab === 'fuse') {
+        this.renderGlassFuseTab(panel, state, forge, panelWidth, panelHeight, scale);
+      } else if (forge.tab === 'gem') {
+        this.renderGlassGemTab(panel, state, forge, panelWidth, panelHeight, scale);
+      } else {
+        this.renderGlassDecomposeTab(panel, state, forge, panelWidth, panelHeight, scale);
+      }
     } else if (forge.tab === 'enhance') {
       this.renderEnhanceTab(body, state, forge, tabWidth, panelHeight, contentTop, contentBottom, scale);
     } else if (forge.tab === 'fuse') {
@@ -1591,7 +1616,9 @@ export class LobbyForgePanelRenderer {
   // 原型 1870×841;k 与背景同一 cover k;左栏 / 顶栏左段按屏幕左缘(LX)、右栏 / 导航 / 货币按右缘(RX)、中间舞台按中心(FX)。
 
   private glassMap(panelWidth: number, panelHeight: number): { k: number; LX: (px: number) => number; RX: (px: number) => number; FX: (px: number) => number; FY: (py: number) => number; S: (v: number) => number } {
-    const k = this.fuseBgK > 0 ? this.fuseBgK : Math.max(panelWidth / 1870, panelHeight / 841);
+    // 控件按"装得下"取 k(背景仍按铺满的 fuseBgK):比原型 20:9 窄的屏(挖孔安全区 / 16:9)按铺满取会让左栏与中栏叠在一起,
+    // 更宽的屏会把顶栏 / 底部按钮挤出屏(10-28);20:9 满屏两者相等,与原型 1:1
+    const k = Math.min(panelWidth / 1870, panelHeight / 841);
     return {
       k,
       LX: (px: number): number => -panelWidth / 2 + px * k,
@@ -1626,7 +1653,7 @@ export class LobbyForgePanelRenderer {
     help.addComponent(Button);
     help.on(Button.EventType.CLICK, () => showSceneHelpPopup(this.host, parent, layout, scale, title, FORGE_HELP_TEXT), this);
     // 货币胶囊:右缘 1725 起往左排,宽按原型(150 / 165 / 153)
-    const widths = [150, 165, 153];
+    const widths = chips.length >= 4 ? [162, 138, 132, 132] : chips.length === 2 ? [163, 154] : [150, 165, 153];
     let right = 1725;
     const spans: Array<{ l: number; r: number }> = [];
     for (let i = chips.length - 1; i >= 0; i -= 1) {
@@ -1654,13 +1681,14 @@ export class LobbyForgePanelRenderer {
       { key: 'enhance', label: '强化', icon: GLASS_ICON.navAttr, y: 185, dot: false },
       { key: 'fuse', label: '合成', icon: GLASS_ICON.navFuse, y: 340, dot: fuseReady },
       { key: 'decompose', label: '分解', icon: GLASS_ICON.navSkill, y: 492, dot: false },
-      { key: 'gem', label: '宝石', icon: GLASS_ICON.navStar, y: 645, dot: false },
+      { key: 'gem', label: '宝石', icon: GLASS_ICON.navGem, y: 645, dot: false },
     ];
     entries.forEach((entry) => {
       const selected = entry.key === active;
       const node = this.host.addChildPlainNode(parent, `LobbyForgeGlassNav_${entry.key}`, RX(1800), FY(entry.y), S(116), S(114));
       if (selected) {
-        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabSel, 0, 0, S(116), S(114), k);
+        // 原型:选中块从左(暗金 + 亮金竖边)向右渐隐到竖条底色
+        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.railSel, 0, 0, S(120), S(114), k);
       }
       const icon = this.host.addSprite('Icon', entry.icon, 0, S(13), S(50), S(50), node);
       if (icon) {
@@ -1728,15 +1756,17 @@ export class LobbyForgePanelRenderer {
     const listPanel = mountGlassPanel(this.host, parent, 'ForgeEnhListPanel', listCx, listCy, listW, FY(95) - FY(820), k);
     const PX = (px: number): number => LX(px) - listCx;
     const PY = (py: number): number => FY(py) - listCy;
-    T(listPanel, 'ForgeEnhListHeader', `选择装备（${items.length}）`, PX(68), PY(121), 25, GLASS_COLOR.text, S(300), HorizontalTextAlignment.LEFT, true);
+    T(listPanel, 'ForgeEnhListHeader', `选择装备（${items.length}）`, PX(68), PY(125), 25, GLASS_COLOR.text, S(300), HorizontalTextAlignment.LEFT, true);
+    mountGlassLine(this.host, listPanel, 'ForgeEnhHeaderLine', 0, PY(154), listW - S(4), Math.max(1, S(1.5)), rgba(46, 56, 70, 255));
     // 部位页签:全部(55..144)+ 6 部位(心距 70)
     const tabDefs: Array<{ code: string | null; label: string; cx: number; w: number }> = [{ code: null, label: '全部', cx: 99, w: 89 }];
     HERO_EQUIP_SLOTS.forEach((slot, index) => tabDefs.push({ code: slot.code, label: slot.label, cx: 180 + index * 69.6, w: 64 }));
     tabDefs.forEach((def) => {
       const selected = def.code === null ? forge.enhanceSlotTab === null : forge.enhanceSlotTab === def.code;
-      const tab = this.host.addChildPlainNode(listPanel, `ForgeEnhSlotTab_${def.code ?? 'ALL'}`, PX(def.cx), PY(182), S(def.w), S(64));
+      const tab = this.host.addChildPlainNode(listPanel, `ForgeEnhSlotTab_${def.code ?? 'ALL'}`, PX(def.cx), PY(193), S(def.w), S(64));
       if (selected) {
-        mountGlassSlice(this.host, tab, 'Bg', GLASS_SLICES.tabSel, 0, 0, S(def.w), S(64), k);
+        // 原型:边上亮、中间暗(贴边内发光,下沿更亮)
+        mountGlassSlice(this.host, tab, 'Bg', GLASS_SLICES.tabGlow, 0, 0, S(def.w), S(64), k * 0.8);
       }
       const tint = selected ? rgba(250, 250, 250) : rgba(206, 210, 220);
       if (def.code === null) {
@@ -1768,7 +1798,7 @@ export class LobbyForgePanelRenderer {
     const hiddenCount = items.length - shownItems.length;
     const hintH = hiddenCount > 0 ? S(36) : 0;
     const listContentH = Math.max(0, shownItems.length * rowStep - (rowStep - rowH)) + hintH + S(6);
-    const scroll = this.addPhoneScroll(listPanel, 'ForgeEnhList', PX(308), PY(224), PY(742), rowW, listContentH, scale);
+    const scroll = this.addPhoneScroll(listPanel, 'ForgeEnhList', PX(308), PY(234), PY(742), rowW, listContentH, scale);
     if (items.length <= 0) {
       T(scroll.content, 'ForgeEnhListEmpty', '该筛选下暂无装备', 0, scroll.topY - S(60), 20, GLASS_COLOR.sub, rowW - S(20), HorizontalTextAlignment.CENTER);
     }
@@ -1819,7 +1849,7 @@ export class LobbyForgePanelRenderer {
     const filterY = PY(778);
     const filterW = S(250);
     const filterBtn = this.host.addChildPlainNode(listPanel, 'ForgeEnhFilterBtn', PX(185), filterY, filterW, S(48));
-    mountGlassSlice(this.host, filterBtn, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, filterW, S(48), k * 0.6);
+    mountGlassSlice(this.host, filterBtn, 'Bg', GLASS_SLICES.pillSecondaryLit, 0, 0, filterW, S(48), k * 0.6);
     const funnel = this.host.addSprite('Funnel', FORGE_ENH_FUNNEL, -filterW / 2 + S(36), 0, S(24), S(24), filterBtn);
     if (funnel) {
       funnel.color = rgba(214, 218, 226);
@@ -1831,13 +1861,10 @@ export class LobbyForgePanelRenderer {
       filterBtn.on(Button.EventType.CLICK, () => this.host.toggleLobbyForgeEnhanceFilterMenu(), this);
       this.host.applyImageButtonFeedback(filterBtn);
     }
-    const sep = this.host.addSprite('ForgeEnhSortSep', GLASS_ICON.divider, PX(335), filterY, S(30), S(2), listPanel);
-    if (sep) {
-      sep.node.angle = 90;
-    }
+    mountGlassFadeLine(this.host, listPanel, 'ForgeEnhSortSep', PX(335), filterY, Math.max(1, S(2)), S(34), rgba(120, 130, 142, 255), true);
     const sortW = S(197);
     const sortBtn = this.host.addChildPlainNode(listPanel, 'ForgeEnhSortBtn', PX(458), filterY, sortW, S(48));
-    mountGlassSlice(this.host, sortBtn, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, sortW, S(48), k * 0.6);
+    mountGlassSlice(this.host, sortBtn, 'Bg', GLASS_SLICES.pillSecondaryLit, 0, 0, sortW, S(48), k * 0.6);
     T(sortBtn, 'Label', forge.enhanceSortAsc ? '品质升序' : '品质优先', -S(16), 0, 19, GLASS_COLOR.text, S(110), HorizontalTextAlignment.CENTER);
     const sortIcon = this.host.addSprite('SortIcon', FORGE_ENH_SORT, sortW / 2 - S(30), 0, S(22), S(22), sortBtn);
     if (sortIcon) {
@@ -1984,10 +2011,13 @@ export class LobbyForgePanelRenderer {
     }
     T(parent, 'ForgeEnhName', safeText(target.equipName), cx + S(5), FY(530), 27, GLASS_COLOR.text, S(320), HorizontalTextAlignment.CENTER, true);
     // 「+N」:节点名 ForgeEnhLevelPlaque / Label 与 patchEnhanceLevel 局部刷新口径一致
+    // 名称 / 消耗分割线:原型中间最实、向两端渐隐(10-28 用户)
+    mountGlassFadeLine(this.host, parent, 'ForgeEnhNameLine', FX(888), FY(553), FX(1010) - FX(766), Math.max(1, S(1.5)), rgba(112, 108, 102, 255));
     const lvPlaque = this.host.addChildPlainNode(parent, 'ForgeEnhLevelPlaque', cx, FY(578), S(200), S(56));
     T(lvPlaque, 'Label', `+${level}`, 0, 0, 42, rgba(250, 240, 214), S(180), HorizontalTextAlignment.CENTER, true);
     this.renderEnhanceStars(parent, 'ForgeEnhStar', level, FX(745), FY(613), S(25), S(27));
     T(parent, 'ForgeEnhStarCap', `${level}/20`, FX(1035), FY(613), 20, GLASS_COLOR.text, S(70), HorizontalTextAlignment.CENTER, true);
+    mountGlassFadeLine(this.host, parent, 'ForgeEnhCostLine', FX(874), FY(634), FX(1170) - FX(578), Math.max(1, S(1.5)), rgba(70, 68, 66, 255));
     T(parent, 'ForgeEnhCostTitle', '强化消耗', cx, FY(655), 19, GLASS_COLOR.sub, S(200), HorizontalTextAlignment.CENTER);
     const costCard = (key: string, l: number, r: number, icon: string, need: number, held: number, name: string, showHeld: boolean): void => {
       const card = mountGlassPanel(this.host, parent, `ForgeEnhCost_${key}`, (FX(l) + FX(r)) / 2, FY(706), FX(r) - FX(l), S(62), k);
@@ -2021,18 +2051,27 @@ export class LobbyForgePanelRenderer {
     const shortfallText = `强化材料不足:${shortfall.join(' · ')}`;
     const btnY = FY(779);
     const mainText = state.busy ? '强化中…' : maxed ? '已满级' : materialsOk ? '强化' : '材料不足';
-    const mainKind = canEnhance ? 'primary' : !state.busy && !maxed ? 'primary' : 'disabled';
+    // 材料不足 = 哑光暗金 + 米白字(原型;10-28 用户:亮底亮字看不清),仍可点提示缺什么
+    const mainKind = canEnhance ? 'primary' : !state.busy && !maxed ? 'primaryDim' : 'primaryOff';
     const main = mountGlassButton(this.host, parent, 'ForgeEnhConfirm', mainText, (FX(775) + FX(990)) / 2, btnY, FX(990) - FX(775), S(56), k, mainKind,
       canEnhance
         ? () => strikeThen(() => (forge.autoRepeat ? this.host.autoEnhanceLobbyEquipment(target.id) : this.host.enhanceLobbyEquipment(target.id)))
         : !state.busy && !maxed ? () => this.host.reportForgeMaterialShortfall(shortfallText, goldHeld < goldCost) : undefined, 24);
-    if (!canEnhance) {
-      // 材料不足:主钮压暗(仍可点,点了提示缺什么)
-      (main.getComponent(UIOpacity) ?? main.addComponent(UIOpacity)).opacity = 150;
+    const mainLabel = mainKind === 'primaryDim' ? main.getChildByName('Label')?.getComponent(Label) : null;
+    if (mainLabel) {
+      mainLabel.isBold = false;
     }
     const rerollable = ['PURPLE', 'GOLD', 'RED'].includes((target.quality || '').toUpperCase());
-    mountGlassButton(this.host, parent, 'ForgeEnhReroll', rerollable ? '词缀洗练' : '紫装起可洗', (FX(605) + FX(760)) / 2, btnY, FX(760) - FX(605), S(50), k,
-      rerollable && !state.busy ? 'secondary' : 'disabled', () => this.host.openLobbyForgeRerollDialog(), 20);
+    const reroll = mountGlassButton(this.host, parent, 'ForgeEnhReroll', rerollable ? '词缀洗练' : '紫装起可洗', (FX(605) + FX(760)) / 2, btnY, FX(760) - FX(605), S(50), k,
+      'secondaryLit', rerollable && !state.busy ? () => this.host.openLobbyForgeRerollDialog() : undefined, 20);
+    if (!(rerollable && !state.busy)) {
+      // 不可洗:外观仍是次钮(原型),字转灰、不响应
+      reroll.getComponent(Button)?.destroy();
+      const rl = reroll.getChildByName('Label')?.getComponent(Label);
+      if (rl) {
+        rl.color = GLASS_COLOR.sub;
+      }
+    }
     const repeat = this.host.addChildPlainNode(parent, 'ForgeEnhRepeat', FX(1070), btnY, S(130), S(52));
     mountGlassCheckbox(this.host, repeat, 'Box', FX(1020) - FX(1070), 0, S(32), forge.autoRepeat);
     T(repeat, 'ForgeEnhRepeatLabel', '连续强化', FX(1045) - FX(1070), 0, 19, forge.autoRepeat ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(100));
@@ -2072,6 +2111,503 @@ export class LobbyForgePanelRenderer {
         opt.on(Button.EventType.CLICK, () => this.host.setLobbyForgeEnhanceRarity(option.key), this);
         this.host.applyImageButtonFeedback(opt, 1.02, 0.98);
       });
+    }
+  }
+
+  /** 玻璃格内放装备图标(裁掉自带框,一层框)+ 底部稀有度细线;size = 格边长。 */
+  private glassItemCell(parent: Node, name: string, item: EquipmentItemVO, x: number, y: number, w: number, h: number, k: number, selected: boolean, scale: number): Node {
+    const S = (v: number): number => v * k;
+    const cell = mountGlassPanel(this.host, parent, name, x, y, w, h, k, selected);
+    const icon = equipIconAssetByCode(item.equipCode);
+    const iconSize = Math.min(w, h) - S(18);
+    if (icon) {
+      mountGlassClippedIcon(this.host, cell, 'Icon', icon, 0, S(4), iconSize);
+    } else {
+      this.addEquipIcon(cell, 'Icon', item.equipCode, item.slot, iconSize, scale);
+    }
+    const q = equipQualityColor(item.quality);
+    mountGlassLine(this.host, cell, 'Rarity', 0, -h / 2 + S(9), w - S(18), Math.max(2, S(4)), rgba(q.r, q.g, q.b, 230));
+    return cell;
+  }
+
+  /** 选中角标:右上香槟小方块 + 深色对勾(分解多选)。 */
+  private glassCheckBadge(parent: Node, x: number, y: number, size: number): void {
+    mountGlassCheckbox(this.host, parent, 'Check', x, y, size, true);
+  }
+
+  // ── 合成(原型 forge_fuse_b)──
+  private renderGlassFuseTab(parent: Node, state: { items: EquipmentItemVO[]; busy: boolean }, forge: { fuseSlotIds: number[] }, panelWidth: number, panelHeight: number, scale: number): void {
+    const { RX, FX, FY, S, k } = this.glassMap(panelWidth, panelHeight);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label =>
+      this.glassText(p, name, text, x, y, S(size), color, w, align, bold);
+    const fuse = this.host.currentLobbyEquipFuseState();
+    const luckOn = fuse.useLuckStone;
+    const luckCount = this.bagCount('FUSION_LUCK_STONE');
+    const slotIds = forge.fuseSlotIds.filter((id) => state.items.some((item) => item.id === id && item.heroId == null));
+    const slotItems = slotIds.map((id) => state.items.find((item) => item.id === id)!).filter(Boolean);
+    const groups = this.collectFuseGroups(state.items);
+    const ready = slotItems.length >= 3;
+    const quality = slotItems.length > 0 ? (slotItems[0].quality || '').toUpperCase() : '';
+    const nextQuality = quality ? EQUIP_QUALITY_ORDER[EQUIP_QUALITY_ORDER.indexOf(quality) + 1] ?? '' : '';
+    const chance = ready ? Math.min(0.95, (EQUIP_FUSE_BASE_CHANCE[quality] ?? 0) + (luckOn ? 0.2 : 0)) : 0;
+    // 中:三材料格(左上 / 右上 / 下)+ 结果格,细线相连
+    const result = { x: 620, y: 313, w: 204, h: 183 };
+    const slots = [{ x: 329, y: 231 }, { x: 910, y: 231 }, { x: 621, y: 538 }];
+    const lines = this.host.addChildPlainNode(parent, 'ForgeFuseLinks', 0, 0, 10, 10).addComponent(Graphics);
+    lines.strokeColor = rgba(170, 178, 192, 150);
+    lines.lineWidth = Math.max(1, S(1.5));
+    lines.moveTo(FX(397), FY(231)); lines.lineTo(FX(485), FY(293)); lines.lineTo(FX(518), FY(293));
+    lines.moveTo(FX(842), FY(231)); lines.lineTo(FX(756), FY(293)); lines.lineTo(FX(722), FY(293));
+    lines.moveTo(FX(620), FY(452)); lines.lineTo(FX(620), FY(476));
+    lines.stroke();
+    lines.fillColor = rgba(200, 206, 218, 220);
+    [[397, 231], [485, 293], [842, 231], [756, 293], [620, 459]].forEach(([px, py]) => {
+      lines.circle(FX(px), FY(py), S(3));
+      lines.fill();
+    });
+    this.fxAnchor = { x: FX(result.x), y: FY(result.y) };
+    this.powerAnchor = { x: FX(result.x), y: FY(470) };
+    const resultNode = mountGlassPanel(this.host, parent, 'ForgeFuseResult', FX(result.x), FY(result.y), S(result.w), S(result.h), k);
+    const previewAsset = ready ? equipShowcaseAssetByQualitySlot(nextQuality, slotItems[0].slot) ?? equipIconAssetByQualitySlot(nextQuality, slotItems[0].slot) : null;
+    if (previewAsset) {
+      const art = this.host.addSprite('ForgeFusePreview', previewAsset, 0, 0, S(165), S(165), resultNode);
+      if (art) {
+        tween(art.node).repeatForever(tween(art.node).to(1.1, { scale: new Vec3(1.05, 1.05, 1) }).to(1.1, { scale: new Vec3(1, 1, 1) })).start();
+      }
+    } else {
+      T(resultNode, 'ForgeFusePreviewHint', '?', 0, 0, 96, rgba(206, 210, 220), S(120), HorizontalTextAlignment.CENTER, true);
+    }
+    slots.forEach((pos, index) => {
+      const item = slotItems[index] ?? null;
+      if (item) {
+        const cell = this.glassItemCell(parent, `ForgeFuseSlot_${index}`, item, FX(pos.x), FY(pos.y), S(136), S(132), k, false, scale);
+        T(cell, 'Lv', `+${item.enhanceLevel ?? 0}`, S(58), S(50), 18, GLASS_COLOR.text, S(60), HorizontalTextAlignment.RIGHT, true);
+        const q = equipQualityColor(item.quality);
+        // 底槽下方是成功率 / 金币行,不再写名字(10-28 重叠);上方两槽照写
+        if (index < 2) T(parent, `ForgeFuseSlotName_${index}`, safeText(item.equipName), FX(pos.x), FY(pos.y + 84), 18, rgba(Math.min(255, q.r + 40), Math.min(255, q.g + 40), Math.min(255, q.b + 40)), S(160), HorizontalTextAlignment.CENTER, true);
+        if (!state.busy) {
+          cell.addComponent(Button);
+          cell.on(Button.EventType.CLICK, () => this.host.setLobbyForgeFuseSlots(slotIds.filter((id) => id !== item.id)), this);
+          this.host.applyImageButtonFeedback(cell);
+        }
+      } else {
+        const cell = mountGlassPanel(this.host, parent, `ForgeFuseSlot_${index}`, FX(pos.x), FY(pos.y), S(136), S(132), k);
+        T(cell, 'Plus', '+', 0, S(2), 58, rgba(214, 218, 226), S(80), HorizontalTextAlignment.CENTER);
+      }
+    });
+    // 产物说明 / 配方行
+    if (ready) {
+      const nq = equipQualityColor(nextQuality);
+      const q = equipQualityColor(quality);
+      const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => Math.min(255, Math.round(v + 30)).toString(16).padStart(2, '0')).join('')}`;
+      this.addRichLine(parent, 'ForgeFuseInfoL', `<color=#F2F2F2>${slotLabelOf(slotItems[0].slot)} · </color><color=${hex(q)}>${equipQualityLabel(quality)}</color><color=#F2F2F2> ×3  →  </color><color=${hex(nq)}>${equipQualityLabel(nextQuality)}</color><color=#F2F2F2> ×1</color>`, FX(620), FY(430), S(21), S(560));
+      this.addRichLine(parent, 'ForgeFuseInfo2', `<color=#B6BDCD>成功率 </color><color=#E3C48A>${Math.round(chance * 100)}%</color><color=#B6BDCD>   ·   金币 </color><color=#E3C48A>${formatInteger(EQUIP_FUSE_GOLD_COST[quality] ?? 0)}</color>`, FX(620), FY(636), S(19), S(600));
+    } else {
+      T(parent, 'ForgeFusePlateHint', slotItems.length > 0 ? `已放入 ${slotItems.length}/3 件` : '放入材料后预览产物', FX(620), FY(430), 20, GLASS_COLOR.sub, S(320), HorizontalTextAlignment.CENTER);
+      T(parent, 'ForgeFuseInfo', '从右侧列表点一组,或用「一键放入」自动装填 3 件', FX(620), FY(636), 19, GLASS_COLOR.sub, S(560), HorizontalTextAlignment.CENTER);
+    }
+    // 概率石行(325..915 × 663..717)
+    const luckRow = mountGlassPanel(this.host, parent, 'ForgeFuseLuck', FX(620), FY(690), FX(915) - FX(325), S(54), k, luckOn);
+    const lx = (px: number): number => FX(px) - FX(620);
+    mountGlassCheckbox(this.host, luckRow, 'ForgeFuseLuckBox', lx(358), 0, S(34), luckOn);
+    this.host.addSprite('ForgeFuseLuckIcon', FORGE_FUSE_LUCK_GEM, lx(420), 0, S(38), S(38), luckRow);
+    T(luckRow, 'ForgeFuseLuckLabel', '合成概率石 +20%(上限 95%)', lx(458), 0, 21, GLASS_COLOR.text, S(340));
+    const luckTagText = `×${formatInteger(luckCount)}`;
+    const tagW = glassTagPillWidthOf(luckTagText, S(19), S(38), estimateGlassWidth);
+    mountGlassTagPill(this.host, luckRow, 'ForgeFuseLuckCount', luckTagText, lx(905) - tagW, 0, S(38), k, S(19), estimateGlassWidth, luckCount > 0 ? GLASS_COLOR.text : GLASS_COLOR.sub);
+    if (!state.busy) {
+      luckRow.addComponent(Button);
+      luckRow.on(Button.EventType.CLICK, () => this.host.toggleLobbyEquipFuseLuckStone(), this);
+    }
+    const autoGroups = groups.filter((group) => group.items.length >= 3);
+    const canAuto = !state.busy && autoGroups.length > 0;
+    const canFuse = ready && !state.busy && !(luckOn && luckCount <= 0);
+    mountGlassButton(this.host, parent, 'ForgeFuseAuto', '一键放入', (FX(302) + FX(607)) / 2, FY(768), FX(607) - FX(302), S(60), k, canAuto ? 'secondaryLit' : 'disabled',
+      () => this.host.setLobbyForgeFuseSlots(autoGroups[0].items.slice(0, 3).map((item) => item.id)), 24);
+    mountGlassButton(this.host, parent, 'ForgeFuseConfirm', state.busy ? '合成中…' : '合成', (FX(632) + FX(934)) / 2, FY(768), FX(934) - FX(632), S(60), k, canFuse ? 'primary' : 'primaryOff',
+      () => this.host.fuseLobbyForgeSelected(), 24);
+    // 右:可合成装备(1155..1717 × 92..815)
+    const pCx = (RX(1155) + RX(1717)) / 2;
+    const pCy = (FY(92) + FY(815)) / 2;
+    const side = mountGlassPanel(this.host, parent, 'ForgeFuseGroupsFrame', pCx, pCy, RX(1717) - RX(1155), FY(92) - FY(815), k);
+    const QX = (px: number): number => RX(px) - pCx;
+    const QY = (py: number): number => FY(py) - pCy;
+    mountGlassSectionHeader(this.host, side, 'ForgeFuseGroupsHeader', '可合成装备', QX(1176), QY(123), k, 26, {
+      text: '规则', rightX: QX(1700), onClick: () => this.showForgeHelp(parent, '合成'),
+    });
+    const rowW = RX(1705) - RX(1168);
+    const rowH = S(80);
+    const rowStep = S(93);
+    const listTop = QY(162);
+    const listBottom = QY(800);
+    if (groups.length <= 0) {
+      T(side, 'ForgeFuseGroupsEmpty', '没有可合成的未穿戴装备组', 0, (listTop + listBottom) / 2, 19, GLASS_COLOR.sub, rowW, HorizontalTextAlignment.CENTER);
+    }
+    const scroll = this.addPhoneScroll(side, 'ForgeFuseGroups', (QX(1168) + QX(1705)) / 2, listTop, listBottom, rowW, groups.length * rowStep, scale);
+    const loadedKey = slotItems.length > 0 ? `${slotItems[0].slot}:${quality}` : '';
+    groups.forEach((group, index) => {
+      const cy = scroll.topY - rowH / 2 - S(2) - index * rowStep;
+      const enough = group.items.length >= 3;
+      const loaded = `${group.slot}:${group.quality}` === loadedKey;
+      const row = mountGlassPanel(this.host, scroll.content, `ForgeFuseGroup_${group.slot}_${group.quality}`, 0, cy, rowW, rowH, k, loaded || enough);
+      const ox = (px: number): number => S(px - 1168) - rowW / 2;
+      const first = group.items[0];
+      const icon = equipIconAssetByCode(first.equipCode);
+      if (icon) {
+        mountEquipIconBacking(this.host, row, 'IconBacking', S(70), first.equipCode, { x: ox(1212) });
+        this.host.addSprite('Icon', icon, ox(1212), 0, S(70), S(70), row);
+      }
+      T(row, 'ForgeFuseGroupName', `${slotLabelOf(group.slot)} · ${equipQualityLabel(group.quality)} ×${group.items.length}`, ox(1268), 0, 22, GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
+      const tagText = loaded ? '已放入' : enough ? '可合成' : `不足 3 件`;
+      const tw = Math.max(S(160), glassTagPillWidthOf(tagText, S(19), S(42), estimateGlassWidth));
+      const tag = this.host.addChildPlainNode(row, 'Tag', ox(1692) - tw / 2, 0, tw, S(42));
+      const tg = tag.addComponent(Graphics);
+      tg.fillColor = enough && !loaded ? rgba(26, 58, 44, 235) : rgba(37, 44, 54, 235);
+      tg.roundRect(-tw / 2, -S(21), tw, S(42), S(12));
+      tg.fill();
+      tg.strokeColor = enough && !loaded ? rgba(70, 136, 98, 255) : rgba(78, 90, 106, 255);
+      tg.lineWidth = Math.max(1, S(1.2));
+      tg.roundRect(-tw / 2, -S(21), tw, S(42), S(12));
+      tg.stroke();
+      T(tag, 'Text', tagText, 0, 0, 19, enough && !loaded ? GLASS_COLOR.green : GLASS_COLOR.sub, tw - S(10), HorizontalTextAlignment.CENTER, enough && !loaded);
+      if (enough && !state.busy && !loaded) {
+        row.addComponent(Button);
+        row.on(Button.EventType.CLICK, () => this.host.setLobbyForgeFuseSlots(group.items.slice(0, 3).map((item) => item.id)), this);
+        this.host.applyImageButtonFeedback(row, 1.01, 0.99);
+      }
+    });
+  }
+
+  private showForgeHelp(parent: Node, title: string): void {
+    const layout = this.lastLayout;
+    if (layout) {
+      showSceneHelpPopup(this.host, this.overlayRoot ?? parent, layout, Math.max(0.62, Math.min(1, layout.uiScale)), title, FORGE_HELP_TEXT);
+    }
+  }
+
+  // ── 分解(原型 forge_decompose_b)──
+  private renderGlassDecomposeTab(
+    parent: Node,
+    state: { items: EquipmentItemVO[]; busy: boolean },
+    forge: { decomposeSelectedIds: number[]; decomposeRarity: string | null; decomposeEnhance: 'all' | 'zero' | 'plus'; decomposeBatchOpen: boolean },
+    panelWidth: number,
+    panelHeight: number,
+    scale: number,
+  ): void {
+    const { LX, RX, FY, S, k } = this.glassMap(panelWidth, panelHeight);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label =>
+      this.glassText(p, name, text, x, y, S(size), color, w, align, bold);
+    const selected = new Set(forge.decomposeSelectedIds);
+    const unworn = state.items.filter((item) => item.heroId == null);
+    const pool = unworn
+      .filter((item) => !forge.decomposeRarity || (item.quality || '').toUpperCase() === forge.decomposeRarity)
+      .filter((item) => {
+        const level = item.enhanceLevel ?? 0;
+        return forge.decomposeEnhance === 'all' || (forge.decomposeEnhance === 'zero' ? level === 0 : level > 0);
+      })
+      .sort((a, b) =>
+        EQUIP_QUALITY_ORDER.indexOf((a.quality || '').toUpperCase()) - EQUIP_QUALITY_ORDER.indexOf((b.quality || '').toUpperCase())
+        || (a.enhanceLevel ?? 0) - (b.enhanceLevel ?? 0)
+        || a.slot.localeCompare(b.slot));
+    // 左面板(43..1178 × 92..815)
+    const lCx = (LX(43) + LX(1178)) / 2;
+    const lCy = (FY(92) + FY(815)) / 2;
+    const left = mountGlassPanel(this.host, parent, 'ForgeDecGridFrame', lCx, lCy, LX(1178) - LX(43), FY(92) - FY(815), k);
+    const PX = (px: number): number => LX(px) - lCx;
+    const PY = (py: number): number => FY(py) - lCy;
+    const chip = (name: string, l: number, w: number, py: number, text: string, on: boolean, tint: { r: number; g: number; b: number } | null, onClick: () => void): void => {
+      const node = this.host.addChildPlainNode(left, name, PX(l + w / 2), PY(py), S(w), S(50));
+      mountGlassSlice(this.host, node, 'Bg', on ? GLASS_SLICES.tabGlow : GLASS_SLICES.tabIdle, 0, 0, S(w), S(50), k * 0.7);
+      const lift = (c: number): number => Math.round(c + (255 - c) * 0.25);
+      const color = on ? rgba(253, 253, 252) : tint ? rgba(lift(tint.r), lift(tint.g), lift(tint.b)) : rgba(214, 218, 226);
+      T(node, 'Label', text, 0, 0, 20, color, S(w - 10), HorizontalTextAlignment.CENTER, on);
+      if (!on && !state.busy) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, onClick, this);
+        this.host.applyImageButtonFeedback(node);
+      }
+    };
+    T(left, 'ForgeDecRarityTag', '稀有度:', PX(65), PY(145), 23, GLASS_COLOR.text, S(120));
+    T(left, 'ForgeDecEnhanceTag', '强化状态:', PX(65), PY(212), 23, GLASS_COLOR.text, S(130));
+    chip('ForgeDecFilterAll', 190, 108, 145, '全部', forge.decomposeRarity === null, null, () => this.host.setLobbyForgeDecomposeRarity(null));
+    EQUIP_QUALITY_ORDER.slice(0, 6).forEach((quality, index) => {
+      chip(`ForgeDecFilter_${quality}`, 313 + index * 128.5, 114, 145, equipQualityLabel(quality), forge.decomposeRarity === quality, equipQualityColor(quality), () => this.host.setLobbyForgeDecomposeRarity(quality));
+    });
+    chip('ForgeDecEnhAll', 190, 118, 212, '全部', forge.decomposeEnhance === 'all', null, () => this.host.setLobbyForgeDecomposeEnhance('all'));
+    chip('ForgeDecEnhZero', 321, 131, 212, '未强化', forge.decomposeEnhance === 'zero', null, () => this.host.setLobbyForgeDecomposeEnhance('zero'));
+    chip('ForgeDecEnhPlus', 468, 132, 212, '已强化', forge.decomposeEnhance === 'plus', null, () => this.host.setLobbyForgeDecomposeEnhance('plus'));
+    mountGlassLine(this.host, left, 'ForgeDecSep', PX(610), PY(253), PX(1160) - PX(60), Math.max(1, S(1.5)), rgba(46, 56, 70, 255));
+    // 网格:8 列,格 124×122,列距 139,行距 175(名字在格下)
+    const columns = 8;
+    const cellW = S(124);
+    const cellH = S(122);
+    const stepX = S(138.7);
+    const stepY = S(175);
+    const gridTop = PY(266);
+    const gridBottom = PY(742);
+    const gridCx = PX(611);
+    const gridW = stepX * (columns - 1) + cellW;
+    const shownCount = Math.min(pool.length, FORGE_PHONE_GRID_CAP);
+    const rows = Math.max(3, Math.ceil(shownCount / columns));
+    const contentH = rows * stepY;
+    if (pool.length <= 0) {
+      T(left, 'ForgeDecEmpty', '当前筛选下没有可分解的未穿戴装备', gridCx, (gridTop + gridBottom) / 2, 21, GLASS_COLOR.sub, gridW, HorizontalTextAlignment.CENTER);
+    }
+    const grid = this.addPhoneScroll(left, 'ForgeDecGrid', gridCx, gridTop, gridBottom, gridW + S(10), contentH, scale);
+    for (let index = 0; index < rows * columns; index += 1) {
+      const x = -gridW / 2 + cellW / 2 + (index % columns) * stepX;
+      const y = grid.topY - S(4) - cellH / 2 - Math.floor(index / columns) * stepY;
+      const item = index < shownCount ? pool[index] : null;
+      if (!item) {
+        // 空格:淡玻璃框(原型下方空位)
+        const empty = mountGlassPanel(this.host, grid.content, `ForgeDecEmptyCell_${index}`, x, y, cellW, cellH, k);
+        (empty.getComponent(UIOpacity) ?? empty.addComponent(UIOpacity)).opacity = 120;
+        continue;
+      }
+      const picked = selected.has(item.id);
+      const cell = this.glassItemCell(grid.content, `ForgeDecCell_${item.id}`, item, x, y, cellW, cellH, k, picked, scale);
+      if (picked) {
+        this.glassCheckBadge(cell, cellW / 2 - S(17), cellH / 2 - S(15), S(26));
+      }
+      const lv = item.enhanceLevel ?? 0;
+      if (lv > 0) {
+        T(cell, 'Lv', `+${lv}`, -cellW / 2 + S(10), cellH / 2 - S(16), 16, GLASS_COLOR.text, S(50), HorizontalTextAlignment.LEFT, true);
+      }
+      T(grid.content, `ForgeDecName_${item.id}`, safeText(item.equipName), x, y - cellH / 2 - S(20), 19, GLASS_COLOR.text, cellW + S(8), HorizontalTextAlignment.CENTER);
+      if (!state.busy) {
+        cell.addComponent(Button);
+        cell.on(Button.EventType.CLICK, () => this.host.toggleLobbyForgeDecomposeSelect(item.id), this);
+        this.host.applyImageButtonFeedback(cell, 1.03, 0.97);
+      }
+    }
+    if (pool.length > shownCount) {
+      T(left, 'ForgeDecMore', `共 ${pool.length} 件,显示前 ${shownCount} 件(可用筛选缩小范围)`, PX(70), PY(772), 16, GLASS_COLOR.sub, S(600));
+    }
+    const visibleIds = pool.slice(0, shownCount).map((item) => item.id);
+    const chosen = pool.filter((item) => selected.has(item.id));
+    mountGlassButton(this.host, left, 'ForgeDecSelectAll', '一键全选', PX(874), PY(772), S(154), S(52), k, !state.busy && visibleIds.length > 0 ? 'secondaryLit' : 'disabled', () => this.host.setLobbyForgeDecomposeSelection(visibleIds), 21);
+    mountGlassButton(this.host, left, 'ForgeDecClear', '清空', PX(1079), PY(772), S(165), S(52), k, !state.busy && chosen.length > 0 ? 'secondaryLit' : 'disabled', () => this.host.setLobbyForgeDecomposeSelection([]), 21);
+    // 右:分解概览(1197..1718 × 92..815)
+    const estimate = chosen.reduce((sum, item) => {
+      const level = item.enhanceLevel ?? 0;
+      const invested = (level * (level + 1)) / 2;
+      return sum + (DECOMPOSE_BASE_STONES[(item.quality || '').toUpperCase()] ?? 1) + Math.floor(invested / 2);
+    }, 0);
+    const sumRange = (table: Record<string, [number, number]>): [number, number] => chosen.reduce<[number, number]>((acc, item) => {
+      const range = table[(item.quality || '').toUpperCase()];
+      return range ? [acc[0] + range[0], acc[1] + range[1]] : acc;
+    }, [0, 0]);
+    const blessRange = sumRange(DECOMPOSE_BLESS_RANGE);
+    const runeRange = sumRange(DECOMPOSE_RUNE_RANGE);
+    const rCx = (RX(1197) + RX(1718)) / 2;
+    const rCy = (FY(92) + FY(815)) / 2;
+    const side = mountGlassPanel(this.host, parent, 'ForgeDecSide', rCx, rCy, RX(1718) - RX(1197), FY(92) - FY(815), k);
+    const QX = (px: number): number => RX(px) - rCx;
+    const QY = (py: number): number => FY(py) - rCy;
+    const sepLine = (name: string, py: number): void => {
+      mountGlassLine(this.host, side, name, QX(1457), QY(py), QX(1697) - QX(1215), Math.max(1, S(1.5)), rgba(46, 56, 70, 255));
+    };
+    mountGlassSectionHeader(this.host, side, 'ForgeDecSideHeader', '分解概览', QX(1222), QY(130), k, 26);
+    sepLine('ForgeDecSideSep0', 173);
+    mountGlassSectionHeader(this.host, side, 'ForgeDecChosenHeader', '已选装备', QX(1222), QY(214), k, 23);
+    this.addRichLine(side, 'ForgeDecChosenNum', `<color=#F0DCB4><size=${Math.round(S(52))}>${chosen.length}</size></color><color=#F2F2F2><size=${Math.round(S(32))}> /20 件</size></color>`, QX(1300), QY(272), S(32), S(300), 0);
+    sepLine('ForgeDecSideSep1', 326);
+    mountGlassSectionHeader(this.host, side, 'ForgeDecGainHeader', '预计获得', QX(1222), QY(362), k, 23);
+    const gain = mountGlassPanel(this.host, side, 'ForgeDecGain', (QX(1228) + QX(1695)) / 2, QY(442), QX(1695) - QX(1228), S(89), k);
+    const gx = (px: number): number => QX(px) - (QX(1228) + QX(1695)) / 2;
+    this.host.addSprite('ForgeDecGainIcon', BAG_ICON_ENHANCE_STONE_ASSET, gx(1288), 0, S(66), S(66), gain);
+    T(gain, 'ForgeDecGainName', '强化石', gx(1352), 0, 25, GLASS_COLOR.text, S(140), HorizontalTextAlignment.LEFT, true);
+    T(gain, 'ForgeDecGainNum', formatInteger(estimate), gx(1620), 0, 40, rgba(240, 220, 180), S(150), HorizontalTextAlignment.CENTER, true);
+    sepLine('ForgeDecSideSep2', 507);
+    mountGlassSectionHeader(this.host, side, 'ForgeDecBonusHeader', '可能获得材料', QX(1222), QY(537), k, 23);
+    [
+      { key: 'bless', icon: FORGE_AI_BLESS_ICON_ASSET, label: '祝福石', range: blessRange, l: 1228, r: 1453 },
+      { key: 'rune', icon: FORGE_AI_GUARD_ICON_ASSET, label: '护符', range: runeRange, l: 1470, r: 1695 },
+    ].forEach((def) => {
+      const card = mountGlassPanel(this.host, side, `ForgeDecBonus_${def.key}`, (QX(def.l) + QX(def.r)) / 2, QY(611), QX(def.r) - QX(def.l), S(92), k);
+      const cx = (px: number): number => QX(px) - (QX(def.l) + QX(def.r)) / 2;
+      this.host.addSprite('Icon', def.icon, cx(def.l + 47), 0, S(58), S(58), card);
+      T(card, 'Name', def.label, cx(def.l + 104), S(15), 19, GLASS_COLOR.sub, S(110));
+      T(card, 'Range', def.range[1] <= 0 ? 'x0' : `x${def.range[0]}~${def.range[1]}`, cx(def.l + 104), -S(20), 23, GLASS_COLOR.text, S(110), HorizontalTextAlignment.LEFT, true);
+    });
+    const warn = this.host.addChildPlainNode(side, 'ForgeDecWarnIcon', QX(1301), QY(685), S(26), S(26)).addComponent(Graphics);
+    warn.strokeColor = rgba(182, 189, 205, 230);
+    warn.lineWidth = Math.max(1, S(1.4));
+    warn.circle(0, 0, S(10));
+    warn.stroke();
+    T(side, 'ForgeDecWarnBang', '!', QX(1301), QY(685), 15, GLASS_COLOR.sub, S(20), HorizontalTextAlignment.CENTER, true);
+    T(side, 'ForgeDecSideWarn', '高品质装备分解可获得更多材料', QX(1324), QY(685), 18, GLASS_COLOR.sub, S(320));
+    mountGlassButton(this.host, side, 'ForgeDecBatchButton', '批量设置', (QX(1215) + QX(1455)) / 2, QY(760), QX(1455) - QX(1215), S(62), k, state.busy ? 'disabled' : 'secondaryLit', () => this.host.setLobbyForgeDecomposeBatchOpen(true), 24);
+    mountGlassButton(this.host, side, 'ForgeDecConfirm', state.busy ? '分解中…' : '分解', (QX(1468) + QX(1702)) / 2, QY(760), QX(1702) - QX(1468), S(62), k, !state.busy && chosen.length > 0 ? 'primary' : 'primaryOff', () => this.host.decomposeLobbyForgeSelected(), 24);
+    if (forge.decomposeBatchOpen) {
+      this.phoneOverlays.push((root) => this.renderDecomposeBatchDialog(root, unworn, this.stageW, scale));
+    }
+  }
+
+  /** 宝石页当前选中的孔位(点已镶孔选中,用于「卸下宝石」;换装备时清掉)。 */
+  private glassGemSocket: { equipId: number; slot: number } | null = null;
+  /** 最近一次 render 的布局(帮助弹窗用)。 */
+  private lastLayout: UiLayout | null = null;
+
+  // ── 宝石(原型 forge_gem_b)──
+  private renderGlassGemTab(parent: Node, state: { items: EquipmentItemVO[]; busy: boolean }, forge: { gemEquipId: number | null; gemPickSlot: number | null }, panelWidth: number, panelHeight: number, scale: number): void {
+    const { LX, RX, FY, S, k } = this.glassMap(panelWidth, panelHeight);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label =>
+      this.glassText(p, name, text, x, y, S(size), color, w, align, bold);
+    const pool = state.items
+      .filter((item) => gemOpenSlots(item.quality) > 0)
+      .sort((a, b) =>
+        (b.heroId != null ? 1 : 0) - (a.heroId != null ? 1 : 0)
+        || EQUIP_QUALITY_ORDER.indexOf((b.quality || '').toUpperCase()) - EQUIP_QUALITY_ORDER.indexOf((a.quality || '').toUpperCase())
+        || (b.enhanceLevel ?? 0) - (a.enhanceLevel ?? 0)
+        || a.slot.localeCompare(b.slot));
+    const selected = pool.find((item) => item.id === forge.gemEquipId) ?? pool[0] ?? null;
+    // 左:可镶嵌装备(43..777 × 92..803)
+    const lCx = (LX(43) + LX(777)) / 2;
+    const lCy = (FY(92) + FY(803)) / 2;
+    const left = mountGlassPanel(this.host, parent, 'ForgeGemListFrame', lCx, lCy, LX(777) - LX(43), FY(92) - FY(803), k);
+    const PX = (px: number): number => LX(px) - lCx;
+    const PY = (py: number): number => FY(py) - lCy;
+    mountGlassSectionHeader(this.host, left, 'ForgeGemListHeader', '可镶嵌装备', PX(55), PY(132), k, 26);
+    T(left, 'ForgeGemListHint', '(绿装起开孔)', PX(55) + S(14) + estimateGlassWidth('可镶嵌装备', S(26)) + S(8), PY(133), 19, GLASS_COLOR.sub, S(160));
+    const rowW = LX(765) - LX(57);
+    const rowH = S(112);
+    const rowStep = S(124);
+    const listTop = PY(166);
+    const listBottom = PY(790);
+    if (pool.length <= 0) {
+      T(left, 'ForgeGemEmpty', '暂无可镶嵌装备(绿装起开孔)', 0, (listTop + listBottom) / 2, 21, GLASS_COLOR.sub, rowW, HorizontalTextAlignment.CENTER);
+    }
+    const scroll = this.addPhoneScroll(left, 'ForgeGemList', (PX(57) + PX(765)) / 2, listTop, listBottom, rowW, pool.length * rowStep, scale);
+    pool.forEach((item, index) => {
+      const cy = scroll.topY - rowH / 2 - S(2) - index * rowStep;
+      const isSel = selected?.id === item.id;
+      const row = mountGlassPanel(this.host, scroll.content, `ForgeGemRow_${item.id}`, 0, cy, rowW, rowH, k, isSel);
+      const ox = (px: number): number => S(px - 57) - rowW / 2;
+      const icon = equipIconAssetByCode(item.equipCode);
+      if (icon) {
+        mountEquipIconBacking(this.host, row, 'IconBacking', S(96), item.equipCode, { x: ox(122) });
+        this.host.addSprite('Icon', icon, ox(122), 0, S(96), S(96), row);
+      }
+      const lv = item.enhanceLevel ?? 0;
+      T(row, 'Name', `${safeText(item.equipName)}   +${lv}`, ox(196), S(19), 22, GLASS_COLOR.text, S(380), HorizontalTextAlignment.LEFT, true);
+      const q = equipQualityColor(item.quality);
+      T(row, 'Rarity', equipQualityLabel(item.quality), ox(196), -S(20), 19, rgba(Math.min(255, q.r + 30), Math.min(255, q.g + 30), Math.min(255, q.b + 30)), S(70));
+      this.renderEnhanceStars(row, 'Star', lv, ox(279), -S(22), S(17), S(24.5));
+      const open = gemOpenSlots(item.quality);
+      const filled = (item.gems ?? []).slice(0, open).filter((code) => !!parseGemCode(code)).length;
+      T(row, 'Holes', `已镶 ${filled}/${open} 孔`, ox(735), 0, 19, GLASS_COLOR.sub, S(160), HorizontalTextAlignment.RIGHT);
+      if (!isSel && !state.busy) {
+        row.addComponent(Button);
+        row.on(Button.EventType.CLICK, () => this.host.selectLobbyForgeGemEquip(item.id), this);
+        this.host.applyImageButtonFeedback(row, 1.01, 0.99);
+      }
+    });
+    // 右:宝石镶嵌(795..1720 × 92..803)
+    const rCx = (RX(795) + RX(1720)) / 2;
+    const rCy = (FY(92) + FY(803)) / 2;
+    const side = mountGlassPanel(this.host, parent, 'ForgeGemSide', rCx, rCy, RX(1720) - RX(795), FY(92) - FY(803), k);
+    const QX = (px: number): number => RX(px) - rCx;
+    const QY = (py: number): number => FY(py) - rCy;
+    mountGlassSectionHeader(this.host, side, 'ForgeGemSideHeader', '宝石镶嵌', QX(822), QY(133), k, 26);
+    if (!selected) {
+      T(side, 'ForgeGemSideHint', '点击左侧装备查看孔位', 0, QY(430), 21, GLASS_COLOR.sub, S(500), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    if (this.glassGemSocket && this.glassGemSocket.equipId !== selected.id) {
+      this.glassGemSocket = null;
+    }
+    const big = this.host.addChildPlainNode(side, 'ForgeGemBigFrame', QX(1244), QY(262), S(186), S(178));
+    mountGlassSlice(this.host, big, 'Bg', GLASS_SLICES.panel, 0, 0, S(186), S(178), k);
+    const bigIcon = equipIconAssetByCode(selected.equipCode);
+    if (bigIcon) {
+      mountGlassClippedIcon(this.host, side, 'ForgeGemBigIcon', bigIcon, QX(1244), QY(262), S(164));
+    }
+    T(side, 'ForgeGemSideName', `${safeText(selected.equipName)}   +${selected.enhanceLevel ?? 0}${selected.heroId != null ? '  (已穿)' : ''}`, QX(1244), QY(377), 25, GLASS_COLOR.text, S(520), HorizontalTextAlignment.CENTER, true);
+    const open = gemOpenSlots(selected.quality);
+    const q = equipQualityColor(selected.quality);
+    const qHex = `#${[q.r, q.g, q.b].map((v) => Math.min(255, v + 30).toString(16).padStart(2, '0')).join('')}`;
+    this.addRichLine(side, 'ForgeGemSideMeta', `<color=${qHex}>${equipQualityLabel(selected.quality)}</color><color=#B6BDCD>  ·  ${open} 孔</color>`, QX(1244), QY(412), S(20), S(300));
+    // 孔位:1~3 个按原型间距 241 居中;4~5 个在 930..1560 等分
+    const gems = selected.gems ?? [];
+    const xs: number[] = [];
+    if (open <= 3) {
+      for (let i = 0; i < open; i += 1) {
+        xs.push(1256 + (i - (open - 1) / 2) * 241);
+      }
+    } else {
+      for (let i = 0; i < open; i += 1) {
+        xs.push(930 + (i * 630) / (open - 1));
+      }
+    }
+    const d = open <= 3 ? 136 : 118;
+    const links = this.host.addChildPlainNode(side, 'ForgeGemLinks', 0, 0, 10, 10).addComponent(Graphics);
+    links.strokeColor = rgba(120, 128, 140, 200);
+    links.lineWidth = Math.max(1, S(1.4));
+    for (let i = 0; i + 1 < xs.length; i += 1) {
+      links.moveTo(QX(xs[i] + d / 2 + 14), QY(511));
+      links.lineTo(QX(xs[i + 1] - d / 2 - 14), QY(511));
+    }
+    links.stroke();
+    let firstEmpty = -1;
+    let lastFilled = -1;
+    xs.forEach((px, i) => {
+      const info = parseGemCode(gems[i]);
+      if (!info && firstEmpty < 0) {
+        firstEmpty = i;
+      }
+      if (info) {
+        lastFilled = i;
+      }
+      const chosenSocket = !!info && this.glassGemSocket?.slot === i;
+      const node = this.host.addChildPlainNode(side, `ForgeGemSocket_${i}`, QX(px), QY(511), S(d), S(d));
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(14, 17, 23, 235);
+      g.circle(0, 0, S(d / 2));
+      g.fill();
+      g.strokeColor = chosenSocket ? rgba(227, 196, 138, 255) : rgba(150, 160, 174, 220);
+      g.lineWidth = Math.max(1.4, S(chosenSocket ? 3 : 2));
+      g.circle(0, 0, S(d / 2) - S(1.5));
+      g.stroke();
+      if (info) {
+        this.host.addSprite('Gem', gemIconAsset(info.type, info.tier), 0, 0, S(d * 0.62), S(d * 0.62), node);
+        T(side, `ForgeGemSocketName_${i}`, info.label, QX(px), QY(600), 19, GLASS_COLOR.text, S(200), HorizontalTextAlignment.CENTER);
+        T(side, `ForgeGemSocketAttr_${i}`, info.attrText.replace(/\+/g, ' +'), QX(px), QY(631), 19, GLASS_COLOR.text, S(200), HorizontalTextAlignment.CENTER);
+        if (!state.busy) {
+          node.addComponent(Button);
+          node.on(Button.EventType.CLICK, () => {
+            this.glassGemSocket = chosenSocket ? null : { equipId: selected.id, slot: i };
+            this.host.selectLobbyForgeGemEquip(selected.id);
+          }, this);
+          this.host.applyImageButtonFeedback(node, 1.04, 0.96);
+        }
+      } else {
+        T(node, 'Plus', '+', 0, S(2), 54, rgba(214, 218, 226), S(70), HorizontalTextAlignment.CENTER);
+        T(side, `ForgeGemSocketName_${i}`, `${i + 1} 阶宝石`, QX(px), QY(600), 19, GLASS_COLOR.text, S(200), HorizontalTextAlignment.CENTER);
+        if (!state.busy) {
+          node.addComponent(Button);
+          node.on(Button.EventType.CLICK, () => this.host.setLobbyForgeGemPickSlot(i), this);
+          this.host.applyImageButtonFeedback(node, 1.04, 0.96);
+        }
+      }
+    });
+    mountGlassLine(this.host, side, 'ForgeGemSep', QX(1257), QY(655), QX(1685) - QX(830), Math.max(1, S(1.5)), rgba(46, 56, 70, 255));
+    const pickSocket = this.glassGemSocket && parseGemCode(gems[this.glassGemSocket.slot]) ? this.glassGemSocket.slot : lastFilled;
+    const pickInfo = pickSocket >= 0 ? parseGemCode(gems[pickSocket]) : null;
+    const hint = pickInfo && this.glassGemSocket
+      ? `卸下第 ${pickSocket + 1} 孔「${pickInfo.label}」需 ${formatInteger(gemUnsocketGold(pickInfo.tier))} 金币`
+      : '第 i 孔镶 i 阶宝石;低阶宝石 3 合 1 升阶(背包 → 合成)';
+    T(side, 'ForgeGemHint', hint, QX(1257), QY(683), 19, GLASS_COLOR.sub, S(820), HorizontalTextAlignment.CENTER);
+    mountGlassButton(this.host, side, 'ForgeGemUnsocket', '卸下宝石', (QX(823) + QX(1248)) / 2, QY(750), QX(1248) - QX(823), S(66), k, !state.busy && pickInfo ? 'secondaryLit' : 'disabled',
+      () => {
+        this.glassGemSocket = null;
+        this.host.unsocketLobbyForgeGem(selected.id, pickSocket);
+      }, 24);
+    mountGlassButton(this.host, side, 'ForgeGemSocketBtn', '镶嵌', (QX(1273) + QX(1691)) / 2, QY(750), QX(1691) - QX(1273), S(66), k, !state.busy && firstEmpty >= 0 ? 'primary' : 'primaryOff',
+      () => this.host.setLobbyForgeGemPickSlot(firstEmpty), 24);
+    if (forge.gemPickSlot != null && forge.gemPickSlot < open) {
+      const pickSlot = forge.gemPickSlot;
+      this.phoneOverlays.push((root) => this.renderGemPickDialog(root, selected, pickSlot, state.busy, this.stageW, scale));
     }
   }
 
@@ -3413,7 +3949,9 @@ export class LobbyForgePanelRenderer {
     if (maxOffset > 1) {
       const trackH = viewportH - 8 * scale;
       const thumbH = Math.max(36 * scale, trackH * (viewportH / fullH));
-      const update = mountRefScrollBar(this.host, parent, `${key}ScrollBar`, cx + width / 2 + 7 * scale, (top + bottom) / 2, 5 * scale, trackH, thumbH);
+      const update = this.glassMode
+        ? this.mountGlassScrollBar(parent, `${key}ScrollBar`, cx + width / 2 + 6 * scale, (top + bottom) / 2, 4 * scale, trackH, thumbH)
+        : mountRefScrollBar(this.host, parent, `${key}ScrollBar`, cx + width / 2 + 7 * scale, (top + bottom) / 2, 5 * scale, trackH, thumbH);
       drawBar = () => update(Math.min(maxOffset, Math.max(0, content.position.y - baseY)) / maxOffset);
       drawBar();
     }
@@ -3422,6 +3960,20 @@ export class LobbyForgePanelRenderer {
       drawBar?.();
     }, this);
     return { content, topY: fullH / 2 };
+  }
+
+  /** B 风格滚动条:淡灰轨道 + 灰白滑块(原型无金色滚动条,10-28)。 */
+  private mountGlassScrollBar(parent: Node, name: string, x: number, y: number, barW: number, trackH: number, thumbH: number): (progress: number) => void {
+    const bar = this.host.addChildPlainNode(parent, name, x, y, barW, trackH);
+    mountGlassLine(this.host, bar, 'Track', 0, 0, barW, trackH, rgba(255, 255, 255, 18));
+    const thumb = mountGlassLine(this.host, bar, 'Thumb', 0, trackH / 2 - thumbH / 2, barW, thumbH, rgba(150, 160, 176, 170));
+    return (progress: number): void => {
+      if (!thumb.isValid) {
+        return;
+      }
+      const p = Math.min(1, Math.max(0, progress));
+      thumb.setPosition(0, trackH / 2 - thumbH / 2 - (trackH - thumbH) * p, 0);
+    };
   }
 
   // 主操作按钮(强化/合成/分解共用):AI 图优先(2.5:1 等比,高度由宽度推出),缺图红底金描边兜底。
