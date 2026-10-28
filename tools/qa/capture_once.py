@@ -30,6 +30,10 @@ def main() -> None:
             INSPECTOR.call(f"(() => {{ {ROOT_JS} root.loginFlow.setInputs({{string:'{user}'}}, {{string:'{pw}'}}); try {{ root.loginFlow.acceptedAgreement = true; }} catch(e){{}} root.run(() => root.loginFlow.login()); return 1; }})()")
         time.sleep(1.5)
     time.sleep(4)
+    if os.environ.get('QA_FULLSCREEN') == '1':
+        # 这台 AVD 自带顶部 136px 挖孔:安全区打成整屏再整刷,和原型 1:1 对比(只改测试进程)
+        INSPECTOR.call(f"(() => {{ {ROOT_JS} const vs = cc.view.getVisibleSize(); cc.sys.getSafeAreaRect = () => cc.rect(0, 0, vs.width, vs.height); setTimeout(() => root.renderCurrentView(), 50); return 1; }})()")
+        time.sleep(2)
     table = {key: (js, wait) for key, js, wait in SCREENS}
     for key in keys:
         js, wait = table[key]

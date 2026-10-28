@@ -48,6 +48,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
+import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -81,6 +82,9 @@ const HERO_NAV_TAB_NORMAL_ART = { asset: 'ui/forge/ai/tab_normal/spriteFrame', b
  * 也可挂进 UiSpriteFrameCache 的 'heroes' 预载组(名册首开时就拉),这样详情页第一次打开也不会先闪程序兜底。
  */
 export const HERO_DETAIL_PRELOAD_ASSETS: string[] = [
+  // 2026-10-28 B 风格:毛玻璃组件 + 虚化背景
+  ...GLASS_ASSET_PATHS,
+  'ui/hero/proto/hero_bg_glass/spriteFrame',
   'ui/mission/ai/tab_active/spriteFrame',
   'ui/forge/ai/tab_normal/spriteFrame',
   'ui/hero/ai/hero_nameplate/spriteFrame',
@@ -139,6 +143,8 @@ const HERO_SKILL_ICON_BY_EFFECT: Record<string, string> = {
 };
 /** 原型去 UI 背景(哥特大厅 + 顶光 + 法阵底座),整屏 1870×841,与页签 / 右栏同一 k 映射。 */
 export const HERO_PROTO_BG = { path: `${HERO_PROTO_DIR}hero_bg/spriteFrame`, w: 1870, h: 841 };
+/** B 风格:同一张大厅背景的虚化压暗版(tools 生成,高斯 5 + 降饱和),面板浮在上面更有层次。 */
+export const HERO_GLASS_BG = `${HERO_PROTO_DIR}hero_bg_glass/spriteFrame`;
 export const HERO_PROTO_TAB_ON = `${HERO_PROTO_DIR}tab_on/spriteFrame`;
 export const HERO_PROTO_TAB_OFF = `${HERO_PROTO_DIR}tab_off/spriteFrame`;
 const HERO_PROTO_NAV_ICONS: Record<'attr' | 'equip' | 'skill' | 'star', string> = {
@@ -241,6 +247,29 @@ interface HeroDockCostView {
 const STAR_MAX = 15;
 const STAR_UP_FRAGMENT_COSTS = [20, 40, 60, 80, 120, 180, 220, 260, 300, 340, 380, 420, 460, 500];
 const STAR_UP_GOLD_COSTS = [10000, 30000, 60000, 100000, 160000, 240000, 330000, 430000, 550000, 680000, 820000, 970000, 1130000, 1300000];
+/** 2026-10-28 B 风格(毛玻璃)开关:英雄详情手机原型路径走 hero_b2 1:1;关掉回到 10-22 金框原型。 */
+const HERO_GLASS = true;
+/** B 风格属性小图标(原型 A 款暗金字形,沿用 ui/hero/proto 金色图,运行时染哑光暗金)。 */
+const HERO_GLASS_STAT_ICONS: Record<string, string> = {
+  生命: 'ui/hero/proto/g_hp/spriteFrame',
+  攻击: 'ui/hero/proto/g_atk/spriteFrame',
+  防御: 'ui/hero/proto/g_def/spriteFrame',
+  速度: 'ui/hero/proto/g_spd/spriteFrame',
+  暴击: 'ui/hero/proto/g_crit/spriteFrame',
+  暴伤: 'ui/hero/proto/g_crit/spriteFrame',
+  幸运: 'ui/hero/proto/ic_luck/spriteFrame',
+  觉醒: 'ui/hero/proto/ic_awaken/spriteFrame',
+};
+const HERO_GLASS_ICON_TINT = new Color(214, 186, 132, 255);
+function heroGlassAffixIcon(label: string): string {
+  if (/暴击|暴伤/.test(label)) return HERO_GLASS_STAT_ICONS.暴击;
+  if (/生命|吸血|回复/.test(label)) return HERO_GLASS_STAT_ICONS.生命;
+  if (/防御|减伤|护盾/.test(label)) return HERO_GLASS_STAT_ICONS.防御;
+  if (/速度|攻速/.test(label)) return HERO_GLASS_STAT_ICONS.速度;
+  if (/幸运/.test(label)) return HERO_GLASS_STAT_ICONS.幸运;
+  if (/攻击|伤害|穿透/.test(label)) return HERO_GLASS_STAT_ICONS.攻击;
+  return heroAffixIconOf(label);
+}
 const HERO_AI_STAT_ICON_ASSETS: Record<string, string> = {
   生命: 'ui/hero/ai/stat_hp/spriteFrame',
   攻击: 'ui/hero/ai/stat_atk/spriteFrame',
@@ -511,7 +540,7 @@ export class LobbyHeroDetailPanelRenderer {
   /** 上次绘制名牌星星行 / 升星页面板的参数(升星后原地重建用;每次整页渲染开头清空)。 */
   private starRowArgs: { parent: Node; x: number; y: number; maxWidth: number; scale: number } | null = null;
   private starPanelArgs: { parent: Node; x: number; y: number; width: number; height: number; scale: number } | null = null;
-  private dockButtons: Array<{ node: Node; label: Label; art: Sprite | null; idleText: string; pendingText: string; idleEnabled: boolean; dim: boolean }> = [];
+  private dockButtons: Array<{ node: Node; label: Label; art: Sprite | null; idleText: string; pendingText: string; idleEnabled: boolean; dim: boolean; glass?: 'primary' | 'secondary' }> = [];
   /** 手机原型 1:1 映射(2026-10-22);非手机为 null,走旧布局。 */
   private proto: HeroProtoGeom | null = null;
   private artStageStash: { node: Node; key: string } | null = null;
@@ -612,12 +641,16 @@ export class LobbyHeroDetailPanelRenderer {
       18 * scale,
     );
     const protoBgK = this.proto ? this.proto.k : 0;
-    if (!(protoBgK > 0 && this.host.addSprite('LobbyHeroDetailBackdropSprite', HERO_PROTO_BG.path, 0, 0, HERO_PROTO_BG.w * protoBgK, HERO_PROTO_BG.h * protoBgK, panel))) {
+    if (!(protoBgK > 0 && this.host.addSprite('LobbyHeroDetailBackdropSprite', HERO_GLASS && this.phoneFrame ? HERO_GLASS_BG : HERO_PROTO_BG.path, 0, 0, HERO_PROTO_BG.w * protoBgK, HERO_PROTO_BG.h * protoBgK, panel))) {
       this.host.addSprite('LobbyHeroDetailBackdropSprite', LOBBY_HERO_DETAIL_BACKDROP_ASSET, 0, 0, panelWidth, panelHeight, panel);
       this.drawPanelShade(panel, panelWidth, panelHeight, scale);
     } else {
       // 2026-10-23 用户「背景图应该暗一些,要做到主次分明」:整体压暗 + 以英雄为中心的径向暗角 + 右栏背后再压一层;英雄身后留一团暖光,主体最亮
       const pk = protoBgK;
+      if (HERO_GLASS && this.phoneFrame) {
+        // B 风格:背景本身已虚化压暗,只再压一层薄暗,保留大厅可见(原型 hero_b2)
+        mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(6, 8, 12, 70));
+      } else {
       mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(0, 0, 0, 105));
       const vig = this.host.addSprite('LobbyHeroDetailProtoVignette', HERO_PROTO_VIGNETTE, (700 - 935) * pk, (420.5 - 430) * pk, 1500 * pk, 1150 * pk, panel);
       if (vig) {
@@ -637,6 +670,7 @@ export class LobbyHeroDetailPanelRenderer {
         glow.getComponent(UITransform)?.setContentSize(620 * pk, 760 * pk);
         (glow.getComponent(UIOpacity) ?? glow.addComponent(UIOpacity)).opacity = 70;
       }
+      }
     }
     this.compactLayout = compact;
     if (this.phoneFrame) {
@@ -653,7 +687,9 @@ export class LobbyHeroDetailPanelRenderer {
     }
     // 本次重绘没用上的暂存立绘(换了英雄/尺寸变了)在这里销毁,不留孤儿节点。
     this.dropArtStageStash();
-    renderSceneBackButton(this.host, panelGroup, layout, 'LobbyHeroDetailBackButton', () => this.host.backToLobbyHeroRosterPanel(), scale, '英雄', '升级：消耗金币与英雄经验书，即时生效。\n\n右下页签切换 属性 / 装备 / 技能 / 升星。\n\n技能：大招默认解锁，战斗中攒满能量手动释放；被动技能随星级逐条解锁。');
+    if (HERO_GLASS && this.proto && this.phoneFrame) {
+      this.renderGlassTopBar(panel, panelWidth, panelHeight);
+    } else renderSceneBackButton(this.host, panelGroup, layout, 'LobbyHeroDetailBackButton', () => this.host.backToLobbyHeroRosterPanel(), scale, '英雄', '升级：消耗金币与英雄经验书，即时生效。\n\n右下页签切换 属性 / 装备 / 技能 / 升星。\n\n技能：大招默认解锁，战斗中攒满能量手动释放；被动技能随星级逐条解锁。');
     this.detailRenderContext = { panelGroup, panelWidth, panelHeight, scale };
     this.refineDialogNode = null;
     this.equipDialogNode = null;
@@ -740,6 +776,12 @@ export class LobbyHeroDetailPanelRenderer {
     if (!hero || hero.id !== heroId || !this.detailRenderContext || !this.isNodeAlive(this.detailRenderContext.panelGroup)) {
       return false;
     }
+    const glassStars = this.findInDetail('LobbyHeroDetailGlassStars')?.getComponent(Label) ?? null;
+    if (glassStars) {
+      const star = this.glassStarText(hero);
+      glassStars.string = star.text;
+      glassStars.color = star.color;
+    }
     const row = this.starRowArgs;
     if (row && this.isNodeAlive(row.parent)) {
       row.parent.children
@@ -815,7 +857,11 @@ export class LobbyHeroDetailPanelRenderer {
     panel.children
       .filter((child) => child.name.startsWith('LobbyHeroDetailLevelUp'))
       .forEach((child) => child.destroy());
-    this.renderLevelUpDock(panel, hero, size.width, size.height, ctx.scale);
+    if (HERO_GLASS && this.proto && this.phoneFrame) {
+      this.renderGlassLevelDock(panel, hero, size.width, size.height);
+    } else {
+      this.renderLevelUpDock(panel, hero, size.width, size.height, ctx.scale);
+    }
     return true;
   }
 
@@ -1697,7 +1743,9 @@ export class LobbyHeroDetailPanelRenderer {
       const enabled = !pending && entry.idleEnabled;
       const dimmed = !enabled || entry.dim;
       entry.label.string = pending ? entry.pendingText : entry.idleText;
-      entry.label.color = dimmed ? rgba(166, 158, 142) : rgba(255, 240, 200);
+      entry.label.color = entry.glass
+        ? (!enabled ? GLASS_COLOR.dim : entry.glass === 'primary' ? GLASS_COLOR.onChampagne : GLASS_COLOR.text)
+        : dimmed ? rgba(166, 158, 142) : rgba(255, 240, 200);
       const button = entry.node.getComponent(Button);
       if (button) {
         button.interactable = enabled;
@@ -1711,6 +1759,10 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   private renderHeader(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
+    if (HERO_GLASS && this.proto && this.phoneFrame) {
+      this.renderGlassPlate(parent, hero, width, height, scale);
+      return;
+    }
     // 名牌(hero_nameplate 764×253,左侧红徽记):名字/元数据/星级三行,文字中心右移避开徽记。
     // 手机:名牌压在立绘区底部(不再屏幕居中,否则压进右栏)。
     const frame = this.phoneFrame;
@@ -2005,7 +2057,11 @@ export class LobbyHeroDetailPanelRenderer {
       }
       const { infoX, infoY, infoWidth, infoHeight } = frame;
       if (tab === 'attr') {
-        this.renderProtoAttrPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
+        if (HERO_GLASS) {
+          this.renderGlassAttrPanel(parent, hero, width, height, scale);
+        } else {
+          this.renderProtoAttrPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
+        }
       } else if (tab === 'equip') {
         this.renderWearablePanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
       } else if (tab === 'skill') {
@@ -2015,7 +2071,11 @@ export class LobbyHeroDetailPanelRenderer {
         this.renderStarCurrencyBar(parent, hero, width, height, scale);
         this.renderStarPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
       }
-      this.renderProtoNav(parent, tab, width, height, scale);
+      if (HERO_GLASS) {
+        this.renderGlassNav(parent, tab, width, height, scale);
+      } else {
+        this.renderProtoNav(parent, tab, width, height, scale);
+      }
       return;
     }
     const sideShade = this.host.addChildPlainNode(parent, 'LobbyHeroDetailSideShade', 0, 0, width, height);
@@ -2048,6 +2108,9 @@ export class LobbyHeroDetailPanelRenderer {
 
   // 升星页顶部持有展示:金币 + 本英雄同名碎片(按稀有度取碎片图标)。
   private renderStarCurrencyBar(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
+    if (HERO_GLASS && this.proto && this.phoneFrame) {
+      return; // B 风格:升星页的金币 + 碎片由 renderGlassTopBar 按页签画
+    }
     const starProfile = this.host.currentLobbyProfile();
     const starBag = this.host.currentLobbyBagState();
     const starFragCode = `HERO_FRAGMENT:${(hero.heroCode || '').toUpperCase()}`;
@@ -4993,6 +5056,9 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   private renderFooter(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
+    if (HERO_GLASS && this.proto && this.phoneFrame) {
+      return; // B 风格:货币胶囊在 renderGlassTopBar 里画(所有页签都显示)
+    }
     // 顶部持有资源:货币栏同款格式——独立胶囊 + 左侧图标 + 数值(金币/英雄经验书),避让右上关闭钮。
     const profile = this.host.currentLobbyProfile();
     const bag = this.host.currentLobbyBagState();
@@ -5401,6 +5467,324 @@ export class LobbyHeroDetailPanelRenderer {
     return rgba(94, 82, 60);
   }
 
+
+  // ───────────── 2026-10-28 英雄详情 B 风格(毛玻璃)原型 hero_b2 1:1 ─────────────
+  // 原型 1870×841;左栏按左缘映射(LX)、右栏按右缘映射(RX)、中间按中心(FX);纵向 FY。字号下限 20(手机可读)。
+  private glassMap(width: number, height: number): { k: number; LX: (px: number) => number; RX: (px: number) => number; FX: (px: number) => number; FY: (py: number) => number; S: (v: number) => number; F: (v: number) => number } {
+    const k = this.proto?.k ?? 1;
+    return {
+      k,
+      LX: (px: number): number => -width / 2 + px * k,
+      RX: (px: number): number => width / 2 - (1870 - px) * k,
+      FX: (px: number): number => (px - 935) * k,
+      FY: (py: number): number => (420.5 - py) * k,
+      S: (v: number): number => v * k,
+      F: (v: number): number => Math.max(20, v * k),
+    };
+  }
+
+  /** 暗金小图标(原型 A 款):沿用 ui/hero/proto 的金色字形,染成哑光暗金。 */
+  private glassStatIcon(parent: Node, name: string, label: string, x: number, y: number, size: number): void {
+    const path = HERO_GLASS_STAT_ICONS[label] ?? heroGlassAffixIcon(label);
+    const sprite = this.host.addSprite(name, path, x, y, size, size, parent);
+    if (sprite) {
+      sprite.color = HERO_GLASS_ICON_TINT;
+    }
+  }
+
+  /** 属性页(B 风格):属性 / 特性加成 / 技能 / 升级 四块毛玻璃面板,右栏 x 1191..1829。 */
+  private renderGlassAttrPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
+    const M = this.glassMap(width, height);
+    const { RX, FY, S, F, k } = M;
+    const root = this.host.addChildPlainNode(parent, 'LobbyHeroDetailInfoPanel', 0, 0, width, height);
+    const panelX = (RX(1191) + RX(1829)) / 2;
+    const panelW = RX(1829) - RX(1191);
+    const box = (name: string, top: number, bottom: number): void => {
+      mountGlassPanel(this.host, root, name, panelX, (FY(top) + FY(bottom)) / 2, panelW, FY(top) - FY(bottom), k);
+    };
+    const cols = { icon: [1235, 1517], label: [1262, 1546], value: [1373, 1690] };
+    // 每行一个节点(原点同 root),子节点名与 patchGrowthNumbers 局部刷新口径一致:<prefix>_<i> / Icon / Label / <prefix>Value
+    const row = (parentNode: Node, prefix: string, index: number, icon: string, label: string, value: string, y: number, valueColor: Color, valueX?: number): Label => {
+      const col = index % 2;
+      const cell = this.host.addChildPlainNode(parentNode, `${prefix}_${index}`, 0, 0, 10, 10);
+      this.glassStatIcon(cell, 'Icon', icon, RX(cols.icon[col]), y, S(26));
+      glassLabel(this.host, cell, 'Label', label, RX(cols.label[col]), y, F(20), GLASS_COLOR.sub, S(130));
+      return glassLabel(this.host, cell, `${prefix}Value`, value, RX(valueX ?? cols.value[col]), y, F(22), valueColor, S(col === 0 ? 130 : 120), HorizontalTextAlignment.LEFT, true);
+    };
+    // ① 属性(合计:基础 + 装备 + 特性,docs/45 §1)
+    box('LobbyHeroDetailAttrBox', 86, 307);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailAttrSection', '属性', RX(1217), FY(119), k, F(26) / k, {
+      text: '属性详情', rightX: RX(1805), onClick: () => this.showAttrDetailPopup(root, hero, scale),
+    });
+    const equipState = this.host.currentLobbyHeroEquipState();
+    const grid = this.host.addChildPlainNode(root, 'LobbyHeroDetailAttributeGrid', 0, 0, 10, 10);
+    resolveAttributeTotals(hero, equipState.items).slice(0, 6).forEach((attr, index) => {
+      row(grid, 'LobbyHeroDetailAttribute', index, attr.label, attr.label, attr.value, FY(165 + Math.floor(index / 2) * 36), attr.boosted ? GLASS_COLOR.green : GLASS_COLOR.text);
+    });
+    resolveGrowthChips(hero).filter((chip) => chip.label !== '大招').slice(0, 2).forEach((chip, index) => {
+      const awakenable = chip.label === '觉醒' && this.isHeroAwakenable(hero);
+      const y = FY(273);
+      const value = row(root, 'LobbyHeroDetailGrowth', index, chip.label, chip.label, awakenable ? '可觉醒' : chip.value, y, awakenable ? GLASS_COLOR.champagne : GLASS_COLOR.text);
+      if (awakenable) {
+        const hit = this.host.addChildPlainNode(root, 'LobbyHeroDetailGrowthAwaken', RX(1640), y, S(300), S(34));
+        this.drawRedDot(hit, 'Dot', S(70), S(12), scale);
+        hit.addComponent(Button);
+        hit.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroDetailTab('star'), this);
+        void value;
+      }
+    });
+    // ② 特性加成
+    box('LobbyHeroDetailAffixBox', 315, 499);
+    const affixes = (hero.affixes ?? []).slice(0, 6);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailAffixSection', '特性加成', RX(1217), FY(348), k, F(26) / k, affixes.length > 0
+      ? { text: '特性洗练', rightX: RX(1805), onClick: () => this.host.openLobbyHeroRefineDialog() }
+      : undefined);
+    if (affixes.length === 0) {
+      glassLabel(this.host, root, 'LobbyHeroDetailAffixEmpty', '该英雄暂无特性', panelX, FY(430), F(20), GLASS_COLOR.sub, panelW - S(80), HorizontalTextAlignment.CENTER);
+    }
+    affixes.forEach((affix, index) => {
+      const shortLabel = HERO_AFFIX_SHORT_LABELS[affix.code] ?? safeText(affix.name || affix.code);
+      const y = FY(394 + Math.floor(index / 2) * 36);
+      const q = affixQualityColor(affix.quality);
+      row(root, 'LobbyHeroDetailAffix', index, shortLabel, shortLabel, heroAffixValueText(affix.code, affix.value ?? 0), y, GLASS_COLOR.text, index % 2 === 0 ? 1373 : 1695);
+      // 品质:图标左侧一根细色条(信息保留,不抢主次)
+      const bar = this.host.addSprite(`LobbyHeroDetailAffixQuality_${index}`, GLASS_ICON.accent, RX(index % 2 === 0 ? 1219 : 1501), y, S(3), S(20), root);
+      if (bar) {
+        bar.color = rgba(q.r, q.g, q.b, 255);
+      }
+    });
+    // ③ 技能:大招一行
+    box('LobbyHeroDetailSkillBox', 507, 646);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailSkillSection', '技能', RX(1217), FY(540), k, F(26) / k, {
+      text: '全部技能', rightX: RX(1805), onClick: () => this.host.selectLobbyHeroDetailTab('skill'),
+    });
+    const ult = resolveSkills(hero).find((skill) => skill.kind === 'ultimate') ?? null;
+    if (ult) {
+      const iconNode = this.host.addChildPlainNode(root, 'LobbyHeroDetailUltIcon', RX(1265), FY(601), S(70), S(70));
+      mountGlassSlice(this.host, iconNode, 'Frame', GLASS_SLICES.row, 0, 0, S(70), S(70), k);
+      this.host.addSprite('Icon', ult.icon ?? resolveUltimateEmblemAsset(hero), 0, 0, S(64), S(64), iconNode);
+      const name = glassLabel(this.host, root, 'LobbyHeroDetailUltName', ult.name, RX(1334), FY(584), F(22), GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
+      const nameW = Math.min(S(260), estimateTextWidth(name.string, F(22)));
+      const tagW = S(72);
+      const tagX = RX(1334) + nameW + S(20) + tagW / 2;
+      const tag = this.host.addChildPlainNode(root, 'LobbyHeroDetailUltTag', tagX, FY(584), tagW, S(32));
+      mountGlassSlice(this.host, tag, 'Bg', GLASS_SLICES.chip, 0, 0, tagW, S(32), k * 0.7);
+      glassLabel(this.host, tag, 'Text', '大招', 0, 0, F(17), GLASS_COLOR.sub, tagW - S(8), HorizontalTextAlignment.CENTER);
+      const current = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
+      glassLabel(this.host, root, 'LobbyHeroDetailUltLevel', `Lv.${current}/${ultimateCap(hero.awakenStatus === 1)}`, RX(1334), FY(619), F(20), GLASS_COLOR.sub, S(200));
+      if (!hero.protagonist) {
+        const maxed = current >= ULTIMATE_MAX_LEVEL;
+        const capped = !maxed && current >= ultimateCap(hero.awakenStatus === 1);
+        mountGlassButton(this.host, root, 'SkillRowUltimateUp', maxed ? '已满级' : capped ? '已达上限' : '升级大招', RX(1730), FY(601), S(130), S(46), k,
+          maxed || capped ? 'disabled' : 'secondary', () => this.host.openLobbyHeroUltimateDialog(), 20);
+      }
+    }
+    // ④ 升级
+    this.renderGlassLevelDock(root, hero, width, height);
+  }
+
+  /** 升级块(属性页底):「升至 Lv.N」+ 消耗 + 一键升级 / 升级;节点名都以 LobbyHeroDetailLevelUp 开头(rebuildLevelUpDockOnly 按前缀局部重建)。 */
+  private renderGlassLevelDock(root: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { RX, FY, S, F, k } = this.glassMap(width, height);
+    const panelX = (RX(1191) + RX(1829)) / 2;
+    const panelW = RX(1829) - RX(1191);
+    mountGlassPanel(this.host, root, 'LobbyHeroDetailLevelUpBox', panelX, (FY(654) + FY(812)) / 2, panelW, FY(654) - FY(812), k);
+    const view = this.resolveLevelUpCostView(hero);
+    const titleY = FY(686);
+    const levelMatch = /^(.*?)(Lv\.\d+)$/.exec(view.title);
+    if (levelMatch) {
+      const head = glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', levelMatch[1].trim(), RX(1233), titleY, F(24), GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
+      const headW = estimateTextWidth(head.string, F(24));
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitleLv', levelMatch[2], RX(1233) + headW + S(8), titleY, F(24), GLASS_COLOR.champagne, S(140), HorizontalTextAlignment.LEFT, true);
+    } else {
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', view.title, RX(1233), titleY, F(22), view.blocked === 'cap' ? GLASS_COLOR.champagne : GLASS_COLOR.text, panelW - S(80), HorizontalTextAlignment.LEFT, true);
+    }
+    // 消耗:图标 + 名称 + 数量(不足标红,点开获取途径);上限态显示提示链接
+    const costY = FY(722);
+    if (view.costs.length > 0) {
+      const names = ['经验书', '金币'];
+      let cur = RX(1233);
+      view.costs.forEach((cost, index) => {
+        const item = this.host.addChildPlainNode(root, `LobbyHeroDetailLevelUpCost_${index}`, cur + S(80), costY, S(170), S(34));
+        this.host.addSprite('Icon', cost.icon, -S(80) + S(12), 0, S(26), S(26), item);
+        const nameLabel = glassLabel(this.host, item, 'Name', names[index] ?? '', -S(80) + S(32), 0, F(19), GLASS_COLOR.sub, S(70));
+        const nameW = estimateTextWidth(nameLabel.string, F(19));
+        glassLabel(this.host, item, 'Value', cost.text, -S(80) + S(32) + nameW + S(8), 0, F(19), cost.lack ? GLASS_COLOR.red : GLASS_COLOR.text, S(100), HorizontalTextAlignment.LEFT, cost.lack);
+        if (cost.source && cost.lack) {
+          const source = cost.source;
+          item.addComponent(Button);
+          item.on(Button.EventType.CLICK, () => this.host.openItemSourcePopup?.(source), this);
+        }
+        cur += S(index === 0 ? 163 : 190);
+      });
+    } else if (view.hint) {
+      const hint = glassLabel(this.host, root, 'LobbyHeroDetailLevelUpHint', view.hint, RX(1233), costY, F(19), GLASS_COLOR.sub, panelW - S(80));
+      const boxSource = view.boxSource;
+      if (boxSource) {
+        hint.node.addComponent(Button);
+        hint.node.on(Button.EventType.CLICK, () => this.host.openItemSourcePopup?.(boxSource), this);
+      }
+    }
+    if (view.costs.length > 0 && view.hint) {
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpHint', view.hint, RX(1805), titleY, F(17), GLASS_COLOR.dim, S(300), HorizontalTextAlignment.RIGHT);
+    }
+    // 双钮:左「一键升级」次钮 / 右「升级」主钮(香槟金);处理中 / 上限置灰,材料不足压暗仍可点(服务器回提示)
+    const pending = this.host.isLobbyHeroLevelUpPending(hero.id);
+    const idleEnabled = view.blocked !== 'cap';
+    const dim = view.blocked === 'lack';
+    this.dockButtons = [];
+    const specs = [
+      { name: 'LobbyHeroDetailLevelUpAutoButton', idleText: '一键升级', pendingText: '处理中', x: (RX(1228) + RX(1503)) / 2, w: RX(1503) - RX(1228), kind: 'secondary' as const, onClick: () => this.host.autoLevelUpLobbyHero(hero.id) },
+      { name: 'LobbyHeroDetailLevelUpButton', idleText: '升级', pendingText: '升级中', x: (RX(1520) + RX(1803)) / 2, w: RX(1803) - RX(1520), kind: 'primary' as const, onClick: () => this.host.levelUpLobbyHero(hero.id) },
+    ];
+    specs.forEach((spec) => {
+      const enabled = !pending && idleEnabled;
+      const btn = mountGlassButton(this.host, root, spec.name, pending ? spec.pendingText : spec.idleText, spec.x, FY(768), spec.w, S(60), k,
+        enabled || dim ? spec.kind : 'disabled', idleEnabled ? spec.onClick : undefined, 24);
+      const label = btn.getChildByName('Label')?.getComponent(Label) ?? null;
+      const art = btn.getChildByName('Pill')?.getComponent(Sprite) ?? null;
+      if (!btn.getComponent(Button) && idleEnabled) {
+        btn.addComponent(Button).interactable = enabled;
+      } else if (btn.getComponent(Button)) {
+        btn.getComponent(Button)!.interactable = enabled;
+      }
+      if (dim) {
+        (btn.getComponent(UIOpacity) ?? btn.addComponent(UIOpacity)).opacity = 150;
+      }
+      if (label) {
+        this.dockButtons.push({ node: btn, label, art, idleText: spec.idleText, pendingText: spec.pendingText, idleEnabled, dim, glass: spec.kind });
+      }
+    });
+  }
+
+  /** 名牌星级(文字):每 5 星一轮,轮内颗数 = 当前档位星数,颜色随档位(绿→蓝→紫→橙→红,同 starDisplayV3)。 */
+  private glassStarText(hero: LobbyHeroItemVO): { text: string; color: Color } {
+    const display = starDisplayV3(Math.max(1, Math.trunc(hero.star || 1)));
+    const [r, g, b] = starBandTextRgbOf(display.color);
+    return { text: '★'.repeat(display.count), color: rgba(r, g, b) };
+  }
+
+  /** 左侧竖排页签(B):选中 = 香槟金圆角块 + 图标 + 字 + ›;其余只有图标和字。 */
+  private renderGlassNav(parent: Node, active: 'attr' | 'equip' | 'skill' | 'star', width: number, height: number, scale: number): void {
+    const { LX, FY, S, F, k } = this.glassMap(width, height);
+    const hero = this.host.currentLobbyHeroDetailHero();
+    const starDot = !!hero && this.isHeroAwakenable(hero);
+    const entries: { key: 'attr' | 'equip' | 'skill' | 'star'; label: string; y: number }[] = [
+      { key: 'attr', label: '属性', y: 159 },
+      { key: 'equip', label: '装备', y: 262 },
+      { key: 'skill', label: '技能', y: 365 },
+      { key: 'star', label: '升星', y: 468 },
+    ];
+    entries.forEach((entry) => {
+      const selected = entry.key === active;
+      const node = this.host.addChildPlainNode(parent, `HeroDetailNav_${entry.key}`, LX(150), FY(entry.y), S(212), S(82));
+      if (selected) {
+        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabActive, 0, 0, S(212), S(82), k);
+      }
+      const navIcon = { attr: GLASS_ICON.navAttr, equip: GLASS_ICON.navEquip, skill: GLASS_ICON.navSkill, star: GLASS_ICON.navStar }[entry.key];
+      const icon = this.host.addSprite('Icon', navIcon, LX(85) - LX(150), 0, S(38), S(38), node);
+      if (icon) {
+        icon.color = selected ? rgba(70, 52, 26) : rgba(205, 208, 214);
+      }
+      glassLabel(this.host, node, 'Label', entry.label, LX(128) - LX(150), 0, F(24), selected ? GLASS_COLOR.onChampagne : rgba(214, 217, 223), S(90), HorizontalTextAlignment.LEFT, selected);
+      if (selected) {
+        const chevron = this.host.addSprite('Chevron', GLASS_ICON.chevron, LX(233) - LX(150), 0, S(16), S(16), node);
+        if (chevron) {
+          chevron.color = rgba(70, 52, 26);
+        }
+      }
+      if (entry.key === 'star' && starDot) {
+        this.drawRedDot(node, 'HeroDetailNavStarDot', S(70), S(20), scale);
+      }
+      if (!selected) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, () => this.host.selectLobbyHeroDetailTab(entry.key), this);
+        this.host.applyImageButtonFeedback(node);
+      }
+    });
+  }
+
+  /** 顶栏(B):左上 ‹ + 「英雄」;右上 货币胶囊 + 竖分隔 + ×。 */
+  private renderGlassTopBar(parent: Node, width: number, height: number): void {
+    const { LX, RX, FY, S, F, k } = this.glassMap(width, height);
+    mountGlassIconButton(this.host, parent, 'LobbyHeroDetailGlassBack', GLASS_ICON.back, LX(68), FY(43), S(34), S(72), () => this.host.backToLobbyHeroRosterPanel());
+    glassLabel(this.host, parent, 'LobbyHeroDetailGlassTitle', '英雄', LX(115), FY(43), F(34), GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+    const profile = this.host.currentLobbyProfile();
+    const bag = this.host.currentLobbyBagState();
+    const bookCount = bag.groups.flatMap((group) => group.items).find((item) => item.itemCode === 'HERO_EXP_BOOK')?.itemCount ?? 0;
+    // 原型是金币 + 钻石;英雄页实际用得上的是金币 + 经验书(升级消耗),沿用旧口径,节点名保持 TopCurrencyValue_* 供局部刷新
+    const chips: Array<{ key: string; icon: string; value: string; l: number; r: number }> = [
+      { key: 'gold', icon: 'ui/bag/ai/icon_gold/spriteFrame', value: formatTopCurrencyValue(formatDecimalValue(profile.gold)), l: 1395, r: 1543 },
+      { key: 'books', icon: 'ui/bag/ai/icon_expbook/spriteFrame', value: formatTopCurrencyValue(formatInteger(bookCount)), l: 1557, r: 1720 },
+    ];
+    const hero = this.host.currentLobbyHeroDetailHero();
+    if (hero && this.host.currentLobbyHeroDetailTab() === 'star') {
+      // 升星页:第二格换成本英雄碎片(升星消耗)
+      const fragCode = `HERO_FRAGMENT:${(hero.heroCode || '').toUpperCase()}`;
+      const owned = bag.groups.flatMap((group) => group.items).find((item) => (item.itemCode || '').toUpperCase() === fragCode)?.itemCount ?? 0;
+      const tier = (hero.rarity || '').toLowerCase();
+      chips[1] = { key: 'shard', icon: `ui/bag/ai/icon_shard_${['r', 'sr', 'ssr', 'ur'].includes(tier) ? tier : 'n'}/spriteFrame`, value: formatTopCurrencyValue(formatInteger(owned)), l: 1557, r: 1720 };
+    }
+    chips.forEach((chip) => {
+      const node = mountGlassChip(this.host, parent, `TopCurrency_${chip.key}`, chip.icon, chip.value, (RX(chip.l) + RX(chip.r)) / 2, FY(42), RX(chip.r) - RX(chip.l), S(42), k);
+      const value = node.getChildByName('Value');
+      if (value) {
+        value.name = `TopCurrencyValue_${chip.key}`;
+      }
+    });
+    const divider = this.host.addSprite('LobbyHeroDetailGlassDivider', GLASS_ICON.divider, RX(1748), FY(42), S(36), S(2), parent);
+    if (divider) {
+      divider.node.angle = 90;
+    }
+    mountGlassIconButton(this.host, parent, 'LobbyHeroDetailBackButton', GLASS_ICON.close, RX(1803), FY(43), S(36), S(72), () => this.host.backToLobbyHeroRosterPanel());
+  }
+
+  /** 名牌(B):深色胶囊,上行 稀有度标签 + 名字,下行 Lv | 战力 | 星级;两侧细箭头切英雄。 */
+  private renderGlassPlate(parent: Node, hero: LobbyHeroItemVO, width: number, height: number, scale: number): void {
+    const { FX, FY, S, F, k } = this.glassMap(width, height);
+    const plateW = S(370);
+    const plateH = S(88);
+    const plate = this.host.addChildPlainNode(parent, 'LobbyHeroDetailIdentityPlate', FX(723), FY(746), plateW, plateH);
+    mountGlassSlice(this.host, plate, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, plateW, plateH, k);
+    const nameText = safeText(hero.heroName);
+    const nameFont = F(24);
+    const tagW = S(52);
+    const nameW = Math.min(S(250), estimateTextWidth(nameText, nameFont));
+    const rowW = tagW + S(14) + nameW;
+    const line1 = S(18);
+    const tag = this.host.addChildPlainNode(plate, 'LobbyHeroDetailRarityTag', -rowW / 2 + tagW / 2, line1, tagW, S(30));
+    // 稀有度小标签:圆角实底(稀有度色压暗),白字
+    const tagBg = mountGlassSlice(this.host, tag, 'Bg', GLASS_SLICES.tabActive, 0, 0, tagW, S(30), k * 0.5);
+    const rc = this.rarityColor(hero.rarity);
+    if (tagBg) {
+      tagBg.color = rgba(Math.round(rc.r * 0.62), Math.round(rc.g * 0.62), Math.round(rc.b * 0.62), 255);
+    }
+    glassLabel(this.host, tag, 'Text', safeText(hero.rarity || 'R'), 0, 0, F(16), rgba(240, 236, 250), tagW - S(4), HorizontalTextAlignment.CENTER, true);
+    glassLabel(this.host, plate, 'LobbyHeroDetailName', nameText, -rowW / 2 + tagW + S(14), line1, nameFont, GLASS_COLOR.text, S(250), HorizontalTextAlignment.LEFT, true);
+    const metaFont = F(19);
+    const line2 = -S(18);
+    const star = this.glassStarText(hero);
+    const parts: Array<{ name: string; text: string; color: Color }> = [
+      { name: 'LobbyHeroDetailLevel', text: `Lv.${hero.level}`, color: GLASS_COLOR.sub },
+      { name: 'LobbyHeroDetailMetaSep1', text: '|', color: GLASS_COLOR.dim },
+      { name: 'LobbyHeroDetailPower', text: `战力 ${formatInteger(hero.power)}`, color: GLASS_COLOR.sub },
+      { name: 'LobbyHeroDetailMetaSep2', text: '|', color: GLASS_COLOR.dim },
+      { name: 'LobbyHeroDetailGlassStars', text: star.text, color: star.color },
+    ];
+    const gap = S(8);
+    const widths = parts.map((part) => estimateTextWidth(part.text, metaFont) * 0.92);
+    let cur = -(widths.reduce((a, b) => a + b, 0) + gap * (parts.length - 1)) / 2;
+    parts.forEach((part, index) => {
+      glassLabel(this.host, plate, part.name, part.text, cur, line2, metaFont, part.color, widths[index] + S(30));
+      cur += widths[index] + gap;
+    });
+    this.starRowArgs = null;
+    ([-1, 1] as const).forEach((direction) => {
+      const ax = FX(direction < 0 ? 500 : 946);
+      const arrow = mountGlassIconButton(this.host, parent, direction < 0 ? 'LobbyHeroDetailSwitchPrev' : 'LobbyHeroDetailSwitchNext', direction < 0 ? GLASS_ICON.back : GLASS_ICON.chevron, ax, FY(744), S(direction < 0 ? 30 : 26), S(70), () => this.host.switchLobbyHeroDetail(direction));
+      void arrow;
+    });
+  }
 
   // ───────────── 2026-10-22 英雄详情(手机)原型 1:1 ─────────────
   /** 字号:原型 px → 设计 px,手机下限 20(phoneReadableFontSize 同口径)。 */
