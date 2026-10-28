@@ -98,6 +98,22 @@ import { resolveBagStyleItemIconAsset } from '../lobby/LobbyBagPanelRenderer';
 import { heroCardArtProfileByCode } from '../lobby/HeroCardArtAssets';
 import { renderLockGlyph } from '../UiLockGlyph';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_GACHA_ACTION_ICON, GLASS_GACHA_POOL_ICON, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassCheckbox, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+
+/** 2026-10-29 B 风格(毛玻璃)开关:手机横屏召唤主界面按原型 gacha_b 1:1。 */
+const GACHA_GLASS = true;
+/** 召唤原图大教堂去饱和 / 提亮 / 压高光 / 轻虚化;比背包的大厅图层次多,人物身后的半透明黑烟能融进去(平灰底上会显出一块暗区)。 */
+const GACHA_GLASS_BG = { path: 'ui/gacha/gacha_bg_glass/spriteFrame', ratio: 1672 / 941 };
+/** B 风格中央卡池骨骼放大倍数(原型人物约占屏高 72%)。 */
+const GACHA_GLASS_SPINE_BOOST = 1.75;
+/** 粗估文字宽(中文按字号、其余按 0.56 字号)。 */
+function estimateGlassTextWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of Array.from(text)) {
+    w += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? fontSize : fontSize * 0.56;
+  }
+  return w;
+}
 
 const GACHA_REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
 const GACHA_REF_SQUARE: RefKitItem = { path: 'ui/formation/ref/btn_square/spriteFrame', w: 96, h: 96, inset: [24, 24, 24, 24] };
@@ -188,6 +204,8 @@ const GACHA_BOX_SUMMON_SPINE_GROUND_Y_EXTRA_RATIO = -0.045;
 export class GachaSceneRenderer {
   // 结果卡详情浮层:悬浮=临时(移出即收),点击=固定(遮罩点击关闭)。
   private resultTooltipNode: Node | null = null;
+  /** 本次主界面是否走 B 风格(骨骼舞台去红环装饰、人物放大)。 */
+  private glassMode = false;
   /** 当前结果页的结果卡列表(用于同批多件同编码装备逐件对应实例)。 */
   private currentResultItems: GachaMockResultItem[] | null = null;
   private resultTooltipSticky = false;
@@ -217,6 +235,16 @@ export class GachaSceneRenderer {
     root.addComponent(BlockInputEvents);
 
     this.upPanelTop = null;
+    this.glassMode = GACHA_GLASS && isPhoneDesign();
+    if (this.glassMode) {
+      const bgW = Math.max(layout.width, layout.height * GACHA_GLASS_BG.ratio);
+      if (!this.host.addSprite('GachaSceneBackground', GACHA_GLASS_BG.path, 0, 0, bgW, bgW / GACHA_GLASS_BG.ratio, root)) {
+        this.renderBackground(root, layout);
+      }
+      this.renderGlassMain(root, layout, scale, state);
+      this.renderActionModal(root, layout, scale, state);
+      return;
+    }
     this.renderBackground(root, layout);
     this.renderTopBar(root, layout, scale);
     if (layout.safeWidth < 900 || layout.safeHeight < 520) {
@@ -824,7 +852,9 @@ export class GachaSceneRenderer {
     graphics.fillColor = rgba(0, 0, 0, 70);
     graphics.ellipse(0, spineGroundY - 22 * scale, stageWidth * 0.34, stageHeight * 0.09);
     graphics.fill();
-    this.renderC1812SummonStageDecor(stage, stageWidth, stageHeight, scale, spineGroundY, selectedPool);
+    if (!this.glassMode) {
+      this.renderC1812SummonStageDecor(stage, stageWidth, stageHeight, scale, spineGroundY, selectedPool);
+    }
 
     const fallback = this.renderAbyssSpineFallback(stage, stageWidth, stageHeight, scale, selectedPool);
     const resource = selectedPool.centerSpineResource || GACHA_ABYSS_SPINE_RESOURCE;
@@ -834,9 +864,11 @@ export class GachaSceneRenderer {
     const idle = selectedPool.centerIdleAnimation || GACHA_ABYSS_SPINE_IDLE_ANIMATION;
     const spineNode = this.host.addChildPlainNode(stage, 'GachaAbyssSpineNode', 0, spineGroundY, stageWidth, stageHeight);
     const skeleton = spineNode.addComponent(sp.Skeleton);
-    skeleton.premultipliedAlpha = false;
+    // 10-29:召唤骨骼图集除 hunka_zhanjiangaosika 外都是预乘导出(RGB ≤ A),按非预乘画会把半透明烟雾画暗,
+    // 人物后面压出一整块矩形暗区(B 风格亮背景上很明显)
+    skeleton.premultipliedAlpha = !resource.includes('hunka_zhanjiangaosika');
     skeleton.timeScale = 0.78;
-    const spineScale = this.resolveAbyssSpineScale(layout, scale, resource);
+    const spineScale = this.resolveAbyssSpineScale(layout, scale, resource) * (this.glassMode ? GACHA_GLASS_SPINE_BOOST : 1);
     spineNode.setScale(new Vec3(spineScale, spineScale, 1));
     this.ensureConfiguredSpineData(resource, uuid, (data) => {
       if (!this.isSkeletonNodeAlive(skeleton)) {
@@ -916,6 +948,15 @@ export class GachaSceneRenderer {
   }
 
   private renderAbyssSpineFallback(parent: Node, width: number, height: number, scale: number, selectedPool: GachaPreviewPool): Node {
+    if (this.glassMode) {
+      // B 风格:不画旧的红圈暗框,只留一行淡字呼吸(骨骼加载完即销毁)
+      const glassNode = this.host.addChildPlainNode(parent, 'GachaAbyssSpineLoadingFallback', 0, -height * 0.05, width * 0.6, 40 * scale);
+      const tip = glassLabel(this.host, glassNode, 'GachaAbyssSpineLoadingLabel', `${safeText(selectedPool.title) || '召唤'}准备中…`, 0, 0, Math.max(20, 21 * scale), GLASS_COLOR.sub, width * 0.6, HorizontalTextAlignment.CENTER);
+      tip.overflow = Label.Overflow.SHRINK;
+      const fade = glassNode.addComponent(UIOpacity);
+      tween(fade).repeatForever(tween().to(0.9, { opacity: 230 }).to(0.9, { opacity: 120 })).start();
+      return glassNode;
+    }
     const node = this.host.addChildPlainNode(parent, 'GachaAbyssSpineLoadingFallback', 0, -height * 0.12, width * 0.46, height * 0.52);
     const graphics = node.addComponent(Graphics);
     graphics.fillColor = rgba(10, 5, 8, 116);
@@ -1231,6 +1272,221 @@ export class GachaSceneRenderer {
     graphics.moveTo(width * 0.24, height * 0.2);
     graphics.lineTo(-width * 0.16, height * 0.34);
     graphics.stroke();
+  }
+
+  /**
+   * 2026-10-29 B 风格召唤主界面(原型 gacha_b 1:1,原型坐标 1870×841):整页去饱和大厅背景 + 中央卡池骨骼放大;
+   * 左栏卡池(选中暗金块 + ›,其余玻璃块 + 线稿图标)、顶部保底行、右侧圆形功能钮 + 跳过动画 + 概率提升面板、底部召唤次钮 / 主钮 + 消耗行。
+   */
+  private renderGlassMain(root: Node, layout: UiLayout, scale: number, state: GachaSceneState): void {
+    const pw = layout.stageWidth;
+    const ph = layout.stageHeight;
+    const { LX, RX, FX, FY, S, k } = glassProtoMap(pw, ph);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const selectedPool = this.resolveSelectedPool(state);
+    const profile = this.host.currentLobbyProfile();
+    mountGlassTopBar(this.host, root, 'Gacha', pw, ph, '召唤', [
+      { key: 'bound', icon: 'ui/bag/ai/icon_bound_diamond/spriteFrame', value: compactValue(profile.boundDiamond), width: 167 },
+      { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: compactValue(profile.diamond), width: 165 },
+    ], () => this.host.closeGachaScene(), () => this.host.closeGachaScene(), { chipRight: 1720 });
+    this.renderAbyssSpineStage(root, layout, scale, selectedPool);
+
+    // ── 左栏卡池(45..350,行高 94,行心 162 起步 112)──
+    const pools = this.resolvePools(state);
+    const railCx = (LX(45) + LX(350)) / 2;
+    const railW = LX(350) - LX(45);
+    const ox = (px: number): number => LX(px) - railCx;
+    const step = Math.min(112, (790 - 115) / Math.max(1, pools.length));
+    pools.forEach((pool, index) => {
+      const active = this.isSelectedPool(pool, state.selectedPoolCode);
+      const node = this.host.addChildPlainNode(root, `GachaPool_${pool.id}`, railCx, FY(162 + index * step), railW, S(Math.min(94, step - 10)));
+      const h = S(Math.min(94, step - 10));
+      if (active) {
+        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabSel, 0, 0, railW, h, k);
+      } else {
+        mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.panel, 0, 0, railW, h, k);
+      }
+      const code = (pool.poolCode || '').toUpperCase();
+      const type = (pool.displayType ?? pool.poolType ?? '').toUpperCase();
+      const iconPath = code.includes('EQUIP') ? GLASS_GACHA_POOL_ICON.EQUIP
+        : type === 'LIMITED' || pool.id === 'limited' || code.includes('LIMITED') ? GLASS_GACHA_POOL_ICON.LIMITED
+          : type === 'HERO' || code === 'NORMAL_HERO' || pool.id === 'hero' ? GLASS_GACHA_POOL_ICON.HERO : GLASS_GACHA_POOL_ICON.NORMAL;
+      const icon = this.host.addSprite('Icon', iconPath, ox(90), 0, S(50), S(50), node);
+      if (icon) {
+        icon.color = active ? rgba(250, 244, 230) : pool.locked ? rgba(120, 128, 140) : rgba(206, 212, 222);
+      }
+      T(node, 'GachaPoolTitle', pool.title, ox(141), S(14), 24, active ? rgba(253, 253, 252) : rgba(236, 238, 242), S(180), HorizontalTextAlignment.LEFT, true);
+      T(node, 'GachaPoolSubline', pool.locked ? (pool.buttonDisabledReason ?? '锁定') : pool.subline, ox(141), -S(18), 19, active ? rgba(246, 236, 214) : GLASS_COLOR.sub, S(190));
+      if (active) {
+        const chev = this.host.addSprite('Chevron', GLASS_ICON.chevron, ox(327), 0, S(18), S(18), node);
+        if (chev) {
+          chev.color = rgba(250, 244, 230);
+        }
+      }
+      if (pool.locked) {
+        (node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity)).opacity = 170;
+      }
+      node.addComponent(Button);
+      node.on(Button.EventType.CLICK, () => this.host.selectGachaPool(pool.poolCode ?? pool.id), this);
+      this.host.applyImageButtonFeedback(node, 1.02, 0.98);
+    });
+
+    // ── 顶部保底行 (935, 95) + 说明 (935, 137)──
+    const pityText = this.resolvePityText(selectedPool, state);
+    const match = /^再召唤 (\d+) 次必得 (.+)$/.exec(pityText);
+    if (match) {
+      const segs: Array<{ text: string; size: number; color: Color; bold: boolean }> = [
+        { text: '再召唤 ', size: 31, color: GLASS_COLOR.text, bold: false },
+        { text: match[1], size: 46, color: rgba(232, 196, 120), bold: true },
+        { text: ' 次必得 ', size: 31, color: GLASS_COLOR.text, bold: false },
+        { text: match[2], size: 35, color: rgba(232, 196, 120), bold: true },
+      ];
+      const widths = segs.map((seg, i) => estimateGlassTextWidth(seg.text, S(seg.size)) + (i === 1 ? S(12) : 0));
+      let cursor = FX(935) - widths.reduce((a, b) => a + b, 0) / 2;
+      segs.forEach((seg, index) => {
+        T(root, `GachaPity_${index}`, seg.text, cursor, FY(95), seg.size, seg.color, widths[index] + S(12), HorizontalTextAlignment.LEFT, seg.bold);
+        cursor += widths[index];
+      });
+    } else {
+      T(root, 'GachaPityLine', pityText, FX(935), FY(95), 30, GLASS_COLOR.text, S(900), HorizontalTextAlignment.CENTER, true);
+    }
+    T(root, 'GachaPhaseGuardNote', selectedPool.noticeText ?? '卡池信息由后端配置驱动。', FX(935), FY(137), 19, GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+
+    // ── 右侧功能钮(圆心 x 1680,y 170 / 252 / 335;字 x 1732)+ 跳过动画 (1680, 419)──
+    this.resolveRightActions(selectedPool).forEach((action, index) => {
+      const cy = FY(170 + index * 82.5);
+      const node = this.host.addChildPlainNode(root, `GachaAction_${action.key}`, (RX(1640) + RX(1830)) / 2, cy, RX(1830) - RX(1640), S(74));
+      const nx = (px: number): number => RX(px) - (RX(1640) + RX(1830)) / 2;
+      this.host.addSprite('Icon', GLASS_GACHA_ACTION_ICON[action.key] ?? GLASS_GACHA_ACTION_ICON.info, nx(1680), 0, S(70), S(70), node);
+      T(node, 'GachaActionLabel', action.label, nx(1732), 0, 22, GLASS_COLOR.text, S(110));
+      node.addComponent(Button);
+      node.on(Button.EventType.CLICK, () => {
+        this.host.setStatus(action.note);
+        this.host.openGachaActionScene(action.key);
+      }, this);
+      this.host.applyImageButtonFeedback(node, 1.04, 0.96);
+    });
+    const skip = this.host.isGachaSkipAnimationEnabled();
+    const toggle = this.host.addChildPlainNode(root, 'GachaSkipAnimToggle', (RX(1655) + RX(1815)) / 2, FY(419), RX(1815) - RX(1655), S(56));
+    const tx = (px: number): number => RX(px) - (RX(1655) + RX(1815)) / 2;
+    mountGlassCheckbox(this.host, toggle, 'Box', tx(1680), 0, S(30), skip);
+    T(toggle, 'GachaSkipAnimLabel', '跳过动画', tx(1713), 0, 22, GLASS_COLOR.text, S(110));
+    toggle.addComponent(Button);
+    toggle.on(Button.EventType.CLICK, () => this.host.toggleGachaSkipAnimation(), this);
+    this.host.applyImageButtonFeedback(toggle, 1.03, 0.97);
+    this.renderGlassUpPanel(root, state, selectedPool, RX, FY, S, k, T);
+
+    // ── 底部:召唤1次(535..918)次钮 / 召唤10次(951..1334)主钮,y 716;消耗行 y 778 ──
+    const enabled = !state.drawing && !selectedPool.locked && !selectedPool.previewOnly && selectedPool.drawEnabled === true;
+    const freeSingle = state.freeSingle != null && state.freeSingle.available && state.freeSingle.poolCode === selectedPool.poolCode;
+    const buttons: Array<{ mode: GachaPreviewResultMode; name: string; title: string; cost: string; x0: number; x1: number; primary: boolean }> = [
+      { mode: 'once', name: 'GachaSummonOnceButton', title: freeSingle ? '免费召唤' : selectedPool.buttonSingleText ?? '召唤1次', cost: freeSingle ? '今日免费 1 次' : this.resolveSummonCostText(selectedPool, 'once'), x0: 535, x1: 918, primary: false },
+      { mode: 'ten', name: 'GachaSummonTenButton', title: selectedPool.buttonTenText ?? '召唤10次', cost: this.resolveSummonCostText(selectedPool, 'ten'), x0: 951, x1: 1334, primary: true },
+    ];
+    buttons.forEach((btn) => {
+      const kind = btn.primary ? (enabled ? 'primary' : 'primaryOff') : (enabled ? 'secondary' : 'disabled');
+      mountGlassButton(this.host, root, btn.name, state.drawing ? '召唤中' : btn.title, (FX(btn.x0) + FX(btn.x1)) / 2, FY(716), FX(btn.x1) - FX(btn.x0), S(63), k, kind, () => {
+        if (state.drawing) {
+          this.host.setStatus('召唤请求处理中，请勿重复点击。');
+          return;
+        }
+        if (selectedPool.locked || selectedPool.previewOnly || selectedPool.drawEnabled !== true) {
+          this.host.setStatus(selectedPool.buttonDisabledReason ?? '该卡池暂未开放真实抽卡。');
+          return;
+        }
+        this.host.startGachaDraw(btn.mode);
+      }, 26);
+      this.renderGlassCostRow(root, btn.name, btn.cost, (FX(btn.x0) + FX(btn.x1)) / 2, FY(778), S, T);
+    });
+  }
+
+  /** B 风格消耗行:「图标 + 文字」段之间以 · 分隔,整行居中。 */
+  private renderGlassCostRow(parent: Node, name: string, cost: string, cx: number, y: number, S: (v: number) => number,
+    T: (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label): void {
+    const parts = cost.split(' / ').map((part) => part.trim()).filter((part) => part.length > 0).slice(0, 2);
+    const font = S(20);
+    const iconW = S(26);
+    const gap = S(10);
+    const dotW = S(26);
+    const segW = parts.map((part) => (part.includes('免费') ? 0 : iconW + gap) + estimateGlassTextWidth(part, font));
+    const total = segW.reduce((a, b) => a + b, 0) + (parts.length > 1 ? dotW : 0);
+    let cursor = cx - total / 2;
+    parts.forEach((part, index) => {
+      if (index > 0) {
+        T(parent, `${name}CostDot`, '·', cursor + dotW / 2, y, 20, GLASS_COLOR.sub, dotW, HorizontalTextAlignment.CENTER);
+        cursor += dotW;
+      }
+      const free = part.includes('免费');
+      if (!free) {
+        const iconAsset = part.includes('券') ? GACHA_COST_TICKET_ICON_ASSET : part.includes('金币') ? GACHA_COST_GOLD_ICON_ASSET : part.includes('绑钻') ? 'ui/bag/ai/icon_bound_diamond/spriteFrame' : GACHA_COST_DIAMOND_ICON_ASSET;
+        const iw = iconAsset === GACHA_COST_TICKET_ICON_ASSET ? iconW * (136 / 110) : iconW;
+        this.host.addSprite(`${name}CostIcon_${index}`, iconAsset, cursor + iconW / 2, y, iw, iconW, parent);
+        cursor += iconW + gap;
+      }
+      const tw = estimateGlassTextWidth(part, font);
+      T(parent, `${name}CostText_${index}`, part, cursor, y, 20, free ? rgba(255, 226, 120) : rgba(214, 220, 230), tw + S(10));
+      cursor += tw;
+    });
+  }
+
+  /** B 风格概率提升面板(1435..1828,底边 715,按行数向上长):标题 + 分隔线 + 「稀有度色标签 + UP 英雄名」分组。 */
+  private renderGlassUpPanel(parent: Node, state: GachaSceneState, selectedPool: GachaPreviewPool, RX: (px: number) => number, FY: (py: number) => number, S: (v: number) => number, k: number,
+    T: (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label): void {
+    const detail = state.poolDetail;
+    if (!detail || (selectedPool.poolCode && detail.pool?.poolCode && detail.pool.poolCode !== selectedPool.poolCode)) {
+      return;
+    }
+    const upItems = detail.items.filter((item) => item.status === 1 && item.upFlag === 1 && (item.rewardType || '').toUpperCase() === 'HERO');
+    if (upItems.length === 0) {
+      return;
+    }
+    const groups: Array<{ rarity: string; lines: string[] }> = [];
+    upItems.slice().sort((a, b) => gachaRarityRank(b.rarity) - gachaRarityRank(a.rarity)).forEach((item) => {
+      const rarity = safeText(item.rarity);
+      const name = safeText(item.rewardName || item.rewardCode);
+      let group = groups.find((g) => g.rarity === rarity);
+      if (!group) {
+        group = { rarity, lines: [] };
+        groups.push(group);
+      }
+      const last = group.lines[group.lines.length - 1];
+      // 一行放两个名字(原型「永夜龙骑 · 阿尔萨斯、」换行「深渊魔女 · 伊芙琳」):超过约 11 字就换行
+      if (last !== undefined && (last + '、' + name).length <= 11) {
+        group.lines[group.lines.length - 1] = `${last}、${name}`;
+      } else {
+        if (last !== undefined) {
+          group.lines[group.lines.length - 1] = `${last}、`;
+        }
+        group.lines.push(name);
+      }
+    });
+    const lineH = 32;
+    const groupGap = 20;
+    const bodyH = groups.reduce((sum, g) => sum + g.lines.length * lineH, 0) + Math.max(0, groups.length - 1) * groupGap;
+    const top = 715 - (bodyH + 92);
+    const cx = (RX(1435) + RX(1828)) / 2;
+    const cy = (FY(top) + FY(715)) / 2;
+    const panel = mountGlassPanel(this.host, parent, 'GachaUpPreviewPanel', cx, cy, RX(1828) - RX(1435), FY(top) - FY(715), k);
+    const PX = (px: number): number => RX(px) - cx;
+    const PY = (py: number): number => FY(py) - cy;
+    mountGlassSectionHeader(this.host, panel, 'GachaUp', '概率提升', PX(1462), PY(top + 34), k, 25);
+    mountGlassLine(this.host, panel, 'HeadLine', (PX(1455) + PX(1810)) / 2, PY(top + 65), PX(1810) - PX(1455), Math.max(1, S(1.4)), rgba(52, 60, 72, 255));
+    let y = top + 65 + 31;
+    groups.forEach((group, gi) => {
+      if (gi > 0) {
+        mountGlassLine(this.host, panel, `Sep_${gi}`, (PX(1455) + PX(1810)) / 2, PY(y - lineH / 2 - groupGap / 2 + 4), PX(1810) - PX(1455), Math.max(1, S(1.2)), rgba(46, 54, 66, 255));
+      }
+      T(panel, `GachaUpTag_${gi}`, group.rarity, PX(1468), PY(y), 22, gachaRarityTagColor(group.rarity), S(70), HorizontalTextAlignment.LEFT, true);
+      group.lines.forEach((line, li) => {
+        T(panel, `GachaUpLine_${gi}_${li}`, line, PX(1545), PY(y + li * lineH), 22, GLASS_COLOR.text, PX(1815) - PX(1545));
+      });
+      y += group.lines.length * lineH + groupGap;
+    });
   }
 
   private renderPityLine(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool, state: GachaSceneState): void {

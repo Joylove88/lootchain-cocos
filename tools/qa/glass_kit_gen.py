@@ -430,7 +430,10 @@ def extract_proto_icons():
                                                'tab_boots': (388, 168, 20), 'tab_ring': (458, 168, 20), 'tab_necklace': (528, 168, 20)}),
                               # 背包原型 bag_b:左栏分类线稿(白色剪影,运行时染色;「全部」压在香槟底上同样按色差抠)
                               ('bag_b.png', {'bag_all': (89, 158, 26), 'bag_material': (88, 244, 27), 'bag_equip': (89, 324, 27), 'bag_ticket': (89, 405, 27),
-                                             'bag_consume': (89, 486, 27), 'bag_fragment': (89, 569, 27), 'bag_box': (88, 649, 27), 'bag_pass': (88, 730, 27)})):
+                                             'bag_consume': (89, 486, 27), 'bag_fragment': (89, 569, 27), 'bag_box': (88, 649, 27), 'bag_pass': (88, 730, 27)}),
+                              # 召唤原型 gacha_b:左栏卡池线稿(白)、右侧功能钮(连圆环保留原色)
+                              ('gacha_b.png', {'pool_limited': (90, 161, 26), 'pool_hero': (89, 272, 26), 'pool_equip': (89, 385, 26), 'pool_normal': (89, 500, 28),
+                                               'gacha_act_info': (1680, 170, 35), 'gacha_act_record': (1680, 252, 35), 'gacha_act_pool': (1680, 335, 35)})):
         path = os.path.join(os.path.dirname(PROTO), proto_name)
         if not os.path.exists(path):
             continue
@@ -439,8 +442,8 @@ def extract_proto_icons():
             img = img.resize((1870, 841), Image.LANCZOS)
         P = np.asarray(img).astype(float)
         for key, (x, y, half) in items.items():
-            if key == 'lock':
-                save(key, cut_keep(x, y, half, 30, 120))
+            if key == 'lock' or key.startswith('gacha_act'):
+                save(key, cut_keep(x, y, half, 30, 120) if key == 'lock' else cut_keep(x, y, half, 14, 70))
             else:
                 save(key, cut(x, y, half, 18, 90, True))
 

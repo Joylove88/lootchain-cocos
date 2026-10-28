@@ -82,6 +82,22 @@ export const GLASS_BAG_ICON: Record<string, string> = {
   PASS: G('bag_pass'),
 };
 
+/** 召唤左栏卡池线稿(原型 gacha_b 抠的白色剪影,运行时染色)。 */
+export const GLASS_GACHA_POOL_ICON = {
+  LIMITED: G('pool_limited'),
+  HERO: G('pool_hero'),
+  EQUIP: G('pool_equip'),
+  NORMAL: G('pool_normal'),
+};
+
+/** 召唤右侧功能钮(原型抠的「圆环 + 暗金图标」整枚,保留原色)。 */
+export const GLASS_GACHA_ACTION_ICON: Record<string, string> = {
+  info: G('gacha_act_info'),
+  record: G('gacha_act_record'),
+  pool: G('gacha_act_pool'),
+  exchange: G('gacha_act_pool'),
+};
+
 /** 属性小图标(直接从原型 hero_b2 抠的扁平暗金剪影,glass_kit_gen.extract_proto_icons)。 */
 export const GLASS_STAT_ICON = {
   hp: G('stat_hp'),
@@ -122,6 +138,8 @@ export const GLASS_ASSET_PATHS: readonly string[] = [
   ...Object.values(GLASS_PART_ICON),
   ...Object.values(GLASS_FORGE_TAB_ICON),
   ...Object.values(GLASS_BAG_ICON),
+  ...Object.values(GLASS_GACHA_POOL_ICON),
+  ...Object.values(GLASS_GACHA_ACTION_ICON),
   G('lock'),
 ];
 
