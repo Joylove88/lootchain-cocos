@@ -21,7 +21,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
-import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassPanel, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { safeText } from '../UiTextFormatter';
 import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_ICON_RING_ASSET, REF_KIT, REF_SECTION_EMBLEM, REF_TITLE_STAR, refCardFrameK } from '../UiRefKit';
 
@@ -179,7 +179,7 @@ const SHOP_ILLUSTRATIONS: Record<string, SpriteSpec> = {
 };
 /** 钻石页同 iconKey 的档位按档位编码换图(钻石山与大量钻石同为 diamond_many)。 */
 const RECHARGE_ART_BY_TIER: Record<string, string> = { RC_328: 'diamond_mountain' };
-/** 2026-10-29 B 风格(毛玻璃)开关:手机金币商店按原型 shop_b 1:1(体力 / 钻石页待原型确认)。 */
+/** 2026-10-29 B 风格(毛玻璃)开关:手机 金币 / 体力 / 钻石 三页按原型 shop_b / shop_stamina_b_barB / shop_diamond_b 1:1(强化护符页仍旧样式)。 */
 const SHOP_GLASS = true;
 const SHOP_GLASS_BG = { path: 'ui/common/ref/hall_bg_glass/spriteFrame', ratio: 1870 / 841 };
 /** B 风格金币插画:从原型 shop_b 抠的哑光图(无底座),w / h 为贴图像素。 */
@@ -188,6 +188,16 @@ const GLASS_GOLD_ILLU: Record<string, { path: string; w: number; h: number }> = 
   gold_medium: { path: 'ui/shop/glass/illu_gold_medium/spriteFrame', w: 650, h: 460 },
   gold_large: { path: 'ui/shop/glass/illu_gold_large/spriteFrame', w: 664, h: 466 },
   gold_chest: { path: 'ui/shop/glass/illu_gold_chest/spriteFrame', w: 696, h: 494 },
+};
+/** 体力药水(原型抠图)。 */
+const GLASS_SHOP_ILLU = { stamina: { path: 'ui/shop/glass/illu_stamina/spriteFrame', w: 540, h: 560 } };
+/** 钻石档位插画(原型 shop_diamond_b 抠的 5 张,按档位编码;原型之外的档位回退旧插画)。 */
+const GLASS_RECHARGE_ILLU: Record<string, { path: string; w: number; h: number }> = {
+  RC_6: { path: 'ui/shop/glass/illu_diamond_1/spriteFrame', w: 600, h: 326 },
+  RC_30: { path: 'ui/shop/glass/illu_diamond_2/spriteFrame', w: 600, h: 326 },
+  RC_98: { path: 'ui/shop/glass/illu_diamond_3/spriteFrame', w: 600, h: 336 },
+  RC_198: { path: 'ui/shop/glass/illu_diamond_4/spriteFrame', w: 600, h: 392 },
+  RC_328: { path: 'ui/shop/glass/illu_diamond_5/spriteFrame', w: 600, h: 416 },
 };
 function compactShopNumber(value: number): string {
   const v = Math.max(0, Math.trunc(value));
@@ -303,7 +313,7 @@ export class LobbyShopDialogRenderer {
         panelH = panelW * PANEL_FRAME.aspect;
       }
     }
-    if (phone && SHOP_GLASS && state.kind === 'gold') {
+    if (phone && SHOP_GLASS && state.kind !== 'rune') {
       this.renderGlassShop(overlay, layout, state);
       return;
     }
@@ -426,17 +436,38 @@ export class LobbyShopDialogRenderer {
     const profile = this.host.currentLobbyProfile();
     const diamond = catalog ? Number(catalog.diamond ?? 0) : Number(profile.diamond ?? 0);
     const close = (): void => this.host.closeLobbyShopDialog();
-    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], [
-      { key: 'gold', icon: ICONS.gold_small.path, value: compactShopNumber(Number(profile.gold ?? 0)), width: 160 },
-      { key: 'diamond', icon: ICONS.diamond.path, value: compactShopNumber(diamond), width: 177 },
-    ], close, close, { y: 57, chipRight: 1696, subtitle: '用钻石换取金币,档位越高赠送越多' });
+    const chips: Array<{ key: string; icon: string; value: string; width: number }> = [];
+    if (state.kind === 'gold') {
+      chips.push({ key: 'gold', icon: ICONS.gold_small.path, value: compactShopNumber(Number(profile.gold ?? 0)), width: 160 });
+    } else if (state.kind === 'stamina') {
+      const stamina = catalog ? catalog.stamina : Number(profile.stamina ?? 0);
+      const maxStamina = catalog ? catalog.maxStamina : Number(profile.maxStamina ?? 0);
+      chips.push({ key: 'stamina', icon: ICONS.stamina.path, value: `${stamina}/${maxStamina}`, width: 160 });
+    }
+    chips.push({ key: 'diamond', icon: ICONS.diamond.path, value: compactShopNumber(diamond), width: 177 });
+    const subtitle = state.kind === 'gold'
+      ? '用钻石换取金币,档位越高赠送越多'
+      : state.kind === 'stamina'
+        ? `${catalog?.staminaOffer.diamondCost ?? 60} 钻石 = ${catalog?.staminaOffer.staminaGain ?? 30} 体力 · 每 5 分钟自然回复 1 点`
+        : this.payMode(catalog) === 'ONLINE'
+          ? '选择支付方式后点击档位,在新窗口完成付款,到账后钻石自动发放'
+          : this.payMode(catalog) === 'MOCK'
+            ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
+            : '钻石充值暂未开放,敬请期待';
+    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], chips, close, close, { y: 57, chipRight: 1696, subtitle });
     const { FY, S } = glassProtoMap(panelW, panelH);
     if (!catalog) {
       const l = glassLabel(this.host as never, panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, FY(420), S(22), GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
       l.fontSize = Math.round(S(22));
       return;
     }
-    this.renderGlassGold(panel, catalog, panelW, panelH, state.busy, diamond);
+    if (state.kind === 'gold') {
+      this.renderGlassGold(panel, catalog, panelW, panelH, state.busy, diamond);
+    } else if (state.kind === 'stamina') {
+      this.renderGlassStamina(panel, catalog, panelW, panelH, state.busy, diamond);
+    } else {
+      this.renderGlassRecharge(panel, catalog, state, panelW, panelH);
+    }
     if (state.notice) {
       this.renderNoticeBanner(panel, state.notice, FY(800), panelW, scale);
     } else {
@@ -448,6 +479,248 @@ export class LobbyShopDialogRenderer {
       const busyLabel = glassLabel(this.host as never, cover, 'LobbyShopBusyText', '处理中…', 0, FY(420), S(28), GLASS_COLOR.text, S(400), HorizontalTextAlignment.CENTER, true);
       busyLabel.fontSize = Math.round(S(28));
     }
+  }
+
+  /** B 风格卡片标题:名称 + 渐隐细线 + 中心小菱形(原型 shop_b / 体力 / 钻石同款)。nameY / lineY 为卡内局部 y。 */
+  private glassCardHead(card: Node, name: string, nameY: number, lineY: number, w: number, S: (v: number) => number, size = 27, leftBar = false): void {
+    if (leftBar) {
+      mountGlassSectionHeader(this.host as never, card, 'Head', name, -w / 2 + S(44), nameY, S(1), size);
+    } else {
+      const l = glassLabel(this.host as never, card, 'Name', name, 0, nameY, S(size), GLASS_COLOR.text, w - S(40), HorizontalTextAlignment.CENTER, true);
+      l.fontSize = Math.round(S(size));
+    }
+    mountGlassFadeLine(this.host as never, card, 'NameLine', 0, lineY, w * 0.78, Math.max(1, S(1.4)), rgba(110, 118, 130, 255));
+    const dia = this.host.addChildPlainNode(card, 'NameDiamond', 0, lineY, S(10), S(10)).addComponent(Graphics);
+    dia.fillColor = rgba(150, 158, 170, 230);
+    dia.moveTo(0, S(4.5));
+    dia.lineTo(S(4.5), 0);
+    dia.lineTo(0, -S(4.5));
+    dia.lineTo(-S(4.5), 0);
+    dia.close();
+    dia.fill();
+  }
+
+  /** B 风格价格胶囊:图标 + 数字居中;kind 只用 secondary(10-29 用户:金色只给真正推荐的档位)。 */
+  private glassPricePill(card: Node, y: number, w: number, h: number, k: number, S: (v: number) => number, text: string, icon: SpriteSpec | undefined, color: Color, primary = false): void {
+    const price = mountGlassButton(this.host as never, card, 'Price', '', 0, y, w, h, k, primary ? 'primary' : 'secondary', undefined, 24);
+    price.getComponent(Button)?.destroy();
+    const pf = Math.round(S(28));
+    let textW = 0;
+    for (const ch of Array.from(text)) {
+      textW += /[　-鿿]/.test(ch) ? pf : pf * 0.58;
+    }
+    const iconW = icon ? S(34) : 0;
+    const gap = icon ? S(14) : 0;
+    const startX = -(iconW + gap + textW) / 2;
+    if (icon) {
+      this.host.addSprite('PriceIcon', icon.path, startX + iconW / 2, 0, iconW, iconW * icon.aspect, price);
+    }
+    const l = glassLabel(this.host as never, price, 'PriceText', text, startX + iconW + gap, 0, pf, primary ? GLASS_COLOR.onChampagne : color, textW + S(20), HorizontalTextAlignment.LEFT, primary);
+    l.fontSize = pf;
+  }
+
+  /**
+   * 2026-10-29 B 风格体力补充(原型 shop_stamina_b_barB 1:1):左「当前体力」大卡(药水 + 体力 / 数值 + 香槟金细条 + 两行说明),
+   * 右「补充 1 份 / 5 份」两卡(两档单价相同,价格都用次钮),底部额度行。
+   */
+  private renderGlassStamina(panel: Node, catalog: ShopCatalogVO, panelW: number, panelH: number, busy: boolean, diamond: number): void {
+    const { FX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.CENTER, bold = false): Label => {
+      const l = glassLabel(this.host as never, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const offer = catalog.staminaOffer;
+    const remaining = Math.max(0, offer.dailyLimit - offer.usedToday);
+    const top = 139;
+    const bottom = 737;
+    const cy = (FY(top) + FY(bottom)) / 2;
+    const h = FY(top) - FY(bottom);
+    // ── 左卡 107..922 ──
+    const lcx = FX((107 + 922) / 2);
+    const lw = S(922 - 107);
+    const left = mountGlassPanel(this.host as never, panel, 'LobbyShopStaminaBox', lcx, cy, lw, h, k);
+    const LX = (px: number): number => FX(px) - lcx;
+    const Y = (py: number): number => FY(py) - cy;
+    this.glassCardHead(left, '当前体力', Y(190), Y(219), lw, S, 28, true);
+    this.host.addSprite('Potion', GLASS_SHOP_ILLU.stamina.path, 0, Y(386), S(250) * (GLASS_SHOP_ILLU.stamina.w / GLASS_SHOP_ILLU.stamina.h), S(250), left);
+    T(left, 'Label', '体力', LX(190), Y(543), 26, GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
+    T(left, 'LobbyShopStaminaValue', `${catalog.stamina}/${catalog.maxStamina}`, LX(841), Y(543), 30, GLASS_COLOR.text, S(260), HorizontalTextAlignment.RIGHT, true);
+    // 香槟金细条(10-29 用户选 B):暗凹轨道 + 淡边 + 香槟渐变填充 + 上沿 1px 高光
+    const barW = LX(841) - LX(190);
+    const barH = S(32);
+    const bar = this.host.addChildPlainNode(left, 'LobbyShopStaminaBar', (LX(190) + LX(841)) / 2, Y(581), barW, barH);
+    const g = bar.addComponent(Graphics);
+    g.fillColor = rgba(12, 15, 20, 235);
+    g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
+    g.fill();
+    g.strokeColor = rgba(92, 100, 112, 200);
+    g.lineWidth = Math.max(1, S(1.4));
+    g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
+    g.stroke();
+    const ratio = Math.max(0, Math.min(1, catalog.maxStamina > 0 ? catalog.stamina / catalog.maxStamina : 0));
+    if (ratio > 0) {
+      const fw = Math.max(barH, (barW - S(4)) * ratio);
+      const fill = this.host.addChildPlainNode(bar, 'Fill', -barW / 2 + S(2) + fw / 2, 0, fw, barH - S(4));
+      mountGlassSlice(this.host as never, fill, 'Bg', GLASS_SLICES.pillPrimary, 0, 0, fw, barH - S(4), k * 0.3);
+    }
+    if (catalog.stamina > catalog.maxStamina) {
+      T(left, 'Over', `已超出上限 +${catalog.stamina - catalog.maxStamina}`, LX(841), Y(612), 20, rgba(150, 214, 166), S(300), HorizontalTextAlignment.RIGHT);
+    }
+    T(left, 'Note_0', '每 5 分钟自然回复 1 点(上限内)', 0, Y(644), 22, GLASS_COLOR.sub, lw - S(60));
+    T(left, 'Note_1', '购买的体力可超过上限,超出部分不会消失', 0, Y(681), 22, GLASS_COLOR.sub, lw - S(60));
+
+    // ── 右两卡 946..1338 / 1357..1768 ──
+    const packs = [1, offer.maxCountPerBuy].filter((count, index, all) => count >= 1 && all.indexOf(count) === index).slice(0, 2);
+    const slots: Array<[number, number]> = [[946, 1338], [1357, 1768]];
+    packs.forEach((count, index) => {
+      const [x0, x1] = slots[index];
+      const ccx = FX((x0 + x1) / 2);
+      const cw = S(x1 - x0);
+      const card = mountGlassPanel(this.host as never, panel, `LobbyShopStaminaBuy_${count}`, ccx, cy, cw, h, k);
+      this.glassCardHead(card, `补充 ${count} 份`, Y(190), Y(219), cw, S, 27);
+      const ih = S(190);
+      this.host.addSprite('Potion', GLASS_SHOP_ILLU.stamina.path, 0, Y(380), ih * (GLASS_SHOP_ILLU.stamina.w / GLASS_SHOP_ILLU.stamina.h), ih, card);
+      if (count > 1) {
+        T(card, 'Badge', `×${count}`, FX(1666) - ccx, Y(291), 36, GLASS_COLOR.text, S(90), HorizontalTextAlignment.CENTER, true);
+      }
+      T(card, 'Amount', `+${offer.staminaGain * count}`, 0, Y(540), 52, GLASS_COLOR.text, cw - S(30), HorizontalTextAlignment.CENTER, true);
+      T(card, 'Unit', '体力', 0, Y(593), 23, GLASS_COLOR.sub, S(120));
+      const cost = offer.diamondCost * count;
+      const sellable = offer.dailyLimit > 0 && count <= remaining;
+      const text = offer.dailyLimit <= 0 ? '暂未开放' : sellable ? this.host.formatInteger(cost) : '今日已达上限';
+      this.glassPricePill(card, Y(671), S(341), S(64), k, S, text, offer.dailyLimit > 0 && sellable ? ICONS.diamond : undefined,
+        !sellable ? GLASS_COLOR.sub : diamond >= cost ? GLASS_COLOR.text : rgba(230, 140, 130));
+      if (!busy && sellable) {
+        card.addComponent(Button);
+        card.on(Button.EventType.CLICK, () => this.host.buyShopStamina(count, card.getWorldPosition()), this);
+        this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+      }
+    });
+    const quotaText = offer.dailyLimit > 0 ? `今日已购 ${offer.usedToday}/${offer.dailyLimit} 次 · 还可购买 ${remaining} 次` : '体力购买暂未开放';
+    T(panel, 'LobbyShopStaminaQuota', quotaText, 0, FY(780), 22, remaining > 0 ? GLASS_COLOR.sub : rgba(230, 140, 130), S(800));
+  }
+
+  /**
+   * 2026-10-29 B 风格钻石充值(原型 shop_diamond_b 1:1,用户:去掉「热门」,价格全用次钮):支付方式行 + 一排 5 张玻璃卡(多了横向滑动 + 右缘 ›)。
+   */
+  private renderGlassRecharge(panel: Node, catalog: ShopCatalogVO, state: LobbyShopDialogState, panelW: number, panelH: number): void {
+    const { FX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.CENTER, bold = false): Label => {
+      const l = glassLabel(this.host as never, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const busy = state.busy;
+    const mode = this.payMode(catalog);
+    const channels = this.onlineChannels(catalog);
+    const selected = channels.find((channel) => channel.channelCode === state.channelCode) ?? channels[0];
+    // 支付方式行(y 147):灰字标签 + 分段签(选中香槟)
+    if (channels.length > 0) {
+      const chipW = channels.map((channel) => S(Math.max(150, payChannelDisplayName(channel.channelName).length * 26 + 60)));
+      const labelW = S(120);
+      const total = labelW + chipW.reduce((a, b) => a + b, 0) + S(14) * channels.length;
+      let x = -total / 2;
+      T(panel, 'LobbyShopChannelLabel', '支付方式', x + labelW / 2, FY(147), 22, GLASS_COLOR.sub, labelW);
+      x += labelW + S(14);
+      channels.forEach((channel, index) => {
+        const active = channel.channelCode === selected?.channelCode;
+        const w = chipW[index];
+        const chip = this.host.addChildPlainNode(panel, `LobbyShopChannel_${channel.channelCode}`, x + w / 2, FY(147), w, S(44));
+        mountGlassSlice(this.host as never, chip, 'Bg', active ? GLASS_SLICES.pillPrimary : GLASS_SLICES.pillSecondary, 0, 0, w, S(44), k * 0.7);
+        T(chip, `LobbyShopChannelText_${channel.channelCode}`, payChannelDisplayName(channel.channelName), 0, 0, 22, active ? GLASS_COLOR.onChampagne : GLASS_COLOR.text, w - S(20), HorizontalTextAlignment.CENTER, active);
+        if (!busy && !active) {
+          chip.addComponent(Button);
+          chip.on(Button.EventType.CLICK, () => this.host.selectShopRechargeChannel(channel.channelCode), this);
+          this.host.applyImageButtonFeedback(chip, 1.04, 0.96);
+        }
+        x += w + S(14);
+      });
+    }
+    // 卡片:宽 330、步 341.5,视口 91..1781(一屏 5 张),y 198..741
+    const tiers = catalog.rechargeTiers;
+    const cardW = S(330);
+    const step = S(341.5);
+    const top = 198;
+    const bottom = 741;
+    const cy = (FY(top) + FY(bottom)) / 2;
+    const h = FY(top) - FY(bottom);
+    const viewX0 = FX(91);
+    const viewX1 = FX(1781);
+    const viewW = viewX1 - viewX0;
+    const rowW = cardW + step * (tiers.length - 1);
+    let parent: Node = panel;
+    let originX = viewX0 + cardW / 2;
+    let originY = cy;
+    if (rowW > viewW + 1) {
+      const viewport = this.host.addChildPlainNode(panel, 'LobbyShopRechargeScroll', (viewX0 + viewX1) / 2, cy, viewW + S(16), h + S(24));
+      viewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+      const scrollView = viewport.addComponent(ScrollView);
+      scrollView.horizontal = true;
+      scrollView.vertical = false;
+      scrollView.inertia = true;
+      scrollView.elastic = true;
+      scrollView.cancelInnerEvents = true;
+      const contentW = rowW + S(16);
+      const maxShift = contentW - (viewW + S(16));
+      const baseX = maxShift / 2;
+      this.rechargeScroll = Math.max(0, Math.min(maxShift, this.rechargeScroll));
+      const content = this.host.addChildPlainNode(viewport, 'LobbyShopRechargeScrollContent', baseX - this.rechargeScroll, 0, contentW, h + S(24));
+      scrollView.content = content;
+      parent = content;
+      originX = -contentW / 2 + S(8) + cardW / 2;
+      originY = 0;
+      // 右缘「›」圆钮(原型 1823, 445):提示还有更多,滑到头隐藏;点一下翻到最右
+      const hint = this.host.addChildPlainNode(panel, 'LobbyShopRechargeMore', FX(1823), FY(445), S(64), S(64));
+      const hg = hint.addComponent(Graphics);
+      hg.fillColor = rgba(24, 30, 38, 220);
+      hg.circle(0, 0, S(28));
+      hg.fill();
+      hg.strokeColor = rgba(150, 160, 176, 220);
+      hg.lineWidth = Math.max(1.2, S(1.6));
+      hg.circle(0, 0, S(28));
+      hg.stroke();
+      this.host.addSprite('Chevron', GLASS_ICON.chevron, S(2), 0, S(24), S(24), hint);
+      hint.addComponent(Button);
+      hint.on(Button.EventType.CLICK, () => scrollView.scrollToRight(0.3), this);
+      const syncHint = (): void => {
+        this.rechargeScroll = Math.max(0, Math.min(maxShift, baseX - content.position.x));
+        if (hint.isValid) {
+          hint.active = this.rechargeScroll < maxShift - S(12);
+        }
+      };
+      viewport.on('scrolling', syncHint, this);
+      viewport.on('scroll-ended', syncHint, this);
+      syncHint();
+    }
+    const Y = (py: number): number => FY(py) - cy;
+    tiers.forEach((tier, index) => {
+      const price = Number(tier.priceCny ?? 0);
+      const payable = mode === 'MOCK' || (mode === 'ONLINE' && LobbyShopDialogRenderer.channelFits(selected, price));
+      const card = mountGlassPanel(this.host as never, parent, `LobbyShopRecharge_${tier.code}`, originX + index * step, originY, cardW, h, k);
+      this.glassCardHead(card, safeText(tier.name), Y(241), Y(267), cardW, S, 25);
+      const art = GLASS_RECHARGE_ILLU[tier.code];
+      if (art) {
+        const fit = Math.min(S(270) / art.w, S(175) / art.h);
+        this.host.addSprite('Illu', art.path, 0, Y(414), art.w * fit, art.h * fit, card);
+      } else {
+        this.addTierIllustration(card, 'Illu', tier.iconKey, RECHARGE_ART_BY_TIER[tier.code], 0, Y(414), S(250), S(170), 1);
+      }
+      T(card, 'Amount', this.host.formatInteger(tier.diamondTotal), 0, Y(538), 40, GLASS_COLOR.text, cardW - S(30), HorizontalTextAlignment.CENTER, true);
+      T(card, 'Unit', '钻石', 0, Y(577), 22, GLASS_COLOR.sub, S(120));
+      if (tier.diamondBonus > 0) {
+        // 大字已是到账总数(含赠送),标签写"含赠"(2026-10-25 策划审核 P1-18)
+        mountGlassBonusTag(this.host as never, card, 'Bonus', `含赠 ${this.host.formatInteger(tier.diamondBonus)}`, 0, Y(617), S(174), S(36), S(21));
+      }
+      this.glassPricePill(card, Y(683), S(287), S(62), k, S, `¥ ${Number.isInteger(price) ? price : price.toFixed(2)}`, undefined, payable ? GLASS_COLOR.text : GLASS_COLOR.sub);
+      if (!busy && payable) {
+        card.addComponent(Button);
+        card.on(Button.EventType.CLICK, () => this.host.rechargeShopDiamond(tier.code, card.getWorldPosition()), this);
+        this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+      }
+    });
   }
 
   /**

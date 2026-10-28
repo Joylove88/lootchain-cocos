@@ -22,6 +22,17 @@ CUTS = {
         'illu_gold_large': (978, 262, 1310, 495),
         'illu_gold_chest': (1390, 258, 1738, 505),
     },
+    'shop_stamina_b_barB.png': {
+        'illu_stamina': (380, 248, 650, 528),
+    },
+    'shop_diamond_b.png': {
+        'illu_diamond_1': (106, 345, 406, 508),
+        'illu_diamond_2': (447, 345, 747, 508),
+        # 原型里这张是「热门」高亮卡,卡内底偏暖:阈值调高,不把暖底当主体
+        'illu_diamond_3': (787, 340, 1087, 508, 26),
+        'illu_diamond_4': (1127, 312, 1427, 508),
+        'illu_diamond_5': (1467, 300, 1767, 508),
+    },
 }
 
 
@@ -36,6 +47,11 @@ def cut(img, box, lo=10, hi=70):
     core = Image.fromarray(((alpha > 0.6) * 255).astype(np.uint8))
     near = np.asarray(core.filter(ImageFilter.MaxFilter(29)).filter(ImageFilter.GaussianBlur(4))).astype(float) / 255
     alpha = alpha * np.clip(near * 1.6, 0, 1)
+    # 抠图框四边 14px 内渐隐:主体若被框边切到(或框边附近残留背景),上机不会露出一道直边
+    hgt, wid = alpha.shape
+    yy, xx = np.mgrid[0:hgt, 0:wid]
+    border = np.minimum(np.minimum(xx, wid - 1 - xx), np.minimum(yy, hgt - 1 - yy)).astype(float)
+    alpha = alpha * np.clip(border / 14.0, 0, 1)
     fg = np.clip((r - bg * (1 - alpha[..., None])) / np.maximum(alpha[..., None], 1e-3), 0, 255)
     out = np.zeros(r.shape[:2] + (4,), np.uint8)
     out[..., :3] = fg.astype(np.uint8)
@@ -50,7 +66,7 @@ def main():
         if img.size != (1870, 841):
             img = img.resize((1870, 841), Image.LANCZOS)
         for name, box in items.items():
-            im = cut(img, box)
+            im = cut(img, box[:4], lo=box[4] if len(box) > 4 else 10)
             # 放大 2 倍存,手机高分屏显示不糊
             im = im.resize((im.width * 2, im.height * 2), Image.LANCZOS)
             path = os.path.join(OUT, f'{name}.png')
