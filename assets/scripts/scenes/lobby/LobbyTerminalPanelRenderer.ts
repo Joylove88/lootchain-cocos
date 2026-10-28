@@ -5,7 +5,7 @@ import { resolveHeroAvatarPath } from './HeroHeadCrop';
 
 export type LobbyTerminalAction =
   | 'heroes' | 'formation' | 'bag' | 'forge' | 'gacha'
-  | 'adventure' | 'daily' | 'crystal' | 'codex' | 'quest'
+  | 'raid' | 'daily' | 'crystal' | 'codex' | 'quest'
   | 'shop' | 'guild' | 'idle' | 'worldmap' | 'rank'
   | 'mail' | 'notice' | 'gift' | 'settings' | 'logout' | 'profile';
 
@@ -17,7 +17,8 @@ export interface LobbyTerminalPanelHost extends LobbyHudHost {
 /** 功能格:原型列左沿 588 + 229.5i、行顶 92 / 297 / 506,格 196×189。 */
 const TILE_KEYS: LobbyTerminalAction[][] = [
   ['heroes', 'formation', 'bag', 'forge', 'gacha'],
-  ['adventure', 'daily', 'crystal', 'codex', 'quest'],
+  // 第 2 行第 1 格:原「冒险」(实际进矿境掠夺),冒险章节下架后改名「矿境掠夺」(2026-10-28,底图同步重画)
+  ['raid', 'daily', 'crystal', 'codex', 'quest'],
   ['shop', 'guild', 'idle', 'worldmap', 'rank'],
 ];
 const TILE_X0 = 588;

@@ -1,0 +1,14 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: the town HUD over the live game scene. IMPORTANT: keep the game scene from the SECOND image EXACTLY (the isometric dark cobblestone plaza, the bronze compass disc with the cyan rune teleport circle, the chibi heroes standing on it, the notice board, the guild hall building, the lamp posts) - only redesign the HUD overlay in the approved style, small and unobtrusive:
+- Top-left: circular minimap (about 150px) as a frosted dark glass disc with a thin faint white ring (no heavy gold ring), simple dark top-down map with tiny monochrome building marks and a champagne player arrow; a small frosted label "主城" under it; next to its lower right a small round frosted button with a small portal icon and tiny label "传送".
+- Under the minimap: a minimal quest tracker without a panel: small champagne diamond + "荒原的威胁 0/5", under it smaller grey "Lv.10 可接 · 去村外林地升级".
+- Top-right: a row of 4 small round frosted icon buttons with tiny labels under them: 召唤, 商店, 邮件 (small red dot), 终端.
+- Near the leader hero: one slim frosted interaction pill "传送 · 世界地图" with a small key hint "F" on its left, and a dimmer pill "查看 · 公告板" under it.
+- Bottom-left: a subtle translucent frosted joystick (thin ring + small knob).
+- Nothing else on screen (no currency bar, no portrait frame, no bottom dock).
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

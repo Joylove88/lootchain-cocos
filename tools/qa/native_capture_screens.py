@@ -29,6 +29,7 @@ HERO_TAB_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyH
                "else if (n>40) clearInterval(t); }}, 250);")
 SCREENS = [
     ('lobby', "void 0;", 2.5),
+    ('terminal', "root.openLobbyTerminalPanel();", 3.0),
     # docs/50 跑图世界 / 矿境(2026-10-26 补)
     ('world_map', "root.openWorldMapPanel(); setTimeout(() => root.selectWorldMapPoint('GRAY'), 600);", 3.5),
     ('world_bounty', "root.openWorldBountyPanel();", 3.0),

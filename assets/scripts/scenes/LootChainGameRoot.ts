@@ -295,6 +295,9 @@ function profileRenameInvalidReason(name: string, currentName: string): string {
   return '';
 }
 
+/** 冒险章节下架(2026-10-28 用户拍板:新玩法直接去野外打怪;首通奖励改由野外精英承接)。 */
+const LOBBY_ADVENTURE_RETIRED = true;
+
 @ccclass('LootChainGameRoot')
 export class LootChainGameRoot extends Component {
   @property(SpriteFrame)
@@ -922,7 +925,7 @@ export class LootChainGameRoot extends Component {
     // 手机只预读轻的几组:锻造 / 召唤 / 英雄的大图解码后占几百 MB 显存,全读进来手机浏览器可能丢失画面或杀页面
     // (2026-10-05 用户手机战斗中卡死);这三页在手机上首开时再读(素材已在本地,不到 1 秒)。
     // 2026-10-28:安卓原生包贴图是 ASTC(显存约为 PNG 的 1/4),锻造也后台预读——首开不再等「正在加载锻造素材」;手机网页仍不读锻造
-    const groups: UiPreloadGroup[] = sys.isNative ? ['adventure', 'bag', 'forge', 'crystal'] : sys.isMobile ? ['adventure', 'bag', 'crystal'] : ['adventure', 'bag', 'heroes', 'forge', 'gacha', 'crystal'];
+    const groups: UiPreloadGroup[] = sys.isNative ? ['bag', 'forge', 'crystal'] : sys.isMobile ? ['bag', 'crystal'] : ['bag', 'heroes', 'forge', 'gacha', 'crystal'];
     const paths: string[] = [];
     groups.forEach((group) => this.uiSpriteFrameCache.groupAssetPaths(group).forEach((path) => paths.push(path)));
     return paths;
@@ -1536,7 +1539,7 @@ export class LootChainGameRoot extends Component {
       case 'bag': this.openLobbyBagPanel(); return;
       case 'forge': this.openLobbyForgePanel(); return;
       case 'gacha': this.openLobbyGachaScene(); return;
-      case 'adventure': this.openLobbyRaidPanel(); return;
+      case 'raid': this.openLobbyRaidPanel(); return;
       case 'daily': this.openLobbyDailyDungeonPanel(); return;
       case 'crystal': this.openGuardCrystalDialog(); return;
       case 'codex': this.openLobbyCodexPanel(); return;
@@ -2502,13 +2505,13 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent('LobbyProfileSceneContent');
   }
 
-  /** 特殊玩法 · 守卫战(docs/47,2026-10-26):从秘境试炼塔面板进原冒险关卡面板;试炼塔标记清掉,返回时直接回大厅。 */
-  private openLobbySpecialGuardBattle(): void {
-    this.lobbyDailyDungeonPanelOpen = false;
-    this.openLobbyAdventurePanel();
-  }
-
   private openLobbyAdventurePanel(): void {
+    // 冒险章节已下架(2026-10-28,服务端也不再开冒险关卡):旧入口(旧大厅 HUD / 引导 / 关卡失效回跳)统一改去世界地图
+    if (LOBBY_ADVENTURE_RETIRED) {
+      this.setStatus('冒险已下架,请前往野外历练');
+      this.openWorldMapPanel();
+      return;
+    }
     this.uiSpriteFrameCache.preloadGroup('adventure');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyAdventurePanelRenderer.resetChallengeDialog();
@@ -2796,8 +2799,8 @@ export class LootChainGameRoot extends Component {
         this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: target.poolCode };
         this.openLobbyGachaScene();
         return;
-      case 'adventure':
-        this.openLobbyAdventurePanel();
+      case 'field':
+        this.openWorldMapPanel();
         return;
       case 'daily':
         this.openLobbyDailyDungeonPanel();

@@ -857,7 +857,7 @@ export class LobbyForgePanelRenderer {
     title.enableOutline = true;
     title.outlineColor = rgba(0, 0, 0, 220);
     title.outlineWidth = Math.max(1, 1.5 * scale);
-    const sub = this.host.addChildLabel(card, 'LobbyForgeEmptyText', '冒险首通与装备召唤均可获取装备', 0, cardH / 2 - 140 * scale, 18 * scale, rgba(215, 204, 181), new Size(cardW - 60 * scale, 26 * scale));
+    const sub = this.host.addChildLabel(card, 'LobbyForgeEmptyText', '野外精英与装备召唤均可获取装备', 0, cardH / 2 - 140 * scale, 18 * scale, rgba(215, 204, 181), new Size(cardW - 60 * scale, 26 * scale));
     sub.overflow = Label.Overflow.SHRINK;
     if (this.host.openLobbyGachaScene) {
       mountKitButton(this.host, card, 'LobbyForgeEmptyGacha', '去召唤', 0, -cardH / 2 + 40 * scale, 200 * scale, 54 * scale, scale, 'primary', () => this.host.openLobbyGachaScene?.());

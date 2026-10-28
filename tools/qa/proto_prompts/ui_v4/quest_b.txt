@@ -1,0 +1,16 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "任务" (quests), full screen.
+- Top bar: back arrow + title "任务"; close (X) on the right.
+- Under the title: segmented tabs "日常任务" (selected) | "成就"; on the right small text "可领取 1 · 今日完成 1/5".
+- A list of 5 full-width quest rows (frosted glass, rounded), each: small monochrome icon in a soft square, title + grey description, a slim progress bar with count above it, reward chips (small icon + text), and an action button on the right:
+  1) 每日登录 / 登录游戏 1 次 / 1/1 (bar full, champagne) / 金币×1000 / primary button "领取" (this row slightly highlighted)
+  2) 冒险 / 冒险战斗胜利 2 次 / 0/2 / 金币×2000, 经验书×1 / dimmed disabled pill "未完成"
+  3) 每日副本 / 每日副本胜利 1 次 / 0/1 / 强化石×2 / "未完成"
+  4) 圣契召唤 / 召唤 1 次 / 0/1 / 金币×1500 / "未完成"
+  5) 锻造强化 / 强化装备 1 次 / 0/1 / 金币×1000 / "未完成"
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

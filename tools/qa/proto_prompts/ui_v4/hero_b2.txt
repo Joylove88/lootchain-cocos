@@ -1,0 +1,7 @@
+Generate ONE image: a finished UI mockup, landscape phone 20:9 (about 1870x841).
+The FIRST attached image is our approved mockup (style B, frosted glass). Reproduce it EXACTLY — same layout, same hero art, same background, same panels, same buttons, same fonts, same colours, same Simplified Chinese text and numbers — with ONLY this change:
+In the right column, add small attribute icons in front of every row label, taken from the SECOND attached image (style A): the same icon shapes in the same order —
+- 属性 section: 生命 (heart), 防御 (shield), 暴击 (four-point burst star), 幸运 (four-leaf clover) in the left column; 攻击 (crossed swords), 速度 (winged foot / swoosh), 暴伤 (burst star), 觉醒 (eye) in the right column.
+- 特性加成 section: 攻击加成 (sword), 生命加成 (heart), 防御加成 (shield) left; 暴击伤害 (burst star), 战利品掉落率 (money bag) right.
+Icon treatment: monochrome muted gold (#C9A86A), flat engraved look, about 22px, all the same size and weight, vertically centred with the label, a small gap before the label; no glow. Labels shift right a little to make room; numbers stay in their tidy columns.
+Everything else unchanged. Output only the single finished mockup image, no annotations.

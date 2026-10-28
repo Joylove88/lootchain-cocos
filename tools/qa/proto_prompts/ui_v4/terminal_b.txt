@@ -1,0 +1,15 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841). The attached screenshot is our CURRENT screen: use it ONLY to know which information and controls exist. Completely REDESIGN the visual style — the current one is too flashy, cluttered, over-decorated and looks AI-generated, with no clear hierarchy. All text in Simplified Chinese exactly as written below; keep text crisp and legible.
+STYLE B — "modern frosted glass" (in the spirit of Honkai Star Rail / Genshin Impact menus, adapted to dark fantasy):
+- Background: the scene illustration stays visible but blurred and darkened (about 60%).
+- Panels: frosted dark translucent glass (deep charcoal-navy #141821 at ~80% opacity with background blur), soft rounded corners (about 12px), a 1px white outline at ~12% opacity. NO metal frames, NO ornaments, NO ribbon banners.
+- Hierarchy through size, weight and spacing instead of borders: large clear titles, generous padding, aligned grid.
+- Colour: white + greys, ONE warm accent (soft champagne gold #E3C48A) used only for the selected item and the single primary button (filled pill button with dark text); secondary buttons are translucent pills. Red only for small notification dots. Rarity as a small coloured tag.
+- Typography: modern clean sans-serif; primary text white #F2F2F2, secondary #A3A8B3.
+- Icons: simple flat white line icons, uniform stroke width.
+- No glow, no sparkles, no particles, no lens flare. Calm, airy, premium.
+SCREEN: "终端" (the player's main menu hub), full screen.
+- Top-left title "终端"; top-right a simple close (X) button.
+- Left column card (about 30% width): circular avatar of a red-haired heroine, name "圣契64", small "ID 64"; rows: "等级  Lv.4", "阵容战力  1,626", a thin EXP bar with "EXP 32%"; then a currency block: "体力 120/120", "金币 4.7M", "钻石 924.5K", each with a small "+" button.
+- Right: a 5x3 grid of 15 equal entry tiles, each = one icon + label: 英雄, 编队, 背包, 锻造, 召唤 / 冒险, 秘境试炼, 守卫水晶, 图鉴, 任务 / 商店, 佣兵公会, 挂机收益, 世界地图, 排行. Small red dots on 英雄, 召唤, 任务, 挂机收益.
+- Bottom bar: left "退出登录" (subtle); right 4 small icon buttons with labels: 邮件, 公告, 兑换码, 设置.
+Output only the single finished mockup image, no annotations.

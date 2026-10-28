@@ -7,7 +7,7 @@ import type { RefDetailSourceKind } from '../UiRefKit';
  */
 export type ItemSourceTarget =
   | { type: 'gacha'; poolCode: string }
-  | { type: 'adventure' }
+  | { type: 'field' }
   | { type: 'daily'; theme: 'AWAKEN' | 'FORGE' | 'ARCANE' | 'ABYSS' }
   | { type: 'shop'; kind: 'gold' | 'rune' }
   | { type: 'forge'; tab: 'decompose' }
@@ -38,27 +38,28 @@ const daily = (theme: keyof typeof DAILY_THEME_OPEN_DAYS, desc: string): ItemSou
   desc,
   target: { type: 'daily', theme },
 });
-const adventure = (desc: string): ItemSourceRoute => ({ kind: 'tower', title: '冒险', desc, target: { type: 'adventure' } });
+// 冒险章节下架(2026-10-28):首通奖励改由野外精英承接,获取途径统一指向世界地图
+const field = (desc: string): ItemSourceRoute => ({ kind: 'tower', title: '野外', desc, target: { type: 'field' } });
 const gacha = (poolCode: string, title: string, desc: string): ItemSourceRoute => ({ kind: 'summon', title, desc, target: { type: 'gacha', poolCode } });
 
 const ROUTES: Record<string, ItemSourceRoute[]> = {
   HERO_EXP_BOOK: [
     { kind: 'tower', title: '挂机收益', desc: '大厅挂机持续产出经验书', target: { type: 'idle' } },
-    adventure('冒险首通奖励'),
+    field('野外精英掉落'),
     { kind: 'quest', title: '每日任务', desc: '完成每日任务领取', target: { type: 'quest' } },
   ],
-  ULT_SCROLL: [daily('ABYSS', '深渊裂隙掉落'), adventure('冒险首领层首通')],
-  BOSS_MARK: [daily('AWAKEN', '觉醒之门掉落'), adventure('冒险首领层首通')],
-  ABYSS_CRYSTAL: [daily('ABYSS', '深渊裂隙Ⅲ起掉落'), adventure('冒险深层首领首通')],
-  AWAKEN_STONE: [adventure('冒险首领层首通'), daily('AWAKEN', '觉醒之门掉落')],
+  ULT_SCROLL: [daily('ABYSS', '深渊裂隙掉落'), field('野外精英掉落')],
+  BOSS_MARK: [daily('AWAKEN', '觉醒之门掉落'), field('野外精英掉落')],
+  ABYSS_CRYSTAL: [daily('ABYSS', '深渊裂隙Ⅲ起掉落'), field('野外精英掉落')],
+  AWAKEN_STONE: [field('野外精英掉落'), daily('AWAKEN', '觉醒之门掉落')],
   ENHANCE_STONE: [
     daily('FORGE', '熔火矿脉掉落'),
     { kind: 'forge', title: '锻造 · 分解', desc: '分解多余装备', target: { type: 'forge', tab: 'decompose' } },
     gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出'),
   ],
-  LOW_ENHANCE_STONE: [adventure('冒险首通奖励'), { kind: 'forge', title: '锻造 · 分解', desc: '分解多余装备', target: { type: 'forge', tab: 'decompose' } }],
+  LOW_ENHANCE_STONE: [field('野外精英掉落'), { kind: 'forge', title: '锻造 · 分解', desc: '分解多余装备', target: { type: 'forge', tab: 'decompose' } }],
   ENHANCE_STONE_HIGH: [daily('FORGE', '熔火矿脉Ⅲ起掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
-  DEEP_REFORGE_STONE: [daily('ARCANE', '秘法圣殿掉落'), adventure('冒险首领层首通')],
+  DEEP_REFORGE_STONE: [daily('ARCANE', '秘法圣殿掉落'), field('野外精英掉落')],
   EQUIP_REROLL_STONE: [daily('ARCANE', '秘法圣殿Ⅱ起掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   FUSION_LUCK_STONE: [daily('ARCANE', '秘法圣殿掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   ENHANCE_BLESS_STONE: [gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
@@ -69,7 +70,7 @@ const ROUTES: Record<string, ItemSourceRoute[]> = {
     { kind: 'forge', title: '锻造 · 分解', desc: '分解橙装 / 红装概率附带', target: { type: 'forge', tab: 'decompose' } },
     gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出'),
   ],
-  GUARD_CORE: [adventure('冒险首通奖励'), daily('FORGE', '每日副本胜利获得')],
+  GUARD_CORE: [field('野外精英掉落'), daily('FORGE', '每日副本胜利获得')],
   GOLD: [
     { kind: 'shop', title: '金币商店', desc: '用钻石兑换金币', target: { type: 'shop', kind: 'gold' } },
     { kind: 'tower', title: '挂机收益', desc: '大厅挂机持续产出金币', target: { type: 'idle' } },
@@ -77,7 +78,7 @@ const ROUTES: Record<string, ItemSourceRoute[]> = {
   ],
   // docs/45 §14:绑钻目前只来自图鉴激活奖励(sql/112)
   BOUND_DIAMOND: [{ kind: 'event', title: '英雄图鉴', desc: '激活英雄图鉴领取绑钻', target: { type: 'codex' } }],
-  LEVEL_CAP: [adventure('冒险首通获得玩家经验,提升英雄等级上限')],
+  LEVEL_CAP: [field('野外清怪、悬赏、剧情任务获得玩家经验,提升英雄等级上限')],
 };
 
 /** 英雄碎片:R / SR 走普通 / 英雄召唤;SSR / UR 走限定 / 英雄召唤。 */
@@ -95,7 +96,7 @@ export function resolveItemSourceRoutes(key: string, rarity = ''): ItemSourceRou
     return fragmentRoutes(rarity);
   }
   if (code.startsWith('GEM_')) {
-    return [adventure('冒险首领层首通'), { kind: 'forge', title: '锻造 · 分解', desc: '分解炽红装备', target: { type: 'forge', tab: 'decompose' } }];
+    return [field('野外精英掉落'), { kind: 'forge', title: '锻造 · 分解', desc: '分解炽红装备', target: { type: 'forge', tab: 'decompose' } }];
   }
   const routes = ROUTES[code];
   if (!routes) {

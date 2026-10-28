@@ -1,0 +1,8 @@
+STYLE B — "modern frosted glass" (in the spirit of Honkai Star Rail / Genshin Impact menus, adapted to dark fantasy):
+- Background: the scene illustration stays visible but blurred and darkened (about 60%).
+- Panels: frosted dark translucent glass (deep charcoal-navy #141821 at ~80% opacity with background blur), soft rounded corners (about 12px), a 1px white outline at ~12% opacity. NO metal frames, NO ornaments, NO ribbon banners.
+- Hierarchy through size, weight and spacing instead of borders: large clear titles, generous padding, aligned grid.
+- Colour: white + greys, ONE warm accent (soft champagne gold #E3C48A) used only for the selected item and the single primary button (filled pill button with dark text); secondary buttons are translucent pills. Red only for small notification dots. Rarity as a small coloured tag.
+- Typography: modern clean sans-serif; primary text white #F2F2F2, secondary #A3A8B3.
+- Icons: simple flat white line icons, uniform stroke width.
+- No glow, no sparkles, no particles, no lens flare. Calm, airy, premium.

@@ -1,0 +1,14 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "金币商店" (gold shop), full screen.
+- Top bar: back arrow + title "金币商店" + small grey subtitle "用钻石换取金币,档位越高赠送越多"; right: currency chips "金币 4.7M", "钻石 924.5K", close (X).
+- Centre: 4 equal product cards in a row (frosted glass, rounded), each: name at top, a muted painted gold-coin illustration in the middle (bigger pile from left to right: one coin, a small stack, a pile, a small chest of coins - matte, no shine sparkles), big amount number + small "金币", a small green-tinted tag for bonus, and a price pill at the bottom with a small diamond icon:
+  1) 一袋金币 · 2,000 金币 · price 20
+  2) 一堆金币 · 11,000 金币 · 赠 10% · price 100
+  3) 金币山 · 36,000 金币 · 赠 20% · price 300
+  4) 金币宝箱 · 104,000 金币 · 赠 30% · price 800 - this card has a small corner tag "最划算" and a champagne outline; its price pill is the champagne primary button, the others are translucent pills.
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

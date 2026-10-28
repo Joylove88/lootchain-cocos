@@ -1,0 +1,10 @@
+SCREEN: "英雄" hero detail, attribute tab, full screen.
+- Top-left back arrow + title "英雄"; top-right currency chips "金币 4.7M", "钻石 924.5K" and a close (X).
+- Far left: vertical tabs 属性 (selected), 装备, 技能, 升星.
+- Centre: full-body art of the hero — a red-haired dark queen with a crimson scythe (painterly, NOT glowing) standing on a simple dark floor; under her a name plate: small rarity tag "SSR", "夜烬女王·莉维娅", "Lv.12", "战力 3,100", 3 small stars; small left/right arrows to switch hero.
+- Right column (about 38% width), three stacked sections with small section headers:
+  1) "属性" with a small "属性详情" text button: two columns of rows: 生命 1,707 | 攻击 96; 防御 66 | 速度 43; 暴击 61% | 暴伤 164.5%; 幸运 88 | 觉醒 未觉醒.
+  2) "特性加成": 攻击加成 +10.3% | 暴击伤害 +14.5%; 生命加成 +6.4% | 战利品掉落率 +7.2%; 防御加成 +3.7%.
+  3) "技能": one row with a small skill icon, "夜烬·焚世之焰", tag "大招", "Lv.5/5".
+- Bottom of right column: "升至 Lv.13", cost "经验书 x2  金币 4,472", then two buttons: secondary "一键升级" and primary "升级".
+Output only the single finished mockup image, no annotations.

@@ -25,6 +25,8 @@ export interface DailyDungeonTierVO {
   rewards: DailyDungeonRewardVO[];
   /** 难度Ⅲ=输出试炼非空:输出分→矿晶+材料阶梯;Ⅰ/Ⅱ 为空。 */
   outputTiers: TrialTierVO[];
+  /** 解锁所需玩家等级(冒险下架后按等级解锁,docs/50 §15);0 = 旧服务端未下发,回退显示关卡。 */
+  unlockLevel: number;
 }
 
 export interface DailyDungeonThemeVO {

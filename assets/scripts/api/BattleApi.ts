@@ -238,6 +238,7 @@ function validateDailyTier(item: unknown): DailyDungeonTierVO {
     unlockStageCode: readText(item, 'unlockStageCode', 32, ''),
     rewards: readArray(item, 'rewards', 8).map(validateDailyReward),
     outputTiers: readArray(item, 'outputTiers', 8).map(validateTrialTier),
+    unlockLevel: typeof item.unlockLevel === 'number' && item.unlockLevel > 0 ? readInteger(item.unlockLevel, 1, 200) : 0,
   };
 }
 

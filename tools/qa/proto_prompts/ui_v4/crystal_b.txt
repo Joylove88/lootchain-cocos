@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "守卫水晶" (guardian crystal upgrade), full screen.
+- Top bar: back arrow + title "守卫水晶"; right: currency chips "金币 4.7M", "守卫晶核 4", close (X).
+- Left (about 35% width): the crystal illustration - a blue crystal cluster held by a dark iron stand, painted, matte, only a soft inner light, NO big glow, NO sparkles; under it a level plate "Lv.1", a thin progress bar "1 / 30 级", small grey "Lv.5 解锁第 3 个法术格".
+- Right top: segmented tabs "水晶升级" (selected) | "法术装备 2/2".
+- Right panel: header "水晶属性提升" with grey subtitle "每一次升级,都让水晶在黑暗中更加璀璨"; column headings "Lv.1 → Lv.2"; 6 rows, each with a small monochrome muted-gold icon: 水晶生命 +0% → +2% (+2%); 开局金币 +0 → +5 (+5); 法术强度 +0% → +2% (+2%); 开局能量 +0 → +2 (+2); 能量上限 150 本级不变; 法术格数 2 格 本级不变 (new values in soft green, "本级不变" grey).
+- Bottom: a cost strip "升级消耗  金币 300   守卫晶核 4/5" (the 4 in muted red), small grey "守卫晶核:冒险关卡首次通关、每日副本胜利获得"; on the right the primary button "升级至 Lv.2".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

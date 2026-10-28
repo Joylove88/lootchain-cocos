@@ -1,0 +1,11 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "邮件" (mailbox), full screen, two columns.
+- Top bar: back arrow + title "邮件"; close (X) on the right.
+- Left column (about 34% width): header "收件箱 1/50" with a small text button "全部已读" on the right; a list with one mail row selected (champagne outline): envelope icon, "QA 测试补券", grey "系统 · 10-15", a small tag "已领"; empty space below; bottom: secondary pill "删除已读" and primary button "一键领取".
+- Right column: title "QA 测试补券"; grey meta line "发件人:系统   2026-10-15 00:25   有效期:永久"; a thin divider; body text "安卓召唤视频测试用(2026-10-15)"; section header "附件" with two square item slots (muted painted ticket icons) labelled "普通契约券 x20" and "英雄契约券 x10", both shown as already claimed (dimmed with a small check); bottom-right: secondary pill "删除" and a disabled pill "已领取".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

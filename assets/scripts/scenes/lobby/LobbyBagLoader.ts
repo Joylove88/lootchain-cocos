@@ -276,7 +276,7 @@ function isEquipBagItem(item: BagItemEntryVO): boolean {
 }
 
 function equipSourceDesc(item: BagItemEntryVO): string {
-  return `${safeText(item.itemName)}为装备:请在「英雄详情 → 装备」中穿戴/卸下;来源:冒险首通掉落与召唤。`;
+  return `${safeText(item.itemName)}为装备:请在「英雄详情 → 装备」中穿戴/卸下;来源:野外精英掉落与召唤。`;
 }
 
 function isHeroFragmentItem(item: BagItemEntryVO): boolean {

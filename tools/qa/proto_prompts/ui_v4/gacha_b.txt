@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "召唤" (summon / gacha), full screen. This screen keeps a big scene illustration as its main visual: a dark gothic hall with a towering hooded shadow figure with dark tendrils and a small blonde girl in front of it - painted, calm, darkened, no glowing red ring, no particles.
+- Top bar: back arrow + title "召唤"; right: currency chips "限定契约券 0", "钻石 924.5K", close (X).
+- Top centre: "再召唤 167 次必得 UR 英雄" (the number 167 in the champagne accent, larger); under it one line of small grey text "限定召唤:UP 英雄概率提升,优先消耗限定契约券,不足时消耗钻石。"
+- Left: a vertical list of 4 banner cards (frosted glass, each with a small icon, title + grey subtitle): 限定召唤 / UP 英雄概率提升 (selected, champagne outline), 英雄召唤 / 常驻英雄池, 装备召唤 / 装备与锻造材料, 普通召唤 / 仅产出 R/SR.
+- Right edge: three small round icon buttons with labels: 概率保底, 记录, 奖池内容; below them a small checkbox "跳过动画"; then a compact card "概率提升" with rows: tag "UR" + "永夜龙骑·阿尔萨斯、深渊魔女·伊芙琳"; tag "SSR" + "夜烬女王·莉维娅"; tag "SR" + "契约魔女、深渊行者".
+- Bottom centre: two large buttons side by side: translucent secondary "召唤1次" with small cost text under it "限定契约券 x1 · 钻石 300"; champagne primary "召唤10次" with "限定契约券 x10 · 钻石 3000".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

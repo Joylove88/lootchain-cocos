@@ -4519,7 +4519,7 @@ export class LobbyHeroDetailPanelRenderer {
       const midY = (listTop + listBottom) / 2;
       this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + 52 * scale, 110 * scale, 110 * scale, panel);
       const emptyTitle = selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备';
-      const emptyText = selectedSlot ? '冒险首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格';
+      const emptyText = selectedSlot ? '野外精英与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格';
       const empty = this.host.addChildLabel(panel, 'WearEmpty', emptyTitle, 0, midY - 14 * scale, 20 * scale, rgba(232, 208, 156), new Size(width - 44 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
       const emptySub = this.host.addChildLabel(panel, 'WearEmptyHint', emptyText, 0, midY - 42 * scale, 16 * scale, rgba(160, 146, 118), new Size(width - 44 * scale, 22 * scale));
@@ -5186,9 +5186,9 @@ export class LobbyHeroDetailPanelRenderer {
       return {
         title: `已达等级上限 Lv.${cap}`,
         costs: [],
-        hint: '去冒险提升玩家等级 ›',
+        hint: '去野外提升玩家等级 ›',
         blocked: 'cap',
-        boxSource: { key: 'LEVEL_CAP', name: '英雄等级上限', note: `玩家等级 Lv.${playerLevel},冒险首通获得玩家经验` },
+        boxSource: { key: 'LEVEL_CAP', name: '英雄等级上限', note: `玩家等级 Lv.${playerLevel},野外清怪 / 悬赏 / 剧情获得玩家经验` },
       };
     }
     const books = detail.nextLevelExpBookCost ?? null;
@@ -6520,7 +6520,7 @@ export class LobbyHeroDetailPanelRenderer {
       const midY = (areaTop + areaBottom) / 2;
       this.host.addSprite('WearEmptyIcon', 'ui/forge/ai/nav_forge_enhance/spriteFrame', 0, midY + PS(56), PS(110), PS(110), panel);
       this.protoText(panel, 'WearEmpty', selectedSlot ? '该部位暂无可用装备' : '选择部位查看可穿戴装备', 0, midY - PS(16), F(23), rgba(236, 214, 164), width - PS(60), HorizontalTextAlignment.CENTER, true);
-      this.protoText(panel, 'WearEmptyHint', selectedSlot ? '冒险首通与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格', 0, midY - PS(52), F(20), rgba(166, 152, 124), width - PS(60));
+      this.protoText(panel, 'WearEmptyHint', selectedSlot ? '野外精英与装备召唤均可获取装备' : '点击上方部位或立绘旁的装备格', 0, midY - PS(52), F(20), rgba(166, 152, 124), width - PS(60));
       return;
     }
     // 列表顺序(原型):本英雄已穿在前,其余按稀有度高→低、强化高→低、战力高→低

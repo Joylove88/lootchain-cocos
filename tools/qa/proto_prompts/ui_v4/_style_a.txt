@@ -1,0 +1,8 @@
+STYLE A — "restrained matte dark iron" (in the spirit of Diablo IV / Path of Exile 2 menus, but cleaner):
+- Background: the scene behind is heavily blurred and darkened to near-black, no candles, no glow.
+- Panels: flat matte charcoal (#1A1B1E to #222327) with an extremely subtle stone texture, thin 1px muted antique-gold hairline borders (#8C7650 at 60%), only tiny 45-degree corner notches — NO spiky ornate gold frames, NO red ribbon title banners, NO filigree.
+- Strict 3-level hierarchy: (1) background dark and quiet, (2) panels a little lighter, aligned on a clean grid with generous spacing, (3) focus: only the selected tab/item and the ONE primary button use a muted gold fill (#B8975A) with dark text; secondary buttons are outline only.
+- Colour: almost monochrome warm greys + one muted gold accent. Red only for tiny notification dots. Rarity shown as a small coloured letter tag, never as full coloured frames.
+- Typography: clean title font, sans-serif body; primary text off-white #EDE6DA, secondary text grey #9A948A; numbers right-aligned in tidy columns.
+- Icons: monochrome engraved muted-gold line/relief icons, all the same size and weight. No colourful glossy icons.
+- Absolutely no glow, light rays, sparkles, particles, lens flare, bloom or wet reflections. Lots of negative space, fewer borders.

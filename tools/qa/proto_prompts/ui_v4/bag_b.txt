@@ -1,0 +1,12 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "背包" (inventory), full screen.
+- Top bar: back arrow + title "背包"; right: currency chips "金币 4.7M", "钻石 924.5K", close (X).
+- Left category list (about 20% width), each row = small monochrome icon + name + count right-aligned: 全部 11.9K (selected), 材料 1,327, 装备 31, 召唤券 0, 消耗品 597, 英雄碎片 4,980, 货币箱 47, 门票 29.
+- Right large panel: header "全部" and on the right "共 55 种"; a tidy 9-column x 4-row grid of square item slots (dark glass squares, rounded), each with a muted painted item icon (rune stones, dark crystals in blue / purple / gold, red ember shards, scrolls, old books, a small treasure chest) and a count in the bottom-right corner (e.g. 94, 255, 18, 12, 325, 2, 221, 207, 2, 1, 2, 4, 4, 180, 300, 140, 260, 160 ...); rarity = a thin coloured line along the bottom edge of each slot (purple / blue / orange). The first slot is selected with a champagne outline.
+- Bottom of panel: one line of small grey hint text "点击道具查看详情、获取途径,可使用的道具可直接使用或合成。"
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

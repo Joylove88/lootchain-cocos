@@ -158,6 +158,13 @@ export class LobbyDailyDungeonPanelRenderer {
     return this.host.lobbyStageDisplayLabel?.(stageCode) ?? '前置关卡';
   }
 
+  /** 矿晶掉落门槛(服务端 CrystalRules = MAIN_3_1 层):冒险下架后按等级,等级取同层难度档下发的 unlockLevel。 */
+  private crystalUnlockText(): string {
+    const tiers = this.host.currentLobbyDailyDungeonState().summary?.themes.flatMap((theme) => theme.tiers) ?? [];
+    const level = tiers.find((tier) => tier.unlockStageCode === 'MAIN_3_1' && tier.unlockLevel > 0)?.unlockLevel ?? 0;
+    return level > 0 ? `玩家等级 Lv.${level}` : `通关${this.stageLabel('MAIN_3_1')}`;
+  }
+
   /** docs/51 终端「排行」:直接打开输出周榜弹窗。 */
   openRankPopup(): void {
     this.rankPopupOpen = true;
@@ -528,7 +535,7 @@ export class LobbyDailyDungeonPanelRenderer {
   ): void {
     const centerY = cardHeight / 2 - cardHeight * 0.913;
     if (!tier.unlocked) {
-      this.renderCardActionBar(card, `通关${this.stageLabel(tier.unlockStageCode)}解锁`, centerY, cardWidth, cardHeight, scale);
+      this.renderCardActionBar(card, tier.unlockLevel > 0 ? `玩家等级 Lv.${tier.unlockLevel} 解锁` : `通关${this.stageLabel(tier.unlockStageCode)}解锁`, centerY, cardWidth, cardHeight, scale);
       return;
     }
     if (!theme.openToday) {
@@ -904,7 +911,7 @@ export class LobbyDailyDungeonPanelRenderer {
     let footerColor = rgba(224, 202, 158, 240);
     if (mine) {
       if (!mine.unlocked) {
-        footerText = `矿晶矿脉:通关${this.stageLabel('MAIN_3_1')}后,副本胜利有几率掉落矿晶。`;
+        footerText = `矿晶矿脉:${this.crystalUnlockText()}后,副本胜利有几率掉落矿晶。`;
         footerColor = rgba(196, 182, 158, 235);
       } else {
         const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);
@@ -963,7 +970,7 @@ export class LobbyDailyDungeonPanelRenderer {
     let color = rgba(224, 202, 158, 240);
     if (mine) {
       if (!mine.unlocked) {
-        text = `通关${this.stageLabel('MAIN_3_1')}后,副本可掉落矿晶`;
+        text = `${this.crystalUnlockText()}后,副本可掉落矿晶`;
         color = rgba(196, 182, 158, 235);
       } else {
         const remain = Math.max(0, mine.dailyBudgetTotal - mine.dailyUsedTotal);
