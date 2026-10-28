@@ -21,6 +21,8 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassPanel, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { safeText } from '../UiTextFormatter';
 import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_ICON_RING_ASSET, REF_KIT, REF_SECTION_EMBLEM, REF_TITLE_STAR, refCardFrameK } from '../UiRefKit';
 
 /**
@@ -177,6 +179,26 @@ const SHOP_ILLUSTRATIONS: Record<string, SpriteSpec> = {
 };
 /** 钻石页同 iconKey 的档位按档位编码换图(钻石山与大量钻石同为 diamond_many)。 */
 const RECHARGE_ART_BY_TIER: Record<string, string> = { RC_328: 'diamond_mountain' };
+/** 2026-10-29 B 风格(毛玻璃)开关:手机金币商店按原型 shop_b 1:1(体力 / 钻石页待原型确认)。 */
+const SHOP_GLASS = true;
+const SHOP_GLASS_BG = { path: 'ui/common/ref/hall_bg_glass/spriteFrame', ratio: 1870 / 841 };
+/** B 风格金币插画:从原型 shop_b 抠的哑光图(无底座),w / h 为贴图像素。 */
+const GLASS_GOLD_ILLU: Record<string, { path: string; w: number; h: number }> = {
+  gold_small: { path: 'ui/shop/glass/illu_gold_small/spriteFrame', w: 640, h: 460 },
+  gold_medium: { path: 'ui/shop/glass/illu_gold_medium/spriteFrame', w: 650, h: 460 },
+  gold_large: { path: 'ui/shop/glass/illu_gold_large/spriteFrame', w: 664, h: 466 },
+  gold_chest: { path: 'ui/shop/glass/illu_gold_chest/spriteFrame', w: 696, h: 494 },
+};
+function compactShopNumber(value: number): string {
+  const v = Math.max(0, Math.trunc(value));
+  if (v >= 1_000_000) {
+    return `${(Math.floor(v / 100_000) / 10).toFixed(1).replace(/\.0$/, '')}M`;
+  }
+  if (v >= 10_000) {
+    return `${(Math.floor(v / 100) / 10).toFixed(1).replace(/\.0$/, '')}K`;
+  }
+  return v.toLocaleString('en-US');
+}
 
 /** 字号口径(2026-09-22 用户:与限时副本面板一致,以后所有弹窗统一)。 */
 const FONT = { title: 34, subtitle: 18, body: 18, small: 16, cardName: 20, amount: 28, unit: 16, tag: 15, price: 20, big: 26 };
@@ -281,6 +303,10 @@ export class LobbyShopDialogRenderer {
         panelH = panelW * PANEL_FRAME.aspect;
       }
     }
+    if (phone && SHOP_GLASS && state.kind === 'gold') {
+      this.renderGlassShop(overlay, layout, state);
+      return;
+    }
     const panel = this.host.addChildPlainNode(overlay, 'LobbyShopPanel', 0, 0, panelW, panelH);
     // 面板自己吞掉点击:点面板不关闭,点外面暗幕才关闭。
     panel.addComponent(BlockInputEvents);
@@ -381,6 +407,126 @@ export class LobbyShopDialogRenderer {
       const busyLabel = this.host.addChildLabel(cover, 'LobbyShopBusyText', '处理中…', 0, (bodyTop + bodyBottom) / 2, FONT.big * scale, rgba(255, 238, 190), new Size(panelW * 0.5, 34 * scale));
       this.outline(busyLabel, scale, rgba(0, 0, 0, 255));
     }
+  }
+
+  /** B 风格整页商店:整屏背景 + 共用顶栏 + 各页内容 + 结果横幅 / 处理中遮罩。 */
+  private renderGlassShop(overlay: Node, layout: UiLayout, state: LobbyShopDialogState): void {
+    const panelW = layout.stageWidth;
+    const panelH = layout.stageHeight;
+    const scale = Math.max(0.62, Math.min(1, layout.uiScale));
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panel = this.host.addChildPlainNode(overlay, 'LobbyShopPanel', 0, 0, panelW, panelH);
+    panel.addComponent(BlockInputEvents);
+    const coverW = layout.width + Math.abs(centerX) * 2;
+    const coverH = layout.height + Math.abs(centerY) * 2;
+    const bgW = Math.max(coverW, coverH * SHOP_GLASS_BG.ratio);
+    this.host.addSprite('LobbyShopGlassBg', SHOP_GLASS_BG.path, 0, 0, bgW, bgW / SHOP_GLASS_BG.ratio, panel);
+    const catalog = state.catalog;
+    const profile = this.host.currentLobbyProfile();
+    const diamond = catalog ? Number(catalog.diamond ?? 0) : Number(profile.diamond ?? 0);
+    const close = (): void => this.host.closeLobbyShopDialog();
+    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], [
+      { key: 'gold', icon: ICONS.gold_small.path, value: compactShopNumber(Number(profile.gold ?? 0)), width: 160 },
+      { key: 'diamond', icon: ICONS.diamond.path, value: compactShopNumber(diamond), width: 177 },
+    ], close, close, { y: 57, chipRight: 1696, subtitle: '用钻石换取金币,档位越高赠送越多' });
+    const { FY, S } = glassProtoMap(panelW, panelH);
+    if (!catalog) {
+      const l = glassLabel(this.host as never, panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, FY(420), S(22), GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
+      l.fontSize = Math.round(S(22));
+      return;
+    }
+    this.renderGlassGold(panel, catalog, panelW, panelH, state.busy, diamond);
+    if (state.notice) {
+      this.renderNoticeBanner(panel, state.notice, FY(800), panelW, scale);
+    } else {
+      this.lastNotice = '';
+    }
+    if (state.busy) {
+      const cover = this.host.addChildPlainNode(panel, 'LobbyShopBusy', 0, 0, panelW, panelH);
+      cover.addComponent(BlockInputEvents);
+      const busyLabel = glassLabel(this.host as never, cover, 'LobbyShopBusyText', '处理中…', 0, FY(420), S(28), GLASS_COLOR.text, S(400), HorizontalTextAlignment.CENTER, true);
+      busyLabel.fontSize = Math.round(S(28));
+    }
+  }
+
+  /**
+   * 2026-10-29 B 风格金币商店(原型 shop_b 1:1,原型坐标 1870×841):整屏虚化大厅背景 + 共用顶栏(标题 | 说明)+ 一排 4 张玻璃卡;
+   * 卡 = 名称 + 细线菱形 + 原型抠的哑光插画 + 大数额 / 金币 + 绿色赠送签 + 价格胶囊;赠送最高一档金边 + 「最划算」斜签 + 主钮价格。
+   */
+  private renderGlassGold(panel: Node, catalog: ShopCatalogVO, panelW: number, panelH: number, busy: boolean, diamond: number): void {
+    const { FX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.CENTER, bold = false): Label => {
+      const l = glassLabel(this.host, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const tiers = catalog.goldTiers;
+    const bestBonus = Math.max(0, ...tiers.map((tier) => tier.bonusPct));
+    // 原型 4 卡:x 108..508 / 533..922 / 947..1337 / 1360..1768(宽 ~400、间距 ~25),y 141..757;档位数不同时同宽均分
+    const left = 108;
+    const right = 1768;
+    const gap = 25;
+    const n = Math.max(1, tiers.length);
+    const cardPW = (right - left - gap * (n - 1)) / n;
+    tiers.forEach((tier, index) => {
+      const x0 = left + index * (cardPW + gap);
+      const cx = FX(x0 + cardPW / 2);
+      const cy = FY((141 + 757) / 2);
+      const w = S(cardPW);
+      const h = FY(141) - FY(757);
+      const best = tier.bonusPct > 0 && tier.bonusPct === bestBonus;
+      const card = mountGlassPanel(this.host, panel, `LobbyShopGold_${tier.code}`, cx, cy, w, h, k);
+      if (best) {
+        mountGlassSlice(this.host, card, 'Best', GLASS_SLICES.frameSel, 0, 0, w, h, k);
+      }
+      const Y = (py: number): number => FY(py) - cy;
+      T(card, 'Name', safeText(tier.name), 0, Y(187), 27, GLASS_COLOR.text, w - S(40), HorizontalTextAlignment.CENTER, true);
+      mountGlassFadeLine(this.host, card, 'NameLine', 0, Y(214), w * 0.72, Math.max(1, S(1.4)), rgba(110, 118, 130, 255));
+      const dia = this.host.addChildPlainNode(card, 'NameDiamond', 0, Y(214), S(10), S(10)).addComponent(Graphics);
+      dia.fillColor = rgba(150, 158, 170, 230);
+      dia.moveTo(0, S(4.5));
+      dia.lineTo(S(4.5), 0);
+      dia.lineTo(0, -S(4.5));
+      dia.lineTo(-S(4.5), 0);
+      dia.close();
+      dia.fill();
+      const art = GLASS_GOLD_ILLU[tier.iconKey] ?? GLASS_GOLD_ILLU[['gold_small', 'gold_medium', 'gold_large', 'gold_chest'][Math.min(3, index)]];
+      if (art) {
+        const fit = Math.min(S(cardPW * 0.86) / art.w, S(250) / art.h);
+        this.host.addSprite('Illu', art.path, 0, Y(378), art.w * fit, art.h * fit, card);
+      }
+      T(card, 'Amount', this.host.formatInteger(tier.goldAmount), 0, Y(541), 42, GLASS_COLOR.text, w - S(30), HorizontalTextAlignment.CENTER, true);
+      T(card, 'Unit', '金币', 0, Y(583), 22, GLASS_COLOR.sub, S(120));
+      if (tier.bonusPct > 0) {
+        mountGlassBonusTag(this.host, card, 'Bonus', `赠 ${tier.bonusPct}%`, 0, Y(627), S(176), S(40), S(22));
+      }
+      const affordable = diamond >= tier.diamondCost;
+      const pillW = S(cardPW - 50);
+      const price = mountGlassButton(this.host, card, 'Price', '', 0, Y(698), pillW, S(62), k, best ? 'primary' : 'secondary', undefined, 24);
+      price.getComponent(Button)?.destroy();
+      const priceText = this.host.formatInteger(tier.diamondCost);
+      const pf = Math.round(S(25));
+      const textW = priceText.length * pf * 0.58;
+      const iconW = S(34);
+      const iconX = -(iconW + S(14) + textW) / 2 + iconW / 2;
+      this.host.addSprite('PriceIcon', ICONS.diamond.path, iconX, 0, iconW, iconW * ICONS.diamond.aspect, price);
+      const pl = T(price, 'PriceText', priceText, iconX + iconW / 2 + S(14), 0, 25, best ? GLASS_COLOR.onChampagne : (affordable ? GLASS_COLOR.text : rgba(230, 140, 130)), textW + S(20), HorizontalTextAlignment.LEFT, best);
+      pl.enableShadow = !best;
+      if (best) {
+        // 「最划算」斜签:香槟底深字,压在卡右上角(原型 1650..1775 × 195..258,逆时针约 12°)
+        const tag = this.host.addChildPlainNode(card, 'BestTag', w / 2 - S(58), Y(226), S(124), S(46));
+        mountGlassSlice(this.host, tag, 'Bg', GLASS_SLICES.pillPrimary, 0, 0, S(124), S(46), k * 0.5);
+        T(tag, 'Text', '最划算', 0, 0, 23, GLASS_COLOR.onChampagne, S(110), HorizontalTextAlignment.CENTER, true);
+        tag.angle = 12;
+      }
+      if (!busy) {
+        card.addComponent(Button);
+        card.on(Button.EventType.CLICK, () => this.host.buyShopGold(tier.code, card.getWorldPosition()), this);
+        this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+      }
+    });
   }
 
   /**

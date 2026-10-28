@@ -1,0 +1,10 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED gold-shop screen (B style). The new mockup is a sibling screen: keep EXACTLY the same background, top bar layout (back arrow + title + divider + grey subtitle; currency chips + close X on the right), the frosted dark glass product cards (soft rounded corners, faint light outline, soft uneven edge light), fonts, colours, the champagne-gold primary pill button and the slate-grey secondary pill button, green bonus tag pills.
+- SECOND image = another APPROVED screen, for small components (section header = short champagne bar + white title, thin dividers, tag pills, progress bar style).
+- THIRD image = our CURRENT (old style) version. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon banners, spiky gold frames, round gold medallions, glowing icons or red buttons.
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames. Painted item art muted and matte.
+SCREEN: "钻石充值". Subtitle "选择支付方式后点击档位,在新窗口完成付款,到账后钻石自动发放". Currency chip: diamond "924.5K" only, plus close X.
+Under the top bar a small row: grey label "支付方式" and a segmented chip "支付宝" (selected, champagne).
+A row of 5 equal product cards (frosted glass), each: name at top ("少量钻石", "一把钻石", "中量钻石", "大量钻石", "钻石山"), a muted painted blue diamond illustration growing from one gem to a pile (matte, no glow rings), big amount "60" / "330" / "1,080" / "2,180" / "3,680" + small "钻石", a green tag pill "含赠 30" / "含赠 100" / "含赠 200" / "含赠 400" (none on the first), and a price pill "¥6" / "¥30" / "¥98" / "¥198" / "¥328" (slate secondary pills; the "¥98" card has a small corner tag "热门" and a champagne outline with a champagne primary price pill). A thin round "›" button at the right edge hints more cards.
+Output only the single finished mockup image, no annotations.

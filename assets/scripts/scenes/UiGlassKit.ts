@@ -429,19 +429,28 @@ export function mountGlassTopBar(
   chips: Array<{ key: string; icon: string; value: string; width: number }>,
   onBack: () => void,
   onClose: () => void,
-  opts: { chipRight?: number; onHelp?: () => void } = {},
+  opts: { chipRight?: number; onHelp?: () => void; y?: number; subtitle?: string } = {},
 ): void {
   const { LX, RX, FY, S, k } = glassProtoMap(panelWidth, panelHeight);
-  mountGlassIconButton(host, parent, `${prefix}GlassBack`, GLASS_ICON.back, LX(68), FY(44), S(34), S(72), onBack);
-  const t = glassLabel(host, parent, `${prefix}GlassTitle`, title, LX(115), FY(44), S(34), GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+  // y:顶栏行心(原型 y);商店原型是 57,其余整页 44
+  const rowY = opts.y ?? 44;
+  mountGlassIconButton(host, parent, `${prefix}GlassBack`, GLASS_ICON.back, LX(68), FY(rowY), S(34), S(72), onBack);
+  const t = glassLabel(host, parent, `${prefix}GlassTitle`, title, LX(115), FY(rowY), S(34), GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
   t.fontSize = Math.round(S(34));
   t.lineHeight = t.fontSize + 4;
+  let titleW = 0;
+  for (const ch of Array.from(title)) {
+    titleW += /[　-鿿＀-￯]/.test(ch) ? t.fontSize : t.fontSize * 0.56;
+  }
+  if (opts.subtitle) {
+    // 标题右侧:细竖线 + 灰色说明(原型 shop_b)
+    const lineX = LX(115) + titleW + S(34);
+    mountGlassLine(host, parent, `${prefix}GlassTitleSep`, lineX, FY(rowY), Math.max(1, S(2)), S(38), new Color(120, 128, 140, 200));
+    const sub = glassLabel(host, parent, `${prefix}GlassSubtitle`, opts.subtitle, lineX + S(25), FY(rowY + 2), S(22), GLASS_COLOR.sub, RX(1330) - (lineX + S(25)), HorizontalTextAlignment.LEFT);
+    sub.fontSize = Math.round(S(22));
+  }
   if (opts.onHelp) {
-    let w = 0;
-    for (const ch of Array.from(title)) {
-      w += /[　-鿿＀-￯]/.test(ch) ? t.fontSize : t.fontSize * 0.56;
-    }
-    const help = host.addChildPlainNode(parent, `${prefix}GlassHelp`, LX(115) + w + S(40), FY(46), S(56), S(56));
+    const help = host.addChildPlainNode(parent, `${prefix}GlassHelp`, LX(115) + titleW + S(40), FY(rowY + 2), S(56), S(56));
     const hg = help.addComponent(Graphics);
     hg.strokeColor = new Color(170, 178, 192, 220);
     hg.lineWidth = Math.max(1.2, S(1.6));
@@ -460,13 +469,13 @@ export function mountGlassTopBar(
   }
   chips.forEach((chip, index) => {
     const { l, r } = spans[index];
-    mountGlassChip(host, parent, `${prefix}GlassChip_${chip.key}`, chip.icon, chip.value, (RX(l) + RX(r)) / 2, FY(44), RX(r) - RX(l), S(42), k);
+    mountGlassChip(host, parent, `${prefix}GlassChip_${chip.key}`, chip.icon, chip.value, (RX(l) + RX(r)) / 2, FY(rowY), RX(r) - RX(l), S(42), k);
   });
-  const divider = host.addSprite(`${prefix}GlassDivider`, GLASS_ICON.divider, RX(1752), FY(44), S(36), S(2), parent);
+  const divider = host.addSprite(`${prefix}GlassDivider`, GLASS_ICON.divider, RX(1752), FY(rowY), S(36), S(2), parent);
   if (divider) {
     divider.node.angle = 90;
   }
-  mountGlassIconButton(host, parent, `${prefix}GlassClose`, GLASS_ICON.close, RX(1805), FY(43), S(36), S(72), onClose);
+  mountGlassIconButton(host, parent, `${prefix}GlassClose`, GLASS_ICON.close, RX(1805), FY(rowY - 1), S(36), S(72), onClose);
 }
 
 /** B 风格滚动条:淡灰轨道 + 灰白滑块;返回按进度(0..1)挪滑块的函数。 */
@@ -481,4 +490,22 @@ export function mountGlassScrollBar(host: UiKitHost, parent: Node, name: string,
     const p = Math.min(1, Math.max(0, progress));
     thumb.setPosition(0, trackH / 2 - thumbH / 2 - (trackH - thumbH) * p, 0);
   };
+}
+
+/** 绿色赠送签(原型 shop_b「赠 10%」):暗绿底 (29,48,41) + 灰绿细边 + 上沿一道亮线;x / y 为中心。 */
+export function mountGlassBonusTag(host: UiKitHost, parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, fontSize: number): Node {
+  const node = host.addChildPlainNode(parent, name, x, y, width, height);
+  const g = node.addComponent(Graphics);
+  const r = height / 2;
+  g.fillColor = new Color(29, 48, 41, 240);
+  g.roundRect(-width / 2, -height / 2, width, height, r);
+  g.fill();
+  g.strokeColor = new Color(96, 128, 100, 230);
+  g.lineWidth = Math.max(1, height * 0.04);
+  g.roundRect(-width / 2, -height / 2, width, height, r);
+  g.stroke();
+  const label = glassLabel(host, node, 'Text', text, 0, 0, fontSize, new Color(150, 214, 166, 255), width - height * 0.6, HorizontalTextAlignment.CENTER);
+  label.fontSize = Math.round(fontSize);
+  label.enableShadow = false;
+  return node;
 }

@@ -1,0 +1,11 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED gold-shop screen (B style). The new mockup is a sibling screen: keep EXACTLY the same background, top bar layout (back arrow + title + divider + grey subtitle; currency chips + close X on the right), the frosted dark glass product cards (soft rounded corners, faint light outline, soft uneven edge light), fonts, colours, the champagne-gold primary pill button and the slate-grey secondary pill button, green bonus tag pills.
+- SECOND image = another APPROVED screen, for small components (section header = short champagne bar + white title, thin dividers, tag pills, progress bar style).
+- THIRD image = our CURRENT (old style) version. Use it ONLY to know which information and controls exist; do NOT copy its red ribbon banners, spiky gold frames, round gold medallions, glowing icons or red buttons.
+All text in Simplified Chinese exactly as written below; crisp and legible. No glow, no sparkles, no red banners, no ornate frames. Painted item art muted and matte.
+SCREEN: "体力补充". Subtitle "60 钻石 = 30 体力 · 每 5 分钟自然回复 1 点". Currency chips: stamina "120/120", diamond "924.5K".
+LEFT big glass card (about 44% width) with section header "当前体力": a muted painted red stamina potion (no medallion ring), text "体力 120/120", a slim progress bar (soft cool-blue fill, full), two lines of small grey text "每 5 分钟自然回复 1 点(上限内)" and "购买的体力可超过上限,超出部分不会消失".
+RIGHT two product cards side by side, each with the name at top ("补充 1 份", "补充 5 份"), the potion art (the second with a small "×5" tag), a big number "+30" / "+150" + small "体力", and a price pill with a small diamond icon "60" / "300" (the first a champagne primary pill, the second a slate secondary pill).
+Bottom centre one line of grey text "今日已购 0/10 次 · 还可购买 10 次".
+Output only the single finished mockup image, no annotations.
