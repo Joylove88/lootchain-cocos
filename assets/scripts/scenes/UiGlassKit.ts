@@ -257,8 +257,9 @@ export function mountGlassSectionHeader(
   fontSize = 26,
   right?: { text: string; rightX: number; onClick?: () => void },
 ): void {
-  host.addSprite(`${name}Bar`, GLASS_ICON.accent, leftX, y, 4 * k, 24 * k, parent);
-  glassLabel(host, parent, `${name}Title`, title, leftX + 14 * k, y, fontSize * k, GLASS_COLOR.text, 260 * k, HorizontalTextAlignment.LEFT, true);
+  // 竖条按原型实测 6×32(10-29 用户:实机短细了)
+  host.addSprite(`${name}Bar`, GLASS_ICON.accent, leftX, y, 6 * k, 32 * k, parent);
+  glassLabel(host, parent, `${name}Title`, title, leftX + 17 * k, y, fontSize * k, GLASS_COLOR.text, 260 * k, HorizontalTextAlignment.LEFT, true);
   if (right) {
     const w = 200 * k;
     const node = host.addChildPlainNode(parent, `${name}Link`, right.rightX - w / 2, y, w, 40 * k);

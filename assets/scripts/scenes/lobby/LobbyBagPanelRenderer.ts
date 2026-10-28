@@ -1587,13 +1587,23 @@ export class LobbyBagPanelRenderer {
     const composeNeed = BAG_COMPOSE_RULES[(item.itemCode || '').toUpperCase()];
     const canCompose = composeNeed != null && safeNumber(item.itemCount) >= composeNeed;
     const sellable = !isVirtualEntry && safeNumber(item.sellGold) > 0 && safeNumber(item.itemCount) > 0;
+    // 不能用的操作不出按钮(10-29 用户);剩下的按原型槽位从右往左排(出售在最右)
     const btnY = Y(690);
-    mountGlassButton(this.host, detail, 'LobbyBagUseButton', '使用', (X(858) + X(1052)) / 2, btnY, X(1052) - X(858), S(56), k,
-      canUse ? 'secondaryLit' : 'disabled', canUse ? () => this.host.useLobbyBagItem(item.itemCode) : undefined, 23);
-    mountGlassButton(this.host, detail, 'LobbyBagComposeButton', '合成', (X(1070) + X(1263)) / 2, btnY, X(1263) - X(1070), S(56), k,
-      canCompose ? 'secondaryLit' : 'disabled', canCompose ? () => this.host.openLobbyBagComposeDialog(item.itemCode) : undefined, 23);
-    mountGlassButton(this.host, detail, 'LobbyBagSellButton', sellable ? '出售' : '不可出售', (X(1278) + X(1472)) / 2, btnY, X(1472) - X(1278), S(56), k,
-      sellable ? 'primary' : 'primaryOff', sellable ? () => this.host.openLobbyBagSellDialog(item.itemCode) : undefined, 23);
+    const slots: Array<[number, number]> = [[858, 1052], [1070, 1263], [1278, 1472]];
+    const actions: Array<{ name: string; text: string; primary: boolean; onClick: () => void }> = [];
+    if (canUse) {
+      actions.push({ name: 'LobbyBagUseButton', text: '使用', primary: false, onClick: () => this.host.useLobbyBagItem(item.itemCode) });
+    }
+    if (canCompose) {
+      actions.push({ name: 'LobbyBagComposeButton', text: '合成', primary: false, onClick: () => this.host.openLobbyBagComposeDialog(item.itemCode) });
+    }
+    if (sellable) {
+      actions.push({ name: 'LobbyBagSellButton', text: '出售', primary: true, onClick: () => this.host.openLobbyBagSellDialog(item.itemCode) });
+    }
+    actions.forEach((action, index) => {
+      const [x0, x1] = slots[slots.length - actions.length + index];
+      mountGlassButton(this.host, detail, action.name, action.text, (X(x0) + X(x1)) / 2, btnY, X(x1) - X(x0), S(56), k, action.primary ? 'primary' : 'secondary', action.onClick, 23);
+    });
   }
 
   /** B 风格二级弹窗壳(原型 bag_use_b / bag_sell_b / bag_compose_b):压暗遮罩 + 双层玻璃 + 标题行 + 圆圈关闭 + 标题下细线。 */
@@ -1820,7 +1830,7 @@ export class LobbyBagPanelRenderer {
     const rowW = X(1399) - X(840);
     ([['单价', `${formatMoney(unitPrice)} 金币`, true, 248], ['持有', `×${formatCompact(held)}`, false, 327]] as Array<[string, string, boolean, number]>).forEach(([key, value, coin, y], index) => {
       const row = mountGlassPanel(this.host, dialog, `Row_${index}`, rowCx, Y(y), rowW, S(62), k);
-      this.host.addSprite('Bar', GLASS_ICON.accent, X(862) - rowCx, 0, S(4), S(24), row);
+      this.host.addSprite('Bar', GLASS_ICON.accent, X(862) - rowCx, 0, S(6), S(30), row);
       T(row, 'Key', key, X(886) - rowCx, 0, 22, GLASS_COLOR.text, S(160));
       const vl = T(row, 'Value', value, X(1368) - rowCx, 0, 22, GLASS_COLOR.text, S(220), HorizontalTextAlignment.RIGHT, true);
       if (coin) {
@@ -1834,7 +1844,7 @@ export class LobbyBagPanelRenderer {
     ]);
     this.mountGlassSlider(dialog, X, Y, S, 480, 855, 1356, 1, maxCount, count, !busy, set);
     mountGlassLine(this.host, dialog, 'MidLine', rowCx, Y(517), rowW, Math.max(1, S(1.5)), rgba(46, 54, 66, 255));
-    this.host.addSprite('SumBar', GLASS_ICON.accent, X(850), Y(558), S(4), S(26), dialog);
+    this.host.addSprite('SumBar', GLASS_ICON.accent, X(850), Y(558), S(6), S(30), dialog);
     T(dialog, 'SumSell', `出售 ×${formatCompact(count)}`, X(870), Y(558), 22, GLASS_COLOR.text, S(150), HorizontalTextAlignment.LEFT, true);
     T(dialog, 'SumArrow', '→', X(1011), Y(558), 22, GLASS_COLOR.sub, S(40), HorizontalTextAlignment.CENTER);
     T(dialog, 'SumGain', '获得', X(1059), Y(558), 22, GLASS_COLOR.text, S(70), HorizontalTextAlignment.CENTER);
