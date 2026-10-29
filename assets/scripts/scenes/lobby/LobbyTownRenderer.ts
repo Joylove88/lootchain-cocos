@@ -257,6 +257,24 @@ type TownInteract =
   | { kind: 'waypoint'; key: string; label: string; x: number; y: number }
   | { kind: 'loot'; key: string; label: string; x: number; y: number; loot: TownLoot };
 
+/** 循环动画选取:先精确名,再"以名开头",最后包含关键词;都排除受击 / 攻击 / 死亡 / 过渡(link)/ 转身片段。 */
+function pickTownLoopAnim(names: string[], exact: string[], fallback: RegExp): string | null {
+  const bad = /beaten|attack|atk|hit|hurt|death|die|dead|link|turn|stun|down|air|spawn|explosion/i;
+  for (const want of exact) {
+    const hit = names.find((name) => name.toLowerCase() === want);
+    if (hit) {
+      return hit;
+    }
+  }
+  for (const want of exact) {
+    const hit = names.find((name) => name.toLowerCase().startsWith(want) && !bad.test(name));
+    if (hit) {
+      return hit;
+    }
+  }
+  return names.find((name) => fallback.test(name) && !bad.test(name)) ?? null;
+}
+
 export class LobbyTownRenderer {
   static readonly WORLD_NODE_NAME = WORLD_NODE_NAME;
 
@@ -2332,8 +2350,10 @@ export class LobbyTownRenderer {
         }
         const runtime = data.getRuntimeData(true) as unknown as { height?: number; animations?: Array<{ name: string }> } | null;
         const names = (runtime?.animations ?? []).map((item) => item.name);
-        monster.idleAnim = names.find((name) => /idle|stand|wait/i.test(name)) ?? names[0] ?? '';
-        monster.moveAnim = names.find((name) => /run|walk|move/i.test(name)) ?? monster.idleAnim;
+        // 10-29 用户「怪物站着像卡了」:旧写法按"名字带 idle"取第一个,拿到的是 beaten_knockback_bounce_link_idle(0.5 秒受击接回过渡)
+        // 在循环播;移动也会拿到 p3_attack_rush_01_run(冲锋攻击)。改为精确名优先,排除受击 / 攻击 / 过渡片段
+        monster.idleAnim = pickTownLoopAnim(names, ['idle', 'stand', 'wait'], /idle|stand|wait/i) ?? names[0] ?? '';
+        monster.moveAnim = pickTownLoopAnim(names, ['run_b', 'walk', 'run', 'move', 'run_h'], /run|walk|move/i) ?? monster.idleAnim;
         monster.attackAnim = names.find((name) => /atk|attack/i.test(name) && !/hit|hurt/i.test(name)) ?? '';
         monster.deathAnim = names.find((name) => /die|dead|death/i.test(name)) ?? '';
         const height = Math.max(40, runtime?.height ?? 200);
@@ -3631,28 +3651,6 @@ export class LobbyTownRenderer {
 
   // ── docs/51 §3 援护技:点队友头像 / 数字键 1~3 ──
 
-  /** 援护位旁边飘一行小字(点了放不出来时给反馈,不只写状态栏)。 */
-  private flashAssistHint(index: number, text: string): void {
-    const slot = this.partySlots[index];
-    const layout = this.hudLayout;
-    if (!slot || !slot.node.isValid || !layout) {
-      return;
-    }
-    const P = townProtoFrame(layout);
-    const old = slot.node.getChildByName('AssistHint');
-    if (old) {
-      old.destroy();
-    }
-    const w = P.S(170);
-    const h = P.S(36);
-    const hint = this.host.addChildPlainNode(slot.node, 'AssistHint', -slot.d * 1.55, 0, w, h);
-    mountGlassSlice(this.host as never, hint, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, w, h, h / 48);
-    const label = this.host.addChildLabel(hint, 'Text', text, 0, 0, P.S(18), rgba(232, 236, 242), new Size(w - P.S(16), h));
-    label.overflow = Label.Overflow.SHRINK;
-    const fade = hint.addComponent(UIOpacity);
-    tween(fade).delay(1.1).to(0.3, { opacity: 0 }).call(() => hint.isValid && hint.destroy()).start();
-  }
-
   private triggerAssist(index: number): void {
     const actor = this.followers[index];
     const now = Date.now();
@@ -3675,8 +3673,19 @@ export class LobbyTownRenderer {
     }
     const target = this.ensureLockTarget();
     if (!target) {
-      this.host.setStatus('附近没有可攻击的目标');
-      this.flashAssistHint(index, '附近没有目标');
+      // 10-29 用户:没有怪也可以释放 —— 原地朝当前朝向出大招 + 特效,照常进冷却(不造成伤害)
+      actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
+      actor.inAction = true;
+      const freeDur = this.playActorAction(actor, 'ult', 1200) || 700;
+      actor.actionUntil = now + freeDur;
+      const freeKit = this.kitOf(actor);
+      gameAudio.sfx(resolveHeroSkillSfxKey(actor.hero.heroCode), 0.9);
+      if (this.entityRoot) {
+        const reach = actor.role === 'melee' ? 150 : 320;
+        this.fx.play(this.entityRoot, freeKit.skill, actor.x + actor.facing * reach, actor.y + 110 + freeKit.skill.offsetY, 420 * freeKit.skill.scale, { flipX: actor.facing < 0 });
+      }
+      this.shake(8, 0.2);
+      this.spawnFloater(actor.x, actor.y + 270, '援护!', rgba(255, 214, 110), 26);
       return;
     }
     actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
@@ -4661,7 +4670,6 @@ export class LobbyTownRenderer {
   }
 
   private refreshPartyHud(now: number): void {
-    const hasTarget = this.partySlots.length > 0 && (!!this.lockTarget && !this.lockTarget.dead || this.liveMonsters(LOCK_ACQUIRE_DIST).length > 0);
     for (const slot of this.partySlots) {
       if (!slot.node.isValid) {
         continue;
@@ -4671,8 +4679,8 @@ export class LobbyTownRenderer {
       const cdFrac = actor.down ? 0 : Math.max(0, Math.min(1, 1 - (actor.assistReadyAt - now) / COMPANION_ASSIST_CD_MS));
       const downLeft = actor.down ? Math.max(0, Math.ceil((actor.downUntil - now) / 1000)) : 0;
       const key = `${Math.round(ratio * 50)}:${Math.round(cdFrac * 48)}:${actor.down ? downLeft : -1}`;
-      // 攻击型援护要锁定附近的怪:没怪时不亮「可释放」光圈(10-29 用户:点 2 / 3 号没反应)
-      this.setHalo(slot, !actor.down && cdFrac >= 1 && (actor.role === 'support' || hasTarget));
+      // 没怪也能放(10-29 用户):冷却好了就亮
+      this.setHalo(slot, !actor.down && cdFrac >= 1);
       if (key === slot.key) {
         continue;
       }
