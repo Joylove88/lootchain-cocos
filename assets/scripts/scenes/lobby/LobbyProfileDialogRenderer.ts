@@ -461,10 +461,7 @@ export class LobbyProfileDialogRenderer {
         { label: '钱包绑定', value: profile.walletBound ? '已绑定' : '未绑定' },
         { label: '钱包地址', value: this.maskWalletAddress(profile.walletAddress), copyText: walletAddress || undefined },
       ]] : []),
-      [
-        { label: '冒险', value: this.profileTowerFloorText() },
-        { label: '挂机产出', value: this.profileIdleRateText() },
-      ],
+      // 冒险(10-28 下架)/ 挂机产出(10-29 下架)两行去掉
     ];
   }
 

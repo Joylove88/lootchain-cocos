@@ -486,7 +486,7 @@ export class LobbyWorldOverlayRenderer {
     this.frame(plate.addComponent(Graphics), plateW, 40 * k, k * 0.8, rgba(14, 10, 10, 230));
     const locked = !status.unlocked;
     this.label(plate, 'Name', point.name, 0, 1, 21 * k, locked ? DIM : GOLD, plateW - 14 * k, HorizontalTextAlignment.CENTER, true);
-    const sub = status.isCurrent ? '当前位置' : locked ? status.reason : point.level;
+    const sub = status.isCurrent ? '当前位置' : locked ? status.reason : status.activated ? point.level : `${point.level} · 未激活`;
     if (sub) {
       const subLabel = this.label(node, 'Sub', sub, 0, -icon * 0.48 - 34 * k, 18 * k, status.isCurrent ? rgba(150, 235, 150) : locked ? rgba(210, 205, 196) : rgba(250, 236, 200), plateW + 60 * k, HorizontalTextAlignment.CENTER, true);
       subLabel.enableOutline = true;
@@ -548,8 +548,8 @@ export class LobbyWorldOverlayRenderer {
     if (quest) {
       this.label(node, 'Quest', `剧情任务「${quest.name}」在此`, 0, bh / 2 - 196 * k, 19 * k, rgba(255, 214, 120), bw - 30 * k);
     }
-    const canGo = status.unlocked && !status.isCurrent;
-    const text = status.isCurrent ? '当前所在' : status.unlocked ? '传送' : status.reason || '未开放';
+    const canGo = status.unlocked && status.activated && !status.isCurrent;
+    const text = status.isCurrent ? '当前所在' : !status.unlocked ? status.reason || '未开放' : status.activated ? '传送' : '未激活 · 需亲自前往';
     this.button(node, 'Go', 0, -bh / 2 + 66 * k, bw - 70 * k, 66 * k, text, canGo ? 'primary' : 'disabled', canGo ? () => this.host.teleportWorldMap(point.code as WorldMapCode) : null);
     this.label(node, 'Note', canGo ? (this.host.worldTeleportNote?.() ?? '免费 · 读条 5 秒') : '', 0, -bh / 2 + 22 * k, 17 * k, DIM, bw - 40 * k);
   }

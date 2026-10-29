@@ -59,6 +59,10 @@ export interface WorldMapProp {
   width: number;
   flat?: boolean;
   tilt?: number;
+  /** 旋转角度(度,逆时针);贴地小路 / 溪流段拼弯用。 */
+  angle?: number;
+  /** 水平翻转。 */
+  flipX?: boolean;
   block?: { w: number; d: number };
 }
 
@@ -127,44 +131,132 @@ function camp(stageCode: string, label: string, monsterCode: string, count: numb
   return { stageCode, label, monsterCode, spine: MONSTER_SPINE[monsterCode] ?? '', count, elite, level, x, y, radius: elite ? 90 : 170 };
 }
 
+/** 晨风村 v2 素材(docs/53 §4.1,2026-10-29;tools/qa/village2_install_assets.py 入库)。 */
+const V2 = (name: string): string => worldAsset(`vil2/vil2_${name}`);
+
+/**
+ * 夯土路网:沿折线每隔 0.38 个路宽盖一枚柔边土色笔刷(vil2_road_brush,同一张图合批),连成弯曲连续的路;
+ * 笔刷保持正圆(渲染层先压 tilt 再转角,压扁后乱转会粗细不均),逐枚转角度 + 微调大小,避免重复纹理。
+ */
+function roads(lines: number[][][], width: number): WorldMapProp[] {
+  const out: WorldMapProp[] = [];
+  const step = width * 0.38;
+  for (const line of lines) {
+    for (let i = 0; i + 1 < line.length; i += 1) {
+      const [ax, ay] = line[i];
+      const [bx, by] = line[i + 1];
+      const n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / step));
+      for (let k = i === 0 ? 0 : 1; k <= n; k += 1) {
+        const f = k / n;
+        const j = out.length;
+        out.push({ asset: V2('road_brush'), x: Math.round(ax + (bx - ax) * f), y: Math.round(ay + (by - ay) * f), width: Math.round(width * (0.92 + ((j * 37) % 17) / 100)), flat: true, angle: (j * 47) % 360 });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 晨风村 v2(docs/53 §4.1,原型 周报截图/2026-10-29_新手村设计/village_overview + village_ingame,用户 10-29 确认):
+ * 清晨山谷农庄,6400×3400。坐标按原型俯视图换算:世界 x = (原型 x - 935) × 3.4,y = (420 - 原型 y) × 3.8。
+ * 北:村长屋;西北:礼拜堂 + 圣契祭坛;东:训练场;西:风车坡;中:小溪 + 木桥;东:铁匠铺;南:村口广场(传送阵);西南:麦田;东南:村口 → 村外林地。
+ */
 const VILLAGE: WorldMapDef = {
   code: 'VILLAGE',
   name: '晨风村',
   levelText: 'Lv.1-10',
-  width: 2600,
-  height: 1800,
-  walk: { left: -1150, right: 1150, bottom: -780, top: 640 },
-  spawn: { x: -120, y: -60 },
+  width: 6400,
+  height: 3400,
+  walk: { left: -3000, right: 3000, bottom: -1520, top: 1420 },
+  spawn: { x: 480, y: -840 },
   ground: worldAsset('ground_village'),
-  groundTile: 360,
+  // 10-29 平滑手绘草地(docs/53 §4.3):大色块,一格 1000 世界单位
+  groundTile: 1000,
   buildings: [
-    { key: 'chief', label: '村长屋', asset: worldAsset('vil_chief_house'), action: 'npc', npc: 'CHIEF', x: -700, y: 330, width: 520, footprint: { w: 400, d: 150 }, door: { x: 60, y: -70 } },
-    { key: 'training', label: '训练场', asset: worldAsset('vil_training'), action: 'npc', npc: 'INSTRUCTOR', x: 640, y: 330, width: 560, footprint: { w: 420, d: 140 }, door: { x: -150, y: -70 } },
-    { key: 'altar', label: '圣契祭坛', asset: worldAsset('vil_altar'), action: 'npc', npc: 'PRIEST', x: 900, y: -260, width: 380, footprint: { w: 280, d: 110 }, door: { x: -90, y: -60 } },
-    { key: 'smithy', label: '铁匠铺', asset: worldAsset('vil_smithy'), action: 'npc', npc: 'SMITH', x: -820, y: -330, width: 470, footprint: { w: 360, d: 140 }, door: { x: 90, y: -60 } },
-    { key: 'well', label: '水井', asset: worldAsset('vil_well'), action: 'none', x: -180, y: 220, width: 200, footprint: { w: 150, d: 60 }, door: { x: 0, y: -40 } },
-    { key: 'gate', label: '村口', asset: worldAsset('vil_gate'), action: 'none', x: 260, y: -700, width: 300, footprint: { w: 60, d: 40 }, door: { x: 0, y: -40 } },
+    { key: 'chief', label: '村长屋', asset: V2('chief_house'), action: 'npc', npc: 'CHIEF', x: -220, y: 1080, width: 640, footprint: { w: 470, d: 170 }, door: { x: 40, y: -90 } },
+    { key: 'altar', label: '圣契祭坛', asset: V2('altar'), action: 'npc', npc: 'PRIEST', x: -1420, y: 640, width: 420, footprint: { w: 300, d: 120 }, door: { x: 0, y: -80 } },
+    { key: 'training', label: '训练场', asset: V2('training'), action: 'npc', npc: 'INSTRUCTOR', x: 1560, y: 700, width: 760, footprint: { w: 560, d: 160 }, door: { x: -200, y: -90 } },
+    { key: 'smithy', label: '铁匠铺', asset: V2('smithy'), action: 'npc', npc: 'SMITH', x: 1800, y: -120, width: 600, footprint: { w: 430, d: 160 }, door: { x: -120, y: -90 } },
+    { key: 'chapel', label: '礼拜堂', asset: V2('chapel'), action: 'none', x: -1900, y: 960, width: 560, footprint: { w: 380, d: 160 }, door: { x: 0, y: -80 } },
+    { key: 'windmill', label: '风车', asset: V2('windmill'), action: 'none', x: -2300, y: 60, width: 560, footprint: { w: 260, d: 140 }, door: { x: 0, y: -70 } },
+    { key: 'watermill', label: '水车磨坊', asset: V2('watermill'), action: 'none', x: -1120, y: -380, width: 500, footprint: { w: 340, d: 140 }, door: { x: 0, y: -70 } },
+    { key: 'house_a', label: '民居', asset: V2('house_a'), action: 'none', x: -260, y: -880, width: 480, footprint: { w: 340, d: 140 }, door: { x: 0, y: -70 } },
+    { key: 'house_b', label: '民居', asset: V2('house_b'), action: 'none', x: 1180, y: -1080, width: 500, footprint: { w: 350, d: 150 }, door: { x: 0, y: -70 } },
+    { key: 'house_c', label: '民居', asset: V2('house_a'), action: 'none', x: 840, y: -160, width: 460, footprint: { w: 320, d: 140 }, door: { x: 0, y: -70 } },
+    { key: 'house_d', label: '民居', asset: V2('house_b'), action: 'none', x: -1660, y: -940, width: 480, footprint: { w: 340, d: 150 }, door: { x: 0, y: -70 } },
+    { key: 'house_e', label: '民居', asset: V2('house_a'), action: 'none', x: 600, y: 420, width: 440, footprint: { w: 310, d: 140 }, door: { x: 0, y: -70 } },
+    { key: 'market', label: '集市', asset: V2('market_stall'), action: 'none', x: 100, y: -320, width: 380, footprint: { w: 260, d: 110 }, door: { x: 0, y: -60 } },
+    { key: 'well', label: '水井', asset: V2('well'), action: 'none', x: 140, y: -1060, width: 230, footprint: { w: 160, d: 70 }, door: { x: 0, y: -40 } },
+    { key: 'board', label: '告示板', asset: V2('notice_board'), action: 'none', x: 1000, y: -560, width: 230, footprint: { w: 160, d: 50 }, door: { x: 0, y: -40 } },
+    { key: 'gate', label: '村口', asset: V2('gate'), action: 'none', x: 2620, y: -960, width: 420, footprint: { w: 80, d: 50 }, door: { x: 0, y: -40 } },
   ],
   npcs: [
-    { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: -560, y: 250, height: 210, flip: 1 },
-    { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 470, y: 250, height: 215, flip: 1 },
-    { code: 'PRIEST', name: '祭司 · 莉娅', asset: worldAsset('npc_priest'), x: 780, y: -330, height: 200, flip: 1 },
-    { code: 'SMITH', name: '铁匠 · 巴洛', asset: worldAsset('npc_smith'), x: -700, y: -400, height: 215, flip: 1 },
+    { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: -60, y: 940, height: 210, flip: 1 },
+    { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 1300, y: 560, height: 215, flip: 1 },
+    { code: 'PRIEST', name: '祭司 · 莉娅', asset: worldAsset('npc_priest'), x: -1300, y: 500, height: 200, flip: -1 },
+    { code: 'SMITH', name: '铁匠 · 巴洛', asset: worldAsset('npc_smith'), x: 1620, y: -260, height: 215, flip: -1 },
   ],
   props: [
-    { asset: worldAsset('vil_tree'), x: -1080, y: 520, width: 300, block: { w: 120, d: 60 } },
-    { asset: worldAsset('vil_tree'), x: 1080, y: 560, width: 280, block: { w: 120, d: 60 } },
-    { asset: worldAsset('vil_tree'), x: -1060, y: -640, width: 300, block: { w: 120, d: 60 } },
-    { asset: worldAsset('vil_tree'), x: 1060, y: -600, width: 280, block: { w: 120, d: 60 } },
-    { asset: worldAsset('vil_tree'), x: -300, y: 560, width: 260, block: { w: 110, d: 50 } },
-    { asset: worldAsset('vil_fence'), x: -260, y: -520, width: 300, block: { w: 260, d: 30 } },
-    { asset: worldAsset('vil_fence'), x: 760, y: -620, width: 300, block: { w: 260, d: 30 } },
+    // ── 贴地:广场 / 小路 / 菜地 / 溪流(地砖层,不挡路;素材本身已是斜视角,不再压 tilt)──
+    // 夯土路网(原型 village_overview):广场为中心,北上过桥到村长屋 / 祭坛,东去铁匠铺与村口,西去磨坊与风车坡
+    ...roads([
+      [[560, -720], [420, -320], [230, 40], [180, 250], [-40, 600], [-120, 900]],
+      [[560, -720], [1100, -660], [1640, -540], [2150, -760], [2620, -950], [3000, -960]],
+      [[560, -720], [20, -640], [-600, -540], [-1120, -580], [-1700, -320], [-2250, -140]],
+      [[180, 250], [-480, 420], [-1050, 520], [-1420, 520], [-1800, 760]],
+      [[-120, 900], [480, 860], [1000, 700], [1360, 540]],
+      [[1640, -540], [1700, -260]],
+      [[1360, 540], [1900, 380], [2350, 200], [2480, -220], [2380, -600], [2150, -760]],
+      [[-600, -540], [-300, -800]],
+      [[-1120, -580], [-1620, -860]],
+      [[1100, -660], [1180, -1000]],
+    ], 170),
+    { asset: V2('plaza'), x: 560, y: -720, width: 1100, flat: true },
+    { asset: V2('wheat'), x: -2560, y: -980, width: 1000, block: { w: 860, d: 300 } },
+    { asset: V2('wheat'), x: -2500, y: -360, width: 760, flipX: true, block: { w: 640, d: 220 } },
+    { asset: V2('veg'), x: -700, y: -1180, width: 700, flat: true },
+    { asset: V2('stream'), x: -2350, y: 300, width: 1100, flat: true },
+    { asset: V2('stream'), x: -1300, y: 220, width: 1100, flat: true, flipX: true },
+    { asset: V2('stream'), x: -300, y: 170, width: 1100, flat: true },
+    { asset: V2('stream'), x: 760, y: 140, width: 1100, flat: true, flipX: true },
+    { asset: V2('stream'), x: 1820, y: 180, width: 1100, flat: true },
+    { asset: V2('stream'), x: 2800, y: 230, width: 1000, flat: true, flipX: true },
+    { asset: V2('pond'), x: -1650, y: 120, width: 520, flat: true },
+    // ── 立物 ──
+    { asset: V2('bridge'), x: 180, y: 150, width: 460 },
+    { asset: V2('bridge'), x: 2350, y: 190, width: 420, flipX: true },
+    ...[[-2950, 1350], [-2700, 1250], [-2950, 700], [-2900, -200], [-2950, -1400], [-2100, 1350], [-1300, 1350], [-600, 1400], [400, 1400], [1000, 1350],
+      [2100, 1380], [2800, 1300], [2950, 600], [2950, -300], [2400, -1450], [1700, -1450], [600, -1480], [-300, -1480], [-1200, -1450], [-2000, -1450]]
+      .map(([x, y], i) => ({ asset: V2(i % 3 === 0 ? 'tree_pine' : 'tree_oak'), x, y, width: i % 3 === 0 ? 300 : 420, block: { w: 140, d: 60 } })),
+    ...[[-800, 300], [2500, 700], [-2600, 900], [300, 700]]
+      .map(([x, y]) => ({ asset: V2('tree_oak'), x, y, width: 380, block: { w: 130, d: 60 } })),
+    ...[[-400, 380], [1350, 260], [-1000, -800], [860, -900], [2200, -500], [-2200, -650], [-700, 1250], [1900, 1100]]
+      .map(([x, y]) => ({ asset: V2('bush'), x, y, width: 170 })),
+    // 外圈第二层(出可走范围,把地图边缘围成林子)
+    ...[[-3200, 1500], [-2500, 1560], [-1700, 1540], [-900, 1580], [-150, 1560], [700, 1580], [1500, 1560], [2300, 1560], [3100, 1500],
+      [-3250, 900], [-3250, 300], [-3250, -400], [-3250, -1000], [3250, 1000], [3250, 300], [3250, -500], [3250, -1300],
+      [-2800, -1650], [-1600, -1680], [-700, -1700], [200, -1700], [1100, -1680], [2000, -1660], [2900, -1600]]
+      .map(([x, y], i) => ({ asset: V2(i % 2 === 0 ? 'tree_oak' : 'tree_pine'), x, y, width: i % 2 === 0 ? 460 : 340 })),
+    ...[[-2400, 1150], [-1000, 1150], [600, 1180], [2600, 1000], [-2800, 160], [2800, -700], [-2300, -1300], [1500, -1300], [200, -1350], [-1300, -1250]]
+      .map(([x, y], i) => ({ asset: V2(i % 2 ? 'bush' : 'rocks'), x, y, width: i % 2 ? 160 : 180, block: { w: 110, d: 40 } })),
+    { asset: V2('hay'), x: -940, y: -1320, width: 240, block: { w: 160, d: 50 } },
+    { asset: V2('hay'), x: -2000, y: -1180, width: 220, block: { w: 150, d: 50 } },
+    { asset: V2('barrels'), x: 1460, y: -360, width: 190, block: { w: 120, d: 40 } },
+    { asset: V2('barrels'), x: -480, y: -1000, width: 170, block: { w: 110, d: 40 } },
+    { asset: V2('rocks'), x: -2700, y: 520, width: 240, block: { w: 160, d: 50 } },
+    { asset: V2('rocks'), x: 2700, y: 40, width: 220, block: { w: 150, d: 50 } },
+    { asset: V2('banner'), x: 160, y: -560, width: 120 },
+    { asset: V2('banner'), x: 960, y: -560, width: 120 },
+    { asset: V2('banner'), x: 1300, y: 900, width: 110 },
+    ...[[-1600, 1180], [-1200, 860]].map(([x, y]) => ({ asset: V2('banner'), x, y, width: 110 })),
+    ...[[-3000, -1000], [-2150, -760], [1950, 960], [1180, 960]].map(([x, y]) => ({ asset: V2('fence'), x, y, width: 320, block: { w: 280, d: 30 } })),
   ],
-  lamps: [{ x: -360, y: -180 }, { x: 380, y: -120 }],
-  lampAsset: TOWN_LAMP_ASSET,
-  waypoint: { x: 260, y: -420, drawn: true },
-  camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 640, 120)],
-  exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 260, y: -760, radius: 110, toMap: 'WOODS', toSpawn: { x: -1600, y: 0 }, reach: 'VILLAGE_GATE' }],
+  lamps: [{ x: 120, y: -560 }, { x: 1000, y: -900 }, { x: -260, y: 600 }, { x: 1300, y: -200 }, { x: -1100, y: -620 }, { x: 2300, y: -760 }],
+  lampAsset: V2('lamp'),
+  // 村口广场中心(原型:广场正中圆形传送阵)
+  waypoint: { x: 560, y: -720, drawn: true },
+  camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 1560, 460)],
+  exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2900, y: -960, radius: 130, toMap: 'WOODS', toSpawn: { x: -1600, y: 0 }, reach: 'VILLAGE_GATE' }],
 };
 
 const WOODS: WorldMapDef = {
@@ -176,8 +268,8 @@ const WOODS: WorldMapDef = {
   walk: { left: -1850, right: 1850, bottom: -1050, top: 950 },
   spawn: { x: -1600, y: 0 },
   ground: worldAsset('ground_forest'),
-  // 10-29 新素材(叶片按 1:1 画):一格 900 世界单位 ≈ 手机上 1:1 显示,不缩小采样就不发毛
-  groundTile: 900,
+  // 10-29 平滑手绘林地(docs/53 §4.3):暗土 + 柔苔大色块,一格 1000 世界单位
+  groundTile: 1000,
   buildings: [],
   npcs: [],
   props: [
@@ -194,7 +286,7 @@ const WOODS: WorldMapDef = {
     camp('FIELD_WOODS_2', '林间蛛巢', 'SMALL_SPIDER', 3, 5, 500, -350),
     camp('FIELD_WOODS_E', '棕鬃熊', 'MEDIUM_BEAR', 1, 8, 1400, 330, true),
   ],
-  exits: [{ key: 'to_village', label: '返回 · 晨风村', x: -1880, y: 0, radius: 110, toMap: 'VILLAGE', toSpawn: { x: 260, y: -600 } }],
+  exits: [{ key: 'to_village', label: '返回 · 晨风村', x: -1880, y: 0, radius: 110, toMap: 'VILLAGE', toSpawn: { x: 2500, y: -900 } }],
   battleBg: 'battle_scene_field_forest',
 };
 

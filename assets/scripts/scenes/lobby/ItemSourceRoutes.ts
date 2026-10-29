@@ -44,8 +44,7 @@ const gacha = (poolCode: string, title: string, desc: string): ItemSourceRoute =
 
 const ROUTES: Record<string, ItemSourceRoute[]> = {
   HERO_EXP_BOOK: [
-    { kind: 'tower', title: '挂机收益', desc: '大厅挂机持续产出经验书', target: { type: 'idle' } },
-    field('野外精英掉落'),
+    field('野外精英掉落 / 探索宝箱'),
     { kind: 'quest', title: '每日任务', desc: '完成每日任务领取', target: { type: 'quest' } },
   ],
   ULT_SCROLL: [daily('ABYSS', '深渊裂隙掉落'), field('野外精英掉落')],
@@ -73,7 +72,7 @@ const ROUTES: Record<string, ItemSourceRoute[]> = {
   GUARD_CORE: [field('野外精英掉落'), daily('FORGE', '每日副本胜利获得')],
   GOLD: [
     { kind: 'shop', title: '金币商店', desc: '用钻石兑换金币', target: { type: 'shop', kind: 'gold' } },
-    { kind: 'tower', title: '挂机收益', desc: '大厅挂机持续产出金币', target: { type: 'idle' } },
+    field('野外清剿 / 探索宝箱'),
     daily('FORGE', '每日副本奖励'),
   ],
   // docs/45 §14:绑钻目前只来自图鉴激活奖励(sql/112)

@@ -7778,7 +7778,7 @@ const HERO_AFFIX_SHORT_LABELS: Record<string, string> = {
   SKILL_POW: '技能伤害提升',
   LIFESTEAL: '攻击吸血',
   BOSS_DMG: '对Boss伤害',
-  ABYSS_INC: '深渊挂机收益',
+  ABYSS_INC: '掠夺收益',
   DROP_RATE: '战利品掉落率',
 };
 

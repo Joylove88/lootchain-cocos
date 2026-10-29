@@ -1,4 +1,4 @@
-import { Graphics, Node, Sprite, UIOpacity } from 'cc';
+import { Graphics, Node, Sprite, tween, UIOpacity, Vec3 } from 'cc';
 import { rgba } from './LobbyHudTypes';
 
 /** 传送阵符文环贴图(主城 HUD 原型 v1,2026-10-27;正圆俯视图,运行时按地砖透视压扁)。 */
@@ -69,6 +69,54 @@ export class TownWaypointFx {
     this.active = active;
     if (this.root.isValid) {
       this.root.active = active;
+    }
+  }
+
+  /**
+   * 首次激活演出(docs/53 §3,10-29 用户「靠近传送阵时发生光效和音效自动激活」):
+   * 符文环从小放大 + 一道光柱从阵心升起再淡出 + 两圈冲击环外扩 + 光点一齐上浮;之后转入常驻激活态。
+   */
+  playActivation(): void {
+    if (!this.root.isValid) {
+      return;
+    }
+    this.setActive(true);
+    const flat = this.spin?.parent;
+    if (flat && flat.isValid) {
+      const base = flat.scale.clone();
+      flat.setScale(base.x * 0.2, base.y * 0.2, 1);
+      tween(flat).to(0.55, { scale: base }, { easing: 'backOut' }).start();
+    }
+    // 光柱:细长竖椭圆叠三层,从阵心升起
+    const pillar = this.host.addChildPlainNode(this.root, 'ActivatePillar', 0, 0, this.rx, this.rx * 4);
+    const pg = pillar.addComponent(Graphics);
+    const h = this.rx * 3.2;
+    [[0.42, 40], [0.26, 80], [0.12, 200]].forEach(([w, a]) => {
+      pg.fillColor = rgba(150, 220, 255, a);
+      pg.roundRect(-this.rx * w, 0, this.rx * w * 2, h, this.rx * w);
+      pg.fill();
+    });
+    pillar.setScale(1, 0.05, 1);
+    const pf = pillar.addComponent(UIOpacity);
+    tween(pillar).to(0.35, { scale: new Vec3(1, 1, 1) }, { easing: 'quadOut' }).start();
+    tween(pf).delay(0.9).to(0.7, { opacity: 0 }).call(() => pillar.isValid && pillar.destroy()).start();
+    // 两圈冲击环
+    [0, 0.18].forEach((delay, i) => {
+      const ring = this.host.addChildPlainNode(this.root, `ActivateRing_${i}`, 0, 0, this.rx * 2, this.rx * 2);
+      const rg = ring.addComponent(Graphics);
+      rg.strokeColor = rgba(170, 230, 255, 230);
+      rg.lineWidth = 6;
+      rg.ellipse(0, 0, this.rx * 0.5, this.rx * 0.5 * this.tilt);
+      rg.stroke();
+      ring.setScale(0.4, 0.4, 1);
+      const rf = ring.addComponent(UIOpacity);
+      tween(ring).delay(delay).to(0.8, { scale: new Vec3(2.6, 2.6, 1) }, { easing: 'quadOut' }).start();
+      tween(rf).delay(delay + 0.3).to(0.5, { opacity: 0 }).call(() => ring.isValid && ring.destroy()).start();
+    });
+    // 光点一齐从地面升起
+    for (const mote of this.motes) {
+      this.respawnMote(mote, 0);
+      mote.rise *= 1.8;
     }
   }
 

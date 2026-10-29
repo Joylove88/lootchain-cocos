@@ -64,6 +64,9 @@ import type { EquipmentItemVO } from '../api/EquipmentApi';
 import { lootChainI18n, type LootChainLanguage } from '../i18n/LootChainI18n';
 import type { PlayerLobbyProfileVO } from '../types/PlayerTypes';
 import type { PlayerIdleSummaryVO } from '../types/IdleTypes';
+
+/** docs/53 §1(2026-10-29 用户):挂机收益下线;后端接口同步关闭。 */
+const IDLE_INCOME_RETIRED = true;
 import type { UserHeroDetailVO } from '../types/HeroTypes';
 import { AdaptiveStageLayoutResolver, type AdaptiveStageLayoutHost } from './AdaptiveStageLayoutResolver';
 import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
@@ -1523,13 +1526,10 @@ export class LootChainGameRoot extends Component {
   }
 
   private runLobbyTerminalAction(action: LobbyTerminalAction): void {
+    // docs/53 §1(10-29):挂机收益下线,终端这格改「野外探索」→ 世界地图(探索面板上线前先定位到当前图)
     if (action === 'idle') {
-      const idle = this.currentIdleSummary();
-      if (idle && idle.claimable && !this.isIdleClaiming()) {
-        this.claimIdleReward();
-      } else {
-        this.setStatus(idle ? `挂机收益 金币 ${this.formatInteger(idle.goldPerHour)} / 时,累计到一定时长后可领取` : '挂机收益读取中…');
-      }
+      this.closeLobbyTerminalPanel();
+      this.openWorldMapPanel();
       return;
     }
     this.closeLobbyTerminalPanel();
@@ -2816,7 +2816,8 @@ export class LootChainGameRoot extends Component {
         this.openLobbyQuestPanel();
         return;
       case 'idle':
-        this.returnToLobbyFromScenePage();
+        // 旧「挂机收益」途径已下线,落到世界地图(野外探索)
+        this.openWorldMapPanel();
         return;
       case 'codex':
         this.openLobbyCodexPanel();
@@ -6932,6 +6933,12 @@ export class LootChainGameRoot extends Component {
       this.setStatus(map?.lockReason || '地图未开放');
       return;
     }
+    // docs/53 §3:只能传送到亲自走到、激活过的传送阵
+    if (!map.activated) {
+      this.setStatus(`${map.mapName}的传送阵未激活 · 需亲自前往`);
+      gameAudio.sfx('ui_error');
+      return;
+    }
     const sec = this.lobbyTownRenderer.teleportChannelSec();
     if (sec < 0) {
       this.setStatus('战斗中无法传送');
@@ -6977,10 +6984,7 @@ export class LootChainGameRoot extends Component {
     if (this.currentView === 'lobby') {
       this.renderCurrentView();
     }
-    // 到一张新图:落脚点那座传送阵自动激活
-    if (map && !map.activated) {
-      this.activateWorldWaypoint(code);
-    }
+    // docs/53 §3(10-29):到新图不再自动激活,要走到传送阵附近才激活
   }
 
   private activateWorldWaypoint(code: WorldMapCode): void {
@@ -6988,6 +6992,8 @@ export class LootChainGameRoot extends Component {
       const ok = await this.runWorldAction(() => this.api.world.activateWaypoint(code));
       if (ok) {
         this.refreshLobbyViewPreservingBackground();
+        // 整刷后再放演出(HUD / 传送阵节点是新的)
+        setTimeout(() => this.lobbyTownRenderer.playWaypointActivated(code), 60);
       }
     })();
   }
@@ -7895,7 +7901,9 @@ export class LootChainGameRoot extends Component {
   }
 
   private async loadIdleSummary(force = false): Promise<void> {
-    if (this.idleSummaryLoading) {
+    // docs/53 §1(10-29):挂机收益下线,不再拉取(idleSummary 恒为 null,挂机红点 / 领取钮全部不出现)
+    void force;
+    if (IDLE_INCOME_RETIRED || this.idleSummaryLoading) {
       return;
     }
     if (!force && this.idleSummary) {

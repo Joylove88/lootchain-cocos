@@ -657,6 +657,12 @@ export class LobbyTownRenderer {
       const oh = frame?.originalSize.height ?? 1;
       const h = prop.width * (oh / Math.max(1, ow)) * (prop.flat ? prop.tilt ?? 1 : 1);
       sprite.node.getComponent(UITransform)?.setContentSize(new Size(prop.width, h));
+      if (prop.angle) {
+        node.angle = prop.angle;
+      }
+      if (prop.flipX) {
+        sprite.node.setScale(-1, 1, 1);
+      }
       if (prop.flat) {
         // 贴地:中心对齐,排在地砖之后、压暗层之前
         sprite.node.setPosition(0, 0, 0);
@@ -675,30 +681,13 @@ export class LobbyTownRenderer {
     const w = Math.max(150, cfg.label.length * 30 + 60);
     const h = 46;
     const plate = this.host.addChildPlainNode(parent, 'Plate', 0, y, w, h);
-    const g = plate.addComponent(Graphics);
-    g.fillColor = rgba(10, 8, 10, 215);
-    g.roundRect(-w / 2, -h / 2, w, h, 8);
-    g.fill();
-    g.strokeColor = rgba(196, 154, 86, 230);
-    g.lineWidth = 2;
-    g.roundRect(-w / 2, -h / 2, w, h, 8);
-    g.stroke();
-    // 两端小菱形
-    g.fillColor = rgba(220, 180, 100, 240);
-    for (const side of [-1, 1]) {
-      const cx = side * (w / 2 - 14);
-      g.moveTo(cx, 7);
-      g.lineTo(cx + 5, 0);
-      g.lineTo(cx, -7);
-      g.lineTo(cx - 5, 0);
-      g.close();
-    }
-    g.fill();
-    const label = this.host.addChildLabel(plate, 'Label', cfg.label, 0, 1, 26, rgba(255, 228, 160), new Size(w - 40, 34));
+    // B 风格(10-29):暗玻璃胶囊 + 浅细边,白字(原旧金框菱形名牌)
+    mountGlassSlice(this.host as never, plate, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, w, h, h / 48);
+    const label = this.host.addChildLabel(plate, 'Label', cfg.label, 0, 1, 24, rgba(240, 242, 246), new Size(w - 40, 34));
     label.overflow = Label.Overflow.SHRINK;
     label.isBold = true;
     label.enableOutline = true;
-    label.outlineColor = rgba(20, 10, 4, 255);
+    label.outlineColor = rgba(0, 0, 0, 200);
     label.outlineWidth = 2;
     const dot = this.host.addChildPlainNode(plate, 'Dot', w / 2 - 4, h / 2 - 4, 16, 16);
     const dg = dot.addComponent(Graphics);
@@ -1396,7 +1385,18 @@ export class LobbyTownRenderer {
         hits.push({ item, dist });
       }
     }
-    return hits.sort((a, b) => a.dist - b.dist).slice(0, 3).map((hit) => hit.item);
+    // 建筑门口(action npc)和站在门边的 NPC 本人指向同一段对话:同一个 NPC 只留最近的一条
+    const seenNpc = new Set<WorldNpcCode>();
+    return hits.sort((a, b) => a.dist - b.dist).filter((hit) => {
+      if (hit.item.kind !== 'npc') {
+        return true;
+      }
+      if (seenNpc.has(hit.item.npc)) {
+        return false;
+      }
+      seenNpc.add(hit.item.npc);
+      return true;
+    }).slice(0, 3).map((hit) => hit.item);
   }
 
   private nearestInteract(): TownInteract | null {
@@ -1484,7 +1484,8 @@ export class LobbyTownRenderer {
     for (const building of this.buildings) {
       const label = building.plate?.getChildByName('Label')?.getComponent(Label);
       if (label) {
-        label.color = building.cfg.key === nearKey ? rgba(255, 246, 210) : rgba(255, 228, 160);
+        // 毛玻璃名牌(mountPlate 底色 240/242/246):走近的提亮成纯白,其余略压暗
+        label.color = building.cfg.key === nearKey ? rgba(255, 255, 255) : rgba(214, 220, 228);
       }
     }
   }
@@ -2263,6 +2264,32 @@ export class LobbyTownRenderer {
         this.host.activateWorldWaypoint?.(this.mapCode);
       }
     }
+  }
+
+  /** 传送阵首次激活成功(服务端已记账):本图就在脚下 → 光柱 / 冲击环 / 音效 / 屏幕中上横幅。 */
+  playWaypointActivated(mapCode: string): void {
+    if (mapCode !== this.mapCode) {
+      return;
+    }
+    this.waypointFx?.playActivation();
+    gameAudio.sfx('waypoint_activate', 1);
+    this.shake(5, 0.25);
+    const layout = this.hudLayout;
+    const hud = this.hudNode;
+    if (!layout || !hud || !hud.isValid) {
+      return;
+    }
+    const P = townProtoFrame(layout);
+    const w = P.S(520);
+    const h = P.S(64);
+    const banner = this.host.addChildPlainNode(hud, 'WaypointActivatedBanner', P.C(935), P.Y(200), w, h);
+    mountGlassSlice(this.host as never, banner, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, w, h, h / 48);
+    const label = this.host.addChildLabel(banner, 'Text', `已激活 · ${this.def.name}传送阵`, 0, 0, P.S(26), rgba(196, 232, 255), new Size(w - P.S(40), h));
+    label.isBold = true;
+    banner.setScale(0.7, 0.7, 1);
+    const fade = banner.addComponent(UIOpacity);
+    tween(banner).to(0.25, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
+    tween(fade).delay(2.2).to(0.5, { opacity: 0 }).call(() => banner.isValid && banner.destroy()).start();
   }
 
   private ensureMonsters(): void {
