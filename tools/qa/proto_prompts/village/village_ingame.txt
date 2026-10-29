@@ -1,0 +1,8 @@
+Generate ONE image: a finished in-game screenshot mockup of a dark-fantasy top-down ARPG on a landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST = our APPROVED HUD style (B style). Use EXACTLY this HUD: round minimap top-left with place name pill, four round frosted buttons top-right (召唤 / 商店 / 邮件 / 终端), quest tracker on the left, frosted joystick bottom-left, frosted dark interaction prompt capsule. No combat buttons (this is the village, no fighting).
+- SECOND = our current town scene, for the camera angle (3/4 top-down) and the scale of the four chibi heroes. Keep the same four chibi heroes and their size.
+- THIRD = the village overview map; this screenshot shows its "村口广场" (village square).
+Scene: the square of a peaceful farming village at dawn — soft warm morning light, light mist; wooden houses with stone foundations at the edges, a small well, flower boxes, hay bales, a wooden notice board. In the centre a round stone teleport platform with a softly glowing pale-blue rune ring and a few rising light motes (activated). The four heroes stand next to it. Prompt capsule next to the heroes: "传送 · 世界地图". Minimap place name "晨风村". Quest tracker: "◇ 拜访村长 0/1" and small grey "走到村长屋".
+GROUND (most important): smooth, clean, refined hand-painted ground like a premium mobile ARPG — soft packed-earth plaza with large worn flagstones, the surrounding grass is smooth with gentle large-scale colour variation; very few small details (an occasional pebble or tuft); NO noisy photographic texture, NO scattered leaves, NO mosaic / pixel look, NO busy pattern.
+Output only the single finished image.

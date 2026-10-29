@@ -1,0 +1,3 @@
+Generate ONE image: a square 1024x1024 seamless tileable ground texture for a premium top-down mobile ARPG forest area, viewed straight from above, evenly lit.
+Style: smooth, clean, refined HAND-PAINTED forest floor (like Torchlight / Diablo Immortal) — soft dark-brown earth blended with soft mossy green patches, gentle large-scale colour variation (patches 200-400 px across), smooth painterly gradients, very low high-frequency detail, only a few small fallen leaves (at most 6-8 in the whole tile) and a couple of tiny roots. NO photographic texture, NO noise, NO carpet of leaves, NO mosaic / pixel look, NO busy pattern.
+Must tile seamlessly on all four edges. Output only the texture.
