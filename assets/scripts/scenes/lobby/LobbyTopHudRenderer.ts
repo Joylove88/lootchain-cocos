@@ -74,7 +74,7 @@ export class LobbyTopHudRenderer {
       const node = this.addChildPlainNode(group, `LobbySystemIcon_${item.key}`, P.R(item.px), P.Y(66), d, d);
       mountRingBase(this.host, node, d * 1.12, item.strong);
       mounted += 1;
-      this.addFitIcon(node, item.icon, P.S(item.strong ? 46 : 44));
+      this.addFitIcon(node, item.icon, P.S(40));
       const text = this.addChildLabel(node, 'Label', item.label, 0, -P.S(49), P.S(20), rgba(246, 236, 214), new Size(P.S(80), P.S(26)));
       text.enableOutline = true;
       text.outlineColor = rgba(0, 0, 0, 230);

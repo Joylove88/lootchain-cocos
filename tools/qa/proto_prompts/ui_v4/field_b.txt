@@ -1,0 +1,16 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED town HUD (B style). Match its HUD language EXACTLY: thin round minimap ring with a dark frosted inside, the place-name pill under it, the small round "传送" button, the four round frosted top-right buttons with white line icons and white labels (召唤 / 商店 / 邮件 / 终端), the quest tracker text with a champagne diamond, the minimal frosted joystick (thin ring + soft knob), frosted dark capsules for prompts. Calm, thin outlines, white / grey text, champagne only as a small accent. No gold ornaments.
+- SECOND image = an APPROVED B-style screen, for the frosted dark glass material, champagne primary accent and slate secondary pill.
+- THIRD image = our CURRENT field HUD (old style). Keep EXACTLY the same game scene underneath (the brown forest-floor field, the four chibi heroes on the left, the stone teleport platform, the fallen log, the monster at the top) and EXACTLY the same set of HUD controls and their positions; only restyle the HUD controls. Do NOT copy its heavy gold rings, gold joystick, gold skill medallions and thick green bars.
+All text in Simplified Chinese exactly as written below; crisp and legible.
+
+HUD to restyle (same positions as the THIRD image):
+- Top-left: round minimap (dark frosted inside, thin light ring, white player arrow, small grey obstacle shapes, a small red dot for an enemy), under it a place-name pill "村外林地 Lv.1-10", a small round "传送" button at its right with white swirl line icon.
+- Left under the minimap: a small round "回城" button (white line icon of a portal arch).
+- Top-right: four round frosted buttons 召唤 / 商店 / 邮件 / 终端 with white line icons and small red dots on 召唤 and 终端.
+- Right edge: three team member portraits stacked vertically, each a round thin-ringed frosted frame with the hero face, a small number badge "1" / "2" / "3" on its left, and a slim muted green HP bar under it (thin, rounded, dark track).
+- Bottom-right skill cluster: one large round attack button (frosted dark glass, thin champagne ring, a white sword line icon), three smaller round skill buttons around it (white line icons: crescent slash, whirlwind, dagger thrust), a small round dash button on the lower left (white running figure line icon), and a small round "切换目标" button on the right (white crosshair line icon) with its label under it.
+- Bottom-left: the minimal frosted joystick (thin ring, soft frosted knob, four tiny chevrons).
+- Bottom centre: the leader bar: white text "见习圣骑士 Lv.2" on the left, a slim rounded HP bar (dark track, muted green fill, thin outline), and "4,000 / 4,000" on the right.
+Output only the single finished mockup image, no annotations.

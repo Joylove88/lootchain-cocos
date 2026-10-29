@@ -64,16 +64,21 @@ export const TOWN_HUD_ASSETS = {
   promptBarHot: 'ui/common/ref/plate_dark/spriteFrame',
   barFrame: 'ui/common/ref/info_banner/spriteFrame',
   eliteMedal: `${HUD}/elite_medal/spriteFrame`,
-  icSword: `${HUD}/ic_sword/spriteFrame`,
-  icSlash: `${HUD}/ic_slash/spriteFrame`,
-  icDash: `${HUD}/ic_dash/spriteFrame`,
-  icWhirl: `${HUD}/ic_whirl/spriteFrame`,
-  icDodge: `${HUD}/ic_dodge/spriteFrame`,
-  icTarget: `${HUD}/ic_target/spriteFrame`,
-  icShop: `${HUD}/ic_shop/spriteFrame`,
-  icMail: `${HUD}/ic_mail/spriteFrame`,
-  icTerminal: `${HUD}/ic_terminal/spriteFrame`,
-  icSummon: `${HUD}/ic_summon/spriteFrame`,
+  // 2026-10-29 B 风格(原型 field_b / town_b):白色线稿图标(tools/qa/glass_kit_gen.cut_line_icons 从原型抠)
+  icSword: 'ui/glass/hud_sword/spriteFrame',
+  icSlash: 'ui/glass/hud_slash/spriteFrame',
+  icDash: 'ui/glass/hud_dash/spriteFrame',
+  icWhirl: 'ui/glass/hud_whirl/spriteFrame',
+  icDodge: 'ui/glass/hud_dodge/spriteFrame',
+  icTarget: 'ui/glass/hud_target/spriteFrame',
+  icShop: 'ui/glass/hud_shop/spriteFrame',
+  icMail: 'ui/glass/hud_mail/spriteFrame',
+  icTerminal: 'ui/glass/hud_terminal/spriteFrame',
+  icSummon: 'ui/glass/hud_summon/spriteFrame',
+  icWorldPortal: 'ui/glass/hud_portal/spriteFrame',
+  icRecall: 'ui/glass/hud_recall/spriteFrame',
+  /** 大招 / 援护就绪光圈(香槟柔光环) */
+  haloRing: 'ui/glass/halo_ring/spriteFrame',
   /** 左实右淡的白色渐变条(程序生成,着色后当追踪条暗衬底) */
   fadeBand: `${HUD}/fade_band/spriteFrame`,
 } as const;
@@ -101,23 +106,28 @@ export const TERMINAL_ASSETS = {
 export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_ASSETS);
 
 
-/** 圆钮底座:暗铁圆盘 + 尖刺金环(hot = 外加一圈细金线强调,不用光晕)。 */
+/**
+ * 圆钮底座(2026-10-29 B 风格,原型 town_b / field_b):深色磨砂圆盘 + 一圈浅色细边;hot = 细边换香槟色(普攻 / 终端)。
+ * d 为外框直径(圆盘半径 0.41d)。不再用尖刺金环。
+ */
 export function mountRingBase(
   host: { addChildPlainNode(parent: Node, name: string, x: number, y: number, w: number, h: number): Node; addSprite(name: string, path: string, x: number, y: number, w: number, h: number, parent?: Node): Sprite | null },
   parent: Node,
   d: number,
   hot = false,
-  fill: Color = new Color(20, 16, 14, 238),
+  fill: Color = new Color(38, 44, 52, 215),
 ): void {
   const disc = host.addChildPlainNode(parent, 'Disc', 0, 0, d, d).addComponent(Graphics);
+  const r = d * 0.41;
   disc.fillColor = fill;
-  disc.circle(0, 0, d * 0.39);
+  disc.circle(0, 0, r);
   disc.fill();
-  if (hot) {
-    disc.strokeColor = new Color(232, 190, 110, 200);
-    disc.lineWidth = Math.max(1, d * 0.025);
-    disc.circle(0, 0, d * 0.47);
-    disc.stroke();
-  }
-  host.addSprite('Ring', TOWN_HUD_ASSETS.ringSpiked, 0, 0, d, d, parent);
+  // 上半一层淡白,做磨砂玻璃的受光
+  disc.fillColor = new Color(255, 255, 255, 10);
+  disc.circle(0, r * 0.18, r * 0.8);
+  disc.fill();
+  disc.strokeColor = hot ? new Color(226, 196, 138, 240) : new Color(184, 192, 202, 215);
+  disc.lineWidth = Math.max(1.5, d * (hot ? 0.02 : 0.016));
+  disc.circle(0, 0, r);
+  disc.stroke();
 }

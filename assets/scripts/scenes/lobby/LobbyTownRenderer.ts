@@ -345,7 +345,7 @@ export class LobbyTownRenderer {
   private bufferedInput: { kind: 'attack' } | { kind: 'skill'; index: number } | null = null;
   private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean }> = [];
   private leaderActionAnim = false;
-  private combatButtons: Array<{ node: Node; cd: Label | null; mask: Graphics | null; index: number; size: number; drawn: number }> = [];
+  private combatButtons: Array<{ node: Node; cd: Label | null; mask: Graphics | null; index: number; size: number; drawn: number; halo: Node | null; haloOn: boolean }> = [];
   // docs/51 队友自动战斗 / 目标锁定 / 野外 HUD
   private inCombat = false;
   private lastCombatAt = 0;
@@ -355,7 +355,7 @@ export class LobbyTownRenderer {
   private lockArrow: Node | null = null;
   private leaderHitFlashUntil = 0;
   private leaderBar: { fill: Graphics; text: Label; name: Label; w: number; h: number; key: string } | null = null;
-  private partySlots: Array<{ actor: TownActor; node: Node; shade: Graphics; cdRing: Graphics; count: Label; hp: Graphics; hpW: number; hpH: number; d: number; key: string }> = [];
+  private partySlots: Array<{ actor: TownActor; node: Node; shade: Graphics; cdRing: Graphics; count: Label; hp: Graphics; hpW: number; hpH: number; d: number; key: string; halo: Node | null; haloOn: boolean }> = [];
   private eliteBar: { node: Node; fill: Graphics; name: Label; stagger: Graphics; sw: number; sh: number; w: number; h: number; key: string } | null = null;
   // docs/51 P2:换队长 / 战利品
   private swapReadyAt = 0;
@@ -1431,20 +1431,23 @@ export class LobbyTownRenderer {
           const hot = index === 0;
           const bar = this.host.addChildPlainNode(root, `Prompt_${index}`, w / 2, -index * P.S(63), w, h);
           // 普通条 = 暗条(stat_bar 900×85)、高亮条 = 暗金牌(plate_dark 696×150),都是现成 UiRefKit 件
-          if (!mountRefSliced(this.host, bar, 'Bg', hot ? { path: TOWN_HUD_ASSETS.promptBarHot, w: 696, h: 150, inset: [70, 70, 40, 40] } : { path: TOWN_HUD_ASSETS.promptBar, w: 900, h: 85, inset: [60, 60, 30, 30] }, 0, 0, w, h)) {
-            const g = bar.addComponent(Graphics);
-            g.fillColor = rgba(14, 10, 8, 220);
-            g.roundRect(-w / 2, -h / 2, w, h, P.S(6));
-            g.fill();
-          }
+          // B 风格(原型 town_b):暗玻璃胶囊 + 浅色细边
+          const g = bar.addComponent(Graphics);
+          g.fillColor = rgba(18, 22, 28, 225);
+          g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+          g.fill();
+          g.strokeColor = hot ? rgba(196, 204, 216, 230) : rgba(140, 150, 164, 180);
+          g.lineWidth = Math.max(1.2, P.S(1.6));
+          g.roundRect(-w / 2, -h / 2, w, h, h / 2);
+          g.stroke();
           let x = -w / 2 + P.S(28);
           if (showKeys && hot) {
             const key = this.host.addChildPlainNode(bar, 'Key', x, 0, P.S(30), P.S(30));
             const kg = key.addComponent(Graphics);
-            kg.fillColor = rgba(16, 12, 8, 240);
+            kg.fillColor = rgba(22, 27, 34, 240);
             kg.roundRect(-P.S(13), -P.S(13), P.S(26), P.S(26), P.S(3));
             kg.fill();
-            kg.strokeColor = rgba(226, 190, 120, 255);
+            kg.strokeColor = rgba(220, 226, 234, 230);
             kg.lineWidth = Math.max(1, P.S(1.5));
             kg.roundRect(-P.S(13), -P.S(13), P.S(26), P.S(26), P.S(3));
             kg.stroke();
@@ -1602,27 +1605,41 @@ export class LobbyTownRenderer {
     const padH = layout.stageHeight * 0.72;
     const pad = this.host.addChildPlainNode(hud, 'LobbyTownJoyPad', layout.stageLeft + padW / 2, layout.stageBottom + padH / 2, padW, padH);
     const base = this.host.addChildPlainNode(hud, 'LobbyTownJoyBase', homeX, homeY, baseD, baseD);
-    if (this.host.addSprite('Art', TOWN_HUD_ASSETS.joyBase, 0, 0, baseD, baseD, base)) {
-      // 原型石盘半透明,能透出地面
-      base.addComponent(UIOpacity).opacity = 215;
-    } else {
-      const bg = base.addComponent(Graphics);
-      bg.fillColor = rgba(8, 8, 12, 120);
-      bg.circle(0, 0, baseD / 2);
+    // B 风格(原型 town_b / field_b):淡磨砂圆盘 + 浅色细环 + 四个小箭头;摇杆头 = 磨砂灰圆 + 细边
+    const bg = base.addComponent(Graphics);
+    bg.fillColor = rgba(18, 22, 28, 120);
+    bg.circle(0, 0, baseD * 0.47);
+    bg.fill();
+    bg.strokeColor = rgba(176, 186, 200, 170);
+    bg.lineWidth = Math.max(1.2, baseD * 0.01);
+    bg.circle(0, 0, baseD * 0.47);
+    bg.stroke();
+    bg.fillColor = rgba(220, 226, 234, 190);
+    const t = baseD * 0.035;
+    const at = baseD * 0.39;
+    [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([ux, uy]) => {
+      const cx = ux * at;
+      const cy = uy * at;
+      bg.moveTo(cx + ux * t, cy + uy * t);
+      bg.lineTo(cx - ux * t * 0.4 - uy * t, cy - uy * t * 0.4 + ux * t);
+      bg.lineTo(cx - ux * t * 0.4 + uy * t, cy - uy * t * 0.4 - ux * t);
+      bg.close();
       bg.fill();
-      bg.strokeColor = rgba(196, 154, 86, 150);
-      bg.lineWidth = Math.max(1.5, 2 * scale);
-      bg.circle(0, 0, baseD / 2);
-      bg.stroke();
-    }
+    });
+    void scale;
     const knobD = baseD * 0.43;
     const knob = this.host.addChildPlainNode(base, 'Knob', 0, 0, knobD, knobD);
-    if (!this.host.addSprite('Art', TOWN_HUD_ASSETS.joyKnob, 0, 0, knobD, knobD, knob)) {
-      const kg = knob.addComponent(Graphics);
-      kg.fillColor = rgba(226, 206, 160, 200);
-      kg.circle(0, 0, knobD / 2);
-      kg.fill();
-    }
+    const kg = knob.addComponent(Graphics);
+    kg.fillColor = rgba(92, 104, 118, 215);
+    kg.circle(0, 0, knobD / 2);
+    kg.fill();
+    kg.fillColor = rgba(255, 255, 255, 26);
+    kg.circle(0, knobD * 0.1, knobD * 0.38);
+    kg.fill();
+    kg.strokeColor = rgba(196, 204, 216, 200);
+    kg.lineWidth = Math.max(1.2, knobD * 0.025);
+    kg.circle(0, 0, knobD / 2);
+    kg.stroke();
     this.joyBase = base;
     this.joyKnob = knob;
     const toLocal = (event: EventTouch): Vec3 => {
@@ -1763,9 +1780,10 @@ export class LobbyTownRenderer {
     }
     // 队长箭头固定在圆心,按移动方向转
     const me = this.host.addChildPlainNode(area, 'Me', 0, 0, P.S(26), P.S(26));
-    if (!this.host.addSprite('Arrow', TOWN_HUD_ASSETS.mapArrow, 0, 0, P.S(26), P.S(26), me)) {
+    // B 风格(原型 field_b):香槟色箭头
+    {
       const mg = me.addComponent(Graphics);
-      mg.fillColor = rgba(120, 220, 255, 255);
+      mg.fillColor = rgba(232, 204, 148, 255);
       mg.moveTo(0, P.S(11));
       mg.lineTo(P.S(8), -P.S(8));
       mg.lineTo(0, -P.S(4));
@@ -1779,7 +1797,15 @@ export class LobbyTownRenderer {
     const plateW = P.S(field ? 216 : 140);
     const plateH = P.S(field ? 38 : 36);
     const plateY = -outer * (field ? 111 / 118 : 94 / 105);
-    mountRefSliced(this.host, node, 'Plate', REF_PLATE_DARK, 0, plateY, plateW, plateH);
+    // B 风格(原型 town_b / field_b):暗玻璃胶囊 + 浅色细边
+    const plate = this.host.addChildPlainNode(node, 'Plate', 0, plateY, plateW, plateH).addComponent(Graphics);
+    plate.fillColor = rgba(18, 22, 28, 225);
+    plate.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
+    plate.fill();
+    plate.strokeColor = rgba(170, 180, 194, 190);
+    plate.lineWidth = Math.max(1.2, P.S(1.5));
+    plate.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
+    plate.stroke();
     const title = this.host.addChildLabel(node, 'Title', plateText, 0, plateY, P.S(22), rgba(246, 232, 200), new Size(plateW - P.S(28), P.S(30)));
     title.overflow = Label.Overflow.SHRINK;
     title.isBold = true;
@@ -1792,7 +1818,7 @@ export class LobbyTownRenderer {
     const ang = -Math.PI / 9;
     const mapBtn = this.host.addChildPlainNode(hud, 'LobbyTownWorldMapBtn', cx + Math.cos(ang) * outer * 1.14, cy + Math.sin(ang) * outer * 1.14, mapBtnD + P.S(30), mapBtnD + P.S(30));
     mountRingBase(this.host, mapBtn, mapBtnD * 1.12);
-    this.addFitSprite('Icon', TOWN_HUD_ASSETS.iconPortal, 0, 0, mapBtnD * 0.6, mapBtnD * 0.6, mapBtn);
+    this.addFitSprite('Icon', TOWN_HUD_ASSETS.icWorldPortal, 0, 0, mapBtnD * 0.54, mapBtnD * 0.54, mapBtn);
     const mapBtnLabel = this.host.addChildLabel(mapBtn, 'Label', '传送', 0, -mapBtnD * 0.5 - P.S(10), P.S(18), rgba(244, 232, 206), new Size(P.S(80), P.S(24)));
     mapBtnLabel.enableOutline = true;
     mapBtnLabel.outlineColor = rgba(0, 0, 0, 230);
@@ -1807,49 +1833,27 @@ export class LobbyTownRenderer {
     this.updateMinimap();
   }
 
-  /** 小地图圆环(原型):暗带 + 两侧细金线 + 顶上金菱尖。outer = 外沿半径。 */
+  /** 小地图圆环(2026-10-29 B 风格,原型 field_b):一道浅色细环 + 内侧淡环 + 顶上小「N」。outer = 外沿半径。 */
   private drawMinimapRing(node: Node, outer: number): void {
     const g = this.host.addChildPlainNode(node, 'Ring', 0, 0, outer * 2.4, outer * 2.4).addComponent(Graphics);
     const k = outer / 118;
-    // 暗带偏蓝灰(原型是铁灰带,和圆内灰地分得开),内侧一道浅高光
-    g.strokeColor = rgba(58, 60, 68, 255);
-    g.lineWidth = 10 * k;
-    g.circle(0, 0, 111 * k);
+    g.strokeColor = rgba(14, 18, 24, 200);
+    g.lineWidth = 8 * k;
+    g.circle(0, 0, 112 * k);
     g.stroke();
-    g.strokeColor = rgba(92, 94, 102, 255);
-    g.lineWidth = Math.max(1, 1.5 * k);
-    g.circle(0, 0, 109 * k);
-    g.stroke();
-    // 分段刻线(原型环带上每 30° 一道)
-    g.strokeColor = rgba(34, 35, 40, 255);
-    g.lineWidth = Math.max(1, 1.5 * k);
-    for (let i = 0; i < 12; i += 1) {
-      const a = (i * Math.PI) / 6 + Math.PI / 12;
-      g.moveTo(Math.cos(a) * 106 * k, Math.sin(a) * 106 * k);
-      g.lineTo(Math.cos(a) * 116 * k, Math.sin(a) * 116 * k);
-    }
-    g.stroke();
-    g.strokeColor = rgba(226, 186, 106, 255);
-    g.lineWidth = Math.max(2, 3 * k);
-    g.circle(0, 0, 117 * k);
-    g.stroke();
+    g.strokeColor = rgba(176, 186, 200, 220);
     g.lineWidth = Math.max(1.5, 2.2 * k);
-    g.circle(0, 0, 105.5 * k);
+    g.circle(0, 0, 116 * k);
     g.stroke();
-    // 顶上金菱尖(高 26、宽 16,尖朝上)
-    g.fillColor = rgba(226, 184, 100, 255);
-    g.moveTo(0, 130 * k);
-    g.lineTo(8 * k, 112 * k);
-    g.lineTo(0, 104 * k);
-    g.lineTo(-8 * k, 112 * k);
-    g.close();
-    g.fill();
-    g.fillColor = rgba(255, 236, 190, 255);
-    g.moveTo(0, 126 * k);
-    g.lineTo(3 * k, 113 * k);
-    g.lineTo(-3 * k, 113 * k);
-    g.close();
-    g.fill();
+    g.strokeColor = rgba(120, 130, 144, 150);
+    g.lineWidth = Math.max(1, 1.2 * k);
+    g.circle(0, 0, 107 * k);
+    g.stroke();
+    const n = this.host.addChildLabel(node, 'North', 'N', 0, 104 * k, 17 * k, rgba(226, 230, 238), new Size(30 * k, 24 * k));
+    n.isBold = true;
+    n.enableOutline = true;
+    n.outlineColor = rgba(0, 0, 0, 220);
+    n.outlineWidth = 2;
   }
 
   /** 圆边压暗:几圈低透明度描边叠出向边缘渐暗(原型圆内四周暗)。 */
@@ -2649,7 +2653,7 @@ export class LobbyTownRenderer {
     this.recallButton = button;
     this.positionRecallButton(layout);
     mountRingBase(this.host, button, size * 1.12);
-    this.addFitSprite('Icon', TOWN_HUD_ASSETS.iconPortal, 0, 0, size * 0.56, size * 0.56, button);
+    this.addFitSprite('Icon', TOWN_HUD_ASSETS.icRecall, 0, 0, size * 0.52, size * 0.52, button);
     const label = this.host.addChildLabel(button, 'Label', home === 'CITY' ? '回城' : '回村', 0, -size * 0.5 - P.S(12), P.S(18), rgba(244, 230, 200), new Size(P.S(90), P.S(26)));
     label.enableOutline = true;
     label.outlineColor = rgba(0, 0, 0, 230);
@@ -4339,9 +4343,9 @@ export class LobbyTownRenderer {
     bar.key = key;
     const g = bar.fill;
     g.clear();
-    const color = flash ? rgba(255, 255, 255, 255) : ratio > 0.5 ? rgba(96, 200, 72, 255) : ratio > 0.3 ? rgba(226, 190, 60, 255) : rgba(226, 70, 52, 255);
+    const color = flash ? rgba(255, 255, 255, 255) : ratio > 0.5 ? rgba(98, 176, 104, 255) : ratio > 0.3 ? rgba(214, 180, 90, 255) : rgba(206, 84, 70, 255);
     g.fillColor = color;
-    g.roundRect(-bar.w / 2, -bar.h / 2, Math.max(bar.h, bar.w * ratio), bar.h, bar.h * 0.25);
+    g.roundRect(-bar.w / 2, -bar.h / 2, Math.max(bar.h, bar.w * ratio), bar.h, bar.h / 2);
     g.fill();
     // 顶部一道亮线,不至于一整块死色
     g.fillColor = rgba(255, 255, 255, 50);
@@ -4389,6 +4393,8 @@ export class LobbyTownRenderer {
     const mk = (name: string, px: number, py: number, d: number, hot: boolean, icon: string, iconK: number, key: string, onPress: () => void, index: number, caption = ''): void => {
       const size = P.S(d);
       const node = this.host.addChildPlainNode(hud, name, P.R(px), P.Y(py), size, size);
+      // 大招就绪光圈(10-29 用户):挂在圆盘下面,冷却结束时外扩一次 + 呼吸
+      const halo = index === 2 ? this.mountHalo(node, size * 1.5) : null;
       mountRingBase(this.host, node, size * 1.12, hot);
       this.addFitSprite('Icon', icon, 0, 0, size * iconK, size * iconK, node);
       let cd: Label | null = null;
@@ -4427,15 +4433,52 @@ export class LobbyTownRenderer {
         onPress();
       }, this);
       this.host.applyImageButtonFeedback(node, 1.06, 0.94);
-      this.combatButtons.push({ node, cd, mask, index, size, drawn: -1 });
+      this.combatButtons.push({ node, cd, mask, index, size, drawn: -1, halo, haloOn: false });
     };
     const A = TOWN_HUD_ASSETS;
-    mk('LobbyFieldAttack', 1668, 690, 165, true, A.icSword, 0.62, 'J', () => this.leaderAttack(), -1);
-    mk('LobbyFieldSkill0', 1560, 598, 92, false, A.icSlash, 0.84, 'K', () => this.leaderSkill(0), 0);
-    mk('LobbyFieldSkill1', 1666, 520, 92, false, A.icDash, 0.86, 'L', () => this.leaderSkill(1), 1);
-    mk('LobbyFieldSkill2', 1773, 590, 92, false, A.icWhirl, 0.84, 'I', () => this.leaderSkill(2), 2);
-    mk('LobbyFieldDodge', 1522, 712, 84, false, A.icDodge, 0.78, 'Shift', () => this.leaderDodge(), -2);
-    mk('LobbyFieldTarget', 1805, 700, 70, false, A.icTarget, 0.72, 'Tab', () => this.cycleLockTarget(), -3, '切换目标');
+    // B 风格(原型 field_b):白色线稿图标约占圆盘 0.6
+    mk('LobbyFieldAttack', 1668, 690, 165, true, A.icSword, 0.6, 'J', () => this.leaderAttack(), -1);
+    mk('LobbyFieldSkill0', 1560, 598, 92, false, A.icSlash, 0.62, 'K', () => this.leaderSkill(0), 0);
+    mk('LobbyFieldSkill1', 1666, 520, 92, false, A.icDash, 0.62, 'L', () => this.leaderSkill(1), 1);
+    mk('LobbyFieldSkill2', 1773, 590, 92, false, A.icWhirl, 0.62, 'I', () => this.leaderSkill(2), 2);
+    mk('LobbyFieldDodge', 1522, 712, 84, false, A.icDodge, 0.6, 'Shift', () => this.leaderDodge(), -2);
+    mk('LobbyFieldTarget', 1805, 700, 70, false, A.icTarget, 0.56, 'Tab', () => this.cycleLockTarget(), -3, '切换目标');
+  }
+
+  /** 就绪光圈节点(香槟柔光环,默认透明);挂在调用处当前子节点之上、圆盘之下由调用顺序保证。 */
+  private mountHalo(parent: Node, size: number): Node | null {
+    const sprite = this.host.addSprite('Halo', TOWN_HUD_ASSETS.haloRing, 0, 0, size, size, parent);
+    if (!sprite) {
+      return null;
+    }
+    sprite.node.addComponent(UIOpacity).opacity = 0;
+    return sprite.node;
+  }
+
+  /**
+   * 就绪光圈开关(10-29 用户:大招 / 队友援护冷却结束要有特效):变就绪那一下从 1.35 倍外扩收回 + 亮闪,之后慢呼吸;
+   * 不就绪立即隐去。只在状态翻转时动 tween,每帧调用无开销。
+   */
+  private setHalo(holder: { halo: Node | null; haloOn: boolean }, on: boolean): void {
+    const halo = holder.halo;
+    if (!halo || !halo.isValid || holder.haloOn === on) {
+      return;
+    }
+    holder.haloOn = on;
+    const fade = halo.getComponent(UIOpacity)!;
+    Tween.stopAllByTarget(halo);
+    Tween.stopAllByTarget(fade);
+    if (!on) {
+      fade.opacity = 0;
+      halo.setScale(1, 1, 1);
+      return;
+    }
+    halo.setScale(1.35, 1.35, 1);
+    fade.opacity = 255;
+    tween(halo).to(0.32, { scale: new Vec3(1, 1, 1) }, { easing: 'quadOut' })
+      .then(tween(halo).repeatForever(tween(halo).to(0.9, { scale: new Vec3(1.06, 1.06, 1) }, { easing: 'sineInOut' }).to(0.9, { scale: new Vec3(1, 1, 1) }, { easing: 'sineInOut' })))
+      .start();
+    tween(fade).delay(0.32).repeatForever(tween(fade).to(0.9, { opacity: 140 }, { easing: 'sineInOut' }).to(0.9, { opacity: 255 }, { easing: 'sineInOut' })).start();
   }
 
   private refreshCombatButtons(now: number): void {
@@ -4470,6 +4513,9 @@ export class LobbyTownRenderer {
           }
         }
       }
+      if (button.halo) {
+        this.setHalo(button, left <= 0 && !this.leaderDead);
+      }
       const opacity = button.node.getComponent(UIOpacity) ?? button.node.addComponent(UIOpacity);
       const want = this.leaderDead ? 140 : 255;
       if (opacity.opacity !== want) {
@@ -4497,12 +4543,13 @@ export class LobbyTownRenderer {
     const node = this.host.addChildPlainNode(hud, 'LobbyFieldLeaderBar', P.C(912.5), P.Y(786), w + P.S(40), P.S(40));
     // 原型:圆角暗槽 + 2px 金边,填充留 2px 内缩
     const groove = node.addComponent(Graphics);
-    groove.fillColor = rgba(12, 10, 8, 235);
-    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), P.S(5));
+    // B 风格(原型 field_b):圆角暗槽 + 浅灰细边
+    groove.fillColor = rgba(12, 15, 20, 225);
+    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), (h + P.S(8)) / 2);
     groove.fill();
-    groove.strokeColor = rgba(214, 172, 96, 255);
-    groove.lineWidth = Math.max(1.5, P.S(2));
-    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), P.S(5));
+    groove.strokeColor = rgba(120, 130, 144, 220);
+    groove.lineWidth = Math.max(1.2, P.S(1.6));
+    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), (h + P.S(8)) / 2);
     groove.stroke();
     const fill = this.host.addChildPlainNode(node, 'Fill', 0, 0, w, h).addComponent(Graphics);
     const hero = leader.hero;
@@ -4532,6 +4579,8 @@ export class LobbyTownRenderer {
     const showKeys = true;
     this.followers.slice(0, 3).forEach((actor, index) => {
       const node = this.host.addChildPlainNode(hud, `LobbyFieldAssist_${index}`, P.R(1790), P.Y(205 + index * 107), d * 1.3, d * 1.3);
+      // 援护技(队友大招)就绪光圈(10-29 用户):冷却结束外扩一次 + 呼吸
+      const halo = this.mountHalo(node, d * 1.45);
       const face = this.host.addChildPlainNode(node, 'Face', 0, 0, d * 0.82, d * 0.82);
       if (!mountHeroAvatar(face, actor.hero.heroCode, d * 0.82, 'circle')) {
         const g = face.addComponent(Graphics);
@@ -4543,7 +4592,12 @@ export class LobbyTownRenderer {
       }
       const shade = this.host.addChildPlainNode(node, 'Shade', 0, 0, d, d).addComponent(Graphics);
       const cdRing = this.host.addChildPlainNode(node, 'Cd', 0, 0, d * 1.2, d * 1.2).addComponent(Graphics);
-      this.host.addSprite('Ring', TOWN_HUD_ASSETS.ringSpiked, 0, 0, d * 1.25, d * 1.25, node);
+      // B 风格:头像外一圈浅色细环(原型 field_b),不用尖刺金环
+      const ring = this.host.addChildPlainNode(node, 'Ring', 0, 0, d * 1.1, d * 1.1).addComponent(Graphics);
+      ring.strokeColor = rgba(184, 192, 202, 220);
+      ring.lineWidth = Math.max(1.5, d * 0.03);
+      ring.circle(0, 0, d * 0.46);
+      ring.stroke();
       const count = this.host.addChildLabel(node, 'Count', '', 0, 0, d * 0.42, rgba(255, 255, 255), new Size(d, d * 0.5));
       count.isBold = true;
       count.enableOutline = true;
@@ -4553,10 +4607,10 @@ export class LobbyTownRenderer {
       const hpH = Math.max(4, P.S(8));
       const hpNode = this.host.addChildPlainNode(node, 'Hp', 0, -d * 0.5 - P.S(10), hpW + 4, hpH + 4);
       const hpBg = hpNode.addComponent(Graphics);
-      hpBg.fillColor = rgba(8, 6, 6, 230);
+      hpBg.fillColor = rgba(12, 15, 20, 220);
       hpBg.roundRect(-hpW / 2 - 2, -hpH / 2 - 2, hpW + 4, hpH + 4, hpH / 2 + 2);
       hpBg.fill();
-      hpBg.strokeColor = rgba(170, 132, 76, 220);
+      hpBg.strokeColor = rgba(110, 120, 134, 200);
       hpBg.lineWidth = 1;
       hpBg.roundRect(-hpW / 2 - 2, -hpH / 2 - 2, hpW + 4, hpH + 4, hpH / 2 + 2);
       hpBg.stroke();
@@ -4564,14 +4618,14 @@ export class LobbyTownRenderer {
       if (showKeys) {
         const badge = this.host.addChildPlainNode(node, 'Key', -d * 0.82, 0, P.S(30), P.S(30));
         const bg = badge.addComponent(Graphics);
-        bg.fillColor = rgba(14, 12, 10, 225);
+        bg.fillColor = rgba(22, 27, 34, 225);
         bg.circle(0, 0, P.S(14));
         bg.fill();
-        bg.strokeColor = rgba(214, 170, 92, 220);
+        bg.strokeColor = rgba(170, 180, 194, 200);
         bg.lineWidth = 1.5;
         bg.circle(0, 0, P.S(14));
         bg.stroke();
-        this.host.addChildLabel(badge, 'Label', `${index + 1}`, 0, 0, P.S(18), rgba(255, 236, 190), new Size(P.S(28), P.S(24))).isBold = true;
+        this.host.addChildLabel(badge, 'Label', `${index + 1}`, 0, 0, P.S(18), rgba(242, 242, 242), new Size(P.S(28), P.S(24))).isBold = true;
       }
       // 点一下 = 援护技;按住 0.5 秒 = 换队长(docs/51 §3)
       node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
@@ -4598,7 +4652,7 @@ export class LobbyTownRenderer {
       node.on(Node.EventType.TOUCH_END, release, this);
       node.on(Node.EventType.TOUCH_CANCEL, release, this);
       this.host.applyImageButtonFeedback(node, 1.06, 0.94);
-      this.partySlots.push({ actor, node, shade, cdRing, count, hp, hpW, hpH, d, key: '' });
+      this.partySlots.push({ actor, node, shade, cdRing, count, hp, hpW, hpH, d, key: '', halo, haloOn: false });
     });
     this.refreshPartyHud(Date.now());
   }
@@ -4613,13 +4667,14 @@ export class LobbyTownRenderer {
       const cdFrac = actor.down ? 0 : Math.max(0, Math.min(1, 1 - (actor.assistReadyAt - now) / COMPANION_ASSIST_CD_MS));
       const downLeft = actor.down ? Math.max(0, Math.ceil((actor.downUntil - now) / 1000)) : 0;
       const key = `${Math.round(ratio * 50)}:${Math.round(cdFrac * 48)}:${actor.down ? downLeft : -1}`;
+      this.setHalo(slot, !actor.down && cdFrac >= 1);
       if (key === slot.key) {
         continue;
       }
       slot.key = key;
       const hp = slot.hp;
       hp.clear();
-      hp.fillColor = ratio > 0.3 ? rgba(96, 200, 72, 255) : rgba(226, 70, 52, 255);
+      hp.fillColor = ratio > 0.3 ? rgba(98, 176, 104, 255) : rgba(206, 84, 70, 255);
       hp.roundRect(-slot.hpW / 2, -slot.hpH / 2, slot.hpW * ratio, slot.hpH, slot.hpH / 2);
       hp.fill();
       slot.shade.clear();
@@ -4634,18 +4689,15 @@ export class LobbyTownRenderer {
       if (!actor.down) {
         const r = slot.d * 0.5;
         if (cdFrac >= 1) {
-          // 就绪:整圈亮金 + 外晕
-          g.strokeColor = rgba(255, 196, 80, 90);
-          g.lineWidth = slot.d * 0.12;
-          g.circle(0, 0, r + slot.d * 0.04);
-          g.stroke();
-          g.strokeColor = rgba(255, 214, 110, 255);
-          g.lineWidth = slot.d * 0.05;
-          g.circle(0, 0, r);
+          // 就绪:光圈节点负责(setHalo),这里只补一圈香槟细环
+          g.strokeColor = rgba(232, 202, 142, 255);
+          g.lineWidth = slot.d * 0.035;
+          g.circle(0, 0, r - slot.d * 0.04);
           g.stroke();
         } else if (cdFrac > 0) {
-          g.strokeColor = rgba(255, 196, 80, 235);
-          g.lineWidth = slot.d * 0.05;
+          // 冷却进度:香槟细弧
+          g.strokeColor = rgba(226, 196, 138, 220);
+          g.lineWidth = slot.d * 0.035;
           g.arc(0, 0, r, Math.PI / 2 - Math.PI * 2 * cdFrac, Math.PI / 2, true);
           g.stroke();
         }

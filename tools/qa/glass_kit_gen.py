@@ -152,6 +152,19 @@ def main():
     save('pill_primary_dim', shaded(160, 56, 28, primary_dim, outline=(198, 172, 128, 235), outline_w=2))
     save('tab_glow', shaded(120, 64, 14, tab_glow, outline=(232, 206, 150, 245), outline_w=2))
     save('line_fade', fade_line(False))
+    # 大招 / 援护就绪光圈(10-29 用户):香槟色柔光环,运行时呼吸 + 就绪瞬间外扩一次
+    n = 256
+    halo = Image.new('RGBA', (n, n), (0, 0, 0, 0))
+    hp = halo.load()
+    for yy in range(n):
+        for xx in range(n):
+            r = math.hypot(xx - n / 2 + 0.5, yy - n / 2 + 0.5) / (n / 2)
+            core = math.exp(-((r - 0.80) / 0.035) ** 2)
+            glow = math.exp(-((r - 0.80) / 0.13) ** 2) * 0.55
+            a_ = min(1.0, core + glow)
+            if a_ > 0.004:
+                hp[xx, yy] = (_mix((236, 200, 132), (255, 240, 205), core)) + (int(255 * a_),)
+    save('halo_ring', halo)
     # 左侧压暗条(背包左栏等无底板侧栏垫底):左半段平铺、右半段渐隐到 0
     shade = Image.new('RGBA', (256, 4), (0, 0, 0, 0))
     for x in range(256):
@@ -162,6 +175,7 @@ def main():
     save('shade_h', shade)
     save('line_fade_v', fade_line(True))
     extract_proto_icons()
+    cut_line_icons()
 
 
 def rail_selected():
@@ -461,6 +475,33 @@ def extract_proto_icons():
                 save(key, cut_keep(x, y, half, 30, 120) if key == 'lock' else cut_keep(x, y, half, 14, 70))
             else:
                 save(key, cut(x, y, half, 18, 90, True))
+
+
+def cut_line_icons():
+    """野外 HUD 原型 field_b:圆钮里的白色线稿图标——按亮度做透明度,只取圆心半径 half 内(避开外圈细环),存白色剪影运行时染色。"""
+    import numpy as np
+    path = os.path.join(os.path.dirname(PROTO), 'field_b.png')
+    if not os.path.exists(path):
+        return
+    img = Image.open(path).convert('RGB')
+    if img.size != (1870, 841):
+        img = img.resize((1870, 841), Image.LANCZOS)
+    a = np.asarray(img).astype(float)
+    items = {'hud_summon': (1473, 66, 23), 'hud_shop': (1582, 66, 23), 'hud_mail': (1690, 66, 23), 'hud_terminal': (1797, 66, 23),
+             'hud_sword': (1662, 684, 56), 'hud_slash': (1555, 596, 32), 'hud_dash': (1666, 520, 32), 'hud_whirl': (1772, 592, 32),
+             'hud_dodge': (1521, 705, 29), 'hud_target': (1797, 698, 21), 'hud_portal': (296, 164, 19), 'hud_recall': (80, 413, 21)}
+    for key, (cx, cy, half) in items.items():
+        box = a[cy - half:cy + half, cx - half:cx + half]
+        lum = box @ np.array([0.299, 0.587, 0.114])
+        bg = np.median(lum)
+        alpha = np.clip((lum - bg - 18) / 110, 0, 1)
+        yy, xx = np.mgrid[0:half * 2, 0:half * 2]
+        r = np.hypot(xx - half + 0.5, yy - half + 0.5) / half
+        alpha *= np.clip((1.0 - r) / 0.1, 0, 1)
+        out = np.zeros(box.shape[:2] + (4,), np.uint8)
+        out[..., :3] = 255
+        out[..., 3] = (alpha * 255).astype(np.uint8)
+        save(key, Image.fromarray(out, 'RGBA').resize((half * 4, half * 4), Image.LANCZOS))
 
 
 def cut_keep(cx, cy, half, lo, hi):
