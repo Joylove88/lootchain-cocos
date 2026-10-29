@@ -44,6 +44,7 @@ import { TOWN_SPAWN } from './LobbyTownConfig';
 import { TownWaypointFx } from './LobbyTownWaypointFx';
 import { REF_PLATE_DARK, mountRefSliced } from '../UiRefKit';
 import { TOWN_HUD_ASSETS, TOWN_MINIMAP_BUILDING_ICONS, mountRingBase, townProtoFrame } from './LobbyTownHudProto';
+import { GLASS_SLICES, mountGlassSlice } from '../UiGlassKit';
 import { GUARD_MONSTER_DB_SCALE } from './GuardBattleModel';
 import { mountHeroAvatar } from './HeroHeadCrop';
 import { TownCombatFx, resolveTownHeroFxKit, type TownHeroFxKit } from './LobbyTownCombatFx';
@@ -1432,14 +1433,7 @@ export class LobbyTownRenderer {
           const bar = this.host.addChildPlainNode(root, `Prompt_${index}`, w / 2, -index * P.S(63), w, h);
           // 普通条 = 暗条(stat_bar 900×85)、高亮条 = 暗金牌(plate_dark 696×150),都是现成 UiRefKit 件
           // B 风格(原型 town_b):暗玻璃胶囊 + 浅色细边
-          const g = bar.addComponent(Graphics);
-          g.fillColor = rgba(18, 22, 28, 225);
-          g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-          g.fill();
-          g.strokeColor = hot ? rgba(196, 204, 216, 230) : rgba(140, 150, 164, 180);
-          g.lineWidth = Math.max(1.2, P.S(1.6));
-          g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-          g.stroke();
+          mountGlassSlice(this.host as never, bar, 'Bg', hot ? GLASS_SLICES.hudCapsule : GLASS_SLICES.hudCapsuleDim, 0, 0, w, h, h / 48);
           let x = -w / 2 + P.S(28);
           if (showKeys && hot) {
             const key = this.host.addChildPlainNode(bar, 'Key', x, 0, P.S(30), P.S(30));
@@ -1606,15 +1600,18 @@ export class LobbyTownRenderer {
     const pad = this.host.addChildPlainNode(hud, 'LobbyTownJoyPad', layout.stageLeft + padW / 2, layout.stageBottom + padH / 2, padW, padH);
     const base = this.host.addChildPlainNode(hud, 'LobbyTownJoyBase', homeX, homeY, baseD, baseD);
     // B 风格(原型 town_b / field_b):淡磨砂圆盘 + 浅色细环 + 四个小箭头;摇杆头 = 磨砂灰圆 + 细边
+    const baseArt = this.host.addSprite('Art', TOWN_HUD_ASSETS.hudJoyBase, 0, 0, baseD, baseD, base);
     const bg = base.addComponent(Graphics);
-    bg.fillColor = rgba(18, 22, 28, 120);
+    bg.fillColor = rgba(18, 22, 28, baseArt ? 0 : 120);
     bg.circle(0, 0, baseD * 0.47);
     bg.fill();
-    bg.strokeColor = rgba(176, 186, 200, 170);
-    bg.lineWidth = Math.max(1.2, baseD * 0.01);
-    bg.circle(0, 0, baseD * 0.47);
-    bg.stroke();
-    bg.fillColor = rgba(220, 226, 234, 190);
+    if (!baseArt) {
+      bg.strokeColor = rgba(176, 186, 200, 170);
+      bg.lineWidth = Math.max(1.2, baseD * 0.01);
+      bg.circle(0, 0, baseD * 0.47);
+      bg.stroke();
+    }
+    bg.fillColor = rgba(220, 226, 234, baseArt ? 0 : 190);
     const t = baseD * 0.035;
     const at = baseD * 0.39;
     [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([ux, uy]) => {
@@ -1627,19 +1624,19 @@ export class LobbyTownRenderer {
       bg.fill();
     });
     void scale;
-    const knobD = baseD * 0.43;
+    const knobD = baseD * 0.4;
     const knob = this.host.addChildPlainNode(base, 'Knob', 0, 0, knobD, knobD);
+    const knobArt = this.host.addSprite('Art', TOWN_HUD_ASSETS.hudJoyKnob, 0, 0, knobD, knobD, knob);
     const kg = knob.addComponent(Graphics);
-    kg.fillColor = rgba(92, 104, 118, 215);
+    kg.fillColor = rgba(92, 104, 118, knobArt ? 0 : 215);
     kg.circle(0, 0, knobD / 2);
     kg.fill();
-    kg.fillColor = rgba(255, 255, 255, 26);
-    kg.circle(0, knobD * 0.1, knobD * 0.38);
-    kg.fill();
-    kg.strokeColor = rgba(196, 204, 216, 200);
-    kg.lineWidth = Math.max(1.2, knobD * 0.025);
-    kg.circle(0, 0, knobD / 2);
-    kg.stroke();
+    if (!knobArt) {
+      kg.strokeColor = rgba(196, 204, 216, 200);
+      kg.lineWidth = Math.max(1.2, knobD * 0.025);
+      kg.circle(0, 0, knobD / 2);
+      kg.stroke();
+    }
     this.joyBase = base;
     this.joyKnob = knob;
     const toLocal = (event: EventTouch): Vec3 => {
@@ -1798,14 +1795,7 @@ export class LobbyTownRenderer {
     const plateH = P.S(field ? 38 : 36);
     const plateY = -outer * (field ? 111 / 118 : 94 / 105);
     // B 风格(原型 town_b / field_b):暗玻璃胶囊 + 浅色细边
-    const plate = this.host.addChildPlainNode(node, 'Plate', 0, plateY, plateW, plateH).addComponent(Graphics);
-    plate.fillColor = rgba(18, 22, 28, 225);
-    plate.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
-    plate.fill();
-    plate.strokeColor = rgba(170, 180, 194, 190);
-    plate.lineWidth = Math.max(1.2, P.S(1.5));
-    plate.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
-    plate.stroke();
+    mountGlassSlice(this.host as never, node, 'Plate', GLASS_SLICES.hudCapsule, 0, plateY, plateW, plateH, plateH / 48);
     const title = this.host.addChildLabel(node, 'Title', plateText, 0, plateY, P.S(22), rgba(246, 232, 200), new Size(plateW - P.S(28), P.S(30)));
     title.overflow = Label.Overflow.SHRINK;
     title.isBold = true;
@@ -1835,8 +1825,16 @@ export class LobbyTownRenderer {
 
   /** 小地图圆环(2026-10-29 B 风格,原型 field_b):一道浅色细环 + 内侧淡环 + 顶上小「N」。outer = 外沿半径。 */
   private drawMinimapRing(node: Node, outer: number): void {
-    const g = this.host.addChildPlainNode(node, 'Ring', 0, 0, outer * 2.4, outer * 2.4).addComponent(Graphics);
     const k = outer / 118;
+    if (this.host.addSprite('Ring', TOWN_HUD_ASSETS.minimapRing, 0, 0, outer * 2.4, outer * 2.4, node)) {
+      const north = this.host.addChildLabel(node, 'North', 'N', 0, 104 * k, 17 * k, rgba(226, 230, 238), new Size(30 * k, 24 * k));
+      north.isBold = true;
+      north.enableOutline = true;
+      north.outlineColor = rgba(0, 0, 0, 220);
+      north.outlineWidth = 2;
+      return;
+    }
+    const g = this.host.addChildPlainNode(node, 'Ring', 0, 0, outer * 2.4, outer * 2.4).addComponent(Graphics);
     g.strokeColor = rgba(14, 18, 24, 200);
     g.lineWidth = 8 * k;
     g.circle(0, 0, 112 * k);
@@ -2141,10 +2139,12 @@ export class LobbyTownRenderer {
       glowNode.setSiblingIndex(vignette.getSiblingIndex());
     }
     this.waypointGlow = glowNode.addComponent(Graphics);
-    // 激活后的旋转符文环 / 呼吸光 / 光点(2026-10-27 主城 HUD 原型 v1)
-    this.waypointFx = new TownWaypointFx(this.host, ground, wp.x, wp.y, wp.drawn ? 120 : 290);
-    if (vignette) {
-      this.waypointFx.node.setSiblingIndex(vignette.getSiblingIndex());
+    // 激活后的旋转符文环 / 呼吸光 / 光点(2026-10-27 主城 HUD 原型 v1);野外石台的挂到石台台面上(见下)
+    if (!wp.drawn) {
+      this.waypointFx = new TownWaypointFx(this.host, ground, wp.x, wp.y, 290);
+      if (vignette) {
+        this.waypointFx.node.setSiblingIndex(vignette.getSiblingIndex());
+      }
     }
     if (wp.drawn) {
       const node = this.host.addChildPlainNode(root, 'TownWaypoint', wp.x, wp.y, 300, 200);
@@ -2158,8 +2158,12 @@ export class LobbyTownRenderer {
         sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, h));
         sprite.node.setPosition(0, h * 0.32, 0);
         this.waypointNode = node;
+        // 10-29 用户「传送阵特效没显示」:符文环原在地面层、被石台盖住只露底边一段 → 挂到石台台面中心(贴图 y 140 / 322)、
+        // 对齐台面蓝色内圈(半径 ≈ 宽 × 0.35)、按台面透视压扁 0.53,画在石台之上
+        this.waypointFx = new TownWaypointFx(this.host, node, 0, h * 0.32 + h * (161 - 140) / 322, w * 0.34, 0.53);
       } else {
         node.destroy();
+        this.waypointFx = new TownWaypointFx(this.host, ground, wp.x, wp.y, 120);
       }
     }
     this.refreshWaypointGlow(this.host.currentWorldState?.() ?? null);
@@ -3627,6 +3631,28 @@ export class LobbyTownRenderer {
 
   // ── docs/51 §3 援护技:点队友头像 / 数字键 1~3 ──
 
+  /** 援护位旁边飘一行小字(点了放不出来时给反馈,不只写状态栏)。 */
+  private flashAssistHint(index: number, text: string): void {
+    const slot = this.partySlots[index];
+    const layout = this.hudLayout;
+    if (!slot || !slot.node.isValid || !layout) {
+      return;
+    }
+    const P = townProtoFrame(layout);
+    const old = slot.node.getChildByName('AssistHint');
+    if (old) {
+      old.destroy();
+    }
+    const w = P.S(170);
+    const h = P.S(36);
+    const hint = this.host.addChildPlainNode(slot.node, 'AssistHint', -slot.d * 1.55, 0, w, h);
+    mountGlassSlice(this.host as never, hint, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, w, h, h / 48);
+    const label = this.host.addChildLabel(hint, 'Text', text, 0, 0, P.S(18), rgba(232, 236, 242), new Size(w - P.S(16), h));
+    label.overflow = Label.Overflow.SHRINK;
+    const fade = hint.addComponent(UIOpacity);
+    tween(fade).delay(1.1).to(0.3, { opacity: 0 }).call(() => hint.isValid && hint.destroy()).start();
+  }
+
   private triggerAssist(index: number): void {
     const actor = this.followers[index];
     const now = Date.now();
@@ -3650,6 +3676,7 @@ export class LobbyTownRenderer {
     const target = this.ensureLockTarget();
     if (!target) {
       this.host.setStatus('附近没有可攻击的目标');
+      this.flashAssistHint(index, '附近没有目标');
       return;
     }
     actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
@@ -4542,15 +4569,7 @@ export class LobbyTownRenderer {
     const h = P.S(16);
     const node = this.host.addChildPlainNode(hud, 'LobbyFieldLeaderBar', P.C(912.5), P.Y(786), w + P.S(40), P.S(40));
     // 原型:圆角暗槽 + 2px 金边,填充留 2px 内缩
-    const groove = node.addComponent(Graphics);
-    // B 风格(原型 field_b):圆角暗槽 + 浅灰细边
-    groove.fillColor = rgba(12, 15, 20, 225);
-    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), (h + P.S(8)) / 2);
-    groove.fill();
-    groove.strokeColor = rgba(120, 130, 144, 220);
-    groove.lineWidth = Math.max(1.2, P.S(1.6));
-    groove.roundRect(-w / 2 - P.S(4), -h / 2 - P.S(4), w + P.S(8), h + P.S(8), (h + P.S(8)) / 2);
-    groove.stroke();
+    mountGlassSlice(this.host as never, node, 'Groove', GLASS_SLICES.hudCapsuleDim, 0, 0, w + P.S(8), h + P.S(8), (h + P.S(8)) / 48);
     const fill = this.host.addChildPlainNode(node, 'Fill', 0, 0, w, h).addComponent(Graphics);
     const hero = leader.hero;
     const name = this.host.addChildLabel(node, 'Name', `${safeText(hero.heroName)} Lv.${hero.level}`, -w / 2 - P.S(15), P.S(1), P.S(22), rgba(246, 236, 214), new Size(P.S(220), P.S(30)), HorizontalTextAlignment.RIGHT);
@@ -4593,11 +4612,8 @@ export class LobbyTownRenderer {
       const shade = this.host.addChildPlainNode(node, 'Shade', 0, 0, d, d).addComponent(Graphics);
       const cdRing = this.host.addChildPlainNode(node, 'Cd', 0, 0, d * 1.2, d * 1.2).addComponent(Graphics);
       // B 风格:头像外一圈浅色细环(原型 field_b),不用尖刺金环
-      const ring = this.host.addChildPlainNode(node, 'Ring', 0, 0, d * 1.1, d * 1.1).addComponent(Graphics);
-      ring.strokeColor = rgba(184, 192, 202, 220);
-      ring.lineWidth = Math.max(1.5, d * 0.03);
-      ring.circle(0, 0, d * 0.46);
-      ring.stroke();
+      // 细环贴图(环半径 110/256):外径对齐 d × 0.46
+      this.host.addSprite('Ring', TOWN_HUD_ASSETS.hudRingThin, 0, 0, d * 1.07, d * 1.07, node);
       const count = this.host.addChildLabel(node, 'Count', '', 0, 0, d * 0.42, rgba(255, 255, 255), new Size(d, d * 0.5));
       count.isBold = true;
       count.enableOutline = true;
@@ -4606,25 +4622,12 @@ export class LobbyTownRenderer {
       const hpW = d * 0.84;
       const hpH = Math.max(4, P.S(8));
       const hpNode = this.host.addChildPlainNode(node, 'Hp', 0, -d * 0.5 - P.S(10), hpW + 4, hpH + 4);
-      const hpBg = hpNode.addComponent(Graphics);
-      hpBg.fillColor = rgba(12, 15, 20, 220);
-      hpBg.roundRect(-hpW / 2 - 2, -hpH / 2 - 2, hpW + 4, hpH + 4, hpH / 2 + 2);
-      hpBg.fill();
-      hpBg.strokeColor = rgba(110, 120, 134, 200);
-      hpBg.lineWidth = 1;
-      hpBg.roundRect(-hpW / 2 - 2, -hpH / 2 - 2, hpW + 4, hpH + 4, hpH / 2 + 2);
-      hpBg.stroke();
+      mountGlassSlice(this.host as never, hpNode, 'Bg', GLASS_SLICES.hudCapsuleDim, 0, 0, hpW + 4, hpH + 4, (hpH + 4) / 48);
       const hp = this.host.addChildPlainNode(hpNode, 'Fill', 0, 0, hpW, hpH).addComponent(Graphics);
       if (showKeys) {
         const badge = this.host.addChildPlainNode(node, 'Key', -d * 0.82, 0, P.S(30), P.S(30));
-        const bg = badge.addComponent(Graphics);
-        bg.fillColor = rgba(22, 27, 34, 225);
-        bg.circle(0, 0, P.S(14));
-        bg.fill();
-        bg.strokeColor = rgba(170, 180, 194, 200);
-        bg.lineWidth = 1.5;
-        bg.circle(0, 0, P.S(14));
-        bg.stroke();
+        // 编号小圆:同圆钮贴图(盘半径 0.41 → 外框 = 14 / 0.41)
+        this.host.addSprite('Bg', TOWN_HUD_ASSETS.hudDisc, 0, 0, P.S(34), P.S(34), badge);
         this.host.addChildLabel(badge, 'Label', `${index + 1}`, 0, 0, P.S(18), rgba(242, 242, 242), new Size(P.S(28), P.S(24))).isBold = true;
       }
       // 点一下 = 援护技;按住 0.5 秒 = 换队长(docs/51 §3)
@@ -4658,6 +4661,7 @@ export class LobbyTownRenderer {
   }
 
   private refreshPartyHud(now: number): void {
+    const hasTarget = this.partySlots.length > 0 && (!!this.lockTarget && !this.lockTarget.dead || this.liveMonsters(LOCK_ACQUIRE_DIST).length > 0);
     for (const slot of this.partySlots) {
       if (!slot.node.isValid) {
         continue;
@@ -4667,7 +4671,8 @@ export class LobbyTownRenderer {
       const cdFrac = actor.down ? 0 : Math.max(0, Math.min(1, 1 - (actor.assistReadyAt - now) / COMPANION_ASSIST_CD_MS));
       const downLeft = actor.down ? Math.max(0, Math.ceil((actor.downUntil - now) / 1000)) : 0;
       const key = `${Math.round(ratio * 50)}:${Math.round(cdFrac * 48)}:${actor.down ? downLeft : -1}`;
-      this.setHalo(slot, !actor.down && cdFrac >= 1);
+      // 攻击型援护要锁定附近的怪:没怪时不亮「可释放」光圈(10-29 用户:点 2 / 3 号没反应)
+      this.setHalo(slot, !actor.down && cdFrac >= 1 && (actor.role === 'support' || hasTarget));
       if (key === slot.key) {
         continue;
       }

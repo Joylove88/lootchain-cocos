@@ -33,6 +33,9 @@ export const GLASS_SLICES = {
   frameSel: slice('frame_sel', 112, 112, 18, 18),
   // 可领取 / 可操作的高亮行(原型 quest_b 首行):暖香槟玻璃 + 金边
   rowReady: slice('row_ready', 256, 112, 44, 24),
+  // 跑图 HUD 胶囊(提示条 / 地名牌 / 血条槽):暗底 + 浅细边,超采样无锯齿
+  hudCapsule: slice('hud_capsule', 128, 48, 24, 23),
+  hudCapsuleDim: slice('hud_capsule_dim', 128, 48, 24, 23),
   row: slice('row', 64, 40, 10, 10),
   pillPrimary: slice('pill_primary', 160, 56, 28, 27),
   pillSecondary: slice('pill_secondary', 256, 56, 28, 27),

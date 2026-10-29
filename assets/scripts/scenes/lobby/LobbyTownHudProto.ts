@@ -79,6 +79,13 @@ export const TOWN_HUD_ASSETS = {
   icRecall: 'ui/glass/hud_recall/spriteFrame',
   /** 大招 / 援护就绪光圈(香槟柔光环) */
   haloRing: 'ui/glass/halo_ring/spriteFrame',
+  // 10-29 用户「边框糊」:圆钮 / 环 / 摇杆改 4 倍超采样贴图(原生端 Graphics 线不抗锯齿)
+  hudDisc: 'ui/glass/hud_disc/spriteFrame',
+  hudDiscHot: 'ui/glass/hud_disc_hot/spriteFrame',
+  hudRingThin: 'ui/glass/hud_ring_thin/spriteFrame',
+  hudJoyBase: 'ui/glass/hud_joy_base/spriteFrame',
+  hudJoyKnob: 'ui/glass/hud_joy_knob/spriteFrame',
+  minimapRing: 'ui/glass/minimap_ring/spriteFrame',
   /** 左实右淡的白色渐变条(程序生成,着色后当追踪条暗衬底) */
   fadeBand: `${HUD}/fade_band/spriteFrame`,
 } as const;
@@ -115,16 +122,16 @@ export function mountRingBase(
   parent: Node,
   d: number,
   hot = false,
-  fill: Color = new Color(38, 44, 52, 215),
+  fill: Color = new Color(34, 38, 43, 228),
 ): void {
+  // 贴图优先(超采样,边缘细腻);缺图才退 Graphics
+  if (host.addSprite('Disc', hot ? TOWN_HUD_ASSETS.hudDiscHot : TOWN_HUD_ASSETS.hudDisc, 0, 0, d, d, parent)) {
+    return;
+  }
   const disc = host.addChildPlainNode(parent, 'Disc', 0, 0, d, d).addComponent(Graphics);
   const r = d * 0.41;
   disc.fillColor = fill;
   disc.circle(0, 0, r);
-  disc.fill();
-  // 上半一层淡白,做磨砂玻璃的受光
-  disc.fillColor = new Color(255, 255, 255, 10);
-  disc.circle(0, r * 0.18, r * 0.8);
   disc.fill();
   disc.strokeColor = hot ? new Color(226, 196, 138, 240) : new Color(184, 192, 202, 215);
   disc.lineWidth = Math.max(1.5, d * (hot ? 0.02 : 0.016));

@@ -176,6 +176,7 @@ def main():
     save('line_fade_v', fade_line(True))
     extract_proto_icons()
     cut_line_icons()
+    hud_textures()
 
 
 def rail_selected():
@@ -502,6 +503,65 @@ def cut_line_icons():
         out[..., :3] = 255
         out[..., 3] = (alpha * 255).astype(np.uint8)
         save(key, Image.fromarray(out, 'RGBA').resize((half * 4, half * 4), Image.LANCZOS))
+
+
+def _circle_tex(n, r, fill_fn, rim=None, rim_w=0.0):
+    """n×n 圆形贴图(4 倍超采样):fill_fn(u, v) -> rgba(u / v 为相对圆心的 -1..1);rim = 外沿细环颜色,rim_w 为环宽(输出像素)。"""
+    N = n * SS
+    im = Image.new('RGBA', (N, N), (0, 0, 0, 0))
+    px = im.load()
+    R = r * SS
+    c = N / 2
+    for yy in range(N):
+        for xx in range(N):
+            dx = (xx + 0.5 - c) / R
+            dy = (yy + 0.5 - c) / R
+            d = math.hypot(dx, dy)
+            if d > 1.0:
+                continue
+            col = fill_fn(dx, dy) if fill_fn else (0, 0, 0, 0)
+            if rim and d > 1.0 - rim_w * SS / R:
+                col = rim
+            px[xx, yy] = col
+    return im.resize((n, n), Image.LANCZOS)
+
+
+def hud_textures():
+    """10-29 用户:跑图 HUD 边框发糊(原生端 Graphics 线不抗锯齿)→ 圆钮 / 环 / 摇杆 / 胶囊全部出超采样贴图(取色原型 field_b)。"""
+    flat = lambda col: (lambda u, v: col)
+    # 圆钮盘:外框直径 256,盘半径 0.41 → 105;深炭灰平涂(原型没有淡白受光)+ 浅色细边
+    save('hud_disc', _circle_tex(256, 105, flat((34, 38, 43, 228)), (186, 194, 204, 235), 4.2))
+    save('hud_disc_hot', _circle_tex(256, 105, flat((34, 38, 43, 228)), (228, 198, 140, 245), 5.2))
+    # 头像细环(只有环)
+    save('hud_ring_thin', _circle_tex(256, 110, None, (186, 194, 204, 230), 6.5))
+    # 摇杆底:不透明深炭灰 + 浅细边 + 四个小三角(三角用 Pillow 画在超采样图上)
+    base = _circle_tex(512, 240, flat((33, 35, 37, 232)), (176, 186, 198, 235), 5.0)
+    big = base.resize((512 * SS, 512 * SS), Image.LANCZOS)
+    d = ImageDraw.Draw(big)
+    c, at, t = 256 * SS, 200 * SS, 22 * SS
+    for ux, uy in ((0, -1), (0, 1), (1, 0), (-1, 0)):
+        tx, ty = c + ux * at, c + uy * at
+        pts = [(tx + ux * t, ty + uy * t), (tx - ux * t * 0.6 - uy * t, ty - uy * t * 0.6 + ux * t), (tx - ux * t * 0.6 + uy * t, ty - uy * t * 0.6 - ux * t)]
+        d.polygon(pts, fill=(206, 212, 220, 235))
+    save('hud_joy_base', big.resize((512, 512), Image.LANCZOS))
+    # 摇杆头:蓝灰球(左上受光 (98,114,128) → 右下 (56,68,80))+ 浅细边
+    knob = lambda u, v: _mix((100, 116, 130, 240), (56, 68, 80, 240), max(0.0, min(1.0, 0.5 + (u + v) * 0.42)))
+    save('hud_joy_knob', _circle_tex(256, 124, knob, (176, 186, 198, 240), 6.0))
+    # 小地图环:外框 = outer × 2.4(512),单位 k = 512 / (118 × 2.4);暗带 r112 宽 8 / 外亮环 r116 宽 2.2 / 内淡环 r107 宽 1.2
+    k = 512 / (118 * 2.4)
+    N = 512 * SS
+    ring = Image.new('RGBA', (N, N), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(ring)
+    def circ(r, w, col):
+        rr, ww = r * k * SS, w * k * SS
+        rd.ellipse((N / 2 - rr - ww / 2, N / 2 - rr - ww / 2, N / 2 + rr + ww / 2, N / 2 + rr + ww / 2), outline=col, width=max(1, int(round(ww))))
+    circ(112, 8, (14, 18, 24, 205))
+    circ(107, 1.4, (126, 136, 150, 170))
+    circ(116, 2.4, (184, 192, 204, 235))
+    save('minimap_ring', ring.resize((512, 512), Image.LANCZOS))
+    # 胶囊(提示条 / 地名牌 / 血条槽):暗底 + 浅细边,九宫格左右 24
+    save('hud_capsule', rounded(128, 48, 24, (18, 22, 28, 228), outline=(176, 186, 198, 210), outline_w=2))
+    save('hud_capsule_dim', rounded(128, 48, 24, (14, 18, 24, 225), outline=(118, 128, 142, 210), outline_w=2))
 
 
 def cut_keep(cx, cy, half, lo, hi):
