@@ -21,11 +21,14 @@ interface Mote {
 
 /**
  * 传送阵特效(用户 10-27「传送阵要有特效」,按原型克制做):
- * 外圈符文环慢转 + 阵面淡蓝呼吸光 + 6~8 个光点缓升淡出;未激活只留暗灰圈(由调用方画),这里整组隐藏。
+ * 外圈符文环慢转 + 阵面淡蓝呼吸光 + 6~8 个光点缓升淡出。
+ * 未激活 = 休眠态(10-29 用户「传送阵特效没了」:原来整组隐藏,看着像坏了):符文环压暗去色、极慢转,冷灰微弱呼吸光,不出光点。
  */
 export class TownWaypointFx {
   private readonly root: Node;
   private readonly spin: Node | null;
+  private readonly ring: Sprite | null;
+  private readonly ringOpacity: UIOpacity | null;
   private readonly glow: Graphics;
   private readonly motes: Mote[] = [];
   private active = false;
@@ -40,7 +43,9 @@ export class TownWaypointFx {
     const flat = host.addChildPlainNode(this.root, 'Flat', 0, 0, rx * 2, rx * 2);
     flat.setScale(1, tilt, 1);
     const spin = host.addChildPlainNode(flat, 'Spin', 0, 0, rx * 2, rx * 2);
-    this.spin = host.addSprite('Ring', TOWN_WAYPOINT_RING_ASSET, 0, 0, rx * 2.04, rx * 2.04, spin) ? spin : null;
+    this.ring = host.addSprite('Ring', TOWN_WAYPOINT_RING_ASSET, 0, 0, rx * 2.04, rx * 2.04, spin);
+    this.spin = this.ring ? spin : null;
+    this.ringOpacity = this.ring ? this.ring.node.addComponent(UIOpacity) : null;
     if (!this.spin) {
       spin.destroy();
     }
@@ -67,8 +72,18 @@ export class TownWaypointFx {
 
   setActive(active: boolean): void {
     this.active = active;
-    if (this.root.isValid) {
-      this.root.active = active;
+    if (!this.root.isValid) {
+      return;
+    }
+    this.root.active = true;
+    if (this.ring && this.ring.isValid) {
+      this.ring.color = active ? rgba(255, 255, 255) : rgba(150, 162, 182);
+    }
+    if (this.ringOpacity) {
+      this.ringOpacity.opacity = active ? 255 : 95;
+    }
+    for (const mote of this.motes) {
+      mote.node.active = active;
     }
   }
 
@@ -121,17 +136,25 @@ export class TownWaypointFx {
   }
 
   step(dt: number): void {
-    if (!this.active || !this.root.isValid) {
+    if (!this.root.isValid) {
       return;
     }
     this.time += dt;
     if (this.spin && this.spin.isValid) {
-      // 约 40 秒一圈:看得出在转,又不晃眼
-      this.spin.angle = (this.time * 9) % 360;
+      // 激活约 40 秒一圈:看得出在转,又不晃眼;休眠 3 分钟一圈
+      this.spin.angle = (this.spin.angle + dt * (this.active ? 9 : 2)) % 360;
     }
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 1.6);
     const g = this.glow;
     g.clear();
+    if (!this.active) {
+      // 休眠:冷灰蓝微光,慢呼吸
+      const slow = 0.5 + 0.5 * Math.sin(this.time * 0.9);
+      g.fillColor = rgba(140, 165, 200, Math.round(8 + 12 * slow));
+      g.ellipse(0, 0, this.rx * 0.8, this.rx * 0.8 * this.tilt);
+      g.fill();
+      return;
+    }
     g.fillColor = rgba(80, 170, 255, Math.round(16 + 20 * pulse));
     g.ellipse(0, 0, this.rx * 0.86, this.rx * 0.86 * this.tilt);
     g.fill();
