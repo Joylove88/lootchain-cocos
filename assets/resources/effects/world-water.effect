@@ -1,0 +1,105 @@
+// 河流 / 瀑布流水(2026-10-29 用户:小溪河流加动态效果)。
+// 挂在贴地的河道 / 瀑布件上,按颜色识别:偏蓝的像素 = 水面(波纹扰动 + 细碎闪光),接近白的 = 白沫(竖向流动条纹);
+// 其余像素(岸石 / 草)原样输出。透明度沿用原图。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: water-vs:vert
+      frag: water-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        waterParams: { value: [0.0028, 1.0, 0.0, 0.0] }
+}%
+
+CCProgram water-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram water-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+
+  uniform WaterFrag {
+    vec4 waterParams;
+  };
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+
+  float waterness(vec3 c) {
+    return smoothstep(0.03, 0.14, c.b - c.r) * step(c.g * 0.78, c.b);
+  }
+
+  float foamness(vec3 c) {
+    return smoothstep(0.72, 0.9, min(c.r, min(c.g, c.b))) * step(c.r - 0.02, c.b);
+  }
+
+  vec4 frag () {
+    vec4 base = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0);
+    if (base.a < 0.01) {
+      return base * color;
+    }
+    float w = waterness(base.rgb);
+    float f = foamness(base.rgb);
+    if (w + f < 0.02) {
+      return base * color;
+    }
+    float t = cc_time.x * waterParams.y;
+    // 波纹扰动:采样点按噪声轻微游走;偏到岸上就退回原像素,岸边不被拉扯
+    vec2 q = uv0 * vec2(46.0, 38.0);
+    vec2 d = vec2(noise(q + vec2(t * 0.6, 0.0)) - 0.5, noise(q * 1.3 + vec2(0.0, t * 0.5)) - 0.5);
+    vec4 o = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0 + d * waterParams.x * max(w, f));
+    if (waterness(o.rgb) + foamness(o.rgb) < 0.02) {
+      o = base;
+    }
+    vec3 rgb = o.rgb;
+    // 水面:细碎闪光随时间游走 + 大块明暗缓慢起伏
+    float glint = noise(uv0 * vec2(190.0, 160.0) + vec2(t * 0.9, -t * 0.4));
+    rgb += w * pow(glint, 9.0) * 0.5;
+    rgb += w * (noise(uv0 * vec2(26.0, 20.0) + t * 0.22) - 0.5) * 0.06;
+    // 白沫:竖向往下流的条纹
+    float foam = noise(vec2(uv0.x * 240.0, uv0.y * 70.0 - t * 5.5));
+    rgb = mix(rgb, rgb * 0.86 + 0.16, f * smoothstep(0.35, 0.85, foam) * 0.8);
+    return vec4(rgb, o.a) * color;
+  }
+}%

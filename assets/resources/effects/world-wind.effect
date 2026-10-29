@@ -1,0 +1,85 @@
+// 野外立物随风摆(2026-10-29 用户:树叶、草地随风飘荡)。
+// 片元里按高度横向错 UV:树根(uv.y=1)不动,越往上摆幅越大;相位取立物在地图上的位置(mapOrigin 由渲染层每帧给),
+// 走动时不会因为镜头移动而变相位。贴图须 packable=false(动态合图会让 uv 不再是 0..1)。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: wind-vs:vert
+      frag: wind-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        windParams: { value: [0.014, 1.5, 2.2, 0.0] }
+        mapOrigin: { value: [0.0, 0.0, 1.0, 0.0] }
+}%
+
+CCProgram wind-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+  out float phase;
+
+  uniform WindVert {
+    vec4 mapOrigin;
+  };
+
+  vec4 vert () {
+    vec4 pos = vec4(a_position, 1);
+    // 世界层节点位置 / 缩放 → 地图坐标,做空间相位(一阵风从西往东扫过去)
+    vec2 mapPos = (a_position.xy - mapOrigin.xy) * mapOrigin.z;
+    phase = mapPos.x * 0.0021 + mapPos.y * 0.0013;
+    pos = cc_matViewProj * pos;
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram wind-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+  in float phase;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+
+  uniform WindFrag {
+    vec4 windParams;
+  };
+
+  vec4 frag () {
+    float t = cc_time.x * windParams.y;
+    // 树根 0 → 树梢 1
+    float h = clamp(1.0 - uv0.y, 0.0, 1.0);
+    float bend = pow(h, windParams.z);
+    // 主摆 + 小幅高频抖动(叶子)
+    float sway = sin(t + phase) * 0.75 + sin(t * 2.7 + phase * 1.9 + uv0.y * 6.0) * 0.25;
+    vec2 uv = uv0;
+    uv.x += sway * windParams.x * bend;
+    vec4 o = CCSampleWithAlphaSeparated(cc_spriteTexture, uv);
+    if (uv.x < 0.0 || uv.x > 1.0) {
+      o.a = 0.0;
+    }
+    o *= color;
+    return o;
+  }
+}%

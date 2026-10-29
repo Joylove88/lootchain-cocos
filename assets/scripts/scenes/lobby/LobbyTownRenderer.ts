@@ -50,6 +50,8 @@ import { mountHeroAvatar } from './HeroHeadCrop';
 import { TownCombatFx, resolveTownHeroFxKit, type TownHeroFxKit } from './LobbyTownCombatFx';
 import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import { gameAudio } from '../../audio/GameAudio';
+import { TownAmbient } from './LobbyTownAmbient';
+import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
 import { worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapExit, type WorldNpcCode } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
@@ -280,6 +282,7 @@ export class LobbyTownRenderer {
 
   private world: Node | null = null;
   private groundRoot: Node | null = null;
+  private readonly ambient = new TownAmbient();
   private entityRoot: Node | null = null;
   private layout: UiLayout | null = null;
   private k = 1;
@@ -490,6 +493,26 @@ export class LobbyTownRenderer {
     }
     this.applyCamera(true);
     this.sortEntities(true);
+    this.ensureAmbient();
+  }
+
+  /** 环境动效(飘叶 / 云影):地图开了 ambient 才挂;世界层重建后重挂。 */
+  private ensureAmbient(): void {
+    const world = this.world;
+    if (!world || !world.isValid || !this.def.ambient || !this.layout) {
+      this.ambient.destroy();
+      return;
+    }
+    if (world.getChildByName('Ambient')) {
+      return;
+    }
+    const view = this.viewSize();
+    this.ambient.mount(world, this.def.width, this.def.height, this.camX, this.camY, view.w, view.h);
+  }
+
+  private viewSize(): { w: number; h: number } {
+    const layout = this.layout!;
+    return { w: Math.max(layout.width, layout.stageWidth) / this.k, h: Math.max(layout.height, layout.stageHeight) / this.k };
   }
 
   /** 是否已挂好世界节点(供 GameRoot 决定要不要驱动 step)。 */
@@ -666,6 +689,9 @@ export class LobbyTownRenderer {
       if (prop.flat) {
         // 贴地:中心对齐,排在地砖之后、压暗层之前
         sprite.node.setPosition(0, 0, 0);
+        if (prop.water) {
+          applyWorldShader(sprite, 'water');
+        }
         const vignette = ground.getChildByName('Vignette');
         if (vignette) {
           node.setSiblingIndex(vignette.getSiblingIndex());
@@ -673,6 +699,9 @@ export class LobbyTownRenderer {
         return;
       }
       sprite.node.setPosition(0, h / 2, 0);
+      if (prop.sway ?? isSwayAsset(prop.asset)) {
+        applyWorldShader(sprite, 'wind');
+      }
       this.propNodes.push({ node, y: prop.y });
     });
   }
@@ -1037,6 +1066,10 @@ export class LobbyTownRenderer {
     this.updateMinimap();
     this.updateGuidePointer();
     this.waypointFx?.step(clamped);
+    if (this.def.ambient) {
+      const view = this.viewSize();
+      this.ambient.step(clamped, this.camX, this.camY, view.w, view.h, this.def.width);
+    }
   }
 
   private stepLeader(dt: number): void {
@@ -1237,6 +1270,12 @@ export class LobbyTownRenderer {
         return false;
       }
     }
+    for (const block of def.blocks ?? []) {
+      const halfW = block.w / 2 + ACTOR_RADIUS * 0.4;
+      if (x > block.x - halfW && x < block.x + halfW && y > block.y - ACTOR_RADIUS * 0.3 && y < block.y + block.d) {
+        return false;
+      }
+    }
     for (const prop of def.props) {
       if (!prop.block) {
         continue;
@@ -1282,6 +1321,7 @@ export class LobbyTownRenderer {
       oy = (Math.random() * 2 - 1) * k * 0.6;
     }
     world.setPosition(cx - this.camX * this.k + ox, cy - this.camY * this.k + oy, 0);
+    updateWorldShaderOrigin(world);
   }
 
   /** 前后遮挡:脚线 y 越大越靠后,先画;只在顺序变化时重排兄弟索引。 */

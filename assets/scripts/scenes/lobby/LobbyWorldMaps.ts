@@ -63,6 +63,10 @@ export interface WorldMapProp {
   angle?: number;
   /** 水平翻转。 */
   flipX?: boolean;
+  /** 河道 / 瀑布件:挂流水着色器(effects/world-water,按颜色识别水面和白沫)。 */
+  water?: boolean;
+  /** 立物强制随风摆 / 不摆(默认按素材名判断:树 / 灌木 / 草丛)。 */
+  sway?: boolean;
   block?: { w: number; d: number };
 }
 
@@ -93,6 +97,14 @@ export interface WorldMapExit {
   reach?: string;
 }
 
+/** 地图级挡路区(河面 / 水潭 / 崖口):x 为中心,y 为下沿,向上 d。 */
+export interface WorldMapBlock {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+}
+
 export interface WorldMapDef {
   code: WorldMapCode;
   name: string;
@@ -115,6 +127,10 @@ export interface WorldMapDef {
   exits: WorldMapExit[];
   /** 野外战斗背景(ui/battle 下的名字)。 */
   battleBg?: string;
+  /** 环境动效:飘落树叶 + 云影(LobbyTownAmbient)。 */
+  ambient?: boolean;
+  /** 地图级挡路区(不依附素材的水面 / 崖口)。 */
+  blocks?: WorldMapBlock[];
 }
 
 const MONSTER_SPINE: Record<string, string> = {
@@ -138,7 +154,7 @@ const V2 = (name: string): string => worldAsset(`vil2/vil2_${name}`);
  * 夯土路网:沿折线每隔 0.38 个路宽盖一枚柔边土色笔刷(vil2_road_brush,同一张图合批),连成弯曲连续的路;
  * 笔刷保持正圆(渲染层先压 tilt 再转角,压扁后乱转会粗细不均),逐枚转角度 + 微调大小,避免重复纹理。
  */
-function roads(lines: number[][][], width: number): WorldMapProp[] {
+function roads(lines: number[][][], width: number, brush = V2('road_brush')): WorldMapProp[] {
   const out: WorldMapProp[] = [];
   const step = width * 0.38;
   for (const line of lines) {
@@ -149,118 +165,201 @@ function roads(lines: number[][][], width: number): WorldMapProp[] {
       for (let k = i === 0 ? 0 : 1; k <= n; k += 1) {
         const f = k / n;
         const j = out.length;
-        out.push({ asset: V2('road_brush'), x: Math.round(ax + (bx - ax) * f), y: Math.round(ay + (by - ay) * f), width: Math.round(width * (0.92 + ((j * 37) % 17) / 100)), flat: true, angle: (j * 47) % 360 });
+        out.push({ asset: brush, x: Math.round(ax + (bx - ax) * f), y: Math.round(ay + (by - ay) * f), width: Math.round(width * (0.92 + ((j * 37) % 17) / 100)), flat: true, angle: (j * 47) % 360 });
       }
     }
   }
   return out;
 }
 
+/** 晨风村 v3 素材(2026-10-29 用户:偏卡通 → 按用户鸟瞰图出写实件;tools/qa/village3_assets_gen.py + village3_install_assets.py)。 */
+const V3 = (name: string): string => worldAsset(`vil3/vil3_${name}`);
+
+/** 晨风村路网(世界坐标折线):路笔刷 + 草丛避让共用。 */
+const VILLAGE_ROADS: number[][][] = [
+  [[784, -630], [576, -374], [480, -118], [384, 42], [272, 330], [192, 618]],
+  [[-448, 234], [-768, 426], [-1152, 506], [-1408, 570]],
+  [[192, 714], [544, 762], [864, 634]],
+  [[1184, -566], [1728, -534], [2432, -454], [2528, -118], [2304, 266], [1920, 314]],
+  [[1024, -806], [1600, -918], [2208, -1094], [2720, -1206], [3200, -1270]],
+  [[416, -822], [-128, -1142], [-736, -1078], [-1248, -822], [-1664, -534], [-2144, -326], [-2560, -198], [-2912, -54]],
+  [[-1248, -822], [-1120, -630]],
+  [[480, -118], [800, -246], [1056, -406]],
+];
+
+/** 点到折线最近距离(草丛 / 花丛撒点避开路面)。 */
+function distToRoads(x: number, y: number, lines: number[][][]): number {
+  let best = Infinity;
+  for (const line of lines) {
+    for (let i = 0; i + 1 < line.length; i += 1) {
+      const [ax, ay] = line[i];
+      const [bx, by] = line[i + 1];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / Math.max(1, dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(x - ax - dx * t, y - ay - dy * t));
+    }
+  }
+  return best;
+}
+
+/** 随风摆的草丛:网格抖动撒点(固定种子),避开路面 / 建筑 / 水面挡块。 */
+function grassTufts(def: { walk: WorldMapDef['walk']; buildings: WorldMapBuilding[]; blocks?: WorldMapBlock[] }, roads: number[][][], step: number): WorldMapProp[] {
+  const out: WorldMapProp[] = [];
+  let seed = 11;
+  const rand = (): number => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+  for (let y = def.walk.bottom + step / 2; y < def.walk.top; y += step) {
+    for (let x = def.walk.left + step / 2; x < def.walk.right; x += step) {
+      const px = Math.round(x + (rand() - 0.5) * step * 0.9);
+      const py = Math.round(y + (rand() - 0.5) * step * 0.9);
+      if (rand() < 0.35 || distToRoads(px, py, roads) < 140) {
+        continue;
+      }
+      const inBuilding = def.buildings.some((b) => Math.abs(px - b.x) < b.width * 0.5 && py > b.y - 60 && py < b.y + b.width * 0.55);
+      const inBlock = (def.blocks ?? []).some((b) => Math.abs(px - b.x) < b.w / 2 + 40 && py > b.y - 40 && py < b.y + b.d + 40);
+      if (inBuilding || inBlock) {
+        continue;
+      }
+      out.push({ asset: V3('grass_tuft'), x: px, y: py, width: Math.round(70 + rand() * 50), flipX: rand() < 0.5 });
+    }
+  }
+  return out;
+}
+
+/** 地表贴花(裸土斑 / 苔石堆 / 杂草斑):固定种子撒满可走区,避开建筑和水面挡块,打散大片草地(10-29 用户:地形偏卡通)。 */
+function groundDecals(def: { walk: WorldMapDef['walk']; buildings: WorldMapBuilding[]; blocks?: WorldMapBlock[] }, step: number): WorldMapProp[] {
+  const out: WorldMapProp[] = [];
+  const kinds = ['decal_weeds', 'decal_dirt', 'decal_weeds', 'decal_moss'];
+  let seed = 23;
+  const rand = (): number => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+  let n = 0;
+  for (let y = def.walk.bottom - 100; y < def.walk.top + 200; y += step * 0.62) {
+    for (let x = def.walk.left - 200; x < def.walk.right + 300; x += step) {
+      const px = Math.round(x + (rand() - 0.5) * step * 0.8);
+      const py = Math.round(y + (rand() - 0.5) * step * 0.5);
+      const inBuilding = def.buildings.some((b) => Math.abs(px - b.x) < b.width * 0.42 && py > b.y && py < b.y + b.width * 0.4);
+      const inBlock = (def.blocks ?? []).some((b) => Math.abs(px - b.x) < b.w / 2 && py > b.y && py < b.y + b.d);
+      if (inBuilding || inBlock || rand() < 0.2) {
+        continue;
+      }
+      const kind = kinds[n % kinds.length];
+      n += 1;
+      const base = kind === 'decal_moss' ? 300 : kind === 'decal_dirt' ? 420 : 560;
+      out.push({ asset: V3(kind), x: px, y: py, width: Math.round(base * (0.75 + rand() * 0.5)), flat: true, flipX: rand() < 0.5 });
+    }
+  }
+  return out;
+}
+
 /**
- * 晨风村 v2(docs/53 §4.1,原型 周报截图/2026-10-29_新手村设计/village_overview + village_ingame,用户 10-29 确认):
- * 清晨山谷农庄,6400×3400。坐标按原型俯视图换算:世界 x = (原型 x - 935) × 3.4,y = (420 - 原型 y) × 3.8。
- * 北:村长屋;西北:礼拜堂 + 圣契祭坛;东:训练场;西:风车坡;中:小溪 + 木桥;东:铁匠铺;南:村口广场(传送阵);西南:麦田;东南:村口 → 村外林地。
+ * 晨风村 v3(2026-10-29 用户:「按我提供的鸟瞰图 1:1 还原 / 当前偏卡通」):
+ * 坐标按用户鸟瞰图(2000×967)换算:世界 x = (原型 x - 1000) × 3.2,y = (483 - 原型 y) × 3.2;地图 6400×3100。
+ * 北:村长屋(石台 + 台阶);西北:礼拜堂 + 圣契祭坛 + 瀑布崖;西:风车坡 + 溪流;中:河潭 + 木桥 + 跌水瀑布 + 水车磨坊;
+ * 东北:训练场;东:铁匠铺 + 悬崖河谷;南:村口广场(传送阵)+ 民居;西南:麦田 + 菜园 + 南崖;东南:村口 → 村外林地。
+ * 水面 / 瀑布件挂流水着色器;树 / 灌木 / 草丛随风摆;飘叶 + 云影(ambient)。
  */
+const VILLAGE_BASE = {
+  walk: { left: -2900, right: 2560, bottom: -1150, top: 1300 },
+  buildings: [
+    { key: 'chief', label: '村长屋', asset: V3('chief_house'), action: 'npc', npc: 'CHIEF', x: -48, y: 654, width: 1280, footprint: { w: 704, d: 260 }, door: { x: 230, y: -40 } },
+    { key: 'altar', label: '圣契祭坛', asset: V3('altar'), action: 'npc', npc: 'PRIEST', x: -1472, y: 606, width: 768, footprint: { w: 461, d: 150 }, door: { x: 0, y: -60 } },
+    { key: 'training', label: '训练场', asset: V3('training'), action: 'npc', npc: 'INSTRUCTOR', x: 1760, y: 366, width: 1888, footprint: { w: 1548, d: 520 }, door: { x: -560, y: -40 } },
+    { key: 'smithy', label: '铁匠铺', asset: V3('smithy'), action: 'npc', npc: 'SMITH', x: 2080, y: -370, width: 992, footprint: { w: 694, d: 240 }, door: { x: -60, y: -60 } },
+    { key: 'chapel', label: '礼拜堂', asset: V3('chapel'), action: 'none', x: -1880, y: 798, width: 496, footprint: { w: 347, d: 200 }, door: { x: 0, y: -60 } },
+    { key: 'windmill', label: '风车', asset: V3('windmill'), action: 'none', x: -2384, y: -226, width: 765, footprint: { w: 344, d: 220 }, door: { x: 0, y: -60 } },
+    { key: 'watermill', label: '水车磨坊', asset: V3('watermill'), action: 'none', x: -1088, y: -562, width: 672, footprint: { w: 403, d: 160 }, door: { x: 0, y: -60 } },
+    { key: 'shed_a', label: '小棚', asset: V3('shed_a'), action: 'none', x: -1568, y: -162, width: 288, footprint: { w: 202, d: 90 }, door: { x: 0, y: -40 } },
+    { key: 'shed_b', label: '民居', asset: V3('shed_b'), action: 'none', x: 800, y: 222, width: 352, footprint: { w: 246, d: 110 }, door: { x: 0, y: -40 } },
+    { key: 'market', label: '集市', asset: V3('market_house'), action: 'none', x: 1088, y: -370, width: 672, footprint: { w: 437, d: 170 }, door: { x: 0, y: -60 } },
+    { key: 'house_w', label: '民居', asset: V3('house_w'), action: 'none', x: -80, y: -1010, width: 576, footprint: { w: 392, d: 190 }, door: { x: 0, y: -60 } },
+    { key: 'house_s', label: '民居', asset: V3('house_s'), action: 'none', x: 1472, y: -1202, width: 608, footprint: { w: 413, d: 180 }, door: { x: 0, y: -60 } },
+    { key: 'shed_sw', label: '农舍', asset: V3('shed_sw'), action: 'none', x: -1616, y: -1074, width: 448, footprint: { w: 314, d: 150 }, door: { x: 0, y: -50 } },
+    { key: 'gate', label: '村口', asset: V3('gate'), action: 'none', x: 2208, y: -1106, width: 416, footprint: { w: 62, d: 40 }, door: { x: 0, y: -40 } },
+  ] as WorldMapBuilding[],
+  // 水面 / 瀑布 / 崖口(桥面、台阶留空可走)
+  blocks: [
+    { x: -2272, y: 170, w: 1312, d: 300 },
+    { x: -1144, y: -246, w: 1264, d: 620 },
+    { x: -240, y: -246, w: 480, d: 250 },
+    { x: -224, y: 290, w: 420, d: 180 },
+    { x: -736, y: -700, w: 700, d: 460 },
+    { x: -2560, y: 760, w: 760, d: 600 },
+  ] as WorldMapBlock[],
+};
+
 const VILLAGE: WorldMapDef = {
   code: 'VILLAGE',
+  ambient: true,
   name: '晨风村',
   levelText: 'Lv.1-10',
   width: 6400,
-  height: 3400,
-  walk: { left: -3000, right: 3000, bottom: -1520, top: 1420 },
-  spawn: { x: 480, y: -840 },
-  ground: worldAsset('ground_village'),
-  // 10-29 平滑手绘草地(docs/53 §4.3):大色块,一格 1000 世界单位
+  height: 3100,
+  walk: VILLAGE_BASE.walk,
+  spawn: { x: 784, y: -820 },
+  ground: worldAsset('ground_village3'),
+  // 10-29 写实草甸底纹(按用户鸟瞰图出),一格 1000 世界单位
   groundTile: 1000,
-  buildings: [
-    { key: 'chief', label: '村长屋', asset: V2('chief_house'), action: 'npc', npc: 'CHIEF', x: -220, y: 1080, width: 640, footprint: { w: 470, d: 170 }, door: { x: 40, y: -90 } },
-    { key: 'altar', label: '圣契祭坛', asset: V2('altar'), action: 'npc', npc: 'PRIEST', x: -1420, y: 640, width: 420, footprint: { w: 300, d: 120 }, door: { x: 0, y: -80 } },
-    { key: 'training', label: '训练场', asset: V2('training'), action: 'npc', npc: 'INSTRUCTOR', x: 1560, y: 700, width: 760, footprint: { w: 560, d: 160 }, door: { x: -200, y: -90 } },
-    { key: 'smithy', label: '铁匠铺', asset: V2('smithy'), action: 'npc', npc: 'SMITH', x: 1800, y: -120, width: 600, footprint: { w: 430, d: 160 }, door: { x: -120, y: -90 } },
-    { key: 'chapel', label: '礼拜堂', asset: V2('chapel'), action: 'none', x: -1900, y: 960, width: 560, footprint: { w: 380, d: 160 }, door: { x: 0, y: -80 } },
-    { key: 'windmill', label: '风车', asset: V2('windmill'), action: 'none', x: -2300, y: 60, width: 560, footprint: { w: 260, d: 140 }, door: { x: 0, y: -70 } },
-    { key: 'watermill', label: '水车磨坊', asset: V2('watermill'), action: 'none', x: -1120, y: -380, width: 500, footprint: { w: 340, d: 140 }, door: { x: 0, y: -70 } },
-    { key: 'house_a', label: '民居', asset: V2('house_a'), action: 'none', x: -260, y: -880, width: 480, footprint: { w: 340, d: 140 }, door: { x: 0, y: -70 } },
-    { key: 'house_b', label: '民居', asset: V2('house_b'), action: 'none', x: 1180, y: -1080, width: 500, footprint: { w: 350, d: 150 }, door: { x: 0, y: -70 } },
-    { key: 'house_c', label: '民居', asset: V2('house_a'), action: 'none', x: 840, y: -160, width: 460, footprint: { w: 320, d: 140 }, door: { x: 0, y: -70 } },
-    { key: 'house_d', label: '民居', asset: V2('house_b'), action: 'none', x: -1660, y: -940, width: 480, footprint: { w: 340, d: 150 }, door: { x: 0, y: -70 } },
-    { key: 'house_e', label: '民居', asset: V2('house_a'), action: 'none', x: 600, y: 420, width: 440, footprint: { w: 310, d: 140 }, door: { x: 0, y: -70 } },
-    { key: 'market', label: '集市', asset: V2('market_stall'), action: 'none', x: 100, y: -320, width: 380, footprint: { w: 260, d: 110 }, door: { x: 0, y: -60 } },
-    { key: 'well', label: '水井', asset: V2('well'), action: 'none', x: 140, y: -1060, width: 230, footprint: { w: 160, d: 70 }, door: { x: 0, y: -40 } },
-    { key: 'board', label: '告示板', asset: V2('notice_board'), action: 'none', x: 1000, y: -560, width: 230, footprint: { w: 160, d: 50 }, door: { x: 0, y: -40 } },
-    { key: 'gate', label: '村口', asset: V2('gate'), action: 'none', x: 2620, y: -960, width: 420, footprint: { w: 80, d: 50 }, door: { x: 0, y: -40 } },
-  ],
+  buildings: VILLAGE_BASE.buildings,
+  blocks: VILLAGE_BASE.blocks,
   npcs: [
-    { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: -60, y: 940, height: 210, flip: 1 },
-    { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 1300, y: 560, height: 215, flip: 1 },
-    { code: 'PRIEST', name: '祭司 · 莉娅', asset: worldAsset('npc_priest'), x: -1300, y: 500, height: 200, flip: -1 },
-    { code: 'SMITH', name: '铁匠 · 巴洛', asset: worldAsset('npc_smith'), x: 1620, y: -260, height: 215, flip: -1 },
+    { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: 300, y: 600, height: 210, flip: -1 },
+    { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 1130, y: 300, height: 215, flip: 1 },
+    { code: 'PRIEST', name: '祭司 · 莉娅', asset: worldAsset('npc_priest'), x: -1290, y: 520, height: 200, flip: -1 },
+    { code: 'SMITH', name: '铁匠 · 巴洛', asset: worldAsset('npc_smith'), x: 1900, y: -470, height: 215, flip: -1 },
   ],
   props: [
-    // ── 贴地:广场 / 小路 / 菜地 / 溪流(地砖层,不挡路;素材本身已是斜视角,不再压 tilt)──
-    // 夯土路网(原型 village_overview):广场为中心,北上过桥到村长屋 / 祭坛,东去铁匠铺与村口,西去磨坊与风车坡
-    ...roads([
-      [[560, -720], [420, -320], [230, 40], [180, 250], [-40, 600], [-120, 900]],
-      [[560, -720], [1100, -660], [1640, -540], [2150, -760], [2620, -950], [3000, -960]],
-      [[560, -720], [20, -640], [-600, -540], [-1120, -580], [-1700, -320], [-2250, -140]],
-      [[180, 250], [-480, 420], [-1050, 520], [-1420, 520], [-1800, 760]],
-      [[-120, 900], [480, 860], [1000, 700], [1360, 540]],
-      [[1640, -540], [1700, -260]],
-      [[1360, 540], [1900, 380], [2350, 200], [2480, -220], [2380, -600], [2150, -760]],
-      [[-600, -540], [-300, -800]],
-      [[-1120, -580], [-1620, -860]],
-      [[1100, -660], [1180, -1000]],
-    ], 170),
-    { asset: V2('plaza'), x: 560, y: -720, width: 1100, flat: true },
-    { asset: V2('wheat'), x: -2560, y: -980, width: 1000, block: { w: 860, d: 300 } },
-    { asset: V2('wheat'), x: -2500, y: -360, width: 760, flipX: true, block: { w: 640, d: 220 } },
-    { asset: V2('veg'), x: -700, y: -1180, width: 700, flat: true },
-    { asset: V2('stream'), x: -2350, y: 300, width: 1100, flat: true },
-    { asset: V2('stream'), x: -1300, y: 220, width: 1100, flat: true, flipX: true },
-    { asset: V2('stream'), x: -300, y: 170, width: 1100, flat: true },
-    { asset: V2('stream'), x: 760, y: 140, width: 1100, flat: true, flipX: true },
-    { asset: V2('stream'), x: 1820, y: 180, width: 1100, flat: true },
-    { asset: V2('stream'), x: 2800, y: 230, width: 1000, flat: true, flipX: true },
-    { asset: V2('pond'), x: -1650, y: 120, width: 520, flat: true },
+    // ── 贴地(先画的在下):地表贴花 → 崖 / 水 → 路 → 桥 / 广场 / 菜园 ──
+    ...groundDecals(VILLAGE_BASE, 520),
+    { asset: V3('nw_falls'), x: -2672, y: 1066, width: 1056, flat: true, water: true },
+    { asset: V3('river_w'), x: -2272, y: 330, width: 1312, flat: true, water: true },
+    { asset: V3('river_c'), x: -864, y: 122, width: 1824, flat: true, water: true },
+    { asset: V3('falls'), x: -736, y: -374, width: 928, flat: true, water: true },
+    { asset: V3('east_cliff'), x: 2872, y: 362, width: 656, flat: true, water: true },
+    { asset: V3('cliff_s'), x: -1664, y: -1338, width: 1504, flat: true },
+    ...roads(VILLAGE_ROADS, 210, V3('road_brush')),
+    { asset: V3('bridge'), x: -48, y: 202, width: 896, flat: true },
+    { asset: V3('plaza'), x: 784, y: -630, width: 960, flat: true },
+    { asset: V3('veg'), x: -1712, y: -1062, width: 704, flat: true },
     // ── 立物 ──
-    { asset: V2('bridge'), x: 180, y: 150, width: 460 },
-    { asset: V2('bridge'), x: 2350, y: 190, width: 420, flipX: true },
-    ...[[-2950, 1350], [-2700, 1250], [-2950, 700], [-2900, -200], [-2950, -1400], [-2100, 1350], [-1300, 1350], [-600, 1400], [400, 1400], [1000, 1350],
-      [2100, 1380], [2800, 1300], [2950, 600], [2950, -300], [2400, -1450], [1700, -1450], [600, -1480], [-300, -1480], [-1200, -1450], [-2000, -1450]]
-      .map(([x, y], i) => ({ asset: V2(i % 3 === 0 ? 'tree_pine' : 'tree_oak'), x, y, width: i % 3 === 0 ? 300 : 420, block: { w: 140, d: 60 } })),
-    ...[[-800, 300], [2500, 700], [-2600, 900], [300, 700]]
-      .map(([x, y]) => ({ asset: V2('tree_oak'), x, y, width: 380, block: { w: 130, d: 60 } })),
-    ...[[-400, 380], [1350, 260], [-1000, -800], [860, -900], [2200, -500], [-2200, -650], [-700, 1250], [1900, 1100]]
-      .map(([x, y]) => ({ asset: V2('bush'), x, y, width: 170 })),
-    // 外圈第二层(出可走范围,把地图边缘围成林子)
-    ...[[-3200, 1500], [-2500, 1560], [-1700, 1540], [-900, 1580], [-150, 1560], [700, 1580], [1500, 1560], [2300, 1560], [3100, 1500],
-      [-3250, 900], [-3250, 300], [-3250, -400], [-3250, -1000], [3250, 1000], [3250, 300], [3250, -500], [3250, -1300],
-      [-2800, -1650], [-1600, -1680], [-700, -1700], [200, -1700], [1100, -1680], [2000, -1660], [2900, -1600]]
-      .map(([x, y], i) => ({ asset: V2(i % 2 === 0 ? 'tree_oak' : 'tree_pine'), x, y, width: i % 2 === 0 ? 460 : 340 })),
-    ...[[-2400, 1150], [-1000, 1150], [600, 1180], [2600, 1000], [-2800, 160], [2800, -700], [-2300, -1300], [1500, -1300], [200, -1350], [-1300, -1250]]
-      .map(([x, y], i) => ({ asset: V2(i % 2 ? 'bush' : 'rocks'), x, y, width: i % 2 ? 160 : 180, block: { w: 110, d: 40 } })),
-    { asset: V2('hay'), x: -940, y: -1320, width: 240, block: { w: 160, d: 50 } },
-    { asset: V2('hay'), x: -2000, y: -1180, width: 220, block: { w: 150, d: 50 } },
-    { asset: V2('barrels'), x: 1460, y: -360, width: 190, block: { w: 120, d: 40 } },
-    { asset: V2('barrels'), x: -480, y: -1000, width: 170, block: { w: 110, d: 40 } },
-    { asset: V2('rocks'), x: -2700, y: 520, width: 240, block: { w: 160, d: 50 } },
-    { asset: V2('rocks'), x: 2700, y: 40, width: 220, block: { w: 150, d: 50 } },
-    { asset: V2('banner'), x: 160, y: -560, width: 120 },
-    { asset: V2('banner'), x: 960, y: -560, width: 120 },
-    { asset: V2('banner'), x: 1300, y: 900, width: 110 },
-    ...[[-1600, 1180], [-1200, 860]].map(([x, y]) => ({ asset: V2('banner'), x, y, width: 110 })),
-    ...[[-3000, -1000], [-2150, -760], [1950, 960], [1180, 960]].map(([x, y]) => ({ asset: V2('fence'), x, y, width: 320, block: { w: 280, d: 30 } })),
+    { asset: V3('wheat'), x: -2544, y: -1142, width: 1312, block: { w: 1100, d: 520 } },
+    { asset: V3('hay'), x: -848, y: -1180, width: 384, block: { w: 280, d: 90 } },
+    // 外圈林子(出可走范围)+ 村内零散树
+    ...[[-3100, 1450], [-2300, 1500], [-1500, 1480], [-800, 1520], [300, 1500], [900, 1480], [1500, 1500], [2200, 1480], [2700, 1420],
+      [-3150, 600], [-3150, -300], [-3100, -1000], [2750, -800], [2700, -1350], [1900, -1420], [900, -1450], [-300, -1450], [-1000, -1420], [-2400, -1450]]
+      .map(([x, y], i) => ({ asset: V3(i % 3 === 0 ? 'tree_pine' : 'tree_oak'), x, y, width: i % 3 === 0 ? 380 : 520 })),
+    ...[[-700, 900], [-560, 1150], [600, 1150], [1050, 1180], [-1100, 1200], [420, 1000], [680, 470], [1500, -150], [2380, -780],
+      [-300, -520], [-520, -820], [-2000, -700], [-2650, -620], [220, -1300], [620, -1260], [-2750, 700], [2480, 760], [-1300, 950]]
+      .map(([x, y], i) => ({ asset: V3(i % 2 === 0 ? 'tree_oak' : 'tree_pine'), x, y, width: i % 2 === 0 ? 460 : 330, block: { w: 120, d: 50 } })),
+    ...[[-900, 700], [-60, 470], [1300, 0], [2300, -250], [-1900, -450], [-2300, 500], [400, -1100], [1150, -1100], [-450, 1050], [1250, 1050]]
+      .map(([x, y]) => ({ asset: V3('bush'), x, y, width: 190 })),
+    // 10-29 按用户鸟瞰图补树丛(原型树位换算,已剔除路 / 建筑 / 水面 / 麦田)
+    ...[[-1408, 1418], [-1152, 1354], [-960, 1450], [-864, 1162], [736, 1194], [2816, 1418], [416, 490], [1472, 170], [2432, -694], [1920, -1206], [1760, -1334], [960, -1334],
+      [320, -1270], [-160, -1334], [-3008, -246], [-1024, 746], [128, -246], [1920, -758], [2688, -886], [2880, -694], [-1216, -1206], [-2240, -1270], [-2784, -1270]]
+      .flatMap(([x, y], i) => [
+        { asset: V3(i % 3 === 1 ? 'tree_pine' : 'tree_oak'), x, y, width: i % 3 === 1 ? 340 : 440 + (i % 4) * 30, block: { w: 110, d: 50 } },
+        { asset: V3('bush'), x: x + (i % 2 ? 150 : -160), y: y - 40, width: 150 + (i % 3) * 20 },
+      ]),
+    ...grassTufts(VILLAGE_BASE, VILLAGE_ROADS, 260),
+    // 广场旗
+    ...[[400, -470], [1180, -470], [1290, -660]].map(([x, y]) => ({ asset: V2('banner'), x, y, width: 110 })),
   ],
-  lamps: [{ x: 120, y: -560 }, { x: 1000, y: -900 }, { x: -260, y: 600 }, { x: 1300, y: -200 }, { x: -1100, y: -620 }, { x: 2300, y: -760 }],
+  lamps: [{ x: 560, y: -300 }, { x: 1300, y: -560 }, { x: 340, y: 330 }, { x: -700, y: 440 }, { x: 1900, y: -1010 }, { x: -1250, y: -760 }],
   lampAsset: V2('lamp'),
   // 村口广场中心(原型:广场正中圆形传送阵)
-  waypoint: { x: 560, y: -720, drawn: true },
-  camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 1560, 460)],
-  exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2900, y: -960, radius: 130, toMap: 'WOODS', toSpawn: { x: -1600, y: 0 }, reach: 'VILLAGE_GATE' }],
+  waypoint: { x: 784, y: -630, drawn: true },
+  camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 1100, 100)],
+  exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2470, y: -1070, radius: 130, toMap: 'WOODS', toSpawn: { x: -1600, y: 0 }, reach: 'VILLAGE_GATE' }],
 };
 
 const WOODS: WorldMapDef = {
   code: 'WOODS',
+  ambient: true,
   name: '村外林地',
   levelText: 'Lv.1-10',
   width: 4000,
@@ -286,7 +385,7 @@ const WOODS: WorldMapDef = {
     camp('FIELD_WOODS_2', '林间蛛巢', 'SMALL_SPIDER', 3, 5, 500, -350),
     camp('FIELD_WOODS_E', '棕鬃熊', 'MEDIUM_BEAR', 1, 8, 1400, 330, true),
   ],
-  exits: [{ key: 'to_village', label: '返回 · 晨风村', x: -1880, y: 0, radius: 110, toMap: 'VILLAGE', toSpawn: { x: 2500, y: -900 } }],
+  exits: [{ key: 'to_village', label: '返回 · 晨风村', x: -1880, y: 0, radius: 110, toMap: 'VILLAGE', toSpawn: { x: 2300, y: -1000 } }],
   battleBg: 'battle_scene_field_forest',
 };
 
