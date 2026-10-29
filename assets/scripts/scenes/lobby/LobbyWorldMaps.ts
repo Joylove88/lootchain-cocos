@@ -176,7 +176,8 @@ const WOODS: WorldMapDef = {
   walk: { left: -1850, right: 1850, bottom: -1050, top: 950 },
   spawn: { x: -1600, y: 0 },
   ground: worldAsset('ground_forest'),
-  groundTile: 360,
+  // 10-29 新素材(叶片按 1:1 画):一格 900 世界单位 ≈ 手机上 1:1 显示,不缩小采样就不发毛
+  groundTile: 900,
   buildings: [],
   npcs: [],
   props: [

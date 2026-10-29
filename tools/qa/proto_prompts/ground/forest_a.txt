@@ -1,0 +1,4 @@
+Generate ONE image: a square 1024x1024 seamless tileable ground texture for a top-down dark-fantasy ARPG (Diablo / Path of Exile style), viewed straight from above (orthographic, no perspective, no horizon), evenly lit (no vignette, no light gradient, no shadows from big objects).
+The attached image shows the game scene this ground is used in (the brown forest-floor field); keep the same palette and mood but make the texture MUCH crisper and more detailed.
+Content: an old forest floor — dark rich soil with crisp fallen oak and maple leaves of varied sizes (each leaf about 40-90 px across, with sharp veins and edges), small twigs and pine needles, patches of short moss, a few tiny pebbles and roots. Clear micro-contrast, sharp edges, high-frequency detail everywhere, no blur, no painterly smudging, no large single features, no paths, no text, no frame.
+The texture must tile seamlessly on all four edges. Output only the texture image.

@@ -2969,7 +2969,8 @@ export class LobbyTownRenderer {
     this.skillReadyAt[index] = now + spec.cdMs;
     this.comboUntil = 0;
     const leader = this.leader;
-    const dur = this.playLeaderAction(spec.anim, spec.cap);
+    // 大招键(旋风斩 = 'ult'):R / SR 自带大招动作 skill4 约 2.5 秒,上限放到 1.8 秒(原 1.0 秒会快进成一闪)
+    const dur = this.playLeaderAction(spec.anim, spec.anim === 'ult' && this.hasOwnUlt(leader) ? 1800 : spec.cap);
     this.leaderActionStart = now;
     this.actionUntil = now + dur * 0.8;
     gameAudio.sfx(resolveHeroSkillSfxKey(leader.hero.heroCode), 0.8);
@@ -3049,7 +3050,8 @@ export class LobbyTownRenderer {
     if (!skeleton || !skeleton.isValid || !names) {
       return 0;
     }
-    const anim = names[kind] || names.attack || names.idle;
+    // R / SR 骨骼没有 ult,自带大招动作是 skill4(映射里叫 skill3,2.5 秒,含光效);UR / SSR 有 ult
+    const anim = (kind === 'ult' ? names.ult || names.skill3 : names[kind]) || names.attack || names.idle;
     if (!anim) {
       return 0;
     }
@@ -3651,6 +3653,12 @@ export class LobbyTownRenderer {
 
   // ── docs/51 §3 援护技:点队友头像 / 数字键 1~3 ──
 
+  /** 这名英雄的骨骼有没有自带大招动作(R / SR 的 skill4):有就只播动作本身,不再叠外部特效包。 */
+  private hasOwnUlt(actor: TownActor): boolean {
+    const rarity = (actor.hero.rarity || '').toUpperCase();
+    return (rarity === 'R' || rarity === 'SR') && !!actor.names?.skill3;
+  }
+
   private triggerAssist(index: number): void {
     const actor = this.followers[index];
     const now = Date.now();
@@ -3659,8 +3667,9 @@ export class LobbyTownRenderer {
     }
     if (actor.role === 'support') {
       actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
-      this.playActorAction(actor, 'ult', 1200);
-      if (this.entityRoot) {
+      // 自带大招动作完整播(2.5 秒),不再压到 1.2 秒
+      this.playActorAction(actor, 'ult', this.hasOwnUlt(actor) ? 0 : 1200);
+      if (this.entityRoot && !this.hasOwnUlt(actor)) {
         const kit = this.kitOf(actor);
         this.fx.play(this.entityRoot, kit.skill, actor.x, actor.y + 100, 460 * kit.skill.scale);
       }
@@ -3676,11 +3685,11 @@ export class LobbyTownRenderer {
       // 10-29 用户:没有怪也可以释放 —— 原地朝当前朝向出大招 + 特效,照常进冷却(不造成伤害)
       actor.assistReadyAt = now + COMPANION_ASSIST_CD_MS;
       actor.inAction = true;
-      const freeDur = this.playActorAction(actor, 'ult', 1200) || 700;
+      const freeDur = this.playActorAction(actor, 'ult', this.hasOwnUlt(actor) ? 0 : 1200) || 700;
       actor.actionUntil = now + freeDur;
       const freeKit = this.kitOf(actor);
       gameAudio.sfx(resolveHeroSkillSfxKey(actor.hero.heroCode), 0.9);
-      if (this.entityRoot) {
+      if (this.entityRoot && !this.hasOwnUlt(actor)) {
         const reach = actor.role === 'melee' ? 150 : 320;
         this.fx.play(this.entityRoot, freeKit.skill, actor.x + actor.facing * reach, actor.y + 110 + freeKit.skill.offsetY, 420 * freeKit.skill.scale, { flipX: actor.facing < 0 });
       }
@@ -3702,12 +3711,13 @@ export class LobbyTownRenderer {
     }
     actor.inAction = true;
     actor.target = target;
-    const dur = this.playActorAction(actor, 'ult', 1200) || 700;
+    const own = this.hasOwnUlt(actor);
+    const dur = this.playActorAction(actor, 'ult', own ? 0 : 1200) || 700;
     actor.actionUntil = now + dur;
     const damage = Math.max(1, Math.round(actor.attack * 4.5));
     const kit = this.kitOf(actor);
     gameAudio.sfx(resolveHeroSkillSfxKey(actor.hero.heroCode), 0.9);
-    if (this.entityRoot) {
+    if (this.entityRoot && !own) {
       this.fx.play(this.entityRoot, kit.skill, target.x, this.monsterBodyY(target) + kit.skill.offsetY, 420 * kit.skill.scale, { flipX: actor.x > target.x });
     }
     this.shake(12, 0.28);
