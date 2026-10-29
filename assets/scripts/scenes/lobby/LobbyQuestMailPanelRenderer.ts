@@ -123,6 +123,21 @@ const QUEST_GLASS_ICONS: Array<{ match: RegExp; path: string }> = [
   { match: /锻造|强化|洗练/, path: 'ui/glass/quest_forge/spriteFrame' },
 ];
 
+/** B 风格奖励图标(原型 quest_b 抠的哑光图;钻石原型里没有,沿用旧图)。 */
+function glassRewardIcon(item: QuestRewardItemVO): string | null {
+  const name = item.name ?? '';
+  if (name.includes('金币')) {
+    return 'ui/glass/reward_gold/spriteFrame';
+  }
+  if (name.includes('经验书')) {
+    return 'ui/glass/reward_exp_book/spriteFrame';
+  }
+  if (name.includes('强化石')) {
+    return 'ui/glass/reward_enhance/spriteFrame';
+  }
+  return null;
+}
+
 /** 任务类型图标:按任务名/描述关键词匹配(ratio=宽/高,等比显示)。 */
 const QUEST_ICON_RULES: Array<{ match: RegExp; path: string; ratio: number }> = [
   { match: /登录|签到/, path: 'ui/common/ai/ic_quest_login/spriteFrame', ratio: 192 / 225 },
@@ -652,8 +667,11 @@ export class LobbyQuestMailPanelRenderer {
       const text = `${item.name ?? ''}×${this.formatAmount(item.amount)}`;
       const w = rewards.length === 1 ? 221 : Math.max(180, 92 + text.length * 17);
       const chip = mountGlassPanel(this.host as never, row, `Reward_${index}`, X(left + w / 2), 0, S(w), S(62), k);
+      const gi = glassRewardIcon(item);
       const ri = resolveRewardIcon(item);
-      if (ri) {
+      if (gi) {
+        this.host.addSprite('Icon', gi, X(left + 36) - X(left + w / 2), 0, S(50), S(50), chip);
+      } else if (ri) {
         const ih = S(42);
         this.host.addSprite('Icon', ri.path, X(left + 36) - X(left + w / 2), 0, Math.min(S(48), ih * ri.ratio), Math.min(S(48), ih * ri.ratio) / ri.ratio, chip);
       }
