@@ -194,6 +194,8 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 怪物之间最小间距(世界单位,纵向按 0.6 压扁算):小于它就互相推开。 */
+const MONSTER_SEPARATION = 110;
 /** 迷雾分块(docs/53 §2.2,与服务端 FieldExploreRules 一致):8 列 × 5 行。 */
 const EXPLORE_COLS = 8;
 const EXPLORE_ROWS = 5;
@@ -429,6 +431,8 @@ export class LobbyTownRenderer {
   private exploreCheckAt = 0;
   // docs/50 §14 野外即时战斗
   private readonly encounters = new Map<string, { id: number; pending: boolean }>();
+  /** 遭遇下发的怪物数值(按群);世界层重建后新刷的怪没数值时从这里补(10-30 用户「怪不攻击、打不死」)。 */
+  private readonly encounterStats = new Map<string, TownFieldEncounter['monsters']>();
   private raiderAttack = 0;
   private leaderHp = 0;
   private leaderMaxHp = 0;
@@ -495,6 +499,7 @@ export class LobbyTownRenderer {
     this.channel = null;
     this.bannerUntil = Date.now() + 2600;
     this.encounters.clear();
+    this.encounterStats.clear();
     this.pendingHits = [];
     this.leaderDead = false;
     this.actionUntil = 0;
@@ -1300,8 +1305,9 @@ export class LobbyTownRenderer {
       this.pushTrail(leader);
       return;
     }
-    const moving = v.x !== 0 || v.y !== 0;
-    if (moving) {
+    let blocked = false;
+    const wantMove = v.x !== 0 || v.y !== 0;
+    if (wantMove) {
       // 俯视 3/4:纵向视觉距离短,速度打八折更自然
       const nx = leader.x + v.x * LEADER_SPEED * dt;
       const ny = leader.y + v.y * LEADER_SPEED * 0.8 * dt;
@@ -1309,18 +1315,36 @@ export class LobbyTownRenderer {
       // 站在不可走点上时放开移动,走回可走区后恢复正常碰撞(仍不出地图外框)
       const stuck = !this.walkable(leader.x, leader.y);
       const inFrame = (x: number, y: number): boolean => x >= this.def.walk.left && x <= this.def.walk.right && y >= this.def.walk.bottom && y <= this.def.walk.top;
+      const ox = leader.x;
+      const oy = leader.y;
       if (this.walkable(nx, leader.y) || (stuck && inFrame(nx, leader.y))) {
         leader.x = nx;
       }
       if (this.walkable(leader.x, ny) || (stuck && inFrame(leader.x, ny))) {
         leader.y = ny;
       }
+      // 两个轴都被挡(斜着顶墙):沿墙滑——试垂直于输入的两个方向,哪边能走走哪边
+      if (leader.x === ox && leader.y === oy) {
+        const step = LEADER_SPEED * dt;
+        for (const [sx, sy] of [[-v.y, v.x], [v.y, -v.x]]) {
+          const tx = ox + sx * step * 0.7;
+          const ty = oy + sy * step * 0.56;
+          if ((sx * v.x + sy * v.y) > -0.01 && this.walkable(tx, ty)) {
+            leader.x = tx;
+            leader.y = ty;
+            break;
+          }
+        }
+      }
+      // 10-30 用户「走不过去,原地踏步」:真没挪动就别播跑步
+      blocked = leader.x === ox && leader.y === oy;
       leader.node.setPosition(leader.x, leader.y, 0);
       if (v.x !== 0) {
         this.setActorFacing(leader, v.x > 0 ? 1 : -1);
       }
       this.pushTrail(leader);
     }
+    const moving = wantMove && !blocked;
     if (nowMs < this.actionUntil) {
       return;
     }
@@ -2855,13 +2879,14 @@ export class LobbyTownRenderer {
         if (!engaged) {
           this.engageCamp(camp.stageCode);
         }
-        // 近战停在身前 70,远程停在 300 外
-        const keep = monster.ranged ? 300 : 70;
+        // 近战停在身前 70,远程停在 300 外;同群各只按序号错开一个角度围上来(10-30 用户:两只怪叠在一起)
+        const keep = monster.ranged ? 300 : 90;
         const dxL = monster.x - victim.x;
         const dyL = monster.y - victim.y;
-        const len = Math.max(1, Math.hypot(dxL, dyL));
-        monster.tx = victim.x + (dxL / len) * keep;
-        monster.ty = victim.y + (dyL / len) * keep * 0.6;
+        const slot = (this.monsters.indexOf(monster) % 6) - 2.5;
+        const ang = Math.atan2(dyL, dxL) + slot * 0.42;
+        monster.tx = victim.x + Math.cos(ang) * keep;
+        monster.ty = victim.y + Math.sin(ang) * keep * 0.6;
         speed = MONSTER_CHASE_SPEED;
         this.tryMonsterAttack(monster, victim, toVictim, now);
       } else if (leashed) {
@@ -2897,6 +2922,33 @@ export class LobbyTownRenderer {
         monster.kbVX *= Math.exp(-14 * dt);
       } else {
         monster.kbVX = 0;
+      }
+      // 互相推开:离同伴不到 MONSTER_SEPARATION 就往反方向挤一点(只看活着的,按体型放大)
+      let px = 0;
+      let py = 0;
+      const sep = MONSTER_SEPARATION * (monster.camp.elite ? 1.6 : 1);
+      for (const other of this.monsters) {
+        if (other === monster || other.dead) {
+          continue;
+        }
+        const ox = monster.x - other.x;
+        const oy = (monster.y - other.y) / 0.6;
+        const d = Math.hypot(ox, oy);
+        if (d < sep && d > 0.01) {
+          px += (ox / d) * (sep - d);
+          py += (oy / d) * (sep - d) * 0.6;
+        } else if (d <= 0.01) {
+          px += (this.monsters.indexOf(monster) % 2 ? 1 : -1) * sep * 0.5;
+        }
+      }
+      if (px !== 0 || py !== 0) {
+        const nx = monster.x + px * Math.min(1, dt * 6);
+        const ny = monster.y + py * Math.min(1, dt * 6);
+        if (this.walkable(nx, ny)) {
+          monster.x = nx;
+          monster.y = ny;
+          monster.node.setPosition(nx, ny, 0);
+        }
       }
       if (moving) {
         const step = Math.min(dist, speed * dt);
@@ -3340,20 +3392,32 @@ export class LobbyTownRenderer {
           actor.hp = actor.down ? 0 : Math.max(1, Math.round(spec.hp * ratio));
         }
       }
-      const mine = this.monsters.filter((monster) => monster.camp.stageCode === stageCode && !monster.dead);
-      mine.forEach((monster, index) => {
-        const spec = encounter.monsters[index] ?? encounter.monsters[0];
-        if (!spec) {
-          return;
-        }
-        monster.maxHp = spec.hp;
-        monster.hp = spec.hp;
-        monster.hit = spec.hit;
-        monster.ranged = spec.ranged;
-        this.drawMonsterHp(monster);
-      });
+      this.encounterStats.set(stageCode, encounter.monsters);
+      this.monsters.filter((monster) => monster.camp.stageCode === stageCode && !monster.dead).forEach((monster) => this.applyEncounterStats(monster));
       this.drawLeaderHp();
     });
+  }
+
+  /**
+   * 给还没数值的怪套上本群遭遇数值(按它在群里的序号取,超出服务端登记只数的沿用第一只)。
+   * 已登记遭遇但怪是重建 / 补刷出来的(maxHp 0)时也走这里,不再变成打不死、不出手的空壳。
+   */
+  private applyEncounterStats(monster: TownMonster): boolean {
+    if (monster.maxHp > 0) {
+      return true;
+    }
+    const specs = this.encounterStats.get(monster.camp.stageCode);
+    if (!specs || specs.length === 0) {
+      return false;
+    }
+    const index = this.monsters.filter((item) => item.camp.stageCode === monster.camp.stageCode).indexOf(monster);
+    const spec = specs[Math.max(0, index)] ?? specs[0];
+    monster.maxHp = spec.hp;
+    monster.hp = spec.hp;
+    monster.hit = spec.hit;
+    monster.ranged = spec.ranged;
+    this.drawMonsterHp(monster);
+    return true;
   }
 
   private ensureLeaderStats(): void {
@@ -4465,7 +4529,7 @@ export class LobbyTownRenderer {
     }
     monster.flashUntil = Date.now() + 120;
     monster.lastHitAt = Date.now();
-    if (monster.maxHp <= 0) {
+    if (!this.applyEncounterStats(monster)) {
       return;
     }
     const now = Date.now();
@@ -4516,6 +4580,7 @@ export class LobbyTownRenderer {
     if (!alive) {
       const encounter = this.encounters.get(stageCode);
       this.encounters.delete(stageCode);
+      this.encounterStats.delete(stageCode);
       this.campRespawnAt.set(stageCode, Date.now() + MONSTER_RESPAWN_MS);
       if (encounter && encounter.id > 0) {
         // docs/51 P2:不再立刻结算,掉一袋战利品在最后一只怪脚下,走过去拾取
@@ -4645,7 +4710,7 @@ export class LobbyTownRenderer {
   }
 
   private tryMonsterAttack(monster: TownMonster, victim: TownActor, toVictim: number, now: number): void {
-    if (monster.maxHp <= 0 || now < monster.staggeredUntil) {
+    if (!this.applyEncounterStats(monster) || now < monster.staggeredUntil) {
       return;
     }
     const range = monster.ranged ? 420 : 105;

@@ -11,6 +11,9 @@ import sys
 S = 7.5
 CX, CY = 904, 435
 HALF = 230
+# 可走区比「树不长在路上」的 HALF 宽(10-30 用户:路边草地走不过去、原地踏步):路两侧 460 都能走,空地放大 1.35;真正挡路的是树干 / 水 / 崖
+WALK_HALF = 460
+WALK_AREA_SCALE = 1.35
 
 
 def wx(px):
@@ -156,14 +159,14 @@ def main() -> None:
     areas = [(wx(x), wy(y), round(rx * S), round(ry * S)) for x, y, rx, ry in AREAS]
     out = []
     out.append('  corridors: {')
-    out.append(f'    half: {HALF},')
+    out.append(f'    half: {WALK_HALF},')
     out.append('    lines: [')
     for line in lines:
         out.append('      [' + ', '.join(f'[{x}, {y}]' for x, y in line) + '],')
     out.append('    ],')
     out.append('    areas: [')
     for x, y, rx, ry in areas:
-        out.append(f'      {{ x: {x}, y: {y}, rx: {rx}, ry: {ry} }},')
+        out.append(f'      {{ x: {x}, y: {y}, rx: {round(rx * WALK_AREA_SCALE)}, ry: {round(ry * WALK_AREA_SCALE)} }},')
     out.append('    ],')
     out.append('  },')
     print('\n'.join(out))
