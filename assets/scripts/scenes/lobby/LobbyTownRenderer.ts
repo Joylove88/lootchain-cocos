@@ -55,7 +55,7 @@ import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
-import { distToLines, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapPoi, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapPoi, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -201,6 +201,8 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 角色脚下柔边接触阴影(10-30 英雄贴地融合:原来的硬边黑椭圆像贴纸)。 */
+const CONTACT_SHADOW = worldAsset('fx/contact_shadow');
 /** 场上物件名字(宝箱 / 石碑 / 采集点):平时暖白,开过 / 采过 / 读过压灰。 */
 const WORLD_NAME_COLOR = rgba(250, 238, 206);
 const WORLD_NAME_DONE = rgba(170, 170, 170);
@@ -283,7 +285,6 @@ const MONSTER_SPECIES_NAME: Record<string, string> = {
   MINI_RAT: '幼鼠', SMALL_SPIDER: '林蛛', MEDIUM_DOG: '野犬', MEDIUM_BEAR: '棕鬃熊', SWORD_MALE: '盗匪剑士', BOW_MALE: '盗匪弓手', GARGOYLE: '石像鬼',
 };
 /** 野外宝箱贴图(林地 v3 写实件;铁箱 / 秘藏按色调区分)。 */
-const CHEST_ASSET = worldAsset('woods3/w3_chest');
 /** 怪群按距离生成 / 回收(世界单位;一屏约 2000 宽):走近 1.4 屏刷,走出 2.3 屏收。 */
 const MONSTER_SPAWN_RANGE = 2800;
 const MONSTER_DESPAWN_RANGE = 4600;
@@ -1028,9 +1029,11 @@ export class LobbyTownRenderer {
 
   private createActor(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, facing: 1 | -1): TownActor {
     const node = this.host.addChildPlainNode(parent, `TownActor_${index}`, x, y, HERO_SLOT_W, HERO_SLOT_H);
+    // 脚下:柔边接触阴影(压地)+ 原程序椭圆影(骨骼自带影子插槽时去掉,见下)
+    const contact = this.addContactShadow(node, HERO_SLOT_W * 0.95);
     const shadow = node.addComponent(Graphics);
-    shadow.fillColor = rgba(0, 0, 0, 120);
-    shadow.ellipse(0, 2, HERO_SLOT_W * 0.3, 8);
+    shadow.fillColor = rgba(0, 0, 0, 70);
+    shadow.ellipse(0, 2, HERO_SLOT_W * 0.24, 6);
     shadow.fill();
     const actor: TownActor = {
       node, x, y, facing, moving: false, skeleton: null, spineNode: null, names: null, baseScaleX: 1, baseScaleY: 1, anim: null, shadow, idleFor: 0, faceAcc: 0,
@@ -1074,12 +1077,17 @@ export class LobbyTownRenderer {
         spineNode.setPosition(pos.x, pos.y + HERO_SLOT_H * 0.44, 0);
         actor.names = resolveBattleUnitSpineAnimationNames(data, unit);
         actor.skeleton = skeleton;
+        this.applyActorTint(skeleton);
         // 动作之间 0.08s 过渡混合:攻击 → 待机 / 跑 → 攻击不再硬切
         mixAll(skeleton, [actor.names.idle, actor.names.move, actor.names.attack, actor.names.skill1, actor.names.skill2, actor.names.skill3, actor.names.ult], 0.08);
         // 英雄骨骼大多自带脚底影子插槽:有就不再叠程序椭圆影(否则脚下两个影子,且骨骼有横向偏移会错开)
         if (actor.shadow && skeletonHasShadowSlot(data)) {
           actor.shadow.clear();
           actor.shadow = null;
+          // 骨骼自带硬边影子:柔边接触阴影调淡,只负责「压地」,不叠成两块影子
+          if (contact && contact.isValid) {
+            (contact.getComponent(UIOpacity) ?? contact.addComponent(UIOpacity)).opacity = 150;
+          }
         }
         actor.spineNode = spineNode;
         this.applyActorAnimation(actor, true);
@@ -2657,7 +2665,7 @@ export class LobbyTownRenderer {
       const w = chest.kind === 'BOSS' ? 230 : 170;
       const node = this.host.addChildPlainNode(root, `TownChest_${chest.code}`, chest.x, chest.y, w, w);
       const glow = this.host.addChildPlainNode(node, 'Glow', 0, 4, w * 1.6, w * 0.6).addComponent(Graphics);
-      const sprite = this.host.addSprite('Art', CHEST_ASSET, 0, 0, w, w, node);
+      const sprite = this.host.addSprite('Art_closed', CHEST_ART.closed, 0, 0, w, w, node);
       let artH = w * 0.8;
       if (sprite) {
         const frame = sprite.spriteFrame;
@@ -2820,6 +2828,25 @@ export class LobbyTownRenderer {
     }
   }
 
+  /** 脚下柔边接触阴影(宽 w,扁 0.36);节点原点 = 脚底。返回阴影节点(没贴图时 null)。 */
+  private addContactShadow(node: Node, w: number): Node | null {
+    const sprite = this.host.addSprite('Contact', CONTACT_SHADOW, 0, 2, w, w * 0.36, node);
+    if (!sprite) {
+      return null;
+    }
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, w * 0.36));
+    return sprite.node;
+  }
+
+  /** 按地图环境色给骨骼整体调色(晨风村暖晨光 / 林地树荫);地图没配就不动。 */
+  private applyActorTint(skeleton: sp.Skeleton): void {
+    const tint = this.def.actorTint;
+    if (tint) {
+      skeleton.color = rgba(tint[0], tint[1], tint[2]);
+    }
+  }
+
   /** 场上物件头顶名字(和 NPC 名牌同口径:描边字,无底框)。 */
   private addWorldNameLabel(node: Node, text: string, y: number): Label {
     // 世界层会整体缩小(约 0.5~0.7),28 号才在屏上清楚;加粗 + 粗描边,压在草地 / 石板上都看得清
@@ -2921,9 +2948,33 @@ export class LobbyTownRenderer {
     this.poiPending.delete(code);
   }
 
+  /** 宝箱素材:关着 / 开盖空箱(按原比例,脚线不变;已是目标素材就只刷颜色)。 */
+  private setChestArt(entry: { node: Node; sprite: Sprite | null; kind: WorldMapChest['kind'] }, opened: boolean): void {
+    const asset = opened ? CHEST_ART.open : CHEST_ART.closed;
+    if (entry.node.isValid && entry.sprite?.node.isValid && entry.sprite.node.name !== `Art_${opened ? 'open' : 'closed'}`) {
+      const w = entry.kind === 'BOSS' ? 230 : 170;
+      entry.sprite.node.destroy();
+      const sprite = this.host.addSprite(`Art_${opened ? 'open' : 'closed'}`, asset, 0, 0, w, w, entry.node);
+      if (sprite) {
+        const frame = sprite.spriteFrame;
+        const h = w * ((frame?.originalSize.height ?? 1) / Math.max(1, frame?.originalSize.width ?? 1));
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, h));
+        sprite.node.setPosition(0, h / 2 - 8, 0);
+        // 放回光圈之后、名字 / 圆徽之前
+        sprite.node.setSiblingIndex(1);
+      }
+      entry.sprite = sprite;
+    }
+    if (entry.sprite && entry.sprite.isValid) {
+      entry.sprite.color = this.chestTint(entry.kind, opened);
+    }
+  }
+
   private chestTint(kind: WorldMapChest['kind'], opened: boolean): Color {
+    // 开过换成开盖空箱素材(refreshChests),只略压暗;不再整只压成灰褐
     if (opened) {
-      return rgba(118, 108, 98);
+      return rgba(196, 190, 182);
     }
     return kind === 'IRON' ? rgba(182, 192, 206) : kind === 'SECRET' ? rgba(214, 190, 255) : rgba(255, 255, 255);
   }
@@ -2933,9 +2984,7 @@ export class LobbyTownRenderer {
     const opened = new Set(world?.openedChests ?? []);
     for (const [code, entry] of this.chestNodes) {
       entry.opened = opened.has(code);
-      if (entry.sprite && entry.sprite.isValid) {
-        entry.sprite.color = this.chestTint(entry.kind, entry.opened);
-      }
+      this.setChestArt(entry, entry.opened);
       if (entry.name && entry.name.isValid) {
         entry.name.string = entry.opened ? `${entry.label} · 已开启` : entry.label;
         entry.name.color = entry.opened ? WORLD_NAME_DONE : WORLD_NAME_COLOR;
@@ -3010,8 +3059,12 @@ export class LobbyTownRenderer {
     if (entry.glow.isValid) {
       entry.glow.node.active = false;
     }
-    if (entry.sprite && entry.sprite.isValid) {
-      tween(entry.sprite).delay(0.5).to(0.4, { color: this.chestTint(entry.kind, true) }).start();
+    // 抖完、金光升起时换成开盖空箱(10-30 写实宝箱)
+    tween(node).delay(0.45).call(() => this.setChestArt(entry, true)).start();
+    entry.badge?.isValid && (entry.badge.active = false);
+    if (entry.name && entry.name.isValid) {
+      entry.name.string = `${entry.label} · 已开启`;
+      entry.name.color = WORLD_NAME_DONE;
     }
   }
 
@@ -3171,10 +3224,12 @@ export class LobbyTownRenderer {
 
   private createMonster(parent: Node, camp: WorldMapCamp, index: number, x: number, y: number): TownMonster {
     const node = this.host.addChildPlainNode(parent, `TownMonster_${camp.stageCode}_${index}`, x, y, 160, 200);
-    const shadow = node.addComponent(Graphics);
-    shadow.fillColor = rgba(0, 0, 0, 110);
     const boss = camp.stageCode.endsWith('_B');
-    shadow.ellipse(0, 2, boss ? 110 : camp.elite ? 70 : 44, boss ? 22 : camp.elite ? 14 : 9);
+    // 柔边接触阴影 + 淡一点的程序椭圆核心(10-30 贴地融合)
+    this.addContactShadow(node, boss ? 300 : camp.elite ? 190 : 120);
+    const shadow = node.addComponent(Graphics);
+    shadow.fillColor = rgba(0, 0, 0, 70);
+    shadow.ellipse(0, 2, boss ? 90 : camp.elite ? 56 : 34, boss ? 18 : camp.elite ? 11 : 7);
     shadow.fill();
     // 区域首领比精英再大一圈
     const target = boss ? 380 : camp.elite ? 250 : 140;
@@ -3243,6 +3298,7 @@ export class LobbyTownRenderer {
         spineNode.setScale(monster.baseScale * MONSTER_ART_FACING * monster.facing, monster.baseScale, 1);
         monster.skeleton = skeleton;
         monster.spineNode = spineNode;
+        this.applyActorTint(skeleton);
         mixAll(skeleton, [monster.idleAnim, monster.moveAnim, monster.attackAnim], 0.1);
         monster.shotFx = resolveGuardMonsterProjectileFx(dir);
         if (monster.shotFx) {

@@ -105,6 +105,20 @@ async def main():
                     await ev(T + f" tp({x} - 430, {y} - 60); return 1;")
                     await asyncio.sleep(2.2)
                     await shot(f'show_{code}')
+                # 宝箱:远看每个;再开第一个木箱看开盖空箱
+                chests = json.loads(await ev(T + " return JSON.stringify((t.def.chests || []).map(c => [c.code, c.kind, c.x, c.y]));"))
+                for code, kind, x, y in chests:
+                    await ev(T + f" tp({x} - 430, {y} - 60); return 1;")
+                    await asyncio.sleep(2.2)
+                    await shot(f'show_{code}')
+                wood = next((c for c in chests if c[1] == 'WOOD'), None)
+                if wood:
+                    await ev(T + f" tp({wood[2]} - 160, {wood[3]} - 30); return 1;")
+                    await asyncio.sleep(1.5)
+                    await ev(f"root.openWorldChest('{wood[0]}'); return 1;")
+                    await asyncio.sleep(3.5)
+                    await shot(f'show_{wood[0]}_opened')
+                    print('chest opened', await ev("return JSON.stringify(root.worldState.openedChests);"), flush=True)
                 return
             for code, kind, x, y, ok in pois:
                 if kind == 'HIDDEN':

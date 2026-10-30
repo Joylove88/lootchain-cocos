@@ -128,6 +128,11 @@ export const POI_ASSET = {
   oreCut: 'ui/world/poi/poi_ore_cut/spriteFrame',
   hidden: 'ui/world/poi/poi_hidden/spriteFrame',
 } as const;
+/** 野外宝箱写实版(10-30 用户:宝箱偏卡通):关着 / 开过(开盖空箱)。 */
+export const CHEST_ART = {
+  closed: 'ui/world/poi/poi_chest/spriteFrame',
+  open: 'ui/world/poi/poi_chest_open/spriteFrame',
+} as const;
 export const POI_MAP_ICON: Record<WorldMapPoiKind, string> = {
   HIDDEN: 'ui/world/mapui/map_hidden/spriteFrame',
   STELE: 'ui/world/mapui/map_stele/spriteFrame',
@@ -173,6 +178,8 @@ export interface WorldMapDef {
   chests?: WorldMapChest[];
   /** 隐藏点 / 石碑 / 采集点(docs/54)。 */
   pois?: WorldMapPoi[];
+  /** 角色环境色(10-30 英雄贴地融合):英雄 / 怪物骨骼整体乘这个色,跟地图光照走(晨风村暖晨光、林地树荫);不给 = 原色。 */
+  actorTint?: [number, number, number];
   /** 地图页「地点」列表(icon:portal / camp / den / ruins / cave / npc / place);不给就按有功能的建筑生成。 */
   places?: Array<{ name: string; x: number; y: number; icon: string }>;
   /** 走廊式可走区(docs/52 §2.1):给了就只能走在路(折线 ± half)和空地(椭圆)里;walk 仍是外框。 */
@@ -344,6 +351,7 @@ const VILLAGE_BASE = {
 const VILLAGE: WorldMapDef = {
   code: 'VILLAGE',
   ambient: true,
+  actorTint: [255, 244, 228],
   name: '晨风村',
   levelText: 'Lv.1-10',
   width: 6400,
@@ -489,6 +497,7 @@ const WOODS_TREES: Array<[number, number, string, number]> = [
  */
 const WOODS: WorldMapDef = {
   code: 'WOODS',
+  actorTint: [236, 242, 226],
   ambient: true,
   name: '村外林地',
   levelText: 'Lv.1-10',
@@ -782,10 +791,12 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...def.npcs.map((n) => n.asset).filter((asset): asset is string => !!asset),
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
     ...(code === 'VILLAGE' || code === 'WOODS' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
-    // 野外宝箱贴图(渲染层 CHEST_ASSET)
-    ...(def.chests?.length ? [worldAsset('woods3/w3_chest')] : []),
+    // 野外宝箱贴图(渲染层 CHEST_ART:关着 / 开盖空箱)
+    ...(def.chests?.length ? Object.values(CHEST_ART) : []),
     // 兴趣点素材(docs/54)+ 场上头顶圆徽用的图标(进图前要在内存里,场上节点不会因贴图晚到而重绘)
     ...(def.pois?.length ? [...Object.values(POI_ASSET), ...Object.values(POI_MAP_ICON)] : []),
+    // 角色脚下柔边接触阴影(LobbyTownRenderer CONTACT_SHADOW)
+    worldAsset('fx/contact_shadow'),
     ...(def.chests?.length ? [worldAsset('mapui/map_chest')] : [])]));
 }
 

@@ -34,6 +34,11 @@ SPEC = {
             'a small rocky outcrop of grey stone, knee high, with clearly visible veins of pale blue-silver ore running through its cracks, a few loose rock chips around it'),
     'ore_cut': (None, 'vil3_altar.png',
                 'the same small grey rocky outcrop AFTER it has been mined: the ore veins chipped out leaving fresh pale broken stone faces, dull and empty, more loose rubble around it'),
+    # 野外宝箱写实版(10-30 用户:宝箱偏卡通;开过的换开盖空箱,不再只压暗)
+    'chest': (None, 'vil3_hay.png',
+              'a weathered old wooden treasure chest with a rounded lid, dark aged oak planks, rusty dark iron bands and corner plates, a heavy iron lock plate on the front, closed, sitting on the ground (realistic, muted, NOT shiny gold, NOT cartoon)'),
+    'chest_open': (None, 'vil3_hay.png',
+                   'the same weathered old wooden treasure chest with its rounded lid swung open backwards, the inside empty except a little loose straw, dark aged oak planks and rusty iron bands (realistic, muted, NOT cartoon)'),
     'hidden': ((1420, 230, 1640, 310), 'vil3_decal_dirt.png',
                'a small patch of freshly turned dark soil on the ground, seen from the same high angle, slightly mounded, with a few clods and one tiny metallic glint peeking out, edges fading into grass'),
 }
@@ -66,7 +71,7 @@ def gen(names: set) -> None:
 
 
 # 场上显示尺寸(世界单位,长边):石碑约一人高,草药 / 矿脉及膝,隐藏点是一小块地皮
-SIDE = {'stele': 512, 'herb': 384, 'herb_cut': 384, 'ore': 384, 'ore_cut': 384, 'hidden': 384}
+SIDE = {'chest': 512, 'chest_open': 512, 'stele': 512, 'herb': 384, 'herb_cut': 384, 'ore': 384, 'ore_cut': 384, 'hidden': 384}
 FLAT = {'hidden': 30}
 
 

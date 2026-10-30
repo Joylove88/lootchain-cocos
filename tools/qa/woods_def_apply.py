@@ -82,6 +82,7 @@ const WOODS_TREES: Array<[number, number, string, number]> = [
  */
 const WOODS: WorldMapDef = {{
   code: 'WOODS',
+  actorTint: [236, 242, 226],
   ambient: true,
   name: '村外林地',
   levelText: 'Lv.1-10',
