@@ -1,5 +1,6 @@
 import {
   Button,
+  Color,
   EventKeyboard,
   EventTouch,
   Graphics,
@@ -52,7 +53,7 @@ import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSk
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
-import { worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapExit, type WorldNpcCode } from './LobbyWorldMaps';
+import { distToLines, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -77,6 +78,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   startWorldFieldBattle?(stageCode: string): void;
   travelWorldMap?(code: WorldMapCode, spawn: { x: number; y: number } | null, reach?: string): void;
   activateWorldWaypoint?(code: WorldMapCode): void;
+  /** docs/52 §3.1 野外宝箱:开箱(成功后回调 playChestOpened)。 */
+  openWorldChest?(code: string): void;
   openWorldQuestTracker?(): void;
   openWorldBountyPanel?(): void;
   /** docs/50 §14 野外即时战斗:登记遭遇(下发数值)/ 清怪上报 / 队长倒下。 */
@@ -168,6 +171,11 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 野外宝箱贴图(林地 v3 写实件;铁箱 / 秘藏按色调区分)。 */
+const CHEST_ASSET = worldAsset('woods3/w3_chest');
+/** 怪群按距离生成 / 回收(世界单位;一屏约 2000 宽):走近 1.4 屏刷,走出 2.3 屏收。 */
+const MONSTER_SPAWN_RANGE = 2800;
+const MONSTER_DESPAWN_RANGE = 4600;
 const MONSTER_CONTACT_RADIUS = 72;
 const MONSTER_RESPAWN_MS = 60_000;
 const WAYPOINT_RADIUS = 150;
@@ -257,6 +265,7 @@ type TownInteract =
   | { kind: 'building'; key: string; label: string; x: number; y: number; building: WorldMapBuilding }
   | { kind: 'npc'; key: string; label: string; x: number; y: number; npc: WorldNpcCode }
   | { kind: 'waypoint'; key: string; label: string; x: number; y: number }
+  | { kind: 'chest'; key: string; label: string; x: number; y: number; chest: WorldMapChest }
   | { kind: 'loot'; key: string; label: string; x: number; y: number; loot: TownLoot };
 
 /** 循环动画选取:先精确名,再"以名开头",最后包含关键词;都排除受击 / 攻击 / 死亡 / 过渡(link)/ 转身片段。 */
@@ -283,6 +292,8 @@ export class LobbyTownRenderer {
   private world: Node | null = null;
   private groundRoot: Node | null = null;
   private readonly ambient = new TownAmbient();
+  /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
+  private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind'] }>();
   private entityRoot: Node | null = null;
   private layout: UiLayout | null = null;
   private k = 1;
@@ -427,6 +438,7 @@ export class LobbyTownRenderer {
     this.waypointNode = null;
     this.waypointGlow = null;
     this.waypointFx = null;
+    this.chestNodes = new Map();
     this.monsters = [];
     this.trail = [];
     this.partySignature = '';
@@ -485,6 +497,7 @@ export class LobbyTownRenderer {
     this.ensureProps();
     this.ensureNpcs();
     this.ensureWaypoint();
+    this.ensureChests();
     this.ensureExits();
     this.ensureMonsters();
     this.ensureParty();
@@ -534,6 +547,7 @@ export class LobbyTownRenderer {
     this.waypointNode = null;
     this.waypointGlow = null;
     this.waypointFx = null;
+    this.chestNodes = new Map();
     this.monsters = [];
     this.trail = [];
     this.partySignature = '';
@@ -568,6 +582,7 @@ export class LobbyTownRenderer {
     this.waypointNode = null;
     this.waypointGlow = null;
     this.waypointFx = null;
+    this.chestNodes = new Map();
     this.monsters = [];
     this.leader = null;
     this.followers = [];
@@ -1066,6 +1081,7 @@ export class LobbyTownRenderer {
     this.updateMinimap();
     this.updateGuidePointer();
     this.waypointFx?.step(clamped);
+    this.stepChestGlow();
     if (this.def.ambient) {
       const view = this.viewSize();
       this.ambient.step(clamped, this.camX, this.camY, view.w, view.h, this.def.width);
@@ -1264,6 +1280,12 @@ export class LobbyTownRenderer {
     if (x < def.walk.left || x > def.walk.right || y < def.walk.bottom || y > def.walk.top) {
       return false;
     }
+    // 走廊式地图(docs/52 §2.1):只能走在路(折线 ± half)或林间空地(椭圆)里
+    const corridors = def.corridors;
+    if (corridors && distToLines(x, y, corridors.lines) > corridors.half
+      && !corridors.areas.some((area) => ((x - area.x) / area.rx) ** 2 + ((y - area.y) / area.ry) ** 2 <= 1)) {
+      return false;
+    }
     for (const building of def.buildings) {
       const halfW = building.footprint.w / 2 + ACTOR_RADIUS * 0.6;
       if (x > building.x - halfW && x < building.x + halfW && y > building.y - ACTOR_RADIUS * 0.3 && y < building.y + building.footprint.d) {
@@ -1395,6 +1417,11 @@ export class LobbyTownRenderer {
       }
     }
     out.push({ kind: 'waypoint', key: 'waypoint', label: `传送阵 · ${def.name}`, x: def.waypoint.x, y: def.waypoint.y });
+    for (const chest of def.chests ?? []) {
+      if (!this.chestNodes.get(chest.code)?.opened) {
+        out.push({ kind: 'chest', key: `chest_${chest.code}`, label: chest.label, x: chest.x, y: chest.y - 30, chest });
+      }
+    }
     for (const loot of this.loots) {
       if (loot.node.isValid) {
         out.push({ kind: 'loot', key: loot.key, label: '战利品', x: loot.x, y: loot.y, loot });
@@ -1452,6 +1479,9 @@ export class LobbyTownRenderer {
     }
     if (item.kind === 'loot') {
       return '拾取 · 战利品';
+    }
+    if (item.kind === 'chest') {
+      return `开启 · ${item.label}`;
     }
     return `${item.building.action === 'quest' ? '查看' : '进入'} · ${item.label}`;
   }
@@ -1573,6 +1603,10 @@ export class LobbyTownRenderer {
       this.pickupLoot(near.loot);
       return;
     }
+    if (near.kind === 'chest') {
+      this.host.openWorldChest?.(near.chest.code);
+      return;
+    }
     if (this.guide?.flag && this.guide.building === near.building.key) {
       lobbyGuide.markVisited(this.guide.flag);
     }
@@ -1637,6 +1671,7 @@ export class LobbyTownRenderer {
     this.mountGuidePointer(effectiveGuide);
     this.refreshNpcMarkers(world);
     this.refreshWaypointGlow(world);
+    this.refreshChests(world);
     this.channelBar = null;
     this.nearKey = null;
     this.updateNearBuilding();
@@ -2228,6 +2263,119 @@ export class LobbyTownRenderer {
     this.refreshWaypointGlow(this.host.currentWorldState?.() ?? null);
   }
 
+  /** 野外宝箱(docs/52 §3.1):木箱原色、铁箱压冷灰、秘藏偏紫、首领宝箱放大;可开的脚下呼吸光圈。 */
+  private ensureChests(): void {
+    const root = this.entityRoot;
+    if (!root || !root.isValid) {
+      return;
+    }
+    for (const chest of this.def.chests ?? []) {
+      if (this.chestNodes.has(chest.code)) {
+        continue;
+      }
+      const w = chest.kind === 'BOSS' ? 230 : 170;
+      const node = this.host.addChildPlainNode(root, `TownChest_${chest.code}`, chest.x, chest.y, w, w);
+      const glow = this.host.addChildPlainNode(node, 'Glow', 0, 4, w * 1.6, w * 0.6).addComponent(Graphics);
+      const sprite = this.host.addSprite('Art', CHEST_ASSET, 0, 0, w, w, node);
+      if (sprite) {
+        const frame = sprite.spriteFrame;
+        const h = w * ((frame?.originalSize.height ?? 1) / Math.max(1, frame?.originalSize.width ?? 1));
+        sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, h));
+        sprite.node.setPosition(0, h / 2 - 8, 0);
+      }
+      this.chestNodes.set(chest.code, { node, sprite, glow, opened: false, kind: chest.kind });
+      this.propNodes.push({ node, y: chest.y });
+    }
+    this.refreshChests(this.host.currentWorldState?.() ?? null);
+  }
+
+  private chestTint(kind: WorldMapChest['kind'], opened: boolean): Color {
+    if (opened) {
+      return rgba(118, 108, 98);
+    }
+    return kind === 'IRON' ? rgba(182, 192, 206) : kind === 'SECRET' ? rgba(214, 190, 255) : rgba(255, 255, 255);
+  }
+
+  /** 今日已开的宝箱压暗、去掉光圈(世界状态 openedChests)。 */
+  private refreshChests(world: WorldStateVO | null): void {
+    const opened = new Set(world?.openedChests ?? []);
+    for (const [code, entry] of this.chestNodes) {
+      entry.opened = opened.has(code);
+      if (entry.sprite && entry.sprite.isValid) {
+        entry.sprite.color = this.chestTint(entry.kind, entry.opened);
+      }
+      if (entry.glow.isValid) {
+        entry.glow.node.active = !entry.opened;
+      }
+    }
+  }
+
+  private stepChestGlow(): void {
+    if (this.chestNodes.size === 0) {
+      return;
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 520);
+    for (const entry of this.chestNodes.values()) {
+      if (entry.opened || !entry.glow.isValid) {
+        continue;
+      }
+      const g = entry.glow;
+      const rx = (entry.kind === 'BOSS' ? 150 : 110) * (0.92 + 0.08 * pulse);
+      const c = entry.kind === 'SECRET' ? [190, 150, 255] : entry.kind === 'BOSS' ? [255, 150, 80] : [255, 214, 120];
+      g.clear();
+      g.fillColor = rgba(c[0], c[1], c[2], Math.round(26 + 34 * pulse));
+      g.ellipse(0, 0, rx, rx * 0.32);
+      g.fill();
+      g.fillColor = rgba(c[0], c[1], c[2], Math.round(20 + 24 * pulse));
+      g.ellipse(0, 0, rx * 0.6, rx * 0.2);
+      g.fill();
+    }
+  }
+
+  /** 开箱演出:宝箱抖两下 → 一圈金光外扩 + 光柱一闪 → 压暗(奖励飘字走 GameRoot 的世界操作统一入口)。 */
+  playChestOpened(code: string): void {
+    const entry = this.chestNodes.get(code);
+    if (!entry || !entry.node.isValid) {
+      return;
+    }
+    const node = entry.node;
+    const base = node.scale.clone();
+    tween(node)
+      .to(0.06, { scale: new Vec3(base.x * 1.08, base.y * 0.92, 1) })
+      .to(0.06, { scale: new Vec3(base.x * 0.94, base.y * 1.1, 1) })
+      .to(0.06, { scale: new Vec3(base.x * 1.05, base.y * 0.95, 1) })
+      .to(0.1, { scale: base })
+      .start();
+    const ring = this.host.addChildPlainNode(node, 'OpenRing', 0, 10, 400, 200);
+    const rg = ring.addComponent(Graphics);
+    rg.strokeColor = rgba(255, 226, 140, 230);
+    rg.lineWidth = 6;
+    rg.ellipse(0, 0, 70, 24);
+    rg.stroke();
+    const rf = ring.addComponent(UIOpacity);
+    ring.setScale(0.4, 0.4, 1);
+    tween(ring).delay(0.18).to(0.6, { scale: new Vec3(2.4, 2.4, 1) }, { easing: 'quadOut' }).start();
+    tween(rf).delay(0.4).to(0.4, { opacity: 0 }).call(() => ring.isValid && ring.destroy()).start();
+    const beam = this.host.addChildPlainNode(node, 'OpenBeam', 0, 40, 120, 420);
+    const bg = beam.addComponent(Graphics);
+    for (const [half, alpha] of [[46, 50], [26, 110], [10, 230]]) {
+      bg.fillColor = rgba(255, 232, 160, alpha);
+      bg.roundRect(-half, 0, half * 2, 380, half);
+      bg.fill();
+    }
+    beam.setScale(1, 0.05, 1);
+    const bf = beam.addComponent(UIOpacity);
+    tween(beam).delay(0.18).to(0.25, { scale: new Vec3(1, 1, 1) }, { easing: 'quadOut' }).start();
+    tween(bf).delay(0.6).to(0.5, { opacity: 0 }).call(() => beam.isValid && beam.destroy()).start();
+    entry.opened = true;
+    if (entry.glow.isValid) {
+      entry.glow.node.active = false;
+    }
+    if (entry.sprite && entry.sprite.isValid) {
+      tween(entry.sprite).delay(0.5).to(0.4, { color: this.chestTint(entry.kind, true) }).start();
+    }
+  }
+
   /** 传送阵符文:已激活亮蓝,未激活暗灰(docs/50 §5.4)。 */
   private refreshWaypointGlow(world: WorldStateVO | null): void {
     const g = this.waypointGlow;
@@ -2338,9 +2486,27 @@ export class LobbyTownRenderer {
       return;
     }
     const now = Date.now();
+    const leaderNow = this.leader;
+    // docs/52 §6:大地图只生成队长附近的怪群(手机同屏骨骼数),走远的整群回收(不算被打死,回来按原样刷)
+    if (leaderNow) {
+      const far = new Set(this.def.camps
+        .filter((camp) => Math.hypot(leaderNow.x - camp.x, leaderNow.y - camp.y) > MONSTER_DESPAWN_RANGE && !this.encounters.has(camp.stageCode))
+        .map((camp) => camp.stageCode));
+      if (far.size > 0 && this.monsters.some((monster) => far.has(monster.camp.stageCode))) {
+        for (const monster of this.monsters) {
+          if (far.has(monster.camp.stageCode) && monster.node.isValid) {
+            monster.node.destroy();
+          }
+        }
+        this.monsters = this.monsters.filter((monster) => !far.has(monster.camp.stageCode));
+      }
+    }
     for (const camp of this.def.camps) {
       const respawnAt = this.campRespawnAt.get(camp.stageCode) ?? 0;
       if (respawnAt > now || this.monsters.some((monster) => monster.camp.stageCode === camp.stageCode)) {
+        continue;
+      }
+      if (leaderNow && Math.hypot(leaderNow.x - camp.x, leaderNow.y - camp.y) > MONSTER_SPAWN_RANGE) {
         continue;
       }
       // 玩家还站在营地里:先不刷(否则一刷出来就撞上直接开战),走远了下次 render 再刷
@@ -2349,9 +2515,11 @@ export class LobbyTownRenderer {
         continue;
       }
       for (let i = 0; i < camp.count; i += 1) {
-        const angle = (Math.PI * 2 * i) / Math.max(1, camp.count);
-        const x = camp.x + Math.cos(angle) * camp.radius * 0.5;
-        const y = camp.y + Math.sin(angle) * camp.radius * 0.3;
+        // 向日葵散布:6~10 只一群也不挤成一圈
+        const angle = i * 2.39996;
+        const r = camp.count <= 3 ? 0.5 : 0.2 + 0.5 * Math.sqrt((i + 0.5) / camp.count);
+        const x = camp.x + Math.cos(angle) * camp.radius * r;
+        const y = camp.y + Math.sin(angle) * camp.radius * r * 0.6;
         this.monsters.push(this.createMonster(root, camp, i, x, y));
       }
     }
@@ -2361,9 +2529,11 @@ export class LobbyTownRenderer {
     const node = this.host.addChildPlainNode(parent, `TownMonster_${camp.stageCode}_${index}`, x, y, 160, 200);
     const shadow = node.addComponent(Graphics);
     shadow.fillColor = rgba(0, 0, 0, 110);
-    shadow.ellipse(0, 2, camp.elite ? 70 : 44, camp.elite ? 14 : 9);
+    const boss = camp.stageCode.endsWith('_B');
+    shadow.ellipse(0, 2, boss ? 110 : camp.elite ? 70 : 44, boss ? 22 : camp.elite ? 14 : 9);
     shadow.fill();
-    const target = camp.elite ? 250 : 140;
+    // 区域首领比精英再大一圈
+    const target = boss ? 380 : camp.elite ? 250 : 140;
     // docs/51 §7:名字只在被锁定时显示(满屏名字太乱)
     const label = this.host.addChildLabel(node, 'Name', `${camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || camp.label} Lv.${camp.level}`, 0, target + 24, 21,
       rgba(250, 236, 214), new Size(240, 28));

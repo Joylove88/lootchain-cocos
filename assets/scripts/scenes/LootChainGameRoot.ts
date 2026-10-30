@@ -136,7 +136,7 @@ import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStageCode, raidPvpStageCode } from '../types/RaidTypes';
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { worldMapDef, worldMapOfStage, type WorldNpcCode } from './lobby/LobbyWorldMaps';
+import { worldMapAssetPaths, worldMapDef, worldMapOfStage, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
@@ -6739,10 +6739,13 @@ export class LootChainGameRoot extends Component {
         }
       }
       if (target !== this.lobbyTownRenderer.currentMapCode()) {
-        this.lobbyTownRenderer.enterMap(target);
-        if (this.currentView === 'lobby') {
-          this.renderCurrentView();
-        }
+        const enter = target;
+        this.preloadWorldMap(enter, () => {
+          this.lobbyTownRenderer.enterMap(enter);
+          if (this.currentView === 'lobby') {
+            this.renderCurrentView();
+          }
+        });
         return;
       }
     }
@@ -6975,16 +6978,70 @@ export class LootChainGameRoot extends Component {
     }
     const def = worldMapDef(code);
     const arrive = spawn ?? { x: def.waypoint.x + 40, y: def.waypoint.y - 150 };
-    this.lobbyTownRenderer.enterMap(code, arrive);
-    try {
-      sys.localStorage.setItem(this.worldMapStorageKey(), code);
-    } catch {
-      // 忽略
-    }
-    if (this.currentView === 'lobby') {
-      this.renderCurrentView();
-    }
+    this.setStatus(`正在前往 ${def.name}…`);
+    // 10-29:先把目标图的素材加载完再切图(各图写实素材 40MB+,不再进大厅整组预载)
+    this.preloadWorldMap(code, () => {
+      this.lobbyTownRenderer.enterMap(code, arrive);
+      try {
+        sys.localStorage.setItem(this.worldMapStorageKey(), code);
+      } catch {
+        // 忽略
+      }
+      if (this.currentView === 'lobby') {
+        this.renderCurrentView();
+      }
+    });
     // docs/53 §3(10-29):到新图不再自动激活,要走到传送阵附近才激活
+  }
+
+  /** 按图加载跑图素材(worldMapAssetPaths),全部到了(或 8 秒兜底)再回调;已在缓存的直接算到。 */
+  private preloadWorldMap(code: WorldMapCode, done: () => void): void {
+    const paths = worldMapAssetPaths(code).filter((path) => !resources.get(path, SpriteFrame));
+    let left = paths.length;
+    let finished = false;
+    const finish = (): void => {
+      if (!finished) {
+        finished = true;
+        done();
+      }
+    };
+    if (left === 0) {
+      finish();
+      return;
+    }
+    const timer = setTimeout(finish, 8000);
+    // 小批量排队(手机一次并发太多会卡,见预读口径):每批 6 张
+    const queue = paths.slice();
+    const next = (): void => {
+      const batch = queue.splice(0, 6);
+      if (batch.length === 0) {
+        return;
+      }
+      let pending = batch.length;
+      for (const path of batch) {
+        resources.load(path, SpriteFrame, () => {
+          left -= 1;
+          pending -= 1;
+          if (left <= 0) {
+            clearTimeout(timer);
+            finish();
+          } else if (pending === 0) {
+            next();
+          }
+        });
+      }
+    };
+    next();
+  }
+
+  /** docs/52 §3.1 野外宝箱:开箱成功放演出 + 奖励飘字(runWorldAction);失败提示原因(例如要先打赢旁边的精英)。 */
+  private openWorldChest(code: string): void {
+    void (async () => {
+      const ok = await this.runWorldAction(() => this.api.world.openChest(code));
+      if (ok) {
+        this.lobbyTownRenderer.playChestOpened(code);
+      }
+    })();
   }
 
   private activateWorldWaypoint(code: WorldMapCode): void {

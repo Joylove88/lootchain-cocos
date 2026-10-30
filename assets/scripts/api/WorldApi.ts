@@ -28,6 +28,11 @@ export class WorldApi {
     return this.http.post<unknown>('/api/player/world/waypoint/activate', { mapCode }).then(validateAction);
   }
 
+  /** 野外宝箱(docs/52 §3.1):target = 宝箱码。 */
+  openChest(chestCode: string): Promise<WorldActionResultVO> {
+    return this.http.post<unknown>('/api/player/world/chest/open', { target: chestCode }).then(validateAction);
+  }
+
   acceptBounty(slot: number): Promise<WorldActionResultVO> {
     return this.http.post<unknown>('/api/player/world/bounty/accept', { slot }).then(validateAction);
   }
@@ -176,6 +181,7 @@ function validateState(data: unknown): WorldStateVO {
     quests,
     bounties,
     bountyDate: readText(data, 'bountyDate', 16, ''),
+    openedChests: readArray(data, 'openedChests', 64).map((code) => (typeof code === 'string' ? code.slice(0, 32) : '')).filter((code) => !!code),
   };
 }
 

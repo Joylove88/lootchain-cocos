@@ -60,6 +60,8 @@ export interface WorldStateVO {
   quests: WorldQuestVO[];
   bounties: WorldBountyVO[];
   bountyDate: string;
+  /** 今日已开的野外宝箱码(docs/52 §3.1)。 */
+  openedChests: string[];
 }
 
 export interface WorldActionResultVO {
