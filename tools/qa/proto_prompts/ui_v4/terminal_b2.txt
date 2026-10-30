@@ -1,0 +1,8 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED terminal mockup in style B (frosted dark glass). Reproduce it EXACTLY: same layout, same sizes and positions, same left profile card, same 5x3 tile grid, same bottom bar, same fonts, colours, icon style (simple white line icons), same champagne-gold highlight on the first tile "英雄", same red dots style. Do not redesign anything.
+- SECOND image = our current in-game terminal, only to confirm the current entries.
+Change ONLY these two tiles in the grid (everything else stays pixel-identical to the FIRST image):
+  * row 2, first tile: label "矿境掠夺" with a simple white line icon of two crossed pickaxes (replaces "冒险" / crossed swords);
+  * row 3, third tile: label "野外探索" with a simple white line icon of a compass rose (replaces "挂机收益" / chest); keep its small red dot.
+All text in Simplified Chinese, crisp and legible. Output only the single finished mockup image, no annotations.

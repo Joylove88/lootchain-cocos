@@ -190,6 +190,10 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 野外怪物种类名(头顶名字用;精英 / 首领用营地名)。 */
+const MONSTER_SPECIES_NAME: Record<string, string> = {
+  MINI_RAT: '幼鼠', SMALL_SPIDER: '林蛛', MEDIUM_DOG: '野犬', MEDIUM_BEAR: '棕鬃熊', SWORD_MALE: '盗匪剑士', BOW_MALE: '盗匪弓手', GARGOYLE: '石像鬼',
+};
 /** 野外宝箱贴图(林地 v3 写实件;铁箱 / 秘藏按色调区分)。 */
 const CHEST_ASSET = worldAsset('woods3/w3_chest');
 /** 怪群按距离生成 / 回收(世界单位;一屏约 2000 宽):走近 1.4 屏刷,走出 2.3 屏收。 */
@@ -375,6 +379,7 @@ export class LobbyTownRenderer {
   private channelBar: { node: Node; fill: Graphics; label: Label; w: number; h: number } | null = null;
   private bannerUntil = 0;
   private respawnCheckAt = 0;
+  private namesCheckAt = 0;
   // docs/50 §14 野外即时战斗
   private readonly encounters = new Map<string, { id: number; pending: boolean }>();
   private raiderAttack = 0;
@@ -1093,6 +1098,7 @@ export class LobbyTownRenderer {
     this.stepFollowers(clamped);
     this.stepCombat(clamped);
     this.stepMonsters(clamped);
+    this.updateMonsterNames();
     if (Date.now() >= this.respawnCheckAt) {
       this.respawnCheckAt = Date.now() + 2000;
       if (this.def.camps.length > 0) {
@@ -2684,13 +2690,13 @@ export class LobbyTownRenderer {
     shadow.fill();
     // 区域首领比精英再大一圈
     const target = boss ? 380 : camp.elite ? 250 : 140;
-    // docs/51 §7:名字只在被锁定时显示(满屏名字太乱)
-    const label = this.host.addChildLabel(node, 'Name', `${camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || camp.label} Lv.${camp.level}`, 0, target + 24, 21,
-      rgba(250, 236, 214), new Size(240, 28));
+    // 10-30 用户「怪物名称也需要显示出来」:名字常显(原 docs/51 §7 只在锁定时显示);普通怪 = 种类名,精英 / 首领 = 自己的名字(金 / 橙)
+    const species = camp.elite ? camp.label : (MONSTER_SPECIES_NAME[camp.monsterCode] ?? (camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || camp.label));
+    const label = this.host.addChildLabel(node, 'Name', `${species} Lv.${camp.level}`, 0, target + 24, boss ? 24 : camp.elite ? 22 : 19,
+      boss ? rgba(255, 150, 96) : camp.elite ? rgba(255, 214, 120) : rgba(236, 232, 224), new Size(260, 30));
     label.enableOutline = true;
     label.outlineColor = rgba(16, 6, 4, 255);
     label.outlineWidth = 2;
-    label.node.active = false;
     if (camp.elite) {
       // 精英:脚下淡黄光圈(原型 p2)
       const ring = this.host.addChildPlainNode(node, 'EliteRing', 0, 0, 200, 80).addComponent(Graphics);
@@ -4724,6 +4730,35 @@ export class LobbyTownRenderer {
   }
 
   /**
+   * 怪物头顶名字(10-30 用户「怪物名称也需要显示出来」):每群只在一只头上显示(混战挤在一起时名字不叠成一摞)+ 锁定的那只;
+   * 这只死了换到同群下一只。锁定的精英名字走顶部精英条,头顶不重复。每 0.25 秒算一次。
+   */
+  private updateMonsterNames(): void {
+    const now = Date.now();
+    if (now < this.namesCheckAt) {
+      return;
+    }
+    this.namesCheckAt = now + 250;
+    const holders = new Map<string, TownMonster>();
+    for (const monster of this.monsters) {
+      if (!monster.dead && !holders.has(monster.camp.stageCode)) {
+        holders.set(monster.camp.stageCode, monster);
+      }
+    }
+    for (const monster of this.monsters) {
+      const label = monster.nameLabel;
+      if (!label || !label.isValid) {
+        continue;
+      }
+      const locked = monster === this.lockTarget;
+      const show = !monster.dead && !(locked && monster.camp.elite) && (locked || holders.get(monster.camp.stageCode) === monster);
+      if (label.node.active !== show) {
+        label.node.active = show;
+      }
+    }
+  }
+
+  /**
    * 怪物头顶血条(docs/51 §7):被锁的普通怪 = 名字 + 血条;被锁的精英只留箭头(名字血条走顶部精英条);
    * 没锁的怪只在挨打后 3 秒显示一条细血条。
    */
@@ -4737,12 +4772,6 @@ export class LobbyTownRenderer {
     const ratio = monster.maxHp > 0 ? monster.hp / monster.maxHp : 1;
     const mode = monster.dead || monster.maxHp <= 0 ? 'none' : locked ? (monster.camp.elite ? 'none' : 'full') : recent ? 'thin' : 'none';
     const key = `${mode}:${Math.round(ratio * 100)}`;
-    if (monster.nameLabel && monster.nameLabel.isValid) {
-      const showName = !monster.dead && locked && !monster.camp.elite;
-      if (monster.nameLabel.node.active !== showName) {
-        monster.nameLabel.node.active = showName;
-      }
-    }
     if (key === monster.hpKey) {
       return;
     }

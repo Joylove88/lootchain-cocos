@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "ebb41474-0dca-4f7b-af30-446f40aa0ee0",
+  "uuid": "2a5ffc7e-ca66-4c7a-9059-33582c32e19b",
   "files": [
     ".json",
     ".png"
@@ -10,8 +10,8 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "ebb41474-0dca-4f7b-af30-446f40aa0ee0@6c48a",
-      "displayName": "ring_overlay",
+      "uuid": "2a5ffc7e-ca66-4c7a-9059-33582c32e19b@6c48a",
+      "displayName": "static_b",
       "id": "6c48a",
       "name": "texture",
       "userData": {
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "ebb41474-0dca-4f7b-af30-446f40aa0ee0",
+        "imageUuidOrDatabaseUri": "2a5ffc7e-ca66-4c7a-9059-33582c32e19b",
         "visible": false
       },
       "ver": "1.0.22",
@@ -34,8 +34,8 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "ebb41474-0dca-4f7b-af30-446f40aa0ee0@f9941",
-      "displayName": "ring_overlay",
+      "uuid": "2a5ffc7e-ca66-4c7a-9059-33582c32e19b@f9941",
+      "displayName": "static_b",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
@@ -45,10 +45,10 @@
         "offsetY": 0,
         "trimX": 0,
         "trimY": 0,
-        "width": 250,
-        "height": 250,
-        "rawWidth": 250,
-        "rawHeight": 250,
+        "width": 1870,
+        "height": 841,
+        "rawWidth": 1870,
+        "rawHeight": 841,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -59,22 +59,22 @@
         "pivotY": 0.5,
         "meshType": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "ebb41474-0dca-4f7b-af30-446f40aa0ee0@6c48a",
+        "imageUuidOrDatabaseUri": "2a5ffc7e-ca66-4c7a-9059-33582c32e19b@6c48a",
         "atlasUuid": "",
         "trimType": "none",
         "vertices": {
           "rawPosition": [
-            -125,
-            -125,
+            -935,
+            -420.5,
             0,
-            125,
-            -125,
+            935,
+            -420.5,
             0,
-            -125,
-            125,
+            -935,
+            420.5,
             0,
-            125,
-            125,
+            935,
+            420.5,
             0
           ],
           "indexes": [
@@ -87,12 +87,12 @@
           ],
           "uv": [
             0,
-            250,
-            250,
-            250,
+            841,
+            1870,
+            841,
             0,
             0,
-            250,
+            1870,
             0
           ],
           "nuv": [
@@ -106,13 +106,13 @@
             1
           ],
           "minPos": [
-            -125,
-            -125,
+            -935,
+            -420.5,
             0
           ],
           "maxPos": [
-            125,
-            125,
+            935,
+            420.5,
             0
           ]
         }
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": true,
-    "redirect": "ebb41474-0dca-4f7b-af30-446f40aa0ee0@6c48a",
+    "redirect": "2a5ffc7e-ca66-4c7a-9059-33582c32e19b@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "lc-android-astc4"

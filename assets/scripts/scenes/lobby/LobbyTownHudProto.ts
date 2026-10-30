@@ -105,10 +105,10 @@ export const TOWN_MINIMAP_BUILDING_ICONS: Record<string, string> = {
 
 export const TOWN_HUD_ASSET_PATHS: string[] = Object.values(TOWN_HUD_ASSETS);
 
-/** docs/51 终端:原型整张静态底层 + 头像环覆盖层(tools/qa/terminal_proto_extract.py 产出,1:1 还原)。 */
+/** 终端 B 风格(10-30 用户确认 proto_terminal_b2):原型整张静态底层 + 头像环覆盖层(tools/qa/terminal_b_extract.py 产出,1:1 还原)。 */
 export const TERMINAL_ASSETS = {
-  staticLayer: 'ui/town/terminal/static/spriteFrame',
-  ringOverlay: 'ui/town/terminal/ring_overlay/spriteFrame',
+  staticLayer: 'ui/town/terminal/static_b/spriteFrame',
+  ringOverlay: 'ui/town/terminal/ring_overlay_b/spriteFrame',
 } as const;
 export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_ASSETS);
 
