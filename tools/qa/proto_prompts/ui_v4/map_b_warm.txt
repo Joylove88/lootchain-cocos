@@ -1,0 +1,30 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome icons, calm darkened blurred background.
+- SECOND image = our CURRENT world map panel. Use it ONLY to know the world-map information (regions and map pins); do NOT copy its style.
+- THIRD image = the real bird's-eye render of the current field map "村外林地" (ignore the HUD in it). Use THIS exact picture as the map content inside the panel (same layout of waterfall, river, bridge, roads, ruins, cave), not a redrawn map.
+STYLE B-WARM — the same modern frosted-glass layout, but WARMED to belong to this warm, hand-painted medieval fantasy world (Diablo / Path of Exile mood, still clean and minimal):
+- panels: warm smoked glass, dark warm charcoal-brown (#1C1813 at ~82%) with a faint amber tint and background blur, 12px rounded corners, a 1px warm gold outline at ~18% opacity; thin warm-gold hairline dividers. NO metal frames, NO ornaments, NO ribbons, NO filigree.
+- text: parchment white (#EDE3D0) primary, warm grey (#A89F8E) secondary; titles and tab labels in an elegant Chinese serif (Song / Kai style), body in clean sans.
+- icons: small muted antique-gold (#C9A86A) engraved-style icons instead of plain white line icons.
+- accent: champagne gold #E3C48A for the selected tab, the single primary button and the player arrow; red only for monsters.
+- No glow, no sparkles. Calm, airy, premium, but clearly fantasy rather than sci-fi.
+All text in Simplified Chinese exactly as written below, crisp and legible.
+SCREEN: "地图" — opened by tapping the minimap while walking in the field map, full screen over the blurred game scene.
+- Top bar: back arrow + title "地图"; segmented tabs "村外林地"(selected, the current map) | "世界地图"; on the right small grey text "坐标 35 , 41"; close (X) at the far right.
+- Main area (left ~75%): a large rounded frosted frame showing the THIRD image (the map), slightly darkened at the edges, with clean flat markers on top:
+  * player = champagne-gold arrow with a small soft ring, label "你" ;
+  * NPC / camp markers = small white round badge icons with short labels: "入口营地(传送阵)" with a small blue portal icon, "猎人营地";
+  * quest target = a gold diamond marker with label "任务:击败棕鬃熊";
+  * monster groups = small red dots in clusters; elite = slightly larger orange dot; boss = red skull icon at the bear cave labelled "腐木巨熊";
+  * treasure chests = tiny gold chest icons; one shows grey (opened);
+  * a thin dotted champagne line from the player arrow to a tapped destination pin (auto-path preview).
+  * bottom-left inside the frame: small legend chips "NPC  任务  怪物  首领  宝箱  传送阵".
+- Right column (~25%), frosted glass card:
+  * section "当前目标": quest name "荒原的威胁", grey desc "击败棕鬃熊 0/1", distance "约 86 米";
+  * a primary champagne pill button "自动寻路";
+  * a secondary translucent pill "传送 · 入口营地" ;
+  * below, a small list "地点" with 4 rows (icon + name + distance): 入口营地 · 幼鼠窝 · 猎人营地 · 古树遗迹; tapping a row = set destination.
+- Bottom hint in grey: "点击地图任意位置设置目的地 · 移动摇杆取消寻路".
+Calm, airy, premium; generous spacing; aligned grid; clear hierarchy.
+Output only the single finished mockup image, no annotations.

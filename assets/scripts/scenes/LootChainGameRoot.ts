@@ -135,6 +135,7 @@ import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
 import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStageCode, raidPvpStageCode } from '../types/RaidTypes';
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
+import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
 import { worldMapAssetPaths, worldMapDef, worldMapOfStage, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
@@ -365,6 +366,8 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyTownRenderer = new LobbyTownRenderer(this as unknown as LobbyTownHost);
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
+  /** 10-30 地图页(当前图鸟瞰 / 世界地图,原型 proto_map_b)。 */
+  private readonly lobbyAreaMapRenderer = new LobbyAreaMapRenderer(this as unknown as LobbyAreaMapHost);
   private worldState: WorldStateVO | null = null;
   private worldLoading = false;
   private worldInitDone = false;
@@ -6894,9 +6897,49 @@ export class LootChainGameRoot extends Component {
   // 世界地图(原型 p3 B 版)
 
   private openWorldMapPanel(): void {
-    this.worldMapPanel = { tab: 0, selected: null, region: null };
+    this.worldMapPanel = { tab: 0, selected: null, region: null, view: 'world', dest: null };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
+  }
+
+  /** 点小地图:地图页的当前图鸟瞰(10-30)。 */
+  private openAreaMapPanel(): void {
+    this.worldMapPanel = { tab: 0, selected: null, region: null, view: 'area', dest: null };
+    gameAudio.sfx('panel_open');
+    this.syncLobbyShopOverlay();
+  }
+
+  private setWorldMapView(view: 'area' | 'world'): void {
+    if (!this.worldMapPanel) {
+      return;
+    }
+    this.worldMapPanel = { ...this.worldMapPanel, view, dest: null, selected: null };
+    this.syncLobbyShopOverlay();
+  }
+
+  private setAreaMapDest(dest: { x: number; y: number; label: string } | null): void {
+    if (!this.worldMapPanel) {
+      return;
+    }
+    this.worldMapPanel = { ...this.worldMapPanel, dest };
+    this.syncLobbyShopOverlay();
+  }
+
+  private currentAreaMapInfo(): import('./lobby/LobbyTownRenderer').TownAreaMapInfo | null {
+    return this.lobbyTownRenderer.isMounted() ? this.lobbyTownRenderer.areaMapInfo() : null;
+  }
+
+  private previewAreaPath(x: number, y: number): import('./lobby/LobbyTownPathfinder').PathPoint[] | null {
+    return this.lobbyTownRenderer.previewPath(x, y);
+  }
+
+  /** 地图页「自动寻路」:关面板,队长沿路走过去(推摇杆取消)。 */
+  private startAreaAutoWalk(x: number, y: number): void {
+    const ok = this.lobbyTownRenderer.autoWalkTo(x, y);
+    this.worldMapPanel = null;
+    gameAudio.sfx('panel_close');
+    this.syncLobbyShopOverlay();
+    this.setStatus(ok ? '自动寻路中 · 移动摇杆取消' : '那里走不过去');
   }
 
   private closeWorldMapPanel(): void {
@@ -6909,7 +6952,7 @@ export class LootChainGameRoot extends Component {
     if (!this.worldMapPanel) {
       return;
     }
-    this.worldMapPanel = { tab: Math.max(0, Math.min(WORLD_TABS.length - 1, tab)), selected: null, region: null };
+    this.worldMapPanel = { ...this.worldMapPanel, tab: Math.max(0, Math.min(WORLD_TABS.length - 1, tab)), selected: null, region: null };
     this.syncLobbyShopOverlay();
   }
 
@@ -7059,7 +7102,7 @@ export class LootChainGameRoot extends Component {
   private openWorldQuestTracker(): void {
     const quests = this.worldState?.quests ?? [];
     const quest = quests.find((item) => item.state === 'DONE') ?? quests.find((item) => item.state === 'ACCEPTED') ?? quests.find((item) => item.state === 'AVAILABLE');
-    this.worldMapPanel = { tab: 0, selected: quest?.map ?? this.lobbyTownRenderer.currentMapCode(), region: null };
+    this.worldMapPanel = { tab: 0, selected: quest?.map ?? this.lobbyTownRenderer.currentMapCode(), region: null, view: 'world', dest: null };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
   }
@@ -7196,7 +7239,7 @@ export class LootChainGameRoot extends Component {
     }
     const layout = this.resolveLayout();
     if (this.worldMapPanel) {
-      this.lobbyWorldOverlayRenderer.renderMap(layout);
+      this.lobbyAreaMapRenderer.render(layout);
     } else if (this.worldBountyPanel) {
       this.lobbyWorldOverlayRenderer.renderBounty(layout);
     } else if (this.worldDialog) {

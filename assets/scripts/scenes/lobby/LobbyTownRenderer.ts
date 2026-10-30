@@ -52,6 +52,7 @@ import { TownCombatFx, resolveTownHeroFxKit, type TownHeroFxKit } from './LobbyT
 import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
+import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
 import { distToLines, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
@@ -78,6 +79,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   startWorldFieldBattle?(stageCode: string): void;
   travelWorldMap?(code: WorldMapCode, spawn: { x: number; y: number } | null, reach?: string): void;
   activateWorldWaypoint?(code: WorldMapCode): void;
+  /** 10-30:点小地图 → 地图页(当前图鸟瞰)。 */
+  openAreaMapPanel?(): void;
   /** docs/52 §3.1 野外宝箱:开箱(成功后回调 playChestOpened)。 */
   openWorldChest?(code: string): void;
   openWorldQuestTracker?(): void;
@@ -85,6 +88,22 @@ export interface LobbyTownHost extends LobbyHudHost {
   /** docs/50 §14 野外即时战斗:登记遭遇(下发数值)/ 清怪上报 / 队长倒下。 */
   engageWorldField?(stageCode: string): Promise<TownFieldEncounter | null>;
   clearWorldField?(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number }>, capped: boolean) => void): void;
+}
+
+/** 地图页(鸟瞰,10-30 原型 proto_map_b)要的当前图快照:坐标都是世界坐标。 */
+export interface TownAreaMapInfo {
+  mapCode: WorldMapCode;
+  name: string;
+  width: number;
+  height: number;
+  leader: { x: number; y: number } | null;
+  quest: { name: string; desc: string; x: number; y: number; label: string } | null;
+  npcs: Array<{ x: number; y: number; label: string }>;
+  waypoint: { x: number; y: number; label: string; activated: boolean };
+  camps: Array<{ x: number; y: number; label: string; kind: 'normal' | 'elite' | 'boss' }>;
+  chests: Array<{ x: number; y: number; label: string; opened: boolean }>;
+  exits: Array<{ x: number; y: number; label: string }>;
+  places: Array<{ name: string; x: number; y: number; icon: string }>;
 }
 
 export interface TownFieldEncounter {
@@ -339,6 +358,13 @@ export class LobbyTownRenderer {
   private promptRoot: Node | null = null;
   private minimapContent: Node | null = null;
   private minimapLastPos: { x: number; y: number } | null = null;
+  /** 小地图坐标(10-30 用户「可以加入坐标」)。 */
+  private coordLabel: Label | null = null;
+  private coordText = '';
+  /** 自动寻路(10-30):按图缓存网格;autoPath = 剩余折点,摇杆一动就取消。 */
+  private pathfinder: TownPathfinder | null = null;
+  private pathfinderMap: WorldMapCode | null = null;
+  private autoPath: PathPoint[] | null = null;
   private minimapBottomY = 0;
   private lastPlayerLevel = 0;
   private trackerBottomY = 0;
@@ -410,6 +436,7 @@ export class LobbyTownRenderer {
   enterMap(code: WorldMapCode, spawn?: { x: number; y: number } | null): void {
     this.claimAllLoot();
     this.mapCode = code;
+    this.autoPath = null;
     this.pendingSpawn = spawn ?? { ...worldMapDef(code).spawn };
     this.exitCooldownUntil = Date.now() + 1500;
     this.battleLock = false;
@@ -1088,6 +1115,100 @@ export class LobbyTownRenderer {
     }
   }
 
+  /**
+   * 自动寻路到地图上一点(10-30 用户:鸟瞰图点击 / NPC / 任务目标自动寻路)。走不到返回 false。
+   * 网格按图懒建一次(林地约 1.4 万格),之后每次只跑 A*。
+   */
+  autoWalkTo(x: number, y: number): boolean {
+    const leader = this.leader;
+    if (!leader) {
+      return false;
+    }
+    if (!this.pathfinder || this.pathfinderMap !== this.mapCode) {
+      const w = this.def.walk;
+      this.pathfinder = new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py));
+      this.pathfinderMap = this.mapCode;
+    }
+    const path = this.pathfinder.find(leader.x, leader.y, x, y);
+    this.autoPath = path && path.length > 0 ? path : null;
+    return !!this.autoPath;
+  }
+
+  /** 地图页快照(10-30 用户:鸟瞰图 + NPC / 任务坐标 + 点击自动寻路)。 */
+  areaMapInfo(): TownAreaMapInfo {
+    const def = this.def;
+    const world = this.host.currentWorldState?.() ?? null;
+    const guide = this.resolveQuestGuide(world);
+    const quest = this.primaryQuest(world);
+    const questPoint = guide ? this.guideTargetPoint(guide) : null;
+    const opened = new Set(world?.openedChests ?? []);
+    const npcs = def.npcs.map((npc) => ({ x: npc.x, y: npc.y, label: npc.name.split(' · ')[0] }));
+    const places = def.places ?? def.buildings
+      .filter((b) => b.action !== 'none' || b.key === 'gate')
+      .map((b) => ({ name: b.label, x: b.x + b.door.x, y: b.y + b.door.y, icon: b.action === 'npc' ? 'npc' : 'place' }));
+    return {
+      mapCode: this.mapCode,
+      name: def.name,
+      width: def.width,
+      height: def.height,
+      leader: this.leader ? { x: this.leader.x, y: this.leader.y } : null,
+      quest: quest && questPoint ? {
+        name: quest.name,
+        desc: quest.state === 'ACCEPTED' && quest.target > 1 ? `${questPoint.label} ${quest.progress}/${quest.target}` : questPoint.label,
+        x: questPoint.x,
+        y: questPoint.y,
+        label: questPoint.label,
+      } : null,
+      npcs,
+      waypoint: { x: def.waypoint.x, y: def.waypoint.y, label: `传送阵 · ${def.name}`, activated: !!world?.maps.find((m) => m.mapCode === this.mapCode)?.activated },
+      camps: def.camps.map((camp) => ({ x: camp.x, y: camp.y, label: camp.label, kind: camp.stageCode.endsWith('_B') ? 'boss' : camp.elite ? 'elite' : 'normal' })),
+      chests: (def.chests ?? []).map((chest) => ({ x: chest.x, y: chest.y, label: chest.label, opened: opened.has(chest.code) })),
+      exits: def.exits.map((exit) => ({ x: exit.x, y: exit.y, label: exit.label })),
+      places,
+    };
+  }
+
+  /** 地图页路线预览:从队长到目的地的折点(含起点);走不到返回 null。 */
+  previewPath(x: number, y: number): PathPoint[] | null {
+    const leader = this.leader;
+    if (!leader) {
+      return null;
+    }
+    if (!this.pathfinder || this.pathfinderMap !== this.mapCode) {
+      const w = this.def.walk;
+      this.pathfinder = new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py));
+      this.pathfinderMap = this.mapCode;
+    }
+    const path = this.pathfinder.find(leader.x, leader.y, x, y);
+    return path ? [{ x: leader.x, y: leader.y }, ...path] : null;
+  }
+
+  /** 是否在自动寻路中(HUD / 鸟瞰图显示用)。 */
+  isAutoWalking(): boolean {
+    return !!this.autoPath && this.autoPath.length > 0;
+  }
+
+  cancelAutoWalk(): void {
+    this.autoPath = null;
+  }
+
+  /** 朝下一个折点的单位方向;到点(< 48)就换下一个,走完清空。 */
+  private autoPathVector(leader: TownActor): { x: number; y: number } {
+    const path = this.autoPath;
+    while (path && path.length > 0 && Math.hypot(path[0].x - leader.x, path[0].y - leader.y) < 48) {
+      path.shift();
+    }
+    if (!path || path.length === 0) {
+      this.autoPath = null;
+      return { x: 0, y: 0 };
+    }
+    const dx = path[0].x - leader.x;
+    // 纵向速度本来就打八折,这里按折算后的方向走,路线更贴近直线
+    const dy = (path[0].y - leader.y) / 0.8;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    return { x: dx / len, y: dy / len };
+  }
+
   private stepLeader(dt: number): void {
     const leader = this.leader;
     if (!leader || !leader.node.isValid) {
@@ -1095,6 +1216,13 @@ export class LobbyTownRenderer {
     }
     let v = this.inputVector();
     const nowMs = Date.now();
+    // 自动寻路:玩家一推摇杆 / 按方向键就取消;没输入时沿折点走
+    // 进战斗(被怪拉住)也停寻路,免得一路拖着怪走
+    if (v.x !== 0 || v.y !== 0 || this.inCombat) {
+      this.autoPath = null;
+    } else if (this.autoPath && this.autoPath.length > 0) {
+      v = this.autoPathVector(leader);
+    }
     if (this.leaderDead || (nowMs < this.actionUntil && nowMs >= this.dashUntil)) {
       v = { x: 0, y: 0 };
     }
@@ -1103,10 +1231,11 @@ export class LobbyTownRenderer {
       const dashSpeed = this.dashSpeed;
       const nx = leader.x + this.dashDir.x * dashSpeed * dt;
       const ny = leader.y + this.dashDir.y * dashSpeed * dt * 0.8;
-      if (this.walkable(nx, leader.y)) {
+      const stuck = !this.walkable(leader.x, leader.y);
+      if (stuck || this.walkable(nx, leader.y)) {
         leader.x = nx;
       }
-      if (this.walkable(leader.x, ny)) {
+      if (stuck || this.walkable(leader.x, ny)) {
         leader.y = ny;
       }
       leader.node.setPosition(leader.x, leader.y, 0);
@@ -1118,10 +1247,14 @@ export class LobbyTownRenderer {
       // 俯视 3/4:纵向视觉距离短,速度打八折更自然
       const nx = leader.x + v.x * LEADER_SPEED * dt;
       const ny = leader.y + v.y * LEADER_SPEED * 0.8 * dt;
-      if (this.walkable(nx, leader.y)) {
+      // 10-30 用户「英雄卡位动不了」:被击退 / 传送 / 存档落点落在可走区外时,原规则「目标不可走就不动」会四个方向全锁死;
+      // 站在不可走点上时放开移动,走回可走区后恢复正常碰撞(仍不出地图外框)
+      const stuck = !this.walkable(leader.x, leader.y);
+      const inFrame = (x: number, y: number): boolean => x >= this.def.walk.left && x <= this.def.walk.right && y >= this.def.walk.bottom && y <= this.def.walk.top;
+      if (this.walkable(nx, leader.y) || (stuck && inFrame(nx, leader.y))) {
         leader.x = nx;
       }
-      if (this.walkable(leader.x, ny)) {
+      if (this.walkable(leader.x, ny) || (stuck && inFrame(leader.x, ny))) {
         leader.y = ny;
       }
       leader.node.setPosition(leader.x, leader.y, 0);
@@ -1897,6 +2030,12 @@ export class LobbyTownRenderer {
     title.outlineColor = rgba(0, 0, 0, 230);
     title.outlineWidth = Math.max(1, P.S(2));
     this.minimapBottomY = cy + plateY - plateH / 2;
+    const coord = this.host.addChildLabel(node, 'Coord', '', 0, plateY + plateH * 0.95, P.S(16), rgba(206, 212, 222), new Size(P.S(140), P.S(22)));
+    coord.enableOutline = true;
+    coord.outlineColor = rgba(0, 0, 0, 220);
+    coord.outlineWidth = Math.max(1, P.S(2));
+    this.coordLabel = coord;
+    this.coordText = '';
     // 圆环右侧偏下(约 4 点前)小圆钮「传送」:任何地方都能打开世界地图传送(10-28);再往下会压地名牌和追踪条
     const mapBtnD = P.S(field ? 58 : 52);
     const ang = -Math.PI / 9;
@@ -1911,7 +2050,8 @@ export class LobbyTownRenderer {
     mapBtn.on(Button.EventType.CLICK, () => this.host.openWorldMapPanel?.(), this);
     this.host.applyImageButtonFeedback(mapBtn, 1.08, 0.94);
     node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.host.openWorldMapPanel?.(), this);
+    // 10-30 用户:点小地图显示鸟瞰图(地图页可再切世界地图)
+    node.on(Button.EventType.CLICK, () => (this.host.openAreaMapPanel ? this.host.openAreaMapPanel() : this.host.openWorldMapPanel?.()), this);
     this.host.applyImageButtonFeedback(node, 1.02, 0.98);
     this.minimapLastPos = null;
     this.updateMinimap();
@@ -2057,6 +2197,11 @@ export class LobbyTownRenderer {
       return;
     }
     content.setPosition(-leader.x * this.minimapScale, -leader.y * this.minimapScale, 0);
+    const coord = townCoordText(leader.x, leader.y, this.def.width, this.def.height);
+    if (coord !== this.coordText && this.coordLabel && this.coordLabel.isValid) {
+      this.coordText = coord;
+      this.coordLabel.string = coord;
+    }
     const last = this.minimapLastPos;
     if (last) {
       const dx = leader.x - last.x;

@@ -19,6 +19,10 @@ export interface WorldMapPanelState {
   tab: number;
   selected: string | null;
   region: string | null;
+  /** 10-30 地图页:area = 当前图鸟瞰(点小地图打开)/ world = 世界地图。 */
+  view?: 'area' | 'world';
+  /** 鸟瞰图上点出来的目的地(世界坐标)。 */
+  dest?: { x: number; y: number; label: string } | null;
 }
 
 export interface WorldBountyPanelState {
@@ -74,7 +78,7 @@ const GOLD = rgba(236, 200, 120);
 const BODY = rgba(236, 226, 204);
 const DIM = rgba(160, 150, 134);
 
-interface WorldPoint {
+export interface WorldPoint {
   code: string;
   name: string;
   level: string;
@@ -96,7 +100,7 @@ const WORLD_REGIONS: ReadonlyArray<{ key: string; name: string }> = [
   { key: 'NORTH', name: '北境' },
   { key: 'DRAGON', name: '龙脊边疆' },
 ];
-const WORLD1_POINTS: readonly WorldPoint[] = [
+export const WORLD1_POINTS: readonly WorldPoint[] = [
   { code: 'VILLAGE', name: '晨风村', level: 'Lv.1-10', x: 0.19, y: 0.74, region: 'NOVICE' },
   { code: 'WOODS', name: '村外林地', level: 'Lv.1-10', x: 0.29, y: 0.62, region: 'NOVICE' },
   { code: 'CITY', name: '主城', level: '', x: 0.37, y: 0.36, region: 'CENTRAL' },

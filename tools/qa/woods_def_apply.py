@@ -45,6 +45,9 @@ def main() -> None:
         else:
             tree_lines.append(f"[{x}, {y}, 'tree_oak', {540 + (i % 4) * 40}]")
     tl = ',\n  '.join(', '.join(tree_lines[j:j + 6]) for j in range(0, len(tree_lines), 6))
+    places = [('入口营地', 'portal', 240, 735), ('幼鼠窝', 'den', 430, 470), ('林间蛛巢', 'cave', 1000, 245),
+              ('猎人营地', 'camp', 1330, 370), ('古树遗迹', 'ruins', 1150, 650), ('熊穴', 'cave', 1580, 195)]
+    places_ts = '\n'.join(f"    {{ name: '{n}', x: {g.wx(x)}, y: {g.wy(y)}, icon: '{i}' }}," for n, i, x, y in places)
     chest_ts = '\n'.join(f"    {{ code: '{c}', label: '{n}', kind: '{k}', x: {g.wx(x)}, y: {g.wy(y)} }}," for c, n, k, x, y in CHESTS)
     ts = f'''/** 村外林地 v3 素材(2026-10-29 按林地原型出写实件;tools/qa/woods_assets_gen.py + woods_install_assets.py)。 */
 const W3 = (name: string): string => worldAsset(`woods3/w3_${{name}}`);
@@ -95,6 +98,10 @@ const WOODS: WorldMapDef = {{
   lamps: [],
   lampAsset: V2('lamp'),
   waypoint: {{ x: {g.wx(180)}, y: {g.wy(755)}, drawn: true }},
+  // 地图页「地点」(10-30 原型 proto_map_b)
+  places: [
+{places_ts}
+  ],
   // 野外宝箱(docs/52 §3.1,走近点「开启」;铁箱 / 首领宝箱要先打赢旁边的精英 / 首领)
   chests: [
 {chest_ts}

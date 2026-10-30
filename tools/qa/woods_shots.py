@@ -64,7 +64,7 @@ def main() -> None:
     ev("t._ac = t.applyCamera; t.applyCamera = () => {}; t.world.setScale(0.095, 0.095, 1); t.world.setPosition(0, -8, 0); return 1;")
     time.sleep(3)
     shot(args.out, 'overview')
-    ev("t.applyCamera = t._ac; t.world.setScale(1, 1, 1); t.applyCamera(true); return 1;")
+    ev("t.applyCamera = t._ac; t.world.setScale(t.k, t.k, 1); t.applyCamera(true); return 1;")
 
 
 if __name__ == '__main__':

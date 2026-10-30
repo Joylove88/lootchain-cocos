@@ -142,6 +142,8 @@ export interface WorldMapDef {
   blocks?: WorldMapBlock[];
   /** 可开的野外宝箱(docs/52 §3.1)。 */
   chests?: WorldMapChest[];
+  /** 地图页「地点」列表(icon:portal / camp / den / ruins / cave / npc / place);不给就按有功能的建筑生成。 */
+  places?: Array<{ name: string; x: number; y: number; icon: string }>;
   /** 走廊式可走区(docs/52 §2.1):给了就只能走在路(折线 ± half)和空地(椭圆)里;walk 仍是外框。 */
   corridors?: { lines: number[][][]; half: number; areas: Array<{ x: number; y: number; rx: number; ry: number }> };
 }
@@ -545,6 +547,15 @@ const WOODS: WorldMapDef = {
   lamps: [],
   lampAsset: V2('lamp'),
   waypoint: { x: -5430, y: -2400, drawn: true },
+  // 地图页「地点」(10-30 原型 proto_map_b)
+  places: [
+    { name: '入口营地', x: -4980, y: -2250, icon: 'portal' },
+    { name: '幼鼠窝', x: -3555, y: -262, icon: 'den' },
+    { name: '林间蛛巢', x: 720, y: 1425, icon: 'cave' },
+    { name: '猎人营地', x: 3195, y: 488, icon: 'camp' },
+    { name: '古树遗迹', x: 1845, y: -1612, icon: 'ruins' },
+    { name: '熊穴', x: 5070, y: 1800, icon: 'cave' },
+  ],
   // 野外宝箱(docs/52 §3.1,走近点「开启」;铁箱 / 首领宝箱要先打赢旁边的精英 / 首领)
   chests: [
     { code: 'WOODS_W1', label: '林间木箱', kind: 'WOOD', x: -5730, y: 922 },
@@ -708,6 +719,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
   }
   return Array.from(new Set([def.ground, def.lampAsset, ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
     ...def.npcs.map((n) => n.asset).filter((asset): asset is string => !!asset),
+    // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
+    ...(code === 'VILLAGE' || code === 'WOODS' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ASSET)
     ...(def.chests?.length ? [worldAsset('woods3/w3_chest')] : [])]));
 }
@@ -716,6 +729,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
 export const WORLD_ASSET_PATHS: readonly string[] = Array.from(new Set([
   worldAsset('city_board'),
   worldAsset('waypoint'),
+  // 地图页图标(10-30,LobbyAreaMapRenderer)
+  ...['quest', 'pin', 'portal', 'paw', 'tent', 'tree', 'skull', 'chest'].map((name) => worldAsset(`mapui/map_${name}`)),
   worldAsset('map_world1'),
   worldAsset('map_world2'),
   worldAsset('portrait_chief'),
