@@ -201,6 +201,9 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 场上物件名字(宝箱 / 石碑 / 采集点):平时暖白,开过 / 采过 / 读过压灰。 */
+const WORLD_NAME_COLOR = rgba(250, 238, 206);
+const WORLD_NAME_DONE = rgba(170, 170, 170);
 /** 怪物之间最小间距(世界单位,纵向按 0.6 压扁算):小于它就互相推开。 */
 const MONSTER_SEPARATION = 110;
 /** 迷雾分块(docs/53 §2.2,与服务端 FieldExploreRules 一致):8 列 × 5 行。 */
@@ -402,9 +405,9 @@ export class LobbyTownRenderer {
   private groundRoot: Node | null = null;
   private readonly ambient = new TownAmbient();
   /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
-  private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind'] }>();
+  private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind']; name: Label | null; label: string; badge: Node | null; badgeY: number }>();
   /** 兴趣点场上节点(docs/54);done = 隐藏点已发现 / 采集点今日已采。 */
-  private poiNodes = new Map<string, { node: Node; art: Node | null; badge: Node | null; poi: WorldMapPoi; done: boolean }>();
+  private poiNodes = new Map<string, { node: Node; art: Node | null; badge: Node | null; badgeY: number; glow: Graphics | null; poi: WorldMapPoi; done: boolean; name: Label | null }>();
   /** 已经发出领取请求的隐藏点(等世界状态回来前不重复触发)。 */
   private poiPending = new Set<string>();
   private entityRoot: Node | null = null;
@@ -1255,6 +1258,7 @@ export class LobbyTownRenderer {
     this.updateGuidePointer();
     this.waypointFx?.step(clamped);
     this.stepChestGlow();
+    this.stepPoiCues();
     if (this.def.ambient) {
       const view = this.viewSize();
       this.ambient.step(clamped, this.camX, this.camY, view.w, view.h, this.def.width);
@@ -2654,13 +2658,20 @@ export class LobbyTownRenderer {
       const node = this.host.addChildPlainNode(root, `TownChest_${chest.code}`, chest.x, chest.y, w, w);
       const glow = this.host.addChildPlainNode(node, 'Glow', 0, 4, w * 1.6, w * 0.6).addComponent(Graphics);
       const sprite = this.host.addSprite('Art', CHEST_ASSET, 0, 0, w, w, node);
+      let artH = w * 0.8;
       if (sprite) {
         const frame = sprite.spriteFrame;
         const h = w * ((frame?.originalSize.height ?? 1) / Math.max(1, frame?.originalSize.width ?? 1));
         sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, h));
         sprite.node.setPosition(0, h / 2 - 8, 0);
+        artH = h;
       }
-      this.chestNodes.set(chest.code, { node, sprite, glow, opened: false, kind: chest.kind });
+      // 头顶名字(10-30 用户:兴趣点要有名字,不然到附近也不好找)
+      const name = this.addWorldNameLabel(node, chest.label, artH + 14);
+      // 可开的宝箱头顶浮一个小圆徽(10-30 用户:要让玩家感觉这个可以开 / 采 / 解锁)
+      const badgeY = artH + 76;
+      const badge = this.mountPoiBadge(node, badgeY, 'ui/world/mapui/map_chest/spriteFrame', null);
+      this.chestNodes.set(chest.code, { node, sprite, glow, opened: false, kind: chest.kind, name, label: chest.label, badge, badgeY });
       this.propNodes.push({ node, y: chest.y });
     }
     this.refreshChests(this.host.currentWorldState?.() ?? null);
@@ -2681,25 +2692,24 @@ export class LobbyTownRenderer {
       if (poi.kind === 'HIDDEN') {
         const node = this.host.addChildPlainNode(ground, `TownPoi_${poi.code}`, poi.x, poi.y, 170, 120);
         this.addPoiArt(node, POI_ASSET.hidden, 170);
-        const badge = this.host.addChildPlainNode(root, `TownPoiBadge_${poi.code}`, poi.x, poi.y + 110, 56, 56);
-        const g = badge.addComponent(Graphics);
-        g.fillColor = rgba(20, 24, 32, 215);
-        g.circle(0, 0, 24);
-        g.fill();
-        g.strokeColor = rgba(255, 255, 255, 70);
-        g.lineWidth = 2;
-        g.circle(0, 0, 24);
-        g.stroke();
-        const q = this.host.addChildLabel(badge, 'Q', '?', 0, 1, 30, rgba(242, 242, 242), new Size(44, 44));
-        q.isBold = true;
-        this.poiNodes.set(poi.code, { node, art: node, badge, poi, done: false });
-        this.propNodes.push({ node: badge, y: poi.y });
+        // 「?」圆徽挂在立物层(参与前后遮挡),比地上的土块高一截
+        const holder = this.host.addChildPlainNode(root, `TownPoiBadge_${poi.code}`, poi.x, poi.y, 80, 80);
+        this.mountPoiBadge(holder, 110, null, '?');
+        this.poiNodes.set(poi.code, { node, art: node, badge: holder, badgeY: 110, glow: null, poi, done: false, name: null });
+        this.propNodes.push({ node: holder, y: poi.y });
         continue;
       }
-      const w = poi.kind === 'STELE' ? 170 : 130;
+      // 10-30 远看草药丛 130 宽融进草地:放大到 180(石碑 190)
+      const w = poi.kind === 'STELE' ? 190 : 180;
       const node = this.host.addChildPlainNode(root, `TownPoi_${poi.code}`, poi.x, poi.y, w, w * 1.6);
+      // 脚下呼吸光圈先挂(在素材下面)
+      const glow = this.host.addChildPlainNode(node, 'Glow', 0, 2, w * 1.8, w * 0.7).addComponent(Graphics);
       const art = this.addPoiArt(node, poi.kind === 'STELE' ? POI_ASSET.stele : poi.kind === 'HERB' ? POI_ASSET.herb : POI_ASSET.ore, w);
-      this.poiNodes.set(poi.code, { node, art, badge: null, poi, done: false });
+      const artH = art?.getComponent(UITransform)?.contentSize.height ?? w;
+      const name = this.addWorldNameLabel(node, poi.name, artH + 4);
+      const badgeY = artH + 68;
+      const badge = this.mountPoiBadge(node, badgeY, POI_MAP_ICON[poi.kind], null);
+      this.poiNodes.set(poi.code, { node, art, badge, badgeY, glow, poi, done: false, name });
       this.propNodes.push({ node, y: poi.y });
     }
     this.refreshPois(this.host.currentWorldState?.() ?? null);
@@ -2721,7 +2731,7 @@ export class LobbyTownRenderer {
       && this.def.camps.every((camp) => Math.hypot(x - camp.x, (y - camp.y) / 0.7) > camp.radius + MONSTER_AGGRO_RADIUS + 150);
     // 立物(石碑 / 草药 / 矿脉)不能落在建筑 / 大树贴图的遮挡区(脚线往上约一个贴图高):10-30 草药丛摆在农舍正后方被整个挡住
     const occluded = (x: number, y: number): boolean =>
-      this.def.buildings.some((b) => Math.abs(x - b.x) < b.width * 0.5 && y > b.y - 20 && y < b.y + b.width * 0.85)
+      this.def.buildings.some((b) => Math.abs(x - b.x) < b.width * 0.6 && y > b.y - 40 && y < b.y + b.width * 0.95)
       || this.def.props.some((prop) => !prop.flat && prop.width >= 250 && Math.abs(x - prop.x) < prop.width * 0.4 && y > prop.y - 20 && y < prop.y + prop.width * 0.9);
     for (const poi of this.def.pois ?? []) {
       const ok = (x: number, y: number): boolean => clear(x, y) && (poi.kind === 'HIDDEN' || !occluded(x, y));
@@ -2749,6 +2759,76 @@ export class LobbyTownRenderer {
         poi.y = best.y;
       }
     }
+  }
+
+  /**
+   * 兴趣点头顶圆徽(10-30 用户:光有名字不够,得让玩家感觉这个可以采集 / 解锁):深色玻璃圆底 + 细白边 + 图标(或「?」),
+   * 每帧轻轻上下浮动(stepPoiCues)。
+   */
+  private mountPoiBadge(parent: Node, y: number, icon: string | null, text: string | null): Node {
+    const badge = this.host.addChildPlainNode(parent, 'Badge', 0, y, 64, 64);
+    const g = badge.addComponent(Graphics);
+    g.fillColor = rgba(20, 24, 32, 220);
+    g.circle(0, 0, 28);
+    g.fill();
+    g.strokeColor = rgba(227, 196, 138, 210);
+    g.lineWidth = 2.5;
+    g.circle(0, 0, 28);
+    g.stroke();
+    if (icon) {
+      this.addFitSprite('Icon', icon, 0, 0, 40, 40, badge);
+    } else if (text) {
+      const q = this.host.addChildLabel(badge, 'Q', text, 0, 1, 34, rgba(242, 242, 242), new Size(48, 48));
+      q.isBold = true;
+    }
+    return badge;
+  }
+
+  /** 圆徽上下浮动 + 可用兴趣点脚下光圈呼吸(和宝箱光圈同节奏,颜色按类型)。 */
+  private stepPoiCues(): void {
+    const now = Date.now();
+    const bob = Math.sin(now / 420) * 6;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 520);
+    for (const entry of this.poiNodes.values()) {
+      if (entry.badge && entry.badge.isValid && entry.badge.active) {
+        const target = entry.poi.kind === 'HIDDEN' ? entry.badge.getChildByName('Badge') : entry.badge;
+        target?.setPosition(0, entry.badgeY + bob, 0);
+      }
+      const g = entry.glow;
+      if (!g || !g.isValid || !g.node.active) {
+        continue;
+      }
+      // 统一用宝箱同款暖金(「可互动」的统一信号);浅绿 / 浅银在草地石板上看不出来(10-30 远看截图)。外圈细描边让轮廓清楚
+      const rx = (entry.poi.kind === 'STELE' ? 130 : 118) * (0.92 + 0.08 * pulse);
+      const c = [255, 214, 120];
+      g.clear();
+      g.fillColor = rgba(c[0], c[1], c[2], Math.round(40 + 46 * pulse));
+      g.ellipse(0, 0, rx, rx * 0.32);
+      g.fill();
+      g.fillColor = rgba(c[0], c[1], c[2], Math.round(30 + 34 * pulse));
+      g.ellipse(0, 0, rx * 0.6, rx * 0.2);
+      g.fill();
+      g.strokeColor = rgba(c[0], c[1], c[2], Math.round(120 + 90 * pulse));
+      g.lineWidth = 3;
+      g.ellipse(0, 0, rx, rx * 0.32);
+      g.stroke();
+    }
+    for (const entry of this.chestNodes.values()) {
+      if (entry.badge && entry.badge.isValid && entry.badge.active) {
+        entry.badge.setPosition(0, entry.badgeY + bob, 0);
+      }
+    }
+  }
+
+  /** 场上物件头顶名字(和 NPC 名牌同口径:描边字,无底框)。 */
+  private addWorldNameLabel(node: Node, text: string, y: number): Label {
+    // 世界层会整体缩小(约 0.5~0.7),28 号才在屏上清楚;加粗 + 粗描边,压在草地 / 石板上都看得清
+    const label = this.host.addChildLabel(node, 'Name', text, 0, y + 6, 28, WORLD_NAME_COLOR, new Size(360, 40));
+    label.isBold = true;
+    label.enableOutline = true;
+    label.outlineColor = rgba(16, 8, 4, 255);
+    label.outlineWidth = 3;
+    return label;
   }
 
   /** 素材按原比例、脚线贴在节点原点;返回素材节点。 */
@@ -2795,9 +2875,25 @@ export class LobbyTownRenderer {
         const done = state === 'gathered';
         if (done !== entry.done && entry.node.isValid) {
           const asset = entry.poi.kind === 'HERB' ? (done ? POI_ASSET.herbCut : POI_ASSET.herb) : (done ? POI_ASSET.oreCut : POI_ASSET.ore);
-          entry.art = this.addPoiArt(entry.node, asset, 130);
+          entry.art = this.addPoiArt(entry.node, asset, 180);
         }
         entry.done = done;
+        if (entry.name && entry.name.isValid) {
+          entry.name.string = done ? `${entry.poi.name} · 已采` : entry.poi.name;
+          entry.name.color = done ? WORLD_NAME_DONE : WORLD_NAME_COLOR;
+        }
+        entry.badge?.isValid && (entry.badge.active = !done);
+        entry.glow?.isValid && (entry.glow.node.active = !done);
+      }
+      if (entry.poi.kind === 'STELE') {
+        const read = state === 'read';
+        if (entry.name && entry.name.isValid) {
+          entry.name.string = read ? `${entry.poi.name} · 已读` : entry.poi.name;
+          entry.name.color = read ? WORLD_NAME_DONE : WORLD_NAME_COLOR;
+        }
+        // 读过的石碑仍可重读(走近有提示),但不再用圆徽 / 光圈招呼
+        entry.badge?.isValid && (entry.badge.active = !read);
+        entry.glow?.isValid && (entry.glow.node.active = !read);
       }
     }
   }
@@ -2840,8 +2936,15 @@ export class LobbyTownRenderer {
       if (entry.sprite && entry.sprite.isValid) {
         entry.sprite.color = this.chestTint(entry.kind, entry.opened);
       }
+      if (entry.name && entry.name.isValid) {
+        entry.name.string = entry.opened ? `${entry.label} · 已开启` : entry.label;
+        entry.name.color = entry.opened ? WORLD_NAME_DONE : WORLD_NAME_COLOR;
+      }
       if (entry.glow.isValid) {
         entry.glow.node.active = !entry.opened;
+      }
+      if (entry.badge && entry.badge.isValid) {
+        entry.badge.active = !entry.opened;
       }
     }
   }

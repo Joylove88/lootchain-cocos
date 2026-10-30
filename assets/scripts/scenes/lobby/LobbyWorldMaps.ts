@@ -784,8 +784,9 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(code === 'VILLAGE' || code === 'WOODS' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ASSET)
     ...(def.chests?.length ? [worldAsset('woods3/w3_chest')] : []),
-    // 兴趣点素材(docs/54)
-    ...(def.pois?.length ? Object.values(POI_ASSET) : [])]));
+    // 兴趣点素材(docs/54)+ 场上头顶圆徽用的图标(进图前要在内存里,场上节点不会因贴图晚到而重绘)
+    ...(def.pois?.length ? [...Object.values(POI_ASSET), ...Object.values(POI_MAP_ICON)] : []),
+    ...(def.chests?.length ? [worldAsset('mapui/map_chest')] : [])]));
 }
 
 /** 进图前要整块下到本地的资源前缀(网页分层下载):地图素材 + 这张图怪物的骨骼 / 头像。 */

@@ -1,6 +1,6 @@
 """野外兴趣点自验(docs/54,2026-10-30):无头 Edge 打开网页包 → 登录(NEW_USER=1 注册新号进晨风村;否则 guidetest02,POI_MAP=WOODS 去林地)→
 逐个兴趣点:隐藏点走近自动弹「发现」卡、石碑按交互打开阅读面板、采集点读条 2 秒后飘字 → 打开地图页截图;打印探索度前后变化。
-用法:[NEW_USER=1] [POI_MAP=WOODS] PREVIEW_PORT=7460 python tools/qa/poi_web_shots.py <输出目录>
+用法:[NEW_USER=1] [POI_MAP=WOODS] [SHOWCASE=1 只远看截图] PREVIEW_PORT=7460 python tools/qa/poi_web_shots.py <输出目录>
 """
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
@@ -97,6 +97,15 @@ async def main():
             pois = json.loads(await ev(T + " return JSON.stringify((t.def.pois || []).map(p => [p.code, p.kind, p.x, p.y, t.walkable(p.x, p.y)]));"))
             print('pois', pois, flush=True)
             print('explore', await ev("const e = root.worldState.explore.find(x => x.mapCode === root.lobbyTownRenderer.def.code); return JSON.stringify({ percent: e.percent, found: e.found });"), flush=True)
+            if os.environ.get('PROBE') == '1':
+                print('probe', await ev(T + " const out = []; for (const [code, e] of t.poiNodes) { const kids = e.node.children.map(c => { const sp = c.getComponent('cc.Sprite'); const ut = c.getComponent('cc.UITransform'); return c.name + (sp ? ':frame=' + (sp.spriteFrame ? sp.spriteFrame.name : 'NULL') : '') + (ut ? ':' + Math.round(ut.width) + 'x' + Math.round(ut.height) : '') + '@' + Math.round(c.position.y) + (c.active ? '' : ':off'); }); out.push(code + ' active=' + e.node.active + ' parent=' + (e.node.parent && e.node.parent.name) + ' pos=' + Math.round(e.node.position.x) + ',' + Math.round(e.node.position.y) + ' [' + kids.join(' | ') + ']'); } return out.join(' ;; ');"), flush=True)
+            if os.environ.get('SHOWCASE') == '1':
+                # 远看:队长站在兴趣点左边 430(提示框不出,看圆徽 / 光圈 / 名字从远处是否显眼)
+                for code, kind, x, y, ok in pois:
+                    await ev(T + f" tp({x} - 430, {y} - 60); return 1;")
+                    await asyncio.sleep(2.2)
+                    await shot(f'show_{code}')
+                return
             for code, kind, x, y, ok in pois:
                 if kind == 'HIDDEN':
                     await ev(T + f" tp({x} - 260, {y}); return 1;")
