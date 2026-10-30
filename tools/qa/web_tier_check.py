@@ -162,6 +162,8 @@ async def main():
                     break
                 await asyncio.sleep(1)
             print('  进大厅', await ev("return t.def.code + ' 已下 ' + Math.round(P.progress().doneBytes / 1e6) + '/' + Math.round(P.progress().totalBytes / 1e6) + 'MB paused=' + P.paused;"), flush=True)
+            await asyncio.sleep(16)
+            print('  后台队首', await ev("return JSON.stringify(P.queue.slice(0, 6).map(p => P.resOf.get(p)));"), flush=True)
             if await ev("return t.def.code;") != 'VILLAGE':
                 await ev("setTimeout(() => root.travelWorldMap('VILLAGE', null), 50); return 1;")
                 await asyncio.sleep(1.5)

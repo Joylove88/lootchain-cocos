@@ -208,10 +208,43 @@ const EXPLORE_ROWS = 5;
  */
 export const EXPLORE_FOG_ASSETS = [0, 1, 2].map((i) => `ui/world/fx/fog_cloud_${i}/spriteFrame`);
 
-/** 在 parent 上给第 cell 格铺一团云(cx, cy = 格中心,cw / ch = 格宽高,均为 parent 坐标)。 */
+/**
+ * 在 parent 上给第 cell 格铺一团云(cx, cy = 格中心,cw / ch = 格宽高,均为 parent 坐标)。
+ * isClear = 某格是否无雾:紧挨无雾格的云团缩到约 1.35 格并往远离无雾格的方向偏,只在交界留一道柔边——
+ * 原先一律放大 2.5 格,会盖过邻格大半(10-30 用户:「我在迷雾的位置,为啥迷雾没有自动消散」,其实所在格已点亮)。
+ */
 export function mountExploreCloud(host: { addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null },
-  parent: Node, cell: number, cx: number, cy: number, cw: number, ch: number): Sprite | null {
-  const size = Math.max(cw, ch) * 2.5;
+  parent: Node, cell: number, cx: number, cy: number, cw: number, ch: number, isClear?: (cell: number) => boolean): Sprite | null {
+  let size = Math.max(cw, ch) * 2.5;
+  if (isClear) {
+    const c = cell % EXPLORE_COLS;
+    const r = Math.floor(cell / EXPLORE_COLS);
+    let pushX = 0;
+    let pushY = 0;
+    let near = 0;
+    for (let dr = -1; dr <= 1; dr += 1) {
+      for (let dc = -1; dc <= 1; dc += 1) {
+        const x = c + dc;
+        const y = r + dr;
+        if ((dc === 0 && dr === 0) || x < 0 || y < 0 || x >= EXPLORE_COLS || y >= EXPLORE_ROWS || !isClear(y * EXPLORE_COLS + x)) {
+          continue;
+        }
+        const w = dc !== 0 && dr !== 0 ? 0.5 : 1;
+        // 行号往下增大、y 往上为正:下方的无雾格把云往上推
+        pushX -= dc * w;
+        pushY += dr * w;
+        near += w;
+      }
+    }
+    if (near > 0) {
+      size = Math.max(cw, ch) * 1.35;
+      const len = Math.hypot(pushX, pushY);
+      if (len > 0.01) {
+        cx += (pushX / len) * cw * 0.18;
+        cy += (pushY / len) * ch * 0.18;
+      }
+    }
+  }
   const sprite = host.addSprite(`Fog_${cell}`, EXPLORE_FOG_ASSETS[(cell * 7) % 3], cx, cy, size, size * 0.82, parent);
   if (sprite) {
     sprite.node.angle = (cell * 73) % 360;
@@ -962,7 +995,8 @@ export class LobbyTownRenderer {
     return this.partyPackPrefixesOf(this.resolveParty());
   }
 
-  private partyPackPrefixesOf(party: readonly LobbyHeroItemVO[]): string[] {
+  /** 指定英雄的骨骼 + 野外战斗特效目录(队伍进图门 / 老玩家后台优先下载)。 */
+  partyPackPrefixesOf(party: readonly LobbyHeroItemVO[]): string[] {
     const set = new Set<string>();
     party.forEach((hero) => {
       const path = resolveBattleUnitSpineResource(this.toUnit(hero));
@@ -4922,18 +4956,25 @@ export class LobbyTownRenderer {
     const mine = this.exploreLit.get(this.mapCode) ?? new Set<number>();
     mine.add(cell);
     this.exploreLit.set(this.mapCode, mine);
-    const lit = this.exploreLitCells();
-    const mask = this.host.currentWorldState?.()?.explore?.find((item) => item.mapCode === this.mapCode)?.mask ?? 0;
-    for (const [fogCell, fog] of this.minimapFog) {
-      if (fog.isValid && fog.active && !exploreFogged(fogCell, lit, mask)) {
-        fog.active = false;
-      }
+    // 新点亮一格:小地图迷雾整层重铺(邻格云团要跟着缩小、让开)
+    if (this.minimapFogCtx && this.minimapFogCtx.layer.isValid) {
+      this.minimapFogCtx.layer.destroyAllChildren();
+      this.mountMinimapFogCells(this.minimapFogCtx.layer, this.minimapFogCtx.def, this.minimapFogCtx.mapScale);
     }
     this.host.reportWorldExplore(this.mapCode, cell);
   }
 
   /** 小地图迷雾:可探索、未点亮的格盖一团暗雾(云影贴图压暗放大,相邻雾团叠成软边)。 */
+  /** 小地图雾层(固定节点,在图标 / 箭头之下;点亮新格时只重铺层内云团)。 */
+  private minimapFogCtx: { layer: Node; def: WorldMapDef; mapScale: number } | null = null;
+
   private mountMinimapFog(content: Node, def: WorldMapDef, mapScale: number): void {
+    const layer = this.host.addChildPlainNode(content, 'MinimapFog', 0, 0, 1, 1);
+    this.minimapFogCtx = { layer, def, mapScale };
+    this.mountMinimapFogCells(layer, def, mapScale);
+  }
+
+  private mountMinimapFogCells(content: Node, def: WorldMapDef, mapScale: number): void {
     this.minimapFog = new Map();
     const world = this.host.currentWorldState?.() ?? null;
     const state = world?.explore?.find((item) => item.mapCode === this.mapCode);
@@ -4951,7 +4992,7 @@ export class LobbyTownRenderer {
       const r = Math.floor(cell / EXPLORE_COLS);
       const x = (-def.width / 2 + (c + 0.5) * cw) * mapScale;
       const y = (def.height / 2 - (r + 0.5) * ch) * mapScale;
-      const fog = mountExploreCloud(this.host, content, cell, x, y, cw * mapScale, ch * mapScale);
+      const fog = mountExploreCloud(this.host, content, cell, x, y, cw * mapScale, ch * mapScale, (other) => !exploreFogged(other, lit, state.mask));
       if (fog) {
         this.minimapFog.set(cell, fog.node);
       }

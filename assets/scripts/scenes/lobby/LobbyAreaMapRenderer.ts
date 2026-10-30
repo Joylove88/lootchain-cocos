@@ -219,7 +219,7 @@ export class LobbyAreaMapRenderer {
         fogCells.add(cell);
         const c = cell % 8;
         const r = Math.floor(cell / 8);
-        mountExploreCloud(this.host, fogLayer, cell, -dispW / 2 + (c + 0.5) * cw, dispH / 2 - (r + 0.5) * ch, cw, ch);
+        mountExploreCloud(this.host, fogLayer, cell, -dispW / 2 + (c + 0.5) * cw, dispH / 2 - (r + 0.5) * ch, cw, ch, (other) => !exploreFogged(other, lit, ex.mask));
       }
     }
     const inFog = (x: number, y: number): boolean => {

@@ -14,10 +14,15 @@ const PRELOAD_DONE_KEY = 'lootchain.bootPreload.version';
 const SW_URL = 'sw.js';
 const SW_CONTROL_TIMEOUT_MS = 4000;
 
-/** 当前资源版本:构建开启 md5Cache 时取 resources 包的 md5;预览/未开启时为 'dev'。 */
+/**
+ * 当前资源版本:构建开启 md5Cache 时取 resources 包的 md5 + 发版编号(release:web 写进 index.html 的 window.__lootchainBuild);
+ * 预览/未开启时为 'dev'。只改代码 / 出包后处理的发版包 md5 不变,必须带发版编号,老玩家才会走核对流程换掉改过内容的旧文件。
+ */
 export function assetCacheVersion(): string {
   const vers = (assetManager.downloader as unknown as { bundleVers?: Record<string, string> }).bundleVers;
-  return (vers && vers.resources) || 'dev';
+  const base = (vers && vers.resources) || 'dev';
+  const build = typeof window !== 'undefined' ? (window as unknown as { __lootchainBuild?: string }).__lootchainBuild : undefined;
+  return build ? `${base}-${build}` : base;
 }
 
 function canUseServiceWorker(): boolean {
@@ -383,7 +388,7 @@ export interface TieredManifest extends AssetManifest {
   core?: number;
 }
 
-const BACKGROUND_CONCURRENCY = 2;
+const BACKGROUND_CONCURRENCY = 3;
 const URGENT_CONCURRENCY = 6;
 
 interface PackWaiter {
@@ -461,6 +466,18 @@ class PackDownloader {
       }
     }
     return Array.from(new Set(out));
+  }
+
+  /** 后台队列里匹配的文件挪到队首(仍按后台并发下,不算紧急);返回挪动个数。 */
+  prioritize(match: (res: string) => boolean): number {
+    const front: string[] = [];
+    const rest: string[] = [];
+    for (const path of this.queue) {
+      const res = this.resOf.get(path) ?? '';
+      (res && match(res) ? front : rest).push(path);
+    }
+    this.queue = front.concat(rest);
+    return front.length;
   }
 
   /** 把匹配的文件提到队首加速下,全部到本地(或重试后放弃)时 resolve。 */
@@ -586,6 +603,14 @@ export function ensurePackResources(prefixes: readonly string[], onProgress?: (d
     return Promise.resolve();
   }
   return packDownloader.ensure((res) => prefixes.some((prefix) => res.startsWith(prefix)), onProgress);
+}
+
+/** 后台下载顺序按玩家调整(老玩家:自己的英雄 / 已解锁地图 / 常用功能页先下);返回挪到前面的文件数。 */
+export function prioritizeBackgroundPack(prefixes: readonly string[]): number {
+  if (!packDownloader.hasManifest() || prefixes.length === 0) {
+    return 0;
+  }
+  return packDownloader.prioritize((res) => prefixes.some((prefix) => res.startsWith(prefix)));
 }
 
 /** 同步判断:这些前缀的素材是否都已在本地(没有清单 = 视为都在)。 */

@@ -321,6 +321,21 @@ fs.writeFileSync(
   path.join(BUILD_DIR, 'version.json'),
   JSON.stringify({ commit, dirty: !!dirty, builtAt: stamp.toISOString() }, null, 2),
 );
+// 发版编号写进 index.html(no-cache):游戏按「resources 包 md5 + 发版编号」判断本地缓存是不是当前版本。
+// 只靠包 md5 时,只改了代码 / 出包后处理(PNG 压缩)的发版 md5 不变,老玩家直接走「已全部缓存」快速启动,
+// 先用缓存里的旧图画页面(2026-10-30 线上召唤页绿块,修复发版后老玩家第一次进来仍是旧图)
+{
+  const indexHtml = path.join(BUILD_DIR, 'index.html');
+  const html = fs.readFileSync(indexHtml, 'utf8').replace(/<script>window\.__lootchainBuild=[^<]*<\/script>\s*/g, '');
+  const at = html.indexOf('<script');
+  if (at < 0) {
+    fail('index.html 里找不到 <script>,写不进发版编号');
+  }
+  const tagScript = `<script>window.__lootchainBuild=${JSON.stringify(`${tag}-${commit}`)};</script>
+`;
+  fs.writeFileSync(indexHtml, html.slice(0, at) + tagScript + html.slice(at));
+  console.log(`[release] index.html 写入发版编号 ${tag}-${commit}`);
+}
 
 step('5/5 打包');
 fs.mkdirSync(RELEASE_DIR, { recursive: true });

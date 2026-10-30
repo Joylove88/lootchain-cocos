@@ -138,7 +138,8 @@ const GROUP_PACK_DIRS: Record<UiPreloadGroup, readonly string[]> = {
     ...fxDirs([LOBBY_UI_FX.heroStarUp, LOBBY_UI_FX.heroLevelUp, LOBBY_UI_FX.powerSurge])],
   gacha: ['ui/gacha', 'spine/gacha', ...fxDirs([LOBBY_UI_FX.gachaRareCard])],
   bag: ['ui/bag', 'ui/equip'],
-  forge: ['ui/forge', 'ui/equip', ...fxDirs(Object.values(FORGE_RESULT_FX))],
+  // 锻造页星级用英雄目录的 c1812 星星
+  forge: ['ui/forge', 'ui/equip', 'ui/hero/c1812/star_', ...fxDirs(Object.values(FORGE_RESULT_FX))],
   adventure: ['ui/adventure'],
   // 战斗图组只下登记的图(ui/battle 整目录 69MB,多为各关场景背景);开战加载门另按本局关卡补下(GameRoot.battlePackPrefixes)
   battle: [],

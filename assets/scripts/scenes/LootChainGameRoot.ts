@@ -41,6 +41,7 @@ import {
   ensurePackResources,
   initPackDownloader,
   packDownloadPending,
+  prioritizeBackgroundPack,
   packResourcesReady,
   setBackgroundPackPaused,
   startBackgroundPack,
@@ -1597,8 +1598,9 @@ export class LootChainGameRoot extends Component {
       void error;
       return;
     }
+    // 网页分层下载:只预读已在本地的(还没下的交给后台下载器按顺序下,名册加载门会兜住)
     const paths = this.lobbyHeroRosterPanelRenderer.cardArtSpriteFramePaths(this.lobbyHeroRosterLoader.currentState().heroes)
-      .filter((path) => !resources.get(path, SpriteFrame));
+      .filter((path) => !resources.get(path, SpriteFrame) && packResourcesReady([path.replace(/\/spriteFrame$/, '')]));
     let cursor = 0;
     const worker = (): void => {
       if (cursor >= paths.length || !this.isValid) {
@@ -3763,6 +3765,23 @@ export class LootChainGameRoot extends Component {
       this.hidePackLoading();
       open();
     });
+  }
+
+  /**
+   * 老玩家(已出村)后台下载顺序:自己的英雄(骨骼 / 立绘 / 卡面 / 野外特效)→ 常用功能页 → 已解锁地图,
+   * 换设备首访的老号点到这些地方时多半已下完(新玩家按 web-pack-tiers 的默认顺序)。名册晚到时再调一次。
+   */
+  private prioritizeReturningPlayerPack(): void {
+    const state = this.worldState;
+    if (!state || state.stage === 'VILLAGE' || !packDownloadPending()) {
+      return;
+    }
+    const heroes = this.lobbyHeroRosterLoader.currentState().heroes.filter((hero) => hero.id > 0);
+    const groups: UiPreloadGroup[] = ['heroes', 'gacha', 'forge', 'bag', 'battle', 'crystal', 'raid'];
+    // prioritize 是稳定挪动:按「地图 → 功能页 → 英雄」依次挪到队首,最后挪的(英雄)排最前
+    prioritizeBackgroundPack(state.maps.filter((map) => map.unlocked).flatMap((map) => worldMapPackPrefixes(map.mapCode as WorldMapCode)));
+    prioritizeBackgroundPack(groups.flatMap((group) => this.uiSpriteFrameCache.groupPackPrefixes(group)));
+    prioritizeBackgroundPack([...heroes.flatMap((hero) => heroPackPrefixes(hero.heroCode)), ...this.lobbyTownRenderer.partyPackPrefixesOf(heroes)]);
   }
 
   /** 跑图渲染层(队伍素材)用的下载门。 */
@@ -6825,6 +6844,9 @@ export class LootChainGameRoot extends Component {
     this.worldState = state;
     if (first) {
       this.worldInitDone = true;
+      // 网页分层下载:老玩家按自己的进度调整后台下载顺序(名册可能晚到,15 秒后再调一次)
+      this.prioritizeReturningPlayerPack();
+      this.scheduleOnce(() => this.prioritizeReturningPlayerPack(), 15);
       // 开局所在地图:新手村阶段 → 晨风村;出村后 → 上次所在的地图(仍开放)否则主城
       let target: WorldMapCode = state.stage === 'VILLAGE' ? 'VILLAGE' : 'CITY';
       if (state.stage === 'CITY') {
