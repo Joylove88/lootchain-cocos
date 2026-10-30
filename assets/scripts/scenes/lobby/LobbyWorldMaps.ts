@@ -106,6 +106,35 @@ export interface WorldMapChest {
   y: number;
 }
 
+/**
+ * 野外兴趣点(docs/54):code 对应服务端 FieldPoiRules。HIDDEN 隐藏点「?」走近自动触发(一次性)、STELE 遗迹石碑(一次性,可重读)、
+ * HERB / ORE 采集点(每日);已发现 / 今日已采由世界状态 explore.found / gatheredToday 下发。
+ */
+export type WorldMapPoiKind = 'HIDDEN' | 'STELE' | 'HERB' | 'ORE';
+export interface WorldMapPoi {
+  code: string;
+  kind: WorldMapPoiKind;
+  name: string;
+  x: number;
+  y: number;
+}
+
+/** 兴趣点场上素材(tools/qa/poi_assets_gen.py)与地图图标。 */
+export const POI_ASSET = {
+  stele: 'ui/world/poi/poi_stele/spriteFrame',
+  herb: 'ui/world/poi/poi_herb/spriteFrame',
+  herbCut: 'ui/world/poi/poi_herb_cut/spriteFrame',
+  ore: 'ui/world/poi/poi_ore/spriteFrame',
+  oreCut: 'ui/world/poi/poi_ore_cut/spriteFrame',
+  hidden: 'ui/world/poi/poi_hidden/spriteFrame',
+} as const;
+export const POI_MAP_ICON: Record<WorldMapPoiKind, string> = {
+  HIDDEN: 'ui/world/mapui/map_hidden/spriteFrame',
+  STELE: 'ui/world/mapui/map_stele/spriteFrame',
+  HERB: 'ui/world/mapui/map_herb/spriteFrame',
+  ORE: 'ui/world/mapui/map_ore/spriteFrame',
+};
+
 /** 地图级挡路区(河面 / 水潭 / 崖口):x 为中心,y 为下沿,向上 d。 */
 export interface WorldMapBlock {
   x: number;
@@ -142,6 +171,8 @@ export interface WorldMapDef {
   blocks?: WorldMapBlock[];
   /** 可开的野外宝箱(docs/52 §3.1)。 */
   chests?: WorldMapChest[];
+  /** 隐藏点 / 石碑 / 采集点(docs/54)。 */
+  pois?: WorldMapPoi[];
   /** 地图页「地点」列表(icon:portal / camp / den / ruins / cave / npc / place);不给就按有功能的建筑生成。 */
   places?: Array<{ name: string; x: number; y: number; icon: string }>;
   /** 走廊式可走区(docs/52 §2.1):给了就只能走在路(折线 ± half)和空地(椭圆)里;walk 仍是外框。 */
@@ -370,6 +401,15 @@ const VILLAGE: WorldMapDef = {
   lampAsset: V2('lamp'),
   // 村口广场中心(原型:广场正中圆形传送阵)
   waypoint: { x: 784, y: -630, drawn: true },
+  // 兴趣点(docs/54 §2.1)
+  pois: [
+    { code: 'V_HIDDEN_1', kind: 'HIDDEN', name: '风车背后', x: -2150, y: 40 },
+    { code: 'V_HIDDEN_2', kind: 'HIDDEN', name: '桥下的布包', x: 260, y: 150 },
+    { code: 'V_HIDDEN_3', kind: 'HIDDEN', name: '麦田里的稻草人', x: -1960, y: -760 },
+    { code: 'V_STELE_1', kind: 'STELE', name: '晨曦之碑', x: -1700, y: 1080 },
+    { code: 'V_HERB_1', kind: 'HERB', name: '草药丛', x: -1420, y: -900 },
+    { code: 'V_HERB_2', kind: 'HERB', name: '草药丛', x: -760, y: 470 },
+  ],
   camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 1100, 100)],
   exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2470, y: -1070, radius: 130, toMap: 'WOODS', toSpawn: { x: -4980, y: -2250 }, reach: 'VILLAGE_GATE' }],
 };
@@ -557,6 +597,17 @@ const WOODS: WorldMapDef = {
     { name: '古树遗迹', x: 1845, y: -1612, icon: 'ruins' },
     { name: '熊穴', x: 5070, y: 1800, icon: 'cave' },
   ],
+  // 兴趣点(docs/54 §2.2)
+  pois: [
+    { code: 'W_HIDDEN_1', kind: 'HIDDEN', name: '瀑布后的岩缝', x: -3000, y: 1900 },
+    { code: 'W_HIDDEN_2', kind: 'HIDDEN', name: '倒木下的箭袋', x: 1100, y: 1300 },
+    { code: 'W_HIDDEN_3', kind: 'HIDDEN', name: '崖边的营火', x: 5800, y: 1300 },
+    { code: 'W_STELE_1', kind: 'STELE', name: '古树之碑', x: 2200, y: -1500 },
+    { code: 'W_HERB_1', kind: 'HERB', name: '草药丛', x: 3500, y: 300 },
+    { code: 'W_HERB_2', kind: 'HERB', name: '草药丛', x: -400, y: -700 },
+    { code: 'W_ORE_1', kind: 'ORE', name: '矿脉', x: 300, y: -2800 },
+    { code: 'W_ORE_2', kind: 'ORE', name: '矿脉', x: 3800, y: -2700 },
+  ],
   // 野外宝箱(docs/52 §3.1,走近点「开启」;铁箱 / 首领宝箱要先打赢旁边的精英 / 首领)
   chests: [
     { code: 'WOODS_W1', label: '林间木箱', kind: 'WOOD', x: -5730, y: 922 },
@@ -732,7 +783,9 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
     ...(code === 'VILLAGE' || code === 'WOODS' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ASSET)
-    ...(def.chests?.length ? [worldAsset('woods3/w3_chest')] : [])]));
+    ...(def.chests?.length ? [worldAsset('woods3/w3_chest')] : []),
+    // 兴趣点素材(docs/54)
+    ...(def.pois?.length ? Object.values(POI_ASSET) : [])]));
 }
 
 /** 进图前要整块下到本地的资源前缀(网页分层下载):地图素材 + 这张图怪物的骨骼 / 头像。 */

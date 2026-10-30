@@ -25,6 +25,19 @@ CHESTS = [
 ]
 
 
+
+# 兴趣点(docs/54 §2.2):坐标由 tools/qa/poi_place_probe.py 实机吸附到可走点后回填
+WOODS_POIS = [
+    ('W_HIDDEN_1', 'HIDDEN', '瀑布后的岩缝', -3000, 1900),
+    ('W_HIDDEN_2', 'HIDDEN', '倒木下的箭袋', 1100, 1300),
+    ('W_HIDDEN_3', 'HIDDEN', '崖边的营火', 5800, 1300),
+    ('W_STELE_1', 'STELE', '古树之碑', 2200, -1500),
+    ('W_HERB_1', 'HERB', '草药丛', 3500, 300),
+    ('W_HERB_2', 'HERB', '草药丛', -400, -700),
+    ('W_ORE_1', 'ORE', '矿脉', 300, -2800),
+    ('W_ORE_2', 'ORE', '矿脉', 3800, -2700),
+]
+
 def main() -> None:
     buf = io.StringIO()
     with redirect_stdout(buf):
@@ -49,6 +62,7 @@ def main() -> None:
               ('猎人营地', 'camp', 1330, 370), ('古树遗迹', 'ruins', 1150, 650), ('熊穴', 'cave', 1580, 195)]
     places_ts = '\n'.join(f"    {{ name: '{n}', x: {g.wx(x)}, y: {g.wy(y)}, icon: '{i}' }}," for n, i, x, y in places)
     chest_ts = '\n'.join(f"    {{ code: '{c}', label: '{n}', kind: '{k}', x: {g.wx(x)}, y: {g.wy(y)} }}," for c, n, k, x, y in CHESTS)
+    pois_ts = '\n'.join(f"    {{ code: '{c}', kind: '{kd}', name: '{n}', x: {x}, y: {y} }}," for c, kd, n, x, y in WOODS_POIS)
     ts = f'''/** 村外林地 v3 素材(2026-10-29 按林地原型出写实件;tools/qa/woods_assets_gen.py + woods_install_assets.py)。 */
 const W3 = (name: string): string => worldAsset(`woods3/w3_${{name}}`);
 
@@ -101,6 +115,10 @@ const WOODS: WorldMapDef = {{
   // 地图页「地点」(10-30 原型 proto_map_b)
   places: [
 {places_ts}
+  ],
+  // 兴趣点(docs/54 §2.2)
+  pois: [
+{pois_ts}
   ],
   // 野外宝箱(docs/52 §3.1,走近点「开启」;铁箱 / 首领宝箱要先打赢旁边的精英 / 首领)
   chests: [

@@ -1,0 +1,14 @@
+Generate ONE image: a finished in-game mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our CURRENT in-game village screen. Keep EXACTLY its HUD (minimap top-left, place-name pill "晨风村 Lv.1-10", round "传送" button, quest tracker, four round frosted top-right buttons 召唤 / 商店 / 邮件 / 终端, three team portraits on the right, joystick bottom-left, skill cluster bottom-right, leader HP bar bottom centre) and EXACTLY its realistic painted top-down village art style (stone plaza, slate-roof cottages, grass, trees, chibi heroes). Move the camera a little so the scene shows a village edge: a grassy slope with a small wooden windmill, a vegetable garden fence and a little stream.
+- SECOND image = an APPROVED B-style screen, for the frosted dark glass material and the champagne accent.
+
+Show THREE new kinds of exploration points in the scene, realistic painted, calm, NOT glowing, matching the village art:
+1. A hidden spot behind the windmill: just a patch of freshly turned soil with a tiny glint, plus above it a small round frosted dark badge with a white "?" (thin outline, no glow). Subtle and easy to miss.
+2. An old weathered stone stele (moss, worn carved runes, about one hero tall) near the slope. The party leader stands next to it and a frosted dark capsule prompt floats above it: a white key cap "F" then white text "阅读石碑".
+3. A herb bush (green leafy medicinal herb with a few small white flowers) by the stream. Another variant beside it is already harvested: the same bush cut down, dull and grey-brown.
+4. Over the party leader: a thin round progress ring (champagne arc on a dark track, about 70% full) with small white text "采集中" under it, because the leader is gathering the herb bush.
+5. On the minimap add tiny white line icons: a "?" mark, a small stele shape and a small leaf, scattered among the existing marks.
+
+Floating text near the herb when gathering finished (place it slightly up-right): "英雄经验书 +1" in white with a thin dark outline, small.
+All text in Simplified Chinese exactly as written; crisp and legible. Calm lighting, no particles, no light beams, no lens flare, no extra candles. Output only the single finished mockup image, no annotations.

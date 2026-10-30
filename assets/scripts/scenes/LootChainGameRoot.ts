@@ -146,7 +146,8 @@ import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/Wor
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
 import { heroPackPrefixes } from '../api/LobbyHeroApi';
-import { worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
+import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
+import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
@@ -375,6 +376,7 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyTownRenderer = new LobbyTownRenderer(this as unknown as LobbyTownHost);
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
+  private readonly lobbyPoiDialogRenderer = new LobbyPoiDialogRenderer(this as unknown as LobbyPoiDialogHost);
   /** 10-30 地图页(当前图鸟瞰 / 世界地图,原型 proto_map_b)。 */
   private readonly lobbyAreaMapRenderer = new LobbyAreaMapRenderer(this as unknown as LobbyAreaMapHost);
   private worldState: WorldStateVO | null = null;
@@ -7246,6 +7248,80 @@ export class LootChainGameRoot extends Component {
     next();
   }
 
+  // ── docs/54 野外兴趣点:隐藏点 / 石碑 / 采集 ──
+
+  private worldPoiDialog: WorldPoiDialogState | null = null;
+
+  private currentWorldPoiDialog(): WorldPoiDialogState | null {
+    return this.worldPoiDialog;
+  }
+
+  private closeWorldPoiDialog(): void {
+    this.worldPoiDialog = null;
+    gameAudio.sfx('panel_close');
+    this.syncWorldOverlays();
+  }
+
+  /**
+   * 领兴趣点:隐藏点(走近自动)首次弹「发现」卡;石碑每次都打开阅读面板(首次带奖励);采集点队长头顶飘字。
+   * 世界状态回来后跑图层收起已发现的隐藏点 / 换采空素材;失败时放开隐藏点的触发锁(走开再走近重试)。
+   */
+  private claimWorldPoi(code: string): void {
+    const def = Object.values(WORLD_MAPS).flatMap((map) => map.pois ?? []).find((poi) => poi.code === code);
+    if (!def) {
+      return;
+    }
+    void (async () => {
+      let result: import('../types/WorldTypes').WorldActionResultVO;
+      try {
+        result = await this.api.world.claimPoi(code);
+      } catch (error) {
+        this.lobbyTownRenderer.releasePoiPending(code);
+        this.setStatus((error as Error)?.message || '操作失败,请重试');
+        return;
+      }
+      const first = result.rewards.length > 0;
+      if (first) {
+        void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+        void this.loadLobbyBag(true);
+      }
+      const mapCode = (Object.values(WORLD_MAPS).find((map) => (map.pois ?? []).some((poi) => poi.code === code))?.code ?? 'VILLAGE') as WorldMapCode;
+      const found = new Set(result.state.explore.find((item) => item.mapCode === mapCode)?.found ?? []);
+      const mapPois = WORLD_MAPS[mapCode]?.pois ?? [];
+      if (def.kind === 'HIDDEN' && first) {
+        const hidden = mapPois.filter((poi) => poi.kind === 'HIDDEN');
+        this.worldPoiDialog = {
+          kind: 'found', poiCode: code, poiKind: def.kind, rewards: result.rewards, first,
+          progressText: `隐藏点 ${hidden.filter((poi) => found.has(`POI:${poi.code}`)).length} / ${hidden.length} · ${poiMapName(code)}`,
+          footerText: '',
+        };
+        gameAudio.sfx('chest_land', 0.6);
+      } else if (def.kind === 'STELE') {
+        // 新手区石碑收集(成就「晨曦往事」,quest_config A_STELE_NOVICE)
+        const novice = ['V_STELE_1', 'W_STELE_1'];
+        const read = novice.filter((stele) => {
+          const map = stele.startsWith('V') ? 'VILLAGE' : 'WOODS';
+          return (result.state.explore.find((item) => item.mapCode === map)?.found ?? []).includes(`POI:${stele}`);
+        }).length;
+        this.worldPoiDialog = {
+          kind: 'stele', poiCode: code, poiKind: def.kind, rewards: result.rewards, first,
+          progressText: '',
+          footerText: read >= novice.length ? `新手区石碑 ${read} / ${novice.length} · 已解锁成就「晨曦往事」,可在成就里领取` : `新手区石碑 ${read} / ${novice.length} · 集齐解锁成就「晨曦往事」`,
+        };
+        gameAudio.sfx('panel_open');
+      } else if (first) {
+        this.lobbyTownRenderer.showPoiRewards(result.rewards.map((item) => ({ name: item.resourceName, amount: item.amount })));
+        gameAudio.sfx('merge', 0.5);
+      }
+      // 到档的探索度奖励(随这次领取一起发)走状态栏提示
+      if (result.message && result.message.includes('探索度')) {
+        this.setStatus(result.message);
+      }
+      this.applyWorldState(result.state);
+      this.syncWorldOverlays();
+    })();
+  }
+
   /** docs/52 §3.1 野外宝箱:开箱成功放演出 + 奖励飘字(runWorldAction);失败提示原因(例如要先打赢旁边的精英)。 */
   private openWorldChest(code: string): void {
     void (async () => {
@@ -7436,8 +7512,12 @@ export class LootChainGameRoot extends Component {
     this.removeNodeFromContent(LobbyWorldOverlayRenderer.DIALOG);
     this.removeNodeFromContent(LobbyWorldOverlayRenderer.MAP);
     this.removeNodeFromContent(LobbyWorldOverlayRenderer.BOUNTY);
+    this.removeNodeFromContent(LobbyPoiDialogRenderer.OVERLAY);
     if (this.currentView !== 'lobby') {
       return;
+    }
+    if (this.worldPoiDialog) {
+      this.lobbyPoiDialogRenderer.render(this.resolveLayout());
     }
     const layout = this.resolveLayout();
     if (this.worldMapPanel) {

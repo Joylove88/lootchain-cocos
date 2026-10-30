@@ -55,7 +55,7 @@ import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
-import { distToLines, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { distToLines, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapPoi, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -88,6 +88,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   reportWorldExplore?(code: WorldMapCode, cell: number): void;
   /** docs/52 §3.1 野外宝箱:开箱(成功后回调 playChestOpened)。 */
   openWorldChest?(code: string): void;
+  /** docs/54 野外兴趣点:隐藏点走近 / 石碑阅读 / 采集读条完成时调用(GameRoot 领奖 + 弹层)。 */
+  claimWorldPoi?(code: string): void;
   openWorldQuestTracker?(): void;
   openWorldBountyPanel?(): void;
   /** docs/50 §14 野外即时战斗:登记遭遇(下发数值)/ 清怪上报 / 队长倒下。 */
@@ -107,10 +109,12 @@ export interface TownAreaMapInfo {
   waypoint: { x: number; y: number; label: string; activated: boolean };
   camps: Array<{ x: number; y: number; label: string; kind: 'normal' | 'elite' | 'boss' }>;
   chests: Array<{ x: number; y: number; label: string; opened: boolean }>;
+  /** 兴趣点(docs/54):state = unfound 隐藏点未发现 / found 已发现 / unread 石碑没读 / read 已读 / ready 可采 / gathered 今日已采。 */
+  pois: Array<{ code: string; x: number; y: number; label: string; kind: WorldMapPoi['kind']; state: 'unfound' | 'found' | 'unread' | 'read' | 'ready' | 'gathered' }>;
   exits: Array<{ x: number; y: number; label: string }>;
   places: Array<{ name: string; x: number; y: number; icon: string }>;
   /** 迷雾 / 探索度(docs/53 §2.2):lit = 已点亮格,mask = 可探索格,cols × rows = 8 × 5。 */
-  explore: { lit: number[]; mask: number; percent: number; tier: number } | null;
+  explore: { lit: number[]; mask: number; percent: number; tier: number; counts: string } | null;
 }
 
 export interface TownFieldEncounter {
@@ -370,6 +374,7 @@ type TownInteract =
   | { kind: 'npc'; key: string; label: string; x: number; y: number; npc: WorldNpcCode }
   | { kind: 'waypoint'; key: string; label: string; x: number; y: number }
   | { kind: 'chest'; key: string; label: string; x: number; y: number; chest: WorldMapChest }
+  | { kind: 'poi'; key: string; label: string; x: number; y: number; poi: WorldMapPoi }
   | { kind: 'loot'; key: string; label: string; x: number; y: number; loot: TownLoot };
 
 /** 循环动画选取:先精确名,再"以名开头",最后包含关键词;都排除受击 / 攻击 / 死亡 / 过渡(link)/ 转身片段。 */
@@ -398,6 +403,10 @@ export class LobbyTownRenderer {
   private readonly ambient = new TownAmbient();
   /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
   private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind'] }>();
+  /** 兴趣点场上节点(docs/54);done = 隐藏点已发现 / 采集点今日已采。 */
+  private poiNodes = new Map<string, { node: Node; art: Node | null; badge: Node | null; poi: WorldMapPoi; done: boolean }>();
+  /** 已经发出领取请求的隐藏点(等世界状态回来前不重复触发)。 */
+  private poiPending = new Set<string>();
   private entityRoot: Node | null = null;
   private layout: UiLayout | null = null;
   private k = 1;
@@ -458,7 +467,7 @@ export class LobbyTownRenderer {
   private recallButton: Node | null = null;
   private hudLayout: UiLayout | null = null;
   /** 读条(传送 3 秒 / 回城 5 秒):移动打断。 */
-  private channel: { startAt: number; endAt: number; label: string; onDone: () => void } | null = null;
+  private channel: { startAt: number; endAt: number; label: string; onDone: () => void; style: 'bar' | 'ring' } | null = null;
   private channelBar: { node: Node; fill: Graphics; label: Label; w: number; h: number } | null = null;
   private bannerUntil = 0;
   private respawnCheckAt = 0;
@@ -561,6 +570,7 @@ export class LobbyTownRenderer {
     this.waypointGlow = null;
     this.waypointFx = null;
     this.chestNodes = new Map();
+    this.poiNodes = new Map();
     this.monsters = [];
     this.trail = [];
     this.partySignature = '';
@@ -620,6 +630,7 @@ export class LobbyTownRenderer {
     this.ensureNpcs();
     this.ensureWaypoint();
     this.ensureChests();
+    this.ensurePois();
     this.ensureExits();
     this.ensureMonsters();
     this.ensureParty();
@@ -670,6 +681,7 @@ export class LobbyTownRenderer {
     this.waypointGlow = null;
     this.waypointFx = null;
     this.chestNodes = new Map();
+    this.poiNodes = new Map();
     this.monsters = [];
     this.trail = [];
     this.partySignature = '';
@@ -705,6 +717,7 @@ export class LobbyTownRenderer {
     this.waypointGlow = null;
     this.waypointFx = null;
     this.chestNodes = new Map();
+    this.poiNodes = new Map();
     this.monsters = [];
     this.leader = null;
     this.followers = [];
@@ -1225,6 +1238,7 @@ export class LobbyTownRenderer {
     this.stepMonsters(clamped);
     this.updateMonsterNames();
     this.updateExplore();
+    this.updateHiddenPois();
     if (Date.now() >= this.respawnCheckAt) {
       this.respawnCheckAt = Date.now() + 2000;
       if (this.def.camps.length > 0) {
@@ -1295,13 +1309,31 @@ export class LobbyTownRenderer {
       waypoint: { x: def.waypoint.x, y: def.waypoint.y, label: `传送阵 · ${def.name}`, activated: !!world?.maps.find((m) => m.mapCode === this.mapCode)?.activated },
       camps: def.camps.map((camp) => ({ x: camp.x, y: camp.y, label: camp.label, kind: camp.stageCode.endsWith('_B') ? 'boss' : camp.elite ? 'elite' : 'normal' })),
       chests: (def.chests ?? []).map((chest) => ({ x: chest.x, y: chest.y, label: chest.label, opened: opened.has(chest.code) })),
+      pois: (def.pois ?? []).map((poi) => ({ code: poi.code, x: poi.x, y: poi.y, label: poi.name, kind: poi.kind, state: this.poiState(poi, world) })),
       exits: def.exits.map((exit) => ({ x: exit.x, y: exit.y, label: exit.label })),
       places,
       explore: (() => {
         const state = world?.explore?.find((item) => item.mapCode === this.mapCode);
-        return state ? { lit: Array.from(this.exploreLitCells()), mask: state.mask, percent: state.percent, tier: state.tier } : null;
+        return state ? { lit: Array.from(this.exploreLitCells()), mask: state.mask, percent: state.percent, tier: state.tier, counts: this.exploreCountsText(state.found ?? [], state.items ?? []) } : null;
       })(),
     };
+  }
+
+  /** 兴趣点计数(docs/54 §4):「隐藏点 1/3 · 石碑 0/1 · 宝箱 2/6 · 采集 1/4」,本图没有的类别不显示。 */
+  private exploreCountsText(found: string[], items: string[]): string {
+    const has = new Set(found);
+    const pois = this.def.pois ?? [];
+    const parts: string[] = [];
+    const count = (label: string, keys: string[]): void => {
+      if (keys.length > 0) {
+        parts.push(`${label} ${keys.filter((key) => has.has(key)).length}/${keys.length}`);
+      }
+    };
+    count('隐藏点', pois.filter((poi) => poi.kind === 'HIDDEN').map((poi) => `POI:${poi.code}`));
+    count('石碑', pois.filter((poi) => poi.kind === 'STELE').map((poi) => `POI:${poi.code}`));
+    count('宝箱', items.filter((key) => key.startsWith('CHEST:')));
+    count('采集', pois.filter((poi) => poi.kind === 'HERB' || poi.kind === 'ORE').map((poi) => `POI:${poi.code}`));
+    return parts.join(' · ');
   }
 
   /** 地图页路线预览:从队长到目的地的折点(含起点);走不到返回 null。 */
@@ -1715,6 +1747,16 @@ export class LobbyTownRenderer {
         out.push({ kind: 'loot', key: loot.key, label: '战利品', x: loot.x, y: loot.y, loot });
       }
     }
+    // 兴趣点:石碑随时可读(读过可重读);采集点今日没采才出提示;隐藏点走近自动触发,不进提示列表
+    for (const poi of this.def.pois ?? []) {
+      if (poi.kind === 'HIDDEN') {
+        continue;
+      }
+      if ((poi.kind === 'HERB' || poi.kind === 'ORE') && this.poiNodes.get(poi.code)?.done) {
+        continue;
+      }
+      out.push({ kind: 'poi', key: `poi_${poi.code}`, label: poi.name, x: poi.x, y: poi.y, poi });
+    }
     return out;
   }
 
@@ -1771,6 +1813,9 @@ export class LobbyTownRenderer {
     if (item.kind === 'chest') {
       return `开启 · ${item.label}`;
     }
+    if (item.kind === 'poi') {
+      return item.poi.kind === 'STELE' ? `阅读 · ${item.label}` : `采集 · ${item.label}`;
+    }
     return `${item.building.action === 'quest' ? '查看' : '进入'} · ${item.label}`;
   }
 
@@ -1783,6 +1828,9 @@ export class LobbyTownRenderer {
     }
     if (item.kind === 'loot') {
       return LOOT_ICON;
+    }
+    if (item.kind === 'poi') {
+      return POI_MAP_ICON[item.poi.kind];
     }
     return TOWN_HUD_ASSETS.iconQuest;
   }
@@ -1895,6 +1943,16 @@ export class LobbyTownRenderer {
       this.host.openWorldChest?.(near.chest.code);
       return;
     }
+    if (near.kind === 'poi') {
+      if (near.poi.kind === 'STELE') {
+        this.host.claimWorldPoi?.(near.poi.code);
+        return;
+      }
+      // 采集:队长头顶读条环 2 秒(移动打断),读满才领
+      const code = near.poi.code;
+      this.startChannel(2, '采集中', () => this.host.claimWorldPoi?.(code), 'ring');
+      return;
+    }
     if (this.guide?.flag && this.guide.building === near.building.key) {
       lobbyGuide.markVisited(this.guide.flag);
     }
@@ -1960,6 +2018,7 @@ export class LobbyTownRenderer {
     this.refreshNpcMarkers(world);
     this.refreshWaypointGlow(world);
     this.refreshChests(world);
+    this.refreshPois(world);
     this.channelBar = null;
     this.nearKey = null;
     this.updateNearBuilding();
@@ -2147,6 +2206,23 @@ export class LobbyTownRenderer {
       marks.fillColor = camp.elite ? rgba(246, 200, 70, 245) : rgba(220, 54, 44, 245);
       marks.circle(camp.x * mapScale, camp.y * mapScale, Math.max(3, P.S(camp.elite ? 7 : 6)));
       marks.fill();
+    }
+    // 兴趣点(docs/54):隐藏点找到后不再标,在迷雾里也不标;采集点今日采过的压灰
+    {
+      const world = this.host.currentWorldState?.() ?? null;
+      const lit = this.exploreLitCells();
+      const mask = world?.explore?.find((item) => item.mapCode === this.mapCode)?.mask ?? 0;
+      for (const poi of def.pois ?? []) {
+        const state = this.poiState(poi, world);
+        if (state === 'found' || (poi.kind === 'HIDDEN' && exploreFogged(this.exploreCellAt(poi.x, poi.y), lit, mask))) {
+          continue;
+        }
+        const icon = this.addFitSprite(`Poi_${poi.code}`, POI_MAP_ICON[poi.kind], poi.x * mapScale, poi.y * mapScale, P.S(20), P.S(20), content);
+        if (icon && (state === 'gathered' || state === 'read')) {
+          icon.grayscale = true;
+          icon.color = rgba(255, 255, 255, 150);
+        }
+      }
     }
     for (const building of def.buildings) {
       const icon = TOWN_MINIMAP_BUILDING_ICONS[building.key];
@@ -2588,6 +2664,165 @@ export class LobbyTownRenderer {
       this.propNodes.push({ node, y: chest.y });
     }
     this.refreshChests(this.host.currentWorldState?.() ?? null);
+  }
+
+  /** 兴趣点场上素材(docs/54):石碑 / 草药 / 矿脉是立物(参与前后遮挡);隐藏点是一小块翻过的土 + 头顶「?」小圆徽。 */
+  private ensurePois(): void {
+    const root = this.entityRoot;
+    const ground = this.groundRoot;
+    if (!root || !root.isValid || !ground || !ground.isValid) {
+      return;
+    }
+    this.snapPois();
+    for (const poi of this.def.pois ?? []) {
+      if (this.poiNodes.has(poi.code)) {
+        continue;
+      }
+      if (poi.kind === 'HIDDEN') {
+        const node = this.host.addChildPlainNode(ground, `TownPoi_${poi.code}`, poi.x, poi.y, 170, 120);
+        this.addPoiArt(node, POI_ASSET.hidden, 170);
+        const badge = this.host.addChildPlainNode(root, `TownPoiBadge_${poi.code}`, poi.x, poi.y + 110, 56, 56);
+        const g = badge.addComponent(Graphics);
+        g.fillColor = rgba(20, 24, 32, 215);
+        g.circle(0, 0, 24);
+        g.fill();
+        g.strokeColor = rgba(255, 255, 255, 70);
+        g.lineWidth = 2;
+        g.circle(0, 0, 24);
+        g.stroke();
+        const q = this.host.addChildLabel(badge, 'Q', '?', 0, 1, 30, rgba(242, 242, 242), new Size(44, 44));
+        q.isBold = true;
+        this.poiNodes.set(poi.code, { node, art: node, badge, poi, done: false });
+        this.propNodes.push({ node: badge, y: poi.y });
+        continue;
+      }
+      const w = poi.kind === 'STELE' ? 170 : 130;
+      const node = this.host.addChildPlainNode(root, `TownPoi_${poi.code}`, poi.x, poi.y, w, w * 1.6);
+      const art = this.addPoiArt(node, poi.kind === 'STELE' ? POI_ASSET.stele : poi.kind === 'HERB' ? POI_ASSET.herb : POI_ASSET.ore, w);
+      this.poiNodes.set(poi.code, { node, art, badge: null, poi, done: false });
+      this.propNodes.push({ node, y: poi.y });
+    }
+    this.refreshPois(this.host.currentWorldState?.() ?? null);
+  }
+
+  /**
+   * 点位落在挡路处(建筑 / 水面 / 树脚)就挪到最近的可走点(由近到远一圈圈找,每圈 16 个方向):
+   * 改的是共享的地图定义,地图页 / 交互判定用的是同一份坐标。每张图只做一次。
+   */
+  private snappedPoiMaps = new Set<string>();
+
+  private snapPois(): void {
+    if (this.snappedPoiMaps.has(this.mapCode)) {
+      return;
+    }
+    this.snappedPoiMaps.add(this.mapCode);
+    // 还要离怪群够远(散开半径 + 仇恨半径 + 余量):摆在怪堆里一走近就开战,战斗中兴趣点不触发(10-30 林地自验)
+    const clear = (x: number, y: number): boolean => this.walkable(x, y)
+      && this.def.camps.every((camp) => Math.hypot(x - camp.x, (y - camp.y) / 0.7) > camp.radius + MONSTER_AGGRO_RADIUS + 150);
+    // 立物(石碑 / 草药 / 矿脉)不能落在建筑 / 大树贴图的遮挡区(脚线往上约一个贴图高):10-30 草药丛摆在农舍正后方被整个挡住
+    const occluded = (x: number, y: number): boolean =>
+      this.def.buildings.some((b) => Math.abs(x - b.x) < b.width * 0.5 && y > b.y - 20 && y < b.y + b.width * 0.85)
+      || this.def.props.some((prop) => !prop.flat && prop.width >= 250 && Math.abs(x - prop.x) < prop.width * 0.4 && y > prop.y - 20 && y < prop.y + prop.width * 0.9);
+    for (const poi of this.def.pois ?? []) {
+      const ok = (x: number, y: number): boolean => clear(x, y) && (poi.kind === 'HIDDEN' || !occluded(x, y));
+      if (ok(poi.x, poi.y)) {
+        continue;
+      }
+      // 先按全部条件找;找不到(四周都是怪群)再退一步只要求可走,至少保证走得到
+      const search = (test: (x: number, y: number) => boolean): { x: number; y: number } | null => {
+        for (let r = 40; r <= 3000; r += 40) {
+          for (let i = 0; i < 16; i += 1) {
+            const a = (i / 16) * Math.PI * 2;
+            const x = Math.round(poi.x + Math.cos(a) * r);
+            const y = Math.round(poi.y + Math.sin(a) * r * 0.7);
+            if (test(x, y)) {
+              return { x, y };
+            }
+          }
+        }
+        return null;
+      };
+      const best = search(ok) ?? search((x, y) => this.walkable(x, y));
+      if (best) {
+        console.log(`[POI] ${poi.code} 挪到可走点 ${best.x},${best.y}(原 ${poi.x},${poi.y})`);
+        poi.x = best.x;
+        poi.y = best.y;
+      }
+    }
+  }
+
+  /** 素材按原比例、脚线贴在节点原点;返回素材节点。 */
+  private addPoiArt(node: Node, asset: string, w: number): Node | null {
+    node.getChildByName('Art')?.destroy();
+    const sprite = this.host.addSprite('Art', asset, 0, 0, w, w, node);
+    if (!sprite) {
+      return null;
+    }
+    const frame = sprite.spriteFrame;
+    const h = w * ((frame?.originalSize.height ?? 1) / Math.max(1, frame?.originalSize.width ?? 1));
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, h));
+    sprite.node.setPosition(0, h / 2 - 10, 0);
+    return sprite.node;
+  }
+
+  private poiState(poi: WorldMapPoi, world: WorldStateVO | null): TownAreaMapInfo['pois'][number]['state'] {
+    const found = new Set(world?.explore?.find((item) => item.mapCode === this.mapCode)?.found ?? []);
+    if (poi.kind === 'HIDDEN') {
+      return found.has(`POI:${poi.code}`) ? 'found' : 'unfound';
+    }
+    if (poi.kind === 'STELE') {
+      return found.has(`POI:${poi.code}`) ? 'read' : 'unread';
+    }
+    return (world?.gatheredToday ?? []).includes(poi.code) ? 'gathered' : 'ready';
+  }
+
+  /** 世界状态回来后:已发现的隐藏点收起(土块和「?」都不再显示);今日已采的采集点换成采空的素材。 */
+  private refreshPois(world: WorldStateVO | null): void {
+    for (const [code, entry] of this.poiNodes) {
+      const state = this.poiState(entry.poi, world);
+      if (entry.poi.kind === 'HIDDEN') {
+        const done = state === 'found';
+        entry.done = done;
+        entry.node.isValid && (entry.node.active = !done);
+        entry.badge?.isValid && (entry.badge.active = !done);
+        if (done) {
+          this.poiPending.delete(code);
+        }
+        continue;
+      }
+      if (entry.poi.kind === 'HERB' || entry.poi.kind === 'ORE') {
+        const done = state === 'gathered';
+        if (done !== entry.done && entry.node.isValid) {
+          const asset = entry.poi.kind === 'HERB' ? (done ? POI_ASSET.herbCut : POI_ASSET.herb) : (done ? POI_ASSET.oreCut : POI_ASSET.ore);
+          entry.art = this.addPoiArt(entry.node, asset, 130);
+        }
+        entry.done = done;
+      }
+    }
+  }
+
+  /** 隐藏点:队长走到约 2 个身位内自动触发(战斗 / 读条中不触发);请求发出后等世界状态回来,期间不重复触发。 */
+  private updateHiddenPois(): void {
+    const leader = this.leader;
+    if (!leader || this.inCombat || this.channel || !this.host.claimWorldPoi) {
+      return;
+    }
+    for (const entry of this.poiNodes.values()) {
+      if (entry.poi.kind !== 'HIDDEN' || entry.done || this.poiPending.has(entry.poi.code)) {
+        continue;
+      }
+      if (Math.hypot(entry.poi.x - leader.x, (entry.poi.y - leader.y) / 0.8) < 150) {
+        this.poiPending.add(entry.poi.code);
+        this.host.claimWorldPoi(entry.poi.code);
+        return;
+      }
+    }
+  }
+
+  /** 领取失败(网络 / 服务端拒绝)时放开,走开再走近可重试。 */
+  releasePoiPending(code: string): void {
+    this.poiPending.delete(code);
   }
 
   private chestTint(kind: WorldMapChest['kind'], opened: boolean): Color {
@@ -3304,9 +3539,10 @@ export class LobbyTownRenderer {
     return this.nearbyInteracts().some((item) => item.kind === 'waypoint') ? 0 : 5;
   }
 
-  startChannel(seconds: number, label: string, onDone: () => void): void {
+  /** style:bar = 屏幕下方读条(传送 / 回城);ring = 队长头顶读条环(采集,原型 poi_scene_b)。 */
+  startChannel(seconds: number, label: string, onDone: () => void, style: 'bar' | 'ring' = 'bar'): void {
     const now = Date.now();
-    this.channel = { startAt: now, endAt: now + seconds * 1000, label, onDone };
+    this.channel = { startAt: now, endAt: now + seconds * 1000, label, onDone, style };
     this.mountChannelBar();
   }
 
@@ -3317,6 +3553,27 @@ export class LobbyTownRenderer {
       return;
     }
     this.channelBar?.node.isValid && this.channelBar.node.destroy();
+    if (this.channel.style === 'ring') {
+      const leader = this.leader;
+      if (!leader || !leader.node.isValid) {
+        return;
+      }
+      // 挂在队长节点上(跟着走 / 跟着世界缩放);原型:细香槟弧 + 深色底环,下方白字「采集中」
+      const r = 34;
+      const node = this.host.addChildPlainNode(leader.node, 'GatherRing', 0, HERO_SLOT_H + 46, r * 2 + 20, r * 2 + 40);
+      const bg = node.addComponent(Graphics);
+      bg.strokeColor = rgba(16, 18, 24, 190);
+      bg.lineWidth = 9;
+      bg.circle(0, 0, r);
+      bg.stroke();
+      const fill = this.host.addChildPlainNode(node, 'Fill', 0, 0, r * 2, r * 2).addComponent(Graphics);
+      const label = this.host.addChildLabel(node, 'Label', this.channel.label, 0, -r - 18, 22, rgba(242, 242, 242), new Size(140, 28));
+      label.enableOutline = true;
+      label.outlineColor = rgba(0, 0, 0, 220);
+      label.outlineWidth = 2;
+      this.channelBar = { node, fill, label, w: r, h: 0 };
+      return;
+    }
     const scale = this.hudScale;
     const w = 360 * scale;
     const h = 22 * scale;
@@ -3355,7 +3612,15 @@ export class LobbyTownRenderer {
     }
     const bar = this.channelBar;
     const t = Math.max(0, Math.min(1, (Date.now() - channel.startAt) / Math.max(1, channel.endAt - channel.startAt)));
-    if (bar) {
+    if (bar && channel.style === 'ring') {
+      // 从 12 点顺时针走(Graphics.arc 顺时针要传 counterclockwise=false,角度递减)
+      bar.fill.clear();
+      bar.fill.strokeColor = rgba(227, 196, 138, 255);
+      bar.fill.lineWidth = 7;
+      const start = Math.PI / 2;
+      bar.fill.arc(0, 0, bar.w, start, start - Math.max(0.02, t) * Math.PI * 2, false);
+      bar.fill.stroke();
+    } else if (bar) {
       bar.fill.clear();
       bar.fill.fillColor = rgba(110, 200, 255, 235);
       bar.fill.roundRect(-bar.w / 2 + 3, -bar.h / 2 + 3, Math.max(2, (bar.w - 6) * t), bar.h - 6, (bar.h - 6) / 2);
@@ -4715,6 +4980,11 @@ export class LobbyTownRenderer {
   }
 
   /** 拾取到的奖励在队长头上逐条飘字(大厅不显示底部状态字)。 */
+  /** 采集点领到的奖励在队长头顶飘字(docs/54,原型 poi_scene_b「英雄经验书 +1」)。 */
+  showPoiRewards(items: Array<{ name: string; amount: number }>): void {
+    this.showLootRewards(items, false);
+  }
+
   private showLootRewards(items: Array<{ name: string; amount: number }>, capped: boolean): void {
     const leader = this.leader;
     if (!leader || !leader.node.isValid) {

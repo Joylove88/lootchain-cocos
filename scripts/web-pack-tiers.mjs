@@ -15,6 +15,8 @@ export const CORE_PREFIXES = [
   'ui/world/vil3', 'ui/world/vil2', 'ui/world/fx', 'ui/world/overview/ov_village', 'ui/world/mapui',
   'ui/world/ground_village3', 'ui/world/npc_', 'ui/world/portrait_chief', 'ui/world/waypoint', 'ui/world/fx_rune_ring',
   'ui/world/city_board', 'ui/world/ui_bounty_paper', 'ui/world/map_world1',
+  // 野外兴趣点素材(docs/54:石碑 / 草药 / 矿脉 / 隐藏点,晨风村就有)
+  'ui/world/poi',
   // 初始 4 英雄(StarterHeroGranter:SR_ABYSS_06 / SR_WITCH_03 / SR_PALADIN_02 / SR_PRIEST_01)
   'spine/hero/npc_1036', 'spine/hero/npc_1028', 'spine/hero/npc_1002', 'spine/hero/npc_21006',
   'ui/hero-roster/card_background/npc_1036', 'ui/hero-roster/card_background/npc_1028',

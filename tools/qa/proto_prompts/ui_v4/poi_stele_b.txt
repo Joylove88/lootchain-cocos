@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our in-game village screen; use it as the blurred, darkened (about 60%) background behind the panel.
+- SECOND image = an APPROVED B-style screen. Match its frosted dark glass panel, 12px rounded corners, 1px faint white outline, champagne gold #E3C48A accent only on the single primary button, white #F2F2F2 / grey #A3A8B3 text, simple white line icons. NO metal frames, NO ornaments, NO ribbon banners, no glow.
+
+A centred stele-reading panel (about 54% of the screen width, 70% of the height):
+- Top-left title "晨曦之碑" (large, white, bold) with a small grey line under it "遗迹石碑 · 晨风村"; top-right a thin white "×" close button.
+- Left part of the panel: a calm painted illustration of the weathered mossy stone stele with carved runes, framed by a thin rounded rectangle (no glow).
+- Right part: the story text in white, comfortable line height, 5~6 lines:
+  "很久以前,这片大地只有长夜。沉默诸神在山谷里点燃了第一缕晨光,人们沿着光走来,建起了第一座村庄——晨风村。诸神离去前留下誓约:只要晨光不灭,大地就不会再沉入黑暗。"
+- Under the story, a thin divider, then a row "首次阅读奖励" in grey and on the right an item chip: small book icon + white "英雄经验书 ×2".
+- Bottom row: on the left small grey text "新手区石碑 1 / 2 · 集齐解锁成就「晨曦往事」"; on the right one champagne filled pill button with dark text "收下".
+All text in Simplified Chinese exactly as written; crisp and legible. Output only the single finished mockup image, no annotations.

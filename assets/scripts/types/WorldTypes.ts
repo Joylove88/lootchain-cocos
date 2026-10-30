@@ -64,6 +64,8 @@ export interface WorldStateVO {
   openedChests: string[];
   /** 迷雾 / 探索度(docs/53 §2.2):每张图一条。 */
   explore: WorldExploreVO[];
+  /** 今日已采的采集点码(docs/54)。 */
+  gatheredToday: string[];
 }
 
 /** 探索度:bits = 已点亮块(格号 = 行 × 8 + 列,行从地图顶边往下),mask = 可探索块,tier = 已发奖档位 0..4。 */
@@ -73,6 +75,10 @@ export interface WorldExploreVO {
   mask: number;
   percent: number;
   tier: number;
+  /** 已发现兴趣点 key(POI:码 / CHEST:码 / BOSS:关卡码 / WAYPOINT,docs/54 §4)。 */
+  found: string[];
+  /** 本图全部兴趣点 key。 */
+  items: string[];
 }
 
 export interface WorldActionResultVO {

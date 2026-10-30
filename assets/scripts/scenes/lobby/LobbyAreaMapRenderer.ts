@@ -6,7 +6,7 @@ import { WORLD1_POINTS, WORLD_TABS, type WorldMapPanelState } from './LobbyWorld
 import type { TownAreaMapInfo } from './LobbyTownRenderer';
 import type { PathPoint } from './LobbyTownPathfinder';
 import { townCoordText } from './LobbyTownPathfinder';
-import { worldAsset } from './LobbyWorldMaps';
+import { POI_MAP_ICON, worldAsset } from './LobbyWorldMaps';
 import { exploreFogged, mountExploreCloud } from './LobbyTownRenderer';
 
 /** 探索度四档奖励(和服务端 FieldExploreRules.tierRewards 一致,只用来显示下一档)。 */
@@ -287,6 +287,18 @@ export class LobbyAreaMapRenderer {
         icon.node.addComponent(UIOpacity).opacity = 160;
       }
     }
+    // 兴趣点(docs/54):在迷雾里不标;隐藏点找到后不再标;石碑读过 / 采集点今日采过压灰
+    for (const poi of info.pois) {
+      if (poi.state === 'found' || inFog(poi.x, poi.y)) {
+        continue;
+      }
+      const p = at(poi.x, poi.y);
+      const icon = this.host.addSprite(`Poi_${poi.code}`, POI_MAP_ICON[poi.kind], p.x, p.y, S(30), S(30), marks);
+      if (icon && (poi.state === 'read' || poi.state === 'gathered')) {
+        icon.grayscale = true;
+        icon.node.addComponent(UIOpacity).opacity = 160;
+      }
+    }
     // 传送阵(地点里是 portal 的名字优先)
     const portalPlace = info.places.find((place) => place.icon === 'portal');
     const wp = at(info.waypoint.x, info.waypoint.y);
@@ -341,15 +353,19 @@ export class LobbyAreaMapRenderer {
     // 探索度(框内左上):百分比 + 下一档奖励
     if (ex) {
       const next = EXPLORE_TIERS.find((tier) => ex.percent < tier.percent);
-      const text = next ? `探索度 ${ex.percent}%  ·  ${next.percent}% 奖励:${next.text}` : `探索度 100%  ·  已全部探索`;
+      const head = next ? `探索度 ${ex.percent}%  ·  ${next.percent}% 奖励:${next.text}` : `探索度 100%  ·  已全部探索`;
+      // 兴趣点计数接在后面(docs/54 §4:探索度 = 区块 40% + 兴趣点 60%)
+      const text = ex.counts ? `${head}  ·  ${ex.counts}` : head;
       const cw = this.chipWidth(text, S) + S(10);
       const chip = this.host.addChildPlainNode(frame, 'Explore', -frameW / 2 + S(16) + cw / 2, frameH / 2 - S(36), cw, S(40));
       mountGlassSlice(this.host, chip, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, cw, S(40), S(40) / 48);
       glassLabel(this.host, chip, 'Text', text, 0, 0, S(19), next ? GLASS_COLOR.text : CHAMPAGNE, cw - S(20), HorizontalTextAlignment.CENTER);
     }
     // 图例
-    const legend = this.host.addChildPlainNode(frame, 'Legend', LX(389) - FX(711.5), FY(751) - FY(438.5), S(662), S(48));
-    mountGlassSlice(this.host, legend, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, S(662), S(48), S(48) / 48);
+    // 10-30 加隐藏点 / 石碑 / 采集三项(docs/54):胶囊往右加宽,前 6 项位置不变
+    const legendW = 1000;
+    const legend = this.host.addChildPlainNode(frame, 'Legend', LX(58 + legendW / 2) - FX(711.5), FY(751) - FY(438.5), S(legendW), S(48));
+    mountGlassSlice(this.host, legend, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, S(legendW), S(48), S(48) / 48);
     const items: Array<{ text: string; icon?: string; dot?: Color }> = [
       { text: 'NPC', dot: new Color(240, 240, 240, 255) },
       { text: '任务', icon: MAP_ICON.quest },
@@ -357,10 +373,13 @@ export class LobbyAreaMapRenderer {
       { text: '首领', icon: MAP_ICON.skull },
       { text: '宝箱', icon: MAP_ICON.chest },
       { text: '传送阵', icon: MAP_ICON.portal },
+      { text: '隐藏点', icon: POI_MAP_ICON.HIDDEN },
+      { text: '石碑', icon: POI_MAP_ICON.STELE },
+      { text: '采集', icon: POI_MAP_ICON.HERB },
     ];
-    const lx0 = [93, 199, 302, 407, 512, 620];
+    const lx0 = [93, 199, 302, 407, 512, 620, 742, 862, 960];
     items.forEach((item, index) => {
-      const x = LX(lx0[index]) - LX(389);
+      const x = LX(lx0[index]) - LX(58 + legendW / 2);
       if (item.icon) {
         this.host.addSprite(`LgIcon_${index}`, item.icon, x, 0, S(26), S(26), legend);
       } else if (item.dot) {

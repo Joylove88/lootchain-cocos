@@ -1,0 +1,11 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our in-game village screen; keep the whole game scene and HUD visible and only very slightly dimmed (about 25%), because this is a small pop-up card, not a full menu.
+- SECOND image = an APPROVED B-style screen. Match its frosted dark glass card, 12px rounded corners, 1px faint white outline, champagne accent only on the single primary button, white / grey text, white line icons. NO metal frames, NO ornaments, no glow, no sparkles.
+
+A compact "discovery" card in the upper-middle of the screen (about 34% of the screen width):
+- Top: a small round frosted badge with a white "?" on the left, then the title "发现 · 风车背后" (white, bold); under it small grey text "隐藏点 1 / 3 · 晨风村".
+- Body (white, 2~3 lines): "风车的木板松了一块,里面塞着一只小布袋。大概是磨坊主藏起来的私房钱吧……他应该不会介意借你一点。"
+- Reward row: two item chips side by side: coin icon + "金币 ×500", grey stone icon + "初级强化石 ×1".
+- Bottom right: one champagne filled pill button with dark text "收下".
+All text in Simplified Chinese exactly as written; crisp and legible. Output only the single finished mockup image, no annotations.
