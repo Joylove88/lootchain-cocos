@@ -28,6 +28,11 @@ export class WorldApi {
     return this.http.post<unknown>('/api/player/world/waypoint/activate', { mapCode }).then(validateAction);
   }
 
+  /** 探索上报(docs/53 §2.2):新点亮的格号;到档服务端自动发奖。 */
+  reportExplore(mapCode: WorldMapCode, cells: number[]): Promise<WorldActionResultVO> {
+    return this.http.post<unknown>('/api/player/world/explore/report', { mapCode, target: cells.join(',') }).then(validateAction);
+  }
+
   /** 野外宝箱(docs/52 §3.1):target = 宝箱码。 */
   openChest(chestCode: string): Promise<WorldActionResultVO> {
     return this.http.post<unknown>('/api/player/world/chest/open', { target: chestCode }).then(validateAction);
@@ -181,6 +186,12 @@ function validateState(data: unknown): WorldStateVO {
     quests,
     bounties,
     bountyDate: readText(data, 'bountyDate', 16, ''),
+    explore: readArray(data, 'explore', 16).map((entry) => {
+      const record = isRecord(entry) ? entry : {};
+      const code = readText(record, 'mapCode', 16, 'CITY') as WorldMapCode;
+      const num = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+      return { mapCode: code, bits: num(record.bits), mask: num(record.mask), percent: readInteger(record.percent, 0, 100), tier: readInteger(record.tier, 0, 4) };
+    }),
     openedChests: readArray(data, 'openedChests', 64).map((code) => (typeof code === 'string' ? code.slice(0, 32) : '')).filter((code) => !!code),
   };
 }

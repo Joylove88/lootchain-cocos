@@ -739,6 +739,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
 export const WORLD_ASSET_PATHS: readonly string[] = Array.from(new Set([
   worldAsset('city_board'),
   worldAsset('waypoint'),
+  // 白色云雾(10-30,小地图 / 地图页迷雾)
+  ...[0, 1, 2].map((i) => worldAsset(`fx/fog_cloud_${i}`)),
   // 地图页图标(10-30,LobbyAreaMapRenderer)
   ...['quest', 'pin', 'portal', 'paw', 'tent', 'tree', 'skull', 'chest'].map((name) => worldAsset(`mapui/map_${name}`)),
   worldAsset('map_world1'),

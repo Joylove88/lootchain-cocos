@@ -7087,6 +7087,37 @@ export class LootChainGameRoot extends Component {
     })();
   }
 
+  /** docs/53 §2.2 探索上报:0.6 秒内的新格合成一次请求;到档奖励走世界操作统一入口(飘字 + 刷资料);失败静默(下次进格再报)。 */
+  private exploreQueue = new Map<WorldMapCode, Set<number>>();
+  private exploreFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private reportWorldExplore(code: WorldMapCode, cell: number): void {
+    const set = this.exploreQueue.get(code) ?? new Set<number>();
+    set.add(cell);
+    this.exploreQueue.set(code, set);
+    if (this.exploreFlushTimer) {
+      return;
+    }
+    this.exploreFlushTimer = setTimeout(() => {
+      this.exploreFlushTimer = null;
+      const batches = Array.from(this.exploreQueue.entries());
+      this.exploreQueue.clear();
+      for (const [map, cells] of batches) {
+        void (async () => {
+          try {
+            const result = await this.api.world.reportExplore(map, Array.from(cells));
+            this.worldState = result.state;
+            if (result.rewards.length > 0 || result.message) {
+              void this.runWorldAction(async () => result);
+            }
+          } catch (error) {
+            console.warn('[World] explore report failed', error);
+          }
+        })();
+      }
+    }, 600);
+  }
+
   private activateWorldWaypoint(code: WorldMapCode): void {
     void (async () => {
       const ok = await this.runWorldAction(() => this.api.world.activateWaypoint(code));

@@ -81,6 +81,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   activateWorldWaypoint?(code: WorldMapCode): void;
   /** 10-30:点小地图 → 地图页(当前图鸟瞰)。 */
   openAreaMapPanel?(): void;
+  /** docs/53 §2.2:走进新的一块,上报点亮。 */
+  reportWorldExplore?(code: WorldMapCode, cell: number): void;
   /** docs/52 §3.1 野外宝箱:开箱(成功后回调 playChestOpened)。 */
   openWorldChest?(code: string): void;
   openWorldQuestTracker?(): void;
@@ -104,6 +106,8 @@ export interface TownAreaMapInfo {
   chests: Array<{ x: number; y: number; label: string; opened: boolean }>;
   exits: Array<{ x: number; y: number; label: string }>;
   places: Array<{ name: string; x: number; y: number; icon: string }>;
+  /** 迷雾 / 探索度(docs/53 §2.2):lit = 已点亮格,mask = 可探索格,cols × rows = 8 × 5。 */
+  explore: { lit: number[]; mask: number; percent: number; tier: number } | null;
 }
 
 export interface TownFieldEncounter {
@@ -190,6 +194,45 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 迷雾分块(docs/53 §2.2,与服务端 FieldExploreRules 一致):8 列 × 5 行。 */
+const EXPLORE_COLS = 8;
+const EXPLORE_ROWS = 5;
+/**
+ * 白色云雾(10-30 用户:迷雾换白色云雾,原来的太方正):3 张不规则云团(tools/qa/world_ambient_textures.py fog_cloud_*),
+ * 每格按格号挑一张、转角度 / 翻面,放大约 2.5 格(以格的长边算)铺,相邻交叠成整片云海,看不出网格。
+ */
+export const EXPLORE_FOG_ASSETS = [0, 1, 2].map((i) => `ui/world/fx/fog_cloud_${i}/spriteFrame`);
+
+/** 在 parent 上给第 cell 格铺一团云(cx, cy = 格中心,cw / ch = 格宽高,均为 parent 坐标)。 */
+export function mountExploreCloud(host: { addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null },
+  parent: Node, cell: number, cx: number, cy: number, cw: number, ch: number): Sprite | null {
+  const size = Math.max(cw, ch) * 2.5;
+  const sprite = host.addSprite(`Fog_${cell}`, EXPLORE_FOG_ASSETS[(cell * 7) % 3], cx, cy, size, size * 0.82, parent);
+  if (sprite) {
+    sprite.node.angle = (cell * 73) % 360;
+    if (cell % 2 === 1) {
+      sprite.node.setScale(-1, 1, 1);
+    }
+  }
+  return sprite;
+}
+
+/**
+ * 这一格要不要盖雾:点亮了不盖;可探索格没点亮就盖;不可探索格(纯密林 / 悬崖)只要四邻有一格点亮就跟着散开,
+ * 否则也盖(不然它从一开始就是亮的,像早去过)。
+ */
+export function exploreFogged(cell: number, lit: Set<number>, mask: number): boolean {
+  if (lit.has(cell)) {
+    return false;
+  }
+  if (Math.floor(mask / Math.pow(2, cell)) % 2 === 1) {
+    return true;
+  }
+  const c = cell % EXPLORE_COLS;
+  const r = Math.floor(cell / EXPLORE_COLS);
+  const near = [[c - 1, r], [c + 1, r], [c, r - 1], [c, r + 1]].filter(([x, y]) => x >= 0 && y >= 0 && x < EXPLORE_COLS && y < EXPLORE_ROWS);
+  return !near.some(([x, y]) => lit.has(y * EXPLORE_COLS + x));
+}
 /** 野外怪物种类名(头顶名字用;精英 / 首领用营地名)。 */
 const MONSTER_SPECIES_NAME: Record<string, string> = {
   MINI_RAT: '幼鼠', SMALL_SPIDER: '林蛛', MEDIUM_DOG: '野犬', MEDIUM_BEAR: '棕鬃熊', SWORD_MALE: '盗匪剑士', BOW_MALE: '盗匪弓手', GARGOYLE: '石像鬼',
@@ -380,6 +423,10 @@ export class LobbyTownRenderer {
   private bannerUntil = 0;
   private respawnCheckAt = 0;
   private namesCheckAt = 0;
+  /** 迷雾(docs/53 §2.2):本地已点亮(含刚上报、服务端还没回)的格;小地图上各格的雾节点。 */
+  private exploreLit = new Map<WorldMapCode, Set<number>>();
+  private minimapFog = new Map<number, Node>();
+  private exploreCheckAt = 0;
   // docs/50 §14 野外即时战斗
   private readonly encounters = new Map<string, { id: number; pending: boolean }>();
   private raiderAttack = 0;
@@ -1099,6 +1146,7 @@ export class LobbyTownRenderer {
     this.stepCombat(clamped);
     this.stepMonsters(clamped);
     this.updateMonsterNames();
+    this.updateExplore();
     if (Date.now() >= this.respawnCheckAt) {
       this.respawnCheckAt = Date.now() + 2000;
       if (this.def.camps.length > 0) {
@@ -1171,6 +1219,10 @@ export class LobbyTownRenderer {
       chests: (def.chests ?? []).map((chest) => ({ x: chest.x, y: chest.y, label: chest.label, opened: opened.has(chest.code) })),
       exits: def.exits.map((exit) => ({ x: exit.x, y: exit.y, label: exit.label })),
       places,
+      explore: (() => {
+        const state = world?.explore?.find((item) => item.mapCode === this.mapCode);
+        return state ? { lit: Array.from(this.exploreLitCells()), mask: state.mask, percent: state.percent, tier: state.tier } : null;
+      })(),
     };
   }
 
@@ -1965,6 +2017,7 @@ export class LobbyTownRenderer {
       // 野外:原型样式的地形(灰地 + 地表纹理 + 深色岩块团),圆边压暗
       this.mountMinimapTerrain(content, def, mapScale);
     }
+    this.mountMinimapFog(content, def, mapScale);
     this.mountMinimapVignette(area, holeR);
     const marks = this.host.addChildPlainNode(content, 'Marks', 0, 0, def.width * mapScale, def.height * mapScale).addComponent(Graphics);
     if (!cityBg) {
@@ -4727,6 +4780,78 @@ export class LobbyTownRenderer {
       this.drawLeaderHp();
       this.applyCamera(true);
     }, 2000);
+  }
+
+  /** 当前图已点亮的格(服务端 bits ∪ 本地刚点亮的)。 */
+  exploreLitCells(code: WorldMapCode = this.mapCode): Set<number> {
+    const world = this.host.currentWorldState?.() ?? null;
+    const state = world?.explore?.find((item) => item.mapCode === code);
+    const lit = new Set<number>(this.exploreLit.get(code) ?? []);
+    for (let cell = 0; cell < EXPLORE_COLS * EXPLORE_ROWS; cell += 1) {
+      if (state && Math.floor(state.bits / Math.pow(2, cell)) % 2 === 1) {
+        lit.add(cell);
+      }
+    }
+    return lit;
+  }
+
+  /** 队长所在格(格号 = 行 × 8 + 列,行从地图顶边往下)。 */
+  private exploreCellAt(x: number, y: number): number {
+    const def = this.def;
+    const c = Math.max(0, Math.min(EXPLORE_COLS - 1, Math.floor((x + def.width / 2) / (def.width / EXPLORE_COLS))));
+    const r = Math.max(0, Math.min(EXPLORE_ROWS - 1, Math.floor((def.height / 2 - y) / (def.height / EXPLORE_ROWS))));
+    return r * EXPLORE_COLS + c;
+  }
+
+  /** 每 0.4 秒看一次队长进了哪一格:新格本地先点亮(小地图雾立刻散),再上报服务端。 */
+  private updateExplore(): void {
+    const now = Date.now();
+    const leader = this.leader;
+    if (now < this.exploreCheckAt || !leader || !this.host.reportWorldExplore) {
+      return;
+    }
+    this.exploreCheckAt = now + 400;
+    const cell = this.exploreCellAt(leader.x, leader.y);
+    if (this.exploreLitCells().has(cell)) {
+      return;
+    }
+    const mine = this.exploreLit.get(this.mapCode) ?? new Set<number>();
+    mine.add(cell);
+    this.exploreLit.set(this.mapCode, mine);
+    const lit = this.exploreLitCells();
+    const mask = this.host.currentWorldState?.()?.explore?.find((item) => item.mapCode === this.mapCode)?.mask ?? 0;
+    for (const [fogCell, fog] of this.minimapFog) {
+      if (fog.isValid && fog.active && !exploreFogged(fogCell, lit, mask)) {
+        fog.active = false;
+      }
+    }
+    this.host.reportWorldExplore(this.mapCode, cell);
+  }
+
+  /** 小地图迷雾:可探索、未点亮的格盖一团暗雾(云影贴图压暗放大,相邻雾团叠成软边)。 */
+  private mountMinimapFog(content: Node, def: WorldMapDef, mapScale: number): void {
+    this.minimapFog = new Map();
+    const world = this.host.currentWorldState?.() ?? null;
+    const state = world?.explore?.find((item) => item.mapCode === this.mapCode);
+    if (!state) {
+      return;
+    }
+    const lit = this.exploreLitCells();
+    const cw = def.width / EXPLORE_COLS;
+    const ch = def.height / EXPLORE_ROWS;
+    for (let cell = 0; cell < EXPLORE_COLS * EXPLORE_ROWS; cell += 1) {
+      if (!exploreFogged(cell, lit, state.mask)) {
+        continue;
+      }
+      const c = cell % EXPLORE_COLS;
+      const r = Math.floor(cell / EXPLORE_COLS);
+      const x = (-def.width / 2 + (c + 0.5) * cw) * mapScale;
+      const y = (def.height / 2 - (r + 0.5) * ch) * mapScale;
+      const fog = mountExploreCloud(this.host, content, cell, x, y, cw * mapScale, ch * mapScale);
+      if (fog) {
+        this.minimapFog.set(cell, fog.node);
+      }
+    }
   }
 
   /**

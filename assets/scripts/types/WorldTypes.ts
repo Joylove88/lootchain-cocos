@@ -62,6 +62,17 @@ export interface WorldStateVO {
   bountyDate: string;
   /** 今日已开的野外宝箱码(docs/52 §3.1)。 */
   openedChests: string[];
+  /** 迷雾 / 探索度(docs/53 §2.2):每张图一条。 */
+  explore: WorldExploreVO[];
+}
+
+/** 探索度:bits = 已点亮块(格号 = 行 × 8 + 列,行从地图顶边往下),mask = 可探索块,tier = 已发奖档位 0..4。 */
+export interface WorldExploreVO {
+  mapCode: WorldMapCode;
+  bits: number;
+  mask: number;
+  percent: number;
+  tier: number;
 }
 
 export interface WorldActionResultVO {

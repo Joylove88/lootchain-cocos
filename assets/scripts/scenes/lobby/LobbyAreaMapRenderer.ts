@@ -7,6 +7,15 @@ import type { TownAreaMapInfo } from './LobbyTownRenderer';
 import type { PathPoint } from './LobbyTownPathfinder';
 import { townCoordText } from './LobbyTownPathfinder';
 import { worldAsset } from './LobbyWorldMaps';
+import { exploreFogged, mountExploreCloud } from './LobbyTownRenderer';
+
+/** 探索度四档奖励(和服务端 FieldExploreRules.tierRewards 一致,只用来显示下一档)。 */
+const EXPLORE_TIERS: Array<{ percent: number; text: string }> = [
+  { percent: 25, text: '金币 800' },
+  { percent: 50, text: '金币 1,500 · 初级强化石 ×2' },
+  { percent: 75, text: '金币 2,500 · 英雄经验书 ×2' },
+  { percent: 100, text: '金币 4,000 · 英雄契约券 ×1' },
+];
 
 /** 地图页图标(tools/qa/map_icons_extract.py 从原型抠出)+ 各图鸟瞰底图(tools/qa/map_overview_capture.py 实机截出)。 */
 const MAP_ICON = {
@@ -193,16 +202,34 @@ export class LobbyAreaMapRenderer {
       g.rect(-dispW / 2, -dispH / 2, dispW, dispH);
       g.fill();
     }
-    // 边缘压暗一圈
-    const vig = this.host.addChildPlainNode(clip, 'Vignette', 0, 0, innerW, innerH).addComponent(Graphics);
-    for (let i = 0; i < 10; i += 1) {
-      const inset = S(4) * i;
-      vig.strokeColor = rgba(6, 8, 12, 26);
-      vig.lineWidth = S(5);
-      vig.rect(-innerW / 2 + inset, -innerH / 2 + inset, innerW - inset * 2, innerH - inset * 2);
-      vig.stroke();
-    }
+    // 10-30:去掉边缘压暗(压在白色云雾上成了一圈灰色直边)
     const at = (x: number, y: number): { x: number; y: number } => ({ x: x * sc, y: y * sc });
+    // 迷雾(docs/53 §2.2):可探索、未点亮的格盖暗雾;雾里的怪群 / 宝箱不标
+    const fogCells = new Set<number>();
+    const ex = info.explore;
+    if (ex) {
+      const lit = new Set(ex.lit);
+      const fogLayer = this.host.addChildPlainNode(map, 'Fog', 0, 0, dispW, dispH);
+      const cw = dispW / 8;
+      const ch = dispH / 5;
+      for (let cell = 0; cell < 40; cell += 1) {
+        if (!exploreFogged(cell, lit, ex.mask)) {
+          continue;
+        }
+        fogCells.add(cell);
+        const c = cell % 8;
+        const r = Math.floor(cell / 8);
+        mountExploreCloud(this.host, fogLayer, cell, -dispW / 2 + (c + 0.5) * cw, dispH / 2 - (r + 0.5) * ch, cw, ch);
+      }
+    }
+    const inFog = (x: number, y: number): boolean => {
+      if (fogCells.size === 0) {
+        return false;
+      }
+      const c = Math.max(0, Math.min(7, Math.floor((x + info.width / 2) / (info.width / 8))));
+      const r = Math.max(0, Math.min(4, Math.floor((info.height / 2 - y) / (info.height / 5))));
+      return fogCells.has(r * 8 + c);
+    };
     const marks = this.host.addChildPlainNode(map, 'Marks', 0, 0, dispW, dispH);
     // 点地图设置目的地(触点 → 地图坐标)
     map.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
@@ -232,6 +259,9 @@ export class LobbyAreaMapRenderer {
     }
     // 怪群 / 精英 / 首领
     for (const camp of info.camps) {
+      if (inFog(camp.x, camp.y)) {
+        continue;
+      }
       const p = at(camp.x, camp.y);
       if (camp.kind === 'boss') {
         this.markerChip(marks, `Boss_${camp.label}`, p.x, p.y, camp.label, MAP_ICON.skull, S, k, true);
@@ -247,6 +277,9 @@ export class LobbyAreaMapRenderer {
       g.fill();
     }
     for (const chest of info.chests) {
+      if (inFog(chest.x, chest.y)) {
+        continue;
+      }
       const p = at(chest.x, chest.y);
       const icon = this.host.addSprite(`Chest_${chest.label}_${Math.round(chest.x)}`, MAP_ICON.chest, p.x, p.y, S(30), S(28), marks);
       if (icon && chest.opened) {
@@ -304,6 +337,15 @@ export class LobbyAreaMapRenderer {
       g.close();
       g.fill();
       this.textChip(marks, 'MeLabel', p.x, p.y + S(42), '你', S, k);
+    }
+    // 探索度(框内左上):百分比 + 下一档奖励
+    if (ex) {
+      const next = EXPLORE_TIERS.find((tier) => ex.percent < tier.percent);
+      const text = next ? `探索度 ${ex.percent}%  ·  ${next.percent}% 奖励:${next.text}` : `探索度 100%  ·  已全部探索`;
+      const cw = this.chipWidth(text, S) + S(10);
+      const chip = this.host.addChildPlainNode(frame, 'Explore', -frameW / 2 + S(16) + cw / 2, frameH / 2 - S(36), cw, S(40));
+      mountGlassSlice(this.host, chip, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, cw, S(40), S(40) / 48);
+      glassLabel(this.host, chip, 'Text', text, 0, 0, S(19), next ? GLASS_COLOR.text : CHAMPAGNE, cw - S(20), HorizontalTextAlignment.CENTER);
     }
     // 图例
     const legend = this.host.addChildPlainNode(frame, 'Legend', LX(389) - FX(711.5), FY(751) - FY(438.5), S(662), S(48));
