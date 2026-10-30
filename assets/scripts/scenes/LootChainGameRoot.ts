@@ -1555,10 +1555,10 @@ export class LootChainGameRoot extends Component {
   }
 
   private runLobbyTerminalAction(action: LobbyTerminalAction): void {
-    // docs/53 §1(10-29):挂机收益下线,终端这格改「野外探索」→ 世界地图(探索面板上线前先定位到当前图)
+    // docs/53 §2.5:终端「野外探索」格 → 当前图鸟瞰图(探索度 + 兴趣点计数都在顶栏)
     if (action === 'idle') {
       this.closeLobbyTerminalPanel();
-      this.openWorldMapPanel();
+      this.openAreaMapPanel();
       return;
     }
     this.closeLobbyTerminalPanel();
@@ -7246,6 +7246,44 @@ export class LootChainGameRoot extends Component {
       }
     };
     next();
+  }
+
+  /** 终端「野外探索」格摘要(docs/53 §2.5):当前图探索度 + 今天可开宝箱 / 可采采集点;红点 = 任一已开放地图今天还有可开 / 可采。 */
+  private terminalExploreSummary(): { text: string; dot: boolean } | null {
+    const world = this.worldState;
+    if (!world) {
+      return null;
+    }
+    const opened = new Set(world.openedChests ?? []);
+    const gathered = new Set(world.gatheredToday ?? []);
+    const leftOf = (code: WorldMapCode): { chests: number; gather: number } => {
+      const def = WORLD_MAPS[code];
+      return {
+        chests: (def?.chests ?? []).filter((chest) => !opened.has(chest.code)).length,
+        gather: (def?.pois ?? []).filter((poi) => (poi.kind === 'HERB' || poi.kind === 'ORE') && !gathered.has(poi.code)).length,
+      };
+    };
+    const dot = world.maps.some((map) => {
+      if (!map.unlocked) {
+        return false;
+      }
+      const left = leftOf(map.mapCode as WorldMapCode);
+      return left.chests + left.gather > 0;
+    });
+    const code = this.lobbyTownRenderer.currentMapCode();
+    const ex = world.explore.find((item) => item.mapCode === code);
+    if (!ex) {
+      return { text: '', dot };
+    }
+    const left = leftOf(code);
+    const parts = [`探索度 ${ex.percent}%`];
+    if (left.chests > 0) {
+      parts.push(`宝箱 ${left.chests}`);
+    }
+    if (left.gather > 0) {
+      parts.push(`采集 ${left.gather}`);
+    }
+    return { text: parts.join(' · '), dot };
   }
 
   // ── docs/54 野外兴趣点:隐藏点 / 石碑 / 采集 ──

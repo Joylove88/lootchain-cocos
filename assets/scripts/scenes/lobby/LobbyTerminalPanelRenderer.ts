@@ -12,6 +12,8 @@ export type LobbyTerminalAction =
 export interface LobbyTerminalPanelHost extends LobbyHudHost {
   closeLobbyTerminalPanel(): void;
   runLobbyTerminalAction(action: LobbyTerminalAction): void;
+  /** 「野外探索」格(docs/53 §2.5):当前图探索度 + 今天还能开的宝箱 / 能采的采集点;dot = 任一已开放地图今天还有可开 / 可采。 */
+  terminalExploreSummary?(): { text: string; dot: boolean } | null;
 }
 
 /** 功能格(原型 proto_terminal_b2):列左沿 630 / 856 / 1083 / 1309 / 1536,宽 210;行顶 105 / 326 / 537,高 205 / 195 / 195。 */
@@ -121,11 +123,13 @@ export class LobbyTerminalPanelRenderer {
   private renderTiles(root: Node, P: TownProtoFrame): void {
     const badges = this.host.currentLobbyBadges?.() ?? null;
     const unread = this.host.lobbyMailUnreadCount?.() ?? 0;
+    const explore = this.host.terminalExploreSummary?.() ?? null;
     const dots: Partial<Record<LobbyTerminalAction, boolean>> = {
       heroes: !!badges?.heroGrowable,
       gacha: !!badges && (badges.gachaFree || badges.gachaTicketTen),
       quest: (badges?.quest ?? 0) > 0,
       mail: unread > 0,
+      idle: !!explore?.dot,
     };
     TILE_KEYS.forEach((row, r) => {
       row.forEach((key, c) => {
@@ -140,6 +144,12 @@ export class LobbyTerminalPanelRenderer {
     });
     if (dots.mail) {
       this.dot(root, 1318, 777, P);
+    }
+    // 「野外探索」格(第 3 行第 3 格):标题下方一行香槟小字(静态图标题底边约 y 700,格底 732)
+    if (explore?.text) {
+      const label = this.host.addChildLabel(root, 'ExploreSummary', explore.text, P.C(TILE_X0[2] + TILE_W / 2), P.Y(TILE_Y0[2] + 179), P.S(18), rgba(227, 196, 138),
+        new Size(P.S(TILE_W - 20), P.S(24)), HorizontalTextAlignment.CENTER);
+      label.overflow = Label.Overflow.SHRINK;
     }
   }
 
