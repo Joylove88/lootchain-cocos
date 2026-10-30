@@ -408,6 +408,14 @@ export function mountGlassFadeLine(host: UiKitHost, parent: Node, name: string, 
 
 
 /** 原型坐标映射(1870×841):k 按"装得下"取;LX / RX 贴左右缘,FX / FY 以面板中心为原点。 */
+/**
+ * B 风格(毛玻璃)整页是否启用:召唤 / 背包 / 锻造。原先只给手机横屏(isPhoneDesign),
+ * 2026-10-30 用户:电脑端也用新主题(电脑浏览器还停在旧版召唤页)。
+ */
+export function glassStyleEnabled(): boolean {
+  return true;
+}
+
 export function glassProtoMap(panelWidth: number, panelHeight: number): { k: number; LX: (px: number) => number; RX: (px: number) => number; FX: (px: number) => number; FY: (py: number) => number; S: (v: number) => number } {
   const k = Math.min(panelWidth / 1870, panelHeight / 841);
   return {

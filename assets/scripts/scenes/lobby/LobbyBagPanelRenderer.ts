@@ -25,7 +25,7 @@ import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
-import { glassLabel, glassProtoMap, GLASS_BAG_ICON, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassButton, mountGlassClippedIcon, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_BAG_ICON, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassButton, mountGlassClippedIcon, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill, mountGlassTopBar } from '../UiGlassKit';
 import { mountRefScrollBar, mountRefButton, mountRefDialogBackdrop, mountRefTitleBand, mountRefLineFrame, mountRefOrnateDialog, mountRefPlate, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_BAG_DLG, REF_DETAIL, REF_DETAIL_INNER_BG, REF_DETAIL_SLOT_FRAME_ASSET, REF_HALL_BG, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_ULT, refDetailSourceKind } from '../UiRefKit';
 
 // C1812 背包视觉资源：道具格底、选中高亮、主按钮、分割线与道具类型图标。
@@ -384,7 +384,7 @@ export class LobbyBagPanelRenderer {
     const coverW = Math.max(panelWidth, layout.width + Math.abs(centerX) * 2);
     const coverH = Math.max(panelHeight, layout.height + Math.abs(centerY) * 2);
     const bgW = Math.max(coverW, coverH * REF_HALL_BG.ratio);
-    const glass = BAG_GLASS && isPhoneDesign();
+    const glass = BAG_GLASS && glassStyleEnabled();
     this.host.addSprite('LobbyBagSceneBackdrop', glass ? BAG_GLASS_BG : REF_HALL_BG.path, 0, 0, bgW, bgW / REF_HALL_BG.ratio, panel)
       ?? this.host.addSprite('LobbyBagSceneBackdrop', 'ui/battle/ai/battle_bg_cathedral/spriteFrame', 0, 0, panelWidth, panelHeight, panel);
     const shade = this.host.addChildPlainNode(panel, 'LobbyBagSceneShade', 0, 0, panelWidth, panelHeight);
@@ -970,7 +970,7 @@ export class LobbyBagPanelRenderer {
   // 居中详情弹窗(参考图):遮罩点击或右上 X 关闭;用途/获取途径/操作按钮(只读禁用)/出售横幅。
   // 框整图非等比拉宽到参考图比例(角饰轻微加宽可接受),内容按比例内边距排布。
   private renderDetailPopup(parent: Node, item: BagItemEntryVO, panelWidth: number, panelHeight: number, scale: number, state: LobbyBagPanelState): void {
-    if (BAG_GLASS && isPhoneDesign()) {
+    if (BAG_GLASS && glassStyleEnabled()) {
       this.renderGlassDetail(parent, item, panelWidth, panelHeight, state);
       return;
     }

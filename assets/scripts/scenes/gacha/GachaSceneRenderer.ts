@@ -98,12 +98,14 @@ import { resolveBagStyleItemIconAsset } from '../lobby/LobbyBagPanelRenderer';
 import { heroCardArtProfileByCode } from '../lobby/HeroCardArtAssets';
 import { renderLockGlyph } from '../UiLockGlyph';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_GACHA_ACTION_ICON, GLASS_GACHA_POOL_ICON, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassCheckbox, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_GACHA_ACTION_ICON, GLASS_GACHA_POOL_ICON, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassCheckbox, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 
 /** 2026-10-29 B 风格(毛玻璃)开关:手机横屏召唤主界面按原型 gacha_b 1:1。 */
 const GACHA_GLASS = true;
 /** B 风格整页背景:与背包共用的去饱和虚化大厅图(10-29 用户选定)。 */
 const GACHA_GLASS_BG = { path: 'ui/common/ref/hall_bg_glass/spriteFrame', ratio: 1870 / 841 };
+/** B 风格中央舞台的参考版面:手机横屏舞台 1600×720(原型按它 1:1 对过),k = 该版面下的原型映射比例。 */
+const GACHA_GLASS_REF = { w: 1600, h: 720, k: Math.min(1600 / 1870, 720 / 841) };
 /** B 风格中央卡池骨骼放大倍数(原型人物约占屏高 72%)。 */
 const GACHA_GLASS_SPINE_BOOST = 1.75;
 /** 粗估文字宽(中文按字号、其余按 0.56 字号)。 */
@@ -235,7 +237,7 @@ export class GachaSceneRenderer {
     root.addComponent(BlockInputEvents);
 
     this.upPanelTop = null;
-    this.glassMode = GACHA_GLASS && isPhoneDesign();
+    this.glassMode = GACHA_GLASS && glassStyleEnabled();
     if (this.glassMode) {
       const bgW = Math.max(layout.width, layout.height * GACHA_GLASS_BG.ratio);
       if (!this.host.addSprite('GachaSceneBackground', GACHA_GLASS_BG.path, 0, 0, bgW, bgW / GACHA_GLASS_BG.ratio, root)) {
@@ -842,11 +844,24 @@ export class GachaSceneRenderer {
     this.renderPityLine(parent, layout, scale, selectedPool, state);
   }
 
-  private renderAbyssSpineStage(parent: Node, layout: UiLayout, scale: number, selectedPool: GachaPreviewPool): void {
+  private renderAbyssSpineStage(parent: Node, realLayout: UiLayout, realScale: number, selectedPool: GachaPreviewPool): void {
+    // B 风格:舞台按手机参考版面(1600×720、scale 1,原型就是按它对的)排,再整体按原型映射 k 缩放到当前屏幕——
+    // 电脑端(2026-10-30 起也用 B 风格)和手机看起来一样;旧版仍按实际版面
+    let layout = realLayout;
+    let scale = realScale;
+    let zoom = 1;
+    if (this.glassMode) {
+      zoom = glassProtoMap(realLayout.stageWidth, realLayout.stageHeight).k / GACHA_GLASS_REF.k;
+      layout = { ...realLayout, stageWidth: GACHA_GLASS_REF.w, stageHeight: GACHA_GLASS_REF.h };
+      scale = 1;
+    }
     const stageWidth = clamp(layout.stageWidth * 0.46, 390 * scale, 730 * scale);
     const stageHeight = clamp(layout.stageHeight * 0.63, 360 * scale, 610 * scale);
-    const centerY = (layout.stageTop + layout.stageBottom) / 2 - 18 * scale;
+    const centerY = (realLayout.stageTop + realLayout.stageBottom) / 2 - 18 * scale * zoom;
     const stage = this.host.addChildPlainNode(parent, 'GachaAbyssSpineStage', 0, centerY, stageWidth, stageHeight);
+    if (zoom !== 1) {
+      stage.setScale(new Vec3(zoom, zoom, 1));
+    }
     const graphics = stage.addComponent(Graphics);
     const spineGroundY = this.resolveGachaSpineGroundY(stageHeight, selectedPool);
     graphics.fillColor = rgba(0, 0, 0, 70);

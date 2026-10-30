@@ -1,5 +1,7 @@
 import { REF_BAG_DLG, REF_DETAIL, REF_SECTION_BAND, REF_TITLE_STAR, REF_ULT } from './UiRefKit';
 import { isTextInputActive } from '../app/ScreenAdapter';
+import { ensurePackResources, packResourcesReady } from '../app/AssetOfflineCache';
+import { FORGE_RESULT_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX } from './lobby/LobbyBattleAttackFxConfig';
 import {
   Node,
   Sprite,
@@ -124,6 +126,32 @@ const BAG_DETAIL_PRELOAD_ASSETS: string[] = [
 
 export type UiPreloadGroup = 'heroes' | 'gacha' | 'bag' | 'forge' | 'adventure' | 'battle' | 'crystal' | 'town' | 'raid';
 
+/**
+ * 分层下载(2026-10-30):各页面除组里登记的图外,整目录也要先下到本地才放行——页面里还有不少「只拉不拦」的图,
+ * 网页首访分层下载后这些图可能还在服务器上,整目录先下齐,页面才不会先画出缺图的样子。
+ */
+/** 页面里挂的界面骨骼特效目录(锻造结果 / 升级升星 / 水晶光效…)。 */
+const fxDirs = (specs: ReadonlyArray<{ effect: string } | null>): string[] =>
+  specs.filter((spec): spec is { effect: string } => !!spec).map((spec) => `spine/effect/${spec.effect}`);
+const GROUP_PACK_DIRS: Record<UiPreloadGroup, readonly string[]> = {
+  heroes: ['ui/hero', 'ui/hero-detail', 'ui/hero-roster', 'spine/ui/hero-roster', 'ui/equip', 'ui/protagonist',
+    ...fxDirs([LOBBY_UI_FX.heroStarUp, LOBBY_UI_FX.heroLevelUp, LOBBY_UI_FX.powerSurge])],
+  gacha: ['ui/gacha', 'spine/gacha', ...fxDirs([LOBBY_UI_FX.gachaRareCard])],
+  bag: ['ui/bag', 'ui/equip'],
+  forge: ['ui/forge', 'ui/equip', ...fxDirs(Object.values(FORGE_RESULT_FX))],
+  adventure: ['ui/adventure'],
+  // 战斗图组只下登记的图(ui/battle 整目录 69MB,多为各关场景背景);开战加载门另按本局关卡补下(GameRoot.battlePackPrefixes)
+  battle: [],
+  crystal: ['ui/crystal', 'ui/guard', ...fxDirs(Object.values(LOBBY_CRYSTAL_FX))],
+  town: [],
+  raid: ['ui/raid'],
+};
+
+/** 图路径(xxx/spriteFrame、xxx/texture)→ 资源路径前缀。 */
+function packPrefixOf(path: string): string {
+  return path.replace(/\/(spriteFrame|texture)$/, '');
+}
+
 /** 守卫水晶弹窗专用新素材(ui/crystal/ai,2026-09-30 参考图改版):首次打开弹窗时整组拉,齐了再画,避免空框闪一下。 */
 const GUARD_CRYSTAL_UI_ASSETS = [
   // 2026-10-14 v4 整页版新素材(Codex 按参考图重出):场景底图 / 水晶 v2 / 等级牌 v2 / 页签 v2 / 题头八角星
@@ -200,11 +228,46 @@ export class UiSpriteFrameCache {
       return;
     }
     this.preloadedGroups.add(group);
+    // 先确认这一组的文件都已下到本地(网页分层下载);没齐就整块提到下载队首,期间页面一直显示下载进度(不计时、不放行),
+    // 下齐后再走下面的内存加载闸门
+    const prefixes = this.groupPackPrefixes(group);
+    if (!packResourcesReady(prefixes)) {
+      this.groupDownloads.set(group, { done: 0, total: 1 });
+      void ensurePackResources(prefixes, (done, total) => {
+        this.groupDownloads.set(group, { done, total });
+        this.scheduleRenderRefresh();
+      }).then(() => {
+        this.groupDownloads.delete(group);
+        this.startGroupMemoryGate(group);
+      });
+      return;
+    }
+    this.startGroupMemoryGate(group);
+  }
+
+  /** 组的下载前缀:整目录(GROUP_PACK_DIRS)+ 组里登记的每张图 + 页面动态补进来的图。 */
+  groupPackPrefixes(group: UiPreloadGroup): string[] {
+    const set = new Set<string>(GROUP_PACK_DIRS[group]);
+    this.forEachGroupAsset(group, (path) => set.add(packPrefixOf(path)), (path) => set.add(packPrefixOf(path)));
+    (this.groupExtraPaths.get(group) ?? []).forEach((path) => set.add(packPrefixOf(path)));
+    return Array.from(set);
+  }
+
+  /** 组正在下载到本地(网页分层下载):{ done, total } 按文件数。 */
+  private readonly groupDownloads = new Map<UiPreloadGroup, { done: number; total: number }>();
+  /** addGroupAssets 补进来的图(下载闸门也要算上)。 */
+  private readonly groupExtraPaths = new Map<UiPreloadGroup, string[]>();
+
+  /** 原来的内存闸门:组里的图读进内存,窗口期内等齐再画(此时文件已在本地,读取很快)。 */
+  private startGroupMemoryGate(group: UiPreloadGroup): void {
     this.groupWaits.set(group, { pending: new Set<string>(), total: 0, startedAt: Date.now() });
     // 闸门最长等 GROUP_GATE_WINDOW_MS:到点无论还有几张没到都放行(缺图走兜底),并补一次整刷让页面换出来。
     setTimeout(() => this.scheduleRenderRefresh(), GROUP_GATE_WINDOW_MS + 50);
     const track = (path: string): void => this.trackGroupPath(group, path);
     this.forEachGroupAsset(group, track, (path) => this.request(path));
+    (this.groupExtraPaths.get(group) ?? []).forEach(track);
+    // 刚从下载态切过来、图都已在内存时没有到货事件,补一次整刷把加载页换成页面
+    this.scheduleRenderRefresh();
   }
 
   /** 某分组用到的全部图路径(后台预读用:按小批量排队读,不一次性塞满加载队列)。 */
@@ -337,12 +400,43 @@ export class UiSpriteFrameCache {
 
   /** 页面动态补进组里的图(如名册里玩家已有英雄的卡面):窗口期内一起等,过了窗口只拉不拦。 */
   addGroupAssets(group: UiPreloadGroup, paths: readonly string[]): void {
+    const extra = this.groupExtraPaths.get(group) ?? [];
+    const fresh = paths.filter((path) => extra.indexOf(path) < 0);
+    if (fresh.length > 0) {
+      this.groupExtraPaths.set(group, extra.concat(fresh));
+    }
     this.preloadGroup(group);
+    // 组还在下载:等下齐后内存闸门会把这些图一起登记(见 startGroupMemoryGate);新补的图不在本地就补下
+    if (this.groupDownloads.has(group)) {
+      return;
+    }
+    const missing = fresh.map(packPrefixOf);
+    if (missing.length > 0 && !packResourcesReady(missing)) {
+      this.groupDownloads.set(group, { done: 0, total: 1 });
+      void ensurePackResources(missing, (done, total) => {
+        this.groupDownloads.set(group, { done, total });
+        this.scheduleRenderRefresh();
+      }).then(() => {
+        this.groupDownloads.delete(group);
+        const wait = this.groupWaits.get(group);
+        if (wait) {
+          wait.startedAt = Date.now();
+        }
+        fresh.forEach((path) => this.trackGroupPath(group, path));
+        this.scheduleRenderRefresh();
+      });
+      return;
+    }
     paths.forEach((path) => this.trackGroupPath(group, path));
   }
 
   /** 页面首开时该组还在下载:返回进度;已齐/超时/没开过返回 null(直接画页面)。 */
   groupProgress(group: UiPreloadGroup): { done: number; total: number } | null {
+    // 还在下到本地:一直拦着(不受窗口期限制,绝不先画缺素材的页面)
+    const downloading = this.groupDownloads.get(group);
+    if (downloading) {
+      return downloading;
+    }
     const wait = this.groupWaits.get(group);
     if (!wait || wait.pending.size === 0 || Date.now() - wait.startedAt >= GROUP_GATE_WINDOW_MS) {
       return null;

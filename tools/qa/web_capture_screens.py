@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """网页正式包按手机分辨率(800×360 CSS × 3 = 2400×1080,走手机布局)逐个打开界面截图;界面清单复用 native_capture_screens.SCREENS。
 调试安卓包在模拟器上会频繁触发 gfx-validator 断言崩溃(正式包没有),整屏审核截图用这个更稳。
-用法:QA_USER=guidetest02 QA_PASS=*** PREVIEW_PORT=7460 python tools/qa/web_capture_screens.py <输出目录> [--only a,b]"""
+用法:QA_USER=guidetest02 QA_PASS=*** PREVIEW_PORT=7460 python tools/qa/web_capture_screens.py <输出目录> [--only a,b] [--pc]"""
 import asyncio, base64, json, os, subprocess, sys, time, urllib.request
 import websockets
 import boss_bar_cdp as base
@@ -10,6 +10,8 @@ from native_capture_screens import SCREENS, ROOT_JS, RESET_JS
 OUT = sys.argv[1]
 GATE_WAIT = int(sys.argv[sys.argv.index('--gate-wait') + 1]) if '--gate-wait' in sys.argv else 40  # 首开素材加载门最多等几秒(首访整包下载时要拉长)
 PROBE = sys.argv[sys.argv.index('--probe') + 1] if '--probe' in sys.argv else None  # 每屏截图后求值并打印(排查用)
+PC = '--pc' in sys.argv  # 电脑分辨率 1600×900(电脑布局),默认手机 800×360×3
+VIEW = (1600, 900, 1, False) if PC else (800, 360, 3, True)
 ONLY = set(sys.argv[sys.argv.index('--only') + 1].split(',')) if '--only' in sys.argv else None
 os.makedirs(OUT, exist_ok=True)
 USER = os.environ.get('QA_USER', 'guidetest02')
@@ -24,7 +26,7 @@ async def main():
         import shutil
         shutil.rmtree(profile, ignore_errors=True)
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
-                             '--window-size=800,360', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
+                             f'--window-size={VIEW[0]},{VIEW[1]}', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     try:
         for _ in range(100):
             try:
@@ -50,7 +52,7 @@ async def main():
                 r = await call('Runtime.evaluate', {'expression': "(()=>{ const cc=window.__cc; " + ROOT_JS + " " + body + " })()", 'returnByValue': True}, 120)
                 return r.get('result', {}).get('result', {}).get('value')
 
-            await call('Emulation.setDeviceMetricsOverride', {'width': 800, 'height': 360, 'deviceScaleFactor': 3, 'mobile': True})
+            await call('Emulation.setDeviceMetricsOverride', {'width': VIEW[0], 'height': VIEW[1], 'deviceScaleFactor': VIEW[2], 'mobile': VIEW[3]})
             await call('Page.navigate', {'url': base.PAGE})
             await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             for _ in range(600):
@@ -96,7 +98,9 @@ async def main():
                 await asyncio.sleep(wait * 2.2)
                 # 首开有素材加载门:等它过去
                 for _ in range(max(1, GATE_WAIT // 2)):
-                    if not await ev("return Object.keys(root.uiSpriteFrameCache.groupWaits ? Object.fromEntries(root.uiSpriteFrameCache.groupWaits) : {}).some(g=>root.uiSpriteFrameCache.groupProgress(g)) ? 1 : 0;"):
+                    # 内存闸门 + 网页分层下载(组下载 / PackLoading 下载页)
+                    if not await ev("const c = root.uiSpriteFrameCache; let pl = false; root.node.walk(n => { if (n.name === 'PackLoading') pl = true; }); "
+                                    "return (pl || (c.groupDownloads && c.groupDownloads.size) || Object.keys(c.groupWaits ? Object.fromEntries(c.groupWaits) : {}).some(g=>c.groupProgress(g))) ? 1 : 0;"):
                         break
                     await asyncio.sleep(2)
                 m = await call('Page.captureScreenshot', {'format': 'png'}, 120)

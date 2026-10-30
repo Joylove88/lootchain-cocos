@@ -35,8 +35,15 @@ import {
 import { AppConfig } from '../app/AppConfig';
 import { isPhoneDesign, isTextInputActive, syncDesignResolutionToViewport } from '../app/ScreenAdapter';
 import {
+  coreManifestFiles,
   downloadFullPack,
   ensureAssetServiceWorker,
+  ensurePackResources,
+  initPackDownloader,
+  packDownloadPending,
+  packResourcesReady,
+  setBackgroundPackPaused,
+  startBackgroundPack,
   fetchAssetManifest,
   hasStorageRoomFor,
   isBootPreloadCached,
@@ -46,7 +53,7 @@ import {
   missingManifestFiles,
   pruneStaleAssetCache,
   supportsFullPack,
-  type AssetManifest,
+  type TieredManifest,
 } from '../app/AssetOfflineCache';
 import { PREVIEW } from 'cc/env';
 import { applyGraphicsSettings, installInteractionFrameBoost } from '../app/GraphicsSettings';
@@ -137,7 +144,8 @@ import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStag
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { worldMapAssetPaths, worldMapDef, worldMapOfStage, type WorldNpcCode } from './lobby/LobbyWorldMaps';
+import { heroPackPrefixes } from '../api/LobbyHeroApi';
+import { worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
@@ -739,7 +747,7 @@ export class LootChainGameRoot extends Component {
         percentLabel.string = `${Math.round(ratio * 100)}%`;
       }
       if (tipLabel.isValid) {
-        tipLabel.string = `正在下载游戏资源 ${mb(doneBytes)} / ${mb(totalBytes)} MB(仅首次,之后打开无需等待)`;
+        tipLabel.string = `正在下载游戏资源 ${mb(doneBytes)} / ${mb(totalBytes)} MB(仅首次)`;
       }
     };
     let finished = false;
@@ -757,24 +765,33 @@ export class LootChainGameRoot extends Component {
       this.flushPendingBootStatus();
       // 登录页亮出后后台预取守卫战必用素材(不阻塞、低并发)。
       this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 1.5);
+      // 网页分层下载:开局包之外的素材进游戏 6 秒后开始后台慢慢下(并发 2),战斗中暂停
+      this.scheduleOnce(() => startBackgroundPack(), 6);
+      this.schedule(() => setBackgroundPackPaused(this.currentView === 'battle'), 1);
     };
     // 第一段(Web/H5):按 asset-manifest.json 把缺的文件整包下载进浏览器缓存;没有清单 / 空间不够就跳过,
     // 退回按页面首开时加载。下载期间不设兜底超时(网速慢也要下完),失败的文件下次访问继续补。
     const downloadPack = async (): Promise<void> => {
-      const manifest: AssetManifest | null = await fetchAssetManifest();
+      const manifest = (await fetchAssetManifest()) as TieredManifest | null;
       if (!manifest) {
         return;
       }
+      // 10-30 分层下载(领导:首访 500 多 M 会吓跑用户):首访只下开局包(清单前 core 个,约 100MB,晨风村为止),
+      // 其余登记给后台下载器,进大厅后低并发慢慢下;去了还没下完的地方由 ensurePackResources 整块补下 + 加载页拦住
       const missing = await missingManifestFiles(manifest);
-      const totalBytes = manifest.files.reduce((sum, entry) => sum + entry[1], 0);
-      const missingBytes = missing.reduce((sum, entry) => sum + entry[1], 0);
-      if (missing.length === 0) {
-        markFullPackCached();
-      } else if (await hasStorageRoomFor(missingBytes)) {
-        await downloadFullPack(missing, totalBytes, totalBytes - missingBytes, (progress) => updatePackProgress(progress.doneBytes, progress.totalBytes));
-      } else {
-        console.warn(`[LootChain] full pack: 浏览器剩余空间不足 ${mb(missingBytes)}MB,改为按页面加载`);
+      const core = coreManifestFiles(manifest, missing);
+      const coreCount = manifest.core ?? manifest.files.length;
+      const coreTotal = manifest.files.slice(0, coreCount).reduce((sum, entry) => sum + entry[1], 0);
+      const coreMissingBytes = core.reduce((sum, entry) => sum + entry[1], 0);
+      const allMissingBytes = missing.reduce((sum, entry) => sum + entry[1], 0);
+      if (core.length > 0) {
+        if (await hasStorageRoomFor(allMissingBytes)) {
+          await downloadFullPack(core, coreTotal, coreTotal - coreMissingBytes, (progress) => updatePackProgress(progress.doneBytes, progress.totalBytes), false);
+        } else {
+          console.warn(`[LootChain] pack: 浏览器剩余空间不足 ${mb(allMissingBytes)}MB,改为按页面加载`);
+        }
       }
+      await initPackDownloader(manifest);
       // 发版后旧版本文件留在缓存里没用,进游戏后后台清掉
       setTimeout(() => void pruneStaleAssetCache(manifest), 20000);
     };
@@ -946,6 +963,12 @@ export class LootChainGameRoot extends Component {
    */
   private prefetchBattleEssentialsInBackground(): void {
     if (this.backgroundWarmStarted) {
+      return;
+    }
+    // 网页分层下载没下完时先不预读:这里的图大多不在开局包,现在读会绕过下载顺序抢带宽(还会把战斗图组整块提成紧急下载);
+    // 后台下完再从本地读进内存
+    if (packDownloadPending()) {
+      this.scheduleOnce(() => this.prefetchBattleEssentialsInBackground(), 10);
       return;
     }
     this.backgroundWarmStarted = true;
@@ -3726,7 +3749,42 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  /**
+   * 没有素材分组的页面(图鉴 / 编队 / 秘境试炼)的下载门(网页分层下载):素材没下到本地就先显示下载进度页,下齐再打开,
+   * 绝不先画缺图的页面;已在本地直接打开。
+   */
+  private openWithPackGate(prefixes: readonly string[], title: string, open: () => void): void {
+    if (packResourcesReady(prefixes)) {
+      open();
+      return;
+    }
+    this.showPackLoading(title, 0, 1);
+    void ensurePackResources(prefixes, (got, total) => this.showPackLoading(title, got, total)).then(() => {
+      this.hidePackLoading();
+      open();
+    });
+  }
+
+  /** 跑图渲染层(队伍素材)用的下载门。 */
+  waitPackResources(prefixes: readonly string[], title: string, done: () => void): void {
+    // 只有正在看跑图大厅时才挡下载页;在别的功能页时静默补下,回大厅前通常已下完
+    if (this.currentView !== 'lobby') {
+      void ensurePackResources(prefixes).then(done);
+      return;
+    }
+    this.openWithPackGate(prefixes, title, done);
+  }
+
+  /** 名册里玩家已有英雄的骨骼目录(编队台上 / 列表拖上阵即显示)。 */
+  private ownedHeroPackPrefixes(): string[] {
+    return this.lobbyHeroRosterLoader.currentState().heroes.flatMap((hero) => heroPackPrefixes(hero.heroCode));
+  }
+
   private openLobbyCodexPanel(): void {
+    if (!packResourcesReady(['ui/codex', 'ui/hero-roster/card_background'])) {
+      this.openWithPackGate(['ui/codex', 'ui/hero-roster/card_background'], '正在加载图鉴素材', () => this.openLobbyCodexPanel());
+      return;
+    }
     this.closeAllLobbyScenePanelFlags();
     this.lobbyCodexPanelOpen = true;
     this.currentView = 'codex';
@@ -3742,6 +3800,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyFormationPanel(stageCode?: string, origin?: string): void {
+    const formationPrefixes = ['ui/formation', 'ui/hero-roster/card_background', ...this.ownedHeroPackPrefixes()];
+    if (!packResourcesReady(formationPrefixes)) {
+      this.openWithPackGate(formationPrefixes, '正在加载编队素材', () => this.openLobbyFormationPanel(stageCode, origin));
+      return;
+    }
     this.uiSpriteFrameCache.preloadGroup('battle');
     this.lobbyFormationOrigin = origin === 'roster' ? 'roster' : null;
     // 英雄面板「布阵」等无关卡上下文的入口:回落当前选中关,再回落服务端推荐/最后解锁关。
@@ -5372,6 +5435,10 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyDailyDungeonPanel(): void {
+    if (!packResourcesReady(['ui/daily'])) {
+      this.openWithPackGate(['ui/daily'], '正在加载秘境试炼素材', () => this.openLobbyDailyDungeonPanel());
+      return;
+    }
     lobbyGuide.markVisited('daily');
     this.closeAllLobbyScenePanelFlags();
     this.lobbyDailyDungeonPanelOpen = true;
@@ -6060,6 +6127,25 @@ export class LootChainGameRoot extends Component {
         const pending = this.pendingGachaDraw;
         pending.result = result;
         pending.highestRarity = this.resolveGachaDrawResultHighestRarity(result);
+        // 网页分层下载:抽到的英雄素材趁召唤动画播放时下到本地;结果页要等它齐了才出(见 presentPendingGachaDrawResult)
+        const heroPrefixes = result.items.filter((item) => item.rewardType === 'HERO' || item.rewardType === 'HERO_FRAGMENT')
+          .flatMap((item) => heroPackPrefixes(item.rewardCode));
+        if (!packResourcesReady(heroPrefixes)) {
+          this.gachaResultPackReady = false;
+          void ensurePackResources(heroPrefixes, (got, total) => {
+            this.gachaResultPackProgress = { got, total };
+            if (this.gachaResultPackWaiting) {
+              this.showPackLoading('正在加载召唤结果', got, total);
+            }
+          }).then(() => {
+            this.gachaResultPackReady = true;
+            if (this.gachaResultPackWaiting) {
+              this.gachaResultPackWaiting = false;
+              this.hidePackLoading();
+              this.presentPendingGachaDrawResult(ticket);
+            }
+          });
+        }
         lobbyGuide.markVisited('draw');
         void this.loadGachaFreeStatus();
         this.presentPendingGachaDrawVideo(ticket);
@@ -6132,9 +6218,19 @@ export class LootChainGameRoot extends Component {
     this.presentPendingGachaDrawResult(pending.ticket);
   }
 
+  /** 召唤结果素材(网页分层下载):未齐时结果页先等,动画播完还没齐就显示加载页。 */
+  private gachaResultPackReady = true;
+  private gachaResultPackWaiting = false;
+  private gachaResultPackProgress = { got: 0, total: 1 };
+
   private presentPendingGachaDrawResult(ticket: number): void {
     const pending = this.pendingGachaDraw;
     if (!pending || pending.ticket !== ticket || !pending.result) {
+      return;
+    }
+    if (!this.gachaResultPackReady) {
+      this.gachaResultPackWaiting = true;
+      this.showPackLoading('正在加载召唤结果', this.gachaResultPackProgress.got, this.gachaResultPackProgress.total);
       return;
     }
     const result = pending.result;
@@ -7037,8 +7133,59 @@ export class LootChainGameRoot extends Component {
     // docs/53 §3(10-29):到新图不再自动激活,要走到传送阵附近才激活
   }
 
-  /** 按图加载跑图素材(worldMapAssetPaths),全部到了(或 8 秒兜底)再回调;已在缓存的直接算到。 */
+  /**
+   * 按图加载跑图素材:① 网页分层下载时先把这张图(地图素材 / 怪物 / 队伍英雄骨骼)整块下到本地——期间显示加载页、不计时,
+   * 绝不先进一张缺素材的地图;② 再把地图贴图读进内存(本地读取,8 秒兜底)。
+   */
   private preloadWorldMap(code: WorldMapCode, done: () => void): void {
+    const prefixes = worldMapPackPrefixes(code).concat(this.lobbyTownRenderer.partyPackPrefixes());
+    if (!packResourcesReady(prefixes)) {
+      const title = `正在加载 ${worldMapDef(code).name}`;
+      this.showPackLoading(title, 0, 1);
+      void ensurePackResources(prefixes, (got, total) => this.showPackLoading(title, got, total)).then(() => {
+        this.hidePackLoading();
+        this.preloadWorldMapMemory(code, done);
+      });
+      return;
+    }
+    this.preloadWorldMapMemory(code, done);
+  }
+
+  /** 整屏下载进度页(网页分层下载:进地图前素材还没下到本地时)。 */
+  private showPackLoading(title: string, done: number, total: number): void {
+    this.removeNodeFromContent('PackLoading');
+    const layout = this.resolveLayout();
+    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panel = this.createUiNode('PackLoading');
+    panel.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    panel.addComponent(BlockInputEvents);
+    const cover = panel.addComponent(Graphics);
+    cover.fillColor = new Color(10, 12, 18, 255);
+    cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
+    cover.fill();
+    mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
+    this.addChildLabel(panel, 'PackLoadingTitle', title, centerX, centerY + 40 * scale, 28 * scale, new Color(242, 242, 242, 255), new Size(520 * scale, 40 * scale));
+    const barWidth = Math.min(460 * scale, layout.width * 0.5);
+    const barHeight = 12 * scale;
+    const g = this.addChildPlainNode(panel, 'PackLoadingBar', centerX, centerY - 6 * scale, barWidth, barHeight).addComponent(Graphics);
+    g.fillColor = new Color(30, 36, 46, 235);
+    g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
+    g.fill();
+    const ratio = total > 0 ? Math.min(1, done / total) : 0;
+    g.fillColor = new Color(227, 196, 138, 255);
+    g.roundRect(-barWidth / 2 + 2, -barHeight / 2 + 2, Math.max(barHeight - 4, (barWidth - 4) * ratio), barHeight - 4, (barHeight - 4) / 2);
+    g.fill();
+    this.addChildLabel(panel, 'PackLoadingCount', `${Math.round(ratio * 100)}%`, centerX, centerY - 34 * scale, 18 * scale, new Color(182, 189, 205, 255), new Size(240 * scale, 26 * scale));
+    this.addChildLabel(panel, 'PackLoadingTip', '首次进入需要下载这里的素材,之后会直接从本地读取', centerX, centerY - 64 * scale, 16 * scale, new Color(150, 156, 170, 230), new Size(560 * scale, 24 * scale));
+  }
+
+  private hidePackLoading(): void {
+    this.removeNodeFromContent('PackLoading');
+  }
+
+  private preloadWorldMapMemory(code: WorldMapCode, done: () => void): void {
     const paths = worldMapAssetPaths(code).filter((path) => !resources.get(path, SpriteFrame));
     let left = paths.length;
     let finished = false;
@@ -8984,6 +9131,53 @@ export class LootChainGameRoot extends Component {
   // LobbyBattleFlow 进战资产加载门:开战响应到达后加载本场全部单位骨骼+敌怪立绘,
   // 渲染层同时显示加载界面;完成后战斗流才启动演出计时。
   preloadBattleSessionAssets(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void> {
+    // 网页分层下载(2026-10-30):本局要用的骨骼 / 贴图文件先整块下到本地(进度条前 80%),再走下面的读取门(后 20%);
+    // 素材都已在本地时直接走读取门,进度照旧
+    const prefixes = this.battlePackPrefixes(start);
+    if (!packResourcesReady(prefixes)) {
+      return ensurePackResources(prefixes, (got, total) => onProgress(Math.round((800 * got) / Math.max(1, total)), 1000))
+        .then(() => this.preloadBattleSessionAssetsLocal(start, (loaded, total) => onProgress(800 + Math.round((200 * loaded) / Math.max(1, total)), 1000)));
+    }
+    return this.preloadBattleSessionAssetsLocal(start, onProgress);
+  }
+
+  /** 本局用到的资源目录:我方 / 守卫 / 敌方骨骼与立绘 + 守卫战预热清单(怪物 / 特效骨骼、贴图)。 */
+  private battlePackPrefixes(start: PlayerBattleStartVO): string[] {
+    const dirOf = (path: string): string => {
+      const clean = path.replace(/\/(spriteFrame|texture)$/, '');
+      return clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : clean;
+    };
+    const set = new Set<string>();
+    const heroAsset = (asset: string | null | undefined): void => {
+      if (asset) {
+        set.add(asset.includes('/') ? dirOf(asset) : `spine/hero/${asset}`);
+      }
+    };
+    this.resolveLobbyBattleAllySpinePrefetchUnits().forEach((unit) => {
+      heroAsset(unit.spineAsset);
+      heroAsset(unit.portraitAsset);
+    });
+    (start.raid?.defenders ?? []).forEach((defender) => {
+      heroAsset(defender.spineAsset);
+      heroAsset(defender.portraitAsset);
+    });
+    start.enemyPreview.forEach((enemy) => {
+      if (enemy.spineAsset) {
+        set.add(dirOf(enemy.spineAsset));
+      }
+      if (enemy.skinAsset) {
+        set.add(dirOf(enemy.skinAsset));
+      }
+    });
+    const collected = this.lobbyGuardBattleRenderer.collectBattlePrewarmResources(this.currentLobbyBattleState());
+    collected.spine.concat(collected.deferredSpine).forEach((path) => set.add(dirOf(path)));
+    collected.sprites.concat(collected.deferredSprites).forEach((path) => set.add(path.replace(/\/(spriteFrame|texture)$/, '')));
+    // 战斗 HUD 图组(血条 / 胜负横幅 / 受击贴图…)
+    this.uiSpriteFrameCache.groupPackPrefixes('battle').forEach((prefix) => set.add(prefix));
+    return Array.from(set).filter((prefix) => prefix.length > 3);
+  }
+
+  private preloadBattleSessionAssetsLocal(start: PlayerBattleStartVO, onProgress: (loaded: number, total: number) => void): Promise<void> {
     // 手机:先把战斗里用不到的页面图从显存里放掉,再往里装战斗资源(2026-10-09 用户手机战斗中贴图显存 878MB)
     if (sys.isMobile) {
       const released = this.uiSpriteFrameCache.releaseIdleTextures(BATTLE_IDLE_UI_DIR_PREFIXES);

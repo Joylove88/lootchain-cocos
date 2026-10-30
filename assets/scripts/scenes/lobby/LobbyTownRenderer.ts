@@ -26,6 +26,7 @@ import type { LobbyBadges } from '../../api/LobbyBadgeApi';
 import type { PlayerIdleSummaryVO } from '../../types/IdleTypes';
 import { safeText } from '../UiTextFormatter';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { packResourcesReady } from '../../app/AssetOfflineCache';
 import { lobbyGuide, type GuideFlag } from '../../guide/GuideManager';
 import { rgba, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
 import {
@@ -78,6 +79,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   openWorldMapPanel?(): void;
   startWorldFieldBattle?(stageCode: string): void;
   travelWorldMap?(code: WorldMapCode, spawn: { x: number; y: number } | null, reach?: string): void;
+  /** 网页分层下载:这些素材还没下到本地时显示下载进度页,下齐后回调(已在本地直接回调)。 */
+  waitPackResources?(prefixes: readonly string[], title: string, done: () => void): void;
   activateWorldWaypoint?(code: WorldMapCode): void;
   /** 10-30:点小地图 → 地图页(当前图鸟瞰)。 */
   openAreaMapPanel?(): void;
@@ -368,6 +371,8 @@ export class LobbyTownRenderer {
   private leader: TownActor | null = null;
   private followers: TownActor[] = [];
   private partySignature = '';
+  /** 正在等这套阵容的素材下到本地(网页分层下载)。 */
+  private partyPackWaiting: string | null = null;
   private trail: Vec2[] = [];
   private buildings: TownBuildingEntity[] = [];
   private lampNodes: Node[] = [];
@@ -900,6 +905,21 @@ export class LobbyTownRenderer {
     if (signature === this.partySignature && this.leader && this.leader.node.isValid) {
       return;
     }
+    // 网页分层下载:换设备首访时进图那一刻名册还没到,进图门没算上队伍骨骼 / 特效——这里补等,绝不先出一支没骨骼的队伍
+    const packPrefixes = this.partyPackPrefixesOf(party);
+    if (this.host.waitPackResources && !packResourcesReady(packPrefixes)) {
+      if (this.partyPackWaiting !== signature) {
+        this.partyPackWaiting = signature;
+        this.host.waitPackResources(packPrefixes, '正在加载队伍', () => {
+          if (this.partyPackWaiting === signature) {
+            this.partyPackWaiting = null;
+            this.ensureParty();
+          }
+        });
+      }
+      return;
+    }
+    this.partyPackWaiting = null;
     // 阵容变了:保留队长位置,重建全队
     const spawn = this.pendingSpawn ?? this.def.spawn;
     const keepX = this.leader?.x ?? spawn.x;
@@ -935,6 +955,25 @@ export class LobbyTownRenderer {
         }
       }
     }
+  }
+
+  /** 当前队伍英雄骨骼的资源目录(进图前整块下到本地,见 GameRoot.preloadWorldMap)。 */
+  partyPackPrefixes(): string[] {
+    return this.partyPackPrefixesOf(this.resolveParty());
+  }
+
+  private partyPackPrefixesOf(party: readonly LobbyHeroItemVO[]): string[] {
+    const set = new Set<string>();
+    party.forEach((hero) => {
+      const path = resolveBattleUnitSpineResource(this.toUnit(hero));
+      if (path) {
+        set.add(path.slice(0, path.lastIndexOf('/')));
+      }
+      // 野外战斗特效(普攻弹道 / 命中 / 战技):第一次出手前就要在本地,否则特效晚出或不出
+      const kit = resolveTownHeroFxKit(hero.heroCode, hero.heroClass, companionRole(hero.heroClass));
+      [kit.spine?.effect, kit.spine?.hit?.effect, kit.skill.effect].forEach((effect) => effect && set.add(`spine/effect/${effect}`));
+    });
+    return Array.from(set);
   }
 
   private createActor(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, facing: 1 | -1): TownActor {

@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { KEEP_RELEASE_PACKAGES, pruneOldPackages } from './prune-release.mjs';
+import { BACKGROUND_ORDER, CORE_EXTRA_FILE, CORE_PREFIXES } from './web-pack-tiers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_DIR = path.join(ROOT, 'build', 'web-mobile');
@@ -183,6 +184,45 @@ function collectMutableAssets(files) {
   return mutable;
 }
 
+/**
+ * resources 包:文件名里的 uuid → 资源路径(config.*.json 的 uuids 是压缩写法,按引擎规则解开)。
+ * 合包 JSON / 找不到的返回空串(当 core)。
+ */
+function resourcesPathIndex() {
+  const dir = path.join(BUILD_DIR, 'assets', 'resources');
+  const cfgName = fs.readdirSync(dir).find((name) => /^config\..*\.json$/.test(name));
+  if (!cfgName) {
+    return () => '';
+  }
+  const cfg = JSON.parse(fs.readFileSync(path.join(dir, cfgName), 'utf8'));
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const HEX = '0123456789abcdef';
+  const unzip = (u) => {
+    const base = u.split('@')[0];
+    if (base.length !== 22) {
+      return base;
+    }
+    let out = base.slice(0, 2);
+    for (let i = 2; i < 22; i += 2) {
+      const a = B64.indexOf(base[i]);
+      const b = B64.indexOf(base[i + 1]);
+      out += HEX[a >> 2] + HEX[((a & 3) << 2) | (b >> 4)] + HEX[b & 15];
+    }
+    return `${out.slice(0, 8)}-${out.slice(8, 12)}-${out.slice(12, 16)}-${out.slice(16, 20)}-${out.slice(20, 32)}`;
+  };
+  const map = new Map();
+  for (const [index, entry] of Object.entries(cfg.paths || {})) {
+    const uuid = cfg.uuids[Number(index)];
+    if (uuid) {
+      map.set(unzip(uuid), entry[0]);
+    }
+  }
+  return (rel) => {
+    const m = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/.exec(path.basename(rel));
+    return (m && map.get(m[1])) || '';
+  };
+}
+
 function writeAssetManifest() {
   const files = [];
   const walk = (dir) => {
@@ -204,13 +244,27 @@ function writeAssetManifest() {
   if (files.length === 0) {
     fail('assets/ 下没有文件,清单为空');
   }
-  // 优先下界面图与小文件:进度条前段走得快,中途断网时常用素材先到本地
-  const rank = (p) => (p.includes('/resources/') && /\/ui\//.test(p) ? 0 : p.startsWith('cocos-js/') || !p.includes('/resources/') ? 0 : 1);
-  files.sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  // 分层(scripts/web-pack-tiers.mjs,2026-10-30):每个 resources 文件按 uuid 反查资源路径;core 排最前,其余按后台下载顺序
+  const resPathOf = resourcesPathIndex();
+  const extra = new Set(fs.existsSync(path.join(ROOT, CORE_EXTRA_FILE)) ? JSON.parse(fs.readFileSync(path.join(ROOT, CORE_EXTRA_FILE), 'utf8')) : []);
+  const tagged = files.map(([rel, size]) => {
+    const res = rel.startsWith('assets/resources/') ? resPathOf(rel) : '';
+    const core = !rel.startsWith('assets/resources/') || res === '' || CORE_PREFIXES.some((prefix) => res.startsWith(prefix)) || extra.has(res);
+    const order = core ? -1 : (() => {
+      const i = BACKGROUND_ORDER.findIndex((prefix) => res.startsWith(prefix));
+      return i < 0 ? BACKGROUND_ORDER.length : i;
+    })();
+    return { rel, size, res, core, order };
+  });
+  tagged.sort((a, b) => a.order - b.order || a.res.localeCompare(b.res) || a.rel.localeCompare(b.rel));
+  const sorted = tagged.map((t) => [t.rel, t.size]);
+  const coreCount = tagged.filter((t) => t.core).length;
+  const coreBytes = tagged.filter((t) => t.core).reduce((sum, t) => sum + t.size, 0);
   const total = files.reduce((sum, f) => sum + f[1], 0);
-  const mutable = collectMutableAssets(files);
-  fs.writeFileSync(path.join(BUILD_DIR, 'asset-manifest.json'), JSON.stringify({ version: commit, files, mutable }));
-  console.log(`[release] asset-manifest.json:${files.length} 个文件,${(total / 1024 / 1024).toFixed(1)} MB`);
+  const mutable = collectMutableAssets(sorted);
+  // files 前 coreCount 个 = 开局包;res = 与 files 平行的资源路径(引擎 / 配置为空串),运行时按路径整块补下(地图 / 界面 / 战斗进入前)
+  fs.writeFileSync(path.join(BUILD_DIR, 'asset-manifest.json'), JSON.stringify({ version: commit, files: sorted, res: tagged.map((t) => t.res), core: coreCount, mutable }));
+  console.log(`[release] asset-manifest.json:${files.length} 个文件,${(total / 1024 / 1024).toFixed(1)} MB;开局包 ${coreCount} 个,${(coreBytes / 1024 / 1024).toFixed(1)} MB`);
 }
 
 step('0/5 环境检查');

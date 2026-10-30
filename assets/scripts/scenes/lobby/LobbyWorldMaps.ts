@@ -735,6 +735,22 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(def.chests?.length ? [worldAsset('woods3/w3_chest')] : [])]));
 }
 
+/** 进图前要整块下到本地的资源前缀(网页分层下载):地图素材 + 这张图怪物的骨骼 / 头像。 */
+export function worldMapPackPrefixes(code: WorldMapCode): string[] {
+  const def = WORLD_MAPS[code];
+  if (!def) {
+    return [];
+  }
+  const set = new Set<string>(worldMapAssetPaths(code).map((path) => path.replace(/\/spriteFrame$/, '')));
+  for (const camp of def.camps) {
+    if (camp.spine) {
+      set.add(camp.spine.slice(0, camp.spine.lastIndexOf('/')));
+    }
+    set.add(`monster/${camp.monsterCode.toLowerCase()}`);
+  }
+  return Array.from(set);
+}
+
 /** 大厅首开预载的公共世界素材(各地图专属素材按图加载,见 worldMapAssetPaths)。 */
 export const WORLD_ASSET_PATHS: readonly string[] = Array.from(new Set([
   worldAsset('city_board'),

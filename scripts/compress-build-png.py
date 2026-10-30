@@ -68,6 +68,8 @@ def compress_one(task):
                 if spine_mode == 'keep' and _looks_like_spine(path):
                     return path, before, before, 'skip-spine'
                 quant = im.convert('RGBA').quantize(colors=256, method=Image.Quantize.FASTOCTREE)
+            if has_alpha and _transparent_rgb_is_black(im):
+                _zero_transparent_palette(quant)
         tmp = path + '.q.tmp'
         quant.save(tmp, format='PNG', optimize=True)
         after = os.path.getsize(tmp)
@@ -81,6 +83,37 @@ def compress_one(task):
         if os.path.exists(tmp):
             os.remove(tmp)
         return path, 0, 0, 'error: %s' % error
+
+
+def _transparent_rgb_is_black(im):
+    """源图完全透明的像素是否(几乎)都是黑色:预乘图集的特征(RGB ≤ A),没在图集头标 pma 的预乘图集也靠这条认出来。
+    导出工具常留几千个带色残点(召唤宝箱怪 boxman_text 约 2%),按 ≥98% 算。"""
+    rgba = im.convert('RGBA')
+    mask = rgba.getchannel('A').point(lambda v: 255 if v == 0 else 0)
+    transparent = mask.histogram()[255]
+    if transparent == 0:
+        return False
+    black = Image.new('RGBA', rgba.size, (0, 0, 0, 0))
+    lum = Image.composite(rgba, black, mask).convert('RGB').convert('L').point(lambda v: 255 if v > 0 else 0)
+    colored = lum.histogram()[255]
+    return colored <= transparent * 0.02
+
+
+def _zero_transparent_palette(quant):
+    """量化后调色板里 alpha=0 的颜色清成黑色:量化器会给完全透明的像素随手配上别的颜色,
+    预乘混合(ONE, ONE_MINUS_SRC_ALPHA)下这些颜色直接叠到画面上——2026-10-30 线上召唤页限定池骨骼满屏绿块。"""
+    if quant.mode != 'P':
+        return
+    pal = quant.getpalette('RGBA')
+    if not pal:
+        return
+    changed = False
+    for i in range(0, len(pal), 4):
+        if pal[i + 3] == 0 and (pal[i] or pal[i + 1] or pal[i + 2]):
+            pal[i:i + 3] = [0, 0, 0]
+            changed = True
+    if changed:
+        quant.putpalette(pal, 'RGBA')
 
 
 SPINE_TEXTURE_UUIDS = set()

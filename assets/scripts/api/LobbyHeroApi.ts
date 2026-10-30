@@ -211,6 +211,15 @@ function resolveHeroAssetFallback(heroCode: string): HeroAssetFallback | null {
   return HERO_ASSET_FALLBACKS[heroCode.trim().toUpperCase()] ?? null;
 }
 
+/** 某英雄要整块下到本地的资源前缀(网页分层下载:召唤结果 / 名册展示前):骨骼、立绘骨骼、名册卡面。 */
+export function heroPackPrefixes(heroCode: string | null | undefined): string[] {
+  const fallback = heroCode ? resolveHeroAssetFallback(heroCode) : null;
+  if (!fallback) {
+    return [];
+  }
+  return [`spine/hero/${fallback.spineAsset}`, `spine/hero/${fallback.portraitAsset}`, fallback.cardBackgroundAsset].filter((path): path is string => !!path);
+}
+
 /** 英雄名册卡立绘路径(不带 /spriteFrame);守卫战统计 / 词条卡头像用它裁头部静态图(2026-10-11)。 */
 export function resolveHeroCardArtPath(heroCode: string | null | undefined): string | null {
   const art = heroCode ? resolveHeroAssetFallback(heroCode)?.cardBackgroundAsset : undefined;

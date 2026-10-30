@@ -22,7 +22,7 @@ import type { LobbyBagPanelState } from '../../types/BagTypes';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { safeText } from '../UiTextFormatter';
 import { renderSceneBackButton, renderTopCurrencyBar, showSceneHelpPopup } from '../UiSceneBackButton';
-import { glassLabel, glassTagPillWidthOf, GLASS_COLOR, GLASS_FORGE_TAB_ICON, GLASS_ICON, GLASS_PART_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassButton, mountGlassCheckbox, mountGlassChip, mountGlassClippedIcon, mountGlassFrame, mountGlassFadeLine, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill } from '../UiGlassKit';
+import { glassLabel, glassStyleEnabled, glassTagPillWidthOf, GLASS_COLOR, GLASS_FORGE_TAB_ICON, GLASS_ICON, GLASS_PART_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassButton, mountGlassCheckbox, mountGlassChip, mountGlassClippedIcon, mountGlassFrame, mountGlassFadeLine, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTagPill } from '../UiGlassKit';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitButton, mountKitSection } from '../UiKit';
 import { drawRefCheckbox, drawRefPanelFallback, mountRefScrollBar, mountRefDialogBackdrop, mountRefLineFrame, REF_BAG_DLG, REF_CLOSE_RING_ASSET, REF_DETAIL_INNER_BG, mountRefButton, mountRefPlate, mountRefPlateButton, mountRefSliced, mountRefTitledPanel, REF_ICON_RING_ASSET, REF_INFO_BANNER, REF_KIT, REF_PLATE_DARK, REF_ROW, REF_ROW_SELECTED, REF_ULT, mountRefSolid, type RefKitItem } from '../UiRefKit';
@@ -441,7 +441,7 @@ export class LobbyForgePanelRenderer {
     if (forge.tab === 'enhance') {
       // 2026-10-21 强化页按原型 A 版 1:1:去 UI 背景(铁砧台 + 战锤),同一 k 映射;铁砧台在背景里,装备 / 名牌等按原型坐标叠上
       const ek = Math.max(coverW / FORGE_ENH_BG.w, coverH / FORGE_ENH_BG.h);
-      const glassBg = FORGE_GLASS && isPhoneDesign();
+      const glassBg = FORGE_GLASS && glassStyleEnabled();
       if (this.host.addSprite('LobbyForgeEnhBg', glassBg ? FORGE_ENH_GLASS_BG : FORGE_ENH_BG.path, 0, 0, FORGE_ENH_BG.w * ek, FORGE_ENH_BG.h * ek, panel)) {
         this.fuseBgK = ek;
         if (!glassBg) {
@@ -449,7 +449,7 @@ export class LobbyForgePanelRenderer {
         }
       }
     }
-    const glassShellBg = FORGE_GLASS && isPhoneDesign();
+    const glassShellBg = FORGE_GLASS && glassStyleEnabled();
     if (glassShellBg && forge.tab !== 'enhance') {
       const gk = Math.max(coverW / FORGE_ENH_BG.w, coverH / FORGE_ENH_BG.h);
       if (this.host.addSprite('LobbyForgeGlassBg', forge.tab === 'fuse' ? FORGE_FUSE_GLASS_BG : FORGE_ENH_GLASS_BG, 0, 0, FORGE_ENH_BG.w * gk, FORGE_ENH_BG.h * gk, panel)) {
@@ -500,7 +500,7 @@ export class LobbyForgePanelRenderer {
     this.bodyOffsetX = -railReserve / 2;
     this.fxAnchor = { x: this.bodyOffsetX, y: 30 };
     this.powerAnchor = null;
-    const glassEnhance = FORGE_GLASS && phone;
+    const glassEnhance = FORGE_GLASS && glassStyleEnabled();
     this.lastLayout = layout;
     this.glassMode = glassEnhance;
     if (glassEnhance) {

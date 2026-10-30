@@ -133,6 +133,7 @@ export const ASSET_MANIFEST_URL = 'asset-manifest.json';
 const FULL_PACK_DONE_KEY = 'lootchain.fullPack.version';
 /** 页面自己下载、不经 SW 再写一遍缓存(sw.js 见到这个请求头直接放行到网络)。 */
 const PREFETCH_HEADER = 'x-lootchain-prefetch';
+const MUTABLE_CHECKED_KEY = 'lootchain.mutableChecked';
 const FULL_PACK_CONCURRENCY = 6;
 const FULL_PACK_RETRY = 3;
 const ASSET_CACHE_NAME = 'lootchain-assets-v1';
@@ -215,12 +216,32 @@ export async function missingManifestFiles(manifest: AssetManifest): Promise<Arr
   return manifest.files.filter(([path]) => !have.has(base + path));
 }
 
+/**
+ * 启动核对删掉的过期文件:重下时要绕过浏览器 HTTP 缓存(md5 名文件是一年 immutable 强缓存,
+ * 默认 fetch 会从磁盘缓存原样拿回那份旧内容,核对等于白做)。
+ */
+const evictedPaths = new Set<string>();
+
+/** 下载器用的 fetch 选项:被核对删掉的文件强制回源。 */
+function packFetchInit(path: string): RequestInit {
+  return { headers: { [PREFETCH_HEADER]: '1' }, cache: evictedPaths.has(path) ? 'reload' : 'default' };
+}
+
 /** 核对 manifest.mutable 里在缓存中的文件:内容哈希对不上就删掉并从 have 里移除。任何一步失败都跳过(不影响启动)。 */
 async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: string, have: Set<string>): Promise<void> {
   const mutable = manifest.mutable;
   const subtle = typeof crypto !== 'undefined' ? crypto.subtle : undefined;
   if (!mutable || !subtle) {
     return;
+  }
+  // 每个版本只核对一次:清单可能有上千个文件(10-30 压缩规则改动后 2000+),每次启动都逐个算哈希会拖慢进游戏
+  const checkedKey = `${MUTABLE_CHECKED_KEY}.${manifest.version ?? assetCacheVersion()}`;
+  try {
+    if (sys.localStorage.getItem(MUTABLE_CHECKED_KEY) === checkedKey) {
+      return;
+    }
+  } catch {
+    // 本地存储不可用:照常核对
   }
   for (const path of Object.keys(mutable)) {
     if (!have.has(base + path)) {
@@ -236,11 +257,17 @@ async function evictMutatedFiles(cache: Cache, manifest: AssetManifest, base: st
       if (hex !== mutable[path]) {
         await cache.delete(path, { ignoreVary: true });
         have.delete(base + path);
+        evictedPaths.add(path);
         console.warn(`[LootChain] full pack: ${path} 缓存内容已过期,重新下载`);
       }
     } catch (error) {
       void error;
     }
+  }
+  try {
+    sys.localStorage.setItem(MUTABLE_CHECKED_KEY, checkedKey);
+  } catch {
+    // 忽略
   }
 }
 
@@ -270,7 +297,7 @@ export async function hasStorageRoomFor(bytes: number): Promise<boolean> {
  * 下载清单里缺的文件进缓存,按字节回调进度。全部成功返回 true 并记标记;
  * 有文件重试后仍失败返回 false(已下好的保留,下次访问继续补)。
  */
-export async function downloadFullPack(missing: Array<[string, number]>, totalBytesAll: number, cachedBytes: number, onProgress: (progress: FullPackProgress) => void): Promise<boolean> {
+export async function downloadFullPack(missing: Array<[string, number]>, totalBytesAll: number, cachedBytes: number, onProgress: (progress: FullPackProgress) => void, markDone = true): Promise<boolean> {
   const cache = await caches.open(ASSET_CACHE_NAME);
   const progress: FullPackProgress = { doneBytes: cachedBytes, totalBytes: totalBytesAll, doneFiles: 0, totalFiles: missing.length };
   onProgress(progress);
@@ -279,7 +306,7 @@ export async function downloadFullPack(missing: Array<[string, number]>, totalBy
   const fetchOne = async (path: string): Promise<boolean> => {
     for (let attempt = 0; attempt < FULL_PACK_RETRY; attempt += 1) {
       try {
-        const response = await fetch(path, { headers: { [PREFETCH_HEADER]: '1' } });
+        const response = await fetch(path, packFetchInit(path));
         if (response.ok && response.status === 200) {
           await cache.put(path, response);
           return true;
@@ -311,7 +338,10 @@ export async function downloadFullPack(missing: Array<[string, number]>, totalBy
     console.warn(`[LootChain] full pack: ${failed}/${missing.length} 个文件下载失败,下次访问继续补`);
     return false;
   }
-  markFullPackCached();
+  // 只下开局包时不记「整包已在本地」(后台下载器全部下完才记)
+  if (markDone) {
+    markFullPackCached();
+  }
   return true;
 }
 
@@ -339,4 +369,239 @@ export async function pruneStaleAssetCache(manifest: AssetManifest): Promise<voi
   } catch (error) {
     void error;
   }
+}
+
+// ── 分层下载(2026-10-30 领导反馈「首访 500 多 M 会吓跑用户」;规则见 scripts/web-pack-tiers.mjs)──
+// 首访只下开局包(manifest.files 前 manifest.core 个,约 100MB,下完进游戏);其余进游戏后后台低并发慢慢下。
+// 玩家去了还没下完的地方(地图 / 界面 / 战斗):调用方先 ensurePackResources 把那一块整块提到队首、提速下完,
+// 期间显示加载页,绝不先画出缺素材的画面。
+
+export interface TieredManifest extends AssetManifest {
+  /** 与 files 平行的资源路径(resources 包内;引擎 / 配置为空串)。 */
+  res?: string[];
+  /** files 前多少个是开局包;缺省 = 全部(旧清单)。 */
+  core?: number;
+}
+
+const BACKGROUND_CONCURRENCY = 2;
+const URGENT_CONCURRENCY = 6;
+
+interface PackWaiter {
+  need: Set<string>;
+  total: number;
+  onProgress?: (done: number, total: number) => void;
+  resolve: () => void;
+}
+
+/** 后台下载器(全局唯一):queue = 还没下的清单文件(按清单顺序),urgent = 被 ensure 提到队首的。 */
+class PackDownloader {
+  private cache: Cache | null = null;
+  private manifest: TieredManifest | null = null;
+  private resOf = new Map<string, string>();
+  private sizeOf = new Map<string, number>();
+  private queue: string[] = [];
+  private urgent: string[] = [];
+  private inFlight = new Set<string>();
+  private have = new Set<string>();
+  private failed = new Set<string>();
+  private waiters: PackWaiter[] = [];
+  private running = 0;
+  private paused = false;
+  private started = false;
+  private doneBytes = 0;
+  private totalBytes = 0;
+
+  /** 记清单与本地已有文件;missing = 本地缺的(已按清单顺序)。 */
+  init(manifest: TieredManifest, missing: Array<[string, number]>, cache: Cache): void {
+    this.manifest = manifest;
+    this.cache = cache;
+    manifest.files.forEach(([path, size], index) => {
+      this.resOf.set(path, manifest.res?.[index] ?? '');
+      this.sizeOf.set(path, size);
+      this.totalBytes += size;
+    });
+    const lack = new Set(missing.map(([path]) => path));
+    for (const [path, size] of manifest.files) {
+      if (lack.has(path)) {
+        this.queue.push(path);
+      } else {
+        this.have.add(path);
+        this.doneBytes += size;
+      }
+    }
+  }
+
+  hasManifest(): boolean {
+    return !!this.manifest;
+  }
+
+  /** 开始后台下载(进游戏后调一次)。 */
+  start(): void {
+    this.started = true;
+    this.pump();
+  }
+
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    if (!paused) {
+      this.pump();
+    }
+  }
+
+  /** 资源路径匹配 match 的文件本地缺几个(0 = 齐了)。 */
+  missingFor(match: (res: string) => boolean): string[] {
+    if (!this.manifest) {
+      return [];
+    }
+    const out: string[] = [];
+    for (const path of this.queue.concat(this.urgent, Array.from(this.inFlight))) {
+      const res = this.resOf.get(path) ?? '';
+      if (res && match(res) && !this.have.has(path)) {
+        out.push(path);
+      }
+    }
+    return Array.from(new Set(out));
+  }
+
+  /** 把匹配的文件提到队首加速下,全部到本地(或重试后放弃)时 resolve。 */
+  ensure(match: (res: string) => boolean, onProgress?: (done: number, total: number) => void): Promise<void> {
+    const need = this.missingFor(match);
+    if (need.length === 0) {
+      return Promise.resolve();
+    }
+    const needSet = new Set(need);
+    this.queue = this.queue.filter((path) => !needSet.has(path));
+    this.urgent = need.filter((path) => !this.inFlight.has(path)).concat(this.urgent.filter((path) => !needSet.has(path)));
+    return new Promise<void>((resolve) => {
+      const waiter: PackWaiter = { need: needSet, total: need.length, onProgress, resolve };
+      this.waiters.push(waiter);
+      onProgress?.(0, waiter.total);
+      this.pump();
+    });
+  }
+
+  progress(): { doneBytes: number; totalBytes: number } {
+    return { doneBytes: this.doneBytes, totalBytes: this.totalBytes };
+  }
+
+  isComplete(): boolean {
+    return !!this.manifest && this.queue.length === 0 && this.urgent.length === 0 && this.inFlight.size === 0;
+  }
+
+  private pump(): void {
+    if (!this.cache) {
+      return;
+    }
+    // 紧急(有人在等)不受暂停影响、并发拉满;纯后台受暂停 / 低并发限制
+    const limit = this.urgent.length > 0 ? URGENT_CONCURRENCY : (this.started && !this.paused ? BACKGROUND_CONCURRENCY : 0);
+    while (this.running < limit) {
+      const next = this.urgent.shift() ?? (this.urgent.length === 0 && this.running < BACKGROUND_CONCURRENCY && this.started && !this.paused ? this.queue.shift() : undefined);
+      if (!next) {
+        break;
+      }
+      this.running += 1;
+      this.inFlight.add(next);
+      void this.fetchOne(next).then((ok) => {
+        this.running -= 1;
+        this.inFlight.delete(next);
+        if (ok) {
+          this.have.add(next);
+        } else {
+          this.failed.add(next);
+        }
+        this.doneBytes += this.sizeOf.get(next) ?? 0;
+        this.settle(next);
+        if (this.isComplete() && this.failed.size === 0) {
+          markFullPackCached();
+        }
+        this.pump();
+      });
+    }
+  }
+
+  private settle(path: string): void {
+    for (const waiter of this.waiters.slice()) {
+      if (waiter.need.delete(path)) {
+        waiter.onProgress?.(waiter.total - waiter.need.size, waiter.total);
+        if (waiter.need.size === 0) {
+          this.waiters.splice(this.waiters.indexOf(waiter), 1);
+          waiter.resolve();
+        }
+      }
+    }
+  }
+
+  private async fetchOne(path: string): Promise<boolean> {
+    for (let attempt = 0; attempt < FULL_PACK_RETRY; attempt += 1) {
+      try {
+        const response = await fetch(path, packFetchInit(path));
+        if (response.ok && response.status === 200) {
+          await this.cache!.put(path, response);
+          return true;
+        }
+      } catch (error) {
+        void error;
+      }
+    }
+    return false;
+  }
+}
+
+const packDownloader = new PackDownloader();
+
+/** 开局包:manifest 前 core 个文件里本地缺的(旧清单没有 core 字段 = 全部)。 */
+export function coreManifestFiles(manifest: TieredManifest, missing: Array<[string, number]>): Array<[string, number]> {
+  const coreCount = manifest.core ?? manifest.files.length;
+  const core = new Set(manifest.files.slice(0, coreCount).map(([path]) => path));
+  return missing.filter(([path]) => core.has(path));
+}
+
+/** 启动:开局包下完后调用,登记清单 + 本地还缺的(含后台部分),进游戏后再 startBackgroundPack。 */
+export async function initPackDownloader(manifest: TieredManifest): Promise<void> {
+  const cache = await caches.open(ASSET_CACHE_NAME);
+  const missing = await missingManifestFiles(manifest);
+  packDownloader.init(manifest, missing, cache);
+  // 自验脚本(tools/qa/web_tier_check.py)读进度 / 暂停后台用
+  (globalThis as unknown as { __lootchainPack?: PackDownloader }).__lootchainPack = packDownloader;
+  if (missing.length === 0) {
+    markFullPackCached();
+  }
+}
+
+export function startBackgroundPack(): void {
+  packDownloader.start();
+}
+
+/** 战斗等重负载场景暂停后台下载(不抢网络 / 解码);有人在 ensure 等的照常下。 */
+export function setBackgroundPackPaused(paused: boolean): void {
+  packDownloader.setPaused(paused);
+}
+
+/**
+ * 进入某块(地图 / 界面 / 战斗)前确保它用到的素材文件都已下到本地:prefixes = 资源路径前缀(如 'ui/forge'、'spine/hero/npc_1036')。
+ * 没有清单(预览 / 原生 / 旧部署)直接 resolve。onProgress 给加载页显示进度。
+ */
+export function ensurePackResources(prefixes: readonly string[], onProgress?: (done: number, total: number) => void): Promise<void> {
+  if (!packDownloader.hasManifest() || prefixes.length === 0) {
+    return Promise.resolve();
+  }
+  return packDownloader.ensure((res) => prefixes.some((prefix) => res.startsWith(prefix)), onProgress);
+}
+
+/** 同步判断:这些前缀的素材是否都已在本地(没有清单 = 视为都在)。 */
+export function packResourcesReady(prefixes: readonly string[]): boolean {
+  if (!packDownloader.hasManifest() || prefixes.length === 0) {
+    return true;
+  }
+  return packDownloader.missingFor((res) => prefixes.some((prefix) => res.startsWith(prefix))).length === 0;
+}
+
+/** 网页分层下载还没全部下完(没有清单 = false)。 */
+export function packDownloadPending(): boolean {
+  return packDownloader.hasManifest() && !packDownloader.isComplete();
+}
+
+/** 后台下载总进度(设置页 / 调试显示)。 */
+export function backgroundPackProgress(): { doneBytes: number; totalBytes: number; complete: boolean } {
+  return { ...packDownloader.progress(), complete: packDownloader.isComplete() };
 }
