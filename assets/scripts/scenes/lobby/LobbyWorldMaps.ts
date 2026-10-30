@@ -160,7 +160,8 @@ const MONSTER_SPINE: Record<string, string> = {
 
 function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false): WorldMapCamp {
   // 一群 6~10 只:散布半径随只数放大
-  const radius = stageCode.endsWith('_B') ? 120 : elite ? 90 : Math.max(170, 110 + count * 26);
+  // 10-30 用户「怪物太靠近都融一起了」:单只体型约 200,8 只一群散到半径 ~600
+  const radius = stageCode.endsWith('_B') ? 120 : elite ? 90 : count <= 3 ? 170 : 140 + count * 58;
   return { stageCode, label, monsterCode, spine: MONSTER_SPINE[monsterCode] ?? '', count, elite, level, x, y, radius };
 }
 
@@ -582,6 +583,15 @@ const WOODS: WorldMapDef = {
     camp('FIELD_WOODS_11', '遗迹东鼠群', 'MINI_RAT', 8, 9, 4470, -1500),
     camp('FIELD_WOODS_10', '熊穴前野犬', 'MEDIUM_DOG', 7, 8, 4320, 1312),
     camp('FIELD_WOODS_B', '腐木巨熊', 'MEDIUM_BEAR', 1, 10, 5295, 1988, true),
+    camp('FIELD_WOODS_12', '西林鼠群', 'MINI_RAT', 6, 2, -4605, 300),
+    camp('FIELD_WOODS_13', '溪畔蛛群', 'SMALL_SPIDER', 7, 4, 8, -638),
+    camp('FIELD_WOODS_14', '中路野犬', 'MEDIUM_DOG', 7, 6, 2145, 675),
+    camp('FIELD_WOODS_15', '遗迹西蛛群', 'SMALL_SPIDER', 8, 7, 645, -1538),
+    camp('FIELD_WOODS_16', '古树野犬', 'MEDIUM_DOG', 7, 8, 2595, -1650),
+    camp('FIELD_WOODS_17', '遗迹东蛛群', 'SMALL_SPIDER', 8, 8, 3645, -1328),
+    camp('FIELD_WOODS_18', '东林野犬', 'MEDIUM_DOG', 7, 9, 4920, 525),
+    camp('FIELD_WOODS_19', '南岔鼠群', 'MINI_RAT', 7, 5, -555, -1688),
+    camp('FIELD_WOODS_20', '东南鼠群', 'MINI_RAT', 8, 9, 5145, -900),
   ],
   exits: [{ key: 'to_village', label: '返回 · 晨风村', x: -6420, y: -2440, radius: 130, toMap: 'VILLAGE', toSpawn: { x: 2300, y: -1000 } }],
   battleBg: 'battle_scene_field_forest',

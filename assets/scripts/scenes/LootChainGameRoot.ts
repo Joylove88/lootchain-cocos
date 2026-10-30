@@ -7231,6 +7231,8 @@ export class LootChainGameRoot extends Component {
 
   /** 三个浮层随大厅重绘重挂(不在大厅视图时不挂)。 */
   private syncWorldOverlays(): void {
+    // 地图页会藏掉大厅 HUD:每次重挂前先还原(关面板的各条路径都经过这里),还开着就在 render 里重新藏
+    this.lobbyAreaMapRenderer.restoreLobbyHud();
     this.removeNodeFromContent(LobbyWorldOverlayRenderer.DIALOG);
     this.removeNodeFromContent(LobbyWorldOverlayRenderer.MAP);
     this.removeNodeFromContent(LobbyWorldOverlayRenderer.BOUNTY);

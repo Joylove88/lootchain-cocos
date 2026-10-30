@@ -62,6 +62,16 @@ CAMPS = [
     ('FIELD_WOODS_11', '遗迹东鼠群', 'MINI_RAT', 8, 9, 1500, 635, False),
     ('FIELD_WOODS_10', '熊穴前野犬', 'MEDIUM_DOG', 7, 8, 1480, 260, False),
     ('FIELD_WOODS_B', '腐木巨熊', 'MEDIUM_BEAR', 1, 10, 1610, 170, True),
+    # 10-30 用户「地图多放些怪物」:沿路再加 9 群
+    ('FIELD_WOODS_12', '西林鼠群', 'MINI_RAT', 6, 2, 290, 395, False),
+    ('FIELD_WOODS_13', '溪畔蛛群', 'SMALL_SPIDER', 7, 4, 905, 520, False),
+    ('FIELD_WOODS_14', '中路野犬', 'MEDIUM_DOG', 7, 6, 1190, 345, False),
+    ('FIELD_WOODS_15', '遗迹西蛛群', 'SMALL_SPIDER', 8, 7, 990, 640, False),
+    ('FIELD_WOODS_16', '古树野犬', 'MEDIUM_DOG', 7, 8, 1250, 655, False),
+    ('FIELD_WOODS_17', '遗迹东蛛群', 'SMALL_SPIDER', 8, 8, 1390, 612, False),
+    ('FIELD_WOODS_18', '东林野犬', 'MEDIUM_DOG', 7, 9, 1560, 365, False),
+    ('FIELD_WOODS_19', '南岔鼠群', 'MINI_RAT', 7, 5, 830, 660, False),
+    ('FIELD_WOODS_20', '东南鼠群', 'MINI_RAT', 8, 9, 1590, 555, False),
 ]
 
 # 立物(素材, 原型 x, 脚底 y, 世界宽, 额外)

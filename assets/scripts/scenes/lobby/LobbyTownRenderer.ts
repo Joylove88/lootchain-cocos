@@ -2663,8 +2663,13 @@ export class LobbyTownRenderer {
         // 向日葵散布:6~10 只一群也不挤成一圈
         const angle = i * 2.39996;
         const r = camp.count <= 3 ? 0.5 : 0.2 + 0.5 * Math.sqrt((i + 0.5) / camp.count);
-        const x = camp.x + Math.cos(angle) * camp.radius * r;
-        const y = camp.y + Math.sin(angle) * camp.radius * r * 0.6;
+        let x = camp.x + Math.cos(angle) * camp.radius * r;
+        let y = camp.y + Math.sin(angle) * camp.radius * r * 0.6;
+        // 散开后可能落进树林 / 河里:往营地中心收到可走为止
+        for (let step = 0; step < 6 && !this.walkable(x, y); step += 1) {
+          x = camp.x + (x - camp.x) * 0.75;
+          y = camp.y + (y - camp.y) * 0.75;
+        }
         this.monsters.push(this.createMonster(root, camp, i, x, y));
       }
     }
@@ -2811,9 +2816,10 @@ export class LobbyTownRenderer {
         }
       } else if (now >= monster.nextPickAt) {
         const angle = Math.random() * Math.PI * 2;
-        const r = Math.random() * camp.radius;
-        monster.tx = camp.x + Math.cos(angle) * r;
-        monster.ty = camp.y + Math.sin(angle) * r * 0.6;
+        // 在自己的出生点附近游走(整群散布形状不塌回一团)
+        const r = Math.random() * Math.min(160, camp.radius * 0.35);
+        monster.tx = monster.homeX + Math.cos(angle) * r;
+        monster.ty = monster.homeY + Math.sin(angle) * r * 0.6;
         monster.nextPickAt = now + 1800 + Math.random() * 2600;
       }
       const winding = now < monster.windupUntil || now < monster.staggeredUntil || now < monster.animLockUntil;

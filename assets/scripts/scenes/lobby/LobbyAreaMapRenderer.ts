@@ -63,6 +63,33 @@ export class LobbyAreaMapRenderer {
 
   constructor(private readonly host: LobbyAreaMapHost) {}
 
+  /** 地图页打开期间藏掉的大厅 HUD 节点(关面板时 restoreLobbyHud 还原)。 */
+  private hiddenHud: Node[] = [];
+
+  /** 把内容根下除世界层 / 地图页自己以外的节点全部藏掉(大厅 HUD、追踪条、按钮)。 */
+  hideLobbyHud(overlay: Node, keep: string[]): void {
+    const parent = overlay.parent;
+    if (!parent) {
+      return;
+    }
+    for (const node of parent.children) {
+      if (node === overlay || keep.indexOf(node.name) >= 0 || !node.active) {
+        continue;
+      }
+      node.active = false;
+      this.hiddenHud.push(node);
+    }
+  }
+
+  restoreLobbyHud(): void {
+    for (const node of this.hiddenHud) {
+      if (node.isValid) {
+        node.active = true;
+      }
+    }
+    this.hiddenHud = [];
+  }
+
   render(layout: UiLayout): void {
     const state = this.host.currentWorldMapPanel();
     if (!state) {
@@ -75,13 +102,14 @@ export class LobbyAreaMapRenderer {
     overlay.addComponent(UITransform).setContentSize(new Size(W, H));
     overlay.addComponent(BlockInputEvents);
     const dim = overlay.addComponent(Graphics);
-    // 盖住大厅 HUD(半透明时右上按钮 / 底部血条会透出来)
-    dim.fillColor = rgba(6, 8, 12, 252);
+    // 原型:背后是压暗的游戏场景(大厅 HUD 由 hideLobbyHud 藏掉,不然右上按钮 / 底部血条会透出来)
+    dim.fillColor = rgba(8, 10, 16, 196);
     dim.rect(-W / 2, -H / 2, W, H);
     dim.fill();
     // 内容按舞台宽高(避开刘海安全区)排版
     const stage = this.host.addChildPlainNode(overlay, 'Stage', 0, 0, layout.stageWidth, layout.stageHeight);
     const P = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    this.hideLobbyHud(overlay, ['LobbyTownWorld']);
     const view = state.view ?? 'world';
     const info = this.host.currentAreaMapInfo();
     this.renderTopBar(stage, P, view, info);
