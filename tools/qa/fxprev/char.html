@@ -1,0 +1,128 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>char preview</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script src="spine-webgl.js"></script></head>
+<body><canvas id="c" width="480" height="560"></canvas>
+<script>
+// 角色骨骼预览(Spine 4.2 JSON):renderChar(dir, base, opts) → {anims:{[anim]:{duration, frames:[dataURL]}}}
+// 固定机位:按全部动作的顶点包围盒并集取景,所有动作同一镜头(看位移 / 比例是否一致)。
+const canvas = document.getElementById('c');
+const W = canvas.width, H = canvas.height;
+const gl = canvas.getContext('webgl', { alpha: false, premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: true });
+const ctx = new spine.ManagedWebGLRenderingContext(gl);
+const renderer = new spine.SceneRenderer(canvas, ctx);
+
+function load(dir, base) {
+  return new Promise((resolve, reject) => {
+    const am = new spine.AssetManager(ctx, '/fx42/' + dir + '/');
+    am.loadText(base + '.json');
+    am.loadTextureAtlas(base + '.atlas');
+    const t0 = performance.now();
+    const tick = () => {
+      if (am.isLoadingComplete()) {
+        if (am.hasErrors()) { reject(new Error(JSON.stringify(am.getErrors()))); return; }
+        try {
+          const json = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require(base + '.atlas')));
+          resolve(json.readSkeletonData(am.require(base + '.json')));
+        } catch (e) { reject(e); }
+      } else if (performance.now() - t0 > 60000) reject(new Error('load timeout'));
+      else setTimeout(tick, 20);
+    };
+    tick();
+  });
+}
+
+function pose(skeleton, state, t) {
+  state.getCurrent(0).trackTime = t;
+  state.apply(skeleton);
+  skeleton.update(0);
+  skeleton.updateWorldTransform(spine.Physics.update);
+}
+
+window.renderChar = async function (dir, base, opts) {
+  opts = opts || {};
+  const fps = opts.fps || 20;
+  const data = await load(dir, base);
+  const skeleton = new spine.Skeleton(data);
+  skeleton.setToSetupPose();
+  const state = new spine.AnimationState(new spine.AnimationStateData(data));
+  const names = data.animations.map(a => a.name);
+  // 取景:全部动作采样的顶点包围盒并集
+  const off = new spine.Vector2(), size = new spine.Vector2();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  // 默认按待机动作取景再外扩(全动作并集会被投射物 / 特效撑得很大,人缩成一点)
+  const frameAnims = opts.frameAnim ? [opts.frameAnim] : (names.filter(n => /idle/i.test(n)).slice(0, 1).length ? names.filter(n => /idle/i.test(n)).slice(0, 1) : names);
+  for (const anim of frameAnims) {
+    state.setAnimation(0, anim, false);
+    const d = state.getCurrent(0).animation.duration || 0.001;
+    for (let i = 0; i < 12; i++) {
+      pose(skeleton, state, d * i / 11);
+      skeleton.getBounds(off, size);
+      if (isFinite(size.x) && size.x > 0) { x0 = Math.min(x0, off.x); y0 = Math.min(y0, off.y); x1 = Math.max(x1, off.x + size.x); y1 = Math.max(y1, off.y + size.y); }
+    }
+  }
+  // 顶点包围盒含隐藏插槽(弓 / 箭 / 特效),再按像素亮区精确取景:待机帧画出来读回非底色像素的范围
+  let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  let zoom = Math.max((x1 - x0) / W, (y1 - y0) / H) * 1.1;
+  const draw = () => {
+    gl.clearColor(0.16, 0.17, 0.2, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    renderer.camera.position.set(cx, cy, 0);
+    renderer.camera.zoom = zoom;
+    renderer.camera.setViewport(W, H);
+    renderer.begin();
+    renderer.drawSkeleton(skeleton, !!opts.pma);
+    renderer.end();
+  };
+  {
+    let px0 = W, py0 = H, px1 = -1, py1 = -1;
+    const buf = new Uint8Array(W * H * 4);
+    for (const anim of frameAnims) {
+      state.setAnimation(0, anim, false);
+      const d = state.getCurrent(0).animation.duration || 0.001;
+      for (let i = 0; i < 6; i++) {
+        skeleton.setToSetupPose();
+        pose(skeleton, state, d * i / 6);
+        draw();
+        gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const k = (y * W + x) * 4;
+          if (Math.abs(buf[k] - 41) + Math.abs(buf[k + 1] - 43) + Math.abs(buf[k + 2] - 51) > 30) {
+            if (x < px0) px0 = x; if (x > px1) px1 = x; if (y < py0) py0 = y; if (y > py1) py1 = y;
+          }
+        }
+      }
+    }
+    if (px1 > 0) {
+      const wx0 = cx + (px0 - W / 2) * zoom, wx1 = cx + (px1 - W / 2) * zoom;
+      const wy0 = cy + (py0 - H / 2) * zoom, wy1 = cy + (py1 - H / 2) * zoom;
+      const pad = opts.pad || 1.5;
+      cx = (wx0 + wx1) / 2; cy = (wy0 + wy1) / 2 + (wy1 - wy0) * 0.12;
+      zoom = Math.max((wx1 - wx0) / W, (wy1 - wy0) / H) * pad;
+    }
+  }
+  const out = { anims: {}, view: { x0, y0, x1, y1 } };
+  for (const anim of names) {
+    state.setAnimation(0, anim, true);
+    const duration = state.getCurrent(0).animation.duration || 0.001;
+    const n = Math.max(2, Math.min(60, Math.round(duration * fps)));
+    const frames = [];
+    for (let i = 0; i < n; i++) {
+      skeleton.setToSetupPose();
+      pose(skeleton, state, duration * i / n);
+      gl.clearColor(0.16, 0.17, 0.2, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      renderer.camera.position.set(cx, cy, 0);
+      renderer.camera.zoom = zoom;
+      renderer.camera.setViewport(W, H);
+      renderer.begin();
+      renderer.drawSkeleton(skeleton, !!opts.pma);
+      renderer.end();
+      frames.push(canvas.toDataURL('image/png'));
+    }
+    out.anims[anim] = { duration: Math.round(duration * 1000) / 1000, frames };
+  }
+  return out;
+};
+window.__ready = true;
+</script></body></html>
