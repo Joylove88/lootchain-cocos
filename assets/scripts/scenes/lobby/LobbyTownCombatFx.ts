@@ -7,7 +7,17 @@ import {
   type BattleAttackFxSpec,
   type BattleAttackSpineFxSpec,
 } from './LobbyBattleAttackFxConfig';
-import { battleFxPremultiplied, lookupBattleFxBounds, resolveHeroGuardSkillEffect, type BattleSkillEffectSpec, type GuardSkillFxRole } from './LobbyBattleSkillEffectConfig';
+import { prepareBattleFxData } from './BattleFxSlotFilter';
+import {
+  battleFxPremultiplied,
+  lookupBattleFxBounds,
+  lookupBattleFxCoreBounds,
+  resolveBattleFxHiddenSlotsForEffect,
+  resolveHeroGuardSkillEffect,
+  resolveHeroUltEffect,
+  type BattleSkillEffectSpec,
+  type GuardSkillFxRole,
+} from './LobbyBattleSkillEffectConfig';
 import { patchBattleUnitSpineRuntimeEnums, resolveBattleUnitSpineRuntimeData } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 
@@ -31,6 +41,8 @@ interface ReadyFx {
   h: number;
   cx: number;
   cy: number;
+  /** 核心亮区(整段演出类大招按它定尺寸 / 对位,见 BATTLE_FX_CORE_BOUNDS);没登记 = null。 */
+  core: { w: number; h: number; cx: number; cy: number } | null;
 }
 
 /** 英雄在野外战斗里的整套表现素材(普攻弹道 / 命中 / 斩击贴图 / 技能)。 */
@@ -38,6 +50,8 @@ export interface TownHeroFxKit {
   strike: BattleAttackFxSpec;
   spine: BattleAttackSpineFxSpec | null;
   skill: BattleSkillEffectSpec;
+  /** 守卫同款专属大招包(hu_*,整段演出取高潮片段):骨骼不自带大招光效的英雄(UR / SSR)放大招时用。 */
+  ult: BattleSkillEffectSpec;
 }
 
 export function resolveTownHeroFxKit(heroCode: string, heroClass: string | null | undefined, role: 'melee' | 'ranged' | 'support'): TownHeroFxKit {
@@ -46,6 +60,7 @@ export function resolveTownHeroFxKit(heroCode: string, heroClass: string | null 
     strike: resolveHeroAttackFx(heroCode, heroClass ?? null, role === 'melee'),
     spine: resolveHeroAttackSpineFx(heroCode),
     skill: resolveHeroGuardSkillEffect(heroCode, skillRole),
+    ult: resolveHeroUltEffect(heroCode, heroClass ?? null),
   };
 }
 
@@ -68,6 +83,7 @@ export class TownCombatFx {
       }
     }
     this.prewarm(kit.skill);
+    this.prewarm(kit.ult);
   }
 
   prewarm(spec: { effect: string; animation: string }): void {
@@ -87,6 +103,8 @@ export class TownCombatFx {
           return;
         }
         patchBattleUnitSpineRuntimeEnums(data, runtime);
+        // 整段演出类大招(hu_*):先裁掉素材里自带的角色本体 / 压暗底(同守卫战,必须在任何实例用这份数据前)
+        prepareBattleFxData(data, runtime, resolveBattleFxHiddenSlotsForEffect(spec.effect));
         const wanted = spec.animation.trim().toLowerCase();
         const animation = names.find((name) => name.toLowerCase() === wanted) ?? names[0];
         const bounds = lookupBattleFxBounds(spec.effect, animation);
@@ -94,7 +112,7 @@ export class TownCombatFx {
           return;
         }
         const anim = (runtime.animations ?? []).find((item) => item?.name === animation) as { duration?: number } | undefined;
-        this.ready.set(spec.effect, { data, animation, duration: Math.max(0.12, anim?.duration ?? 0.6), ...bounds });
+        this.ready.set(spec.effect, { data, animation, duration: Math.max(0.12, anim?.duration ?? 0.6), ...bounds, core: lookupBattleFxCoreBounds(spec.effect, animation) });
       } catch (error) {
         console.warn('[TownFx] prewarm failed', spec.effect, error);
       }
@@ -108,8 +126,9 @@ export class TownCombatFx {
   /**
    * 在 (x, y) 播一段特效,最长边缩到 sizePx;返回节点(没就绪返回 null)。
    * loop = 循环(弹道);否则播完自动销毁(有 clip 只播片段,片段末 0.12s 淡出)。
+   * core = 按核心亮区定尺寸(sizePx = 亮区宽高的几何均值)并把亮区中心对准 (x, y);整段演出类大招用,淡粒子撑大的宽松框不算。
    */
-  play(parent: Node, fx: TownFxClip, x: number, y: number, sizePx: number, opts: { loop?: boolean; flipX?: boolean; angle?: number; speed?: number } = {}): Node | null {
+  play(parent: Node, fx: TownFxClip, x: number, y: number, sizePx: number, opts: { loop?: boolean; flipX?: boolean; angle?: number; speed?: number; core?: boolean } = {}): Node | null {
     const ready = this.ready.get(fx.effect);
     if (!ready || !parent.isValid) {
       if (!ready) {
@@ -117,13 +136,16 @@ export class TownCombatFx {
       }
       return null;
     }
-    const fit = sizePx / Math.max(1, Math.max(ready.w, ready.h));
+    const core = opts.core ? ready.core : null;
+    const fit = core ? sizePx / Math.sqrt(Math.max(64, core.w * core.h)) : sizePx / Math.max(1, Math.max(ready.w, ready.h));
+    const cx = core ? core.cx : ready.cx;
+    const cy = core ? core.cy : ready.cy;
     const holder = this.host.addChildPlainNode(parent, 'TownFx', x, y, 10, 10);
     holder.setSiblingIndex(parent.children.length - 1);
     if (opts.angle) {
       holder.angle = opts.angle;
     }
-    const node = this.host.addChildPlainNode(holder, 'Fx', -ready.cx * fit * (opts.flipX ? -1 : 1), -ready.cy * fit, 10, 10);
+    const node = this.host.addChildPlainNode(holder, 'Fx', -cx * fit * (opts.flipX ? -1 : 1), -cy * fit, 10, 10);
     node.setScale(fit * (opts.flipX ? -1 : 1), fit, 1);
     const skeleton = node.addComponent(sp.Skeleton);
     try {

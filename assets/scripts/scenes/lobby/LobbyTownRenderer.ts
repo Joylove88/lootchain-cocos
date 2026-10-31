@@ -66,6 +66,8 @@ import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
  * 角色只翻左右(现有英雄骨骼全是侧面视角);动画有 run 用 run,没有就 idle 走。
  */
 export interface LobbyTownHost extends LobbyHudHost {
+  /** 断网遮罩挡着(10-31):野外冻结、不收键盘。 */
+  netBlocked?(): boolean;
   /** docs/48:冒险之门 = 矿境面板(NPC 矿列表 → 掠夺)。 */
   openLobbyRaidPanel?(): void;
   /** docs/47 P0:本地掠夺原型(无服务端时的回退)。 */
@@ -1043,7 +1045,7 @@ export class LobbyTownRenderer {
       }
       // 野外战斗特效(普攻弹道 / 命中 / 战技):第一次出手前就要在本地,否则特效晚出或不出
       const kit = resolveTownHeroFxKit(hero.heroCode, hero.heroClass, companionRole(hero.heroClass));
-      [kit.spine?.effect, kit.spine?.hit?.effect, kit.skill.effect].forEach((effect) => effect && set.add(`spine/effect/${effect}`));
+      [kit.spine?.effect, kit.spine?.hit?.effect, kit.skill.effect, kit.ult.effect].forEach((effect) => effect && set.add(`spine/effect/${effect}`));
     });
     return Array.from(set);
   }
@@ -1197,7 +1199,7 @@ export class LobbyTownRenderer {
 
   private onKeyDown(event: EventKeyboard): void {
     this.keys.add(event.keyCode);
-    if (!this.isMounted() || !this.layout) {
+    if (!this.isMounted() || !this.layout || this.host.netBlocked?.()) {
       return;
     }
     if (event.keyCode === KeyCode.KEY_F || event.keyCode === KeyCode.KEY_E || event.keyCode === KeyCode.SPACE || event.keyCode === KeyCode.ENTER) {
@@ -1260,6 +1262,10 @@ export class LobbyTownRenderer {
       return;
     }
     const clamped = Math.min(0.05, Math.max(0, dt));
+    if (this.host.netBlocked?.()) {
+      // 断网:借顿帧机制整场冻结(骨骼停住、恢复时所有计时顺延),怪物不会趁断线打人
+      this.hitStopUntil = Math.max(this.hitStopUntil, Date.now() + 100);
+    }
     if (this.stepHitStop(Date.now())) {
       this.applyCamera(false, clamped);
       return;
@@ -1429,6 +1435,7 @@ export class LobbyTownRenderer {
     if (this.leaderDead || (nowMs < this.actionUntil && nowMs >= this.dashUntil)) {
       v = { x: 0, y: 0 };
     }
+    this.stepDodgeFx(nowMs);
     if (nowMs < this.dashUntil) {
       // 翻滚 / 突进:按冲刺方向强制位移
       const dashSpeed = this.dashSpeed;
@@ -3877,9 +3884,10 @@ export class LobbyTownRenderer {
     { kind: 'skill2', mult: 1.8, reach: 200, cap: 820, heavy: true },
   ];
   private static readonly SKILLS = [
-    { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, cap: 900, dash: 0, anim: 'skill3' as const },
-    { name: '突进斩', mult: 2.0, reach: 120, around: false, cdMs: 7000, cap: 700, dash: 280, anim: 'skill1' as const },
-    { name: '旋风斩', mult: 1.6, reach: 220, around: true, cdMs: 9000, cap: 1000, dash: 0, anim: 'ult' as const },
+    // 10-31 用户「只有大招有技能特效」:技能动作 2~2.5 秒,原 cap 0.7~0.9 秒 = 快进 3 倍一闪而过;放宽到约 1.7~2 倍速
+    { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, cap: 1200, dash: 0, anim: 'skill3' as const },
+    { name: '突进斩', mult: 2.0, reach: 120, around: false, cdMs: 7000, cap: 1250, dash: 280, anim: 'skill1' as const },
+    { name: '旋风斩', mult: 1.6, reach: 220, around: true, cdMs: 9000, cap: 1500, dash: 0, anim: 'ult' as const },
   ];
 
   private get fx(): TownCombatFx {
@@ -4034,7 +4042,7 @@ export class LobbyTownRenderer {
     this.comboUntil = 0;
     const leader = this.leader;
     // 大招键(旋风斩 = 'ult'):R / SR 自带大招动作 skill4 约 2.5 秒,上限放到 1.8 秒(原 1.0 秒会快进成一闪)
-    const dur = this.playLeaderAction(spec.anim, spec.anim === 'ult' && this.hasOwnUlt(leader) ? 1800 : spec.cap);
+    const dur = this.playLeaderAction(this.skillAnimKind(leader, index), spec.anim === 'ult' && this.hasOwnUlt(leader) ? 1800 : spec.cap);
     this.leaderActionStart = now;
     this.actionUntil = now + dur * 0.8;
     gameAudio.sfx(resolveHeroSkillSfxKey(leader.hero.heroCode), 0.8);
@@ -4051,6 +4059,7 @@ export class LobbyTownRenderer {
       this.dashDir = { x: dx / len, y: dy / len };
       this.dashSpeed = dist / 0.2;
       this.dashUntil = now + 200;
+      this.dodgeFx = { until: now + 200, nextGhost: 0, lean: false };
       const x1 = leader.x + this.dashDir.x * dist;
       const y1 = leader.y + this.dashDir.y * dist * 0.8;
       this.pendingHits.push({ at: now + 200, mult: spec.mult, reach: spec.reach, around: false, heavy: true, skill: index, dashLine: { x0: leader.x, y0: leader.y, x1, y1 } });
@@ -4083,6 +4092,170 @@ export class LobbyTownRenderer {
     this.bufferedInput = null;
     this.leaderActionAnim = false;
     this.endOneShot(leader);
+    // 10-31 用户「瞬移,没有动作动画」:冲刺段播跑步动作 2.4 倍速 + 身体前倾 + 沿路残影(stepDodgeFx),结束回正
+    const skeleton = leader.skeleton;
+    const run = leader.names?.move;
+    if (skeleton && skeleton.isValid && run) {
+      try {
+        skeleton.setAnimation(0, run, true);
+        skeleton.timeScale = 2.4;
+        leader.anim = run;
+      } catch (error) {
+        void error;
+      }
+    }
+    const spine = leader.spineNode;
+    if (spine && spine.isValid) {
+      Tween.stopAllByTarget(spine);
+      spine.angle = -16 * leader.facing;
+    }
+    this.dodgeFx = { until: now + 250, nextGhost: 0, lean: true };
+    this.spawnAfterimage(leader, 0.75);
+  }
+
+  /** 闪避 / 突进的表现状态:until = 冲刺结束;nextGhost = 下一张残影时间;lean = 有前倾要回正(突进技能不前倾)。 */
+  private dodgeFx: { until: number; nextGhost: number; lean: boolean } | null = null;
+
+  /** 冲刺中每 45ms 留一张残影;冲刺结束恢复动作速度、身体回正。 */
+  private stepDodgeFx(now: number): void {
+    const fx = this.dodgeFx;
+    const leader = this.leader;
+    if (!fx || !leader) {
+      return;
+    }
+    if (now < fx.until) {
+      if (now >= fx.nextGhost) {
+        fx.nextGhost = now + 45;
+        this.spawnAfterimage(leader, 0.55);
+      }
+      return;
+    }
+    this.dodgeFx = null;
+    if (!fx.lean) {
+      return;
+    }
+    if (leader.skeleton && leader.skeleton.isValid && !this.leaderActionAnim) {
+      leader.skeleton.timeScale = 1;
+    }
+    const spine = leader.spineNode;
+    if (spine && spine.isValid) {
+      tween(spine).to(0.12, { angle: 0 }, { easing: 'quadOut' }).start();
+    }
+  }
+
+  /** 残影:同骨骼另起一个实例,定格在队长当前这一帧,染冷色后 0.28 秒淡出。 */
+  private spawnAfterimage(actor: TownActor, alpha: number): void {
+    const src = actor.skeleton;
+    const data = src?.skeletonData;
+    const root = this.entityRoot;
+    const spine = actor.spineNode;
+    if (!src || !src.isValid || !data || !root || !root.isValid || !spine || !spine.isValid) {
+      return;
+    }
+    const current = src.getCurrent(0);
+    const animName = current?.animation?.name;
+    if (!current || !animName) {
+      return;
+    }
+    const holder = this.host.addChildPlainNode(root, 'TownDodgeGhost', actor.x, actor.y, 10, 10);
+    holder.setSiblingIndex(Math.max(0, actor.node.getSiblingIndex()));
+    const node = this.host.addChildPlainNode(holder, 'Spine', spine.position.x, spine.position.y, 10, 10);
+    node.setScale(spine.scale);
+    node.angle = spine.angle;
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = src.premultipliedAlpha;
+    try {
+      skeleton.skeletonData = data;
+      const runtime = resolveBattleUnitSpineRuntimeData(data);
+      const skin = runtime ? resolveBattleUnitSpineSkinName(data, runtime) : null;
+      if (skin) {
+        skeleton.setSkin(skin);
+      }
+      const entry = skeleton.setAnimation(0, animName, false);
+      if (entry) {
+        entry.trackTime = current.trackTime;
+      }
+      skeleton.timeScale = 0;
+      skeleton.color = rgba(140, 200, 255, 255);
+    } catch (error) {
+      void error;
+      holder.destroy();
+      return;
+    }
+    const opacity = holder.addComponent(UIOpacity);
+    opacity.opacity = Math.round(255 * alpha);
+    tween(opacity).to(0.28, { opacity: 0 }, { easing: 'quadIn' }).call(() => holder.isValid && holder.destroy()).start();
+  }
+
+  /**
+   * 技能键对应的动作:R / SR 骨骼没有 ult,映射里的 skill3 就是大招动作 skill4 —— K 键(重斩)改播 skill2,
+   * 否则 K 和 I 播的是同一段大招(10-31 实测)。
+   */
+  private skillAnimKind(actor: TownActor, index: number): 'skill1' | 'skill2' | 'skill3' | 'ult' {
+    if (index === 0) {
+      return actor.names?.ult ? 'skill3' : 'skill2';
+    }
+    return index === 1 ? 'skill1' : 'ult';
+  }
+
+  /** 技能落点特效:英雄骨骼自带的 skillN_kz 动画(挂机战斗同款,画在目标身上);没有 = null。 */
+  private skillKzAnim(actor: TownActor, index: number): string | null {
+    const names = actor.names;
+    if (!names) {
+      return null;
+    }
+    if (index === 0) {
+      return names.ult ? names.skill3Kz : names.skill2Kz;
+    }
+    if (index === 1) {
+      return names.skill1Kz;
+    }
+    return names.ult ? names.skill4Kz : names.skill3Kz;
+  }
+
+  /** 在 (x, y) 脚下另起一个同骨骼实例只播落点动画 anim(和英雄同尺寸,朝 facing),播完销毁;没播成返回 false。 */
+  private playOwnKz(actor: TownActor, anim: string, x: number, y: number, facing: 1 | -1): boolean {
+    const src = actor.skeleton;
+    const data = src?.skeletonData;
+    const root = this.entityRoot;
+    const spine = actor.spineNode;
+    if (!src || !src.isValid || !data || !root || !root.isValid || !spine) {
+      return false;
+    }
+    let duration = 0;
+    try {
+      duration = src.findAnimation(anim)?.duration ?? 0;
+    } catch (error) {
+      void error;
+    }
+    if (duration <= 0) {
+      return false;
+    }
+    const holder = this.host.addChildPlainNode(root, 'TownFxKz', x, y, 10, 10);
+    holder.setSiblingIndex(root.children.length - 1);
+    const node = this.host.addChildPlainNode(holder, 'Spine', spine.position.x, spine.position.y, 10, 10);
+    node.setScale(actor.baseScaleX * facing, actor.baseScaleY, 1);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = src.premultipliedAlpha;
+    const speed = 1.2;
+    try {
+      skeleton.skeletonData = data;
+      const runtime = resolveBattleUnitSpineRuntimeData(data);
+      const skin = runtime ? resolveBattleUnitSpineSkinName(data, runtime) : null;
+      if (skin) {
+        skeleton.setSkin(skin);
+      }
+      skeleton.setAnimation(0, anim, false);
+      skeleton.timeScale = speed;
+    } catch (error) {
+      void error;
+      holder.destroy();
+      return false;
+    }
+    const life = duration / speed;
+    const opacity = holder.addComponent(UIOpacity);
+    tween(opacity).delay(Math.max(0, life - 0.15)).to(0.15, { opacity: 0 }).call(() => holder.isValid && holder.destroy()).start();
+    return true;
   }
 
   private canAct(): boolean {
@@ -4164,7 +4337,7 @@ export class LobbyTownRenderer {
    * 命中反馈:专属命中特效(没有就贴斩击图)+ 受击闪白 + 形变 + 击退;by = 打出这一下的人(队长 / 队友)。
    * 队长的命中再加顿帧 + 震屏 + 打击音;队友的只出特效和击退(频率高,全加会糊)。
    */
-  private impactMonster(monster: TownMonster, by: TownActor, heavy: boolean, leaderHit: boolean): void {
+  private impactMonster(monster: TownMonster, by: TownActor, heavy: boolean, leaderHit: boolean, skillHit = false): void {
     const root = this.entityRoot;
     if (!root || !root.isValid || monster.dead) {
       return;
@@ -4175,7 +4348,8 @@ export class LobbyTownRenderer {
     const scale = (heavy ? 1.25 : 1) * (leaderHit ? 1 : 0.8) * (monster.camp.elite ? 1.2 : 1);
     const hit = kit.spine?.hit;
     const hitNode = hit ? this.fx.play(root, hit, monster.x - dir * 10, bodyY, 150 * hit.size * scale, { flipX: dir < 0 }) : null;
-    if (!hitNode && by.role === 'melee') {
+    // 技能命中已有整套技能特效,不再叠静态斩击贴图(10-31 用户「有些还显示的贴图」)
+    if (!hitNode && by.role === 'melee' && !skillHit) {
       this.fx.strikeSprite(root, kit.strike, monster.x - dir * 10, bodyY, 150 * kit.strike.size * scale, dir > 0 ? -12 : 12);
     }
     monster.flashUntil = Date.now() + (heavy ? 130 : 80);
@@ -4243,6 +4417,9 @@ export class LobbyTownRenderer {
       this.dashUntil += delta;
       this.iframesUntil += delta;
       this.leaderActionStart += delta;
+      if (this.dodgeFx) {
+        this.dodgeFx.until += delta;
+      }
       this.pendingHits.forEach((hit) => { hit.at += delta; });
       this.companionHits.forEach((hit) => { hit.at += delta; });
       for (const actor of [this.leader, ...this.followers]) {
@@ -4992,13 +5169,28 @@ export class LobbyTownRenderer {
     const root = this.entityRoot;
     const kit = this.kitOf(leader);
     if (hit.skill !== undefined && root) {
-      // 技能:专属战技特效(target = 落在锁定目标 / 前方;self = 绕自身),再加一记重震
+      // 技能特效(10-31 用户「只有大招有技能特效,其他技能没有特效」):
+      // ① 英雄骨骼自带的落点特效 skillN_kz(挂机战斗同款,每名英雄专属)画在锁定目标脚下(没目标落在身前);
+      // ② UR / SSR 大招骨骼不带光效 → 守卫同款专属大招包(hu_*,按核心亮区定尺寸);
+      // ③ 都没有才用通用战技特效(target = 锁定目标 / 前方;self = 绕自身)
       const target = this.ensureLockTarget();
-      const self = kit.skill.anchor === 'self' || hit.around;
-      const fxX = self || !target ? leader.x + (self ? 0 : leader.facing * 150) : target.x;
-      const fxY = self || !target ? leader.y + 90 : this.monsterBodyY(target);
-      const size = (hit.skill === 2 ? 420 : 340) * kit.skill.scale;
-      this.fx.play(root, kit.skill, fxX, fxY + kit.skill.offsetY, size, { flipX: leader.facing < 0 });
+      const near = target && Math.hypot(target.x - leader.x, target.y - leader.y) <= hit.reach + 260 ? target : null;
+      const facing: 1 | -1 = near ? (near.x >= leader.x ? 1 : -1) : leader.facing;
+      const kz = this.skillKzAnim(leader, hit.skill);
+      let shown = !!kz && this.playOwnKz(leader, kz, near ? near.x : leader.x + leader.facing * 170, near ? near.y : leader.y, facing);
+      if (!shown && hit.skill === 2 && !this.hasOwnUlt(leader)) {
+        const tiers: Record<string, number> = { R: 2.3, SR: 2.6, SSR: 3.0, UR: 3.4 };
+        const tier = tiers[(leader.hero.rarity || 'R').toUpperCase()] ?? 2.3;
+        const ux = near ? near.x : leader.x + leader.facing * 200;
+        const uy = (near ? this.monsterBodyY(near) : leader.y + 100) + kit.ult.offsetY;
+        shown = !!this.fx.play(root, kit.ult, ux, uy, 170 * tier, { flipX: facing < 0, core: true });
+      }
+      if (!shown) {
+        const self = kit.skill.anchor === 'self' || hit.around;
+        const fxX = self || !near ? leader.x + (self ? 0 : leader.facing * 150) : near.x;
+        const fxY = self || !near ? leader.y + 90 : this.monsterBodyY(near);
+        this.fx.play(root, kit.skill, fxX, fxY + kit.skill.offsetY, 420 * kit.skill.scale, { flipX: facing < 0 });
+      }
       this.shake(10, 0.22);
     }
     if (hit.ranged && hit.skill === undefined && root) {
@@ -5051,7 +5243,7 @@ export class LobbyTownRenderer {
       if (!this.lockTarget) {
         this.setLockTarget(monster);
       }
-      this.impactMonster(monster, leader, hit.heavy || hit.skill !== undefined, !landed);
+      this.impactMonster(monster, leader, hit.heavy || hit.skill !== undefined, !landed, hit.skill !== undefined);
       landed = true;
       this.damageMonster(monster, damage, hit.heavy, false);
     }

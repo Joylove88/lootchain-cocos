@@ -24,6 +24,8 @@ export class HttpClient {
   private baseUrl: string;
   /** 登录态失效(业务 code=401)时的集中回调:宿主(游戏根)清 token 并回登录页。 */
   onAuthExpired: (() => void) | null = null;
+  /** 网络层结果(连接监视用):true = 服务端有回应(含业务错误);false = 连不上 / 超时 / 网关 502~504。 */
+  onNetworkStatus: ((reachable: boolean) => void) | null = null;
 
   constructor(
     baseUrl: string,
@@ -77,6 +79,10 @@ export class HttpClient {
         if (xhr.readyState !== 4) {
           return;
         }
+        // status 0 = 连接失败 / 超时(onerror / ontimeout 另行上报);502~504 = 服务端没起来(发版重启中)
+        if (xhr.status !== 0) {
+          this.onNetworkStatus?.(xhr.status < 502 || xhr.status > 504);
+        }
         if (xhr.status < 200 || xhr.status >= 300) {
           reject(new ApiError(xhr.status || -1, xhr.responseText || '网络请求失败', url));
           return;
@@ -96,8 +102,14 @@ export class HttpClient {
           reject(error);
         }
       };
-      xhr.onerror = () => reject(new ApiError(-1, '网络连接失败', url));
-      xhr.ontimeout = () => reject(new ApiError(-2, '请求超时', url));
+      xhr.onerror = () => {
+        this.onNetworkStatus?.(false);
+        reject(new ApiError(-1, '网络连接失败', url));
+      };
+      xhr.ontimeout = () => {
+        this.onNetworkStatus?.(false);
+        reject(new ApiError(-2, '请求超时', url));
+      };
       xhr.send(body === undefined ? null : JSON.stringify(body));
     });
   }

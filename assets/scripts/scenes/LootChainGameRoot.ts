@@ -66,6 +66,7 @@ import { installMobileWebShell, requestLandscapeFullscreen, setFullscreenGate } 
 import { gameAudio } from '../audio/GameAudio';
 import { lobbyGuide } from '../guide/GuideManager';
 import { lootChainApi, LootChainApi } from '../api/LootChainApi';
+import { ConnectionWatch } from '../net/ConnectionWatch';
 import { PlayerWsClient } from '../net/PlayerWsClient';
 import { PaymentWindow } from '../net/PaymentWindow';
 import type { EquipmentItemVO } from '../api/EquipmentApi';
@@ -80,7 +81,7 @@ import { AdaptiveStageLayoutResolver, type AdaptiveStageLayoutHost } from './Ada
 import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
-import { mountKitBackdrop, mountKitButton, mountKitSection, type UiKitHost } from './UiKit';
+import { mountKitBackdrop, mountKitButton, mountKitLoading, mountKitSection, type UiKitHost, type UiKitLoadingHost } from './UiKit';
 import { nativeUnderlayVideoSupported } from '../app/NativeUnderlayVideo';
 import { preloadHeroAvatars } from './lobby/HeroHeadCrop';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
@@ -364,6 +365,11 @@ export class LootChainGameRoot extends Component {
     const wsBase = AppConfig.apiBaseUrl.replace(/^http/, 'ws');
     return `${wsBase}/ws/player?satoken=${encodeURIComponent(token)}`;
   });
+  // 连接监视(10-31):断网 / 连不上服务器时挂「连接服务器中」遮罩挡住操作;探测请求用一个轻量 GET
+  private readonly connectionWatch = new ConnectionWatch(() => this.api.http.get<unknown>('/api/player/me/rename'), () => this.playerWsClient.reconnectNow());
+  private netOverlayNode: Node | null = null;
+  private netOverlayKey = '';
+  private netBlockedSince = 0;
   // 挂机收益(服务端权威):汇总快照 + 领取中标记 + 自动挑战开关(本地会话内)。
   private idleSummary: PlayerIdleSummaryVO | null = null;
   private idleSummaryLoading = false;
@@ -618,6 +624,14 @@ export class LootChainGameRoot extends Component {
     this.registerPlayerWsHandlers();
     // 任意请求 401(token 过期/被踢)→集中清会话回登录页,玩家只在失效时才需要重登。
     this.api.http.onAuthExpired = () => this.handleAuthExpired();
+    // 请求 / 长连接的网络层结果汇到连接监视;请求连不上时顺手探一下长连接(手机断网时 onclose 常迟迟不来)
+    this.api.http.onNetworkStatus = (reachable) => {
+      this.connectionWatch.setHttp(reachable);
+      if (!reachable) {
+        this.playerWsClient.probe();
+      }
+    };
+    this.playerWsClient.onStatus = (open) => this.connectionWatch.setWs(open);
     this.currentView = 'login';
     this.preloadUiSprites();
     // 英雄头像(挑战弹窗 / 守卫战统计):22 张小图,开局预读,打开时不闪首字
@@ -1067,6 +1081,7 @@ export class LootChainGameRoot extends Component {
   private handleAuthExpired(): void {
     this.api.auth.logout();
     this.playerWsClient.disconnect();
+    this.connectionWatch.reset();
     if (this.currentView !== 'login' && this.currentView !== 'loginAccount') {
       this.currentView = 'login';
       this.renderCurrentView();
@@ -1075,6 +1090,7 @@ export class LootChainGameRoot extends Component {
   }
 
   update(deltaTime: number): void {
+    this.updateNetOverlay();
     // 视口变化(窗口缩放 / 手机转动)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
     // 输入框编辑中(软键盘弹出会改窗口尺寸)不同步也不重排,否则输入框被重建、键盘收起、字丢失。
     if (!isTextInputActive()) {
@@ -8626,6 +8642,68 @@ export class LootChainGameRoot extends Component {
       return 'gachaExchange';
     }
     return 'gachaPoolContent';
+  }
+
+  /** 断网遮罩是否挡着(野外战斗据此冻结、不收键盘)。 */
+  netBlocked(): boolean {
+    return !!this.netOverlayNode && this.netOverlayNode.isValid;
+  }
+
+  /**
+   * 断网 / 连不上服务器(ConnectionWatch)持续 1.2 秒 → 整屏「连接服务器中」遮罩挡住所有点击(挂在内容根之外,整页重绘不会清掉);
+   * 恢复即撤。只在已登录、不在登录页时生效(登录页的请求失败照旧提示)。
+   */
+  private updateNetOverlay(): void {
+    const now = Date.now();
+    this.connectionWatch.tick(now);
+    const watched = !this.isLoginSceneView(this.currentView) && !!this.api.tokenStore.tokenValue();
+    const state = watched ? this.connectionWatch.state(now) : 'ok';
+    if (state === 'ok') {
+      this.netBlockedSince = 0;
+      if (this.netOverlayNode) {
+        if (this.netOverlayNode.isValid) {
+          this.netOverlayNode.destroy();
+        }
+        this.netOverlayNode = null;
+        this.netOverlayKey = '';
+      }
+      return;
+    }
+    if (this.netBlockedSince === 0) {
+      this.netBlockedSince = now;
+    }
+    if (now - this.netBlockedSince < 1200) {
+      return;
+    }
+    const key = `${state}|${this.layoutKey}`;
+    if (this.netOverlayNode && this.netOverlayNode.isValid && key === this.netOverlayKey) {
+      // 后挂的节点(弹层 / 飘字)别盖到遮罩上面
+      if (this.netOverlayNode.getSiblingIndex() !== this.node.children.length - 1) {
+        this.netOverlayNode.setSiblingIndex(this.node.children.length - 1);
+      }
+      return;
+    }
+    if (this.netOverlayNode && this.netOverlayNode.isValid) {
+      this.netOverlayNode.destroy();
+    }
+    const layout = this.resolveLayout();
+    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const cover = Math.max(layout.width, layout.height) * 3;
+    const node = new Node('NetConnecting');
+    node.layer = this.node.layer;
+    this.node.addChild(node);
+    node.addComponent(UITransform).setContentSize(new Size(cover, cover));
+    node.addComponent(BlockInputEvents);
+    const dim = node.addComponent(Graphics);
+    dim.fillColor = new Color(0, 0, 0, 150);
+    dim.rect(-cover / 2, -cover / 2, cover, cover);
+    dim.fill();
+    mountKitLoading(this as unknown as UiKitLoadingHost, node, centerX, centerY, scale, '连接服务器中…',
+      state === 'offline' ? '网络已断开,请检查网络连接' : '网络不稳定,正在重新连接');
+    this.netOverlayNode = node;
+    this.netOverlayKey = key;
   }
 
   private isLoginSceneView(view: ViewName): boolean {
