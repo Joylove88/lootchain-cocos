@@ -1,5 +1,6 @@
 import type { sp } from 'cc';
 import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
+import { equippedHeroSkin } from './HeroSkins';
 
 export interface BattleUnitSpineRuntimeData {
   x?: number;
@@ -192,6 +193,11 @@ const BATTLE_SR_R_FORMATION_MAX_HEIGHT_RATIO = 0.53;
 export function resolveBattleUnitSpineResource(unit: BattlePresentationUnitSnapshot): string | null {
   if (unit.side === 'enemy') {
     return resolveBattleUnitEnemySpineResource(unit.spineAsset);
+  }
+  // 英雄皮肤(HeroSkins,11-01 试穿阶段):穿着皮肤就换成皮肤骨骼(同一套骨骼动作,贴图不同)
+  const skin = equippedHeroSkin(unit.heroCode);
+  if (skin) {
+    return skin.spine;
   }
   const asset = resolveBattleUnitSpinePrimaryAsset(unit);
   if (!asset) {

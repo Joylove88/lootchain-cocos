@@ -1,7 +1,7 @@
 """野外技能 / 闪避表现自验(2026-10-31 用户:「瞬移没有动作动画;只有大招有技能特效,其他技能没有特效,有些还显示贴图」):
 无头 Edge 打开网页包 → 登录 guidetest02 → 林地怪群旁 → 依次放 K / L / I / Shift,每个动作连拍几张,
 打印队长英雄、技能特效是否就绪、实际播的动作名。
-用法:PREVIEW_PORT=7460 python tools/qa/field_skill_web.py <输出目录> [--leader=英雄码]
+用法:PREVIEW_PORT=7460 python tools/qa/field_skill_web.py <输出目录> [--leader=英雄码] [--solo] [--dodge] [--skin 英雄码:皮肤码]
 """
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
@@ -55,6 +55,11 @@ async def main():
                     open(os.path.join(OUT, f'{name}.jpg'), 'wb').write(base64.b64decode(m['result']['data']))
 
             await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            if '--skin' in sys.argv:
+                # 英雄皮肤本地试穿(HeroSkins):页面脚本跑之前写好开关
+                skin = sys.argv[sys.argv.index('--skin') + 1]
+                hero, code = skin.split(':')
+                await call('Page.addScriptToEvaluateOnNewDocument', {'source': "localStorage.setItem('lootchain.heroSkin', JSON.stringify({'" + hero + "': '" + code + "'}));"})
             await call('Page.navigate', {'url': base.PAGE})
             r = await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             print('cc', r.get('result', {}).get('result', {}).get('value'), flush=True)
@@ -71,6 +76,13 @@ async def main():
                     break
                 await asyncio.sleep(1)
             T = "const t = root.lobbyTownRenderer; const tp = (x, y) => { const all = [t.leader, ...t.followers]; all.forEach((a, i) => { a.x = x - i * 90; a.y = y; a.node.setPosition(a.x, a.y, 0); }); t.trail = [new cc.Vec2(x - 400, y), new cc.Vec2(x, y)]; t.applyCamera(true); };"
+            if '--skin' in sys.argv:
+                hero, code = sys.argv[sys.argv.index('--skin') + 1].split(':')
+                # 进地图时队伍重建,那时读试穿开关;已经在林地就先回城再进
+                await ev("localStorage.setItem('lootchain.heroSkin', JSON.stringify({'" + hero + "': '" + code + "'})); return 1;")
+                if await ev("return root.lobbyTownRenderer.def.code;") == 'WOODS':
+                    await ev("setTimeout(() => root.travelWorldMap('VILLAGE', null), 50); return 1;")
+                    await asyncio.sleep(8)
             await ev("if (root.lobbyTownRenderer.def.code !== 'WOODS') setTimeout(() => root.travelWorldMap('WOODS', null), 50); return 1;")
             for _ in range(120):
                 if await ev(T + " return t.def.code === 'WOODS' && t.leader ? 'ok' : 'wait';") == 'ok':
@@ -83,6 +95,7 @@ async def main():
                     await ev(T + f" t.swapLeader({idx}); return 1;")
             await asyncio.sleep(8)
             print('party', await ev(T + " return JSON.stringify([t.leader, ...t.followers].map(a => ({ code: a.hero.heroCode, rarity: a.hero.rarity, role: a.role, names: a.names, kit: t.kitOf(a) })));"), flush=True)
+            print('skinprobe', await ev(T + " return JSON.stringify({ ls: localStorage.getItem('lootchain.heroSkin'), leader: t.leader.hero.heroCode, data: t.leader.skeleton && t.leader.skeleton.skeletonData && t.leader.skeleton.skeletonData.name, uuid: t.leader.skeleton && t.leader.skeleton.skeletonData && t.leader.skeleton.skeletonData._uuid });"), flush=True)
             print('anims', await ev(T + " return JSON.stringify([t.leader, ...t.followers].map(a => [a.hero.heroCode, (a.skeleton.skeletonData.getRuntimeData().animations || []).map(x => x.name + ':' + x.duration.toFixed(2)).join(' ')]));"), flush=True)
             if '--solo' in sys.argv:
                 await ev(T + " t.followers.forEach(a => a.node.active = false); return 1;")

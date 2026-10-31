@@ -4,7 +4,7 @@ Meowa 导入时会按图集尺寸重建附件大小(放大过的图集 → 骨�
 所以只拿它画好的贴图:按区域名把新贴图逐块搬回「我们自己放大过的图集」(spine_atlas_scale 产物),骨骼仍用原 skel / json。
 同时逐块做颜色统计对齐(按透明度加权的均值 / 标准差,RGB 各通道):特效里原本暗色的烟雾 / 冲击波块,AI 常画成灰白实心,
 对齐后回到原版的色相与明暗,只保留新画出的细节。透明度取新图(轮廓更细),但不超过原版同位置透明度 ×1.3;再把原版以 --halo(默认 0.55)透明度垫在下面,保住柔光渐隐。
-用法:python tools/qa/fx_tex_repack.py <放大后的源目录> <Meowa 产物目录> <输出目录> <基名> [--no-color] [--halo 0.55] [--keep-orig 正则 --hue 度]
+用法:python tools/qa/fx_tex_repack.py <放大后的源目录> <Meowa 产物目录> <输出目录> <基名> [--no-color] [--halo 0.55] [--keep-orig 正则 --hue 度 --sv 饱和倍率,明度倍率]
 """
 import os, re, shutil, sys
 import numpy as np
@@ -18,6 +18,8 @@ HALO = float(args[args.index('--halo') + 1]) if '--halo' in args else 0.55
 # 角色换皮:光效部件(施法光球 / 法阵 / 火焰)AI 常画成白色实心块 → 这些区域不用新图,改用原图 + 色相旋转(度)
 KEEP = re.compile(args[args.index('--keep-orig') + 1]) if '--keep-orig' in args else None
 HUE = float(args[args.index('--hue') + 1]) if '--hue' in args else 0.0
+# 保留部件的饱和度 / 明度倍率(如 "1.4,0.85" = 更浓更暗)
+SAT, VAL = (float(x) for x in (args[args.index('--sv') + 1].split(',') if '--sv' in args else ('1', '1')))
 
 
 def parse_atlas(path):
@@ -120,11 +122,13 @@ def premultiply(img):
 
 
 def hue_shift(img, deg):
-    if not deg:
+    if not deg and SAT == 1 and VAL == 1:
         return img
     rgba = np.asarray(img).astype(np.float32)
     hsv = np.asarray(Image.fromarray(rgba[..., :3].astype(np.uint8), 'RGB').convert('HSV')).astype(np.float32)
     hsv[..., 0] = (hsv[..., 0] + deg / 360.0 * 255.0) % 256
+    hsv[..., 1] = np.clip(hsv[..., 1] * SAT, 0, 255)
+    hsv[..., 2] = np.clip(hsv[..., 2] * VAL, 0, 255)
     rgb = np.asarray(Image.fromarray(hsv.astype(np.uint8), 'HSV').convert('RGB')).astype(np.float32)
     return Image.fromarray(np.dstack([rgb, rgba[..., 3]]).astype(np.uint8), 'RGBA')
 

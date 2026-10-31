@@ -347,6 +347,10 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'fx_35004_kaerweisi_hit:attack': { w: 567, h: 572, cx: 5, cy: 49 },
   'fx_150079_laierde_fly:skill': { w: 1332, h: 972, cx: 14, cy: 1 },
   'fx_150079_laierde_hit:skill_bomb_up': { w: 2004, h: 1544, cx: -175, cy: 521 },
+  // 皮肤「血月契约」换色版(同骨骼同动画,包围盒同原版)
+  'bm_laierde_fly:skill': { w: 1332, h: 972, cx: 14, cy: 1 },
+  'bm_laierde_hit:skill_bomb_up': { w: 2004, h: 1544, cx: -175, cy: 521 },
+  'bm_a47_217:effect_debuff': { w: 436, h: 276, cx: 1, cy: 66 },
   'fx_45013_yingshu_fly:attack': { w: 472, h: 199, cx: -119, cy: 9 },
   'fx_25002_dutengnv_fly:attack_fly': { w: 412, h: 184, cx: 6, cy: 0 },
   'fx_25002_dutengnv_hit:attack': { w: 836, h: 780, cx: 28, cy: 16 },

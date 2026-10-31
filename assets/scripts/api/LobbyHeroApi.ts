@@ -1,3 +1,4 @@
+import { equippedHeroSkin } from '../scenes/lobby/HeroSkins';
 import { HttpClient } from '../net/HttpClient';
 import { parseBattleSkillConfig } from './BattleApi';
 import type { LobbyHeroAffixVO, LobbyHeroFilterOptionsVO, LobbyHeroItemVO } from '../types/LobbyHeroTypes';
@@ -217,7 +218,10 @@ export function heroPackPrefixes(heroCode: string | null | undefined): string[] 
   if (!fallback) {
     return [];
   }
-  return [`spine/hero/${fallback.spineAsset}`, `spine/hero/${fallback.portraitAsset}`, fallback.cardBackgroundAsset].filter((path): path is string => !!path);
+  // 穿着的皮肤骨骼也要一起下(HeroSkins)
+  const skin = equippedHeroSkin(heroCode);
+  return [`spine/hero/${fallback.spineAsset}`, `spine/hero/${fallback.portraitAsset}`, fallback.cardBackgroundAsset, skin ? skin.spine.slice(0, skin.spine.lastIndexOf('/')) : null]
+    .filter((path): path is string => !!path);
 }
 
 /** 英雄名册卡立绘路径(不带 /spriteFrame);守卫战统计 / 词条卡头像用它裁头部静态图(2026-10-11)。 */
