@@ -1,6 +1,6 @@
 
 fx_65007_fulade_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -930,7 +930,7 @@ skill2/dilie_00052
   index: -1
 
 fx_65007_fulade_hit_2.png
-size: 512,128
+size: 512, 128
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

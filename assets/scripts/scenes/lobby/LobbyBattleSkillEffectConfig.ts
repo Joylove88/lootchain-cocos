@@ -240,6 +240,9 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a47_208:effect_change_jineng_baodian': { w: 442, h: 382, cx: 14, cy: 0 },
   'v2_a47_215:effect_chiyou_gongji_qianghuabaodian': { w: 396, h: 202, cx: 7, cy: 4 },
   'v2_a47_217:effect_debuff': { w: 436, h: 276, cx: 1, cy: 66 },
+  // 精英 / 首领光环(10-31,fx_pack_v2 选型 render.jsonl 亮区)
+  'v2_a47_453:action1': { w: 358, h: 272, cx: 0, cy: 105 },
+  'v2_a49_405:idle': { w: 188, h: 146, cx: 5, cy: 59 },
   'v2_a47_257:effect_qinglong_jineng_di': { w: 363, h: 247, cx: 0, cy: 51 },
   'v2_a47_268:effect_sb_5_zxd_baodian': { w: 323, h: 317, cx: -3, cy: 129 },
   'v2_a47_274:effect_xihe_jineng_di': { w: 148, h: 148, cx: -5, cy: 76 },

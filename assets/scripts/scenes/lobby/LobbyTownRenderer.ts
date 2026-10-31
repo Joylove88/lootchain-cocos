@@ -369,6 +369,8 @@ interface TownMonster {
   kbVX: number;
   /** 远程怪弹道特效(GUARD_MONSTER_PROJECTILE_FX) */
   shotFx: { effect: string; animation: string; size: number } | null;
+  /** 精英 / 首领骨骼光环的贴地层(首领开战放大回弹用)。 */
+  aura: Node | null;
 }
 
 /** docs/51 P2 拾取:怪群清完掉落战利品袋,走到旁边出「拾取 · 战利品」提示,拾取时才向服务端结算发奖。 */
@@ -3293,8 +3295,8 @@ export class LobbyTownRenderer {
     label.enableOutline = true;
     label.outlineColor = rgba(16, 6, 4, 255);
     label.outlineWidth = 2;
-    if (camp.elite) {
-      // 精英:脚下淡黄光圈(原型 p2)
+    if (camp.elite && !camp.aura) {
+      // 精英:脚下淡黄光圈(原型 p2);配了骨骼光环的改走 mountCampAura
       const ring = this.host.addChildPlainNode(node, 'EliteRing', 0, 0, 200, 80).addComponent(Graphics);
       ring.strokeColor = rgba(255, 214, 110, 170);
       ring.lineWidth = 3;
@@ -3306,8 +3308,9 @@ export class LobbyTownRenderer {
       facing: -1, baseScale: 1, skeleton: null, spineNode: null, idleAnim: '', moveAnim: '', moving: false,
       hp: 0, maxHp: 0, hit: 1, ranged: false, dead: false, diedAt: 0, nextAttackAt: 0, windupUntil: 0,
       attackAnim: '', deathAnim: '', hpBar: null, hpDrawn: -1, flashUntil: 0, lastHitAt: 0, hpKey: '', nameLabel: label, victim: null, stagger: 0, staggeredUntil: 0, floatAt: 0, floatSeq: 0,
-      curAnim: '', animLockUntil: 0, moveSince: 0, kbVX: 0, shotFx: null,
+      curAnim: '', animLockUntil: 0, moveSince: 0, kbVX: 0, shotFx: null, aura: null,
     };
+    this.mountCampAura(monster);
     // 点怪直接锁它
     node.on(Node.EventType.TOUCH_END, () => {
       if (!monster.dead) {
@@ -3917,6 +3920,7 @@ export class LobbyTownRenderer {
       return;
     }
     this.encounters.set(stageCode, { id: 0, pending: true });
+    this.playBossIntro(stageCode);
     void this.host.engageWorldField(stageCode).then((encounter) => {
       if (!encounter) {
         this.encounters.delete(stageCode);
@@ -5306,6 +5310,61 @@ export class LobbyTownRenderer {
     if (monster.hp <= 0) {
       this.killMonster(monster);
     }
+  }
+
+  /**
+   * 精英 / 首领骨骼光环(10-31):贴地层压在最底下,升腾层在身体后面;都跟着怪物节点走、随死亡淡出一起消失。
+   * 特效数据没就绪就每 250ms 重试(最多 10 秒),不阻塞刷怪。
+   */
+  private mountCampAura(monster: TownMonster, tries = 0): void {
+    const aura = monster.camp.aura;
+    if (!aura || monster.dead || !monster.node.isValid) {
+      return;
+    }
+    if (!this.fx.isReady(aura.ground.effect) || (aura.rise && !this.fx.isReady(aura.rise.effect))) {
+      this.fx.prewarm(aura.ground);
+      if (aura.rise) {
+        this.fx.prewarm(aura.rise);
+      }
+      if (tries < 40) {
+        setTimeout(() => this.mountCampAura(monster, tries + 1), 250);
+      }
+      return;
+    }
+    const ground = this.fx.play(monster.node, aura.ground, 0, 0, aura.ground.size, { loop: true });
+    if (ground) {
+      if (aura.ground.squash) {
+        ground.setScale(1, aura.ground.squash, 1);
+      }
+      ground.setSiblingIndex(0);
+      monster.aura = ground;
+    }
+    if (aura.rise) {
+      const rise = this.fx.play(monster.node, aura.rise, 0, aura.rise.y, aura.rise.size, { loop: true });
+      if (rise) {
+        (rise.getComponent(UIOpacity) ?? rise.addComponent(UIOpacity)).opacity = aura.rise.opacity ?? 255;
+        const body = monster.spineNode && monster.spineNode.isValid ? monster.spineNode.getSiblingIndex() : 1;
+        rise.setSiblingIndex(Math.max(1, body));
+      }
+    }
+  }
+
+  /** 首领开战:光环猛地放大回弹 + 重震 + 名号横幅(10-31 用户「BOSS 加一些特效的感觉」)。 */
+  private playBossIntro(stageCode: string): void {
+    const boss = this.monsters.find((m) => m.camp.stageCode === stageCode && !m.dead);
+    if (!boss || !stageCode.endsWith('_B')) {
+      return;
+    }
+    const ring = boss.aura;
+    if (ring && ring.isValid) {
+      const squash = boss.camp.aura?.ground.squash ?? 1;
+      Tween.stopAllByTarget(ring);
+      ring.setScale(1.9, 1.9 * squash, 1);
+      tween(ring).to(0.45, { scale: new Vec3(1, squash, 1) }, { easing: 'backOut' }).start();
+    }
+    this.shake(16, 0.45);
+    this.hitStop(120);
+    this.spawnFloater(boss.x, boss.y + 470, `首领 · ${boss.camp.label}`, rgba(255, 150, 96), 40);
   }
 
   private killMonster(monster: TownMonster): void {

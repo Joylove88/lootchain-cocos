@@ -1,6 +1,6 @@
 
 fx_45018_adaier_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -104,7 +104,7 @@ effect/skill3/lm_zj_mz/lm_zj_mz_06
   index: -1
 
 fx_45018_adaier_hit_2.png
-size: 1024,512
+size: 1024, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

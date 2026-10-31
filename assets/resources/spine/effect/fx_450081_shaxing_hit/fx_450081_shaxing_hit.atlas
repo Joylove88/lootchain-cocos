@@ -1,132 +1,132 @@
 
 fx_450081_shaxing_hit.png
-size: 1024,256
+size: 2048, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 images/attack/glow_00016
   rotate: false
-  xy: 912, 166
-  size: 87, 88
-  orig: 110, 110
-  offset: 12, 11
+  xy: 1824, 332
+  size: 174, 176
+  orig: 220, 220
+  offset: 24, 22
   index: -1
 images/attackhit/attackhit_00016
   rotate: false
-  xy: 786, 157
-  size: 126, 97
-  orig: 200, 141
-  offset: 8, 15
+  xy: 1572, 314
+  size: 252, 194
+  orig: 400, 282
+  offset: 16, 30
   index: -1
 images/attackhit/attackhit_00017
   rotate: false
-  xy: 786, 157
-  size: 126, 97
-  orig: 200, 141
-  offset: 8, 15
+  xy: 1572, 314
+  size: 252, 194
+  orig: 400, 282
+  offset: 16, 30
   index: -1
 images/attackhit/attackhit_00018
   rotate: false
-  xy: 170, 1
-  size: 136, 126
-  orig: 200, 141
-  offset: 15, 6
+  xy: 340, 2
+  size: 272, 252
+  orig: 400, 282
+  offset: 30, 12
   index: -1
 images/attackhit/attackhit_00019
   rotate: false
-  xy: 173, 128
-  size: 157, 126
-  orig: 200, 141
-  offset: 12, 6
+  xy: 346, 256
+  size: 314, 252
+  orig: 400, 282
+  offset: 24, 12
   index: -1
 images/attackhit/attackhit_00020
   rotate: false
-  xy: 1, 1
-  size: 168, 126
-  orig: 200, 141
-  offset: 12, 6
+  xy: 2, 2
+  size: 336, 252
+  orig: 400, 282
+  offset: 24, 12
   index: -1
 images/attackhit/attackhit_00021
   rotate: false
-  xy: 1, 128
-  size: 171, 126
-  orig: 200, 141
-  offset: 16, 6
+  xy: 2, 256
+  size: 342, 252
+  orig: 400, 282
+  offset: 32, 12
   index: -1
 images/attackhit/attackhit_00022
   rotate: false
-  xy: 307, 8
-  size: 108, 67
-  orig: 200, 141
-  offset: 82, 50
+  xy: 614, 16
+  size: 216, 134
+  orig: 400, 282
+  offset: 164, 100
   index: -1
 images/attackhit/attackhit_00023
   rotate: false
-  xy: 581, 86
-  size: 100, 68
-  orig: 200, 141
-  offset: 90, 50
+  xy: 1162, 172
+  size: 200, 136
+  orig: 400, 282
+  offset: 180, 100
   index: -1
 images/attackhit/attackhit_00024
   rotate: false
-  xy: 759, 87
-  size: 58, 68
-  orig: 200, 141
-  offset: 93, 50
+  xy: 1518, 174
+  size: 116, 136
+  orig: 400, 282
+  offset: 186, 100
   index: -1
 images/skill02/guanxian_00037
   rotate: false
-  xy: 818, 37
-  size: 37, 119
-  orig: 42, 131
-  offset: 2, 7
+  xy: 1636, 74
+  size: 74, 238
+  orig: 84, 262
+  offset: 4, 14
   index: -1
 images/skillhit/skillhit_00061
   rotate: false
-  xy: 682, 90
-  size: 76, 65
-  orig: 174, 116
-  offset: 8, 3
+  xy: 1364, 180
+  size: 152, 130
+  orig: 348, 232
+  offset: 16, 6
   index: -1
 images/skillhit/skillhit_00062
   rotate: false
-  xy: 682, 90
-  size: 76, 65
-  orig: 174, 116
-  offset: 8, 3
+  xy: 1364, 180
+  size: 152, 130
+  orig: 348, 232
+  offset: 16, 6
   index: -1
 images/skillhit/skillhit_00063
   rotate: false
-  xy: 459, 60
-  size: 121, 93
-  orig: 174, 116
-  offset: 6, 0
+  xy: 918, 120
+  size: 242, 186
+  orig: 348, 232
+  offset: 12, 0
   index: -1
 images/skillhit/skillhit_00064
   rotate: false
-  xy: 644, 155
-  size: 141, 99
-  orig: 174, 116
-  offset: 10, 4
+  xy: 1288, 310
+  size: 282, 198
+  orig: 348, 232
+  offset: 20, 8
   index: -1
 images/skillhit/skillhit_00065
   rotate: false
-  xy: 490, 154
-  size: 154, 100
-  orig: 174, 116
-  offset: 10, 3
+  xy: 980, 308
+  size: 308, 200
+  orig: 348, 232
+  offset: 20, 6
   index: -1
 images/skillhit/skillhit_00066
   rotate: false
-  xy: 331, 158
-  size: 158, 96
-  orig: 174, 116
-  offset: 13, 5
+  xy: 662, 316
+  size: 316, 192
+  orig: 348, 232
+  offset: 26, 10
   index: -1
 images/skillhit/skillhit_00067
   rotate: false
-  xy: 331, 75
-  size: 128, 82
-  orig: 174, 116
-  offset: 46, 13
+  xy: 662, 150
+  size: 256, 164
+  orig: 348, 232
+  offset: 92, 26
   index: -1

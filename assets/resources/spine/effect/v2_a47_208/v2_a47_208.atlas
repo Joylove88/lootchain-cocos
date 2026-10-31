@@ -1,104 +1,104 @@
 
 effect_change.png
-size: 1024,128
+size: 4096, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 baodianyue1
   rotate: false
-  xy: 1, 1
-  size: 70, 37
-  orig: 77, 77
-  offset: 4, 19
+  xy: 4, 4
+  size: 280, 148
+  orig: 308, 308
+  offset: 16, 76
   index: -1
 baodianyue10
   rotate: false
-  xy: 465, 46
-  size: 74, 70
-  orig: 77, 77
-  offset: 4, 6
+  xy: 1860, 184
+  size: 296, 280
+  orig: 308, 308
+  offset: 16, 24
   index: -1
 baodianyue11
   rotate: false
-  xy: 617, 49
-  size: 73, 67
-  orig: 77, 77
-  offset: 4, 6
+  xy: 2468, 196
+  size: 292, 268
+  orig: 308, 308
+  offset: 16, 24
   index: -1
 baodianyue12
   rotate: false
-  xy: 691, 54
-  size: 72, 62
-  orig: 77, 77
-  offset: 6, 6
+  xy: 2764, 216
+  size: 288, 248
+  orig: 308, 308
+  offset: 24, 24
   index: -1
 baodianyue13
   rotate: false
-  xy: 763, 56
-  size: 66, 60
-  orig: 77, 77
-  offset: 11, 6
+  xy: 3052, 224
+  size: 264, 240
+  orig: 308, 308
+  offset: 44, 24
   index: -1
 baodianyue2
   rotate: false
-  xy: 899, 66
-  size: 66, 50
-  orig: 77, 77
-  offset: 8, 6
+  xy: 3596, 264
+  size: 264, 200
+  orig: 308, 308
+  offset: 32, 24
   index: -1
 baodianyue3
   rotate: false
-  xy: 830, 61
-  size: 68, 55
-  orig: 77, 77
-  offset: 6, 1
+  xy: 3320, 244
+  size: 272, 220
+  orig: 308, 308
+  offset: 24, 4
   index: -1
 baodianyue4
   rotate: false
-  xy: 540, 51
-  size: 76, 65
-  orig: 77, 77
+  xy: 2160, 204
+  size: 304, 260
+  orig: 308, 308
   offset: 0, 0
   index: -1
 baodianyue5
   rotate: false
-  xy: 387, 48
-  size: 77, 68
-  orig: 77, 77
-  offset: 0, 2
+  xy: 1548, 192
+  size: 308, 272
+  orig: 308, 308
+  offset: 0, 8
   index: -1
 baodianyue6
   rotate: false
-  xy: 79, 41
-  size: 76, 75
-  orig: 77, 77
-  offset: 0, 2
+  xy: 316, 164
+  size: 304, 300
+  orig: 308, 308
+  offset: 0, 8
   index: -1
 baodianyue7
   rotate: false
-  xy: 311, 44
-  size: 76, 72
-  orig: 77, 77
-  offset: 1, 5
+  xy: 1244, 176
+  size: 304, 288
+  orig: 308, 308
+  offset: 4, 20
   index: -1
 baodianyue8
   rotate: false
-  xy: 234, 44
-  size: 76, 72
-  orig: 77, 77
-  offset: 1, 6
+  xy: 936, 176
+  size: 304, 288
+  orig: 308, 308
+  offset: 4, 24
   index: -1
 baodianyue9
   rotate: false
-  xy: 156, 44
-  size: 77, 72
-  orig: 77, 77
-  offset: 0, 6
+  xy: 624, 176
+  size: 308, 288
+  orig: 308, 308
+  offset: 0, 24
   index: -1
 yhrbd2
   rotate: false
-  xy: 1, 39
-  size: 77, 77
-  orig: 77, 77
+  xy: 4, 156
+  size: 308, 308
+  orig: 308, 308
   offset: 0, 0
   index: -1

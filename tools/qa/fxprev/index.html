@@ -15,8 +15,10 @@ const SIZE = 512;
 function loadSet(name, pma) {
   return new Promise((resolve, reject) => {
     const am = new spine.AssetManager(ctx, '/fx42/' + encodeURIComponent(name) + '/');
-    const skel = encodeURIComponent(name) + '.skel', atlas = encodeURIComponent(name) + '.atlas';
-    am.loadBinary(skel);
+    // json = Spine JSON 骨骼(Meowa 换皮导出的是 json);否则二进制 .skel
+    const json = (window.__jsonSets || []).includes(name);
+    const skel = encodeURIComponent(name) + (json ? '.json' : '.skel'), atlas = encodeURIComponent(name) + '.atlas';
+    if (json) am.loadText(skel); else am.loadBinary(skel);
     am.loadTextureAtlas(atlas);
     const t0 = performance.now();
     const tick = () => {
@@ -24,8 +26,7 @@ function loadSet(name, pma) {
         if (am.hasErrors()) { reject(new Error(JSON.stringify(am.getErrors()))); return; }
         try {
           const loader = new spine.AtlasAttachmentLoader(am.require(atlas));
-          const bin = new spine.SkeletonBinary(loader);
-          const data = bin.readSkeletonData(am.require(skel));
+          const data = json ? new spine.SkeletonJson(loader).readSkeletonData(am.require(skel)) : new spine.SkeletonBinary(loader).readSkeletonData(am.require(skel));
           resolve({ am, data });
         } catch (e) { reject(e); }
       } else if (performance.now() - t0 > 60000) { reject(new Error('load timeout')); }

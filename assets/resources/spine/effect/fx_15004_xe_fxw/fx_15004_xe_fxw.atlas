@@ -1,34 +1,34 @@
 
 fx_15004_xe_fxw.png
-size: 1024, 64
+size: 4096, 256
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 image/fx_15004_xe_attack/xe_attack_zidan_00001
   rotate: false
-  xy: 2, 2
-  size: 240, 39
-  orig: 240, 50
-  offset: 0, 4
+  xy: 8, 8
+  size: 960, 156
+  orig: 960, 200
+  offset: 0, 16
   index: -1
 image/fx_15004_xe_attack/xe_attack_zidan_00003
   rotate: false
-  xy: 486, 8
-  size: 240, 33
-  orig: 240, 50
-  offset: 0, 8
+  xy: 1944, 32
+  size: 960, 132
+  orig: 960, 200
+  offset: 0, 32
   index: -1
 image/fx_15004_xe_attack/xe_attack_zidan_00005
   rotate: false
-  xy: 728, 8
-  size: 240, 33
-  orig: 240, 50
-  offset: 0, 9
+  xy: 2912, 32
+  size: 960, 132
+  orig: 960, 200
+  offset: 0, 36
   index: -1
 image/fx_15004_xe_attack/xe_attack_zidan_00007
   rotate: false
-  xy: 244, 7
-  size: 240, 34
-  orig: 240, 50
-  offset: 0, 8
+  xy: 976, 28
+  size: 960, 136
+  orig: 960, 200
+  offset: 0, 32
   index: -1

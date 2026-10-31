@@ -1,6 +1,6 @@
 
 fx_25002_dutengnv_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -153,7 +153,7 @@ skill2/New_skill2_duqi_00042
   index: -1
 
 fx_25002_dutengnv_hit_2.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -362,7 +362,7 @@ skill2/New_skill2_duqi_00044
   index: -1
 
 fx_25002_dutengnv_hit_3.png
-size: 1024,512
+size: 1024, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

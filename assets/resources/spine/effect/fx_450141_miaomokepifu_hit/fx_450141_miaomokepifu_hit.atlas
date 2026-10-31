@@ -1,6 +1,6 @@
 
 fx_450141_miaomokepifu_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -167,7 +167,7 @@ images/skill2/zhao_00086
   index: -1
 
 fx_450141_miaomokepifu_hit_2.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -348,7 +348,7 @@ images/skill2/zhao_00081
   index: -1
 
 fx_450141_miaomokepifu_hit_3.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

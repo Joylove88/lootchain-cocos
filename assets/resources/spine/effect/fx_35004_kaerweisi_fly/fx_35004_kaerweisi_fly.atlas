@@ -1,13 +1,13 @@
 
 fx_35004_kaerweisi_fly.png
-size: 256, 64
+size: 1024, 256
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/atk_dd
   rotate: false
-  xy: 2, 2
-  size: 206, 42
-  orig: 217, 65
-  offset: 7, 14
+  xy: 8, 8
+  size: 824, 168
+  orig: 868, 260
+  offset: 28, 56
   index: -1

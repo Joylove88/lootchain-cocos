@@ -1,125 +1,125 @@
 
 skeleton.png
-size: 1024,128
+size: 4096, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 pic/eff/puxian_skill_a1_14
   rotate: false
-  xy: 681, 71
-  size: 11, 10
-  orig: 96, 114
-  offset: 43, 47
+  xy: 2724, 284
+  size: 44, 40
+  orig: 384, 456
+  offset: 172, 188
   index: -1
 pic/eff/puxian_skill_a1_15
   rotate: false
-  xy: 681, 82
-  size: 51, 45
-  orig: 96, 114
-  offset: 24, 31
+  xy: 2724, 328
+  size: 204, 180
+  orig: 384, 456
+  offset: 96, 124
   index: -1
 pic/eff/puxian_skill_a1_16
   rotate: false
-  xy: 732, 82
-  size: 49, 45
-  orig: 96, 114
-  offset: 24, 30
+  xy: 2928, 328
+  size: 196, 180
+  orig: 384, 456
+  offset: 96, 120
   index: -1
 pic/eff/puxian_skill_a1_17
   rotate: false
-  xy: 782, 83
-  size: 50, 44
-  orig: 96, 114
-  offset: 24, 30
+  xy: 3128, 332
+  size: 200, 176
+  orig: 384, 456
+  offset: 96, 120
   index: -1
 pic/eff/puxian_skill_a1_18
   rotate: false
-  xy: 508, 64
-  size: 59, 63
-  orig: 96, 114
-  offset: 18, 18
+  xy: 2032, 256
+  size: 236, 252
+  orig: 384, 456
+  offset: 72, 72
   index: -1
 pic/eff/puxian_skill_a1_19
   rotate: false
-  xy: 319, 64
-  size: 61, 63
-  orig: 96, 114
-  offset: 17, 18
+  xy: 1276, 256
+  size: 244, 252
+  orig: 384, 456
+  offset: 68, 72
   index: -1
 pic/eff/puxian_skill_a1_20
   rotate: false
-  xy: 1, 64
-  size: 67, 63
-  orig: 96, 114
-  offset: 16, 20
+  xy: 4, 256
+  size: 268, 252
+  orig: 384, 456
+  offset: 64, 80
   index: -1
 pic/eff/puxian_skill_a1_21
   rotate: false
-  xy: 60, 1
-  size: 65, 61
-  orig: 96, 114
-  offset: 16, 24
+  xy: 240, 4
+  size: 260, 244
+  orig: 384, 456
+  offset: 64, 96
   index: -1
 pic/eff/puxian_skill_a1_22
   rotate: false
-  xy: 567, 62
-  size: 56, 65
-  orig: 96, 114
-  offset: 20, 21
+  xy: 2268, 248
+  size: 224, 260
+  orig: 384, 456
+  offset: 80, 84
   index: -1
 pic/eff/puxian_skill_a1_23
   rotate: false
-  xy: 196, 62
-  size: 61, 65
-  orig: 96, 114
-  offset: 16, 22
+  xy: 784, 248
+  size: 244, 260
+  orig: 384, 456
+  offset: 64, 88
   index: -1
 pic/eff/puxian_skill_a1_24
   rotate: false
-  xy: 134, 61
-  size: 61, 66
-  orig: 96, 114
-  offset: 17, 22
+  xy: 536, 244
+  size: 244, 264
+  orig: 384, 456
+  offset: 68, 88
   index: -1
 pic/eff/puxian_skill_a1_25
   rotate: false
-  xy: 448, 61
-  size: 59, 66
-  orig: 96, 114
-  offset: 19, 22
+  xy: 1792, 244
+  size: 236, 264
+  orig: 384, 456
+  offset: 76, 88
   index: -1
 pic/eff/puxian_skill_a1_26
   rotate: false
-  xy: 1, 1
-  size: 59, 62
-  orig: 96, 114
-  offset: 18, 22
+  xy: 4, 4
+  size: 236, 248
+  orig: 384, 456
+  offset: 72, 88
   index: -1
 pic/eff/puxian_skill_a1_27
   rotate: false
-  xy: 257, 63
-  size: 61, 64
-  orig: 96, 114
-  offset: 16, 22
+  xy: 1028, 252
+  size: 244, 256
+  orig: 384, 456
+  offset: 64, 88
   index: -1
 pic/eff/puxian_skill_a1_28
   rotate: false
-  xy: 69, 62
-  size: 64, 65
-  orig: 96, 114
-  offset: 14, 22
+  xy: 276, 248
+  size: 256, 260
+  orig: 384, 456
+  offset: 56, 88
   index: -1
 pic/eff/puxian_skill_a1_29
   rotate: false
-  xy: 381, 69
-  size: 66, 58
-  orig: 96, 114
-  offset: 12, 30
+  xy: 1524, 276
+  size: 264, 232
+  orig: 384, 456
+  offset: 48, 120
   index: -1
 pic/eff/puxian_skill_a1_30
   rotate: false
-  xy: 624, 69
-  size: 56, 58
-  orig: 96, 114
-  offset: 22, 28
+  xy: 2496, 276
+  size: 224, 232
+  orig: 384, 456
+  offset: 88, 112
   index: -1

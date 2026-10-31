@@ -1,0 +1,216 @@
+
+skeleton.png
+size: 2048, 512
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+ui_shilian_fuben_00000_00000
+  rotate: false
+  xy: 2, 325
+  size: 201, 160
+  orig: 320, 178
+  offset: 67, 18
+  index: -1
+ui_shilian_fuben_00000_00001
+  rotate: false
+  xy: 2, 165
+  size: 197, 158
+  orig: 320, 178
+  offset: 69, 20
+  index: -1
+ui_shilian_fuben_00000_00002
+  rotate: false
+  xy: 1755, 13
+  size: 184, 157
+  orig: 320, 178
+  offset: 68, 21
+  index: -1
+ui_shilian_fuben_00000_00003
+  rotate: false
+  xy: 1172, 12
+  size: 184, 158
+  orig: 320, 178
+  offset: 67, 20
+  index: -1
+ui_shilian_fuben_00000_00004
+  rotate: false
+  xy: 1567, 14
+  size: 186, 157
+  orig: 320, 178
+  offset: 66, 18
+  index: -1
+ui_shilian_fuben_00000_00005
+  rotate: false
+  xy: 787, 16
+  size: 189, 151
+  orig: 320, 178
+  offset: 65, 20
+  index: -1
+ui_shilian_fuben_00000_00006
+  rotate: false
+  xy: 1184, 172
+  size: 190, 152
+  orig: 320, 178
+  offset: 65, 17
+  index: -1
+ui_shilian_fuben_00000_00007
+  rotate: false
+  xy: 1572, 332
+  size: 194, 153
+  orig: 320, 178
+  offset: 65, 20
+  index: -1
+ui_shilian_fuben_00000_00008
+  rotate: false
+  xy: 1376, 331
+  size: 194, 154
+  orig: 320, 178
+  offset: 66, 22
+  index: -1
+ui_shilian_fuben_00000_00009
+  rotate: false
+  xy: 787, 169
+  size: 191, 154
+  orig: 320, 178
+  offset: 69, 23
+  index: -1
+ui_shilian_fuben_00000_00010
+  rotate: false
+  xy: 1184, 326
+  size: 190, 159
+  orig: 320, 178
+  offset: 71, 19
+  index: -1
+ui_shilian_fuben_00000_00011
+  rotate: false
+  xy: 980, 164
+  size: 190, 158
+  orig: 320, 178
+  offset: 71, 20
+  index: -1
+ui_shilian_fuben_00000_00012
+  rotate: false
+  xy: 410, 328
+  size: 192, 157
+  orig: 320, 178
+  offset: 71, 21
+  index: -1
+ui_shilian_fuben_00000_00013
+  rotate: false
+  xy: 2, 2
+  size: 192, 161
+  orig: 320, 178
+  offset: 70, 17
+  index: -1
+ui_shilian_fuben_00000_00014
+  rotate: false
+  xy: 604, 326
+  size: 192, 159
+  orig: 320, 178
+  offset: 70, 19
+  index: -1
+ui_shilian_fuben_00000_00015
+  rotate: false
+  xy: 798, 325
+  size: 192, 160
+  orig: 320, 178
+  offset: 69, 18
+  index: -1
+ui_shilian_fuben_00000_00016
+  rotate: false
+  xy: 1768, 330
+  size: 193, 155
+  orig: 320, 178
+  offset: 67, 23
+  index: -1
+ui_shilian_fuben_00000_00017
+  rotate: false
+  xy: 1376, 173
+  size: 192, 156
+  orig: 320, 178
+  offset: 67, 22
+  index: -1
+ui_shilian_fuben_00000_00018
+  rotate: false
+  xy: 205, 170
+  size: 192, 156
+  orig: 320, 178
+  offset: 66, 22
+  index: -1
+ui_shilian_fuben_00000_00019
+  rotate: false
+  xy: 399, 170
+  size: 192, 156
+  orig: 320, 178
+  offset: 65, 22
+  index: -1
+ui_shilian_fuben_00000_00020
+  rotate: false
+  xy: 593, 168
+  size: 192, 156
+  orig: 320, 178
+  offset: 65, 22
+  index: -1
+ui_shilian_fuben_00000_00021
+  rotate: false
+  xy: 978, 8
+  size: 189, 154
+  orig: 320, 178
+  offset: 65, 24
+  index: -1
+ui_shilian_fuben_00000_00022
+  rotate: false
+  xy: 393, 9
+  size: 189, 159
+  orig: 320, 178
+  offset: 65, 19
+  index: -1
+ui_shilian_fuben_00000_00023
+  rotate: false
+  xy: 584, 7
+  size: 189, 159
+  orig: 320, 178
+  offset: 65, 19
+  index: -1
+ui_shilian_fuben_00000_00024
+  rotate: false
+  xy: 992, 324
+  size: 190, 161
+  orig: 320, 178
+  offset: 65, 17
+  index: -1
+ui_shilian_fuben_00000_00025
+  rotate: false
+  xy: 1376, 12
+  size: 189, 159
+  orig: 320, 178
+  offset: 66, 19
+  index: -1
+ui_shilian_fuben_00000_00026
+  rotate: false
+  xy: 1572, 173
+  size: 190, 157
+  orig: 320, 178
+  offset: 66, 20
+  index: -1
+ui_shilian_fuben_00000_00027
+  rotate: false
+  xy: 1764, 172
+  size: 190, 156
+  orig: 320, 178
+  offset: 66, 21
+  index: -1
+ui_shilian_fuben_00000_00028
+  rotate: false
+  xy: 201, 12
+  size: 190, 156
+  orig: 320, 178
+  offset: 65, 22
+  index: -1
+ui_shilian_fuben_00000_00029
+  rotate: false
+  xy: 205, 328
+  size: 203, 157
+  orig: 320, 178
+  offset: 65, 21
+  index: -1

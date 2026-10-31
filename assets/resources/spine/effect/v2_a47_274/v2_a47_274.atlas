@@ -1,62 +1,62 @@
 
 effect_xihe_di.png
-size: 512, 512
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 xihzhuanh1
   rotate: false
-  xy: 298, 219
-  size: 116, 105
-  orig: 166, 166
-  offset: 39, 38
+  xy: 596, 438
+  size: 232, 210
+  orig: 332, 332
+  offset: 78, 76
   index: -1
 xihzhuanh2
   rotate: false
-  xy: 162, 62
-  size: 130, 125
-  orig: 166, 166
-  offset: 24, 23
+  xy: 324, 124
+  size: 260, 250
+  orig: 332, 332
+  offset: 48, 46
   index: -1
 xihzhuanh3
   rotate: false
-  xy: 164, 189
-  size: 132, 135
-  orig: 166, 166
-  offset: 22, 14
+  xy: 328, 378
+  size: 264, 270
+  orig: 332, 332
+  offset: 44, 28
   index: -1
 xihzhuanh4
   rotate: false
-  xy: 325, 331
-  size: 151, 144
-  orig: 166, 166
-  offset: 11, 6
+  xy: 650, 662
+  size: 302, 288
+  orig: 332, 332
+  offset: 22, 12
   index: -1
 xihzhuanh5
   rotate: false
-  xy: 2, 2
-  size: 155, 152
-  orig: 166, 166
-  offset: 11, 1
+  xy: 4, 4
+  size: 310, 304
+  orig: 332, 332
+  offset: 22, 2
   index: -1
 xihzhuanh6
   rotate: false
-  xy: 2, 156
-  size: 158, 159
-  orig: 166, 166
-  offset: 8, 0
+  xy: 4, 312
+  size: 316, 318
+  orig: 332, 332
+  offset: 16, 0
   index: -1
 xihzhuanh7
   rotate: false
-  xy: 2, 317
-  size: 160, 158
-  orig: 166, 166
-  offset: 6, 0
+  xy: 4, 634
+  size: 320, 316
+  orig: 332, 332
+  offset: 12, 0
   index: -1
 xihzhuanh8
   rotate: false
-  xy: 164, 326
-  size: 159, 149
-  orig: 166, 166
-  offset: 7, 4
+  xy: 328, 652
+  size: 318, 298
+  orig: 332, 332
+  offset: 14, 8
   index: -1

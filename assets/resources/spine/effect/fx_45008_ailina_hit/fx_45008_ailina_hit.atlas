@@ -1,6 +1,6 @@
 
 fx_45008_ailina_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -440,7 +440,7 @@ skill2/suipian_00071
   index: -1
 
 fx_45008_ailina_hit_2.png
-size: 256,128
+size: 256, 128
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

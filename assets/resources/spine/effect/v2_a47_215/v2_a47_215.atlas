@@ -1,62 +1,62 @@
 
 effect_chiyou.png
-size: 2048, 128
+size: 4096, 256
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 dg1
   rotate: false
-  xy: 939, 36
-  size: 177, 54
-  orig: 192, 192
-  offset: 0, 72
+  xy: 1878, 72
+  size: 354, 108
+  orig: 384, 384
+  offset: 0, 144
   index: -1
 dg2
   rotate: false
-  xy: 1118, 35
-  size: 168, 55
-  orig: 192, 192
-  offset: 9, 71
+  xy: 2236, 70
+  size: 336, 110
+  orig: 384, 384
+  offset: 18, 142
   index: -1
 dg3
   rotate: false
-  xy: 1288, 15
-  size: 164, 75
-  orig: 192, 192
-  offset: 6, 60
+  xy: 2576, 30
+  size: 328, 150
+  orig: 384, 384
+  offset: 12, 120
   index: -1
 dg4
   rotate: false
-  xy: 2, 2
-  size: 177, 88
-  orig: 192, 192
-  offset: 6, 53
+  xy: 4, 4
+  size: 354, 176
+  orig: 384, 384
+  offset: 12, 106
   index: -1
 dg5
   rotate: false
-  xy: 563, 21
-  size: 184, 69
-  orig: 192, 192
-  offset: 6, 64
+  xy: 1126, 42
+  size: 368, 138
+  orig: 384, 384
+  offset: 12, 128
   index: -1
 dg6
   rotate: false
-  xy: 372, 19
-  size: 189, 71
-  orig: 192, 192
-  offset: 3, 62
+  xy: 744, 38
+  size: 378, 142
+  orig: 384, 384
+  offset: 6, 124
   index: -1
 dg7
   rotate: false
-  xy: 181, 18
-  size: 189, 72
-  orig: 192, 192
-  offset: 3, 61
+  xy: 362, 36
+  size: 378, 144
+  orig: 384, 384
+  offset: 6, 122
   index: -1
 dg8
   rotate: false
-  xy: 749, 34
-  size: 188, 56
-  orig: 192, 192
-  offset: 3, 73
+  xy: 1498, 68
+  size: 376, 112
+  orig: 384, 384
+  offset: 6, 146
   index: -1

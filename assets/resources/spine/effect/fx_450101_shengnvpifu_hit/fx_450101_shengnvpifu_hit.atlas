@@ -1,6 +1,6 @@
 
 fx_450101_shengnvpifu_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -209,7 +209,7 @@ effect/skill2/tlssn_sk2_zlx/tlssn_sk2_zlx_00024
   index: -1
 
 fx_450101_shengnvpifu_hit_2.png
-size: 1024,512
+size: 1024, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

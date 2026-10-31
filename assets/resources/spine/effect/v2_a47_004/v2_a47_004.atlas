@@ -1,83 +1,83 @@
 
 1051.png
-size: 512, 256
+size: 2048, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 ef/hit/hit_00000
   rotate: false
-  xy: 72, 95
-  size: 72, 53
-  orig: 131, 115
-  offset: 34, 32
+  xy: 288, 380
+  size: 288, 212
+  orig: 524, 460
+  offset: 136, 128
   index: -1
 ef/hit/hit_00001
   rotate: false
-  xy: 214, 110
-  size: 87, 71
-  orig: 131, 115
-  offset: 28, 22
+  xy: 856, 440
+  size: 348, 284
+  orig: 524, 460
+  offset: 112, 88
   index: -1
 ef/hit/hit_00002
   rotate: false
-  xy: 411, 182
-  size: 92, 71
-  orig: 131, 115
-  offset: 21, 23
+  xy: 1644, 728
+  size: 368, 284
+  orig: 524, 460
+  offset: 84, 92
   index: -1
 ef/hit/hit_00003
   rotate: false
-  xy: 214, 183
-  size: 96, 70
-  orig: 131, 115
-  offset: 18, 25
+  xy: 856, 732
+  size: 384, 280
+  orig: 524, 460
+  offset: 72, 100
   index: -1
 ef/hit/hit_00004
   rotate: false
-  xy: 312, 184
-  size: 97, 69
-  orig: 131, 115
-  offset: 17, 24
+  xy: 1248, 736
+  size: 388, 276
+  orig: 524, 460
+  offset: 68, 96
   index: -1
 ef/zhua/zhua_00000
   rotate: false
-  xy: 2, 123
-  size: 68, 130
-  orig: 95, 152
-  offset: 4, 16
+  xy: 8, 492
+  size: 272, 520
+  orig: 380, 608
+  offset: 16, 64
   index: -1
 ef/zhua/zhua_00001
   rotate: false
-  xy: 2, 2
-  size: 64, 119
-  orig: 95, 152
-  offset: 9, 12
+  xy: 8, 8
+  size: 256, 476
+  orig: 380, 608
+  offset: 36, 48
   index: -1
 ef/zhua/zhua_00002
   rotate: false
-  xy: 72, 150
-  size: 69, 103
-  orig: 95, 152
-  offset: 4, 11
+  xy: 288, 600
+  size: 276, 412
+  orig: 380, 608
+  offset: 16, 44
   index: -1
 ef/zhua/zhua_00003
   rotate: false
-  xy: 143, 154
-  size: 69, 99
-  orig: 95, 152
-  offset: 4, 10
+  xy: 572, 616
+  size: 276, 396
+  orig: 380, 608
+  offset: 16, 40
   index: -1
 ef/zhua/zhua_00004
   rotate: false
-  xy: 68, 15
-  size: 64, 78
-  orig: 95, 152
-  offset: 7, 10
+  xy: 272, 60
+  size: 256, 312
+  orig: 380, 608
+  offset: 28, 40
   index: -1
 ef/zhua/zhua_00005
   rotate: false
-  xy: 146, 84
-  size: 52, 68
-  orig: 95, 152
-  offset: 10, 11
+  xy: 584, 336
+  size: 208, 272
+  orig: 380, 608
+  offset: 40, 44
   index: -1

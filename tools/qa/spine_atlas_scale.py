@@ -11,7 +11,10 @@ args = sys.argv[1:]
 SRC, BASE, OUT = args[0], args[1], args[2]
 K = int(args[args.index('--factor') + 1]) if '--factor' in args else 2
 os.makedirs(OUT, exist_ok=True)
-shutil.copy(os.path.join(SRC, BASE + '.json'), os.path.join(OUT, BASE + '.json'))
+# 骨骼文件原样复制(json 或二进制 skel,特效包多是 skel)
+for ext in ('.json', '.skel'):
+    if os.path.exists(os.path.join(SRC, BASE + ext)):
+        shutil.copy(os.path.join(SRC, BASE + ext), os.path.join(OUT, BASE + ext))
 
 KEYS = ('xy', 'size', 'orig', 'offset', 'bounds', 'offsets')
 lines = []

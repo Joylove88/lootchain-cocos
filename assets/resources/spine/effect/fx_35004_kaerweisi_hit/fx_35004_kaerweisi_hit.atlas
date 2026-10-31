@@ -1,118 +1,118 @@
 
 fx_35004_kaerweisi_hit.png
-size: 1024,256
+size: 2048, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 attack/atk_hit_000
   rotate: false
-  xy: 433, 1
-  size: 101, 103
-  orig: 174, 174
-  offset: 34, 30
+  xy: 866, 2
+  size: 202, 206
+  orig: 348, 348
+  offset: 68, 60
   index: -1
 attack/atk_hit_001
   rotate: false
-  xy: 465, 106
-  size: 146, 146
-  orig: 174, 174
-  offset: 13, 12
+  xy: 930, 212
+  size: 292, 292
+  orig: 348, 348
+  offset: 26, 24
   index: -1
 attack/atk_hit_002
   rotate: false
-  xy: 160, 94
-  size: 157, 159
-  orig: 174, 174
-  offset: 8, 7
+  xy: 320, 188
+  size: 314, 318
+  orig: 348, 348
+  offset: 16, 14
   index: -1
 attack/atk_hit_003
   rotate: false
-  xy: 1, 92
-  size: 158, 161
-  orig: 174, 174
-  offset: 9, 6
+  xy: 2, 184
+  size: 316, 322
+  orig: 348, 348
+  offset: 18, 12
   index: -1
 attack/atk_hit_004
   rotate: false
-  xy: 318, 104
-  size: 146, 148
-  orig: 174, 174
-  offset: 14, 12
+  xy: 636, 208
+  size: 292, 296
+  orig: 348, 348
+  offset: 28, 24
   index: -1
 attack/atk_hit_005
   rotate: false
-  xy: 718, 127
-  size: 103, 126
-  orig: 174, 174
-  offset: 36, 26
+  xy: 1436, 254
+  size: 206, 252
+  orig: 348, 348
+  offset: 72, 52
   index: -1
 attack/atk_hit_006
   rotate: false
-  xy: 612, 125
-  size: 106, 127
-  orig: 174, 174
-  offset: 36, 25
+  xy: 1224, 250
+  size: 212, 254
+  orig: 348, 348
+  offset: 72, 50
   index: -1
 attack/atk_hit_007
   rotate: false
-  xy: 822, 146
-  size: 106, 107
-  orig: 174, 174
-  offset: 35, 40
+  xy: 1644, 292
+  size: 212, 214
+  orig: 348, 348
+  offset: 70, 80
   index: -1
 attack/atk_hit_008
   rotate: false
-  xy: 853, 45
-  size: 96, 100
-  orig: 174, 174
-  offset: 34, 40
+  xy: 1706, 90
+  size: 192, 200
+  orig: 348, 348
+  offset: 68, 80
   index: -1
 attack/atk_hit_009
   rotate: false
-  xy: 757, 26
-  size: 96, 100
-  orig: 174, 174
-  offset: 34, 40
+  xy: 1514, 52
+  size: 192, 200
+  orig: 348, 348
+  offset: 68, 80
   index: -1
 skill2/hit_000
   rotate: false
-  xy: 929, 181
-  size: 85, 71
-  orig: 134, 112
-  offset: 20, 20
+  xy: 1858, 362
+  size: 170, 142
+  orig: 268, 224
+  offset: 40, 40
   index: -1
 skill2/hit_001
   rotate: false
-  xy: 318, 7
-  size: 115, 97
-  orig: 134, 112
-  offset: 4, 6
+  xy: 636, 14
+  size: 230, 194
+  orig: 268, 224
+  offset: 8, 12
   index: -1
 skill2/hit_002
   rotate: false
-  xy: 535, 4
-  size: 110, 102
-  orig: 134, 112
-  offset: 18, 6
+  xy: 1070, 8
+  size: 220, 204
+  orig: 268, 224
+  offset: 36, 12
   index: -1
 skill2/hit_003
   rotate: false
-  xy: 645, 23
-  size: 111, 102
-  orig: 134, 112
-  offset: 18, 6
+  xy: 1290, 46
+  size: 222, 204
+  orig: 268, 224
+  offset: 36, 12
   index: -1
 skill2/hit_004
   rotate: false
-  xy: 1, 22
-  size: 91, 69
-  orig: 134, 112
-  offset: 34, 34
+  xy: 2, 44
+  size: 182, 138
+  orig: 268, 224
+  offset: 68, 68
   index: -1
 skill2/hit_005
   rotate: false
-  xy: 92, 53
-  size: 47, 38
-  orig: 134, 112
-  offset: 49, 44
+  xy: 184, 106
+  size: 94, 76
+  orig: 268, 224
+  offset: 98, 88
   index: -1

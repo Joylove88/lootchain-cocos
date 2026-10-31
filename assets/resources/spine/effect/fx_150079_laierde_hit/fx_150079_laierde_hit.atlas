@@ -1,104 +1,104 @@
 
 fx_150079_laierde_hit.png
-size: 1024,512
+size: 2048, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 skill/New_15007_Skill_baozha_00073
   rotate: false
-  xy: 224, 83
-  size: 171, 158
-  orig: 258, 200
-  offset: 66, 0
+  xy: 448, 166
+  size: 342, 316
+  orig: 516, 400
+  offset: 132, 0
   index: -1
 skill/New_15007_Skill_baozha_00075
   rotate: false
-  xy: 726, 300
-  size: 198, 186
-  orig: 258, 200
-  offset: 48, 4
+  xy: 1452, 600
+  size: 396, 372
+  orig: 516, 400
+  offset: 96, 8
   index: -1
 skill/New_15007_Skill_baozha_00077
   rotate: false
-  xy: 1, 98
-  size: 223, 195
-  orig: 258, 200
-  offset: 29, 3
+  xy: 2, 196
+  size: 446, 390
+  orig: 516, 400
+  offset: 58, 6
   index: -1
 skill/New_15007_Skill_baozha_00079
   rotate: false
-  xy: 1, 294
-  size: 239, 193
-  orig: 258, 200
-  offset: 16, 4
+  xy: 2, 588
+  size: 478, 386
+  orig: 516, 400
+  offset: 32, 8
   index: -1
 skill/New_15007_Skill_baozha_00081
   rotate: false
-  xy: 241, 304
-  size: 245, 182
-  orig: 258, 200
-  offset: 8, 10
+  xy: 482, 608
+  size: 490, 364
+  orig: 516, 400
+  offset: 16, 20
   index: -1
 skill/New_15007_Skill_baozha_00083
   rotate: false
-  xy: 487, 307
-  size: 238, 180
-  orig: 258, 200
-  offset: 4, 6
+  xy: 974, 614
+  size: 476, 360
+  orig: 516, 400
+  offset: 8, 12
   index: -1
 skill/New_15007_Skill_baozha_00085
   rotate: false
-  xy: 1, 1
-  size: 210, 96
-  orig: 258, 200
-  offset: 2, 20
+  xy: 2, 2
+  size: 420, 192
+  orig: 516, 400
+  offset: 4, 40
   index: -1
 skill/New_15007_Skill_dilie_00074
   rotate: false
-  xy: 656, 240
-  size: 158, 60
-  orig: 200, 65
-  offset: 19, 2
+  xy: 1312, 480
+  size: 316, 120
+  orig: 400, 130
+  offset: 38, 4
   index: -1
 skill/New_15007_Skill_dilie_00076
   rotate: false
-  xy: 487, 244
-  size: 169, 62
-  orig: 200, 65
-  offset: 14, 2
+  xy: 974, 488
+  size: 338, 124
+  orig: 400, 130
+  offset: 28, 4
   index: -1
 skill/New_15007_Skill_dilie_00078
   rotate: false
-  xy: 241, 241
-  size: 193, 62
-  orig: 200, 65
-  offset: 4, 2
+  xy: 482, 482
+  size: 386, 124
+  orig: 400, 130
+  offset: 8, 4
   index: -1
 skill/New_15007_Skill_dilie_00080
   rotate: false
-  xy: 211, 20
-  size: 173, 62
-  orig: 200, 65
-  offset: 15, 2
+  xy: 422, 40
+  size: 346, 124
+  orig: 400, 130
+  offset: 30, 4
   index: -1
 skill/New_15007_Skill_dilie_00082
   rotate: false
-  xy: 815, 244
-  size: 150, 55
-  orig: 200, 65
-  offset: 25, 6
+  xy: 1630, 488
+  size: 300, 110
+  orig: 400, 130
+  offset: 50, 12
   index: -1
 skill/New_15007_Skill_dilie_00084
   rotate: false
-  xy: 815, 199
-  size: 130, 44
-  orig: 200, 65
-  offset: 33, 8
+  xy: 1630, 398
+  size: 260, 88
+  orig: 400, 130
+  offset: 66, 16
   index: -1
 skill/New_15007_Skill_dilie_00086
   rotate: false
-  xy: 396, 195
-  size: 129, 46
-  orig: 200, 65
-  offset: 34, 8
+  xy: 792, 390
+  size: 258, 92
+  orig: 400, 130
+  offset: 68, 16
   index: -1

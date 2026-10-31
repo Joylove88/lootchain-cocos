@@ -82,7 +82,38 @@ export interface WorldMapCamp {
   x: number;
   y: number;
   radius: number;
+  /** 精英 / 首领脚下的骨骼光环(10-31);没有 = 旧的程序淡黄光圈。 */
+  aura?: WorldMapCampAura;
 }
+
+/**
+ * 精英 / 首领骨骼光环(2026-10-31 用户「精英怪、BOSS 加一些特效」「特效用骨骼特效,静态贴图不好看」):
+ * ground = 贴地循环(size = 包围盒长边世界像素;squash = 正视圆形法阵压扁贴地的纵向比例);rise = 身后升腾循环(y = 离脚底高度)。
+ */
+export interface WorldMapCampAura {
+  ground: { effect: string; animation: string; size: number; squash?: number };
+  rise?: { effect: string; animation: string; size: number; y: number; opacity?: number };
+}
+
+/** 去火 / 狂暴 / 腐化三套光环(素材 fx_pack_v2:A47-376 燃烧地环、A49-405 火焰光丝、A47-162 符文法阵、A47-217 紫色法阵 + 光柱、A47-453 品红旋涡)。 */
+const AURA_LAVA: WorldMapCampAura = {
+  ground: { effect: 'v2_a47_376', animation: 'action2', size: 330 },
+  rise: { effect: 'v2_a49_405', animation: 'idle', size: 230, y: 70, opacity: 210 },
+};
+const AURA_RAGE: WorldMapCampAura = {
+  ground: { effect: 'v2_a47_162', animation: 'fz', size: 340, squash: 0.34 },
+};
+const AURA_CORRUPT: WorldMapCampAura = {
+  ground: { effect: 'v2_a47_217', animation: 'effect_debuff', size: 600 },
+  rise: { effect: 'v2_a47_453', animation: 'action1', size: 520, y: 40, opacity: 190 },
+};
+
+/** 营地专属骨骼(10-31 Meowa 换皮的 2 倍高清写实变种):放在原怪目录下的子目录,原目录名查的体型 / 弹道表照常生效。 */
+const VARIANT_SPINE = {
+  lavaSpider: 'spine/monster/small_spider/elite_lava/small_base_001',
+  brownBear: 'spine/monster/medium_bear/elite_brown/medium_base_001',
+  corruptBear: 'spine/monster/medium_bear/boss_corrupt/medium_base_001',
+};
 
 /** 走出地图的出口(走进圈里切到 toMap 的 toSpawn)。 */
 export interface WorldMapExit {
@@ -204,11 +235,12 @@ const MONSTER_SPINE: Record<string, string> = {
   GARGOYLE: 'spine/monster/gargoyle/twohand_spear_001',
 };
 
-function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false): WorldMapCamp {
+function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false,
+  variant?: { spine?: string; aura?: WorldMapCampAura }): WorldMapCamp {
   // 一群 6~10 只:散布半径随只数放大
   // 10-30 用户「怪物太靠近都融一起了」:单只体型约 200,8 只一群散到半径 ~600
   const radius = stageCode.endsWith('_B') ? 120 : elite ? 90 : count <= 3 ? 170 : 140 + count * 58;
-  return { stageCode, label, monsterCode, spine: MONSTER_SPINE[monsterCode] ?? '', count, elite, level, x, y, radius };
+  return { stageCode, label, monsterCode, spine: variant?.spine ?? MONSTER_SPINE[monsterCode] ?? '', count, elite, level, x, y, radius, aura: variant?.aura };
 }
 
 /** 晨风村 v2 素材(docs/53 §4.1,2026-10-29;tools/qa/village2_install_assets.py 入库)。 */
@@ -643,14 +675,14 @@ const WOODS: WorldMapDef = {
     camp('FIELD_WOODS_5', '桥头野犬', 'MEDIUM_DOG', 6, 4, -1792, -412),
     camp('FIELD_WOODS_6', '瀑布蛛群', 'SMALL_SPIDER', 6, 4, -780, 1912),
     camp('FIELD_WOODS_2', '林间蛛巢', 'SMALL_SPIDER', 10, 5, 982, 1388),
-    camp('FIELD_WOODS_E2', '林间蛛后', 'SMALL_SPIDER', 1, 7, 458, 1725, true),
+    camp('FIELD_WOODS_E2', '林间蛛后', 'SMALL_SPIDER', 1, 7, 458, 1725, true, { spine: VARIANT_SPINE.lavaSpider, aura: AURA_LAVA }),
     camp('FIELD_WOODS_7', '林道野犬', 'MEDIUM_DOG', 6, 6, 1395, 562),
     camp('FIELD_WOODS_8', '猎人营地野犬', 'MEDIUM_DOG', 8, 6, 2895, 338),
-    camp('FIELD_WOODS_E', '棕鬃熊', 'MEDIUM_BEAR', 1, 8, 4095, 562, true),
+    camp('FIELD_WOODS_E', '棕鬃熊', 'MEDIUM_BEAR', 1, 8, 4095, 562, true, { spine: VARIANT_SPINE.brownBear, aura: AURA_RAGE }),
     camp('FIELD_WOODS_9', '遗迹蛛群', 'SMALL_SPIDER', 8, 7, 1545, -1688),
     camp('FIELD_WOODS_11', '遗迹东鼠群', 'MINI_RAT', 8, 9, 4470, -1500),
     camp('FIELD_WOODS_10', '熊穴前野犬', 'MEDIUM_DOG', 7, 8, 4320, 1312),
-    camp('FIELD_WOODS_B', '腐木巨熊', 'MEDIUM_BEAR', 1, 10, 5295, 1988, true),
+    camp('FIELD_WOODS_B', '腐木巨熊', 'MEDIUM_BEAR', 1, 10, 5295, 1988, true, { spine: VARIANT_SPINE.corruptBear, aura: AURA_CORRUPT }),
     camp('FIELD_WOODS_12', '西林鼠群', 'MINI_RAT', 6, 2, -4605, 300),
     camp('FIELD_WOODS_13', '溪畔蛛群', 'SMALL_SPIDER', 7, 4, 8, -638),
     camp('FIELD_WOODS_14', '中路野犬', 'MEDIUM_DOG', 7, 6, 2145, 675),
@@ -822,6 +854,13 @@ export function worldMapPackPrefixes(code: WorldMapCode): string[] {
   for (const camp of def.camps) {
     if (camp.spine) {
       set.add(camp.spine.slice(0, camp.spine.lastIndexOf('/')));
+    }
+    // 精英 / 首领光环骨骼特效:进图前一起下到本地,否则首次见到时光环晚出
+    if (camp.aura) {
+      set.add(`spine/effect/${camp.aura.ground.effect}`);
+      if (camp.aura.rise) {
+        set.add(`spine/effect/${camp.aura.rise.effect}`);
+      }
     }
     set.add(`monster/${camp.monsterCode.toLowerCase()}`);
   }

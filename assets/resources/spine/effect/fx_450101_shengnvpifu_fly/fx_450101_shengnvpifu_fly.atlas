@@ -1,41 +1,41 @@
 
 fx_450101_shengnvpifu_fly.png
-size: 1024,128
+size: 4096, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 effect/attack/tlssn_atk_zd/tlssn_atk_zd_00000
   rotate: false
-  xy: 1, 1
-  size: 191, 72
-  orig: 222, 88
-  offset: 20, 7
+  xy: 4, 4
+  size: 764, 288
+  orig: 888, 352
+  offset: 80, 28
   index: -1
 effect/attack/tlssn_atk_zd/tlssn_atk_zd_00001
   rotate: false
-  xy: 574, 1
-  size: 188, 72
-  orig: 222, 88
-  offset: 22, 7
+  xy: 2296, 4
+  size: 752, 288
+  orig: 888, 352
+  offset: 88, 28
   index: -1
 effect/attack/tlssn_atk_zd/tlssn_atk_zd_00002
   rotate: false
-  xy: 384, 1
-  size: 189, 72
-  orig: 222, 88
-  offset: 22, 8
+  xy: 1536, 4
+  size: 756, 288
+  orig: 888, 352
+  offset: 88, 32
   index: -1
 effect/attack/tlssn_atk_zd/tlssn_atk_zd_00003
   rotate: false
-  xy: 192, 1
-  size: 191, 72
-  orig: 222, 88
-  offset: 20, 8
+  xy: 768, 4
+  size: 764, 288
+  orig: 888, 352
+  offset: 80, 32
   index: -1
 effect/attack/tlssn_atk_zd/tlssn_atk_zd_00004
   rotate: false
-  xy: 763, 1
-  size: 188, 72
-  orig: 222, 88
-  offset: 22, 7
+  xy: 3052, 4
+  size: 752, 288
+  orig: 888, 352
+  offset: 88, 28
   index: -1

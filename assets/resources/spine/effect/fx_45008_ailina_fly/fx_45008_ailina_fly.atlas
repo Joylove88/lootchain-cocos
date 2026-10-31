@@ -1,195 +1,195 @@
 
 fx_45008_ailina_fly.png
-size: 1024,256
+size: 2048, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 skill/jianguang_00040
   rotate: false
-  xy: 503, 64
-  size: 117, 93
-  orig: 248, 95
-  offset: 5, 0
+  xy: 1006, 128
+  size: 234, 186
+  orig: 496, 190
+  offset: 10, 0
   index: -1
 skill/jianguang_00041
   rotate: false
-  xy: 363, 63
-  size: 139, 94
-  orig: 248, 95
-  offset: 24, 0
+  xy: 726, 126
+  size: 278, 188
+  orig: 496, 190
+  offset: 48, 0
   index: -1
 skill/jianguang_00042
   rotate: false
-  xy: 194, 158
-  size: 181, 94
-  orig: 248, 95
-  offset: 24, 0
+  xy: 388, 316
+  size: 362, 188
+  orig: 496, 190
+  offset: 48, 0
   index: -1
 skill/jianguang_00043
   rotate: false
-  xy: 376, 158
-  size: 179, 94
-  orig: 248, 95
-  offset: 26, 0
+  xy: 752, 316
+  size: 358, 188
+  orig: 496, 190
+  offset: 52, 0
   index: -1
 skill/jianguang_00044
   rotate: false
-  xy: 729, 185
-  size: 179, 66
-  orig: 248, 95
-  offset: 26, 11
+  xy: 1458, 370
+  size: 358, 132
+  orig: 496, 190
+  offset: 52, 22
   index: -1
 skill/jianguang_00045
   rotate: false
-  xy: 193, 105
-  size: 170, 52
-  orig: 248, 95
-  offset: 35, 22
+  xy: 386, 210
+  size: 340, 104
+  orig: 496, 190
+  offset: 70, 44
   index: -1
 skill/jianguang_00046
   rotate: false
-  xy: 184, 8
-  size: 109, 49
-  orig: 248, 95
-  offset: 48, 25
+  xy: 368, 16
+  size: 218, 98
+  orig: 496, 190
+  offset: 96, 50
   index: -1
 skill/jianguang_00047
   rotate: false
-  xy: 184, 8
-  size: 109, 49
-  orig: 248, 95
-  offset: 48, 25
+  xy: 368, 16
+  size: 218, 98
+  orig: 496, 190
+  offset: 96, 50
   index: -1
 skill/jianguang_00048
   rotate: false
-  xy: 738, 135
-  size: 100, 49
-  orig: 248, 95
-  offset: 52, 24
+  xy: 1476, 270
+  size: 200, 98
+  orig: 496, 190
+  offset: 104, 48
   index: -1
 skill/jianguang_00049
   rotate: false
-  xy: 738, 135
-  size: 100, 49
-  orig: 248, 95
-  offset: 52, 24
+  xy: 1476, 270
+  size: 200, 98
+  orig: 496, 190
+  offset: 104, 48
   index: -1
 skill/jianguang_00050
   rotate: false
-  xy: 738, 86
-  size: 90, 48
-  orig: 248, 95
-  offset: 54, 24
+  xy: 1476, 172
+  size: 180, 96
+  orig: 496, 190
+  offset: 108, 48
   index: -1
 skill/jianguang_00051
   rotate: false
-  xy: 738, 86
-  size: 90, 48
-  orig: 248, 95
-  offset: 54, 24
+  xy: 1476, 172
+  size: 180, 96
+  orig: 496, 190
+  offset: 108, 48
   index: -1
 skill/jianguang_00052
   rotate: false
-  xy: 503, 20
-  size: 86, 43
-  orig: 248, 95
-  offset: 56, 24
+  xy: 1006, 40
+  size: 172, 86
+  orig: 496, 190
+  offset: 112, 48
   index: -1
 skill/jianguang_00053
   rotate: false
-  xy: 503, 20
-  size: 86, 43
-  orig: 248, 95
-  offset: 56, 24
+  xy: 1006, 40
+  size: 172, 86
+  orig: 496, 190
+  offset: 112, 48
   index: -1
 skill/jianguang_00054
   rotate: false
-  xy: 621, 22
-  size: 82, 42
-  orig: 248, 95
-  offset: 58, 26
+  xy: 1242, 44
+  size: 164, 84
+  orig: 496, 190
+  offset: 116, 52
   index: -1
 skill/jianguang_00055
   rotate: false
-  xy: 621, 22
-  size: 82, 42
-  orig: 248, 95
-  offset: 58, 26
+  xy: 1242, 44
+  size: 164, 84
+  orig: 496, 190
+  offset: 116, 52
   index: -1
 skill/jianguang_00056
   rotate: false
-  xy: 713, 50
-  size: 77, 35
-  orig: 248, 95
-  offset: 60, 30
+  xy: 1426, 100
+  size: 154, 70
+  orig: 496, 190
+  offset: 120, 60
   index: -1
 skill/jianguang_00057
   rotate: false
-  xy: 713, 50
-  size: 77, 35
-  orig: 248, 95
-  offset: 60, 30
+  xy: 1426, 100
+  size: 154, 70
+  orig: 496, 190
+  offset: 120, 60
   index: -1
 skill/jianguang_00058
   rotate: false
-  xy: 324, 81
-  size: 12, 23
-  orig: 248, 95
-  offset: 120, 36
+  xy: 648, 162
+  size: 24, 46
+  orig: 496, 190
+  offset: 240, 72
   index: -1
 skill/jiantou_00040
   rotate: false
-  xy: 908, 171
-  size: 114, 81
-  orig: 202, 92
-  offset: 56, 11
+  xy: 1816, 342
+  size: 228, 162
+  orig: 404, 184
+  offset: 112, 22
   index: -1
 skill/jiantou_00041
   rotate: false
-  xy: 621, 89
-  size: 116, 72
-  orig: 202, 92
-  offset: 68, 20
+  xy: 1242, 178
+  size: 232, 144
+  orig: 404, 184
+  offset: 136, 40
   index: -1
 skill/jiantou_00042
   rotate: false
-  xy: 556, 162
-  size: 172, 89
-  orig: 202, 92
-  offset: 24, 2
+  xy: 1112, 324
+  size: 344, 178
+  orig: 404, 184
+  offset: 48, 4
   index: -1
 skill/jiantou_00043
   rotate: false
-  xy: 1, 162
-  size: 193, 89
-  orig: 202, 92
-  offset: 9, 0
+  xy: 2, 324
+  size: 386, 178
+  orig: 404, 184
+  offset: 18, 0
   index: -1
 skill/jiantou_00044
   rotate: false
-  xy: 1, 76
-  size: 191, 85
-  orig: 202, 92
-  offset: 10, 0
+  xy: 2, 152
+  size: 382, 170
+  orig: 404, 184
+  offset: 20, 0
   index: -1
 skill/jiantou_00045
   rotate: false
-  xy: 1, 1
-  size: 182, 75
-  orig: 202, 92
-  offset: 20, 0
+  xy: 2, 2
+  size: 364, 150
+  orig: 404, 184
+  offset: 40, 0
   index: -1
 skill/jiantou_00046
   rotate: false
-  xy: 193, 58
-  size: 130, 46
-  orig: 202, 92
-  offset: 28, 17
+  xy: 386, 116
+  size: 260, 92
+  orig: 404, 184
+  offset: 56, 34
   index: -1
 skill/jiantou_00047
   rotate: false
-  xy: 621, 64
-  size: 91, 24
-  orig: 202, 92
-  offset: 40, 30
+  xy: 1242, 128
+  size: 182, 48
+  orig: 404, 184
+  offset: 80, 60
   index: -1

@@ -1,76 +1,76 @@
 
 xxm_jtboss_bs_sj.png
-size: 1024, 512
+size: 2048, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 image/bo1_01
   rotate: false
-  xy: 806, 405
-  size: 159, 82
-  orig: 178, 100
-  offset: 10, 10
+  xy: 1612, 810
+  size: 318, 164
+  orig: 356, 200
+  offset: 20, 20
   index: -1
 image/bo2_01
   rotate: false
-  xy: 582, 289
-  size: 98, 84
-  orig: 125, 105
-  offset: 16, 7
+  xy: 1164, 578
+  size: 196, 168
+  orig: 250, 210
+  offset: 32, 14
   index: -1
 image/bo3_01
   rotate: false
-  xy: 245, 53
-  size: 100, 117
-  orig: 118, 125
-  offset: 15, 2
+  xy: 490, 106
+  size: 200, 234
+  orig: 236, 250
+  offset: 30, 4
   index: -1
 image/dilie
   rotate: false
-  xy: 2, 299
-  size: 399, 188
-  orig: 425, 213
-  offset: 15, 16
+  xy: 4, 598
+  size: 798, 376
+  orig: 850, 426
+  offset: 30, 32
   index: -1
 image/guang/dian_bai
   rotate: false
-  xy: 2, 2
-  size: 39, 39
-  orig: 60, 60
-  offset: 11, 11
+  xy: 4, 4
+  size: 78, 78
+  orig: 120, 120
+  offset: 22, 22
   index: -1
 image/guang/dian_hong
   rotate: false
-  xy: 967, 455
-  size: 31, 32
-  orig: 60, 60
-  offset: 15, 14
+  xy: 1934, 910
+  size: 62, 64
+  orig: 120, 120
+  offset: 30, 28
   index: -1
 image/guang/guang1
   rotate: false
-  xy: 403, 306
-  size: 177, 181
-  orig: 255, 256
-  offset: 40, 36
+  xy: 806, 612
+  size: 354, 362
+  orig: 510, 512
+  offset: 80, 72
   index: -1
 image/guang/line3
   rotate: false
-  xy: 582, 375
-  size: 222, 112
-  orig: 254, 188
-  offset: 14, 39
+  xy: 1164, 750
+  size: 444, 224
+  orig: 508, 376
+  offset: 28, 78
   index: -1
 image/guang/xin
   rotate: false
-  xy: 245, 172
-  size: 114, 125
-  orig: 144, 144
-  offset: 19, 12
+  xy: 490, 344
+  size: 228, 250
+  orig: 288, 288
+  offset: 38, 24
   index: -1
 image/yanquan_00
   rotate: false
-  xy: 2, 43
-  size: 241, 254
-  orig: 256, 256
-  offset: 10, 0
+  xy: 4, 86
+  size: 482, 508
+  orig: 512, 512
+  offset: 20, 0
   index: -1

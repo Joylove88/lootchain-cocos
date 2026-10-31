@@ -1,6 +1,6 @@
 
 fx_650011_zuozhupifu_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -230,7 +230,7 @@ effect/skill1/zz_jn1_ycmz/zz_jn1_ycmz_16
   index: -1
 
 fx_650011_zuozhupifu_hit_2.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

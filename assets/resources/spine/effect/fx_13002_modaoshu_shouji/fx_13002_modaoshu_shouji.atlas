@@ -1,160 +1,160 @@
 
 fx_13002_modaoshu_shouji.png
-size: 1024,512
+size: 2048, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 images/dimian/HCR_jineng_baozha_00
   rotate: false
-  xy: 557, 335
-  size: 105, 55
-  orig: 142, 86
-  offset: 22, 8
+  xy: 1114, 670
+  size: 210, 110
+  orig: 284, 172
+  offset: 44, 16
   index: -1
 images/dimian/HCR_jineng_baozha_01
   rotate: false
-  xy: 663, 305
-  size: 104, 61
-  orig: 142, 86
-  offset: 22, 8
+  xy: 1326, 610
+  size: 208, 122
+  orig: 284, 172
+  offset: 44, 16
   index: -1
 images/dimian/HCR_jineng_baozha_02
   rotate: false
-  xy: 673, 367
-  size: 119, 67
-  orig: 142, 86
-  offset: 14, 8
+  xy: 1346, 734
+  size: 238, 134
+  orig: 284, 172
+  offset: 28, 16
   index: -1
 images/dimian/HCR_jineng_baozha_03
   rotate: false
-  xy: 436, 316
-  size: 118, 68
-  orig: 142, 86
-  offset: 10, 8
+  xy: 872, 632
+  size: 236, 136
+  orig: 284, 172
+  offset: 20, 16
   index: -1
 images/dimian/HCR_jineng_baozha_04
   rotate: false
-  xy: 804, 436
-  size: 124, 68
-  orig: 142, 86
-  offset: 8, 8
+  xy: 1608, 872
+  size: 248, 136
+  orig: 284, 172
+  offset: 16, 16
   index: -1
 images/dimian/HCR_jineng_baozha_05
   rotate: false
-  xy: 673, 435
-  size: 130, 69
-  orig: 142, 86
-  offset: 5, 8
+  xy: 1346, 870
+  size: 260, 138
+  orig: 284, 172
+  offset: 10, 16
   index: -1
 images/dimian/HCR_jineng_baozha_06
   rotate: false
-  xy: 1, 1
-  size: 135, 69
-  orig: 142, 86
-  offset: 2, 8
+  xy: 2, 2
+  size: 270, 138
+  orig: 284, 172
+  offset: 4, 16
   index: -1
 images/dimian/HCR_jineng_baozha_07
   rotate: false
-  xy: 299, 294
-  size: 116, 74
-  orig: 142, 86
-  offset: 16, 4
+  xy: 598, 588
+  size: 232, 148
+  orig: 284, 172
+  offset: 32, 8
   index: -1
 images/dimian/HCR_jineng_baozha_08
   rotate: false
-  xy: 295, 224
-  size: 112, 69
-  orig: 142, 86
-  offset: 15, 9
+  xy: 590, 448
+  size: 224, 138
+  orig: 284, 172
+  offset: 30, 18
   index: -1
 images/dimian/HCR_jineng_baozha_09
   rotate: false
-  xy: 555, 298
-  size: 99, 36
-  orig: 142, 86
-  offset: 24, 9
+  xy: 1110, 596
+  size: 198, 72
+  orig: 284, 172
+  offset: 48, 18
   index: -1
 images/shouji/HCR_mdaoshu_shouji_00
   rotate: false
-  xy: 557, 391
-  size: 115, 113
-  orig: 162, 168
-  offset: 22, 28
+  xy: 1114, 782
+  size: 230, 226
+  orig: 324, 336
+  offset: 44, 56
   index: -1
 images/shouji/HCR_mdaoshu_shouji_01
   rotate: false
-  xy: 1, 71
-  size: 146, 142
-  orig: 162, 168
-  offset: 7, 12
+  xy: 2, 142
+  size: 292, 284
+  orig: 324, 336
+  offset: 14, 24
   index: -1
 images/shouji/HCR_mdaoshu_shouji_02
   rotate: false
-  xy: 1, 358
-  size: 149, 146
-  orig: 162, 168
-  offset: 6, 12
+  xy: 2, 716
+  size: 298, 292
+  orig: 324, 336
+  offset: 12, 24
   index: -1
 images/shouji/HCR_mdaoshu_shouji_03
   rotate: false
-  xy: 1, 213
-  size: 149, 144
-  orig: 162, 168
-  offset: 6, 12
+  xy: 2, 426
+  size: 298, 288
+  orig: 324, 336
+  offset: 12, 24
   index: -1
 images/shouji/HCR_mdaoshu_shouji_04
   rotate: false
-  xy: 151, 362
-  size: 148, 142
-  orig: 162, 168
-  offset: 6, 12
+  xy: 302, 724
+  size: 296, 284
+  orig: 324, 336
+  offset: 12, 24
   index: -1
 images/shouji/HCR_mdaoshu_shouji_05
   rotate: false
-  xy: 151, 218
-  size: 143, 143
-  orig: 162, 168
-  offset: 10, 13
+  xy: 302, 436
+  size: 286, 286
+  orig: 324, 336
+  offset: 20, 26
   index: -1
 images/shouji/HCR_mdaoshu_shouji_06
   rotate: false
-  xy: 299, 368
-  size: 136, 136
-  orig: 162, 168
-  offset: 14, 18
+  xy: 598, 736
+  size: 272, 272
+  orig: 324, 336
+  offset: 28, 36
   index: -1
 images/shouji/HCR_mdaoshu_shouji_07
   rotate: false
-  xy: 436, 385
-  size: 121, 119
-  orig: 162, 168
-  offset: 20, 24
+  xy: 872, 770
+  size: 242, 238
+  orig: 324, 336
+  offset: 40, 48
   index: -1
 images/shouji/HCR_mdaoshu_shouji_08
   rotate: false
-  xy: 295, 136
-  size: 98, 87
-  orig: 162, 168
-  offset: 30, 38
+  xy: 590, 272
+  size: 196, 174
+  orig: 324, 336
+  offset: 60, 76
   index: -1
 images/shouji/HCR_mdaoshu_shouji_09
   rotate: false
-  xy: 928, 427
-  size: 76, 77
-  orig: 162, 168
-  offset: 46, 48
+  xy: 1856, 854
+  size: 152, 154
+  orig: 324, 336
+  offset: 92, 96
   index: -1
 images/shouji/HCR_mdaoshu_shouji_10
   rotate: false
-  xy: 151, 173
-  size: 74, 45
-  orig: 162, 168
-  offset: 47, 50
+  xy: 302, 346
+  size: 148, 90
+  orig: 324, 336
+  offset: 94, 100
   index: -1
 images/shouji/HCR_mdaoshu_shouji_11
   rotate: false
-  xy: 1005, 487
-  size: 14, 17
-  orig: 162, 168
-  offset: 74, 66
+  xy: 2010, 974
+  size: 28, 34
+  orig: 324, 336
+  offset: 148, 132
   index: -1

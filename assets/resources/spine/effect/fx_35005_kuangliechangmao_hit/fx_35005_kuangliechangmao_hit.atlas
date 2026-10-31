@@ -1,6 +1,6 @@
 
 fx_35005_kuangliechangmao_hit.png
-size: 1024,1024
+size: 1024, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
@@ -363,7 +363,7 @@ fx_35005_klcm_hit/shandianxz_00010
   index: -1
 
 fx_35005_kuangliechangmao_hit_2.png
-size: 1024,512
+size: 1024, 512
 format: RGBA8888
 filter: Linear, Linear
 repeat: none

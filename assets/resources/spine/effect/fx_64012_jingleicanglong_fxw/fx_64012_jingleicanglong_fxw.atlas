@@ -1,104 +1,104 @@
 
 fx_64012_jingleicanglong_fxw.png
-size: 1024, 512
+size: 2048, 1024
 format: RGBA8888
 filter: Linear, Linear
 repeat: none
 shandianxiao_00000
   rotate: false
-  xy: 593, 26
-  size: 71, 117
-  orig: 256, 256
-  offset: 185, 7
+  xy: 1186, 52
+  size: 142, 234
+  orig: 512, 512
+  offset: 370, 14
   index: -1
 shandianxiao_00001
   rotate: false
-  xy: 679, 95
-  size: 143, 242
-  orig: 256, 256
-  offset: 113, 14
+  xy: 1358, 190
+  size: 286, 484
+  orig: 512, 512
+  offset: 226, 28
   index: -1
 shandianxiao_00002
   rotate: false
-  xy: 2, 116
-  size: 256, 237
-  orig: 256, 256
-  offset: 0, 19
+  xy: 4, 232
+  size: 512, 474
+  orig: 512, 512
+  offset: 0, 38
   index: -1
 shandianxiao_00003
   rotate: false
-  xy: 260, 100
-  size: 225, 253
-  orig: 256, 256
-  offset: 0, 3
+  xy: 520, 200
+  size: 450, 506
+  orig: 512, 512
+  offset: 0, 6
   index: -1
 shandianxiao_00004
   rotate: false
-  xy: 487, 145
-  size: 190, 252
-  orig: 256, 256
-  offset: 0, 4
+  xy: 974, 290
+  size: 380, 504
+  orig: 512, 512
+  offset: 0, 8
   index: -1
 shandianxiao_00005
   rotate: false
-  xy: 864, 301
-  size: 142, 207
-  orig: 256, 256
-  offset: 0, 5
+  xy: 1728, 602
+  size: 284, 414
+  orig: 512, 512
+  offset: 0, 10
   index: -1
 shandianxiao_00006
   rotate: false
-  xy: 824, 136
-  size: 135, 163
-  orig: 256, 256
-  offset: 0, 5
+  xy: 1648, 272
+  size: 270, 326
+  orig: 512, 512
+  offset: 0, 10
   index: -1
 shandianxiao_00007
   rotate: false
-  xy: 666, 31
-  size: 82, 62
-  orig: 256, 256
-  offset: 32, 9
+  xy: 1332, 62
+  size: 164, 124
+  orig: 512, 512
+  offset: 64, 18
   index: -1
 texiaoguan1
   rotate: false
-  xy: 487, 15
-  size: 104, 128
-  orig: 106, 129
-  offset: 1, 0
+  xy: 974, 30
+  size: 208, 256
+  orig: 212, 258
+  offset: 2, 0
   index: -1
 texiaoguan2
   rotate: false
-  xy: 2, 2
-  size: 153, 112
-  orig: 173, 164
-  offset: 20, 0
+  xy: 4, 4
+  size: 306, 224
+  orig: 346, 328
+  offset: 40, 0
   index: -1
 texiaoguan3
   rotate: false
-  xy: 431, 399
-  size: 260, 109
-  orig: 269, 243
-  offset: 4, 134
+  xy: 862, 798
+  size: 520, 218
+  orig: 538, 486
+  offset: 8, 268
   index: -1
 texiaoguan4
   rotate: false
-  xy: 2, 355
-  size: 427, 153
-  orig: 430, 155
-  offset: 2, 0
+  xy: 4, 710
+  size: 854, 306
+  orig: 860, 310
+  offset: 4, 0
   index: -1
 texiaoguan5
   rotate: false
-  xy: 157, 18
-  size: 80, 96
-  orig: 81, 96
+  xy: 314, 36
+  size: 160, 192
+  orig: 162, 192
   offset: 0, 0
   index: -1
 texiaoqiu
   rotate: false
-  xy: 693, 339
-  size: 169, 169
-  orig: 173, 173
-  offset: 2, 2
+  xy: 1386, 678
+  size: 338, 338
+  orig: 346, 346
+  offset: 4, 4
   index: -1
