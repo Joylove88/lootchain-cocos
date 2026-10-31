@@ -51,7 +51,8 @@ async def main():
                 if await ev('!!window.__ready', 10):
                     break
                 await asyncio.sleep(0.2)
-            res = await ev(f'window.renderChar({json.dumps(os.path.basename(SRC))}, {json.dumps(BASE)}, {{fps: {FPS}, pma: {"true" if PMA else "false"}}})')
+            binary = 'true' if not os.path.exists(os.path.join(SRC, BASE + '.json')) and os.path.exists(os.path.join(SRC, BASE + '.skel')) else 'false'
+            res = await ev(f'window.renderChar({json.dumps(os.path.basename(SRC))}, {json.dumps(BASE)}, {{fps: {FPS}, pma: {"true" if PMA else "false"}, binary: {binary}}})')
     finally:
         proc.terminate()
         server.terminate()

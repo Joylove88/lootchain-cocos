@@ -12,18 +12,20 @@ const gl = canvas.getContext('webgl', { alpha: false, premultipliedAlpha: false,
 const ctx = new spine.ManagedWebGLRenderingContext(gl);
 const renderer = new spine.SceneRenderer(canvas, ctx);
 
-function load(dir, base) {
+function load(dir, base, binary) {
   return new Promise((resolve, reject) => {
     const am = new spine.AssetManager(ctx, '/fx42/' + dir + '/');
-    am.loadText(base + '.json');
+    // binary = 二进制 .skel(英雄骨骼多是 skel);否则 Spine JSON
+    if (binary) am.loadBinary(base + '.skel'); else am.loadText(base + '.json');
     am.loadTextureAtlas(base + '.atlas');
     const t0 = performance.now();
     const tick = () => {
       if (am.isLoadingComplete()) {
         if (am.hasErrors()) { reject(new Error(JSON.stringify(am.getErrors()))); return; }
         try {
-          const json = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(am.require(base + '.atlas')));
-          resolve(json.readSkeletonData(am.require(base + '.json')));
+          const loader = new spine.AtlasAttachmentLoader(am.require(base + '.atlas'));
+          resolve(binary ? new spine.SkeletonBinary(loader).readSkeletonData(am.require(base + '.skel'))
+            : new spine.SkeletonJson(loader).readSkeletonData(am.require(base + '.json')));
         } catch (e) { reject(e); }
       } else if (performance.now() - t0 > 60000) reject(new Error('load timeout'));
       else setTimeout(tick, 20);
@@ -42,7 +44,7 @@ function pose(skeleton, state, t) {
 window.renderChar = async function (dir, base, opts) {
   opts = opts || {};
   const fps = opts.fps || 20;
-  const data = await load(dir, base);
+  const data = await load(dir, base, !!opts.binary);
   const skeleton = new spine.Skeleton(data);
   // 怪物包的贴图挂在具名皮肤上、默认皮肤是空的(游戏里同样 setSkin):默认皮肤没附件就用第一个具名皮肤
   const skinName = opts.skin || (data.skins.find(s => s.name !== 'default' && s.getAttachments().length > 0) && !(data.defaultSkin && data.defaultSkin.getAttachments().length > 0)
@@ -55,7 +57,7 @@ window.renderChar = async function (dir, base, opts) {
   const off = new spine.Vector2(), size = new spine.Vector2();
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   // 默认按待机动作取景再外扩(全动作并集会被投射物 / 特效撑得很大,人缩成一点)
-  const idleName = names.find(n => /^(\d+_)?idle$/i.test(n)) || names.find(n => /idle/i.test(n));
+  const idleName = names.find(n => /^(\d+_)?(idle|stand)$/i.test(n)) || names.find(n => /idle|stand/i.test(n));
   const frameAnims = opts.frameAnim ? [opts.frameAnim] : (idleName ? [idleName] : names);
   for (const anim of frameAnims) {
     state.setAnimation(0, anim, false);
@@ -107,7 +109,7 @@ window.renderChar = async function (dir, base, opts) {
     }
   }
   const out = { anims: {}, view: { x0, y0, x1, y1 } };
-  for (const anim of names) {
+  for (const anim of (opts.only && opts.only.length ? names.filter(n => opts.only.includes(n)) : names)) {
     state.setAnimation(0, anim, true);
     const duration = state.getCurrent(0).animation.duration || 0.001;
     const n = Math.max(2, Math.min(60, Math.round(duration * fps)));

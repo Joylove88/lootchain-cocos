@@ -4,7 +4,7 @@ Meowa 导入时会按图集尺寸重建附件大小(放大过的图集 → 骨�
 所以只拿它画好的贴图:按区域名把新贴图逐块搬回「我们自己放大过的图集」(spine_atlas_scale 产物),骨骼仍用原 skel / json。
 同时逐块做颜色统计对齐(按透明度加权的均值 / 标准差,RGB 各通道):特效里原本暗色的烟雾 / 冲击波块,AI 常画成灰白实心,
 对齐后回到原版的色相与明暗,只保留新画出的细节。透明度取新图(轮廓更细),但不超过原版同位置透明度 ×1.3;再把原版以 --halo(默认 0.55)透明度垫在下面,保住柔光渐隐。
-用法:python tools/qa/fx_tex_repack.py <放大后的源目录> <Meowa 产物目录> <输出目录> <基名> [--no-color] [--halo 0.55]
+用法:python tools/qa/fx_tex_repack.py <放大后的源目录> <Meowa 产物目录> <输出目录> <基名> [--no-color] [--halo 0.55] [--keep-orig 正则 --hue 度]
 """
 import os, re, shutil, sys
 import numpy as np
@@ -15,6 +15,9 @@ SRC, NEW, OUT, BASE = args[0], args[1], args[2], args[3]
 COLOR = '--no-color' not in args
 # 柔光底:原版贴图按此透明度垫在新贴图下面(AI 画的边缘常偏硬,发光特效的柔和光晕 / 渐隐靠它保住);0 = 不垫
 HALO = float(args[args.index('--halo') + 1]) if '--halo' in args else 0.55
+# 角色换皮:光效部件(施法光球 / 法阵 / 火焰)AI 常画成白色实心块 → 这些区域不用新图,改用原图 + 色相旋转(度)
+KEEP = re.compile(args[args.index('--keep-orig') + 1]) if '--keep-orig' in args else None
+HUE = float(args[args.index('--hue') + 1]) if '--hue' in args else 0.0
 
 
 def parse_atlas(path):
@@ -116,6 +119,16 @@ def premultiply(img):
     return Image.fromarray(a.astype(np.uint8), 'RGBA')
 
 
+def hue_shift(img, deg):
+    if not deg:
+        return img
+    rgba = np.asarray(img).astype(np.float32)
+    hsv = np.asarray(Image.fromarray(rgba[..., :3].astype(np.uint8), 'RGB').convert('HSV')).astype(np.float32)
+    hsv[..., 0] = (hsv[..., 0] + deg / 360.0 * 255.0) % 256
+    rgb = np.asarray(Image.fromarray(hsv.astype(np.uint8), 'HSV').convert('RGB')).astype(np.float32)
+    return Image.fromarray(np.dstack([rgb, rgba[..., 3]]).astype(np.uint8), 'RGBA')
+
+
 def main():
     src_pages, src_regions = parse_atlas(os.path.join(SRC, BASE + '.atlas'))
     new_atlas = [f for f in os.listdir(NEW) if f.endswith('.atlas')][0]
@@ -137,6 +150,15 @@ def main():
         if min(r['w'], r['h'], r['ow'], r['oh'], n['w'], n['h'], n['ow'], n['oh']) <= 0:
             continue
         ref = full_canvas(src_imgs[r['page']], r, 90)
+        if KEEP and KEEP.search(name):
+            piece = hue_shift(ref, HUE)
+            stripped = piece.crop((r['ox'], r['oh'] - r['oy'] - r['h'], r['ox'] + r['w'], r['oh'] - r['oy']))
+            if r['rot']:
+                stripped = stripped.rotate(-90, expand=True)
+            out_imgs[r['page']].paste(Image.new('RGBA', stripped.size, (0, 0, 0, 0)), (r['x'], r['y']))
+            out_imgs[r['page']].paste(stripped, (r['x'], r['y']))
+            done += 1
+            continue
         # 新图集旋转方向不确定:两种都试,和原版透明度更接近的那个对
         best = None
         for rot_dir in ((90, -90) if n['rot'] else (0,)):
