@@ -44,6 +44,10 @@ window.renderChar = async function (dir, base, opts) {
   const fps = opts.fps || 20;
   const data = await load(dir, base);
   const skeleton = new spine.Skeleton(data);
+  // 怪物包的贴图挂在具名皮肤上、默认皮肤是空的(游戏里同样 setSkin):默认皮肤没附件就用第一个具名皮肤
+  const skinName = opts.skin || (data.skins.find(s => s.name !== 'default' && s.getAttachments().length > 0) && !(data.defaultSkin && data.defaultSkin.getAttachments().length > 0)
+    ? data.skins.find(s => s.name !== 'default' && s.getAttachments().length > 0).name : null);
+  if (skinName) skeleton.setSkinByName(skinName);
   skeleton.setToSetupPose();
   const state = new spine.AnimationState(new spine.AnimationStateData(data));
   const names = data.animations.map(a => a.name);
@@ -51,7 +55,8 @@ window.renderChar = async function (dir, base, opts) {
   const off = new spine.Vector2(), size = new spine.Vector2();
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   // 默认按待机动作取景再外扩(全动作并集会被投射物 / 特效撑得很大,人缩成一点)
-  const frameAnims = opts.frameAnim ? [opts.frameAnim] : (names.filter(n => /idle/i.test(n)).slice(0, 1).length ? names.filter(n => /idle/i.test(n)).slice(0, 1) : names);
+  const idleName = names.find(n => /^(\d+_)?idle$/i.test(n)) || names.find(n => /idle/i.test(n));
+  const frameAnims = opts.frameAnim ? [opts.frameAnim] : (idleName ? [idleName] : names);
   for (const anim of frameAnims) {
     state.setAnimation(0, anim, false);
     const d = state.getCurrent(0).animation.duration || 0.001;
