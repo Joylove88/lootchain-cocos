@@ -6851,6 +6851,20 @@ export class LootChainGameRoot extends Component {
       this.scheduleOnce(() => this.prioritizeReturningPlayerPack(), 15);
       // 开局所在地图:新手村阶段 → 晨风村;出村后 → 上次所在的地图(仍开放)否则主城
       let target: WorldMapCode = state.stage === 'VILLAGE' ? 'VILLAGE' : 'CITY';
+      // docs/55 §2.3 下线续点:服务端记的最后位置优先(地图仍开放才用;新手村阶段只认晨风村)
+      const last = state.lastPosition;
+      const lastOk = !!last && state.maps.some((map) => map.mapCode === last.mapCode && map.unlocked)
+        && (state.stage !== 'VILLAGE' || last.mapCode === 'VILLAGE');
+      if (last && lastOk) {
+        const code = last.mapCode as WorldMapCode;
+        this.preloadWorldMap(code, () => {
+          this.lobbyTownRenderer.enterMap(code, { x: last.x, y: last.y });
+          if (this.currentView === 'lobby') {
+            this.renderCurrentView();
+          }
+        });
+        return;
+      }
       if (state.stage === 'CITY') {
         try {
           const saved = sys.localStorage.getItem(this.worldMapStorageKey()) as WorldMapCode | null;
@@ -7498,6 +7512,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private fieldKillProfileAt = 0;
+
+  /** docs/55 野外坐标:走长连接上行(没连上就丢,服务端按位置过期处理)。 */
+  private reportWorldPosition(type: 'pos' | 'warp', map: WorldMapCode, x: number, y: number): void {
+    this.playerWsClient.send({ type, map, x, y });
+  }
 
   private clearWorldField(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number; code?: string }>, capped: boolean) => void): void {
     void (async () => {

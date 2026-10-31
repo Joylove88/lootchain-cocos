@@ -1,6 +1,6 @@
 /**
  * 玩家通知长连接客户端(docs/27 长连接通知通道)。
- * 只收服务端推送 {type,data,ts},游戏行为仍走 REST;上行仅心跳 ping。
+ * 收服务端推送 {type,data,ts};上行:心跳 ping + 野外坐标 pos / warp(docs/55,send);领奖等游戏行为仍走 REST。
  * 断线自动重连(1s→2s→5s→10s 退避),心跳 30s,token 变化自动重握手。
  */
 export type PlayerWsListener = (data: Record<string, unknown>) => void;
@@ -53,6 +53,20 @@ export class PlayerWsClient {
     } catch (error) {
       void error;
       this.scheduleReconnect();
+    }
+  }
+
+  /** 上行一条消息(docs/55 野外坐标);没连上就丢掉(坐标是高频增量,断线期间的丢了不补)。 */
+  send(message: Record<string, unknown>): boolean {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    try {
+      this.socket.send(JSON.stringify(message));
+      return true;
+    } catch (error) {
+      void error;
+      return false;
     }
   }
 

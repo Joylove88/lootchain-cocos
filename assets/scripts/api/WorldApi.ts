@@ -225,6 +225,14 @@ function validateState(data: unknown): WorldStateVO {
     }),
     openedChests: readArray(data, 'openedChests', 64).map((code) => (typeof code === 'string' ? code.slice(0, 32) : '')).filter((code) => !!code),
     gatheredToday: readArray(data, 'gatheredToday', 64).map((code) => (typeof code === 'string' ? code.slice(0, 32) : '')).filter((code) => !!code),
+    lastPosition: (() => {
+      const record = isRecord(data.lastPosition) ? data.lastPosition : null;
+      const code = record ? readText(record, 'mapCode', 16, '') as WorldMapCode : '';
+      if (!record || MAP_CODES.indexOf(code as WorldMapCode) < 0 || typeof record.x !== 'number' || typeof record.y !== 'number') {
+        return null;
+      }
+      return { mapCode: code as WorldMapCode, x: Math.round(record.x), y: Math.round(record.y) };
+    })(),
   };
 }
 

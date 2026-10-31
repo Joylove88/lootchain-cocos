@@ -417,13 +417,13 @@ const VILLAGE: WorldMapDef = {
   lampAsset: V2('lamp'),
   // 村口广场中心(原型:广场正中圆形传送阵)
   waypoint: { x: 784, y: -630, drawn: true },
-  // 兴趣点(docs/54 §2.1)
+  // 兴趣点(docs/54 §2.1;坐标 = 10-30 实测吸附后固定,与服务端 FieldGeometry 一致,docs/55 §3)
   pois: [
     { code: 'V_HIDDEN_1', kind: 'HIDDEN', name: '风车背后', x: -2150, y: 40 },
     { code: 'V_HIDDEN_2', kind: 'HIDDEN', name: '桥下的布包', x: 260, y: 150 },
     { code: 'V_HIDDEN_3', kind: 'HIDDEN', name: '麦田里的稻草人', x: -1960, y: -760 },
-    { code: 'V_STELE_1', kind: 'STELE', name: '晨曦之碑', x: -1700, y: 1080 },
-    { code: 'V_HERB_1', kind: 'HERB', name: '草药丛', x: -1420, y: -900 },
+    { code: 'V_STELE_1', kind: 'STELE', name: '晨曦之碑', x: -1983, y: 1278 },
+    { code: 'V_HERB_1', kind: 'HERB', name: '草药丛', x: -1279, y: -801 },
     { code: 'V_HERB_2', kind: 'HERB', name: '草药丛', x: -760, y: 470 },
   ],
   camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 1100, 100)],
@@ -616,14 +616,14 @@ const WOODS: WorldMapDef = {
   ],
   // 兴趣点(docs/54 §2.2)
   pois: [
-    { code: 'W_HIDDEN_1', kind: 'HIDDEN', name: '瀑布后的岩缝', x: -3000, y: 1900 },
-    { code: 'W_HIDDEN_2', kind: 'HIDDEN', name: '倒木下的箭袋', x: 1100, y: 1300 },
-    { code: 'W_HIDDEN_3', kind: 'HIDDEN', name: '崖边的营火', x: 5800, y: 1300 },
-    { code: 'W_STELE_1', kind: 'STELE', name: '古树之碑', x: 2200, y: -1500 },
-    { code: 'W_HERB_1', kind: 'HERB', name: '草药丛', x: 3500, y: 300 },
-    { code: 'W_HERB_2', kind: 'HERB', name: '草药丛', x: -400, y: -700 },
-    { code: 'W_ORE_1', kind: 'ORE', name: '矿脉', x: 300, y: -2800 },
-    { code: 'W_ORE_2', kind: 'ORE', name: '矿脉', x: 3800, y: -2700 },
+    { code: 'W_HIDDEN_1', kind: 'HIDDEN', name: '瀑布后的岩缝', x: -1448, y: 2350 },
+    { code: 'W_HIDDEN_2', kind: 'HIDDEN', name: '倒木下的箭袋', x: 308, y: 746 },
+    { code: 'W_HIDDEN_3', kind: 'HIDDEN', name: '崖边的营火', x: 5800, y: 1412 },
+    { code: 'W_STELE_1', kind: 'STELE', name: '古树之碑', x: 1909, y: -1008 },
+    { code: 'W_HERB_1', kind: 'HERB', name: '草药丛', x: 3907, y: 182 },
+    { code: 'W_HERB_2', kind: 'HERB', name: '草药丛', x: -881, y: -363 },
+    { code: 'W_ORE_1', kind: 'ORE', name: '矿脉', x: -624, y: -2532 },
+    { code: 'W_ORE_2', kind: 'ORE', name: '矿脉', x: 3121, y: -2225 },
   ],
   // 野外宝箱(docs/52 §3.1,走近点「开启」;铁箱 / 首领宝箱要先打赢旁边的精英 / 首领)
   chests: [
@@ -770,6 +770,8 @@ const GRAY: WorldMapDef = {
 };
 
 export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY, GRAY };
+// 自验 / 坐标导出脚本读地图定义用(tools/qa/export_world_geometry.py,docs/55)
+(globalThis as unknown as { __lootchainWorldMaps?: unknown }).__lootchainWorldMaps = WORLD_MAPS;
 
 export function worldMapDef(code: WorldMapCode | null | undefined): WorldMapDef {
   return (code && WORLD_MAPS[code]) || CITY;

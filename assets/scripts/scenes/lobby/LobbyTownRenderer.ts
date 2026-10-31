@@ -88,6 +88,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   reportWorldExplore?(code: WorldMapCode, cell: number): void;
   /** docs/52 §3.1 野外宝箱:开箱(成功后回调 playChestOpened)。 */
   openWorldChest?(code: string): void;
+  /** docs/55 野外坐标:移动中每 0.5 秒 pos、换图 warp(走长连接)。 */
+  reportWorldPosition?(type: 'pos' | 'warp', map: WorldMapCode, x: number, y: number): void;
   /** docs/54 野外兴趣点:隐藏点走近 / 石碑阅读 / 采集读条完成时调用(GameRoot 领奖 + 弹层)。 */
   claimWorldPoi?(code: string): void;
   openWorldQuestTracker?(): void;
@@ -560,6 +562,9 @@ export class LobbyTownRenderer {
     this.mapCode = code;
     this.autoPath = null;
     this.pendingSpawn = spawn ?? { ...worldMapDef(code).spawn };
+    // docs/55:换图先告诉服务端落点(合法瞬移),之后按 pos 增量上报
+    this.host.reportWorldPosition?.('warp', code, Math.round(this.pendingSpawn.x), Math.round(this.pendingSpawn.y));
+    this.posSent = { x: this.pendingSpawn.x, y: this.pendingSpawn.y, at: Date.now() };
     this.exitCooldownUntil = Date.now() + 1500;
     this.battleLock = false;
     this.channel = null;
@@ -1266,6 +1271,7 @@ export class LobbyTownRenderer {
     this.updateMonsterNames();
     this.updateExplore();
     this.updateHiddenPois();
+    this.updatePositionReport();
     if (Date.now() >= this.respawnCheckAt) {
       this.respawnCheckAt = Date.now() + 2000;
       if (this.def.camps.length > 0) {
@@ -2943,6 +2949,26 @@ export class LobbyTownRenderer {
         entry.glow?.isValid && (entry.glow.node.active = !read);
       }
     }
+  }
+
+  /** 上次上报的坐标(docs/55)。 */
+  private posSent: { x: number; y: number; at: number } | null = null;
+
+  /** docs/55 坐标上报:移动中每 0.5 秒一条(挪动 < 30 单位不发);停下后补一条最终位置;每 10 秒保底一条(服务端判断位置是否过期)。 */
+  private updatePositionReport(): void {
+    const leader = this.leader;
+    if (!leader || !this.host.reportWorldPosition) {
+      return;
+    }
+    const now = Date.now();
+    const last = this.posSent;
+    const moved = last ? Math.hypot(leader.x - last.x, leader.y - last.y) : Infinity;
+    const due = !last || (moved >= 30 && now - last.at >= 500) || (moved > 0 && !leader.moving && now - last.at >= 200) || now - last.at >= 10_000;
+    if (!due) {
+      return;
+    }
+    this.posSent = { x: leader.x, y: leader.y, at: now };
+    this.host.reportWorldPosition('pos', this.mapCode, Math.round(leader.x), Math.round(leader.y));
   }
 
   /** 隐藏点:队长走到约 2 个身位内自动触发(战斗 / 读条中不触发);请求发出后等世界状态回来,期间不重复触发。 */

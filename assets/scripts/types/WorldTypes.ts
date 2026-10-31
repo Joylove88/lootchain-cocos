@@ -66,6 +66,8 @@ export interface WorldStateVO {
   explore: WorldExploreVO[];
   /** 今日已采的采集点码(docs/54)。 */
   gatheredToday: string[];
+  /** 服务端记的最后所在地图与坐标(docs/55 §2.3 下线续点)。 */
+  lastPosition: { mapCode: WorldMapCode; x: number; y: number } | null;
 }
 
 /** 探索度:bits = 已点亮块(格号 = 行 × 8 + 列,行从地图顶边往下),mask = 可探索块,tier = 已发奖档位 0..4。 */
