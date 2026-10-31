@@ -55,7 +55,7 @@ import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
-import { CHEST_ART, distToLines, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapPoi, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapPoi, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -94,7 +94,10 @@ export interface LobbyTownHost extends LobbyHudHost {
   openWorldBountyPanel?(): void;
   /** docs/50 §14 野外即时战斗:登记遭遇(下发数值)/ 清怪上报 / 队长倒下。 */
   engageWorldField?(stageCode: string): Promise<TownFieldEncounter | null>;
-  clearWorldField?(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number }>, capped: boolean) => void): void;
+  clearWorldField?(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number; code?: string }>, capped: boolean) => void): void;
+  /** docs/52 §7 普通小怪按只掉落:上报遭遇累计击杀(失败回调 null)。 */
+  reportWorldFieldKills?(encounterId: number, stageCode: string, killed: number,
+    onResult: (result: { drops: Array<{ index: number; items: Array<{ code: string; name: string; amount: number }> }>; rewards: Array<{ code: string; name: string; amount: number }>; capped: boolean } | null) => void): void;
 }
 
 /** 地图页(鸟瞰,10-30 原型 proto_map_b)要的当前图快照:坐标都是世界坐标。 */
@@ -201,6 +204,8 @@ const WORLD_NODE_NAME = 'LobbyTownWorld';
 const MONSTER_WANDER_SPEED = 70;
 const MONSTER_CHASE_SPEED = 190;
 const MONSTER_AGGRO_RADIUS = 260;
+/** 「本轮战果」脱战多久收起 / 算新一轮(毫秒)。 */
+const HAUL_IDLE_MS = 6000;
 /** 角色脚下柔边接触阴影(10-30 英雄贴地融合:原来的硬边黑椭圆像贴纸)。 */
 const CONTACT_SHADOW = worldAsset('fx/contact_shadow');
 /** 场上物件名字(宝箱 / 石碑 / 采集点):平时暖白,开过 / 采过 / 读过压灰。 */
@@ -482,6 +487,16 @@ export class LobbyTownRenderer {
   private exploreCheckAt = 0;
   // docs/50 §14 野外即时战斗
   private readonly encounters = new Map<string, { id: number; pending: boolean }>();
+  /**
+   * 普通小怪按只掉落(docs/52 §7):每个怪群一份击杀记录。killed = 已死几只;pos = 每只倒下的位置(掉落从这里飞向队伍);
+   * reported = 已上报到几只;finished = 全灭待清;timer = 约 1.2 秒合并一次上报。id 为 0 = 开战回执还没到,先记着。
+   */
+  private readonly killState = new Map<string, { id: number; killed: number; reported: number; pos: Array<{ x: number; y: number }>; finished: boolean; timer: ReturnType<typeof setTimeout> | null; label: string }>();
+  /** 「本轮战果」(原型 field_loot_b):开打起累计,脱战约 6 秒收起。 */
+  private haul: { kills: number; groups: number; totals: Map<string, { name: string; amount: number }>; notes: string[]; lastAt: number } | null = null;
+  private haulNode: Node | null = null;
+  /** 服务端登记的每群只数(encounterStats 清掉后上报还要用)。 */
+  private readonly serverCampCount = new Map<string, number>();
   /** 遭遇下发的怪物数值(按群);世界层重建后新刷的怪没数值时从这里补(10-30 用户「怪不攻击、打不死」)。 */
   private readonly encounterStats = new Map<string, TownFieldEncounter['monsters']>();
   private raiderAttack = 0;
@@ -549,6 +564,7 @@ export class LobbyTownRenderer {
     this.battleLock = false;
     this.channel = null;
     this.bannerUntil = Date.now() + 2600;
+    this.flushAllKills();
     this.encounters.clear();
     this.encounterStats.clear();
     this.pendingHits = [];
@@ -1267,6 +1283,7 @@ export class LobbyTownRenderer {
     this.waypointFx?.step(clamped);
     this.stepChestGlow();
     this.stepPoiCues();
+    this.stepHaul(Date.now());
     if (this.def.ambient) {
       const view = this.viewSize();
       this.ambient.step(clamped, this.camX, this.camY, view.w, view.h, this.def.width);
@@ -2017,6 +2034,9 @@ export class LobbyTownRenderer {
     this.renderMinimap(hud, layout, scale);
     this.renderQuestTracker(hud, layout, scale, world);
     this.renderRecallButton(hud, layout, scale, world);
+    // HUD 整体重画会带走战果卡:这一轮还在就补挂回去
+    this.haulNode = null;
+    this.refreshHaulCard();
     this.renderCombatButtons(hud, layout, scale);
     this.renderLeaderBar(hud, layout);
     this.renderPartyColumn(hud, layout);
@@ -3869,6 +3889,15 @@ export class LobbyTownRenderer {
         return;
       }
       this.encounters.set(stageCode, { id: encounter.encounterId, pending: false });
+      const ks = this.killState.get(stageCode);
+      if (ks && ks.id === 0) {
+        ks.id = encounter.encounterId;
+        if (ks.finished) {
+          this.finishKills(stageCode);
+        } else if (ks.killed > 0) {
+          this.scheduleKillReport(stageCode);
+        }
+      }
       // 队长数值以服务端为准;最大血量变了按比例换算当前血
       if (encounter.raiderHp > 0 && encounter.raiderHp !== this.leaderMaxHp) {
         const ratio = this.leaderMaxHp > 0 ? this.leaderHp / this.leaderMaxHp : 1;
@@ -3890,6 +3919,7 @@ export class LobbyTownRenderer {
         }
       }
       this.encounterStats.set(stageCode, encounter.monsters);
+      this.serverCampCount.set(stageCode, encounter.monsters.length);
       this.monsters.filter((monster) => monster.camp.stageCode === stageCode && !monster.dead).forEach((monster) => this.applyEncounterStats(monster));
       this.drawLeaderHp();
     });
@@ -5074,15 +5104,43 @@ export class LobbyTownRenderer {
     tween(opacity).delay(0.5).to(0.6, { opacity: 0 }).start();
     const stageCode = monster.camp.stageCode;
     const alive = this.monsters.some((item) => item.camp.stageCode === stageCode && !item.dead);
+    const perKill = !monster.camp.elite;
+    this.touchHaul();
+    if (this.haul) {
+      this.haul.kills += 1;
+      this.refreshHaulCard();
+    }
+    if (perKill) {
+      // docs/52 §7:普通小怪按只掉落——记下这一只,约 1.2 秒合并上报一次
+      const encounter = this.encounters.get(stageCode);
+      let ks = this.killState.get(stageCode);
+      if (!ks) {
+        ks = { id: encounter?.id ?? 0, killed: 0, reported: 0, pos: [], finished: false, timer: null, label: monster.camp.label };
+        this.killState.set(stageCode, ks);
+      }
+      ks.killed += 1;
+      ks.pos.push({ x: monster.x, y: monster.y });
+      if (!alive) {
+        ks.finished = true;
+      }
+    }
     if (!alive) {
       const encounter = this.encounters.get(stageCode);
       this.encounters.delete(stageCode);
       this.encounterStats.delete(stageCode);
       this.campRespawnAt.set(stageCode, Date.now() + MONSTER_RESPAWN_MS);
-      if (encounter && encounter.id > 0) {
-        // docs/51 P2:不再立刻结算,掉一袋战利品在最后一只怪脚下,走过去拾取
+      if (this.haul) {
+        this.haul.groups += 1;
+        this.refreshHaulCard();
+      }
+      if (perKill) {
+        this.finishKills(stageCode);
+      } else if (encounter && encounter.id > 0) {
+        // 精英 / 首领:掉一袋战利品,0.7 秒后自动飞向队伍结算(10-31 用户:不用再走过去捡)
         this.spawnLoot(encounter.id, stageCode, monster.x, monster.y);
       }
+    } else if (perKill) {
+      this.scheduleKillReport(stageCode);
     }
   }
 
@@ -5115,8 +5173,10 @@ export class LobbyTownRenderer {
       g.stroke();
     }
     tween(art).repeatForever(tween<Node>().to(0.6, { position: new Vec3(0, 46, 0) }).to(0.6, { position: new Vec3(0, 36, 0) })).start();
-    this.loots.push({ key: `loot_${encounterId}`, stageCode, encounterId, x, y, node, spawnedAt: Date.now() });
-    this.spawnFloater(x, y + 150, '战利品掉落', rgba(255, 224, 150), 24);
+    const loot = { key: `loot_${encounterId}`, stageCode, encounterId, x, y, node, spawnedAt: Date.now() };
+    this.loots.push(loot);
+    // 10-31:不用走过去捡,0.7 秒后自动飞向队伍
+    tween(node).delay(0.7).call(() => this.pickupLoot(loot)).start();
   }
 
   private pickupLoot(loot: TownLoot): void {
@@ -5131,11 +5191,235 @@ export class LobbyTownRenderer {
         Tween.stopAllByTarget(art);
       }
       const opacity = loot.node.getComponent(UIOpacity) ?? loot.node.addComponent(UIOpacity);
-      tween(loot.node).to(0.25, { position: new Vec3(loot.x, loot.y + 90, 0) }).start();
-      tween(opacity).to(0.25, { opacity: 0 }).call(() => loot.node.isValid && loot.node.destroy()).start();
+      const leader = this.leader;
+      const to = leader ? new Vec3(leader.x, leader.y + 120, 0) : new Vec3(loot.x, loot.y + 90, 0);
+      tween(loot.node).to(0.45, { position: to }, { easing: 'quadIn' }).start();
+      tween(opacity).delay(0.25).to(0.2, { opacity: 0 }).call(() => loot.node.isValid && loot.node.destroy()).start();
     }
-    this.host.clearWorldField?.(loot.encounterId, loot.stageCode, (items, capped) => this.showLootRewards(items, capped));
+    const camp = this.def.camps.find((item) => item.stageCode === loot.stageCode);
+    this.host.clearWorldField?.(loot.encounterId, loot.stageCode, (items, capped) => this.addHaulRewards(items, capped, camp?.label ?? ''));
     this.nearKey = null;
+  }
+
+  // ── docs/52 §7 普通小怪按只掉落 ──
+
+  private scheduleKillReport(stageCode: string): void {
+    const ks = this.killState.get(stageCode);
+    if (!ks || ks.timer || ks.id <= 0) {
+      return;
+    }
+    ks.timer = setTimeout(() => {
+      ks.timer = null;
+      this.reportKills(stageCode, false);
+    }, 1200);
+  }
+
+  /** 怪群全灭:报齐击杀 → 清怪(推进任务 / 悬赏,服务端补齐没报到的)。开战回执还没到就等回执(engageCamp 里补)。 */
+  private finishKills(stageCode: string): void {
+    const ks = this.killState.get(stageCode);
+    if (!ks || ks.id <= 0) {
+      return;
+    }
+    if (ks.timer) {
+      clearTimeout(ks.timer);
+      ks.timer = null;
+    }
+    this.reportKills(stageCode, true);
+  }
+
+  private reportKills(stageCode: string, finish: boolean): void {
+    const ks = this.killState.get(stageCode);
+    if (!ks || ks.id <= 0 || !this.host.reportWorldFieldKills) {
+      return;
+    }
+    const id = ks.id;
+    // 服务端每群最多登记 6 只(客户端按配置刷 6~10 只):上报按比例折算,全灭时报满;掉落序号再按比例映射回倒下的那只
+    const serverCount = Math.max(1, this.encounterStats.get(stageCode)?.length ?? this.serverCampCount.get(stageCode) ?? ks.killed);
+    const clientCount = Math.max(1, this.def.camps.find((camp) => camp.stageCode === stageCode)?.count ?? ks.killed);
+    const killed = finish ? serverCount : Math.min(serverCount, Math.floor((ks.killed * serverCount) / clientCount));
+    const pos = ks.pos.slice();
+    const toClient = (index: number): number => Math.min(pos.length - 1, Math.floor(((index + 1) * clientCount) / serverCount) - 1);
+    const label = ks.label;
+    const done = (): void => {
+      if (finish) {
+        this.killState.delete(stageCode);
+        this.host.clearWorldField?.(id, stageCode, (items, capped) => this.addHaulRewards(items, capped, label));
+      }
+    };
+    if (killed <= ks.reported) {
+      done();
+      return;
+    }
+    ks.reported = killed;
+    this.host.reportWorldFieldKills(id, stageCode, killed, (result) => {
+      if (result) {
+        this.playKillDrops(result.drops.map((drop) => ({ index: Math.max(0, toClient(drop.index)), items: drop.items })), pos);
+        this.addHaulRewards(result.rewards, result.capped, label);
+      }
+      done();
+    });
+  }
+
+  /** 切图 / 下线前:没报完的击杀补报(不丢奖励)。 */
+  private flushAllKills(): void {
+    for (const [stageCode, ks] of Array.from(this.killState.entries())) {
+      if (ks.timer) {
+        clearTimeout(ks.timer);
+        ks.timer = null;
+      }
+      if (ks.id > 0 && ks.killed > ks.reported && this.host.reportWorldFieldKills) {
+        this.host.reportWorldFieldKills(ks.id, stageCode, ks.killed, () => undefined);
+      }
+    }
+    this.killState.clear();
+  }
+
+  /** 有掉落的那几只:从倒下的位置弹出图标,沿弧线飞向队长后消失(原型 field_loot_b)。 */
+  private playKillDrops(drops: Array<{ index: number; items: Array<{ code: string; name: string; amount: number }> }>, pos: Array<{ x: number; y: number }>): void {
+    const root = this.entityRoot;
+    if (!root || !root.isValid) {
+      return;
+    }
+    drops.forEach((drop, order) => {
+      const item = drop.items.find((entry) => FIELD_DROP_ICON[entry.code]) ?? null;
+      if (!item) {
+        return;
+      }
+      const from = pos[drop.index] ?? pos[pos.length - 1];
+      if (!from) {
+        return;
+      }
+      setTimeout(() => {
+        if (!root.isValid) {
+          return;
+        }
+        const node = this.host.addChildPlainNode(root, 'KillDrop', from.x, from.y + 40, 60, 60);
+        this.addFitSprite('Icon', FIELD_DROP_ICON[item.code], 0, 0, 52, 52, node);
+        node.setSiblingIndex(root.children.length - 1);
+        const leader = this.leader;
+        const up = new Vec3(from.x + (Math.random() - 0.5) * 40, from.y + 150, 0);
+        tween(node)
+          .to(0.22, { position: up }, { easing: 'quadOut' })
+          .delay(0.12)
+          .to(0.38, { position: leader ? new Vec3(leader.x, leader.y + 120, 0) : up }, { easing: 'quadIn' })
+          .call(() => node.isValid && node.destroy())
+          .start();
+      }, order * 90);
+    });
+  }
+
+  /** 战果卡开始 / 续上一轮(脱战约 6 秒算新一轮)。 */
+  private touchHaul(): void {
+    const now = Date.now();
+    if (!this.haul || now - this.haul.lastAt > HAUL_IDLE_MS) {
+      this.haul = { kills: 0, groups: 0, totals: new Map(), notes: [], lastAt: now };
+    }
+    this.haul.lastAt = now;
+  }
+
+  /** 奖励记进「本轮战果」(按奖励名合并);capped = 有超额(只给 1 经验)。 */
+  private addHaulRewards(items: Array<{ name: string; amount: number; code?: string }>, capped: boolean, label: string): void {
+    this.touchHaul();
+    const haul = this.haul!;
+    for (const item of items) {
+      const key = item.code ?? item.name;
+      const cur = haul.totals.get(key) ?? { name: item.name, amount: 0 };
+      cur.amount += item.amount;
+      haul.totals.set(key, cur);
+    }
+    if (capped) {
+      const note = `${label ? `${label} · ` : ''}今日有奖击杀已用完`;
+      if (!haul.notes.includes(note)) {
+        haul.notes = [note];
+      }
+    }
+    this.refreshHaulCard();
+  }
+
+  /** 每帧:脱战超过 HAUL_IDLE_MS 收起战果卡。 */
+  private stepHaul(now: number): void {
+    if (!this.haul || !this.haulNode || !this.haulNode.isValid) {
+      return;
+    }
+    if (!this.inCombat && now - this.haul.lastAt > HAUL_IDLE_MS) {
+      const node = this.haulNode;
+      this.haulNode = null;
+      this.haul = null;
+      const opacity = node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
+      tween(opacity).to(0.35, { opacity: 0 }).call(() => node.isValid && node.destroy()).start();
+    } else if (this.inCombat) {
+      this.haul.lastAt = now;
+    }
+  }
+
+  /**
+   * 「本轮战果」卡(原型 field_loot_b:左侧回城钮右边,B 风格暗玻璃):标题 + 「连续 n 群」、击杀、金币、经验、材料若干行、超额提示。
+   * 数据变了整张重画(行数很少)。
+   */
+  private refreshHaulCard(): void {
+    const hud = this.hudNode;
+    const layout = this.hudLayout;
+    const haul = this.haul;
+    if (!hud || !hud.isValid || !layout || !haul) {
+      return;
+    }
+    this.haulNode?.isValid && this.haulNode.destroy();
+    const P = townProtoFrame(layout);
+    const rows: Array<{ icon: string | null; label: string; value: string; gold?: boolean }> = [
+      { icon: FIELD_DROP_ICON.KILL, label: '击杀', value: `${haul.kills}` },
+    ];
+    const gold = haul.totals.get('GOLD');
+    if (gold) {
+      rows.push({ icon: FIELD_DROP_ICON.GOLD, label: '金币', value: `+${this.host.formatInteger(gold.amount)}`, gold: true });
+    }
+    const exp = haul.totals.get('PLAYER_EXP');
+    if (exp) {
+      rows.push({ icon: null, label: '经验', value: `+${this.host.formatInteger(exp.amount)}` });
+    }
+    for (const [code, item] of haul.totals) {
+      if (code === 'GOLD' || code === 'PLAYER_EXP') {
+        continue;
+      }
+      rows.push({ icon: FIELD_DROP_ICON[code] ?? null, label: item.name, value: `×${this.host.formatInteger(item.amount)}` });
+    }
+    const w = P.S(315);
+    const rowH = P.S(35);
+    const h = P.S(52) + rows.length * rowH + (haul.notes.length ? P.S(40) : P.S(10));
+    // 顶边对齐回城钮(没有回城钮就贴追踪条下方)
+    const recall = this.recallButton && this.recallButton.isValid ? this.recallButton : null;
+    const left = recall ? recall.position.x + recall.getComponent(UITransform)!.contentSize.width / 2 + P.S(14) : P.L(44);
+    const top = recall ? recall.position.y + recall.getComponent(UITransform)!.contentSize.height / 2 : this.trackerBottomY - P.S(20);
+    const node = this.host.addChildPlainNode(hud, 'LobbyFieldHaul', left + w / 2, top - h / 2, w, h);
+    mountGlassSlice(this.host as never, node, 'Bg', GLASS_SLICES.panel, 0, 0, w, h, P.S(1) * 0.9);
+    const text = (name: string, value: string, x: number, y: number, size: number, color: Color, width: number, align: HorizontalTextAlignment, bold = false): Label => {
+      const label = this.host.addChildLabel(node, name, value, x, y, P.S(size), color, new Size(width, P.S(size) + 10), align);
+      label.overflow = Label.Overflow.SHRINK;
+      label.isBold = bold;
+      return label;
+    };
+    const L = -w / 2 + P.S(20);
+    const R = w / 2 - P.S(18);
+    text('Title', '本轮战果', L, h / 2 - P.S(26), 21, rgba(242, 242, 242), P.S(160), HorizontalTextAlignment.LEFT, true);
+    if (haul.groups > 0) {
+      text('Groups', `连续 ${haul.groups} 群`, R, h / 2 - P.S(26), 15, rgba(163, 168, 179), P.S(120), HorizontalTextAlignment.RIGHT);
+    }
+    rows.forEach((row, i) => {
+      const y = h / 2 - P.S(66) - i * rowH;
+      if (row.icon) {
+        this.addFitSprite(`Icon_${i}`, row.icon, L + P.S(12), y, P.S(24), P.S(24), node);
+      }
+      text(`Label_${i}`, row.label, L + P.S(34), y, 17, rgba(182, 189, 205), P.S(140), HorizontalTextAlignment.LEFT);
+      text(`Value_${i}`, row.value, R, y, 18, row.gold ? rgba(227, 196, 138) : rgba(242, 242, 242), P.S(120), HorizontalTextAlignment.RIGHT);
+    });
+    if (haul.notes.length) {
+      const y = -h / 2 + P.S(22);
+      const g = this.host.addChildPlainNode(node, 'Div', 0, y + P.S(18), w - P.S(36), 1).addComponent(Graphics);
+      g.fillColor = rgba(255, 255, 255, 30);
+      g.rect(-(w - P.S(36)) / 2, 0, w - P.S(36), Math.max(1, P.S(1)));
+      g.fill();
+      text('Note', haul.notes[0], L, y, 14, rgba(150, 156, 170), w - P.S(40), HorizontalTextAlignment.LEFT);
+    }
+    this.haulNode = node;
   }
 
   /** 拾取到的奖励在队长头上逐条飘字(大厅不显示底部状态字)。 */

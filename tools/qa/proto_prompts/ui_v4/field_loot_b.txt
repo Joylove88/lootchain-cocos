@@ -1,0 +1,17 @@
+Generate ONE image: a finished in-game mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our CURRENT in-game field screen (村外林地): keep EXACTLY its HUD (minimap top-left with place-name pill "村外林地 Lv.1-10" and round "传送" button, quest tracker under it, round "回城" button, four round frosted top-right buttons 召唤 / 商店 / 邮件 / 终端, three team portraits on the right edge, joystick bottom-left, skill cluster bottom-right, leader HP bar bottom centre) and EXACTLY its realistic painted top-down forest art style with the chibi heroes fighting a group of dark forest spiders.
+- SECOND image = an APPROVED B-style screen, for the frosted dark glass material and the champagne accent.
+
+Show the NEW "battle haul" card ("本轮战果") that sums up several monster groups killed in a row, so the player is not interrupted by a loot bag after every group:
+- Place it on the LEFT side, below the quest tracker and the "回城" button, above the joystick: a compact frosted dark glass card (about 20% of screen width), 12px rounded corners, 1px faint white outline. No metal frame, no glow.
+- Card content (Simplified Chinese, exactly as written):
+  - Title row: white bold "本轮战果" on the left; on the right small grey text "连续 3 群".
+  - Row: a small white sword line icon + "击杀" in grey + "18" in white.
+  - Row: a small coin icon + "金币" in grey + "+1,240" in champagne gold.
+  - Row: a small book icon + "经验" in grey + "+360" in white.
+  - Row: a small grey stone icon + "初级强化石" in grey + "×2" in white.
+  - A thin divider, then one small grey line "幼鼠窝 · 今日有奖次数已用完".
+- In the scene: one small loot pouch (brown leather bag with a faint warm glint) flying from a dead spider toward the hero group along a short curved arc, with 2~3 tiny coin specks trailing — subtle, not flashy.
+- Keep all other HUD exactly as in the FIRST image. Calm lighting, no particles storm, no light beams, no lens flare.
+All text crisp and legible. Output only the single finished mockup image, no annotations.

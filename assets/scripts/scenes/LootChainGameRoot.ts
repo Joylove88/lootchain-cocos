@@ -7478,7 +7478,28 @@ export class LootChainGameRoot extends Component {
     }
   }
 
-  private clearWorldField(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number }>, capped: boolean) => void): void {
+  /** docs/52 §7:普通小怪按只掉落,上报遭遇累计击杀;回调给跑图层放掉落飞向队伍 + 记进「本轮战果」。资料按 3 秒节流刷新。 */
+  private reportWorldFieldKills(encounterId: number, stageCode: string, killed: number,
+    onResult: (result: { drops: Array<{ index: number; items: Array<{ code: string; name: string; amount: number }> }>; rewards: Array<{ code: string; name: string; amount: number }>; capped: boolean } | null) => void): void {
+    void (async () => {
+      try {
+        const result = await this.api.world.fieldKill(encounterId, killed);
+        const map = (item: WorldRewardItemVO): { code: string; name: string; amount: number } => ({ code: item.resourceCode, name: item.resourceName, amount: item.amount });
+        onResult({ drops: result.drops.map((drop) => ({ index: drop.index, items: drop.items.map(map) })), rewards: result.rewards.map(map), capped: result.capped });
+        if (result.rewards.length > 0 && Date.now() - this.fieldKillProfileAt > 3000) {
+          this.fieldKillProfileAt = Date.now();
+          void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+        }
+      } catch (error) {
+        console.warn('[World] field kill report failed', stageCode, error);
+        onResult(null);
+      }
+    })();
+  }
+
+  private fieldKillProfileAt = 0;
+
+  private clearWorldField(encounterId: number, stageCode: string, onRewards?: (items: Array<{ name: string; amount: number; code?: string }>, capped: boolean) => void): void {
     void (async () => {
       try {
         const result = await this.api.world.clearField(encounterId);
@@ -7486,7 +7507,7 @@ export class LootChainGameRoot extends Component {
         const rewardText = result.rewards.map((item) => `${item.resourceName} ×${item.amount}`).join('  ');
         this.setStatus([result.message, rewardText].filter(Boolean).join(' · '));
         // docs/51 P2:大厅不显示底部状态字,拾取战利品的奖励由跑图层在队长头上飘字
-        onRewards?.(result.rewards.map((item) => ({ name: item.resourceName, amount: item.amount })), result.capped);
+        onRewards?.(result.rewards.map((item) => ({ name: item.resourceName, amount: item.amount, code: item.resourceCode })), result.capped);
         void this.loadLobbyProfile(this.currentLobbyProfile().userId);
         this.refreshLobbyViewPreservingBackground();
       } catch (error) {

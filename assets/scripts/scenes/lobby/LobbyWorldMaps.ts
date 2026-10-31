@@ -128,6 +128,14 @@ export const POI_ASSET = {
   oreCut: 'ui/world/poi/poi_ore_cut/spriteFrame',
   hidden: 'ui/world/poi/poi_hidden/spriteFrame',
 } as const;
+/** 野外按只掉落 / 战果卡图标(docs/52 §7):按奖励码。 */
+export const FIELD_DROP_ICON: Record<string, string> = {
+  GOLD: 'ui/bag/ai/icon_gold/spriteFrame',
+  LOW_ENHANCE_STONE: 'ui/bag/ai/icon_enhance_low/spriteFrame',
+  HERO_EXP_BOOK: 'ui/bag/ai/icon_expbook/spriteFrame',
+  KILL: 'ui/world/mapui/map_skull/spriteFrame',
+};
+
 /** 野外宝箱写实版(10-30 用户:宝箱偏卡通):关着 / 开过(开盖空箱)。 */
 export const CHEST_ART = {
   closed: 'ui/world/poi/poi_chest/spriteFrame',
@@ -797,6 +805,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(def.pois?.length ? [...Object.values(POI_ASSET), ...Object.values(POI_MAP_ICON)] : []),
     // 角色脚下柔边接触阴影(LobbyTownRenderer CONTACT_SHADOW)
     worldAsset('fx/contact_shadow'),
+    // 野外按只掉落的飞行图标 / 「本轮战果」卡图标(docs/52 §7)
+    ...(def.camps.length ? Object.values(FIELD_DROP_ICON) : []),
     ...(def.chests?.length ? [worldAsset('mapui/map_chest')] : [])]));
 }
 

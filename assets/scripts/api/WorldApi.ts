@@ -56,6 +56,24 @@ export class WorldApi {
     return this.http.post<unknown>('/api/player/world/field/engage', { stageCode, heroIds, leaderHeroId, requestId: `field-${Date.now()}` }).then(validateEncounter);
   }
 
+  /** docs/52 §7 普通小怪按只掉落:上报遭遇累计击杀数;drops = 新结算的每只掉落(index 0 起,items 空 = 只给经验)。 */
+  fieldKill(encounterId: number, killed: number): Promise<FieldKillVO> {
+    return this.http.post<unknown>('/api/player/world/field/kill', { encounterId, killed }).then((data) => {
+      if (!isRecord(data)) {
+        throw new Error('击杀结算响应格式错误');
+      }
+      return {
+        drops: readArray(data, 'drops', 32).map((entry) => {
+          const record = isRecord(entry) ? entry : {};
+          return { index: readInteger(record.index, 0, 64), items: readArray(record, 'items', 8).map(validateReward) };
+        }),
+        rewards: readArray(data, 'rewards', 16).map(validateReward),
+        quotaLeft: readInteger(data.quotaLeft, 0, 100000),
+        capped: data.capped === true,
+      };
+    });
+  }
+
   clearField(encounterId: number): Promise<FieldClearVO> {
     return this.http.post<unknown>('/api/player/world/field/clear', { encounterId }).then((data) => {
       if (!isRecord(data)) {
@@ -80,6 +98,13 @@ export interface FieldEncounterVO {
   /** docs/51:怪血量按全队攻击折算;队友(AI 自动战斗)攻击 / 血量已按进攻方口径折算。旧服务端没有 → 0 / 空。 */
   teamAttack: number;
   companions: Array<{ heroId: number; heroCode: string; attack: number; hp: number }>;
+}
+
+export interface FieldKillVO {
+  drops: Array<{ index: number; items: WorldRewardItemVO[] }>;
+  rewards: WorldRewardItemVO[];
+  quotaLeft: number;
+  capped: boolean;
 }
 
 export interface FieldClearVO {
