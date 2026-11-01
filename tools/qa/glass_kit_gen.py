@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, 'assets', 'resources', 'ui', 'glass')
-META_TEMPLATE = os.path.join(ROOT, 'assets', 'resources', 'ui', 'town', 'terminal', 'ring_overlay.png.meta')
+META_TEMPLATE = os.path.join(ROOT, 'assets', 'resources', 'ui', 'town', 'terminal', 'ring_overlay_b.png.meta')
 SS = 4  # 超采样倍数
 
 # 色板(与原型取色一致)

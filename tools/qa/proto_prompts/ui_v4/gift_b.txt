@@ -1,0 +1,12 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the one primary button, translucent secondary pill buttons, calm darkened blurred background.
+- SECOND image = our current "终端" (main menu hub) screen. The new dialog opens ON TOP of this screen: keep this exact hub screen visible behind the dialog, dimmed to about 40% brightness and slightly blurred, do not redesign it.
+
+DIALOG "兑换码" (redeem gift code), a small MODAL frosted glass card centred on screen, about 40% of the screen width and about 45% of the screen height. NO red ribbon title bar, NO spiky gold corners, NO glow.
+- Title row: a small monochrome muted-gold gift-box line icon + title "兑换码" in white, left-aligned; a simple close (X) on the right.
+- Grey hint text under the title: "输入礼包码领取奖励,每个礼包码每个账号只能使用一次".
+- One wide text input field (dark translucent, thin faint outline, rounded) with grey placeholder "输入礼包码"; on its right end a small translucent text button "粘贴".
+- Bottom row, right-aligned: a secondary translucent pill button "取消" and a primary champagne-gold pill button "兑换".
+Generous padding inside the card, aligned edges, clear hierarchy: title > input > buttons > hint.
+Output only the single finished mockup image, no annotations.

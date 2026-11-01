@@ -134,6 +134,7 @@ import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
 import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer';
 import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
 import { LobbyTerminalPanelRenderer, type LobbyTerminalAction, type LobbyTerminalPanelHost } from './lobby/LobbyTerminalPanelRenderer';
+import { LobbyGiftDialogRenderer, type LobbyGiftDialogHost, type LobbyGiftDialogState } from './lobby/LobbyGiftDialogRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
@@ -396,6 +397,9 @@ export class LootChainGameRoot extends Component {
   private worldFieldStage: string | null = null;
   private readonly lobbyQuestMailPanelRenderer = new LobbyQuestMailPanelRenderer(this as unknown as import('./lobby/LobbyQuestMailPanelRenderer').LobbyQuestMailHost);
   private readonly lobbyTerminalPanelRenderer = new LobbyTerminalPanelRenderer(this as unknown as LobbyTerminalPanelHost);
+  private readonly lobbyGiftDialogRenderer = new LobbyGiftDialogRenderer(this as unknown as LobbyGiftDialogHost);
+  /** 终端「兑换码」弹框(11-01 原型 gift_b):开着时非 null;草稿只存不重绘(重绘会重建输入框打断输入)。 */
+  private lobbyGiftDialog: LobbyGiftDialogState | null = null;
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
@@ -1550,6 +1554,9 @@ export class LootChainGameRoot extends Component {
     }
     if (this.lobbyTerminalOpen && this.currentView === 'lobby') {
       this.lobbyTerminalPanelRenderer.render(layout);
+      if (this.lobbyGiftDialog) {
+        this.lobbyGiftDialogRenderer.render(layout);
+      }
     }
   }
 
@@ -1627,6 +1634,8 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTerminalOpen = false;
+    this.lobbyGiftDialog = null;
+    this.removeLobbyGiftDialog();
     // 先藏再下一帧销毁:整张静态大图正在本帧绘制时直接销毁,调试包会撞 gfx-validator 断言(10-27 开关终端后切图崩)
     const node = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
     if (node) {
@@ -1642,6 +1651,11 @@ export class LootChainGameRoot extends Component {
   }
 
   private runLobbyTerminalAction(action: LobbyTerminalAction): void {
+    // 11-01:「兑换码」在终端上直接弹小框(旧「更多」整页下线)
+    if (action === 'gift') {
+      this.openLobbyGiftDialog();
+      return;
+    }
     // docs/53 §2.5:终端「野外探索」格 → 当前图鸟瞰图(探索度 + 兴趣点计数都在顶栏)
     if (action === 'idle') {
       this.closeLobbyTerminalPanel();
@@ -1673,7 +1687,6 @@ export class LootChainGameRoot extends Component {
         return;
       case 'mail': this.openLobbyMailPanel(); return;
       case 'notice': this.openLobbyNoticePanel(); return;
-      case 'gift': this.openLobbyMorePanel(); return;
       case 'settings': this.openLobbySettingsPanel(); return;
       case 'logout': this.logoutToLoginPage(); return;
       case 'profile': this.openPlayerProfileDialog(); return;
@@ -2015,6 +2028,21 @@ export class LootChainGameRoot extends Component {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
       this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
     }
+    // 终端开着:HUD 局部重绘的新节点会盖在终端上(11-01 兑换成功回读资料时小地图 / 摇杆压到终端上),
+    // 重挂终端(名片数值顺带更新)和兑换码弹框到最上层;旧终端先藏下一帧销毁(同 closeLobbyTerminalPanel)
+    if (this.lobbyTerminalOpen && this.currentView === 'lobby') {
+      const old = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
+      if (old) {
+        old.name = `${LobbyTerminalPanelRenderer.NODE_NAME}_Stale`;
+        old.active = false;
+        this.scheduleOnce(() => old.isValid && old.destroy(), 0);
+      }
+      this.removeLobbyGiftDialog();
+      this.lobbyTerminalPanelRenderer.render(layout);
+      if (this.lobbyGiftDialog) {
+        this.lobbyGiftDialogRenderer.render(layout);
+      }
+    }
     this.layoutKey = this.makeLayoutKey();
   }
 
@@ -2351,6 +2379,7 @@ export class LootChainGameRoot extends Component {
       [Boolean(this.worldBountyPanel), () => this.closeWorldBountyPanel()],
       [this.lobbyProfileOpen, () => this.closePlayerProfileDialog()],
       [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
+      [Boolean(this.lobbyGiftDialog), () => this.closeLobbyGiftDialog()],
       [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
       [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
       [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
@@ -6658,32 +6687,127 @@ export class LootChainGameRoot extends Component {
     return this.lobbyGiftRedeeming;
   }
 
-  /** 兑换礼包码("更多"面板,2026-09-06):成功后回读资料/背包,提示奖励清单。 */
+  /**
+   * 兑换礼包码:成功后回读资料/背包。终端兑换码弹框开着时:出错写进弹框、成功关弹框飘奖励(大厅不显示 setStatus);
+   * 旧「更多」页(已无入口,保留兜底)仍走 setStatus。
+   */
   private redeemLobbyGiftCode(code: string): void {
     const trimmed = (code ?? '').trim();
     if (!trimmed) {
-      this.setStatus('请输入兑换码。');
+      if (this.lobbyGiftDialog) {
+        this.lobbyGiftDialog = { draft: '', error: '请输入兑换码' };
+        this.renderLobbyGiftDialog();
+      } else {
+        this.setStatus('请输入兑换码。');
+      }
       return;
     }
     if (this.lobbyGiftRedeeming) {
       return;
     }
     this.lobbyGiftRedeeming = true;
+    if (this.lobbyGiftDialog) {
+      this.lobbyGiftDialog = { draft: trimmed, error: '' };
+      this.renderLobbyGiftDialog();
+    }
     this.renderCurrentLobbyScenePage();
+    let floats: string[] = [];
     void this.api.gift.redeem(trimmed)
       .then((rewards) => {
-        this.setStatus(`兑换成功:${rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
-        const profile = this.currentLobbyProfile();
-        void this.loadLobbyProfile(profile.userId);
+        const items = rewards.map((item) => `${item.name} ×${this.formatInteger(item.amount)}`);
+        if (this.lobbyGiftDialog) {
+          this.lobbyGiftDialog = null;
+          floats = ['兑换成功', ...items];
+        } else {
+          this.setStatus(`兑换成功:${items.join(' ')}`);
+        }
         void this.loadLobbyBag(true);
+        // 等资料回读完再飘字:回读会重挂终端到最上层,先飘的字会被盖住
+        return this.loadLobbyProfile(this.currentLobbyProfile().userId).catch(() => undefined);
       })
       .catch((error) => {
-        this.setStatus(`兑换失败:${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.lobbyGiftDialog) {
+          this.lobbyGiftDialog = { ...this.lobbyGiftDialog, error: message || '兑换失败,请稍后重试' };
+        } else {
+          this.setStatus(`兑换失败:${message}`);
+        }
       })
       .finally(() => {
         this.lobbyGiftRedeeming = false;
+        this.renderLobbyGiftDialog();
         this.renderCurrentLobbyScenePage();
+        if (floats.length > 0) {
+          this.spawnRewardFloats(floats);
+        }
       });
+  }
+
+  private currentLobbyGiftDialog(): LobbyGiftDialogState | null {
+    return this.lobbyGiftDialog;
+  }
+
+  private openLobbyGiftDialog(): void {
+    if (this.currentView !== 'lobby' || !this.lobbyTerminalOpen) {
+      return;
+    }
+    this.lobbyGiftDialog = { draft: '', error: '' };
+    this.renderLobbyGiftDialog();
+  }
+
+  private closeLobbyGiftDialog(): void {
+    if (!this.lobbyGiftDialog || this.lobbyGiftRedeeming) {
+      return;
+    }
+    this.lobbyGiftDialog = null;
+    this.removeLobbyGiftDialog();
+  }
+
+  private setLobbyGiftDraft(text: string): void {
+    if (this.lobbyGiftDialog) {
+      this.lobbyGiftDialog = { draft: text, error: '' };
+    }
+  }
+
+  /** 「粘贴」:Web 读系统剪贴板(浏览器可能拦截 / 原生包没有),读不到就提示手动粘贴。 */
+  private pasteLobbyGiftCode(): void {
+    const fail = (message: string): void => {
+      if (this.lobbyGiftDialog) {
+        this.lobbyGiftDialog = { ...this.lobbyGiftDialog, error: message };
+        this.renderLobbyGiftDialog();
+      }
+    };
+    const clipboard = (globalThis as { navigator?: { clipboard?: { readText?: () => Promise<string> } } }).navigator?.clipboard;
+    if (!clipboard?.readText) {
+      fail('无法读取剪贴板,请在输入框内手动粘贴');
+      return;
+    }
+    void clipboard.readText()
+      .then((text) => {
+        const pasted = (text ?? '').trim().slice(0, 64);
+        if (!pasted) {
+          fail('剪贴板里没有内容');
+          return;
+        }
+        if (this.lobbyGiftDialog) {
+          this.lobbyGiftDialog = { draft: pasted, error: '' };
+          this.renderLobbyGiftDialog();
+        }
+      })
+      .catch(() => fail('无法读取剪贴板,请在输入框内手动粘贴'));
+  }
+
+  /** 局部重挂弹框(不动终端);状态为空就只移除。 */
+  private renderLobbyGiftDialog(): void {
+    this.removeLobbyGiftDialog();
+    if (this.lobbyGiftDialog && this.lobbyTerminalOpen && this.currentView === 'lobby') {
+      this.lobbyGiftDialogRenderer.render(this.resolveLayout());
+    }
+  }
+
+  private removeLobbyGiftDialog(): void {
+    this.removeNodeFromContent(LobbyGiftDialogRenderer.NODE_NAME);
+    this.removeNodeFromContent(LobbyGiftDialogRenderer.INPUT_NAME);
   }
 
   private removeLobbyMailPanel(): void {
@@ -9307,7 +9431,7 @@ export class LootChainGameRoot extends Component {
     this.uiPrimitiveFactory.applyPasswordMask(editBox, textLabel);
   }
 
-  private addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false, options?: { frameless?: boolean; placeholder?: string }): EditBox {
+  private addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false, options?: { frameless?: boolean; placeholder?: string; placeholderColor?: Color }): EditBox {
     return this.uiPrimitiveFactory.addFramedEditBox(initialText, x, y, width, layout, password, options);
   }
 

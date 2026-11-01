@@ -52,6 +52,8 @@ export const GLASS_SLICES = {
   pillSecondaryLit: slice('pill_secondary_lit', 256, 56, 28, 27),
   pillPrimaryDim: slice('pill_primary_dim', 160, 56, 28, 27),
   tabGlow: slice('tab_glow', 120, 64, 24, 24),
+  // 输入框底(11-01 兑换码原型 gift_b):比面板更暗 + 淡灰细边,圆角 14
+  input: slice('input', 96, 64, 18, 18),
 };
 
 export const GLASS_ICON = {
@@ -74,6 +76,7 @@ export const GLASS_ICON = {
   lineFade: G('line_fade'),
   lineFadeV: G('line_fade_v'),
   shadeH: G('shade_h'),
+  gift: G('icon_gift'),
 };
 
 /** 背包左栏分类线稿(原型 bag_b 抠的白色剪影,运行时染色)。 */

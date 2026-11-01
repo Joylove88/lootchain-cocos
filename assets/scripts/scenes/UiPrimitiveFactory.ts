@@ -86,7 +86,7 @@ export class UiPrimitiveFactory {
     return label;
   }
 
-  addEditBox(initialText: string, x: number, y: number, width: number, layout?: UiLayout, password = false, placeholder = ''): EditBox {
+  addEditBox(initialText: string, x: number, y: number, width: number, layout?: UiLayout, password = false, placeholder = '', placeholderColor?: Color): EditBox {
     const currentLayout = layout ?? this.host.resolveLayout();
     const node = this.host.createUiNode('EditBox');
     // 先冻结节点(2026-09-06 四修):EditBox 的 __preload 在激活时才建 DOM——激活前把 inputMode
@@ -171,7 +171,7 @@ export class UiPrimitiveFactory {
     const refreshDisplay = () => {
       const hasText = editBox.string.length > 0;
       display.string = hasText ? (password ? '*'.repeat(editBox.string.length) : editBox.string) : placeholder;
-      display.color = hasText ? rgba(231, 226, 214) : rgba(150, 136, 110, 220);
+      display.color = hasText ? rgba(231, 226, 214) : placeholderColor ?? rgba(150, 136, 110, 220);
     };
     refreshDisplay();
     // 聚焦后引擎已重写过 <input> 样式,这里再注一次暗色样式(颜色/光标/透明底)作双保险。
@@ -220,13 +220,13 @@ export class UiPrimitiveFactory {
     editBox.node.on(EditBox.EventType.EDITING_RETURN, mask, this);
   }
 
-  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false, options?: { frameless?: boolean; placeholder?: string }): EditBox {
+  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password = false, options?: { frameless?: boolean; placeholder?: string; placeholderColor?: Color }): EditBox {
     // frameless(2026-09-09 登录素材化改版):外观由调用方自摆素材框时不再画手绘金框,
     // EditBox 本体仍走同一条冻结-激活链路(见 addEditBox),只是少了这层兄弟节点。
     if (!options?.frameless) {
       this.addBeveledPanel('InputFrame', x, y, width + 28, layout.inputHeight + 8, rgba(8, 7, 9, 220), rgba(185, 138, 58, 190), 8);
     }
-    return this.addEditBox(initialText, x, y, width, layout, password, options?.placeholder ?? '');
+    return this.addEditBox(initialText, x, y, width, layout, password, options?.placeholder ?? '', options?.placeholderColor);
   }
 
   addButton(text: string, x: number, y: number, callback: () => void, layout?: UiLayout, width?: number, height?: number): Button {
