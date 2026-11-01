@@ -142,7 +142,10 @@ async def main():
             await asyncio.sleep(4)
             await shot('08_hero_skin_static')
             await ev("root.toggleHeroSkinPreview(); return 1;")
-            await asyncio.sleep(6)
+            # 动作循环里连拍(查技能 / 大招换脸附件的方向,11-01 头倒着)
+            for i in range(8):
+                await asyncio.sleep(1.2)
+                await shot(f'08c_preview_{i}')
             print('preview probe', await ev("let h=null; root.node.walk(n=>{ if(!h && n.name==='HeroSkinSpinePreview') h=n; }); if(!h) return 'none'; const sn=h.children[0]; const sk=sn.getComponent('sp.Skeleton'); const st=h.parent; const ut=st.getComponent('cc.UITransform'); return JSON.stringify({holder:[Math.round(h.position.x),Math.round(h.position.y)], stageH: ut && Math.round(ut.height), spine:[Math.round(sn.position.x),Math.round(sn.position.y)], scale: sn.scale.x.toFixed(4), anim: sk && sk.animation, wpos: [Math.round(sn.worldPosition.x), Math.round(sn.worldPosition.y)], data: sk && sk.skeletonData && sk.skeletonData.name});"), flush=True)
             # 任务页(B 风格电脑端也用)
             await ev("root.closeLobbyHeroDetailPanel(); return 1;")

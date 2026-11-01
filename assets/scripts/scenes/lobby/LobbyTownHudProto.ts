@@ -107,7 +107,8 @@ export const TOWN_HUD_ASSET_PATHS: string[] = Object.values(TOWN_HUD_ASSETS);
 
 /** 终端 B 风格(10-30 用户确认 proto_terminal_b2):原型整张静态底层 + 头像环覆盖层(tools/qa/terminal_b_extract.py 产出,1:1 还原)。 */
 export const TERMINAL_ASSETS = {
-  staticLayer: 'ui/town/terminal/static_b/spriteFrame',
+  // 11-01 原型上下各外扩 200 行(tools/qa/terminal_b_extend.py):电脑 16:9 屏上下不再露黑边
+  staticLayer: 'ui/town/terminal/static_b_ext/spriteFrame',
   ringOverlay: 'ui/town/terminal/ring_overlay_b/spriteFrame',
 } as const;
 export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_ASSETS);

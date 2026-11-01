@@ -2,7 +2,7 @@
 和 terminal_proto_extract.py 同一做法——原型整张当静态底层,只抠掉会变的内容(头像 / 名字 / ID / 等级 / 战力 / EXP 文字与进度条 /
 货币数值 / 红点),运行时按原型坐标画回去;头像环单独裁一块带透明孔的覆盖层压在头像上面。
 用法:python tools/qa/terminal_b_extract.py
-产物:assets/resources/ui/town/terminal/static_b.png(1870×841)、ring_overlay_b.png(200×200)
+产物:assets/resources/ui/town/terminal/static_b.png(11-01 起移到 素材原始备份/terminal_static_b_1101,游戏里用 terminal_b_extend.py 外扩的 static_b_ext)(1870×841)、ring_overlay_b.png(200×200)
 """
 import os
 import sys

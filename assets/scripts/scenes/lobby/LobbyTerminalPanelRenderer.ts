@@ -36,6 +36,8 @@ const SUB = rgba(163, 168, 179);
  * 头像 / 名字 / ID / 等级 / 战力 / 经验 / 货币 / 红点按原型像素坐标画回去;头像上压一块带透明圆孔的环覆盖层(盖住方头像四角)。
  * 按钮只是透明点击区。
  */
+const TERMINAL_EXT_PAD = 200;
+
 export class LobbyTerminalPanelRenderer {
   static readonly NODE_NAME = 'LobbyTerminal';
 
@@ -51,7 +53,8 @@ export class LobbyTerminalPanelRenderer {
     dim.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     dim.fill();
     const w = TOWN_HUD_PROTO.w * P.u;
-    const h = TOWN_HUD_PROTO.h * P.u;
+    // 底图是原型上下各外扩 TERMINAL_EXT_PAD 行的版本,中心不变
+    const h = (TOWN_HUD_PROTO.h + TERMINAL_EXT_PAD * 2) * P.u;
     this.host.addSprite('Static', TERMINAL_ASSETS.staticLayer, P.C(TOWN_HUD_PROTO.w / 2), P.Y(TOWN_HUD_PROTO.h / 2), w, h, root);
     this.renderCard(root, P);
     this.renderTiles(root, P);
