@@ -1,0 +1,24 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item, translucent secondary pill buttons, small monochrome icons, calm darkened blurred background.
+- SECOND image = a LAYOUT reference from another game. Copy ONLY its layout structure (a large modal window over the menu hub; a row of tabs at the top-left; back "<" and close "X" at the top-right; a scrollable list of announcement entries on the left about 35% wide, each entry = square icon + title; a large detail pane on the right with a wide banner picture on top and the article text below, plus a thin scrollbar on the far right). Do NOT copy anything else from it: no white/light theme, no logos, no characters, no mascot, no texts, no art.
+- THIRD image = our current "终端" (main menu hub) screen. The announcement window opens ON TOP of this hub: the hub stays visible around the window edges, dimmed to about 35% brightness and slightly blurred.
+
+WINDOW "公告" (announcements): one large frosted dark glass window, about 92% of the screen width and 86% of the screen height, centred. NO red ribbon, NO spiky gold corners, NO glow.
+- Top row inside the window: three tab pills on the left: "公告" (selected, champagne-gold fill with dark text), "活动", "更新" (unselected translucent glass with white text); a tiny red dot on the top-right corner of "活动" and "更新". On the right end of the row: a simple back arrow "<" and a close "X" (thin white line icons).
+- Left column (about 35% of the window width): a vertical list of 5 announcement entries, each a frosted glass row card: a square dark glass icon tile on the left with a simple monochrome muted-gold line icon (megaphone / calendar / wrench / scroll / chat bubble), and the title in white (up to two lines) to its right. The 2nd entry is SELECTED: champagne-gold thin outline with a soft warm inner glow. A tiny red dot on the top-right corner of the 4th and 5th entries (unread). Entries:
+  1) "停服维护预告 · 11月5日 06:00-08:00"
+  2) "新玩法「矿境掠夺」开放说明"
+  3) "限时召唤:夜烬女王·莉维娅"
+  4) "兑换码使用说明"
+  5) "玩家反馈渠道说明"
+  A thin scrollbar at the right edge of the list.
+- Right detail pane (rest of the width, frosted glass panel): at the top a wide banner picture with rounded corners (about 16:6): a painted dark-fantasy underground mine with red crystal veins and a lantern-lit wooden walkway, matte, desaturated, darkened, NO characters, NO logos; over the lower-left of the banner the title text "新玩法「矿境掠夺」开放说明" in white with a soft dark shadow. Below the banner: a small grey tag "公告" and grey date "发布 2026-11-01 10:00"; then the article in white/light-grey body text:
+  "各位冒险者:"
+  "矿境掠夺玩法已于 11 月 1 日开放,玩家等级达到 Lv.10 即可从终端进入。"
+  "1. NPC 矿:按顺序挑战 60 座矿点,首次通关可获得额外奖励。"
+  "2. 真人矿:匹配实力相近的玩家矿点进行掠夺,胜利可夺取对方矿库中的部分矿晶。"
+  (the last line partly cut off at the bottom edge, implying the text scrolls)
+  A thin scrollbar on the far right of the pane.
+Generous padding, aligned edges, clear hierarchy: tabs > list titles / banner title > body text > grey meta text.
+Output only the single finished mockup image, no annotations.

@@ -135,6 +135,7 @@ import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer
 import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
 import { LobbyTerminalPanelRenderer, type LobbyTerminalAction, type LobbyTerminalPanelHost } from './lobby/LobbyTerminalPanelRenderer';
 import { LobbyGiftDialogRenderer, type LobbyGiftDialogHost, type LobbyGiftDialogState } from './lobby/LobbyGiftDialogRenderer';
+import { LobbyNoticeDialogRenderer, noticeTabOf, type LobbyNoticeDialogHost, type LobbyNoticeDialogState, type LobbyNoticeTab } from './lobby/LobbyNoticeDialogRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
@@ -170,7 +171,7 @@ import type { LobbyBattlePanelState } from './lobby/LobbyBattleState';
 import type { LobbyCodexClaimPayload, LobbyCodexPanelState, LobbyCodexRarityFilter } from '../types/LobbyCodexTypes';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../types/LobbyHeroTypes';
 import type { PlayerBattleLineupHeroVO, PlayerBattleStartVO } from '../types/BattleTypes';
-import type { LobbyNoticePanelState } from '../types/LobbyNoticeTypes';
+import type { LobbyNoticePanelState, LobbyNoticeVO } from '../types/LobbyNoticeTypes';
 import type { GachaDrawResultVO, GachaPoolVO } from '../types/GachaTypes';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../types/ProtagonistTypes';
 import { LoginVideoBackground } from '../login-bg/login/LoginVideoBackground';
@@ -400,6 +401,11 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyGiftDialogRenderer = new LobbyGiftDialogRenderer(this as unknown as LobbyGiftDialogHost);
   /** 终端「兑换码」弹框(11-01 原型 gift_b):开着时非 null;草稿只存不重绘(重绘会重建输入框打断输入)。 */
   private lobbyGiftDialog: LobbyGiftDialogState | null = null;
+  private readonly lobbyNoticeDialogRenderer = new LobbyNoticeDialogRenderer(this as unknown as LobbyNoticeDialogHost);
+  /** 终端「公告」弹框(11-02 原型 notice_b2):开着时非 null。 */
+  private lobbyNoticeDialog: LobbyNoticeDialogState | null = null;
+  /** 已读公告单号(本机存储,按账号分开);懒加载。 */
+  private lobbyNoticeReadSet: Set<string> | null = null;
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
@@ -1554,9 +1560,7 @@ export class LootChainGameRoot extends Component {
     }
     if (this.lobbyTerminalOpen && this.currentView === 'lobby') {
       this.lobbyTerminalPanelRenderer.render(layout);
-      if (this.lobbyGiftDialog) {
-        this.lobbyGiftDialogRenderer.render(layout);
-      }
+      this.remountTerminalDialogs(layout);
     }
   }
 
@@ -1636,6 +1640,8 @@ export class LootChainGameRoot extends Component {
     this.lobbyTerminalOpen = false;
     this.lobbyGiftDialog = null;
     this.removeLobbyGiftDialog();
+    this.lobbyNoticeDialog = null;
+    this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
     // 先藏再下一帧销毁:整张静态大图正在本帧绘制时直接销毁,调试包会撞 gfx-validator 断言(10-27 开关终端后切图崩)
     const node = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
     if (node) {
@@ -1654,6 +1660,11 @@ export class LootChainGameRoot extends Component {
     // 11-01:「兑换码」在终端上直接弹小框(旧「更多」整页下线)
     if (action === 'gift') {
       this.openLobbyGiftDialog();
+      return;
+    }
+    // 11-02:「公告」也在终端上直接弹框
+    if (action === 'notice') {
+      this.openLobbyNoticeDialog();
       return;
     }
     // docs/53 §2.5:终端「野外探索」格 → 当前图鸟瞰图(探索度 + 兴趣点计数都在顶栏)
@@ -1686,7 +1697,6 @@ export class LootChainGameRoot extends Component {
         this.lobbyDailyDungeonPanelRenderer.openRankPopup();
         return;
       case 'mail': this.openLobbyMailPanel(); return;
-      case 'notice': this.openLobbyNoticePanel(); return;
       case 'settings': this.openLobbySettingsPanel(); return;
       case 'logout': this.logoutToLoginPage(); return;
       case 'profile': this.openPlayerProfileDialog(); return;
@@ -2038,10 +2048,9 @@ export class LootChainGameRoot extends Component {
         this.scheduleOnce(() => old.isValid && old.destroy(), 0);
       }
       this.removeLobbyGiftDialog();
+      this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
       this.lobbyTerminalPanelRenderer.render(layout);
-      if (this.lobbyGiftDialog) {
-        this.lobbyGiftDialogRenderer.render(layout);
-      }
+      this.remountTerminalDialogs(layout);
     }
     this.layoutKey = this.makeLayoutKey();
   }
@@ -2380,6 +2389,7 @@ export class LootChainGameRoot extends Component {
       [this.lobbyProfileOpen, () => this.closePlayerProfileDialog()],
       [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
       [Boolean(this.lobbyGiftDialog), () => this.closeLobbyGiftDialog()],
+      [Boolean(this.lobbyNoticeDialog), () => this.closeLobbyNoticeDialog()],
       [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
       [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
       [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
@@ -6805,6 +6815,125 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  /** 终端上的弹框(兑换码 / 公告)在终端重挂后补挂回去。 */
+  private remountTerminalDialogs(layout: UiLayout): void {
+    if (this.lobbyNoticeDialog) {
+      this.markSelectedLobbyNoticeRead();
+      this.lobbyNoticeDialogRenderer.render(layout);
+    }
+    if (this.lobbyGiftDialog) {
+      this.lobbyGiftDialogRenderer.render(layout);
+    }
+  }
+
+  // ── 终端公告弹框(11-02 原型 notice_b2):数据走后台 /api/player/lobby/notices,打开即强制重拉 ──
+  private currentLobbyNoticeDialog(): LobbyNoticeDialogState | null {
+    return this.lobbyNoticeDialog;
+  }
+
+  private lobbyNoticeDialogData(): { loading: boolean; error: string; notices: LobbyNoticeVO[] } {
+    const state = this.lobbyNoticeLoader.currentState();
+    return { loading: state.loading, error: state.error, notices: state.notices.filter((notice) => noticeTabOf(notice.noticeType) !== null) };
+  }
+
+  private openLobbyNoticeDialog(): void {
+    if (this.currentView !== 'lobby' || !this.lobbyTerminalOpen) {
+      return;
+    }
+    this.lobbyNoticeDialog = { tab: 'notice', selected: null, listOffset: 0 };
+    this.renderLobbyNoticeDialog();
+    void this.lobbyNoticeLoader.load(true).then(() => {
+      const dialog = this.lobbyNoticeDialog;
+      if (!dialog) {
+        return;
+      }
+      // 「公告」页签没有内容而「更新」有:默认落到「更新」
+      const notices = this.lobbyNoticeDialogData().notices;
+      if (dialog.selected === null && dialog.tab === 'notice' && !notices.some((n) => noticeTabOf(n.noticeType) === 'notice')
+        && notices.some((n) => noticeTabOf(n.noticeType) === 'update')) {
+        this.lobbyNoticeDialog = { ...dialog, tab: 'update' };
+      }
+      this.renderLobbyNoticeDialog();
+    });
+  }
+
+  private closeLobbyNoticeDialog(): void {
+    if (!this.lobbyNoticeDialog) {
+      return;
+    }
+    this.lobbyNoticeDialog = null;
+    this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
+  }
+
+  private setLobbyNoticeTab(tab: LobbyNoticeTab): void {
+    if (!this.lobbyNoticeDialog || this.lobbyNoticeDialog.tab === tab) {
+      return;
+    }
+    this.lobbyNoticeDialog = { tab, selected: null, listOffset: 0 };
+    this.renderLobbyNoticeDialog();
+  }
+
+  private selectLobbyNotice(noticeNo: string, listOffset: number): void {
+    if (!this.lobbyNoticeDialog) {
+      return;
+    }
+    this.lobbyNoticeDialog = { ...this.lobbyNoticeDialog, selected: noticeNo, listOffset };
+    this.renderLobbyNoticeDialog();
+  }
+
+  /** 局部重挂公告弹框(不动终端);先把正在看的那条记为已读。 */
+  private renderLobbyNoticeDialog(): void {
+    this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
+    if (!this.lobbyNoticeDialog || !this.lobbyTerminalOpen || this.currentView !== 'lobby') {
+      return;
+    }
+    this.markSelectedLobbyNoticeRead();
+    this.lobbyNoticeDialogRenderer.render(this.resolveLayout());
+    // 兑换码弹框若同时开着(理论上不会),保持在最上
+    if (this.lobbyGiftDialog) {
+      this.renderLobbyGiftDialog();
+    }
+  }
+
+  private markSelectedLobbyNoticeRead(): void {
+    const dialog = this.lobbyNoticeDialog;
+    if (!dialog) {
+      return;
+    }
+    const inTab = this.lobbyNoticeDialogData().notices.filter((notice) => noticeTabOf(notice.noticeType) === dialog.tab);
+    const shown = inTab.find((notice) => notice.noticeNo === dialog.selected) ?? inTab[0];
+    if (shown && !this.isLobbyNoticeRead(shown.noticeNo)) {
+      const read = this.lobbyNoticeReadSet ?? new Set<string>();
+      read.add(shown.noticeNo);
+      this.lobbyNoticeReadSet = read;
+      try {
+        // 只留最近 100 条,够覆盖后台同时在线的公告
+        sys.localStorage.setItem(this.lobbyNoticeReadKey(), JSON.stringify(Array.from(read).slice(-100)));
+      } catch {
+        // 存储不可用(隐私模式等):本次会话内仍记得
+      }
+    }
+  }
+
+  private isLobbyNoticeRead(noticeNo: string): boolean {
+    if (!this.lobbyNoticeReadSet) {
+      let list: string[] = [];
+      try {
+        const raw = sys.localStorage.getItem(this.lobbyNoticeReadKey());
+        const parsed: unknown = raw ? JSON.parse(raw) : [];
+        list = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+      } catch {
+        list = [];
+      }
+      this.lobbyNoticeReadSet = new Set(list);
+    }
+    return this.lobbyNoticeReadSet.has(noticeNo);
+  }
+
+  private lobbyNoticeReadKey(): string {
+    return `lootchain.noticeRead.${this.currentLobbyProfile().userId}`;
+  }
+
   private removeLobbyGiftDialog(): void {
     this.removeNodeFromContent(LobbyGiftDialogRenderer.NODE_NAME);
     this.removeNodeFromContent(LobbyGiftDialogRenderer.INPUT_NAME);
@@ -9345,6 +9474,7 @@ export class LootChainGameRoot extends Component {
     this.lobbyCodexLoader.resetForLogin();
     this.lobbyHeroRosterLoader.resetForLogin();
     this.lobbyNoticeLoader.resetForLogin();
+    this.lobbyNoticeReadSet = null;
     this.selectedLobbyStageCode = null;
     this.selectedLobbyFormationHeroIds = [];
     this.closeAllLobbyScenePanelFlags();

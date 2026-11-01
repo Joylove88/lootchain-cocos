@@ -77,6 +77,11 @@ export const GLASS_ICON = {
   lineFadeV: G('line_fade_v'),
   shadeH: G('shade_h'),
   gift: G('icon_gift'),
+  // 公告弹框(11-02 原型 notice_b2 抠的白色剪影,运行时染色):喇叭 = 公告类、扳手 = 维护、卷轴 = 版本、报纸 = 「更新」页签
+  noticeMegaphone: G('notice_megaphone'),
+  noticeWrench: G('notice_wrench'),
+  noticeScroll: G('notice_scroll'),
+  noticePaper: G('notice_paper'),
 };
 
 /** 背包左栏分类线稿(原型 bag_b 抠的白色剪影,运行时染色)。 */

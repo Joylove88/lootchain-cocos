@@ -1,0 +1,6 @@
+Generate ONE image: a wide banner illustration for a dark-fantasy RPG announcement window, aspect ratio about 10:3 (very wide), e.g. 2000x600.
+The attached image is a STYLE reference for colour and mood only: low-saturation, matte, painterly, calm, darkened, cool grey-blue with muted warm accents.
+SUBJECT: a stone castle gatehouse under repair at dusk: wooden scaffolding and ladders against the wall, a stack of cut stone blocks, a wooden workbench with a hammer, chisels and rolled blueprints, a pulley with rope. On the right third a small stone forge with a dim ember glow is the ONLY light source; everything else is in soft ambient light under an overcast sky.
+COMPOSITION: the left 55% of the image is calm and low-contrast (dark sky and soft out-of-focus wall) because a white title text will be placed over the lower-left area later; keep the lower-left quarter especially dark and plain.
+STRICT: no text, no letters, no logos, no people, no characters, no UI elements, no frame or border. No glowing particles, no sparks, no light rays, no lens flare, no wet reflective ground, no candles, no saturated colours. Restrained detail, unified perspective, hand-painted matte look (not shiny, not cartoon).
+Output only the single image.

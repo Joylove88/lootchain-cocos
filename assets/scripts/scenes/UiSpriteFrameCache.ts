@@ -53,7 +53,7 @@ import { FORGE_PRELOAD_ASSETS, FORGE_PRELOAD_ASSETS_V3 } from './lobby/LobbyForg
 import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { TOWN_ASSET_PATHS } from './lobby/LobbyTownConfig';
 import { WORLD_ASSET_PATHS } from './lobby/LobbyWorldMaps';
-import { TERMINAL_ASSET_PATHS, TOWN_HUD_ASSET_PATHS } from './lobby/LobbyTownHudProto';
+import { NOTICE_BANNER_ASSETS, TERMINAL_ASSET_PATHS, TOWN_HUD_ASSET_PATHS } from './lobby/LobbyTownHudProto';
 import { TOWN_WAYPOINT_RING_ASSET } from './lobby/LobbyTownWaypointFx';
 import { RAID_UI_ASSET_PATHS } from './lobby/LobbyRaidPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
@@ -378,6 +378,10 @@ export class UiSpriteFrameCache {
         TOWN_HUD_ASSET_PATHS.forEach((asset) => track(asset));
         track(TOWN_WAYPOINT_RING_ASSET);
         TERMINAL_ASSET_PATHS.forEach((asset) => track(asset));
+        // 终端上的兑换码 / 公告弹框:横幅与图标只预读不拦(弹框里缺图到货后随大厅局部重绘补上);
+        // 图标路径同 UiGlassKit.GLASS_ICON(不 import:UiGlassKit → UiPrimitiveFactory → 本文件成环)
+        Object.values(NOTICE_BANNER_ASSETS).forEach((asset) => request(asset));
+        ['icon_gift', 'notice_megaphone', 'notice_wrench', 'notice_scroll', 'notice_paper'].forEach((name) => request(`ui/glass/${name}/spriteFrame`));
         ['ui/guide/lguide_pointer/spriteFrame', 'ui/lobby/ai/lhud_btn_mail/spriteFrame', 'ui/lobby/ai/lhud_btn_more/spriteFrame'].forEach((asset) => request(asset));
         break;
       default:

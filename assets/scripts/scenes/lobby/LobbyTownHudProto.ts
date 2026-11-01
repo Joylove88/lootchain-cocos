@@ -114,6 +114,12 @@ export const TERMINAL_ASSETS = {
 } as const;
 export const TERMINAL_ASSET_PATHS: string[] = Object.values(TERMINAL_ASSETS);
 
+/** 终端上的公告弹框横幅(11-02 用户确认,tools/qa/notice_dialog_assets.py):「公告」/「更新」页签各一张。放终端目录 = 网页开局包。 */
+export const NOTICE_BANNER_ASSETS = {
+  common: 'ui/town/terminal/notice_banner_common/spriteFrame',
+  update: 'ui/town/terminal/notice_banner_update/spriteFrame',
+} as const;
+
 
 /**
  * 圆钮底座(2026-10-29 B 风格,原型 town_b / field_b):深色磨砂圆盘 + 一圈浅色细边;hot = 细边换香槟色(普攻 / 终端)。
