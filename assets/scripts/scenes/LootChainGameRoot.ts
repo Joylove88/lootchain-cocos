@@ -1559,7 +1559,22 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTerminalOpen = true;
+    this.lobbyPanelFromTerminal = null;
     this.lobbyTerminalPanelRenderer.render(this.resolveLayout());
+    // 红点只在进大厅时拉过一次,领完奖 / 读完邮件后会过时:每次打开终端重拉,变了自动整刷
+    void this.loadLobbyBadges(true);
+  }
+
+  /** 从终端格子打开的界面(任务 / 背包 / 商店),顶栏「<」回终端用。 */
+  private lobbyPanelFromTerminal: 'quest' | 'bag' | 'shop' | null = null;
+
+  private backFromLobbyPanel(panel: 'quest' | 'bag' | 'shop', close: () => void): void {
+    const toTerminal = this.lobbyPanelFromTerminal === panel;
+    this.lobbyPanelFromTerminal = null;
+    close();
+    if (toTerminal) {
+      this.openLobbyTerminalPanel();
+    }
   }
 
   private closeLobbyTerminalPanel(): void {
@@ -1575,6 +1590,12 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  private runLobbyTerminalShop(kind: 'stamina' | 'gold' | 'diamond'): void {
+    this.closeLobbyTerminalPanel();
+    this.lobbyPanelFromTerminal = 'shop';
+    this.openLobbyShopDialog(kind);
+  }
+
   private runLobbyTerminalAction(action: LobbyTerminalAction): void {
     // docs/53 §2.5:终端「野外探索」格 → 当前图鸟瞰图(探索度 + 兴趣点计数都在顶栏)
     if (action === 'idle') {
@@ -1583,6 +1604,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.closeLobbyTerminalPanel();
+    this.lobbyPanelFromTerminal = action === 'quest' || action === 'bag' || action === 'shop' ? action : null;
     switch (action) {
       case 'heroes': this.openLobbyHeroRosterPanel(); return;
       case 'formation': this.openLobbyFormationPanel(); return;
@@ -6506,6 +6528,8 @@ export class LootChainGameRoot extends Component {
         this.setStatus(`已领取「${quest.questName}」奖励:${quest.rewards.map((item) => `${item.name}×${item.amount}`).join(' ')}`);
         this.lobbyQuestState = { ...this.lobbyQuestState, claiming: null, version: this.lobbyQuestState.version + 1 };
         await this.loadLobbyQuestSummary(true);
+        // 终端 / 大厅的任务红点跟着刷新(原先只在进大厅时拉,领完还挂着)
+        void this.loadLobbyBadges(true);
         const profile = this.currentLobbyProfile();
         void this.loadLobbyProfile(profile.userId);
         void this.loadLobbyBag(true);

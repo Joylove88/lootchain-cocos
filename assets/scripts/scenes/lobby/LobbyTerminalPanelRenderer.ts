@@ -14,6 +14,8 @@ export interface LobbyTerminalPanelHost extends LobbyHudHost {
   runLobbyTerminalAction(action: LobbyTerminalAction): void;
   /** 「野外探索」格(docs/53 §2.5):当前图探索度 + 今天还能开的宝箱 / 能采的采集点;dot = 任一已开放地图今天还有可开 / 可采。 */
   terminalExploreSummary?(): { text: string; dot: boolean } | null;
+  /** 名片货币「+」:关终端开对应商店页(记下来源,商店「<」回终端)。 */
+  runLobbyTerminalShop?(kind: 'stamina' | 'gold' | 'diamond'): void;
 }
 
 /** 功能格(原型 proto_terminal_b2):列左沿 630 / 856 / 1083 / 1309 / 1536,宽 210;行顶 105 / 326 / 537,高 205 / 195 / 195。 */
@@ -171,8 +173,7 @@ export class LobbyTerminalPanelRenderer {
         text(`Cur_${item.shop}`, item.value, 497, item.py, 24, TEXT, 160, HorizontalTextAlignment.RIGHT);
       }
       this.hit(root, `Plus_${item.shop}`, 551, item.py, 52, 52, P, () => {
-        this.host.closeLobbyTerminalPanel();
-        this.host.openLobbyShopDialog?.(item.shop);
+        this.host.runLobbyTerminalShop?.(item.shop);
       });
     }
   }

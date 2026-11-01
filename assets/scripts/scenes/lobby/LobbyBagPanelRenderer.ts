@@ -280,6 +280,8 @@ function bagSidebarIconAsset(itemType: string): string {
 }
 
 export interface LobbyBagPanelHost {
+  /** 顶栏「<」(11-01 用户「任务这里的返回要返回到终端」):从终端进来的就关掉并重开终端,否则同关闭。 */
+  backFromLobbyPanel?(panel: 'quest' | 'bag' | 'shop', close: () => void): void;
   node: Node;
   currentLobbyBagState(): LobbyBagPanelState;
   closeLobbyBagPanel(): void;
@@ -407,7 +409,7 @@ export class LobbyBagPanelRenderer {
       mountGlassTopBar(this.host, panel, 'LobbyBag', panelWidth, panelHeight, '背包', profile ? [
         { key: 'gold', icon: 'ui/bag/ai/icon_gold/spriteFrame', value: formatCompact(safeNumber(profile.gold)), width: 156 },
         { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: formatCompact(safeNumber(profile.diamond)), width: 181 },
-      ] : [], closeBag, closeBag, { chipRight: 1716 });
+      ] : [], () => (this.host.backFromLobbyPanel ? this.host.backFromLobbyPanel('bag', closeBag) : closeBag()), closeBag, { chipRight: 1716 });
       this.renderGlassBag(panel, panelWidth, panelHeight, state);
     } else {
       this.renderBagCurrencyBar(panel, panelWidth, panelHeight, scale);

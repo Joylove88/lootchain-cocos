@@ -52,6 +52,8 @@ export interface LobbyShopDialogState {
 }
 
 export interface LobbyShopDialogHost {
+  /** 顶栏「<」(11-01 用户「任务这里的返回要返回到终端」):从终端进来的就关掉并重开终端,否则同关闭。 */
+  backFromLobbyPanel?(panel: 'quest' | 'bag' | 'shop', close: () => void): void;
   currentLobbyProfile(): PlayerLobbyProfileVO;
   currentLobbyShopState(): LobbyShopDialogState | null;
   closeLobbyShopDialog(): void;
@@ -475,7 +477,8 @@ export class LobbyShopDialogRenderer {
           : this.payMode(catalog) === 'MOCK'
             ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
             : '钻石充值暂未开放,敬请期待';
-    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], chips, close, close, { y: 57, chipRight: 1696, subtitle });
+    const back = (): void => (this.host.backFromLobbyPanel ? this.host.backFromLobbyPanel('shop', close) : close());
+    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], chips, back, close, { y: 57, chipRight: 1696, subtitle });
     const { FY, S } = glassProtoMap(panelW, panelH);
     this.renderGlassTabs(panel, state.kind, panelW, panelH);
     if (state.kind === 'skin') {

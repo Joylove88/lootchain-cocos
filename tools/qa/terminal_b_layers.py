@@ -6,7 +6,7 @@
 输入 素材原始备份/terminal_static_b_1101/static_b.png(terminal_b_extract.py 产物)。
 """
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 SRC = '素材原始备份/terminal_static_b_1101/static_b.png'
 BG_RAW = '素材原始备份/terminal_static_b_1101/bg_gpt_raw.png'
@@ -15,6 +15,9 @@ W, H = 1870, 841
 SS = 4
 RADIUS = 14
 BG_DIM, BG_BLUR = 0.72, 3
+HERO_ICON = '素材原始备份/terminal_static_b_1101/hero_icon_line_gpt.png'
+HERO_ICON_H, HERO_ICON_THICKEN = 84, 23
+LABEL_FONT = 'C:/Windows/Fonts/NotoSansSC-VF.ttf'
 
 TILE_X0 = [630, 856, 1083, 1309, 1536]
 TILE_W = 210
@@ -53,7 +56,35 @@ for y0 in TILE_Y0:
             xl, xr = cx - half - 2, cx + half + 2
             for c in range(3):
                 rgb[y, xl:xr + 1, c] = np.linspace(rgb[y, xl, c], rgb[y, xr, c], xr - xl + 1)
+# 英雄格(11-01 用户「为啥英雄这里一直黄的」):原型把它画成了选中态(金底 + 金色实心剪影 + 金色胶囊字)。
+# 换成普通格:底 = 编队格去掉图标和标签(每列竖向插值),图标 = GPT 按整套线框风格重画的白色线框英雄头像(线条加粗到同等比例),字 = Noto Sans SC 白字。
+M = 3  # 连格子描边 / 抗锯齿外缘一起换
+HX, FX, HY0, HTW, HTH = 630 - M, 856 - M, 105 - M, 210 + 2 * M, 205 + 2 * M
+tile = np.dstack([rgb, alpha * 255])[HY0:HY0 + HTH, FX:FX + HTW].copy()
+ya, yb = 150 - HY0, 294 - HY0
+for c in range(3):
+    top, bot = tile[ya, :, c].copy(), tile[yb, :, c].copy()
+    for i, y in enumerate(range(ya, yb + 1)):
+        t = i / (yb - ya)
+        tile[y, :, c] = top * (1 - t) + bot * t
+icon = Image.open(HERO_ICON).convert('RGBA').split()[3]
+icon = icon.crop(icon.getbbox())
+icon = icon.filter(ImageFilter.MaxFilter(HERO_ICON_THICKEN))
+ih = HERO_ICON_H
+iw = round(icon.width * ih / icon.height)
+icon = np.asarray(icon.resize((iw, ih), Image.LANCZOS), dtype=float) / 255
+ix, iy = round(HTW / 2 - iw / 2), round(192 - HY0 - ih / 2)
+reg = tile[iy:iy + ih, ix:ix + iw]
+for c in range(3):
+    reg[..., c] = reg[..., c] * (1 - icon) + 242 * icon
+tile_img = Image.fromarray(np.clip(tile, 0, 255).astype('uint8'), 'RGBA')
+font = ImageFont.truetype(LABEL_FONT, 26)
+font.set_variation_by_axes([430])
+d = ImageDraw.Draw(tile_img)
+bb = d.textbbox((0, 0), '英雄', font=font)
+d.text((HTW / 2 - (bb[0] + bb[2]) / 2, 265.5 - HY0 - (bb[1] + bb[3]) / 2), '英雄', font=font, fill=(242, 242, 242, 255))
 out = np.dstack([rgb, alpha * 255]).astype('uint8')
+out[HY0:HY0 + HTH, HX:HX + HTW] = np.asarray(tile_img)
 Image.fromarray(out, 'RGBA').save(OUT_DIR + 'panels_b.png')
 
 # 背景:3:2 图按宽 1870 等比(高约 1247),中心对齐原型;按原型面板外的背景区域逐通道匹配均值 / 对比

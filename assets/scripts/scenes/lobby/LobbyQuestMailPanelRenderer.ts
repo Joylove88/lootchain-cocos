@@ -171,6 +171,8 @@ function resolveRewardIcon(item: QuestRewardItemVO): { path: string; ratio: numb
 const REWARD_ICON_PATHS = ['ic_gold_large', 'ic_gold_medium', 'ic_exp_book', 'ic_enhance_gem', 'ic_diamond_gem'].map((name) => `ui/common/ai/${name}/spriteFrame`);
 
 export interface LobbyQuestMailHost {
+  /** 顶栏「<」(11-01 用户「任务这里的返回要返回到终端」):从终端进来的就关掉并重开终端,否则同关闭。 */
+  backFromLobbyPanel?(panel: 'quest' | 'bag' | 'shop', close: () => void): void;
   createUiNode(name: string): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
@@ -559,7 +561,8 @@ export class LobbyQuestMailPanelRenderer {
     const bgW = Math.max(coverW, coverH * (1870 / 841));
     this.host.addSprite('LobbyQuestGlassBg', QUEST_GLASS_BG, 0, 0, bgW, bgW / (1870 / 841), panel);
     const close = (): void => this.host.closeLobbyQuestPanel();
-    mountGlassTopBar(this.host as never, panel, 'LobbyQuest', panelW, panelH, '任务', [], close, close);
+    const back = (): void => (this.host.backFromLobbyPanel ? this.host.backFromLobbyPanel('quest', close) : close());
+    mountGlassTopBar(this.host as never, panel, 'LobbyQuest', panelW, panelH, '任务', [], back, close);
 
     // 页签 日常任务 58..305 / 成就 320..567,y 137(选中香槟,未选玻璃)
     const tabs: Array<{ key: 'DAILY' | 'ACHIEVE'; text: string; x0: number; x1: number }> = [
