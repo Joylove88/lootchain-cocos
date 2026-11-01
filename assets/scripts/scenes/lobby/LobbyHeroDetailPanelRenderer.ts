@@ -1,3 +1,5 @@
+import { mountHeroSkinSpine } from './HeroSkinPreview';
+import { HERO_DEFAULT_BUST, HERO_SKIN_ASSETS, heroSkinsOf, type HeroSkinInfo } from './HeroSkins';
 import {
   assetManager,
   AudioClip,
@@ -42,7 +44,7 @@ import { compactResourceValue, safeText } from '../UiTextFormatter';
 import { formatTopCurrencyValue, renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
 import { C1812_BUTTON_PRIMARY_ASSET, C1812_BUTTON_RETURN_ASSET, starBandAssetOf, starBandTextRgbOf, starDisplayV3 } from '../C1812CommonUiAssets';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
-import { patchBattleUnitSpineRuntimeEnums, type BattleUnitSpineRuntimeData } from './LobbyBattleUnitSpineRuntime';
+import { patchBattleUnitSpineRuntimeEnums, resolveBattleUnitSpineRuntimeData, resolveBattleUnitSpineSkinName, type BattleUnitSpineRuntimeData } from './LobbyBattleUnitSpineRuntime';
 import { loadSharedSpineData } from './SpineDataStore';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
@@ -348,6 +350,9 @@ function glowTierKey(enhanceLevel: number): string | null {
 
 const HERO_DETAIL_SPINE_RUNTIME_RETRY_DELAYS_MS = [180, 420, 900];
 
+/** 英雄详情页签(docs/56 加皮肤)。 */
+export type HeroDetailTab = 'attr' | 'equip' | 'skill' | 'star' | 'skin';
+
 export interface HeroDetailAttribute {
   label: string;
   value: string;
@@ -486,8 +491,15 @@ export interface LobbyHeroDetailPanelHost {
   oneClickEquipLobbyHero(heroId: number): void;
   oneClickUnequipLobbyHero(heroId: number): void;
   switchLobbyHeroDetail(direction: number): void;
-  currentLobbyHeroDetailTab(): 'attr' | 'equip' | 'skill' | 'star';
-  selectLobbyHeroDetailTab(tab: 'attr' | 'equip' | 'skill' | 'star'): void;
+  currentLobbyHeroDetailTab(): HeroDetailTab;
+  selectLobbyHeroDetailTab(tab: HeroDetailTab): void;
+  /** 皮肤页(docs/56):当前选中的皮肤(null = 默认外观;undefined = 还没选,按穿着的算)、是否在播动作预览。 */
+  currentHeroSkinSelection(): string | null | undefined;
+  selectHeroSkin(skinCode: string | null): void;
+  equipHeroSkin(heroCode: string, skinCode: string | null): void;
+  openShopSkin(skinCode: string | null): void;
+  heroSkinPreviewing(): boolean;
+  toggleHeroSkinPreview(): void;
   selectLobbyHeroEquipSlot(slot: string): void;
   equipLobbyHeroEquipment(equipmentId: number): void;
   transferLobbyHeroEquipment(equipmentId: number): void;
@@ -1969,7 +1981,10 @@ export class LobbyHeroDetailPanelRenderer {
     const artHeight = height - 138 * scale;
     const artX = 0;
     const artY = -28 * scale;
-    this.renderArtStage(parent, hero, artX, artY, artWidth, artHeight, scale);
+    const skinTab = tab === 'skin' && heroSkinsOf(hero.heroCode).length > 0;
+    if (!(skinTab && this.renderGlassSkinArt(parent, hero, { artX, artY, artWidth, artHeight }))) {
+      this.renderArtStage(parent, hero, artX, artY, artWidth, artHeight, scale);
+    }
     if (tab === 'equip') {
       this.renderEquipSlotsAroundArt(parent, hero, artX, artY, artWidth, artHeight, scale);
     }
@@ -1978,7 +1993,9 @@ export class LobbyHeroDetailPanelRenderer {
     const infoY = 14 * scale;
     const infoWidth = 548 * scale;
     const infoHeight = height - 176 * scale;
-    if (tab === 'attr') {
+    if (skinTab) {
+      this.renderSkinPanelRect(parent, hero, infoX - infoWidth / 2, infoY + infoHeight / 2, infoWidth, infoHeight);
+    } else if (tab === 'attr' || tab === 'skin') {
       this.renderInfoPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
     } else if (tab === 'equip') {
       this.renderWearablePanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
@@ -2091,7 +2108,12 @@ export class LobbyHeroDetailPanelRenderer {
     const tab = this.host.currentLobbyHeroDetailTab();
     if (this.proto) {
       // 2026-10-22 原型 1:1
-      this.renderArtStage(parent, hero, frame.artX, frame.artY, frame.artWidth, frame.artHeight, scale);
+      const skinTab = HERO_GLASS && tab === 'skin' && heroSkinsOf(hero.heroCode).length > 0;
+      if (skinTab && this.renderGlassSkinArt(parent, hero, frame)) {
+        // 皮肤页选中了皮肤:中间换成皮肤立绘 / 动作预览(选默认时仍是原立绘舞台)
+      } else {
+        this.renderArtStage(parent, hero, frame.artX, frame.artY, frame.artWidth, frame.artHeight, scale);
+      }
       if (tab === 'equip') {
         if (HERO_GLASS) {
           this.renderGlassEquipSlots(parent, hero, width, height);
@@ -2100,7 +2122,9 @@ export class LobbyHeroDetailPanelRenderer {
         }
       }
       const { infoX, infoY, infoWidth, infoHeight } = frame;
-      if (tab === 'attr') {
+      if (skinTab) {
+        this.renderGlassSkinPanel(parent, hero, width, height);
+      } else if (tab === 'attr' || tab === 'skin') {
         if (HERO_GLASS) {
           this.renderGlassAttrPanel(parent, hero, width, height, scale);
         } else {
@@ -2126,7 +2150,7 @@ export class LobbyHeroDetailPanelRenderer {
       if (HERO_GLASS) {
         this.renderGlassNav(parent, tab, width, height, scale);
       } else {
-        this.renderProtoNav(parent, tab, width, height, scale);
+        this.renderProtoNav(parent, tab === 'skin' ? 'attr' : tab, width, height, scale);
       }
       return;
     }
@@ -4451,15 +4475,19 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   // 右下页签导航(参考图1):属性/装备/技能/升星,选中红底金框金字。
-  private renderDetailNav(parent: Node, active: 'attr' | 'equip' | 'skill' | 'star', width: number, height: number, scale: number): void {
+  private renderDetailNav(parent: Node, active: HeroDetailTab, width: number, height: number, scale: number): void {
     const hero = this.host.currentLobbyHeroDetailHero();
     const starDot = !!hero && this.isHeroAwakenable(hero);
-    const entries: { key: 'attr' | 'equip' | 'skill' | 'star'; label: string }[] = [
+    const entries: { key: HeroDetailTab; label: string }[] = [
       { key: 'attr', label: '属性' },
       { key: 'equip', label: '装备' },
       { key: 'skill', label: '技能' },
       { key: 'star', label: '升星' },
     ];
+    // 皮肤(docs/56):这名英雄有皮肤才出现
+    if (hero && heroSkinsOf(hero.heroCode).length > 0) {
+      entries.push({ key: 'skin', label: '皮肤' });
+    }
     // 手机:左侧竖排(右栏底部是升级按钮,不能再叠页签);桌面:右下横排。
     const frame = this.phoneFrame;
     const tabW = frame ? frame.tabWidth : 136 * scale;
@@ -5707,23 +5735,30 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   /** 左侧竖排页签(B):选中 = 香槟金圆角块 + 图标 + 字 + ›;其余只有图标和字。 */
-  private renderGlassNav(parent: Node, active: 'attr' | 'equip' | 'skill' | 'star', width: number, height: number, scale: number): void {
+  private renderGlassNav(parent: Node, active: HeroDetailTab, width: number, height: number, scale: number): void {
     const { LX, FY, S, F, k } = this.glassMap(width, height);
     const hero = this.host.currentLobbyHeroDetailHero();
     const starDot = !!hero && this.isHeroAwakenable(hero);
-    const entries: { key: 'attr' | 'equip' | 'skill' | 'star'; label: string; y: number }[] = [
+    const entries: { key: HeroDetailTab; label: string; y: number }[] = [
       { key: 'attr', label: '属性', y: 159 },
       { key: 'equip', label: '装备', y: 262 },
       { key: 'skill', label: '技能', y: 365 },
       { key: 'star', label: '升星', y: 468 },
     ];
+    // 皮肤页签(docs/56):这名英雄有皮肤才出现(原型 hero_skin_b,y 550)
+    if (hero && heroSkinsOf(hero.heroCode).length > 0) {
+      entries.push({ key: 'skin', label: '皮肤', y: 571 });
+    }
+    if (active === 'skin' && !entries.some((entry) => entry.key === 'skin')) {
+      active = 'attr';
+    }
     entries.forEach((entry) => {
       const selected = entry.key === active;
       const node = this.host.addChildPlainNode(parent, `HeroDetailNav_${entry.key}`, LX(150), FY(entry.y), S(212), S(82));
       if (selected) {
         mountGlassSlice(this.host, node, 'Bg', GLASS_SLICES.tabSel, 0, 0, S(212), S(82), k);
       }
-      const navIcon = { attr: GLASS_ICON.navAttr, equip: GLASS_ICON.navEquip, skill: GLASS_ICON.navSkill, star: GLASS_ICON.navStar }[entry.key];
+      const navIcon = { attr: GLASS_ICON.navAttr, equip: GLASS_ICON.navEquip, skill: GLASS_ICON.navSkill, star: GLASS_ICON.navStar, skin: GLASS_ICON.navSkin }[entry.key];
       // 原型取色:选中图标 (210,191,164)、字白;未选图标 (165,171,188)、字 (195,203,217)
       const icon = this.host.addSprite('Icon', navIcon, LX(85) - LX(150), 0, S(48), S(48), node);
       if (icon) {
@@ -5875,6 +5910,151 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   /** 技能页(B):一个整高面板「技能」,内含大招卡 + 被动卡(原型卡 1205..1816,首卡顶 150,高 135,间距 14)。 */
+  /** 皮肤页当前选中项:没选过 = 正穿着的皮肤(都没穿 = 默认)。 */
+  private glassSkinSelection(hero: LobbyHeroItemVO): HeroSkinInfo | null {
+    const skins = heroSkinsOf(hero.heroCode);
+    const chosen = this.host.currentHeroSkinSelection();
+    if (chosen === undefined) {
+      return skins.find((skin) => skin.equipped) ?? null;
+    }
+    return chosen === null ? null : skins.find((skin) => skin.skinCode === chosen) ?? null;
+  }
+
+  /** 皮肤页中间:选中皮肤时画皮肤立绘(或动作预览,皮肤战斗骨骼);选默认返回 false,由调用方照常画立绘舞台。 */
+  private renderGlassSkinArt(parent: Node, hero: LobbyHeroItemVO, frame: { artX: number; artY: number; artWidth: number; artHeight: number }): boolean {
+    const skin = this.glassSkinSelection(hero);
+    const assets = skin ? HERO_SKIN_ASSETS[skin.skinCode] : null;
+    if (!skin || !assets) {
+      return false;
+    }
+    this.dropArtStageStash();
+    const stage = this.host.addChildPlainNode(parent, 'LobbyHeroDetailSkinStage', frame.artX, frame.artY, frame.artWidth, frame.artHeight);
+    const groundY = this.resolveHeroDetailGroundY(frame.artHeight);
+    if (this.host.heroSkinPreviewing()) {
+      mountHeroSkinSpine(this.host, stage, assets, 0, groundY + frame.artHeight * 0.06, frame.artHeight * 0.6);
+    } else {
+      // 立绘透明底,脚底贴名牌上沿(与原立绘舞台同一条地平线)
+      const artH = frame.artHeight * 0.98;
+      const artW = artH * (724 / 1236);
+      this.host.addSprite('LobbyHeroDetailSkinArt', assets.art, 0, groundY + artH / 2 - artH * 0.02, artW, artH, stage);
+    }
+    return true;
+  }
+
+  /** 皮肤页右栏(B,原型 hero_skin_b):皮肤列表(默认 + 各皮肤)/ 穿戴属性 / 预览动作 + 穿戴。 */
+  private renderGlassSkinPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { FY } = this.glassMap(width, height);
+    const col = this.glassColumn(width, height);
+    this.renderSkinPanelRect(parent, hero, col.x - col.w / 2, FY(86), col.w, FY(86) - FY(800));
+  }
+
+  /** 皮肤页右栏按矩形排:left / top / w / h 为容器坐标;内部坐标沿用原型右栏(x 1191..1829、y 86..800)等比映射。 */
+  private renderSkinPanelRect(parent: Node, hero: LobbyHeroItemVO, left: number, top: number, w: number, h: number): void {
+    const kx = w / (1829 - 1191);
+    const ky = h / (800 - 86);
+    const k = Math.min(kx, ky);
+    const RX = (px: number): number => left + (px - 1191) * kx;
+    const FY = (py: number): number => top - (py - 86) * ky;
+    const S = (v: number): number => v * k;
+    const F = (v: number): number => Math.max(16, v * k);
+    const col = { x: left + w / 2, w: w - S(8) };
+    const root = this.host.addChildPlainNode(parent, 'LobbyHeroDetailSkinPanel', 0, 0, 10, 10);
+    const skins = heroSkinsOf(hero.heroCode);
+    const selected = this.glassSkinSelection(hero);
+    const equipped = skins.find((skin) => skin.equipped) ?? null;
+    // 列表框 88..460
+    mountGlassPanel(this.host, root, 'ListBox', col.x, (FY(88) + FY(460)) / 2, col.w, FY(88) - FY(460), k);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailSkinSection', '皮肤', RX(1217), FY(119), k, F(26) / k, {
+      text: '前往商店', rightX: RX(1800), onClick: () => this.host.openShopSkin(selected?.skinCode ?? skins[0]?.skinCode ?? null),
+    });
+    const rows: Array<{ key: string | null; name: string; tag: string; status: string; bust: string }> = [
+      { key: null, name: '默认', tag: '', status: equipped ? '' : '已穿戴', bust: HERO_DEFAULT_BUST[(hero.heroCode || '').toUpperCase()] ?? '' },
+      ...skins.map((skin) => ({
+        key: skin.skinCode,
+        name: skin.skinName,
+        tag: skin.tag,
+        status: skin.equipped ? '已穿戴' : skin.owned ? '已拥有' : `${Math.round(skin.priceDiamond).toLocaleString('en-US')} 钻石`,
+        bust: HERO_SKIN_ASSETS[skin.skinCode]?.bust ?? '',
+      })),
+    ];
+    const rowH = Math.min(133, (448 - 152 - 12 * (rows.length - 1)) / Math.max(1, rows.length));
+    rows.forEach((row, index) => {
+      const top = 157 + index * (rowH + 12);
+      const cy = FY(top + rowH / 2);
+      const isSel = (selected?.skinCode ?? null) === row.key;
+      const node = mountGlassPanel(this.host, root, `SkinRow_${row.key ?? 'default'}`, (RX(1217) + RX(1806)) / 2, cy, RX(1806) - RX(1217), S(rowH), k, isSel);
+      const ox = (RX(1217) + RX(1806)) / 2;
+      const L = (px: number): number => RX(px) - ox;
+      const thumbSize = S(Math.min(112, rowH - 20));
+      const thumb = this.host.addChildPlainNode(node, 'Thumb', L(1283), 0, thumbSize, thumbSize);
+      mountGlassSlice(this.host, thumb, 'Frame', GLASS_SLICES.frame, 0, 0, thumbSize, thumbSize, k);
+      if (row.bust) {
+        const mask = this.host.addChildPlainNode(thumb, 'Mask', 0, 0, thumbSize - S(6), thumbSize - S(6));
+        mask.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+        this.host.addSprite('Bust', row.bust, 0, 0, thumbSize - S(6), thumbSize - S(6), mask);
+      }
+      const nameLabel = glassLabel(this.host, node, 'Name', row.name, L(1366), 0, F(24), GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+      if (row.tag) {
+        const nameW = Math.min(S(200), estimateTextWidth(nameLabel.string, F(24)));
+        this.glassSkinTag(node, 'Tag', row.tag, L(1366) + nameW + S(22), 0, S(32), S(18));
+      }
+      glassLabel(this.host, node, 'Status', row.status, L(1780), 0, F(20), GLASS_COLOR.sub, S(180), HorizontalTextAlignment.RIGHT);
+      if (!isSel) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, () => this.host.selectHeroSkin(row.key), this);
+        this.host.applyImageButtonFeedback(node, 1.01, 0.99);
+      }
+    });
+    // 穿戴属性 472..694
+    mountGlassPanel(this.host, root, 'StatBox', col.x, (FY(472) + FY(694)) / 2, col.w, FY(472) - FY(694), k);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailSkinStatSection', '穿戴属性', RX(1217), FY(505), k, F(26) / k);
+    const stats = selected ? [
+      { icon: GLASS_STAT_ICON.atk, label: '攻击', pct: selected.attackPct },
+      { icon: GLASS_STAT_ICON.hp, label: '生命', pct: selected.hpPct },
+    ].filter((entry) => entry.pct > 0) : [];
+    if (stats.length === 0) {
+      glassLabel(this.host, root, 'SkinStatNone', '默认外观,无额外属性', RX(1252), FY(583), F(20), GLASS_COLOR.sub, S(500), HorizontalTextAlignment.LEFT);
+    }
+    stats.forEach((stat, index) => {
+      const y = 560 + index * 46;
+      const icon = this.host.addSprite(`SkinStatIcon_${index}`, stat.icon, RX(1252), FY(y), S(32), S(32), root);
+      if (icon) {
+        icon.color = GLASS_COLOR.gold;
+      }
+      glassLabel(this.host, root, `SkinStatLabel_${index}`, stat.label, RX(1297), FY(y), F(22), GLASS_COLOR.sub, S(120), HorizontalTextAlignment.LEFT);
+      glassLabel(this.host, root, `SkinStatValue_${index}`, `+${Math.round(stat.pct * 1000) / 10}%`, RX(1780), FY(y), F(24), GLASS_COLOR.green, S(140), HorizontalTextAlignment.RIGHT, true);
+    });
+    glassLabel(this.host, root, 'SkinStatNote', '穿戴后在野外、守卫、掠夺中生效', (RX(1217) + RX(1806)) / 2, FY(662), F(18), GLASS_COLOR.sub, S(560), HorizontalTextAlignment.CENTER);
+    // 底部按钮:预览动作 / 穿戴(未拥有 = 前往购买)
+    mountGlassButton(this.host, root, 'SkinPreviewButton', this.host.heroSkinPreviewing() ? '查看立绘' : '预览动作', (RX(1197) + RX(1506)) / 2, FY(750), RX(1506) - RX(1197), S(64), k,
+      selected ? 'secondary' : 'disabled', selected ? () => this.host.toggleHeroSkinPreview() : undefined, 24);
+    const isEquipped = selected ? selected.equipped : !equipped;
+    const ownedOrDefault = !selected || selected.owned;
+    const mainText = isEquipped ? '已穿戴' : ownedOrDefault ? '穿戴' : '前往购买';
+    mountGlassButton(this.host, root, 'SkinEquipButton', mainText, (RX(1521) + RX(1824)) / 2, FY(750), RX(1824) - RX(1521), S(64), k,
+      isEquipped ? 'primaryOff' : 'primary',
+      isEquipped ? undefined : ownedOrDefault
+        ? () => this.host.equipHeroSkin(hero.heroCode, selected?.skinCode ?? null)
+        : () => this.host.openShopSkin(selected?.skinCode ?? null),
+      24);
+  }
+
+  /** 皮肤角标(暗红细边 + 红字,原型「限定」)。 */
+  private glassSkinTag(parent: Node, name: string, text: string, leftX: number, y: number, h: number, size: number): void {
+    const w = estimateTextWidth(text, size) + h * 0.9;
+    const node = this.host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
+    const g = node.addComponent(Graphics);
+    g.fillColor = new Color(90, 22, 26, 150);
+    g.roundRect(-w / 2, -h / 2, w, h, h * 0.22);
+    g.fill();
+    g.strokeColor = new Color(196, 72, 70, 220);
+    g.lineWidth = Math.max(1, h * 0.04);
+    g.roundRect(-w / 2, -h / 2, w, h, h * 0.22);
+    g.stroke();
+    const label = glassLabel(this.host, node, 'Text', text, 0, 0, size, new Color(236, 120, 112, 255), w, HorizontalTextAlignment.CENTER);
+    label.fontSize = Math.round(size);
+  }
+
   private renderGlassSkillPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
     const { RX, FY, S, F, k } = this.glassMap(width, height);
     const col = this.glassColumn(width, height);

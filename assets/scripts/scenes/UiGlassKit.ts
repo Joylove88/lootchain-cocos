@@ -65,6 +65,7 @@ export const GLASS_ICON = {
   navEquip: G('nav_equip'),
   navSkill: G('nav_skill'),
   navStar: G('nav_star'),
+  navSkin: G('nav_skin'),
   navFuse: G('nav_fuse'),
   navGem: G('nav_gem'),
   arrowLeft: G('icon_arrow_l'),

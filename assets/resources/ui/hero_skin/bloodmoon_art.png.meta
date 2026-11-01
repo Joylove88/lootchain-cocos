@@ -1,0 +1,138 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "1ae0fc8c-3932-47d9-b92b-83fc17173f04",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "1ae0fc8c-3932-47d9-b92b-83fc17173f04@6c48a",
+      "displayName": "bloodmoon_art",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "clamp-to-edge",
+        "wrapModeT": "clamp-to-edge",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "1ae0fc8c-3932-47d9-b92b-83fc17173f04",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "1ae0fc8c-3932-47d9-b92b-83fc17173f04@f9941",
+      "displayName": "bloodmoon_art",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": 0,
+        "offsetY": 0,
+        "trimX": 0,
+        "trimY": 0,
+        "width": 724,
+        "height": 1236,
+        "rawWidth": 724,
+        "rawHeight": 1236,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": false,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "1ae0fc8c-3932-47d9-b92b-83fc17173f04@6c48a",
+        "atlasUuid": "",
+        "trimType": "none",
+        "vertices": {
+          "rawPosition": [
+            -362,
+            -618,
+            0,
+            362,
+            -618,
+            0,
+            -362,
+            618,
+            0,
+            362,
+            618,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            0,
+            1236,
+            724,
+            1236,
+            0,
+            0,
+            724,
+            0
+          ],
+          "nuv": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "minPos": [
+            -362,
+            -618,
+            0
+          ],
+          "maxPos": [
+            362,
+            618,
+            0
+          ]
+        }
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": true,
+    "hasAlpha": true,
+    "redirect": "1ae0fc8c-3932-47d9-b92b-83fc17173f04@6c48a",
+    "compressSettings": {
+      "useCompressTexture": true,
+      "presetId": "lc-android-astc4"
+    }
+  }
+}

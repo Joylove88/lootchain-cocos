@@ -122,7 +122,8 @@ import { LobbyCodexState } from './lobby/LobbyCodexState';
 import { LobbyCodexPanelRenderer, type LobbyCodexPanelHost } from './lobby/LobbyCodexPanelRenderer';
 import { LobbyForgePanelRenderer, type LobbyForgePanelHost } from './lobby/LobbyForgePanelRenderer';
 import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFormationPowerSnapshot } from './lobby/LobbyFormationPanelRenderer';
-import { LobbyHeroDetailPanelRenderer, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
+import { LobbyHeroDetailPanelRenderer, type HeroDetailTab, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
+import { heroSkinCatalog, heroSkinPackPrefixes, heroSkinsOf, setHeroSkinCatalog } from './lobby/HeroSkins';
 import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
 import { openConfirmPopup } from './lobby/ConfirmPopup';
 import { LobbyTownRenderer, type LobbyTownHost } from './lobby/LobbyTownRenderer';
@@ -495,7 +496,10 @@ export class LootChainGameRoot extends Component {
   private lobbyFormationPanelOpen = false;
   private lobbyHeroDetailHeroId: number | null = null;
   // 英雄详情页签(参考图):属性(默认)/装备/技能/升星。
-  private lobbyHeroDetailTab: 'attr' | 'equip' | 'skill' | 'star' = 'attr';
+  private lobbyHeroDetailTab: HeroDetailTab = 'attr';
+  /** 英雄详情皮肤页(docs/56):选中的皮肤(null = 默认;undefined = 未选,按穿着的)/ 是否在播动作预览。 */
+  private heroSkinSelection: string | null | undefined = undefined;
+  private heroSkinPreview = false;
   private lobbyHeroLevelUpBusyId: number | null = null;
   // 洗练弹窗状态:打开标记 + 锁定词条 id 集合(user_hero_attr.id);切换英雄/关闭详情时重置。
   private lobbyHeroRefineDialogOpen = false;
@@ -1589,7 +1593,7 @@ export class LootChainGameRoot extends Component {
       case 'crystal': this.openGuardCrystalDialog(); return;
       case 'codex': this.openLobbyCodexPanel(); return;
       case 'quest': this.openLobbyQuestPanel(); return;
-      case 'shop': this.openLobbyShopDialog('gold'); return;
+      case 'shop': this.openLobbyShopDialog(heroSkinCatalog().length > 0 ? 'skin' : 'gold'); return;
       case 'guild': this.openWorldBountyPanel(); return;
       case 'worldmap': this.openWorldMapPanel(); return;
       case 'rank':
@@ -5053,11 +5057,19 @@ export class LootChainGameRoot extends Component {
     this.refreshLobbyHeroEquipDialog();
   }
 
-  private currentLobbyHeroDetailTab(): 'attr' | 'equip' | 'skill' | 'star' {
+  private currentLobbyHeroDetailTab(): HeroDetailTab {
     return this.lobbyHeroDetailTab;
   }
 
-  private selectLobbyHeroDetailTab(tab: 'attr' | 'equip' | 'skill' | 'star'): void {
+  private selectLobbyHeroDetailTab(tab: HeroDetailTab): void {
+    if (tab === 'skin') {
+      this.heroSkinSelection = undefined;
+      this.heroSkinPreview = false;
+      if (!packResourcesReady(heroSkinPackPrefixes())) {
+        this.openWithPackGate(heroSkinPackPrefixes(), '正在加载皮肤素材', () => this.selectLobbyHeroDetailTab('skin'));
+        return;
+      }
+    }
     if (tab === 'equip') {
       lobbyGuide.markVisited('equip');
     }
@@ -6771,6 +6783,14 @@ export class LootChainGameRoot extends Component {
     if (!this.isLobbyViewActive()) {
       return;
     }
+    // 皮肤页(docs/56):素材没下完先挡下载页;目录没拿到先拉
+    if (kind === 'skin' && !packResourcesReady(heroSkinPackPrefixes())) {
+      this.openWithPackGate(heroSkinPackPrefixes(), '正在加载皮肤素材', () => this.openLobbyShopDialog('skin'));
+      return;
+    }
+    if (kind === 'skin') {
+      void this.loadHeroSkins();
+    }
     const previous = this.lobbyShopDialog;
     this.lobbyShopDialog = {
       kind,
@@ -6779,10 +6799,156 @@ export class LootChainGameRoot extends Component {
       busy: false,
       notice: kind === 'diamond' ? this.rechargePendingNotice() : '',
       channelCode: previous?.channelCode ?? null,
+      skinSelected: previous?.skinSelected ?? null,
+      skinPreview: false,
     };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
     void this.loadLobbyShopCatalog();
+  }
+
+  // ===== 英雄皮肤(docs/56,2026-11-01):商店购买 / 英雄详情穿戴 =====
+
+  /** 拉皮肤目录灌进 HeroSkins(登录进大厅 / 购买 / 穿戴后);穿着状态变了就重建野外队伍,换上新外观。 */
+  private async loadHeroSkins(): Promise<void> {
+    try {
+      const before = heroSkinCatalog().filter((skin) => skin.equipped).map((skin) => skin.skinCode).join(',');
+      const catalog = await this.api.heroSkin.catalog();
+      setHeroSkinCatalog(catalog.skins);
+      const after = heroSkinCatalog().filter((skin) => skin.equipped).map((skin) => skin.skinCode).join(',');
+      if (before !== after) {
+        this.lobbyTownRenderer.reset();
+      }
+      this.renderCurrentView();
+    } catch (error) {
+      console.warn('[LootChain] hero skins load failed', error);
+    }
+  }
+
+  /** 商店顶部分页:强化护符仍是旧版单页,其余在同一个 B 风格整页里切换。 */
+  private switchLobbyShopTab(kind: LobbyShopKind): void {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog || dialog.busy || dialog.kind === kind) {
+      return;
+    }
+    gameAudio.sfx('ui_click');
+    if (kind === 'skin' || kind === 'rune') {
+      this.openLobbyShopDialog(kind);
+      return;
+    }
+    dialog.kind = kind;
+    dialog.notice = kind === 'diamond' ? this.rechargePendingNotice() : '';
+    this.syncLobbyShopOverlay();
+  }
+
+  private selectShopSkin(skinCode: string): void {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog || dialog.busy) {
+      return;
+    }
+    dialog.skinSelected = skinCode;
+    dialog.skinPreview = false;
+    gameAudio.sfx('ui_click');
+    this.syncLobbyShopOverlay();
+  }
+
+  private toggleShopSkinPreview(): void {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog) {
+      return;
+    }
+    dialog.skinPreview = !dialog.skinPreview;
+    gameAudio.sfx('ui_click');
+    this.syncLobbyShopOverlay();
+  }
+
+  private buyShopSkin(skinCode: string): void {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog || dialog.busy) {
+      return;
+    }
+    dialog.busy = true;
+    this.syncLobbyShopOverlay();
+    void (async () => {
+      try {
+        const result = await this.api.heroSkin.buy(skinCode);
+        if (this.lobbyShopDialog === dialog) {
+          dialog.notice = result.message;
+        }
+        this.setStatus(result.message);
+        gameAudio.sfx('reward_claim');
+        await this.loadLobbyProfile(this.currentLobbyProfile().userId);
+        await this.loadHeroSkins();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.lobbyShopDialog === dialog) {
+          dialog.notice = `购买失败:${message}`;
+        }
+        gameAudio.sfx('ui_error');
+      } finally {
+        if (this.lobbyShopDialog === dialog) {
+          dialog.busy = false;
+        }
+        this.syncLobbyShopOverlay();
+      }
+    })();
+  }
+
+  /** 英雄详情 → 商店皮肤页(选中该皮肤)。 */
+  private openShopSkin(skinCode: string | null): void {
+    this.openLobbyShopDialog('skin');
+    if (this.lobbyShopDialog && skinCode) {
+      this.lobbyShopDialog.skinSelected = skinCode;
+      this.syncLobbyShopOverlay();
+    }
+  }
+
+  private currentHeroSkinSelection(): string | null | undefined {
+    return this.heroSkinSelection;
+  }
+
+  private selectHeroSkin(skinCode: string | null): void {
+    this.heroSkinSelection = skinCode;
+    this.heroSkinPreview = false;
+    gameAudio.sfx('ui_click');
+    this.renderCurrentView();
+  }
+
+  private heroSkinPreviewing(): boolean {
+    return this.heroSkinPreview;
+  }
+
+  private toggleHeroSkinPreview(): void {
+    this.heroSkinPreview = !this.heroSkinPreview;
+    gameAudio.sfx('ui_click');
+    this.renderCurrentView();
+  }
+
+  private heroSkinEquipping = false;
+
+  private equipHeroSkin(heroCode: string, skinCode: string | null): void {
+    if (this.heroSkinEquipping) {
+      return;
+    }
+    this.heroSkinEquipping = true;
+    void (async () => {
+      try {
+        const result = await this.api.heroSkin.equip(heroCode, skinCode);
+        this.setStatus(result.message);
+        gameAudio.sfx('reward_claim');
+        this.heroSkinSelection = undefined;
+        await this.loadHeroSkins();
+        // 战力随穿脱重算:名册 / 详情的战力回读
+        await this.loadLobbyHeroRoster(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.setStatus(`穿戴失败:${message}`);
+        gameAudio.sfx('ui_error');
+      } finally {
+        this.heroSkinEquipping = false;
+        this.renderCurrentView();
+      }
+    })();
   }
 
   private closeLobbyShopDialog(): void {
@@ -8788,6 +8954,8 @@ export class LootChainGameRoot extends Component {
     }
     void this.loadIdleSummary();
     void this.loadLobbyBadges();
+    // 皮肤目录(docs/56):穿着的皮肤影响野外 / 守卫里的英雄外观
+    void this.loadHeroSkins();
     // 登录态就绪后建立通知长连接(幂等;断线自动重连)。
     this.playerWsClient.connect();
   }

@@ -1,3 +1,4 @@
+import { HeroSkinApi } from './HeroSkinApi';
 import { AppConfig } from '../app/AppConfig';
 import { HttpClient } from '../net/HttpClient';
 import { TokenStore } from '../store/TokenStore';
@@ -58,6 +59,7 @@ export class LootChainApi {
   readonly mail = new MailApi(this.http);
   readonly gift = new GiftApi(this.http);
   readonly shop = new ShopApi(this.http);
+  readonly heroSkin = new HeroSkinApi(this.http);
 
   setApiBaseUrl(baseUrl: string): void {
     this.http.setBaseUrl(baseUrl);

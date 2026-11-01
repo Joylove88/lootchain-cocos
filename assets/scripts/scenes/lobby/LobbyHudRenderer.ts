@@ -1,3 +1,4 @@
+import { heroSkinCatalog } from './HeroSkins';
 import {
   BlockInputEvents,
   Button,
@@ -1722,7 +1723,8 @@ export class LobbyHudRenderer {
       return;
     }
     if (label === '商店') {
-      this.host.openLobbyShopDialog?.('gold');
+      // docs/56:有皮肤可卖时商店默认打开皮肤页
+      this.host.openLobbyShopDialog?.(heroSkinCatalog().length > 0 ? 'skin' : 'gold');
       return;
     }
     this.showUnopenedFeature(label, '场景玩法入口暂未开放；当前不会跳转到玩法页面，也不会调用玩法或经济接口。');

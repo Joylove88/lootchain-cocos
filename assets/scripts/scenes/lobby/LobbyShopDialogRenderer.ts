@@ -15,13 +15,15 @@ import {
   Vec3,
   tween,
 } from 'cc';
+import { HERO_SKIN_ASSETS, heroSkinCatalog, type HeroSkinInfo } from './HeroSkins';
+import { mountHeroSkinSpine } from './HeroSkinPreview';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
-import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { safeText } from '../UiTextFormatter';
 import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_ICON_RING_ASSET, REF_KIT, REF_SECTION_EMBLEM, REF_TITLE_STAR, refCardFrameK } from '../UiRefKit';
 
@@ -34,7 +36,7 @@ import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel,
  * 价格带钻石图标;2026-09-24 去掉底部余额行,改成醒目的结果横幅);字号按限时副本面板口径(标题 34、正文 18、卡名 20、数额 28)。
  * 作为全屏覆盖层挂在当前视图之上(大厅 / 锻造等功能页都能开),数据与写入全走服务端 ShopApi;购买成功由根节点做飘字 + 飞币动效。
  */
-export type LobbyShopKind = 'gold' | 'stamina' | 'diamond' | 'rune';
+export type LobbyShopKind = 'skin' | 'gold' | 'stamina' | 'diamond' | 'rune';
 
 export interface LobbyShopDialogState {
   kind: LobbyShopKind;
@@ -44,6 +46,9 @@ export interface LobbyShopDialogState {
   notice: string;
   /** 钻石页选中的充值通道(空=第一个可用通道)。 */
   channelCode?: string | null;
+  /** 皮肤页选中的皮肤(空 = 第一个)与是否在播动作预览(docs/56)。 */
+  skinSelected?: string | null;
+  skinPreview?: boolean;
 }
 
 export interface LobbyShopDialogHost {
@@ -55,6 +60,11 @@ export interface LobbyShopDialogHost {
   buyShopStamina(count: number, fromWorld?: Vec3): void;
   buyShopRune(count: number, fromWorld?: Vec3): void;
   rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void;
+  /** 皮肤页(docs/56):购买 / 选中 / 切换动作预览;顶部分页切换。 */
+  buyShopSkin(skinCode: string): void;
+  selectShopSkin(skinCode: string): void;
+  toggleShopSkinPreview(): void;
+  switchLobbyShopTab(kind: LobbyShopKind): void;
   selectShopRechargeChannel(channelCode: string): void;
   createUiNode(name: string): Node;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -104,7 +114,15 @@ const ICONS: Record<string, SpriteSpec> = {
   rune: { path: 'ui/forge/ai/icon_guard_rune/spriteFrame', aspect: 1 },
 };
 
-const TITLE: Record<LobbyShopKind, string> = { gold: '金币商店', stamina: '体力补充', diamond: '钻石充值', rune: '强化护符' };
+const TITLE: Record<LobbyShopKind, string> = { skin: '商店', gold: '金币商店', stamina: '体力补充', diamond: '钻石充值', rune: '强化护符' };
+/** 商店顶部分页(docs/56,原型 shop_skin_b):x = 原型左右沿,y 117、高 44。 */
+const SHOP_TABS: Array<{ kind: LobbyShopKind; label: string; l: number; r: number }> = [
+  { kind: 'skin', label: '皮肤', l: 123, r: 308 },
+  { kind: 'gold', label: '金币', l: 323, r: 520 },
+  { kind: 'stamina', label: '体力', l: 535, r: 732 },
+  { kind: 'diamond', label: '钻石充值', l: 747, r: 948 },
+  { kind: 'rune', label: '强化护符', l: 963, r: 1165 },
+];
 
 /**
  * 档位卡样式(2026-10-17 v2 用户「更还原原型图:金币图、宝箱图、边框都要一样」):
@@ -313,7 +331,8 @@ export class LobbyShopDialogRenderer {
         panelH = panelW * PANEL_FRAME.aspect;
       }
     }
-    if (phone && SHOP_GLASS && state.kind !== 'rune') {
+    // 11-01:皮肤页起电脑端也走 B 风格整页(顶部分页在 B 风格里);强化护符页仍是旧版
+    if (SHOP_GLASS && state.kind !== 'rune') {
       this.renderGlassShop(overlay, layout, state);
       return;
     }
@@ -445,7 +464,9 @@ export class LobbyShopDialogRenderer {
       chips.push({ key: 'stamina', icon: ICONS.stamina.path, value: `${stamina}/${maxStamina}`, width: 160 });
     }
     chips.push({ key: 'diamond', icon: ICONS.diamond.path, value: compactShopNumber(diamond), width: 177 });
-    const subtitle = state.kind === 'gold'
+    const subtitle = state.kind === 'skin'
+      ? '限定皮肤 · 穿戴后获得属性加成'
+      : state.kind === 'gold'
       ? '用钻石换取金币,档位越高赠送越多'
       : state.kind === 'stamina'
         ? `${catalog?.staminaOffer.diamondCost ?? 60} 钻石 = ${catalog?.staminaOffer.staminaGain ?? 30} 体力 · 每 5 分钟自然回复 1 点`
@@ -456,18 +477,34 @@ export class LobbyShopDialogRenderer {
             : '钻石充值暂未开放,敬请期待';
     mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], chips, close, close, { y: 57, chipRight: 1696, subtitle });
     const { FY, S } = glassProtoMap(panelW, panelH);
+    this.renderGlassTabs(panel, state.kind, panelW, panelH);
+    if (state.kind === 'skin') {
+      this.renderGlassSkin(panel, state, panelW, panelH, diamond);
+      this.renderGlassShopCovers(panel, state, panelW, panelH);
+      return;
+    }
+    // 其余页按原型 y 139 起排;顶部分页占了 95~139,整体内容挪下 46、等比缩到 93%(只缩不改排版)
+    const bodyScale = 0.93;
+    const body = this.host.addChildPlainNode(panel, 'LobbyShopBody', 0, FY(185) - bodyScale * FY(139), panelW, panelH);
+    body.setScale(bodyScale, bodyScale, 1);
     if (!catalog) {
       const l = glassLabel(this.host as never, panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, FY(420), S(22), GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
       l.fontSize = Math.round(S(22));
       return;
     }
     if (state.kind === 'gold') {
-      this.renderGlassGold(panel, catalog, panelW, panelH, state.busy, diamond);
+      this.renderGlassGold(body, catalog, panelW, panelH, state.busy, diamond);
     } else if (state.kind === 'stamina') {
-      this.renderGlassStamina(panel, catalog, panelW, panelH, state.busy, diamond);
+      this.renderGlassStamina(body, catalog, panelW, panelH, state.busy, diamond);
     } else {
-      this.renderGlassRecharge(panel, catalog, state, panelW, panelH);
+      this.renderGlassRecharge(body, catalog, state, panelW, panelH);
     }
+    this.renderGlassShopCovers(panel, state, panelW, panelH);
+  }
+
+  /** 结果横幅 + 处理中遮罩(各页共用)。 */
+  private renderGlassShopCovers(panel: Node, state: LobbyShopDialogState, panelW: number, panelH: number): void {
+    const { FY, S } = glassProtoMap(panelW, panelH);
     if (state.notice) {
       this.renderGlassNotice(panel, state.notice, FY(798), panelW, panelH);
     } else {
@@ -480,6 +517,161 @@ export class LobbyShopDialogRenderer {
       busyLabel.fontSize = Math.round(S(28));
     }
   }
+
+  /** 顶部分页(docs/56):选中 = 香槟实心胶囊深字,其余半透明胶囊;没有皮肤可卖时不显示「皮肤」。 */
+  private renderGlassTabs(panel: Node, active: LobbyShopKind, panelW: number, panelH: number): void {
+    const { RX, LX, FY, S, k } = glassProtoMap(panelW, panelH);
+    void RX;
+    const hasSkins = heroSkinCatalog().length > 0;
+    let shift = 0;
+    SHOP_TABS.forEach((tab) => {
+      if (tab.kind === 'skin' && !hasSkins) {
+        shift = tab.r - tab.l + 15;
+        return;
+      }
+      const l = LX(tab.l - shift);
+      const r = LX(tab.r - shift);
+      const selected = tab.kind === active;
+      mountGlassButton(this.host as never, panel, `LobbyShopTab_${tab.kind}`, tab.label, (l + r) / 2, FY(117), r - l, S(44), k,
+        selected ? 'primary' : 'secondary', selected ? undefined : () => this.host.switchLobbyShopTab(tab.kind), 22);
+    });
+  }
+
+  /**
+   * 皮肤页(docs/56,原型 shop_skin_b):左 = 大图展示(或动作预览);右 = 名称 / 所属英雄 / 穿戴属性 / 说明 / 价格 + 购买;下 = 皮肤缩略条。
+   */
+  private renderGlassSkin(panel: Node, state: LobbyShopDialogState, panelW: number, panelH: number, diamond: number): void {
+    const { LX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host as never, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const skins = heroSkinCatalog();
+    if (skins.length === 0) {
+      T(panel, 'LobbyShopSkinEmpty', '皮肤读取中…', 0, FY(420), 22, GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    const skin: HeroSkinInfo = skins.find((entry) => entry.skinCode === state.skinSelected) ?? skins[0];
+    const assets = HERO_SKIN_ASSETS[skin.skinCode];
+    // 左:展示框 108..1155 × 153..703
+    const showX = (LX(108) + LX(1155)) / 2;
+    const showY = (FY(153) + FY(703)) / 2;
+    const showW = LX(1155) - LX(108);
+    const showH = FY(153) - FY(703);
+    const show = mountGlassPanel(this.host as never, panel, 'LobbyShopSkinShow', showX, showY, showW, showH, k);
+    if (state.skinPreview && assets) {
+      mountHeroSkinSpine(this.host, show, assets, LX(640) - showX, FY(670) - showY, S(440));
+    } else if (assets) {
+      const artH = S(536);
+      const artW = artH * (724 / 1236);
+      this.host.addSprite('LobbyShopSkinArt', assets.art, LX(700) - showX, FY(430) - showY, artW, artH, show);
+    }
+    mountGlassButton(this.host as never, show, 'LobbyShopSkinPreview', state.skinPreview ? '查看立绘' : '预览动作 ▶', LX(229) - showX, FY(644) - showY, S(194), S(56), k,
+      'secondary', () => this.host.toggleShopSkinPreview(), 20);
+
+    // 右:信息框 1170..1769 × 155..703
+    const infoX = (LX(1170) + LX(1769)) / 2;
+    const infoY = (FY(155) + FY(703)) / 2;
+    const info = mountGlassPanel(this.host as never, panel, 'LobbyShopSkinInfo', infoX, infoY, LX(1769) - LX(1170), FY(155) - FY(703), k);
+    const ix = (px: number): number => LX(px) - infoX;
+    const iy = (py: number): number => FY(py) - infoY;
+    T(info, 'Name', skin.skinName, ix(1216), iy(205), 46, GLASS_COLOR.text, S(500), HorizontalTextAlignment.LEFT, true);
+    const heroLine = `${assets?.heroName ?? skin.heroCode} · ${assets?.rarity ?? ''}`;
+    const heroLabel = T(info, 'Hero', heroLine, ix(1216), iy(258), 26, GLASS_COLOR.sub, S(300));
+    if (skin.tag) {
+      let heroW = 0;
+      for (const ch of Array.from(heroLine)) {
+        heroW += /[　-鿿＀-￯]/.test(ch) ? heroLabel.fontSize : heroLabel.fontSize * 0.56;
+      }
+      this.skinTag(info, 'Tag', `${skin.tag}皮肤`, ix(1216) + heroW + S(22), iy(258), S(36), S(19));
+    }
+    mountGlassFadeLine(this.host as never, info, 'Divider', ix(1470), iy(293), S(520), Math.max(1, S(1.5)), new Color(150, 158, 172, 150));
+    mountGlassSectionHeader(this.host as never, info, 'StatSection', '穿戴属性', ix(1219), iy(327), k, 26);
+    const stats: Array<{ icon: string; label: string; pct: number }> = [
+      { icon: GLASS_STAT_ICON.atk, label: '攻击', pct: skin.attackPct },
+      { icon: GLASS_STAT_ICON.hp, label: '生命', pct: skin.hpPct },
+    ].filter((entry) => entry.pct > 0);
+    stats.forEach((stat, index) => {
+      const y = 375 + index * 45;
+      const icon = this.host.addSprite(`StatIcon_${index}`, stat.icon, ix(1258), iy(y), S(30), S(30), info);
+      if (icon) {
+        icon.color = GLASS_COLOR.gold;
+      }
+      T(info, `StatLabel_${index}`, stat.label, ix(1295), iy(y), 22, GLASS_COLOR.sub, S(120));
+      T(info, `StatValue_${index}`, `+${Math.round(stat.pct * 1000) / 10}%`, ix(1433), iy(y), 24, GLASS_COLOR.green, S(140), HorizontalTextAlignment.LEFT, true);
+      mountGlassFadeLine(this.host as never, info, `StatLine_${index}`, ix(1380), iy(y + 22), S(320), Math.max(1, S(1)), new Color(150, 158, 172, 70));
+    });
+    mountGlassSectionHeader(this.host as never, info, 'DescSection', '皮肤说明', ix(1219), iy(482), k, 26);
+    const descFont = Math.round(S(20));
+    // LEFT 对齐时 x 是文字左沿(UiPrimitiveFactory 按对齐平移框)
+    const desc = this.host.addChildLabel(info, 'Desc', skin.description, ix(1232), iy(543), descFont, GLASS_COLOR.sub, new Size(ix(1745) - ix(1232), S(70)), HorizontalTextAlignment.LEFT);
+    desc.enableWrapText = true;
+    desc.lineHeight = descFont + 10;
+    desc.overflow = Label.Overflow.SHRINK;
+    // 价格胶囊 + 购买钮
+    const priceX = (ix(1208) + ix(1475)) / 2;
+    const price = this.host.addChildPlainNode(info, 'Price', priceX, iy(629), ix(1475) - ix(1208), S(62));
+    mountGlassSlice(this.host as never, price, 'Pill', GLASS_SLICES.pillSecondary, 0, 0, ix(1475) - ix(1208), S(62), k);
+    this.host.addSprite('DiamondIcon', ICONS.diamond.path, S(-42), 0, S(36), S(36), price);
+    T(price, 'Value', Math.round(skin.priceDiamond).toLocaleString('en-US'), S(-12), 0, 28, GLASS_COLOR.text, S(140), HorizontalTextAlignment.LEFT, true);
+    const canAfford = diamond >= skin.priceDiamond;
+    const buyText = skin.equipped ? '已穿戴' : skin.owned ? '已拥有' : '购买';
+    const buyKind = skin.owned ? 'disabled' : canAfford ? 'primary' : 'primaryDim';
+    mountGlassButton(this.host as never, info, 'Buy', buyText, (ix(1493) + ix(1740)) / 2, iy(629), ix(1740) - ix(1493), S(62), k, buyKind,
+      skin.owned ? undefined : () => this.host.buyShopSkin(skin.skinCode), 28);
+    T(info, 'Hint', skin.owned ? '已拥有 · 在英雄详情 › 皮肤 中穿戴' : canAfford ? '购买后可在英雄详情 › 皮肤 中穿戴' : '钻石不足 · 可在「钻石充值」页补充',
+      (ix(1210) + ix(1740)) / 2, iy(682), 18, GLASS_COLOR.sub, ix(1740) - ix(1210), HorizontalTextAlignment.CENTER);
+
+    // 下:缩略条 108..1769 × 716..815
+    const stripX = (LX(108) + LX(1769)) / 2;
+    const stripY = (FY(716) + FY(815)) / 2;
+    const strip = mountGlassPanel(this.host as never, panel, 'LobbyShopSkinStrip', stripX, stripY, LX(1769) - LX(108), FY(716) - FY(815), k);
+    skins.forEach((entry, index) => {
+      const a = HERO_SKIN_ASSETS[entry.skinCode];
+      const cx = LX(179 + index * 128) - stripX;
+      const thumb = this.host.addChildPlainNode(strip, `Thumb_${entry.skinCode}`, cx, 0, S(112), S(92));
+      mountGlassSlice(this.host as never, thumb, 'Frame', entry.skinCode === skin.skinCode ? GLASS_SLICES.frameSel : GLASS_SLICES.frame, 0, 0, S(112), S(92), k);
+      if (a) {
+        const mask = this.host.addChildPlainNode(thumb, 'Mask', 0, 0, S(104), S(84));
+        mask.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+        this.host.addSprite('Bust', a.bust, 0, S(4), S(104), S(104), mask);
+      }
+      const nameBg = this.host.addChildPlainNode(thumb, 'NameBg', 0, -S(32), S(104), S(22));
+      const g = nameBg.addComponent(Graphics);
+      g.fillColor = new Color(10, 12, 18, 190);
+      g.rect(-S(52), -S(11), S(104), S(22));
+      g.fill();
+      T(thumb, 'Name', entry.skinName, 0, -S(32), 15, GLASS_COLOR.text, S(100), HorizontalTextAlignment.CENTER);
+      if (entry.skinCode !== skin.skinCode) {
+        thumb.addComponent(Button);
+        thumb.on(Button.EventType.CLICK, () => this.host.selectShopSkin(entry.skinCode));
+      }
+    });
+  }
+
+  /** 皮肤角标(暗红细边 + 红字,原型「限定皮肤」)。 */
+  private skinTag(parent: Node, name: string, text: string, leftX: number, y: number, h: number, size: number): void {
+    let w = 0;
+    for (const ch of Array.from(text)) {
+      w += /[　-鿿＀-￯]/.test(ch) ? size : size * 0.56;
+    }
+    w += h * 0.9;
+    const node = this.host.addChildPlainNode(parent, name, leftX + w / 2, y, w, h);
+    const g = node.addComponent(Graphics);
+    g.fillColor = new Color(90, 22, 26, 150);
+    g.roundRect(-w / 2, -h / 2, w, h, h * 0.22);
+    g.fill();
+    g.strokeColor = new Color(196, 72, 70, 220);
+    g.lineWidth = Math.max(1, h * 0.04);
+    g.roundRect(-w / 2, -h / 2, w, h, h * 0.22);
+    g.stroke();
+    const label = glassLabel(this.host as never, node, 'Text', text, 0, 0, size, new Color(236, 120, 112, 255), w, HorizontalTextAlignment.CENTER);
+    label.fontSize = Math.round(size);
+  }
+
+
 
   /**
    * 2026-10-29 B 风格结果横幅(原型 shop_notice_ok_b / shop_notice_err_b):卡片同材质的玻璃胶囊居中,颜色只在小图标 / 细线上。

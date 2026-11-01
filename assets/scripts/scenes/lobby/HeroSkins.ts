@@ -1,61 +1,87 @@
 /**
- * 英雄皮肤(2026-11-01 试穿阶段):皮肤 = 换了贴图的同一套战斗骨骼(Meowa 按 GPT 原型换皮,动作 / 技能动作全保留)。
- * 现在只有「本地试穿」开关(localStorage lootchain.heroSkin = { 英雄码: 皮肤码 }),玩家没有入口;
- * 正式的获得 / 拥有 / 切换(商店、英雄详情、服务端保存)待原型确认后再做。
- * 生效范围:走 resolveBattleUnitSpineResource 的地方(野外、守卫、掠夺、布阵);英雄详情页立绘舞台暂不换。
+ * 英雄皮肤(docs/56,2026-11-01):皮肤 = 换了贴图的同一套战斗骨骼(Meowa 按 GPT 原型换皮,动作 / 技能动作全保留)。
+ * 本表只登记客户端资源(skinCode → 骨骼 / 外挂特效换色版 / 立绘 / 头像);名称、属性、价格、拥有 / 穿着以服务端
+ * GET /api/player/hero-skins 为准,由游戏根拿到后 setHeroSkinCatalog 灌进来。
+ * 生效范围:走 resolveBattleUnitSpineResource 的地方(野外、守卫、掠夺、布阵)+ 野外外挂特效;英雄详情页「皮肤」页签展示立绘。
  */
-export interface HeroSkinDef {
-  code: string;
-  name: string;
-  /** 骨骼资源路径(resources 下,不带扩展名)。 */
+export interface HeroSkinAssets {
+  heroCode: string;
+  /** 所属英雄显示名 / 稀有度(商店卡片用)。 */
+  heroName: string;
+  rarity: string;
+  /** 战斗骨骼资源路径(resources 下,不带扩展名)。 */
   spine: string;
   /** 外挂特效换色版(按原 effect 码替换:普攻弹道 / 命中 / 战技不在骨骼里,不换就还是原配色)。 */
   fx?: Record<string, string>;
+  /** 立绘(透明底,商店大图 / 英雄详情中间)。 */
+  art: string;
+  /** 头像(方形)。 */
+  bust: string;
 }
 
-export const HERO_SKINS: Record<string, HeroSkinDef[]> = {
+/** 服务端目录一项(HeroSkinApi)。 */
+export interface HeroSkinInfo {
+  skinCode: string;
+  heroCode: string;
+  skinName: string;
+  tag: string;
+  attackPct: number;
+  hpPct: number;
+  priceDiamond: number;
+  description: string;
+  owned: boolean;
+  equipped: boolean;
+}
+
+export const HERO_SKIN_ASSETS: Record<string, HeroSkinAssets> = {
   // 血月契约:外挂特效是原版紫色转血红(fx_tex_repack --hue 80 --sv 1.35,0.9),目录 bm_ 开头避开开局包前缀
-  SR_WITCH_03: [{
-    code: 'bloodmoon', name: '血月契约', spine: 'spine/hero_skin/act_1028_bloodmoon/act_1028',
+  SKIN_WITCH03_BLOODMOON: {
+    heroCode: 'SR_WITCH_03',
+    heroName: '契约魔女',
+    rarity: 'SR',
+    spine: 'spine/hero_skin/act_1028_bloodmoon/act_1028',
     fx: { fx_150079_laierde_fly: 'bm_laierde_fly', fx_150079_laierde_hit: 'bm_laierde_hit', v2_a47_217: 'bm_a47_217' },
-  }],
+    art: 'ui/hero_skin/bloodmoon_art/spriteFrame',
+    bust: 'ui/hero_skin/bloodmoon_bust/spriteFrame',
+  },
 };
 
-const STORAGE_KEY = 'lootchain.heroSkin';
+/** 默认外观头像(皮肤页「默认」一行)。没登记的英雄用名册卡面。 */
+export const HERO_DEFAULT_BUST: Record<string, string> = {
+  SR_WITCH_03: 'ui/hero_skin/default_SR_WITCH_03_bust/spriteFrame',
+};
 
-function readEquipped(): Record<string, string> {
-  try {
-    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) as unknown : null;
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
-  } catch (error) {
-    void error;
-    return {};
-  }
+/** 皮肤素材目录(商店皮肤页 / 英雄详情皮肤页加载门、穿着皮肤的英雄进图前一起下)。 */
+export function heroSkinPackPrefixes(skinCode?: string | null): string[] {
+  const list = skinCode ? [HERO_SKIN_ASSETS[skinCode]].filter(Boolean) : Object.values(HERO_SKIN_ASSETS);
+  const out = new Set<string>(['ui/hero_skin']);
+  list.forEach((a) => {
+    out.add(a.spine.slice(0, a.spine.lastIndexOf('/')));
+    Object.values(a.fx ?? {}).forEach((code) => out.add(`spine/effect/${code}`));
+  });
+  return Array.from(out);
 }
 
-/** 这名英雄当前穿着的皮肤(没穿 / 皮肤不存在 = null)。 */
-export function equippedHeroSkin(heroCode: string | null | undefined): HeroSkinDef | null {
+let catalog: HeroSkinInfo[] = [];
+
+/** 游戏根拿到服务端目录后调用(登录 / 购买 / 穿戴后刷新)。 */
+export function setHeroSkinCatalog(list: HeroSkinInfo[]): void {
+  catalog = list.filter((skin) => !!HERO_SKIN_ASSETS[skin.skinCode]);
+}
+
+export function heroSkinCatalog(): HeroSkinInfo[] {
+  return catalog;
+}
+
+/** 这名英雄的全部皮肤(客户端有资源的才算)。 */
+export function heroSkinsOf(heroCode: string | null | undefined): HeroSkinInfo[] {
   const code = (heroCode || '').trim().toUpperCase();
-  if (!code) {
-    return null;
-  }
-  const skinCode = readEquipped()[code];
-  return (HERO_SKINS[code] ?? []).find((skin) => skin.code === skinCode) ?? null;
+  return catalog.filter((skin) => skin.heroCode.toUpperCase() === code);
 }
 
-/** 本地试穿 / 脱下(skinCode = null 脱下)。 */
-export function setEquippedHeroSkin(heroCode: string, skinCode: string | null): void {
-  try {
-    const map = readEquipped();
-    const code = heroCode.trim().toUpperCase();
-    if (skinCode) {
-      map[code] = skinCode;
-    } else {
-      delete map[code];
-    }
-    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch (error) {
-    void error;
-  }
+/** 这名英雄当前穿着的皮肤资源(没穿 = null)。 */
+export function equippedHeroSkin(heroCode: string | null | undefined): (HeroSkinAssets & { skinCode: string }) | null {
+  const skin = heroSkinsOf(heroCode).find((entry) => entry.equipped);
+  const assets = skin ? HERO_SKIN_ASSETS[skin.skinCode] : null;
+  return skin && assets ? { ...assets, skinCode: skin.skinCode } : null;
 }
