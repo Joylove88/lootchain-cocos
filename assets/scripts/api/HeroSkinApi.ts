@@ -35,6 +35,7 @@ function readSkin(value: unknown): HeroSkinInfo | null {
     description: readText(r, 'description', 255, ''),
     owned: r.owned === true,
     equipped: r.equipped === true,
+    powerBonus: readNumber(r.powerBonus, 0, 1e12),
   };
 }
 

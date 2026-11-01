@@ -20,7 +20,7 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
 import { mountRefHeaderBand, mountRefPlate, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_INFO_BANNER, REF_KIT, REF_SECTION_EMBLEM, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassPanel, mountGlassScrollBar, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassPanel, mountGlassScrollBar, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { townProtoFrame } from './LobbyTownHudProto';
 
 /** 服务端邮件列表上限(PlayerMailServiceImpl.MAX_LIST 50),收件箱头「N / 50」用。 */
@@ -280,6 +280,11 @@ export class LobbyQuestMailPanelRenderer {
 
   // ── 任务面板(2026-09-10 参考图素材化改版:恶魔犄角哥特弹框,叠在活的大厅之上) ──
   renderQuestPanel(layout: UiLayout): void {
+    // 2026-11-01 用户「横版做的新主题界面 web 端也要同步」:B 风格任务页电脑端也用
+    if (QUEST_GLASS && glassStyleEnabled()) {
+      this.renderQuestPanelGlass(layout);
+      return;
+    }
     if (isPhoneDesign()) {
       this.renderQuestPanelPhone(layout);
       return;

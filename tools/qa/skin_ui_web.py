@@ -49,6 +49,12 @@ async def main():
                 return res.get('value') if 'value' in res else json.dumps(res)[:300]
 
             async def shot(name):
+                # 下载页挡着时先等它走完(新配置首访会补下皮肤 / 英雄素材)
+                for _ in range(240):
+                    if await ev("let b=false; root.node.walk(n=>{ if(n.name==='PackLoading' || n.name==='SceneAssetLoadingTip') b=true; }); return b ? 'wait' : 'ok';") == 'ok':
+                        break
+                    await asyncio.sleep(1)
+                await asyncio.sleep(1)
                 m = await call('Page.captureScreenshot', {'format': 'jpeg', 'quality': 85}, 120)
                 if 'result' in m:
                     open(os.path.join(OUT, f'{name}.jpg'), 'wb').write(base64.b64decode(m['result']['data']))
@@ -114,6 +120,7 @@ async def main():
             print('witch hero id', hid, flush=True)
             await ev(f"root.openLobbyHeroDetail({hid}); return 1;")
             await asyncio.sleep(6)
+            await shot('04b_hero_attr')
             await ev("root.selectLobbyHeroDetailTab('skin'); return 1;")
             await asyncio.sleep(6)
             await shot('05_hero_skin_default')
@@ -125,10 +132,24 @@ async def main():
             await asyncio.sleep(4)
             await shot('07_hero_skin_equipped')
             print('after equip power', await ev("const h = root.lobbyHeroRosterLoader.currentState().heroes.find(x => x.heroCode === 'SR_WITCH_03'); return h ? h.power : 0;"), flush=True)
+            # 点「已穿戴」提示战力加成(11-01)
+            await asyncio.sleep(3)
+            await ev("root.remindHeroSkinEquipped('SKIN_WITCH03_BLOODMOON'); return 1;")
+            await asyncio.sleep(0.6)
+            await shot('07b_hero_skin_remind')
+            # 默认已是动作预览;切到静态立绘
+            await ev("root.toggleHeroSkinPreview(); return 1;")
+            await asyncio.sleep(4)
+            await shot('08_hero_skin_static')
             await ev("root.toggleHeroSkinPreview(); return 1;")
             await asyncio.sleep(6)
-            await shot('08_hero_skin_preview')
             print('preview probe', await ev("let h=null; root.node.walk(n=>{ if(!h && n.name==='HeroSkinSpinePreview') h=n; }); if(!h) return 'none'; const sn=h.children[0]; const sk=sn.getComponent('sp.Skeleton'); const st=h.parent; const ut=st.getComponent('cc.UITransform'); return JSON.stringify({holder:[Math.round(h.position.x),Math.round(h.position.y)], stageH: ut && Math.round(ut.height), spine:[Math.round(sn.position.x),Math.round(sn.position.y)], scale: sn.scale.x.toFixed(4), anim: sk && sk.animation, wpos: [Math.round(sn.worldPosition.x), Math.round(sn.worldPosition.y)], data: sk && sk.skeletonData && sk.skeletonData.name});"), flush=True)
+            # 任务页(B 风格电脑端也用)
+            await ev("root.closeLobbyHeroDetailPanel(); return 1;")
+            await asyncio.sleep(2)
+            await ev("root.openLobbyQuestPanel(); return 1;")
+            await asyncio.sleep(6)
+            await shot('09_quest')
     finally:
         proc.kill()
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)

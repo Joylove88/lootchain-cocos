@@ -50,7 +50,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassFrame, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, glassStyleEnabled, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassFrame, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -497,6 +497,7 @@ export interface LobbyHeroDetailPanelHost {
   currentHeroSkinSelection(): string | null | undefined;
   selectHeroSkin(skinCode: string | null): void;
   equipHeroSkin(heroCode: string, skinCode: string | null): void;
+  remindHeroSkinEquipped(skinCode: string | null): void;
   openShopSkin(skinCode: string | null): void;
   heroSkinPreviewing(): boolean;
   toggleHeroSkinPreview(): void;
@@ -656,10 +657,12 @@ export class LobbyHeroDetailPanelRenderer {
     }
     const scale = Math.max(0.62, Math.min(1, layout.uiScale));
     const phone = isPhoneDesign();
-    const compact = !phone && (layout.safeWidth < 1154 * scale || layout.safeHeight < 520 * scale);
+    const compact = !phone && !(HERO_GLASS && glassStyleEnabled()) && (layout.safeWidth < 1154 * scale || layout.safeHeight < 520 * scale);
     const panelWidth = Math.max(320 * scale, layout.stageWidth);
     const panelHeight = Math.max(260 * scale, layout.stageHeight);
-    this.phoneFrame = phone ? this.resolvePhoneFrame(panelWidth, panelHeight, scale) : null;
+    // 2026-11-01 用户「横版做的新主题界面 web 端也要同步」:B 风格英雄详情电脑端也用(原型等比 contain,居中)
+    const glassPc = !phone && HERO_GLASS && glassStyleEnabled();
+    this.phoneFrame = phone || glassPc ? this.resolvePhoneFrame(panelWidth, panelHeight, scale, glassPc) : null;
     this.warmDetailArtOnce();
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
@@ -693,7 +696,16 @@ export class LobbyHeroDetailPanelRenderer {
       18 * scale,
     );
     const protoBgK = this.proto ? this.proto.k : 0;
-    if (!(protoBgK > 0 && this.host.addSprite('LobbyHeroDetailBackdropSprite', HERO_GLASS && this.phoneFrame ? HERO_GLASS_BG : HERO_PROTO_BG.path, 0, 0, HERO_PROTO_BG.w * protoBgK, HERO_PROTO_BG.h * protoBgK, panel))) {
+    // 电脑端原型取 contain(上下留空):背景放大到铺满,并平移让法阵圆心(700, 640)仍对准 contain 下的立绘脚底
+    let bgK = protoBgK;
+    let bgX = 0;
+    let bgY = 0;
+    if (protoBgK > 0 && glassPc) {
+      bgK = Math.max(protoBgK, (panelWidth / 2 - 235 * protoBgK) / 700, (panelHeight / 2 - 219.5 * protoBgK) / 201) * 1.01;
+      bgX = 235 * (bgK - protoBgK);
+      bgY = 219.5 * (bgK - protoBgK);
+    }
+    if (!(protoBgK > 0 && this.host.addSprite('LobbyHeroDetailBackdropSprite', HERO_GLASS && this.phoneFrame ? HERO_GLASS_BG : HERO_PROTO_BG.path, bgX, bgY, HERO_PROTO_BG.w * bgK, HERO_PROTO_BG.h * bgK, panel))) {
       this.host.addSprite('LobbyHeroDetailBackdropSprite', LOBBY_HERO_DETAIL_BACKDROP_ASSET, 0, 0, panelWidth, panelHeight, panel);
       this.drawPanelShade(panel, panelWidth, panelHeight, scale);
     } else {
@@ -2028,9 +2040,10 @@ export class LobbyHeroDetailPanelRenderer {
    * 手机横屏分区(设计高 720):左侧竖排页签(避开左上标题横幅)、右栏宽约 42% 屏宽从货币栏下方贴到底边、
    * 中间立绘区;名牌压在立绘区底部,立绘脚底落在名牌顶上方,头顶不出舞台。
    */
-  private resolvePhoneFrame(width: number, height: number, scale: number): HeroDetailPhoneFrame {
+  private resolvePhoneFrame(width: number, height: number, scale: number, contain = false): HeroDetailPhoneFrame {
     // 2026-10-22 原型 1:1:整屏原型 1870×841,k 取 cover;左页签贴左缘、右栏贴右缘(窄屏右栏宽封顶 0.44W)、立绘 / 名牌按中心映射与背景法阵对齐
-    const k = Math.max(width / 1870, height / 841);
+    // 电脑端(16:9 比原型窄)取 contain,否则左页签 / 立绘 / 右栏横向挤在一起
+    const k = contain ? Math.min(width / 1870, height / 841) : Math.max(width / 1870, height / 841);
     this.proto = { k, width, height };
     const FX = (px: number): number => (px - 935) * k;
     const FY = (py: number): number => (420.5 - py) * k;
@@ -5931,10 +5944,12 @@ export class LobbyHeroDetailPanelRenderer {
     const stage = this.host.addChildPlainNode(parent, 'LobbyHeroDetailSkinStage', frame.artX, frame.artY, frame.artWidth, frame.artHeight);
     const groundY = this.resolveHeroDetailGroundY(frame.artHeight);
     if (this.host.heroSkinPreviewing()) {
-      mountHeroSkinSpine(this.host, stage, assets, 0, groundY + frame.artHeight * 0.06, frame.artHeight * 0.6);
+      // 11-01 用户「这里也需要放大」:0.6 → 1.15 倍舞台高(实测角色约与默认立绘同高)
+      mountHeroSkinSpine(this.host, stage, assets, 0, groundY + frame.artHeight * 0.04, frame.artHeight * 1.15);
     } else {
       // 立绘透明底,脚底贴名牌上沿(与原立绘舞台同一条地平线)
-      const artH = frame.artHeight * 0.98;
+      // 头顶不出舞台(电脑端 contain 舞台更高,0.98 倍会顶出屏幕上沿)
+      const artH = Math.min(frame.artHeight * 0.98, (frame.artHeight / 2 - groundY - 40) / 0.98);
       const artW = artH * (724 / 1236);
       this.host.addSprite('LobbyHeroDetailSkinArt', assets.art, 0, groundY + artH / 2 - artH * 0.02, artW, artH, stage);
     }
@@ -6024,19 +6039,31 @@ export class LobbyHeroDetailPanelRenderer {
       glassLabel(this.host, root, `SkinStatLabel_${index}`, stat.label, RX(1297), FY(y), F(22), GLASS_COLOR.sub, S(120), HorizontalTextAlignment.LEFT);
       glassLabel(this.host, root, `SkinStatValue_${index}`, `+${Math.round(stat.pct * 1000) / 10}%`, RX(1780), FY(y), F(24), GLASS_COLOR.green, S(140), HorizontalTextAlignment.RIGHT, true);
     });
-    glassLabel(this.host, root, 'SkinStatNote', '穿戴后在野外、守卫、掠夺中生效', (RX(1217) + RX(1806)) / 2, FY(662), F(18), GLASS_COLOR.sub, S(560), HorizontalTextAlignment.CENTER);
+    const powerBonus = selected?.powerBonus ?? 0;
+    if (powerBonus > 0) {
+      glassLabel(this.host, root, 'SkinStatNote', '穿戴后在野外、守卫、掠夺中生效', RX(1217), FY(662), F(18), GLASS_COLOR.sub, S(380), HorizontalTextAlignment.LEFT);
+      glassLabel(this.host, root, 'SkinStatPower', `战力 +${powerBonus}`, RX(1780), FY(662), F(22), GLASS_COLOR.gold, S(200), HorizontalTextAlignment.RIGHT, true);
+    } else {
+      glassLabel(this.host, root, 'SkinStatNote', '穿戴后在野外、守卫、掠夺中生效', (RX(1217) + RX(1806)) / 2, FY(662), F(18), GLASS_COLOR.sub, S(560), HorizontalTextAlignment.CENTER);
+    }
     // 底部按钮:预览动作 / 穿戴(未拥有 = 前往购买)
-    mountGlassButton(this.host, root, 'SkinPreviewButton', this.host.heroSkinPreviewing() ? '查看立绘' : '预览动作', (RX(1197) + RX(1506)) / 2, FY(750), RX(1506) - RX(1197), S(64), k,
+    mountGlassButton(this.host, root, 'SkinPreviewButton', selected && this.host.heroSkinPreviewing() ? '查看立绘' : '预览动作', (RX(1197) + RX(1506)) / 2, FY(750), RX(1506) - RX(1197), S(64), k,
       selected ? 'secondary' : 'disabled', selected ? () => this.host.toggleHeroSkinPreview() : undefined, 24);
     const isEquipped = selected ? selected.equipped : !equipped;
     const ownedOrDefault = !selected || selected.owned;
     const mainText = isEquipped ? '已穿戴' : ownedOrDefault ? '穿戴' : '前往购买';
-    mountGlassButton(this.host, root, 'SkinEquipButton', mainText, (RX(1521) + RX(1824)) / 2, FY(750), RX(1824) - RX(1521), S(64), k,
+    const equipButton = mountGlassButton(this.host, root, 'SkinEquipButton', mainText, (RX(1521) + RX(1824)) / 2, FY(750), RX(1824) - RX(1521), S(64), k,
       isEquipped ? 'primaryOff' : 'primary',
       isEquipped ? undefined : ownedOrDefault
         ? () => this.host.equipHeroSkin(hero.heroCode, selected?.skinCode ?? null)
         : () => this.host.openShopSkin(selected?.skinCode ?? null),
       24);
+    if (isEquipped) {
+      // 「已穿戴」保持暗字外观,但点了提示这套皮肤加的战力(11-01 用户要求)
+      equipButton.addComponent(Button);
+      equipButton.on(Button.EventType.CLICK, () => this.host.remindHeroSkinEquipped(selected?.skinCode ?? null), this);
+      this.host.applyImageButtonFeedback(equipButton, 1.03, 0.97);
+    }
   }
 
   /** 皮肤角标(暗红细边 + 红字,原型「限定」)。 */

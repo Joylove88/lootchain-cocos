@@ -562,7 +562,7 @@ export class LobbyShopDialogRenderer {
     const showH = FY(153) - FY(703);
     const show = mountGlassPanel(this.host as never, panel, 'LobbyShopSkinShow', showX, showY, showW, showH, k);
     if (state.skinPreview && assets) {
-      mountHeroSkinSpine(this.host, show, assets, LX(640) - showX, FY(670) - showY, S(440));
+      mountHeroSkinSpine(this.host, show, assets, LX(640) - showX, FY(670) - showY, S(572));
     } else if (assets) {
       const artH = S(536);
       const artW = artH * (724 / 1236);

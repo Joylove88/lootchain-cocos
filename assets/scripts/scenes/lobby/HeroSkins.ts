@@ -31,6 +31,8 @@ export interface HeroSkinInfo {
   description: string;
   owned: boolean;
   equipped: boolean;
+  /** 穿上后这名英雄增加的战力(服务端按玩家该英雄最高战力实例算;没有该英雄 = 0)。 */
+  powerBonus: number;
 }
 
 export const HERO_SKIN_ASSETS: Record<string, HeroSkinAssets> = {

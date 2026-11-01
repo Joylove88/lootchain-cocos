@@ -499,7 +499,8 @@ export class LootChainGameRoot extends Component {
   private lobbyHeroDetailTab: HeroDetailTab = 'attr';
   /** 英雄详情皮肤页(docs/56):选中的皮肤(null = 默认;undefined = 未选,按穿着的)/ 是否在播动作预览。 */
   private heroSkinSelection: string | null | undefined = undefined;
-  private heroSkinPreview = false;
+  // 皮肤页默认直接播动作预览(11-01 用户「静态图默认直接展示动态立绘」),按钮切到静态立绘
+  private heroSkinPreview = true;
   private lobbyHeroLevelUpBusyId: number | null = null;
   // 洗练弹窗状态:打开标记 + 锁定词条 id 集合(user_hero_attr.id);切换英雄/关闭详情时重置。
   private lobbyHeroRefineDialogOpen = false;
@@ -5064,7 +5065,7 @@ export class LootChainGameRoot extends Component {
   private selectLobbyHeroDetailTab(tab: HeroDetailTab): void {
     if (tab === 'skin') {
       this.heroSkinSelection = undefined;
-      this.heroSkinPreview = false;
+      this.heroSkinPreview = true;
       if (!packResourcesReady(heroSkinPackPrefixes())) {
         this.openWithPackGate(heroSkinPackPrefixes(), '正在加载皮肤素材', () => this.selectLobbyHeroDetailTab('skin'));
         return;
@@ -6909,7 +6910,7 @@ export class LootChainGameRoot extends Component {
 
   private selectHeroSkin(skinCode: string | null): void {
     this.heroSkinSelection = skinCode;
-    this.heroSkinPreview = false;
+    this.heroSkinPreview = true;
     gameAudio.sfx('ui_click');
     this.renderCurrentView();
   }
@@ -6926,15 +6927,34 @@ export class LootChainGameRoot extends Component {
 
   private heroSkinEquipping = false;
 
+  /** 点「已穿戴」:提示这套皮肤正在加的战力。 */
+  private remindHeroSkinEquipped(skinCode: string | null): void {
+    const skin = skinCode ? heroSkinCatalog().find((entry) => entry.skinCode === skinCode) : null;
+    gameAudio.sfx('ui_click');
+    if (!skin) {
+      this.spawnRewardFloats(['当前为默认外观']);
+      return;
+    }
+    this.spawnRewardFloats([skin.powerBonus > 0 ? `已穿戴「${skin.skinName}」:战力 +${skin.powerBonus}` : `已穿戴「${skin.skinName}」`]);
+  }
+
   private equipHeroSkin(heroCode: string, skinCode: string | null): void {
     if (this.heroSkinEquipping) {
       return;
     }
     this.heroSkinEquipping = true;
+    const beforePower = this.lobbyHeroRosterLoader.currentState().heroes
+      .filter((hero) => hero.heroCode === heroCode)
+      .reduce((best, hero) => Math.max(best, Number(hero.power) || 0), 0);
     void (async () => {
       try {
         const result = await this.api.heroSkin.equip(heroCode, skinCode);
         this.setStatus(result.message);
+        // 大厅不显示底部状态字:穿脱结果用飘字(11-01 用户「点击已穿戴时应该提示增加战力」)
+        this.spawnRewardFloats([result.message]);
+        if (result.heroPower !== null && beforePower > 0 && result.heroPower !== beforePower) {
+          this.spawnPowerDeltaFloat(result.heroPower - beforePower);
+        }
         gameAudio.sfx('reward_claim');
         this.heroSkinSelection = undefined;
         await this.loadHeroSkins();
@@ -6943,6 +6963,7 @@ export class LootChainGameRoot extends Component {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.setStatus(`穿戴失败:${message}`);
+        this.spawnRewardFloats([`穿戴失败:${message}`]);
         gameAudio.sfx('ui_error');
       } finally {
         this.heroSkinEquipping = false;
