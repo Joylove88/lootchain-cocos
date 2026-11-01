@@ -381,7 +381,7 @@ export class UiSpriteFrameCache {
         // 终端上的兑换码 / 公告弹框:横幅与图标只预读不拦(弹框里缺图到货后随大厅局部重绘补上);
         // 图标路径同 UiGlassKit.GLASS_ICON(不 import:UiGlassKit → UiPrimitiveFactory → 本文件成环)
         Object.values(NOTICE_BANNER_ASSETS).forEach((asset) => request(asset));
-        ['icon_gift', 'notice_megaphone', 'notice_wrench', 'notice_scroll', 'notice_paper'].forEach((name) => request(`ui/glass/${name}/spriteFrame`));
+        ['icon_gift', 'notice_megaphone', 'notice_wrench', 'notice_scroll', 'notice_paper', 'settings_music', 'settings_sound', 'profile_pencil'].forEach((name) => request(`ui/glass/${name}/spriteFrame`));
         ['ui/guide/lguide_pointer/spriteFrame', 'ui/lobby/ai/lhud_btn_mail/spriteFrame', 'ui/lobby/ai/lhud_btn_more/spriteFrame'].forEach((asset) => request(asset));
         break;
       default:

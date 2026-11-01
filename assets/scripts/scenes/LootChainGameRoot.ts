@@ -136,6 +136,7 @@ import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
 import { LobbyTerminalPanelRenderer, type LobbyTerminalAction, type LobbyTerminalPanelHost } from './lobby/LobbyTerminalPanelRenderer';
 import { LobbyGiftDialogRenderer, type LobbyGiftDialogHost, type LobbyGiftDialogState } from './lobby/LobbyGiftDialogRenderer';
 import { LobbyProfileGlassDialogRenderer, type LobbyProfileGlassDialogHost } from './lobby/LobbyProfileGlassDialogRenderer';
+import { LobbySettingsGlassDialogRenderer, SUPPORT_EMAIL, type LobbySettingsGlassDialogHost } from './lobby/LobbySettingsGlassDialogRenderer';
 import { LobbyNoticeDialogRenderer, noticeTabOf, type LobbyNoticeDialogHost, type LobbyNoticeDialogState, type LobbyNoticeTab } from './lobby/LobbyNoticeDialogRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
@@ -408,6 +409,9 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyProfileGlassRenderer = new LobbyProfileGlassDialogRenderer(this as unknown as LobbyProfileGlassDialogHost);
   /** 终端「资料」弹框(11-02 原型 profile_b2):开着时 true;改名沿用 profileRename 状态。 */
   private lobbyProfileGlassOpen = false;
+  private readonly lobbySettingsGlassRenderer = new LobbySettingsGlassDialogRenderer(this as unknown as LobbySettingsGlassDialogHost);
+  /** 终端「设置」弹框(11-02 原型 settings_b2):开着时 true。 */
+  private lobbySettingsGlassOpen = false;
   /** 已读公告单号(本机存储,按账号分开);懒加载。 */
   private lobbyNoticeReadSet: Set<string> | null = null;
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
@@ -1651,6 +1655,8 @@ export class LootChainGameRoot extends Component {
       this.profileRename = { ...PROFILE_RENAME_CLOSED };
       this.removeLobbyProfileGlass();
     }
+    this.lobbySettingsGlassOpen = false;
+    this.removeNodeFromContent(LobbySettingsGlassDialogRenderer.NODE_NAME);
     // 先藏再下一帧销毁:整张静态大图正在本帧绘制时直接销毁,调试包会撞 gfx-validator 断言(10-27 开关终端后切图崩)
     const node = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
     if (node) {
@@ -1669,6 +1675,11 @@ export class LootChainGameRoot extends Component {
     // 11-01:「兑换码」在终端上直接弹小框(旧「更多」整页下线)
     if (action === 'gift') {
       this.openLobbyGiftDialog();
+      return;
+    }
+    // 11-02:「设置」也在终端上直接弹框
+    if (action === 'settings') {
+      this.openLobbySettingsGlassDialog();
       return;
     }
     // 11-02:「资料」(名片头像)也在终端上直接弹框
@@ -1711,7 +1722,6 @@ export class LootChainGameRoot extends Component {
         this.lobbyDailyDungeonPanelRenderer.openRankPopup();
         return;
       case 'mail': this.openLobbyMailPanel(); return;
-      case 'settings': this.openLobbySettingsPanel(); return;
       case 'logout': this.logoutToLoginPage(); return;
       default: return;
     }
@@ -2063,6 +2073,7 @@ export class LootChainGameRoot extends Component {
       this.removeLobbyGiftDialog();
       this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
       this.removeLobbyProfileGlass();
+      this.removeNodeFromContent(LobbySettingsGlassDialogRenderer.NODE_NAME);
       this.lobbyTerminalPanelRenderer.render(layout);
       this.remountTerminalDialogs(layout);
     }
@@ -2405,6 +2416,7 @@ export class LootChainGameRoot extends Component {
       [Boolean(this.lobbyGiftDialog), () => this.closeLobbyGiftDialog()],
       [Boolean(this.lobbyNoticeDialog), () => this.closeLobbyNoticeDialog()],
       [this.lobbyProfileGlassOpen, () => this.closeLobbyProfileGlassDialog()],
+      [this.lobbySettingsGlassOpen, () => this.closeLobbySettingsGlassDialog()],
       [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
       [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
       [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
@@ -6832,6 +6844,9 @@ export class LootChainGameRoot extends Component {
 
   /** 终端上的弹框(兑换码 / 公告)在终端重挂后补挂回去。 */
   private remountTerminalDialogs(layout: UiLayout): void {
+    if (this.lobbySettingsGlassOpen) {
+      this.lobbySettingsGlassRenderer.render(layout);
+    }
     if (this.lobbyProfileGlassOpen) {
       this.lobbyProfileGlassRenderer.render(layout);
       this.lobbyProfileGlassRenderer.renderRename(layout);
@@ -6843,6 +6858,42 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyGiftDialog) {
       this.lobbyGiftDialogRenderer.render(layout);
     }
+  }
+
+  // ── 终端设置弹框(11-02 原型 settings_b2) ──
+  private openLobbySettingsGlassDialog(): void {
+    if (this.currentView !== 'lobby' || !this.lobbyTerminalOpen) {
+      return;
+    }
+    this.lobbySettingsGlassOpen = true;
+    this.renderLobbySettingsGlass();
+  }
+
+  private closeLobbySettingsGlassDialog(): void {
+    if (!this.lobbySettingsGlassOpen) {
+      return;
+    }
+    this.lobbySettingsGlassOpen = false;
+    this.removeNodeFromContent(LobbySettingsGlassDialogRenderer.NODE_NAME);
+  }
+
+  private renderLobbySettingsGlass(): void {
+    this.removeNodeFromContent(LobbySettingsGlassDialogRenderer.NODE_NAME);
+    if (this.lobbySettingsGlassOpen && this.lobbyTerminalOpen && this.currentView === 'lobby') {
+      this.lobbySettingsGlassRenderer.render(this.resolveLayout());
+    }
+  }
+
+  /** 设置底条「复制」客服邮箱:写剪贴板后飘字(大厅不显示 setStatus);写不进就把邮箱飘出来。 */
+  private copyLobbySupportEmail(): void {
+    const clipboard = (globalThis as { navigator?: { clipboard?: { writeText?: (text: string) => Promise<void> } } }).navigator?.clipboard;
+    if (!clipboard?.writeText) {
+      this.spawnRewardFloats([`客服邮箱:${SUPPORT_EMAIL}`]);
+      return;
+    }
+    void clipboard.writeText(SUPPORT_EMAIL)
+      .then(() => this.spawnRewardFloats(['已复制客服邮箱']))
+      .catch(() => this.spawnRewardFloats([`客服邮箱:${SUPPORT_EMAIL}`]));
   }
 
   // ── 终端资料弹框(11-02 原型 profile_b2):打开即回读资料 + 最近战斗 ──

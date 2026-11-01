@@ -1,0 +1,16 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, small monochrome muted-gold icons, calm darkened blurred background.
+- SECOND image = our APPROVED announcement window that opens on top of the menu hub. Use the SAME window: same size and position (about 80% of screen width, 86% of height, centred), same frosted dark glass, same close "X" at the top-right, same thin divider line under the top row, NO back arrow. Copy its SELECTED style exactly: selected items are a DARK-GOLD gradient (darker brownish gold on the left, brighter gold on the right, thin light-gold rim) with WHITE text; unselected items are translucent dark glass with white text.
+- THIRD image = our current "终端" (main menu hub). The window opens ON TOP of it: the hub stays visible around the window edges, dimmed to about 35% and slightly blurred.
+
+WINDOW "设置" (settings). Top row: a thin champagne accent bar + title "设置" in white on the left, close "X" on the right, thin divider below.
+- LEFT column (about 48% of the window width), two frosted panels stacked:
+  1) Section header "语言" (thin champagne bar on the left). One row: grey label "游戏语言" on the left and a 2-option segmented control on the right: "简体中文" (selected, dark-gold, white text) | "English".
+  2) Section header "声音". Two rows with thin dividers: "音乐" with a small muted-gold music-note icon, and a modern rounded toggle switch on the right (ON: dark-gold track with a light knob on the right); "音效" with a small speaker icon, toggle ON.
+- RIGHT column, one frosted panel: section header "画面".
+  Row "画质": segmented control "流畅" | "极致" (极致 selected, dark-gold). Under it a grey hint line: "流畅:降低分辨率、减少特效,卡顿时选它;极致:全部拉满".
+  Row "帧率": segmented control "30" | "60" | "120" (60 selected, dark-gold).
+- BOTTOM strip across the full window width (a slim frosted bar above the bottom edge): on the left two text links in light grey with a small chevron: "用户协议 ›", "隐私政策 ›"; on the right grey text "客服邮箱:support@lootchain.game" followed by a small translucent pill button "复制".
+Generous padding, aligned edges, clear hierarchy: section headers > row labels > grey hints.
+Output only the single finished mockup image, no annotations.
