@@ -1,7 +1,7 @@
-import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Node, Size, UITransform } from 'cc';
+import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Node, resources, Size, Sprite, SpriteFrame, UITransform } from 'cc';
 import { rgba, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
 import { TERMINAL_ASSETS, TOWN_HUD_PROTO, type TownProtoFrame } from './LobbyTownHudProto';
-import { resolveHeroAvatarPath } from './HeroHeadCrop';
+import { buildHeroHeadCropFrame, resolveHeroAvatarPath } from './HeroHeadCrop';
 
 export type LobbyTerminalAction =
   | 'heroes' | 'formation' | 'bag' | 'forge' | 'gacha'
@@ -36,7 +36,20 @@ const SUB = rgba(163, 168, 179);
  * 头像 / 名字 / ID / 等级 / 战力 / 经验 / 货币 / 红点按原型像素坐标画回去;头像上压一块带透明圆孔的环覆盖层(盖住方头像四角)。
  * 按钮只是透明点击区。
  */
-const TERMINAL_EXT_PAD = 200;
+/** 背景图尺寸(3:2,中心与原型对齐)。 */
+const TERMINAL_BG = { w: 1870, h: 1247 };
+
+/**
+ * 竖向自适应(11-01 用户「按原型那样,上下空白别那么大」):屏幕比原型(1870:841)高出来的部分,
+ * 摊到面板层里「整行纯玻璃」的拉伸行上(逐行差最小的行),格子 / 名片跟着变高,图标文字不变形。
+ * 名片列(x < 619)与格子列各自的拉伸行,两列总增高相同,所以上下沿始终对齐;标题(y < 104)不动、底栏(y >= 733)整体下移。
+ */
+const PANEL_BAND = { top: 104, bottom: 733, split: 619 };
+const STRETCH_ROWS = {
+  card: [320, 500, 527, 714], // 环覆盖层下沿以下 / 经验条下 / 货币行上 / 底部留白
+  tile: [124, 294, 342, 503, 554, 712], // 三行格子各自的图标上方 / 标签下方留白
+};
+type TerminalColumn = 'card' | 'tile' | 'other';
 
 export class LobbyTerminalPanelRenderer {
   static readonly NODE_NAME = 'LobbyTerminal';
@@ -44,7 +57,8 @@ export class LobbyTerminalPanelRenderer {
   constructor(private readonly host: LobbyTerminalPanelHost) {}
 
   render(layout: UiLayout): void {
-    const P = terminalFrame(layout);
+    const F = terminalFrames(layout);
+    const P = F.other;
     const root = this.host.createUiNode(LobbyTerminalPanelRenderer.NODE_NAME);
     root.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     root.addComponent(BlockInputEvents);
@@ -52,15 +66,55 @@ export class LobbyTerminalPanelRenderer {
     dim.fillColor = rgba(10, 12, 18, 255);
     dim.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     dim.fill();
-    const w = TOWN_HUD_PROTO.w * P.u;
-    // 底图是原型上下各外扩 TERMINAL_EXT_PAD 行的版本,中心不变
-    const h = (TOWN_HUD_PROTO.h + TERMINAL_EXT_PAD * 2) * P.u;
-    this.host.addSprite('Static', TERMINAL_ASSETS.staticLayer, P.C(TOWN_HUD_PROTO.w / 2), P.Y(TOWN_HUD_PROTO.h / 2), w, h, root);
-    this.renderCard(root, P);
-    this.renderTiles(root, P);
+    // 背景按整屏 cover 铺满(任意分辨率不留边),面板层按原型 contain 等比居中
+    const bgK = Math.max(layout.width / TERMINAL_BG.w, layout.height / TERMINAL_BG.h);
+    this.host.addSprite('Background', TERMINAL_ASSETS.background, P.C(TOWN_HUD_PROTO.w / 2), (layout.stageTop + layout.stageBottom) / 2, TERMINAL_BG.w * bgK, TERMINAL_BG.h * bgK, root);
+    this.renderPanels(root, F);
+    this.renderCard(root, F.card);
+    this.renderTiles(root, F.tile, F.other);
     this.renderBottom(root, P);
     // 关闭钮(原型 (1771, 55))
     this.hit(root, 'Close', 1771, 55, 90, 90, P, () => this.host.closeLobbyTerminalPanel());
+  }
+
+  /**
+   * 面板层:标题行 / 底栏整块,中间带按列切段,拉伸行单独拉高。
+   * 面板图在终端的首开图组里,正常此时已在缓存;万一没到就整张等比放(不拉伸),到货后整刷会重进这里。
+   */
+  private renderPanels(root: Node, F: TerminalFrames): void {
+    const base = resources.get(TERMINAL_ASSETS.panelLayer, SpriteFrame);
+    const P = F.other;
+    if (!base || F.extra < 0.5) {
+      this.host.addSprite('Panels', TERMINAL_ASSETS.panelLayer, P.C(TOWN_HUD_PROTO.w / 2), (P.Y(0) + P.Y(TOWN_HUD_PROTO.h)) / 2, TOWN_HUD_PROTO.w * F.u, TOWN_HUD_PROTO.h * F.u, root);
+      return;
+    }
+    const piece = (name: string, x: number, y: number, w: number, h: number, column: TerminalColumn): void => {
+      const frame = panelPiece(base, x, y, w, h);
+      if (!frame) {
+        return;
+      }
+      const fr = column === 'card' ? F.card : column === 'tile' ? F.tile : F.other;
+      const top = fr.Y(y);
+      const bottom = fr.Y(y + h);
+      const node = this.host.addChildPlainNode(root, `Panels_${name}`, P.C(x + w / 2), (top + bottom) / 2, w * F.u, top - bottom);
+      const sprite = node.addComponent(Sprite);
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      sprite.trim = false;
+      sprite.spriteFrame = frame;
+      node.getComponent(UITransform)?.setContentSize(w * F.u, top - bottom);
+    };
+    piece('Top', 0, 0, TOWN_HUD_PROTO.w, PANEL_BAND.top, 'other');
+    piece('Bottom', 0, PANEL_BAND.bottom, TOWN_HUD_PROTO.w, TOWN_HUD_PROTO.h - PANEL_BAND.bottom, 'other');
+    const columns: Array<[TerminalColumn, number, number]> = [['card', 0, PANEL_BAND.split], ['tile', PANEL_BAND.split, TOWN_HUD_PROTO.w - PANEL_BAND.split]];
+    for (const [column, x, w] of columns) {
+      let y = PANEL_BAND.top;
+      for (const row of STRETCH_ROWS[column]) {
+        piece(`${column}_${y}`, x, y, w, row - y, column);
+        piece(`${column}_s${row}`, x, row, w, 1, column);
+        y = row + 1;
+      }
+      piece(`${column}_${y}`, x, y, w, PANEL_BAND.bottom - y, column);
+    }
   }
 
   /** 名片:头像 (226,213) 孔 r80、名字 x331 / y190、ID y231、等级 / 战力右沿 573 @ 344 / 397、EXP y450 + 条 y476(x150..573)、货币右沿 497 @ 560 / 623 / 687。 */
@@ -123,7 +177,7 @@ export class LobbyTerminalPanelRenderer {
     }
   }
 
-  private renderTiles(root: Node, P: TownProtoFrame): void {
+  private renderTiles(root: Node, P: TownProtoFrame, bottom: TownProtoFrame): void {
     const badges = this.host.currentLobbyBadges?.() ?? null;
     const unread = this.host.lobbyMailUnreadCount?.() ?? 0;
     const explore = this.host.terminalExploreSummary?.() ?? null;
@@ -138,7 +192,9 @@ export class LobbyTerminalPanelRenderer {
       row.forEach((key, c) => {
         const x0 = TILE_X0[c];
         const y0 = TILE_Y0[r];
-        this.hit(root, `Tile_${key}`, x0 + TILE_W / 2, y0 + TILE_H[r] / 2, TILE_W, TILE_H[r], P, () => this.host.runLobbyTerminalAction(key));
+        // 格子随拉伸行变高:点击区按拉伸后的上下沿算
+        const hitNode = this.hit(root, `Tile_${key}`, x0 + TILE_W / 2, y0 + TILE_H[r] / 2, TILE_W, (P.Y(y0) - P.Y(y0 + TILE_H[r])) / P.u, P, () => this.host.runLobbyTerminalAction(key));
+        hitNode.setPosition(hitNode.position.x, (P.Y(y0) + P.Y(y0 + TILE_H[r])) / 2, 0);
         if (dots[key]) {
           // 原型红点在格右上 (+181, +27)
           this.dot(root, x0 + 181, y0 + 27, P);
@@ -146,11 +202,12 @@ export class LobbyTerminalPanelRenderer {
       });
     });
     if (dots.mail) {
-      this.dot(root, 1318, 777, P);
+      this.dot(root, 1318, 777, bottom);
     }
-    // 「野外探索」格(第 3 行第 3 格):标题下方一行香槟小字(静态图标题底边约 y 700,格底 732)
+    // 「野外探索」格(第 3 行第 3 格):标题下方一行香槟小字(静态图标题底边约 y 700,格底 732);
+    // 按标题位置往下 16 定位,不跨过格底的拉伸行(y 712)
     if (explore?.text) {
-      const label = this.host.addChildLabel(root, 'ExploreSummary', explore.text, P.C(TILE_X0[2] + TILE_W / 2), P.Y(TILE_Y0[2] + 179), P.S(18), rgba(227, 196, 138),
+      const label = this.host.addChildLabel(root, 'ExploreSummary', explore.text, P.C(TILE_X0[2] + TILE_W / 2), P.Y(TILE_Y0[2] + 163) - P.S(16), P.S(18), rgba(227, 196, 138),
         new Size(P.S(TILE_W - 20), P.S(24)), HorizontalTextAlignment.CENTER);
       label.overflow = Label.Overflow.SHRINK;
     }
@@ -182,11 +239,62 @@ export class LobbyTerminalPanelRenderer {
   }
 }
 
-/** 终端是整页:原型整体等比铺满整屏(u = min(高 / 841, 宽 / 1870)),以整屏中心(不是安全区)居中。 */
-function terminalFrame(layout: UiLayout): TownProtoFrame {
+interface TerminalFrames {
+  u: number;
+  /** 屏幕比原型高出来的原型像素(摊到拉伸行上;屏幕更宽时为 0) */
+  extra: number;
+  card: TownProtoFrame;
+  tile: TownProtoFrame;
+  other: TownProtoFrame;
+  /** 原型 y → 拉伸后的原型 y */
+  map(column: TerminalColumn, py: number): number;
+}
+
+/** 终端是整页:横向按原型等比(u = min(高 / 841, 宽 / 1870)),竖向多出来的高度摊进拉伸行;以整屏中心(不是安全区)居中。 */
+function terminalFrames(layout: UiLayout): TerminalFrames {
   const u = Math.min(layout.height / TOWN_HUD_PROTO.h, layout.width / TOWN_HUD_PROTO.w);
+  const extra = Math.max(0, layout.height / u - TOWN_HUD_PROTO.h);
   const cx = (layout.stageLeft + layout.stageRight) / 2;
   const cy = (layout.stageTop + layout.stageBottom) / 2;
+  const totalH = TOWN_HUD_PROTO.h + extra;
+  const map = (column: TerminalColumn, py: number): number => {
+    if (py < PANEL_BAND.top || column === 'other') {
+      return py >= PANEL_BAND.bottom ? py + extra : py;
+    }
+    const rows = STRETCH_ROWS[column];
+    const each = extra / rows.length;
+    let shifted = py;
+    for (const row of rows) {
+      if (py >= row + 1) {
+        shifted += each;
+      } else if (py > row) {
+        shifted += each * (py - row);
+      }
+    }
+    return shifted;
+  };
   const X = (px: number): number => cx + (px - TOWN_HUD_PROTO.w / 2) * u;
-  return { u, L: X, R: X, C: X, Y: (py) => cy - (py - TOWN_HUD_PROTO.h / 2) * u, S: (size) => size * u };
+  const frame = (column: TerminalColumn): TownProtoFrame => ({
+    u, L: X, R: X, C: X, Y: (py) => cy - (map(column, py) - totalH / 2) * u, S: (size) => size * u,
+  });
+  return { u, extra, card: frame('card'), tile: frame('tile'), other: frame('other'), map };
+}
+
+/** 面板层子帧缓存(按原型像素矩形切;源帧换了就重建)。 */
+let panelBase: SpriteFrame | null = null;
+const panelPieces = new Map<string, SpriteFrame>();
+function panelPiece(base: SpriteFrame, x: number, y: number, w: number, h: number): SpriteFrame | null {
+  if (panelBase !== base) {
+    panelBase = base;
+    panelPieces.clear();
+  }
+  const key = `${x},${y},${w},${h}`;
+  let piece = panelPieces.get(key) ?? null;
+  if (!piece) {
+    piece = buildHeroHeadCropFrame(base, [x, y, w, h]);
+    if (piece) {
+      panelPieces.set(key, piece);
+    }
+  }
+  return piece;
 }
