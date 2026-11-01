@@ -150,9 +150,9 @@ export class LobbyAreaMapRenderer {
       const x = (index === 0 ? -1 : 1) * (segW / 2 - tw / 2 - S(2));
       const node = this.host.addChildPlainNode(seg, `Tab_${tab.key}`, x, 0, tw, segH - S(4));
       if (on) {
-        mountGlassSlice(this.host, node, 'Pill', GLASS_SLICES.pillPrimary, 0, 0, tw, segH - S(4), k);
+        mountGlassSlice(this.host, node, 'Pill', GLASS_SLICES.pillGold, 0, 0, tw, segH - S(4), k);
       }
-      glassLabel(this.host, node, 'Label', tab.text, 0, 0, S(22), on ? GLASS_COLOR.onChampagne : GLASS_COLOR.text, tw - S(20), HorizontalTextAlignment.CENTER, on);
+      glassLabel(this.host, node, 'Label', tab.text, 0, 0, S(22), on ? GLASS_COLOR.onGold : GLASS_COLOR.text, tw - S(20), HorizontalTextAlignment.CENTER, on);
       if (!on && (tab.key === 'world' || info)) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => this.host.setWorldMapView(tab.key));

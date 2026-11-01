@@ -536,7 +536,7 @@ export class LobbyShopDialogRenderer {
       const r = LX(tab.r - shift);
       const selected = tab.kind === active;
       mountGlassButton(this.host as never, panel, `LobbyShopTab_${tab.kind}`, tab.label, (l + r) / 2, FY(117), r - l, S(44), k,
-        selected ? 'primary' : 'secondary', selected ? undefined : () => this.host.switchLobbyShopTab(tab.kind), 22);
+        selected ? 'selected' : 'secondary', selected ? undefined : () => this.host.switchLobbyShopTab(tab.kind), 22);
     });
   }
 
@@ -926,8 +926,8 @@ export class LobbyShopDialogRenderer {
         const active = channel.channelCode === selected?.channelCode;
         const w = chipW[index];
         const chip = this.host.addChildPlainNode(panel, `LobbyShopChannel_${channel.channelCode}`, x + w / 2, FY(147), w, S(44));
-        mountGlassSlice(this.host as never, chip, 'Bg', active ? GLASS_SLICES.pillPrimary : GLASS_SLICES.pillSecondary, 0, 0, w, S(44), k * 0.7);
-        T(chip, `LobbyShopChannelText_${channel.channelCode}`, payChannelDisplayName(channel.channelName), 0, 0, 22, active ? GLASS_COLOR.onChampagne : GLASS_COLOR.text, w - S(20), HorizontalTextAlignment.CENTER, active);
+        mountGlassSlice(this.host as never, chip, 'Bg', active ? GLASS_SLICES.pillGold : GLASS_SLICES.pillSecondary, 0, 0, w, S(44), k * 0.7);
+        T(chip, `LobbyShopChannelText_${channel.channelCode}`, payChannelDisplayName(channel.channelName), 0, 0, 22, active ? GLASS_COLOR.onGold : GLASS_COLOR.text, w - S(20), HorizontalTextAlignment.CENTER, active);
         if (!busy && !active) {
           chip.addComponent(Button);
           chip.on(Button.EventType.CLICK, () => this.host.selectShopRechargeChannel(channel.channelCode), this);

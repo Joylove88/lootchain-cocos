@@ -42,6 +42,8 @@ const TABS: Array<{ key: LobbyNoticeTab; text: string; icon: string; x0: number;
   { key: 'update', text: '更新', icon: GLASS_ICON.noticePaper, x0: 422, x1: 623 },
 ];
 const ICON_TINT = new Color(226, 206, 166, 255);
+/** 选中页签图标(原型取色)。 */
+const TAB_ICON_ON = new Color(250, 216, 162, 255);
 const DOT = new Color(226, 52, 48, 255);
 
 /** 估算单行文字宽度:全角字 ≈ 字号,半角 ≈ 0.56 字号。 */
@@ -119,12 +121,13 @@ export class LobbyNoticeDialogRenderer {
       const active = state.tab === tab.key;
       const w = S(tab.x1 - tab.x0);
       const node = this.host.addChildPlainNode(panel, `Tab_${tab.key}`, FX((tab.x0 + tab.x1) / 2), FY(114), w, S(58));
-      mountGlassSlice(this.host, node, 'Bg', active ? GLASS_SLICES.tabActive : GLASS_SLICES.panel, 0, 0, w, S(58), k);
+      // 选中 = 暗金渐变页签(原型),字用白色(11-02 用户);未选 = 玻璃
+      mountGlassSlice(this.host, node, 'Bg', active ? GLASS_SLICES.tabGold : GLASS_SLICES.panel, 0, 0, w, S(58), k);
       const icon = this.host.addSprite('Icon', tab.icon, S(65) - w / 2, 0, S(36), S(36), node);
       if (icon) {
-        icon.color = active ? GLASS_COLOR.onChampagne : GLASS_COLOR.text;
+        icon.color = active ? TAB_ICON_ON : GLASS_COLOR.text;
       }
-      T(node, 'Label', tab.text, S(101) - w / 2, 0, 25, active ? GLASS_COLOR.onChampagne : GLASS_COLOR.text, S(90), HorizontalTextAlignment.LEFT, active);
+      T(node, 'Label', tab.text, S(101) - w / 2, 0, 25, active ? GLASS_COLOR.onGold : GLASS_COLOR.text, S(90), HorizontalTextAlignment.LEFT, active);
       if (tabNotices(tab.key).some((notice) => !this.host.isLobbyNoticeRead(notice.noticeNo))) {
         this.dot(node, w / 2 - S(14), S(58) / 2 - S(4), S(8));
       }

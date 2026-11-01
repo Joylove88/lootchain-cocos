@@ -41,7 +41,8 @@ export const GLASS_SLICES = {
   pillSecondary: slice('pill_secondary', 256, 56, 28, 27),
   pillDisabled: slice('pill_disabled', 160, 56, 28, 27),
   chip: slice('chip', 120, 44, 22, 21),
-  tabActive: slice('tab_active', 120, 64, 18, 18),
+  // 选中页签:11-02 用户「选中黄底时字用白色,全局通用」→ 改指暗金渐变底 tab_gold(原浅香槟 tab_active 配深字),配 GLASS_COLOR.onGold 白字
+  tabActive: slice('tab_gold', 160, 64, 18, 18),
   tabIdle: slice('tab_idle', 120, 64, 18, 18),
   tabSel: slice('tab_sel', 120, 64, 18, 18),
   plate: slice('plate', 160, 88, 44, 43),
@@ -54,6 +55,10 @@ export const GLASS_SLICES = {
   tabGlow: slice('tab_glow', 120, 64, 24, 24),
   // 输入框底(11-01 兑换码原型 gift_b):比面板更暗 + 淡灰细边,圆角 14
   input: slice('input', 96, 64, 18, 18),
+  // 暗金选中页签(11-02 公告原型 notice_b2):左暗右亮横向渐变 + 浅金细边,配白字 / 米金图标
+  tabGold: slice('tab_gold', 160, 64, 18, 18),
+  // 胶囊形选中态(分段切换 / 支付方式等),同一暗金渐变
+  pillGold: slice('pill_gold', 160, 56, 28, 27),
 };
 
 export const GLASS_ICON = {
@@ -164,6 +169,8 @@ export const GLASS_COLOR = {
   dim: new Color(120, 126, 138, 255),
   champagne: new Color(227, 196, 138, 255),
   onChampagne: new Color(46, 34, 18, 255),
+  /** 选中态(暗金底 tabActive / tabGold / pillGold)上的字:白色(11-02 用户全局口径);onChampagne 只留给主按钮。 */
+  onGold: new Color(248, 246, 240, 255),
   green: new Color(132, 214, 140, 255),
   red: new Color(232, 108, 96, 255),
   gold: new Color(201, 168, 106, 255),
@@ -237,7 +244,7 @@ export function glassLabel(
  * disabled = 次按钮外观 + 灰字(不响应);primaryOff = 主按钮外观 + 暗一档的字(不响应)。
  * 10-28 用户:不可用按钮「透明化过重导致看不清」——不可用也保持原型外观,只靠字色区分,不做半透明。
  */
-export type GlassButtonKind = 'primary' | 'secondary' | 'disabled' | 'primaryOff' | 'secondaryLit' | 'primaryDim';
+export type GlassButtonKind = 'primary' | 'secondary' | 'disabled' | 'primaryOff' | 'secondaryLit' | 'primaryDim' | 'selected';
 
 /** 胶囊按钮:primary 香槟金实心深字 / secondary 半透明白字 / disabled 灰(不响应)。 */
 export function mountGlassButton(
@@ -255,16 +262,18 @@ export function mountGlassButton(
   fontSize = 24,
 ): Node {
   const node = host.addChildPlainNode(parent, name, x, y, width, height);
+  // selected:页签 / 分段的选中态(11-02 用户:选中黄底配白字,全局通用)= 暗金胶囊 + 白字
   const item = kind === 'primary' || kind === 'primaryOff' ? GLASS_SLICES.pillPrimary
+    : kind === 'selected' ? GLASS_SLICES.pillGold
     : kind === 'primaryDim' ? GLASS_SLICES.pillPrimaryDim
       : kind === 'secondaryLit' ? GLASS_SLICES.pillSecondaryLit : GLASS_SLICES.pillSecondary;
   mountGlassSlice(host, node, 'Pill', item, 0, 0, width, height, k);
   // primaryDim(材料不足):暗金底 + 米白字(原型 (238,226,202)),不再亮底亮字糊在一起
-  const color = kind === 'primary' ? GLASS_COLOR.onChampagne : kind === 'primaryOff' ? new Color(110, 92, 64, 255)
+  const color = kind === 'primary' ? GLASS_COLOR.onChampagne : kind === 'selected' ? GLASS_COLOR.onGold : kind === 'primaryOff' ? new Color(110, 92, 64, 255)
     : kind === 'primaryDim' ? new Color(238, 226, 202, 255) : kind === 'secondary' || kind === 'secondaryLit' ? GLASS_COLOR.text : GLASS_COLOR.sub;
   const label = host.addChildLabel(node, 'Label', text, 0, 0, fontSize * k, color, new Size(width * 0.82, height * 0.8), HorizontalTextAlignment.CENTER);
   label.overflow = Label.Overflow.SHRINK;
-  label.isBold = kind === 'primary' || kind === 'primaryOff';
+  label.isBold = kind === 'primary' || kind === 'primaryOff' || kind === 'selected';
   label.enableOutline = false;
   fitButtonLabel(label, height);
   if (kind !== 'disabled' && kind !== 'primaryOff') {

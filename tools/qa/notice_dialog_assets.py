@@ -44,6 +44,34 @@ def banners():
         print('wrote', path, im.size)
 
 
+def tab_gold(name='tab_gold', W=160, H=64, R=12):
+    """选中态暗金底(原型 notice_b2「公告」页签逐像素取色):左暗金 (122,100,72) → 右亮金 (205,170,112) 横向渐变 + 下沿略亮,
+    浅金细边 (214,182,128)、上沿一道淡高光。11-02 用户:选中态全局统一用它 + 白字。
+    tab_gold 160×64 圆角 12(九宫格 18,GLASS_SLICES.tabGold / tabActive);pill_gold 160×56 全圆角(九宫格 28/27,GLASS_SLICES.pillGold)。"""
+    SS = kit.SS
+    w, h = W * SS, H * SS
+    x = np.linspace(0, 1, w)[None, :, None]
+    y = np.linspace(0, 1, h)[:, None, None]
+    left, right = np.array([122, 100, 72]), np.array([205, 170, 112])
+    rgb = left * (1 - x) + right * x
+    rgb = rgb * (0.96 + 0.08 * y)  # 下沿略亮(原型 y 138 起比中段亮)
+    body = np.dstack([np.clip(rgb, 0, 255), np.full((h, w), 255.0)])
+    im = Image.fromarray(body.astype(np.uint8), 'RGBA')
+    mask = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), R * SS, fill=255)
+    out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    out.paste(im, (0, 0), mask)
+    rim = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(rim).rounded_rectangle((0, 0, w - 1, h - 1), R * SS, outline=(214, 182, 128, 235), width=int(1.6 * SS))
+    out.alpha_composite(rim)
+    hl = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(hl).rounded_rectangle((2 * SS, 2 * SS, w - 1 - 2 * SS, h - 1 - 2 * SS), (R - 2) * SS, outline=(255, 236, 196, 60), width=SS)
+    clip = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(clip).rectangle((0, 0, w, h // 3), fill=255)
+    out.alpha_composite(Image.composite(hl, Image.new('RGBA', (w, h), (0, 0, 0, 0)), clip))
+    kit.save(name, out.resize((W, H), Image.LANCZOS))
+
+
 def icons():
     P = np.asarray(Image.open(os.path.join(PROTO_DIR, 'notice_b2.png')).convert('RGB')).astype(float)
     # 列表格图标(格子 83 方,图标约 50 方,半径 32 避开格框)
@@ -56,3 +84,5 @@ def icons():
 if __name__ == '__main__':
     banners()
     icons()
+    tab_gold()
+    tab_gold('pill_gold', 160, 56, 28)

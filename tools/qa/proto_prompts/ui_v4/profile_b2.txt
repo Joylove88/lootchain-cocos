@@ -1,0 +1,26 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, small monochrome muted-gold icons, calm darkened blurred background.
+- SECOND image = our APPROVED announcement window that also opens on top of the menu hub. Use the SAME window: same size and position (about 80% of screen width, 86% of height, centred), same frosted dark glass, same close "X" at the top-right, same thin divider line under the top row. NO back arrow.
+- THIRD image = our current "终端" (main menu hub) screen. The window opens ON TOP of this hub: the hub stays visible around the window edges, dimmed to about 35% brightness and slightly blurred. Use the white-haired elf heroine portrait from its top-left card as the player avatar.
+
+WINDOW "玩家资料" (player profile). Top row: title "玩家资料" in white on the left (no tabs), close "X" on the right, a thin divider line below.
+- LEFT column (about 42% of the window width):
+  * Profile card (frosted glass panel): round avatar (the white-haired elf heroine from the third image) with a thin faint ring, NO gold dragon frame; to its right the name "圣契64" large white with a small pencil edit icon button; grey "UID 64"; a small soft-green tag "账号状态:正常"; a grey italic motto "无畏前行,书写属于自己的传说".
+  * Below: one frosted panel with 6 clean stat rows (each row = small monochrome muted-gold icon, grey label on the left, white value right-aligned), thin dividers between rows:
+    等级  Lv.6
+    下一级  "Lv.7 还差 83 EXP" with a slim champagne progress bar and grey "1,267 / 1,350" under it
+    英雄上限  Lv.16
+    体力  120/120
+    阵容战力  1,020
+    英雄总战力  10,280
+- RIGHT column (rest of the width, one frosted glass panel): section header "最近战斗" (thin champagne bar on the left, like the hero detail page) with grey "最近 8 场" on the right of the header row. Below, a vertical list of 6 slim row cards, each: a small square dark glass icon tile with a monochrome muted-gold line icon (crossed pickaxes for mine raid, shield for guard crystal, gate arch for dungeon), a white title, a grey time on the second line, and on the right a small result tag ("胜利" soft green, "失败" muted red):
+    1) 矿境掠夺 · 复仇            10-26 14:10   胜利
+    2) 矿境掠夺 · 真人矿          10-26 09:38   胜利
+    3) 矿境掠夺 · 真人矿          10-26 09:31   失败
+    4) 矿境掠夺 · 废弃矿井 6号矿   10-26 04:06   胜利
+    5) 秘境试炼 · 熔火矿脉 Ⅱ      10-25 21:12   胜利
+    6) 守卫水晶 · 第 12 波         10-25 20:40   失败
+  A thin scrollbar at the right edge of the list.
+Generous padding, aligned edges, clear hierarchy: name > section headers > values > grey labels.
+Output only the single finished mockup image, no annotations.

@@ -573,7 +573,7 @@ export class LobbyQuestMailPanelRenderer {
       const active = state.tab === tab.key;
       const node = this.host.addChildPlainNode(panel, `QuestTab_${tab.key}`, (LX(tab.x0) + LX(tab.x1)) / 2, FY(137), LX(tab.x1) - LX(tab.x0), S(68));
       mountGlassSlice(this.host as never, node, 'Bg', active ? GLASS_SLICES.tabActive : GLASS_SLICES.panel, 0, 0, LX(tab.x1) - LX(tab.x0), S(68), k);
-      T(node, 'Label', tab.text, 0, 0, 25, active ? GLASS_COLOR.onChampagne : GLASS_COLOR.text, LX(tab.x1) - LX(tab.x0) - S(20), HorizontalTextAlignment.CENTER, active);
+      T(node, 'Label', tab.text, 0, 0, 25, active ? GLASS_COLOR.onGold : GLASS_COLOR.text, LX(tab.x1) - LX(tab.x0) - S(20), HorizontalTextAlignment.CENTER, active);
       if (!active) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => this.host.setLobbyQuestTab(tab.key), this);

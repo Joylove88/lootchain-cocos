@@ -6394,7 +6394,7 @@ export class LobbyHeroDetailPanelRenderer {
       const l = 1210 + index * 101.2;
       const chip = this.host.addChildPlainNode(root, `WearSlotChip_${slot.code}`, (RX(l) + RX(l + 94)) / 2, FY(180), RX(l + 94) - RX(l), S(44));
       mountGlassSlice(this.host, chip, 'Bg', selected ? GLASS_SLICES.tabActive : GLASS_SLICES.tabIdle, 0, 0, RX(l + 94) - RX(l), S(44), k * 0.7);
-      glassLabel(this.host, chip, 'Label', slot.label, 0, 0, F(19), selected ? GLASS_COLOR.onChampagne : rgba(214, 218, 226), S(90), HorizontalTextAlignment.CENTER, selected);
+      glassLabel(this.host, chip, 'Label', slot.label, 0, 0, F(19), selected ? GLASS_COLOR.onGold : rgba(214, 218, 226), S(90), HorizontalTextAlignment.CENTER, selected);
       chip.addComponent(Button);
       chip.on(Button.EventType.CLICK, () => {
         this.touchTipEquipId = null;
