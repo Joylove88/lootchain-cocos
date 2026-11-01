@@ -1313,7 +1313,7 @@ export class LobbyFormationPanelRenderer {
       cg.stroke();
     }
     button.addComponent(Button);
-    button.on(Button.EventType.CLICK, () => this.host.closeLobbyFormationPanel(), this);
+    button.on(Button.EventType.CLICK, () => { (this.host as { forgetTerminalReturn?: () => void }).forgetTerminalReturn?.(); this.host.closeLobbyFormationPanel(); }, this);
     this.host.applyImageButtonFeedback(button, 1.06, 0.94);
   }
 

@@ -1096,6 +1096,7 @@ export class LootChainGameRoot extends Component {
 
   update(deltaTime: number): void {
     this.updateNetOverlay();
+    this.tickTerminalReturn();
     // 视口变化(窗口缩放 / 手机转动)时同步设计分辨率;visibleSize 变化会改变 layoutKey 触发下方重排。
     // 输入框编辑中(软键盘弹出会改窗口尺寸)不同步也不重排,否则输入框被重建、键盘收起、字丢失。
     if (!isTextInputActive()) {
@@ -1559,20 +1560,64 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTerminalOpen = true;
-    this.lobbyPanelFromTerminal = null;
+    this.terminalReturn = null;
     this.lobbyTerminalPanelRenderer.render(this.resolveLayout());
     // 红点只在进大厅时拉过一次,领完奖 / 读完邮件后会过时:每次打开终端重拉,变了自动整刷
     void this.loadLobbyBadges(true);
   }
 
-  /** 从终端格子打开的界面(任务 / 背包 / 商店),顶栏「<」回终端用。 */
-  private lobbyPanelFromTerminal: 'quest' | 'bag' | 'shop' | null = null;
+  /**
+   * 从终端进去的界面回到大厅后自动重开终端(11-01 用户「从终端进入的界面点返回都要回到终端」)。
+   * pending:刚从终端格子出发,目标界面可能还在下素材 / 异步打开;等看到它真的开了(armed)之后,
+   * 大厅上再没有任何界面 / 弹层时才重开终端,中途跳转(名册 → 详情)不误开。
+   * 清掉:点「✕」(forgetTerminalReturn)、进战斗、传送换图、20 秒内目标界面一直没开。
+   */
+  private terminalReturn: { armed: boolean; at: number } | null = null;
 
-  private backFromLobbyPanel(panel: 'quest' | 'bag' | 'shop', close: () => void): void {
-    const toTerminal = this.lobbyPanelFromTerminal === panel;
-    this.lobbyPanelFromTerminal = null;
+  private armTerminalReturn(): void {
+    this.terminalReturn = { armed: false, at: Date.now() };
+  }
+
+  /** 「✕」关闭:直接回大厅,不回终端。 */
+  private forgetTerminalReturn(): void {
+    this.terminalReturn = null;
+  }
+
+  /** 顶栏「<」:关掉当前界面;来自终端的话由 tickTerminalReturn 重开终端。 */
+  private backFromLobbyPanel(_panel: 'quest' | 'bag' | 'shop', close: () => void): void {
     close();
-    if (toTerminal) {
+  }
+
+  /** 大厅上是否还开着任何界面 / 弹层 / 下载页(返回键顺序表 + 野外浮层)。 */
+  private lobbyHasOpenLayer(): boolean {
+    if (this.lobbyTerminalOpen || this.worldMapPanel || this.worldBountyPanel) {
+      return true;
+    }
+    if (this.ensureContentRoot().getChildByName('PackLoading')) {
+      return true;
+    }
+    return this.lobbyBackLayers().some(([open]) => open);
+  }
+
+  private tickTerminalReturn(): void {
+    const ret = this.terminalReturn;
+    if (!ret) {
+      return;
+    }
+    if (this.currentView === 'battle' || this.currentView === 'login' || this.currentView === 'loginAccount') {
+      this.terminalReturn = null;
+      return;
+    }
+    const plainLobby = this.currentView === 'lobby' && !this.bootPreloadActive && !this.lobbyHasOpenLayer();
+    if (!ret.armed) {
+      if (!plainLobby) {
+        ret.armed = true;
+      } else if (Date.now() - ret.at > 20_000) {
+        this.terminalReturn = null;
+      }
+      return;
+    }
+    if (plainLobby) {
       this.openLobbyTerminalPanel();
     }
   }
@@ -1592,7 +1637,7 @@ export class LootChainGameRoot extends Component {
 
   private runLobbyTerminalShop(kind: 'stamina' | 'gold' | 'diamond'): void {
     this.closeLobbyTerminalPanel();
-    this.lobbyPanelFromTerminal = 'shop';
+    this.armTerminalReturn();
     this.openLobbyShopDialog(kind);
   }
 
@@ -1600,11 +1645,14 @@ export class LootChainGameRoot extends Component {
     // docs/53 §2.5:终端「野外探索」格 → 当前图鸟瞰图(探索度 + 兴趣点计数都在顶栏)
     if (action === 'idle') {
       this.closeLobbyTerminalPanel();
+      this.armTerminalReturn();
       this.openAreaMapPanel();
       return;
     }
     this.closeLobbyTerminalPanel();
-    this.lobbyPanelFromTerminal = action === 'quest' || action === 'bag' || action === 'shop' ? action : null;
+    if (action !== 'logout') {
+      this.armTerminalReturn();
+    }
     switch (action) {
       case 'heroes': this.openLobbyHeroRosterPanel(); return;
       case 'formation': this.openLobbyFormationPanel(); return;
@@ -2270,7 +2318,18 @@ export class LootChainGameRoot extends Component {
    * 大厅面板节点名不统一(LobbyQuestDim 等),靠节点名找不到,这里直接按状态位调各自的关闭函数(模拟器实测任务面板按返回直接弹了退出确认)。
    */
   private closeLobbyLayerByBack(): boolean {
-    const layers: Array<[boolean, () => void]> = [
+    for (const [open, close] of this.lobbyBackLayers()) {
+      if (open) {
+        close();
+        return true;
+      }
+    }
+    return this.closeGachaLayerByBack();
+  }
+
+  /** 返回键顺序表:[是否开着, 关闭函数],最内层在前。 */
+  private lobbyBackLayers(): Array<[boolean, () => void]> {
+    return [
       [this.legalDocumentKey !== null, () => this.closeLegalDocument()],
       [this.loginLanguageDialogOpen, () => this.closeLoginLanguageDialog()],
       [Boolean(this.lobbyShopDialog), () => this.closeLobbyShopDialog()],
@@ -2287,6 +2346,9 @@ export class LootChainGameRoot extends Component {
       [this.lobbyBagSellItemCode !== null && !this.lobbyBagActionBusy, () => this.closeLobbyBagSellDialog()],
       [this.lobbyBagUseItemCode !== null && !this.lobbyBagActionBusy, () => this.closeLobbyBagUseDialog()],
       [this.lobbyTokenFurnaceState.open, () => this.closeLobbyTokenFurnace()],
+      // 野外浮层(地图 / 佣兵公会):返回键 = 「<」,不能走兜底的「点 Close 节点」(那是「✕」,会清掉回终端)
+      [Boolean(this.worldMapPanel), () => this.closeWorldMapPanel()],
+      [Boolean(this.worldBountyPanel), () => this.closeWorldBountyPanel()],
       [this.lobbyProfileOpen, () => this.closePlayerProfileDialog()],
       [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
       [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
@@ -2305,12 +2367,9 @@ export class LootChainGameRoot extends Component {
       [this.lobbyDailyDungeonPanelOpen, () => this.closeLobbyDailyDungeonPanel()],
       [this.lobbyAdventurePanelOpen, () => this.closeLobbyAdventurePanel()],
     ];
-    for (const [open, close] of layers) {
-      if (open) {
-        close();
-        return true;
-      }
-    }
+  }
+
+  private closeGachaLayerByBack(): boolean {
     if (this.currentView === 'gachaResult') {
       this.closeGachaMockResultScene();
       return true;
@@ -7369,6 +7428,7 @@ export class LootChainGameRoot extends Component {
 
   /** 换图(出口 / 传送 / 回城):目标图未开放就提示;spawn 缺省 = 目标图传送阵旁。 */
   private travelWorldMap(code: WorldMapCode, spawn: { x: number; y: number } | null, reach?: string): void {
+    this.terminalReturn = null;
     const map = this.worldState?.maps.find((item) => item.mapCode === code);
     if (this.worldState && !map?.unlocked) {
       this.setStatus(map?.lockReason || '地图未开放');

@@ -174,7 +174,7 @@ export class LobbyAreaMapRenderer {
     if (divider) {
       divider.node.angle = 90;
     }
-    mountGlassIconButton(this.host, parent, 'MapClose', GLASS_ICON.close, RX(1800), FY(43), S(36), S(72), () => this.host.closeWorldMapPanel());
+    mountGlassIconButton(this.host, parent, 'MapClose', GLASS_ICON.close, RX(1800), FY(43), S(36), S(72), () => { (this.host as { forgetTerminalReturn?: () => void }).forgetTerminalReturn?.(); this.host.closeWorldMapPanel(); });
   }
 
   // ── 本图鸟瞰 ──

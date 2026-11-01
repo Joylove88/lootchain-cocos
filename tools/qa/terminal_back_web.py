@@ -89,17 +89,41 @@ async def main():
             print('skins', await ev("return JSON.stringify((root.api && 1) ? 'loaded' : 0);"), flush=True)
             # 终端 → 任务 / 背包 / 商店:点顶栏「<」应回到终端,点「✕」回大厅(11-01)
             click = "const n=(()=>{let f=null; root.node.walk(x=>{ if(!f && x.name==='%s' && x.activeInHierarchy) f=x; }); return f;})(); if(!n) return 'nonode'; n.emit('click', n.getComponent('cc.Button')); return 'ok';"
-            for action, prefix in [('quest', 'LobbyQuest'), ('bag', 'LobbyBag'), ('shop', 'LobbyShop')]:
-                for btn in ('GlassBack', 'GlassClose'):
+            # ① 终端每个入口:进去 → 返回(安卓返回键同一套「关最上层」)→ 应回到终端
+            actions = ['heroes', 'formation', 'bag', 'forge', 'gacha', 'raid', 'daily', 'crystal', 'codex', 'quest',
+                       'shop', 'guild', 'idle', 'worldmap', 'rank', 'mail', 'notice', 'gift', 'settings', 'profile']
+            only = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), None)
+            for action in (only or actions):
+                await ev("root.openLobbyTerminalPanel(); return 1;")
+                await asyncio.sleep(1.5)
+                await ev(f"root.runLobbyTerminalAction('{action}'); return 1;")
+                for _ in range(90):  # 首开要下素材:等下载页走完
+                    await asyncio.sleep(1)
+                    if await ev("let b=false; root.node.walk(n=>{ if(n.name==='PackLoading') b=true; }); return b ? 'wait' : 'ok';") == 'ok':
+                        break
+                await asyncio.sleep(3)
+                opened = await ev("return JSON.stringify({view: root.currentView, ret: root.terminalReturn, formation: root.lobbyFormationPanelOpen, map: !!root.worldMapPanel, err: (window.__lastErr || '')});")
+                await ev("root.handleNativeBack(); return 1;")
+                await asyncio.sleep(2)
+                st = await ev("return JSON.stringify({view: root.currentView, terminal: root.lobbyTerminalOpen});")
+                print('back', action, opened, '->', st, flush=True)
+                await ev("root.closeLobbyTerminalPanel(); return 1;")
+                await asyncio.sleep(1)
+            if only:
+                return
+            # ② 「<」/「✕」按钮:「<」回终端,「✕」回大厅
+            for action, back, close in [('quest', 'LobbyQuestGlassBack', 'LobbyQuestGlassClose'), ('bag', 'LobbyBagGlassBack', 'LobbyBagGlassClose'),
+                                        ('shop', 'LobbyShopGlassBack', 'LobbyShopGlassClose'), ('forge', 'LobbyForgeGlassBack', 'LobbyForgeBackButton')]:
+                for btn in (back, close):
                     await ev("root.openLobbyTerminalPanel(); return 1;")
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1.5)
                     await ev(f"root.runLobbyTerminalAction('{action}'); return 1;")
                     await asyncio.sleep(5)
-                    r = await ev(click % (prefix + btn))
+                    r = await ev(click % btn)
                     await asyncio.sleep(2)
-                    st = await ev("return JSON.stringify({view: root.currentView, terminal: root.lobbyTerminalOpen, quest: root.lobbyQuestPanelOpen, shop: !!root.lobbyShopDialog});")
-                    print(action, btn, r, st, flush=True)
-                    if action == 'quest' and btn == 'GlassBack':
+                    st = await ev("return JSON.stringify({view: root.currentView, terminal: root.lobbyTerminalOpen});")
+                    print('button', action, btn, r, st, flush=True)
+                    if btn == 'LobbyQuestGlassBack':
                         await shot('terminal_after_back')
                     await ev("root.closeLobbyTerminalPanel(); return 1;")
                     await asyncio.sleep(1)

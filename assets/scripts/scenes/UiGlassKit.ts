@@ -490,7 +490,12 @@ export function mountGlassTopBar(
   if (divider) {
     divider.node.angle = 90;
   }
-  mountGlassIconButton(host, parent, `${prefix}GlassClose`, GLASS_ICON.close, RX(1805), FY(rowY - 1), S(36), S(72), onClose);
+  // 「✕」= 直接回大厅:清掉「从终端来、返回时重开终端」的记号(宿主是 GameRoot 时才有)
+  const closeToLobby = (): void => {
+    (host as { forgetTerminalReturn?: () => void }).forgetTerminalReturn?.();
+    onClose();
+  };
+  mountGlassIconButton(host, parent, `${prefix}GlassClose`, GLASS_ICON.close, RX(1805), FY(rowY - 1), S(36), S(72), closeToLobby);
 }
 
 /** B 风格滚动条:淡灰轨道 + 灰白滑块;返回按进度(0..1)挪滑块的函数。 */

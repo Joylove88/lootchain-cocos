@@ -1669,7 +1669,7 @@ export class LobbyForgePanelRenderer {
     if (divider) {
       divider.node.angle = 90;
     }
-    mountGlassIconButton(this.host, parent, 'LobbyForgeBackButton', GLASS_ICON.close, RX(1805), FY(43), S(36), S(72), () => this.host.closeLobbyForgePanel());
+    mountGlassIconButton(this.host, parent, 'LobbyForgeBackButton', GLASS_ICON.close, RX(1805), FY(43), S(36), S(72), () => { (this.host as { forgetTerminalReturn?: () => void }).forgetTerminalReturn?.(); this.host.closeLobbyForgePanel(); });
   }
 
   /** 右缘竖排页签(B):玻璃竖条 + 4 项(选中 = 哑光暗金块),合成有可用组时红点。 */
