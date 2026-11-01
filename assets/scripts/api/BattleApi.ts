@@ -443,8 +443,13 @@ function validateRecentBattle(item: unknown): PlayerBattleRecentVO {
   const realMainline = isRealSettlementMode(settlementMode);
   const noReward = settlementMode === 'NO_REWARD';
   const daily = settlementMode === DAILY_SETTLEMENT_MODE;
-  if (!realMainline && !noReward && !daily) {
+  // 11-02 资料弹框「最近战斗」:矿境 NPC 矿 / 真人矿 / 野外的发奖结算也列出(只读展示)
+  const play = settlementMode === RAID_SETTLEMENT_MODE || settlementMode === RAID_PVP_SETTLEMENT_MODE || settlementMode === FIELD_SETTLEMENT_MODE;
+  if (!realMainline && !noReward && !daily && !play) {
     throw new Error('最近战斗记录响应包含未开放结算模式');
+  }
+  if (play && (item.rewardGranted !== true || item.readonlyEconomy === true || item.economyApplied !== true)) {
+    throw new Error('最近战斗记录响应越过玩法结算约束');
   }
   if (daily && (item.rewardGranted !== true || item.readonlyEconomy === true || item.economyApplied !== true)) {
     throw new Error('最近战斗记录响应越过每日副本结算约束');
@@ -462,7 +467,7 @@ function validateRecentBattle(item: unknown): PlayerBattleRecentVO {
     settlementNo: readRequiredText(item, 'settlementNo', MAX_TEXT, '最近战斗记录缺少 settlementNo'),
     stageCode,
     result: readText(item, 'result', 16, 'WIN'),
-    settlementMode: realMainline && config ? config.settlementMode : daily ? DAILY_SETTLEMENT_MODE : 'NO_REWARD',
+    settlementMode: realMainline && config ? config.settlementMode : daily ? DAILY_SETTLEMENT_MODE : play ? settlementMode : 'NO_REWARD',
     rewardGranted: item.rewardGranted === true,
     readonlyEconomy: item.readonlyEconomy === true,
     economyApplied: item.economyApplied === true,

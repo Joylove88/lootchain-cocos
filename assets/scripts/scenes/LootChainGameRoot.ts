@@ -135,6 +135,7 @@ import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer
 import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
 import { LobbyTerminalPanelRenderer, type LobbyTerminalAction, type LobbyTerminalPanelHost } from './lobby/LobbyTerminalPanelRenderer';
 import { LobbyGiftDialogRenderer, type LobbyGiftDialogHost, type LobbyGiftDialogState } from './lobby/LobbyGiftDialogRenderer';
+import { LobbyProfileGlassDialogRenderer, type LobbyProfileGlassDialogHost } from './lobby/LobbyProfileGlassDialogRenderer';
 import { LobbyNoticeDialogRenderer, noticeTabOf, type LobbyNoticeDialogHost, type LobbyNoticeDialogState, type LobbyNoticeTab } from './lobby/LobbyNoticeDialogRenderer';
 import type { UiLayout } from './lobby/LobbyHudTypes';
 import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadingFlow';
@@ -404,6 +405,9 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyNoticeDialogRenderer = new LobbyNoticeDialogRenderer(this as unknown as LobbyNoticeDialogHost);
   /** 终端「公告」弹框(11-02 原型 notice_b2):开着时非 null。 */
   private lobbyNoticeDialog: LobbyNoticeDialogState | null = null;
+  private readonly lobbyProfileGlassRenderer = new LobbyProfileGlassDialogRenderer(this as unknown as LobbyProfileGlassDialogHost);
+  /** 终端「资料」弹框(11-02 原型 profile_b2):开着时 true;改名沿用 profileRename 状态。 */
+  private lobbyProfileGlassOpen = false;
   /** 已读公告单号(本机存储,按账号分开);懒加载。 */
   private lobbyNoticeReadSet: Set<string> | null = null;
   private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
@@ -1642,6 +1646,11 @@ export class LootChainGameRoot extends Component {
     this.removeLobbyGiftDialog();
     this.lobbyNoticeDialog = null;
     this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
+    if (this.lobbyProfileGlassOpen) {
+      this.lobbyProfileGlassOpen = false;
+      this.profileRename = { ...PROFILE_RENAME_CLOSED };
+      this.removeLobbyProfileGlass();
+    }
     // 先藏再下一帧销毁:整张静态大图正在本帧绘制时直接销毁,调试包会撞 gfx-validator 断言(10-27 开关终端后切图崩)
     const node = this.ensureContentRoot().getChildByName(LobbyTerminalPanelRenderer.NODE_NAME);
     if (node) {
@@ -1660,6 +1669,11 @@ export class LootChainGameRoot extends Component {
     // 11-01:「兑换码」在终端上直接弹小框(旧「更多」整页下线)
     if (action === 'gift') {
       this.openLobbyGiftDialog();
+      return;
+    }
+    // 11-02:「资料」(名片头像)也在终端上直接弹框
+    if (action === 'profile') {
+      this.openLobbyProfileGlassDialog();
       return;
     }
     // 11-02:「公告」也在终端上直接弹框
@@ -1699,7 +1713,6 @@ export class LootChainGameRoot extends Component {
       case 'mail': this.openLobbyMailPanel(); return;
       case 'settings': this.openLobbySettingsPanel(); return;
       case 'logout': this.logoutToLoginPage(); return;
-      case 'profile': this.openPlayerProfileDialog(); return;
       default: return;
     }
   }
@@ -2049,6 +2062,7 @@ export class LootChainGameRoot extends Component {
       }
       this.removeLobbyGiftDialog();
       this.removeNodeFromContent(LobbyNoticeDialogRenderer.NODE_NAME);
+      this.removeLobbyProfileGlass();
       this.lobbyTerminalPanelRenderer.render(layout);
       this.remountTerminalDialogs(layout);
     }
@@ -2390,6 +2404,7 @@ export class LootChainGameRoot extends Component {
       [this.lobbyMorePanelOpen, () => this.closeLobbyMorePanel()],
       [Boolean(this.lobbyGiftDialog), () => this.closeLobbyGiftDialog()],
       [Boolean(this.lobbyNoticeDialog), () => this.closeLobbyNoticeDialog()],
+      [this.lobbyProfileGlassOpen, () => this.closeLobbyProfileGlassDialog()],
       [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
       [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
       [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
@@ -2598,7 +2613,7 @@ export class LootChainGameRoot extends Component {
 
   private openProfileRename(): void {
     this.profileRename = { ...PROFILE_RENAME_CLOSED, open: true, infoLoading: true };
-    this.renderCurrentView();
+    this.renderProfileRenameSurface();
     void this.api.profile.renameInfo()
       .then((info) => {
         if (this.profileRename.open) {
@@ -2610,8 +2625,8 @@ export class LootChainGameRoot extends Component {
         this.profileRename = { ...this.profileRename, infoLoading: false, error: `读取改名价格失败:${message}` };
       })
       .finally(() => {
-        if (this.profileRename.open && this.currentView === 'profile') {
-          this.renderCurrentView();
+        if (this.profileRename.open && (this.currentView === 'profile' || this.lobbyProfileGlassOpen)) {
+          this.renderProfileRenameSurface();
         }
       });
   }
@@ -2621,7 +2636,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.profileRename = { ...PROFILE_RENAME_CLOSED };
-    this.renderCurrentView();
+    this.renderProfileRenameSurface();
   }
 
   private setProfileRenameDraft(text: string): void {
@@ -2642,11 +2657,11 @@ export class LootChainGameRoot extends Component {
     const invalid = profileRenameInvalidReason(name, state.info.currentName);
     if (invalid) {
       this.profileRename = { ...state, error: invalid };
-      this.renderCurrentView();
+      this.renderProfileRenameSurface();
       return;
     }
     this.profileRename = { ...state, busy: true, error: '' };
-    this.renderCurrentView();
+    this.renderProfileRenameSurface();
     let floats: string[] = [];
     try {
       const result = await this.api.profile.rename(name);
@@ -2662,7 +2677,7 @@ export class LootChainGameRoot extends Component {
       if (this.profileRename.busy) {
         this.profileRename = { ...this.profileRename, busy: false };
       }
-      this.renderCurrentView();
+      this.renderProfileRenameSurface();
       if (floats.length > 0) {
         this.spawnRewardFloats(floats);
       }
@@ -6817,6 +6832,10 @@ export class LootChainGameRoot extends Component {
 
   /** 终端上的弹框(兑换码 / 公告)在终端重挂后补挂回去。 */
   private remountTerminalDialogs(layout: UiLayout): void {
+    if (this.lobbyProfileGlassOpen) {
+      this.lobbyProfileGlassRenderer.render(layout);
+      this.lobbyProfileGlassRenderer.renderRename(layout);
+    }
     if (this.lobbyNoticeDialog) {
       this.markSelectedLobbyNoticeRead();
       this.lobbyNoticeDialogRenderer.render(layout);
@@ -6824,6 +6843,61 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyGiftDialog) {
       this.lobbyGiftDialogRenderer.render(layout);
     }
+  }
+
+  // ── 终端资料弹框(11-02 原型 profile_b2):打开即回读资料 + 最近战斗 ──
+  private openLobbyProfileGlassDialog(): void {
+    if (this.currentView !== 'lobby' || !this.lobbyTerminalOpen) {
+      return;
+    }
+    this.lobbyProfileGlassOpen = true;
+    this.profileRename = { ...PROFILE_RENAME_CLOSED };
+    this.renderLobbyProfileGlass();
+    void Promise.all([
+      this.loadLobbyBattleRecent(true).catch(() => undefined),
+      this.loadLobbyProfile(this.currentLobbyProfile().userId).catch(() => undefined),
+      // 矿境 NPC 矿名单(把 RAID_n 显示成「废弃矿井 6号矿」),拉过就不再拉
+      this.loadLobbyRaidStages(false).catch(() => undefined),
+    ]).then(() => this.renderLobbyProfileGlass());
+  }
+
+  private closeLobbyProfileGlassDialog(): void {
+    if (!this.lobbyProfileGlassOpen || this.profileRename.busy) {
+      return;
+    }
+    this.lobbyProfileGlassOpen = false;
+    this.profileRename = { ...PROFILE_RENAME_CLOSED };
+    this.removeLobbyProfileGlass();
+  }
+
+  /** 局部重挂资料弹框(+ 改名小框),不动终端。 */
+  private renderLobbyProfileGlass(): void {
+    this.removeLobbyProfileGlass();
+    if (!this.lobbyProfileGlassOpen || !this.lobbyTerminalOpen || this.currentView !== 'lobby') {
+      return;
+    }
+    const layout = this.resolveLayout();
+    this.lobbyProfileGlassRenderer.render(layout);
+    this.lobbyProfileGlassRenderer.renderRename(layout);
+  }
+
+  private removeLobbyProfileGlass(): void {
+    this.removeNodeFromContent(LobbyProfileGlassDialogRenderer.NODE_NAME);
+    this.removeNodeFromContent(LobbyProfileGlassDialogRenderer.RENAME_NODE_NAME);
+    this.removeNodeFromContent(LobbyProfileGlassDialogRenderer.RENAME_INPUT_NAME);
+  }
+
+  private currentLobbyRaidStages(): Array<{ stageCode: string; zoneName: string; orderNo: number }> | null {
+    return this.lobbyRaidState.stages?.stages ?? null;
+  }
+
+  /** 改名状态变了:资料弹框开着就只重挂弹框,否则沿用旧资料页整页重绘。 */
+  private renderProfileRenameSurface(): void {
+    if (this.lobbyProfileGlassOpen) {
+      this.renderLobbyProfileGlass();
+      return;
+    }
+    this.renderCurrentView();
   }
 
   // ── 终端公告弹框(11-02 原型 notice_b2):数据走后台 /api/player/lobby/notices,打开即强制重拉 ──
