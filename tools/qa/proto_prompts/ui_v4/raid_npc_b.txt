@@ -1,0 +1,12 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "矿境" (mine raid, NPC mines tab), full screen.
+- Top bar: back arrow + title "矿境"; segmented tabs "真人矿" | "NPC 矿" (selected); right: stamina chip "120/120 +", close (X).
+- Left list (frosted): 废弃矿井 (selected, champagne), 铁脉坑道, 银晶矿洞, 熔火深井, 幽蓝晶窟, 龙脊矿脉 (the last five dimmed with a small lock).
+- Centre: a painted cave scene with wooden walkways (matte, darkened, no glowing lamps), 10 round mine-entrance nodes in two rows labelled 1号矿 … 10号矿: 1-6 cleared (small soft-green check), 7 current (champagne ring), 8-10 locked (grey with lock).
+- Right frosted panel: title "废弃矿井 · 7号矿"; three small round enemy portraits with names 礼拜堂侍僧, 荒原游侠, 城门卫兵 and a star each; a line "推荐战力 1230 / 当前 1020" (1020 in muted red); section "掠夺奖励": coin ×720, red crystal ×2; "首通": red shard ×30; primary champagne button "掠夺"; small grey "消耗体力 6(胜利才扣)".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

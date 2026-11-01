@@ -1,0 +1,14 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+This is a MODAL DIALOG over the hero detail screen: the hero detail page (frosted glass, left tab list, hero art, right column) is visible behind it, dimmed to about 40% and slightly blurred. The dialog itself is one frosted glass card (same panel style), centred, with a title row (title text left-aligned in white, close X on the right), NO red ribbon title bar, NO spiky gold corners.
+DIALOG "终极技能升级" (ultimate skill upgrade), about 75% screen width, with grey subtitle "圣铠壁垒·阿特拉斯 · 当前 Lv.1 / 上限 Lv.5(觉醒后 Lv.10)".
+- Left: a round skill emblem (shield with a cross, painted, matte, a thin faint ring, NO spiky gold frame, NO glow).
+- Right of it: skill name "圣铠·天启旋盾 · 大招 · Lv1/5"; description "守卫战 2★ 解锁;蓄满后点击英雄手动释放伤害 +25%,不点自动释放。每升 1 级伤害 +10%。"
+- Two small frosted info boxes: "技能等级" with a row of 10 small diamond pips (1 filled champagne, rest empty) and "Lv.1 → Lv.2"; "伤害倍率" "260% → 299%" (299% larger) and a small soft-green "每级 +39%".
+- Right box "升级消耗 · 升至 Lv.2": rows "终极技能卷轴 180/1" and "金币 2,000" with small item icons.
+- Buttons: primary champagne "升级", secondary pill "关闭".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

@@ -1,0 +1,14 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+This is a MODAL DIALOG over the hero detail screen: the hero detail page (frosted glass, left tab list, hero art, right column) is visible behind it, dimmed to about 40% and slightly blurred. The dialog itself is one frosted glass card (same panel style), centred, with a title row (title text left-aligned in white, close X on the right), NO red ribbon title bar, NO spiky gold corners.
+DIALOG "属性详情" (attribute details), about 60% screen width.
+- Header strip: small hero portrait (crimson-haired vampire queen, painted), rarity tag "SSR", name "夜烬女王·莉维娅", grey "Lv.12", "战力 3,100".
+- Two columns of sections (section headers with a thin champagne bar on the left, like the hero detail page):
+  "战斗属性": rows with small monochrome muted-gold icons: 生命 1,707 (this row highlighted with a faint champagne outline), 攻击 96, 防御 66, 速度 43, 暴击 61%, 暴伤 164.5%.
+  "养成": 幸运 88, 觉醒 未觉醒, 星级 3 星; then "属性来源": 生命 1,707 = 基础 1,194 + 装备 410 + 特性 103 (as a small equation row).
+- Bottom: a single translucent pill "关闭".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

@@ -1,0 +1,14 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+This is a MODAL DIALOG over the hero detail screen: the hero detail page (frosted glass, left tab list, hero art, right column) is visible behind it, dimmed to about 40% and slightly blurred. The dialog itself is one frosted glass card (same panel style), centred, with a title row (title text left-aligned in white, close X on the right), NO red ribbon title bar, NO spiky gold corners.
+DIALOG "特性洗练" (trait reroll), about 70% screen width.
+- Left: hero card (painted portrait of the crimson-haired vampire queen, matte), name "夜烬女王·莉维娅", tag "SSR", "当前战力 3,100".
+- Right: grey hint "点击特性切换锁定:锁定的保留,其余重新随机;锁得越多消耗越高。"; 5 trait rows (frosted rows with a thin coloured line on the left = quality colour), each: small icon, name, value, a small quality tag, and a lock toggle on the right: 攻击加成 +10.3% (橙), 暴击伤害 +14.5% (橙), 生命加成 +6.4% (金), 战利品掉落率 +7.2% (紫), 防御加成 +3.7% (蓝).
+- A legend line "特性品质: 绿 蓝 紫 金 橙 红" as tiny coloured dots.
+- Cost strip: "深渊重铸石 ×1 持有:256", "金币 500 持有:4.7M", "锁定 0 条".
+- Buttons: primary champagne "确认洗练", secondary pill "取消".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

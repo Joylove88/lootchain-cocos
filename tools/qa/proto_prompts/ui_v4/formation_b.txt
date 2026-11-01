@@ -1,0 +1,11 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "编队" (team formation), full screen. Keep a scene: the left 65% shows the four chibi heroes standing on four round dark stone plinths in a dim gothic hall (painted, darkened and slightly blurred, NO rows of candles, NO glowing crystal).
+- Top bar: back arrow + title "编队" + small "?" help; centre a frosted chip "阵容战力 1,020 · 已上阵 4/4"; close (X).
+- Under each hero: a compact frosted name plate: rarity tag (SR / R), "Lv.5 契约魔女" / "Lv.1 深渊行者" / "Lv.1 低语教徒" / "Lv.1 王国巡逻兵", a row of small stars, and a small translucent pill "下阵".
+- Right panel (about 33% width, frosted): header "可出战英雄"; segmented tabs 全部 (selected) | UR | SSR | SR | R; a 3-column grid of square hero portrait cards (painted, matte) with rarity tag, name, "Lv.5 ⚔405" style line; cards already in the team have a small champagne check mark in the corner. Bottom of the panel: a sort button, a dropdown "品质", a list-view toggle.
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.

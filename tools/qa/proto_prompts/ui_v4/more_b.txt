@@ -1,0 +1,12 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent for the selected item and the one primary button, translucent secondary pill buttons, small monochrome muted-gold attribute icons, calm darkened blurred background.
+- SECOND image = our CURRENT version of the screen to redesign. Use it ONLY to know which information and controls exist; do NOT copy its style (it is too flashy, cluttered and AI-looking: red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as the FIRST image.
+SCREEN: "更多" (more / misc), full screen.
+- Top bar: back arrow + title "更多"; close (X) on the right.
+- Left panel (about 45% width): a row of 3 square frosted tiles with simple white line icons + labels: 邮件 (small red dot with "1"), 设置, 公告. Below: section header "兑换码"; a text input field with grey placeholder "输入礼包码" and a primary champagne button "兑换" on its right.
+- Right panel: section header "最近战报"; one row: "10-26 09:31  冒险关卡" with a small muted-red tag "失败" on the right; empty space below.
+- Footer, small grey centred text links: "用户协议 · 隐私政策 · 客服:support@lootchain.game".
+Extra rules: painted item / reward art may stay but must be muted, matte, no glow or sparkle; item rarity shown as a thin coloured line or a small tag, never thick glowing coloured frames. Small inline stat icons use the monochrome muted gold (#C9A86A) engraved style. Background scenes darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy: title > section headers > rows > secondary text.
+Output only the single finished mockup image, no annotations.
