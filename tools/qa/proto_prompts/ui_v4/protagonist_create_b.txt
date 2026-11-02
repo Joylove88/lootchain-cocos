@@ -1,0 +1,24 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+ONE image is attached = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, small monochrome muted-gold icons, calm darkened background, champagne gold #E3C48A as the only accent; a selected item = dark-gold gradient fill with WHITE text; the single primary button = filled champagne pill with dark text.
+
+FULL SCREEN "选择主角" (create your protagonist), shown once right after the first login. No top resource bar, no close button.
+BACKGROUND: a calm, dim, cool blue-grey "sea of souls" void: soft mist, a few distant tiny floating worlds (small glowing islands / planets) far away, faint stars. Matte painterly, restrained, NO particles, NO light rays, NO lens flare. Slightly darker towards the right where the panel sits.
+
+LEFT ~58% of the screen = the character stage:
+- Top-left: title "选择主角" large white, and under it grey text "前世的残魂,正在万界之海中寻找它的转世……".
+- Centre of the stage: the chosen MALE protagonist, full body, standing on a faint round stone platform, about 75% of the screen height: a lean young man of about 18, short dark hair, determined eyes with a faint golden glint, plain worn linen tunic, leather belt and boots, holding a simple wooden training sword low at his side — a humble village orphan. Semi-realistic painted style, matte, grounded proportions (NOT anime, NOT chibi, NOT glossy cartoon).
+- BEHIND him, much larger and very faint (about 25% opacity, cool blue-grey with a thin gold rim light), the translucent silhouette of his former life "夜帝": a towering armored emperor in a long flowing cape, an ornate dark crown-helm, a great sword planted in front of him, energy wings half-spread. It reads as a ghostly memory, not a second character.
+- Near the young man's right shoulder: a tiny palm-sized translucent soul spirit (a miniature silhouette of the same armored emperor with cape and face-mask, only two small golden eyes visible, a soft wisp of pale flame around it) — this is the system spirit "零".
+
+RIGHT ~38% of the screen = ONE tall frosted glass panel with generous padding:
+- Row of TWO gender cards side by side (each about 150x190, rounded): left card "男" with a small bust portrait of the young man, SELECTED (dark-gold gradient border and fill tint, white text "男"); right card "女" with a small bust portrait of the young woman version (young woman of about 18, dark hair tied back, the same worn linen outfit, a slim rapier), NOT selected (translucent dark glass, grey text "女").
+- Below, a thin divider, then the info block:
+  * small grey label "出身" and white text "晨风村的孤儿,被认为没有契约天赋";
+  * small grey label "职业" and white text "圣契剑士 · 重剑";
+  * small grey label "前世" and white text "???" with a tiny grey lock icon;
+  * a row of 3 small round skill icons (dark glass circles with monochrome muted-gold line icons: a sword slash, a glowing seal, an afterimage dash) with tiny grey names under them "魂斩" "契印爆发" "残影步".
+- Below, a thin divider, then grey label "主角名" and a frosted glass input field (rounded, faint outline) containing white text "晨星" with a small monochrome dice icon button on its right (random name), and a tiny grey hint under it "2–12 个字,创建后可改名".
+- At the bottom of the panel, full width: the primary champagne pill button "踏上强者之路" (dark text).
+
+Generous padding, aligned edges, clear hierarchy. B style only — no red ribbons, no ornate gold frames, no glowing particles.
+Output only the single finished mockup image, no annotations.
