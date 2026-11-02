@@ -1,0 +1,21 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our real in-game village scene "晨风村" (top-down 3/4 view, painted). Keep this EXACT scene, camera, buildings, plaza and the glowing blue rune teleport circle in the middle. REMOVE all of its HUD (minimap, quest tracker, joystick, top-right buttons, the "传送 · 世界地图" prompt) and REMOVE the four heroes standing in it.
+- SECOND image = our APPROVED "选择主角" prototype: use its young MALE protagonist (worn linen tunic, leather belt and boots, dark short hair) and its tiny soul spirit "零" (palm-sized translucent miniature of an armored emperor with cape and face-mask, two small golden eyes, a wisp of pale flame) as the character designs. The young man holds a WOODEN training sword (clearly pale worn wood).
+- THIRD image = our APPROVED UI style reference (frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent).
+
+SCENE "觉醒" (the very first moment of the game, a story cut-scene frame):
+- Time: the first light of dawn. The village is cool blue-grey and still asleep (lamps out, soft mist low on the ground), the sky beginning to warm at the top edge. The rune circle in the plaza glows strongly (it "shone all night").
+- Cinematic letterbox: thin black bars at the very top and bottom (about 6% of the height each).
+- The young man, in the same small in-game scale as the heroes in the first image, is half-lying on the stones at the edge of the rune circle, propped up on one arm, just waking up, the wooden sword lying beside him.
+- Just above him, the soul spirit "零" floats, a little larger than in the second image so it reads clearly at this scale, its golden eyes open; a thin champagne-gold thread of light connects its chest to the boy's chest (the binding).
+- Very subtle: a soft pale ring of light pulsing outward from the boy on the ground. No particles, no lens flare, no light rays.
+
+UI OVERLAYS (B style):
+- Top centre, just under the letterbox: a slim frosted glass system notice (about 620x96, rounded) with a small champagne seal icon on the left, the title "圣契 · 绑定完成" in white, and one grey line under it "宿主:晨星    境界:觉醒 · 初期"; a hair-thin champagne progress line along its bottom edge, completely full.
+- Top right, inside the letterbox area: a small translucent pill button "跳过 ›" in grey-white.
+- Bottom, above the lower letterbox, centred, about 62% of the screen width: a frosted glass dialogue card (about 1160x170, rounded). On its left a round portrait (about 110px) of "零" — the miniature armored emperor face-mask with two golden eyes and a pale flame wisp, on a dark background, with a thin faint ring. To the right: the speaker name "零" in small champagne text, then the line in white:
+  "……这具身体也太弱了。名字?想不起来了。一切从零开始——就叫我零吧。"
+  At the bottom-right corner of the card a small grey hint "点击继续 ▾".
+Everything else is the scene. Calm, cinematic, premium. B style only — no red ribbons, no ornate gold frames.
+Output only the single finished mockup image, no annotations.
