@@ -20,15 +20,17 @@ export const CORE_PREFIXES = [
   // 主角野外骨骼(docs/60,永夜龙骑底换皮,男女两套:建角前不知道性别,两套都进开局包)+ 借用的永夜龙骑弹道 / 命中 / 战技 / 大招特效
   'spine/hero/protag_', 'spine/effect/fx_350131_jialulupifu_fly', 'spine/effect/fx_350131_jialulupifu_hit',
   'spine/effect/v2_a47_014', 'spine/effect/hu_085',
-  // 初始 4 英雄(StarterHeroGranter:SR_ABYSS_06 / SR_WITCH_03 / SR_PALADIN_02 / SR_PRIEST_01)
-  'spine/hero/npc_1036', 'spine/hero/npc_1028', 'spine/hero/npc_1002', 'spine/hero/npc_21006',
-  'ui/hero-roster/card_background/npc_1036', 'ui/hero-roster/card_background/npc_1028',
-  'ui/hero-roster/card_background/npc_1002', 'ui/hero-roster/card_background/npc_21006',
-  // 初始 4 英雄的野外战斗特效(普攻弹道 / 命中 / 战技,resolveTownHeroFxKit)+ 普攻斩击贴图
-  'spine/effect/fx_45008_ailina_fly', 'spine/effect/fx_45008_ailina_hit', 'spine/effect/fx_450101_shengnvpifu_fly', 'spine/effect/fx_450101_shengnvpifu_hit',
-  'spine/effect/fx_15004_xe_fxw', 'spine/effect/fx_15004_xe_hit', 'spine/effect/fx_150079_laierde_fly', 'spine/effect/fx_150079_laierde_hit',
-  'spine/effect/v2_a47_444', 'spine/effect/v2_a47_217', 'spine/effect/v2_a47_202', 'spine/effect/v2_a47_427',
-  'ui/battle/attack', 'spine/hero/act_1036', 'spine/hero/act_1028', 'spine/hero/act_1002', 'spine/hero/act_21006',
+  // 契约之选候选 6 名 R(docs/58 §9:新号不再送 4 名 SR,觉醒后 3 选 1 R;6 名都要在开局包,候选按账号随机):
+  // 战斗骨骼 + 名册立绘(契约卡)+ 野外弹道 / 命中 / 战技 / 大招特效(LobbyTownRenderer.partyPackPrefixesOf 实测)
+  'spine/hero/act_1001', 'spine/hero/act_1012', 'spine/hero/act_1004', 'spine/hero/act_1008', 'spine/hero/act_1016', 'spine/hero/act_1003',
+  'ui/hero/roster/R_',
+  'spine/effect/fx_240019_haerbie_fly', 'spine/effect/fx_240019_haerbie_hit', 'spine/effect/v2_a47_004', 'spine/effect/hu_014',
+  'spine/effect/fx_45013_yingshu_fly', 'spine/effect/fx_45013_yingshu_hit', 'spine/effect/v2_a47_391', 'spine/effect/hu_050',
+  'spine/effect/fx_450141_miaomokepifu_fly', 'spine/effect/fx_450141_miaomokepifu_hit', 'spine/effect/v2_a47_073', 'spine/effect/hu_073',
+  'spine/effect/fx_25002_dutengnv_fly', 'spine/effect/fx_25002_dutengnv_hit', 'spine/effect/v2_a47_125', 'spine/effect/hu_035',
+  'spine/effect/fx_35005_kuangliechangmao_toushewu', 'spine/effect/fx_35005_kuangliechangmao_hit', 'spine/effect/v2_a47_257', 'spine/effect/hu_063',
+  'spine/effect/fx_650011_zuozhupifu_fly', 'spine/effect/fx_650011_zuozhupifu_hit', 'spine/effect/v2_a47_188', 'spine/effect/hu_028',
+  'ui/battle/attack',
   // 风 / 水着色器、通用读取态光环(UiKit mountKitLoading)、公用面板底 / 页签 / 分区徽记 / 队伍头像
   'effects/', 'spine/effect/v2_a49_153',
   'ui/crystal/ai/inner_panel_bg', 'ui/crystal/ai/tab_on', 'ui/crystal/ai/tab_off', 'ui/crystal/ai/section_emblem',

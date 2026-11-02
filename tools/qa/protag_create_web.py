@@ -130,6 +130,23 @@ async def main():
                     print(f'tap{i+1}', await ev(AW), flush=True)
                     await shot(f'16_tap{i+1}')
                 await step('17_after_awaken', 2)
+                # docs/58 契约之选:演完应弹出 3 选 1;点中间一张 → 订立契约 → 新伙伴进队
+                CS = "const c = root.contractPick; return JSON.stringify(c ? { codes: c.candidates.map(x => x.heroCode + ':' + x.heroName), sel: c.selected, busy: c.busy, err: c.error } : null);"
+                if await wait_for("return root.contractPick ? 'ok' : 'wait';", 30, 0.5):
+                    await asyncio.sleep(2)
+                    print('contract', await ev(CS), flush=True)
+                    await shot('18_contract')
+                    await ev("const c = root.contractPick; root.selectStarterContract(c.candidates[1].heroCode); return 1;")
+                    await asyncio.sleep(1.5)
+                    print('contract sel', await ev(CS), flush=True)
+                    await shot('19_contract_selected')
+                    await ev("root.confirmStarterContract(); return 1;")
+                    await wait_for("return root.contractPick ? 'wait' : 'ok';", 30, 0.5)
+                    await asyncio.sleep(6)
+                    print('party', await ev("const t = root.lobbyTownRenderer; return JSON.stringify([t.leader, ...t.followers].map(a => a.hero.heroCode));"), flush=True)
+                    await shot('20_after_contract')
+                else:
+                    print('contract NOT shown', flush=True)
     finally:
         proc.kill()
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)

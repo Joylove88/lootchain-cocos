@@ -104,6 +104,7 @@ import {
 } from './login/LoginRenderer';
 import { clearAwakenPending, isAwakenPending, ProtagonistCreateFlow, type ProtagonistCreateFlowHost } from './protagonist/ProtagonistCreateFlow';
 import { LobbyAwakenCinematic, type AwakenCinematicHost } from './lobby/LobbyAwakenCinematic';
+import { LobbyContractPickRenderer, type ContractPickHost, type ContractPickState } from './lobby/LobbyContractPickRenderer';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
 import {
   LobbyBackgroundController,
@@ -389,6 +390,14 @@ export class LootChainGameRoot extends Component {
   // docs/60 新号「觉醒」演出(晨风村法阵旁醒来 → 零绑定 → 对话)
   private readonly awakenCinematic = new LobbyAwakenCinematic(this as unknown as AwakenCinematicHost, this.lobbyTownRenderer);
   private awakenCheckAt = 0;
+  // docs/58 契约之选:觉醒后 3 选 1 R(没选过才弹;不可跳过)
+  private contractPick: ContractPickState | null = null;
+  private contractCheckedUid = 0;
+  private readonly contractPickRenderer = new LobbyContractPickRenderer(
+    this as unknown as ContractPickHost,
+    (heroCode) => this.selectStarterContract(heroCode),
+    () => void this.confirmStarterContract(),
+  );
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
   private readonly lobbyPoiDialogRenderer = new LobbyPoiDialogRenderer(this as unknown as LobbyPoiDialogHost);
@@ -1545,6 +1554,7 @@ export class LootChainGameRoot extends Component {
         this.renderLobbyHud(townLayout);
         this.remountLobbyQuestDialogIfOpen(townLayout);
         this.awakenCinematic.remount(townLayout);
+        this.remountStarterContract(townLayout);
       }
       gameAudio.bgm('bgm_lobby');
       if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
@@ -2088,6 +2098,7 @@ export class LootChainGameRoot extends Component {
       this.remountTerminalDialogs(layout);
     }
     this.awakenCinematic.remount(layout);
+    this.remountStarterContract(layout);
     this.layoutKey = this.makeLayoutKey();
   }
 
@@ -2367,6 +2378,10 @@ export class LootChainGameRoot extends Component {
     if (this.awakenCinematic.active) {
       // 觉醒演出里返回键 = 跳过
       this.awakenCinematic.skip();
+      return;
+    }
+    if (this.contractPick) {
+      // 契约之选必须选一名,返回键不关
       return;
     }
     const contentRoot = this.ensureContentRoot();
@@ -9633,11 +9648,88 @@ export class LootChainGameRoot extends Component {
     }
     this.awakenCheckAt = now + 500;
     const userId = this.api.tokenStore.userId();
-    if (!userId || !isAwakenPending(userId) || this.bootPreloadActive || this.lobbyHasOpenLayer()) {
+    if (!userId || this.bootPreloadActive || this.contractPick || this.lobbyHasOpenLayer()) {
+      return;
+    }
+    if (!isAwakenPending(userId)) {
+      // 没有待演的觉醒:本会话查一次契约之选(新号觉醒演完 / 跳过后、或选之前掉线重登)
+      if (this.contractCheckedUid !== userId && this.lobbyTownRenderer.awakenStageReady()) {
+        this.contractCheckedUid = userId;
+        void this.checkStarterContract();
+      }
       return;
     }
     const name = currentLobbyProtagonistHero()?.heroName || this.protagonistCreateFlow.currentState().protagonistName || '';
-    this.awakenCinematic.start(this.resolveLayout(), name, () => clearAwakenPending(userId));
+    this.awakenCinematic.start(this.resolveLayout(), name, () => {
+      clearAwakenPending(userId);
+      this.contractCheckedUid = userId;
+      void this.checkStarterContract();
+    });
+  }
+
+  // ── docs/58 契约之选 ──
+
+  private async checkStarterContract(): Promise<void> {
+    try {
+      const state = await this.api.starterContract.state();
+      if (state.picked || state.candidates.length < 3 || this.currentView !== 'lobby') {
+        return;
+      }
+      this.contractPick = { candidates: state.candidates, selected: '', busy: false, error: '' };
+      this.renderStarterContract();
+    } catch (error) {
+      console.warn('[Contract] state failed', error);
+    }
+  }
+
+  private selectStarterContract(heroCode: string): void {
+    if (!this.contractPick || this.contractPick.busy) {
+      return;
+    }
+    this.contractPick = { ...this.contractPick, selected: heroCode, error: '' };
+    this.renderStarterContract();
+  }
+
+  private async confirmStarterContract(): Promise<void> {
+    const pick = this.contractPick;
+    if (!pick || pick.busy || !pick.selected) {
+      return;
+    }
+    this.contractPick = { ...pick, busy: true, error: '' };
+    this.renderStarterContract();
+    try {
+      const state = await this.api.starterContract.pick(pick.selected);
+      if (!state.picked) {
+        throw new Error('契约没有订立成功,再试一次');
+      }
+      const hero = pick.candidates.find((item) => item.heroCode === pick.selected);
+      this.contractPick = null;
+      this.removeNodeFromContent(LobbyContractPickRenderer.NODE_NAME);
+      this.setTownHudVisible(true);
+      // 新伙伴进名册 → 跑图队伍重建(主角 + 新伙伴)
+      await this.loadLobbyHeroRoster(true);
+      this.renderCurrentView();
+      this.spawnRewardFloats([`契约成立 · ${hero?.heroName ?? ''} 加入队伍`]);
+    } catch (error) {
+      this.contractPick = { ...pick, busy: false, error: (error as Error)?.message || '契约没有订立成功,再试一次' };
+      this.renderStarterContract();
+    }
+  }
+
+  private renderStarterContract(): void {
+    this.removeNodeFromContent(LobbyContractPickRenderer.NODE_NAME);
+    if (this.contractPick && this.currentView === 'lobby') {
+      this.setTownHudVisible(false);
+      this.contractPickRenderer.render(this.resolveLayout(), this.contractPick);
+    }
+  }
+
+  private remountStarterContract(layout: UiLayout): void {
+    if (this.contractPick && this.currentView === 'lobby') {
+      this.removeNodeFromContent(LobbyContractPickRenderer.NODE_NAME);
+      this.setTownHudVisible(false);
+      this.contractPickRenderer.render(layout, this.contractPick);
+    }
   }
 
   /** 演出期间藏跑图 HUD(小地图 / 摇杆 / 技能键 / 右上按钮 / 任务追踪)。 */

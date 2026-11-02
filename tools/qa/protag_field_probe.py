@@ -98,6 +98,10 @@ async def main():
                 print('chief', await ev(T + " const n = t.entityRoot.getChildByName('TownNpc_CHIEF'); if (!n) return 'no node'; const kids = t.entityRoot.children; const art = n.getChildByName('Art'); "
                       "const house = kids.find(c => /chief/i.test(c.name)); return JSON.stringify({ active: n.activeInHierarchy, pos: [n.position.x, n.position.y], idx: kids.indexOf(n), houseIdx: house ? kids.indexOf(house) : -1, houseName: house && house.name, "
                       "art: !!(art && art.getComponent(cc.Sprite) && art.getComponent(cc.Sprite).spriteFrame), op: n.getComponent(cc.UIOpacity) && n.getComponent(cc.UIOpacity).opacity, total: kids.length, near: kids.filter(c => Math.abs(c.position.x - 300) < 500 && Math.abs(c.position.y - 600) < 300).map(c => c.name + '@' + kids.indexOf(c) + ':' + Math.round(c.position.y)) });"), flush=True)
+            if '--rprefixes' in sys.argv:
+                heroes = [('R_PATROL_01','战士','1001'),('R_ACOLY_02','辅助','1012'),('R_SCOUT_03','刺客','1004'),('R_CULT_05','法师','1008'),('R_RANGER_06','射手','1016'),('R_GUARD_07','坦克','1003')]
+                arr = ','.join("{id:%d,heroCode:'%s',heroClass:'%s',rarity:'R',spineAsset:'npc_%s',portraitAsset:'act_%s',heroName:'x',level:1,power:1}" % (i + 1, c, k, n, n) for i, (c, k, n) in enumerate(heroes))
+                print('RPREFIX', await ev(T + " return JSON.stringify(t.partyPackPrefixesOf([" + arr + "]));"), flush=True)
             print('res', await ev("const r = cc.resources; const info = r.getInfoWithPath('spine/hero/protag_m/protag_m', cc.sp.SkeletonData); return JSON.stringify({ info: !!info, uuid: info && info.uuid });"))
             await asyncio.sleep(2)
             m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
