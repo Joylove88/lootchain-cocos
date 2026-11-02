@@ -20,7 +20,7 @@ from notice_dialog_assets import cut_white  # noqa: E402
 SRC = os.path.join(kit.ROOT, '周报截图', '2026-11-02_主角', 'assets_src')
 PROTO = os.path.join(kit.ROOT, '周报截图', '2026-11-02_主角', 'proto', 'protagonist_create_b.png')
 OUT = os.path.join(kit.ROOT, 'assets', 'resources', 'ui', 'protagonist', 'b')
-MALE_SRC, FEMALE_SRC = 'protag_m_v5', 'protag_f_v6'  # 女主 11-03 改短发对齐野外骨骼(Atlas 底只有短发部件)
+MALE_SRC, FEMALE_SRC = 'protag_m_v9', 'protag_f_v8'  # 11-03 2K 年轻化(Meowa image-2.5 2K;男主按女主色调调暖)
 
 # 原型像素坐标(1870×841)里的图标中心与半径
 ICONS = {

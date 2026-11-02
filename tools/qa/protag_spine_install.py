@@ -15,7 +15,7 @@ HERO = os.path.join(ROOT, 'assets', 'resources', 'spine', 'hero')
 AVATAR = os.path.join(ROOT, 'assets', 'resources', 'ui', 'hero', 'ai', 'avatar')
 ART = os.path.join(ROOT, '周报截图', '2026-11-02_主角', 'assets_src')
 BASE = 'IshmaelA'
-TARGETS = [('m2', 'protag_m', 'protag_m_v5', 'PROTAGONIST_MALE_ATTACK'), ('f2', 'protag_f', 'protag_f_v6', 'PROTAGONIST_FEMALE_ATTACK')]
+TARGETS = [('m2', 'protag_m', 'protag_m_v9', 'PROTAGONIST_MALE_ATTACK'), ('f2', 'protag_f', 'protag_f_v8', 'PROTAGONIST_FEMALE_ATTACK')]
 
 
 # 11-03 用户「头一直在仰头」:永夜龙骑头盔骨骼本来斜向上,画进去的脸跟着仰;骨骼动画是在初始姿势上叠加,
