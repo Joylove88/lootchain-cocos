@@ -94,6 +94,80 @@ ASSETS = {
         'background (#000000). No circle, no ring, no frame, no badge, no text, no glow, no gradient background. Modern minimal '
         'dark-fantasy UI style, matching the gold line icons in the attached prototype panel. ' +
         'Subject: a dashing swordsman silhouette in mid-stride with two fading afterimage silhouettes behind him (skill "残影步"), elegant, NOT clip-art.'),
+    'protag_m_v2': ([f'{ROOT}/assets/resources/ui/hero/roster/R_PATROL_01.jpg', f'{ROOT}/assets/resources/ui/hero/roster/R_RANGER_06.jpg', f'{OUT}/protag_m_base.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'ART STYLE: match EXACTLY the hero illustrations in the FIRST two attached images (our existing in-game hero art): clean confident '
+        'line art, cel shading with two or three tones, muted earthy palette, simple readable shapes. NOT semi-realistic painting, NOT airbrushed '
+        'skin, NOT hyper-detailed texture, NO dramatic rim light, NO glow. Damage and dirt on the clothes only in a few places, not everywhere. '
+        'POSE: relaxed natural standing pose, body turned about 20 degrees, head facing FORWARD and eyes looking straight at the viewer '
+        '(NOT looking up, NOT looking to the side, NOT a heroic upward gaze), a calm slightly stubborn expression; the face is a little '
+        'imperfect and individual, not a generic perfect face. Full body head to toe. ' +
+        'CHARACTER (design from the THIRD image, redrawn in the style above): a lean village boy of about 18, short messy dark brown hair, '
+        'faint golden glint in the eyes, plain worn linen tunic with a laced collar, leather belt with a small pouch, leather bracers, worn '
+        'trousers and boots; a simple WOODEN training sword held low in his right hand, point down.'),
+    'protag_f_v2': ([f'{ROOT}/assets/resources/ui/hero/roster/R_PATROL_01.jpg', f'{ROOT}/assets/resources/ui/hero/roster/R_RANGER_06.jpg', f'{OUT}/protag_f_base.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'ART STYLE: match EXACTLY the hero illustrations in the FIRST two attached images (our existing in-game hero art): clean confident '
+        'line art, cel shading with two or three tones, muted earthy palette, simple readable shapes. NOT semi-realistic painting, NOT airbrushed '
+        'skin, NOT hyper-detailed texture, NO dramatic rim light, NO glow. Damage and dirt on the clothes only in a few places, not everywhere. '
+        'POSE: relaxed natural standing pose, body turned about 20 degrees, head facing FORWARD and eyes looking straight at the viewer '
+        '(NOT looking up, NOT looking to the side, NOT a heroic upward gaze), a calm slightly stubborn expression; the face is a little '
+        'imperfect and individual, not a generic perfect face. Full body head to toe. ' +
+        'CHARACTER (design from the THIRD image, redrawn in the style above): a slender village girl of about 18, dark brown hair in a loose '
+        'ponytail, faint golden glint in the eyes, a small golden seal sigil on the back of her left hand, plain worn linen tunic, leather belt '
+        'with a small pouch, leather bracers, worn trousers and boots; a slim WOODEN practice rapier held low in her right hand, point down. '
+        'Modest outfit, not revealing.'),
+    'protag_m_v3': ([f'{ROOT}/assets/resources/ui/hero/roster/SSR_RON.jpg', f'{ROOT}/assets/resources/ui/hero/roster/SSR_KANE.jpg', f'{OUT}/protag_m_base.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'ART STYLE: match the SSR / UR hero illustrations in the FIRST two attached images (our premium in-game hero art): dark-fantasy '
+        'semi-realistic painting, realistic face and proportions, refined brushwork, desaturated cold palette with muted browns, believable '
+        'cloth and leather materials, soft directional light from the upper left. NOT chibi, NOT cel-shaded anime, NOT airbrushed plastic skin, '
+        'NO glow, NO dramatic rim light. Wear and dirt only in a few deliberate places (cuffs, hem, knees), not spread evenly everywhere. '
+        'POSE: a relaxed natural standing pose with weight on one leg, body turned about 25 degrees, head facing FORWARD and eyes looking '
+        'straight at the viewer (NOT looking up, NOT to the side, NOT a heroic upward gaze); calm, slightly stubborn expression. The face is '
+        'individual and a little imperfect (distinct nose and brows, slight asymmetry), not a generic perfect model face. Full body head to toe. ' +
+        'CHARACTER (outfit design from the THIRD image): a lean village youth of about 18, short messy dark brown hair, a faint golden glint in '
+        'the eyes, plain worn linen tunic with a laced collar, leather belt with a small pouch, leather bracers, worn trousers and boots; a simple '
+        'WOODEN training sword (pale worn wood, clearly wood) held low in his right hand, point down.'),
+    'protag_f_v3': ([f'{ROOT}/assets/resources/ui/hero/roster/SSR_LIVIA.jpg', f'{ROOT}/assets/resources/ui/hero/roster/UR_ATLAS.jpg', f'{OUT}/protag_f_base.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'ART STYLE: match the SSR / UR hero illustrations in the FIRST two attached images (our premium in-game hero art): dark-fantasy '
+        'semi-realistic painting, realistic face and proportions, refined brushwork, desaturated cold palette with muted browns, believable '
+        'cloth and leather materials, soft directional light from the upper left. NOT chibi, NOT cel-shaded anime, NOT airbrushed plastic skin, '
+        'NO glow, NO dramatic rim light. Wear and dirt only in a few deliberate places (cuffs, hem, knees), not spread evenly everywhere. '
+        'POSE: a relaxed natural standing pose with weight on one leg, body turned about 25 degrees, head facing FORWARD and eyes looking '
+        'straight at the viewer (NOT looking up, NOT to the side, NOT a heroic upward gaze); calm, slightly stubborn expression. The face is '
+        'individual and a little imperfect (distinct nose and brows, slight asymmetry), not a generic perfect model face. Full body head to toe. ' +
+        'CHARACTER (outfit design from the THIRD image): a slender village girl of about 18, dark brown hair in a loose low ponytail with a few '
+        'loose strands, a faint golden glint in the eyes, a small golden seal sigil on the back of her left hand, plain worn linen tunic, leather '
+        'belt with a small pouch, leather bracers, worn trousers and boots; a slim WOODEN practice rapier (pale worn wood) held low in her right '
+        'hand, point down. Modest outfit, not revealing.'),
+    'protag_m_v4': ([f'{OUT}/protag_m_v3.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'The attached image is our APPROVED character. Redraw EXACTLY the same character: same face, hair, outfit, colours, weapon, pose, '
+        'proportions and framing. Change ONLY the rendering quality: smooth, refined, finely blended painting like a high-end game character '
+        'illustration; clean crisp silhouette edges; smooth skin; hair drawn as clean flowing locks with soft gradients; cloth and leather with '
+        'subtle smooth texture. REMOVE all grain, noise, speckles, scratchy strokes, fuzzy or frayed edges and grimy dirt texture. '
+        'Keep the worn look only as a few clean, clearly drawn patches and tears. Same semi-realistic dark-fantasy style, NOT anime, NOT chibi.'),
+    'protag_f_v4': ([f'{OUT}/protag_f_v3.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'The attached image is our APPROVED character. Redraw EXACTLY the same character: same face, hair, outfit, colours, weapon, pose, '
+        'proportions and framing. Change ONLY the rendering quality: smooth, refined, finely blended painting like a high-end game character '
+        'illustration; clean crisp silhouette edges; smooth skin; hair drawn as clean flowing locks with soft gradients; cloth and leather with '
+        'subtle smooth texture. REMOVE all grain, noise, speckles, scratchy strokes, fuzzy or frayed edges and grimy dirt texture. '
+        'Keep the worn look only as a few clean, clearly drawn patches and tears. Same semi-realistic dark-fantasy style, NOT anime, NOT chibi.'),
+    'protag_m_v5': ([f'{OUT}/protag_m_v4.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'The attached image is our APPROVED character. Redraw EXACTLY the same character, face, outfit, colours, weapon, pose and framing, '
+        'with the same smooth refined rendering. Change ONLY the HAIR: neat, smooth hair drawn as a few clean defined locks with soft '
+        'gradients and a clean outline; NO frizz, NO flyaway strands, NO fuzzy or wispy hair edges, NO stray single hairs sticking out. '
+        'Also keep every silhouette edge of the figure crisp and clean.'),
+    'protag_f_v5': ([f'{OUT}/protag_f_v4.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'The attached image is our APPROVED character. Redraw EXACTLY the same character, face, outfit, colours, weapon, pose and framing, '
+        'with the same smooth refined rendering. Change ONLY the HAIR: neat, smooth hair drawn as a few clean defined locks with soft '
+        'gradients and a clean outline; NO frizz, NO flyaway strands, NO fuzzy or wispy hair edges, NO stray single hairs sticking out. '
+        'Also keep every silhouette edge of the figure crisp and clean.'),
 }
 
 

@@ -20,6 +20,7 @@ from notice_dialog_assets import cut_white  # noqa: E402
 SRC = os.path.join(kit.ROOT, '周报截图', '2026-11-02_主角', 'assets_src')
 PROTO = os.path.join(kit.ROOT, '周报截图', '2026-11-02_主角', 'proto', 'protagonist_create_b.png')
 OUT = os.path.join(kit.ROOT, 'assets', 'resources', 'ui', 'protagonist', 'b')
+MALE_SRC, FEMALE_SRC = 'protag_m_v5', 'protag_f_v5'
 
 # 原型像素坐标(1870×841)里的图标中心与半径
 ICONS = {
@@ -99,12 +100,13 @@ def icons():
 
 
 def main():
-    save(scaled('protag_m_base', 1080), 'protag_m_base')
-    save(scaled('protag_f_base', 1080), 'protag_f_base')
+    # 11-03 用户:主角改写实 SSR/UR 画风 + 细腻化 + 理顺头发(protag_*_v5),旧半写实 protag_*_base 弃用
+    save(scaled(MALE_SRC, 1080), 'protag_m_base')
+    save(scaled(FEMALE_SRC, 1080), 'protag_f_base')
     save(scaled('yedi_m', 1080), 'yedi_m')
     save(scaled('zero_m', 384), 'zero_m')
-    bust('protag_m_base', 'protag_m_bust')
-    bust('protag_f_base', 'protag_f_bust')
+    bust(MALE_SRC, 'protag_m_bust')
+    bust(FEMALE_SRC, 'protag_f_bust')
     round_portrait('zero_m_portrait', 'zero_m_round')
     bg = Image.open(os.path.join(SRC, 'soul_sea_bg.png')).convert('RGB')
     save(bg, 'soul_sea_bg', 'jpg')
