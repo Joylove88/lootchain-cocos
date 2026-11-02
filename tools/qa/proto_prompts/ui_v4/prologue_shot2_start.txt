@@ -1,0 +1,9 @@
+Generate ONE image: a clean cinematic illustration, wide 16:9 (about 1920x1080). NO UI, no text.
+ONE image is attached = our approved scene (the dark emperor 夜帝 stabbed in the back by the radiant lord 天枢 with a spear of white light). Keep the SAME two characters, faces, armour, crown, halo, colours, lighting and painted matte style (semi-realistic, matte, NOT anime, NOT glossy, NOT photo-real).
+NEW CAMERA: a MEDIUM SHOT of 夜帝 from the waist up, slightly left of centre, about 75% of the image height, seen from the FRONT (his chest and face toward the camera, body turned only about 20 degrees). Anatomy must be natural and correct: head, neck and shoulders aligned with the torso, NO twisted neck, NO looking back over the shoulder.
+- There is NO spear touching him anymore: the spear has just been pulled out. In the centre of his chest (just below the left collarbone) there is a small glowing white WOUND of light, and thin white cracks of light spread outward from it across his dark breastplate.
+- He bends his head slightly forward and looks DOWN at the glowing wound in his chest. Expression RESTRAINED: jaw clenched, lips closed, brows drawn together, a look of disbelief turning into cold grief; normal dark eyes with only a faint violet glint (NOT glowing white, mouth NOT open).
+- His crown is on his head; long dark hair and the torn cape blow forward in the wind; the edges of his black energy wings frame the top of the image behind him.
+- 天枢 stands in the right background, smaller and softly out of focus, the spear of white light now held LOWERED at his side, pointing down to the ground; cold calm face, golden halo glowing. The spear does not overlap 夜帝 at all.
+- Background: the black-violet tide and dark clouds, softly blurred.
+Output only the single image.

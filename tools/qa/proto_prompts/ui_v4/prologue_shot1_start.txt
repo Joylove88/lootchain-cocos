@@ -1,0 +1,7 @@
+Generate ONE image: a clean cinematic illustration, wide 16:9 (about 1920x1080). NO UI, no text.
+ONE image is attached = our approved scene. Reproduce it EXACTLY — same characters, faces, armour, wings, crown, halo, violet sword, hooded cultists, floating white-gold citadel, black-violet tide with shadow creatures, same colours, light, camera and composition, same painted matte style — with ONLY this change: it is ONE MOMENT EARLIER, just before the stab.
+- The radiant blond lord is lunging forward with the long spear of white light; the spear's glowing tip is still about one arm's length BEHIND the emperor's back, NOT touching him yet.
+- The emperor's armour is still intact: NO white cracks of light on it anywhere.
+- The emperor is still facing the dark tide, focused on the battle, his violet sword raised and glowing brightly; he has not noticed the attack yet.
+Everything else identical.
+Output only the single image.

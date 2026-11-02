@@ -1,0 +1,6 @@
+Generate ONE image: a clean cinematic illustration, wide 16:9 (about 1920x1080). NO UI at all.
+ONE image is attached = our APPROVED prologue key frame. Reproduce the SAME scene exactly — same characters, faces, armour, wings, crown, halo, spear of light, violet sword, hooded cultists, floating white-gold citadel, black-violet tide of darkness with shadow creatures, same colours, lighting and painted matte style, same camera and composition — but:
+- REMOVE all UI: no letterbox bars, no "跳过" button, no "序幕 · 神庭陨落" text, no dialogue card, no portrait, no text anywhere.
+- Fill the areas that were covered by the UI naturally: the lower part of the emperor's torn cape and his violet sword blade fully visible, the cloud sea and broken white stones at the bottom, the dark sky at the top.
+- Keep a little breathing room around the two main characters (do not crop the emperor's wings or the lord's halo).
+Output only the single image.

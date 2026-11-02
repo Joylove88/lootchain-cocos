@@ -1,0 +1,8 @@
+Generate ONE image: a CHARACTER REFERENCE SHEET for a film, wide 16:9 (about 1920x1080). No text, no labels, no UI.
+TWO images are attached = our approved scenes. Copy the two characters EXACTLY from them (faces, hair, crown, halo, armour, cape, wings, weapons, colours), in the same semi-realistic painted matte style (NOT anime, NOT glossy, NOT photo-real).
+Layout: a plain, evenly lit, neutral dark grey studio background with a soft floor shadow; the two characters stand side by side, FULL BODY head to toe, both facing the camera in a calm neutral standing pose (about 3/4 front view), not overlapping, same scale, each about 85% of the image height, generous space between them.
+- LEFT: 夜帝 (the dark emperor): tall man, long wavy black hair, pale stern face, dark eyes with a faint violet glint; a tall spiked dark-gold crown; ornate layered dark armour with thin gold filigree; a long torn dark-purple cape; large black bat-like energy wings half-spread behind him; holding a long great sword with a glowing pale-violet blade, point resting on the ground.
+- RIGHT: 天枢 (the radiant lord): tall man, very long straight platinum-blond hair, calm cold handsome face; a large golden spiked halo ring behind his head; flowing white-and-gold robes over white-gold armour with gold star motifs; holding a long spear made of white light, upright at his side.
+夜帝 is UNHURT: his breastplate is intact, NO wound, NO glowing spot, NO cracks of light on the armour.
+Both completely visible, no cropping, no props or scenery other than the floor shadow.
+Output only the single image.
