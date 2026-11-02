@@ -75,13 +75,19 @@ const HERO_SKILL_SFX_CODES = new Set([
   'UR_ATLAS', 'SR_PALADIN_02', 'R_GUARD_07', 'UR_SERAPHINA', 'SR_PRIEST_01', 'R_ACOLY_02',
 ]);
 
-export function resolveHeroSkillSfxKey(heroCode: string | null | undefined): string {
+/** 主角(docs/60)是永夜龙骑骨骼换皮、动作一致:特效 / 音效全部借 UR_ARTHAS 的配置。 */
+export function fxHeroCodeOf(heroCode: string | null | undefined): string {
   const code = (heroCode || '').trim().toUpperCase();
+  return code.startsWith('PROTAGONIST_') ? 'UR_ARTHAS' : code;
+}
+
+export function resolveHeroSkillSfxKey(heroCode: string | null | undefined): string {
+  const code = fxHeroCodeOf(heroCode);
   return HERO_SKILL_SFX_CODES.has(code) ? `skill/hero_${code.toLowerCase()}` : 'skill';
 }
 
 export function resolveHeroAttackSfxKey(heroCode: string | null | undefined, heroClass: string | null | undefined, meleeRole: boolean): string {
-  const code = (heroCode || '').trim().toUpperCase();
+  const code = fxHeroCodeOf(heroCode);
   if (HERO_ATTACK_SFX_CODES.has(code)) {
     return `atk/hero_${code.toLowerCase()}`;
   }

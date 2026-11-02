@@ -151,7 +151,7 @@ import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStag
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { heroPackPrefixes } from '../api/LobbyHeroApi';
+import { heroPackPrefixes, resolveFieldParty } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
 import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
@@ -8172,9 +8172,8 @@ export class LootChainGameRoot extends Component {
 
   private async engageWorldField(stageCode: string): Promise<import('./lobby/LobbyTownRenderer').TownFieldEncounter | null> {
     try {
-      const heroIds = this.currentLobbyFormationHeroIds().length > 0
-        ? this.currentLobbyFormationHeroIds()
-        : this.currentLobbyHeroRosterState().heroes.filter((hero) => hero.id > 0 && !hero.protagonist).sort((a, b) => b.power - a.power).slice(0, 4).map((hero) => hero.id);
+      // docs/60:主角当队长(第一个)+ 最多 3 名英雄;与跑图渲染共用 resolveFieldParty
+      const heroIds = resolveFieldParty(this.currentLobbyHeroRosterState().heroes, this.currentLobbyFormationHeroIds()).map((hero) => hero.id);
       return await this.api.world.engageField(stageCode, heroIds, heroIds[0] ?? null);
     } catch (error) {
       this.setStatus((error as Error)?.message || '野外遭遇失败');

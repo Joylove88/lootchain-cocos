@@ -10,6 +10,8 @@ import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 export const HERO_AVATAR_DIR = 'ui/hero/ai/avatar';
 /** 已生成头像的英雄码(新英雄生成头像后加进来)。 */
 export const HERO_AVATAR_CODES: ReadonlySet<string> = new Set([
+  // 主角(docs/60):立绘裁头胸(tools/qa/protag_spine_install.py)
+  'PROTAGONIST_MALE_ATTACK', 'PROTAGONIST_FEMALE_ATTACK',
   'R_PATROL_01', 'R_ACOLY_02', 'R_SCOUT_03', 'R_CULT_05', 'R_RANGER_06', 'R_GUARD_07',
   'SR_PRIEST_01', 'SR_PALADIN_02', 'SR_WITCH_03', 'SR_BLADE_04', 'SR_SNIPER_05', 'SR_ABYSS_06',
   'SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON',

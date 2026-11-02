@@ -93,10 +93,45 @@ function validateLobbyHeroes(data: unknown): LobbyHeroItemVO[] {
   if (data.length > MAX_HERO_COUNT) {
     throw new Error('大厅英雄响应格式错误：英雄数量超过上限');
   }
-  return data
-    .map((item, index) => normalizeHeroItem(item, index))
+  const items = data.map((item, index) => normalizeHeroItem(item, index));
+  // 主角不进英雄列表(名册 / 编队 / 各战斗选人都看不到),单独记下给野外当队长(docs/60)
+  lobbyProtagonistHero = items.find((item): item is LobbyHeroItemVO => item !== null && isHiddenProtagonistHero(item)) ?? null;
+  return items
     .filter((item): item is LobbyHeroItemVO => item !== null && !isHiddenProtagonistHero(item))
     .sort((a, b) => b.power - a.power);
+}
+
+let lobbyProtagonistHero: LobbyHeroItemVO | null = null;
+
+/** 最近一次大厅英雄接口里的主角(user_hero source_type=PROTAGONIST);还没拉到 / 没建主角时为 null。 */
+export function currentLobbyProtagonistHero(): LobbyHeroItemVO | null {
+  return lobbyProtagonistHero;
+}
+
+/** 野外队伍上限(与后端 FieldStageRules.MAX_PARTY 一致)。 */
+const FIELD_PARTY_MAX = 4;
+
+/**
+ * 野外队伍(docs/60,11-03 用户「接进野外当队长」):主角当队长(玩家操控)+ 编队里最多 3 名英雄跟随;
+ * 没编队按战力取前几名;没有主角(旧数据)时退回原口径 4 名英雄。跑图渲染与登记遭遇共用,保证两边队伍一致(第一个 = 队长)。
+ */
+export function resolveFieldParty(heroes: readonly LobbyHeroItemVO[], formationHeroIds: readonly number[]): LobbyHeroItemVO[] {
+  const lead = lobbyProtagonistHero;
+  const byId = new Map(heroes.map((hero) => [hero.id, hero]));
+  let companions = formationHeroIds.map((id) => byId.get(id)).filter((hero): hero is LobbyHeroItemVO => !!hero && !hero.protagonist);
+  if (companions.length === 0) {
+    companions = heroes.filter((hero) => hero.id > 0 && !hero.protagonist).slice().sort((a, b) => b.power - a.power);
+  }
+  return lead ? [lead, ...companions.slice(0, FIELD_PARTY_MAX - 1)] : companions.slice(0, FIELD_PARTY_MAX);
+}
+
+/** 主角骨骼按性别(男 / 女两套,永夜龙骑底换皮,docs/60)。 */
+function protagonistSpineAsset(heroCode: string): string | null {
+  const code = heroCode.trim().toUpperCase();
+  if (!code.startsWith('PROTAGONIST_')) {
+    return null;
+  }
+  return code.indexOf('FEMALE') >= 0 ? 'protag_f' : 'protag_m';
 }
 
 function isHiddenProtagonistHero(item: LobbyHeroItemVO): boolean {
@@ -120,10 +155,12 @@ function normalizeHeroItem(item: unknown, index: number): LobbyHeroItemVO | null
   }
   const fallbackAssets = resolveHeroAssetFallback(heroCode);
   const fallbackHeroClass = resolveHeroClassFallback(heroCode);
-  const portraitAsset = readOptionalText(item, 'portraitAsset', 64) ?? fallbackAssets?.portraitAsset ?? null;
+  // 主角:骨骼固定用 spine/hero/protag_m|protag_f(服务端旧的立绘 / 骨骼字段是 5 月占位,不用)
+  const protagonistAsset = protagonistSpineAsset(heroCode);
+  const portraitAsset = protagonistAsset ?? readOptionalText(item, 'portraitAsset', 64) ?? fallbackAssets?.portraitAsset ?? null;
   const cardBackgroundAsset = readOptionalText(item, 'cardBackgroundAsset', MAX_RESOURCE_PATH_LENGTH) ?? fallbackAssets?.cardBackgroundAsset ?? null;
-  const spineAsset = readOptionalText(item, 'spineAsset', 128) ?? deriveSpineAssetFromPortrait(portraitAsset) ?? fallbackAssets?.spineAsset ?? null;
-  const spineUuid = readOptionalText(item, 'spineUuid', 64) ?? fallbackAssets?.spineUuid ?? null;
+  const spineAsset = protagonistAsset ?? readOptionalText(item, 'spineAsset', 128) ?? deriveSpineAssetFromPortrait(portraitAsset) ?? fallbackAssets?.spineAsset ?? null;
+  const spineUuid = protagonistAsset ? null : readOptionalText(item, 'spineUuid', 64) ?? fallbackAssets?.spineUuid ?? null;
   return {
     id,
     heroCode,

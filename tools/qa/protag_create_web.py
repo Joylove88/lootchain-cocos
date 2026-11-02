@@ -2,7 +2,7 @@
 无头 Edge 打开网页包 → 用「没有主角」的账号登录 → 应落到选择主角页:男版截图 → 切女 → 骰子换名 → 非法名提示 →
 (--create 时)起一个随机名点「踏上强者之路」→ 应进大厅。
 先跑:本地库清掉该账号的主角(player_protagonist + 主角 user_hero / user_hero_attr),备份见会话 scratchpad uid68_*.sql。
-用法:PREVIEW_PORT=7460 python tools/qa/protag_create_web.py <输出目录> [--phone] [--user=guidetest06] [--create]
+用法:PREVIEW_PORT=7460 python tools/qa/protag_create_web.py <输出目录> [--phone] [--user=guidetest06] [--create [--female]]
 """
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
@@ -106,6 +106,9 @@ async def main():
                 await ev(FIND + "const b=find('ProtagonistNameInput').getComponent('cc.EditBox'); b.string='圣契64'; root.protagonistCreateFlow.setNameDraft('圣契64'); root.protagonistCreateFlow.submitCreate(); return 1;")
                 await wait_for("return root.protagonistCreateFlow.currentState().creating ? 'wait' : 'ok';", 30, 0.5)
                 await step('06_duplicate_name')
+                if '--female' in sys.argv:
+                    await ev(CLICK % 'GenderCard_female')
+                    await asyncio.sleep(1)
                 await ev(CLICK % 'NameDice')
                 await asyncio.sleep(1)
                 await ev(CLICK % 'Submit')

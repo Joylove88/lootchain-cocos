@@ -93,6 +93,9 @@ const BATTLE_STAGE12_SPINE_PROFILE_BY_ASSET: Record<string, BattleUnitSpineVisua
   Eulenspigel: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
   Ishmael: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
   IshmaelA: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
+  // 主角(docs/60):永夜龙骑骨骼换皮,体型 / 动作口径全照 IshmaelA
+  protag_m: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
+  protag_f: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
   LucienA: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
   Lucrecia: BATTLE_STAGE12_NAMED_SPINE_PROFILE,
   Nuu: BATTLE_STAGE12_NUU_SPINE_PROFILE,
@@ -159,6 +162,8 @@ const BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET: Record<string, number> = {
   Nuu: 1.35,
   Ishmael: 1.2,
   IshmaelA: 1.3,
+  protag_m: 1.3,
+  protag_f: 1.3,
 };
 
 // 战斗 + 大厅挂机逐英雄体型调优(与布阵表独立:两处基础公式不同,倍率需分开调)。
@@ -183,6 +188,8 @@ const BATTLE_COMBAT_CANVAS_COMPENSATION_BY_ASSET: Record<string, number> = {
   Nuu: 1.5,
   Ishmael: 0.94,
   IshmaelA: 0.94,
+  protag_m: 0.94,
+  protag_f: 0.94,
 };
 
 const BATTLE_SR_R_COMBAT_MAX_HEIGHT_RATIO = 0.84;

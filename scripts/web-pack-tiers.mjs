@@ -17,6 +17,9 @@ export const CORE_PREFIXES = [
   'ui/world/city_board', 'ui/world/ui_bounty_paper', 'ui/world/map_world1',
   // 野外兴趣点素材(docs/54:石碑 / 草药 / 矿脉 / 隐藏点,晨风村就有)
   'ui/world/poi',
+  // 主角野外骨骼(docs/60,永夜龙骑底换皮,男女两套:建角前不知道性别,两套都进开局包)+ 借用的永夜龙骑弹道 / 命中 / 战技 / 大招特效
+  'spine/hero/protag_', 'spine/effect/fx_350131_jialulupifu_fly', 'spine/effect/fx_350131_jialulupifu_hit',
+  'spine/effect/v2_a47_014', 'spine/effect/hu_085',
   // 初始 4 英雄(StarterHeroGranter:SR_ABYSS_06 / SR_WITCH_03 / SR_PALADIN_02 / SR_PRIEST_01)
   'spine/hero/npc_1036', 'spine/hero/npc_1028', 'spine/hero/npc_1002', 'spine/hero/npc_21006',
   'ui/hero-roster/card_background/npc_1036', 'ui/hero-roster/card_background/npc_1028',

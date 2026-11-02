@@ -1,5 +1,6 @@
 import { Node, Sprite, UIOpacity, Vec3, sp, tween } from 'cc';
 import {
+  fxHeroCodeOf,
   resolveAttackFxSpritePath,
   resolveAttackSpineFxResource,
   resolveHeroAttackFx,
@@ -55,8 +56,10 @@ export interface TownHeroFxKit {
   ult: BattleSkillEffectSpec;
 }
 
-export function resolveTownHeroFxKit(heroCode: string, heroClass: string | null | undefined, role: 'melee' | 'ranged' | 'support'): TownHeroFxKit {
+export function resolveTownHeroFxKit(rawHeroCode: string, heroClass: string | null | undefined, role: 'melee' | 'ranged' | 'support'): TownHeroFxKit {
   const skillRole: GuardSkillFxRole = role === 'support' ? 'support' : role === 'ranged' ? 'ranged' : 'melee';
+  // 主角借永夜龙骑的弹道 / 命中 / 战技 / 大招(同一副骨骼、同一套动作)
+  const heroCode = fxHeroCodeOf(rawHeroCode);
   const kit: TownHeroFxKit = {
     strike: resolveHeroAttackFx(heroCode, heroClass ?? null, role === 'melee'),
     spine: resolveHeroAttackSpineFx(heroCode),
@@ -64,7 +67,7 @@ export function resolveTownHeroFxKit(heroCode: string, heroClass: string | null 
     ult: resolveHeroUltEffect(heroCode, heroClass ?? null),
   };
   // 穿着皮肤:外挂特效换成皮肤配色版(HeroSkins.fx,按原 effect 码替换)
-  const swap = equippedHeroSkin(heroCode)?.fx;
+  const swap = equippedHeroSkin(rawHeroCode)?.fx;
   if (swap) {
     const re = <T extends { effect: string }>(spec: T): T => (swap[spec.effect] ? { ...spec, effect: swap[spec.effect] } : spec);
     if (kit.spine) {

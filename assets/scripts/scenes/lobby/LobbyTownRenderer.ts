@@ -22,6 +22,7 @@ import {
   tween,
 } from 'cc';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
+import { resolveFieldParty } from '../../api/LobbyHeroApi';
 import type { LobbyBadges } from '../../api/LobbyBadgeApi';
 import type { PlayerIdleSummaryVO } from '../../types/IdleTypes';
 import { safeText } from '../UiTextFormatter';
@@ -957,17 +958,8 @@ export class LobbyTownRenderer {
   // ── 队伍 ──
 
   private resolveParty(): LobbyHeroItemVO[] {
-    const state = this.host.currentLobbyHeroRosterState();
-    const selectedIds = this.host.currentLobbyFormationHeroIds();
-    const byId = new Map(state.heroes.map((hero) => [hero.id, hero]));
-    let party = selectedIds.map((id) => byId.get(id)).filter((hero): hero is LobbyHeroItemVO => !!hero);
-    if (party.length === 0) {
-      party = state.heroes
-        .filter((hero) => hero.id > 0 && !hero.protagonist)
-        .sort((a, b) => b.power - a.power)
-        .slice(0, 4);
-    }
-    return party.slice(0, 4);
+    // docs/60:主角当队长 + 编队最多 3 名英雄(与登记遭遇共用 resolveFieldParty,第一个 = 队长)
+    return resolveFieldParty(this.host.currentLobbyHeroRosterState().heroes, this.host.currentLobbyFormationHeroIds());
   }
 
   private ensureParty(): void {
