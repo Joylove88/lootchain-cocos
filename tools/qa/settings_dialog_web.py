@@ -90,6 +90,12 @@ async def main():
                     break
                 await asyncio.sleep(1)
             if view != 'lobby':
+                # 登录页的协议入口也走同一查看层(11-02 B 风格)
+                await ev("root.openLegalDocument('privacy'); return 1;")
+                await asyncio.sleep(2)
+                await shot('00_login_privacy')
+                await ev("root.closeLegalDocument(); return 1;")
+                await asyncio.sleep(1)
                 await ev("root.loginFlow.setInputs({string:'guidetest02'}, {string:'pass1234'}); root.loginFlow.acceptedAgreement = true; root.run(() => root.loginFlow.login()); return 1;")
             await wait_for("return root.currentView === 'lobby' && root.worldState ? 'ok' : 'wait';", 240)
             await asyncio.sleep(6)
