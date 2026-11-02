@@ -4,11 +4,6 @@ import { ApiError } from '../../net/HttpClient';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../../types/ProtagonistTypes';
 import { ProtagonistCreateState } from './ProtagonistCreateState';
 
-const HIDDEN_PROTAGONIST_CREATE_REQUEST = {
-  gender: 'male' as ProtagonistGender,
-  protagonistName: '圣契档案',
-};
-
 export interface ProtagonistCreateFlowHost {
   showProtagonistCreateView(): void;
   startLobbyLoading(tokenName: string): void;
@@ -58,7 +53,9 @@ export class ProtagonistCreateFlow {
         this.enterLobbyAfterProtagonistReady();
         return;
       }
-      await this.ensureHiddenProtagonistReady(ticket);
+      // docs/60:新号先进「选择主角」(男 / 女 + 起名),建好再进大厅;不再后台补建隐藏主角
+      this.host.setStatus('');
+      this.host.showProtagonistCreateView();
     } catch (error) {
       if (!this.isCurrent(ticket)) {
         return;
@@ -71,7 +68,7 @@ export class ProtagonistCreateFlow {
 
   /**
    * 刷新后恢复会话(已直接进大厅):后台核对主角色。已创建 → 只记下档案,不再重进大厅;
-   * 极少数没建过的账号 → 照常补建隐藏主角,建好后走正常进大厅流程。
+   * 没建过(选择主角页没点完就关了)→ 切回选择主角页,建好后走正常进大厅流程。
    */
   async verifyAfterResume(userId: number, tokenName: string): Promise<void> {
     this.currentUserId = userId;
@@ -88,7 +85,7 @@ export class ProtagonistCreateFlow {
         this.state.rememberServerProfile(serverState.profile);
         return;
       }
-      await this.ensureHiddenProtagonistReady(ticket);
+      this.host.showProtagonistCreateView();
     } catch (error) {
       if (!this.isCurrent(ticket)) {
         return;
@@ -102,6 +99,14 @@ export class ProtagonistCreateFlow {
 
   selectGender(gender: ProtagonistGender): void {
     this.state.setGender(gender);
+  }
+
+  rollName(): void {
+    this.state.rollName();
+  }
+
+  setNameDraft(name: string): void {
+    this.state.setNameDraft(name);
   }
 
   previewForm(form: ProtagonistForm): void {
@@ -162,25 +167,6 @@ export class ProtagonistCreateFlow {
     this.host.loadLobbyProfileAfterLogin(this.currentUserId);
   }
 
-  private async ensureHiddenProtagonistReady(ticket: number): Promise<void> {
-    this.host.setStatus('正在初始化玩家档案...');
-    const profile = await this.protagonistApi.create({
-      ...HIDDEN_PROTAGONIST_CREATE_REQUEST,
-      protagonistName: this.resolveHiddenProtagonistName(this.currentUserId),
-    });
-    if (!this.isCurrent(ticket)) {
-      return;
-    }
-    this.state.rememberServerProfile(profile);
-    this.host.setStatus('玩家档案初始化完成。');
-    this.enterLobbyAfterProtagonistReady();
-  }
-
-  private resolveHiddenProtagonistName(userId: number): string {
-    const suffix = Math.max(1, Math.trunc(userId || 1)).toString();
-    return `圣契${suffix}`.slice(0, 12);
-  }
-
   private nextTicket(): number {
     this.flowTicket += 1;
     return this.flowTicket;
@@ -192,7 +178,8 @@ export class ProtagonistCreateFlow {
 
   private formatApiError(error: unknown, prefix: string): string {
     if (error instanceof ApiError) {
-      return `${prefix}：${error.message}`;
+      // 后端业务提示本身就是给玩家看的(如「该名字已被使用,换一个试试」),不再拼开发口径的前缀
+      return error.message || prefix;
     }
     const message = error instanceof Error ? error.message : String(error);
     return `${prefix}：${message}`;

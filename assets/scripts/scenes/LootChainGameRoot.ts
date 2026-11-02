@@ -1516,6 +1516,10 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderProtagonistCreate(): void {
+    if (this.currentView !== 'protagonistCreate') {
+      // 刷新恢复会话时可能已进了大厅(主角没建完就关了):切回选择主角页要丢掉大厅的复用节点
+      this.invalidateReusableScenes();
+    }
     this.currentView = 'protagonistCreate';
     const layout = this.renderBase();
     this.protagonistCreateRenderer.render(layout, this.protagonistCreateFlow.currentState());
@@ -9597,6 +9601,14 @@ export class LootChainGameRoot extends Component {
 
   private selectProtagonistGender(gender: ProtagonistGender): void {
     this.protagonistCreateFlow.selectGender(gender);
+  }
+
+  private rollProtagonistName(): void {
+    this.protagonistCreateFlow.rollName();
+  }
+
+  private setProtagonistNameDraft(name: string): void {
+    this.protagonistCreateFlow.setNameDraft(name);
   }
 
   private previewProtagonistForm(form: ProtagonistForm): void {

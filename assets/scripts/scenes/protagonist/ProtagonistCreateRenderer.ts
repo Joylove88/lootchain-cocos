@@ -9,23 +9,38 @@ import {
   Node,
   Size,
   Sprite,
+  tween,
+  UIOpacity,
   UITransform,
   Vec3,
 } from 'cc';
-import { PROTAGONIST_FORM_OPTIONS, type ProtagonistCreateFormState, type ProtagonistForm, type ProtagonistGender } from '../../types/ProtagonistTypes';
-import { clamp, rgba, type UiLayout } from '../lobby/LobbyHudTypes';
+import type { ProtagonistCreateFormState, ProtagonistGender } from '../../types/ProtagonistTypes';
+import type { UiLayout } from '../lobby/LobbyHudTypes';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassIconButton, mountGlassLine, mountGlassSlice } from '../UiGlassKit';
 
-const PROTAGONIST_ART_ASSETS: Record<ProtagonistGender, string> = {
-  male: 'ui/protagonist/protagonist_male_attack/spriteFrame',
-  female: 'ui/protagonist/protagonist_female_attack/spriteFrame',
+const B = (name: string): string => `ui/protagonist/b/${name}/spriteFrame`;
+const G = (name: string): string => `ui/glass/${name}/spriteFrame`;
+
+const ART = {
+  bg: B('soul_sea_bg'),
+  ghost: B('yedi_m'),
+  zero: B('zero_m'),
+  base: { male: B('protag_m_base'), female: B('protag_f_base') } as Record<ProtagonistGender, string>,
+  bust: { male: B('protag_m_bust'), female: B('protag_f_bust') } as Record<ProtagonistGender, string>,
 };
+
+const CLASS_TEXT: Record<ProtagonistGender, string> = { male: '圣契剑士 · 重剑', female: '圣契剑士 · 细剑' };
+const SKILLS = [
+  { icon: G('protag_skill_slash'), name: '魂斩' },
+  { icon: G('protag_skill_seal'), name: '契印爆发' },
+  { icon: G('protag_skill_step'), name: '残影步' },
+];
 
 export interface ProtagonistCreateRendererHost {
   node: Node;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
-  addChildBeveledPanelNode(parent: Node, name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Node;
   addChildLabel(
     parent: Node,
     name: string,
@@ -37,373 +52,189 @@ export interface ProtagonistCreateRendererHost {
     contentSize?: Size,
     horizontalAlign?: HorizontalTextAlignment,
   ): Label;
-  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean): EditBox;
-  addGoldButton(text: string, x: number, y: number, callback: () => void, layout: UiLayout, width: number, height: number): Button;
+  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean, options?: { frameless?: boolean; placeholder?: string; placeholderColor?: Color }): EditBox;
   setProtagonistNameInput(input: EditBox | null): void;
+  setProtagonistNameDraft(name: string): void;
   selectProtagonistGender(gender: ProtagonistGender): void;
-  previewProtagonistForm(form: ProtagonistForm): void;
+  rollProtagonistName(): void;
   submitProtagonistCreate(): void;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   applyPointerCursor(node: Node): void;
 }
 
-/** 主角色创建界面渲染器；只负责 Cocos UI，不决定主角属性和战斗强度。 */
+/**
+ * docs/60「选择主角」(B 风格,原型 周报截图/2026-11-02_主角/proto/protagonist_create_b(_female).png,用户 11-03 确认):
+ * 左 = 万界之海舞台(主角全身 + 身后约 15% 的夜帝残影 + 肩旁漂浮的零),右 = 毛玻璃面板(男 / 女卡、出身 / 职业 / 前世、
+ * 3 个初始技能、起名框 + 骰子、「踏上强者之路」)。坐标全部取原型像素(1870×841)经 glassProtoMap 映射。
+ * 前世夜帝固定男性(11-03 用户),选女主角时残影 / 零也用男版。只负责画,不决定主角属性;正式创建走后端。
+ */
 export class ProtagonistCreateRenderer {
   constructor(private readonly host: ProtagonistCreateRendererHost) {}
 
   render(layout: UiLayout, state: ProtagonistCreateFormState): void {
-    const metrics = this.resolveMetrics(layout);
-    this.renderBackdrop(layout);
-    const scene = this.createRootGroup('ProtagonistCreatePanel', metrics.centerX, metrics.centerY, metrics.panelWidth, metrics.panelHeight);
-    scene.addComponent(BlockInputEvents);
-    this.drawFullSceneFrame(scene, metrics.panelWidth, metrics.panelHeight, metrics.scale);
-    this.renderTitle(scene, metrics);
-    this.renderGenderCards(scene, metrics, state);
-    this.renderFormArea(scene, metrics, state);
-    this.renderCreateControls(layout, metrics, state);
-  }
-
-  private resolveMetrics(layout: UiLayout): ProtagonistMetrics {
-    const rawScale = Math.min(layout.safeWidth / 1520, layout.safeHeight / 860);
-    const scale = clamp(rawScale, 0.34, 1);
-    const panelWidth = Math.max(320 * scale, layout.safeWidth - 16 * scale);
-    const panelHeight = Math.max(180 * scale, layout.safeHeight - 12 * scale);
-    const centerX = (layout.safeLeft + layout.safeRight) / 2;
-    const centerY = (layout.safeTop + layout.safeBottom) / 2;
-    const compact = panelWidth < 720 || panelHeight < 420;
-    return {
-      scale,
-      panelWidth,
-      panelHeight,
-      centerX,
-      centerY,
-      compact,
+    const cx = (layout.stageLeft + layout.stageRight) / 2;
+    const cy = (layout.stageTop + layout.stageBottom) / 2;
+    const { k, FX, FY, S } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    const T = (parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, width: number, align = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const label = glassLabel(this.host, parent, name, text, x, y, S(size), color, width, align, bold);
+      label.fontSize = Math.max(12, Math.round(S(size)));
+      label.lineHeight = label.fontSize + 4;
+      return label;
     };
-  }
+    const gender = state.selectedGender;
 
-  private renderBackdrop(layout: UiLayout): void {
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const backdrop = this.createRootGroup('ProtagonistCreateBackdrop', centerX, centerY, layout.width, layout.height);
-    const graphics = backdrop.addComponent(Graphics);
-    graphics.fillColor = rgba(4, 4, 7, 214);
-    graphics.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
-    graphics.fill();
+    const root = this.host.createUiNode('ProtagonistCreateScene');
+    root.setPosition(new Vec3(cx, cy, 0));
+    root.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    root.addComponent(BlockInputEvents);
 
-    // 用低成本 Cocos 图形塑造大殿轮廓，最终资产会拆成背景图和 UI 切图。
-    graphics.fillColor = rgba(104, 12, 18, 56);
-    graphics.rect(-layout.stageWidth * 0.08, -layout.stageHeight / 2, layout.stageWidth * 0.16, layout.stageHeight);
-    graphics.fill();
-    graphics.strokeColor = rgba(188, 42, 39, 84);
-    graphics.lineWidth = Math.max(1, layout.uiScale * 2);
-    for (let index = -3; index <= 3; index += 1) {
-      const x = index * layout.stageWidth * 0.12;
-      const towerHeight = layout.stageHeight * (0.28 + Math.abs(index) * 0.025);
-      graphics.moveTo(x, -layout.stageHeight / 2);
-      graphics.lineTo(x, -layout.stageHeight / 2 + towerHeight);
-      graphics.lineTo(x + layout.stageWidth * 0.018, -layout.stageHeight / 2 + towerHeight * 0.78);
-      graphics.stroke();
+    // 背景:万界之海整屏 cover(原图 1672×941,右侧本来就偏暗给面板),整体再压一层暗
+    const bgW = Math.max(layout.width, layout.height * (1672 / 941));
+    this.host.addSprite('ProtagonistBg', ART.bg, 0, 0, bgW, bgW * (941 / 1672), root);
+    const shade = this.host.addChildPlainNode(root, 'ProtagonistShade', 0, 0, layout.width, layout.height);
+    const g = shade.addComponent(Graphics);
+    g.fillColor = new Color(6, 9, 14, 70);
+    g.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
+    g.fill();
+
+    // 舞台:夜帝残影(原型约 15%,冷灰蓝)→ 主角全身(脚踩石台,原型 y 135..780)→ 零(原型 865,230,上下漂)
+    const ghost = this.host.addSprite('ProtagonistGhost', ART.ghost, FX(560), FY(350), S(560), S(840), root);
+    if (ghost) {
+      ghost.color = new Color(176, 192, 220, 255);
+      const op = ghost.node.addComponent(UIOpacity);
+      op.opacity = 44;
+      tween(op).repeatForever(tween().to(3.2, { opacity: 30 }).to(3.2, { opacity: 50 })).start();
     }
-  }
-
-  private renderTitle(parent: Node, metrics: ProtagonistMetrics): void {
-    const title = this.host.addChildLabel(
-      parent,
-      'ProtagonistCreateTitle',
-      '选择角色',
-      -metrics.panelWidth / 2 + 64 * metrics.scale,
-      metrics.panelHeight / 2 - 54 * metrics.scale,
-      40 * metrics.scale,
-      rgba(248, 219, 150),
-      new Size(220 * metrics.scale, 52 * metrics.scale),
-      HorizontalTextAlignment.LEFT,
-    );
-    this.applyOutline(title, metrics.scale, true);
-    const subtitle = this.host.addChildLabel(
-      parent,
-      'ProtagonistCreateSubtitle',
-      '创建你的 SSR 主角。主角不进入抽卡池，攻击形态默认开放。',
-      -metrics.panelWidth / 2 + 64 * metrics.scale,
-      metrics.panelHeight / 2 - 96 * metrics.scale,
-      18 * metrics.scale,
-      rgba(185, 155, 100),
-      new Size(metrics.compact ? metrics.panelWidth - 110 * metrics.scale : metrics.panelWidth * 0.58, 32 * metrics.scale),
-      HorizontalTextAlignment.LEFT,
-    );
-    subtitle.overflow = Label.Overflow.SHRINK;
-  }
-
-  private renderGenderCards(parent: Node, metrics: ProtagonistMetrics, state: ProtagonistCreateFormState): void {
-    const dense = this.isDenseCompact(metrics);
-    const cardWidth = metrics.compact ? metrics.panelWidth * 0.31 : Math.min(metrics.panelWidth * 0.22, 330 * metrics.scale);
-    const cardHeight = metrics.compact ? metrics.panelHeight * (dense ? 0.34 : 0.4) : Math.min(metrics.panelHeight * 0.66, 520 * metrics.scale);
-    const cardY = metrics.compact ? metrics.panelHeight * (dense ? 0.26 : 0.2) : -metrics.panelHeight * 0.01;
-    const gap = metrics.compact ? metrics.panelWidth * 0.1 : Math.max(72 * metrics.scale, metrics.panelWidth * 0.07);
-    const maleX = metrics.compact ? -cardWidth / 2 - gap / 2 : -metrics.panelWidth * 0.21;
-    const femaleX = metrics.compact ? cardWidth / 2 + gap / 2 : maleX + cardWidth + gap;
-    this.renderGenderCard(parent, 'male', maleX, cardY, cardWidth, cardHeight, metrics.scale, state.selectedGender === 'male');
-    this.renderGenderCard(parent, 'female', femaleX, cardY, cardWidth, cardHeight, metrics.scale, state.selectedGender === 'female');
-  }
-
-  private renderGenderCard(parent: Node, gender: ProtagonistGender, x: number, y: number, width: number, height: number, scale: number, selected: boolean): void {
-    const card = this.host.addChildPlainNode(parent, `ProtagonistGenderCard_${gender}`, x, y, width, height);
-    const graphics = card.addComponent(Graphics);
-    this.drawCardFrame(graphics, width, height, scale, selected);
-    card.addComponent(Button);
-    card.on(Button.EventType.CLICK, () => this.host.selectProtagonistGender(gender), this);
-    this.host.applyImageButtonFeedback(card, 1.018, 0.985);
-    this.host.applyPointerCursor(card);
-
-    const label = gender === 'male' ? '男' : '女';
-    const epithet = gender === 'male' ? '深渊誓刃' : '血月圣裁';
-    const symbol = gender === 'male' ? '♂' : '♀';
-    if (!this.renderCharacterArt(card, gender, width, height, scale)) {
-      this.drawCharacterSilhouette(card, gender, width, height, scale, selected);
-    }
-    const genderLabel = this.host.addChildLabel(card, 'ProtagonistGenderLabel', label, 0, -height / 2 + 46 * scale, 30 * scale, rgba(246, 220, 155), new Size(width * 0.8, 42 * scale));
-    this.applyOutline(genderLabel, scale, true);
-    const epithetLabel = this.host.addChildLabel(card, 'ProtagonistEpithet', epithet, 0, -height / 2 + 18 * scale, 18 * scale, rgba(190, 156, 92), new Size(width * 0.86, 24 * scale));
-    epithetLabel.overflow = Label.Overflow.SHRINK;
-    const symbolLabel = this.host.addChildLabel(card, 'ProtagonistGenderSymbol', symbol, -width / 2 + 42 * scale, height / 2 - 52 * scale, 34 * scale, selected ? rgba(242, 92, 70) : rgba(148, 118, 70), new Size(56 * scale, 56 * scale));
-    this.applyOutline(symbolLabel, scale, true);
-    const badge = this.host.addChildLabel(card, 'ProtagonistSsrBadge', 'SSR 主角', width / 2 - 74 * scale, height / 2 - 34 * scale, 17 * scale, rgba(250, 221, 150), new Size(112 * scale, 26 * scale));
-    badge.overflow = Label.Overflow.SHRINK;
-  }
-
-  private renderCharacterArt(parent: Node, gender: ProtagonistGender, width: number, height: number, scale: number): boolean {
-    // P1 使用概念图裁切出的男女主角卡面资产；加载失败时保留剪影兜底，避免预览空卡。
-    const artWidth = Math.min(width * 0.76, 250 * scale);
-    const artHeight = Math.min(height * 0.72, 330 * scale);
-    const sprite = this.host.addSprite(
-      `ProtagonistCharacterArt_${gender}`,
-      PROTAGONIST_ART_ASSETS[gender],
-      0,
-      24 * scale,
-      artWidth,
-      artHeight,
-      parent,
-    );
-    return !!sprite;
-  }
-
-  private renderFormArea(parent: Node, metrics: ProtagonistMetrics, state: ProtagonistCreateFormState): void {
-    const dense = this.isDenseCompact(metrics);
-    const areaX = metrics.compact ? 0 : metrics.panelWidth * 0.34;
-    const areaY = metrics.compact ? -metrics.panelHeight * (dense ? 0.08 : 0.14) : 8 * metrics.scale;
-    const areaWidth = metrics.compact ? metrics.panelWidth * 0.78 : Math.min(metrics.panelWidth * 0.26, 440 * metrics.scale);
-    const areaHeight = metrics.compact ? metrics.panelHeight * (dense ? 0.17 : 0.2) : Math.min(metrics.panelHeight * 0.44, 390 * metrics.scale);
-    const area = this.host.addChildPlainNode(parent, 'ProtagonistFormPreview', areaX, areaY, areaWidth, areaHeight);
-    const graphics = area.addComponent(Graphics);
-    graphics.fillColor = rgba(8, 7, 8, 205);
-    graphics.rect(-areaWidth / 2, -areaHeight / 2, areaWidth, areaHeight);
-    graphics.fill();
-    graphics.strokeColor = rgba(167, 121, 55, 180);
-    graphics.stroke();
-
-    const title = this.host.addChildLabel(
-      area,
-      'ProtagonistFormTitle',
-      'SSR 主角形态',
-      0,
-      areaHeight / 2 - (dense ? 11 : 28) * metrics.scale,
-      (dense ? 13 : 20) * metrics.scale,
-      rgba(247, 220, 154),
-      new Size(areaWidth - 34 * metrics.scale, (dense ? 18 : 30) * metrics.scale),
-    );
-    title.overflow = Label.Overflow.SHRINK;
-    this.applyOutline(title, metrics.scale, true);
-
-    if (dense) {
-      this.renderDenseFormChips(area, areaWidth, areaHeight, metrics.scale, state);
-      return;
+    this.host.addSprite('ProtagonistBody', ART.base[gender], FX(735), FY(452), S(440), S(660), root);
+    const zero = this.host.addSprite('ProtagonistZero', ART.zero, FX(875), FY(240), S(150), S(150), root);
+    if (zero) {
+      const base = zero.node.position.clone();
+      tween(zero.node).repeatForever(
+        tween().to(1.8, { position: new Vec3(base.x, base.y + S(10), 0) }, { easing: 'sineInOut' })
+          .to(1.8, { position: base }, { easing: 'sineInOut' }),
+      ).start();
     }
 
-    const chipHeight = 40 * metrics.scale;
-    const chipGap = 10 * metrics.scale;
-    const totalHeight = PROTAGONIST_FORM_OPTIONS.length * chipHeight + (PROTAGONIST_FORM_OPTIONS.length - 1) * chipGap;
-    let y = Math.min(areaHeight / 2 - 72 * metrics.scale, totalHeight / 2 - chipHeight / 2);
-    for (const option of PROTAGONIST_FORM_OPTIONS) {
-      this.renderFormChip(area, option.code, option.label, option.detail, option.unlocked, state.selectedForm === option.code, 0, y, areaWidth - 32 * metrics.scale, chipHeight, metrics.scale);
-      y -= chipHeight + chipGap;
+    // 标题(原型 60,42 / 60,86)
+    T(root, 'ProtagonistTitle', '选择主角', FX(60), FY(42), 44, GLASS_COLOR.text, S(400), HorizontalTextAlignment.LEFT, true);
+    T(root, 'ProtagonistSubtitle', '前世的残魂,正在万界之海中寻找它的转世……', FX(60), FY(86), 20, GLASS_COLOR.sub, S(620));
+
+    // 右侧面板 1166..1836 × 22..808
+    const panel = this.host.addChildPlainNode(root, 'ProtagonistPanel', FX(1501), FY(415), S(670), S(786));
+    panel.addComponent(BlockInputEvents);
+    mountGlassSlice(this.host, panel, 'GlassBase', GLASS_SLICES.panel, 0, 0, S(670), S(786), k);
+    mountGlassSlice(this.host, panel, 'Glass', GLASS_SLICES.panel, 0, 0, S(670), S(786), k);
+    const P = (px: number): number => FX(px) - FX(1501);
+    const Q = (py: number): number => FY(py) - FY(415);
+
+    // 男 / 女卡(原型 1250..1486 / 1518..1758 × 42..248)
+    this.genderCard(panel, 'male', '男', P(1368), Q(145), S(236), S(206), k, gender === 'male', T);
+    this.genderCard(panel, 'female', '女', P(1638), Q(145), S(240), S(206), k, gender === 'female', T);
+    mountGlassLine(this.host, panel, 'DividerTop', P(1503), Q(270), S(596), Math.max(1, S(1)), new Color(255, 255, 255, 26));
+
+    // 出身 / 职业 / 前世(图标 1236,标签 1276,值 1375;行 y 302 / 347 / 390)
+    const rows: Array<{ icon: string; label: string; value: string; y: number }> = [
+      { icon: G('protag_info_home'), label: '出身', value: '晨风村的孤儿,被认为没有契约天赋', y: 302 },
+      { icon: G('protag_info_class'), label: '职业', value: CLASS_TEXT[gender], y: 347 },
+      { icon: G('protag_info_past'), label: '前世', value: '???', y: 390 },
+    ];
+    for (const row of rows) {
+      const icon = this.host.addSprite(`Info_${row.label}`, row.icon, P(1236), Q(row.y), S(26), S(26), panel);
+      if (icon) {
+        icon.color = GLASS_COLOR.champagne;
+      }
+      T(panel, `InfoLabel_${row.label}`, row.label, P(1276), Q(row.y), 22, GLASS_COLOR.sub, S(90));
+      T(panel, `InfoValue_${row.label}`, row.value, P(1375), Q(row.y), 22, GLASS_COLOR.text, S(430));
     }
-  }
-
-  private renderFormChip(parent: Node, form: ProtagonistForm, label: string, detail: string, unlocked: boolean, selected: boolean, x: number, y: number, width: number, height: number, scale: number): void {
-    const chip = this.host.addChildPlainNode(parent, `ProtagonistForm_${form}`, x, y, width, height);
-    const graphics = chip.addComponent(Graphics);
-    graphics.fillColor = selected ? rgba(100, 18, 20, 210) : rgba(15, 13, 12, unlocked ? 200 : 150);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.strokeColor = selected ? rgba(230, 164, 74, 235) : rgba(130, 101, 59, unlocked ? 170 : 104);
-    graphics.stroke();
-    chip.addComponent(Button);
-    chip.on(Button.EventType.CLICK, () => this.host.previewProtagonistForm(form), this);
-    this.host.applyImageButtonFeedback(chip, 1.014, 0.986);
-    const icon = form === 'attack' ? '剑' : form === 'defense' ? '盾' : '契';
-    this.host.addChildLabel(chip, 'ProtagonistFormIcon', icon, -width / 2 + 30 * scale, 0, 20 * scale, unlocked ? rgba(242, 210, 140) : rgba(132, 118, 92), new Size(42 * scale, height));
-    const text = unlocked ? label : `${label}  锁定`;
-    const title = this.host.addChildLabel(chip, 'ProtagonistFormLabel', text, -width / 2 + 58 * scale, 7 * scale, 18 * scale, unlocked ? rgba(242, 214, 156) : rgba(144, 132, 108), new Size(width - 70 * scale, 20 * scale), HorizontalTextAlignment.LEFT);
-    title.overflow = Label.Overflow.SHRINK;
-    const detailLabel = this.host.addChildLabel(chip, 'ProtagonistFormDetail', detail, -width / 2 + 58 * scale, -10 * scale, 15 * scale, rgba(159, 135, 92), new Size(width - 72 * scale, 21 * scale), HorizontalTextAlignment.LEFT);
-    detailLabel.overflow = Label.Overflow.SHRINK;
-  }
-
-  private renderDenseFormChips(parent: Node, width: number, height: number, scale: number, state: ProtagonistCreateFormState): void {
-    const chipGap = 6 * scale;
-    const chipWidth = (width - 32 * scale - chipGap * 2) / 3;
-    const chipHeight = Math.max(16 * scale, height - 38 * scale);
-    const chipY = -height / 2 + 12 * scale + chipHeight / 2;
-    for (let index = 0; index < PROTAGONIST_FORM_OPTIONS.length; index += 1) {
-      const option = PROTAGONIST_FORM_OPTIONS[index];
-      const chipX = -width / 2 + 16 * scale + chipWidth / 2 + index * (chipWidth + chipGap);
-      this.renderDenseFormChip(parent, option.code, option.label, option.unlocked, state.selectedForm === option.code, chipX, chipY, chipWidth, chipHeight, scale);
+    const lock = this.host.addSprite('InfoPastLock', GLASS_ICON.lock, P(1442), Q(390), S(20), S(22), panel);
+    if (lock) {
+      lock.color = GLASS_COLOR.sub;
     }
-  }
 
-  private renderDenseFormChip(parent: Node, form: ProtagonistForm, label: string, unlocked: boolean, selected: boolean, x: number, y: number, width: number, height: number, scale: number): void {
-    const chip = this.host.addChildPlainNode(parent, `ProtagonistDenseForm_${form}`, x, y, width, height);
-    const graphics = chip.addComponent(Graphics);
-    graphics.fillColor = selected ? rgba(100, 18, 20, 210) : rgba(15, 13, 12, unlocked ? 196 : 138);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.strokeColor = selected ? rgba(230, 164, 74, 225) : rgba(130, 101, 59, unlocked ? 160 : 96);
-    graphics.stroke();
-    chip.addComponent(Button);
-    chip.on(Button.EventType.CLICK, () => this.host.previewProtagonistForm(form), this);
-    this.host.applyImageButtonFeedback(chip, 1.012, 0.988);
-    const text = unlocked ? label : `${label} 锁`;
-    const chipLabel = this.host.addChildLabel(chip, 'ProtagonistDenseFormLabel', text, 0, 0, Math.max(8, 12 * scale), unlocked ? rgba(238, 210, 150) : rgba(144, 132, 108), new Size(width - 8 * scale, height));
-    chipLabel.overflow = Label.Overflow.SHRINK;
-  }
+    // 3 个初始技能(圆心 1331 / 1501 / 1671 × 483,半径 46;名字 y 535)
+    SKILLS.forEach((skill, i) => {
+      const x = P(1331 + i * 170);
+      const disc = this.host.addChildPlainNode(panel, `Skill_${i}`, x, Q(483), S(92), S(92));
+      const dg = disc.addComponent(Graphics);
+      dg.fillColor = new Color(12, 15, 22, 200);
+      dg.circle(0, 0, S(46));
+      dg.fill();
+      dg.lineWidth = Math.max(1, S(1.5));
+      dg.strokeColor = new Color(255, 255, 255, 46);
+      dg.circle(0, 0, S(45));
+      dg.stroke();
+      const icon = this.host.addSprite(`SkillIcon_${i}`, skill.icon, 0, 0, S(58), S(58), disc);
+      if (icon) {
+        icon.color = GLASS_COLOR.champagne;
+      }
+      T(panel, `SkillName_${i}`, skill.name, x, Q(535), 21, GLASS_COLOR.text, S(150), HorizontalTextAlignment.CENTER);
+    });
+    mountGlassLine(this.host, panel, 'DividerBottom', P(1503), Q(568), S(596), Math.max(1, S(1)), new Color(255, 255, 255, 26));
 
-  private renderCreateControls(layout: UiLayout, metrics: ProtagonistMetrics, state: ProtagonistCreateFormState): void {
-    const dense = this.isDenseCompact(metrics);
-    const compactControls = dense || layout.inputHeight > 30 * metrics.scale;
-    const controlX = metrics.centerX + (metrics.compact ? 0 : metrics.panelWidth * 0.34);
-    const buttonYOffset = dense ? 20 : compactControls ? 46 : 70;
-    const buttonHeight = (dense ? 32 : compactControls ? 42 : 54) * metrics.scale;
-    const inputWidth = Math.min(390 * metrics.scale, metrics.panelWidth * (dense ? 0.62 : 0.28));
-    const inputY = metrics.centerY - metrics.panelHeight / 2 + (dense ? 128 : compactControls ? 132 : 154) * metrics.scale;
-    const input = this.host.addFramedEditBox(state.protagonistName, controlX, inputY, inputWidth, layout);
+    // 起名:标签 1230 / 框 1335..1782 × 593..651 / 分隔 1705 / 骰子 1741
+    T(panel, 'NameLabel', '主角名', P(1230), Q(622), 22, GLASS_COLOR.sub, S(100));
+    mountGlassSlice(this.host, panel, 'NameInputBg', GLASS_SLICES.input, P(1558), Q(622), S(447), S(58), k);
+    mountGlassLine(this.host, panel, 'NameInputSep', P(1705), Q(622), Math.max(1, S(2)), S(30), new Color(98, 106, 120, 200));
+    const dice = mountGlassIconButton(this.host, panel, 'NameDice', G('protag_dice'), P(1741), Q(622), S(34), S(64), () => this.host.rollProtagonistName());
+    const diceSprite = dice.getComponentInChildren(Sprite);
+    if (diceSprite) {
+      diceSprite.color = GLASS_COLOR.champagne;
+    }
+    this.host.applyPointerCursor(dice);
+    const hint = state.error || '2–12 个字,创建后可改名';
+    T(panel, 'NameHint', hint, P(1358), Q(670), 18, state.error ? GLASS_COLOR.red : GLASS_COLOR.dim, S(430));
+
+    const submit = mountGlassButton(this.host, panel, 'Submit', state.creating ? '正在订立圣契…' : '踏上强者之路', P(1502), Q(744), S(608), S(72), k,
+      state.creating ? 'primaryOff' : 'primary', () => this.host.submitProtagonistCreate(), 30);
+    this.host.applyPointerCursor(submit);
+
+    // EditBox 最后建(工厂挂内容根、在面板之上;坐标用内容根绝对坐标);文字起点 = 原型「晨星」x 1368
+    const input = this.host.addFramedEditBox(state.protagonistName, cx + FX(1520), cy + FY(622), S(330), layout, false, {
+      frameless: true,
+      placeholder: '输入主角名',
+      placeholderColor: GLASS_COLOR.dim,
+    });
+    input.node.name = 'ProtagonistNameInput';
+    const inputFont = Math.max(14, Math.round(S(26)));
+    for (const label of [input.textLabel, input.node.getChildByName('EditBoxDisplayLabel')?.getComponent(Label)]) {
+      if (label) {
+        label.fontSize = inputFont;
+        label.lineHeight = inputFont + 6;
+        label.color = GLASS_COLOR.text;
+      }
+    }
     input.maxLength = 12;
+    input.enabled = !state.creating;
+    input.node.on(EditBox.EventType.TEXT_CHANGED, (box: EditBox) => this.host.setProtagonistNameDraft(box.string), this);
+    input.node.on(EditBox.EventType.EDITING_RETURN, () => this.host.submitProtagonistCreate(), this);
     this.host.setProtagonistNameInput(input);
+  }
 
-    this.host.addChildLabel(
-      this.createRootGroup('ProtagonistCreateInputLabelLayer', controlX, inputY + (dense ? 30 : 39) * metrics.scale, inputWidth, 26 * metrics.scale),
-      'ProtagonistNameLabel',
-      '角色名',
-      0,
-      0,
-      17 * metrics.scale,
-      rgba(232, 194, 109),
-      new Size(inputWidth, 26 * metrics.scale),
-    );
-
-    const buttonText = state.creating ? '创建中' : '进入游戏';
-    const createButton = this.host.addGoldButton(
-      buttonText,
-      controlX,
-      metrics.centerY - metrics.panelHeight / 2 + buttonYOffset * metrics.scale,
-      () => this.host.submitProtagonistCreate(),
-      layout,
-      Math.min(360 * metrics.scale, metrics.panelWidth * (dense ? 0.54 : 0.42)),
-      buttonHeight,
-    );
-    createButton.interactable = !state.creating;
-    if (state.error) {
-      const error = this.host.addChildLabel(
-        this.createRootGroup('ProtagonistCreateErrorLayer', controlX, metrics.centerY - metrics.panelHeight / 2 + (dense ? 55 : 102) * metrics.scale, metrics.panelWidth * (metrics.compact ? 0.86 : 0.34), 24 * metrics.scale),
-        'ProtagonistCreateError',
-        state.error,
-        0,
-        0,
-        15 * metrics.scale,
-        rgba(255, 118, 118),
-        new Size(metrics.panelWidth - 60 * metrics.scale, 24 * metrics.scale),
-      );
-      error.overflow = Label.Overflow.SHRINK;
+  private genderCard(
+    parent: Node,
+    gender: ProtagonistGender,
+    text: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    k: number,
+    selected: boolean,
+    T: (parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, width: number, align?: HorizontalTextAlignment, bold?: boolean) => Label,
+  ): void {
+    const card = this.host.addChildPlainNode(parent, `GenderCard_${gender}`, x, y, w, h);
+    // 选中 = 暗金渐变底 + 金边 + 白字(11-02 全局选中口径);未选 = 装备框同款亮边玻璃 + 灰字
+    mountGlassSlice(this.host, card, 'Glass', selected ? GLASS_SLICES.tabGold : GLASS_SLICES.frame, 0, 0, w, h, k);
+    const bust = this.host.addSprite('Bust', ART.bust[gender], 0, 0, w - 4 * k, h - 4 * k, card);
+    if (bust && !selected) {
+      bust.color = new Color(170, 176, 188, 255);
+    }
+    T(card, 'Label', text, 0, -h / 2 + 28 * k, 28, selected ? GLASS_COLOR.onGold : GLASS_COLOR.sub, w, HorizontalTextAlignment.CENTER, selected);
+    if (!selected) {
+      card.addComponent(Button);
+      card.on(Button.EventType.CLICK, () => this.host.selectProtagonistGender(gender), this);
+      this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+      this.host.applyPointerCursor(card);
     }
   }
-
-  private drawFullSceneFrame(parent: Node, width: number, height: number, scale: number): void {
-    const graphics = parent.addComponent(Graphics);
-    // 全屏场景只保留薄边框和顶部/底部暗色压层，不再使用居中弹框视觉。
-    graphics.fillColor = rgba(3, 3, 6, 92);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.fillColor = rgba(0, 0, 0, 112);
-    graphics.rect(-width / 2, height / 2 - 126 * scale, width, 126 * scale);
-    graphics.rect(-width / 2, -height / 2, width, 118 * scale);
-    graphics.fill();
-    graphics.strokeColor = rgba(207, 151, 68, 170);
-    graphics.lineWidth = Math.max(1, 1.5 * scale);
-    graphics.rect(-width / 2 + 10 * scale, -height / 2 + 10 * scale, width - 20 * scale, height - 20 * scale);
-    graphics.stroke();
-    graphics.strokeColor = rgba(199, 45, 41, 110);
-    graphics.moveTo(-width * 0.18, height / 2 - 110 * scale);
-    graphics.lineTo(width * 0.18, height / 2 - 110 * scale);
-    graphics.moveTo(-width * 0.14, -height / 2 + 92 * scale);
-    graphics.lineTo(width * 0.14, -height / 2 + 92 * scale);
-    graphics.stroke();
-  }
-
-  private createRootGroup(name: string, x: number, y: number, width: number, height: number): Node {
-    const node = this.host.createUiNode(name);
-    node.setPosition(new Vec3(x, y, 0));
-    node.addComponent(UITransform).setContentSize(new Size(width, height));
-    return node;
-  }
-
-  private drawCardFrame(graphics: Graphics, width: number, height: number, scale: number, selected: boolean): void {
-    graphics.fillColor = selected ? rgba(20, 10, 10, 230) : rgba(8, 8, 10, 214);
-    graphics.rect(-width / 2, -height / 2, width, height);
-    graphics.fill();
-    graphics.strokeColor = selected ? rgba(224, 166, 72, 240) : rgba(128, 100, 58, 170);
-    graphics.lineWidth = Math.max(1, 2 * scale);
-    graphics.stroke();
-    graphics.strokeColor = selected ? rgba(196, 26, 30, 170) : rgba(60, 32, 32, 110);
-    graphics.lineWidth = Math.max(1, 1 * scale);
-    graphics.rect(-width / 2 + 8 * scale, -height / 2 + 8 * scale, width - 16 * scale, height - 16 * scale);
-    graphics.stroke();
-  }
-
-  private drawCharacterSilhouette(parent: Node, gender: ProtagonistGender, width: number, height: number, scale: number, selected: boolean): void {
-    const figure = this.host.addChildPlainNode(parent, 'ProtagonistFigure', 0, 18 * scale, width * 0.72, height * 0.58);
-    const graphics = figure.addComponent(Graphics);
-    const glow = selected ? 255 : 150;
-    graphics.fillColor = gender === 'male' ? rgba(34, 34, 38, glow) : rgba(38, 30, 34, glow);
-    graphics.circle(0, height * 0.16, 20 * scale);
-    graphics.fill();
-    graphics.moveTo(-44 * scale, height * 0.04);
-    graphics.lineTo(0, height * 0.15);
-    graphics.lineTo(44 * scale, height * 0.04);
-    graphics.lineTo(28 * scale, -height * 0.2);
-    graphics.lineTo(-28 * scale, -height * 0.2);
-    graphics.close();
-    graphics.fill();
-    graphics.strokeColor = selected ? rgba(226, 64, 52, 185) : rgba(122, 89, 52, 132);
-    graphics.lineWidth = Math.max(1, 2 * scale);
-    graphics.moveTo(gender === 'male' ? -52 * scale : 50 * scale, -height * 0.18);
-    graphics.lineTo(gender === 'male' ? 50 * scale : -50 * scale, height * 0.18);
-    graphics.stroke();
-  }
-
-  private applyOutline(label: Label, scale: number, strong: boolean): void {
-    label.enableOutline = true;
-    label.outlineColor = rgba(0, 0, 0, strong ? 220 : 170);
-    label.outlineWidth = Math.max(1, (strong ? 1.1 : 0.8) * scale);
-  }
-
-  private isDenseCompact(metrics: ProtagonistMetrics): boolean {
-    return metrics.compact;
-  }
-}
-
-interface ProtagonistMetrics {
-  scale: number;
-  panelWidth: number;
-  panelHeight: number;
-  centerX: number;
-  centerY: number;
-  compact: boolean;
 }

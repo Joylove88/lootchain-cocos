@@ -44,6 +44,8 @@ export interface ProtagonistCreateFormState {
   userId: number;
   selectedGender: ProtagonistGender;
   protagonistName: string;
+  /** 名字是随机给的(玩家没改过):切性别时跟着换成该性别的随机名。 */
+  nameAuto: boolean;
   selectedForm: ProtagonistForm;
   error: string;
   creating: boolean;

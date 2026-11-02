@@ -10,6 +10,14 @@ const DEFAULT_ATTACK_FORM = 'attack';
 const NAME_MIN_LENGTH = 2;
 const NAME_MAX_LENGTH = 12;
 
+const RESERVED_NAME_WORDS = ['官方', '客服', '管理员', '系统', '运营', 'gm', 'admin', 'lootchain'];
+
+/** docs/60 选择主角:随机起名池(骰子 / 默认名);只是建议,重名时后端会拦,玩家再摇或自己改。 */
+const RANDOM_NAMES: Record<ProtagonistGender, readonly string[]> = {
+  male: ['凌夜', '苍澜', '墨尘', '寒川', '烬羽', '云逸', '北辰', '玄策', '朔风', '青锋', '沧溟', '暮川', '长歌', '承影', '少游', '临渊'],
+  female: ['霜月', '晚晴', '星落', '若雪', '清歌', '绯烟', '洛璃', '云裳', '月汐', '紫苑', '初晴', '疏影', '琉音', '夜岚', '昭华', '听澜'],
+};
+
 /** 主角色创建页状态。当前以服务端创建为准，本地存储只保留预览镜像，不能当成正式数据。 */
 export class ProtagonistCreateState {
   private readonly memoryProfiles = new Map<number, ProtagonistLocalProfile>();
@@ -34,9 +42,11 @@ export class ProtagonistCreateState {
   }
 
   setGender(gender: ProtagonistGender): void {
+    const name = this.formState.nameAuto ? this.randomName(gender, this.formState.protagonistName) : this.formState.protagonistName;
     this.formState = {
       ...this.formState,
       selectedGender: gender,
+      protagonistName: name,
       error: '',
     };
     this.bump();
@@ -46,6 +56,26 @@ export class ProtagonistCreateState {
     this.formState = {
       ...this.formState,
       protagonistName: name.trim(),
+      error: '',
+    };
+    this.bump();
+  }
+
+  /** 输入中:只记草稿(整页重绘后输入框按它回填),不触发重绘,避免打字时重建 EditBox。 */
+  setNameDraft(name: string): void {
+    this.formState = {
+      ...this.formState,
+      protagonistName: name,
+      nameAuto: false,
+    };
+  }
+
+  /** 骰子:换一个该性别的随机名(不与当前名相同)。 */
+  rollName(): void {
+    this.formState = {
+      ...this.formState,
+      protagonistName: this.randomName(this.formState.selectedGender, this.formState.protagonistName),
+      nameAuto: true,
       error: '',
     };
     this.bump();
@@ -157,6 +187,15 @@ export class ProtagonistCreateState {
     if (!/^[\u4e00-\u9fa5A-Za-z0-9_]+$/.test(trimmed)) {
       return '角色名仅支持中文、英文、数字和下划线。';
     }
+    // 与后端 PlayerRenameService.normalize 同口径:不能纯数字、不能含官方保留字
+    if (/^[0-9]+$/.test(trimmed)) {
+      return '角色名不能是纯数字。';
+    }
+    const lower = trimmed.toLowerCase();
+    const reserved = RESERVED_NAME_WORDS.find((word) => lower.indexOf(word) >= 0);
+    if (reserved) {
+      return `角色名不能包含「${reserved}」。`;
+    }
     return '';
   }
 
@@ -164,12 +203,18 @@ export class ProtagonistCreateState {
     return {
       userId,
       selectedGender: 'male',
-      protagonistName: `圣契${userId || 1}`,
+      protagonistName: this.randomName('male', ''),
+      nameAuto: true,
       selectedForm: DEFAULT_ATTACK_FORM,
       error: '',
       creating: false,
       version: this.revision,
     };
+  }
+
+  private randomName(gender: ProtagonistGender, avoid: string): string {
+    const pool = RANDOM_NAMES[gender].filter((name) => name !== avoid);
+    return pool[Math.floor(Math.random() * pool.length)] ?? RANDOM_NAMES[gender][0];
   }
 
   private bump(): void {

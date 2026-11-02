@@ -76,6 +76,24 @@ ASSETS = {
         'Copy ONLY the background of the attached prototype: the dim cool blue-grey "sea of souls" void with soft mist, a calm misty sea '
         'surface, a few distant tiny floating islands with small glowing buildings, faint stars; and the round engraved dark stone platform '
         'in the lower centre-left (empty). Slightly darker towards the right third. No particles, no light rays, no lens flare.'),
+    'skill_slash': ([f'{PROTO}/protagonist_create_b.png'],
+        'Generate ONE image, square (about 1024x1024). A single flat game skill ICON glyph in soft champagne gold (#E3C48A), '
+        'clean bold shapes with crisp edges and uniform stroke weight, centred, filling about 70% of the canvas, on a PURE BLACK '
+        'background (#000000). No circle, no ring, no frame, no badge, no text, no glow, no gradient background. Modern minimal '
+        'dark-fantasy UI style, matching the gold line icons in the attached prototype panel. ' +
+        'Subject: a sword slashing diagonally with a curved crescent of soul energy trailing behind the blade (skill "魂斩").'),
+    'skill_seal': ([f'{PROTO}/protagonist_create_b.png'],
+        'Generate ONE image, square (about 1024x1024). A single flat game skill ICON glyph in soft champagne gold (#E3C48A), '
+        'clean bold shapes with crisp edges and uniform stroke weight, centred, filling about 70% of the canvas, on a PURE BLACK '
+        'background (#000000). No circle, no ring, no frame, no badge, no text, no glow, no gradient background. Modern minimal '
+        'dark-fantasy UI style, matching the gold line icons in the attached prototype panel. ' +
+        'Subject: a four-pointed star seal sigil bursting outward, small shards radiating from it (skill "契印爆发").'),
+    'skill_step': ([f'{PROTO}/protagonist_create_b.png'],
+        'Generate ONE image, square (about 1024x1024). A single flat game skill ICON glyph in soft champagne gold (#E3C48A), '
+        'clean bold shapes with crisp edges and uniform stroke weight, centred, filling about 70% of the canvas, on a PURE BLACK '
+        'background (#000000). No circle, no ring, no frame, no badge, no text, no glow, no gradient background. Modern minimal '
+        'dark-fantasy UI style, matching the gold line icons in the attached prototype panel. ' +
+        'Subject: a dashing swordsman silhouette in mid-stride with two fading afterimage silhouettes behind him (skill "残影步"), elegant, NOT clip-art.'),
 }
 
 
