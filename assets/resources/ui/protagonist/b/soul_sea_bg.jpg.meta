@@ -4,8 +4,8 @@
   "imported": true,
   "uuid": "411683fd-8d0f-434b-8c75-1b6e6070035d",
   "files": [
-    ".jpg",
-    ".json"
+    ".json",
+    ".png"
   ],
   "subMetas": {
     "6c48a": {
@@ -64,16 +64,16 @@
         "trimType": "none",
         "vertices": {
           "rawPosition": [
-            -836,
+            -836.0,
             -470.5,
             0,
-            836,
+            836.0,
             -470.5,
             0,
-            -836,
+            -836.0,
             470.5,
             0,
-            836,
+            836.0,
             470.5,
             0
           ],
@@ -106,12 +106,12 @@
             1
           ],
           "minPos": [
-            -836,
+            -836.0,
             -470.5,
             0
           ],
           "maxPos": [
-            836,
+            836.0,
             470.5,
             0
           ]
@@ -128,7 +128,7 @@
   "userData": {
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
-    "hasAlpha": false,
+    "hasAlpha": true,
     "redirect": "411683fd-8d0f-434b-8c75-1b6e6070035d@6c48a",
     "compressSettings": {
       "useCompressTexture": false,

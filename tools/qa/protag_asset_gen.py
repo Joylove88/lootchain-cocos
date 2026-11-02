@@ -168,6 +168,31 @@ ASSETS = {
         'with the same smooth refined rendering. Change ONLY the HAIR: neat, smooth hair drawn as a few clean defined locks with soft '
         'gradients and a clean outline; NO frizz, NO flyaway strands, NO fuzzy or wispy hair edges, NO stray single hairs sticking out. '
         'Also keep every silhouette edge of the figure crisp and clean.'),
+    'skinref_m': ([f'{OUT}/stand_Eulenspigel.png', f'{OUT}/protag_m_v5.png'],
+        'Generate ONE image, portrait 2:3 (about 1024x1536), on a plain flat dark grey background (#22252C), no shadow, no text. '
+        'This is a REFERENCE for re-texturing a 2D skeletal (Spine) character: keep the EXACT pose, body proportions, silhouette, and the '
+        'position, size and angle of EVERY body part and prop of the character in the FIRST image (head, torso, both arms, hands, legs, feet, '
+        'cloth pieces, weapons), so each part lands in the same place. Only change what they look like: the face, hair, skin and outfit become '
+        'the protagonist of the SECOND image, painted in the same smooth refined semi-realistic style as the SECOND image (NOT anime, NOT chibi). ' +
+        'Mapping: his long dark coat becomes a long worn hooded traveller’s cloak of rough brown wool hanging to the ankles, keeping the same '
+        'torn hem shape; under it the plain linen tunic with laced collar, leather belt with pouch, leather bracers, brown trousers and leather boots '
+        'of the SECOND image; the dagger in his right hand becomes a short WOODEN training sword of the same length and angle; the greatsword hilt '
+        'over his back becomes the hilt of a big WOODEN training greatsword strapped on his back; the rope at his left side becomes a plain cloth strap.'),
+    'skinref_f': ([f'{OUT}/stand_Lucrecia.png', f'{OUT}/protag_f_v5.png'],
+        'Generate ONE image, portrait 2:3 (about 1024x1536), on a plain flat dark grey background (#22252C), no shadow, no text. '
+        'This is a REFERENCE for re-texturing a 2D skeletal (Spine) character: keep the EXACT pose, body proportions, silhouette, and the '
+        'position, size and angle of EVERY body part and prop of the character in the FIRST image (head, torso, both arms, hands, legs, feet, '
+        'cloth pieces, weapons), so each part lands in the same place. Only change what they look like: the face, hair, skin and outfit become '
+        'the protagonist of the SECOND image, painted in the same smooth refined semi-realistic style as the SECOND image (NOT anime, NOT chibi). ' +
+        'Mapping: her white armoured dress becomes the plain linen tunic, leather belt with pouch, leather bracers, brown trousers and leather boots '
+        'of the SECOND image (modest, not revealing); her red cape becomes a short worn brown wool cape; the long red spear-blade in her right hand '
+        'becomes a long slim WOODEN practice blade of the same length and angle; the huge spiked tower shield becomes a big plain WOODEN tower shield '
+        'made of rough planks bound with dark iron bands, same size and outline but no spikes; her hair becomes the brown low ponytail of the SECOND image.'),
+    'protag_f_v6': ([f'{OUT}/protag_f_v5.png', f'{OUT}/stand_Lucrecia_reskin.png'],
+        'Generate ONE image, tall portrait 2:3 (about 1024x1536). ' + ALPHA +
+        'The FIRST image is our APPROVED character. Redraw EXACTLY the same girl, face, outfit, colours, wooden rapier, pose, framing and the same '
+        'smooth refined semi-realistic rendering. Change ONLY the HAIR: a short chin-length brown bob with a soft side part, like the field '
+        'character in the SECOND image; no ponytail. Neat clean locks, no frizz, no flyaway strands, crisp clean edges.'),
 }
 
 
