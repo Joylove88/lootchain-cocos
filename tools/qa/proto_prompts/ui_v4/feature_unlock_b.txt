@@ -1,0 +1,13 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our real in-game village field screen with its approved B-style HUD (minimap top-left, quest tracker, joystick bottom-left, top-right buttons, the plaza with the rune circle). Keep this EXACT screen and HUD as the base; replace the four heroes with ONE young male protagonist (from the third image, small in-game scale, now in a light traveller's armour with a short dark cape and a rune-etched sword) followed by 3 small companion heroes; the tiny soul spirit "零" floats above his shoulder.
+- SECOND image = our APPROVED "觉醒" prototype: reuse its frosted dialogue card and 零's round portrait style exactly.
+- THIRD image = our APPROVED "境界突破" prototype (character design, B-style panels, champagne accents).
+
+MOMENT "新功能开放" (the player just broke through to the 炼魂 realm at Lv.10 and leaves the village; four terminal features unlock at once):
+- The field HUD stays visible and usable; the game is NOT paused. Do not cover the joystick or the minimap.
+- Top centre (under the top edge, between the minimap and the top-right buttons): a frosted glass broadcast banner (about 760x150, rounded): a small champagne line "境界提升 · 炼魂 · 初期" at the top, then the white title "新功能开放", then a row of FOUR small square dark glass tiles (about 76px) each with a monochrome muted-gold line icon and a tiny white caption under it: "世界地图" (map pin on a folded map), "野外探索" (compass star), "商店" (shopping bag), "佣兵公会" (shield with a sword). A small champagne "新" badge on the top-right corner of each tile.
+- The top-right "终端" HUD button gets a small champagne "新" badge and a thin soft champagne pulse ring around it (one ring, subtle, no particles).
+- Bottom centre, above the joystick row but not overlapping the joystick: the short frosted dialogue card (about 900x120) with 零's round portrait, speaker "零" in champagne, white line "这具身体总算像样了。外面的世界打开了——终端里多了几样东西,去看看。", and a small grey "点击收起" at its bottom-right.
+Calm, premium, readable. B style only — no red ribbons, no ornate gold frames, no glowing particles, no light rays, no lens flare.
+Output only the single finished mockup image, no annotations.

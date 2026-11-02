@@ -1,0 +1,15 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our previous tutorial prototype on the "终端" (main menu hub): spotlight hole around the "英雄" tile, a pointing glove tapping it, a frosted guide card to its right. Reproduce this EXACT screen — same hub layout, same tile grid and positions, same left profile panel, same bottom bar, same spotlight, same glove and ripple, same guide card size and position — and change ONLY what is listed below.
+- SECOND image = our APPROVED "选择主角" prototype: use its young MALE protagonist (short dark hair, worn linen tunic) as the player's round avatar (bust, matte painted, NOT anime).
+- THIRD image = our APPROVED "觉醒" prototype: use the round portrait of the soul spirit "零" from its dialogue card (dark armored face-mask, two golden eyes, a pale flame wisp, thin faint ring).
+
+CHANGES:
+1) Guide card: replace the village chief portrait with 零's round portrait; speaker name "零" in small champagne text; the line in white: "伙伴也得变强。去「英雄」里给低语教徒升一级——经验书我已经塞进你背包了。"; keep the 5 step dots (2nd one champagne) and the small grey "跳过".
+2) Left profile panel: the round avatar becomes the young male protagonist; name "晨星", grey "ID 64". The stat rows become: "境界" with value "觉醒 · 初期" (value in champagne), "等级" "Lv.4", the EXP bar "EXP 40%", then 体力 "120/120", 金币 "1,280", 钻石 "300" (each still with its small "+" button).
+3) LOCKED tiles (feature not yet unlocked): the tile stays in place but is dimmed to about 40%, its line icon greyed, a small grey padlock icon in its top-right corner, and under the tile name a small grey line with the unlock condition. Apply to:
+   矿境掠夺 "Lv.15 开放", 秘境试炼 "Lv.12 开放", 守卫水晶 "Lv.15 开放", 商店 "Lv.10 开放", 佣兵公会 "Lv.10 开放", 野外探索 "Lv.10 开放" (remove its 探索度 line), 世界地图 "Lv.10 开放", 排行 "Lv.20 开放".
+   UNLOCKED tiles stay normal: 英雄 (in the spotlight), 召唤, 图鉴, 任务. Remove all red notification dots except the one on 英雄.
+   (These locked tiles are also dimmed by the spotlight overlay like everything else outside the hole; they must still read as locked.)
+Everything else identical. B style only.
+Output only the single finished mockup image, no annotations.
