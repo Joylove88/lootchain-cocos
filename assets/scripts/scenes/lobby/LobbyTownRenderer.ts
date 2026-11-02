@@ -3878,6 +3878,22 @@ export class LobbyTownRenderer {
     { kind: 'skill1', mult: 1.15, reach: 180, cap: 680, heavy: false },
     { kind: 'skill2', mult: 1.8, reach: 200, cap: 820, heavy: true },
   ];
+  /**
+   * 专属连招(11-03 用户「英雄攻击动作太少,看不出连招」):永夜龙骑骨骼的每段攻击动作 2~3 秒、里面有好几刀,
+   * 原来整段压到 0.6 秒快进 = 只看到一闪。这里把每段里真正出刀的那一截(秒,按 12fps 逐帧看过)切出来、接近原速播,串成 5 段:
+   * 上挑 → 横扫 → 过顶劈 → 突刺 → 跃起下劈(终结,重击 + 范围)。按骨骼资源名配;没配的英雄仍走 COMBO 三段。
+   * hitAt = 命中点在这一截里的比例。主角(protag_m / protag_f)与永夜龙骑(IshmaelA)同一副骨骼、共用。
+   */
+  private static readonly CLIP_COMBOS: Record<string, Array<{ anim: string; start: number; end: number; speed: number; hitAt: number; mult: number; reach: number; heavy: boolean; around?: boolean }>> = (() => {
+    const chain = [
+      { anim: 'skill3A', start: 0.4, end: 1.1, speed: 1.3, hitAt: 0.5, mult: 0.9, reach: 175, heavy: false },
+      { anim: 'skill1', start: 0.25, end: 0.95, speed: 1.3, hitAt: 0.45, mult: 1.0, reach: 185, heavy: false },
+      { anim: 'atk', start: 0.55, end: 1.5, speed: 1.35, hitAt: 0.68, mult: 1.25, reach: 180, heavy: false },
+      { anim: 'skill1', start: 1.05, end: 1.95, speed: 1.35, hitAt: 0.4, mult: 1.2, reach: 210, heavy: false },
+      { anim: 'skill3B', start: 0.3, end: 1.45, speed: 1.3, hitAt: 0.62, mult: 1.9, reach: 220, heavy: true, around: true },
+    ];
+    return { protag_m: chain, protag_f: chain, IshmaelA: chain };
+  })();
   private static readonly SKILLS = [
     // 10-31 用户「只有大招有技能特效」:技能动作 2~2.5 秒,原 cap 0.7~0.9 秒 = 快进 3 倍一闪而过;放宽到约 1.7~2 倍速
     { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, cap: 1200, dash: 0, anim: 'skill3' as const },
@@ -4006,6 +4022,11 @@ export class LobbyTownRenderer {
       }
       return;
     }
+    const clips = LobbyTownRenderer.CLIP_COMBOS[this.leader.hero.spineAsset ?? ''];
+    if (clips && this.leader.skeleton) {
+      this.leaderClipAttack(now, clips);
+      return;
+    }
     this.comboStep = now < this.comboUntil ? (this.comboStep % 3) + 1 : 1;
     const spec = LobbyTownRenderer.COMBO[this.comboStep - 1];
     const leader = this.leader;
@@ -4017,6 +4038,29 @@ export class LobbyTownRenderer {
     const ranged = leader.role !== 'melee';
     this.pendingHits.push({ at: now + dur * 0.38, mult: spec.mult, reach: spec.reach, around: false, heavy: spec.heavy, ranged });
     gameAudio.sfx(resolveHeroAttackSfxKey(leader.hero.heroCode, leader.hero.heroClass, !ranged), spec.heavy ? 0.8 : 0.6);
+  }
+
+  /** 专属连招的一段:切片播放 + 按这一截的出刀点排命中;连招窗口内连点按顺序接,断了从第一段起。 */
+  private leaderClipAttack(now: number, clips: ReadonlyArray<{ anim: string; start: number; end: number; speed: number; hitAt: number; mult: number; reach: number; heavy: boolean; around?: boolean }>): void {
+    const leader = this.leader;
+    if (!leader) {
+      return;
+    }
+    this.comboStep = now < this.comboUntil ? (this.comboStep % clips.length) + 1 : 1;
+    const seg = clips[this.comboStep - 1];
+    this.magnetToTarget(seg.reach);
+    const dur = this.playActorClip(leader, seg.anim, seg.start, seg.end, seg.speed);
+    if (dur <= 0) {
+      return;
+    }
+    this.leaderActionAnim = true;
+    this.leaderActionStart = now;
+    // 取消点:出刀后就能接下一段(不必等收招),终结段收招长一点
+    this.actionUntil = now + dur * (seg.heavy ? 0.85 : Math.min(0.8, seg.hitAt + 0.18));
+    this.comboUntil = now + dur + 500;
+    const ranged = leader.role !== 'melee';
+    this.pendingHits.push({ at: now + dur * seg.hitAt, mult: seg.mult, reach: seg.reach, around: !!seg.around, heavy: seg.heavy, ranged });
+    gameAudio.sfx(resolveHeroAttackSfxKey(leader.hero.heroCode, leader.hero.heroClass, !ranged), seg.heavy ? 0.85 : 0.6);
   }
 
   private leaderSkill(index: number): void {
@@ -4191,6 +4235,10 @@ export class LobbyTownRenderer {
     if (index === 0) {
       return actor.names?.ult ? 'skill3' : 'skill2';
     }
+    // 有专属连招的骨骼:连招已用了 skill1 的两截,L 改放 skill2(披风旋身斩),三个技能键动作都不重样
+    if (index === 1 && LobbyTownRenderer.CLIP_COMBOS[actor.hero.spineAsset ?? ''] && actor.names?.skill2) {
+      return 'skill2';
+    }
     return index === 1 ? 'skill1' : 'ult';
   }
 
@@ -4309,6 +4357,39 @@ export class LobbyTownRenderer {
     actor.anim = anim;
     actor.loopAfter = loop;
     const dur = lengthMs / speed;
+    actor.oneShotEnd = Date.now() + dur;
+    return dur;
+  }
+
+  /**
+   * 切片播放:只播动作 anim 的 [start, end] 秒(TrackEntry.animationStart / animationEnd),按 speed 倍速,播完接循环。
+   * animationEnd 要在 addAnimation 之前设好:排队的循环按上一段的切片长度算接续时间。返回实际时长 ms(0 = 没播)。
+   */
+  private playActorClip(actor: TownActor, anim: string, start: number, end: number, speed: number): number {
+    const skeleton = actor.skeleton;
+    const names = actor.names;
+    if (!skeleton || !skeleton.isValid || !names || !skeleton.findAnimation(anim)) {
+      return 0;
+    }
+    const loop = (actor.moving ? names.move || names.idle : names.idle) || null;
+    try {
+      const entry = skeleton.setAnimation(0, anim, false);
+      if (entry) {
+        entry.animationStart = start;
+        entry.animationEnd = end;
+        entry.animationLast = -1;
+      }
+      if (loop) {
+        skeleton.addAnimation(0, loop, true, 0);
+      }
+      skeleton.timeScale = speed;
+    } catch (error) {
+      void error;
+      return 0;
+    }
+    actor.anim = anim;
+    actor.loopAfter = loop;
+    const dur = ((end - start) * 1000) / speed;
     actor.oneShotEnd = Date.now() + dur;
     return dur;
   }

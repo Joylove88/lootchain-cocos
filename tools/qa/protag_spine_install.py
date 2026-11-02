@@ -18,8 +18,16 @@ BASE = 'IshmaelA'
 TARGETS = [('m2', 'protag_m', 'protag_m_v5', 'PROTAGONIST_MALE_ATTACK'), ('f2', 'protag_f', 'protag_f_v6', 'PROTAGONIST_FEMALE_ATTACK')]
 
 
+# 11-03 用户「头一直在仰头」:永夜龙骑头盔骨骼本来斜向上,画进去的脸跟着仰;骨骼动画是在初始姿势上叠加,
+# 把头骨 face01 初始角度往下压 15°(实测 -12° 已明显看向正前方,+ 方向更仰)全部动作一起修正
+HEAD_TILT = -15.0
+
+
 def install_spine(src_key, name):
-    src = os.path.join('C:/mw/protag', src_key, 'out_fix')
+    # 衣服统一(protag_spine_unify.py)跑过就用它的结果
+    src = os.path.join('C:/mw/protag', src_key, 'out_unify')
+    if not os.path.isdir(src):
+        src = os.path.join('C:/mw/protag', src_key, 'out_fix')
     dst = os.path.join(HERO, name)
     os.makedirs(dst, exist_ok=True)
     orig = os.path.join(HERO, BASE)
@@ -29,8 +37,13 @@ def install_spine(src_key, name):
     first = next(i for i, l in enumerate(atlas) if l.strip())
     atlas[first] = name + '.png'
     open(os.path.join(dst, name + '.atlas'), 'w', encoding='utf-8', newline='\n').write('\n'.join(atlas) + '\n')
-    shutil.copy(os.path.join(src, BASE + '.json'), os.path.join(dst, name + '.json'))
-    print('spine', name, (w, h))
+    import json
+    data = json.load(open(os.path.join(src, BASE + '.json'), encoding='utf-8'))
+    for bone in data['bones']:
+        if bone['name'] == 'face01':
+            bone['rotation'] = round(bone.get('rotation', 0) + HEAD_TILT, 2)
+    json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    print('spine', name, (w, h), 'from', src)
 
 
 def install_avatar(art, code):
