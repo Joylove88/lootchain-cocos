@@ -1,0 +1,16 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED "选择主角" prototype: the giant faint silhouette behind the boy is his former life "夜帝" (a towering armored emperor: dark ornate armour, spiked crown-helm, long flowing cape, half-spread energy wings, a great sword). In THIS image 夜帝 is shown fully solid and in colour as a real character.
+- SECOND image = our APPROVED "觉醒" prototype: reuse its cinematic letterbox, its "跳过 ›" pill and its frosted dialogue card style (round portrait on the left, speaker name in champagne, white line).
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent).
+
+SCENE "序幕 · 神庭陨落" (the opening cut-scene: the betrayal), cinematic key frame, semi-realistic painted, matte, epic but restrained (NOT anime, NOT glossy cartoon):
+- Setting: the edge of a vast floating sky citadel of white-gold stone (the divine court, 上界神庭) high above a sea of clouds; on the horizon a wall of "长夜": a towering black-violet tide of darkness swallowing the sky, with faint shapes of corrupted giant creatures inside it. Cold dusk light.
+- Centre-left: 夜帝, large in frame (about 60% of the height), mid-battle stance facing the dark tide, his great sword "夜曜" glowing with a cold pale-violet edge, cape torn by wind, wings of dark energy spread. He is half-turning his head back in shock.
+- Behind him (right of centre, slightly higher on a broken white pillar): "天枢", his sworn brother — a radiant lord in white-gold armour and a high golden halo crown, calm cold face, driving a long spear of white light into 夜帝's back; cracks of white light spread across 夜帝's armour. Two or three hooded cultists in dark robes (永夜教廷) stand in the shadows behind 天枢, faint.
+- Very restrained effects: no particle storm, no lens flare; the light of the spear and the violet sword edge are the only strong lights.
+UI (B style):
+- Thin black letterbox bars at top and bottom; "跳过 ›" pill at the top-right inside the letterbox.
+- Bottom centre above the lower bar: the frosted dialogue card (about 1160x150): round portrait of 天枢 (white-gold helm, cold eyes, thin faint ring), speaker name "天枢" in small champagne text, white line "兄长,长夜你挡不住的。圣契……就交给我吧。", small grey "点击继续 ▾" at the bottom-right.
+- Top-left inside the frame, small and quiet: champagne text "序幕" and white text "神庭陨落".
+Output only the single finished mockup image, no annotations.
