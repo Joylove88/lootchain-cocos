@@ -18,12 +18,12 @@ const CRYSTAL_ICON = 'ui/bag/ai/icon_sacred_crystal/spriteFrame';
 const ICON = (name: string): string => `ui/glass/${name}/spriteFrame`;
 const WEEKDAY = ['', '一', '二', '三', '四', '五', '六', '日'];
 const TIER_TABS = ['Ⅰ 普通', 'Ⅱ 困难', 'Ⅲ 输出试炼'];
-/** 主题场景图(同旧页);横幅 / 缩略图都按 cover 裁切。 */
+/** 主题场景图:用提亮版 scene_*_lit(11-02 用户「封面太暗,要和原型一样亮」,tools/qa/daily_scene_lit.py);横幅 / 缩略图都按 cover 裁切。 */
 const THEME_SCENE: Array<{ keyword: string; asset: string; drop: string }> = [
-  { keyword: 'AWAKEN', asset: 'ui/daily/ai/scene_awaken/spriteFrame', drop: '掉落觉醒材料' },
-  { keyword: 'FORGE', asset: 'ui/daily/ai/scene_forge/spriteFrame', drop: '掉落强化材料' },
-  { keyword: 'ARCANE', asset: 'ui/daily/ai/scene_arcane/spriteFrame', drop: '掉落宝石与洗练材料' },
-  { keyword: 'ABYSS', asset: 'ui/daily/ai/scene_abyss/spriteFrame', drop: '掉落终极技能材料' },
+  { keyword: 'AWAKEN', asset: 'ui/daily/ai/scene_awaken_lit/spriteFrame', drop: '掉落觉醒材料' },
+  { keyword: 'FORGE', asset: 'ui/daily/ai/scene_forge_lit/spriteFrame', drop: '掉落强化材料' },
+  { keyword: 'ARCANE', asset: 'ui/daily/ai/scene_arcane_lit/spriteFrame', drop: '掉落宝石与洗练材料' },
+  { keyword: 'ABYSS', asset: 'ui/daily/ai/scene_abyss_lit/spriteFrame', drop: '掉落终极技能材料' },
 ];
 const sceneOf = (code: string): { asset: string; drop: string } | null => THEME_SCENE.find((entry) => (code || '').toUpperCase().includes(entry.keyword)) ?? null;
 
@@ -127,7 +127,8 @@ export class LobbyDailyGlassRenderer {
       const top = 96 + index * 182;
       const on = theme.code === selected.code;
       const card = this.host.addChildPlainNode(panel, `Theme_${theme.code}`, FX(309), FY(top + 83), S(524), S(166));
-      mountGlassSlice(kit, card, 'Bg', on ? GLASS_SLICES.panelSel : GLASS_SLICES.panel, 0, 0, S(524), S(166), k);
+      // 选中:整卡暗金渐变底 + 白字(同原型 / 全局选中口径);未选:玻璃
+      mountGlassSlice(kit, card, 'Bg', on ? GLASS_SLICES.tabGold : GLASS_SLICES.panel, 0, 0, S(524), S(166), k);
       const left = -S(524) / 2;
       const thumb = this.host.addChildPlainNode(card, 'Thumb', left + S(12 + 136), 0, S(272), S(144));
       thumb.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
@@ -136,10 +137,11 @@ export class LobbyDailyGlassRenderer {
         mountCoverArt(thumb, scene.asset, S(272), S(144));
       }
       if (!theme.openToday) {
-        this.veil(thumb, S(272), S(144), 150);
+        // 未开放只轻压一层(原型里未开放的封面仍看得清)
+        this.veil(thumb, S(272), S(144), 70);
       }
-      T(card, 'Name', theme.name, left + S(306), S(41), 32, theme.openToday ? GLASS_COLOR.text : GLASS_COLOR.sub, S(210), HorizontalTextAlignment.LEFT, true);
-      T(card, 'Days', theme.openDays.map((day) => WEEKDAY[day] ?? '').map((d, i) => (i === 0 ? `周${d}` : d)).join(' / '), left + S(306), -S(3), 22, GLASS_COLOR.sub, S(210));
+      T(card, 'Name', theme.name, left + S(306), S(41), 32, on ? GLASS_COLOR.onGold : theme.openToday ? GLASS_COLOR.text : new Color(214, 218, 226, 255), S(210), HorizontalTextAlignment.LEFT, true);
+      T(card, 'Days', theme.openDays.map((day) => WEEKDAY[day] ?? '').map((d, i) => (i === 0 ? `周${d}` : d)).join(' / '), left + S(306), -S(3), 22, on ? new Color(244, 236, 220, 255) : GLASS_COLOR.sub, S(210));
       const tagText = theme.openToday ? `今日开放 · ${theme.usedToday}/${theme.timesPerDay}` : '今日未开放';
       this.tag(card, tagText, left + S(398), -S(45), S(184), S(38), theme.openToday ? 'green' : 'grey', S, k, T);
       if (!on) {
@@ -172,7 +174,7 @@ export class LobbyDailyGlassRenderer {
       sg.fill();
     }
     if (!theme.openToday) {
-      this.veil(banner, S(1202), S(197), 110);
+      this.veil(banner, S(1202), S(197), 70);
     }
     T(panel, 'BannerTitle', theme.name, FX(647), FY(215), 48, GLASS_COLOR.text, S(600), HorizontalTextAlignment.LEFT, true);
     const days = theme.openDays.map((day) => WEEKDAY[day] ?? '').map((d, i) => (i === 0 ? `周${d}` : d)).join(' / ');
