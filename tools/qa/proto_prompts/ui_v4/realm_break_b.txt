@@ -1,0 +1,22 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED "选择主角" prototype: reuse its background (dim blue-grey sea of souls with tiny floating worlds), its round stone platform, its right-side tall frosted glass panel and its overall composition (character stage on the left ~58%, panel on the right ~38%).
+- SECOND image = our APPROVED announcement-style window (frosted dark glass window, about 80% of the screen width and 86% of the height, centred, title on the top-left, close "X" on the top-right, thin divider under the top row). Use THIS window frame for the screen; the whole composition of the first image goes inside it. NO back arrow.
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent; selected = dark-gold gradient with WHITE text; primary button = filled champagne pill with dark text).
+
+WINDOW "境界突破". Top row: title "境界突破" white on the left, a small champagne-outlined status pill "瓶颈中" next to it, close "X" on the right, thin divider below.
+LEFT (character stage inside the window):
+- The same young male protagonist as in the first image (same face and dark short hair), now ONE realm stronger: a light traveller's armour (dark leather and blued steel plates), a short dark cape, a rune-etched steel sword with a faint pale-blue glow along the fuller, faint pale soul-lines on the ground under his feet. Semi-realistic painted, matte (NOT anime, NOT cartoon). Standing on the round stone platform.
+- Behind him, very faint (about 15% opacity), a preview of his NEXT realm look: the same figure in heavier contract armour with THREE small glowing seal sigils orbiting behind his shoulders. A tiny grey caption under the platform: "下一境界外观".
+- The tiny soul spirit "零" floats near his shoulder, as in the first image.
+RIGHT (one tall frosted glass panel, generous padding):
+- A horizontal realm ladder at the top: small nodes connected by a thin line: "觉醒" (small check, grey) — "炼魂" (current, dark-gold gradient pill with WHITE text, small grey "圆满" under it) — "契灵" (next, champagne outline, white text) — "圣域" (dim, tiny lock) — "神裔" (dim, tiny lock).
+- Section header "突破条件" (thin champagne bar on the left) with grey "满足任意一项" on the right. Three slim rows, each: small monochrome muted-gold icon, white label, grey current value, right-aligned status:
+    等级达到 Lv.55        当前 Lv.55        soft-green check "已达成"
+    晨曦大陆成就 60%      当前 42%          a slim progress bar (grey)
+    战力达到 85,000        当前 61,200       a slim progress bar (grey)
+- Section header "突破试炼": a small dark glass card with a monochrome icon of two crossed swords, white title "天枢的幻影", grey line "重演夜帝与天枢的第一次交手", grey small line "失败无惩罚,可立即重试".
+- Section header "突破奖励": a row of 5 small square dark glass tiles with monochrome muted-gold line icons and tiny grey captions under them: "外观换阶", "全属性 +15%", "新技能·契印", "前世记忆", "进化上限".
+- Bottom of the panel: grey small text "瓶颈期已储备溢出进化 3 次,突破后一次兑现" and the primary champagne pill button "开始突破试炼" (full panel width).
+The hub/menu behind the window is dimmed to about 35% (just the darkened sea of souls is fine). Generous padding, aligned edges, clear hierarchy. B style only — no red ribbons, no ornate gold frames, no glowing particles, no lens flare.
+Output only the single finished mockup image, no annotations.
