@@ -1,0 +1,17 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED "觉醒" cut-scene prototype (dawn village plaza with the glowing rune circle, the soul spirit "零", the frosted dialogue card with 零's round portrait). This screen comes right after it: use that same scene as the BACKGROUND, but blurred and darkened to about 35% brightness, and reuse its dialogue card style and 零's round portrait exactly.
+- SECOND image = three of our real hero arts, left to right: 王国巡逻兵 (young warrior, red scarf, fur collar, big sword), 低语教徒 (white-haired dark mage with a cyan spectral skull mask), 荒原游侠 (red-haired fox-eared ranger with a crossbow). Use these EXACT characters and their art style for the three cards (crop each art to a tall portrait framing of the character, keep their faces and outfits).
+- THIRD image = our APPROVED UI style reference (frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent; selected item = dark-gold gradient rim and tint with WHITE text; primary button = filled champagne pill with dark text).
+
+SCREEN "契约之选" (pick your first companion, one time only):
+- Top centre: title "契约之选" large white, and under it grey text "圣契残存的力量,只够与一位强者订立契约".
+- Centre: THREE tall hero cards in a row, evenly spaced (each about 330x520, rounded corners, frosted dark glass frame with a thin faint outline). Each card: the hero art filling the upper ~65%, fading softly into the dark glass at the bottom; in the top-left corner a small grey-blue rarity tag "R"; in the top-right corner a small monochrome muted-gold class icon in a dark glass circle. Below the art: the hero name in white (large), a grey line with the class and role, then two small translucent pill tags with a short trait each:
+  1) 王国巡逻兵 — "战士 · 前排输出" — tags "上手简单" "近战连击"
+  2) 低语教徒 — "法师 · 范围伤害" — tags "清怪最快" "远程"
+  3) 荒原游侠 — "射手 · 远程单点" — tags "放风筝" "高暴击"
+  The MIDDLE card (低语教徒) is SELECTED: slightly larger (about 4% scale up), a dark-gold gradient rim with a soft warm inner tint, and a small champagne check mark badge on the top edge; the other two are normal and a bit dimmer.
+- Bottom area: on the left, the frosted dialogue card from the first image, but shorter (about 900x130): 零's round portrait, the speaker name "零" in small champagne text, and the white line "挑一个顺眼的吧。其余的伙伴,以后去圣契祭坛还能召唤。". On the right, the primary champagne pill button "订立契约" (about 300x72).
+- No top resource bar, no close button, no skip on this screen.
+Generous spacing, aligned edges, calm and premium. B style only — no red ribbons, no ornate gold frames, no glowing particles.
+Output only the single finished mockup image, no annotations.

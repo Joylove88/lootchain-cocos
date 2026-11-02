@@ -1,0 +1,24 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our real in-game village scene. Use it as the BACKGROUND of this screen, blurred and darkened to about 30% brightness (this screen pops up in the field right after a level-up).
+- SECOND image = our APPROVED "契约之选" prototype. Match its overall layout language exactly: title block at top centre, three tall frosted glass cards in a row, the short frosted dialogue card with 零's round portrait at the bottom-left, the champagne primary pill button at the bottom-right, the same selected style (dark-gold gradient rim + soft warm tint + small champagne check badge, slightly scaled up).
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent).
+
+SCREEN "进化抉择" (choose 1 of 3 evolutions on level-up):
+- Top centre: small champagne text "等级提升 · Lv.5", under it the big white title "进化抉择", under it grey text "境界:觉醒 · 初期".
+- Centre: THREE tall cards (about 330x500 each, frosted dark glass, rounded). NO character art on these cards — instead each card has, in its upper part, a large round emblem (about 150px): a dark glass disc with a thin coloured ring and a clean monochrome line icon in the ring colour. Card colour coding is by RARITY on the card's top edge and rarity tag: 普通 = soft grey, 稀有 = soft blue #7FA8E0, 传说 = soft amber (not used here). Each card from top to bottom:
+  * top-left a small rarity tag, top-right a small grey category tag;
+  * the emblem;
+  * the evolution name in white (large);
+  * the effect in light grey (2 lines max);
+  * a thin divider, then a small route row: a tiny coloured route dot + route name + progress pips, and for card 2 an extra champagne line.
+  1) rarity "普通", category "属性", emblem = shield icon with a soft gold ring; name "坚韧之躯"; effect "全队生命 +4%"; route row: gold dot "守护" with pips ●○○ "1/3".
+  2) rarity "稀有", category "战斗", emblem = cracked-ground sword strike icon with a muted red ring; name "三段裂地"; effect "普攻第三段范围 +20%,并眩晕 0.5 秒"; route row: red dot "猎杀" with pips ●●○ "2/3"; extra line in champagne "再选 1 张猎杀 → 质变【嗜血】".
+  3) rarity "普通", category "探索", emblem = compass / chest icon with a teal ring; name "寻宝直觉"; effect "野外宝箱显示在小地图上"; route row: teal dot "探索" with pips ○○○ → "0/3".
+  The MIDDLE card is SELECTED.
+- Under the cards, centred, a slim row: a translucent pill button with a small refresh icon "刷新 · 免费 1 次", and next to it grey small text "再 3 次必出稀有".
+- Bottom-left: the short frosted dialogue card (about 900x120): 零's round portrait (armored face-mask, two golden eyes), speaker "零" in champagne, white line "猎杀路线快成型了……宿主,你骨子里还是那么好斗。".
+- Bottom-right: the primary champagne pill button "确认进化".
+- Far top-left, small and quiet: a row of five tiny route chips showing the build so far: "猎杀 1" (red dot), "守护 0" (gold dot), "奥术 0" (violet dot), "探索 0" (teal dot), "财富 0" (amber dot), grey text, translucent glass pills.
+No top resource bar, no close button. Generous spacing, aligned edges, calm and premium. B style only — no red ribbons, no ornate gold frames, no glowing particles, no lens flare.
+Output only the single finished mockup image, no annotations.
