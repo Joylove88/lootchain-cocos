@@ -1,0 +1,15 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+FOUR images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, translucent secondary pill buttons, small monochrome muted-gold icons, thin champagne bar before section headers.
+- SECOND image = our APPROVED daily-dungeon screen (same style family). Copy its SELECTED style exactly: a selected tab / item is a DARK-GOLD gradient (darker brownish gold on the left, brighter gold on the right, thin light-gold rim) with WHITE text.
+- THIRD image = our CURRENT formation screen: keep its LAYOUT and its scene (the four chibi heroes standing on round stone plinths in a gothic hall, a tall glowing guard crystal on an altar at the back centre between the heroes, the hero list panel on the right); only restyle the UI to the B style and calm the scene down (darker, fewer candles, no glowing particles, the crystal keeps a soft inner light).
+- FOURTH image = the previous B draft of this screen: follow its overall look, but fix the selected tab style as above.
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+
+SCREEN: "编队" (team formation), full screen.
+- Top bar: back arrow "<" + title "编队" + a small "?" help circle; centre a frosted chip with a crossed-swords icon "阵容战力 1,020" and after a thin divider "已上阵 4/4"; close "X" on the right.
+- Scene (left ~62%): darkened blurred gothic hall; at the back centre a tall softly glowing blue-violet guard crystal on a stone altar; four chibi heroes on four round dark stone plinths in a shallow arc, the middle two slightly in front, the group centred on the crystal.
+- Under each hero a compact frosted name plate: small flat rarity tag (SR purple / R grey-blue), "Lv.5", name ("契约魔女" / "深渊行者" / "低语教徒" / "王国巡逻兵"), a row of small stars, and a translucent secondary pill "下阵".
+- RIGHT panel (~33% width, frosted glass): section header "可出战英雄"; segmented rarity tabs "全部" (SELECTED: dark-gold, white text) | "UR" | "SSR" | "SR" | "R"; a 3-column grid of square hero portrait cards (painted, matte) with a small flat rarity tag top-left, the name, and "Lv.5" + crossed-swords "405"; cards already in the team have a small champagne check mark in the top-right corner and a faint champagne rim. At the bottom of the panel: a small sort icon button, a dropdown "品质", a list-view toggle icon.
+Extra rules: painted art muted and matte, no glow or sparkles except the crystal's soft inner light and the selected rims; background darkened, no rows of candles; generous spacing, aligned edges.
+Output only the single finished mockup image, no annotations.

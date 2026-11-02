@@ -15,6 +15,8 @@ import {
   UITransform,
   Vec3,
 } from 'cc';
+import { glassLabel, glassStyleEnabled, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import type { UiKitHost } from '../UiKit';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
 import { safeText } from '../UiTextFormatter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
@@ -190,6 +192,11 @@ export class LobbyFormationPanelRenderer {
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
     const geo = this.resolveGeometry(stageWidth, stageHeight, scale);
+    if (glassStyleEnabled()) {
+      // B 风格顶栏在原型 y 0..84 一行(✕ 在右上),右栏从顶栏下方开始
+      const kTop = Math.min(stageWidth / 1870, stageHeight / 841);
+      geo.panelTop = Math.min(geo.panelTop, (420.5 - 84) * kTop);
+    }
     this.geo = geo;
     const bgAspect = 1672 / 941;
     const bgCover = layout.width / layout.height > bgAspect ? layout.width : layout.height * bgAspect;
@@ -220,7 +227,8 @@ export class LobbyFormationPanelRenderer {
     // 极轻全局压暗(参考图背景本身就是暗调,只压一点让名牌 / 面板更跳)
     const veil = this.host.addChildPlainNode(dim, 'LobbyFormationSceneVeil', 0, 0, layout.width, layout.height);
     const veilGraphics = veil.addComponent(Graphics);
-    veilGraphics.fillColor = rgba(6, 4, 6, 48);
+    // B 风格(11-02 原型 formation_b2):场景整体压暗偏冷,去掉暖红烛光感;水晶仍透出
+    veilGraphics.fillColor = glassStyleEnabled() ? rgba(8, 12, 20, 168) : rgba(6, 4, 6, 48);
     veilGraphics.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     veilGraphics.fill();
     // 功能页采用场景式导航，遮罩只阻断底层输入，不再承担点击关闭语义。
@@ -373,6 +381,10 @@ export class LobbyFormationPanelRenderer {
   private renderHeader(parent: Node, state: LobbyHeroRosterPanelState, stageCode: string, selectedHeroIds: number[]): void {
     const g = this.geo;
     const u = g.u * g.b;
+    if (glassStyleEnabled()) {
+      this.renderGlassHeader(parent, state, stageCode, selectedHeroIds);
+      return;
+    }
     const rowY = g.top - 48 * u;
     const plaqueH = 92 * u;
     const plaqueW = plaqueH * (564 / 180);
@@ -421,6 +433,53 @@ export class LobbyFormationPanelRenderer {
     if (state.loading || state.error) {
       const statusText = state.loading ? '正在读取可上阵英雄...' : '英雄队列暂不可用，当前不能进入战斗。';
       const status = this.host.addChildLabel(parent, 'LobbyFormationStatus', statusText, g.heroesCenterX, g.top - 110 * u, 16 * u, state.error ? rgba(255, 150, 130, 235) : rgba(214, 190, 140, 230), new Size(640 * u, 24 * u));
+      status.overflow = Label.Overflow.SHRINK;
+    }
+  }
+
+  /**
+   * B 风格顶栏(11-02 原型 formation_b2):「< 编队 ?」+ 中间玻璃胶囊「阵容战力 N | 已上阵 x/4」+ ✕。
+   * 胶囊放在「?」与右栏之间空白区正中(同旧横匾口径,用户 10-15「阵容战力居中再向左一些」)。
+   */
+  private renderGlassHeader(parent: Node, state: LobbyHeroRosterPanelState, stageCode: string, selectedHeroIds: number[]): void {
+    const g = this.geo;
+    const kit = this.host as unknown as UiKitHost;
+    const stageW = g.right - g.left;
+    const stageH = g.top - g.bottom;
+    const close = (): void => this.host.closeLobbyFormationPanel();
+    mountGlassTopBar(kit, parent, 'LobbyFormation', stageW, stageH, '编队', [], close, close, { onHelp: () => this.toggleFormationHelp(parent) });
+    const k = Math.min(stageW / 1870, stageH / 841);
+    // 行心与 mountGlassTopBar 同一换算(原型 y 44,以舞台中心为原点)
+    const rowY = (420.5 - 44) * k;
+    const chipW = 480 * k;
+    const chipH = 52 * k;
+    const minX = g.left + 330 * k + chipW / 2;
+    const maxX = g.panelLeft - 20 * k - chipW / 2;
+    const chipX = maxX > minX ? (minX + maxX) / 2 : minX;
+    const chip = this.host.addChildPlainNode(parent, 'LobbyFormationPowerBanner', chipX, rowY, chipW, chipH);
+    mountGlassSlice(kit, chip, 'Bg', GLASS_SLICES.chip, 0, 0, chipW, chipH, k);
+    const power = this.host.currentLobbyFormationPowerSnapshot(stageCode);
+    const left = -chipW / 2;
+    const icon = this.host.addSprite('Icon', 'ui/glass/profile_swords/spriteFrame', left + 34 * k, 0, 28 * k, 28 * k, chip);
+    if (icon) {
+      icon.color = new Color(214, 218, 226, 255);
+    }
+    const T = (name: string, text: string, x: number, size: number, color: Color, w: number, bold = false): Label => {
+      const l = glassLabel(kit, chip, name, text, x, 0, size * k, color, w, HorizontalTextAlignment.LEFT, bold);
+      l.fontSize = Math.max(12, Math.round(size * k));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    T('Caption', '阵容战力', left + 60 * k, 21, GLASS_COLOR.sub, 100 * k);
+    const footerHidden = this.host.isLobbyFormationFooterHidden?.() ?? false;
+    const numberColor = !power.rosterLoaded ? GLASS_COLOR.dim : footerHidden || power.enough || power.recommendedPower <= 0 ? GLASS_COLOR.champagne : new Color(240, 160, 110, 255);
+    T('Number', power.rosterLoaded ? formatInteger(power.currentPower) : '—', left + 160 * k, 30, numberColor, 140 * k, true);
+    mountGlassLine(kit, chip, 'Divider', left + 312 * k, 0, Math.max(1, 2 * k), 28 * k, new Color(120, 128, 140, 200));
+    const deployed = Math.min(4, selectedHeroIds.length);
+    T('Deployed', `已上阵 ${deployed}/4`, left + 334 * k, 21, deployed >= 4 ? GLASS_COLOR.text : GLASS_COLOR.sub, 130 * k);
+    if (state.loading || state.error) {
+      const statusText = state.loading ? '正在读取可上阵英雄...' : '英雄队列暂不可用，当前不能进入战斗。';
+      const status = glassLabel(kit, parent, 'LobbyFormationStatus', statusText, g.heroesCenterX, rowY - 64 * k, 20 * k, state.error ? GLASS_COLOR.red : GLASS_COLOR.sub, 640 * k, HorizontalTextAlignment.CENTER);
       status.overflow = Label.Overflow.SHRINK;
     }
   }
@@ -529,6 +588,14 @@ export class LobbyFormationPanelRenderer {
       const plus = this.host.addChildLabel(slot, 'LobbyFormationSlotPlus', '+', 0, 64 * u, 48 * u, rgba(232, 200, 130, 170), new Size(60 * u, 60 * u));
       plus.overflow = Label.Overflow.SHRINK;
     }
+    if (glassStyleEnabled()) {
+      if (pedestal) {
+        // 石台压掉暖金光,和 B 风格冷暗场景一致
+        pedestal.color = new Color(150, 152, 162, 255);
+      }
+      this.renderGlassNameplate(slot, hero, u);
+      return;
+    }
     // 名牌(参考图 210×80,三行:稀有度 + Lv + ×;职业图标 + 名字;星级)
     const plateW = Math.min(224 * u, g.slotSpacing - 16 * u);
     const plateH = 84 * u;
@@ -593,6 +660,44 @@ export class LobbyFormationPanelRenderer {
     unequip.addComponent(Button);
     unequip.on(Button.EventType.CLICK, () => this.host.toggleLobbyFormationHero(hero.id), this);
     this.host.applyImageButtonFeedback(unequip, 1.05, 0.95);
+  }
+
+  /** B 风格名牌(原型 formation_b2):玻璃名牌三行(稀有度扁签 + Lv / 名字 / 星级)+ 名牌下玻璃次按钮「下阵」。 */
+  private renderGlassNameplate(slot: Node, hero: LobbyHeroItemVO | null, u: number): void {
+    const g = this.geo;
+    const kit = this.host as unknown as UiKitHost;
+    const plateW = Math.min(232 * u, g.slotSpacing - 12 * u);
+    const plateH = 96 * u;
+    const plate = this.host.addChildPlainNode(slot, 'LobbyFormationActorNameplate', 0, -72 * u, plateW, plateH);
+    mountGlassPanel(kit, plate, 'Bg', 0, 0, plateW, plateH, u * 0.9);
+    const T = (name: string, text: string, x: number, y: number, size: number, color: Color, w: number, bold = false): Label => {
+      const l = glassLabel(kit, plate, name, text, x, y, size * u, color, w, HorizontalTextAlignment.CENTER, bold);
+      l.fontSize = Math.max(12, Math.round(size * u));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    if (!hero) {
+      T('LobbyFormationActorName', '空位', 0, 12 * u, 20, GLASS_COLOR.text, plateW - 30 * u, true);
+      T('LobbyFormationActorSub', '点击右侧英雄上阵', 0, -16 * u, 15, GLASS_COLOR.sub, plateW - 30 * u);
+      return;
+    }
+    const rarity = safeText(hero.rarity).toUpperCase();
+    const tagW = (rarity.length > 2 ? 46 : rarity.length > 1 ? 38 : 30) * u;
+    const tagH = 24 * u;
+    const tag = this.host.addChildPlainNode(plate, 'Rarity', -plateW / 2 + 16 * u + tagW / 2, 26 * u, tagW, tagH);
+    const tg = tag.addComponent(Graphics);
+    const tagColor: Record<string, Color> = { UR: new Color(168, 58, 52, 235), SSR: new Color(176, 112, 40, 235), SR: new Color(104, 70, 150, 235), R: new Color(58, 82, 116, 235) };
+    tg.fillColor = tagColor[rarity] ?? tagColor.R;
+    tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, 5 * u);
+    tg.fill();
+    const tl = glassLabel(kit, tag, 'Text', rarity || 'R', 0, 0, 16 * u, new Color(248, 246, 240, 255), tagW, HorizontalTextAlignment.CENTER, true);
+    tl.fontSize = Math.max(12, Math.round(16 * u));
+    tl.enableShadow = false;
+    T('Level', `Lv.${hero.level}`, 10 * u, 26 * u, 19, GLASS_COLOR.text, 100 * u);
+    T('LobbyFormationActorName', safeText(hero.heroName), 0, 0, 20, GLASS_COLOR.text, plateW - 24 * u, true);
+    this.renderStars(plate, 0, -26 * u, hero.star, 19 * u, 22 * u);
+    const unequip = mountGlassButton(kit, slot, 'LobbyFormationActorUnequip', '下阵', 0, -146 * u, 150 * u, 40 * u, u, 'secondary', () => this.host.toggleLobbyFormationHero(hero.id), 19);
+    void unequip;
   }
 
   /** 5 颗星(实心 = 星级),居中排在 cx。 */
@@ -858,7 +963,11 @@ export class LobbyFormationPanelRenderer {
     const panel = this.host.addChildPlainNode(parent, 'LobbyFormationHeroPicker', (g.panelLeft + g.panelRight) / 2, (g.panelTop + g.panelBottom) / 2, pw, ph);
     // 面板框素材 500×821(2026-10-15 按参考图重出,细金线):金线矩形在 (7..492, 24..795),上下宝石凸在线外 —— 金线矩形对齐面板矩形
     const k = pw / 485;
-    if (!this.addSliced(panel, 'LobbyFormationPickerFrame', FR.panelFrame, 0, k, 500 * k, ph + 50 * k, k, [50, 50, 70, 70])) {
+    const glass = glassStyleEnabled();
+    const kit = this.host as unknown as UiKitHost;
+    if (glass) {
+      mountGlassPanel(kit, panel, 'LobbyFormationPickerFrame', 0, 0, pw, ph, u * 0.9);
+    } else if (!this.addSliced(panel, 'LobbyFormationPickerFrame', FR.panelFrame, 0, k, 500 * k, ph + 50 * k, k, [50, 50, 70, 70])) {
       const fg = panel.addComponent(Graphics);
       fg.fillColor = rgba(16, 15, 16, 238);
       fg.rect(-pw / 2, -ph / 2, pw, ph);
@@ -871,10 +980,17 @@ export class LobbyFormationPanelRenderer {
     const top = ph / 2;
     const bot = -ph / 2;
     const titleY = top - 40 * u;
-    const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, titleY, 28 * u, rgba(244, 224, 182), new Size(200 * u, 36 * u));
-    title.overflow = Label.Overflow.SHRINK;
-    title.isBold = true;
-    this.applyOutline(title, u, true);
+    if (glass) {
+      // 分区标题:香槟竖条 + 左对齐白字(同英雄详情口径)
+      this.host.addSprite('LobbyFormationHeroPickerTitleBar', GLASS_ICON.accent, -pw / 2 + 26 * u, titleY, 6 * u, 30 * u, panel);
+      const gt = glassLabel(kit, panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', -pw / 2 + 42 * u, titleY, 26 * u, GLASS_COLOR.text, 260 * u, HorizontalTextAlignment.LEFT, true);
+      gt.fontSize = Math.max(12, Math.round(26 * u));
+    } else {
+      const title = this.host.addChildLabel(panel, 'LobbyFormationHeroPickerTitle', '可出战英雄', 0, titleY, 28 * u, rgba(244, 224, 182), new Size(200 * u, 36 * u));
+      title.overflow = Label.Overflow.SHRINK;
+      title.isBold = true;
+      this.applyOutline(title, u, true);
+    }
 
     const tabs: Array<{ key: 'ALL' | 'UR' | 'SSR' | 'SR' | 'R'; label: string }> = [
       { key: 'ALL', label: '全部' },
@@ -891,17 +1007,22 @@ export class LobbyFormationPanelRenderer {
     tabs.forEach((tab, tabIndex) => {
       const active = this.pickerRarityFilter === tab.key;
       const tabNode = this.host.addChildPlainNode(panel, `LobbyFormationRarityTab_${tab.key}`, -tabsW / 2 + tabW / 2 + tabIndex * (tabW + tabGap), tabY, tabW, tabH);
-      if (!this.addSliced(tabNode, 'Art', active ? FR.tabOn : FR.tabOff, 0, 0, tabW, tabH, tabH / 64, [20, 20, 20, 20])) {
+      if (glass) {
+        // 选中 = 暗金渐变胶囊白字(全局选中口径);未选 = 玻璃
+        mountGlassSlice(kit, tabNode, 'Art', active ? GLASS_SLICES.pillGold : GLASS_SLICES.pillSecondary, 0, 0, tabW, tabH, u * 0.7);
+      } else if (!this.addSliced(tabNode, 'Art', active ? FR.tabOn : FR.tabOff, 0, 0, tabW, tabH, tabH / 64, [20, 20, 20, 20])) {
         const tg = tabNode.addComponent(Graphics);
         tg.fillColor = active ? rgba(120, 82, 36, 240) : rgba(28, 28, 30, 220);
         tg.roundRect(-tabW / 2, -tabH / 2, tabW, tabH, 6 * u);
         tg.fill();
       }
-      const tabLabel = this.host.addChildLabel(tabNode, 'Label', tab.label, 0, 0, 18 * u, active ? rgba(255, 240, 206) : rgba(190, 184, 172), new Size(tabW - 8 * u, 26 * u));
+      const tabLabel = this.host.addChildLabel(tabNode, 'Label', tab.label, 0, 0, 18 * u, glass ? (active ? GLASS_COLOR.onGold : GLASS_COLOR.text) : active ? rgba(255, 240, 206) : rgba(190, 184, 172), new Size(tabW - 8 * u, 26 * u));
       tabLabel.overflow = Label.Overflow.SHRINK;
       fitButtonLabel(tabLabel, tabH);
       tabLabel.isBold = active;
-      this.applyOutline(tabLabel, u, false);
+      if (!glass) {
+        this.applyOutline(tabLabel, u, false);
+      }
       tabNode.addComponent(Button);
       tabNode.on(Button.EventType.CLICK, () => {
         if (this.pickerRarityFilter !== tab.key) {
@@ -914,7 +1035,7 @@ export class LobbyFormationPanelRenderer {
     });
     const lineNode = this.host.addChildPlainNode(panel, 'LobbyFormationPickerLine', 0, top - 126 * u, tabsW, 2 * u);
     const lg = lineNode.addComponent(Graphics);
-    lg.fillColor = rgba(150, 116, 62, 110);
+    lg.fillColor = glass ? rgba(255, 255, 255, 22) : rgba(150, 116, 62, 110);
     lg.rect(-tabsW / 2, -0.6 * u, tabsW, 1.2 * u);
     lg.fill();
 
@@ -1003,7 +1124,8 @@ export class LobbyFormationPanelRenderer {
 
   private renderPickerSortBar(panel: Node, orderX: number, dropX: number, densityX: number, y: number, height: number): void {
     const u = this.geo.u * this.geo.b;
-    const gold = rgba(226, 186, 112, 240);
+    const glass = glassStyleEnabled();
+    const gold = glass ? rgba(214, 218, 226, 240) : rgba(226, 186, 112, 240);
     // 升 / 降序钮:三道横线,降序上长下短
     const order = this.addPickerSquareButton(panel, 'LobbyFormationSortOrder', orderX, y, 60 * u, height);
     const og = this.host.addChildPlainNode(order, 'Icon', 0, 0, 30 * u, 26 * u).addComponent(Graphics);
@@ -1029,7 +1151,9 @@ export class LobbyFormationPanelRenderer {
     // 排序下拉框
     const dropW = 286 * u;
     const drop = this.host.addChildPlainNode(panel, 'LobbyFormationSortDropdown', dropX, y, dropW, height);
-    if (!this.addSliced(drop, 'Art', FR.boxDark, 0, 0, dropW, height, height / 72, [20, 20, 20, 20])) {
+    if (glass) {
+      mountGlassSlice(this.host as unknown as UiKitHost, drop, 'Art', GLASS_SLICES.input, 0, 0, dropW, height, u * 0.8);
+    } else if (!this.addSliced(drop, 'Art', FR.boxDark, 0, 0, dropW, height, height / 72, [20, 20, 20, 20])) {
       const dg = drop.addComponent(Graphics);
       dg.fillColor = rgba(14, 13, 14, 236);
       dg.roundRect(-dropW / 2, -height / 2, dropW, height, 6 * u);
@@ -1056,7 +1180,7 @@ export class LobbyFormationPanelRenderer {
     // 大 / 小卡切换钮:三行列表图标(小卡模式时亮金)
     const density = this.addPickerSquareButton(panel, 'LobbyFormationCardDensity', densityX, y, 62 * u, height);
     const lgx = this.host.addChildPlainNode(density, 'Icon', 0, 0, 30 * u, 26 * u).addComponent(Graphics);
-    lgx.fillColor = this.pickerDense ? rgba(255, 220, 140, 255) : rgba(214, 206, 190, 230);
+    lgx.fillColor = this.pickerDense ? (glass ? GLASS_COLOR.champagne : rgba(255, 220, 140, 255)) : rgba(214, 206, 190, 230);
     for (let i = 0; i < 3; i += 1) {
       const ly = 8 * u - i * 8 * u;
       lgx.rect(-13 * u, ly - 1.8 * u, 4 * u, 3.6 * u);
@@ -1073,7 +1197,9 @@ export class LobbyFormationPanelRenderer {
   private addPickerSquareButton(parent: Node, name: string, x: number, y: number, width: number, height: number): Node {
     const u = this.geo.u * this.geo.b;
     const node = this.host.addChildPlainNode(parent, name, x, y, width, height);
-    if (!this.addSliced(node, 'Art', FR.btnSquare, 0, 0, width, height, height / 96, [24, 24, 24, 24])) {
+    if (glassStyleEnabled()) {
+      mountGlassSlice(this.host as unknown as UiKitHost, node, 'Art', GLASS_SLICES.panel, 0, 0, width, height, u * 0.8);
+    } else if (!this.addSliced(node, 'Art', FR.btnSquare, 0, 0, width, height, height / 96, [24, 24, 24, 24])) {
       const g = node.addComponent(Graphics);
       g.fillColor = rgba(16, 15, 16, 236);
       g.roundRect(-width / 2, -height / 2, width, height, 6 * u);
@@ -1095,20 +1221,28 @@ export class LobbyFormationPanelRenderer {
     const optH = 46 * u;
     const menuH = optH * FORMATION_SORT_OPTIONS.length + 10 * u;
     const menu = this.host.addChildPlainNode(panel, 'LobbyFormationSortMenu', x, bottomY + menuH / 2, optW, menuH);
+    if (glassStyleEnabled()) {
+      mountGlassSlice(this.host as unknown as UiKitHost, menu, 'Base', GLASS_SLICES.panel, 0, 0, optW, menuH, u * 0.8);
+      mountGlassSlice(this.host as unknown as UiKitHost, menu, 'Glass', GLASS_SLICES.panel, 0, 0, optW, menuH, u * 0.8);
+    }
     const mg = menu.addComponent(Graphics);
-    mg.fillColor = rgba(12, 11, 12, 246);
-    mg.roundRect(-optW / 2, -menuH / 2, optW, menuH, 6 * u);
-    mg.fill();
-    mg.strokeColor = rgba(176, 140, 80, 220);
-    mg.lineWidth = Math.max(1, 1.2 * u);
-    mg.roundRect(-optW / 2, -menuH / 2, optW, menuH, 6 * u);
-    mg.stroke();
+    if (!glassStyleEnabled()) {
+      mg.fillColor = rgba(12, 11, 12, 246);
+      mg.roundRect(-optW / 2, -menuH / 2, optW, menuH, 6 * u);
+      mg.fill();
+      mg.strokeColor = rgba(176, 140, 80, 220);
+      mg.lineWidth = Math.max(1, 1.2 * u);
+      mg.roundRect(-optW / 2, -menuH / 2, optW, menuH, 6 * u);
+      mg.stroke();
+    }
     menu.addComponent(BlockInputEvents);
     FORMATION_SORT_OPTIONS.forEach((option, index) => {
       const active = option.key === this.pickerSortKey;
       const oy = menuH / 2 - 5 * u - optH / 2 - index * optH;
       const item = this.host.addChildPlainNode(menu, `Option_${option.key}`, 0, oy, optW - 12 * u, optH - 6 * u);
-      if (active && !this.addSliced(item, 'Art', FR.tabOn, 0, 0, optW - 12 * u, optH - 6 * u, (optH - 6 * u) / 64, [20, 20, 20, 20])) {
+      if (active && glassStyleEnabled()) {
+        mountGlassSlice(this.host as unknown as UiKitHost, item, 'Art', GLASS_SLICES.tabGold, 0, 0, optW - 12 * u, optH - 6 * u, u * 0.7);
+      } else if (active && !this.addSliced(item, 'Art', FR.tabOn, 0, 0, optW - 12 * u, optH - 6 * u, (optH - 6 * u) / 64, [20, 20, 20, 20])) {
         const ig = item.addComponent(Graphics);
         ig.fillColor = rgba(120, 82, 36, 240);
         ig.roundRect(-(optW - 12 * u) / 2, -(optH - 6 * u) / 2, optW - 12 * u, optH - 6 * u, 5 * u);
@@ -1136,9 +1270,15 @@ export class LobbyFormationPanelRenderer {
     const rarity = safeText(hero.rarity).toUpperCase();
     const rarityColor = this.resolveRarityColor(rarity, 255);
     const g = card.addComponent(Graphics);
-    g.fillColor = rgba(10, 8, 12, 245);
-    g.rect(-width / 2, -height / 2, width, height);
-    g.fill();
+    const glass = glassStyleEnabled();
+    if (glass) {
+      // B 风格:玻璃物品框垫在头像下层(框的内光不再盖住头像),已上阵 = 金边选中框
+      mountGlassFrame(this.host as unknown as UiKitHost, card, 'Frame', 0, 0, width, height, width / 160, selected);
+    } else {
+      g.fillColor = rgba(10, 8, 12, 245);
+      g.rect(-width / 2, -height / 2, width, height);
+      g.fill();
+    }
     const inset = width * 0.045;
     const innerW = width - inset * 2;
     const innerH = height - inset * 2;
@@ -1197,7 +1337,9 @@ export class LobbyFormationPanelRenderer {
     // 稀有度卡框:在 256px 帧空间里九宫格拉伸到卡片比例,再整体缩放(角饰不变形)
     const frameK = width / FORMATION_CARD_FRAME_PX;
     const framePath = FORMATION_CARD_FRAME_ASSETS[rarity] ?? FORMATION_CARD_FRAME_ASSETS.R;
-    if (!this.addSliced(card, 'Frame', framePath, 0, 0, width, height, frameK, [FORMATION_CARD_FRAME_INSET, FORMATION_CARD_FRAME_INSET, FORMATION_CARD_FRAME_INSET, FORMATION_CARD_FRAME_INSET])) {
+    if (glass) {
+      // B 风格的框已垫在头像下层;稀有度只看左上色字,不再用华丽卡框
+    } else if (!this.addSliced(card, 'Frame', framePath, 0, 0, width, height, frameK, [FORMATION_CARD_FRAME_INSET, FORMATION_CARD_FRAME_INSET, FORMATION_CARD_FRAME_INSET, FORMATION_CARD_FRAME_INSET])) {
       g.strokeColor = rarityColor;
       g.lineWidth = Math.max(1.5, 2 * u);
       g.rect(-width / 2, -height / 2, width, height);
@@ -1295,6 +1437,9 @@ export class LobbyFormationPanelRenderer {
 
   /** 右上圆形关闭钮(参考图 1622,48;压在右栏右上角)。 */
   private renderCloseButton(parent: Node): void {
+    if (glassStyleEnabled()) {
+      return;
+    }
     const g = this.geo;
     const u = g.u * g.b;
     const size = 66 * u;
