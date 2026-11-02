@@ -2424,6 +2424,7 @@ export class LootChainGameRoot extends Component {
       [Boolean(this.lobbyNoticeDialog), () => this.closeLobbyNoticeDialog()],
       [this.lobbyProfileGlassOpen, () => this.closeLobbyProfileGlassDialog()],
       [this.lobbySettingsGlassOpen, () => this.closeLobbySettingsGlassDialog()],
+      [this.lobbyDailyDungeonPanelOpen && this.lobbyDailyDungeonPanelRenderer.isRankPopupOpen(), () => this.lobbyDailyDungeonPanelRenderer.closeRankPopup()],
       [this.lobbyTerminalOpen, () => this.closeLobbyTerminalPanel()],
       [this.lobbyMailPanelOpen, () => this.closeLobbyMailPanel()],
       [this.lobbyQuestPanelOpen, () => this.closeLobbyQuestPanel()],
@@ -3937,8 +3938,14 @@ export class LootChainGameRoot extends Component {
       open();
       return;
     }
+    // 下载页只在发起时的画面上刷进度:期间切去别的功能页(如从终端进每日副本),不再把下载页重新盖到新页面上(11-02 实测「正在加载队伍」压住副本页)
+    const view = this.currentView;
     this.showPackLoading(title, 0, 1);
-    void ensurePackResources(prefixes, (got, total) => this.showPackLoading(title, got, total)).then(() => {
+    void ensurePackResources(prefixes, (got, total) => {
+      if (this.currentView === view) {
+        this.showPackLoading(title, got, total);
+      }
+    }).then(() => {
       this.hidePackLoading();
       open();
     });
@@ -5651,6 +5658,7 @@ export class LootChainGameRoot extends Component {
     }
     lobbyGuide.markVisited('daily');
     this.closeAllLobbyScenePanelFlags();
+    this.lobbyDailyDungeonPanelRenderer.resetTransientPopups();
     this.lobbyDailyDungeonPanelOpen = true;
     this.currentView = 'dailyDungeon';
     this.renderCurrentView();

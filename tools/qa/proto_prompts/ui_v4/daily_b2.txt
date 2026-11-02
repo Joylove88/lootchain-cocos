@@ -1,0 +1,22 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, translucent secondary pill buttons, small monochrome muted-gold icons, thin champagne bar before section headers, calm darkened blurred background.
+- SECOND image = our APPROVED codex screen (same style family). Copy its SELECTED style exactly: a selected list item / tab is a DARK-GOLD gradient (darker brownish gold on the left, brighter gold on the right, thin light-gold rim) with WHITE text; the single primary action button is a light champagne pill with dark text; item slots are small dark glass squares with a matte item icon and "×N" next to them.
+- THIRD image = our CURRENT daily-dungeon screen. Use it ONLY to know the data (4 dungeons and their painted scenes, difficulty Ⅰ / Ⅱ rewards, Ⅲ = output trial that converts damage score to crystals, stamina, output ranking); do NOT copy its layout or style.
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+
+SCREEN: "每日副本" (daily dungeons), full screen page, NEW layout: dungeon list on the left, big detail on the right.
+- Top bar: back arrow "<" + title "每日副本" + a small "?" help circle; right side: a translucent secondary pill "输出榜" with a small bar-chart icon, a stamina chip (small lightning icon, "120/120", small "+"), a thin vertical divider, close "X".
+- LEFT column (about 30% width): 4 stacked landscape dungeon cards (frosted glass, rounded), each card = a wide painted thumbnail of the dungeon scene on the left half (matte, darkened: a gothic stone gate / a lava mine / an arcane blue cathedral / a purple void rift), and on the right half the name in white, grey open days, and a small status tag:
+  1) "觉醒之门"  grey "周一 / 四 / 日"  soft-green tag "今日开放 · 0/2"
+  2) "熔火矿脉"  grey "周二 / 五 / 日"  soft-green tag "今日开放 · 0/2"   (SELECTED: dark-gold rim and warm glow)
+  3) "秘法圣殿"  grey "周三 / 六 / 日"  grey tag "今日未开放" (card dimmed)
+  4) "深渊裂隙"  grey "周五 / 六 / 日"  grey tag "今日未开放" (card dimmed)
+- RIGHT detail (about 68% width, one frosted panel):
+  * Top: a wide banner of the selected dungeon (painted lava mine with molten rivers and a dark iron bridge, matte, darkened, rounded corners), over its lower-left the title "熔火矿脉" large white, and under it grey "掉落强化材料 · 周二 / 五 / 日开放".
+  * Below the banner a row: segmented difficulty tabs "Ⅰ 普通" (SELECTED, dark-gold, white text) | "Ⅱ 困难" | "Ⅲ 输出试炼"; on the right grey "今日次数 0/2".
+  * Section header "通关奖励": a row of 3 item slots: dark iron enhance stone "×8", gold coins "×800", blue crystal "×6".
+  * Section header "输出试炼(Ⅲ)" with a small grey note "按造成的伤害换取矿晶": a compact 4-step ladder shown as 4 small glass chips in a row: "输出 1万 → 矿晶 ×8", "5万 → ×20", "15万 → ×40", "30万 → ×60" (the first two lit champagne, the others grey).
+  * Bottom row: grey text with a small red-crystal icon "今日矿晶 12 / 60 · 玩家等级 Lv.17 后副本可掉落矿晶" on the left; on the right a primary champagne pill button "挑战" with a smaller grey line under it "消耗体力 10".
+Extra rules: painted art muted and matte, no glow or sparkles except the soft selected rim; background darkened and blurred, no candles or particles; generous spacing, aligned edges, clear hierarchy.
+Output only the single finished mockup image, no annotations.

@@ -36,6 +36,8 @@ import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { TOKEN_FURNACE_ENABLED } from '../../api/TokenApi';
 import { PHONE_DIALOG_CONTENT_PAD, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
+import { glassStyleEnabled } from '../UiGlassKit';
+import { LobbyDailyGlassRenderer } from './LobbyDailyGlassRenderer';
 
 export interface LobbyDailyDungeonPanelHost {
   node: Node;
@@ -152,7 +154,45 @@ export class LobbyDailyDungeonPanelRenderer {
   // 输出试炼档位阶梯弹窗:非空即展示(点难度Ⅲ奖励区打开)。
   private trialLadderPopupTiers: TrialTierVO[] | null = null;
 
-  constructor(private readonly host: LobbyDailyDungeonPanelHost) {}
+  /** 11-02 B 风格重设计(原型 daily_b3):左副本列表 + 右详情,电脑 / 手机共用。 */
+  private readonly glass: LobbyDailyGlassRenderer;
+
+  constructor(private readonly host: LobbyDailyDungeonPanelHost) {
+    this.glass = new LobbyDailyGlassRenderer(host, {
+      selectedTier: (code) => {
+        const theme = this.host.currentLobbyDailyDungeonState().summary?.themes.find((item) => item.code === code);
+        if (!theme) {
+          return 1;
+        }
+        const stored = this.selectedTierByTheme.get(code);
+        if (stored !== undefined && theme.tiers.some((tier) => tier.tier === stored)) {
+          return stored;
+        }
+        // 默认:最高已解锁的普通难度(Ⅲ 输出试炼是另一种玩法,不默认落上去)
+        const normal = theme.tiers.slice(0, 3).filter((tier) => tier.outputTiers.length === 0);
+        return [...normal].reverse().find((tier) => tier.unlocked)?.tier ?? normal[0]?.tier ?? 1;
+      },
+      setSelectedTier: (code, tier) => this.selectedTierByTheme.set(code, tier),
+      rankOpen: () => this.rankPopupOpen,
+      openRank: () => this.openRankPopup(),
+      renderRankPopup: (panel, width, height, scale) => this.renderCrystalRankPopup(panel, width, height, scale),
+      helpText: (state) => `每天轮换开放不同主题。
+
+每次挑战消耗体力 ${state.summary?.staminaCost ?? 8};每个主题每天 ${state.summary?.themes?.[0]?.timesPerDay ?? 2} 次,胜利才计次。
+
+Ⅰ 普通 / Ⅱ 困难通关领固定材料;Ⅲ 输出试炼限时 90 秒挑战巨型 BOSS,按总输出落档领矿晶与材料。`,
+      crystalLine: (state) => {
+        const mine = state.summary?.crystalMine;
+        if (!mine) {
+          return '挑战更高难度可获得更稀有的奖励';
+        }
+        if (!mine.unlocked) {
+          return `${this.crystalUnlockText()}后,副本胜利有几率掉落矿晶`;
+        }
+        return `今日矿晶掉落 ${mine.myTodayDrop} / ${mine.myDailyCap}`;
+      },
+    });
+  }
 
   private stageLabel(stageCode: string): string {
     return this.host.lobbyStageDisplayLabel?.(stageCode) ?? '前置关卡';
@@ -165,6 +205,22 @@ export class LobbyDailyDungeonPanelRenderer {
     return level > 0 ? `玩家等级 Lv.${level}` : `通关${this.stageLabel('MAIN_3_1')}`;
   }
 
+  /** 输出榜开着时返回键先关它(11-02:原先返回键直接关掉整页,开关位还残留到下次进页)。 */
+  isRankPopupOpen(): boolean {
+    return this.rankPopupOpen;
+  }
+
+  closeRankPopup(): void {
+    this.rankPopupOpen = false;
+    this.host.refreshLobbyDailyDungeonPanel();
+  }
+
+  /** 进页时复位页内弹窗(上次带着输出榜离开不应再自动弹出)。 */
+  resetTransientPopups(): void {
+    this.rankPopupOpen = false;
+    this.trialLadderPopupTiers = null;
+  }
+
   /** docs/51 终端「排行」:直接打开输出周榜弹窗。 */
   openRankPopup(): void {
     this.rankPopupOpen = true;
@@ -173,6 +229,10 @@ export class LobbyDailyDungeonPanelRenderer {
   }
 
   render(layout: UiLayout): void {
+    if (glassStyleEnabled()) {
+      this.glass.render(layout);
+      return;
+    }
     const state = this.host.currentLobbyDailyDungeonState();
     const scale = Math.max(0.68, Math.min(1, layout.uiScale));
     const panelWidth = Math.max(300 * scale, layout.stageWidth);
