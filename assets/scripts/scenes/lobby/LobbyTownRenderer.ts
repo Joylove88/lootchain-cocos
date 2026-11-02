@@ -1193,7 +1193,7 @@ export class LobbyTownRenderer {
 
   private onKeyDown(event: EventKeyboard): void {
     this.keys.add(event.keyCode);
-    if (!this.isMounted() || !this.layout || this.host.netBlocked?.()) {
+    if (!this.isMounted() || !this.layout || this.host.netBlocked?.() || this.awakenLock) {
       return;
     }
     if (event.keyCode === KeyCode.KEY_F || event.keyCode === KeyCode.KEY_E || event.keyCode === KeyCode.SPACE || event.keyCode === KeyCode.ENTER) {
@@ -1230,6 +1230,9 @@ export class LobbyTownRenderer {
   }
 
   private inputVector(): { x: number; y: number } {
+    if (this.awakenLock) {
+      return { x: 0, y: 0 };
+    }
     let x = 0;
     let y = 0;
     if (this.joy.active) {
@@ -1247,6 +1250,140 @@ export class LobbyTownRenderer {
       y /= len;
     }
     return { x, y };
+  }
+
+  // ── docs/60 觉醒演出(LobbyAwakenCinematic 驱动) ──
+
+  private awakenLock = false;
+  private awakenSpirit: Node | null = null;
+  private awakenBind: Graphics | null = null;
+
+  /**
+   * 队长能演觉醒了:跑图已建好、队长骨骼就绪、带「倒地起身」动作。
+   * 新号都出生在晨风村法阵旁;不在晨风村(老号补演 / 自验账号)就在原地演,不卡流程。
+   */
+  awakenStageReady(): boolean {
+    const leader = this.leader;
+    return this.isMounted() && !!leader?.skeleton && !!leader.skeleton.findAnimation('down_end');
+  }
+
+  /** 开场:锁操作、藏队友、队长躺在法阵旁(down_end 首帧定格 = 平躺)。 */
+  beginAwakenStage(): boolean {
+    const leader = this.leader;
+    if (!this.awakenStageReady() || !leader?.skeleton) {
+      return false;
+    }
+    this.awakenLock = true;
+    this.keys.clear();
+    this.followers.forEach((actor) => { actor.node.active = false; });
+    this.actionUntil = Number.MAX_SAFE_INTEGER;
+    this.leaderActionAnim = false;
+    this.setActorFacing(leader, 1);
+    leader.skeleton.setAnimation(0, 'down_end', false);
+    leader.skeleton.timeScale = 0;
+    leader.anim = 'down_end';
+    leader.oneShotEnd = 0;
+    return true;
+  }
+
+  /** 醒来:播 down_end(跪起 → 站起)接待机。返回时长 ms。 */
+  playAwakenGetUp(): number {
+    const leader = this.leader;
+    const names = leader?.names;
+    if (!leader?.skeleton || !names) {
+      return 0;
+    }
+    const length = (leader.skeleton.findAnimation('down_end')?.duration ?? 0.83) * 1000;
+    leader.skeleton.timeScale = 0.7;
+    leader.skeleton.setAnimation(0, 'down_end', false);
+    if (names.idle) {
+      leader.skeleton.addAnimation(0, names.idle, true, 0);
+    }
+    leader.anim = names.idle;
+    return length / 0.7;
+  }
+
+  /** 零飞到队长肩旁(从右上方淡入 + 落位后上下漂),挂在队长节点下跟着走。 */
+  mountAwakenSpirit(path: string, durationMs: number): void {
+    const leader = this.leader;
+    if (!leader) {
+      return;
+    }
+    this.awakenSpirit?.destroy();
+    // 肩旁(原型 awaken_b:零浮在主角右肩上方);别飞到头顶 —— 会被顶部「绑定完成」横幅挡住
+    const node = this.host.addChildPlainNode(leader.node, 'AwakenSpirit', 300, 340, 130, 130);
+    const sprite = this.host.addSprite('Body', path, 0, 0, 130, 130, node);
+    void sprite;
+    const op = node.addComponent(UIOpacity);
+    op.opacity = 0;
+    const rest = new Vec3(105, 170, 0);
+    tween(op).to(durationMs / 1000 * 0.6, { opacity: 255 }).start();
+    tween(node).to(durationMs / 1000, { position: rest }, { easing: 'sineOut' })
+      .call(() => {
+        tween(node).repeatForever(tween().to(1.6, { position: new Vec3(rest.x, rest.y + 10, 0) }, { easing: 'sineInOut' })
+          .to(1.6, { position: rest }, { easing: 'sineInOut' })).start();
+      })
+      .start();
+    this.awakenSpirit = node;
+  }
+
+  /** 绑定金线:零 → 队长胸口,progress 0..1 由覆盖层逐帧推进。 */
+  setAwakenBind(progress: number): void {
+    const leader = this.leader;
+    if (!leader || !this.awakenSpirit) {
+      return;
+    }
+    if (!this.awakenBind || !this.awakenBind.isValid) {
+      const node = this.host.addChildPlainNode(leader.node, 'AwakenBind', 0, 0, 10, 10);
+      this.awakenBind = node.addComponent(Graphics);
+    }
+    const g = this.awakenBind;
+    g.clear();
+    if (progress <= 0) {
+      return;
+    }
+    const from = this.awakenSpirit.position;
+    const chest = { x: 10, y: 105 };
+    const t = Math.min(1, progress);
+    const x = from.x + (chest.x - from.x) * t;
+    const y = from.y + (chest.y - from.y) * t;
+    // 外晕 + 芯线;到位后芯线渐隐(progress 1 → 2)
+    const fade = progress > 1 ? Math.max(0, 2 - progress) : 1;
+    g.lineWidth = 7;
+    g.strokeColor = rgba(240, 200, 110, Math.round(70 * fade));
+    g.moveTo(from.x, from.y);
+    g.lineTo(x, y);
+    g.stroke();
+    g.lineWidth = 2;
+    g.strokeColor = rgba(255, 232, 170, Math.round(230 * fade));
+    g.moveTo(from.x, from.y);
+    g.lineTo(x, y);
+    g.stroke();
+  }
+
+  /** 收场:零融进胸口淡出、恢复操作和队友。 */
+  endAwakenStage(): void {
+    this.awakenLock = false;
+    this.actionUntil = 0;
+    this.followers.forEach((actor) => { actor.node.active = true; });
+    const leader = this.leader;
+    if (leader?.skeleton && leader.skeleton.isValid) {
+      leader.skeleton.timeScale = 1;
+      leader.moving = false;
+      this.applyActorAnimation(leader, true);
+    }
+    this.awakenBind?.node.isValid && this.awakenBind.node.destroy();
+    this.awakenBind = null;
+    const spirit = this.awakenSpirit;
+    this.awakenSpirit = null;
+    if (spirit && spirit.isValid) {
+      Tween.stopAllByTarget(spirit);
+      const op = spirit.getComponent(UIOpacity);
+      tween(spirit).to(0.5, { position: new Vec3(10, 105, 0), scale: new Vec3(0.3, 0.3, 1) }, { easing: 'sineIn' }).call(() => spirit.isValid && spirit.destroy()).start();
+      if (op) {
+        tween(op).to(0.5, { opacity: 0 }).start();
+      }
+    }
   }
 
   // ── 每帧 ──

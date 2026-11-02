@@ -102,7 +102,8 @@ import {
   LoginRenderer,
   type LoginRendererHost,
 } from './login/LoginRenderer';
-import { ProtagonistCreateFlow, type ProtagonistCreateFlowHost } from './protagonist/ProtagonistCreateFlow';
+import { clearAwakenPending, isAwakenPending, ProtagonistCreateFlow, type ProtagonistCreateFlowHost } from './protagonist/ProtagonistCreateFlow';
+import { LobbyAwakenCinematic, type AwakenCinematicHost } from './lobby/LobbyAwakenCinematic';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
 import {
   LobbyBackgroundController,
@@ -151,7 +152,7 @@ import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStag
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { heroPackPrefixes, resolveFieldParty } from '../api/LobbyHeroApi';
+import { currentLobbyProtagonistHero, heroPackPrefixes, resolveFieldParty } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
 import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
@@ -385,6 +386,9 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyGuardBattleRenderer = new LobbyGuardBattleRenderer(this as unknown as LobbyGuardBattleHost);
   private readonly lobbyHudRenderer = new LobbyHudRenderer(this as unknown as LobbyHudHost);
   private readonly lobbyTownRenderer = new LobbyTownRenderer(this as unknown as LobbyTownHost);
+  // docs/60 新号「觉醒」演出(晨风村法阵旁醒来 → 零绑定 → 对话)
+  private readonly awakenCinematic = new LobbyAwakenCinematic(this as unknown as AwakenCinematicHost, this.lobbyTownRenderer);
+  private awakenCheckAt = 0;
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
   private readonly lobbyPoiDialogRenderer = new LobbyPoiDialogRenderer(this as unknown as LobbyPoiDialogHost);
@@ -1137,6 +1141,7 @@ export class LootChainGameRoot extends Component {
     this.updateLobbyPosterFade(deltaTime);
     if (LOBBY_TOWN_ENABLED && this.currentView === 'lobby') {
       this.lobbyTownRenderer.step(deltaTime);
+      this.stepAwakenCinematic();
       // docs/50:切图那一刻素材组还在加载会被加载门挡住、地图没建;加载完没人补刷 → 地图一直空着。这里兜底补一次(1 秒限频)
       if (!this.lobbyTownRenderer.isMounted() && !this.uiSpriteFrameCache.groupProgress('town')) {
         const now = Date.now();
@@ -1539,6 +1544,7 @@ export class LootChainGameRoot extends Component {
       if (!this.renderSceneAssetGate(townLayout)) {
         this.renderLobbyHud(townLayout);
         this.remountLobbyQuestDialogIfOpen(townLayout);
+        this.awakenCinematic.remount(townLayout);
       }
       gameAudio.bgm('bgm_lobby');
       if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
@@ -2081,6 +2087,7 @@ export class LootChainGameRoot extends Component {
       this.lobbyTerminalPanelRenderer.render(layout);
       this.remountTerminalDialogs(layout);
     }
+    this.awakenCinematic.remount(layout);
     this.layoutKey = this.makeLayoutKey();
   }
 
@@ -2355,6 +2362,11 @@ export class LootChainGameRoot extends Component {
    */
   private handleNativeBack(): void {
     if (this.bootPreloadActive) {
+      return;
+    }
+    if (this.awakenCinematic.active) {
+      // 觉醒演出里返回键 = 跳过
+      this.awakenCinematic.skip();
       return;
     }
     const contentRoot = this.ensureContentRoot();
@@ -9604,6 +9616,40 @@ export class LootChainGameRoot extends Component {
 
   private rollProtagonistName(): void {
     this.protagonistCreateFlow.rollName();
+  }
+
+  /**
+   * 觉醒演出(docs/60):本机记着「待演」且已进晨风村、跑图队长骨骼就绪、大厅上没开别的界面 → 开演。
+   * 0.5 秒查一次;演完 / 跳过清掉待演记录。
+   */
+  private stepAwakenCinematic(): void {
+    if (this.awakenCinematic.active) {
+      this.awakenCinematic.step();
+      return;
+    }
+    const now = Date.now();
+    if (now < this.awakenCheckAt) {
+      return;
+    }
+    this.awakenCheckAt = now + 500;
+    const userId = this.api.tokenStore.userId();
+    if (!userId || !isAwakenPending(userId) || this.bootPreloadActive || this.lobbyHasOpenLayer()) {
+      return;
+    }
+    const name = currentLobbyProtagonistHero()?.heroName || this.protagonistCreateFlow.currentState().protagonistName || '';
+    this.awakenCinematic.start(this.resolveLayout(), name, () => clearAwakenPending(userId));
+  }
+
+  /** 演出期间藏跑图 HUD(小地图 / 摇杆 / 技能键 / 右上按钮 / 任务追踪)。 */
+  private setTownHudVisible(visible: boolean): void {
+    // 跑图 HUD + 右上系统按钮(召唤 / 商店 / 邮件 / 终端)+ 资源条 / 名片 / 引导层
+    const root = this.ensureContentRoot();
+    for (const name of ['LobbyTownHud', 'LobbySystemIcons', 'LobbyResourceBar', 'LobbyPlayerInfoButton', 'LobbyCompactStaminaChip', 'LobbyGuideOverlay', 'LobbyGoalTracker', 'LobbyCompactGoalTracker']) {
+      const node = root.getChildByName(name);
+      if (node && node.isValid) {
+        node.active = visible;
+      }
+    }
   }
 
   private setProtagonistNameDraft(name: string): void {

@@ -4,6 +4,40 @@ import { ApiError } from '../../net/HttpClient';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../../types/ProtagonistTypes';
 import { ProtagonistCreateState } from './ProtagonistCreateState';
 
+const AWAKEN_PENDING_PREFIX = 'lootchain.awaken.pending.';
+
+function awakenStorage(): Storage | null {
+  try {
+    return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function markAwakenPending(userId: number): void {
+  try {
+    awakenStorage()?.setItem(`${AWAKEN_PENDING_PREFIX}${userId}`, '1');
+  } catch {
+    // 无痕 / 禁用存储:本次会话照演,只是刷新后不补
+  }
+}
+
+export function isAwakenPending(userId: number): boolean {
+  try {
+    return awakenStorage()?.getItem(`${AWAKEN_PENDING_PREFIX}${userId}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function clearAwakenPending(userId: number): void {
+  try {
+    awakenStorage()?.removeItem(`${AWAKEN_PENDING_PREFIX}${userId}`);
+  } catch {
+    // ignore
+  }
+}
+
 export interface ProtagonistCreateFlowHost {
   showProtagonistCreateView(): void;
   startLobbyLoading(tokenName: string): void;
@@ -144,6 +178,8 @@ export class ProtagonistCreateFlow {
         return;
       }
       this.state.rememberServerProfile(profile);
+      // docs/60:刚建完的新号进晨风村先演「觉醒」;记在本机,中途刷新 / 掉线下次登录仍会补演(演完或跳过才清)
+      markAwakenPending(profile.userId);
       this.host.setStatus(`${profile.protagonistName} 已完成圣契。`);
       this.enterLobbyAfterProtagonistReady();
     } catch (error) {

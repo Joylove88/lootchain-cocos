@@ -113,7 +113,23 @@ async def main():
                 await asyncio.sleep(1)
                 await ev(CLICK % 'Submit')
                 ok = await wait_for("return root.currentView === 'lobby' ? 'ok' : 'wait';", 120)
-                await step('07_after_create' if ok else '07_create_failed', 6)
+                if not ok:
+                    await step('07_create_failed', 2)
+                    return
+                # docs/60 觉醒演出:等开演,按时间线连拍,再点三下对话
+                AW = "const a = root.awakenCinematic; return JSON.stringify({ phase: a.phase, line: a.lineIndex, hud: !!(root.ensureContentRoot().getChildByName('LobbyTownHud') || {}).active });"
+                started = await wait_for("return root.awakenCinematic.active ? 'ok' : 'wait';", 90, 0.5)
+                print('awaken started', started, await ev(AW), flush=True)
+                for name, wait in [('10_eyes', 1.2), ('11_reveal', 1.6), ('12_getup', 1.4), ('13_bind', 2.2), ('14_bindline', 1.4), ('15_talk1', 1.6)]:
+                    await asyncio.sleep(wait)
+                    print(name, await ev(AW), flush=True)
+                    await shot(name)
+                for i in range(3):
+                    await ev("let n=null; root.node.walk(x=>{ if(!n && x.name==='LobbyAwakenCinematic') n=x; }); if(!n) return 'none'; n.emit(cc.Node.EventType.TOUCH_END, {propagationStopped:false}); return 1;")
+                    await asyncio.sleep(1.2)
+                    print(f'tap{i+1}', await ev(AW), flush=True)
+                    await shot(f'16_tap{i+1}')
+                await step('17_after_awaken', 2)
     finally:
         proc.kill()
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
