@@ -1,0 +1,10 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our current "终端" (main menu hub) screen in the approved B style (frosted dark glass, white text, champagne accents). Keep this hub screen EXACTLY as the base.
+- SECOND image = our APPROVED style reference (frosted glass panels, thin faint outlines, translucent pills, dark-gold selected style with white text).
+Show a NEW-PLAYER TUTORIAL STEP on top of the hub, in the same B style:
+- A spotlight overlay: the whole screen is dimmed to about 30% brightness, except a soft-edged rounded-rectangle hole exactly around the "英雄" tile (top-left tile of the grid), which stays fully bright; a thin champagne-gold rim with a faint soft glow traces the hole.
+- A stylised pointing hand (clean, simple, semi-realistic light grey glove, soft shadow, NOT cartoonish) tapping the centre of the "英雄" tile, with a small champagne ripple ring under the fingertip (it is an animated tap).
+- A frosted glass guide card placed to the right of the tile (about 560x170): on its left a small round portrait of a kind old village chief NPC (grey beard, painted, matte, thin faint ring); to the right the speaker name "村长" in small champagne text, the line "英雄是你的伙伴。去「英雄」里给他升一级,变得更强吧!" in white, and at the bottom a row of 5 small step dots (the 2nd one champagne = current step) and on the far right a small grey text button "跳过".
+- Nothing else is highlighted; everything outside the hole is dim and not clickable.
+Rules: B style only — no red ribbons, no ornate gold frames, no glowing particles, no lens flares. Output only the single finished mockup image, no annotations.
