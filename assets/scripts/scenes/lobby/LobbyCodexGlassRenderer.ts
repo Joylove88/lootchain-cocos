@@ -122,6 +122,11 @@ export class LobbyCodexGlassRenderer {
     const kit = this.host as unknown as UiKitHost;
     const claimable = state.claimableCount > 0;
     const busy = state.claiming !== null;
+    // 「一键领取」与 ✕ 之间的竖分割线(原型 x 1743;顶栏没有货币胶囊时 mountGlassTopBar 不画)
+    const divider = this.host.addSprite('LobbyCodexGlassDivider', GLASS_ICON.divider, FX(1743), FY(44), S(36), S(2), panel);
+    if (divider) {
+      divider.node.angle = 90;
+    }
     const btn = mountGlassButton(kit, panel, 'LobbyCodexClaimAll', claimable ? '一键领取' : '暂无可领', FX(1604), FY(46), S(198), S(48), k,
       claimable && !busy ? 'primary' : 'disabled', () => this.host.claimAllLobbyCodexRewards(), 22);
     if (claimable) {
@@ -317,7 +322,8 @@ export class LobbyCodexGlassRenderer {
   private renderMilestoneTip(panel: Node, milestone: LobbyCodexMilestoneVO, owned: number, x: number, FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: TFn): void {
     const kit = this.host as unknown as UiKitHost;
     const rewards = milestone.rewards.slice(0, 4);
-    const w = Math.max(S(320), S(40) + rewards.length * S(130));
+    // 每格 = 物品框 56 + 「×数量」最长约 7 字;步距 170,数量不再贴到下一格
+    const w = Math.max(S(320), S(40) + rewards.length * S(170) - S(20));
     const h = S(150);
     // 气泡夹在中间格子面板(345..1228)内:最右的 22 宝箱不再伸到右栏上被截断
     const minX = FX(345) + w / 2;
@@ -327,7 +333,7 @@ export class LobbyCodexGlassRenderer {
     mountGlassSlice(kit, tip, 'Base', GLASS_SLICES.panel, 0, 0, w, h, k);
     mountGlassSlice(kit, tip, 'Glass', GLASS_SLICES.panel, 0, 0, w, h, k);
     T(tip, 'Title', `收录 ${milestone.targetCount} 位 · ${milestone.rewardName}`, -w / 2 + S(20), h / 2 - S(26), 20, GLASS_COLOR.text, w - S(40), HorizontalTextAlignment.LEFT, true);
-    rewards.forEach((reward, index) => this.rewardSlot(tip, reward, -w / 2 + S(20) + S(28) + index * S(130), -S(10), S(56), S, k, T));
+    rewards.forEach((reward, index) => this.rewardSlot(tip, reward, -w / 2 + S(20) + S(28) + index * S(170), -S(10), S(56), S, k, T));
     const status = milestone.claimed ? '已领取' : milestone.reached ? '可领取' : `还差 ${Math.max(1, milestone.targetCount - owned)} 位英雄`;
     T(tip, 'Status', status, -w / 2 + S(20), -h / 2 + S(20), 18, milestone.claimed ? GLASS_COLOR.dim : GLASS_COLOR.sub, w - S(40));
   }
