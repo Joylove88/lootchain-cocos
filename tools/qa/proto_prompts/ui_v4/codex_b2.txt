@@ -1,0 +1,19 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, translucent secondary pill buttons, small monochrome muted-gold icons, calm darkened blurred background.
+- SECOND image = our APPROVED announcement window. Copy its SELECTED style exactly: a selected tab / segment is a DARK-GOLD gradient (darker brownish gold on the left, brighter gold on the right, thin light-gold rim) with WHITE text; unselected ones are translucent dark glass with white text. The single primary action button is a light champagne pill with dark text.
+- THIRD image = our CURRENT version of this screen. Use it ONLY to know which information and controls exist; do NOT copy its style (red ribbon banners, spiky gold frames, candles, glowing icons - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+
+SCREEN: "图鉴" (hero codex / collection), full screen page (not a dialog).
+- Top bar: back arrow "<" + title "图鉴" + a small "?" help circle; on the right: primary champagne pill "一键领取" with a small red badge "18", a thin vertical divider, close "X".
+- Under the top bar, centred: a slim collection progress bar (frosted track, champagne fill to about 70%) with 4 milestone markers labelled 5, 10, 15, 22; above 5 / 10 / 15 small muted wooden treasure-chest icons (painted, matte) each with a tiny red dot (claimable); above 22 a greyed chest with a small lock. On the left of the bar grey text "已收集 15 / 22".
+- Filter row: segmented tabs "全部" (selected, dark-gold, white text) | "UR" | "SSR" | "SR" | "R"; on the right a small checkbox "仅看未收集".
+- A 5-column grid of hero cards (frosted glass card, rounded corners, painted realistic half-body hero portrait cropped inside the upper 80%, matte, darkened bottom for the name): rarity tag top-left (R grey-blue, SR purple, small and flat); the hero name in white at the bottom. Three card states:
+  * collected with reward: a small champagne pill "领取" top-right (cards 1, 2, 4 of row 1);
+  * collected, reward already taken: no pill, a tiny grey check "已领取" top-right (card 3 of row 1);
+  * not collected yet: portrait desaturated and dimmed to about 35%, a small lock icon in the centre and grey text "未收集" under the name (card 5 of row 1, and 2 cards in row 2).
+  Row 1 names: 礼拜堂侍僧, 低语教徒, 城门卫兵, 王国巡逻兵, 荒原游侠. Row 2 partly visible (R and SR heroes).
+  A thin scrollbar on the right.
+Extra rules: painted art must be muted, matte, no glow or sparkle; rarity only as a small flat tag, never thick glowing coloured frames. Background darkened and blurred, no candles or glowing particles. Generous spacing, aligned grid.
+Output only the single finished mockup image, no annotations.

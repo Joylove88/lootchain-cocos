@@ -2305,6 +2305,13 @@ export class LootChainGameRoot extends Component {
    * 只在 openLobbyDailyDungeonPanel 自立、returnToLobbyFromScenePage 显式清除。
    */
   private closeAllLobbyScenePanelFlags(): void {
+    // 进整页功能页:终端及其上的弹框随整页重绘已被清掉,开关位一并复位。
+    // 否则(如下载门等待期间终端被「返回回终端」重开)终端位残留 true,返回键先去关一个看不见的终端,功能页退不出去(11-02 图鉴实测)
+    this.lobbyTerminalOpen = false;
+    this.lobbyGiftDialog = null;
+    this.lobbyNoticeDialog = null;
+    this.lobbyProfileGlassOpen = false;
+    this.lobbySettingsGlassOpen = false;
     this.lobbyShopDialog = null;
     this.lobbyAdventurePanelOpen = false;
     this.lobbyRaidPanelOpen = false;
@@ -3970,8 +3977,10 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyCodexPanel(): void {
-    if (!packResourcesReady(['ui/codex', 'ui/hero-roster/card_background'])) {
-      this.openWithPackGate(['ui/codex', 'ui/hero-roster/card_background'], '正在加载图鉴素材', () => this.openLobbyCodexPanel());
+    // 11-02 B 风格图鉴:宝箱(ui/codex)+ 右栏横版半身卡面(ui/hero/roster);头像在开局包
+    const codexPrefixes = ['ui/codex', 'ui/hero/roster'];
+    if (!packResourcesReady(codexPrefixes)) {
+      this.openWithPackGate(codexPrefixes, '正在加载图鉴素材', () => this.openLobbyCodexPanel());
       return;
     }
     this.closeAllLobbyScenePanelFlags();
@@ -4060,6 +4069,10 @@ export class LootChainGameRoot extends Component {
 
   private reloadLobbyCodex(): void {
     void this.loadLobbyCodex(true);
+  }
+
+  private rerenderLobbyCodex(): void {
+    this.renderCurrentLobbyScenePage();
   }
 
   // ── 图鉴系统一期(2026-09-15):页内 UI 态 + 激活奖励/里程碑领取 ──

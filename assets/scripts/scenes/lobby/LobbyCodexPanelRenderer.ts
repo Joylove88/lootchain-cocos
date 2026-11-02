@@ -31,6 +31,8 @@ import { renderSceneBackButton } from '../UiSceneBackButton';
 import { clamp, rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
+import { glassStyleEnabled } from '../UiGlassKit';
+import { LobbyCodexGlassRenderer, type LobbyCodexGlassHost } from './LobbyCodexGlassRenderer';
 
 /** 图鉴页素材(2026-09-15):复用任务弹框/背包/英雄卡素材;宝箱三态为图鉴专属(用户自出图,缺图退手绘)。 */
 const CODEX_UI_ASSETS = {
@@ -114,9 +116,21 @@ export interface LobbyCodexPanelHost {
  * 立绘卡墙三态(已激活 / 可领取金框角标 / 未收集灰影加锁);点卡片弹详情(奖励清单 + 领取 / 前往召唤)。
  */
 export class LobbyCodexPanelRenderer {
-  constructor(private readonly host: LobbyCodexPanelHost) {}
+  private readonly glass: LobbyCodexGlassRenderer;
+
+  constructor(private readonly host: LobbyCodexPanelHost) {
+    this.glass = new LobbyCodexGlassRenderer(host as unknown as LobbyCodexGlassHost, {
+      reward: REWARD_ICON_BY_CODE,
+      chest: { locked: CODEX_UI_ASSETS.chestLocked, ready: CODEX_UI_ASSETS.chestReady, opened: CODEX_UI_ASSETS.chestOpened },
+    });
+  }
 
   render(layout: UiLayout): void {
+    // 11-02 B 风格重设计(原型 codex_b3):三栏 + 底部收集进度,电脑 / 手机共用
+    if (glassStyleEnabled()) {
+      this.glass.render(layout);
+      return;
+    }
     const state = this.host.currentLobbyCodexState();
     const scale = Math.max(0.64, Math.min(1, layout.uiScale));
     const panelWidth = Math.max(300 * scale, layout.stageWidth);
