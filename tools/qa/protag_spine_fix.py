@@ -27,7 +27,103 @@ FIXES = {
           'Cloak / cape parts: a long worn hooded traveller\u2019s cloak of rough brown wool, evenly painted with soft folds and a torn hem, '
           'NO white spots, NO bright patches, NO holes showing white. Hair part: neat short dark brown hair with a short side-swept fringe that '
           'stays above the eyebrows and does not cover the eyes. ' + KEEP),
+    # 永夜龙骑底(11-03):全盔部件画成露脸的头 + 头发;头盔红眼光(eyes01)直接清透明,不走 AI
+    'm2': ('IshmaelA', 'protag_m_v5.png',
+           ['face01', 'face02'],
+           'Head parts: the bare head of the young man in the reference image, NO helmet and NO hood: a realistic face with brown eyes and a '
+           'calm expression, short neat dark brown hair filling the outline. ' + KEEP),
+    'f2': ('IshmaelA', 'protag_f_v6.png',
+           ['face01', 'face02'],  # 带 armor03 一起提交 Meowa 连续两次 generation_failed,护甲块另行处理
+           'Head parts: the bare head of the young woman in the reference image, NO helmet: a realistic face with brown eyes, short brown '
+           'chin-length bob hair filling the outline. ' + KEEP),
 }
+# 换皮后直接清成透明的部件(头盔红眼光等不该出现在主角身上的发光件)
+BLANK = {'m2': ['eyes01'], 'f2': ['eyes01']}
+# 女版后处理(同一副底骨骼、同一张放大图集 → 区域坐标与男版完全一致):
+# Meowa 把女版躯干 body01 / body02 画成了带兜帽的人脸(播技能时出现两个头),两块护甲 R_armor03 / armor03 没换皮还是原黑甲
+# → 直接从男版搬这四块(皮背心 / 布兜帽 / 皮护甲);女版 face01 回来是空的 → 用她自己的 face02(同为侧前方的头)缩放填进去
+COPY_FROM_MALE = {'f2': ('m2', ['body01', 'body02', 'R_armor03', 'armor03'])}
+FILL_FROM = {'f2': [('face01', 'face02')]}
+
+
+def atlas_regions(atlas_path):
+    regs, cur = {}, None
+    for line in open(atlas_path, encoding='utf-8').read().splitlines()[5:]:
+        if line and not line.startswith(' ') and ':' not in line:
+            cur = line.strip()
+            regs[cur] = {}
+        elif cur and ':' in line and line.startswith(' '):
+            k, v = line.strip().split(':', 1)
+            regs[cur][k.strip()] = v.strip()
+    boxes = {}
+    for n, r in regs.items():
+        if 'xy' in r:
+            x, y = (int(v) for v in r['xy'].split(','))
+            w, h = (int(v) for v in r['size'].split(','))
+            if r.get('rotate') == 'true':
+                w, h = h, w
+            boxes[n] = (x, y, w, h)
+    return regs, boxes
+
+
+def post_fix(key, out, base):
+    import numpy as np
+    from PIL import Image
+    png = os.path.join(out, base + '.png')
+    regs, boxes = atlas_regions(os.path.join(out, base + '.atlas'))
+    page = np.array(Image.open(png).convert('RGBA'))
+    if key in COPY_FROM_MALE:
+        mk, names = COPY_FROM_MALE[key]
+        mregs, _ = atlas_regions(os.path.join(OUT, mk, 'out_fix', base + '.atlas'))
+        mpage = np.array(Image.open(os.path.join(OUT, mk, 'out_fix', base + '.png')).convert('RGBA'))
+        for n in names:
+            assert mregs[n] == regs[n], n
+            x, y, w, h = boxes[n]
+            page[y:y + h, x:x + w] = mpage[y:y + h, x:x + w]
+            print('  copied from', mk, n)
+    img = Image.fromarray(page)
+    for dst, src in FILL_FROM.get(key, []):
+        x, y, w, h = boxes[dst]
+        sx, sy, sw, sh = boxes[src]
+        piece = img.crop((sx, sy, sx + sw, sy + sh)).resize((w, h), Image.LANCZOS)
+        arr = np.array(img)
+        arr[y:y + h, x:x + w] = 0
+        img = Image.fromarray(arr)
+        img.alpha_composite(piece, (x, y))
+        print('  filled', dst, 'from', src)
+    img.save(png)
+
+
+def blank_regions(atlas_path, names):
+    import numpy as np
+    from PIL import Image
+    page, regs, cur = None, {}, None
+    for line in open(atlas_path, encoding='utf-8').read().splitlines():
+        if line.strip().endswith('.png') and ':' not in line:
+            page = line.strip()
+        elif line and not line.startswith(' ') and ':' not in line:
+            cur = line.strip()
+            regs[cur] = {}
+        elif cur and ':' in line:
+            k, v = line.strip().split(':', 1)
+            regs[cur][k.strip()] = v.strip()
+    png = os.path.join(os.path.dirname(atlas_path), page)
+    im = np.array(Image.open(png).convert('RGBA'))
+    for n in names:
+        r = regs.get(n)
+        if not r:
+            print('  blank: region not found', n)
+            continue
+        if 'bounds' in r:
+            x, y, w, h = (int(v) for v in r['bounds'].split(','))
+        else:
+            x, y = (int(v) for v in r['xy'].split(','))
+            w, h = (int(v) for v in r['size'].split(','))
+        if r.get('rotate', 'false') in ('true', '90', '270'):
+            w, h = h, w
+        im[y:y + h, x:x + w, 3] = 0
+        print('  blanked', n, (x, y, w, h))
+    Image.fromarray(im).save(png)
 
 
 def job_of(logpath):
@@ -74,7 +170,9 @@ def fix(key):
         with open(logpath, 'w', encoding='utf-8') as log:
             run([sys.executable, RUNNER, 'spine-edit-run', '--source-spine-package', pkg, '--selected-parts-json', sel_path,
                  '--prompt', prompt, '--project-id', PROJECT, '--thread-id', THREAD, '--display-name', f'protag_fix_{key}',
-                 '--reference-image', os.path.join(SRC_ART, ref), '--generation-model', 'nano-banana', '--resolution', '2K',
+                 # 相同请求会被去重成同一个任务(失败的也一样)→ 每次重交带新的操作号
+                 '--client-operation-id', f'protag_fix_{key}_{int(__import__("time").time())}',
+                 '--reference-image', os.path.join(SRC_ART, ref), '--generation-model', os.environ.get('FIX_MODEL', 'nano-banana'), '--resolution', '2K',
                  '--quality', 'ultimate', '--export-version', '4.2', '--output-dir', os.path.join(d, 'fo')], stdout=log, stderr=subprocess.STDOUT)
         job = job_of(logpath)
     zips = glob.glob(os.path.join(d, 'fo', '*', '*.zip'))
@@ -95,6 +193,10 @@ def fix(key):
     out = os.path.join(d, 'out_fix')
     run([sys.executable, os.path.join(QA, 'fx_tex_repack.py'), src, pack, out, base, '--no-color', '--halo', '0'], check=True)
     run([sys.executable, os.path.join(QA, 'spine_reskin_orient_check.py'), os.path.join(d, 'src_x2', base + '.atlas'), os.path.join(out, base + '.atlas'), '--fix'])
+    if BLANK.get(key):
+        blank_regions(os.path.join(out, base + '.atlas'), BLANK[key])
+    if key in COPY_FROM_MALE or key in FILL_FROM:
+        post_fix(key, out, base)
     return 'ok'
 
 

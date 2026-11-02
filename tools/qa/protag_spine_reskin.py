@@ -30,6 +30,15 @@ TARGETS = {
           'Re-texture this character as a slender 18-year-old village girl: brown hair in a low ponytail, plain worn linen tunic, short worn brown '
           'wool cape, leather belt with pouch, leather bracers, brown trousers, leather boots (modest, not revealing); the long blade is a pale '
           'WOODEN practice blade and the big shield is a plain WOODEN tower shield of rough planks bound with dark iron bands, no spikes.'),
+    # 11-03 用户「男女都只要带剑的」:SSR / UR 里只持一把剑的只有永夜龙骑(IshmaelA),男女共用这副底;重甲轮廓用斗篷 / 层叠布衣盖住
+    'm2': ('IshmaelA', 'skinref_m2.png',
+           'Re-texture this character as a lean 18-year-old village youth with NO armour: short neat dark brown hair and a bare face (no helmet), '
+           'hooded brown wool travelling cloak over the shoulders, plain worn linen tunic, leather belt with pouch, leather bracers, brown trousers, '
+           'leather boots, worn brown wool cape; the long sword is a pale WOODEN training sword.'),
+    'f2': ('IshmaelA', 'skinref_f2.png',
+           'Re-texture this character as a slender 18-year-old village girl with NO armour: short brown chin-length bob and a bare face (no helmet), '
+           'hooded brown wool travelling cloak over the shoulders, plain worn linen tunic, leather belt with pouch, leather bracers, brown trousers, '
+           'leather boots, worn brown wool cape, modest; the long sword is a pale WOODEN training sword.'),
 }
 
 

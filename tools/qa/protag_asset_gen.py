@@ -193,6 +193,26 @@ ASSETS = {
         'The FIRST image is our APPROVED character. Redraw EXACTLY the same girl, face, outfit, colours, wooden rapier, pose, framing and the same '
         'smooth refined semi-realistic rendering. Change ONLY the HAIR: a short chin-length brown bob with a soft side part, like the field '
         'character in the SECOND image; no ponytail. Neat clean locks, no frizz, no flyaway strands, crisp clean edges.'),
+    'skinref_m2': ([f'{OUT}/stand_IshmaelA.png', f'{OUT}/protag_m_v5.png'],
+        'Generate ONE image, portrait 2:3 (about 1024x1536), on a plain flat dark grey background (#22252C), no shadow, no text. '
+        'This is a REFERENCE for re-texturing a 2D skeletal (Spine) character: keep the EXACT pose, body proportions, silhouette, and the '
+        'position, size and angle of EVERY body part and the sword of the character in the FIRST image, so each part lands in the same place. '
+        'Only change what they look like: the character becomes the protagonist of the SECOND image, painted in the same smooth refined '
+        'semi-realistic style as the SECOND image (NOT anime, NOT chibi). There is NO armour at all: the bulky armour plates become layered '
+        'worn cloth and leather that follow the same outline (a hooded brown wool travelling cloak over the shoulders, the linen tunic, leather '
+        'belt with pouch, leather bracers, brown trousers, leather boots); the full helmet becomes the bare head with the face and hair of the '
+        'SECOND image; the red cape becomes a worn brown wool cape; the long red sword becomes a long pale WOODEN training sword of the same '
+        'length and angle. ONLY the sword, no shield, no second weapon. ' + 'The character is the young man of the SECOND image.'),
+    'skinref_f2': ([f'{OUT}/stand_IshmaelA.png', f'{OUT}/protag_f_v6.png'],
+        'Generate ONE image, portrait 2:3 (about 1024x1536), on a plain flat dark grey background (#22252C), no shadow, no text. '
+        'This is a REFERENCE for re-texturing a 2D skeletal (Spine) character: keep the EXACT pose, body proportions, silhouette, and the '
+        'position, size and angle of EVERY body part and the sword of the character in the FIRST image, so each part lands in the same place. '
+        'Only change what they look like: the character becomes the protagonist of the SECOND image, painted in the same smooth refined '
+        'semi-realistic style as the SECOND image (NOT anime, NOT chibi). There is NO armour at all: the bulky armour plates become layered '
+        'worn cloth and leather that follow the same outline (a hooded brown wool travelling cloak over the shoulders, the linen tunic, leather '
+        'belt with pouch, leather bracers, brown trousers, leather boots); the full helmet becomes the bare head with the face and hair of the '
+        'SECOND image; the red cape becomes a worn brown wool cape; the long red sword becomes a long pale WOODEN training sword of the same '
+        'length and angle. ONLY the sword, no shield, no second weapon. ' + 'The character is the young woman of the SECOND image (short brown bob, a slimmer feminine figure inside the same outline, modest).'),
 }
 
 
