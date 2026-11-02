@@ -68,6 +68,11 @@ const FR = {
 } as const;
 /** 背景(用户 2026-10-15:「背景 UI 像之前那样」→ 换回第三版重画的大教堂,水晶在图宽 27.8% 处、左三分之二都亮)。 */
 const FORMATION_BG_CRYSTAL_X = 0.278;
+/**
+ * B 风格背景(11-02 用户「背景也要和原型一致」):按原背景构图重画的冷灰蓝大教堂(原型 formation_b2 的色调),
+ * 水晶仍在图宽 28% 处(实测 0.280),站位对位公式不变;tools/qa/proto_prompts/ui_v4/formation_bg_b.txt。
+ */
+const FORMATION_BG_GLASS = `${REF_DIR}formation_bg_b/spriteFrame`;
 /** 背景最多放大到 1.2:再大水晶会占到三分之一屏高(用户嫌过);对不齐时英雄组就近。 */
 const FORMATION_BG_MAX_SCALE = 1.2;
 /** 职业图标(用户「不需要阵营,按职业分」):名牌第二行 + 英雄卡底行。 */
@@ -218,7 +223,7 @@ export class LobbyFormationPanelRenderer {
     const dimGraphics = dim.addComponent(Graphics);
     // 旧背景水晶在图高 30% 处:垂直居中裁(顶对齐会把地面裁掉、水晶落到英雄身后)
     const bgY = 0;
-    if (!this.host.addSprite('LobbyFormationSceneBgSprite', FR.bg, bgX, bgY, bgWidth, bgHeight, dim)
+    if (!this.host.addSprite('LobbyFormationSceneBgSprite', glassStyleEnabled() ? FORMATION_BG_GLASS : FR.bg, bgX, bgY, bgWidth, bgHeight, dim)
       && !this.host.addSprite('LobbyFormationSceneBgSprite', FORMATION_BATTLE_BG_ASSET, 0, 0, bgCover, bgCover / bgAspect, dim)) {
       dimGraphics.fillColor = rgba(10, 7, 8, 250);
       dimGraphics.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
@@ -228,7 +233,8 @@ export class LobbyFormationPanelRenderer {
     const veil = this.host.addChildPlainNode(dim, 'LobbyFormationSceneVeil', 0, 0, layout.width, layout.height);
     const veilGraphics = veil.addComponent(Graphics);
     // B 风格(11-02 原型 formation_b2):场景整体压暗偏冷,去掉暖红烛光感;水晶仍透出
-    veilGraphics.fillColor = glassStyleEnabled() ? rgba(8, 12, 20, 168) : rgba(6, 4, 6, 48);
+    // B 风格背景本身已是冷暗调,只轻压一层让名牌 / 面板更跳
+    veilGraphics.fillColor = glassStyleEnabled() ? rgba(8, 12, 20, 60) : rgba(6, 4, 6, 48);
     veilGraphics.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
     veilGraphics.fill();
     // 功能页采用场景式导航，遮罩只阻断底层输入，不再承担点击关闭语义。
