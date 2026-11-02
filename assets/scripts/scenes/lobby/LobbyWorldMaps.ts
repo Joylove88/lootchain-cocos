@@ -404,7 +404,8 @@ const VILLAGE: WorldMapDef = {
   buildings: VILLAGE_BASE.buildings,
   blocks: VILLAGE_BASE.blocks,
   npcs: [
-    { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: 300, y: 600, height: 210, flip: -1 },
+    // 11-03 用户「看不到村长」:原 (300, 600) 站在村长屋前大橡树后面被树冠整个挡住,挪到台阶下小路左侧
+    { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: 90, y: 500, height: 210, flip: 1 },
     { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 1130, y: 300, height: 215, flip: 1 },
     { code: 'PRIEST', name: '祭司 · 莉娅', asset: worldAsset('npc_priest'), x: -1290, y: 520, height: 200, flip: -1 },
     { code: 'SMITH', name: '铁匠 · 巴洛', asset: worldAsset('npc_smith'), x: 1900, y: -470, height: 215, flip: -1 },

@@ -73,6 +73,31 @@ async def main():
                 if '"skel":true' in st:
                     break
                 await asyncio.sleep(2)
+            if '--chief' in sys.argv:
+                print('maps', await ev("return JSON.stringify((root.worldState && root.worldState.maps || []).map(m => m.mapCode + ':' + m.unlocked + ':' + (m.lockReason || '')));"), flush=True)
+                await ev("setTimeout(() => root.preloadWorldMap('VILLAGE', () => { root.lobbyTownRenderer.enterMap('VILLAGE', { x: 200, y: 420 }); root.renderCurrentView(); }), 50); return 1;")
+                await asyncio.sleep(8)
+                print('after travel', await ev(T + " return t.def.code + ' status=' + (root.statusPresenter && root.statusPresenter.text);"), flush=True)
+                for _ in range(90):
+                    if await ev(T + " return t.def.code === 'VILLAGE' && t.leader && t.leader.skeleton ? 'ok' : 'wait';") == 'ok':
+                        break
+                    await asyncio.sleep(1)
+                await asyncio.sleep(4)
+                import base64 as _b64
+                for code in ['CHIEF', 'INSTRUCTOR', 'PRIEST', 'SMITH']:
+                    await ev(T + f" const n = t.def.npcs.find(x => x.code === '{code}'); t.leader.x = n.x - 160; t.leader.y = n.y - 120; t.leader.node.setPosition(t.leader.x, t.leader.y, 0); return 1;")
+                    await asyncio.sleep(3)
+                    m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
+                    open(os.path.join(OUT, f'npc_{code}.png'), 'wb').write(_b64.b64decode(m['result']['data']))
+                await ev(T + " t.leader.x = 200; t.leader.y = 420; t.leader.node.setPosition(200, 420, 0); return 1;")
+                await asyncio.sleep(3)
+                print('npcdbg', await ev(T + " const P = 'ui/world/npc_chief/spriteFrame'; return JSON.stringify({ code: t.def.code, npcs: t.def.npcs.map(n => n.code), res: !!cc.resources.get(P, cc.SpriteFrame), cache: !!root.uiSpriteFrameCache.resolve(P, {}), names: t.entityRoot.children.filter(c => /Npc/.test(c.name)).map(c => c.name), info: !!cc.resources.getInfoWithPath('ui/world/npc_chief', cc.SpriteFrame) || !!cc.resources.getInfoWithPath(P) });"), flush=True)
+                await ev("cc.resources.load('ui/world/npc_chief/spriteFrame', cc.SpriteFrame, (e, f) => { window.__npcErr = e ? String(e) : ('ok ' + (f && f.name)); }); return 1;")
+                await asyncio.sleep(4)
+                print('npcload', await ev("return String(window.__npcErr);"), flush=True)
+                print('chief', await ev(T + " const n = t.entityRoot.getChildByName('TownNpc_CHIEF'); if (!n) return 'no node'; const kids = t.entityRoot.children; const art = n.getChildByName('Art'); "
+                      "const house = kids.find(c => /chief/i.test(c.name)); return JSON.stringify({ active: n.activeInHierarchy, pos: [n.position.x, n.position.y], idx: kids.indexOf(n), houseIdx: house ? kids.indexOf(house) : -1, houseName: house && house.name, "
+                      "art: !!(art && art.getComponent(cc.Sprite) && art.getComponent(cc.Sprite).spriteFrame), op: n.getComponent(cc.UIOpacity) && n.getComponent(cc.UIOpacity).opacity, total: kids.length, near: kids.filter(c => Math.abs(c.position.x - 300) < 500 && Math.abs(c.position.y - 600) < 300).map(c => c.name + '@' + kids.indexOf(c) + ':' + Math.round(c.position.y)) });"), flush=True)
             print('res', await ev("const r = cc.resources; const info = r.getInfoWithPath('spine/hero/protag_m/protag_m', cc.sp.SkeletonData); return JSON.stringify({ info: !!info, uuid: info && info.uuid });"))
             await asyncio.sleep(2)
             m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
