@@ -25,10 +25,11 @@ HEAD_TILT = -15.0
 # (父骨 chest 世界角 62.71°,换算成 chest 本地坐标;0 / 10 / 18 三档渲染对比 18 最贴领口)
 # 11-03 深夜 用户「女主能不能和男主一样」:女主前面几轮(挪头 / 画上衣后 / 挖领口 / 脖子画进立领 / 大招单独挪)都不对,
 # 根因 = GPT 把女主马甲画成贴脖立领,男主是宽毛领 V 口。终解 = 女主头参数与男主完全一致(HEAD_SHIFT 同值,不单独改动作)
-# + 男主马甲领口区域盖到女主马甲贴图上(protag_collar_graft.py)。废弃的立领填脖子脚本留在 _unused_protag_collar_cut.py
+# + 用户再拍板「衣服直接和男主一样」:女主贴图 = 男主整张贴图,只保留女主的脸 / 眼睛区域(protag_body_from_male.py)。
+# 废弃:只换领口 protag_collar_graft.py、立领填脖子 _unused_protag_collar_cut.py
 HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-18.0, -5.4)}
-# 领口换男主的角色
-COLLAR_GRAFT = {'protag_f'}
+# 身体贴图整套用男主的角色(只留自己的脸)
+BODY_FROM_MALE = {'protag_f'}
 CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
@@ -64,9 +65,9 @@ def install_spine(src_key, name):
             lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
-    if name in COLLAR_GRAFT:
+    if name in BODY_FROM_MALE:
         png = os.path.join(dst, name + '.png')
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_collar_graft.py'), png, png], check=True)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_body_from_male.py'), png, png], check=True)
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     if name in HOOD_CUT:
         cut_hood(dst, name, data, *HOOD_CUT[name])
