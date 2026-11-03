@@ -17,6 +17,8 @@ export const CORE_PREFIXES = [
   'ui/world/city_board', 'ui/world/ui_bounty_paper', 'ui/world/map_world1',
   // 野外兴趣点素材(docs/54:石碑 / 草药 / 矿脉 / 隐藏点,晨风村就有)
   'ui/world/poi',
+  // 序幕「神庭陨落」视频(docs/60,新号建主角前播,720p30 约 4MB)+ 对话头像在 ui/protagonist
+  'video/prologue',
   // 主角野外骨骼(docs/60,永夜龙骑底换皮,男女两套:建角前不知道性别,两套都进开局包)+ 借用的永夜龙骑弹道 / 命中 / 战技 / 大招特效
   'spine/hero/protag_', 'spine/effect/fx_350131_jialulupifu_fly', 'spine/effect/fx_350131_jialulupifu_hit',
   'spine/effect/v2_a47_014', 'spine/effect/hu_085',

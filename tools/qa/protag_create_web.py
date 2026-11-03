@@ -91,6 +91,34 @@ async def main():
                 print('NOT on protagonistCreate:', await ev(STATE))
                 await shot('00_wrong_view')
                 return
+            # docs/60 序幕视频:DOM 覆盖层(#lootchain-prologue),按时间轴连拍,播完自动露出选择主角页
+            PV = "(() => { const r = document.getElementById('lootchain-prologue'); if (!r) return 'none'; const v = r.querySelector('video'); return JSON.stringify({ t: v && +v.currentTime.toFixed(1), paused: v && v.paused, muted: v && v.muted, card: r.children[r.children.length - 1].style.opacity, text: r.innerText.slice(0, 80) }); })()"
+            async def pv():
+                r = await call('Runtime.evaluate', {'expression': PV, 'returnByValue': True})
+                return r.get('result', {}).get('result', {}).get('value')
+            print('prologue', await pv(), flush=True)
+            # 按视频实际进度截:开场 / 天枢台词(4.3~8.4s)/ 夜帝台词(11.2~15.2s)
+            targets = [('00_prologue_a', 1.0), ('00_prologue_b', 5.5), ('00_prologue_c', 12.5)]
+            for name, at in targets:
+                for _ in range(200):
+                    v = await pv()
+                    if v == 'none':
+                        break
+                    try:
+                        if json.loads(v)['t'] >= at:
+                            break
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.1)
+                print(name, await pv(), flush=True)
+                m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
+                if 'result' in m:
+                    open(os.path.join(OUT, f'{name}.png'), 'wb').write(base64.b64decode(m['result']['data']))
+            for _ in range(30):
+                if await pv() == 'none':
+                    break
+                await asyncio.sleep(1)
+            print('prologue end', await pv(), flush=True)
             await step('01_male', 4)
             await ev(CLICK % 'GenderCard_female')
             await step('02_female')

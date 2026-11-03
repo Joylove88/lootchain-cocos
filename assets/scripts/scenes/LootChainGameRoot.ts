@@ -103,6 +103,7 @@ import {
   type LoginRendererHost,
 } from './login/LoginRenderer';
 import { clearAwakenPending, isAwakenPending, ProtagonistCreateFlow, type ProtagonistCreateFlowHost } from './protagonist/ProtagonistCreateFlow';
+import { playPrologueVideo, prologueSeen } from './protagonist/PrologueVideo';
 import { LobbyAwakenCinematic, type AwakenCinematicHost } from './lobby/LobbyAwakenCinematic';
 import { LobbyContractPickRenderer, type ContractPickHost, type ContractPickState } from './lobby/LobbyContractPickRenderer';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
@@ -9619,6 +9620,12 @@ export class LootChainGameRoot extends Component {
 
   private showProtagonistCreateView(): void {
     this.renderProtagonistCreate();
+    // docs/60 序幕「神庭陨落」:还没看过的新号先播一次(盖在选择主角页上,播完 / 跳过露出下面的页面)
+    const userId = this.api.tokenStore.userId();
+    const playing = typeof document !== 'undefined' && !!document.getElementById('lootchain-prologue');
+    if (userId && !prologueSeen(userId) && !playing) {
+      playPrologueVideo(userId, () => undefined);
+    }
   }
 
   private handleLoginSuccess(userId: number, tokenName: string): void {
