@@ -23,17 +23,18 @@ TARGETS = [('m2', 'protag_m', 'protag_m_v9', 'PROTAGONIST_MALE_ATTACK'), ('f2', 
 HEAD_TILT = -15.0
 # 11-03 用户「头和脖子错位、离领口远」:压角度是绕脖根转,脸整体前移;把头骨在世界坐标里往背后(左)挪 18、下沉 5.4
 # (父骨 chest 世界角 62.71°,换算成 chest 本地坐标;0 / 10 / 18 三档渲染对比 18 最贴领口)
-HEAD_SHIFT = (-18.0, -5.4)
+# 11-03 晚 用户「女主头的位置不对,佝偻的感觉,向脖领向左移」:女版再往背后挪 40、抬 6(-40 / -50 对比,-50 头陷进领口)
+HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-58.0, 0.6)}
 CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
 HOOD_CUT = {'protag_m': (147.0, 10.0)}
 
 
-def head_shift_local():
+def head_shift_local(name):
     import math
     a = math.radians(CHEST_WORLD_DEG)
-    wx, wy = HEAD_SHIFT
+    wx, wy = HEAD_SHIFT[name]
     return wx * math.cos(a) + wy * math.sin(a), -wx * math.sin(a) + wy * math.cos(a)
 
 
@@ -56,7 +57,7 @@ def install_spine(src_key, name):
     for bone in data['bones']:
         if bone['name'] == 'face01':
             bone['rotation'] = round(bone.get('rotation', 0) + HEAD_TILT, 2)
-            lx, ly = head_shift_local()
+            lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
