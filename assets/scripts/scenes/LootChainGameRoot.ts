@@ -411,6 +411,7 @@ export class LootChainGameRoot extends Component {
     (key) => this.selectEvolutionCard(key),
     () => void this.confirmEvolution(),
     () => void this.refreshEvolution(),
+    (open) => this.toggleEvolutionHelp(open),
   );
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
@@ -7821,6 +7822,7 @@ export class LootChainGameRoot extends Component {
 
   /** 点小地图:地图页的当前图鸟瞰(10-30)。 */
   private openAreaMapPanel(): void {
+    this.lobbyAreaMapRenderer.exploreOpen = false;
     this.worldMapPanel = { tab: 0, selected: null, region: null, view: 'area', dest: null };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
@@ -7915,6 +7917,11 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTownRenderer.startChannel(sec, `传送至 ${map.mapName}…`, () => this.travelWorldMap(code, null));
+  }
+
+  /** 地图页原地重画(探索度档位下拉展开 / 收起)。 */
+  redrawWorldMapPanel(): void {
+    this.syncLobbyShopOverlay();
   }
 
   /** 地图页领取探索度档位奖励(11-03):领完重画地图页(按钮变「已领取」)。 */
@@ -9792,6 +9799,14 @@ export class LootChainGameRoot extends Component {
   private applyEvolutionState(state: EvolutionState): void {
     this.evolutionState = state;
     this.lobbyTownRenderer.setEvolution(state.effects, state.qualities.filter((q) => q.active).map((q) => q.code));
+  }
+
+  private toggleEvolutionHelp(open: boolean): void {
+    if (!this.evolutionPick) {
+      return;
+    }
+    this.evolutionPick = { ...this.evolutionPick, help: open };
+    this.renderEvolutionPick();
   }
 
   private selectEvolutionCard(key: string): void {

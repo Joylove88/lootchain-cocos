@@ -9,6 +9,11 @@ import { townCoordText } from './LobbyTownPathfinder';
 import { POI_MAP_ICON, worldAsset } from './LobbyWorldMaps';
 import { exploreFogged, mountExploreCloud } from './LobbyTownRenderer';
 
+/** 竖直方向尺寸(地图页 FY 用单独的竖向缩放;高度跟着它走)。 */
+function SY(P: { FY: (py: number) => number }, v: number): number {
+  return v * (P.FY(0) - P.FY(1));
+}
+
 /** 千分位(原生 toLocaleString 不出千分位,自己拼)。 */
 function fmtNum(n: number): string {
   return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -65,6 +70,8 @@ export interface LobbyAreaMapHost {
   worldTeleportNote?(): string;
   /** 领取探索度档位奖励(11-03)。 */
   claimExploreTier?(mapCode: WorldMapCode, tier: number): void;
+  /** 原地重画地图页(探索度下拉展开 / 收起)。 */
+  redrawWorldMapPanel?(): void;
 }
 
 /**
@@ -73,6 +80,9 @@ export interface LobbyAreaMapHost {
  */
 export class LobbyAreaMapRenderer {
   static readonly NODE = 'LobbyWorldMapOverlay';
+
+  /** 探索度档位下拉是否展开(点探索度胶囊切换;关地图页后回到收起)。 */
+  exploreOpen = false;
 
   /** 鸟瞰框可见半宽 / 半高(cover 后地图比框大):标签贴边时翻到左侧 / 不出框。 */
   private visHalfW = 0;
@@ -124,7 +134,11 @@ export class LobbyAreaMapRenderer {
     dim.fill();
     // 内容按舞台宽高(避开刘海安全区)排版
     const stage = this.host.addChildPlainNode(overlay, 'Stage', 0, 0, layout.stageWidth, layout.stageHeight);
-    const P = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    // 11-03 用户「鸟瞰图整体再放大一些」:原型 1870×841 按宽缩放后 16:9 屏上下空一大截 → 竖直方向单独缩放(最多横向的 1.3 倍),
+    // 地图框 / 右栏变高、顶栏 / 底提示贴到上下边;字号 / 按钮仍按横向缩放
+    const base = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    const kY = Math.min(base.k * 1.3, (layout.stageHeight * 0.985) / 841);
+    const P = { ...base, FY: (py: number): number => (420.5 - py) * Math.max(base.k, kY) };
     this.hideLobbyHud(overlay, ['LobbyTownWorld']);
     const view = state.view ?? 'world';
     const info = this.host.currentAreaMapInfo();
@@ -140,6 +154,20 @@ export class LobbyAreaMapRenderer {
 
   private renderTopBar(parent: Node, P: ReturnType<typeof glassProtoMap>, view: 'area' | 'world', info: TownAreaMapInfo | null): void {
     const { LX, RX, FX, FY, S, k } = P;
+    // 11-03 用户「顶部没有背景不好看」:整条暗色玻璃底 + 下沿细亮线(铺满舞台宽,顶边贴屏)
+    {
+      const stageW = RX(1870) - LX(0);
+      const top = FY(0) + S(400);
+      const bottom = FY(82);
+      const bar = this.host.addChildPlainNode(parent, 'MapTopBarBg', 0, (top + bottom) / 2, stageW + S(400), top - bottom).addComponent(Graphics);
+      const h = top - bottom;
+      bar.fillColor = rgba(10, 13, 21, 225);
+      bar.rect(-(stageW + S(400)) / 2, -h / 2, stageW + S(400), h);
+      bar.fill();
+      bar.fillColor = rgba(255, 255, 255, 34);
+      bar.rect(-(stageW + S(400)) / 2, -h / 2, stageW + S(400), Math.max(1, S(1.4)));
+      bar.fill();
+    }
     mountGlassIconButton(this.host, parent, 'MapBack', GLASS_ICON.back, LX(68), FY(44), S(34), S(72), () => this.host.closeWorldMapPanel());
     glassLabel(this.host, parent, 'MapTitle', '地图', LX(115), FY(44), S(34), GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
     // 分段页签:当前图 | 世界地图
@@ -189,7 +217,7 @@ export class LobbyAreaMapRenderer {
   private renderArea(parent: Node, P: ReturnType<typeof glassProtoMap>, state: WorldMapPanelState, info: TownAreaMapInfo): void {
     const { LX, RX, FX, FY, S, k } = P;
     const frameW = S(1333);
-    const frameH = S(693);
+    const frameH = SY(P, 693);
     const frame = mountGlassPanel(this.host, parent, 'MapFrame', FX(711.5), FY(438.5), frameW, frameH, k);
     const innerW = frameW - S(8);
     const innerH = frameH - S(8);
@@ -362,11 +390,46 @@ export class LobbyAreaMapRenderer {
       const head = ex.percent >= 100 ? '探索度 100%  ·  已全部探索' : `探索度 ${ex.percent}%`;
       // 兴趣点计数接在后面(docs/54 §4:探索度 = 区块 40% + 兴趣点 60%)
       const text = ex.counts ? `${head}  ·  ${ex.counts}` : head;
-      const cw = this.chipWidth(text, S) + S(10);
+      // 11-03 用户:档位奖励收进探索度里,点胶囊展开 / 收起;有可领取的档,胶囊右上红点
+      const ready = ex.tiers.some((t) => t.reached && !t.claimed);
+      const arrowW = S(30);
+      const cw = this.chipWidth(text, S) + S(10) + arrowW;
       const chip = this.host.addChildPlainNode(frame, 'Explore', -frameW / 2 + S(16) + cw / 2, frameH / 2 - S(36), cw, S(40));
       mountGlassSlice(this.host, chip, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, cw, S(40), S(40) / 48);
-      glassLabel(this.host, chip, 'Text', text, 0, 0, S(19), ex.percent >= 100 ? CHAMPAGNE : GLASS_COLOR.text, cw - S(20), HorizontalTextAlignment.CENTER);
-      this.renderExploreTiers(frame, ex, info.mapCode, -frameW / 2 + S(16), frameH / 2 - S(92), S, k);
+      glassLabel(this.host, chip, 'Text', text, -arrowW / 2, 0, S(19), ex.percent >= 100 ? CHAMPAGNE : GLASS_COLOR.text, cw - S(20) - arrowW, HorizontalTextAlignment.CENTER);
+      const arrow = this.host.addChildPlainNode(chip, 'Arrow', cw / 2 - S(22), 0, S(20), S(20)).addComponent(Graphics);
+      arrow.strokeColor = GLASS_COLOR.text;
+      arrow.lineWidth = Math.max(2, S(2.6));
+      const a = S(7);
+      if (this.exploreOpen) {
+        arrow.moveTo(-a, -a / 2);
+        arrow.lineTo(0, a / 2);
+        arrow.lineTo(a, -a / 2);
+      } else {
+        arrow.moveTo(-a, a / 2);
+        arrow.lineTo(0, -a / 2);
+        arrow.lineTo(a, a / 2);
+      }
+      arrow.stroke();
+      if (ready) {
+        const dot = this.host.addChildPlainNode(chip, 'RedDot', cw / 2 - S(6), S(14), S(16), S(16)).addComponent(Graphics);
+        dot.fillColor = rgba(232, 64, 52, 255);
+        dot.circle(0, 0, S(6.5));
+        dot.fill();
+        dot.strokeColor = rgba(255, 255, 255, 200);
+        dot.lineWidth = Math.max(1, S(1.4));
+        dot.circle(0, 0, S(6.5));
+        dot.stroke();
+      }
+      chip.addComponent(Button);
+      chip.on(Button.EventType.CLICK, () => {
+        this.exploreOpen = !this.exploreOpen;
+        this.host.redrawWorldMapPanel?.();
+      });
+      this.host.applyImageButtonFeedback(chip, 1.02, 0.98);
+      if (this.exploreOpen) {
+        this.renderExploreTiers(frame, ex, info.mapCode, -frameW / 2 + S(16), frameH / 2 - S(62), S, k);
+      }
     }
     // 图例
     // 10-30 加隐藏点 / 石碑 / 采集三项(docs/54):胶囊往右加宽,前 6 项位置不变
@@ -405,7 +468,7 @@ export class LobbyAreaMapRenderer {
   private renderAreaSide(parent: Node, P: ReturnType<typeof glassProtoMap>, state: WorldMapPanelState, info: TownAreaMapInfo,
     target: { x: number; y: number; label: string } | null): void {
     const { LX, RX, FX, FY, S, k } = P;
-    mountGlassPanel(this.host, parent, 'MapSide', FX(1613.5), FY(438.5), S(433), S(693), k);
+    mountGlassPanel(this.host, parent, 'MapSide', FX(1613.5), FY(438.5), S(433), SY(P, 693), k);
     const leader = info.leader;
     const meters = (x: number, y: number): string => (leader ? `约 ${Math.max(1, Math.round(Math.hypot(x - leader.x, y - leader.y) / UNITS_PER_METER))} 米` : '');
     if (state.dest) {
@@ -455,30 +518,36 @@ export class LobbyAreaMapRenderer {
    * 探索度四档奖励(11-03):一排四张小卡「25% · 金币 800」,右侧状态 = 领取(到档未领,香槟金按钮)/ 已领取 / 还差 n%。
    * 服务端没下发档位(老服务端)时按本地表只显示不能领。
    */
-  private renderExploreTiers(frame: Node, ex: NonNullable<TownAreaMapInfo['explore']>, mapCode: WorldMapCode, left: number, y: number, S: (v: number) => number, k: number): void {
+  private renderExploreTiers(frame: Node, ex: NonNullable<TownAreaMapInfo['explore']>, mapCode: WorldMapCode, left: number, top: number, S: (v: number) => number, k: number): void {
     const tiers = ex.tiers.length > 0
       ? ex.tiers
       : EXPLORE_TIERS.map((t, i) => ({ tier: i + 1, percent: t.percent, rewards: [], reached: ex.percent >= t.percent, claimed: ex.tier > i, text: t.text }));
-    const w = S(300);
-    const h = S(54);
-    const gap = S(10);
+    // 下拉面板:胶囊正下方,四行(百分比 / 奖励 / 状态)
+    const w = S(470);
+    const rowH = S(54);
+    const pad = S(10);
+    const h = pad * 2 + rowH * tiers.length + S(6) * (tiers.length - 1) + S(30);
+    const panel = this.host.addChildPlainNode(frame, 'ExploreTiers', left + w / 2, top - h / 2, w, h);
+    panel.addComponent(BlockInputEvents);
+    mountGlassSlice(this.host, panel, 'Bg', GLASS_SLICES.panel, 0, 0, w, h, k);
+    glassLabel(this.host, panel, 'Head', '探索度奖励 · 到达后点「领取」', -w / 2 + S(16), h / 2 - pad - S(12), S(17), GLASS_COLOR.sub, w - S(32), HorizontalTextAlignment.LEFT);
     tiers.forEach((tier, i) => {
-      const x = left + w / 2 + i * (w + gap);
-      const node = this.host.addChildPlainNode(frame, `ExploreTier_${tier.tier}`, x, y, w, h);
+      const y = h / 2 - pad - S(30) - rowH / 2 - i * (rowH + S(6));
+      const node = this.host.addChildPlainNode(panel, `ExploreTier_${tier.tier}`, 0, y, w - pad * 2, rowH);
       const ready = tier.reached && !tier.claimed && ex.tiers.length > 0;
-      mountGlassSlice(this.host, node, 'Bg', ready ? GLASS_SLICES.rowReady : GLASS_SLICES.panel, 0, 0, w, h, k);
+      mountGlassSlice(this.host, node, 'Bg', ready ? GLASS_SLICES.rowReady : GLASS_SLICES.row, 0, 0, w - pad * 2, rowH, k);
+      const rw = w - pad * 2;
       const rewardText = 'text' in tier ? (tier as { text: string }).text : tier.rewards.map((r) => `${r.resourceName} ${r.resourceCode === 'GOLD' ? fmtNum(r.amount) : '×' + r.amount}`).join(' · ');
-      glassLabel(this.host, node, 'Pct', `${tier.percent}%`, -w / 2 + S(14), S(11), S(19), tier.reached ? CHAMPAGNE : GLASS_COLOR.sub, S(60), HorizontalTextAlignment.LEFT, true);
-      const reward = glassLabel(this.host, node, 'Reward', rewardText, -w / 2 + S(14), -S(12), S(16), tier.claimed ? GLASS_COLOR.dim : GLASS_COLOR.text, w - S(106), HorizontalTextAlignment.LEFT);
+      glassLabel(this.host, node, 'Pct', `${tier.percent}%`, -rw / 2 + S(14), 0, S(21), tier.reached ? CHAMPAGNE : GLASS_COLOR.sub, S(64), HorizontalTextAlignment.LEFT, true);
+      const reward = glassLabel(this.host, node, 'Reward', rewardText, -rw / 2 + S(80), 0, S(17), tier.claimed ? GLASS_COLOR.dim : GLASS_COLOR.text, rw - S(190), HorizontalTextAlignment.LEFT);
       reward.overflow = Label.Overflow.SHRINK;
-      reward.node.getComponent(UITransform)?.setContentSize(w - S(106), S(22));
-      const sx = w / 2 - S(46);
+      reward.node.getComponent(UITransform)?.setContentSize(rw - S(190), S(24));
+      const sx = rw / 2 - S(52);
       if (ready) {
-        const btn = mountGlassButton(this.host, node, 'Claim', '领取', sx, 0, S(76), S(36), k, 'primary', () => this.host.claimExploreTier?.(mapCode, tier.tier), 18);
-        void btn;
+        mountGlassButton(this.host, node, 'Claim', '领取', sx, 0, S(82), S(38), k, 'primary', () => this.host.claimExploreTier?.(mapCode, tier.tier), 19);
       } else {
         const state = tier.claimed ? '已领取' : tier.reached ? '可领取' : `差 ${Math.max(1, tier.percent - ex.percent)}%`;
-        glassLabel(this.host, node, 'State', state, sx, 0, S(17), tier.claimed ? GLASS_COLOR.dim : GLASS_COLOR.sub, S(80), HorizontalTextAlignment.CENTER);
+        glassLabel(this.host, node, 'State', state, sx, 0, S(18), tier.claimed ? GLASS_COLOR.dim : GLASS_COLOR.sub, S(90), HorizontalTextAlignment.CENTER);
       }
     });
   }
@@ -537,7 +606,7 @@ export class LobbyAreaMapRenderer {
     const world = this.host.currentWorldState();
     const current = this.host.currentWorldMapCode();
     const frameW = S(1333);
-    const frameH = S(693);
+    const frameH = SY(P, 693);
     const frame = mountGlassPanel(this.host, parent, 'MapFrame', FX(711.5), FY(438.5), frameW, frameH, k);
     const innerW = frameW - S(8);
     const innerH = frameH - S(8);
@@ -581,7 +650,7 @@ export class LobbyAreaMapRenderer {
       this.host.applyImageButtonFeedback(node, 1.06, 0.96);
     }
     // 右栏:选中地图详情 + 已激活传送阵列表
-    mountGlassPanel(this.host, parent, 'MapSide', FX(1613.5), FY(438.5), S(433), S(693), k);
+    mountGlassPanel(this.host, parent, 'MapSide', FX(1613.5), FY(438.5), S(433), SY(P, 693), k);
     const selected = WORLD1_POINTS.find((point) => point.code === state.selected) ?? WORLD1_POINTS.find((point) => point.code === current) ?? null;
     mountGlassSectionHeader(this.host, parent, 'WorldSel', selected ? selected.name : '世界地图', LX(1418), FY(125), k);
     if (selected) {

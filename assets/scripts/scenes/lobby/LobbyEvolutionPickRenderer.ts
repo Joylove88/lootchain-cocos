@@ -18,6 +18,8 @@ export interface EvolutionPickState {
   selected: string;
   busy: boolean;
   error: string;
+  /** 「?」说明面板开着。 */
+  help?: boolean;
 }
 
 export const ROUTE_NAME: Record<EvolutionRoute, string> = { HUNT: '猎杀', GUARD: '守护', ARCANE: '奥术', EXPLORE: '探索', WEALTH: '财富' };
@@ -60,6 +62,7 @@ export class LobbyEvolutionPickRenderer {
     private readonly onSelect: (key: string) => void,
     private readonly onConfirm: () => void,
     private readonly onRefresh: () => void,
+    private readonly onHelp: (open: boolean) => void,
   ) {}
 
   render(layout: UiLayout, pick: EvolutionPickState): void {
@@ -93,6 +96,8 @@ export class LobbyEvolutionPickRenderer {
     const title = glassLabel(this.host, root, 'Title', '进 化 抉 择', FX(935), FY(72), S(54), GLASS_COLOR.text, S(600), HorizontalTextAlignment.CENTER, true);
     title.lineHeight = Math.round(S(62));
     glassLabel(this.host, root, 'Realm', `境界:${pick.state.realm || '觉醒 · 初期'}`, FX(935), FY(117), S(26), GLASS_COLOR.sub, S(500), HorizontalTextAlignment.CENTER);
+    // 11-03 用户「左上那排是什么,加个 ? 说明」:标题右侧圆形「?」,点开说明面板
+    this.helpButton(root, FX(935) + S(178), FY(74), S);
 
     // 三张卡(原型 344×444,中心 x 542 / 935 / 1330,y 386)
     const xs = [542, 935, 1330];
@@ -140,6 +145,80 @@ export class LobbyEvolutionPickRenderer {
     const confirm = mountGlassButton(this.host, root, 'Confirm', pick.busy ? '进化中…' : '确认进化', FX(1470), FY(750), S(350), S(78), k,
       ready ? 'primary' : 'primaryOff', () => this.onConfirm(), 32);
     this.host.applyPointerCursor?.(confirm);
+    if (pick.help) {
+      this.helpPanel(root, pick.state, layout.width, layout.height, S, k);
+    }
+  }
+
+  private helpButton(root: Node, x: number, y: number, S: (v: number) => number): void {
+    const node = this.host.addChildPlainNode(root, 'Help', x, y, S(48), S(48));
+    const g = node.addComponent(Graphics);
+    g.fillColor = new Color(20, 26, 38, 230);
+    g.circle(0, 0, S(19));
+    g.fill();
+    g.strokeColor = new Color(227, 196, 138, 200);
+    g.lineWidth = Math.max(1.5, S(2));
+    g.circle(0, 0, S(19));
+    g.stroke();
+    glassLabel(this.host, node, 'Q', '?', 0, S(1), S(26), GLASS_COLOR.champagne, S(40), HorizontalTextAlignment.CENTER, true);
+    node.addComponent(Button);
+    node.on(Button.EventType.CLICK, () => this.onHelp(true), this);
+    this.host.applyImageButtonFeedback(node, 1.08, 0.94);
+    this.host.applyPointerCursor?.(node);
+  }
+
+  /** 说明面板:路线 / 质变 / 稀有度 / 保底 / 刷新 / 生效范围;下面列五条路线的质变效果(已触发的标亮)。 */
+  private helpPanel(root: Node, state: EvolutionState, W: number, H: number, S: (v: number) => number, k: number): void {
+    const mask = this.host.addChildPlainNode(root, 'HelpMask', 0, 0, W, H);
+    mask.addComponent(BlockInputEvents);
+    const mg = mask.addComponent(Graphics);
+    mg.fillColor = new Color(4, 6, 12, 170);
+    mg.rect(-W / 2, -H / 2, W, H);
+    mg.fill();
+    mask.addComponent(Button);
+    mask.on(Button.EventType.CLICK, () => this.onHelp(false), this);
+    const pw = S(1060);
+    const ph = S(640);
+    const panel = this.host.addChildPlainNode(root, 'HelpPanel', 0, 0, pw, ph);
+    panel.addComponent(BlockInputEvents);
+    mountGlassSlice(this.host, panel, 'Glass', GLASS_SLICES.panel, 0, 0, pw, ph, k);
+    glassLabel(this.host, panel, 'Title', '进化说明', 0, ph / 2 - S(44), S(34), GLASS_COLOR.text, pw - S(80), HorizontalTextAlignment.CENTER, true);
+    const lines: Array<[string, string]> = [
+      ['进化抉择', '每升 1 级,系统给出 3 张进化卡,选 1 张永久生效。'],
+      ['进化路线', '每张卡属于一条路线:猎杀 / 守护 / 奥术 / 探索 / 财富。左上角是各路线已选的张数。'],
+      ['质变', '同一路线选满 3 张,自动触发该路线的质变(见下方)。'],
+      ['稀有度', '普通 / 稀有 / 传说,越稀有数值越高;传说卡 Lv.10 起才会出现。'],
+      ['保底 · 刷新', '连续 5 次没出稀有,下一次必出稀有;每次可免费刷新 1 次,之后消耗钻石(20 / 40 / 80)。'],
+      ['生效范围', '目前作用于野外战斗与野外掉落。'],
+    ];
+    const left = -pw / 2 + S(48);
+    let y = ph / 2 - S(104);
+    for (const [head, body] of lines) {
+      glassLabel(this.host, panel, `H_${head}`, head, left, y, S(21), GLASS_COLOR.champagne, S(150), HorizontalTextAlignment.LEFT, true);
+      const label = glassLabel(this.host, panel, `B_${head}`, body, left + S(150), y, S(20), GLASS_COLOR.text, pw - S(250), HorizontalTextAlignment.LEFT);
+      label.overflow = Label.Overflow.SHRINK;
+      label.node.getComponent(UITransform)?.setContentSize(pw - S(250), S(28));
+      y -= S(46);
+    }
+    // 五条路线的质变
+    y -= S(6);
+    const line = this.host.addChildPlainNode(panel, 'Sep', 0, y + S(18), pw - S(96), S(2)).addComponent(Graphics);
+    line.fillColor = new Color(255, 255, 255, 34);
+    line.rect(-(pw - S(96)) / 2, -S(0.6), pw - S(96), S(1.2));
+    line.fill();
+    for (const q of state.qualities) {
+      const dot = this.host.addChildPlainNode(panel, `QDot_${q.code}`, left + S(6), y - S(8), S(14), S(14)).addComponent(Graphics);
+      dot.fillColor = ROUTE_COLOR[q.route];
+      dot.circle(0, 0, S(6));
+      dot.fill();
+      const count = state.routes[q.route] ?? 0;
+      glassLabel(this.host, panel, `QName_${q.code}`, `${ROUTE_NAME[q.route]} ${Math.min(count, q.layer)}/${q.layer} · ${q.name}`, left + S(24), y - S(8), S(20),
+        q.active ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(230), HorizontalTextAlignment.LEFT, true);
+      glassLabel(this.host, panel, `QDesc_${q.code}`, q.active ? `${q.desc}(已触发)` : q.desc, left + S(250), y - S(8), S(19),
+        q.active ? GLASS_COLOR.champagne : GLASS_COLOR.sub, pw - S(330), HorizontalTextAlignment.LEFT);
+      y -= S(38);
+    }
+    mountGlassButton(this.host, panel, 'Close', '知道了', 0, -ph / 2 + S(46), S(220), S(56), k, 'secondary', () => this.onHelp(false), 24);
   }
 
   private dim(root: Node, W: number, H: number): void {
