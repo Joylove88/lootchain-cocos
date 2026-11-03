@@ -21,6 +21,17 @@ TARGETS = [('m2', 'protag_m', 'protag_m_v9', 'PROTAGONIST_MALE_ATTACK'), ('f2', 
 # 11-03 用户「头一直在仰头」:永夜龙骑头盔骨骼本来斜向上,画进去的脸跟着仰;骨骼动画是在初始姿势上叠加,
 # 把头骨 face01 初始角度往下压 15°(实测 -12° 已明显看向正前方,+ 方向更仰)全部动作一起修正
 HEAD_TILT = -15.0
+# 11-03 用户「头和脖子错位、离领口远」:压角度是绕脖根转,脸整体前移;把头骨在世界坐标里往背后(左)挪 18、下沉 5.4
+# (父骨 chest 世界角 62.71°,换算成 chest 本地坐标;0 / 10 / 18 三档渲染对比 18 最贴领口)
+HEAD_SHIFT = (-18.0, -5.4)
+CHEST_WORLD_DEG = 62.71
+
+
+def head_shift_local():
+    import math
+    a = math.radians(CHEST_WORLD_DEG)
+    wx, wy = HEAD_SHIFT
+    return wx * math.cos(a) + wy * math.sin(a), -wx * math.sin(a) + wy * math.cos(a)
 
 
 def install_spine(src_key, name):
@@ -42,6 +53,9 @@ def install_spine(src_key, name):
     for bone in data['bones']:
         if bone['name'] == 'face01':
             bone['rotation'] = round(bone.get('rotation', 0) + HEAD_TILT, 2)
+            lx, ly = head_shift_local()
+            bone['x'] = round(bone.get('x', 0) + lx, 2)
+            bone['y'] = round(bone.get('y', 0) + ly, 2)
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     print('spine', name, (w, h), 'from', src)
 

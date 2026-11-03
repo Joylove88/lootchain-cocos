@@ -86,7 +86,33 @@ async def main():
                 if view in ('login', 'lobby', 'loginAccount') and await ev("return (window.__lootchainPack && !root.bootPreloadActive) ? 'y' : 'n';") == 'y':
                     break
                 await asyncio.sleep(1)
+            if '--seen' in sys.argv:
+                # 复现「注册后已看过序幕(旧版在选择主角页前播)→ 建号后不再播序幕、直接进村」
+                await ev("for (let u = 60; u < 80; u++) localStorage.setItem('lootchain.prologue.seen.' + u, '1'); return 1;")
             await ev("root.loginFlow.setInputs({string:'%s'}, {string:'pass1234'}); root.loginFlow.acceptedAgreement = true; root.run(() => root.loginFlow.login()); return 1;" % USER)
+            if '--npc-markers' in sys.argv:
+                # 晨风村 NPC 头顶标记 + 追踪副行:读当前标记,再注入「拿起武器」进行中看教官是否变金色 ?
+                await wait_for("const t = root.lobbyTownRenderer; return root.currentView === 'lobby' && t.isMounted() && t.leader && t.leader.skeleton ? 'ok' : 'wait';", 300)
+                await asyncio.sleep(4)
+                MK = "const t = root.lobbyTownRenderer; return JSON.stringify(t.npcNodes.map(e => { const l = e.node.getChildByName('Marker').getComponent('cc.Label'); return e.code + ':' + l.string + ':' + (l.color.b < 120 ? 'gold' : 'gray'); }));"
+                print('map', await ev("return root.lobbyTownRenderer.mapCode;"), 'markers', await ev(MK), flush=True)
+                await shot('40_town')
+                await ev("const t = root.lobbyTownRenderer; const w = JSON.parse(JSON.stringify(root.worldState)); w.quests = [{code:'V02',name:'拿起武器',desc:'去训练场,打倒教官放出来的幼鼠。',state:'ACCEPTED',objective:'KILL',objectiveTarget:'stage:FIELD_VILLAGE_T',progress:0,target:1,map:'VILLAGE',acceptNpc:'CHIEF',turnInNpc:'INSTRUCTOR',minLevel:1,rewards:[]}]; root.worldState = w; root.renderLobbyView ? root.renderLobbyView() : t.refreshNpcMarkers(w); t.refreshNpcMarkers(w); return 1;")
+                await asyncio.sleep(2)
+                print('V02 markers', await ev(MK), flush=True)
+                await shot('41_town_v02')
+                return
+            if '--contract-only' in sys.argv:
+                # 只看契约之选弹层:用已有主角的账号进大厅,直接注入 3 张候选卡渲染(不走建号 / 觉醒 / 接口)
+                await wait_for("const t = root.lobbyTownRenderer; return root.currentView === 'lobby' && t.isMounted() && t.leader && t.leader.skeleton ? 'ok' : 'wait';", 300)
+                await asyncio.sleep(4)
+                await ev("root.contractPick = { candidates: [{heroCode:'R_GUARD_07',heroName:'城门卫兵',rarity:'R'},{heroCode:'R_RANGER_06',heroName:'荒原游侠',rarity:'R'},{heroCode:'R_CULT_05',heroName:'低语教徒',rarity:'R'}], selected: '', busy: false, error: '' }; root.renderStarterContract(); return 1;")
+                await asyncio.sleep(3)
+                await shot('30_contract_dim')
+                await ev("root.selectStarterContract('R_RANGER_06'); return 1;")
+                await asyncio.sleep(2)
+                await shot('31_contract_dim_sel')
+                return
             if not await wait_for("return root.currentView === 'protagonistCreate' ? 'ok' : 'wait';", 120):
                 print('NOT on protagonistCreate:', await ev(STATE))
                 await shot('00_wrong_view')

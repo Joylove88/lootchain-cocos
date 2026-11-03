@@ -2756,19 +2756,25 @@ export class LobbyTownRenderer {
     }
   }
 
-  /** NPC 头顶标记:有可接任务 = 金色 !;有可交任务 = 金色 ?;进行中 = 灰色 ?。 */
+  /**
+   * NPC 头顶标记:有可接任务 = 金色 !;有可交任务 / 当前要找他(对话目标、训练场教官开训)= 金色 ?;只是进行中 = 灰色 ?。
+   * 11-03 用户:接了「拿起武器」后教官头顶一直是灰 ?,以为不是要找的人,不知道去哪 —— 要点他开训的也得是金色。
+   */
   private refreshNpcMarkers(world: WorldStateVO | null): void {
+    const quests = world?.quests ?? [];
     for (const entry of this.npcNodes) {
       const marker = entry.node.isValid ? entry.node.getChildByName('Marker')?.getComponent(Label) : null;
       if (!marker) {
         continue;
       }
-      const quests = world?.quests ?? [];
       const done = quests.some((quest) => quest.state === 'DONE' && quest.turnInNpc === entry.code);
       const available = quests.some((quest) => quest.state === 'AVAILABLE' && quest.acceptNpc === entry.code);
+      const actNow = quests.some((quest) => quest.state === 'ACCEPTED' && quest.progress < quest.target
+        && ((quest.objective === 'TALK' && quest.objectiveTarget === entry.code)
+          || (entry.code === 'INSTRUCTOR' && quest.objectiveTarget === 'stage:FIELD_VILLAGE_T')));
       const pending = quests.some((quest) => quest.state === 'ACCEPTED' && quest.turnInNpc === entry.code);
-      marker.string = done ? '?' : available ? '!' : pending ? '?' : '';
-      marker.color = done || available ? rgba(255, 210, 80) : rgba(170, 170, 170);
+      marker.string = done || actNow ? '?' : available ? '!' : pending ? '?' : '';
+      marker.color = done || available || actNow ? rgba(255, 210, 80) : rgba(170, 170, 170);
     }
   }
 
@@ -3735,7 +3741,9 @@ export class LobbyTownRenderer {
     if (quest) {
       const progress = quest.objective === 'KILL' || quest.objective === 'COLLECT' ? ` ${Math.min(quest.progress, quest.target)}/${quest.target}` : '';
       const status = quest.state === 'DONE' ? ' · 可交付' : quest.state === 'AVAILABLE' ? ' · 可接取' : '';
-      const sub = quest.state === 'LOCKED' ? `Lv.${quest.minLevel} 可接 · 去村外林地升级` : this.def.camps.length > 0 ? '' : quest.desc.replace(/[。.]$/, '');
+      // 副行写任务说明(做什么 / 去哪);野外图怪群多、追踪条下还有精英条,只留主行。晨风村只有训练场一个怪群,照样写(11-03 用户新号不知道去哪)
+      const showDesc = this.def.camps.length === 0 || this.mapCode === 'VILLAGE';
+      const sub = quest.state === 'LOCKED' ? `Lv.${quest.minLevel} 可接 · 去村外林地升级` : showDesc ? quest.desc.replace(/[。.]$/, '') : '';
       rows.push({ text: `${quest.name}${progress}${status}`, sub, tone: 'story' });
     }
     for (const bounty of bounties.slice(0, 2)) {
