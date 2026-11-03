@@ -4,6 +4,8 @@
  * 建筑 (x, y) = 贴图底边中点(脚线),footprint 从脚线往屏幕上方延伸的不可走矩形,door = 交互点(相对脚线)。
  */
 import type { WorldMapCode } from '../../types/WorldTypes';
+import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
+import { VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
 import {
   TOWN_BUILDINGS,
   TOWN_GROUND_ASSET,
@@ -13,7 +15,6 @@ import {
   TOWN_MAP,
   TOWN_PROPS,
   TOWN_SPAWN,
-  TOWN_WALK_BOUNDS,
   townBuildingAsset,
   townPropAsset,
   type TownAction,
@@ -38,6 +39,13 @@ export interface WorldMapBuilding {
   width: number;
   footprint: { w: number; d: number };
   door: { x: number; y: number };
+  /** 贴地画(压在人物下面、不做遮挡淡出):场地类建筑(训练场)人要走进去。 */
+  flat?: boolean;
+  /**
+   * 可进入的场地(11-03 训练场):outline 外轮廓内只有 floor 地面多边形可走,代替 footprint 整块挡路。
+   * holes = 场内障碍脚底。坐标相对建筑原点(x 向右、y 向上),tools/qa/training_walk_def.py 从贴图像素描出来。
+   */
+  walkMask?: { outline: number[][]; floor: number[][]; holes?: number[][][] };
 }
 
 export interface WorldMapNpc {
@@ -84,6 +92,13 @@ export interface WorldMapCamp {
   radius: number;
   /** 精英 / 首领脚下的骨骼光环(10-31);没有 = 旧的程序淡黄光圈。 */
   aura?: WorldMapCampAura;
+  /** 固定站位(世界坐标);没有 = 按营地中心向日葵散布。 */
+  spots?: number[][];
+  /**
+   * 训练靶(11-03 用户「怪死了没接任务就卡住」):静态贴图、不走动不还手不主动开战,打坏后 respawnMs 就重立,
+   * 玩家站在旁边也照样重立(普通怪要等人走远)。
+   */
+  dummy?: { asset: string; height: number; respawnMs: number };
 }
 
 /**
@@ -223,6 +238,8 @@ export interface WorldMapDef {
   places?: Array<{ name: string; x: number; y: number; icon: string }>;
   /** 走廊式可走区(docs/52 §2.1):给了就只能走在路(折线 ± half)和空地(椭圆)里;walk 仍是外框。 */
   corridors?: { lines: number[][][]; half: number; areas: Array<{ x: number; y: number; rx: number; ry: number }> };
+  /** 11-03:走廊只用来撒树,不再限制行走(除挡块 / 立物外整张图都能走)。 */
+  openWalk?: boolean;
 }
 
 const MONSTER_SPINE: Record<string, string> = {
@@ -359,12 +376,19 @@ function groundDecals(def: { walk: WorldMapDef['walk']; buildings: WorldMapBuild
  * 东北:训练场;东:铁匠铺 + 悬崖河谷;南:村口广场(传送阵)+ 民居;西南:麦田 + 菜园 + 南崖;东南:村口 → 村外林地。
  * 水面 / 瀑布件挂流水着色器;树 / 灌木 / 草丛随风摆;飘叶 + 云影(ambient)。
  */
+/** 训练场建筑原点(贴图底边中点;遮挡件 / 可走区都相对它)。 */
+const TRAINING_ORIGIN = { x: 1760, y: 366 };
+
 const VILLAGE_BASE = {
-  walk: { left: -2900, right: 2560, bottom: -1150, top: 1300 },
+  // 11-03 用户「地图可见范围内都应该能走」:放到离地图边 50(原来四周各留 250~640 一圈看得见走不了)
+  walk: { left: -3150, right: 3150, bottom: -1500, top: 1500 },
   buildings: [
     { key: 'chief', label: '村长屋', asset: V3('chief_house'), action: 'npc', npc: 'CHIEF', x: -48, y: 654, width: 1280, footprint: { w: 704, d: 260 }, door: { x: 230, y: -40 } },
     { key: 'altar', label: '圣契祭坛', asset: V3('altar'), action: 'npc', npc: 'PRIEST', x: -1472, y: 606, width: 768, footprint: { w: 461, d: 150 }, door: { x: 0, y: -60 } },
-    { key: 'training', label: '训练场', asset: V3('training'), action: 'npc', npc: 'INSTRUCTOR', x: 1760, y: 366, width: 1888, footprint: { w: 1548, d: 520 }, door: { x: -560, y: -40 } },
+    // 11-03 用户「地图显示在靶场附近但跑不上去」:场地贴地画 + 场内可走(入口在左下台阶),教官站场里
+    { key: 'training', label: '训练场', asset: V3('training'), action: 'npc', npc: 'INSTRUCTOR', x: TRAINING_ORIGIN.x, y: TRAINING_ORIGIN.y, width: 1888, footprint: { w: 1548, d: 520 }, door: { x: -450, y: 200 },
+      flat: true,
+      walkMask: TRAINING_WALK_MASK },
     { key: 'smithy', label: '铁匠铺', asset: V3('smithy'), action: 'npc', npc: 'SMITH', x: 2080, y: -370, width: 992, footprint: { w: 694, d: 240 }, door: { x: -60, y: -60 } },
     { key: 'chapel', label: '礼拜堂', asset: V3('chapel'), action: 'none', x: -1880, y: 798, width: 496, footprint: { w: 347, d: 200 }, door: { x: 0, y: -60 } },
     { key: 'windmill', label: '风车', asset: V3('windmill'), action: 'none', x: -2384, y: -226, width: 765, footprint: { w: 344, d: 220 }, door: { x: 0, y: -60 } },
@@ -377,15 +401,8 @@ const VILLAGE_BASE = {
     { key: 'shed_sw', label: '农舍', asset: V3('shed_sw'), action: 'none', x: -1616, y: -1074, width: 448, footprint: { w: 314, d: 150 }, door: { x: 0, y: -50 } },
     { key: 'gate', label: '村口', asset: V3('gate'), action: 'none', x: 2208, y: -1106, width: 416, footprint: { w: 62, d: 40 }, door: { x: 0, y: -40 } },
   ] as WorldMapBuilding[],
-  // 水面 / 瀑布 / 崖口(桥面、台阶留空可走)
-  blocks: [
-    { x: -2272, y: 170, w: 1312, d: 300 },
-    { x: -1144, y: -246, w: 1264, d: 620 },
-    { x: -240, y: -246, w: 480, d: 250 },
-    { x: -224, y: 290, w: 420, d: 180 },
-    { x: -736, y: -700, w: 700, d: 460 },
-    { x: -2560, y: 760, w: 760, d: 600 },
-  ] as WorldMapBlock[],
+  // 水面 / 瀑布 / 崖壁(11-03 改按贴图像素生成:岸边草地可走、桥面留空;tools/qa/world_water_blocks.py)
+  blocks: VILLAGE_WATER_BLOCKS as WorldMapBlock[],
 };
 
 const VILLAGE: WorldMapDef = {
@@ -406,7 +423,7 @@ const VILLAGE: WorldMapDef = {
   npcs: [
     // 11-03 用户「看不到村长」:原 (300, 600) 站在村长屋前大橡树后面被树冠整个挡住,挪到台阶下小路左侧
     { code: 'CHIEF', name: '村长 · 老霍恩', asset: worldAsset('npc_chief'), x: 90, y: 500, height: 210, flip: 1 },
-    { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 1130, y: 300, height: 215, flip: 1 },
+    { code: 'INSTRUCTOR', name: '教官 · 格雷', asset: worldAsset('npc_instructor'), x: 2245, y: 816, height: 215, flip: -1 },
     { code: 'PRIEST', name: '祭司 · 莉娅', asset: worldAsset('npc_priest'), x: -1290, y: 520, height: 200, flip: -1 },
     { code: 'SMITH', name: '铁匠 · 巴洛', asset: worldAsset('npc_smith'), x: 1900, y: -470, height: 215, flip: -1 },
   ],
@@ -429,7 +446,7 @@ const VILLAGE: WorldMapDef = {
     // 外圈林子(出可走范围)+ 村内零散树
     ...[[-3100, 1450], [-2300, 1500], [-1500, 1480], [-800, 1520], [300, 1500], [900, 1480], [1500, 1500], [2200, 1480], [2700, 1420],
       [-3150, 600], [-3150, -300], [-3100, -1000], [2750, -800], [2700, -1350], [1900, -1420], [900, -1450], [-300, -1450], [-1000, -1420], [-2400, -1450]]
-      .map(([x, y], i) => ({ asset: V3(i % 3 === 0 ? 'tree_pine' : 'tree_oak'), x, y, width: i % 3 === 0 ? 380 : 520 })),
+      .map(([x, y], i) => ({ asset: V3(i % 3 === 0 ? 'tree_pine' : 'tree_oak'), x, y, width: i % 3 === 0 ? 380 : 520, block: { w: 130, d: 55 } })),
     ...[[-700, 900], [-560, 1150], [600, 1150], [1050, 1180], [-1100, 1200], [420, 1000], [680, 470], [1500, -150], [2380, -780],
       [-300, -520], [-520, -820], [-2000, -700], [-2650, -620], [220, -1300], [620, -1260], [-2750, 700], [2480, 760], [-1300, 950]]
       .map(([x, y], i) => ({ asset: V3(i % 2 === 0 ? 'tree_oak' : 'tree_pine'), x, y, width: i % 2 === 0 ? 460 : 330, block: { w: 120, d: 50 } })),
@@ -445,6 +462,8 @@ const VILLAGE: WorldMapDef = {
     ...grassTufts(VILLAGE_BASE, VILLAGE_ROADS, 260),
     // 广场旗
     ...[[400, -470], [1180, -470], [1290, -660]].map(([x, y]) => ({ asset: V2('banner'), x, y, width: 110 })),
+    // 训练场遮挡件(前排栅栏竖条 / 小棚 / 石柱):和贴地的场地图逐像素重合,按脚线排序,人走到后面被挡住
+    ...TRAINING_FG.map(([name, rx, ry, width]) => ({ asset: worldAsset(`vil3/${name}`), x: TRAINING_ORIGIN.x + rx, y: TRAINING_ORIGIN.y + ry, width, sway: false })),
   ],
   lamps: [{ x: 560, y: -300 }, { x: 1300, y: -560 }, { x: 340, y: 330 }, { x: -700, y: 440 }, { x: 1900, y: -1010 }, { x: -1250, y: -760 }],
   lampAsset: V2('lamp'),
@@ -459,7 +478,13 @@ const VILLAGE: WorldMapDef = {
     { code: 'V_HERB_1', kind: 'HERB', name: '草药丛', x: -1279, y: -801 },
     { code: 'V_HERB_2', kind: 'HERB', name: '草药丛', x: -760, y: 470 },
   ],
-  camps: [camp('FIELD_VILLAGE_T', '训练用幼鼠', 'MINI_RAT', 1, 1, 1100, 100)],
+  // 训练靶(服务端仍按 MINI_RAT 数值登记 3 只;11-03 由一只幼鼠改成场里 3 个可无限重立的稻草靶)
+  camps: [{
+    ...camp('FIELD_VILLAGE_T', '稻草靶', 'MINI_RAT', 3, 1, 1764, 771),
+    // 原图里木桩靶的位置(靶子已从场地图抹掉,改成可打的单独贴图)
+    spots: [[1543, 798], [1764, 767], [1986, 749]],
+    dummy: { asset: V3('dummy'), height: 170, respawnMs: 3000 },
+  }],
   exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2470, y: -1070, radius: 130, toMap: 'WOODS', toSpawn: { x: -4980, y: -2250 }, reach: 'VILLAGE_GATE' }],
 };
 
@@ -570,6 +595,9 @@ const WOODS: WorldMapDef = {
       { x: 5445, y: 525, rx: 506, ry: 354 },
     ],
   },
+  // 11-03 用户「地图可见范围内的都应该能走」:走廊只用来撒树;行走改成除水面 / 崖石(village_water_blocks.py 按像素生成)和立物挡块外都能走
+  openWalk: true,
+  blocks: WOODS_WATER_BLOCKS as WorldMapBlock[],
   spawn: { x: -4980, y: -2250 },
   ground: worldAsset('ground_woods3'),
   // 10-29 写实林地底纹(苔草 + 腐殖土),一格 1000 世界单位
@@ -704,7 +732,8 @@ const CITY: WorldMapDef = {
   levelText: '',
   width: TOWN_MAP.width,
   height: TOWN_MAP.height,
-  walk: { ...TOWN_WALK_BOUNDS },
+  // 11-03 用户「地图可见范围内都应该能走」:放到离地图边 50(原 TOWN_WALK_BOUNDS 四周留 150~420 看得见走不了)
+  walk: { left: -2150, right: 2150, bottom: -1250, top: 1250 },
   spawn: { ...TOWN_SPAWN },
   ground: TOWN_GROUND_ASSET,
   groundTile: TOWN_GROUND_TILE,
@@ -774,7 +803,8 @@ const GRAY: WorldMapDef = {
   levelText: 'Lv.10-20',
   width: 4800,
   height: 2800,
-  walk: { left: -2250, right: 2250, bottom: -1250, top: 1100 },
+  // 11-03 同晨风村:放到离地图边 50
+  walk: { left: -2350, right: 2350, bottom: -1350, top: 1350 },
   spawn: { x: -1900, y: -100 },
   ground: worldAsset('ground_wasteland'),
   // 10-27 换写实龟裂地面(1024 无缝):一格 900 世界单位,裂纹块大小接近原型
@@ -832,6 +862,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
   }
   return Array.from(new Set([def.ground, def.lampAsset, ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
     ...def.npcs.map((n) => n.asset).filter((asset): asset is string => !!asset),
+    // 训练靶贴图(camp.dummy)
+    ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
     ...(code === 'VILLAGE' || code === 'WOODS' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ART:关着 / 开盖空箱)

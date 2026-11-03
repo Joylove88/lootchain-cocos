@@ -7699,9 +7699,9 @@ export class LootChainGameRoot extends Component {
       return;
     }
     if (dialog.mode === 'train') {
-      // §14 即时战斗:训练用幼鼠就在训练场里,直接上去打
+      // §14 即时战斗:稻草靶就立在训练场里,直接上去打(打坏几秒后重立)
       this.closeWorldDialog();
-      this.setStatus('幼鼠就在训练场里 · J 普攻 / K L I 技能 / Shift 翻滚');
+      this.setStatus('稻草靶就在训练场里 · J 普攻 / K L I 技能 / Shift 翻滚');
       return;
     }
     dialog.busy = true;

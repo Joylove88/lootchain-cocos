@@ -300,6 +300,19 @@ const MONSTER_SPAWN_RANGE = 2800;
 const MONSTER_DESPAWN_RANGE = 4600;
 const MONSTER_CONTACT_RADIUS = 72;
 const MONSTER_RESPAWN_MS = 60_000;
+
+/** 射线法点在多边形内(训练场可走区)。 */
+function pointInPolygon(x: number, y: number, pts: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
+    const [xi, yi] = pts[i];
+    const [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
 const WAYPOINT_RADIUS = 150;
 /** docs/51 §6 / §7:队友伤害折算(和后端 COMPANION_ATTACK_SHARE 同值,遭遇回来前的占位)、拉绳、闪现、复活、援护冷却;锁定 / 脱锁距离。 */
 const FIELD_COMPANION_SHARE = 0.6;
@@ -372,6 +385,8 @@ interface TownMonster {
   shotFx: { effect: string; animation: string; size: number } | null;
   /** 精英 / 首领骨骼光环的贴地层(首领开战放大回弹用)。 */
   aura: Node | null;
+  /** 训练靶贴图(camp.dummy);有它就不走 AI。 */
+  dummySprite: Sprite | null;
 }
 
 /** docs/51 P2 拾取:怪群清完掉落战利品袋,走到旁边出「拾取 · 战利品」提示,拾取时才向服务端结算发奖。 */
@@ -615,7 +630,7 @@ export class LobbyTownRenderer {
   onFieldBattleEnd(stageCode: string, win: boolean): void {
     this.battleLock = false;
     if (win) {
-      this.campRespawnAt.set(stageCode, Date.now() + MONSTER_RESPAWN_MS);
+      this.campRespawnAt.set(stageCode, Date.now() + this.campRespawnMs(stageCode));
       this.monsters.filter((monster) => monster.camp.stageCode === stageCode).forEach((monster) => monster.node.isValid && monster.node.destroy());
       this.monsters = this.monsters.filter((monster) => monster.camp.stageCode !== stageCode);
       return;
@@ -657,6 +672,7 @@ export class LobbyTownRenderer {
     this.ensureBuildings();
     this.ensureLamps();
     this.ensureProps();
+    this.raiseFlatBuildings();
     this.ensureNpcs();
     this.ensureWaypoint();
     this.ensureChests();
@@ -809,7 +825,12 @@ export class LobbyTownRenderer {
     for (const cfg of this.def.buildings) {
       let entity = this.buildings.find((item) => item.cfg.key === cfg.key);
       if (!entity || !entity.node.isValid) {
-        const node = this.host.addChildPlainNode(root, `TownBuilding_${cfg.key}`, cfg.x, cfg.y, cfg.footprint.w, cfg.footprint.d);
+        // 场地类(训练场)贴地画,人走在上面;贴地层没建好就先跳过
+        const parent = cfg.flat ? this.groundRoot : root;
+        if (!parent || !parent.isValid) {
+          continue;
+        }
+        const node = this.host.addChildPlainNode(parent, `TownBuilding_${cfg.key}`, cfg.x, cfg.y, cfg.footprint.w, cfg.footprint.d);
         entity = { cfg, node, plate: null, sprite: null, fade: 255 };
         this.buildings = this.buildings.filter((item) => item.cfg.key !== cfg.key).concat(entity);
       }
@@ -833,6 +854,47 @@ export class LobbyTownRenderer {
         if (dot) {
           dot.active = this.buildingBadge(cfg.key, badges);
         }
+      }
+    }
+  }
+
+  /** 训练靶贴图:贴图还没进缓存时 addSprite 返回空并发起加载,之后每帧(stepMonsters)重试到挂上为止。 */
+  private mountDummyArt(monster: TownMonster): void {
+    const dummy = monster.camp.dummy;
+    const art = monster.spineNode;
+    if (!dummy || !art || !art.isValid || monster.dummySprite) {
+      return;
+    }
+    const sprite = this.host.addSprite('Art', dummy.asset, 0, 0, 100, dummy.height, art);
+    if (!sprite) {
+      return;
+    }
+    const frame = sprite.spriteFrame;
+    const w = dummy.height * ((frame?.originalSize.width ?? 1) / Math.max(1, frame?.originalSize.height ?? 1));
+    sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, dummy.height));
+    sprite.node.setPosition(0, dummy.height / 2, 0);
+    monster.dummySprite = sprite;
+  }
+
+  /** 营地打光后多久重刷:训练靶几秒就重立,普通怪 60 秒。 */
+  private campRespawnMs(stageCode: string): number {
+    return this.def.camps.find((camp) => camp.stageCode === stageCode)?.dummy?.respawnMs ?? MONSTER_RESPAWN_MS;
+  }
+
+  /** 贴地的场地建筑压在路刷 / 地表贴花上面(贴地件按 ensureProps 先后排,场地后补的放最上)。 */
+  private raiseFlatBuildings(): void {
+    for (const building of this.buildings) {
+      const node = building.node;
+      const parent = node.isValid ? node.parent : null;
+      if (!building.cfg.flat || !parent) {
+        continue;
+      }
+      // 压暗层(Vignette)之下的最上面
+      const vignette = parent.getChildByName('Vignette');
+      const index = node.getSiblingIndex();
+      const want = vignette ? vignette.getSiblingIndex() - (index < vignette.getSiblingIndex() ? 1 : 0) : parent.children.length - 1;
+      if (index !== want) {
+        node.setSiblingIndex(want);
       }
     }
   }
@@ -1745,7 +1807,7 @@ export class LobbyTownRenderer {
     const t = 1 - Math.exp(-10 * dt);
     for (const building of this.buildings) {
       const sprite = building.sprite;
-      if (!sprite || !sprite.isValid) {
+      if (!sprite || !sprite.isValid || building.cfg.flat) {
         continue;
       }
       const size = sprite.node.getComponent(UITransform);
@@ -1774,12 +1836,23 @@ export class LobbyTownRenderer {
       return false;
     }
     // 走廊式地图(docs/52 §2.1):只能走在路(折线 ± half)或林间空地(椭圆)里
-    const corridors = def.corridors;
+    const corridors = def.openWalk ? null : def.corridors;
     if (corridors && distToLines(x, y, corridors.lines) > corridors.half
       && !corridors.areas.some((area) => ((x - area.x) / area.rx) ** 2 + ((y - area.y) / area.ry) ** 2 <= 1)) {
       return false;
     }
     for (const building of def.buildings) {
+      const mask = building.walkMask;
+      if (mask) {
+        // 可进入的场地:外轮廓里只有场内地面能走
+        const rx = x - building.x;
+        const ry = y - building.y;
+        if (pointInPolygon(rx, ry, mask.outline)
+          && (!pointInPolygon(rx, ry, mask.floor) || (mask.holes ?? []).some((hole) => pointInPolygon(rx, ry, hole)))) {
+          return false;
+        }
+        continue;
+      }
       const halfW = building.footprint.w / 2 + ACTOR_RADIUS * 0.6;
       if (x > building.x - halfW && x < building.x + halfW && y > building.y - ACTOR_RADIUS * 0.3 && y < building.y + building.footprint.d) {
         return false;
@@ -1847,7 +1920,7 @@ export class LobbyTownRenderer {
     }
     const items: Array<{ node: Node; y: number }> = [];
     for (const building of this.buildings) {
-      if (building.node.isValid) {
+      if (building.node.isValid && !building.cfg.flat) {
         items.push({ node: building.node, y: building.cfg.y });
       }
     }
@@ -3391,12 +3464,17 @@ export class LobbyTownRenderer {
       if (leaderNow && Math.hypot(leaderNow.x - camp.x, leaderNow.y - camp.y) > MONSTER_SPAWN_RANGE) {
         continue;
       }
-      // 玩家还站在营地里:先不刷(否则一刷出来就撞上直接开战),走远了下次 render 再刷
+      // 玩家还站在营地里:先不刷(否则一刷出来就撞上直接开战),走远了下次 render 再刷;训练靶不主动开战,站旁边也照样重立
       const leader = this.leader;
-      if (respawnAt > 0 && leader && Math.hypot(leader.x - camp.x, leader.y - camp.y) < camp.radius + MONSTER_AGGRO_RADIUS) {
+      if (!camp.dummy && respawnAt > 0 && leader && Math.hypot(leader.x - camp.x, leader.y - camp.y) < camp.radius + MONSTER_AGGRO_RADIUS) {
         continue;
       }
       for (let i = 0; i < camp.count; i += 1) {
+        const spot = camp.spots?.[i];
+        if (spot) {
+          this.monsters.push(this.createMonster(root, camp, i, spot[0], spot[1]));
+          continue;
+        }
         // 向日葵散布:6~10 只一群也不挤成一圈
         const angle = i * 2.39996;
         const r = camp.count <= 3 ? 0.5 : 0.2 + 0.5 * Math.sqrt((i + 0.5) / camp.count);
@@ -3422,10 +3500,10 @@ export class LobbyTownRenderer {
     shadow.ellipse(0, 2, boss ? 90 : camp.elite ? 56 : 34, boss ? 18 : camp.elite ? 11 : 7);
     shadow.fill();
     // 区域首领比精英再大一圈
-    const target = boss ? 380 : camp.elite ? 250 : 140;
+    const target = camp.dummy ? camp.dummy.height : boss ? 380 : camp.elite ? 250 : 140;
     // 10-30 用户「怪物名称也需要显示出来」:名字常显(原 docs/51 §7 只在锁定时显示);普通怪 = 种类名,精英 / 首领 = 自己的名字(金 / 橙)
-    const species = camp.elite ? camp.label : (MONSTER_SPECIES_NAME[camp.monsterCode] ?? (camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || camp.label));
-    const label = this.host.addChildLabel(node, 'Name', `${species} Lv.${camp.level}`, 0, target + 24, boss ? 24 : camp.elite ? 22 : 19,
+    const species = camp.elite || camp.dummy ? camp.label : (MONSTER_SPECIES_NAME[camp.monsterCode] ?? (camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || camp.label));
+    const label = this.host.addChildLabel(node, 'Name', camp.dummy ? species : `${species} Lv.${camp.level}`, 0, target + 24, boss ? 24 : camp.elite ? 22 : 19,
       boss ? rgba(255, 150, 96) : camp.elite ? rgba(255, 214, 120) : rgba(236, 232, 224), new Size(260, 30));
     label.enableOutline = true;
     label.outlineColor = rgba(16, 6, 4, 255);
@@ -3443,7 +3521,7 @@ export class LobbyTownRenderer {
       facing: -1, baseScale: 1, skeleton: null, spineNode: null, idleAnim: '', moveAnim: '', moving: false,
       hp: 0, maxHp: 0, hit: 1, ranged: false, dead: false, diedAt: 0, nextAttackAt: 0, windupUntil: 0,
       attackAnim: '', deathAnim: '', hpBar: null, hpDrawn: -1, flashUntil: 0, lastHitAt: 0, hpKey: '', nameLabel: label, victim: null, stagger: 0, staggeredUntil: 0, floatAt: 0, floatSeq: 0,
-      curAnim: '', animLockUntil: 0, moveSince: 0, kbVX: 0, shotFx: null, aura: null,
+      curAnim: '', animLockUntil: 0, moveSince: 0, kbVX: 0, shotFx: null, aura: null, dummySprite: null,
     };
     this.mountCampAura(monster);
     // 点怪直接锁它
@@ -3453,6 +3531,15 @@ export class LobbyTownRenderer {
       }
     }, this);
     monster.hpBar = this.host.addChildPlainNode(node, 'HpBar', 0, target + 4, 110, 12).addComponent(Graphics);
+    if (camp.dummy) {
+      // 训练靶:静态贴图(脚底对齐);挂到 spineNode 上复用受击形变
+      const art = this.host.addChildPlainNode(node, 'Dummy', 0, 0, 10, 10);
+      monster.spineNode = art;
+      this.mountDummyArt(monster);
+      monster.baseScale = 1;
+      monster.facing = 1;
+      return monster;
+    }
     if (!camp.spine) {
       return monster;
     }
@@ -3524,6 +3611,22 @@ export class LobbyTownRenderer {
         continue;
       }
       const camp = monster.camp;
+      if (camp.dummy) {
+        // 训练靶:不走动、不还手、不主动开战(挨打时 damageMonster 登记遭遇),只画血条和受击闪红
+        this.drawMonsterHp(monster);
+        if (!monster.dummySprite) {
+          this.mountDummyArt(monster);
+        }
+        const sprite = monster.dummySprite;
+        if (sprite && sprite.isValid) {
+          const flash = now < monster.flashUntil;
+          if ((monster as unknown as { __flash?: number }).__flash !== (flash ? 1 : 0)) {
+            (monster as unknown as { __flash?: number }).__flash = flash ? 1 : 0;
+            sprite.color = flash ? rgba(255, 150, 140, 255) : rgba(255, 255, 255, 255);
+          }
+        }
+        continue;
+      }
       const toLeader = Math.hypot(leader.x - monster.x, leader.y - monster.y);
       const leashed = Math.hypot(monster.x - camp.x, monster.y - camp.y) > camp.radius + 520;
       const engaged = this.encounters.has(camp.stageCode);
@@ -5595,6 +5698,15 @@ export class LobbyTownRenderer {
     if (monster.skeleton && monster.skeleton.isValid && monster.deathAnim) {
       monster.skeleton.setAnimation(0, monster.deathAnim, false);
     }
+    if (monster.camp.dummy && monster.spineNode && monster.spineNode.isValid) {
+      // 稻草靶被打倒:往背离队长的一侧歪倒
+      const away = this.leader && this.leader.x > monster.x ? 1 : -1;
+      const art = monster.spineNode;
+      Tween.stopAllByTarget(art);
+      art.setScale(1, 1, 1);
+      tween(art).to(0.32, { angle: 78 * away }, { easing: 'quadIn' }).start();
+      this.spawnFloater(monster.x, monster.y + 120, '击破', rgba(255, 226, 150), 26);
+    }
     const opacity = monster.node.getComponent(UIOpacity) ?? monster.node.addComponent(UIOpacity);
     tween(opacity).delay(0.5).to(0.6, { opacity: 0 }).start();
     const stageCode = monster.camp.stageCode;
@@ -5623,7 +5735,7 @@ export class LobbyTownRenderer {
       const encounter = this.encounters.get(stageCode);
       this.encounters.delete(stageCode);
       this.encounterStats.delete(stageCode);
-      this.campRespawnAt.set(stageCode, Date.now() + MONSTER_RESPAWN_MS);
+      this.campRespawnAt.set(stageCode, Date.now() + this.campRespawnMs(stageCode));
       if (this.haul) {
         this.haul.groups += 1;
         this.refreshHaulCard();

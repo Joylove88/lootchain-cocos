@@ -90,6 +90,9 @@ const WOODS: WorldMapDef = {{
   height: 6525,
   walk: {{ left: -6750, right: 6750, bottom: -3240, top: 3240 }},
 {corr}
+  // 11-03 用户「地图可见范围内的都应该能走」:走廊只用来撒树;行走改成除水面 / 崖石(village_water_blocks.py 按像素生成)和立物挡块外都能走
+  openWalk: true,
+  blocks: WOODS_WATER_BLOCKS as WorldMapBlock[],
   spawn: {{ x: -4980, y: -2250 }},
   ground: worldAsset('ground_woods3'),
   // 10-29 写实林地底纹(苔草 + 腐殖土),一格 1000 世界单位

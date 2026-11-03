@@ -171,8 +171,14 @@ def main() -> None:
     out.append('  },')
     print('\n'.join(out))
     print('---camps')
+    # 10-31 精英 / 首领换皮 + 骨骼光环(LobbyWorldMaps VARIANT_SPINE / AURA_*)
+    variants = {'FIELD_WOODS_E2': '{ spine: VARIANT_SPINE.lavaSpider, aura: AURA_LAVA }',
+                'FIELD_WOODS_E': '{ spine: VARIANT_SPINE.brownBear, aura: AURA_RAGE }',
+                'FIELD_WOODS_B': '{ spine: VARIANT_SPINE.corruptBear, aura: AURA_CORRUPT }'}
     for code, name, mon, n, lv, x, y, elite in CAMPS:
         e = ', true' if elite else ''
+        if code in variants:
+            e += ', ' + variants[code]
         print(f"    camp('{code}', '{name}', '{mon}', {n}, {lv}, {wx(x)}, {wy(y)}{e}),")
     print('---flats')
     for a, x, y, w, water in FLATS:
