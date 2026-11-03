@@ -24,7 +24,12 @@ HEAD_TILT = -15.0
 # 11-03 用户「头和脖子错位、离领口远」:压角度是绕脖根转,脸整体前移;把头骨在世界坐标里往背后(左)挪 18、下沉 5.4
 # (父骨 chest 世界角 62.71°,换算成 chest 本地坐标;0 / 10 / 18 三档渲染对比 18 最贴领口)
 # 11-03 晚 用户「女主头的位置不对,佝偻的感觉,向脖领向左移」:女版再往背后挪 40、抬 6(-40 / -50 对比,-50 头陷进领口)
-HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-58.0, 0.6)}
+# 11-03 夜 用户「头脖子没在衣领里,和衣服错位」:女版马甲是立领,头要抬进领口、画在上衣后面让领子盖住脖子根
+HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-52.0, 50.6)}
+# 女版跑步 / 攻击 / 技能换的 body02 领子更高,同动作换用的 face02 网格再往上抬(世界坐标)
+FACE02_RAISE = {'protag_f': (0.0, 20.0)}
+# 头画在上衣(body01 插槽)后面的角色
+HEAD_BEHIND_BODY = {'protag_f'}
 CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
@@ -60,6 +65,19 @@ def install_spine(src_key, name):
             lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
+            if name in FACE02_RAISE:
+                import math
+                fa = math.radians(CHEST_WORLD_DEG + bone.get('rotation', 0))
+                ex, ey = FACE02_RAISE[name]
+                mesh = next(sk for sk in data['skins'] if sk['name'] == 'default')['attachments']['face01']['face02']
+                v = mesh['vertices']
+                for i in range(0, len(v), 2):
+                    v[i] = round(v[i] + ex * math.cos(fa) + ey * math.sin(fa), 2)
+                    v[i + 1] = round(v[i + 1] - ex * math.sin(fa) + ey * math.cos(fa), 2)
+    if name in HEAD_BEHIND_BODY:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import spine_draw_order
+        spine_draw_order.move_slots_before(data, ['face01', 'eyes01'], 'body01')
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     if name in HOOD_CUT:
         cut_hood(dst, name, data, *HOOD_CUT[name])
