@@ -13,6 +13,7 @@ from PIL import Image
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 ATLAS = os.path.join(ROOT, 'assets', 'resources', 'spine', 'hero', 'protag_f', 'protag_f.atlas')
 # 正向贴图像素:种子点 + 允许漫延的包围盒 (x0, y0, x1, y1);亮度阈值以下才算领子里面
+INNER_ALPHA = float(os.environ.get('COLLAR_INNER_ALPHA', '0.4'))
 CUTS = {
     'body01': {'seed': (100, 140), 'box': (68, 104, 142, 178), 'lum': 80},
     'body02': {'seed': (114, 135), 'box': (72, 98, 162, 172), 'lum': 80},
@@ -65,7 +66,8 @@ def main():
         inner = flood(dark, cut['seed'], cut['box'])
         if inner.sum() < 50:
             raise SystemExit(f'{name}: 领口内区域太小({int(inner.sum())}),种子 / 阈值不对')
-        # 边缘 2px 留半透明内阴影:腐蚀两次,核心全透明,外圈 alpha 110
+        # 领子里面不全挖空:留 INNER_ALPHA 的原阴影压在脖子上(全透明只剩一圈细边,脖子像棍子插在环里);
+        # 边缘 2px 更实一点(领子厚度)
         core = inner.copy()
         for _ in range(2):
             e = core.copy()
@@ -75,8 +77,8 @@ def main():
             e[:, :-1] &= core[:, 1:]
             core = e
         rim = inner & ~core
-        arr[core, 3] = 0
-        arr[rim, 3] = np.minimum(arr[rim, 3], 110)
+        arr[core, 3] = arr[core, 3] * INNER_ALPHA
+        arr[rim, 3] = arr[rim, 3] * min(1.0, INNER_ALPHA + 0.3)
         fixed = Image.fromarray(arr.round().astype(np.uint8), 'RGBA')
         im.paste(fixed.rotate(90, expand=True) if rot else fixed, (x, y))
         print(name, 'cut px', int(inner.sum()))
