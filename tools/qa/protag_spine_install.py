@@ -30,6 +30,9 @@ HEAD_TILT = -15.0
 HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-18.0, -5.4)}
 # 身体贴图整套用男主的角色(只留自己的脸)
 BODY_FROM_MALE = {'protag_f'}
+# 11-03 用户「跑步的时候衣服是对的,站立的时候不对」:站立用 body01(高立领马甲)、跑步用 body02(毛领马甲);
+# 这些角色全程只用 body02(setup 附件 + 各动作切回 body01 的关键帧都换成 body02)
+BODY02_ALWAYS = {'protag_f'}
 CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
@@ -65,6 +68,14 @@ def install_spine(src_key, name):
             lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
+    if name in BODY02_ALWAYS:
+        for slot in data['slots']:
+            if slot['name'] == 'body01':
+                slot['attachment'] = 'body02'
+        for anim in data['animations'].values():
+            for key in anim.get('slots', {}).get('body01', {}).get('attachment', []):
+                if key.get('name') == 'body01':
+                    key['name'] = 'body02'
     if name in BODY_FROM_MALE:
         png = os.path.join(dst, name + '.png')
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_body_from_male.py'), png, png], check=True)
