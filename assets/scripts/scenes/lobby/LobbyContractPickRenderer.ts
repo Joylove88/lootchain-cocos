@@ -18,6 +18,8 @@ export interface ContractPickState {
   selected: string;
   busy: boolean;
   error: string;
+  /** 文案(默认 = 开局契约之选;Lv.15 / Lv.30 等级契约复用这页换文案)。 */
+  copy?: { title: string; subtitle: string; line: string; confirm: string; confirming: string };
 }
 
 /** 卡上的定位 + 两个特点标签(原型 contract_pick_b;6 名 R 候选池)。 */
@@ -28,6 +30,13 @@ const HERO_BLURB: Record<string, { role: string; tags: [string, string] }> = {
   R_CULT_05: { role: '法师 · 范围伤害', tags: ['清怪最快', '远程'] },
   R_RANGER_06: { role: '射手 · 远程单点', tags: ['放风筝', '高暴击'] },
   R_GUARD_07: { role: '坦克 · 前排承伤', tags: ['皮糙肉厚', '保护队友'] },
+  // 等级契约 Lv.30 的 SR 候选(docs/58 §4.1)
+  SR_ABYSS_06: { role: '刺客 · 影袭爆发', tags: ['切后排', '暗影连斩'] },
+  SR_WITCH_03: { role: '法师 · 暗焰范围', tags: ['范围灼烧', '远程'] },
+  SR_PALADIN_02: { role: '坦克 · 圣光护盾', tags: ['扛伤', '护盾队友'] },
+  SR_PRIEST_01: { role: '辅助 · 群体治疗', tags: ['群体回复', '续航'] },
+  SR_BLADE_04: { role: '战士 · 重斩', tags: ['高单段', '破防'] },
+  SR_SNIPER_05: { role: '射手 · 远程狙击', tags: ['超远程', '必中'] },
 };
 const ZERO_PORTRAIT = 'ui/protagonist/b/zero_m_round/spriteFrame';
 /** 右上职业标识:亮金线条职业图标(原型右上角样式,tools/qa/class_gold_icons.py 入库)。 */
@@ -59,11 +68,12 @@ export class LobbyContractPickRenderer {
     root.setPosition(new Vec3(cx, cy, 0));
     root.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
     root.addComponent(BlockInputEvents);
-    // 压暗(原型:冷蓝深底 + 四周渐暗、中间略透,底下的村子只剩轮廓;11-03 用户嫌原来一层 200 透明黑太亮、草地绿透出来)
+    // 压暗(原型:冷蓝深底 + 四周渐暗、中间略透,底下的村子只剩轮廓;11-03 用户嫌原来一层 200 透明黑太亮、草地绿透出来;
+    // 11-03 晚 再加深 222 → 240:主城「公告板」等建筑名牌字还透得出来)
     const dim = root.addComponent(Graphics);
     const W = layout.width;
     const H = layout.height;
-    dim.fillColor = new Color(8, 12, 22, 222);
+    dim.fillColor = new Color(8, 12, 22, 240);
     dim.rect(-W / 2, -H / 2, W, H);
     dim.fill();
     // 四周渐暗:10 圈互不重叠的边框带,越靠外越黑(Graphics 没有径向渐变)
@@ -87,8 +97,9 @@ export class LobbyContractPickRenderer {
       dim.fill();
     }
 
-    glassLabel(this.host, root, 'Title', '契约之选', FX(935), FY(40), S(46), GLASS_COLOR.text, S(600), HorizontalTextAlignment.CENTER, true);
-    glassLabel(this.host, root, 'Subtitle', '圣契残存的力量,只够与一位强者订立契约', FX(935), FY(90), S(24), GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+    const copy = state.copy ?? { title: '契约之选', subtitle: '圣契残存的力量,只够与一位强者订立契约', line: '挑一个顺眼的吧。其余的伙伴,以后去圣契祭坛还能召唤。', confirm: '订立契约', confirming: '订立中…' };
+    glassLabel(this.host, root, 'Title', copy.title, FX(935), FY(40), S(46), GLASS_COLOR.text, S(600), HorizontalTextAlignment.CENTER, true);
+    glassLabel(this.host, root, 'Subtitle', copy.subtitle, FX(935), FY(90), S(24), GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
 
     // 三张竖卡(原型 354×515,中心 x 534 / 936 / 1338,y 392)
     const xs = [534, 936, 1338];
@@ -100,7 +111,7 @@ export class LobbyContractPickRenderer {
     const dialog = this.host.addChildPlainNode(root, 'Dialogue', FX(796), FY(743), dw, dh);
     mountGlassSlice(this.host, dialog, 'Glass', GLASS_SLICES.panel, 0, 0, dw, dh, k);
     glassLabel(this.host, dialog, 'Speaker', '零', S(416 - 796), S(30), S(24), GLASS_COLOR.champagne, S(120), HorizontalTextAlignment.LEFT, true);
-    const line = state.error || '挑一个顺眼的吧。其余的伙伴,以后去圣契祭坛还能召唤。';
+    const line = state.error || copy.line;
     glassLabel(this.host, dialog, 'Line', line, S(416 - 796), -S(12), S(24), state.error ? GLASS_COLOR.red : GLASS_COLOR.text, S(800));
     const portrait = this.host.addChildPlainNode(root, 'ZeroPortrait', FX(313), FY(743), S(152), S(152));
     const pg = portrait.addComponent(Graphics);
@@ -121,7 +132,7 @@ export class LobbyContractPickRenderer {
 
     // 主按钮(原型 x 1288~1627 / y 705~781)
     const ready = !!state.selected && !state.busy;
-    const confirm = mountGlassButton(this.host, root, 'Confirm', state.busy ? '订立中…' : '订立契约', FX(1457), FY(743), S(339), S(76), k,
+    const confirm = mountGlassButton(this.host, root, 'Confirm', state.busy ? copy.confirming : copy.confirm, FX(1457), FY(743), S(339), S(76), k,
       ready ? 'primary' : 'primaryOff', () => this.onConfirm(), 30);
     this.host.applyPointerCursor?.(confirm);
   }
@@ -211,7 +222,8 @@ export class LobbyContractPickRenderer {
     // 文字居中(原型:名字 y 514 / 定位 y 555 / 标签 y 600,相对卡心 392)
     glassLabel(this.host, card, 'Name', hero.heroName, 0, -S(122), S(34), GLASS_COLOR.text, w - S(40), HorizontalTextAlignment.CENTER, true);
     glassLabel(this.host, card, 'Role', blurb.role, 0, -S(163), S(20), GLASS_COLOR.sub, w - S(40), HorizontalTextAlignment.CENTER);
-    const tags = blurb.tags.filter((t) => !!t);
+    // 英雄契约里程碑:已有的英雄标出来(选它转碎片),替换特点标签
+    const tags = hero.owned ? [`已拥有 · 转碎片 ×${hero.fragments}`] : blurb.tags.filter((t) => !!t);
     const fontSize = S(18);
     const pillH = S(36);
     const gap = S(18);

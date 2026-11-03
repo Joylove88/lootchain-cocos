@@ -322,6 +322,8 @@ function profileRenameInvalidReason(name: string, currentName: string): string {
 
 /** 冒险章节下架(2026-10-28 用户拍板:新玩法直接去野外打怪;首通奖励改由野外精英承接)。 */
 const LOBBY_ADVENTURE_RETIRED = true;
+/** 英雄契约里程碑副标题前缀:来源剧情任务码 → 剧情名(按等级解锁的显示 Lv.N)。 */
+const LEVEL_CONTRACT_SOURCE: Record<string, string> = { V04: '祭坛的回应', V09: '林地之王已除' };
 
 @ccclass('LootChainGameRoot')
 export class LootChainGameRoot extends Component {
@@ -396,6 +398,9 @@ export class LootChainGameRoot extends Component {
   // docs/58 契约之选:觉醒后 3 选 1 R(没选过才弹;不可跳过)
   private contractPick: ContractPickState | null = null;
   private contractCheckedUid = 0;
+  /** '' = 开局契约之选;否则 = 英雄契约里程碑码(docs/58 §3.1:V04 / V09 剧情领奖后 / Lv.30),同一页面换文案。 */
+  private contractMilestone = '';
+  private levelContractCheckDue = true;
   private readonly contractPickRenderer = new LobbyContractPickRenderer(
     this as unknown as ContractPickHost,
     (heroCode) => this.selectStarterContract(heroCode),
@@ -7790,6 +7795,8 @@ export class LootChainGameRoot extends Component {
         ok = await this.runWorldAction(() => this.api.world.claimQuest(quest.code));
         if (ok) {
           gameAudio.sfx('reward');
+          // docs/58 §3.1:V04 / V09 领奖解锁英雄契约(对话关掉后弹)
+          this.levelContractCheckDue = true;
         }
       }
       if (!ok) {
@@ -9098,6 +9105,7 @@ export class LootChainGameRoot extends Component {
     // docs/58 §10:每升一级一次进化抉择(战斗中升级 → 打完再弹)
     if (after > before) {
       this.evolutionCheckDue = true;
+      this.levelContractCheckDue = true;
     }
     if (Math.floor(after / 5) > Math.floor(before / 5)) {
       void this.loadLobbyMails(false, false);
@@ -9750,6 +9758,12 @@ export class LootChainGameRoot extends Component {
       if (this.evolutionCheckDue && this.contractCheckedUid === userId && !this.evolutionLoading && !this.lobbyTownRenderer.isInCombat()) {
         this.evolutionCheckDue = false;
         void this.checkEvolution();
+        return;
+      }
+      // 英雄契约里程碑:进化抉择选完之后再弹(同一次升级两个都有时先进化后契约)
+      if (this.levelContractCheckDue && !this.evolutionCheckDue && this.contractCheckedUid === userId && !this.evolutionLoading && !this.lobbyTownRenderer.isInCombat()) {
+        this.levelContractCheckDue = false;
+        void this.checkLevelContract();
       }
       return;
     }
@@ -9905,10 +9919,38 @@ export class LootChainGameRoot extends Component {
       if (state.picked || state.candidates.length < 3 || this.currentView !== 'lobby') {
         return;
       }
+      this.contractMilestone = '';
       this.contractPick = { candidates: state.candidates, selected: '', busy: false, error: '' };
       this.renderStarterContract();
     } catch (error) {
       console.warn('[Contract] state failed', error);
+    }
+  }
+
+  /** 英雄契约里程碑:剧情 V04 / V09 领奖后 / Lv.30 各弹一次(老号过档的下次进大厅补),复用契约之选页面。 */
+  private async checkLevelContract(): Promise<void> {
+    try {
+      const state = await this.api.starterContract.levelState();
+      if (!state.milestone || state.candidates.length < 3 || this.currentView !== 'lobby' || this.contractPick || this.evolutionPick) {
+        return;
+      }
+      this.contractMilestone = state.milestone;
+      this.contractPick = {
+        candidates: state.candidates,
+        selected: '',
+        busy: false,
+        error: '',
+        copy: {
+          title: '英雄契约',
+          subtitle: `${LEVEL_CONTRACT_SOURCE[state.storyQuest] ?? `Lv.${state.milestone}`} · 圣契感应到了新的强者,可以再订立一份契约`,
+          line: state.rarity === 'SR' ? '这次回应的是 SR 级的强者。挑一位,马上入队。' : '宿主的力量足以维系新的契约了。挑一位,马上入队。',
+          confirm: '订立契约',
+          confirming: '订立中…',
+        },
+      };
+      this.renderStarterContract();
+    } catch (error) {
+      console.warn('[LevelContract] state failed', error);
     }
   }
 
@@ -9928,9 +9970,19 @@ export class LootChainGameRoot extends Component {
     this.contractPick = { ...pick, busy: true, error: '' };
     this.renderStarterContract();
     try {
-      const state = await this.api.starterContract.pick(pick.selected);
-      if (!state.picked) {
-        throw new Error('契约没有订立成功,再试一次');
+      if (this.contractMilestone) {
+        const state = await this.api.starterContract.levelPick(this.contractMilestone, pick.selected);
+        if (state.milestone === this.contractMilestone) {
+          throw new Error('契约没有订立成功,再试一次');
+        }
+        // 一次补多档:选完这档再查下一档
+        this.contractMilestone = '';
+        this.levelContractCheckDue = true;
+      } else {
+        const state = await this.api.starterContract.pick(pick.selected);
+        if (!state.picked) {
+          throw new Error('契约没有订立成功,再试一次');
+        }
       }
       const hero = pick.candidates.find((item) => item.heroCode === pick.selected);
       this.contractPick = null;
@@ -9939,7 +9991,7 @@ export class LootChainGameRoot extends Component {
       // 新伙伴进名册 → 跑图队伍重建(主角 + 新伙伴)
       await this.loadLobbyHeroRoster(true);
       this.renderCurrentView();
-      this.spawnRewardFloats([`契约成立 · ${hero?.heroName ?? ''} 加入队伍`]);
+      this.spawnRewardFloats([hero?.owned ? `契约成立 · ${hero.heroName} 已拥有,获得碎片 ×${hero.fragments}` : `契约成立 · ${hero?.heroName ?? ''} 加入队伍`]);
     } catch (error) {
       this.contractPick = { ...pick, busy: false, error: (error as Error)?.message || '契约没有订立成功,再试一次' };
       this.renderStarterContract();
