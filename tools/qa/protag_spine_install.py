@@ -78,6 +78,10 @@ def install_spine(src_key, name):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import spine_draw_order
         spine_draw_order.move_slots_before(data, ['face01', 'eyes01'], 'body01')
+        # 立领里面挖透明,后面的脖子才能从领口露出来(protag_collar_cut.py)
+        png = os.path.join(dst, name + '.png')
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_collar_cut.py'), png, png,
+                        os.path.join(dst, name + '.atlas')], check=True)
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     if name in HOOD_CUT:
         cut_hood(dst, name, data, *HOOD_CUT[name])
