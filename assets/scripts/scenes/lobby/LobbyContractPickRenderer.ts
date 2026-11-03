@@ -30,14 +30,14 @@ const HERO_BLURB: Record<string, { role: string; tags: [string, string] }> = {
   R_GUARD_07: { role: '坦克 · 前排承伤', tags: ['皮糙肉厚', '保护队友'] },
 };
 const ZERO_PORTRAIT = 'ui/protagonist/b/zero_m_round/spriteFrame';
-/** 右上职业标识:与布阵同一套暗金职业图标。 */
+/** 右上职业标识:亮金线条职业图标(原型右上角样式,tools/qa/class_gold_icons.py 入库)。 */
 const CLASS_ICONS: Record<string, string> = {
-  战士: 'ui/formation/ref/class_warrior/spriteFrame',
-  法师: 'ui/formation/ref/class_mage/spriteFrame',
-  刺客: 'ui/formation/ref/class_assassin/spriteFrame',
-  射手: 'ui/formation/ref/class_archer/spriteFrame',
-  辅助: 'ui/formation/ref/class_support/spriteFrame',
-  坦克: 'ui/formation/ref/class_tank/spriteFrame',
+  战士: 'ui/glass/class_gold_warrior/spriteFrame',
+  法师: 'ui/glass/class_gold_mage/spriteFrame',
+  刺客: 'ui/glass/class_gold_assassin/spriteFrame',
+  射手: 'ui/glass/class_gold_archer/spriteFrame',
+  辅助: 'ui/glass/class_gold_support/spriteFrame',
+  坦克: 'ui/glass/class_gold_tank/spriteFrame',
 };
 
 /**
@@ -180,19 +180,19 @@ export class LobbyContractPickRenderer {
     const rarity = glassLabel(this.host, tag, 'R', hero.rarity || 'R', 0, 0, S(22), new Color(206, 214, 230, 255), S(50), HorizontalTextAlignment.CENTER, true);
     rarity.isItalic = true;
     const blurb = HERO_BLURB[hero.heroCode] ?? { role: hero.heroClass ?? '', tags: ['', ''] as [string, string] };
-    // 右上职业标识(原型圆直径 58,中心距右 45 / 顶 43):暗底细环 + 暗金职业图标(与布阵同一套)
+    // 右上职业标识(原型圆直径 58,中心距右 45 / 顶 43):暗底细环 + 亮金职业图标
     const classIcon = CLASS_ICONS[blurb.role.split(' ')[0]] ?? CLASS_ICONS[hero.heroClass ?? ''];
     if (classIcon) {
       const badge = this.host.addChildPlainNode(card, 'ClassBadge', w / 2 - S(45), h / 2 - S(43), S(60), S(60));
       const bg = badge.addComponent(Graphics);
-      bg.fillColor = new Color(30, 34, 44, 220);
+      bg.fillColor = new Color(14, 17, 24, 190);
       bg.circle(0, 0, S(29));
       bg.fill();
-      bg.strokeColor = new Color(214, 184, 122, 200);
-      bg.lineWidth = Math.max(1.2, S(1.6));
+      bg.strokeColor = new Color(200, 170, 112, 130);
+      bg.lineWidth = Math.max(1, S(1.4));
       bg.circle(0, 0, S(29));
       bg.stroke();
-      this.host.addSprite('Icon', classIcon, 0, 0, S(46), S(46), badge);
+      this.host.addSprite('Icon', classIcon, 0, 0, S(38), S(38), badge);
     }
     if (selected) {
       // 选中勾:骑在卡顶边正中(原型 48×32 香槟金圆角块)

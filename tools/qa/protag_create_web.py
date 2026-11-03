@@ -105,6 +105,7 @@ async def main():
             if '--contract-only' in sys.argv:
                 # 只看契约之选弹层:用已有主角的账号进大厅,直接注入 3 张候选卡渲染(不走建号 / 觉醒 / 接口)
                 await wait_for("const t = root.lobbyTownRenderer; return root.currentView === 'lobby' && t.isMounted() && t.leader && t.leader.skeleton ? 'ok' : 'wait';", 300)
+                await wait_for("let busy=false; root.node.walk(x=>{ if(x.name==='PackLoading' && x.activeInHierarchy) busy=true; }); return busy ? 'wait' : 'ok';", 400)
                 await asyncio.sleep(4)
                 await ev("root.contractPick = { candidates: [{heroCode:'R_GUARD_07',heroName:'城门卫兵',rarity:'R'},{heroCode:'R_RANGER_06',heroName:'荒原游侠',rarity:'R'},{heroCode:'R_CULT_05',heroName:'低语教徒',rarity:'R'}], selected: '', busy: false, error: '' }; root.renderStarterContract(); return 1;")
                 await asyncio.sleep(3)
