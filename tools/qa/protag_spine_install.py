@@ -23,14 +23,12 @@ TARGETS = [('m2', 'protag_m', 'protag_m_v9', 'PROTAGONIST_MALE_ATTACK'), ('f2', 
 HEAD_TILT = -15.0
 # 11-03 用户「头和脖子错位、离领口远」:压角度是绕脖根转,脸整体前移;把头骨在世界坐标里往背后(左)挪 18、下沉 5.4
 # (父骨 chest 世界角 62.71°,换算成 chest 本地坐标;0 / 10 / 18 三档渲染对比 18 最贴领口)
-# 11-03 晚 用户「女主头的位置不对,佝偻的感觉,向脖领向左移」:女版再往背后挪 40、抬 6(-40 / -50 对比,-50 头陷进领口)
-# 11-03 夜 用户「头脖子没在衣领里 / 脖子没有在领口里」:女版马甲是立领,头抬到下巴刚好压在领口上;
-# 脖子不能跟着头走(头一仰一转就离开领口)→ 脖子画进身体贴图的立领里、头贴图只留一小截脖子根(protag_collar_cut.py),头仍画在上衣前面
-HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-52.0, 50.6)}
-# 要跑 protag_collar_cut.py(立领填脖子 + 头贴图剪脖子)的角色
-COLLAR_FIX = {'protag_f'}
-# 11-03 用户「大招这个姿势头脖子要向右移一些 → 移到领口缺口上」:大招 0.35s 起到收招的头骨骼位移键加世界偏移(只影响这个动作;16 / 30 / 40 对比选 40)
-ULT_HEAD_SHIFT = {'protag_f': (40.0, -10.0)}
+# 11-03 深夜 用户「女主能不能和男主一样」:女主前面几轮(挪头 / 画上衣后 / 挖领口 / 脖子画进立领 / 大招单独挪)都不对,
+# 根因 = GPT 把女主马甲画成贴脖立领,男主是宽毛领 V 口。终解 = 女主头参数与男主完全一致(HEAD_SHIFT 同值,不单独改动作)
+# + 男主马甲领口区域盖到女主马甲贴图上(protag_collar_graft.py)。废弃的立领填脖子脚本留在 _unused_protag_collar_cut.py
+HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-18.0, -5.4)}
+# 领口换男主的角色
+COLLAR_GRAFT = {'protag_f'}
 CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
@@ -66,18 +64,9 @@ def install_spine(src_key, name):
             lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
-    if name in ULT_HEAD_SHIFT:
-        import math
-        a = math.radians(CHEST_WORLD_DEG)
-        wx, wy = ULT_HEAD_SHIFT[name]
-        for key in data['animations']['ult']['bones']['face01'].get('translate', []):
-            if 0.35 <= key.get('time', 0) <= 3.0:
-                key['x'] = round(key.get('x', 0) + wx * math.cos(a) + wy * math.sin(a), 2)
-                key['y'] = round(key.get('y', 0) - wx * math.sin(a) + wy * math.cos(a), 2)
-    if name in COLLAR_FIX:
+    if name in COLLAR_GRAFT:
         png = os.path.join(dst, name + '.png')
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_collar_cut.py'), png, png,
-                        os.path.join(dst, name + '.atlas')], check=True)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_collar_graft.py'), png, png], check=True)
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     if name in HOOD_CUT:
         cut_hood(dst, name, data, *HOOD_CUT[name])
