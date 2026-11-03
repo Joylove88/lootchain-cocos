@@ -25,6 +25,22 @@ class GameAudioManager {
   private currentBgmKey = '';
   /** 同帧同音效去重(一波怪 60 只同时死=一次 hit,不叠成噪声)。 */
   private readonly lastPlayedAt = new Map<string, number>();
+  /** 全屏视频(序幕)播放中:BGM / 音效全压住,结束后补播最后要求的 BGM。 */
+  private held = false;
+
+  /** 序幕等 DOM 视频自带原声,播放期间压住游戏音频。 */
+  setHold(held: boolean): void {
+    if (this.held === held) {
+      return;
+    }
+    this.held = held;
+    if (held) {
+      this.currentBgmKey = '';
+      this.bgmSource?.stop();
+    } else {
+      this.resumePendingBgm();
+    }
+  }
 
   sfxEnabled(): boolean {
     return sys.localStorage.getItem(SFX_KEY) !== '0';
@@ -50,7 +66,7 @@ class GameAudioManager {
   /** 播放音效(节流 80ms/键)。任何用户手势路径都会经过这里,顺带补播被浏览器拦下的 BGM。 */
   sfx(key: string, volumeScale = 1): void {
     this.resumePendingBgm();
-    if (!this.sfxEnabled() || !key) {
+    if (this.held || !this.sfxEnabled() || !key) {
       return;
     }
     const now = Date.now();
@@ -71,7 +87,7 @@ class GameAudioManager {
       return;
     }
     this.pendingBgmKey = key;
-    if (!this.bgmEnabled()) {
+    if (this.held || !this.bgmEnabled()) {
       return;
     }
     if (this.currentBgmKey === key && this.bgmSource?.playing) {
@@ -102,7 +118,7 @@ class GameAudioManager {
   }
 
   private resumePendingBgm(): void {
-    if (this.pendingBgmKey && this.bgmEnabled() && (!this.bgmSource || !this.bgmSource.playing)) {
+    if (!this.held && this.pendingBgmKey && this.bgmEnabled() && (!this.bgmSource || !this.bgmSource.playing)) {
       this.bgm(this.pendingBgmKey);
     }
   }

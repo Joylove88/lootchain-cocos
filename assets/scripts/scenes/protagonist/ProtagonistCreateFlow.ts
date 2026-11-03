@@ -3,6 +3,7 @@ import type { ProtagonistApi } from '../../api/ProtagonistApi';
 import { ApiError } from '../../net/HttpClient';
 import type { ProtagonistCreateFormState, ProtagonistForm, ProtagonistGender } from '../../types/ProtagonistTypes';
 import { ProtagonistCreateState } from './ProtagonistCreateState';
+import { playPrologueVideo, prologueSeen } from './PrologueVideo';
 
 const AWAKEN_PENDING_PREFIX = 'lootchain.awaken.pending.';
 
@@ -180,6 +181,10 @@ export class ProtagonistCreateFlow {
       this.state.rememberServerProfile(profile);
       // docs/60:刚建完的新号进晨风村先演「觉醒」;记在本机,中途刷新 / 掉线下次登录仍会补演(演完或跳过才清)
       markAwakenPending(profile.userId);
+      // docs/60 序幕「神庭陨落」:选完主角后播一次(11-03 用户改顺序),盖在大厅加载上,播完接晨风村觉醒
+      if (!prologueSeen(profile.userId)) {
+        playPrologueVideo(profile.userId, () => undefined);
+      }
       this.host.setStatus(`${profile.protagonistName} 已完成圣契。`);
       this.enterLobbyAfterProtagonistReady();
     } catch (error) {

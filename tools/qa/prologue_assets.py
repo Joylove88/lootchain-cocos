@@ -1,5 +1,5 @@
 """docs/60 序幕「神庭陨落」素材入库(2026-11-03 用户「先接序幕视频」):
-- 视频:周报截图/2026-11-02_主角/video/prologue_720p.mp4(即梦参考生成正片压的 720p30 ~4MB)→ assets/resources/video/prologue.mp4
+- 视频:周报截图/2026-11-02_主角/video/prologue_1080p_crf19.mp4(即梦参考生成正片压的 1080p30 crf19 ~12.9MB;11-03 用户嫌 720p 糊)→ assets/resources/video/prologue.mp4
 - 对话卡头像:人物参考图 proto/prologue_char_ref_v2.png 裁夜帝 / 天枢头部 → ui/protagonist/b/portrait_yedi.png / portrait_tianshu.png(圆形,256)
 用法:python tools/qa/prologue_assets.py
 """
@@ -32,7 +32,7 @@ def round_portrait(box, out):
 
 def main():
     os.makedirs(OUT_VIDEO, exist_ok=True)
-    shutil.copy(os.path.join(SRC, 'video', 'prologue_720p.mp4'), os.path.join(OUT_VIDEO, 'prologue.mp4'))
+    shutil.copy(os.path.join(SRC, 'video', 'prologue_1080p_crf19.mp4'), os.path.join(OUT_VIDEO, 'prologue.mp4'))
     print('video', os.path.getsize(os.path.join(OUT_VIDEO, 'prologue.mp4')))
     for name, box in HEADS.items():
         round_portrait(box, name)
