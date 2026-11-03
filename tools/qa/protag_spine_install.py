@@ -29,6 +29,8 @@ HEAD_TILT = -15.0
 HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-52.0, 50.6)}
 # 要跑 protag_collar_cut.py(立领填脖子 + 头贴图剪脖子)的角色
 COLLAR_FIX = {'protag_f'}
+# 11-03 用户「大招这个姿势头脖子要向右移一些」:大招 0.35~2.5s 仰头段的头骨骼位移键再加世界 x 偏移(只影响这个动作)
+ULT_HEAD_SHIFT_X = {'protag_f': 16.0}
 CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
@@ -64,6 +66,14 @@ def install_spine(src_key, name):
             lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
+    if name in ULT_HEAD_SHIFT_X:
+        import math
+        a = math.radians(CHEST_WORLD_DEG)
+        wx = ULT_HEAD_SHIFT_X[name]
+        for key in data['animations']['ult']['bones']['face01'].get('translate', []):
+            if 0.35 <= key.get('time', 0) <= 2.5:
+                key['x'] = round(key.get('x', 0) + wx * math.cos(a), 2)
+                key['y'] = round(key.get('y', 0) - wx * math.sin(a), 2)
     if name in COLLAR_FIX:
         png = os.path.join(dst, name + '.png')
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'protag_collar_cut.py'), png, png,
