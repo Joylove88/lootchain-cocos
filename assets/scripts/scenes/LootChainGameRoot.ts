@@ -407,6 +407,11 @@ export class LootChainGameRoot extends Component {
   private worldState: WorldStateVO | null = null;
   private worldLoading = false;
   private worldInitDone = false;
+  /**
+   * 11-03 用户「每次登录都先在主城展示一下再切到上次离线的场景」:跑图默认图是主城,世界状态(下线续点)晚到才切图。
+   * 改为开局所在地图定下来并进图之前,大厅只显示「正在进入世界」,不先画主城。
+   */
+  private worldEntryReady = false;
   private worldDialog: WorldDialogState | null = null;
   private worldMapPanel: WorldMapPanelState | null = null;
   private worldBountyPanel: WorldBountyPanelState | null = null;
@@ -1457,6 +1462,33 @@ export class LootChainGameRoot extends Component {
   }
 
   /** 该页首开素材未齐时画加载进度并返回 true;名册额外等玩家已有英雄的卡面立绘。 */
+  /** 开局地图还没定(世界状态没到 / 续点地图素材没进内存):整屏「正在进入世界」,不先画默认的主城。 */
+  private renderWorldEntryGate(layout: UiLayout): void {
+    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panel = this.createUiNode('WorldEntryLoading');
+    panel.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    panel.addComponent(BlockInputEvents);
+    const cover = panel.addComponent(Graphics);
+    cover.fillColor = new Color(10, 12, 18, 255);
+    cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
+    cover.fill();
+    mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
+    this.addChildLabel(panel, 'WorldEntryLoadingTitle', '正在进入世界…', centerX, centerY, 28 * scale, new Color(242, 242, 242, 255), new Size(520 * scale, 40 * scale));
+  }
+
+  /** 开局地图已进好(或世界状态拉取失败,退回默认图):放开大厅,整页重绘。 */
+  private markWorldEntryReady(): void {
+    if (this.worldEntryReady) {
+      return;
+    }
+    this.worldEntryReady = true;
+    if (this.currentView === 'lobby') {
+      this.renderCurrentView();
+    }
+  }
+
   private renderSceneAssetGate(layout: UiLayout): boolean {
     const group = this.sceneAssetGateGroup(this.currentView);
     if (!group) {
@@ -1551,6 +1583,10 @@ export class LootChainGameRoot extends Component {
         void this.loadWorldState();
       }
       const townLayout = this.renderBase();
+      if (!this.worldEntryReady && this.api.tokenStore.tokenValue()) {
+        this.renderWorldEntryGate(townLayout);
+        return;
+      }
       if (!this.renderSceneAssetGate(townLayout)) {
         this.renderLobbyHud(townLayout);
         this.remountLobbyQuestDialogIfOpen(townLayout);
@@ -7553,6 +7589,8 @@ export class LootChainGameRoot extends Component {
       this.applyWorldState(state);
     } catch (error) {
       console.warn('[World] state failed', error);
+      // 拉不到世界状态:别一直挡在「正在进入世界」,退回默认图
+      this.markWorldEntryReady();
     } finally {
       this.worldLoading = false;
     }
@@ -7576,8 +7614,12 @@ export class LootChainGameRoot extends Component {
         const code = last.mapCode as WorldMapCode;
         this.preloadWorldMap(code, () => {
           this.lobbyTownRenderer.enterMap(code, { x: last.x, y: last.y });
-          if (this.currentView === 'lobby') {
-            this.renderCurrentView();
+          if (this.worldEntryReady) {
+            if (this.currentView === 'lobby') {
+              this.renderCurrentView();
+            }
+          } else {
+            this.markWorldEntryReady();
           }
         });
         return;
@@ -7596,10 +7638,19 @@ export class LootChainGameRoot extends Component {
         const enter = target;
         this.preloadWorldMap(enter, () => {
           this.lobbyTownRenderer.enterMap(enter);
-          if (this.currentView === 'lobby') {
-            this.renderCurrentView();
+          if (this.worldEntryReady) {
+            if (this.currentView === 'lobby') {
+              this.renderCurrentView();
+            }
+          } else {
+            this.markWorldEntryReady();
           }
         });
+        return;
+      }
+      // 开局就在默认图(主城):直接放开
+      if (!this.worldEntryReady) {
+        this.markWorldEntryReady();
         return;
       }
     }
