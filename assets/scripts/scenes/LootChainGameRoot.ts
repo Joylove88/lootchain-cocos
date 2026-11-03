@@ -9943,7 +9943,9 @@ export class LootChainGameRoot extends Component {
         copy: {
           title: '英雄契约',
           subtitle: `${LEVEL_CONTRACT_SOURCE[state.storyQuest] ?? `Lv.${state.milestone}`} · 圣契感应到了新的强者,可以再订立一份契约`,
-          line: state.rarity === 'SR' ? '这次回应的是 SR 级的强者。挑一位,马上入队。' : '宿主的力量足以维系新的契约了。挑一位,马上入队。',
+          line: state.candidates.every((c) => c.owned)
+            ? '回应的都是你已经认识的伙伴。订立契约会化作他们的碎片。'
+            : state.rarity === 'SR' ? '这次回应的是 SR 级的强者。挑一位,马上入队。' : '宿主的力量足以维系新的契约了。挑一位,马上入队。',
           confirm: '订立契约',
           confirming: '订立中…',
         },
