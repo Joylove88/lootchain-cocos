@@ -70,13 +70,23 @@ export interface WorldStateVO {
   lastPosition: { mapCode: WorldMapCode; x: number; y: number } | null;
 }
 
-/** 探索度:bits = 已点亮块(格号 = 行 × 8 + 列,行从地图顶边往下),mask = 可探索块,tier = 已发奖档位 0..4。 */
+/** 探索度档位(11-03):到档后在地图页点「领取」,不再自动发。 */
+export interface WorldExploreTierVO {
+  tier: number;
+  percent: number;
+  rewards: WorldRewardItemVO[];
+  reached: boolean;
+  claimed: boolean;
+}
+
+/** 探索度:bits = 已点亮块(格号 = 行 × 8 + 列,行从地图顶边往下),mask = 可探索块,tier = 已领到第几档 0..4。 */
 export interface WorldExploreVO {
   mapCode: WorldMapCode;
   bits: number;
   mask: number;
   percent: number;
   tier: number;
+  tiers: WorldExploreTierVO[];
   /** 已发现兴趣点 key(POI:码 / CHEST:码 / BOSS:关卡码 / WAYPOINT,docs/54 §4)。 */
   found: string[];
   /** 本图全部兴趣点 key。 */

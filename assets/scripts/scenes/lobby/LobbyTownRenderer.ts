@@ -69,6 +69,8 @@ import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 export interface LobbyTownHost extends LobbyHudHost {
   /** 断网遮罩挡着(10-31):野外冻结、不收键盘。 */
   netBlocked?(): boolean;
+  /** 全屏抉择页(契约之选 / 进化抉择)开着:键盘不驱动跑图。 */
+  townInputLocked?(): boolean;
   /** docs/48:冒险之门 = 矿境面板(NPC 矿列表 → 掠夺)。 */
   openLobbyRaidPanel?(): void;
   /** docs/47 P0:本地掠夺原型(无服务端时的回退)。 */
@@ -122,7 +124,7 @@ export interface TownAreaMapInfo {
   exits: Array<{ x: number; y: number; label: string }>;
   places: Array<{ name: string; x: number; y: number; icon: string }>;
   /** 迷雾 / 探索度(docs/53 §2.2):lit = 已点亮格,mask = 可探索格,cols × rows = 8 × 5。 */
-  explore: { lit: number[]; mask: number; percent: number; tier: number; counts: string } | null;
+  explore: { lit: number[]; mask: number; percent: number; tier: number; counts: string; tiers: import('../../types/WorldTypes').WorldExploreTierVO[] } | null;
 }
 
 export interface TownFieldEncounter {
@@ -546,11 +548,21 @@ export class LobbyTownRenderer {
   private shakeDur = 1;
   private leaderActionStart = 0;
   private bufferedInput: { kind: 'attack' } | { kind: 'skill'; index: number } | null = null;
-  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean }> = [];
+  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean; combo?: number }> = [];
   private leaderActionAnim = false;
   private combatButtons: Array<{ node: Node; cd: Label | null; mask: Graphics | null; index: number; size: number; drawn: number; halo: Node | null; haloOn: boolean }> = [];
   // docs/51 队友自动战斗 / 目标锁定 / 野外 HUD
   private inCombat = false;
+  /**
+   * docs/58 §10 进化(客户端生效部分):卡码 → 累计值(SKILL_CD / ROLL / SKILL_DMG / GUARD / SPEED / COMBO3 / MAP_CHEST / MAP_HIDDEN),
+   * evoQualities = 已触发的质变码(HUNT_3 / GUARD_3 / ARCANE_3 / EXPLORE_3)。攻击 / 生命 / 掉落加成在服务端遭遇数值里。
+   */
+  private evo: Record<string, number> = {};
+  private evoQualities = new Set<string>();
+  /** 「翻身反击」:翻滚后这个时刻之前伤害加成。 */
+  private rollBuffUntil = 0;
+  /** 「回响」:技能命中后下一次普攻伤害 +50%。 */
+  private echoReady = false;
   private lastCombatAt = 0;
   private companionHits: Array<{ at: number; target: TownMonster; damage: number; heavy: boolean; actor?: TownActor; skillFx?: boolean }> = [];
   private lockTarget: TownMonster | null = null;
@@ -624,6 +636,27 @@ export class LobbyTownRenderer {
     this.camY = this.pendingSpawn.y;
     this.keys.clear();
     this.joy = { active: false, id: -1, dx: 0, dy: 0 };
+  }
+
+  /** docs/58 §10:登录 / 选完进化后更新已生效的进化效果。 */
+  setEvolution(effects: Record<string, number>, qualities: string[]): void {
+    // 小地图标记(寻宝直觉 / 拾遗之眼)在下次整页重绘时生效(GameRoot 关进化页后会重绘一次)
+    this.evo = { ...effects };
+    this.evoQualities = new Set(qualities);
+  }
+
+  /** 正在和怪群交战(进化抉择等全屏页先不弹)。 */
+  isInCombat(): boolean {
+    return this.inCombat;
+  }
+
+  private evoValue(code: string): number {
+    return this.evo[code] ?? 0;
+  }
+
+  /** 移动速度倍率:疾行 + 探索第 3 层质变「寻踪」+10%。 */
+  private moveMul(): number {
+    return 1 + this.evoValue('SPEED') + (this.evoQualities.has('EXPLORE_3') ? 0.1 : 0);
   }
 
   /** 野外战斗回来(docs/50):赢了这群怪 60 秒后再刷;输了把队伍推离营地,免得一回来又撞上。 */
@@ -1255,7 +1288,7 @@ export class LobbyTownRenderer {
 
   private onKeyDown(event: EventKeyboard): void {
     this.keys.add(event.keyCode);
-    if (!this.isMounted() || !this.layout || this.host.netBlocked?.() || this.awakenLock) {
+    if (!this.isMounted() || !this.layout || this.host.netBlocked?.() || this.host.townInputLocked?.() || this.awakenLock) {
       return;
     }
     if (event.keyCode === KeyCode.KEY_F || event.keyCode === KeyCode.KEY_E || event.keyCode === KeyCode.SPACE || event.keyCode === KeyCode.ENTER) {
@@ -1548,7 +1581,7 @@ export class LobbyTownRenderer {
       places,
       explore: (() => {
         const state = world?.explore?.find((item) => item.mapCode === this.mapCode);
-        return state ? { lit: Array.from(this.exploreLitCells()), mask: state.mask, percent: state.percent, tier: state.tier, counts: this.exploreCountsText(state.found ?? [], state.items ?? []) } : null;
+        return state ? { lit: Array.from(this.exploreLitCells()), mask: state.mask, percent: state.percent, tier: state.tier, counts: this.exploreCountsText(state.found ?? [], state.items ?? []), tiers: state.tiers ?? [] } : null;
       })(),
     };
   }
@@ -1649,8 +1682,8 @@ export class LobbyTownRenderer {
     const wantMove = v.x !== 0 || v.y !== 0;
     if (wantMove) {
       // 俯视 3/4:纵向视觉距离短,速度打八折更自然
-      const nx = leader.x + v.x * LEADER_SPEED * dt;
-      const ny = leader.y + v.y * LEADER_SPEED * 0.8 * dt;
+      const nx = leader.x + v.x * LEADER_SPEED * this.moveMul() * dt;
+      const ny = leader.y + v.y * LEADER_SPEED * this.moveMul() * 0.8 * dt;
       // 10-30 用户「英雄卡位动不了」:被击退 / 传送 / 存档落点落在可走区外时,原规则「目标不可走就不动」会四个方向全锁死;
       // 站在不可走点上时放开移动,走回可走区后恢复正常碰撞(仍不出地图外框)
       const stuck = !this.walkable(leader.x, leader.y);
@@ -1665,7 +1698,7 @@ export class LobbyTownRenderer {
       }
       // 两个轴都被挡(斜着顶墙):沿墙滑——试垂直于输入的两个方向,哪边能走走哪边
       if (leader.x === ox && leader.y === oy) {
-        const step = LEADER_SPEED * dt;
+        const step = LEADER_SPEED * this.moveMul() * dt;
         for (const [sx, sy] of [[-v.y, v.x], [v.y, -v.x]]) {
           const tx = ox + sx * step * 0.7;
           const ty = oy + sy * step * 0.56;
@@ -1769,7 +1802,7 @@ export class LobbyTownRenderer {
         const dy = target.y - actor.y;
         const dist = Math.hypot(dx, dy);
         if (dist > 0.5) {
-          stepLen = Math.min(dist, LEADER_SPEED * 1.35 * dt);
+          stepLen = Math.min(dist, LEADER_SPEED * this.moveMul() * 1.35 * dt);
           stepX = (dx / dist) * stepLen;
           actor.x += stepX;
           actor.y += (dy / dist) * stepLen;
@@ -2463,7 +2496,7 @@ export class LobbyTownRenderer {
       const mask = world?.explore?.find((item) => item.mapCode === this.mapCode)?.mask ?? 0;
       for (const poi of def.pois ?? []) {
         const state = this.poiState(poi, world);
-        if (state === 'found' || (poi.kind === 'HIDDEN' && exploreFogged(this.exploreCellAt(poi.x, poi.y), lit, mask))) {
+        if (state === 'found' || (poi.kind === 'HIDDEN' && this.evoValue('MAP_HIDDEN') <= 0 && exploreFogged(this.exploreCellAt(poi.x, poi.y), lit, mask))) {
           continue;
         }
         const icon = this.addFitSprite(`Poi_${poi.code}`, POI_MAP_ICON[poi.kind], poi.x * mapScale, poi.y * mapScale, P.S(20), P.S(20), content);
@@ -2471,6 +2504,15 @@ export class LobbyTownRenderer {
           icon.grayscale = true;
           icon.color = rgba(255, 255, 255, 150);
         }
+      }
+    }
+    // docs/58 §10 进化「寻宝直觉」:没开过的野外宝箱标在小地图上
+    if (this.evoValue('MAP_CHEST') > 0) {
+      for (const chest of def.chests ?? []) {
+        if (this.chestNodes.get(chest.code)?.opened) {
+          continue;
+        }
+        this.addFitSprite(`Chest_${chest.code}`, 'ui/world/mapui/map_chest/spriteFrame', chest.x * mapScale, chest.y * mapScale, P.S(20), P.S(20), content);
       }
     }
     for (const building of def.buildings) {
@@ -4284,7 +4326,7 @@ export class LobbyTownRenderer {
     this.actionUntil = now + dur * 0.7;
     this.comboUntil = now + dur + 450;
     const ranged = leader.role !== 'melee';
-    this.pendingHits.push({ at: now + dur * 0.38, mult: spec.mult, reach: spec.reach, around: false, heavy: spec.heavy, ranged });
+    this.pendingHits.push({ at: now + dur * 0.38, mult: spec.mult, reach: spec.reach, around: false, heavy: spec.heavy, ranged, combo: this.comboStep });
     gameAudio.sfx(resolveHeroAttackSfxKey(leader.hero.heroCode, leader.hero.heroClass, !ranged), spec.heavy ? 0.8 : 0.6);
   }
 
@@ -4307,7 +4349,7 @@ export class LobbyTownRenderer {
     this.actionUntil = now + dur * (seg.heavy ? 0.85 : Math.min(0.8, seg.hitAt + 0.18));
     this.comboUntil = now + dur + 500;
     const ranged = leader.role !== 'melee';
-    this.pendingHits.push({ at: now + dur * seg.hitAt, mult: seg.mult, reach: seg.reach, around: !!seg.around, heavy: seg.heavy, ranged });
+    this.pendingHits.push({ at: now + dur * seg.hitAt, mult: seg.mult, reach: seg.reach, around: !!seg.around, heavy: seg.heavy, ranged, combo: this.comboStep });
     gameAudio.sfx(resolveHeroAttackSfxKey(leader.hero.heroCode, leader.hero.heroClass, !ranged), seg.heavy ? 0.85 : 0.6);
   }
 
@@ -4326,7 +4368,7 @@ export class LobbyTownRenderer {
       return;
     }
     const spec = LobbyTownRenderer.SKILLS[index];
-    this.skillReadyAt[index] = now + spec.cdMs;
+    this.skillReadyAt[index] = now + this.skillCdMs(index);
     this.comboUntil = 0;
     const leader = this.leader;
     // 大招键(旋风斩 = 'ult'):R / SR 自带大招动作 skill4 约 2.5 秒,上限放到 1.8 秒(原 1.0 秒会快进成一闪)
@@ -4359,6 +4401,11 @@ export class LobbyTownRenderer {
     }
   }
 
+  /** 技能冷却:进化「冥想」按比例缩短。 */
+  private skillCdMs(index: number): number {
+    return Math.round(LobbyTownRenderer.SKILLS[index].cdMs * (1 - Math.min(0.5, this.evoValue('SKILL_CD'))));
+  }
+
   private leaderDodge(): void {
     const leader = this.leader;
     const now = Date.now();
@@ -4376,6 +4423,9 @@ export class LobbyTownRenderer {
     this.actionUntil = now + 250;
     this.iframesUntil = now + 400;
     this.dodgeReadyAt = now + 1200;
+    if (this.evoValue('ROLL') > 0) {
+      this.rollBuffUntil = now + 250 + 2000;
+    }
     this.comboUntil = 0;
     this.bufferedInput = null;
     this.leaderActionAnim = false;
@@ -5445,7 +5495,7 @@ export class LobbyTownRenderer {
     }
     // 脱战回血:4 秒没挨打,每秒回 8%
     if (!this.leaderDead && this.leaderHp < this.leaderMaxHp && now - this.lastHurtAt > 4000) {
-      this.leaderHp = Math.min(this.leaderMaxHp, this.leaderHp + this.leaderMaxHp * 0.08 * dt);
+      this.leaderHp = Math.min(this.leaderMaxHp, this.leaderHp + this.leaderMaxHp * 0.08 * (this.evoQualities.has('EXPLORE_3') ? 2 : 1) * dt);
       this.drawLeaderHp();
     }
     for (const actor of this.followers) {
@@ -5484,13 +5534,28 @@ export class LobbyTownRenderer {
     this.refreshPartyHud(now);
   }
 
-  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean }): void {
+  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean; combo?: number }): void {
     const leader = this.leader;
     if (!leader) {
       return;
     }
     const attack = Math.max(1, this.raiderAttack || 20);
-    const damage = Math.max(1, Math.round(attack * hit.mult));
+    // docs/58 §10 进化:秘能(技能伤害)/ 翻身反击(翻滚后 2 秒)/ 回响(技能命中后下一次普攻 +50%)/ 三段裂地(第三段范围 + 眩晕)
+    let mult = hit.mult;
+    if (hit.skill !== undefined) {
+      mult *= 1 + this.evoValue('SKILL_DMG');
+    } else if (this.echoReady) {
+      mult *= 1.5;
+      this.echoReady = false;
+    }
+    if (Date.now() < this.rollBuffUntil) {
+      mult *= 1 + this.evoValue('ROLL');
+    }
+    const slam = hit.skill === undefined && hit.combo === 3 && this.evoValue('COMBO3') > 0;
+    if (slam) {
+      hit = { ...hit, reach: hit.reach * (1 + this.evoValue('COMBO3')) };
+    }
+    const damage = Math.max(1, Math.round(attack * mult));
     const root = this.entityRoot;
     const kit = this.kitOf(leader);
     if (hit.skill !== undefined && root) {
@@ -5571,6 +5636,16 @@ export class LobbyTownRenderer {
       this.impactMonster(monster, leader, hit.heavy || hit.skill !== undefined, !landed, hit.skill !== undefined);
       landed = true;
       this.damageMonster(monster, damage, hit.heavy, false);
+      if (slam && !monster.dead) {
+        // 三段裂地:眩晕 0.5 秒(不出手、不走动)
+        const now = Date.now();
+        monster.nextAttackAt = Math.max(monster.nextAttackAt, now + 500);
+        monster.windupUntil = 0;
+        monster.animLockUntil = Math.max(monster.animLockUntil, now + 500);
+      }
+    }
+    if (landed && hit.skill !== undefined && this.evoQualities.has('ARCANE_3')) {
+      this.echoReady = true;
     }
     if (!landed && hit.skill === undefined && root) {
       // 挥空也要有刀光:在身前贴一记斩击图
@@ -5691,6 +5766,13 @@ export class LobbyTownRenderer {
   private killMonster(monster: TownMonster): void {
     monster.dead = true;
     monster.diedAt = Date.now();
+    if (this.evoQualities.has('HUNT_3') && !monster.camp.dummy && this.leader && !this.leaderDead && this.leaderMaxHp > 0) {
+      // docs/58 §10 猎杀第 3 层质变「嗜血」
+      const heal = Math.round(this.leaderMaxHp * 0.03);
+      this.leaderHp = Math.min(this.leaderMaxHp, this.leaderHp + heal);
+      this.spawnFloater(this.leader.x, this.leader.y + 250, `+${heal}`, rgba(120, 230, 140), 24);
+      this.drawLeaderHp();
+    }
     monster.hpBar?.clear();
     if (monster.nameLabel && monster.nameLabel.isValid) {
       monster.nameLabel.node.active = false;
@@ -6147,6 +6229,14 @@ export class LobbyTownRenderer {
   }
 
   private hurtActor(actor: TownActor, amount: number): void {
+    // docs/58 §10 进化:铁壁按比例减伤;坚壁 = 生命低于 30% 时再 -30%
+    const hp = actor === this.leader ? this.leaderHp : actor.hp;
+    const maxHp = actor === this.leader ? this.leaderMaxHp : actor.maxHp;
+    let scale = 1 - Math.min(0.6, this.evoValue('GUARD'));
+    if (this.evoQualities.has('GUARD_3') && maxHp > 0 && hp < maxHp * 0.3) {
+      scale *= 0.7;
+    }
+    amount = Math.max(1, Math.round(amount * scale));
     if (actor === this.leader) {
       this.hurtLeader(amount);
       return;
@@ -6540,7 +6630,7 @@ export class LobbyTownRenderer {
         continue;
       }
       const readyAt = button.index >= 0 ? this.skillReadyAt[button.index] : button.index === -2 ? this.dodgeReadyAt : 0;
-      const total = button.index >= 0 ? LobbyTownRenderer.SKILLS[button.index].cdMs : 1200;
+      const total = button.index >= 0 ? this.skillCdMs(button.index) : 1200;
       const left = Math.max(0, readyAt - now);
       if (button.cd && button.cd.isValid) {
         const text = left > 0 && button.index >= 0 ? `${Math.ceil(left / 1000)}` : '';

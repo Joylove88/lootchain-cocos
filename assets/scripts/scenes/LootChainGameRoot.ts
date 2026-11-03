@@ -106,6 +106,8 @@ import { clearAwakenPending, isAwakenPending, ProtagonistCreateFlow, type Protag
 import { playPrologueVideo, prologuePlaying, prologueSeen } from './protagonist/PrologueVideo';
 import { LobbyAwakenCinematic, type AwakenCinematicHost } from './lobby/LobbyAwakenCinematic';
 import { LobbyContractPickRenderer, type ContractPickHost, type ContractPickState } from './lobby/LobbyContractPickRenderer';
+import { LobbyEvolutionPickRenderer, type EvolutionPickHost, type EvolutionPickState } from './lobby/LobbyEvolutionPickRenderer';
+import type { EvolutionState } from '../api/EvolutionApi';
 import { ProtagonistCreateRenderer, type ProtagonistCreateRendererHost } from './protagonist/ProtagonistCreateRenderer';
 import {
   LobbyBackgroundController,
@@ -398,6 +400,17 @@ export class LootChainGameRoot extends Component {
     this as unknown as ContractPickHost,
     (heroCode) => this.selectStarterContract(heroCode),
     () => void this.confirmStarterContract(),
+  );
+  // docs/58 §10 进化抉择:升级后 3 选 1(本会话进大厅查一次 + 每次升级再查;战斗中 / 有别的浮层时先不弹)
+  private evolutionPick: EvolutionPickState | null = null;
+  private evolutionState: EvolutionState | null = null;
+  private evolutionCheckDue = true;
+  private evolutionLoading = false;
+  private readonly evolutionPickRenderer = new LobbyEvolutionPickRenderer(
+    this as unknown as EvolutionPickHost,
+    (key) => this.selectEvolutionCard(key),
+    () => void this.confirmEvolution(),
+    () => void this.refreshEvolution(),
   );
   /** docs/50 跑图世界:NPC 对话 / 世界地图 / 悬赏三个浮层。 */
   private readonly lobbyWorldOverlayRenderer = new LobbyWorldOverlayRenderer(this as unknown as import('./lobby/LobbyWorldOverlayRenderer').LobbyWorldOverlayHost);
@@ -1592,6 +1605,7 @@ export class LootChainGameRoot extends Component {
         this.remountLobbyQuestDialogIfOpen(townLayout);
         this.awakenCinematic.remount(townLayout);
         this.remountStarterContract(townLayout);
+        this.remountEvolutionPick(townLayout);
       }
       gameAudio.bgm('bgm_lobby');
       if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
@@ -2136,6 +2150,7 @@ export class LootChainGameRoot extends Component {
     }
     this.awakenCinematic.remount(layout);
     this.remountStarterContract(layout);
+    this.remountEvolutionPick(layout);
     this.layoutKey = this.makeLayoutKey();
   }
 
@@ -2417,8 +2432,8 @@ export class LootChainGameRoot extends Component {
       this.awakenCinematic.skip();
       return;
     }
-    if (this.contractPick) {
-      // 契约之选必须选一名,返回键不关
+    if (this.contractPick || this.evolutionPick) {
+      // 契约之选 / 进化抉择必须选一张,返回键不关
       return;
     }
     const contentRoot = this.ensureContentRoot();
@@ -7902,6 +7917,16 @@ export class LootChainGameRoot extends Component {
     this.lobbyTownRenderer.startChannel(sec, `传送至 ${map.mapName}…`, () => this.travelWorldMap(code, null));
   }
 
+  /** 地图页领取探索度档位奖励(11-03):领完重画地图页(按钮变「已领取」)。 */
+  claimExploreTier(mapCode: WorldMapCode, tier: number): void {
+    void this.runWorldAction(() => this.api.world.claimExploreTier(mapCode, tier)).then((ok) => {
+      if (ok) {
+        gameAudio.sfx('reward');
+      }
+      this.syncLobbyShopOverlay();
+    });
+  }
+
   /** 世界地图「传送」钮下的说明(传送阵上立即 / 别处读条 / 交战中不能传)。 */
   worldTeleportNote(): string {
     const sec = this.lobbyTownRenderer.teleportChannelSec();
@@ -9063,6 +9088,10 @@ export class LootChainGameRoot extends Component {
 
   /** docs/08 升级礼包:逢 5 级服务端投礼包邮件,等级涨了就回读邮件(不标已读)和红点,邮箱红点立刻亮。 */
   onPlayerLevelUp(before: number, after: number): void {
+    // docs/58 §10:每升一级一次进化抉择(战斗中升级 → 打完再弹)
+    if (after > before) {
+      this.evolutionCheckDue = true;
+    }
     if (Math.floor(after / 5) > Math.floor(before / 5)) {
       void this.loadLobbyMails(false, false);
       void this.loadLobbyBadges(true);
@@ -9700,7 +9729,7 @@ export class LootChainGameRoot extends Component {
     }
     this.awakenCheckAt = now + 500;
     const userId = this.api.tokenStore.userId();
-    if (!userId || this.bootPreloadActive || this.contractPick || this.lobbyHasOpenLayer() || prologuePlaying()) {
+    if (!userId || this.bootPreloadActive || this.contractPick || this.evolutionPick || this.lobbyHasOpenLayer() || prologuePlaying()) {
       return;
     }
     if (!isAwakenPending(userId)) {
@@ -9708,6 +9737,12 @@ export class LootChainGameRoot extends Component {
       if (this.contractCheckedUid !== userId && this.lobbyTownRenderer.awakenStageReady()) {
         this.contractCheckedUid = userId;
         void this.checkStarterContract();
+        return;
+      }
+      // 进化抉择:契约之选查过之后;战斗中不弹(打完再弹)
+      if (this.evolutionCheckDue && this.contractCheckedUid === userId && !this.evolutionLoading && !this.lobbyTownRenderer.isInCombat()) {
+        this.evolutionCheckDue = false;
+        void this.checkEvolution();
       }
       return;
     }
@@ -9722,6 +9757,129 @@ export class LootChainGameRoot extends Component {
       this.contractCheckedUid = userId;
       void this.checkStarterContract();
     });
+  }
+
+  // ── docs/58 §10 进化抉择 ──
+
+  private async checkEvolution(): Promise<void> {
+    this.evolutionLoading = true;
+    try {
+      const state = await this.api.evolution.state();
+      this.applyEvolutionState(state);
+      if (state.choice && this.currentView === 'lobby' && !this.contractPick) {
+        this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
+        this.renderEvolutionPick();
+      }
+    } catch (error) {
+      console.warn('[Evolution] state failed', error);
+    } finally {
+      this.evolutionLoading = false;
+    }
+  }
+
+  /** 跑图键盘锁:契约之选 / 进化抉择开着时(LobbyTownHost)。 */
+  townInputLocked(): boolean {
+    return !!this.contractPick || !!this.evolutionPick;
+  }
+
+  /** 默认选中中间那张(原型选中态在中间)。 */
+  private defaultEvolutionKey(state: EvolutionState): string {
+    const cards = state.choice?.candidates ?? [];
+    return cards[Math.min(1, cards.length - 1)]?.key ?? '';
+  }
+
+  /** 已生效进化交给跑图(技能冷却 / 移速 / 受伤减免 / 小地图等客户端效果)。 */
+  private applyEvolutionState(state: EvolutionState): void {
+    this.evolutionState = state;
+    this.lobbyTownRenderer.setEvolution(state.effects, state.qualities.filter((q) => q.active).map((q) => q.code));
+  }
+
+  private selectEvolutionCard(key: string): void {
+    if (!this.evolutionPick || this.evolutionPick.busy) {
+      return;
+    }
+    this.evolutionPick = { ...this.evolutionPick, selected: key, error: '' };
+    this.renderEvolutionPick();
+  }
+
+  private async confirmEvolution(): Promise<void> {
+    const pick = this.evolutionPick;
+    const choice = pick?.state.choice;
+    if (!pick || !choice || pick.busy || !pick.selected) {
+      return;
+    }
+    this.evolutionPick = { ...pick, busy: true, error: '' };
+    this.renderEvolutionPick();
+    try {
+      const state = await this.api.evolution.pick(choice.id, pick.selected);
+      const card = choice.candidates.find((c) => c.key === pick.selected);
+      this.applyEvolutionState(state);
+      gameAudio.sfx('reward');
+      const newQuality = state.qualities.find((q) => q.active && !pick.state.qualities.find((old) => old.code === q.code)?.active);
+      if (state.choice) {
+        // 还有积压的抉择:接着选下一次
+        this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
+        this.renderEvolutionPick();
+      } else {
+        this.evolutionPick = null;
+        this.removeNodeFromContent(LobbyEvolutionPickRenderer.NODE_NAME);
+        this.setTownHudVisible(true);
+        // 寻宝直觉 / 拾遗之眼:小地图标记要整页重绘一次才出来
+        if (card?.code.startsWith('MAP_')) {
+          this.renderCurrentView();
+        }
+      }
+      const floats = ['进化 · ' + (card?.name ?? '')];
+      if (newQuality) {
+        floats.push('质变 · ' + newQuality.name + ':' + newQuality.desc);
+      }
+      this.spawnRewardFloats(floats);
+    } catch (error) {
+      this.evolutionPick = { ...pick, busy: false, error: (error as Error)?.message || '进化没有成功,再试一次' };
+      this.renderEvolutionPick();
+    }
+  }
+
+  private async refreshEvolution(): Promise<void> {
+    const pick = this.evolutionPick;
+    const choice = pick?.state.choice;
+    if (!pick || !choice || pick.busy) {
+      return;
+    }
+    this.evolutionPick = { ...pick, busy: true, error: '' };
+    this.renderEvolutionPick();
+    try {
+      const state = await this.api.evolution.refresh(choice.id);
+      this.applyEvolutionState(state);
+      if (choice.refreshPrice > 0) {
+        void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+      }
+      this.evolutionPick = state.choice ? { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' } : null;
+      this.renderEvolutionPick();
+    } catch (error) {
+      const message = (error as Error)?.message || '刷新失败';
+      const error2 = /余额不足/.test(message) ? '钻石不够了,这次刷新要 ' + choice.refreshPrice + ' 钻石' : message;
+      this.evolutionPick = { ...pick, busy: false, error: error2 };
+      this.renderEvolutionPick();
+    }
+  }
+
+  private renderEvolutionPick(): void {
+    this.removeNodeFromContent(LobbyEvolutionPickRenderer.NODE_NAME);
+    if (this.evolutionPick && this.currentView === 'lobby') {
+      this.setTownHudVisible(false);
+      this.evolutionPickRenderer.render(this.resolveLayout(), this.evolutionPick);
+    } else if (!this.contractPick) {
+      this.setTownHudVisible(true);
+    }
+  }
+
+  private remountEvolutionPick(layout: UiLayout): void {
+    if (this.evolutionPick && this.currentView === 'lobby') {
+      this.removeNodeFromContent(LobbyEvolutionPickRenderer.NODE_NAME);
+      this.setTownHudVisible(false);
+      this.evolutionPickRenderer.render(layout, this.evolutionPick);
+    }
   }
 
   // ── docs/58 契约之选 ──

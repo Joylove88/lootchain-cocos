@@ -28,7 +28,12 @@ export class WorldApi {
     return this.http.post<unknown>('/api/player/world/waypoint/activate', { mapCode }).then(validateAction);
   }
 
-  /** 探索上报(docs/53 §2.2):新点亮的格号;到档服务端自动发奖。 */
+  /** 领取探索度档位奖励(11-03,地图页):tier = 1..4,领高档顺带补领下面没领的档。 */
+  claimExploreTier(mapCode: WorldMapCode, tier: number): Promise<WorldActionResultVO> {
+    return this.http.post<unknown>('/api/player/world/explore/claim', { mapCode, target: String(tier) }).then(validateAction);
+  }
+
+  /** 探索上报(docs/53 §2.2):新点亮的格号;到新档只提示,奖励去地图页领。 */
   reportExplore(mapCode: WorldMapCode, cells: number[]): Promise<WorldActionResultVO> {
     return this.http.post<unknown>('/api/player/world/explore/report', { mapCode, target: cells.join(',') }).then(validateAction);
   }
@@ -221,7 +226,20 @@ function validateState(data: unknown): WorldStateVO {
       const code = readText(record, 'mapCode', 16, 'CITY') as WorldMapCode;
       const num = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
       const keys = (field: string): string[] => readArray(record, field, 64).map((key) => (typeof key === 'string' ? key.slice(0, 40) : '')).filter((key) => !!key);
-      return { mapCode: code, bits: num(record.bits), mask: num(record.mask), percent: readInteger(record.percent, 0, 100), tier: readInteger(record.tier, 0, 4), found: keys('found'), items: keys('items') };
+      const tiers = readArray(record, 'tiers', 8).map((raw) => {
+        const t = isRecord(raw) ? raw : {};
+        return {
+          tier: readInteger(t.tier, 0, 8),
+          percent: readInteger(t.percent, 0, 100),
+          rewards: readArray(t, 'rewards', 8).map((item) => {
+            const r = isRecord(item) ? item : {};
+            return { resourceType: readText(r, 'resourceType', 32, ''), resourceCode: readText(r, 'resourceCode', 64, ''), resourceName: readText(r, 'resourceName', 32, ''), amount: num(r.amount) };
+          }).filter((r) => !!r.resourceCode),
+          reached: t.reached === true,
+          claimed: t.claimed === true,
+        };
+      }).filter((t) => t.tier > 0);
+      return { mapCode: code, bits: num(record.bits), mask: num(record.mask), percent: readInteger(record.percent, 0, 100), tier: readInteger(record.tier, 0, 4), tiers, found: keys('found'), items: keys('items') };
     }),
     openedChests: readArray(data, 'openedChests', 64).map((code) => (typeof code === 'string' ? code.slice(0, 32) : '')).filter((code) => !!code),
     gatheredToday: readArray(data, 'gatheredToday', 64).map((code) => (typeof code === 'string' ? code.slice(0, 32) : '')).filter((code) => !!code),

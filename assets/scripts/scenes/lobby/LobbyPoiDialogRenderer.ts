@@ -249,12 +249,18 @@ export class LobbyPoiDialogRenderer {
     this.T(card, 'Sub', state.progressText, L(722), Y(229), 21, GLASS_COLOR.sub, S(500), S);
     mountGlassLine(this.host, card, 'Div', L(935), Y(259), S(606), Math.max(1, S(1.2)), rgba(255, 255, 255, 34));
     this.body(card, 'Story', text.body, L(645), Y(275), 25, 39, 590, S);
+    // 11-03 用户截图:第三条奖励超出卡片右边 → 整行按卡片内宽(原型 645 ~ 1228)排,放不下就等比缩窄
+    // (探索度档位奖励已改为地图页按档领取,不再混进隐藏点奖励)
     const chips = state.rewards.slice(0, 3);
+    const gap = 16;
+    const widths = chips.map((item) => Math.max(190, textWidth(`${item.resourceName} ×${item.amount}`, 23) + 96));
+    const total = widths.reduce((sum, w) => sum + w, 0) + gap * Math.max(0, chips.length - 1);
+    const fit = Math.min(1, (1228 - 645) / Math.max(1, total));
     let x = L(645);
     chips.forEach((item, i) => {
-      const w = S(Math.max(190, textWidth(`${item.resourceName} ×${item.amount}`, 23) + 96));
+      const w = S(widths[i] * fit);
       this.rewardChip(card, `Reward_${i}`, item, x + w / 2, Y(438), w, S(53), S, k);
-      x += w + S(16);
+      x += w + S(gap * fit);
     });
     mountGlassButton(this.host, card, 'Ok', '收下', L(1125), Y(520), S(238), S(61), k * 1.15, 'primary', () => this.host.closeWorldPoiDialog(), 26);
   }

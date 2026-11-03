@@ -1,4 +1,4 @@
-import { BlockInputEvents, Button, Color, EventTouch, Graphics, HorizontalTextAlignment, Mask, Node, Size, Sprite, UIOpacity, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Button, Color, EventTouch, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UIOpacity, UITransform, Vec3 } from 'cc';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { GLASS_COLOR, GLASS_ICON, GLASS_SLICES, glassLabel, glassProtoMap, mountGlassButton, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
@@ -9,7 +9,12 @@ import { townCoordText } from './LobbyTownPathfinder';
 import { POI_MAP_ICON, worldAsset } from './LobbyWorldMaps';
 import { exploreFogged, mountExploreCloud } from './LobbyTownRenderer';
 
-/** 探索度四档奖励(和服务端 FieldExploreRules.tierRewards 一致,只用来显示下一档)。 */
+/** 千分位(原生 toLocaleString 不出千分位,自己拼)。 */
+function fmtNum(n: number): string {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/** 探索度四档奖励(和服务端 FieldExploreRules.tierRewards 一致;服务端没下发档位时兜底显示)。 */
 const EXPLORE_TIERS: Array<{ percent: number; text: string }> = [
   { percent: 25, text: '金币 800' },
   { percent: 50, text: '金币 1,500 · 初级强化石 ×2' },
@@ -58,6 +63,8 @@ export interface LobbyAreaMapHost {
   selectWorldMapPoint(code: string | null): void;
   teleportWorldMap(code: WorldMapCode): void;
   worldTeleportNote?(): string;
+  /** 领取探索度档位奖励(11-03)。 */
+  claimExploreTier?(mapCode: WorldMapCode, tier: number): void;
 }
 
 /**
@@ -350,16 +357,16 @@ export class LobbyAreaMapRenderer {
       g.fill();
       this.textChip(marks, 'MeLabel', p.x, p.y + S(42), '你', S, k);
     }
-    // 探索度(框内左上):百分比 + 下一档奖励
+    // 探索度(框内左上):百分比 + 兴趣点计数;下面一排四档奖励(11-03 用户:档位奖励单独放地图页,到档点「领取」)
     if (ex) {
-      const next = EXPLORE_TIERS.find((tier) => ex.percent < tier.percent);
-      const head = next ? `探索度 ${ex.percent}%  ·  ${next.percent}% 奖励:${next.text}` : `探索度 100%  ·  已全部探索`;
+      const head = ex.percent >= 100 ? '探索度 100%  ·  已全部探索' : `探索度 ${ex.percent}%`;
       // 兴趣点计数接在后面(docs/54 §4:探索度 = 区块 40% + 兴趣点 60%)
       const text = ex.counts ? `${head}  ·  ${ex.counts}` : head;
       const cw = this.chipWidth(text, S) + S(10);
       const chip = this.host.addChildPlainNode(frame, 'Explore', -frameW / 2 + S(16) + cw / 2, frameH / 2 - S(36), cw, S(40));
       mountGlassSlice(this.host, chip, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, cw, S(40), S(40) / 48);
-      glassLabel(this.host, chip, 'Text', text, 0, 0, S(19), next ? GLASS_COLOR.text : CHAMPAGNE, cw - S(20), HorizontalTextAlignment.CENTER);
+      glassLabel(this.host, chip, 'Text', text, 0, 0, S(19), ex.percent >= 100 ? CHAMPAGNE : GLASS_COLOR.text, cw - S(20), HorizontalTextAlignment.CENTER);
+      this.renderExploreTiers(frame, ex, info.mapCode, -frameW / 2 + S(16), frameH / 2 - S(92), S, k);
     }
     // 图例
     // 10-30 加隐藏点 / 石碑 / 采集三项(docs/54):胶囊往右加宽,前 6 项位置不变
@@ -441,6 +448,38 @@ export class LobbyAreaMapRenderer {
       row.addComponent(Button);
       row.on(Button.EventType.CLICK, () => this.host.setAreaMapDest({ x: place.x, y: place.y, label: place.name }));
       this.host.applyImageButtonFeedback(row, 1.02, 0.98);
+    });
+  }
+
+  /**
+   * 探索度四档奖励(11-03):一排四张小卡「25% · 金币 800」,右侧状态 = 领取(到档未领,香槟金按钮)/ 已领取 / 还差 n%。
+   * 服务端没下发档位(老服务端)时按本地表只显示不能领。
+   */
+  private renderExploreTiers(frame: Node, ex: NonNullable<TownAreaMapInfo['explore']>, mapCode: WorldMapCode, left: number, y: number, S: (v: number) => number, k: number): void {
+    const tiers = ex.tiers.length > 0
+      ? ex.tiers
+      : EXPLORE_TIERS.map((t, i) => ({ tier: i + 1, percent: t.percent, rewards: [], reached: ex.percent >= t.percent, claimed: ex.tier > i, text: t.text }));
+    const w = S(300);
+    const h = S(54);
+    const gap = S(10);
+    tiers.forEach((tier, i) => {
+      const x = left + w / 2 + i * (w + gap);
+      const node = this.host.addChildPlainNode(frame, `ExploreTier_${tier.tier}`, x, y, w, h);
+      const ready = tier.reached && !tier.claimed && ex.tiers.length > 0;
+      mountGlassSlice(this.host, node, 'Bg', ready ? GLASS_SLICES.rowReady : GLASS_SLICES.panel, 0, 0, w, h, k);
+      const rewardText = 'text' in tier ? (tier as { text: string }).text : tier.rewards.map((r) => `${r.resourceName} ${r.resourceCode === 'GOLD' ? fmtNum(r.amount) : '×' + r.amount}`).join(' · ');
+      glassLabel(this.host, node, 'Pct', `${tier.percent}%`, -w / 2 + S(14), S(11), S(19), tier.reached ? CHAMPAGNE : GLASS_COLOR.sub, S(60), HorizontalTextAlignment.LEFT, true);
+      const reward = glassLabel(this.host, node, 'Reward', rewardText, -w / 2 + S(14), -S(12), S(16), tier.claimed ? GLASS_COLOR.dim : GLASS_COLOR.text, w - S(106), HorizontalTextAlignment.LEFT);
+      reward.overflow = Label.Overflow.SHRINK;
+      reward.node.getComponent(UITransform)?.setContentSize(w - S(106), S(22));
+      const sx = w / 2 - S(46);
+      if (ready) {
+        const btn = mountGlassButton(this.host, node, 'Claim', '领取', sx, 0, S(76), S(36), k, 'primary', () => this.host.claimExploreTier?.(mapCode, tier.tier), 18);
+        void btn;
+      } else {
+        const state = tier.claimed ? '已领取' : tier.reached ? '可领取' : `差 ${Math.max(1, tier.percent - ex.percent)}%`;
+        glassLabel(this.host, node, 'State', state, sx, 0, S(17), tier.claimed ? GLASS_COLOR.dim : GLASS_COLOR.sub, S(80), HorizontalTextAlignment.CENTER);
+      }
     });
   }
 
