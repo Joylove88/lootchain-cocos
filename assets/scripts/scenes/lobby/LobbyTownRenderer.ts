@@ -338,20 +338,35 @@ const MONSTER_ART_FACING: 1 | -1 = 1;
 
 /** docs/60 §12 突破试炼「心魔 · 昔日的自己」:就地展开的心境石台(不换地图,坐标同步照常),只有主角和自己的暗影单挑。 */
 export const REALM_TRIAL_STAGE = 'REALM_TRIAL';
-const REALM_TRIAL_ARENA = 'ui/realm/trial_arena/spriteFrame';
-/** 石台贴图世界尺寸(原图 1536×1024)与可走椭圆(比石台略收,脚别踩到雾里)。 */
-const REALM_TRIAL_ART_W = 1700;
-const REALM_TRIAL_ART_H = 1133;
-const REALM_TRIAL_WALK_RX = 660;
-const REALM_TRIAL_WALK_RY = 370;
+/**
+ * 心境整景底图(11-04 用户「战斗场景和原型图一致」:从原型 realm_trial_xinmo_b 去掉人物 / 界面出的干净底板,
+ * 雾中石台 + 四周褪色的村屋围栏,原图 1536×1024)。试炼期间镜头钉在石台中心,底图按当前画面铺满(略大一圈),
+ * 构图和原型一致;图里石台中心在 (790, 520)、半轴约 (700, 300)。可走椭圆 / 开场站位都按画面比例取(原型实测)。
+ */
+const REALM_TRIAL_ARENA = 'ui/realm/trial_scene/spriteFrame';
+const REALM_TRIAL_ART_COVER = 1.08;
+const REALM_TRIAL_ART_CENTER = { x: 790 / 1536 - 0.5, y: 0.5 - 520 / 1024 };
+const REALM_TRIAL_WALK = { rx: 0.40, ry: 0.24 };
+/** 原型里主角脚下在画面 (0.33, 0.69)、心魔在 (0.62, 0.41) → 相对画面中心的比例。 */
+const REALM_TRIAL_LEADER_FRAC = { x: -0.17, y: -0.19 };
+const REALM_TRIAL_MONSTER_FRAC = { x: 0.12, y: 0.09 };
+/** 暗影:同一副主角骨骼压成近黑的烟灰色。 */
+const REALM_TRIAL_TINT = rgba(62, 64, 78, 255);
 /** 限时 3 分钟;心魔血量 = 主角攻击 × 45(普攻 + 技能约 30~60 秒),每击 = 主角生命 6%。 */
 export const REALM_TRIAL_LIMIT_MS = 180_000;
 const REALM_TRIAL_HP_PER_ATTACK = 45;
 const REALM_TRIAL_HIT_SHARE = 0.06;
+/** 心魔开场静止时长(零说完台词再动手)。 */
+const REALM_TRIAL_INTRO_MS = 3500;
 
 interface RealmTrialRun {
   cx: number;
   cy: number;
+  /** 按开场时的画面算出的可走半轴与开场站位(世界坐标偏移)。 */
+  walkRx: number;
+  walkRy: number;
+  leaderAt: { x: number; y: number };
+  monsterAt: { x: number; y: number };
   /** 开始时队长的位置:结束送回这里(石台可能盖在建筑 / 水面上,不能停在里面)。 */
   homeX: number;
   homeY: number;
@@ -362,6 +377,8 @@ interface RealmTrialRun {
   nodes: Node[];
   savedMonsters: TownMonster[];
   monster: TownMonster | null;
+  /** 开场静止到这个时刻(心魔站着不动、不出手)。 */
+  introUntil: number;
   tinted: boolean;
   over: boolean;
   onWin: (durationMs: number) => void;
@@ -712,8 +729,14 @@ export class LobbyTownRenderer {
     this.setLockTarget(null);
     this.pendingHits = [];
     this.companionHits = [];
-    const cx = leader.x + 120;
-    const cy = leader.y + 60;
+    const view = this.viewSize();
+    const artW = Math.max(view.w, view.h * 1.5) * REALM_TRIAL_ART_COVER;
+    const artH = artW / 1.5;
+    const leaderAt = { x: view.w * REALM_TRIAL_LEADER_FRAC.x, y: view.h * REALM_TRIAL_LEADER_FRAC.y };
+    const monsterAt = { x: view.w * REALM_TRIAL_MONSTER_FRAC.x, y: view.h * REALM_TRIAL_MONSTER_FRAC.y };
+    // 石台中心放在队长右上,开场队长正好站在原型的位置上
+    const cx = leader.x - leaderAt.x;
+    const cy = leader.y - leaderAt.y;
     const hidden: Node[] = [];
     for (const child of entities.children) {
       if (child !== leader.node && child.active) {
@@ -744,12 +767,17 @@ export class LobbyTownRenderer {
     vg.fill();
     nodes.push(veil);
     // 贴图没进缓存时 addSprite 只发请求返回 null:stepRealmTrial 每帧补挂(跑图层不会整页重绘)
-    const arena = this.host.addChildPlainNode(ground, 'RealmTrialArena', cx, cy, REALM_TRIAL_ART_W, REALM_TRIAL_ART_H);
-    this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, REALM_TRIAL_ART_W, REALM_TRIAL_ART_H, arena);
+    const arena = this.host.addChildPlainNode(ground, 'RealmTrialArena', cx - REALM_TRIAL_ART_CENTER.x * artW, cy - REALM_TRIAL_ART_CENTER.y * artH, artW, artH);
+    this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, artW, artH, arena);
     nodes.push(arena);
     const camp: WorldMapCamp = {
       stageCode: REALM_TRIAL_STAGE, label: '昔日的自己', monsterCode: 'XINMO', spine, count: 1, elite: true, level: 1,
-      x: cx + 240, y: cy + 130, radius: 2000,
+      x: cx + monsterAt.x, y: cy + monsterAt.y, radius: 2000,
+      // 11-04 用户「心魔加血红光影缠绕身体」:A49-454 飘带光弧染血红绕身 + 脚下暗红符文阵
+      aura: {
+        ground: { effect: 'v2_a47_162', animation: 'fz', size: 300, squash: 0.34 },
+        rise: { effect: 'v2_a49_454', animation: 'idle', size: 330, y: 125, opacity: 215, tint: [255, 40, 46], twin: true },
+      },
     };
     const monster = this.createMonster(entities, camp, 0, camp.x, camp.y);
     nodes.push(monster.node);
@@ -758,7 +786,7 @@ export class LobbyTownRenderer {
     monster.hp = monster.maxHp;
     monster.hit = Math.max(1, Math.round(this.leaderMaxHp * REALM_TRIAL_HIT_SHARE));
     monster.ranged = false;
-    this.trial = { cx, cy, homeX: leader.x, homeY: leader.y, startedAt: Date.now(), hidden, nodes, savedMonsters: this.monsters, monster, tinted: false, over: false, onWin, onFail };
+    this.trial = { cx, cy, walkRx: artW * REALM_TRIAL_WALK.rx, walkRy: artH * REALM_TRIAL_WALK.ry, leaderAt, monsterAt, homeX: leader.x, homeY: leader.y, startedAt: Date.now(), hidden, nodes, savedMonsters: this.monsters, monster, introUntil: 0, tinted: false, over: false, onWin, onFail };
     this.monsters = [monster];
     this.encounters.set(REALM_TRIAL_STAGE, { id: -1, pending: false });
     this.followers.forEach((actor) => {
@@ -838,15 +866,19 @@ export class LobbyTownRenderer {
     }
     trial.over = false;
     trial.startedAt = Date.now();
+    trial.introUntil = Date.now() + REALM_TRIAL_INTRO_MS;
     monster.hp = monster.maxHp;
     monster.dead = false;
-    monster.x = trial.cx + 240;
-    monster.y = trial.cy + 130;
+    monster.x = trial.cx + trial.monsterAt.x;
+    monster.y = trial.cy + trial.monsterAt.y;
+    monster.homeX = monster.x;
+    monster.homeY = monster.y;
+    monster.facing = -1;
     monster.tx = monster.x;
     monster.ty = monster.y;
     monster.node.setPosition(monster.x, monster.y, 0);
     monster.windupUntil = 0;
-    monster.nextAttackAt = Date.now() + 1500;
+    monster.nextAttackAt = Date.now() + REALM_TRIAL_INTRO_MS + 600;
     monster.stagger = 0;
     monster.staggeredUntil = 0;
     monster.victim = null;
@@ -865,8 +897,8 @@ export class LobbyTownRenderer {
     this.drawMonsterHp(monster);
     const leader = this.leader;
     if (leader) {
-      leader.x = trial.cx - 220;
-      leader.y = trial.cy - 120;
+      leader.x = trial.cx + trial.leaderAt.x;
+      leader.y = trial.cy + trial.leaderAt.y;
       leader.node.setPosition(leader.x, leader.y, 0);
       leader.anim = null;
       this.applyActorAnimation(leader, true);
@@ -886,12 +918,12 @@ export class LobbyTownRenderer {
     }
     const arena = trial.nodes[1];
     if (arena && arena.isValid && !arena.getChildByName('Art')) {
-      this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, REALM_TRIAL_ART_W, REALM_TRIAL_ART_H, arena);
+      const size = arena.getComponent(UITransform)?.contentSize;
+      this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, size?.width ?? 1, size?.height ?? 1, arena);
     }
     const monster = trial.monster;
     if (monster && !trial.tinted && monster.skeleton && monster.skeleton.isValid && monster.skeleton.skeletonData) {
-      // 暗影:同一副主角骨骼压成近黑的烟灰色
-      monster.skeleton.color = rgba(62, 64, 78, 255);
+      monster.skeleton.color = REALM_TRIAL_TINT;
       trial.tinted = true;
     }
     if (!trial.over && Date.now() - trial.startedAt > REALM_TRIAL_LIMIT_MS) {
@@ -2144,7 +2176,7 @@ export class LobbyTownRenderer {
   private walkable(x: number, y: number): boolean {
     const trial = this.trial;
     if (trial) {
-      return ((x - trial.cx) / REALM_TRIAL_WALK_RX) ** 2 + ((y - trial.cy) / REALM_TRIAL_WALK_RY) ** 2 <= 1;
+      return ((x - trial.cx) / trial.walkRx) ** 2 + ((y - trial.cy) / trial.walkRy) ** 2 <= 1;
     }
     const def = this.def;
     if (x < def.walk.left || x > def.walk.right || y < def.walk.bottom || y > def.walk.top) {
@@ -2203,8 +2235,10 @@ export class LobbyTownRenderer {
     const target = this.leader ?? this.def.spawn;
     const maxX = Math.max(0, this.def.width / 2 - viewW / 2);
     const maxY = Math.max(0, this.def.height / 2 - viewH / 2);
-    const wantX = Math.max(-maxX, Math.min(maxX, target.x));
-    const wantY = Math.max(-maxY, Math.min(maxY, target.y + 40));
+    // 心魔试炼:镜头钉在石台中心(构图同原型),不按地图边夹(图外由暗幕盖住)
+    const trial = this.trial;
+    const wantX = trial ? trial.cx : Math.max(-maxX, Math.min(maxX, target.x));
+    const wantY = trial ? trial.cy : Math.max(-maxY, Math.min(maxY, target.y + 40));
     if (snap) {
       this.camX = wantX;
       this.camY = wantY;
@@ -2567,7 +2601,7 @@ export class LobbyTownRenderer {
       // docs/60 §12 心魔试炼:只留摇杆 / 战斗簇 / 队长血条 / 心魔血条(试炼顶栏 / 放弃 / 零的台词由 GameRoot 盖在上面)
       this.renderCombatButtons(hud, layout, scale);
       this.renderLeaderBar(hud, layout);
-      this.renderEliteBar(hud, layout);
+      this.eliteBar = null;
       this.promptRoot = this.host.addChildPlainNode(hud, 'LobbyTownPrompts', 0, 0, 1, 1);
       return;
     }
@@ -3942,6 +3976,10 @@ export class LobbyTownRenderer {
       if (monster.dead) {
         continue;
       }
+      if (this.trial && Date.now() < this.trial.introUntil) {
+        // 心魔开场站着不动(零说完台词再动手)
+        continue;
+      }
       const camp = monster.camp;
       if (camp.dummy) {
         // 训练靶:不走动、不还手、不主动开战(挨打时 damageMonster 登记遭遇),只画血条和受击闪红
@@ -4076,7 +4114,7 @@ export class LobbyTownRenderer {
         const want = flash ? 1 : 0;
         if ((monster as unknown as { __flash?: number }).__flash !== want) {
           (monster as unknown as { __flash?: number }).__flash = want;
-          monster.skeleton.color = flash ? rgba(255, 120, 110, 255) : rgba(255, 255, 255, 255);
+          monster.skeleton.color = flash ? rgba(255, 120, 110, 255) : monster.camp.stageCode === REALM_TRIAL_STAGE ? REALM_TRIAL_TINT : rgba(255, 255, 255, 255);
         }
       }
     }
@@ -6028,10 +6066,19 @@ export class LobbyTownRenderer {
       ground.setSiblingIndex(0);
       monster.aura = ground;
     }
-    if (aura.rise) {
-      const rise = this.fx.play(monster.node, aura.rise, 0, aura.rise.y, aura.rise.size, { loop: true });
-      if (rise) {
+    const rises = aura.rise ? [this.fx.play(monster.node, aura.rise, 0, aura.rise.y, aura.rise.size, { loop: true })] : [];
+    if (aura.rise?.twin) {
+      rises.push(this.fx.play(monster.node, aura.rise, 0, aura.rise.y, aura.rise.size, { loop: true, flipX: true, speed: 0.72 }));
+    }
+    for (const rise of rises) {
+      if (rise && aura.rise) {
         (rise.getComponent(UIOpacity) ?? rise.addComponent(UIOpacity)).opacity = aura.rise.opacity ?? 255;
+        const tint = aura.rise.tint;
+        if (tint) {
+          rise.getComponentsInChildren(sp.Skeleton).forEach((sk) => {
+            sk.color = rgba(tint[0], tint[1], tint[2], 255);
+          });
+        }
         const body = monster.spineNode && monster.spineNode.isValid ? monster.spineNode.getSiblingIndex() : 1;
         rise.setSiblingIndex(Math.max(1, body));
       }

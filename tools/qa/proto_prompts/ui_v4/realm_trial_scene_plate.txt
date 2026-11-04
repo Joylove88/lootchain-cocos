@@ -1,0 +1,6 @@
+Generate ONE image, 1536x1024 (3:2): a clean game background plate made from the attached APPROVED prototype screenshot.
+Keep EXACTLY the same scene, camera angle (top-down 3/4), lighting, colours and painting style: the round arena of dark slightly reflective charcoal stone with concentric engraved rings and a faint four-pointed star in the centre, thin cracks, drifting grey-blue mist, and the faded silhouettes of the starting village's wooden houses and fences around the edges.
+REMOVE EVERYTHING that is not the scene: all UI (top bar, buttons, health bar, timer, dialogue card, portrait, joystick, skill buttons, all text) and both characters, the small spirit and their ground rings. Fill those areas naturally with the same stone floor and mist.
+Extend the scene slightly so the round arena sits in the centre with the village silhouettes and mist all around (mist thicker toward the edges and corners).
+Matte painted, low saturation, realistic (NOT anime, NOT cartoon). No characters, no UI, no text, no glow, no particles.
+Output only the image.

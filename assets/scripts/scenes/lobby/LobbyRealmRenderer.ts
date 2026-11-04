@@ -59,6 +59,8 @@ export interface RealmBreakState {
 export interface RealmTrialHudState {
   /** 剩余毫秒。 */
   remainMs: number;
+  /** 心魔剩余血量 0~1。 */
+  hpRatio: number;
   /** 开场台词还显示着。 */
   showLine: boolean;
   /** 失败面板:null = 进行中。 */
@@ -284,6 +286,22 @@ export class LobbyRealmRenderer {
     quit.on(Button.EventType.CLICK, () => this.handlers.quitTrial());
     this.host.applyImageButtonFeedback(quit, 1.03, 0.97);
     this.host.applyPointerCursor?.(quit);
+    // 心魔血条(原型:名字 x 619 / y 97;条 x 612~1192 / y 124 高 16;百分比 x 1208)
+    glassLabel(this.host, root, 'BossName', '昔日的自己', FX(619), FY(97), S(20), GLASS_COLOR.text, S(300));
+    const bw = S(580);
+    const bh = Math.max(4, S(16));
+    const boss = this.host.addChildPlainNode(root, 'BossBar', FX(902), FY(124), bw, bh);
+    const track = boss.addComponent(Graphics);
+    track.fillColor = new Color(26, 20, 24, 225);
+    track.roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+    track.fill();
+    track.strokeColor = new Color(255, 255, 255, 46);
+    track.lineWidth = 1;
+    track.roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+    track.stroke();
+    this.host.addChildPlainNode(boss, 'Fill', 0, 0, bw, bh).addComponent(Graphics);
+    glassLabel(this.host, root, 'BossPct', '100%', FX(1208), FY(124), S(19), GLASS_COLOR.sub, S(90));
+    this.drawBossBar(root, state.hpRatio);
     glassLabel(this.host, root, 'NoPenalty', '失败无惩罚,可立即重试', FX(68), FY(490), S(19), GLASS_COLOR.sub, S(300));
     if (state.showLine && !state.failed) {
       // 零的开场台词(原型框 x 455~1328 / y 668~797;圆头像中心 (522, 727))
@@ -294,8 +312,38 @@ export class LobbyRealmRenderer {
     }
   }
 
-  /** 只更新倒计时(每帧调用,避免整层重建)。 */
-  updateTrialTimer(remainMs: number, root: Node | null): void {
+  private drawBossBar(root: Node, ratio: number): void {
+    const bar = root.getChildByName('BossBar');
+    const fill = bar?.getChildByName('Fill')?.getComponent(Graphics);
+    const size = bar?.getComponent(UITransform)?.contentSize;
+    if (!fill || !size) {
+      return;
+    }
+    const r = Math.max(0, Math.min(1, ratio));
+    const key = Math.round(r * 400);
+    if ((fill as unknown as { __key?: number }).__key === key) {
+      return;
+    }
+    (fill as unknown as { __key?: number }).__key = key;
+    fill.clear();
+    if (r > 0) {
+      const w = size.width;
+      const h = size.height;
+      fill.fillColor = new Color(178, 52, 50, 255);
+      fill.roundRect(-w / 2 + 1, -h / 2 + 1, Math.max(h - 2, (w - 2) * r), h - 2, (h - 2) / 2);
+      fill.fill();
+    }
+    const pct = root.getChildByName('BossPct')?.getComponent(Label);
+    if (pct) {
+      pct.string = `${Math.ceil(r * 100)}%`;
+    }
+  }
+
+  /** 只更新倒计时 / 心魔血条(每帧调用,避免整层重建)。 */
+  updateTrial(remainMs: number, hpRatio: number, root: Node | null): void {
+    if (root) {
+      this.drawBossBar(root, hpRatio);
+    }
     const label = root?.getChildByName('Timer')?.getComponent(Label);
     if (!label) {
       return;

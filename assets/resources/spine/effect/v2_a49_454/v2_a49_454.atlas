@@ -1,0 +1,223 @@
+
+skeleton.png
+size: 2048, 256
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+images/eff/heiwuchang_skill_a_05
+  rotate: false
+  xy: 1965, 184
+  size: 50, 68
+  orig: 220, 174
+  offset: 88, 28
+  index: -1
+images/eff/heiwuchang_skill_a_06
+  rotate: false
+  xy: 1650, 100
+  size: 82, 67
+  orig: 220, 174
+  offset: 72, 29
+  index: -1
+images/eff/heiwuchang_skill_a_07
+  rotate: false
+  xy: 1524, 33
+  size: 109, 66
+  orig: 220, 174
+  offset: 56, 29
+  index: -1
+images/eff/heiwuchang_skill_a_08
+  rotate: false
+  xy: 1285, 26
+  size: 116, 66
+  orig: 220, 174
+  offset: 52, 29
+  index: -1
+images/eff/heiwuchang_skill_a_09
+  rotate: false
+  xy: 1529, 101
+  size: 119, 66
+  orig: 220, 174
+  offset: 52, 29
+  index: -1
+images/eff/heiwuchang_skill_a_10
+  rotate: false
+  xy: 1718, 172
+  size: 123, 80
+  orig: 220, 174
+  offset: 52, 30
+  index: -1
+images/eff/heiwuchang_skill_a_11
+  rotate: false
+  xy: 1592, 169
+  size: 124, 83
+  orig: 220, 174
+  offset: 51, 30
+  index: -1
+images/eff/heiwuchang_skill_a_12
+  rotate: false
+  xy: 1463, 169
+  size: 127, 83
+  orig: 220, 174
+  offset: 49, 30
+  index: -1
+images/eff/heiwuchang_skill_a_13
+  rotate: false
+  xy: 1332, 169
+  size: 129, 83
+  orig: 220, 174
+  offset: 47, 30
+  index: -1
+images/eff/heiwuchang_skill_a_14
+  rotate: false
+  xy: 1197, 169
+  size: 133, 83
+  orig: 220, 174
+  offset: 44, 30
+  index: -1
+images/eff/heiwuchang_skill_a_15
+  rotate: false
+  xy: 919, 170
+  size: 137, 82
+  orig: 220, 174
+  offset: 40, 30
+  index: -1
+images/eff/heiwuchang_skill_a_16
+  rotate: false
+  xy: 1058, 170
+  size: 137, 82
+  orig: 220, 174
+  offset: 39, 30
+  index: -1
+images/eff/heiwuchang_skill_a_17
+  rotate: false
+  xy: 2, 154
+  size: 137, 98
+  orig: 220, 174
+  offset: 39, 30
+  index: -1
+images/eff/heiwuchang_skill_a_18
+  rotate: false
+  xy: 2, 54
+  size: 135, 98
+  orig: 220, 174
+  offset: 39, 30
+  index: -1
+images/eff/heiwuchang_skill_a_19
+  rotate: false
+  xy: 141, 154
+  size: 134, 98
+  orig: 220, 174
+  offset: 39, 30
+  index: -1
+images/eff/heiwuchang_skill_a_20
+  rotate: false
+  xy: 139, 54
+  size: 131, 98
+  orig: 220, 174
+  offset: 40, 30
+  index: -1
+images/eff/heiwuchang_skill_a_21
+  rotate: false
+  xy: 277, 154
+  size: 131, 98
+  orig: 220, 174
+  offset: 40, 30
+  index: -1
+images/eff/heiwuchang_skill_a_22
+  rotate: false
+  xy: 272, 55
+  size: 130, 97
+  orig: 220, 174
+  offset: 41, 30
+  index: -1
+images/eff/heiwuchang_skill_a_23
+  rotate: false
+  xy: 410, 155
+  size: 127, 97
+  orig: 220, 174
+  offset: 44, 30
+  index: -1
+images/eff/heiwuchang_skill_a_24
+  rotate: false
+  xy: 539, 155
+  size: 127, 97
+  orig: 220, 174
+  offset: 45, 30
+  index: -1
+images/eff/heiwuchang_skill_a_25
+  rotate: false
+  xy: 668, 152
+  size: 126, 100
+  orig: 220, 174
+  offset: 46, 30
+  index: -1
+images/eff/heiwuchang_skill_a_26
+  rotate: false
+  xy: 796, 150
+  size: 121, 102
+  orig: 220, 174
+  offset: 50, 33
+  index: -1
+images/eff/heiwuchang_skill_a_27
+  rotate: false
+  xy: 1843, 153
+  size: 120, 99
+  orig: 220, 174
+  offset: 51, 37
+  index: -1
+images/eff/heiwuchang_skill_a_28
+  rotate: false
+  xy: 919, 74
+  size: 120, 94
+  orig: 220, 174
+  offset: 51, 41
+  index: -1
+images/eff/heiwuchang_skill_a_29
+  rotate: false
+  xy: 1041, 80
+  size: 120, 88
+  orig: 220, 174
+  offset: 51, 47
+  index: -1
+images/eff/heiwuchang_skill_a_30
+  rotate: false
+  xy: 1163, 86
+  size: 120, 81
+  orig: 220, 174
+  offset: 51, 53
+  index: -1
+images/eff/heiwuchang_skill_a_31
+  rotate: false
+  xy: 1285, 94
+  size: 120, 73
+  orig: 220, 174
+  offset: 51, 59
+  index: -1
+images/eff/heiwuchang_skill_a_32
+  rotate: false
+  xy: 1407, 101
+  size: 120, 66
+  orig: 220, 174
+  offset: 51, 66
+  index: -1
+images/eff/heiwuchang_skill_a_33
+  rotate: false
+  xy: 1407, 40
+  size: 115, 59
+  orig: 220, 174
+  offset: 55, 73
+  index: -1
+images/eff/heiwuchang_skill_a_34
+  rotate: false
+  xy: 2, 2
+  size: 108, 50
+  orig: 220, 174
+  offset: 60, 80
+  index: -1
+images/eff/heiwuchang_skill_a_35
+  rotate: false
+  xy: 112, 35
+  size: 53, 17
+  orig: 220, 174
+  offset: 97, 111
+  index: -1

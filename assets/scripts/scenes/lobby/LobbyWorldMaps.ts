@@ -107,7 +107,11 @@ export interface WorldMapCamp {
  */
 export interface WorldMapCampAura {
   ground: { effect: string; animation: string; size: number; squash?: number };
-  rise?: { effect: string; animation: string; size: number; y: number; opacity?: number };
+  /**
+   * tint = 骨骼整体乘色(把现成光效染成别的颜色,例:紫红飘带染血红);
+   * twin = 再叠一份镜像、0.72 倍速(共享缓存设不了起播时间,用速度差错开相位,循环里淡出那段也一直有光)。
+   */
+  rise?: { effect: string; animation: string; size: number; y: number; opacity?: number; tint?: [number, number, number]; twin?: boolean };
 }
 
 /** 去火 / 狂暴 / 腐化三套光环(素材 fx_pack_v2:A47-376 燃烧地环、A49-405 火焰光丝、A47-162 符文法阵、A47-217 紫色法阵 + 光柱、A47-453 品红旋涡)。 */

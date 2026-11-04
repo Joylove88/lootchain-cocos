@@ -9969,7 +9969,7 @@ export class LootChainGameRoot extends Component {
     }
     this.realmBreak = null;
     this.removeNodeFromContent(LobbyRealmRenderer.BREAK_NODE);
-    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, showLine: true, failed: null, settling: false, error: '' };
+    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, hpRatio: 1, showLine: true, failed: null, settling: false, error: '' };
     this.realmTrialLineUntil = Date.now() + 8000;
     this.realmTrialLineShown = true;
     // 整页重绘:跑图 HUD 按试炼重建(只留摇杆 / 战斗簇 / 血条),系统按钮由 renderRealmLayers 收起
@@ -9988,7 +9988,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTownRenderer.restartRealmTrial();
-    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, showLine: false, failed: null, settling: false, error: '' };
+    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, hpRatio: 1, showLine: false, failed: null, settling: false, error: '' };
     this.renderRealmLayers();
   }
 
@@ -10022,7 +10022,7 @@ export class LootChainGameRoot extends Component {
       this.evolutionCheckDue = true;
       this.renderCurrentView();
     } catch (error) {
-      this.realmTrial = { remainMs: 0, showLine: false, ...this.realmTrial, settling: false, failed: 'down', error: (error as Error)?.message || '突破没有成功,再试一次' };
+      this.realmTrial = { remainMs: 0, hpRatio: 0, showLine: false, ...this.realmTrial, settling: false, failed: 'down', error: (error as Error)?.message || '突破没有成功,再试一次' };
       this.renderRealmLayers();
     }
   }
@@ -10067,13 +10067,14 @@ export class LootChainGameRoot extends Component {
       return;
     }
     trial.remainMs = Math.max(0, REALM_TRIAL_LIMIT_MS - info.elapsedMs);
+    trial.hpRatio = info.hpRatio;
     if (this.realmTrialLineShown && Date.now() > this.realmTrialLineUntil) {
       this.realmTrialLineShown = false;
       this.realmTrial = { ...trial, showLine: false };
       this.renderRealmLayers();
       return;
     }
-    this.realmRenderer.updateTrialTimer(trial.remainMs, this.ensureContentRoot().getChildByName(LobbyRealmRenderer.TRIAL_NODE));
+    this.realmRenderer.updateTrial(trial.remainMs, trial.hpRatio, this.ensureContentRoot().getChildByName(LobbyRealmRenderer.TRIAL_NODE));
   }
 
   /** 境界三屏按状态重挂(整页重绘后 / 状态变化时)。试炼中收起系统按钮,只留跑图战斗 HUD。 */

@@ -119,6 +119,8 @@ async def main():
             await ev("const m = t.trial.monster; m.hp = Math.round(m.maxHp * 0.4); m.lastHitAt = Date.now(); t.drawMonsterHp(m); return m.maxHp;")
             await asyncio.sleep(7)
             await shot('03_trial_mid')
+            await asyncio.sleep(1.3)
+            await shot('03c_aura_later')
             await ev("t.leaderHp = 1; t.damageLeader ? t.damageLeader(10) : null; if (!t.leaderDead) { t.leaderHp = 0; t.onLeaderDown(); } return t.leaderDead;")
             await asyncio.sleep(1.5)
             await shot('03b_fail')
