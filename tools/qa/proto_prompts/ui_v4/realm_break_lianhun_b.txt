@@ -1,0 +1,23 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED "境界突破" window prototype (for a LATER realm). Keep its EXACT layout, window frame, panel sizes, fonts, spacing and style: frosted dark glass window ~80% wide, title top-left with a small status pill, close "X" top-right, character stage on the left ~55%, one tall frosted panel on the right with a realm ladder, "突破条件", "突破试炼", "突破奖励" sections and a full-width champagne pill button at the bottom. Its central armoured figure (light traveller's armour of dark leather and blued steel, short dark cape, rune-etched sword with a faint pale-blue fuller) is the "炼魂" look we want to PREVIEW on this screen.
+- SECOND image = our APPROVED "选择主角" prototype: the young male protagonist in his CURRENT humble look (plain rough linen shirt and trousers, simple belt, a WOODEN practice sword), same face and dark short hair.
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent; selected = dark-gold gradient with WHITE text; primary button = filled champagne pill with dark text).
+
+This is the FIRST breakthrough of the game: "觉醒" → "炼魂", when the player is about to leave the starting village.
+WINDOW "境界突破". Top row: title "境界突破" white on the left, a small champagne-outlined status pill "可突破" next to it, close "X" on the right, thin divider below.
+LEFT (character stage inside the window, same round stone platform and dim sea-of-souls backdrop as the first image):
+- The protagonist from the SECOND image in his CURRENT humble look (rough linen clothes, wooden sword), with only a faint pale-gold contract sigil on the back of his right hand. Semi-realistic painted, matte (NOT anime, NOT cartoon).
+- Behind him, very faint (about 18% opacity), a ghostly preview of his NEXT look = the armoured "炼魂" figure from the FIRST image (traveller's armour, short cape, rune sword). A tiny grey caption under the platform: "炼魂境外观".
+- The tiny soul spirit "零" floats near his shoulder, as in the first image.
+- NO orbiting sigils, NO giant statue behind him (those belong to later realms).
+RIGHT (the tall frosted glass panel, same structure as the first image):
+- Realm ladder at the top: "觉醒" (current, dark-gold gradient pill with WHITE text, small grey "圆满" under it) — "炼魂" (next, champagne outline, white text) — "契灵" (dim, tiny lock) — "圣域" (dim, tiny lock) — "神裔" (dim, tiny lock).
+- Section header "突破条件" with grey "需全部满足" on the right. Two slim rows, each: small monochrome muted-gold icon, white label, grey current value, right-aligned soft-green check "已达成":
+    等级达到 Lv.10            当前 Lv.10
+    完成剧情「林地之王」       已完成
+- Section header "突破试炼": a small dark glass card with a monochrome icon of a cracked mirror, white title "心魔 · 昔日的自己", grey line "斩断过去的弱小,才能走出这座村子", grey small line "失败无惩罚,可立即重试".
+- Section header "突破奖励": a row of 5 small square dark glass tiles with monochrome muted-gold line icons and tiny grey captions: "外观换阶", "攻击生命 +15%", "大招·夜帝残影", "前世记忆", "进化上限".
+- Bottom of the panel: grey small text "突破后开放传说进化卡与路线质变第 6 层" and the primary champagne pill button "开始突破试炼" (full panel width).
+Behind the window: the darkened sea of souls at about 35% brightness. Generous padding, aligned edges, clear hierarchy, all text Simplified Chinese exactly as written. B style only — no red ribbons, no ornate gold frames, no glowing particles, no lens flare. Calm, matte, low saturation (avoid AI look).
+Output only the single finished mockup image, no annotations.

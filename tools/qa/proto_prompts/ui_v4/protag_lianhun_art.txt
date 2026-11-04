@@ -1,0 +1,7 @@
+Generate ONE image: a full-body character illustration with a FULLY TRANSPARENT background, portrait 3:4 (about 810x1080), for a dark-fantasy RPG UI.
+TWO images are attached:
+- FIRST image = our protagonist in his CURRENT humble look (rough linen shirt, belt, wooden sword). Keep EXACTLY the same person: same face, same hair, same body proportions, same standing pose and camera angle, same painting style, same framing (head near the top, boots near the bottom, the same empty margins).
+- SECOND image = a UI prototype: its central armoured figure shows the target "炼魂" outfit.
+Draw the SAME person from the first image, same pose, now wearing the "炼魂" outfit from the second image: light traveller's armour of dark leather with blued-steel shoulder and forearm plates, a short dark hooded cape over the shoulders, belted tunic, leather boots with steel shin guards, and instead of the wooden sword a rune-etched steel sword with a faint pale-blue line along the fuller (held the same way, pointing down to the left). A faint pale-gold contract sigil on the back of the right hand.
+Semi-realistic painted, matte, low saturation, realistic proportions (NOT anime, NOT cartoon). No glow, no particles, no background, no ground shadow, no text.
+Output a PNG with a TRANSPARENT background.

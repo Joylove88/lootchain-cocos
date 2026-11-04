@@ -71,6 +71,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   netBlocked?(): boolean;
   /** 全屏抉择页(契约之选 / 进化抉择)开着:键盘不驱动跑图。 */
   townInputLocked?(): boolean;
+  /** 主角境界称号(docs/60 §12,例「炼魂 · 初期」),队长血条上方显示;'' = 不显示。 */
+  realmTitle?(): string;
   /** docs/48:冒险之门 = 矿境面板(NPC 矿列表 → 掠夺)。 */
   openLobbyRaidPanel?(): void;
   /** docs/47 P0:本地掠夺原型(无服务端时的回退)。 */
@@ -334,6 +336,38 @@ const LOOT_ICON = 'ui/bag/ai/icon_gold_chest/spriteFrame';
 /** 怪物骨骼原图朝向(1 = 朝右);翻面时乘进 scaleX。 */
 const MONSTER_ART_FACING: 1 | -1 = 1;
 
+/** docs/60 §12 突破试炼「心魔 · 昔日的自己」:就地展开的心境石台(不换地图,坐标同步照常),只有主角和自己的暗影单挑。 */
+export const REALM_TRIAL_STAGE = 'REALM_TRIAL';
+const REALM_TRIAL_ARENA = 'ui/realm/trial_arena/spriteFrame';
+/** 石台贴图世界尺寸(原图 1536×1024)与可走椭圆(比石台略收,脚别踩到雾里)。 */
+const REALM_TRIAL_ART_W = 1700;
+const REALM_TRIAL_ART_H = 1133;
+const REALM_TRIAL_WALK_RX = 660;
+const REALM_TRIAL_WALK_RY = 370;
+/** 限时 3 分钟;心魔血量 = 主角攻击 × 45(普攻 + 技能约 30~60 秒),每击 = 主角生命 6%。 */
+export const REALM_TRIAL_LIMIT_MS = 180_000;
+const REALM_TRIAL_HP_PER_ATTACK = 45;
+const REALM_TRIAL_HIT_SHARE = 0.06;
+
+interface RealmTrialRun {
+  cx: number;
+  cy: number;
+  /** 开始时队长的位置:结束送回这里(石台可能盖在建筑 / 水面上,不能停在里面)。 */
+  homeX: number;
+  homeY: number;
+  startedAt: number;
+  /** 试炼期间收起来的节点(结束按原样打开)。 */
+  hidden: Node[];
+  /** 试炼自己加的节点(结束销毁)。 */
+  nodes: Node[];
+  savedMonsters: TownMonster[];
+  monster: TownMonster | null;
+  tinted: boolean;
+  over: boolean;
+  onWin: (durationMs: number) => void;
+  onFail: (reason: 'down' | 'timeout') => void;
+}
+
 interface TownMonster {
   camp: WorldMapCamp;
   node: Node;
@@ -524,6 +558,8 @@ export class LobbyTownRenderer {
   /** 遭遇下发的怪物数值(按群);世界层重建后新刷的怪没数值时从这里补(10-30 用户「怪不攻击、打不死」)。 */
   private readonly encounterStats = new Map<string, TownFieldEncounter['monsters']>();
   private raiderAttack = 0;
+  /** 突破试炼进行中(docs/60 §12)。 */
+  private trial: RealmTrialRun | null = null;
   private leaderHp = 0;
   private leaderMaxHp = 0;
   private leaderDead = false;
@@ -657,6 +693,238 @@ export class LobbyTownRenderer {
   /** 移动速度倍率:疾行 + 探索第 3 层质变「寻踪」+10%。 */
   private moveMul(): number {
     return 1 + this.evoValue('SPEED') + (this.evoQualities.has('EXPLORE_3') ? 0.1 : 0);
+  }
+
+  // ── docs/60 §12 突破试炼「心魔 · 昔日的自己」 ──
+
+  /**
+   * 就地展开心境石台开始试炼:收起本图的建筑 / NPC / 物件 / 怪群 / 队友(结束原样打开),铺石台 + 四周暗幕,
+   * 在主角右上方刷出自己的暗影(同一副主角骨骼染暗)。spine = 主角骨骼资源路径。
+   */
+  startRealmTrial(spine: string, onWin: (durationMs: number) => void, onFail: (reason: 'down' | 'timeout') => void): boolean {
+    const leader = this.leader;
+    const ground = this.groundRoot;
+    const entities = this.entityRoot;
+    if (this.trial || !leader || !ground || !ground.isValid || !entities || !entities.isValid) {
+      return false;
+    }
+    this.ensureLeaderStats();
+    this.setLockTarget(null);
+    this.pendingHits = [];
+    this.companionHits = [];
+    const cx = leader.x + 120;
+    const cy = leader.y + 60;
+    const hidden: Node[] = [];
+    for (const child of entities.children) {
+      if (child !== leader.node && child.active) {
+        child.active = false;
+        hidden.push(child);
+      }
+    }
+    for (const child of ground.children) {
+      // 平铺地面留着(被暗幕盖住),贴地建筑 / 物件收起
+      if (child.active && !child.name.startsWith('GroundTile') && child.name !== 'Vignette') {
+        child.active = false;
+        hidden.push(child);
+      }
+    }
+    // 环境动效(飘叶 / 云影)也收起:心境里没有风
+    const ambient = ground.parent?.getChildByName('Ambient');
+    if (ambient && ambient.active) {
+      ambient.active = false;
+      hidden.push(ambient);
+    }
+    const nodes: Node[] = [];
+    const W = this.def.width;
+    const H = this.def.height;
+    const veil = this.host.addChildPlainNode(ground, 'RealmTrialVeil', 0, 0, W, H);
+    const vg = veil.addComponent(Graphics);
+    vg.fillColor = rgba(10, 13, 20, 238);
+    vg.rect(-W - 2000, -H - 2000, W * 3 + 4000, H * 3 + 4000);
+    vg.fill();
+    nodes.push(veil);
+    // 贴图没进缓存时 addSprite 只发请求返回 null:stepRealmTrial 每帧补挂(跑图层不会整页重绘)
+    const arena = this.host.addChildPlainNode(ground, 'RealmTrialArena', cx, cy, REALM_TRIAL_ART_W, REALM_TRIAL_ART_H);
+    this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, REALM_TRIAL_ART_W, REALM_TRIAL_ART_H, arena);
+    nodes.push(arena);
+    const camp: WorldMapCamp = {
+      stageCode: REALM_TRIAL_STAGE, label: '昔日的自己', monsterCode: 'XINMO', spine, count: 1, elite: true, level: 1,
+      x: cx + 240, y: cy + 130, radius: 2000,
+    };
+    const monster = this.createMonster(entities, camp, 0, camp.x, camp.y);
+    nodes.push(monster.node);
+    const attack = Math.max(20, this.raiderAttack || 20);
+    monster.maxHp = attack * REALM_TRIAL_HP_PER_ATTACK;
+    monster.hp = monster.maxHp;
+    monster.hit = Math.max(1, Math.round(this.leaderMaxHp * REALM_TRIAL_HIT_SHARE));
+    monster.ranged = false;
+    this.trial = { cx, cy, homeX: leader.x, homeY: leader.y, startedAt: Date.now(), hidden, nodes, savedMonsters: this.monsters, monster, tinted: false, over: false, onWin, onFail };
+    this.monsters = [monster];
+    this.encounters.set(REALM_TRIAL_STAGE, { id: -1, pending: false });
+    this.followers.forEach((actor) => {
+      if (actor.node.isValid) {
+        actor.node.active = false;
+      }
+    });
+    this.restartRealmTrial();
+    return true;
+  }
+
+  /** 试炼进行中(GameRoot 画顶栏 / 计时用):已用时、心魔剩余血量比例。 */
+  realmTrialInfo(): { elapsedMs: number; hpRatio: number } | null {
+    const trial = this.trial;
+    if (!trial) {
+      return null;
+    }
+    const monster = trial.monster;
+    return { elapsedMs: Date.now() - trial.startedAt, hpRatio: monster && monster.maxHp > 0 ? Math.max(0, monster.hp / monster.maxHp) : 1 };
+  }
+
+  isRealmTrialActive(): boolean {
+    return !!this.trial;
+  }
+
+  /** 结束试炼(胜利 / 放弃):销毁石台与心魔,收起的东西原样打开,队伍回满血。 */
+  endRealmTrial(): void {
+    const trial = this.trial;
+    if (!trial) {
+      return;
+    }
+    this.trial = null;
+    this.setLockTarget(null);
+    this.encounters.delete(REALM_TRIAL_STAGE);
+    for (const node of trial.nodes) {
+      if (node.isValid) {
+        node.destroy();
+      }
+    }
+    for (const node of trial.hidden) {
+      if (node.isValid) {
+        node.active = true;
+      }
+    }
+    this.monsters = trial.savedMonsters.filter((monster) => monster.node.isValid);
+    const leader = this.leader;
+    if (leader) {
+      leader.x = trial.homeX;
+      leader.y = trial.homeY;
+      leader.node.setPosition(leader.x, leader.y, 0);
+    }
+    this.followers.forEach((actor) => {
+      if (actor.node.isValid) {
+        actor.node.active = true;
+        actor.x = leader?.x ?? actor.x;
+        actor.y = leader?.y ?? actor.y;
+        actor.node.setPosition(actor.x, actor.y, 0);
+      }
+    });
+    if (leader) {
+      this.trail = [new Vec2(leader.x, leader.y)];
+      leader.anim = null;
+      this.applyActorAnimation(leader, true);
+    }
+    this.leaderDead = false;
+    this.leaderHp = this.leaderMaxHp;
+    this.drawLeaderHp();
+    this.applyCamera(true);
+  }
+
+  /** (重新)开始一局:心魔回满血回到起点,主角满血站到对面,计时重算(失败无惩罚)。 */
+  restartRealmTrial(): void {
+    const trial = this.trial;
+    const monster = trial?.monster;
+    if (!trial || !monster) {
+      return;
+    }
+    trial.over = false;
+    trial.startedAt = Date.now();
+    monster.hp = monster.maxHp;
+    monster.dead = false;
+    monster.x = trial.cx + 240;
+    monster.y = trial.cy + 130;
+    monster.tx = monster.x;
+    monster.ty = monster.y;
+    monster.node.setPosition(monster.x, monster.y, 0);
+    monster.windupUntil = 0;
+    monster.nextAttackAt = Date.now() + 1500;
+    monster.stagger = 0;
+    monster.staggeredUntil = 0;
+    monster.victim = null;
+    const opacity = monster.node.getComponent(UIOpacity);
+    if (opacity) {
+      Tween.stopAllByTarget(opacity);
+      opacity.opacity = 255;
+    }
+    if (monster.nameLabel && monster.nameLabel.isValid) {
+      monster.nameLabel.node.active = true;
+    }
+    if (monster.skeleton && monster.skeleton.isValid && monster.idleAnim) {
+      monster.skeleton.setAnimation(0, monster.idleAnim, true);
+      monster.curAnim = monster.idleAnim;
+    }
+    this.drawMonsterHp(monster);
+    const leader = this.leader;
+    if (leader) {
+      leader.x = trial.cx - 220;
+      leader.y = trial.cy - 120;
+      leader.node.setPosition(leader.x, leader.y, 0);
+      leader.anim = null;
+      this.applyActorAnimation(leader, true);
+      this.trail = [new Vec2(leader.x, leader.y)];
+    }
+    this.leaderDead = false;
+    this.leaderHp = this.leaderMaxHp;
+    this.drawLeaderHp();
+    this.setLockTarget(monster);
+    this.applyCamera(true);
+  }
+
+  private stepRealmTrial(): void {
+    const trial = this.trial;
+    if (!trial) {
+      return;
+    }
+    const arena = trial.nodes[1];
+    if (arena && arena.isValid && !arena.getChildByName('Art')) {
+      this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, REALM_TRIAL_ART_W, REALM_TRIAL_ART_H, arena);
+    }
+    const monster = trial.monster;
+    if (monster && !trial.tinted && monster.skeleton && monster.skeleton.isValid && monster.skeleton.skeletonData) {
+      // 暗影:同一副主角骨骼压成近黑的烟灰色
+      monster.skeleton.color = rgba(62, 64, 78, 255);
+      trial.tinted = true;
+    }
+    if (!trial.over && Date.now() - trial.startedAt > REALM_TRIAL_LIMIT_MS) {
+      trial.over = true;
+      trial.onFail('timeout');
+    }
+  }
+
+  private onRealmTrialMonsterDead(): void {
+    const trial = this.trial;
+    if (!trial || trial.over) {
+      return;
+    }
+    trial.over = true;
+    this.shake(6, 0.3);
+    trial.onWin(Date.now() - trial.startedAt);
+  }
+
+  private onRealmTrialLeaderDown(): void {
+    const trial = this.trial;
+    const leader = this.leader;
+    if (!trial || !leader || trial.over) {
+      return;
+    }
+    trial.over = true;
+    this.leaderDead = true;
+    this.pendingHits = [];
+    this.setLockTarget(null);
+    const names = leader.names;
+    if (leader.skeleton && leader.skeleton.isValid && names?.death) {
+      leader.skeleton.setAnimation(0, names.death, false);
+    }
+    trial.onFail('down');
   }
 
   /** 野外战斗回来(docs/50):赢了这群怪 60 秒后再刷;输了把队伍推离营地,免得一回来又撞上。 */
@@ -1497,27 +1765,37 @@ export class LobbyTownRenderer {
       return;
     }
     this.stepLeader(clamped);
-    this.stepFollowers(clamped);
+    if (!this.trial) {
+      this.stepFollowers(clamped);
+    }
     this.stepCombat(clamped);
     this.stepMonsters(clamped);
+    this.stepRealmTrial();
     this.updateMonsterNames();
-    this.updateExplore();
-    this.updateHiddenPois();
-    this.updatePositionReport();
-    if (Date.now() >= this.respawnCheckAt) {
+    if (!this.trial) {
+      // 试炼石台是就地铺的:探索 / 隐藏点 / 坐标上报都停掉(站位可能在建筑 / 水面范围里,服务端坐标校验会拦)
+      this.updateExplore();
+      this.updateHiddenPois();
+      this.updatePositionReport();
+    }
+    if (Date.now() >= this.respawnCheckAt && !this.trial) {
       this.respawnCheckAt = Date.now() + 2000;
       if (this.def.camps.length > 0) {
         this.ensureMonsters();
       }
     }
-    this.checkExitsAndWaypoint();
+    if (!this.trial) {
+      this.checkExitsAndWaypoint();
+    }
     this.stepChannel();
     this.updateBuildingSeeThrough(clamped);
     this.applyCamera(false, clamped);
     this.sortEntities(false);
-    this.updateNearBuilding();
-    this.updateMinimap();
-    this.updateGuidePointer();
+    if (!this.trial) {
+      this.updateNearBuilding();
+      this.updateMinimap();
+      this.updateGuidePointer();
+    }
     this.waypointFx?.step(clamped);
     this.stepChestGlow();
     this.stepPoiCues();
@@ -1864,6 +2142,10 @@ export class LobbyTownRenderer {
   }
 
   private walkable(x: number, y: number): boolean {
+    const trial = this.trial;
+    if (trial) {
+      return ((x - trial.cx) / REALM_TRIAL_WALK_RX) ** 2 + ((y - trial.cy) / REALM_TRIAL_WALK_RY) ** 2 <= 1;
+    }
     const def = this.def;
     if (x < def.walk.left || x > def.walk.right || y < def.walk.bottom || y > def.walk.top) {
       return false;
@@ -2281,6 +2563,14 @@ export class LobbyTownRenderer {
     this.hudLayout = layout;
     // docs/51 原型 v3:左上圆形小地图 + 追踪;队长右侧交互提示条;野外加右下战斗簇 / 底部队长血条 / 右侧援护位 / 顶部精英条
     this.renderJoystick(hud, layout, scale);
+    if (this.trial) {
+      // docs/60 §12 心魔试炼:只留摇杆 / 战斗簇 / 队长血条 / 心魔血条(试炼顶栏 / 放弃 / 零的台词由 GameRoot 盖在上面)
+      this.renderCombatButtons(hud, layout, scale);
+      this.renderLeaderBar(hud, layout);
+      this.renderEliteBar(hud, layout);
+      this.promptRoot = this.host.addChildPlainNode(hud, 'LobbyTownPrompts', 0, 0, 1, 1);
+      return;
+    }
     this.renderMinimap(hud, layout, scale);
     this.renderQuestTracker(hud, layout, scale, world);
     this.renderRecallButton(hud, layout, scale, world);
@@ -4214,7 +4504,7 @@ export class LobbyTownRenderer {
   }
 
   private engageCamp(stageCode: string): void {
-    if (this.encounters.has(stageCode) || !this.host.engageWorldField) {
+    if (stageCode === REALM_TRIAL_STAGE || this.encounters.has(stageCode) || !this.host.engageWorldField) {
       return;
     }
     this.encounters.set(stageCode, { id: 0, pending: true });
@@ -5202,6 +5492,9 @@ export class LobbyTownRenderer {
     if (this.leader && !this.leaderDead) {
       out.push(this.leader);
     }
+    if (this.trial) {
+      return out;
+    }
     for (const actor of this.followers) {
       if (!actor.down && actor.node.isValid) {
         out.push(actor);
@@ -5792,6 +6085,10 @@ export class LobbyTownRenderer {
     const opacity = monster.node.getComponent(UIOpacity) ?? monster.node.addComponent(UIOpacity);
     tween(opacity).delay(0.5).to(0.6, { opacity: 0 }).start();
     const stageCode = monster.camp.stageCode;
+    if (stageCode === REALM_TRIAL_STAGE) {
+      this.onRealmTrialMonsterDead();
+      return;
+    }
     const alive = this.monsters.some((item) => item.camp.stageCode === stageCode && !item.dead);
     const perKill = !monster.camp.elite;
     this.touchHaul();
@@ -6284,6 +6581,10 @@ export class LobbyTownRenderer {
     if (!leader) {
       return;
     }
+    if (this.trial) {
+      this.onRealmTrialLeaderDown();
+      return;
+    }
     this.leaderDead = true;
     this.pendingHits = [];
     this.companionHits = [];
@@ -6689,6 +6990,15 @@ export class LobbyTownRenderer {
     const fill = this.host.addChildPlainNode(node, 'Fill', 0, 0, w, h).addComponent(Graphics);
     const hero = leader.hero;
     const name = this.host.addChildLabel(node, 'Name', `${safeText(hero.heroName)} Lv.${hero.level}`, -w / 2 - P.S(15), P.S(1), P.S(22), rgba(246, 236, 214), new Size(P.S(220), P.S(30)), HorizontalTextAlignment.RIGHT);
+    const realmTitle = this.host.realmTitle?.() ?? '';
+    if (realmTitle) {
+      // docs/60 §4.5:名字旁显示境界(香槟小字,压在名字上方)
+      const realm = this.host.addChildLabel(node, 'Realm', realmTitle, -w / 2 - P.S(15), P.S(27), P.S(17), rgba(227, 196, 138), new Size(P.S(220), P.S(24)), HorizontalTextAlignment.RIGHT);
+      realm.overflow = Label.Overflow.SHRINK;
+      realm.enableOutline = true;
+      realm.outlineColor = rgba(0, 0, 0, 220);
+      realm.outlineWidth = 2;
+    }
     name.overflow = Label.Overflow.SHRINK;
     name.enableOutline = true;
     name.outlineColor = rgba(0, 0, 0, 230);
@@ -6828,13 +7138,13 @@ export class LobbyTownRenderer {
   /** 顶部中间精英条:锁定精英时显示名字 + 长血条(原型 x 620~1225、y 42~92)。 */
   private renderEliteBar(hud: Node, layout: UiLayout): void {
     this.eliteBar = null;
-    if (!this.def.camps.some((camp) => camp.elite)) {
+    if (!this.trial && !this.def.camps.some((camp) => camp.elite)) {
       return;
     }
     const P = townProtoFrame(layout);
     const w = P.S(530);
     const h = P.S(16);
-    const node = this.host.addChildPlainNode(hud, 'LobbyFieldEliteBar', P.C(950), P.Y(68), w + P.S(140), P.S(80));
+    const node = this.host.addChildPlainNode(hud, 'LobbyFieldEliteBar', P.C(950), P.Y(this.trial ? 178 : 68), w + P.S(140), P.S(80));
     const groove = node.addComponent(Graphics);
     groove.fillColor = rgba(10, 6, 6, 225);
     groove.rect(-w / 2, -h / 2, w, h);
@@ -6888,7 +7198,9 @@ export class LobbyTownRenderer {
       return;
     }
     bar.key = key;
-    bar.name.string = `精英 · ${target.camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || target.camp.label}  Lv.${target.camp.level}${staggered ? '  破防' : ''}`;
+    bar.name.string = target.camp.stageCode === REALM_TRIAL_STAGE
+      ? `心魔 · ${target.camp.label}${staggered ? '  破防' : ''}`
+      : `精英 · ${target.camp.label.replace(/群|窝|巢|哨岗|营地/g, '') || target.camp.label}  Lv.${target.camp.level}${staggered ? '  破防' : ''}`;
     bar.fill.clear();
     bar.fill.fillColor = rgba(196, 40, 34, 255);
     bar.fill.rect(-bar.w / 2, -bar.h / 2, bar.w * ratio, bar.h);

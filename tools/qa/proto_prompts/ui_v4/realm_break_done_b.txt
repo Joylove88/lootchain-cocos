@@ -1,0 +1,22 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED "境界突破" window prototype: reuse its dim blue-grey sea-of-souls backdrop with tiny floating worlds, its round stone platform, and the ghostly "炼魂境外观" figure behind the protagonist — on THIS screen that armoured look becomes REAL.
+- SECOND image = our APPROVED later-realm prototype: its central armoured figure is exactly the "炼魂" look (light traveller's armour of dark leather and blued steel plates, short dark cape, rune-etched steel sword with a faint pale-blue fuller). Same young male face and dark short hair as the first image.
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent; primary button = filled champagne pill with dark text).
+
+SCREEN "突破成功" — full screen, shown right after winning the first breakthrough trial (觉醒 → 炼魂). No window frame, no close button.
+CENTRE-LEFT (about 45% width): the protagonist now in the "炼魂" armour from the SECOND image, standing on the round stone platform, sword lowered, looking slightly up; faint pale soul-lines on the platform under his feet; a single soft cool light from above. The tiny soul spirit "零" floats near his shoulder. Semi-realistic painted, matte (NOT anime, NOT cartoon).
+TOP CENTRE: small grey text "境界突破" and under it a large white title "炼魂境"; between them a thin line with two small realm pills "觉醒" (grey) → "炼魂" (dark-gold gradient pill with WHITE text).
+RIGHT (one tall frosted glass panel about 640 wide, generous padding):
+- Section header "突破所得" (thin champagne bar on the left). Four slim rows, each with a small monochrome muted-gold line icon, white label and right-aligned value:
+    境界称号            炼魂 · 初期
+    主角攻击 / 生命      +15%   (value in soft champagne)
+    新大招              夜帝残影
+    进化上限            传说进化卡 · 路线质变第 6 层
+- Section header "前世记忆 · 其一": a small dark glass card with a faint torn-paper texture edge, a tiny grey caption "神庭 · 第九声钟" and two lines of white quote text:
+    「那一夜神庭的钟敲了九下。天枢握着我的手说:兄长,打完这一仗,我们回北境喝酒。」
+  and under it a tiny grey "记忆碎片 1 / ?".
+- Bottom of the panel: the primary champagne pill button "继续" (full panel width) and above it, small grey text "离开晨风村,前往中央王国".
+BOTTOM-LEFT: a short frosted dialogue card about 700x100 with 零's small round portrait, speaker "零" in small champagne text and the white line "第一道锁开了。宿主,外面的世界比你想的大得多。".
+All text Simplified Chinese exactly as written, crisp. Calm and premium: no fireworks, no rays, no particles, no lens flare, no glow halos. Low saturation, matte (avoid AI look).
+Output only the single finished mockup image, no annotations.

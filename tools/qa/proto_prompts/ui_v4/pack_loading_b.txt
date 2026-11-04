@@ -1,0 +1,17 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our sea-of-souls background (dim blue-grey stormy sea, tiny floating castles, a round stone platform lower-left). Use it as the full-screen background, slightly blurred and darkened to about 45% brightness, so the screen feels calm.
+- SECOND image = our APPROVED UI prototype with the tiny soul spirit "零" (small dark caped silhouette with two golden eyes) and our frosted glass dialogue style.
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent).
+
+SCREEN: a short in-game loading screen shown while new assets download (e.g. before the party appears).
+- Lower-centre: ONE slim frosted dark glass card about 820x190 (rounded corners, 1px faint white outline), centred horizontally, its bottom about 90px above the screen bottom.
+  Inside the card, top to bottom, all centred:
+  * white title "正在加载队伍" (about 30px, medium weight);
+  * a slim progress bar about 640 wide and 8px tall: dark track, champagne-gold fill at 41% with soft rounded ends (no glow);
+  * one row under the bar: left-aligned grey "首次进入需要下载素材,之后直接从本地读取" (small), right-aligned white "41%";
+  * a thin faint divider, then a small line: a tiny champagne label "小贴士" followed by grey text "翻滚的无敌帧可以躲开精英的蓄力重击".
+- Left of the card, overlapping its left edge slightly: the tiny soul spirit "零" floating (about 110px tall), as in the second image.
+- Nothing else on screen: no buttons, no top bar, no logo, no characters.
+All text Simplified Chinese exactly as written, crisp. Calm and premium: no candles, no fire, no rays, no particles, no lens flare, no glow halos. Low saturation, matte (avoid AI look).
+Output only the single finished mockup image, no annotations.

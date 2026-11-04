@@ -1,0 +1,19 @@
+Generate ONE image: a finished in-game screen mockup for a dark-fantasy mobile action RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = a REAL screenshot of our current field-combat screen (top-down 3/4 view). Keep its HUD controls exactly where they are and in the same style: virtual joystick bottom-left, the big attack button + three skill buttons + dodge + "切换目标" bottom-right. REMOVE everything else from it (minimap, quest tracker, top-right system buttons, party portraits, bottom name/HP bar, village scenery) — this is a special trial space.
+- SECOND image = our APPROVED "境界突破" window prototype: the young male protagonist in his CURRENT humble look (rough linen shirt and trousers, simple belt, a WOODEN practice sword) and the tiny soul spirit "零" (small dark caped silhouette with two golden eyes).
+- THIRD image = our APPROVED UI style reference (frosted dark glass, thin faint white outlines, white/grey text, champagne gold #E3C48A as the only accent; red only for enemy HP).
+
+SCREEN "心魔试炼" — the opening moment of the first realm-breakthrough trial.
+SCENE (same top-down 3/4 camera and character scale as the FIRST image):
+- A quiet mind-space: a round arena of dark, slightly reflective grey stone (like still black water turned to stone) with faint cracks, surrounded by drifting grey mist; at the edges, the blurred silhouettes of the starting village's wooden houses and fence, desaturated like a fading memory. Cold blue-grey lighting, one soft light from above. Matte painted, low saturation (NOT anime, NOT cartoon, no sparkles).
+- Lower-left of centre: the protagonist (from the SECOND image), wooden sword ready, facing up-right. "零" floats near his shoulder.
+- Upper-right of centre, about 4 metres away: his SHADOW SELF — the exact same young man and the same humble clothes and wooden sword, but drained of colour: near-black smoky silhouette with faint ash-grey edges, smoke trailing from the shoulders, dim pale-grey eyes, a slumped resentful posture. Under his feet a thin dark ring.
+HUD (B style frosted glass):
+- Top centre: a slim frosted glass bar about 640 wide: left a small champagne label "突破试炼", centre white "心魔 · 昔日的自己", right a white timer "02:58".
+- Under it, centred, an enemy health bar about 560 wide: tiny white name "昔日的自己" above-left, a thin dark-red fill bar with a faint outline, small grey "100%" on the right.
+- Top-left: a small translucent pill button "放弃试炼" with a tiny exit icon.
+- Bottom-centre (between the joystick and the skill buttons): a short frosted dialogue card about 760x110 with 零's small round portrait, speaker "零" in small champagne text and the white line "那是被所有人看不起的你。斩断他,我们才走得出这座村子。".
+- Left of the dialogue, just above the joystick: a small grey line "失败无惩罚,可立即重试".
+All text Simplified Chinese exactly as written, crisp. No glow, no particles, no lens flare, no extra icons.
+Output only the single finished mockup image, no annotations.

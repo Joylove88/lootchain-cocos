@@ -1,0 +1,5 @@
+Generate ONE image: a game ground texture for a top-down 3/4 view action RPG (same camera angle as the attached screenshot), 1536x1024.
+Subject: the floor of a quiet "mind space" arena seen from above at a 3/4 angle: a wide round platform of dark, slightly reflective charcoal-grey stone slabs (like still black water turned to stone), concentric engraved rings and a faint four-pointed star carved in the centre, thin cracks, a few small loose stones. The platform is an ellipse filling about 85% of the width and 80% of the height.
+Outside the ellipse: soft drifting grey-blue mist that fades to FULLY TRANSPARENT toward the image edges (the corners and borders must be completely transparent, alpha 0), so it blends over any background.
+Cold blue-grey lighting from above, matte painted, low saturation, realistic (NOT anime, NOT cartoon). No characters, no UI, no text, no glow, no particles, no candles.
+Output a PNG with a TRANSPARENT background.

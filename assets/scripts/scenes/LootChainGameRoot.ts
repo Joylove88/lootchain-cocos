@@ -81,7 +81,7 @@ import { AdaptiveStageLayoutResolver, type AdaptiveStageLayoutHost } from './Ada
 import { StatusPresenter, type StatusPresenterHost } from './StatusPresenter';
 import { UiContentRootController, type UiContentRootHost } from './UiContentRootController';
 import { UiPrimitiveFactory, type ButtonVisualState, type UiPrimitiveFactoryHost } from './UiPrimitiveFactory';
-import { mountKitBackdrop, mountKitButton, mountKitLoading, mountKitSection, type UiKitHost, type UiKitLoadingHost } from './UiKit';
+import { mountKitButton, mountKitLoading, mountKitSection, type UiKitHost, type UiKitLoadingHost } from './UiKit';
 import { nativeUnderlayVideoSupported } from '../app/NativeUnderlayVideo';
 import { preloadHeroAvatars } from './lobby/HeroHeadCrop';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
@@ -131,7 +131,10 @@ import { LobbyHeroDetailPanelRenderer, type HeroDetailTab, type LobbyHeroDetailP
 import { heroSkinCatalog, heroSkinPackPrefixes, heroSkinsOf, setHeroSkinCatalog } from './lobby/HeroSkins';
 import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
 import { openConfirmPopup } from './lobby/ConfirmPopup';
-import { LobbyTownRenderer, type LobbyTownHost } from './lobby/LobbyTownRenderer';
+import { LobbyTownRenderer, REALM_TRIAL_LIMIT_MS, type LobbyTownHost } from './lobby/LobbyTownRenderer';
+import { LobbyRealmRenderer, type RealmGender, type RealmRendererHost, type RealmTrialHudState } from './lobby/LobbyRealmRenderer';
+import { mountLoadingScreen, type LoadingScreenHost } from './lobby/LobbyLoadingScreen';
+import type { RealmState } from '../api/RealmApi';
 import type { ItemSourceTarget } from './lobby/ItemSourceRoutes';
 import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
@@ -410,6 +413,22 @@ export class LootChainGameRoot extends Component {
   private evolutionPick: EvolutionPickState | null = null;
   private evolutionState: EvolutionState | null = null;
   private evolutionCheckDue = true;
+  // docs/60 §12 主角境界突破:出村前 觉醒 → 炼魂(突破窗口 → 心魔试炼 → 突破成功)
+  private realmState: RealmState | null = null;
+  private realmLoading = false;
+  private realmCheckedUid = 0;
+  private realmBreak: { busy: boolean; error: string } | null = null;
+  private realmTrial: RealmTrialHudState | null = null;
+  private realmTrialLineUntil = 0;
+  private realmTrialLineShown = false;
+  private realmDone: { leaving: boolean } | null = null;
+  private readonly realmRenderer = new LobbyRealmRenderer(this as unknown as RealmRendererHost, {
+    closeBreak: () => this.closeRealmBreak(),
+    startTrial: () => this.startRealmTrial(),
+    quitTrial: () => this.quitRealmTrial(),
+    retryTrial: () => this.retryRealmTrial(),
+    continueDone: () => this.continueRealmDone(),
+  });
   private evolutionLoading = false;
   private readonly evolutionPickRenderer = new LobbyEvolutionPickRenderer(
     this as unknown as EvolutionPickHost,
@@ -1175,6 +1194,7 @@ export class LootChainGameRoot extends Component {
     this.updateLobbyPosterFade(deltaTime);
     if (LOBBY_TOWN_ENABLED && this.currentView === 'lobby') {
       this.lobbyTownRenderer.step(deltaTime);
+      this.tickRealmTrial();
       this.stepAwakenCinematic();
       // docs/50:切图那一刻素材组还在加载会被加载门挡住、地图没建;加载完没人补刷 → 地图一直空着。这里兜底补一次(1 秒限频)
       if (!this.lobbyTownRenderer.isMounted() && !this.uiSpriteFrameCache.groupProgress('town')) {
@@ -1483,18 +1503,8 @@ export class LootChainGameRoot extends Component {
   /** 该页首开素材未齐时画加载进度并返回 true;名册额外等玩家已有英雄的卡面立绘。 */
   /** 开局地图还没定(世界状态没到 / 续点地图素材没进内存):整屏「正在进入世界」,不先画默认的主城。 */
   private renderWorldEntryGate(layout: UiLayout): void {
-    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const panel = this.createUiNode('WorldEntryLoading');
-    panel.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
-    panel.addComponent(BlockInputEvents);
-    const cover = panel.addComponent(Graphics);
-    cover.fillColor = new Color(10, 12, 18, 255);
-    cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
-    cover.fill();
-    mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
-    this.addChildLabel(panel, 'WorldEntryLoadingTitle', '正在进入世界…', centerX, centerY, 28 * scale, new Color(242, 242, 242, 255), new Size(520 * scale, 40 * scale));
+    // 11-04 过场加载页 B 风格(原型 pack_loading_b):不知道总量,只画标题 + 小贴士
+    mountLoadingScreen(this as unknown as LoadingScreenHost, 'WorldEntryLoading', layout, { title: '正在进入世界…', ratio: null, hint: '' });
   }
 
   /** 开局地图已进好(或世界状态拉取失败,退回默认图):放开大厅,整页重绘。 */
@@ -1524,40 +1534,18 @@ export class LootChainGameRoot extends Component {
       return false;
     }
     const scale = Math.max(0.7, Math.min(1, layout.uiScale));
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const panel = this.createUiNode('SceneAssetLoading');
-    panel.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
-    // 纯色底盖住功能页背景(背景里的聚光圆平时被面板挡住,加载态单独露出来像花屏)。
-    const cover = panel.addComponent(Graphics);
-    cover.fillColor = new Color(10, 8, 9, 255);
-    cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
-    cover.fill();
-    // 2026-10-10 全界面美化:纯黑底上垫一层压暗的大教堂实景(读到图才有),不再是一整屏黑
-    mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
       forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材', town: '正在加载世界',
       raid: '正在加载矿境',
     };
-    this.addChildLabel(panel, 'SceneAssetLoadingTitle', titles[group], centerX, centerY + 40 * scale, 28 * scale, new Color(245, 214, 140, 255), new Size(520 * scale, 40 * scale));
-    const barWidth = Math.min(460 * scale, layout.width * 0.5);
-    const barHeight = 12 * scale;
-    const bar = this.addChildPlainNode(panel, 'SceneAssetLoadingBar', centerX, centerY - 6 * scale, barWidth, barHeight);
-    const g = bar.addComponent(Graphics);
-    g.fillColor = new Color(26, 22, 20, 235);
-    g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
-    g.fill();
-    g.strokeColor = new Color(170, 132, 74, 220);
-    g.lineWidth = Math.max(1, 1.2 * scale);
-    g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
-    g.stroke();
+    // 11-04 过场加载页 B 风格(原型 pack_loading_b)
     const ratio = progress.total > 0 ? progress.done / progress.total : 0;
-    g.fillColor = new Color(232, 176, 74, 245);
-    g.roundRect(-barWidth / 2 + 2, -barHeight / 2 + 2, Math.max(barHeight - 4, (barWidth - 4) * ratio), barHeight - 4, (barHeight - 4) / 2);
-    g.fill();
-    this.addChildLabel(panel, 'SceneAssetLoadingCount', `${progress.done} / ${progress.total}`, centerX, centerY - 34 * scale, 18 * scale, new Color(228, 202, 150, 240), new Size(240 * scale, 26 * scale));
-    this.addChildLabel(panel, 'SceneAssetLoadingTip', '首次打开需要下载素材,之后会直接从本地读取', centerX, centerY - 64 * scale, 16 * scale, new Color(168, 150, 118, 220), new Size(560 * scale, 24 * scale));
+    const screen = mountLoadingScreen(this as unknown as LoadingScreenHost, 'SceneAssetLoading', layout, {
+      title: titles[group], ratio, hint: '首次打开需要下载素材,之后直接从本地读取', count: `${progress.done} / ${progress.total}`,
+    });
+    // 返回钮按整屏绝对坐标画:挂到抵消加载页居中偏移的容器上
+    const panel = this.addChildPlainNode(screen, 'Abs', -screen.position.x, -screen.position.y, 1, 1);
     renderSceneBackButton(
       this as unknown as SceneBackButtonHost,
       panel,
@@ -1612,6 +1600,7 @@ export class LootChainGameRoot extends Component {
         this.awakenCinematic.remount(townLayout);
         this.remountStarterContract(townLayout);
         this.remountEvolutionPick(townLayout);
+        this.renderRealmLayers(townLayout);
       }
       gameAudio.bgm('bgm_lobby');
       if (!this.ownedHeroCardArtPrefetched && this.api.tokenStore.tokenValue()) {
@@ -2157,6 +2146,7 @@ export class LootChainGameRoot extends Component {
     this.awakenCinematic.remount(layout);
     this.remountStarterContract(layout);
     this.remountEvolutionPick(layout);
+    this.renderRealmLayers(layout);
     this.layoutKey = this.makeLayoutKey();
   }
 
@@ -2436,6 +2426,14 @@ export class LootChainGameRoot extends Component {
     if (this.awakenCinematic.active) {
       // 觉醒演出里返回键 = 跳过
       this.awakenCinematic.skip();
+      return;
+    }
+    if (this.realmBreak) {
+      this.closeRealmBreak();
+      return;
+    }
+    if (this.realmTrial || this.realmDone) {
+      // 试炼中用「放弃试炼」退出;突破成功页点「继续」
       return;
     }
     if (this.contractPick || this.evolutionPick) {
@@ -7776,6 +7774,12 @@ export class LootChainGameRoot extends Component {
       this.setStatus('稻草靶就在训练场里 · J 普攻 / K L I 技能 / Shift 翻滚');
       return;
     }
+    if (dialog.mode === 'claim' && quest.code === 'V10' && !this.realmReachedLianhun()) {
+      // docs/60 §12:出村前先突破(觉醒 → 炼魂)
+      this.closeWorldDialog();
+      this.openRealmBreak();
+      return;
+    }
     dialog.busy = true;
     this.syncLobbyShopOverlay();
     void (async () => {
@@ -7797,6 +7801,8 @@ export class LootChainGameRoot extends Component {
           gameAudio.sfx('reward');
           // docs/58 §3.1:V04 / V09 领奖解锁英雄契约(对话关掉后弹)
           this.levelContractCheckDue = true;
+          // docs/60 §12:V09 交付 = 突破条件之一,重读境界
+          void this.loadRealmState();
         }
       }
       if (!ok) {
@@ -8000,31 +8006,10 @@ export class LootChainGameRoot extends Component {
   /** 整屏下载进度页(网页分层下载:进地图前素材还没下到本地时)。 */
   private showPackLoading(title: string, done: number, total: number): void {
     this.removeNodeFromContent('PackLoading');
-    const layout = this.resolveLayout();
-    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const panel = this.createUiNode('PackLoading');
-    panel.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
-    panel.addComponent(BlockInputEvents);
-    const cover = panel.addComponent(Graphics);
-    cover.fillColor = new Color(10, 12, 18, 255);
-    cover.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
-    cover.fill();
-    mountKitBackdrop(this as unknown as UiKitHost, panel, layout.width, layout.height, 175).setPosition(centerX, centerY, 0);
-    this.addChildLabel(panel, 'PackLoadingTitle', title, centerX, centerY + 40 * scale, 28 * scale, new Color(242, 242, 242, 255), new Size(520 * scale, 40 * scale));
-    const barWidth = Math.min(460 * scale, layout.width * 0.5);
-    const barHeight = 12 * scale;
-    const g = this.addChildPlainNode(panel, 'PackLoadingBar', centerX, centerY - 6 * scale, barWidth, barHeight).addComponent(Graphics);
-    g.fillColor = new Color(30, 36, 46, 235);
-    g.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
-    g.fill();
-    const ratio = total > 0 ? Math.min(1, done / total) : 0;
-    g.fillColor = new Color(227, 196, 138, 255);
-    g.roundRect(-barWidth / 2 + 2, -barHeight / 2 + 2, Math.max(barHeight - 4, (barWidth - 4) * ratio), barHeight - 4, (barHeight - 4) / 2);
-    g.fill();
-    this.addChildLabel(panel, 'PackLoadingCount', `${Math.round(ratio * 100)}%`, centerX, centerY - 34 * scale, 18 * scale, new Color(182, 189, 205, 255), new Size(240 * scale, 26 * scale));
-    this.addChildLabel(panel, 'PackLoadingTip', '首次进入需要下载这里的素材,之后会直接从本地读取', centerX, centerY - 64 * scale, 16 * scale, new Color(150, 156, 170, 230), new Size(560 * scale, 24 * scale));
+    // 11-04 过场加载页 B 风格(原型 pack_loading_b,识海背景 + 毛玻璃卡 + 小贴士)
+    mountLoadingScreen(this as unknown as LoadingScreenHost, 'PackLoading', this.resolveLayout(), {
+      title, ratio: total > 0 ? Math.min(1, done / total) : 0, hint: '首次进入需要下载素材,之后直接从本地读取',
+    });
   }
 
   private hidePackLoading(): void {
@@ -9106,6 +9091,7 @@ export class LootChainGameRoot extends Component {
     if (after > before) {
       this.evolutionCheckDue = true;
       this.levelContractCheckDue = true;
+      void this.loadRealmState();
     }
     if (Math.floor(after / 5) > Math.floor(before / 5)) {
       void this.loadLobbyMails(false, false);
@@ -9744,7 +9730,8 @@ export class LootChainGameRoot extends Component {
     }
     this.awakenCheckAt = now + 500;
     const userId = this.api.tokenStore.userId();
-    if (!userId || this.bootPreloadActive || this.contractPick || this.evolutionPick || this.lobbyHasOpenLayer() || prologuePlaying()) {
+    if (!userId || this.bootPreloadActive || this.contractPick || this.evolutionPick || this.realmBreak || this.realmTrial || this.realmDone
+      || this.lobbyHasOpenLayer() || prologuePlaying()) {
       return;
     }
     if (!isAwakenPending(userId)) {
@@ -9753,6 +9740,11 @@ export class LootChainGameRoot extends Component {
         this.contractCheckedUid = userId;
         void this.checkStarterContract();
         return;
+      }
+      // 境界:本会话进大厅读一次(V10 拦截 / 称号)
+      if (this.realmCheckedUid !== userId && this.contractCheckedUid === userId) {
+        this.realmCheckedUid = userId;
+        void this.loadRealmState().then(() => this.refreshLobbyViewPreservingBackground());
       }
       // 进化抉择:契约之选查过之后;战斗中不弹(打完再弹)
       if (this.evolutionCheckDue && this.contractCheckedUid === userId && !this.evolutionLoading && !this.lobbyTownRenderer.isInCombat()) {
@@ -9800,7 +9792,7 @@ export class LootChainGameRoot extends Component {
 
   /** 跑图键盘锁:契约之选 / 进化抉择开着时(LobbyTownHost)。 */
   townInputLocked(): boolean {
-    return !!this.contractPick || !!this.evolutionPick;
+    return !!this.contractPick || !!this.evolutionPick || !!this.realmBreak || !!this.realmDone;
   }
 
   /** 默认选中中间那张(原型选中态在中间)。 */
@@ -9908,6 +9900,221 @@ export class LootChainGameRoot extends Component {
       this.removeNodeFromContent(LobbyEvolutionPickRenderer.NODE_NAME);
       this.setTownHudVisible(false);
       this.evolutionPickRenderer.render(layout, this.evolutionPick);
+    }
+  }
+
+  // ── docs/60 §12 主角境界突破 ──
+
+  private realmGender(): RealmGender {
+    return currentLobbyProtagonistHero()?.heroCode === 'PROTAGONIST_FEMALE_ATTACK' ? 'female' : 'male';
+  }
+
+  /** 读境界(进大厅 / 升级 / 交任务后);V10 拦截与称号显示用。 */
+  private async loadRealmState(): Promise<RealmState | null> {
+    if (this.realmLoading) {
+      return this.realmState;
+    }
+    this.realmLoading = true;
+    try {
+      this.realmState = await this.api.realm.state();
+    } catch (error) {
+      console.warn('[Realm] state failed', error);
+    } finally {
+      this.realmLoading = false;
+    }
+    return this.realmState;
+  }
+
+  /** 已到炼魂(没读到状态时放行;服务端领 V10 时还会再拦一次)。 */
+  private realmReachedLianhun(): boolean {
+    const code = this.realmState?.realmCode;
+    return !code || code !== 'AWAKEN';
+  }
+
+  /** 跑图层队长血条上方的境界称号(LobbyTownHost)。 */
+  realmTitle(): string {
+    return this.realmState?.title ?? '';
+  }
+
+  private openRealmBreak(): void {
+    this.realmBreak = { busy: false, error: '' };
+    gameAudio.sfx('panel_open');
+    void this.loadRealmState().then((state) => {
+      if (!state && this.realmBreak) {
+        this.realmBreak = null;
+        this.setStatus('境界信息读取失败,稍后再试');
+      }
+      this.renderRealmLayers();
+    });
+    this.renderRealmLayers();
+  }
+
+  private closeRealmBreak(): void {
+    this.realmBreak = null;
+    this.removeNodeFromContent(LobbyRealmRenderer.BREAK_NODE);
+    this.setTownHudVisible(true);
+  }
+
+  private startRealmTrial(): void {
+    const realm = this.realmState;
+    if (!realm || !realm.canBreak || !this.realmBreak || this.realmBreak.busy) {
+      return;
+    }
+    const spine = this.realmGender() === 'female' ? 'spine/hero/protag_f/protag_f' : 'spine/hero/protag_m/protag_m';
+    const ok = this.lobbyTownRenderer.startRealmTrial(spine, (ms) => void this.onRealmTrialWin(ms), (reason) => this.onRealmTrialFail(reason));
+    if (!ok) {
+      this.realmBreak = { busy: false, error: '现在没法开始试炼,先回到村子里再试' };
+      this.renderRealmLayers();
+      return;
+    }
+    this.realmBreak = null;
+    this.removeNodeFromContent(LobbyRealmRenderer.BREAK_NODE);
+    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, showLine: true, failed: null, settling: false, error: '' };
+    this.realmTrialLineUntil = Date.now() + 8000;
+    this.realmTrialLineShown = true;
+    // 整页重绘:跑图 HUD 按试炼重建(只留摇杆 / 战斗簇 / 血条),系统按钮由 renderRealmLayers 收起
+    this.renderCurrentView();
+  }
+
+  private quitRealmTrial(): void {
+    this.lobbyTownRenderer.endRealmTrial();
+    this.realmTrial = null;
+    this.removeNodeFromContent(LobbyRealmRenderer.TRIAL_NODE);
+    this.renderCurrentView();
+  }
+
+  private retryRealmTrial(): void {
+    if (!this.realmTrial) {
+      return;
+    }
+    this.lobbyTownRenderer.restartRealmTrial();
+    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, showLine: false, failed: null, settling: false, error: '' };
+    this.renderRealmLayers();
+  }
+
+  private onRealmTrialFail(reason: 'down' | 'timeout'): void {
+    if (!this.realmTrial) {
+      return;
+    }
+    this.realmTrial = { ...this.realmTrial, failed: reason, settling: false, error: '' };
+    this.renderRealmLayers();
+  }
+
+  private async onRealmTrialWin(durationMs: number): Promise<void> {
+    if (!this.realmTrial) {
+      return;
+    }
+    this.realmTrial = { ...this.realmTrial, settling: true, failed: null, error: '' };
+    this.renderRealmLayers();
+    try {
+      const state = await this.api.realm.winTrial(durationMs);
+      if (state.realmCode === 'AWAKEN') {
+        throw new Error('突破没有成功,再试一次');
+      }
+      this.realmState = state;
+      this.lobbyTownRenderer.endRealmTrial();
+      this.realmTrial = null;
+      this.removeNodeFromContent(LobbyRealmRenderer.TRIAL_NODE);
+      const v10 = this.worldState?.quests.find((quest) => quest.code === 'V10');
+      this.realmDone = { leaving: !!v10 && (v10.state === 'ACCEPTED' || v10.state === 'DONE') };
+      gameAudio.sfx('reward');
+      // 进化页称号 / 传说卡开放跟着刷新
+      this.evolutionCheckDue = true;
+      this.renderCurrentView();
+    } catch (error) {
+      this.realmTrial = { remainMs: 0, showLine: false, ...this.realmTrial, settling: false, failed: 'down', error: (error as Error)?.message || '突破没有成功,再试一次' };
+      this.renderRealmLayers();
+    }
+  }
+
+  private continueRealmDone(): void {
+    const leaving = !!this.realmDone?.leaving;
+    this.realmDone = null;
+    this.removeNodeFromContent(LobbyRealmRenderer.DONE_NODE);
+    this.setTownHudVisible(true);
+    this.renderCurrentView();
+    if (leaving) {
+      void this.leaveVillageAfterRealm();
+    }
+  }
+
+  /** 突破成功页「继续」:接着交 V10「远行」,从村口传送阵去主城(同对话里交任务的流程)。 */
+  private async leaveVillageAfterRealm(): Promise<void> {
+    const quest = this.worldState?.quests.find((item) => item.code === 'V10');
+    if (!quest) {
+      return;
+    }
+    if (quest.state === 'ACCEPTED' && quest.objective === 'TALK') {
+      if (!(await this.runWorldAction(() => this.api.world.reportQuest(quest.code, 'TALK', quest.objectiveTarget)))) {
+        return;
+      }
+    }
+    if (!(await this.runWorldAction(() => this.api.world.claimQuest(quest.code)))) {
+      return;
+    }
+    gameAudio.sfx('reward');
+    this.lobbyTownRenderer.startChannel(3, '前往主城…', () => this.travelWorldMap('CITY', null));
+  }
+
+  /** 每帧:试炼倒计时(只改字)、开场台词到点收起(重绘一次)。 */
+  private tickRealmTrial(): void {
+    const trial = this.realmTrial;
+    if (!trial || trial.failed || trial.settling) {
+      return;
+    }
+    const info = this.lobbyTownRenderer.realmTrialInfo();
+    if (!info) {
+      return;
+    }
+    trial.remainMs = Math.max(0, REALM_TRIAL_LIMIT_MS - info.elapsedMs);
+    if (this.realmTrialLineShown && Date.now() > this.realmTrialLineUntil) {
+      this.realmTrialLineShown = false;
+      this.realmTrial = { ...trial, showLine: false };
+      this.renderRealmLayers();
+      return;
+    }
+    this.realmRenderer.updateTrialTimer(trial.remainMs, this.ensureContentRoot().getChildByName(LobbyRealmRenderer.TRIAL_NODE));
+  }
+
+  /** 境界三屏按状态重挂(整页重绘后 / 状态变化时)。试炼中收起系统按钮,只留跑图战斗 HUD。 */
+  private renderRealmLayers(layout?: UiLayout): void {
+    this.removeNodeFromContent(LobbyRealmRenderer.BREAK_NODE);
+    this.removeNodeFromContent(LobbyRealmRenderer.TRIAL_NODE);
+    this.removeNodeFromContent(LobbyRealmRenderer.DONE_NODE);
+    if (this.currentView !== 'lobby') {
+      return;
+    }
+    const L = layout ?? this.resolveLayout();
+    const gender = this.realmGender();
+    if (this.realmTrial) {
+      const root = this.ensureContentRoot();
+      for (const name of ['LobbySystemIcons', 'LobbyResourceBar', 'LobbyPlayerInfoButton', 'LobbyCompactStaminaChip', 'LobbyGuideOverlay', 'LobbyGoalTracker', 'LobbyCompactGoalTracker']) {
+        const node = root.getChildByName(name);
+        if (node && node.isValid) {
+          node.active = false;
+        }
+      }
+      this.realmRenderer.renderTrialHud(L, this.realmTrial);
+      this.raisePackLoading();
+      return;
+    }
+    if (this.realmBreak && this.realmState) {
+      this.setTownHudVisible(false);
+      this.realmRenderer.renderBreak(L, { realm: this.realmState, gender, busy: this.realmBreak.busy, error: this.realmBreak.error });
+    }
+    if (this.realmDone && this.realmState) {
+      this.setTownHudVisible(false);
+      this.realmRenderer.renderDone(L, this.realmState, gender, this.realmDone.leaving);
+    }
+    this.raisePackLoading();
+  }
+
+  /** 素材下载页压到最上层(之后重挂的浮层不许盖住它)。 */
+  private raisePackLoading(): void {
+    const root = this.ensureContentRoot();
+    const pack = root.getChildByName('PackLoading');
+    if (pack && pack.isValid) {
+      pack.setSiblingIndex(root.children.length - 1);
     }
   }
 

@@ -19,6 +19,8 @@ export const CORE_PREFIXES = [
   'ui/world/poi',
   // 进化抉择卡面图案(docs/58 §10,Lv.2 就弹)
   'ui/evolution',
+  // 主角境界突破(docs/60 §12):出村前心魔试炼的石台贴地图
+  'ui/realm',
   // 序幕「神庭陨落」视频(docs/60,新号选完主角后播,1080p30 约 12.9MB)+ 对话头像在 ui/protagonist
   'video/prologue',
   // 主角野外骨骼(docs/60,永夜龙骑底换皮,男女两套:建角前不知道性别,两套都进开局包)+ 借用的永夜龙骑弹道 / 命中 / 战技 / 大招特效

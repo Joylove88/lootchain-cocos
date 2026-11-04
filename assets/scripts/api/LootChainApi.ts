@@ -25,6 +25,7 @@ import { ShopApi } from './ShopApi';
 import { PlayerProfileApi } from './PlayerProfileApi';
 import { StarterContractApi } from './StarterContractApi';
 import { EvolutionApi } from './EvolutionApi';
+import { RealmApi } from './RealmApi';
 import { ProtagonistApi } from './ProtagonistApi';
 import { TokenApi } from './TokenApi';
 
@@ -44,6 +45,7 @@ export class LootChainApi {
   /** docs/58 契约之选(新号 3 选 1 R)。 */
   readonly starterContract = new StarterContractApi(this.http);
   readonly evolution = new EvolutionApi(this.http);
+  readonly realm = new RealmApi(this.http);
   readonly lobbyNotice = new LobbyNoticeApi(this.http);
   readonly lobbyCodex = new LobbyCodexApi(this.http);
   readonly lobbyHero = new LobbyHeroApi(this.http);
