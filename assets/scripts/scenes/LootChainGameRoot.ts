@@ -159,7 +159,7 @@ import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStag
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { currentLobbyProtagonistHero, heroPackPrefixes, resolveFieldParty } from '../api/LobbyHeroApi';
+import { currentLobbyProtagonistHero, heroPackPrefixes, resolveFieldParty, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
 import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
@@ -9743,6 +9743,11 @@ export class LootChainGameRoot extends Component {
       }
       // 境界:本会话进大厅读一次(V10 拦截 / 称号)
       if (this.realmCheckedUid !== userId && this.contractCheckedUid === userId) {
+        // 换号:先按觉醒外观,读到境界再换
+        if (this.realmCheckedUid !== 0) {
+          this.realmState = null;
+          setProtagonistRealmSkin(false);
+        }
         this.realmCheckedUid = userId;
         void this.loadRealmState().then(() => this.refreshLobbyViewPreservingBackground());
       }
@@ -9917,6 +9922,10 @@ export class LootChainGameRoot extends Component {
     this.realmLoading = true;
     try {
       this.realmState = await this.api.realm.state();
+      // docs/60 P1b:野外主角外观跟境界走(炼魂起换装);变了就局部刷新大厅,跑图队伍按骨骼名重建(保留队长位置)
+      if (this.realmState.realmCode && setProtagonistRealmSkin(this.realmState.realmCode !== 'AWAKEN') && !this.realmTrial) {
+        this.refreshLobbyViewPreservingBackground();
+      }
     } catch (error) {
       console.warn('[Realm] state failed', error);
     } finally {
@@ -10013,6 +10022,8 @@ export class LootChainGameRoot extends Component {
       }
       this.realmState = state;
       this.lobbyTownRenderer.endRealmTrial();
+      // 突破成功:野外主角换炼魂装(下面 renderCurrentView 重建队伍)
+      setProtagonistRealmSkin(true);
       this.realmTrial = null;
       this.removeNodeFromContent(LobbyRealmRenderer.TRIAL_NODE);
       const v10 = this.worldState?.quests.find((quest) => quest.code === 'V10');

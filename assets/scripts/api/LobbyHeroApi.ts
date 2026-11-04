@@ -102,6 +102,16 @@ function validateLobbyHeroes(data: unknown): LobbyHeroItemVO[] {
 }
 
 let lobbyProtagonistHero: LobbyHeroItemVO | null = null;
+let protagonistRealmSkin = false;
+
+/** 主角野外外观跟境界走(docs/60 P1b):true = 炼魂及以上,换炼魂装;境界读到后由 GameRoot 设置。返回是否有变化。 */
+export function setProtagonistRealmSkin(lianhun: boolean): boolean {
+  if (protagonistRealmSkin === lianhun) {
+    return false;
+  }
+  protagonistRealmSkin = lianhun;
+  return true;
+}
 
 /** 最近一次大厅英雄接口里的主角(user_hero source_type=PROTAGONIST);还没拉到 / 没建主角时为 null。 */
 export function currentLobbyProtagonistHero(): LobbyHeroItemVO | null {
@@ -116,7 +126,9 @@ const FIELD_PARTY_MAX = 4;
  * 没编队按战力取前几名;没有主角(旧数据)时退回原口径 4 名英雄。跑图渲染与登记遭遇共用,保证两边队伍一致(第一个 = 队长)。
  */
 export function resolveFieldParty(heroes: readonly LobbyHeroItemVO[], formationHeroIds: readonly number[]): LobbyHeroItemVO[] {
-  const lead = lobbyProtagonistHero;
+  const base = lobbyProtagonistHero;
+  // 境界外观(docs/60 P1b):炼魂起换 protag_m_lh / protag_f_lh(同一副骨骼换装)
+  const lead = base && protagonistRealmSkin && base.spineAsset ? { ...base, spineAsset: `${base.spineAsset}_lh` } : base;
   const byId = new Map(heroes.map((hero) => [hero.id, hero]));
   let companions = formationHeroIds.map((id) => byId.get(id)).filter((hero): hero is LobbyHeroItemVO => !!hero && !hero.protagonist);
   if (companions.length === 0) {

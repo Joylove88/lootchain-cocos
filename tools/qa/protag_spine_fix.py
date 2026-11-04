@@ -36,13 +36,20 @@ FIXES = {
            ['face01', 'face02'],  # 带 armor03 一起提交 Meowa 连续两次 generation_failed,护甲块另行处理
            'Head parts: the bare head of the young woman in the reference image, NO helmet: a realistic face with brown eyes, short brown '
            'chin-length bob hair filling the outline. ' + KEEP),
+    # 11-04 炼魂境外观(m3):躯干 body01 / body02 和披风 cloak02 被画成带兜帽的人脸(技能时两个头)→ 按炼魂参考图重画成皮甲胸甲 / 深色披风;
+    # 头部 face01 / face02 不重画,从觉醒版 m2 原样搬(换装后脸 / 发型不变)
+    'm3': ('IshmaelA', 'skinref_m3.png',
+           ['body01', 'body02', 'cloak02'],
+           'Torso parts (body01 / body02): the upper body of a light traveller armour, dark leather chest piece with crossed straps and a small '
+           'round bronze cape clasp, the collar of a short dark charcoal cape around the neck opening, NO face, NO head, NO hood with a face in it. '
+           'Cloak part (cloak02): a short dark charcoal wool cape with soft folds and a torn hem only, NO face, NO head. ' + KEEP),
 }
 # 换皮后直接清成透明的部件(头盔红眼光等不该出现在主角身上的发光件)
-BLANK = {'m2': ['eyes01'], 'f2': ['eyes01']}
+BLANK = {'m2': ['eyes01'], 'f2': ['eyes01'], 'm3': ['eyes01']}
 # 女版后处理(同一副底骨骼、同一张放大图集 → 区域坐标与男版完全一致):
 # Meowa 把女版躯干 body01 / body02 画成了带兜帽的人脸(播技能时出现两个头),两块护甲 R_armor03 / armor03 没换皮还是原黑甲
 # → 直接从男版搬这四块(皮背心 / 布兜帽 / 皮护甲);女版 face01 回来是空的 → 用她自己的 face02(同为侧前方的头)缩放填进去
-COPY_FROM_MALE = {'f2': ('m2', ['body01', 'body02', 'R_armor03', 'armor03'])}
+COPY_FROM_MALE = {'f2': ('m2', ['body01', 'body02', 'R_armor03', 'armor03']), 'm3': ('m2', ['face01', 'face02'])}
 FILL_FROM = {'f2': [('face01', 'face02')]}
 
 
@@ -74,8 +81,10 @@ def post_fix(key, out, base):
     page = np.array(Image.open(png).convert('RGBA'))
     if key in COPY_FROM_MALE:
         mk, names = COPY_FROM_MALE[key]
-        mregs, _ = atlas_regions(os.path.join(OUT, mk, 'out_fix', base + '.atlas'))
-        mpage = np.array(Image.open(os.path.join(OUT, mk, 'out_fix', base + '.png')).convert('RGBA'))
+        # 来源版本统一过衣服(protag_spine_unify.py → out_unify)就从它搬,和游戏里装的一致
+        msrc = os.path.join(OUT, mk, 'out_unify') if os.path.isdir(os.path.join(OUT, mk, 'out_unify')) else os.path.join(OUT, mk, 'out_fix')
+        mregs, _ = atlas_regions(os.path.join(msrc, base + '.atlas'))
+        mpage = np.array(Image.open(os.path.join(msrc, base + '.png')).convert('RGBA'))
         for n in names:
             assert mregs[n] == regs[n], n
             x, y, w, h = boxes[n]

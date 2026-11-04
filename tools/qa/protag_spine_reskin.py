@@ -39,6 +39,13 @@ TARGETS = {
            'Re-texture this character as a slender 18-year-old village girl with NO armour: short brown chin-length bob and a bare face (no helmet), '
            'hooded brown wool travelling cloak over the shoulders, plain worn linen tunic, leather belt with pouch, leather bracers, brown trousers, '
            'leather boots, worn brown wool cape, modest; the long sword is a pale WOODEN training sword.'),
+    # 11-04 docs/60 §12 P1b 炼魂境外观(旅者轻甲 + 短兜帽披风 + 符文剑):同一副永夜龙骑底,参考图按 m2 同姿势换装(skinref_m3);
+    # 女版照觉醒版终版口径:男版整套贴图 + 只留女主脸(protag_body_from_male.py),不单独换皮
+    'm3': ('IshmaelA', 'skinref_m3.png',
+           'Re-texture this character as the same lean 18-year-old youth, now a travelling swordsman: short neat dark brown hair and a bare face '
+           '(no helmet), light traveller armour of dark leather with blued-steel shoulder plates, forearm plates and knee plates, belted layered '
+           'tunic with straps, short dark charcoal hooded cape over the shoulders, dark trousers, leather boots with steel shin guards; the long '
+           'sword is a rune-etched steel sword with a faint pale-blue line along the fuller and a bronze crossguard.'),
 }
 
 

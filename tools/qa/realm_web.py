@@ -21,7 +21,9 @@ BUSY = "let busy=false; root.node.walk(x=>{ if((x.name==='PackLoading' || x.name
 CLEAR = ("if (root.evolutionPick && !root.evolutionPick.busy && root.evolutionPick.state.choice) { root.selectEvolutionCard(root.evolutionPick.state.choice.candidates[0].key); await root.confirmEvolution(); return 'evo'; }"
          " if (root.contractPick && !root.contractPick.busy) { root.selectStarterContract(root.contractPick.candidates[0].heroCode); await root.confirmStarterContract(); return 'contract'; }"
          " return 'none';")
-STATE = "return JSON.stringify({ realm: root.realmState && root.realmState.title, code: root.realmState && root.realmState.realmCode, canBreak: root.realmState && root.realmState.canBreak, brk: !!root.realmBreak, trial: root.realmTrial, done: root.realmDone, info: t.realmTrialInfo() });"
+STATE = "return JSON.stringify({ realm: root.realmState && root.realmState.title, code: root.realmState && root.realmState.realmCode, canBreak: root.realmState && root.realmState.canBreak, brk: !!root.realmBreak, trial: root.realmTrial, done: root.realmDone, info: t.realmTrialInfo(), leaderSpine: t.leader && t.leader.hero.spineAsset });"
+# P1b 换装:队长骨骼名 + 实际挂上的骨骼资源
+LEADER = "const sk = t.leader && t.leader.skeleton; return JSON.stringify({ spine: t.leader && t.leader.hero.spineAsset, data: sk && sk.skeletonData && sk.skeletonData.name, x: t.leader && Math.round(t.leader.x), y: t.leader && Math.round(t.leader.y) });"
 
 
 def sql(q):
@@ -133,7 +135,19 @@ async def main():
             await ev("root.continueRealmDone(); return 1;")
             await asyncio.sleep(6)
             print('after continue', await ev("return JSON.stringify({ map: t.mapCode, realm: root.realmState && root.realmState.title });"), flush=True)
+            print('leader after', await ev(LEADER), flush=True)
             await shot('05_after')
+            # 刷新重进:走登录读境界那条路,队长应直接是炼魂装
+            await call('Page.reload')
+            await asyncio.sleep(8)
+            await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
+            for _ in range(120):
+                if await ev("return (root && root.currentView === 'lobby' && t && t.leader && root.realmState) ? 'ok' : 'wait';") == 'ok':
+                    break
+                await asyncio.sleep(2)
+            await asyncio.sleep(4)
+            print('leader relogin', await ev(LEADER), flush=True)
+            await shot('06_relogin')
     finally:
         proc.kill()
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)

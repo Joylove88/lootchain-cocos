@@ -1363,7 +1363,8 @@ export class LobbyTownRenderer {
       return;
     }
     const party = this.resolveParty();
-    const signature = party.map((hero) => `${hero.id}:${hero.heroCode}`).join(',');
+    // 带上骨骼名:主角突破换装(protag_m → protag_m_lh)时英雄没变也要重建
+    const signature = party.map((hero) => `${hero.id}:${hero.heroCode}:${hero.spineAsset ?? ''}`).join(',');
     if (signature === this.partySignature && this.leader && this.leader.node.isValid) {
       return;
     }
@@ -4510,7 +4511,7 @@ export class LobbyTownRenderer {
       { anim: 'skill1', start: 1.05, end: 1.95, speed: 1.35, hitAt: 0.4, mult: 1.2, reach: 210, heavy: false },
       { anim: 'skill3B', start: 0.3, end: 1.45, speed: 1.3, hitAt: 0.62, mult: 1.9, reach: 220, heavy: true, around: true },
     ];
-    return { protag_m: chain, protag_f: chain, IshmaelA: chain };
+    return { protag_m: chain, protag_f: chain, protag_m_lh: chain, protag_f_lh: chain, IshmaelA: chain };
   })();
   private static readonly SKILLS = [
     // 10-31 用户「只有大招有技能特效」:技能动作 2~2.5 秒,原 cap 0.7~0.9 秒 = 快进 3 倍一闪而过;放宽到约 1.7~2 倍速
