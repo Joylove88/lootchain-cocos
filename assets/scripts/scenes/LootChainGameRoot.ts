@@ -159,7 +159,7 @@ import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStag
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { currentLobbyProtagonistHero, heroPackPrefixes, resolveFieldParty, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
+import { currentLobbyProtagonistHero, currentLobbyProtagonistLeader, heroPackPrefixes, LOBBY_FORMATION_MAX, resolveFieldParty, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
 import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
@@ -1834,7 +1834,7 @@ export class LootChainGameRoot extends Component {
       .filter((hero) => hero.id > 0 && !hero.protagonist && hero.rarity.toUpperCase() !== 'EX' && !hero.heroCode.toUpperCase().startsWith('EX_'));
     const byId = new Map(roster.map((hero) => [hero.id, hero]));
     const picked = this.resolveLobbyFormationHeroIds().map((id) => byId.get(id)).filter((hero): hero is LobbyHeroItemVO => !!hero);
-    const heroes = (picked.length > 0 ? picked : [...roster].sort((a, b) => b.power - a.power)).slice(0, 4);
+    const heroes = (picked.length > 0 ? picked : [...roster].sort((a, b) => b.power - a.power)).slice(0, LOBBY_FORMATION_MAX);
     if (heroes.length === 0) {
       this.setStatus('没有可上阵的英雄,先去召唤。');
       return;
@@ -3263,7 +3263,23 @@ export class LootChainGameRoot extends Component {
     if (heroId == null) {
       return 0;
     }
-    return this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? 0;
+    return this.findLobbyHeroById(heroId)?.power ?? 0;
+  }
+
+  /**
+   * 按 id 找英雄:名册列表(不含主角)找不到时回退主角(2026-11-05 主角进名册,可打开英雄详情养成)。
+   * 主角带境界外观(炼魂装骨骼),与野外队长 / 编队队长位一致。
+   */
+  private findLobbyHeroById(heroId: number | null): LobbyHeroItemVO | null {
+    if (heroId == null) {
+      return null;
+    }
+    const hit = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId);
+    if (hit) {
+      return hit;
+    }
+    const lead = currentLobbyProtagonistLeader();
+    return lead && lead.id === heroId ? lead : null;
   }
 
   // 自动强化:连续强化直到失败/满级/材料不足,期间沿用当前祝福石/护符开关(每次尝试都会消耗)。
@@ -4092,7 +4108,9 @@ export class LootChainGameRoot extends Component {
   }
 
   private openLobbyFormationPanel(stageCode?: string, origin?: string): void {
-    const formationPrefixes = ['ui/formation', 'ui/hero-roster/card_background', ...this.ownedHeroPackPrefixes()];
+    // 队长位画主角骨骼(境界外观 protag_m / protag_m_lh),一起进加载门
+    const lead = currentLobbyProtagonistLeader();
+    const formationPrefixes = ['ui/formation', 'ui/hero-roster/card_background', ...this.ownedHeroPackPrefixes(), ...(lead?.spineAsset ? [`spine/hero/${lead.spineAsset}`] : [])];
     if (!packResourcesReady(formationPrefixes)) {
       this.openWithPackGate(formationPrefixes, '正在加载编队素材', () => this.openLobbyFormationPanel(stageCode, origin));
       return;
@@ -4287,12 +4305,20 @@ export class LootChainGameRoot extends Component {
 
   private openLobbyHeroDetail(heroId: number): void {
     this.uiSpriteFrameCache.preloadGroup('heroes');
-    const hero = this.lobbyHeroRosterLoader.currentState().heroes.find((item) => item.id === heroId);
+    const hero = this.findLobbyHeroById(heroId);
     if (!hero || hero.rarity.toUpperCase() === 'EX' || hero.heroCode.toUpperCase().startsWith('EX_')) {
       this.setStatus('该英雄当前不可查看详情。');
       return;
     }
     lobbyGuide.markVisited('herocard');
+    if (hero.protagonist && !this.realmState) {
+      // 主角详情的称号 / 「境界」页要境界状态
+      void this.loadRealmState().then(() => {
+        if (this.currentView === 'heroDetail') {
+          this.refreshLobbyOverlay();
+        }
+      });
+    }
     this.lobbyHeroDetailHeroId = hero.id;
     this.lobbyHeroDetailTab = 'attr';
     this.lobbyHeroDetailPanelRenderer.resetAttrDetailPopup();
@@ -4369,7 +4395,7 @@ export class LootChainGameRoot extends Component {
     if (this.lobbyHeroDetailHeroId === null) {
       return null;
     }
-    return this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === this.lobbyHeroDetailHeroId) ?? null;
+    return this.findLobbyHeroById(this.lobbyHeroDetailHeroId);
   }
 
   private isLobbyHeroLevelUpPending(heroId: number): boolean {
@@ -4534,7 +4560,7 @@ export class LootChainGameRoot extends Component {
     try {
       // 名册与详情互不依赖,并行回读(2026-10-16 用户「升级升星数值延迟变化」:原先 名册→资料/背包/冒险→详情 三轮串行)
       await Promise.all([this.loadLobbyHeroRoster(true), this.loadLobbyHeroDetail(heroId)]);
-      const after = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? beforePower;
+      const after = this.findLobbyHeroById(heroId)?.power ?? beforePower;
       const gain = after - beforePower;
       if (gain !== 0) {
         this.setStatus(`${heroName} ${verb}：战力 ${this.formatInteger(after)}（${gain > 0 ? '+' : ''}${this.formatInteger(gain)}）`);
@@ -4614,7 +4640,7 @@ export class LootChainGameRoot extends Component {
         this.setStatus(`一键升级未执行：${stopReason || '材料不足或已达上限'}`);
       }
       this.lobbyHeroLevelUpBusyId = null;
-      const afterPower = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? lastPower;
+      const afterPower = this.findLobbyHeroById(heroId)?.power ?? lastPower;
       this.releaseHeroDock();
       this.spawnPowerDeltaFloat(afterPower - beforePower);
     }
@@ -4661,7 +4687,7 @@ export class LootChainGameRoot extends Component {
       gameAudio.sfx(ok ? 'level_up' : 'ui_error');
       this.setStatus(ok ? `${heroName} 觉醒成功！大招等级上限提升，战力 ${this.formatInteger(lastPower)}。` : `觉醒失败：${failReason}`);
       this.lobbyHeroLevelUpBusyId = null;
-      const afterPower = this.lobbyHeroRosterLoader.currentState().heroes.find((hero) => hero.id === heroId)?.power ?? lastPower;
+      const afterPower = this.findLobbyHeroById(heroId)?.power ?? lastPower;
       if (ok) {
         this.celebrateHeroGrowth('awaken');
         this.scheduleHeroDetailRefresh();
@@ -5373,7 +5399,7 @@ export class LootChainGameRoot extends Component {
 
   /** 名册里的英雄简要(装备角标头像 / 转移确认用);EX / 查不到返回 null。 */
   private lobbyHeroBriefById(heroId: number): { heroCode: string; heroName: string } | null {
-    const hero = this.lobbyHeroRosterLoader.currentState().heroes.find((item) => item.id === heroId);
+    const hero = this.findLobbyHeroById(heroId);
     return hero ? { heroCode: hero.heroCode, heroName: hero.heroName } : null;
   }
 
@@ -5454,7 +5480,8 @@ export class LootChainGameRoot extends Component {
     const roster = this.lobbyHeroRosterLoader.currentState();
     const selectedHeroIds = this.resolveLobbyFormationHeroIds();
     const byId = new Map(this.selectableLobbyHeroes().map((hero) => [hero.id, hero]));
-    const currentPower = selectedHeroIds
+    // 阵容战力 = 主角(固定带队)+ 编队 3 名英雄(2026-11-05 用户拍板「战力算主角」,与后端资料 lineupPower 同口径)
+    const currentPower = Math.max(0, Math.trunc(currentLobbyProtagonistHero()?.power ?? 0)) + selectedHeroIds
       .map((heroId) => byId.get(heroId)?.power ?? 0)
       .reduce((sum, power) => sum + Math.max(0, Math.trunc(power)), 0);
     const resolvedStageCode = this.resolveLobbyStageCode(stageCode) ?? this.selectedLobbyStageCode ?? '';
@@ -5489,8 +5516,8 @@ export class LootChainGameRoot extends Component {
       this.setStatus(`${hero.heroName} 已移出本次阵容。`);
     } else {
       const next = [...current];
-      if (next.length >= 4) {
-        this.setStatus('阵容已满(上限 4 人)，请先点击已上阵英雄下阵，再选择新英雄。');
+      if (next.length >= LOBBY_FORMATION_MAX) {
+        this.setStatus(`阵容已满(主角带队 + ${LOBBY_FORMATION_MAX} 名英雄)，请先点击已上阵英雄下阵，再选择新英雄。`);
         return;
       } else {
         next.push(hero.id);
@@ -9975,6 +10002,31 @@ export class LootChainGameRoot extends Component {
     return this.realmState?.title ?? '';
   }
 
+  /** 境界名(编队队长名牌 / 名册主角卡,例「炼魂」);没读到返回 ''。 */
+  realmName(): string {
+    return this.realmState?.realmName ?? '';
+  }
+
+  /** 主角详情「境界」页(2026-11-05 主角进名册)。 */
+  protagonistRealmInfo(): RealmState | null {
+    return this.realmState;
+  }
+
+  protagonistEvolutionInfo(): EvolutionState | null {
+    return this.evolutionState;
+  }
+
+  /** 主角详情「前往突破」:回大厅再开突破层(突破层只在大厅视图渲染)。 */
+  openProtagonistRealmBreak(): void {
+    this.returnToLobbyFromScenePage();
+    this.openRealmBreak();
+  }
+
+  /** 境界光环 %(编队队长名牌;没读到 / 旧服务端按觉醒默认 5,以开战回执为准)。 */
+  realmTeamAuraPct(): number {
+    return this.realmState && this.realmState.teamAuraPct > 0 ? this.realmState.teamAuraPct : 5;
+  }
+
   private openRealmBreak(): void {
     this.realmBreak = { busy: false, error: '' };
     gameAudio.sfx('panel_open');
@@ -10493,7 +10545,7 @@ export class LootChainGameRoot extends Component {
 
   // 装备详情卡"已穿戴:英雄名"反查(EquipCardHost 可选接口,花名册未载入时回退通用文案)。
   private resolveHeroName(heroId: number): string | null {
-    const hero = this.lobbyHeroRosterLoader.currentState().heroes.find((item) => item.id === heroId);
+    const hero = this.findLobbyHeroById(heroId);
     return hero ? hero.heroName : null;
   }
 
@@ -10511,8 +10563,10 @@ export class LootChainGameRoot extends Component {
 
   // 详情左右切换英雄(参考图1):在花名册可查看列表(含主角,过滤 EX)里循环切换。
   private switchLobbyHeroDetail(direction: number): void {
-    const heroes = this.lobbyHeroRosterLoader.currentState().heroes
-      .filter((hero) => hero.id > 0 && hero.rarity.toUpperCase() !== 'EX' && !hero.heroCode.toUpperCase().startsWith('EX_'));
+    // 主角在名册首格(2026-11-05),左右切换也从主角开始
+    const lead = currentLobbyProtagonistLeader();
+    const heroes = [...(lead ? [lead] : []), ...this.lobbyHeroRosterLoader.currentState().heroes
+      .filter((hero) => hero.id > 0 && hero.rarity.toUpperCase() !== 'EX' && !hero.heroCode.toUpperCase().startsWith('EX_'))];
     if (heroes.length <= 1 || this.lobbyHeroDetailHeroId === null) {
       return;
     }
@@ -10685,7 +10739,7 @@ export class LootChainGameRoot extends Component {
   private defaultLobbyFormationHeroIds(): number[] {
     return [...this.selectableLobbyHeroes()]
       .sort((a, b) => b.power - a.power)
-      .slice(0, 4)
+      .slice(0, LOBBY_FORMATION_MAX)
       .map((hero) => hero.id);
   }
 
@@ -10694,14 +10748,14 @@ export class LootChainGameRoot extends Component {
     const byId = new Map(heroes.map((hero) => [hero.id, hero]));
     const normalized: number[] = [];
     for (const heroId of heroIds) {
-      if (normalized.length >= 4) {
+      if (normalized.length >= LOBBY_FORMATION_MAX) {
         break;
       }
       if (byId.has(heroId) && !normalized.includes(heroId)) {
         normalized.push(heroId);
       }
     }
-    return normalized.slice(0, 4);
+    return normalized.slice(0, LOBBY_FORMATION_MAX);
   }
 
   private reconcileLobbyFormationSelection(): boolean {

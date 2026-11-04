@@ -28,6 +28,8 @@ export interface RealmState {
   legendOpen: boolean;
   /** TRIAL 打试炼突破 / LEGACY 老号直接补发 / '' 觉醒。 */
   source: string;
+  /** 境界光环 %(主角带队:守卫战上阵英雄攻击 / 生命加成;旧服务端 0)。 */
+  teamAuraPct: number;
 }
 
 /** 主角境界突破(docs/60 §12):状态与突破条件由服务端给出;试炼打赢后上报用时,服务端校验后升境。 */
@@ -73,5 +75,6 @@ function validateState(data: unknown): RealmState {
     nextBonus: num(data, 'nextBonus'),
     legendOpen: data.legendOpen === true,
     source: readText(data, 'source', 16, ''),
+    teamAuraPct: Math.max(0, Math.min(50, Math.round(num(data, 'teamAuraPct')))),
   };
 }

@@ -38,6 +38,7 @@ import { mountHeroAvatar } from './HeroHeadCrop';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
+import { currentLobbyProtagonistLeader, LOBBY_FORMATION_MAX } from '../../api/LobbyHeroApi';
 
 const FORMATION_SPINE_RUNTIME_RETRY_DELAYS_MS = [180, 420, 900];
 const FORMATION_BATTLE_BG_ASSET: string = 'ui/battle/battle_scene_cathedral/spriteFrame';
@@ -155,6 +156,10 @@ export interface LobbyFormationPanelHost {
   ): Label;
   applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
+  /** 主角境界名(队长名牌「炼魂境」;没读到为 '')。 */
+  realmName?(): string;
+  /** 境界光环 %(队长名牌)。 */
+  realmTeamAuraPct?(): number;
 }
 
 export interface LobbyFormationPowerSnapshot {
@@ -444,7 +449,7 @@ export class LobbyFormationPanelRenderer {
   }
 
   /**
-   * B 风格顶栏(11-02 原型 formation_b2):「< 编队 ?」+ 中间玻璃胶囊「阵容战力 N | 已上阵 x/4」+ ✕。
+   * B 风格顶栏(11-02 原型 formation_b2):「< 编队 ?」+ 中间玻璃胶囊「阵容战力 N | 已上阵 x/3」+ ✕。
    * 胶囊放在「?」与右栏之间空白区正中(同旧横匾口径,用户 10-15「阵容战力居中再向左一些」)。
    */
   private renderGlassHeader(parent: Node, state: LobbyHeroRosterPanelState, stageCode: string, selectedHeroIds: number[]): void {
@@ -481,8 +486,8 @@ export class LobbyFormationPanelRenderer {
     const numberColor = !power.rosterLoaded ? GLASS_COLOR.dim : footerHidden || power.enough || power.recommendedPower <= 0 ? GLASS_COLOR.champagne : new Color(240, 160, 110, 255);
     T('Number', power.rosterLoaded ? formatInteger(power.currentPower) : '—', left + 160 * k, 30, numberColor, 140 * k, true);
     mountGlassLine(kit, chip, 'Divider', left + 312 * k, 0, Math.max(1, 2 * k), 28 * k, new Color(120, 128, 140, 200));
-    const deployed = Math.min(4, selectedHeroIds.length);
-    T('Deployed', `已上阵 ${deployed}/4`, left + 334 * k, 21, deployed >= 4 ? GLASS_COLOR.text : GLASS_COLOR.sub, 130 * k);
+    const deployed = Math.min(LOBBY_FORMATION_MAX, selectedHeroIds.length);
+    T('Deployed', `已上阵 ${deployed}/${LOBBY_FORMATION_MAX}`, left + 334 * k, 21, deployed >= LOBBY_FORMATION_MAX ? GLASS_COLOR.text : GLASS_COLOR.sub, 130 * k);
     if (state.loading || state.error) {
       const statusText = state.loading ? '正在读取可上阵英雄...' : '英雄队列暂不可用，当前不能进入战斗。';
       const status = glassLabel(kit, parent, 'LobbyFormationStatus', statusText, g.heroesCenterX, rowY - 64 * k, 20 * k, state.error ? GLASS_COLOR.red : GLASS_COLOR.sub, 640 * k, HorizontalTextAlignment.CENTER);
@@ -516,7 +521,8 @@ export class LobbyFormationPanelRenderer {
     title.isBold = true;
     this.applyOutline(title, u, true);
     const lines = [
-      '· 守卫战最多上阵 4 名英雄，不分前后排。',
+      '· 主角固定当队长、不能下阵；再选 3 名英雄上阵。',
+      '· 野外：主角带这 3 人同行；守卫战：3 人上格子，主角给全队境界光环。',
       '· 点右侧英雄卡上阵 / 下阵，已上阵的卡右上角有金色对勾。',
       '· 点名牌上的「×」或下方「下阵」可撤下该英雄。',
       '· 右栏底部可切换排序（品质 / 战力 / 等级 / 星级）、',
@@ -544,24 +550,30 @@ export class LobbyFormationPanelRenderer {
       return;
     }
     const slots = this.resolveSelectedSlots(state.heroes, selectedHeroIds);
-    this.renderFormationBattlefield(parent, slots);
+    this.renderFormationBattlefield(parent, slots, currentLobbyProtagonistLeader());
     this.renderFormationHeroPicker(parent, state.heroes, selectedHeroIds);
   }
 
-  /** 战场:守卫战不分前后排,4 个站位一排(参考图脚底 y≈615,间距 262),英雄站在石台上,下面名牌 + 下阵钮。 */
-  private renderFormationBattlefield(parent: Node, slots: Array<LobbyHeroItemVO | null>): void {
+  /**
+   * 战场(2026-11-05 原型 formation_protag_b):4 个站位一排——最左是主角队长位(固定、不能下阵、略靠前),
+   * 右边 3 个英雄位(浅弧:中间一位略靠前)。先画后排再画前排,石台和名牌互不遮挡。没有主角(旧数据)时队长位空着。
+   */
+  private renderFormationBattlefield(parent: Node, slots: Array<LobbyHeroItemVO | null>, leader: LobbyHeroItemVO | null): void {
     const g = this.geo;
     const field = this.host.addChildPlainNode(parent, 'LobbyFormationBattlefieldScene', 0, 0, g.right - g.left, g.top - g.bottom);
     const feetY = g.bottom + (150 + 60 * g.b) * g.u;
-    // 用户 2026-10-15「英雄位置按之前那样」:浅弧——两端两位略靠后(脚底高 48u、整体 0.93 倍),中间两位靠前;
-    // 两端先画、中间后画,石台和名牌互不遮挡
-    [0, 3, 1, 2].forEach((index) => {
-      const outer = index === 0 || index === 3;
-      this.renderFormationSlot(field, slots[index] ?? null, index, g.heroesCenterX + (index - 1.5) * g.slotSpacing, feetY + (outer ? 48 * g.u * g.b : 0), outer ? 0.93 : 1);
+    const back = 36 * g.u * g.b;
+    [1, 3, 2].forEach((index) => {
+      const mid = index === 2;
+      this.renderFormationSlot(field, slots[index - 1] ?? null, index, g.heroesCenterX + (index - 1.5) * g.slotSpacing, feetY + (mid ? back * 0.4 : back), mid ? 0.97 : 0.95);
     });
+    if (leader) {
+      // 队长脚底与两侧英雄同高(名牌比英雄名牌 + 下阵钮略高,底边对齐不出屏)
+      this.renderFormationSlot(field, leader, 0, g.heroesCenterX - 1.5 * g.slotSpacing, feetY + back, 0.97, true);
+    }
   }
 
-  private renderFormationSlot(parent: Node, hero: LobbyHeroItemVO | null, index: number, x: number, feetY: number, depth: number): void {
+  private renderFormationSlot(parent: Node, hero: LobbyHeroItemVO | null, index: number, x: number, feetY: number, depth: number, leader = false): void {
     const g = this.geo;
     const u = g.u * g.b;
     const slot = this.host.addChildPlainNode(parent, `LobbyFormationActorStand_${index}`, x, feetY, 240 * u, 40 * u);
@@ -595,11 +607,15 @@ export class LobbyFormationPanelRenderer {
       plus.overflow = Label.Overflow.SHRINK;
     }
     if (glassStyleEnabled()) {
-      if (pedestal) {
-        // 石台压掉暖金光,和 B 风格冷暗场景一致
+      if (pedestal && !leader) {
+        // 石台压掉暖金光,和 B 风格冷暗场景一致;队长位保留石台原有的金边(原型:队长石台一圈细金线)
         pedestal.color = new Color(150, 152, 162, 255);
       }
-      this.renderGlassNameplate(slot, hero, u);
+      if (leader && hero) {
+        this.renderGlassLeaderNameplate(slot, hero, u);
+      } else {
+        this.renderGlassNameplate(slot, hero, u);
+      }
       return;
     }
     // 名牌(参考图 210×80,三行:稀有度 + Lv + ×;职业图标 + 名字;星级)
@@ -704,6 +720,50 @@ export class LobbyFormationPanelRenderer {
     this.renderStars(plate, 0, -26 * u, hero.star, 19 * u, 22 * u);
     const unequip = mountGlassButton(kit, slot, 'LobbyFormationActorUnequip', '下阵', 0, -146 * u, 150 * u, 40 * u, u, 'secondary', () => this.host.toggleLobbyFormationHero(hero.id), 19);
     void unequip;
+  }
+
+  /**
+   * 队长名牌(原型 formation_protag_b):选中态金边玻璃,高度 = 英雄名牌 + 下阵钮;
+   * 行:暗金「队长」签 + Lv / 名字 / 「炼魂境 · 境界光环」/「攻击/生命 +5%」/ 细线 + 锁「固定带队」(没有下阵钮)。
+   */
+  private renderGlassLeaderNameplate(slot: Node, hero: LobbyHeroItemVO, u: number): void {
+    const g = this.geo;
+    const kit = this.host as unknown as UiKitHost;
+    const plateW = Math.min(232 * u, g.slotSpacing - 12 * u);
+    const top = -24 * u;
+    const bottom = -168 * u;
+    const plateH = top - bottom;
+    const plate = this.host.addChildPlainNode(slot, 'LobbyFormationLeaderNameplate', 0, (top + bottom) / 2, plateW, plateH);
+    mountGlassPanel(kit, plate, 'Bg', 0, 0, plateW, plateH, u * 0.9, true);
+    const T = (name: string, text: string, x: number, y: number, size: number, color: Color, w: number, bold = false): Label => {
+      const l = glassLabel(kit, plate, name, text, x, y, size * u, color, w, HorizontalTextAlignment.CENTER, bold);
+      l.fontSize = Math.max(12, Math.round(size * u));
+      l.lineHeight = l.fontSize + 4;
+      l.overflow = Label.Overflow.SHRINK;
+      return l;
+    };
+    const tagW = 54 * u;
+    const tagH = 26 * u;
+    const rowTop = plateH / 2 - 22 * u;
+    const tag = this.host.addChildPlainNode(plate, 'LeaderTag', -plateW / 2 + 16 * u + tagW / 2, rowTop, tagW, tagH);
+    mountGlassSlice(kit, tag, 'Bg', GLASS_SLICES.tabGold, 0, 0, tagW, tagH, u * 0.6);
+    const tl = glassLabel(kit, tag, 'Text', '队长', 0, 0, 16 * u, GLASS_COLOR.onGold, tagW, HorizontalTextAlignment.CENTER, true);
+    tl.fontSize = Math.max(12, Math.round(16 * u));
+    tl.enableShadow = false;
+    T('Level', `Lv.${hero.level}`, 14 * u, rowTop, 19, GLASS_COLOR.text, 100 * u);
+    T('LobbyFormationActorName', safeText(hero.heroName), 0, rowTop - 27 * u, 20, GLASS_COLOR.text, plateW - 24 * u, true);
+    const realm = this.host.realmName?.() ?? '';
+    const aura = Math.max(0, Math.round(this.host.realmTeamAuraPct?.() ?? 0));
+    T('Realm', realm ? `${realm}境 · 境界光环` : '境界光环', 0, rowTop - 53 * u, 17, GLASS_COLOR.champagne, plateW - 24 * u);
+    T('Aura', `攻击/生命 +${aura}%`, 0, rowTop - 75 * u, 17, GLASS_COLOR.champagne, plateW - 24 * u);
+    mountGlassLine(kit, plate, 'Divider', 0, -plateH / 2 + 28 * u, plateW - 36 * u, Math.max(1, u), new Color(150, 140, 120, 120));
+    const lockY = -plateH / 2 + 14 * u;
+    const lock = this.host.addSprite('Lock', GLASS_ICON.lock, -38 * u, lockY, 16 * u, 16 * u, plate);
+    if (lock) {
+      lock.color = GLASS_COLOR.dim;
+    }
+    const fixed = glassLabel(kit, plate, 'Fixed', '固定带队', 10 * u, lockY, 16 * u, GLASS_COLOR.dim, 100 * u, HorizontalTextAlignment.CENTER);
+    fixed.fontSize = Math.max(12, Math.round(16 * u));
   }
 
   /** 5 颗星(实心 = 星级),居中排在 cx。 */
@@ -1372,14 +1432,14 @@ export class LobbyFormationPanelRenderer {
       : this.defaultLineup(visible);
     const slots: Array<LobbyHeroItemVO | null> = [];
     for (const hero of ordered) {
-      if (slots.length >= 4) {
+      if (slots.length >= LOBBY_FORMATION_MAX) {
         break;
       }
       if (!slots.some((slot) => slot?.id === hero.id)) {
         slots.push(hero);
       }
     }
-    while (slots.length < 4) {
+    while (slots.length < LOBBY_FORMATION_MAX) {
       slots.push(null);
     }
     return slots;
@@ -1390,7 +1450,7 @@ export class LobbyFormationPanelRenderer {
   }
 
   private defaultLineup(heroes: LobbyHeroItemVO[]): LobbyHeroItemVO[] {
-    return this.visibleHeroes(heroes).sort((a, b) => b.power - a.power).slice(0, 4);
+    return this.visibleHeroes(heroes).sort((a, b) => b.power - a.power).slice(0, LOBBY_FORMATION_MAX);
   }
 
   private renderEmpty(parent: Node, text: string): void {
@@ -1436,8 +1496,8 @@ export class LobbyFormationPanelRenderer {
     dg.fillColor = rgba(176, 146, 96, 170);
     dg.rect(-0.75 * u, -13 * u, 1.5 * u, 26 * u);
     dg.fill();
-    const deployed = Math.min(4, selectedCount);
-    const count = this.host.addChildLabel(banner, 'Deployed', `已上阵 ${deployed}/4`, x0 + 234 * u, 0, 17 * u, deployed >= 4 ? rgba(240, 226, 196) : rgba(206, 192, 164), new Size(innerW / 2 - (x0 + 234 * u), 26 * u), HorizontalTextAlignment.LEFT);
+    const deployed = Math.min(LOBBY_FORMATION_MAX, selectedCount);
+    const count = this.host.addChildLabel(banner, 'Deployed', `已上阵 ${deployed}/${LOBBY_FORMATION_MAX}`, x0 + 234 * u, 0, 17 * u, deployed >= LOBBY_FORMATION_MAX ? rgba(240, 226, 196) : rgba(206, 192, 164), new Size(innerW / 2 - (x0 + 234 * u), 26 * u), HorizontalTextAlignment.LEFT);
     count.overflow = Label.Overflow.SHRINK;
   }
 

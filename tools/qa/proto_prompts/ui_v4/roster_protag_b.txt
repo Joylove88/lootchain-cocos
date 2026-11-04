@@ -1,0 +1,22 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED style reference (hero detail screen). Match its visual language exactly: frosted dark glass panels, soft rounded corners, thin faint white outlines, white/grey text, the single champagne-gold accent, translucent secondary pill buttons, small monochrome muted-gold icons, thin champagne bar before section headers, calm darkened blurred background.
+- SECOND image = the B draft of THIS hero roster screen. Keep its layout, card size, grid, top bar, left class filter column and the "布阵" button EXACTLY; only change what is described below.
+- THIRD image = our player character (the protagonist, a young male swordsman in worn dark leather-and-plate light armour with a short dark cloak and a long sword, realistic proportions). Paint HIS half-body art into the first card.
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+
+SCREEN: "英雄" (hero roster), full screen, same as the SECOND image, with these changes:
+- Header right text: "拥有 5" then divider then crossed-swords "英雄总战力 1,846".
+- The FIRST card of the grid (top-left, same size as the other cards) is the PROTAGONIST card and must clearly stand out as special but still calm:
+  - a thin warm champagne-gold rim around the card (1-2px, soft, no glow, no ornaments) instead of the faint white outline;
+  - top-left a small dark-gold gradient tag "主角" with white text (instead of a rarity tag); top-right a small round icon with a crossed-swords class icon;
+  - painted half-body of the protagonist from the THIRD image, matte, looking forward, sword over shoulder;
+  - instead of the row of stars: a small champagne text chip "炼魂境 · 初期";
+  - name line "夜行者"; bottom line "Lv.18 | ⚔ 762".
+  - a tiny small lock icon next to the tag is NOT needed; keep it clean.
+- The other cards follow in the same style as the SECOND image: 见习圣骑士 (SR, Lv.2, ⚔308), 银色祭司 (SR, Lv.1, ⚔269), 深渊行者 (SR, Lv.1, ⚔266) in the first row; second row: 契约魔女 (SR, Lv.1, ⚔241); the rest of the grid is empty frosted panel space.
+- Left class filter column unchanged: 全部 (selected, dark-gold gradient with white text), 战士, 法师, 坦克, 刺客, 射手, 辅助.
+- Top-right currency chips: "65,870" gold coin, "240" diamond, close X.
+- Bottom-right floating primary champagne button "布阵".
+Extra rules: painted art muted and matte, no glow, no sparkles, no particles; background darkened and blurred, no rows of candles; generous spacing, aligned grid.
+Output only the single finished mockup image, no annotations.

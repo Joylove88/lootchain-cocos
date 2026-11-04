@@ -103,6 +103,8 @@ export interface PlayerBattleStartVO {
   guardRecommendedPower?: number | null;
   /** 新手宝箱脚本档位本局是否认可(玩家前 3 场守卫战)。 */
   guardChestScript?: boolean;
+  /** 主角境界光环 %(2026-11-05:守卫战上阵英雄攻击 / 生命加成;掠夺 / 野外 / 旧服务端为 0)。 */
+  guardRealmAura?: number;
   /** 矿境掠夺建场参数(docs/48;RAID_n 关卡由服务端算好,其他关卡 / 本地原型为空)。 */
   raid?: import('./RaidTypes').RaidSetupVO | null;
 }

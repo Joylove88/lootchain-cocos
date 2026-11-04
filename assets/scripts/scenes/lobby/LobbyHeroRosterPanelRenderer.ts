@@ -30,6 +30,10 @@ import { renderTopCurrencyBar } from '../UiSceneBackButton';
 import { mountRefSliced, mountRefSolid, mountRefTitleBand, REF_KIT, REF_ULT } from '../UiRefKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, resolveHeroRosterArtPath } from './HeroHeadCrop';
+import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import type { UiKitHost } from '../UiKit';
+import { currentLobbyProtagonistLeader, protagonistPortraitPath } from '../../api/LobbyHeroApi';
+import { HERO_GLASS_BG } from './LobbyHeroDetailPanelRenderer';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import {
   HERO_PROTO_BAND_STAR,
@@ -196,6 +200,23 @@ const HERO_ROSTER_PROTO_CLASS_ICONS: Record<string, string> = {
   辅助: `${HERO_PROTO_DIR}cls_support/spriteFrame`,
 };
 const HERO_ROSTER_PROTO_IC_OWNED = `${HERO_PROTO_DIR}ic_owned/spriteFrame`;
+/** B 风格名册:白线职业图标(class_gold_* 转白,运行时染色);「全部」用背包全部图标。 */
+const HERO_ROSTER_GLASS_CLASS_ICONS: Record<string, string> = {
+  全部: 'ui/glass/bag_all/spriteFrame',
+  战士: 'ui/glass/class_line_warrior/spriteFrame',
+  法师: 'ui/glass/class_line_mage/spriteFrame',
+  坦克: 'ui/glass/class_line_tank/spriteFrame',
+  刺客: 'ui/glass/class_line_assassin/spriteFrame',
+  射手: 'ui/glass/class_line_archer/spriteFrame',
+  辅助: 'ui/glass/class_line_support/spriteFrame',
+};
+/** B 风格稀有度扁签底色(与编队名牌同色)。 */
+const HERO_ROSTER_GLASS_RARITY: Record<string, Color> = {
+  UR: new Color(168, 58, 52, 235),
+  SSR: new Color(176, 112, 40, 235),
+  SR: new Color(104, 70, 150, 235),
+  R: new Color(58, 82, 116, 235),
+};
 const HERO_ROSTER_PROTO_IC_BANNER = `${HERO_PROTO_DIR}ic_banner/spriteFrame`;
 /** 可觉醒门槛(与英雄详情 AWAKEN_COST.minStar 同口径):卡片红点只标确定可操作的养成。 */
 const HERO_ROSTER_AWAKEN_MIN_STAR = 10;
@@ -209,6 +230,8 @@ export interface LobbyHeroRosterPanelHost {
   refreshLobbyOverlay?(): void;
   openLobbyHeroDetail(heroId: number): void;
   currentLobbyProfile?(): PlayerLobbyProfileVO;
+  /** 主角境界称号(名册主角卡,例「炼魂 · 初期」;没读到为 '')。 */
+  realmTitle?(): string;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -281,6 +304,13 @@ export class LobbyHeroRosterPanelRenderer {
       rgba(0, 0, 0, 0),
       14 * scale,
     );
+    if (glassStyleEnabled()) {
+      // 2026-11-05 B 毛玻璃名册(原型 周报截图/2026-11-05_主角带队/proto/roster_protag_b.png):主角卡固定首格;手机 / 电脑同一套
+      const filterTabs = this.resolveHeroFilterTabs(state.heroes, state.heroClassOptions);
+      this.ensureSelectedHeroClass(filterTabs);
+      this.renderGlass(panel, panelWidth, panelHeight, layout, centerX, centerY, scale, state, filterTabs);
+      return;
+    }
     if (isPhoneDesign()) {
       const filterTabs = this.resolveHeroFilterTabs(state.heroes, state.heroClassOptions);
       this.ensureSelectedHeroClass(filterTabs);
@@ -321,7 +351,9 @@ export class LobbyHeroRosterPanelRenderer {
         hero.protagonist ? 1 : 0,
       ].join(':'))
       .join(',');
-    return `${this.selectedHeroClass}|${this.lastOpenedHeroId ?? ''}|${flags}|${options}|${state.heroes.length}|${heroes}`;
+    const lead = currentLobbyProtagonistLeader();
+    const leadSig = lead ? `${lead.id}:${lead.level}:${lead.power}:${safeText(lead.heroName)}:${lead.spineAsset ?? ''}:${this.host.realmTitle?.() ?? ''}` : '';
+    return `${this.selectedHeroClass}|${this.lastOpenedHeroId ?? ''}|${flags}|${options}|${state.heroes.length}|${leadSig}|${heroes}`;
   }
 
   private createUiNode(name: string): Node {
@@ -1735,6 +1767,297 @@ export class LobbyHeroRosterPanelRenderer {
     btn.addComponent(Button);
     this.host.applyImageButtonFeedback(btn, 1.03, 0.97);
     btn.on(Button.EventType.CLICK, () => this.host.openLobbyFormationPanel(undefined, 'roster'), this);
+  }
+
+  // ───────────── 2026-11-05 B 毛玻璃名册(原型 roster_protag_b,1870×841 映射) ─────────────
+
+  private renderGlass(panel: Node, width: number, height: number, layout: UiLayout, centerX: number, centerY: number, scale: number, state: LobbyHeroRosterPanelState, tabs: string[]): void {
+    const kit = this.host as unknown as UiKitHost;
+    const { LX, RX, FY, S, k } = glassProtoMap(width, height);
+    // 背景:英雄详情同款虚化大厅,铺满整个窗口(含安全区外)
+    const coverW = layout.width + Math.abs(centerX) * 2;
+    const coverH = layout.height + Math.abs(centerY) * 2;
+    const bgW = Math.max(coverW, coverH * (1870 / 841));
+    this.host.addSprite('LobbyHeroRosterGlassBg', HERO_GLASS_BG, 0, 0, bgW, bgW / (1870 / 841), panel);
+    const veil = this.host.addChildPlainNode(panel, 'LobbyHeroRosterGlassVeil', 0, 0, coverW, coverH).addComponent(Graphics);
+    veil.fillColor = rgba(8, 10, 14, 40);
+    veil.rect(-coverW / 2, -coverH / 2, coverW, coverH);
+    veil.fill();
+
+    const profile = this.host.currentLobbyProfile?.();
+    const chips = profile ? [
+      { key: 'gold', icon: 'ui/bag/ai/icon_gold/spriteFrame', value: formatGroupedInteger(Number(profile.gold) || 0), width: 152 },
+      { key: 'diamond', icon: 'ui/bag/ai/icon_diamond/spriteFrame', value: formatGroupedInteger(Number(profile.diamond) || 0), width: 152 },
+    ] : [];
+    const close = (): void => this.host.closeLobbyHeroRosterPanel();
+    mountGlassTopBar(kit, panel, 'LobbyHeroRoster', width, height, '英雄', chips, close, close);
+
+    this.renderGlassRail(panel, tabs, LX, FY, S, k);
+
+    // 主面板 340..1825 × 86..815
+    const boxL = LX(340);
+    const boxR = RX(1825);
+    const boxT = FY(86);
+    const boxB = FY(815);
+    mountGlassPanel(kit, panel, 'LobbyHeroRosterGlassBox', (boxL + boxR) / 2, (boxT + boxB) / 2, boxR - boxL, boxT - boxB, k);
+    mountGlassSectionHeader(kit, panel, 'LobbyHeroRosterGlassHeader', '英雄名册', LX(372), FY(124), k, 28);
+    const lead = currentLobbyProtagonistLeader();
+    const owned = state.heroes.length + (lead ? 1 : 0);
+    const totalPower = state.heroes.reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0) + Math.max(0, Number(lead?.power) || 0);
+    const T = (name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment, bold = false): Label => {
+      const label = glassLabel(kit, panel, name, text, x, y, S(size), color, w, align, bold);
+      label.fontSize = Math.max(12, Math.round(S(size)));
+      label.lineHeight = label.fontSize + 4;
+      return label;
+    };
+    const ownedIcon = this.host.addSprite('LobbyHeroRosterGlassOwnedIcon', 'ui/glass/profile_helmet/spriteFrame', RX(1384), FY(124), S(30), S(30), panel);
+    if (ownedIcon) {
+      ownedIcon.color = GLASS_COLOR.gold;
+    }
+    T('LobbyHeroRosterGlassOwnedLabel', '拥有', RX(1404), FY(124), 22, GLASS_COLOR.sub, S(60), HorizontalTextAlignment.LEFT);
+    T('LobbyHeroRosterGlassOwnedValue', `${owned}`, RX(1462), FY(124), 26, GLASS_COLOR.text, S(60), HorizontalTextAlignment.LEFT, true);
+    mountGlassLine(kit, panel, 'LobbyHeroRosterGlassInfoSep', RX(1522), FY(124), Math.max(1, S(2)), S(28), new Color(120, 128, 140, 200));
+    const powerIcon = this.host.addSprite('LobbyHeroRosterGlassPowerIcon', 'ui/glass/profile_swords/spriteFrame', RX(1562), FY(124), S(30), S(30), panel);
+    if (powerIcon) {
+      powerIcon.color = GLASS_COLOR.gold;
+    }
+    T('LobbyHeroRosterGlassPowerLabel', '英雄总战力', RX(1582), FY(124), 22, GLASS_COLOR.sub, S(120), HorizontalTextAlignment.LEFT);
+    T('LobbyHeroRosterGlassPowerValue', formatGroupedInteger(totalPower), RX(1792), FY(124), 26, GLASS_COLOR.text, S(110), HorizontalTextAlignment.RIGHT, true);
+
+    this.renderGlassGrid(panel, state, lead, LX, RX, FY, S, k, scale);
+
+    mountGlassButton(kit, panel, 'LobbyHeroRosterFormationButton', '布阵', RX(1660), FY(770), S(285), S(62), k, 'primary', () => this.host.openLobbyFormationPanel(undefined, 'roster'), 28);
+  }
+
+  /** 左栏职业页签:选中 = 暗金块 + 白线图标 + 白字 + ›;未选只有灰白图标和字。 */
+  private renderGlassRail(panel: Node, tabs: string[], LX: (px: number) => number, FY: (py: number) => number, S: (v: number) => number, k: number): void {
+    const kit = this.host as unknown as UiKitHost;
+    const step = tabs.length > 1 ? Math.min(91.7, (720 - 160) / (tabs.length - 1)) : 0;
+    tabs.forEach((tab, index) => {
+      const active = this.isHeroClassTabActive(tab);
+      const node = this.host.addChildPlainNode(panel, `LobbyHeroRosterFilterTab_${index}`, LX(157), FY(160 + index * step), S(218), S(80));
+      if (active) {
+        mountGlassSlice(kit, node, 'Bg', GLASS_SLICES.tabActive, 0, 0, S(218), S(80), k);
+      }
+      const key = tab === HERO_FILTER_ALL ? HERO_FILTER_ALL : this.normalizeHeroClassKey(tab);
+      const icon = this.host.addSprite('Icon', HERO_ROSTER_GLASS_CLASS_ICONS[key] ?? HERO_ROSTER_GLASS_CLASS_ICONS[HERO_FILTER_ALL], S(-68), 0, S(40), S(40), node);
+      if (icon) {
+        icon.color = active ? rgba(248, 240, 224) : rgba(176, 182, 198);
+      }
+      const label = glassLabel(kit, node, 'Label', tab, S(-26), 0, S(26), active ? GLASS_COLOR.onGold : rgba(200, 206, 218), S(110), HorizontalTextAlignment.LEFT, active);
+      label.fontSize = Math.max(12, Math.round(S(26)));
+      if (active) {
+        const chevron = this.host.addSprite('Chevron', GLASS_ICON.chevron, S(84), 0, S(16), S(16), node);
+        if (chevron) {
+          chevron.color = rgba(240, 228, 204);
+        }
+      } else {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, () => this.selectHeroClassFilter(tab), this);
+        this.host.applyImageButtonFeedback(node, 1.025, 0.97);
+      }
+    });
+  }
+
+  /** 卡墙:4 列(原型卡 340×262、列距 20、行距 20),主角卡固定首格(全部 / 主角所在职业页签);纵向滚动,底部给布阵钮留位。 */
+  private renderGlassGrid(panel: Node, state: LobbyHeroRosterPanelState, lead: LobbyHeroItemVO | null, LX: (px: number) => number, RX: (px: number) => number, FY: (py: number) => number, S: (v: number) => number, k: number, scale: number): void {
+    const gridL = LX(365);
+    const gridR = RX(1800);
+    const gridW = gridR - gridL;
+    const viewT = FY(160);
+    const viewB = FY(812);
+    const viewH = viewT - viewB;
+    const viewX = (gridL + gridR) / 2;
+    const viewY = (viewT + viewB) / 2;
+    if (state.loading && state.heroes.length === 0 && !lead) {
+      mountKitLoading(this.host, panel, viewX, viewY, scale, '英雄读取中…');
+      return;
+    }
+    const heroes = this.filterHeroesBySelectedClass(this.sortHeroesForRosterDisplay(state.heroes));
+    const leadShown = !!lead && (this.selectedHeroClass === HERO_FILTER_ALL || this.filterHeroesBySelectedClass([lead]).length > 0);
+    const cards: LobbyHeroItemVO[] = leadShown && lead ? [lead, ...heroes] : heroes;
+    if (cards.length === 0) {
+      const empty = glassLabel(this.host as unknown as UiKitHost, panel, 'LobbyHeroRosterGlassEmpty', state.heroes.length === 0 ? '当前暂无可展示的已拥有英雄。' : '暂无该职业英雄', viewX, viewY, S(24), GLASS_COLOR.sub, gridW, HorizontalTextAlignment.CENTER);
+      empty.fontSize = Math.max(12, Math.round(S(24)));
+      return;
+    }
+    const columns = 4;
+    const gap = S(20);
+    const rowGap = S(20);
+    const cardW = (gridW - gap * (columns - 1)) / columns;
+    const cardH = S(262);
+    const topPad = S(2);
+    const bottomPad = S(96);
+    const rows = Math.ceil(cards.length / columns);
+    const contentH = Math.max(viewH, topPad + rows * cardH + (rows - 1) * rowGap + bottomPad);
+    const viewW = gridW + S(16);
+    const viewport = this.host.addChildPlainNode(panel, 'LobbyHeroRosterScrollView', viewX, viewY, viewW, viewH);
+    const mask = viewport.addComponent(Mask);
+    mask.type = Mask.Type.GRAPHICS_RECT;
+    const scrollView = viewport.addComponent(ScrollView);
+    scrollView.horizontal = false;
+    scrollView.vertical = contentH > viewH + 0.5;
+    scrollView.inertia = true;
+    scrollView.elastic = true;
+    scrollView.cancelInnerEvents = true;
+    const content = this.host.addChildPlainNode(viewport, 'LobbyHeroRosterScrollContent', 0, (viewH - contentH) / 2, viewW, contentH);
+    scrollView.content = content;
+    const startX = -gridW / 2 + cardW / 2;
+    const startY = contentH / 2 - topPad - cardH / 2;
+    const buildCard = (hero: LobbyHeroItemVO, index: number): void => {
+      if (!content.isValid) {
+        return;
+      }
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      this.renderGlassCard(content, hero, index, startX + col * (cardW + gap), startY - row * (cardH + rowGap), cardW, cardH, S, k, scale);
+    };
+    const initialSyncCount = Math.min(cards.length, columns * 2);
+    for (let i = 0; i < initialSyncCount; i += 1) {
+      buildCard(cards[i], i);
+    }
+    let deferBatch = 0;
+    for (let i = initialSyncCount; i < cards.length; i += columns) {
+      deferBatch += 1;
+      const batchStart = i;
+      tween(content)
+        .delay(deferBatch * HERO_ROSTER_CARD_DEFER_STEP_SECONDS)
+        .call(() => {
+          for (let j = batchStart; j < Math.min(batchStart + columns, cards.length); j += 1) {
+            buildCard(cards[j], j);
+          }
+        })
+        .start();
+    }
+  }
+
+  /**
+   * B 风格卡(原型 340×262):半身插画铺满 → 底部压暗 → 星行 / 名字 / 细线 / Lv | 剑 + 战力;左上稀有度扁签、右上职业圆章。
+   * 主角卡:细香槟金边(选中格同款)+ 暗金「主角」签 + 境界称号胶囊代替星行;插画 = 境界立绘贴顶裁头胸,垫识海底图。
+   */
+  private renderGlassCard(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, w: number, h: number, S: (v: number) => number, k: number, scale: number): void {
+    const kit = this.host as unknown as UiKitHost;
+    const lead = !!hero.protagonist;
+    const card = this.host.addChildPlainNode(parent, lead ? 'LobbyHeroRosterProtagonistCard' : `LobbyHeroRosterCard_${index}`, x, y, w, h);
+    card.addComponent(Button);
+    card.on(Button.EventType.CLICK, () => {
+      this.lastOpenedHeroId = hero.id;
+      this.host.openLobbyHeroDetail(hero.id);
+    }, this);
+    this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+    const inset = Math.max(2, S(3));
+    const artW = w - inset * 2;
+    const artH = h - inset * 2;
+    mountGlassSlice(kit, card, 'Back', GLASS_SLICES.frame, 0, 0, w, h, k);
+    if (lead) {
+      const bg = this.host.addChildPlainNode(card, 'LeadBg', 0, 0, artW, artH);
+      mountCoverArt(bg, 'ui/protagonist/b/soul_sea_bg/spriteFrame', artW, artH);
+      const art = this.host.addChildPlainNode(card, 'Art', 0, 0, artW, artH);
+      mountCoverArt(art, protagonistPortraitPath(hero.heroCode), artW, artH, true);
+    } else {
+      const art = this.host.addChildPlainNode(card, 'Art', 0, 0, artW, artH);
+      this.mountProtoCardArt(art, hero, artW, artH);
+    }
+    // 底部压暗(下 45%)
+    const shadeH = h * 0.46;
+    const steps = 10;
+    for (let i = 0; i < steps; i += 1) {
+      const sh = shadeH / steps;
+      mountRefSolid(this.host, card, `Shade_${i}`, 0, -h / 2 + inset + sh * (i + 0.5), artW, sh + 0.5, rgba(10, 12, 18, Math.round(232 * Math.pow(1 - i / steps, 1.3))));
+    }
+    const P = (py: number): number => h / 2 - S(py);
+    const text = (name: string, value: string, px: number, py: number, size: number, color: Color, width: number, align = HorizontalTextAlignment.CENTER, bold = false): Label => {
+      const label = glassLabel(kit, card, name, value, px, P(py), S(size), color, width, align, bold);
+      label.fontSize = Math.max(12, Math.round(S(size)));
+      label.lineHeight = label.fontSize + 4;
+      return label;
+    };
+    if (lead) {
+      const title = safeText(this.host.realmTitle?.() ?? '');
+      const chipText = title ? title.replace(' · ', '境 · ') : '主角';
+      const chipW = S(Math.max(120, 22 * Array.from(chipText).length + 28));
+      const chip = this.host.addChildPlainNode(card, 'RealmChip', 0, P(170), chipW, S(32));
+      mountGlassSlice(kit, chip, 'Bg', GLASS_SLICES.tagPill, 0, 0, chipW, S(32), k * 0.9);
+      const cl = glassLabel(kit, chip, 'Text', chipText, 0, 0, S(19), GLASS_COLOR.champagne, chipW - S(16), HorizontalTextAlignment.CENTER);
+      cl.fontSize = Math.max(12, Math.round(S(19)));
+    } else {
+      const stars = starDisplayV3(hero.star);
+      const starSize = S(22);
+      const starGap = S(3);
+      const starX0 = -(stars.count * starSize + Math.max(0, stars.count - 1) * starGap) / 2 + starSize / 2;
+      for (let i = 0; i < stars.count; i += 1) {
+        this.host.addSprite(`Star_${i}`, starBandAssetOf(stars.color), starX0 + i * (starSize + starGap), P(166), starSize, starSize, card);
+      }
+    }
+    text('Name', safeText(hero.heroName), 0, 198, 24, GLASS_COLOR.text, w - S(30), HorizontalTextAlignment.CENTER, true);
+    mountGlassLine(kit, card, 'NameLine', 0, P(219), w - S(28), Math.max(1, S(1)), new Color(200, 206, 220, 60));
+    text('Level', formatHeroCardLevel(hero.level), -S(36), 242, 21, GLASS_COLOR.sub, S(110), HorizontalTextAlignment.RIGHT);
+    mountGlassLine(kit, card, 'MetaSep', -S(20), P(242), Math.max(1, S(1.5)), S(20), new Color(140, 148, 160, 160));
+    const powerIcon = this.host.addSprite('PowerIcon', 'ui/glass/profile_swords/spriteFrame', S(4), P(242), S(24), S(24), card);
+    if (powerIcon) {
+      powerIcon.color = GLASS_COLOR.gold;
+    }
+    text('Power', formatGroupedInteger(hero.power), S(22), 242, 21, GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
+
+    // 边框只描边(玻璃格九宫格中间有内光,压在插画上会发灰):主角 / 刚点开过的英雄 = 香槟金细边,其余 = 淡白细边
+    const gold = lead || this.lastOpenedHeroId === hero.id;
+    const border = this.host.addChildPlainNode(card, 'Frame', 0, 0, w, h).addComponent(Graphics);
+    border.strokeColor = gold ? rgba(227, 196, 138, 235) : rgba(255, 255, 255, 40);
+    border.lineWidth = Math.max(1.5, S(gold ? 2.6 : 1.6));
+    border.roundRect(-w / 2 + 1, -h / 2 + 1, w - 2, h - 2, S(12));
+    border.stroke();
+    if (gold) {
+      border.strokeColor = rgba(227, 196, 138, 60);
+      border.lineWidth = Math.max(1, S(6));
+      border.roundRect(-w / 2 + S(4), -h / 2 + S(4), w - S(8), h - S(8), S(10));
+      border.stroke();
+    }
+
+    // 左上:稀有度扁签 / 主角暗金签
+    const tagText = lead ? '主角' : safeText(hero.rarity || 'R').toUpperCase();
+    const tagW = S(lead ? 64 : tagText.length > 2 ? 54 : 44);
+    const tagH = S(32);
+    const tag = this.host.addChildPlainNode(card, 'RarityTag', -w / 2 + S(14) + tagW / 2, P(28), tagW, tagH);
+    if (lead) {
+      mountGlassSlice(kit, tag, 'Bg', GLASS_SLICES.tabGold, 0, 0, tagW, tagH, k * 0.6);
+    } else {
+      const tg = tag.addComponent(Graphics);
+      tg.fillColor = HERO_ROSTER_GLASS_RARITY[tagText] ?? HERO_ROSTER_GLASS_RARITY.R;
+      tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, S(6));
+      tg.fill();
+      tg.strokeColor = rgba(255, 255, 255, 46);
+      tg.lineWidth = 1;
+      tg.roundRect(-tagW / 2, -tagH / 2, tagW, tagH, S(6));
+      tg.stroke();
+    }
+    const tl = glassLabel(kit, tag, 'Text', tagText, 0, 0, S(19), GLASS_COLOR.onGold, tagW, HorizontalTextAlignment.CENTER, true);
+    tl.fontSize = Math.max(12, Math.round(S(19)));
+    // 右上:职业圆章
+    const ringD = S(42);
+    const ring = this.host.addChildPlainNode(card, 'ClassRing', w / 2 - S(32), P(30), ringD, ringD);
+    const rg = ring.addComponent(Graphics);
+    rg.fillColor = rgba(12, 14, 20, 220);
+    rg.circle(0, 0, ringD / 2 - 1);
+    rg.fill();
+    rg.strokeColor = rgba(255, 255, 255, 60);
+    rg.lineWidth = 1.2;
+    rg.circle(0, 0, ringD / 2 - 1);
+    rg.stroke();
+    const cls = this.resolveHeroClass(hero);
+    const clsIcon = cls ? HERO_ROSTER_GLASS_CLASS_ICONS[this.normalizeHeroClassKey(cls)] : undefined;
+    if (clsIcon) {
+      const ic = this.host.addSprite('ClassIcon', clsIcon, 0, 0, ringD * 0.62, ringD * 0.62, ring);
+      if (ic) {
+        ic.color = rgba(232, 214, 176);
+      }
+    }
+    if (!lead && (hero.awakenStatus ?? 0) <= 0 && Math.trunc(hero.star || 1) >= HERO_ROSTER_AWAKEN_MIN_STAR) {
+      const dot = this.host.addChildPlainNode(card, 'RedDot', w / 2 - S(8), h / 2 - S(6), 16 * scale, 16 * scale);
+      const dg = dot.addComponent(Graphics);
+      dg.fillColor = rgba(230, 52, 40, 255);
+      dg.circle(0, 0, 6.5 * scale);
+      dg.fill();
+    }
   }
 
   private protoText(parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.CENTER, bold = false): Label {

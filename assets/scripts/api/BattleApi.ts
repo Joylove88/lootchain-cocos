@@ -1,6 +1,6 @@
 import { HttpClient } from '../net/HttpClient';
 import { isRaidBattleStageCode, type RaidSetupDefenderVO, type RaidSetupVO } from '../types/RaidTypes';
-import { guardRawHeroFromLineupJson, normalizeGuardCrystalSnapshot, normalizeGuardMonsterEntry } from '../scenes/lobby/GuardReplay';
+import { guardRawHeroFromLineupJson, normalizeGuardCrystalSnapshot, normalizeGuardMonsterEntry, normalizeGuardRealmAura } from '../scenes/lobby/GuardReplay';
 import type {
   PlayerBattleCurrencyChangeVO,
   PlayerBattleEnemyVO,
@@ -318,6 +318,8 @@ function validateBattleStart(data: unknown, expectedStageCode: string): PlayerBa
     guardMonsters: readArray(data, 'guardMonsters', 40).map(normalizeGuardMonster).filter((m): m is GuardMonsterRosterEntryVO => m !== null),
     guardRecommendedPower: Number.isFinite(Number(data.guardRecommendedPower)) && Number(data.guardRecommendedPower) > 0 ? Number(data.guardRecommendedPower) : null,
     guardChestScript: data.guardChestScript === true,
+    // 2026-11-05:主角境界光环 %(守卫战;复演同一份解析)
+    guardRealmAura: normalizeGuardRealmAura(data.guardRealmAura),
     // docs/48:矿境掠夺建场参数(服务端算好;与复演同一份解析)
     raid: normalizeRaidSetup(data.raid),
   };

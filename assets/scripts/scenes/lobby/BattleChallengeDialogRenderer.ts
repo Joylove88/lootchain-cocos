@@ -1,6 +1,7 @@
 import {
   BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UIOpacity, UITransform, Vec3,
 } from 'cc';
+import { currentLobbyProtagonistHero, LOBBY_FORMATION_MAX } from '../../api/LobbyHeroApi';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import { safeText } from '../UiTextFormatter';
@@ -121,7 +122,7 @@ export class BattleChallengeDialogRenderer {
   }
 
   /**
-   * 左栏:守卫目标(2026-10-24 策划审核 P0-2:主线已全是守卫战——10 波守水晶、上阵 4 人、不分前后排,
+   * 左栏:守卫目标(2026-10-24 策划审核 P0-2:主线已全是守卫战——10 波守水晶、上阵 3 名英雄 + 主角带队、不分前后排,
    * 旧 5v5 的"敌方阵容 / 克制环 / 击败全部敌人"作废)。怪物强度 = 推荐战力对比当前阵容战力。
    */
   private renderEnemySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, stage: LobbyAdventureStageVO, formation: LobbyHeroItemVO[]): void {
@@ -130,7 +131,7 @@ export class BattleChallengeDialogRenderer {
     const goal = this.host.addChildLabel(section, 'BattleChallengeDialogEnemySummary', '守住水晶 · 抵挡 10 波怪物', 0, height / 2 - 76 * scale, 21 * scale, rgba(236, 216, 180), new Size(width - 60 * scale, 30 * scale));
     goal.overflow = Label.Overflow.SHRINK;
     const recommended = Math.max(0, Math.trunc(Number(stage.recommendedPower) || 0));
-    const teamPower = formation.slice(0, 4).reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0);
+    const teamPower = Math.max(0, Number(currentLobbyProtagonistHero()?.power) || 0) + formation.slice(0, LOBBY_FORMATION_MAX).reduce((sum, hero) => sum + Math.max(0, Number(hero.power) || 0), 0);
     const ratio = recommended > 0 ? teamPower / recommended : 1;
     const grade = ratio >= 1.2 ? { text: '轻松', color: rgba(140, 220, 140) } : ratio >= 0.9 ? { text: '标准', color: rgba(255, 216, 130) } : { text: '困难', color: rgba(240, 120, 96) };
     const boxW = width - 60 * scale;
@@ -205,13 +206,13 @@ export class BattleChallengeDialogRenderer {
 
   private renderAllySection(parent: Node, x: number, y: number, width: number, height: number, scale: number, formation: LobbyHeroItemVO[]): void {
     const section = mountKitSection(this.host, parent, 'BattleChallengeDialogAllySection', x, y, width, height, scale, 0.2);
-    this.sectionTitle(section, 'BattleChallengeDialogAllyTitle', `我方阵容  ${Math.min(4, formation.length)}/4`, width, height, scale, rgba(236, 210, 148));
+    this.sectionTitle(section, 'BattleChallengeDialogAllyTitle', `我方阵容  ${Math.min(LOBBY_FORMATION_MAX, formation.length)}/${LOBBY_FORMATION_MAX}`, width, height, scale, rgba(236, 210, 148));
     if (formation.length === 0) {
       const empty = this.host.addChildLabel(section, 'BattleChallengeDialogAllyText', '点击「布阵」选择出战英雄', 0, -10 * scale, 18 * scale, rgba(190, 172, 136), new Size(width - 60 * scale, 26 * scale));
       empty.overflow = Label.Overflow.SHRINK;
       return;
     }
-    const heroes = formation.slice(0, 4);
+    const heroes = formation.slice(0, LOBBY_FORMATION_MAX);
     const size = Math.min(78 * scale, (height - 70 * scale) * 0.7, (width - 60 * scale) / heroes.length - 12 * scale);
     const step = size + 14 * scale;
     const rowY = -8 * scale;

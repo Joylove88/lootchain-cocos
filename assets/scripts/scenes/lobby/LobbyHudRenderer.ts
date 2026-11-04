@@ -389,7 +389,7 @@ export class LobbyHudRenderer {
    */
   private resolveSoftGuide(view: string, maxCompletedStageCode: string): { targets: string[]; text: string; flag: GuideFlag } | null {
     if (view === 'formation') {
-      return lobbyGuide.isDone('formation') ? null : { targets: ['LobbyFormationPowerBanner'], text: '拖英雄到格子上阵,最多 4 人;阵容战力和推荐战力比一比', flag: 'formation' };
+      return lobbyGuide.isDone('formation') ? null : { targets: ['LobbyFormationPowerBanner'], text: '主角固定带队,再选 3 名英雄上阵;阵容战力和推荐战力比一比', flag: 'formation' };
     }
     if (view !== 'lobby') {
       return null;

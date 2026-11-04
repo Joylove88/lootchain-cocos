@@ -137,9 +137,35 @@ export function buildGuardPoolHero(raw: GuardRawHero, sourceIndex: number): Guar
   };
 }
 
-/** 上阵 4 人(2026-08-26 拍板 5→4)。 */
+/**
+ * 上阵阵容 → 召唤池。人数以服务端回执为准(2026-11-05 起守卫战 = 主角带队 + 3 名英雄,主角不进池只给光环);
+ * 这里的 4 只是兜底上限(掠夺进攻方阵容沿用编队,第二期再改)。
+ */
 export function buildGuardPool(raws: readonly GuardRawHero[]): GuardPoolHero[] {
   return raws.slice(0, 4).map((raw, index) => buildGuardPoolHero(raw, index));
+}
+
+/** 境界光环上限(%):防异常回执把战斗打穿。 */
+export const GUARD_REALM_AURA_MAX = 50;
+
+/** 开战回执 guardRealmAura → 0~50 整数;缺省 / 坏值为 0(与改版前逐位一致)。 */
+export function normalizeGuardRealmAura(raw: unknown): number {
+  const value = guardNum(raw, 0);
+  return Math.max(0, Math.min(GUARD_REALM_AURA_MAX, Math.round(value)));
+}
+
+/**
+ * 主角境界光环(2026-11-05):上阵英雄攻击 / 生命 +aura%。攻击并进特性攻击加成(atkBonusPct,局内同一乘区),
+ * 生命乘局外生命(折算水晶)。aura=0 原样返回,保证旧回执 / 掠夺复演不变。
+ */
+export function applyGuardRealmAura(pool: GuardPoolHero[], auraPct: number): GuardPoolHero[] {
+  const aura = normalizeGuardRealmAura(auraPct);
+  if (aura <= 0) {
+    return pool;
+  }
+  return pool.map((hero) => (hero.outside
+    ? { ...hero, outside: { ...hero.outside, atkBonusPct: hero.outside.atkBonusPct + aura, hp: hero.outside.hp * (1 + aura / 100) } }
+    : hero));
 }
 
 export interface GuardStageSetup {
@@ -198,11 +224,13 @@ export interface GuardReplaySetup {
   crystal: GuardCrystalSnapshot | null;
   /** 新手宝箱脚本档位是否认可(服务端:玩家前 3 场守卫战)。 */
   allowChestScript: boolean;
+  /** 主角境界光环 %(回执 guardRealmAura;旧回执 / 掠夺为 0)。 */
+  realmAura?: number;
 }
 
-/** 建池:阵容(上阵 ≤4)+ 掠夺 NPC 守卫(顺延在阵容之后、不受 4 人上限;sourceIndex 对应表现快照 lineup + npc 的顺序)。 */
-export function buildGuardPoolForSetup(lineup: readonly GuardRawHero[], raid: GuardRaidSetup | null | undefined): GuardPoolHero[] {
-  const pool = buildGuardPool(lineup);
+/** 建池:阵容(带主角境界光环)+ 掠夺 NPC 守卫(顺延在阵容之后、不受人数上限、不吃光环;sourceIndex 对应表现快照 lineup + npc 的顺序)。 */
+export function buildGuardPoolForSetup(lineup: readonly GuardRawHero[], raid: GuardRaidSetup | null | undefined, realmAura = 0): GuardPoolHero[] {
+  const pool = applyGuardRealmAura(buildGuardPool(lineup), realmAura);
   if (!raid) {
     return pool;
   }
@@ -218,7 +246,7 @@ export function guardStartRaidFromSetup(state: GuardBattleState, raid: GuardRaid
   );
 }
 
-export function createGuardBattleFromSetup(setup: GuardReplaySetup, pool: GuardPoolHero[] = buildGuardPoolForSetup(setup.lineup, setup.raid)): GuardBattleState {
+export function createGuardBattleFromSetup(setup: GuardReplaySetup, pool: GuardPoolHero[] = buildGuardPoolForSetup(setup.lineup, setup.raid, setup.realmAura ?? 0)): GuardBattleState {
   const stage = resolveGuardStageSetup(setup.stageCode, setup.recommendedPower);
   const state = createGuardBattle(pool, setup.seedText, stage.maxWave, stage.mode, {
     monsterScale: stage.monsterScale,
@@ -508,6 +536,7 @@ export function guardReplaySetupFromStart(start: unknown, allowChestScript: bool
     crystal: normalizeGuardCrystalSnapshot(start.guardCrystal),
     allowChestScript,
     raid: guardRaidSetupFromStart(start.raid),
+    realmAura: normalizeGuardRealmAura(start.guardRealmAura),
   };
 }
 

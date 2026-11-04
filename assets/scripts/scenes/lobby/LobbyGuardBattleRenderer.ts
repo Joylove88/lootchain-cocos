@@ -151,7 +151,7 @@ import { buildHeroHeadCropFrame, heroHeadCropOf, mountHeroAvatar, resolveHeroAva
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
 import { resolveUltimateSkillName } from './LobbyHeroDetailPanelRenderer';
 import { heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources } from './HeroCombatStats';
-import { buildGuardPoolForSetup, GUARD_REPLAY_VERSION, guardRaidSetupFromStart, guardStartRaidFromSetup, resolveGuardStageSetup, type GuardRawHero } from './GuardReplay';
+import { buildGuardPoolForSetup, normalizeGuardRealmAura, GUARD_REPLAY_VERSION, guardRaidSetupFromStart, guardStartRaidFromSetup, resolveGuardStageSetup, type GuardRawHero } from './GuardReplay';
 import { resolveBattleHeroSkillProfile, resolveEnergyShieldHpRatio, resolveSkillTriggerChance, resolveUnlockedPassiveCount } from './LobbyBattleHeroSkillConfig';
 
 const GUARD_PASSIVE_TYPES: GuardPassiveType[] = ['lifesteal', 'truePierce', 'freeze', 'stun', 'splash', 'reflect', 'atkUp', 'hpUp'];
@@ -932,14 +932,14 @@ export class LobbyGuardBattleRenderer {
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
     const snapshot = resolveLobbyBattlePresentationSnapshot(battleState, heroes);
     this.snapshot = snapshot;
-    // 上阵 4 英雄(2026-08-26 用户拍板:5→4,同名副本更聚焦,高星可成)。
+    // 上阵英雄(2026-11-05 起:主角固定带队只给境界光环 + 3 名英雄上格子;人数以开战回执为准)。
     // docs/43:回执带 guardStats 时按服务端原始属性建池(与服务端复演同一函数、同一阵容顺序);旧服务端走下面的本地口径
     const lineup = battleState.start?.lineup ?? [];
     // docs/48 矿境掠夺:NPC 守卫的原始属性也进池(顺延在阵容之后,与表现快照 / 复演同序)
     const raidSetup = guardRaidSetupFromStart(battleState.start?.raid ?? null);
     const raws = lineup.slice(0, 4).map((entry) => entry.guardRaw ?? null);
     const serverPool = raws.length > 0 && raws.every((raw) => !!raw)
-      ? buildGuardPoolForSetup(raws as GuardRawHero[], raidSetup).map((hero, index) => {
+      ? buildGuardPoolForSetup(raws as GuardRawHero[], raidSetup, normalizeGuardRealmAura(battleState.start?.guardRealmAura)).map((hero, index) => {
         const allyIndex = index < lineup.length
           ? snapshot.allies.findIndex((ally) => ally.sourceHeroId === lineup[index].heroId)
           : snapshot.allies.findIndex((ally) => ally.unitKey === `npc-${hero.heroCode}-${index - lineup.length}`);
@@ -948,7 +948,7 @@ export class LobbyGuardBattleRenderer {
       : null;
     const pool: GuardPoolHero[] = serverPool ?? snapshot.allies
       .filter((ally) => ally.power > 0 && !ally.unitKey.includes('empty'))
-      .slice(0, 4)
+      .slice(0, 3)
       .map((ally, index) => ({
         heroCode: (ally.heroCode ?? ally.unitKey).toUpperCase(),
         displayName: ally.displayName,

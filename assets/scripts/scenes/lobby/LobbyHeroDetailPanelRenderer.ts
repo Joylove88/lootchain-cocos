@@ -24,6 +24,10 @@ import {
   sys,
   view,
 } from 'cc';
+import { protagonistPortraitPath, protagonistUltUnlocked } from '../../api/LobbyHeroApi';
+import type { RealmState } from '../../api/RealmApi';
+import type { EvolutionState } from '../../api/EvolutionApi';
+import { ROUTE_NAME } from './LobbyEvolutionPickRenderer';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 import { mountKitButton, mountKitSection } from '../UiKit';
@@ -50,7 +54,7 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './HeroHeadCrop';
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, glassStyleEnabled, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassFrame, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { glassLabel, glassStyleEnabled, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassFrame, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -491,6 +495,11 @@ export interface LobbyHeroDetailPanelHost {
   oneClickEquipLobbyHero(heroId: number): void;
   oneClickUnequipLobbyHero(heroId: number): void;
   switchLobbyHeroDetail(direction: number): void;
+  /** 主角详情「境界」页(2026-11-05 主角进名册):境界 / 进化状态,没读到为 null。 */
+  protagonistRealmInfo?(): RealmState | null;
+  protagonistEvolutionInfo?(): EvolutionState | null;
+  /** 回大厅打开境界突破(满足条件时)。 */
+  openProtagonistRealmBreak?(): void;
   currentLobbyHeroDetailTab(): HeroDetailTab;
   selectLobbyHeroDetailTab(tab: HeroDetailTab): void;
   /** 皮肤页(docs/56):当前选中的皮肤(null = 默认外观;undefined = 还没选,按穿着的算)、是否在播动作预览。 */
@@ -2156,6 +2165,9 @@ export class LobbyHeroDetailPanelRenderer {
         } else {
           this.renderProtoSkillPanel(parent, hero, infoX, infoY + 9 * k, infoWidth, infoHeight + 18 * k);
         }
+      } else if (HERO_GLASS && hero.protagonist) {
+        // 主角不升星:第 4 页签是「境界」(境界 / 光环 / 进化总览)
+        this.renderGlassRealmPanel(parent, hero, width, height);
       } else {
         this.renderStarCurrencyBar(parent, hero, width, height, scale);
         this.renderStarPanel(parent, hero, infoX, infoY, infoWidth, infoHeight, scale);
@@ -2583,7 +2595,7 @@ export class LobbyHeroDetailPanelRenderer {
     const portraitY = hero.protagonist ? this.resolveHeroDetailGroundY(height) + height * 0.45 : this.resolveHeroDetailGroundY(height) + height * 0.3;
     const portrait = this.host.addChildPlainNode(parent, 'LobbyHeroDetailDynamicPortrait', 0, portraitY, width * 0.86, height * 0.92);
     const loaded = hero.protagonist
-      ? this.host.addSprite('LobbyHeroDetailDynamicPortraitSprite', LOBBY_HERO_DETAIL_PROTAGONIST_ASSET, 0, 0, width * 0.8, height * 0.9, portrait)
+      ? this.host.addSprite('LobbyHeroDetailDynamicPortraitSprite', protagonistPortraitPath(hero.heroCode), 0, 0, height * 0.9 * 0.75, height * 0.9, portrait)
       : null;
     if (!loaded) {
       this.drawFallbackPortrait(portrait, hero, width * 0.56, height * 0.72, scale);
@@ -5656,7 +5668,8 @@ export class LobbyHeroDetailPanelRenderer {
       mountGlassSlice(this.host, tag, 'Bg', GLASS_SLICES.chip, 0, 0, tagW, S(32), k * 0.7);
       glassLabel(this.host, tag, 'Text', '大招', 0, 0, F(17), GLASS_COLOR.sub, tagW - S(8), HorizontalTextAlignment.CENTER);
       const current = typeof hero.ultimateSkillLevel === 'number' ? hero.ultimateSkillLevel : 1;
-      glassLabel(this.host, root, 'LobbyHeroDetailUltLevel', `Lv.${current}/${ultimateCap(hero.awakenStatus === 1)}`, RX(1334), FY(619), F(20), GLASS_COLOR.sub, S(200));
+      // 主角大招不走英雄大招等级(野外 U 键,炼魂解锁)
+      glassLabel(this.host, root, 'LobbyHeroDetailUltLevel', hero.protagonist ? (protagonistUltUnlocked() ? '已解锁 · 野外 U 键' : '炼魂境解锁') : `Lv.${current}/${ultimateCap(hero.awakenStatus === 1)}`, RX(1334), FY(619), F(20), GLASS_COLOR.sub, S(260));
       if (!hero.protagonist) {
         const maxed = current >= ULTIMATE_MAX_LEVEL;
         const capped = !maxed && current >= ultimateCap(hero.awakenStatus === 1);
@@ -5751,15 +5764,17 @@ export class LobbyHeroDetailPanelRenderer {
   private renderGlassNav(parent: Node, active: HeroDetailTab, width: number, height: number, scale: number): void {
     const { LX, FY, S, F, k } = this.glassMap(width, height);
     const hero = this.host.currentLobbyHeroDetailHero();
-    const starDot = !!hero && this.isHeroAwakenable(hero);
+    const protagonist = !!hero?.protagonist;
+    const starDot = !!hero && !protagonist && this.isHeroAwakenable(hero);
     const entries: { key: HeroDetailTab; label: string; y: number }[] = [
       { key: 'attr', label: '属性', y: 159 },
       { key: 'equip', label: '装备', y: 262 },
       { key: 'skill', label: '技能', y: 365 },
-      { key: 'star', label: '升星', y: 468 },
+      // 主角不升星(靠境界 / 进化成长):同一页签位换成「境界」
+      { key: 'star', label: protagonist ? '境界' : '升星', y: 468 },
     ];
     // 皮肤页签(docs/56):这名英雄有皮肤才出现(原型 hero_skin_b,y 550)
-    if (hero && heroSkinsOf(hero.heroCode).length > 0) {
+    if (hero && !protagonist && heroSkinsOf(hero.heroCode).length > 0) {
       entries.push({ key: 'skin', label: '皮肤', y: 571 });
     }
     if (active === 'skin' && !entries.some((entry) => entry.key === 'skin')) {
@@ -5809,7 +5824,7 @@ export class LobbyHeroDetailPanelRenderer {
       { key: 'books', icon: 'ui/bag/ai/icon_expbook/spriteFrame', value: formatTopCurrencyValue(formatInteger(bookCount)), l: 1557, r: 1720 },
     ];
     const hero = this.host.currentLobbyHeroDetailHero();
-    if (hero && this.host.currentLobbyHeroDetailTab() === 'star') {
+    if (hero && !hero.protagonist && this.host.currentLobbyHeroDetailTab() === 'star') {
       // 升星页:第二格换成本英雄碎片(升星消耗)
       const fragCode = `HERO_FRAGMENT:${(hero.heroCode || '').toUpperCase()}`;
       const owned = bag.groups.flatMap((group) => group.items).find((item) => (item.itemCode || '').toUpperCase() === fragCode)?.itemCount ?? 0;
@@ -5849,11 +5864,15 @@ export class LobbyHeroDetailPanelRenderer {
     if (tagBg) {
       tagBg.color = HERO_GLASS_RARITY_TAG[(hero.rarity || 'R').toUpperCase()] ?? HERO_GLASS_RARITY_TAG.R;
     }
-    glassLabel(this.host, tag, 'Text', safeText(hero.rarity || 'R'), 0, 0, F(16), rgba(240, 236, 250), tagW - S(4), HorizontalTextAlignment.CENTER, true);
+    if (tagBg && hero.protagonist) {
+      tagBg.color = rgba(150, 112, 52);
+    }
+    glassLabel(this.host, tag, 'Text', hero.protagonist ? '主角' : safeText(hero.rarity || 'R'), 0, 0, F(16), rgba(240, 236, 250), tagW - S(4), HorizontalTextAlignment.CENTER, true);
     glassLabel(this.host, plate, 'LobbyHeroDetailName', nameText, -rowW / 2 + tagW + S(14), line1, nameFont, GLASS_COLOR.text, S(250), HorizontalTextAlignment.LEFT, true);
     const metaFont = F(19);
     const line2 = -S(18);
-    const star = this.glassStarText(hero);
+    const realmTitle = hero.protagonist ? safeText(this.host.protagonistRealmInfo?.()?.title ?? '') : '';
+    const star = hero.protagonist ? { text: realmTitle ? `${realmTitle.replace(' · ', '境 · ')}` : '主角', color: GLASS_COLOR.champagne } : this.glassStarText(hero);
     const parts: Array<{ name: string; text: string; color: Color }> = [
       { name: 'LobbyHeroDetailLevel', text: `Lv.${hero.level}`, color: rgba(249, 249, 250) },
       { name: 'LobbyHeroDetailMetaSep1', text: '|', color: GLASS_COLOR.dim },
@@ -6080,6 +6099,77 @@ export class LobbyHeroDetailPanelRenderer {
     g.stroke();
     const label = glassLabel(this.host, node, 'Text', text, 0, 0, size, new Color(236, 120, 112, 255), w, HorizontalTextAlignment.CENTER);
     label.fontSize = Math.round(size);
+  }
+
+  /**
+   * 主角「境界」页(B,2026-11-05 主角进名册):境界称号 / 主角加成 / 境界光环 / 大招 / 下一境界条件 + 进化总览(等级、五条路线、已激活质变)。
+   * 条件满足时给「前往突破」(回大厅开突破层)。
+   */
+  private renderGlassRealmPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
+    const { RX, FY, S, F, k } = this.glassMap(width, height);
+    const col = this.glassColumn(width, height);
+    const root = this.host.addChildPlainNode(parent, 'LobbyHeroDetailRealmPanel', 0, 0, width, height);
+    mountGlassPanel(this.host, root, 'Box', col.x, (FY(86) + FY(811)) / 2, col.w, FY(86) - FY(811), k);
+    const realm = this.host.protagonistRealmInfo?.() ?? null;
+    const evo = this.host.protagonistEvolutionInfo?.() ?? null;
+    const left = RX(1217);
+    const right = RX(1805);
+    const rowW = right - left;
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailRealmSection', '境界', left, FY(119), k, F(26) / k);
+    const title = realm?.title ? realm.title.replace(' · ', '境 · ') : '读取中…';
+    glassLabel(this.host, root, 'RealmTitle', title, right, FY(119), F(26), GLASS_COLOR.champagne, S(300), HorizontalTextAlignment.RIGHT, true);
+    const aura = Math.max(0, Math.round(realm?.teamAuraPct ?? 0));
+    const rows: Array<{ label: string; value: string; color?: Color }> = [
+      { label: '主角攻击 / 生命', value: realm ? `+${Math.round((realm.bonus || 0) * 100)}%` : '—' },
+      { label: '境界光环(守卫战全队)', value: `攻击 / 生命 +${aura || 5}%` },
+      { label: '大招', value: protagonistUltUnlocked() ? '夜帝残影 · 已解锁' : '夜帝残影 · 炼魂解锁', color: protagonistUltUnlocked() ? GLASS_COLOR.text : GLASS_COLOR.sub },
+    ];
+    const rowH = 52;
+    rows.forEach((row, index) => {
+      const y = FY(170 + index * rowH);
+      glassLabel(this.host, root, `RealmRowLabel_${index}`, row.label, left + S(6), y, F(20), GLASS_COLOR.sub, S(300), HorizontalTextAlignment.LEFT);
+      glassLabel(this.host, root, `RealmRowValue_${index}`, row.value, right, y, F(20), row.color ?? GLASS_COLOR.text, S(300), HorizontalTextAlignment.RIGHT, true);
+      mountGlassLine(this.host, root, `RealmRowLine_${index}`, (left + right) / 2, y - S(rowH / 2), rowW, Math.max(1, S(1)), new Color(120, 128, 140, 70));
+    });
+    // 下一境界
+    let y = 170 + rows.length * rowH + 10;
+    if (realm && realm.nextRealmName) {
+      glassLabel(this.host, root, 'RealmNext', `突破到 ${realm.nextRealmName}境`, left + S(6), FY(y), F(20), GLASS_COLOR.text, S(320), HorizontalTextAlignment.LEFT, true);
+      realm.conditions.slice(0, 3).forEach((cond, index) => {
+        const cy = FY(y + 40 + index * 36);
+        glassLabel(this.host, root, `RealmCond_${index}`, `${cond.done ? '✓' : '·'} ${safeText(cond.label)}`, left + S(20), cy, F(18), cond.done ? GLASS_COLOR.green : GLASS_COLOR.sub, S(380), HorizontalTextAlignment.LEFT);
+        glassLabel(this.host, root, `RealmCondCur_${index}`, safeText(cond.current), right, cy, F(18), cond.done ? GLASS_COLOR.green : GLASS_COLOR.sub, S(200), HorizontalTextAlignment.RIGHT);
+      });
+      if (realm.canBreak && this.host.openProtagonistRealmBreak) {
+        mountGlassButton(this.host, root, 'RealmBreakButton', '前往突破', right - S(80), FY(y), S(150), S(40), k, 'primary', () => this.host.openProtagonistRealmBreak?.(), 20);
+      }
+      y += 40 + Math.min(3, realm.conditions.length) * 36 + 16;
+    } else if (realm) {
+      glassLabel(this.host, root, 'RealmNext', '已到当前开放的最高境界', left + S(6), FY(y), F(19), GLASS_COLOR.sub, S(400), HorizontalTextAlignment.LEFT);
+      y += 46;
+    }
+    // 进化总览
+    const evoTop = Math.max(y + 12, 430);
+    mountGlassSectionHeader(this.host, root, 'LobbyHeroDetailEvoSection', '进化', left, FY(evoTop), k, F(26) / k);
+    if (evo) {
+      glassLabel(this.host, root, 'EvoLevel', `进化 Lv.${evo.level}${evo.pendingCount > 0 ? ` · 待抉择 ${evo.pendingCount}` : ''}`, right, FY(evoTop), F(20), evo.pendingCount > 0 ? GLASS_COLOR.champagne : GLASS_COLOR.sub, S(320), HorizontalTextAlignment.RIGHT);
+      const routes = Object.keys(ROUTE_NAME) as Array<keyof typeof ROUTE_NAME>;
+      const chipW = (rowW - S(4 * 10)) / routes.length;
+      routes.forEach((route, index) => {
+        const cx = left + chipW / 2 + index * (chipW + S(10));
+        const chip = mountGlassPanel(this.host, root, `EvoRoute_${route}`, cx, FY(evoTop + 64), chipW, S(64), k);
+        glassLabel(this.host, chip, 'Name', ROUTE_NAME[route], 0, S(12), F(18), GLASS_COLOR.sub, chipW - S(8), HorizontalTextAlignment.CENTER);
+        glassLabel(this.host, chip, 'Count', `${Math.max(0, Math.round(evo.routes?.[route] ?? 0))}`, 0, -S(14), F(22), GLASS_COLOR.text, chipW - S(8), HorizontalTextAlignment.CENTER, true);
+      });
+      const active = (evo.qualities ?? []).filter((q) => q.active);
+      const text = active.length > 0 ? `已激活质变:${active.slice(0, 4).map((q) => safeText(q.name)).join('、')}${active.length > 4 ? ` 等 ${active.length} 个` : ''}` : '还没有激活的路线质变(同一路线进化卡攒够层数即激活)';
+      // LEFT 对齐时 x 是文字框左沿
+      const desc = this.host.addChildLabel(root, 'EvoQualities', text, left + S(6), FY(evoTop + 136), Math.round(F(18)), GLASS_COLOR.sub, new Size(rowW - S(12), S(60)), HorizontalTextAlignment.LEFT);
+      desc.enableWrapText = true;
+      desc.overflow = Label.Overflow.SHRINK;
+    } else {
+      glassLabel(this.host, root, 'EvoLoading', '进化数据读取中…', left + S(6), FY(evoTop + 50), F(19), GLASS_COLOR.sub, S(400), HorizontalTextAlignment.LEFT);
+    }
   }
 
   private renderGlassSkillPanel(parent: Node, hero: LobbyHeroItemVO, width: number, height: number): void {
@@ -8162,11 +8252,14 @@ export function resolveUltimateEmblemAsset(hero: Pick<LobbyHeroItemVO, 'heroCode
 // 技能组总数由稀有度决定:R/SR = 3(1+2),SSR/UR = 5(1+4);被动顺序 = 技能配置 [护盾?, ...effects]。
 export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
   if (hero.protagonist) {
+    // 主角技能 = 野外操作(LobbyTownRenderer.CLIP_COMBOS / SKILLS / 夜帝残影,数值同口径);守卫战主角不上格子,只给境界光环
+    const ultOpen = protagonistUltUnlocked();
     return [
-      { name: '圣契裁决', tag: '大招 · 默认', description: '守卫战 2★ 解锁；蓄满后点击英雄手动释放伤害 +25%，不点自动释放。', kind: 'ultimate', icon: resolveUltimateEmblemAsset(hero) },
-      { name: '圣契斩击', tag: '普攻', description: '攻击形态默认开放，对单体目标造成暗金斩击伤害。', icon: HERO_SKILL_ICON_BY_EFFECT.atkUp },
-      { name: '誓约战意', tag: '被动', description: '主角在队首时提升本次预演的压制感与生存展示。', icon: HERO_SKILL_ICON_BY_EFFECT.splash },
-      { name: '守御/祷言形态', tag: '锁定', description: '防御形态与辅助形态后续通过冒险剧情道具解锁。', locked: true },
+      { name: '夜帝残影', tag: ultOpen ? '大招 · U 键' : '大招 · 炼魂解锁', description: '前冲出剑，身后夜帝虚影挥刃横扫前方一大片，伤害为攻击 ×450%，冷却 30 秒。', kind: 'ultimate', icon: resolveUltimateEmblemAsset(hero), locked: !ultOpen },
+      { name: '五段连招', tag: '普攻 · J 键', description: '上挑、横扫、过顶劈、突刺、跃起下劈，连按自动接段；最后一击范围重击。', icon: HERO_SKILL_ICON_BY_EFFECT.atkUp },
+      { name: '重斩', tag: '战技 · K 键', description: '蓄力重劈前方，伤害为攻击 ×260%，冷却 5 秒。', icon: HERO_SKILL_ICON_BY_EFFECT.splash },
+      { name: '突进斩', tag: '战技 · L 键', description: '向前突进一段距离并斩击，伤害为攻击 ×200%，冷却 7 秒。', icon: HERO_SKILL_ICON_BY_EFFECT.truePierce ?? HERO_SKILL_ICON_BY_EFFECT.atkUp },
+      { name: '旋风斩', tag: '战技 · I 键', description: '原地旋身横扫周身一圈，伤害为攻击 ×160%，冷却 9 秒。', icon: HERO_SKILL_ICON_BY_EFFECT.stun ?? HERO_SKILL_ICON_BY_EFFECT.splash },
     ];
   }
   const kit: HeroDetailSkill[] = [];

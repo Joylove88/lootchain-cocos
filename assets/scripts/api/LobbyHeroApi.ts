@@ -118,6 +118,31 @@ export function currentLobbyProtagonistHero(): LobbyHeroItemVO | null {
   return lobbyProtagonistHero;
 }
 
+/** 主角大招「夜帝残影」已解锁(到炼魂,与野外 U 键同口径)。 */
+export function protagonistUltUnlocked(): boolean {
+  return protagonistRealmSkin;
+}
+
+/** 主角全身立绘(透明底 810×1080):炼魂起换炼魂装;名册卡面(贴顶裁头胸)/ 英雄详情立绘共用。 */
+export function protagonistPortraitPath(heroCode: string | null | undefined): string {
+  const female = (heroCode ?? '').toUpperCase().indexOf('FEMALE') >= 0;
+  return protagonistRealmSkin
+    ? `ui/realm/protag_${female ? 'f' : 'm'}_lianhun/spriteFrame`
+    : `ui/protagonist/b/protag_${female ? 'f' : 'm'}_base/spriteFrame`;
+}
+
+/** 带境界外观的主角(docs/60 P1b:炼魂起换 protag_m_lh / protag_f_lh,同一副骨骼换装);野外队长 / 编队队长位 / 名册共用。 */
+export function currentLobbyProtagonistLeader(): LobbyHeroItemVO | null {
+  const base = lobbyProtagonistHero;
+  return base && protagonistRealmSkin && base.spineAsset ? { ...base, spineAsset: `${base.spineAsset}_lh` } : base;
+}
+
+/**
+ * 编队英雄数(2026-11-05 用户拍板):主角固定当队长、不进编队,编队只放 3 名英雄;
+ * 野外 = 主角 + 这 3 人跟随,守卫战 = 这 3 人上格子 + 主角境界光环。与后端 PlayerTeamServiceImpl.MAX_LINEUP_SIZE 一致。
+ */
+export const LOBBY_FORMATION_MAX = 3;
+
 /** 野外队伍上限(与后端 FieldStageRules.MAX_PARTY 一致)。 */
 const FIELD_PARTY_MAX = 4;
 
@@ -126,9 +151,7 @@ const FIELD_PARTY_MAX = 4;
  * 没编队按战力取前几名;没有主角(旧数据)时退回原口径 4 名英雄。跑图渲染与登记遭遇共用,保证两边队伍一致(第一个 = 队长)。
  */
 export function resolveFieldParty(heroes: readonly LobbyHeroItemVO[], formationHeroIds: readonly number[]): LobbyHeroItemVO[] {
-  const base = lobbyProtagonistHero;
-  // 境界外观(docs/60 P1b):炼魂起换 protag_m_lh / protag_f_lh(同一副骨骼换装)
-  const lead = base && protagonistRealmSkin && base.spineAsset ? { ...base, spineAsset: `${base.spineAsset}_lh` } : base;
+  const lead = currentLobbyProtagonistLeader();
   const byId = new Map(heroes.map((hero) => [hero.id, hero]));
   let companions = formationHeroIds.map((id) => byId.get(id)).filter((hero): hero is LobbyHeroItemVO => !!hero && !hero.protagonist);
   if (companions.length === 0) {

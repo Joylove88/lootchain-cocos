@@ -27,6 +27,10 @@ ULT_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyHeroRo
 HERO_TAB_JS = ("let n=0; const t=setInterval(() => {{ n++; const all=root.lobbyHeroRosterLoader.currentState().heroes.filter(h=>h.id>0); "
                "if (all.length>0) {{ clearInterval(t); root.openLobbyHeroDetail(all[0].id); setTimeout(() => root.selectLobbyHeroDetailTab('{tab}'), 1500); }} "
                "else if (n>40) clearInterval(t); }}, 250);")
+# 主角详情(2026-11-05 主角进名册):开名册 → 点主角卡(LobbyHeroRosterProtagonistCard)→ 切页签
+PROTAG_TAB_JS = ("root.openLobbyHeroRosterPanel(); let n=0; const t=setInterval(() => {{ n++; let c=null; root.node.walk(x=>{{ if(!c && x.name==='LobbyHeroRosterProtagonistCard' && x.activeInHierarchy) c=x; }}); "
+                 "if (c) {{ clearInterval(t); c.emit('click', c.getComponent('cc.Button')); setTimeout(() => root.selectLobbyHeroDetailTab('{tab}'), 1500); }} "
+                 "else if (n>40) clearInterval(t); }}, 250);")
 SCREENS = [
     ('lobby', "void 0;", 2.5),
     ('terminal', "root.openLobbyTerminalPanel();", 3.0),
@@ -60,6 +64,9 @@ SCREENS = [
     ('hero_star', HERO_TAB_JS.format(tab='star'), 5.0),
     # 2026-10-21 按钮字留白全量排查补充的界面
     ('hero_roster', "root.openLobbyHeroRosterPanel();", 3.5),
+    ('protag_attr', PROTAG_TAB_JS.format(tab='attr'), 6.0),
+    ('protag_skill', PROTAG_TAB_JS.format(tab='skill'), 6.0),
+    ('protag_realm', PROTAG_TAB_JS.format(tab='star'), 6.0),
     # 2026-10-25 属性详情弹窗:英雄详情属性页后置 attrDetailHeroId 再整刷(弹窗随整刷恢复)
     ('attr_detail', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => { root.selectLobbyHeroDetailTab('attr'); setTimeout(() => { root.lobbyHeroDetailPanelRenderer.attrDetailHeroId = all[0].id; root.renderCurrentView(); }, 1200); }, 1500);"), 6.0),
     ('hero_refine', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => root.openLobbyHeroRefineDialog(), 1800);"), 5.0),

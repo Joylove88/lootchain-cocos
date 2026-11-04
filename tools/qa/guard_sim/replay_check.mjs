@@ -16,7 +16,7 @@ const SK = await import(pathToFileURL(path.resolve(dir, 'LobbyBattleHeroSkillCon
 const WITH_PASSIVES = process.env.PASSIVES === '1';
 const roster = JSON.parse(fs.readFileSync(rosterFile, 'utf8'));
 const byId = new Map(roster.heroes.map((h) => [h.id, h]));
-const team = (roster.formation || []).map((id) => byId.get(id)).filter(Boolean).slice(0, 4);
+const team = (roster.formation || []).map((id) => byId.get(id)).filter(Boolean).slice(0, Number(process.env.TEAM || 3));
 const classMap = { 法师: '法师', 战士: '战士', 坦克: '坦克', 刺客: '刺客', 射手: '射手', 辅助: '辅助' };
 
 function fakeStart(seedIndex) {
@@ -25,6 +25,7 @@ function fakeStart(seedIndex) {
     stageCode,
     serverSeed: `SEED-${seedIndex}`,
     guardRecommendedPower: Number(process.env.REC_POWER || 2800),
+    guardRealmAura: Number(process.env.AURA || 0),
     guardCrystal: { level: 3, crystalHpPct: 10, startGold: 50, spellPowerPct: 10, startEnergy: 30, energyMaxBonus: 0, unlockedSpells: ['quake', 'frost', 'thunder'], spellSlots: 2, spellLoadout: ['thunder', 'frost'], spellLevels: { quake: 1, frost: 2, thunder: 1 } },
     guardMonsters: [],
     lineup: team.map((h) => ({

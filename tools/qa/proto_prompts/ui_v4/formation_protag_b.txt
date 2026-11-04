@@ -1,0 +1,16 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = the APPROVED B draft of THIS formation screen. Keep its style, background scene (gothic hall, tall softly glowing guard crystal on an altar at the back centre), top bar and the RIGHT hero list panel EXACTLY (same size and position); only change the left scene area as described below.
+- SECOND image = our APPROVED style reference (hero detail screen): frosted dark glass, thin faint outlines, champagne-gold accent, dark-gold gradient selected state with white text.
+- THIRD image = our player character (the protagonist: a young male swordsman in worn dark leather-and-plate light armour, short dark cloak, long sword, realistic proportions).
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+
+SCREEN: "编队" (team formation), full screen.
+- Top bar: back arrow "<" + title "编队" + small "?" help circle; centre a frosted chip with crossed-swords icon "阵容战力 1,084" and after a thin divider "已上阵 3/3"; close "X" on the right.
+- Scene (left ~62%): the team is now ONE LEADER + THREE HEROES:
+  - LEADER slot on the far left, standing slightly in front of the others: the PROTAGONIST from the THIRD image as a full-body figure (a bit taller than the chibi heroes, realistic proportions, matte painted), standing on a round dark stone plinth that has a thin champagne-gold ring inlaid on its top edge (subtle, no glow). Under him a compact frosted name plate with a thin champagne rim: a small dark-gold tag "队长" with white text, "Lv.18", name "夜行者", a small champagne text "炼魂境 · 境界光环 攻击/生命 +5%", and at the bottom instead of a button a small grey lock icon with grey text "固定带队".
+  - THREE HERO slots to his right in a shallow arc (the middle one slightly in front), each a chibi hero on a plain round dark stone plinth, with the usual frosted name plate: small rarity tag "SR", "Lv.2"/"Lv.1"/"Lv.1", names "见习圣骑士" / "银色祭司" / "深渊行者", a row of small stars, and a translucent secondary pill "下阵".
+  - The four figures are evenly spaced, the whole group centred on the crystal; nothing overlaps.
+- RIGHT panel exactly like the FIRST image: header "可出战英雄"; rarity tabs "全部" (selected dark-gold, white text) | "UR" | "SSR" | "SR" | "R"; 3-column grid of square hero portrait cards: 见习圣骑士 (check mark), 银色祭司 (check mark), 深渊行者 (check mark), 契约魔女 (no check mark, not in team); the protagonist is NOT in this list. Bottom: sort icon button, dropdown "品质", list-view toggle icon.
+Extra rules: painted art muted and matte, no glow or sparkles except the crystal's soft inner light; background darkened, no rows of candles; generous spacing, aligned edges.
+Output only the single finished mockup image, no annotations.
