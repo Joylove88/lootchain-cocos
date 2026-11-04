@@ -18,24 +18,30 @@ BASE = 'IshmaelA'
 TARGETS = [('m2', 'protag_m', 'protag_m_v9', 'PROTAGONIST_MALE_ATTACK'), ('f2', 'protag_f', 'protag_f_v8', 'PROTAGONIST_FEMALE_ATTACK'),
            # 11-04 境界 P1b 炼魂外观(docs/60):m3 = 深色皮甲 + 蓝钢肩甲 / 护膝 + 兜帽短披风 + 符文钢剑;女版同觉醒口径 = 男版整套贴图只留女主的脸
            # 队伍头像不分境界,沿用觉醒版
-           ('m3', 'protag_m_lh', None, None), ('m3', 'protag_f_lh', None, None)]
+           ('m3', 'protag_m_lh', None, None), ('m3', 'protag_f_lh', None, None),
+           # 11-04 炼魂大招「夜帝残影」虚影(用户选 B:Meowa 换成夜帝本人,头部单独重画露脸 + 王冠 + 长发);游戏里放大 + 半透明 + 染紫
+           ('yd2', 'protag_yedi', None, None)]
 
 
 # 11-03 用户「头一直在仰头」:永夜龙骑头盔骨骼本来斜向上,画进去的脸跟着仰;骨骼动画是在初始姿势上叠加,
 # 把头骨 face01 初始角度往下压 15°(实测 -12° 已明显看向正前方,+ 方向更仰)全部动作一起修正
 HEAD_TILT = -15.0
+# 夜帝的脸是 Meowa 按头盔网格重画的,朝向本来就对,不压角度、不挪位置
+HEAD_TILT_BY = {'protag_yedi': 0.0}
 # 11-03 用户「头和脖子错位、离领口远」:压角度是绕脖根转,脸整体前移;把头骨在世界坐标里往背后(左)挪 18、下沉 5.4
 # (父骨 chest 世界角 62.71°,换算成 chest 本地坐标;0 / 10 / 18 三档渲染对比 18 最贴领口)
 # 11-03 深夜 用户「女主能不能和男主一样」:女主前面几轮(挪头 / 画上衣后 / 挖领口 / 脖子画进立领 / 大招单独挪)都不对,
 # 根因 = GPT 把女主马甲画成贴脖立领,男主是宽毛领 V 口。终解 = 女主头参数与男主完全一致(HEAD_SHIFT 同值,不单独改动作)
 # + 用户再拍板「衣服直接和男主一样」:女主贴图 = 男主整张贴图,只保留女主的脸 / 眼睛区域(protag_body_from_male.py)。
 # 废弃:只换领口 protag_collar_graft.py、立领填脖子 _unused_protag_collar_cut.py
-HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-18.0, -5.4), 'protag_m_lh': (-18.0, -5.4), 'protag_f_lh': (-18.0, -5.4)}
+HEAD_SHIFT = {'protag_m': (-18.0, -5.4), 'protag_f': (-18.0, -5.4), 'protag_m_lh': (-18.0, -5.4), 'protag_f_lh': (-18.0, -5.4), 'protag_yedi': (0.0, 0.0)}
 # 11-04 炼魂(m3)用户「脑袋快掉到胸口」:新肩甲比毛领高,头夹在两块肩甲中间,要把头抬出领口。
 # 按世界坐标往上抬会在上身后仰的动作(skill1 举剑)里把头带偏到侧面(用户「这个动作的头位置偏移过大」),
 # 改成顺着脊柱(chest 骨本地 x 轴)抬 22,各动作头都贴着脖子
 # 脸贴图脖子根在头骨本地的 y(skill1 翻转补偿用)
 FACE_NECK_Y = -15.0
+# 夜帝脸贴图按肤色像素实测脖子根 y≈-20
+FACE_NECK_Y_BY = {'protag_yedi': -20.0}
 # 女版同值显得脖子长(用户 11-04「女版的头可以再往下一点点」),低 8 / 低 14 对比取低 8
 HEAD_LIFT_SPINE = {'protag_m_lh': 22.0, 'protag_f_lh': 14.0}
 # 身体贴图整套用男主的角色(只留自己的脸)
@@ -47,6 +53,8 @@ CHEST_WORLD_DEG = 62.71
 # 11-03 用户「跑步时脑袋背后多了个衣服角」:跑步 / 攻击 / 大招等动作身体槽换成 body02,男版 AI 把它画成了带兜帽的上衣,
 # 头往后挪之后兜帽尖露在脑后;把 body02 贴图里毛领以上的兜帽抹掉(区域坐标 y<147、渐隐 10,只动网格包围内、亮色毛领保留)
 HOOD_CUT = {'protag_m': (147.0, 10.0)}
+# 11-04 大招虚影另出一份加色混合的发光层(protag_yedi_glow,共用贴图)
+GLOW_COPY = {'protag_yedi'}
 
 
 def head_shift_local(name):
@@ -74,7 +82,7 @@ def install_spine(src_key, name):
     data = json.load(open(os.path.join(src, BASE + '.json'), encoding='utf-8'))
     for bone in data['bones']:
         if bone['name'] == 'face01':
-            bone['rotation'] = round(bone.get('rotation', 0) + HEAD_TILT, 2)
+            bone['rotation'] = round(bone.get('rotation', 0) + HEAD_TILT_BY.get(name, HEAD_TILT), 2)
             lx, ly = head_shift_local(name)
             bone['x'] = round(bone.get('x', 0) + lx, 2)
             bone['y'] = round(bone.get('y', 0) + ly, 2)
@@ -88,7 +96,7 @@ def install_spine(src_key, name):
         import math
         setup = next(b for b in data['bones'] if b['name'] == 'face01').get('rotation', 0)
 
-        def comp(rot, y0=FACE_NECK_Y):
+        def comp(rot, y0=FACE_NECK_Y_BY.get(name, FACE_NECK_Y)):
             t = math.radians(setup + rot)
             return {'x': round(-2 * y0 * math.sin(t), 2), 'y': round(2 * y0 * math.cos(t), 2)}
         c1, c2 = comp(35.82), comp(8.62)
@@ -115,6 +123,13 @@ def install_spine(src_key, name):
     json.dump(data, open(os.path.join(dst, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     if name in HOOD_CUT:
         cut_hood(dst, name, data, *HOOD_CUT[name])
+    if name in GLOW_COPY:
+        # 发光层:同一张贴图、同一份图集,骨骼数据所有部件改加色混合(暗甲透明、金纹 / 披风 / 刃发亮 = 虚影的光)
+        glow = json.loads(json.dumps(data))
+        for slot in glow['slots']:
+            slot['blend'] = 'additive'
+        json.dump(glow, open(os.path.join(dst, name + '_glow.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+        shutil.copy(os.path.join(dst, name + '.atlas'), os.path.join(dst, name + '_glow.atlas'))
     print('spine', name, (w, h), 'from', src)
 
 

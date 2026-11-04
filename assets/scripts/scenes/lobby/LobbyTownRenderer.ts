@@ -4,6 +4,7 @@ import {
   EventKeyboard,
   EventTouch,
   Graphics,
+  gfx,
   HorizontalTextAlignment,
   Input,
   KeyCode,
@@ -66,6 +67,75 @@ import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
  * - step(dt) 由 GameRoot.update 在大厅视图时驱动:移动 / 碰撞 / 跟随 / 镜头 / 前后遮挡 / 门口判定。
  * 角色只翻左右(现有英雄骨骼全是侧面视角);动画有 run 用 run,没有就 idle 走。
  */
+/**
+ * docs/60 P1b 炼魂大招「夜帝残影」(11-04 用户确认原型 realm_ult_yedi_a + 虚影选 B + 刀光候选 1)。
+ * 虚影 = 永夜龙骑底换皮的夜帝(protag_yedi,Meowa),动作与主角同一截「横扫」;翅膀 A49-269、刀光 S681-4006 attackall(白色弯月剑气染淡紫)、
+ * 脚下 A47-217 紫色法阵;受击沿用普通受击(X 斩爆点偏橙已去掉)。虚影双层:普通层 + 加色发光层(protag_yedi_glow)。数值:攻击 × 4.5、前方半径 560 扇形、冷却 30 秒(我定,可调)。
+ */
+const REALM_ULT_BASE = {
+  icon: 'ui/realm/icon_rw_ult/spriteFrame',
+  spine: 'spine/hero/protag_yedi/protag_yedi',
+  /** 发光层(同贴图、全部件加色混合;深色甲透明、金纹 / 披风 / 刃发亮),叠在普通层上面。 */
+  glow: 'spine/hero/protag_yedi/protag_yedi_glow',
+  cdMs: 30000,
+  mult: 4.5,
+  reach: 560,
+  /** 主角 / 虚影同播的一截:skill1 后半「举剑定住 → 斜劈下去」(0.2~1.0 是举剑定格,1.0~1.4 才是挥砍)。 */
+  clip: { anim: 'skill1', start: 0.8, end: 1.55, speed: 0.9 },
+  /** 蓄势:虚影浮起、主角定住的时长。 */
+  leadMs: 320,
+  /** 命中点(挥砍落到底约 1.25s)占这一截的比例。 */
+  hitAt: 0.6,
+  ghostScale: 2.0,
+  /** 普通层(轮廓 / 细节)透明度与乘色;发光层透明度与乘色(11-04 用户「要和原型一致」:普通层提高看得清长发 / 王冠 / 披风)。 */
+  ghostAlpha: 165,
+  tint: [236, 220, 255] as [number, number, number],
+  glowAlpha: 170,
+  glowTint: [190, 130, 255] as [number, number, number],
+  /**
+   * 翅膀(原型同款紫色蝙蝠翼 + 金色翼脉,GPT 出图左右两片 ui/realm/yedi_wing_l|r):每帧跟着虚影胸口骨骼(chest)走 ——
+   * 翼根 = chest 骨本地 wingRoot(x 沿骨头往上、y 往背侧),身体转多少翅膀跟着转多少(11-04 用户「翅膀跟随人物动作贴在背部」);
+   * 每片宽 wingW(×ghostScale);蓄势时从收拢(wingFold°)展开,之后慢扇;叠一层加色混合让翼膜透光。
+   */
+  wingL: 'ui/realm/yedi_wing_l/spriteFrame',
+  wingR: 'ui/realm/yedi_wing_r/spriteFrame',
+  // 11-04 用户逐帧反馈「600ms 要往右上、750 / 900ms 弯腰时要往右、1100ms 要往左转一点」:chest 骨原点本来就在背侧,
+  // 翼根改往身体前方挪(y 负 = 胸前方向)并上移;转角只跟 0.6(全跟时前倾 50° 翅膀斜得太厉害)
+  wingRoot: { x: 60, y: -60 },
+  wingTurn: 0.6,
+  wingW: 170,
+  wingAlpha: 185,
+  wingGlowAlpha: 70,
+  wingFold: 38,
+  wingFlap: 9,
+  /** 放大招先把身边的怪震开(用户「放大招时把怪推开」):半径 / 击退初速(衰减 e^-14t,约 速度/14 像素)/ 定住时长。 */
+  pushRadius: 380,
+  pushSpeed: 3400,
+  pushStunMs: 1300,
+  /** 虚影相对队长:往身后 x、往下 y(脚比主角低一点,像从地里升起)。 */
+  ghostAt: { x: 150, y: -20 },
+  slashAt: { x: 240, y: 140 },
+  slashSize: 1000,
+  /** 刀光动画从第几秒播(素材前 0.1 秒空)。 */
+  slashFrom: 0.08,
+  /** 刀光在这一截的哪里出(挥砍起手约 1.05s)。 */
+  slashLead: 0.33,
+  /** 场景压暗(11-04 用户「压暗调浅」;摆件不在地面层不跟着暗,压太深反差突兀)。 */
+  dimAlpha: 70,
+  circleSize: 440,
+  slash: { effect: 'v2_s681_4006', animation: 'attackall' },
+  circle: { effect: 'v2_a47_217', animation: 'effect_debuff' },
+  /** 命中:紫粉暗能量爆点(替掉主角普攻的橙色火焰命中)。 */
+  hit: { effect: 'v2_a47_375', animation: 'action1', size: 1.6 },
+};
+type RealmUltCfg = typeof REALM_ULT_BASE;
+/** 演出参数;自验脚本可在页面里写 window.__realmUltTune 覆盖(不用重出包调手感),正式玩家没有这个开关。 */
+function realmUltCfg(): RealmUltCfg {
+  const tune = (globalThis as unknown as { __realmUltTune?: Partial<RealmUltCfg> }).__realmUltTune;
+  return tune ? { ...REALM_ULT_BASE, ...tune } : REALM_ULT_BASE;
+}
+const REALM_ULT = REALM_ULT_BASE;
+
 export interface LobbyTownHost extends LobbyHudHost {
   /** 断网遮罩挡着(10-31):野外冻结、不收键盘。 */
   netBlocked?(): boolean;
@@ -73,6 +143,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   townInputLocked?(): boolean;
   /** 主角境界称号(docs/60 §12,例「炼魂 · 初期」),队长血条上方显示;'' = 不显示。 */
   realmTitle?(): string;
+  /** 主角境界到炼魂(docs/60 P1b):野外多一个大招「夜帝残影」按钮(U 键)。 */
+  realmUltOpen?(): boolean;
   /** docs/48:冒险之门 = 矿境面板(NPC 矿列表 → 掠夺)。 */
   openLobbyRaidPanel?(): void;
   /** docs/47 P0:本地掠夺原型(无服务端时的回退)。 */
@@ -590,6 +662,8 @@ export class LobbyTownRenderer {
   private iframesUntil = 0;
   private dodgeReadyAt = 0;
   private readonly skillReadyAt = [0, 0, 0];
+  /** 炼魂大招「夜帝残影」冷却到点时间(docs/60 P1b)。 */
+  private ultReadyAt = 0;
   // docs/51 打击感(10-28):特效 / 顿帧 / 震屏 / 连招输入缓冲
   private combatFxInst: TownCombatFx | null = null;
   private readonly fxKits = new Map<string, TownHeroFxKit>();
@@ -600,8 +674,8 @@ export class LobbyTownRenderer {
   private shakeAmp = 0;
   private shakeDur = 1;
   private leaderActionStart = 0;
-  private bufferedInput: { kind: 'attack' } | { kind: 'skill'; index: number } | null = null;
-  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean; combo?: number }> = [];
+  private bufferedInput: { kind: 'attack' } | { kind: 'skill'; index: number } | { kind: 'ult' } | null = null;
+  private pendingHits: Array<{ at: number; mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean; combo?: number; ult?: boolean }> = [];
   private leaderActionAnim = false;
   private combatButtons: Array<{ node: Node; cd: Label | null; mask: Graphics | null; index: number; size: number; drawn: number; halo: Node | null; haloOn: boolean }> = [];
   // docs/51 队友自动战斗 / 目标锁定 / 野外 HUD
@@ -1605,6 +1679,7 @@ export class LobbyTownRenderer {
       case KeyCode.KEY_K: this.leaderSkill(0); break;
       case KeyCode.KEY_L: this.leaderSkill(1); break;
       case KeyCode.KEY_I: this.leaderSkill(2); break;
+      case KeyCode.KEY_U: this.leaderRealmUlt(); break;
       case KeyCode.SHIFT_LEFT: case KeyCode.SHIFT_RIGHT: this.leaderDodge(); break;
       case KeyCode.TAB: this.cycleLockTarget(); break;
       case KeyCode.DIGIT_1: case KeyCode.DIGIT_2: case KeyCode.DIGIT_3: {
@@ -1973,6 +2048,7 @@ export class LobbyTownRenderer {
       v = { x: 0, y: 0 };
     }
     this.stepDodgeFx(nowMs);
+    this.stepRealmUltWings();
     if (nowMs < this.dashUntil) {
       // 翻滚 / 突进:按冲刺方向强制位移
       const dashSpeed = this.dashSpeed;
@@ -4730,6 +4806,292 @@ export class LobbyTownRenderer {
     }
   }
 
+  // ── docs/60 P1b 炼魂大招「夜帝残影」(原型 realm_ult_yedi_a:主角前冲出剑,身后巨大半透明夜帝虚影挥紫刃横扫一整片) ──
+
+  private realmUltGhost: sp.SkeletonData | null = null;
+  private realmUltGlow: sp.SkeletonData | null = null;
+  private realmUltGhostLoading = false;
+  /** 正在播的虚影翅膀:每帧把翼根贴到虚影 chest 骨上(stepRealmUltWings)。 */
+  private realmUltWings: Array<{ wings: Node; skeleton: sp.Skeleton; skNode: Node; root: { x: number; y: number }; turn: number }> = [];
+
+  private prewarmRealmUlt(): void {
+    const cfg = realmUltCfg();
+    [cfg.slash, cfg.circle, cfg.hit].forEach((spec) => this.fx.prewarm(spec));
+    if ((this.realmUltGhost && this.realmUltGlow) || this.realmUltGhostLoading) {
+      return;
+    }
+    this.realmUltGhostLoading = true;
+    loadSharedSpineData(cfg.spine, null, 'RealmUlt', (data) => {
+      this.realmUltGhost = data;
+      loadSharedSpineData(cfg.glow, null, 'RealmUltGlow', (glow) => {
+        this.realmUltGhostLoading = false;
+        this.realmUltGlow = glow;
+      });
+    });
+  }
+
+  /**
+   * 演出约 1.2 秒:① 蓄势 leadMs:场景压暗 + 脚下紫金法阵 + 身后夜帝虚影(主角骨骼同款动作,放大 / 半透明 / 染紫)浮起展翼;
+   * ② 之后虚影与主角同步播「横扫」那一截,刀光在身前铺开;③ 出刀点一次结算前方大扇形(顿帧 + 重震 + 每只怪 X 斩爆点);
+   * ④ 收刀后虚影淡出、压暗退去。伤害 / 范围 / 冷却见 REALM_ULT。
+   */
+  private leaderRealmUlt(): void {
+    const now = Date.now();
+    const leader = this.leader;
+    const root = this.entityRoot;
+    if (!leader || !root || this.leaderDead || this.def.camps.length === 0 || !leader.hero.protagonist || !this.host.realmUltOpen?.()) {
+      return;
+    }
+    if (now < this.ultReadyAt) {
+      return;
+    }
+    if (this.leaderBusy(now)) {
+      if (now - this.leaderActionStart > 120) {
+        this.bufferedInput = { kind: 'ult' };
+      }
+      return;
+    }
+    this.prewarmRealmUlt();
+    const cfg = realmUltCfg();
+    this.ultReadyAt = now + cfg.cdMs;
+    this.comboUntil = 0;
+    const target = this.ensureLockTarget();
+    if (target) {
+      this.setActorFacing(leader, target.x >= leader.x ? 1 : -1);
+    }
+    const facing = leader.facing;
+    const c = cfg.clip;
+    const lead = cfg.leadMs;
+    // 主角:先定住 lead 毫秒(虚影浮起),再与虚影同步横扫
+    const played = this.playActorClip(leader, c.anim, c.start, c.end, c.speed);
+    const dur = played > 0 ? played : 900;
+    const total = lead + dur;
+    if (played > 0 && leader.skeleton) {
+      leader.skeleton.timeScale = 0;
+      setTimeout(() => {
+        if (this.leader === leader && leader.skeleton && leader.skeleton.isValid) {
+          leader.skeleton.timeScale = c.speed;
+        }
+      }, lead);
+      leader.oneShotEnd = now + total;
+    }
+    this.leaderActionAnim = true;
+    this.leaderActionStart = now;
+    this.actionUntil = now + total * 0.9;
+    this.iframesUntil = Math.max(this.iframesUntil, now + total);
+    this.pendingHits.push({ at: now + lead + dur * cfg.hitAt, mult: cfg.mult, reach: cfg.reach, around: false, heavy: true, ult: true });
+    gameAudio.sfx(resolveHeroSkillSfxKey(leader.hero.heroCode), 1);
+    this.spawnRealmUltDim(total, cfg);
+    // 先把身边的怪震开 + 定住一会(虚影出场有空间,横扫能扫到一整片)
+    for (const monster of this.monsters) {
+      if (monster.dead || !monster.node.isValid) {
+        continue;
+      }
+      const dx = monster.x - leader.x;
+      const dy = monster.y - leader.y;
+      if (Math.hypot(dx, dy * 1.4) > cfg.pushRadius) {
+        continue;
+      }
+      const dir = dx === 0 ? facing : dx > 0 ? 1 : -1;
+      monster.kbVX += dir * cfg.pushSpeed * (monster.camp.elite ? 0.4 : 1);
+      monster.windupUntil = 0;
+      monster.nextAttackAt = Math.max(monster.nextAttackAt, now + cfg.pushStunMs);
+      monster.animLockUntil = Math.max(monster.animLockUntil, now + cfg.pushStunMs);
+    }
+    this.shake(8, 0.18);
+    // 脚下紫色法阵(A47-217,自带竖向紫光柱)
+    const circle = this.fx.play(root, cfg.circle, leader.x, leader.y + 20, cfg.circleSize, { loop: true });
+    if (circle) {
+      const op = circle.addComponent(UIOpacity);
+      tween(op).delay(total / 1000).to(0.3, { opacity: 0 }).call(() => circle.isValid && circle.destroy()).start();
+    }
+    this.spawnRealmUltGhost(leader, facing, lead, dur, cfg);
+    // 刀光:蓄势结束就在身前铺开(白色弯月剑气染淡紫;素材开头空帧跳过)
+    setTimeout(() => {
+      if (this.leader !== leader || !root.isValid) {
+        return;
+      }
+      const slash = this.fx.play(root, { ...cfg.slash, clip: { start: cfg.slashFrom, end: 1, speed: 1.15 } }, leader.x + facing * cfg.slashAt.x, leader.y + cfg.slashAt.y, cfg.slashSize, { flipX: facing < 0 });
+      slash?.getComponentsInChildren(sp.Skeleton).forEach((sk) => { sk.color = rgba(214, 170, 255, 255); });
+    }, lead + dur * cfg.slashLead);
+  }
+
+  /** 场景压暗(地面层最上、角色之下):进 0.25s、退 0.35s。 */
+  private spawnRealmUltDim(totalMs: number, cfg: RealmUltCfg): void {
+    const ground = this.groundRoot;
+    if (!ground || !ground.isValid) {
+      return;
+    }
+    const node = this.host.addChildPlainNode(ground, 'RealmUltDim', this.camX, this.camY, 10, 10);
+    node.setSiblingIndex(ground.children.length - 1);
+    // Graphics 不吃 UIOpacity(整块不透明,11-04 实测地面全被盖住):淡入淡出靠重画填充色的 alpha
+    const g = node.addComponent(Graphics);
+    const draw = (a: number): void => {
+      if (!g.isValid) {
+        return;
+      }
+      g.clear();
+      g.fillColor = rgba(24, 10, 46, Math.round(a));
+      g.rect(-5000, -3500, 10000, 7000);
+      g.fill();
+    };
+    const fade = { a: 0 };
+    draw(0);
+    tween(fade).to(0.25, { a: cfg.dimAlpha }, { onUpdate: () => draw(fade.a) }).delay(Math.max(0, totalMs / 1000 - 0.25))
+      .to(0.35, { a: 0 }, { onUpdate: () => draw(fade.a) }).call(() => node.isValid && node.destroy()).start();
+  }
+
+  /** 夜帝虚影:挂在队长节点下(跟着走、跟队长一起排序),画在主角身后;普通层出轮廓细节 + 加色发光层出「虚影的光」。 */
+  private spawnRealmUltGhost(leader: TownActor, facing: number, leadMs: number, durMs: number, cfg: RealmUltCfg): void {
+    const spine = leader.spineNode;
+    if (!this.realmUltGhost || !spine || !spine.isValid || !leader.node.isValid) {
+      return;
+    }
+    const k = cfg.ghostScale;
+    const holder = this.host.addChildPlainNode(leader.node, 'RealmUltGhost', -facing * cfg.ghostAt.x, cfg.ghostAt.y - 30, 10, 10);
+    holder.setSiblingIndex(0);
+    // 翅膀(骨骼没有翅膀部件):左右两片贴图画在虚影身后,翼根每帧贴到虚影胸口骨上
+    const wings = this.mountRealmUltWings(holder, spine, k, leadMs, cfg);
+    const layers: Array<{ data: sp.SkeletonData; alpha: number; tint: [number, number, number] }> = [{ data: this.realmUltGhost, alpha: cfg.ghostAlpha, tint: cfg.tint }];
+    if (this.realmUltGlow) {
+      layers.push({ data: this.realmUltGlow, alpha: cfg.glowAlpha, tint: cfg.glowTint });
+    }
+    const c = cfg.clip;
+    let follow: { skeleton: sp.Skeleton; skNode: Node } | null = null;
+    layers.forEach((layer, i) => {
+      const node = this.host.addChildPlainNode(holder, i === 0 ? 'Spine' : 'Glow', spine.position.x, spine.position.y, 10, 10);
+      node.setScale(spine.scale.x * k, spine.scale.y * k, 1);
+      const skeleton = node.addComponent(sp.Skeleton);
+      skeleton.premultipliedAlpha = leader.skeleton?.premultipliedAlpha ?? false;
+      try {
+        skeleton.skeletonData = layer.data;
+        const runtime = resolveBattleUnitSpineRuntimeData(layer.data);
+        const skin = runtime ? resolveBattleUnitSpineSkinName(layer.data, runtime) : null;
+        if (skin) {
+          skeleton.setSkin(skin);
+        }
+        const entry = skeleton.setAnimation(0, c.anim, false);
+        if (entry) {
+          entry.animationStart = c.start;
+          entry.animationEnd = c.end;
+          entry.animationLast = -1;
+        }
+        skeleton.timeScale = 0;
+        setTimeout(() => {
+          if (skeleton.isValid) {
+            skeleton.timeScale = c.speed;
+          }
+        }, leadMs);
+        skeleton.color = rgba(layer.tint[0], layer.tint[1], layer.tint[2], 255);
+        node.addComponent(UIOpacity).opacity = layer.alpha;
+        if (!follow) {
+          follow = { skeleton, skNode: node };
+        }
+      } catch (error) {
+        void error;
+        node.destroy();
+      }
+    });
+    const followed = follow as { skeleton: sp.Skeleton; skNode: Node } | null;
+    if (wings && followed) {
+      this.realmUltWings.push({ wings, skeleton: followed.skeleton, skNode: followed.skNode, root: cfg.wingRoot, turn: cfg.wingTurn });
+    }
+    const op = holder.addComponent(UIOpacity);
+    op.opacity = 0;
+    tween(holder).by(leadMs / 1000, { position: new Vec3(0, 30, 0) }, { easing: 'quadOut' }).start();
+    tween(op).to(leadMs / 1000, { opacity: 255 }, { easing: 'quadOut' })
+      .delay(durMs / 1000)
+      .to(0.4, { opacity: 0 }, { easing: 'quadIn' })
+      .call(() => holder.isValid && holder.destroy()).start();
+  }
+
+  /** 夜帝的翅膀:翼根对准虚影背部,蓄势时从收拢展开、之后慢扇;每片叠一层加色混合(翼膜透光)。 */
+  private mountRealmUltWings(holder: Node, spine: Node, k: number, leadMs: number, cfg: RealmUltCfg): Node {
+    // 初始位置先按胸口大致高度放(第一帧 stepRealmUltWings 就贴到骨头上)
+    const root = this.host.addChildPlainNode(holder, 'Wings', spine.position.x, spine.position.y + 440 * spine.scale.y * k, 10, 10);
+    root.setSiblingIndex(0);
+    const w = cfg.wingW * k;
+    const h = w * (500 / 384);
+    ([[cfg.wingL, 1, -1], [cfg.wingR, 0, 1]] as Array<[string, number, number]>).forEach(([path, ax, side]) => {
+      // side:-1 = 画面左片(翼根在右下)、1 = 右片;朝左时整对镜像(左右互换无所谓,对称)
+      const wing = this.host.addChildPlainNode(root, side < 0 ? 'WingL' : 'WingR', 0, 0, w, h);
+      wing.getComponent(UITransform)?.setAnchorPoint(ax, 0.43);
+      const art = this.host.addSprite('Art', path, 0, 0, w, h, wing);
+      if (!art) {
+        wing.destroy();
+        return;
+      }
+      art.node.getComponent(UITransform)?.setAnchorPoint(ax, 0.43);
+      art.node.addComponent(UIOpacity).opacity = cfg.wingAlpha;
+      const glow = this.host.addSprite('Glow', path, 0, 0, w, h, wing);
+      if (glow) {
+        glow.node.getComponent(UITransform)?.setAnchorPoint(ax, 0.43);
+        glow.color = rgba(220, 180, 255, cfg.wingGlowAlpha);
+        const blend = glow as unknown as { _srcBlendFactor: number; _dstBlendFactor: number; _updateBlendFunc: () => void };
+        blend._srcBlendFactor = gfx.BlendFactor.SRC_ALPHA;
+        blend._dstBlendFactor = gfx.BlendFactor.ONE;
+        blend._updateBlendFunc();
+      }
+      // 收拢(翼尖朝上贴背)→ 展开 → 慢扇
+      const open = 0;
+      wing.angle = -side * cfg.wingFold;
+      wing.setScale(0.7, 0.7, 1);
+      tween(wing).to(leadMs / 1000, { angle: open, scale: new Vec3(1, 1, 1) }, { easing: 'backOut' })
+        .then(tween(wing).repeatForever(tween(wing).to(0.35, { angle: side * cfg.wingFlap }, { easing: 'sineInOut' }).to(0.35, { angle: open }, { easing: 'sineInOut' })))
+        .start();
+    });
+    return root;
+  }
+
+  /** 翅膀贴背:读虚影 chest 骨的世界坐标 / 角度(骨架空间),换算到虚影节点空间;转角按开场那一帧为基准(朝左时镜像取反)。 */
+  private stepRealmUltWings(): void {
+    if (this.realmUltWings.length === 0) {
+      return;
+    }
+    this.realmUltWings = this.realmUltWings.filter((item) => item.wings.isValid && item.skeleton.isValid && item.skNode.isValid);
+    for (const item of this.realmUltWings) {
+      const bone = item.skeleton.findBone('chest');
+      if (!bone) {
+        continue;
+      }
+      const r = bone.getWorldRotationX();
+      const rad = (r * Math.PI) / 180;
+      const bx = bone.worldX + Math.cos(rad) * item.root.x - Math.sin(rad) * item.root.y;
+      const by = bone.worldY + Math.sin(rad) * item.root.x + Math.cos(rad) * item.root.y;
+      const sk = item.skNode;
+      item.wings.setPosition(sk.position.x + bx * sk.scale.x, sk.position.y + by * sk.scale.y, 0);
+      // 转角以「躯干竖直」(chest 指向正上 = 90°)为基准:后仰翅膀跟着后仰、前倾跟着前倾(不用第一帧当基准:那一帧动作还没套上)
+      item.wings.angle = (r - 90) * item.turn * (sk.scale.x < 0 ? -1 : 1);
+    }
+  }
+
+  /** 出刀点结算:前方大扇形(身后一点也算),每只命中的怪 X 斩爆点;顿帧 + 重震。 */
+  private resolveRealmUltHit(leader: TownActor, multBase: number, reach: number): void {
+    const attack = Math.max(1, this.raiderAttack || 20);
+    const damage = Math.max(1, Math.round(attack * multBase * (1 + this.evoValue('SKILL_DMG'))));
+    let landed = false;
+    for (const monster of this.monsters) {
+      if (monster.dead || !monster.node.isValid) {
+        continue;
+      }
+      const dx = monster.x - leader.x;
+      const dy = monster.y - leader.y;
+      if (dx * leader.facing < -90 || Math.hypot(dx, dy * 1.5) > reach) {
+        continue;
+      }
+      if (!this.lockTarget) {
+        this.setLockTarget(monster);
+      }
+      this.impactMonster(monster, leader, true, !landed, true, realmUltCfg().hit);
+      landed = true;
+      this.damageMonster(monster, damage, true, false);
+    }
+    this.shake(landed ? 20 : 12, 0.4);
+    if (landed) {
+      this.hitStop(140);
+    }
+  }
+
   /** 技能冷却:进化「冥想」按比例缩短。 */
   private skillCdMs(index: number): number {
     return Math.round(LobbyTownRenderer.SKILLS[index].cdMs * (1 - Math.min(0.5, this.evoValue('SKILL_CD'))));
@@ -5041,7 +5403,7 @@ export class LobbyTownRenderer {
    * 命中反馈:专属命中特效(没有就贴斩击图)+ 受击闪白 + 形变 + 击退;by = 打出这一下的人(队长 / 队友)。
    * 队长的命中再加顿帧 + 震屏 + 打击音;队友的只出特效和击退(频率高,全加会糊)。
    */
-  private impactMonster(monster: TownMonster, by: TownActor, heavy: boolean, leaderHit: boolean, skillHit = false): void {
+  private impactMonster(monster: TownMonster, by: TownActor, heavy: boolean, leaderHit: boolean, skillHit = false, hitOverride?: { effect: string; animation: string; size: number }): void {
     const root = this.entityRoot;
     if (!root || !root.isValid || monster.dead) {
       return;
@@ -5050,7 +5412,7 @@ export class LobbyTownRenderer {
     const bodyY = this.monsterBodyY(monster);
     const dir = monster.x >= by.x ? 1 : -1;
     const scale = (heavy ? 1.25 : 1) * (leaderHit ? 1 : 0.8) * (monster.camp.elite ? 1.2 : 1);
-    const hit = kit.spine?.hit;
+    const hit = hitOverride ?? kit.spine?.hit;
     const hitNode = hit ? this.fx.play(root, hit, monster.x - dir * 10, bodyY, 150 * hit.size * scale, { flipX: dir < 0 }) : null;
     // 技能命中已有整套技能特效,不再叠静态斩击贴图(10-31 用户「有些还显示的贴图」)
     if (!hitNode && by.role === 'melee' && !skillHit) {
@@ -5821,6 +6183,8 @@ export class LobbyTownRenderer {
       this.bufferedInput = null;
       if (input.kind === 'attack') {
         this.leaderAttack();
+      } else if (input.kind === 'ult') {
+        this.leaderRealmUlt();
       } else {
         this.leaderSkill(input.index);
       }
@@ -5866,9 +6230,13 @@ export class LobbyTownRenderer {
     this.refreshPartyHud(now);
   }
 
-  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean; combo?: number }): void {
+  private resolveLeaderHit(hit: { mult: number; reach: number; around: boolean; heavy: boolean; dashLine?: { x0: number; y0: number; x1: number; y1: number }; skill?: number; ranged?: boolean; combo?: number; ult?: boolean }): void {
     const leader = this.leader;
     if (!leader) {
+      return;
+    }
+    if (hit.ult) {
+      this.resolveRealmUltHit(leader, hit.mult, hit.reach);
       return;
     }
     const attack = Math.max(1, this.raiderAttack || 20);
@@ -6886,12 +7254,12 @@ export class LobbyTownRenderer {
       const size = P.S(d);
       const node = this.host.addChildPlainNode(hud, name, P.R(px), P.Y(py), size, size);
       // 大招就绪光圈(10-29 用户):挂在圆盘下面,冷却结束时外扩一次 + 呼吸
-      const halo = index === 2 ? this.mountHalo(node, size * 1.5) : null;
+      const halo = index === 2 || index === -4 ? this.mountHalo(node, size * 1.5) : null;
       mountRingBase(this.host, node, size * 1.12, hot);
       this.addFitSprite('Icon', icon, 0, 0, size * iconK, size * iconK, node);
       let cd: Label | null = null;
       let mask: Graphics | null = null;
-      if (index >= 0 || index === -2) {
+      if (index >= 0 || index === -2 || index === -4) {
         mask = this.host.addChildPlainNode(node, 'CdMask', 0, 0, size, size).addComponent(Graphics);
         cd = this.host.addChildLabel(node, 'Cd', '', 0, 0, size * 0.36, rgba(255, 236, 196), new Size(size, size * 0.5));
         cd.isBold = true;
@@ -6935,6 +7303,11 @@ export class LobbyTownRenderer {
     mk('LobbyFieldSkill2', 1773, 590, 92, false, A.icWhirl, 0.62, 'I', () => this.leaderSkill(2), 2);
     mk('LobbyFieldDodge', 1522, 712, 84, false, A.icDodge, 0.6, 'Shift', () => this.leaderDodge(), -2);
     mk('LobbyFieldTarget', 1805, 700, 70, false, A.icTarget, 0.56, 'Tab', () => this.cycleLockTarget(), -3, '切换目标');
+    // docs/60 P1b 炼魂大招「夜帝残影」(原型 realm_ult_yedi_a):主角当队长且到炼魂才有,在技能簇左上
+    if (this.resolveParty()[0]?.protagonist && this.host.realmUltOpen?.()) {
+      mk('LobbyFieldRealmUlt', 1560, 470, 104, true, REALM_ULT.icon, 0.72, 'U', () => this.leaderRealmUlt(), -4);
+      this.prewarmRealmUlt();
+    }
   }
 
   /** 就绪光圈节点(香槟柔光环,默认透明);挂在调用处当前子节点之上、圆盘之下由调用顺序保证。 */
@@ -6978,11 +7351,11 @@ export class LobbyTownRenderer {
       if (!button.node.isValid) {
         continue;
       }
-      const readyAt = button.index >= 0 ? this.skillReadyAt[button.index] : button.index === -2 ? this.dodgeReadyAt : 0;
-      const total = button.index >= 0 ? this.skillCdMs(button.index) : 1200;
+      const readyAt = button.index >= 0 ? this.skillReadyAt[button.index] : button.index === -2 ? this.dodgeReadyAt : button.index === -4 ? this.ultReadyAt : 0;
+      const total = button.index >= 0 ? this.skillCdMs(button.index) : button.index === -4 ? realmUltCfg().cdMs : 1200;
       const left = Math.max(0, readyAt - now);
       if (button.cd && button.cd.isValid) {
-        const text = left > 0 && button.index >= 0 ? `${Math.ceil(left / 1000)}` : '';
+        const text = left > 0 && (button.index >= 0 || button.index === -4) ? `${Math.ceil(left / 1000)}` : '';
         if (button.cd.string !== text) {
           button.cd.string = text;
         }

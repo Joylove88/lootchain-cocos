@@ -401,7 +401,7 @@ export class LobbyRealmRenderer {
     const rows = [
       { icon: ICON.title, label: '境界称号', value: realm.title, gold: false },
       { icon: ICON.atk, label: '主角攻击 / 生命', value: bonus, gold: true },
-      { icon: ICON.ult, label: '新大招', value: '夜帝残影 · 即将开放', gold: false },
+      { icon: ICON.ult, label: '新大招', value: '夜帝残影 · 已解锁', gold: false },
       { icon: ICON.evo, label: '进化上限', value: '传说进化卡', gold: false },
     ];
     [182, 232, 281, 331].forEach((y, i) => {

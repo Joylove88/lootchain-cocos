@@ -43,9 +43,23 @@ FIXES = {
            'Torso parts (body01 / body02): the upper body of a light traveller armour, dark leather chest piece with crossed straps and a small '
            'round bronze cape clasp, the collar of a short dark charcoal cape around the neck opening, NO face, NO head, NO hood with a face in it. '
            'Cloak part (cloak02): a short dark charcoal wool cape with soft folds and a torn hem only, NO face, NO head. ' + KEEP),
+    # 11-04 大招虚影夜帝:头部两块(face01 待机 / face02 跑动技能)换皮后还是封闭头盔,重画成露脸 + 王冠 + 黑长发
+    'yd': ('IshmaelA', 'skinref_yd.png',
+           ['face01', 'face02'],
+           'Head parts (face01 / face02): the bare head of 夜帝 seen from the side-front like the reference: pale stern male face clearly visible '
+           '(eyes, nose, mouth), long wavy black hair falling to the back of the neck, a tall spiked dark-gold crown on top. NO helmet, NO mask, '
+           'NO visor. ' + KEEP),
+    # 11-04 用户「骨骼虚影要和原型图一致,带翅膀、长发、皇冠、披风」:第二轮以 yd 成品为底(C:/mw/protag/yd2/out = yd/out_fix),
+    # 头部再画长发 + 高王冠;身后披风 cloak01 顶部画上垂落的长卷发(头部网格放不下长发,长发借披风铺到背上);翅膀另做贴图层
+    'yd2': ('IshmaelA', 'skinref_yd2.png',
+            ['face01', 'face02', 'cloak01'],
+            'Head parts (face01 / face02): the head of 夜帝 like the reference: the same pale stern male face clearly visible, a tall ornate spiked '
+            'dark-gold crown, long wavy black hair flowing back from the head and falling down behind the neck. NO helmet, NO mask. '
+            'Cape part (cloak01): the long torn dark-purple cape with thin gold trim hanging behind him; over the upper part of the cape, long wavy '
+            'black hair falls from the top edge down along the cape, like the reference. NO face, NO head on the cape. ' + KEEP),
 }
 # 换皮后直接清成透明的部件(头盔红眼光等不该出现在主角身上的发光件)
-BLANK = {'m2': ['eyes01'], 'f2': ['eyes01'], 'm3': ['eyes01']}
+BLANK = {'m2': ['eyes01'], 'f2': ['eyes01'], 'm3': ['eyes01'], 'yd': ['eyes01']}
 # 女版后处理(同一副底骨骼、同一张放大图集 → 区域坐标与男版完全一致):
 # Meowa 把女版躯干 body01 / body02 画成了带兜帽的人脸(播技能时出现两个头),两块护甲 R_armor03 / armor03 没换皮还是原黑甲
 # → 直接从男版搬这四块(皮背心 / 布兜帽 / 皮护甲);女版 face01 回来是空的 → 用她自己的 face02(同为侧前方的头)缩放填进去

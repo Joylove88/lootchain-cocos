@@ -9940,6 +9940,12 @@ export class LootChainGameRoot extends Component {
     return !code || code !== 'AWAKEN';
   }
 
+  /** 炼魂起野外有大招「夜帝残影」(LobbyTownHost,docs/60 P1b);没读到境界时不给。 */
+  realmUltOpen(): boolean {
+    const code = this.realmState?.realmCode;
+    return !!code && code !== 'AWAKEN';
+  }
+
   /** 跑图层队长血条上方的境界称号(LobbyTownHost)。 */
   realmTitle(): string {
     return this.realmState?.title ?? '';

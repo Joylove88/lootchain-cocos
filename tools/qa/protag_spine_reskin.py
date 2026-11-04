@@ -46,6 +46,12 @@ TARGETS = {
            '(no helmet), light traveller armour of dark leather with blued-steel shoulder plates, forearm plates and knee plates, belted layered '
            'tunic with straps, short dark charcoal hooded cape over the shoulders, dark trousers, leather boots with steel shin guards; the long '
            'sword is a rune-etched steel sword with a faint pale-blue line along the fuller and a bronze crossguard.'),
+    # 11-04 炼魂大招「夜帝残影」的虚影(用户选 B:和原型一样有王冠 / 长发):同一副永夜龙骑底换成夜帝本人,游戏里放大 + 半透明 + 染紫;
+    # 骨骼没有翅膀部件,翅膀另做特效层
+    'yd': ('IshmaelA', 'skinref_yd.png',
+           'Re-texture this character as 夜帝, a tall regal dark emperor: pale stern face, long wavy black hair kept close to the head and shoulders, '
+           'a tall spiked dark-gold crown, ornate layered dark armour with thin gold filigree, a long torn dark-purple cape, dark gauntlets and greaves; '
+           'the long sword is a great sword with a pale-violet blade and an ornate dark-gold crossguard.'),
 }
 
 

@@ -245,6 +245,8 @@ export const BATTLE_FX_MEASURED_BOUNDS: Record<string, BattleFxMeasuredBounds> =
   'v2_a49_405:idle': { w: 188, h: 146, cx: 5, cy: 59 },
   // 心魔试炼缠身血光(11-04,A49-454 紫红飘带光弧,运行时染血红)
   'v2_a49_454:idle': { w: 378, h: 313, cx: -8, cy: 297 },
+  // 炼魂大招「夜帝残影」(11-04):白色弯月剑气(运行时染淡紫)
+  'v2_s681_4006:attackall': { w: 1137, h: 645, cx: 179, cy: 353 },
   'v2_a47_257:effect_qinglong_jineng_di': { w: 363, h: 247, cx: 0, cy: 51 },
   'v2_a47_268:effect_sb_5_zxd_baodian': { w: 323, h: 317, cx: -3, cy: 129 },
   'v2_a47_274:effect_xihe_jineng_di': { w: 148, h: 148, cx: -5, cy: 76 },
