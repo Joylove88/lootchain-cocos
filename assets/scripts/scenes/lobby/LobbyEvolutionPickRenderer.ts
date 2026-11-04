@@ -1,4 +1,4 @@
-import { BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Label, Node, Size, Sprite, tween, UIOpacity, UITransform, Vec3 } from 'cc';
 import type { EvolutionCard, EvolutionRoute, EvolutionState } from '../../api/EvolutionApi';
 import type { UiLayout } from './LobbyHudTypes';
 import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassSlice } from '../UiGlassKit';
@@ -177,8 +177,8 @@ export class LobbyEvolutionPickRenderer {
     mg.fill();
     mask.addComponent(Button);
     mask.on(Button.EventType.CLICK, () => this.onHelp(false), this);
-    const pw = S(1060);
-    const ph = S(640);
+    const pw = S(1120);
+    const ph = S(820);
     const panel = this.host.addChildPlainNode(root, 'HelpPanel', 0, 0, pw, ph);
     panel.addComponent(BlockInputEvents);
     mountGlassSlice(this.host, panel, 'Glass', GLASS_SLICES.panel, 0, 0, pw, ph, k);
@@ -186,7 +186,7 @@ export class LobbyEvolutionPickRenderer {
     const lines: Array<[string, string]> = [
       ['进化抉择', '每升 1 级,系统给出 3 张进化卡,选 1 张永久生效。'],
       ['进化路线', '每张卡属于一条路线:猎杀 / 守护 / 奥术 / 探索 / 财富。左上角是各路线已选的张数。'],
-      ['质变', '同一路线选满 3 张,自动触发该路线的质变(见下方)。'],
+      ['质变', '同一路线选满 3 / 6 张,自动触发第 3 / 6 层质变(见下方);第 6 层要主角突破到炼魂境才生效。'],
       ['稀有度', '普通 / 稀有 / 传说,越稀有数值越高;传说卡要主角突破到炼魂境后才会出现。'],
       ['保底 · 刷新', '连续 5 次没出稀有,下一次必出稀有;每次可免费刷新 1 次,之后消耗钻石(20 / 40 / 80)。'],
       ['生效范围', '目前作用于野外战斗与野外掉落。'],
@@ -198,9 +198,9 @@ export class LobbyEvolutionPickRenderer {
       const label = glassLabel(this.host, panel, `B_${head}`, body, left + S(150), y, S(20), GLASS_COLOR.text, pw - S(250), HorizontalTextAlignment.LEFT);
       label.overflow = Label.Overflow.SHRINK;
       label.node.getComponent(UITransform)?.setContentSize(pw - S(250), S(28));
-      y -= S(46);
+      y -= S(42);
     }
-    // 五条路线的质变
+    // 五条路线的质变(第 3 / 6 层)
     y -= S(6);
     const line = this.host.addChildPlainNode(panel, 'Sep', 0, y + S(18), pw - S(96), S(2)).addComponent(Graphics);
     line.fillColor = new Color(255, 255, 255, 34);
@@ -212,13 +212,50 @@ export class LobbyEvolutionPickRenderer {
       dot.circle(0, 0, S(6));
       dot.fill();
       const count = state.routes[q.route] ?? 0;
-      glassLabel(this.host, panel, `QName_${q.code}`, `${ROUTE_NAME[q.route]} ${Math.min(count, q.layer)}/${q.layer} · ${q.name}`, left + S(24), y - S(8), S(20),
+      glassLabel(this.host, panel, `QName_${q.code}`, `${ROUTE_NAME[q.route]} ${Math.min(count, q.layer)}/${q.layer} · ${q.name}`, left + S(24), y - S(8), S(19),
         q.active ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(230), HorizontalTextAlignment.LEFT, true);
-      glassLabel(this.host, panel, `QDesc_${q.code}`, q.active ? `${q.desc}(已触发)` : q.desc, left + S(250), y - S(8), S(19),
+      const tail = q.active ? '(已触发)' : q.locked ? `(${q.lockReason || '突破后开放'})` : '';
+      const qd = glassLabel(this.host, panel, `QDesc_${q.code}`, q.desc + tail, left + S(250), y - S(8), S(18),
         q.active ? GLASS_COLOR.champagne : GLASS_COLOR.sub, pw - S(330), HorizontalTextAlignment.LEFT);
-      y -= S(38);
+      qd.overflow = Label.Overflow.SHRINK;
+      qd.node.getComponent(UITransform)?.setContentSize(pw - S(330), S(28));
+      y -= S(32);
     }
     mountGlassButton(this.host, panel, 'Close', '知道了', 0, -ph / 2 + S(46), S(220), S(56), k, 'secondary', () => this.onHelp(false), 24);
+  }
+
+  static readonly BANNER_NAME = 'LobbyEvolutionQualityBanner';
+
+  /**
+   * 路线质变触发横幅(11-04 用户「选满 3 次没看到质变」):屏幕中上一张毛玻璃卡 ——「路线质变 · 第 N 层」+ 名字(路线色)+ 效果,
+   * 弹入后停 2.8 秒淡出;不挡操作。
+   */
+  showQualityBanner(layout: UiLayout, quality: { name: string; desc: string; route: EvolutionRoute; layer: number }): void {
+    const { k, S } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    const cx = (layout.stageLeft + layout.stageRight) / 2;
+    const cy = (layout.stageTop + layout.stageBottom) / 2 + layout.stageHeight * 0.18;
+    const root = this.host.createUiNode(LobbyEvolutionPickRenderer.BANNER_NAME);
+    root.setPosition(new Vec3(cx, cy, 0));
+    const w = S(760);
+    const h = S(190);
+    root.addComponent(UITransform).setContentSize(new Size(w, h));
+    mountGlassSlice(this.host, root, 'Glass', GLASS_SLICES.panelSel, 0, 0, w, h, k);
+    const color = ROUTE_COLOR[quality.route];
+    const bar = this.host.addChildPlainNode(root, 'Bar', 0, h / 2 - S(10), w - S(60), S(4)).addComponent(Graphics);
+    bar.fillColor = color;
+    bar.roundRect(-(w - S(60)) / 2, -S(2), w - S(60), S(4), S(2));
+    bar.fill();
+    glassLabel(this.host, root, 'Head', `${ROUTE_NAME[quality.route]}路线质变 · 第 ${quality.layer} 层`, 0, S(52), S(22), GLASS_COLOR.champagne, w - S(60), HorizontalTextAlignment.CENTER, true);
+    const name = glassLabel(this.host, root, 'Name', quality.name, 0, S(6), S(44), GLASS_COLOR.text, w - S(60), HorizontalTextAlignment.CENTER, true);
+    name.color = new Color(Math.min(255, color.r + 30), Math.min(255, color.g + 30), Math.min(255, color.b + 30), 255);
+    const desc = glassLabel(this.host, root, 'Desc', quality.desc, 0, -S(50), S(22), GLASS_COLOR.text, w - S(80), HorizontalTextAlignment.CENTER);
+    desc.overflow = Label.Overflow.SHRINK;
+    desc.node.getComponent(UITransform)?.setContentSize(w - S(80), S(34));
+    const op = root.addComponent(UIOpacity);
+    op.opacity = 0;
+    root.setScale(0.8, 0.8, 1);
+    tween(root).to(0.28, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
+    tween(op).to(0.2, { opacity: 255 }).delay(2.8).to(0.5, { opacity: 0 }).call(() => root.isValid && root.destroy()).start();
   }
 
   private dim(root: Node, W: number, H: number): void {
@@ -305,7 +342,12 @@ export class LobbyEvolutionPickRenderer {
     line.fillColor = new Color(255, 255, 255, 34);
     line.rect(-(w - S(56)) / 2, -S(0.6), w - S(56), S(1.2));
     line.fill();
-    const after = Math.min(3, card.routeCount + 1);
+    const after = card.routeCount + 1;
+    const layers = state.qualities.filter((q) => q.route === card.route).sort((a, b) => a.layer - b.layer);
+    const nextQ = layers.find((q) => q.layer >= after) ?? null;
+    const prevLayer = nextQ ? (layers.filter((q) => q.layer < nextQ.layer).pop()?.layer ?? 0) : (layers[layers.length - 1]?.layer ?? 3);
+    const segment = nextQ ? nextQ.layer - prevLayer : 3;
+    const filled = nextQ ? after - prevLayer : segment;
     const ry = -S(163);
     const rdot = this.host.addChildPlainNode(node, 'RouteDot', -S(117), ry, S(14), S(14)).addComponent(Graphics);
     rdot.fillColor = color;
@@ -313,9 +355,9 @@ export class LobbyEvolutionPickRenderer {
     rdot.fill();
     glassLabel(this.host, node, 'RouteName', ROUTE_NAME[card.route], -S(100), ry, S(22), GLASS_COLOR.text, S(70));
     const dots = this.host.addChildPlainNode(node, 'RouteDots', S(8), ry, S(70), S(20)).addComponent(Graphics);
-    for (let i = 0; i < 3; i += 1) {
+    for (let i = 0; i < segment; i += 1) {
       const dx = -S(20) + i * S(20);
-      if (i < after) {
+      if (i < filled) {
         dots.fillColor = new Color(236, 236, 236, 255);
         dots.circle(dx, 0, S(6));
         dots.fill();
@@ -326,7 +368,9 @@ export class LobbyEvolutionPickRenderer {
         dots.stroke();
       }
     }
-    glassLabel(this.host, node, 'RouteCount', `|   ${after}/3`, S(48), ry, S(22), GLASS_COLOR.sub, S(80));
+    // 11-04 用户「同一类选满 3 次后一直 3/3」:按下一层显示(4/6);第 6 层没开放时标「未开」,超过最高层显示「已满」
+    const countText = nextQ ? `|   ${after}/${nextQ.layer}${nextQ.locked ? ' 未开' : ''}` : `|   ${after} 已满`;
+    glassLabel(this.host, node, 'RouteCount', countText, S(58), ry, S(22), GLASS_COLOR.sub, S(120));
     if (selected) {
       // 选中:金边 + 外晕 + 顶边正中的勾 + 质变提示
       const border = this.host.addChildPlainNode(node, 'SelBorder', 0, 0, w + S(16), h + S(16)).addComponent(Graphics);
@@ -349,11 +393,13 @@ export class LobbyEvolutionPickRenderer {
       cg.lineTo(-S(3), -S(7));
       cg.lineTo(S(10), S(7));
       cg.stroke();
-      const quality = state.qualities.find((q) => q.route === card.route && !q.active);
+      const quality = state.qualities.filter((q) => q.route === card.route && !q.active).sort((a, b) => a.layer - b.layer)[0];
       if (quality) {
-        const hint = after >= quality.layer
-          ? `选它 → 质变【${quality.name}】`
-          : `再选 ${quality.layer - after} 张${ROUTE_NAME[card.route]} → 质变【${quality.name}】`;
+        const hint = quality.locked
+          ? `第 ${quality.layer} 层质变【${quality.name}】${quality.lockReason || '突破后开放'}`
+          : after >= quality.layer
+            ? `选它 → 质变【${quality.name}】`
+            : `再选 ${quality.layer - after} 张${ROUTE_NAME[card.route]} → 质变【${quality.name}】`;
         glassLabel(this.host, node, 'Hint', hint, 0, -S(194), S(20), GLASS_COLOR.champagne, w - S(24), HorizontalTextAlignment.CENTER);
       }
     }

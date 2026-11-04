@@ -34,6 +34,9 @@ def sql(q):
 
 
 def backup():
+    if sql("SHOW TABLES LIKE 'qa_bak_route_user_waypoint'"):
+        print('backup exists, reuse', flush=True)
+        return
     for t in TABLES:
         sql(f"DROP TABLE IF EXISTS qa_bak_route_{t}; CREATE TABLE qa_bak_route_{t} AS SELECT * FROM {t} WHERE user_id={UID};")
 
@@ -125,12 +128,8 @@ async def main():
                 if view in ('login', 'lobby', 'loginAccount') and await ev("return (window.__lootchainPack && !root.bootPreloadActive) ? 'y' : 'n';") == 'y':
                     break
                 await asyncio.sleep(1)
-            if view == 'lobby':
-                # 旧会话:退出重登才会重读世界状态
-                await ev("location.reload(); return 1;")
-                await asyncio.sleep(3)
-                await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
-            if await ev("return root.currentView;") != 'lobby':
+            print('view', view, flush=True)
+            if view != 'lobby':
                 await ev(f"root.loginFlow.setInputs({{string:'{ACCOUNT}'}}, {{string:'pass1234'}}); root.loginFlow.acceptedAgreement = true; root.run(() => root.loginFlow.login()); return 1;")
             for _ in range(240):
                 if await ev("return root.currentView === 'lobby' && root.worldState ? 'ok' : 'wait';") == 'ok':

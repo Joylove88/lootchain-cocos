@@ -37,6 +37,9 @@ export interface EvolutionQuality {
   route: EvolutionRoute;
   layer: number;
   active: boolean;
+  /** 境界还没开放这一层(lockReason 如「炼魂境开放」)。 */
+  locked: boolean;
+  lockReason: string;
 }
 
 export interface EvolutionState {
@@ -119,6 +122,8 @@ function validateState(data: unknown): EvolutionState {
       route: route(readText(item, 'route', 16, 'HUNT')),
       layer: num(item, 'layer', 3),
       active: item.active === true,
+      locked: item.locked === true,
+      lockReason: readText(item, 'lockReason', 32, ''),
     };
   });
   const effectsRaw = isRecord(data.effects) ? data.effects : {};

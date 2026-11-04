@@ -9586,6 +9586,22 @@ export class LootChainGameRoot extends Component {
         this.loadLobbyTokenFurnaceSummary(true);
       }
     });
+    // 11-04:后台给玩家加金币 / 钻石(后台进程经 Redis 中继推过来)→ 提示 + 刷新货币栏
+    this.playerWsClient.on('CURRENCY_CHANGED', (data) => {
+      const code = typeof data.currency === 'string' ? data.currency : '';
+      const delta = Number(data.delta);
+      const name = code === 'DIAMOND' ? '钻石' : code === 'GOLD' ? '金币' : '货币';
+      if (Number.isFinite(delta) && delta !== 0) {
+        const n = String(Math.abs(Math.round(delta))).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        const text = `${delta > 0 ? '获得' : '扣除'} ${name} ×${n}`;
+        this.setStatus(text);
+        if (delta > 0) {
+          this.spawnRewardFloats([text]);
+          gameAudio.sfx('reward');
+        }
+      }
+      void this.loadLobbyProfile(this.currentLobbyProfile().userId);
+    });
     this.playerWsClient.on('RANK_CHANGED', () => {
       // 只有开着限时副本面板(可能看着输出榜)才刷新,避免无谓请求。
       if (this.lobbyDailyDungeonPanelOpen) {
@@ -9782,8 +9798,15 @@ export class LootChainGameRoot extends Component {
   private async checkEvolution(): Promise<void> {
     this.evolutionLoading = true;
     try {
+      const prev = this.evolutionState;
       const state = await this.api.evolution.state();
       this.applyEvolutionState(state);
+      // 突破境界后,张数早就够的第 6 层质变这时才生效:也弹一次横幅
+      const unlocked = prev ? state.qualities.find((q) => q.active && !prev.qualities.find((old) => old.code === q.code)?.active) : null;
+      if (unlocked && this.currentView === 'lobby') {
+        this.removeNodeFromContent(LobbyEvolutionPickRenderer.BANNER_NAME);
+        this.evolutionPickRenderer.showQualityBanner(this.resolveLayout(), unlocked);
+      }
       if (state.choice && this.currentView === 'lobby' && !this.contractPick) {
         this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
         this.renderEvolutionPick();
@@ -9855,11 +9878,12 @@ export class LootChainGameRoot extends Component {
           this.renderCurrentView();
         }
       }
-      const floats = ['进化 · ' + (card?.name ?? '')];
+      this.spawnRewardFloats(['进化 · ' + (card?.name ?? '')]);
       if (newQuality) {
-        floats.push('质变 · ' + newQuality.name + ':' + newQuality.desc);
+        // 质变:中上方横幅(飘字太容易错过)
+        this.removeNodeFromContent(LobbyEvolutionPickRenderer.BANNER_NAME);
+        this.evolutionPickRenderer.showQualityBanner(this.resolveLayout(), newQuality);
       }
-      this.spawnRewardFloats(floats);
     } catch (error) {
       this.evolutionPick = { ...pick, busy: false, error: (error as Error)?.message || '进化没有成功,再试一次' };
       this.renderEvolutionPick();

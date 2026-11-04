@@ -690,6 +690,10 @@ export class LobbyTownRenderer {
   private rollBuffUntil = 0;
   /** 「回响」:技能命中后下一次普攻伤害 +50%。 */
   private echoReady = false;
+  /** 第 6 层质变(11-04,炼魂开放):连斩层数 / 到期、不屈下次可用时刻。 */
+  private killStacks = 0;
+  private killStacksUntil = 0;
+  private lastStandReadyAt = 0;
   private lastCombatAt = 0;
   private companionHits: Array<{ at: number; target: TownMonster; damage: number; heavy: boolean; actor?: TownActor; skillFx?: boolean }> = [];
   private lockTarget: TownMonster | null = null;
@@ -783,7 +787,7 @@ export class LobbyTownRenderer {
 
   /** 移动速度倍率:疾行 + 探索第 3 层质变「寻踪」+10%。 */
   private moveMul(): number {
-    return 1 + this.evoValue('SPEED') + (this.evoQualities.has('EXPLORE_3') ? 0.1 : 0);
+    return 1 + this.evoValue('SPEED') + (this.evoQualities.has('EXPLORE_3') ? 0.1 : 0) + (this.evoQualities.has('EXPLORE_6') ? 0.1 : 0);
   }
 
   // ── docs/60 §12 突破试炼「心魔 · 昔日的自己」 ──
@@ -5141,7 +5145,7 @@ export class LobbyTownRenderer {
     this.dashUntil = now + 250;
     this.actionUntil = now + 250;
     this.iframesUntil = now + 400;
-    this.dodgeReadyAt = now + 1200;
+    this.dodgeReadyAt = now + (this.evoQualities.has('EXPLORE_6') ? 720 : 1200);
     if (this.evoValue('ROLL') > 0) {
       this.rollBuffUntil = now + 250 + 2000;
     }
@@ -6279,6 +6283,10 @@ export class LobbyTownRenderer {
     if (Date.now() < this.rollBuffUntil) {
       mult *= 1 + this.evoValue('ROLL');
     }
+    // 猎杀第 6 层「连斩」:击杀后 3 秒内每层 +20%(最多 3 层)
+    if (this.killStacks > 0 && Date.now() < this.killStacksUntil) {
+      mult *= 1 + 0.2 * this.killStacks;
+    }
     const slam = hit.skill === undefined && hit.combo === 3 && this.evoValue('COMBO3') > 0;
     if (slam) {
       hit = { ...hit, reach: hit.reach * (1 + this.evoValue('COMBO3')) };
@@ -6374,6 +6382,14 @@ export class LobbyTownRenderer {
     }
     if (landed && hit.skill !== undefined && this.evoQualities.has('ARCANE_3')) {
       this.echoReady = true;
+    }
+    if (landed && hit.skill !== undefined && this.evoQualities.has('ARCANE_6')) {
+      // 奥术第 6 层「灵涌」:其余技能冷却 -1.5 秒
+      for (let i = 0; i < this.skillReadyAt.length; i += 1) {
+        if (i !== hit.skill) {
+          this.skillReadyAt[i] -= 1500;
+        }
+      }
     }
     if (!landed && hit.skill === undefined && root) {
       // 挥空也要有刀光:在身前贴一记斩击图
@@ -6509,6 +6525,12 @@ export class LobbyTownRenderer {
       this.leaderHp = Math.min(this.leaderMaxHp, this.leaderHp + heal);
       this.spawnFloater(this.leader.x, this.leader.y + 250, `+${heal}`, rgba(120, 230, 140), 24);
       this.drawLeaderHp();
+    }
+    if (this.evoQualities.has('HUNT_6') && !monster.camp.dummy && this.leader && !this.leaderDead) {
+      const now = Date.now();
+      this.killStacks = Math.min(3, (now < this.killStacksUntil ? this.killStacks : 0) + 1);
+      this.killStacksUntil = now + 3000;
+      this.spawnFloater(this.leader.x, this.leader.y + 290, `连斩 ×${this.killStacks}`, rgba(255, 140, 110), 22);
     }
     monster.hpBar?.clear();
     if (monster.nameLabel && monster.nameLabel.isValid) {
@@ -7000,6 +7022,14 @@ export class LobbyTownRenderer {
     const leader = this.leader;
     if (!leader || this.leaderDead) {
       return;
+    }
+    const now0 = Date.now();
+    if (this.evoQualities.has('GUARD_6') && !this.trial && this.leaderHp - amount <= 0 && now0 >= this.lastStandReadyAt && this.leaderHp > 1) {
+      // 守护第 6 层「不屈」:致命一击留 1 点生命 + 2 秒无敌(60 秒一次)
+      amount = this.leaderHp - 1;
+      this.lastStandReadyAt = now0 + 60000;
+      this.iframesUntil = Math.max(this.iframesUntil, now0 + 2000);
+      this.spawnFloater(leader.x, leader.y + 300, '不屈', rgba(240, 210, 130), 30);
     }
     this.leaderHp = Math.max(0, this.leaderHp - amount);
     this.lastHurtAt = Date.now();
