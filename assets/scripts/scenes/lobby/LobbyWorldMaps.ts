@@ -726,7 +726,11 @@ const WOODS: WorldMapDef = {
     camp('FIELD_WOODS_19', '南岔鼠群', 'MINI_RAT', 7, 5, -555, -1688),
     camp('FIELD_WOODS_20', '东南鼠群', 'MINI_RAT', 8, 9, 5145, -900),
   ],
-  exits: [{ key: 'to_village', label: '返回 · 晨风村', x: -6420, y: -2440, radius: 130, toMap: 'VILLAGE', toSpawn: { x: 2300, y: -1000 } }],
+  // 11-04 用户「晨风村 → 林地 → 主城要一路跑过去」:林地东头(东林空地)出口通主城(世界地图上主城在林地东北)
+  exits: [
+    { key: 'to_village', label: '返回 · 晨风村', x: -6420, y: -2440, radius: 130, toMap: 'VILLAGE', toSpawn: { x: 2300, y: -1000 } },
+    { key: 'to_city', label: '前往 · 主城', x: 5800, y: 525, radius: 130, toMap: 'CITY', toSpawn: { x: -900, y: -960 } },
+  ],
   battleBg: 'battle_scene_field_forest',
 };
 
@@ -753,7 +757,11 @@ const CITY: WorldMapDef = {
   // 广场黄铜罗盘就是主城传送阵(不另画底座,只加符文光)
   waypoint: { x: 0, y: -330, drawn: false },
   camps: [],
-  exits: [],
+  // 11-04:南门(商行 / 佣兵公会之间)回林地,东门(英灵殿北侧)去灰岩荒原;首次来要走到广场罗盘激活传送阵
+  exits: [
+    { key: 'to_woods', label: '前往 · 村外林地', x: -900, y: -1150, radius: 130, toMap: 'WOODS', toSpawn: { x: 5500, y: 525 } },
+    { key: 'to_gray', label: '前往 · 灰岩荒原', x: 2050, y: -700, radius: 130, toMap: 'GRAY', toSpawn: { x: -1980, y: 260 } },
+  ],
 };
 
 /**
@@ -832,7 +840,7 @@ const GRAY: WorldMapDef = {
     camp('FIELD_GRAY_3', '盗匪营地', 'BOW_MALE', 3, 15, 1150, 450),
     camp('FIELD_GRAY_E', '石像鬼', 'GARGOYLE', 1, 17, 1850, -350, true),
   ],
-  exits: [],
+  exits: [{ key: 'to_city', label: '返回 · 主城', x: -2230, y: 300, radius: 130, toMap: 'CITY', toSpawn: { x: 1880, y: -700 } }],
   battleBg: 'battle_scene_field_wasteland',
 };
 

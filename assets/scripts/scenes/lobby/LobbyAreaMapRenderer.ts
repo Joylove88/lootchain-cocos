@@ -666,7 +666,7 @@ export class LobbyAreaMapRenderer {
       const canGo = st.unlocked && st.activated && !isCurrent;
       mountGlassButton(this.host, parent, 'WorldGo', isCurrent ? '当前所在' : canGo ? '传送' : '无法传送', FX(1613), FY(312), S(380), S(56), k,
         canGo ? 'primary' : 'primaryOff', canGo ? () => this.host.teleportWorldMap(selected.code as WorldMapCode) : undefined, 24);
-      glassLabel(this.host, parent, 'WorldNote', canGo ? (this.host.worldTeleportNote?.() ?? '') : '', FX(1613), FY(360), S(18), GLASS_COLOR.sub, S(390), HorizontalTextAlignment.CENTER);
+      glassLabel(this.host, parent, 'WorldNote', canGo ? (this.host.worldTeleportNote?.() ?? '') : st.unlocked && !st.activated && !isCurrent ? '从相邻地图的出口走过去,靠近传送阵即可激活' : '', FX(1613), FY(360), S(18), GLASS_COLOR.sub, S(390), HorizontalTextAlignment.CENTER);
     }
     mountGlassLine(this.host, parent, 'MapSideSep', FX(1613), FY(438), S(390), Math.max(1, S(1.5)), new Color(255, 255, 255, 30));
     mountGlassSectionHeader(this.host, parent, 'WorldList', '已激活传送阵', LX(1418), FY(474), k);

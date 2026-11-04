@@ -7810,11 +7810,11 @@ export class LootChainGameRoot extends Component {
         this.syncLobbyShopOverlay();
         return;
       }
-      // 出村:领完「远行」直接从村口传送阵去主城
+      // 出村:领完「远行」不再直接传送 —— 11-04 用户「新图首次要跑图解锁」,穿过林地从东边出口走到主城(任务追踪 / 自动寻路指路)
       if (dialog.mode === 'claim' && quest.code === 'V10') {
         this.worldDialog = null;
         this.syncLobbyShopOverlay();
-        this.lobbyTownRenderer.startChannel(3, '前往主城…', () => this.travelWorldMap('CITY', null));
+        this.refreshLobbyViewPreservingBackground();
         return;
       }
       // 同一个 NPC 还有下一段(接了就能交 / 交了有新的):接着说
@@ -10055,7 +10055,7 @@ export class LootChainGameRoot extends Component {
     }
   }
 
-  /** 突破成功页「继续」:接着交 V10「远行」,从村口传送阵去主城(同对话里交任务的流程)。 */
+  /** 突破成功页「继续」:接着交 V10「远行」(同对话里交任务的流程);之后穿过林地走到主城。 */
   private async leaveVillageAfterRealm(): Promise<void> {
     const quest = this.worldState?.quests.find((item) => item.code === 'V10');
     if (!quest) {
@@ -10070,7 +10070,8 @@ export class LootChainGameRoot extends Component {
       return;
     }
     gameAudio.sfx('reward');
-    this.lobbyTownRenderer.startChannel(3, '前往主城…', () => this.travelWorldMap('CITY', null));
+    // 11-04:不再直接传送到主城,穿过林地走过去
+    this.refreshLobbyViewPreservingBackground();
   }
 
   /** 每帧:试炼倒计时(只改字)、开场台词到点收起(重绘一次)。 */

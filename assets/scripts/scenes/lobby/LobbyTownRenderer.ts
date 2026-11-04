@@ -4232,11 +4232,17 @@ export class LobbyTownRenderer {
       return building ? { x: building.x + building.door.x, y: building.y + building.door.y, label: building.label } : null;
     };
     const travel = (mapCode: string): { x: number; y: number; label: string } => {
+      // 11-04:目标图相邻就走出口;目标图传送阵已激活就去传送阵;否则沿出口一路跑过去(新图首次要亲自走到)
       const exit = def.exits.find((item) => item.toMap === mapCode);
       if (exit) {
         return { x: exit.x, y: exit.y, label: exit.label };
       }
       const target = worldMapDef(mapCode as WorldMapCode);
+      const activated = !!world?.maps.find((item) => item.mapCode === mapCode)?.activated;
+      const hop = activated ? null : this.firstExitToward(mapCode as WorldMapCode);
+      if (hop) {
+        return { x: hop.x, y: hop.y, label: `${hop.label}(去${target.name})` };
+      }
       return { x: def.waypoint.x, y: def.waypoint.y, label: `传送阵 · 去${target.name}` };
     };
     let point: { x: number; y: number; label: string } | null = null;
@@ -4245,7 +4251,7 @@ export class LobbyTownRenderer {
     } else if (quest.state === 'DONE' || quest.objective === 'TALK' || quest.objective === 'GROW') {
       point = npcPoint(quest.state === 'DONE' || quest.objective !== 'TALK' ? quest.turnInNpc : quest.objectiveTarget);
       if (!point && quest.map !== this.mapCode) {
-        point = travel(this.villageOrCity(world));
+        point = travel(quest.map);
       }
     } else if (quest.objective === 'KILL' || quest.objective === 'COLLECT') {
       if (quest.map !== this.mapCode) {
@@ -4264,8 +4270,30 @@ export class LobbyTownRenderer {
     return { building: '', point, text: quest.name };
   }
 
+  /** 「回城」目的地:出村且主城传送阵已激活(亲自走到过)→ 主城,否则晨风村。 */
   private villageOrCity(world: WorldStateVO | null): WorldMapCode {
-    return world?.villageDone ? 'CITY' : 'VILLAGE';
+    return world?.villageDone && world.maps.some((map) => map.mapCode === 'CITY' && map.activated) ? 'CITY' : 'VILLAGE';
+  }
+
+  /** 出口图上从本图到目标图的最短路线,返回第一步要走的出口(到不了 = null)。 */
+  private firstExitToward(target: WorldMapCode): WorldMapExit | null {
+    const queue: Array<{ code: WorldMapCode; first: WorldMapExit | null }> = [{ code: this.mapCode, first: null }];
+    const seen = new Set<WorldMapCode>([this.mapCode]);
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const exit of worldMapDef(cur.code).exits) {
+        if (seen.has(exit.toMap)) {
+          continue;
+        }
+        const first = cur.first ?? exit;
+        if (exit.toMap === target) {
+          return first;
+        }
+        seen.add(exit.toMap);
+        queue.push({ code: exit.toMap, first });
+      }
+    }
+    return null;
   }
 
   private primaryQuest(world: WorldStateVO | null) {
