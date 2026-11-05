@@ -115,7 +115,14 @@ export interface RaidPvpCandidateVO {
   crystal: number;
   stealPreview: number;
   attackedRecently: boolean;
+  /** 对方编队 3 名英雄(不含主角)。 */
   defenders: RaidDefenderPreviewVO[];
+  /** docs/61:对方主角(守矿首领);旧服务端无此字段 → null。 */
+  protagonist: RaidDefenderPreviewVO | null;
+  /** 对方境界称号(例「炼魂 · 中期」)。 */
+  realmTitle: string | null;
+  /** 已到炼魂:立绘用换装版。 */
+  lianhun: boolean;
 }
 
 export interface RaidPvpReportVO {
@@ -144,4 +151,6 @@ export interface RaidPvpHomeVO {
   staminaCost: number;
   candidates: RaidPvpCandidateVO[];
   reports: RaidPvpReportVO[];
+  /** docs/61:我的防守阵(主角在前 + 编队 3 人)。 */
+  myTeam: RaidDefenderPreviewVO[];
 }

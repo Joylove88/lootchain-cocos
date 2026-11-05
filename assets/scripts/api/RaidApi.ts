@@ -49,6 +49,9 @@ function validatePvpHome(data: unknown): RaidPvpHomeVO {
         stealPreview: readInteger(record.stealPreview, 0, Number.MAX_SAFE_INTEGER),
         attackedRecently: record.attackedRecently === true,
         defenders: readArray(record, 'defenders', 6).map(normalizeDefenderPreview),
+        protagonist: isRecord(record.protagonist) ? normalizeDefenderPreview(record.protagonist) : null,
+        realmTitle: readOptionalText(record, 'realmTitle', 40),
+        lianhun: record.lianhun === true,
       };
     }),
     reports: readArray(data, 'reports', 30).map((entry) => {
@@ -67,6 +70,7 @@ function validatePvpHome(data: unknown): RaidPvpHomeVO {
         canRevenge: record.canRevenge === true,
       };
     }),
+    myTeam: readArray(data, 'myTeam', 6).map(normalizeDefenderPreview),
   };
 }
 

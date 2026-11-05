@@ -1,10 +1,14 @@
 import { BlockInputEvents, Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UIOpacity, UITransform, Vec3 } from 'cc';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { PlayerBattleRewardItemVO } from '../../types/BattleTypes';
-import type { RaidPvpCandidateVO, RaidPvpHomeVO, RaidPvpReportVO, RaidStagesVO, RaidStageVO } from '../../types/RaidTypes';
+import type { RaidDefenderPreviewVO, RaidPvpCandidateVO, RaidPvpHomeVO, RaidPvpReportVO, RaidStagesVO, RaidStageVO } from '../../types/RaidTypes';
 import { C1812_BUTTON_PRIMARY_ASSET } from '../C1812CommonUiAssets';
 import { renderSceneBackButton, renderTopCurrencyBar } from '../UiSceneBackButton';
-import { mountKitLoading } from '../UiKit';
+import { mountKitLoading, type UiKitHost } from '../UiKit';
+import {
+  glassLabel, glassProtoMap, GLASS_COLOR, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel,
+  mountGlassSectionHeader, mountGlassTagPill, mountGlassTopBar,
+} from '../UiGlassKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { mountHeroAvatar } from './HeroHeadCrop';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
@@ -108,7 +112,25 @@ export const RAID_UI_ASSET_PATHS: readonly string[] = [
   'ui/bag/ai/icon_sacred_crystal/spriteFrame',
   'ui/bag/ai/icon_bound_diamond/spriteFrame',
   ...[0, 1, 2, 3, 4, 5].map((index) => RAID_ART.zoneThumb(index)),
+  // docs/61 真人矿 B 风格(原型 pvp_b_v4):主角立绘 4 张 + 玻璃件 / 线稿图标(路径写死,不引用 UiGlassKit 常量,免得预载表初始化顺序成环)
+  'ui/protagonist/b/protag_m_base/spriteFrame',
+  'ui/protagonist/b/protag_f_base/spriteFrame',
+  'ui/realm/protag_m_lianhun/spriteFrame',
+  'ui/realm/protag_f_lianhun/spriteFrame',
+  ...['panel', 'frame', 'chip', 'tag_pill', 'pill_primary', 'pill_secondary', 'pill_gold', 'accent_bar', 'divider', 'icon_back', 'icon_close', 'icon_plus',
+    'profile_swords', 'battle_shield', 'battle_pickaxe', 'notice_paper'].map((name) => `ui/glass/${name}/spriteFrame`),
 ];
+
+/** 真人矿 B 风格(docs/61,原型 周报截图/2026-11-05_掠夺主角带队/proto/pvp_b_v4.png):主角立绘(炼魂起换装版)+ 头部中心(图宽占比,PIL 量头顶行 alpha 中点)。 */
+const PROTAG_ART: Record<'male' | 'female', Record<'base' | 'lianhun', { path: string; headX: number }>> = {
+  male: { base: { path: 'ui/protagonist/b/protag_m_base/spriteFrame', headX: 0.46 }, lianhun: { path: 'ui/realm/protag_m_lianhun/spriteFrame', headX: 0.478 } },
+  female: { base: { path: 'ui/protagonist/b/protag_f_base/spriteFrame', headX: 0.485 }, lianhun: { path: 'ui/realm/protag_f_lianhun/spriteFrame', headX: 0.51 } },
+};
+const GLASS_ICON_PATH = (name: string): string => `ui/glass/${name}/spriteFrame`;
+const CRYSTAL_ICON_ASSET = 'ui/bag/ai/icon_sacred_crystal/spriteFrame';
+const STAR_COLOR = new Color(236, 196, 96, 255);
+const WARN_COLOR = new Color(244, 168, 104, 255);
+type GlassT = (parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label;
 const PROTO_W = 1870;
 const PROTO_H = 841;
 const STAGES_PER_ZONE = 10;
@@ -171,6 +193,11 @@ export class LobbyRaidPanelRenderer {
 
   render(layout: UiLayout): void {
     const state = this.host.currentLobbyRaidState();
+    if (state.tab === 'pvp') {
+      // docs/61:真人矿 B 风格整页(NPC 矿第 3 屏原型确认前仍走旧版)
+      this.renderPvpGlass(layout);
+      return;
+    }
     const scale = Math.max(0.68, Math.min(1, layout.uiScale));
     const panelWidth = Math.max(300 * scale, layout.stageWidth);
     const panelHeight = Math.max(260 * scale, layout.stageHeight);
@@ -207,9 +234,7 @@ export class LobbyRaidPanelRenderer {
     }
     this.renderBackBanner(panel, m);
     this.renderTabs(panel, panelWidth, m, state.tab);
-    if (state.tab === 'pvp') {
-      this.renderPvp(panel, panelWidth, scale, m, this.host.currentLobbyRaidPvpState());
-    } else if (state.loading && !state.stages) {
+    if (state.loading && !state.stages) {
       mountKitLoading(this.host, panel, 0, 10 * scale, scale, '矿境读取中…');
     } else if (state.error && !state.stages) {
       this.label(panel, 'LobbyRaidError', `读取失败:${state.error}`, 0, 20 * scale, 18 * scale, RED_TEXT, panelWidth * 0.7);
@@ -371,183 +396,264 @@ export class LobbyRaidPanelRenderer {
     return label;
   }
 
-  // ════════════════════ 真人矿(原型 pvp_v1)════════════════════
+  // ════════════════════ 真人矿 B 风格(docs/61,原型 pvp_b_v4)════════════════════
+  //
+  // 坐标按原型 1870×841(glassProtoMap:FX / FY 以舞台中心为原点,S 等比);顶栏贴左右缘(LX / RX)。
+  // 顶栏 y 40:‹ 矿境 + 真人矿(暗金胶囊)/ NPC 矿 + 体力 + ✕;我的矿横条 57..1813 × 80..162;
+  // 「可掠夺的矿」标题 + 换一批 @ y 193;对手竖卡 3 张 57..1337 × 223..817(卡宽 415 间距 17.5);右栏战报 1357..1813 × 223..817。
 
-  private renderPvp(parent: Node, width: number, scale: number, m: ProtoMap, state: LobbyRaidPvpState): void {
+  private renderPvpGlass(layout: UiLayout): void {
+    const raid = this.host.currentLobbyRaidState();
+    const state = this.host.currentLobbyRaidPvpState();
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panelW = layout.stageWidth;
+    const panelH = layout.stageHeight;
+    const { k, LX, FX, FY, S } = glassProtoMap(panelW, panelH);
+    const kit = this.host as unknown as UiKitHost;
+    const T: GlassT = (parent, name, text, x, y, size, color, w, align = HorizontalTextAlignment.LEFT, bold = false) => {
+      const label = glassLabel(kit, parent, name, text, x, y, S(size), color, w, align, bold);
+      label.fontSize = Math.max(12, Math.round(S(size)));
+      label.lineHeight = label.fontSize + 4;
+      return label;
+    };
+
+    const dim = this.host.createUiNode('LobbyRaidDim');
+    dim.setPosition(new Vec3(centerX, centerY, 0));
+    dim.addComponent(UITransform).setContentSize(new Size(layout.width, layout.height));
+    dim.addComponent(BlockInputEvents);
+    const group = this.host.createUiNode('LobbyRaidSceneContent');
+    group.setPosition(new Vec3(centerX, centerY, 0));
+    group.addComponent(UITransform).setContentSize(new Size(panelW, panelH));
+    group.addComponent(BlockInputEvents);
+    const panel = this.host.addChildPlainNode(group, 'LobbyRaidSceneFrame', 0, 0, panelW, panelH);
+    // 背景:矿洞铺满整屏(含挖孔区)+ 压暗约 60%(原型:场景插画虚化压暗)
+    const coverW = layout.width + Math.abs(centerX) * 2;
+    const coverH = layout.height + Math.abs(centerY) * 2;
+    const bgScale = Math.max(coverW / 1600, coverH / 720);
+    this.host.addSprite('LobbyRaidGlassBg', RAID_ART.backdrop, 0, 0, 1600 * bgScale, 720 * bgScale, panel);
+    const veil = this.host.addChildPlainNode(panel, 'LobbyRaidGlassVeil', 0, 0, coverW, coverH).addComponent(Graphics);
+    veil.fillColor = rgba(8, 10, 15, 168);
+    veil.rect(-coverW / 2, -coverH / 2, coverW, coverH);
+    veil.fill();
+
+    const profile = this.host.currentLobbyProfile?.();
+    const close = (): void => this.host.closeLobbyRaidPanel();
+    mountGlassTopBar(kit, panel, 'LobbyRaid', panelW, panelH, '矿境',
+      profile ? [{ key: 'stamina', icon: STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}`, width: 200 }] : [],
+      close, close, { chipRight: 1700, y: 40 });
+    // 页签:选中 = 暗金胶囊 + 白字(全局选中口径);未选 = 灰字
+    const tabs: Array<{ key: 'pvp' | 'npc'; label: string; x: number }> = [{ key: 'pvp', label: '真人矿', x: 400 }, { key: 'npc', label: 'NPC 矿', x: 588 }];
+    for (const tab of tabs) {
+      const on = tab.key === raid.tab;
+      if (on) {
+        mountGlassButton(kit, panel, `LobbyRaidTab_${tab.key}`, tab.label, LX(tab.x), FY(40), S(170), S(50), k, 'selected', undefined, 26);
+        continue;
+      }
+      const node = this.host.addChildPlainNode(panel, `LobbyRaidTab_${tab.key}`, LX(tab.x), FY(40), S(170), S(56));
+      T(node, 'Label', tab.label, 0, 0, 26, GLASS_COLOR.sub, S(160), HorizontalTextAlignment.CENTER);
+      node.on(Node.EventType.TOUCH_END, () => this.host.selectLobbyRaidTab(tab.key), this);
+      this.host.applyImageButtonFeedback(node, 1.04, 0.96);
+    }
+
     if (state.loading && !state.home) {
-      mountKitLoading(this.host, parent, 0, 10 * scale, scale, '真人矿读取中…');
+      T(panel, 'LobbyRaidPvpLoading', '真人矿读取中…', FX(935), FY(450), 24, GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
       return;
     }
-    if (state.error && !state.home) {
-      this.label(parent, 'LobbyRaidPvpError', `读取失败:${state.error}`, 0, 20 * scale, m.S(24), RED_TEXT, width * 0.7);
-      this.renderRetryButton(parent, scale, () => this.host.reloadLobbyRaidPvp(false));
+    if (!state.home) {
+      if (state.error) {
+        T(panel, 'LobbyRaidPvpError', `读取失败:${state.error}`, FX(935), FY(430), 24, GLASS_COLOR.red, S(900), HorizontalTextAlignment.CENTER);
+        mountGlassButton(kit, panel, 'LobbyRaidRetry', '重试', FX(935), FY(500), S(180), S(52), k, 'secondary', () => this.host.reloadLobbyRaidPvp(false), 22);
+      }
       return;
     }
     const home = state.home;
-    if (!home) {
-      return;
-    }
-    this.renderPvpMine(parent, m, home, state);
-    this.renderPvpCandidates(parent, m, home);
-    this.renderPvpReports(parent, m, home);
+    this.renderPvpMineStrip(panel, home, state, FX, FY, S, k, T);
+    this.renderPvpCards(panel, home, FX, FY, S, k, T);
+    this.renderPvpReportColumn(panel, home, FX, FY, S, k, T);
   }
 
-  /** 左「我的矿」(原型 x 25..428,y 97..820):标题 / 分隔线 / 整卡矿晶插画 / 矿库 / 菱形分隔线 / 阵容战力 / 盾 / 买盾钮。 */
-  private renderPvpMine(parent: Node, m: ProtoMap, home: RaidPvpHomeVO, state: LobbyRaidPvpState): void {
-    this.card(parent, 'LobbyRaidPvpMine', m, 25, 97, 428, 820);
-    // 插画铺满标题下方的整块卡面(原型 y 171..818)
-    const art = this.rect(m, 28, 171, 425, 818);
-    const clip = this.host.addChildPlainNode(parent, 'LobbyRaidPvpMineArt', art.cx, art.cy, art.w, art.h);
-    clip.addComponent(Mask);
-    // 插画(600×1068)只裁掉顶上 10% 的洞顶:矿晶(插画 15%~50%)整颗露在卡面上半;sh ≥ 1.12h 盖满下沿
-    const sh = Math.max(art.h * 1.12, (art.w * 1068) / 600);
-    const sw = (sh * 600) / 1068;
-    this.host.addSprite('Art', RAID_ART.mineCard, 0, art.h / 2 + sh * 0.1 - sh / 2, sw, sh, clip);
-    this.label(parent, 'LobbyRaidPvpMineTitle', '我的矿', m.X(227), m.Y(137), m.S(34), GOLD_TEXT, m.HX(300), HorizontalTextAlignment.CENTER, true);
-    this.divider(parent, 'LobbyRaidPvpMineDiv1', m, 60, 395, 170);
-    // 「矿库 17,922」:小字「矿库」+ 大号数字,整体居中
-    const fontA = m.S(32);
-    const fontB = m.S(48);
-    const numText = fmt(home.myCrystal);
-    const wA = textWidth('矿库', fontA);
-    const wB = textWidth(numText, fontB);
-    const gap = m.S(16);
-    const left = m.X(227) - (wA + gap + wB) / 2;
-    const a = this.label(parent, 'LobbyRaidPvpCrystalCap', '矿库', left, m.Y(463), fontA, GOLD_TEXT, wA + m.S(4), HorizontalTextAlignment.LEFT);
-    const b = this.label(parent, 'LobbyRaidPvpCrystal', numText, left + wA + gap, m.Y(461), fontB, GOLD_TEXT, wB + m.S(8), HorizontalTextAlignment.LEFT, true);
-    for (const lbl of [a, b]) {
-      lbl.enableOutline = true;
-      lbl.outlineColor = rgba(10, 6, 4, 255);
-      lbl.outlineWidth = Math.max(1, m.S(2));
-    }
-    this.divider(parent, 'LobbyRaidPvpMineDiv2', m, 62, 395, 497, true);
-    this.label(parent, 'LobbyRaidPvpPower', `阵容战力  ${fmt(home.lineupPower)}`, m.X(227), m.Y(537), m.S(26), BODY_TEXT, m.HX(360));
+  /** 我的矿横条(原型 57..1813 × 80..162,行心 121):镐 + 我的矿 | 矿晶 矿库 N | 阵容战力 N + 4 头像 | 盾状态 + 买盾。 */
+  private renderPvpMineStrip(panel: Node, home: RaidPvpHomeVO, state: LobbyRaidPvpState,
+    FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
+    const kit = this.host as unknown as UiKitHost;
+    const y = FY(121);
+    mountGlassPanel(kit, panel, 'LobbyRaidPvpMine', FX(935), y, S(1756), S(82), k);
+    this.host.addSprite('LobbyRaidPvpMineIcon', GLASS_ICON_PATH('battle_pickaxe'), FX(103), y, S(36), S(36), panel);
+    T(panel, 'LobbyRaidPvpMineTitle', '我的矿', FX(136), y, 28, GLASS_COLOR.text, S(140), HorizontalTextAlignment.LEFT, true);
+    const sep = (name: string, x: number): void => {
+      mountGlassLine(kit, panel, name, FX(x), y, Math.max(1, S(1.5)), S(40), new Color(255, 255, 255, 40));
+    };
+    sep('LobbyRaidPvpMineSep1', 292);
+    this.host.addSprite('LobbyRaidPvpCrystalIcon', CRYSTAL_ICON_ASSET, FX(342), y, S(46), S(46), panel);
+    T(panel, 'LobbyRaidPvpCrystalCap', '矿库', FX(376), y, 22, GLASS_COLOR.sub, S(60));
+    T(panel, 'LobbyRaidPvpCrystal', fmt(home.myCrystal), FX(434), y, 36, GLASS_COLOR.text, S(130), HorizontalTextAlignment.LEFT, true);
+    sep('LobbyRaidPvpMineSep2', 584);
+    T(panel, 'LobbyRaidPvpPowerCap', '阵容战力', FX(618), y, 22, GLASS_COLOR.sub, S(100));
+    T(panel, 'LobbyRaidPvpPower', fmt(home.lineupPower), FX(718), y, 26, GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
+    // 我的防守阵:主角在前 + 编队 3 人
+    home.myTeam.slice(0, 4).forEach((hero, index) => {
+      this.mountGlassHero(panel, `LobbyRaidPvpMyHero_${index}`, hero, FX(884 + index * 76), y, S(62), k);
+    });
     const shieldLeft = home.shieldUntil ? this.msUntil(home.shieldUntil) : 0;
     const protectLeft = home.protectUntil ? this.msUntil(home.protectUntil) : 0;
     const guarded = shieldLeft > 0 || protectLeft > 0;
-    const shieldText = shieldLeft > 0 ? `保护盾: 剩余 ${this.formatLeft(shieldLeft)}` : protectLeft > 0 ? `新手保护: 剩余 ${this.formatLeft(protectLeft)}` : '无盾: 矿可能被掠夺';
-    this.host.addSprite('LobbyRaidPvpShieldIcon', RAID_ART.defend, m.X(82), m.Y(598), m.S(46), m.S(46), parent);
-    this.label(parent, 'LobbyRaidPvpShield', shieldText, m.X(118), m.Y(600), m.S(26), guarded ? GREEN_TEXT : rgba(255, 170, 120, 250), m.HX(300), HorizontalTextAlignment.LEFT);
-    const button = this.host.addChildPlainNode(parent, 'LobbyRaidShieldBuy', m.X(227), m.Y(682), m.S(276), m.S(64));
+    const shieldText = shieldLeft > 0 ? `保护盾 · 剩余 ${this.formatLeft(shieldLeft)}` : protectLeft > 0 ? `新手保护 · 剩余 ${this.formatLeft(protectLeft)}` : '无盾:矿可能被掠夺';
+    const shield = this.host.addSprite('LobbyRaidPvpShieldIcon', GLASS_ICON_PATH('battle_shield'), FX(1206), y, S(32), S(32), panel);
+    if (shield) {
+      shield.color = guarded ? GLASS_COLOR.green : WARN_COLOR;
+    }
+    T(panel, 'LobbyRaidPvpShield', shieldText, FX(1234), y, 22, guarded ? GLASS_COLOR.green : WARN_COLOR, S(290));
     const canBuy = home.canBuyShield && !state.buying;
-    this.paintButton(button, m.S(276), m.S(64), m.ks, state.buying ? '购买中…' : `买 1 天盾 · ${home.shieldPrice} 钻`, m.S(26), canBuy ? 'secondary' : 'disabled');
-    if (canBuy) {
-      button.on(Node.EventType.TOUCH_END, () => this.host.buyLobbyRaidShield(), this);
-      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
-    } else {
-      if (!state.buying) {
-        this.label(parent, 'LobbyRaidShieldNote', home.shieldNote, m.X(227), m.Y(735), m.S(20), DIM_TEXT, m.HX(360));
-      }
-    }
+    const buyText = state.buying ? '购买中…' : canBuy ? `买 1 天盾 · ${home.shieldPrice} 钻` : (home.shieldNote || '暂不可买');
+    mountGlassButton(kit, panel, 'LobbyRaidShieldBuy', buyText, FX(1665), y, S(266), S(50), k, canBuy ? 'secondary' : 'disabled',
+      canBuy ? () => this.host.buyLobbyRaidShield() : undefined, 22);
   }
 
-  /** 中「可掠夺的矿」(原型框 x 441..1413,y 99..820):标题 + 换一批,5 行(行 x 457..1400,行顶 175 / 300 / 427 / 553 / 679,行高 117)。 */
-  private renderPvpCandidates(parent: Node, m: ProtoMap, home: RaidPvpHomeVO): void {
-    this.card(parent, 'LobbyRaidPvpList', m, 441, 99, 1413, 820);
-    this.label(parent, 'LobbyRaidPvpTitle', '可掠夺的矿', m.X(485), m.Y(137), m.S(32), GOLD_TEXT, m.HX(300), HorizontalTextAlignment.LEFT, true);
-    const refresh = this.host.addChildPlainNode(parent, 'LobbyRaidPvpRefresh', m.X(1300), m.Y(137), m.S(190), m.S(56));
-    this.paintButton(refresh, m.S(190), m.S(56), m.ks, '换一批', m.S(26), 'secondary');
-    refresh.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(true), this);
-    this.host.applyImageButtonFeedback(refresh, 1.04, 0.96);
+  /** 对手竖卡(原型 v4):卡 57..1337 × 223..817,宽 415 间距 17.5;上半主角立绘(底部渐隐)+ 名字 + Lv·境界 + 3 英雄 + 星 + 战力 + 可抢 + 掠夺。 */
+  private renderPvpCards(panel: Node, home: RaidPvpHomeVO,
+    FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
+    const kit = this.host as unknown as UiKitHost;
+    mountGlassSectionHeader(kit, panel, 'LobbyRaidPvpListHead', '可掠夺的矿', FX(60), FY(193), k, 26);
+    mountGlassButton(kit, panel, 'LobbyRaidPvpRefresh', '换一批', FX(1259), FY(193), S(156), S(44), k, 'secondary', () => this.host.reloadLobbyRaidPvp(true), 21);
     if (home.candidates.length === 0) {
-      // 空状态(2026-10-27 UI 审核:原先中间只有一行小字):灰矿口插图 + 标题 + 说明 + 大号「换一批」
-      const art = this.host.addSprite('LobbyRaidPvpEmptyArt', RAID_ART.nodeOff, m.X(927), m.Y(330), m.S(200), m.S(200), parent);
-      if (art) {
-        art.grayscale = true;
-        art.node.addComponent(UIOpacity).opacity = 200;
-      }
-      this.label(parent, 'LobbyRaidPvpEmptyTitle', '附近暂时没有可掠夺的矿', m.X(927), m.Y(480), m.S(32), BODY_TEXT, m.HX(800), HorizontalTextAlignment.CENTER, true);
-      this.label(parent, 'LobbyRaidPvpEmptyDesc', '有保护盾、新手保护期内、或 24 小时内打过的矿不会出现', m.X(927), m.Y(530), m.S(24), DIM_TEXT, m.HX(820));
-      const again = this.host.addChildPlainNode(parent, 'LobbyRaidPvpEmptyRefresh', m.X(927), m.Y(620), m.S(320), m.S(68));
-      this.paintButton(again, m.S(320), m.S(68), m.ks, '换一批', m.S(32), 'primary');
-      again.on(Node.EventType.TOUCH_END, () => this.host.reloadLobbyRaidPvp(true), this);
-      this.host.applyImageButtonFeedback(again, 1.04, 0.96);
+      mountGlassPanel(kit, panel, 'LobbyRaidPvpEmpty', FX(697), FY(520), S(1280), S(594), k);
+      T(panel, 'LobbyRaidPvpEmptyTitle', '附近暂时没有可掠夺的矿', FX(697), FY(470), 30, GLASS_COLOR.text, S(900), HorizontalTextAlignment.CENTER, true);
+      T(panel, 'LobbyRaidPvpEmptyDesc', '有保护盾、新手保护期内、或 24 小时内打过的矿不会出现', FX(697), FY(520), 22, GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+      mountGlassButton(kit, panel, 'LobbyRaidPvpEmptyRefresh', '换一批', FX(697), FY(600), S(260), S(56), k, 'primary', () => this.host.reloadLobbyRaidPvp(true), 24);
       return;
     }
-    const tops = [175, 300, 427, 553, 679];
-    home.candidates.slice(0, 5).forEach((candidate, index) => this.renderPvpCandidateRow(parent, candidate, m, tops[index]));
-  }
-
-  private renderPvpCandidateRow(parent: Node, candidate: RaidPvpCandidateVO, m: ProtoMap, top: number): void {
-    const L = 457;
-    const R = 1400;
-    const mid = top + 58;
-    const id = candidate.userId;
-    const r = this.rect(m, L, top, R, top + 117);
-    const row = this.host.addChildPlainNode(parent, `LobbyRaidPvpRow_${id}`, r.cx, r.cy, r.w, r.h);
-    this.ornateFrame(row.addComponent(Graphics), r.w, r.h, m.S(10), rgba(22, 18, 15, 235), rgba(168, 128, 66, 235), rgba(90, 70, 40, 200), Math.max(1.2, m.S(1.8)));
-    const blocked = candidate.attackedRecently;
-    const text = blocked ? DIM_TEXT : BODY_TEXT;
-    // 圆头像(金环):对方阵容第一个英雄
-    this.mountRingAvatar(parent, `LobbyRaidPvpAvatar_${id}`, candidate.defenders[0]?.heroCode, candidate.nickname, m.X(L + 58), m.Y(mid), m.S(96), m, blocked);
-    this.label(parent, `LobbyRaidPvpName_${id}`, candidate.nickname, m.X(L + 136), m.Y(mid - 19), m.S(28), blocked ? DIM_TEXT : GOLD_TEXT, m.HX(150), HorizontalTextAlignment.LEFT);
-    this.label(parent, `LobbyRaidPvpLv_${id}`, `Lv.${candidate.level}`, m.X(L + 136), m.Y(mid + 23), m.S(22), DIM_TEXT, m.HX(150), HorizontalTextAlignment.LEFT);
-    this.label(parent, `LobbyRaidPvpPower_${id}`, `阵容战力  ${fmt(candidate.lineupPower)}`, m.X(L + 291), m.Y(mid - 19), m.S(24), text, m.HX(285), HorizontalTextAlignment.LEFT);
-    this.label(parent, `LobbyRaidPvpCrystal_${id}`, blocked ? '24 小时内已打过' : `矿库 ${fmt(candidate.crystal)}  ·  可抢 ${fmt(candidate.stealPreview)}`, m.X(L + 291), m.Y(mid + 23), m.S(22), blocked ? RED_TEXT : text, m.HX(285), HorizontalTextAlignment.LEFT);
-    // 守卫 ×3(方框金边头像 + 星)
-    candidate.defenders.slice(0, 3).forEach((defender, index) => {
-      const x = m.X(L + 596 + index * 80);
-      const size = m.S(66);
-      const box = this.host.addChildPlainNode(parent, `LobbyRaidPvpDef_${id}_${index}`, x, m.Y(mid - 11), size, size);
-      const bg = box.addComponent(Graphics);
-      bg.fillColor = rgba(30, 26, 24, 255);
-      bg.rect(-size / 2, -size / 2, size, size);
-      bg.fill();
-      if (!mountHeroAvatar(box, defender.heroCode, size - m.S(4), 'square')) {
-        this.label(box, 'Txt', (defender.heroName || defender.heroCode).slice(0, 1), 0, 0, size * 0.4, text, size);
+    const cardW = 415;
+    let firstOpen = true;
+    home.candidates.slice(0, 3).forEach((candidate, index) => {
+      const x0 = 57 + index * (cardW + 17.5);
+      const primary = firstOpen && !candidate.attackedRecently;
+      if (primary) {
+        firstOpen = false;
       }
-      const frame = this.host.addChildPlainNode(box, 'Frame', 0, 0, size, size).addComponent(Graphics);
-      frame.strokeColor = rgba(180, 140, 76, 235);
-      frame.lineWidth = Math.max(1, m.S(1.6));
-      frame.rect(-size / 2, -size / 2, size, size);
-      frame.stroke();
-      if (blocked) {
-        box.addComponent(UIOpacity).opacity = 120;
-      }
-      this.label(parent, `LobbyRaidPvpDefStar_${id}_${index}`, starText(defender.star), x, m.Y(mid + 38), m.S(20), rgba(250, 210, 90, 250), m.HX(76));
+      this.renderPvpCard(panel, candidate, x0, cardW, primary, FX, FY, S, k, T);
     });
-    const button = this.host.addChildPlainNode(parent, `LobbyRaidPvpAttack_${id}`, m.X(L + 874), m.Y(mid), m.S(120), m.S(48));
-    this.paintButton(button, m.S(120), m.S(48), m.ks, '掠夺', m.S(26), blocked ? 'disabled' : 'secondary');
-    if (!blocked) {
-      button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidPvp(candidate.userId, null), this);
-      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
-    }
   }
 
-  /** 右「战报」(原型 x 1425..1846,y 98..820):标题 / 分隔线 / 行距 108 的战报行,被打的带「复仇」。 */
-  private renderPvpReports(parent: Node, m: ProtoMap, home: RaidPvpHomeVO): void {
-    this.card(parent, 'LobbyRaidPvpReports', m, 1425, 98, 1846, 820);
-    this.label(parent, 'LobbyRaidPvpReportsTitle', '战报', m.X(1636), m.Y(132), m.S(36), GOLD_TEXT, m.HX(300), HorizontalTextAlignment.CENTER, true);
-    this.divider(parent, 'LobbyRaidPvpReportsDiv', m, 1450, 1822, 169);
+  private renderPvpCard(panel: Node, candidate: RaidPvpCandidateVO, x0: number, cardW: number, primary: boolean,
+    FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
+    const kit = this.host as unknown as UiKitHost;
+    const id = candidate.userId;
+    const top = 223;
+    const cx = x0 + cardW / 2;
+    const blocked = candidate.attackedRecently;
+    const card = mountGlassPanel(kit, panel, `LobbyRaidPvpCard_${id}`, FX(cx), FY(top + 297), S(cardW), S(594), k);
+    // 上半主角立绘:遮罩裁到卡内 (卡顶 +2 .. +250),头顶留 10px,头部中心对准卡中线;底部 96px 渐隐进卡面
+    const artH = 248;
+    const clip = this.host.addChildPlainNode(panel, `LobbyRaidPvpArt_${id}`, FX(cx), FY(top + 2 + artH / 2), S(cardW - 4), S(artH));
+    clip.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    const gender = (candidate.protagonist?.heroCode ?? '').toUpperCase().includes('FEMALE') ? 'female' : 'male';
+    const art = PROTAG_ART[gender][candidate.lianhun ? 'lianhun' : 'base'];
+    const imgH = S(artH / 0.37);
+    const imgW = imgH * (810 / 1080);
+    const sprite = this.host.addSprite('Art', art.path, -(art.headX - 0.5) * imgW, S(artH / 2) - S(8) - imgH / 2, imgW, imgH, clip);
+    if (sprite && blocked) {
+      sprite.grayscale = true;
+    }
+    const fade = this.host.addChildPlainNode(clip, 'Fade', 0, 0, S(cardW - 4), S(artH)).addComponent(Graphics);
+    const steps = 12;
+    const fadeH = S(96);
+    for (let i = 0; i < steps; i += 1) {
+      // 渐隐到卡面实测底色 (22,26,32)(先前 (17,20,27) 在立绘下沿留一道暗线)
+      fade.fillColor = rgba(22, 26, 32, Math.round(255 * ((i + 1) / steps) ** 1.4));
+      fade.rect(-S(cardW - 4) / 2, -S(artH) / 2 + fadeH - (fadeH * (i + 1)) / steps, S(cardW - 4), fadeH / steps + 1);
+      fade.fill();
+    }
+    if (candidate.protagonist) {
+      mountGlassTagPill(kit, panel, `LobbyRaidPvpLeadTag_${id}`, '主角', FX(x0 + 16), FY(top + 31), S(32), k, S(18), textWidth, GLASS_COLOR.text);
+    }
+    const nameColor = blocked ? GLASS_COLOR.sub : GLASS_COLOR.text;
+    T(panel, `LobbyRaidPvpName_${id}`, candidate.nickname, FX(cx), FY(top + 262), 30, nameColor, S(cardW - 40), HorizontalTextAlignment.CENTER, true);
+    const lv = candidate.realmTitle ? `Lv.${candidate.level} · ${candidate.realmTitle}` : `Lv.${candidate.level}`;
+    T(panel, `LobbyRaidPvpLv_${id}`, lv, FX(cx), FY(top + 300), 20, GLASS_COLOR.sub, S(cardW - 40), HorizontalTextAlignment.CENTER);
+    candidate.defenders.slice(0, 3).forEach((hero, index) => {
+      const hx = cx + (index - 1) * 103;
+      this.mountGlassHero(panel, `LobbyRaidPvpDef_${id}_${index}`, hero, FX(hx), FY(top + 361), S(74), k, blocked);
+      T(panel, `LobbyRaidPvpDefStar_${id}_${index}`, `★${Math.max(1, hero.star)}`, FX(hx), FY(top + 410), 19, STAR_COLOR, S(90), HorizontalTextAlignment.CENTER);
+    });
+    // 阵容战力 / 可抢:图标 + 灰字说明 + 白字数值,整组居中
+    const powerText = fmt(candidate.lineupPower);
+    const powerW = 30 + 10 + textWidth('阵容战力', 21) + 12 + textWidth(powerText, 22);
+    const px = cx - powerW / 2;
+    const swords = this.host.addSprite(`LobbyRaidPvpPowerIcon_${id}`, GLASS_ICON_PATH('profile_swords'), FX(px + 15), FY(top + 447), S(26), S(26), panel);
+    if (swords) {
+      swords.color = GLASS_COLOR.sub;
+    }
+    T(panel, `LobbyRaidPvpPowerCap_${id}`, '阵容战力', FX(px + 40), FY(top + 447), 21, GLASS_COLOR.sub, S(100));
+    T(panel, `LobbyRaidPvpPower_${id}`, powerText, FX(px + 40 + textWidth('阵容战力', 21) + 12), FY(top + 447), 22, nameColor, S(130));
+    const stealText = fmt(candidate.stealPreview);
+    const stealW = 32 + 10 + textWidth('可抢', 22) + 10 + textWidth(stealText, 30) * 0.92 + 10 + textWidth('矿晶', 22);
+    const sx = cx - stealW / 2;
+    this.host.addSprite(`LobbyRaidPvpStealIcon_${id}`, CRYSTAL_ICON_ASSET, FX(sx + 16), FY(top + 487), S(34), S(34), panel);
+    T(panel, `LobbyRaidPvpStealCap_${id}`, '可抢', FX(sx + 42), FY(top + 488), 22, GLASS_COLOR.sub, S(60));
+    const numX = sx + 42 + textWidth('可抢', 22) + 10;
+    T(panel, `LobbyRaidPvpSteal_${id}`, stealText, FX(numX), FY(top + 486), 30, blocked ? GLASS_COLOR.sub : GLASS_COLOR.text, S(150), HorizontalTextAlignment.LEFT, true);
+    T(panel, `LobbyRaidPvpStealUnit_${id}`, '矿晶', FX(numX + textWidth(stealText, 30) * 0.92 + 10), FY(top + 488), 22, GLASS_COLOR.sub, S(60));
+    // 掠夺:第一张能打的卡用主按钮(香槟),其余次按钮;24 小时内打过 = 不可点并写原因
+    const kind = blocked ? 'disabled' : primary ? 'primary' : 'secondary';
+    mountGlassButton(kit, panel, `LobbyRaidPvpAttack_${id}`, blocked ? '24 小时内已打过' : '掠夺', FX(cx), FY(top + 549), S(cardW - 50), S(54), k, kind,
+      blocked ? undefined : () => this.host.startLobbyRaidPvp(candidate.userId, null), blocked ? 21 : 26);
+    void card;
+  }
+
+  /** 右栏战报(原型 1357..1813 × 223..817):标题 + 分割线 + 最多 4 行(行心 360 起步 118);被打赢的带「复仇」。 */
+  private renderPvpReportColumn(panel: Node, home: RaidPvpHomeVO,
+    FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
+    const kit = this.host as unknown as UiKitHost;
+    mountGlassPanel(kit, panel, 'LobbyRaidPvpReports', FX(1585), FY(520), S(456), S(594), k);
+    this.host.addSprite('LobbyRaidPvpReportsIcon', GLASS_ICON_PATH('notice_paper'), FX(1398), FY(262), S(30), S(30), panel);
+    T(panel, 'LobbyRaidPvpReportsTitle', '战报', FX(1426), FY(262), 28, GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+    mountGlassLine(kit, panel, 'LobbyRaidPvpReportsDiv', FX(1585), FY(300), S(416), Math.max(1, S(1.5)), new Color(255, 255, 255, 34));
     if (home.reports.length === 0) {
-      this.label(parent, 'LobbyRaidPvpReportsEmpty', '还没有战报,去掠夺一座矿吧', m.X(1636), m.Y(240), m.S(22), DIM_TEXT, m.HX(360));
+      T(panel, 'LobbyRaidPvpReportsEmpty', '还没有战报,去掠夺一座矿吧', FX(1585), FY(380), 21, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
       return;
     }
-    const reports = home.reports.slice(0, 6);
-    reports.forEach((report, index) => this.renderPvpReportRow(parent, report, m, 225 + index * 108, true));
+    home.reports.slice(0, 4).forEach((report, index) => {
+      const cy = 362 + index * 118;
+      this.renderPvpReportLine(panel, report, cy, FX, FY, S, k, T);
+      if (index < Math.min(4, home.reports.length) - 1) {
+        mountGlassLine(kit, panel, `LobbyRaidPvpReportSep_${report.id}`, FX(1585), FY(cy + 59), S(416), Math.max(1, S(1)), new Color(255, 255, 255, 22));
+      }
+    });
   }
 
-  private renderPvpReportRow(parent: Node, report: RaidPvpReportVO, m: ProtoMap, cy: number, separator: boolean): void {
+  private renderPvpReportLine(panel: Node, report: RaidPvpReportVO, cy: number,
+    FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
+    const kit = this.host as unknown as UiKitHost;
     const attack = report.role === 'ATTACK';
     const won = report.result === 'WIN';
     const id = report.id;
-    if (!this.host.addSprite(`LobbyRaidPvpReportIcon_${id}`, attack ? RAID_ART.attack : RAID_ART.defend, m.X(1466), m.Y(cy), m.S(44), m.S(44), parent)) {
-      this.label(parent, `LobbyRaidPvpReportTag_${id}`, attack ? '攻' : '守', m.X(1466), m.Y(cy), m.S(24), GOLD_TEXT, m.S(44));
+    const icon = this.host.addSprite(`LobbyRaidPvpReportIcon_${id}`, GLASS_ICON_PATH(attack ? 'profile_swords' : 'battle_shield'), FX(1400), FY(cy), S(36), S(36), panel);
+    if (icon) {
+      icon.color = new Color(214, 218, 226, 255);
     }
-    const head = attack ? `掠夺  ${report.opponentName}` : `被  ${report.opponentName}  掠夺`;
-    const timeRight = report.canRevenge ? 1722 : 1822;
-    this.label(parent, `LobbyRaidPvpReportHead_${id}`, head, m.X(1496), m.Y(cy - 19), m.S(24), BODY_TEXT, m.HX(timeRight - 1496), HorizontalTextAlignment.LEFT);
+    const right = report.canRevenge ? 1680 : 1790;
+    T(panel, `LobbyRaidPvpReportHead_${id}`, attack ? `掠夺 ${report.opponentName}` : `被 ${report.opponentName} 掠夺`, FX(1436), FY(cy - 19), 22, GLASS_COLOR.text, S(right - 1436));
     const delta = report.crystalDelta;
-    this.label(parent, `LobbyRaidPvpReportBody_${id}`, `${won ? '胜' : '败'}  ${delta >= 0 ? '+' : ''}${fmt(delta)} 矿晶`, m.X(1496), m.Y(cy + 22), m.S(24), won ? GREEN_TEXT : RED_TEXT, m.HX(200), HorizontalTextAlignment.LEFT);
-    this.label(parent, `LobbyRaidPvpReportAgo_${id}`, this.formatAgo(report.createdAt), m.X(timeRight), m.Y(cy + 22), m.S(21), DIM_TEXT, m.HX(120), HorizontalTextAlignment.RIGHT);
+    const result = `${won ? '胜' : '败'} ${delta >= 0 ? '+' : ''}${fmt(delta)} 矿晶`;
+    T(panel, `LobbyRaidPvpReportBody_${id}`, result, FX(1436), FY(cy + 20), 21, won ? GLASS_COLOR.green : GLASS_COLOR.red, S(170));
+    T(panel, `LobbyRaidPvpReportAgo_${id}`, `· ${this.formatAgo(report.createdAt)}`, FX(1436 + textWidth(result, 21) + 10), FY(cy + 20), 20, GLASS_COLOR.sub, S(right - 1446 - textWidth(result, 21)));
     if (report.canRevenge) {
-      const button = this.host.addChildPlainNode(parent, `LobbyRaidPvpRevenge_${id}`, m.X(1788), m.Y(cy), m.S(96), m.S(50));
-      this.paintButton(button, m.S(96), m.S(50), m.ks, '复仇', m.S(24), 'small');
-      button.on(Node.EventType.TOUCH_END, () => this.host.startLobbyRaidPvp(report.opponentUserId, report.id), this);
-      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+      mountGlassButton(kit, panel, `LobbyRaidPvpRevenge_${id}`, '复仇', FX(1745), FY(cy), S(96), S(42), k, 'secondary',
+        () => this.host.startLobbyRaidPvp(report.opponentUserId, report.id), 20);
     }
-    if (separator) {
-      this.divider(parent, `LobbyRaidPvpReportSep_${id}`, m, 1450, 1822, cy + 54);
+  }
+
+  /** 玻璃框英雄头像(物品格口径:一层框 + 圆角头像);dimmed = 不可打的对手整组压暗。 */
+  private mountGlassHero(parent: Node, name: string, hero: RaidDefenderPreviewVO, x: number, y: number, size: number, k: number, dimmed = false): void {
+    const kit = this.host as unknown as UiKitHost;
+    const frame = mountGlassFrame(kit, parent, name, x, y, size, size, k);
+    const inner = size * 0.9;
+    if (!mountHeroAvatar(frame, hero.heroCode, inner, 'round')) {
+      glassLabel(kit, frame, 'Initial', (hero.heroName || hero.heroCode || '?').slice(0, 1), 0, 0, size * 0.4, GLASS_COLOR.text, size, HorizontalTextAlignment.CENTER, true);
+    }
+    if (dimmed) {
+      frame.addComponent(UIOpacity).opacity = 140;
     }
   }
 
