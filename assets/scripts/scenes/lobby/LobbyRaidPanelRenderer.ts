@@ -513,10 +513,7 @@ export class LobbyRaidPanelRenderer {
       }
       T(row, 'Name', zone.name, -w / 2 + S(31), 0, 30, on ? GLASS_COLOR.onGold : unlocked ? GLASS_COLOR.text : GLASS_COLOR.sub, S(200), HorizontalTextAlignment.LEFT, on);
       if (!unlocked) {
-        const lock = this.host.addSprite('Lock', GLASS_ICON_PATH('lock'), w / 2 - S(33), 0, S(34), S(34), row);
-        if (lock) {
-          lock.color = new Color(220, 224, 232, 255);
-        }
+        this.mountLineLock(row, 'Lock', w / 2 - S(33), 0, S(28), new Color(240, 242, 246, 255));
       }
       row.on(Node.EventType.TOUCH_END, () => {
         const target = zone.stages.find((stage) => stage.unlocked && !stage.cleared) ?? zone.stages.find((stage) => stage.unlocked) ?? zone.stages[0];
@@ -541,7 +538,8 @@ export class LobbyRaidPanelRenderer {
       const on = stage.stageCode === selected.stageCode;
       const tile = this.host.addChildPlainNode(panel, `LobbyRaidMine_${stage.orderNo}`, FX(cx), FY(top + 115), S(151), S(230));
       mountGlassSlice(kit, tile, 'Bg', on ? GLASS_SLICES.frameSel : GLASS_SLICES.frame, 0, 0, S(151), S(230), k);
-      this.host.addSprite('Art', stage.unlocked ? RAID_ART.nodeOn : RAID_ART.nodeOff, 0, S(115 - 72), S(128), S(128), tile);
+      // 原型矿口在格内约 120 见方(上沿距格顶 ~19)
+      this.host.addSprite('Art', stage.unlocked ? RAID_ART.nodeOn : RAID_ART.nodeOff, 0, S(115 - 76), S(120), S(120), tile);
       T(tile, 'Name', `${(stage.orderNo - 1) % STAGES_PER_ZONE + 1}号矿`, 0, S(115 - 154), 28, stage.unlocked ? GLASS_COLOR.text : GLASS_COLOR.sub, S(140), HorizontalTextAlignment.CENTER, true);
       const sy = S(115 - 194);
       if (stage.cleared) {
@@ -550,10 +548,7 @@ export class LobbyRaidPanelRenderer {
       } else if (stage.unlocked) {
         T(tile, 'State', '当前', 0, sy, 22, GLASS_COLOR.champagne, S(120), HorizontalTextAlignment.CENTER);
       } else {
-        const lock = this.host.addSprite('Lock', GLASS_ICON_PATH('lock'), -S(75.5) + S(42), sy, S(26), S(26), tile);
-        if (lock) {
-          lock.color = GLASS_COLOR.sub;
-        }
+        this.mountLineLock(tile, 'Lock', -S(75.5) + S(42), sy, S(22), new Color(214, 218, 226, 255));
         T(tile, 'State', '未解锁', -S(75.5) + S(64), sy, 20, GLASS_COLOR.sub, S(80));
       }
       tile.on(Node.EventType.TOUCH_END, () => this.host.selectLobbyRaidStage(stage.stageCode), this);
@@ -718,6 +713,39 @@ export class LobbyRaidPanelRenderer {
         child.destroy();
       }
     }
+  }
+
+  /** 线稿锁(原型:白色描边圆角锁身 + 半圆锁梁 + 锁孔);size = 锁高。 */
+  private mountLineLock(parent: Node, name: string, x: number, y: number, size: number, color: Color): void {
+    const node = this.host.addChildPlainNode(parent, name, x, y, size, size);
+    const g = node.addComponent(Graphics);
+    // 原型锁线粗约为锁高的 1/8(26px 锁 ≈ 3px 线)
+    const lw = Math.max(2, size * 0.13);
+    const bw = size * 0.82;
+    const bh = size * 0.56;
+    const by = -size / 2 + lw / 2;
+    g.lineWidth = lw;
+    g.strokeColor = color;
+    g.lineCap = Graphics.LineCap.ROUND;
+    g.lineJoin = Graphics.LineJoin.ROUND;
+    g.roundRect(-bw / 2, by, bw, bh, size * 0.1);
+    g.stroke();
+    // 锁梁:两竖 + 上半圆
+    const sr = bw * 0.3;
+    const top = by + bh;
+    const archY = size / 2 - lw / 2 - sr;
+    // 上半圆按折线画(Graphics.arc 的方向参数在引擎里有坑,见 cocos-graphics-arc-direction)
+    g.moveTo(-sr, top);
+    g.lineTo(-sr, archY);
+    for (let i = 1; i <= 12; i += 1) {
+      const t = Math.PI - (Math.PI * i) / 12;
+      g.lineTo(Math.cos(t) * sr, archY + Math.sin(t) * sr);
+    }
+    g.lineTo(sr, top);
+    g.stroke();
+    g.fillColor = color;
+    g.circle(0, by + bh * 0.5, Math.max(1.2, lw * 0.8));
+    g.fill();
   }
 
   /** 绿色勾章(已完成):绿圆 + 白勾。 */
