@@ -722,7 +722,8 @@ export class LobbyHeroDetailPanelRenderer {
       const pk = protoBgK;
       if (HERO_GLASS && this.phoneFrame) {
         // B 风格:背景本身已虚化压暗,只再压一层薄暗,保留大厅可见(原型 hero_b2)
-        mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(6, 8, 12, 12));
+        // 11-05 背景换成清晰青冷版(不再虚化):整体压暗一层,主体与面板更跳
+        mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(6, 8, 12, 46));
       } else {
       mountRefSolid(this.host, panel, 'LobbyHeroDetailProtoVeil', 0, 0, panelWidth, panelHeight, rgba(0, 0, 0, 105));
       const vig = this.host.addSprite('LobbyHeroDetailProtoVignette', HERO_PROTO_VIGNETTE, (700 - 935) * pk, (420.5 - 430) * pk, 1500 * pk, 1150 * pk, panel);
@@ -5689,7 +5690,24 @@ export class LobbyHeroDetailPanelRenderer {
     mountGlassPanel(this.host, root, 'LobbyHeroDetailLevelUpBox', panelX, (FY(654) + FY(812)) / 2, panelW, FY(654) - FY(812), k);
     if (hero.protagonist) {
       // 主角等级 = 玩家等级(2026-11-05 后端读名册时对齐),不吃经验书,没有升级按钮
-      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', `主角 Lv.${hero.level}`, RX(1233), FY(690), F(24), GLASS_COLOR.text, panelW - S(80), HorizontalTextAlignment.LEFT, true);
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', `主角 Lv.${hero.level}`, RX(1233), FY(690), F(24), GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
+      // 境界称号胶囊(与名册主角卡同款:暗褐底 + 细暗金边 + 香槟字),贴右
+      const realmTitle = safeText(this.host.protagonistRealmInfo?.()?.title ?? '');
+      if (realmTitle) {
+        const chipText = realmTitle.replace(' · ', '境 · ');
+        const chipH = S(34);
+        const chipW = Math.max(S(150), estimateTextWidth(chipText, F(19)) + S(36));
+        const chip = this.host.addChildPlainNode(root, 'LobbyHeroDetailRealmChip', RX(1795) - chipW / 2, FY(690), chipW, chipH);
+        const cg = chip.addComponent(Graphics);
+        cg.fillColor = rgba(26, 22, 16, 196);
+        cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
+        cg.fill();
+        cg.strokeColor = rgba(190, 158, 98, 210);
+        cg.lineWidth = Math.max(1, S(1.2));
+        cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
+        cg.stroke();
+        glassLabel(this.host, chip, 'Text', chipText, 0, 0, F(19), GLASS_COLOR.champagne, chipW - S(16), HorizontalTextAlignment.CENTER);
+      }
       glassLabel(this.host, root, 'LobbyHeroDetailLevelUpHint', '主角等级跟随玩家等级,野外打怪、做剧情任务获得经验即可提升', RX(1233), FY(740), F(19), GLASS_COLOR.sub, panelW - S(80), HorizontalTextAlignment.LEFT);
       glassLabel(this.host, root, 'LobbyHeroDetailLevelUpHint2', '每升一级还有一次进化抉择(境界页查看进化总览)', RX(1233), FY(776), F(19), GLASS_COLOR.sub, panelW - S(80), HorizontalTextAlignment.LEFT);
       return;
@@ -5770,6 +5788,16 @@ export class LobbyHeroDetailPanelRenderer {
   /** 左侧竖排页签(B):选中 = 香槟金圆角块 + 图标 + 字 + ›;其余只有图标和字。 */
   private renderGlassNav(parent: Node, active: HeroDetailTab, width: number, height: number, scale: number): void {
     const { LX, FY, S, F, k } = this.glassMap(width, height);
+    // 左栏无底板:清晰背景(11-05)的亮柱子会和页签字糊在一起,垫左深右渐隐暗带
+    const navShade = this.host.addSprite('LobbyHeroDetailNavShade', GLASS_ICON.shadeH, (LX(-80) + LX(520)) / 2, 0, LX(520) - LX(-80), height + S(40), parent);
+    if (navShade) {
+      navShade.color = rgba(255, 255, 255, 170);
+      // 压在背景 / 压暗层之上、立绘之下(不盖住立绘的剑)
+      const veil = parent.getChildByName('LobbyHeroDetailProtoVeil');
+      if (veil) {
+        navShade.node.setSiblingIndex(veil.getSiblingIndex() + 1);
+      }
+    }
     const hero = this.host.currentLobbyHeroDetailHero();
     const protagonist = !!hero?.protagonist;
     const starDot = !!hero && !protagonist && this.isHeroAwakenable(hero);
@@ -5878,14 +5906,16 @@ export class LobbyHeroDetailPanelRenderer {
     glassLabel(this.host, plate, 'LobbyHeroDetailName', nameText, -rowW / 2 + tagW + S(14), line1, nameFont, GLASS_COLOR.text, S(250), HorizontalTextAlignment.LEFT, true);
     const metaFont = F(19);
     const line2 = -S(18);
-    const realmTitle = hero.protagonist ? safeText(this.host.protagonistRealmInfo?.()?.title ?? '') : '';
-    const star = hero.protagonist ? { text: realmTitle ? `${realmTitle.replace(' · ', '境 · ')}` : '主角', color: GLASS_COLOR.champagne } : this.glassStarText(hero);
+    const star = this.glassStarText(hero);
+    // 主角名牌只放 Lv | 战力(加境界称号会超出名牌,11-05 用户):境界称号放右栏底部「主角 Lv.N」行右侧
     const parts: Array<{ name: string; text: string; color: Color }> = [
       { name: 'LobbyHeroDetailLevel', text: `Lv.${hero.level}`, color: rgba(249, 249, 250) },
       { name: 'LobbyHeroDetailMetaSep1', text: '|', color: GLASS_COLOR.dim },
       { name: 'LobbyHeroDetailPower', text: `战力 ${formatInteger(hero.power)}`, color: rgba(249, 249, 250) },
-      { name: 'LobbyHeroDetailMetaSep2', text: '|', color: GLASS_COLOR.dim },
-      { name: 'LobbyHeroDetailGlassStars', text: star.text, color: star.color },
+      ...(hero.protagonist ? [] : [
+        { name: 'LobbyHeroDetailMetaSep2', text: '|', color: GLASS_COLOR.dim },
+        { name: 'LobbyHeroDetailGlassStars', text: star.text, color: star.color },
+      ]),
     ];
     const gap = S(8);
     const widths = parts.map((part) => estimateTextWidth(part.text, metaFont) * 0.92);

@@ -1780,9 +1780,15 @@ export class LobbyHeroRosterPanelRenderer {
     const bgW = Math.max(coverW, coverH * (1870 / 841));
     this.host.addSprite('LobbyHeroRosterGlassBg', HERO_GLASS_BG, 0, 0, bgW, bgW / (1870 / 841), panel);
     const veil = this.host.addChildPlainNode(panel, 'LobbyHeroRosterGlassVeil', 0, 0, coverW, coverH).addComponent(Graphics);
-    veil.fillColor = rgba(8, 10, 14, 40);
+    // 清晰背景(11-05)整体再压一层,主次分明
+    veil.fillColor = rgba(8, 10, 14, 70);
     veil.rect(-coverW / 2, -coverH / 2, coverW, coverH);
     veil.fill();
+    // 11-05 背景换成清晰版后左栏字压在亮柱子上:左栏底下垫左深右渐隐的暗带(同背包页做法)
+    const railShade = this.host.addSprite('LobbyHeroRosterRailShade', GLASS_ICON.shadeH, (LX(-80) + LX(560)) / 2, 0, LX(560) - LX(-80), height + S(40), panel);
+    if (railShade) {
+      railShade.color = rgba(255, 255, 255, 170);
+    }
 
     const profile = this.host.currentLobbyProfile?.();
     const chips = profile ? [
@@ -1977,11 +1983,21 @@ export class LobbyHeroRosterPanelRenderer {
     if (lead) {
       const title = safeText(this.host.realmTitle?.() ?? '');
       const chipText = title ? title.replace(' · ', '境 · ') : '主角';
-      const chipW = S(Math.max(120, 22 * Array.from(chipText).length + 28));
-      const chip = this.host.addChildPlainNode(card, 'RealmChip', 0, P(170), chipW, S(32));
-      mountGlassSlice(kit, chip, 'Bg', GLASS_SLICES.tagPill, 0, 0, chipW, S(32), k * 0.9);
-      const cl = glassLabel(kit, chip, 'Text', chipText, 0, 0, S(19), GLASS_COLOR.champagne, chipW - S(16), HorizontalTextAlignment.CENTER);
-      cl.fontSize = Math.max(12, Math.round(S(19)));
+      // 原型:矮胶囊(高 26)暗褐半透底 + 细暗金边 + 香槟字,中心在卡顶下 165,与名字(199)之间留约 6 的空
+      const chipH = S(26);
+      const chipW = S(Math.max(118, 17 * Array.from(chipText).length + 30));
+      const chip = this.host.addChildPlainNode(card, 'RealmChip', 0, P(163), chipW, chipH);
+      const cg = chip.addComponent(Graphics);
+      cg.fillColor = rgba(26, 22, 16, 196);
+      cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
+      cg.fill();
+      cg.strokeColor = rgba(190, 158, 98, 210);
+      cg.lineWidth = Math.max(1, S(1.2));
+      cg.roundRect(-chipW / 2, -chipH / 2, chipW, chipH, chipH / 2);
+      cg.stroke();
+      const cl = glassLabel(kit, chip, 'Text', chipText, 0, 0, S(17), GLASS_COLOR.champagne, chipW - S(14), HorizontalTextAlignment.CENTER);
+      cl.fontSize = Math.max(12, Math.round(S(17)));
+      cl.lineHeight = cl.fontSize + 2;
     } else {
       const stars = starDisplayV3(hero.star);
       const starSize = S(22);
@@ -1991,7 +2007,7 @@ export class LobbyHeroRosterPanelRenderer {
         this.host.addSprite(`Star_${i}`, starBandAssetOf(stars.color), starX0 + i * (starSize + starGap), P(166), starSize, starSize, card);
       }
     }
-    text('Name', safeText(hero.heroName), 0, 198, 24, GLASS_COLOR.text, w - S(30), HorizontalTextAlignment.CENTER, true);
+    text('Name', safeText(hero.heroName), 0, 199, 24, GLASS_COLOR.text, w - S(30), HorizontalTextAlignment.CENTER, true);
     mountGlassLine(kit, card, 'NameLine', 0, P(219), w - S(28), Math.max(1, S(1)), new Color(200, 206, 220, 60));
     text('Level', formatHeroCardLevel(hero.level), -S(36), 242, 21, GLASS_COLOR.sub, S(110), HorizontalTextAlignment.RIGHT);
     mountGlassLine(kit, card, 'MetaSep', -S(20), P(242), Math.max(1, S(1.5)), S(20), new Color(140, 148, 160, 160));
