@@ -72,8 +72,9 @@ export interface LobbyRaidPanelHost {
 
 const STAMINA_ICON_ASSET = 'ui/bag/ai/icon_stamina/spriteFrame';
 const RAID_ART = {
-  nodeOn: 'ui/raid/mine_node_on/spriteFrame',
-  nodeOff: 'ui/raid/mine_node_off/spriteFrame',
+  // 矿口(11-05 按原型 npc_b_v3 重出:无圆环、碎石矿堆 + 木支架 + 吊灯,透明底;未解锁 = 同图去色压暗)
+  nodeOn: 'ui/raid/mine_entrance_on/spriteFrame',
+  nodeOff: 'ui/raid/mine_entrance_off/spriteFrame',
   zoneThumb: (index: number) => `ui/raid/zone_thumb_${index + 1}/spriteFrame`,
 };
 /** 矿境面板整组素材(UiSpriteFrameCache 预载组 'raid':首开等齐再画)。路径写死,不引用 UiGlassKit 常量(预载表初始化顺序成环)。 */
@@ -540,10 +541,7 @@ export class LobbyRaidPanelRenderer {
       const on = stage.stageCode === selected.stageCode;
       const tile = this.host.addChildPlainNode(panel, `LobbyRaidMine_${stage.orderNo}`, FX(cx), FY(top + 115), S(151), S(230));
       mountGlassSlice(kit, tile, 'Bg', on ? GLASS_SLICES.frameSel : GLASS_SLICES.frame, 0, 0, S(151), S(230), k);
-      const art = this.host.addSprite('Art', stage.unlocked ? RAID_ART.nodeOn : RAID_ART.nodeOff, 0, S(115 - 72), S(126), S(126), tile);
-      if (art && !stage.unlocked) {
-        art.grayscale = true;
-      }
+      this.host.addSprite('Art', stage.unlocked ? RAID_ART.nodeOn : RAID_ART.nodeOff, 0, S(115 - 72), S(128), S(128), tile);
       T(tile, 'Name', `${(stage.orderNo - 1) % STAGES_PER_ZONE + 1}号矿`, 0, S(115 - 154), 28, stage.unlocked ? GLASS_COLOR.text : GLASS_COLOR.sub, S(140), HorizontalTextAlignment.CENTER, true);
       const sy = S(115 - 194);
       if (stage.cleared) {
