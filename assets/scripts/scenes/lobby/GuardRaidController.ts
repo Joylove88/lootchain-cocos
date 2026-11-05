@@ -58,7 +58,8 @@ export interface GuardRaidBridge {
   laneY(laneF: number, x: number): number;
   cellCenter(cell: number): { x: number; y: number };
   heroViews(): Map<number, GuardUnitView>;
-  allyFor(heroCode: string): BattlePresentationUnitSnapshot | null;
+  /** side:双方可能同 heroCode(两边都是男主角 / 同名英雄),ours = 我方(同伴 / 主角),theirs = 守卫,boss = 首领(守卫里最后一个同码)。 */
+  allyFor(heroCode: string, side?: 'ours' | 'theirs' | 'boss'): BattlePresentationUnitSnapshot | null;
   loadSpine(node: Node, fallback: Node, resource: string, size: number, mirror: boolean, view: GuardUnitView, ally: BattlePresentationUnitSnapshot): void;
   mountShade(parent: Node, name: string, x: number, y: number, width: number, height: number): Node | null;
   spawnFloater(x: number, y: number, text: string, color: Color, fontSize?: number): void;
@@ -455,7 +456,7 @@ export class GuardRaidController {
   }
 
   private raiderSnapshot(): BattlePresentationUnitSnapshot | null {
-    return this.raiderCode ? this.bridge.allyFor(this.raiderCode) : null;
+    return this.raiderCode ? this.bridge.allyFor(this.raiderCode, 'ours') : null;
   }
 
   private raiderCode = '';
@@ -716,7 +717,7 @@ export class GuardRaidController {
     if (!field) {
       return null;
     }
-    const ally = this.bridge.allyFor(heroCode);
+    const ally = this.bridge.allyFor(heroCode, 'ours');
     // 原型:同伴比主角小一圈
     const size = this.bridge.heroDisplaySize() * (own ? 1 : 0.86);
     const unitSize = this.bridge.unitSize();
@@ -1068,7 +1069,7 @@ export class GuardRaidController {
         view.node.getChildByName('GuardRaidBossRing')?.destroy();
         let played = false;
         if (view.skeleton && view.skeleton.isValid) {
-          const ally = this.bridge.allyFor(hero.heroCode);
+          const ally = this.bridge.allyFor(hero.heroCode, hero.raidBoss ? 'boss' : 'theirs');
           const data = view.skeleton.skeletonData as sp.SkeletonData | null;
           const death = ally && data ? resolveBattleUnitSpineAnimationNames(data, ally).death : null;
           if (death) {
@@ -1178,7 +1179,7 @@ export class GuardRaidController {
   private mountBossBar(hud: Node, boss: GuardHeroUnit): void {
     const host = this.bridge.host;
     const P = this.proto!;
-    const snapshot = this.bridge.allyFor(boss.heroCode);
+    const snapshot = this.bridge.allyFor(boss.heroCode, 'boss');
     const name = snapshot?.displayName ?? '首领';
     const tag = snapshot?.subline && snapshot.subline !== '矿主' && snapshot.subline !== '首领' ? snapshot.subline : '';
     // 原型里整组左沿(图标左缘)在 x≈608,输出面板右沿 470;电脑 16:9 屏窄,中间锚定的首领条会压到输出面板 → 整组右移让开
@@ -1228,7 +1229,7 @@ export class GuardRaidController {
       ours.push({
         key: `m${sim.raider.monsterId}`,
         heroCode: sim.raider.heroCode,
-        name: this.bridge.allyFor(sim.raider.heroCode)?.displayName ?? '主角',
+        name: this.bridge.allyFor(sim.raider.heroCode, 'ours')?.displayName ?? '主角',
         damage,
         dps: damage / seconds,
         protagonist: this.protagonistRaider(),
@@ -1242,7 +1243,7 @@ export class GuardRaidController {
       ours.push({
         key: `m${ally.monsterId}`,
         heroCode: ally.heroCode,
-        name: this.bridge.allyFor(ally.heroCode)?.displayName ?? ally.heroCode,
+        name: this.bridge.allyFor(ally.heroCode, 'ours')?.displayName ?? ally.heroCode,
         damage,
         dps: damage / seconds,
         protagonist: false,
@@ -1255,7 +1256,7 @@ export class GuardRaidController {
       return {
         key: `h${hero.unitId}`,
         heroCode: hero.heroCode,
-        name: this.bridge.allyFor(hero.heroCode)?.displayName ?? hero.heroCode,
+        name: this.bridge.allyFor(hero.heroCode, hero.raidBoss ? 'boss' : 'theirs')?.displayName ?? hero.heroCode,
         damage,
         dps: damage / seconds,
         protagonist: false,

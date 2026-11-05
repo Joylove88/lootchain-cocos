@@ -98,10 +98,14 @@ async def main():
             print('panel', await ev("const s=root.currentLobbyRaidState(); return JSON.stringify({err:s.error, sel:s.selectedStageCode, clearedMax:s.stages&&s.stages.clearedMax, n:s.stages&&s.stages.stages.length});"), flush=True)
             await shot('raid_panel')
             # 选矿 + 掠夺 → 编队确认 → 开战
-            await ev(f"root.selectLobbyRaidStage('{STAGE}'); root.startLobbyRaidBattle('{STAGE}'); return 'preview';")
+            if STAGE.upper().startswith('RAIDPVP_'):
+                await ev(f"root.startLobbyRaidPvp({int(STAGE.split('_')[1])}, null); return 'preview-pvp';")
+            else:
+                await ev(f"root.selectLobbyRaidStage('{STAGE}'); root.startLobbyRaidBattle('{STAGE}'); return 'preview';")
             await asyncio.sleep(3)
             print('preview view', await ev("return root.currentView + ' stage=' + root.selectedLobbyStageCode;"), flush=True)
             await shot('raid_preview')
+            await ev("window.__errs=[]; const ce=console.error.bind(console); console.error=(...a)=>{ window.__errs.push(a.map(x=>x&&x.stack?x.stack:String(x)).join(' ').slice(0,400)); ce(...a); }; window.addEventListener('unhandledrejection', e=>window.__errs.push('rej '+String(e.reason&&e.reason.stack||e.reason).slice(0,400))); window.addEventListener('error', e=>window.__errs.push('err '+String(e.message).slice(0,300))); return 'hook';")
             await ev("root.confirmLobbyBattleStart ? root.confirmLobbyBattleStart() : root.lobbyBattleFlow.start(root.selectedLobbyStageCode); return 'start';")
             for _ in range(90):
                 st = await ev("const b=root.currentLobbyBattleState(); return JSON.stringify({starting:b.starting, has:!!b.start, err:b.error, mounted: !!(gr && gr.isMounted() && raid)});")
@@ -109,6 +113,8 @@ async def main():
                     print('start', st, flush=True)
                     break
                 await asyncio.sleep(1)
+            else:
+                print('start-timeout', await ev("const b=root.currentLobbyBattleState(); return JSON.stringify({starting:b.starting, has:!!b.start, err:b.error, assets:b.assetsLoading, view:root.currentView, errs:(window.__errs||[]).slice(-6)});"), flush=True)
             await asyncio.sleep(2)
             print('battle', await ev(STATE), flush=True)
             print('pool', await ev("if(!sim) return 'nosim'; return JSON.stringify({pool: sim.pool.map(p=>p.heroCode+':'+p.displayName+':'+p.sourceIndex), allies: (gr.snapshot? gr.snapshot.allies.map(a=>a.unitKey+':'+a.displayName) : null), raidRaw: !!(root.currentLobbyBattleState().start||{}).raid, npcAssets: (gr.snapshot? gr.snapshot.allies.filter(a=>a.unitKey.startsWith('npc')).map(a=>a.spineAsset+'|'+a.portraitAsset) : null), views: [...gr.heroViews.values()].map(v=>v.node.name+':'+v.spineReady), lineupRaw: (root.currentLobbyBattleState().start||{}).lineup.map(h=>!!h.guardRaw)});"), flush=True)

@@ -1060,7 +1060,7 @@ export class LobbyGuardBattleRenderer {
       laneY: (laneF) => this.raidLaneY(laneF),
       cellCenter: (cell) => this.cellCenter(cell),
       heroViews: () => this.heroViews,
-      allyFor: (heroCode) => this.snapshot?.allies.find((ally) => (ally.heroCode ?? ally.unitKey).toUpperCase() === heroCode.toUpperCase()) ?? null,
+      allyFor: (heroCode, side) => this.raidSnapshotFor(heroCode, side),
       loadSpine: (node, fallback, resource, size, mirror, view, ally) => this.loadSpineInto(node, fallback, resource, size, mirror, view, { allyUnit: ally }),
       mountShade: (parent, name, x, y, width, height) => this.mountSoftShade(parent, name, x, y, width, height, 'blob'),
       spawnFloater: (x, y, text, color, fontSize) => this.spawnFloater(x, y, text, color, fontSize),
@@ -1071,6 +1071,21 @@ export class LobbyGuardBattleRenderer {
       attackSfx: (heroCode) => gameAudio.sfx(this.resolveRaidSfxKey(heroCode), 0.6),
     });
     this.raid.setRaiderCode(sim.raider?.heroCode ?? '');
+  }
+
+  /** 掠夺表现快照按 heroCode 找单位;双方可能同码(两边都是男主角 / 同名英雄)→ 按阵营限定:我方 = ally- / raider-,守卫 = npc-(首领取最后一个同码)。 */
+  private raidSnapshotFor(heroCode: string, side?: 'ours' | 'theirs' | 'boss'): BattlePresentationUnitSnapshot | null {
+    const code = heroCode.toUpperCase();
+    const all = (this.snapshot?.allies ?? []).filter((ally) => (ally.heroCode ?? ally.unitKey).toUpperCase() === code);
+    if (!side) {
+      return all[0] ?? null;
+    }
+    const scoped = all.filter((ally) => (side === 'ours') === !ally.unitKey.startsWith('npc-'));
+    if (side === 'ours') {
+      // 主角进攻方:补的 raider- 单位优先(主角不在 lineup 里)
+      return scoped.find((ally) => ally.unitKey.startsWith('raider-')) ?? scoped[0] ?? all[0] ?? null;
+    }
+    return (side === 'boss' ? scoped[scoped.length - 1] : scoped[0]) ?? all[0] ?? null;
   }
 
   /** 掠夺(docs/47 P0):进攻方斩中守卫的命中特效——先用英雄专属 fx_pack 命中骨骼,没就绪退静态斩击图(2026-10-25 用户「特效都没了」)。 */
