@@ -268,7 +268,7 @@ export const GUARD_RAID_ALLY_MELEE_REACH = 0.95;
 export const GUARD_RAID_ALLY_RANGED_REACH = 3.4;
 export const GUARD_RAID_ALLY_INTERVAL_MS: Record<GuardHeroRole, number> = { melee: 900, ranged: 1100, control: 1200, support: 1300 };
 /** 首领站位:水晶正前方、走道中线。 */
-export const GUARD_RAID_BOSS_X = 1.2;
+export const GUARD_RAID_BOSS_X = 2.0;
 export const GUARD_RAID_TIME_LIMIT_MS = 180_000;
 /** 进攻方出生 x 与可走到的最右 x(原型 v1:出生在画面约 2/3 处,右侧留给动作钮,不许走到按钮底下)。 */
 export const GUARD_RAID_SPAWN_X = 7.0;

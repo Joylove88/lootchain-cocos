@@ -40,6 +40,9 @@ import { TOWN_HUD_ASSETS, mountRingBase } from './LobbyTownHudProto';
 import { GLASS_COLOR, GLASS_SLICES, mountGlassSlice } from '../UiGlassKit';
 import { mountHeroAvatar } from './HeroHeadCrop';
 
+/** 掠夺首领(NPC 矿主 / 真人矿对方主角)表现放大倍率(只影响表现,不进模型)。 */
+const GUARD_RAID_BOSS_VIEW_SCALE = 1.7;
+
 /**
  * docs/47 P0 掠夺模式·进攻侧(2026-10-25):玩家操控 1 个英雄冲守卫阵。
  * 这里只管"手"和"眼":摇杆 / 按钮 / 键盘 → 模型输入;模型事件 → 动画 / 顿帧 / 震屏 / 飘字 / 血条。
@@ -982,7 +985,7 @@ export class GuardRaidController {
     g.stroke();
   }
 
-  /** 守卫:细红血条 + 白色小名字;首领放大 1.3 倍、脚下暗红光圈、头顶不画条(顶部大血条);倒下压暗。 */
+  /** 守卫:细红血条 + 白色小名字;首领放大 1.7 倍(用户 11-05:矿主要一眼认出)、脚下暗红光圈、头顶不画条(顶部大血条);倒下压暗。 */
   private syncHeroes(sim: GuardBattleState): void {
     const unitSize = this.bridge.unitSize();
     const H = this.bridge.layout().height;
@@ -1020,17 +1023,17 @@ export class GuardRaidController {
         const size = this.bridge.heroDisplaySize();
         if (hero.raidBoss) {
           // 首领:放大、头顶名字与条交给顶部大血条;脚下暗红光圈
-          view.node.setScale(1.3, 1.3, 1);
+          view.node.setScale(GUARD_RAID_BOSS_VIEW_SCALE, GUARD_RAID_BOSS_VIEW_SCALE, 1);
           bar.active = false;
           if (nameNode) {
             nameNode.active = false;
           }
           const ring = this.bridge.host.addChildPlainNode(view.node, 'GuardRaidBossRing', 0, -size * 0.42, size * 0.9, size * 0.24).addComponent(Graphics);
-          ring.strokeColor = rgba(170, 40, 36, 190);
+          ring.strokeColor = rgba(210, 56, 46, 230);
           ring.lineWidth = Math.max(2, H * 0.004);
           ring.ellipse(0, 0, size * 0.4, size * 0.1);
           ring.stroke();
-          ring.fillColor = rgba(120, 20, 18, 70);
+          ring.fillColor = rgba(150, 26, 22, 96);
           ring.ellipse(0, 0, size * 0.4, size * 0.1);
           ring.fill();
           ring.node.setSiblingIndex(0);
