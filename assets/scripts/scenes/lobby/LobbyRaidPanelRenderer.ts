@@ -531,18 +531,13 @@ export class LobbyRaidPanelRenderer {
       return;
     }
     const cardW = 415;
-    let firstOpen = true;
     home.candidates.slice(0, 3).forEach((candidate, index) => {
       const x0 = 57 + index * (cardW + 17.5);
-      const primary = firstOpen && !candidate.attackedRecently;
-      if (primary) {
-        firstOpen = false;
-      }
-      this.renderPvpCard(panel, candidate, x0, cardW, primary, FX, FY, S, k, T);
+      this.renderPvpCard(panel, candidate, x0, cardW, FX, FY, S, k, T);
     });
   }
 
-  private renderPvpCard(panel: Node, candidate: RaidPvpCandidateVO, x0: number, cardW: number, primary: boolean,
+  private renderPvpCard(panel: Node, candidate: RaidPvpCandidateVO, x0: number, cardW: number,
     FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
     const kit = this.host as unknown as UiKitHost;
     const id = candidate.userId;
@@ -604,8 +599,8 @@ export class LobbyRaidPanelRenderer {
     const numX = sx + 42 + textWidth('可抢', 22) + 10;
     T(panel, `LobbyRaidPvpSteal_${id}`, stealText, FX(numX), FY(top + 486), 30, blocked ? GLASS_COLOR.sub : GLASS_COLOR.text, S(150), HorizontalTextAlignment.LEFT, true);
     T(panel, `LobbyRaidPvpStealUnit_${id}`, '矿晶', FX(numX + textWidth(stealText, 30) * 0.92 + 10), FY(top + 488), 22, GLASS_COLOR.sub, S(60));
-    // 掠夺:第一张能打的卡用主按钮(香槟),其余次按钮;24 小时内打过 = 不可点并写原因
-    const kind = blocked ? 'disabled' : primary ? 'primary' : 'secondary';
+    // 掠夺:三张卡一律次按钮(11-05 用户:候选是随机平级的,原型第一张香槟主按钮会被误读成「推荐」);24 小时内打过 = 不可点并写原因
+    const kind = blocked ? 'disabled' : 'secondary';
     mountGlassButton(kit, panel, `LobbyRaidPvpAttack_${id}`, blocked ? '24 小时内已打过' : '掠夺', FX(cx), FY(top + 549), S(cardW - 50), S(54), k, kind,
       blocked ? undefined : () => this.host.startLobbyRaidPvp(candidate.userId, null), blocked ? 21 : 26);
     void card;
