@@ -81,7 +81,7 @@ async def main():
                     if await ev("return root.currentView;") == 'lobby':
                         break
                     await asyncio.sleep(2)
-            for _ in range(45):
+            for _ in range(120):  # 新包首访要整块下开局包,无头 SwiftShader 偶尔 > 90s
                 if '"sprites":9' in await ev("const t=root.lobbyTownRenderer; return JSON.stringify({sprites:t.buildings.filter(b=>b.sprite).length});"):
                     break
                 await asyncio.sleep(2)
@@ -96,6 +96,13 @@ async def main():
             probe = await ev("const out=[]; cc.director.getScene().walk(n=>{ if(/^LobbyRaid/.test(n.name) && n.activeInHierarchy){ const t=n.getComponent(cc.UITransform); if(t){ const p=n.worldPosition; out.push(n.name+' '+Math.round(p.x)+','+Math.round(p.y)+' '+Math.round(t.width*n.worldScale.x)+'x'+Math.round(t.height*n.worldScale.y)); } } }); return out.slice(0,400).join('\n');")
             open(os.path.join(OUT, 'probe.txt'), 'w', encoding='utf-8').write(str(probe))
             await shot('pvp_panel')
+            if os.environ.get('SHOP') == '1':
+                # 顶栏体力「+」→ 体力补充弹框要盖在矿境面板上
+                print('plus', await ev("let hit=null; cc.director.getScene().walk(n=>{ if(n.name==='Plus' && n.parent && /LobbyRaidGlassChip_stamina/.test(n.parent.name)) hit=n; }); if(!hit) return 'no-plus'; hit.emit('click'); hit.getComponent(cc.Button) && cc.Component.EventHandler.emitEvents(hit.getComponent(cc.Button).clickEvents, null); return 'clicked';"), flush=True)
+                await asyncio.sleep(3)
+                await shot('stamina_plus')
+                await ev("root.closeLobbyShopDialog && root.closeLobbyShopDialog(); return 'closed';")
+                await asyncio.sleep(2)
             if os.environ.get('NPC') == '1':
                 await ev("root.selectLobbyRaidTab('npc'); return 'npc';")
                 await asyncio.sleep(4)

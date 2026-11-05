@@ -457,7 +457,7 @@ export function mountGlassTopBar(
   panelWidth: number,
   panelHeight: number,
   title: string,
-  chips: Array<{ key: string; icon: string; value: string; width: number }>,
+  chips: Array<{ key: string; icon: string; value: string; width: number; onPlus?: () => void }>,
   onBack: () => void,
   onClose: () => void,
   opts: { chipRight?: number; onHelp?: () => void; y?: number; subtitle?: string } = {},
@@ -500,7 +500,7 @@ export function mountGlassTopBar(
   }
   chips.forEach((chip, index) => {
     const { l, r } = spans[index];
-    mountGlassChip(host, parent, `${prefix}GlassChip_${chip.key}`, chip.icon, chip.value, (RX(l) + RX(r)) / 2, FY(rowY), RX(r) - RX(l), S(42), k);
+    mountGlassChip(host, parent, `${prefix}GlassChip_${chip.key}`, chip.icon, chip.value, (RX(l) + RX(r)) / 2, FY(rowY), RX(r) - RX(l), S(42), k, chip.onPlus);
   });
   // 没有货币胶囊(任务页)就不画胶囊与关闭钮之间的竖线
   const divider = chips.length > 0 ? host.addSprite(`${prefix}GlassDivider`, GLASS_ICON.divider, RX(1752), FY(rowY), S(36), S(2), parent) : null;

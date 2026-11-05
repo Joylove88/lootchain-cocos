@@ -54,6 +54,8 @@ export interface LobbyRaidPanelHost {
   buyLobbyRaidShield(): void;
   /** 掠夺真人矿 / 复仇(revengeOf = 被打的战报 id)。 */
   startLobbyRaidPvp(defenderUserId: number, revengeOf?: number | null): void;
+  /** 顶栏体力「+」→ 体力补充(宿主是 GameRoot 时有)。 */
+  openLobbyShopDialog?(kind: 'skin' | 'gold' | 'stamina' | 'diamond' | 'rune'): void;
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
@@ -112,7 +114,8 @@ export const RAID_UI_ASSET_PATHS: readonly string[] = [
   'ui/bag/ai/icon_sacred_crystal/spriteFrame',
   'ui/bag/ai/icon_bound_diamond/spriteFrame',
   ...[0, 1, 2, 3, 4, 5].map((index) => RAID_ART.zoneThumb(index)),
-  // docs/61 真人矿 B 风格(原型 pvp_b_v4):主角立绘 4 张 + 玻璃件 / 线稿图标(路径写死,不引用 UiGlassKit 常量,免得预载表初始化顺序成环)
+  // docs/61 真人矿 B 风格(原型 pvp_b_v4):整屏背景(原型去 UI 扩成 3:2,轻虚化)+ 主角立绘 4 张 + 玻璃件 / 线稿图标(路径写死,不引用 UiGlassKit 常量,免得预载表初始化顺序成环)
+  'ui/raid/pvp_bg_v4/spriteFrame',
   'ui/protagonist/b/protag_m_base/spriteFrame',
   'ui/protagonist/b/protag_f_base/spriteFrame',
   'ui/realm/protag_m_lianhun/spriteFrame',
@@ -128,6 +131,7 @@ const PROTAG_ART: Record<'male' | 'female', Record<'base' | 'lianhun', { path: s
 };
 const GLASS_ICON_PATH = (name: string): string => `ui/glass/${name}/spriteFrame`;
 const CRYSTAL_ICON_ASSET = 'ui/bag/ai/icon_sacred_crystal/spriteFrame';
+const PVP_BG_ASSET = 'ui/raid/pvp_bg_v4/spriteFrame';
 const STAR_COLOR = new Color(236, 196, 96, 255);
 const WARN_COLOR = new Color(244, 168, 104, 255);
 type GlassT = (parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label;
@@ -427,20 +431,17 @@ export class LobbyRaidPanelRenderer {
     group.addComponent(UITransform).setContentSize(new Size(panelW, panelH));
     group.addComponent(BlockInputEvents);
     const panel = this.host.addChildPlainNode(group, 'LobbyRaidSceneFrame', 0, 0, panelW, panelH);
-    // 背景:矿洞铺满整屏(含挖孔区)+ 压暗约 60%(原型:场景插画虚化压暗)
+    // 背景 = 原型背景本身(pvp_b_v4 去掉全部 UI、扩成 3:2 1536×1024、轻虚化;亮度已按原型露出处校过,不再叠压暗层),铺满整屏含挖孔区
     const coverW = layout.width + Math.abs(centerX) * 2;
     const coverH = layout.height + Math.abs(centerY) * 2;
-    const bgScale = Math.max(coverW / 1600, coverH / 720);
-    this.host.addSprite('LobbyRaidGlassBg', RAID_ART.backdrop, 0, 0, 1600 * bgScale, 720 * bgScale, panel);
-    const veil = this.host.addChildPlainNode(panel, 'LobbyRaidGlassVeil', 0, 0, coverW, coverH).addComponent(Graphics);
-    veil.fillColor = rgba(8, 10, 15, 168);
-    veil.rect(-coverW / 2, -coverH / 2, coverW, coverH);
-    veil.fill();
+    const bgScale = Math.max(coverW / 1536, coverH / 1024);
+    this.host.addSprite('LobbyRaidGlassBg', PVP_BG_ASSET, 0, 0, 1536 * bgScale, 1024 * bgScale, panel);
 
     const profile = this.host.currentLobbyProfile?.();
     const close = (): void => this.host.closeLobbyRaidPanel();
     mountGlassTopBar(kit, panel, 'LobbyRaid', panelW, panelH, '矿境',
-      profile ? [{ key: 'stamina', icon: STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}`, width: 200 }] : [],
+      profile ? [{ key: 'stamina', icon: STAMINA_ICON_ASSET, value: `${profile.stamina}/${profile.maxStamina}`, width: 216,
+        onPlus: this.host.openLobbyShopDialog ? () => this.host.openLobbyShopDialog?.('stamina') : undefined }] : [],
       close, close, { chipRight: 1700, y: 40 });
     // 页签:选中 = 暗金胶囊 + 白字(全局选中口径);未选 = 灰字
     const tabs: Array<{ key: 'pvp' | 'npc'; label: string; x: number }> = [{ key: 'pvp', label: '真人矿', x: 400 }, { key: 'npc', label: 'NPC 矿', x: 588 }];
@@ -543,25 +544,28 @@ export class LobbyRaidPanelRenderer {
     const cx = x0 + cardW / 2;
     const blocked = candidate.attackedRecently;
     const card = mountGlassPanel(kit, panel, `LobbyRaidPvpCard_${id}`, FX(cx), FY(top + 297), S(cardW), S(594), k);
-    // 上半主角立绘:遮罩裁到卡内 (卡顶 +2 .. +250),头顶留 10px,头部中心对准卡中线;底部 96px 渐隐进卡面
-    const artH = 248;
+    // 上半主角立绘(原型:头肩特写、肩甲撑满卡宽):遮罩裁到卡内 (卡顶 +2 .. +287,延伸到名字后面),只露人物上 27%,
+    // 头顶留 14px,头部中心对准卡中线;底部 120px 渐隐进卡面(名字压在渐隐上)
+    const artH = 285;
     const clip = this.host.addChildPlainNode(panel, `LobbyRaidPvpArt_${id}`, FX(cx), FY(top + 2 + artH / 2), S(cardW - 4), S(artH));
     clip.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
     const gender = (candidate.protagonist?.heroCode ?? '').toUpperCase().includes('FEMALE') ? 'female' : 'male';
     const art = PROTAG_ART[gender][candidate.lianhun ? 'lianhun' : 'base'];
-    const imgH = S(artH / 0.37);
+    const imgH = S(artH / 0.27);
     const imgW = imgH * (810 / 1080);
-    const sprite = this.host.addSprite('Art', art.path, -(art.headX - 0.5) * imgW, S(artH / 2) - S(8) - imgH / 2, imgW, imgH, clip);
+    const sprite = this.host.addSprite('Art', art.path, -(art.headX - 0.5) * imgW, S(artH / 2) - S(14) - imgH / 2, imgW, imgH, clip);
     if (sprite && blocked) {
       sprite.grayscale = true;
     }
     const fade = this.host.addChildPlainNode(clip, 'Fade', 0, 0, S(cardW - 4), S(artH)).addComponent(Graphics);
-    const steps = 12;
-    const fadeH = S(96);
+    // 渐隐到卡面实测底色 (22,26,32)(先前 (17,20,27) 在立绘下沿留一道暗线);条带首尾相接不重叠(重叠处 alpha 叠加会出横纹),40 级够细
+    const steps = 40;
+    const fadeH = S(120);
+    const stepH = fadeH / steps;
+    const fadeW = S(cardW - 4);
     for (let i = 0; i < steps; i += 1) {
-      // 渐隐到卡面实测底色 (22,26,32)(先前 (17,20,27) 在立绘下沿留一道暗线)
-      fade.fillColor = rgba(22, 26, 32, Math.round(255 * ((i + 1) / steps) ** 1.4));
-      fade.rect(-S(cardW - 4) / 2, -S(artH) / 2 + fadeH - (fadeH * (i + 1)) / steps, S(cardW - 4), fadeH / steps + 1);
+      fade.fillColor = rgba(22, 26, 32, Math.round(255 * ((i + 0.5) / steps) ** 1.4));
+      fade.rect(-fadeW / 2, -S(artH) / 2 + fadeH - stepH * (i + 1), fadeW, stepH);
       fade.fill();
     }
     if (candidate.protagonist) {
@@ -606,8 +610,8 @@ export class LobbyRaidPanelRenderer {
     FX: (v: number) => number, FY: (v: number) => number, S: (v: number) => number, k: number, T: GlassT): void {
     const kit = this.host as unknown as UiKitHost;
     mountGlassPanel(kit, panel, 'LobbyRaidPvpReports', FX(1585), FY(520), S(456), S(594), k);
-    this.host.addSprite('LobbyRaidPvpReportsIcon', GLASS_ICON_PATH('notice_paper'), FX(1398), FY(262), S(30), S(30), panel);
-    T(panel, 'LobbyRaidPvpReportsTitle', '战报', FX(1426), FY(262), 28, GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+    this.host.addSprite('LobbyRaidPvpReportsIcon', GLASS_ICON_PATH('notice_paper'), FX(1400), FY(262), S(36), S(36), panel);
+    T(panel, 'LobbyRaidPvpReportsTitle', '战报', FX(1432), FY(262), 28, GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
     mountGlassLine(kit, panel, 'LobbyRaidPvpReportsDiv', FX(1585), FY(300), S(416), Math.max(1, S(1.5)), new Color(255, 255, 255, 34));
     if (home.reports.length === 0) {
       T(panel, 'LobbyRaidPvpReportsEmpty', '还没有战报,去掠夺一座矿吧', FX(1585), FY(380), 21, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
@@ -628,16 +632,16 @@ export class LobbyRaidPanelRenderer {
     const attack = report.role === 'ATTACK';
     const won = report.result === 'WIN';
     const id = report.id;
-    const icon = this.host.addSprite(`LobbyRaidPvpReportIcon_${id}`, GLASS_ICON_PATH(attack ? 'profile_swords' : 'battle_shield'), FX(1400), FY(cy), S(36), S(36), panel);
+    const icon = this.host.addSprite(`LobbyRaidPvpReportIcon_${id}`, GLASS_ICON_PATH(attack ? 'profile_swords' : 'battle_shield'), FX(1402), FY(cy), S(46), S(46), panel);
     if (icon) {
       icon.color = new Color(214, 218, 226, 255);
     }
     const right = report.canRevenge ? 1680 : 1790;
-    T(panel, `LobbyRaidPvpReportHead_${id}`, attack ? `掠夺 ${report.opponentName}` : `被 ${report.opponentName} 掠夺`, FX(1436), FY(cy - 19), 22, GLASS_COLOR.text, S(right - 1436));
+    T(panel, `LobbyRaidPvpReportHead_${id}`, attack ? `掠夺 ${report.opponentName}` : `被 ${report.opponentName} 掠夺`, FX(1442), FY(cy - 19), 22, GLASS_COLOR.text, S(right - 1442));
     const delta = report.crystalDelta;
     const result = `${won ? '胜' : '败'} ${delta >= 0 ? '+' : ''}${fmt(delta)} 矿晶`;
-    T(panel, `LobbyRaidPvpReportBody_${id}`, result, FX(1436), FY(cy + 20), 21, won ? GLASS_COLOR.green : GLASS_COLOR.red, S(170));
-    T(panel, `LobbyRaidPvpReportAgo_${id}`, `· ${this.formatAgo(report.createdAt)}`, FX(1436 + textWidth(result, 21) + 10), FY(cy + 20), 20, GLASS_COLOR.sub, S(right - 1446 - textWidth(result, 21)));
+    T(panel, `LobbyRaidPvpReportBody_${id}`, result, FX(1442), FY(cy + 20), 21, won ? GLASS_COLOR.green : GLASS_COLOR.red, S(170));
+    T(panel, `LobbyRaidPvpReportAgo_${id}`, `· ${this.formatAgo(report.createdAt)}`, FX(1442 + textWidth(result, 21) + 10), FY(cy + 20), 20, GLASS_COLOR.sub, S(right - 1452 - textWidth(result, 21)));
     if (report.canRevenge) {
       mountGlassButton(kit, panel, `LobbyRaidPvpRevenge_${id}`, '复仇', FX(1745), FY(cy), S(96), S(42), k, 'secondary',
         () => this.host.startLobbyRaidPvp(report.opponentUserId, report.id), 20);
