@@ -133,7 +133,8 @@ const GLASS_ICON_PATH = (name: string): string => `ui/glass/${name}/spriteFrame`
 const CRYSTAL_ICON_ASSET = 'ui/bag/ai/icon_sacred_crystal/spriteFrame';
 const PVP_BG_ASSET = 'ui/raid/pvp_bg_v4/spriteFrame';
 const STAR_COLOR = new Color(236, 196, 96, 255);
-const WARN_COLOR = new Color(244, 168, 104, 255);
+// 无盾警示:原型实测香槟暖金(字芯 ≈ (252,222,162)),不是橙色
+const WARN_COLOR = new Color(246, 216, 156, 255);
 type GlassT = (parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label;
 const PROTO_W = 1870;
 const PROTO_H = 841;
@@ -500,11 +501,16 @@ export class LobbyRaidPanelRenderer {
     const protectLeft = home.protectUntil ? this.msUntil(home.protectUntil) : 0;
     const guarded = shieldLeft > 0 || protectLeft > 0;
     const shieldText = shieldLeft > 0 ? `保护盾 · 剩余 ${this.formatLeft(shieldLeft)}` : protectLeft > 0 ? `新手保护 · 剩余 ${this.formatLeft(protectLeft)}` : '无盾:矿可能被掠夺';
-    const shield = this.host.addSprite('LobbyRaidPvpShieldIcon', GLASS_ICON_PATH('battle_shield'), FX(1206), y, S(32), S(32), panel);
-    if (shield) {
-      shield.color = guarded ? GLASS_COLOR.green : WARN_COLOR;
+    // 原型(逐像素量):无盾 = 香槟色描边三角「!」(1232..1262 × 107..134)+ 常规字重香槟字(左沿 1279、字高 ≈ 24);有盾 = 绿色盾 + 绿字
+    if (guarded) {
+      const shield = this.host.addSprite('LobbyRaidPvpShieldIcon', GLASS_ICON_PATH('battle_shield'), FX(1247), y, S(30), S(30), panel);
+      if (shield) {
+        shield.color = GLASS_COLOR.green;
+      }
+    } else {
+      this.mountWarnTriangle(panel, 'LobbyRaidPvpShieldIcon', FX(1247), FY(120.5), S(30), S(27));
     }
-    T(panel, 'LobbyRaidPvpShield', shieldText, FX(1234), y, 22, guarded ? GLASS_COLOR.green : WARN_COLOR, S(290));
+    T(panel, 'LobbyRaidPvpShield', shieldText, FX(1279), y, 24, guarded ? GLASS_COLOR.green : WARN_COLOR, S(250));
     const canBuy = home.canBuyShield && !state.buying;
     const buyText = state.buying ? '购买中…' : canBuy ? `买 1 天盾 · ${home.shieldPrice} 钻` : (home.shieldNote || '暂不可买');
     mountGlassButton(kit, panel, 'LobbyRaidShieldBuy', buyText, FX(1665), y, S(266), S(50), k, canBuy ? 'secondary' : 'disabled',
@@ -646,6 +652,30 @@ export class LobbyRaidPanelRenderer {
       mountGlassButton(kit, panel, `LobbyRaidPvpRevenge_${id}`, '复仇', FX(1745), FY(cy), S(96), S(42), k, 'secondary',
         () => this.host.startLobbyRaidPvp(report.opponentUserId, report.id), 20);
     }
+  }
+
+  /** 警示三角(原型线稿):圆角描边三角 + 竖杠 + 圆点,香槟色。 */
+  private mountWarnTriangle(parent: Node, name: string, x: number, y: number, w: number, h: number): void {
+    const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
+    const g = node.addComponent(Graphics);
+    const lw = Math.max(2, h * 0.13);
+    g.lineWidth = lw;
+    g.lineJoin = Graphics.LineJoin.ROUND;
+    g.lineCap = Graphics.LineCap.ROUND;
+    g.strokeColor = WARN_COLOR;
+    const hw = w / 2 - lw / 2;
+    const hh = h / 2 - lw / 2;
+    g.moveTo(0, hh);
+    g.lineTo(hw, -hh);
+    g.lineTo(-hw, -hh);
+    g.close();
+    g.stroke();
+    g.moveTo(0, hh * 0.32);
+    g.lineTo(0, -hh * 0.3);
+    g.stroke();
+    g.fillColor = WARN_COLOR;
+    g.circle(0, -hh * 0.62, lw * 0.62);
+    g.fill();
   }
 
   /** 玻璃框英雄头像(物品格口径:一层框 + 圆角头像);dimmed = 不可打的对手整组压暗。 */
