@@ -125,11 +125,40 @@ async def main():
                     r = await call('Runtime.evaluate', {'expression': "(async()=>{ const cc = window.__cc; " + ROOT_JS + " " + body + " })()", 'awaitPromise': True, 'returnByValue': True}, 120)
                     res = r.get('result', {}).get('result', {})
                     return res.get('value') if 'value' in res else json.dumps(r)[:400]
+                # 跑速实测:往右跑 1 秒,量主角节点屏幕位移 / 单位尺寸(与野外「每秒几个身高」对比)
+                spd = await eva("const ctrl=raid; const n=ctrl.raider.view.node; const x0=n.position.x; raid.keys.add(68); await new Promise(r=>setTimeout(r,1000)); raid.keys.delete(68); const x1=n.position.x; const y0=n.position.y; raid.keys.add(83); await new Promise(r=>setTimeout(r,400)); raid.keys.delete(83); const dyPer400=Math.round(n.position.y-y0); const sk=ctrl.raider.view.skeleton; return JSON.stringify({dxPerSec:Math.round(x1-x0), dyPer400, laneSpanPx:Math.round(gr.raidLaneY(1)-gr.raidLaneY(0)), unitSize:Math.round(gr.unitSize()), runScale: sk?sk.timeScale:null, anim: sk&&sk.getCurrent(0)?sk.getCurrent(0).animation.name:null});")
+                print('speed', spd, flush=True)
+                # 先让机器人走到守卫身边(实战:有命中 / 受击 / 顿帧),贴身后停机器人再连点采样
+                await ev(BOT)
+                for _ in range(40):
+                    near = await ev("const u=sim.monsters.find(m=>m.player); if(!u) return 'n'; const cellX=(c)=>1.45+(c%6)*1.18; return sim.heroes.some(h=>!h.dead && Math.abs((h.fx!=null?h.fx:cellX(h.cell))-u.x)<1.3) ? 'y' : 'n';")
+                    if near == 'y':
+                        break
+                    await asyncio.sleep(0.5)
+                await ev("clearInterval(window.__raidBot); raid.keys.clear && raid.keys.clear(); return 'stop-bot';")
+                print('near', near, flush=True)
                 samples = await eva("const ctrl=raid; const v=ctrl&&ctrl.raider&&ctrl.raider.view; const out=[]; const t0=Date.now(); const press=setInterval(()=>{ ctrl.attackPressedAt=Date.now(); },150); "
-                                   "for(let i=0;i<30;i++){ await new Promise(r=>setTimeout(r,100)); const e=v&&v.skeleton&&v.skeleton.getCurrent(0); out.push((Date.now()-t0)+':'+(e?e.animation.name+'@'+e.trackTime.toFixed(2):'-')+'x'+(v&&v.skeleton?v.skeleton.timeScale.toFixed(2):'-')+' c'+(sim.raider?sim.raider.comboStep:'-')); } clearInterval(press); return out.join(' | ');")
+                                   "for(let i=0;i<40;i++){ await new Promise(r=>setTimeout(r,100)); const e=v&&v.skeleton&&v.skeleton.getCurrent(0); out.push((Date.now()-t0)+':'+(e?e.animation.name+'@'+e.trackTime.toFixed(2):'-')+'x'+(v&&v.skeleton?v.skeleton.timeScale.toFixed(2):'-')+' c'+(sim.raider?sim.raider.comboStep:'-')); } clearInterval(press); return out.join(' | ');")
                 print('anim', samples, flush=True)
                 skills = await eva("const ctrl=raid; const v=ctrl.raider.view; const out=[]; for (const i of [0,1,2]) { ctrl.skillPressedAt[i]=Date.now(); await new Promise(r=>setTimeout(r,250)); const e=v.skeleton.getCurrent(0); out.push('skill'+i+':'+(e?e.animation.name+'@'+e.trackTime.toFixed(2):'-')+'x'+v.skeleton.timeScale.toFixed(2)); await new Promise(r=>setTimeout(r,1300)); } return out.join(' | ');")
                 print('skills', skills, flush=True)
+                if os.environ.get('PROBE_FX') == '1':
+                    # 技能特效截图:贴身后按技能,在模型第一下命中后约 150ms 截图(特效正亮)
+                    await ev(BOT)
+                    await asyncio.sleep(3)
+                    await ev("clearInterval(window.__raidBot); return 'stop';")
+                    print('kit', await ev("const k=raid.raiderFxKit; const f=raid.combatFx; return JSON.stringify({skill:k&&k.skill, ult:k&&k.ult&&k.ult.effect, ready: f?[...f.ready.keys()]:null, pending: f?[...f.pending]:null, names: raid.raider&&raid.raider.names});"), flush=True)
+                    for i, hit_ms in ((0, 504), (1, 200), (2, 400)):
+                        await asyncio.sleep(1.2)
+                        for _ in range(30):
+                            if await ev(f"return sim.raider && sim.timeMs >= sim.raider.skillReadyMs[{i}] && sim.timeMs >= sim.raider.actionUntilMs ? 'y' : 'n';") == 'y':
+                                break
+                            await asyncio.sleep(0.5)
+                        await ev(f"raid.skillPressedAt[{i}]=Date.now(); window.__fxPeak=0; window.__fxSampler=setInterval(()=>{{ let n=0; cc.director.getScene().walk(x=>{{ if((x.name==='RaidFxKz'||x.name==='TownFx') && x.activeInHierarchy) n++; }}); window.__fxPeak=Math.max(window.__fxPeak,n); }},40); return 'k';")
+                        await asyncio.sleep((hit_ms + 120) / 1000)
+                        await shot(f'skill_fx_{i}')
+                        await asyncio.sleep(1.2)
+                        print('fxnodes', i, await ev("clearInterval(window.__fxSampler); return window.__fxPeak;"), flush=True)
             await asyncio.sleep(2)
             print('battle', await ev(STATE), flush=True)
             print('pool', await ev("if(!sim) return 'nosim'; return JSON.stringify({pool: sim.pool.map(p=>p.heroCode+':'+p.displayName+':'+p.sourceIndex), allies: (gr.snapshot? gr.snapshot.allies.map(a=>a.unitKey+':'+a.displayName) : null), raidRaw: !!(root.currentLobbyBattleState().start||{}).raid, npcAssets: (gr.snapshot? gr.snapshot.allies.filter(a=>a.unitKey.startsWith('npc')).map(a=>a.spineAsset+'|'+a.portraitAsset) : null), views: [...gr.heroViews.values()].map(v=>v.node.name+':'+v.spineReady), lineupRaw: (root.currentLobbyBattleState().start||{}).lineup.map(h=>!!h.guardRaw)});"), flush=True)

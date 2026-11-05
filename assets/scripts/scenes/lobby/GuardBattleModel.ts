@@ -274,7 +274,11 @@ export const GUARD_RAID_TIME_LIMIT_MS = 180_000;
 export const GUARD_RAID_SPAWN_X = 7.0;
 export const GUARD_RAID_MAX_X = 8.0;
 export const GUARD_RAID_MOVE_X = 3.2;
-export const GUARD_RAID_MOVE_LANE = 1.6;
+/**
+ * 纵深移速(排 / 秒)。11-06 用户「人物在掠夺战场里跑步太快」:实测电脑 1600×900 横向 204px/s、纵向 565px/s(两排间距 453px × 1.6 → 纵向是横向 2.8 倍);
+ * 野外纵向 = 横向 × 0.8,按同口径取 0.4(≈ 181px/s)。
+ */
+export const GUARD_RAID_MOVE_LANE = 0.4;
 export const GUARD_RAID_COMBO_WINDOW_MS = 700;
 /**
  * 普攻五段(11-06 用户「抢矿和野外不一样,需要同步」):时序照野外主角专属连招(LobbyTownRenderer.CLIP_COMBOS,

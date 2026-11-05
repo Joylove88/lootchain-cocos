@@ -19,6 +19,8 @@ import {
   sp,
   tween,
 } from 'cc';
+import { resolveTownHeroFxKit, TownCombatFx, type TownCombatFxHost, type TownHeroFxKit } from './LobbyTownCombatFx';
+import { resolveBattleUnitSpineRuntimeData, resolveBattleUnitSpineSkinName } from './LobbyBattleUnitSpineRuntime';
 import { heroClipCombo, HERO_SKILL_ACTION_CAP_MS } from './HeroClipCombos';
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
@@ -603,6 +605,9 @@ export class GuardRaidController {
               : index === 1 ? (heroClipCombo(raider.ally?.spineAsset) && names?.skill2 ? 'skill2' : 'skill1')
                 : 'ult';
             this.playAction(raider, kind, HERO_SKILL_ACTION_CAP_MS[index] ?? 1200, sim);
+            // 技能特效对齐野外(resolveLeaderHit):在第一下命中的时刻播(模型命中点同源)
+            const firstHit = GUARD_RAID_SKILLS[index]?.hits[0] ?? 300;
+            setTimeout(() => this.playSkillFx(index, sim), firstHit);
           }
           gameAudio.sfx('wave_start', 0.5);
           break;
@@ -789,6 +794,11 @@ export class GuardRaidController {
     };
     if (own) {
       this.raider = record;
+      // 技能特效素材(同野外 TownCombatFx 一套)进战就预热,放技能时直接有图
+      const kit = this.raiderKit();
+      if (kit) {
+        this.fx.prewarmKit(kit);
+      }
     } else {
       this.allies.set(unit.monsterId, record);
     }
@@ -806,6 +816,154 @@ export class GuardRaidController {
     }
     unit.names = resolveBattleUnitSpineAnimationNames(data, unit.ally);
     unit.loopAnim = view.idleAnim;
+  }
+
+  // ── 技能特效(11-06 用户「技能特效对齐野外」,口径同 LobbyTownRenderer.resolveLeaderHit)──
+
+  private combatFx: TownCombatFx | null = null;
+  private raiderFxKit: TownHeroFxKit | null = null;
+
+  private get fx(): TownCombatFx {
+    if (!this.combatFx) {
+      this.combatFx = new TownCombatFx(this.bridge.host as unknown as TownCombatFxHost);
+    }
+    return this.combatFx;
+  }
+
+  private raiderKit(): TownHeroFxKit | null {
+    const raider = this.raider;
+    if (!raider) {
+      return null;
+    }
+    if (!this.raiderFxKit) {
+      this.raiderFxKit = resolveTownHeroFxKit(raider.heroCode, raider.ally?.heroClass ?? null, 'melee');
+    }
+    return this.raiderFxKit;
+  }
+
+  /** 野外特效尺寸按野外角色高 230 配;掠夺按单位显示尺寸等比换算。 */
+  private fxScale(): number {
+    return this.bridge.unitSize() / 230;
+  }
+
+  /**
+   * 技能命中特效,优先级同野外:① 英雄骨骼自带落点动画 skillN_kz(画在目标脚下)② 旋风斩且骨骼没有自带大招动作 → 专属大招包(hu_*,按核心亮区)
+   * ③ 通用战技特效(锚在目标 / 前方,自身型绕身)。目标 = 主角朝向前方最近的存活守卫(够不着就落在身前)。
+   */
+  private playSkillFx(index: number, sim: GuardBattleState): void {
+    const raider = this.raider;
+    const field = this.bridge.field();
+    const kit = this.raiderKit();
+    if (!raider || !field || !field.isValid || !kit || raider.deadShown || !raider.view.node.isValid || sim.phase !== 'wave') {
+      return;
+    }
+    const k = this.fxScale();
+    const me = raider.view.node.position;
+    const facing = raider.facing;
+    const spec = GUARD_RAID_SKILLS[index];
+    const reachPx = Math.abs(this.bridge.xToPx(1 + (spec?.reach ?? 1.5)) - this.bridge.xToPx(1)) + this.bridge.unitSize() * 0.6;
+    let near: { x: number; y: number } | null = null;
+    let best = Number.POSITIVE_INFINITY;
+    for (const hero of sim.heroes) {
+      if (hero.dead || hero.hp === undefined) {
+        continue;
+      }
+      const view = this.bridge.heroViews().get(hero.unitId);
+      if (!view || !view.node.isValid) {
+        continue;
+      }
+      const p = view.node.position;
+      const dx = p.x - me.x;
+      const ahead = spec?.around || (facing < 0 ? dx <= this.bridge.unitSize() * 0.3 : dx >= -this.bridge.unitSize() * 0.3);
+      const d = Math.hypot(dx, (p.y - me.y) * 1.5);
+      if (ahead && d <= reachPx && d < best) {
+        best = d;
+        near = { x: p.x, y: p.y };
+      }
+    }
+    const bodyLift = this.bridge.unitSize() * 0.35;
+    const kz = this.skillKzAnim(raider, index);
+    let shown = !!kz && this.playOwnKz(raider, kz, near ? near.x : me.x + facing * 170 * k, near ? near.y : me.y, near ? (near.x >= me.x ? 1 : -1) : facing);
+    if (!shown && index === 2 && !this.hasOwnUlt(raider)) {
+      const tiers: Record<string, number> = { R: 2.3, SR: 2.6, SSR: 3.0, UR: 3.4 };
+      const tier = tiers[(raider.ally?.rarity || 'R').toUpperCase()] ?? 2.3;
+      const ux = near ? near.x : me.x + facing * 200 * k;
+      const uy = (near ? near.y + bodyLift : me.y + 100 * k) + kit.ult.offsetY * k;
+      shown = !!this.fx.play(field, kit.ult, ux, uy, 170 * tier * k, { flipX: facing < 0, core: true });
+    }
+    if (!shown) {
+      const self = kit.skill.anchor === 'self' || !!spec?.around;
+      const fxX = self || !near ? me.x + (self ? 0 : facing * 150 * k) : near.x;
+      const fxY = self || !near ? me.y + 90 * k : near.y + bodyLift;
+      this.fx.play(field, kit.skill, fxX, fxY + kit.skill.offsetY * k, 420 * kit.skill.scale * k, { flipX: facing < 0 });
+    }
+    this.bridge.shakeField(10);
+  }
+
+  /** 同野外 skillKzAnim:重斩 = skill3Kz(没 ult 的骨骼 skill2Kz)、突进斩 = skill1Kz、旋风斩 = skill4Kz / skill3Kz。 */
+  private skillKzAnim(unit: RaidUnitView, index: number): string | null {
+    const names = unit.names;
+    if (!names) {
+      return null;
+    }
+    if (index === 0) {
+      return names.ult ? names.skill3Kz : names.skill2Kz;
+    }
+    if (index === 1) {
+      return names.skill1Kz;
+    }
+    return names.ult ? names.skill4Kz : names.skill3Kz;
+  }
+
+  /** 同野外 hasOwnUlt:R / SR 骨骼自带大招动作(skill3 含光效)。 */
+  private hasOwnUlt(unit: RaidUnitView): boolean {
+    const rarity = (unit.ally?.rarity || '').toUpperCase();
+    return (rarity === 'R' || rarity === 'SR') && !!unit.names?.skill3;
+  }
+
+  /** 同野外 playOwnKz:在 (x, y) 另起一个同骨骼实例只播落点动画,和英雄同尺寸、朝 facing,播完淡出销毁。 */
+  private playOwnKz(unit: RaidUnitView, anim: string, x: number, y: number, facing: 1 | -1): boolean {
+    const src = unit.view.skeleton;
+    const data = src?.skeletonData as sp.SkeletonData | null | undefined;
+    const field = this.bridge.field();
+    const spine = unit.view.node.getChildByName('GuardUnitSpine');
+    if (!src || !src.isValid || !data || !field || !field.isValid || !spine) {
+      return false;
+    }
+    let duration = 0;
+    try {
+      duration = src.findAnimation(anim)?.duration ?? 0;
+    } catch (error) {
+      void error;
+    }
+    if (duration <= 0) {
+      return false;
+    }
+    const holder = this.bridge.host.addChildPlainNode(field, 'RaidFxKz', x, y, 10, 10);
+    holder.setSiblingIndex(field.children.length - 1);
+    const node = this.bridge.host.addChildPlainNode(holder, 'Spine', spine.position.x, spine.position.y, 10, 10);
+    node.setScale(Math.abs(spine.scale.x) * facing, spine.scale.y, 1);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = src.premultipliedAlpha;
+    const speed = 1.2;
+    try {
+      skeleton.skeletonData = data;
+      const runtime = resolveBattleUnitSpineRuntimeData(data);
+      const skin = runtime ? resolveBattleUnitSpineSkinName(data, runtime) : null;
+      if (skin) {
+        skeleton.setSkin(skin);
+      }
+      skeleton.setAnimation(0, anim, false);
+      skeleton.timeScale = speed;
+    } catch (error) {
+      void error;
+      holder.destroy();
+      return false;
+    }
+    const life = duration / speed;
+    const opacity = holder.addComponent(UIOpacity);
+    tween(opacity).delay(Math.max(0, life - 0.15)).to(0.15, { opacity: 0 }).call(() => holder.isValid && holder.destroy()).start();
+    return true;
   }
 
   /**
@@ -1022,8 +1180,8 @@ export class GuardRaidController {
     if (view.skeleton && view.skeleton.isValid) {
       view.skeleton.color = view.hitFlashUntil > Date.now() ? FLASH : WHITE;
       // 跑步动画按地面速度加速,不然像在冰上滑
-      // 一次性动作期间保持它自己的倍速(切片 / 加速播完),之后跑步按地面速度加速
-      view.skeleton.timeScale = Date.now() < unit.oneShotUntil ? unit.oneShotSpeed : unit.loopAnim && unit.loopAnim === unit.names?.move ? 1.3 : 1;
+      // 一次性动作期间保持它自己的倍速(切片 / 加速播完);跑步动画原速(同野外;原 × 1.3 腿迈得太快,11-06 用户「跑步太快」)
+      view.skeleton.timeScale = Date.now() < unit.oneShotUntil ? unit.oneShotSpeed : 1;
     }
     const hpKey = `${Math.ceil(monster.hp)}/${monster.maxHp}`;
     if (hpKey !== unit.hpKey) {
