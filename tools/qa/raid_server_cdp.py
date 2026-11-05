@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """矿境掠夺 PVE 闭环自验(docs/48,电脑端):无头 Edge 打开本地正式包 → 登录 → 主城 → 矿境面板截图 → 掠夺 RAID_n(走编队确认 → battles/start)
 → 机器人打(清守卫 → 砸水晶)→ 结算 → 打印结算回执(奖励 / 体力 / 复演裁定)+ 终局截图。
-用法:PREVIEW_PORT=7460 [PHONE=1] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]"""
+用法:PREVIEW_PORT=7460 [PHONE=1] [STALL=1] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]"""
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
 import boss_bar_cdp as base
@@ -107,6 +107,10 @@ async def main():
             await shot('raid_preview')
             await ev("window.__errs=[]; const ce=console.error.bind(console); console.error=(...a)=>{ window.__errs.push(a.map(x=>x&&x.stack?x.stack:String(x)).join(' ').slice(0,400)); ce(...a); }; window.addEventListener('unhandledrejection', e=>window.__errs.push('rej '+String(e.reason&&e.reason.stack||e.reason).slice(0,400))); window.addEventListener('error', e=>window.__errs.push('err '+String(e.message).slice(0,300))); return 'hook';")
             await ev("root.confirmLobbyBattleStart ? root.confirmLobbyBattleStart() : root.lobbyBattleFlow.start(root.selectedLobbyStageCode); return 'start';")
+            if os.environ.get('STALL') == '1':
+                # 复现「正在进入矿境…」卡死:开战请求在途时重置流程(回执作废),期望等待页 4 秒后自动重发开战
+                await ev("root.lobbyBattleFlow.prepare(root.selectedLobbyStageCode); return 'stall';")
+                print('stall injected', flush=True)
             for _ in range(90):
                 st = await ev("const b=root.currentLobbyBattleState(); return JSON.stringify({starting:b.starting, has:!!b.start, err:b.error, mounted: !!(gr && gr.isMounted() && raid)});")
                 if '"mounted":true' in st or ('"err":"' in st and '"err":""' not in st):

@@ -181,6 +181,8 @@ export interface LobbyGuardBattleHost {
   currentTrialOutputTiers?(): Array<{ tierCode: string; tierName: string; minScore: number }>;
   settleLobbyBattleSession(): void;
   returnToLobbyFromBattlePreview(): void;
+  /** 等待页兜底:开战回执被作废(流程被重置)后重新发起开战(同 startLobbyBattleSession)。 */
+  retryLobbyBattleStart?(): void;
   /** docs/61:掠夺结算后回矿境面板(retry = NPC 矿再来一次,直接进编队确认)。缺省退回大厅。 */
   returnToLobbyRaidPanel?(retry: boolean): void;
   setStatus(text: string): void;
@@ -792,6 +794,8 @@ export class LobbyGuardBattleRenderer {
       this.host.addChildLabel(this.root, 'GuardStarting', battleState.error ? `开战失败:${battleState.error}` : '正在进入矿境…', 0, 0, 20, rgba(230, 214, 178), new Size(layout.width * 0.8, 30));
       if (battleState.error) {
         this.renderExitButton(this.root, layout.width, layout.height);
+      } else if (!battleState.starting) {
+        this.armStartStallGuard(this.root, battleState.stageCode, layout.width, layout.height);
       }
       return;
     }
@@ -2801,6 +2805,47 @@ export class LobbyGuardBattleRenderer {
         gameAudio.sfx('summon');
       }
     }, this);
+  }
+
+  /** 同一关卡已自动重发过开战的关卡码(只自动重发一次,再卡就给按钮)。 */
+  private startStallRetriedFor = '';
+
+  /**
+   * 等待页卡死兜底(11-06 真人矿首进偶发停在「正在进入矿境…」:开战请求在途时流程被重置,回执按过期作废,
+   * 之后既不在开战中、也没有回执和报错,页面再无任何出口)。空闲 4 秒仍是这个状态:第一次自动重发开战,
+   * 之后显示「重新进入 / 返回」。正常流程里这个空闲窗口只有拉名册的几百毫秒,不会触发。
+   */
+  private armStartStallGuard(root: Node, stageCode: string, width: number, height: number): void {
+    setTimeout(() => {
+      if (!root.isValid) {
+        return;
+      }
+      const state = this.host.currentLobbyBattleState();
+      if (state.start || state.starting || state.error || state.stageCode !== stageCode) {
+        return;
+      }
+      if (this.host.retryLobbyBattleStart && this.startStallRetriedFor !== stageCode) {
+        this.startStallRetriedFor = stageCode;
+        console.warn(`[LootChain] battle start stalled, retry ${stageCode}`);
+        this.host.retryLobbyBattleStart();
+        return;
+      }
+      this.renderExitButton(root, width, height);
+      if (this.host.retryLobbyBattleStart) {
+        const retry = this.host.addChildPlainNode(root, 'GuardStartRetry', 0, -56, 200, 48);
+        const g = retry.addComponent(Graphics);
+        g.fillColor = rgba(43, 54, 65, 235);
+        g.roundRect(-100, -24, 200, 48, 24);
+        g.fill();
+        g.strokeColor = rgba(160, 170, 184, 200);
+        g.lineWidth = 1.5;
+        g.roundRect(-100, -24, 200, 48, 24);
+        g.stroke();
+        this.host.addChildLabel(retry, 'Label', '重新进入', 0, 0, 20, rgba(242, 242, 242), new Size(180, 30));
+        this.host.applyImageButtonFeedback(retry);
+        retry.on(Node.EventType.TOUCH_END, () => this.host.retryLobbyBattleStart?.(), this);
+      }
+    }, 4000);
   }
 
   private renderExitButton(parent: Node, width: number, height: number): void {

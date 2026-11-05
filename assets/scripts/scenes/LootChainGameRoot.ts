@@ -3959,6 +3959,14 @@ export class LootChainGameRoot extends Component {
     return state.stageCode === stageCode && (state.starting || !!state.start || state.settling || !!state.settlement);
   }
 
+  /** 战斗等待页兜底(LobbyGuardBattleHost.retryLobbyBattleStart):开战回执被作废后重新开战。 */
+  private retryLobbyBattleStart(): void {
+    if (this.currentView !== 'battle') {
+      return;
+    }
+    this.startLobbyBattleSession();
+  }
+
   private startLobbyBattleSession(): void {
     if (!this.selectedLobbyStageCode) {
       this.rejectInvalidLobbyStageSelection();
