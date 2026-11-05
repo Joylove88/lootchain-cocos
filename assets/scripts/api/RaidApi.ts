@@ -123,5 +123,6 @@ function normalizeStage(item: unknown): RaidStageVO {
     }),
     rewardPreview: readArray(item, 'rewardPreview', 8).map(normalizeRewardItem),
     firstClearRewards: readArray(item, 'firstClearRewards', 8).map(normalizeRewardItem),
+    owner: isRecord(item.owner) ? normalizeDefenderPreview(item.owner) : null,
   };
 }

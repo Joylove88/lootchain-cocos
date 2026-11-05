@@ -54,6 +54,14 @@ async def main():
                 res = r.get('result', {}).get('result', {})
                 return res.get('value') if 'value' in res else json.dumps(res)[:300]
 
+            async def wait_node(name, tries=90):
+                for _ in range(tries):
+                    if await ev("let hit=false; cc.director.getScene().walk(n=>{ if(n.name==='" + name + "' && n.activeInHierarchy) hit=true; }); return hit ? 'y' : 'n';") == 'y':
+                        return True
+                    await asyncio.sleep(1)
+                print('wait-timeout', name, flush=True)
+                return False
+
             async def shot(name):
                 m = await call('Page.captureScreenshot', {'format': 'png'}, 120)
                 if 'result' in m:
@@ -91,7 +99,9 @@ async def main():
                 if '"has":true' in st or ('"err":"' in st and '"err":""' not in st):
                     break
                 await asyncio.sleep(1)
-            await asyncio.sleep(4)
+            # 矿境素材组首开要下载(下载页「正在加载矿境」),等面板真正画出来
+            await wait_node('LobbyRaidPvpMine')
+            await asyncio.sleep(3)
             print('pvp', await ev("const s=root.currentLobbyRaidPvpState(); const h=s.home; return JSON.stringify({err:s.error, my:h&&h.myCrystal, power:h&&h.lineupPower, team:h&&h.myTeam.map(t=>t.heroCode), cands:h&&h.candidates.map(c=>c.nickname+':'+(c.protagonist&&c.protagonist.heroCode)+':'+c.realmTitle+':'+c.lianhun+':'+c.stealPreview+(c.attackedRecently?':X':'')), reports:h&&h.reports.length});"), flush=True)
             probe = await ev("const out=[]; cc.director.getScene().walk(n=>{ if(/^LobbyRaid/.test(n.name) && n.activeInHierarchy){ const t=n.getComponent(cc.UITransform); if(t){ const p=n.worldPosition; out.push(n.name+' '+Math.round(p.x)+','+Math.round(p.y)+' '+Math.round(t.width*n.worldScale.x)+'x'+Math.round(t.height*n.worldScale.y)); } } }); return out.slice(0,400).join('\n');")
             open(os.path.join(OUT, 'probe.txt'), 'w', encoding='utf-8').write(str(probe))
@@ -105,7 +115,8 @@ async def main():
                 await asyncio.sleep(2)
             if os.environ.get('NPC') == '1':
                 await ev("root.selectLobbyRaidTab('npc'); return 'npc';")
-                await asyncio.sleep(4)
+                await wait_node('LobbyRaidInfoCard')
+                await asyncio.sleep(4)  # 矿主卡面异步挂
                 await shot('npc_panel')
     finally:
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True)

@@ -21,6 +21,8 @@ export interface RaidStageVO {
   defenders: RaidDefenderPreviewVO[];
   rewardPreview: PlayerBattleRewardItemVO[];
   firstClearRewards: PlayerBattleRewardItemVO[];
+  /** docs/61:矿主首领(第 4 名 / 矿区池下一位,星 +1);旧服务端无此字段 → null。defenders 为前 3 名守卫。 */
+  owner: RaidDefenderPreviewVO | null;
 }
 
 export interface RaidStagesVO {
