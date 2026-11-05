@@ -272,27 +272,15 @@ export class LobbyHudRenderer {
       const frameHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, frameW, frameH);
       const g = frameHolder.addComponent(Graphics);
       const radius = 14 * scale;
-      // 外圈柔光(粗半透)+内圈亮描边
-      g.strokeColor = rgba(255, 202, 88, 80);
-      g.lineWidth = 9 * scale;
+      // 2026-11-05 B 风格:香槟金细边 + 外圈淡晕(旧版金色粗框 + 四角亮角标太花)
+      g.strokeColor = rgba(227, 196, 138, 60);
+      g.lineWidth = 8 * scale;
       g.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, radius);
       g.stroke();
-      g.strokeColor = rgba(255, 226, 136, 240);
-      g.lineWidth = 3 * scale;
+      g.strokeColor = rgba(227, 196, 138, 235);
+      g.lineWidth = 2.2 * scale;
       g.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, radius);
       g.stroke();
-      // 四角 L 形亮角标(选中框质感)
-      const arm = Math.min(34 * scale, frameW * 0.22);
-      g.strokeColor = rgba(255, 240, 176, 255);
-      g.lineWidth = 5 * scale;
-      for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]] as Array<[number, number]>) {
-        const cx = sx * frameW / 2;
-        const cy = sy * frameH / 2;
-        g.moveTo(cx - sx * arm, cy);
-        g.lineTo(cx, cy);
-        g.lineTo(cx, cy - sy * arm);
-        g.stroke();
-      }
       const frameFade = frameHolder.addComponent(UIOpacity);
       tween(frameFade)
         .repeatForever(tween()
@@ -302,29 +290,34 @@ export class LobbyHudRenderer {
       ringHalfV = frameH / 2;
       ringHalfH = frameW / 2;
     } else {
-      const ringW = targetW * 1.3 + 18;
-      const ringH = targetH * 1.5 + 14;
+      // 2026-11-05 B 风格:贴合目标的圆角细框(香槟金细边 + 淡晕,呼吸),不再用金色椭圆光圈素材
+      const ringW = targetW + 16 * scale;
+      const ringH = targetH + 12 * scale;
       const ringHolder = this.addChildPlainNode(overlay, 'GuideRing', local.x, local.y, ringW, ringH);
-      if (!this.host.addSprite('GuideRingArt', 'ui/guide/lguide_ring/spriteFrame', 0, 0, ringW, ringH, ringHolder)) {
-        const ring = ringHolder.addComponent(Graphics);
-        ring.strokeColor = rgba(255, 214, 110, 235);
-        ring.lineWidth = 3.5;
-        ring.ellipse(0, 0, ringW / 2 - 4, ringH / 2 - 4);
-        ring.stroke();
-      }
-      tween(ringHolder)
+      const ring = ringHolder.addComponent(Graphics);
+      const ringR = Math.min(ringH / 2, 16 * scale);
+      ring.strokeColor = rgba(227, 196, 138, 60);
+      ring.lineWidth = 8 * scale;
+      ring.roundRect(-ringW / 2, -ringH / 2, ringW, ringH, ringR);
+      ring.stroke();
+      ring.strokeColor = rgba(227, 196, 138, 240);
+      ring.lineWidth = 2.2 * scale;
+      ring.roundRect(-ringW / 2, -ringH / 2, ringW, ringH, ringR);
+      ring.stroke();
+      const ringFade = ringHolder.addComponent(UIOpacity);
+      tween(ringFade)
         .repeatForever(tween()
-          .to(0.7, { scale: new Vec3(1.1, 1.1, 1) })
-          .to(0.7, { scale: new Vec3(1, 1, 1) }))
+          .to(0.7, { opacity: 140 })
+          .to(0.7, { opacity: 255 }))
         .start();
       ringHalfV = ringH / 2;
       ringHalfH = ringW / 2;
     }
     // 方向:目标上方放箭头+气泡;顶部空间不足则翻到下方(箭头转 180° 指上)。
-    const pointerH = 66 * scale;
-    const pointerW = pointerH * (192 / 256);
-    const bubbleW = Math.min(400 * scale, layout.stageWidth * 0.52);
-    const bubbleH = bubbleW * (320 / 768);
+    const pointerH = 30 * scale;
+    const pointerW = 34 * scale;
+    const bubbleW = Math.min(420 * scale, layout.stageWidth * 0.52);
+    const bubbleH = 92 * scale;
     const needed = ringHalfV + pointerH + bubbleH + 26 * scale;
     const above = local.y + needed < layout.stageTop - 6;
     // 上下都放不下(英雄卡这类很高的目标,手机布局下气泡掉出屏幕,2026-10-15 安卓真机):改放目标左 / 右侧,箭头横指
@@ -336,12 +329,13 @@ export class LobbyHudRenderer {
     const pointerY = side !== 0 ? local.y : local.y + dir * (ringHalfV + pointerH / 2 + 6 * scale);
     const pointerHolder = this.addChildPlainNode(overlay, 'GuidePointer', pointerX, pointerY, pointerW, pointerH);
     pointerHolder.angle = side > 0 ? -90 : side < 0 ? 90 : above ? 0 : 180;
-    if (!this.host.addSprite('GuidePointerArt', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH, pointerHolder)) {
+    {
+      // 朝下的香槟金三角(B 风格,旧雕花金箭头素材不用)
       const pg = pointerHolder.addComponent(Graphics);
-      pg.fillColor = rgba(255, 214, 110, 240);
-      pg.moveTo(-pointerW * 0.3, pointerH * 0.3);
-      pg.lineTo(pointerW * 0.3, pointerH * 0.3);
-      pg.lineTo(0, -pointerH * 0.4);
+      pg.fillColor = rgba(227, 196, 138, 245);
+      pg.moveTo(-pointerW / 2, pointerH / 2);
+      pg.lineTo(pointerW / 2, pointerH / 2);
+      pg.lineTo(0, -pointerH / 2);
       pg.close();
       pg.fill();
     }
@@ -360,19 +354,24 @@ export class LobbyHudRenderer {
       ? pointerX + side * (pointerH / 2 + bubbleW / 2 + 6 * scale)
       : Math.max(layout.stageLeft + bubbleW / 2 + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
     const bubble = this.addChildPlainNode(overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH);
-    if (!this.host.addSprite('GuideBubbleArt', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH, bubble)) {
+    {
+      // 2026-11-05 B 风格气泡(旧金框雕花气泡素材不用):深色毛玻璃 + 淡白细边 + 左侧香槟竖条
       const bg = bubble.addComponent(Graphics);
-      bg.fillColor = rgba(14, 11, 8, 240);
-      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 10 * scale);
+      bg.fillColor = rgba(20, 24, 33, 238);
+      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 12 * scale);
       bg.fill();
-      bg.strokeColor = rgba(240, 194, 104, 235);
-      bg.lineWidth = Math.max(1, 1.6 * scale);
-      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 10 * scale);
+      bg.strokeColor = rgba(255, 255, 255, 34);
+      bg.lineWidth = Math.max(1, 1.2 * scale);
+      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 12 * scale);
       bg.stroke();
+      bg.fillColor = rgba(227, 196, 138, 255);
+      bg.roundRect(-bubbleW / 2 + 14 * scale, -bubbleH * 0.26, 4 * scale, bubbleH * 0.52, 2 * scale);
+      bg.fill();
     }
-    const text = this.addChildLabel(bubble, 'GuideText', entry.text, 0, 0, 19 * scale, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
+    const text = this.addChildLabel(bubble, 'GuideText', entry.text, 8 * scale, 0, 19 * scale, rgba(242, 242, 242, 255), new Size(bubbleW - 64 * scale, bubbleH - 20 * scale));
     text.overflow = Label.Overflow.SHRINK;
-    this.applyLobbyResourceTextStyle(text, scale, true);
+    text.enableWrapText = true;
+    text.lineHeight = text.fontSize + 6;
     if (soft) {
       // 软引导:点气泡即关闭并记为已看过;点高亮的入口本身也会在对应页面记为已看过
       bubble.addComponent(Button);

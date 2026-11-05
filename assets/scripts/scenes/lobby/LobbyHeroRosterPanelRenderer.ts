@@ -1910,7 +1910,8 @@ export class LobbyHeroRosterPanelRenderer {
       }
       const col = index % columns;
       const row = Math.floor(index / columns);
-      this.renderGlassCard(content, hero, index, startX + col * (cardW + gap), startY - row * (cardH + rowGap), cardW, cardH, S, k, scale);
+      // 英雄卡节点名按英雄序号(主角卡单独命名):新手引导指向 LobbyHeroRosterCard_0 = 第一名英雄
+      this.renderGlassCard(content, hero, leadShown ? index - 1 : index, startX + col * (cardW + gap), startY - row * (cardH + rowGap), cardW, cardH, S, k, scale);
     };
     const initialSyncCount = Math.min(cards.length, columns * 2);
     for (let i = 0; i < initialSyncCount; i += 1) {
@@ -1933,7 +1934,7 @@ export class LobbyHeroRosterPanelRenderer {
 
   /**
    * B 风格卡(原型 340×262):半身插画铺满 → 底部压暗 → 星行 / 名字 / 细线 / Lv | 剑 + 战力;左上稀有度扁签、右上职业圆章。
-   * 主角卡:细香槟金边(选中格同款)+ 暗金「主角」签 + 境界称号胶囊代替星行;插画 = 境界立绘贴顶裁头胸,垫识海底图。
+   * 主角卡:细香槟金边 + 暗金「主角」签 + 境界称号胶囊代替星行;插画 = 境界立绘(与骨骼同装)贴顶裁头胸,垫大厅底图。
    */
   private renderGlassCard(parent: Node, hero: LobbyHeroItemVO, index: number, x: number, y: number, w: number, h: number, S: (v: number) => number, k: number, scale: number): void {
     const kit = this.host as unknown as UiKitHost;
@@ -1951,7 +1952,8 @@ export class LobbyHeroRosterPanelRenderer {
     mountGlassSlice(kit, card, 'Back', GLASS_SLICES.frame, 0, 0, w, h, k);
     if (lead) {
       const bg = this.host.addChildPlainNode(card, 'LeadBg', 0, 0, artW, artH);
-      mountCoverArt(bg, 'ui/protagonist/b/soul_sea_bg/spriteFrame', artW, artH);
+      // 卡底 = 哥特大厅(与原型 / 其他英雄卡的大厅底一致;原先的识海海面底和名册不搭)
+      mountCoverArt(bg, HERO_GLASS_BG, artW, artH);
       const art = this.host.addChildPlainNode(card, 'Art', 0, 0, artW, artH);
       mountCoverArt(art, protagonistPortraitPath(hero.heroCode), artW, artH, true);
     } else {

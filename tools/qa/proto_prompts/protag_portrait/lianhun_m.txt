@@ -1,0 +1,6 @@
+Generate ONE image: a full-body character portrait for a dark-fantasy RPG, portrait orientation 3:4, FULLY TRANSPARENT background (no floor, no shadow, no backdrop).
+TWO images are attached:
+- FIRST image = our in-game animated character in his upgraded armour. Copy his OUTFIT and FACE EXACTLY: young man, short dark-brown hair, steel-blue plate pauldrons with thin gold trim, dark leather chest armour with a round gold clasp at the collar, dark short cape/cloak behind, steel-blue plate tassets and greaves with gold trim, dark leather gloves, steel sabatons, a long steel longsword with a gold cross-guard. Same colours (steel blue-grey, dark leather, thin gold trim), realistic proportions (NOT chibi).
+- SECOND image = our current portrait framing and painting style: copy its FRAMING and STYLE: standing upright facing the viewer, whole body from head to feet visible, head near the top edge, feet near the bottom edge, longsword held down in the right hand with the blade pointing to the ground at his side, realistic semi-painted, matte, soft light, no glow, no effects.
+The outfit must match the FIRST image, not the SECOND.
+Output only the single character on a fully transparent background, no text.

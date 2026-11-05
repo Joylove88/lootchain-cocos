@@ -5687,6 +5687,13 @@ export class LobbyHeroDetailPanelRenderer {
     const panelX = (RX(1191) + RX(1829)) / 2;
     const panelW = RX(1829) - RX(1191);
     mountGlassPanel(this.host, root, 'LobbyHeroDetailLevelUpBox', panelX, (FY(654) + FY(812)) / 2, panelW, FY(654) - FY(812), k);
+    if (hero.protagonist) {
+      // 主角等级 = 玩家等级(2026-11-05 后端读名册时对齐),不吃经验书,没有升级按钮
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpTitle', `主角 Lv.${hero.level}`, RX(1233), FY(690), F(24), GLASS_COLOR.text, panelW - S(80), HorizontalTextAlignment.LEFT, true);
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpHint', '主角等级跟随玩家等级,野外打怪、做剧情任务获得经验即可提升', RX(1233), FY(740), F(19), GLASS_COLOR.sub, panelW - S(80), HorizontalTextAlignment.LEFT);
+      glassLabel(this.host, root, 'LobbyHeroDetailLevelUpHint2', '每升一级还有一次进化抉择(境界页查看进化总览)', RX(1233), FY(776), F(19), GLASS_COLOR.sub, panelW - S(80), HorizontalTextAlignment.LEFT);
+      return;
+    }
     const view = this.resolveLevelUpCostView(hero);
     const titleY = FY(680);
     const levelMatch = /^(.*?)(Lv\.\d+)$/.exec(view.title);

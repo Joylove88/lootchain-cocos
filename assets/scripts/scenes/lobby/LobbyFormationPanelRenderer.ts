@@ -600,7 +600,8 @@ export class LobbyFormationPanelRenderer {
     if (hero) {
       const standH = 380 * u;
       const standW = standH * 0.72;
-      const actor = this.host.addChildPlainNode(slot, 'LobbyFormationActor', 0, standH * 0.42, standW, standH);
+      // 主角骨骼(写实比例,包围盒含长剑)按 Q 版英雄的口径排会飘在石台上方:队长位整体下移约 0.19 个站位高,脚踩石台(11-05 截图量)
+      const actor = this.host.addChildPlainNode(slot, 'LobbyFormationActor', 0, standH * (leader ? 0.23 : 0.42), standW, standH);
       this.renderFormationHeroSpinePreview(actor, hero, standW, standH, g.scale);
     } else {
       const plus = this.host.addChildLabel(slot, 'LobbyFormationSlotPlus', '+', 0, 64 * u, 48 * u, rgba(232, 200, 130, 170), new Size(60 * u, 60 * u));

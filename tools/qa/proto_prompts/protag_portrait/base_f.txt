@@ -1,0 +1,6 @@
+Generate ONE image: a full-body character portrait for a dark-fantasy RPG, portrait orientation 3:4, FULLY TRANSPARENT background (no floor, no shadow, no backdrop).
+TWO images are attached:
+- FIRST image = our in-game animated character outfit. The heroine wears EXACTLY this outfit: cream/off-white shaggy fur mantle over both shoulders and collar, brown leather chest armor with stitched plates, brown leather tassets over the hips with torn cream cloth hanging below, long brown cape behind, brown leather bracers and gloves, brown cloth leg wraps and leather boots, a plain long sword with a pale wooden hilt and pale blade. Same colours (warm browns, cream fur), realistic proportions (NOT chibi).
+- SECOND image = our old portrait of the heroine: keep HER FACE, HAIR and BODY exactly, and copy its FRAMING, POSE and PAINTING STYLE: standing upright facing the viewer, whole body from head to boots visible, head near the top edge, boots near the bottom edge, sword held down in her right hand with the blade pointing to the ground at her side, realistic semi-painted, matte, soft studio light, no glow, no effects.
+Only the outfit changes compared to the SECOND image; the outfit must match the FIRST image (tailored to a young woman, practical, not revealing).
+Output only the single character on a fully transparent background, no text.
