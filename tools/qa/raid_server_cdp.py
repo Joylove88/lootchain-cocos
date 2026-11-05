@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """矿境掠夺 PVE 闭环自验(docs/48,电脑端):无头 Edge 打开本地正式包 → 登录 → 主城 → 矿境面板截图 → 掠夺 RAID_n(走编队确认 → battles/start)
 → 机器人打(清守卫 → 砸水晶)→ 结算 → 打印结算回执(奖励 / 体力 / 复演裁定)+ 终局截图。
-用法:PREVIEW_PORT=7460 python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]"""
+用法:PREVIEW_PORT=7460 [PHONE=1] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]"""
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
 import boss_bar_cdp as base
@@ -13,8 +13,8 @@ ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.
 JS_CC = r"""(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms)); let cc = null; for (let i = 0; i < 30 && !cc; i++) { try { cc = await System.import('cc'); } catch (e) { await sleep(1500); } } if (!cc) return 'cc import failed'; window.__cc = cc; return 'ok'; })()"""
 STATE = "if(!sim) return 'nosim'; const u=sim.monsters.find(m=>m.player); return JSON.stringify({phase:sim.phase, t:Math.round(sim.timeMs), x:u&&+u.x.toFixed(2), hp:u&&Math.round(u.hp), max:u&&u.maxHp, heroes:sim.heroes.map(h=>Math.round(h.hp||0)+'/'+h.maxHp+(h.dead?'X':'')), crystal:sim.crystalHp+'/'+sim.crystalMaxHp, inputs:sim.inputs.length, serverRaid: gr.serverRaid});"
 BOT = ("window.__raidBot = setInterval(()=>{ try { const u=sim.monsters.find(m=>m.player); if(!u||sim.phase!=='wave'){ clearInterval(window.__raidBot); return; } const alive=sim.heroes.filter(h=>!h.dead); "
-       "const cellX=(c)=>1.45+(c%6)*1.18; const target=alive.length? alive.reduce((a,b)=>Math.abs(cellX(b.cell)-u.x)<Math.abs(cellX(a.cell)-u.x)?b:a) : null; const tx = target ? cellX(target.cell) : 0.9; const stop = target ? 1.1 : 0.2; "
-       "const laneT = target ? (Math.floor(target.cell/6)===0 ? 0.25 : 0.75) : 0.5; const laneD = laneT - (u.laneF||0.5); "
+       "const cellX=(h)=>h.fx!==undefined?h.fx:1.45+(h.cell%6)*1.18; const target=alive.length? alive.reduce((a,b)=>Math.abs(cellX(b)-u.x)<Math.abs(cellX(a)-u.x)?b:a) : null; const tx = target ? cellX(target) : 0.9; const stop = target ? 1.1 : 0.2; "
+       "const laneT = target ? (target.flane!==undefined ? target.flane : (Math.floor(target.cell/6)===0 ? 0.25 : 0.75)) : 0.5; const laneD = laneT - (u.laneF||0.5); "
        "raid.keys.delete(65); raid.keys.delete(68); raid.keys.delete(87); raid.keys.delete(83); "
        "if (Math.abs(tx-u.x) > stop || Math.abs(laneD) > 0.3) { if (Math.abs(tx-u.x) > stop) raid.keys.add(tx<u.x?65:68); if (Math.abs(laneD) > 0.3) raid.keys.add(laneD<0?87:83); setTimeout(()=>{ raid.keys.delete(65); raid.keys.delete(68); raid.keys.delete(87); raid.keys.delete(83); }, 120); } "
        "else { raid.attackPressedAt = Date.now(); if (Math.random()<0.15) raid.skillPressedAt[Math.floor(Math.random()*3)] = Date.now(); } } catch(e){} }, 300); return 'bot';")
@@ -61,7 +61,13 @@ async def main():
                     open(os.path.join(OUT, f'{name}.png'), 'wb').write(base64.b64decode(m['result']['data']))
                     print('shot', name, flush=True)
 
-            await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            if os.environ.get('PHONE') == '1':
+                # 手机横屏(20:9 Pixel 7 逻辑像素 915×412,DPR 2)+ 安卓 UA + 触摸:走手机设计高 720 的布局
+                await call('Network.setUserAgentOverride', {'userAgent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36', 'platform': 'Android'})
+                await call('Emulation.setTouchEmulationEnabled', {'enabled': True, 'maxTouchPoints': 5})
+                await call('Emulation.setDeviceMetricsOverride', {'width': 915, 'height': 412, 'deviceScaleFactor': 2, 'mobile': True, 'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
+            else:
+                await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             await call('Page.navigate', {'url': base.PAGE})
             r = await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             print('cc', r.get('result', {}).get('result', {}).get('value'), flush=True)
@@ -115,8 +121,8 @@ async def main():
                 st = await ev(STATE)
                 if i % 5 == 0:
                     print('t', st, flush=True)
-                if i == 4:
-                    await shot('raid_battle_mid')
+                if i in (2, 4, 8):
+                    await shot(f'raid_battle_mid_{i}')
                 if '"phase":"victory"' in st or '"phase":"defeat"' in st:
                     print('end', st, flush=True)
                     break
@@ -130,6 +136,7 @@ async def main():
                 await asyncio.sleep(1)
             await asyncio.sleep(2)
             await shot('raid_settlement')
+            print('result', await ev("const o=gr.root&&gr.root.getChildByName('GuardEndOverlay'); const r=o&&o.getChildByName('GuardRaidResult'); return JSON.stringify({overlay:!!o, result:!!r, children: r? r.children.map(c=>c.name):[]});"), flush=True)
     finally:
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True)
 

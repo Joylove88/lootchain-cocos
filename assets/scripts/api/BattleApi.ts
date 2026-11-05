@@ -1,5 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
-import { isRaidBattleStageCode, type RaidSetupDefenderVO, type RaidSetupVO } from '../types/RaidTypes';
+import { isRaidBattleStageCode, type RaidSetupAllyVO, type RaidSetupDefenderVO, type RaidSetupVO } from '../types/RaidTypes';
 import { guardRawHeroFromLineupJson, normalizeGuardCrystalSnapshot, normalizeGuardMonsterEntry, normalizeGuardRealmAura } from '../scenes/lobby/GuardReplay';
 import type {
   PlayerBattleCurrencyChangeVO,
@@ -341,6 +341,23 @@ function normalizeRaidSetup(raw: unknown): RaidSetupVO | null {
       spineAsset: readOptionalText(entry, 'spineAsset', MAX_TEXT),
       portraitAsset: readOptionalText(entry, 'portraitAsset', MAX_TEXT),
       hit: typeof entry.hit === 'number' ? readInteger(entry.hit, 1, Number.MAX_SAFE_INTEGER) : undefined,
+      ...(entry.boss === true ? { boss: true, title: readOptionalText(entry, 'title', MAX_TEXT) } : {}),
+    });
+  }
+  const allies: RaidSetupAllyVO[] = [];
+  for (const entry of readArray(raw, 'allies', 3)) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const heroCode = readText(entry, 'heroCode', MAX_TEXT, '');
+    if (!heroCode) {
+      continue;
+    }
+    allies.push({
+      heroId: typeof entry.heroId === 'number' ? readInteger(entry.heroId, 0, Number.MAX_SAFE_INTEGER) : null,
+      heroCode,
+      attack: readInteger(entry.attack, 1, Number.MAX_SAFE_INTEGER),
+      hp: readInteger(entry.hp, 1, Number.MAX_SAFE_INTEGER),
     });
   }
   if (defenders.length === 0) {
@@ -351,8 +368,19 @@ function normalizeRaidSetup(raw: unknown): RaidSetupVO | null {
     stageCode: readText(raw, 'stageCode', MAX_TEXT, ''),
     timeLimitMs: readInteger(raw.timeLimitMs, 10_000, 600_000),
     crystalHp: readInteger(raw.crystalHp, 1, Number.MAX_SAFE_INTEGER),
-    raider: { heroCode: readText(raw.raider, 'heroCode', MAX_TEXT, ''), attack: readInteger(raw.raider.attack, 1, Number.MAX_SAFE_INTEGER), hp: readInteger(raw.raider.hp, 1, Number.MAX_SAFE_INTEGER) },
+    raider: {
+      heroCode: readText(raw.raider, 'heroCode', MAX_TEXT, ''),
+      attack: readInteger(raw.raider.attack, 1, Number.MAX_SAFE_INTEGER),
+      hp: readInteger(raw.raider.hp, 1, Number.MAX_SAFE_INTEGER),
+      ...(raw.raider.protagonist === true ? {
+        protagonist: true,
+        heroName: readOptionalText(raw.raider, 'heroName', MAX_TEXT),
+        spineAsset: readOptionalText(raw.raider, 'spineAsset', MAX_TEXT),
+        title: readOptionalText(raw.raider, 'title', MAX_TEXT),
+      } : {}),
+    },
     defenders,
+    ...(allies.length > 0 ? { allies } : {}),
   };
 }
 

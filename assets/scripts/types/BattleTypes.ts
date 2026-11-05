@@ -5,6 +5,8 @@ export interface PlayerBattleStartDTO {
   heroIds: number[];
   leaderHeroId: number;
   clientVersion: string;
+  /** docs/61:支持矿境掠夺主角带队(主角进攻 + 3 名 AI 同伴 + 守矿首领);只在掠夺关卡传。 */
+  raidSquad?: boolean;
 }
 
 export interface PlayerBattleSettleDTO {

@@ -237,17 +237,42 @@ function resolveAllies(start: PlayerBattleStartVO | null, heroes: LobbyHeroItemV
 }
 
 function resolveRaidDefenderAllies(start: PlayerBattleStartVO | null): BattlePresentationUnitSnapshot[] {
-  return (start?.raid?.defenders ?? []).map((defender, index) => {
+  const defenders = (start?.raid?.defenders ?? []).map((defender, index) => {
     const unit = fromLineupHero(defender.hero, 5 + index, undefined);
     return {
       ...unit,
       unitKey: `npc-${defender.hero.heroCode}-${index}`,
       leader: false,
-      subline: `守卫 Lv.${defender.hero.level}`,
+      subline: defender.boss ? (defender.title || '首领') : `守卫 Lv.${defender.hero.level}`,
       spineAsset: defender.spineAsset ?? unit.spineAsset ?? null,
       portraitAsset: defender.portraitAsset ?? unit.portraitAsset ?? null,
     };
   });
+  // docs/61:主角当进攻方时不在 lineup 里,单独补一个表现单位(骨骼 = 回执 spineAsset,炼魂起 _lh 换装)
+  const raider = start?.raid?.raider;
+  if (raider?.protagonist) {
+    defenders.push({
+      ...EMPTY_ALLY,
+      unitKey: `raider-${raider.heroCode}`,
+      side: 'ally',
+      slot: 5 + defenders.length,
+      displayName: safeName(raider.heroName ?? '', '主角'),
+      subline: raider.title || '主角',
+      rarity: 'SSR',
+      level: 1,
+      power: 0,
+      role: 'front',
+      leader: true,
+      hpRatio: 1,
+      heroCode: raider.heroCode,
+      heroClass: '战士',
+      portraitAsset: null,
+      spineAsset: raider.spineAsset ?? null,
+      spineUuid: null,
+      scaleProfile: resolveHeroScaleProfile('SSR'),
+    });
+  }
+  return defenders;
 }
 
 function resolveEnemies(start: PlayerBattleStartVO | null): BattlePresentationUnitSnapshot[] {

@@ -4032,6 +4032,19 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  /** docs/61:掠夺结算后回矿境面板;retry = NPC 矿再来一次(直接进编队确认)。 */
+  private returnToLobbyRaidPanel(retry: boolean): void {
+    const stageCode = this.selectedLobbyStageCode ?? '';
+    this.returnToLobbyFromBattlePreview();
+    if (retry && isRaidStageCode(stageCode)) {
+      this.openLobbyBattlePreviewPanel(stageCode);
+      return;
+    }
+    if (isRaidStageCode(stageCode) || isRaidPvpStageCode(stageCode)) {
+      this.openLobbyRaidPanel();
+    }
+  }
+
   /**
    * 没有素材分组的页面(图鉴 / 编队 / 秘境试炼)的下载门(网页分层下载):素材没下到本地就先显示下载进度页,下齐再打开,
    * 绝不先画缺图的页面;已在本地直接打开。

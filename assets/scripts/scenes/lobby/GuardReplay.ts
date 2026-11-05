@@ -208,7 +208,9 @@ export function resolveGuardStageSetup(stageCode: string, recommendedPower: numb
 export interface GuardRaidSetup {
   crystalHp: number;
   raider: { heroCode: string; attack: number; hp: number };
-  defenders: Array<{ cell: number; hp: number; raw: GuardRawHero; hit?: number }>;
+  defenders: Array<{ cell: number; hp: number; raw: GuardRawHero; hit?: number; boss?: boolean }>;
+  /** docs/61 主角带队:进攻方 AI 同伴(编队英雄;旧回执为空)。heroCode 必须在 lineup 池里(职业从池取)。 */
+  allies?: Array<{ heroCode: string; attack: number; hp: number }>;
   /** 野外清怪模式(docs/50):无水晶、怪全灭即胜,怪物追击进攻方。 */
   clear?: boolean;
 }
@@ -242,7 +244,8 @@ export function guardStartRaidFromSetup(state: GuardBattleState, raid: GuardRaid
   guardStartRaid(
     state,
     { heroCode: raid.raider.heroCode, attack: raid.raider.attack, hp: raid.raider.hp, crystalHp: raid.crystalHp, clear: !!raid.clear },
-    raid.defenders.map((defender) => ({ heroCode: defender.raw.heroCode, cell: defender.cell, star: defender.raw.star, hp: defender.hp, hit: defender.hit })),
+    raid.defenders.map((defender) => ({ heroCode: defender.raw.heroCode, cell: defender.cell, star: defender.raw.star, hp: defender.hp, hit: defender.hit, boss: defender.boss })),
+    raid.allies ?? [],
   );
 }
 
@@ -545,7 +548,7 @@ export function guardRaidSetupFromStart(raw: unknown): GuardRaidSetup | null {
   if (!guardIsRecord(raw) || !guardIsRecord(raw.raider)) {
     return null;
   }
-  const defenders: Array<{ cell: number; hp: number; raw: GuardRawHero; hit?: number }> = [];
+  const defenders: Array<{ cell: number; hp: number; raw: GuardRawHero; hit?: number; boss?: boolean }> = [];
   for (const entry of Array.isArray(raw.defenders) ? raw.defenders.slice(0, 6) : []) {
     if (!guardIsRecord(entry)) {
       continue;
@@ -557,7 +560,14 @@ export function guardRaidSetupFromStart(raw: unknown): GuardRaidSetup | null {
       continue;
     }
     const hit = guardNum(entry.hit, 0);
-    defenders.push({ cell: Math.max(0, Math.min(11, Math.trunc(guardNum(entry.cell)))), hp: Math.max(1, Math.round(guardNum(entry.hp, 1))), raw: hero, ...(hit > 0 ? { hit: Math.round(hit) } : {}) });
+    defenders.push({ cell: Math.max(0, Math.min(11, Math.trunc(guardNum(entry.cell)))), hp: Math.max(1, Math.round(guardNum(entry.hp, 1))), raw: hero, ...(hit > 0 ? { hit: Math.round(hit) } : {}), ...(entry.boss === true ? { boss: true } : {}) });
+  }
+  const allies: Array<{ heroCode: string; attack: number; hp: number }> = [];
+  for (const entry of Array.isArray(raw.allies) ? raw.allies.slice(0, 3) : []) {
+    if (!guardIsRecord(entry) || !guardText(entry.heroCode)) {
+      continue;
+    }
+    allies.push({ heroCode: guardText(entry.heroCode).toUpperCase(), attack: Math.max(1, Math.round(guardNum(entry.attack, 1))), hp: Math.max(1, Math.round(guardNum(entry.hp, 1))) });
   }
   if (defenders.length === 0) {
     return null;
@@ -567,5 +577,6 @@ export function guardRaidSetupFromStart(raw: unknown): GuardRaidSetup | null {
     crystalHp: Math.max(1, Math.round(guardNum(raw.crystalHp, 1))),
     raider: { heroCode: guardText(raw.raider.heroCode).toUpperCase(), attack: Math.max(1, Math.round(guardNum(raw.raider.attack, 1))), hp: Math.max(1, Math.round(guardNum(raw.raider.hp, 1))) },
     defenders,
+    ...(allies.length > 0 ? { allies } : {}),
   };
 }

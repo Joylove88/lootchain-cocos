@@ -13,6 +13,7 @@ import { resolveLobbyBattlePresentationTimeline } from './LobbyBattlePresentatio
 import { resolveLobbyBattleVisualCompletionDurationMs } from './LobbyBattleVisualCompletion';
 import { resolveBattleReplay } from './LobbyBattleReplayModel';
 import { LOBBY_FORMATION_MAX } from '../../api/LobbyHeroApi';
+import { isRaidSquadStageCode } from '../../types/RaidTypes';
 
 const FALLBACK_BATTLE_PRESENTATION_TOTAL_MS = 45_000;
 
@@ -369,6 +370,8 @@ export class LobbyBattleFlow {
       heroIds: heroes.map((hero) => hero.id),
       leaderHeroId: leader.id,
       clientVersion: 'cocos-lobby-stage-4o',
+      // docs/61:矿境掠夺按「主角进攻 + 编队 3 人 AI 同伴 + 守矿首领」建场(旧客户端不传 → 服务端沿用旧口径)
+      ...(isRaidSquadStageCode(stageCode) ? { raidSquad: true } : {}),
     };
   }
 

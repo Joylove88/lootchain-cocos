@@ -53,7 +53,7 @@ import { FORGE_PRELOAD_ASSETS, FORGE_PRELOAD_ASSETS_V3 } from './lobby/LobbyForg
 import { HERO_DETAIL_PRELOAD_ASSETS } from './lobby/LobbyHeroDetailPanelRenderer';
 import { TOWN_ASSET_PATHS } from './lobby/LobbyTownConfig';
 import { WORLD_ASSET_PATHS } from './lobby/LobbyWorldMaps';
-import { NOTICE_BANNER_ASSETS, TERMINAL_ASSET_PATHS, TOWN_HUD_ASSET_PATHS } from './lobby/LobbyTownHudProto';
+import { NOTICE_BANNER_ASSETS, TERMINAL_ASSET_PATHS, TOWN_HUD_ASSETS, TOWN_HUD_ASSET_PATHS } from './lobby/LobbyTownHudProto';
 import { TOWN_WAYPOINT_RING_ASSET } from './lobby/LobbyTownWaypointFx';
 import { RAID_UI_ASSET_PATHS } from './lobby/LobbyRaidPanelRenderer';
 import { LOCK_BODY_ASSET, LOCK_HEAD_ASSET } from './UiLockGlyph';
@@ -361,6 +361,11 @@ export class UiSpriteFrameCache {
         track(BATTLE_C1812_BUFF_DEFENSE_DOWN_ASSET);
         track(BATTLE_C1812_BUFF_SHIELD_ASSET);
         track(BATTLE_C1812_BUFF_STUN_ASSET);
+        // docs/61 掠夺 HUD B 风格(原型 battle_b3):与野外 HUD 同一套圆钮 / 摇杆 / 线稿图标 + 玻璃面板 / 胶囊 / 主角技能图标
+        [TOWN_HUD_ASSETS.hudDisc, TOWN_HUD_ASSETS.hudDiscHot, TOWN_HUD_ASSETS.hudJoyBase, TOWN_HUD_ASSETS.hudJoyKnob, TOWN_HUD_ASSETS.icSword,
+          TOWN_HUD_ASSETS.icSlash, TOWN_HUD_ASSETS.icDash, TOWN_HUD_ASSETS.icWhirl, TOWN_HUD_ASSETS.icDodge].forEach((asset) => track(asset));
+        ['panel', 'hud_capsule', 'tag_pill', 'pill_primary', 'pill_secondary', 'profile_helmet', 'protag_skill_slash', 'protag_skill_seal', 'protag_skill_step']
+          .forEach((name) => track(`ui/glass/${name}/spriteFrame`));
         break;
       case 'crystal':
         GUARD_CRYSTAL_UI_ASSETS.forEach((asset) => track(asset));

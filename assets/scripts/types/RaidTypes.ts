@@ -41,14 +41,39 @@ export interface RaidSetupDefenderVO {
   portraitAsset?: string | null;
   /** 野外清怪(docs/50):这只怪每一击对进攻方的最终伤害。 */
   hit?: number;
+  /** docs/61:守矿首领(对方主角 / NPC 矿主),站水晶前、顶部单独血条。 */
+  boss?: boolean;
+  /** 首领称号:真人矿 = 对方境界(炼魂 · 中期),NPC = 矿主。 */
+  title?: string | null;
+}
+
+/** docs/61 主角带队:进攻方(主角时带表现信息,主角不在 lineup 里)。 */
+export interface RaidSetupRaiderVO {
+  heroCode: string;
+  attack: number;
+  hp: number;
+  protagonist?: boolean;
+  heroName?: string | null;
+  spineAsset?: string | null;
+  title?: string | null;
+}
+
+/** docs/61 AI 同伴(编队英雄;heroCode 在开战回执 lineup 里)。 */
+export interface RaidSetupAllyVO {
+  heroId: number | null;
+  heroCode: string;
+  attack: number;
+  hp: number;
 }
 
 export interface RaidSetupVO {
   stageCode: string;
   timeLimitMs: number;
   crystalHp: number;
-  raider: { heroCode: string; attack: number; hp: number };
+  raider: RaidSetupRaiderVO;
   defenders: RaidSetupDefenderVO[];
+  /** docs/61:AI 同伴(旧服务端 / 野外没有)。 */
+  allies?: RaidSetupAllyVO[];
   /** 野外清怪模式(docs/50):无水晶,怪全灭即胜。 */
   clear?: boolean;
 }
@@ -65,6 +90,11 @@ export function isRaidPvpStageCode(stageCode: string | null | undefined): boolea
 /** 野外怪群关卡码 FIELD_<地图>_<营地>(docs/50),例:FIELD_WOODS_1、FIELD_GRAY_E。 */
 export function isFieldStageCode(stageCode: string | null | undefined): boolean {
   return /^FIELD_[A-Z]{2,12}_[A-Z0-9]{1,3}$/i.test((stageCode ?? '').trim());
+}
+
+/** 矿境掠夺(NPC 矿 / 真人矿,不含野外):开战声明支持主角带队(docs/61)。 */
+export function isRaidSquadStageCode(stageCode: string | null | undefined): boolean {
+  return isRaidStageCode(stageCode) || isRaidPvpStageCode(stageCode);
 }
 
 /** NPC 矿、真人矿或野外怪群:都走掠夺(动作)战斗流。 */

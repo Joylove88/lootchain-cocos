@@ -145,6 +145,8 @@ export interface GuardHeroUnit {
   moving?: boolean;
   /** 清怪模式:每一击对进攻方的最终伤害(服务端按进攻方血量折算下发,不走守卫普攻公式)。 */
   clearHit?: number;
+  /** docs/61:守矿首领(对方主角 / NPC 矿主),站水晶前(fx / flane),出手不锁车道。 */
+  raidBoss?: boolean;
 }
 
 /** 每个英雄编码的词条状态(docs/32):蓝卡层数、紫卡层数(每英雄 1 条)、专属大招觉醒等级。 */
@@ -212,6 +214,8 @@ export interface GuardMonster {
   diedAtMs: number;
   /** 掠夺模式:玩家操控的进攻英雄(位置由输入驱动,不自动啃水晶、不吃荆棘)。 */
   player?: boolean;
+  /** docs/61 主角带队:进攻方 AI 同伴(player=true 的同时为 true;倒下不判负)。 */
+  raidAlly?: boolean;
   /** 玩家单位的连续车道坐标 0..1(渲染用;lane 取四舍五入供守卫锁定)。 */
   laneF?: number;
   /** 朝向:-1 朝水晶(屏幕左),1 朝出怪口。 */
@@ -237,6 +241,34 @@ export interface GuardRaider {
   /** 被守卫击中后的短暂硬直。 */
   staggerUntilMs: number;
 }
+/** docs/61 主角带队:进攻方 AI 同伴(编队 3 名英雄)。 */
+export interface GuardRaidAlly {
+  monsterId: number;
+  heroCode: string;
+  attack: number;
+  role: GuardHeroRole;
+  /** 队形槽 0..2(跟随时的站位偏移)。 */
+  slot: number;
+  attackReadyMs: number;
+  /** 当前攻击目标:守卫 unitId;-1 = 水晶;null = 跟随。 */
+  targetUnitId: number | null;
+  /** 本 tick 是否在移动(渲染层播跑 / 待机)。 */
+  moving: boolean;
+}
+/** 同伴跟随队形:相对主角的 x 偏移(格,主角朝水晶 = 往右是身后)与纵深偏移。 */
+export const GUARD_RAID_ALLY_FORMATION: ReadonlyArray<{ dx: number; dl: number }> = [
+  { dx: 0.75, dl: -0.24 },
+  { dx: 0.75, dl: 0.24 },
+  { dx: 1.35, dl: 0 },
+];
+/** 同伴移速(格/秒)、索敌半径(以主角为圆心,格)、近战 / 远程出手距离、出手间隔。 */
+export const GUARD_RAID_ALLY_SPEED = 2.9;
+export const GUARD_RAID_ALLY_AGGRO = 4.2;
+export const GUARD_RAID_ALLY_MELEE_REACH = 0.95;
+export const GUARD_RAID_ALLY_RANGED_REACH = 3.4;
+export const GUARD_RAID_ALLY_INTERVAL_MS: Record<GuardHeroRole, number> = { melee: 900, ranged: 1100, control: 1200, support: 1300 };
+/** 首领站位:水晶正前方、走道中线。 */
+export const GUARD_RAID_BOSS_X = 1.2;
 export const GUARD_RAID_TIME_LIMIT_MS = 180_000;
 /** 进攻方出生 x 与可走到的最右 x(原型 v1:出生在画面约 2/3 处,右侧留给动作钮,不许走到按钮底下)。 */
 export const GUARD_RAID_SPAWN_X = 7.0;
@@ -351,7 +383,9 @@ export interface GuardEvent {
     // docs/41 §6:升星被动触发(passive=类型,monsterIds=受影响的怪,amount=伤害 / 回复量)/ 能量护盾在波次开始时套上(amount=护盾量)。
     | 'passiveProc' | 'crystalShield'
     // docs/47 P0 掠夺:进攻方出手(level=连段 / 技能序号)/ 命中守卫(cell + amount,crit=重击)/ 守卫倒下 / 翻滚 / 进攻方受伤
-    | 'raidSwing' | 'raidSkill' | 'raidHit' | 'heroDead' | 'raidDodge' | 'raidHurt';
+    | 'raidSwing' | 'raidSkill' | 'raidHit' | 'heroDead' | 'raidDodge' | 'raidHurt'
+    // docs/61 主角带队:同伴出手(monsterId=同伴,cell=目标守卫格;打水晶时 cell=-1)/ 同伴倒下
+    | 'raidAllyAttack' | 'raidAllyDead';
   timeMs: number;
   /** passiveProc:被动类型(GuardPassiveType)。 */
   passive?: string;
@@ -926,6 +960,11 @@ export interface GuardBattleState {
   inputs: GuardInput[];
   /** docs/47 P0 掠夺模式的进攻方;非掠夺局为 null。 */
   raider: GuardRaider | null;
+  /** docs/61 主角带队:AI 同伴(旧回执 / 野外为空)。 */
+  raidAllies: GuardRaidAlly[];
+  /** 掠夺伤害统计(只统计,不影响胜负):我方按英雄码(主角 / 同伴,含打水晶);敌方按守卫 unitId(打在我方身上的实际伤害)。 */
+  raidDealt: Record<string, number>;
+  raidTaken: Record<number, number>;
   /** 野外清怪模式(docs/50):没有水晶,防守方(怪物)全灭即胜;怪物会追击进攻方。 */
   raidClear?: boolean;
   /** 战场事件:本波待触发(波开始时用 eventRng 排好)、场上流星矿晶、已出现的偷金鼠数。 */
@@ -1626,6 +1665,9 @@ export function createGuardBattle(
     eventRng: createGuardRng((seed ^ 0x27d4eb2f) >>> 0),
     inputs: [],
     raider: null,
+    raidAllies: [],
+    raidDealt: {},
+    raidTaken: {},
     pendingFieldEvents: [],
     pickups: [],
     nextPickupId: 1,
@@ -2553,7 +2595,7 @@ function damageMonster(state: GuardBattleState, monster: GuardMonster, damage: n
     return;
   }
   if (monster.player) {
-    guardDamageRaider(state, monster, damage);
+    guardDamageRaider(state, monster, damage, byHero);
     return;
   }
   // 集火标记(docs/37 A):被标记目标受伤 +20%;普攻已在结算时乘过(飘字数值一致),这里不重复乘。
@@ -4193,7 +4235,8 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
 export function guardStartRaid(
   state: GuardBattleState,
   raider: { heroCode: string; attack: number; hp: number; crystalHp?: number; clear?: boolean },
-  defense: Array<{ heroCode: string; cell: number; star: number; hp: number; hit?: number }>,
+  defense: Array<{ heroCode: string; cell: number; star: number; hp: number; hit?: number; boss?: boolean }>,
+  allies: Array<{ heroCode: string; attack: number; hp: number }> = [],
 ): void {
   state.mode = 'raid';
   state.phase = 'wave';
@@ -4236,6 +4279,8 @@ export function guardStartRaid(
         moving: false,
         clearHit: Math.max(1, Math.round(entry.hit ?? 1)),
       } : {}),
+      // docs/61:首领站水晶正前方走道中线(不按格子站)
+      ...(entry.boss && !state.raidClear ? { raidBoss: true, fx: GUARD_RAID_BOSS_X, flane: 0.5 } : {}),
     };
   });
   const hp = Math.max(1, Math.round(raider.hp));
@@ -4275,6 +4320,35 @@ export function guardStartRaid(
     skillReadyMs: [0, 0, 0],
     staggerUntilMs: 0,
   };
+  // docs/61 主角带队:同伴站主角身后,跟随 / 自动索敌(旧回执 allies 为空 → 与改前逐位一致)
+  state.raidAllies = [];
+  allies.slice(0, GUARD_RAID_ALLY_FORMATION.length).forEach((ally, slot) => {
+    const form = GUARD_RAID_ALLY_FORMATION[slot];
+    const allyHp = Math.max(1, Math.round(ally.hp));
+    const allyUnit: GuardMonster = {
+      ...monster,
+      monsterId: state.nextMonsterId++,
+      x: Math.min(GUARD_RAID_MAX_X, GUARD_RAID_SPAWN_X + form.dx),
+      hp: allyHp,
+      maxHp: allyHp,
+      spineCode: `ally:${ally.heroCode}`,
+      laneF: Math.max(0, Math.min(1, 0.5 + form.dl)),
+      lane: Math.round(0.5 + form.dl),
+      raidAlly: true,
+    };
+    state.monsters.push(allyUnit);
+    const pool = state.pool.find((hero) => hero.heroCode === ally.heroCode);
+    state.raidAllies.push({
+      monsterId: allyUnit.monsterId,
+      heroCode: ally.heroCode,
+      attack: Math.max(1, Math.round(ally.attack)),
+      role: pool?.role ?? 'melee',
+      slot,
+      attackReadyMs: 600 + slot * 150,
+      targetUnitId: null,
+      moving: false,
+    });
+  });
 }
 
 function guardRaidUnit(state: GuardBattleState): GuardMonster | null {
@@ -4415,7 +4489,119 @@ function guardRaidTick(state: GuardBattleState, dtMs: number): boolean {
       }
     }
   }
+  if (state.raidAllies.length > 0 && state.phase === 'wave') {
+    guardRaidAlliesTick(state, unit, dtMs);
+  }
   return (state.phase as GuardPhase) === 'victory' || (state.phase as GuardPhase) === 'defeat';
+}
+
+/** 守卫在走道上的位置(格 / 纵深);首领与清怪怪物用 fx / flane。 */
+function guardRaidHeroPos(hero: GuardHeroUnit): { x: number; lane: number } {
+  return {
+    x: hero.fx ?? guardCellX(hero.cell),
+    lane: hero.flane ?? (Math.floor(hero.cell / GUARD_GRID_COLS) === 0 ? 0.25 : 0.75),
+  };
+}
+
+/**
+ * docs/61 同伴 AI(确定性,复演逐位一致):以主角为圆心 GUARD_RAID_ALLY_AGGRO 格内有守卫就去打最近的一个
+ * (近战贴到守卫右侧同一纵深,远程保持射程);附近没有守卫且主角已压到水晶前就打水晶;否则跟在主角身后。
+ */
+function guardRaidAlliesTick(state: GuardBattleState, lead: GuardMonster, dtMs: number): void {
+  const guards = state.heroes.filter((hero) => !hero.dead && hero.hp !== undefined);
+  const leadFacing = lead.facing ?? -1;
+  for (const ally of state.raidAllies) {
+    const unit = state.monsters.find((monster) => monster.monsterId === ally.monsterId);
+    if (!unit || unit.dead) {
+      ally.moving = false;
+      ally.targetUnitId = null;
+      continue;
+    }
+    const ranged = ally.role !== 'melee';
+    const reach = ranged ? GUARD_RAID_ALLY_RANGED_REACH : GUARD_RAID_ALLY_MELEE_REACH;
+    const form = GUARD_RAID_ALLY_FORMATION[ally.slot] ?? GUARD_RAID_ALLY_FORMATION[0];
+    const lane = unit.laneF ?? 0.5;
+    let target: GuardHeroUnit | null = null;
+    let best = Number.POSITIVE_INFINITY;
+    for (const hero of guards) {
+      const pos = guardRaidHeroPos(hero);
+      if (Math.abs(pos.x - lead.x) > GUARD_RAID_ALLY_AGGRO) {
+        continue;
+      }
+      const d = Math.abs(pos.x - unit.x) + Math.abs(pos.lane - lane) * 2;
+      if (d < best) {
+        best = d;
+        target = hero;
+      }
+    }
+    const crystal = !target && !state.raidClear && lead.x <= GUARD_CRYSTAL_REACH_X + GUARD_RAID_ALLY_AGGRO;
+    let goalX: number;
+    let goalLane: number;
+    if (target) {
+      const pos = guardRaidHeroPos(target);
+      goalX = pos.x + reach * (ranged ? 0.85 : 0.7);
+      goalLane = ranged ? lane : Math.max(0, Math.min(1, pos.lane + form.dl * 0.4));
+    } else if (crystal) {
+      goalX = GUARD_CRYSTAL_REACH_X + (ranged ? reach * 0.85 : 0.55);
+      goalLane = Math.max(0, Math.min(1, 0.5 + form.dl));
+    } else {
+      goalX = lead.x - leadFacing * form.dx;
+      goalLane = Math.max(0, Math.min(1, (lead.laneF ?? 0.5) + form.dl));
+    }
+    goalX = Math.max(GUARD_CRYSTAL_REACH_X, Math.min(GUARD_RAID_MAX_X, goalX));
+    const step = GUARD_RAID_ALLY_SPEED * (dtMs / 1000);
+    const laneStep = GUARD_RAID_MOVE_LANE * (dtMs / 1000);
+    const dx = goalX - unit.x;
+    const nx = Math.abs(dx) <= step ? goalX : unit.x + Math.sign(dx) * step;
+    const dl = goalLane - lane;
+    const nl = Math.abs(dl) <= laneStep ? goalLane : lane + Math.sign(dl) * laneStep;
+    const moved = Math.abs(nx - unit.x) + Math.abs(nl - lane);
+    unit.x = nx;
+    unit.laneF = nl;
+    unit.lane = Math.round(nl);
+    ally.moving = moved > 0.0005;
+    if (Math.abs(dx) > 0.0005) {
+      unit.facing = dx < 0 ? -1 : 1;
+    }
+    ally.targetUnitId = target ? target.unitId : crystal ? -1 : null;
+    if (state.timeMs < ally.attackReadyMs || (!target && !crystal)) {
+      continue;
+    }
+    const mult = ally.role === 'support' ? 0.7 : 1;
+    const damage = Math.max(1, Math.round(ally.attack * mult));
+    if (target) {
+      const pos = guardRaidHeroPos(target);
+      const inRange = ranged
+        ? Math.abs(pos.x - unit.x) <= reach + 0.2
+        : Math.abs(pos.x - unit.x) <= reach && Math.abs(pos.lane - nl) <= 0.3;
+      if (!inRange) {
+        continue;
+      }
+      unit.facing = pos.x < unit.x ? -1 : 1;
+      ally.attackReadyMs = state.timeMs + GUARD_RAID_ALLY_INTERVAL_MS[ally.role];
+      const hp = target.hp ?? 0;
+      state.raidDealt[ally.heroCode] = (state.raidDealt[ally.heroCode] ?? 0) + Math.min(hp, damage);
+      target.hp = Math.max(0, hp - damage);
+      state.events.push({ type: 'raidAllyAttack', timeMs: state.timeMs, monsterId: unit.monsterId, cell: target.cell, heroCode: ally.heroCode, amount: damage });
+      if (target.hp <= 0) {
+        target.dead = true;
+        state.events.push({ type: 'heroDead', timeMs: state.timeMs, cell: target.cell, heroCode: target.heroCode });
+      }
+    } else if (unit.x <= GUARD_CRYSTAL_REACH_X + (ranged ? reach + 0.2 : 0.9)) {
+      unit.facing = -1;
+      ally.attackReadyMs = state.timeMs + GUARD_RAID_ALLY_INTERVAL_MS[ally.role];
+      const crystalDamage = Math.max(1, Math.round(damage * GUARD_RAID_CRYSTAL_MULT));
+      state.raidDealt[ally.heroCode] = (state.raidDealt[ally.heroCode] ?? 0) + Math.min(state.crystalHp, crystalDamage);
+      state.crystalHp = Math.max(0, state.crystalHp - crystalDamage);
+      state.events.push({ type: 'raidAllyAttack', timeMs: state.timeMs, monsterId: unit.monsterId, cell: -1, heroCode: ally.heroCode, amount: crystalDamage });
+      state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: unit.monsterId, amount: crystalDamage });
+      if (state.crystalHp <= 0) {
+        state.phase = 'victory';
+        state.events.push({ type: 'victory', timeMs: state.timeMs });
+        return;
+      }
+    }
+  }
 }
 
 function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit: GuardMonster, kind: GuardRaidHitKind): void {
@@ -4452,6 +4638,7 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
       continue;
     }
     hitAny = true;
+    state.raidDealt[raider.heroCode] = (state.raidDealt[raider.heroCode] ?? 0) + Math.min(hero.hp, damage);
     hero.hp = Math.max(0, hero.hp - damage);
     state.events.push({ type: 'raidHit', timeMs: state.timeMs, cell: hero.cell, heroCode: hero.heroCode, amount: damage, crit: heavy, monsterId: unit.monsterId });
     if (hero.hp <= 0) {
@@ -4470,6 +4657,7 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
   // 身前没有守卫、贴着水晶、朝向水晶:打水晶
   if (!hitAny && facing < 0 && unit.x <= GUARD_CRYSTAL_REACH_X + 0.55) {
     const crystalDamage = Math.max(1, Math.round(damage * GUARD_RAID_CRYSTAL_MULT));
+    state.raidDealt[raider.heroCode] = (state.raidDealt[raider.heroCode] ?? 0) + Math.min(state.crystalHp, crystalDamage);
     state.crystalHp = Math.max(0, state.crystalHp - crystalDamage);
     state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: unit.monsterId, amount: crystalDamage });
     if (state.crystalHp <= 0) {
@@ -4550,19 +4738,40 @@ function guardClearMonsterTick(state: GuardBattleState, hero: GuardHeroUnit, dtM
     pattern: guardHeroProfileOf(state, hero.heroCode).archetype,
     hits: [{ monsterId: unit.monsterId, amount, kind: 'main' }],
   });
-  guardDamageRaider(state, unit, amount / GUARD_RAID_INCOMING_MULT);
+  guardDamageRaider(state, unit, amount / GUARD_RAID_INCOMING_MULT, hero);
 }
 
-/** 进攻方受伤:无敌帧内免伤;打空血 = 掠夺失败。 */
-function guardDamageRaider(state: GuardBattleState, unit: GuardMonster, damage: number): void {
+/** 进攻方受伤:无敌帧内免伤;打空血 = 掠夺失败。同伴(docs/61)同承伤倍率、无翻滚,倒下只退场不判负。 */
+function guardDamageRaider(state: GuardBattleState, unit: GuardMonster, damage: number, byHero: GuardHeroUnit | null = null): void {
   const raider = state.raider;
   if (!raider) {
+    return;
+  }
+  if (unit.raidAlly) {
+    if (unit.dead) {
+      return;
+    }
+    const hurt = Math.max(1, Math.round(damage * GUARD_RAID_INCOMING_MULT));
+    const dealt = Math.min(unit.hp, hurt);
+    unit.hp = Math.max(0, unit.hp - hurt);
+    if (byHero) {
+      state.raidTaken[byHero.unitId] = (state.raidTaken[byHero.unitId] ?? 0) + dealt;
+    }
+    state.events.push({ type: 'raidHurt', timeMs: state.timeMs, monsterId: unit.monsterId, amount: hurt });
+    if (unit.hp <= 0) {
+      unit.dead = true;
+      unit.diedAtMs = state.timeMs;
+      state.events.push({ type: 'raidAllyDead', timeMs: state.timeMs, monsterId: unit.monsterId });
+    }
     return;
   }
   if (state.timeMs < raider.dodgeUntilMs) {
     return;
   }
   const amount = Math.max(1, Math.round(damage * GUARD_RAID_INCOMING_MULT));
+  if (byHero) {
+    state.raidTaken[byHero.unitId] = (state.raidTaken[byHero.unitId] ?? 0) + Math.min(unit.hp, amount);
+  }
   unit.hp = Math.max(0, unit.hp - amount);
   raider.staggerUntilMs = Math.max(raider.staggerUntilMs, state.timeMs + GUARD_RAID_STAGGER_MS);
   state.events.push({ type: 'raidHurt', timeMs: state.timeMs, monsterId: unit.monsterId, amount });

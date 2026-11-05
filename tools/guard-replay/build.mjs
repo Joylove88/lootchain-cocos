@@ -1,6 +1,6 @@
 // 守卫战服务端复演产物构建(docs/43):把客户端同一份纯逻辑 TS(模型 / 词条 / 技能表 / 战斗属性 / 复演)转成 .mjs,
 // 连同 cli.mjs 一起输出到后端仓 guard-replay/,由 Java 结算时用 node 调用。模型有改动就要重跑本脚本并提交后端仓。
-// 用法:npm run build:guard-replay   (默认输出 ../LootChain/guard-replay)
+// 用法:npm run build:guard-replay   (默认输出 ../LootChain/guard-replay);node tools/guard-replay/build.mjs <输出目录> [源码目录]
 import { createRequire } from 'module';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -12,7 +12,8 @@ const ts = require('D:/office app/cocos/editors/Creator/3.8.8/resources/app.asar
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..', '..');
 const out = path.resolve(process.argv[2] || path.join(repo, '..', 'LootChain', 'guard-replay'));
-const srcDir = path.join(repo, 'assets', 'scripts', 'scenes', 'lobby');
+// 第二参可指定源码目录(自检用:把 git 旧版本源码导出到临时目录,构建「旧模型」做兼容对比)
+const srcDir = process.argv[3] ? path.resolve(process.argv[3]) : path.join(repo, 'assets', 'scripts', 'scenes', 'lobby');
 const modules = ['GuardBattleModel', 'GuardPerkConfig', 'LobbyBattleHeroSkillConfig', 'HeroCombatStats', 'GuardReplay'];
 
 fs.mkdirSync(out, { recursive: true });

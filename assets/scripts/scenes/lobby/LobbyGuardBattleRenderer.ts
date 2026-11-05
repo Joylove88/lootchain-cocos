@@ -140,7 +140,7 @@ import {
 } from './LobbyBattleUnitSpineRuntime';
 import { worldMapOfStage } from './LobbyWorldMaps';
 import { loadSharedSpineData } from './SpineDataStore';
-import { GuardRaidController } from './GuardRaidController';
+import { GuardRaidController, formatInt } from './GuardRaidController';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
@@ -181,6 +181,8 @@ export interface LobbyGuardBattleHost {
   currentTrialOutputTiers?(): Array<{ tierCode: string; tierName: string; minScore: number }>;
   settleLobbyBattleSession(): void;
   returnToLobbyFromBattlePreview(): void;
+  /** docs/61:掠夺结算后回矿境面板(retry = NPC 矿再来一次,直接进编队确认)。缺省退回大厅。 */
+  returnToLobbyRaidPanel?(retry: boolean): void;
   setStatus(text: string): void;
   addChildPlainNode(parent: Node, name: string, x: number, y: number, width: number, height: number): Node;
   addChildLabel(
@@ -1068,6 +1070,7 @@ export class LobbyGuardBattleRenderer {
       mountSprite: (parent, name, path, x, y, w, h) => this.mountSprite(parent, name, path, x, y, w, h),
       attackSfx: (heroCode) => gameAudio.sfx(this.resolveRaidSfxKey(heroCode), 0.6),
     });
+    this.raid.setRaiderCode(sim.raider?.heroCode ?? '');
   }
 
   /** 掠夺(docs/47 P0):进攻方斩中守卫的命中特效——先用英雄专属 fx_pack 命中骨骼,没就绪退静态斩击图(2026-10-25 用户「特效都没了」)。 */
@@ -1951,11 +1954,10 @@ export class LobbyGuardBattleRenderer {
     const row = Math.floor(cell / GUARD_GRID_COLS);
     if (this.isRaidStage()) {
       // 野外清怪(docs/50):怪物会追人,站位用模型里的实时位置
-      if (this.sim?.raidClear) {
-        const hero = this.sim.heroes.find((item) => item.cell === cell);
-        if (hero && hero.fx !== undefined) {
-          return { x: this.xToPx(hero.fx), y: this.raidLaneY(hero.flane ?? 0.5) };
-        }
+      // docs/61:守矿首领也不按格子站(fx / flane = 水晶正前方)
+      const hero = this.sim?.heroes.find((item) => item.cell === cell);
+      if (hero && hero.fx !== undefined) {
+        return { x: this.xToPx(hero.fx), y: this.raidLaneY(hero.flane ?? 0.5) };
       }
       // 掠夺:x 与模拟坐标一致(进攻方挥刀范围所见即所得),上下两排在走道里错开站(原型 v1)
       return { x: this.xToPx(guardCellX(cell)), y: this.raidLaneY(row === 0 ? 0.25 : 0.75) };
@@ -2098,17 +2100,22 @@ export class LobbyGuardBattleRenderer {
       .start();
     // 水晶血条挂在水晶头顶(2026-09-28 用户:"血条也要放到水晶上"),原左上角大血条移除;独立节点,不随水晶呼吸缩放。
     const barW = Math.max(width * 1.35, 132);
-    const barH = 18;
+    // docs/61 掠夺(原型 battle_b3):细蓝条 + 数字(手机上水晶靠上,数字放条上方会压到左上输出面板 → 放条下方)
+    const raidSlim = this.isRaidStage() && !this.sim?.raidClear;
+    const barH = raidSlim ? 8 : 18;
     // 水晶贴左缘:血条整体钳在屏幕内(左留 12px)
     const barX = Math.max(x, -this.layoutWidth / 2 + 12 + barW / 2);
     const bar = this.host.addChildPlainNode(field, 'GuardCrystalHpBar', barX, y + height / 2 + 22, barW, barH);
     bar.addComponent(Graphics);
-    const hpText = this.host.addChildLabel(bar, 'GuardCrystalHpText', '', 0, 0, 14, rgba(255, 250, 235, 250), new Size(barW - 8, barH));
+    const hpText = this.host.addChildLabel(bar, 'GuardCrystalHpText', '', 0, raidSlim ? -barH / 2 - 12 : 0, raidSlim ? 17 : 14, rgba(255, 250, 235, 250), new Size(barW - 8, raidSlim ? 22 : barH));
     hpText.enableOutline = true;
     hpText.outlineColor = rgba(8, 14, 30, 255);
     hpText.outlineWidth = 2;
     hpText.isBold = true;
     LobbyGuardBattleRenderer.hudCharCache(hpText);
+    if (this.isRaidStage() && !this.sim?.raidClear) {
+      return;
+    }
     const cap = this.host.addChildPlainNode(field, 'GuardCrystalHpCap', barX, y + height / 2 + 22 + barH / 2 + 11, 120, 18);
     const capLabel = this.host.addChildLabel(cap, 'Text', '守卫水晶', 0, 0, 14, rgba(170, 215, 255, 240), new Size(120, 18));
     capLabel.enableOutline = true;
@@ -2501,7 +2508,7 @@ export class LobbyGuardBattleRenderer {
       hpGraphics.fillColor = rgba(8, 12, 22, 230);
       hpGraphics.roundRect(-w / 2, -h / 2, w, h, r);
       hpGraphics.fill();
-      const inset = 3;
+      const inset = h <= 10 ? 1.5 : 3;
       const fillW = Math.max(r, (w - inset * 2) * hpRatio);
       hpGraphics.fillColor = hpRatio > 0.35 ? rgba(70, 165, 255, 250) : rgba(240, 86, 66, 250);
       hpGraphics.roundRect(-w / 2 + inset, -h / 2 + inset, fillW, h - inset * 2, r - inset);
@@ -2509,14 +2516,14 @@ export class LobbyGuardBattleRenderer {
       hpGraphics.fillColor = hpRatio > 0.35 ? rgba(190, 230, 255, 90) : rgba(255, 190, 170, 90);
       hpGraphics.roundRect(-w / 2 + inset, 0, fillW, h / 2 - inset, r - inset);
       hpGraphics.fill();
-      hpGraphics.strokeColor = rgba(214, 170, 96, 235);
-      hpGraphics.lineWidth = 1.5;
+      hpGraphics.strokeColor = h <= 10 ? rgba(200, 214, 232, 120) : rgba(214, 170, 96, 235);
+      hpGraphics.lineWidth = h <= 10 ? 1 : 1.5;
       hpGraphics.roundRect(-w / 2, -h / 2, w, h, r);
       hpGraphics.stroke();
     }
     const hpText = hpBar?.getChildByName('GuardCrystalHpText')?.getComponent(Label);
     if (hpText) {
-      const hpString = `${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
+      const hpString = sim.mode === 'raid' ? `${formatInt(Math.ceil(sim.crystalHp))} / ${formatInt(sim.crystalMaxHp)}` : `${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
       if (hpText.string !== hpString) {
         hpText.string = hpString;
       }
@@ -3043,10 +3050,11 @@ export class LobbyGuardBattleRenderer {
     this.stepBattleGuide(sim);
     this.syncHeroes();
     this.raid?.sync(sim);
-    const raiderView = this.raid?.raiderView();
-    if (raiderView && !this.monsterViews.has(raiderView.monsterId)) {
-      // 进攻方也登记进怪物视图表:守卫的弹道 / 斩击 / 技能特效才找得到目标(2026-10-25 用户「攻击弹道、特效都没了」)
-      this.monsterViews.set(raiderView.monsterId, raiderView.view);
+    for (const playerView of this.raid?.playerViews() ?? []) {
+      if (!this.monsterViews.has(playerView.monsterId)) {
+        // 进攻方 / 同伴(docs/61)也登记进怪物视图表:守卫的弹道 / 斩击 / 技能特效才找得到目标(2026-10-25 用户「攻击弹道、特效都没了」)
+        this.monsterViews.set(playerView.monsterId, playerView.view);
+      }
     }
     this.syncResonance();
     this.syncMonsters();
@@ -7612,8 +7620,8 @@ export class LobbyGuardBattleRenderer {
   private liveDamageFloaters = 0;
 
   private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
-    if (targetId === this.raiderMonsterId) {
-      // 进攻方掉血由 GuardRaidController 按折算后的实际数值飘(heroAttack 的 amount 是折算前的)
+    if (targetId === this.raiderMonsterId || this.sim?.monsters.find((entry) => entry.monsterId === targetId)?.player) {
+      // 进攻方 / 同伴掉血由 GuardRaidController 按折算后的实际数值飘(heroAttack 的 amount 是折算前的)
       return;
     }
     const big = skill || amount >= 1000;
@@ -10786,6 +10794,16 @@ export class LobbyGuardBattleRenderer {
     const sim = this.sim;
     const rush = sim?.mode === 'rush';
     const raid = sim?.mode === 'raid';
+    if (raid && sim && !sim.raidClear && this.serverRaid && this.raid) {
+      // docs/61(原型 result_b):结果 + 奖励 + 我方 / 敌方输出对比;按钮等结算回执到了再挂
+      g.clear();
+      // 原型 result_b:战场压暗约 60%,战斗 HUD 由控制器藏掉
+      g.fillColor = rgba(6, 8, 12, 196);
+      g.rect(-width / 2, -height / 2, width, height);
+      g.fill();
+      this.raid.mountResult(overlay, sim, victory, width, height);
+      return;
+    }
     const panelH = height * 0.56;
     this.paintOverlayPanel(overlay, panelH * 1.65, panelH, -height * 0.02);
     const clear = !!sim?.raidClear;
@@ -10867,6 +10885,11 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
+  /** NPC 矿可「再来一次」;真人矿有 24 小时限制,只回矿境。 */
+  private selectedRaidRetryable(): boolean {
+    return /^RAID_\d+$/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
+  }
+
   /** 结算面板(宽 = 高 × 1.65,高 = 布局高 × 0.56)的文字可用宽度。 */
   private endOverlayTextWidth(): number {
     return Math.min(this.layoutWidth * 0.7, this.layoutHeight * 0.56 * 1.65 * 0.84);
@@ -10895,6 +10918,16 @@ export class LobbyGuardBattleRenderer {
     }
     if (battleState.error && settleLabel) {
       settleLabel.string = `结算失败:${battleState.error}`;
+    }
+    if (overlay.getChildByName('GuardRaidResult') && this.raid) {
+      this.raid.refreshResult(overlay, battleState, this.selectedRaidRetryable(), (retry) => {
+        if (this.host.returnToLobbyRaidPanel) {
+          this.host.returnToLobbyRaidPanel(retry);
+        } else {
+          this.host.returnToLobbyFromBattlePreview();
+        }
+      });
+      return;
     }
     const settlement = battleState.settlement;
     if (!settlement || overlay.getChildByName('GuardEndBack')) {
