@@ -223,7 +223,7 @@ export interface GuardMonster {
 }
 
 // ── docs/47 P0 掠夺模式:进攻方 ──
-export type GuardRaidHitKind = 'combo1' | 'combo2' | 'combo3' | 'skill0' | 'skill1' | 'skill2';
+export type GuardRaidHitKind = 'combo1' | 'combo2' | 'combo3' | 'combo4' | 'combo5' | 'skill0' | 'skill1' | 'skill2';
 export interface GuardRaider {
   monsterId: number;
   heroCode: string;
@@ -276,17 +276,27 @@ export const GUARD_RAID_MAX_X = 8.0;
 export const GUARD_RAID_MOVE_X = 3.2;
 export const GUARD_RAID_MOVE_LANE = 1.6;
 export const GUARD_RAID_COMBO_WINDOW_MS = 700;
-/** 普攻三段:锁时 / 命中时刻 / 倍率 / 身前触及(格)。 */
-export const GUARD_RAID_COMBO: ReadonlyArray<{ lockMs: number; hitMs: number; mult: number; reach: number }> = [
-  { lockMs: 280, hitMs: 120, mult: 1.0, reach: 1.35 },
-  { lockMs: 280, hitMs: 120, mult: 1.0, reach: 1.35 },
-  { lockMs: 460, hitMs: 200, mult: 1.9, reach: 1.6 },
+/**
+ * 普攻五段(11-06 用户「抢矿和野外不一样,需要同步」):时序照野外主角专属连招(LobbyTownRenderer.CLIP_COMBOS,
+ * 上挑 → 横扫 → 过顶劈 → 突刺 → 跃起下劈):lockMs = 取消点(可接下一段)、hitMs = 出刀点,均为切片时长 × 野外比例;
+ * 原三段每段只锁 280ms,表现层把 2.5 秒的攻击动作从头播 280ms 就被下一下打断 = 连点只看到起手。
+ * 倍率按「五段总输出 / 总锁时」与原三段持平折算(原 3.9 / 1.02s,野外倍率 × 1.47);第五段重击 + 前后都打。
+ */
+export const GUARD_RAID_COMBO: ReadonlyArray<{ lockMs: number; hitMs: number; mult: number; reach: number; heavy?: boolean; around?: boolean }> = [
+  { lockMs: 366, hitMs: 269, mult: 1.3, reach: 1.35 },
+  { lockMs: 339, hitMs: 242, mult: 1.45, reach: 1.4 },
+  { lockMs: 563, hitMs: 479, mult: 1.85, reach: 1.35 },
+  { lockMs: 387, hitMs: 267, mult: 1.75, reach: 1.55 },
+  { lockMs: 752, hitMs: 548, mult: 2.8, reach: 1.6, heavy: true, around: true },
 ];
-/** 三个技能:重斩 / 突进斩 / 旋风斩。 */
+/**
+ * 三个技能:重斩 / 突进斩 / 旋风斩。11-06 时序同步野外(动作按野外上限加速播完:重斩 1200ms、突进斩 1250ms、旋风斩 1500ms;
+ * 锁到 80%、命中在 42% / 突进 200ms);原锁 340~900ms,2~3 秒的技能动作还没出刀就被切回待机 = 看着像没放。
+ */
 export const GUARD_RAID_SKILLS: ReadonlyArray<{ name: string; cdMs: number; lockMs: number; hits: number[]; mult: number; reach: number; dash?: number; around?: boolean; iframeMs?: number }> = [
-  { name: '重斩', cdMs: 5000, lockMs: 560, hits: [280], mult: 2.6, reach: 1.9 },
-  { name: '突进斩', cdMs: 7000, lockMs: 340, hits: [80], mult: 1.4, reach: 1.2, dash: 2.4, iframeMs: 340 },
-  { name: '旋风斩', cdMs: 10000, lockMs: 900, hits: [160, 420, 680], mult: 0.85, reach: 1.5, around: true },
+  { name: '重斩', cdMs: 5000, lockMs: 960, hits: [504], mult: 2.6, reach: 1.9 },
+  { name: '突进斩', cdMs: 7000, lockMs: 1000, hits: [200], mult: 1.4, reach: 1.2, dash: 2.4, iframeMs: 340 },
+  { name: '旋风斩', cdMs: 10000, lockMs: 1200, hits: [400, 630, 860], mult: 0.85, reach: 1.5, around: true },
 ];
 export const GUARD_RAID_DODGE_MS = 360;
 export const GUARD_RAID_DODGE_CD_MS = 1300;
@@ -4384,7 +4394,7 @@ export function guardRaidAttack(state: GuardBattleState): boolean {
   if (!raider || !unit || guardRaidLocked(state) || state.phase !== 'wave') {
     return false;
   }
-  const step = state.timeMs < raider.comboUntilMs ? (raider.comboStep % 3) + 1 : 1;
+  const step = state.timeMs < raider.comboUntilMs ? (raider.comboStep % GUARD_RAID_COMBO.length) + 1 : 1;
   const spec = GUARD_RAID_COMBO[step - 1];
   raider.comboStep = step;
   raider.comboUntilMs = state.timeMs + spec.lockMs + GUARD_RAID_COMBO_WINDOW_MS;
@@ -4608,10 +4618,13 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
   let mult: number;
   let reach: number;
   let around = false;
+  let heavyCombo = false;
   if (kind.startsWith('combo')) {
     const spec = GUARD_RAID_COMBO[Number(kind.slice(5)) - 1];
     mult = spec.mult;
     reach = spec.reach;
+    around = !!spec.around;
+    heavyCombo = !!spec.heavy;
   } else {
     const spec = GUARD_RAID_SKILLS[Number(kind.slice(5))];
     mult = spec.mult;
@@ -4619,7 +4632,7 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
     around = !!spec.around;
   }
   const facing = unit.facing ?? -1;
-  const heavy = kind === 'combo3' || kind.startsWith('skill');
+  const heavy = heavyCombo || kind.startsWith('skill');
   const damage = Math.max(1, Math.round(raider.attack * mult));
   let hitAny = false;
   for (const hero of state.heroes) {

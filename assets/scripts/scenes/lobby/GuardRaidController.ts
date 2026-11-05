@@ -19,11 +19,13 @@ import {
   sp,
   tween,
 } from 'cc';
+import { heroClipCombo, HERO_SKILL_ACTION_CAP_MS } from './HeroClipCombos';
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import {
   GUARD_RAID_SKILLS,
   GUARD_RAID_TIME_LIMIT_MS,
+  GUARD_RAID_COMBO,
   guardRaidAttack,
   guardRaidDodge,
   guardRaidMove,
@@ -77,7 +79,8 @@ export interface GuardRaidBridge {
 const rgba = (r: number, g: number, b: number, a = 255): Color => new Color(r, g, b, a);
 const WHITE = new Color(255, 255, 255, 255);
 const FLASH = new Color(255, 130, 110, 255);
-const INPUT_BUFFER_MS = 260;
+/** 按键缓冲:盖住最长一段普攻锁时(第 5 段 752ms),出招中按的普攻 / 技能到取消点自动接上(同野外 bufferedInput;原 260ms 时第 3 / 5 段里按的技能直接丢了)。 */
+const INPUT_BUFFER_MS = 800;
 /** 原型 battle_b3 画布(1870×841):原型像素 × u(= 屏高 / 841),左侧件贴左缘、右侧件贴右缘、顶栏居中。 */
 const PROTO_W = 1870;
 const PROTO_H = 841;
@@ -111,6 +114,8 @@ interface RaidUnitView {
   names: BattleUnitSpineAnimationNames | null;
   loopAnim: string;
   oneShotUntil: number;
+  /** 一次性动作的播放倍速(按野外上限加速播完;播完恢复 1)。 */
+  oneShotSpeed: number;
   facing: 1 | -1;
   prevX: number;
   prevLane: number;
@@ -586,17 +591,18 @@ export class GuardRaidController {
             this.bridge.attackSfx(sim.raider.heroCode);
           }
           if (raider) {
-            this.playOneShot(raider, event.level === 3 ? (raider.names?.skill1 ?? raider.names?.attack) : raider.names?.attack, event.level === 3 ? 460 : 280, sim);
+            this.playSwing(raider, Math.max(1, event.level ?? 1), sim);
           }
           break;
         case 'raidSkill': {
           const index = event.level ?? 0;
           if (raider) {
+            // 同野外 skillAnimKind:重斩 = skill3(没有 ult 的骨骼 skill2)、突进斩 = 有专属连招时 skill2 否则 skill1、旋风斩 = ult;按野外上限加速播完
             const names = raider.names;
-            const anim = index === 0 ? (names?.skill2 ?? names?.skill1 ?? names?.attack)
-              : index === 1 ? (names?.move ?? names?.attack)
-                : (names?.ult ?? names?.skill3 ?? names?.skill1 ?? names?.attack);
-            this.playOneShot(raider, anim, GUARD_RAID_SKILLS[index]?.lockMs ?? 500, sim);
+            const kind: 'skill1' | 'skill2' | 'skill3' | 'ult' = index === 0 ? (names?.ult ? 'skill3' : 'skill2')
+              : index === 1 ? (heroClipCombo(raider.ally?.spineAsset) && names?.skill2 ? 'skill2' : 'skill1')
+                : 'ult';
+            this.playAction(raider, kind, HERO_SKILL_ACTION_CAP_MS[index] ?? 1200, sim);
           }
           gameAudio.sfx('wave_start', 0.5);
           break;
@@ -631,7 +637,8 @@ export class GuardRaidController {
           // 同伴出手:动作 + 目标受击(轻反馈,不顿帧不震屏,主角的手感不被同伴稀释)
           const unit = event.monsterId !== undefined ? this.allies.get(event.monsterId) : undefined;
           if (unit) {
-            this.playOneShot(unit, unit.names?.attack, 420, sim);
+            // 同野外同伴:整段攻击动作按 750ms 上限播完(原 420ms 就切回待机,动作只露起手)
+            this.playAction(unit, 'attack', 750, sim);
           }
           const view = event.cell !== undefined && event.cell >= 0 ? this.guardView(sim, event.cell) : undefined;
           if (view && view.node.isValid) {
@@ -651,7 +658,8 @@ export class GuardRaidController {
             unit.view.hitFlashUntil = Date.now() + 110;
             const own = unit === raider;
             this.bridge.spawnFloater(unit.view.node.position.x, unit.view.node.position.y + this.bridge.unitSize() * 0.6, `-${event.amount ?? 0}`, own ? rgba(255, 110, 100) : rgba(236, 140, 130), own ? 20 : 15);
-            if (own) {
+            // 出招中(普攻切片 / 技能)只闪红不播受击:原来每挨一下都切 hit 动作,把正在出的刀 / 技能打断(11-06 用户「攻击技能都不放」)
+            if (own && Date.now() >= unit.oneShotUntil) {
               this.playOneShot(unit, unit.names?.hit, 160, sim);
             }
           }
@@ -766,6 +774,7 @@ export class GuardRaidController {
       names: null,
       loopAnim: '',
       oneShotUntil: 0,
+      oneShotSpeed: 1,
       facing: unit.facing ?? -1,
       prevX: unit.x,
       prevLane: unit.laneF ?? 0.5,
@@ -799,6 +808,86 @@ export class GuardRaidController {
     unit.loopAnim = view.idleAnim;
   }
 
+  /**
+   * 普攻第 step 段(同野外 leaderClipAttack / leaderAttack):有专属连招的骨骼播对应那一截出刀切片,
+   * 其余英雄按段落换 attack / skill1 / skill2 整段动作;时长与模型 GUARD_RAID_COMBO 的锁时同源。
+   */
+  private playSwing(unit: RaidUnitView, step: number, sim: GuardBattleState): void {
+    const chain = heroClipCombo(unit.ally?.spineAsset);
+    const seg = chain ? chain[(step - 1) % chain.length] : null;
+    if (seg && this.playClip(unit, seg.anim, seg.start, seg.end, seg.speed, sim) > 0) {
+      return;
+    }
+    const spec = GUARD_RAID_COMBO[(step - 1) % GUARD_RAID_COMBO.length];
+    const kind = spec?.heavy ? 'skill2' : step % 2 === 0 ? 'skill1' : 'attack';
+    this.playAction(unit, kind, Math.round((spec?.lockMs ?? 400) / 0.7), sim);
+  }
+
+  /** 切片播放(同野外 playActorClip):只播 anim 的 [start, end] 秒、按 speed 倍速,播完自动接循环;返回时长 ms(0 = 没播)。 */
+  private playClip(unit: RaidUnitView, anim: string, start: number, end: number, speed: number, sim: GuardBattleState): number {
+    const skeleton = unit.view.skeleton;
+    if (!skeleton || !skeleton.isValid || unit.deadShown || !skeleton.findAnimation(anim)) {
+      return 0;
+    }
+    const loop = this.wantedLoop(unit, sim);
+    try {
+      const entry = skeleton.setAnimation(0, anim, false);
+      if (entry) {
+        entry.animationStart = start;
+        entry.animationEnd = end;
+        entry.animationLast = -1;
+      }
+      if (loop) {
+        skeleton.addAnimation(0, loop, true, 0);
+      }
+      skeleton.timeScale = speed;
+    } catch (error) {
+      void error;
+      return 0;
+    }
+    const dur = ((end - start) * 1000) / speed;
+    unit.oneShotUntil = Date.now() + dur;
+    unit.oneShotSpeed = speed;
+    unit.loopAnim = loop;
+    return dur;
+  }
+
+  /** 整段动作(同野外 playActorAction):超过 capMs 的动作加速播完,播完自动接循环;返回时长 ms。 */
+  private playAction(unit: RaidUnitView, kind: 'attack' | 'skill1' | 'skill2' | 'skill3' | 'ult', capMs: number, sim: GuardBattleState): number {
+    const skeleton = unit.view.skeleton;
+    const names = unit.names;
+    if (!skeleton || !skeleton.isValid || !names || unit.deadShown) {
+      return 0;
+    }
+    const anim = (kind === 'ult' ? names.ult || names.skill3 : names[kind]) || names.attack || names.idle;
+    if (!anim) {
+      return 0;
+    }
+    let lengthMs = 600;
+    try {
+      lengthMs = Math.max(150, (skeleton.findAnimation(anim)?.duration ?? 0.6) * 1000);
+    } catch (error) {
+      void error;
+    }
+    const speed = capMs > 0 && lengthMs > capMs ? lengthMs / capMs : 1;
+    const loop = this.wantedLoop(unit, sim);
+    try {
+      skeleton.setAnimation(0, anim, false);
+      if (loop) {
+        skeleton.addAnimation(0, loop, true, 0);
+      }
+      skeleton.timeScale = speed;
+    } catch (error) {
+      void error;
+      return 0;
+    }
+    const dur = lengthMs / speed;
+    unit.oneShotUntil = Date.now() + dur;
+    unit.oneShotSpeed = speed;
+    unit.loopAnim = loop;
+    return dur;
+  }
+
   private playOneShot(unit: RaidUnitView, anim: string | null | undefined, holdMs: number, sim: GuardBattleState): void {
     const view = unit.view;
     if (!anim || !view.skeleton || !view.skeleton.isValid || unit.deadShown) {
@@ -811,6 +900,7 @@ export class GuardRaidController {
         view.skeleton.addAnimation(0, loop, true, 0);
       }
       unit.oneShotUntil = Date.now() + holdMs;
+      unit.oneShotSpeed = 1;
       unit.loopAnim = loop;
     } catch (error) {
       void error;
@@ -932,7 +1022,8 @@ export class GuardRaidController {
     if (view.skeleton && view.skeleton.isValid) {
       view.skeleton.color = view.hitFlashUntil > Date.now() ? FLASH : WHITE;
       // 跑步动画按地面速度加速,不然像在冰上滑
-      view.skeleton.timeScale = Date.now() < unit.oneShotUntil ? 1 : unit.loopAnim && unit.loopAnim === unit.names?.move ? 1.3 : 1;
+      // 一次性动作期间保持它自己的倍速(切片 / 加速播完),之后跑步按地面速度加速
+      view.skeleton.timeScale = Date.now() < unit.oneShotUntil ? unit.oneShotSpeed : unit.loopAnim && unit.loopAnim === unit.names?.move ? 1.3 : 1;
     }
     const hpKey = `${Math.ceil(monster.hp)}/${monster.maxHp}`;
     if (hpKey !== unit.hpKey) {

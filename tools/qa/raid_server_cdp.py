@@ -119,6 +119,17 @@ async def main():
                 await asyncio.sleep(1)
             else:
                 print('start-timeout', await ev("const b=root.currentLobbyBattleState(); return JSON.stringify({starting:b.starting, has:!!b.start, err:b.error, assets:b.assetsLoading, view:root.currentView, errs:(window.__errs||[]).slice(-6)});"), flush=True)
+            if os.environ.get('PROBE_ANIM') == '1':
+                # 连点攻击 3 秒(每 150ms 按一下),每 100ms 采样主角骨骼当前动作 / 片段时刻 / 倍速 + 模型连招段数(验证不再只播起手)
+                async def eva(body):
+                    r = await call('Runtime.evaluate', {'expression': "(async()=>{ const cc = window.__cc; " + ROOT_JS + " " + body + " })()", 'awaitPromise': True, 'returnByValue': True}, 120)
+                    res = r.get('result', {}).get('result', {})
+                    return res.get('value') if 'value' in res else json.dumps(r)[:400]
+                samples = await eva("const ctrl=raid; const v=ctrl&&ctrl.raider&&ctrl.raider.view; const out=[]; const t0=Date.now(); const press=setInterval(()=>{ ctrl.attackPressedAt=Date.now(); },150); "
+                                   "for(let i=0;i<30;i++){ await new Promise(r=>setTimeout(r,100)); const e=v&&v.skeleton&&v.skeleton.getCurrent(0); out.push((Date.now()-t0)+':'+(e?e.animation.name+'@'+e.trackTime.toFixed(2):'-')+'x'+(v&&v.skeleton?v.skeleton.timeScale.toFixed(2):'-')+' c'+(sim.raider?sim.raider.comboStep:'-')); } clearInterval(press); return out.join(' | ');")
+                print('anim', samples, flush=True)
+                skills = await eva("const ctrl=raid; const v=ctrl.raider.view; const out=[]; for (const i of [0,1,2]) { ctrl.skillPressedAt[i]=Date.now(); await new Promise(r=>setTimeout(r,250)); const e=v.skeleton.getCurrent(0); out.push('skill'+i+':'+(e?e.animation.name+'@'+e.trackTime.toFixed(2):'-')+'x'+v.skeleton.timeScale.toFixed(2)); await new Promise(r=>setTimeout(r,1300)); } return out.join(' | ');")
+                print('skills', skills, flush=True)
             await asyncio.sleep(2)
             print('battle', await ev(STATE), flush=True)
             print('pool', await ev("if(!sim) return 'nosim'; return JSON.stringify({pool: sim.pool.map(p=>p.heroCode+':'+p.displayName+':'+p.sourceIndex), allies: (gr.snapshot? gr.snapshot.allies.map(a=>a.unitKey+':'+a.displayName) : null), raidRaw: !!(root.currentLobbyBattleState().start||{}).raid, npcAssets: (gr.snapshot? gr.snapshot.allies.filter(a=>a.unitKey.startsWith('npc')).map(a=>a.spineAsset+'|'+a.portraitAsset) : null), views: [...gr.heroViews.values()].map(v=>v.node.name+':'+v.spineReady), lineupRaw: (root.currentLobbyBattleState().start||{}).lineup.map(h=>!!h.guardRaw)});"), flush=True)

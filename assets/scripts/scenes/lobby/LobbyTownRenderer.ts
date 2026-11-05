@@ -22,6 +22,7 @@ import {
   sp,
   tween,
 } from 'cc';
+import { HERO_CLIP_COMBOS } from './HeroClipCombos';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import { resolveFieldParty } from '../../api/LobbyHeroApi';
 import type { LobbyBadges } from '../../api/LobbyBadgeApi';
@@ -4605,22 +4606,8 @@ export class LobbyTownRenderer {
     { kind: 'skill1', mult: 1.15, reach: 180, cap: 680, heavy: false },
     { kind: 'skill2', mult: 1.8, reach: 200, cap: 820, heavy: true },
   ];
-  /**
-   * 专属连招(11-03 用户「英雄攻击动作太少,看不出连招」):永夜龙骑骨骼的每段攻击动作 2~3 秒、里面有好几刀,
-   * 原来整段压到 0.6 秒快进 = 只看到一闪。这里把每段里真正出刀的那一截(秒,按 12fps 逐帧看过)切出来、接近原速播,串成 5 段:
-   * 上挑 → 横扫 → 过顶劈 → 突刺 → 跃起下劈(终结,重击 + 范围)。按骨骼资源名配;没配的英雄仍走 COMBO 三段。
-   * hitAt = 命中点在这一截里的比例。主角(protag_m / protag_f)与永夜龙骑(IshmaelA)同一副骨骼、共用。
-   */
-  private static readonly CLIP_COMBOS: Record<string, Array<{ anim: string; start: number; end: number; speed: number; hitAt: number; mult: number; reach: number; heavy: boolean; around?: boolean }>> = (() => {
-    const chain = [
-      { anim: 'skill3A', start: 0.4, end: 1.1, speed: 1.3, hitAt: 0.5, mult: 0.9, reach: 175, heavy: false },
-      { anim: 'skill1', start: 0.25, end: 0.95, speed: 1.3, hitAt: 0.45, mult: 1.0, reach: 185, heavy: false },
-      { anim: 'atk', start: 0.55, end: 1.5, speed: 1.35, hitAt: 0.68, mult: 1.25, reach: 180, heavy: false },
-      { anim: 'skill1', start: 1.05, end: 1.95, speed: 1.35, hitAt: 0.4, mult: 1.2, reach: 210, heavy: false },
-      { anim: 'skill3B', start: 0.3, end: 1.45, speed: 1.3, hitAt: 0.62, mult: 1.9, reach: 220, heavy: true, around: true },
-    ];
-    return { protag_m: chain, protag_f: chain, protag_m_lh: chain, protag_f_lh: chain, IshmaelA: chain };
-  })();
+  /** 专属连招切片表(与矿境掠夺共用,见 HeroClipCombos)。 */
+  private static readonly CLIP_COMBOS = HERO_CLIP_COMBOS;
   private static readonly SKILLS = [
     // 10-31 用户「只有大招有技能特效」:技能动作 2~2.5 秒,原 cap 0.7~0.9 秒 = 快进 3 倍一闪而过;放宽到约 1.7~2 倍速
     { name: '重斩', mult: 2.6, reach: 210, around: false, cdMs: 5000, cap: 1200, dash: 0, anim: 'skill3' as const },
