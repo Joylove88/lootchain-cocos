@@ -1,0 +1,20 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED shop screen (gold shop). Match its visual language exactly: same darkened blurred cathedral background, same top bar (back arrow, title, grey subtitle, currency chips, close X), frosted dark glass panels with soft rounded corners and faint white outlines, white/grey text, translucent price pills with a small diamond icon, the single champagne-gold accent.
+- SECOND image = our APPROVED bag screen. Copy its LEFT CATEGORY RAIL exactly (a vertical column of frosted rows, each = small flat white line icon + label, the selected row in the dark-gold gradient with white text) and its item-icon style (realistic painted item on a dark rounded square with a thin rarity-coloured outline).
+All text in Simplified Chinese exactly as written below; text crisp and legible. The screen must clearly belong to the same game as both images.
+SCREEN: "商店" (shop), full screen, page "道具" (items) selected.
+- Top bar: back arrow + title "商店" + small grey subtitle "道具每日 0 点刷新限购"; right: currency chips "金币 4.7M", "钻石 924.5K", close (X).
+- LEFT RAIL (about 190px wide, under the top bar): 5 rows: 道具 (selected, dark gold), 金币, 体力, 皮肤, 钻石充值. Each with a simple white line icon (bag, coin, potion, mask, gem).
+- RIGHT AREA: a grid of 8 item cards, 4 columns x 2 rows, equal size, frosted glass, generous gaps. Each card, top to bottom: item icon (painted, matte, on dark rounded square with thin rarity outline) centred; item name in white; a small grey line "今日 0/5"; a translucent price pill at the bottom with a small currency icon (diamond or gold coin) and the price.
+  1) 强化护符 (bronze shield amulet with a rune, purple outline) · 今日 0/5 · diamond 80
+  2) 强化石 (rough grey-blue ore stone, green outline) · 今日 0/20 · gold 2,000
+  3) 高阶强化石 (cut blue crystal stone, blue outline) · 今日 0/10 · diamond 30
+  4) 祝福石 (pale gold blessed stone, purple outline) · 今日 0/5 · diamond 50
+  5) 英雄经验书 (old leather book, blue outline) · 今日 0/20 · gold 5,000
+  6) 守卫晶核 (blue crystal cluster shard, purple outline) · 今日 0/10 · diamond 40
+  7) 普通契约券 (parchment ticket with wax seal, blue outline) · 今日 0/5 · diamond 100
+  8) 英雄契约券 (dark parchment ticket with gold seal, orange outline) · 今日 2/2 - this one is sold out: its pill is greyed with text "今日已售罄", icon slightly dimmed.
+- Bottom centre, small grey text: "点击道具选择购买数量".
+Extra rules: painted item art must be muted, matte, no glow or sparkle; rarity only as the thin coloured outline. No champagne primary button on this page (all prices are translucent pills). Background darkened and blurred, no visible candles or glowing particles. Generous spacing, aligned grid, clear hierarchy.
+Output only the single finished mockup image, no annotations.

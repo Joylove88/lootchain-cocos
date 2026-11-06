@@ -1780,7 +1780,7 @@ export class LootChainGameRoot extends Component {
       case 'crystal': this.openGuardCrystalDialog(); return;
       case 'codex': this.openLobbyCodexPanel(); return;
       case 'quest': this.openLobbyQuestPanel(); return;
-      case 'shop': this.openLobbyShopDialog(heroSkinCatalog().length > 0 ? 'skin' : 'gold'); return;
+      case 'shop': this.openLobbyShopDialog('item'); return;
       case 'guild': this.openWorldBountyPanel(); return;
       case 'worldmap': this.openWorldMapPanel(); return;
       case 'rank':
@@ -3100,6 +3100,9 @@ export class LootChainGameRoot extends Component {
         return;
       case 'shop':
         this.openLobbyShopDialog(target.kind);
+        if (target.itemCode && this.lobbyShopDialog) {
+          this.lobbyShopDialog.itemPick = { code: target.itemCode, count: 1 };
+        }
         return;
       case 'forge':
         this.openLobbyForgePanel();
@@ -7397,10 +7400,12 @@ export class LootChainGameRoot extends Component {
     return this.lobbyShopDialog;
   }
 
-  private openLobbyShopDialog(kind: LobbyShopKind): void {
+  private openLobbyShopDialog(requested: LobbyShopKind): void {
     if (!this.isLobbyViewActive()) {
       return;
     }
+    // 11-06(docs/62):强化护符单页并入道具页,旧入口一律落到道具页
+    const kind: LobbyShopKind = requested === 'rune' ? 'item' : requested;
     // 皮肤页(docs/56):素材没下完先挡下载页;目录没拿到先拉
     if (kind === 'skin' && !packResourcesReady(heroSkinPackPrefixes())) {
       this.openWithPackGate(heroSkinPackPrefixes(), '正在加载皮肤素材', () => this.openLobbyShopDialog('skin'));
@@ -7419,6 +7424,7 @@ export class LootChainGameRoot extends Component {
       channelCode: previous?.channelCode ?? null,
       skinSelected: previous?.skinSelected ?? null,
       skinPreview: false,
+      itemPick: null,
     };
     gameAudio.sfx('panel_open');
     this.syncLobbyShopOverlay();
@@ -7443,17 +7449,19 @@ export class LootChainGameRoot extends Component {
     }
   }
 
-  /** 商店顶部分页:强化护符仍是旧版单页,其余在同一个 B 风格整页里切换。 */
-  private switchLobbyShopTab(kind: LobbyShopKind): void {
+  /** 商店左分类栏切页(11-06 docs/62):皮肤页要先过素材下载门,其余在同一个 B 风格整页里切换。 */
+  private switchLobbyShopTab(requested: LobbyShopKind): void {
+    const kind: LobbyShopKind = requested === 'rune' ? 'item' : requested;
     const dialog = this.lobbyShopDialog;
     if (!dialog || dialog.busy || dialog.kind === kind) {
       return;
     }
     gameAudio.sfx('ui_click');
-    if (kind === 'skin' || kind === 'rune') {
+    if (kind === 'skin') {
       this.openLobbyShopDialog(kind);
       return;
     }
+    dialog.itemPick = null;
     dialog.kind = kind;
     dialog.notice = kind === 'diamond' ? this.rechargePendingNotice() : '';
     this.syncLobbyShopOverlay();
@@ -8752,6 +8760,53 @@ export class LootChainGameRoot extends Component {
     const safeCount = Math.max(1, Math.floor(count));
     // 护符进背包(锻造页读背包数),买完回读背包;不飞货币动效
     void this.runLobbyShopAction(() => this.api.shop.buyRune(safeCount), { kind: 'diamond', amount: 0, fromWorld: fromWorld ?? null, volume: 'few' }, () => this.loadLobbyBag(true));
+  }
+
+  /** 道具页(docs/62):点格子开购买框 / null 关。 */
+  private pickShopItem(itemCode: string | null): void {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog || dialog.busy) {
+      return;
+    }
+    dialog.itemPick = itemCode ? { code: itemCode, count: 1 } : null;
+    dialog.notice = '';
+    gameAudio.sfx(itemCode ? 'panel_open' : 'ui_click');
+    this.syncLobbyShopOverlay();
+  }
+
+  private setShopItemPickCount(count: number): void {
+    const dialog = this.lobbyShopDialog;
+    if (!dialog || dialog.busy || !dialog.itemPick) {
+      return;
+    }
+    dialog.itemPick.count = Math.max(1, Math.floor(count));
+    gameAudio.sfx('ui_click');
+    this.syncLobbyShopOverlay();
+  }
+
+  /** 道具页购买:本地先拦货币不足(给差额),通过后走服务端;成功关购买框、回读背包(锻造 / 召唤 / 水晶都读背包数)。 */
+  private buyShopItem(itemCode: string, count: number): void {
+    const dialog = this.lobbyShopDialog;
+    const offer = dialog?.catalog?.itemOffers?.find((entry) => entry.itemCode === itemCode);
+    if (!dialog || dialog.busy || !offer) {
+      return;
+    }
+    const safeCount = Math.max(1, Math.floor(count));
+    const isGold = offer.currency === 'GOLD';
+    const balance = isGold ? Number(this.currentLobbyProfile().gold ?? dialog.catalog?.gold ?? 0) : Number(dialog.catalog?.diamond ?? 0);
+    const total = offer.unitPrice * safeCount;
+    if (balance < total) {
+      dialog.notice = `购买失败:${isGold ? '金币' : '钻石'}不足,还差 ${this.formatInteger(total - balance)}`;
+      gameAudio.sfx('ui_error');
+      this.syncLobbyShopOverlay();
+      return;
+    }
+    void this.runLobbyShopAction(() => this.api.shop.buyItem(itemCode, safeCount), { kind: 'diamond', amount: 0, fromWorld: null, volume: 'few' }, async () => {
+      if (this.lobbyShopDialog === dialog) {
+        dialog.itemPick = null;
+      }
+      await this.loadLobbyBag(true);
+    });
   }
 
   private rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void {

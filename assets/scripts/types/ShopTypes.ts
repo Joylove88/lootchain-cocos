@@ -33,6 +33,25 @@ export interface ShopRuneOfferVO {
   held: number;
 }
 
+/** 道具页上架道具(docs/62,2026-11-06):单价 / 每日限购走服务端限购配置。 */
+export interface ShopItemOfferVO {
+  itemCode: string;
+  itemName: string;
+  /** N / R / SR / SSR / UR。 */
+  rarity: string;
+  /** 支付货币 DIAMOND / GOLD。 */
+  currency: 'DIAMOND' | 'GOLD' | string;
+  unitPrice: number;
+  /** 每日上限(0=未开放)。 */
+  dailyLimit: number;
+  usedToday: number;
+  /** 单次最多买几个。 */
+  maxCountPerBuy: number;
+  held: number;
+  /** 用途说明(道具模板 use_desc)。 */
+  useDesc?: string | null;
+}
+
 export interface ShopRechargeTierVO {
   code: string;
   name: string;
@@ -60,6 +79,8 @@ export interface ShopCatalogVO {
   rechargeChannels?: ShopRechargeChannelVO[];
   /** 强化护符购买。旧服务端缺省。 */
   runeOffer?: ShopRuneOfferVO | null;
+  /** 道具页上架道具(docs/62)。旧服务端缺省。 */
+  itemOffers?: ShopItemOfferVO[] | null;
 }
 
 export type ShopPayMode = 'MOCK' | 'ONLINE' | 'NONE';

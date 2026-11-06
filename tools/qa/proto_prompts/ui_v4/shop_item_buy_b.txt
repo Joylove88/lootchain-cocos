@@ -1,0 +1,9 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+ONE image is attached: our APPROVED shop screen (items page: left category rail + 4x2 grid of item cards). Match its visual language exactly (frosted dark glass, soft rounded corners, faint white outlines, white/grey text, the single champagne-gold accent, translucent secondary pills).
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+SCREEN: the same shop items page in the background, dimmed to about 40% and slightly blurred; on top, a centred MODAL DIALOG "购买" (about 760x500), one frosted glass card:
+- Title row: "购买道具" left-aligned white, close X on the right; a faint divider line.
+- Left part: the item icon large (the cut blue crystal "高阶强化石" painted, matte, on a dark rounded square with a thin purple rarity outline); below it a small purple-tinted rarity tag "SR".
+- Right part: item name "高阶强化石" (large white); grey line "持有 12"; grey description (2 lines) "强化 +10 以上消耗的强化石,强化页自动使用"; then a quantity row: a round translucent "-" button, a dark rounded number box showing "3", a round translucent "+" button, and a small translucent pill "最大" on the right; under it a small grey line "今日还可购买 10 个".
+- Bottom: a total line "合计" with a small diamond icon and "90" (white, large); two buttons at the bottom right: translucent secondary pill "取消" and the champagne primary pill "购买" (dark text).
+Extra rules: no glow or sparkle; generous spacing; clean alignment. Output only the single finished mockup image, no annotations.

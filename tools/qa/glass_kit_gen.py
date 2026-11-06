@@ -464,6 +464,9 @@ def extract_proto_icons():
                                                'quest_summon': (134, 628, 31), 'quest_forge': (134, 755, 31),
                                                # 奖励小框图标(原型配色):金币堆 / 经验书 / 强化石
                                                'reward_gold': (1153, 373, 28), 'reward_exp_book': (1369, 374, 28), 'reward_enhance': (1152, 501, 27)}),
+                              # 商店道具页原型 shop_items_b(11-06):左分类栏线稿(白色剪影,运行时染色)
+                              ('../../2026-11-06_商店道具/proto/shop_items_b.png', {'shop_rail_item': (98, 168, 24), 'shop_rail_gold': (98, 263, 24), 'shop_rail_stamina': (98, 353, 24),
+                                                                                    'shop_rail_skin': (98, 443, 24), 'shop_rail_diamond': (98, 531, 24)}),
                               # 守卫水晶原型 crystal_b(11-06):属性行暗金图标(保留原色)
                               ('crystal_b.png', {'crystal_hp': (832, 295, 24), 'crystal_gold': (832, 359, 24), 'crystal_power': (832, 423, 24),
                                                  'crystal_energy': (832, 487, 24), 'crystal_energy_max': (832, 551, 24), 'crystal_slots': (832, 615, 24)})):

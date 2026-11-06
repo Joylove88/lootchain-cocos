@@ -9,7 +9,7 @@ export type ItemSourceTarget =
   | { type: 'gacha'; poolCode: string }
   | { type: 'field' }
   | { type: 'daily'; theme: 'AWAKEN' | 'FORGE' | 'ARCANE' | 'ABYSS' }
-  | { type: 'shop'; kind: 'gold' | 'rune' }
+  | { type: 'shop'; kind: 'gold' | 'item'; itemCode?: string }
   | { type: 'forge'; tab: 'decompose' }
   | { type: 'quest' }
   | { type: 'codex' }
@@ -41,10 +41,13 @@ const daily = (theme: keyof typeof DAILY_THEME_OPEN_DAYS, desc: string): ItemSou
 // 冒险章节下架(2026-10-28):首通奖励改由野外精英承接,获取途径统一指向世界地图
 const field = (desc: string): ItemSourceRoute => ({ kind: 'tower', title: '野外', desc, target: { type: 'field' } });
 const gacha = (poolCode: string, title: string, desc: string): ItemSourceRoute => ({ kind: 'summon', title, desc, target: { type: 'gacha', poolCode } });
+// 商店道具页(docs/62,2026-11-06):点了直接开该道具的购买框
+const shop = (itemCode: string, desc: string): ItemSourceRoute => ({ kind: 'shop', title: '商店 · 道具', desc, target: { type: 'shop', kind: 'item', itemCode } });
 
 const ROUTES: Record<string, ItemSourceRoute[]> = {
   HERO_EXP_BOOK: [
     field('野外精英掉落 / 探索宝箱'),
+    shop('HERO_EXP_BOOK', '5,000 金币 / 本,每日限购 20 本'),
     { kind: 'quest', title: '每日任务', desc: '完成每日任务领取', target: { type: 'quest' } },
   ],
   ULT_SCROLL: [daily('ABYSS', '深渊裂隙掉落'), field('野外精英掉落')],
@@ -53,23 +56,24 @@ const ROUTES: Record<string, ItemSourceRoute[]> = {
   AWAKEN_STONE: [field('野外精英掉落'), daily('AWAKEN', '觉醒之门掉落')],
   ENHANCE_STONE: [
     daily('FORGE', '熔火矿脉掉落'),
+    shop('ENHANCE_STONE', '2,000 金币 / 个,每日限购 20 个'),
     { kind: 'forge', title: '锻造 · 分解', desc: '分解多余装备', target: { type: 'forge', tab: 'decompose' } },
     gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出'),
   ],
   LOW_ENHANCE_STONE: [field('野外精英掉落'), { kind: 'forge', title: '锻造 · 分解', desc: '分解多余装备', target: { type: 'forge', tab: 'decompose' } }],
-  ENHANCE_STONE_HIGH: [daily('FORGE', '熔火矿脉Ⅲ起掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
+  ENHANCE_STONE_HIGH: [daily('FORGE', '熔火矿脉Ⅲ起掉落'), shop('ENHANCE_STONE_HIGH', '30 钻石 / 个,每日限购 10 个'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   DEEP_REFORGE_STONE: [daily('ARCANE', '秘法圣殿掉落'), field('野外精英掉落')],
   EQUIP_REROLL_STONE: [daily('ARCANE', '秘法圣殿Ⅱ起掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   FUSION_LUCK_STONE: [daily('ARCANE', '秘法圣殿掉落'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
-  ENHANCE_BLESS_STONE: [gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
+  ENHANCE_BLESS_STONE: [shop('ENHANCE_BLESS_STONE', '50 钻石 / 个,每日限购 5 个'), gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出')],
   // docs/45 §12:+10 以上的核心消耗品 → 商店限购在前;分解橙装 35% / 红装 80% 附带护符
   ENHANCE_GUARD_RUNE: [
-    { kind: 'shop', title: '商店 · 强化护符', desc: '80 钻石 / 张,每日限购 5 张', target: { type: 'shop', kind: 'rune' } },
+    shop('ENHANCE_GUARD_RUNE', '80 钻石 / 张,每日限购 5 张'),
     daily('FORGE', '熔火矿脉Ⅲ 胜利概率掉落'),
     { kind: 'forge', title: '锻造 · 分解', desc: '分解橙装 / 红装概率附带', target: { type: 'forge', tab: 'decompose' } },
     gacha(POOL.equip, '召唤 · 装备召唤', '装备召唤产出'),
   ],
-  GUARD_CORE: [field('野外精英掉落'), daily('FORGE', '每日副本胜利获得')],
+  GUARD_CORE: [field('野外精英掉落'), daily('FORGE', '每日副本胜利获得'), shop('GUARD_CORE', '40 钻石 / 个,每日限购 10 个')],
   GOLD: [
     { kind: 'shop', title: '金币商店', desc: '用钻石兑换金币', target: { type: 'shop', kind: 'gold' } },
     field('野外清剿 / 探索宝箱'),

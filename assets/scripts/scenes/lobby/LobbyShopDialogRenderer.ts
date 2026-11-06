@@ -18,12 +18,14 @@ import {
 import { HERO_SKIN_ASSETS, heroSkinCatalog, type HeroSkinInfo } from './HeroSkins';
 import { mountHeroSkinSpine } from './HeroSkinPreview';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
-import type { ShopCatalogVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
+import type { ShopCatalogVO, ShopItemOfferVO, ShopPayMode, ShopRechargeChannelVO } from '../../types/ShopTypes';
+import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
+import { itemRarityRingColor, mountItemRarityBacking } from './EquipRarityShine';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { addPhoneDialogTitle, drawPhoneDialogFrame, resolvePhoneDialogSize } from './LobbyPhoneDialogFrame';
 import { renderTopCurrencyBar, type SceneBackButtonHost, type TopCurrencyEntry } from '../UiSceneBackButton';
-import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, GLASS_STAT_ICON, mountGlassBonusTag, mountGlassButton, mountGlassFadeLine, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { safeText } from '../UiTextFormatter';
 import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_ICON_RING_ASSET, REF_KIT, REF_SECTION_EMBLEM, REF_TITLE_STAR, refCardFrameK } from '../UiRefKit';
 
@@ -36,7 +38,8 @@ import { mountRefButton, mountRefTitleBand, mountRefSliced, mountRefTitledPanel,
  * 价格带钻石图标;2026-09-24 去掉底部余额行,改成醒目的结果横幅);字号按限时副本面板口径(标题 34、正文 18、卡名 20、数额 28)。
  * 作为全屏覆盖层挂在当前视图之上(大厅 / 锻造等功能页都能开),数据与写入全走服务端 ShopApi;购买成功由根节点做飘字 + 飞币动效。
  */
-export type LobbyShopKind = 'skin' | 'gold' | 'stamina' | 'diamond' | 'rune';
+/** 'rune' = 旧强化护符单页,11-06 起并入道具页('item'),只留作入口别名。 */
+export type LobbyShopKind = 'skin' | 'item' | 'gold' | 'stamina' | 'diamond' | 'rune';
 
 export interface LobbyShopDialogState {
   kind: LobbyShopKind;
@@ -49,6 +52,8 @@ export interface LobbyShopDialogState {
   /** 皮肤页选中的皮肤(空 = 第一个)与是否在播动作预览(docs/56)。 */
   skinSelected?: string | null;
   skinPreview?: boolean;
+  /** 道具页购买框(docs/62):选中的道具 + 数量;空 = 没开。 */
+  itemPick?: { code: string; count: number } | null;
 }
 
 export interface LobbyShopDialogHost {
@@ -61,6 +66,10 @@ export interface LobbyShopDialogHost {
   buyShopGold(tierCode: string, fromWorld?: Vec3): void;
   buyShopStamina(count: number, fromWorld?: Vec3): void;
   buyShopRune(count: number, fromWorld?: Vec3): void;
+  /** 道具页(docs/62):点格子开购买框(null = 关)、改数量、确认购买。 */
+  pickShopItem(itemCode: string | null): void;
+  setShopItemPickCount(count: number): void;
+  buyShopItem(itemCode: string, count: number): void;
   rechargeShopDiamond(tierCode: string, fromWorld?: Vec3): void;
   /** 皮肤页(docs/56):购买 / 选中 / 切换动作预览;顶部分页切换。 */
   buyShopSkin(skinCode: string): void;
@@ -116,14 +125,17 @@ const ICONS: Record<string, SpriteSpec> = {
   rune: { path: 'ui/forge/ai/icon_guard_rune/spriteFrame', aspect: 1 },
 };
 
-const TITLE: Record<LobbyShopKind, string> = { skin: '商店', gold: '金币商店', stamina: '体力补充', diamond: '钻石充值', rune: '强化护符' };
-/** 商店顶部分页(docs/56,原型 shop_skin_b):x = 原型左右沿,y 117、高 44。 */
-const SHOP_TABS: Array<{ kind: LobbyShopKind; label: string; l: number; r: number }> = [
-  { kind: 'skin', label: '皮肤', l: 123, r: 308 },
-  { kind: 'gold', label: '金币', l: 323, r: 520 },
-  { kind: 'stamina', label: '体力', l: 535, r: 732 },
-  { kind: 'diamond', label: '钻石充值', l: 747, r: 948 },
-  { kind: 'rune', label: '强化护符', l: 963, r: 1165 },
+const TITLE: Record<LobbyShopKind, string> = { skin: '商店', item: '商店', gold: '金币商店', stamina: '体力补充', diamond: '钻石充值', rune: '强化护符' };
+/**
+ * 商店左分类栏(11-06 用户选 A,原型 shop_items_b):x 47..333,行心 y 168 起每行 +90,行高 82;选中 = 暗金底白字。
+ * 图标是原型抠的白色线稿(glass_kit_gen),运行时按选中 / 未选染色。没有皮肤可卖时不显示「皮肤」。
+ */
+const SHOP_RAIL: Array<{ kind: LobbyShopKind; label: string; icon: string }> = [
+  { kind: 'item', label: '道具', icon: 'ui/glass/shop_rail_item/spriteFrame' },
+  { kind: 'gold', label: '金币', icon: 'ui/glass/shop_rail_gold/spriteFrame' },
+  { kind: 'stamina', label: '体力', icon: 'ui/glass/shop_rail_stamina/spriteFrame' },
+  { kind: 'skin', label: '皮肤', icon: 'ui/glass/shop_rail_skin/spriteFrame' },
+  { kind: 'diamond', label: '钻石充值', icon: 'ui/glass/shop_rail_diamond/spriteFrame' },
 ];
 
 /**
@@ -211,6 +223,7 @@ const GLASS_GOLD_ILLU: Record<string, { path: string; w: number; h: number }> = 
 };
 /** 体力药水(原型抠图)。 */
 const GLASS_SHOP_ILLU = { stamina: { path: 'ui/shop/glass/illu_stamina/spriteFrame', w: 540, h: 560 } };
+
 /** 钻石档位插画(原型 shop_diamond_b 抠的 5 张,按档位编码;原型之外的档位回退旧插画)。 */
 const GLASS_RECHARGE_ILLU: Record<string, { path: string; w: number; h: number }> = {
   RC_6: { path: 'ui/shop/glass/illu_diamond_1/spriteFrame', w: 600, h: 326 },
@@ -333,8 +346,8 @@ export class LobbyShopDialogRenderer {
         panelH = panelW * PANEL_FRAME.aspect;
       }
     }
-    // 11-01:皮肤页起电脑端也走 B 风格整页(顶部分页在 B 风格里);强化护符页仍是旧版
-    if (SHOP_GLASS && state.kind !== 'rune') {
+    // 11-01:皮肤页起电脑端也走 B 风格整页;11-06 改左分类栏 + 道具页(强化护符并入道具页)
+    if (SHOP_GLASS) {
       this.renderGlassShop(overlay, layout, state);
       return;
     }
@@ -458,7 +471,8 @@ export class LobbyShopDialogRenderer {
     const diamond = catalog ? Number(catalog.diamond ?? 0) : Number(profile.diamond ?? 0);
     const close = (): void => this.host.closeLobbyShopDialog();
     const chips: Array<{ key: string; icon: string; value: string; width: number }> = [];
-    if (state.kind === 'gold') {
+    const kind: LobbyShopKind = state.kind === 'rune' ? 'item' : state.kind;
+    if (kind === 'gold' || kind === 'item') {
       chips.push({ key: 'gold', icon: ICONS.gold_small.path, value: compactShopNumber(Number(profile.gold ?? 0)), width: 160 });
     } else if (state.kind === 'stamina') {
       const stamina = catalog ? catalog.stamina : Number(profile.stamina ?? 0);
@@ -466,7 +480,9 @@ export class LobbyShopDialogRenderer {
       chips.push({ key: 'stamina', icon: ICONS.stamina.path, value: `${stamina}/${maxStamina}`, width: 160 });
     }
     chips.push({ key: 'diamond', icon: ICONS.diamond.path, value: compactShopNumber(diamond), width: 177 });
-    const subtitle = state.kind === 'skin'
+    const subtitle = kind === 'item'
+      ? '道具每日 0 点刷新限购'
+      : state.kind === 'skin'
       ? '限定皮肤 · 穿戴后获得属性加成'
       : state.kind === 'gold'
       ? '用钻石换取金币,档位越高赠送越多'
@@ -478,18 +494,30 @@ export class LobbyShopDialogRenderer {
             ? '联调环境:点击档位即模拟支付到账;正式环境接入支付渠道后走真实支付'
             : '钻石充值暂未开放,敬请期待';
     const back = (): void => (this.host.backFromLobbyPanel ? this.host.backFromLobbyPanel('shop', close) : close());
-    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, TITLE[state.kind], chips, back, close, { y: 57, chipRight: 1696, subtitle });
-    const { FY, S } = glassProtoMap(panelW, panelH);
-    this.renderGlassTabs(panel, state.kind, panelW, panelH);
-    if (state.kind === 'skin') {
-      this.renderGlassSkin(panel, state, panelW, panelH, diamond);
+    // 11-06 左分类栏后,各页统一标题「商店」,页名靠左栏选中态
+    mountGlassTopBar(this.host as never, panel, 'LobbyShop', panelW, panelH, '商店', chips, back, close, { y: 57, chipRight: 1696, subtitle });
+    const { FX, FY, S } = glassProtoMap(panelW, panelH);
+    this.renderGlassRail(panel, kind, panelW, panelH);
+    if (kind === 'item') {
+      if (!catalog) {
+        const l = glassLabel(this.host as never, panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', FX(1087), FY(420), S(22), GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
+        l.fontSize = Math.round(S(22));
+      } else {
+        this.renderGlassItems(panel, catalog, state, panelW, panelH, diamond, Number(profile.gold ?? catalog.gold ?? 0));
+      }
       this.renderGlassShopCovers(panel, state, panelW, panelH);
       return;
     }
-    // 其余页按原型 y 139 起排;顶部分页占了 95~139,整体内容挪下 46、等比缩到 93%(只缩不改排版)
-    const bodyScale = 0.93;
-    const body = this.host.addChildPlainNode(panel, 'LobbyShopBody', 0, FY(185) - bodyScale * FY(139), panelW, panelH);
+    // 其余页(金币 / 体力 / 皮肤 / 钻石)内容不改排版:整块等比缩到 87.5% 装进分类栏右侧(原型 x 360..1815),纵向居中在 y 462
+    const bodyScale = 0.875;
+    const [srcTop, srcBottom] = kind === 'skin' ? [155, 815] : [139, 800];
+    const body = this.host.addChildPlainNode(panel, 'LobbyShopBody', FX(1087.5) - bodyScale * FX(937), FY(462) - bodyScale * FY((srcTop + srcBottom) / 2), panelW, panelH);
     body.setScale(bodyScale, bodyScale, 1);
+    if (kind === 'skin') {
+      this.renderGlassSkin(body, state, panelW, panelH, diamond);
+      this.renderGlassShopCovers(panel, state, panelW, panelH);
+      return;
+    }
     if (!catalog) {
       const l = glassLabel(this.host as never, panel, 'LobbyShopLoading', state.loading ? '商店读取中…' : '商店暂不可用', 0, FY(420), S(22), GLASS_COLOR.sub, S(600), HorizontalTextAlignment.CENTER);
       l.fontSize = Math.round(S(22));
@@ -521,23 +549,203 @@ export class LobbyShopDialogRenderer {
     }
   }
 
-  /** 顶部分页(docs/56):选中 = 香槟实心胶囊深字,其余半透明胶囊;没有皮肤可卖时不显示「皮肤」。 */
-  private renderGlassTabs(panel: Node, active: LobbyShopKind, panelW: number, panelH: number): void {
-    const { RX, LX, FY, S, k } = glassProtoMap(panelW, panelH);
-    void RX;
+  /** 左分类栏(原型 shop_items_b):选中行 = 暗金底 + 白字白图标,其余无底、灰字灰图标;没有皮肤可卖时不显示「皮肤」。 */
+  private renderGlassRail(panel: Node, active: LobbyShopKind, panelW: number, panelH: number): void {
+    const { LX, FY, S, k } = glassProtoMap(panelW, panelH);
     const hasSkins = heroSkinCatalog().length > 0;
-    let shift = 0;
-    SHOP_TABS.forEach((tab) => {
+    let row = 0;
+    SHOP_RAIL.forEach((tab) => {
       if (tab.kind === 'skin' && !hasSkins) {
-        shift = tab.r - tab.l + 15;
         return;
       }
-      const l = LX(tab.l - shift);
-      const r = LX(tab.r - shift);
+      const y = FY(168 + row * 90);
+      row += 1;
       const selected = tab.kind === active;
-      mountGlassButton(this.host as never, panel, `LobbyShopTab_${tab.kind}`, tab.label, (l + r) / 2, FY(117), r - l, S(44), k,
-        selected ? 'selected' : 'secondary', selected ? undefined : () => this.host.switchLobbyShopTab(tab.kind), 22);
+      const node = this.host.addChildPlainNode(panel, `LobbyShopTab_${tab.kind}`, (LX(47) + LX(333)) / 2, y, LX(333) - LX(47), S(82));
+      if (selected) {
+        mountGlassSlice(this.host as never, node, 'Bg', GLASS_SLICES.tabGold, 0, 0, LX(333) - LX(47), S(82), k);
+      }
+      const half = (LX(333) - LX(47)) / 2;
+      const icon = this.host.addSprite('Icon', tab.icon, LX(98) - LX(47) - half, 0, S(46), S(46), node);
+      if (icon) {
+        icon.color = selected ? GLASS_COLOR.onGold : rgba(170, 176, 188, 255);
+      }
+      const label = glassLabel(this.host as never, node, 'Label', tab.label, LX(148) - LX(47) - half, 0, S(28), selected ? GLASS_COLOR.onGold : GLASS_COLOR.sub, S(170), HorizontalTextAlignment.LEFT, selected);
+      label.fontSize = Math.round(S(28));
+      if (!selected) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, () => this.host.switchLobbyShopTab(tab.kind), this);
+        this.host.applyImageButtonFeedback(node, 1.02, 0.98);
+      }
     });
+  }
+
+  /**
+   * 道具页(docs/62,原型 shop_items_b 1:1):4 列 × 2 行玻璃卡(x 359..1815、y 114..757);
+   * 卡内:稀有度暗底描边 + 道具图标 / 名字 / 今日 已购/上限 / 价格胶囊(钻石或金币);买满 = 灰胶囊「今日已售罄」。点卡 = 购买框。
+   */
+  private renderGlassItems(panel: Node, catalog: ShopCatalogVO, state: LobbyShopDialogState, panelW: number, panelH: number, diamond: number, gold: number): void {
+    const { FX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.CENTER, bold = false): Label => {
+      const l = glassLabel(this.host as never, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const offers = (catalog.itemOffers ?? []).slice(0, 8);
+    if (offers.length === 0) {
+      T(panel, 'LobbyShopItemsEmpty', '道具暂未上架,敬请期待', FX(1087), FY(420), 24, GLASS_COLOR.sub, S(600));
+      return;
+    }
+    const cols: Array<[number, number]> = [[359, 717], [731, 1083], [1097, 1449], [1463, 1815]];
+    const rows: Array<[number, number]> = [[114, 428], [440, 757]];
+    offers.forEach((offer, index) => {
+      const [x0, x1] = cols[index % 4];
+      const [y0, y1] = rows[Math.floor(index / 4)];
+      const cx = FX((x0 + x1) / 2);
+      const cy = FY((y0 + y1) / 2);
+      const Y = (py: number): number => FY(y0 + py) - cy;
+      const card = mountGlassPanel(this.host as never, panel, `LobbyShopItem_${offer.itemCode}`, cx, cy, S(x1 - x0), S(y1 - y0), k);
+      const remaining = Math.max(0, offer.dailyLimit - offer.usedToday);
+      const soldOut = remaining <= 0;
+      this.mountShopItemIcon(card, offer, 0, Y(96), S(145), soldOut);
+      T(card, 'Name', offer.itemName, 0, Y(192), 30, soldOut ? GLASS_COLOR.sub : GLASS_COLOR.text, S(x1 - x0 - 30), HorizontalTextAlignment.CENTER, true);
+      T(card, 'Limit', `今日 ${offer.usedToday}/${offer.dailyLimit}`, 0, Y(230), 22, GLASS_COLOR.sub, S(260));
+      const isGold = offer.currency === 'GOLD';
+      const enough = (isGold ? gold : diamond) >= offer.unitPrice;
+      this.glassPricePill(card, Y(275), S(296), S(46), k, S, soldOut ? '今日已售罄' : this.host.formatInteger(offer.unitPrice),
+        soldOut ? undefined : isGold ? ICONS.gold_small : ICONS.diamond, soldOut ? GLASS_COLOR.sub : enough ? GLASS_COLOR.text : rgba(230, 140, 130));
+      if (!soldOut && !state.busy) {
+        card.addComponent(Button);
+        card.on(Button.EventType.CLICK, () => this.host.pickShopItem(offer.itemCode), this);
+        this.host.applyImageButtonFeedback(card, 1.02, 0.98);
+      }
+    });
+    if (!state.notice) {
+      // 结果横幅也在这一行,有横幅时不画提示(否则字叠在横幅两侧)
+      T(panel, 'LobbyShopItemsHint', '点击道具选择购买数量', FX(1087), FY(792), 22, GLASS_COLOR.sub, S(600));
+    }
+    const pick = state.itemPick;
+    const picked = pick ? offers.find((offer) => offer.itemCode === pick.code) : undefined;
+    if (pick && picked) {
+      this.renderGlassItemPick(panel, picked, pick.count, state.busy, panelW, panelH, diamond, gold);
+    }
+  }
+
+  /** 道具图标:背包同款稀有度暗底 + 描边(mountItemRarityBacking),图标本体 78%;售罄压暗。 */
+  private mountShopItemIcon(parent: Node, offer: ShopItemOfferVO, x: number, y: number, box: number, dim: boolean): void {
+    mountItemRarityBacking(this.host as never, parent, 'IconBacking', box, offer.rarity, { x, y });
+    const asset = resolveBagStyleItemIconAsset(offer.itemCode, 'MATERIAL', offer.rarity) ?? ICONS.rune.path;
+    const icon = this.host.addSprite('Icon', asset, x, y, box * 0.78, box * 0.78, parent);
+    if (icon && dim) {
+      icon.color = rgba(150, 150, 150, 170);
+    }
+  }
+
+  /**
+   * 购买框(原型 shop_item_buy_b 1:1):暗幕 + 玻璃卡 876×577(中心 936,411);左大图标 + 稀有度胶囊,右名字 / 持有 / 说明 /
+   * 数量(− 数 + 最大)/ 今日还可购买;底部合计 + 取消(次)/ 购买(全屏唯一主钮,货币不够 = primaryDim)。
+   */
+  private renderGlassItemPick(panel: Node, offer: ShopItemOfferVO, count: number, busy: boolean, panelW: number, panelH: number, diamond: number, gold: number): void {
+    const { FX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(this.host as never, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const close = (): void => this.host.pickShopItem(null);
+    const dim = this.host.addChildPlainNode(panel, 'LobbyShopItemPick', 0, 0, panelW * 2, panelH * 2);
+    const dg = dim.addComponent(Graphics);
+    dg.fillColor = rgba(4, 6, 10, 160);
+    dg.rect(-panelW, -panelH, panelW * 2, panelH * 2);
+    dg.fill();
+    dim.addComponent(BlockInputEvents);
+    dim.addComponent(Button);
+    dim.on(Button.EventType.CLICK, close, this);
+    const cx = FX(936);
+    const cy = FY(411.5);
+    const X = (px: number): number => FX(px) - cx;
+    const Y = (py: number): number => FY(py) - cy;
+    // 玻璃卡下垫一层实底:弹框压在道具格上,纯半透明会透出底下的卡片(原型弹框是不透的)
+    const base = this.host.addChildPlainNode(dim, 'CardBase', cx, cy, S(876), S(577)).addComponent(Graphics);
+    base.fillColor = rgba(14, 17, 23, 238);
+    base.roundRect(-S(434), -S(285.5), S(868), S(571), S(14));
+    base.fill();
+    const card = mountGlassPanel(this.host as never, dim, 'Card', cx, cy, S(876), S(577), k);
+    card.addComponent(BlockInputEvents);
+    T(card, 'Title', '购买道具', X(538), Y(168), 34, GLASS_COLOR.text, S(400), HorizontalTextAlignment.LEFT, true);
+    const x = this.host.addChildPlainNode(card, 'Close', X(1320), Y(170), S(72), S(72));
+    this.host.addSprite('Icon', GLASS_ICON.close, 0, 0, S(36), S(36), x);
+    x.addComponent(Button);
+    x.on(Button.EventType.CLICK, close, this);
+    this.host.applyImageButtonFeedback(x, 1.08, 0.94);
+    mountGlassLine(this.host as never, card, 'TopLine', X(936), Y(210), S(796), Math.max(1, S(1.4)), rgba(255, 255, 255, 34));
+    // 左:大图标 + 稀有度胶囊
+    this.mountShopItemIcon(card, offer, X(672), Y(383), S(212), false);
+    // 胶囊色 = 图标描边同色(背包稀有度描边口径)
+    const rarityColor = itemRarityRingColor(offer.rarity);
+    const pill = this.host.addChildPlainNode(card, 'Rarity', X(672), Y(523), S(86), S(36));
+    const pg = pill.addComponent(Graphics);
+    pg.fillColor = rgba(rarityColor.r, rarityColor.g, rarityColor.b, 90);
+    pg.roundRect(-S(43), -S(18), S(86), S(36), S(18));
+    pg.fill();
+    pg.strokeColor = rgba(rarityColor.r, rarityColor.g, rarityColor.b, 230);
+    pg.lineWidth = Math.max(1.2, S(1.8));
+    pg.roundRect(-S(43), -S(18), S(86), S(36), S(18));
+    pg.stroke();
+    T(pill, 'Text', (offer.rarity || 'N').toUpperCase(), 0, 0, 22, GLASS_COLOR.text, S(80), HorizontalTextAlignment.CENTER, true);
+    mountGlassLine(this.host as never, card, 'MidLine', X(828), Y(391), Math.max(1, S(1.4)), S(297), rgba(255, 255, 255, 34));
+    // 右:名字 / 持有 / 说明 / 数量
+    T(card, 'Name', offer.itemName, X(866), Y(262), 36, GLASS_COLOR.text, S(460), HorizontalTextAlignment.LEFT, true);
+    T(card, 'Held', `持有 ${this.host.formatInteger(offer.held)}`, X(866), Y(312), 24, GLASS_COLOR.sub, S(460));
+    const desc = T(card, 'Desc', offer.useDesc || '', X(866), Y(374), 23, GLASS_COLOR.sub, S(450));
+    desc.overflow = Label.Overflow.SHRINK;
+    desc.enableWrapText = true;
+    desc.node.getComponent(UITransform)?.setContentSize(S(450), S(76));
+    const remaining = Math.max(0, offer.dailyLimit - offer.usedToday);
+    const maxN = Math.max(1, Math.min(offer.maxCountPerBuy, remaining));
+    const isGold = offer.currency === 'GOLD';
+    const balance = isGold ? gold : diamond;
+    const affordable = offer.unitPrice > 0 ? Math.floor(balance / offer.unitPrice) : maxN;
+    const n = Math.max(1, Math.min(maxN, count));
+    const round = (name: string, text: string, px: number, enabled: boolean, onTap: () => void): void => {
+      const node = this.host.addChildPlainNode(card, name, X(px), Y(463), S(60), S(60));
+      const g = node.addComponent(Graphics);
+      g.fillColor = rgba(255, 255, 255, enabled ? 16 : 6);
+      g.circle(0, 0, S(29));
+      g.fill();
+      g.strokeColor = rgba(170, 178, 192, enabled ? 200 : 90);
+      g.lineWidth = Math.max(1.2, S(1.6));
+      g.circle(0, 0, S(29));
+      g.stroke();
+      T(node, 'Text', text, 0, S(1), 34, enabled ? GLASS_COLOR.text : GLASS_COLOR.dim, S(50), HorizontalTextAlignment.CENTER);
+      if (enabled && !busy) {
+        node.addComponent(Button);
+        node.on(Button.EventType.CLICK, onTap, this);
+        this.host.applyImageButtonFeedback(node, 1.06, 0.94);
+      }
+    };
+    round('Minus', '−', 897, n > 1, () => this.host.setShopItemPickCount(n - 1));
+    const box = this.host.addChildPlainNode(card, 'Count', X(1022.5), Y(463), S(159), S(54));
+    mountGlassSlice(this.host as never, box, 'Bg', GLASS_SLICES.input, 0, 0, S(159), S(54), k);
+    T(box, 'Text', String(n), 0, 0, 30, GLASS_COLOR.text, S(140), HorizontalTextAlignment.CENTER, true);
+    round('Plus', '+', 1145, n < maxN, () => this.host.setShopItemPickCount(n + 1));
+    const maxTarget = Math.max(1, Math.min(maxN, affordable > 0 ? affordable : maxN));
+    mountGlassButton(this.host as never, card, 'Max', '最大', X(1263.5), Y(463), S(129), S(50), k, n === maxTarget ? 'disabled' : 'secondary',
+      busy ? undefined : () => this.host.setShopItemPickCount(maxTarget), 24);
+    T(card, 'Remain', `今日还可购买 ${remaining} 个`, X(866), Y(521), 22, GLASS_COLOR.sub, S(420));
+    mountGlassLine(this.host as never, card, 'BottomLine', X(936), Y(578), S(796), Math.max(1, S(1.4)), rgba(255, 255, 255, 34));
+    // 底部:合计 + 取消 / 购买
+    const total = offer.unitPrice * n;
+    const enough = balance >= total;
+    T(card, 'TotalLabel', '合计', X(538), Y(638), 28, GLASS_COLOR.sub, S(80));
+    const cur = isGold ? ICONS.gold_small : ICONS.diamond;
+    this.host.addSprite('TotalIcon', cur.path, X(643), Y(638), S(40), S(40) * cur.aspect, card);
+    T(card, 'Total', this.host.formatInteger(total), X(676), Y(638), 38, enough ? GLASS_COLOR.text : rgba(230, 140, 130), S(200), HorizontalTextAlignment.LEFT, true);
+    mountGlassButton(this.host as never, card, 'Cancel', '取消', X(1002.5), Y(638), S(211), S(64), k, 'secondary', close, 28);
+    mountGlassButton(this.host as never, card, 'Buy', busy ? '请稍候…' : '购买', X(1237.5), Y(638), S(217), S(64), k, busy ? 'primaryOff' : enough ? 'primary' : 'primaryDim',
+      busy ? undefined : () => this.host.buyShopItem(offer.itemCode, n), 28);
   }
 
   /**

@@ -48,6 +48,8 @@ SCREENS = [
     ('shop_gold', "root.openLobbyShopDialog('gold');", 2.5),
     ('shop_stamina', "root.openLobbyShopDialog('stamina');", 2.5),
     ('shop_diamond', "root.openLobbyShopDialog('diamond');", 2.5),
+    ('shop_item', "root.openLobbyShopDialog('item');", 3.0),
+    ('shop_item_pick', "root.openLobbyShopDialog('item'); setTimeout(() => root.pickShopItem('ENHANCE_STONE_HIGH'), 2000);", 4.0),
     ('forge_enhance', FORGE_TAB_JS.format(tab='enhance'), 5.0),
     ('forge_fuse', FORGE_TAB_JS.format(tab='fuse'), 5.0),
     ('forge_decompose', FORGE_TAB_JS.format(tab='decompose'), 5.0),

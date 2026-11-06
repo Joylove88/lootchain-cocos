@@ -22,6 +22,11 @@ export class ShopApi {
     return this.http.post<unknown>('/api/player/shop/rune/buy', { count }).then(expectRecord<ShopPurchaseResultVO>('购买强化护符'));
   }
 
+  /** 道具页购买(docs/62):钻石 / 金币买上架道具,每日限购。 */
+  buyItem(itemCode: string, count: number): Promise<ShopPurchaseResultVO> {
+    return this.http.post<unknown>('/api/player/shop/item/buy', { itemCode, count }).then(expectRecord<ShopPurchaseResultVO>('购买道具'));
+  }
+
   /** 充值下单;channelCode 为空时服务端取默认通道(docs/34)。 */
   recharge(tierCode: string, channelCode?: string | null): Promise<ShopRechargeResultVO> {
     return this.http.post<unknown>('/api/player/shop/recharge', channelCode ? { tierCode, channelCode } : { tierCode }).then(expectRecord<ShopRechargeResultVO>('钻石充值'));
