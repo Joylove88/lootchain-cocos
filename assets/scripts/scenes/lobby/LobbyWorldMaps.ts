@@ -923,7 +923,8 @@ export const WORLD_ASSET_PATHS: readonly string[] = Array.from(new Set([
   worldAsset('map_world1'),
   worldAsset('map_world2'),
   worldAsset('portrait_chief'),
-  worldAsset('ui_bounty_paper'),
+  // 佣兵公会背景(11-06 B 毛玻璃,替换羊皮纸悬赏令)
+  worldAsset('guild_bg_b'),
   // 世界地图气泡 / 悬赏令上的怪物立绘
   ...Object.keys(MONSTER_SPINE).map((code) => `monster/${code.toLowerCase()}/spriteFrame`),
 ]));

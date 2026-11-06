@@ -14,7 +14,7 @@ export const CORE_PREFIXES = [
   // 晨风村(地图素材、动效贴图、鸟瞰底图、地图页图标、NPC、传送阵、世界地图)
   'ui/world/vil3', 'ui/world/vil2', 'ui/world/fx', 'ui/world/overview/ov_village', 'ui/world/mapui',
   'ui/world/ground_village3', 'ui/world/npc_', 'ui/world/portrait_chief', 'ui/world/waypoint', 'ui/world/fx_rune_ring',
-  'ui/world/city_board', 'ui/world/ui_bounty_paper', 'ui/world/map_world1',
+  'ui/world/city_board', 'ui/world/guild_bg_b', 'ui/world/map_world1',
   // 野外兴趣点素材(docs/54:石碑 / 草药 / 矿脉 / 隐藏点,晨风村就有)
   'ui/world/poi',
   // 进化抉择卡面图案(docs/58 §10,Lv.2 就弹)

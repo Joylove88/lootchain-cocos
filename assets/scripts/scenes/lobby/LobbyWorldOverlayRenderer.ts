@@ -5,6 +5,11 @@ import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { WORLD_MAPS, worldAsset, type WorldNpcCode } from './LobbyWorldMaps';
 import { WORLD_NPC_IDLE, WORLD_QUEST_TEXT } from './WorldStoryText';
+import type { UiKitHost } from '../UiKit';
+import { GLASS_COLOR, glassLabel, glassProtoMap, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassTopBar } from '../UiGlassKit';
+
+/** 佣兵公会背景(11-06 原型 world_bounty_b 去界面扩图)。 */
+const GUILD_BG_ASSET = worldAsset('guild_bg_b');
 
 /** NPC 对话(原型 p4)。mode:offer 接任务 / claim 交任务 / grow 养成类去做 / train 训练场开战 / progress 进行中 / idle 闲聊。 */
 export interface WorldDialogState {
@@ -558,7 +563,12 @@ export class LobbyWorldOverlayRenderer {
     this.label(node, 'Note', canGo ? (this.host.worldTeleportNote?.() ?? '免费 · 读条 5 秒') : '', 0, -bh / 2 + 22 * k, 17 * k, DIM, bw - 40 * k);
   }
 
-  // ── 佣兵公会悬赏(原型 p5) ──
+  // ── 佣兵公会悬赏(11-06 B 毛玻璃,原型 周报截图/2026-11-01_B风格补全/proto/world_bounty_b.png,1870×841) ──
+  //
+  // 顶栏 y 44:‹ 佣兵公会 / 中间今日进度 / 日常任务(次按钮 1525..1703)+ 竖线 1746 + ✕;
+  // 三张玻璃卡 197..668 / 703..1173 / 1207..1677 × 118..778(宽 471 高 660,间距 35);卡内:标题 + 难度胶囊 y 158、怪物插画 175..440、
+  // 目标 456 / 地点 490、分隔线 519、「奖励」分区 545、奖励格 88×84 @ 612(3 个间距 130 / 2 个 154)、数量 670、按钮 224..640 × 700..760。
+  // 用户 11-06 拍板「接取」三张卡平级 → 一律次按钮(同真人矿对手卡),不给主按钮。
 
   renderBounty(layout: UiLayout): void {
     const state = this.host.currentWorldBountyPanel();
@@ -569,107 +579,110 @@ export class LobbyWorldOverlayRenderer {
     const bounties = world?.bounties ?? [];
     const W = layout.stageWidth;
     const H = layout.stageHeight;
-    const k = Math.max(0.7, Math.min(1.3, H / 860)) * (isPhoneDesign() ? 1.08 : 1);
-    const overlay = this.overlayRoot(LobbyWorldOverlayRenderer.BOUNTY, layout, 250, null);
-    const bg = this.host.addChildPlainNode(overlay, 'Wall', 0, -10 * k, W, H).addComponent(Graphics);
-    bg.fillColor = rgba(34, 24, 18, 255);
-    bg.rect(-W / 2, -H / 2, W, H);
-    bg.fill();
-    for (let i = 0; i < 9; i += 1) {
-      bg.fillColor = i % 2 === 0 ? rgba(44, 31, 22, 255) : rgba(38, 27, 19, 255);
-      bg.rect(-W / 2, -H / 2 + (H / 9) * i, W, H / 9 - 2);
-      bg.fill();
-    }
-    // 顶部
-    const bannerH = 68 * k;
-    const bannerW = bannerH * (642 / 140);
-    const banner = this.host.addChildPlainNode(overlay, 'Back', -W / 2 + 20 * k + bannerW / 2, H / 2 - 16 * k - bannerH / 2, bannerW, bannerH);
-    this.host.addSprite('Art', 'ui/raid/back_banner/spriteFrame', 0, 0, bannerW, bannerH, banner);
-    this.label(banner, 'Title', '佣兵公会', bannerW * 0.06, 1, 32 * k, rgba(250, 232, 190), bannerW * 0.5, HorizontalTextAlignment.CENTER, true);
-    banner.addComponent(Button);
-    banner.on(Button.EventType.CLICK, () => this.host.closeWorldBountyPanel(), this);
+    const { k, RX, FX, FY, S } = glassProtoMap(W, H);
+    const kit = this.host as unknown as UiKitHost;
+    const overlay = this.overlayRoot(LobbyWorldOverlayRenderer.BOUNTY, layout, 255, null);
+    // 背景 = 原型去掉界面的公会大厅(guild_bg_b,3:2,亮度按原型露出处校过),铺满整屏含挖孔区
+    const cx = (layout.stageLeft + layout.stageRight) / 2;
+    const cy = (layout.stageTop + layout.stageBottom) / 2;
+    const bgScale = Math.max((layout.width + Math.abs(cx) * 2) / 1536, (layout.height + Math.abs(cy) * 2) / 1024);
+    this.host.addSprite('GuildBg', GUILD_BG_ASSET, 0, 0, 1536 * bgScale, 1024 * bgScale, overlay);
+    const close = (): void => this.host.closeWorldBountyPanel();
+    mountGlassTopBar(kit, overlay, 'LobbyWorldBounty', W, H, '佣兵公会', [], close, close, { y: 44 });
     const doneCount = bounties.filter((item) => item.state === 'CLAIMED').length;
     const now = new Date();
     const left = Math.max(0, Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime()) / 1000));
     const hh = String(Math.floor(left / 3600)).padStart(2, '0');
     const mm = String(Math.floor((left % 3600) / 60)).padStart(2, '0');
-    this.label(overlay, 'Head', `今日悬赏 ${doneCount}/${bounties.length} 已完成 · ${hh}:${mm} 后刷新`, 0, H / 2 - 16 * k - bannerH / 2, 24 * k, BODY, W * 0.5);
-    const daily = this.button(overlay, 'Daily', W / 2 - 220 * k, H / 2 - 16 * k - bannerH / 2, 190 * k, 54 * k, '日常任务', 'secondary', () => this.host.openLobbyQuestPanel?.());
-    void daily;
-    const close = this.host.addChildPlainNode(overlay, 'Close', W / 2 - 52 * k, H / 2 - 52 * k, 72 * k, 72 * k);
-    const cg = close.addComponent(Graphics);
-    cg.fillColor = rgba(14, 10, 10, 230);
-    cg.circle(0, 0, 32 * k);
-    cg.fill();
-    cg.strokeColor = rgba(214, 170, 92, 240);
-    cg.lineWidth = Math.max(2, 2.5 * k);
-    cg.circle(0, 0, 32 * k);
-    cg.stroke();
-    cg.moveTo(-12 * k, -12 * k);
-    cg.lineTo(12 * k, 12 * k);
-    cg.moveTo(-12 * k, 12 * k);
-    cg.lineTo(12 * k, -12 * k);
-    cg.stroke();
-    close.addComponent(Button);
-    close.on(Button.EventType.CLICK, () => this.host.closeWorldBountyPanel(), this);
+    this.glassText(overlay, 'Head', `今日悬赏 ${doneCount}/${bounties.length} 已完成 · ${hh}:${mm} 后刷新`, FX(935), FY(47), 24, GLASS_COLOR.sub, S(760), k, HorizontalTextAlignment.CENTER);
+    if (this.host.openLobbyQuestPanel) {
+      mountGlassButton(kit, overlay, 'Daily', '日常任务', RX(1614), FY(46), S(178), S(50), k, 'secondary', () => this.host.openLobbyQuestPanel?.(), 24);
+      // 竖分隔线(原型 1746;贴图版在手机上太淡,改实线同标题分隔色)
+      mountGlassLine(kit, overlay, 'DailyDivider', RX(1746), FY(44), Math.max(1, S(2)), S(38), new Color(120, 128, 140, 200));
+    }
     if (bounties.length === 0) {
-      this.label(overlay, 'Empty', '到主城后,佣兵公会每天会贴出 3 张悬赏。', 0, 0, 28 * k, BODY, W * 0.7);
+      this.glassText(overlay, 'Empty', '到主城后,佣兵公会每天会贴出 3 张悬赏。', FX(935), FY(430), 28, GLASS_COLOR.sub, S(1200), k, HorizontalTextAlignment.CENTER);
       return;
     }
-    const cardH = H * 0.74;
-    const cardW = Math.min(cardH * 0.64, (W - 120 * k) / 3);
-    const gap = Math.min(40 * k, (W - cardW * 3) / 4);
+    const centers = [432.5, 938, 1442];
     bounties.slice(0, 3).forEach((bounty, index) => {
-      const cx = (index - 1) * (cardW + gap);
-      this.renderBountyCard(overlay, bounty, cx, -30 * k, cardW, cardH, k, state.busy);
+      this.renderBountyCard(overlay, bounty, FX(centers[index]), FY(448), k, state.busy);
     });
   }
 
-  private renderBountyCard(parent: Node, bounty: WorldBountyVO, x: number, y: number, w: number, h: number, k: number, busy: boolean): void {
-    const card = this.host.addChildPlainNode(parent, `Bounty_${bounty.slot}`, x, y, w, h);
-    if (!this.host.addSprite('Paper', worldAsset('ui_bounty_paper'), 0, 0, w, h, card)) {
-      const g = card.addComponent(Graphics);
-      g.fillColor = rgba(214, 196, 160, 255);
-      g.rect(-w / 2, -h / 2, w, h);
-      g.fill();
+  /** 卡内坐标:原型卡宽 471 / 高 660,以卡中心为原点(L = 卡内原型 x 相对卡左缘,Y = 原型 y)。 */
+  private renderBountyCard(parent: Node, bounty: WorldBountyVO, x: number, y: number, k: number, busy: boolean): void {
+    const kit = this.host as unknown as UiKitHost;
+    const S = (v: number): number => v * k;
+    const L = (px: number): number => (px - 235.5) * k;
+    const Y = (py: number): number => (448 - py) * k;
+    const w = S(471);
+    const h = S(660);
+    const card = mountGlassPanel(kit, parent, `Bounty_${bounty.slot}`, x, y, w, h, k);
+    // 标题 + 难度胶囊(易绿 / 中琥珀 / 难红:描边 + 淡底 + 同色字)
+    this.glassText(card, 'Title', bounty.name, L(28), Y(158), 32, GLASS_COLOR.text, S(320), k, HorizontalTextAlignment.LEFT, true);
+    const tone = bounty.difficulty === '难' ? new Color(226, 96, 86, 255) : bounty.difficulty === '中' ? new Color(226, 178, 96, 255) : new Color(118, 200, 130, 255);
+    const pill = this.host.addChildPlainNode(card, 'Diff', L(414), Y(158), S(64), S(40));
+    const pg = pill.addComponent(Graphics);
+    pg.fillColor = new Color(tone.r, tone.g, tone.b, 34);
+    pg.roundRect(-S(32), -S(20), S(64), S(40), S(20));
+    pg.fill();
+    pg.strokeColor = new Color(tone.r, tone.g, tone.b, 220);
+    pg.lineWidth = Math.max(1.2, S(1.8));
+    pg.roundRect(-S(32), -S(20), S(64), S(40), S(20));
+    pg.stroke();
+    this.glassText(pill, 'Text', bounty.difficulty, 0, 0, 24, tone, S(56), k, HorizontalTextAlignment.CENTER, true);
+    // 怪物插画:按比例装进 420×265 的画框,底部渐隐进卡片
+    const artBox = this.host.addChildPlainNode(card, 'ArtClip', 0, Y(307), S(430), S(265));
+    artBox.addComponent(Mask);
+    const art = this.host.addSprite('Art', `monster/${bounty.monsterCode.toLowerCase()}/spriteFrame`, 0, 0, S(265), S(265), artBox);
+    const frame = art?.spriteFrame;
+    if (art && frame) {
+      const o = frame.originalSize;
+      // 按画框高度铺满(原型插画顶满上下),横向最多超出 12% 由画框裁掉
+      const fit = Math.min(S(265) / Math.max(1, o.height), (S(420) / Math.max(1, o.width)) * 1.12);
+      art.node.getComponent(UITransform)?.setContentSize(o.width * fit, o.height * fit);
     }
-    const ink = rgba(70, 40, 24);
-    const red = rgba(140, 28, 20);
-    this.label(card, 'Title', bounty.name, -16 * k, h / 2 - 64 * k, 32 * k, red, w - 140 * k, HorizontalTextAlignment.CENTER, true);
-    // 难度印章
-    const stamp = this.host.addChildPlainNode(card, 'Stamp', w / 2 - 60 * k, h / 2 - 64 * k, 60 * k, 60 * k).addComponent(Graphics);
-    const stampColor = bounty.difficulty === '难' ? rgba(160, 30, 24, 230) : bounty.difficulty === '中' ? rgba(170, 110, 30, 230) : rgba(50, 110, 50, 230);
-    stamp.strokeColor = stampColor;
-    stamp.lineWidth = 3 * k;
-    stamp.circle(0, 0, 26 * k);
-    stamp.stroke();
-    stamp.circle(0, 0, 21 * k);
-    stamp.stroke();
-    this.label(card, 'Diff', bounty.difficulty, w / 2 - 60 * k, h / 2 - 64 * k, 26 * k, stampColor, 50 * k, HorizontalTextAlignment.CENTER, true);
-    // 怪物插画(立绘)
-    const artH = h * 0.29;
-    const art = this.host.addChildPlainNode(card, 'ArtClip', 0, h / 2 - 110 * k - artH / 2, w - 70 * k, artH);
-    art.addComponent(Mask);
-    const sprite = this.host.addSprite('Art', `monster/${bounty.monsterCode.toLowerCase()}/spriteFrame`, 0, 0, artH * 1.1, artH * 1.1, art);
-    if (sprite) {
-      sprite.color = rgba(200, 180, 150, 255);
+    const fade = this.host.addChildPlainNode(card, 'ArtFade', 0, Y(420), S(440), S(44)).addComponent(Graphics);
+    for (let i = 0; i < 8; i += 1) {
+      fade.fillColor = new Color(23, 27, 36, Math.round(26 + i * 26));
+      fade.rect(-S(220), S(22) - S(5.5) * (i + 1), S(440), S(5.5));
+      fade.fill();
     }
-    const lineY = h / 2 - 120 * k - artH;
-    const target = `目标:${bounty.desc}  ${Math.min(bounty.progress, bounty.target)}/${bounty.target}`;
-    this.label(card, 'Goal', target, 0, lineY - 20 * k, 21 * k, ink, w - 70 * k);
-    this.label(card, 'Place', `地点:${WORLD_MAPS[bounty.map as WorldMapCode]?.name ?? bounty.map}`, 0, lineY - 56 * k, 20 * k, ink, w - 70 * k);
-    this.label(card, 'RewardTitle', '奖励', -w / 2 + 60 * k, lineY - 92 * k, 20 * k, ink, 80 * k, HorizontalTextAlignment.CENTER, true);
-    const rewardBox = this.host.addChildPlainNode(card, 'Rewards', 0, lineY - 140 * k, w - 60 * k, 100 * k);
-    // 羊皮纸上用深色墨字(浅色字看不清);数量行与按钮留出间距(2026-10-27 UI 审核:数量被「接取」按钮盖住)
-    this.rewardRow(rewardBox, bounty.rewards, -(w - 60 * k) / 2, 0, k * 0.9, w - 60 * k, rgba(70, 40, 24), true);
-    const btnY = -h / 2 + 62 * k;
-    const btnW = w * 0.58;
+    const goal = `目标: ${bounty.desc}  ${Math.min(bounty.progress, bounty.target)}/${bounty.target}`;
+    this.glassText(card, 'Goal', goal, L(30), Y(456), 22, new Color(226, 228, 234, 255), S(415), k);
+    this.glassText(card, 'Place', `地点: ${WORLD_MAPS[bounty.map as WorldMapCode]?.name ?? bounty.map}`, L(30), Y(490), 22, new Color(226, 228, 234, 255), S(415), k);
+    mountGlassLine(kit, card, 'Divider', 0, Y(519), S(415), Math.max(1, S(1.2)), new Color(255, 255, 255, 34));
+    mountGlassSectionHeader(kit, card, 'Reward', '奖励', L(33), Y(545), k, 24);
+    const rewards = bounty.rewards.slice(0, 3);
+    const gap = rewards.length === 2 ? 154 : 130;
+    rewards.forEach((reward, index) => {
+      const rx = S((index - (rewards.length - 1) / 2) * gap);
+      const cell = mountGlassFrame(kit, card, `Reward_${index}`, rx, Y(612), S(88), S(84), k);
+      const asset = reward.resourceType === 'PLAYER_EXP' ? null : resolveBagStyleItemIconAsset(reward.resourceCode, reward.resourceType);
+      if (!asset || !this.host.addSprite('Icon', asset, 0, 0, S(66), S(66), cell)) {
+        const isExp = reward.resourceType === 'PLAYER_EXP';
+        this.glassText(cell, 'Txt', isExp ? 'EXP' : (reward.resourceName || '?').slice(0, 2), 0, 0, 26, isExp ? new Color(132, 214, 140, 255) : GLASS_COLOR.text, S(80), k, HorizontalTextAlignment.CENTER, isExp);
+      }
+      this.glassText(card, `RewardAmt_${index}`, `×${reward.amount}`, rx, Y(670), 22, GLASS_COLOR.sub, S(124), k, HorizontalTextAlignment.CENTER);
+    });
+    const btnY = Y(730);
+    const btnW = S(416);
+    const btnH = S(58);
     if (bounty.state === 'OPEN') {
-      this.button(card, 'Btn', 0, btnY, btnW, 54 * k, busy ? '请稍候…' : '接取', busy ? 'disabled' : 'primary', busy ? null : () => this.host.acceptWorldBounty(bounty.slot));
+      mountGlassButton(kit, card, 'Btn', busy ? '请稍候…' : '接取', 0, btnY, btnW, btnH, k, busy ? 'disabled' : 'secondary', busy ? undefined : () => this.host.acceptWorldBounty(bounty.slot), 26);
     } else if (bounty.state === 'DONE') {
-      this.button(card, 'Btn', 0, btnY, btnW, 54 * k, busy ? '请稍候…' : '领取奖励', busy ? 'disabled' : 'primary', busy ? null : () => this.host.claimWorldBounty(bounty.slot));
+      mountGlassButton(kit, card, 'Btn', busy ? '请稍候…' : '领取奖励', 0, btnY, btnW, btnH, k, busy ? 'disabled' : 'secondaryLit', busy ? undefined : () => this.host.claimWorldBounty(bounty.slot), 26);
     } else {
-      this.button(card, 'Btn', 0, btnY, btnW, 54 * k, bounty.state === 'CLAIMED' ? '已完成' : '进行中', 'disabled', null);
+      mountGlassButton(kit, card, 'Btn', bounty.state === 'CLAIMED' ? '已完成' : '进行中', 0, btnY, btnW, btnH, k, 'disabled', undefined, 26);
     }
+  }
+
+  /** B 风格文字(字号按原型像素 × k,下限 12)。 */
+  private glassText(parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, width: number, k: number, align = HorizontalTextAlignment.LEFT, bold = false): Label {
+    const label = glassLabel(this.host as unknown as UiKitHost, parent, name, text, x, y, size * k, color, width, align, bold);
+    label.fontSize = Math.max(12, Math.round(size * k));
+    label.lineHeight = label.fontSize + 4;
+    return label;
   }
 }
