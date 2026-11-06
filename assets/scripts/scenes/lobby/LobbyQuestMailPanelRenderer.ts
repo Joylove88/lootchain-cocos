@@ -20,7 +20,11 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountKitLoading } from '../UiKit';
 import { mountRefHeaderBand, mountRefPlate, mountRefSliced, raiseRefFrame, REF_CARD_FRAME_LINE, REF_INFO_BANNER, REF_KIT, REF_SECTION_EMBLEM, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
-import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassPanel, mountGlassScrollBar, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
+import { TOWN_HUD_ASSETS } from './LobbyTownHudProto';
+
+/** 邮件信封白线稿(B 风格,同大厅顶栏邮件图标)。 */
+const MAIL_GLASS_ICON = TOWN_HUD_ASSETS.icMail;
 import { townProtoFrame } from './LobbyTownHudProto';
 
 /** 服务端邮件列表上限(PlayerMailServiceImpl.MAX_LIST 50),收件箱头「N / 50」用。 */
@@ -1211,6 +1215,11 @@ export class LobbyQuestMailPanelRenderer {
 
   // ── 邮件面板 ──
   renderMailPanel(layout: UiLayout): void {
+    // 11-06 B 毛玻璃(原型 mail_b)
+    if (glassStyleEnabled()) {
+      this.renderMailPanelGlass(layout);
+      return;
+    }
     // 2026-10-10 全界面美化:电脑端也用全屏实景版式(原电脑版是黑底小平框)
     if (isPhoneDesign() || layout.stageWidth >= 900) {
       this.renderMailPanelPhone(layout);
@@ -1492,6 +1501,239 @@ export class LobbyQuestMailPanelRenderer {
     this.mountMailButton(right, 'Claim', claimText, rx(1567), ry(686), S(335), S(82), true, pending && !busy, S(32), pending && !busy ? () => this.host.claimLobbyMail(mailId) : undefined);
   }
 
+  /**
+   * 邮件(11-06 B 毛玻璃,原型 周报截图/2026-10-28_整体UI去AI感/proto/mail_b.png,1870×841;用户选「按原型」):
+   * 顶栏 ‹ 邮件 / ✕ @ y 57;左栏 103..842 × 115..772:「收件箱 n/50」140 @ 160、未读胶囊 673..818、邮件卡 117..828(高 105,行距 115,自 203 起;
+   * 选中 = rowReady 暖金)、分隔线 668、删除已读 131..450 / 一键领取 468..818 @ 719;
+   * 右栏 872..1769:标题 905 @ 165、元信息 907 @ 229、分隔线 262、正文 908 自 290、「附件」909 @ 430、附件格 140×135(心 978 起步 175,@ 529,名 @ 622)、
+   * 分隔线 668、删除 1182..1411 / 领取 1428..1742 @ 719。主按钮全屏只给「一键领取」,单封「领取附件」用亮次按钮(用户 11-06 同意)。
+   */
+  private renderMailPanelGlass(layout: UiLayout): void {
+    const centerX = (layout.stageLeft + layout.stageRight) / 2;
+    const centerY = (layout.stageTop + layout.stageBottom) / 2;
+    const panelW = layout.stageWidth;
+    const panelH = layout.stageHeight;
+    const state = this.host.currentLobbyMailState();
+    const { LX, RX, FY, S, k } = glassProtoMap(panelW, panelH);
+    const kit = this.host as never;
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align: HorizontalTextAlignment = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(kit, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const dim = this.mountDim('LobbyMailDim', centerX, centerY, layout, () => this.host.closeLobbyMailPanel(), 200);
+    const group = this.host.createUiNode('LobbyMailSceneContent');
+    group.setPosition(new Vec3(centerX, centerY, 0));
+    group.addComponent(UITransform).setContentSize(new Size(panelW, panelH));
+    group.addComponent(BlockInputEvents);
+    this.lastMailNodes = [dim, group];
+    const panel = this.host.addChildPlainNode(group, 'Frame', 0, 0, panelW, panelH);
+    const coverW = layout.width + Math.abs(centerX) * 2;
+    const coverH = layout.height + Math.abs(centerY) * 2;
+    const bgW = Math.max(coverW, coverH * (1870 / 841));
+    this.host.addSprite('LobbyMailGlassBg', QUEST_GLASS_BG, 0, 0, bgW, bgW / (1870 / 841), panel);
+    const close = (): void => this.host.closeLobbyMailPanel();
+    mountGlassTopBar(kit, panel, 'LobbyMail', panelW, panelH, '邮件', [], close, close, { y: 57 });
+
+    // 首开素材闸门:背景 + 信封线稿 + 附件图标到齐再画
+    const artPaths = [QUEST_GLASS_BG, MAIL_GLASS_ICON];
+    state.mails.forEach((mail) => mail.attachments.forEach((item) => {
+      const icon = resolveRewardIcon(item);
+      if (icon) {
+        artPaths.push(icon.path);
+      }
+    }));
+    if (this.artPending(artPaths, () => this.rerenderMailIfOpen(layout))) {
+      T(panel, 'Loading', '邮件读取中…', 0, 0, 26, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
+      return;
+    }
+
+    const leftCx = (LX(103) + LX(842)) / 2;
+    const rightCx = (RX(872) + RX(1769)) / 2;
+    const midY = FY(443.5);
+    const left = mountGlassPanel(kit, panel, 'Inbox', leftCx, midY, LX(842) - LX(103), S(657), k);
+    const right = mountGlassPanel(kit, panel, 'Detail', rightCx, midY, RX(1769) - RX(872), S(657), k);
+    const lx = (px: number): number => LX(px) - leftCx;
+    const rx = (px: number): number => RX(px) - rightCx;
+    const ly = (py: number): number => FY(py) - midY;
+    if (state.loading && state.mails.length === 0) {
+      T(panel, 'Loading', '邮件读取中…', 0, 0, 26, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    if (state.error && state.mails.length === 0) {
+      T(panel, 'Error', `读取失败:${state.error}`, 0, 0, 26, GLASS_COLOR.red, S(900), HorizontalTextAlignment.CENTER);
+      return;
+    }
+
+    // ── 左栏:收件箱 ──
+    const unread = state.mails.filter((mail) => !mail.read).length;
+    const head = T(left, 'Head', '收件箱', lx(140), ly(160), 30, GLASS_COLOR.text, S(140), HorizontalTextAlignment.LEFT, true);
+    void head;
+    T(left, 'HeadCount', `${state.mails.length} / ${MAIL_LIST_MAX}`, lx(256), ly(160), 28, GLASS_COLOR.text, S(160));
+    const pill = this.host.addChildPlainNode(left, 'UnreadPill', lx(745.5), ly(160), S(145), S(40));
+    mountGlassSlice(kit, pill, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, S(145), S(40), k);
+    T(pill, 'Text', unread > 0 ? `未读 ${unread}` : '全部已读', 0, 0, 22, unread > 0 ? GLASS_COLOR.champagne : GLASS_COLOR.sub, S(130), HorizontalTextAlignment.CENTER);
+
+    let selected = state.mails.find((mail) => mail.mailId === this.host.currentLobbyMailSelectedId()) ?? null;
+    if (!selected && state.mails.length > 0) {
+      selected = state.mails[0];
+    }
+    if (state.mails.length === 0) {
+      T(left, 'EmptyText', '暂无邮件', 0, ly(420), 26, GLASS_COLOR.sub, S(300), HorizontalTextAlignment.CENTER);
+    } else {
+      const rowW = S(711);
+      const rowH = S(105);
+      const pitch = S(115);
+      const listTop = ly(198);
+      const listBottom = ly(655);
+      const viewH = listTop - listBottom;
+      const listNode = this.host.addChildPlainNode(left, 'MailList', lx(472.5), (listTop + listBottom) / 2, rowW + S(10), viewH);
+      listNode.addComponent(Mask);
+      const contentHeight = Math.max(viewH, state.mails.length * pitch - (pitch - rowH) + S(10));
+      const contentNode = this.host.addChildPlainNode(listNode, 'MailListContent', 0, 0, rowW + S(10), contentHeight);
+      contentNode.getComponent(UITransform)?.setAnchorPoint(0.5, 1);
+      contentNode.setPosition(0, viewH / 2, 0);
+      const scroll = listNode.addComponent(ScrollView);
+      scroll.content = contentNode;
+      scroll.horizontal = false;
+      scroll.vertical = true;
+      scroll.inertia = true;
+      scroll.elastic = true;
+      state.mails.forEach((mail, index) => {
+        this.addMailCardGlass(contentNode, mail, -S(5) - index * pitch - rowH / 2, rowW, rowH, mail === selected, S, k);
+      });
+      if (contentHeight > viewH) {
+        const update = mountGlassScrollBar(kit, left, 'MailScrollBar', lx(834), (listTop + listBottom) / 2, S(5), viewH, Math.max(S(40), viewH * (viewH / contentHeight)));
+        listNode.on('scrolling', () => {
+          const max = Math.max(1, contentHeight - viewH);
+          update(Math.max(0, Math.min(1, (contentNode.position.y - viewH / 2) / max)));
+        }, this);
+      }
+    }
+    mountGlassLine(kit, left, 'FootLine', lx(473), ly(668), S(690), Math.max(1, S(1)), rgba(255, 255, 255, 22));
+    const anyClaimable = state.mails.some((mail) => !mail.claimed && mail.attachments.length > 0);
+    const anyDeletable = state.mails.some((mail) => mail.read && (mail.claimed || mail.attachments.length === 0));
+    const busy = state.claiming !== null;
+    mountGlassButton(kit, left, 'DeleteRead', state.claiming === -2 ? '处理中…' : '删除已读', lx(290.5), ly(719), S(319), S(62), k, anyDeletable && !busy ? 'secondary' : 'disabled', anyDeletable && !busy ? () => this.host.deleteReadLobbyMails() : undefined, 28);
+    mountGlassButton(kit, left, 'ClaimAll', state.claiming === -1 ? '领取中…' : '一键领取', lx(643), ly(719), S(350), S(62), k, anyClaimable && !busy ? 'primary' : 'primaryOff', anyClaimable && !busy ? () => this.host.claimAllLobbyMails() : undefined, 30);
+
+    // ── 右栏:详情 ──
+    if (!selected) {
+      T(right, 'DetailEmptyText', '没有更多邮件', 0, ly(420), 26, GLASS_COLOR.sub, S(400), HorizontalTextAlignment.CENTER);
+      return;
+    }
+    const innerL = rx(905);
+    const innerW = rx(1738) - innerL;
+    T(right, 'Title', selected.title, innerL, ly(165), 40, GLASS_COLOR.text, innerW, HorizontalTextAlignment.LEFT, true);
+    T(right, 'Meta', `发件人:系统      ${formatMailTime(selected.createTime, false)}      有效期:${selected.expireTime ? formatMailTime(selected.expireTime, false) : '永久'}`, rx(907), ly(229), 22, GLASS_COLOR.sub, innerW);
+    mountGlassLine(kit, right, 'MetaLine', (rx(905) + rx(1738)) / 2, ly(262), innerW, Math.max(1, S(1)), rgba(255, 255, 255, 26));
+    const body = this.host.addChildLabel(right, 'Body', selected.content, rx(908), ly(290), Math.max(12, Math.round(S(28))), new Color(226, 228, 234, 255), new Size(innerW, S(120)), HorizontalTextAlignment.LEFT);
+    body.enableWrapText = true;
+    body.lineHeight = S(42);
+    body.overflow = Label.Overflow.SHRINK;
+    body.node.getComponent(UITransform)?.setAnchorPoint(0, 1);
+    body.node.setPosition(rx(908), ly(284), 0);
+    body.verticalAlign = VerticalTextAlignment.TOP;
+    const hasAttachment = selected.attachments.length > 0;
+    if (hasAttachment) {
+      mountGlassLine(kit, right, 'AttachBar', rx(912), ly(430), S(6), S(30), GLASS_COLOR.champagne);
+      T(right, 'AttachLabel', '附件', rx(929), ly(430), 26, GLASS_COLOR.text, S(120), HorizontalTextAlignment.LEFT, true);
+      // 附件格 140×135、行距 175;一行最多 4 格,多的另起一行(名字行占位)
+      selected.attachments.forEach((item, index) => {
+        const col = index % 4;
+        const row = Math.floor(index / 4);
+        this.addMailAttachmentGlass(right, item, rx(978) + S(175) * col, ly(529) - S(190) * row, S(140), S(135), selected!.claimed, S, k, T);
+      });
+    } else {
+      T(right, 'NoAttach', '本邮件没有附件', innerL, ly(470), 24, GLASS_COLOR.sub, innerW);
+    }
+    mountGlassLine(kit, right, 'FootLine', (rx(900) + rx(1740)) / 2, ly(668), rx(1740) - rx(900), Math.max(1, S(1)), rgba(255, 255, 255, 22));
+    const pending = hasAttachment && !selected.claimed;
+    const mailId = selected.mailId;
+    mountGlassButton(kit, right, 'Delete', '删除', rx(1296.5), ly(719), S(229), S(62), k, !pending && !busy ? 'secondary' : 'disabled', !pending && !busy ? () => this.host.deleteLobbyMail(mailId) : undefined, 28);
+    const claimText = !hasAttachment ? '无附件' : selected.claimed ? '已领取' : state.claiming === mailId ? '领取中…' : '领取附件';
+    mountGlassButton(kit, right, 'Claim', claimText, rx(1585), ly(719), S(314), S(62), k, pending && !busy ? 'secondaryLit' : 'disabled', pending && !busy ? () => this.host.claimLobbyMail(mailId) : undefined, 28);
+  }
+
+  /** 左栏邮件卡(B):暗玻璃底(选中 = rowReady 暖金)+ 圆底信封线稿(未读香槟 + 红点 / 已读灰)+ 标题 / 发件人·时间 + 右侧状态胶囊。 */
+  private addMailCardGlass(parent: Node, mail: PlayerMailVO, y: number, width: number, height: number, selected: boolean, S: (v: number) => number, k: number): void {
+    const kit = this.host as never;
+    const card = this.host.addChildPlainNode(parent, `MailCard_${mail.mailId}`, 0, y, width, height);
+    mountGlassSlice(kit, card, 'Bg', selected ? GLASS_SLICES.rowReady : GLASS_SLICES.panel, 0, 0, width, height, k);
+    const unread = !mail.read;
+    const iconX = -width / 2 + S(58);
+    const disc = this.host.addChildPlainNode(card, 'IconDisc', iconX, 0, S(76), S(76)).addComponent(Graphics);
+    disc.fillColor = rgba(20, 24, 33, 230);
+    disc.circle(0, 0, S(37));
+    disc.fill();
+    disc.strokeColor = rgba(255, 255, 255, 34);
+    disc.lineWidth = Math.max(1, S(1.2));
+    disc.circle(0, 0, S(37));
+    disc.stroke();
+    const icon = this.host.addSprite('MailIcon', MAIL_GLASS_ICON, iconX, 0, S(44), S(44), card);
+    if (icon) {
+      icon.color = unread || selected ? GLASS_COLOR.champagne : rgba(170, 176, 188, 255);
+    }
+    if (unread) {
+      const dot = this.host.addChildPlainNode(card, 'UnreadDot', iconX + S(28), S(28), S(18), S(18)).addComponent(Graphics);
+      dot.fillColor = rgba(226, 64, 54, 255);
+      dot.circle(0, 0, S(8));
+      dot.fill();
+    }
+    const textL = -width / 2 + S(123);
+    const hasAttachment = mail.attachments.length > 0;
+    const tagW = S(84);
+    const textW = width / 2 - S(24) - (hasAttachment ? tagW + S(24) : 0) - textL;
+    const title = glassLabel(kit, card, 'Title', mail.title, textL, S(19), S(28), unread || selected ? GLASS_COLOR.text : rgba(214, 218, 226, 255), Math.max(S(200), textW), HorizontalTextAlignment.LEFT, true);
+    title.fontSize = Math.max(12, Math.round(S(28)));
+    const sub = glassLabel(kit, card, 'Sub', `系统 · ${formatMailTime(mail.createTime, true)}`, textL, -S(22), S(22), GLASS_COLOR.sub, textW, HorizontalTextAlignment.LEFT);
+    sub.fontSize = Math.max(12, Math.round(S(22)));
+    if (hasAttachment) {
+      const tag = this.host.addChildPlainNode(card, 'AttachTag', width / 2 - S(22) - tagW / 2, -S(15), tagW, S(38));
+      mountGlassSlice(kit, tag, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, tagW, S(38), k);
+      const tagText = glassLabel(kit, tag, 'Text', mail.claimed ? '已领' : '附件', 0, 0, S(20), mail.claimed ? GLASS_COLOR.sub : GLASS_COLOR.champagne, tagW - S(10), HorizontalTextAlignment.CENTER);
+      tagText.fontSize = Math.max(12, Math.round(S(20)));
+    }
+    card.addComponent(Button);
+    card.on(Button.EventType.CLICK, () => this.host.selectLobbyMail(mail.mailId), this);
+    this.host.applyImageButtonFeedback(card, 1.015, 0.985);
+  }
+
+  /** 右栏附件格(B):玻璃物品框 + 图标 + 右下数量 + 下方名字;已领右上香槟勾。 */
+  private addMailAttachmentGlass(parent: Node, item: QuestRewardItemVO, x: number, y: number, w: number, h: number, claimed: boolean, S: (v: number) => number, k: number,
+    T: (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align?: HorizontalTextAlignment, bold?: boolean) => Label): void {
+    const slot = mountGlassFrame(this.host as never, parent, `Attach_${item.code}`, x, y, w, h, k);
+    const icon = resolveRewardIcon(item);
+    const iconBox = Math.min(w, h) * 0.66;
+    if (icon) {
+      const iw = icon.ratio >= 1 ? iconBox : iconBox * icon.ratio;
+      const ih = icon.ratio >= 1 ? iconBox / icon.ratio : iconBox;
+      const art = this.host.addSprite('Icon', icon.path, 0, S(4), iw, ih, slot);
+      if (art && claimed) {
+        art.color = rgba(170, 170, 170, 255);
+      }
+    } else {
+      T(slot, 'NameIn', item.name, 0, S(4), 20, GLASS_COLOR.text, w - S(16), HorizontalTextAlignment.CENTER);
+    }
+    T(slot, 'Count', this.formatAmount(item.amount), w / 2 - S(12), -h / 2 + S(20), 22, GLASS_COLOR.text, w - S(16), HorizontalTextAlignment.RIGHT, true);
+    if (claimed) {
+      const badge = this.host.addChildPlainNode(slot, 'Check', w / 2 - S(22), h / 2 - S(22), S(34), S(34)).addComponent(Graphics);
+      badge.fillColor = rgba(20, 24, 33, 235);
+      badge.circle(0, 0, S(15));
+      badge.fill();
+      badge.strokeColor = GLASS_COLOR.champagne;
+      badge.lineWidth = Math.max(1.2, S(2));
+      badge.circle(0, 0, S(15));
+      badge.stroke();
+      badge.moveTo(-S(7), 0);
+      badge.lineTo(-S(2), -S(6));
+      badge.lineTo(S(8), S(6));
+      badge.stroke();
+    }
+    T(parent, `AttachName_${item.code}`, item.name, x, y - h / 2 - S(25), 22, GLASS_COLOR.text, w + S(30), HorizontalTextAlignment.CENTER);
+  }
+
   /** 原型裁的红主钮 / 暗次钮(文字已抹平)+ 字;不可用时压暗。 */
   private mountMailButton(parent: Node, name: string, text: string, x: number, y: number, width: number, height: number, primary: boolean, enabled: boolean, fontSize: number, onClick?: () => void): void {
     const btn = this.host.addChildPlainNode(parent, name, x, y, width, height);
@@ -1635,7 +1877,11 @@ export class LobbyQuestMailPanelRenderer {
       node.destroy();
     });
     this.lastMailNodes = [];
-    this.renderMailPanelPhone(layout);
+    if (glassStyleEnabled()) {
+      this.renderMailPanelGlass(layout);
+    } else {
+      this.renderMailPanelPhone(layout);
+    }
   }
 
   private addMailRow(parent: Node, mail: PlayerMailVO, x: number, y: number, width: number, height: number, scale: number, claiming: number | null): void {
