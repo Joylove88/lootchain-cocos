@@ -76,6 +76,9 @@ SCREENS = [
     ('formation', "root.openLobbyFormationPanel();", 4.0),
     ('adventure', "root.openLobbyAdventurePanel();", 3.5),
     ('daily', "root.openLobbyDailyDungeonPanel();", 3.5),
+    ('daily_rank', "root.openLobbyDailyDungeonPanel(); setTimeout(() => root.lobbyDailyDungeonPanelRenderer.openRankPopup(), 2500);", 5.0),
+    # 输出周榜满榜样式自验:读完周榜后注入 7 人样例(本地周榜常为空),只改前端内存态
+    ('daily_rank_mock', "root.openLobbyDailyDungeonPanel(); setTimeout(() => root.lobbyDailyDungeonPanelRenderer.openRankPopup(), 2500); setTimeout(() => { const s = root.lobbyCrystalRankState.summary; if (s) { s.topList = [['暗夜猎手',18400],['圣契64',15200],['霜刃',12900],['烬灭之王',11300],['星落',9800],['无名旅人',8600],['铁誓',7100]].map((e, i) => ({ rank: i + 1, userId: 900 + i, displayName: e[0], score: e[1] })); s.myRank = 2; s.myWeekScore = 15200; s.myTodayScore = 3200; s.lastWeek = { weekKey: '2026W44', myRank: 5, myScore: 9000, crystalAmount: 600, rewardsDesc: '随机SSR英雄碎片×10' }; } root.refreshLobbyDailyDungeonPanel(); }, 4500);", 6.0),
     ('crystal', "root.openGuardCrystalDialog();", 4.0),
     ('crystal_spells', "root.openGuardCrystalDialog(); setTimeout(() => { const d = root.lobbyGuardCrystalDialog; if (d) { d.tab = 'spells'; root.refreshGuardCrystalDialog(); } }, 2500);", 5.0),
     ('token_furnace', "root.openLobbyTokenFurnace();", 3.5),

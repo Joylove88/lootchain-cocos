@@ -36,7 +36,9 @@ import { mountKitLoading } from '../UiKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { TOKEN_FURNACE_ENABLED } from '../../api/TokenApi';
 import { PHONE_DIALOG_CONTENT_PAD, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
-import { glassStyleEnabled } from '../UiGlassKit';
+import { glassLabel, glassProtoMap, glassStyleEnabled, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassLine, mountGlassPanel, mountGlassSlice } from '../UiGlassKit';
+import type { UiKitHost } from '../UiKit';
+import { mountItemRarityBacking } from './EquipRarityShine';
 import { LobbyDailyGlassRenderer } from './LobbyDailyGlassRenderer';
 
 export interface LobbyDailyDungeonPanelHost {
@@ -142,6 +144,49 @@ const DAILY_REWARD_FALLBACK_NOTES: Record<string, string> = {
 };
 
 /** 每日材料副本面板(2026-08-05 参考图改版):四主题素材卡,难度徽章+奖励图标格,顶部右侧体力。 */
+/**
+ * 周榜奖励说明拆成道具(「随机UR英雄碎片×10、觉醒石×1」→ 图标 + 数量);认不出的道具只出文字,不画错图。
+ * 名字按服务端 rewardsDesc 写法匹配(CrystalRankRewards)。
+ */
+/** 千分位整数(原生 toLocaleString 无千分位,手动插逗号)。 */
+function rankInt(value: number): string {
+  return String(Math.max(0, Math.floor(Number(value) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/** 奖励名断行:稀有度前缀单独一行;其余超过 4 字拆成前 2 字 + 余下。 */
+function rankRewardNameLines(name: string): string[] {
+  const m = /^(UR|SSR|SR|R|N)(.+)$/.exec(name);
+  if (m) {
+    return [m[1], m[2]];
+  }
+  const chars = Array.from(name);
+  return chars.length > 4 ? [chars.slice(0, 2).join(''), chars.slice(2).join('')] : [name];
+}
+
+function parseRankRewards(desc: string): Array<{ name: string; count: number; icon: string | null; rarity: string; crystal: boolean }> {
+  const icons: Array<{ match: RegExp; icon: string; rarity: string }> = [
+    { match: /UR英雄碎片/, icon: 'ui/bag/ai/icon_shard_ur/spriteFrame', rarity: 'UR' },
+    { match: /SSR英雄碎片/, icon: 'ui/bag/ai/icon_shard_ssr/spriteFrame', rarity: 'SSR' },
+    { match: /SR英雄碎片/, icon: 'ui/bag/ai/icon_shard_sr/spriteFrame', rarity: 'SR' },
+    { match: /觉醒石/, icon: 'ui/bag/ai/icon_awaken_stone/spriteFrame', rarity: 'SR' },
+    { match: /终极技能卷轴/, icon: 'ui/bag/ai/icon_expbook/spriteFrame', rarity: 'SSR' },
+    { match: /高阶强化石/, icon: 'ui/bag/ai/icon_enhance_high/spriteFrame', rarity: 'SR' },
+    { match: /强化护符/, icon: 'ui/forge/ai/icon_guard_rune/spriteFrame', rarity: 'SR' },
+    { match: /强化石/, icon: 'ui/bag/ai/icon_enhance_low/spriteFrame', rarity: 'R' },
+  ];
+  return (desc || '')
+    .split(/[、,,+]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => {
+      const m = /^(.*?)\s*[×xX*]\s*(\d+)$/.exec(part);
+      const name = (m ? m[1] : part).replace(/^随机/, '').trim();
+      const count = m ? Number(m[2]) : 1;
+      const hit = icons.find((entry) => entry.match.test(name));
+      return { name, count, icon: hit?.icon ?? null, rarity: hit?.rarity ?? 'N', crystal: false };
+    });
+}
+
 export class LobbyDailyDungeonPanelRenderer {
   /** 每张主题卡当前选中的难度(实例态,不进 state;面板重开保留本会话内选择)。 */
   private readonly selectedTierByTheme = new Map<string, number>();
@@ -175,7 +220,7 @@ export class LobbyDailyDungeonPanelRenderer {
       setSelectedTier: (code, tier) => this.selectedTierByTheme.set(code, tier),
       rankOpen: () => this.rankPopupOpen,
       openRank: () => this.openRankPopup(),
-      renderRankPopup: (panel, width, height, scale) => this.renderCrystalRankPopup(panel, width, height, scale),
+      renderRankPopup: (panel, width, height) => this.renderGlassRankPopup(panel, width, height),
       helpText: (state) => `每天轮换开放不同主题。
 
 每次挑战消耗体力 ${state.summary?.staminaCost ?? 8};每个主题每天 ${state.summary?.themes?.[0]?.timesPerDay ?? 2} 次,胜利才计次。
@@ -1099,6 +1144,193 @@ export class LobbyDailyDungeonPanelRenderer {
   }
 
   // 输出周榜弹窗(P金-1c,docs/27):我的分数/排名+榜单前列+阶梯表+上周结果。
+  /**
+   * 11-07 B 毛玻璃输出周榜(原型 周报截图/2026-11-07_输出榜B/proto/daily_rank_b.png,1870×841,用户选 A:头像用名字首字):
+   * 卡 301..1571 × 66..770;顶:竖条 + 输出周榜 + 周次胶囊 + 时钟 · 距结算 + ✕,副标计分规则;
+   * 左:前 7 名(1~3 名金 / 银 / 铜奖牌)+ 底部固定「我的」行(暖金 rowReady);右:阶梯奖励(名次 + 矿晶 + 奖励道具图标 ×N)+ 上周结果。只看不操作,无主按钮。
+   */
+  private renderGlassRankPopup(parent: Node, panelWidth: number, panelHeight: number): void {
+    const kit = this.host as unknown as UiKitHost;
+    const { k, FX, FY, S } = glassProtoMap(panelWidth, panelHeight);
+    const close = (): void => {
+      this.rankPopupOpen = false;
+      this.host.refreshLobbyDailyDungeonPanel();
+    };
+    const overlay = this.host.addChildPlainNode(parent, 'LobbyDailyRankOverlay', 0, 0, panelWidth * 2, panelHeight * 2);
+    overlay.addComponent(BlockInputEvents);
+    const og = overlay.addComponent(Graphics);
+    og.fillColor = rgba(4, 6, 10, 165);
+    og.rect(-panelWidth, -panelHeight, panelWidth * 2, panelHeight * 2);
+    og.fill();
+    overlay.addComponent(Button);
+    overlay.on(Button.EventType.CLICK, close, this);
+    const cx = FX(936);
+    const cy = FY(418);
+    const X = (px: number): number => FX(px) - cx;
+    const Y = (py: number): number => FY(py) - cy;
+    // 玻璃卡下垫实底:弹框压在副本卡与背景图上,纯半透明会透出底下内容
+    const base = this.host.addChildPlainNode(overlay, 'LobbyDailyRankBase', cx, cy, S(1270), S(704)).addComponent(Graphics);
+    base.fillColor = rgba(14, 17, 23, 236);
+    base.roundRect(-S(632), -S(349), S(1264), S(698), S(16));
+    base.fill();
+    const card = mountGlassPanel(kit, overlay, 'LobbyDailyRankCard', cx, cy, S(1270), S(704), k);
+    card.addComponent(BlockInputEvents);
+    const T = (p: Node, name: string, text: string, x: number, y: number, size: number, color: Color, w: number, align = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const l = glassLabel(kit, p, name, text, x, y, S(size), color, w, align, bold);
+      l.fontSize = Math.max(12, Math.round(S(size)));
+      l.lineHeight = l.fontSize + 4;
+      return l;
+    };
+    const accent = (name: string, x: number, y: number, h: number): void => {
+      mountGlassLine(kit, card, name, X(x), Y(y), Math.max(2, S(6)), S(h), GLASS_COLOR.champagne);
+    };
+
+    // ── 顶部 ──
+    accent('TitleBar', 350, 110, 36);
+    T(card, 'RankTitle', '输出周榜', X(376), Y(110), 40, GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
+    const rankState = this.host.currentLobbyCrystalRankState?.();
+    const summary = rankState?.summary ?? null;
+    if (summary) {
+      const pill = this.host.addChildPlainNode(card, 'WeekTag', X(639), Y(110), S(148), S(42));
+      mountGlassSlice(kit, pill, 'Bg', GLASS_SLICES.tagPill, 0, 0, S(148), S(42), S(42) / 36);
+      T(pill, 'Text', summary.weekKey, 0, 0, 25, GLASS_COLOR.sub, S(136), HorizontalTextAlignment.CENTER);
+      const days = Math.floor(summary.secondsToWeekEnd / 86400);
+      const hours = Math.floor((summary.secondsToWeekEnd % 86400) / 3600);
+      const clock = this.host.addChildPlainNode(card, 'Clock', X(1160), Y(110), S(30), S(30)).addComponent(Graphics);
+      clock.strokeColor = rgba(170, 178, 192, 230);
+      clock.lineWidth = Math.max(1.4, S(2.2));
+      clock.circle(0, 0, S(12));
+      clock.moveTo(0, S(7));
+      clock.lineTo(0, 0);
+      clock.lineTo(S(5), -S(3));
+      clock.stroke();
+      T(card, 'Countdown', `距结算 ${days} 天 ${hours} 小时`, X(1188), Y(110), 24, GLASS_COLOR.sub, S(250));
+    }
+    mountGlassLine(kit, card, 'TopSep', X(1452), Y(110), Math.max(1, S(1.6)), S(36), rgba(120, 128, 140, 170));
+    const x = this.host.addChildPlainNode(card, 'Close', X(1511), Y(110), S(72), S(72));
+    this.host.addSprite('Icon', GLASS_ICON.close, 0, 0, S(38), S(38), x);
+    x.addComponent(Button);
+    x.on(Button.EventType.CLICK, close, this);
+    this.host.applyImageButtonFeedback(x, 1.08, 0.94);
+    T(card, 'RankSub', '分 = 层数(BOSS + 波次)× 100 · 每周一 0 点结算', X(376), Y(152), 23, GLASS_COLOR.sub, S(700));
+
+    if (!rankState || rankState.loading || !summary) {
+      const text = rankState?.error && !summary ? `读取失败:${rankState.error}` : '正在读取周榜…';
+      T(card, 'RankLoading', text, 0, Y(430), 24, rankState?.error && !summary ? GLASS_COLOR.red : GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+      return;
+    }
+
+    // ── 左:前 7 名 + 我的 ──
+    const rows = summary.topList.slice(0, 7);
+    if (rows.length === 0) {
+      T(card, 'RankEmpty', '本周暂无人上榜 —— 打一场难度Ⅲ抢头名!', X(632), Y(420), 24, GLASS_COLOR.sub, S(560), HorizontalTextAlignment.CENTER);
+    }
+    rows.forEach((entry, index) => {
+      const y = 224 + index * 65.5;
+      const mine = summary.myRank > 0 && summary.myRank === entry.rank;
+      if (mine) {
+        mountGlassSlice(kit, card, `RankMineHl_${index}`, GLASS_SLICES.rowReady, X(632.5), Y(y), S(605), S(62), k * 0.7);
+      }
+      this.drawRankBadge(card, `RankBadge_${index}`, entry.rank, X(373), Y(y), S);
+      this.drawNameAvatar(card, `RankAvatar_${index}`, entry.displayName, X(470), Y(y), S(31), S);
+      T(card, `RankRow_${index}`, entry.displayName, X(528), Y(y), 26, GLASS_COLOR.text, S(280), HorizontalTextAlignment.LEFT, mine);
+      T(card, `RankRowScore_${index}`, rankInt(entry.score), X(918), Y(y), 26, GLASS_COLOR.text, S(200), HorizontalTextAlignment.RIGHT, mine);
+      if (index < rows.length - 1) {
+        mountGlassLine(kit, card, `RankSep_${index}`, X(632.5), Y(y + 32.75), S(595), Math.max(1, S(1.2)), rgba(255, 255, 255, 22));
+      }
+    });
+    mountGlassLine(kit, card, 'MineSep', X(632.5), Y(652), S(615), Math.max(1, S(1.2)), rgba(255, 255, 255, 30));
+    mountGlassSlice(kit, card, 'RankMine', GLASS_SLICES.rowReady, X(632.5), Y(704), S(615), S(72), k * 0.7);
+    T(card, 'RankMineRank', summary.myRank > 0 ? `第 ${summary.myRank} 名` : '未上榜', X(348), Y(704), 21, summary.myRank > 0 ? GLASS_COLOR.champagne : GLASS_COLOR.sub, S(100), HorizontalTextAlignment.LEFT, summary.myRank > 0);
+    const myName = this.host.currentLobbyProfile?.()?.displayName ?? '';
+    this.drawNameAvatar(card, 'RankMineAvatar', myName || '我', X(470), Y(704), S(31), S);
+    T(card, 'RankMineName', '我', X(525), Y(704), 26, GLASS_COLOR.text, S(90), HorizontalTextAlignment.LEFT, true);
+    // 右端分数 = 本周分;中间只写今日 / 本周,宽度让出分数位(大分数时不叠)
+    T(card, 'RankMineDay', `今日 ${rankInt(summary.myTodayScore)} · 本周 ${rankInt(summary.myWeekScore)}`, X(626), Y(704), 21, GLASS_COLOR.sub, S(170));
+    T(card, 'RankMineScore', rankInt(summary.myWeekScore), X(918), Y(704), 26, GLASS_COLOR.text, S(105), HorizontalTextAlignment.RIGHT, true);
+
+    // ── 右:阶梯奖励 ──
+    mountGlassLine(kit, card, 'ColSep', X(960), Y(465), Math.max(1, S(1.4)), S(550), rgba(255, 255, 255, 26));
+    accent('TierBar', 988, 196, 30);
+    T(card, 'RankTiersTitle', '周榜阶梯奖励', X(1006), Y(196), 26, GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
+    const tiers = summary.rewardTiers.slice(0, 5);
+    tiers.forEach((tier, index) => {
+      const y = 263 + index * 85.75;
+      const range = tier.rankFrom === tier.rankTo ? `第 ${tier.rankFrom} 名` : `第 ${tier.rankFrom}~${tier.rankTo} 名`;
+      T(card, `RankTier_${index}`, range, X(992), Y(y), 24, GLASS_COLOR.text, S(140));
+      const items = [{ name: '矿晶', count: tier.crystalAmount, icon: 'ui/bag/ai/icon_sacred_crystal/spriteFrame', rarity: 'N', crystal: true }, ...parseRankRewards(tier.rewardsDesc)].slice(0, 3);
+      const slots = [1163, 1300, 1440];
+      items.forEach((item, i) => {
+        const ix = X(slots[i]);
+        mountItemRarityBacking(this.host as never, card, `RankTierBox_${index}_${i}`, S(62), item.rarity, { x: ix, y: Y(y) });
+        if (item.icon) {
+          this.host.addSprite(`RankTierIcon_${index}_${i}`, item.icon, ix, Y(y), S(46), S(46), card);
+        }
+        // 原型断行:稀有度前缀单独一行(UR / 英雄碎片 / ×10),长名拆两段(终极 / 技能卷轴),数量末行;不靠自动换行(会把「片」甩到下一行)
+        const label = T(card, `RankTierItem_${index}_${i}`, [...rankRewardNameLines(item.name), item.crystal ? String(item.count) : `×${item.count}`].join('\n'), ix + S(38), Y(y), 18, GLASS_COLOR.text, S(92));
+        label.enableWrapText = false;
+        label.overflow = Label.Overflow.SHRINK;
+        label.lineHeight = label.fontSize + 2;
+        label.node.getComponent(UITransform)?.setContentSize(S(92), S(72));
+      });
+      if (index < tiers.length - 1) {
+        mountGlassLine(kit, card, `RankTierSep_${index}`, X(1262), Y(y + 43), S(555), Math.max(1, S(1.2)), rgba(255, 255, 255, 22));
+      }
+    });
+    mountGlassLine(kit, card, 'LastWeekSep', X(1262), Y(665), S(555), Math.max(1, S(1.2)), rgba(255, 255, 255, 30));
+    const last = summary.lastWeek;
+    const lastText = last
+      ? `上周(${last.weekKey})第 ${last.myRank} 名:矿晶 ${last.crystalAmount}${last.rewardsDesc ? ` + ${last.rewardsDesc}` : ''},已发放`
+      : '上周结果:未上榜';
+    T(card, 'RankLastWeek', lastText, X(1262), Y(707), 24, last ? GLASS_COLOR.green : GLASS_COLOR.sub, S(560), HorizontalTextAlignment.CENTER);
+  }
+
+  /** 名次:1~3 名扁平奖牌(金 / 银 / 铜,原型取色),4 名起灰色数字。 */
+  private drawRankBadge(parent: Node, name: string, rank: number, x: number, y: number, S: (v: number) => number): void {
+    const kit = this.host as unknown as UiKitHost;
+    if (rank > 3) {
+      const l = glassLabel(kit, parent, name, String(rank), x, y, S(26), GLASS_COLOR.sub, S(60), HorizontalTextAlignment.CENTER);
+      l.fontSize = Math.round(S(26));
+      return;
+    }
+    const tone = rank === 1 ? [214, 172, 92] : rank === 2 ? [176, 184, 196] : [186, 122, 82];
+    const node = this.host.addChildPlainNode(parent, name, x, y, S(56), S(56));
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(tone[0], tone[1], tone[2], 255);
+    g.circle(0, 0, S(25));
+    g.fill();
+    g.strokeColor = rgba(Math.round(tone[0] * 0.55), Math.round(tone[1] * 0.55), Math.round(tone[2] * 0.55), 255);
+    g.lineWidth = Math.max(1.4, S(2.4));
+    g.circle(0, 0, S(19));
+    g.stroke();
+    const l = glassLabel(kit, node, 'Text', String(rank), 0, 0, S(26), rgba(40, 30, 18, 255), S(40), HorizontalTextAlignment.CENTER, true);
+    l.fontSize = Math.round(S(26));
+    l.enableShadow = false;
+  }
+
+  /** 名字首字头像(11-07 用户选 A:排行接口没有头像):按名字散列取一档低饱和底色 + 细边 + 白色首字。 */
+  private drawNameAvatar(parent: Node, name: string, displayName: string, x: number, y: number, r: number, S: (v: number) => number): void {
+    const kit = this.host as unknown as UiKitHost;
+    const palette = [[64, 78, 104], [92, 70, 104], [70, 96, 88], [104, 82, 64], [88, 70, 76], [66, 88, 108]];
+    let hash = 0;
+    for (const ch of Array.from(displayName)) {
+      hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    }
+    const c = palette[hash % palette.length];
+    const node = this.host.addChildPlainNode(parent, name, x, y, r * 2, r * 2);
+    const g = node.addComponent(Graphics);
+    g.fillColor = rgba(c[0], c[1], c[2], 255);
+    g.circle(0, 0, r);
+    g.fill();
+    g.strokeColor = rgba(200, 206, 216, 150);
+    g.lineWidth = Math.max(1, S(1.6));
+    g.circle(0, 0, r);
+    g.stroke();
+    const first = Array.from(displayName.trim())[0] ?? '?';
+    const l = glassLabel(kit, node, 'Text', first, 0, 0, r * 0.95, GLASS_COLOR.text, r * 1.6, HorizontalTextAlignment.CENTER, true);
+    l.fontSize = Math.round(r * 0.95);
+  }
+
   private renderCrystalRankPopup(parent: Node, panelWidth: number, panelHeight: number, scale: number): void {
     const overlay = this.host.addChildPlainNode(parent, 'LobbyDailyRankOverlay', 0, 0, panelWidth * 2, panelHeight * 2);
     overlay.addComponent(BlockInputEvents);

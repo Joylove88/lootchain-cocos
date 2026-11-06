@@ -1,0 +1,19 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+TWO images are attached:
+- FIRST image = our APPROVED "每日副本" (daily dungeon) screen in the frosted-glass style. Match its visual language exactly: frosted dark glass panels, soft rounded corners, faint white outlines, white/grey text, the single champagne-gold accent, translucent secondary pills, small monochrome muted-gold icons, calm darkened blurred background.
+- SECOND image = our CURRENT "输出周榜" (weekly damage ranking) popup. Use it ONLY to know which information exists; do NOT copy its style (plain text lines on black, gold border, ornament dividers - remove all of that).
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+SCREEN: the daily dungeon page in the background, dimmed to about 40% and slightly blurred; on top, a centred MODAL DIALOG (about 1180x690), one frosted glass card:
+- Title row: champagne short vertical accent bar + "输出周榜" (large white) + a small grey tag pill "2026W45"; on the right a grey clock icon with "距结算 1 天 23 小时" and a close X. Under the title, small grey text "分 = 层数(BOSS + 波次)× 100 · 每周一 0 点结算".
+- LEFT column (about 55% width): a ranking list of 7 rows, each row = rank number (1, 2, 3 shown as small flat medals in muted gold / silver / bronze; 4+ as plain grey numbers), a small round player avatar (painted dark-fantasy portraits, matte), player name, and the score right-aligned:
+  1 暗夜猎手 18,400 / 2 圣契64 15,200 / 3 霜刃 12,900 / 4 烬灭之王 11,300 / 5 星落 9,800 / 6 无名旅人 8,600 / 7 铁誓 7,100.
+  Thin dividers between rows. At the bottom of the column, pinned and separated by a line, "MY ROW" highlighted with a soft warm champagne glass background and thin gold edge: rank "未上榜" in grey, my avatar, name "我", "今日 0 · 本周 0" in grey, score "0".
+- RIGHT column: section header (champagne vertical bar) "周榜阶梯奖励", then 5 reward rows, each = rank range on the left (white), and on the right a small red-crystal icon with amount + 1-2 small square item icons (painted, matte, thin rarity outline) with "×N":
+  第 1 名 · 矿晶 2000 · UR 英雄碎片 ×10 · 觉醒石 ×1
+  第 2~3 名 · 矿晶 1200 · UR 英雄碎片 ×5 · 终极技能卷轴 ×1
+  第 4~10 名 · 矿晶 600 · SSR 英雄碎片 ×10
+  第 11~30 名 · 矿晶 300 · SSR 英雄碎片 ×5
+  第 31~100 名 · 矿晶 100 · 高阶强化石 ×3
+  Below, a thin divider and a small line "上周结果:未上榜" (grey; a soft green tint would be used when rewarded).
+- No primary button in this dialog (information only).
+Extra rules: no glow or sparkle; rarity only as thin coloured outlines; generous spacing, aligned grid, clear hierarchy. Output only the single finished mockup image, no annotations.
