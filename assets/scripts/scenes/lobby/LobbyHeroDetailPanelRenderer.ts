@@ -4153,8 +4153,8 @@ export class LobbyHeroDetailPanelRenderer {
     // 手机全屏:浮层改挂到场景内容根(右栏之后才画的名牌/页签/标题横幅/返回键不再盖在弹窗上)。
     const phoneRoot = this.phoneFrame && this.detailRenderContext && this.isNodeAlive(this.detailRenderContext.panelGroup) ? this.detailRenderContext.panelGroup : null;
     if (this.proto && phoneRoot && this.detailRenderContext) {
-      // 2026-10-23 原型 A 1:1
-      this.renderProtoAttrDetail(phoneRoot, hero, this.detailRenderContext.panelWidth, this.detailRenderContext.panelHeight);
+      // 11-06 B 毛玻璃(原型 attr_detail_b);旧红金版 renderProtoAttrDetail 不再走
+      this.renderGlassAttrDetail(phoneRoot, hero, this.detailRenderContext.panelWidth, this.detailRenderContext.panelHeight);
       return;
     }
     const overlay = this.host.addChildPlainNode(phoneRoot ?? parent, 'LobbyHeroAttrDetailOverlay', 0, 0, 4000, 4000);
@@ -7419,65 +7419,113 @@ export class LobbyHeroDetailPanelRenderer {
 
   private protoAttrSourceStat = '生命';
 
-  /** 属性详情(原型 A):头条(半身插画 + 稀有度徽 + 名字 / 等级 / 战力)→ 左 战斗属性(合计)/ 右 养成 + 属性来源(点左侧行切换)→ 关闭。 */
-  private renderProtoAttrDetail(root: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number): void {
-    const { S, F } = this.protoDialogMap();
-    let shell: { dim: Node; dialog: Node; X: (px: number) => number; Y: (py: number) => number } | null = null;
+  /**
+   * 属性详情(11-06 B 毛玻璃,原型 周报截图/2026-11-01_B风格补全/proto/attr_detail_b.png,1870×841 屏幕坐标):
+   * 窗 389..1481 × 56..788;标题竖条 421 / 字 440 @ y 97、✕ 1430;头条 415..1455 × 135..263(插画 415..712 右渐隐、稀有度胶囊 802 / 名字 860 @ 181、等级战力 770 @ 222);
+   * 左「战斗属性」413..928 × 282..690(行 367 起步 55.4,图标 466 / 名 505 / 值右 891,选中行 = panelSel);
+   * 右上「养成」946..1457 × 282..500(行 370 / 423 / 476,图标 998 / 名 1037 / 值右 1417);右下「属性来源」946..1457 × 520..692
+   * (统计行 601、等式行:= 996、列 1080 / 1214 / 1360(名 643 / 值 672)、+ 1146 / 1281);关闭次钮 935 @ 741(296×54)。点左侧行切换来源。
+   */
+  private renderGlassAttrDetail(root: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number): void {
+    const { FX, FY, S, F } = this.protoDialogMap();
+    const k = this.proto?.k ?? 1;
+    const dimW = Math.max(panelWidth, view.getVisibleSize().width) * 1.6;
+    const dimH = panelHeight * 1.6;
+    const dim = this.host.addChildPlainNode(root, 'LobbyHeroAttrDetailPanelDim', 0, 0, dimW, dimH);
+    const dg = dim.addComponent(Graphics);
+    dg.fillColor = rgba(0, 0, 0, 150);
+    dg.rect(-dimW / 2, -dimH / 2, dimW, dimH);
+    dg.fill();
+    dim.addComponent(BlockInputEvents);
     const close = (): void => {
       this.attrDetailHeroId = null;
-      if (shell && shell.dim.isValid) {
-        shell.dim.destroy();
+      if (dim.isValid) {
+        dim.destroy();
       }
     };
-    // 2026-10-24 用户「有两个名称冲突了」:标题带不再放英雄名(下面头条已有),单行标题居中于红芯
-    shell = this.protoDialogShell(root, 'LobbyHeroAttrDetailPanel', [378, 55, 1497, 797], [62, 140], '属性详情', 872, 36, close, panelWidth, panelHeight);
-    const { dim, dialog, X, Y } = shell;
     dim.addComponent(Button);
     dim.on(Button.EventType.CLICK, close, this);
-    this.protoDialogClose(dialog, X(1450), Y(101), S(54), close);
+    const cx = FX(935);
+    const cy = FY(422);
+    const w = S(1092);
+    const h = S(732);
+    const dialog = this.host.addChildPlainNode(dim, 'LobbyHeroAttrDetailPanel', cx, cy, w, h);
+    dialog.addComponent(BlockInputEvents);
+    // 两层玻璃底(单层在亮背景上偏透,同资料弹窗做法)
+    mountGlassSlice(this.host, dialog, 'GlassBase', GLASS_SLICES.panel, 0, 0, w, h, k);
+    mountGlassSlice(this.host, dialog, 'Glass', GLASS_SLICES.panel, 0, 0, w, h, k);
+    const X = (px: number): number => FX(px) - cx;
+    const Y = (py: number): number => FY(py) - cy;
+    const T = (parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, width: number, align = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const label = glassLabel(this.host, parent, name, text, x, y, F(size), color, width, align, bold);
+      label.fontSize = Math.round(F(size));
+      label.lineHeight = label.fontSize + 4;
+      return label;
+    };
+    const rowText = new Color(220, 224, 232, 255);
+    this.host.addSprite('TitleBar', GLASS_ICON.accent, X(421), Y(97), S(6), S(32), dialog);
+    T(dialog, 'Title', '属性详情', X(440), Y(97), 32, GLASS_COLOR.text, S(300), HorizontalTextAlignment.LEFT, true);
+    mountGlassIconButton(this.host, dialog, 'Close', GLASS_ICON.close, X(1430), Y(97), S(36), S(72), close);
 
-    // 头条
-    const strip = this.protoDialogBox(dialog, 'HeroStrip', X, Y, [420, 152, 1450, 262], null, 0);
-    const stripW = S(1450 - 420);
-    const artW = S(285);
-    const artH = S(104);
-    const art = this.host.addChildPlainNode(strip.node, 'Art', -stripW / 2 + S(3) + artW / 2, 0, artW, artH);
-    // 扁条(≈2.7:1)居中裁会切头:贴顶取头胸
+    // 头条:半身插画(右侧渐隐进玻璃)+ 稀有度胶囊 + 名字 / 等级 · 战力
+    const strip = mountGlassPanel(this.host, dialog, 'HeroStrip', X(935), Y(199), S(1040), S(128), k);
+    const sx = (px: number): number => X(px) - X(935);
+    const sy = (py: number): number => Y(py) - Y(199);
+    const artW = S(297);
+    const artH = S(122);
+    const art = this.host.addChildPlainNode(strip, 'Art', sx(415) + S(2) + artW / 2, 0, artW, artH);
+    art.addComponent(Mask);
     this.mountHeroWideArt(art, hero, artW, artH, true);
+    const fade = this.host.addChildPlainNode(strip, 'ArtFade', sx(415) + S(2) + artW - S(45), 0, S(90), artH).addComponent(Graphics);
     for (let i = 0; i < 10; i += 1) {
-      const sw = S(9);
-      mountRefSolid(this.host, art, `Fade_${i}`, artW / 2 - S(90) + sw * (i + 0.5), 0, sw + 0.5, artH, rgba(8, 6, 5, Math.round(25 * i)));
+      fade.fillColor = rgba(22, 26, 35, Math.round(24 * (i + 1)));
+      fade.rect(-S(45) + S(9) * i, -artH / 2, S(9) + 0.5, artH);
+      fade.fill();
     }
-    mountRefSolid(this.host, art, 'FadeEnd', artW / 2, 0, S(6), artH, rgba(8, 6, 5, 236));
-    const sX = (px: number): number => X(px) - X(935);
-    this.host.addSprite('Badge', heroRarityBadgeAsset(hero.rarity), sX(765), 0, S(86), S(86), strip.node);
-    this.protoText(strip.node, 'Name', safeText(hero.heroName), sX(838), S(17), F(30), rgba(255, 236, 196), S(560), HorizontalTextAlignment.LEFT, true);
-    this.protoText(strip.node, 'Level', `Lv.${Math.max(1, Math.trunc(hero.level || 1))}`, sX(838), -S(24), F(24), rgba(232, 218, 190), S(110), HorizontalTextAlignment.LEFT);
-    this.host.addSprite('PowerIcon', HERO_PROTO_IC_POWER, sX(962), -S(24), S(34), S(34), strip.node);
-    this.protoText(strip.node, 'Power', `战力 ${formatInteger(hero.power)}`, sX(990), -S(24), F(24), rgba(255, 236, 196), S(300), HorizontalTextAlignment.LEFT, true);
-    strip.finish();
+    const rarity = safeText(hero.rarity || 'R').toUpperCase();
+    const tone = rarity === 'UR' ? rgba(176, 96, 52) : rarity === 'SSR' ? rgba(102, 68, 160) : rarity === 'SR' ? rgba(58, 98, 168) : rgba(78, 110, 92);
+    const pill = this.host.addChildPlainNode(strip, 'Rarity', sx(802), sy(181), S(64), S(34));
+    const pg = pill.addComponent(Graphics);
+    pg.fillColor = new Color(tone.r, tone.g, tone.b, 230);
+    pg.roundRect(-S(32), -S(17), S(64), S(34), S(6));
+    pg.fill();
+    pg.strokeColor = new Color(Math.min(255, tone.r + 60), Math.min(255, tone.g + 60), Math.min(255, tone.b + 60), 200);
+    pg.lineWidth = Math.max(1, S(1.2));
+    pg.roundRect(-S(32), -S(17), S(64), S(34), S(6));
+    pg.stroke();
+    T(pill, 'Text', rarity, 0, 0, 22, GLASS_COLOR.text, S(60), HorizontalTextAlignment.CENTER, true);
+    T(strip, 'Name', safeText(hero.heroName), sx(860), sy(181), 30, GLASS_COLOR.text, S(560), HorizontalTextAlignment.LEFT, true);
+    T(strip, 'Meta', `Lv.${Math.max(1, Math.trunc(hero.level || 1))}  |  战力 ${formatInteger(hero.power)}`, sx(770), sy(222), 24, GLASS_COLOR.sub, S(560), HorizontalTextAlignment.LEFT);
 
     // 左:战斗属性(合计 = 基础 + 装备 + 特性)
     const sources = this.resolveAttrSources(hero);
     const fmt = (stat: string, v: number): string => (sources[stat].percent ? `${Math.round(v * 10) / 10}%` : formatInteger(Math.round(v)));
     const total = (stat: string): number => sources[stat].base + sources[stat].equip + sources[stat].affix;
     const stats = ['生命', '攻击', '防御', '速度', '暴击', '暴伤'];
+    const statIcon: Record<string, string> = {
+      生命: GLASS_STAT_ICON.hp, 攻击: GLASS_STAT_ICON.atk, 防御: GLASS_STAT_ICON.def, 速度: GLASS_STAT_ICON.spd, 暴击: GLASS_STAT_ICON.crit, 暴伤: GLASS_STAT_ICON.crit,
+    };
     if (!sources[this.protoAttrSourceStat]) {
       this.protoAttrSourceStat = '生命';
     }
-    const left = this.protoDialogBox(dialog, 'CombatBox', X, Y, [398, 275, 925, 708], '战斗属性', 48);
-    const lcx = X((398 + 925) / 2);
-    const lcy = Y((275 + 708) / 2);
-    const rowW = S(907 - 420);
+    mountGlassPanel(this.host, dialog, 'CombatBox', X((413 + 928) / 2), Y((282 + 690) / 2), S(515), S(408), k);
+    this.host.addSprite('CombatBar', GLASS_ICON.accent, X(426), Y(312), S(6), S(30), dialog);
+    T(dialog, 'CombatTitle', '战斗属性', X(445), Y(312), 26, GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
     stats.forEach((stat, index) => {
+      const ry = 367 + index * 55.4;
       const selected = stat === this.protoAttrSourceStat;
-      const row = this.protoRow(left.node, `Row_${index}`, 0, Y(362 + index * 57.2) - lcy, rowW, S(48), selected);
-      const icon = HERO_AI_STAT_ICON_ASSETS[stat];
-      if (icon) {
-        this.host.addSprite('Icon', icon, -rowW / 2 + S(33), 0, S(40), S(40), row);
+      const row = this.host.addChildPlainNode(dialog, `Row_${index}`, X(670.5), Y(ry), S(491), S(54));
+      if (selected) {
+        mountGlassSlice(this.host, row, 'Sel', GLASS_SLICES.panelSel, 0, 0, S(491), S(54), k);
+      } else if (index < stats.length - 1 && stats[index + 1] !== this.protoAttrSourceStat) {
+        mountGlassLine(this.host, row, 'Line', 0, -S(27.7), S(477), Math.max(1, S(1)), new Color(255, 255, 255, 20));
       }
-      this.protoText(row, 'Label', stat, -rowW / 2 + S(70), 0, F(22), rgba(206, 188, 152), S(120), HorizontalTextAlignment.LEFT);
-      this.protoText(row, 'Value', fmt(stat, total(stat)), rowW / 2 - S(20), 0, F(26), rgba(255, 248, 232), S(200), HorizontalTextAlignment.RIGHT, true);
+      const icon = statIcon[stat];
+      if (icon) {
+        this.host.addSprite('Icon', icon, X(466) - X(670.5), 0, S(36), S(36), row);
+      }
+      T(row, 'Label', stat, X(505) - X(670.5), 0, 22, rowText, S(140));
+      T(row, 'Value', fmt(stat, total(stat)), X(891) - X(670.5), 0, 26, GLASS_COLOR.text, S(220), HorizontalTextAlignment.RIGHT, true);
       if (!selected) {
         row.addComponent(Button);
         row.on(Button.EventType.CLICK, () => {
@@ -7485,78 +7533,57 @@ export class LobbyHeroDetailPanelRenderer {
           const parentNode = dim.parent;
           dim.destroy();
           if (parentNode && parentNode.isValid) {
-            this.renderProtoAttrDetail(parentNode, hero, panelWidth, panelHeight);
+            this.renderGlassAttrDetail(parentNode, hero, panelWidth, panelHeight);
           }
         }, this);
         this.host.applyImageButtonFeedback(row, 1.01, 0.99);
       }
     });
-    void lcx;
-    left.finish();
 
     // 右上:养成
-    const growth = this.protoDialogBox(dialog, 'GrowthBox', X, Y, [945, 275, 1473, 538], '养成', 48);
-    const gcy = Y((275 + 538) / 2);
-    const gW = S(1455 - 963);
+    mountGlassPanel(this.host, dialog, 'GrowthBox', X((946 + 1457) / 2), Y((282 + 500) / 2), S(511), S(218), k);
+    this.host.addSprite('GrowthBar', GLASS_ICON.accent, X(969), Y(313), S(6), S(30), dialog);
+    T(dialog, 'GrowthTitle', '养成', X(988), Y(313), 26, GLASS_COLOR.text, S(200), HorizontalTextAlignment.LEFT, true);
     const luck = typeof hero.luckValue === 'number' ? hero.luckValue : 0;
     const awaken = typeof hero.awakenStatus === 'number' ? hero.awakenStatus : 0;
-    // 2026-10-25 策划审核 P2-5:去掉"大招 Lv"一行(技能页已有,重复信息),三行在框内居中
-    const growthRows: Array<{ label: string; value: string; icon: string | null }> = [
-      { label: '幸运', value: `${luck}`, icon: HERO_PROTO_IC_LUCK },
-      { label: '觉醒', value: awaken > 0 ? `${awaken} 阶` : '未觉醒', icon: HERO_PROTO_IC_AWAKEN },
+    const growthRows: Array<{ label: string; value: string; icon: string }> = [
+      { label: '幸运', value: `${luck}`, icon: GLASS_STAT_ICON.luck },
+      { label: '觉醒', value: awaken > 0 ? `${awaken} 阶` : '未觉醒', icon: GLASS_STAT_ICON.awaken },
       { label: '星级', value: `${Math.max(1, Math.trunc(hero.star || 1))} 星`, icon: 'ui/hero/ai/star_filled/spriteFrame' },
     ];
-    const growthStep = 58;
-    const growthTop = (357 + 357 + 3 * 51) / 2 - (growthRows.length - 1) * growthStep / 2;
+    mountGlassLine(this.host, dialog, 'GrowthHead', X(1201), Y(341), S(470), Math.max(1, S(1)), new Color(255, 255, 255, 20));
     growthRows.forEach((entry, index) => {
-      const row = this.protoRow(growth.node, `Row_${index}`, 0, Y(growthTop + index * growthStep) - gcy, gW, S(44));
-      if (entry.icon) {
-        this.host.addSprite('Icon', entry.icon, -gW / 2 + S(32), 0, S(34), S(34), row);
+      const ry = 370 + index * 53;
+      this.host.addSprite(`GrowthIcon_${index}`, entry.icon, X(998), Y(ry), S(34), S(34), dialog);
+      T(dialog, `GrowthLabel_${index}`, entry.label, X(1037), Y(ry), 22, rowText, S(160));
+      T(dialog, `GrowthValue_${index}`, entry.value, X(1417), Y(ry), 24, GLASS_COLOR.text, S(240), HorizontalTextAlignment.RIGHT, true);
+      if (index < growthRows.length - 1) {
+        mountGlassLine(this.host, dialog, `GrowthLine_${index}`, X(1201), Y(ry + 26.5), S(470), Math.max(1, S(1)), new Color(255, 255, 255, 20));
       }
-      this.protoText(row, 'Label', entry.label, -gW / 2 + S(69), 0, F(22), rgba(206, 188, 152), S(120), HorizontalTextAlignment.LEFT);
-      this.protoText(row, 'Value', entry.value, gW / 2 - S(20), 0, F(24), rgba(255, 248, 232), S(220), HorizontalTextAlignment.RIGHT, true);
     });
-    growth.finish();
 
     // 右下:属性来源(选中项拆分)
-    const src = this.protoDialogBox(dialog, 'SourceBox', X, Y, [945, 550, 1473, 708], '属性来源', 46);
-    const scy = Y((550 + 708) / 2);
-    const scx = X((945 + 1473) / 2);
-    const P = (px: number): number => X(px) - scx;
+    mountGlassPanel(this.host, dialog, 'SourceBox', X((946 + 1457) / 2), Y((520 + 692) / 2), S(511), S(172), k);
+    this.host.addSprite('SourceBar', GLASS_ICON.accent, X(969), Y(550), S(6), S(30), dialog);
+    T(dialog, 'SourceTitle', '属性来源', X(988), Y(550), 26, GLASS_COLOR.text, S(260), HorizontalTextAlignment.LEFT, true);
+    mountGlassLine(this.host, dialog, 'SourceHead', X(1201), Y(575), S(470), Math.max(1, S(1)), new Color(255, 255, 255, 20));
     const stat = this.protoAttrSourceStat;
     const info = sources[stat];
-    const statIcon = HERO_AI_STAT_ICON_ASSETS[stat];
-    if (statIcon) {
-      this.host.addSprite('StatIcon', statIcon, P(993), Y(618) - scy, S(34), S(34), src.node);
-    }
-    this.protoText(src.node, 'StatName', stat, P(1030), Y(618) - scy, F(24), rgba(255, 236, 196), S(150), HorizontalTextAlignment.LEFT, true);
-    this.protoText(src.node, 'StatTotal', fmt(stat, total(stat)), P(1438), Y(618) - scy, F(28), rgba(255, 248, 232), S(200), HorizontalTextAlignment.RIGHT, true);
-    const bW = S(1455 - 963);
-    const bH = S(60);
-    const bY = Y(669) - scy;
-    const sumBox = this.host.addChildPlainNode(src.node, 'SumBox', 0, bY, bW, bH);
-    const sg = sumBox.addComponent(Graphics);
-    sg.fillColor = rgba(20, 15, 12, 240);
-    sg.roundRect(-bW / 2, -bH / 2, bW, bH, 6);
-    sg.fill();
-    sg.strokeColor = rgba(150, 118, 70, 170);
-    sg.lineWidth = 1.2;
-    sg.roundRect(-bW / 2, -bH / 2, bW, bH, 6);
-    sg.stroke();
-    const Q = (px: number): number => P(px);
-    this.protoText(sumBox, 'Eq', '=', Q(990), 0, F(26), rgba(220, 196, 140), S(30), HorizontalTextAlignment.CENTER, true);
+    this.host.addSprite('SourceIcon', statIcon[stat] ?? GLASS_STAT_ICON.hp, X(998), Y(601), S(34), S(34), dialog);
+    T(dialog, 'SourceStat', stat, X(1035), Y(601), 22, rowText, S(160));
+    T(dialog, 'SourceTotal', fmt(stat, total(stat)), X(1418), Y(601), 26, GLASS_COLOR.text, S(240), HorizontalTextAlignment.RIGHT, true);
+    mountGlassLine(this.host, dialog, 'SourceLine', X(1201), Y(626), S(470), Math.max(1, S(1)), new Color(255, 255, 255, 20));
+    T(dialog, 'Eq', '=', X(996), Y(658), 26, GLASS_COLOR.sub, S(30), HorizontalTextAlignment.CENTER, true);
     const parts: Array<[string, number]> = [['基础', info.base], ['装备', info.equip], ['特性', info.affix]];
-    const colX = [1085, 1235, 1385];
+    const colX = [1080, 1214, 1360];
     parts.forEach(([label, v], index) => {
-      this.protoText(sumBox, `PartLabel_${index}`, label, Q(colX[index]), S(13), F(19), rgba(190, 172, 140), S(110));
-      this.protoText(sumBox, `PartValue_${index}`, fmt(stat, v), Q(colX[index]), -S(13), F(22), rgba(255, 244, 220), S(130), HorizontalTextAlignment.CENTER, true);
-      if (index > 0) {
-        this.protoText(sumBox, `Plus_${index}`, '+', Q((colX[index - 1] + colX[index]) / 2), 0, F(24), rgba(220, 196, 140), S(30), HorizontalTextAlignment.CENTER, true);
-      }
+      T(dialog, `PartLabel_${index}`, label, X(colX[index]), Y(643), 20, GLASS_COLOR.sub, S(120), HorizontalTextAlignment.CENTER);
+      T(dialog, `PartValue_${index}`, fmt(stat, v), X(colX[index]), Y(672), 22, GLASS_COLOR.text, S(140), HorizontalTextAlignment.CENTER);
     });
-    src.finish();
+    T(dialog, 'Plus_1', '+', X(1146), Y(658), 24, GLASS_COLOR.sub, S(30), HorizontalTextAlignment.CENTER, true);
+    T(dialog, 'Plus_2', '+', X(1281), Y(658), 24, GLASS_COLOR.sub, S(30), HorizontalTextAlignment.CENTER, true);
 
-    this.protoBigButton(dialog, 'CloseButton', '关闭', X(935), Y(755), S(300), S(58), 'secondary', true, close);
+    mountGlassButton(this.host, dialog, 'CloseButton', '关闭', X(935), Y(741), S(296), S(54), k, 'secondary', close, 26);
   }
 
   /** 洗练(原型 B):左英雄卡(半身插画 / 名字 / 稀有度 / 当前战力)| 右 提示 → 词条行(品质条 / 图标 / 名称 / 数值 / 品质章 / 锁)→ 品质图例 → 消耗框 → 双钮。 */
