@@ -333,3 +333,10 @@ sword03
   orig: 789, 208
   offset: 0, 0
   index: -1
+neckfill
+  rotate: false
+  xy: 1872, 0
+  size: 64, 64
+  orig: 64, 64
+  offset: 0, 0
+  index: -1

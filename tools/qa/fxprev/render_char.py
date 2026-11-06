@@ -54,6 +54,9 @@ async def main():
                 if await ev('!!window.__ready', 10):
                     break
                 await asyncio.sleep(0.2)
+            if os.environ.get('CLEAR'):
+                # 背景色(0~1 三元组,如 CLEAR=1,0,1 洋红):查透明缝时用,深色背景和深色衣服分不开
+                await ev('window.__clear = [' + os.environ['CLEAR'] + ']; 1', 10)
             binary = 'true' if not os.path.exists(os.path.join(SRC, BASE + '.json')) and os.path.exists(os.path.join(SRC, BASE + '.skel')) else 'false'
             res = await ev(f'window.renderChar({json.dumps(os.path.basename(SRC))}, {json.dumps(BASE)}, {{fps: {FPS}, pma: {"true" if PMA else "false"}, binary: {binary}}})')
     finally:

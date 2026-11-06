@@ -72,7 +72,7 @@ window.renderChar = async function (dir, base, opts) {
   let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   let zoom = Math.max((x1 - x0) / W, (y1 - y0) / H) * 1.1;
   const draw = () => {
-    gl.clearColor(0.16, 0.17, 0.2, 1);
+    gl.clearColor(...(window.__clear || [0.16, 0.17, 0.2]), 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     renderer.camera.position.set(cx, cy, 0);
     renderer.camera.zoom = zoom;
@@ -117,7 +117,7 @@ window.renderChar = async function (dir, base, opts) {
     for (let i = 0; i < n; i++) {
       skeleton.setToSetupPose();
       pose(skeleton, state, duration * i / n);
-      gl.clearColor(0.16, 0.17, 0.2, 1);
+      gl.clearColor(...(window.__clear || [0.16, 0.17, 0.2]), 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       renderer.camera.position.set(cx, cy, 0);
       renderer.camera.zoom = zoom;

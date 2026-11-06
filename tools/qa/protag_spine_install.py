@@ -44,6 +44,8 @@ FACE_NECK_Y = -15.0
 FACE_NECK_Y_BY = {'protag_yedi': -20.0}
 # 女版同值显得脖子长(用户 11-04「女版的头可以再往下一点点」),低 8 / 低 14 对比取低 8
 HEAD_LIFT_SPINE = {'protag_m_lh': 22.0, 'protag_f_lh': 14.0}
+# 11-06 抬头后后颈和肩甲之间露透明缝(用户「脖子左侧出现透明空白」):装完炼魂两套后必须再跑
+#   python tools/qa/protag_neck_fill.py assets/resources/spine/hero/<protag_m_lh|protag_f_lh> <同名> --x 86 --y 30 --w 62 --h 38 --color 38,34,36
 # 身体贴图整套用男主的角色(只留自己的脸)
 BODY_FROM_MALE = {'protag_f': None, 'protag_f_lh': 'protag_m_lh'}
 # 11-03 用户「跑步的时候衣服是对的,站立的时候不对」:站立用 body01(高立领马甲)、跑步用 body02(毛领马甲);
