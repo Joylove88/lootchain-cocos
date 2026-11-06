@@ -3,6 +3,9 @@
 core = 亮度>=峰值45% 帧的 10~90% 框并集;loose = 亮度>=峰值20% 帧的 2~98% 框并集。 -> core_hu.json"""
 import asyncio, json, os, subprocess, sys, time, urllib.request
 import websockets
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import edge_guard  # 无头 Edge 收尾兜底(11-06)
+edge_guard.install()
 HERE = os.path.dirname(os.path.abspath(__file__))
 EDGE = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 CDP, HTTP = 9355, 8769

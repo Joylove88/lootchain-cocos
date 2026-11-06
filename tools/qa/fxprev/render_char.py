@@ -5,6 +5,9 @@
 """
 import asyncio, base64, io, json, os, subprocess, sys, time, urllib.request
 import websockets
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import edge_guard  # 无头 Edge 收尾兜底(11-06)
+edge_guard.install()
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))

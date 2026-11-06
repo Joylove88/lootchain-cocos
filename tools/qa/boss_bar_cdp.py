@@ -2,6 +2,8 @@
 """无头 Edge + CDP 走正常启动链进守卫战,催生 BOSS,实测头顶血条量法并截图(独立临时 profile)。"""
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
+import edge_guard  # 无头 Edge 收尾兜底:退出时按 profile 杀残留浏览器(11-06)
+edge_guard.install()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # 输出目录(无头浏览器配置 edge_* / 截图 shots/)放仓库外:默认 %TEMP%/lootchain-qa,可用 LC_QA_OUT 覆盖。跑完记得删 edge_*。

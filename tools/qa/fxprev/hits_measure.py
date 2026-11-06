@@ -9,6 +9,9 @@
 """
 import asyncio, json, os, re, subprocess, sys, time, urllib.request
 import websockets
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import edge_guard  # 无头 Edge 收尾兜底(11-06)
+edge_guard.install()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))

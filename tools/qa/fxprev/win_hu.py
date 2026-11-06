@@ -2,6 +2,9 @@
 """候选大招时间窗口细看:python win_hu.py 073:4.2:5.5 051:1.5:4.0 ...  → D:/骨骼动画素材/hero_ult_选型/win/<套>_<t0>_<t1>.png(10 帧,固定机位 1800 宽),并打印窗口亮区包围盒"""
 import asyncio, base64, io, json, os, subprocess, sys, time, urllib.request
 import websockets
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import edge_guard  # 无头 Edge 收尾兜底(11-06)
+edge_guard.install()
 from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = r'D:/骨骼动画素材/hero_ult_out_4243/hero_ult_out_4243'

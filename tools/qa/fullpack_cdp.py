@@ -5,6 +5,9 @@
 用法:python fullpack_cdp.py [--mobile] [--throttle MBps]"""
 import asyncio, base64, json, os, sys, time, subprocess, shutil, urllib.request
 import websockets
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import edge_guard  # 无头 Edge 收尾兜底(11-06)
+edge_guard.install()
 
 SCRATCH = os.environ.get('LC_QA_OUT') or os.path.join(os.environ.get('TEMP') or os.environ.get('TMP') or '/tmp', 'lootchain-qa')
 os.makedirs(SCRATCH, exist_ok=True)
