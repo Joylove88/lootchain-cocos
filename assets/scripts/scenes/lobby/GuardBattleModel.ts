@@ -4743,7 +4743,8 @@ function guardRaidResolveUlt(state: GuardBattleState, raider: GuardRaider, unit:
       continue;
     }
     const pos = guardRaidHeroPos(hero);
-    const ahead = (pos.x - unit.x) * -facing;
+    // 身前为正:朝左(facing -1)时 x 更小的在身前
+    const ahead = (pos.x - unit.x) * facing;
     if (ahead < -spec.back || ahead > spec.reach || Math.abs(pos.lane - lane) > spec.lane) {
       continue;
     }
