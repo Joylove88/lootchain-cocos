@@ -18,3 +18,4 @@ Thumbs.db
 
 # 原型参考裁图(由原型截图裁出,只留本地,不进 git)
 tools/qa/proto_prompts/**/*.png
+素材原始备份/unused-20261106/
