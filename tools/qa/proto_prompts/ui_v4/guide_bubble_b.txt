@@ -1,0 +1,11 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape phone 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED field / town HUD screen (frosted-glass style). Use it as the background screen and match its visual language exactly: frosted dark glass, soft rounded corners, faint white outlines, white/grey text, the single champagne-gold accent (#E3C48A), simple flat white line icons.
+- SECOND image = our CURRENT tutorial guide art (ornate gold carved bubble frame + ornate gold/red arrow). Use it ONLY to know the elements; do NOT copy its style (too ornate, glowing, AI-looking - remove all of that).
+- THIRD image = the round portrait of "零" (the system sprite guide character). Use this exact face as the small round avatar in the guide bubble.
+All text in Simplified Chinese exactly as written below; text crisp and legible.
+SCREEN: the same field/town HUD screen, showing three tutorial guide elements in the new style:
+1) TOP-CENTRE QUEST TRACKER: a slim frosted-glass capsule (about 520x46) at the top centre: a small champagne map-pin line icon, then "前往「铁匠铺」" in white and "· 打造第一件装备" in grey; a tiny distance text "32 米" on the right in grey.
+2) FIELD POINTER: above the player character's head in the scene, a clean champagne-gold chevron arrow (flat, soft drop shadow, no glow, no ornament) pointing toward the right where the target is, with a faint dotted trail.
+3) HARD GUIDE ON A HUD BUTTON: the screen is dimmed (about 65% black) EXCEPT a rounded-rectangle hole around the "召唤" (summon) HUD button at the top-right; the hole has a thin champagne outline with a soft faint halo. A small flat champagne triangle points at the button. Next to it, a GUIDE BUBBLE: a frosted dark glass card (about 560x120, rounded 14px, faint white outline) with the round "零" avatar (about 84px, thin light ring) overlapping its left edge, a small champagne name "零" at top-left of the text area, and the line "点这里召唤你的第一位伙伴" in white below it; a tiny grey "点击继续 ›" at the bottom-right of the bubble.
+Extra rules: no glow or sparkle, no ornate frames; calm, clean, premium. Output only the single finished mockup image, no annotations.
