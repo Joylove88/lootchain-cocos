@@ -229,7 +229,8 @@ export class LobbyGuardCrystalDialogRenderer {
     } else {
       // 11-06 B:原型 crystal_b 的场景比底图暗一档(玻璃面板 / 灰字才压得住);水晶与特效画在这层之上不受影响
       const shade = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalSceneShade', 0, 0, layout.width, layout.height).addComponent(Graphics);
-      shade.fillColor = rgba(4, 6, 12, 110);
+      // 11-06 用户「背景图需要压暗一些」:110 → 165
+      shade.fillColor = rgba(4, 6, 12, 165);
       shade.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
       shade.fill();
     }
