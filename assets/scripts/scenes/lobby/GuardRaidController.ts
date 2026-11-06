@@ -441,11 +441,12 @@ export class GuardRaidController {
       const icon = (this.protagonistRaider() ? PROTAG_SKILL_ICONS : GENERIC_SKILL_ICONS)[index] ?? A.icSlash;
       const button = mk(`GuardRaidSkill_${index}`, px, py, 92, false, icon, 0.62, ['K', 'L', 'I'][index] ?? '', () => { this.skillPressedAt[index] = Date.now(); });
       const mask = this.mountCdMask(button.node, button.size);
-      const cd = host.addChildLabel(button.node, 'Cd', '', 0, 0, button.size * 0.36, rgba(244, 244, 248), new Size(button.size, button.size * 0.5));
+      // 11-06 用户「冷却倒计时看不清」:冷却中图标压暗 + 整盘暗底(drawCdMask),数字加大加粗描边
+      const cd = host.addChildLabel(button.node, 'Cd', '', 0, 0, button.size * 0.42, rgba(255, 255, 255), new Size(button.size, button.size * 0.56));
       cd.isBold = true;
       cd.enableOutline = true;
-      cd.outlineColor = rgba(10, 12, 16, 255);
-      cd.outlineWidth = 2;
+      cd.outlineColor = rgba(0, 0, 0, 255);
+      cd.outlineWidth = 3;
       this.skillButtons.push({ node: button.node, cd, mask, size: button.size, drawn: -1 });
     });
     // docs/61 §8 炼魂大招「夜帝残影」:位置同野外(技能簇左上,原型 field_b / realm_ult_yedi_a)
@@ -453,11 +454,11 @@ export class GuardRaidController {
     if (this.raiderUlt) {
       const button = mk('GuardRaidRealmUlt', 1560, 470, 104, true, REALM_ULT_BASE.icon, 0.72, 'U', () => { this.ultPressedAt = Date.now(); });
       const mask = this.mountCdMask(button.node, button.size);
-      const cd = host.addChildLabel(button.node, 'Cd', '', 0, 0, button.size * 0.34, rgba(244, 244, 248), new Size(button.size, button.size * 0.5));
+      const cd = host.addChildLabel(button.node, 'Cd', '', 0, 0, button.size * 0.4, rgba(255, 255, 255), new Size(button.size, button.size * 0.56));
       cd.isBold = true;
       cd.enableOutline = true;
-      cd.outlineColor = rgba(10, 12, 16, 255);
-      cd.outlineWidth = 2;
+      cd.outlineColor = rgba(0, 0, 0, 255);
+      cd.outlineWidth = 3;
       this.ultButton = { node: button.node, cd, mask, size: button.size, drawn: -1 };
       this.realmShow.prewarm();
     }
@@ -1677,7 +1678,8 @@ export class GuardRaidController {
       if (button.cd.string !== text) {
         button.cd.string = text;
       }
-      button.drawn = this.drawCdMask(button.mask, button.size, left / Math.max(1, GUARD_RAID_SKILLS[index]?.cdMs ?? 1), button.drawn);
+      button.drawn = this.drawCdMask(button.mask, button.size, left / Math.max(1, GUARD_RAID_SKILLS[index]?.cdMs ?? 1), button.drawn, true);
+      this.dimIcon(button.node, left > 0);
     });
     const ult = this.ultButton;
     if (ult && ult.node.isValid) {
@@ -1686,7 +1688,8 @@ export class GuardRaidController {
       if (ult.cd.string !== text) {
         ult.cd.string = text;
       }
-      ult.drawn = this.drawCdMask(ult.mask, ult.size, left / GUARD_RAID_ULT.cdMs, ult.drawn);
+      ult.drawn = this.drawCdMask(ult.mask, ult.size, left / GUARD_RAID_ULT.cdMs, ult.drawn, true);
+      this.dimIcon(ult.node, left > 0);
     }
     const dodge = this.dodgeButton;
     if (dodge && dodge.node.isValid) {
@@ -1696,15 +1699,35 @@ export class GuardRaidController {
   }
 
   /** 冷却扇形:从 12 点方向顺时针退去(arc 第六参 true = 逆时针短弧,见 Graphics.arc 方向坑)。 */
-  private drawCdMask(g: Graphics, size: number, frac: number, drawn: number): number {
+  /** 冷却中线稿图标压暗(数字压在暗图标上才看得清,11-06 用户反馈)。 */
+  private dimIcon(node: Node, cooling: boolean): void {
+    const icon = node.getChildByName('Icon');
+    if (!icon || !icon.isValid) {
+      return;
+    }
+    // 用 Sprite 颜色 alpha 压暗(运行时给图标挂 UIOpacity 后不冷却的图标整颗不画,11-06 实测)
+    const sprite = icon.getComponent(Sprite);
+    const want = cooling ? 70 : 255;
+    if (sprite && sprite.color.a !== want) {
+      sprite.color = rgba(255, 255, 255, want);
+    }
+  }
+
+  /** withNumber:带倒计时数字的按钮再铺整盘暗底(翻滚钮没有数字,只画扇形)。 */
+  private drawCdMask(g: Graphics, size: number, frac: number, drawn: number, withNumber = false): number {
     const f = Math.max(0, Math.min(1, frac));
     const key = Math.round(f * 60);
     if (key === drawn || !g.isValid) {
       return drawn;
     }
     g.clear();
+    if (f > 0 && withNumber) {
+      g.fillColor = rgba(0, 0, 0, 120);
+      g.circle(0, 0, size * 0.4);
+      g.fill();
+    }
     if (f > 0) {
-      g.fillColor = rgba(0, 0, 0, 150);
+      g.fillColor = rgba(0, 0, 0, withNumber ? 110 : 150);
       g.moveTo(0, 0);
       g.arc(0, 0, size * 0.4, Math.PI / 2 - Math.PI * 2 * f, Math.PI / 2, true);
       g.close();

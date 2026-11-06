@@ -192,6 +192,16 @@ async def main():
                         await ev("cc.director.resume(); return 1;")
                         await asyncio.sleep(1.6)
                 print('ult-after', await ev("clearInterval(window.__ultSampler); return JSON.stringify({nodes: window.__ultNodes, dealt: sim.raidDealt, heroes: sim.heroes.map(h=>Math.round(h.hp||0)), ready: sim.raider.ultReadyMs, t: sim.timeMs, rult: sim.inputs.filter(i=>i.k==='rult').length, cd: raid.ultButton && raid.ultButton.cd.string});"), flush=True)
+            if os.environ.get('PROBE_HUD') == '1':
+                # 技能钮子节点状态(图标 / 冷却遮罩 / 数字):名字、激活、透明度、贴图、尺寸
+                await asyncio.sleep(2)
+                await shot('hud_ready')
+                for k in ('skillPressedAt[0]', 'skillPressedAt[1]', 'skillPressedAt[2]', 'ultPressedAt'):
+                    await ev(f"raid.{k} = Date.now(); return 1;")
+                    await asyncio.sleep(1.6)
+                await shot('hud_cooling')
+                print('hud', await ev("return JSON.stringify(raid.skillButtons.map(b=>b.node.children.map(c=>{ const sp=c.getComponent(cc.Sprite); const op=c.getComponent(cc.UIOpacity); const t=c.getComponent(cc.UITransform); return c.name+(c.isValid?'':'(dead)')+':'+(c.active?1:0)+':op'+(op?op.opacity:'-')+':'+(sp&&sp.spriteFrame?sp.spriteFrame.name:'-')+':'+(t?Math.round(t.width)+'x'+Math.round(t.height):''); })));"), flush=True)
+                return
             if os.environ.get('PROBE_SWITCH') == '1':
                 # docs/61 §9 切换操控:头像栏截图 → 切到同伴 1(头像点击同一入口 requestSwitch)→ 机器人操控同伴打 6 秒 → 截图 → 切回主角
                 await asyncio.sleep(1.5)

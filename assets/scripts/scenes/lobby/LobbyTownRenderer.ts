@@ -7076,11 +7076,12 @@ export class LobbyTownRenderer {
       let mask: Graphics | null = null;
       if (index >= 0 || index === -2 || index === -4) {
         mask = this.host.addChildPlainNode(node, 'CdMask', 0, 0, size, size).addComponent(Graphics);
-        cd = this.host.addChildLabel(node, 'Cd', '', 0, 0, size * 0.36, rgba(255, 236, 196), new Size(size, size * 0.5));
+        // 11-06 用户「冷却倒计时看不清,字和图标颜色重叠」:冷却中图标压暗 + 整盘暗底(refreshCombatButtons),数字加大加粗描边
+        cd = this.host.addChildLabel(node, 'Cd', '', 0, 0, size * 0.42, rgba(255, 255, 255), new Size(size, size * 0.56));
         cd.isBold = true;
         cd.enableOutline = true;
-        cd.outlineColor = rgba(10, 6, 4, 255);
-        cd.outlineWidth = 2;
+        cd.outlineColor = rgba(0, 0, 0, 255);
+        cd.outlineWidth = 3;
       }
       if (caption) {
         const label = this.host.addChildLabel(node, 'Caption', caption, 0, -size * 0.5 - P.S(14), P.S(18), rgba(244, 230, 200), new Size(P.S(110), P.S(26)));
@@ -7185,11 +7186,20 @@ export class LobbyTownRenderer {
           g.clear();
           if (frac > 0) {
             const r = button.size * 0.4;
-            g.fillColor = rgba(0, 0, 0, 150);
+            // 整盘暗底 + 剩余部分再压一层扇形(数字压在暗底上,不和白色线稿图标叠色)
+            g.fillColor = rgba(0, 0, 0, 120);
+            g.circle(0, 0, r);
+            g.fill();
+            g.fillColor = rgba(0, 0, 0, 110);
             g.moveTo(0, 0);
             g.arc(0, 0, r, Math.PI / 2 - Math.PI * 2 * frac, Math.PI / 2, true);
             g.close();
             g.fill();
+          }
+          // 用 Sprite 颜色 alpha 压暗(挂 UIOpacity 在掠夺实测会让图标整颗不画)
+          const iconSprite = button.node.getChildByName('Icon')?.getComponent(Sprite);
+          if (iconSprite) {
+            iconSprite.color = rgba(255, 255, 255, frac > 0 && button.cd ? 70 : 255);
           }
         }
       }
