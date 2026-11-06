@@ -1074,7 +1074,7 @@ export class LobbyGuardBattleRenderer {
       mountSprite: (parent, name, path, x, y, w, h) => this.mountSprite(parent, name, path, x, y, w, h),
       attackSfx: (heroCode) => gameAudio.sfx(this.resolveRaidSfxKey(heroCode), 0.6),
     });
-    this.raid.setRaiderCode(sim.raider?.heroCode ?? '');
+    this.raid.setRaiderCode(sim.raider?.heroCode ?? '', !!sim.raider?.ultOpen);
   }
 
   /** 掠夺表现快照按 heroCode 找单位;双方可能同码(两边都是男主角 / 同名英雄)→ 按阵营限定:我方 = ally- / raider-,守卫 = npc-(首领取最后一个同码)。 */

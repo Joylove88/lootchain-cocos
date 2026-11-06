@@ -24,14 +24,18 @@ import { resolveBattleUnitSpineRuntimeData, resolveBattleUnitSpineSkinName } fro
 import { heroClipCombo, HERO_SKILL_ACTION_CAP_MS } from './HeroClipCombos';
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
+import { REALM_ULT_BASE, RealmUltShow, realmUltCfg, realmUltTiming } from './RealmUltShow';
+import { resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import {
   GUARD_RAID_SKILLS,
+  GUARD_RAID_ULT,
   GUARD_RAID_TIME_LIMIT_MS,
   GUARD_RAID_COMBO,
   guardRaidAttack,
   guardRaidDodge,
   guardRaidMove,
   guardRaidSkill,
+  guardRaidUlt,
   type GuardBattleState,
   type GuardEvent,
   type GuardHeroUnit,
@@ -154,6 +158,11 @@ export class GuardRaidController {
   private attackPressedAt = 0;
   private dodgePressedAt = 0;
   private skillPressedAt: [number, number, number] = [0, 0, 0];
+  private ultPressedAt = 0;
+  /** docs/61 §8 主角大招「夜帝残影」按钮(炼魂才有)。 */
+  private ultButton: { node: Node; cd: Label; mask: Graphics; size: number; drawn: number } | null = null;
+  private raiderUlt = false;
+  private realmShowInst: RealmUltShow | null = null;
   private skillButtons: Array<{ node: Node; cd: Label; mask: Graphics; size: number; drawn: number }> = [];
   private dodgeButton: { node: Node; mask: Graphics; size: number; drawn: number } | null = null;
   private inputBound = false;
@@ -201,7 +210,7 @@ export class GuardRaidController {
     this.renderButtons(hud);
     if (!isPhoneDesign()) {
       const P = this.proto;
-      const hint = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', 'WASD / 方向键 移动 · J 普攻 · K L I 技能 · Shift 翻滚', P.C(935), P.Y(826), P.S(15), rgba(176, 184, 198, 150), new Size(width * 0.6, P.S(22)));
+      const hint = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', `WASD / 方向键 移动 · J 普攻 · K L I 技能${this.raiderUlt ? ' · U 大招' : ''} · Shift 翻滚`, P.C(935), P.Y(826), P.S(15), rgba(176, 184, 198, 150), new Size(width * 0.6, P.S(22)));
       hint.overflow = Label.Overflow.SHRINK;
     }
     this.bindInput();
@@ -429,6 +438,19 @@ export class GuardRaidController {
       cd.outlineWidth = 2;
       this.skillButtons.push({ node: button.node, cd, mask, size: button.size, drawn: -1 });
     });
+    // docs/61 §8 炼魂大招「夜帝残影」:位置同野外(技能簇左上,原型 field_b / realm_ult_yedi_a)
+    this.ultButton = null;
+    if (this.raiderUlt) {
+      const button = mk('GuardRaidRealmUlt', 1560, 470, 104, true, REALM_ULT_BASE.icon, 0.72, 'U', () => { this.ultPressedAt = Date.now(); });
+      const mask = this.mountCdMask(button.node, button.size);
+      const cd = host.addChildLabel(button.node, 'Cd', '', 0, 0, button.size * 0.34, rgba(244, 244, 248), new Size(button.size, button.size * 0.5));
+      cd.isBold = true;
+      cd.enableOutline = true;
+      cd.outlineColor = rgba(10, 12, 16, 255);
+      cd.outlineWidth = 2;
+      this.ultButton = { node: button.node, cd, mask, size: button.size, drawn: -1 };
+      this.realmShow.prewarm();
+    }
   }
 
   /**
@@ -471,9 +493,10 @@ export class GuardRaidController {
 
   private raiderCode = '';
 
-  /** 渲染器建场后告知进攻方英雄码(HUD 早于首个 tick 建好,技能图标要按主角 / 英雄区分)。 */
-  setRaiderCode(heroCode: string): void {
+  /** 渲染器建场后告知进攻方英雄码(HUD 早于首个 tick 建好,技能图标要按主角 / 英雄区分)与能否放大招(回执 raider.ult)。 */
+  setRaiderCode(heroCode: string, ult = false): void {
     this.raiderCode = heroCode;
+    this.raiderUlt = ult;
   }
 
   // ── 输入 ──
@@ -498,6 +521,7 @@ export class GuardRaidController {
     this.allies.clear();
     this.skillButtons = [];
     this.dodgeButton = null;
+    this.ultButton = null;
     this.bossBar = null;
     this.dpsPanel = null;
     this.dpsRows.clear();
@@ -513,6 +537,7 @@ export class GuardRaidController {
       case KeyCode.KEY_K: case KeyCode.DIGIT_1: this.skillPressedAt[0] = now; break;
       case KeyCode.KEY_L: case KeyCode.DIGIT_2: this.skillPressedAt[1] = now; break;
       case KeyCode.KEY_I: case KeyCode.DIGIT_3: this.skillPressedAt[2] = now; break;
+      case KeyCode.KEY_U: case KeyCode.DIGIT_4: if (this.raiderUlt) { this.ultPressedAt = now; } break;
       default: break;
     }
   }
@@ -563,6 +588,13 @@ export class GuardRaidController {
     } else {
       this.dodgePressedAt = 0;
     }
+    if (this.ultPressedAt && now - this.ultPressedAt <= INPUT_BUFFER_MS) {
+      if (guardRaidUlt(sim)) {
+        this.ultPressedAt = 0;
+      }
+    } else {
+      this.ultPressedAt = 0;
+    }
     for (let i = 0; i < 3; i += 1) {
       const at = this.skillPressedAt[i];
       if (at && now - at <= INPUT_BUFFER_MS) {
@@ -612,6 +644,9 @@ export class GuardRaidController {
           gameAudio.sfx('wave_start', 0.5);
           break;
         }
+        case 'raidUlt':
+          this.playRealmUlt(sim);
+          break;
         case 'raidDodge':
           if (raider) {
             this.playOneShot(raider, raider.names?.move ?? raider.names?.idle, 360, sim);
@@ -624,7 +659,21 @@ export class GuardRaidController {
           const view = this.guardView(sim, event.cell);
           const heavy = !!event.crit;
           const facing = raider?.facing ?? -1;
-          if (view && view.node.isValid) {
+          const ult = event.skillName === 'ult';
+          if (view && view.node.isValid && ult) {
+            // 大招命中:紫粉暗能量爆点(同野外 resolveRealmUltHit / impactMonster 的 hitOverride)+ 大号飘字
+            const field = this.bridge.field();
+            const hit = realmUltCfg().hit;
+            const k = this.fxScale();
+            view.hitFlashUntil = Date.now() + 160;
+            if (field && field.isValid) {
+              this.fx.play(field, hit, view.node.position.x - (facing < 0 ? 1 : -1) * 10 * k, view.node.position.y + this.bridge.unitSize() * 0.25, 150 * hit.size * k, { flipX: facing < 0 });
+            }
+            this.bridge.spawnFloater(view.node.position.x, view.node.position.y + this.bridge.unitSize() * 0.6, `-${event.amount ?? 0}`, rgba(226, 170, 255), 28);
+            const push = (facing < 0 ? -1 : 1) * 22;
+            const base = view.node.position.clone();
+            tween(view.node).to(0.06, { position: new Vec3(base.x + push, base.y, 0) }).to(0.12, { position: base }).start();
+          } else if (view && view.node.isValid) {
             view.hitFlashUntil = Date.now() + (heavy ? 140 : 90);
             this.bridge.hitFx(sim.raider?.heroCode ?? '', view.node.position.x - (facing < 0 ? -1 : 1) * this.bridge.unitSize() * 0.1, view.node.position.y + this.bridge.unitSize() * 0.25, heavy ? 1.15 : 0.85);
             this.bridge.spawnFloater(view.node.position.x, view.node.position.y + this.bridge.unitSize() * 0.55, `-${event.amount ?? 0}`, heavy ? rgba(255, 196, 80) : rgba(255, 236, 200), heavy ? 24 : 18);
@@ -633,8 +682,8 @@ export class GuardRaidController {
             const base = view.node.position.clone();
             tween(view.node).to(0.05, { position: new Vec3(base.x + push, base.y, 0) }).to(0.09, { position: base }).start();
           }
-          this.hitStopUntil = Math.max(this.hitStopUntil, Date.now() + (heavy ? 110 : 55));
-          this.bridge.shakeField(heavy ? 12 : 5);
+          this.hitStopUntil = Math.max(this.hitStopUntil, Date.now() + (ult ? 140 : heavy ? 110 : 55));
+          this.bridge.shakeField(ult ? 20 : heavy ? 12 : 5);
           gameAudio.sfx(heavy ? 'chest_land' : 'merge', heavy ? 0.9 : 0.5);
           break;
         }
@@ -966,6 +1015,53 @@ export class GuardRaidController {
     return true;
   }
 
+  private get realmShow(): RealmUltShow {
+    if (!this.realmShowInst) {
+      this.realmShowInst = new RealmUltShow(this.bridge.host as unknown as TownCombatFxHost, () => this.fx);
+    }
+    return this.realmShowInst;
+  }
+
+  /**
+   * docs/61 §8 主角大招「夜帝残影」演出(与野外同一份 RealmUltShow):主角定住蓄势 → 同步横扫切片;压暗 / 脚下法阵 / 身后夜帝虚影 + 翅膀 / 刀光。
+   * 伤害与时序在模型 GUARD_RAID_ULT(出刀点 820ms 与这里切片 60% 同源);野外像素尺寸按 k = 单位尺寸 / 230 换算。
+   */
+  private playRealmUlt(sim: GuardBattleState): void {
+    const raider = this.raider;
+    const field = this.bridge.field();
+    if (!raider || !field || !field.isValid || raider.deadShown || !raider.view.node.isValid) {
+      return;
+    }
+    const show = this.realmShow;
+    show.prewarm();
+    const cfg = realmUltCfg();
+    const c = cfg.clip;
+    const played = this.playClip(raider, c.anim, c.start, c.end, c.speed, sim);
+    const { lead, dur, total } = realmUltTiming(played, cfg);
+    if (played > 0) {
+      // 蓄势期定格(syncUnit 一次性动作期间用 oneShotSpeed),到点按切片倍速挥下
+      raider.oneShotSpeed = 0;
+      raider.oneShotUntil = Date.now() + total;
+      setTimeout(() => { raider.oneShotSpeed = c.speed; }, lead);
+    }
+    const k = this.fxScale();
+    const me = raider.view.node.position;
+    const facing = raider.facing;
+    const feetY = me.y - this.bridge.unitSize() * 0.4;
+    gameAudio.sfx(resolveHeroSkillSfxKey(raider.heroCode), 1);
+    // 压暗:战场层最底(背景在战场层外,单位 / 水晶 / 特效都在压暗之上)
+    show.spawnDim(field, 0, 0, total, 0);
+    show.spawnCircle(field, me.x, feetY, total, k);
+    show.spawnGhost(raider.view.node, raider.view.node.getChildByName('GuardUnitSpine'), raider.view.skeleton?.premultipliedAlpha ?? false, facing, lead, dur, k);
+    this.bridge.shakeField(8);
+    setTimeout(() => {
+      if (field.isValid && raider.view.node.isValid && !raider.deadShown) {
+        const pos = raider.view.node.position;
+        show.spawnSlash(field, pos.x, pos.y - this.bridge.unitSize() * 0.4, facing, k);
+      }
+    }, lead + dur * cfg.slashLead);
+  }
+
   /**
    * 普攻第 step 段(同野外 leaderClipAttack / leaderAttack):有专属连招的骨骼播对应那一截出刀切片,
    * 其余英雄按段落换 attack / skill1 / skill2 整段动作;时长与模型 GUARD_RAID_COMBO 的锁时同源。
@@ -1192,6 +1288,7 @@ export class GuardRaidController {
 
   /** 渲染帧:上一 tick → 本 tick 位置插值(alpha 由渲染器按累积器算)。 */
   frame(alpha: number): void {
+    this.realmShowInst?.step();
     const a = Math.max(0, Math.min(1, alpha));
     for (const unit of this.unitViews()) {
       const view = unit.view;
@@ -1357,6 +1454,15 @@ export class GuardRaidController {
       }
       button.drawn = this.drawCdMask(button.mask, button.size, left / Math.max(1, GUARD_RAID_SKILLS[index]?.cdMs ?? 1), button.drawn);
     });
+    const ult = this.ultButton;
+    if (ult && ult.node.isValid) {
+      const left = Math.max(0, raider.ultReadyMs - sim.timeMs);
+      const text = left > 0 ? `${Math.ceil(left / 1000)}` : '';
+      if (ult.cd.string !== text) {
+        ult.cd.string = text;
+      }
+      ult.drawn = this.drawCdMask(ult.mask, ult.size, left / GUARD_RAID_ULT.cdMs, ult.drawn);
+    }
     const dodge = this.dodgeButton;
     if (dodge && dodge.node.isValid) {
       const left = Math.max(0, raider.dodgeReadyMs - sim.timeMs);

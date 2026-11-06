@@ -223,7 +223,7 @@ export interface GuardMonster {
 }
 
 // ── docs/47 P0 掠夺模式:进攻方 ──
-export type GuardRaidHitKind = 'combo1' | 'combo2' | 'combo3' | 'combo4' | 'combo5' | 'skill0' | 'skill1' | 'skill2';
+export type GuardRaidHitKind = 'combo1' | 'combo2' | 'combo3' | 'combo4' | 'combo5' | 'skill0' | 'skill1' | 'skill2' | 'ult';
 export interface GuardRaider {
   monsterId: number;
   heroCode: string;
@@ -240,6 +240,9 @@ export interface GuardRaider {
   skillReadyMs: [number, number, number];
   /** 被守卫击中后的短暂硬直。 */
   staggerUntilMs: number;
+  /** docs/61 §8 主角大招「夜帝残影」:回执 raider.ult(炼魂)才开;旧回执 false → 与改前逐位一致。 */
+  ultOpen: boolean;
+  ultReadyMs: number;
 }
 /** docs/61 主角带队:进攻方 AI 同伴(编队 3 名英雄)。 */
 export interface GuardRaidAlly {
@@ -302,6 +305,12 @@ export const GUARD_RAID_SKILLS: ReadonlyArray<{ name: string; cdMs: number; lock
   { name: '突进斩', cdMs: 7000, lockMs: 1000, hits: [200], mult: 1.4, reach: 1.2, dash: 2.4, iframeMs: 340 },
   { name: '旋风斩', cdMs: 10000, lockMs: 1200, hits: [400, 630, 860], mult: 0.85, reach: 1.5, around: true },
 ];
+/**
+ * docs/61 §8 主角大招「夜帝残影」(同野外 LobbyTownRenderer / RealmUltShow 的 REALM_ULT_BASE):冷却 30 秒、攻击 × 4.5、前方大扇形。
+ * 时序按野外演出折算:蓄势 320ms + 横扫切片(skill1 0.8~1.55s ÷ 0.9 倍速 ≈ 833ms),出刀点在切片 60% → 820ms;动作锁到 90%(1040ms)、全程无敌。
+ * 范围:野外半径 560px(普攻 170px ≈ 1.35 格)→ 前方 4.5 格、身后 0.7 格、纵深整条走道;出招先把 3 格内守卫震住 1.3 秒(野外是推开 + 定住)。
+ */
+export const GUARD_RAID_ULT = { cdMs: 30000, mult: 4.5, reach: 4.5, back: 0.7, lane: 0.8, lockMs: 1040, hitMs: 820, iframeMs: 1150, stunRadius: 3.0, stunMs: 1300 };
 export const GUARD_RAID_DODGE_MS = 360;
 export const GUARD_RAID_DODGE_CD_MS = 1300;
 export const GUARD_RAID_DODGE_DIST = 1.1;
@@ -398,6 +407,8 @@ export interface GuardEvent {
     | 'passiveProc' | 'crystalShield'
     // docs/47 P0 掠夺:进攻方出手(level=连段 / 技能序号)/ 命中守卫(cell + amount,crit=重击)/ 守卫倒下 / 翻滚 / 进攻方受伤
     | 'raidSwing' | 'raidSkill' | 'raidHit' | 'heroDead' | 'raidDodge' | 'raidHurt'
+    // docs/61 §8:主角大招出招(monsterId=主角)
+    | 'raidUlt'
     // docs/61 主角带队:同伴出手(monsterId=同伴,cell=目标守卫格;打水晶时 cell=-1)/ 同伴倒下
     | 'raidAllyAttack' | 'raidAllyDead';
   timeMs: number;
@@ -465,7 +476,9 @@ export type GuardInputKind =
   | 'summon' | 'drag' | 'sell' | 'enhance' | 'choose' | 'skip' | 'reroll' | 'banish' | 'chest' | 'crystal'
   | 'spell' | 'trap' | 'mark' | 'skill' | 'callWave' | 'pickup' | 'loadout' | 'auto'
   // docs/47 P0 掠夺:移动方向 / 普攻 / 技能 / 翻滚
-  | 'rmove' | 'ratk' | 'rskill' | 'rdodge';
+  | 'rmove' | 'ratk' | 'rskill' | 'rdodge'
+  // docs/61 §8 主角大招
+  | 'rult';
 export interface GuardInput {
   t: number;
   k: GuardInputKind;
@@ -4248,7 +4261,7 @@ export function guardPlaceTrap(state: GuardBattleState, kind: GuardTrapKind, x: 
 /** 建好的 sim 切成掠夺局:放守卫(有血量)+ 放进攻方;phase 直接进 wave。defense 的 heroCode 必须在 pool 里。 */
 export function guardStartRaid(
   state: GuardBattleState,
-  raider: { heroCode: string; attack: number; hp: number; crystalHp?: number; clear?: boolean },
+  raider: { heroCode: string; attack: number; hp: number; crystalHp?: number; clear?: boolean; ult?: boolean },
   defense: Array<{ heroCode: string; cell: number; star: number; hp: number; hit?: number; boss?: boolean }>,
   allies: Array<{ heroCode: string; attack: number; hp: number }> = [],
 ): void {
@@ -4333,6 +4346,8 @@ export function guardStartRaid(
     dodgeReadyMs: 0,
     skillReadyMs: [0, 0, 0],
     staggerUntilMs: 0,
+    ultOpen: !!raider.ult && !raider.clear,
+    ultReadyMs: 0,
   };
   // docs/61 主角带队:同伴站主角身后,跟随 / 自动索敌(旧回执 allies 为空 → 与改前逐位一致)
   state.raidAllies = [];
@@ -4436,6 +4451,35 @@ export function guardRaidSkill(state: GuardBattleState, id: number): boolean {
   return true;
 }
 
+/** docs/61 §8 主角大招「夜帝残影」:炼魂才开(回执 raider.ult),冷却 30 秒;出招先震住身边守卫,出刀点结算前方大扇形 + 水晶。 */
+export function guardRaidUlt(state: GuardBattleState): boolean {
+  const raider = state.raider;
+  const unit = guardRaidUnit(state);
+  const spec = GUARD_RAID_ULT;
+  if (!raider || !unit || !raider.ultOpen || guardRaidLocked(state) || state.phase !== 'wave' || state.timeMs < raider.ultReadyMs) {
+    return false;
+  }
+  raider.ultReadyMs = state.timeMs + spec.cdMs;
+  raider.actionUntilMs = state.timeMs + spec.lockMs;
+  raider.dodgeUntilMs = Math.max(raider.dodgeUntilMs, state.timeMs + spec.iframeMs);
+  raider.comboStep = 0;
+  raider.comboUntilMs = 0;
+  raider.pendingHits.push({ atMs: state.timeMs + spec.hitMs, kind: 'ult' });
+  const lane = unit.laneF ?? 0.5;
+  for (const hero of state.heroes) {
+    if (hero.dead || hero.hp === undefined) {
+      continue;
+    }
+    const pos = guardRaidHeroPos(hero);
+    if (Math.hypot(pos.x - unit.x, (pos.lane - lane) * 2) <= spec.stunRadius) {
+      hero.attackCooldownMs = Math.max(hero.attackCooldownMs, spec.stunMs);
+    }
+  }
+  state.events.push({ type: 'raidUlt', timeMs: state.timeMs, monsterId: unit.monsterId });
+  guardRecord(state, 'rult', 0);
+  return true;
+}
+
 export function guardRaidDodge(state: GuardBattleState): boolean {
   const raider = state.raider;
   const unit = guardRaidUnit(state);
@@ -4443,7 +4487,7 @@ export function guardRaidDodge(state: GuardBattleState): boolean {
     return false;
   }
   // 翻滚可以打断普攻后摇(不能打断技能)
-  if (state.timeMs < raider.actionUntilMs && raider.pendingHits.some((hit) => hit.kind.startsWith('skill'))) {
+  if (state.timeMs < raider.actionUntilMs && raider.pendingHits.some((hit) => hit.kind.startsWith('skill') || hit.kind === 'ult')) {
     return false;
   }
   raider.pendingHits = [];
@@ -4623,6 +4667,10 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
   let reach: number;
   let around = false;
   let heavyCombo = false;
+  if (kind === 'ult') {
+    guardRaidResolveUlt(state, raider, unit);
+    return;
+  }
   if (kind.startsWith('combo')) {
     const spec = GUARD_RAID_COMBO[Number(kind.slice(5)) - 1];
     mult = spec.mult;
@@ -4673,6 +4721,48 @@ function guardRaidResolveHit(state: GuardBattleState, raider: GuardRaider, unit:
   }
   // 身前没有守卫、贴着水晶、朝向水晶:打水晶
   if (!hitAny && facing < 0 && unit.x <= GUARD_CRYSTAL_REACH_X + 0.55) {
+    const crystalDamage = Math.max(1, Math.round(damage * GUARD_RAID_CRYSTAL_MULT));
+    state.raidDealt[raider.heroCode] = (state.raidDealt[raider.heroCode] ?? 0) + Math.min(state.crystalHp, crystalDamage);
+    state.crystalHp = Math.max(0, state.crystalHp - crystalDamage);
+    state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: unit.monsterId, amount: crystalDamage });
+    if (state.crystalHp <= 0) {
+      state.phase = 'victory';
+      state.events.push({ type: 'victory', timeMs: state.timeMs });
+    }
+  }
+}
+
+/** 大招出刀点:前方 reach 格 / 身后 back 格、纵深整条走道内全部守卫;够得着水晶(朝水晶)也砍水晶。 */
+function guardRaidResolveUlt(state: GuardBattleState, raider: GuardRaider, unit: GuardMonster): void {
+  const spec = GUARD_RAID_ULT;
+  const facing = unit.facing ?? -1;
+  const damage = Math.max(1, Math.round(raider.attack * spec.mult));
+  const lane = unit.laneF ?? 0.5;
+  for (const hero of state.heroes) {
+    if (hero.dead || hero.hp === undefined) {
+      continue;
+    }
+    const pos = guardRaidHeroPos(hero);
+    const ahead = (pos.x - unit.x) * -facing;
+    if (ahead < -spec.back || ahead > spec.reach || Math.abs(pos.lane - lane) > spec.lane) {
+      continue;
+    }
+    state.raidDealt[raider.heroCode] = (state.raidDealt[raider.heroCode] ?? 0) + Math.min(hero.hp, damage);
+    hero.hp = Math.max(0, hero.hp - damage);
+    state.events.push({ type: 'raidHit', timeMs: state.timeMs, cell: hero.cell, heroCode: hero.heroCode, amount: damage, crit: true, monsterId: unit.monsterId, skillName: 'ult' });
+    if (hero.hp <= 0) {
+      hero.dead = true;
+      state.events.push({ type: 'heroDead', timeMs: state.timeMs, cell: hero.cell, heroCode: hero.heroCode });
+    }
+  }
+  if (state.raidClear) {
+    if (state.heroes.length > 0 && state.heroes.every((hero) => hero.dead)) {
+      state.phase = 'victory';
+      state.events.push({ type: 'victory', timeMs: state.timeMs });
+    }
+    return;
+  }
+  if (facing < 0 && unit.x - GUARD_CRYSTAL_REACH_X <= spec.reach) {
     const crystalDamage = Math.max(1, Math.round(damage * GUARD_RAID_CRYSTAL_MULT));
     state.raidDealt[raider.heroCode] = (state.raidDealt[raider.heroCode] ?? 0) + Math.min(state.crystalHp, crystalDamage);
     state.crystalHp = Math.max(0, state.crystalHp - crystalDamage);

@@ -22,6 +22,7 @@ import {
   guardSetSkillAuto,
   guardRaidAttack,
   guardRaidDodge,
+  guardRaidUlt,
   guardRaidMove,
   guardRaidSkill,
   guardStartRaid,
@@ -207,7 +208,8 @@ export function resolveGuardStageSetup(stageCode: string, recommendedPower: numb
 /** 矿境掠夺建场参数(docs/48):服务端算好的进攻方 / 守卫 / 水晶,客户端与复演只认它。 */
 export interface GuardRaidSetup {
   crystalHp: number;
-  raider: { heroCode: string; attack: number; hp: number };
+  /** ult = 主角已到炼魂,可放大招「夜帝残影」(docs/61 §8;旧回执没有 → false)。 */
+  raider: { heroCode: string; attack: number; hp: number; ult?: boolean };
   defenders: Array<{ cell: number; hp: number; raw: GuardRawHero; hit?: number; boss?: boolean }>;
   /** docs/61 主角带队:进攻方 AI 同伴(编队英雄;旧回执为空)。heroCode 必须在 lineup 池里(职业从池取)。 */
   allies?: Array<{ heroCode: string; attack: number; hp: number }>;
@@ -243,7 +245,7 @@ export function buildGuardPoolForSetup(lineup: readonly GuardRawHero[], raid: Gu
 export function guardStartRaidFromSetup(state: GuardBattleState, raid: GuardRaidSetup): void {
   guardStartRaid(
     state,
-    { heroCode: raid.raider.heroCode, attack: raid.raider.attack, hp: raid.raider.hp, crystalHp: raid.crystalHp, clear: !!raid.clear },
+    { heroCode: raid.raider.heroCode, attack: raid.raider.attack, hp: raid.raider.hp, crystalHp: raid.crystalHp, clear: !!raid.clear, ult: !!raid.raider.ult },
     raid.defenders.map((defender) => ({ heroCode: defender.raw.heroCode, cell: defender.cell, star: defender.raw.star, hp: defender.hp, hit: defender.hit, boss: defender.boss })),
     raid.allies ?? [],
   );
@@ -309,6 +311,7 @@ export function guardApplyInput(state: GuardBattleState, input: GuardInput, allo
     case 'ratk': guardRaidAttack(state); break;
     case 'rskill': guardRaidSkill(state, input.v); break;
     case 'rdodge': guardRaidDodge(state); break;
+    case 'rult': guardRaidUlt(state); break;
     default: break;
   }
 }
@@ -575,7 +578,7 @@ export function guardRaidSetupFromStart(raw: unknown): GuardRaidSetup | null {
   return {
     clear: raw.clear === true,
     crystalHp: Math.max(1, Math.round(guardNum(raw.crystalHp, 1))),
-    raider: { heroCode: guardText(raw.raider.heroCode).toUpperCase(), attack: Math.max(1, Math.round(guardNum(raw.raider.attack, 1))), hp: Math.max(1, Math.round(guardNum(raw.raider.hp, 1))) },
+    raider: { heroCode: guardText(raw.raider.heroCode).toUpperCase(), attack: Math.max(1, Math.round(guardNum(raw.raider.attack, 1))), hp: Math.max(1, Math.round(guardNum(raw.raider.hp, 1))), ...(raw.raider.ult === true ? { ult: true } : {}) },
     defenders,
     ...(allies.length > 0 ? { allies } : {}),
   };

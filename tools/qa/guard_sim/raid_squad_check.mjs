@@ -1,5 +1,5 @@
 // docs/61 掠夺主角带队:复演一致性 + 新旧口径平衡对比。
-// 用法:node tools/qa/guard_sim/raid_squad_check.mjs <新 guard-replay 目录> <旧 guard-replay 目录> <回执目录(raid_receipts.py 产出)> [每个回执局数=8]
+// 用法:[ULT=1|0] node tools/qa/guard_sim/raid_squad_check.mjs <新 guard-replay 目录> <旧 guard-replay 目录> <回执目录(raid_receipts.py 产出)> [每个回执局数=8]
 // 1) 新口径回执(带同伴 / 首领):新模型机器人实打 → 新 cli 复演,逐项对比 胜负 / 时间 / 水晶血 / 主角血;
 // 2) 旧口径回执:旧模型机器人实打(= 旧客户端)→ 新 cli 复演,必须逐位一致(兼容旧客户端 / 旧会话);
 // 3) 同一座矿新旧口径的胜率 / 用时 / 剩余血量对比(同一套机器人打法)。
@@ -60,6 +60,8 @@ function botStep(M, s, tick) {
   }
   M.guardRaidMove(s, 0);
   if (tick % 97 === 13) { M.guardRaidDodge(s); return; }
+  // docs/61 §8 主角大招(炼魂回执 raider.ult;旧模型没有这个函数)
+  if (M.guardRaidUlt && s.raider.ultOpen && s.timeMs >= s.raider.ultReadyMs && M.guardRaidUlt(s)) return;
   for (const i of [2, 0, 1]) {
     if (s.timeMs >= s.raider.skillReadyMs[i] && M.guardRaidSkill(s, i)) return;
   }
@@ -99,7 +101,10 @@ const summary = {};
 for (const file of files) {
   const base = JSON.parse(fs.readFileSync(path.join(receiptDir, file), 'utf8'));
   const squad = Array.isArray(base.raid?.allies) && base.raid.allies.length > 0;
-  const live = squad ? NEW : OLD;
+  // ULT=1:新口径回执强制开主角大招(docs/61 §8,炼魂号)——测大招进复演一致;ULT=0 强制关
+  if (squad && (process.env.ULT === '1' || process.env.ULT === '0')) base.raid.raider.ult = process.env.ULT === '1';
+  // LIVE_OLD=1:新口径回执也用旧模型实打(= 线上旧网页),验新复演对旧客户端兼容
+  const live = squad && process.env.LIVE_OLD !== '1' ? NEW : OLD;
   const rows = [];
   for (let i = 0; i < N; i += 1) {
     const start = { ...base, battleNo: `${base.battleNo}-S${i}` };

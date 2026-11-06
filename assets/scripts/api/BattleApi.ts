@@ -377,6 +377,7 @@ function normalizeRaidSetup(raw: unknown): RaidSetupVO | null {
         heroName: readOptionalText(raw.raider, 'heroName', MAX_TEXT),
         spineAsset: readOptionalText(raw.raider, 'spineAsset', MAX_TEXT),
         title: readOptionalText(raw.raider, 'title', MAX_TEXT),
+        ...(raw.raider.ult === true ? { ult: true } : {}),
       } : {}),
     },
     defenders,

@@ -58,6 +58,8 @@ export interface RaidSetupRaiderVO {
   heroName?: string | null;
   spineAsset?: string | null;
   title?: string | null;
+  /** docs/61 §8:主角已到炼魂,可放大招「夜帝残影」。 */
+  ult?: boolean;
 }
 
 /** docs/61 AI 同伴(编队英雄;heroCode 在开战回执 lineup 里)。 */

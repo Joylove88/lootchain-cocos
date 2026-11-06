@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """矿境掠夺 PVE 闭环自验(docs/48,电脑端):无头 Edge 打开本地正式包 → 登录 → 主城 → 矿境面板截图 → 掠夺 RAID_n(走编队确认 → battles/start)
 → 机器人打(清守卫 → 砸水晶)→ 结算 → 打印结算回执(奖励 / 体力 / 复演裁定)+ 终局截图。
-用法:PREVIEW_PORT=7460 [PHONE=1] [STALL=1] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]"""
+用法:PREVIEW_PORT=7460 [PHONE=1] [STALL=1] [PROBE_ULT=1] [ACCOUNT=guidetest05] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]
+PROBE_ULT=1:贴身放主角大招「夜帝残影」(docs/61 §8,账号要到炼魂,本地 guidetest05),分时刻截图 + 打印虚影 / 压暗节点与大招伤害。"""
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
 import boss_bar_cdp as base
@@ -17,7 +18,7 @@ BOT = ("window.__raidBot = setInterval(()=>{ try { const u=sim.monsters.find(m=>
        "const laneT = target ? (target.flane!==undefined ? target.flane : (Math.floor(target.cell/6)===0 ? 0.25 : 0.75)) : 0.5; const laneD = laneT - (u.laneF||0.5); "
        "raid.keys.delete(65); raid.keys.delete(68); raid.keys.delete(87); raid.keys.delete(83); "
        "if (Math.abs(tx-u.x) > stop || Math.abs(laneD) > 0.3) { if (Math.abs(tx-u.x) > stop) raid.keys.add(tx<u.x?65:68); if (Math.abs(laneD) > 0.3) raid.keys.add(laneD<0?87:83); setTimeout(()=>{ raid.keys.delete(65); raid.keys.delete(68); raid.keys.delete(87); raid.keys.delete(83); }, 120); } "
-       "else { raid.attackPressedAt = Date.now(); if (Math.random()<0.15) raid.skillPressedAt[Math.floor(Math.random()*3)] = Date.now(); } } catch(e){} }, 300); return 'bot';")
+       "else { raid.attackPressedAt = Date.now(); if (Math.random()<0.15) raid.skillPressedAt[Math.floor(Math.random()*3)] = Date.now(); if (raid.raiderUlt && Math.random()<0.1) raid.ultPressedAt = Date.now(); } } catch(e){} }, 300); return 'bot';")
 
 
 def js(body):
@@ -78,7 +79,7 @@ async def main():
                     break
                 await asyncio.sleep(2)
             if view != 'lobby':
-                await ev("root.loginFlow.setInputs({string:'guidetest02'}, {string:'pass1234'}); try { root.loginFlow.acceptedAgreement = true; } catch(e){} root.run(() => root.loginFlow.login()); return 'login';")
+                await ev("root.loginFlow.setInputs({string:'" + os.environ.get('ACCOUNT', 'guidetest02') + "'}, {string:'pass1234'}); try { root.loginFlow.acceptedAgreement = true; } catch(e){} root.run(() => root.loginFlow.login()); return 'login';")
                 for _ in range(60):
                     if await ev("return root.currentView;") == 'lobby':
                         break
@@ -159,6 +160,25 @@ async def main():
                         await shot(f'skill_fx_{i}')
                         await asyncio.sleep(1.2)
                         print('fxnodes', i, await ev("clearInterval(window.__fxSampler); return window.__fxPeak;"), flush=True)
+            if os.environ.get('PROBE_ULT') == '1':
+                print('ult-open', await ev("return JSON.stringify({model: sim && sim.raider && sim.raider.ultOpen, hud: !!(raid && raid.ultButton), receipt: !!(((root.currentLobbyBattleState().start||{}).raid||{}).raider||{}).ult});"), flush=True)
+                await ev(BOT)
+                near = 'n'
+                for _ in range(40):
+                    near = await ev("const u=sim.monsters.find(m=>m.player); if(!u) return 'n'; const cellX=(c)=>1.45+(c%6)*1.18; return sim.heroes.some(h=>!h.dead && Math.abs((h.fx!=null?h.fx:cellX(h.cell))-u.x)<1.6) ? 'y' : 'n';")
+                    if near == 'y':
+                        break
+                    await asyncio.sleep(0.5)
+                await ev("clearInterval(window.__raidBot); raid.keys.clear && raid.keys.clear(); return 'stop-bot';")
+                await asyncio.sleep(0.8)
+                print('ult-before', await ev("return JSON.stringify({dealt: sim.raidDealt, heroes: sim.heroes.map(h=>Math.round(h.hp||0)), ready: sim.raider.ultReadyMs, t: sim.timeMs});"), flush=True)
+                await ev("window.__ultNodes={}; window.__ultSampler=setInterval(()=>{ cc.director.getScene().walk(x=>{ if(/^RealmUlt|^Wing|^TownFx$/.test(x.name) && x.activeInHierarchy) window.__ultNodes[x.name]=(window.__ultNodes[x.name]||0)+1; }); },60); raid.ultPressedAt=Date.now(); return 'ult';")
+                for ms, tag in ((180, 'lead'), (520, 'swing'), (860, 'hit'), (1300, 'after')):
+                    await asyncio.sleep((ms - (0 if tag == 'lead' else prev)) / 1000)
+                    prev = ms
+                    await shot(f'ult_{tag}')
+                await asyncio.sleep(0.8)
+                print('ult-after', await ev("clearInterval(window.__ultSampler); return JSON.stringify({nodes: window.__ultNodes, dealt: sim.raidDealt, heroes: sim.heroes.map(h=>Math.round(h.hp||0)), ready: sim.raider.ultReadyMs, t: sim.timeMs, rult: sim.inputs.filter(i=>i.k==='rult').length, cd: raid.ultButton && raid.ultButton.cd.string});"), flush=True)
             await asyncio.sleep(2)
             print('battle', await ev(STATE), flush=True)
             print('pool', await ev("if(!sim) return 'nosim'; return JSON.stringify({pool: sim.pool.map(p=>p.heroCode+':'+p.displayName+':'+p.sourceIndex), allies: (gr.snapshot? gr.snapshot.allies.map(a=>a.unitKey+':'+a.displayName) : null), raidRaw: !!(root.currentLobbyBattleState().start||{}).raid, npcAssets: (gr.snapshot? gr.snapshot.allies.filter(a=>a.unitKey.startsWith('npc')).map(a=>a.spineAsset+'|'+a.portraitAsset) : null), views: [...gr.heroViews.values()].map(v=>v.node.name+':'+v.spineReady), lineupRaw: (root.currentLobbyBattleState().start||{}).lineup.map(h=>!!h.guardRaw)});"), flush=True)
