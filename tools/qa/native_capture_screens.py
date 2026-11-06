@@ -75,6 +75,7 @@ SCREENS = [
     ('adventure', "root.openLobbyAdventurePanel();", 3.5),
     ('daily', "root.openLobbyDailyDungeonPanel();", 3.5),
     ('crystal', "root.openGuardCrystalDialog();", 4.0),
+    ('crystal_spells', "root.openGuardCrystalDialog(); setTimeout(() => { const d = root.lobbyGuardCrystalDialog; if (d) { d.tab = 'spells'; root.refreshGuardCrystalDialog(); } }, 2500);", 5.0),
     ('token_furnace', "root.openLobbyTokenFurnace();", 3.5),
     ('gacha', "root.openLobbyGachaScene();", 5.0),
     ('settings', "root.openLobbySettingsPanel();", 2.5),

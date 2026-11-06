@@ -31,9 +31,8 @@ import {
 import { GUARD_SPELL_FX, LOBBY_CRYSTAL_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { rgba, type UiLayout } from './LobbyHudTypes';
-import { mountKitLoading } from '../UiKit';
-import { mountRefButton, mountRefHeaderBand, mountRefSectionDiamond, mountRefSliced, REF_CLOSE_ASSET, REF_KIT, type RefKitItem } from '../UiRefKit';
-import { renderTopCurrencyBar } from '../UiSceneBackButton';
+import { mountKitLoading, type UiKitHost } from '../UiKit';
+import { GLASS_COLOR, GLASS_ICON, GLASS_SLICES, glassLabel, glassProtoMap, mountGlassButton, mountGlassLine, mountGlassPanel, mountGlassSlice, mountGlassTopBar } from '../UiGlassKit';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 
 /**
@@ -93,10 +92,6 @@ export interface LobbyGuardCrystalDialogHost {
   formatInteger(value: number | null | undefined): string;
 }
 
-const TITLE_DIVIDER_L = { path: 'ui/common/ai/title_divider_left/spriteFrame', aspect: 76 / 390 };
-const TITLE_DIVIDER_R = { path: 'ui/common/ai/title_divider_right/spriteFrame', aspect: 73 / 392 };
-const CLOSE_BUTTON = { path: 'ui/common/ai/button_close/spriteFrame', aspect: 161 / 155 };
-const LOCK_ICON = { path: 'ui/common/ai/ic_lock/spriteFrame', aspect: 192 / 135 };
 const GOLD_ICON = 'ui/common/ai/ic_gold_medium/spriteFrame';
 /** 守卫晶核图标(背包同一张,LobbyBagPanelRenderer.BAG_AI_ITEM_ICON_ASSETS.GUARD_CORE)。 */
 const CORE_ICON = 'ui/bag/ai/icon_guard_core/spriteFrame';
@@ -113,33 +108,15 @@ const CUI = (name: string): string => `ui/crystal/ai/${name}/spriteFrame`;
 const SCENE_BG = { path: CUI('crystal_scene_bg'), w: 1672, h: 941 };
 /** 水晶立绘 v2(蓝水晶 + 黑色尖刺台座);v2 未入库时退回 v1(515×798 熔岩基座版)。 */
 const CRYSTAL_ART = { path: CUI('crystal_art_v2'), aspect: 1024 / 585, fallback: { path: CUI('crystal_art'), aspect: 798 / 515 } };
-const TITLE_EMBLEM = { path: CUI('title_emblem_v2'), aspect: 512 / 512 };
 /** 法术详情演示框通用底图(暗色法阵场景);2026-10-14 用户要求每个法术各一张专属插画 → 优先 SPELL_ART,缺图退回这张。 */
 const SPELL_PREVIEW_BG = { path: CUI('spell_preview_bg'), w: 1024, h: 768 };
 const SPELL_ART: Record<GuardSpellId, string> = {
   quake: CUI('spell_art_quake'), frost: CUI('spell_art_frost'), thunder: CUI('spell_art_thunder'),
   goldrush: CUI('spell_art_goldrush'), aegis: CUI('spell_art_aegis'), warhorn: CUI('spell_art_warhorn'),
 };
-/** 等级牌 550×177、页签 选中 440×122 / 未选中 512×122、升级按钮 573×180、法术页升级按钮(带晶体图标)527×154。 */
-const LEVEL_PLATE = { path: CUI('level_plate_v2'), aspect: 193 / 1024, fallback: { path: CUI('level_plate'), aspect: 177 / 550 } };
-const TAB_ON = { path: CUI('tab_on_v2'), aspect: 195 / 1024, fallback: { path: CUI('tab_on'), aspect: 122 / 440 } };
-const TAB_OFF = { path: CUI('tab_off_v2'), aspect: 159 / 1024, fallback: { path: CUI('tab_off'), aspect: 122 / 512 } };
 interface ArtSpec { path: string; aspect: number; fallback?: { path: string; aspect: number } }
-const BTN_LEVEL_UP = { path: CUI('btn_level_up'), aspect: 180 / 573 };
 const BTN_COST_UP = { path: CUI('btn_cost_up'), aspect: 154 / 527 };
-/** 九宫格素材:源尺寸 + 边距(源像素)。显示时按目标高度等比缩放、只横向/纵向拉中段,角饰不变形。 */
-const INNER_PANEL = { path: CUI('inner_panel_bg'), w: 1948, h: 1259, inset: { l: 110, r: 110, t: 110, b: 110 } };
-const STAT_ROW = { path: CUI('stat_row_bg'), w: 1066, h: 84, inset: { l: 60, r: 60, t: 0, b: 0 } };
-const SECTION_EMBLEM = { path: CUI('section_emblem'), aspect: 121 / 107 };
 // 2026-10-16 用户「水晶界面和其他界面风格不太像」:换成布阵 / 锻造同一套素材(标题牌、关闭钮、页签、细金框、列表行、红金按钮)
-const REF_TITLE_PLAQUE = { path: 'ui/formation/ref/title_plaque/spriteFrame', aspect: 564 / 180 };
-const REF_TAB_ON: RefKitItem = { path: 'ui/formation/ref/tab_on/spriteFrame', w: 309, h: 64, inset: [20, 20, 20, 20] };
-const REF_TAB_OFF: RefKitItem = { path: 'ui/formation/ref/tab_off/spriteFrame', w: 252, h: 64, inset: [20, 20, 20, 20] };
-const REF_ROW: RefKitItem = { path: 'ui/forge/ref/row_normal/spriteFrame', w: 538, h: 120, inset: [40, 40, 32, 32] };
-const REF_ROW_SELECTED: RefKitItem = { path: 'ui/forge/ref/row_selected/spriteFrame', w: 535, h: 120, inset: [40, 40, 32, 32] };
-const REF_ICON_RING = 'ui/common/ref/icon_ring/spriteFrame';
-/** 标题带铺到的位置(素材像素):与 UiRefKit.REF_CARD_FRAME_LINE 同口径,带子垫在镂空边框下。 */
-const CARD_FRAME_LINE = { top: 6, side: 6 };
 /** 场景底图里地面法阵中心:图宽 18.5%、图高 78%(水晶脚底对准这里)。 */
 const SCENE_FLOOR = { x: 0.185, y: 0.78 };
 /** 法术图标(圆形带框的新素材);狂战号角暂无新图,沿用旧图 + 程序画框。 */
@@ -151,15 +128,27 @@ const SPELL_ICON: Record<GuardSpellId, string> = {
   aegis: CUI('spell_aegis'),
   warhorn: 'ui/battle/ai/buff_atk/spriteFrame',
 };
-/** 属性行图标(新素材,原始宽高比)。 */
-const STAT_ICON: Record<string, { path: string; aspect: number }> = {
-  Hp: { path: CUI('stat_hp'), aspect: 88 / 65 },
-  Gold: { path: CUI('stat_gold'), aspect: 72 / 76 },
-  Power: { path: CUI('stat_power'), aspect: 80 / 81 },
-  Energy: { path: CUI('stat_energy'), aspect: 50 / 76 },
-  EnergyMax: { path: CUI('stat_energy_max'), aspect: 79 / 80 },
-  Slots: { path: CUI('stat_slots'), aspect: 79 / 74 },
+/** 属性行暗金图标(11-06 从原型 crystal_b 抠,tools/qa/glass_kit_gen.py)。 */
+const GLASS_CRYSTAL_STAT_ICON: Record<string, string> = {
+  Hp: 'ui/glass/crystal_hp/spriteFrame',
+  Gold: 'ui/glass/crystal_gold/spriteFrame',
+  Power: 'ui/glass/crystal_power/spriteFrame',
+  Energy: 'ui/glass/crystal_energy/spriteFrame',
+  EnergyMax: 'ui/glass/crystal_energy_max/spriteFrame',
+  Slots: 'ui/glass/crystal_slots/spriteFrame',
 };
+/** 顶栏货币简写(原型写法:4,700,000 → 4.7M,≥10 万 → 123K,其余带千分位)。 */
+function compactNumber(value: number): string {
+  const v = Math.max(0, Math.floor(value));
+  if (v >= 1_000_000) {
+    return `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`;
+  }
+  if (v >= 100_000) {
+    return `${Math.floor(v / 1000)}K`;
+  }
+  // 原生 toLocaleString 无千分位,手动插逗号
+  return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
 /** 法术详情文案(数值口径与 GuardBattleModel.guardCastSpell 一致)。 */
 const SPELL_DETAIL: Record<GuardSpellId, string> = {
   quake: '对全场怪物造成本波普通怪 60% 血量的伤害并击退 1.2 格。能量满时的清场保底。',
@@ -174,11 +163,12 @@ const SPELL_DETAIL: Record<GuardSpellId, string> = {
  * 内部基准 scale 按可用高度定(电脑版 840 高面板里内容区约 582),左栏立绘区加宽、右栏随屏宽变宽,
  * 法术列表改 3 列 × 2 行(宽而矮的内容区放 2 列 × 3 行会把卡片压扁),法术详情框加高放下两行描述。
  */
-const GOLD_TEXT = rgba(236, 202, 122);
-const CREAM_TEXT = rgba(240, 230, 206);
-const GREEN_TEXT = rgba(140, 236, 150);
-const DIM_TEXT = rgba(176, 160, 136);
-const RED_TEXT = rgba(255, 122, 100);
+// 11-06 B 毛玻璃色板(GLASS_COLOR 同值):香槟 / 白 / 绿 / 灰 / 红
+const GOLD_TEXT = rgba(227, 196, 138);
+const CREAM_TEXT = rgba(242, 242, 242);
+const GREEN_TEXT = rgba(132, 214, 140);
+const DIM_TEXT = rgba(150, 156, 168);
+const RED_TEXT = rgba(232, 108, 96);
 
 export class LobbyGuardCrystalDialogRenderer {
   /** 本次渲染是否手机全屏版(render 开头确定)。 */
@@ -236,49 +226,25 @@ export class LobbyGuardCrystalDialogRenderer {
       g.fillColor = rgba(10, 8, 12, 255);
       g.rect(-W / 2, -H / 2, W, H);
       g.fill();
-    }
-
-    // 题头:恶魔徽章标题牌 +「守卫水晶」(与布阵 / 锻造同款);缺图退回八角星徽记 + 金字
-    const plaqueH = 0.098 * H;
-    const plaqueW = plaqueH * REF_TITLE_PLAQUE.aspect;
-    const plaqueX = L + 0.006 * W + plaqueW / 2;
-    const plaqueY = T - 0.052 * H;
-    const plaque = this.host.addSprite('LobbyGuardCrystalTitlePlaque', REF_TITLE_PLAQUE.path, plaqueX, plaqueY, plaqueW, plaqueH, panel);
-    if (plaque) {
-      const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', '守卫水晶', plaqueX + plaqueW * 0.05, plaqueY, 32 * scale, rgba(244, 222, 176), new Size(plaqueW * 0.46, 44 * scale));
-      title.overflow = Label.Overflow.SHRINK;
-      title.isBold = true;
-      this.outline(title, scale, rgba(20, 12, 6, 255));
     } else {
-      const emblemH = 0.075 * H;
-      this.host.addSprite('LobbyGuardCrystalTitleEmblem', TITLE_EMBLEM.path, L + 0.05 * W, plaqueY, emblemH / TITLE_EMBLEM.aspect, emblemH, panel);
-      const title = this.host.addChildLabel(panel, 'LobbyGuardCrystalTitle', '守卫水晶', L + 0.088 * W, plaqueY, FONT.title * scale, GOLD_TEXT, new Size(0.24 * W, FONT.title * scale + 8), HorizontalTextAlignment.LEFT);
-      title.isBold = true;
-      this.outline(title, scale, rgba(40, 24, 8, 255));
+      // 11-06 B:原型 crystal_b 的场景比底图暗一档(玻璃面板 / 灰字才压得住);水晶与特效画在这层之上不受影响
+      const shade = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalSceneShade', 0, 0, layout.width, layout.height).addComponent(Graphics);
+      shade.fillColor = rgba(4, 6, 12, 110);
+      shade.rect(-layout.width / 2, -layout.height / 2, layout.width, layout.height);
+      shade.fill();
     }
 
-    // 右上:货币栏(金币 / 守卫晶核)+ 关闭
-    const closeSize = 0.052 * H;
-    const closeX = L + 0.972 * W;
-    const closeY = T - 0.052 * H;
-    const close = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalClose', closeX, closeY, closeSize * 1.25, closeSize * 1.25);
-    if (!this.host.addSprite('LobbyGuardCrystalCloseArt', REF_CLOSE_ASSET, 0, 0, closeSize * 1.25, closeSize * 1.25, close)) {
-      this.host.addSprite('LobbyGuardCrystalCloseArt', CLOSE_BUTTON.path, 0, 0, closeSize, closeSize * CLOSE_BUTTON.aspect, close);
-    }
-    close.addComponent(Button);
-    close.on(Button.EventType.CLICK, () => this.host.closeGuardCrystalDialog(), this);
-    this.host.applyImageButtonFeedback(close, 1.08, 0.94);
+    // 11-06 B 毛玻璃(原型 crystal_b):顶栏「‹ 守卫水晶」+ 金币 / 晶核胶囊 + ✕(全站共用顶栏)
     const info = state.info;
-    if (info) {
-      // 货币胶囊:与锻造 / 英雄页同款顶栏(bag_currency_bar)
-      renderTopCurrencyBar(this.host, panel, W / 2, H / 2, scale, [
-        { key: 'gold', icon: GOLD_ICON, value: this.host.formatInteger(Number(info.goldBalance ?? 0)) },
-        { key: 'core', icon: CORE_ICON, value: this.host.formatInteger(Number(info.coreBalance ?? 0)) },
-      ], (W / 2 - (closeX - closeSize * 0.75)) / scale + 10);
-    }
+    const close = (): void => this.host.closeGuardCrystalDialog();
+    mountGlassTopBar(this.kit, panel, 'LobbyGuardCrystal', W, H, '守卫水晶', info ? [
+      { key: 'gold', icon: GOLD_ICON, value: compactNumber(Number(info.goldBalance ?? 0)), width: 150 },
+      { key: 'core', icon: CORE_ICON, value: compactNumber(Number(info.coreBalance ?? 0)), width: 165 },
+    ] : [], close, close);
+    const { FX, FY, S } = glassProtoMap(W, H);
 
-    const bodyTop = T - 0.165 * H;
-    const bodyBottom = -T + 0.05 * H;
+    const bodyTop = FY(160);
+    const bodyBottom = FY(786);
     if (!info || this.host.isGuardCrystalAssetsLoading()) {
       // 2026-10-11 统一读取态(UiKit.mountKitLoading);不可用仍用一行提示
       if (state.loading || info) {
@@ -292,20 +258,16 @@ export class LobbyGuardCrystalDialogRenderer {
     // 左 1/3 水晶舞台(参考图水晶中心在 19% 宽处),右 62% 内容列(35.5% → 97.5%)
     const leftX = L + 0.19 * W;
     const leftW = 0.3 * W;
-    const rightLeft = L + 0.355 * W;
-    const rightRight = L + 0.975 * W;
-    const rightW = rightRight - rightLeft;
-    const rightX = (rightLeft + rightRight) / 2;
+    // 右侧内容列 = 原型 772 → 1830
+    const rightW = S(1058);
+    const rightX = FX(1301);
     this.renderCrystal(panel, info, state, leftX, leftW, scale, W, H);
-    this.renderTabs(panel, state, info, rightLeft, scale, W, H);
+    this.renderTabs(panel, state, info, W, H);
     if (state.tab === 'spells') {
       this.renderSpellsPage(panel, state, info, rightX, rightW, bodyTop, bodyBottom, scale);
     } else {
-      const footerH = 0.105 * H;
-      const footerY = -T + 0.08 * H + footerH / 2;
-      const innerBottom = footerY + footerH / 2 + 0.03 * H;
-      this.renderStats(panel, info, rightX, rightW, bodyTop, innerBottom, scale);
-      this.renderUpgradeFooter(panel, info, state, rightX, rightW, footerY, footerH, scale);
+      this.renderStats(panel, info, W, H);
+      this.renderUpgradeFooter(panel, info, state, W, H);
     }
     this.renderNotice(panel, state, W, H, scale);
     if (state.busy) {
@@ -370,20 +332,18 @@ export class LobbyGuardCrystalDialogRenderer {
         }
       }
     }
-    // 等级牌:压在台座下沿(参考图 Lv.5 牌在 70% 高处)
-    const plateH = 0.062 * H;
-    // 等级牌放在台座下方(不再挡住尖脚),水晶直接踩在地面法阵上
+    // 等级牌(11-06 B:原型 crystal_b 的暗玻璃牌 310×56 + 白字),放在台座下方(不挡尖脚),水晶直接踩在地面法阵上
+    const plateH = 0.066 * H;
+    const plateW = plateH * 5.5;
     const plateY = floorY - 0.052 * H;
-    const plate = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBadge', x, plateY, plateH / LEVEL_PLATE.aspect, plateH);
-    const plateArt = this.spriteByHeight(plate, 'Art', LEVEL_PLATE, 0, 0, plateH);
-    const plateW = plateH / (plateArt?.aspect ?? LEVEL_PLATE.aspect);
-    const level = this.host.addChildLabel(plate, 'Text', `Lv.${info.level}`, 0, 1 * scale, FONT.title * 0.9 * scale, CREAM_TEXT, new Size(plateW * 0.7, FONT.title * scale));
-    level.isBold = true;
-    this.outline(level, scale, rgba(10, 20, 40, 255));
+    const plate = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBadge', x, plateY, plateW, plateH);
+    mountGlassSlice(this.kit, plate, 'Art', GLASS_SLICES.plate, 0, 0, plateW, plateH, plateH / 88);
+    const level = glassLabel(this.kit, plate, 'Text', `Lv.${info.level}`, 0, 0, plateH * 0.6, GLASS_COLOR.text, plateW * 0.7, HorizontalTextAlignment.CENTER, true);
+    level.fontSize = Math.round(plateH * 0.6);
     // 进度条 + 「n / 30 级」+ 解锁提示 底下垫一层柔和暗底:场景底图这块是亮蓝光地板,直接写字看不清
     const barW = 0.21 * W;
-    const barH = 0.012 * H;
-    const barY = plateY - 0.056 * H;
+    const barH = Math.max(4, 0.009 * H);
+    const barY = plateY - 0.054 * H;
     const shadeW = w * 0.98;
     const shadeTop = barY + 0.03 * H;
     const shadeBottom = T - 0.985 * H;
@@ -398,19 +358,20 @@ export class LobbyGuardCrystalDialogRenderer {
     }
     const bar = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalLevelBar', x, barY, barW, barH);
     const g = bar.addComponent(Graphics);
-    g.fillColor = rgba(24, 32, 52, 240);
+    // 原型:淡灰细轨 + 冷蓝进度 + 进度头一颗亮点
+    g.fillColor = rgba(52, 58, 70, 230);
     g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
     g.fill();
-    g.fillColor = rgba(100, 180, 255, 250);
-    g.roundRect(-barW / 2, -barH / 2, Math.max(barH, barW * (info.level / Math.max(1, info.maxLevel))), barH, barH / 2);
+    const fillW = Math.max(barH, barW * (info.level / Math.max(1, info.maxLevel)));
+    g.fillColor = rgba(92, 160, 240, 255);
+    g.roundRect(-barW / 2, -barH / 2, fillW, barH, barH / 2);
     g.fill();
-    g.strokeColor = rgba(196, 156, 92, 200);
-    g.lineWidth = 1.5;
-    g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
-    g.stroke();
-    const cap = this.host.addChildLabel(panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, barY - 0.03 * H, FONT.body * scale, CREAM_TEXT, new Size(barW + 40 * scale, this.lh(24, scale)));
-    cap.overflow = Label.Overflow.SHRINK;
-    this.outline(cap, scale, rgba(6, 6, 10, 255));
+    g.fillColor = rgba(150, 205, 255, 255);
+    g.circle(-barW / 2 + fillW - barH * 0.2, 0, barH * 0.95);
+    g.fill();
+    const textK = H / 841;
+    const cap = glassLabel(this.kit, panel, 'LobbyGuardCrystalLevelCap', info.level >= info.maxLevel ? '已升到满级' : `${info.level} / ${info.maxLevel} 级`, x, barY - 0.035 * H, 24 * textK, GLASS_COLOR.sub, barW + 40 * scale, HorizontalTextAlignment.CENTER);
+    cap.fontSize = Math.max(16, Math.round(24 * textK));
     // 下一级解锁提示(最多两行),两侧花边(参考图)
     const hints: string[] = [];
     const nextUnlock = info.next ? GUARD_SPELL_IDS.find((id) => (info.next?.unlockedSpells ?? []).indexOf(id) >= 0 && (info.current.unlockedSpells ?? []).indexOf(id) < 0) : undefined;
@@ -422,50 +383,40 @@ export class LobbyGuardCrystalDialogRenderer {
     } else if (info.nextSlotLevel) {
       hints.push(`Lv.${info.nextSlotLevel} 解锁第 ${this.slotsOf(info) + 1} 个法术格`);
     }
-    let cursor = barY - 0.07 * H;
+    let cursor = barY - 0.079 * H;
     hints.slice(0, 2).forEach((text, index) => {
-      const hint = this.host.addChildLabel(panel, `LobbyGuardCrystalNextUnlock${index}`, text, x, cursor, FONT.body * scale, GOLD_TEXT, new Size(w * 0.8, this.lh(24, scale)));
-      hint.overflow = Label.Overflow.SHRINK;
-      this.outline(hint, scale, rgba(6, 6, 10, 255));
-      if (index === 0) {
-        const half = Math.min(0.11 * W, text.length * FONT.body * scale * 0.52);
-        const ornW = 0.034 * W;
-        this.host.addSprite('LobbyGuardCrystalHintOrnL', TITLE_DIVIDER_L.path, x - half - ornW / 2, cursor, ornW, ornW * TITLE_DIVIDER_L.aspect, panel);
-        this.host.addSprite('LobbyGuardCrystalHintOrnR', TITLE_DIVIDER_R.path, x + half + ornW / 2, cursor, ornW, ornW * TITLE_DIVIDER_R.aspect, panel);
-      }
-      cursor -= this.lh(26, scale);
+      const hint = glassLabel(this.kit, panel, `LobbyGuardCrystalNextUnlock${index}`, text, x, cursor, 21 * textK, GLASS_COLOR.sub, w * 0.86, HorizontalTextAlignment.CENTER);
+      hint.fontSize = Math.max(15, Math.round(21 * textK));
+      cursor -= this.lh(27 * textK, 1);
     });
   }
 
-  /** 右侧页签(参考图:选中 = 亮金边深底,未选中 = 暗边),与内面板左边对齐。 */
-  private renderTabs(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, left: number, scale: number, W: number, H: number): void {
-    const tabH = 0.064 * H;
-    const y = H / 2 - 0.112 * H;
-    const gap = 0.012 * W;
-    const tabs: Array<{ key: LobbyGuardCrystalDialogState['tab']; text: string }> = [
-      { key: 'upgrade', text: '水晶升级' },
-      { key: 'spells', text: `法术装备 ${this.loadoutOf(info).length}/${this.slotsOf(info)}` },
+  /** UiGlassKit 用的宿主视图(宿主即 UiKitHost 的超集)。 */
+  private get kit(): UiKitHost {
+    return this.host as unknown as UiKitHost;
+  }
+
+  /** B 风格文字(字号 = 原型像素 × k,下限 12)。 */
+  private glassText(parent: Node, name: string, text: string, x: number, y: number, size: number, color: Color, width: number, k: number, align = HorizontalTextAlignment.LEFT, bold = false): Label {
+    const label = glassLabel(this.kit, parent, name, text, x, y, size * k, color, width, align, bold);
+    label.fontSize = Math.max(12, Math.round(size * k));
+    label.lineHeight = label.fontSize + 4;
+    return label;
+  }
+
+  /** 右侧页签(原型 crystal_b:选中 = 暗金底白字 768..1090,未选 = 暗玻璃 1103..1448,y 88..143)。 */
+  private renderTabs(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, W: number, H: number): void {
+    const { k, FX, FY, S } = glassProtoMap(W, H);
+    const tabs: Array<{ key: LobbyGuardCrystalDialogState['tab']; text: string; x0: number; x1: number }> = [
+      { key: 'upgrade', text: '水晶升级', x0: 768, x1: 1090 },
+      { key: 'spells', text: `法术装备 ${this.loadoutOf(info).length}/${this.slotsOf(info)}`, x0: 1103, x1: 1448 },
     ];
-    let cursor = left + 0.01 * W;
     tabs.forEach((tab) => {
       const active = state.tab === tab.key;
-      const spec = active ? TAB_ON : TAB_OFF;
-      // 两个页签同宽(0.17W),高度按各自素材比例(选中款边框粗、略高,正好像凸起)
-      const tabW = 0.17 * W;
-      const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, 0, y, tabW, tabH);
-      if (!mountRefSliced(this.host, node, 'Art', active ? REF_TAB_ON : REF_TAB_OFF, 0, 0, tabW, tabH * 0.86, 2)) {
-        const primary = this.host.addSprite('Art', spec.path, 0, 0, tabW, tabW * spec.aspect, node);
-        if (!primary && spec.fallback) {
-          this.host.addSprite('Art', spec.fallback.path, 0, 0, tabW, tabW * spec.fallback.aspect, node);
-        }
-      }
-      const tx = cursor + tabW / 2;
-      node.setPosition(tx, y, 0);
-      cursor += tabW + gap;
-      const label = this.host.addChildLabel(node, 'Text', tab.text, 0, 0, FONT.section * scale, active ? rgba(255, 240, 206) : rgba(196, 188, 172), new Size(tabW - 24 * scale, 30 * scale));
-      label.isBold = true;
-      label.overflow = Label.Overflow.SHRINK;
-      this.outline(label, scale, rgba(10, 8, 6, 255));
+      const tabW = S(tab.x1 - tab.x0);
+      const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalTab_${tab.key}`, FX((tab.x0 + tab.x1) / 2), FY(115.5), tabW, S(56));
+      mountGlassSlice(this.kit, node, 'Bg', active ? GLASS_SLICES.tabActive : GLASS_SLICES.panel, 0, 0, tabW, S(56), k);
+      this.glassText(node, 'Text', tab.text, 0, 0, 26, active ? GLASS_COLOR.onGold : GLASS_COLOR.text, tabW - S(30), k, HorizontalTextAlignment.CENTER, active);
       if (!active) {
         node.addComponent(Button);
         node.on(Button.EventType.CLICK, () => {
@@ -476,102 +427,44 @@ export class LobbyGuardCrystalDialogRenderer {
             this.host.refreshGuardCrystalDialog();
           }
         }, this);
-        this.host.applyImageButtonFeedback(node, 1.04, 0.96);
+        this.host.applyImageButtonFeedback(node, 1.03, 0.97);
       }
     });
   }
 
-  /**
-   * 九宫格素材按目标高度等比缩放:节点显示尺寸 w×h,内部 Sprite 用源高度 srcH、宽度 w/k 做 SLICED,再整体缩放 k=h/srcH。
-   * 角饰与边线保持原比例,只拉中段(用户规则:一体构图素材不许非等比拉伸)。
-   */
-  private mountSliced(parent: Node, name: string, spec: { path: string; h: number; inset: { l: number; r: number; t: number; b: number } }, x: number, y: number, w: number, h: number): Node {
-    const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
-    const k = h / spec.h;
-    const sprite = this.host.addSprite('Art', spec.path, 0, 0, w / k, spec.h, node);
-    if (sprite) {
-      const frame = sprite.spriteFrame;
-      if (frame) {
-        frame.insetLeft = spec.inset.l;
-        frame.insetRight = spec.inset.r;
-        frame.insetTop = spec.inset.t;
-        frame.insetBottom = spec.inset.b;
-      }
-      sprite.type = Sprite.Type.SLICED;
-      sprite.node.setScale(k, k, 1);
-    }
-    return node;
+  /** 分区标题竖条(原型 5×30 香槟色;程序画,首开贴图未缓存也不缺)。 */
+  private accentBar(parent: Node, name: string, x: number, y: number, k: number, h = 30): void {
+    mountGlassLine(this.kit, parent, name, x, y, Math.max(2, 5 * k), h * k, GLASS_COLOR.champagne);
   }
 
-  /** 内面板:新素材 inner_panel_bg,纵横都可能拉,按"较小一边"定缩放系数,四角等比。 */
-  private mountInnerPanel(panel: Node, name: string, x: number, top: number, w: number, bottom: number): Node {
-    const h = top - bottom;
-    const node = this.host.addChildPlainNode(panel, name, x, (top + bottom) / 2, w, h);
-    // 2026-10-16:套件细金框(与锻造 / 布阵面板一致),内里垫实底压住场景
-    const back = this.host.addChildPlainNode(node, 'Back', 0, 0, w - 8, h - 8).addComponent(Graphics);
-    back.fillColor = rgba(10, 9, 12, 218);
-    back.roundRect(-(w - 8) / 2, -(h - 8) / 2, w - 8, h - 8, 8);
-    back.fill();
-    if (mountRefSliced(this.host, node, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
-      return node;
-    }
-    // 角饰按约 26% 原尺寸显示(≈28px):再大会压住面板里的小标题。
-    const k = Math.min(0.26, Math.min(w / INNER_PANEL.w, h / INNER_PANEL.h));
-    const sprite = this.host.addSprite('Art', INNER_PANEL.path, 0, 0, w / k, h / k, node);
-    if (sprite) {
-      const frame = sprite.spriteFrame;
-      if (frame) {
-        frame.insetLeft = INNER_PANEL.inset.l;
-        frame.insetRight = INNER_PANEL.inset.r;
-        frame.insetTop = INNER_PANEL.inset.t;
-        frame.insetBottom = INNER_PANEL.inset.b;
-      }
-      sprite.type = Sprite.Type.SLICED;
-      sprite.node.setScale(k, k, 1);
-    }
-    return node;
-  }
-
-  /** 「水晶升级」内面板:标题行(徽记 + 水晶属性提升 + 副标 + Lv.a → Lv.b)+ 六行属性条。 */
-  private renderStats(panel: Node, info: GuardCrystalInfoVO, x: number, w: number, top: number, bottom: number, scale: number): void {
-    const statsPanel = this.mountInnerPanel(panel, 'LobbyGuardCrystalStatsPanel', x, top, w, bottom);
+  /** 「水晶升级」属性面板(原型 772..1830 × 160..660):标题 + 副标 + Lv.a → Lv.b 列头 + 6 行(图标 / 名 / 当前 / → / 下一级 / 增量)。 */
+  private renderStats(panel: Node, info: GuardCrystalInfoVO, W: number, H: number): void {
+    const { k, FX, FY, S } = glassProtoMap(W, H);
+    mountGlassPanel(this.kit, panel, 'LobbyGuardCrystalStatsPanel', FX(1301), FY(410), S(1058), S(500), k);
     const current = info.current;
     const next = info.next;
-    const pad = 30 * scale;
-    const left = x - w / 2 + pad;
-    const right = x + w / 2 - pad;
-    // 标题行:标题带(深红渐变 + 金线)+ 大号亮金粗体标题 + 副标,和下面的属性行拉开层级
-    // 标题带顶边贴面板金线内侧、左右到金线(用户 2026-10-16:红色与边框之间有缝)
-    const bandH = 70 * scale;
-    const fk = this.cardFrameK(w, top - bottom);
-    const headY = top - CARD_FRAME_LINE.top * fk - bandH / 2;
-    const statsBand = this.drawHeaderBand(statsPanel, 'LobbyGuardCrystalStatsBand', 0, headY - (top + bottom) / 2, w - CARD_FRAME_LINE.side * fk * 2, bandH, scale);
-    this.tuckUnderFrame(statsPanel, statsBand);
-    const emblemH = 52 * scale;
-    mountRefSectionDiamond(this.host, panel, 'LobbyGuardCrystalEmblem', left + emblemH / SECTION_EMBLEM.aspect / 2, headY, bandH * 0.32);
-    const textX = left + emblemH / SECTION_EMBLEM.aspect + 12 * scale;
-    const head = this.host.addChildLabel(panel, 'LobbyGuardCrystalStatsTitle', '水晶属性提升', textX, headY + 11 * scale, 27 * scale, rgba(255, 222, 140), new Size(260 * scale, 34 * scale), HorizontalTextAlignment.LEFT);
-    head.isBold = true;
-    this.outline(head, scale, rgba(40, 14, 6, 255));
-    const sub = this.host.addChildLabel(panel, 'LobbyGuardCrystalStatsSub', '每一次升级,都让水晶在黑暗中更加璀璨', textX, headY - 17 * scale, FONT.tiny * scale, rgba(206, 184, 150), new Size(w * 0.5, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
-    sub.overflow = Label.Overflow.SHRINK;
-    // 列:名称 | 当前 | → | 下一级 | (增量)
-    const colCur = x + w * 0.1;
-    const colArrow = x + w * 0.2;
-    const colNext = x + w * 0.3;
-    // 手机端增量字被抬到 20 号,列再往里收,别压到属性条右端花边
-    const colDelta = right - (this.phone ? 64 : 56) * scale;
-    const lvText = next ? `Lv.${info.level}` : `Lv.${info.level} · 满级`;
-    const lvCur = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadCur', lvText, colCur, headY, 25 * scale, rgba(255, 222, 140), new Size(150 * scale, 32 * scale));
-    lvCur.isBold = true;
-    this.outline(lvCur, scale, rgba(40, 14, 6, 255));
+    this.accentBar(panel, 'LobbyGuardCrystalStatsAccent', FX(794), FY(195), k);
+    this.glassText(panel, 'LobbyGuardCrystalStatsTitle', '水晶属性提升', FX(810), FY(195), 28, GLASS_COLOR.text, S(300), k, HorizontalTextAlignment.LEFT, true);
+    this.glassText(panel, 'LobbyGuardCrystalStatsSub', '每一次升级,都让水晶在黑暗中更加璀璨', FX(810), FY(233), 21, GLASS_COLOR.sub, S(520), k);
     if (next) {
-      this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadArrow', '→', colArrow, headY, 25 * scale, rgba(255, 222, 140), new Size(40 * scale, 32 * scale));
-      const lvNext = this.host.addChildLabel(panel, 'LobbyGuardCrystalHeadNext', `Lv.${info.level + 1}`, colNext, headY, 25 * scale, rgba(160, 240, 160), new Size(130 * scale, 32 * scale));
-      lvNext.isBold = true;
-      this.outline(lvNext, scale, rgba(10, 30, 10, 255));
+      this.glassText(panel, 'LobbyGuardCrystalHeadCur', `Lv.${info.level}`, FX(1392), FY(209), 26, GLASS_COLOR.champagne, S(150), k, HorizontalTextAlignment.CENTER, true);
+      this.glassText(panel, 'LobbyGuardCrystalHeadArrow', '→', FX(1515), FY(209), 26, GLASS_COLOR.text, S(50), k, HorizontalTextAlignment.CENTER);
+      this.glassText(panel, 'LobbyGuardCrystalHeadNext', `Lv.${info.level + 1}`, FX(1634), FY(209), 26, GLASS_COLOR.green, S(150), k, HorizontalTextAlignment.CENTER, true);
+    } else {
+      this.glassText(panel, 'LobbyGuardCrystalHeadCur', `Lv.${info.level} · 满级`, FX(1512), FY(209), 26, GLASS_COLOR.champagne, S(300), k, HorizontalTextAlignment.CENTER, true);
     }
-    const divY = headY - bandH / 2 - 6 * scale;
+    // 行区:比面板再暗一档的圆角底 + 细边,行间 1px 分隔
+    const box = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalRowsBox', FX(1302), FY(454.5), S(1030), S(385)).addComponent(Graphics);
+    box.fillColor = rgba(8, 11, 16, 120);
+    box.roundRect(-S(515), -S(192.5), S(1030), S(385), S(10));
+    box.fill();
+    box.strokeColor = rgba(255, 255, 255, 26);
+    box.lineWidth = Math.max(1, S(1.2));
+    box.roundRect(-S(515), -S(192.5), S(1030), S(385), S(10));
+    box.stroke();
+    for (let i = 0; i < 5; i += 1) {
+      mountGlassLine(this.kit, panel, `LobbyGuardCrystalRowSep${i}`, FX(1302), FY(327 + i * 64), S(1004), Math.max(1, S(1.2)), rgba(255, 255, 255, 22));
+    }
 
     const levelRow = (info.levels ?? []).find((row) => row.level === info.level);
     const extraSlots = Math.max(0, this.slotsOf(info) - Number(levelRow?.effect.spellSlots ?? this.slotsOf(info)));
@@ -583,54 +476,30 @@ export class LobbyGuardCrystalDialogRenderer {
       { key: 'EnergyMax', name: '能量上限', read: (e) => 150 + e.energyMaxBonus, fmt: (v) => `${v}`, delta: (v) => `+${v}` },
       { key: 'Slots', name: '法术格数', read: (e) => (e === current ? this.slotsOf(info) : Number(e.spellSlots ?? GUARD_BASE_SPELL_SLOTS) + extraSlots), fmt: (v) => `${v} 格`, delta: (v) => `+${v}` },
     ];
-    const rowsTop = divY - 10 * scale;
-    const avail = rowsTop - (bottom + 16 * scale);
-    // 参考图六行属性条撑满面板(行高约面板高 1/8),不再封顶在 46
-    const gap = 10 * scale;
-    const rowH = Math.min(64 * scale, (avail - gap * (rows.length - 1)) / rows.length);
-    const rowW = w - pad * 2;
     rows.forEach((row, index) => {
-      const y = rowsTop - rowH / 2 - index * (rowH + gap);
-      // 2026-10-16 用户「开局能量图标左边超出边框」「每行内容左右缩进」:行底换细金边暗行;
-      // 图标按宽高比装进 rowH×0.66 的方框(宽图标按宽缩),整行内容左右各缩进 22
-      if (!mountRefSliced(this.host, panel, `LobbyGuardCrystalRow${row.key}`, REF_ROW, x, y, rowW, rowH)) {
-        this.mountSliced(panel, `LobbyGuardCrystalRow${row.key}`, STAT_ROW, x, y, rowW, rowH);
-      }
-      const icon = STAT_ICON[row.key];
-      const iconBox = rowH * 0.66;
-      const iconW = icon.aspect >= 1 ? iconBox / icon.aspect : iconBox;
-      const iconH = icon.aspect >= 1 ? iconBox : iconBox * icon.aspect;
-      const rowInset = 22 * scale;
-      this.host.addSprite(`Icon${row.key}`, icon.path, left + rowInset + iconBox / 2, y, iconW, iconH, panel);
-      const rowName = this.host.addChildLabel(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, left + rowInset + iconBox + 12 * scale, y, FONT.body * scale, CREAM_TEXT, new Size(150 * scale, 26 * scale), HorizontalTextAlignment.LEFT);
-      rowName.isBold = true;
+      const y = FY(295 + index * 64);
+      this.host.addSprite(`LobbyGuardCrystalIcon${row.key}`, GLASS_CRYSTAL_STAT_ICON[row.key], FX(832), y, S(48), S(48), panel);
+      this.glassText(panel, `LobbyGuardCrystalRowName${row.key}`, row.name, FX(890), y, 24, GLASS_COLOR.text, S(260), k);
       const curValue = row.read(current);
-      const cur = this.host.addChildLabel(panel, `LobbyGuardCrystalRowCur${row.key}`, row.fmt(curValue), colCur, y, FONT.value * scale, CREAM_TEXT, new Size(120 * scale, 26 * scale));
-      cur.isBold = true;
-      if (next) {
-        const nextValue = row.read(next);
-        const changed = nextValue !== curValue;
-        if (!changed) {
-          // docs/45 §26:不变行只留当前值,箭头 / 下一级 / 增量三列合成一个灰字,一眼看出本级升了哪几项
-          const same = this.host.addChildLabel(panel, `LobbyGuardCrystalRowSame${row.key}`, '本级不变', (colArrow + colDelta) / 2, y, FONT.small * scale, DIM_TEXT, new Size(Math.abs(colDelta - colArrow) + 80 * scale, this.lh(22, scale)));
-          same.overflow = Label.Overflow.SHRINK;
-          return;
-        }
-        // 有提升的行:左缘 4px 金色竖条
-        const bar = this.host.addChildPlainNode(panel, `LobbyGuardCrystalRowMark${row.key}`, left + 13 * scale, y, 4 * scale, rowH * 0.62).addComponent(Graphics);
-        bar.fillColor = rgba(236, 192, 96, 240);
-        bar.roundRect(-2 * scale, -rowH * 0.31, 4 * scale, rowH * 0.62, 2 * scale);
-        bar.fill();
-        this.host.addChildLabel(panel, `LobbyGuardCrystalRowArrow${row.key}`, '→', colArrow, y, FONT.body * scale, DIM_TEXT, new Size(40 * scale, 26 * scale));
-        const nextLabel = this.host.addChildLabel(panel, `LobbyGuardCrystalRowNext${row.key}`, row.fmt(nextValue), colNext, y, FONT.value * scale, GREEN_TEXT, new Size(120 * scale, 26 * scale));
-        nextLabel.isBold = true;
-        this.host.addChildLabel(panel, `LobbyGuardCrystalRowDelta${row.key}`, `(${row.delta(nextValue - curValue)})`, colDelta, y, FONT.small * scale, GREEN_TEXT, new Size(80 * scale, this.lh(22, scale)));
+      this.glassText(panel, `LobbyGuardCrystalRowCur${row.key}`, row.fmt(curValue), FX(1390), y, 24, GLASS_COLOR.text, S(150), k, HorizontalTextAlignment.CENTER);
+      if (!next) {
+        return;
       }
+      const nextValue = row.read(next);
+      if (nextValue === curValue) {
+        // docs/45 §26:不变行只留当前值,箭头 / 下一级 / 增量三列合成一个灰字,一眼看出本级升了哪几项
+        this.glassText(panel, `LobbyGuardCrystalRowSame${row.key}`, '本级不变', FX(1636), y, 23, GLASS_COLOR.sub, S(200), k, HorizontalTextAlignment.CENTER);
+        return;
+      }
+      this.glassText(panel, `LobbyGuardCrystalRowArrow${row.key}`, '→', FX(1515), y, 22, GLASS_COLOR.sub, S(50), k, HorizontalTextAlignment.CENTER);
+      this.glassText(panel, `LobbyGuardCrystalRowNext${row.key}`, row.fmt(nextValue), FX(1632), y, 24, GLASS_COLOR.green, S(150), k, HorizontalTextAlignment.CENTER, true);
+      this.glassText(panel, `LobbyGuardCrystalRowDelta${row.key}`, `(${row.delta(nextValue - curValue)})`, FX(1752), y, 24, GLASS_COLOR.green, S(120), k, HorizontalTextAlignment.CENTER);
     });
   }
 
-  /** 「水晶升级」底部(参考图):深底金边说明框「升级消耗 [金币] 7,500 [晶核] 25 / 15」+ 红色大按钮「升级至 Lv.6」。 */
-  private renderUpgradeFooter(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, x: number, w: number, y: number, h: number, scale: number): void {
+  /** 「水晶升级」底栏(原型 772..1830 × 672..786):升级消耗 | 金币 | 晶核 持有/需要(不足标红)+ 说明;右侧全屏唯一主钮「升级至 Lv.n」。 */
+  private renderUpgradeFooter(panel: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, W: number, H: number): void {
+    const { k, FX, FY, S } = glassProtoMap(W, H);
     const gold = Number(info.goldBalance ?? 0);
     const core = Number(info.coreBalance ?? 0);
     const goldCost = info.nextUpgradeGold ?? 0;
@@ -638,63 +507,27 @@ export class LobbyGuardCrystalDialogRenderer {
     const maxed = info.level >= info.maxLevel || info.nextUpgradeGold === null;
     const goldOk = gold >= goldCost;
     const coreOk = core >= coreCost;
-    const btnW = Math.min(w * 0.42, h / BTN_LEVEL_UP.aspect);
-    const btnH = btnW * BTN_LEVEL_UP.aspect;
-    const gap = 0.018 * w;
-    const boxW = w - btnW - gap;
-    const boxX = x - w / 2 + boxW / 2;
-    const box = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalPreviewBox', boxX, y, boxW, h);
-    const g = box.addComponent(Graphics);
-    g.fillColor = rgba(10, 9, 12, 218);
-    g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
-    g.fill();
-    if (!mountRefSliced(this.host, box, 'Frame', REF_KIT.cardFrame, 0, 0, boxW, h)) {
-      g.strokeColor = rgba(190, 146, 76, 210);
-      g.lineWidth = 1.5;
-      g.roundRect(-boxW / 2, -h / 2, boxW, h, 6 * scale);
-      g.stroke();
-    }
-    const pad = 28 * scale;
-    const title = this.host.addChildLabel(box, 'Title', maxed ? '已升到满级' : '升级消耗', -boxW / 2 + pad, h * 0.14, FONT.body * scale, GOLD_TEXT, new Size(110 * scale, this.lh(26, scale)), HorizontalTextAlignment.LEFT);
-    title.isBold = true;
+    mountGlassPanel(this.kit, panel, 'LobbyGuardCrystalPreviewBox', FX(1301), FY(729), S(1058), S(114), k);
+    this.accentBar(panel, 'LobbyGuardCrystalCostAccent', FX(796), FY(711), k, 28);
+    this.glassText(panel, 'LobbyGuardCrystalCostTitle', maxed ? '已升到满级' : '升级消耗', FX(815), FY(711), 26, GLASS_COLOR.text, S(140), k, HorizontalTextAlignment.LEFT, true);
     if (!maxed) {
-      const items: Array<{ key: string; icon: string; text: string; ok: boolean }> = [
-        { key: 'Gold', icon: GOLD_ICON, text: this.host.formatInteger(goldCost), ok: goldOk },
-        { key: 'Core', icon: CORE_ICON, text: `${this.host.formatInteger(core)} / ${this.host.formatInteger(coreCost)}`, ok: coreOk },
-      ];
-      const iconSize = 30 * scale;
-      let cursor = -boxW / 2 + pad + 110 * scale;
-      items.forEach((item) => {
-        this.host.addSprite(`CostIcon${item.key}`, item.icon, cursor + iconSize / 2, h * 0.14, iconSize, iconSize, box);
-        const textW = (item.key === 'Gold' ? 110 : 130) * scale;
-        const text = this.host.addChildLabel(box, `Cost${item.key}`, item.text, cursor + iconSize + 6 * scale, h * 0.14, FONT.value * scale, item.ok ? CREAM_TEXT : RED_TEXT, new Size(textW, this.lh(28, scale)), HorizontalTextAlignment.LEFT);
-        text.overflow = Label.Overflow.SHRINK;
-        text.isBold = true;
-        cursor += iconSize + textW + 14 * scale;
-      });
+      const sep = (name: string, px: number): void => {
+        mountGlassLine(this.kit, panel, name, FX(px), FY(711), Math.max(1, S(1.6)), S(26), rgba(120, 128, 140, 170));
+      };
+      sep('LobbyGuardCrystalCostSep0', 955);
+      this.host.addSprite('LobbyGuardCrystalCostIconGold', GOLD_ICON, FX(1008), FY(711), S(36), S(36), panel);
+      this.glassText(panel, 'LobbyGuardCrystalCostGold', this.host.formatInteger(goldCost), FX(1040), FY(711), 25, goldOk ? GLASS_COLOR.text : GLASS_COLOR.red, S(70), k);
+      sep('LobbyGuardCrystalCostSep1', 1115);
+      this.host.addSprite('LobbyGuardCrystalCostIconCore', CORE_ICON, FX(1165), FY(711), S(36), S(36), panel);
+      const haveText = this.host.formatInteger(core);
+      const have = this.glassText(panel, 'LobbyGuardCrystalCostCore', haveText, FX(1194), FY(711), 25, coreOk ? GLASS_COLOR.text : GLASS_COLOR.red, S(120), k, HorizontalTextAlignment.LEFT, true);
+      const haveW = Array.from(haveText).length * have.fontSize * 0.6;
+      this.glassText(panel, 'LobbyGuardCrystalCostCoreNeed', `/ ${this.host.formatInteger(coreCost)}`, FX(1194) + haveW + S(8), FY(711), 25, GLASS_COLOR.text, S(110), k, HorizontalTextAlignment.LEFT, true);
     }
-    const source = this.host.addChildLabel(box, 'Source', maxed ? '水晶已达当前版本上限' : '守卫晶核:野外精英击败、每日副本胜利获得', -boxW / 2 + pad, -h * 0.26, FONT.tiny * scale, DIM_TEXT, new Size(boxW - pad * 2, this.lh(20, scale)), HorizontalTextAlignment.LEFT);
-    source.overflow = Label.Overflow.SHRINK;
-
-    const btnX = x + w / 2 - btnW / 2;
-    // 红金主钮(套件,与终极技能 / 锻造同款);缺图退回原按钮图
-    const refBtnH = Math.min(h, btnW / 3.6);
-    const button = mountRefButton(this.host, panel, 'LobbyGuardCrystalUpgrade', maxed ? '已满级' : `升级至 Lv.${info.level + 1}`, btnX, y, btnW, refBtnH, scale, 'primary', undefined, { fontSize: FONT.button * scale });
-    if (!button.getChildByName('Art')) {
-      this.host.addSprite('LobbyGuardCrystalUpgradeArt', BTN_LEVEL_UP.path, 0, 0, btnW, btnH, button);
-    }
-    this.bindUpgradeButton(button, info, state, maxed, goldOk, coreOk, gold, core, goldCost, coreCost);
-  }
-
-  /** 升级按钮通用行为:满级 / 忙灰显;不足时本地先拦并提示差多少。 */
-  private bindUpgradeButton(button: Node, info: GuardCrystalInfoVO, state: LobbyGuardCrystalDialogState, maxed: boolean, goldOk: boolean, coreOk: boolean, gold: number, core: number, goldCost: number, coreCost: number): void {
-    void info;
-    if (maxed || state.busy) {
-      button.addComponent(UIOpacity).opacity = 140;
-      return;
-    }
-    button.addComponent(Button);
-    button.on(Button.EventType.CLICK, () => {
+    this.glassText(panel, 'LobbyGuardCrystalCostSource', maxed ? '水晶已达当前版本上限' : '守卫晶核:野外精英击败、每日副本胜利获得', FX(815), FY(753), 21, GLASS_COLOR.sub, S(620), k);
+    // 全屏唯一主钮;资源不足 = 暗金 primaryDim(点了提示差多少);满级 / 忙 = primaryOff
+    const kind = maxed || state.busy ? 'primaryOff' : goldOk && coreOk ? 'primary' : 'primaryDim';
+    mountGlassButton(this.kit, panel, 'LobbyGuardCrystalUpgrade', maxed ? '已满级' : `升级至 Lv.${info.level + 1}`, FX(1634.5), FY(732), S(355), S(70), k, kind, () => {
       const current = this.host.currentGuardCrystalState();
       if (!coreOk || !goldOk) {
         if (current) {
@@ -705,8 +538,7 @@ export class LobbyGuardCrystalDialogRenderer {
         return;
       }
       this.host.upgradeGuardCrystal();
-    }, this);
-    this.host.applyImageButtonFeedback(button, 1.04, 0.96);
+    }, 30);
   }
 
   // ── 法术装备页 ──
@@ -729,10 +561,10 @@ export class LobbyGuardCrystalDialogRenderer {
     const holder = this.host.addChildPlainNode(parent, name, x, y, size, size);
     if (id === 'warhorn') {
       const g = holder.addComponent(Graphics);
-      g.fillColor = rgba(24, 12, 10, 240);
+      g.fillColor = rgba(16, 20, 28, 240);
       g.circle(0, 0, size * 0.46);
       g.fill();
-      g.strokeColor = rgba(200, 150, 70, 240);
+      g.strokeColor = rgba(201, 168, 106, 240);
       g.lineWidth = Math.max(2, size * 0.04);
       g.circle(0, 0, size * 0.46);
       g.stroke();
@@ -754,8 +586,9 @@ export class LobbyGuardCrystalDialogRenderer {
 
   /** 页面:整块内面板;左 53% 装备格 + 列表,右 47% 详情卡。 */
   private renderSpellsPage(panel: Node, state: LobbyGuardCrystalDialogState, info: GuardCrystalInfoVO, x: number, w: number, top: number, bottom: number, scale: number): void {
-    const spellsPanel = this.mountInnerPanel(panel, 'LobbyGuardCrystalSpellsPanel', x, top, w, bottom);
-    const fk = this.cardFrameK(w, top - bottom);
+    // 11-06 B 毛玻璃:布局不变,外框换玻璃面板(k 与升级页同口径)
+    const gk = w / 1058;
+    mountGlassPanel(this.kit, panel, 'LobbyGuardCrystalSpellsPanel', x, (top + bottom) / 2, w, top - bottom, gk);
     this.sockets = [];
     this.dragGhost = null;
     const loadout = this.loadoutOf(info);
@@ -771,67 +604,17 @@ export class LobbyGuardCrystalDialogRenderer {
     const rightColX = x + w / 2 - pad - rightColW / 2;
     const colTop = top - 22 * scale;
     const colBottom = bottom + 20 * scale;
-    this.renderSpellColumn(panel, state, info, leftColX, leftColW, colTop, colBottom, scale, {
-      host: spellsPanel,
-      cx: x,
-      cy: (top + bottom) / 2,
-      top: top - CARD_FRAME_LINE.top * fk,
-      left: x - w / 2 + CARD_FRAME_LINE.side * fk,
-    });
+    this.renderSpellColumn(panel, state, info, leftColX, leftColW, colTop, colBottom, scale);
     this.renderSpellDetail(panel, state, info, rightColX, rightColW, colTop, colBottom, scale);
   }
 
-  /**
-   * 标题带(2026-10-16 用户「标题要和下面列表做出层级区分,现在看着不像标题」):
-   * 整条暗红实底 + 左侧提亮渐变 + 底边金线 + 金线两端菱形点;标题字放大加粗压在上面。
-   */
-  private drawHeaderBand(parent: Node, name: string, x: number, y: number, w: number, h: number, scale: number): Node {
-    return mountRefHeaderBand(this.host, parent, name, x, y, w, h, scale);
-  }
-
-  /** 细金框(REF_KIT.cardFrame)在给定框尺寸下的九宫格缩放系数(与 mountRefSliced 同算法)。 */
-  private cardFrameK(w: number, h: number): number {
-    return Math.min(w / REF_KIT.cardFrame.w, h / REF_KIT.cardFrame.h, 1);
-  }
-
-  /**
-   * 标题带放进框节点、压在边框(Frame)之上:卡框素材内芯是不透明暗底,放在下面红色会被盖暗;
-   * 带子顶边 / 两侧正好停在金线内侧,不盖金线也不留缝。
-   */
-  private tuckUnderFrame(frameHost: Node, band: Node): void {
-    // 边框已换内芯镂空版:带子放在边框下一层,金线 / 角花压在红底上(2026-10-16「红色和边框的角完美衔接」)
-    const frame = frameHost.getChildByName('Frame');
-    band.setSiblingIndex(frame ? frame.getSiblingIndex() : frameHost.children.length - 1);
-  }
-
-  /** 小节标题:徽记 + 金字;右侧可带一行灰字。 */
-  private sectionHead(
-    panel: Node,
-    key: string,
-    text: string,
-    left: number,
-    right: number,
-    y: number,
-    scale: number,
-    note?: string,
-    flush?: { host: Node; cx: number; cy: number; left: number },
-  ): void {
-    if (flush) {
-      // 左边延伸到面板金线,带子放进面板节点、压在边框下面
-      const bandLeft = flush.left;
-      const band = this.drawHeaderBand(flush.host, `${key}Band`, (bandLeft + right) / 2 - flush.cx, y - flush.cy, right - bandLeft, 38 * scale, scale);
-      this.tuckUnderFrame(flush.host, band);
-    } else {
-      this.drawHeaderBand(panel, `${key}Band`, (left + right) / 2, y, right - left, 38 * scale, scale);
-    }
-    const emblemH = 30 * scale;
-    mountRefSectionDiamond(this.host, panel, `${key}Emblem`, left + 6 * scale + emblemH / SECTION_EMBLEM.aspect / 2, y, 14 * scale);
-    const textX = left + 6 * scale + emblemH / SECTION_EMBLEM.aspect + 8 * scale;
-    const head = this.host.addChildLabel(panel, `${key}Title`, text, textX, y, 24 * scale, rgba(255, 222, 140), new Size(220 * scale, 30 * scale), HorizontalTextAlignment.LEFT);
-    head.isBold = true;
-    this.outline(head, scale, rgba(40, 14, 6, 255));
+  /** 小节标题(B 风格):香槟竖条 + 白色粗体;右侧可带一行灰字。 */
+  private sectionHead(panel: Node, key: string, text: string, left: number, right: number, y: number, scale: number, note?: string): void {
+    mountGlassLine(this.kit, panel, `${key}Accent`, left + 4 * scale, y, Math.max(2, 5 * scale * 0.85), 28 * scale * 0.85, GLASS_COLOR.champagne);
+    const textX = left + 18 * scale;
+    glassLabel(this.kit, panel, `${key}Title`, text, textX, y, 24 * scale, GLASS_COLOR.text, 220 * scale, HorizontalTextAlignment.LEFT, true);
     if (note) {
-      const noteLabel = this.host.addChildLabel(panel, `${key}Note`, note, right - 10 * scale, y, FONT.small * scale, rgba(206, 184, 150), new Size(Math.max(120 * scale, (right - textX) * 0.7), this.lh(22, scale)), HorizontalTextAlignment.RIGHT);
+      const noteLabel = glassLabel(this.kit, panel, `${key}Note`, note, right - 10 * scale, y, FONT.small * scale, GLASS_COLOR.sub, Math.max(120 * scale, (right - textX) * 0.7), HorizontalTextAlignment.RIGHT);
       noteLabel.overflow = Label.Overflow.SHRINK;
     }
   }
@@ -846,7 +629,6 @@ export class LobbyGuardCrystalDialogRenderer {
     top: number,
     bottom: number,
     scale: number,
-    flush?: { host: Node; cx: number; cy: number; top: number; left: number },
   ): void {
     const slots = this.slotsOf(info);
     const loadout = this.loadoutOf(info);
@@ -857,8 +639,8 @@ export class LobbyGuardCrystalDialogRenderer {
 
     // 已装备的法术
     // 首个标题带贴面板顶边与左侧金线(放在边框下一层),其余内容跟着它往下排
-    const headY = flush ? flush.top - 19 * scale : top - 19 * scale;
-    this.sectionHead(panel, 'LobbyGuardCrystalLoadout', '已装备的法术', left, right, headY, scale, `${loadout.length}/${slots}`, flush);
+    const headY = top - 19 * scale;
+    this.sectionHead(panel, 'LobbyGuardCrystalLoadout', '已装备的法术', left, right, headY, scale, `${loadout.length}/${slots}`);
     // 2026-10-16 用户「法术装备界面有些挤」:装备格缩小一档,上下与两条标题带拉开
     const socket = Math.min(64 * scale, w / 5);
     const shown = slots + (info.nextSlotLevel ? 1 : 0);
@@ -871,11 +653,12 @@ export class LobbyGuardCrystalDialogRenderer {
       const isTarget = open && loadout.length >= slots && i === target && slots > 1;
       const node = this.host.addChildPlainNode(panel, `LobbyGuardCrystalSocket_${i}`, sx, socketY, socket, socket);
       const ring = node.addComponent(Graphics);
-      ring.fillColor = rgba(10, 8, 8, open ? 230 : 160);
+      // B 风格格位:暗玻璃圆 + 浅灰细边;当前目标格 = 香槟边
+      ring.fillColor = rgba(12, 16, 22, open ? 220 : 150);
       ring.circle(0, 0, socket / 2);
       ring.fill();
-      ring.strokeColor = isTarget ? rgba(150, 240, 160, 255) : open ? rgba(190, 146, 72, 220) : rgba(100, 88, 72, 170);
-      ring.lineWidth = isTarget ? 3 : 2;
+      ring.strokeColor = isTarget ? rgba(227, 196, 138, 255) : open ? rgba(160, 168, 182, 200) : rgba(90, 96, 108, 160);
+      ring.lineWidth = isTarget ? 3 : 1.6;
       ring.circle(0, 0, socket / 2 + (isTarget ? 2 * scale : 0));
       ring.stroke();
       let hover: Node | null = null;
@@ -883,21 +666,19 @@ export class LobbyGuardCrystalDialogRenderer {
         // 拖拽悬停高亮环(默认隐藏)
         hover = this.host.addChildPlainNode(node, 'Hover', 0, 0, socket, socket);
         const hg = hover.addComponent(Graphics);
-        hg.strokeColor = rgba(170, 250, 180, 255);
+        hg.strokeColor = rgba(236, 210, 150, 255);
         hg.lineWidth = 4;
         hg.circle(0, 0, socket / 2 + 5 * scale);
         hg.stroke();
-        hg.fillColor = rgba(120, 240, 140, 40);
+        hg.fillColor = rgba(227, 196, 138, 40);
         hg.circle(0, 0, socket / 2);
         hg.fill();
         hover.active = false;
       }
-      // 金环(套件,与终极技能弹窗同款)套在格位外圈
-      this.host.addSprite('Ring', REF_ICON_RING, 0, 0, socket * 1.22, socket * 1.22, node);
       if (id) {
         this.mountSpellIcon(node, 'Icon', id, 0, 0, socket * 1.02, false);
       } else if (!open) {
-        this.host.addSprite('Lock', LOCK_ICON.path, 0, 0, socket * 0.34, socket * 0.34 * LOCK_ICON.aspect, node);
+        this.host.addSprite('Lock', GLASS_ICON.lock, 0, 0, socket * 0.36, socket * 0.36, node);
       } else {
         this.host.addChildLabel(node, 'Empty', '拖入', 0, 0, FONT.small * scale, DIM_TEXT, new Size(socket, 22 * scale));
       }
@@ -942,16 +723,8 @@ export class LobbyGuardCrystalDialogRenderer {
       const equipped = slotIndex >= 0;
       const selected = state.selectedSpell === id;
       const card = this.host.addChildPlainNode(panel, `LobbyGuardCrystalSpell_${id}`, x, cy, w, rowH);
-      if (!mountRefSliced(this.host, card, 'Bg', selected ? REF_ROW_SELECTED : REF_ROW, 0, 0, w, rowH)) {
-        const g = card.addComponent(Graphics);
-        g.fillColor = selected ? rgba(44, 32, 16, 240) : equipped ? rgba(30, 22, 12, 235) : rgba(14, 11, 9, 225);
-        g.roundRect(-w / 2, -rowH / 2, w, rowH, 6 * scale);
-        g.fill();
-        g.strokeColor = selected ? rgba(255, 232, 160, 255) : equipped ? rgba(200, 156, 84, 220) : rgba(110, 90, 60, 150);
-        g.lineWidth = selected ? 2.5 : 1.2;
-        g.roundRect(-w / 2, -rowH / 2, w, rowH, 6 * scale);
-        g.stroke();
-      }
+      // B 风格:选中行 = panelSel 暖金(全站选中态),其余暗玻璃
+      mountGlassSlice(this.kit, card, 'Bg', selected ? GLASS_SLICES.panelSel : GLASS_SLICES.panel, 0, 0, w, rowH, Math.min(scale * 0.8, rowH / 56));
       const iconSize = rowH * 0.72;
       const iconX = -w / 2 + 20 * scale + iconSize / 2;
       this.mountSpellIcon(card, 'Icon', id, iconX, 0, iconSize, !open);
@@ -966,21 +739,15 @@ export class LobbyGuardCrystalDialogRenderer {
       const pillH = 26 * scale;
       const pillX = w / 2 - 20 * scale - pillW / 2;
       const pill = this.host.addChildPlainNode(card, 'StatePill', pillX, 0, pillW, pillH);
-      const pg = pill.addComponent(Graphics);
-      pg.fillColor = equipped ? rgba(44, 30, 12, 245) : rgba(18, 14, 12, 230);
-      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 5 * scale);
-      pg.fill();
-      pg.strokeColor = equipped ? rgba(220, 176, 96, 240) : rgba(110, 96, 72, 200);
-      pg.lineWidth = 1.5;
-      pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 5 * scale);
-      pg.stroke();
+      // 状态胶囊 = 全站标签胶囊(浅填充 + 细描边);已装备字用香槟色
+      mountGlassSlice(this.kit, pill, 'Bg', GLASS_SLICES.tagPill, 0, 0, pillW, pillH, pillH / 36);
       const pillText = !open ? `Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : equipped ? '已装备' : `Lv.${spellLv.level}`;
       const lockW = open ? 0 : 16 * scale;
       const pillLabel = this.host.addChildLabel(pill, 'Text', pillText, -lockW / 2, 0, FONT.small * scale, equipped ? GOLD_TEXT : DIM_TEXT, new Size(pillW - 8 * scale - lockW, pillH));
       pillLabel.overflow = Label.Overflow.SHRINK;
       pillLabel.isBold = equipped;
       if (!open) {
-        this.host.addSprite('Lock', LOCK_ICON.path, pillW / 2 - 6 * scale - lockW / 2, 0, lockW, lockW * LOCK_ICON.aspect, pill);
+        this.host.addSprite('Lock', GLASS_ICON.lock, pillW / 2 - 6 * scale - lockW / 2, 0, lockW, lockW, pill);
       }
       if (open && this.spellUpgradable(info, spellLv)) {
         const dot = this.host.addChildPlainNode(card, 'RedDot', w / 2 - 6 * scale, rowH / 2 - 6 * scale, 12 * scale, 12 * scale);
@@ -1152,16 +919,15 @@ export class LobbyGuardCrystalDialogRenderer {
     const spellLv = this.spellLevelOf(info, id);
     const h = top - bottom;
     const card = this.host.addChildPlainNode(panel, 'LobbyGuardCrystalSpellDetail', x, (top + bottom) / 2, w, h);
+    // B 风格:详情卡 = 面板内再垫一层暗玻璃(比外面板暗一档)
     const g = card.addComponent(Graphics);
-    g.fillColor = rgba(12, 9, 8, 215);
-    g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
+    g.fillColor = rgba(8, 11, 16, 120);
+    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
     g.fill();
-    if (!mountRefSliced(this.host, card, 'Frame', REF_KIT.cardFrameOpen, 0, 0, w, h)) {
-      g.strokeColor = rgba(190, 146, 76, 210);
-      g.lineWidth = 1.5;
-      g.roundRect(-w / 2, -h / 2, w, h, 8 * scale);
-      g.stroke();
-    }
+    g.strokeColor = rgba(255, 255, 255, 30);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
+    g.stroke();
     const pad = 22 * scale;
     const left = -w / 2 + pad;
     const right = w / 2 - pad;
@@ -1183,19 +949,15 @@ export class LobbyGuardCrystalDialogRenderer {
     const fxH = Math.max(90 * scale, Math.min(h * 0.36, h - pad * 2 - fixedH));
     const gapS = baseGap + Math.max(0, h - pad * 2 - fixedH - fxH) / 5;
 
-    // 标题行:徽记 + 名 + 「能量 n」 + 等级牌
-    const ck = this.cardFrameK(w, h);
-    const bandH = titleH + 12 * scale;
-    let cursor = h / 2 - CARD_FRAME_LINE.top * ck - 6 * scale;
-    const titleBand = this.drawHeaderBand(card, 'TitleBand', 0, h / 2 - CARD_FRAME_LINE.top * ck - bandH / 2, w - CARD_FRAME_LINE.side * ck * 2, bandH, scale);
-    this.tuckUnderFrame(card, titleBand);
-    const emblemH = 28 * scale;
-    mountRefSectionDiamond(this.host, card, 'Emblem', left + emblemH / SECTION_EMBLEM.aspect / 2, cursor - titleH / 2, 14 * scale);
+    // 标题行:香槟竖条 + 名 + 「能量 n」 + 等级胶囊
+    let cursor = h / 2 - 12 * scale;
+    const emblemH = 18 * scale;
+    mountGlassLine(this.kit, card, 'Accent', left + 3 * scale, cursor - titleH / 2, Math.max(2, 4.5 * scale * 0.85), 26 * scale * 0.85, GLASS_COLOR.champagne);
     const lvW = 66 * scale;
-    const lvH = 24 * scale;
+    const lvH = 26 * scale;
     const energyW = 78 * scale;
-    const nameX = left + emblemH / SECTION_EMBLEM.aspect + 8 * scale;
-    const name = this.host.addChildLabel(card, 'Name', def.name, nameX, cursor - titleH / 2, 24 * scale, rgba(255, 222, 140), new Size(innerW - lvW - energyW - emblemH - 24 * scale, titleH), HorizontalTextAlignment.LEFT);
+    const nameX = left + emblemH;
+    const name = this.host.addChildLabel(card, 'Name', def.name, nameX, cursor - titleH / 2, 24 * scale, CREAM_TEXT, new Size(innerW - lvW - energyW - emblemH - 24 * scale, titleH), HorizontalTextAlignment.LEFT);
     name.isBold = true;
     this.outline(name, scale, rgba(40, 14, 6, 255));
     name.overflow = Label.Overflow.SHRINK;
@@ -1207,15 +969,9 @@ export class LobbyGuardCrystalDialogRenderer {
       const maxed = spellLv.level >= GUARD_SPELL_MAX_LEVEL;
       const tier = guardSpellTier(spellLv.level);
       const lvPill = this.host.addChildPlainNode(card, 'Level', right - lvW / 2, cursor - titleH / 2, lvW, lvH);
-      const lg = lvPill.addComponent(Graphics);
-      lg.fillColor = maxed ? rgba(120, 78, 12, 245) : rgba(20, 16, 12, 235);
-      lg.roundRect(-lvW / 2, -lvH / 2, lvW, lvH, lvH / 2);
-      lg.fill();
-      lg.strokeColor = maxed ? rgba(255, 214, 110, 255) : tier === 2 ? rgba(214, 228, 248, 230) : rgba(190, 150, 90, 220);
-      lg.lineWidth = 1.5;
-      lg.roundRect(-lvW / 2, -lvH / 2, lvW, lvH, lvH / 2);
-      lg.stroke();
-      const lvText = this.host.addChildLabel(lvPill, 'Text', maxed ? 'Lv.5 满' : `Lv.${spellLv.level}`, 0, 0, FONT.tiny * scale, maxed ? rgba(255, 230, 140) : CREAM_TEXT, new Size(lvW - 6 * scale, lvH));
+      // 满级 = 暗金胶囊;二阶(tier 2)字偏冷白,其余标签胶囊
+      mountGlassSlice(this.kit, lvPill, 'Bg', maxed ? GLASS_SLICES.pillGold : GLASS_SLICES.tagPill, 0, 0, lvW, lvH, lvH / 36);
+      const lvText = this.host.addChildLabel(lvPill, 'Text', maxed ? 'Lv.5 满' : `Lv.${spellLv.level}`, 0, 0, FONT.tiny * scale, maxed ? GLASS_COLOR.onGold : tier === 2 ? rgba(214, 228, 248) : CREAM_TEXT, new Size(lvW - 6 * scale, lvH));
       lvText.isBold = true;
       lvText.overflow = Label.Overflow.SHRINK;
     } else {
@@ -1245,7 +1001,7 @@ export class LobbyGuardCrystalDialogRenderer {
     }
     const frame = this.host.addChildPlainNode(fxBox, 'Frame', 0, 0, innerW, fxH);
     const fr = frame.addComponent(Graphics);
-    fr.strokeColor = rgba(170, 130, 70, 200);
+    fr.strokeColor = rgba(255, 255, 255, 40);
     fr.lineWidth = 1.5;
     fr.rect(-innerW / 2, -fxH / 2, innerW, fxH);
     fr.stroke();
@@ -1269,7 +1025,7 @@ export class LobbyGuardCrystalDialogRenderer {
     cursor -= descH + gapS;
 
     // 下一级对照表(标题行 + 逐项);满级 / 未解锁各一行
-    this.drawDivider(card, 'TableDivider', 0, cursor + 2 * scale, innerW);
+    mountGlassLine(this.kit, card, 'TableDivider', 0, cursor + 2 * scale, innerW, Math.max(1, 1.2 * scale), rgba(255, 255, 255, 30));
     if (open && diff) {
       const header = this.host.addChildLabel(card, 'DiffHead', `Lv.${spellLv.level}   →   Lv.${spellLv.level + 1}`, 0, cursor - rowH / 2, FONT.body * scale, GOLD_TEXT, new Size(innerW, rowH));
       header.isBold = true;
@@ -1284,7 +1040,7 @@ export class LobbyGuardCrystalDialogRenderer {
       entries.forEach((entry, index) => {
         const y = cursor - rowH / 2;
         const rg = this.host.addChildPlainNode(card, `DiffRow${index}`, 0, y, innerW, rowH - 3 * scale).addComponent(Graphics);
-        rg.fillColor = rgba(255, 214, 140, index % 2 === 0 ? 16 : 7);
+        rg.fillColor = rgba(255, 255, 255, index % 2 === 0 ? 12 : 5);
         rg.roundRect(-innerW / 2, -(rowH - 3 * scale) / 2, innerW, rowH - 3 * scale, 3 * scale);
         rg.fill();
         const label = this.host.addChildLabel(card, `DiffLabel${index}`, entry.label, left + 6 * scale, y, FONT.small * scale, CREAM_TEXT, new Size(innerW * 0.3, rowH), HorizontalTextAlignment.LEFT);
@@ -1298,7 +1054,7 @@ export class LobbyGuardCrystalDialogRenderer {
         cursor -= rowH;
       });
       if (diff.unlock) {
-        const unlock = this.host.addChildLabel(card, 'DiffUnlock', `解锁「${diff.unlock}」`, 0, cursor - rowH / 2, FONT.small * scale, rgba(255, 214, 110), new Size(innerW, rowH));
+        const unlock = this.host.addChildLabel(card, 'DiffUnlock', `解锁「${diff.unlock}」`, 0, cursor - rowH / 2, FONT.small * scale, GOLD_TEXT, new Size(innerW, rowH));
         unlock.overflow = Label.Overflow.SHRINK;
         unlock.isBold = true;
         cursor -= rowH;
@@ -1336,38 +1092,29 @@ export class LobbyGuardCrystalDialogRenderer {
     }
     const btnX = left + btnW / 2;
     const labelText = !open ? '未解锁' : !spellLv.available ? '暂未开放' : maxed ? '已满级' : gated ? `需水晶 Lv.${gateLevel}` : `升级 Lv.${spellLv.level + 1}`;
-    // 红金主钮(套件);缺图退回原按钮图
-    const button = mountRefButton(this.host, card, 'LobbyGuardCrystalUpgrade', labelText, btnX, btnY, btnW, btnH, scale, 'primary', undefined, { fontSize: 20 * scale });
-    if (!button.getChildByName('Art')) {
-      this.host.addSprite('LobbyGuardCrystalUpgradeArt', BTN_COST_UP.path, 0, 0, btnW, btnH, button);
-    }
+    // B 风格:法术页唯一主钮;门槛未到 / 资源不足 = 暗金 primaryDim(点了提示原因);不可升 = primaryOff
     const disabled = !open || !spellLv.available || maxed || state.busy;
-    if (disabled || gated) {
-      button.addComponent(UIOpacity).opacity = 140;
-    }
-    if (!disabled) {
-      button.addComponent(Button);
-      button.on(Button.EventType.CLICK, () => {
-        const current = this.host.currentGuardCrystalState();
-        if (!current) {
-          return;
-        }
-        if (gated) {
-          current.notice = `${def.name}升到 Lv.${spellLv.level + 1} 需要守卫水晶 Lv.${gateLevel}(在「水晶升级」页签升级水晶)`;
-          current.noticeGood = false;
-          this.host.refreshGuardCrystalDialog();
-          return;
-        }
-        if (core < coreCost || gold < goldCost) {
-          current.notice = core < coreCost ? `守卫晶核不足:还差 ${this.host.formatInteger(coreCost - core)} 个` : `金币不足:还差 ${this.host.formatInteger(goldCost - gold)}`;
-          current.noticeGood = false;
-          this.host.refreshGuardCrystalDialog();
-          return;
-        }
-        this.host.upgradeGuardSpell(id);
-      }, this);
-      this.host.applyImageButtonFeedback(button, 1.04, 0.96);
-    }
+    const short = gold < goldCost || core < coreCost;
+    const kind = disabled ? 'primaryOff' : gated || short ? 'primaryDim' : 'primary';
+    mountGlassButton(this.kit, card, 'LobbyGuardCrystalUpgrade', labelText, btnX, btnY, btnW, btnH, scale * 0.85, kind, () => {
+      const current = this.host.currentGuardCrystalState();
+      if (!current) {
+        return;
+      }
+      if (gated) {
+        current.notice = `${def.name}升到 Lv.${spellLv.level + 1} 需要守卫水晶 Lv.${gateLevel}(在「水晶升级」页签升级水晶)`;
+        current.noticeGood = false;
+        this.host.refreshGuardCrystalDialog();
+        return;
+      }
+      if (core < coreCost || gold < goldCost) {
+        current.notice = core < coreCost ? `守卫晶核不足:还差 ${this.host.formatInteger(coreCost - core)} 个` : `金币不足:还差 ${this.host.formatInteger(goldCost - gold)}`;
+        current.noticeGood = false;
+        this.host.refreshGuardCrystalDialog();
+        return;
+      }
+      this.host.upgradeGuardSpell(id);
+    }, 22 / 0.85);
     // 装备状态 / 装备按钮(拖拽之外的兜底:点一下装到当前选中格)
     const target = state.targetSlot >= 0 && state.targetSlot < slots ? state.targetSlot : slots - 1;
     let pillText = '';
@@ -1389,62 +1136,18 @@ export class LobbyGuardCrystalDialogRenderer {
     }
     const pillW = innerW - btnW - 8 * scale;
     const pillH = btnH * 0.72;
-    const pill = this.host.addChildPlainNode(card, 'Action', right - pillW / 2, btnY, pillW, pillH);
-    // 可装备 = 暗金副钮(套件);已装备 / 未解锁 = 细金边暗行(与列表行同款)
-    const pillArt = action ? mountRefSliced(this.host, pill, 'Art', REF_KIT.btnSecondary, 0, 0, pillW, pillH) : mountRefSliced(this.host, pill, 'Art', slotIndex >= 0 ? REF_ROW_SELECTED : REF_ROW, 0, 0, pillW, pillH);
-    const pg = pill.addComponent(Graphics);
-    if (pillArt) {
-      pg.enabled = false;
-    }
-    pg.fillColor = action ? rgba(130, 34, 22, 245) : slotIndex >= 0 ? rgba(30, 22, 12, 240) : rgba(40, 32, 24, 230);
-    pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 6 * scale);
-    pg.fill();
-    pg.strokeColor = action ? rgba(255, 196, 120, 240) : slotIndex >= 0 ? rgba(214, 170, 96, 230) : rgba(140, 120, 90, 200);
-    pg.lineWidth = 1.5;
-    pg.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, 6 * scale);
-    pg.stroke();
-    const pillLabel = this.host.addChildLabel(pill, 'Text', pillText, 0, 0, FONT.small * scale, action ? rgba(255, 238, 200) : slotIndex >= 0 ? GOLD_TEXT : DIM_TEXT, new Size(pillW - 8 * scale, pillH));
-    pillLabel.overflow = Label.Overflow.SHRINK;
-    pillLabel.isBold = true;
     if (action && !state.busy) {
+      // 可装备 = 次按钮(主钮留给升级)
       const run = action;
-      pill.addComponent(Button);
-      pill.on(Button.EventType.CLICK, () => run(), this);
-      this.host.applyImageButtonFeedback(pill, 1.06, 0.95);
+      mountGlassButton(this.kit, card, 'Action', pillText, right - pillW / 2, btnY, pillW, pillH, scale * 0.85, 'secondaryLit', () => run(), FONT.body / 0.85);
+      return;
     }
-  }
-
-  /** 分隔线(参考图款):金线从中间向两端渐隐 + 中心小菱形。 */
-  private drawDivider(panel: Node, name: string, x: number, y: number, w: number): void {
-    const node = this.host.addChildPlainNode(panel, name, x, y, w, 8);
-    const g = node.addComponent(Graphics);
-    // 实测坑:同一 Graphics 先 stroke 后 fill 会吞掉描边;<2px 高的细矩形会被三角化合并成 2 点画不出来。
-    // 所以线只用分段 stroke(渐隐),菱形挂到子节点单独 fill。
-    g.lineWidth = Math.max(2, w / 480);
-    const steps = 10;
-    for (let i = 0; i < steps; i++) {
-      const a0 = (i / steps) * (w / 2);
-      const a1 = ((i + 1) / steps) * (w / 2);
-      g.strokeColor = rgba(220, 172, 92, Math.round(255 * (1 - (i / steps) * 0.85)));
-      g.moveTo(a0, 0);
-      g.lineTo(a1, 0);
-      g.moveTo(-a0, 0);
-      g.lineTo(-a1, 0);
-      g.stroke();
-    }
-    this.fillDiamond(node, 0, 0, 7, 4, rgba(230, 188, 110, 240));
-  }
-
-  private fillDiamond(parent: Node, x: number, y: number, rx: number, ry: number, color: Color): void {
-    const node = this.host.addChildPlainNode(parent, 'Diamond', x, y, rx * 2, ry * 2);
-    const g = node.addComponent(Graphics);
-    g.fillColor = color;
-    g.moveTo(0, ry);
-    g.lineTo(rx, 0);
-    g.lineTo(0, -ry);
-    g.lineTo(-rx, 0);
-    g.close();
-    g.fill();
+    // 已装备 / 未解锁 = 标签胶囊(已装备字用香槟色)
+    const pill = this.host.addChildPlainNode(card, 'Action', right - pillW / 2, btnY, pillW, pillH);
+    mountGlassSlice(this.kit, pill, 'Bg', GLASS_SLICES.tagPill, 0, 0, pillW, pillH, pillH / 36);
+    const pillLabel = this.host.addChildLabel(pill, 'Label', pillText, 0, 0, FONT.small * scale, slotIndex >= 0 ? GOLD_TEXT : DIM_TEXT, new Size(pillW - 8 * scale, pillH));
+    pillLabel.overflow = Label.Overflow.SHRINK;
+    pillLabel.isBold = slotIndex >= 0;
   }
 
   /** 格位编号:金边菱形 + 数字。 */
@@ -1452,14 +1155,14 @@ export class LobbyGuardCrystalDialogRenderer {
     const node = this.host.addChildPlainNode(parent, 'Index', x, y, size, size);
     const g = node.addComponent(Graphics);
     const r = size / 2;
-    g.fillColor = rgba(24, 16, 10, 245);
+    g.fillColor = rgba(16, 20, 28, 245);
     g.moveTo(0, r);
     g.lineTo(r, 0);
     g.lineTo(0, -r);
     g.lineTo(-r, 0);
     g.close();
     g.fill();
-    g.strokeColor = open ? rgba(214, 170, 96, 255) : rgba(120, 104, 88, 200);
+    g.strokeColor = open ? rgba(227, 196, 138, 255) : rgba(100, 106, 118, 200);
     g.lineWidth = 2;
     g.moveTo(0, r);
     g.lineTo(r, 0);
@@ -1467,7 +1170,7 @@ export class LobbyGuardCrystalDialogRenderer {
     g.lineTo(-r, 0);
     g.close();
     g.stroke();
-    const label = this.host.addChildLabel(node, 'Text', text, 0, 0, FONT.small * scale, open ? GOLD_TEXT : rgba(160, 146, 120), new Size(size, size));
+    const label = this.host.addChildLabel(node, 'Text', text, 0, 0, FONT.small * scale, open ? GOLD_TEXT : DIM_TEXT, new Size(size, size));
     label.isBold = true;
   }
 
@@ -1505,9 +1208,14 @@ export class LobbyGuardCrystalDialogRenderer {
     this.outline(label, scale, rgba(10, 8, 6, 255));
   }
 
+  /** B 风格不描边,只留一层淡投影(与 glassLabel 一致);参数保留给旧调用点。 */
   private outline(label: Label, scale: number, color: Color): void {
-    label.enableOutline = true;
-    label.outlineColor = color;
-    label.outlineWidth = Math.max(1, 2 * scale);
+    void scale;
+    void color;
+    label.enableOutline = false;
+    label.enableShadow = true;
+    label.shadowColor = new Color(0, 0, 0, 120);
+    label.shadowOffset.set(0, -1);
+    label.shadowBlur = 2;
   }
 }

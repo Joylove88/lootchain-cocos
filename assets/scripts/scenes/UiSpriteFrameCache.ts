@@ -153,24 +153,18 @@ function packPrefixOf(path: string): string {
   return path.replace(/\/(spriteFrame|texture)$/, '');
 }
 
-/** 守卫水晶弹窗专用新素材(ui/crystal/ai,2026-09-30 参考图改版):首次打开弹窗时整组拉,齐了再画,避免空框闪一下。 */
+/** 守卫水晶弹窗素材:首次打开弹窗时整组拉,齐了再画,避免空框闪一下。11-06 改 B 毛玻璃后只留场景 / 水晶 / 法术图 + 玻璃件。 */
 const GUARD_CRYSTAL_UI_ASSETS = [
-  // 2026-10-14 v4 整页版新素材(Codex 按参考图重出):场景底图 / 水晶 v2 / 等级牌 v2 / 页签 v2 / 题头八角星
-  'crystal_scene_bg', 'crystal_art_v2', 'level_plate_v2', 'tab_on_v2', 'tab_off_v2', 'title_emblem_v2', 'spell_preview_bg',
+  // 场景底图 / 水晶 v2(左侧舞台,特效挂在它上面)/ 法术插画与图标
+  'crystal_scene_bg', 'crystal_art_v2', 'spell_preview_bg',
   'spell_art_quake', 'spell_art_frost', 'spell_art_thunder', 'spell_art_goldrush', 'spell_art_aegis', 'spell_art_warhorn',
-  'btn_level_up', 'btn_cost_up', 'inner_panel_bg', 'stat_row_bg', 'section_emblem',
-  'stat_hp', 'stat_gold', 'stat_power', 'stat_energy', 'stat_energy_max', 'stat_slots',
   'spell_quake', 'spell_frost', 'spell_thunder', 'spell_goldrush', 'spell_aegis',
 ].map((name) => `ui/crystal/ai/${name}/spriteFrame`).concat([
-  // 弹窗里共用的外框 / 标题花边 / 关闭 / 锁 / 货币图标,一起等,首开不缺角
-  'ui/hero/ai/refine_panel_bg/spriteFrame', 'ui/common/ai/title_divider_left/spriteFrame', 'ui/common/ai/title_divider_right/spriteFrame',
-  'ui/common/ai/button_close/spriteFrame', 'ui/common/ai/ic_lock/spriteFrame', 'ui/common/ai/ic_gold_medium/spriteFrame',
-  'ui/bag/ai/icon_guard_core/spriteFrame', 'ui/battle/ai/buff_atk/spriteFrame',
-  // docs/39 法术等级:卡片档位徽记 Ⅰ / Ⅱ / Ⅲ
-  'ui/daily/ai/tier_1/spriteFrame', 'ui/daily/ai/tier_2/spriteFrame', 'ui/daily/ai/tier_3/spriteFrame',
-  // 2026-10-16 风格统一:布阵 / 锻造同款标题牌、关闭、页签、细金框、列表行、红金按钮、顶栏货币胶囊
-  'ui/formation/ref/title_plaque/spriteFrame', 'ui/formation/ref/btn_close/spriteFrame', 'ui/formation/ref/tab_on/spriteFrame', 'ui/formation/ref/tab_off/spriteFrame',
-  'ui/forge/ref/row_normal/spriteFrame', 'ui/common/ref/card_frame/spriteFrame', 'ui/common/ref/card_frame_open/spriteFrame', 'ui/common/ref/btn_primary/spriteFrame', 'ui/common/ai/bag_currency_bar/spriteFrame',
+  'ui/common/ai/ic_gold_medium/spriteFrame', 'ui/bag/ai/icon_guard_core/spriteFrame', 'ui/battle/ai/buff_atk/spriteFrame',
+  // B 毛玻璃:原型 crystal_b 抠的属性暗金图标 + 本页用到的玻璃件(名同 UiGlassKit;不 import,免成环)
+  ...['crystal_hp', 'crystal_gold', 'crystal_power', 'crystal_energy', 'crystal_energy_max', 'crystal_slots',
+    'panel', 'panel_sel', 'tab_gold', 'plate', 'tag_pill', 'chip', 'pill_primary', 'pill_primary_dim', 'pill_secondary_lit', 'pill_gold',
+    'icon_back', 'icon_close', 'divider', 'lock'].map((name) => `ui/glass/${name}/spriteFrame`),
 ]);
 
 export class UiSpriteFrameCache {

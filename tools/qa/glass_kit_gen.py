@@ -463,7 +463,10 @@ def extract_proto_icons():
                               ('quest_b.png', {'quest_login': (134, 247, 31), 'quest_field': (134, 373, 31), 'quest_dungeon': (134, 500, 31),
                                                'quest_summon': (134, 628, 31), 'quest_forge': (134, 755, 31),
                                                # 奖励小框图标(原型配色):金币堆 / 经验书 / 强化石
-                                               'reward_gold': (1153, 373, 28), 'reward_exp_book': (1369, 374, 28), 'reward_enhance': (1152, 501, 27)})):
+                                               'reward_gold': (1153, 373, 28), 'reward_exp_book': (1369, 374, 28), 'reward_enhance': (1152, 501, 27)}),
+                              # 守卫水晶原型 crystal_b(11-06):属性行暗金图标(保留原色)
+                              ('crystal_b.png', {'crystal_hp': (832, 295, 24), 'crystal_gold': (832, 359, 24), 'crystal_power': (832, 423, 24),
+                                                 'crystal_energy': (832, 487, 24), 'crystal_energy_max': (832, 551, 24), 'crystal_slots': (832, 615, 24)})):
         path = os.path.join(os.path.dirname(PROTO), proto_name)
         if not os.path.exists(path):
             continue
@@ -472,7 +475,7 @@ def extract_proto_icons():
             img = img.resize((1870, 841), Image.LANCZOS)
         P = np.asarray(img).astype(float)
         for key, (x, y, half) in items.items():
-            if key == 'lock' or key.startswith('gacha_act') or key.startswith('quest_') or key.startswith('reward_'):
+            if key == 'lock' or key.startswith('gacha_act') or key.startswith('quest_') or key.startswith('reward_') or key.startswith('crystal_'):
                 save(key, cut_keep(x, y, half, 30, 120) if key == 'lock' else cut_keep(x, y, half, 14, 70))
             else:
                 save(key, cut(x, y, half, 18, 90, True))
