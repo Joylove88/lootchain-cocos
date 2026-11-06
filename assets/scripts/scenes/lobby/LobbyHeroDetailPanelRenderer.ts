@@ -1413,8 +1413,8 @@ export class LobbyHeroDetailPanelRenderer {
 
   private renderRefineDialog(parent: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number, scale: number): void {
     if (this.proto) {
-      // 2026-10-23 原型 B 1:1
-      this.renderProtoRefineDialog(parent, hero, panelWidth, panelHeight);
+      // 11-06 B 毛玻璃(用户从 4 版里选 v4:立绘出框 + 数值条)
+      this.renderGlassRefineDialog(parent, hero, panelWidth, panelHeight);
       return;
     }
     const affixes = hero.affixes ?? [];
@@ -7587,6 +7587,215 @@ export class LobbyHeroDetailPanelRenderer {
   }
 
   /** 洗练(原型 B):左英雄卡(半身插画 / 名字 / 稀有度 / 当前战力)| 右 提示 → 词条行(品质条 / 图标 / 名称 / 数值 / 品质章 / 锁)→ 品质图例 → 消耗框 → 双钮。 */
+  /**
+   * 特性洗练(11-06 B 毛玻璃,用户选原型 v4:周报截图/2026-11-06_特性洗练B风格/proto/refine_v4.png,1870×841 屏幕坐标):
+   * 左 0..650 英雄插画直接站在暗化背景上(无卡框,右 / 下渐隐),名字 + 稀有度胶囊 @ 720、当前战力 @ 777;
+   * 右玻璃面板 645..1808 × 70..808:标题竖条 688 / 字 720 @ 113、✕ 1762;说明 720 @ 157;
+   * 特性行 683..1772(行心 223 起步 69.5,高 58):图标 740 / 名 795 / 值 1030 / 数值条 1185..1527 / 品质胶囊 1605 / 锁 1725;
+   * 数值条 = 这条在本品质原始值区间里的位置(HeroAffixGenerator:D 8~19 … SSS 120~199);图例 @ 561;
+   * 消耗条 683..1772 × 598..688;按钮 主 730..1313 / 次 1366..1740 × 714..786。点行切换锁定(锁定行 = panelSel)。
+   */
+  private renderGlassRefineDialog(parent: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number): void {
+    const { FX, FY, S, F } = this.protoDialogMap();
+    const k = this.proto?.k ?? 1;
+    const affixes = hero.affixes ?? [];
+    const lockedIds = new Set(this.host.currentLobbyHeroRefineState().lockedAttrIds.filter((id) => affixes.some((affix) => affix.id === id)));
+    const pending = this.host.isLobbyHeroRefinePending(hero.id);
+    const close = (): void => this.host.closeLobbyHeroRefineDialog();
+    const dimW = Math.max(panelWidth, view.getVisibleSize().width) * 1.6;
+    const dimH = panelHeight * 1.6;
+    const dim = this.host.addChildPlainNode(parent, 'LobbyHeroRefineDialogDim', 0, 0, dimW, dimH);
+    const dg = dim.addComponent(Graphics);
+    dg.fillColor = rgba(0, 0, 0, 165);
+    dg.rect(-dimW / 2, -dimH / 2, dimW, dimH);
+    dg.fill();
+    dim.addComponent(BlockInputEvents);
+    this.refineDialogNode = dim;
+    const T = (node: Node, name: string, text: string, x: number, y: number, size: number, color: Color, width: number, align = HorizontalTextAlignment.LEFT, bold = false): Label => {
+      const label = glassLabel(this.host, node, name, text, x, y, F(size), color, width, align, bold);
+      label.fontSize = Math.round(F(size));
+      label.lineHeight = label.fontSize + 4;
+      return label;
+    };
+
+    // 左:英雄插画(出框,右侧 / 底部渐隐进背景)
+    // 插画区铺到屏幕左 / 上 / 下边缘(电脑 16:9 比原型方,只按原型 650×841 会露出上下硬边像一张卡)
+    const vis = view.getVisibleSize();
+    const artL = Math.min(FX(0), -vis.width / 2);
+    const artR = FX(650);
+    const artT = Math.max(FY(0), vis.height / 2);
+    const artB = Math.min(FY(841), -vis.height / 2);
+    const artW = artR - artL;
+    const artH = artT - artB;
+    const art = this.host.addChildPlainNode(dim, 'HeroArt', (artL + artR) / 2, (artT + artB) / 2, artW, artH);
+    art.addComponent(Mask);
+    this.mountHeroWideArt(art, hero, artW, artH, true);
+    // 右侧渐隐一直盖到插画右缘(原 560±90 留了最后一截硬边)
+    const fadeR = this.host.addChildPlainNode(dim, 'HeroArtFadeR', artR - S(90), (artT + artB) / 2, S(180), artH).addComponent(Graphics);
+    for (let i = 0; i < 12; i += 1) {
+      fadeR.fillColor = rgba(10, 12, 16, Math.min(250, Math.round(21 * (i + 1))));
+      fadeR.rect(-S(90) + S(15) * i, -artH / 2, S(15) + 0.5, artH);
+      fadeR.fill();
+    }
+    // 底部渐隐:原型 y 620 起一直压到屏幕底边(名字 / 战力压在暗处更清楚)
+    const fadeTop = FY(620);
+    const fadeH = fadeTop - artB;
+    const fadeB = this.host.addChildPlainNode(dim, 'HeroArtFadeB', (artL + artR) / 2, (fadeTop + artB) / 2, artW, fadeH).addComponent(Graphics);
+    for (let i = 0; i < 14; i += 1) {
+      fadeB.fillColor = rgba(10, 12, 16, Math.min(225, Math.round(16 * (i + 1))));
+      fadeB.rect(-artW / 2, fadeH / 2 - (fadeH / 14) * (i + 1), artW, fadeH / 14 + 0.5);
+      fadeB.fill();
+    }
+    T(dim, 'HeroName', safeText(hero.heroName), FX(140), FY(720), 40, GLASS_COLOR.text, S(360), HorizontalTextAlignment.LEFT, true);
+    const rarity = safeText(hero.rarity || 'R').toUpperCase();
+    const tone = rarity === 'UR' ? rgba(176, 96, 52) : rarity === 'SSR' ? rgba(102, 68, 160) : rarity === 'SR' ? rgba(58, 98, 168) : rgba(78, 110, 92);
+    const pill = this.host.addChildPlainNode(dim, 'HeroRarity', FX(536), FY(720), S(82), S(40));
+    const pg = pill.addComponent(Graphics);
+    pg.fillColor = new Color(tone.r, tone.g, tone.b, 230);
+    pg.roundRect(-S(41), -S(20), S(82), S(40), S(20));
+    pg.fill();
+    pg.strokeColor = new Color(Math.min(255, tone.r + 70), Math.min(255, tone.g + 70), Math.min(255, tone.b + 70), 210);
+    pg.lineWidth = Math.max(1, S(1.4));
+    pg.roundRect(-S(41), -S(20), S(82), S(40), S(20));
+    pg.stroke();
+    T(pill, 'Text', rarity, 0, 0, 24, GLASS_COLOR.text, S(76), HorizontalTextAlignment.CENTER, true);
+    T(dim, 'HeroPowerLabel', '当前战力', FX(145), FY(777), 26, GLASS_COLOR.sub, S(130));
+    T(dim, 'HeroPowerValue', formatInteger(hero.power), FX(285), FY(777), 40, GLASS_COLOR.text, S(220), HorizontalTextAlignment.LEFT, true);
+
+    // 右:玻璃面板
+    const pcx = FX(1226.5);
+    const pcy = FY(439);
+    const dialog = this.host.addChildPlainNode(dim, 'LobbyHeroRefineDialog', pcx, pcy, S(1163), S(738));
+    dialog.addComponent(BlockInputEvents);
+    mountGlassSlice(this.host, dialog, 'GlassBase', GLASS_SLICES.panel, 0, 0, S(1163), S(738), k);
+    mountGlassSlice(this.host, dialog, 'Glass', GLASS_SLICES.panel, 0, 0, S(1163), S(738), k);
+    const X = (px: number): number => FX(px) - pcx;
+    const Y = (py: number): number => FY(py) - pcy;
+    this.host.addSprite('TitleBar', GLASS_ICON.accent, X(692), Y(113), S(8), S(46), dialog);
+    T(dialog, 'Title', '特性洗练', X(720), Y(113), 44, GLASS_COLOR.text, S(320), HorizontalTextAlignment.LEFT, true);
+    mountGlassIconButton(this.host, dialog, 'Close', GLASS_ICON.close, X(1762), Y(113), S(38), S(76), close);
+    T(dialog, 'Hint', '点击特性切换锁定:锁定的保留,其余重新随机;锁得越多消耗越高。', X(720), Y(157), 22, GLASS_COLOR.sub, S(1000));
+
+    const range: Record<string, [number, number]> = { D: [8, 19], C: [15, 34], B: [25, 49], A: [40, 74], S: [60, 109], SS: [90, 149], SSS: [120, 199] };
+    const iconOf = (label: string): string => (/暴击/.test(label) ? GLASS_STAT_ICON.crit
+      : /生命|吸血/.test(label) ? GLASS_STAT_ICON.hp
+        : /防御/.test(label) ? GLASS_STAT_ICON.def
+          : /速度/.test(label) ? GLASS_STAT_ICON.spd
+            : /掉落|战利品|掠夺/.test(label) ? GLASS_STAT_ICON.loot
+              : /幸运/.test(label) ? GLASS_STAT_ICON.luck : GLASS_STAT_ICON.atk);
+    if (affixes.length === 0) {
+      T(dialog, 'Empty', '该英雄暂无可洗练的特性', X(1227), Y(360), 24, GLASS_COLOR.sub, S(900), HorizontalTextAlignment.CENTER);
+    }
+    const step = affixes.length > 5 ? Math.min(69.5, 340 / affixes.length) : 69.5;
+    const rowH = Math.min(58, step - 8);
+    affixes.forEach((affix, index) => {
+      const locked = lockedIds.has(affix.id);
+      const ry = 223 + index * step;
+      const rowW = S(1089);
+      const row = this.host.addChildPlainNode(dialog, `LobbyHeroRefineAffix_${index}`, X(1227.5), Y(ry), rowW, S(rowH));
+      mountGlassSlice(this.host, row, 'Bg', locked ? GLASS_SLICES.panelSel : GLASS_SLICES.panel, 0, 0, rowW, S(rowH), k);
+      const R = (px: number): number => X(px) - X(1227.5);
+      const label = HERO_AFFIX_SHORT_LABELS[affix.code] ?? safeText(affix.name || affix.code);
+      const q = affixQualityColor(affix.quality);
+      this.host.addSprite('Icon', iconOf(label), R(740), 0, S(42), S(42), row);
+      T(row, 'Name', label, R(795), 0, 28, locked ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(230), HorizontalTextAlignment.LEFT, locked);
+      T(row, 'Value', heroAffixValueText(affix.code, affix.value ?? 0), R(1030), 0, 32, GLASS_COLOR.text, S(150), HorizontalTextAlignment.LEFT, true);
+      // 数值条:本品质区间内的位置(新号 / 旧数据超出区间时夹到 0~1,最少露一截)
+      const [lo, hi] = range[safeText(affix.quality).toUpperCase()] ?? [8, 199];
+      const ratio = Math.max(0.06, Math.min(1, ((affix.value ?? lo) - lo) / Math.max(1, hi - lo)));
+      const barW = S(342);
+      const barH = Math.max(4, S(12));
+      const bar = this.host.addChildPlainNode(row, 'Bar', R(1356), 0, barW, barH).addComponent(Graphics);
+      bar.fillColor = rgba(255, 255, 255, 34);
+      bar.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2);
+      bar.fill();
+      bar.fillColor = rgba(q.r, q.g, q.b, 225);
+      bar.roundRect(-barW / 2, -barH / 2, Math.max(barH, barW * ratio), barH, barH / 2);
+      bar.fill();
+      // 品质胶囊
+      const badge = this.host.addChildPlainNode(row, 'Grade', R(1605), 0, S(62), S(36));
+      const bg = badge.addComponent(Graphics);
+      bg.fillColor = rgba(Math.round(q.r * 0.55), Math.round(q.g * 0.55), Math.round(q.b * 0.55), 235);
+      bg.roundRect(-S(31), -S(18), S(62), S(36), S(18));
+      bg.fill();
+      bg.strokeColor = rgba(q.r, q.g, q.b, 230);
+      bg.lineWidth = Math.max(1, S(1.4));
+      bg.roundRect(-S(31), -S(18), S(62), S(36), S(18));
+      bg.stroke();
+      T(badge, 'Text', affixQualityText(affix.quality), 0, 0, 22, GLASS_COLOR.text, S(56), HorizontalTextAlignment.CENTER, true);
+      this.drawGlassLock(row, `Lock_${index}`, R(1725), 0, S(36), locked);
+      if (affix.id > 0 && !pending) {
+        row.addComponent(Button);
+        row.on(Button.EventType.CLICK, () => this.host.toggleLobbyHeroRefineLock(affix.id), this);
+        this.host.applyImageButtonFeedback(row, 1.01, 0.99);
+      }
+    });
+
+    // 品质图例(绿 蓝 紫 金 橙 红)
+    T(dialog, 'LegendLabel', '特性品质:', X(702), Y(561), 22, GLASS_COLOR.sub, S(130));
+    ['C', 'B', 'A', 'S', 'SS', 'SSS'].forEach((grade, index) => {
+      const q = affixQualityColor(grade);
+      const dot = this.host.addChildPlainNode(dialog, `LegendDot_${grade}`, X(846 + index * 86), Y(561), S(16), S(16)).addComponent(Graphics);
+      dot.fillColor = rgba(q.r, q.g, q.b, 255);
+      dot.circle(0, 0, S(7.5));
+      dot.fill();
+      T(dialog, `LegendText_${grade}`, affixQualityText(grade), X(862 + index * 86), Y(561), 22, rgba(206, 210, 220), S(40));
+    });
+
+    // 消耗条:石 1 / 金 500 各 ×2^锁数(与服务器公式一致)+ 持有(不足标红)
+    const lockCount = lockedIds.size;
+    const multiplier = Math.pow(2, lockCount);
+    const goldCost = 500 * multiplier;
+    const bagState = this.host.currentLobbyBagState();
+    const stoneCount = bagState.groups.flatMap((group) => group.items).find((item) => item.itemCode === 'DEEP_REFORGE_STONE')?.itemCount ?? 0;
+    const goldHeld = Number(this.host.currentLobbyProfile().gold) || 0;
+    const stoneShort = bagState.loaded && stoneCount < multiplier;
+    const goldShort = goldHeld < goldCost;
+    mountGlassPanel(this.host, dialog, 'CostBox', X(1227.5), Y(643), S(1089), S(90), k);
+    // 重铸石图四周留白多,按原型观感放大
+    this.host.addSprite('StoneIcon', 'ui/bag/ai/icon_reforge_stone/spriteFrame', X(775), Y(643), S(104), S(104), dialog);
+    T(dialog, 'Stone', `深渊重铸石 × ${formatInteger(multiplier)}`, X(832), Y(627), 28, GLASS_COLOR.text, S(260));
+    T(dialog, 'StoneHeld', `持有:${bagState.loading && !bagState.loaded ? '读取中' : formatInteger(stoneCount)}`, X(832), Y(660), 22, stoneShort ? GLASS_COLOR.red : GLASS_COLOR.sub, S(260));
+    mountGlassLine(this.host, dialog, 'CostDiv1', X(1100), Y(643), Math.max(1, S(1.4)), S(58), rgba(255, 255, 255, 34));
+    this.host.addSprite('GoldIcon', 'ui/bag/ai/icon_gold/spriteFrame', X(1195), Y(643), S(56), S(56), dialog);
+    T(dialog, 'Gold', `金币 ${formatInteger(goldCost)}`, X(1252), Y(627), 28, GLASS_COLOR.text, S(230));
+    T(dialog, 'GoldHeld', `持有:${compactResourceValue(goldHeld)}`, X(1252), Y(660), 22, goldShort ? GLASS_COLOR.red : GLASS_COLOR.sub, S(230));
+    mountGlassLine(this.host, dialog, 'CostDiv2', X(1495), Y(643), Math.max(1, S(1.4)), S(58), rgba(255, 255, 255, 34));
+    T(dialog, 'LockCount', `锁定 ${lockCount} 条`, X(1640), Y(643), 28, GLASS_COLOR.text, S(240), HorizontalTextAlignment.CENTER);
+
+    const canRefine = !pending && affixes.length > 0;
+    mountGlassButton(this.host, dialog, 'LobbyHeroRefineConfirm', pending ? '洗练中…' : '确认洗练', X(1021.5), Y(750), S(583), S(72), k, canRefine ? 'primary' : 'primaryOff', canRefine ? () => this.host.refineLobbyHero(hero.id) : undefined, 32);
+    mountGlassButton(this.host, dialog, 'LobbyHeroRefineCancel', '取消', X(1553), Y(750), S(374), S(72), k, 'secondary', close, 32);
+  }
+
+  /** B 风格锁(白线稿):未锁 = 灰白描边 + 锁梁上抬;锁定 = 香槟描边 + 扣合。 */
+  private drawGlassLock(parent: Node, name: string, x: number, y: number, h: number, locked: boolean): void {
+    const node = this.host.addChildPlainNode(parent, name, x, y, h, h);
+    const g = node.addComponent(Graphics);
+    const c = locked ? GLASS_COLOR.champagne : rgba(220, 224, 232, 230);
+    const bw = h * 0.66;
+    const bh = h * 0.5;
+    const bodyY = -h / 2 + bh / 2;
+    const r = h * 0.2;
+    const lift = locked ? 0 : h * 0.12;
+    g.lineWidth = Math.max(1.6, h * 0.09);
+    g.strokeColor = c;
+    g.moveTo(-r, bodyY + bh / 2);
+    g.lineTo(-r, bodyY + bh / 2 + h * 0.14 + lift);
+    g.arc(0, bodyY + bh / 2 + h * 0.14 + lift, r, Math.PI, 0, false);
+    if (locked) {
+      g.lineTo(r, bodyY + bh / 2);
+    } else {
+      g.lineTo(r, bodyY + bh / 2 + h * 0.14 + lift - r * 0.4);
+    }
+    g.stroke();
+    g.roundRect(-bw / 2, bodyY - bh / 2, bw, bh, h * 0.08);
+    g.stroke();
+    g.fillColor = c;
+    g.circle(0, bodyY, h * 0.06);
+    g.fill();
+  }
+
   private renderProtoRefineDialog(parent: Node, hero: LobbyHeroItemVO, panelWidth: number, panelHeight: number): void {
     const { S, F } = this.protoDialogMap();
     const affixes = hero.affixes ?? [];
