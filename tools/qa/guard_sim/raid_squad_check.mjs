@@ -1,5 +1,5 @@
 // docs/61 掠夺主角带队:复演一致性 + 新旧口径平衡对比。
-// 用法:[ULT=1|0] node tools/qa/guard_sim/raid_squad_check.mjs <新 guard-replay 目录> <旧 guard-replay 目录> <回执目录(raid_receipts.py 产出)> [每个回执局数=8]
+// 用法:[ULT=1|0] [SWITCH=1] node tools/qa/guard_sim/raid_squad_check.mjs <新 guard-replay 目录> <旧 guard-replay 目录> <回执目录(raid_receipts.py 产出)> [每个回执局数=8]
 // 1) 新口径回执(带同伴 / 首领):新模型机器人实打 → 新 cli 复演,逐项对比 胜负 / 时间 / 水晶血 / 主角血;
 // 2) 旧口径回执:旧模型机器人实打(= 旧客户端)→ 新 cli 复演,必须逐位一致(兼容旧客户端 / 旧会话);
 // 3) 同一座矿新旧口径的胜率 / 用时 / 剩余血量对比(同一套机器人打法)。
@@ -21,7 +21,13 @@ const OLD = await load(oldDir);
 /** 机器人打法:走到最近守卫右侧同一排 → 有技能放技能(2→0→1),没有就普攻;守卫清完去砸水晶。 */
 function botStep(M, s, tick) {
   if (s.phase !== 'wave' || !s.raider) return;
-  const me = s.monsters.find((m) => m.monsterId === s.raider.monsterId);
+  // SWITCH=1(docs/61 §9):每 9 秒轮换操控 主角 → 同伴 1 → 同伴 2 → 同伴 3 → 主角…(冷却 / 出招中失败照常,失败不进记录)
+  if (process.env.SWITCH === '1' && M.guardRaidSwitch && s.raidAllies.length > 0 && tick % 90 === 45) {
+    const order = [s.raider.monsterId, ...s.raidAllies.map((a) => a.monsterId)];
+    M.guardRaidSwitch(s, order[Math.floor(tick / 90) % order.length]);
+  }
+  const ctl = M.guardRaidCtl ? M.guardRaidCtl(s) : s.raider;
+  const me = s.monsters.find((m) => m.monsterId === ctl.monsterId);
   if (!me || me.dead) return;
   const lane = me.laneF ?? 0.5;
   // 锁定目标直到它倒下(两个守卫等距时不来回横跳)
@@ -63,7 +69,7 @@ function botStep(M, s, tick) {
   // docs/61 §8 主角大招(炼魂回执 raider.ult;旧模型没有这个函数)
   if (M.guardRaidUlt && s.raider.ultOpen && s.timeMs >= s.raider.ultReadyMs && M.guardRaidUlt(s)) return;
   for (const i of [2, 0, 1]) {
-    if (s.timeMs >= s.raider.skillReadyMs[i] && M.guardRaidSkill(s, i)) return;
+    if (s.timeMs >= ctl.skillReadyMs[i] && M.guardRaidSkill(s, i)) return;
   }
   M.guardRaidAttack(s);
 }

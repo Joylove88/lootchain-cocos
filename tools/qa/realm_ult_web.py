@@ -100,7 +100,7 @@ async def main():
             await asyncio.sleep(3)
             # 等怪群刷出 / 特效与虚影预热
             for _ in range(20):
-                ready = await ev(T + " return JSON.stringify({ ghost: !!t.realmUltGhost, fx: ['v2_s681_4006','v2_a49_269','v2_a47_162','v2_a47_268'].map(e => t.fx.isReady(e)), mons: t.monsters.filter(m => !m.dead).length });")
+                ready = await ev(T + " return JSON.stringify({ ghost: (t.prewarmRealmUlt(), !!(t.realmUltShowInst && t.realmUltShowInst.ghost)), fx: ['v2_s681_4006','v2_a49_269','v2_a47_162','v2_a47_268'].map(e => t.fx.isReady(e)), mons: t.monsters.filter(m => !m.dead).length });")
                 if '"ghost":true' in ready and 'false' not in ready:
                     break
                 await asyncio.sleep(1)
@@ -126,7 +126,7 @@ async def main():
             if '--probe-wings' in sys.argv:
                 await ev(T + " t.raiderAttack = 0.2; t.ultReadyAt = 0; t.actionUntil = 0; t.dashUntil = 0; t.leaderRealmUlt(); return 1;")
                 for _ in range(10):
-                    print('  wings', await ev(T + " return JSON.stringify(t.realmUltWings.map(i => { const b = i.skeleton.findBone('chest'); return { wp: [Math.round(i.wings.position.x), Math.round(i.wings.position.y), Math.round(i.wings.angle)], b: b ? [Math.round(b.worldX), Math.round(b.worldY), Math.round(b.getWorldRotationX())] : null, anim: i.skeleton.getCurrent(0) && i.skeleton.getCurrent(0).trackTime.toFixed(2), ts: i.skeleton.timeScale, mode: i.skeleton._cacheMode }; }));"), flush=True)
+                    print('  wings', await ev(T + " return JSON.stringify(t.realmUltShowInst.wings.map(i => { const b = i.skeleton.findBone('chest'); return { wp: [Math.round(i.wings.position.x), Math.round(i.wings.position.y), Math.round(i.wings.angle)], b: b ? [Math.round(b.worldX), Math.round(b.worldY), Math.round(b.getWorldRotationX())] : null, anim: i.skeleton.getCurrent(0) && i.skeleton.getCurrent(0).trackTime.toFixed(2), ts: i.skeleton.timeScale, mode: i.skeleton._cacheMode }; }));"), flush=True)
                     await asyncio.sleep(0.12)
                 return
             # 每个时间点单独放一次:到点 director.pause 冻结画面再截(无头截图一张要几秒,连拍对不上时刻);伤害压到 1 不打死怪(免得升级弹窗)

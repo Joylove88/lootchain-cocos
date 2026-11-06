@@ -311,6 +311,8 @@ export const GUARD_RAID_SKILLS: ReadonlyArray<{ name: string; cdMs: number; lock
  * 范围:野外半径 560px(普攻 170px ≈ 1.35 格)→ 前方 4.5 格、身后 0.7 格、纵深整条走道;出招先把 3 格内守卫震住 1.3 秒(野外是推开 + 定住)。
  */
 export const GUARD_RAID_ULT = { cdMs: 30000, mult: 4.5, reach: 4.5, back: 0.7, lane: 0.8, lockMs: 1040, hitMs: 820, iframeMs: 1150, stunRadius: 3.0, stunMs: 1300 };
+/** docs/61 §9 切换操控冷却(用户拍板 1 秒;被操控同伴倒下自动切回主角不吃冷却)。 */
+export const GUARD_RAID_SWITCH_CD_MS = 1000;
 export const GUARD_RAID_DODGE_MS = 360;
 export const GUARD_RAID_DODGE_CD_MS = 1300;
 export const GUARD_RAID_DODGE_DIST = 1.1;
@@ -409,6 +411,8 @@ export interface GuardEvent {
     | 'raidSwing' | 'raidSkill' | 'raidHit' | 'heroDead' | 'raidDodge' | 'raidHurt'
     // docs/61 §8:主角大招出招(monsterId=主角)
     | 'raidUlt'
+    // docs/61 §9:切换操控(monsterId=新操控单位;level 1 = 被操控同伴倒下自动切回主角)
+    | 'raidSwitch'
     // docs/61 主角带队:同伴出手(monsterId=同伴,cell=目标守卫格;打水晶时 cell=-1)/ 同伴倒下
     | 'raidAllyAttack' | 'raidAllyDead';
   timeMs: number;
@@ -477,8 +481,8 @@ export type GuardInputKind =
   | 'spell' | 'trap' | 'mark' | 'skill' | 'callWave' | 'pickup' | 'loadout' | 'auto'
   // docs/47 P0 掠夺:移动方向 / 普攻 / 技能 / 翻滚
   | 'rmove' | 'ratk' | 'rskill' | 'rdodge'
-  // docs/61 §8 主角大招
-  | 'rult';
+  // docs/61 §8 主角大招 / §9 切换操控(v = 目标单位 monsterId)
+  | 'rult' | 'rswitch';
 export interface GuardInput {
   t: number;
   k: GuardInputKind;
@@ -989,6 +993,14 @@ export interface GuardBattleState {
   raider: GuardRaider | null;
   /** docs/61 主角带队:AI 同伴(旧回执 / 野外为空)。 */
   raidAllies: GuardRaidAlly[];
+  /**
+   * docs/61 §9 切换操控:当前操控的单位 monsterId(-1 = 主角);操控同伴时同伴用 raidPilots 里自己的那份手感状态(连招 / 冷却 / 翻滚),
+   * 主角交 AI(raidLeadAi,复用同伴 AI);切换冷却 raidSwitchReadyMs。从不切换的局这些字段全不动 → 与改前逐位一致。
+   */
+  raidControlId: number;
+  raidPilots: GuardRaider[];
+  raidLeadAi: GuardRaidAlly | null;
+  raidSwitchReadyMs: number;
   /** 掠夺伤害统计(只统计,不影响胜负):我方按英雄码(主角 / 同伴,含打水晶);敌方按守卫 unitId(打在我方身上的实际伤害)。 */
   raidDealt: Record<string, number>;
   raidTaken: Record<number, number>;
@@ -1693,6 +1705,10 @@ export function createGuardBattle(
     inputs: [],
     raider: null,
     raidAllies: [],
+    raidControlId: -1,
+    raidPilots: [],
+    raidLeadAi: null,
+    raidSwitchReadyMs: 0,
     raidDealt: {},
     raidTaken: {},
     pendingFieldEvents: [],
@@ -4351,6 +4367,10 @@ export function guardStartRaid(
   };
   // docs/61 主角带队:同伴站主角身后,跟随 / 自动索敌(旧回执 allies 为空 → 与改前逐位一致)
   state.raidAllies = [];
+  state.raidControlId = -1;
+  state.raidPilots = [];
+  state.raidLeadAi = null;
+  state.raidSwitchReadyMs = 0;
   allies.slice(0, GUARD_RAID_ALLY_FORMATION.length).forEach((ally, slot) => {
     const form = GUARD_RAID_ALLY_FORMATION[slot];
     const allyHp = Math.max(1, Math.round(ally.hp));
@@ -4380,8 +4400,18 @@ export function guardStartRaid(
   });
 }
 
-function guardRaidUnit(state: GuardBattleState): GuardMonster | null {
+/** 当前操控的那份手感状态:主角 = state.raider;操控同伴时 = raidPilots 里那名同伴的(docs/61 §9)。 */
+export function guardRaidCtl(state: GuardBattleState): GuardRaider | null {
   const raider = state.raider;
+  if (!raider || state.raidControlId < 0 || state.raidControlId === raider.monsterId) {
+    return raider;
+  }
+  return state.raidPilots.find((pilot) => pilot.monsterId === state.raidControlId) ?? raider;
+}
+
+/** 当前操控的单位(主角或被操控的同伴)。 */
+function guardRaidUnit(state: GuardBattleState): GuardMonster | null {
+  const raider = guardRaidCtl(state);
   if (!raider) {
     return null;
   }
@@ -4390,14 +4420,14 @@ function guardRaidUnit(state: GuardBattleState): GuardMonster | null {
 }
 
 function guardRaidLocked(state: GuardBattleState): boolean {
-  const raider = state.raider;
+  const raider = guardRaidCtl(state);
   // 受击硬直不再锁操作(2026-10-25 实测:3 个守卫连打时每下 160ms 硬直把进攻方定死,一刀都出不来);staggerUntilMs 只给表现层播受击
   return !raider || state.timeMs < raider.actionUntilMs;
 }
 
 /** 移动方向(0 停 / 1..8);只在方向变化时记录,复演时按 t 回放。 */
 export function guardRaidMove(state: GuardBattleState, dir: number): boolean {
-  const raider = state.raider;
+  const raider = guardRaidCtl(state);
   const next = Math.max(0, Math.min(8, Math.round(dir)));
   if (!raider || raider.moveDir === next) {
     return false;
@@ -4408,7 +4438,7 @@ export function guardRaidMove(state: GuardBattleState, dir: number): boolean {
 }
 
 export function guardRaidAttack(state: GuardBattleState): boolean {
-  const raider = state.raider;
+  const raider = guardRaidCtl(state);
   const unit = guardRaidUnit(state);
   if (!raider || !unit || guardRaidLocked(state) || state.phase !== 'wave') {
     return false;
@@ -4425,7 +4455,7 @@ export function guardRaidAttack(state: GuardBattleState): boolean {
 }
 
 export function guardRaidSkill(state: GuardBattleState, id: number): boolean {
-  const raider = state.raider;
+  const raider = guardRaidCtl(state);
   const unit = guardRaidUnit(state);
   const index = Math.max(0, Math.min(2, Math.round(id)));
   const spec = GUARD_RAID_SKILLS[index];
@@ -4451,12 +4481,108 @@ export function guardRaidSkill(state: GuardBattleState, id: number): boolean {
   return true;
 }
 
+/**
+ * docs/61 §9 切换操控(用户拍板「直接换人操控」):点同伴头像 → 摇杆 / 普攻 / 技能 / 翻滚都给这名同伴(用自己那份冷却),
+ * 主角交 AI 跟随作战(复用同伴 AI,站被操控同伴的队形位);点主角头像切回。冷却 1 秒、出招中不能切;主角倒下仍判负。
+ */
+export function guardRaidSwitch(state: GuardBattleState, monsterId: number): boolean {
+  const target = Math.round(monsterId);
+  if (!state.raider || state.phase !== 'wave' || state.raidAllies.length === 0 || state.timeMs < state.raidSwitchReadyMs || guardRaidLocked(state)) {
+    return false;
+  }
+  if (!guardRaidSwitchTo(state, target, false)) {
+    return false;
+  }
+  state.raidSwitchReadyMs = state.timeMs + GUARD_RAID_SWITCH_CD_MS;
+  guardRecord(state, 'rswitch', target);
+  return true;
+}
+
+/** 交接操控(auto = 被操控同伴倒下自动切回主角,不记录、不吃冷却;复演里同样在受伤结算时触发)。 */
+function guardRaidSwitchTo(state: GuardBattleState, target: number, auto: boolean): boolean {
+  const raider = state.raider;
+  const cur = guardRaidCtl(state);
+  if (!raider || !cur || target === cur.monsterId) {
+    return false;
+  }
+  const unit = state.monsters.find((monster) => monster.monsterId === target);
+  if (!unit || unit.dead) {
+    return false;
+  }
+  const lead = target === raider.monsterId;
+  const ally = lead ? null : state.raidAllies.find((entry) => entry.monsterId === target) ?? null;
+  if (!lead && !ally) {
+    return false;
+  }
+  let next: GuardRaider = raider;
+  if (ally) {
+    const existing = state.raidPilots.find((pilot) => pilot.monsterId === target);
+    if (existing) {
+      next = existing;
+    } else {
+      next = {
+        monsterId: target,
+        heroCode: ally.heroCode,
+        attack: ally.attack,
+        moveDir: 0,
+        comboStep: 0,
+        comboUntilMs: 0,
+        actionUntilMs: 0,
+        pendingHits: [],
+        dodgeUntilMs: 0,
+        dodgeReadyMs: 0,
+        skillReadyMs: [0, 0, 0],
+        staggerUntilMs: 0,
+        ultOpen: false,
+        ultReadyMs: 0,
+      };
+      state.raidPilots.push(next);
+    }
+  }
+  // 方向跟着手走(摇杆按着就接着跑);交出去的那名出手作废、转 AI
+  next.moveDir = cur.moveDir;
+  next.pendingHits = [];
+  next.comboStep = 0;
+  next.comboUntilMs = 0;
+  next.actionUntilMs = Math.min(next.actionUntilMs, state.timeMs);
+  cur.moveDir = 0;
+  cur.pendingHits = [];
+  cur.comboStep = 0;
+  cur.comboUntilMs = 0;
+  cur.actionUntilMs = Math.min(cur.actionUntilMs, state.timeMs);
+  if (cur === raider && ally) {
+    // 主角交 AI:近战、站被操控同伴空出来的队形位
+    state.raidLeadAi = {
+      monsterId: raider.monsterId,
+      heroCode: raider.heroCode,
+      attack: raider.attack,
+      role: 'melee',
+      slot: ally.slot,
+      attackReadyMs: state.timeMs + 300,
+      targetUnitId: null,
+      moving: false,
+    };
+  } else if (lead) {
+    state.raidLeadAi = null;
+  } else if (state.raidLeadAi && ally) {
+    state.raidLeadAi.slot = ally.slot;
+  }
+  const back = state.raidAllies.find((entry) => entry.monsterId === cur.monsterId);
+  if (back) {
+    back.attackReadyMs = Math.max(back.attackReadyMs, state.timeMs + 300);
+  }
+  state.raidControlId = lead ? -1 : target;
+  state.events.push({ type: 'raidSwitch', timeMs: state.timeMs, monsterId: target, level: auto ? 1 : 0 });
+  return true;
+}
+
 /** docs/61 §8 主角大招「夜帝残影」:炼魂才开(回执 raider.ult),冷却 30 秒;出招先震住身边守卫,出刀点结算前方大扇形 + 水晶。 */
 export function guardRaidUlt(state: GuardBattleState): boolean {
   const raider = state.raider;
   const unit = guardRaidUnit(state);
   const spec = GUARD_RAID_ULT;
-  if (!raider || !unit || !raider.ultOpen || guardRaidLocked(state) || state.phase !== 'wave' || state.timeMs < raider.ultReadyMs) {
+  // 大招是主角的:操控同伴时不能放
+  if (!raider || !unit || !raider.ultOpen || guardRaidCtl(state) !== raider || guardRaidLocked(state) || state.phase !== 'wave' || state.timeMs < raider.ultReadyMs) {
     return false;
   }
   raider.ultReadyMs = state.timeMs + spec.cdMs;
@@ -4481,7 +4607,7 @@ export function guardRaidUlt(state: GuardBattleState): boolean {
 }
 
 export function guardRaidDodge(state: GuardBattleState): boolean {
-  const raider = state.raider;
+  const raider = guardRaidCtl(state);
   const unit = guardRaidUnit(state);
   if (!raider || !unit || state.phase !== 'wave' || state.timeMs < raider.dodgeReadyMs) {
     return false;
@@ -4517,7 +4643,7 @@ function guardRaidDirVector(dir: number): { x: number; y: number } {
 
 /** 掠夺模式每 tick:移动 + 到点的打击;返回 true = 本 tick 已分出胜负。 */
 function guardRaidTick(state: GuardBattleState, dtMs: number): boolean {
-  const raider = state.raider;
+  const raider = guardRaidCtl(state);
   const unit = guardRaidUnit(state);
   if (!raider || !unit) {
     return false;
@@ -4568,7 +4694,14 @@ function guardRaidHeroPos(hero: GuardHeroUnit): { x: number; lane: number } {
 function guardRaidAlliesTick(state: GuardBattleState, lead: GuardMonster, dtMs: number): void {
   const guards = state.heroes.filter((hero) => !hero.dead && hero.hp !== undefined);
   const leadFacing = lead.facing ?? -1;
-  for (const ally of state.raidAllies) {
+  // docs/61 §9:lead = 当前操控的单位(队形跟着它走);被操控的同伴不跑 AI,主角交 AI 时排在最后
+  const team = state.raidLeadAi ? [...state.raidAllies, state.raidLeadAi] : state.raidAllies;
+  for (const ally of team) {
+    if (ally.monsterId === lead.monsterId) {
+      ally.moving = false;
+      ally.targetUnitId = null;
+      continue;
+    }
     const unit = state.monsters.find((monster) => monster.monsterId === ally.monsterId);
     if (!unit || unit.dead) {
       ally.moving = false;
@@ -4855,8 +4988,10 @@ function guardDamageRaider(state: GuardBattleState, unit: GuardMonster, damage: 
   if (!raider) {
     return;
   }
+  const ctl = guardRaidCtl(state) ?? raider;
+  const controlled = unit.monsterId === ctl.monsterId;
   if (unit.raidAlly) {
-    if (unit.dead) {
+    if (unit.dead || (controlled && state.timeMs < ctl.dodgeUntilMs)) {
       return;
     }
     const hurt = Math.max(1, Math.round(damage * GUARD_RAID_INCOMING_MULT));
@@ -4870,10 +5005,14 @@ function guardDamageRaider(state: GuardBattleState, unit: GuardMonster, damage: 
       unit.dead = true;
       unit.diedAtMs = state.timeMs;
       state.events.push({ type: 'raidAllyDead', timeMs: state.timeMs, monsterId: unit.monsterId });
+      if (controlled) {
+        guardRaidSwitchTo(state, raider.monsterId, true);
+      }
     }
     return;
   }
-  if (state.timeMs < raider.dodgeUntilMs) {
+  // 主角交 AI 时没有翻滚无敌(无敌帧属于当前操控的那份手感状态)
+  if (controlled && state.timeMs < raider.dodgeUntilMs) {
     return;
   }
   const amount = Math.max(1, Math.round(damage * GUARD_RAID_INCOMING_MULT));

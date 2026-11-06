@@ -36,6 +36,8 @@ import {
   guardRaidMove,
   guardRaidSkill,
   guardRaidUlt,
+  guardRaidCtl,
+  guardRaidSwitch,
   type GuardBattleState,
   type GuardEvent,
   type GuardHeroUnit,
@@ -159,6 +161,11 @@ export class GuardRaidController {
   private dodgePressedAt = 0;
   private skillPressedAt: [number, number, number] = [0, 0, 0];
   private ultPressedAt = 0;
+  /** docs/61 §9 切换操控:请求切到的单位 monsterId(按键缓冲同普攻,出招中按的到取消点再切)。 */
+  private switchTarget: { id: number; at: number } | null = null;
+  /** docs/61 §9 底部切换头像栏(原型 switch_a):主角 + 3 同伴,当前操控金圈 + 小三角。 */
+  private squadBar: { root: Node; slots: Array<{ monsterId: number; node: Node; ring: Graphics; hp: Graphics; marker: Node; size: number; key: string }> } | null = null;
+  private controlKey = '';
   /** docs/61 §8 主角大招「夜帝残影」按钮(炼魂才有)。 */
   private ultButton: { node: Node; cd: Label; mask: Graphics; size: number; drawn: number } | null = null;
   private raiderUlt = false;
@@ -208,9 +215,10 @@ export class GuardRaidController {
     this.renderTopBar(hud);
     this.renderJoystick(hud, width, height);
     this.renderButtons(hud);
+    this.squadBar = null;
     if (!isPhoneDesign()) {
       const P = this.proto;
-      const hint = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', `WASD / 方向键 移动 · J 普攻 · K L I 技能${this.raiderUlt ? ' · U 大招' : ''} · Shift 翻滚`, P.C(935), P.Y(826), P.S(15), rgba(176, 184, 198, 150), new Size(width * 0.6, P.S(22)));
+      const hint = this.bridge.host.addChildLabel(hud, 'GuardRaidKeyHint', `WASD / 方向键 移动 · J 普攻 · K L I 技能${this.raiderUlt ? ' · U 大招' : ''} · Shift 翻滚 · Q 切换操控`, P.C(935), P.Y(826), P.S(15), rgba(176, 184, 198, 150), new Size(width * 0.6, P.S(22)));
       hint.overflow = Label.Overflow.SHRINK;
     }
     this.bindInput();
@@ -425,6 +433,8 @@ export class GuardRaidController {
     const dodge = mk('GuardRaidDodge', 1522, 712, 84, false, A.icDodge, 0.6, 'Shift', () => { this.dodgePressedAt = Date.now(); });
     this.dodgeButton = { node: dodge.node, mask: this.mountCdMask(dodge.node, dodge.size), size: dodge.size, drawn: -1 };
     this.skillButtons = [];
+    // HUD 重建后按当前操控重刷技能图标 / 大招钮(refreshControlHud 按 controlKey 去重)
+    this.controlKey = '';
     const slots: Array<[number, number]> = [[1560, 598], [1666, 520], [1773, 590]];
     GUARD_RAID_SKILLS.forEach((_spec, index) => {
       const [px, py] = slots[index];
@@ -522,6 +532,7 @@ export class GuardRaidController {
     this.skillButtons = [];
     this.dodgeButton = null;
     this.ultButton = null;
+    this.squadBar = null;
     this.bossBar = null;
     this.dpsPanel = null;
     this.dpsRows.clear();
@@ -538,6 +549,7 @@ export class GuardRaidController {
       case KeyCode.KEY_L: case KeyCode.DIGIT_2: this.skillPressedAt[1] = now; break;
       case KeyCode.KEY_I: case KeyCode.DIGIT_3: this.skillPressedAt[2] = now; break;
       case KeyCode.KEY_U: case KeyCode.DIGIT_4: if (this.raiderUlt) { this.ultPressedAt = now; } break;
+      case KeyCode.KEY_Q: this.cycleSwitch(this.lastSim); break;
       default: break;
     }
   }
@@ -579,8 +591,17 @@ export class GuardRaidController {
         unit.prevLane = monster.laneF ?? 0.5;
       }
     }
-    guardRaidMove(sim, this.moveDir());
+    this.lastSim = sim;
     const now = Date.now();
+    const sw = this.switchTarget;
+    if (sw && now - sw.at <= INPUT_BUFFER_MS) {
+      if (guardRaidSwitch(sim, sw.id) || guardRaidCtl(sim)?.monsterId === sw.id) {
+        this.switchTarget = null;
+      }
+    } else {
+      this.switchTarget = null;
+    }
+    guardRaidMove(sim, this.moveDir());
     if (this.dodgePressedAt && now - this.dodgePressedAt <= INPUT_BUFFER_MS) {
       if (guardRaidDodge(sim)) {
         this.dodgePressedAt = 0;
@@ -617,16 +638,18 @@ export class GuardRaidController {
   // ── 事件 → 表现 ──
 
   afterTick(sim: GuardBattleState, events: readonly GuardEvent[]): void {
-    const raider = this.raider;
     for (const event of events) {
+      // docs/61 §9:出招 / 受击按事件里的单位找视图(操控同伴时出招的是同伴)
+      const raider = event.type === 'defeat' ? this.raider : this.viewOf(event.monsterId) ?? this.raider;
       switch (event.type) {
         case 'raidSwing':
-          if (sim.raider) {
-            this.bridge.attackSfx(sim.raider.heroCode);
-          }
           if (raider) {
+            this.bridge.attackSfx(raider.heroCode);
             this.playSwing(raider, Math.max(1, event.level ?? 1), sim);
           }
+          break;
+        case 'raidSwitch':
+          this.onSwitched(sim, event.level === 1);
           break;
         case 'raidSkill': {
           const index = event.level ?? 0;
@@ -639,7 +662,7 @@ export class GuardRaidController {
             this.playAction(raider, kind, HERO_SKILL_ACTION_CAP_MS[index] ?? 1200, sim);
             // 技能特效对齐野外(resolveLeaderHit):在第一下命中的时刻播(模型命中点同源)
             const firstHit = GUARD_RAID_SKILLS[index]?.hits[0] ?? 300;
-            setTimeout(() => this.playSkillFx(index, sim), firstHit);
+            setTimeout(() => this.playSkillFx(index, sim, raider), firstHit);
           }
           gameAudio.sfx('wave_start', 0.5);
           break;
@@ -675,7 +698,7 @@ export class GuardRaidController {
             tween(view.node).to(0.06, { position: new Vec3(base.x + push, base.y, 0) }).to(0.12, { position: base }).start();
           } else if (view && view.node.isValid) {
             view.hitFlashUntil = Date.now() + (heavy ? 140 : 90);
-            this.bridge.hitFx(sim.raider?.heroCode ?? '', view.node.position.x - (facing < 0 ? -1 : 1) * this.bridge.unitSize() * 0.1, view.node.position.y + this.bridge.unitSize() * 0.25, heavy ? 1.15 : 0.85);
+            this.bridge.hitFx(raider?.heroCode ?? '', view.node.position.x - (facing < 0 ? -1 : 1) * this.bridge.unitSize() * 0.1, view.node.position.y + this.bridge.unitSize() * 0.25, heavy ? 1.15 : 0.85);
             this.bridge.spawnFloater(view.node.position.x, view.node.position.y + this.bridge.unitSize() * 0.55, `-${event.amount ?? 0}`, heavy ? rgba(255, 196, 80) : rgba(255, 236, 200), heavy ? 24 : 18);
             // 受击顶退:往远离进攻方的方向顶一下再弹回
             const push = (facing < 0 ? -1 : 1) * (heavy ? 14 : 7);
@@ -689,7 +712,8 @@ export class GuardRaidController {
         }
         case 'raidAllyAttack': {
           // 同伴出手:动作 + 目标受击(轻反馈,不顿帧不震屏,主角的手感不被同伴稀释)
-          const unit = event.monsterId !== undefined ? this.allies.get(event.monsterId) : undefined;
+          // 主角交 AI 时(docs/61 §9)出手事件的单位是主角
+          const unit = this.viewOf(event.monsterId);
           if (unit) {
             // 同野外同伴:整段攻击动作按 750ms 上限播完(原 420ms 就切回待机,动作只露起手)
             this.playAction(unit, 'attack', 750, sim);
@@ -707,30 +731,31 @@ export class GuardRaidController {
           gameAudio.sfx('forge_success', 0.7);
           break;
         case 'raidHurt': {
-          const unit = event.monsterId === raider?.monsterId ? raider : event.monsterId !== undefined ? this.allies.get(event.monsterId) : undefined;
+          const unit = this.viewOf(event.monsterId);
+          const ctlId = guardRaidCtl(sim)?.monsterId;
           if (unit && unit.view.node.isValid) {
             unit.view.hitFlashUntil = Date.now() + 110;
-            const own = unit === raider;
+            const own = unit.monsterId === ctlId;
             this.bridge.spawnFloater(unit.view.node.position.x, unit.view.node.position.y + this.bridge.unitSize() * 0.6, `-${event.amount ?? 0}`, own ? rgba(255, 110, 100) : rgba(236, 140, 130), own ? 20 : 15);
             // 出招中(普攻切片 / 技能)只闪红不播受击:原来每挨一下都切 hit 动作,把正在出的刀 / 技能打断(11-06 用户「攻击技能都不放」)
             if (own && Date.now() >= unit.oneShotUntil) {
               this.playOneShot(unit, unit.names?.hit, 160, sim);
             }
           }
-          if (unit === raider) {
+          if (unit && unit.monsterId === ctlId) {
             this.bridge.shakeField(4);
           }
           break;
         }
         case 'raidAllyDead': {
-          const unit = event.monsterId !== undefined ? this.allies.get(event.monsterId) : undefined;
+          const unit = this.viewOf(event.monsterId);
           if (unit) {
             this.showUnitDeath(unit);
           }
           break;
         }
         case 'crystalHit':
-          if (event.monsterId === sim.raider?.monsterId) {
+          if (event.monsterId === guardRaidCtl(sim)?.monsterId) {
             this.hitStopUntil = Math.max(this.hitStopUntil, Date.now() + 70);
             this.bridge.shakeField(9);
           }
@@ -742,6 +767,183 @@ export class GuardRaidController {
           break;
         default:
           break;
+      }
+    }
+  }
+
+  /** monsterId → 我方单位视图(主角 / 同伴)。 */
+  private viewOf(monsterId: number | undefined): RaidUnitView | undefined {
+    if (monsterId === undefined) {
+      return undefined;
+    }
+    return this.raider && this.raider.monsterId === monsterId ? this.raider : this.allies.get(monsterId);
+  }
+
+  /** 请求切换操控到 monsterId(头像 / Q 键);实际切换在下一 tick 前喂给模型(冷却 / 出招中由模型拒绝,缓冲 800ms)。 */
+  requestSwitch(monsterId: number): void {
+    this.switchTarget = { id: monsterId, at: Date.now() };
+  }
+
+  /** Q 键:按 主角 → 同伴 1 → 2 → 3 轮换到下一个活着的。 */
+  private cycleSwitch(sim: GuardBattleState | null): void {
+    if (!sim || !sim.raider || sim.raidAllies.length === 0) {
+      return;
+    }
+    const order = [sim.raider.monsterId, ...sim.raidAllies.map((ally) => ally.monsterId)];
+    const cur = guardRaidCtl(sim)?.monsterId ?? sim.raider.monsterId;
+    const start = Math.max(0, order.indexOf(cur));
+    for (let i = 1; i < order.length; i += 1) {
+      const id = order[(start + i) % order.length];
+      if (sim.monsters.some((monster) => monster.monsterId === id && !monster.dead)) {
+        this.requestSwitch(id);
+        return;
+      }
+    }
+  }
+
+  private lastSim: GuardBattleState | null = null;
+
+  /** 切换后:按键缓冲作废、技能图标换成该英雄那套、大招钮置灰 / 恢复、头像栏刷新;自动切回给个提示。 */
+  private onSwitched(sim: GuardBattleState, auto: boolean): void {
+    this.attackPressedAt = 0;
+    this.dodgePressedAt = 0;
+    this.skillPressedAt = [0, 0, 0];
+    this.ultPressedAt = 0;
+    this.refreshControlHud(sim);
+    const unit = this.viewOf(guardRaidCtl(sim)?.monsterId);
+    if (unit && unit.view.node.isValid) {
+      this.bridge.spawnFloater(unit.view.node.position.x, unit.view.node.position.y + this.bridge.unitSize() * 0.8, auto ? '同伴倒下 · 切回主角' : '操控', CHAMPAGNE, auto ? 20 : 16);
+    }
+    gameAudio.sfx('merge', 0.4);
+  }
+
+  /** 按当前操控刷新:技能图标(主角三技能 / 同伴通用三技能)、大招钮可用态、头上「这是你」标记。 */
+  private refreshControlHud(sim: GuardBattleState): void {
+    const ctl = guardRaidCtl(sim);
+    if (!ctl) {
+      return;
+    }
+    const key = `${ctl.monsterId}`;
+    if (key === this.controlKey) {
+      return;
+    }
+    this.controlKey = key;
+    const lead = ctl === sim.raider;
+    const icons = lead && this.protagonistRaider() ? PROTAG_SKILL_ICONS : GENERIC_SKILL_ICONS;
+    this.skillButtons.forEach((button, index) => {
+      if (!button.node.isValid) {
+        return;
+      }
+      const old = button.node.getChildByName('Icon');
+      if (old) {
+        old.destroy();
+      }
+      this.mountIcon(button.node, 'Icon', icons[index] ?? TOWN_HUD_ASSETS.icSlash, button.size * 0.62);
+      button.node.getChildByName('Icon')?.setSiblingIndex(Math.max(0, (button.node.getChildByName('CdMask')?.getSiblingIndex() ?? 1) - 1));
+      button.drawn = -1;
+    });
+    const ult = this.ultButton;
+    if (ult && ult.node.isValid) {
+      const op = ult.node.getComponent(UIOpacity) ?? ult.node.addComponent(UIOpacity);
+      op.opacity = lead ? 255 : 90;
+    }
+    for (const unit of this.unitViews()) {
+      const marker = unit.view.node.getChildByName('RaidMeMarker');
+      if (marker) {
+        marker.active = unit.monsterId === ctl.monsterId;
+      }
+    }
+  }
+
+  /**
+   * 底部切换头像栏(原型 switch_a,用户 11-06 选 A;1870×841:中心 x 935、y 760,直径 84、当前操控 96、间距 22):
+   * 圆形头像 + 毛玻璃底环 + 头像下细血条;当前操控 = 香槟金圈 + 头顶小倒三角,其余略暗;倒下灰掉不可点。按下即切(冷却 / 出招中由模型拒绝)。
+   */
+  private mountSquadBar(sim: GuardBattleState): void {
+    const hud = this.hud;
+    const P = this.proto;
+    const raider = sim.raider;
+    if (!hud || !hud.isValid || !P || !raider || sim.raidAllies.length === 0 || sim.raidClear) {
+      return;
+    }
+    const host = this.bridge.host;
+    const ids = [raider.monsterId, ...sim.raidAllies.map((ally) => ally.monsterId)];
+    const codes = [raider.heroCode, ...sim.raidAllies.map((ally) => ally.heroCode)];
+    // 原型 y 760;电脑端底部还有一行按键提示(y 826),整体上移到 742 免得血条压字
+    const root = host.addChildPlainNode(hud, 'GuardRaidSquadBar', P.C(935), P.Y(isPhoneDesign() ? 760 : 742), P.S(106 * ids.length), P.S(130));
+    const slots: Array<{ monsterId: number; node: Node; ring: Graphics; hp: Graphics; marker: Node; size: number; key: string }> = [];
+    ids.forEach((monsterId, i) => {
+      const size = P.S(84);
+      const node = host.addChildPlainNode(root, `Slot_${i}`, P.S((i - (ids.length - 1) / 2) * 106), 0, size * 1.16, size * 1.16);
+      const base = node.addComponent(Graphics);
+      base.fillColor = rgba(20, 24, 33, 200);
+      base.circle(0, 0, size * 0.52);
+      base.fill();
+      const avatar = host.addChildPlainNode(node, 'Avatar', 0, 0, size * 0.9, size * 0.9);
+      mountHeroAvatar(avatar, codes[i], size * 0.9, 'circle');
+      const ring = host.addChildPlainNode(node, 'Ring', 0, 0, size * 1.16, size * 1.16).addComponent(Graphics);
+      const hp = host.addChildPlainNode(node, 'Hp', 0, -size * 0.66, size * 0.86, P.S(6)).addComponent(Graphics);
+      const marker = host.addChildPlainNode(node, 'Marker', 0, size * 0.7, P.S(18), P.S(12));
+      const tri = marker.addComponent(Graphics);
+      tri.fillColor = CHAMPAGNE;
+      tri.moveTo(-P.S(8), P.S(5));
+      tri.lineTo(P.S(8), P.S(5));
+      tri.lineTo(0, -P.S(5));
+      tri.close();
+      tri.fill();
+      node.addComponent(UIOpacity);
+      node.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
+        event.propagationStopped = true;
+        this.requestSwitch(monsterId);
+      }, this);
+      slots.push({ monsterId, node, ring, hp, marker, size, key: '' });
+    });
+    this.squadBar = { root, slots };
+  }
+
+  private syncSquadBar(sim: GuardBattleState): void {
+    if (!this.squadBar || !this.squadBar.root.isValid) {
+      this.squadBar = null;
+      this.mountSquadBar(sim);
+      if (!this.squadBar) {
+        return;
+      }
+    }
+    const ctlId = guardRaidCtl(sim)?.monsterId;
+    const cooling = sim.timeMs < sim.raidSwitchReadyMs;
+    const P = this.proto!;
+    for (const slot of this.squadBar.slots) {
+      const monster = sim.monsters.find((entry) => entry.monsterId === slot.monsterId);
+      const ratio = monster ? Math.max(0, monster.hp) / Math.max(1, monster.maxHp) : 0;
+      const dead = !monster || monster.dead;
+      const on = slot.monsterId === ctlId;
+      const key = `${on ? 1 : 0}${dead ? 1 : 0}${cooling ? 1 : 0}${Math.round(ratio * 40)}`;
+      if (key === slot.key) {
+        continue;
+      }
+      slot.key = key;
+      const r = slot.size * 0.52;
+      slot.ring.clear();
+      slot.ring.lineWidth = on ? Math.max(2, P.S(2.6)) : Math.max(1, P.S(1.2));
+      slot.ring.strokeColor = on ? CHAMPAGNE : rgba(255, 255, 255, 40);
+      slot.ring.circle(0, 0, on ? r + P.S(2) : r);
+      slot.ring.stroke();
+      slot.node.setScale(on ? 96 / 84 : 1, on ? 96 / 84 : 1, 1);
+      slot.marker.active = on;
+      const op = slot.node.getComponent(UIOpacity);
+      if (op) {
+        op.opacity = dead ? 80 : on ? 255 : cooling ? 150 : 215;
+      }
+      const w = slot.size * 0.86;
+      const h = P.S(6);
+      slot.hp.clear();
+      slot.hp.fillColor = rgba(0, 0, 0, 150);
+      slot.hp.roundRect(-w / 2, -h / 2, w, h, h / 2);
+      slot.hp.fill();
+      if (ratio > 0) {
+        slot.hp.fillColor = ratio < 0.4 ? BAR_RED : BAR_GREEN;
+        slot.hp.roundRect(-w / 2, -h / 2, Math.max(h, w * ratio), h, h / 2);
+        slot.hp.fill();
       }
     }
   }
@@ -808,9 +1010,10 @@ export class GuardRaidController {
     const barY = unitSize * (own ? 0.66 : 0.58);
     const hp = this.bridge.host.addChildPlainNode(node, 'RaidHp', 0, barY, barW, barH);
     hp.addComponent(Graphics);
-    if (own) {
-      // 主角头顶香槟色小倒三角(原型:标出「这是你」)
+    {
+      // 当前操控单位头顶香槟色小倒三角(原型:标出「这是你」;docs/61 §9 切换操控后跟着换人,syncUnit 按当前操控显隐)
       const tri = this.bridge.host.addChildPlainNode(node, 'RaidMeMarker', 0, barY + H * 0.03, H * 0.03, H * 0.024).addComponent(Graphics);
+      tri.node.active = own;
       const tw = H * 0.013;
       const th = H * 0.012;
       tri.fillColor = CHAMPAGNE;
@@ -890,6 +1093,23 @@ export class GuardRaidController {
     return this.raiderFxKit;
   }
 
+  private readonly unitFxKits = new Map<string, TownHeroFxKit>();
+
+  /** 出招单位的特效包:主角同原先;同伴按自己的职业(切换操控后同伴放技能,口径同野外同伴)。 */
+  private kitOf(unit: RaidUnitView, sim: GuardBattleState): TownHeroFxKit | null {
+    if (unit === this.raider) {
+      return this.raiderKit();
+    }
+    let kit = this.unitFxKits.get(unit.heroCode);
+    if (!kit) {
+      const role = sim.raidAllies.find((ally) => ally.monsterId === unit.monsterId)?.role ?? 'melee';
+      kit = resolveTownHeroFxKit(unit.heroCode, unit.ally?.heroClass ?? null, role === 'melee' ? 'melee' : role === 'support' ? 'support' : 'ranged');
+      this.unitFxKits.set(unit.heroCode, kit);
+      this.fx.prewarmKit(kit);
+    }
+    return kit;
+  }
+
   /** 野外特效尺寸按野外角色高 230 配;掠夺按单位显示尺寸等比换算。 */
   private fxScale(): number {
     return this.bridge.unitSize() / 230;
@@ -899,10 +1119,10 @@ export class GuardRaidController {
    * 技能命中特效,优先级同野外:① 英雄骨骼自带落点动画 skillN_kz(画在目标脚下)② 旋风斩且骨骼没有自带大招动作 → 专属大招包(hu_*,按核心亮区)
    * ③ 通用战技特效(锚在目标 / 前方,自身型绕身)。目标 = 主角朝向前方最近的存活守卫(够不着就落在身前)。
    */
-  private playSkillFx(index: number, sim: GuardBattleState): void {
-    const raider = this.raider;
+  private playSkillFx(index: number, sim: GuardBattleState, unit: RaidUnitView | null = this.raider): void {
+    const raider = unit;
     const field = this.bridge.field();
-    const kit = this.raiderKit();
+    const kit = raider ? this.kitOf(raider, sim) : null;
     if (!raider || !field || !field.isValid || !kit || raider.deadShown || !raider.view.node.isValid || sim.phase !== 'wave') {
       return;
     }
@@ -1162,9 +1382,12 @@ export class GuardRaidController {
   }
 
   private wantedLoop(unit: RaidUnitView, sim: GuardBattleState): string {
-    const moving = unit === this.raider
-      ? (sim.raider?.moveDir ?? 0) > 0
-      : !!sim.raidAllies.find((ally) => ally.monsterId === unit.monsterId)?.moving;
+    const ctl = guardRaidCtl(sim);
+    const moving = unit.monsterId === ctl?.monsterId
+      ? (ctl?.moveDir ?? 0) > 0
+      : unit === this.raider
+        ? !!sim.raidLeadAi?.moving
+        : !!sim.raidAllies.find((ally) => ally.monsterId === unit.monsterId)?.moving;
     return (moving ? (unit.names?.move ?? unit.names?.idle) : unit.names?.idle) ?? unit.view.idleAnim ?? '';
   }
 
@@ -1439,10 +1662,12 @@ export class GuardRaidController {
   }
 
   private syncButtons(sim: GuardBattleState): void {
-    const raider = sim.raider;
+    const raider = guardRaidCtl(sim);
     if (!raider) {
       return;
     }
+    this.refreshControlHud(sim);
+    this.syncSquadBar(sim);
     this.skillButtons.forEach((button, index) => {
       if (!button.node.isValid) {
         return;
@@ -1456,7 +1681,7 @@ export class GuardRaidController {
     });
     const ult = this.ultButton;
     if (ult && ult.node.isValid) {
-      const left = Math.max(0, raider.ultReadyMs - sim.timeMs);
+      const left = Math.max(0, (sim.raider?.ultReadyMs ?? 0) - sim.timeMs);
       const text = left > 0 ? `${Math.ceil(left / 1000)}` : '';
       if (ult.cd.string !== text) {
         ult.cd.string = text;

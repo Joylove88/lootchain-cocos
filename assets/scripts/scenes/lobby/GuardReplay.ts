@@ -23,6 +23,7 @@ import {
   guardRaidAttack,
   guardRaidDodge,
   guardRaidUlt,
+  guardRaidSwitch,
   guardRaidMove,
   guardRaidSkill,
   guardStartRaid,
@@ -312,6 +313,7 @@ export function guardApplyInput(state: GuardBattleState, input: GuardInput, allo
     case 'rskill': guardRaidSkill(state, input.v); break;
     case 'rdodge': guardRaidDodge(state); break;
     case 'rult': guardRaidUlt(state); break;
+    case 'rswitch': guardRaidSwitch(state, input.v); break;
     default: break;
   }
 }

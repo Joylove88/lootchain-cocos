@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """矿境掠夺 PVE 闭环自验(docs/48,电脑端):无头 Edge 打开本地正式包 → 登录 → 主城 → 矿境面板截图 → 掠夺 RAID_n(走编队确认 → battles/start)
 → 机器人打(清守卫 → 砸水晶)→ 结算 → 打印结算回执(奖励 / 体力 / 复演裁定)+ 终局截图。
-用法:PREVIEW_PORT=7460 [PHONE=1] [STALL=1] [PROBE_ULT=1] [ACCOUNT=guidetest05] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]
-PROBE_ULT=1:贴身放主角大招「夜帝残影」(docs/61 §8,账号要到炼魂,本地 guidetest05),分时刻截图 + 打印虚影 / 压暗节点与大招伤害。"""
+用法:PREVIEW_PORT=7460 [PHONE=1] [STALL=1] [PROBE_ULT=1|2] [PROBE_SWITCH=1] [ACCOUNT=guidetest05] python tools/qa/raid_server_cdp.py <输出目录> [RAID_1]
+PROBE_ULT=1:贴身放主角大招(=2 再按时刻定格连拍,会清冷却、结算复演不作数)「夜帝残影」(docs/61 §8,账号要到炼魂,本地 guidetest05),分时刻截图 + 打印虚影 / 压暗节点与大招伤害。"""
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
 import boss_bar_cdp as base
@@ -13,7 +13,7 @@ os.makedirs(OUT, exist_ok=True)
 ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.getComponent('LootChainGameRoot'); if(c) root=c; } }); const gr=root&&root.lobbyGuardBattleRenderer; const raid=gr&&gr.raid; const sim=gr&&gr.sim;"
 JS_CC = r"""(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms)); let cc = null; for (let i = 0; i < 30 && !cc; i++) { try { cc = await System.import('cc'); } catch (e) { await sleep(1500); } } if (!cc) return 'cc import failed'; window.__cc = cc; return 'ok'; })()"""
 STATE = "if(!sim) return 'nosim'; const u=sim.monsters.find(m=>m.player); return JSON.stringify({phase:sim.phase, t:Math.round(sim.timeMs), x:u&&+u.x.toFixed(2), hp:u&&Math.round(u.hp), max:u&&u.maxHp, heroes:sim.heroes.map(h=>Math.round(h.hp||0)+'/'+h.maxHp+(h.dead?'X':'')), crystal:sim.crystalHp+'/'+sim.crystalMaxHp, inputs:sim.inputs.length, serverRaid: gr.serverRaid});"
-BOT = ("window.__raidBot = setInterval(()=>{ try { const u=sim.monsters.find(m=>m.player); if(!u||sim.phase!=='wave'){ clearInterval(window.__raidBot); return; } const alive=sim.heroes.filter(h=>!h.dead); "
+BOT = ("window.__raidBot = setInterval(()=>{ try { const cid = sim.raidControlId >= 0 ? sim.raidControlId : (sim.raider && sim.raider.monsterId); const u=sim.monsters.find(m=>m.monsterId===cid); if(!u||sim.phase!=='wave'){ clearInterval(window.__raidBot); return; } const alive=sim.heroes.filter(h=>!h.dead); "
        "const cellX=(h)=>h.fx!==undefined?h.fx:1.45+(h.cell%6)*1.18; const target=alive.length? alive.reduce((a,b)=>Math.abs(cellX(b)-u.x)<Math.abs(cellX(a)-u.x)?b:a) : null; const tx = target ? cellX(target) : 0.9; const stop = target ? 1.1 : 0.2; "
        "const laneT = target ? (target.flane!==undefined ? target.flane : (Math.floor(target.cell/6)===0 ? 0.25 : 0.75)) : 0.5; const laneD = laneT - (u.laneF||0.5); "
        "raid.keys.delete(65); raid.keys.delete(68); raid.keys.delete(87); raid.keys.delete(83); "
@@ -178,7 +178,39 @@ async def main():
                     prev = ms
                     await shot(f'ult_{tag}')
                 await asyncio.sleep(0.8)
+                if os.environ.get('PROBE_ULT') == '2':
+                    # 定格连拍(同 realm_ult_web --solo):每个时刻单独放一次,到点 director.pause 再截;要清冷却,本局结算复演不作数
+                    for ms in (150, 330, 520, 700, 880, 1100):
+                        await ev("clearInterval(window.__raidBot); return 1;")
+                        for _ in range(30):
+                            if await ev("return sim.timeMs >= sim.raider.actionUntilMs ? 'y' : 'n';") == 'y':
+                                break
+                            await asyncio.sleep(0.3)
+                        await ev(f"sim.raider.ultReadyMs = 0; raid.ultPressedAt = Date.now(); setTimeout(() => cc.director.pause(), {ms}); return 1;")
+                        await asyncio.sleep(ms / 1000 + 0.6)
+                        await shot(f'ult_freeze_{ms}')
+                        await ev("cc.director.resume(); return 1;")
+                        await asyncio.sleep(1.6)
                 print('ult-after', await ev("clearInterval(window.__ultSampler); return JSON.stringify({nodes: window.__ultNodes, dealt: sim.raidDealt, heroes: sim.heroes.map(h=>Math.round(h.hp||0)), ready: sim.raider.ultReadyMs, t: sim.timeMs, rult: sim.inputs.filter(i=>i.k==='rult').length, cd: raid.ultButton && raid.ultButton.cd.string});"), flush=True)
+            if os.environ.get('PROBE_SWITCH') == '1':
+                # docs/61 §9 切换操控:头像栏截图 → 切到同伴 1(头像点击同一入口 requestSwitch)→ 机器人操控同伴打 6 秒 → 截图 → 切回主角
+                await asyncio.sleep(1.5)
+                print('bar', await ev("const b=raid.squadBar; return b ? JSON.stringify(b.slots.map(s=>({id:s.monsterId, on:s.marker.active, x:Math.round(s.node.worldPosition.x), y:Math.round(s.node.worldPosition.y)}))) : 'nobar';"), flush=True)
+                await shot('switch_0_bar')
+                aid = await ev("return String(sim.raidAllies[0].monsterId);")
+                await ev(f"raid.requestSwitch({aid}); return 1;")
+                await asyncio.sleep(1.2)
+                print('switch-1', await ev("return JSON.stringify({ctl: sim.raidControlId, leadAi: !!sim.raidLeadAi, cd: sim.raidSwitchReadyMs - sim.timeMs, rswitch: sim.inputs.filter(i=>i.k==='rswitch').length, icons: raid.skillButtons.map(b=>{ const i=b.node.getChildByName('Icon'); const sp=i&&i.getComponent(cc.Sprite); return sp&&sp.spriteFrame?sp.spriteFrame.name:'-'; }), ultOp: raid.ultButton ? (raid.ultButton.node.getComponent(cc.UIOpacity)||{}).opacity : null});"), flush=True)
+                await ev(BOT)
+                await asyncio.sleep(3)
+                await shot('switch_1_ally')
+                await asyncio.sleep(3)
+                print('switch-ally-dealt', await ev("return JSON.stringify(sim.raidDealt);"), flush=True)
+                await ev("clearInterval(window.__raidBot); return 1;")
+                await ev("raid.requestSwitch(sim.raider.monsterId); return 1;")
+                await asyncio.sleep(1.2)
+                print('switch-back', await ev("return JSON.stringify({ctl: sim.raidControlId, leadAi: !!sim.raidLeadAi, rswitch: sim.inputs.filter(i=>i.k==='rswitch').length});"), flush=True)
+                await shot('switch_2_back')
             await asyncio.sleep(2)
             print('battle', await ev(STATE), flush=True)
             print('pool', await ev("if(!sim) return 'nosim'; return JSON.stringify({pool: sim.pool.map(p=>p.heroCode+':'+p.displayName+':'+p.sourceIndex), allies: (gr.snapshot? gr.snapshot.allies.map(a=>a.unitKey+':'+a.displayName) : null), raidRaw: !!(root.currentLobbyBattleState().start||{}).raid, npcAssets: (gr.snapshot? gr.snapshot.allies.filter(a=>a.unitKey.startsWith('npc')).map(a=>a.spineAsset+'|'+a.portraitAsset) : null), views: [...gr.heroViews.values()].map(v=>v.node.name+':'+v.spineReady), lineupRaw: (root.currentLobbyBattleState().start||{}).lineup.map(h=>!!h.guardRaw)});"), flush=True)
@@ -209,6 +241,11 @@ async def main():
             print('result', await ev("const o=gr.root&&gr.root.getChildByName('GuardEndOverlay'); const r=o&&o.getChildByName('GuardRaidResult'); return JSON.stringify({overlay:!!o, result:!!r, children: r? r.children.map(c=>c.name):[]});"), flush=True)
     finally:
         subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'], capture_output=True)
+        # msedge 启动进程会把浏览器交给另一个进程,只杀 proc.pid 会留下满负荷的 swiftshader 浏览器(11-06 两次把整机拖死、出包卡住):
+        # 再按本次独占的 profile 目录找出残留主进程整树杀掉
+        ps = ("Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { $_.CommandLine -like '*" + os.path.basename(profile) + "*' -and $_.CommandLine -notlike '*--type=*' } "
+              "| ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }")
+        subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True)
 
 
 asyncio.run(main())
