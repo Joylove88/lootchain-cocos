@@ -7,6 +7,8 @@
 // 2026-09-18 用户反馈 UR 技能仍太小:UR 1.6→2.4(渲染层 baseFit=单位高×1.7×scale/特效实测尺寸,UR 未触及 2.0 放大上限)。
 // 纯表现配置:不碰结算、不改数值、不新增玩家 API(doc 24 安全边界)。
 
+import { guardFxAliasCode } from './GuardPerkConfig';
+
 export type BattleSkillEffectAnchor = 'target' | 'self' | 'fullscreen';
 
 export interface BattleSkillEffectSpec {
@@ -145,12 +147,14 @@ const ROLE_FALLBACK_SKILL_EFFECTS: Record<GuardSkillFxRole, BattleSkillEffectSpe
 
 export function resolveHeroGuardSkillEffect(heroCode: string | null | undefined, role: GuardSkillFxRole | null | undefined): BattleSkillEffectSpec {
   const code = (heroCode || '').trim().toUpperCase();
-  return HERO_GUARD_SKILL_EFFECTS[code] ?? ROLE_FALLBACK_SKILL_EFFECTS[role ?? 'melee'] ?? ROLE_FALLBACK_SKILL_EFFECTS.melee;
+  // 异界神州借同定位英雄的整套战技(11-08,原来走职业兜底)
+  return HERO_GUARD_SKILL_EFFECTS[code] ?? HERO_GUARD_SKILL_EFFECTS[guardFxAliasCode(code, 'skill')] ?? ROLE_FALLBACK_SKILL_EFFECTS[role ?? 'melee'] ?? ROLE_FALLBACK_SKILL_EFFECTS.melee;
 }
 
 export function resolveHeroUltEffect(heroCode: string | null | undefined, heroClass: string | null | undefined): BattleSkillEffectSpec {
   const code = (heroCode || '').trim().toUpperCase();
-  const byCode = HERO_ULT_EFFECTS[code];
+  // 异界神州借同定位英雄的满屏大招包(11-08,原来走 ×0.64 的职业兜底小特效)
+  const byCode = HERO_ULT_EFFECTS[code] ?? HERO_ULT_EFFECTS[guardFxAliasCode(code, 'skill')];
   if (byCode) {
     return byCode;
   }

@@ -3469,7 +3469,7 @@ export class LobbyGuardBattleRenderer {
         });
         if (event.perkId === 'dragonslayer') {
           this.shakeField(9);
-          this.spawnFloater(this.xToPx(4), this.walkwayY() + this.layoutHeight * 0.18, '龙焰爆!', rgba(255, 170, 90), 24);
+          this.spawnFloater(this.xToPx(4), this.walkwayY() + this.layoutHeight * 0.18, resolveGuardHeroPerkProfile(event.heroCode ?? '', 'melee').purple?.procCall ?? '龙焰爆!', rgba(255, 170, 90), 24);
         }
       } else if (event.type === 'passiveProc') {
         this.playPassiveProcFx(event);

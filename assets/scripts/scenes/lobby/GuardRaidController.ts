@@ -49,6 +49,7 @@ import type { GuardUnitView, LobbyGuardBattleHost } from './LobbyGuardBattleRend
 import { TOWN_HUD_ASSETS, mountRingBase } from './LobbyTownHudProto';
 import { GLASS_COLOR, GLASS_SLICES, mountGlassSlice } from '../UiGlassKit';
 import { mountHeroAvatar } from './HeroHeadCrop';
+import { isBuiltinFxHero } from '../../api/YijieShenzhouHeroes';
 
 /** 掠夺首领(NPC 矿主 / 真人矿对方主角)表现放大倍率(只影响表现,不进模型)。 */
 const GUARD_RAID_BOSS_VIEW_SCALE = 1.7;
@@ -1153,7 +1154,8 @@ export class GuardRaidController {
     }
     const bodyLift = this.bridge.unitSize() * 0.35;
     const kz = this.skillKzAnim(raider, index);
-    let shown = !!kz && this.playOwnKz(raider, kz, near ? near.x : me.x + facing * 170 * k, near ? near.y : me.y, near ? (near.x >= me.x ? 1 : -1) : facing);
+    // 自带光效的骨骼(异界神州):动作本身就是特效,不叠外挂
+    let shown = (!!kz && this.playOwnKz(raider, kz, near ? near.x : me.x + facing * 170 * k, near ? near.y : me.y, near ? (near.x >= me.x ? 1 : -1) : facing)) || isBuiltinFxHero(raider.heroCode);
     if (!shown && index === 2 && !this.hasOwnUlt(raider)) {
       const tiers: Record<string, number> = { R: 2.3, SR: 2.6, SSR: 3.0, UR: 3.4 };
       const tier = tiers[(raider.ally?.rarity || 'R').toUpperCase()] ?? 2.3;
@@ -1187,6 +1189,9 @@ export class GuardRaidController {
 
   /** 同野外 hasOwnUlt:R / SR 骨骼自带大招动作(skill3 含光效)。 */
   private hasOwnUlt(unit: RaidUnitView): boolean {
+    if (isBuiltinFxHero(unit.heroCode)) {
+      return true;
+    }
     const rarity = (unit.ally?.rarity || '').toUpperCase();
     return (rarity === 'R' || rarity === 'SR') && !!unit.names?.skill3;
   }
@@ -1334,7 +1339,7 @@ export class GuardRaidController {
     if (!skeleton || !skeleton.isValid || !names || unit.deadShown) {
       return 0;
     }
-    const anim = (kind === 'ult' ? names.ult || names.skill3 : names[kind]) || names.attack || names.idle;
+    const anim = (kind === 'ult' ? names.ult || names.skill3 || (isBuiltinFxHero(unit.heroCode) ? names.skill1 : '') : names[kind]) || names.attack || names.idle;
     if (!anim) {
       return 0;
     }

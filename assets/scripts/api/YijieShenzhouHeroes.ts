@@ -54,6 +54,15 @@ export function yijieHeroByCode(heroCode: string | null | undefined): YijieHero 
 export const YIJIE_CARD_ART_DIR = 'ui/hero-roster/card_background';
 
 /**
+ * 骨骼动作自带整套技能光效(D26 的刀光 / 火柱 / 炮击都画在动作里,11-08 逐个渲染核对过)。
+ * 野外 / 掠夺:放技能 / 大招整段播自身动作,不再叠外挂战技 / 大招特效(原来大招被掐到 1.2 秒再叠一层借来的特效)。
+ * 守卫战不受影响:英雄站格子、怪在远处,目标处的外挂特效仍要播。
+ */
+export function isBuiltinFxHero(heroCode: string | null | undefined): boolean {
+  return !!yijieHeroByCode(heroCode);
+}
+
+/**
  * 战斗 / 大厅 / 布阵体型补偿(LobbyBattleUnitSpineRuntime 的 ACT 补偿表):D26 骨骼导出时头部宽高是 0,
  * 运行时改用该稀有度的兜底高度(R 620 / SR 660 / SSR 1180 / UR 1280)缩放 → 补偿 = 兜底高度 / 实际可见高度,
  * 等于按真实身高缩放。11-07 守卫战实测标定。

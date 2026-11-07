@@ -3,6 +3,8 @@
 // kind=bolt:弹道贴图(朝右绘制,飞行时按方向旋转,命中才结算飘字);kind=strike:斩击/撞击贴图直接落在目标身上(近战即时结算)。
 // 纯表现配置:不碰结算、不改数值(doc 24 安全边界)。
 
+import { guardFxAliasCode } from './GuardPerkConfig';
+
 export type BattleAttackFxKind = 'bolt' | 'strike';
 
 export interface BattleAttackFxSpec {
@@ -102,7 +104,7 @@ export function resolveHeroAttackSfxKey(heroCode: string | null | undefined, her
 export function resolveHeroAttackFx(heroCode: string | null | undefined, heroClass: string | null | undefined, meleeRole: boolean): BattleAttackFxSpec {
   // 主角借永夜龙骑:守卫战 / 掠夺直接传 PROTAGONIST_*,原来查不到会退回静态贴图(11-07 用户实机反馈)
   const code = fxHeroCodeOf(heroCode);
-  const byCode = HERO_ATTACK_FX[code] ?? HERO_ATTACK_FX[YIJIE_ATTACK_SPINE_FX_ALIAS[code] ?? ''];
+  const byCode = HERO_ATTACK_FX[code] ?? HERO_ATTACK_FX[guardFxAliasCode(code, 'attack')];
   if (byCode) {
     return byCode;
   }
@@ -159,32 +161,11 @@ const HERO_ATTACK_SPINE_FX: Record<string, BattleAttackSpineFxSpec> = {
 };
 
 // 异界神州(sql/156,2026-11-07 用户:「普通攻击的效果怎么都是贴图」):不另挑新素材,按职业 + 元素颜色借现有英雄的普攻骨骼特效
-// (弹道 + 命中,素材已在包里)。D26 骨骼自己的攻击动作也带刀光,这里只补飞向目标 / 落在目标身上的那一段。
-const YIJIE_ATTACK_SPINE_FX_ALIAS: Record<string, string> = {
-  UR_LVBU: 'UR_ARTHAS', // 赤戟 → 龙焰月牙
-  UR_ZHAOYUN: 'SSR_KANE', // 银枪 → 银白枪芒
-  UR_ZHUGELIANG: 'UR_EVELYN', // 借风 → 冰蓝旋风
-  SSR_SUNWUKONG: 'SSR_RON', // 金箍棒 → 余烬飞刃
-  SSR_DIAOCHAN: 'SSR_LIVIA', // 魅舞 → 夜烬镰刃旋风
-  SSR_SUNSHANGXIANG: 'SR_SNIPER_05', // 烈焰弩 → 尾焰弩矢
-  SSR_ZHANGFEI: 'SR_PALADIN_02', // 蛇矛震地 → 淡金盾波
-  SR_YANGJIAN: 'R_PATROL_01', // 三尖两刃 → 蓝白霜刃
-  SR_HUATUO: 'SR_PRIEST_01', // 药光 → 圣光细弹
-  SR_ZHANGCHUNHUA: 'UR_NYX', // 紫镰 → 暗紫影刃
-  SR_ZHANGJIAO: 'SR_WITCH_03', // 符雷 → 紫电球
-  SR_HUANGZHONG: 'UR_AURELIA', // 烈弓 → 青翎光箭
-  SR_CAOREN: 'UR_ATLAS', // 巨盾 → 金色盾波
-  R_DAQIAO: 'R_ACOLY_02', // 灯火 → 暖黄微光
-  R_HUAXIONG: 'SR_BLADE_04', // 赤刃 → 猩红月牙
-  R_GANNING: 'R_SCOUT_03', // 双刃 → 钢匕飞刃
-  R_XUNYOU: 'UR_SERAPHINA', // 墨卷 → 银蓝星光
-  R_TAISHICI: 'R_RANGER_06', // 连珠箭 → 羽箭
-  R_DIANWEI: 'R_GUARD_07', // 双戟 → 灰白撞击棱
-};
+// (弹道 + 命中,素材已在包里)。借用表在 GuardPerkConfig.guardFxAliasCode(战技 / 大招 / 近战打击时刻同表)。
 
 export function resolveHeroAttackSpineFx(heroCode: string | null | undefined): BattleAttackSpineFxSpec | null {
   const code = fxHeroCodeOf(heroCode);
-  return HERO_ATTACK_SPINE_FX[code] ?? HERO_ATTACK_SPINE_FX[YIJIE_ATTACK_SPINE_FX_ALIAS[code] ?? ''] ?? null;
+  return HERO_ATTACK_SPINE_FX[code] ?? HERO_ATTACK_SPINE_FX[guardFxAliasCode(code, 'attack')] ?? null;
 }
 
 export function resolveAttackSpineFxResource(spec: { effect: string }): string {

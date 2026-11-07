@@ -25,6 +25,7 @@ import {
 import { HERO_CLIP_COMBOS } from './HeroClipCombos';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import { resolveFieldParty } from '../../api/LobbyHeroApi';
+import { isBuiltinFxHero } from '../../api/YijieShenzhouHeroes';
 import type { LobbyBadges } from '../../api/LobbyBadgeApi';
 import type { PlayerIdleSummaryVO } from '../../types/IdleTypes';
 import { safeText } from '../UiTextFormatter';
@@ -5198,7 +5199,8 @@ export class LobbyTownRenderer {
       return 0;
     }
     // R / SR 骨骼没有 ult,自带大招动作是 skill4(映射里叫 skill3,2.5 秒,含光效);UR / SSR 有 ult
-    const anim = (kind === 'ult' ? names.ult || names.skill3 : names[kind]) || names.attack || names.idle;
+    // 异界神州 R / SR(D26)只有两段技能:大招用第二段(skill1,自带光效)
+    const anim = (kind === 'ult' ? names.ult || names.skill3 || (isBuiltinFxHero(actor.hero.heroCode) ? names.skill1 : '') : names[kind]) || names.attack || names.idle;
     if (!anim) {
       return 0;
     }
@@ -5737,7 +5739,7 @@ export class LobbyTownRenderer {
     actor.nextAttackAt = now + Math.max(cadence * (0.9 + Math.random() * 0.2), dur + 120);
     const damage = Math.max(1, Math.round(actor.attack * (skill ? 2.2 : 1) * (0.92 + Math.random() * 0.16)));
     if (actor.role === 'melee') {
-      this.companionHits.push({ at: now + dur * 0.4, target, damage, heavy: skill, actor, skillFx: skill });
+      this.companionHits.push({ at: now + dur * 0.4, target, damage, heavy: skill, actor, skillFx: skill && !isBuiltinFxHero(actor.hero.heroCode) });
     } else {
       this.fireProjectile(actor, target, damage, skill, dur * 0.35);
     }
@@ -5753,7 +5755,7 @@ export class LobbyTownRenderer {
     const ey = this.monsterBodyY(target);
     const travel = Math.max(120, Math.min(420, (Math.hypot(ex - sx, ey - sy) / 1500) * 1000));
     // 伤害按时间结算(顿帧时 companionHits 会整体后移);弹道只管表现
-    this.companionHits.push({ at: now + releaseMs + travel, target, damage, heavy, actor, skillFx: heavy });
+    this.companionHits.push({ at: now + releaseMs + travel, target, damage, heavy, actor, skillFx: heavy && !isBuiltinFxHero(actor.hero.heroCode) });
     if (!root || !root.isValid) {
       return;
     }
@@ -5842,6 +5844,9 @@ export class LobbyTownRenderer {
 
   /** 这名英雄的骨骼有没有自带大招动作(R / SR 的 skill4):有就只播动作本身,不再叠外部特效包。 */
   private hasOwnUlt(actor: TownActor): boolean {
+    if (isBuiltinFxHero(actor.hero.heroCode)) {
+      return true;
+    }
     const rarity = (actor.hero.rarity || '').toUpperCase();
     return (rarity === 'R' || rarity === 'SR') && !!actor.names?.skill3;
   }
@@ -6148,7 +6153,8 @@ export class LobbyTownRenderer {
       const near = target && Math.hypot(target.x - leader.x, target.y - leader.y) <= hit.reach + 260 ? target : null;
       const facing: 1 | -1 = near ? (near.x >= leader.x ? 1 : -1) : leader.facing;
       const kz = this.skillKzAnim(leader, hit.skill);
-      let shown = !!kz && this.playOwnKz(leader, kz, near ? near.x : leader.x + leader.facing * 170, near ? near.y : leader.y, facing);
+      // 自带光效的骨骼(异界神州):动作本身就是特效,不叠外挂
+      let shown = (!!kz && this.playOwnKz(leader, kz, near ? near.x : leader.x + leader.facing * 170, near ? near.y : leader.y, facing)) || isBuiltinFxHero(leader.hero.heroCode);
       if (!shown && hit.skill === 2 && !this.hasOwnUlt(leader)) {
         const tiers: Record<string, number> = { R: 2.3, SR: 2.6, SSR: 3.0, UR: 3.4 };
         const tier = tiers[(leader.hero.rarity || 'R').toUpperCase()] ?? 2.3;

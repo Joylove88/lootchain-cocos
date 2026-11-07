@@ -6,6 +6,7 @@
 
 import {
   GUARD_ARCHETYPE_LABEL,
+  guardFxAliasCode,
   GUARD_ATTACK_MAX_HITS,
   GUARD_ATTACK_MULT_CAP,
   GUARD_ATTACK_TARGET_COEF_CAP,
@@ -1548,6 +1549,7 @@ export function createGuardRng(seed: number): () => number {
 const ROLE_OVERRIDE_BY_CODE: Record<string, GuardHeroRole> = {
   UR_EVELYN: 'control',
   SR_CHAIN_08: 'control',
+  UR_ZHUGELIANG: 'control', // 异界神州·卧龙星君(星阵布控 / 借东风;紫卡八阵图要减速)
 };
 export function resolveGuardRole(heroCode: string, heroClass: string | null | undefined): GuardHeroRole {
   const byCode = ROLE_OVERRIDE_BY_CODE[(heroCode || '').toUpperCase()];
@@ -2828,7 +2830,7 @@ function castHeroSkill(state: GuardBattleState, hero: GuardHeroUnit, cast: { mul
     const areaToX = Math.min(GUARD_SPAWN_X, front.x + guardSkillAreaCells('melee', hero.heroCode));
     const targets = state.monsters.filter((monster) => !monster.dead && guardMeleeCanHit(monster) && monster.x >= areaFromX && monster.x <= areaToX);
     // 分段:伤害 / 击退在各打击时刻结算(guardTickSkillHits),施放事件只带范围与锚点给渲染层起特效
-    const schedule = GUARD_MELEE_SKILL_HITS[hero.heroCode] ?? GUARD_MELEE_SKILL_HITS_FALLBACK;
+    const schedule = GUARD_MELEE_SKILL_HITS[hero.heroCode] ?? GUARD_MELEE_SKILL_HITS[guardFxAliasCode(hero.heroCode, 'skill')] ?? GUARD_MELEE_SKILL_HITS_FALLBACK;
     const hitTimes = (ultLv > 0 ? schedule.ult : schedule.skill).slice(0, 4);
     const segments = Math.max(1, hitTimes.length);
     // 2.0 → 1.8(2026-10-14):覆盖范围改为「首怪起向后铺」后命中更多,同种子 N=400 回归把主动玩家胜率拉回基线 ±4pp
@@ -3526,7 +3528,8 @@ export function guardTick(state: GuardBattleState, dtMs: number): GuardPhase {
         state.crystalHp = Math.max(0, state.crystalHp - bite);
         state.events.push({ type: 'crystalHit', timeMs: state.timeMs, monsterId: monster.monsterId, amount: bite });
         guardApplyReflectPassives(state, monster);
-        if ((state.heroPerks.UR_ATLAS?.purple ?? 0) > 0 && state.heroes.some((hero) => hero.heroCode.toUpperCase() === 'UR_ATLAS')) {
+        // 盾反类紫卡(阿特拉斯·盾反 / 典韦·恶来):在场且已选,水晶每受击攒 1 枚印(同场共用)
+        if (state.heroes.some((hero) => (state.heroPerks[hero.heroCode.toUpperCase()]?.purple ?? 0) > 0 && guardHeroProfileOf(state, hero.heroCode).purple?.suffix === 'riposte')) {
           state.riposteSeals = Math.min(3, state.riposteSeals + 1);
         }
         if (state.crystalHp <= 0) {

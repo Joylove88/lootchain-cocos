@@ -161,6 +161,8 @@ export interface GuardPurplePerkDef {
   describe: (value: number) => string;
   /** 车轮战禁用(血契)。 */
   standardOnly?: boolean;
+  /** 击杀触发类(龙焰爆)全场喊话;缺省按机制默认文字。 */
+  procCall?: string;
 }
 
 export interface GuardHeroPerkProfile {
@@ -264,7 +266,121 @@ export const GUARD_HERO_PERK_PROFILE: Record<string, GuardHeroPerkProfile> = {
     archetype: 'dagger', element: 'edge', look: '钢银单匕快斩,带血线',
     purple: { suffix: 'cutthroat', name: '割喉', school: '收割', values: [0.6, 0.9, 1.2], describe: (v) => `每第 5 击,对射程内生命最低的怪补一刀,造成 ${pct(v)} 伤害` },
   },
+
+  // ── 异界神州(sql/156,2026-11-08):每人 1 条专属紫卡。机制复用上面已验证的后缀(模型按后缀结算),换成各自的名字 / 数值 / 文案;
+  // 数值按稀有度对齐同机制原主(UR 同 UR、低一档略降)。原型 / 元素跟随普攻借用的英雄(YIJIE_FX_ALIAS),弹道与卡面措辞一致。
+  UR_LVBU: {
+    archetype: 'slash', element: 'fire', look: '赤红方天画戟横扫',
+    purple: { suffix: 'dragonslayer', name: '无双', school: '无双横扫', values: [0.10, 0.18, 0.25], procCall: '无双!', describe: (v) => `对精英与 BOSS 伤害 +${pct(v)};击杀精英时横扫千军,最近 10 只怪各受 150% 伤害(每波 1 次)` },
+  },
+  UR_ZHAOYUN: {
+    archetype: 'shock', element: 'holy', look: '银白龙胆枪芒',
+    purple: { suffix: 'longlance', name: '七进七出', school: '贯阵突刺', values: [2, 3, 4], describe: (v) => `普攻自带贯穿,再刺穿目标身后最近 ${v} 只怪,各 50% 伤害` },
+  },
+  UR_ZHUGELIANG: {
+    archetype: 'whirl', element: 'ice', look: '东风卷起的青蓝旋风',
+    purple: { suffix: 'deepchill', name: '八阵图', school: '困阵控场', values: [0.4, 0.6, 0.8], describe: (v) => `每第 5 击,减速中的怪(最近 5 只)被八阵困锁,各受 ${pct(v)} 伤害` },
+  },
+  SSR_SUNWUKONG: {
+    archetype: 'dagger', element: 'fire', look: '金箍棒连打,火星飞溅',
+    purple: { suffix: 'phase', name: '七十二变', school: '分身突袭', values: [1.0, 1.4, 1.8], describe: (v) => `每第 5 击,分身闪到生命比例最高的怪身后补一棒,造成 ${pct(v)} 伤害` },
+  },
+  SSR_DIAOCHAN: {
+    archetype: 'whirl', element: 'fire', look: '绯红舞袖旋风',
+    purple: { suffix: 'echo', name: '闭月', school: '回眸连舞', values: [1.0, 1.3, 1.6], describe: (v) => `每第 4 次出手追加一道回眸舞袖,造成 ${pct(v)} 伤害` },
+  },
+  SSR_SUNSHANGXIANG: {
+    archetype: 'arrow', element: 'fire', look: '烈焰弩矢,红莲尾焰',
+    purple: { suffix: 'headhunt', name: '红莲弩', school: '爆裂猎首', values: [0.7, 1.0, 1.3], describe: (v) => `优先锁定精英/BOSS 与血量最高的怪;每第 4 箭爆裂,该箭伤害 +${pct(v)}` },
+  },
+  SSR_ZHANGFEI: {
+    archetype: 'shock', element: 'holy', look: '蛇矛震地冲击波',
+    purple: { suffix: 'punish', name: '当阳怒吼', school: '守晶震慑', values: [0.6, 0.9, 1.2], describe: (v) => `每第 4 击,对正在攻击水晶的怪(最近 3 只)怒吼震击,各受 ${pct(v)} 伤害` },
+  },
+  SR_YANGJIAN: {
+    archetype: 'slash', element: 'ice', look: '三尖两刃刀霜光',
+    purple: { suffix: 'verdict', name: '天眼', school: '破邪重击', values: [1.8, 2.05, 2.3], describe: (v) => `技能击(2★ 起每第 4 次出手)伤害倍率从 ×1.6 提到 ×${v}` },
+  },
+  SR_HUATUO: {
+    archetype: 'holy', element: 'holy', look: '青囊药光',
+    purple: { suffix: 'grace', name: '青囊', school: '妙手回春', values: [0.029, 0.032, 0.035], describe: (v) => `每次出手给水晶的回复从最大生命的 2.5% 提到 ${(v * 100).toFixed(1)}%` },
+  },
+  SR_ZHANGCHUNHUA: {
+    archetype: 'dagger', element: 'dark', look: '幽紫镰刃影斩',
+    purple: { suffix: 'cutthroat', name: '绝情', school: '收割残血', values: [0.7, 1.0, 1.3], describe: (v) => `每第 5 击,对射程内生命最低的怪补一镰,造成 ${pct(v)} 伤害` },
+  },
+  SR_ZHANGJIAO: {
+    archetype: 'orb', element: 'thunder', look: '符雷电球',
+    purple: { suffix: 'curseburst', name: '黄天', school: '符雷齐落', values: [0.65, 0.85, 1.05], describe: (v) => `每第 4 次普攻引下天雷,±0.8 格内最近 4 只怪各受 ${pct(v)} 伤害` },
+  },
+  SR_HUANGZHONG: {
+    archetype: 'arrow', element: 'edge', look: '烈弓长箭',
+    purple: { suffix: 'focus', name: '定军', school: '百步穿杨', values: [0.035, 0.05, 0.065], describe: (v) => `连续射同一目标时伤害逐次 +${pct(v)},最多叠 5 层(+${pct(v * 5)});换目标清零` },
+  },
+  SR_CAOREN: {
+    archetype: 'shock', element: 'holy', look: '巨盾撞击金波',
+    purple: { suffix: 'fury', name: '坚城', school: '背城死守', values: [0.03, 0.04, 0.05], describe: (v) => `水晶每损失 10% 生命,自身攻击力 +${pct(v)}` },
+  },
+  R_DAQIAO: {
+    archetype: 'holy', element: 'holy', look: '暖黄灯火',
+    purple: { suffix: 'prayer', name: '明灯', school: '灯火续航', values: [1.5, 1.75, 2.0], describe: (v) => `水晶生命低于 50% 时,她给水晶的回复量 ×${v}` },
+  },
+  R_HUAXIONG: {
+    archetype: 'slash', element: 'edge', look: '赤刃大刀',
+    purple: { suffix: 'veteran', name: '骁勇', school: 'R 卡逆袭', values: [0.25, 0.4, 0.6], describe: (v) => `自身攻击力 +${pct(v)}` },
+  },
+  R_GANNING: {
+    archetype: 'dagger', element: 'edge', look: '锦帆双刃快斩',
+    purple: { suffix: 'mark', name: '锦帆夜袭', school: '连击暴击', values: [0.2, 0.3, 0.4], describe: (v) => `技能击伤害倍率 +${v};已有「会心」时,暴击伤害倍率也 +${v}` },
+  },
+  R_XUNYOU: {
+    archetype: 'orb', element: 'dark', look: '墨卷符球',
+    purple: { suffix: 'pyre', name: '连环计', school: '连环清场', values: [0.25, 0.35, 0.45], describe: (v) => `被他击杀的怪化作墨爆,±0.8 格内最近 4 只怪各受 ${pct(v)} 伤害(不连锁)` },
+  },
+  R_TAISHICI: {
+    archetype: 'arrow', element: 'edge', look: '连珠火箭',
+    purple: { suffix: 'skirmish', name: '连珠', school: '远射游击', values: [0.5, 0.7, 0.9], describe: (v) => `每第 3 箭,额外向射程内最远的怪补射一箭,造成 ${pct(v)} 伤害` },
+  },
+  R_DIANWEI: {
+    archetype: 'shock', element: 'edge', look: '双戟撞击',
+    purple: { suffix: 'riposte', name: '恶来', school: '护主反击', values: [0.3, 0.5, 0.7], describe: (v) => `水晶每受击攒 1 枚戟印(最多 3 枚,与同场盾反共用);每枚让他的下一击伤害 +${pct(v)}` },
+  },
 };
+
+/**
+ * 异界神州表现借用(2026-11-07 普攻 / 11-08 战技与大招):D26 新英雄不另挑素材,借现有同职业 / 同色系英雄的整套外挂特效。
+ * attack = 普攻弹道 + 命中;skill = 守卫战技 / 金卡大招 / 近战打击时刻表(借用对象必须同守卫定位,荀攸是远程法师不能借辅助的绕身圣光)。
+ */
+const YIJIE_FX_ALIAS: Record<string, string> = {
+  UR_LVBU: 'UR_ARTHAS', // 赤戟 → 龙焰月牙
+  UR_ZHAOYUN: 'SSR_KANE', // 银枪 → 银白枪芒
+  UR_ZHUGELIANG: 'UR_EVELYN', // 借风 → 冰蓝旋风
+  SSR_SUNWUKONG: 'SSR_RON', // 金箍棒 → 余烬飞刃
+  SSR_DIAOCHAN: 'SSR_LIVIA', // 魅舞 → 夜烬镰刃旋风
+  SSR_SUNSHANGXIANG: 'SR_SNIPER_05', // 烈焰弩 → 尾焰弩矢
+  SSR_ZHANGFEI: 'SR_PALADIN_02', // 蛇矛震地 → 淡金盾波
+  SR_YANGJIAN: 'R_PATROL_01', // 三尖两刃 → 蓝白霜刃
+  SR_HUATUO: 'SR_PRIEST_01', // 药光 → 圣光细弹
+  SR_ZHANGCHUNHUA: 'UR_NYX', // 紫镰 → 暗紫影刃
+  SR_ZHANGJIAO: 'SR_WITCH_03', // 符雷 → 紫电球
+  SR_HUANGZHONG: 'UR_AURELIA', // 烈弓 → 青翎光箭
+  SR_CAOREN: 'UR_ATLAS', // 巨盾 → 金色盾波
+  R_DAQIAO: 'R_ACOLY_02', // 灯火 → 暖黄微光
+  R_HUAXIONG: 'SR_BLADE_04', // 赤刃 → 猩红月牙
+  R_GANNING: 'R_SCOUT_03', // 双刃 → 钢匕飞刃
+  R_XUNYOU: 'UR_SERAPHINA', // 墨卷 → 银蓝星光
+  R_TAISHICI: 'R_RANGER_06', // 连珠箭 → 羽箭
+  R_DIANWEI: 'R_GUARD_07', // 双戟 → 灰白撞击棱
+};
+const YIJIE_SKILL_FX_ALIAS_OVERRIDE: Record<string, string> = {
+  R_XUNYOU: 'R_CULT_05', // 远程法师:战技灼烧区 / 大招借低语教徒的紫色蚀月(晨星是辅助,大招绕自身)
+};
+
+/** 外挂特效借用对象(没借用 = 原码)。kind=skill 时用于战技 / 大招 / 近战打击时刻。 */
+export function guardFxAliasCode(heroCode: string | null | undefined, kind: 'attack' | 'skill'): string {
+  const code = (heroCode || '').trim().toUpperCase();
+  return (kind === 'skill' ? YIJIE_SKILL_FX_ALIAS_OVERRIDE[code] : undefined) ?? YIJIE_FX_ALIAS[code] ?? code;
+}
 
 /** 未登记编码(老账号下架英雄/主角)的兜底:按定位给原型,没有紫卡。 */
 export function resolveGuardHeroPerkProfile(heroCode: string, role: 'melee' | 'ranged' | 'support' | 'control'): GuardHeroPerkProfile {
