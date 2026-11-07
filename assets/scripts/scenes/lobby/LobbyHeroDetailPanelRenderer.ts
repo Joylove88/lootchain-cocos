@@ -31,7 +31,7 @@ import { ROUTE_NAME } from './LobbyEvolutionPickRenderer';
 import { LOBBY_UI_FX } from './LobbyBattleAttackFxConfig';
 import { mountLobbySpineFx, prewarmLobbySpineFx } from './LobbyUiSpineFx';
 import { mountKitButton, mountKitSection } from '../UiKit';
-import { drawRefPanelFallback, mountRefButton, mountRefTitleBand, mountRefLineFrame, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_TITLE_STAR, REF_ULT, REF_ULT_EMBLEM_FULL_ASSET, refCardFrameK, type RefKitItem } from '../UiRefKit';
+import { drawRefPanelFallback, mountRefButton, mountRefTitleBand, mountRefLineFrame, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitledPanel, raiseRefFrame, REF_CARD_FRAME_LINE, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_ICON_RING_ASSET, REF_KIT, REF_ROW, REF_ROW_SELECTED, REF_SECTION_EMBLEM, REF_TITLE_STAR, REF_ULT, refCardFrameK, type RefKitItem } from '../UiRefKit';
 import type { LobbyHeroAffixVO, LobbyHeroItemVO } from '../../types/LobbyHeroTypes';
 import type { EquipmentItemVO } from '../../api/EquipmentApi';
 import { equipItemPowerScore, equipQualityColor, equipQualityLabel, HERO_EQUIP_SLOTS, renderEquipDetailCard } from './EquipDetailCard';
@@ -124,7 +124,7 @@ export const HERO_DETAIL_PRELOAD_ASSETS: string[] = [
   'ui/common/ref/ult_cost_row/spriteFrame',
   'ui/common/ref/ult_btn_primary/spriteFrame',
   'ui/common/ref/ult_btn_secondary/spriteFrame',
-  'ui/common/ref/ult_emblem_full/spriteFrame',
+  'ui/hero/ult_emblem/GENERIC/spriteFrame',
   'ui/common/ref/close_ring/spriteFrame',
   'ui/common/ref/ult_title_star/spriteFrame',
   'ui/common/solid_white/spriteFrame',
@@ -8435,13 +8435,15 @@ export function resolveUltimateSkillName(heroCode: string | null | undefined): s
 }
 
 // 大招徽章(2026-10-19 用户「根据不同大招生成不同的技能图标」):外圈金环统一(取自 ult_emblem_full),内芯按技能名 + 特效画面逐个出图,
-// 主色互相拉开;ui/hero/ult_emblem/<英雄码>.png,主角用 PROTAGONIST。不在表里的英雄回退通用火焰徽章。
+// 主色互相拉开;ui/hero/ult_emblem/<英雄码>.png,主角用 PROTAGONIST。不在表里的英雄(下架老英雄)回退 GENERIC。
+// 11-08 用户嫌金环发光徽章 AI 感太强 → 全部改 B 主题哑光手绘(无金环,界面画细白圈):异界神州 19 名 tools/qa/d26_art_gen.py emblem_paint,
+// 老英雄 / 主角 / GENERIC / 被动图标 sk_* tools/qa/skill_icon_matte.py;金环原图在 素材原始备份/skill-icons-goldring-20261108。
 export function resolveUltimateEmblemAsset(hero: Pick<LobbyHeroItemVO, 'heroCode' | 'protagonist'>): string {
   if (hero.protagonist) {
     return 'ui/hero/ult_emblem/PROTAGONIST/spriteFrame';
   }
   const code = (hero.heroCode || '').trim().toUpperCase();
-  return HERO_ULTIMATE_SKILL_NAMES[code] ? `ui/hero/ult_emblem/${code}/spriteFrame` : REF_ULT_EMBLEM_FULL_ASSET;
+  return HERO_ULTIMATE_SKILL_NAMES[code] || yijieHeroByCode(code) ? `ui/hero/ult_emblem/${code}/spriteFrame` : 'ui/hero/ult_emblem/GENERIC/spriteFrame';
 }
 
 // 技能组(docs/25 技能系统):1 终极技能(大招,默认解锁 Lv1)+ N 被动(升星逐条解锁)。
