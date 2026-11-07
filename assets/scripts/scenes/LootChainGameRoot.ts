@@ -6334,6 +6334,27 @@ export class LootChainGameRoot extends Component {
     }
   }
 
+  /** 卡池页签副标题;限时池(带结束时间)后缀剩余时间「异界神州 · 剩 29 天」(2026-11-07)。 */
+  private gachaPoolSubline(pool: GachaPoolVO): string {
+    const base = this.trimText(pool.tabSubtitle || pool.poolType || '召唤卡池').slice(0, 40);
+    const raw = (pool.endTime ?? '').toString().trim();
+    if (!raw) {
+      return base;
+    }
+    // 后端 LocalDateTime(上海时区)按「yyyy-MM-dd HH:mm:ss」或 ISO 下发,没带时区的按 +08:00 解析
+    const iso = raw.replace(' ', 'T');
+    const end = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}+08:00`);
+    if (!Number.isFinite(end)) {
+      return base;
+    }
+    const left = end - Date.now();
+    if (left <= 0) {
+      return `${base} · 已结束`;
+    }
+    const hours = Math.floor(left / 3600000);
+    return hours >= 24 ? `${base} · 剩 ${Math.floor(hours / 24)} 天` : `${base} · 剩 ${Math.max(1, hours)} 小时`;
+  }
+
   private toGachaPreviewPool(pool: GachaPoolVO): GachaPreviewPool {
     const theme = (pool.themeColor ?? '').toLowerCase();
     const displayType = (pool.displayType ?? pool.poolType ?? '').toUpperCase();
@@ -6351,7 +6372,7 @@ export class LootChainGameRoot extends Component {
       poolType: pool.poolType ?? null,
       displayType: pool.displayType ?? null,
       title,
-      subline: this.trimText(pool.tabSubtitle || pool.poolType || '召唤卡池').slice(0, 40),
+      subline: this.gachaPoolSubline(pool),
       rarity,
       active: pool.poolCode === this.gachaSceneState.selectedPoolCode,
       locked: Boolean(pool.locked) || pool.status !== 1,

@@ -203,6 +203,9 @@ const GACHA_BOX_SUMMON_SPINE_GROUND_Y_EXTRA_RATIO = -0.045;
 
 /** 抽奖全屏预览页。
  * 当前阶段只做视觉、布局和只读规则入口，不触发真实扣费、发奖、保底或兑换写入。 */
+/** 卡池主视觉用英雄战斗骨骼(spine/hero/)时的缩放倍率(11-07 限时召唤·异界神州,按截图调)。 */
+const GACHA_HERO_SKELETON_SCALE_MULTIPLIER = 1.4;
+
 export class GachaSceneRenderer {
   // 结果卡详情浮层:悬浮=临时(移出即收),点击=固定(遮罩点击关闭)。
   private resultTooltipNode: Node | null = null;
@@ -873,7 +876,8 @@ export class GachaSceneRenderer {
 
     const fallback = this.renderAbyssSpineFallback(stage, stageWidth, stageHeight, scale, selectedPool);
     const resource = selectedPool.centerSpineResource || GACHA_ABYSS_SPINE_RESOURCE;
-    const uuid = selectedPool.centerSpineUuid || GACHA_ABYSS_SPINE_UUID;
+    // 11-07:配了自定义骨骼路径却没配 uuid 时(限时召唤·异界神州),不能套默认池的 uuid,否则会加载成黄蜂教宗
+    const uuid = selectedPool.centerSpineUuid || (selectedPool.centerSpineResource ? '' : GACHA_ABYSS_SPINE_UUID);
     const skin = selectedPool.centerSpineSkin || GACHA_ABYSS_SPINE_SKIN;
     const intro = selectedPool.centerIntroAnimation || GACHA_ABYSS_SPINE_INTRO_ANIMATION;
     const idle = selectedPool.centerIdleAnimation || GACHA_ABYSS_SPINE_IDLE_ANIMATION;
@@ -881,7 +885,8 @@ export class GachaSceneRenderer {
     const skeleton = spineNode.addComponent(sp.Skeleton);
     // 10-29:召唤骨骼图集除 hunka_zhanjiangaosika 外都是预乘导出(RGB ≤ A),按非预乘画会把半透明烟雾画暗,
     // 人物后面压出一整块矩形暗区(B 风格亮背景上很明显)
-    skeleton.premultipliedAlpha = !resource.includes('hunka_zhanjiangaosika');
+    // 11-07:英雄骨骼(spine/hero/,如限时召唤·异界神州的 sz_lvbu)是非预乘导出
+    skeleton.premultipliedAlpha = !resource.includes('hunka_zhanjiangaosika') && !resource.includes('spine/hero/');
     skeleton.timeScale = 0.78;
     const spineScale = this.resolveAbyssSpineScale(layout, scale, resource) * (this.glassMode ? GACHA_GLASS_SPINE_BOOST : 1);
     spineNode.setScale(new Vec3(spineScale, spineScale, 1));
@@ -993,9 +998,11 @@ export class GachaSceneRenderer {
     return node;
   }
 
+  // 用英雄战斗骨骼当卡池主视觉(限时召唤·异界神州)时的放大倍率:英雄骨骼比召唤专用骨骼小得多
   private resolveAbyssSpineScale(layout: UiLayout, scale: number, resource: string): number {
     const stageFactor = clamp(Math.min(layout.stageWidth / 1920, layout.stageHeight / 1080), 0.58, 1.15);
-    const poolMultiplier = resource.includes('/box_summon/') ? GACHA_BOX_SUMMON_SPINE_SCALE_MULTIPLIER : 1;
+    const poolMultiplier = resource.includes('/box_summon/') ? GACHA_BOX_SUMMON_SPINE_SCALE_MULTIPLIER
+      : resource.includes('spine/hero/') ? GACHA_HERO_SKELETON_SCALE_MULTIPLIER : 1;
     return 0.43 * scale * stageFactor * poolMultiplier;
   }
 

@@ -30,7 +30,10 @@ export const CORE_PREFIXES = [
   'spine/effect/v2_a47_014', 'spine/effect/hu_085',
   // 契约之选候选 6 名 R(docs/58 §9:新号不再送 4 名 SR,觉醒后 3 选 1 R;6 名都要在开局包,候选按账号随机):
   // 战斗骨骼 + 名册立绘(契约卡)+ 野外弹道 / 命中 / 战技 / 大招特效(LobbyTownRenderer.partyPackPrefixesOf 实测)
-  'spine/hero/act_1001', 'spine/hero/act_1012', 'spine/hero/act_1004', 'spine/hero/act_1008', 'spine/hero/act_1016', 'spine/hero/act_1003',
+  // 2026-11-07 候选换成异界神州 R(sql/156):华雄 / 大乔 / 甘宁 / 荀攸 / 太史慈 / 典韦;特效按职业兜底仍借原 6 名 R 的
+  'spine/hero/sz_huaxiong', 'spine/hero/sz_daqiao', 'spine/hero/sz_ganning', 'spine/hero/sz_xunyou', 'spine/hero/sz_taishici', 'spine/hero/sz_dianwei',
+  'ui/hero-roster/card_background/sz_huaxiong', 'ui/hero-roster/card_background/sz_daqiao', 'ui/hero-roster/card_background/sz_ganning',
+  'ui/hero-roster/card_background/sz_xunyou', 'ui/hero-roster/card_background/sz_taishici', 'ui/hero-roster/card_background/sz_dianwei',
   'ui/hero/roster/R_',
   'spine/effect/fx_240019_haerbie_fly', 'spine/effect/fx_240019_haerbie_hit', 'spine/effect/v2_a47_004', 'spine/effect/hu_014',
   'spine/effect/fx_45013_yingshu_fly', 'spine/effect/fx_45013_yingshu_hit', 'spine/effect/v2_a47_391', 'spine/effect/hu_050',

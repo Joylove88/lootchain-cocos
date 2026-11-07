@@ -1,0 +1,90 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>portrait</title>
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<script src="spine-webgl.js"></script></head>
+<body><canvas id="c" width="1400" height="1600"></canvas>
+<script>
+// 英雄透明底立绘(2026-11-07 D26 异界神州):待机动作某一帧,按像素亮区取景,透明底 PNG。
+// renderPortrait(dir, base, {anim, t, binary}) → dataURL
+const canvas = document.getElementById('c');
+const W = canvas.width, H = canvas.height;
+const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: true });
+const ctx = new spine.ManagedWebGLRenderingContext(gl);
+const renderer = new spine.SceneRenderer(canvas, ctx);
+
+function load(dir, base, binary) {
+  return new Promise((resolve, reject) => {
+    const am = new spine.AssetManager(ctx, '/fx42/' + dir + '/');
+    if (binary) am.loadBinary(base + '.skel'); else am.loadText(base + '.json');
+    am.loadTextureAtlas(base + '.atlas');
+    const t0 = performance.now();
+    const tick = () => {
+      if (am.isLoadingComplete()) {
+        if (am.hasErrors()) { reject(new Error(JSON.stringify(am.getErrors()))); return; }
+        try {
+          const loader = new spine.AtlasAttachmentLoader(am.require(base + '.atlas'));
+          resolve(binary ? new spine.SkeletonBinary(loader).readSkeletonData(am.require(base + '.skel'))
+            : new spine.SkeletonJson(loader).readSkeletonData(am.require(base + '.json')));
+        } catch (e) { reject(e); }
+      } else if (performance.now() - t0 > 60000) reject(new Error('load timeout'));
+      else setTimeout(tick, 20);
+    };
+    tick();
+  });
+}
+
+window.renderPortrait = async function (dir, base, opts) {
+  opts = opts || {};
+  const data = await load(dir, base, !!opts.binary);
+  const skeleton = new spine.Skeleton(data);
+  skeleton.setToSetupPose();
+  const state = new spine.AnimationState(new spine.AnimationStateData(data));
+  const anim = opts.anim || 'idle';
+  state.setAnimation(0, anim, false);
+  const d = state.getCurrent(0).animation.duration || 0.001;
+  state.getCurrent(0).trackTime = d * (opts.t || 0);
+  state.apply(skeleton);
+  skeleton.update(0);
+  skeleton.updateWorldTransform(spine.Physics.update);
+  const off = new spine.Vector2(), size = new spine.Vector2();
+  skeleton.getBounds(off, size);
+  let cx = off.x + size.x / 2, cy = off.y + size.y / 2;
+  let zoom = Math.max(size.x / W, size.y / H) * 1.05;
+  const draw = () => {
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    renderer.camera.position.set(cx, cy, 0);
+    renderer.camera.zoom = zoom;
+    renderer.camera.setViewport(W, H);
+    renderer.begin();
+    renderer.drawSkeleton(skeleton, false);
+    renderer.end();
+  };
+  // 两遍:先按顶点包围盒画一遍,读回 alpha 亮区再收紧取景(隐藏插槽 / 特效会把包围盒撑大)
+  draw();
+  const buf = new Uint8Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  let px0 = W, py0 = H, px1 = -1, py1 = -1;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (buf[(y * W + x) * 4 + 3] > 24) { if (x < px0) px0 = x; if (x > px1) px1 = x; if (y < py0) py0 = y; if (y > py1) py1 = y; }
+  }
+  if (px1 > 0) {
+    const wx0 = cx + (px0 - W / 2) * zoom, wx1 = cx + (px1 - W / 2) * zoom;
+    const wy0 = cy + (py0 - H / 2) * zoom, wy1 = cy + (py1 - H / 2) * zoom;
+    cx = (wx0 + wx1) / 2; cy = (wy0 + wy1) / 2;
+    zoom = Math.max((wx1 - wx0) / W, (wy1 - wy0) / H) * 1.04;
+  }
+  draw();
+  if (opts.measure) {
+    // 体型校准用:骨骼头部记录的高度(游戏按它缩放)vs 待机首帧实际可见高度(世界单位)
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let qy0 = H, qy1 = -1, qx0 = W, qx1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (buf[(y * W + x) * 4 + 3] > 24) { if (y < qy0) qy0 = y; if (y > qy1) qy1 = y; if (x < qx0) qx0 = x; if (x > qx1) qx1 = x; }
+    }
+    return JSON.stringify({ dataWidth: data.width, dataHeight: data.height, bodyW: (qx1 - qx0) * zoom, bodyH: (qy1 - qy0) * zoom });
+  }
+  return canvas.toDataURL('image/png');
+};
+window.__ready = true;
+</script></body></html>

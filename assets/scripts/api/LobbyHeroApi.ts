@@ -1,6 +1,7 @@
 import { equippedHeroSkin } from '../scenes/lobby/HeroSkins';
 import { HttpClient } from '../net/HttpClient';
 import { parseBattleSkillConfig } from './BattleApi';
+import { YIJIE_CARD_ART_DIR, YIJIE_HEROES } from './YijieShenzhouHeroes';
 import type { LobbyHeroAffixVO, LobbyHeroFilterOptionsVO, LobbyHeroItemVO } from '../types/LobbyHeroTypes';
 import { isRecord, readInteger, readOptionalStat, readOptionalText, readText, type UnknownRecord } from './ApiValueGuards';
 interface HeroAssetFallback {
@@ -71,6 +72,11 @@ const HERO_CLASS_FALLBACKS: Record<string, string> = {
   UR_AURELIA: '射手',
   UR_ATLAS: '坦克',
 };
+// 异界神州(sql/156):骨骼 / 立绘同名 sz_*
+for (const hero of YIJIE_HEROES) {
+  HERO_ASSET_FALLBACKS[hero.code] = { portraitAsset: hero.asset, spineAsset: hero.asset, cardBackgroundAsset: `${YIJIE_CARD_ART_DIR}/${hero.asset}` };
+  HERO_CLASS_FALLBACKS[hero.code] = hero.heroClass;
+}
 
 /** 大厅英雄只读 API；只读取大厅门面，不调用带养成写入口的英雄 Controller。 */
 export class LobbyHeroApi {

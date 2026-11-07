@@ -1,5 +1,6 @@
 import { Graphics, Mask, Node, Rect, resources, Size, Sprite, SpriteFrame, UITransform, Vec2 } from 'cc';
 import { resolveHeroCardArtPath } from '../../api/LobbyHeroApi';
+import { YIJIE_HEROES } from '../../api/YijieShenzhouHeroes';
 
 /**
  * 英雄静态头像。
@@ -16,6 +17,8 @@ export const HERO_AVATAR_CODES: ReadonlySet<string> = new Set([
   'SR_PRIEST_01', 'SR_PALADIN_02', 'SR_WITCH_03', 'SR_BLADE_04', 'SR_SNIPER_05', 'SR_ABYSS_06',
   'SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON',
   'UR_ARTHAS', 'UR_ATLAS', 'UR_AURELIA', 'UR_NYX', 'UR_SERAPHINA', 'UR_EVELYN',
+  // 异界神州(2026-11-07,tools/qa/d26_art_gen.py 以骨骼待机立绘为参考生成)
+  ...YIJIE_HEROES.map((hero) => hero.code),
 ]);
 
 export function resolveHeroAvatarPath(heroCode: string | null | undefined): string | null {
@@ -33,6 +36,8 @@ export const HERO_ROSTER_ART_CODES: ReadonlySet<string> = new Set([
   'SR_PRIEST_01', 'SR_PALADIN_02', 'SR_WITCH_03', 'SR_BLADE_04', 'SR_SNIPER_05', 'SR_ABYSS_06',
   'SSR_KANE', 'SSR_LIVIA', 'SSR_MICHAEL', 'SSR_RON',
   'UR_ARTHAS', 'UR_ATLAS', 'UR_AURELIA', 'UR_NYX', 'UR_SERAPHINA', 'UR_EVELYN',
+  // 异界神州(2026-11-07,tools/qa/d26_art_gen.py 以骨骼待机立绘为参考生成)
+  ...YIJIE_HEROES.map((hero) => hero.code),
 ]);
 
 /** 横版卡面路径(带 /spriteFrame);没有生成的英雄返回 null。 */

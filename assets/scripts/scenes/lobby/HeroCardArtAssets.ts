@@ -3,6 +3,8 @@
 // aspect = 素材实测宽高比;tight = npc 系紧裁人物图(等比 contain,不需要可见高补偿);
 // visibleRatio/focusXRatio 与花名册卡背景显示参数同源(Illust 方图带大留白,按可见高放大+水平焦点偏移)。
 
+import { YIJIE_HEROES } from '../../api/YijieShenzhouHeroes';
+
 export interface HeroCardArtProfile {
   asset: string;
   aspect: number;
@@ -46,6 +48,10 @@ const HERO_CARD_ART_PROFILES: Record<string, HeroCardArtProfile> = {
   UR_NYX: illustArt('Sphinx_Illust', 1, 0.729, 0.102),
   UR_SERAPHINA: illustArt('LucienA_Illust', 1, 0.768, -0.011),
 };
+// 异界神州(sql/156):骨骼待机透明立绘,紧裁人物图
+for (const hero of YIJIE_HEROES) {
+  HERO_CARD_ART_PROFILES[hero.code] = npcArt(hero.asset, hero.artAspect);
+}
 
 /** heroCode → 立绘显示档案;未配立绘(hero_template 为 NULL)返回 null,调用方回退剪影。 */
 export function heroCardArtProfileByCode(heroCode: string | null | undefined): HeroCardArtProfile | null {

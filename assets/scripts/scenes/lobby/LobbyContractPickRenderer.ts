@@ -2,6 +2,7 @@ import { BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Lab
 import type { StarterContractCandidate } from '../../api/StarterContractApi';
 import type { UiLayout } from './LobbyHudTypes';
 import { mountCoverArt, resolveHeroRosterArtPath } from './HeroHeadCrop';
+import { YIJIE_HEROES } from '../../api/YijieShenzhouHeroes';
 import { glassLabel, glassProtoMap, glassTagPillWidthOf, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassSlice, mountGlassTagPill } from '../UiGlassKit';
 
 export interface ContractPickHost {
@@ -38,6 +39,10 @@ const HERO_BLURB: Record<string, { role: string; tags: [string, string] }> = {
   SR_BLADE_04: { role: '战士 · 重斩', tags: ['高单段', '破防'] },
   SR_SNIPER_05: { role: '射手 · 远程狙击', tags: ['超远程', '必中'] },
 };
+// 2026-11-07 起契约候选换成异界神州 R / SR(StarterContractService.POOL / LevelContractService.POOL_SR)
+for (const hero of YIJIE_HEROES) {
+  HERO_BLURB[hero.code] = { role: hero.role, tags: hero.tags };
+}
 const ZERO_PORTRAIT = 'ui/protagonist/b/zero_m_round/spriteFrame';
 /** 右上职业标识:亮金线条职业图标(原型右上角样式,tools/qa/class_gold_icons.py 入库)。 */
 const CLASS_ICONS: Record<string, string> = {

@@ -1,0 +1,138 @@
+{
+  "ver": "1.0.27",
+  "importer": "image",
+  "imported": true,
+  "uuid": "be43c872-4f53-4f60-9455-b7b1a925652d",
+  "files": [
+    ".json",
+    ".png"
+  ],
+  "subMetas": {
+    "6c48a": {
+      "importer": "texture",
+      "uuid": "be43c872-4f53-4f60-9455-b7b1a925652d@6c48a",
+      "displayName": "sz_xunyou",
+      "id": "6c48a",
+      "name": "texture",
+      "userData": {
+        "wrapModeS": "repeat",
+        "wrapModeT": "repeat",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "none",
+        "anisotropy": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "be43c872-4f53-4f60-9455-b7b1a925652d",
+        "visible": false
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "f9941": {
+      "importer": "sprite-frame",
+      "uuid": "be43c872-4f53-4f60-9455-b7b1a925652d@f9941",
+      "displayName": "sz_xunyou",
+      "id": "f9941",
+      "name": "spriteFrame",
+      "userData": {
+        "trimThreshold": 1,
+        "rotated": false,
+        "offsetX": 0,
+        "offsetY": 0,
+        "trimX": 0,
+        "trimY": 0,
+        "width": 839,
+        "height": 900,
+        "rawWidth": 839,
+        "rawHeight": 900,
+        "borderTop": 0,
+        "borderBottom": 0,
+        "borderLeft": 0,
+        "borderRight": 0,
+        "packable": false,
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0,
+        "isUuid": true,
+        "imageUuidOrDatabaseUri": "be43c872-4f53-4f60-9455-b7b1a925652d@6c48a",
+        "atlasUuid": "",
+        "trimType": "none",
+        "vertices": {
+          "rawPosition": [
+            -419.5,
+            -450,
+            0,
+            419.5,
+            -450,
+            0,
+            -419.5,
+            450,
+            0,
+            419.5,
+            450,
+            0
+          ],
+          "indexes": [
+            0,
+            1,
+            2,
+            2,
+            1,
+            3
+          ],
+          "uv": [
+            0,
+            900,
+            839,
+            900,
+            0,
+            0,
+            839,
+            0
+          ],
+          "nuv": [
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          "minPos": [
+            -419.5,
+            -450,
+            0
+          ],
+          "maxPos": [
+            419.5,
+            450,
+            0
+          ]
+        }
+      },
+      "ver": "1.0.12",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "type": "sprite-frame",
+    "fixAlphaTransparencyArtifacts": false,
+    "hasAlpha": true,
+    "redirect": "be43c872-4f53-4f60-9455-b7b1a925652d@6c48a",
+    "compressSettings": {
+      "useCompressTexture": true,
+      "presetId": "lc-android-astc4"
+    }
+  }
+}

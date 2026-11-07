@@ -23,7 +23,9 @@ param(
     [string]$SpineVersion = '4.2.43',
     [string[]]$Only = @(),
     [switch]$Recurse,
-    [switch]$SkipDone
+    [switch]$SkipDone,
+    # 重打包图集页最大边长;单张部件超过 2048 宽(D26 包的 tiao / st / long)时用 4096
+    [int]$PackMax = 2048
 )
 $ErrorActionPreference = 'Continue'
 if (-not (Test-Path $Spine)) {
@@ -36,6 +38,12 @@ $toolDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $expPack  = Join-Path $toolDir 'fx42_binary_pack.export.json'
 $expJson  = Join-Path $toolDir 'fx42_json_data.export.json'
 $expReuse = Join-Path $toolDir 'fx42_reuse_atlas.export.json'
+if ($PackMax -ne 2048) {
+    New-Item -ItemType Directory -Force $OutRoot | Out-Null
+    $tmpPack = Join-Path $OutRoot "pack_$PackMax.export.json"
+    ((Get-Content -Raw $expPack) -replace '"maxWidth": 2048', "`"maxWidth`": $PackMax" -replace '"maxHeight": 2048', "`"maxHeight`": $PackMax") | Set-Content -Encoding ASCII $tmpPack
+    $expPack = $tmpPack
+}
 $outBin  = Join-Path $OutRoot 'fx42'
 $outJson = Join-Path $OutRoot 'fx42json'
 $logDir  = Join-Path $OutRoot 'logs'
@@ -96,9 +104,10 @@ function Is-SetDir([System.IO.DirectoryInfo]$dir) {
 
 # 产物文件名统一成套名:<name>.skel / <name>.atlas;png 名字在 atlas 里引用,不改
 function Normalize-Output([string]$dir, [string]$name) {
-    $skel = Get-ChildItem $dir -Filter *.skel -File | Select-Object -First 1
+    # 取最新导出的那个(重跑时目录里可能留着上次失败的 <name>.skel)
+    $skel = Get-ChildItem $dir -Filter *.skel -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($skel -and $skel.BaseName -ne $name) { Move-Item -Force $skel.FullName (Join-Path $dir "$name.skel") }
-    $atlas = Get-ChildItem $dir -Filter *.atlas -File | Select-Object -First 1
+    $atlas = Get-ChildItem $dir -Filter *.atlas -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($atlas -and $atlas.BaseName -ne $name) { Move-Item -Force $atlas.FullName (Join-Path $dir "$name.atlas") }
 }
 
@@ -132,7 +141,8 @@ foreach ($d in $dirs) {
     $oB = Join-Path $outBin $name
     $oJ = Join-Path $outJson $name
     $skelOut = Join-Path $oB "$name.skel"
-    if ($SkipDone -and (Test-Path $skelOut) -and ((Skel-Version $skelOut) -like '4.2*')) {
+    # 只有 skel 没有图集 = 上次打包失败,不算转好
+    if ($SkipDone -and (Test-Path $skelOut) -and ((Skel-Version $skelOut) -like '4.2*') -and (@(Get-ChildItem $oB -Filter *.atlas -ErrorAction SilentlyContinue).Count -gt 0)) {
         Write-Output "[$tag/$($dirs.Count)] skip(done)  $name"
         continue
     }

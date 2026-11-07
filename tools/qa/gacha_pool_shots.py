@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """召唤页逐个卡池截图(2026-10-30 用户反馈线上召唤页中央骨骼花屏):无头 Edge 打开网页包 → 登录 QA 号 → 召唤 → 逐个卡池选中截图,
 并打印每个卡池中央骨骼的资源路径 / 贴图尺寸 / 预乘设置。
-用法:PREVIEW_PORT=7460 python tools/qa/gacha_pool_shots.py <输出目录> [--gpu](--gpu 用真显卡,默认 SwiftShader)
+用法:PREVIEW_PORT=7460 python tools/qa/gacha_pool_shots.py <输出目录> [--gpu] [--canvas](--gpu 用真显卡,默认 SwiftShader;--canvas 走画布导出,Creator 预览 7456 用)
 """
 import asyncio, base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
@@ -9,6 +9,8 @@ import boss_bar_cdp as base
 
 OUT = next((a for a in sys.argv[1:] if not a.startswith('--')), os.path.join(base.SCRATCH, 'gacha_pool_shots'))
 GPU = '--gpu' in sys.argv
+# --canvas:从游戏画布导出截图(Creator 预览 7456 用;页面截图在无头预览下会卡死)
+CANVAS = '--canvas' in sys.argv
 os.makedirs(OUT, exist_ok=True)
 ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.getComponent('LootChainGameRoot'); if(c) root=c; } });"
 JS_CC = r"""(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms)); let cc = null; for (let i = 0; i < 60 && !cc; i++) { try { cc = await System.import('cc'); } catch (e) { await sleep(1500); } } if (!cc) return 'cc import failed'; window.__cc = cc; return 'ok'; })()"""
@@ -51,6 +53,12 @@ async def main():
                 return res.get('value') if 'value' in res else json.dumps(res)[:300]
 
             async def shot(name):
+                if CANVAS:
+                    # Creator 预览(7456)无头时页面截图会卡死:手动推一帧后直接导出游戏画布
+                    url = await ev("cc.game.step(); const c = document.getElementById('GameCanvas') || document.querySelector('canvas'); return c.toDataURL('image/jpeg', 0.85);")
+                    if isinstance(url, str) and url.startswith('data:'):
+                        open(os.path.join(OUT, f'{name}.jpg'), 'wb').write(base64.b64decode(url.split(',', 1)[1]))
+                    return
                 m = await call('Page.captureScreenshot', {'format': 'jpeg', 'quality': 80}, 120)
                 if 'result' in m:
                     open(os.path.join(OUT, f'{name}.jpg'), 'wb').write(base64.b64decode(m['result']['data']))

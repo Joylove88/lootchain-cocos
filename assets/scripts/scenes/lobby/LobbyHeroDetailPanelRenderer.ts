@@ -55,6 +55,7 @@ import { mountCoverArt, mountHeroAvatar, resolveHeroRosterArtPath } from './Hero
 import { HERO_BASE_CRIT_DAMAGE_PCT, heroAffixPct, heroAffixSumPct, heroCombatTotal, resolveHeroCombatSources, type HeroCombatStatKey, type HeroCombatStatSource } from './HeroCombatStats';
 import { fitButtonLabel } from '../UiPrimitiveFactory';
 import { glassLabel, glassStyleEnabled, GLASS_ASSET_PATHS, GLASS_COLOR, GLASS_ICON, GLASS_PART_ICON, GLASS_STAT_ICON, GLASS_SLICES, glassTagPillWidthOf, mountGlassClippedIcon, mountGlassFrame, mountGlassTagPill, mountGlassButton, mountGlassChip, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { yijieHeroByCode } from '../../api/YijieShenzhouHeroes';
 
 export const LOBBY_HERO_DETAIL_BACKDROP_ASSET = 'ui/hero/ai/hero_detail_bg/spriteFrame';
 export const LOBBY_HERO_DETAIL_PROTAGONIST_ASSET = 'ui/hero-detail/hero_detail_protagonist/spriteFrame';
@@ -8430,7 +8431,7 @@ const HERO_ULTIMATE_SKILL_NAMES: Record<string, string> = {
 // 导出:战斗大招施放的全屏名字横幅也用同一命名(单一数据源)。
 export function resolveUltimateSkillName(heroCode: string | null | undefined): string {
   const code = (heroCode || '').trim().toUpperCase();
-  return HERO_ULTIMATE_SKILL_NAMES[code] ?? '终极技能';
+  return HERO_ULTIMATE_SKILL_NAMES[code] ?? yijieHeroByCode(code)?.ultName ?? '终极技能';
 }
 
 // 大招徽章(2026-10-19 用户「根据不同大招生成不同的技能图标」):外圈金环统一(取自 ult_emblem_full),内芯按技能名 + 特效画面逐个出图,

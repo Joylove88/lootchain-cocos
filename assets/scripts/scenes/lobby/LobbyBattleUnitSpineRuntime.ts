@@ -1,4 +1,5 @@
 import type { sp } from 'cc';
+import { YIJIE_HEROES, yijieCanvasCompensation, yijieRarity } from '../../api/YijieShenzhouHeroes';
 import type { BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 import { equippedHeroSkin } from './HeroSkins';
 
@@ -170,6 +171,10 @@ const BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET: Record<string, number> = {
   protag_m_lh: 1.3,
   protag_f_lh: 1.3,
 };
+// 异界神州 D26 骨骼(sz_*):头部宽高为 0 → 按该稀有度兜底高度 / 实际可见高度补偿(YijieShenzhouHeroes.yijieCanvasCompensation)
+for (const hero of YIJIE_HEROES) {
+  BATTLE_ACT_CANVAS_COMPENSATION_BY_ASSET[hero.asset] = yijieCanvasCompensation(hero, BATTLE_STAGE12_SPINE_PROFILE_BY_RARITY[yijieRarity(hero)].fallbackRawHeight);
+}
 
 // 战斗 + 大厅挂机逐英雄体型调优(与布阵表独立:两处基础公式不同,倍率需分开调)。
 // 规则同上:act_ 系表值再乘族系基准 1.75,named 骨骼表值直接生效。

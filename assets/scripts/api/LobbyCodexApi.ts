@@ -1,4 +1,5 @@
 import { HttpClient } from '../net/HttpClient';
+import { YIJIE_CARD_ART_DIR, YIJIE_HEROES } from './YijieShenzhouHeroes';
 import type {
   LobbyCodexClaimPayload,
   LobbyCodexClaimResultVO,
@@ -30,6 +31,9 @@ const HERO_ASSET_FALLBACKS: Record<string, { portraitAsset: string; spineAsset: 
   SR_ABYSS_06: { portraitAsset: 'act_1036', spineAsset: 'npc_1036', cardBackgroundAsset: 'ui/hero-roster/card_background/npc_1036' },
   UR_EVELYN: { portraitAsset: 'Nuu', spineAsset: 'Nuu', cardBackgroundAsset: 'ui/hero-roster/card_background/Nuu_Illust' },
 };
+for (const hero of YIJIE_HEROES) {
+  HERO_ASSET_FALLBACKS[hero.code] = { portraitAsset: hero.asset, spineAsset: hero.asset, cardBackgroundAsset: `${YIJIE_CARD_ART_DIR}/${hero.asset}` };
+}
 
 /** 大厅图鉴 API(2026-09-15 图鉴系统一期):汇总 + 激活奖励/里程碑领取;不调用英雄养成 Controller。 */
 export class LobbyCodexApi {
