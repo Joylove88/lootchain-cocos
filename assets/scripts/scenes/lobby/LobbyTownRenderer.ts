@@ -538,6 +538,8 @@ export class LobbyTownRenderer {
   private mapCode: WorldMapCode = 'CITY';
   private pendingSpawn: { x: number; y: number } | null = null;
   private npcNodes: Array<{ code: WorldNpcCode; node: Node; y: number }> = [];
+  /** NPC 贴图没在缓存里时 ensureNpcs 会整只跳过(addSprite 只发加载返回 null),跑图很少整页重绘:每帧节流补建(11-07 训练场教官看不到)。 */
+  private npcRetryAt = 0;
   private waypointNode: Node | null = null;
   private waypointGlow: Graphics | null = null;
   private waypointFx: TownWaypointFx | null = null;
@@ -1824,6 +1826,7 @@ export class LobbyTownRenderer {
     this.stepMonsters(clamped);
     this.stepRealmTrial();
     this.updateMonsterNames();
+    this.retryMissingNpcs();
     if (!this.trial) {
       // 试炼石台是就地铺的:探索 / 隐藏点 / 坐标上报都停掉(站位可能在建筑 / 水面范围里,服务端坐标校验会拦)
       this.updateExplore();
@@ -3272,6 +3275,28 @@ export class LobbyTownRenderer {
       marker.outlineWidth = 3;
       tween(marker.node).repeatForever(tween<Node>().by(0.6, { position: new Vec3(0, 8, 0) }).by(0.6, { position: new Vec3(0, -8, 0) })).start();
       this.npcNodes.push({ code: npc.code, node, y: npc.y });
+    }
+  }
+
+  /** 有 NPC 因贴图晚到没建出来:每 0.5 秒补建一次,建出来后补刷头顶标记。 */
+  private retryMissingNpcs(): void {
+    const now = Date.now();
+    if (now < this.npcRetryAt) {
+      return;
+    }
+    this.npcRetryAt = now + 500;
+    const root = this.entityRoot;
+    if (!root || !root.isValid) {
+      return;
+    }
+    const missing = this.def.npcs.some((npc) => !!npc.asset && !root.getChildByName(`TownNpc_${npc.code}`));
+    if (!missing) {
+      return;
+    }
+    const before = this.npcNodes.length;
+    this.ensureNpcs();
+    if (this.npcNodes.length !== before) {
+      this.refreshNpcMarkers(this.host.currentWorldState?.() ?? null);
     }
   }
 

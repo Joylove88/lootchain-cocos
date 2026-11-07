@@ -100,7 +100,8 @@ export function resolveHeroAttackSfxKey(heroCode: string | null | undefined, her
 
 /** 按 heroCode → 职业 → 角色(近战 strike / 其余 bolt)三级兜底解析普攻表现。 */
 export function resolveHeroAttackFx(heroCode: string | null | undefined, heroClass: string | null | undefined, meleeRole: boolean): BattleAttackFxSpec {
-  const code = (heroCode || '').trim().toUpperCase();
+  // 主角借永夜龙骑:守卫战 / 掠夺直接传 PROTAGONIST_*,原来查不到会退回静态贴图(11-07 用户实机反馈)
+  const code = fxHeroCodeOf(heroCode);
   const byCode = HERO_ATTACK_FX[code] ?? HERO_ATTACK_FX[YIJIE_ATTACK_SPINE_FX_ALIAS[code] ?? ''];
   if (byCode) {
     return byCode;
@@ -182,7 +183,7 @@ const YIJIE_ATTACK_SPINE_FX_ALIAS: Record<string, string> = {
 };
 
 export function resolveHeroAttackSpineFx(heroCode: string | null | undefined): BattleAttackSpineFxSpec | null {
-  const code = (heroCode ?? '').trim().toUpperCase();
+  const code = fxHeroCodeOf(heroCode);
   return HERO_ATTACK_SPINE_FX[code] ?? HERO_ATTACK_SPINE_FX[YIJIE_ATTACK_SPINE_FX_ALIAS[code] ?? ''] ?? null;
 }
 

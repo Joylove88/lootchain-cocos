@@ -87,6 +87,8 @@ SCREENS = [
     ('crystal_spells', "root.openGuardCrystalDialog(); setTimeout(() => { const d = root.lobbyGuardCrystalDialog; if (d) { d.tab = 'spells'; root.refreshGuardCrystalDialog(); } }, 2500);", 5.0),
     ('token_furnace', "root.openLobbyTokenFurnace();", 3.5),
     ('gacha', "root.openLobbyGachaScene();", 5.0),
+    # 限时召唤·异界神州(sql/156):中央吕布骨骼 + 新英雄立绘
+    ('gacha_yijie', "root.openLobbyGachaScene(); let n = 0; const t = setInterval(() => { n++; const g = root.gachaSceneState; if (n > 40) { clearInterval(t); return; } if (n > 8 && g.pools.some(p => p.poolCode === 'LIMITED_YIJIE_SHENZHOU') && g.selectedPoolCode !== 'LIMITED_YIJIE_SHENZHOU') root.selectGachaPool('LIMITED_YIJIE_SHENZHOU'); }, 500);", 10.0),
     ('settings', "root.openLobbySettingsPanel();", 2.5),
     ('more', "root.openLobbyMorePanel();", 2.5),
     ('notice', "root.openLobbyNoticePanel();", 3.0),

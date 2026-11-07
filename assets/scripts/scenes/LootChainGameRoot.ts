@@ -6664,6 +6664,9 @@ export class LootChainGameRoot extends Component {
     this.gachaResultMode = null;
     this.currentView = 'lobby';
     this.renderCurrentView();
+    // 11-07 用户「点击免费召唤之后该任务也没有完成」:服务端读世界状态时才结算养成类剧情进度(GACHA_DRAW),回大厅要重读,
+    // 否则任务追踪 / NPC 头顶标记一直停在 0/1
+    void this.loadWorldState();
   }
 
   private closeLobbyNoticePanel(): void {
@@ -7783,6 +7786,9 @@ export class LootChainGameRoot extends Component {
     if (dialog.mode === 'grow') {
       this.closeWorldDialog();
       if (quest.objectiveTarget === 'GACHA_DRAW') {
+        // 11-07 用户「点前往召唤没有默认选中可免费召唤的页签」:预选免费单抽池(普通召唤),卡池加载完保留当前选中
+        const freePool = this.gachaSceneState.freeSingle?.poolCode ?? 'BASIC_CONTRACT_PREVIEW';
+        this.gachaSceneState = { ...this.gachaSceneState, selectedPoolCode: freePool };
         this.openLobbyGachaScene();
       } else if (quest.objectiveTarget === 'HERO_LEVEL_UP') {
         this.openLobbyHeroRosterPanel();
@@ -9816,8 +9822,9 @@ export class LootChainGameRoot extends Component {
     }
     this.awakenCheckAt = now + 500;
     const userId = this.api.tokenStore.userId();
+    // 11-07 用户:剧情对话框和进化抉择同时出现 → 剧情框(worldDialog)开着时契约 / 进化 / 里程碑都等它关了再弹
     if (!userId || this.bootPreloadActive || this.contractPick || this.evolutionPick || this.realmBreak || this.realmTrial || this.realmDone
-      || this.lobbyHasOpenLayer() || prologuePlaying()) {
+      || this.worldDialog || this.lobbyHasOpenLayer() || prologuePlaying()) {
       return;
     }
     if (!isAwakenPending(userId)) {
@@ -9878,8 +9885,13 @@ export class LootChainGameRoot extends Component {
         this.evolutionPickRenderer.showQualityBanner(this.resolveLayout(), unlocked);
       }
       if (state.choice && this.currentView === 'lobby' && !this.contractPick) {
-        this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
-        this.renderEvolutionPick();
+        if (this.worldDialog) {
+          // 请求途中剧情框弹出来了(交任务升级 → 教官接着派下一个任务):等剧情框关掉再弹
+          this.evolutionCheckDue = true;
+        } else {
+          this.evolutionPick = { state, selected: this.defaultEvolutionKey(state), busy: false, error: '' };
+          this.renderEvolutionPick();
+        }
       }
     } catch (error) {
       console.warn('[Evolution] state failed', error);
@@ -10276,6 +10288,11 @@ export class LootChainGameRoot extends Component {
   private async checkLevelContract(): Promise<void> {
     try {
       const state = await this.api.starterContract.levelState();
+      if (state.milestone && state.candidates.length >= 3 && this.worldDialog) {
+        // 剧情 V04 / V09 领奖后剧情框还开着:等它关了再弹,不叠在一起
+        this.levelContractCheckDue = true;
+        return;
+      }
       if (!state.milestone || state.candidates.length < 3 || this.currentView !== 'lobby' || this.contractPick || this.evolutionPick) {
         return;
       }

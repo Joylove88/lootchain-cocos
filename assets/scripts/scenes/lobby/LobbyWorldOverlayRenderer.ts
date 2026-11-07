@@ -1,12 +1,12 @@
 import { BlockInputEvents, Button, Color, Graphics, HorizontalTextAlignment, Label, Mask, Node, Size, Sprite, UIOpacity, UITransform, Vec3 } from 'cc';
-import type { WorldBountyVO, WorldMapCode, WorldQuestVO, WorldRewardItemVO, WorldStateVO } from '../../types/WorldTypes';
+import type { WorldBountyVO, WorldMapCode, WorldQuestVO, WorldStateVO } from '../../types/WorldTypes';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { WORLD_MAPS, worldAsset, type WorldNpcCode } from './LobbyWorldMaps';
 import { WORLD_NPC_IDLE, WORLD_QUEST_TEXT } from './WorldStoryText';
 import type { UiKitHost } from '../UiKit';
-import { GLASS_COLOR, glassLabel, glassProtoMap, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassTopBar } from '../UiGlassKit';
+import { GLASS_COLOR, GLASS_ICON, glassLabel, glassProtoMap, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassTopBar } from '../UiGlassKit';
 
 /** 佣兵公会背景(11-06 原型 world_bounty_b 去界面扩图)。 */
 const GUILD_BG_ASSET = worldAsset('guild_bg_b');
@@ -180,6 +180,130 @@ export class LobbyWorldOverlayRenderer {
     g.stroke();
   }
 
+  // ── NPC 对话(11-07 B 风格,原型 周报截图/2026-11-07_剧情对话B/proto/story_dialog_b2.png,1870×841 坐标) ──
+
+  renderDialog(layout: UiLayout): void {
+    const state = this.host.currentWorldDialog();
+    if (!state) {
+      return;
+    }
+    const world = this.host.currentWorldState();
+    const quest = world?.quests.find((item) => item.code === state.questCode) ?? null;
+    const W = layout.stageWidth;
+    const H = layout.stageHeight;
+    const { k, LX, RX, FY, S } = glassProtoMap(W, H);
+    const kit = this.host as unknown as UiKitHost;
+    const overlay = this.overlayRoot(LobbyWorldOverlayRenderer.DIALOG, layout, 90, null);
+    // 立绘:左侧站立,下半身压在台词条下(原型头顶 y≈140、中心 x≈300)
+    const portrait = NPC_PORTRAITS[state.npc];
+    const ph = S(720);
+    if (portrait) {
+      const sprite = this.host.addSprite('Portrait', portrait, LX(300), -H / 2 + ph / 2 + S(10), ph * 0.62, ph, overlay);
+      if (sprite) {
+        const frame = sprite.spriteFrame;
+        const ow = frame?.originalSize.width ?? 1;
+        const oh = frame?.originalSize.height ?? 1;
+        sprite.node.getComponent(UITransform)?.setContentSize(ph * (ow / Math.max(1, oh)), ph);
+      }
+    }
+    // 底部台词条:整宽冷炭灰玻璃(原型 y 660~841),上沿渐隐 + 淡白细线;向下多铺一截盖住挖孔 / 安全区
+    const stripH = S(181);
+    const fullW = layout.width;
+    const stripY = -H / 2 + stripH / 2;
+    const strip = this.host.addChildPlainNode(overlay, 'DialogBox', 0, stripY, fullW, stripH);
+    strip.addComponent(BlockInputEvents);
+    const sg = strip.addComponent(Graphics);
+    sg.fillColor = new Color(22, 26, 33, 236);
+    sg.rect(-fullW / 2, -stripH / 2 - S(80), fullW, stripH + S(80));
+    sg.fill();
+    for (let i = 0; i < 6; i += 1) {
+      sg.fillColor = new Color(22, 26, 33, Math.round(200 - i * 32));
+      sg.rect(-fullW / 2, stripH / 2 + S(3) * i, fullW, S(3));
+      sg.fill();
+    }
+    mountGlassLine(kit, strip, 'TopLine', 0, stripH / 2, fullW, Math.max(1, S(1.2)), new Color(255, 255, 255, 30));
+    // 名字胶囊(原型 x 75~347、y 630~686):竖条 + 香槟名字,压在台词条上沿
+    const plateW = S(272);
+    const plateH = S(56);
+    const plate = this.host.addChildPlainNode(overlay, 'NamePlate', LX(211), FY(658), plateW, plateH);
+    const pg = plate.addComponent(Graphics);
+    pg.fillColor = new Color(29, 33, 40, 245);
+    pg.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
+    pg.fill();
+    pg.strokeColor = new Color(255, 255, 255, 40);
+    pg.lineWidth = Math.max(1, S(1.4));
+    pg.roundRect(-plateW / 2, -plateH / 2, plateW, plateH, plateH / 2);
+    pg.stroke();
+    this.host.addSprite('Bar', GLASS_ICON.accent, S(112 - 211), 0, S(6), S(30), plate);
+    this.glassText(plate, 'Name', NPC_NAMES[state.npc], S(136 - 211), 0, 30, GLASS_COLOR.champagne, S(200), k, HorizontalTextAlignment.LEFT, true);
+    // 台词(原型 x 323 起,两行 y 722 / 767,字 28)
+    const textW = Math.min(S(1420), W / 2 - LX(323) - S(60));
+    const textLabel = this.host.addChildLabel(strip, 'Text', this.dialogText(state, quest), LX(323), FY(744) - stripY, Math.max(14, Math.round(28 * k)), GLASS_COLOR.text, new Size(textW, S(110)), HorizontalTextAlignment.LEFT);
+    textLabel.overflow = Label.Overflow.SHRINK;
+    textLabel.enableWrapText = true;
+    textLabel.lineHeight = Math.round(45 * k);
+    // 纯对话 / 进行中:点台词条关闭
+    if (state.mode === 'idle' || state.mode === 'progress' || !quest) {
+      strip.addComponent(Button);
+      strip.on(Button.EventType.CLICK, () => this.host.closeWorldDialog(), this);
+      this.glassText(strip, 'Hint', '点击继续 ›', RX(1822), FY(790) - stripY, 20, GLASS_COLOR.dim, S(200), k, HorizontalTextAlignment.RIGHT);
+      return;
+    }
+    // 右侧任务卡(原型 x 1187~1843、y 88~632)
+    const cardW = S(656);
+    const cardH = S(544);
+    const card = mountGlassPanel(kit, overlay, 'QuestCard', RX(1515), FY(360), cardW, cardH, k);
+    card.addComponent(BlockInputEvents);
+    const CX = (px: number): number => (px - 1515) * k;
+    const CY = (py: number): number => (360 - py) * k;
+    const title = state.mode === 'claim' ? `任务完成 · ${quest.name}` : `剧情任务 · ${quest.name}`;
+    this.host.addSprite('TitleBar', GLASS_ICON.accent, CX(1229), CY(128), S(6), S(34), card);
+    this.glassText(card, 'Title', title, CX(1257), CY(128), 34, GLASS_COLOR.text, S(540), k, HorizontalTextAlignment.LEFT, true);
+    const lineColor = new Color(255, 255, 255, 30);
+    mountGlassLine(kit, card, 'Div0', CX(1515), CY(166), S(580), Math.max(1, S(1.2)), lineColor);
+    this.glassText(card, 'GoalTitle', '目标', CX(1226), CY(199), 22, GLASS_COLOR.sub, S(120), k);
+    const done = state.mode === 'claim';
+    const check = this.host.addChildPlainNode(card, 'Check', CX(1241), CY(240), S(32), S(32)).addComponent(Graphics);
+    check.strokeColor = done ? GLASS_COLOR.green : new Color(226, 228, 234, 200);
+    check.lineWidth = Math.max(1.2, S(2));
+    check.roundRect(-S(14), -S(14), S(28), S(28), S(6));
+    check.stroke();
+    if (done) {
+      check.lineWidth = Math.max(2, S(3));
+      check.moveTo(-S(8), 0);
+      check.lineTo(-S(2), -S(7));
+      check.lineTo(S(9), S(8));
+      check.stroke();
+    }
+    const counted = quest.objective === 'KILL' || quest.objective === 'COLLECT' || quest.objective === 'GROW';
+    this.glassText(card, 'Goal', quest.desc, CX(1276), CY(240), 22, GLASS_COLOR.text, S(counted ? 440 : 520), k);
+    if (counted) {
+      const cur = Math.min(quest.progress, quest.target);
+      this.glassText(card, 'GoalProgress', `${cur}/${quest.target}`, CX(1806), CY(240), 24, cur >= quest.target ? GLASS_COLOR.green : GLASS_COLOR.champagne, S(90), k, HorizontalTextAlignment.RIGHT, true);
+    }
+    mountGlassLine(kit, card, 'Div1', CX(1515), CY(276), S(580), Math.max(1, S(1.2)), lineColor);
+    this.glassText(card, 'PlaceTitle', '地点', CX(1226), CY(308), 22, GLASS_COLOR.sub, S(100), k);
+    this.glassText(card, 'Place', WORLD_MAPS[quest.map as WorldMapCode]?.name ?? quest.map, CX(1348), CY(308), 22, GLASS_COLOR.text, S(440), k);
+    mountGlassLine(kit, card, 'Div2', CX(1515), CY(338), S(580), Math.max(1, S(1.2)), lineColor);
+    this.glassText(card, 'RewardTitle', '奖励', CX(1226), CY(368), 22, GLASS_COLOR.sub, S(100), k);
+    // 奖励格(原型 76×76,中心 x 1317 起每格 174,y 429;名字 × 数量 y 485)
+    quest.rewards.slice(0, 3).forEach((reward, index) => {
+      const rx = CX(1317 + index * 174);
+      const cell = mountGlassFrame(kit, card, `Reward_${index}`, rx, CY(429), S(78), S(76), k);
+      const asset = reward.resourceType === 'PLAYER_EXP' ? null : resolveBagStyleItemIconAsset(reward.resourceCode, reward.resourceType);
+      if (!asset || !this.host.addSprite('Icon', asset, 0, 0, S(58), S(58), cell)) {
+        const isExp = reward.resourceType === 'PLAYER_EXP';
+        this.glassText(cell, 'Txt', isExp ? 'EXP' : (reward.resourceName || '?').slice(0, 2), 0, 0, 24, GLASS_COLOR.text, S(70), k, HorizontalTextAlignment.CENTER, isExp);
+      }
+      this.glassText(card, `RewardAmt_${index}`, `${reward.resourceName} ×${reward.amount}`, rx, CY(485), 20, GLASS_COLOR.text, S(168), k, HorizontalTextAlignment.CENTER);
+    });
+    // 按钮(原型 y 562 高 64;主 1226~1503 / 次 1535~1812)
+    const primaryText = state.busy ? '请稍候…' : state.mode === 'claim' ? '领取奖励' : state.mode === 'grow' ? this.growActionText(quest) : state.mode === 'train' ? '开始训练' : '接受';
+    mountGlassButton(kit, card, 'Primary', primaryText, CX(1364.5), CY(562), S(277), S(64), k, state.busy ? 'primaryOff' : 'primary', state.busy ? undefined : () => this.host.worldDialogPrimary(), 26);
+    mountGlassButton(kit, card, 'Later', '稍后', CX(1673.5), CY(562), S(277), S(64), k, 'secondary', () => this.host.closeWorldDialog(), 26);
+  }
+
+  // 世界地图气泡仍用的红金按钮 / 分隔线
   private button(parent: Node, name: string, x: number, y: number, w: number, h: number, text: string, style: 'primary' | 'secondary' | 'disabled', onTap: (() => void) | null): Node {
     const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
     const bg = this.host.addSprite('Bg', BTN[style], 0, 0, w, h, node);
@@ -205,119 +329,6 @@ export class LobbyWorldOverlayRenderer {
       this.host.applyImageButtonFeedback(node, 1.04, 0.96);
     }
     return node;
-  }
-
-  private rewardRow(parent: Node, rewards: WorldRewardItemVO[], x0: number, y: number, k: number, maxW: number, textColor: Color = BODY, amountOnly = false): void {
-    const icon = 54 * k;
-    const cell = Math.min(maxW / Math.max(1, rewards.length), 150 * k);
-    rewards.slice(0, 4).forEach((reward, index) => {
-      const cx = x0 + cell * index + cell / 2;
-      const box = this.host.addChildPlainNode(parent, `Reward_${index}`, cx, y + 10 * k, icon + 8 * k, icon + 8 * k);
-      const g = box.addComponent(Graphics);
-      g.fillColor = rgba(24, 20, 18, 240);
-      g.roundRect(-(icon + 8 * k) / 2, -(icon + 8 * k) / 2, icon + 8 * k, icon + 8 * k, 6 * k);
-      g.fill();
-      g.strokeColor = rgba(150, 118, 66, 220);
-      g.lineWidth = Math.max(1, 1.5 * k);
-      g.roundRect(-(icon + 8 * k) / 2, -(icon + 8 * k) / 2, icon + 8 * k, icon + 8 * k, 6 * k);
-      g.stroke();
-      const asset = reward.resourceType === 'PLAYER_EXP' ? null : resolveBagStyleItemIconAsset(reward.resourceCode, reward.resourceType);
-      if (!asset || !this.host.addSprite('Icon', asset, 0, 0, icon, icon, box)) {
-        this.label(box, 'Txt', reward.resourceType === 'PLAYER_EXP' ? 'EXP' : (reward.resourceName || '?').slice(0, 2), 0, 0, 20 * k, rgba(140, 230, 140), icon);
-      }
-      // 窄格(悬赏纸)只写数量:名字 + 数量塞不下会被压成芝麻字,名字看图标 / 点开详情
-      this.label(parent, `RewardAmt_${index}`, amountOnly ? `×${reward.amount}` : `${reward.resourceName} ×${reward.amount}`, cx, y - icon / 2 - (amountOnly ? 16 : 12) * k, (amountOnly ? 22 : 17) * k, textColor, cell);
-    });
-  }
-
-  // ── NPC 对话(原型 p4) ──
-
-  renderDialog(layout: UiLayout): void {
-    const state = this.host.currentWorldDialog();
-    if (!state) {
-      return;
-    }
-    const world = this.host.currentWorldState();
-    const quest = world?.quests.find((item) => item.code === state.questCode) ?? null;
-    const k = Math.max(0.7, Math.min(1.25, layout.stageHeight / 860)) * (isPhoneDesign() ? 1.1 : 1);
-    const W = layout.stageWidth;
-    const H = layout.stageHeight;
-    const overlay = this.overlayRoot(LobbyWorldOverlayRenderer.DIALOG, layout, 110, null);
-    // 立绘(左下,下半身被对话框挡住)
-    const portrait = NPC_PORTRAITS[state.npc];
-    const ph = H * 0.78;
-    if (portrait) {
-      const sprite = this.host.addSprite('Portrait', portrait, -W / 2 + W * 0.17, -H / 2 + ph / 2 + H * 0.02, ph * 0.62, ph, overlay);
-      if (sprite) {
-        const frame = sprite.spriteFrame;
-        const ow = frame?.originalSize.width ?? 1;
-        const oh = frame?.originalSize.height ?? 1;
-        sprite.node.getComponent(UITransform)?.setContentSize(ph * (ow / Math.max(1, oh)), ph);
-      }
-    }
-    // 底部对话框
-    const boxH = H * 0.24;
-    const box = this.host.addChildPlainNode(overlay, 'DialogBox', 0, -H / 2 + boxH / 2, W, boxH);
-    this.frame(box.addComponent(Graphics), W - 4, boxH, k, rgba(10, 8, 8, 236));
-    box.addComponent(BlockInputEvents);
-    const plateW = 300 * k;
-    const plate = this.host.addChildPlainNode(box, 'NamePlate', -W / 2 + W * 0.06 + plateW / 2, boxH / 2, plateW, 46 * k);
-    this.frame(plate.addComponent(Graphics), plateW, 46 * k, k, rgba(30, 14, 12, 250));
-    this.label(plate, 'Name', NPC_NAMES[state.npc], 0, 1, 24 * k, GOLD, plateW - 30 * k, HorizontalTextAlignment.CENTER, true);
-    const text = this.dialogText(state, quest);
-    const textLabel = this.host.addChildLabel(box, 'Text', text, -W / 2 + W * 0.2, -4 * k, 26 * k, BODY, new Size(W * 0.72, boxH * 0.7), HorizontalTextAlignment.LEFT);
-    textLabel.overflow = Label.Overflow.SHRINK;
-    textLabel.enableWrapText = true;
-    textLabel.lineHeight = 36 * k;
-    // 对话框点一下 = 关闭(纯对话 / 进行中)
-    if (state.mode === 'idle' || state.mode === 'progress') {
-      box.addComponent(Button);
-      box.on(Button.EventType.CLICK, () => this.host.closeWorldDialog(), this);
-      this.label(box, 'Hint', '点击继续 ▼', W / 2 - 110 * k, -boxH / 2 + 26 * k, 18 * k, DIM, 200 * k);
-      return;
-    }
-    // 右侧任务卡
-    if (!quest) {
-      return;
-    }
-    const cardW = Math.min(W * 0.34, 560 * k);
-    const cardH = H * 0.6;
-    const card = this.host.addChildPlainNode(overlay, 'QuestCard', W / 2 - cardW / 2 - W * 0.03, -H / 2 + boxH + cardH / 2 + H * 0.03, cardW, cardH);
-    card.addComponent(BlockInputEvents);
-    this.frame(card.addComponent(Graphics), cardW, cardH, k);
-    const title = state.mode === 'claim' ? `任务完成 · ${quest.name}` : `剧情任务 · ${quest.name}`;
-    this.label(card, 'Title', title, 0, cardH / 2 - 44 * k, 30 * k, GOLD, cardW - 40 * k, HorizontalTextAlignment.CENTER, true);
-    this.divider(card, cardW, cardH / 2 - 80 * k, k);
-    const left = -cardW / 2 + 32 * k;
-    this.label(card, 'GoalTitle', '目标', left, cardH / 2 - 112 * k, 22 * k, rgba(226, 204, 160), 120 * k, HorizontalTextAlignment.LEFT, true);
-    const done = state.mode === 'claim';
-    const box2 = this.host.addChildPlainNode(card, 'Check', left + 14 * k, cardH / 2 - 150 * k, 26 * k, 26 * k).addComponent(Graphics);
-    box2.strokeColor = rgba(196, 156, 88, 240);
-    box2.lineWidth = 2;
-    box2.rect(-12 * k, -12 * k, 24 * k, 24 * k);
-    box2.stroke();
-    if (done) {
-      box2.strokeColor = rgba(120, 220, 120, 255);
-      box2.lineWidth = 3;
-      box2.moveTo(-8 * k, 0);
-      box2.lineTo(-2 * k, -7 * k);
-      box2.lineTo(9 * k, 8 * k);
-      box2.stroke();
-    }
-    const progress = quest.objective === 'KILL' || quest.objective === 'COLLECT' || quest.objective === 'GROW'
-      ? ` ${Math.min(quest.progress, quest.target)}/${quest.target}` : '';
-    this.label(card, 'Goal', `${quest.desc}${progress}`, left + 40 * k, cardH / 2 - 150 * k, 21 * k, BODY, cardW - 90 * k, HorizontalTextAlignment.LEFT);
-    this.divider(card, cardW, cardH / 2 - 186 * k, k);
-    this.label(card, 'PlaceTitle', '地点', left, cardH / 2 - 216 * k, 22 * k, rgba(226, 204, 160), 100 * k, HorizontalTextAlignment.LEFT, true);
-    this.label(card, 'Place', WORLD_MAPS[quest.map as WorldMapCode]?.name ?? quest.map, left + 110 * k, cardH / 2 - 216 * k, 22 * k, BODY, cardW - 160 * k, HorizontalTextAlignment.LEFT);
-    this.divider(card, cardW, cardH / 2 - 248 * k, k);
-    this.label(card, 'RewardTitle', '奖励', left, cardH / 2 - 278 * k, 22 * k, rgba(226, 204, 160), 100 * k, HorizontalTextAlignment.LEFT, true);
-    this.rewardRow(card, quest.rewards, -cardW / 2 + 20 * k, cardH / 2 - 350 * k, k, cardW - 40 * k);
-    const btnY = -cardH / 2 + 56 * k;
-    const btnW = (cardW - 90 * k) / 2;
-    const primaryText = state.busy ? '请稍候…' : state.mode === 'claim' ? '领取奖励' : state.mode === 'grow' ? this.growActionText(quest) : state.mode === 'train' ? '开始训练' : '接受';
-    this.button(card, 'Primary', -btnW / 2 - 15 * k, btnY, btnW, 64 * k, primaryText, state.busy ? 'disabled' : 'primary', state.busy ? null : () => this.host.worldDialogPrimary());
-    this.button(card, 'Later', btnW / 2 + 15 * k, btnY, btnW, 64 * k, '稍后', 'secondary', () => this.host.closeWorldDialog());
   }
 
   private divider(parent: Node, w: number, y: number, k: number): void {
