@@ -530,6 +530,10 @@ export class LobbyTownRenderer {
   private guide: TownGuideTarget | null = null;
   private guidePointer: Node | null = null;
   private trackerLabel: Label | null = null;
+  /** 顶部追踪胶囊的灰色说明 / 距离(11-07 B 风格,随走动刷新)。 */
+  private trackerSub: Label | null = null;
+  private trackerDist: Label | null = null;
+  private trackerFont = 19;
   /** docs/50:当前所在地图 + 切图后的出生点。 */
   private mapCode: WorldMapCode = 'CITY';
   private pendingSpawn: { x: number; y: number } | null = null;
@@ -3079,8 +3083,13 @@ export class LobbyTownRenderer {
     }
   }
 
+  /**
+   * 顶部任务追踪胶囊(11-07 B 风格,原型 guide_bubble_b):深色玻璃胶囊 + 香槟定位针 + 白字「前往「X」」+ 灰字「· 说明」+ 右端灰色距离。
+   */
   private renderGuideTracker(hud: Node, layout: UiLayout, scale: number, guide: TownGuideTarget | null): void {
     this.trackerLabel = null;
+    this.trackerSub = null;
+    this.trackerDist = null;
     if (!guide) {
       return;
     }
@@ -3088,20 +3097,62 @@ export class LobbyTownRenderer {
     if (!cfg) {
       return;
     }
-    const w = Math.min(460 * scale, layout.stageWidth * 0.5);
-    const h = 44 * scale;
+    const w = Math.min(560 * scale, layout.stageWidth * 0.5);
+    const h = 46 * scale;
     const node = this.host.addChildPlainNode(hud, 'LobbyTownGuideTracker', (layout.stageLeft + layout.stageRight) / 2, layout.stageTop - 36 * scale, w, h);
     const g = node.addComponent(Graphics);
-    g.fillColor = rgba(10, 8, 10, 200);
-    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
+    g.fillColor = rgba(16, 19, 26, 215);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
     g.fill();
-    g.strokeColor = rgba(214, 170, 92, 220);
-    g.lineWidth = Math.max(1, 1.6 * scale);
-    g.roundRect(-w / 2, -h / 2, w, h, 10 * scale);
+    g.strokeColor = rgba(255, 255, 255, 46);
+    g.lineWidth = Math.max(1, 1.2 * scale);
+    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
     g.stroke();
-    const label = this.host.addChildLabel(node, 'Label', `前往「${cfg.label}」· ${guide.text}`, 0, 1, 19 * scale, rgba(255, 236, 190), new Size(w - 24 * scale, 28 * scale));
-    label.overflow = Label.Overflow.SHRINK;
-    this.trackerLabel = label;
+    // 定位针:香槟水滴轮廓 + 中心小圆
+    const pinX = -w / 2 + h * 0.62;
+    const pin = this.host.addChildPlainNode(node, 'Pin', pinX, h * 0.02, h * 0.5, h * 0.6).addComponent(Graphics);
+    const pr = h * 0.17;
+    pin.strokeColor = rgba(227, 196, 138, 255);
+    pin.lineWidth = Math.max(1.4, 2.2 * scale);
+    pin.arc(0, pr * 0.35, pr, Math.PI * 1.25, Math.PI * -0.25, true);
+    pin.lineTo(0, -pr * 1.35);
+    pin.close();
+    pin.stroke();
+    pin.circle(0, pr * 0.35, pr * 0.38);
+    pin.stroke();
+    this.trackerFont = 20 * scale;
+    const textLeft = pinX + h * 0.42;
+    const main = this.host.addChildLabel(node, 'Label', '', textLeft, 0, this.trackerFont, rgba(242, 242, 242), new Size(w * 0.45, 28 * scale), HorizontalTextAlignment.LEFT);
+    main.isBold = true;
+    const sub = this.host.addChildLabel(node, 'Sub', '', textLeft, 0, this.trackerFont * 0.95, rgba(163, 168, 179), new Size(w * 0.4, 28 * scale), HorizontalTextAlignment.LEFT);
+    sub.overflow = Label.Overflow.SHRINK;
+    const dist = this.host.addChildLabel(node, 'Dist', '', w / 2 - h * 0.5, 0, this.trackerFont * 0.9, rgba(163, 168, 179), new Size(110 * scale, 28 * scale), HorizontalTextAlignment.RIGHT);
+    dist.overflow = Label.Overflow.SHRINK;
+    this.trackerLabel = main;
+    this.trackerSub = sub;
+    this.trackerDist = dist;
+    this.setTrackerText(`前往「${cfg.label}」`, `· ${guide.text}`, '');
+  }
+
+  /** 白字主句 + 紧跟其后的灰字说明(按字宽估算接续位置)+ 右端距离。 */
+  private setTrackerText(main: string, sub: string, dist: string): void {
+    const label = this.trackerLabel;
+    if (!label || !label.isValid) {
+      return;
+    }
+    label.string = main;
+    let width = 0;
+    for (const ch of Array.from(main)) {
+      width += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? this.trackerFont : this.trackerFont * 0.58;
+    }
+    const sx = label.node.position.x + width + this.trackerFont * 0.3;
+    if (this.trackerSub && this.trackerSub.isValid) {
+      this.trackerSub.string = sub;
+      this.trackerSub.node.setPosition(sx, 0, 0);
+    }
+    if (this.trackerDist && this.trackerDist.isValid) {
+      this.trackerDist.string = dist;
+    }
   }
 
   /** 引导目标点:任务追踪给的地图点,或主城建筑门口。 */
@@ -3113,6 +3164,10 @@ export class LobbyTownRenderer {
     return cfg ? { x: cfg.x + cfg.door.x, y: cfg.y + cfg.door.y, label: cfg.label } : null;
   }
 
+  /**
+   * 跑图指引(11-07 用户选 D「地面箭头路径」):队长脚下朝目标方向铺三个由近到远渐淡的香槟 › 箭头,整组前后缓动;
+   * 不加虚线、不挂头顶。挂在队长节点最底层(画在人物下面);交战 / 走到目标附近时藏起来。
+   */
   private mountGuidePointer(guide: TownGuideTarget | null): void {
     this.guidePointer?.isValid && this.guidePointer.destroy();
     this.guidePointer = null;
@@ -3120,20 +3175,29 @@ export class LobbyTownRenderer {
     if (!guide || !leader || !leader.node.isValid) {
       return;
     }
-    const pointerH = 70;
-    const pointerW = pointerH * (192 / 256);
-    const holder = this.host.addChildPlainNode(leader.node, 'GuidePointer', 0, HERO_SLOT_H + 60, pointerW, pointerH);
-    const art = this.host.addChildPlainNode(holder, 'Art', 0, 0, pointerW, pointerH);
-    if (!this.host.addSprite('Img', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH, art)) {
-      const g = art.addComponent(Graphics);
-      g.fillColor = rgba(255, 214, 110, 240);
-      g.moveTo(-pointerW * 0.3, pointerH * 0.3);
-      g.lineTo(pointerW * 0.3, pointerH * 0.3);
-      g.lineTo(0, -pointerH * 0.4);
-      g.close();
-      g.fill();
-    }
-    tween(art).repeatForever(tween<Node>().to(0.5, { position: new Vec3(0, 10, 0) }).to(0.5, { position: new Vec3(0, 0, 0) })).start();
+    const holder = this.host.addChildPlainNode(leader.node, 'GuidePointer', 0, 6, 10, 10);
+    holder.setSiblingIndex(0);
+    const marks = this.host.addChildPlainNode(holder, 'Marks', 0, 0, 10, 10);
+    // 11-07 截图:沙地上浅香槟几乎看不见 → 放大 + 深色整圈描边(本体下垫一道更粗的暗线)
+    const steps: Array<[number, number, number]> = [[104, 44, 255], [178, 38, 200], [244, 32, 140]];
+    steps.forEach(([x, size, alpha], index) => {
+      const g = this.host.addChildPlainNode(marks, `Chevron_${index}`, x, 0, size * 1.6, size * 2.4).addComponent(Graphics);
+      g.lineCap = Graphics.LineCap.ROUND;
+      g.lineJoin = Graphics.LineJoin.ROUND;
+      g.strokeColor = rgba(24, 18, 10, Math.round(alpha * 0.85));
+      g.lineWidth = size * 0.42;
+      g.moveTo(-size * 0.42, size * 0.62);
+      g.lineTo(size * 0.42, 0);
+      g.lineTo(-size * 0.42, -size * 0.62);
+      g.stroke();
+      g.strokeColor = rgba(236, 204, 140, alpha);
+      g.lineWidth = size * 0.24;
+      g.moveTo(-size * 0.42, size * 0.62);
+      g.lineTo(size * 0.42, 0);
+      g.lineTo(-size * 0.42, -size * 0.62);
+      g.stroke();
+    });
+    tween(marks).repeatForever(tween<Node>().to(0.6, { position: new Vec3(14, 0, 0) }).to(0.6, { position: new Vec3(0, 0, 0) })).start();
     this.guidePointer = holder;
   }
 
@@ -3150,19 +3214,18 @@ export class LobbyTownRenderer {
     }
     const dx = cfg.x - leader.x;
     const dy = cfg.y - leader.y;
-    const near = Math.hypot(dx, dy) < INTERACT_RADIUS;
-    // 10-28 录屏:战斗里橙色指引箭头和红色锁定箭头混在一起 → 交战中藏起来(指针是 Sprite,active 开关没有 Graphics 的坑)
+    const distPx = Math.hypot(dx, dy);
+    const near = distPx < INTERACT_RADIUS;
+    // 10-28 录屏:战斗里指引和红色锁定箭头混在一起 → 交战中藏起来
     holder.active = !near && !this.inCombat;
-    if (this.trackerLabel && this.trackerLabel.isValid) {
-      this.trackerLabel.string = near ? `到了「${cfg.label}」· 点交互提示` : `前往「${cfg.label}」· ${guide.text}`;
-    }
     if (near) {
+      this.setTrackerText(`到了「${cfg.label}」`, '· 点交互提示', '');
       return;
     }
-    // 指针素材默认朝下(-y):朝向 θ 需转 θ+90°
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    holder.angle = angle;
-    // 指针挂在队长头顶,随队长翻面时不能跟着镜像:holder 不在 spine 下,无需处理
+    // 距离按 40 像素 ≈ 1 米(人物身高约 2 米)
+    this.setTrackerText(`前往「${cfg.label}」`, `· ${guide.text}`, `${Math.max(1, Math.round(distPx / 40))} 米`);
+    // 箭头沿本地 +x 排开:整组转到目标方向
+    holder.angle = (Math.atan2(dy, dx) * 180) / Math.PI;
   }
 
   // ── docs/50:NPC / 传送阵 / 出口 / 明雷怪 ──

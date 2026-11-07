@@ -1,0 +1,7 @@
+Generate ONE image: a 2x2 comparison sheet (about 1870x1000) of FOUR design options for the "go here" direction pointer in a dark-fantasy top-down mobile RPG field (same art style as the attached screenshot: painted dark forest ground, chibi party of 4 heroes, frosted-glass HUD with a single champagne-gold accent #E3C48A).
+Each quadrant shows the same small scene crop (the 4-hero party standing on the dark forest ground, the target is off to the right), with a large label in the top-left corner of the quadrant: "A", "B", "C", "D" and a short Chinese caption under it. All pointers are flat champagne gold, soft shadow, NO glow, NO sparkles, NO ornament, NO dotted line.
+A) caption "脚下方向环": a thin champagne ring on the ground under the leader (the hero in front), with a small solid wedge/notch on the ring facing the target direction (like a compass bezel). Subtle.
+B) caption "头顶小三角": a small solid rounded champagne triangle floating just above the leader's head, tilted to point toward the target; nothing else.
+C) caption "屏幕边缘指示": no pointer near the heroes; instead at the right edge of the screen a frosted-glass rounded tab with a champagne arrow pointing right and small text "铁匠铺 32 米".
+D) caption "地面光点路径": three small soft champagne chevron marks painted on the ground in front of the leader, spaced apart, fading out, leading toward the target (like footprints/arrows on the floor, not dots).
+Captions in Simplified Chinese exactly as given, crisp and legible. Output only the single comparison image.

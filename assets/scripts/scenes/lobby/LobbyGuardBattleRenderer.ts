@@ -127,6 +127,7 @@ import {
   guardPickMonsterSpineCodes,
   guardApplyMonsterRoster,
 } from './GuardBattleModel';
+import { GUIDE_BUBBLE_AVATAR_OVERHANG, mountGuideTriangle, mountZeroGuideBubble } from '../GuideKit';
 import { resolveLobbyBattlePresentationSnapshot, type BattlePresentationSnapshot, type BattlePresentationUnitSnapshot } from './LobbyBattlePresentationSnapshot';
 import {
   patchBattleUnitSpineRuntimeEnums,
@@ -2875,27 +2876,22 @@ export class LobbyGuardBattleRenderer {
     const by = summonBtn.position.y;
     const btnTf = summonBtn.getComponent(UITransform);
     const btnH = (btnTf?.height ?? 80) * summonBtn.scale.y;
-    const pointerH = 78;
-    const pointerW = pointerH * (192 / 256);
+    // 11-07 B 风格(原型 guide_bubble_b):香槟小三角 + 「零」头像气泡,替换旧金框雕花素材
+    const pointerH = 30;
+    const pointerW = 34;
     const pointerY = by + btnH / 2 + pointerH / 2 + 8;
-    const pointer = this.host.addChildPlainNode(holder, 'Pointer', bx, pointerY, pointerW, pointerH);
-    this.mountSprite(pointer, 'Img', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH);
+    const pointer = mountGuideTriangle(this.host, holder, 'Pointer', bx, pointerY, pointerW, pointerH, 0);
     tween(pointer)
       .repeatForever(tween()
-        .to(0.55, { position: new Vec3(bx, pointerY + 12, 0) })
+        .to(0.55, { position: new Vec3(bx, pointerY + 10, 0) })
         .to(0.55, { position: new Vec3(bx, pointerY, 0) }))
       .start();
-    const bubbleW = Math.min(430, layout.width * 0.4);
-    const bubbleH = bubbleW * (320 / 768);
-    const bubbleX = Math.min(layout.width / 2 - bubbleW / 2 - 10, bx);
-    const bubbleY = pointerY + pointerH / 2 + bubbleH / 2 + 6;
-    const bubble = this.host.addChildPlainNode(holder, 'Bubble', bubbleX, bubbleY, bubbleW, bubbleH);
-    this.mountSprite(bubble, 'Img', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH);
-    const text = this.host.addChildLabel(bubble, 'Text', '点击【招募】放置英雄,守住水晶!', 0, 0, 20, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
-    text.overflow = Label.Overflow.SHRINK;
-    text.enableOutline = true;
-    text.outlineColor = rgba(12, 8, 6, 255);
-    text.outlineWidth = 2;
+    const bubbleH = 104;
+    const bubbleW = Math.min(470, layout.width * 0.42);
+    const avatarOver = bubbleH * GUIDE_BUBBLE_AVATAR_OVERHANG;
+    const bubbleX = Math.max(-layout.width / 2 + bubbleW / 2 + avatarOver + 10, Math.min(layout.width / 2 - bubbleW / 2 - 10, bx));
+    const bubbleY = pointerY + pointerH / 2 + bubbleH / 2 + 8;
+    mountZeroGuideBubble(this.host, holder, 'Bubble', bubbleX, bubbleY, bubbleW, bubbleH, '点击【招募】放置英雄,守住水晶!');
   }
 
   /**
@@ -2944,31 +2940,25 @@ export class LobbyGuardBattleRenderer {
     const layoutH = root.getComponent(UITransform)?.height ?? 900;
     const holder = this.host.addChildPlainNode(root, name, 0, 0, 10, 10);
     holder.setSiblingIndex(root.children.length - 1);
-    const bubbleW = Math.min(460, layoutW * 0.42);
-    const bubbleH = bubbleW * (320 / 768);
+    // 11-07 B 风格「零」气泡(原型 guide_bubble_b)
+    const bubbleH = 104;
+    const bubbleW = Math.min(480, layoutW * 0.42);
     // 气泡固定在战场中部空地(不压顶部波次横幅 / 统计钮,也不盖住手指);手指单独指向目标
     const bubbleX = 0;
     const bubbleY = layoutH * 0.06;
     if (anchor) {
-      const pointerH = 78;
-      const pointerW = pointerH * (192 / 256);
+      const pointerH = 30;
+      const pointerW = 34;
       const pointerY = Math.min(layoutH / 2 - 130, anchor.y + pointerH / 2 + 8);
-      const pointer = this.host.addChildPlainNode(holder, 'Pointer', anchor.x, pointerY, pointerW, pointerH);
-      this.mountSprite(pointer, 'Img', 'ui/guide/lguide_pointer/spriteFrame', 0, 0, pointerW, pointerH);
+      const pointer = mountGuideTriangle(this.host, holder, 'Pointer', anchor.x, pointerY, pointerW, pointerH, 0);
       tween(pointer)
         .repeatForever(tween()
           .to(0.55, { position: new Vec3(anchor.x, pointerY + 12, 0) })
           .to(0.55, { position: new Vec3(anchor.x, pointerY, 0) }))
         .start();
     }
-    const bubble = this.host.addChildPlainNode(holder, 'Bubble', bubbleX, bubbleY, bubbleW, bubbleH);
-    this.mountSprite(bubble, 'Img', 'ui/guide/lguide_bubble/spriteFrame', 0, 0, bubbleW, bubbleH);
-    const label = this.host.addChildLabel(bubble, 'Text', text, 0, 0, 20, rgba(255, 236, 190, 255), new Size(bubbleW * 0.82, bubbleH * 0.56));
-    label.overflow = Label.Overflow.SHRINK;
-    label.enableWrapText = true;
-    label.enableOutline = true;
-    label.outlineColor = rgba(12, 8, 6, 255);
-    label.outlineWidth = 2;
+    // 气泡居中偏右半个头像位,头像压在左沿外也居中
+    mountZeroGuideBubble(this.host, holder, 'Bubble', bubbleX + bubbleH * GUIDE_BUBBLE_AVATAR_OVERHANG / 2, bubbleY, bubbleW, bubbleH, text);
   }
 
   private dropGuideHint(name: string): void {

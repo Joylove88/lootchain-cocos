@@ -41,6 +41,8 @@ SCREENS = [
     ('raid_npc', "root.openLobbyRaidPanel(); setTimeout(() => root.selectLobbyRaidTab('npc'), 2500);", 6.0),
     ('raid_pvp', "root.openLobbyRaidPanel(); setTimeout(() => root.selectLobbyRaidTab('pvp'), 2500);", 6.0),
     ('world_field', "root.travelWorldMap('WOODS', null);", 8.0),
+    # 跑图指引自验(方案 D 地面箭头 + 顶部追踪胶囊):进林地后注入一个右前方的临时目标(只改前端内存)
+    ('guide_field', "root.travelWorldMap('WOODS', null); setTimeout(() => { const t = root.lobbyTownRenderer; const g = { point: { x: t.leader.x + 700, y: t.leader.y + 160, label: '铁匠铺' }, text: '打造第一件装备' }; t.guide = g; t.mountGuidePointer(g); t.renderGuideTracker(t.hudNode, t.hudLayout, t.hudScale, g); }, 6500);", 9.5),
     ('world_city', "root.travelWorldMap('CITY', null);", 8.0),
     ('bag', "root.openLobbyBagPanel();", 3.0),
     ('quest', "root.openLobbyQuestPanel();", 3.0),
@@ -74,6 +76,8 @@ SCREENS = [
     ('hero_refine', HERO_TAB_JS.format(tab='attr').replace("setTimeout(() => root.selectLobbyHeroDetailTab('attr'), 1500);", "setTimeout(() => root.openLobbyHeroRefineDialog(), 1800);"), 5.0),
     ('codex', "root.openLobbyCodexPanel();", 3.5),
     ('formation', "root.openLobbyFormationPanel();", 4.0),
+    # 引导气泡自验:清掉布阵软引导的已看标记再进布阵(测试号 guidetest02 = 64),出「零」气泡
+    ('guide_formation', "try { localStorage.removeItem('lootchain.guide.' + root.currentLobbyProfile().userId + '.formation'); } catch (e) {} root.openLobbyFormationPanel();", 4.5),
     ('adventure', "root.openLobbyAdventurePanel();", 3.5),
     ('daily', "root.openLobbyDailyDungeonPanel();", 3.5),
     ('daily_rank', "root.openLobbyDailyDungeonPanel(); setTimeout(() => root.lobbyDailyDungeonPanelRenderer.openRankPopup(), 2500);", 5.0),

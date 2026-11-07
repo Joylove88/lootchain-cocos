@@ -46,6 +46,7 @@ import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday } from './ItemSourceRoutes';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
 import { LobbyIdleStageRenderer } from './LobbyIdleStageRenderer';
 import type { LobbyTownRenderer, TownGuideTarget } from './LobbyTownRenderer';
+import { GUIDE_BUBBLE_AVATAR_OVERHANG, mountGuideTriangle, mountZeroGuideBubble, type GuideKitHost } from '../GuideKit';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 import type { LobbyAdventureStageVO } from '../../types/LobbyAdventureTypes';
 export type { LobbyHudHost } from './LobbyHudTypes';
@@ -316,8 +317,10 @@ export class LobbyHudRenderer {
     // 方向:目标上方放箭头+气泡;顶部空间不足则翻到下方(箭头转 180° 指上)。
     const pointerH = 30 * scale;
     const pointerW = 34 * scale;
-    const bubbleW = Math.min(420 * scale, layout.stageWidth * 0.52);
-    const bubbleH = 92 * scale;
+    // 11-07 B 风格「零」气泡(原型 guide_bubble_b):头像压在左沿外 GUIDE_BUBBLE_AVATAR_OVERHANG × 高
+    const bubbleW = Math.min(540 * scale, layout.stageWidth * 0.5);
+    const bubbleH = 120 * scale;
+    const avatarOver = bubbleH * GUIDE_BUBBLE_AVATAR_OVERHANG;
     const needed = ringHalfV + pointerH + bubbleH + 26 * scale;
     const above = local.y + needed < layout.stageTop - 6;
     // 上下都放不下(英雄卡这类很高的目标,手机布局下气泡掉出屏幕,2026-10-15 安卓真机):改放目标左 / 右侧,箭头横指
@@ -327,18 +330,8 @@ export class LobbyHudRenderer {
     // 指引箭头(image2 素材,默认朝下;翻转时角度 180,横放 ±90):上下 / 左右浮动
     const pointerX = side !== 0 ? local.x + side * (ringHalfH + pointerH / 2 + 6 * scale) : local.x;
     const pointerY = side !== 0 ? local.y : local.y + dir * (ringHalfV + pointerH / 2 + 6 * scale);
-    const pointerHolder = this.addChildPlainNode(overlay, 'GuidePointer', pointerX, pointerY, pointerW, pointerH);
-    pointerHolder.angle = side > 0 ? -90 : side < 0 ? 90 : above ? 0 : 180;
-    {
-      // 朝下的香槟金三角(B 风格,旧雕花金箭头素材不用)
-      const pg = pointerHolder.addComponent(Graphics);
-      pg.fillColor = rgba(227, 196, 138, 245);
-      pg.moveTo(-pointerW / 2, pointerH / 2);
-      pg.lineTo(pointerW / 2, pointerH / 2);
-      pg.lineTo(0, -pointerH / 2);
-      pg.close();
-      pg.fill();
-    }
+    // 香槟小三角(B 风格,旧雕花金箭头素材不用;GuideKit 共用件)
+    const pointerHolder = mountGuideTriangle(this.guideKitHost(), overlay, 'GuidePointer', pointerX, pointerY, pointerW, pointerH, side > 0 ? -90 : side < 0 ? 90 : above ? 0 : 180);
     const bobX = side !== 0 ? pointerX + side * 10 * scale : pointerX;
     const bobY = side !== 0 ? pointerY : pointerY + dir * 10 * scale;
     tween(pointerHolder)
@@ -350,28 +343,12 @@ export class LobbyHudRenderer {
     const bubbleY = side !== 0
       ? Math.max(layout.stageBottom + bubbleH / 2 + 8, Math.min(layout.stageTop - bubbleH / 2 - 8, local.y))
       : pointerY + dir * (pointerH / 2 + bubbleH / 2 + 6 * scale);
+    // 气泡在右侧(side>0)时头像朝向指针一侧也在左沿,多让出头像宽;夹边同样算头像
     const bubbleX = side !== 0
-      ? pointerX + side * (pointerH / 2 + bubbleW / 2 + 6 * scale)
-      : Math.max(layout.stageLeft + bubbleW / 2 + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
-    const bubble = this.addChildPlainNode(overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH);
-    {
-      // 2026-11-05 B 风格气泡(旧金框雕花气泡素材不用):深色毛玻璃 + 淡白细边 + 左侧香槟竖条
-      const bg = bubble.addComponent(Graphics);
-      bg.fillColor = rgba(20, 24, 33, 238);
-      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 12 * scale);
-      bg.fill();
-      bg.strokeColor = rgba(255, 255, 255, 34);
-      bg.lineWidth = Math.max(1, 1.2 * scale);
-      bg.roundRect(-bubbleW / 2, -bubbleH / 2, bubbleW, bubbleH, 12 * scale);
-      bg.stroke();
-      bg.fillColor = rgba(227, 196, 138, 255);
-      bg.roundRect(-bubbleW / 2 + 14 * scale, -bubbleH * 0.26, 4 * scale, bubbleH * 0.52, 2 * scale);
-      bg.fill();
-    }
-    const text = this.addChildLabel(bubble, 'GuideText', entry.text, 8 * scale, 0, 19 * scale, rgba(242, 242, 242, 255), new Size(bubbleW - 64 * scale, bubbleH - 20 * scale));
-    text.overflow = Label.Overflow.SHRINK;
-    text.enableWrapText = true;
-    text.lineHeight = text.fontSize + 6;
+      ? pointerX + side * (pointerH / 2 + bubbleW / 2 + 6 * scale + (side > 0 ? avatarOver : 0))
+      : Math.max(layout.stageLeft + bubbleW / 2 + avatarOver + 8, Math.min(layout.stageRight - bubbleW / 2 - 8, local.x));
+    // 软引导点气泡即关闭 → 右下角「点击继续 ›」;硬引导要点目标本身,不出这行
+    const bubble = mountZeroGuideBubble(this.guideKitHost(), overlay, 'GuideBubble', bubbleX, bubbleY, bubbleW, bubbleH, entry.text, soft ? '点击继续 ›' : undefined);
     if (soft) {
       // 软引导:点气泡即关闭并记为已看过;点高亮的入口本身也会在对应页面记为已看过
       bubble.addComponent(Button);
@@ -410,6 +387,15 @@ export class LobbyHudRenderer {
 
   private get node(): Node {
     return this.host.node;
+  }
+
+  /** GuideKit 用的宿主视图(本类自带的建节点 / 文字工具 + 宿主贴图)。 */
+  private guideKitHost(): GuideKitHost {
+    return {
+      addChildPlainNode: (parent, name, x, y, w, h) => this.addChildPlainNode(parent, name, x, y, w, h),
+      addSprite: (name, path, x, y, w, h, parent) => this.host.addSprite(name, path, x, y, w, h, parent),
+      addChildLabel: (parent, name, text, x, y, size, color, box, align) => this.addChildLabel(parent, name, text, x, y, size, color, box, align),
+    };
   }
 
   /** 领取挂机收益动效(2026-09-03 用户):一串金币从领取按钮抛物线飞向顶部金币胶囊,首枚到达时胶囊弹跳;金额滚动由 TopHud 侧接手。 */
