@@ -5,7 +5,7 @@ import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountHeroAvatar } from './HeroHeadCrop';
 import { DAILY_THEME_OPEN_DAYS } from './ItemSourceRoutes';
 import { worldMapOfStage } from './LobbyWorldMaps';
-import type { ProfileRenameState } from './LobbyProfileDialogRenderer';
+import type { ProfileRenameState } from './LobbyProfileState';
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import type { PlayerBattleRecentVO } from '../../types/BattleTypes';
 import type { LobbyHeroItemVO } from '../../types/LobbyHeroTypes';

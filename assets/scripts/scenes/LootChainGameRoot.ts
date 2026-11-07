@@ -86,7 +86,7 @@ import { nativeUnderlayVideoSupported } from '../app/NativeUnderlayVideo';
 import { preloadHeroAvatars } from './lobby/HeroHeadCrop';
 import { renderSceneBackButton, type SceneBackButtonHost } from './UiSceneBackButton';
 import { LegalDocumentOverlayRenderer, type LegalDocumentOverlayHost } from './LegalDocumentOverlayRenderer';
-import type { ProfileRenameState } from './lobby/LobbyProfileDialogRenderer';
+import type { ProfileRenameState } from './lobby/LobbyProfileState';
 import type { LegalDocumentKey } from '../legal/LegalDocuments';
 import type { UiPreloadGroup } from './UiSpriteFrameCache';
 import {
@@ -140,7 +140,6 @@ import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
 import { LobbyHeroRosterPanelRenderer, type LobbyHeroRosterPanelHost } from './lobby/LobbyHeroRosterPanelRenderer';
 import { LobbyHudRenderer, type LobbyHudHost } from './lobby/LobbyHudRenderer';
 import { LobbyQuestMailPanelRenderer } from './lobby/LobbyQuestMailPanelRenderer';
-import { LobbyMorePanelRenderer } from './lobby/LobbyMorePanelRenderer';
 import { LobbyTerminalPanelRenderer, type LobbyTerminalAction, type LobbyTerminalPanelHost } from './lobby/LobbyTerminalPanelRenderer';
 import { LobbyGiftDialogRenderer, type LobbyGiftDialogHost, type LobbyGiftDialogState } from './lobby/LobbyGiftDialogRenderer';
 import { LobbyProfileGlassDialogRenderer, type LobbyProfileGlassDialogHost } from './lobby/LobbyProfileGlassDialogRenderer';
@@ -151,7 +150,6 @@ import { LobbyLoadingFlow, type LobbyLoadingFlowHost } from './lobby/LobbyLoadin
 import { LobbyLoadingRenderer, type LobbyLoadingHost } from './lobby/LobbyLoadingRenderer';
 import { LobbyNoticeState } from './lobby/LobbyNoticeState';
 import { LobbyPanelLoader, type LobbyPanelLoaderHost } from './lobby/LobbyPanelLoader';
-import { LobbyNoticePanelRenderer, type LobbyNoticePanelHost } from './lobby/LobbyNoticePanelRenderer';
 import { LobbyDailyDungeonPanelRenderer, type LobbyDailyDungeonPanelHost } from './lobby/LobbyDailyDungeonPanelRenderer';
 import type { LobbyDailyDungeonPanelState } from '../types/DailyDungeonTypes';
 import { isDailyDungeonStageCode } from '../api/BattleApi';
@@ -164,7 +162,6 @@ import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type World
 import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
-import { LobbyProfileDialogRenderer, type LobbyProfileDialogHost } from './lobby/LobbyProfileDialogRenderer';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
 import { LobbyGuardCrystalDialogRenderer, type LobbyGuardCrystalDialogHost, type LobbyGuardCrystalDialogState } from './lobby/LobbyGuardCrystalDialogRenderer';
 import { LOBBY_UI_FX, type ForgeFxKind } from './lobby/LobbyBattleAttackFxConfig';
@@ -174,7 +171,6 @@ import { mountLobbySpineFx } from './lobby/LobbyUiSpineFx';
 type LobbyShopFlyVolume = 'few' | 'some' | 'many' | 'chest';
 const LOBBY_SHOP_FLY_COIN_COUNT: Record<LobbyShopFlyVolume, number> = { few: 6, some: 12, many: 18, chest: 28 };
 import { LobbyProfileLoader, type LobbyProfileLoaderHost } from './lobby/LobbyProfileLoader';
-import { LobbySettingsPanelRenderer, type LobbySettingsPanelHost } from './lobby/LobbySettingsPanelRenderer';
 import type { LobbyAdventurePanelState, LobbyAdventureStageVO } from '../types/LobbyAdventureTypes';
 import type { LobbyBagPanelState } from '../types/BagTypes';
 import type { LobbyBattlePanelState } from './lobby/LobbyBattleState';
@@ -471,7 +467,6 @@ export class LootChainGameRoot extends Component {
   private lobbySettingsGlassOpen = false;
   /** 已读公告单号(本机存储,按账号分开);懒加载。 */
   private lobbyNoticeReadSet: Set<string> | null = null;
-  private readonly lobbyMorePanelRenderer = new LobbyMorePanelRenderer(this as unknown as import('./lobby/LobbyMorePanelRenderer').LobbyMorePanelHost);
   private readonly lobbyLoadingFlow = new LobbyLoadingFlow(this as unknown as LobbyLoadingFlowHost);
   private readonly lobbyLoadingRenderer = new LobbyLoadingRenderer(this as unknown as LobbyLoadingHost);
   private readonly lobbyCodexState = new LobbyCodexState();
@@ -513,7 +508,6 @@ export class LootChainGameRoot extends Component {
     this as unknown as LobbyPanelLoaderHost,
     'lobby notices',
   );
-  private readonly lobbyNoticePanelRenderer = new LobbyNoticePanelRenderer(this as unknown as LobbyNoticePanelHost);
   private readonly lobbyDailyDungeonPanelRenderer = new LobbyDailyDungeonPanelRenderer(this as unknown as LobbyDailyDungeonPanelHost);
   private lobbyDailyDungeonState: LobbyDailyDungeonPanelState = { loading: false, error: '', summary: null, version: 0 };
   private lobbyDailyDungeonTicket = 0;
@@ -534,7 +528,6 @@ export class LootChainGameRoot extends Component {
     selectedCrystal: null, customCrystal: '', submitting: false, actionMessage: '', actionError: false,
   };
   private lobbyTokenFurnaceTicket = 0;
-  private readonly lobbyProfileDialogRenderer = new LobbyProfileDialogRenderer(this as unknown as LobbyProfileDialogHost);
   /** 用户协议/隐私政策查看层(2026-09-25):任何视图都可打开,整页重绘后由 syncLegalDocumentOverlay 重新挂回。 */
   private readonly legalDocumentOverlayRenderer = new LegalDocumentOverlayRenderer(this as unknown as LegalDocumentOverlayHost);
   private legalDocumentKey: LegalDocumentKey | null = null;
@@ -559,7 +552,6 @@ export class LootChainGameRoot extends Component {
   private readonly lobbyRechargePending = new Map<string, { diamondTotal: number; volume: LobbyShopFlyVolume; fromWorld: Vec3 | null; startedAt: number }>();
   private lobbyRechargePollTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly lobbyProfileLoader = new LobbyProfileLoader(this.api.profile, AppConfig.defaultDevUserId, this as unknown as LobbyProfileLoaderHost);
-  private readonly lobbySettingsPanelRenderer = new LobbySettingsPanelRenderer(this as unknown as LobbySettingsPanelHost);
   private currentView: ViewName = 'login';
   private layoutKey = '';
   private lobbyProfileOpen = false;
@@ -1967,10 +1959,6 @@ export class LootChainGameRoot extends Component {
     if (this.renderSceneAssetGate(layout)) {
       return;
     }
-    if (this.currentView === 'profile') {
-      this.renderPlayerProfileDialog(layout);
-      return;
-    }
     if (this.currentView === 'adventure') {
       this.renderLobbyAdventurePanel(layout);
       return;
@@ -2001,10 +1989,6 @@ export class LootChainGameRoot extends Component {
       this.lobbyHudRenderer.mountGuideOverlay(layout, 'heroDetail');
       return;
     }
-    if (this.currentView === 'notice') {
-      this.renderLobbyNoticePanel(layout);
-      return;
-    }
     if (this.currentView === 'dailyDungeon') {
       this.renderLobbyDailyDungeonPanel(layout);
       return;
@@ -2016,10 +2000,6 @@ export class LootChainGameRoot extends Component {
       this.lobbyRaidPanelRenderer.render(layout);
       return;
     }
-    if (this.currentView === 'settings') {
-      this.renderLobbySettingsPanel(layout);
-      return;
-    }
     if (this.currentView === 'quest') {
       this.lobbyQuestMailPanelRenderer.renderQuestPanel(layout);
       this.lobbyHudRenderer.mountGuideOverlay(layout, 'quest');
@@ -2027,10 +2007,6 @@ export class LootChainGameRoot extends Component {
     }
     if (this.currentView === 'mail') {
       this.lobbyQuestMailPanelRenderer.renderMailPanel(layout);
-      return;
-    }
-    if (this.currentView === 'more') {
-      this.lobbyMorePanelRenderer.render(layout);
       return;
     }
     if (this.currentView === 'placeholder') {
@@ -2150,10 +2126,6 @@ export class LootChainGameRoot extends Component {
     this.layoutKey = this.makeLayoutKey();
   }
 
-  private renderPlayerProfileDialog(layout: UiLayout): void {
-    this.lobbyProfileDialogRenderer.render(layout);
-  }
-
   private renderLobbyForgePanel(layout: UiLayout): void {
     this.lobbyForgePanelRenderer.render(layout);
   }
@@ -2227,14 +2199,6 @@ export class LootChainGameRoot extends Component {
     this.contentRootController.registerReusableNodes(LOBBY_BAG_REUSE_NODE_NAMES);
     // 跑图世界节点整页重绘时摘下暂存,回大厅原样挂回(位置 / 骨骼动画不丢)
     this.contentRootController.registerReusableNodes([LobbyTownRenderer.WORLD_NODE_NAME]);
-  }
-
-  private renderLobbyNoticePanel(layout: UiLayout): void {
-    this.lobbyNoticePanelRenderer.render(layout);
-  }
-
-  private renderLobbySettingsPanel(layout: UiLayout): void {
-    this.lobbySettingsPanelRenderer.render(layout);
   }
 
   private renderLobbyPlaceholderDialog(layout: UiLayout): void {
@@ -2692,15 +2656,11 @@ export class LootChainGameRoot extends Component {
 
 
 
+  /** 11-07 旧整页资料面板已删:旧入口转到 B 风格资料弹框。 */
   private openPlayerProfileDialog(): void {
-    if (this.lobbyProfileOpen && this.currentView === 'profile') {
-      return;
-    }
-    this.profileRename = { ...PROFILE_RENAME_CLOSED };
-    this.closeAllLobbyScenePanelFlags();
-    this.lobbyProfileOpen = true;
-    this.currentView = 'profile';
-    this.renderCurrentView();
+    // 玻璃弹框挂在终端之上(终端没开不画)
+    this.openLobbyTerminalPanel();
+    this.openLobbyProfileGlassDialog();
   }
 
   private closePlayerProfileDialog(): void {
@@ -6067,12 +6027,10 @@ export class LootChainGameRoot extends Component {
     this.openLobbyBattlePreviewPanel(stageCode);
   }
 
+  /** 11-07 旧整页公告面板已删:旧入口转到 B 风格公告弹框。 */
   private openLobbyNoticePanel(): void {
-    this.closeAllLobbyScenePanelFlags();
-    this.lobbyNoticePanelOpen = true;
-    this.currentView = 'notice';
-    this.renderCurrentView();
-    void this.loadLobbyNotices();
+    this.openLobbyTerminalPanel();
+    this.openLobbyNoticeDialog();
   }
 
   private openLobbyGachaScene(): void {
@@ -6708,14 +6666,10 @@ export class LootChainGameRoot extends Component {
     return this.lobbyNoticeLoader.currentState();
   }
 
+  /** 11-07 旧整页设置面板已删:旧入口转到 B 风格设置弹框。 */
   private openLobbySettingsPanel(): void {
-    if (this.lobbySettingsPanelOpen && this.currentView === 'settings') {
-      return;
-    }
-    this.closeAllLobbyScenePanelFlags();
-    this.lobbySettingsPanelOpen = true;
-    this.currentView = 'settings';
-    this.renderCurrentView();
+    this.openLobbyTerminalPanel();
+    this.openLobbySettingsGlassDialog();
   }
 
   private closeLobbySettingsPanel(): void {
@@ -6848,17 +6802,9 @@ export class LootChainGameRoot extends Component {
   }
 
   // ── "更多"面板(2026-09-06):低频入口收纳,右上仅留一个入口 ──
+  /** 11-07 旧「更多」整页已删(兑换码 / 公告 / 设置都在终端):旧入口转到终端。 */
   private openLobbyMorePanel(): void {
-    if (this.lobbyMorePanelOpen && this.currentView === 'more') {
-      return;
-    }
-    this.closeAllLobbyScenePanelFlags();
-    this.lobbyMorePanelOpen = true;
-    this.currentView = 'more';
-    this.renderCurrentView();
-    // 红点/战报数据兜底刷新(不清未读)。
-    void this.loadLobbyMails(false, false);
-    void this.loadLobbyBattleRecent(false);
+    this.openLobbyTerminalPanel();
   }
 
   private closeLobbyMorePanel(): void {

@@ -1,6 +1,16 @@
 import type { PlayerLobbyProfileVO } from '../../types/PlayerTypes';
 import { positiveInteger, safeText } from '../UiTextFormatter';
 
+/** 改昵称弹框状态(2026-09-25;11-07 旧整页资料面板删除后从 LobbyProfileDialogRenderer 挪来)。 */
+export interface ProfileRenameState {
+  open: boolean;
+  infoLoading: boolean;
+  info: { currentName: string; freeAvailable: boolean; diamondCost: number; renameCount: number } | null;
+  draft: string;
+  busy: boolean;
+  error: string;
+}
+
 /**
  * 大厅玩家资料本地状态。
  *
