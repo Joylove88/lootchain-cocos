@@ -148,6 +148,14 @@ const HERO_SKILL_ICON_BY_EFFECT: Record<string, string> = {
   shield: `${HERO_PROTO_DIR}sk_shield/spriteFrame`,
   speed: `${HERO_PROTO_DIR}sk_speed/spriteFrame`,
 };
+/** 主角四键技能专属图标(11-08 用户「名字和图标不对版」:原来借被动图标,重斩 = 溅射星、旋风斩 = 眩晕闪电);
+ *  意象对齐野外 HUD 按钮线稿 hud_sword / hud_slash / hud_dash / hud_whirl,哑光手绘(tools/qa/skill_icon_matte.py skill)。 */
+const HERO_PROTAGONIST_SKILL_ICON = {
+  combo: `${HERO_PROTO_DIR}sk_p_combo/spriteFrame`,
+  heavy: `${HERO_PROTO_DIR}sk_p_heavy/spriteFrame`,
+  dash: `${HERO_PROTO_DIR}sk_p_dash/spriteFrame`,
+  whirl: `${HERO_PROTO_DIR}sk_p_whirl/spriteFrame`,
+};
 /** 原型去 UI 背景(哥特大厅 + 顶光 + 法阵底座),整屏 1870×841,与页签 / 右栏同一 k 映射。 */
 export const HERO_PROTO_BG = { path: `${HERO_PROTO_DIR}hero_bg/spriteFrame`, w: 1870, h: 841 };
 /** B 风格:同一张大厅背景的虚化压暗版(tools 生成,高斯 5 + 降饱和),面板浮在上面更有层次。 */
@@ -8454,10 +8462,10 @@ export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
     const ultOpen = protagonistUltUnlocked();
     return [
       { name: '夜帝残影', tag: ultOpen ? '大招 · U 键' : '大招 · 炼魂解锁', description: '前冲出剑，身后夜帝虚影挥刃横扫前方一大片，伤害为攻击 ×450%，冷却 30 秒。', kind: 'ultimate', icon: resolveUltimateEmblemAsset(hero), locked: !ultOpen },
-      { name: '五段连招', tag: '普攻 · J 键', description: '上挑、横扫、过顶劈、突刺、跃起下劈，连按自动接段；最后一击范围重击。', icon: HERO_SKILL_ICON_BY_EFFECT.atkUp },
-      { name: '重斩', tag: '战技 · K 键', description: '蓄力重劈前方，伤害为攻击 ×260%，冷却 5 秒。', icon: HERO_SKILL_ICON_BY_EFFECT.splash },
-      { name: '突进斩', tag: '战技 · L 键', description: '向前突进一段距离并斩击，伤害为攻击 ×200%，冷却 7 秒。', icon: HERO_SKILL_ICON_BY_EFFECT.truePierce ?? HERO_SKILL_ICON_BY_EFFECT.atkUp },
-      { name: '旋风斩', tag: '战技 · I 键', description: '原地旋身横扫周身一圈，伤害为攻击 ×160%，冷却 9 秒。', icon: HERO_SKILL_ICON_BY_EFFECT.stun ?? HERO_SKILL_ICON_BY_EFFECT.splash },
+      { name: '五段连招', tag: '普攻 · J 键', description: '上挑、横扫、过顶劈、突刺、跃起下劈，连按自动接段；最后一击范围重击。', icon: HERO_PROTAGONIST_SKILL_ICON.combo },
+      { name: '重斩', tag: '战技 · K 键', description: '蓄力重劈前方，伤害为攻击 ×260%，冷却 5 秒。', icon: HERO_PROTAGONIST_SKILL_ICON.heavy },
+      { name: '突进斩', tag: '战技 · L 键', description: '向前突进一段距离并斩击，伤害为攻击 ×200%，冷却 7 秒。', icon: HERO_PROTAGONIST_SKILL_ICON.dash },
+      { name: '旋风斩', tag: '战技 · I 键', description: '原地旋身横扫周身一圈，伤害为攻击 ×160%，冷却 9 秒。', icon: HERO_PROTAGONIST_SKILL_ICON.whirl },
     ];
   }
   const kit: HeroDetailSkill[] = [];

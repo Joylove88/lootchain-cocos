@@ -4,6 +4,7 @@
 覆盖:
   ult     老英雄大招徽章 22 + 主角 PROTAGONIST + 下架英雄兜底 GENERIC → ui/hero/ult_emblem/<码>.png(384×384 圆形透明)
   passive 被动技能图标 10 → ui/hero/proto/sk_<效果>.png(256×256 圆形透明)
+  skill   主角四键技能 4(五段连招 / 重斩 / 突进斩 / 旋风斩)→ ui/hero/proto/sk_p_<键>.png(256×256,题材对齐野外 HUD 按钮)
 题材沿用老图的主体(玩家认得出是谁的),只换画风;提示词 = d26_art_gen.PROMPTS['emblem_paint'](用户确认的 A 口径),
 参考图 = 现在 B 技能面板截图。异界神州 19 张走 d26_art_gen.py emblem_paint(同一口径)。
 
@@ -54,20 +55,31 @@ ULT = {
     'PROTAGONIST': '夜帝残影: an upright longsword with a champagne-gold hilt and pale silver blade, behind it a large translucent pale violet-grey silhouette of a crowned night emperor raising his own blade; clear contrast against a deep navy background, readable at small size; palette pale silver, champagne gold and soft violet-grey',
     'GENERIC': '终极技能: a single upright sword crossed with a stylized flame; palette charcoal and aged gold',
 }
+# 被动名与效果一一对应(LobbyHeroDetailPanelRenderer.describeHeroSkillEffect):题材必须照「名字字面」画,玩家一眼对上。
+# 11-08 用户「名字和图标不对版」:眩晕画成闪电、溅射画成八芒星、荆棘反弹没有荆棘、力量强化只是一把剑、冰封冻结只是冰晶 → 重写这 5 条。
 PASSIVE = {
-    'sk_atkUp': '攻击强化: one sharp upright sword with a small rising arrow beside it; palette crimson and steel',
-    'sk_freeze': '冰冻: a cluster of sharp ice crystals; palette pale ice blue',
+    'sk_atkUp': '力量强化 (attack power up): a clenched armored gauntlet fist raised upward, knuckles forward, conveying raw strength; palette crimson and dark steel',
+    'sk_freeze': '冰封冻结 (freeze an enemy in place): a monster claw sealed inside a solid block of clear ice, frost creeping over the block; palette pale ice blue and white',
     'sk_hpUp': '生命强化: a red heart with a small plus cross; palette deep red',
     'sk_lifesteal': '吸血: a single drop of blood between two curved fangs; palette dark red',
-    'sk_reflect': '反伤: a silver shield deflecting two arrows back outward; palette steel silver',
+    'sk_reflect': '荆棘反弹 (thorns that strike back at attackers): a round shield wrapped in dark thorny vines with sharp spikes, a few thorns lashing outward; palette dark green-brown thorns and steel',
     'sk_shield': '护盾: a translucent hexagon-patterned protective dome; palette pale cyan blue',
     'sk_speed': '速度: a pair of swept feathered wings; palette olive and soft gold',
-    'sk_splash': '溅射: an eight-pointed burst star splitting outward; palette amber gold',
-    'sk_stun': '眩晕: a lightning bolt with three small stars circling it; palette yellow',
+    'sk_splash': '溅射 (splash damage hitting nearby enemies): one heavy impact crater in the center whose shockwave splashes outward onto two smaller enemy silhouettes on its left and right, debris flying sideways; palette amber orange and charcoal',
+    'sk_stun': '眩晕 (stun / daze): a dented horned helmet with a ring of small spinning stars circling above it, dizzy swirl lines; palette steel grey and soft yellow stars',
     'sk_truePierce': '真伤穿透: a red arrow piercing through a cracked armor plate; palette red and bronze',
 }
 PASSIVE_NOTE = (' This is a small passive-skill icon: keep it ONE simple symbol, centered, with very little background detail '
-                'so it reads at 48 px.')
+                'so it reads at 48 px. The symbol must literally depict the skill name so players can match name and icon.')
+
+# 主角四键技能(野外 J / K / L / I,夜帝):题材对齐野外 HUD 按钮线稿 ui/glass/hud_sword / hud_slash / hud_dash / hud_whirl,
+# 详情页与按钮是同一个意象(原来借被动图标:重斩 = 溅射星、旋风斩 = 眩晕闪电,完全不对版)。
+SKILL = {
+    'sk_p_combo': '五段连招 (five-hit sword combo): a longsword in the center surrounded by five sequential crescent slash trails at different angles (upward, horizontal sweep, overhead, forward thrust, leaping down-slash); palette pale silver and soft violet-grey',
+    'sk_p_heavy': '重斩 (charged heavy cleave): one huge crescent slash arc cleaving straight down from a two-handed greatsword, the ground cracking under the impact; palette steel silver and ember orange',
+    'sk_p_dash': '突进斩 (dash forward and slash): a sword thrusting horizontally forward with strong forward speed lines and a faint afterimage trail behind it; palette pale silver and cool blue',
+    'sk_p_whirl': '旋风斩 (spinning slash around oneself): a sword sweeping a full 360-degree circular slash ring around the center, whirlwind arcs; palette pale silver and teal',
+}
 
 
 def targets():
@@ -75,6 +87,8 @@ def targets():
         yield key, subject, 'ult'
     for key, subject in PASSIVE.items():
         yield key, subject, 'passive'
+    for key, subject in SKILL.items():
+        yield key, subject, 'skill'
 
 
 def gen(codex, key, subject, kind):
@@ -84,7 +98,7 @@ def gen(codex, key, subject, kind):
     os.makedirs(OUT, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix='matteicon_')
     ref = G.emblem_b_ref(tmp)
-    prompt = G.PROMPTS['emblem_paint'].replace('{subject}', subject) + (PASSIVE_NOTE if kind == 'passive' else '')
+    prompt = G.PROMPTS['emblem_paint'].replace('{subject}', subject) + (PASSIVE_NOTE if kind in ('passive', 'skill') else '')
     t0 = time.time()
     r = subprocess.run([codex, 'exec', '--skip-git-repo-check', '-m', G.MODEL, '-c', 'model_reasoning_effort="low"', '-s', 'read-only', '-C', tmp, '-i', ref, '-'],
                        input=prompt, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)

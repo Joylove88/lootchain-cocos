@@ -68,6 +68,37 @@ def synth_death(data, hit_anim):
     return anim
 
 
+NON_INHERIT_REFLECTION = ('noRotationOrReflection', 'noScaleOrReflection', 'onlyTranslation')
+
+
+def mirror_non_inheriting_bones(data):
+    """根骨骼镜像对「不继承父级镜像」的骨骼无效(D26 的脚 jiao1/jiao2 设成 noRotationOrReflection 让脚掌贴地,
+    赵云的发梢 cf1~3 也是)→ 镜像后脚尖仍朝原方向,看起来像罗圈腿(11-08 用户反馈)。
+    这些骨骼自己做镜像:局部旋转取反、scaleX 取反,旋转关键帧(相对 setup 的增量)与贝塞尔曲线的值坐标一起取反。
+    IK 不用动(运行时按父级镜像自动处理,翻 bendPositive 反而更错,渲染逐像素比对过)。"""
+    names = {b['name'] for b in data['bones'] if b.get('inherit', b.get('transform')) in NON_INHERIT_REFLECTION}
+    for bone in data['bones']:
+        if bone['name'] in names:
+            bone['rotation'] = -bone.get('rotation', 0)
+            bone['scaleX'] = -bone.get('scaleX', 1)
+            if 'shearY' in bone:
+                bone['shearY'] = -bone['shearY']
+    for anim in data['animations'].values():
+        for bone_name, timelines in anim.get('bones', {}).items():
+            if bone_name not in names:
+                continue
+            for key in timelines.get('rotate', []):
+                if 'value' in key:
+                    key['value'] = -key['value']
+                curve = key.get('curve')
+                if isinstance(curve, list) and len(curve) == 4:
+                    key['curve'] = [curve[0], -curve[1], curve[2], -curve[3]]
+            for key in timelines.get('shear', []):
+                if 'y' in key:
+                    key['y'] = -key['y']
+    return names
+
+
 def run(code, asset, tier):
     jdir = os.path.join(SRC, 'fx42json', code)
     bdir = os.path.join(SRC, 'fx42', code)
@@ -88,6 +119,7 @@ def run(code, asset, tier):
     # 根骨骼没有动画关键帧,Spine 4 缩放关键帧也是乘在初始缩放上,镜像不会被动画盖掉。
     root = data['bones'][0]
     root['scaleX'] = -abs(root.get('scaleX', 1))
+    mirror_non_inheriting_bones(data)
 
     stage = os.path.join(STAGE, asset)
     shutil.rmtree(stage, ignore_errors=True)
