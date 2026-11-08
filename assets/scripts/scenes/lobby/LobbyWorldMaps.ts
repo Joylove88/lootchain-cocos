@@ -95,6 +95,8 @@ export interface WorldMapProp {
   /** 立物强制随风摆 / 不摆(默认按素材名判断:树 / 灌木 / 草丛)。 */
   sway?: boolean;
   block?: { w: number; d: number };
+  /** 整体乘色(11-08 林地矮物件压暗一点融进地面,不一颗颗跳出来)。 */
+  tint?: [number, number, number];
 }
 
 /** 野外怪群:地图上营地中心 + 游走半径;碰到其中任意一只即开 stageCode 这场战斗。 */
@@ -229,12 +231,15 @@ export interface WorldMapBlock {
 export interface GroundSplatDef {
   /** 混合遮罩(R 噪声 / G 草甸 / B 离路距离;tools/qa/woods_ground_install.py 生成)。 */
   mask: string;
+  /** 第二张遮罩(R 落叶层 / G 裸土)。 */
+  mask2: string;
   floor: string;
   moss: string;
   meadow: string;
   dirt: string;
-  /** 各层一格多少世界单位:[腐殖层, 苔草, 草甸, 土路]。 */
-  tiles: [number, number, number, number];
+  leaf: string;
+  /** 各层一格多少世界单位:[腐殖层, 苔草, 草甸, 土路, 落叶]。 */
+  tiles: [number, number, number, number, number];
 }
 
 export interface WorldMapDef {
@@ -532,9 +537,12 @@ const VILLAGE: WorldMapDef = {
 
 
 /** 林地 v4 物件行([素材序号, x, y, 宽, 翻转, 挡块宽?, 挡块深?])→ 地图立物 / 贴地件。 */
-function woodsRows(rows: number[][], flat: boolean): WorldMapProp[] {
+function woodsRows(rows: number[][], flat: boolean, tint?: [number, number, number]): WorldMapProp[] {
   return rows.map(([a, x, y, width, flip, bw, bd]) => {
     const prop: WorldMapProp = { asset: worldAsset(WOODS_V4_ASSETS[a]), x, y, width };
+    if (tint) {
+      prop.tint = tint;
+    }
     if (flat) {
       prop.flat = true;
     }
@@ -586,14 +594,17 @@ const WOODS: WorldMapDef = {
   // 10-29 写实林地底纹(苔草 + 腐殖土),一格 1000 世界单位;11-08 起只在多层地表装好前兜底
   ground: worldAsset('ground_woods3'),
   groundTile: 1000,
-  // 11-08 E 方案:腐殖层 / 苔草 / 草甸 / 土路四层混合(土路不规则边 + 暗沟 + 车辙由着色器按离路距离画)
+  // 11-08 E 方案:腐殖层 / 苔草 / 草甸 / 落叶 / 裸土 / 土路六层高度混合(土路不规则边 + 暗边 + 车辙由着色器按离路距离画)
   groundSplat: {
     mask: worldAsset('woods4/ground_splat'),
+    mask2: worldAsset('woods4/ground_splat2'),
     floor: worldAsset('woods4/tex_forest_floor'),
     moss: worldAsset('ground_woods3'),
     meadow: worldAsset('woods4/tex_meadow'),
     dirt: worldAsset('woods4/tex_dirt_path'),
-    tiles: [520, 1000, 300, 420],
+    leaf: worldAsset('woods4/tex_leaf_litter'),
+    // 11-08 第二版放大平铺(原 520 / 1000 / 300 / 420):材质细节在屏上读得出来,不缩成噪点;腐殖层 900 时满地大落叶太褐,收到 720
+    tiles: [720, 1400, 560, 640, 380],
   },
   groundShadows: true,
   buildings: [],
@@ -606,7 +617,8 @@ const WOODS: WorldMapDef = {
     // ── 立物:地标 / 营地件 → 高物件(树 / 岩)→ 矮物件(蕨 / 草 / 碎石)──
     ...WOODS_V4_STANDS.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
     ...woodsRows(WOODS_V4_TALL, false),
-    ...woodsRows(WOODS_V4_LOW, false),
+    // 矮物件(蕨 / 草 / 碎石)压暗一点、略偏暖,当地面质感的一部分,视觉重心留给树和人(11-08 第二版)
+    ...woodsRows(WOODS_V4_LOW, false, [214, 214, 204]),
   ],
   lamps: [],
   lampAsset: V2('lamp'),
@@ -765,7 +777,7 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
   const splat = def.groundSplat;
   return Array.from(new Set([def.ground, def.lampAsset,
     // 多层地表遮罩 + 材质(11-08)
-    ...(splat ? [splat.mask, splat.floor, splat.moss, splat.meadow, splat.dirt] : []), ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
+    ...(splat ? [splat.mask, splat.mask2, splat.floor, splat.moss, splat.meadow, splat.dirt, splat.leaf] : []), ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
     ...def.npcs.map((n) => n.asset).filter((asset): asset is string => !!asset),
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),

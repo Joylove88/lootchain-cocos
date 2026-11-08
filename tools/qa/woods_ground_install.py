@@ -3,6 +3,7 @@
 - 三张无缝材质(Codex 订阅生图:林地腐殖层 / 草甸 / 土路)转 1024² JPG 入库 ui/world/woods4/(带 mipmap、运行时设平铺);
 - 混合遮罩 ground_splat.jpg(每像素 24 世界单位,RGB 4:4:4 JPG —— 出包的 PNG 量化会毁数据,透明通道也会被量化,所以不用 PNG / alpha):
     R = 大尺度噪声(腐殖层 ↔ 苔草过渡 + 明暗起伏),G = 草甸权重(怪群空地 / 林间空地 + 噪声成片),B = 离路中线距离 / 512
+  第二张 ground_splat2.jpg:R = 落叶层(秋树 / 阔叶树冠下),G = 裸土(怪群圈心)
   着色器 effects/world-ground 按遮罩混 4 层(第 4 层 = 原 ground_woods3 苔草底纹),土路边缘按距离 + 噪声抖动、草土交界压一道暗沟、中线两侧车辙。
 - 原图(1254² PNG)备份到 素材原始备份/woods-ground-tex-20261108/。
 
@@ -24,7 +25,7 @@ import woods_v4_gen as G  # noqa: E402
 ROOT = G.ROOT
 DST = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'woods4')
 BACKUP = os.path.join(ROOT, '素材原始备份', 'woods-ground-tex-20261108')
-TEXTURES = ['tex_forest_floor', 'tex_meadow', 'tex_dirt_path']
+TEXTURES = ['tex_forest_floor', 'tex_meadow', 'tex_dirt_path', 'tex_leaf_litter']
 MASK_CELL = 24
 
 
@@ -82,6 +83,9 @@ def install_textures(src):
     os.makedirs(BACKUP, exist_ok=True)
     for name in TEXTURES:
         p = os.path.join(src, name + '.png')
+        if not os.path.exists(p):
+            print('skip (no source)', name)
+            continue
         shutil.copy2(p, os.path.join(BACKUP, name + '.png'))
         im = Image.open(p).convert('RGB').resize((1024, 1024), Image.LANCZOS)
         out = os.path.join(DST, name + '.jpg')
@@ -122,10 +126,34 @@ def build_mask():
     n2 = value_noise(W, H, 70, 11) * 0.6 + value_noise(W, H, 24, 12) * 0.4
     meadow = np.clip(clear * 0.55 + smoothstep(0.55, 0.8, n2) * 0.45, 0, 0.7)
     rgb = np.stack([n1, meadow / 0.7, np.clip(d_road / 512.0, 0, 1)], axis=-1)
+    save_mask(rgb, 'ground_splat', W, H)
+    # 第二张遮罩(11-08 第二版):R = 落叶层(秋树 / 阔叶树冠下,按噪声成片)、G = 裸土(怪群圈心被踩秃的地)
+    leaf = np.zeros(X.shape, np.float32)
+    for t in L['tall']:
+        if t.get('kind') != 'tree' or 'pine' in t['asset']:
+            continue
+        w = t['width']
+        k = 0.9 if 'autumn' in t['asset'] else 0.45
+        r = np.hypot((X - t['x']) / (w * 0.62), (Y - (t['y'] + w * 0.12)) / (w * 0.4))
+        leaf = np.maximum(leaf, k * (1 - smoothstep(0.45, 1.05, r)))
+    n4 = value_noise(W, H, 9, 31) * 0.6 + value_noise(W, H, 4, 32) * 0.4
+    # 噪声把圆斑打碎成一片片(实测整圆像个坑)
+    leaf = np.clip(leaf * (0.35 + 1.1 * n4) - 0.1, 0, 1) * smoothstep(60, 160, d_road)
+    bare = np.zeros(X.shape, np.float32)
+    for c in L['camps']:
+        if c['elite']:
+            continue
+        r = G.camp_radius(c)
+        bare = np.maximum(bare, 1 - smoothstep(r * 0.25, r * 0.7, np.hypot(X - c['x'], (Y - c['y']) / 0.8)))
+    bare = np.clip(bare * (0.35 + 0.65 * value_noise(W, H, 6, 41)), 0, 1) * 0.85
+    save_mask(np.stack([leaf, bare, np.zeros_like(leaf)], axis=-1), 'ground_splat2', W, H)
+
+
+def save_mask(rgb, name, W, H):
     im = Image.fromarray((rgb * 255).round().clip(0, 255).astype(np.uint8), 'RGB')
-    out = os.path.join(DST, 'ground_splat.jpg')
+    out = os.path.join(DST, name + '.jpg')
     im.save(out, quality=95, subsampling=0)
-    write_meta(out, meta_for('ground_splat', '.jpg', W, H, False, False))
+    write_meta(out, meta_for(name, '.jpg', W, H, False, False))
     print(out, W, H, os.path.getsize(out) // 1024, 'KB')
 
 
@@ -133,6 +161,8 @@ def main():
     ensure_dir()
     if '--mask-only' not in sys.argv:
         install_textures(sys.argv[1])
+    elif '--tex' in sys.argv:
+        install_textures(sys.argv[sys.argv.index('--tex') + 1])
     build_mask()
 
 

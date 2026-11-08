@@ -1407,6 +1407,9 @@ export class LobbyTownRenderer {
       if (prop.flipX) {
         sprite.node.setScale(-1, 1, 1);
       }
+      if (prop.tint) {
+        sprite.color = rgba(prop.tint[0], prop.tint[1], prop.tint[2]);
+      }
       if (prop.flat) {
         // 贴地:中心对齐,排在地砖之后、压暗层之前
         sprite.node.setPosition(0, 0, 0);

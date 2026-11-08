@@ -3,7 +3,7 @@ import type { GroundSplatDef } from './LobbyWorldMaps';
 
 /**
  * 野外多层地表(2026-11-08 用户「地面效果能做到流放之路2这种级别吗,更细腻的材质」,E 方案 a):
- * 整张地图铺一个四边形,着色器 effects/world-ground 按混合遮罩(cc_spriteTexture)混 4 层平铺材质。
+ * 整张地图铺一个四边形,着色器 effects/world-ground 按两张混合遮罩(cc_spriteTexture + mask2Tex)混 6 层平铺材质(高度混合)。
  * 遮罩 / 材质由 tools/qa/woods_ground_install.py 生成入库。素材全到齐才挂上(之前仍是旧的平铺底纹),材质按地图缓存复用。
  */
 const EFFECT = 'effects/world-ground';
@@ -15,7 +15,7 @@ export function groundSplatReady(cfg: GroundSplatDef): boolean {
 }
 
 function build(cfg: GroundSplatDef, width: number, height: number, effect: EffectAsset, frames: SpriteFrame[]): void {
-  const [mask, floor, moss, meadow, dirt] = frames;
+  const [mask, mask2, floor, moss, meadow, dirt, leaf] = frames;
   const material = new Material();
   material.initialize({ effectAsset: effect });
   const layer = (name: string, frame: SpriteFrame): void => {
@@ -27,9 +27,12 @@ function build(cfg: GroundSplatDef, width: number, height: number, effect: Effec
   layer('mossTex', moss);
   layer('meadowTex', meadow);
   layer('dirtTex', dirt);
-  const [tf, tm, tw, td] = cfg.tiles;
+  layer('leafTex', leaf);
+  material.setProperty('mask2Tex', mask2.texture as Texture2D);
+  const [tf, tm, tw, td, tl] = cfg.tiles;
   material.setProperty('tiles', new Vec4(width / tf, height / tf, width / tm, height / tm));
   material.setProperty('tiles2', new Vec4(width / tw, height / tw, width / td, height / td));
+  material.setProperty('tiles3', new Vec4(width / tl, height / tl, 0, 0));
   cache.set(cfg.mask, { material, mask });
 }
 
@@ -75,7 +78,7 @@ export function mountGroundSplat(root: Node, width: number, height: number, cfg:
     return;
   }
   loading.add(cfg.mask);
-  const paths = [cfg.mask, cfg.floor, cfg.moss, cfg.meadow, cfg.dirt];
+  const paths = [cfg.mask, cfg.mask2, cfg.floor, cfg.moss, cfg.meadow, cfg.dirt, cfg.leaf];
   const frames: Array<SpriteFrame | null> = paths.map(() => null);
   let effect: EffectAsset | null = null;
   let left = paths.length + 1;

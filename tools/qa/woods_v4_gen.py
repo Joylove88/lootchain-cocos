@@ -664,13 +664,13 @@ def tree_mix(x, y):
     return [('oak', 4), ('pine', 4), ('autumn', 2)]
 
 
-def scatter(g, P, structures, seed=8):
+def scatter(g, P, structures, seed=8, layers=('tall', 'low')):
     rnd = random.Random(seed)
     cells = {}
     for name in ZONES:
         cells[name] = np.where((g.zone == name) & ~g.blocked & ~g.edge)
     # 先高后矮:按密度 × 面积投点,投不进的不补(天然留白)
-    for layer in ('tall', 'low'):
+    for layer in layers:
         for name, (desc, tall_t, low_t, tall_d, low_d) in ZONES.items():
             iy, ix = cells[name]
             if len(iy) == 0:
@@ -766,6 +766,160 @@ def dress_camp_rims(g, P, camps, structures, rnd):
             try_low(g, P, asset, x, y, rnd.uniform(lo, hi), structures)
 
 
+# ── 矮物件成组摆放(11-08 用户「地面摆件、装饰物乱糟糟的没有规律」)──
+# 原做法按分区密度均匀撒点 → 每隔 300 就一件、一处混五六种、和环境没关系。改成:
+#   1. 树根组:树前脚下 1 中 + 1~2 小(蕨 / 蘑菇 / 草),跟着树种;
+#   2. 岩脚组:石头 / 岩块前面碎石 + 枯草;
+#   3. 路缘带:沿路两侧离中线 170~230 断续成串的小碎石 / 草叶(一段有一段没有,按沿路噪声);
+#   4. 空地草簇:林间空地 / 怪群外圈 3~5 丛草成一簇,圈心留空;
+#   5. 林下组:深林 / 林缘少量「灌木 + 两丛蕨 + 草」或「倒木 + 蕨 + 蘑菇」;
+#   6. 水边组:蕨 + 小石 + 草。
+# 组与组之间留空(地面露出来),一片区域只用两三种主角素材。
+LOW_MODE = 'cluster'
+
+# 红蘑菇太跳,只放在林下倒木组里点一下
+ROOT_SETS = {
+    'pine': [('fern', 3), ('grass', 2)],
+    'oak': [('fern', 3), ('bush', 1), ('grass', 2)],
+    'autumn': [('fern', 2), ('dry_grass_s', 2), ('grass', 1)],
+}
+
+
+def poisson(rnd, cand_xy, spacing, limit):
+    """在候选点里挑互相至少隔 spacing 的点(随机顺序贪心;纵向按 0.8 压扁算距离)。"""
+    out = []
+    grid = {}
+    order = list(range(len(cand_xy)))
+    rnd.shuffle(order)
+    for i in order:
+        x, y = cand_xy[i]
+        kx, ky = int(x // spacing), int(y // spacing)
+        ok = all((ox - x) ** 2 + ((oy - y) / 0.8) ** 2 >= spacing * spacing
+                 for a in range(kx - 1, kx + 2) for b in range(ky - 1, ky + 2) for (ox, oy) in grid.get((a, b), ()))
+        if ok:
+            out.append((x, y))
+            grid.setdefault((kx, ky), []).append((x, y))
+            if len(out) >= limit:
+                break
+    return out
+
+
+def try_low_group(g, P, asset, x, y, w, structures):
+    """同 try_low,但矮物件之间允许互相压 30%(成簇);在树前允许压住树根更多一点。"""
+    rect, h = rect_of(asset, x, y, w, 'prop')
+    for o in P.near(x, y, 1):
+        ov = overlap(rect, o['rect'])
+        if o['layer'] == 'low' and ov > 0.3 * min(area(rect), area(o['rect'])):
+            return False
+        if o['layer'] == 'tall':
+            if y > o['y'] - 10 and ov > 0:
+                return False
+            if y <= o['y'] - 10 and ov > 0.45 * area(rect):
+                return False
+    for srect in structures:
+        if overlap(rect, srect) > 0.05 * area(rect):
+            return False
+    item = {'asset': asset, 'x': round(x), 'y': round(y), 'width': round(w), 'rect': rect, 'r': 0, 'layer': 'low'}
+    if (int(x * 7 + y * 13) // 17) % 2 == 0:
+        item['flipX'] = True
+    P.low.append(item)
+    P.add(item)
+    return True
+
+
+def place_group(g, P, rnd, structures, cx, cy, items, spread):
+    """以 (cx, cy) 为中心放一组:第一件(最大)放中心,其余绕着放;每件都过防遮挡检查。"""
+    placed = 0
+    for k, (name, scale) in enumerate(items):
+        asset, (lo, hi) = LOW[name]
+        w = rnd.uniform(lo, hi) * scale
+        for _ in range(6):
+            r = 0 if k == 0 else spread * rnd.uniform(0.45, 1.0)
+            a = rnd.uniform(0, math.tau)
+            x = cx + math.cos(a) * r
+            y = cy + math.sin(a) * r * 0.6
+            if abs(x) > MAP_W / 2 - 80 or abs(y) > MAP_H / 2 - 80:
+                continue
+            i = g.idx(x, y)
+            if g.blocked[i] or g.zone[i] in ('road', 'water') or g.d_road[i] < 150:
+                continue
+            if try_low_group(g, P, asset, x, y, w, structures):
+                placed += 1
+                break
+    return placed
+
+
+def scatter_clusters(g, P, structures, roads, stands, seed=8):
+    rnd = random.Random(seed + 101)
+    camp_cores = [(c[5], c[6], 140 + c[3] * 58) for c in V4_CAMPS]
+    # 1. 树根组(约 55% 的树)
+    for t in list(P.tall):
+        if t.get('kind') != 'tree' or rnd.random() > 0.55:
+            continue
+        kind = 'pine' if 'pine' in t['asset'] else 'autumn' if 'autumn' in t['asset'] else 'oak'
+        n = rnd.choice([2, 2, 3])
+        names = [pick(rnd, ROOT_SETS[kind]) for _ in range(n)]
+        items = [(names[0], 1.0)] + [(nm, 0.75) for nm in names[1:]]
+        side = rnd.choice([-1, 1])
+        place_group(g, P, rnd, structures, t['x'] + side * t['width'] * rnd.uniform(0.08, 0.22), t['y'] - rnd.uniform(25, 60), items, t['width'] * 0.22)
+    # 2. 岩脚组
+    rocks = [t for t in P.tall if t.get('kind') == 'rock'] + [s for s in stands if 'rock' in s['asset'] or 'boulder' in s['asset']]
+    for r in rocks:
+        if rnd.random() > 0.8:
+            continue
+        items = [(pick(rnd, [('stones', 2), ('rocks_s', 2), ('gravel', 1)]), 0.9), (pick(rnd, [('gravel', 2), ('dry_grass_s', 2), ('grass', 1)]), 0.7)]
+        if rnd.random() < 0.5:
+            items.append(('dry_grass_s', 0.7))
+        place_group(g, P, rnd, structures, r['x'] + rnd.uniform(-0.25, 0.25) * r['width'], r['y'] - 40, items, r['width'] * 0.3)
+    # 3. 路缘带:沿每条路两侧,按沿路一维噪声决定哪段有;一段内每 85~120 放一件小东西
+    for line in roads:
+        for side in (-1, 1):
+            phase = rnd.uniform(0, 100)
+            acc = 0.0
+            for (ax, ay), (bx, by) in zip(line, line[1:]):
+                seg = math.hypot(bx - ax, by - ay)
+                if seg < 1:
+                    continue
+                nx, ny = -(by - ay) / seg, (bx - ax) / seg
+                t = 0.0
+                while t < seg:
+                    s_ = acc + t
+                    if math.sin(s_ / 260 + phase) + 0.6 * math.sin(s_ / 97 + phase * 1.7) > 0.55:
+                        off = rnd.uniform(170, 230)
+                        x = ax + (bx - ax) * t / seg + nx * side * off
+                        y = ay + (by - ay) * t / seg + ny * side * off
+                        if abs(x) < MAP_W / 2 - 80 and abs(y) < MAP_H / 2 - 80:
+                            i = g.idx(x, y)
+                            if not g.blocked[i] and g.zone[i] not in ('water', 'clearing', 'road'):
+                                asset, (lo, hi) = LOW[pick(rnd, [('gravel', 3), ('stones', 3), ('grass', 2), ('dry_grass_s', 2)])]
+                                try_low_group(g, P, asset, x, y, rnd.uniform(lo, hi) * 0.7, structures)
+                    t += rnd.uniform(85, 120)
+                acc += seg
+    # 4. 空地草簇:林间空地 / 怪群外圈,圈心留空
+    iy, ix = np.where((g.zone == 'clearing') & ~g.blocked)
+    cand = [(float(g.X[i, j]), float(g.Y[i, j])) for i, j in zip(iy[::3], ix[::3])]
+    for (x, y) in poisson(rnd, cand, 620, 400):
+        if any(math.hypot(x - cx, (y - cy) / 0.8) < cr * 0.6 for cx, cy, cr in camp_cores):
+            continue
+        items = [(pick(rnd, [('grass', 3), ('dry_grass_l', 2)]), 1.0)] + [(pick(rnd, [('grass', 3), ('dry_grass_s', 2)]), 0.75) for _ in range(rnd.choice([2, 3, 4]))]
+        place_group(g, P, rnd, structures, x, y, items, 110)
+    # 5. 林下组(深林 / 林缘,稀)
+    iy, ix = np.where(np.isin(g.zone, ['forest', 'edge']) & ~g.blocked & (g.d_road > 360))
+    cand = [(float(g.X[i, j]), float(g.Y[i, j])) for i, j in zip(iy[::5], ix[::5])]
+    for (x, y) in poisson(rnd, cand, 950, 500):
+        if rnd.random() < 0.35:
+            items = [('log', 0.9), ('fern', 0.8), ('mushrooms', 0.8)]
+        else:
+            items = [('bush', 1.0), ('fern', 0.9), ('fern', 0.75), ('grass', 0.75)]
+        place_group(g, P, rnd, structures, x, y, items, 140)
+    # 6. 水边组
+    iy, ix = np.where((g.zone == 'waterside') & ~g.blocked)
+    cand = [(float(g.X[i, j]), float(g.Y[i, j])) for i, j in zip(iy[::3], ix[::3])]
+    for (x, y) in poisson(rnd, cand, 700, 200):
+        items = [('fern', 1.0), (pick(rnd, [('rocks_s', 2), ('stones', 1)]), 0.8), ('grass', 0.7)]
+        place_group(g, P, rnd, structures, x, y, items, 110)
+
+
 def generate(seed=8):
     roads, areas, flats, river, bridge, stands = build_skeleton()
     camps = build_camps()
@@ -782,9 +936,15 @@ def generate(seed=8):
     g.moved = moved + moved2
     structures = [rect_of(st['asset'], st['x'], st['y'], st['width'], 'prop')[0] for st in stands + extra]
     P = Placed()
-    dress_camp_rims(g, P, camps, structures, rnd)
-    scatter(g, P, structures, seed)
-    scatter_decals(g, P)
+    if LOW_MODE == 'cluster':
+        # 11-08 第二版:高物件照旧,矮物件改成按环境成组摆;地表贴花全部去掉(落叶 / 裸土交给地表着色器)
+        scatter(g, P, structures, seed, layers=('tall',))
+        scatter_clusters(g, P, structures, roads, stands + extra, seed)
+        P.decal = []
+    else:
+        dress_camp_rims(g, P, camps, structures, rnd)
+        scatter(g, P, structures, seed)
+        scatter_decals(g, P)
     return {'roads': roads, 'areas': areas, 'flats': flats, 'river': river, 'bridge': bridge, 'stands': stands + extra,
             'camps': camps, 'chests': chests, 'pois': pois, 'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places,
             'tall': P.tall, 'low': P.low, 'decals': P.decal}, g
