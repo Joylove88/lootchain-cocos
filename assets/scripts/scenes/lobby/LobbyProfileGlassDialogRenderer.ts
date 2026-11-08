@@ -3,6 +3,7 @@ import type { UiKitHost } from '../UiKit';
 import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassIconButton, mountGlassLine, mountGlassPanel, mountGlassScrollBar, mountGlassSlice } from '../UiGlassKit';
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { mountHeroAvatar } from './HeroHeadCrop';
+import { currentLobbyProtagonistHero } from '../../api/LobbyHeroApi';
 import { DAILY_THEME_OPEN_DAYS } from './ItemSourceRoutes';
 import { worldMapOfStage } from './LobbyWorldMaps';
 import type { ProfileRenameState } from './LobbyProfileState';
@@ -138,7 +139,7 @@ export class LobbyProfileGlassDialogRenderer {
     // 头像:同终端名片(主角 → 队长 → 第一位英雄),圆形遮罩 + 淡白细环
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
     const leaderId = this.host.currentLobbyFormationHeroIds()[0];
-    const hero = heroes.find((item) => item.protagonist) ?? heroes.find((item) => item.id === leaderId) ?? heroes.find((item) => item.id > 0);
+    const hero = currentLobbyProtagonistHero() ?? heroes.find((item) => item.protagonist) ?? heroes.find((item) => item.id === leaderId) ?? heroes.find((item) => item.id > 0);
     const avatar = this.host.addChildPlainNode(panel, 'Avatar', FX(326), FY(279), S(172), S(172));
     mountHeroAvatar(avatar, hero?.heroCode, S(166), 'circle');
     const ring = avatar.addComponent(Graphics);

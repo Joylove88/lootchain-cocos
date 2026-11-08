@@ -2,6 +2,7 @@ import { BlockInputEvents, Button, Graphics, HorizontalTextAlignment, Label, Nod
 import { rgba, type LobbyHudHost, type UiLayout } from './LobbyHudTypes';
 import { TERMINAL_ASSETS, TOWN_HUD_PROTO, type TownProtoFrame } from './LobbyTownHudProto';
 import { buildHeroHeadCropFrame, resolveHeroAvatarPath } from './HeroHeadCrop';
+import { currentLobbyProtagonistHero } from '../../api/LobbyHeroApi';
 
 export type LobbyTerminalAction =
   | 'heroes' | 'formation' | 'bag' | 'forge' | 'gacha'
@@ -124,7 +125,8 @@ export class LobbyTerminalPanelRenderer {
     const profile = this.host.currentLobbyProfile();
     const heroes = this.host.currentLobbyHeroRosterState().heroes;
     const leaderId = this.host.currentLobbyFormationHeroIds()[0];
-    const hero = heroes.find((item) => item.protagonist) ?? heroes.find((item) => item.id === leaderId) ?? heroes.find((item) => item.id > 0);
+    // 11-09 自检:名册列表不含主角(LobbyHeroApi 单独存)→ 原来落到编队第一人,头像和名字(主角)对不上
+    const hero = currentLobbyProtagonistHero() ?? heroes.find((item) => item.protagonist) ?? heroes.find((item) => item.id === leaderId) ?? heroes.find((item) => item.id > 0);
     const avatarPath = hero ? resolveHeroAvatarPath(hero.heroCode) : null;
     // 方头像 168(四角 r119)在环覆盖层(200 方、孔 r80)下面:孔外全部被覆盖层盖住
     if (!avatarPath || !this.host.addSprite('Avatar', avatarPath, P.C(226), P.Y(213), P.S(168), P.S(168), root)) {

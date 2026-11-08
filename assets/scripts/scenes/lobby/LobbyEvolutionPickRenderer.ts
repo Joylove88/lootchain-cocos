@@ -369,8 +369,10 @@ export class LobbyEvolutionPickRenderer {
       }
     }
     // 11-04 用户「同一类选满 3 次后一直 3/3」:按下一层显示(4/6);第 6 层没开放时标「未开」,超过最高层显示「已满」
-    const countText = nextQ ? `|   ${after}/${nextQ.layer}${nextQ.locked ? ' 未开' : ''}` : `|   ${after} 已满`;
-    glassLabel(this.host, node, 'RouteCount', countText, S(58), ry, S(22), GLASS_COLOR.sub, S(120));
+    // 11-09 自检:「7 已满」读起来像这张卡没用 → 写明是质变层满了(卡面属性照样生效)
+    const countText = nextQ ? `|   ${after}/${nextQ.layer}${nextQ.locked ? ' 未开' : ''}` : `|   ${after} 质变已满`;
+    const count = glassLabel(this.host, node, 'RouteCount', countText, S(58), ry, S(22), GLASS_COLOR.sub, S(130));
+    count.overflow = Label.Overflow.SHRINK;
     if (selected) {
       // 选中:金边 + 外晕 + 顶边正中的勾 + 质变提示
       const border = this.host.addChildPlainNode(node, 'SelBorder', 0, 0, w + S(16), h + S(16)).addComponent(Graphics);
