@@ -142,7 +142,7 @@ export const WORLD1_POINTS: readonly WorldPoint[] = [
   { code: 'WOODS', name: '村外林地', level: 'Lv.1-10', x: 0.29, y: 0.62, region: 'NOVICE' },
   { code: 'CITY', name: '主城', level: '', x: 0.37, y: 0.36, region: 'CENTRAL' },
   { code: 'GRAY', name: '灰岩荒原', level: 'Lv.10-20', x: 0.56, y: 0.58, region: 'CENTRAL' },
-  { code: 'DEADWOOD', name: '枯木林', level: 'Lv.20-30', x: 0.76, y: 0.38, region: 'CENTRAL', future: 20 },
+  { code: 'DEADWOOD', name: '枯木林', level: 'Lv.20-30', x: 0.76, y: 0.38, region: 'CENTRAL' },
   { code: 'SLAG', name: '熔渣矿坑', level: 'Lv.30-40', x: 0.51, y: 0.12, region: 'NORTH', future: 30 },
   { code: 'FROST', name: '霜脊高地', level: 'Lv.40-50', x: 0.18, y: 0.15, region: 'NORTH', future: 40 },
   { code: 'DRAGON', name: '龙骸深谷', level: 'Lv.50-60', x: 0.82, y: 0.18, region: 'DRAGON', future: 50 },

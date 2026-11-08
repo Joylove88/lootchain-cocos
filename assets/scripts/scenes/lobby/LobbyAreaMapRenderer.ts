@@ -48,6 +48,8 @@ export const AREA_MAP_OVERVIEW: Partial<Record<WorldMapCode, string>> = {
   GRAY: worldAsset('overview/ov_gray'),
   // 11-08 主城 v4:city_v4_gen.py 离线渲染
   CITY: worldAsset('overview/ov_city'),
+  // 11-09 枯木林 v4:dead_v4_gen.py 离线渲染
+  DEADWOOD: worldAsset('overview/ov_deadwood'),
 };
 export const AREA_MAP_ASSET_PATHS: readonly string[] = [...Object.values(MAP_ICON), ...Object.values(AREA_MAP_OVERVIEW) as string[]];
 const CHAMPAGNE = GLASS_COLOR.champagne;

@@ -98,6 +98,35 @@ CITY2 = {
 }
 
 
+# 11-09 第二步第一张:枯木林(Lv.20–30,docs/50 §5.3 / docs/59 第 3 章「古树枯死、精灵守望者、古树低语」);西口接灰岩荒原
+DEAD = {
+    'size': (2000, 1000),
+    'bg': (78, 72, 60),
+    'roads': [
+        [(0, 520), (260, 540), (520, 480), (780, 520), (1000, 470), (1250, 520), (1500, 460), (1720, 420), (1880, 330)],
+        [(520, 480), (470, 300), (420, 180)],
+        [(520, 480), (560, 680), (480, 820)],
+        [(1000, 470), (1020, 300), (1060, 170)],
+        [(1000, 470), (960, 650), (1000, 820)],
+        [(1250, 520), (1350, 680), (1420, 800)],
+        [(1500, 460), (1480, 300)],
+    ],
+    'river': [(780, 1000), (820, 760), (760, 560), (860, 330), (820, 0)],
+    'zones': [
+        ('ELVEN WARDEN CAMP (safe, waypoint)', (230, 560), 120, 80, (110, 150, 120)),
+        ('WITHERED GIANT-TREE GROVE (tree stalkers)', (420, 190), 170, 100, (110, 90, 70)),
+        ('BLACK MUD BOG, poison mist (spiders)', (470, 830), 180, 110, (60, 75, 55)),
+        ('RAVEN CRAG (bats, ravens)', (1060, 160), 140, 80, (100, 100, 100)),
+        ('OLD GRAVEYARD + RUINED CHAPEL', (1000, 830), 170, 100, (120, 115, 120)),
+        ('ABANDONED WOODCUTTER HAMLET (infected)', (1420, 800), 150, 90, (120, 100, 80)),
+        ('WHISPERING STONE CIRCLE (stele fragments)', (1480, 280), 120, 80, (130, 130, 150)),
+        ('WITCH HOLLOW: huge dead world-tree (boss)', (1840, 330), 140, 110, (90, 60, 80)),
+    ],
+    'labels': [('BLACK CREEK', (800, 60)), ('ROOT BRIDGE', (790, 520)), ('EXIT -> WASTELAND', (40, 490)),
+               ('dense dead forest edges', (1000, 970)), ('dense dead forest edges', (1300, 40))],
+}
+
+
 def font(size):
     for f in ('C:/Windows/Fonts/arialbd.ttf', 'C:/Windows/Fonts/arial.ttf'):
         if os.path.exists(f):
@@ -129,3 +158,4 @@ if __name__ == '__main__':
     draw(GRAY, 'gray')
     draw(CITY, 'city')
     draw(CITY2, 'city2')
+    draw(DEAD, 'dead')

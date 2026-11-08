@@ -329,6 +329,7 @@ export function exploreFogged(cell: number, lit: Set<number>, mask: number): boo
 /** 野外怪物种类名(头顶名字用;精英 / 首领用营地名)。 */
 const MONSTER_SPECIES_NAME: Record<string, string> = {
   MINI_RAT: '幼鼠', SMALL_SPIDER: '林蛛', MEDIUM_DOG: '野犬', MEDIUM_BEAR: '棕鬃熊', SWORD_MALE: '盗匪剑士', BOW_MALE: '盗匪弓手', GARGOYLE: '石像鬼',
+  LARGE_SPIDER: '黑泥毒蛛', SMALL_BAT: '腐林蝙蝠', SMALL_RAVEN: '食腐鸦', STAFF_PRIEST: '亡灵祭司', MUTANT_MALE: '腐化者',
 };
 /** 野外宝箱贴图(林地 v3 写实件;铁箱 / 秘藏按色调区分)。 */
 /** 怪群按距离生成 / 回收(世界单位;一屏约 2000 宽):走近 1.4 屏刷,走出 2.3 屏收。 */
@@ -4727,7 +4728,8 @@ export class LobbyTownRenderer {
       // 等级不够接下一条剧情(2026-10-27 UI 审核):指去对应野区打怪升级。
       // 11-08 第 2 章:Lv.10 以后该去灰岩荒原(原来写死村外林地),并指向和玩家等级最接近的怪群
       const level = world?.playerLevel ?? 1;
-      const farm: WorldMapCode = level >= 10 ? 'GRAY' : 'WOODS';
+      // 11-09 枯木林:Lv.20 以后去枯木林
+      const farm: WorldMapCode = level >= 20 ? 'DEADWOOD' : level >= 10 ? 'GRAY' : 'WOODS';
       const farmDef = worldMapDef(farm);
       if (this.mapCode === farm) {
         const camps = def.camps.filter((item) => !item.elite);
@@ -4868,9 +4870,13 @@ export class LobbyTownRenderer {
       const status = quest.state === 'DONE' ? ' · 可交付' : quest.state === 'AVAILABLE' ? ' · 可接取' : '';
       // 副行写任务说明(做什么 / 去哪);野外图怪群多、追踪条下还有精英条,只留主行。晨风村只有训练场一个怪群,照样写(11-03 用户新号不知道去哪)
       const showDesc = this.def.camps.length === 0 || this.mapCode === 'VILLAGE';
-      const farmName = (world?.playerLevel ?? 1) >= 10 ? '灰岩荒原' : '村外林地';
+      const lv = world?.playerLevel ?? 1;
+      const farmName = lv >= 20 ? '枯木林' : lv >= 10 ? '灰岩荒原' : '村外林地';
       const sub = quest.state === 'LOCKED' ? `Lv.${quest.minLevel} 可接 · 去${farmName}升级` : showDesc ? quest.desc.replace(/[。.]$/, '') : '';
       rows.push({ text: `${quest.name}${progress}${status}`, sub, tone: 'story' });
+    } else if (world && world.quests.length > 0 && world.quests.every((item) => item.state === 'CLAIMED' || item.state === 'SKIPPED')) {
+      // 11-09 自检:主线全部交完(C210 之后)追踪条整块消失,玩家不知道接下来干什么 → 留一行下一章预告 + 当前该做的事
+      rows.push({ text: '第 3 章 · 枯木林 · 剧情即将开放', sub: (world.playerLevel ?? 1) >= 20 ? '先去枯木林打怪、接悬赏' : '先去佣兵公会接悬赏、刷野怪升到 Lv.20', tone: 'story' });
     }
     for (const bounty of bounties.slice(0, 2)) {
       rows.push({ text: `悬赏 · ${bounty.name} ${Math.min(bounty.progress, bounty.target)}/${bounty.target}${bounty.state === 'DONE' ? ' · 可领取' : ''}`, sub: '', tone: 'bounty' });

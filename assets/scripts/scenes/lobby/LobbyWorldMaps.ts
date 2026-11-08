@@ -5,7 +5,11 @@
  */
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
-import { CITY_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import { CITY_WATER_BLOCKS, DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import {
+  DEAD_V4_AREAS, DEAD_V4_ASSETS, DEAD_V4_BRIDGE, DEAD_V4_CAMPS, DEAD_V4_CHESTS, DEAD_V4_EXITS, DEAD_V4_FLATS, DEAD_V4_LOW, DEAD_V4_NPCS,
+  DEAD_V4_PLACES, DEAD_V4_POIS, DEAD_V4_ROADS, DEAD_V4_SIZE, DEAD_V4_SPAWN, DEAD_V4_STANDS, DEAD_V4_TALL, DEAD_V4_WAYPOINT,
+} from './LobbyDeadwoodLayout';
 import {
   CITY_V4_AREAS,
   CITY_V4_BOARD,
@@ -348,6 +352,14 @@ const MONSTER_SPINE: Record<string, string> = {
   ROCK_GOLEM: 'spine/monster/rock_golem/golem_001',
   // 11-08 第 2 章剧情精英:宿主「影」
   CROW_REAPER: 'spine/monster/crow_reaper/twohand_spear_001',
+  // 11-09 枯木林(Lv.20-30):现成骨骼里有移动 / 攻击 / 死亡动作的几种
+  LARGE_SPIDER: 'spine/monster/large_spider/large_001',
+  SMALL_BAT: 'spine/monster/small_bat/small_base_001',
+  SMALL_RAVEN: 'spine/monster/small_raven/small_base_001',
+  STAFF_PRIEST: 'spine/monster/staff_priest/staff_001',
+  MUTANT_MALE: 'spine/monster/mutant_male/knuckle_002_darkness',
+  HALIDOM_KEEPER: 'spine/monster/halidom_keeper/halidom_001',
+  CURSED_CASTER: 'spine/monster/cursed_caster/staff_001',
 };
 
 function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false,
@@ -831,11 +843,100 @@ const GRAY: WorldMapDef = {
   chests: GRAY_V4_CHESTS.map((c) => ({ ...c })),
   camps: GRAY_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
     camp(code, label, monster, count, level, x, y, !!elite, GRAY_CAMP_VARIANT[code])),
-  exits: GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
+  exits: [
+    ...GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
+    // 11-09 东口 → 枯木林(Lv.20;落在枯木林西口精灵营地外)
+    { key: 'to_deadwood', label: '前往 · 枯木林', x: GRAY_V4_SIZE.width / 2 - 140, y: -270, radius: 130, toMap: 'DEADWOOD' as WorldMapCode, toSpawn: { x: -8560, y: 157 } },
+  ],
   battleBg: 'battle_scene_field_wasteland',
 };
 
-export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY, GRAY };
+/** 枯木林 v4 布局表的物件行 → 道具(同 grayRows,素材表换成 DEAD_V4_ASSETS)。 */
+function deadRows(rows: number[][], tint?: [number, number, number]): WorldMapProp[] {
+  return rows.map(([a, x, y, width, flip, bw, bd]) => {
+    const prop: WorldMapProp = { asset: worldAsset(DEAD_V4_ASSETS[a]), x, y, width };
+    if (tint) {
+      prop.tint = tint;
+    }
+    if (flip) {
+      prop.flipX = true;
+    }
+    if (bw) {
+      prop.block = { w: bw, d: bd };
+    }
+    return prop;
+  });
+}
+
+/** 枯木林精英 / 首领光环:沼泽蛛母腐化、守墓人狂暴法阵、林间女巫腐化(紫色法阵 + 品红旋涡)。 */
+const DEAD_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAura }> = {
+  FIELD_DEADWOOD_E2: { aura: AURA_CORRUPT },
+  FIELD_DEADWOOD_E: { aura: AURA_RAGE },
+  FIELD_DEADWOOD_B: { aura: AURA_CORRUPT },
+};
+
+const DEAD_HALF_W = DEAD_V4_SIZE.width / 2 - 50;
+const DEAD_HALF_H = DEAD_V4_SIZE.height / 2 - 50;
+
+/**
+ * 枯木林 v4(2026-11-09 用户选写实原型 dead_r1,Lv.20-30;管线同灰岩荒原 v4):18000×9000、镜头 1.4;
+ * 西精灵营地(接灰岩荒原东口)→ 古树林 → 黑泥沼泽 → 黑溪树根桥 → 鸦岩 → 旧墓园 → 伐木村 → 低语石阵 → 女巫谷;
+ * 24 普通群(Lv.20~29)+ 沼泽蛛母 / 守墓人精英 + 林间女巫首领;布局由 tools/qa/dead_v4_gen.py 生成(LobbyDeadwoodLayout.ts)。
+ */
+const DEADWOOD: WorldMapDef = {
+  code: 'DEADWOOD',
+  name: '枯木林',
+  levelText: 'Lv.20-30',
+  actorTint: [236, 232, 224],
+  ambient: false,
+  cameraZoom: 1.4,
+  width: DEAD_V4_SIZE.width,
+  height: DEAD_V4_SIZE.height,
+  walk: { left: -DEAD_HALF_W, right: DEAD_HALF_W, bottom: -DEAD_HALF_H, top: DEAD_HALF_H },
+  corridors: { half: 460, lines: DEAD_V4_ROADS, areas: DEAD_V4_AREAS.map(([x, y, rx, ry]) => ({ x, y, rx, ry })) },
+  openWalk: true,
+  // 黑溪水面 / 沼泽水心挡块(world_water_blocks.py 按贴图像素生成)
+  blocks: DEADWOOD_WATER_BLOCKS as WorldMapBlock[],
+  spawn: { ...DEAD_V4_SPAWN },
+  ground: worldAsset('dead4/tex_mud'),
+  groundTile: 900,
+  // 多层地表:黑泥 / 苔藓 / 枯草 / 土路 / 落叶(tools/qa/dead_ground_install.py 生成遮罩)
+  groundSplat: {
+    mask: worldAsset('dead4/ground_splat'),
+    mask2: worldAsset('dead4/ground_splat2'),
+    floor: worldAsset('dead4/tex_mud'),
+    moss: worldAsset('dead4/tex_moss'),
+    meadow: worldAsset('dead4/tex_deadgrass'),
+    dirt: worldAsset('dead4/tex_track'),
+    leaf: worldAsset('dead4/tex_leaves'),
+    tiles: [720, 1300, 560, 640, 520],
+  },
+  groundShadows: true,
+  castShadowOpacity: 70,
+  buildings: [],
+  npcs: DEAD_V4_NPCS.map((n: { code: string; name: string; asset: string; x: number; y: number; height: number; flip: number }) => ({ code: n.code as WorldNpcCode, name: n.name, asset: worldAsset(n.asset), x: n.x, y: n.y, height: n.height, flip: (n.flip < 0 ? -1 : 1) as 1 | -1 })),
+  props: [
+    // 贴地:黑溪段 / 沼泽 → 树根桥
+    ...DEAD_V4_FLATS.map((f) => ({ ...f, asset: worldAsset(f.asset), flat: true })),
+    { ...DEAD_V4_BRIDGE, asset: worldAsset(DEAD_V4_BRIDGE.asset), flat: true },
+    // 立物:地标(营地 / 古树 / 鸦岩 / 礼拜堂 / 木屋 / 石阵 / 世界树 / 林缘)→ 枯树 / 苔石 / 倒木 → 枯草 / 枯灌丛 / 落枝 / 蘑菇
+    ...DEAD_V4_STANDS.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
+    ...deadRows(DEAD_V4_TALL),
+    ...deadRows(DEAD_V4_LOW, [214, 210, 200]),
+  ],
+  lamps: [],
+  lampAsset: TOWN_LAMP_ASSET,
+  waypoint: { ...DEAD_V4_WAYPOINT, drawn: true },
+  places: DEAD_V4_PLACES.map((p) => ({ ...p })),
+  pois: DEAD_V4_POIS.map((p) => ({ ...p })),
+  chests: DEAD_V4_CHESTS.map((c) => ({ ...c })),
+  camps: DEAD_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
+    camp(code, label, monster, count, level, x, y, !!elite, DEAD_CAMP_VARIANT[code])),
+  exits: DEAD_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
+  battleBg: 'battle_scene_field_wasteland',
+};
+
+export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY, GRAY, DEADWOOD };
 // 自验 / 坐标导出脚本读地图定义用(tools/qa/export_world_geometry.py,docs/55)
 (globalThis as unknown as { __lootchainWorldMaps?: unknown }).__lootchainWorldMaps = WORLD_MAPS;
 
@@ -871,7 +972,7 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
-    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' || code === 'CITY' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
+    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' || code === 'CITY' || code === 'DEADWOOD' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ART:关着 / 开盖空箱)
     ...(def.chests?.length ? Object.values(CHEST_ART) : []),
     // 兴趣点素材(docs/54)+ 场上头顶圆徽用的图标(进图前要在内存里,场上节点不会因贴图晚到而重绘)

@@ -54,6 +54,22 @@ JOBS = {
         'an old paved floor; south-east - a terraced open-pit quarry mine with timber scaffolding, ore carts on rails, spoil heaps, '
         'with veins of dark purple-black crystal in the rock; far north-east - a ring of standing stones around a gigantic '
         'collapsed stone statue lying broken in pieces. Leave open flat ground around each area. ' + REAL)),
+    # 11-09 枯木林(Lv.20–30):月影森林的古树大片枯死、黑泥沼泽毒雾、旧墓园、精灵守望者营地、女巫的枯死世界树
+    'dead_r1': (['SKETCH:dead'], (
+        'Oblique aerial photograph of a dying old-growth forest in late autumn, used as a game zone (think the dead spruce forests '
+        'of the Harz mountains, Black Forest bark-beetle kill zones and a misty peat bog). Follow the reference image (a rough '
+        'layout sketch) for where every area and path goes; the colored ellipses are only zone markers, do not draw ellipses. '
+        'Most trees are dead: grey bare trunks, broken snags, fallen logs, a few last brown-orange leaves; the forest is SPARSE '
+        'with many open clearings so the ground is clearly visible and walkable. Ground: dark wet soil, black mud, brown dead '
+        'grass, fallen leaves, moss, roots, a few pale mushrooms. Low patches of ground fog in hollows. A slow dark creek winds '
+        'north-south, crossed by a natural bridge of giant fallen roots on the main path. Muddy forest tracks link the areas. '
+        'Areas: west - a small elven ranger camp on a low rise (a few slender pale canvas tents, a carved wooden watch platform, '
+        'a fire pit, a circle of old flat stones); north-west - a grove of gigantic withered ancient trees with huge exposed roots; '
+        'south-west - a black mud bog with dead reeds, pools of stagnant water and thick webs between dead trees; north-center - '
+        'a rocky crag with crows; south-center - an old overgrown graveyard with leaning headstones, an iron fence and a roofless '
+        'stone chapel; south-east - an abandoned woodcutter hamlet of a few collapsed timber cottages, stacked logs and a broken '
+        'cart; north-east - a ring of tall mossy standing stones; far east - a hollow where one colossal dead world-tree with a '
+        'split trunk towers over a crooked witch hut. Leave open flat ground around each area. ' + REAL)),
     'city_r1': (['SKETCH:city2'], (
         'Oblique aerial photograph of a real walled late-medieval capital city district (think Rothenburg, Carcassonne, old '
         'Edinburgh), used as the hub town of a game. Follow the reference image (a rough layout sketch) for where each place and '

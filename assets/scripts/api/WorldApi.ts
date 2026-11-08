@@ -2,7 +2,7 @@ import { HttpClient } from '../net/HttpClient';
 import type { WorldActionResultVO, WorldBountyVO, WorldMapCode, WorldMapStateVO, WorldQuestVO, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { isRecord, readArray, readInteger, readText } from './ApiValueGuards';
 
-const MAP_CODES: WorldMapCode[] = ['VILLAGE', 'WOODS', 'CITY', 'GRAY'];
+const MAP_CODES: WorldMapCode[] = ['VILLAGE', 'WOODS', 'CITY', 'GRAY', 'DEADWOOD'];
 
 /** 新手村 → 主城 → 野区(docs/50):世界状态 / 剧情任务 / 悬赏 / 传送阵;野外怪群开战结算复用 BattleApi(stageCode=FIELD_*)。 */
 export class WorldApi {

@@ -15,13 +15,18 @@ from walk_map_overlay import dump_maps  # noqa: E402
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 OUT_TS = os.path.join(ROOT, 'assets', 'scripts', 'scenes', 'lobby', 'LobbyWaterBlocks.ts')
 CELL = 40
-MAPS = {'VILLAGE': 'VILLAGE_WATER_BLOCKS', 'WOODS': 'WOODS_WATER_BLOCKS', 'GRAY': 'GRAY_WATER_BLOCKS', 'CITY': 'CITY_WATER_BLOCKS'}
+MAPS = {'VILLAGE': 'VILLAGE_WATER_BLOCKS', 'WOODS': 'WOODS_WATER_BLOCKS', 'GRAY': 'GRAY_WATER_BLOCKS', 'CITY': 'CITY_WATER_BLOCKS',
+        'DEADWOOD': 'DEADWOOD_WATER_BLOCKS'}
 # 不挂流水着色器、但整块是崖石的贴地件
 ROCK_ASSETS = ('vil3_cliff_s',)
 # 11-08 灰岩荒原:峡谷段整块不可走(贴图本身就是抠好的谷,按不透明像素算;峡谷是灰色,按颜色判会把两岸龟裂土也算进去)
 ALPHA_ASSETS = ('gray4_gorge', 'city4_canal/')  # 主城运河(含两岸石砌堤)整段不可走,石桥按桥面留空
 # 矿坑:只有坑心不可走(外圈台阶 / 坑沿能走),按贴图内椭圆算
-PIT_ASSETS = ('gray4_quarry_pit',)
+PIT_ASSETS = ('gray4_quarry_pit', 'dead4_bog_pool')
+# 11-09 枯木林黑溪:两岸泥岸可走,只有中间水面一条不可走(按贴图不透明像素的中间带算;暗色溪水按颜色判不出来)
+CREEK_ASSETS = ('dead4_creek',)
+# 桥面(按贴图不透明像素留空):石桥 / 树根桥
+BRIDGE_ASSETS = ('bridge', 'dead4_root_tangle')
 
 
 def alpha_pixels(a):
@@ -32,6 +37,12 @@ def pit_pixels(a):
     h, w = a.shape[:2]
     yy, xx = np.mgrid[0:h, 0:w]
     return (a[..., 3] > 140) & ((((xx - w / 2) / (w * 0.36)) ** 2 + ((yy - h * 0.55) / (h * 0.33)) ** 2) <= 1)
+
+
+def creek_pixels(a):
+    h, w = a.shape[:2]
+    xx = np.arange(w)[None, :]
+    return (a[..., 3] > 140) & (np.abs(xx - w / 2) < w * 0.2)
 
 
 def load(asset, flip=False):
@@ -89,6 +100,8 @@ def blocks_for(d):
         fn = None
         if any(r in p['asset'] for r in ALPHA_ASSETS):
             fn = alpha_pixels
+        elif any(r in p['asset'] for r in CREEK_ASSETS):
+            fn = creek_pixels
         elif any(r in p['asset'] for r in PIT_ASSETS):
             fn = pit_pixels
         elif p.get('water') or any(r in p['asset'] for r in ROCK_ASSETS):
@@ -99,7 +112,7 @@ def blocks_for(d):
                     blocked.add(k)
     bridge = {}
     for p in flats:
-        if 'bridge' in p['asset']:
+        if any(r in p['asset'] for r in BRIDGE_ASSETS):
             for k, v in world_grid(p, map_w, map_h, lambda a: a[..., 3] > 140).items():
                 bridge[k] = max(bridge.get(k, 0), v)
     deck = {k for k, v in bridge.items() if v > 0.35}

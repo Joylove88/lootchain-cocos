@@ -1,5 +1,5 @@
 /** 新手村 → 主城 → 野区(docs/50)世界状态,后端 GET /api/player/world/state。 */
-export type WorldMapCode = 'VILLAGE' | 'WOODS' | 'CITY' | 'GRAY';
+export type WorldMapCode = 'VILLAGE' | 'WOODS' | 'CITY' | 'GRAY' | 'DEADWOOD';
 export type WorldQuestState = 'LOCKED' | 'AVAILABLE' | 'ACCEPTED' | 'DONE' | 'CLAIMED' | 'SKIPPED';
 export type WorldBountyState = 'OPEN' | 'ACCEPTED' | 'DONE' | 'CLAIMED';
 
