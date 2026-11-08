@@ -8,7 +8,8 @@
 - 没开 groundShadows 的地图(晨风村)道具自带接地暗斑:按树根质心垫柔边椭圆(--no-shadow 关);
 - 原图备份到 素材原始备份/tree-hq-20261108/,meta 尺寸同步。
 
-用法:python tools/qa/tree_hq_install.py <候选 png> <目标资源,如 ui/world/vil3/vil3_tree_oak> [--preview 输出.png]
+用法:python tools/qa/tree_hq_install.py <候选 png> <目标资源,如 ui/world/vil3/vil3_tree_oak> [--key cyan] [--no-shadow] [--preview 输出.png]
+     (开了 groundShadows 的地图(林地)用 --no-shadow,渲染层自己画投影 / 接地暗斑)
 """
 import os
 import shutil
@@ -21,17 +22,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from world_tex_fit import RES, ROOT, fix_meta, needs, resize_premul  # noqa: E402
 
 BACKUP = os.path.join(ROOT, '素材原始备份', 'tree-hq-20261108')
-KEY = np.array([255.0, 0.0, 255.0])
-
-
-def key_magenta(im):
+def key_out(im, key='magenta'):
     """硬遮罩 + 收边 + 边缘带回填内部颜色。
     实测按「品红度」算半透明 + 反解前景色不行:叶子本身蓝通道低,叶色混了品红的边缘像素((R+B)/2 只比 G 高一点)
     被当成不透明,外圈一圈粉紫。改为:(R+B)/2 - G > 15 一律算背景(树皮 / 叶子都远低于这个值),前景收 1 像素,
     离背景 3 像素内的边缘带颜色用内部像素向外扩散回填,最后 alpha 轻微模糊做抗锯齿。"""
     from PIL import ImageFilter
     a = np.asarray(im.convert('RGB')).astype(np.float32)
-    e = (a[..., 0] + a[..., 2]) / 2 - a[..., 1]
+    # 背景色差:品红底 = (R+B)/2 - G;青色底(秋叶树:橙红叶子在品红判据下会被当成背景) = (G+B)/2 - R
+    if key == 'cyan':
+        e = (a[..., 1] + a[..., 2]) / 2 - a[..., 0]
+    else:
+        e = (a[..., 0] + a[..., 2]) / 2 - a[..., 1]
     fg = Image.fromarray(((e < 15) * 255).astype(np.uint8))
     fg = fg.filter(ImageFilter.MinFilter(3))           # 收 1 像素
     fg = fg.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))  # 去针孔
@@ -59,12 +61,12 @@ def key_magenta(im):
     return Image.fromarray((out + 0.5).astype(np.uint8), 'RGBA')
 
 
-def prepare(src):
+def prepare(src, key='magenta'):
     im = Image.open(src)
     if im.mode == 'RGBA' and np.asarray(im.getchannel('A')).min() < 250:
         rgba = im  # 自带透明底(第一轮候选)
     else:
-        rgba = key_magenta(im)
+        rgba = key_out(im, key)
     al = np.asarray(rgba.getchannel('A'))
     # 去掉孤立噪点:包围盒按 alpha > 24 算
     bb = Image.fromarray(((al > 24) * 255).astype(np.uint8)).getbbox()
@@ -97,9 +99,32 @@ def add_contact_shadow(rgba):
     return canvas
 
 
+def match_aspect(rgba, old_path):
+    """按旧图高宽比补透明边:道具按宽度缩放,新图更瘦高会在游戏里整体变高(实测村松 1.17 → 1.83),
+    更矮胖则变矮;补边后游戏里的显示高度 / 遮挡范围与旧图一致。瘦高补左右,矮胖补顶部(底边是站地线不能动)。"""
+    ow, oh = Image.open(old_path).size
+    old_r = oh / ow
+    w, h = rgba.size
+    r = h / w
+    if r > old_r * 1.06:
+        nw = round(h / old_r)
+        canvas = Image.new('RGBA', (nw, h), (0, 0, 0, 0))
+        canvas.paste(rgba, ((nw - w) // 2, 0))
+        return canvas
+    if r < old_r / 1.06:
+        nh = round(w * old_r)
+        canvas = Image.new('RGBA', (w, nh), (0, 0, 0, 0))
+        canvas.paste(rgba, (0, nh - h))
+        return canvas
+    return rgba
+
+
 def main():
     src, target = sys.argv[1], sys.argv[2].replace('/spriteFrame', '')
-    rgba = prepare(src)
+    key = sys.argv[sys.argv.index('--key') + 1] if '--key' in sys.argv else 'magenta'
+    rgba = prepare(src, key)
+    old = os.path.join(BACKUP, target + '.png')
+    rgba = match_aspect(rgba, old if os.path.exists(old) else os.path.join(RES, target + '.png'))
     need, _ = needs()
     n = need.get(target)
     if not n:
