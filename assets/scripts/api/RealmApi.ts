@@ -9,7 +9,7 @@ export interface RealmCondition {
 }
 
 export interface RealmState {
-  /** AWAKEN 觉醒 / LIANHUN 炼魂 …;'' = 读取失败。 */
+  /** AWAKEN 觉醒 / LIANHUN 炼魂 / QILING 契灵 …;'' = 读取失败。 */
   realmCode: string;
   realmName: string;
   /** 小阶:初期 / 中期 / 后期 / 圆满。 */
@@ -20,7 +20,7 @@ export interface RealmState {
   nextRealmCode: string;
   nextRealmName: string;
   conditions: RealmCondition[];
-  /** 突破条件全部满足,可以开始试炼。 */
+  /** 突破条件满足(按 conditionMode:全部 / 任意一条),可以开始试炼。 */
   canBreak: boolean;
   /** 当前 / 下一境界的主角攻击 / 生命加成(0.15 = 15%)。 */
   bonus: number;
@@ -30,6 +30,10 @@ export interface RealmState {
   source: string;
   /** 境界光环 %(主角带队:守卫战上阵英雄攻击 / 生命加成;旧服务端 0)。 */
   teamAuraPct: number;
+  /** ALL = 条件需全部满足(觉醒 → 炼魂);ANY = 任选其一(炼魂 → 契灵起,docs/60 §4.2)。 */
+  conditionMode: 'ALL' | 'ANY';
+  /** 下一境界的光环 %(突破面板奖励;没有下一境 0)。 */
+  nextTeamAuraPct: number;
 }
 
 /** 主角境界突破(docs/60 §12):状态与突破条件由服务端给出;试炼打赢后上报用时,服务端校验后升境。 */
@@ -40,8 +44,9 @@ export class RealmApi {
     return this.http.get<unknown>('/api/player/realm').then(validateState);
   }
 
-  winTrial(durationMs: number): Promise<RealmState> {
-    return this.http.post<unknown>('/api/player/realm/trial', { durationMs: Math.round(durationMs) }).then(validateState);
+  /** targetRealm = 打的是哪一境的试炼(服务端和当前「下一境」对不上就不升,防重复 / 晚到上报连升)。 */
+  winTrial(durationMs: number, targetRealm: string): Promise<RealmState> {
+    return this.http.post<unknown>('/api/player/realm/trial', { durationMs: Math.round(durationMs), targetRealm }).then(validateState);
   }
 }
 
@@ -76,5 +81,7 @@ function validateState(data: unknown): RealmState {
     legendOpen: data.legendOpen === true,
     source: readText(data, 'source', 16, ''),
     teamAuraPct: Math.max(0, Math.min(50, Math.round(num(data, 'teamAuraPct')))),
+    conditionMode: readText(data, 'conditionMode', 8, 'ALL') === 'ANY' ? 'ANY' : 'ALL',
+    nextTeamAuraPct: Math.max(0, Math.min(50, Math.round(num(data, 'nextTeamAuraPct')))),
   };
 }

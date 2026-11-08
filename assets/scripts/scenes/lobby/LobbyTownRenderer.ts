@@ -62,7 +62,7 @@ import { TownAmbient } from './LobbyTownAmbient';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
-import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -86,6 +86,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   realmTitle?(): string;
   /** 主角境界到炼魂(docs/60 P1b):野外多一个大招「夜帝残影」按钮(U 键)。 */
   realmUltOpen?(): boolean;
+  /** 主角已到契灵(docs/60 §14):身后 3 枚契印 + 被动「契印」(技能命中叠印,满 3 层引爆)。 */
+  realmQilingOpen?(): boolean;
   /** docs/48:冒险之门 = 矿境面板(NPC 矿列表 → 掠夺)。 */
   openLobbyRaidPanel?(): void;
   /** docs/47 P0:本地掠夺原型(无服务端时的回退)。 */
@@ -199,6 +201,8 @@ interface TownActor {
   /** 一次性动作(攻击 / 技能)播完的时刻;动作后已用 addAnimation 排好的循环动画名(播完不再 setAnimation 重播) */
   oneShotEnd: number;
   loopAfter: string | null;
+  /** 契灵主角身后的 3 枚契印(docs/60 §14;亮起的枚数 = 当前叠印层数)。 */
+  seals?: Node[];
 }
 
 interface TownBuildingEntity {
@@ -378,12 +382,41 @@ const REALM_TRIAL_WALK = { rx: 0.40, ry: 0.24 };
 /** 原型里主角脚下在画面 (0.33, 0.69)、心魔在 (0.62, 0.41) → 相对画面中心的比例。 */
 const REALM_TRIAL_LEADER_FRAC = { x: -0.17, y: -0.19 };
 const REALM_TRIAL_MONSTER_FRAC = { x: 0.12, y: 0.09 };
-/** 暗影:同一副主角骨骼压成近黑的烟灰色。 */
-const REALM_TRIAL_TINT = rgba(62, 64, 78, 255);
 /** 限时 3 分钟;心魔血量 = 主角攻击 × 45(普攻 + 技能约 30~60 秒),每击 = 主角生命 6%。 */
 export const REALM_TRIAL_LIMIT_MS = 180_000;
 const REALM_TRIAL_HP_PER_ATTACK = 45;
 const REALM_TRIAL_HIT_SHARE = 0.06;
+/**
+ * 试炼敌人的口径(按要突破到的境界):炼魂 = 心魔 · 昔日的自己(染暗 + 血红光影,血 = 攻击 × 45 / 每击 = 生命 6%);
+ * 契灵 = 天枢的幻影(docs/60 §14:染金白 + 金色光影,血 = 攻击 × 60 / 每击 = 生命 7%)。
+ */
+export interface RealmTrialSpec {
+  label: string;
+  hpPerAttack: number;
+  hitShare: number;
+  tint: [number, number, number];
+  /** 敌人整体透明度(幻影半透明)。 */
+  opacity: number;
+  /** 身上光环:心魔 = 暗红符文阵 + 血红飘带;天枢的幻影 = 燃金地环 + 金色光丝(染淡金)。 */
+  aura: WorldMapCampAura;
+}
+export const REALM_TRIAL_SPECS: Record<string, RealmTrialSpec> = {
+  LIANHUN: {
+    label: '昔日的自己', hpPerAttack: REALM_TRIAL_HP_PER_ATTACK, hitShare: REALM_TRIAL_HIT_SHARE, tint: [62, 64, 78], opacity: 255,
+    // 11-04 用户「心魔加血红光影缠绕身体」:A49-454 飘带光弧染血红绕身 + 脚下暗红符文阵
+    aura: {
+      ground: { effect: 'v2_a47_162', animation: 'fz', size: 300, squash: 0.34 },
+      rise: { effect: 'v2_a49_454', animation: 'idle', size: 330, y: 125, opacity: 215, tint: [255, 40, 46], twin: true },
+    },
+  },
+  QILING: {
+    label: '天枢的幻影', hpPerAttack: 60, hitShare: 0.07, tint: [255, 240, 205], opacity: 205,
+    aura: {
+      ground: { effect: 'v2_a47_376', animation: 'action2', size: 320 },
+      rise: { effect: 'v2_a49_405', animation: 'idle', size: 260, y: 90, opacity: 220, tint: [255, 236, 170], twin: true },
+    },
+  },
+};
 /** 心魔开场静止时长(零说完台词再动手)。 */
 const REALM_TRIAL_INTRO_MS = 3500;
 
@@ -408,6 +441,8 @@ interface RealmTrialRun {
   /** 开场静止到这个时刻(心魔站着不动、不出手)。 */
   introUntil: number;
   tinted: boolean;
+  tint: [number, number, number];
+  opacity: number;
   over: boolean;
   onWin: (durationMs: number) => void;
   onFail: (reason: 'down' | 'timeout') => void;
@@ -663,6 +698,8 @@ export class LobbyTownRenderer {
   private rollBuffUntil = 0;
   /** 「回响」:技能命中后下一次普攻伤害 +50%。 */
   private echoReady = false;
+  /** 被动「契印」层数(0~2,第 3 层当场引爆)。 */
+  private sealStacks = 0;
   /** 第 6 层质变(11-04,炼魂开放):连斩层数 / 到期、不屈下次可用时刻。 */
   private killStacks = 0;
   private killStacksUntil = 0;
@@ -777,7 +814,7 @@ export class LobbyTownRenderer {
    * 就地展开心境石台开始试炼:收起本图的建筑 / NPC / 物件 / 怪群 / 队友(结束原样打开),铺石台 + 四周暗幕,
    * 在主角右上方刷出自己的暗影(同一副主角骨骼染暗)。spine = 主角骨骼资源路径。
    */
-  startRealmTrial(spine: string, onWin: (durationMs: number) => void, onFail: (reason: 'down' | 'timeout') => void): boolean {
+  startRealmTrial(spine: string, onWin: (durationMs: number) => void, onFail: (reason: 'down' | 'timeout') => void, spec: RealmTrialSpec = REALM_TRIAL_SPECS.LIANHUN): boolean {
     const leader = this.leader;
     const ground = this.groundRoot;
     const entities = this.entityRoot;
@@ -830,22 +867,18 @@ export class LobbyTownRenderer {
     this.host.addSprite('Art', REALM_TRIAL_ARENA, 0, 0, artW, artH, arena);
     nodes.push(arena);
     const camp: WorldMapCamp = {
-      stageCode: REALM_TRIAL_STAGE, label: '昔日的自己', monsterCode: 'XINMO', spine, count: 1, elite: true, level: 1,
+      stageCode: REALM_TRIAL_STAGE, label: spec.label, monsterCode: 'XINMO', spine, count: 1, elite: true, level: 1,
       x: cx + monsterAt.x, y: cy + monsterAt.y, radius: 2000,
-      // 11-04 用户「心魔加血红光影缠绕身体」:A49-454 飘带光弧染血红绕身 + 脚下暗红符文阵
-      aura: {
-        ground: { effect: 'v2_a47_162', animation: 'fz', size: 300, squash: 0.34 },
-        rise: { effect: 'v2_a49_454', animation: 'idle', size: 330, y: 125, opacity: 215, tint: [255, 40, 46], twin: true },
-      },
+      aura: spec.aura,
     };
     const monster = this.createMonster(entities, camp, 0, camp.x, camp.y);
     nodes.push(monster.node);
     const attack = Math.max(20, this.raiderAttack || 20);
-    monster.maxHp = attack * REALM_TRIAL_HP_PER_ATTACK;
+    monster.maxHp = attack * spec.hpPerAttack;
     monster.hp = monster.maxHp;
-    monster.hit = Math.max(1, Math.round(this.leaderMaxHp * REALM_TRIAL_HIT_SHARE));
+    monster.hit = Math.max(1, Math.round(this.leaderMaxHp * spec.hitShare));
     monster.ranged = false;
-    this.trial = { cx, cy, walkRx: artW * REALM_TRIAL_WALK.rx, walkRy: artH * REALM_TRIAL_WALK.ry, leaderAt, monsterAt, homeX: leader.x, homeY: leader.y, startedAt: Date.now(), hidden, nodes, savedMonsters: this.monsters, monster, introUntil: 0, tinted: false, over: false, onWin, onFail };
+    this.trial = { cx, cy, walkRx: artW * REALM_TRIAL_WALK.rx, walkRy: artH * REALM_TRIAL_WALK.ry, leaderAt, monsterAt, homeX: leader.x, homeY: leader.y, startedAt: Date.now(), hidden, nodes, savedMonsters: this.monsters, monster, introUntil: 0, tinted: false, tint: spec.tint, opacity: spec.opacity, over: false, onWin, onFail };
     this.monsters = [monster];
     this.encounters.set(REALM_TRIAL_STAGE, { id: -1, pending: false });
     this.followers.forEach((actor) => {
@@ -944,7 +977,7 @@ export class LobbyTownRenderer {
     const opacity = monster.node.getComponent(UIOpacity);
     if (opacity) {
       Tween.stopAllByTarget(opacity);
-      opacity.opacity = 255;
+      opacity.opacity = trial.opacity;
     }
     if (monster.nameLabel && monster.nameLabel.isValid) {
       monster.nameLabel.node.active = true;
@@ -982,8 +1015,11 @@ export class LobbyTownRenderer {
     }
     const monster = trial.monster;
     if (monster && !trial.tinted && monster.skeleton && monster.skeleton.isValid && monster.skeleton.skeletonData) {
-      monster.skeleton.color = REALM_TRIAL_TINT;
+      monster.skeleton.color = rgba(trial.tint[0], trial.tint[1], trial.tint[2], 255);
       trial.tinted = true;
+      if (trial.opacity < 255) {
+        (monster.node.getComponent(UIOpacity) ?? monster.node.addComponent(UIOpacity)).opacity = trial.opacity;
+      }
     }
     if (!trial.over && Date.now() - trial.startedAt > REALM_TRIAL_LIMIT_MS) {
       trial.over = true;
@@ -1587,7 +1623,7 @@ export class LobbyTownRenderer {
     }
     const party = this.resolveParty();
     // 带上骨骼名:主角突破换装(protag_m → protag_m_lh)时英雄没变也要重建
-    const signature = party.map((hero) => `${hero.id}:${hero.heroCode}:${hero.spineAsset ?? ''}`).join(',');
+    const signature = party.map((hero) => `${hero.id}:${hero.heroCode}:${hero.spineAsset ?? ''}`).join(',') + (this.host.realmQilingOpen?.() ? ':QL' : '');
     if (signature === this.partySignature && this.leader && this.leader.node.isValid) {
       return;
     }
@@ -1677,6 +1713,9 @@ export class LobbyTownRenderer {
       actionUntil: 0, inAction: false, target: null, thinkAt: 0, assistReadyAt: Date.now() + COMPANION_ASSIST_CD_MS / 2,
       oneShotEnd: 0, loopAfter: null,
     };
+    if (hero.protagonist && this.host.realmQilingOpen?.()) {
+      actor.seals = this.mountQilingSeals(node);
+    }
     const unit = this.toUnit(hero);
     const resourcePath = resolveBattleUnitSpineResource(unit);
     if (!resourcePath) {
@@ -1736,6 +1775,114 @@ export class LobbyTownRenderer {
       }
     });
     return actor;
+  }
+
+  /**
+   * 契灵主角身后的 3 枚契印(docs/60 §14,同立绘:肩后一道弧上的淡金符文环):程序画,挂在骨骼之前 = 压在身体后面;
+   * 各自上下浮动(相位错开)。未叠印时半透明,叠印一层亮一枚,引爆时三枚一起闪。
+   */
+  private mountQilingSeals(actorNode: Node): Node[] {
+    const group = this.host.addChildPlainNode(actorNode, 'QilingSeals', 0, 0, 10, 10);
+    const spots = [{ x: -58, y: 238, r: 21 }, { x: 0, y: 268, r: 24 }, { x: 58, y: 238, r: 21 }];
+    return spots.map((spot, i) => {
+      const seal = this.host.addChildPlainNode(group, `Seal${i}`, spot.x, spot.y, spot.r * 3, spot.r * 3);
+      const g = seal.addComponent(Graphics);
+      const r = spot.r;
+      // 外圈柔光
+      for (let k = 4; k >= 1; k -= 1) {
+        g.fillColor = rgba(255, 214, 140, 10 + (4 - k) * 6);
+        g.circle(0, 0, r * (1 + k * 0.16));
+        g.fill();
+      }
+      g.lineWidth = 2.2;
+      g.strokeColor = rgba(255, 226, 160, 235);
+      g.circle(0, 0, r);
+      g.stroke();
+      g.lineWidth = 1.3;
+      g.strokeColor = rgba(255, 236, 190, 200);
+      g.circle(0, 0, r * 0.72);
+      g.stroke();
+      // 刻度
+      for (let k = 0; k < 12; k += 1) {
+        const a = (k / 12) * Math.PI * 2;
+        g.moveTo(Math.cos(a) * r * 0.78, Math.sin(a) * r * 0.78);
+        g.lineTo(Math.cos(a) * r * 0.92, Math.sin(a) * r * 0.92);
+      }
+      g.stroke();
+      // 中心四角星
+      g.fillColor = rgba(255, 238, 200, 240);
+      const t = r * 0.56;
+      const w = r * 0.14;
+      g.moveTo(0, t);
+      g.lineTo(w, w);
+      g.lineTo(t, 0);
+      g.lineTo(w, -w);
+      g.lineTo(0, -t);
+      g.lineTo(-w, -w);
+      g.lineTo(-t, 0);
+      g.lineTo(-w, w);
+      g.close();
+      g.fill();
+      seal.addComponent(UIOpacity).opacity = 120;
+      tween(seal).delay(i * 0.45).repeatForever(tween(seal)
+        .by(1.4, { position: new Vec3(0, 7, 0) }, { easing: 'sineInOut' })
+        .by(1.4, { position: new Vec3(0, -7, 0) }, { easing: 'sineInOut' })).start();
+      return seal;
+    });
+  }
+
+  /** 契印亮起的枚数跟叠印层数走;flash = 引爆时三枚一起闪一下再暗回去。 */
+  private refreshQilingSeals(actor: TownActor | null, flash = false): void {
+    const seals = actor?.seals;
+    if (!seals) {
+      return;
+    }
+    seals.forEach((seal, i) => {
+      const op = seal.isValid ? seal.getComponent(UIOpacity) : null;
+      if (!op) {
+        return;
+      }
+      Tween.stopAllByTarget(op);
+      if (flash) {
+        op.opacity = 255;
+        tween(op).delay(0.25).to(0.35, { opacity: 120 }).start();
+        tween(seal).to(0.12, { scale: new Vec3(1.45, 1.45, 1) }).to(0.3, { scale: new Vec3(1, 1, 1) }).start();
+        return;
+      }
+      const lit = i < this.sealStacks;
+      tween(op).to(0.15, { opacity: lit ? 255 : 120 }).start();
+      if (lit && i === this.sealStacks - 1) {
+        tween(seal).to(0.1, { scale: new Vec3(1.25, 1.25, 1) }).to(0.2, { scale: new Vec3(1, 1, 1) }).start();
+      }
+    });
+  }
+
+  /**
+   * 被动「契印」(docs/60 §14):主角战技命中一次叠 1 层,满 3 层引爆 = 对目标额外一击攻击 × 150%。
+   * 服务端最短清怪校验已按契灵放宽 10%(PlayerWorldServiceImpl dpsMul)。
+   */
+  private stackQilingSeal(leader: TownActor, target: TownMonster | null, attack: number): void {
+    if (!leader.hero.protagonist || !leader.seals) {
+      return;
+    }
+    this.sealStacks += 1;
+    if (this.sealStacks < 3) {
+      this.refreshQilingSeals(leader);
+      return;
+    }
+    this.sealStacks = 0;
+    this.refreshQilingSeals(leader, true);
+    if (!target || target.dead || !target.node.isValid) {
+      return;
+    }
+    const root = this.entityRoot;
+    if (root) {
+      const kit = this.kitOf(leader);
+      this.fx.play(root, kit.skill, target.x, this.monsterBodyY(target) + kit.skill.offsetY, 320 * kit.skill.scale);
+    }
+    this.spawnFloater(target.x, target.y + (target.camp.elite ? 300 : 200), '契印 · 引爆', rgba(255, 220, 140), 26);
+    this.shake(7, 0.18);
+    this.damageMonster(target, Math.max(1, Math.round(attack * 1.5)), true, false);
   }
 
   private mountActorFallback(parent: Node, hero: LobbyHeroItemVO): void {
@@ -1820,7 +1967,7 @@ export class LobbyTownRenderer {
       return;
     }
     // docs/50 §14 野外即时战斗(和掠夺同一套键位):J 普攻 / K L I 技能 / Shift 翻滚
-    if (this.def.camps.length === 0) {
+    if (!this.combatMap()) {
       return;
     }
     switch (event.keyCode) {
@@ -4241,7 +4388,8 @@ export class LobbyTownRenderer {
 
   private ensureMonsters(): void {
     const root = this.entityRoot;
-    if (!root || !root.isValid) {
+    // 11-09 自验:试炼开始会整页重绘 → 这里不能刷怪(否则本图怪群刷进试炼的怪物列表,出现在石台上一起打)
+    if (!root || !root.isValid || this.trial) {
       return;
     }
     const now = Date.now();
@@ -4553,7 +4701,7 @@ export class LobbyTownRenderer {
         const want = flash ? 1 : 0;
         if ((monster as unknown as { __flash?: number }).__flash !== want) {
           (monster as unknown as { __flash?: number }).__flash = want;
-          monster.skeleton.color = flash ? rgba(255, 120, 110, 255) : monster.camp.stageCode === REALM_TRIAL_STAGE ? REALM_TRIAL_TINT : rgba(255, 255, 255, 255);
+          monster.skeleton.color = flash ? rgba(255, 120, 110, 255) : monster.camp.stageCode === REALM_TRIAL_STAGE && this.trial ? rgba(this.trial.tint[0], this.trial.tint[1], this.trial.tint[2], 255) : rgba(255, 255, 255, 255);
         }
       }
     }
@@ -5102,6 +5250,11 @@ export class LobbyTownRenderer {
     return true;
   }
 
+  /** 能打架的地图:有怪群的野外,或者正在打突破试炼(主城没有怪群,契灵突破也可能在主城开)。 */
+  private combatMap(): boolean {
+    return this.def.camps.length > 0 || !!this.trial;
+  }
+
   private ensureLeaderStats(): void {
     if (this.leaderMaxHp <= 0) {
       // 第一次遭遇前的占位(遭遇下发后按服务端换算)
@@ -5121,7 +5274,7 @@ export class LobbyTownRenderer {
 
   private leaderAttack(): void {
     const now = Date.now();
-    if (!this.leader || this.leaderDead || this.def.camps.length === 0) {
+    if (!this.leader || this.leaderDead || !this.combatMap()) {
       return;
     }
     if (this.leaderBusy(now)) {
@@ -5174,7 +5327,7 @@ export class LobbyTownRenderer {
 
   private leaderSkill(index: number): void {
     const now = Date.now();
-    if (!this.leader || this.leaderDead || this.def.camps.length === 0) {
+    if (!this.leader || this.leaderDead || !this.combatMap()) {
       return;
     }
     if (this.leaderBusy(now)) {
@@ -5245,7 +5398,7 @@ export class LobbyTownRenderer {
     const now = Date.now();
     const leader = this.leader;
     const root = this.entityRoot;
-    if (!leader || !root || this.leaderDead || this.def.camps.length === 0 || !leader.hero.protagonist || !this.host.realmUltOpen?.()) {
+    if (!leader || !root || this.leaderDead || !this.combatMap() || !leader.hero.protagonist || !this.host.realmUltOpen?.()) {
       return;
     }
     if (now < this.ultReadyAt) {
@@ -5542,7 +5695,7 @@ export class LobbyTownRenderer {
 
   private canAct(): boolean {
     const now = Date.now();
-    return !!this.leader && !this.leaderDead && now >= this.actionUntil && now >= this.dashUntil && this.def.camps.length > 0;
+    return !!this.leader && !this.leaderDead && now >= this.actionUntil && now >= this.dashUntil && this.combatMap();
   }
 
   /** 队长出招,返回本段动作的实际时长(ms,已按 cap 加速)。没骨骼时按 cap 计。 */
@@ -6225,7 +6378,7 @@ export class LobbyTownRenderer {
   private triggerAssist(index: number): void {
     const actor = this.followers[index];
     const now = Date.now();
-    if (!actor || actor.down || this.leaderDead || now < actor.assistReadyAt || this.def.camps.length === 0) {
+    if (!actor || actor.down || this.leaderDead || now < actor.assistReadyAt || !this.combatMap()) {
       return;
     }
     if (actor.role === 'support') {
@@ -6301,7 +6454,7 @@ export class LobbyTownRenderer {
     const now = Date.now();
     const leader = this.leader;
     const target = this.followers[index];
-    if (!leader || !target || target.down || this.leaderDead || now < this.swapReadyAt || this.def.camps.length === 0) {
+    if (!leader || !target || target.down || this.leaderDead || now < this.swapReadyAt || !this.combatMap()) {
       return;
     }
     this.swapReadyAt = now + SWAP_CD_MS;
@@ -6396,7 +6549,7 @@ export class LobbyTownRenderer {
 
   private stepCombat(dt: number): void {
     const leader = this.leader;
-    if (!leader || this.def.camps.length === 0) {
+    if (!leader || !this.combatMap()) {
       return;
     }
     this.ensureLeaderStats();
@@ -6604,6 +6757,10 @@ export class LobbyTownRenderer {
     }
     if (landed && hit.skill !== undefined && this.evoQualities.has('ARCANE_3')) {
       this.echoReady = true;
+    }
+    if (landed && hit.skill !== undefined && leader.seals) {
+      const target = this.lockTarget && !this.lockTarget.dead ? this.lockTarget : this.ensureLockTarget();
+      this.stackQilingSeal(leader, target, attack);
     }
     if (landed && hit.skill !== undefined && this.evoQualities.has('ARCANE_6')) {
       // 奥术第 6 层「灵涌」:其余技能冷却 -1.5 秒
@@ -7528,7 +7685,7 @@ export class LobbyTownRenderer {
   private renderCombatButtons(hud: Node, layout: UiLayout, scale: number): void {
     void scale;
     this.combatButtons = [];
-    if (this.def.camps.length === 0) {
+    if (!this.combatMap()) {
       return;
     }
     const P = townProtoFrame(layout);
@@ -7691,7 +7848,7 @@ export class LobbyTownRenderer {
     if (leader) {
       this.ensureLeaderRing(leader);
     }
-    if (this.def.camps.length === 0 || !leader) {
+    if (!this.combatMap() || !leader) {
       return;
     }
     const P = townProtoFrame(layout);

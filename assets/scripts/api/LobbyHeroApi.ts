@@ -109,6 +109,21 @@ function validateLobbyHeroes(data: unknown): LobbyHeroItemVO[] {
 
 let lobbyProtagonistHero: LobbyHeroItemVO | null = null;
 let protagonistRealmSkin = false;
+let protagonistQiling = false;
+
+/** 主角立绘到契灵换契约者战甲(docs/60 §14;野外骨骼仍用炼魂装 _lh)。返回是否有变化。 */
+export function setProtagonistQilingPortrait(qiling: boolean): boolean {
+  if (protagonistQiling === qiling) {
+    return false;
+  }
+  protagonistQiling = qiling;
+  return true;
+}
+
+/** 已到契灵(野外队长身后 3 枚契印 / 被动契印)。 */
+export function protagonistQilingReached(): boolean {
+  return protagonistQiling;
+}
 
 /** 主角野外外观跟境界走(docs/60 P1b):true = 炼魂及以上,换炼魂装;境界读到后由 GameRoot 设置。返回是否有变化。 */
 export function setProtagonistRealmSkin(lianhun: boolean): boolean {
@@ -132,6 +147,9 @@ export function protagonistUltUnlocked(): boolean {
 /** 主角全身立绘(透明底 810×1080):炼魂起换炼魂装;名册卡面(贴顶裁头胸)/ 英雄详情立绘共用。 */
 export function protagonistPortraitPath(heroCode: string | null | undefined): string {
   const female = (heroCode ?? '').toUpperCase().indexOf('FEMALE') >= 0;
+  if (protagonistQiling) {
+    return `ui/realm/protag_${female ? 'f' : 'm'}_qiling/spriteFrame`;
+  }
   return protagonistRealmSkin
     ? `ui/realm/protag_${female ? 'f' : 'm'}_lianhun/spriteFrame`
     : `ui/protagonist/b/protag_${female ? 'f' : 'm'}_base/spriteFrame`;

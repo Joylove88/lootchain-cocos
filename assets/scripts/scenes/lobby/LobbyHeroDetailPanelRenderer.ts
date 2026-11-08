@@ -24,7 +24,7 @@ import {
   sys,
   view,
 } from 'cc';
-import { protagonistPortraitPath, protagonistUltUnlocked } from '../../api/LobbyHeroApi';
+import { protagonistPortraitPath, protagonistQilingReached, protagonistUltUnlocked } from '../../api/LobbyHeroApi';
 import type { RealmState } from '../../api/RealmApi';
 import type { EvolutionState } from '../../api/EvolutionApi';
 import { ROUTE_NAME } from './LobbyEvolutionPickRenderer';
@@ -6091,6 +6091,10 @@ export class LobbyHeroDetailPanelRenderer {
       { label: '境界光环(守卫战全队)', value: `攻击 / 生命 +${aura || 5}%` },
       { label: '大招', value: protagonistUltUnlocked() ? '夜帝残影 · 已解锁' : '夜帝残影 · 炼魂解锁', color: protagonistUltUnlocked() ? GLASS_COLOR.text : GLASS_COLOR.sub },
     ];
+    // docs/60 §14:契灵起多一条被动
+    if (protagonistQilingReached()) {
+      rows.push({ label: '被动', value: '契印 · 已解锁' });
+    }
     const rowH = 52;
     rows.forEach((row, index) => {
       const y = FY(170 + index * rowH);
@@ -6101,7 +6105,7 @@ export class LobbyHeroDetailPanelRenderer {
     // 下一境界
     let y = 170 + rows.length * rowH + 10;
     if (realm && realm.nextRealmName) {
-      glassLabel(this.host, root, 'RealmNext', `突破到 ${realm.nextRealmName}境`, left + S(6), FY(y), F(20), GLASS_COLOR.text, S(320), HorizontalTextAlignment.LEFT, true);
+      glassLabel(this.host, root, 'RealmNext', `突破到 ${realm.nextRealmName}境${realm.conditionMode === 'ANY' ? ' · 任选其一' : ''}`, left + S(6), FY(y), F(20), GLASS_COLOR.text, S(320), HorizontalTextAlignment.LEFT, true);
       realm.conditions.slice(0, 3).forEach((cond, index) => {
         const cy = FY(y + 40 + index * 36);
         glassLabel(this.host, root, `RealmCond_${index}`, `${cond.done ? '✓' : '·'} ${safeText(cond.label)}`, left + S(20), cy, F(18), cond.done ? GLASS_COLOR.green : GLASS_COLOR.sub, S(380), HorizontalTextAlignment.LEFT);
@@ -6112,7 +6116,7 @@ export class LobbyHeroDetailPanelRenderer {
       }
       y += 40 + Math.min(3, realm.conditions.length) * 36 + 16;
     } else if (realm) {
-      glassLabel(this.host, root, 'RealmNext', '已到当前开放的最高境界', left + S(6), FY(y), F(19), GLASS_COLOR.sub, S(400), HorizontalTextAlignment.LEFT);
+      glassLabel(this.host, root, 'RealmNext', '已到晨曦大陆的顶点 · 下一境界「圣域」随暗潮群岛开放', left + S(6), FY(y), F(19), GLASS_COLOR.sub, S(560), HorizontalTextAlignment.LEFT);
       y += 46;
     }
     // 进化总览
@@ -8466,6 +8470,7 @@ export function resolveSkills(hero: LobbyHeroItemVO): HeroDetailSkill[] {
       { name: '重斩', tag: '战技 · K 键', description: '蓄力重劈前方，伤害为攻击 ×260%，冷却 5 秒。', icon: HERO_PROTAGONIST_SKILL_ICON.heavy },
       { name: '突进斩', tag: '战技 · L 键', description: '向前突进一段距离并斩击，伤害为攻击 ×200%，冷却 7 秒。', icon: HERO_PROTAGONIST_SKILL_ICON.dash },
       { name: '旋风斩', tag: '战技 · I 键', description: '原地旋身横扫周身一圈，伤害为攻击 ×160%，冷却 9 秒。', icon: HERO_PROTAGONIST_SKILL_ICON.whirl },
+      { name: '契印', tag: protagonistQilingReached() ? '被动' : '被动 · 契灵解锁', description: '战技命中敌人叠 1 层契印，满 3 层引爆，额外造成攻击 ×150% 伤害。', kind: 'passive', icon: HERO_PROTAGONIST_SKILL_ICON.heavy, locked: !protagonistQilingReached() },
     ];
   }
   const kit: HeroDetailSkill[] = [];

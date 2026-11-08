@@ -131,7 +131,7 @@ import { LobbyHeroDetailPanelRenderer, type HeroDetailTab, type LobbyHeroDetailP
 import { heroSkinCatalog, heroSkinPackPrefixes, heroSkinsOf, setHeroSkinCatalog } from './lobby/HeroSkins';
 import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
 import { openConfirmPopup } from './lobby/ConfirmPopup';
-import { LobbyTownRenderer, REALM_TRIAL_LIMIT_MS, type LobbyTownHost } from './lobby/LobbyTownRenderer';
+import { LobbyTownRenderer, REALM_TRIAL_LIMIT_MS, REALM_TRIAL_SPECS, type LobbyTownHost } from './lobby/LobbyTownRenderer';
 import { LobbyRealmRenderer, type RealmGender, type RealmRendererHost, type RealmTrialHudState } from './lobby/LobbyRealmRenderer';
 import { mountLoadingScreen, type LoadingScreenHost } from './lobby/LobbyLoadingScreen';
 import type { RealmState } from '../api/RealmApi';
@@ -157,7 +157,7 @@ import { isFieldStageCode, isRaidBattleStageCode, isRaidPvpStageCode, isRaidStag
 import type { WorldMapCode, WorldRewardItemVO, WorldStateVO } from '../types/WorldTypes';
 import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMapRenderer';
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
-import { currentLobbyProtagonistHero, currentLobbyProtagonistLeader, heroPackPrefixes, LOBBY_FORMATION_MAX, resolveFieldParty, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
+import { currentLobbyProtagonistHero, currentLobbyProtagonistLeader, heroPackPrefixes, LOBBY_FORMATION_MAX, resolveFieldParty, setProtagonistQilingPortrait, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
 import { WORLD_MAPS, WORLD_NPC_SERVICE, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode, type WorldNpcService } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
@@ -9922,6 +9922,7 @@ export class LootChainGameRoot extends Component {
         if (this.realmCheckedUid !== 0) {
           this.realmState = null;
           setProtagonistRealmSkin(false);
+          setProtagonistQilingPortrait(false);
         }
         this.realmCheckedUid = userId;
         void this.loadRealmState().then(() => this.refreshLobbyViewPreservingBackground());
@@ -10115,7 +10116,11 @@ export class LootChainGameRoot extends Component {
     try {
       this.realmState = await this.api.realm.state();
       // docs/60 P1b:野外主角外观跟境界走(炼魂起换装);变了就局部刷新大厅,跑图队伍按骨骼名重建(保留队长位置)
-      if (this.realmState.realmCode && setProtagonistRealmSkin(this.realmState.realmCode !== 'AWAKEN') && !this.realmTrial) {
+      // §14:契灵换立绘 + 野外身后 3 枚契印(骨骼仍是炼魂装)
+      const code = this.realmState.realmCode;
+      const skinChanged = !!code && setProtagonistRealmSkin(code !== 'AWAKEN');
+      const qilingChanged = !!code && setProtagonistQilingPortrait(code === 'QILING');
+      if ((skinChanged || qilingChanged) && !this.realmTrial) {
         this.refreshLobbyViewPreservingBackground();
       }
     } catch (error) {
@@ -10136,6 +10141,11 @@ export class LootChainGameRoot extends Component {
   realmUltOpen(): boolean {
     const code = this.realmState?.realmCode;
     return !!code && code !== 'AWAKEN';
+  }
+
+  /** 契灵起野外主角身后 3 枚契印 + 被动「契印」(LobbyTownHost,docs/60 §14)。 */
+  realmQilingOpen(): boolean {
+    return this.realmState?.realmCode === 'QILING';
   }
 
   /** 跑图层队长血条上方的境界称号(LobbyTownHost)。 */
@@ -10192,8 +10202,13 @@ export class LootChainGameRoot extends Component {
     if (!realm || !realm.canBreak || !this.realmBreak || this.realmBreak.busy) {
       return;
     }
-    const spine = this.realmGender() === 'female' ? 'spine/hero/protag_f/protag_f' : 'spine/hero/protag_m/protag_m';
-    const ok = this.lobbyTownRenderer.startRealmTrial(spine, (ms) => void this.onRealmTrialWin(ms), (reason) => this.onRealmTrialFail(reason));
+    // 炼魂 = 心魔(自己的骨骼染暗);契灵 = 天枢的幻影(夜帝的兄弟:男主炼魂装骨骼染金白,docs/60 §14)
+    const target = realm.nextRealmCode || 'LIANHUN';
+    const spine = target === 'QILING'
+      ? 'spine/hero/protag_m_lh/protag_m_lh'
+      : this.realmGender() === 'female' ? 'spine/hero/protag_f/protag_f' : 'spine/hero/protag_m/protag_m';
+    const ok = this.lobbyTownRenderer.startRealmTrial(spine, (ms) => void this.onRealmTrialWin(ms), (reason) => this.onRealmTrialFail(reason),
+      REALM_TRIAL_SPECS[target] ?? REALM_TRIAL_SPECS.LIANHUN);
     if (!ok) {
       this.realmBreak = { busy: false, error: '现在没法开始试炼,先回到村子里再试' };
       this.renderRealmLayers();
@@ -10201,7 +10216,7 @@ export class LootChainGameRoot extends Component {
     }
     this.realmBreak = null;
     this.removeNodeFromContent(LobbyRealmRenderer.BREAK_NODE);
-    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, hpRatio: 1, showLine: true, failed: null, settling: false, error: '' };
+    this.realmTrial = { target, remainMs: REALM_TRIAL_LIMIT_MS, hpRatio: 1, showLine: true, failed: null, settling: false, error: '' };
     this.realmTrialLineUntil = Date.now() + 8000;
     this.realmTrialLineShown = true;
     // 整页重绘:跑图 HUD 按试炼重建(只留摇杆 / 战斗簇 / 血条),系统按钮由 renderRealmLayers 收起
@@ -10220,7 +10235,7 @@ export class LootChainGameRoot extends Component {
       return;
     }
     this.lobbyTownRenderer.restartRealmTrial();
-    this.realmTrial = { remainMs: REALM_TRIAL_LIMIT_MS, hpRatio: 1, showLine: false, failed: null, settling: false, error: '' };
+    this.realmTrial = { target: this.realmTrial.target, remainMs: REALM_TRIAL_LIMIT_MS, hpRatio: 1, showLine: false, failed: null, settling: false, error: '' };
     this.renderRealmLayers();
   }
 
@@ -10239,24 +10254,27 @@ export class LootChainGameRoot extends Component {
     this.realmTrial = { ...this.realmTrial, settling: true, failed: null, error: '' };
     this.renderRealmLayers();
     try {
-      const state = await this.api.realm.winTrial(durationMs);
-      if (state.realmCode === 'AWAKEN') {
+      const target = this.realmTrial.target;
+      const state = await this.api.realm.winTrial(durationMs, target);
+      if (state.realmCode !== target) {
         throw new Error('突破没有成功,再试一次');
       }
       this.realmState = state;
       this.lobbyTownRenderer.endRealmTrial();
-      // 突破成功:野外主角换炼魂装(下面 renderCurrentView 重建队伍)
+      // 突破成功:野外主角换炼魂装 / 契灵换立绘 + 契印(下面 renderCurrentView 重建队伍)
       setProtagonistRealmSkin(true);
+      setProtagonistQilingPortrait(state.realmCode === 'QILING');
       this.realmTrial = null;
       this.removeNodeFromContent(LobbyRealmRenderer.TRIAL_NODE);
-      const v10 = this.worldState?.quests.find((quest) => quest.code === 'V10');
+      // 炼魂突破才接 V10「远行」离村
+      const v10 = target === 'LIANHUN' ? this.worldState?.quests.find((quest) => quest.code === 'V10') : undefined;
       this.realmDone = { leaving: !!v10 && (v10.state === 'ACCEPTED' || v10.state === 'DONE') };
       gameAudio.sfx('reward');
       // 进化页称号 / 传说卡开放跟着刷新
       this.evolutionCheckDue = true;
       this.renderCurrentView();
     } catch (error) {
-      this.realmTrial = { remainMs: 0, hpRatio: 0, showLine: false, ...this.realmTrial, settling: false, failed: 'down', error: (error as Error)?.message || '突破没有成功,再试一次' };
+      this.realmTrial = { target: 'LIANHUN', remainMs: 0, hpRatio: 0, showLine: false, ...this.realmTrial, settling: false, failed: 'down', error: (error as Error)?.message || '突破没有成功,再试一次' };
       this.renderRealmLayers();
     }
   }
