@@ -5,7 +5,25 @@
  */
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
-import { VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import { GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import {
+  GRAY_V4_AREAS,
+  GRAY_V4_ASSETS,
+  GRAY_V4_BRIDGE,
+  GRAY_V4_CAMPS,
+  GRAY_V4_CHESTS,
+  GRAY_V4_EXITS,
+  GRAY_V4_FLATS,
+  GRAY_V4_LOW,
+  GRAY_V4_PLACES,
+  GRAY_V4_POIS,
+  GRAY_V4_ROADS,
+  GRAY_V4_SIZE,
+  GRAY_V4_SPAWN,
+  GRAY_V4_STANDS,
+  GRAY_V4_TALL,
+  GRAY_V4_WAYPOINT,
+} from './LobbyGrayLayout';
 import {
   WOODS_V4_AREAS,
   WOODS_V4_ASSETS,
@@ -284,6 +302,8 @@ export interface WorldMapDef {
   groundSplat?: GroundSplatDef;
   /** 高立物方向投影 + 脚下接地暗斑(11-08 E 方案 b / c)。 */
   groundShadows?: boolean;
+  /** 高立物投影不透明度(默认 120,林地深色草地上实测 78 看不出);浅色地面(荒原)压淡,否则投影像一块黑多边形。 */
+  castShadowOpacity?: number;
   /** 镜头拉远倍数(11-08 林地 1.4:同屏看到的范围按倍数放大,头顶字 / 血条 / 飘字反向放大保持屏上大小)。不给 = 1。 */
   cameraZoom?: number;
 }
@@ -296,6 +316,13 @@ const MONSTER_SPINE: Record<string, string> = {
   SWORD_MALE: 'spine/monster/sword_male/sword_001',
   BOW_MALE: 'spine/monster/bow_male/bow_001',
   GARGOYLE: 'spine/monster/gargoyle/twohand_spear_001',
+  // 11-08 灰岩荒原 v4:盗匪 / 狼王 / 碎岩巨像
+  WHITE_WOLF_KING: 'spine/monster/white_wolf_king/white_wolf_001',
+  DAGGER_FEMALE: 'spine/monster/dagger_female/dagger_001',
+  CROSSBOW_MALE: 'spine/monster/crossbow_male/crossbow_001',
+  SPEAR_MALE: 'spine/monster/spear_male/spear_001',
+  BLUNT_MALE: 'spine/monster/blunt_male/blunt_001',
+  ROCK_GOLEM: 'spine/monster/rock_golem/golem_001',
 };
 
 function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false,
@@ -662,87 +689,92 @@ const CITY: WorldMapDef = {
   // 11-04:南门(商行 / 佣兵公会之间)回林地,东门(英灵殿北侧)去灰岩荒原;首次来要走到广场罗盘激活传送阵
   exits: [
     { key: 'to_woods', label: '前往 · 村外林地', x: -900, y: -1150, radius: 130, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
-    { key: 'to_gray', label: '前往 · 灰岩荒原', x: 2050, y: -700, radius: 130, toMap: 'GRAY', toSpawn: { x: -1980, y: 260 } },
+    { key: 'to_gray', label: '前往 · 灰岩荒原', x: 2050, y: -700, radius: 130, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },  // 11-08 荒原 v4:落在西口(主路起点)
   ],
 };
 
-/**
- * 灰岩荒原贴地装饰(docs/51,10-27 用户:「地形只有个平面地板图,参考原型更真实」):
- * 固定种子撒点——裂纹 / 碎石贴地,枯草 / 小石 / 岩堆 / 枯灌 / 骨堆立在地上(不挡路),大岩群沿上下边缘围一圈;
- * 避开营地、传送阵、出生点,一局一局位置不变。
- */
-function grayDecals(): WorldMapProp[] {
-  let seed = 20261027;
-  const rand = (): number => {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return seed / 0x7fffffff;
-  };
-  const walk = { left: -2250, right: 2250, bottom: -1250, top: 1100 };
-  const keepOut: Array<[number, number, number]> = [[-1800, -420, 300], [-1900, -100, 220], [-800, 300, 300], [300, -380, 300], [1150, 450, 300], [1850, -350, 260]];
-  const free = (x: number, y: number): boolean => keepOut.every(([cx, cy, r]) => Math.hypot(x - cx, (y - cy) * 1.3) > r);
-  const out: WorldMapProp[] = [];
-  const scatter = (key: string, count: number, width: number, opts: { flat?: boolean; jitter?: number } = {}): void => {
-    let placed = 0;
-    for (let tries = 0; placed < count && tries < count * 20; tries += 1) {
-      const x = walk.left + 80 + rand() * (walk.right - walk.left - 160);
-      const y = walk.bottom + 80 + rand() * (walk.top - walk.bottom - 160);
-      if (!free(x, y)) {
-        continue;
-      }
-      const w = width * (1 - (opts.jitter ?? 0.25) + rand() * (opts.jitter ?? 0.25) * 2);
-      out.push({ asset: worldAsset(key), x: Math.round(x), y: Math.round(y), width: Math.round(w), ...(opts.flat ? { flat: true, tilt: 0.55 } : {}) });
-      placed += 1;
+/** 灰岩荒原 v4 布局表的物件行 → 道具(同 woodsRows,素材表换成 GRAY_V4_ASSETS)。 */
+function grayRows(rows: number[][], tint?: [number, number, number]): WorldMapProp[] {
+  return rows.map(([a, x, y, width, flip, bw, bd]) => {
+    const prop: WorldMapProp = { asset: worldAsset(GRAY_V4_ASSETS[a]), x, y, width };
+    if (tint) {
+      prop.tint = tint;
     }
-  };
-  scatter('fld_g_crack', 16, 420, { flat: true });
-  scatter('fld_g_gravel', 16, 300, { flat: true });
-  scatter('fld_g_grass_l', 18, 130);
-  scatter('fld_g_grass_s', 24, 86);
-  scatter('fld_g_stones', 16, 120);
-  scatter('fld_g_rocks_s', 12, 170);
-  scatter('fld_g_boulders_m', 8, 280);
-  scatter('fld_g_shrub', 8, 160);
-  scatter('fld_g_bones', 3, 150);
-  // 上下边缘一圈大岩群(挡路,地图边界看起来是山石而不是空地)
-  for (let x = walk.left - 100; x <= walk.right + 100; x += 620) {
-    out.push({ asset: worldAsset('fld_g_boulders_l'), x: Math.round(x + (rand() - 0.5) * 160), y: walk.top + 120, width: 520, block: { w: 380, d: 80 } });
-    out.push({ asset: worldAsset('fld_g_boulders_l'), x: Math.round(x + 300 + (rand() - 0.5) * 160), y: walk.bottom - 60, width: 520, block: { w: 380, d: 80 } });
-  }
-  return out;
+    if (flip) {
+      prop.flipX = true;
+    }
+    if (bw) {
+      prop.block = { w: bw, d: bd };
+    }
+    return prop;
+  });
 }
 
+/** 荒原精英 / 首领光环(布局表只给坐标):狼王狂暴法阵、石像鬼腐化、碎岩巨像熔火。 */
+const GRAY_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAura }> = {
+  FIELD_GRAY_E2: { aura: AURA_RAGE },
+  FIELD_GRAY_E: { aura: AURA_CORRUPT },
+  FIELD_GRAY_B: { aura: AURA_LAVA },
+};
+
+const GRAY_HALF_W = GRAY_V4_SIZE.width / 2 - 50;
+const GRAY_HALF_H = GRAY_V4_SIZE.height / 2 - 50;
+
+/**
+ * 灰岩荒原 v4(2026-11-08 用户:「其他图没有地面 / 装饰 / 鸟瞰图,需要补全」+ 选写实原型 gray_r1):
+ * 18000×9000、镜头 1.4;西营地 → 盆地 → 干河谷石桥 → 哨岗 / 营寨 → 遗迹 → 矿坑 → 碎岩巨像;
+ * 24 普通群(Lv.10~19)+ 狼王 / 石像鬼精英 + 碎岩巨像首领;布局由 tools/qa/gray_v4_gen.py 生成(LobbyGrayLayout.ts)。
+ */
 const GRAY: WorldMapDef = {
   code: 'GRAY',
   name: '灰岩荒原',
   levelText: 'Lv.10-20',
-  width: 4800,
-  height: 2800,
-  // 11-03 同晨风村:放到离地图边 50
-  walk: { left: -2350, right: 2350, bottom: -1350, top: 1350 },
-  spawn: { x: -1900, y: -100 },
+  actorTint: [240, 236, 228],
+  ambient: false,
+  cameraZoom: 1.4,
+  width: GRAY_V4_SIZE.width,
+  height: GRAY_V4_SIZE.height,
+  walk: { left: -GRAY_HALF_W, right: GRAY_HALF_W, bottom: -GRAY_HALF_H, top: GRAY_HALF_H },
+  corridors: { half: 460, lines: GRAY_V4_ROADS, areas: GRAY_V4_AREAS.map(([x, y, rx, ry]) => ({ x, y, rx, ry })) },
+  openWalk: true,
+  // 河谷 / 矿坑坑心挡块(world_water_blocks.py 按贴图像素生成)
+  blocks: GRAY_WATER_BLOCKS as WorldMapBlock[],
+  spawn: { ...GRAY_V4_SPAWN },
   ground: worldAsset('ground_wasteland'),
-  // 10-27 换写实龟裂地面(1024 无缝):一格 900 世界单位,裂纹块大小接近原型
   groundTile: 900,
+  // 多层地表:龟裂土 / 碎石地 / 枯草 / 碎岩屑 / 裸土 / 土路(tools/qa/gray_ground_install.py 生成遮罩)
+  groundSplat: {
+    mask: worldAsset('gray4/ground_splat'),
+    mask2: worldAsset('gray4/ground_splat2'),
+    floor: worldAsset('gray4/tex_earth'),
+    moss: worldAsset('gray4/tex_gravel'),
+    meadow: worldAsset('gray4/tex_drygrass'),
+    dirt: worldAsset('gray4/tex_track'),
+    leaf: worldAsset('gray4/tex_scree'),
+    tiles: [720, 1300, 560, 640, 520],
+  },
+  groundShadows: true,
+  castShadowOpacity: 78,
   buildings: [],
   npcs: [],
   props: [
-    ...[[-1600, 800], [-400, 950], [900, 900], [2000, 800], [-1800, -950], [-300, -1000], [1500, -1000], [200, 200]]
-      .map(([x, y]) => ({ asset: worldAsset('fld_rocks'), x, y, width: 340, block: { w: 240, d: 70 } })),
-    ...[[-1100, 600], [700, -700], [1700, 300]].map(([x, y]) => ({ asset: worldAsset('fld_ruin_wall'), x, y, width: 420, block: { w: 320, d: 60 } })),
-    ...[[-1300, -500], [0, 700], [2100, -400]].map(([x, y]) => ({ asset: worldAsset('fld_dead_tree'), x, y, width: 320, block: { w: 80, d: 40 } })),
-    { asset: worldAsset('fld_bandit_camp'), x: 1250, y: 820, width: 620, block: { w: 480, d: 110 } },
-    ...grayDecals(),
+    // 贴地:峡谷段 / 矿坑 / 遗迹地面 → 石桥
+    ...GRAY_V4_FLATS.map((f) => ({ ...f, asset: worldAsset(f.asset), flat: true })),
+    { ...GRAY_V4_BRIDGE, asset: worldAsset(GRAY_V4_BRIDGE.asset), flat: true },
+    // 立物:地标(营地 / 哨岗 / 营寨 / 遗迹 / 巨像 / 矿坑 / 崖台)→ 石柱 / 岩块 / 枯树 → 枯草 / 灌丛 / 碎石
+    ...GRAY_V4_STANDS.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
+    ...grayRows(GRAY_V4_TALL),
+    ...grayRows(GRAY_V4_LOW, [222, 218, 210]),
   ],
   lamps: [],
   lampAsset: TOWN_LAMP_ASSET,
-  waypoint: { x: -1800, y: -420, drawn: true },
-  camps: [
-    camp('FIELD_GRAY_1', '荒野猎犬群', 'MEDIUM_DOG', 3, 11, -800, 300),
-    camp('FIELD_GRAY_2', '盗匪哨岗', 'SWORD_MALE', 3, 13, 300, -380),
-    camp('FIELD_GRAY_3', '盗匪营地', 'BOW_MALE', 3, 15, 1150, 450),
-    camp('FIELD_GRAY_E', '石像鬼', 'GARGOYLE', 1, 17, 1850, -350, true),
-  ],
-  exits: [{ key: 'to_city', label: '返回 · 主城', x: -2230, y: 300, radius: 130, toMap: 'CITY', toSpawn: { x: 1880, y: -700 } }],
+  waypoint: { ...GRAY_V4_WAYPOINT, drawn: true },
+  places: GRAY_V4_PLACES.map((p) => ({ ...p })),
+  pois: GRAY_V4_POIS.map((p) => ({ ...p })),
+  chests: GRAY_V4_CHESTS.map((c) => ({ ...c })),
+  camps: GRAY_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
+    camp(code, label, monster, count, level, x, y, !!elite, GRAY_CAMP_VARIANT[code])),
+  exits: GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
   battleBg: 'battle_scene_field_wasteland',
 };
 
@@ -782,7 +814,7 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
-    ...(code === 'VILLAGE' || code === 'WOODS' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
+    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ART:关着 / 开盖空箱)
     ...(def.chests?.length ? Object.values(CHEST_ART) : []),
     // 兴趣点素材(docs/54)+ 场上头顶圆徽用的图标(进图前要在内存里,场上节点不会因贴图晚到而重绘)

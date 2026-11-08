@@ -44,6 +44,8 @@ const PLACE_ICON: Record<string, string> = {
 export const AREA_MAP_OVERVIEW: Partial<Record<WorldMapCode, string>> = {
   VILLAGE: worldAsset('overview/ov_village'),
   WOODS: worldAsset('overview/ov_woods'),
+  // 11-08 灰岩荒原 v4:gray_v4_gen.py 离线渲染(近似多层地表 + 全部立物),实机可用后可换 map_overview_capture 截图
+  GRAY: worldAsset('overview/ov_gray'),
 };
 export const AREA_MAP_ASSET_PATHS: readonly string[] = [...Object.values(MAP_ICON), ...Object.values(AREA_MAP_OVERVIEW) as string[]];
 const CHAMPAGNE = GLASS_COLOR.champagne;

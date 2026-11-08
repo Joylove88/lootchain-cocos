@@ -1481,7 +1481,7 @@ export class LobbyTownRenderer {
       if (prop.flipX) {
         node.setScale(-1, 1, 1);
       }
-      node.addComponent(UIOpacity).opacity = 120;
+      node.addComponent(UIOpacity).opacity = this.def.castShadowOpacity ?? 120;
       // 投影落在脚下往右下 0.38h × 0.42h 的范围
       this.addCull(outer, prop.x - prop.width / 2, prop.x + prop.width / 2 + h * 0.4, prop.y - h * 0.45, prop.y + 20);
     }
