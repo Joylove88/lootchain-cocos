@@ -75,7 +75,9 @@ export type WorldNpcCode = 'CHIEF' | 'INSTRUCTOR' | 'PRIEST' | 'SMITH' | 'BOARD'
   | 'SCHOLAR' | 'GUILDMASTER' | 'CAPTAIN' | 'MERCHANT' | 'INNKEEPER' | 'BARD' | 'FLOWER_GIRL' | 'OLD_MAN' | 'CHILD' | 'VENDOR'
   | 'GUARD_S' | 'GUARD_E'
   // 11-08 第 2 章:荒原流浪者营地首领
-  | 'WANDERER';
+  | 'WANDERER'
+  // 11-09 第 3 章:枯木林精灵营地守望者
+  | 'WARDEN';
 
 /** NPC 附带的服务(对话框里多一个按钮):商店 / 悬赏 / 酒馆传闻。 */
 export type WorldNpcService = 'shop' | 'bounty' | 'rumor';

@@ -195,6 +195,10 @@ SPECS = {
     # 11-08 第 2 章:灰岩荒原流浪者营地首领
     'npc_wanderer': ('npc', None, 'magenta', dict(subject='a weathered wasteland caravan leader: a lean grey-bearded man in a dusty hooded '
                      'travel cloak and patched leather, a scarf around his neck, a curved knife at his belt, leaning on a staff')),
+    # 11-09 第 3 章:枯木林精灵守望者营地的守望者
+    'npc_warden': ('npc', None, 'magenta', dict(subject='a tall slender elven forest warden woman with long silver-blond hair and pointed '
+                   'ears, in a weathered moss-green hooded ranger cloak over fitted brown leather armor, a longbow on her back, one hand '
+                   'resting on a carved wooden staff, calm and watchful')),
 }
 
 

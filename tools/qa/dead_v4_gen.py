@@ -122,8 +122,8 @@ CAMPS_PX = [
     ('FIELD_DEADWOOD_B', '林间女巫', 'CURSED_CASTER', 1, 30, 1565, 405, True),
 ]
 
-# 营地 NPC(第 3 章剧情做的时候再加精灵守望者)
-NPCS_WORLD_OFFSET = []
+# 营地 NPC(11-09 第 3 章:精灵守望者在营地接 / 交任务):相对营地中心的世界偏移
+NPCS_WORLD_OFFSET = [('WARDEN', '精灵守望者 · 希尔瓦', 'ui/world/city4/city4_npc_warden', -330, 40, 1)]
 
 CHESTS_PX = [
     ('DEADWOOD_W1', '林间木箱', 'WOOD', 60, 300),

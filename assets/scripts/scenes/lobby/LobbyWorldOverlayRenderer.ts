@@ -83,6 +83,7 @@ const NPC_NAMES: Record<WorldNpcCode, string> = {
   GUARD_S: '城门卫兵',
   GUARD_E: '城门卫兵',
   WANDERER: '流浪者首领 · 葛兰',
+  WARDEN: '精灵守望者 · 希尔瓦',
 };
 const CITY_NPC = (name: string): string => worldAsset(`city4/city4_${name}`);
 const NPC_PORTRAITS: Partial<Record<WorldNpcCode, string>> = {
@@ -104,6 +105,7 @@ const NPC_PORTRAITS: Partial<Record<WorldNpcCode, string>> = {
   GUARD_S: CITY_NPC('npc_guard'),
   GUARD_E: CITY_NPC('npc_guard'),
   WANDERER: CITY_NPC('npc_wanderer'),
+  WARDEN: CITY_NPC('npc_warden'),
 };
 const BTN = {
   primary: 'ui/raid/btn_primary/spriteFrame',

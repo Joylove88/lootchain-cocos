@@ -238,7 +238,7 @@ const EMPTY_BLOCKS: WorldMapBlock[] = [];
 const GUIDE_GROUND_SQUASH = 0.55;
 const INTERACT_RADIUS = 180;
 /** 剧情收集物由哪种怪掉(服务端 StoryQuestCatalog COLLECT 的 dropFrom)。 */
-const QUEST_ITEM_DROP_FROM: Record<string, string> = { SPIDER_SILK: 'SMALL_SPIDER', BANDIT_LEDGER: 'BLUNT_MALE' };
+const QUEST_ITEM_DROP_FROM: Record<string, string> = { SPIDER_SILK: 'SMALL_SPIDER', BANDIT_LEDGER: 'BLUNT_MALE', SPIDER_GLAND: 'LARGE_SPIDER' };
 const ACTOR_RADIUS = 26;
 const WORLD_NODE_NAME = 'LobbyTownWorld';
 /** 明雷怪(docs/50):游走速度 / 追击速度 / 警戒半径 / 接触半径 / 战胜后刷新时长。 */
@@ -4876,7 +4876,7 @@ export class LobbyTownRenderer {
       rows.push({ text: `${quest.name}${progress}${status}`, sub, tone: 'story' });
     } else if (world && world.quests.length > 0 && world.quests.every((item) => item.state === 'CLAIMED' || item.state === 'SKIPPED')) {
       // 11-09 自检:主线全部交完(C210 之后)追踪条整块消失,玩家不知道接下来干什么 → 留一行下一章预告 + 当前该做的事
-      rows.push({ text: '第 3 章 · 枯木林 · 剧情即将开放', sub: (world.playerLevel ?? 1) >= 20 ? '先去枯木林打怪、接悬赏' : '先去佣兵公会接悬赏、刷野怪升到 Lv.20', tone: 'story' });
+      rows.push({ text: '第 4 章 · 熔渣矿坑 · 即将开放', sub: '先去佣兵公会接悬赏、在枯木林刷野怪升到 Lv.30', tone: 'story' });
     }
     for (const bounty of bounties.slice(0, 2)) {
       rows.push({ text: `悬赏 · ${bounty.name} ${Math.min(bounty.progress, bounty.target)}/${bounty.target}${bounty.state === 'DONE' ? ' · 可领取' : ''}`, sub: '', tone: 'bounty' });
