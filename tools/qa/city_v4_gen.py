@@ -470,6 +470,47 @@ def lamps_along(roads, g, rnd):
 ROAD_WORLD = [[P(x, y) for x, y in line] for line in ROADS_PX]
 
 
+# ── GPT 原型手摆(11-08 用户「装饰摆放还是不够好,让 GPT 出原型图,然后照着摆放」)──
+# tools/qa/deco_proto.py 出原型 → 逐件读位置写 tools/qa/deco_hand/city_<区块>.json([件号, 原型像素 x, y, 宽倍率?]);
+# 该区块里的随机民居 / 树 / 小件全部换成原型里的。件号同 deco_proto.DECO['city']。
+HAND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'deco_hand')
+
+
+def apply_hand_deco(stands, tall, low, seed):
+    import deco_proto as DP
+    if not os.path.isdir(HAND_DIR):
+        return stands, tall, low
+    table = {code: (asset, w) for code, asset, w, _ in DP.DECO['city']}
+    rnd = random.Random(seed + 505)
+    for name in sorted(os.listdir(HAND_DIR)):
+        if not name.startswith('city_') or not name.endswith('.json'):
+            continue
+        hand = json.load(open(os.path.join(HAND_DIR, name), encoding='utf-8'))
+        x0, y0, x1, y1 = DP.REGIONS['city'][hand['region']]
+        inside = lambda it: x0 <= it['x'] <= x1 and y0 <= it['y'] <= y1
+        stands = [st for st in stands if not (st.get('house') and inside(st))]
+        tall = [t for t in tall if not inside(t)]
+        low = [t for t in low if not inside(t)]
+        pw, ph = hand['protoSize']
+        for row in hand['items']:
+            code, px, py = row[:3]
+            k = row[3] if len(row) > 3 else 1.0
+            asset, w = table[code]
+            w = round(w * k * rnd.uniform(0.95, 1.05))
+            x = round(x0 + px / pw * (x1 - x0))
+            y = round(y1 - py / ph * (y1 - y0))
+            flip = rnd.random() < 0.5
+            if code in 'ABCDEF':
+                h = w * aspect(asset)
+                stands.append({'asset': asset, 'x': x, 'y': y, 'width': w, 'block': blk(w * 0.82, min(h * 0.45, 220)), 'house': True,
+                               'flipX': flip, 'hand': True})
+            elif code in 'GH':
+                tall.append({'asset': asset, 'x': x, 'y': y, 'width': w, 'kind': 'tree', 'flipX': flip, 'hand': True})
+            else:
+                low.append({'asset': asset, 'x': x, 'y': y, 'width': w, 'flipX': flip, 'hand': True})
+    return stands, tall, low
+
+
 def generate(seed=11):
     rnd = random.Random(seed)
     roads, areas, flats, stands, bridges, board = build_skeleton()
@@ -483,6 +524,7 @@ def generate(seed=11):
     g = build_grid(roads, areas, flats, stands + [board], points)
     tall, low = place_greenery(g, stands + [board], rnd)
     lamps = lamps_along(roads, g, rnd)
+    stands, tall, low = apply_hand_deco(stands, tall, low, seed)
     return {'roads': roads, 'areas': areas, 'flats': flats, 'bridges': bridges, 'stands': stands, 'board': board, 'npcs': npcs,
             'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': tall, 'low': low, 'lamps': lamps}, g
 

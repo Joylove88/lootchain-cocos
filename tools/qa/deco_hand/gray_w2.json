@@ -1,0 +1,4 @@
+{"map": "gray", "region": "w2", "protoSize": [1536, 1024], "note": "11-08 GPT 原型 gray_w2_proto.png 录入(底边岩群是原有边缘件,不录)",
+ "groups": [["tree", 140, 172], ["scrub", 265, 128], ["rockM", 630, 112], ["bones", 115, 368], ["scrub", 60, 618],
+            ["rockL", 120, 692], ["rockM", 1305, 242], ["tree", 1392, 472], ["spoil", 1395, 692], ["bones", 1365, 832],
+            ["pebbles", 255, 842]]}

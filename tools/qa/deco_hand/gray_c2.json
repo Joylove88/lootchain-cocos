@@ -1,0 +1,4 @@
+{"map": "gray", "region": "c2", "protoSize": [1536, 1024], "note": "11-08 GPT 原型 gray_c2_proto.png 录入(营寨 / 峡谷 / 底边石柱石堆是原有)",
+ "groups": [["tree", 718, 150], ["rockM", 792, 162], ["scrub", 832, 122], ["rockM", 1292, 82], ["bones", 285, 418],
+            ["scrub", 298, 508], ["rockM", 312, 742], ["tree", 950, 772], ["pebbles", 1020, 792], ["tree", 1442, 772],
+            ["rockM", 1388, 778], ["bones", 1228, 902]]}

@@ -771,6 +771,58 @@ def camp_props(camps, rnd):
     return out
 
 
+# ── GPT 原型手摆(11-08 用户「装饰摆放还是不够好,让 GPT 出原型图,然后照着摆放」)──
+# tools/qa/deco_proto.py 出原型 → 读组位置写 tools/qa/deco_hand/<图>_<区块>.json;该区块里的随机散布全部换成这些组。
+# 组合模板:(件, 宽, dx, dy, 高物件?) dx / dy 为相对组脚点的世界偏移
+DECO_KITS = {
+    # 11-08 第一张原型对比:GPT 画的组比我们的显示宽大约 1.3 倍、每组草 / 碎石更多 → 按原型放大、补点缀
+    'rockL': [('boulders_l', 700, 0, 0, True), ('dry_grass', 150, -330, -40, False), ('dry_grass', 130, 300, -80, False),
+              ('dry_grass', 110, -120, -120, False), ('stones', 170, 170, -140, False), ('stones', 140, -260, -150, False)],
+    'rockM': [('boulders_m', 430, 0, 0, True), ('dry_grass', 140, -230, -30, False), ('dry_grass', 115, 210, -40, False),
+              ('stones', 150, 120, -110, False)],
+    'tree': [('dead_tree', 500, 0, 0, True), ('scrub', 250, 220, -40, False), ('dry_grass', 140, -200, -50, False),
+             ('dry_grass', 115, 90, -110, False), ('stones', 130, -90, -120, False)],
+    'scrub': [('scrub', 280, 0, 0, False), ('dry_grass', 140, -150, -30, False), ('dry_grass', 120, 140, -60, False)],
+    'bones': [('bones', 360, 0, 0, False), ('dry_grass', 130, 200, -20, False), ('dry_grass', 110, -180, -60, False),
+              ('stones', 140, -60, -100, False)],
+    'spoil': [('spoil_heap', 520, 0, 0, True), ('stones', 170, -260, -40, False), ('stones', 140, 240, -70, False)],
+    'cart': [('cart', 360, 0, 0, True), ('crates', 240, 190, -30, True), ('dry_grass', 120, -160, -40, False)],
+    'pebbles': [('stones', 170, 0, 0, False), ('dry_grass', 130, 120, -20, False), ('stones', 130, -110, -40, False)],
+    'pillar': [('rock_pillar', 560, 0, 0, True), ('boulders_m', 340, 280, -60, True), ('dry_grass', 140, -200, -40, False),
+               ('stones', 140, 120, -120, False)],
+}
+DECO_ASSET = {'dead_tree': 'ui/world/fld_dead_tree'}
+HAND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'deco_hand')
+
+
+def apply_hand_deco(Pl, mp, seed, stands=None):
+    import deco_proto as DP
+    rnd = random.Random(seed + 303)
+    for name in sorted(os.listdir(HAND_DIR)) if os.path.isdir(HAND_DIR) else []:
+        if not name.startswith(mp + '_') or not name.endswith('.json'):
+            continue
+        hand = json.load(open(os.path.join(HAND_DIR, name), encoding='utf-8'))
+        x0, y0, x1, y1 = DP.REGIONS[mp][hand['region']]
+        inside = lambda it: x0 <= it['x'] <= x1 and y0 <= it['y'] <= y1
+        Pl.tall = [t for t in Pl.tall if not inside(t)]
+        Pl.low = [t for t in Pl.low if not inside(t)]
+        if stands is not None:
+            # 怪群外圈的主题杂物(骨堆 / 木箱 / 拒马…)也按原型重摆,不留随机件
+            stands[:] = [st for st in stands if not (st.get('theme') and inside(st))]
+        pw, ph = hand['protoSize']
+        for kit, px, py in hand['groups']:
+            gx = x0 + px / pw * (x1 - x0)
+            gy = y1 - py / ph * (y1 - y0)
+            flip = rnd.random() < 0.5
+            for part, w, dx, dy, tall in DECO_KITS[kit]:
+                asset = DECO_ASSET.get(part, G4(part))
+                w = round(w * rnd.uniform(0.9, 1.1))
+                it = {'asset': asset, 'x': round(gx + (-dx if flip else dx)), 'y': round(gy + dy), 'width': w, 'flipX': flip,
+                      'rect': rect_of(asset, gx + dx, gy + dy, w)[0], 'r': 0, 'layer': 'tall' if tall else 'low',
+                      'kind': 'tree' if part == 'dead_tree' else 'rock', 'hand': True}
+                (Pl.tall if tall else Pl.low).append(it)
+
+
 def generate(seed=8):
     roads, areas, flats, stands, bridge = build_skeleton()
     camps = build_camps()
@@ -804,6 +856,7 @@ def generate(seed=8):
     Pl = Placed()
     scatter_tall(g, Pl, structures, seed)
     scatter_clusters(g, Pl, structures, roads, stands, camps, seed)
+    apply_hand_deco(Pl, 'gray', seed, stands)
     return {'roads': roads, 'areas': areas, 'flats': flats, 'bridge': bridge, 'stands': stands, 'camps': camps, 'chests': chests,
             'pois': pois, 'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': Pl.tall, 'low': Pl.low, 'npcs': npcs}, g
 

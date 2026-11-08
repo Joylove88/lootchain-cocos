@@ -1,0 +1,4 @@
+{"map": "gray", "region": "c1", "protoSize": [1536, 1024], "note": "11-08 GPT 原型 gray_c1_proto.png 录入(哨塔 / 拒马 / 遗迹是原有地标)",
+ "groups": [["rockL", 270, 192], ["scrub", 470, 98], ["rockM", 820, 98], ["tree", 1145, 142], ["bones", 215, 382],
+            ["rockM", 235, 598], ["pillar", 225, 832], ["rockL", 520, 872], ["bones", 790, 872], ["cart", 1220, 818],
+            ["rockM", 1375, 772], ["spoil", 1170, 482], ["pebbles", 990, 972], ["scrub", 1225, 968]]}

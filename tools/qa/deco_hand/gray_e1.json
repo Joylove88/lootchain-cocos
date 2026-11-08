@@ -1,0 +1,4 @@
+{"map": "gray", "region": "e1", "protoSize": [1536, 1024], "note": "11-08 GPT 原型 gray_e1_proto.png 录入(倒伏巨像 / 立石 / 遗迹地面是原有)",
+ "groups": [["scrub", 200, 165], ["rockL", 425, 128], ["scrub", 665, 182], ["rockM", 860, 272], ["scrub", 945, 282],
+            ["bones", 475, 537], ["rockM", 170, 692], ["tree", 405, 877], ["bones", 950, 752], ["rockL", 1015, 937],
+            ["scrub", 1110, 917], ["tree", 1400, 722], ["pebbles", 1460, 577], ["scrub", 1285, 95]]}
