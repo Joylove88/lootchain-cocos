@@ -3,8 +3,8 @@ import type { WorldBountyVO, WorldMapCode, WorldQuestVO, WorldStateVO } from '..
 import { rgba, type UiLayout } from './LobbyHudTypes';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
-import { WORLD_MAPS, worldAsset, type WorldNpcCode } from './LobbyWorldMaps';
-import { WORLD_NPC_IDLE, WORLD_QUEST_TEXT } from './WorldStoryText';
+import { WORLD_MAPS, WORLD_NPC_SERVICE, worldAsset, type WorldNpcCode, type WorldNpcService } from './LobbyWorldMaps';
+import { WORLD_NPC_CHATTER, WORLD_NPC_IDLE, WORLD_QUEST_TEXT } from './WorldStoryText';
 import type { UiKitHost } from '../UiKit';
 import { GLASS_COLOR, GLASS_ICON, glassLabel, glassProtoMap, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassPanel, mountGlassSectionHeader, mountGlassTopBar } from '../UiGlassKit';
 
@@ -17,6 +17,9 @@ export interface WorldDialogState {
   mode: 'offer' | 'claim' | 'grow' | 'train' | 'progress' | 'idle';
   questCode: string;
   busy: boolean;
+  /** 闲聊第几句(WORLD_NPC_CHATTER 轮换);酒馆传闻的正文。 */
+  line?: number;
+  rumor?: string;
 }
 
 /** 世界地图(原型 p3 B 版):tab = 世界页签;selected = 选中的传送阵;region = 地区筛选。 */
@@ -47,6 +50,8 @@ export interface LobbyWorldOverlayHost {
   currentWorldBountyPanel(): WorldBountyPanelState | null;
   closeWorldDialog(): void;
   worldDialogPrimary(): void;
+  /** NPC 服务按钮(商店 / 悬赏 / 再听一个传闻)。 */
+  worldDialogService?(service: WorldNpcService): void;
   closeWorldMapPanel(): void;
   selectWorldMapTab(tab: number): void;
   selectWorldMapPoint(code: string | null): void;
@@ -65,13 +70,40 @@ const NPC_NAMES: Record<WorldNpcCode, string> = {
   PRIEST: '祭司 · 莉娅',
   SMITH: '铁匠 · 巴洛',
   BOARD: '公告板',
+  SCHOLAR: '帝国学者 · 艾德里安',
+  GUILDMASTER: '公会会长 · 维克',
+  CAPTAIN: '卫队长 · 罗兰',
+  MERCHANT: '杂货商 · 托比',
+  INNKEEPER: '酒馆老板 · 巴克',
+  BARD: '吟游诗人 · 林恩',
+  FLOWER_GIRL: '卖花姑娘 · 艾米',
+  OLD_MAN: '老镇民 · 霍克',
+  CHILD: '小汤姆',
+  VENDOR: '果摊大婶 · 玛莎',
+  GUARD_S: '城门卫兵',
+  GUARD_E: '城门卫兵',
+  WANDERER: '流浪者首领 · 葛兰',
 };
+const CITY_NPC = (name: string): string => worldAsset(`city4/city4_${name}`);
 const NPC_PORTRAITS: Partial<Record<WorldNpcCode, string>> = {
   CHIEF: worldAsset('portrait_chief'),
   INSTRUCTOR: worldAsset('npc_instructor'),
   PRIEST: worldAsset('npc_priest'),
   SMITH: worldAsset('npc_smith'),
-  BOARD: worldAsset('city_board'),
+  BOARD: CITY_NPC('notice_board'),
+  SCHOLAR: CITY_NPC('npc_scholar'),
+  GUILDMASTER: CITY_NPC('npc_guildmaster'),
+  CAPTAIN: CITY_NPC('npc_captain'),
+  MERCHANT: CITY_NPC('npc_merchant'),
+  INNKEEPER: CITY_NPC('npc_innkeeper'),
+  BARD: CITY_NPC('npc_bard'),
+  FLOWER_GIRL: CITY_NPC('npc_flower_girl'),
+  OLD_MAN: CITY_NPC('npc_old_man'),
+  CHILD: CITY_NPC('npc_child'),
+  VENDOR: CITY_NPC('npc_vendor'),
+  GUARD_S: CITY_NPC('npc_guard'),
+  GUARD_E: CITY_NPC('npc_guard'),
+  WANDERER: CITY_NPC('npc_wanderer'),
 };
 const BTN = {
   primary: 'ui/raid/btn_primary/spriteFrame',
@@ -244,6 +276,14 @@ export class LobbyWorldOverlayRenderer {
     textLabel.lineHeight = Math.round(45 * k);
     // 纯对话 / 进行中:点台词条关闭
     if (state.mode === 'idle' || state.mode === 'progress' || !quest) {
+      const service = state.mode === 'idle' ? WORLD_NPC_SERVICE[state.npc] : undefined;
+      if (service && this.host.worldDialogService) {
+        // 11-08 主城 NPC 服务:台词条右侧主按钮(商店 / 悬赏 / 再听一个)+ 离开
+        const label = service === 'shop' ? '看看货' : service === 'bounty' ? '查看悬赏' : '再听一个';
+        mountGlassButton(kit, strip, 'Service', label, RX(1520), FY(744) - stripY, S(230), S(60), k, 'primary', () => this.host.worldDialogService!(service), 24);
+        mountGlassButton(kit, strip, 'Leave', '离开', RX(1770), FY(744) - stripY, S(200), S(60), k, 'secondary', () => this.host.closeWorldDialog(), 24);
+        return;
+      }
       strip.addComponent(Button);
       strip.on(Button.EventType.CLICK, () => this.host.closeWorldDialog(), this);
       this.glassText(strip, 'Hint', '点击继续 ›', RX(1822), FY(790) - stripY, 20, GLASS_COLOR.dim, S(200), k, HorizontalTextAlignment.RIGHT);
@@ -358,7 +398,11 @@ export class LobbyWorldOverlayRenderer {
     if (state.mode === 'grow' || state.mode === 'progress') {
       return text?.progress || text?.offer || quest?.desc || WORLD_NPC_IDLE[state.npc];
     }
-    return WORLD_NPC_IDLE[state.npc];
+    if (state.rumor) {
+      return state.rumor;
+    }
+    const chatter = WORLD_NPC_CHATTER[state.npc];
+    return chatter?.length ? chatter[(state.line ?? 0) % chatter.length] : WORLD_NPC_IDLE[state.npc];
   }
 
   // ── 世界地图(原型 p3 B 版 + 世界 / 地区分类) ──

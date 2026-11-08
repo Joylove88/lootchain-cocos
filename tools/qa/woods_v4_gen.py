@@ -335,7 +335,7 @@ def build_points():
         {'key': 'to_village', 'label': '返回 · 晨风村', 'x': round(-6420 * MAP_SCALE), 'y': round(-2440 * MAP_SCALE), 'radius': 130,
          'toMap': 'VILLAGE', 'toSpawn': {'x': 2300, 'y': -1000}},
         {'key': 'to_city', 'label': '前往 · 主城', 'x': round(5800 * MAP_SCALE), 'y': round(525 * MAP_SCALE), 'radius': 130,
-         'toMap': 'CITY', 'toSpawn': {'x': -900, 'y': -960}},
+         'toMap': 'CITY', 'toSpawn': {'x': -2344, 'y': -2750}},  # 11-08 主城 v4 南门内
     ]
     places = [{'name': n, 'x': wx(x), 'y': wy(y), 'icon': ic} for n, ic, x, y in [
         ('入口营地', 'portal', 240, 735), ('幼鼠窝', 'den', 430, 470), ('林间蛛巢', 'cave', 1000, 245),

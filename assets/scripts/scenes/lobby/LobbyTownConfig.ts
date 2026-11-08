@@ -95,9 +95,11 @@ export const TOWN_PROPS: readonly TownPropConfig[] = [
   { key: 'bench', x: 560, y: -470, width: 200, block: { w: 170, d: 40 } },
 ];
 
+/**
+ * 11-08 主城 v4(LobbyCityLayout)不再用旧版 9 栋功能建筑 / 道具图:只留地面兜底底纹和荒原用的路灯,
+ * 旧建筑图不再随大厅预载(原来每次进大厅都整组拉 13 张 1024 图)。
+ */
 export const TOWN_ASSET_PATHS: readonly string[] = [
   TOWN_GROUND_ASSET,
   TOWN_LAMP_ASSET,
-  ...TOWN_BUILDINGS.map((building) => townBuildingAsset(building.key)),
-  ...(['emblem', 'tree', 'crates', 'bench'] as TownPropKey[]).map((key) => townPropAsset(key)),
 ];

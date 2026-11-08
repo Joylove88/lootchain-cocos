@@ -117,7 +117,12 @@ CAMPS_PX = [
     ('FIELD_GRAY_23', '巨像外围石像鬼', 'GARGOYLE', 5, 18, 1700, 480, False),
     ('FIELD_GRAY_24', '巨像西石像鬼', 'GARGOYLE', 5, 19, 1400, 220, False),
     ('FIELD_GRAY_B', '碎岩巨像', 'ROCK_GOLEM', 1, 20, 1585, 300, True),
+    # 11-08 第 2 章剧情精英(C208):另一位宿主「影」,矿坑东北沿
+    ('FIELD_GRAY_S', '宿主 · 影', 'CROW_REAPER', 1, 18, 1590, 505, True),
 ]
+
+# 荒原营地 NPC(11-08 第 2 章:流浪者联盟首领在营地接 / 交任务,不用来回跑王都):相对营地中心的世界偏移
+NPCS_WORLD_OFFSET = [('WANDERER', '流浪者首领 · 葛兰', 'ui/world/city4/city4_npc_wanderer', -330, 40, 1)]
 
 CHESTS_PX = [
     ('GRAY_W1', '荒原木箱', 'WOOD', 70, 380),
@@ -403,7 +408,7 @@ def build_points():
     waypoint = {'x': cx - 60, 'y': cy - 40}
     spawn = {'x': cx + 120, 'y': cy - 260}
     exits = [{'key': 'to_city', 'label': '返回 · 主城', 'x': -MAP_W // 2 + 140, 'y': wy(462), 'radius': 130,
-              'toMap': 'CITY', 'toSpawn': {'x': 1880, 'y': -700}}]
+              'toMap': 'CITY', 'toSpawn': {'x': 6300, 'y': -288}}]  # 11-08 主城 v4 东门内
     places = [{'name': n, 'x': wx(x), 'y': wy(y), 'icon': ic} for n, ic, x, y in PLACES_PX]
     return chests, pois, waypoint, spawn, exits, places
 
@@ -788,6 +793,9 @@ def generate(seed=8):
     chests, pois, waypoint, spawn, exits, places = build_points()
     points = [(c['x'], c['y'], 260) for c in chests] + [(p['x'], p['y'], 260) for p in pois] + [(e['x'], e['y'], 320) for e in exits] \
         + [(waypoint['x'], waypoint['y'], 420), (spawn['x'], spawn['y'], 300)]
+    cx, cy = P(*CAMP_PX)
+    npcs = [{'code': c, 'name': n, 'asset': a, 'x': cx + dx, 'y': cy + dy, 'height': 215, 'flip': f} for c, n, a, dx, dy, f in NPCS_WORLD_OFFSET]
+    points += [(n['x'], n['y'], 280) for n in npcs]
     g = build_grid(roads, areas, flats, stands, camps, points)
     # 压路 / 压河谷的立物直接去掉(打日志),地标件位置手调
     g.bad_stands = [s for s in stands if not stand_ok(g, s['asset'], s['x'], s['y'], s['width'])]
@@ -797,7 +805,7 @@ def generate(seed=8):
     scatter_tall(g, Pl, structures, seed)
     scatter_clusters(g, Pl, structures, roads, stands, camps, seed)
     return {'roads': roads, 'areas': areas, 'flats': flats, 'bridge': bridge, 'stands': stands, 'camps': camps, 'chests': chests,
-            'pois': pois, 'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': Pl.tall, 'low': Pl.low}, g
+            'pois': pois, 'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': Pl.tall, 'low': Pl.low, 'npcs': npcs}, g
 
 
 # ── 预览 ──
@@ -971,6 +979,7 @@ def export_ts(L):
         f'export const GRAY_V4_CAMPS: Array<[string, string, string, number, number, number, number, number]> = {J(camps)};',
         f'export const GRAY_V4_CHESTS = {J(L["chests"])} as const;',
         f'export const GRAY_V4_POIS = {J(L["pois"])} as const;',
+        f'export const GRAY_V4_NPCS = {J([{**n, "asset": short(n["asset"])} for n in L["npcs"]])};',
         f'export const GRAY_V4_WAYPOINT = {J(L["waypoint"])};',
         f'export const GRAY_V4_SPAWN = {J(L["spawn"])};',
         f'export const GRAY_V4_EXITS = {J(L["exits"])};',

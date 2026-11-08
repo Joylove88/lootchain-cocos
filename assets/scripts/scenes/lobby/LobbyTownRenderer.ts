@@ -62,7 +62,7 @@ import { TownAmbient } from './LobbyTownAmbient';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
-import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -80,6 +80,8 @@ export interface LobbyTownHost extends LobbyHudHost {
   netBlocked?(): boolean;
   /** 全屏抉择页(契约之选 / 进化抉择)开着:键盘不驱动跑图。 */
   townInputLocked?(): boolean;
+  /** 境界突破试炼进行中(试炼 / 结算演出期间隐藏点不自动触发,免得弹窗叠在演出上)。 */
+  realmTrialActive?(): boolean;
   /** 主角境界称号(docs/60 §12,例「炼魂 · 初期」),队长血条上方显示;'' = 不显示。 */
   realmTitle?(): string;
   /** 主角境界到炼魂(docs/60 P1b):野外多一个大招「夜帝残影」按钮(U 键)。 */
@@ -231,6 +233,8 @@ const EMPTY_BLOCKS: WorldMapBlock[] = [];
 /** 跑图指引箭头平铺在地面上的纵向压扁比(地面透视,11-08)。 */
 const GUIDE_GROUND_SQUASH = 0.55;
 const INTERACT_RADIUS = 180;
+/** 剧情收集物由哪种怪掉(服务端 StoryQuestCatalog COLLECT 的 dropFrom)。 */
+const QUEST_ITEM_DROP_FROM: Record<string, string> = { SPIDER_SILK: 'SMALL_SPIDER', BANDIT_LEDGER: 'BLUNT_MALE' };
 const ACTOR_RADIUS = 26;
 const WORLD_NODE_NAME = 'LobbyTownWorld';
 /** 明雷怪(docs/50):游走速度 / 追击速度 / 警戒半径 / 接触半径 / 战胜后刷新时长。 */
@@ -3395,7 +3399,9 @@ export class LobbyTownRenderer {
       return;
     }
     const cfg = this.guideTargetPoint(guide);
-    if (!cfg) {
+    // 11-08 主城 v4 拆了功能建筑:软引导(穿装备 / 水晶 / 每日副本)找不到建筑时改提示「打开终端」,打开终端即记为已看过
+    const viaTerminal = !cfg && !!guide.flag;
+    if (!cfg && !viaTerminal) {
       return;
     }
     const w = Math.min(560 * scale, layout.stageWidth * 0.5);
@@ -3432,7 +3438,16 @@ export class LobbyTownRenderer {
     this.trackerLabel = main;
     this.trackerSub = sub;
     this.trackerDist = dist;
-    this.setTrackerText(`前往「${cfg.label}」`, `· ${guide.text}`, '');
+    this.setTrackerText(cfg ? `前往「${cfg.label}」` : '打开「终端」', `· ${guide.text}`, '');
+  }
+
+  /** 当前软引导要靠终端完成(本图没有对应建筑)时的引导标记;终端打开时由根节点记为已看过。 */
+  terminalGuideFlag(): TownGuideTarget['flag'] | null {
+    const guide = this.guide;
+    if (!guide?.flag || guide.point || this.def.buildings.some((item) => item.key === guide.building)) {
+      return null;
+    }
+    return guide.flag;
   }
 
   /** 白字主句 + 紧跟其后的灰字说明(按字宽估算接续位置)+ 右端距离。 */
@@ -3976,6 +3991,10 @@ export class LobbyTownRenderer {
   private updateHiddenPois(): void {
     const leader = this.leader;
     if (!leader || this.inCombat || this.channel || !this.host.claimWorldPoi) {
+      return;
+    }
+    // 11-08 自检:打心魔试炼时走过隐藏点,「发现」弹窗叠在突破结算演出上 → 试炼 / 演出期间不触发,结束后走近再触发
+    if (this.host.townInputLocked?.() || this.host.realmTrialActive?.()) {
       return;
     }
     for (const entry of this.poiNodes.values()) {
@@ -4557,14 +4576,19 @@ export class LobbyTownRenderer {
     }
     const def = this.def;
     if (quest.state === 'LOCKED') {
-      // 等级不够接下一条剧情(2026-10-27 UI 审核):指去村外林地打怪升级
-      if (this.mapCode === 'WOODS') {
-        const camp = def.camps[0];
+      // 等级不够接下一条剧情(2026-10-27 UI 审核):指去对应野区打怪升级。
+      // 11-08 第 2 章:Lv.10 以后该去灰岩荒原(原来写死村外林地),并指向和玩家等级最接近的怪群
+      const level = world?.playerLevel ?? 1;
+      const farm: WorldMapCode = level >= 10 ? 'GRAY' : 'WOODS';
+      const farmDef = worldMapDef(farm);
+      if (this.mapCode === farm) {
+        const camps = def.camps.filter((item) => !item.elite);
+        const camp = camps.reduce<WorldMapCamp | null>((best, item) => (!best || Math.abs(item.level - level) < Math.abs(best.level - level) ? item : best), null);
         return camp ? { building: '', point: { x: camp.x, y: camp.y, label: camp.label }, text: `打怪升到 Lv.${quest.minLevel}` } : null;
       }
-      const exit = def.exits.find((item) => item.toMap === 'WOODS');
-      const point = exit ? { x: exit.x, y: exit.y, label: exit.label } : { x: def.waypoint.x, y: def.waypoint.y, label: '传送阵 · 去村外林地' };
-      return { building: '', point, text: `去村外林地打怪升到 Lv.${quest.minLevel}` };
+      const exit = def.exits.find((item) => item.toMap === farm) ?? this.firstExitToward(farm);
+      const point = exit ? { x: exit.x, y: exit.y, label: exit.label } : { x: def.waypoint.x, y: def.waypoint.y, label: `传送阵 · 去${farmDef.name}` };
+      return { building: '', point, text: `去${farmDef.name}打怪升到 Lv.${quest.minLevel}` };
     }
     const npcPoint = (code: string): { x: number; y: number; label: string } | null => {
       const npc = def.npcs.find((item) => item.code === code);
@@ -4588,22 +4612,54 @@ export class LobbyTownRenderer {
       }
       return { x: def.waypoint.x, y: def.waypoint.y, label: `传送阵 · 去${target.name}` };
     };
+    // 11-08 第 2 章:接 / 交任务的 NPC 可能在别的图(荒原营地首领 / 主城学者)→ 先引路到那张图
+    const npcMapOf = (code: string): string | null => {
+      for (const d of Object.values(WORLD_MAPS)) {
+        if (d.npcs.some((n) => n.code === code && n.asset) || d.buildings.some((b) => b.npc === code)) {
+          return d.code;
+        }
+      }
+      return null;
+    };
     let point: { x: number; y: number; label: string } | null = null;
     if (quest.state === 'AVAILABLE') {
       point = npcPoint(quest.acceptNpc);
-    } else if (quest.state === 'DONE' || quest.objective === 'TALK' || quest.objective === 'GROW') {
-      point = npcPoint(quest.state === 'DONE' || quest.objective !== 'TALK' ? quest.turnInNpc : quest.objectiveTarget);
-      if (!point && quest.map !== this.mapCode) {
+      const at = point ? null : npcMapOf(quest.acceptNpc);
+      if (at && at !== this.mapCode) {
+        point = travel(at);
+      }
+    } else if (quest.objective === 'REACH' && quest.state !== 'DONE' && quest.objectiveTarget.startsWith('POI:')) {
+      // 「到达」类:读石碑等兴趣点(C205)
+      if (quest.map !== this.mapCode) {
         point = travel(quest.map);
+      } else {
+        const poi = (def.pois ?? []).find((item) => `POI:${item.code}` === quest.objectiveTarget);
+        point = poi ? { x: poi.x, y: poi.y, label: poi.name } : null;
+      }
+    } else if (quest.state === 'DONE' || quest.objective === 'TALK' || quest.objective === 'GROW') {
+      const who = quest.state === 'DONE' || quest.objective !== 'TALK' ? quest.turnInNpc : quest.objectiveTarget;
+      point = npcPoint(who);
+      if (!point) {
+        const at = npcMapOf(who) ?? quest.map;
+        if (at !== this.mapCode) {
+          point = travel(at);
+        }
       }
     } else if (quest.objective === 'KILL' || quest.objective === 'COLLECT') {
       if (quest.map !== this.mapCode) {
         point = travel(quest.map);
       } else {
-        const code = quest.objective === 'COLLECT' ? 'SMALL_SPIDER' : quest.objectiveTarget;
+        // 收集物 → 掉落它的怪(和服务端 StoryQuestCatalog.dropFrom 一致)
+        const code = quest.objective === 'COLLECT' ? (QUEST_ITEM_DROP_FROM[quest.objectiveTarget] ?? 'SMALL_SPIDER') : quest.objectiveTarget;
+        // 11-08 自检:同种怪有好几群时,原来永远指第一群(刚清空还在等刷新也指它)→ 优先没在刷新的、离队长最近的一群
+        const now = Date.now();
+        const lx = this.leader?.x ?? 0;
+        const ly = this.leader?.y ?? 0;
         const camp = code.startsWith('stage:')
           ? def.camps.find((item) => item.stageCode === code.slice(6))
-          : def.camps.find((item) => item.monsterCode === code);
+          : def.camps.filter((item) => item.monsterCode === code)
+            .map((item) => ({ item, cooling: (this.campRespawnAt.get(item.stageCode) ?? 0) > now ? 1 : 0, d: Math.hypot(item.x - lx, item.y - ly) }))
+            .sort((a, b) => a.cooling - b.cooling || a.d - b.d)[0]?.item;
         point = camp ? { x: camp.x, y: camp.y, label: camp.label } : null;
       }
     }
@@ -4664,7 +4720,8 @@ export class LobbyTownRenderer {
       const status = quest.state === 'DONE' ? ' · 可交付' : quest.state === 'AVAILABLE' ? ' · 可接取' : '';
       // 副行写任务说明(做什么 / 去哪);野外图怪群多、追踪条下还有精英条,只留主行。晨风村只有训练场一个怪群,照样写(11-03 用户新号不知道去哪)
       const showDesc = this.def.camps.length === 0 || this.mapCode === 'VILLAGE';
-      const sub = quest.state === 'LOCKED' ? `Lv.${quest.minLevel} 可接 · 去村外林地升级` : showDesc ? quest.desc.replace(/[。.]$/, '') : '';
+      const farmName = (world?.playerLevel ?? 1) >= 10 ? '灰岩荒原' : '村外林地';
+      const sub = quest.state === 'LOCKED' ? `Lv.${quest.minLevel} 可接 · 去${farmName}升级` : showDesc ? quest.desc.replace(/[。.]$/, '') : '';
       rows.push({ text: `${quest.name}${progress}${status}`, sub, tone: 'story' });
     }
     for (const bounty of bounties.slice(0, 2)) {
@@ -7419,7 +7476,8 @@ export class LobbyTownRenderer {
     }
     const ratio = this.leaderMaxHp > 0 ? Math.max(0, Math.min(1, this.leaderHp / this.leaderMaxHp)) : 1;
     const flash = Date.now() < this.leaderHitFlashUntil;
-    const key = `${Math.round(ratio * 400)}:${flash ? 1 : 0}`;
+    // 11-08 自检:新号进图时血量先是 0 / 0(比例按 1),算出满血后比例仍是 1 → 只按比例判断时文字一直停在「0 / 0」,数值也要进 key
+    const key = `${Math.round(ratio * 400)}:${flash ? 1 : 0}:${Math.round(this.leaderHp)}:${this.leaderMaxHp}`;
     if (key === bar.key) {
       return;
     }

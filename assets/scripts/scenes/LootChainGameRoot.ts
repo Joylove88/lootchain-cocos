@@ -159,7 +159,7 @@ import { LobbyAreaMapRenderer, type LobbyAreaMapHost } from './lobby/LobbyAreaMa
 import { LobbyWorldOverlayRenderer, WORLD_TABS, type WorldBountyPanelState, type WorldDialogState, type WorldMapPanelState } from './lobby/LobbyWorldOverlayRenderer';
 import { currentLobbyProtagonistHero, currentLobbyProtagonistLeader, heroPackPrefixes, LOBBY_FORMATION_MAX, resolveFieldParty, setProtagonistRealmSkin } from '../api/LobbyHeroApi';
 import { LobbyPoiDialogRenderer, poiMapName, type LobbyPoiDialogHost, type WorldPoiDialogState } from './lobby/LobbyPoiDialogRenderer';
-import { WORLD_MAPS, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode } from './lobby/LobbyWorldMaps';
+import { WORLD_MAPS, WORLD_NPC_SERVICE, worldMapAssetPaths, worldMapDef, worldMapOfStage, worldMapPackPrefixes, type WorldNpcCode, type WorldNpcService } from './lobby/LobbyWorldMaps';
 import { LobbyRaidPanelRenderer, type LobbyRaidPanelHost, type LobbyRaidPanelState, type LobbyRaidPvpState } from './lobby/LobbyRaidPanelRenderer';
 import { TOKEN_FURNACE_ENABLED } from '../api/TokenApi';
 import { LobbyShopDialogRenderer, type LobbyShopDialogHost, type LobbyShopDialogState, type LobbyShopKind } from './lobby/LobbyShopDialogRenderer';
@@ -1638,6 +1638,11 @@ export class LootChainGameRoot extends Component {
     }
     this.lobbyTerminalOpen = true;
     this.terminalReturn = null;
+    // 主城 v4 没有功能建筑:指向终端的软引导打开终端即算看过
+    const guideFlag = this.lobbyTownRenderer?.terminalGuideFlag();
+    if (guideFlag) {
+      lobbyGuide.markVisited(guideFlag);
+    }
     this.lobbyTerminalPanelRenderer.render(this.resolveLayout());
     // 红点只在进大厅时拉过一次,领完奖 / 读完邮件后会过时:每次打开终端重拉,变了自动整刷
     void this.loadLobbyBadges(true);
@@ -7761,7 +7766,77 @@ export class LootChainGameRoot extends Component {
     if (pending) {
       return pick('progress', pending.code);
     }
-    return pick('idle', '');
+    const idle = pick('idle', '');
+    // 11-08 主城 NPC:闲聊按次数轮换;酒馆老板给一条传闻
+    this.worldNpcTalkCount += 1;
+    idle.line = this.worldNpcTalkCount;
+    if (WORLD_NPC_SERVICE[npc] === 'rumor') {
+      idle.rumor = this.nextWorldRumor();
+    }
+    return idle;
+  }
+
+  private worldNpcTalkCount = 0;
+
+  /**
+   * 酒馆传闻(11-08):从已解锁的野区里挑一条对玩家有用的线索——今天还没开的宝箱、还没去过的隐藏点 / 石碑、精英 / 首领在哪。
+   * 只用本地世界状态 + 地图定义,不发请求。
+   */
+  private nextWorldRumor(): string {
+    const world = this.worldState;
+    const unlocked = new Set((world?.maps ?? []).filter((m) => m.unlocked).map((m) => m.mapCode));
+    const opened = new Set(world?.openedChests ?? []);
+    const found = new Set((world?.explore ?? []).flatMap((e) => e.found));
+    const lines: string[] = [];
+    // 出村后(Lv.10+)只说荒原以后的事,新手区的宝箱 / 隐藏点对老玩家没意义;都说完了再退回全部
+    const level = world?.playerLevel ?? 1;
+    const lowMaps = new Set(['VILLAGE', 'WOODS']);
+    const pickMaps = (skipLow: boolean) => Object.values(WORLD_MAPS).filter((def) => unlocked.has(def.code) && def.code !== 'CITY' && !(skipLow && lowMaps.has(def.code)));
+    const maps = pickMaps(level >= 10).length ? pickMaps(level >= 10) : pickMaps(false);
+    for (const def of maps) {
+      if (!unlocked.has(def.code) || def.code === 'CITY') {
+        continue;
+      }
+      for (const chest of def.chests ?? []) {
+        if (!opened.has(chest.code) && chest.kind !== 'WOOD') {
+          lines.push(`听说${def.name}的「${chest.label}」今天还没人开过,${chest.kind === 'SECRET' ? '藏得可深了,得绕点路才找得到' : '不过得先收拾掉守着它的家伙'}。`);
+        }
+      }
+      for (const poi of def.pois ?? []) {
+        if ((poi.kind === 'HIDDEN' || poi.kind === 'STELE') && !found.has(`POI:${poi.code}`)) {
+          lines.push(`有个走商说,${def.name}里有处叫「${poi.name}」的地方,${poi.kind === 'STELE' ? '刻着谁也看不懂的古字' : '去过的人都说不虚此行'}。`);
+        }
+      }
+      for (const camp of def.camps) {
+        if (camp.elite) {
+          lines.push(`${def.name}的「${camp.label}」最近又出来了,Lv.${camp.level} 左右,${camp.stageCode.endsWith('_B') ? '是那一带的首领,打赢了有好东西' : '身边常有好箱子'}。`);
+        }
+      }
+    }
+    if (!lines.length) {
+      return '最近风平浪静,没什么新鲜事。来杯麦酒吧!';
+    }
+    return lines[this.worldNpcTalkCount % lines.length];
+  }
+
+  /** NPC 服务按钮:商店 → 道具页;悬赏 → 佣兵公会悬赏面板;传闻 → 再说一条。 */
+  private worldDialogService(service: WorldNpcService): void {
+    const dialog = this.worldDialog;
+    if (!dialog) {
+      return;
+    }
+    if (service === 'rumor') {
+      this.worldNpcTalkCount += 1;
+      this.worldDialog = { ...dialog, rumor: this.nextWorldRumor() };
+      this.syncLobbyShopOverlay();
+      return;
+    }
+    this.closeWorldDialog();
+    if (service === 'shop') {
+      this.openLobbyShopDialog('item');
+    } else {
+      this.openWorldBountyPanel();
+    }
   }
 
   private closeWorldDialog(): void {
@@ -8159,6 +8234,11 @@ export class LootChainGameRoot extends Component {
         void this.loadLobbyProfile(this.currentLobbyProfile().userId);
         void this.loadLobbyBag(true);
       }
+      // 11-08 第 2 章:读石碑这类「到达」目标(C205 古碑上的字)—— 领到兴趣点后补报剧情进度(重读也算)
+      const reachQuest = (result.state.quests ?? this.worldState?.quests ?? []).find((item) => item.state === 'ACCEPTED' && item.objective === 'REACH' && item.objectiveTarget === `POI:${code}`);
+      if (reachQuest) {
+        void this.runWorldAction(() => this.api.world.reportQuest(reachQuest.code, 'REACH', `POI:${code}`));
+      }
       const mapCode = (Object.values(WORLD_MAPS).find((map) => (map.pois ?? []).some((poi) => poi.code === code))?.code ?? 'VILLAGE') as WorldMapCode;
       const found = new Set(result.state.explore.find((item) => item.mapCode === mapCode)?.found ?? []);
       const mapPois = WORLD_MAPS[mapCode]?.pois ?? [];
@@ -8173,6 +8253,7 @@ export class LootChainGameRoot extends Component {
       } else if (def.kind === 'STELE') {
         // 新手区石碑收集(成就「晨曦往事」,quest_config A_STELE_NOVICE)
         const novice = ['V_STELE_1', 'W_STELE_1'];
+        const isNovice = novice.includes(code);
         const read = novice.filter((stele) => {
           const map = stele.startsWith('V') ? 'VILLAGE' : 'WOODS';
           return (result.state.explore.find((item) => item.mapCode === map)?.found ?? []).includes(`POI:${stele}`);
@@ -8180,7 +8261,8 @@ export class LootChainGameRoot extends Component {
         this.worldPoiDialog = {
           kind: 'stele', poiCode: code, poiKind: def.kind, rewards: result.rewards, first,
           progressText: '',
-          footerText: read >= novice.length ? `新手区石碑 ${read} / ${novice.length} · 已解锁成就「晨曦往事」,可在成就里领取` : `新手区石碑 ${read} / ${novice.length} · 集齐解锁成就「晨曦往事」`,
+          // 11-08 自检:荒原古碑不算新手区石碑,别显示「新手区石碑 x / 2」
+          footerText: !isNovice ? '' : read >= novice.length ? `新手区石碑 ${read} / ${novice.length} · 已解锁成就「晨曦往事」,可在成就里领取` : `新手区石碑 ${read} / ${novice.length} · 集齐解锁成就「晨曦往事」`,
         };
         gameAudio.sfx('panel_open');
       } else if (first) {
@@ -9903,6 +9985,10 @@ export class LootChainGameRoot extends Component {
   /** 跑图键盘锁:契约之选 / 进化抉择开着时(LobbyTownHost)。 */
   townInputLocked(): boolean {
     return !!this.contractPick || !!this.evolutionPick || !!this.realmBreak || !!this.realmDone;
+  }
+
+  realmTrialActive(): boolean {
+    return !!this.realmTrial;
   }
 
   /** 默认选中中间那张(原型选中态在中间)。 */

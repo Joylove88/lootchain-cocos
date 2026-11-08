@@ -5,7 +5,22 @@
  */
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
-import { GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import { CITY_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import {
+  CITY_V4_AREAS,
+  CITY_V4_BOARD,
+  CITY_V4_EXITS,
+  CITY_V4_FLATS,
+  CITY_V4_LAMPS,
+  CITY_V4_LOW,
+  CITY_V4_NPCS,
+  CITY_V4_PLACES,
+  CITY_V4_ROADS,
+  CITY_V4_SIZE,
+  CITY_V4_SPAWN,
+  CITY_V4_STANDS,
+  CITY_V4_WAYPOINT,
+} from './LobbyCityLayout';
 import {
   GRAY_V4_AREAS,
   GRAY_V4_ASSETS,
@@ -15,6 +30,7 @@ import {
   GRAY_V4_EXITS,
   GRAY_V4_FLATS,
   GRAY_V4_LOW,
+  GRAY_V4_NPCS,
   GRAY_V4_PLACES,
   GRAY_V4_POIS,
   GRAY_V4_ROADS,
@@ -44,20 +60,27 @@ import {
   WOODS_V4_WAYPOINT,
 } from './LobbyWoodsLayout';
 import {
-  TOWN_BUILDINGS,
   TOWN_GROUND_ASSET,
   TOWN_GROUND_TILE,
-  TOWN_LAMPS,
   TOWN_LAMP_ASSET,
-  TOWN_MAP,
-  TOWN_PROPS,
-  TOWN_SPAWN,
-  townBuildingAsset,
-  townPropAsset,
   type TownAction,
 } from './LobbyTownConfig';
 
-export type WorldNpcCode = 'CHIEF' | 'INSTRUCTOR' | 'PRIEST' | 'SMITH' | 'BOARD';
+export type WorldNpcCode = 'CHIEF' | 'INSTRUCTOR' | 'PRIEST' | 'SMITH' | 'BOARD'
+  // 11-08 主城 v4 NPC 城区:任务(学者 / 会长 / 卫队长)· 商店(杂货商 / 果摊)· 情报(酒馆老板)· 活人
+  | 'SCHOLAR' | 'GUILDMASTER' | 'CAPTAIN' | 'MERCHANT' | 'INNKEEPER' | 'BARD' | 'FLOWER_GIRL' | 'OLD_MAN' | 'CHILD' | 'VENDOR'
+  | 'GUARD_S' | 'GUARD_E'
+  // 11-08 第 2 章:荒原流浪者营地首领
+  | 'WANDERER';
+
+/** NPC 附带的服务(对话框里多一个按钮):商店 / 悬赏 / 酒馆传闻。 */
+export type WorldNpcService = 'shop' | 'bounty' | 'rumor';
+export const WORLD_NPC_SERVICE: Partial<Record<WorldNpcCode, WorldNpcService>> = {
+  MERCHANT: 'shop',
+  VENDOR: 'shop',
+  GUILDMASTER: 'bounty',
+  INNKEEPER: 'rumor',
+};
 
 export const WORLD_ASSET_DIR = 'ui/world';
 export function worldAsset(name: string): string {
@@ -323,6 +346,8 @@ const MONSTER_SPINE: Record<string, string> = {
   SPEAR_MALE: 'spine/monster/spear_male/spear_001',
   BLUNT_MALE: 'spine/monster/blunt_male/blunt_001',
   ROCK_GOLEM: 'spine/monster/rock_golem/golem_001',
+  // 11-08 第 2 章剧情精英:宿主「影」
+  CROW_REAPER: 'spine/monster/crow_reaper/twohand_spear_001',
 };
 
 function camp(stageCode: string, label: string, monsterCode: string, count: number, level: number, x: number, y: number, elite = false,
@@ -663,34 +688,65 @@ const WOODS: WorldMapDef = {
   battleBg: 'battle_scene_field_forest',
 };
 
+const CITY_HALF_W = CITY_V4_SIZE.width / 2 - 50;
+const CITY_HALF_H = CITY_V4_SIZE.height / 2 - 50;
+
+/**
+ * 主城 v4(2026-11-08 用户选写实原型 city_r1「晴天暖石城」+「主城就放任务 NPC / 活人 NPC / 地区商店 NPC,功能都在终端了」):
+ * 14000×7000、镜头 1.4;罗盘广场(传送阵 + 公告板)/ 大教堂 / 佣兵公会 / 帝国学院 / 集市街 / 金麦酒馆 / 兵营 / 运河 / 城墙;
+ * 原 9 栋功能建筑全部拆掉(召唤 / 英雄 / 锻造 / 水晶 / 试炼塔 / 掠夺 / 图鉴只走终端)。布局由 tools/qa/city_v4_gen.py 生成(LobbyCityLayout.ts)。
+ */
 const CITY: WorldMapDef = {
   code: 'CITY',
   name: '主城',
   levelText: '',
-  width: TOWN_MAP.width,
-  height: TOWN_MAP.height,
-  // 11-03 用户「地图可见范围内都应该能走」:放到离地图边 50(原 TOWN_WALK_BOUNDS 四周留 150~420 看得见走不了)
-  walk: { left: -2150, right: 2150, bottom: -1250, top: 1250 },
-  spawn: { ...TOWN_SPAWN },
+  actorTint: [248, 242, 232],
+  ambient: true,
+  cameraZoom: 1.4,
+  width: CITY_V4_SIZE.width,
+  height: CITY_V4_SIZE.height,
+  walk: { left: -CITY_HALF_W, right: CITY_HALF_W, bottom: -CITY_HALF_H, top: CITY_HALF_H },
+  corridors: { half: 300, lines: CITY_V4_ROADS, areas: CITY_V4_AREAS.map(([x, y, rx, ry]) => ({ x, y, rx, ry })) },
+  openWalk: true,
+  // 运河挡块(world_water_blocks.py 按贴图像素生成,石桥按桥面留空)
+  blocks: CITY_WATER_BLOCKS as WorldMapBlock[],
+  spawn: { ...CITY_V4_SPAWN },
   ground: TOWN_GROUND_ASSET,
   groundTile: TOWN_GROUND_TILE,
+  // 多层地表:老卵石 / 长苔卵石 / 草坪 / 广场石板 / 主街条石(tools/qa/city_ground_install.py 生成遮罩)
+  groundSplat: {
+    mask: worldAsset('city4/ground_splat'),
+    mask2: worldAsset('city4/ground_splat2'),
+    floor: worldAsset('city4/tex_cobble'),
+    moss: worldAsset('city4/tex_cobble_moss'),
+    meadow: worldAsset('city4/tex_grass'),
+    dirt: worldAsset('city4/tex_street'),
+    leaf: worldAsset('city4/tex_flagstone'),
+    tiles: [300, 520, 420, 340, 460],
+  },
+  groundShadows: true,
+  // 高建筑的斜投影在街上压出整片暗块(实机 11-08)→ 主城再淡一些
+  castShadowOpacity: 64,
   buildings: [
-    ...TOWN_BUILDINGS.map((cfg) => ({ ...cfg, asset: townBuildingAsset(cfg.key), action: cfg.action as WorldMapBuilding['action'] })),
-    // 剧情任务公告板(docs/50 §4.1):罗盘传送阵东侧
-    { key: 'board', label: '公告板', asset: worldAsset('city_board'), action: 'npc', npc: 'BOARD', x: 470, y: -300, width: 220, footprint: { w: 140, d: 40 }, door: { x: -60, y: -40 } },
+    // 剧情任务公告板(docs/50 §4.1):罗盘广场东侧
+    { ...CITY_V4_BOARD, asset: worldAsset(CITY_V4_BOARD.asset), action: 'npc', npc: 'BOARD' },
   ],
-  npcs: [{ code: 'BOARD', name: '公告板', asset: null, x: 470, y: -340, height: 0, flip: 1 }],
-  props: TOWN_PROPS.map((prop) => ({ ...prop, asset: townPropAsset(prop.key) })),
-  lamps: [...TOWN_LAMPS],
-  lampAsset: TOWN_LAMP_ASSET,
-  // 广场黄铜罗盘就是主城传送阵(不另画底座,只加符文光)
-  waypoint: { x: 0, y: -330, drawn: false },
+  npcs: CITY_V4_NPCS.map((n) => ({ code: n.code as WorldNpcCode, name: n.name, asset: worldAsset(n.asset), x: n.x, y: n.y, height: n.height, flip: (n.flip < 0 ? -1 : 1) as 1 | -1 })),
+  props: [
+    // 贴地:罗盘广场 / 运河 / 小船 / 石桥
+    ...CITY_V4_FLATS.map((f) => ({ ...f, asset: worldAsset(f.asset), flat: true })),
+    // 立物:城墙 / 门楼 / 地标 / 民居 / 摊位 / 雕像 / 树 → 花箱 / 木桶 / 长椅 / 灌木
+    ...CITY_V4_STANDS.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
+    ...CITY_V4_LOW.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
+  ],
+  lamps: CITY_V4_LAMPS.map((l) => ({ ...l })),
+  lampAsset: worldAsset('city4/city4_lamp'),
+  // 广场罗盘就是主城传送阵(贴地件自带罗盘,不另画底座)
+  waypoint: { ...CITY_V4_WAYPOINT, drawn: false },
+  places: CITY_V4_PLACES.map((p) => ({ ...p })),
   camps: [],
-  // 11-04:南门(商行 / 佣兵公会之间)回林地,东门(英灵殿北侧)去灰岩荒原;首次来要走到广场罗盘激活传送阵
-  exits: [
-    { key: 'to_woods', label: '前往 · 村外林地', x: -900, y: -1150, radius: 130, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
-    { key: 'to_gray', label: '前往 · 灰岩荒原', x: 2050, y: -700, radius: 130, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },  // 11-08 荒原 v4:落在西口(主路起点)
-  ],
+  // 南门回林地,东门去灰岩荒原;首次来要走到广场罗盘激活传送阵
+  exits: CITY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
 };
 
 /** 灰岩荒原 v4 布局表的物件行 → 道具(同 woodsRows,素材表换成 GRAY_V4_ASSETS)。 */
@@ -715,6 +771,7 @@ const GRAY_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAur
   FIELD_GRAY_E2: { aura: AURA_RAGE },
   FIELD_GRAY_E: { aura: AURA_CORRUPT },
   FIELD_GRAY_B: { aura: AURA_LAVA },
+  FIELD_GRAY_S: { aura: AURA_CORRUPT },
 };
 
 const GRAY_HALF_W = GRAY_V4_SIZE.width / 2 - 50;
@@ -756,7 +813,7 @@ const GRAY: WorldMapDef = {
   groundShadows: true,
   castShadowOpacity: 78,
   buildings: [],
-  npcs: [],
+  npcs: GRAY_V4_NPCS.map((n) => ({ code: n.code as WorldNpcCode, name: n.name, asset: worldAsset(n.asset), x: n.x, y: n.y, height: n.height, flip: (n.flip < 0 ? -1 : 1) as 1 | -1 })),
   props: [
     // 贴地:峡谷段 / 矿坑 / 遗迹地面 → 石桥
     ...GRAY_V4_FLATS.map((f) => ({ ...f, asset: worldAsset(f.asset), flat: true })),
@@ -814,7 +871,7 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
-    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
+    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' || code === 'CITY' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ART:关着 / 开盖空箱)
     ...(def.chests?.length ? Object.values(CHEST_ART) : []),
     // 兴趣点素材(docs/54)+ 场上头顶圆徽用的图标(进图前要在内存里,场上节点不会因贴图晚到而重绘)

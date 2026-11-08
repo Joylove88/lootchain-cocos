@@ -15,11 +15,11 @@ from walk_map_overlay import dump_maps  # noqa: E402
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 OUT_TS = os.path.join(ROOT, 'assets', 'scripts', 'scenes', 'lobby', 'LobbyWaterBlocks.ts')
 CELL = 40
-MAPS = {'VILLAGE': 'VILLAGE_WATER_BLOCKS', 'WOODS': 'WOODS_WATER_BLOCKS', 'GRAY': 'GRAY_WATER_BLOCKS'}
+MAPS = {'VILLAGE': 'VILLAGE_WATER_BLOCKS', 'WOODS': 'WOODS_WATER_BLOCKS', 'GRAY': 'GRAY_WATER_BLOCKS', 'CITY': 'CITY_WATER_BLOCKS'}
 # 不挂流水着色器、但整块是崖石的贴地件
 ROCK_ASSETS = ('vil3_cliff_s',)
 # 11-08 灰岩荒原:峡谷段整块不可走(贴图本身就是抠好的谷,按不透明像素算;峡谷是灰色,按颜色判会把两岸龟裂土也算进去)
-ALPHA_ASSETS = ('gray4_gorge',)
+ALPHA_ASSETS = ('gray4_gorge', 'city4_canal/')  # 主城运河(含两岸石砌堤)整段不可走,石桥按桥面留空
 # 矿坑:只有坑心不可走(外圈台阶 / 坑沿能走),按贴图内椭圆算
 PIT_ASSETS = ('gray4_quarry_pit',)
 
