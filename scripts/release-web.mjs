@@ -98,8 +98,47 @@ function patchEngineDprCap() {
       console.log(`[release] 引擎 DPR 封顶补丁:${name}`);
     }
   }
-  if (hits !== 1) {
+  // --skip-build 重跑时引擎已打过补丁,算命中
+  const already = fs.readdirSync(dir).filter((n) => n.endsWith('.js') && fs.readFileSync(path.join(dir, n), 'utf8').includes('window.__lcMaxDevicePixelRatio||2')).length;
+  if (hits + (hits === 0 ? already : 0) !== 1) {
     fail(`引擎 DPR 封顶补丁命中 ${hits} 处(应为 1):引擎版本变了?对照 pal/screen-adapter/web 的 devicePixelRatio getter 更新 patchEngineDprCap 的正则`);
+  }
+}
+
+/**
+ * 强制横屏补到「触屏为主的设备」(2026-11-08 用户在 Chrome 开发者工具手机模式下看到竖屏,要求强制横屏):
+ * 引擎只在 systemInfo.isMobile 时旋转画布,而 isMobile 只看 UA(/mobile|android|iphone|ipad/)——开发者工具响应式模式、
+ * iPad 桌面 UA、平板模式的 Windows 都是桌面 UA,竖着拿就不转、按竖屏排版。这里把「主指针是触屏((pointer: coarse))」也算手机,
+ * 这样引擎旋转、ScreenAdapter.viewportCssSize 对调宽高、手机放大 / 画质默认流畅等全部按同一口径走(sys.isMobile 由它拷贝)。
+ * 触屏事件引擎会 preventDefault,不会再派生出不感知旋转的鼠标事件。引擎 chunk 文件名不带 md5,改内容不会被老缓存卡住。
+ */
+function patchEngineTouchAsMobile() {
+  const dir = path.join(BUILD_DIR, 'cocos-js');
+  const pattern = /(\w+)\.isMobile=\/mobile\|android\|iphone\|ipad\/\.test\((\w+)\)(?!\|\|)/g;
+  const marker = '(pointer: coarse)';
+  let hits = 0;
+  let already = 0;
+  for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+    const file = path.join(dir, name);
+    const src = fs.readFileSync(file, 'utf8');
+    if (!src.includes('isMobile=/mobile|android|iphone|ipad/')) {
+      continue;
+    }
+    if (src.includes(marker)) {
+      already += 1;
+      continue;
+    }
+    const out = src.replace(pattern, (m, obj, ua) => {
+      hits += 1;
+      return `${obj}.isMobile=/mobile|android|iphone|ipad/.test(${ua})||!!(window.matchMedia&&window.matchMedia("${marker}").matches)`;
+    });
+    if (out !== src) {
+      fs.writeFileSync(file, out);
+      console.log(`[release] 引擎触屏按手机补丁(强制横屏):${name}`);
+    }
+  }
+  if (hits + already !== 1) {
+    fail(`引擎触屏按手机补丁命中 ${hits} 处(应为 1):引擎版本变了?对照 pal/system-info/web 的 isMobile 赋值更新 patchEngineTouchAsMobile 的正则`);
   }
 }
 
@@ -301,6 +340,7 @@ if (!skipBuild) {
 checkBuildLayout();
 fixServiceWorkerName();
 patchEngineDprCap();
+patchEngineTouchAsMobile();
 disableSplashScreen();
 
 step('3/5 PNG 压缩(libimagequant,达不到画质下限的保原图)');
