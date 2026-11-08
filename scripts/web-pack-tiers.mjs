@@ -58,8 +58,8 @@ export const CORE_PREFIXES = [
 
 // 后台下载顺序(越靠前越先下):玩家最可能的下一步。没列到的放最后,按文件名。
 export const BACKGROUND_ORDER = [
-  // 出村:村外林地 + 林地怪
-  'ui/world/woods3', 'ui/world/ground_woods3', 'ui/world/overview/ov_woods',
+  // 出村:村外林地 + 林地怪(woods4 = 11-08 多层地表材质 / 遮罩)
+  'ui/world/woods3', 'ui/world/woods4', 'ui/world/ground_woods3', 'ui/world/overview/ov_woods',
   'spine/monster/small_spider', 'spine/monster/medium_dog', 'spine/monster/medium_bear', 'monster/',
   // 村里剧情会带去的功能页:召唤(祭司)/ 英雄养成 + 锻造(铁匠)/ 背包任务商店
   'ui/gacha', 'spine/gacha', 'ui/hero', 'ui/hero-detail', 'ui/hero-roster', 'ui/forge', 'ui/equip', 'ui/bag', 'ui/shop', 'ui/mission',

@@ -1,6 +1,8 @@
 // 野外立物随风摆(2026-10-29 用户:树叶、草地随风飘荡)。
 // 片元里按高度横向错 UV:树根(uv.y=1)不动,越往上摆幅越大;相位取立物在地图上的位置(mapOrigin 由渲染层每帧给),
 // 走动时不会因为镜头移动而变相位。贴图须 packable=false(动态合图会让 uv 不再是 0..1)。
+// 11-08 圆形透视孔(用户「人物在树后面看不到」):holeParams = (世界 x, 世界 y, 半径, 强度),只挂在挡住队伍的那几棵树上(另一份材质),
+// 孔内按柔边圆把透明度压到 1 - 强度 × 0.72,看得见树后的人;其他树强度为 0。
 CCEffect %{
   techniques:
   - passes:
@@ -20,6 +22,7 @@ CCEffect %{
       properties:
         windParams: { value: [0.014, 1.5, 2.2, 0.0] }
         mapOrigin: { value: [0.0, 0.0, 1.0, 0.0] }
+        holeParams: { value: [0.0, 0.0, 0.0, 0.0] }
 }%
 
 CCProgram wind-vs %{
@@ -33,6 +36,7 @@ CCProgram wind-vs %{
   out vec4 color;
   out vec2 uv0;
   out float phase;
+  out vec2 wpos;
 
   uniform WindVert {
     vec4 mapOrigin;
@@ -43,6 +47,7 @@ CCProgram wind-vs %{
     // 世界层节点位置 / 缩放 → 地图坐标,做空间相位(一阵风从西往东扫过去)
     vec2 mapPos = (a_position.xy - mapOrigin.xy) * mapOrigin.z;
     phase = mapPos.x * 0.0021 + mapPos.y * 0.0013;
+    wpos = a_position.xy;
     pos = cc_matViewProj * pos;
     uv0 = a_texCoord;
     color = a_color;
@@ -58,12 +63,14 @@ CCProgram wind-fs %{
   in vec4 color;
   in vec2 uv0;
   in float phase;
+  in vec2 wpos;
 
   #pragma builtin(local)
   layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
 
   uniform WindFrag {
     vec4 windParams;
+    vec4 holeParams;
   };
 
   vec4 frag () {
@@ -80,6 +87,12 @@ CCProgram wind-fs %{
       o.a = 0.0;
     }
     o *= color;
+    if (holeParams.w > 0.0) {
+      // 纵向略压扁的柔边圆(人物比宽高):中心 72% 透,外缘 45% 半径内渐变回不透
+      float d = length((wpos - holeParams.xy) * vec2(1.0, 0.8));
+      float k = 1.0 - smoothstep(holeParams.z * 0.55, holeParams.z, d);
+      o.a *= 1.0 - k * holeParams.w * 0.72;
+    }
     return o;
   }
 }%

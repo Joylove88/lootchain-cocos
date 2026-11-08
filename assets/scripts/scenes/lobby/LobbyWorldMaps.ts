@@ -7,6 +7,25 @@ import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
 import { VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
 import {
+  WOODS_V4_AREAS,
+  WOODS_V4_ASSETS,
+  WOODS_V4_BRIDGE,
+  WOODS_V4_CAMPS,
+  WOODS_V4_CHESTS,
+  WOODS_V4_DECALS,
+  WOODS_V4_EXITS,
+  WOODS_V4_FLATS,
+  WOODS_V4_LOW,
+  WOODS_V4_PLACES,
+  WOODS_V4_POIS,
+  WOODS_V4_ROADS,
+  WOODS_V4_SIZE,
+  WOODS_V4_SPAWN,
+  WOODS_V4_STANDS,
+  WOODS_V4_TALL,
+  WOODS_V4_WAYPOINT,
+} from './LobbyWoodsLayout';
+import {
   TOWN_BUILDINGS,
   TOWN_GROUND_ASSET,
   TOWN_GROUND_TILE,
@@ -206,6 +225,18 @@ export interface WorldMapBlock {
   d: number;
 }
 
+/** 野外多层地表(11-08,LobbyGroundSplat / effects/world-ground):混合遮罩 + 4 层平铺材质(spriteFrame 路径)。 */
+export interface GroundSplatDef {
+  /** 混合遮罩(R 噪声 / G 草甸 / B 离路距离;tools/qa/woods_ground_install.py 生成)。 */
+  mask: string;
+  floor: string;
+  moss: string;
+  meadow: string;
+  dirt: string;
+  /** 各层一格多少世界单位:[腐殖层, 苔草, 草甸, 土路]。 */
+  tiles: [number, number, number, number];
+}
+
 export interface WorldMapDef {
   code: WorldMapCode;
   name: string;
@@ -244,6 +275,12 @@ export interface WorldMapDef {
   corridors?: { lines: number[][][]; half: number; areas: Array<{ x: number; y: number; rx: number; ry: number }> };
   /** 11-03:走廊只用来撒树,不再限制行走(除挡块 / 立物外整张图都能走)。 */
   openWalk?: boolean;
+  /** 多层地表(给了就用整图混合着色器代替 ground 平铺底纹;路面也由着色器画,不再盖路刷)。 */
+  groundSplat?: GroundSplatDef;
+  /** 高立物方向投影 + 脚下接地暗斑(11-08 E 方案 b / c)。 */
+  groundShadows?: boolean;
+  /** 镜头拉远倍数(11-08 林地 1.4:同屏看到的范围按倍数放大,头顶字 / 血条 / 飘字反向放大保持屏上大小)。不给 = 1。 */
+  cameraZoom?: number;
 }
 
 const MONSTER_SPINE: Record<string, string> = {
@@ -490,248 +527,100 @@ const VILLAGE: WorldMapDef = {
     spots: [[1543, 798], [1764, 767], [1986, 749]],
     dummy: { asset: V3('dummy'), height: 170, respawnMs: 3000 },
   }],
-  exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2470, y: -1070, radius: 130, toMap: 'WOODS', toSpawn: { x: -4980, y: -2250 }, reach: 'VILLAGE_GATE' }],
+  exits: [{ key: 'to_woods', label: '前往 · 村外林地', x: 2470, y: -1070, radius: 130, toMap: 'WOODS', toSpawn: { x: -7470, y: -3375 }, reach: 'VILLAGE_GATE' }],
 };
 
-/** 村外林地 v3 素材(2026-10-29 按林地原型出写实件;tools/qa/woods_assets_gen.py + woods_install_assets.py)。 */
-const W3 = (name: string): string => worldAsset(`woods3/w3_${name}`);
 
-/** 林地路网(世界坐标,tools/qa/woods_def_gen.py 由原型换算;woods_def_apply.py 装进来):路刷 + 走廊可走区共用。 */
-const WOODS_ROADS: number[][][] = [
-  [[-5055, -2138], [-4305, -1575], [-3630, -1162], [-3030, -825], [-2280, -525], [-1605, -338], [-1192, -75], [-330, 112], [420, 300], [1170, 525], [1845, 675], [2595, 675], [3195, 638]],
-  [[1845, 675], [1320, 1050], [870, 1350], [270, 1612], [-330, 1838], [-855, 2025], [-1005, 2438]],
-  [[3195, 638], [3870, 1012], [4320, 1350], [4845, 1650], [5370, 1912]],
-  [[-3180, -900], [-3630, -338], [-4230, 38], [-4905, 562], [-5730, 900]],
-  [[-330, 112], [-30, -488], [195, -1162], [570, -1538], [1470, -1725], [2520, -1688], [3570, -1312], [4470, -1538], [4920, -1612]],
-  [[4470, -1538], [4920, -1162], [5295, -638]],
-  [[195, -1162], [-368, -1612], [-780, -1988], [-968, -2662]],
-  [[3195, 638], [4170, 562], [5445, 525]],
-];
+/** 林地 v4 物件行([素材序号, x, y, 宽, 翻转, 挡块宽?, 挡块深?])→ 地图立物 / 贴地件。 */
+function woodsRows(rows: number[][], flat: boolean): WorldMapProp[] {
+  return rows.map(([a, x, y, width, flip, bw, bd]) => {
+    const prop: WorldMapProp = { asset: worldAsset(WOODS_V4_ASSETS[a]), x, y, width };
+    if (flat) {
+      prop.flat = true;
+    }
+    if (flip) {
+      prop.flipX = true;
+    }
+    if (bw) {
+      prop.block = { w: bw, d: bd };
+    }
+    return prop;
+  });
+}
 
-/** 林地树林:沿走廊两侧固定种子撒(离路越远越稀,树冠不盖路),[x, y, 素材, 宽];每 3 棵配一丛蕨。 */
-const WOODS_TREES: Array<[number, number, string, number]> = [
-  [-4413, -3312, 'tree_pine', 380], [-1868, -3221, 'tree_pine', 420], [-1539, -3363, 'tree_pine', 460], [-507, -3222, 'tree_oak', 660], [1797, -3335, 'tree_oak', 540], [2689, -3348, 'tree_autumn', 640],
-  [3255, -3360, 'tree_pine', 460], [-3677, -2991, 'tree_pine', 500], [-3435, -2953, 'tree_oak', 540], [-443, -3080, 'tree_oak', 580], [-229, -2959, 'tree_pine', 460], [1070, -3002, 'tree_pine', 500],
-  [1988, -3117, 'tree_pine', 380], [2636, -3082, 'tree_oak', 580], [3027, -3009, 'tree_oak', 620], [5877, -3016, 'tree_pine', 500], [6130, -2975, 'tree_autumn', 600], [-6977, -2767, 'tree_pine', 420],
-  [-3791, -2693, 'tree_oak', 620], [-1517, -2811, 'tree_oak', 660], [-457, -2807, 'tree_pine', 380], [-158, -2674, 'tree_pine', 420], [732, -2794, 'tree_pine', 460], [1109, -2753, 'tree_oak', 660],
-  [1662, -2826, 'tree_oak', 540], [2723, -2717, 'tree_pine', 420], [3349, -2803, 'tree_pine', 460], [4090, -2688, 'tree_autumn', 560], [4266, -2733, 'tree_oak', 540], [4684, -2814, 'tree_oak', 580],
-  [6857, -2697, 'tree_pine', 460], [-4345, -2458, 'tree_pine', 500], [-4049, -2520, 'tree_pine', 380], [-3429, -2406, 'tree_oak', 580], [-280, -2421, 'tree_oak', 620], [704, -2413, 'tree_pine', 500],
-  [3299, -2505, 'tree_pine', 380], [3732, -2553, 'tree_pine', 420], [3970, -2557, 'tree_autumn', 640], [4387, -2487, 'tree_oak', 660], [4976, -2402, 'tree_pine', 380], [6144, -2484, 'tree_pine', 420],
-  [6542, -2542, 'tree_pine', 460], [6869, -2483, 'tree_oak', 660], [-3802, -2223, 'tree_oak', 540], [-3096, -2173, 'tree_pine', 420], [5352, -2310, 'tree_pine', 460], [5470, -2228, 'tree_pine', 500],
-  [6120, -2279, 'tree_oak', 540], [-3394, -1952, 'tree_autumn', 600], [5322, -1990, 'tree_pine', 460], [5540, -1904, 'tree_pine', 500], [5801, -1888, 'tree_pine', 380], [-6877, -1697, 'tree_oak', 580],
-  [-6004, -1644, 'tree_oak', 620], [-3046, -1677, 'tree_pine', 500], [-2635, -1712, 'tree_pine', 380], [-2527, -1716, 'tree_pine', 420], [5306, -1712, 'tree_oak', 620], [5481, -1692, 'tree_oak', 660],
-  [-5988, -1476, 'tree_autumn', 560], [-4670, -1385, 'tree_pine', 420], [-2469, -1395, 'tree_pine', 460], [5644, -1465, 'tree_oak', 660], [5873, -1425, 'tree_oak', 540], [6173, -1464, 'tree_pine', 420],
-  [-4696, -1110, 'tree_pine', 460], [-4349, -1101, 'tree_pine', 500], [-1487, -1107, 'tree_oak', 540], [820, -1161, 'tree_oak', 580], [3902, -1084, 'tree_pine', 460], [4353, -1125, 'tree_autumn', 640],
-  [5836, -1229, 'tree_pine', 380], [6279, -1126, 'tree_oak', 580], [6620, -1134, 'tree_oak', 620], [6791, -1143, 'tree_pine', 500], [-5295, -945, 'tree_pine', 380], [-4997, -875, 'tree_pine', 420],
-  [-4586, -888, 'tree_oak', 620], [-4232, -829, 'tree_oak', 660], [-4118, -900, 'tree_pine', 380], [488, -793, 'tree_pine', 420], [3038, -789, 'tree_autumn', 600], [3242, -788, 'tree_oak', 660],
-  [3569, -865, 'tree_oak', 540], [3894, -844, 'tree_pine', 420], [4293, -942, 'tree_pine', 460], [4610, -820, 'tree_pine', 500], [5994, -837, 'tree_oak', 540], [6501, -824, 'tree_oak', 580],
-  [-6620, -636, 'tree_pine', 460], [-5044, -679, 'tree_pine', 500], [-4652, -571, 'tree_pine', 380], [554, -519, 'tree_autumn', 560], [2412, -550, 'tree_oak', 620], [3019, -548, 'tree_pine', 500],
-  [3287, -619, 'tree_pine', 380], [3609, -630, 'tree_pine', 420], [3916, -688, 'tree_oak', 620], [4249, -531, 'tree_oak', 660], [4524, -657, 'tree_pine', 380], [5968, -619, 'tree_pine', 420],
-  [6550, -626, 'tree_pine', 460], [-6198, -397, 'tree_oak', 660], [-5684, -311, 'tree_autumn', 640], [-5216, -299, 'tree_pine', 420], [-5003, -416, 'tree_pine', 460], [805, -406, 'tree_pine', 500],
-  [4280, -291, 'tree_oak', 540], [4550, -348, 'tree_oak', 580], [4933, -346, 'tree_pine', 460], [5312, -318, 'tree_pine', 500], [5687, -268, 'tree_pine', 380], [5891, -298, 'tree_oak', 580],
-  [6571, -268, 'tree_oak', 620], [-6617, 0, 'tree_autumn', 600], [-5930, -91, 'tree_pine', 380], [-5675, 8, 'tree_pine', 420], [-2341, -109, 'tree_oak', 620], [-2164, -134, 'tree_oak', 660],
-  [1755, -145, 'tree_pine', 380], [2137, -81, 'tree_pine', 420], [5888, -89, 'tree_pine', 460], [6764, -8, 'tree_oak', 660], [-6586, 133, 'tree_oak', 540], [-6275, 135, 'tree_pine', 420],
-  [-2450, 241, 'tree_autumn', 560], [-2145, 202, 'tree_pine', 500], [5836, 286, 'tree_oak', 540], [6181, 165, 'tree_oak', 580], [6627, 216, 'tree_pine', 460], [-6687, 504, 'tree_pine', 500],
-  [-6291, 434, 'tree_pine', 380], [-3932, 493, 'tree_oak', 580], [-3757, 557, 'tree_oak', 620], [-3366, 518, 'tree_pine', 500], [-3075, 519, 'tree_pine', 380], [-871, 513, 'tree_autumn', 640],
-  [-569, 525, 'tree_oak', 620], [-250, 543, 'tree_oak', 660], [113, 541, 'tree_pine', 380], [6306, 445, 'tree_pine', 420], [-6892, 735, 'tree_pine', 460], [-6161, 708, 'tree_oak', 660],
-  [-4305, 786, 'tree_oak', 540], [-3975, 678, 'tree_pine', 420], [-3802, 705, 'tree_pine', 460], [-3434, 669, 'tree_pine', 500], [-1363, 769, 'tree_autumn', 600], [-1183, 822, 'tree_oak', 580],
-  [-786, 698, 'tree_pine', 460], [-521, 717, 'tree_pine', 500], [-138, 680, 'tree_pine', 380], [5819, 795, 'tree_oak', 580], [6197, 803, 'tree_oak', 620], [6478, 660, 'tree_pine', 500],
-  [-6880, 956, 'tree_pine', 380], [-6685, 956, 'tree_pine', 420], [-6211, 1078, 'tree_oak', 620], [-5216, 1096, 'tree_autumn', 560], [-5028, 1059, 'tree_pine', 380], [-4747, 969, 'tree_pine', 420],
-  [-4271, 1083, 'tree_pine', 460], [-3633, 960, 'tree_oak', 660], [-1731, 1104, 'tree_oak', 540], [-1452, 990, 'tree_pine', 420], [-1198, 973, 'tree_pine', 460], [-575, 1034, 'tree_pine', 500],
-  [-248, 1029, 'tree_oak', 540], [2147, 1089, 'tree_oak', 580], [2430, 1065, 'tree_autumn', 640], [2681, 1023, 'tree_pine', 500], [5500, 948, 'tree_pine', 380], [5889, 931, 'tree_oak', 580],
-  [6124, 933, 'tree_oak', 620], [6587, 1058, 'tree_pine', 500], [-6859, 1341, 'tree_pine', 380], [-6550, 1253, 'tree_pine', 420], [-6184, 1256, 'tree_oak', 620], [-5843, 1364, 'tree_oak', 660],
-  [-5528, 1350, 'tree_pine', 380], [-5362, 1325, 'tree_autumn', 600], [-5012, 1224, 'tree_pine', 460], [-4672, 1231, 'tree_oak', 660], [-4261, 1229, 'tree_oak', 540], [1998, 1306, 'tree_pine', 420],
-  [2926, 1269, 'tree_pine', 460], [3408, 1261, 'tree_pine', 500], [-6970, 1486, 'tree_oak', 540], [-6550, 1516, 'tree_oak', 580], [-6191, 1585, 'tree_pine', 460], [-6045, 1486, 'tree_pine', 500],
-  [-5692, 1625, 'tree_autumn', 560], [-5279, 1556, 'tree_oak', 580], [-4447, 1502, 'tree_oak', 620], [-4075, 1630, 'tree_pine', 500], [-3733, 1635, 'tree_pine', 380], [-1762, 1534, 'tree_pine', 420],
-  [-1486, 1521, 'tree_oak', 620], [2150, 1497, 'tree_oak', 660], [2367, 1566, 'tree_pine', 380], [3123, 1532, 'tree_pine', 420], [3232, 1498, 'tree_pine', 460], [3558, 1486, 'tree_autumn', 640],
-  [3956, 1544, 'tree_oak', 540], [6594, 1614, 'tree_pine', 420], [-5857, 1835, 'tree_pine', 460], [-5665, 1834, 'tree_pine', 500], [-4952, 1815, 'tree_oak', 540], [-4692, 1816, 'tree_oak', 580],
-  [-2451, 1844, 'tree_pine', 460], [-1748, 1795, 'tree_pine', 500], [-1471, 1749, 'tree_pine', 380], [1848, 1798, 'tree_oak', 580], [2457, 1891, 'tree_autumn', 600], [2688, 1864, 'tree_pine', 500],
-  [2971, 1803, 'tree_pine', 380], [3377, 1839, 'tree_pine', 420], [3637, 1755, 'tree_oak', 620], [4035, 1870, 'tree_oak', 660], [4241, 1776, 'tree_pine', 380], [-6984, 2077, 'tree_pine', 420],
-  [-6200, 2035, 'tree_pine', 460], [-5685, 2071, 'tree_oak', 660], [-5275, 2167, 'tree_oak', 540], [-5033, 2023, 'tree_autumn', 560], [-4233, 2095, 'tree_pine', 460], [-2038, 2037, 'tree_pine', 500],
-  [-1519, 2122, 'tree_oak', 540], [-81, 2150, 'tree_oak', 580], [1483, 2155, 'tree_pine', 460], [1685, 2067, 'tree_pine', 500], [2437, 2057, 'tree_pine', 380], [2804, 2039, 'tree_oak', 580],
-  [3330, 2175, 'tree_oak', 620], [3974, 2144, 'tree_pine', 500], [-2811, 2419, 'tree_autumn', 640], [-1829, 2422, 'tree_pine', 420], [-1531, 2298, 'tree_oak', 620], [-408, 2458, 'tree_oak', 660],
-  [-202, 2405, 'tree_pine', 380], [1082, 2443, 'tree_pine', 420], [2001, 2319, 'tree_pine', 460], [3318, 2336, 'tree_oak', 660], [4214, 2355, 'tree_oak', 540], [4612, 2443, 'tree_pine', 420],
-  [6649, 2425, 'tree_pine', 460], [-6518, 2698, 'tree_autumn', 600], [-5661, 2715, 'tree_oak', 540], [-5364, 2604, 'tree_oak', 580], [-2064, 2717, 'tree_pine', 460], [-1374, 2700, 'tree_pine', 500],
-  [-511, 2640, 'tree_pine', 380], [-104, 2573, 'tree_oak', 580], [1415, 2601, 'tree_oak', 620], [2095, 2629, 'tree_pine', 500], [4008, 2586, 'tree_pine', 380], [6518, 2568, 'tree_pine', 420],
-  [-6001, 2998, 'tree_autumn', 560], [-5227, 2982, 'tree_oak', 660], [-2352, 2889, 'tree_pine', 380], [-1735, 2910, 'tree_pine', 420], [-1528, 2821, 'tree_pine', 460], [-1230, 2912, 'tree_oak', 660],
-  [-868, 2921, 'tree_oak', 540], [-477, 2929, 'tree_pine', 420], [115, 2874, 'tree_pine', 460], [383, 2943, 'tree_pine', 500], [697, 2975, 'tree_oak', 540], [2684, 2937, 'tree_autumn', 640],
-  [3356, 2868, 'tree_pine', 460], [4048, 2833, 'tree_pine', 500], [4398, 2862, 'tree_pine', 380], [5673, 2991, 'tree_oak', 580], [-3081, 3142, 'tree_oak', 620], [-1565, 3125, 'tree_pine', 500],
-  [-1042, 3260, 'tree_pine', 380], [-866, 3245, 'tree_pine', 420], [-135, 3230, 'tree_oak', 620], [175, 3202, 'tree_oak', 660], [762, 3152, 'tree_autumn', 600], [3916, 3106, 'tree_pine', 420],
-  [4510, 3224, 'tree_pine', 460], [5253, 3244, 'tree_oak', 660], [5517, 3236, 'tree_oak', 540],
-];
+/** 林地精英 / 首领的专属骨骼与光环(v4 布局表只给坐标)。 */
+const WOODS_CAMP_VARIANT: Record<string, { spine?: string; aura?: WorldMapCampAura }> = {
+  FIELD_WOODS_E2: { spine: VARIANT_SPINE.lavaSpider, aura: AURA_LAVA },
+  FIELD_WOODS_E: { spine: VARIANT_SPINE.brownBear, aura: AURA_RAGE },
+  FIELD_WOODS_B: { spine: VARIANT_SPINE.corruptBear, aura: AURA_CORRUPT },
+};
+
+const WOODS_HALF_W = WOODS_V4_SIZE.width / 2 - 50;
+const WOODS_HALF_H = WOODS_V4_SIZE.height / 2 - 50;
 
 /**
- * 村外林地 v3(docs/52 / 53,2026-10-29 用户确认按原型规模做):原型 woods_overview(1808×870)换算 x = (px - 904) × 7.5、y = (435 - py) × 7.5,
- * 地图 13560×6525;走廊结构(路 + 林间空地),两侧密林。西南入口营地(传送阵)→ 幼鼠窝 → 木桥 → 北:瀑布 / 林间蛛巢;
- * 东:猎人营地 → 东北熊穴(区域首领腐木巨熊);南:古树遗迹。11 群小怪(6~10 只)+ 2 精英 + 首领,怪群按距离生成 / 回收。
- * 本段由 tools/qa/woods_def_apply.py 生成,改布局改 woods_def_gen.py 再重跑。
+ * 村外林地 v4(2026-11-08 用户:镜头太近 / 地图更大 / 怪更密 / 人在树后看不到 / 装饰不要重叠、分区合理摆放):
+ * v3 原型骨架整体放大 1.5 倍(20340×9788),八分区(路面 / 路肩 / 林缘 / 空地怪群 / 水边 / 岩区 / 遗迹 / 深林)按表撒物件,
+ * 树冠不盖身后的路和怪群活动圈;普通怪群 20 → 30 群、每群 8~12 只(服务端每群仍按 6 只登记结算,每日 576 只封顶不变)。
+ * 布局数据在 LobbyWoodsLayout.ts(tools/qa/woods_v4_gen.py apply 生成)。
  */
 const WOODS: WorldMapDef = {
   code: 'WOODS',
   actorTint: [236, 242, 226],
   ambient: true,
+  cameraZoom: 1.4,
   name: '村外林地',
   levelText: 'Lv.1-10',
-  width: 13560,
-  height: 6525,
-  walk: { left: -6750, right: 6750, bottom: -3240, top: 3240 },
+  width: WOODS_V4_SIZE.width,
+  height: WOODS_V4_SIZE.height,
+  walk: { left: -WOODS_HALF_W, right: WOODS_HALF_W, bottom: -WOODS_HALF_H, top: WOODS_HALF_H },
   corridors: {
     half: 460,
-    lines: [
-      [[-5055, -2138], [-4305, -1575], [-3630, -1162], [-3030, -825], [-2280, -525], [-1605, -338], [-1192, -75], [-330, 112], [420, 300], [1170, 525], [1845, 675], [2595, 675], [3195, 638]],
-      [[1845, 675], [1320, 1050], [870, 1350], [270, 1612], [-330, 1838], [-855, 2025], [-1005, 2438]],
-      [[3195, 638], [3870, 1012], [4320, 1350], [4845, 1650], [5370, 1912]],
-      [[-3180, -900], [-3630, -338], [-4230, 38], [-4905, 562], [-5730, 900]],
-      [[-330, 112], [-30, -488], [195, -1162], [570, -1538], [1470, -1725], [2520, -1688], [3570, -1312], [4470, -1538], [4920, -1612]],
-      [[4470, -1538], [4920, -1162], [5295, -638]],
-      [[195, -1162], [-368, -1612], [-780, -1988], [-968, -2662]],
-      [[3195, 638], [4170, 562], [5445, 525]],
-    ],
-    areas: [
-      { x: -5542, y: -2438, rx: 1519, ry: 961 },
-      { x: -3255, y: -112, rx: 961, ry: 556 },
-      { x: 795, y: 1538, rx: 1215, ry: 608 },
-      { x: 3345, y: 488, rx: 1316, ry: 608 },
-      { x: 2145, y: -1538, rx: 1924, ry: 961 },
-      { x: 5220, y: 1875, rx: 1114, ry: 556 },
-      { x: -855, y: 1988, rx: 556, ry: 405 },
-      { x: -5730, y: 900, rx: 506, ry: 354 },
-      { x: -968, y: -2662, rx: 506, ry: 354 },
-      { x: 5445, y: 525, rx: 506, ry: 354 },
-    ],
+    lines: WOODS_V4_ROADS,
+    areas: WOODS_V4_AREAS.map(([x, y, rx, ry]) => ({ x, y, rx, ry })),
   },
-  // 11-03 用户「地图可见范围内的都应该能走」:走廊只用来撒树;行走改成除水面 / 崖石(village_water_blocks.py 按像素生成)和立物挡块外都能走
+  // 11-03 用户「地图可见范围内的都应该能走」:走廊只用来撒树;行走改成除水面 / 崖石(world_water_blocks.py 按像素生成)和立物挡块外都能走
   openWalk: true,
   blocks: WOODS_WATER_BLOCKS as WorldMapBlock[],
-  spawn: { x: -4980, y: -2250 },
+  spawn: { ...WOODS_V4_SPAWN },
+  // 10-29 写实林地底纹(苔草 + 腐殖土),一格 1000 世界单位;11-08 起只在多层地表装好前兜底
   ground: worldAsset('ground_woods3'),
-  // 10-29 写实林地底纹(苔草 + 腐殖土),一格 1000 世界单位
   groundTile: 1000,
+  // 11-08 E 方案:腐殖层 / 苔草 / 草甸 / 土路四层混合(土路不规则边 + 暗沟 + 车辙由着色器按离路距离画)
+  groundSplat: {
+    mask: worldAsset('woods4/ground_splat'),
+    floor: worldAsset('woods4/tex_forest_floor'),
+    moss: worldAsset('ground_woods3'),
+    meadow: worldAsset('woods4/tex_meadow'),
+    dirt: worldAsset('woods4/tex_dirt_path'),
+    tiles: [520, 1000, 300, 420],
+  },
+  groundShadows: true,
   buildings: [],
   npcs: [],
   props: [
-    // ── 贴地(先画的在下):地表贴花 → 崖 / 水 → 营地 / 遗迹地面 → 路 → 桥 ──
-    ...groundDecals({ walk: { left: -6750, right: 6750, bottom: -3240, top: 3240 }, buildings: [] }, 760,
-      [['decal_leaves', 560], ['decal_moss', 340], ['decal_roots', 460], ['decal_leaves', 560]], W3),
-
-    { asset: W3('cliff_falls'), x: -3405, y: 2348, width: 3800, flat: true, water: true },
-    { asset: W3('cliff_ne'), x: 6150, y: 1012, width: 1300, flat: true, water: true },
-    { asset: W3('camp_plaza'), x: -5542, y: -2588, width: 2500, flat: true },
-    { asset: W3('ruins_floor'), x: 1695, y: -1950, width: 2700, flat: true },
-    { asset: W3('river_a'), x: -2880, y: 1125, width: 1900, flat: true, water: true },
-    { asset: W3('river_c'), x: -2205, y: 675, width: 1700, flat: true, water: true, flipX: true },
-    { asset: W3('river_a'), x: -1492, y: 262, width: 1700, flat: true, water: true },
-    { asset: W3('river_b'), x: -855, y: -412, width: 1500, flat: true, water: true },
-    { asset: W3('river_b'), x: -818, y: -1012, width: 1500, flat: true, water: true, flipX: true },
-    { asset: W3('river_c'), x: -1268, y: -1538, width: 1700, flat: true, water: true },
-    { asset: W3('river_a'), x: -1830, y: -2100, width: 1700, flat: true, water: true, flipX: true },
-    { asset: W3('river_c'), x: -2280, y: -2662, width: 1700, flat: true, water: true },
-    { asset: W3('river_a'), x: -2542, y: -3188, width: 1800, flat: true, water: true, flipX: true },
-    ...roads(WOODS_ROADS, 220, V3('road_brush')),
-    { asset: W3('bridge'), x: -855, y: -15, width: 1050, flat: true },
-    // ── 立物 ──
-
-    { asset: W3('camp_tent'), x: -6368, y: -1912, width: 560, block: { w: 380, d: 120 } },
-    { asset: W3('camp_tent'), x: -6555, y: -2888, width: 520, flipX: true, block: { w: 360, d: 110 } },
-    { asset: W3('camp_palisade'), x: -5280, y: -1538, width: 1000, block: { w: 900, d: 80 } },
-    { asset: W3('camp_palisade'), x: -5655, y: -3225, width: 1100, flipX: true, block: { w: 1000, d: 80 } },
-    { asset: W3('camp_banner'), x: -6180, y: -1612, width: 210 },
-    { asset: W3('camp_banner'), x: -4642, y: -2438, width: 210 },
-    { asset: W3('camp_banner'), x: -4192, y: -2738, width: 210, flipX: true },
-    { asset: W3('camp_crates'), x: -4530, y: -2662, width: 300, block: { w: 220, d: 60 } },
-    { asset: W3('rat_log'), x: -4080, y: -338, width: 760, block: { w: 560, d: 120 } },
-    { asset: W3('spider_den'), x: 645, y: 1575, width: 1600, block: { w: 1200, d: 260 } },
-    { asset: W3('hunter_tent'), x: 3195, y: 262, width: 640, block: { w: 440, d: 120 } },
-    { asset: W3('hunter_rack'), x: 4020, y: 300, width: 540, block: { w: 380, d: 60 } },
-    { asset: W3('campfire'), x: 3682, y: 75, width: 280 },
-    { asset: W3('ancient_tree'), x: 2558, y: -1875, width: 1600, block: { w: 520, d: 160 } },
-    { asset: W3('ruin_arch'), x: 1170, y: -938, width: 980, block: { w: 700, d: 90 } },
-    { asset: W3('ruin_wall'), x: 3682, y: -2362, width: 950, block: { w: 700, d: 110 } },
-    { asset: W3('ruin_wall'), x: 420, y: -2288, width: 820, flipX: true, block: { w: 600, d: 100 } },
-    { asset: W3('ruin_pillar'), x: 4282, y: -1725, width: 320, block: { w: 140, d: 50 } },
-    { asset: W3('ruin_pillar'), x: 945, y: -1312, width: 300, block: { w: 140, d: 50 } },
-    { asset: W3('crystal_pillar'), x: 495, y: -1988, width: 280, block: { w: 140, d: 50 } },
-    { asset: W3('crystal_pillar'), x: 3382, y: -1538, width: 280, block: { w: 140, d: 50 } },
-    { asset: W3('bear_den'), x: 5445, y: 2062, width: 1800, block: { w: 1300, d: 300 } },
-    { asset: W3('bones'), x: 4470, y: 1875, width: 560 },
-    { asset: W3('rock_big'), x: -1980, y: -2138, width: 640, block: { w: 440, d: 120 } },
-    { asset: W3('rock_big'), x: 420, y: 2362, width: 700, flipX: true, block: { w: 480, d: 120 } },
-    { asset: W3('rock_small'), x: -6068, y: 300, width: 380, block: { w: 260, d: 70 } },
-    { asset: W3('rock_small'), x: 2070, y: 1762, width: 360, flipX: true, block: { w: 240, d: 70 } },
-    { asset: W3('stump'), x: 6232, y: 1575, width: 280, block: { w: 160, d: 50 } },
-    { asset: W3('stump'), x: -2280, y: -938, width: 260, block: { w: 150, d: 50 } },
-    { asset: W3('tree_autumn'), x: -5768, y: -675, width: 620, block: { w: 140, d: 60 } },
-    { asset: W3('tree_autumn'), x: -330, y: -1238, width: 600, block: { w: 140, d: 60 } },
-    { asset: W3('tree_autumn'), x: 2595, y: 1238, width: 560, block: { w: 140, d: 60 } },
-    ...WOODS_TREES.flatMap(([x, y, asset, width], i) => {
-      const tree: WorldMapProp = { asset: W3(asset), x, y, width, block: { w: 110, d: 50 } };
-      return i % 3 === 0 ? [tree, { asset: W3(i % 7 === 0 ? 'mushrooms' : 'fern'), x: x + (i % 2 ? 170 : -170), y: y - 50, width: i % 7 === 0 ? 120 : 200 }] : [tree];
-    }),
+    // ── 贴地(先画的在下):地表贴花 → 崖 / 水 / 营地 / 遗迹地面 → 桥(路由多层地表着色器画)──
+    ...woodsRows(WOODS_V4_DECALS, true),
+    ...WOODS_V4_FLATS.map((f) => ({ ...f, asset: worldAsset(f.asset) })),
+    { ...WOODS_V4_BRIDGE, asset: worldAsset(WOODS_V4_BRIDGE.asset) },
+    // ── 立物:地标 / 营地件 → 高物件(树 / 岩)→ 矮物件(蕨 / 草 / 碎石)──
+    ...WOODS_V4_STANDS.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
+    ...woodsRows(WOODS_V4_TALL, false),
+    ...woodsRows(WOODS_V4_LOW, false),
   ],
   lamps: [],
   lampAsset: V2('lamp'),
-  waypoint: { x: -5430, y: -2400, drawn: true },
+  waypoint: { ...WOODS_V4_WAYPOINT, drawn: true },
   // 地图页「地点」(10-30 原型 proto_map_b)
-  places: [
-    { name: '入口营地', x: -4980, y: -2250, icon: 'portal' },
-    { name: '幼鼠窝', x: -3555, y: -262, icon: 'den' },
-    { name: '林间蛛巢', x: 720, y: 1425, icon: 'cave' },
-    { name: '猎人营地', x: 3195, y: 488, icon: 'camp' },
-    { name: '古树遗迹', x: 1845, y: -1612, icon: 'ruins' },
-    { name: '熊穴', x: 5070, y: 1800, icon: 'cave' },
-  ],
+  places: WOODS_V4_PLACES.map((p) => ({ ...p })),
   // 兴趣点(docs/54 §2.2)
-  pois: [
-    { code: 'W_HIDDEN_1', kind: 'HIDDEN', name: '瀑布后的岩缝', x: -1448, y: 2350 },
-    { code: 'W_HIDDEN_2', kind: 'HIDDEN', name: '倒木下的箭袋', x: 308, y: 746 },
-    { code: 'W_HIDDEN_3', kind: 'HIDDEN', name: '崖边的营火', x: 5800, y: 1412 },
-    { code: 'W_STELE_1', kind: 'STELE', name: '古树之碑', x: 1909, y: -1008 },
-    { code: 'W_HERB_1', kind: 'HERB', name: '草药丛', x: 3907, y: 182 },
-    { code: 'W_HERB_2', kind: 'HERB', name: '草药丛', x: -881, y: -363 },
-    { code: 'W_ORE_1', kind: 'ORE', name: '矿脉', x: -624, y: -2532 },
-    { code: 'W_ORE_2', kind: 'ORE', name: '矿脉', x: 3121, y: -2225 },
-  ],
+  pois: WOODS_V4_POIS.map((p) => ({ ...p })),
   // 野外宝箱(docs/52 §3.1,走近点「开启」;铁箱 / 首领宝箱要先打赢旁边的精英 / 首领)
-  chests: [
-    { code: 'WOODS_W1', label: '林间木箱', kind: 'WOOD', x: -5730, y: 922 },
-    { code: 'WOODS_W2', label: '林间木箱', kind: 'WOOD', x: -3518, y: -1275 },
-    { code: 'WOODS_W3', label: '林间木箱', kind: 'WOOD', x: 4882, y: -1688 },
-    { code: 'WOODS_I1', label: '蛛后铁箱', kind: 'IRON', x: -855, y: 2048 },
-    { code: 'WOODS_I2', label: '熊踪铁箱', kind: 'IRON', x: 5520, y: 548 },
-    { code: 'WOODS_S1', label: '秘藏宝箱', kind: 'SECRET', x: -968, y: -2700 },
-    { code: 'WOODS_B1', label: '首领宝箱', kind: 'BOSS', x: 4995, y: 1725 },
-  ],
-  camps: [
-
-    camp('FIELD_WOODS_4', '营地外鼠群', 'MINI_RAT', 6, 3, -4192, -1350),
-    camp('FIELD_WOODS_1', '幼鼠窝', 'MINI_RAT', 8, 2, -3255, -112),
-    camp('FIELD_WOODS_3', '林道鼠群', 'MINI_RAT', 6, 2, -2880, -750),
-    camp('FIELD_WOODS_5', '桥头野犬', 'MEDIUM_DOG', 6, 4, -1792, -412),
-    camp('FIELD_WOODS_6', '瀑布蛛群', 'SMALL_SPIDER', 6, 4, -780, 1912),
-    camp('FIELD_WOODS_2', '林间蛛巢', 'SMALL_SPIDER', 10, 5, 982, 1388),
-    camp('FIELD_WOODS_E2', '林间蛛后', 'SMALL_SPIDER', 1, 7, 458, 1725, true, { spine: VARIANT_SPINE.lavaSpider, aura: AURA_LAVA }),
-    camp('FIELD_WOODS_7', '林道野犬', 'MEDIUM_DOG', 6, 6, 1395, 562),
-    camp('FIELD_WOODS_8', '猎人营地野犬', 'MEDIUM_DOG', 8, 6, 2895, 338),
-    camp('FIELD_WOODS_E', '棕鬃熊', 'MEDIUM_BEAR', 1, 8, 4095, 562, true, { spine: VARIANT_SPINE.brownBear, aura: AURA_RAGE }),
-    camp('FIELD_WOODS_9', '遗迹蛛群', 'SMALL_SPIDER', 8, 7, 1545, -1688),
-    camp('FIELD_WOODS_11', '遗迹东鼠群', 'MINI_RAT', 8, 9, 4470, -1500),
-    camp('FIELD_WOODS_10', '熊穴前野犬', 'MEDIUM_DOG', 7, 8, 4320, 1312),
-    camp('FIELD_WOODS_B', '腐木巨熊', 'MEDIUM_BEAR', 1, 10, 5295, 1988, true, { spine: VARIANT_SPINE.corruptBear, aura: AURA_CORRUPT }),
-    camp('FIELD_WOODS_12', '西林鼠群', 'MINI_RAT', 6, 2, -4605, 300),
-    camp('FIELD_WOODS_13', '溪畔蛛群', 'SMALL_SPIDER', 7, 4, 8, -638),
-    camp('FIELD_WOODS_14', '中路野犬', 'MEDIUM_DOG', 7, 6, 2145, 675),
-    camp('FIELD_WOODS_15', '遗迹西蛛群', 'SMALL_SPIDER', 8, 7, 645, -1538),
-    camp('FIELD_WOODS_16', '古树野犬', 'MEDIUM_DOG', 7, 8, 2595, -1650),
-    camp('FIELD_WOODS_17', '遗迹东蛛群', 'SMALL_SPIDER', 8, 8, 3645, -1328),
-    camp('FIELD_WOODS_18', '东林野犬', 'MEDIUM_DOG', 7, 9, 4920, 525),
-    camp('FIELD_WOODS_19', '南岔鼠群', 'MINI_RAT', 7, 5, -555, -1688),
-    camp('FIELD_WOODS_20', '东南鼠群', 'MINI_RAT', 8, 9, 5145, -900),
-  ],
-  // 11-04 用户「晨风村 → 林地 → 主城要一路跑过去」:林地东头(东林空地)出口通主城(世界地图上主城在林地东北)
-  exits: [
-    { key: 'to_village', label: '返回 · 晨风村', x: -6420, y: -2440, radius: 130, toMap: 'VILLAGE', toSpawn: { x: 2300, y: -1000 } },
-    { key: 'to_city', label: '前往 · 主城', x: 5800, y: 525, radius: 130, toMap: 'CITY', toSpawn: { x: -900, y: -960 } },
-  ],
+  chests: WOODS_V4_CHESTS.map((c) => ({ ...c })),
+  camps: WOODS_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
+    camp(code, label, monster, count, level, x, y, !!elite, WOODS_CAMP_VARIANT[code])),
+  // 11-04 用户「晨风村 → 林地 → 主城要一路跑过去」:林地西南出口回晨风村、东头(东林空地)出口通主城
+  exits: WOODS_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
   battleBg: 'battle_scene_field_forest',
 };
 
@@ -760,7 +649,7 @@ const CITY: WorldMapDef = {
   camps: [],
   // 11-04:南门(商行 / 佣兵公会之间)回林地,东门(英灵殿北侧)去灰岩荒原;首次来要走到广场罗盘激活传送阵
   exits: [
-    { key: 'to_woods', label: '前往 · 村外林地', x: -900, y: -1150, radius: 130, toMap: 'WOODS', toSpawn: { x: 5500, y: 525 } },
+    { key: 'to_woods', label: '前往 · 村外林地', x: -900, y: -1150, radius: 130, toMap: 'WOODS', toSpawn: { x: 8250, y: 788 } },
     { key: 'to_gray', label: '前往 · 灰岩荒原', x: 2050, y: -700, radius: 130, toMap: 'GRAY', toSpawn: { x: -1980, y: 260 } },
   ],
 };
@@ -873,7 +762,10 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
   if (!def) {
     return [];
   }
-  return Array.from(new Set([def.ground, def.lampAsset, ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
+  const splat = def.groundSplat;
+  return Array.from(new Set([def.ground, def.lampAsset,
+    // 多层地表遮罩 + 材质(11-08)
+    ...(splat ? [splat.mask, splat.floor, splat.moss, splat.meadow, splat.dirt] : []), ...def.buildings.map((b) => b.asset), ...def.props.map((p) => p.asset),
     ...def.npcs.map((n) => n.asset).filter((asset): asset is string => !!asset),
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),

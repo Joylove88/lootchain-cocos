@@ -13,6 +13,7 @@ import {
   Node,
   Size,
   Sprite,
+  SpriteFrame,
   UIOpacity,
   UITransform,
   Vec2,
@@ -59,8 +60,9 @@ import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSk
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
-import { applyWorldShader, isSwayAsset, updateWorldShaderOrigin } from './LobbyWorldShaders';
-import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapPoi, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
+import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -215,6 +217,19 @@ const FOLLOW_GAP_SAMPLES = 16;
 const FOLLOW_SPACING = 112;
 /** 被挡住时建筑的不透明度。 */
 const BUILDING_SEE_THROUGH_OPACITY = 120;
+/** 视野裁剪的镜头量化步长(地图单位)。 */
+const CULL_STEP = 160;
+/** 高于这个高度(地图单位)的立物才算会挡人(人物约 230 高)。 */
+const OCCLUDER_MIN_H = 260;
+/** 树冠透视孔半径(地图单位,以队长身体为圆心)。 */
+const CANOPY_HOLE_R = 200;
+/** 不随风摆的立物(岩 / 营帐)挡人时淡到的透明度。 */
+const OCCLUDER_FADE_OPACITY = 150;
+/** 挡路立物分桶格子(地图单位)。 */
+const BLOCK_CELL = 512;
+const EMPTY_BLOCKS: WorldMapBlock[] = [];
+/** 跑图指引箭头平铺在地面上的纵向压扁比(地面透视,11-08)。 */
+const GUIDE_GROUND_SQUASH = 0.55;
 const INTERACT_RADIUS = 180;
 const ACTOR_RADIUS = 26;
 const WORLD_NODE_NAME = 'LobbyTownWorld';
@@ -503,6 +518,8 @@ export class LobbyTownRenderer {
   private entityRoot: Node | null = null;
   private layout: UiLayout | null = null;
   private k = 1;
+  /** 世界层头顶字 / 血条 / 飘字反向放大倍数(= 地图镜头拉远倍数 cameraZoom,屏上大小不变)。 */
+  private uiZ = 1;
   private leader: TownActor | null = null;
   private followers: TownActor[] = [];
   private partySignature = '';
@@ -513,6 +530,15 @@ export class LobbyTownRenderer {
   private lampNodes: Node[] = [];
   /** 非贴地装饰(树 / 货箱 / 石凳):参与前后遮挡。 */
   private propNodes: Array<{ node: Node; y: number }> = [];
+  /**
+   * 视野裁剪(11-08 林地 v4 约 2400 个物件,全开手机吃不消):物件包围盒(地图坐标),镜头外的关掉 active,
+   * 不参与渲染 / 前后排序;镜头每挪 CULL_STEP 才重算一次。
+   */
+  private cullItems: Array<{ node: Node; x0: number; x1: number; y0: number; y1: number }> = [];
+  /** 会挡住队伍的高立物(树 / 岩 / 营帐):队长走到它身后时,随风摆的开圆形透视孔,其余淡成半透明(11-08 B 方案)。 */
+  private occluders: Array<{ node: Node; sprite: Sprite; x: number; y: number; w: number; h: number; sway: boolean; hole: boolean; fade: number }> = [];
+  private holeStrength = 0;
+  private cullKey = '';
   private camX: number = TOWN_SPAWN.x;
   private camY: number = TOWN_SPAWN.y;
   private orderKey = '';
@@ -668,6 +694,10 @@ export class LobbyTownRenderer {
     this.mapCode = code;
     this.autoPath = null;
     this.pendingSpawn = spawn ?? { ...worldMapDef(code).spawn };
+    // 11-08 林地放大后,旧版下线续点 / 落点可能落在水面 / 树脚:就近找可走点,找不到回出生点
+    if (spawn && !this.walkable(spawn.x, spawn.y)) {
+      this.pendingSpawn = this.nearestWalkable(spawn.x, spawn.y) ?? { ...worldMapDef(code).spawn };
+    }
     // docs/55:换图先告诉服务端落点(合法瞬移),之后按 pos 增量上报
     this.host.reportWorldPosition?.('warp', code, Math.round(this.pendingSpawn.x), Math.round(this.pendingSpawn.y));
     this.posSent = { x: this.pendingSpawn.x, y: this.pendingSpawn.y, at: Date.now() };
@@ -696,6 +726,10 @@ export class LobbyTownRenderer {
     this.buildings = [];
     this.lampNodes = [];
     this.propNodes = [];
+    this.cullItems = [];
+    this.cullKey = '';
+    this.occluders = [];
+    this.holeStrength = 0;
     this.npcNodes = [];
     this.waypointNode = null;
     this.waypointGlow = null;
@@ -1018,7 +1052,9 @@ export class LobbyTownRenderer {
     const layoutChanged = !this.layout || this.layout.stageWidth !== layout.stageWidth || this.layout.stageHeight !== layout.stageHeight
       || this.layout.stageLeft !== layout.stageLeft || this.layout.stageBottom !== layout.stageBottom;
     this.layout = layout;
-    this.k = layout.stageHeight / 900;
+    // 11-08 用户「镜头太近」:地图可配 cameraZoom(林地 1.4 = 同屏看到 1.4 倍远),世界层头顶字按 uiZ 反向放大
+    this.uiZ = this.def.cameraZoom ?? 1;
+    this.k = layout.stageHeight / 900 / this.uiZ;
     if (!restored || !this.world || !this.world.isValid || !this.world.parent) {
       this.buildWorld();
     }
@@ -1034,10 +1070,12 @@ export class LobbyTownRenderer {
     this.ensureExits();
     this.ensureMonsters();
     this.ensureParty();
-    if (layoutChanged) {
+    if (layoutChanged || (this.world && Math.abs(this.world.scale.x - this.k) > 1e-6)) {
       this.world?.setScale(this.k, this.k, 1);
     }
     this.applyCamera(true);
+    this.updateCulling();
+    this.cullMonsters();
     this.sortEntities(true);
     this.ensureAmbient();
   }
@@ -1061,6 +1099,14 @@ export class LobbyTownRenderer {
     return { w: Math.max(layout.width, layout.stageWidth) / this.k, h: Math.max(layout.height, layout.stageHeight) / this.k };
   }
 
+  /** 世界层的头顶字 / 名牌 / 血条按镜头拉远倍数反向放大(屏上大小和拉远前一样)。 */
+  private worldUi<T extends Node>(node: T): T {
+    if (this.uiZ !== 1) {
+      node.setScale(this.uiZ, this.uiZ, 1);
+    }
+    return node;
+  }
+
   /** 是否已挂好世界节点(供 GameRoot 决定要不要驱动 step)。 */
   isMounted(): boolean {
     return !!this.world && this.world.isValid && !!this.world.parent;
@@ -1076,6 +1122,10 @@ export class LobbyTownRenderer {
     this.buildings = [];
     this.lampNodes = [];
     this.propNodes = [];
+    this.cullItems = [];
+    this.cullKey = '';
+    this.occluders = [];
+    this.holeStrength = 0;
     this.npcNodes = [];
     this.waypointNode = null;
     this.waypointGlow = null;
@@ -1112,6 +1162,10 @@ export class LobbyTownRenderer {
     this.buildings = [];
     this.lampNodes = [];
     this.propNodes = [];
+    this.cullItems = [];
+    this.cullKey = '';
+    this.occluders = [];
+    this.holeStrength = 0;
     this.npcNodes = [];
     this.waypointNode = null;
     this.waypointGlow = null;
@@ -1133,9 +1187,21 @@ export class LobbyTownRenderer {
       return;
     }
     const def = this.def;
+    const splat = def.groundSplat;
+    if (splat) {
+      // 11-08 多层地表:素材到齐后整图一个四边形压在最底,旧平铺底纹(兜底)拆掉
+      mountGroundSplat(root, def.width, def.height, splat, (node) => {
+        node.setSiblingIndex(0);
+        for (const child of root.children.slice()) {
+          if (child.name.startsWith('Tile_')) {
+            child.destroy();
+          }
+        }
+      });
+    }
     const tileSize = def.groundTile;
     const cols = Math.ceil(def.width / tileSize) + 1;
-    const rows = Math.ceil(def.height / tileSize) + 1;
+    const rows = splat && groundSplatReady(splat) ? 0 : Math.ceil(def.height / tileSize) + 1;
     const x0 = -def.width / 2 - tileSize / 2;
     const y0 = -def.height / 2 - tileSize / 2;
     for (let r = 0; r < rows; r += 1) {
@@ -1147,8 +1213,8 @@ export class LobbyTownRenderer {
         // 图没到时 addSprite 返回 null(并在到货后触发整刷),下次 render 再补
         const tile = this.host.addSprite(name, def.ground, x0 + c * tileSize + tileSize / 2, y0 + r * tileSize + tileSize / 2, tileSize + 1, tileSize + 1, root);
         if (tile) {
-          // 无缝贴图不再逐格调明暗(会把平铺格子暴露出来);地砖永远排最底
-          tile.node.setSiblingIndex(0);
+          // 无缝贴图不再逐格调明暗(会把平铺格子暴露出来);地砖永远排最底(多层地表还在装时它是兜底)
+          tile.node.setSiblingIndex(root.getChildByName('Splat') ? 1 : 0);
         }
       }
     }
@@ -1253,6 +1319,65 @@ export class LobbyTownRenderer {
     }
   }
 
+  /** 登记一个可裁剪的物件(包围盒 = 地图坐标)。 */
+  private addCull(node: Node, x0: number, x1: number, y0: number, y1: number): void {
+    this.cullItems.push({ node, x0, x1, y0, y1 });
+    this.cullKey = '';
+  }
+
+  /** 镜头外的物件关掉;镜头按 CULL_STEP 量化,挪够一格才重算。 */
+  private updateCulling(): void {
+    if (this.cullItems.length === 0 || !this.layout) {
+      return;
+    }
+    const view = this.viewSize();
+    const qx = Math.round(this.camX / CULL_STEP);
+    const qy = Math.round(this.camY / CULL_STEP);
+    const key = `${qx}:${qy}:${Math.round(view.w)}:${Math.round(view.h)}`;
+    if (key === this.cullKey) {
+      return;
+    }
+    this.cullKey = key;
+    // 量化误差 + 一格余量:镜头在两次重算之间最多挪 CULL_STEP,边缘不会露出空白
+    const mx = view.w / 2 + CULL_STEP * 2;
+    const my = view.h / 2 + CULL_STEP * 2;
+    const left = qx * CULL_STEP - mx;
+    const right = qx * CULL_STEP + mx;
+    const bottom = qy * CULL_STEP - my;
+    const top = qy * CULL_STEP + my;
+    this.cullItems = this.cullItems.filter((item) => item.node.isValid);
+    for (const item of this.cullItems) {
+      const on = item.x1 > left && item.x0 < right && item.y1 > bottom && item.y0 < top;
+      if (item.node.active !== on) {
+        item.node.active = on;
+      }
+    }
+  }
+
+  /**
+   * 镜头外的怪关掉节点(11-08 实测:林地 v4 加密后刷新范围内约 96 只,骨骼 + 名字 + 血条全在画,约 300 次绘制;
+   * 怪的走位 / 仇恨按数据坐标跑,不依赖节点激活)。上下按身高多留一截(脚线在下、身体朝上)。
+   */
+  private cullMonsters(): void {
+    if (this.monsters.length === 0 || !this.layout) {
+      return;
+    }
+    const view = this.viewSize();
+    const halfW = view.w / 2 + 320;
+    const below = view.h / 2 + 200;
+    const above = view.h / 2 + 480;
+    for (const monster of this.monsters) {
+      if (!monster.node.isValid) {
+        continue;
+      }
+      const dy = monster.y - this.camY;
+      const on = Math.abs(monster.x - this.camX) < halfW && dy > -below && dy < above;
+      if (monster.node.active !== on) {
+        monster.node.active = on;
+      }
+    }
+  }
+
   private ensureProps(): void {
     const ground = this.groundRoot;
     const entities = this.entityRoot;
@@ -1288,24 +1413,94 @@ export class LobbyTownRenderer {
         if (prop.water) {
           applyWorldShader(sprite, 'water');
         }
-        const vignette = ground.getChildByName('Vignette');
-        if (vignette) {
-          node.setSiblingIndex(vignette.getSiblingIndex());
+        // 排在投影层 / 压暗层之前(投影要压在所有贴地件上面)
+        const anchor = ground.getChildByName('Shadows') ?? ground.getChildByName('Vignette');
+        if (anchor) {
+          node.setSiblingIndex(anchor.getSiblingIndex());
         }
+        // 转过角度的贴地件按外接圆算
+        const half = prop.angle ? Math.hypot(prop.width, h) / 2 : 0;
+        this.addCull(node, prop.x - (half || prop.width / 2), prop.x + (half || prop.width / 2), prop.y - (half || h / 2), prop.y + (half || h / 2));
         return;
       }
       sprite.node.setPosition(0, h / 2, 0);
-      if (prop.sway ?? isSwayAsset(prop.asset)) {
+      this.addCull(node, prop.x - prop.width / 2, prop.x + prop.width / 2, prop.y - 40, prop.y + h);
+      const sway = prop.sway ?? isSwayAsset(prop.asset);
+      if (sway) {
         applyWorldShader(sprite, 'wind');
+      }
+      // 比人高的立物才会挡住人(矮草 / 碎石不管)
+      if (h >= OCCLUDER_MIN_H) {
+        this.occluders.push({ node, sprite, x: prop.x, y: prop.y, w: prop.width, h, sway, hole: false, fade: 255 });
+      }
+      if (this.def.groundShadows) {
+        this.mountPropShadow(prop, sprite.spriteFrame, h, index);
       }
       this.propNodes.push({ node, y: prop.y });
     });
   }
 
+  /**
+   * 立物投影 + 接地暗斑(11-08 E 方案 b / c):画在贴地层最上面(压在所有贴地件上、所有人物下面)。
+   * - 高立物(树 / 岩 / 营帐):用自己的贴图染成偏冷的暗色、压扁并向右下斜(光从左上来),不透明度 120(实测 78 在深色草地上看不出)。
+   *   斜切靠三层节点「转 -9.09° → 缩放 (1.081, -0.389) → 转 -24°」合成矩阵 [[1, 0.378], [0, -0.42]](节点不支持直接斜切)。
+   * - 宽于 160 的立物:脚下柔边暗斑(contact_shadow)。
+   * 按贴图分组挂到各自的子容器,同贴图的投影相邻可合批;节点登记进视野裁剪。
+   */
+  private mountPropShadow(prop: WorldMapProp, frame: SpriteFrame | null, h: number, index: number): void {
+    const ground = this.groundRoot;
+    if (!ground || !ground.isValid || !frame) {
+      return;
+    }
+    let layer = ground.getChildByName('Shadows');
+    if (!layer) {
+      layer = this.host.addChildPlainNode(ground, 'Shadows', 0, 0, 10, 10);
+      const vignette = ground.getChildByName('Vignette');
+      if (vignette) {
+        layer.setSiblingIndex(vignette.getSiblingIndex());
+      }
+    }
+    const group = (key: string): Node => layer!.getChildByName(key) ?? this.host.addChildPlainNode(layer!, key, 0, 0, 10, 10);
+    const name = `Sh_${index}`;
+    if (h >= OCCLUDER_MIN_H && prop.block) {
+      const outer = this.host.addChildPlainNode(group(`Cast_${prop.asset}`), name, prop.x, prop.y + 4, 10, 10);
+      outer.angle = -9.09;
+      const mid = this.host.addChildPlainNode(outer, 'S', 0, 0, 10, 10);
+      mid.setScale(1.081, -0.389, 1);
+      const inner = this.host.addChildPlainNode(mid, 'R', 0, 0, 10, 10);
+      inner.angle = -24;
+      const node = this.host.addChildPlainNode(inner, 'Art', 0, h / 2, prop.width, h);
+      const sprite = node.addComponent(Sprite);
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      sprite.spriteFrame = frame;
+      node.getComponent(UITransform)?.setContentSize(new Size(prop.width, h));
+      sprite.color = rgba(10, 18, 30, 255);
+      if (prop.flipX) {
+        node.setScale(-1, 1, 1);
+      }
+      node.addComponent(UIOpacity).opacity = 120;
+      // 投影落在脚下往右下 0.38h × 0.42h 的范围
+      this.addCull(outer, prop.x - prop.width / 2, prop.x + prop.width / 2 + h * 0.4, prop.y - h * 0.45, prop.y + 20);
+    }
+    if (prop.width >= 160) {
+      const w = prop.width * (prop.block ? 0.95 : 0.7);
+      const holder = this.host.addChildPlainNode(group('AO'), name, prop.x, prop.y + 6, w, w * 0.36);
+      const ao = this.host.addSprite('Art', CONTACT_SHADOW, 0, 0, w, w * 0.36, holder);
+      if (!ao) {
+        holder.destroy();
+        return;
+      }
+      ao.sizeMode = Sprite.SizeMode.CUSTOM;
+      ao.node.getComponent(UITransform)?.setContentSize(new Size(w, w * 0.36));
+      ao.node.addComponent(UIOpacity).opacity = prop.block ? 200 : 140;
+      this.addCull(holder, prop.x - w / 2, prop.x + w / 2, prop.y - w * 0.2, prop.y + w * 0.2);
+    }
+  }
+
   private mountPlate(parent: Node, cfg: { label: string }, y: number, badge: boolean): Node {
     const w = Math.max(150, cfg.label.length * 30 + 60);
     const h = 46;
-    const plate = this.host.addChildPlainNode(parent, 'Plate', 0, y, w, h);
+    const plate = this.worldUi(this.host.addChildPlainNode(parent, 'Plate', 0, y, w, h));
     // B 风格(10-29):暗玻璃胶囊 + 浅细边,白字(原旧金框菱形名牌)
     mountGlassSlice(this.host as never, plate, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, w, h, h / 48);
     const label = this.host.addChildLabel(plate, 'Label', cfg.label, 0, 1, 24, rgba(240, 242, 246), new Size(w - 40, 34));
@@ -1846,6 +2041,9 @@ export class LobbyTownRenderer {
     this.stepChannel();
     this.updateBuildingSeeThrough(clamped);
     this.applyCamera(false, clamped);
+    this.updateCulling();
+    this.cullMonsters();
+    this.updateCanopyHoles(clamped);
     this.sortEntities(false);
     if (!this.trial) {
       this.updateNearBuilding();
@@ -2198,6 +2396,73 @@ export class LobbyTownRenderer {
     }
   }
 
+  /** 由近到远一圈圈找最近的可走点(每圈 16 个方向,最远 1500)。 */
+  private nearestWalkable(x: number, y: number): { x: number; y: number } | null {
+    for (let r = 60; r <= 1500; r += 60) {
+      for (let i = 0; i < 16; i += 1) {
+        const a = (i / 16) * Math.PI * 2;
+        const nx = Math.round(x + Math.cos(a) * r);
+        const ny = Math.round(y + Math.sin(a) * r * 0.7);
+        if (this.walkable(nx, ny)) {
+          return { x: nx, y: ny };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 树冠透视孔(11-08 用户「人物在树后面看不到了」,选 B 方案圆形透视孔):队长站在立物身后、身体落在贴图里时,
+   * 随风摆的树切到带孔材质(以队长身体为圆心的柔边圆变透明),其他立物(岩 / 营帐)整块淡成半透明;走出来渐隐恢复。
+   */
+  private updateCanopyHoles(dt: number): void {
+    const leader = this.leader;
+    const world = this.world;
+    if (!leader || !leader.node.isValid || !world || !world.isValid || this.occluders.length === 0) {
+      return;
+    }
+    const t = 1 - Math.exp(-10 * dt);
+    const covers = (o: (typeof this.occluders)[number]): boolean => o.node.active && leader.y > o.y + 8
+      && Math.abs(leader.x - o.x) < o.w * 0.42 && leader.y < o.y + o.h * 0.9;
+    let any = false;
+    for (const o of this.occluders) {
+      if (o.node.isValid && o.sway && covers(o)) {
+        any = true;
+        break;
+      }
+    }
+    this.holeStrength += ((any ? 1 : 0) - this.holeStrength) * t;
+    if (!any && this.holeStrength < 0.02) {
+      this.holeStrength = 0;
+    }
+    const scale = world.worldScale.x || 1;
+    const p = leader.node.worldPosition;
+    setWindHole(p.x, p.y + HERO_SLOT_H * 0.45 * scale, CANOPY_HOLE_R * scale, this.holeStrength);
+    for (const o of this.occluders) {
+      if (!o.node.isValid) {
+        continue;
+      }
+      const covered = covers(o);
+      if (o.sway) {
+        // 孔渐隐期间(没人被挡了)保留上一批带孔的树,强度降到 0 再换回普通材质,不闪
+        const want = covered || (o.hole && !any && this.holeStrength > 0);
+        if (want !== o.hole && useWindHole(o.sprite, want)) {
+          o.hole = want;
+        }
+        if (o.hole) {
+          continue;
+        }
+      }
+      const target = covered ? OCCLUDER_FADE_OPACITY : 255;
+      if (o.fade === target) {
+        continue;
+      }
+      o.fade = Math.abs(target - o.fade) < 1 ? target : o.fade + (target - o.fade) * t;
+      const opacity = o.sprite.node.getComponent(UIOpacity) ?? o.sprite.node.addComponent(UIOpacity);
+      opacity.opacity = Math.round(o.fade);
+    }
+  }
+
   private walkable(x: number, y: number): boolean {
     const trial = this.trial;
     if (trial) {
@@ -2230,22 +2495,49 @@ export class LobbyTownRenderer {
         return false;
       }
     }
-    for (const block of def.blocks ?? []) {
+    // 水面挡块 + 挡路立物按 512 格分桶(林地 v4 上千条水面矩形 + 几百棵树,每走一步全扫太贵)
+    for (const block of this.blockBucket(def, x, y)) {
       const halfW = block.w / 2 + ACTOR_RADIUS * 0.4;
       if (x > block.x - halfW && x < block.x + halfW && y > block.y - ACTOR_RADIUS * 0.3 && y < block.y + block.d) {
         return false;
       }
     }
-    for (const prop of def.props) {
-      if (!prop.block) {
-        continue;
-      }
-      const halfW = prop.block.w / 2 + ACTOR_RADIUS * 0.4;
-      if (x > prop.x - halfW && x < prop.x + halfW && y > prop.y - ACTOR_RADIUS * 0.3 && y < prop.y + prop.block.d) {
-        return false;
-      }
-    }
     return true;
+  }
+
+  private blockGrid: { def: WorldMapDef; cells: Map<string, WorldMapBlock[]> } | null = null;
+
+  /** (x, y) 所在格的挡块(地图水面挡块 + 立物挡块;一个挡块登记进它压到的每一格)。 */
+  private blockBucket(def: WorldMapDef, x: number, y: number): WorldMapBlock[] {
+    if (!this.blockGrid || this.blockGrid.def !== def) {
+      const cells = new Map<string, WorldMapBlock[]>();
+      const all: WorldMapBlock[] = [...(def.blocks ?? [])];
+      for (const prop of def.props) {
+        if (prop.block) {
+          all.push({ x: prop.x, y: prop.y, w: prop.block.w, d: prop.block.d });
+        }
+      }
+      const pad = ACTOR_RADIUS;
+      for (const block of all) {
+        const cx0 = Math.floor((block.x - block.w / 2 - pad) / BLOCK_CELL);
+        const cx1 = Math.floor((block.x + block.w / 2 + pad) / BLOCK_CELL);
+        const cy0 = Math.floor((block.y - pad) / BLOCK_CELL);
+        const cy1 = Math.floor((block.y + block.d + pad) / BLOCK_CELL);
+        for (let cx = cx0; cx <= cx1; cx += 1) {
+          for (let cy = cy0; cy <= cy1; cy += 1) {
+            const key = `${cx},${cy}`;
+            const list = cells.get(key);
+            if (list) {
+              list.push(block);
+            } else {
+              cells.set(key, [block]);
+            }
+          }
+        }
+      }
+      this.blockGrid = { def, cells };
+    }
+    return this.blockGrid.cells.get(`${Math.floor(x / BLOCK_CELL)},${Math.floor(y / BLOCK_CELL)}`) ?? EMPTY_BLOCKS;
   }
 
   private applyCamera(snap: boolean, dt = 0): void {
@@ -2304,7 +2596,8 @@ export class LobbyTownRenderer {
       }
     }
     for (const prop of this.propNodes) {
-      if (prop.node.isValid) {
+      // 视野外关掉的不排(林地 v4 上千棵树,每帧全排太贵)
+      if (prop.node.isValid && prop.node.active) {
         items.push({ node: prop.node, y: prop.y });
       }
     }
@@ -2317,7 +2610,7 @@ export class LobbyTownRenderer {
       items.push({ node: this.waypointNode, y: this.def.waypoint.y + 40 });
     }
     for (const monster of this.monsters) {
-      if (monster.node.isValid) {
+      if (monster.node.isValid && monster.node.active) {
         items.push({ node: monster.node, y: monster.y });
       }
     }
@@ -2787,7 +3080,7 @@ export class LobbyTownRenderer {
     bg.fill();
     const def = this.def;
     // 圆里看多大范围:主城 3200 世界单位(原型一圈建筑图标都在圆里)、野外 2400(能看到几群怪)
-    const mapScale = (holeR * 2) / (field ? 2400 : 3200);
+    const mapScale = (holeR * 2) / ((field ? 2400 : 3200) * (this.def.cameraZoom ?? 1));
     this.minimapScale = mapScale;
     const content = this.host.addChildPlainNode(area, 'Content', 0, 0, def.width * mapScale, def.height * mapScale);
     this.minimapContent = content;
@@ -3004,7 +3297,8 @@ export class LobbyTownRenderer {
     };
     const blobs: Array<[number, number, number]> = [];
     for (const prop of def.props) {
-      if (prop.flat || prop.width < 160) {
+      // 只画挡路的大件(树 / 岩 / 营帐):林地 v4 矮物件(蕨 / 草 / 碎石)上千个,全画进 Graphics 太重
+      if (prop.flat || prop.width < 160 || !prop.block) {
         continue;
       }
       const r = prop.width * mapScale * 0.42;
@@ -3181,9 +3475,14 @@ export class LobbyTownRenderer {
     }
     const holder = this.host.addChildPlainNode(leader.node, 'GuidePointer', 0, 6, 10, 10);
     holder.setSiblingIndex(0);
-    const marks = this.host.addChildPlainNode(holder, 'Marks', 0, 0, 10, 10);
+    // 11-08 用户把竖着的箭头看成「主角普攻的 7 字贴图」:改成平铺在地面上(纵向压扁 = 地面透视,
+    // 方向按地面角度转),从脚边往外挪开不压身体;Ground 压扁 → Rot 转向 → Marks 前后缓动
+    const ground = this.host.addChildPlainNode(holder, 'Ground', 0, 0, 10, 10);
+    ground.setScale(1, GUIDE_GROUND_SQUASH, 1);
+    const rot = this.host.addChildPlainNode(ground, 'Rot', 0, 0, 10, 10);
+    const marks = this.host.addChildPlainNode(rot, 'Marks', 0, 0, 10, 10);
     // 11-07 截图:沙地上浅香槟几乎看不见 → 放大 + 深色整圈描边(本体下垫一道更粗的暗线)
-    const steps: Array<[number, number, number]> = [[104, 44, 255], [178, 38, 200], [244, 32, 140]];
+    const steps: Array<[number, number, number]> = [[170, 48, 255], [250, 42, 200], [322, 36, 140]];
     steps.forEach(([x, size, alpha], index) => {
       const g = this.host.addChildPlainNode(marks, `Chevron_${index}`, x, 0, size * 1.6, size * 2.4).addComponent(Graphics);
       g.lineCap = Graphics.LineCap.ROUND;
@@ -3220,16 +3519,23 @@ export class LobbyTownRenderer {
     const dy = cfg.y - leader.y;
     const distPx = Math.hypot(dx, dy);
     const near = distPx < INTERACT_RADIUS;
-    // 10-28 录屏:战斗里指引和红色锁定箭头混在一起 → 交战中藏起来
-    holder.active = !near && !this.inCombat;
+    // 10-28 录屏:战斗里指引和红色锁定箭头混在一起 → 交战中藏起来;
+    // 11-08 出招 / 怪就在身边时也藏(用户把出招时的箭头当成了普攻贴图)
+    const now = Date.now();
+    const fighting = now < this.comboUntil || this.leaderBusy(now)
+      || this.monsters.some((monster) => !monster.dead && Math.hypot(monster.x - leader.x, monster.y - leader.y) < MONSTER_AGGRO_RADIUS + 320);
+    holder.active = !near && !this.inCombat && !fighting;
     if (near) {
       this.setTrackerText(`到了「${cfg.label}」`, '· 点交互提示', '');
       return;
     }
     // 距离按 40 像素 ≈ 1 米(人物身高约 2 米)
     this.setTrackerText(`前往「${cfg.label}」`, `· ${guide.text}`, `${Math.max(1, Math.round(distPx / 40))} 米`);
-    // 箭头沿本地 +x 排开:整组转到目标方向
-    holder.angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    // 箭头沿本地 +x 排开:按地面角度转(外层已纵向压扁,屏幕上的 dy 要先还原成地面距离)
+    const rot = holder.getChildByName('Ground')?.getChildByName('Rot');
+    if (rot) {
+      rot.angle = (Math.atan2(dy / GUIDE_GROUND_SQUASH, dx) * 180) / Math.PI;
+    }
   }
 
   // ── docs/50:NPC / 传送阵 / 出口 / 明雷怪 ──
@@ -3269,11 +3575,13 @@ export class LobbyTownRenderer {
       plate.enableOutline = true;
       plate.outlineColor = rgba(16, 8, 4, 255);
       plate.outlineWidth = 2;
+      this.worldUi(plate.node);
       const marker = this.host.addChildLabel(node, 'Marker', '', 0, npc.height + 52, 44, rgba(255, 210, 80), new Size(60, 56));
       marker.isBold = true;
       marker.enableOutline = true;
       marker.outlineColor = rgba(40, 20, 0, 255);
       marker.outlineWidth = 3;
+      this.worldUi(marker.node);
       tween(marker.node).repeatForever(tween<Node>().by(0.6, { position: new Vec3(0, 8, 0) }).by(0.6, { position: new Vec3(0, -8, 0) })).start();
       this.npcNodes.push({ code: npc.code, node, y: npc.y });
     }
@@ -3489,7 +3797,7 @@ export class LobbyTownRenderer {
    * 每帧轻轻上下浮动(stepPoiCues)。
    */
   private mountPoiBadge(parent: Node, y: number, icon: string | null, text: string | null): Node {
-    const badge = this.host.addChildPlainNode(parent, 'Badge', 0, y, 64, 64);
+    const badge = this.worldUi(this.host.addChildPlainNode(parent, 'Badge', 0, y, 64, 64));
     const g = badge.addComponent(Graphics);
     g.fillColor = rgba(20, 24, 32, 220);
     g.circle(0, 0, 28);
@@ -3570,6 +3878,7 @@ export class LobbyTownRenderer {
     label.enableOutline = true;
     label.outlineColor = rgba(16, 8, 4, 255);
     label.outlineWidth = 3;
+    this.worldUi(label.node);
     return label;
   }
 
@@ -3853,6 +4162,7 @@ export class LobbyTownRenderer {
       plate.enableOutline = true;
       plate.outlineColor = rgba(16, 8, 4, 255);
       plate.outlineWidth = 2;
+      this.worldUi(plate.node);
     }
   }
 
@@ -3980,6 +4290,7 @@ export class LobbyTownRenderer {
     label.enableOutline = true;
     label.outlineColor = rgba(16, 6, 4, 255);
     label.outlineWidth = 2;
+    this.worldUi(label.node);
     if (camp.elite && !camp.aura) {
       // 精英:脚下淡黄光圈(原型 p2);配了骨骼光环的改走 mountCampAura
       const ring = this.host.addChildPlainNode(node, 'EliteRing', 0, 0, 200, 80).addComponent(Graphics);
@@ -4002,7 +4313,7 @@ export class LobbyTownRenderer {
         this.setLockTarget(monster);
       }
     }, this);
-    monster.hpBar = this.host.addChildPlainNode(node, 'HpBar', 0, target + 4, 110, 12).addComponent(Graphics);
+    monster.hpBar = this.worldUi(this.host.addChildPlainNode(node, 'HpBar', 0, target + 4, 110, 12)).addComponent(Graphics);
     if (camp.dummy) {
       // 训练靶:静态贴图(脚底对齐);挂到 spineNode 上复用受击形变
       const art = this.host.addChildPlainNode(node, 'Dummy', 0, 0, 10, 10);
@@ -4519,7 +4830,7 @@ export class LobbyTownRenderer {
       }
       // 挂在队长节点上(跟着走 / 跟着世界缩放);原型:细香槟弧 + 深色底环,下方白字「采集中」
       const r = 34;
-      const node = this.host.addChildPlainNode(leader.node, 'GatherRing', 0, HERO_SLOT_H + 46, r * 2 + 20, r * 2 + 40);
+      const node = this.worldUi(this.host.addChildPlainNode(leader.node, 'GatherRing', 0, HERO_SLOT_H + 46, r * 2 + 20, r * 2 + 40));
       const bg = node.addComponent(Graphics);
       bg.strokeColor = rgba(16, 18, 24, 190);
       bg.lineWidth = 9;
@@ -6243,8 +6554,8 @@ export class LobbyTownRenderer {
       }
     }
     if (!landed && hit.skill === undefined && root) {
-      // 挥空也要有刀光:在身前贴一记斩击图
-      this.fx.strikeSprite(root, kit.strike, leader.x + leader.facing * 110, leader.y + 100, 150 * kit.strike.size * 0.8, leader.facing > 0 ? -10 : 10);
+      // 挥空也要有刀光(11-08:原来固定贴静态斩击图,改成专属骨骼刀光往前扫一小段,没就绪才退回贴图)
+      this.fx.swing(root, kit, leader.x + leader.facing * 110, leader.y + 100, leader.facing, 150 * kit.strike.size * 0.8);
     }
   }
 
@@ -7139,12 +7450,14 @@ export class LobbyTownRenderer {
     label.outlineWidth = 3;
     label.node.setSiblingIndex(root.children.length - 1);
     const opacity = label.node.addComponent(UIOpacity);
+    const z = this.uiZ;
+    label.node.setScale(z, z, 1);
     if (size >= 28) {
       // 重击 / 队长伤害:先放大再落回(打击感)
-      label.node.setScale(1.6, 1.6, 1);
-      tween(label.node).to(0.09, { scale: new Vec3(1, 1, 1) }, { easing: 'quadOut' }).start();
+      label.node.setScale(1.6 * z, 1.6 * z, 1);
+      tween(label.node).to(0.09, { scale: new Vec3(z, z, 1) }, { easing: 'quadOut' }).start();
     }
-    tween(label.node).by(0.7, { position: new Vec3(0, 70, 0) }).start();
+    tween(label.node).by(0.7, { position: new Vec3(0, 70 * z, 0) }).start();
     tween(opacity).delay(0.35).to(0.35, { opacity: 0 }).call(() => label.node.isValid && label.node.destroy()).start();
   }
 

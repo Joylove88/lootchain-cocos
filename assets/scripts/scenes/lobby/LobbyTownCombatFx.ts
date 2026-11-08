@@ -216,6 +216,30 @@ export class TownCombatFx {
   }
 
   /**
+   * 近战挥空的刀光(11-08 用户「主角普攻效果贴图问题」):专属骨骼弹道当刀光,从身前往前扫一小段后淡出;
+   * 弹道没就绪退回命中特效,都没有才贴静态斩击图(原来挥空固定贴静态图)。
+   */
+  swing(parent: Node, kit: TownHeroFxKit, x: number, y: number, facing: 1 | -1, widthPx: number): void {
+    if (!parent.isValid) {
+      return;
+    }
+    const spine = kit.spine;
+    if (spine && this.ready.has(spine.effect)) {
+      const node = this.play(parent, spine, x - facing * 40, y, widthPx * Math.max(0.9, spine.size / 1.5), { loop: true, flipX: facing < 0 });
+      if (node) {
+        const opacity = node.addComponent(UIOpacity);
+        tween(node).by(0.28, { position: new Vec3(facing * 130, 0, 0) }, { easing: 'quadOut' }).start();
+        tween(opacity).delay(0.14).to(0.16, { opacity: 0 }).call(() => node.isValid && node.destroy()).start();
+        return;
+      }
+    }
+    if (spine?.hit && this.play(parent, spine.hit, x, y, widthPx * Math.max(0.8, spine.hit.size / 2), { flipX: facing < 0 })) {
+      return;
+    }
+    this.strikeSprite(parent, kit.strike, x, y, widthPx, facing > 0 ? -10 : 10);
+  }
+
+  /**
    * 弹道:从 (sx, sy) 飞到 (ex, ey),travelMs 到达后回调 onArrive(命中特效 / 伤害在回调里做)。
    * 有 Spine 弹道就飞骨骼特效,没有(或没就绪)飞贴图;贴图朝右绘制,按飞行方向旋转。
    */

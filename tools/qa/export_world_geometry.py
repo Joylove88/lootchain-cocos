@@ -2,7 +2,8 @@
 """野外坐标表导出(docs/55 §2.2):无头 Edge 打开网页包,读前端地图定义(window.__lootchainWorldMaps),
 生成后端 FieldGeometry.java(锚点 / 宝箱 / 兴趣点 / 怪群坐标),服务端领奖位置校验用。改地图布局后重跑。
 锚点 = 传送阵、传送阵旁默认落点(x + 40, y - 150)、出生点、其他图出口通往本图的落点。
-用法:PREVIEW_PORT=7460 python tools/qa/export_world_geometry.py
+用法:PREVIEW_PORT=7460 python tools/qa/export_world_geometry.py      (无头 Edge 读网页包)
+     python tools/qa/export_world_geometry.py --node                     (不开浏览器,node 直接编译地图定义)
 """
 import asyncio, json, os, shutil, subprocess, sys, time, urllib.request
 import websockets
@@ -18,7 +19,23 @@ DUMP = r"""(() => { const W = window.__lootchainWorldMaps; const out = {}; for (
     camps: (d.camps || []).map(c => [c.stageCode, c.x, c.y, c.radius || 0]) }; } return JSON.stringify(out); })()"""
 
 
+def dump_node():
+    """--node:不开浏览器,用 walk_map_overlay.dump_maps(node 编译地图定义)直接取(11-08;兴趣点运行时吸附挪位不会反映进来,生成器要先避开)。"""
+    from walk_map_overlay import dump_maps
+    out = {}
+    for code, d in dump_maps().items():
+        out[code] = {'waypoint': [d['waypoint']['x'], d['waypoint']['y']], 'spawn': [d['spawn']['x'], d['spawn']['y']],
+                     'exits': [[e['toMap'], e['toSpawn']['x'], e['toSpawn']['y']] for e in d.get('exits') or []],
+                     'chests': [[c['code'], c['x'], c['y']] for c in d.get('chests') or []],
+                     'pois': [[p['code'], p['x'], p['y']] for p in d.get('pois') or []],
+                     'camps': [[c['stageCode'], c['x'], c['y'], c.get('radius') or 0] for c in d.get('camps') or []]}
+    return out
+
+
 async def main():
+    if '--node' in sys.argv:
+        write_java(dump_node())
+        return
     profile = base.PROFILE + '_geom'
     shutil.rmtree(profile, ignore_errors=True)
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
@@ -54,7 +71,10 @@ async def main():
     finally:
         proc.kill()
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
+    write_java(data)
 
+
+def write_java(data):
     anchors = {code: [d['waypoint'], [d['waypoint'][0] + 40, d['waypoint'][1] - 150], d['spawn']] for code, d in data.items()}
     for code, d in data.items():
         for to_map, x, y in d['exits']:

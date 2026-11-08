@@ -5,6 +5,7 @@ import { EffectAsset, Material, Node, resources, Sprite, Vec4 } from 'cc';
  * - wind:树 / 灌木 / 草丛立物,片元按高度错 UV 摆动(effects/world-wind)
  * - water:地形块,alpha 通道存水面遮罩,波纹 + 闪光 + 瀑布白沫(effects/world-water)
  * 全部立物共用一份材质(可合批);着色器还没加载完就先不挂,加载完回调里补挂。
+ * - 11-08 透视孔:同一个 wind 着色器再建一份「带孔」材质,只挂在当前挡住队伍的几棵树上(setWindHole 每帧给孔的位置 / 强度)。
  */
 type ShaderKind = 'wind' | 'water';
 
@@ -13,6 +14,9 @@ const materials: Partial<Record<ShaderKind, Material>> = {};
 const loading = new Set<ShaderKind>();
 const waiting: Record<ShaderKind, Sprite[]> = { wind: [], water: [] };
 const origin = new Vec4(0, 0, 1, 0);
+const hole = new Vec4(0, 0, 0, 0);
+/** 带透视孔的风材质(和 wind 同一个着色器)。 */
+let holeMat: Material | null = null;
 
 function load(kind: ShaderKind): void {
   if (materials[kind] || loading.has(kind)) {
@@ -30,6 +34,10 @@ function load(kind: ShaderKind): void {
     mat.initialize({ effectAsset: effect });
     if (kind === 'wind') {
       mat.setProperty('mapOrigin', origin);
+      holeMat = new Material();
+      holeMat.initialize({ effectAsset: effect });
+      holeMat.setProperty('mapOrigin', origin);
+      holeMat.setProperty('holeParams', hole);
     }
     materials[kind] = mat;
     for (const sprite of waiting[kind].splice(0)) {
@@ -67,6 +75,32 @@ export function updateWorldShaderOrigin(world: Node): void {
   }
   origin.set(p.x, p.y, 1 / s, 0);
   mat.setProperty('mapOrigin', origin);
+  holeMat?.setProperty('mapOrigin', origin);
+}
+
+/** 透视孔位置(世界坐标 = 画布坐标)/ 半径 / 强度 0~1;强度 0 = 关。 */
+export function setWindHole(x: number, y: number, radius: number, strength: number): void {
+  if (!holeMat) {
+    return;
+  }
+  if (hole.x === x && hole.y === y && hole.z === radius && hole.w === strength) {
+    return;
+  }
+  hole.set(x, y, radius, strength);
+  holeMat.setProperty('holeParams', hole);
+}
+
+/** 随风摆立物切到带孔 / 普通材质;材质没加载完返回 false(调用方退回半透明)。 */
+export function useWindHole(sprite: Sprite, on: boolean): boolean {
+  const base = materials.wind;
+  if (!base || !holeMat) {
+    return false;
+  }
+  const want = on ? holeMat : base;
+  if (sprite.customMaterial !== want) {
+    sprite.customMaterial = want;
+  }
+  return true;
 }
 
 /** 立物是否随风摆:树 / 灌木 / 草丛(麦田带围栏,不摆)。 */

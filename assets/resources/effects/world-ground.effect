@@ -1,0 +1,110 @@
+// 野外多层地表(2026-11-08 用户「地面效果能做到流放之路2这种级别吗,更细腻的材质」):整张地图一个四边形,
+// cc_spriteTexture = 混合遮罩(tools/qa/woods_ground_install.py 生成,每像素 24 世界单位,uv 0..1 铺满全图):
+//   R = 大尺度噪声(腐殖层 ↔ 苔草过渡 + 明暗起伏),G = 草甸权重,B = 离路中线距离 / 512
+// 4 层平铺材质按遮罩混合:林地腐殖层 → 苔草(原 ground_woods3)→ 草甸 → 土路;
+// 土路边缘按距离 + 噪声抖动成不规则过渡,草土交界压一道暗沟,中线两侧断续车辙;最后轻 S 曲线 + 暗部偏冷 / 亮部偏暖 + 左上微光 + 暗角。
+// grade = (S 曲线强度, 暗角强度, 整体亮度, -)。
+// tiles = 各层一格多少个 uv(地图宽 / 格宽,地图高 / 格宽):floor.xy / moss.zw;tiles2 = meadow.xy / dirt.zw。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: ground-vs:vert
+      frag: ground-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        floorTex: { value: white }
+        mossTex: { value: white }
+        meadowTex: { value: white }
+        dirtTex: { value: white }
+        tiles: { value: [39.0, 18.8, 20.3, 9.8] }
+        tiles2: { value: [67.8, 32.6, 48.4, 23.3] }
+        grade: { value: [0.10, 0.18, 1.06, 0.0] }
+}%
+
+CCProgram ground-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram ground-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec4 color;
+  in vec2 uv0;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  uniform sampler2D floorTex;
+  uniform sampler2D mossTex;
+  uniform sampler2D meadowTex;
+  uniform sampler2D dirtTex;
+
+  uniform GroundFrag {
+    vec4 tiles;
+    vec4 tiles2;
+    vec4 grade;
+  };
+
+  vec4 frag () {
+    vec3 m = texture(cc_spriteTexture, uv0).rgb;
+    float n1 = m.r;
+    float wMeadow = m.g * 0.7;
+    float d = m.b * 512.0;
+    vec3 floorC = texture(floorTex, uv0 * tiles.xy).rgb;
+    vec3 moss = texture(mossTex, uv0 * tiles.zw).rgb;
+    vec3 meadow = texture(meadowTex, uv0 * tiles2.xy).rgb;
+    vec3 dirt = texture(dirtTex, uv0 * tiles2.zw).rgb;
+    // 小尺度噪声(约 300 单位一格的草甸纹理绿通道换个比例当噪声用)、路边抖动噪声(苔草纹理超大尺度)
+    float n3 = texture(meadowTex, uv0 * tiles2.xy * 0.37 + vec2(0.31, 0.17)).g;
+    float n2 = texture(mossTex, uv0 * tiles.zw * 0.13 + vec2(0.53, 0.29)).r;
+    vec3 base = mix(floorC, moss, smoothstep(0.38, 0.62, n1));
+    base = mix(base, meadow, wMeadow * (0.75 + 0.25 * n3));
+    float edge = 80.0 + n2 * 110.0;
+    float mDirt = 1.0 - smoothstep(edge - 22.0, edge + 26.0, d);
+    float g0 = (d - edge - 8.0) / 22.0;
+    float groove = exp(-g0 * g0) * 0.22;
+    float r0 = abs(d - 42.0) / 9.0;
+    float ruts = exp(-r0 * r0) * 0.16 * smoothstep(0.35, 0.6, n3) * mDirt;
+    base = mix(base, dirt * (0.92 + 0.16 * n3), mDirt);
+    base *= 1.0 - groove - ruts;
+    // 大尺度明暗起伏(压住平铺感)
+    base *= 0.9 + 0.18 * n1;
+    // 调色:轻 S 曲线 + 暗部偏冷 / 亮部偏暖
+    float lum = dot(base, vec3(0.333));
+    base += (lum - 0.5) * grade.x;
+    vec3 warm = vec3(1.05, 1.02, 0.95);
+    vec3 cool = vec3(0.95, 0.99, 1.05);
+    base *= mix(cool, warm, clamp(lum * 1.4, 0.0, 1.0)) * grade.z;
+    // 屏幕空间:左上微光 + 暗角(只压地面,不额外叠全屏层,手机不多一层填充)
+    vec2 sp = gl_FragCoord.xy / cc_screenSize.xy;
+    float light = 1.06 - 0.10 * (sp.x * 0.6 + (1.0 - sp.y) * 0.4);
+    float vig = 1.0 - grade.y * pow(clamp(length((sp - 0.5) * 2.0), 0.0, 1.0), 2.4);
+    base *= light * vig;
+    return vec4(clamp(base, 0.0, 1.0), 1.0) * color;
+  }
+}%
