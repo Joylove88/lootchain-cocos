@@ -30,11 +30,17 @@ def key_out(im, key='magenta'):
     from PIL import ImageFilter
     a = np.asarray(im.convert('RGB')).astype(np.float32)
     # 背景色差:品红底 = (R+B)/2 - G;青色底(秋叶树:橙红叶子在品红判据下会被当成背景) = (G+B)/2 - R
+    thr, w_lo, w_span = 15, -40, 55
     if key == 'cyan':
         e = (a[..., 1] + a[..., 2]) / 2 - a[..., 0]
+    elif key == 'magenta_strict':
+        # 11-09 主城精致风:橙红瓦顶 / 偏紫蓝灰石板在 (R+B)/2-G 判据下被当背景抠成斑点;
+        # 改按 min(R,B)-G(纯品红 ≈ 245,橙瓦 < 0,紫石板 ≈ 20~40,紫旗 ≈ 60),只抠接近纯品红的像素
+        e = np.minimum(a[..., 0], a[..., 2]) - a[..., 1]
+        thr, w_lo, w_span = 120, -60, 160
     else:
         e = (a[..., 0] + a[..., 2]) / 2 - a[..., 1]
-    fg = Image.fromarray(((e < 15) * 255).astype(np.uint8))
+    fg = Image.fromarray(((e < thr) * 255).astype(np.uint8))
     fg = fg.filter(ImageFilter.MinFilter(3))           # 收 1 像素
     fg = fg.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))  # 去针孔
     core = np.asarray(fg.filter(ImageFilter.MinFilter(5))) > 0   # 离背景 ≥ 3 像素的内部,颜色可信
@@ -54,7 +60,7 @@ def key_out(im, key='magenta'):
         known |= grow
     # 边缘带:原色与回填色按「品红度」混(越像品红越用回填色),保住叶边本身的明暗
     band = (~core)
-    w = np.clip((e + 40) / 55, 0, 1)[..., None]
+    w = np.clip((e - w_lo) / w_span, 0, 1)[..., None]
     out_rgb = np.where(band[..., None], a * (1 - w) + rgb * w, a)
     alpha = np.asarray(fg.filter(ImageFilter.GaussianBlur(0.6))).astype(np.float32)
     out = np.concatenate([np.clip(out_rgb, 0, 255), alpha[..., None]], -1)

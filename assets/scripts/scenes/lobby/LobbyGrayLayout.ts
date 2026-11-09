@@ -21,5 +21,5 @@ export const GRAY_V4_POIS = [{"code":"G_HIDDEN_1","kind":"HIDDEN","name":"峡谷
 export const GRAY_V4_NPCS = [{"code":"WANDERER","name":"流浪者首领 · 葛兰","asset":"city4/city4_npc_wanderer","x":-7554,"y":228,"height":215,"flip":1}];
 export const GRAY_V4_WAYPOINT = {"x":-7284,"y":148};
 export const GRAY_V4_SPAWN = {"x":-7104,"y":-72};
-export const GRAY_V4_EXITS = [{"key":"to_city","label":"返回 · 主城","x":-8860,"y":-188,"radius":130,"toMap":"CITY","toSpawn":{"x":6300,"y":-288}}];
+export const GRAY_V4_EXITS = [{"key":"to_city","label":"返回 · 主城","x":-8860,"y":-188,"radius":130,"toMap":"CITY","toSpawn":{"x":6000,"y":-12}}];
 export const GRAY_V4_PLACES = [{"name":"流浪者营地","x":-7224,"y":188,"icon":"portal"},{"name":"龟裂盆地","x":-5956,"y":-2603,"icon":"den"},{"name":"盗匪哨岗","x":-375,"y":1842,"icon":"camp"},{"name":"盗匪营寨","x":1806,"y":-2400,"icon":"camp"},{"name":"古遗迹","x":3024,"y":1811,"icon":"ruins"},{"name":"走私矿坑","x":6169,"y":-1689,"icon":"cave"},{"name":"碎岩巨像","x":7184,"y":1557,"icon":"ruins"}];

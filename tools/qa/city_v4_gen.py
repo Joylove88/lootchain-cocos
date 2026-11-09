@@ -51,72 +51,79 @@ def C4(name):
 V3 = lambda n: f'ui/world/vil3/vil3_{n}'
 
 # ── 骨架(原型像素)──
-PLAZA_PX = (770, 455)
+# 11-09 用户「两边城墙都重叠了,不好看,主城重新设计」→ 选 P1 广场大道原型(周报截图/2026-11-09_地图画风原型/city_p1.png):
+# 罗盘广场居中;大道北通大教堂(两侧柏树 + 花坛),西北佣兵公会、东北帝国学院;西街酒馆 → 西南公园池塘;东街集市 → 兵营 → 东门;
+# 南面运河两座桥(主桥 + 码头桥),河南岸草坡和南门;城墙只在北边一道(两端各一座塔),东西两侧是树林草坡,不再有竖向城墙
+PLAZA_PX = (886, 445)
 ROADS_PX = [
-    [(0, 415), (300, 410), (560, 420), (700, 445), (770, 455)],                       # 西门大街 → 广场
-    [(770, 455), (900, 470), (1100, 470), (1300, 455), (1450, 445), (1600, 470), (1774, 480)],  # 广场 → 东门
-    [(770, 455), (785, 330), (790, 215)],                                             # 广场 → 大教堂
-    [(770, 455), (720, 560), (650, 650), (620, 735), (590, 887)],                     # 广场 → 运河西桥 → 南门
-    [(770, 455), (900, 360), (1050, 330), (1170, 345)],                               # 广场 → 学院
-    [(770, 455), (680, 370), (590, 320)],                                             # 广场 → 佣兵公会
-    [(900, 470), (1000, 540), (1150, 565), (1240, 640), (1250, 735)],                # 集市街 → 运河东桥
-    [(300, 410), (300, 520), (420, 590)],                                             # 西街 → 酒馆
-    [(1450, 445), (1520, 380), (1560, 350)],                                          # 东街 → 兵营
-    [(300, 410), (230, 330)],                                                         # 西街 → 公园
+    [(886, 445), (886, 270)],                                                         # 广场 → 大教堂(大道)
+    [(886, 445), (1000, 455), (1300, 460), (1500, 448), (1640, 445), (1774, 445)],    # 广场 → 集市街 → 东门
+    [(886, 445), (700, 452), (450, 455), (220, 450), (60, 445)],                      # 广场 → 西街(酒馆)
+    [(886, 445), (886, 705), (886, 887)],                                             # 广场 → 运河主桥 → 南门
+    [(820, 405), (640, 318)],                                                         # → 佣兵公会
+    [(955, 405), (1130, 318)],                                                        # → 帝国学院
+    [(470, 455), (430, 560), (330, 600)],                                             # 西街 → 公园
+    [(1300, 460), (1330, 580), (1345, 705), (1300, 790), (1150, 840)],                # 集市 → 码头桥 → 河南岸小路
+    [(300, 450), (300, 120)],                                                         # 西北巷
+    [(1480, 448), (1480, 130)],                                                       # 东北巷
 ]
 # 空地 / 前场(原型像素 x, y, rx, ry):不放房子
 AREAS_PX = [
-    (770, 455, 120, 75),    # 罗盘广场
-    (790, 230, 110, 45),    # 教堂前场
-    (590, 325, 80, 40),     # 公会前院
-    (1170, 350, 90, 40),    # 学院门前
-    (1060, 560, 120, 45),   # 集市
-    (420, 600, 80, 40),     # 酒馆门前
-    (1560, 360, 80, 40),    # 兵营前
-    (1690, 480, 70, 45),    # 东门内
-    (590, 820, 70, 40),     # 南门内
-    (210, 320, 120, 80),    # 公园
+    (886, 445, 140, 80),    # 罗盘广场
+    (886, 265, 95, 30),     # 大教堂台阶前
+    (505, 312, 75, 30),     # 公会门前
+    (1250, 318, 85, 30),    # 学院门前
+    (1185, 498, 150, 48),   # 集市
+    (430, 500, 75, 30),     # 酒馆门前(露天座)
+    (1585, 460, 70, 38),    # 东门内
+    (886, 790, 80, 45),     # 南门内(河南岸)
+    (305, 640, 150, 70),    # 公园池塘
+    (1500, 665, 90, 30),    # 码头
 ]
-CANAL_Y_PX = 735
-CANAL_BRIDGES_PX = [620, 1250]
+CANAL_Y_PX = 705
+CANAL_BRIDGES_PX = [886, 1345]
+# 民居街区(原型像素矩形):房子只摆在这些块里(其余是广场 / 地标 / 公园 / 城外草坡)
+BLOCK_RECTS_PX = [(120, 95, 700, 425), (1060, 75, 1700, 300), (1400, 300, 1560, 425), (500, 480, 860, 655), (960, 540, 1300, 655),
+                  (1380, 470, 1560, 560)]
 
 # ── 地标(原型像素脚线, 素材, 显示宽, 挡块宽/深, 名牌)──
 LANDMARKS = [
-    ('cathedral', 790, 200, 2500, (2000, 360), '圣辉大教堂'),
-    ('guild_hall', 560, 300, 1500, (1150, 260), '佣兵公会'),
-    ('academy', 1190, 330, 1900, (1500, 300), '帝国学院'),
-    ('tavern', 410, 590, 1100, (820, 220), '金麦酒馆'),
-    ('barracks', 1580, 345, 1500, (1150, 240), '王都兵营'),
+    ('cathedral', 886, 240, 1720, (1500, 330), '圣辉大教堂'),  # 11-09 伐木村画风版带钟楼更高(宽高比 1.1),缩宽防止塔顶出地图上沿
+    ('guild_hall', 505, 296, 1800, (1400, 280), '佣兵公会'),
+    ('academy', 1250, 302, 2350, (1850, 300), '帝国学院'),
+    ('tavern', 430, 486, 1100, (820, 220), '金麦酒馆'),
+    ('barracks', 1390, 424, 1900, (1500, 250), '王都兵营'),
 ]
 # NPC(原型像素站位, 码, 名字, 素材, 朝向):任务 / 商店 / 情报 / 活人
 NPCS = [
-    ('SCHOLAR', '帝国学者 · 艾德里安', 'npc_scholar', 1150, 365, -1),
-    ('GUILDMASTER', '公会会长 · 维克', 'npc_guildmaster', 615, 335, 1),
-    ('CAPTAIN', '卫队长 · 罗兰', 'npc_captain', 1665, 470, -1),
-    ('MERCHANT', '杂货商 · 托比', 'npc_merchant', 1015, 575, 1),
-    ('INNKEEPER', '酒馆老板 · 巴克', 'npc_innkeeper', 440, 612, 1),
-    ('BARD', '吟游诗人 · 林恩', 'npc_bard', 705, 485, 1),
-    ('FLOWER_GIRL', '卖花姑娘 · 艾米', 'npc_flower_girl', 845, 520, -1),
-    ('OLD_MAN', '老镇民 · 霍克', 'npc_old_man', 240, 345, 1),
-    ('CHILD', '小汤姆', 'npc_child', 190, 365, 1),
-    ('VENDOR', '果摊大婶 · 玛莎', 'npc_vendor', 1105, 585, -1),
-    ('GUARD_S', '城门卫兵', 'npc_guard', 630, 815, -1),
-    ('GUARD_E', '城门卫兵', 'npc_guard', 1700, 520, -1),
+    ('SCHOLAR', '帝国学者 · 艾德里安', 'npc_scholar', 1205, 332, 1),
+    ('GUILDMASTER', '公会会长 · 维克', 'npc_guildmaster', 560, 325, -1),
+    ('CAPTAIN', '卫队长 · 罗兰', 'npc_captain', 1560, 470, 1),
+    ('MERCHANT', '杂货商 · 托比', 'npc_merchant', 1120, 520, 1),
+    ('INNKEEPER', '酒馆老板 · 巴克', 'npc_innkeeper', 470, 505, 1),
+    ('BARD', '吟游诗人 · 林恩', 'npc_bard', 800, 478, 1),
+    ('FLOWER_GIRL', '卖花姑娘 · 艾米', 'npc_flower_girl', 965, 480, -1),
+    ('OLD_MAN', '老镇民 · 霍克', 'npc_old_man', 220, 600, 1),
+    ('CHILD', '小汤姆', 'npc_child', 250, 615, 1),
+    ('VENDOR', '果摊大婶 · 玛莎', 'npc_vendor', 1255, 525, -1),
+    ('GUARD_S', '城门卫兵', 'npc_guard', 830, 815, 1),
+    ('GUARD_E', '城门卫兵', 'npc_guard', 1615, 482, -1),
 ]
-BOARD_PX = (870, 480)
+BOARD_PX = (978, 418)
 
-TALL_TREES = {'oak': (V3('tree_oak'), (480, 600)), 'pine': (V3('tree_pine'), (360, 460))}
-HOUSES = {
-    'house_a': (650, 820), 'house_b': (620, 760), 'house_c': (650, 820), 'house_d': (460, 560), 'house_e': (760, 900), 'house_f': (640, 780),
+TALL_TREES = {'oak': (C4('tree_oak'), (480, 600)), 'pine': (C4('tree_pine'), (360, 460))}  # 11-09 换手绘树
+# 11-09 A 手绘风:民居约 4~5 人高(人约 230 世界单位高),沿街成排
+HOUSES = {  # 11-09 P1:按原型民居尺度(约 3 人高),街区才排得下成片的房子
+    'house_a': (640, 760), 'house_b': (620, 740), 'house_c': (640, 760), 'house_d': (520, 620), 'house_e': (700, 820), 'house_f': (640, 760),
 }
 LOW = {
-    'bush': (V3('bush'), (150, 210)),
+    'bush': (C4('bush'), (150, 210)),
     'planter': (C4('planter'), (220, 280)),
     'barrels': (C4('barrels'), (180, 230)),
     'bench': (C4('bench'), (200, 240)),
 }
 
-ZONE_COLOR = {'street': (210, 190, 150), 'side': (230, 215, 180), 'block': (170, 120, 90), 'open': (250, 238, 120),
+ZONE_COLOR = {'street': (210, 190, 150), 'side': (230, 215, 180), 'block': (170, 120, 90), 'open': (250, 238, 120), 'nature': (120, 170, 90),
               'park': (90, 160, 80), 'canal': (70, 120, 160), 'wall': (90, 90, 90)}
 
 PLACEHOLDER_ASPECT = {'cathedral': 0.75, 'guild_hall': 0.7, 'academy': 0.6, 'tavern': 0.85, 'barracks': 0.55, 'gatehouse': 0.7,
@@ -203,59 +210,63 @@ def build_skeleton():
         k += 1
     bridges = []
     for bx in CANAL_BRIDGES_PX:
-        bridges.append({'asset': C4('canal_bridge'), 'x': wx(bx), 'y': cy + 20, 'width': 760, 'flat': True})
-    for bx, flip in ((1330, False), (1440, True), (860, False)):
+        bridges.append({'asset': C4('canal_bridge'), 'x': wx(bx), 'y': cy + 20, 'width': 560, 'flat': True})  # 11-09 短桥(长约 1.5 倍宽)刚好跨过运河
+    for bx, flip in ((1250, False), (1460, True), (560, False)):
         flats.append({'asset': C4('boat'), 'x': wx(bx), 'y': cy - 30, 'width': 520, 'flat': True, 'flipX': flip})
-    # 城墙:北墙一排(带塔),南墙一排(南门处开口放门楼),东 / 西墙竖条(东门处开口放门楼)
+    # 城墙:只在北边一道(大教堂身后),两端各一座圆塔;东西两侧不砌墙(11-09 用户:两边竖墙重叠难看),用树林草坡收边
     top = MAP_H / 2 - 60
+    x0, x1 = wx(150), wx(1650)
+    x = x0
+    i = 0
+    while x < x1:
+        st('wall_h', x + 500, top - 330, 1000, blk(1000, 120), flip=i % 2 == 1)
+        x += 960
+        i += 1
+    st('wall_tower', x0 - 80, top - 380, 520, blk(360, 150))
+    st('wall_tower', x1 + 80, top - 380, 520, blk(360, 150), flip=True)
+    # 南门:河南岸大道尽头;东门:东街尽头贴地图边
+    gate_s = wx(886)
     bottom = -MAP_H / 2 + 40
-    gate_s = wx(590)
-    x = -MAP_W / 2
-    i = 0
-    while x < MAP_W / 2:
-        st('wall_h', x + 500, top - 360, 1000, blk(1000, 120), flip=i % 2 == 1)
-        if i % 3 == 1:
-            st('wall_tower', x + 1000, top - 420, 460, blk(320, 140))
-        x += 980
-        i += 1
-    x = -MAP_W / 2
-    i = 0
-    while x < MAP_W / 2:
-        if abs(x + 500 - gate_s) < 1000:
-            x += 980
-            i += 1
-            continue
-        st('wall_h', x + 500, bottom, 1000, blk(1000, 120), flip=i % 2 == 1)
-        x += 980
-        i += 1
     st('gatehouse', gate_s, bottom - 10, 1300, None, label='南门')
     stands[-1]['gate'] = True
-    gate_e_y = wy(480)
     for sx in (-1, 1):
-        xx = sx * (MAP_W / 2 - 260)
-        y = bottom + 600
-        while y < top - 300:
-            if sx > 0 and abs(y - gate_e_y) < 750:
-                y += 820
-                continue
-            st('wall_v', xx, y, 520, blk(400, 700), flip=sx < 0)
-            y += 820
-    st('gatehouse', MAP_W / 2 - 420, gate_e_y - 120, 1100, None, label='东门')
+        st('wall_h', gate_s + sx * 1150, bottom + 40, 1000, blk(1000, 120), flip=sx > 0)
+    gate_e_y = wy(445)
+    st('gatehouse', MAP_W / 2 - 520, gate_e_y - 120, 1200, None, label='东门')
     stands[-1]['gate'] = True
-    # 广场:公告板 / 旗杆 / 雕像;集市摊位;公园喷泉 / 井
+    # 广场:公告板 / 喷泉;大道两侧旗杆 + 柏树 + 花坛;集市摊位;公园池塘 + 骑士像 + 长椅;码头栈桥
     bx, by = P(*BOARD_PX)
     board = {'key': 'board', 'label': '公告板', 'asset': C4('notice_board'), 'x': bx, 'y': by, 'width': 300,
              'footprint': {'w': 200, 'd': 50}, 'door': {'x': -70, 'y': -50}}
-    for dx in (-1, 1):
-        st('banner', px + dx * 1050, py + 260, 260, blk(80, 40))
-        st('statue', px + dx * 820, py - 520, 340, blk(180, 80), flip=dx > 0)
-    for i, (sx, sy) in enumerate(((950, 520), (1000, 530), (1085, 530), (1135, 545), (1040, 610), (1110, 620))):
-        x, y = P(sx, sy)
+    fx, fy = P(765, 385)
+    st('fountain', fx, fy, 560, blk(420, 140))
+    for sx in (-1, 1):
+        ax_, ay_ = P(886 + sx * 62, 300)
+        st('banner', ax_, ay_, 230, blk(70, 40), flip=sx > 0)
+        for k, cy_ in enumerate((215, 250, 285)):
+            cx_, cyy = P(886 + sx * (105 + k * 8), cy_)
+            st('cypress', cx_, cyy, 210, blk(70, 40), flip=k % 2 == 1)
+        # 11-09 实机:6 个花箱围着罗盘又大又挤、红花跳色 → 只留大道口一对,缩到 320
+        bx_, by_ = P(886 + sx * 95, 330)
+        st('flower_bed', bx_, by_, 320, blk(290, 60), flip=sx > 0)
+    for i, (sx_, sy_) in enumerate(((1090, 478), (1150, 470), (1215, 472), (1270, 480), (1120, 530), (1200, 528))):
+        x, y = P(sx_, sy_)
         st('stall_a' if i % 2 == 0 else 'stall_b', x, y, 460, blk(360, 90), flip=i % 3 == 2)
-    fx, fy = P(205, 320)
-    st('fountain', fx, fy, 520, blk(400, 140))
-    wx_, wy_ = P(1520, 600)
-    st('well', wx_, wy_, 300, blk(180, 80))
+    # 11-09 实机:池塘石边压到运河上 → 缩小北挪,雕像跟着北移
+    pdx, pdy = P(305, 628)
+    flats.append({'asset': C4('pond'), 'x': pdx, 'y': pdy, 'width': 1400, 'flat': True, 'water': True})
+    sx_, sy_ = P(318, 570)
+    st('statue', sx_, sy_, 200, blk(120, 60))
+    for (bx_, by_, f) in ((285, 565, False), (395, 632, True), (215, 690, False)):
+        x, y = P(bx_, by_)
+        st('bench', x, y, 230, blk(180, 40), flip=f)
+    for (dx_, f) in ((1460, False), (1580, True)):
+        x, y = P(dx_, 680)
+        flats.append({'asset': C4('pier'), 'x': x, 'y': y, 'width': 900, 'flat': True, 'flipX': f})
+    for (rx_, ry_, w) in ((60, 840, 900), (190, 870, 760), (1560, 810, 900), (1700, 760, 820), (1730, 250, 700), (1740, 520, 640),
+                          (40, 200, 640)):
+        x, y = P(rx_, ry_)
+        st('rocks', x, y, w, blk(w * 0.7, 120), flip=rx_ > 900)
     return roads, areas, flats, stands, bridges, board
 
 
@@ -270,17 +281,17 @@ def build_points():
     px, py = P(*PLAZA_PX)
     waypoint = {'x': px, 'y': py}
     spawn = {'x': px, 'y': py - 500}
-    gate_s = wx(590)
+    gate_s = wx(886)
     exits = [
         {'key': 'to_woods', 'label': '前往 · 村外林地', 'x': gate_s, 'y': -MAP_H // 2 + 140, 'radius': 140, 'toMap': 'WOODS',
          'toSpawn': {'x': 8250, 'y': 788}},
-        {'key': 'to_gray', 'label': '前往 · 灰岩荒原', 'x': MAP_W // 2 - 140, 'y': wy(480), 'radius': 140, 'toMap': 'GRAY',
+        {'key': 'to_gray', 'label': '前往 · 灰岩荒原', 'x': MAP_W // 2 - 140, 'y': wy(445), 'radius': 140, 'toMap': 'GRAY',
          'toSpawn': {'x': -8560, 'y': -190}},
     ]
     places = [{'name': n, 'x': wx(x), 'y': wy(y), 'icon': ic} for n, ic, x, y in [
-        ('罗盘广场', 'portal', 770, 455), ('圣辉大教堂', 'place', 790, 230), ('佣兵公会', 'npc', 590, 330), ('帝国学院', 'npc', 1170, 360),
-        ('集市街', 'npc', 1060, 570), ('金麦酒馆', 'npc', 420, 605), ('王都兵营', 'place', 1570, 365), ('小公园', 'place', 210, 330),
-        ('南门', 'place', 590, 830), ('东门', 'place', 1730, 480)]]
+        ('罗盘广场', 'portal', 886, 445), ('圣辉大教堂', 'place', 886, 265), ('佣兵公会', 'npc', 505, 315), ('帝国学院', 'npc', 1250, 320),
+        ('集市街', 'npc', 1185, 500), ('金麦酒馆', 'npc', 430, 500), ('王都兵营', 'place', 1390, 440), ('公园', 'place', 305, 620),
+        ('码头', 'place', 1500, 665), ('南门', 'place', 886, 820), ('东门', 'place', 1640, 445)]]
     return waypoint, spawn, exits, places
 
 
@@ -295,7 +306,7 @@ class Grid:
         xs = (np.arange(self.nx) * CELL - MAP_W / 2 + CELL / 2).astype(np.float32)
         ys = (MAP_H / 2 - np.arange(self.ny) * CELL - CELL / 2).astype(np.float32)
         self.X, self.Y = np.meshgrid(xs, ys)
-        self.zone = np.full((self.ny, self.nx), 'block', dtype=object)
+        self.zone = np.full((self.ny, self.nx), 'nature', dtype=object)
         self.blocked = np.zeros((self.ny, self.nx), bool)
 
     def idx(self, x, y):
@@ -311,11 +322,13 @@ def build_grid(roads, areas, flats, stands, points):
     g = Grid()
     g.d_road = seg_dist(g.X, g.Y, roads)
     z = g.zone
-    z[:] = 'block'
+    z[:] = 'nature'
+    for x0, y0, x1, y1 in BLOCK_RECTS_PX:
+        z[(g.X >= wx(x0)) & (g.X <= wx(x1)) & (g.Y <= wy(y0)) & (g.Y >= wy(y1))] = 'block'
     ell = np.zeros(z.shape, bool)
     for x, y, rx, ry in areas:
         ell |= ((g.X - x) / rx) ** 2 + ((g.Y - y) / ry) ** 2 <= 1
-    park = ((g.X - wx(210)) / (150 * S)) ** 2 + ((g.Y - wy(320)) / (95 * S)) ** 2 <= 1
+    park = ((g.X - wx(305)) / (190 * S)) ** 2 + ((g.Y - wy(640)) / (95 * S)) ** 2 <= 1
     z[park] = 'park'
     z[ell & ~park] = 'open'
     z[(g.d_road > STREET_HALF) & (g.d_road <= STREET_HALF + 160)] = 'side'
@@ -324,7 +337,7 @@ def build_grid(roads, areas, flats, stands, points):
     canal = np.abs(g.Y - cy) < 300
     z[canal] = 'canal'
     z[(np.abs(g.Y - cy) >= 300) & (np.abs(g.Y - cy) < 420)] = 'side'
-    wall = (g.Y > MAP_H / 2 - 520) | (g.Y < -MAP_H / 2 + 420) | (np.abs(g.X) > MAP_W / 2 - 560)
+    wall = g.Y > MAP_H / 2 - 520
     z[wall] = 'wall'
     g.blocked |= canal | wall
     for it in stands:
@@ -354,34 +367,96 @@ def cover_ok(g, rect, base_y, min_road=STREET_HALF + 40):
     return True
 
 
+REJ = {}
+
+
+def nearest_road(x, y):
+    """离 (x, y) 最近的街道点与该段方向。"""
+    best = None
+    for line in ROAD_WORLD:
+        for (ax, ay), (bx, by) in zip(line, line[1:]):
+            dx, dy = bx - ax, by - ay
+            L2 = max(1.0, dx * dx + dy * dy)
+            t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / L2))
+            px, py = ax + dx * t, ay + dy * t
+            d = math.hypot(x - px, y - py)
+            if best is None or d < best[0]:
+                L = math.sqrt(L2)
+                best = (d, px, py, dx / L, dy / L)
+    return best
+
+
 def place_houses(g, stands, rnd):
-    """民居:在 block 区按泊松撒候选点,脚线离街 ≥ 街半宽 + 60(门口贴着街),贴图不盖身后的街 / 广场;互不重叠。"""
+    """民居(11-09 用户「摆件乱糟糟没有规律,重叠度高」):候选点同原来(block 区泊松、近街优先),
+    但离街近的(≤ 900)按最近一段街「对齐成排」——脚线落到离街中线固定距离的那条平行线上,门朝街;
+    陡的街段(接近竖直)不排,只用横向的;互不重叠(阈值 2%),不盖身后的街 / 广场。"""
     rects = [rect_of(s['asset'], s['x'], s['y'], s['width'])[0] for s in stands]
     out = []
     iy, ix = np.where((g.zone == 'block') & ~g.blocked)
     cand = [(float(g.X[i, j]), float(g.Y[i, j])) for i, j in zip(iy[::2], ix[::2])]
     rnd.shuffle(cand)
-    # 优先离街近的点(面朝街),再填里面
     cand.sort(key=lambda p: abs(float(seg_dist(np.array(p[0]), np.array(p[1]), ROAD_WORLD)) - (STREET_HALF + 260)))
     names = list(HOUSES)
     for (x, y) in cand:
-        d = float(seg_dist(np.array(x), np.array(y), ROAD_WORLD))
-        if d < STREET_HALF + 80:
+        d, px, py, tx, ty = nearest_road(x, y)
+        if d < STREET_HALF + 40:
+            REJ['near'] = REJ.get('near', 0) + 1
             continue
         name = names[rnd.randrange(len(names))]
         lo, hi = HOUSES[name]
         w = rnd.uniform(lo, hi)
         asset = C4(name)
+        if d <= 520 and abs(tx) > 0.8:
+            # 对齐成排:街北侧脚线 = 街中线 + 街半宽 + 60;街南侧往下推一个屋高的大半(屋顶不盖街)
+            road_y = py + (x - px) * (ty / tx)
+            if y > road_y:
+                y = road_y + STREET_HALF + 60
+            else:
+                y = road_y - STREET_HALF - 60 - w * aspect(asset) * 0.6
         rect, h = rect_of(asset, x, y, w)
-        if any(overlap(rect, r) > 0.03 * min(area(rect), area(r)) for r in rects):
+        if any(overlap(rect, r) > 0.02 * min(area(rect), area(r)) for r in rects):
+            REJ['overlap'] = REJ.get('overlap', 0) + 1
             continue
         if not cover_ok(g, rect, y):
+            REJ['cover'] = REJ.get('cover', 0) + 1
             continue
-        it = {'asset': asset, 'x': round(x), 'y': round(y), 'width': round(w), 'block': blk(w * 0.82, min(h * 0.45, 220)), 'house': True}
-        if rnd.random() < 0.5:
+        i_ = g.idx(x, y)
+        if g.zone[i_] in ('street', 'canal', 'wall', 'open') or g.blocked[i_]:
+            REJ['zone'] = REJ.get('zone', 0) + 1
+            continue
+        out.append({'asset': asset, 'x': round(x), 'y': round(y), 'width': round(w), 'block': blk(w * 0.82, min(h * 0.45, 260)), 'house': True})
+        rects.append(rect)
+    return out
+
+
+P1_HOUSES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'deco_hand', 'city_p1_houses.json')
+
+
+def hand_houses(stands, rnd):
+    """11-09 主城 P1:民居按原型逐栋量的位置摆(deco_hand/city_p1_houses.json),不再随机撒。
+    原型屋宽 px × S × 1.1 = 显示宽;窄屋(< 55 px)用窄高的 house_d,连排(> 100 px)用双联 house_e,其余在 a / b / c / f 里轮换;
+    和地标重叠过 8% 的跳过(地标位置以生成器为准)。"""
+    data = json.load(open(P1_HOUSES, encoding='utf-8'))
+    rects = [rect_of(s['asset'], s['x'], s['y'], s['width'])[0] for s in stands]
+    normal = ['house_a', 'house_b', 'house_c', 'house_f']
+    out = []
+    for k, (px, py, pw) in enumerate(data['houses']):
+        name = 'house_d' if pw < 55 else 'house_e' if pw > 100 else normal[k % len(normal)]
+        w = round(pw * S * 1.1)
+        asset = C4(name)
+        x, y = wx(px), wy(py)
+        rect, h = rect_of(asset, x, y, w)
+        if any(overlap(rect, r) > 0.08 * min(area(rect), area(r)) for r in rects):
+            REJ['hand_landmark'] = REJ.get('hand_landmark', 0) + 1
+            continue
+        # 民居之间:前后排贴图互相遮一截是正常的纵深;只拦脚点几乎重合的(同一排挤在一起)
+        if any(abs(x - o['x']) < (w + o['width']) * 0.42 and abs(y - o['y']) < 160 for o in out):
+            REJ['hand_crowd'] = REJ.get('hand_crowd', 0) + 1
+            continue
+        it = {'asset': asset, 'x': x, 'y': y, 'width': w, 'block': blk(w * 0.82, min(h * 0.45, 240)), 'house': True}
+        if k % 3 == 1:
             it['flipX'] = True
         out.append(it)
-        rects.append(rect)
     return out
 
 
@@ -402,15 +477,15 @@ def place_greenery(g, stands, rnd):
         rects.append(rect)
         return True
 
-    for zone, n, kinds in (('park', 60, ['oak', 'oak', 'pine']), ('block', 260, ['oak', 'pine']), ('side', 80, ['oak'])):
+    for zone, n, kinds in (('park', 14, ['oak', 'oak', 'pine']), ('nature', 90, ['oak', 'oak', 'pine']), ('block', 40, ['oak', 'pine'])):
         iy, ix = np.where((g.zone == zone) & ~g.blocked)
         for _ in range(n * 6):
             if not len(iy):
                 break
             k = rnd.randrange(len(iy))
             x, y = float(g.X[iy[k], ix[k]]), float(g.Y[iy[k], ix[k]])
-            if zone == 'park' and math.hypot(x - wx(205), (y - wy(320)) / 0.7) < 700:
-                continue  # 喷泉周围留空
+            if zone == 'park' and math.hypot(x - wx(305), (y - wy(650)) / 0.7) < 900:
+                continue  # 池塘周围留空
             if try_tree(x, y, kinds[rnd.randrange(len(kinds))]):
                 n -= 1
                 if n <= 0:
@@ -429,20 +504,30 @@ def place_greenery(g, stands, rnd):
         rects.append(rect)
         return True
 
-    # 房子门前:花箱 / 木桶;树下:灌木
+    # 房前贴墙根:屋角一组木桶 / 门旁一张长椅(脚线就在墙根下 30,画在房子前面像靠着墙)
     for s in stands:
-        if s.get('house') and rnd.random() < 0.55:
-            try_low(rnd.choice(['planter', 'barrels', 'planter']), s['x'] + rnd.uniform(-0.3, 0.3) * s['width'], s['y'] - 70)
+        if not s.get('house'):
+            continue
+        roll = rnd.random()
+        corner = s['x'] + (1 if rnd.random() < 0.5 else -1) * s['width'] * 0.36
+        if roll < 0.45:
+            try_low('barrels', corner, s['y'] - 30, 0.9)
+        elif roll < 0.7:
+            try_low('bench', s['x'] + rnd.uniform(-0.15, 0.15) * s['width'], s['y'] - 30, 0.9)
     for t in list(tall):
         if rnd.random() < 0.5:
             try_low('bush', t['x'] + rnd.uniform(-0.2, 0.2) * t['width'], t['y'] - 50)
-    # 广场 / 公园长椅
+    # 广场边长椅(两侧各一张,朝广场)
     px, py = P(*PLAZA_PX)
-    for a in (200, 340):
-        for sgn in (-1, 1):
-            try_low('bench', px + sgn * 1150, py - 260 + (a - 200) * 3)
-    for _ in range(8):
-        try_low('bench', wx(210) + rnd.uniform(-900, 900), wy(320) + rnd.uniform(-500, 500))
+    for sgn in (-1, 1):
+        try_low('bench', px + sgn * 1250, py - 420)
+    # 城外草坡:灌木丛点缀
+    iy, ix = np.where((g.zone == 'nature') & ~g.blocked)
+    for _ in range(60):
+        if not len(iy):
+            break
+        k = rnd.randrange(len(iy))
+        try_low('bush', float(g.X[iy[k], ix[k]]), float(g.Y[iy[k], ix[k]]))
     return tall, low
 
 
@@ -519,12 +604,12 @@ def generate(seed=11):
     points = [(n['x'], n['y'], 320) for n in npcs] + [(e['x'], e['y'], 360) for e in exits] + \
         [(waypoint['x'], waypoint['y'], 600), (spawn['x'], spawn['y'], 300), (board['x'], board['y'], 260)]
     g = build_grid(roads, areas, flats, stands + [board], points)
-    houses = place_houses(g, stands + [board], rnd)
+    houses = hand_houses(stands + [board], rnd) if os.path.exists(P1_HOUSES) else place_houses(g, stands + [board], rnd)
     stands = stands + houses
     g = build_grid(roads, areas, flats, stands + [board], points)
     tall, low = place_greenery(g, stands + [board], rnd)
     lamps = lamps_along(roads, g, rnd)
-    stands, tall, low = apply_hand_deco(stands, tall, low, seed)
+    # 11-09:主城不再套 GPT 原型手摆组(树篱横穿房子 / 花箱悬空就出在这里),全部按街道规则摆
     return {'roads': roads, 'areas': areas, 'flats': flats, 'bridges': bridges, 'stands': stands, 'board': board, 'npcs': npcs,
             'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': tall, 'low': low, 'lamps': lamps}, g
 

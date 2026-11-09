@@ -31,9 +31,25 @@ ROOT = LAY.ROOT
 SRC = GEN.OUT
 DST = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'city4')
 BACKUP = os.path.join(ROOT, '素材原始备份', 'city4-20261108')
+if GEN.STYLE == 'fa':  # 11-09 伐木村画风:原图另存,不覆盖写实版备份
+    BACKUP = os.path.join(ROOT, '素材原始备份', 'city4-20261109-fa')
+if GEN.STYLE == 'jw':  # 11-09 精致风 A
+    BACKUP = os.path.join(ROOT, '素材原始备份', 'city4-20261109-jw')
 ZOOM = 1.4
 MAX_PX = 2048
 
+
+
+def _retry(fn, n=8):
+    """Creator 监听目录偶发占用文件(Errno 22/13),稍等重试。"""
+    import time
+    for i in range(n):
+        try:
+            return fn()
+        except OSError:
+            if i == n - 1:
+                raise
+            time.sleep(1.5)
 
 def display_widths():
     L, _ = LAY.generate()
@@ -84,7 +100,10 @@ def install_obj(name, need):
     asset = LAY.C4(name)
     os.makedirs(BACKUP, exist_ok=True)
     shutil.copy2(src, os.path.join(BACKUP, name + '.png'))
-    rgba = prepare(src, key or 'magenta')
+    key = key or 'magenta'
+    if GEN.STYLE == 'jw' and key == 'magenta':
+        key = 'magenta_strict'  # 精致风橙瓦 / 紫石板 / 紫旗不能被品红判据吃掉
+    rgba = prepare(src, key)
     if name == 'canal':
         # 运河段:左右两端直切串段,端头渐隐盖接缝(横向)
         rgba = feather(rgba.rotate(90, expand=True), 0.01, ends=0.06).rotate(-90, expand=True)
@@ -100,7 +119,7 @@ def install_obj(name, need):
     if tpl == 'npc' and rgba.height > 768:
         rgba = resize_premul(rgba, round(rgba.width * 768 / rgba.height), 768)
     out = os.path.join(DST, f'city4_{name}.png')
-    rgba.save(out, optimize=True)
+    _retry(lambda: rgba.save(out, optimize=True))
     WG.write_meta(out, png_meta(f'city4_{name}', rgba.width, rgba.height))
     print('installed', out, rgba.size, f'(显示宽 {disp:.0f})')
 
@@ -111,7 +130,7 @@ def install_tex(name):
     shutil.copy2(src, os.path.join(BACKUP, name + '.png'))
     im = Image.open(src).convert('RGB').resize((1024, 1024), Image.LANCZOS)
     out = os.path.join(DST, f'{name}.jpg')
-    im.save(out, quality=90, subsampling=0)
+    _retry(lambda: im.save(out, quality=90, subsampling=0))
     WG.write_meta(out, WG.meta_for(name, '.jpg', 1024, 1024, True, True))
     print('installed', out)
 

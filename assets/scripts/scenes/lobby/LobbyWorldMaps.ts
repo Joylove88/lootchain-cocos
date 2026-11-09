@@ -333,6 +333,8 @@ export interface WorldMapDef {
   groundShadows?: boolean;
   /** 高立物投影不透明度(默认 120,林地深色草地上实测 78 看不出);浅色地面(荒原)压淡,否则投影像一块黑多边形。 */
   castShadowOpacity?: number;
+  /** 这些贴图不投方向影(旗杆 / 摊位 / 花箱 / 长椅等细小件:贴图整体压扁斜切出来是一大块黑多边形,11-09 主城实机);仍有脚下接地暗斑。 */
+  castShadowSkip?: string[];
   /** 镜头拉远倍数(11-08 林地 1.4:同屏看到的范围按倍数放大,头顶字 / 血条 / 飘字反向放大保持屏上大小)。不给 = 1。 */
   cameraZoom?: number;
 }
@@ -736,11 +738,13 @@ const CITY: WorldMapDef = {
     meadow: worldAsset('city4/tex_grass'),
     dirt: worldAsset('city4/tex_street'),
     leaf: worldAsset('city4/tex_flagstone'),
-    tiles: [300, 520, 420, 340, 460],
+    // 11-09 精致风地面:细卵石约 22 一块、街面扇形大块约 45 一块(苔痕层是同纹理变体,尺寸一致才不成迷彩)
+    tiles: [560, 560, 600, 520, 600],
   },
   groundShadows: true,
   // 高建筑的斜投影在街上压出整片暗块(实机 11-08)→ 主城再淡一些
   castShadowOpacity: 64,
+  castShadowSkip: ['city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
   buildings: [
     // 剧情任务公告板(docs/50 §4.1):罗盘广场东侧
     { ...CITY_V4_BOARD, asset: worldAsset(CITY_V4_BOARD.asset), action: 'npc', npc: 'BOARD' },

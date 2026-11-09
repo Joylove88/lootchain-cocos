@@ -1506,7 +1506,8 @@ export class LobbyTownRenderer {
     }
     const group = (key: string): Node => layer!.getChildByName(key) ?? this.host.addChildPlainNode(layer!, key, 0, 0, 10, 10);
     const name = `Sh_${index}`;
-    if (h >= OCCLUDER_MIN_H && prop.block) {
+    const skipCast = (this.def.castShadowSkip ?? []).some((k) => prop.asset.includes(k));
+    if (h >= OCCLUDER_MIN_H && prop.block && !skipCast) {
       const outer = this.host.addChildPlainNode(group(`Cast_${prop.asset}`), name, prop.x, prop.y + 4, 10, 10);
       outer.angle = -9.09;
       const mid = this.host.addChildPlainNode(outer, 'S', 0, 0, 10, 10);

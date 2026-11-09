@@ -22,7 +22,7 @@ ROCK_ASSETS = ('vil3_cliff_s',)
 # 11-08 灰岩荒原:峡谷段整块不可走(贴图本身就是抠好的谷,按不透明像素算;峡谷是灰色,按颜色判会把两岸龟裂土也算进去)
 ALPHA_ASSETS = ('gray4_gorge', 'city4_canal/')  # 主城运河(含两岸石砌堤)整段不可走,石桥按桥面留空
 # 矿坑:只有坑心不可走(外圈台阶 / 坑沿能走),按贴图内椭圆算
-PIT_ASSETS = ('gray4_quarry_pit', 'dead4_bog_pool')
+PIT_ASSETS = ('gray4_quarry_pit', 'dead4_bog_pool', 'city4_pond')
 # 11-09 枯木林黑溪:两岸泥岸可走,只有中间水面一条不可走(按贴图不透明像素的中间带算;暗色溪水按颜色判不出来)
 CREEK_ASSETS = ('dead4_creek',)
 # 桥面(按贴图不透明像素留空):石桥 / 树根桥

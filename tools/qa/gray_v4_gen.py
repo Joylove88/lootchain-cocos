@@ -409,7 +409,7 @@ def build_points():
     waypoint = {'x': cx - 60, 'y': cy - 40}
     spawn = {'x': cx + 120, 'y': cy - 260}
     exits = [{'key': 'to_city', 'label': '返回 · 主城', 'x': -MAP_W // 2 + 140, 'y': wy(462), 'radius': 130,
-              'toMap': 'CITY', 'toSpawn': {'x': 6300, 'y': -288}}]  # 11-08 主城 v4 东门内
+              'toMap': 'CITY', 'toSpawn': {'x': 6000, 'y': -12}}]  # 11-09 主城 P1 东门内
     places = [{'name': n, 'x': wx(x), 'y': wy(y), 'icon': ic} for n, ic, x, y in PLACES_PX]
     return chests, pois, waypoint, spawn, exits, places
 

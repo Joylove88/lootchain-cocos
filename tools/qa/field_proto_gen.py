@@ -40,6 +40,21 @@ REAL = (
     'photo. Wide 2:1 landscape, fill the whole frame edge to edge. Absolutely NO text, NO labels, NO UI, NO people.'
 )
 
+STYLE_A = os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'style_proto', 'city_a.png')
+PAINT_SHEET = os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'city4p', 'sheet.jpg')
+CITY_PAINT = (
+    'Top-down oblique (about 50 degrees) birds-eye overview of our whole game hub city, used as a game map. Image 1 is a rough layout '
+    'sketch: follow it for where every district, street and landmark goes (coloured ellipses are only markers, do not draw ellipses '
+    'or text). Image 2 is the ART STYLE you must match exactly: hand-painted stylized fantasy map art, warm sunlight from the upper '
+    'left, soft painterly textures, harmonious warm sandstone / slate-blue roofs / rich greens. Image 3 shows our existing building '
+    'and prop designs: draw the buildings, walls, stalls, trees and props to look like these. Layout rules: houses stand in neat rows '
+    'along the streets with their doors facing the street, gardens and trees behind them; every object at consistent real scale '
+    '(houses 4-6 people tall); nothing overlaps; streets and the central plaza are wide, clean and open; greenery in parks and along '
+    'edges, flower beds and small trees in tidy groups. Wide 2:1 landscape, fill the whole frame. No text, no labels, no UI, no '
+    'people. '
+)
+
+
 JOBS = {
     'gray_r1': (['SKETCH:gray'], (
         'Oblique aerial photograph of a grey limestone badlands / semi-desert plateau (think Spanish Bardenas Reales, Utah badlands '
@@ -70,6 +85,14 @@ JOBS = {
         'stone chapel; south-east - an abandoned woodcutter hamlet of a few collapsed timber cottages, stacked logs and a broken '
         'cart; north-east - a ring of tall mossy standing stones; far east - a hollow where one colossal dead world-tree with a '
         'split trunk towers over a crooked witch hut. Leave open flat ground around each area. ' + REAL)),
+    # 11-09 主城重设计(A 手绘风):图 2 = 画风原型 city_a,图 3 = 已画好的手绘素材表(房子 / 地标外观照它)
+    'city_p1': (['SKETCH:city_p1', STYLE_A, PAINT_SHEET], (CITY_PAINT + 'Layout P1 (plaza and avenues): the city wall runs ONLY along '
+                'the top (north) edge behind the cathedral, plus short wall sections flanking the east gate and the south gate; the left and '
+                'right map edges are closed by gently wooded hills and trees, NOT by walls. A canal crosses the south part with stone '
+                'bridges.')),
+    'city_p2': (['SKETCH:city_p2', STYLE_A, PAINT_SHEET], (CITY_PAINT + 'Layout P2 (lakeside town): no city walls at all; the top edge '
+                'is a forest ridge, the left and right bottom corners are low cliffs; a big calm lake fills the south with wooden docks and '
+                'moored boats; the two exits are marked only by single stone gate towers standing beside the road.')),
     'city_r1': (['SKETCH:city2'], (
         'Oblique aerial photograph of a real walled late-medieval capital city district (think Rothenburg, Carcassonne, old '
         'Edinburgh), used as the hub town of a game. Follow the reference image (a rough layout sketch) for where each place and '
@@ -158,7 +181,8 @@ def main():
             print('skip', name)
             continue
         refs, prompt = JOBS[name]
-        paths = [os.path.join(OUT, f'sketch_{r[7:]}.png') if r.startswith('SKETCH:') else os.path.join(RES, r) for r in refs]
+        paths = [os.path.join(OUT, f'sketch_{r[7:]}.png') if r.startswith('SKETCH:') else (r if os.path.isabs(r) else os.path.join(RES, r))
+                 for r in refs]
         waited = 0
         while other_codex_exec() > 0:
             if waited % 60 == 0:

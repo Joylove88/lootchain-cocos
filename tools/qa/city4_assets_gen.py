@@ -71,6 +71,115 @@ NPC = (
     'Centered, portrait 1024x1536. No text, no frame.'
 )
 
+# ── 11-09 A 手绘风(用户选画风原型 city_a:「参考英雄联盟地形画风」)──
+# STYLE=paint:同一套物件清单按手绘 MOBA 地形风重画,图 2 改给画风参考 city_a(不再给写实原型);NPC 立绘不重画;产物另放 city4p
+STYLE = os.environ.get('STYLE', '')
+STYLE_REF_CANDIDATES = [os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'style_proto', 'city_a.png'),
+                        os.path.join(ROOT, '周报截图', '2026-11-09_地图画风原型', 'city_a.png')]
+PAINT = (
+    'Hand-painted stylized fantasy map art in the style of image 2: painterly brushwork with soft texture detail, warm sunlight from '
+    'the upper left with soft ambient occlusion, harmonious slightly saturated palette (warm sandstone, slate-blue roofs, rich '
+    'greens), clean readable shapes, gently stylized sturdy proportions (not chibi, not cartoonish toy look), crisp silhouette. '
+    'NOT a photo, no photographic noise, no glow, no ornament spam, not over-sharpened.'
+)
+if STYLE == 'paint':
+    OUT = os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'city4p')
+    _concept = 'an aerial photo style game map of a sunny walled late-medieval capital city of honey-coloured limestone'
+    OBJ = OBJ.replace(PHOTO, PAINT).replace('image 2 is the whole concept for context', 'image 2 is the ART STYLE reference you must match').replace(_concept, 'a walled late-medieval capital city')
+    FLAT = FLAT.replace(PHOTO, PAINT).replace('image 2 is the whole concept for context', 'image 2 is the ART STYLE reference you must match').replace(_concept, 'a walled late-medieval capital city')
+    TEX = TEX.replace(PHOTO, PAINT + ' Small-scale pattern: about 14 to 18 stones (or tiles / tufts) fit across the whole texture width. LOW CONTRAST and soft: gentle value range, muted colours, thin soft joints, so that characters standing on it read clearly; a calm floor, not a busy pattern.')
+
+# ── 11-09 伐木村画风(用户:「参考这个画风」= field_a 伐木村原型;拍板原型 city_fa2)──
+# STYLE=fa:图 2 = city_fa2(主城广场按伐木村画法)、图 3 = field_a(伐木村本体);旧化、土暖低饱和、细节只给物件;产物放 city4f
+FA_REFS = [[os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'style_proto', n),
+            os.path.join(ROOT, '周报截图', '2026-11-09_地图画风原型', n)] for n in ('city_fa2.png', 'field_a.png')]
+FA_GROUND_REF = [os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'style_proto', 'fa2_ground_crop.png'),
+                 os.path.join(ROOT, '周报截图', '2026-11-09_地图画风原型', 'fa2_ground_crop.png')]
+FA = (
+    'Painted exactly in the style of images 2 and 3 (our approved style references): a hand-painted game environment with soft '
+    'painterly brushwork, weathered and lived-in materials (worn chipped stone, grey sun-bleached wood, patched mossy roofs, faded '
+    'cloth), a warm earthy MUTED palette (dusty ochre, warm grey stone, faded terracotta and dull slate roofs, olive and sage greens), '
+    'Match the colour grading of image 2 exactly: desaturated warm brown-grey overall, stone is pale weathered grey-beige (NOT yellow, '
+    'NOT orange, NOT golden), calm stone walls with simple soft block shapes rather than busy patchy blotches; '
+    'soft warm afternoon light from the upper left with gentle shadows and soft ambient occlusion, believable proportions (not chibi, '
+    'not a toy). Detail is moderate and loose, not over-rendered. NOT a photo, NOT a glossy 3D render, NO gold trim, NO glow, NO rim '
+    'highlights on every edge, no sparkles, no ornament spam, not over-sharpened, no outlines.'
+)
+# ── 11-09 精致风 A(用户:「不朽箴言 可以参考这款游戏,画风比较精致」→ 原型 city_jw_a「午后金光」拍板)──
+# STYLE=jw:图 2 = city_jw_a 整图、图 3 = 它的左上局部(雕花石作 / 喷泉细节);只借通用特征,不喂那款游戏的任何截图;产物放 city4j
+_STY_DIRS = lambda n: [os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'style_proto', n), os.path.join(ROOT, '周报截图', '2026-11-09_地图画风原型', n)]
+if STYLE == 'jw':
+    FA_REFS = [_STY_DIRS('city_jw_a.png'), _STY_DIRS('jwa_detail_crop.png')]
+    FA_GROUND_REF = _STY_DIRS('jwa_ground_crop.png')
+    FA = (
+        'Painted exactly in the style of images 2 and 3 (our approved style references): a refined, high-detail fantasy illustration '
+        'with crisp clean edges, finely carved ornamental gothic stonework (tracery, carved trims, small reliefs), pale silver-grey stone '
+        'and worn marble, deep slate-blue roofs, dark timber, restrained gold and dark-iron accents (small gold finials and trims, not '
+        'everywhere), jewel-tone accents (deep violet and sapphire cloth, a few violet flowers), warm late-afternoon golden light from '
+        'the upper left with soft shadows and a gentle warm rim light, polished and clean, rich but controlled detail, believable '
+        'proportions (not chibi, not a toy). NOT a photo, NOT muddy brushwork, NOT cartoon, no glow effects, no sparkles, no outlines.'
+    )
+if STYLE in ('fa', 'jw'):
+    OUT = os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'city4f' if STYLE == 'fa' else 'city4j')
+    _concept = 'an aerial photo style game map of a sunny walled late-medieval capital city of honey-coloured limestone'
+    _ctx = 'image 2 is the whole concept for context'
+    _sty = 'images 2 and 3 are the ART STYLE references you must match (ignore their content)'
+    # 11-09 用户:「房子看起来是斜的歪的」——生图默认给 45° 等距角,和游戏正俯视镜头不符 → 强制正面朝镜头
+    FRONTAL = ('CAMERA (very important): the camera looks straight ahead (north), tilted about 50 degrees down, with NO yaw rotation. '
+               'The main front of the object faces the viewer squarely: its front edge and roof ridge run perfectly horizontal, parallel '
+               'to the bottom edge of the image; all vertical edges are perfectly vertical; the side walls are barely visible or not '
+               'visible at all. NOT a 45-degree isometric corner view, NOT turned, NOT tilted, no fisheye. Same camera as the houses in '
+               'image 2. ')
+    OBJ = OBJ.replace(PHOTO, FA).replace(_ctx, _sty).replace(_concept, 'a walled late-medieval capital city').replace('scale and material only', 'scale and building type only')
+    if STYLE == 'jw':
+        FRONTAL = FRONTAL.replace('Same camera as the houses in image 2. ', 'IGNORE the 45-degree angle of the houses in the style references; use this frontal camera. ')
+    OBJ = OBJ.replace('Generate ONE new image', FRONTAL + 'Generate ONE new image').replace('like an isometric ARPG camera', 'like a top-down ARPG camera looking straight north')
+    FLAT = FLAT.replace(PHOTO, FA).replace(_ctx, _sty).replace(_concept, 'a walled late-medieval capital city')
+    _tex_extra = ' Paint it like the ground in the references: broad soft brush patches with ' if STYLE == 'fa' else ' Match the paving of image 1: neat and refined, not brushy; '
+    TEX = TEX.replace(PHOTO, FA.replace('images 2 and 3', 'images 1 and 2') + _tex_extra + 
+                      'subtle darker and lighter blotches, NOT a busy repeated tile pattern; about 14 to 18 stones (or tufts) across the '
+                      'texture width where stones are visible. LOW CONTRAST, gentle value range, so characters standing on it read clearly.')
+
+# 伐木村画风下单独改写的物件描述(正面构图 / 对称 / 少碎件)
+FA_SUBJECT = {
+    # 11-09 用户:「格格不入」——实机地面 5 种贴图色相 / 质感 / 石块尺度各不一样(灰条砖街 vs 暖卵石 vs 黄石板),拼成补丁
+    # → 全部按 city_fa2 的地面(图 1 = 它的局部)出同一色系:踩实的土 + 半埋的旧卵石,只在石头多少 / 草多少上区分
+    'tex_cobble': 'the packed-earth town ground of image 1: warm brown trodden earth with soft broad brush blotches and SPARSE half-buried '
+                  'worn rounded cobbles (cobbles cover about a third of the surface, in loose irregular clusters), a few pebbles',
+    'tex_cobble_moss': 'the same packed-earth town ground as image 1 but with very few stones, more bare trodden earth, a few small dry '
+                       'grass tufts and faint moss patches',
+    'tex_street': 'a worn old cobblestone street in exactly the colours of image 1: irregular rounded cobbles of varied size packed '
+                  'closely, earth and dust filling the joints, some stones missing showing earth; NOT bricks, NOT rows, NOT a grid',
+    'tex_flagstone': 'worn irregular large old flagstones of the same warm brown-grey as the stones in image 1, soft rounded edges, '
+                     'earth and dust in the wide joints, a few cracks; NOT a regular grid, NOT square tiles',
+    'tex_grass': 'short trodden olive-green and dry yellowish town grass with soft painted strokes and a few bare earth spots, the '
+                 'same muted earthy palette as image 1',
+    # 11-09 第二版:第一版桥身拉满竖图(显示 1620 长,运河才 460 宽)一路顶到南门 → 要短桥,两端带台阶落到街面
+    'canal_bridge': 'a SHORT old single-arch stone footbridge with low parapets, seen from high above looking north, its deck running '
+                    'perfectly straight and vertical (NOT diagonal, NOT turned); the whole bridge is only about 1.3 times as long as it '
+                    'is wide; at the top and bottom ends the parapets end in small square stone posts and the deck widens slightly with '
+                    'two low worn steps down to the street; left and right parapets mirror-symmetrical',
+    'cathedral': 'large old gothic cathedral seen from its front: a SYMMETRICAL west facade with the main arched wooden double door '
+                 'exactly in the centre, one tall square bell tower rising from the middle of the facade, a big rose window above the '
+                 'door, a long dark slate nave roof behind; simple sturdy shapes with only a few small pinnacles, weathered pale grey-beige '
+                 'stone with moss',
+}
+
+# 精致风 A:地面贴图按原型 A 的细密卵石铺地(图 1 = 它的局部)出同一色系;桥 / 大教堂沿用上面的构图描述,石色换银灰
+JW_SUBJECT = dict(FA_SUBJECT)
+JW_SUBJECT.update({
+    'tex_cobble': 'the fine plaza paving of image 1: small neat rounded-square grey setts laid in gentle sweeping arcs, pale silver-grey '
+                  'and warm grey stones lit by warm golden light, thin dark joints, subtle wear',
+    'tex_cobble_moss': 'the same fine grey sett paving as image 1 but older and a little irregular, with thin moss lines and a few tiny '
+                       'grass tufts in some joints',
+    'tex_street': 'a street of slightly larger worn grey setts laid in gentle fan-shaped arcs, the same colours and light as image 1',
+    'tex_flagstone': 'large refined pale marble-grey flagstones with thin neat joints and subtle wear, the same colours and light as image 1',
+    'tex_grass': 'a neat lush green town lawn of short grass with soft fine detail and a few tiny violet and white flowers, in the warm '
+                 'golden light of image 1',
+})
+JW_SUBJECT['academy'] = ('medieval academy / library seen straight from the front as a single frontal facade: a long two-storey hall with tall pointed windows, a square bell tower at one side and an arched entrance in the middle, pale silver-grey stone and deep slate-blue roofs; NO courtyard, NO garden, NO view from above')
+JW_SUBJECT['cathedral'] = JW_SUBJECT['cathedral'].replace('weathered pale grey-beige stone with moss', 'pale silver-grey stone with finely carved tracery and small gold finials')
+
 # 名字: (模板, 参考裁框(原型 city_r1 像素 x0,y0,x1,y1 或 None), 底色, 参数)
 SPECS = {
     # ── 地标建筑(纯景观,功能都在终端)──
@@ -166,6 +275,22 @@ SPECS = {
                 'image', edge='the bridge itself (no water, no ground)', size='Portrait 1024x1536')),
     'boat': ('flat', (1254, 680, 1394, 735), 'magenta', dict(
         subject='a small moored wooden river boat seen from above', edge='the boat hull', size='Landscape 1536x1024')),
+    # ── 11-09 A 手绘风:城里的树 / 灌木(原来借用晨风村写实树,和手绘房子画风对不上)──
+    'tree_oak': ('obj', None, 'magenta', dict(subject='a lush rounded oak tree with a full leafy crown and a sturdy trunk', short='tree',
+                 size='Portrait 1024x1536')),
+    'tree_pine': ('obj', None, 'magenta', dict(subject='a neat conical evergreen fir tree', short='tree', size='Portrait 1024x1536')),
+    'bush': ('obj', None, 'cyan', dict(subject='a small round leafy green garden shrub with a few tiny white flowers', short='bush')),
+    # ── 11-09 P1 广场大道版主城新增(手绘风)──
+    'pond': ('flat', None, 'magenta', dict(subject='a small park pond with a rounded natural shape, clear teal water with a few lily pads, '
+             'edged with rounded stones and a little grass', edge='the stone-edged pond bank', size='Landscape 1536x1024')),
+    'pier': ('flat', None, 'magenta', dict(subject='a wooden canal pier: a straight plank boardwalk on wooden posts with a few mooring '
+             'posts and a rope coil, running left to right', edge='the pier itself (no water)', size='Landscape 1536x1024')),
+    'rocks': ('obj', None, 'magenta', dict(subject='a cluster of rounded grey boulders with moss and a few grass tufts', short='boulders',
+              size='Landscape 1536x1024')),
+    'cypress': ('obj', None, 'magenta', dict(subject='a tall slender dark green Italian cypress tree', short='tree',
+                size='Portrait 1024x1536')),
+    'flower_bed': ('obj', None, 'cyan', dict(subject='a low rectangular stone-bordered flower bed full of red and white flowers and a '
+                   'small shrub', short='flower bed', size='Landscape 1536x1024')),
     # ── 地面材质(无缝)──
     'tex_cobble': ('tex', None, None, dict(subject='old worn medieval cobblestone paving of rounded honey-grey stones with dust in the joints')),
     'tex_cobble_moss': ('tex', None, None, dict(subject='old uneven cobblestones with moss, weeds and packed earth in the gaps')),
@@ -215,7 +340,19 @@ def prompt_of(name):
     args.update(p)
     if key:
         args['key'] = KEYS[key]
-    return {'obj': OBJ, 'flat': FLAT, 'tex': TEX, 'npc': NPC}[tpl].format(**args)
+    subj = JW_SUBJECT if STYLE == 'jw' else FA_SUBJECT
+    if STYLE in ('fa', 'jw') and name in subj:
+        args['subject'] = subj[name]
+        if name == 'canal_bridge':
+            args['size'] = 'Square 1024x1024'
+    if STYLE == 'jw' and name.startswith('house_'):  # 民居几十栋:比地标朴素,否则满城紫旗金饰太花
+        args['subject'] += '; an ordinary townhouse, more modest than the landmarks: NO banners, NO heraldry, only two or three tiny gold finials on the roof, simple carved window trims, a flower box'
+    text = {'obj': OBJ, 'flat': FLAT, 'tex': TEX, 'npc': NPC}[tpl].format(**args)
+    if STYLE in ('fa', 'jw'):  # 写实版的「蜂蜜色石灰岩」会把颜色拉黄 → 伐木村画风换灰米色旧石,精致风换银灰石
+        stone, tone = ('pale weathered grey-beige stone', 'grey-beige') if STYLE == 'fa' else ('pale silver-grey stone', 'silver-grey')
+        for w in ('honey-coloured limestone', 'honey limestone', 'grey-honey stone', 'honey stone', 'honey-grey', 'grey-honey', 'honey'):
+            text = text.replace(w, stone if 'stone' in w or 'limestone' in w else tone)
+    return text
 
 
 def crop_ref(name):
@@ -259,6 +396,15 @@ def gen(name):
         print('skip', name, flush=True)
         return
     refs = [r for r in (crop_ref(name), proto() if SPECS[name][1] else None) if r]
+    if STYLE == 'paint':
+        style_ref = next((p for p in STYLE_REF_CANDIDATES if os.path.exists(p)), None)
+        refs = [r for r in (crop_ref(name), style_ref) if r] if SPECS[name][0] != 'tex' else [style_ref]
+    if STYLE in ('fa', 'jw'):
+        styles = [next(p for p in c if os.path.exists(p)) for c in FA_REFS]
+        # 没有裁框的物件(树 / 灌木 / 池塘…)图 1 也给 city_fa2,保证提示词里的「图 2 / 图 3」对得上号
+        refs = ([] if SPECS[name][0] == 'tex' else [crop_ref(name) or styles[0]]) + styles
+        if SPECS[name][0] == 'tex':  # 地面贴图:图 1 = city_fa2 地面局部(要贴合的材质),图 2 = city_fa2 整图
+            refs = [next(p for p in FA_GROUND_REF if os.path.exists(p)), styles[0]]
     if SPECS[name][0] == 'npc':
         refs = [os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'npc_chief.png')]
     waited = 0
@@ -298,7 +444,7 @@ def main():
     if '--crops' in sys.argv:
         crops_sheet()
         return
-    for name in (sys.argv[1:] or list(SPECS)):
+    for name in (sys.argv[1:] or [n for n in SPECS if not (STYLE in ('paint', 'fa', 'jw') and SPECS[n][0] == 'npc')]):
         gen(name)
     print('done', OUT, flush=True)
 
