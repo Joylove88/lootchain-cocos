@@ -287,6 +287,10 @@ export interface GroundSplatDef {
   leaf: string;
   /** 各层一格多少世界单位:[腐殖层, 苔草, 草甸, 土路, 落叶]。 */
   tiles: [number, number, number, number, number];
+  /** 铺石城区:floor / moss / dirt 是同一张铺石的对齐变体 → 软过渡、不画车辙(主城)。 */
+  paved?: boolean;
+  /** 景深 [远处空气感 0~1, 近处压暗 0~1]:屏幕上方偏雾偏亮、下方偏暗,地面有往后退的立体感。 */
+  depth?: [number, number];
 }
 
 export interface WorldMapDef {
@@ -729,17 +733,22 @@ const CITY: WorldMapDef = {
   spawn: { ...CITY_V4_SPAWN },
   ground: TOWN_GROUND_ASSET,
   groundTile: TOWN_GROUND_TILE,
-  // 多层地表:老卵石 / 长苔卵石 / 草坪 / 广场石板 / 主街条石(tools/qa/city_ground_install.py 生成遮罩)
+  // 多层地表:大石板 / 长苔石板 / 草坪 / 广场石板 / 主街(石板压暗);遮罩 tools/qa/city_ground_install.py,变体 city_ground_variants.py
   groundSplat: {
     mask: worldAsset('city4/ground_splat'),
     mask2: worldAsset('city4/ground_splat2'),
-    floor: worldAsset('city4/tex_cobble'),
+    floor: worldAsset('city4/tex_slab'),
     moss: worldAsset('city4/tex_cobble_moss'),
     meadow: worldAsset('city4/tex_grass'),
     dirt: worldAsset('city4/tex_street'),
     leaf: worldAsset('city4/tex_flagstone'),
-    // 11-09 精致风地面:细卵石约 22 一块、街面扇形大块约 45 一块(苔痕层是同纹理变体,尺寸一致才不成迷彩)
-    tiles: [560, 560, 600, 520, 600],
+    // 11-10 实机「好别扭」:苔痕 / 主街原是另一套扇形铺石,跟底层石块对不齐拼成撕纸边 →
+    // 三层都由底层逐像素派生(tools/qa/city_ground_variants.py),平铺尺寸必须一致;
+    // 同日用户给场地参考 → 底层换大块旧石板 tex_slab(一格约 6 块,一块约 140 ≈ 一人高)
+    tiles: [840, 840, 600, 840, 600],
+    paved: true,
+    // 11-10 用户「地面后面看起来有立体感」
+    depth: [0.55, 0.16],
   },
   groundShadows: true,
   // 高建筑的斜投影在街上压出整片暗块(实机 11-08)→ 主城再淡一些

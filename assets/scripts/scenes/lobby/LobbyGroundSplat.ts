@@ -33,6 +33,14 @@ function build(cfg: GroundSplatDef, width: number, height: number, effect: Effec
   material.setProperty('tiles', new Vec4(width / tf, height / tf, width / tm, height / tm));
   material.setProperty('tiles2', new Vec4(width / tw, height / tw, width / td, height / td));
   material.setProperty('tiles3', new Vec4(width / tl, height / tl, 0, 0));
+  if (cfg.paved) {
+    // 铺石城区:同纹理变体层宽软过渡、不画车辙(world-ground.effect grade.w)
+    material.setProperty('grade', new Vec4(0.10, 0.18, 1.06, 1));
+  }
+  if (cfg.depth) {
+    // 景深:远处空气感 / 近处压暗(world-ground.effect depthFx)
+    material.setProperty('depthFx', new Vec4(cfg.depth[0], cfg.depth[1], 0, 0));
+  }
   cache.set(cfg.mask, { material, mask });
 }
 

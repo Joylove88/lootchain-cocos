@@ -8,7 +8,11 @@
 //     不再是 50 单位宽的一大片糊状渐变;
 //   - 平铺尺寸放大(材质细节在屏上读得出来,不再缩成噪点);土路交界压一道细暗边 + 中线两侧断续车辙;
 //   - 轻 S 曲线 + 暗部偏冷 / 亮部偏暖 + 左上微光 + 暗角(在着色器里做,不叠全屏层)。
-// tiles = floor.xy / moss.zw;tiles2 = meadow.xy / dirt.zw;tiles3 = leaf.xy;grade = (S 曲线, 暗角, 亮度, -)。
+// tiles = floor.xy / moss.zw;tiles2 = meadow.xy / dirt.zw;tiles3 = leaf.xy;grade = (S 曲线, 暗角, 亮度, 铺石城区)。
+// 11-10 铺石城区(grade.w = 1,主城):老卵石 / 苔痕 / 主街三层是同一张卵石逐像素对齐的变体,交界只变色调 →
+//   这三层改宽软过渡(高度混合的硬边在整齐铺石上像撕纸),街沿不压暗边、不画车辙。
+// 11-10 景深(用户「地面后面看起来有立体感」):depthFx = (远处空气感, 近处压暗, -, -),默认 0 不开。
+//   屏幕上方 = 远:对比度降、往暖灰雾色靠、略提亮;屏幕下方 = 近:略压暗。只作用地面,不另叠全屏层。
 CCEffect %{
   techniques:
   - passes:
@@ -36,6 +40,7 @@ CCEffect %{
         tiles2: { value: [36.3, 17.5, 31.8, 15.3] }
         tiles3: { value: [53.5, 25.8, 0.0, 0.0] }
         grade: { value: [0.10, 0.18, 1.06, 0.0] }
+        depthFx: { value: [0.0, 0.0, 0.0, 0.0] }
 }%
 
 CCProgram ground-vs %{
@@ -78,6 +83,7 @@ CCProgram ground-fs %{
     vec4 tiles2;
     vec4 tiles3;
     vec4 grade;
+    vec4 depthFx;
   };
 
   float lum (vec3 c) {
@@ -108,7 +114,9 @@ CCProgram ground-fs %{
 
     vec3 base = floorC;
     float hb = lum(floorC);
-    float f = hblend(smoothstep(0.24, 0.6, n1), hb, lum(moss));
+    float paved = grade.w;
+    float wMoss = smoothstep(0.24, 0.6, n1);
+    float f = mix(hblend(wMoss, hb, lum(moss)), wMoss, paved);
     base = mix(base, moss, f);
     hb = mix(hb, lum(moss), f);
     f = hblend(wMeadow * (0.75 + 0.25 * n3), hb, lum(meadow) + 0.05);
@@ -126,10 +134,11 @@ CCProgram ground-fs %{
     // 土路:遮罩按离路距离给宽过渡带,高度混合出不规则清楚的边;交界压一道细暗边 + 断续车辙
     float edge = 85.0 + n2 * 100.0;
     float wDirt = 1.0 - smoothstep(edge - 45.0, edge + 45.0, d);
-    float fd = hblend(wDirt, hb, lum(dirt));
-    float rim = fd * (1.0 - fd) * 4.0 * 0.16 + exp(-pow((d - edge - 30.0) / 30.0, 2.0)) * 0.07;
+    float wSoft = 1.0 - smoothstep(edge - 120.0, edge + 120.0, d);
+    float fd = mix(hblend(wDirt, hb, lum(dirt)), wSoft, paved);
+    float rim = (fd * (1.0 - fd) * 4.0 * 0.16 + exp(-pow((d - edge - 30.0) / 30.0, 2.0)) * 0.07) * (1.0 - paved);
     float r0 = abs(d - 42.0) / 9.0;
-    float ruts = exp(-r0 * r0) * 0.14 * smoothstep(0.35, 0.6, n3) * fd;
+    float ruts = exp(-r0 * r0) * 0.14 * smoothstep(0.35, 0.6, n3) * fd * (1.0 - paved);
     base = mix(base, dirt * (0.92 + 0.16 * n3), fd);
     base *= 1.0 - rim - ruts;
 
@@ -146,6 +155,13 @@ CCProgram ground-fs %{
     float light = 1.06 - 0.10 * (sp.x * 0.6 + (1.0 - sp.y) * 0.4);
     float vig = 1.0 - grade.y * pow(clamp(length((sp - 0.5) * 2.0), 0.0, 1.0), 2.4);
     base *= light * vig;
+    // 景深:远处(屏幕上方)空气感,近处(屏幕下方)压暗
+    float far = smoothstep(0.30, 1.0, sp.y);
+    float lf = lum(base);
+    vec3 haze = vec3(0.80, 0.76, 0.70) * (0.55 + 0.45 * lf);
+    base = mix(base, mix(vec3(lf), base, 0.75) * 0.85 + haze * 0.15, far * depthFx.x);
+    base = mix(base, haze, far * far * depthFx.x * 0.35);
+    base *= 1.0 - depthFx.y * smoothstep(0.45, 0.0, sp.y);
     return vec4(clamp(base, 0.0, 1.0), 1.0) * color;
   }
 }%

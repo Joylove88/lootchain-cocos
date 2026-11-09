@@ -297,6 +297,8 @@ SPECS = {
     'tex_grass': ('tex', None, None, dict(subject='short well-kept town park lawn with a few clover and tiny daisies')),
     'tex_street': ('tex', None, None, dict(subject='main street paving of larger rectangular worn grey-honey setts laid in rows')),
     'tex_flagstone': ('tex', None, None, dict(subject='large worn square limestone flagstones of a square in front of a cathedral')),
+    # 11-10 用户实机「好别扭」+ 给了几张战斗场地参考(只取通用特征:大块石板、稀疏裂缝、低对比、细节留给边缘)
+    'tex_slab': ('tex', None, None, dict(subject='large worn stone slabs')),
     # ── NPC(画风参考 npc_chief)──
     'npc_scholar': ('npc', None, 'magenta', dict(subject='an imperial scholar: a middle-aged man with round spectacles and a short grey '
                     'beard, deep blue scholar robe with gold trim, holding a big leather-bound book and a rolled map')),
@@ -334,7 +336,24 @@ def proto():
     raise SystemExit('找不到原型 gray_r1.png')
 
 
+SLAB_PROMPT = (
+    'Image 1 and image 2 are our own approved art style references (a refined painted fantasy town in warm late-afternoon light); '
+    'use them only for colour, light and rendering quality, ignore their content.\n'
+    'Generate ONE new image with your image generation tool: a seamless tileable square ground texture seen from straight above '
+    '(orthographic top-down) for a game terrain shader: an old town square paved with LARGE irregular worn stone slabs, only about 5 '
+    'to 7 slabs across the whole texture width, slabs of varied size (some square, some long, a few split into two by a crack), '
+    'thin soft dark joints, a few sparse hairline cracks and chipped corners, faint dust and very slight wear in the joints. '
+    'Refined hand-painted look with soft subtle brushwork inside each slab, calm surfaces, NOT a photo, NOT cartoon, NOT glossy. '
+    'Colour: muted warm grey and pale grey-beige stone with only very subtle variation between slabs, matte. '
+    'VERY LOW CONTRAST and a gentle value range so characters standing on it read clearly; no strong outlines on the slabs, no '
+    'bevel highlights, no moss, no plants, no objects, no symbols, no large single features. Evenly lit, no directional light '
+    'gradient, no vignette. Must tile seamlessly on all four edges. Square 1024x1024. No text.'
+)
+
+
 def prompt_of(name):
+    if name == 'tex_slab':
+        return SLAB_PROMPT
     tpl, _, key, p = SPECS[name]
     args = dict(extra_no='', size='Square 1024x1024')
     args.update(p)
