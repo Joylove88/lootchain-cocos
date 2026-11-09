@@ -144,7 +144,10 @@ POIS_PX = [
     ('D_HERB_2', 'HERB', '林间草药', 1480, 120),
 ]
 # 运行时 snapPois 挪过的兴趣点坐标写回这里(实机 [POI] 日志),服务端坐标表才对得上
-POI_FIX = {}
+POI_FIX = {  # 11-09 实机
+    'D_HIDDEN_3': (8188, 1152),
+    'D_STELE_2': (-4730, 1796),
+}
 
 PLACES_PX = [('精灵营地', 'portal', 215, 440), ('枯死古树林', 'den', 400, 230), ('黑泥沼泽', 'den', 430, 700),
              ('鸦岩', 'camp', 965, 165), ('旧墓园', 'ruins', 900, 700), ('废弃伐木村', 'camp', 1330, 640),
@@ -152,7 +155,7 @@ PLACES_PX = [('精灵营地', 'portal', 215, 440), ('枯死古树林', 'den', 40
 
 # ── 物件表(世界单位显示宽)──
 TALL = {
-    'snag': (G4('dead_snag'), (360, 500)),
+    'snag': (G4('dead_snag'), (280, 400)),
     'spruce': (G4('dead_spruce'), (300, 420)),
     'old_tree': (G4('giant_dead_tree_b'), (620, 900)),
     'old_tree2': (G4('giant_dead_tree'), (700, 1000)),
@@ -293,11 +296,11 @@ def landmarks():
     # 精灵守望者营地(传送阵在营地中央;帐篷 / 瞭望台在主路北侧,篝火 / 树桩座在南侧)
     cx, cy = P(*CAMP_PX)
     st('watch_platform', cx - 620, cy + 360, 560, blk(260, 100))
-    st('elf_tent', cx - 100, cy + 430, 560, blk(380, 110))
-    st('elf_tent_b', cx + 470, cy + 300, 480, blk(330, 100))
-    st('elf_tent', cx + 940, cy + 540, 520, blk(360, 110), flip=True)
-    st('campfire', cx + 420, cy - 560, 300)
-    st('stump_seat', cx + 760, cy - 640, 320)
+    st('elf_tent', cx - 100, cy + 430, 460, blk(320, 100))
+    st('elf_tent_b', cx + 470, cy + 300, 400, blk(280, 90))
+    st('elf_tent', cx + 940, cy + 540, 430, blk(300, 100), flip=True)
+    st('campfire', cx + 420, cy - 560, 240)
+    st('stump_seat', cx + 700, cy - 620, 230)
     # 枯死古树林:两棵巨大枯树 + 断树
     gx, gy = P(*GROVE_PX)
     st('giant_dead_tree', gx - 520, gy + 40, 1700, blk(520, 170))
@@ -309,8 +312,8 @@ def landmarks():
     flats.append({'asset': G4('bog_pool'), 'x': bx, 'y': by, 'width': BOG_W, 'flat': True, 'pit': True})
     st('web_snag', bx - 2950, by + 1250, 950, blk(560, 70))
     st('web_snag', bx + 1900, by - 1150, 880, blk(520, 70), flip=True)
-    st('drowned_stump', bx + 700, by + 820, 380, blk(200, 60))
-    st('drowned_stump', bx - 1500, by - 700, 360, blk(190, 60), flip=True)
+    st('drowned_stump', bx + 700, by + 820, 280, blk(160, 50))
+    st('drowned_stump', bx - 1500, by - 700, 270, blk(150, 50), flip=True)
     for dx, dy, w in ((-1650, 220, 330), (1700, 160, 320), (-700, -920, 300), (900, -980, 310), (300, 1000, 280)):
         st('reeds', bx + dx, by + dy, w)
     # 鸦岩:苔岩堆
@@ -320,28 +323,28 @@ def landmarks():
     st('mossy_boulder', kx + 1250, ky - 60, 380, blk(250, 60), flip=True)
     # 旧墓园 + 礼拜堂:礼拜堂在北,墓碑在南,东 / 南两边铁栅栏(西边、北边敞开)
     hx, hy = P(*CHAPEL_PX)
-    st('chapel_ruin', hx, hy + 120, 2100, blk(1500, 170))
-    st('headstones', hx + 650, hy - 520, 900, blk(600, 80))
+    st('chapel_ruin', hx, hy + 120, 1700, blk(1200, 150))
+    st('headstones', hx + 600, hy - 480, 430, blk(300, 50))
     for dx, dy, f in ((-450, -380, False), (-80, -720, True), (380, -880, False), (1050, -820, True), (-700, -860, False)):
-        st('headstone', hx + dx, hy + dy, 260, blk(130, 40), flip=f)
-    for i, dx in enumerate((-600, 0, 600, 1200)):
-        st('iron_fence', hx + dx, hy - 1150, 640, blk(580, 40), flip=i % 2 == 1)
+        st('headstone', hx + dx * 0.8, hy + dy * 0.8, 120, blk(70, 30), flip=f)
+    for i, dx in enumerate((-480, -160, 160, 480, 800)):
+        st('iron_fence', hx + dx, hy - 1000, 340, blk(310, 30), flip=i % 2 == 1)
     # 废弃伐木村:三间木屋 + 原木堆 + 破推车
     vx, vy = P(*HAMLET_PX)
-    st('cottage', vx + 300, vy + 420, 1350, blk(950, 160))
-    st('cottage_collapsed', vx - 1500, vy - 450, 1200, blk(820, 150))
-    st('cottage_collapsed_b', vx + 1450, vy - 420, 1300, blk(900, 150), flip=True)
-    st('log_stack', vx - 450, vy + 380, 720, blk(560, 80))
-    st('log_stack', vx + 350, vy - 380, 760, blk(600, 80), flip=True)
-    st('broken_cart', vx - 80, vy - 980, 650, blk(440, 80))
+    st('cottage', vx + 300, vy + 420, 1050, blk(740, 140))
+    st('cottage_collapsed', vx - 1400, vy - 420, 900, blk(620, 130))
+    st('cottage_collapsed_b', vx + 1350, vy - 400, 1000, blk(700, 130), flip=True)
+    st('log_stack', vx - 450, vy + 380, 420, blk(330, 60))
+    st('log_stack', vx + 350, vy - 380, 440, blk(350, 60), flip=True)
+    st('broken_cart', vx - 80, vy - 900, 380, blk(260, 60))
     # 低语石阵:一圈立石(南面留口给路)
     sx, sy = P(*STONES_PX)
     for k, (x, y) in enumerate(ellipse_ring(sx, sy + 60, 1250, 640, 11, 0.2, skip=(235, 305))):
-        st('standing_stone' if k % 3 else 'standing_stone_b', x, y, 300 if k % 3 else 260, blk(130, 45), flip=k % 2 == 1)
+        st('standing_stone' if k % 3 else 'standing_stone_b', x, y, 170 if k % 3 else 150, blk(90, 35), flip=k % 2 == 1)
     # 女巫谷:枯死世界树 + 树根间的女巫小屋
     wx0, wy0 = P(*WITCH_PX)
     st('world_tree', wx0 + 120, wy0 + 120, 3000, blk(1300, 260))
-    st('witch_hut', wx0 + 280, wy0 - 40, 880, blk(560, 120))
+    st('witch_hut', wx0 + 280, wy0 - 40, 700, blk(450, 110))
     # 上边缘:密的枯杉 / 断树(地图北界看起来是林子而不是空地);下边缘:倒木 + 断树(人走在它们后面不被挡)
     x = -MAP_W / 2 + 200
     rnd = random.Random(31)
@@ -735,8 +738,8 @@ CAMP_THEME = {
     'SMALL_RAVEN': [('fallen_log', 520, True), ('mushrooms', 130, False)],
     'SMALL_BAT': [('dead_snag', 420, True), ('branches', 180, False)],
     'LARGE_SPIDER': [('web_snag', 760, True), ('reeds', 280, False)],
-    'STAFF_PRIEST': [('headstone', 250, True), ('standing_stone_b', 240, True)],
-    'MUTANT_MALE': [('log_stack', 600, True), ('branches', 180, False)],
+    'STAFF_PRIEST': [('headstone', 120, True), ('standing_stone_b', 150, True)],
+    'MUTANT_MALE': [('log_stack', 400, True), ('branches', 180, False)],
 }
 
 
