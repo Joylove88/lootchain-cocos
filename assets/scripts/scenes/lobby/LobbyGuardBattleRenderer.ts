@@ -1410,8 +1410,11 @@ export class LobbyGuardBattleRenderer {
    * 与其把背景放大平移去迁就固定布局(必然损画质),不如让格位跟着当前背景的地平线走(见 laneToPy)。
    */
   private static readonly SCENE_BG_HORIZON: Record<string, number> = {
-    battle_scene_guard_mine: 0.39,
-    battle_scene_raid_mine: 0.40, // 掠夺矿洞(2026-10-26,scene_horizon 实测)
+    // 2026-11-10 分层背景重画:地平线 = 石坎脚下(可站人的地面起点),scene_horizon 候选 + 目视
+    battle_scene_guard_mine: 0.385,
+    battle_scene_raid_mine: 0.39,
+    battle_scene_field_wasteland: 0.40,
+    battle_scene_field_forest: 0.43,
     battle_scene_shadow_keep: 0.425,
     battle_scene_ash_cathedral: 0.45,
     battle_scene_blood_moon: 0.381,
@@ -1421,9 +1424,9 @@ export class LobbyGuardBattleRenderer {
     battle_scene_molten_core: 0.403,
     battle_scene_final_throne: 0.438,
     // 限时副本新图(2026-10-11):先用回退图的地平线,出图落位后用 tools/qa 量一遍再改
-    battle_scene_daily_awaken: 0.395, // 2026-10-13 重生成(地面左右开阔),scene_horizon 实测 0.392
-    battle_scene_daily_arcane: 0.479,
-    battle_scene_daily_abyss: 0.396, // 2026-10-13 重生成(地面左右开阔),scene_horizon 实测 0.396
+    battle_scene_daily_awaken: 0.345,
+    battle_scene_daily_arcane: 0.33,
+    battle_scene_daily_abyss: 0.35,
   };
 
   /** 由 stageCode(MAIN_<章>_<关>)解析本局战场背景图名;非主线或越界回退矿脉图。 */
@@ -1534,13 +1537,13 @@ export class LobbyGuardBattleRenderer {
    * 0 = 顶边贴屏幕顶、只裁地面。宽屏手机(比 16:9 更宽)cover 铺满后图比屏幕高,
    * 焦点在上方远景的图默认会被裁掉主体(2026-10-13 用户:"觉醒之门背景压太高,后面的门显示不全")。
    */
-  private static readonly SCENE_BG_TOP_CROP: Record<string, number> = {
-    battle_scene_daily_awaken: 0,
-  };
+  private static readonly SCENE_BG_TOP_CROP: Record<string, number> = {};
 
   /** 背景节点中心 Y(屏幕坐标,向上为正);背景、加载底图、地平线三处共用。 */
   private sceneBgCenterY(bgH: number, height: number): number {
-    const topCrop = LobbyGuardBattleRenderer.SCENE_BG_TOP_CROP[this.resolveSceneBgName()] ?? 1;
+    // 2026-11-10 分层背景:远景只占顶上约 1/4,照旧只裁上面会把远景裁光 → 上面裁 30%、下面(全是地面)裁 70%
+    const name = this.resolveSceneBgName();
+    const topCrop = LobbyGuardBattleRenderer.SCENE_BG_TOP_CROP[name] ?? (LobbyGuardBattleRenderer.SCENE_BG_LAYER[name] ? 0.3 : 1);
     return ((bgH - height) / 2) * (2 * topCrop - 1);
   }
 
@@ -1561,11 +1564,95 @@ export class LobbyGuardBattleRenderer {
     const cover = Math.max(width / bgSrcW, height / bgSrcH);
     const bgW = bgSrcW * cover;
     const bgH = bgSrcH * cover;
-    this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, this.sceneBgCenterY(bgH, height), bgW, bgH);
+    const centerY = this.sceneBgCenterY(bgH, height);
+    this.mountSprite(root, 'GuardSceneBg', this.resolveSceneBgPath(), 0, centerY, bgW, bgH);
+    this.sceneNearNode = null;
+    const layer = this.sceneBgLayer();
+    if (layer) {
+      this.mountSceneLayers(root, layer, bgW, bgH, centerY);
+    }
     // 顶部压暗改羽化渐变(2026-09-15 用户反馈平涂半透明黑带太难看):上沿最深、向下平滑透明,没有硬边。
     // 2026-10-13 用户:「顶部遮盖层不好看」——暗带改为真正的上深下浅渐变,并拉高到 22% 让过渡更缓
     const shadeH = height * 0.22;
     this.mountSoftShade(root, 'GuardTopShade', 0, height / 2 - shadeH / 2, width, shadeH, 'top-fade');
+  }
+
+  /**
+   * 分层战场背景(2026-11-10 用户「远处做了层次感,很立体」「分层远处背景会动态吧」):
+   * 远景层 = 整图(GuardSceneBg)→ 雾带(两条,不同速度横向飘)+ 远处浮尘 → 近景层 = 同一张图抠出的地面 + 石坎(_near,透明底)。
+   * 近景像素与整图逐像素一致,静止时三层叠起来就是原图;雾从石坎后面穿过才显出纵深。震屏时近景跟着晃、远景不动(视差)。
+   * ledge = 近景上沿(从图顶算,tools/qa/battle_bg_layer_install.py 量出);fog = 雾色;sky = 室外(顶上加一条慢云)。
+   */
+  private static readonly SCENE_BG_LAYER: Record<string, { ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean }> = {
+    battle_scene_field_wasteland: { ledge: 0.259, fog: [206, 210, 220], fogAlpha: 150, mote: [230, 230, 235], sky: true },
+    battle_scene_field_forest: { ledge: 0.312, fog: [200, 214, 206], fogAlpha: 140, mote: [235, 240, 200], sky: true },
+    battle_scene_raid_mine: { ledge: 0.27, fog: [120, 150, 205], fogAlpha: 120, mote: [255, 200, 130], sky: false },
+    battle_scene_guard_mine: { ledge: 0.284, fog: [255, 140, 80], fogAlpha: 110, mote: [255, 150, 70], sky: false },
+    battle_scene_daily_awaken: { ledge: 0.238, fog: [255, 244, 222], fogAlpha: 150, mote: [255, 225, 150], sky: true },
+    battle_scene_daily_arcane: { ledge: 0.226, fog: [170, 140, 255], fogAlpha: 120, mote: [190, 170, 255], sky: false },
+    battle_scene_daily_abyss: { ledge: 0.25, fog: [225, 100, 80], fogAlpha: 120, mote: [255, 120, 80], sky: true },
+  };
+
+  /** 震屏视差用:近景层节点(没有分层图时为 null)。 */
+  private sceneNearNode: Node | null = null;
+  private sceneNearY = 0;
+
+  private sceneBgLayer(): { name: string; ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean } | null {
+    const name = this.resolveSceneBgName();
+    const cfg = LobbyGuardBattleRenderer.SCENE_BG_LAYER[name];
+    return cfg && this.uiAssetKnown(`ui/battle/${name}_near/spriteFrame`) ? { name, ...cfg } : null;
+  }
+
+  private mountSceneLayers(root: Node, layer: { name: string; ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean }, bgW: number, bgH: number, centerY: number): void {
+    const yOf = (ratio: number): number => centerY + bgH * (0.5 - ratio);
+    const [r, g, b] = layer.fog;
+    // 雾带:两张横向无缝雾图首尾相接,整条匀速左移一张宽后瞬移回原位(画面完全一样,看不出跳);远的那条更淡更慢
+    const fogBand = (name: string, ratio: number, bandH: number, alpha: number, seconds: number): void => {
+      const tileW = bgW * 1.25;
+      const band = this.host.addChildPlainNode(root, name, 0, yOf(ratio), tileW * 2, bandH);
+      for (let i = 0; i < 2; i += 1) {
+        this.mountSprite(band, `${name}Tile${i}`, 'ui/battle/battle_fog_strip/spriteFrame', (i - 0.5) * tileW, 0, tileW + 2, bandH, new Color(r, g, b, alpha));
+      }
+      const start = new Vec3(tileW / 2, yOf(ratio), 0);
+      const end = new Vec3(-tileW / 2, yOf(ratio), 0);
+      band.setPosition(start.x - tileW * Math.random(), start.y, 0);
+      const first = (band.position.x - end.x) / tileW * seconds;
+      tween(band)
+        .to(first, { position: end })
+        .call(() => {
+          band.setPosition(start);
+          tween(band).repeatForever(tween<Node>().to(seconds, { position: end }).call(() => band.setPosition(start))).start();
+        })
+        .start();
+    };
+    if (layer.sky) {
+      fogBand('GuardSkyDrift', Math.max(0.03, layer.ledge * 0.18), bgH * 0.14, Math.round(layer.fogAlpha * 0.45), 150);
+    }
+    fogBand('GuardFogFar', layer.ledge * 0.62, bgH * 0.2, Math.round(layer.fogAlpha * 0.7), 110);
+    fogBand('GuardFogNear', layer.ledge * 0.97, bgH * 0.14, layer.fogAlpha, 70);
+    // 远处浮尘 / 余烬:几颗柔光点在石坎后面缓慢上飘、忽明忽暗
+    const [mr, mg, mb] = layer.mote;
+    const count = sys.isMobile ? 6 : 10;
+    for (let i = 0; i < count; i += 1) {
+      const size = bgH * (0.006 + Math.random() * 0.008);
+      const x0 = (Math.random() - 0.5) * bgW * 0.9;
+      const y0 = yOf(layer.ledge * (0.35 + Math.random() * 0.6));
+      const mote = this.mountSoftFx(root, `GuardMote${i}`, 'glow', x0, y0, size * 3, size * 3, new Color(mr, mg, mb, 255));
+      const opacity = mote.getComponent(UIOpacity) ?? mote.addComponent(UIOpacity);
+      opacity.opacity = 0;
+      const rise = bgH * (0.04 + Math.random() * 0.05);
+      const drift = (Math.random() - 0.5) * bgW * 0.05;
+      const seconds = 6 + Math.random() * 6;
+      // 位移与明暗同周期:每圈从起点淡入、上飘、淡出,回到起点时正好看不见
+      tween(mote).delay(Math.random() * seconds).call(() => {
+        tween(mote).repeatForever(tween<Node>()
+          .call(() => mote.setPosition(x0, y0, 0))
+          .to(seconds, { position: new Vec3(x0 + drift, y0 + rise, 0) })).start();
+        tween(opacity).repeatForever(tween<UIOpacity>().to(seconds * 0.4, { opacity: 170 }).to(seconds * 0.6, { opacity: 0 })).start();
+      }).start();
+    }
+    this.sceneNearY = centerY;
+    this.sceneNearNode = this.mountSprite(root, 'GuardSceneNear', `ui/battle/${layer.name}_near/spriteFrame`, 0, centerY, bgW, bgH);
   }
 
   /** 法术等级点缀用的白色柔光 / 光环纹理(运行时生成 64×64,按法术颜色染色)。 */
@@ -2766,6 +2853,18 @@ export class LobbyGuardBattleRenderer {
       .to(0.06, { position: new Vec3(base.x - amplitude * 0.7, base.y + amplitude * 0.4, base.z) })
       .to(0.05, { position: base })
       .start();
+    // 分层背景视差:近景跟着晃一半,远景不动(2026-11-10)
+    const near = this.sceneNearNode;
+    if (near && near.isValid) {
+      const nb = new Vec3(0, this.sceneNearY, 0);
+      const k = amplitude * 0.5;
+      Tween.stopAllByTarget(near);
+      tween(near)
+        .to(0.05, { position: new Vec3(nb.x + k, nb.y - k * 0.5, 0) })
+        .to(0.06, { position: new Vec3(nb.x - k * 0.7, nb.y + k * 0.4, 0) })
+        .to(0.05, { position: nb })
+        .start();
+    }
   }
 
   private renderSummonButton(): void {
@@ -8533,8 +8632,11 @@ export class LobbyGuardBattleRenderer {
     const spine = new Set<string>();
     const deferredSpine = new Set<string>();
     // 进场第一眼就要的图排最前:关卡背景(加载页也拿它当底图)、石台格子、标题横幅
+    const layer = this.sceneBgLayer();
     const sprites = new Set<string>([
       this.resolveSceneBgPath(),
+      // 分层背景的近景层 + 雾带(2026-11-10)
+      ...(layer ? [`ui/battle/${layer.name}_near/spriteFrame`, 'ui/battle/battle_fog_strip/spriteFrame'] : []),
       this.cellTilePath(false),
       this.cellTilePath(true),
       'ui/battle/ai/battle_bg_cathedral/spriteFrame',
