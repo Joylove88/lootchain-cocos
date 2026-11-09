@@ -317,6 +317,17 @@ export interface WorldMapDef {
   battleBg?: string;
   /** 环境动效:飘落树叶 + 云影(LobbyTownAmbient)。 */
   ambient?: boolean;
+  /**
+   * 加强环境层(11-10 主城「远景 + 动态层」):云影改成跟着镜头飘(屏上常有)、加浮尘光点、屏幕下沿偶尔掠过虚化近景树冠(比地面移得快)。
+   * 需要 ambient 同时开。
+   */
+  ambientDepth?: boolean;
+  /**
+   * 北缘远景(11-10 主城):地图顶外接一条远景横条(画在地面之下,只从城垛缝 / 地图顶外露出来),
+   * 人走近北边(y 从 biasFrom 到 biasTo)时镜头往北多看 reveal;远景横向按 parallax 倍速移动(比地面慢),竖向随偏移只走一半。
+   * pieces = 横条切段(每段宽 = 原图像素 × scale),height = 世界单位高。
+   */
+  backdrop?: { pieces: Array<{ asset: string; w: number }>; height: number; parallax: number; reveal: number; biasFrom: number; biasTo: number };
   /** 地图级挡路区(不依附素材的水面 / 崖口)。 */
   blocks?: WorldMapBlock[];
   /** 可开的野外宝箱(docs/52 §3.1)。 */
@@ -709,6 +720,10 @@ const WOODS: WorldMapDef = {
 };
 
 const CITY_HALF_W = CITY_V4_SIZE.width / 2 - 50;
+/** 远景横条三段的原图像素宽 / 高(city_backdrop_install.py 输出);原图 1 像素 ≈ 0.97 世界单位(原型同比例)。 */
+const CITY_BACKDROP_PIECES = [1730, 1730, 1730];
+const CITY_BACKDROP_H = 489;
+const CITY_BACKDROP_SCALE = 0.97;
 const CITY_HALF_H = CITY_V4_SIZE.height / 2 - 50;
 
 /**
@@ -722,6 +737,16 @@ const CITY: WorldMapDef = {
   levelText: '',
   actorTint: [248, 242, 232],
   ambient: true,
+  ambientDepth: true,
+  // 北墙外远景:王宫山丘 + 远山(tools/qa/city_backdrop_gen.py → city_backdrop_install.py;整条宽见安装脚本输出 × BACKDROP_SCALE)
+  backdrop: {
+    pieces: CITY_BACKDROP_PIECES.map((w, i) => ({ asset: worldAsset(`city4/backdrop_${i}`), w: w * CITY_BACKDROP_SCALE })),
+    height: CITY_BACKDROP_H * CITY_BACKDROP_SCALE,
+    parallax: 0.15,
+    reveal: 420,
+    biasFrom: 1900,
+    biasTo: 2850,
+  },
   cameraZoom: 1.4,
   width: CITY_V4_SIZE.width,
   height: CITY_V4_SIZE.height,
@@ -994,6 +1019,9 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(def.pois?.length ? [...Object.values(POI_ASSET), ...Object.values(POI_MAP_ICON)] : []),
     // 角色脚下柔边接触阴影(LobbyTownRenderer CONTACT_SHADOW)
     worldAsset('fx/contact_shadow'),
+    // 北缘远景横条 + 加强环境层(浮尘 / 近景树冠 / 云影)(11-10)
+    ...(def.backdrop ? def.backdrop.pieces.map((p) => p.asset) : []),
+    ...(def.ambientDepth ? [worldAsset('fx/mote'), worldAsset('fx/fg_canopy'), worldAsset('fx/cloud_shadow')] : []),
     // 野外按只掉落的飞行图标 / 「本轮战果」卡图标(docs/52 §7)
     ...(def.camps.length ? Object.values(FIELD_DROP_ICON) : []),
     ...(def.chests?.length ? [worldAsset('mapui/map_chest')] : [])]));

@@ -548,6 +548,8 @@ export class LobbyTownRenderer {
 
   private world: Node | null = null;
   private groundRoot: Node | null = null;
+  /** 北缘远景横条(11-10 主城):世界层第一个子节点(压在地面之下),每帧按镜头做视差。 */
+  private backdropNode: Node | null = null;
   private readonly ambient = new TownAmbient();
   /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
   private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind']; name: Label | null; label: string; badge: Node | null; badgeY: number }>();
@@ -1100,6 +1102,7 @@ export class LobbyTownRenderer {
       this.buildWorld();
     }
     this.ensureGround();
+    this.ensureBackdrop();
     this.ensureBuildings();
     this.ensureLamps();
     this.ensureProps();
@@ -1132,7 +1135,7 @@ export class LobbyTownRenderer {
       return;
     }
     const view = this.viewSize();
-    this.ambient.mount(world, this.def.width, this.def.height, this.camX, this.camY, view.w, view.h);
+    this.ambient.mount(world, this.def.width, this.def.height, this.camX, this.camY, view.w, view.h, !!this.def.ambientDepth);
   }
 
   private viewSize(): { w: number; h: number } {
@@ -1156,6 +1159,7 @@ export class LobbyTownRenderer {
   /** 离开大厅 / 换账号时丢弃全部状态(世界节点由 contentRoot 自己销毁)。 */
   reset(): void {
     this.world = null;
+    this.backdropNode = null;
     this.groundRoot = null;
     this.entityRoot = null;
     this.leader = null;
@@ -1198,6 +1202,7 @@ export class LobbyTownRenderer {
     world.addComponent(UITransform).setContentSize(new Size(def.width, def.height));
     world.setScale(this.k, this.k, 1);
     this.world = world;
+    this.backdropNode = def.backdrop ? this.host.addChildPlainNode(world, 'Backdrop', 0, def.height / 2, 10, 10) : null;
     this.groundRoot = this.host.addChildPlainNode(world, 'Ground', 0, 0, def.width, def.height);
     this.entityRoot = this.host.addChildPlainNode(world, 'Entities', 0, 0, def.width, def.height);
     this.buildings = [];
@@ -2710,8 +2715,16 @@ export class LobbyTownRenderer {
     const maxY = Math.max(0, this.def.height / 2 - viewH / 2);
     // 心魔试炼:镜头钉在石台中心(构图同原型),不按地图边夹(图外由暗幕盖住)
     const trial = this.trial;
+    // 北缘远景(11-10 主城):人走近北边时镜头往北多看一截,地图顶外那截露出远景
+    const bd = trial ? undefined : this.def.backdrop;
+    let biasY = 0;
+    if (bd) {
+      const r = Math.max(0, Math.min(1, (target.y - bd.biasFrom) / (bd.biasTo - bd.biasFrom)));
+      biasY = r * r * (3 - 2 * r) * bd.reveal;
+    }
+    const maxTop = bd ? maxY + bd.reveal : maxY;
     const wantX = trial ? trial.cx : Math.max(-maxX, Math.min(maxX, target.x));
-    const wantY = trial ? trial.cy : Math.max(-maxY, Math.min(maxY, target.y + 40));
+    const wantY = trial ? trial.cy : Math.max(-maxY, Math.min(maxTop, target.y + 40 + biasY));
     if (snap) {
       this.camX = wantX;
       this.camY = wantY;
@@ -2732,6 +2745,42 @@ export class LobbyTownRenderer {
     }
     world.setPosition(cx - this.camX * this.k + ox, cy - this.camY * this.k + oy, 0);
     updateWorldShaderOrigin(world);
+    if (bd) {
+      this.updateBackdrop(bd, maxY);
+    }
+  }
+
+  /** 北缘远景横条:按段铺好(贴图没到时 addSprite 返回 null,下次 render 再补)。 */
+  private ensureBackdrop(): void {
+    const bd = this.def.backdrop;
+    const root = this.backdropNode;
+    if (!bd || !root || !root.isValid) {
+      return;
+    }
+    const total = bd.pieces.reduce((sum, p) => sum + p.w, 0);
+    let x = -total / 2;
+    bd.pieces.forEach((piece, i) => {
+      const name = `Piece_${i}`;
+      if (!root.getChildByName(name)) {
+        // 段间各多盖 1 单位,防止线性采样在段缝露出细线
+        this.host.addSprite(name, piece.asset, x + piece.w / 2, bd.height / 2, piece.w + 2, bd.height, root);
+      }
+      x += piece.w;
+    });
+  }
+
+  /**
+   * 视差:横向只跟镜头走 parallax 倍(远景慢);竖向——镜头没往北偏时整条沉在地图顶下 reveal/2(被地面盖住),
+   * 偏满时下沿刚好在地图顶下 40(城墙后面),中间按偏移量的一半跟随(远景竖向也慢一半)。
+   */
+  private updateBackdrop(bd: NonNullable<WorldMapDef['backdrop']>, maxY: number): void {
+    const node = this.backdropNode;
+    if (!node || !node.isValid) {
+      return;
+    }
+    const lift = Math.max(0, this.camY - maxY);
+    const bottom = this.def.height / 2 - 40 - bd.reveal * 0.5 + lift * 0.5;
+    node.setPosition(this.camX * (1 - bd.parallax), bottom, 0);
   }
 
   /** 前后遮挡:脚线 y 越大越靠后,先画;只在顺序变化时重排兄弟索引。 */

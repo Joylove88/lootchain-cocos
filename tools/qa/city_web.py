@@ -30,11 +30,20 @@ CLEAR = ("if (root.evolutionPick && !root.evolutionPick.busy && root.evolutionPi
          " if (root.contractPick && !root.contractPick.busy) { root.selectStarterContract(root.contractPick.candidates[0].heroCode); await root.confirmStarterContract(); return 'contract'; }"
          " return 'none';")
 # 传送到 (x, y):队长 + 队友 + 足迹 + 镜头
-TP = ("const all=[t.leader,...t.followers]; all.forEach((a,i)=>{ a.x={x}-i*60; a.y={y}; a.node.setPosition(a.x,a.y,0); });"
+TP = ("t.autoPath = null; const all=[t.leader,...t.followers]; all.forEach((a,i)=>{ a.x={x}-i*60; a.y={y}; a.node.setPosition(a.x,a.y,0); });"
       " t.trail=[new cc.Vec2({x}-200,{y}), new cc.Vec2({x},{y})]; t.applyCamera(true); return 1;")
 # 原型像素 → 世界坐标:x = px / 1774 * 14000 - 7000, y = 3500 - py / 887 * 7000
 SPOTS = [('plaza', 0, -150), ('avenue', 0, 900), ('west_houses', -4600, 900), ('guild', -3000, 300), ('market', 3200, -900),
-         ('academy', 2900, 700), ('pond_canal', -3800, -2000), ('south_gate', 0, -2700), ('east_gate', 6000, -1000), ('east_bridge', 5000, -2200)]
+         ('academy', 2900, 700), ('pond_canal', -3800, -2000), ('south_gate', 0, -2700), ('east_gate', 6000, -1000), ('east_bridge', 5000, -2200),
+         ('north', 0, 3300), ('north_west', -4200, 3300), ('north_east', 4200, 3300),
+         ('wall_road', -1800, 2860), ('wall_road_ext', -1800, 2860),
+         ('north_road_w', -4300, 2860), ('north_road_e', 4300, 2860), ('north_mid', 0, 2300),
+         ('corner_e', 6600, 2860), ('corner_w', -6600, 2860)]
+VW = int(os.environ.get('CITY_VW', '1600'))  # 视口宽(高固定 900):2160 = 2.4:1 超宽屏
+# _ext 时镜头比人物再往北偏 BIAS(原型:靠近北墙时镜头往北看)
+BIAS = int(os.environ.get('CITY_BIAS', '400'))
+# *_ext:镜头允许多往北看 EXT 世界单位(主城远景原型:地图外那条用远景合成)
+EXT = int(os.environ.get('CITY_EXT', '700'))
 # 只拍部分区域:CITY_SPOTS=plaza,avenue
 if os.environ.get('CITY_SPOTS'):
     SPOTS = [s for s in SPOTS if s[0] in os.environ['CITY_SPOTS'].split(',')]
@@ -47,7 +56,7 @@ def js(body):
 async def main():
     profile = base.PROFILE + '_city'
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
-                             '--window-size=1600,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
+                             f'--window-size={VW},900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     logs = []
     try:
         for _ in range(100):
@@ -97,7 +106,7 @@ async def main():
                     await asyncio.sleep(2)
 
             await call('Runtime.enable')
-            await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            await call('Emulation.setDeviceMetricsOverride', {'width': VW, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             await call('Page.navigate', {'url': base.PAGE})
             r = await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             print('cc', r.get('result', {}).get('result', {}).get('value'), flush=True)
@@ -146,13 +155,25 @@ async def main():
               out.total = targets.length;
               return JSON.stringify(out);""", 600)
             print('reach', reach, flush=True)
+            if os.environ.get('CITY_FG_PROBE'):
+                # 近景树冠必现的一处:挑一棵,把人放到它上方让它落在屏幕下沿(相对高度约 -0.75)
+                pos = await ev("const a = t.ambient; const c = a.canopies.find(c => Math.abs(c.y) < 1500 && Math.abs(c.x) < 4000); return c ? JSON.stringify([Math.round(c.x), Math.round(c.y + 0.75 * 630 / 1.45 - 40)]) : 'none';")
+                print('fg target', pos, flush=True)
+                if pos and pos != 'none':
+                    fx, fy = json.loads(pos)
+                    SPOTS.append(('fg_probe', fx, fy))
             for name, x, y in SPOTS:
+                if name.endswith('_ext'):
+                    await ev(f"t.__h0 = t.def.height; t.def.height += {EXT * 2}; t.__ac0 = t.applyCamera; t.applyCamera = function (snap, dt) {{ const L = this.leader; this.leader = {{ x: L.x, y: L.y + {BIAS} }}; try {{ t.__ac0.call(this, true, dt); }} finally {{ this.leader = L; }} }}; return 1;")
                 await ev(TP.replace('{x}', str(x)).replace('{y}', str(y)))
                 await asyncio.sleep(6)
                 await settle(60)
                 stats = await ev("const dc = cc.director.root && cc.director.root.device && cc.director.root.device.numDrawCalls; return JSON.stringify({ drawCalls: dc });")
                 print(name, stats, flush=True)
+                print(' ambient', await ev("const a = t.ambient; if (!a || !a.depth) return 'no depth'; const on = a.canopies.filter(c => c.node.active); return JSON.stringify({ cam: [Math.round(t.camX), Math.round(t.camY)], canopies: on.length, canopyOp: on.map(c => c.opacity.opacity), clouds: a.clouds.map(c => [Math.round(c.x - t.camX), Math.round(c.y - t.camY)]), motes: a.motes.filter(m => m.opacity.opacity > 0).length });"), flush=True)
                 await shot(f'spot_{name}')
+                if name.endswith('_ext'):
+                    print('ext', await ev("const r = JSON.stringify({ k: t.k, camY: t.camY, h: t.def.height }); t.def.height = t.__h0; t.applyCamera = t.__ac0; t.applyCamera(true); return r;"), flush=True)
             # 打开地图页(鸟瞰图 + 地点)
             await ev("root.openAreaMapPanel(); return 1;")
             await asyncio.sleep(4)
