@@ -57,7 +57,17 @@ def build_mask():
     k2 = 1
     padg = np.pad(garden, k2, mode='edge')
     garden = sum(padg[k2 + dy:k2 + dy + H, k2 + dx:k2 + dx + W] for dy in range(-k2, k2 + 1) for dx in range(-k2, k2 + 1)) / (2 * k2 + 1) ** 2
-    grass = np.maximum(grass, smoothstep(0.3, 0.7, garden))
+    # 11-11 实机:庭院草坪被街边铺石带吃掉大半后剩一条细长草带(像绿地毯)→ 乘过街距后做开运算,窄于 13 格(312)的条整条去掉
+    road_k = smoothstep(G.STREET_HALF, G.STREET_HALF + 120, d_road)
+    gterm = smoothstep(0.3, 0.7, garden) * road_k
+    r = 6
+
+    def box(m, rr):
+        p = np.pad(m.astype(np.float32), rr, mode='constant')
+        return sum(p[rr + dy:rr + dy + H, rr + dx:rr + dx + W] for dy in range(-rr, rr + 1) for dx in range(-rr, rr + 1))
+    core = box(gterm > 0.5, r) >= (2 * r + 1) ** 2 - 0.5
+    keep = np.clip(box(box(core, r) > 0.5, 1) / 9.0, 0, 1)
+    gterm = gterm * keep
     px, py = G.P(305, 640)
     grass = np.maximum(grass, 1 - smoothstep(0.75, 1.05, np.hypot((X - px) / (200 * G.S), (Y - py) / (110 * G.S))))
     for t in L['tall']:
@@ -68,7 +78,8 @@ def build_mask():
     cy = G.wy(G.CANAL_Y_PX)
     bank = (np.abs(Y - cy) > 280) & (np.abs(Y - cy) < 520)
     grass = np.maximum(grass, (edge | bank) * smoothstep(0.45, 0.75, n2) * 0.8)
-    grass *= smoothstep(G.STREET_HALF, G.STREET_HALF + 120, d_road)
+    grass *= road_k
+    grass = np.maximum(grass, gterm)
     # 11-09 实机:街边是一条直硬线像贴上去的带子 → 距离加两层噪声,街沿参差、卵石散进泥地(同 city_fa2)
     # 11-09 精致风:规整铺石之间撕纸边很假,振幅收小成缓弯(fa 手绘风是 220 / 90)
     ragged = (value_noise(W, H, 9, 61) - 0.5) * 70 + (value_noise(W, H, 3, 62) - 0.5) * 30

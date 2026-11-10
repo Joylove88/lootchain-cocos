@@ -249,6 +249,8 @@ const MONSTER_AGGRO_RADIUS = 260;
 const HAUL_IDLE_MS = 6000;
 /** 角色脚下柔边接触阴影(10-30 英雄贴地融合:原来的硬边黑椭圆像贴纸)。 */
 const CONTACT_SHADOW = worldAsset('fx/contact_shadow');
+/** 平底立面(房子 / 城墙)的墙脚接地暗带:上沿最深往下渐隐(tools/qa/city_terrace_install.py contact_strip)。 */
+const CONTACT_STRIP = worldAsset('fx/contact_strip');
 /** 场上物件名字(宝箱 / 石碑 / 采集点):平时暖白,开过 / 采过 / 读过压灰。 */
 const WORLD_NAME_COLOR = rgba(250, 238, 206);
 const WORLD_NAME_DONE = rgba(170, 170, 170);
@@ -1532,7 +1534,39 @@ export class LobbyTownRenderer {
       // 投影落在脚下往右下 0.38h × 0.42h 的范围
       this.addCull(outer, prop.x - prop.width / 2, prop.x + prop.width / 2 + h * 0.4, prop.y - h * 0.45, prop.y + 20);
     }
-    if (prop.width >= 160 && !(this.def.aoSkip ?? []).some((k) => prop.asset.includes(k))) {
+    const listed = (list?: string[]): boolean => (list ?? []).some((k) => prop.asset.includes(k));
+    if (listed(this.def.aoStrip)) {
+      // 平底立面:沿墙脚一条暗带(上沿藏在墙脚后面一点),不再在脚下露半个椭圆(11-11 主城「像悬浮」)
+      const w = (prop.block?.w ?? prop.width * 0.85) * 1.06;
+      const sh = 64;
+      const holder = this.host.addChildPlainNode(group('AOStrip'), name, prop.x, prop.y - sh / 2 + 12, w, sh);
+      const ao = this.host.addSprite('Art', CONTACT_STRIP, 0, 0, w, sh, holder);
+      if (!ao) {
+        holder.destroy();
+        return;
+      }
+      ao.sizeMode = Sprite.SizeMode.CUSTOM;
+      ao.node.getComponent(UITransform)?.setContentSize(new Size(w, sh));
+      this.addCull(holder, prop.x - w / 2, prop.x + w / 2, prop.y - sh, prop.y + 20);
+      return;
+    }
+    if (listed(this.def.aoRound)) {
+      // 圆池类(喷泉 / 井,3/4 俯视):椭圆托在池底正下方,只在池沿外露一圈
+      const w = prop.width * 1.08;
+      const eh = w * 0.5;
+      const holder = this.host.addChildPlainNode(group('AO'), name, prop.x + w * 0.03, prop.y + prop.width * 0.2, w, eh);
+      const ao = this.host.addSprite('Art', CONTACT_SHADOW, 0, 0, w, eh, holder);
+      if (!ao) {
+        holder.destroy();
+        return;
+      }
+      ao.sizeMode = Sprite.SizeMode.CUSTOM;
+      ao.node.getComponent(UITransform)?.setContentSize(new Size(w, eh));
+      ao.node.addComponent(UIOpacity).opacity = 190;
+      this.addCull(holder, prop.x - w / 2, prop.x + w * 0.6, prop.y - eh * 0.2, prop.y + eh);
+      return;
+    }
+    if (prop.width >= 160 && !listed(this.def.aoSkip)) {
       const w = prop.width * (prop.block ? 0.95 : 0.7);
       const holder = this.host.addChildPlainNode(group('AO'), name, prop.x, prop.y + 6, w, w * 0.36);
       const ao = this.host.addSprite('Art', CONTACT_SHADOW, 0, 0, w, w * 0.36, holder);

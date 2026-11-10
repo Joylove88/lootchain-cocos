@@ -352,6 +352,10 @@ export interface WorldMapDef {
   castShadowSkip?: string[];
   /** 这些贴图不要脚下接地暗斑(11-10 主城挡土墙:900 宽的墙段底下压一个大椭圆黑斑;墙脚暗带另用贴地件画)。 */
   aoSkip?: string[];
+  /** 这些贴图的接地影改成沿墙脚的一条暗带(11-11 主城:房子 / 城墙是平底立面,默认椭圆在脚下露半个 → 城墙脚一排半圆、房子像悬空)。 */
+  aoStrip?: string[];
+  /** 这些贴图是 3/4 俯视的圆池(喷泉 / 井):椭圆暗斑托在池底正下方(默认压在脚点,池子前沿下面露一大块像悬浮)。 */
+  aoRound?: string[];
   /** 镜头拉远倍数(11-08 林地 1.4:同屏看到的范围按倍数放大,头顶字 / 血条 / 飘字反向放大保持屏上大小)。不给 = 1。 */
   cameraZoom?: number;
 }
@@ -782,6 +786,8 @@ const CITY: WorldMapDef = {
   castShadowOpacity: 64,
   // 11-10 城墙投影把城垛缺口投成路面上一排白虚线 + 锯齿暗带(像马路标线)→ 城墙段不投影(角塔的圆影保留)
   aoSkip: ['city4_terrace_wall'],
+  aoStrip: ['city4_house_', 'city4_guild_hall', 'city4_cathedral', 'city4_academy', 'city4_barracks', 'city4_tavern', 'city4_wall_h', 'city4_gatehouse', 'city4_stall_'],
+  aoRound: ['city4_fountain', 'city4_well'],
   castShadowSkip: ['city4_wall_h', 'city4_terrace_wall', 'city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
   buildings: [
     // 剧情任务公告板(docs/50 §4.1):罗盘广场东侧
@@ -1023,6 +1029,7 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(def.pois?.length ? [...Object.values(POI_ASSET), ...Object.values(POI_MAP_ICON)] : []),
     // 角色脚下柔边接触阴影(LobbyTownRenderer CONTACT_SHADOW)
     worldAsset('fx/contact_shadow'),
+    ...(def.aoStrip?.length ? [worldAsset('fx/contact_strip')] : []),
     // 北缘远景横条 + 加强环境层(浮尘 / 近景树冠 / 云影)(11-10)
     ...(def.backdrop ? def.backdrop.pieces.map((p) => p.asset) : []),
     ...(def.ambientDepth ? [worldAsset('fx/mote'), worldAsset('fx/fg_canopy'), worldAsset('fx/cloud_shadow')] : []),

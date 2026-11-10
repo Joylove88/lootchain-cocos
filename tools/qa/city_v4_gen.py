@@ -212,7 +212,8 @@ def build_skeleton():
     for bx in CANAL_BRIDGES_PX:
         bridges.append({'asset': C4('canal_bridge'), 'x': wx(bx), 'y': cy + 20, 'width': 560, 'flat': True})  # 11-09 短桥(长约 1.5 倍宽)刚好跨过运河
     for bx, flip in ((1250, False), (1460, True), (560, False)):
-        flats.append({'asset': C4('boat'), 'x': wx(bx), 'y': cy - 30, 'width': 520, 'flat': True, 'flipX': flip})
+        # 11-11 实机「船跑墙上了」:宽 520 的船高 221,水面只有 180 → 船舷压在南岸石堤上;缩到 360(高 153)摆在水面正中
+        flats.append({'asset': C4('boat'), 'x': wx(bx), 'y': cy + 2, 'width': 360, 'flat': True, 'flipX': flip})
     # 城墙:只在北边一道(大教堂身后),两端各一座圆塔;东西两侧不砌墙(11-09 用户:两边竖墙重叠难看),用树林草坡收边
     top = MAP_H / 2 - 60
     x0, x1 = wx(150), wx(1650)
@@ -238,8 +239,9 @@ def build_skeleton():
     bx, by = P(*BOARD_PX)
     board = {'key': 'board', 'label': '公告板', 'asset': C4('notice_board'), 'x': bx, 'y': by, 'width': 300,
              'footprint': {'w': 200, 'd': 50}, 'door': {'x': -70, 'y': -50}}
-    fx, fy = P(765, 385)
-    st('fountain', fx, fy, 560, blk(420, 140))
+    # 11-11 实机「喷泉像悬浮」:原 (765,385) 宽 560 压在台地挡土墙立面 + 栏杆上 → 缩小南移到罗盘西北角的空铺石上,顶不碰墙脚
+    fx, fy = P(741, 428)
+    st('fountain', fx, fy, 460, blk(350, 120))
     for sx in (-1, 1):
         ax_, ay_ = P(886 + sx * 62, 300)
         st('banner', ax_, ay_, 230, blk(70, 40), flip=sx > 0)
@@ -257,7 +259,7 @@ def build_skeleton():
     flats.append({'asset': C4('pond'), 'x': pdx, 'y': pdy, 'width': 1400, 'flat': True, 'water': True})
     sx_, sy_ = P(318, 570)
     st('statue', sx_, sy_, 200, blk(120, 60))
-    for (bx_, by_, f) in ((285, 565, False), (395, 632, True), (215, 690, False)):
+    for (bx_, by_, f) in ((285, 565, False), (395, 632, True), (215, 652, False)):
         x, y = P(bx_, by_)
         st('bench', x, y, 230, blk(180, 40), flip=f)
     for (dx_, f) in ((1460, False), (1580, True)):
@@ -533,7 +535,8 @@ def place_greenery(g, stands, rnd):
 
 def lamps_along(roads, g, rnd):
     out = []
-    for line in roads[:3] + roads[3:5]:
+    # 11-11 全城只有 7 盏灯、大片铺石空着 → 所有街都排(两侧交替,间距 850)
+    for line in roads:
         acc = 0.0
         side = 1
         for (ax, ay), (bx, by) in zip(line, line[1:]):
@@ -544,10 +547,10 @@ def lamps_along(roads, g, rnd):
                 x = ax + (bx - ax) * t / seg + nx * side * (STREET_HALF + 70)
                 y = ay + (by - ay) * t / seg + ny * side * (STREET_HALF + 70)
                 i = g.idx(x, y)
-                if not g.blocked[i] and g.zone[i] not in ('canal', 'wall') and all(math.hypot(x - o['x'], y - o['y']) > 600 for o in out):
+                if not g.blocked[i] and g.zone[i] not in ('canal', 'wall') and all(math.hypot(x - o['x'], y - o['y']) > 520 for o in out):
                     out.append({'x': round(x), 'y': round(y)})
                 side = -side
-                t += 1100
+                t += 850
             acc += seg
     return out
 

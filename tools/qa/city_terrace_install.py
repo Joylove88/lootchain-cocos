@@ -24,6 +24,7 @@ DST = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'city4')
 BACKUP = os.path.join(ROOT, '素材原始备份', 'city-terrace-20261110')
 CUT = 0.03
 GRAND_TOP = 0.415
+WALL_CUTS = {'b': 824, 'c': 547, 'd': 272}   # 与 city_plan_v2.TERRACE_PIECES 对应
 WIDTH = {'terrace_wall': 1024, 'terrace_stairs': 768, 'terrace_stairs_grand': 1024}
 
 
@@ -66,6 +67,26 @@ def install(name):
     if rgba.width > w:
         rgba = resize_premul(rgba, w, round(rgba.height * w / rgba.width))
     save(name, rgba)
+    if name == 'terrace_wall':
+        # 11-11 短段:在立柱(1024 宽里中心 237 / 512 / 789,柱宽约 60)右侧切开 → 拼跨时全城墙段同一比例、高度一致
+        for suffix, cut in WALL_CUTS.items():
+            save(f'terrace_wall_{suffix}', rgba.crop((0, 0, cut, rgba.height)))
+
+
+def contact_strip():
+    """通用墙脚接地暗带(ui/world/fx/contact_strip,渲染层 aoStrip 用):256×48,上沿最深往下渐隐,两端渐隐。"""
+    w, h = 256, 48
+    y = np.linspace(0, 1, h)[:, None]
+    x = np.linspace(-1, 1, w)[None, :]
+    a = np.clip(1 - y, 0, 1) ** 1.6 * np.clip((1 - np.abs(x)) * 5, 0, 1)
+    a[:6] *= np.linspace(0.55, 1, 6)[:, None]
+    rgba = np.zeros((h, w, 4), np.uint8)
+    rgba[..., :3] = (14, 12, 10)
+    rgba[..., 3] = (a * 215).round().astype(np.uint8)
+    dst = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'fx', 'contact_strip.png')
+    Image.fromarray(rgba, 'RGBA').save(dst, optimize=True)
+    WG.write_meta(dst, meta('contact_strip', w, h))
+    print('installed', dst)
 
 
 def shade():
@@ -86,3 +107,4 @@ if __name__ == '__main__':
     for n in WIDTH:
         install(n)
     shade()
+    contact_strip()

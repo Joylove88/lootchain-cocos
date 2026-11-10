@@ -18,7 +18,8 @@ import city_v4_gen as G
 HOUSE_SEQ = ['house_a', 'house_b', 'house_c', 'house_f', 'house_e', 'house_b', 'house_a', 'house_c']
 HOUSE_W = {'house_a': 640, 'house_b': 620, 'house_c': 640, 'house_d': 500, 'house_e': 760, 'house_f': 600}
 ROW_GAP = (30, 70)
-ROW_STEP = 640                      # 街区内部横排行距(后排屋脚压在前排屋顶后面)
+ROW_STEP = 820                      # 街区内部横排行距(11-11:原 640 前排屋顶盖住后排一楼门窗,叠成一坨 → 拉开到后排整面露出)
+STACK_KEEP = 0.86                   # 前后排上下错开至少前排屋高 × 这个比例(只许盖住后排墙脚一点)
 FRONT = G.STREET_HALF + 70          # 街北侧民居脚线离街中线
 AVENUE_TREE_W = 430
 GROVE_GAP = 1150
@@ -31,7 +32,10 @@ REJ_PTS = []
 # 墙顶石栏杆压在台地边上。路穿过的地方开台阶(贴地件,人走在上面):西北巷 / 公会斜街 / 大道(大台阶)/ 学院斜街 / 东北巷
 TERRACE_Y = G.wy(340)               # 台地边(墙顶)世界 y
 TERRACE_FACE = 140                  # 立面高(墙脚 = TERRACE_Y - TERRACE_FACE)
-TERRACE_SEG = 840                   # 墙段显示宽(高约 0.28 × 宽 < 260:不算挡人立物,不投影)
+TERRACE_SEG = 820                   # 整段墙显示宽(高约 0.30 × 宽 = 249 < 260:不算挡人立物,不投影)
+# 11-11 实机「左右墙高度不一样」:原来每跨按跨长均分段宽,段宽不同 → 高度跟着不同(最多差 18%)。
+# 改成全城同一比例:整段 + 在立柱后切出的 3 种短段(city_terrace_install.py 生成)拼满每一跨,缩放只允许 ±3%
+TERRACE_PIECES = [('terrace_wall', 1024), ('terrace_wall_b', 824), ('terrace_wall_c', 547), ('terrace_wall_d', 272)]
 TERRACE_STAIRS = [(300, 'terrace_stairs', 470), (685, 'terrace_stairs', 470), (886, 'terrace_stairs_grand', 780),
                   (1086, 'terrace_stairs', 470), (1480, 'terrace_stairs', 470)]
 TERRACE_KEEP = (TERRACE_Y - TERRACE_FACE - 260, TERRACE_Y + 160)   # 民居脚线不许落在这条带里(脚踩在墙上 / 贴墙根)
@@ -74,7 +78,14 @@ def plan_houses(g, stands, rnd):
         if not _free(rect, rects):
             _rej('overlap', x, y)
             return None
-        # 民居之间:前后排互相遮一截是正常纵深,只拦同一排挤在一起的(脚点横向太近且前后差不到半个屋高)
+        # 11-11 前后排不许叠:横向有重叠的两栋,脚线前后差必须 ≥ 前排屋高 × STACK_KEEP(否则前排屋顶盖住后排门窗)
+        for o in out:
+            ox = min(x + w / 2, o['x'] + o['width'] / 2) - max(x - w / 2, o['x'] - o['width'] / 2)
+            front_h = h if y < o['y'] else o['width'] * G.aspect(o['asset'])
+            if ox > 60 and abs(y - o['y']) < front_h * STACK_KEEP:
+                _rej('stack', x, y)
+                return None
+        # 同一排挤在一起的(脚点横向太近且前后差不到半个屋高)
         if any(abs(x - o['x']) < (w + o['width']) * 0.47 and abs(y - o['y']) < h * 0.5 for o in out):
             _rej('crowd', x, y)
             return None
@@ -145,7 +156,7 @@ def plan_houses(g, stands, rnd):
                     x = road_x + side * (G.STREET_HALF + 60 + w / 2)
                     h = w * G.aspect(G.C4(name))
                     if put(name, x, y, w, side < 0):
-                        y += h * 0.62
+                        y += h * STACK_KEEP + 30
                     else:
                         y += 160
     return out
@@ -160,7 +171,16 @@ def mark_gardens(g):
     pad = np.pad(free.astype(np.float32), k, mode='constant')
     H, W = free.shape
     dense = sum(pad[k + dy:k + dy + H, k + dx:k + dx + W] for dy in range(-k, k + 1) for dx in range(-k, k + 1)) / (2 * k + 1) ** 2
-    g.zone[free & (dense > 0.85)] = 'garden'
+    garden = free & (dense > 0.85)
+    # 11-11 实机:台地墙脚 / 街边剩下一条条细长草带(像绿地毯)→ 开运算去掉窄于 9 格(360)的条,只留成块的庭院
+    r = 4
+
+    def box(m):
+        p = np.pad(m.astype(np.float32), r, mode='constant')
+        return sum(p[r + dy:r + dy + H, r + dx:r + dx + W] for dy in range(-r, r + 1) for dx in range(-r, r + 1))
+    core = box(garden) >= (2 * r + 1) ** 2 - 0.5
+    garden &= box(core) > 0.5
+    g.zone[garden] = 'garden'
 
 
 def plan_greenery(g, stands, rnd):
@@ -298,24 +318,61 @@ def strip_wild(stands):
     return [s for s in stands if 'city4_rocks' not in s['asset']]
 
 
+def _wall_combo(length):
+    """一跨墙用哪些件拼:整段尽量多,短段各最多 1 件;返回 (件列表, 统一缩放)。缩放离 1 最近的组合。"""
+    k = TERRACE_SEG / 1024
+    best = None
+    for nf in range(0, int(length / (1024 * k)) + 2):
+        for nb in (0, 1):
+            for nc in (0, 1):
+                for nd in (0, 1):
+                    total = (nf * 1024 + nb * 824 + nc * 547 + nd * 272) * k
+                    if total <= 0:
+                        continue
+                    sc = length / total
+                    cost = abs(sc - 1) + 0.004 * (nb + nc + nd)
+                    if best is None or cost < best[0]:
+                        best = (cost, [0] * nf + [1] * nb + [2] * nc + [3] * nd, sc)
+    return best[1], best[2]
+
+
 def plan_terrace():
-    """挡土墙段(立物,带挡块)+ 台阶 / 墙脚暗带(贴地件)。墙段在两座台阶之间均分(段宽 ≈ TERRACE_SEG),端头正好接到台阶边。"""
+    """挡土墙段(立物,带挡块)+ 台阶 / 墙脚暗带(贴地件)。全城墙段同一比例(高度一致):
+    两座台阶之间的跨用「整段 + 短段」拼满(缩放 ±3% 内);两头的跨从台阶往外排整段,伸出地图不管。"""
     foot = TERRACE_Y - TERRACE_FACE
     walls, flats = [], []
     gaps = sorted((G.wx(px) - w / 2 + 40, G.wx(px) + w / 2 - 40) for px, _a, w in TERRACE_STAIRS)   # 台阶两侧短墙压住墙段端头 40
-    edges = [-G.MAP_W / 2 - 200] + [v for gp in gaps for v in gp] + [G.MAP_W / 2 + 200]
-    k = 0
-    for a, b in zip(edges[::2], edges[1::2]):
-        n = max(1, round((b - a) / TERRACE_SEG))
-        w = (b - a) / n
-        for i in range(n):
-            cx = a + w * (i + 0.5)
-            walls.append({'asset': G.C4('terrace_wall'), 'x': round(cx), 'y': round(foot), 'width': round(w) + 2,
-                          'block': G.blk(w + 2, TERRACE_FACE + 40), 'flipX': k % 2 == 1, 'terrace': True})
-            flats.append({'asset': G.C4('terrace_shade'), 'x': round(cx), 'y': round(foot - 30), 'width': round(w * 1.04), 'flat': True})
-            k += 1
+    kk = TERRACE_SEG / 1024
+    seq = 0
+
+    def piece(idx, left, sc):
+        nonlocal seq
+        name, px = TERRACE_PIECES[idx]
+        w = px * kk * sc
+        cx = left + w / 2
+        it = {'asset': G.C4(name), 'x': round(cx), 'y': round(foot), 'width': round(w) + 2, 'block': G.blk(w + 2, TERRACE_FACE + 40), 'terrace': True}
+        if idx == 0 and seq % 2 == 1:
+            it['flipX'] = True
+        walls.append(it)
+        flats.append({'asset': G.C4('terrace_shade'), 'x': round(cx), 'y': round(foot - 30), 'width': round(w * 1.04), 'flat': True})
+        seq += 1
+        return left + w
+
+    # 中间各跨
+    for (_a0, a), (b, _b1) in zip(gaps, gaps[1:]):
+        combo, sc = _wall_combo(b - a)
+        x = a
+        for idx in combo:
+            x = piece(idx, x, sc)
+    # 两头:从台阶边往外排整段
+    x = gaps[0][0]
+    while x > -G.MAP_W / 2 - 100:
+        x -= TERRACE_SEG
+        piece(0, x, 1)
+    x = gaps[-1][1]
+    while x < G.MAP_W / 2 + 100:
+        x = piece(0, x, 1)
     for px, asset, w in TERRACE_STAIRS:
         h = w * G.aspect(G.C4(asset))
-        # 台阶底边比墙脚低一点(伸出到下层街面),往上爬进台地
         flats.append({'asset': G.C4(asset), 'x': G.wx(px), 'y': round(foot - 60 + h / 2), 'width': w, 'flat': True})
     return walls, flats
