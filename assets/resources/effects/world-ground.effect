@@ -120,6 +120,8 @@ CCProgram ground-fs %{
     base = mix(base, moss, f);
     hb = mix(hb, lum(moss), f);
     f = hblend(wMeadow * (0.75 + 0.25 * n3), hb, lum(meadow) + 0.05);
+    // 铺石城区(11-10 主城规划 v2):草坪要整块铺满(原来最多七成,石板透上来像苔痕,树像种在石头上),边缘只留窄窄一圈过渡
+    f = mix(f, smoothstep(0.35, 0.65, m.g + (n3 - 0.5) * 0.12), paved);
     base = mix(base, meadow, f);
     hb = mix(hb, lum(meadow), f);
     // 落叶:比其他层边缘软一些、最多盖 85%,颜色往树冠的赭橙靠(实测纯落叶贴图压在树下像个黑坑)

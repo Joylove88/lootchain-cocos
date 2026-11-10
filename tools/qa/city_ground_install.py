@@ -47,11 +47,17 @@ def build_mask():
     gj = np.clip(((X + G.MAP_W / 2) // G.CELL).astype(int), 0, g.nx - 1)
     zone = g.zone[gi, gj]
     nature = np.isin(zone, ['nature', 'park']).astype(np.float32)
+    # 11-10 规划 v2:街区庭院草坪(garden)边缘只糊一点,保持跟房子 / 街对齐的方正形状
+    garden = (zone == 'garden').astype(np.float32)
     # 边缘做软:按 3 格均值糊一下
     k = 5
     pad = np.pad(nature, k, mode='edge')
     nature = sum(pad[k + dy:k + dy + H, k + dx:k + dx + W] for dy in range(-k, k + 1) for dx in range(-k, k + 1)) / (2 * k + 1) ** 2
     grass = np.maximum(grass, smoothstep(0.35, 0.75, nature))
+    k2 = 1
+    padg = np.pad(garden, k2, mode='edge')
+    garden = sum(padg[k2 + dy:k2 + dy + H, k2 + dx:k2 + dx + W] for dy in range(-k2, k2 + 1) for dx in range(-k2, k2 + 1)) / (2 * k2 + 1) ** 2
+    grass = np.maximum(grass, smoothstep(0.3, 0.7, garden))
     px, py = G.P(305, 640)
     grass = np.maximum(grass, 1 - smoothstep(0.75, 1.05, np.hypot((X - px) / (200 * G.S), (Y - py) / (110 * G.S))))
     for t in L['tall']:

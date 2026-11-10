@@ -45,7 +45,10 @@ BIAS = int(os.environ.get('CITY_BIAS', '400'))
 # *_ext:镜头允许多往北看 EXT 世界单位(主城远景原型:地图外那条用远景合成)
 EXT = int(os.environ.get('CITY_EXT', '700'))
 # 只拍部分区域:CITY_SPOTS=plaza,avenue
-if os.environ.get('CITY_SPOTS'):
+# 整图网格巡检(11-10 摆件排查):CITY_GRID=1 → x -6000..6000 步 2000、y -3000..2800 步 1150
+if os.environ.get('CITY_GRID'):
+    SPOTS = [(f'g_{x}_{y}', x, y) for y in range(2800, -3001, -1150) for x in range(-6000, 6001, 2000)]
+if os.environ.get('CITY_SPOTS') and not os.environ.get('CITY_GRID'):
     SPOTS = [s for s in SPOTS if s[0] in os.environ['CITY_SPOTS'].split(',')]
 
 

@@ -778,7 +778,8 @@ const CITY: WorldMapDef = {
   groundShadows: true,
   // 高建筑的斜投影在街上压出整片暗块(实机 11-08)→ 主城再淡一些
   castShadowOpacity: 64,
-  castShadowSkip: ['city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
+  // 11-10 城墙投影把城垛缺口投成路面上一排白虚线 + 锯齿暗带(像马路标线)→ 城墙段不投影(角塔的圆影保留)
+  castShadowSkip: ['city4_wall_h', 'city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
   buildings: [
     // 剧情任务公告板(docs/50 §4.1):罗盘广场东侧
     { ...CITY_V4_BOARD, asset: worldAsset(CITY_V4_BOARD.asset), action: 'npc', npc: 'BOARD' },

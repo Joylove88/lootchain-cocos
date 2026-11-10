@@ -84,7 +84,7 @@ CANAL_Y_PX = 705
 CANAL_BRIDGES_PX = [886, 1345]
 # 民居街区(原型像素矩形):房子只摆在这些块里(其余是广场 / 地标 / 公园 / 城外草坡)
 BLOCK_RECTS_PX = [(120, 95, 700, 425), (1060, 75, 1700, 300), (1400, 300, 1560, 425), (500, 480, 860, 655), (960, 540, 1300, 655),
-                  (1380, 470, 1560, 560)]
+                  (1380, 470, 1560, 640)]   # 11-10 v2:兵营南街区往下放到运河岸(原来只 90 px 深,一排房子都放不下)
 
 # ── 地标(原型像素脚线, 素材, 显示宽, 挡块宽/深, 名牌)──
 LANDMARKS = [
@@ -597,6 +597,8 @@ def apply_hand_deco(stands, tall, low, seed):
 
 
 def generate(seed=11):
+    if os.environ.get('CITY_PLAN', 'v2') != 'v1':
+        return generate_v2(seed)
     rnd = random.Random(seed)
     roads, areas, flats, stands, bridges, board = build_skeleton()
     npcs = build_npcs()
@@ -612,6 +614,26 @@ def generate(seed=11):
     # 11-09:主城不再套 GPT 原型手摆组(树篱横穿房子 / 花箱悬空就出在这里),全部按街道规则摆
     return {'roads': roads, 'areas': areas, 'flats': flats, 'bridges': bridges, 'stands': stands, 'board': board, 'npcs': npcs,
             'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': tall, 'low': low, 'lamps': lamps}, g
+
+
+def generate_v2(seed=11):
+    """11-10 摆件规划 v2(tools/qa/city_plan_v2.py):民居沿街连排、树按行道树 / 地标对树 / 树丛种、城里去掉石堆。"""
+    import city_plan_v2 as PV
+    rnd = random.Random(seed)
+    roads, areas, flats, stands, bridges, board = build_skeleton()
+    stands = PV.strip_wild(stands)
+    npcs = build_npcs()
+    waypoint, spawn, exits, places = build_points()
+    points = [(n['x'], n['y'], 320) for n in npcs] + [(e['x'], e['y'], 360) for e in exits] +         [(waypoint['x'], waypoint['y'], 600), (spawn['x'], spawn['y'], 300), (board['x'], board['y'], 260)]
+    g = build_grid(roads, areas, flats, stands + [board], points)
+    stands = stands + PV.plan_houses(g, stands + [board], rnd)
+    g = build_grid(roads, areas, flats, stands + [board], points)
+    PV.mark_gardens(g)
+    tall, low, groves = PV.plan_greenery(g, stands + [board], rnd)
+    lamps = lamps_along(roads, g, rnd)
+    return {'roads': roads, 'areas': areas, 'flats': flats, 'bridges': bridges, 'stands': stands, 'board': board, 'npcs': npcs,
+            'waypoint': waypoint, 'spawn': spawn, 'exits': exits, 'places': places, 'tall': tall, 'low': low, 'lamps': lamps,
+            'groves': groves}, g
 
 
 # ── 预览 ──
@@ -636,7 +658,7 @@ def splat_ground(Wp, Hp):
         t = Image.open(os.path.join(d, name + '.jpg')).convert('RGB').resize((px, px), Image.LANCZOS)
         T[name] = np.tile(np.asarray(t).astype(np.float32) / 255, (Hp // px + 2, Wp // px + 2, 1))[:Hp, :Wp]
     sm = lambda e0, e1, x: np.clip((x - e0) / (e1 - e0), 0, 1) ** 2 * (3 - 2 * np.clip((x - e0) / (e1 - e0), 0, 1))
-    base = T['tex_cobble']
+    base = T['tex_slab']
     base = base + (T['tex_cobble_moss'] - base) * sm(0.24, 0.6, m1[..., 0])[..., None]
     base = base + (T['tex_grass'] - base) * (m1[..., 1] * 0.7)[..., None]
     base = base + (T['tex_flagstone'] * np.array([1.12, 1.02, 0.86]) - base) * (np.clip(m2[..., 0] * 1.3 - 0.15, 0, 1) * 0.85)[..., None]
@@ -647,7 +669,8 @@ def splat_ground(Wp, Hp):
     return Image.fromarray((base.clip(0, 1) * 255).astype(np.uint8), 'RGB').convert('RGBA')
 
 
-TILES = {'tex_cobble': 300, 'tex_cobble_moss': 520, 'tex_grass': 420, 'tex_street': 340, 'tex_flagstone': 460}
+# 11-10 底层换大石板 tex_slab(旧 tex_cobble 已删),平铺尺寸同 LobbyWorldMaps CITY.groundSplat.tiles
+TILES = {'tex_slab': 840, 'tex_cobble_moss': 840, 'tex_grass': 600, 'tex_street': 840, 'tex_flagstone': 600}
 
 
 def render_preview(L, g, scale=0.1, zones=False, marks=True):
