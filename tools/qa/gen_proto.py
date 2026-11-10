@@ -30,7 +30,8 @@ def main() -> None:
     args = ap.parse_args()
     prompt = open(args.prompt, encoding='utf-8').read()
     work = tempfile.mkdtemp(prefix='lc-proto-')
-    cmd = [codex_exe(), 'exec', '--skip-git-repo-check', '-s', 'read-only', '-C', work]
+    # 11-08 新电脑:用户 config.toml 写的 gpt-5.5 + priority 在订阅下不可用,调用时覆盖(不改用户配置)
+    cmd = [codex_exe(), 'exec', '--skip-git-repo-check', '-s', 'read-only', '-C', work, '-c', 'model="gpt-6.1-sol"', '-c', 'service_tier="default"']
     for ref in args.ref:
         cmd += ['-i', os.path.abspath(ref)]
     cmd.append('-')

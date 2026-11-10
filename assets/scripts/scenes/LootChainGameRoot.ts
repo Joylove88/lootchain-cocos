@@ -133,7 +133,8 @@ import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSo
 import { openConfirmPopup } from './lobby/ConfirmPopup';
 import { LobbyTownRenderer, REALM_TRIAL_LIMIT_MS, REALM_TRIAL_SPECS, type LobbyTownHost } from './lobby/LobbyTownRenderer';
 import { LobbyRealmRenderer, type RealmGender, type RealmRendererHost, type RealmTrialHudState } from './lobby/LobbyRealmRenderer';
-import { mountLoadingScreen, type LoadingScreenHost } from './lobby/LobbyLoadingScreen';
+import { currentLoadingTip, mountLoadingScreen, type LoadingScreenHost } from './lobby/LobbyLoadingScreen';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassIconButton, GLASS_ICON, mountGlassLine, mountGlassSlice } from './UiGlassKit';
 import type { RealmState } from '../api/RealmApi';
 import type { ItemSourceTarget } from './lobby/ItemSourceRoutes';
 import { LobbyHeroRosterState } from './lobby/LobbyHeroRosterState';
@@ -239,9 +240,13 @@ type PendingGachaDraw = {
 // 首次访问阻塞预载只拿登录 + 大厅界面图(约 15MB);大厅亮出后后台静默预取守卫战必用的战斗 HUD/怪物骨骼;
 // 其余(英雄骨骼、技能特效、抽卡/锻造/背包等各页面素材)全部在真正用到时按需下载,经 Service Worker 存本地。
 const BOOT_PRELOAD_UI_DIRS = ['ui/login', 'ui/common', 'ui/lobby'] as const;
-/** 启动加载页背景(2026-10-14 用户:加载界面要背景图,多张随机):ui/boot/boot_bg_1..N,16:9 横图,PC / 手机都按 cover 铺满。 */
-const BOOT_BG_COUNT = 4;
-const BOOT_BG_SIZE = { w: 1536, h: 864 };
+/**
+ * 启动加载页(11-11 B 风格,原型 周报截图/2026-11-11_启动加载页/proto/boot_loading_b.png,用户确认):
+ * 背景与游戏内过场加载页同一张识海图(96KB,cover 铺满 + 压暗),字标是程序生成的透明图(tools/qa/boot_wordmark_gen.py)。
+ * 加载屏在整包下载前就画:图都走 resources 单文件加载,到了再淡入;玻璃卡先程序画,glass/panel 到了换贴图。
+ */
+const BOOT_BG = { path: 'ui/protagonist/b/soul_sea_bg/spriteFrame', w: 1672, h: 941 };
+const BOOT_WORDMARK = { path: 'ui/boot/boot_wordmark/spriteFrame', w: 1640, h: 280, scale: 2 };
 const BATTLE_PREFETCH_UI_DIRS = ['ui/battle/ai', 'ui/battle/attack', 'ui/guard', 'ui/battle/c1812'] as const;
 /**
  * 手机进战斗前释放的页面图目录(2026-10-09,见 UiSpriteFrameCache.releaseIdleTextures):战斗及其结算 / 设置弹层都不会用到的页面。
@@ -725,38 +730,65 @@ export class LootChainGameRoot extends Component {
   private pendingBootStatus: string | null = null;
 
   /**
-   * 加载页背景:随机一张 boot_bg_n 按 cover 铺满舞台(16:9 横图,手机横屏更宽时裁上下、PC 更窄时裁左右),
-   * 上面压一层中心最深的暗罩保证标题 / 进度条可读;图是单独一个小文件,首访也几秒内到,到了淡入,没到就留深色底。
+   * 加载页背景:识海图按 cover 铺满舞台 + 整屏压暗(同过场加载页 Dim 120);字标同批读,背景到了一起淡入,没到就留深色底。
+   * 图是单独小文件,首访也几秒内到。
    */
-  private mountBootBackground(root: Node, layout: UiLayout, centerX: number, centerY: number): void {
-    const index = 1 + Math.floor(Math.random() * BOOT_BG_COUNT);
-    const path = `ui/boot/boot_bg_${index}/spriteFrame`;
+  private mountBootBackground(root: Node, layout: UiLayout, centerX: number, centerY: number, wordmarkY: number, wordmarkScale: number): void {
     const holder = this.addChildPlainNode(root, 'BootLoadingBg', centerX, centerY, layout.width, layout.height);
     holder.setSiblingIndex(0);
     const holderOpacity = holder.addComponent(UIOpacity);
     holderOpacity.opacity = 0;
-    resources.load(path, SpriteFrame, (error, frame) => {
+    resources.load(BOOT_BG.path, SpriteFrame, (error, frame) => {
       if (error || !frame || !holder.isValid) {
         return;
       }
-      const cover = Math.max(layout.width / BOOT_BG_SIZE.w, layout.height / BOOT_BG_SIZE.h);
-      const sprite = this.addSprite('Img', path, 0, 0, BOOT_BG_SIZE.w * cover, BOOT_BG_SIZE.h * cover, holder);
+      const cover = Math.max(layout.width / BOOT_BG.w, layout.height / BOOT_BG.h);
+      const sprite = this.addSprite('Img', BOOT_BG.path, 0, 0, BOOT_BG.w * cover, BOOT_BG.h * cover, holder);
       if (!sprite) {
         return;
       }
-      // 暗罩:四层叠加的椭圆,中心最深(标题区),边缘透出画面
-      const shade = this.addChildPlainNode(holder, 'Shade', 0, 0, layout.width, layout.height);
-      const g = shade.addComponent(Graphics);
-      g.fillColor = new Color(4, 3, 6, 110);
-      g.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
-      g.fill();
-      for (let i = 3; i >= 1; i--) {
-        const k = i / 3;
-        g.fillColor = new Color(4, 3, 6, 45);
-        g.ellipse(0, 0, layout.width * 0.42 * k, layout.height * 0.36 * k);
-        g.fill();
-      }
+      const shade = this.addChildPlainNode(holder, 'Shade', 0, 0, layout.width, layout.height).addComponent(Graphics);
+      shade.fillColor = new Color(8, 11, 18, 120);
+      shade.rect(-layout.width, -layout.height, layout.width * 2, layout.height * 2);
+      shade.fill();
       tween(holderOpacity).to(0.6, { opacity: 255 }).start();
+    });
+    // 字标:挂在背景之上、玻璃卡之下(root 第 1 个子节点之后)
+    const mark = this.addChildPlainNode(root, 'BootLoadingWordmark', centerX, wordmarkY, 1, 1);
+    mark.setSiblingIndex(1);
+    const markOpacity = mark.addComponent(UIOpacity);
+    markOpacity.opacity = 0;
+    resources.load(BOOT_WORDMARK.path, SpriteFrame, (error, frame) => {
+      if (error || !frame || !mark.isValid) {
+        return;
+      }
+      const w = (BOOT_WORDMARK.w / BOOT_WORDMARK.scale) * wordmarkScale;
+      const h = (BOOT_WORDMARK.h / BOOT_WORDMARK.scale) * wordmarkScale;
+      if (this.addSprite('Img', BOOT_WORDMARK.path, 0, 0, w, h, mark)) {
+        tween(markOpacity).to(0.6, { opacity: 255 }).start();
+      }
+    });
+  }
+
+  /** 启动加载页玻璃卡:先程序画(深色半透明圆角 + 淡白细边),glass/panel 贴图读到后换成全站同款九宫格(带沿边内光)。 */
+  private mountBootCard(root: Node, x: number, y: number, w: number, h: number, k: number): void {
+    const card = this.addChildPlainNode(root, 'BootLoadingCard', x, y, w, h);
+    const g = card.addComponent(Graphics);
+    const r = 12 * k;
+    g.fillColor = new Color(20, 25, 34, 205);
+    g.roundRect(-w / 2, -h / 2, w, h, r);
+    g.fill();
+    g.strokeColor = new Color(255, 255, 255, 34);
+    g.lineWidth = Math.max(1, k);
+    g.roundRect(-w / 2, -h / 2, w, h, r);
+    g.stroke();
+    resources.load(GLASS_SLICES.panel.path, SpriteFrame, (error, frame) => {
+      if (error || !frame || !card.isValid) {
+        return;
+      }
+      if (mountGlassSlice(this as unknown as UiKitHost, card, 'Glass', GLASS_SLICES.panel, 0, 0, w, h, k)) {
+        g.clear();
+      }
     });
   }
 
@@ -772,7 +804,6 @@ export class LootChainGameRoot extends Component {
     const layout = this.resolveLayout();
     const centerX = (layout.stageLeft + layout.stageRight) / 2;
     const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
     const root = this.createUiNode('BootLoadingRoot');
     root.setPosition(0, 0, 0);
     const rootTransform = root.addComponent(UITransform);
@@ -780,45 +811,56 @@ export class LootChainGameRoot extends Component {
     const coverWidth = Math.max(layout.width, layout.height) * 3;
     rootTransform.setContentSize(new Size(coverWidth, coverWidth));
     const bg = root.addComponent(Graphics);
-    bg.fillColor = new Color(6, 5, 8, 255);
+    bg.fillColor = new Color(12, 15, 22, 255);
     bg.rect(-coverWidth / 2, -coverWidth / 2, coverWidth, coverWidth);
     bg.fill();
     root.addComponent(BlockInputEvents);
-    this.mountBootBackground(root, layout, centerX, centerY);
-    const title = this.addChildLabel(root, 'BootLoadingTitle', 'LOOTCHAIN', centerX, centerY + 96 * scale, 52 * scale, new Color(245, 210, 122, 255), new Size(720 * scale, 66 * scale));
-    title.isBold = true;
-    this.addChildLabel(root, 'BootLoadingSub', 'SILENT GODS', centerX, centerY + 54 * scale, 17 * scale, new Color(196, 168, 112, 220), new Size(400 * scale, 24 * scale));
-    const barWidth = Math.min(520 * scale, layout.width * 0.6);
-    const barHeight = 14 * scale;
-    const barNode = this.addChildPlainNode(root, 'BootLoadingBar', centerX, centerY - 12 * scale, barWidth, barHeight);
-    const barGraphics = barNode.addComponent(Graphics);
-    const percentLabel = this.addChildLabel(root, 'BootLoadingPercent', '0%', centerX, centerY - 44 * scale, 20 * scale, new Color(228, 202, 150, 240), new Size(200 * scale, 28 * scale));
-    const tipLabel = this.addChildLabel(root, 'BootLoadingTip', '正在加载界面素材…', centerX, centerY - 76 * scale, 18 * scale, new Color(196, 176, 140, 230), new Size(680 * scale, 26 * scale));
-    tipLabel.overflow = Label.Overflow.SHRINK;
+    // 坐标取原型 1870×841 实测像素(glassProtoMap:FX / FY 相对舞台中心)
+    const { k, FX, FY, S } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    const PX = (px: number): number => centerX + FX(px);
+    const PY = (py: number): number => centerY + FY(py);
+    this.mountBootBackground(root, layout, centerX, centerY, PY(270), k);
+    // 玻璃卡(原型 x 450~1418 / y 456~671)
+    this.mountBootCard(root, PX(934), PY(563.5), S(968), S(215), k);
+    const kitHost = this as unknown as UiKitHost;
+    const titleLabel = glassLabel(kitHost, root, 'BootLoadingTitle', '正在加载界面素材', PX(935), PY(496.5), S(36), GLASS_COLOR.text, S(800), HorizontalTextAlignment.CENTER);
+    const barWidth = S(818);
+    const barHeight = Math.max(5, S(16));
+    const barGraphics = this.addChildPlainNode(root, 'BootLoadingBar', PX(935), PY(546.5), barWidth, barHeight).addComponent(Graphics);
+    const hintLabel = glassLabel(kitHost, root, 'BootLoadingHint', '仅首次需要下载,之后打开直接进入', PX(527), PY(585), S(21), GLASS_COLOR.sub, S(560));
+    const percentLabel = glassLabel(kitHost, root, 'BootLoadingPercent', '0%', PX(1343), PY(584), S(22), GLASS_COLOR.text, S(240), HorizontalTextAlignment.RIGHT);
+    mountGlassLine(kitHost, root, 'BootLoadingDivider', PX(935), PY(611.5), S(816), Math.max(1, S(1)), new Color(255, 255, 255, 30));
+    glassLabel(kitHost, root, 'BootLoadingTipTag', '小贴士', PX(527), PY(636.5), S(22), GLASS_COLOR.champagne, S(90), HorizontalTextAlignment.LEFT, true);
+    glassLabel(kitHost, root, 'BootLoadingTip', currentLoadingTip(), PX(611), PY(636.5), S(22), GLASS_COLOR.sub, S(730));
     const drawBar = (progress: number): void => {
       if (!barGraphics.isValid) {
         return;
       }
       barGraphics.clear();
-      barGraphics.fillColor = new Color(26, 22, 20, 235);
+      barGraphics.fillColor = new Color(42, 48, 60, 235);
       barGraphics.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
       barGraphics.fill();
-      barGraphics.strokeColor = new Color(170, 132, 74, 220);
-      barGraphics.lineWidth = Math.max(1, 1.2 * scale);
+      barGraphics.strokeColor = new Color(255, 255, 255, 30);
+      barGraphics.lineWidth = 1;
       barGraphics.roundRect(-barWidth / 2, -barHeight / 2, barWidth, barHeight, barHeight / 2);
       barGraphics.stroke();
-      const fillWidth = Math.max(barHeight, barWidth * Math.min(1, progress));
-      barGraphics.fillColor = new Color(232, 176, 74, 245);
-      barGraphics.roundRect(-barWidth / 2 + 2, -barHeight / 2 + 2, fillWidth - 4, barHeight - 4, (barHeight - 4) / 2);
-      barGraphics.fill();
+      if (progress > 0) {
+        barGraphics.fillColor = GLASS_COLOR.champagne;
+        barGraphics.roundRect(-barWidth / 2, -barHeight / 2, Math.max(barHeight, barWidth * Math.min(1, progress)), barHeight, barHeight / 2);
+        barGraphics.fill();
+      }
     };
+    drawBar(0);
     const updateProgress = (progress: number, phaseLabel: string): void => {
       drawBar(progress);
       if (percentLabel.isValid) {
         percentLabel.string = `${Math.round(progress * 100)}%`;
       }
-      if (tipLabel.isValid) {
-        tipLabel.string = `正在加载${phaseLabel}…`;
+      if (titleLabel.isValid) {
+        titleLabel.string = `正在加载${phaseLabel}`;
+      }
+      if (hintLabel.isValid) {
+        hintLabel.string = '首次进入需要准备素材,之后打开直接进入';
       }
     };
     const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
@@ -832,11 +874,14 @@ export class LootChainGameRoot extends Component {
       lastPackDraw = now;
       const ratio = totalBytes > 0 ? doneBytes / totalBytes : 1;
       drawBar(ratio);
-      if (percentLabel.isValid) {
-        percentLabel.string = `${Math.round(ratio * 100)}%`;
+      if (titleLabel.isValid) {
+        titleLabel.string = '正在下载游戏资源';
       }
-      if (tipLabel.isValid) {
-        tipLabel.string = `正在下载游戏资源 ${mb(doneBytes)} / ${mb(totalBytes)} MB(仅首次)`;
+      if (hintLabel.isValid) {
+        hintLabel.string = '仅首次需要下载,之后打开直接进入';
+      }
+      if (percentLabel.isValid) {
+        percentLabel.string = `${mb(doneBytes)} / ${mb(totalBytes)} MB`;
       }
     };
     let finished = false;
@@ -1525,7 +1570,6 @@ export class LootChainGameRoot extends Component {
     if (!progress) {
       return false;
     }
-    const scale = Math.max(0.7, Math.min(1, layout.uiScale));
     const titles: Record<UiPreloadGroup, string> = {
       heroes: '正在加载英雄素材', gacha: '正在加载召唤素材', bag: '正在加载背包素材',
       forge: '正在加载锻造素材', adventure: '正在加载冒险素材', battle: '正在加载战斗素材', crystal: '正在加载水晶素材', town: '正在加载世界',
@@ -1536,21 +1580,13 @@ export class LootChainGameRoot extends Component {
     const screen = mountLoadingScreen(this as unknown as LoadingScreenHost, 'SceneAssetLoading', layout, {
       title: titles[group], ratio, hint: '首次打开需要下载素材,之后直接从本地读取', count: `${progress.done} / ${progress.total}`,
     });
-    // 返回钮按整屏绝对坐标画:挂到抵消加载页居中偏移的容器上
-    const panel = this.addChildPlainNode(screen, 'Abs', -screen.position.x, -screen.position.y, 1, 1);
-    renderSceneBackButton(
-      this as unknown as SceneBackButtonHost,
-      panel,
-      layout,
-      'SceneAssetLoadingBack',
-      () => {
-        this.closeAllLobbyScenePanelFlags();
-        this.currentView = 'lobby';
-        this.renderCurrentView();
-      },
-      scale,
-      '',
-    );
+    // 右上角玻璃「✕」(11-11 原旧金环关闭钮;位置同 B 风格顶栏 mountGlassTopBar 的 ✕):不等了,回大厅
+    const { RX, FY: gateFY, S: gateS } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    mountGlassIconButton(this as unknown as UiKitHost, screen, 'SceneAssetLoadingBack', GLASS_ICON.close, RX(1805), gateFY(43), gateS(36), gateS(72), () => {
+      this.closeAllLobbyScenePanelFlags();
+      this.currentView = 'lobby';
+      this.renderCurrentView();
+    });
     return true;
   }
 

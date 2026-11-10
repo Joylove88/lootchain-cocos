@@ -35,7 +35,7 @@ let tipText = '';
 let tipAt = 0;
 
 /** 同一次加载期间(8 秒内连续刷新进度)保持同一条,不跳来跳去。 */
-function currentTip(): string {
+export function currentLoadingTip(): string {
   const now = Date.now();
   if (!tipText || now - tipAt > 8000) {
     tipText = TIPS[Math.floor(Math.random() * TIPS.length)];
@@ -99,7 +99,7 @@ export function mountLoadingScreen(host: LoadingScreenHost, nodeName: string, la
   }
   mountGlassLine(host, root, 'Divider', FX(951), FY(672), S(769), Math.max(1, S(1)), new Color(255, 255, 255, 30));
   glassLabel(host, root, 'TipTag', '小贴士', FX(567), FY(703), S(21), GLASS_COLOR.champagne, S(90), HorizontalTextAlignment.LEFT, true);
-  glassLabel(host, root, 'Tip', currentTip(), FX(668), FY(703), S(19), GLASS_COLOR.sub, S(660));
+  glassLabel(host, root, 'Tip', currentLoadingTip(), FX(668), FY(703), S(19), GLASS_COLOR.sub, S(660));
   // 零:漂在卡片左沿(原型 (470, 612) 约 150 高)
   host.addSprite('Zero', ZERO, FX(470), FY(612), S(150), S(150), root);
   return root;

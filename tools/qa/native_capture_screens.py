@@ -87,6 +87,8 @@ SCREENS = [
     ('crystal_spells', "root.openGuardCrystalDialog(); setTimeout(() => { const d = root.lobbyGuardCrystalDialog; if (d) { d.tab = 'spells'; root.refreshGuardCrystalDialog(); } }, 2500);", 5.0),
     ('token_furnace', "root.openLobbyTokenFurnace();", 3.5),
     ('gacha', "root.openLobbyGachaScene();", 5.0),
+    # 11-11 功能页首开素材加载门(SceneAssetLoading + 右上角玻璃 ✕):假装召唤组还差 13 张,20 秒后还原
+    ('scene_gate', "const c = root.uiSpriteFrameCache; const orig = c.groupProgress.bind(c); c.groupProgress = (g) => g === 'gacha' ? { done: 7, total: 20 } : orig(g); root.openLobbyGachaScene(); setTimeout(() => { c.groupProgress = orig; }, 20000);", 2.0),
     # 限时召唤·异界神州(sql/156):中央吕布骨骼 + 新英雄立绘
     ('gacha_yijie', "root.openLobbyGachaScene(); let n = 0; const t = setInterval(() => { n++; const g = root.gachaSceneState; if (n > 40) { clearInterval(t); return; } if (n > 8 && g.pools.some(p => p.poolCode === 'LIMITED_YIJIE_SHENZHOU') && g.selectedPoolCode !== 'LIMITED_YIJIE_SHENZHOU') root.selectGachaPool('LIMITED_YIJIE_SHENZHOU'); }, 500);", 10.0),
     ('settings', "root.openLobbySettingsPanel();", 2.5),
