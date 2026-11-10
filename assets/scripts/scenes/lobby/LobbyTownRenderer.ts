@@ -59,6 +59,7 @@ import { REALM_ULT_BASE, RealmUltShow, realmUltCfg, realmUltTiming } from './Rea
 import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
+import { TownScene, sceneWalkable } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
@@ -553,6 +554,7 @@ export class LobbyTownRenderer {
   /** 北缘远景横条(11-10 主城):世界层第一个子节点(压在地面之下),每帧按镜头做视差。 */
   private backdropNode: Node | null = null;
   private readonly ambient = new TownAmbient();
+  private readonly scene = new TownScene();
   /** 野外宝箱节点(docs/52 §3.1):code → 节点 / 贴图 / 脚下光圈。 */
   private chestNodes = new Map<string, { node: Node; sprite: Sprite | null; glow: Graphics; opened: boolean; kind: WorldMapChest['kind']; name: Label | null; label: string; badge: Node | null; badgeY: number }>();
   /** 兴趣点场上节点(docs/54);done = 隐藏点已发现 / 采集点今日已采。 */
@@ -1108,6 +1110,7 @@ export class LobbyTownRenderer {
     this.ensureBuildings();
     this.ensureLamps();
     this.ensureProps();
+    this.ensureScene();
     this.raiseFlatBuildings();
     this.ensureNpcs();
     this.ensureWaypoint();
@@ -1124,6 +1127,16 @@ export class LobbyTownRenderer {
     this.cullMonsters();
     this.sortEntities(true);
     this.ensureAmbient();
+  }
+
+  /** 整图场景(11-11):遮挡条 / 灯火烟雾 / 走动的人;世界层重建后重挂,素材没到就下一帧再试。 */
+  private ensureScene(): void {
+    const world = this.world;
+    const entities = this.entityRoot;
+    if (!world || !world.isValid || !entities || !entities.isValid) {
+      return;
+    }
+    this.scene.mount(this.host, world, entities, this.def, (node, y) => this.propNodes.push({ node, y }));
   }
 
   /** 环境动效(飘叶 / 云影):地图开了 ambient 才挂;世界层重建后重挂。 */
@@ -1266,7 +1279,8 @@ export class LobbyTownRenderer {
         }
       }
     }
-    if (!root.getChildByName('Vignette')) {
+    // 整图场景的底图自带暗边,而且遮挡条是底图像素的原样拷贝:底图被压暗、条没被压暗就会露出接缝
+    if (!def.scene && !root.getChildByName('Vignette')) {
       // 地图外沿压暗:四周一圈渐变(16 层低透明度叠出平滑过渡;10-27 用户:原来 6 层 × 70 叠成一条硬黑边)
       const g = this.host.addChildPlainNode(root, 'Vignette', 0, 0, def.width, def.height).addComponent(Graphics);
       const band = 220;
@@ -1479,6 +1493,8 @@ export class LobbyTownRenderer {
       const sway = prop.sway ?? isSwayAsset(prop.asset);
       if (sway) {
         applyWorldShader(sprite, 'wind');
+      } else if (prop.cloth) {
+        applyWorldShader(sprite, 'cloth');
       }
       // 比人高的立物才会挡住人(矮草 / 碎石不管)
       if (h >= OCCLUDER_MIN_H) {
@@ -2239,6 +2255,8 @@ export class LobbyTownRenderer {
     this.updateCulling();
     this.cullMonsters();
     this.updateCanopyHoles(clamped);
+    this.ensureScene();
+    this.scene.step(clamped);
     this.sortEntities(false);
     if (!this.trial) {
       this.updateNearBuilding();
@@ -2667,6 +2685,10 @@ export class LobbyTownRenderer {
     if (x < def.walk.left || x > def.walk.right || y < def.walk.bottom || y > def.walk.top) {
       return false;
     }
+    // 整图场景(11-11):只有可走栅格里标了的格子能走
+    if (def.scene && !sceneWalkable(def.scene, x, y)) {
+      return false;
+    }
     // 走廊式地图(docs/52 §2.1):只能走在路(折线 ± half)或林间空地(椭圆)里
     const corridors = def.openWalk ? null : def.corridors;
     if (corridors && distToLines(x, y, corridors.lines) > corridors.half
@@ -2844,6 +2866,10 @@ export class LobbyTownRenderer {
       if (npc.node.isValid) {
         items.push({ node: npc.node, y: npc.y });
       }
+    }
+    // 整图场景里走动的人 / 动物(脚线每帧在变)
+    for (const item of this.scene.sortables()) {
+      items.push(item);
     }
     if (this.waypointNode && this.waypointNode.isValid) {
       items.push({ node: this.waypointNode, y: this.def.waypoint.y + 40 });

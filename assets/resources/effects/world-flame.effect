@@ -1,0 +1,100 @@
+// 程序火焰(2026-11-11 主城重做演示:火盆 / 火把 / 炉火)。不用贴图序列:噪声沿火舌往上滚,下宽上尖,芯白黄 → 外橙红。
+// 挂在一张 uv 为 0..1 的柔光点贴图上(packable=false);相位取精灵在屏上的位置,每团火不同步。预乘输出。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: flame-vs:vert
+      frag: flame-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: one
+          blendDst: one_minus_src_alpha
+          blendSrcAlpha: one
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        flameParams: { value: [1.6, 1.5, 0.62, 0.0] }
+}%
+
+CCProgram flame-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+  out float phase;
+
+  vec4 vert () {
+    vec4 pos = vec4(a_position, 1);
+    // 同一精灵四个顶点的 x 不同会让相位在面内渐变:只是让火舌左右不对称,正好
+    phase = floor(a_position.x * 0.02) * 1.7 + floor(a_position.y * 0.02) * 2.3;
+    pos = cc_matViewProj * pos;
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram flame-fs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+  in float phase;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+
+  uniform FlameFrag {
+    vec4 flameParams;
+  };
+
+  float hash (vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float noise (vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+
+  float fbm (vec2 p) {
+    return noise(p) * 0.6 + noise(p * 2.1) * 0.3 + noise(p * 4.3) * 0.1;
+  }
+
+  vec4 frag () {
+    float t = cc_time.x * flameParams.x + phase;
+    // 火根 0 → 火尖 1;横向 -1..1
+    float y = 1.0 - uv0.y;
+    float x = (uv0.x - 0.5) * 2.0;
+    float n = fbm(vec2(x * 1.6 + phase * 3.0, y * 2.2 - t * flameParams.y));
+    // 越往上被气流带得越歪
+    float wob = (n - 0.5) * 0.7 * y;
+    float width = flameParams.z * (1.0 - pow(y, 0.75));
+    float d = abs(x + wob) / max(0.001, width);
+    float body = (1.0 - smoothstep(0.25, 1.0, d)) * smoothstep(0.0, 0.08, y);
+    float flick = 0.78 + 0.22 * noise(vec2(t * 3.1, phase * 7.0));
+    float v = body * (0.55 + 0.45 * n) * flick;
+    vec3 col = mix(vec3(1.0, 0.36, 0.08), vec3(1.0, 0.82, 0.38), smoothstep(0.25, 0.85, v) * (1.0 - y * 0.6));
+    col = mix(col, vec3(1.0, 0.97, 0.85), smoothstep(0.75, 1.0, v) * (1.0 - y));
+    float a = smoothstep(0.05, 0.55, v) * (1.0 - smoothstep(0.75, 1.0, y));
+    // 贴图只为占住采样器绑定(不参与成形)
+    vec4 tex = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0);
+    a *= 0.999 + 0.001 * tex.a;
+    a *= color.a;
+    return vec4(col * color.rgb * a, a);
+  }
+}%

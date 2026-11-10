@@ -5,6 +5,7 @@
  */
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
+import { cityDemoDef } from './LobbyCityDemo';
 import { CITY_WATER_BLOCKS, DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
 import {
   DEAD_V4_AREAS, DEAD_V4_ASSETS, DEAD_V4_BRIDGE, DEAD_V4_CAMPS, DEAD_V4_CHESTS, DEAD_V4_EXITS, DEAD_V4_FLATS, DEAD_V4_LOW, DEAD_V4_NPCS,
@@ -141,6 +142,8 @@ export interface WorldMapProp {
   water?: boolean;
   /** 立物强制随风摆 / 不摆(默认按素材名判断:树 / 灌木 / 草丛)。 */
   sway?: boolean;
+  /** 挂旗 / 布篷(11-11):上端固定、下摆随风起伏(风摆着色器的 cloth 材质)。 */
+  cloth?: boolean;
   block?: { w: number; d: number };
   /** 整体乘色(11-08 林地矮物件压暗一点融进地面,不一颗颗跳出来)。 */
   tint?: [number, number, number];
@@ -293,6 +296,38 @@ export interface GroundSplatDef {
   depth?: [number, number];
 }
 
+/**
+ * 整图场景(11-11 主城重做演示;训练场「贴地画 + 可走区 + 遮挡件」的通用版):底图是一张完整的画(props 里的贴地件),
+ * 这里给它配可走栅格 + 遮挡条 + 灯火烟雾 + 走动的人。坐标除 strips / walk 外都是世界单位。tools/qa/city_demo_build.py 生成数据。
+ */
+export interface WorldSceneDef {
+  /** 遮挡层整图(RGBA:和底图同像素,只留立在地面上的东西);运行时按 strips 切成竖条。 */
+  fg: string;
+  /** 遮挡层图片像素尺寸 / 一个图片像素合多少世界单位(图片中心 = 地图原点)。 */
+  px: [number, number];
+  unit: number;
+  /** 遮挡条 [sx, sy, sw, sh, 脚线 y](图片像素,左上原点):人的脚线比它的脚线靠北,就被这条盖住。 */
+  strips: number[][];
+  /** 可走栅格:一格 cell 图片像素;每行一个十六进制串(高位在左),第 0 行在最上。只有标 1 的格子能走。 */
+  walk: { cell: number; cols: number; rows: string[] };
+  /** 柔光点贴图(光晕 / 火焰载体 / 飞蛾 / 雪片共用;packable=false)。 */
+  dot: string;
+  /** 光晕:盖在所有东西上面的叠加光(灯 / 窗 / 火旁),alpha 0~255,flicker = 明暗起伏幅度 0~1;moths = 绕灯飞蛾数。 */
+  glows: Array<{ x: number; y: number; r: number; color: [number, number, number]; alpha: number; flicker: number; moths?: number }>;
+  /** 明火(程序火焰):(x, y) = 火根;foot = 火盆 / 炉子的脚线(排序用,不给 = 火根);embers = 往上飘的火星数。 */
+  flames: Array<{ x: number; y: number; w: number; h: number; foot?: number; embers?: number }>;
+  /** 烟囱烟:(x, y) = 出烟口。 */
+  smokes: Array<{ x: number; y: number; size: number; tint: [number, number, number] }>;
+  /** 整屏薄雾。 */
+  mist?: { tint: [number, number, number]; alpha: number };
+  /** 飘雪片数。 */
+  snow?: number;
+  /** 走动的人 / 动物(骨骼):沿 route 来回,每到一点停 pause 秒;perch = 排序用的脚线(停在屋脊上的鸟要排到屋顶前面)。 */
+  walkers: Array<{ spine: string; height: number; route: number[][]; speed: number; pause: [number, number]; perch?: number; timeScale?: number }>;
+  /** 站着不走的人(静态图 + 原地呼吸)。 */
+  idlers: Array<{ asset: string; x: number; y: number; height: number; flip?: boolean }>;
+}
+
 export interface WorldMapDef {
   code: WorldMapCode;
   name: string;
@@ -358,6 +393,8 @@ export interface WorldMapDef {
   aoRound?: string[];
   /** 镜头拉远倍数(11-08 林地 1.4:同屏看到的范围按倍数放大,头顶字 / 血条 / 飘字反向放大保持屏上大小)。不给 = 1。 */
   cameraZoom?: number;
+  /** 整图场景(11-11):可走栅格 / 遮挡条 / 动效 / 走动的人;给了就不画地图外沿压暗(图自己带暗边)。 */
+  scene?: WorldSceneDef;
 }
 
 const MONSTER_SPINE: Record<string, string> = {
@@ -986,7 +1023,8 @@ const DEADWOOD: WorldMapDef = {
   battleBg: 'battle_scene_field_wasteland',
 };
 
-export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY, GRAY, DEADWOOD };
+// 11-11 主城重做演示:本机预览地址带 ?cityDemo=moon|lit 时,主城换成对应画风的演示广场(线上地址不生效)
+export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY: cityDemoDef() ?? CITY, GRAY, DEADWOOD };
 // 自验 / 坐标导出脚本读地图定义用(tools/qa/export_world_geometry.py,docs/55)
 (globalThis as unknown as { __lootchainWorldMaps?: unknown }).__lootchainWorldMaps = WORLD_MAPS;
 
@@ -1033,6 +1071,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 北缘远景横条 + 加强环境层(浮尘 / 近景树冠 / 云影)(11-10)
     ...(def.backdrop ? def.backdrop.pieces.map((p) => p.asset) : []),
     ...(def.ambientDepth ? [worldAsset('fx/mote'), worldAsset('fx/fg_canopy'), worldAsset('fx/cloud_shadow')] : []),
+    // 整图场景:遮挡层 / 柔光点 / 站着的人(11-11)
+    ...(def.scene ? [def.scene.fg, def.scene.dot, ...def.scene.idlers.map((n) => n.asset)] : []),
     // 野外按只掉落的飞行图标 / 「本轮战果」卡图标(docs/52 §7)
     ...(def.camps.length ? Object.values(FIELD_DROP_ICON) : []),
     ...(def.chests?.length ? [worldAsset('mapui/map_chest')] : [])]));

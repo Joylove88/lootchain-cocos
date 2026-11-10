@@ -6,13 +6,14 @@ import { EffectAsset, Material, Node, resources, Sprite, Vec4 } from 'cc';
  * - water:地形块,alpha 通道存水面遮罩,波纹 + 闪光 + 瀑布白沫(effects/world-water)
  * 全部立物共用一份材质(可合批);着色器还没加载完就先不挂,加载完回调里补挂。
  * - 11-08 透视孔:同一个 wind 着色器再建一份「带孔」材质,只挂在当前挡住队伍的几棵树上(setWindHole 每帧给孔的位置 / 强度)。
+ * - 11-11 主城重做演示:cloth = 挂旗 / 布篷(wind 着色器的「上端固定」模式,另一份材质);flame = 程序火焰(effects/world-flame)。
  */
-type ShaderKind = 'wind' | 'water';
+type ShaderKind = 'wind' | 'water' | 'cloth' | 'flame';
 
-const EFFECT_PATH: Record<ShaderKind, string> = { wind: 'effects/world-wind', water: 'effects/world-water' };
+const EFFECT_PATH: Record<ShaderKind, string> = { wind: 'effects/world-wind', water: 'effects/world-water', cloth: 'effects/world-wind', flame: 'effects/world-flame' };
 const materials: Partial<Record<ShaderKind, Material>> = {};
 const loading = new Set<ShaderKind>();
-const waiting: Record<ShaderKind, Sprite[]> = { wind: [], water: [] };
+const waiting: Record<ShaderKind, Sprite[]> = { wind: [], water: [], cloth: [], flame: [] };
 const origin = new Vec4(0, 0, 1, 0);
 const hole = new Vec4(0, 0, 0, 0);
 /** 带透视孔的风材质(和 wind 同一个着色器)。 */
@@ -38,6 +39,10 @@ function load(kind: ShaderKind): void {
       holeMat.initialize({ effectAsset: effect });
       holeMat.setProperty('mapOrigin', origin);
       holeMat.setProperty('holeParams', hole);
+    } else if (kind === 'cloth') {
+      // 摆幅(占贴图宽)/ 速度 / 弯曲指数 / 上端固定
+      mat.setProperty('windParams', new Vec4(0.05, 2.0, 1.3, 1));
+      mat.setProperty('mapOrigin', origin);
     }
     materials[kind] = mat;
     for (const sprite of waiting[kind].splice(0)) {
@@ -65,7 +70,8 @@ export function applyWorldShader(sprite: Sprite | null, kind: ShaderKind): void 
 /** 每帧镜头更新后调:世界层的世界坐标 / 缩放 → 风的空间相位换算成地图坐标(走动时相位不跟着镜头变)。 */
 export function updateWorldShaderOrigin(world: Node): void {
   const mat = materials.wind;
-  if (!mat) {
+  const cloth = materials.cloth;
+  if (!mat && !cloth) {
     return;
   }
   const p = world.worldPosition;
@@ -74,7 +80,8 @@ export function updateWorldShaderOrigin(world: Node): void {
     return;
   }
   origin.set(p.x, p.y, 1 / s, 0);
-  mat.setProperty('mapOrigin', origin);
+  mat?.setProperty('mapOrigin', origin);
+  cloth?.setProperty('mapOrigin', origin);
   holeMat?.setProperty('mapOrigin', origin);
 }
 
