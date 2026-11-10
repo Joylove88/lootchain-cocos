@@ -1,0 +1,21 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our sea-of-souls background (dim blue-grey stormy sea, tiny floating castles, a round stone platform lower-left). Use it as the full-screen background, slightly blurred and darkened to about 45% brightness, calm.
+- SECOND image = our APPROVED boot screen in the same style (white wide-spaced "LOOTCHAIN" wordmark, champagne "SILENT GODS" with hairlines, frosted glass card). Match its wordmark, glass card, colours and typography exactly.
+- THIRD image = our CURRENT account login screen. Use it ONLY to know which information and controls exist. Completely REDESIGN it: the red dragon, hooded knights, spiky gold frame and lava buttons are too flashy and do not match our UI.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass panels (#141821 at ~80% with background blur), ~12px rounded corners, 1px white outline at ~12% opacity; no metal frames, no ornaments, no ribbons. Hierarchy by size / weight / spacing. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used only for the single primary button and links. Modern clean sans-serif typography. Simple flat white line icons. No glow, no sparkles, no particles, no lens flare. Calm, airy, premium, low saturation, matte (avoid AI look).
+
+SCREEN: the game's login screen (ONE screen: the account form is shown directly, no separate "press to login" page).
+- Upper centre: the same wordmark as the second image but smaller: "LOOTCHAIN" white capitals about 52px tall, wide letter spacing, centre at about y=120; "SILENT GODS" champagne below it with one fading hairline on each side.
+- Centre: ONE frosted dark glass card about 600x520, horizontally centred, from about y=215 to y=735. Inside, with generous padding (about 48px), top to bottom:
+  * left-aligned white title "账号登录" (about 32px, medium weight); under it small grey "登录已有账号,或注册新账号进入游戏" (about 18px);
+  * small grey field label "账号"; a full-width input field (darker than the card, rounded 14px, 1px faint grey outline, about 60px tall) with a small white line person icon at the left, grey placeholder "请输入账号", and a small dim grey hint right-aligned inside "4-20 位字母、数字或下划线";
+  * small grey field label "密码"; the same input field with a small white line lock icon, placeholder "请输入密码", right-aligned dim hint "6-32 位";
+  * one row of two equal pill buttons (about 58px tall): left = primary filled champagne-gold pill "登录" with dark text; right = secondary translucent slate-grey glass pill "注册" with white text;
+  * centred small grey text "新玩家点「注册」直接开号进游戏";
+  * a thin faint divider, then one row: a small rounded checkbox (checked, champagne tick) + grey "我已阅读并同意" + champagne link text "《用户协议》" + grey "和" + champagne link "《隐私政策》".
+- Top-right corner: two small round frosted glass icon buttons side by side (about 52px), each with a white line icon and a tiny grey label under it: a globe icon "语言", a wrench icon "修复".
+- Nothing else on screen: no characters, no dragon, no back button, no version text.
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.
