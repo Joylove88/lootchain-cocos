@@ -48,6 +48,9 @@ EXT = int(os.environ.get('CITY_EXT', '700'))
 # 整图网格巡检(11-10 摆件排查):CITY_GRID=1 → x -6000..6000 步 2000、y -3000..2800 步 1150
 if os.environ.get('CITY_GRID'):
     SPOTS = [(f'g_{x}_{y}', x, y) for y in range(2800, -3001, -1150) for x in range(-6000, 6001, 2000)]
+# 任意点位:CITY_XY=name:x:y,name2:x:y(11-10 高低差台阶 / 栏杆后遮挡特写)
+if os.environ.get('CITY_XY'):
+    SPOTS = [(n, int(x), int(y)) for n, x, y in (s.split(':') for s in os.environ['CITY_XY'].split(','))]
 if os.environ.get('CITY_SPOTS') and not os.environ.get('CITY_GRID'):
     SPOTS = [s for s in SPOTS if s[0] in os.environ['CITY_SPOTS'].split(',')]
 

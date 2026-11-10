@@ -350,6 +350,8 @@ export interface WorldMapDef {
   castShadowOpacity?: number;
   /** 这些贴图不投方向影(旗杆 / 摊位 / 花箱 / 长椅等细小件:贴图整体压扁斜切出来是一大块黑多边形,11-09 主城实机);仍有脚下接地暗斑。 */
   castShadowSkip?: string[];
+  /** 这些贴图不要脚下接地暗斑(11-10 主城挡土墙:900 宽的墙段底下压一个大椭圆黑斑;墙脚暗带另用贴地件画)。 */
+  aoSkip?: string[];
   /** 镜头拉远倍数(11-08 林地 1.4:同屏看到的范围按倍数放大,头顶字 / 血条 / 飘字反向放大保持屏上大小)。不给 = 1。 */
   cameraZoom?: number;
 }
@@ -779,7 +781,8 @@ const CITY: WorldMapDef = {
   // 高建筑的斜投影在街上压出整片暗块(实机 11-08)→ 主城再淡一些
   castShadowOpacity: 64,
   // 11-10 城墙投影把城垛缺口投成路面上一排白虚线 + 锯齿暗带(像马路标线)→ 城墙段不投影(角塔的圆影保留)
-  castShadowSkip: ['city4_wall_h', 'city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
+  aoSkip: ['city4_terrace_wall'],
+  castShadowSkip: ['city4_wall_h', 'city4_terrace_wall', 'city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
   buildings: [
     // 剧情任务公告板(docs/50 §4.1):罗盘广场东侧
     { ...CITY_V4_BOARD, asset: worldAsset(CITY_V4_BOARD.asset), action: 'npc', npc: 'BOARD' },

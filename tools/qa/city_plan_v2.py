@@ -26,6 +26,16 @@ GROVE_ROAD = G.STREET_HALF + 260
 REJ = {}
 REJ_PTS = []
 
+# ── 11-10 高低差:北部上城区(大教堂 / 公会 / 学院)抬高一层 ──
+# 台地南沿 = 原型像素 y 340 一条横线(公会 / 学院门前场以南、罗盘广场以北);墙脚往下 TERRACE_FACE 是挡土墙立面,
+# 墙顶石栏杆压在台地边上。路穿过的地方开台阶(贴地件,人走在上面):西北巷 / 公会斜街 / 大道(大台阶)/ 学院斜街 / 东北巷
+TERRACE_Y = G.wy(340)               # 台地边(墙顶)世界 y
+TERRACE_FACE = 140                  # 立面高(墙脚 = TERRACE_Y - TERRACE_FACE)
+TERRACE_SEG = 840                   # 墙段显示宽(高约 0.28 × 宽 < 260:不算挡人立物,不投影)
+TERRACE_STAIRS = [(300, 'terrace_stairs', 470), (685, 'terrace_stairs', 470), (886, 'terrace_stairs_grand', 780),
+                  (1086, 'terrace_stairs', 470), (1480, 'terrace_stairs', 470)]
+TERRACE_KEEP = (TERRACE_Y - TERRACE_FACE - 260, TERRACE_Y + 160)   # 民居脚线不许落在这条带里(脚踩在墙上 / 贴墙根)
+
 
 def _rej(k, x=None, y=None):
     REJ[k] = REJ.get(k, 0) + 1
@@ -55,6 +65,9 @@ def plan_houses(g, stands, rnd):
         asset = G.C4(name)
         rect, h = G.rect_of(asset, x, y, w)
         # 脚线落在街边带(side)或街区(block)里都行,但屋身中心必须在街区里
+        if TERRACE_KEEP[0] < y < TERRACE_KEEP[1]:
+            _rej('terrace', x, y)
+            return None
         if _zone(g, x, y) not in ('block', 'side') or _zone(g, x, y + h * 0.4) != 'block' or g.blocked[g.idx(x, y)]:
             _rej('zone', x, y)
             return None
@@ -283,3 +296,26 @@ def plan_greenery(g, stands, rnd):
 def strip_wild(stands):
     """城里不放野外大石堆。"""
     return [s for s in stands if 'city4_rocks' not in s['asset']]
+
+
+def plan_terrace():
+    """挡土墙段(立物,带挡块)+ 台阶 / 墙脚暗带(贴地件)。墙段在两座台阶之间均分(段宽 ≈ TERRACE_SEG),端头正好接到台阶边。"""
+    foot = TERRACE_Y - TERRACE_FACE
+    walls, flats = [], []
+    gaps = sorted((G.wx(px) - w / 2 + 40, G.wx(px) + w / 2 - 40) for px, _a, w in TERRACE_STAIRS)   # 台阶两侧短墙压住墙段端头 40
+    edges = [-G.MAP_W / 2 - 200] + [v for gp in gaps for v in gp] + [G.MAP_W / 2 + 200]
+    k = 0
+    for a, b in zip(edges[::2], edges[1::2]):
+        n = max(1, round((b - a) / TERRACE_SEG))
+        w = (b - a) / n
+        for i in range(n):
+            cx = a + w * (i + 0.5)
+            walls.append({'asset': G.C4('terrace_wall'), 'x': round(cx), 'y': round(foot), 'width': round(w) + 2,
+                          'block': G.blk(w + 2, TERRACE_FACE + 40), 'flipX': k % 2 == 1, 'terrace': True})
+            flats.append({'asset': G.C4('terrace_shade'), 'x': round(cx), 'y': round(foot - 30), 'width': round(w * 1.04), 'flat': True})
+            k += 1
+    for px, asset, w in TERRACE_STAIRS:
+        h = w * G.aspect(G.C4(asset))
+        # 台阶底边比墙脚低一点(伸出到下层街面),往上爬进台地
+        flats.append({'asset': G.C4(asset), 'x': G.wx(px), 'y': round(foot - 60 + h / 2), 'width': w, 'flat': True})
+    return walls, flats

@@ -1532,7 +1532,7 @@ export class LobbyTownRenderer {
       // 投影落在脚下往右下 0.38h × 0.42h 的范围
       this.addCull(outer, prop.x - prop.width / 2, prop.x + prop.width / 2 + h * 0.4, prop.y - h * 0.45, prop.y + 20);
     }
-    if (prop.width >= 160) {
+    if (prop.width >= 160 && !(this.def.aoSkip ?? []).some((k) => prop.asset.includes(k))) {
       const w = prop.width * (prop.block ? 0.95 : 0.7);
       const holder = this.host.addChildPlainNode(group('AO'), name, prop.x, prop.y + 6, w, w * 0.36);
       const ao = this.host.addSprite('Art', CONTACT_SHADOW, 0, 0, w, w * 0.36, holder);

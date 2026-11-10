@@ -96,8 +96,8 @@ LANDMARKS = [
 ]
 # NPC(原型像素站位, 码, 名字, 素材, 朝向):任务 / 商店 / 情报 / 活人
 NPCS = [
-    ('SCHOLAR', '帝国学者 · 艾德里安', 'npc_scholar', 1205, 332, 1),
-    ('GUILDMASTER', '公会会长 · 维克', 'npc_guildmaster', 560, 325, -1),
+    ('SCHOLAR', '帝国学者 · 艾德里安', 'npc_scholar', 1205, 316, 1),       # 11-10 高低差:原 332 脚踩在台地栏杆上 → 往台地里挪
+    ('GUILDMASTER', '公会会长 · 维克', 'npc_guildmaster', 560, 314, -1),  # 11-10 高低差:原 325
     ('CAPTAIN', '卫队长 · 罗兰', 'npc_captain', 1560, 470, 1),
     ('MERCHANT', '杂货商 · 托比', 'npc_merchant', 1120, 520, 1),
     ('INNKEEPER', '酒馆老板 · 巴克', 'npc_innkeeper', 470, 505, 1),
@@ -622,6 +622,9 @@ def generate_v2(seed=11):
     rnd = random.Random(seed)
     roads, areas, flats, stands, bridges, board = build_skeleton()
     stands = PV.strip_wild(stands)
+    if os.environ.get('CITY_TERRACE', '1') != '0':
+        t_walls, t_flats = PV.plan_terrace()
+        stands, flats = stands + t_walls, flats + t_flats
     npcs = build_npcs()
     waypoint, spawn, exits, places = build_points()
     points = [(n['x'], n['y'], 320) for n in npcs] + [(e['x'], e['y'], 360) for e in exits] +         [(waypoint['x'], waypoint['y'], 600), (spawn['x'], spawn['y'], 300), (board['x'], board['y'], 260)]
