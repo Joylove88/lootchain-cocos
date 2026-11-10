@@ -61,7 +61,7 @@ async def main():
                 await asyncio.sleep(2)
             for _ in range(60):
                 v = await ev("return root.currentView;")
-                if v in ('login', 'lobby'):
+                if v in ('login', 'loginAccount', 'lobby'):
                     break
                 await asyncio.sleep(2)
             # 后端重启后浏览器里的旧会话会失效:一律先退出再登录
@@ -72,7 +72,7 @@ async def main():
                 await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
                 for _ in range(60):
                     v = await ev("return root && !root.bootPreloadActive ? root.currentView : null;")
-                    if v == 'login':
+                    if v in ('login', 'loginAccount'):
                         break
                     await asyncio.sleep(2)
             # 退出后登录页要过一会儿才接得住输入:登不进就重试

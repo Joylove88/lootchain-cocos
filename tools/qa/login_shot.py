@@ -53,7 +53,7 @@ async def shoot(mobile: bool, suffix: str) -> None:
             v = None
             for _ in range(300):
                 v = await ev("return root && !root.bootPreloadActive ? root.currentView : null;")
-                if v in ('login', 'lobby'):
+                if v in ('login', 'loginAccount', 'lobby'):
                     break
                 await asyncio.sleep(2)
             if v == 'lobby':
@@ -62,12 +62,12 @@ async def shoot(mobile: bool, suffix: str) -> None:
                 await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
                 for _ in range(60):
                     v = await ev("return root && !root.bootPreloadActive ? root.currentView : null;")
-                    if v == 'login':
+                    if v in ('login', 'loginAccount'):
                         break
                     await asyncio.sleep(2)
             print(suffix, 'view', v, flush=True)
             await asyncio.sleep(6)
-            for name, js in (('login', ''), ('login_account', 'root.openLoginAccountScene();')):
+            for name, js in (('login', ''), ('login_language', 'root.openLoginLanguageDialog();')):
                 if js:
                     await ev(js + ' return 1;')
                     await asyncio.sleep(4)

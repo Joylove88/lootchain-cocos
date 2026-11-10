@@ -1,4 +1,3 @@
-import { isPhoneDesign } from '../../app/ScreenAdapter';
 import {
   BlockInputEvents,
   Button,
@@ -11,22 +10,17 @@ import {
   Size,
   Sprite,
   UITransform,
-  Vec3,
-  VerticalTextAlignment,
 } from 'cc';
 import { resetAssetOfflineCache } from '../../app/AssetOfflineCache';
-import { lootChainI18n, type LootChainI18nKey } from '../../i18n/LootChainI18n';
-import { clamp, rgba, type UiLayout } from '../lobby/LobbyHudTypes';
+import { lootChainI18n, type LootChainLanguage } from '../../i18n/LootChainI18n';
+import type { UiLayout } from '../lobby/LobbyHudTypes';
+import type { UiKitHost } from '../UiKit';
+import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassLine, mountGlassSlice } from '../UiGlassKit';
 
-type LoginRightRailKey = 'language' | 'service' | 'notice' | 'repair';
-
-interface RailButtonAsset {
-  label: string;
-  key?: LoginRightRailKey;
-  labelKey?: LootChainI18nKey;
-  path: string;
-}
-
+/**
+ * 旧版登录页切图(2026-09 红金雕花 logo / 主按钮 / 右栏图标)。11-11 改 B 风格后页面不再使用,
+ * 只为 UiSpriteFrameCache 里「场景 Inspector 覆盖图」的兼容判断保留路径。
+ */
 export const LOGIN_UI_ASSETS = {
   logo: 'ui/login/login_logo/spriteFrame',
   mainButton: 'ui/login/login_button_main/spriteFrame',
@@ -35,97 +29,72 @@ export const LOGIN_UI_ASSETS = {
     { label: '客服', path: 'ui/login/side_btn_service/spriteFrame' },
     { label: '公告', path: 'ui/login/side_btn_notice/spriteFrame' },
     { label: '修复', path: 'ui/login/side_btn_repair/spriteFrame' },
-  ] satisfies RailButtonAsset[],
-};
-
-// 账号登录场景素材化改版(2026-09-09 用户切图,原名已 ascii 化):全部一体构图只能等比显示。
-const LOGIN_AI_ASSETS = {
-  /** 竖版哥特面板 900×1238(荆棘金框+顶部红宝石徽记)。 */
-  panel: 'ui/login/ai/panel_bg/spriteFrame',
-  /** 红色岩浆登录钮 910×284(两端荆棘翼饰,空底无字)。 */
-  btnLogin: 'ui/login/ai/btn_login/spriteFrame',
-  /** 暗黑注册钮 726×205(切角金铜框,空底无字)。 */
-  btnRegister: 'ui/login/ai/btn_register/spriteFrame',
-  /** 账号输入框 1571×196(左端内嵌人像图标)。 */
-  inputAccount: 'ui/login/ai/input_account/spriteFrame',
-  /** 密码输入框 1571×196(左端内嵌挂锁图标)。 */
-  inputPassword: 'ui/login/ai/input_password/spriteFrame',
-  /** 协议勾选选中态 118×117(金勾)。 */
-  checkOn: 'ui/login/ai/check_on/spriteFrame',
-  /** 分隔线左右段 558×43 / 618×42(星饰端头,成对)。 */
-  dividerLeft: 'ui/login/ai/divider_left/spriteFrame',
-  dividerRight: 'ui/login/ai/divider_right/spriteFrame',
-  subDividerLeft: 'ui/common/ai/footer_divider_left/spriteFrame',
-  subDividerRight: 'ui/common/ai/footer_divider_right/spriteFrame',
-  /** 菱形第三方登录钮(参考图顺序 G/A/Discord/X,303×304 上下)。 */
-  socials: [
-    { key: 'G', path: 'ui/login/ai/social_g/spriteFrame' },
-    { key: 'A', path: 'ui/login/ai/social_a/spriteFrame' },
-    { key: 'D', path: 'ui/login/ai/social_discord/spriteFrame' },
-    { key: 'X', path: 'ui/login/ai/social_x/spriteFrame' },
   ],
 };
 
-export const SHOW_LOGIN_BRAND = true;
-export const SHOW_RIGHT_RAIL = true;
-export const USE_IMAGE_LOGIN_BUTTON = true;
-// 2026-09-25 占位清理:第三方登录未接入,账号登录弹窗里的 G/A/Discord/X 钮先隐藏。
-export const SHOW_DIALOG_THIRD_PARTY_LOGIN = false;
+/**
+ * 登录页 B 风格素材(11-11,原型 周报截图/2026-11-11_登录页/proto/login_b.png,用户确认):
+ * 背景 / 字标与启动加载页同一套;线条图标由 tools/qa/login_icons_gen.py 生成;玻璃件取 UiGlassKit。
+ * 启动时 UiSpriteFrameCache.preload 预读,首屏就是完整样式(没到的走重绘补上)。
+ */
+const LOGIN_B = {
+  bg: { path: 'ui/protagonist/b/soul_sea_bg/spriteFrame', w: 1672, h: 941 },
+  wordmark: { path: 'ui/boot/boot_wordmark/spriteFrame', w: 1640, h: 280 },
+  iconUser: 'ui/login/b/icon_user/spriteFrame',
+  iconLock: 'ui/login/b/icon_lock/spriteFrame',
+  iconGlobe: 'ui/login/b/icon_globe/spriteFrame',
+  iconWrench: 'ui/login/b/icon_wrench/spriteFrame',
+};
+
+export const LOGIN_B_ASSET_PATHS: readonly string[] = [
+  LOGIN_B.bg.path,
+  LOGIN_B.wordmark.path,
+  LOGIN_B.iconUser,
+  LOGIN_B.iconLock,
+  LOGIN_B.iconGlobe,
+  LOGIN_B.iconWrench,
+  GLASS_SLICES.panel.path,
+  GLASS_SLICES.input.path,
+  GLASS_SLICES.pillPrimary.path,
+  GLASS_SLICES.pillSecondary.path,
+  GLASS_SLICES.pillGold.path,
+];
+
+/** 原型取色。 */
+const C = {
+  sub: new Color(156, 164, 175, 255),
+  label: new Color(211, 212, 214, 255),
+  placeholder: new Color(126, 135, 144, 255),
+  hint: new Color(122, 130, 139, 255),
+  railFill: new Color(30, 37, 46, 205),
+  railStroke: new Color(255, 255, 255, 44),
+};
 
 export interface LoginRendererState {
   agreementAccepted: boolean;
   defaultDevUserId: number;
 }
 
-export interface LoginRendererHost {
+export interface LoginRendererHost extends UiKitHost {
   createUiNode(name: string): Node;
   addSprite(name: string, assetPath: string, x: number, y: number, width: number, height: number, parent?: Node): Sprite | null;
-  addLabel(text: string, x: number, y: number, size?: number, color?: Color, contentSize?: Size): Label;
-  addChildLabel(
-    parent: Node,
-    name: string,
-    text: string,
-    x: number,
-    y: number,
-    fontSize: number,
-    color: Color,
-    contentSize: Size,
-    horizontalAlign?: HorizontalTextAlignment,
-  ): Label;
-  addRect(name: string, x: number, y: number, width: number, height: number, fill: Color, stroke?: Color, lineWidth?: number): Graphics;
-  addBeveledPanel(name: string, x: number, y: number, width: number, height: number, fill: Color, stroke: Color, bevel?: number): Graphics;
-  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean, options?: { frameless?: boolean; placeholder?: string }): EditBox;
-  addButton(text: string, x: number, y: number, callback: () => void, layout?: UiLayout, width?: number, height?: number): Button;
-  addGoldButton(text: string, x: number, y: number, callback: () => void, layout: UiLayout, width: number, height: number): Button;
-  addImageButton(
-    name: string,
-    assetPath: string,
-    text: string,
-    x: number,
-    y: number,
-    callback: () => void,
-    layout: UiLayout,
-    width: number,
-    height: number,
-    fontSize: number,
-  ): Button;
-  applyImageButtonFeedback(node: Node, hoverScale?: number, pressedScale?: number): void;
+  addFramedEditBox(initialText: string, x: number, y: number, width: number, layout: UiLayout, password?: boolean, options?: { frameless?: boolean; placeholder?: string; placeholderColor?: Color }): EditBox;
   applyPointerCursor(node: Node): void;
   setLoginInputs(accountInput: EditBox | null, passwordInput: EditBox | null): void;
   /** 打开用户协议/隐私政策查看层(2026-09-25)。 */
   openLegalDocument?(key: 'terms' | 'privacy'): void;
-  openLoginAccountScene(): void;
   openLoginLanguageDialog(): void;
-  renderLogin(): void;
+  closeLoginLanguageDialog(): void;
+  selectLoginLanguage(language: LootChainLanguage): void;
   submitLogin(): void;
   submitRegister(): void;
   toggleLoginAgreement(): void;
   setStatus(text: string): void;
-  addStatus(text: string, layout?: UiLayout, y?: number): void;
+  addStatus(text: string, layout?: UiLayout, y?: number, color?: Color): void;
 }
 
 /**
- * 登录页/账号登录场景渲染器。
+ * 登录页渲染器(11-11 B 风格单页:进来直接是账号表单,不再有「点账号登录」的中间页)。
  *
  * 这里只组合 Cocos UI 节点，不直接调用登录接口，也不切换到大厅最终态。
  * 用户点击后通过 host 回调交给 LoginFlow 和 Root 处理。
@@ -134,179 +103,121 @@ export class LoginRenderer {
   constructor(private readonly host: LoginRendererHost) {}
 
   /**
-   * 账号 / 密码草稿:输入时实时记下,页面重建(图片到货、横竖屏变化)后回填——
-   * 否则重建出来的是空输入框,玩家刚输的内容"过一会儿自己消失"(2026-10-05 用户手机录屏)。回到登录首页时清空。
+   * 账号 / 密码草稿:输入时实时记下,页面重建(图片到货、横竖屏变化、切语言)后回填——
+   * 否则重建出来的是空输入框,玩家刚输的内容"过一会儿自己消失"(2026-10-05 用户手机录屏)。
    */
   private readonly drafts = { account: '', password: '' };
 
-  /** 账号登录页状态提示行的位置(按钮与协议之间);登录中 / 报错的提示也显示在这里,不压协议行。 */
+  /** 状态提示行的位置(按钮与协议之间);登录中 / 报错的提示也显示在这里,不压协议行。 */
   accountStatusY: number | null = null;
 
-  renderLogin(layout: UiLayout): void {
+  /** 退出登录 / 登录过期回到登录页时清空草稿。 */
+  clearDrafts(): void {
     this.drafts.account = '';
     this.drafts.password = '';
-    if (SHOW_LOGIN_BRAND) {
-      this.renderLoginBrand(layout);
-    }
-    if (SHOW_RIGHT_RAIL) {
-      this.renderRightRail(layout);
-    }
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const buttonWidth = clamp(layout.contentWidth * 0.34, 300 * layout.uiScale, 450 * layout.uiScale);
-    const buttonHeight = Math.round(buttonWidth * 0.23);
-    // 主登录按钮贴近舞台底部安全区，避免不同预览分辨率下跑出背景舞台。
-    // 手机:点屏幕会进全屏,浏览器的「如需退出全屏…」提示条占屏幕底部约 1/4(网页无法去掉),
-    // 按钮整体抬到底部 27% 之上,不被挡(2026-10-05 用户)。
-    const bottomGap = isPhoneDesign() ? layout.safeHeight * 0.27 : Math.max(12 * layout.uiScale, layout.safeHeight * 0.02);
-    const buttonY = layout.safeBottom + bottomGap + buttonHeight / 2;
-    if (USE_IMAGE_LOGIN_BUTTON) {
-      this.host.addImageButton(
-        'MainAccountLoginButton',
-        LOGIN_UI_ASSETS.mainButton,
-        '账号登录',
-        centerX,
-        buttonY,
-        () => this.host.openLoginAccountScene(),
-        layout,
-        buttonWidth,
-        buttonHeight,
-        Math.max(18 * layout.uiScale, layout.bodyFont + 7 * layout.uiScale),
-      );
-    } else {
-      this.host.addGoldButton('账号登录', centerX, buttonY, () => this.host.openLoginAccountScene(), layout, Math.min(320 * layout.uiScale, layout.contentWidth * 0.3), 48 * layout.uiScale);
-    }
-    this.host.addStatus('等待圣契召唤。', layout, buttonY + buttonHeight / 2 + 28 * layout.uiScale);
   }
 
-  renderLoginAccountScene(layout: UiLayout, state: LoginRendererState): void {
-    // 2026-09-09 用户切图素材化改版(参考图):竖版哥特面板 + 素材输入框(内嵌图标)+
-    // 岩浆登录钮/暗黑注册钮并排 + 星饰分隔线 + 菱形第三方钮 + 协议勾选。
-    // 手绘旧版全部保留为缺图兜底(addSprite 未缓存返回 null 当帧走兜底,加载完整页重渲换素材)。
-    const scale = layout.uiScale;
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const centerY = (layout.stageTop + layout.stageBottom) / 2;
-    const scene = this.host.addRect('LoginAccountSceneRoot', centerX, centerY, layout.width, layout.height, rgba(0, 0, 0, 138));
-    scene.node.addComponent(BlockInputEvents);
+  renderLoginPage(layout: UiLayout, state: LoginRendererState): void {
+    const cx = (layout.stageLeft + layout.stageRight) / 2;
+    const cy = (layout.stageTop + layout.stageBottom) / 2;
+    const { k, FX, FY, S, RX } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    const host = this.host;
+    const root = host.createUiNode('LoginGlassRoot');
+    root.setPosition(cx, cy, 0);
+    const W = layout.width;
+    const H = layout.height;
+    // 挂 BlockInputEvents 的节点必须有 UITransform:否则引擎排序点击处理器时读 null.cameraPriority 抛错,整页点不动
+    root.addComponent(UITransform).setContentSize(new Size(W, H));
+    // 背景:纯色兜底 + 识海图 cover + 压暗(同启动加载页)
+    const base = host.addChildPlainNode(root, 'Base', 0, 0, W, H).addComponent(Graphics);
+    base.fillColor = new Color(12, 15, 22, 255);
+    base.rect(-W, -H, W * 2, H * 2);
+    base.fill();
+    const cover = Math.max(W / LOGIN_B.bg.w, H / LOGIN_B.bg.h);
+    host.addSprite('Bg', LOGIN_B.bg.path, 0, 0, LOGIN_B.bg.w * cover, LOGIN_B.bg.h * cover, root);
+    const dim = host.addChildPlainNode(root, 'Dim', 0, 0, W, H).addComponent(Graphics);
+    dim.fillColor = new Color(8, 11, 18, 120);
+    dim.rect(-W, -H, W * 2, H * 2);
+    dim.fill();
+    root.addComponent(BlockInputEvents);
 
-    // 面板等比锚高(900×1238),矮屏下随安全高收缩;超窄屏再按宽度钳一道。
-    // 2026-09-09 用户反馈:整个登录框放大一档(高上限 720→800,边距/宽钳同步放宽)。
-    const panelAspect = 900 / 1238;
-    let formHeight = Math.min(800 * scale, layout.safeHeight - 8 * scale);
-    let formWidth = formHeight * panelAspect;
-    const maxWidth = Math.max(320 * scale, layout.safeWidth * 0.7);
-    if (formWidth > maxWidth) {
-      formWidth = maxWidth;
-      formHeight = formWidth / panelAspect;
-    }
-    const panelY = centerY;
-    if (!this.host.addSprite('LoginAccountPanelArt', LOGIN_AI_ASSETS.panel, centerX, panelY, formWidth, formHeight)) {
-      const form = this.host.addBeveledPanel('LoginAccountScenePanel', centerX, panelY, formWidth, formHeight, rgba(7, 6, 9, 216), rgba(206, 162, 82, 216), 16 * scale);
-      form.node.addComponent(BlockInputEvents);
-    }
+    // 字标:启动页同一张图缩 0.68(原型 LOOTCHAIN 字高 34 / 启动页 50),画布中心对到原型 (932.5, 107.5)
+    const markScale = 0.68 * k / 2;
+    host.addSprite('Wordmark', LOGIN_B.wordmark.path, FX(932.5), FY(107.5), LOGIN_B.wordmark.w * markScale, LOGIN_B.wordmark.h * markScale, root);
 
-    // 内容整体向内缩进 10px(2026-09-09 用户反馈)。
-    const inner = formWidth * 0.8 - 20 * scale;
-    // 标题下移 35px + 参考图风格:大号鎏金粗体+深棕描边,副标题两侧星饰线。
-    const titleY = panelY + formHeight * 0.29 - 35 * scale;
-    const title = this.host.addLabel('账号登录', centerX, titleY, 44 * scale, rgba(245, 210, 122), new Size(formWidth - 90 * scale, 58 * scale));
-    title.overflow = Label.Overflow.SHRINK;
-    title.isBold = true;
-    title.enableOutline = true;
-    title.outlineColor = rgba(62, 34, 10, 255);
-    title.outlineWidth = Math.max(2, 3 * scale);
-    const subtitleY = titleY - 46 * scale;
-    const subtitleText = '登录已有账号,或注册新账号进入 LootChain';
-    const subtitle = this.host.addLabel(subtitleText, centerX, subtitleY, 16 * scale, rgba(208, 186 , 144, 235), new Size(formWidth - 160 * scale, 26 * scale));
-    subtitle.overflow = Label.Overflow.SHRINK;
-    let subtitleTextW = 0;
-    for (const ch of subtitleText) {
-      subtitleTextW += (ch.codePointAt(0) ?? 0) > 255 ? 16 * scale : 16 * scale * 0.55;
-    }
-    const subtitleHalf = Math.min(subtitleTextW, formWidth - 160 * scale) / 2;
-    const subGap = 8 * scale;
-    const subDividerAvail = formWidth / 2 - subtitleHalf - subGap - 12 * scale;
-    if (subDividerAvail >= 40) {
-      const subDividerW = Math.min(64 * scale, subDividerAvail);
-      const subDividerH = subDividerW * (71 / 224);
-      const subDividerX = subtitleHalf + subGap + subDividerW / 2;
-      const subLeft = this.host.addSprite('LoginSubtitleDividerL', LOGIN_AI_ASSETS.subDividerLeft, centerX - subDividerX, subtitleY, subDividerW, subDividerH);
-      const subRight = subLeft ? this.host.addSprite('LoginSubtitleDividerR', LOGIN_AI_ASSETS.subDividerRight, centerX + subDividerX, subtitleY, subDividerW, subDividerH) : null;
-      if (subLeft && !subRight) {
-        subLeft.node.destroy();
-      }
-      if (!subLeft || !subRight) {
-        for (const dir of [-1, 1]) {
-          const orn = this.host.addLabel(dir < 0 ? '—◆' : '◆—', centerX + dir * (formWidth / 2 - 78 * scale), subtitleY, 13 * scale, rgba(196, 158, 92, 220), new Size(48 * scale, 20 * scale));
-          orn.overflow = Label.Overflow.SHRINK;
-        }
-      }
-    }
-
-    // 输入区:素材框(左端烘焙图标)+ frameless EditBox 叠放,右侧格式提示压在框内。
-    const frameHeight = inner * (196 / 1571);
-    const labelX = centerX - inner / 2 + 60 * scale;
-    // 矮屏防撞:账号行既锚面板比例,也不越过副标题下沿。
-    const accountLabelY = Math.min(panelY + formHeight * 0.145, subtitleY - 44 * scale);
-    const accountInputY = accountLabelY - 18 * scale - frameHeight / 2;
-    const accountInput = this.mountAssetInputRow(layout, centerX, labelX, accountLabelY, accountInputY, inner, frameHeight, {
-      label: '账号', hint: '4~20位字母/数字/下划线', frameName: 'AccountInputFrameArt', asset: LOGIN_AI_ASSETS.inputAccount, placeholder: '请输入账号', password: false,
+    // 右上:语言 / 修复 圆形玻璃钮(原型圆心 (1681, 73) / (1786, 73),直径 66;标签 y 124.5)
+    this.mountRailButton(root, 'Rail_language', RX(1681), FY(73), S(66), FY(124.5), S(18), LOGIN_B.iconGlobe, lootChainI18n.t('login.rightRail.language'), () => host.openLoginLanguageDialog());
+    this.mountRailButton(root, 'Rail_修复', RX(1786), FY(73), S(66), FY(124.5), S(18), LOGIN_B.iconWrench, '修复', () => {
+      host.setStatus('正在清理本地缓存并重新加载…');
+      void resetAssetOfflineCache().then(() => window.location.reload());
     });
-    const passwordLabelY = accountInputY - frameHeight / 2 - 24 * scale;
-    const passwordInputY = passwordLabelY - 18 * scale - frameHeight / 2;
-    const passwordInput = this.mountAssetInputRow(layout, centerX, labelX, passwordLabelY, passwordInputY, inner, frameHeight, {
-      label: '密码', hint: '6~32位', frameName: 'PasswordInputFrameArt', asset: LOGIN_AI_ASSETS.inputPassword, placeholder: '请输入密码', password: true,
-    });
-    this.host.setLoginInputs(accountInput, passwordInput);
 
-    // 按钮行:登录(岩浆大钮)靠左、注册(暗黑钮)靠右,同一行(参考图)。
-    const loginW = inner * 0.55;
-    const loginH = loginW * (284 / 910);
-    const regW = inner * 0.4;
-    const regH = regW * (205 / 726);
-    const enterButtonY = passwordInputY - frameHeight / 2 - 28 * scale - loginH / 2;
-    this.mountPanelButton('AccountLoginSubmit', LOGIN_AI_ASSETS.btnLogin, '登 录', centerX - inner / 2 + loginW / 2, enterButtonY, loginW, loginH, 26 * scale, layout, () => this.host.submitLogin(), 'primary');
-    this.mountPanelButton('AccountRegisterSubmit', LOGIN_AI_ASSETS.btnRegister, '注 册', centerX + inner / 2 - regW / 2, enterButtonY, regW, regH, 22 * scale, layout, () => this.host.submitRegister(), 'secondary');
-
-    const dividerY = enterButtonY - loginH / 2 - 38 * scale;
-    const socialY = dividerY - 56 * scale;
-    // 2026-09-09 用户反馈:协议行整行上移 15px。
-    // 协议行必须落在面板框内(手机横屏面板矮,原公式会压到底边雕花上,2026-10-05 用户):下限 = 面板底边上方 9.5% 高。
-    const agreementY = Math.max(socialY - 43 * scale, panelY - formHeight / 2 + formHeight * 0.095);
-    if (SHOW_DIALOG_THIRD_PARTY_LOGIN) {
-      this.renderThirdPartyLogin(dividerY, socialY, layout, centerX, inner);
+    // 玻璃卡(原型 x 574~1298 / y 182~761)
+    const card = host.addChildPlainNode(root, 'Card', FX(936), FY(471.5), S(724), S(579));
+    if (!mountGlassSlice(host, card, 'Glass', GLASS_SLICES.panel, 0, 0, S(724), S(579), k)) {
+      const g = card.addComponent(Graphics);
+      g.fillColor = new Color(20, 25, 34, 205);
+      g.roundRect(-S(362), -S(289.5), S(724), S(579), S(12));
+      g.fill();
+      g.strokeColor = new Color(255, 255, 255, 34);
+      g.lineWidth = Math.max(1, k);
+      g.roundRect(-S(362), -S(289.5), S(724), S(579), S(12));
+      g.stroke();
     }
-    this.renderAgreement(agreementY, layout, centerX, state.agreementAccepted);
-    this.renderBackButton(layout, scale);
-    // 不显示第三方登录时,提示放进按钮与协议之间的空白处;放在默认的屏幕底部会和协议行叠在一起(手机横屏,2026-10-05)
-    const hintY = SHOW_DIALOG_THIRD_PARTY_LOGIN ? undefined : (enterButtonY - loginH / 2 + agreementY) / 2;
-    this.accountStatusY = hintY ?? null;
-    this.host.addStatus('新玩家点「注 册」直接开号进游戏。', layout, hintY);
+    glassLabel(host, root, 'LoginTitle', '账号登录', FX(632), FY(230), S(38), GLASS_COLOR.text, S(400), HorizontalTextAlignment.LEFT, true);
+    glassLabel(host, root, 'LoginSubtitle', '登录已有账号,或注册新账号进入游戏', FX(632), FY(272.5), S(22), C.sub, S(600));
+
+    const accountInput = this.mountInputRow(layout, root, cx, cy, {
+      label: '账号', labelY: 321, inputY: 370, icon: LOGIN_B.iconUser, placeholder: '请输入账号', hint: '4-20 位字母、数字或下划线', editRight: 1000, password: false,
+    });
+    const passwordInput = this.mountInputRow(layout, root, cx, cy, {
+      label: '密码', labelY: 432, inputY: 481, icon: LOGIN_B.iconLock, placeholder: '请输入密码', hint: '6-32 位', editRight: 1160, password: true,
+    });
+    host.setLoginInputs(accountInput, passwordInput);
+
+    // 按钮行(原型 登录 x 627~924 / 注册 x 948~1244,y 543~602):唯一主钮香槟、注册全站统一次钮
+    mountGlassButton(host, root, 'AccountLoginSubmit', '登录', FX(775.5), FY(572.5), S(297), S(59), k, 'primary', () => host.submitLogin(), 27);
+    mountGlassButton(host, root, 'AccountRegisterSubmit', '注册', FX(1096), FY(572.5), S(296), S(59), k, 'secondary', () => host.submitRegister(), 27);
+
+    // 新玩家提示(登录中 / 报错也走这一行)
+    this.accountStatusY = cy + FY(637);
+    host.addStatus('新玩家点「注册」直接开号进游戏', layout, this.accountStatusY, C.sub);
+
+    mountGlassLine(host, root, 'LoginDivider', FX(936), FY(673.5), S(618), Math.max(1, S(1)), new Color(255, 255, 255, 30));
+    this.renderAgreement(root, FX, FY, S, state.agreementAccepted);
   }
 
-  /** 素材输入行:标签 + 素材框(左端烘焙图标,故 EditBox 右移避开)+ 框内右缘格式提示。 */
-  private mountAssetInputRow(
+  /** 输入行:灰字标签 + 深色圆角输入框(glass input)+ 左线条图标 + 无框 EditBox + 框内右侧格式提示。 */
+  private mountInputRow(
     layout: UiLayout,
-    centerX: number,
-    labelX: number,
-    labelY: number,
-    inputY: number,
-    inner: number,
-    frameHeight: number,
-    row: { label: string; hint: string; frameName: string; asset: string; placeholder: string; password: boolean },
+    root: Node,
+    cx: number,
+    cy: number,
+    row: { label: string; labelY: number; inputY: number; icon: string; placeholder: string; hint: string; editRight: number; password: boolean },
   ): EditBox {
+    const host = this.host;
+    const { k, FX, FY, S } = glassProtoMap(layout.stageWidth, layout.stageHeight);
     const draftKey = row.password ? 'password' : 'account';
-    const scale = layout.uiScale;
-    const tip = this.host.addLabel(row.label, labelX, labelY, 19 * scale, rgba(224, 202, 156, 240), new Size(140 * scale, 28 * scale));
-    tip.horizontalAlign = HorizontalTextAlignment.LEFT;
-    const frameOk = !!this.host.addSprite(row.frameName, row.asset, centerX, inputY, inner, frameHeight);
-    // 素材左端 ~14% 是烘焙的人像/锁图标区,EditBox 从图标右侧起排;缺图退回手绘金框(占满行宽)。
-    const editWidth = frameOk ? inner * 0.66 : inner - 28 * scale;
-    const editX = frameOk ? centerX - inner / 2 + inner * 0.15 + editWidth / 2 : centerX;
-    const hint = this.host.addLabel(row.hint, centerX + inner / 2 - 140 * scale, inputY, 14 * scale, rgba(150, 134, 104, 210), new Size(240 * scale, 22 * scale));
-    hint.horizontalAlign = HorizontalTextAlignment.RIGHT;
-    hint.overflow = Label.Overflow.SHRINK;
-    // 失焦占位/内容显示由工厂 EditBoxDisplayLabel 统一承担(2026-09-09 根治引擎重摆跑位)。
-    const box = this.host.addFramedEditBox(this.drafts[draftKey], editX, inputY, editWidth, layout, row.password, { frameless: frameOk, placeholder: row.placeholder });
+    glassLabel(host, root, `Label_${draftKey}`, row.label, FX(632), FY(row.labelY), S(21), C.label, S(120));
+    const frame = host.addChildPlainNode(root, `InputFrame_${draftKey}`, FX(936), FY(row.inputY), S(618), S(58));
+    if (!mountGlassSlice(host, frame, 'Glass', GLASS_SLICES.input, 0, 0, S(618), S(58), k)) {
+      const g = frame.addComponent(Graphics);
+      g.fillColor = new Color(11, 13, 20, 225);
+      g.roundRect(-S(309), -S(29), S(618), S(58), S(14));
+      g.fill();
+      g.strokeColor = new Color(255, 255, 255, 40);
+      g.lineWidth = Math.max(1, k);
+      g.roundRect(-S(309), -S(29), S(618), S(58), S(14));
+      g.stroke();
+    }
+    host.addSprite('Icon', row.icon, FX(667.5) - FX(936), 0, S(28), S(28), frame);
+    glassLabel(host, root, `Hint_${draftKey}`, row.hint, FX(1227), FY(row.inputY - 0.5), S(18), C.hint, S(300), HorizontalTextAlignment.RIGHT);
+    // EditBox:自绘显示层左沿 = 中心 - (宽 - 28)/2,对到原型占位字起点 x 707;右沿让出框内提示
+    const editW = S(row.editRight - 707) + 14;
+    const editX = cx + FX(707) + (editW - 28) / 2;
+    const box = host.addFramedEditBox(this.drafts[draftKey], editX, cy + FY(row.inputY), editW, layout, row.password, {
+      frameless: true, placeholder: row.placeholder, placeholderColor: C.placeholder,
+    });
     const keep = (): void => {
       if (box.isValid) {
         this.drafts[draftKey] = box.string;
@@ -317,247 +228,140 @@ export class LoginRenderer {
     return box;
   }
 
-  /** 素材按钮(空底图+文字 Label 叠加);缺图兜底手绘(主=红底金框,次=暗底金描边)。 */
-  private mountPanelButton(
-    name: string,
-    asset: string,
-    text: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    fontSize: number,
-    layout: UiLayout,
-    callback: () => void,
-    kind: 'primary' | 'secondary',
-  ): void {
-    const node = this.host.createUiNode(name);
-    node.setPosition(new Vec3(x, y, 0));
-    node.addComponent(UITransform).setContentSize(new Size(width, height));
-    if (!this.host.addSprite(`${name}Art`, asset, 0, 0, width, height, node)) {
-      const graphics = node.addComponent(Graphics);
-      graphics.fillColor = kind === 'primary' ? rgba(122, 32, 24, 240) : rgba(12, 10, 12, 235);
-      graphics.roundRect(-width / 2, -height / 2, width, height, 6);
-      graphics.fill();
-      graphics.strokeColor = rgba(214, 168, 82, 230);
-      graphics.lineWidth = Math.max(1, 1.4 * layout.uiScale);
-      graphics.roundRect(-width / 2, -height / 2, width, height, 6);
-      graphics.stroke();
-    }
-    const label = this.host.addChildLabel(node, 'Label', text, 0, 0, fontSize, kind === 'primary' ? rgba(255, 234, 178) : rgba(232, 206, 150), new Size(width - 24 * layout.uiScale, fontSize + 10));
-    label.overflow = Label.Overflow.SHRINK;
+  /** 右上角圆形玻璃钮:暗玻璃圆 + 淡白描边 + 白线条图标,下方灰字。 */
+  private mountRailButton(root: Node, name: string, x: number, y: number, d: number, labelY: number, fontSize: number, icon: string, text: string, onClick: () => void): void {
+    const host = this.host;
+    const node = host.addChildPlainNode(root, name, x, y, d, d);
+    const g = node.addComponent(Graphics);
+    g.fillColor = C.railFill;
+    g.circle(0, 0, d / 2);
+    g.fill();
+    g.strokeColor = C.railStroke;
+    g.lineWidth = Math.max(1, d / 50);
+    g.circle(0, 0, d / 2);
+    g.stroke();
+    host.addSprite('Icon', icon, 0, 0, d * 0.5, d * 0.5, node);
     node.addComponent(Button);
-    node.on(Button.EventType.CLICK, callback, this);
-    this.host.applyImageButtonFeedback(node);
-    this.host.applyPointerCursor(node);
+    node.on(Button.EventType.CLICK, onClick);
+    host.applyImageButtonFeedback(node, 1.06, 0.94);
+    host.applyPointerCursor(node);
+    glassLabel(host, root, `${name}Label`, text, x, labelY, fontSize, GLASS_COLOR.sub, d * 1.6, HorizontalTextAlignment.CENTER);
   }
 
-  private renderLoginBrand(layout: UiLayout): void {
-    const logoWidth = clamp(layout.stageWidth * 0.23, 210 * layout.uiScale, 320 * layout.uiScale);
-    const logoHeight = Math.round(logoWidth * 0.51);
-    const logoX = layout.safeLeft + logoWidth / 2;
-    const logoY = layout.safeTop - logoHeight / 2;
-    if (!this.host.addSprite('LoginLogo', LOGIN_UI_ASSETS.logo, logoX, logoY, logoWidth, logoHeight)) {
-      this.host.addLabel('LOOTCHAIN', logoX, logoY + 22 * layout.uiScale, 46 * layout.uiScale, rgba(245, 210, 122), new Size(logoWidth * 1.35, 62 * layout.uiScale));
-      this.host.addLabel('SILENT GODS', logoX, logoY - 30 * layout.uiScale, 17 * layout.uiScale, rgba(214, 177, 94), new Size(logoWidth * 1.2, 28 * layout.uiScale));
-    }
-  }
-
-  private renderRightRail(layout: UiLayout): void {
-    const railWidth = 76 * layout.uiScale;
-    const railHeight = 74 * layout.uiScale;
-    // 右侧按钮使用 safeRight 定位，和登录 logo 一样跟随舞台安全区自适应。
-    const x = layout.safeRight - railWidth / 2;
-    const yStart = layout.safeTop - Math.max(8 * layout.uiScale, layout.safeInsetY * 0.4) - railHeight / 2;
-    const railGap = 84 * layout.uiScale;
-    // 2026-09-25 占位清理:客服/公告未接入先不显示;只留"语言"与"修复"(清本地缓存重载)。
-    LOGIN_UI_ASSETS.rightRail
-      .filter((asset) => asset.path.includes('side_btn_prophecy') || asset.path.includes('side_btn_repair'))
-      .forEach((asset, index) => {
-        this.addRailImageButton(asset, x, yStart - index * railGap, layout);
-      });
-  }
-
-  private renderThirdPartyLogin(dividerY: number, socialY: number, layout: UiLayout, centerX: number, inner: number): void {
-    const scale = layout.uiScale;
-    // 分隔行:星饰线素材左右段夹住"其他登录方式"(缺图退手绘细线)。
-    const dividerLabel = this.host.addLabel('其他登录方式', centerX, dividerY, 17 * scale, rgba(214, 177, 94), new Size(160 * scale, 26 * scale));
-    dividerLabel.overflow = Label.Overflow.SHRINK;
-    const segWidth = Math.max(60 * scale, inner / 2 - 92 * scale);
-    const segHeightL = segWidth * (43 / 558);
-    const segHeightR = segWidth * (42 / 618);
-    const segGap = 86 * scale;
-    const leftOk = !!this.host.addSprite('LoginDividerLeft', LOGIN_AI_ASSETS.dividerLeft, centerX - segGap - segWidth / 2, dividerY, segWidth, segHeightL);
-    const rightOk = !!this.host.addSprite('LoginDividerRight', LOGIN_AI_ASSETS.dividerRight, centerX + segGap + segWidth / 2, dividerY, segWidth, segHeightR);
-    if (!leftOk || !rightOk) {
-      const line = this.host.addRect('LoginDividerFallback', centerX, dividerY, inner, 2, rgba(0, 0, 0, 0));
-      line.strokeColor = rgba(185, 150, 84, 150);
-      line.lineWidth = Math.max(1, scale);
-      for (const dir of [-1, 1]) {
-        line.moveTo(dir * segGap, 0);
-        line.lineTo(dir * (segGap + segWidth), 0);
-      }
-      line.stroke();
-    }
-    // 菱形第三方钮(参考图顺序 G/A/Discord/X);素材缺图退回旧手绘菱形。
-    const size = inner * 0.16;
-    const gap = inner * 0.225;
-    LOGIN_AI_ASSETS.socials.forEach((social, index) => {
-      const x = centerX + (index - (LOGIN_AI_ASSETS.socials.length - 1) / 2) * gap;
-      const node = this.host.createUiNode(`SocialLogin_${social.key}`);
-      node.setPosition(new Vec3(x, socialY, 0));
-      node.addComponent(UITransform).setContentSize(new Size(size, size));
-      if (!this.host.addSprite('Art', social.path, 0, 0, size, size, node)) {
-        node.destroy();
-        this.addDiamondButton(social.key, x, socialY, () => this.host.setStatus('第三方登录暂未开放。'), layout);
-        return;
-      }
-      node.addComponent(Button);
-      node.on(Button.EventType.CLICK, () => this.host.setStatus('第三方登录暂未开放。'), this);
-      this.host.applyImageButtonFeedback(node, 1.06, 0.94);
-      this.host.applyPointerCursor(node);
-    });
-  }
-
-  private renderAgreement(y: number, layout: UiLayout, centerX: number, agreementAccepted: boolean): void {
-    const scale = layout.uiScale;
-    const boxSize = 26 * scale;
-    const x = centerX - 176 * scale;
-    // 勾选框:选中=用户金勾素材,未选/缺图=手绘切角空框;整框可点切换。
-    const box = this.host.createUiNode('LoginAgreementBox');
-    box.setPosition(new Vec3(x, y, 0));
-    box.addComponent(UITransform).setContentSize(new Size(boxSize + 10 * scale, boxSize + 10 * scale));
-    const spriteOk = agreementAccepted ? !!this.host.addSprite('Art', LOGIN_AI_ASSETS.checkOn, 0, 0, boxSize, boxSize, box) : false;
-    if (!spriteOk) {
-      const graphics = box.addComponent(Graphics);
-      graphics.fillColor = rgba(10, 8, 9, 232);
-      graphics.roundRect(-boxSize / 2, -boxSize / 2, boxSize, boxSize, 4 * scale);
-      graphics.fill();
-      graphics.strokeColor = rgba(185, 138, 58, 220);
-      graphics.lineWidth = Math.max(1, 1.4 * scale);
-      graphics.roundRect(-boxSize / 2, -boxSize / 2, boxSize, boxSize, 4 * scale);
-      graphics.stroke();
-      if (agreementAccepted) {
-        graphics.strokeColor = rgba(245, 210, 122, 245);
-        graphics.lineWidth = Math.max(1.4, 2 * scale);
-        graphics.moveTo(-boxSize * 0.24, 0);
-        graphics.lineTo(-boxSize * 0.05, -boxSize * 0.2);
-        graphics.lineTo(boxSize * 0.26, boxSize * 0.2);
-        graphics.stroke();
-      }
-    }
-    box.addComponent(Button);
-    box.on(Button.EventType.CLICK, () => this.host.toggleLoginAgreement(), this);
-    this.host.applyPointerCursor(box);
-    // 协议名可点击查看全文(2026-09-25):四段文字按字数估宽横排,整行仍以原位置居中。
-    const fontSize = 16 * scale;
+  /** 协议行(原型 y 711):香槟描边勾选框 + 灰字 + 香槟协议名(可点开全文),整行居中。 */
+  private renderAgreement(root: Node, FX: (px: number) => number, FY: (py: number) => number, S: (v: number) => number, accepted: boolean): void {
+    const host = this.host;
+    const fontSize = S(22);
     const parts: Array<{ text: string; doc?: 'terms' | 'privacy' }> = [
       { text: '我已阅读并同意' },
       { text: '《用户协议》', doc: 'terms' },
-      { text: '和' },
+      { text: ' 和 ' },
       { text: '《隐私政策》', doc: 'privacy' },
     ];
-    const widths = parts.map((part) => part.text.length * fontSize);
-    let cursorX = centerX + 26 * scale - widths.reduce((sum, width) => sum + width, 0) / 2;
+    const unit = (ch: string): number => (/[ -~]/.test(ch) ? 0.5 : 1);
+    const widths = parts.map((part) => Array.from(part.text).reduce((sum, ch) => sum + unit(ch), 0) * fontSize);
+    const box = S(28);
+    const gap = S(20);
+    const total = box + gap + widths.reduce((sum, w) => sum + w, 0);
+    const y = FY(711);
+    let x = FX(936) - total / 2;
+    // 勾选框:暗底 + 香槟细边,选中多一个香槟勾;整框(放大热区)可点
+    const check = host.addChildPlainNode(root, 'LoginAgreementBox', x + box / 2, y, box + S(16), box + S(16));
+    const g = check.addComponent(Graphics);
+    const r = box * 0.2;
+    g.fillColor = new Color(18, 22, 29, 220);
+    g.roundRect(-box / 2, -box / 2, box, box, r);
+    g.fill();
+    g.strokeColor = accepted ? GLASS_COLOR.champagne : new Color(150, 160, 172, 220);
+    g.lineWidth = Math.max(1.2, box * 0.07);
+    g.roundRect(-box / 2, -box / 2, box, box, r);
+    g.stroke();
+    if (accepted) {
+      g.strokeColor = GLASS_COLOR.champagne;
+      g.lineWidth = Math.max(1.6, box * 0.1);
+      g.moveTo(-box * 0.26, 0);
+      g.lineTo(-box * 0.06, -box * 0.2);
+      g.lineTo(box * 0.28, box * 0.2);
+      g.stroke();
+    }
+    check.addComponent(Button);
+    check.on(Button.EventType.CLICK, () => host.toggleLoginAgreement(), this);
+    host.applyPointerCursor(check);
+    x += box + gap;
     parts.forEach((part, index) => {
       const width = widths[index];
-      const label = this.host.addLabel(part.text, cursorX + width / 2, y, fontSize, part.doc ? rgba(240, 196, 102) : rgba(215, 210, 198), new Size(width + 4 * scale, 26 * scale));
-      label.overflow = Label.Overflow.SHRINK;
+      const label = glassLabel(host, root, part.doc === 'terms' ? 'LoginAgreementTermsLink' : part.doc === 'privacy' ? 'LoginAgreementPrivacyLink' : `LoginAgreementText_${index}`,
+        part.text, x, y, fontSize, part.doc ? GLASS_COLOR.champagne : C.sub, width + S(6));
       if (part.doc) {
         const doc = part.doc;
-        label.isUnderline = true;
-        label.node.name = doc === 'terms' ? 'LoginAgreementTermsLink' : 'LoginAgreementPrivacyLink';
         label.node.addComponent(Button);
-        label.node.on(Button.EventType.CLICK, () => this.host.openLegalDocument?.(doc), this);
-        this.host.applyPointerCursor(label.node);
+        label.node.on(Button.EventType.CLICK, () => host.openLegalDocument?.(doc), this);
+        host.applyPointerCursor(label.node);
       }
-      cursorX += width;
+      x += width;
     });
   }
 
-  private addRailImageButton(asset: RailButtonAsset, x: number, y: number, layout: UiLayout): Button {
-    const railWidth = 76 * layout.uiScale;
-    const railHeight = 74 * layout.uiScale;
-    const iconSize = 46 * layout.uiScale;
-    const isLanguageButton = asset.path.includes('side_btn_prophecy');
-    const label = isLanguageButton ? lootChainI18n.t('login.rightRail.language') : asset.label;
-    const node = this.host.createUiNode(`Rail_${isLanguageButton ? 'language' : asset.label}`);
-    node.setPosition(new Vec3(x, y, 0));
-    node.addComponent(UITransform).setContentSize(new Size(railWidth, railHeight));
-    const button = node.addComponent(Button);
-    // 右栏只剩"语言"与"修复"(2026-09-25 占位清理);修复=清掉本地资源缓存(Service Worker + Cache Storage + 预载标记)后重新加载。
-    const onClick = isLanguageButton
-      ? (): void => this.host.openLoginLanguageDialog()
-      : (): void => {
-        this.host.setStatus('正在清理本地缓存并重新加载…');
-        void resetAssetOfflineCache().then(() => window.location.reload());
-      };
-    node.on(Button.EventType.CLICK, onClick);
-    this.host.applyImageButtonFeedback(node);
+  /** 语言选择弹框(B 风格):压暗遮罩 + 玻璃窗 + 标题 / 说明 + 两个选项胶囊(当前语言暗金选中白字)+ ✕。点空白关闭。 */
+  renderLanguageDialog(layout: UiLayout): void {
+    const host = this.host;
+    const cx = (layout.stageLeft + layout.stageRight) / 2;
+    const cy = (layout.stageTop + layout.stageBottom) / 2;
+    const { k, S } = glassProtoMap(layout.stageWidth, layout.stageHeight);
+    const overlay = host.createUiNode('LoginLanguageDialog');
+    overlay.setPosition(cx, cy, 0);
+    const W = layout.width;
+    const H = layout.height;
+    overlay.addComponent(UITransform).setContentSize(new Size(W, H));
+    const dim = host.addChildPlainNode(overlay, 'Dim', 0, 0, W * 2, H * 2);
+    const dg = dim.addComponent(Graphics);
+    dg.fillColor = new Color(4, 6, 10, 200);
+    dg.rect(-W, -H, W * 2, H * 2);
+    dg.fill();
+    dim.addComponent(BlockInputEvents);
+    dim.addComponent(Button);
+    dim.on(Button.EventType.CLICK, () => host.closeLoginLanguageDialog());
 
-    if (!this.host.addSprite('Icon', asset.path, 0, 15 * layout.uiScale, iconSize, iconSize, node)) {
-      // 图标未加载完成时画一个菱形,避免按钮区域空白不可见;点击走同一动作。
-      this.addDiamondButton('', x, y + 14, onClick, layout);
-    }
-    this.host.addChildLabel(node, 'Label', label, 0, -27 * layout.uiScale, Math.max(13, 18 * layout.uiScale), rgba(229, 196, 122), new Size(72 * layout.uiScale, 28 * layout.uiScale));
-    return button;
+    const pw = S(560);
+    const ph = S(340);
+    const panel = host.addChildPlainNode(overlay, 'Panel', 0, 0, pw, ph);
+    panel.addComponent(BlockInputEvents);
+    // 实底玻璃卡:先垫一层近不透明深底,底下登录卡的字不透出来(同输出周榜弹窗口径)
+    const solid = panel.addComponent(Graphics);
+    solid.fillColor = new Color(16, 20, 28, 240);
+    solid.roundRect(-pw / 2, -ph / 2, pw, ph, S(12));
+    solid.fill();
+    mountGlassSlice(host, panel, 'Glass', GLASS_SLICES.panel, 0, 0, pw, ph, k);
+    glassLabel(host, panel, 'Title', lootChainI18n.t('language.title'), -pw / 2 + S(44), ph / 2 - S(54), S(32), GLASS_COLOR.text, S(360), HorizontalTextAlignment.LEFT, true);
+    glassLabel(host, panel, 'Subtitle', lootChainI18n.t('language.subtitle'), -pw / 2 + S(44), ph / 2 - S(96), S(20), C.sub, pw - S(88));
+    // ✕(画两笔,不依赖贴图)
+    const close = host.addChildPlainNode(panel, 'Close', pw / 2 - S(44), ph / 2 - S(50), S(60), S(60));
+    const cg = close.addComponent(Graphics);
+    cg.strokeColor = new Color(220, 224, 230, 230);
+    cg.lineWidth = Math.max(1.5, S(2.4));
+    const a = S(11);
+    cg.moveTo(-a, -a);
+    cg.lineTo(a, a);
+    cg.moveTo(-a, a);
+    cg.lineTo(a, -a);
+    cg.stroke();
+    close.addComponent(Button);
+    close.on(Button.EventType.CLICK, () => host.closeLoginLanguageDialog());
+    host.applyImageButtonFeedback(close, 1.08, 0.94);
+    host.applyPointerCursor(close);
+
+    const current = lootChainI18n.currentLanguage();
+    const options: Array<{ lang: LootChainLanguage; key: 'language.simplifiedChinese' | 'language.english' }> = [
+      { lang: 'zh-CN', key: 'language.simplifiedChinese' },
+      { lang: 'en-US', key: 'language.english' },
+    ];
+    const ow = (pw - S(88) - S(20)) / 2;
+    options.forEach((opt, index) => {
+      const x = -pw / 2 + S(44) + ow / 2 + index * (ow + S(20));
+      mountGlassButton(host, panel, `LoginLanguageOption_${opt.lang}`, lootChainI18n.t(opt.key), x, -S(40), ow, S(64), k,
+        opt.lang === current ? 'selected' : 'secondary', () => host.selectLoginLanguage(opt.lang), 24);
+    });
+    const tip = glassLabel(host, panel, 'Tip', '点击空白关闭', 0, -ph / 2 + S(36), S(18), GLASS_COLOR.dim, pw - S(88), HorizontalTextAlignment.CENTER);
+    tip.overflow = Label.Overflow.SHRINK;
   }
-
-  private addDiamondButton(text: string, x: number, y: number, callback: () => void, layout: UiLayout): Button {
-    const size = 48 * layout.uiScale;
-    const node = this.host.createUiNode(`Diamond_${text}`);
-    node.setPosition(new Vec3(x, y, 0));
-    node.angle = 45;
-    node.addComponent(UITransform).setContentSize(new Size(size, size));
-    const graphics = node.addComponent(Graphics);
-    graphics.fillColor = rgba(10, 8, 9, 232);
-    graphics.strokeColor = rgba(185, 138, 58, 210);
-    graphics.lineWidth = 2;
-    graphics.rect(-size / 2, -size / 2, size, size);
-    graphics.fill();
-    graphics.stroke();
-    const button = node.addComponent(Button);
-    node.on(Button.EventType.CLICK, callback);
-    this.host.applyPointerCursor(node);
-
-    const labelNode = new Node('Label');
-    labelNode.layer = node.layer;
-    node.addChild(labelNode);
-    labelNode.angle = -45;
-    labelNode.setPosition(Vec3.ZERO);
-    labelNode.addComponent(UITransform).setContentSize(new Size(size, size));
-    const label = labelNode.addComponent(Label);
-    label.string = text;
-    label.fontSize = Math.max(14, layout.bodyFont + 2);
-    label.lineHeight = label.fontSize + 8;
-    label.horizontalAlign = HorizontalTextAlignment.CENTER;
-    label.verticalAlign = VerticalTextAlignment.CENTER;
-    label.color = rgba(245, 210, 122);
-    return button;
-  }
-
-  /** 左上「返回登录」:暗铁按钮切图(bag_button_dark 512×158 等比),图没读到时回退通用按钮。2026-10-10 全界面美化。 */
-  private renderBackButton(layout: UiLayout, scale: number): void {
-    const h = 44 * scale;
-    const w = h * (512 / 158);
-    const x = layout.safeLeft + 18 * scale + w / 2;
-    const y = layout.safeTop - 30 * scale;
-    const node = this.host.createUiNode('LoginBackButton');
-    node.setPosition(x, y, 0);
-    node.addComponent(UITransform).setContentSize(new Size(w, h));
-    if (!this.host.addSprite('Art', 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, w, h, node)) {
-      node.destroy();
-      this.host.addButton('返回登录', layout.safeLeft + 62 * scale, layout.safeTop - 26 * scale, () => this.host.renderLogin(), layout, 118 * scale, 38 * scale);
-      return;
-    }
-    const label = this.host.addChildLabel(node, 'Label', '返回登录', 0, 0, 19 * scale, rgba(240, 214, 156), new Size(w * 0.74, h * 0.7));
-    label.overflow = Label.Overflow.SHRINK;
-    label.enableOutline = true;
-    label.outlineColor = rgba(0, 0, 0, 220);
-    label.outlineWidth = Math.max(1, 1.4 * scale);
-    node.addComponent(Button);
-    node.on(Button.EventType.CLICK, () => this.host.renderLogin(), this);
-    this.host.applyImageButtonFeedback(node, 1.04, 0.96);
-  }
-
 }

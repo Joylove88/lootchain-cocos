@@ -9,12 +9,7 @@ import {
   resources,
   SpriteFrame,
 } from 'cc';
-import {
-  LOGIN_UI_ASSETS,
-  SHOW_LOGIN_BRAND,
-  SHOW_RIGHT_RAIL,
-  USE_IMAGE_LOGIN_BUTTON,
-} from './login/LoginRenderer';
+import { LOGIN_B_ASSET_PATHS, LOGIN_UI_ASSETS } from './login/LoginRenderer';
 import { LOBBY_C1812_RESOURCE_ICON_ASSETS, LOBBY_PLAYER_INFO_PANEL_ASSET } from './lobby/LobbyHudTypes';
 import {
   BATTLE_C1812_BANNER_DEFEAT_ASSET,
@@ -194,15 +189,8 @@ export class UiSpriteFrameCache {
    * 各玩法页面的图按分组在第一次打开该页时再拉(preloadGroup),到货走 90ms 合并整刷,不会逐张重建。
    */
   preload(overrides: UiSpriteFrameOverrides): void {
-    if (SHOW_LOGIN_BRAND && !overrides.logoFrame) {
-      this.request(LOGIN_UI_ASSETS.logo);
-    }
-    if (USE_IMAGE_LOGIN_BUTTON && !overrides.mainButtonFrame) {
-      this.request(LOGIN_UI_ASSETS.mainButton);
-    }
-    if (SHOW_RIGHT_RAIL && overrides.rightRailFrames.length < LOGIN_UI_ASSETS.rightRail.length) {
-      LOGIN_UI_ASSETS.rightRail.forEach((asset) => this.request(asset.path));
-    }
+    // 11-11 登录页 B 风格:背景 / 字标 / 线条图标 / 玻璃件(旧红金 logo / 主按钮 / 右栏图标不再请求)
+    LOGIN_B_ASSET_PATHS.forEach((path) => this.request(path));
     this.request(LOBBY_PLAYER_INFO_PANEL_ASSET);
     this.request(SCENE_BACK_BUTTON_ASSET);
     Object.values(LOBBY_C1812_RESOURCE_ICON_ASSETS).forEach((asset) => this.request(asset.path));

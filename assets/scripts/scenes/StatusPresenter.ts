@@ -28,7 +28,8 @@ export class StatusPresenter {
     this.label = null;
   }
 
-  add(text: string, layout?: UiLayout, y?: number): void {
+  /** color:调用方指定字色(11-11 登录页 B 风格用灰字);不给 = 旧的蓝色状态字。 */
+  add(text: string, layout?: UiLayout, y?: number, color?: Color): void {
     const currentLayout = layout ?? this.host.resolveLayout();
     const translatedText = lootChainI18n.text(text);
     const statusY = y ?? currentLayout.safeBottom + Math.max(8 * currentLayout.uiScale, currentLayout.safeHeight * 0.01);
@@ -38,7 +39,7 @@ export class StatusPresenter {
       centerX,
       statusY,
       currentLayout.bodyFont,
-      rgba(127, 214, 255),
+      color ?? rgba(127, 214, 255),
       new Size(currentLayout.statusWidth, 48 * currentLayout.uiScale),
     );
   }

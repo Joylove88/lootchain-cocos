@@ -691,7 +691,7 @@ export class LootChainGameRoot extends Component {
     applyGraphicsSettings();
     installInteractionFrameBoost();
     // 有输入框的界面不自动进全屏(进全屏会收掉输入法);登录首页可以(主按钮已抬到浏览器退出全屏提示条之上)
-    setFullscreenGate(() => !isTextInputActive() && ['loginAccount', 'loading', 'protagonistCreate'].indexOf(this.currentView) < 0);
+    setFullscreenGate(() => !isTextInputActive() && ['login', 'loginAccount', 'loading', 'protagonistCreate'].indexOf(this.currentView) < 0);
     // 仅横屏(2026-10-02 用户拍板):手机竖握时引擎旋转画布显示横屏;构建配置也设了 landscape,这里保证预览与任何构建都生效。
     view.setOrientation(macro.ORIENTATION_LANDSCAPE);
     // H5/PC 全屏适配:设计分辨率跟随横屏视口比例,后续每帧在 update 里保持同步。
@@ -1365,153 +1365,29 @@ export class LootChainGameRoot extends Component {
     this.renderLogin();
   }
 
+  /**
+   * 登录页(11-11 B 风格单页,原型 周报截图/2026-11-11_登录页/proto/login_b.png):进来直接是账号表单。
+   * 视图名统一记 'loginAccount'('login' 仍是入口别名:登录过期 / 退出时设 'login' 再整刷也落到这里),
+   * 自验脚本按 'loginAccount' 找输入框的老写法不用改。
+   */
   private renderLogin(): void {
-    this.currentView = 'login';
+    this.currentView = 'loginAccount';
     this.invalidateReusableScenes();
     const layout = this.renderBase();
-    this.loginRenderer.renderLogin(layout);
-    this.renderLoginLanguageDialog(layout);
-  }
-
-  private renderLoginAccountScene(): void {
-    this.currentView = 'loginAccount';
-    this.loginLanguageDialogOpen = false;
-    const layout = this.renderBase();
-    this.loginRenderer.renderLoginAccountScene(layout, {
+    this.loginRenderer.renderLoginPage(layout, {
       agreementAccepted: this.loginFlow.agreementAccepted,
       defaultDevUserId: this.loginFlow.defaultDevUserId,
     });
+    if (this.loginLanguageDialogOpen) {
+      this.loginRenderer.renderLanguageDialog(layout);
+      // 兜底:聚焦中的输入框原生 <input> 浮在画布之上,弹框盖不住;打开期间一律藏起来
+      this.setEditBoxDomHidden(true);
+    }
   }
 
-  private renderLoginLanguageDialog(layout: UiLayout): void {
-    if (!this.loginLanguageDialogOpen) {
-      return;
-    }
-    const scale = Math.max(0.72, Math.min(1, layout.uiScale));
-    const centerX = (layout.stageLeft + layout.stageRight) / 2;
-    const centerY = (layout.stageBottom + layout.stageTop) / 2;
-    const dim = this.addRect('LoginLanguageDialogDim', centerX, centerY, layout.width, layout.height, new Color(0, 0, 0, 184));
-    dim.node.addComponent(BlockInputEvents);
-    dim.node.addComponent(Button);
-    dim.node.on(Button.EventType.CLICK, () => this.closeLoginLanguageDialog());
-
-    const panelWidth = Math.min(layout.stageWidth - 40 * scale, 460 * scale);
-    const panelHeight = 320 * scale;
-    const panel = this.addBeveledPanelNode(
-      'LoginLanguageDialogPanel',
-      centerX,
-      centerY,
-      panelWidth,
-      panelHeight,
-      new Color(13, 11, 10, 244),
-      new Color(204, 158, 80, 230),
-      18 * scale,
-    );
-    panel.addComponent(BlockInputEvents);
-
-    const closeButton = this.addChildBeveledPanelNode(
-      panel,
-      'LoginLanguageDialogClose',
-      panelWidth / 2 - 34 * scale,
-      panelHeight / 2 - 32 * scale,
-      42 * scale,
-      32 * scale,
-      new Color(34, 25, 24, 238),
-      new Color(204, 158, 80, 210),
-      8 * scale,
-    );
-    closeButton.addComponent(Button);
-    closeButton.on(Button.EventType.CLICK, () => this.closeLoginLanguageDialog());
-    this.applyImageButtonFeedback(closeButton, 1.04, 0.96);
-    this.addChildLabel(closeButton, 'CloseLabel', 'X', 0, 0, 20 * scale, new Color(245, 210, 122), new Size(38 * scale, 24 * scale));
-
-    const title = this.addChildLabel(
-      panel,
-      'LoginLanguageDialogTitle',
-      lootChainI18n.t('language.title'),
-      0,
-      panelHeight / 2 - 58 * scale,
-      28 * scale,
-      new Color(245, 210, 122),
-      new Size(panelWidth - 96 * scale, 40 * scale),
-    );
-    title.enableOutline = true;
-    title.outlineColor = new Color(0, 0, 0, 220);
-    title.outlineWidth = Math.max(1, 1.5 * scale);
-
-    const subtitle = this.addChildLabel(
-      panel,
-      'LoginLanguageDialogSubtitle',
-      lootChainI18n.t('language.subtitle'),
-      0,
-      panelHeight / 2 - 96 * scale, 19 * scale,
-      new Color(196, 178, 138),
-      new Size(panelWidth - 80 * scale, 28 * scale),
-    );
-    subtitle.overflow = Label.Overflow.SHRINK;
-
-    const currentLanguage = lootChainI18n.currentLanguage();
-    this.renderLoginLanguageOption(panel, 'zh-CN', -56 * scale, currentLanguage, panelWidth, scale);
-    this.renderLoginLanguageOption(panel, 'en-US', -126 * scale, currentLanguage, panelWidth, scale);
-
-    this.addChildLabel(
-      panel,
-      'LoginLanguageDialogTip',
-      '点击空白关闭',
-      0,
-      -panelHeight / 2 + 26 * scale, 16 * scale,
-      new Color(132, 119, 94),
-      new Size(panelWidth - 70 * scale, 22 * scale),
-    );
-  }
-
-  private renderLoginLanguageOption(
-    panel: Node,
-    language: LootChainLanguage,
-    y: number,
-    currentLanguage: LootChainLanguage,
-    panelWidth: number,
-    scale: number,
-  ): void {
-    const selected = language === currentLanguage;
-    const optionWidth = panelWidth - 92 * scale;
-    const option = this.addChildBeveledPanelNode(
-      panel,
-      `LoginLanguageOption_${language}`,
-      0,
-      y,
-      optionWidth,
-      52 * scale,
-      selected ? new Color(61, 44, 19, 242) : new Color(23, 18, 17, 238),
-      selected ? new Color(245, 210, 122, 238) : new Color(119, 91, 54, 210),
-      10 * scale,
-    );
-    option.addComponent(Button);
-    option.on(Button.EventType.CLICK, () => this.selectLoginLanguage(language));
-    this.applyImageButtonFeedback(option, 1.02, 0.98);
-
-    const labelKey = language === 'zh-CN' ? 'language.simplifiedChinese' : 'language.english';
-    this.addChildLabel(
-      option,
-      'LanguageName',
-      lootChainI18n.t(labelKey),
-      -optionWidth / 2 + 24 * scale,
-      0, 20 * scale,
-      new Color(238, 218, 166),
-      new Size(optionWidth - 76 * scale, 32 * scale),
-      HorizontalTextAlignment.LEFT,
-    );
-    if (selected) {
-      this.addChildLabel(
-        option,
-        'SelectedMark',
-        lootChainI18n.t('language.current'),
-        optionWidth / 2 - 74 * scale,
-        0, 17 * scale,
-        new Color(245, 210, 122),
-        new Size(116 * scale, 28 * scale),
-      );
-    }
+  private renderLoginAccountScene(): void {
+    this.loginLanguageDialogOpen = false;
+    this.renderLogin();
   }
 
   /** 当前页面对应的素材分组(没有分组的页面不拦)。 */
@@ -2469,7 +2345,11 @@ export class LootChainGameRoot extends Component {
       this.returnToLobbyFromScenePage();
       return;
     }
-    if (this.currentView === 'lobby' || this.currentView === 'login') {
+    if (this.isLoginSceneView(this.currentView) && this.loginLanguageDialogOpen) {
+      this.closeLoginLanguageDialog();
+      return;
+    }
+    if (this.currentView === 'lobby' || this.isLoginSceneView(this.currentView)) {
       this.openNativeExitConfirm();
     }
   }
@@ -9495,7 +9375,8 @@ export class LootChainGameRoot extends Component {
   }
 
   private renderBase(): UiLayout {
-    this.setLoginSceneStageVisible(this.isLoginSceneView(this.currentView));
+    // 11-11 登录页改 B 风格:旧龙 + 兜帽骑士视频背景(Login_BG_Poster / Video)不再显示,背景由 LoginRenderer 画
+    this.setLoginSceneStageVisible(false);
     const layout = this.resolveLayout();
     this.applyRootSize(layout);
     this.layoutKey = this.makeLayoutKey();
@@ -10594,8 +10475,8 @@ export class LootChainGameRoot extends Component {
     this.lobbyLoadingFlow.retry(this.loginFlow.lastTokenName);
   }
 
-  private addStatus(text: string, layout?: UiLayout, y?: number): void {
-    this.statusPresenter.add(text, layout, y);
+  private addStatus(text: string, layout?: UiLayout, y?: number, color?: Color): void {
+    this.statusPresenter.add(text, layout, y, color);
   }
 
   private flushPendingBootStatus(): void {
@@ -10623,7 +10504,7 @@ export class LootChainGameRoot extends Component {
       this.statusPresenter.set(text, layout, gachaStatusY);
       return;
     }
-    if (this.currentView === 'loginAccount' && this.loginRenderer.accountStatusY !== null) {
+    if (this.isLoginSceneView(this.currentView) && this.loginRenderer.accountStatusY !== null) {
       this.statusPresenter.set(text, this.resolveLayout(), this.loginRenderer.accountStatusY);
       return;
     }
