@@ -7,7 +7,8 @@
 - 独立调试端口 9352 + 独立配置目录 battlepolish_browser_profile(不以 edge_ 开头,别的会话收尾清残留时不会连带关掉)
 - 默认用显卡渲染(软件渲染在 2400×1080 下每帧几百毫秒,sim 追帧后特效全对不上);QA_GPU=0 退回软件渲染
 
-用法:PYTHONIOENCODING=utf-8 python tools/qa/battle_polish_shots.py <输出目录> [phone|pc|both] [--only=guard|field] [--codes=英雄码,...] [--steps=步骤.json]
+用法:PYTHONIOENCODING=utf-8 python tools/qa/battle_polish_shots.py <输出目录> [phone|pc|both] [--only=guard|field|lobby] [--codes=英雄码,...] [--steps=步骤.json]
+--steps 配 --only=guard(js 里有 r / sim / M)、--only=field(js 里有 t = 野外渲染器)或 --only=lobby 用;步骤种类见 run_steps
 产物:<输出目录>/<视口>_guard_*.png、<视口>_field_*.png + 控制台打印的画布 / 特效节点缩放等量化信息
 """
 import asyncio
@@ -245,6 +246,35 @@ async def run_view(name, port):
                 open(path, 'wb').write(base64.b64decode(m['result']['data']))
                 print('  shot(page)', os.path.basename(path), str(data)[:60], flush=True)
 
+        async def run_steps(wrap):
+            """跑 --steps 里的自定义步骤;wrap(js) 把步骤里的 js 包成可执行表达式(守卫战 / 野外各带各的环境变量)。"""
+            for step in json.load(open(STEPS_FILE, encoding='utf-8')):
+                if step.get('cpu'):
+                    # {"cpu": 4}:处理器降速到 1/4(量「手机上这段代码要跑多久」用;量完记得 {"cpu": 1} 还原)
+                    await call('Emulation.setCPUThrottlingRate', {'rate': float(step['cpu'])})
+                if step.get('metrics'):
+                    # {"metrics": "small"}:视口宽高各缩到 82%(触发战场重建,验「重建后还在不在」用);{"metrics": "restore"} 还原
+                    k = 0.82 if step['metrics'] == 'small' else 1
+                    await call('Emulation.setDeviceMetricsOverride', {'width': round(w * k), 'height': round(h * k), 'deviceScaleFactor': dpr, 'mobile': mobile,
+                                                                       'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
+                if step.get('cast'):
+                    # {"cast": {"idx": 0, "ult": true, "code": "UR_NYX"}}:放一次战技 / 大招并定格在亮度峰值(只在守卫战里有意义)
+                    c = step['cast']
+                    print(name, 'cast', await raw(cast_js(int(c.get('idx', 0)), bool(c.get('ult')), c.get('code', '')), 120), flush=True)
+                if step.get('js'):
+                    res = await raw(wrap(step['js']), 300)
+                    if step.get('save') and isinstance(res, str) and res.startswith('data:image/'):
+                        # {"js": ..., "save": "文件名.png"}:js 返回一张图(data URL)时存成文件——页面里自己拼好的巡检图 / 对照图
+                        path = os.path.join(OUT, f"{name}_{step['save']}")
+                        open(path, 'wb').write(base64.b64decode(res.split(',', 1)[1]))
+                        print(name, 'saved', os.path.basename(path), flush=True)
+                    else:
+                        print(name, 'step', (str(res) or '')[:20000], flush=True)
+                if step.get('wait'):
+                    await asyncio.sleep(float(step['wait']))
+                if step.get('shot'):
+                    await shot(step['shot'])
+
         await call('Runtime.enable')
         # 保证本页在前台(后台页不出帧):万一还有别的页被打开,也不至于把游戏页晾在后面
         await call('Page.bringToFront')
@@ -310,32 +340,7 @@ async def run_view(name, port):
             print(name, 'hold', await raw(HOLD.replace('__WAIT__', '2600'), 120), flush=True)
             if STEPS_FILE:
                 # 自定义步骤(做样片 / 前后对比用):JSON 数组,每步 {"js": 表达式(可用 H 里的 r / sim / M / cc / sleep,写成 async 函数体), "shot": 名字, "wait": 秒}
-                for step in json.load(open(STEPS_FILE, encoding='utf-8')):
-                    if step.get('cpu'):
-                        # {"cpu": 4}:处理器降速到 1/4(量「手机上这段代码要跑多久」用;量完记得 {"cpu": 1} 还原)
-                        await call('Emulation.setCPUThrottlingRate', {'rate': float(step['cpu'])})
-                    if step.get('metrics'):
-                        # {"metrics": "small"}:视口宽高各缩到 82%(触发战场重建,验「重建后还在不在」用);{"metrics": "restore"} 还原
-                        k = 0.82 if step['metrics'] == 'small' else 1
-                        await call('Emulation.setDeviceMetricsOverride', {'width': round(w * k), 'height': round(h * k), 'deviceScaleFactor': dpr, 'mobile': mobile,
-                                                                           'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
-                    if step.get('cast'):
-                        # {"cast": {"idx": 0, "ult": true, "code": "UR_NYX"}}:放一次战技 / 大招并定格在亮度峰值
-                        c = step['cast']
-                        print(name, 'cast', await raw(cast_js(int(c.get('idx', 0)), bool(c.get('ult')), c.get('code', '')), 120), flush=True)
-                    if step.get('js'):
-                        res = await raw("(async () => { " + H + step['js'] + " })()", 300)
-                        if step.get('save') and isinstance(res, str) and res.startswith('data:image/'):
-                            # {"js": ..., "save": "文件名.png"}:js 返回一张图(data URL)时存成文件——页面里自己拼好的巡检图 / 对照图
-                            path = os.path.join(OUT, f"{name}_{step['save']}")
-                            open(path, 'wb').write(base64.b64decode(res.split(',', 1)[1]))
-                            print(name, 'saved', os.path.basename(path), flush=True)
-                        else:
-                            print(name, 'step', (str(res) or '')[:20000], flush=True)
-                    if step.get('wait'):
-                        await asyncio.sleep(float(step['wait']))
-                    if step.get('shot'):
-                        await shot(step['shot'])
+                await run_steps(lambda js: "(async () => { " + H + js + " })()")
                 await raw(RESUME)
                 await raw(EXIT)
                 if logs:
@@ -384,6 +389,13 @@ async def run_view(name, port):
                 if isinstance(far, str) and far.startswith('ok'):
                     break
                 await asyncio.sleep(3)
+            if STEPS_FILE:
+                # --only=field --steps=…:站到怪群旁边后跑自定义步骤(js 里可用 cc / root / t(野外渲染器)/ sleep),不走默认的四组截图
+                await run_steps(lambda js: "(async () => { const sleep = ms => new Promise(z => setTimeout(z, ms)); const cc = window.__cc; " + ROOT_JS + js + " })()")
+                await ev("clearInterval(window.__lcKeepAlive); return 1;")
+                if logs:
+                    print(name, 'page exceptions:', *logs[:12], sep='\n  ', flush=True)
+                return
             await shot('field_00_before')
             for label, call_js, delays in (('atk', 't.leaderAttack()', (0.18, 0.3, 0.3)), ('K', 't.leaderSkill(0)', (0.2, 0.3, 0.4)), ('L', 't.leaderSkill(1)', (0.2, 0.3, 0.4)), ('I', 't.leaderSkill(2)', (0.3, 0.5, 0.7))):
                 await ev("t.skillReadyAt = [0, 0, 0]; t.dodgeReadyAt = 0; t.actionUntil = 0; t.dashUntil = 0; return 1;")
