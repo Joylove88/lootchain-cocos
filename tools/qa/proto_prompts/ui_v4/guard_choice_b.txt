@@ -1,0 +1,20 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile tower-defense RPG battle screen, landscape 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack screen in the final in-game UI style (frosted dark glass panels, thin champagne bar before section titles, champagne-gold selected tab, light thin line icons). Match its fonts, colours, glass panel look and edge light exactly.
+- SECOND image = our APPROVED in-game popup in the same style (frosted glass dialog over a dimmed game scene: champagne bar + white title, thin round close X, translucent glass row strips, slate-grey secondary pill and champagne-gold primary pill). Match its dialog construction exactly.
+- THIRD image = our CURRENT (old style) version of this battle popup. Use it ONLY to know which information and controls exist and for the dimmed battlefield behind; do NOT copy its spiky gold frames, ornate corner pieces, red ribbon banners, red gem buttons or gold scroll dividers.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass panels (#141821 at ~85% with background blur), ~12px rounded corners, 1px white outline at ~12% opacity with a soft uneven light along the top edge; no metal frames, no ornaments, no ribbons, no gems. Hierarchy by size / weight / spacing. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used sparingly (primary button, key numbers). Selected segment = dark-gold gradient pill with WHITE text. Rarity only as small coloured accents (blue #3484F2, purple #BA54F6, orange #F0A334). Modern clean sans-serif typography. Simple flat white line icons. No glow, no sparkles, no particles. Calm, premium, matte (avoid AI look).
+- Behind the popup: the battlefield from the third image (crystal on the left, hero slots, bottom HUD) dimmed to about 30% brightness, slightly blurred.
+
+SCREEN: the "pick one tactic card" popup in the middle of a battle.
+- ONE large frosted glass dialog about 1120x640, centred. No close X (the player must pick or refresh).
+- Title row centred at the top: white "战术 ×1 · 选择一张战术卡" (about 32px, medium weight); under it small grey "选择一张战术卡,获得强大的战斗增益".
+- Three tall glass cards side by side (each about 290x400, 36px apart), slightly lighter glass than the dialog, each with a thin coloured line along its top edge for rarity:
+  1) blue top line; small blue-outlined tag pill "普攻强化" at the top centre; a round frosted portrait frame (about 110px) with a painted head of a white-haired elf witch; small grey "契约魔女"; bold white card name "元素球·多重"; grey centred description "每次普攻打出 2 颗元素球,每颗 78% 伤害,多出的元素球打向下一只怪".
+  2) purple top line; purple tag pill "专属流派 · 代价换输出"; same witch portrait; grey "契约魔女"; bold white "血契"; grey description "自身攻击力 +20%,代价:她在场的波次开始时水晶 -2%(单局至多 -12%)".
+  3) blue top line; tag pill "通用"; round frame with a red potion flask icon (painted, matte); bold white "全队攻速 +5%"; grey description "缩短出手间隔,可叠加".
+  Under each card, outside it, a small grey text button with a thin ✕: "✕ 放逐".
+- Bottom centre of the dialog: one secondary slate-grey glass pill "刷新(剩 1)".
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.

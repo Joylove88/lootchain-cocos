@@ -1,0 +1,18 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile tower-defense RPG battle screen, landscape 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack screen in the final in-game UI style (frosted dark glass panels, thin champagne bar before section titles, champagne-gold selected tab, light thin line icons). Match its fonts, colours, glass panel look and edge light exactly.
+- SECOND image = our APPROVED in-game popup in the same style (frosted glass dialog over a dimmed game scene: champagne bar + white title, thin round close X, translucent glass row strips, slate-grey secondary pill and champagne-gold primary pill). Match its dialog construction exactly.
+- THIRD image = our CURRENT (old style) version of this battle popup. Use it ONLY to know which information and controls exist and for the dimmed battlefield behind; do NOT copy its spiky gold frames, ornate corner pieces, red ribbon banners, red gem buttons or gold scroll dividers.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass panels (#141821 at ~85% with background blur), ~12px rounded corners, 1px white outline at ~12% opacity with a soft uneven light along the top edge; no metal frames, no ornaments, no ribbons, no gems. Hierarchy by size / weight / spacing. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used sparingly (primary button, key numbers). Selected segment = dark-gold gradient pill with WHITE text. Rarity only as small coloured accents (blue #3484F2, purple #BA54F6, orange #F0A334). Modern clean sans-serif typography. Simple flat white line icons. No glow, no sparkles, no particles. Calm, premium, matte (avoid AI look).
+- Behind the popup: the battlefield from the third image (crystal on the left, hero slots, bottom HUD) dimmed to about 30% brightness, slightly blurred.
+
+SCREEN: the battle result popup after winning a guard battle.
+- ONE frosted glass dialog about 900x560, centred. No close X.
+- Top centre: large white title "守卫成功!" (about 46px, medium weight) with a small soft-green outlined tag pill "WIN" to its right. Under it grey "坚守 10 波 · 击杀 186 · 用时 3:42".
+- A thin divider, then a section title (champagne bar + white "本场奖励").
+- One centred row of 4 reward tiles: each a rounded frosted square frame (about 110px) with a thin rarity line along its bottom edge, a painted matte item icon inside, and the count under the tile in white: gold coin "金币 ×12,800" (grey bottom line); dark red-veined crystal shard "高阶强化石 ×3" (purple line); old leather book "英雄经验书 ×5" (blue line); blue crystal cluster "守卫晶核 ×2" (purple line). Item names in small grey under the counts.
+- Under the tiles small grey "奖励已发放。"
+- Bottom centre: one primary champagne-gold pill "返回大厅".
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.

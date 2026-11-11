@@ -1,0 +1,17 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile tower-defense RPG battle screen, landscape 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack screen in the final in-game UI style (frosted dark glass panels, thin champagne bar before section titles, champagne-gold selected tab, light thin line icons). Match its fonts, colours, glass panel look and edge light exactly.
+- SECOND image = our APPROVED in-game popup in the same style (frosted glass dialog over a dimmed game scene: champagne bar + white title, thin round close X, translucent glass row strips, slate-grey secondary pill and champagne-gold primary pill). Match its dialog construction exactly.
+- THIRD image = our CURRENT (old style) version of this battle popup. Use it ONLY to know which information and controls exist and for the dimmed battlefield behind; do NOT copy its spiky gold frames, ornate corner pieces, red ribbon banners, red gem buttons or gold scroll dividers.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass panels (#141821 at ~85% with background blur), ~12px rounded corners, 1px white outline at ~12% opacity with a soft uneven light along the top edge; no metal frames, no ornaments, no ribbons, no gems. Hierarchy by size / weight / spacing. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used sparingly (primary button, key numbers). Selected segment = dark-gold gradient pill with WHITE text. Rarity only as small coloured accents (blue #3484F2, purple #BA54F6, orange #F0A334). Modern clean sans-serif typography. Simple flat white line icons. No glow, no sparkles, no particles. Calm, premium, matte (avoid AI look).
+- Behind the popup: the battlefield from the third image (crystal on the left, hero slots, bottom HUD) dimmed to about 30% brightness, slightly blurred.
+
+SCREEN: the treasure-chest prize wheel popup in the middle of a battle, final revealed state of a BOSS deluxe chest with a 5-in-a-row jackpot.
+- ONE frosted glass dialog about 1100x620, centred. Title row: champagne bar + white title "BOSS 豪华宝箱" + a small champagne-outlined tag pill "5 连大奖". No red banner.
+- LEFT half: the prize wheel restyled to match the glass UI: a dark glass disc (about 360px) with a thin champagne outer ring and small dim dots around it, 8 segments separated by hairlines; each segment has a small matte icon and tiny white label (金币 / 招募 / 强攻 / 大奖 ...); a small champagne triangle pointer at the top; in the centre a painted dark iron treasure chest, lid open with a faint warm light (matte, no sparkles). Under the wheel champagne text "大奖 ×5".
+- RIGHT half: section title (champagne bar + white "奖励"), then 5 translucent glass reward rows (each about 56px tall): small matte icon on the left (gold coin pile or a tiny white-haired witch head), white name, value right-aligned:
+  "战斗金币" "+300" (champagne); "免费招募 · 契约魔女" "已上阵" (soft green); "免费招募 · 契约魔女" "已上阵"; "战斗金币" "+300"; "免费招募 · 契约魔女" "已上阵".
+- Bottom right of the dialog: primary champagne-gold pill "收下".
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.
