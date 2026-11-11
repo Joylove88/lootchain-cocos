@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectImageUuids, pruneNativeArt } from './android-prune-art.mjs';
 import { applyCompressSettings } from './android-texture-compress.mjs';
 import { KEEP_RELEASE_PACKAGES, pruneOldPackages } from './prune-release.mjs';
 
@@ -99,6 +100,19 @@ if (!skipBuild) {
       settings.splashScreen.totalTime = 0;
       fs.writeFileSync(settingsFile, JSON.stringify(settings));
       console.log('[android] 启动图已关闭:data/src/settings.json splashScreen.totalTime = 0');
+    }
+  }
+}
+// 手持设备用不到的素材不进安装包(主城高清一套只给电脑端用,见 android-prune-art.mjs)
+{
+  const assetsDir = path.join(ROOT, 'build', config.outputName || 'android', 'data', 'assets');
+  const unused = collectImageUuids(ROOT);
+  if (unused.size > 0 && fs.existsSync(assetsDir)) {
+    const { files, bytes } = pruneNativeArt(assetsDir, unused);
+    if (files > 0) {
+      console.log(`[android] 剔除手持设备用不到的素材:${files} 个贴图文件,省 ${(bytes / 1048576).toFixed(1)} MB`);
+    } else if (!skipBuild) {
+      console.warn('[android] 注意:没找到要剔除的高清主城贴图(构建产物目录结构变了?),安装包会多带几十 MB,检查 scripts/android-prune-art.mjs');
     }
   }
 }
