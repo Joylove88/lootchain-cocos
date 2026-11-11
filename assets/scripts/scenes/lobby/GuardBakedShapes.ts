@@ -4,6 +4,7 @@ import { Color, Rect, Size, SpriteFrame, Texture2D, Vec2 } from 'cc';
  * 守卫战程序图形烘焙(2026-10-07 手机战斗卡顿):弹体 / 命中爆闪 / 格位爆闪原先每次 new 一个 Graphics,
  * 每个 Graphics 是一个独立渲染模型(单独一次绘制 + 每帧 UBO 上传 + 首绘建缓冲),普攻超过骨骼特效上限后每秒几十个。
  * 改为:同一形状 + 颜色只在 CPU 上画一次成小贴图(2 倍超采样、抗锯齿),之后都是普通精灵,可合批、零缓冲分配。
+ * 命中爆闪 / 出手闪光是带渐变的柔光星芒,按 4 倍精度烘,形状与配色分开(见 FlashStencil)。
  */
 const SUPERSAMPLE = 2;
 const cache = new Map<string, SpriteFrame>();
@@ -119,15 +120,20 @@ class Canvas {
       bytes[i + 2] = Math.round(this.data[i + 2] * 255);
       bytes[i + 3] = Math.round(a * 255);
     }
-    const texture = new Texture2D();
-    texture.reset({ width: this.w, height: this.h, format: Texture2D.PixelFormat.RGBA8888, mipmapLevel: 1 });
-    texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
-    texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
-    texture.uploadData(bytes);
-    const frame = new SpriteFrame();
-    frame.texture = texture;
-    return frame;
+    return frameFromBytes(bytes, this.w, this.h);
   }
+}
+
+/** 把一块 RGBA 像素做成精灵帧(线性过滤、不重复)。 */
+function frameFromBytes(bytes: Uint8Array, w: number, h: number): SpriteFrame {
+  const texture = new Texture2D();
+  texture.reset({ width: w, height: h, format: Texture2D.PixelFormat.RGBA8888, mipmapLevel: 1 });
+  texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
+  texture.setWrapMode(Texture2D.WrapMode.CLAMP_TO_EDGE, Texture2D.WrapMode.CLAMP_TO_EDGE);
+  texture.uploadData(bytes);
+  const frame = new SpriteFrame();
+  frame.texture = texture;
+  return frame;
 }
 
 function rgbaOf(color: Color, alpha: number): Rgba {
@@ -167,14 +173,249 @@ export function boltFrame(color: Color, glowAlpha = 120, trailAlpha = 130): Spri
   });
 }
 
-/** 命中爆闪:白核 + 4 道斜向光芒,设计尺寸 48×48。 */
-export function impactFrame(color: Color): SpriteFrame | null {
-  return bake(key('impact', color), 48, 48, (c) => {
-    c.fillEllipse(0, 0, 9, 9, [1, 0.97, 0.9, 235 / 255]);
-    for (let i = 0; i < 4; i += 1) {
-      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      c.strokeLine(Math.cos(a) * 6, Math.sin(a) * 6, Math.cos(a) * 20, Math.sin(a) * 20, 3, rgbaOf(color, 220));
+/**
+ * 命中爆闪 / 出手闪光(2026-11-11 战斗画面精致化,用户确认样片 06):主色柔光 + 细长星芒(芯白、向外染成主色并淡出)+ 白亮芯。
+ * 原先是 2 倍超采样的 48 像素小图(白圆点 + 四根硬边斜线)和一个程序画的纯色圆饼;它们出现时还会再弹大到 1.3~1.7 倍,
+ * 手机上画面又放大 1.5 倍,等于被放大着用,发虚又简陋。现在按 4 倍精度烘。
+ *
+ * 形状和配色分开烘:4 倍精度的渐变逐像素画一遍,手机级处理器要 12~22 毫秒(实测:处理器降速 4~6 倍;头一次连代码预热 20~33 毫秒),
+ * 而颜色跟着英雄主色 / 控制效果走,一局里会陆续冒出十来种——每种新颜色都在交战中现画一遍就是一次掉帧。
+ * 所以先画一张不带颜色的底稿(FlashStencil):每个像素只记「白 / 暖白 / 主色 / 提亮的主色」四种成分各占多少,再加透明度;
+ * 一种形状整个应用只画一次(开局预烘时画),之后每种颜色只是把四种成分按比例混一遍(乘加,同样条件下 2~5 毫秒,
+ * 和原先 2 倍精度的小图一个量级),结果与直接按那个颜色画出来的一样(差别不超过 1~2 个色阶)。
+ */
+const FLASH_SUPERSAMPLE = 4;
+/** 底稿里的四种颜色成分(下标)。 */
+const PART_WHITE = 0;
+const PART_WARM = 1;
+const PART_BASE = 2;
+const PART_TINT = 3;
+/** 底稿每像素 5 个数:四种成分的占比(合计 1)+ 透明度。 */
+const STENCIL_STRIDE = 5;
+/** 亮芯外圈的暖白。 */
+const WARM_WHITE = [1, 253 / 255, 244 / 255];
+/** 星芒中段「提亮的主色」= 主色各通道加这么多(封顶 1)。 */
+const TINT_LIFT = 70 / 255;
+
+class FlashStencil {
+  /** 贴图边长(像素)。 */
+  readonly px: number;
+
+  /** 画的时候用浮点(0..1);画完 seal() 压成每个数 1 字节留存——4 倍精度的底稿用浮点留着要占几兆内存。 */
+  private float: Float32Array | null;
+
+  private packed: Uint8Array | null = null;
+
+  /** size = 设计尺寸(正方形,原点在中心,y 向上);ss = 超采样倍数。 */
+  constructor(size: number, private readonly ss: number) {
+    this.px = Math.ceil(size * ss);
+    this.float = new Float32Array(this.px * this.px * STENCIL_STRIDE);
+  }
+
+  /** 往一个像素上叠一层(source-over):这层的颜色 = partA 占 weightA、partB 占其余,透明度 alpha(> 0)。 */
+  private put(d: Float32Array, px: number, py: number, partA: number, weightA: number, partB: number, alpha: number): void {
+    const i = (py * this.px + px) * STENCIL_STRIDE;
+    const under = d[i + 4] * (1 - alpha);
+    const outA = alpha + under;
+    const keep = under / outA;
+    const add = alpha / outA;
+    d[i] *= keep;
+    d[i + 1] *= keep;
+    d[i + 2] *= keep;
+    d[i + 3] *= keep;
+    d[i + partA] += add * weightA;
+    d[i + partB] += add * (1 - weightA);
+    d[i + 4] = outA;
+  }
+
+  /** 设计坐标的一段 [lo, hi] 落在哪些像素上(两头各放宽 1 像素,夹在贴图内)。 */
+  private span(lo: number, hi: number): [number, number] {
+    const half = this.px / 2;
+    return [Math.max(0, Math.floor(lo * this.ss + half) - 1), Math.min(this.px - 1, Math.ceil(hi * this.ss + half) + 1)];
+  }
+
+  /**
+   * 圆心在原点的柔光圆:透明度从圆心 a0 → 0.45 半径处 a1 → 边缘 0;颜色从 inner(圆心)过渡到 outer(0.45 半径以外)。
+   * 光晕(inner = outer = 主色)和亮芯(白 → 暖白)都用它。
+   */
+  softDisc(r: number, inner: number, outer: number, a0: number, a1: number): void {
+    const d = this.float;
+    if (!d) {
+      return;
     }
+    const [p0, p1] = this.span(-r, r);
+    const half = this.px / 2;
+    for (let py = p0; py <= p1; py += 1) {
+      const y = (py + 0.5 - half) / this.ss;
+      for (let px = p0; px <= p1; px += 1) {
+        const x = (px + 0.5 - half) / this.ss;
+        const t = Math.sqrt(x * x + y * y) / r;
+        if (t >= 1) {
+          continue;
+        }
+        const k = Math.min(1, t / 0.45);
+        const alpha = t < 0.45 ? a0 + (a1 - a0) * k : a1 * (1 - (t - 0.45) / 0.55);
+        if (alpha > 0.002) {
+          this.put(d, px, py, inner, 1 - k, outer, alpha);
+        }
+      }
+    }
+  }
+
+  /**
+   * 星芒:从原点沿 angle 方向伸出 len 长的细长尖刺,根部宽 width、向尖端按二次曲线收成一个点;
+   * 颜色沿长度从白 → 提亮的主色(42% 处)→ 主色并淡出到透明。
+   */
+  spike(angle: number, len: number, width: number): void {
+    const d = this.float;
+    if (!d) {
+      return;
+    }
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const hw = width / 2;
+    const aa = 1 / this.ss;
+    // 包围盒:尖刺所在的旋转矩形四个角
+    const ex = len * cos;
+    const ey = len * sin;
+    const [x0, x1] = this.span(Math.min(hw * sin, -hw * sin, ex + hw * sin, ex - hw * sin), Math.max(hw * sin, -hw * sin, ex + hw * sin, ex - hw * sin));
+    const [y0, y1] = this.span(Math.min(hw * cos, -hw * cos, ey + hw * cos, ey - hw * cos), Math.max(hw * cos, -hw * cos, ey + hw * cos, ey - hw * cos));
+    const half = this.px / 2;
+    for (let py = y0; py <= y1; py += 1) {
+      const y = (py + 0.5 - half) / this.ss;
+      for (let px = x0; px <= x1; px += 1) {
+        const x = (px + 0.5 - half) / this.ss;
+        const along = x * cos + y * sin;
+        if (along < 0 || along > len) {
+          continue;
+        }
+        const t = along / len;
+        // 轮廓 = 二次贝塞尔 (0, 宽/2) → 控制点 (0.3 长, 0.16 宽) → (长, 0);按沿长度的位置反解参数
+        const q = (-0.6 + Math.sqrt(0.36 + 1.6 * t)) / 0.8;
+        const halfWidth = (1 - q) * (1 - q) * hw + 2 * q * (1 - q) * 0.16 * width;
+        const coverage = Math.min(1, (halfWidth - Math.abs(y * cos - x * sin)) / aa + 0.5);
+        if (coverage <= 0) {
+          continue;
+        }
+        if (t < 0.42) {
+          const k = t / 0.42;
+          const alpha = (0.98 - 0.02 * k) * coverage;
+          if (alpha > 0.002) {
+            this.put(d, px, py, PART_WHITE, 1 - k, PART_TINT, alpha);
+          }
+        } else {
+          const k = (t - 0.42) / 0.58;
+          const alpha = 0.96 * (1 - k) * coverage;
+          if (alpha > 0.002) {
+            this.put(d, px, py, PART_TINT, 1 - k, PART_BASE, alpha);
+          }
+        }
+      }
+    }
+  }
+
+  /** 画完:压成字节留存,浮点缓冲丢掉。 */
+  seal(): void {
+    const d = this.float;
+    if (!d) {
+      return;
+    }
+    const packed = new Uint8Array(d.length);
+    for (let i = 0; i < d.length; i += 1) {
+      packed[i] = Math.round(d[i] * 255);
+    }
+    this.packed = packed;
+    this.float = null;
+  }
+
+  /** 按主色把底稿混成成品贴图(一遍乘加)。 */
+  toFrame(color: Color): SpriteFrame {
+    const d = this.packed;
+    if (!d) {
+      throw new Error('flash stencil not sealed');
+    }
+    const count = this.px * this.px;
+    const bytes = new Uint8Array(count * 4);
+    const r = color.r / 255;
+    const g = color.g / 255;
+    const b = color.b / 255;
+    const tr = Math.min(1, r + TINT_LIFT);
+    const tg = Math.min(1, g + TINT_LIFT);
+    const tb = Math.min(1, b + TINT_LIFT);
+    for (let p = 0, i = 0, o = 0; p < count; p += 1, i += STENCIL_STRIDE, o += 4) {
+      const alpha = d[i + 4];
+      if (alpha === 0) {
+        continue;
+      }
+      // 四种成分(各 0..255,合计约 255):白 = 1、暖白、主色、提亮的主色
+      const white = d[i];
+      const warm = d[i + 1];
+      const base = d[i + 2];
+      const tint = d[i + 3];
+      bytes[o] = Math.min(255, Math.round(white + warm * WARM_WHITE[0] + base * r + tint * tr));
+      bytes[o + 1] = Math.min(255, Math.round(white + warm * WARM_WHITE[1] + base * g + tint * tg));
+      bytes[o + 2] = Math.min(255, Math.round(white + warm * WARM_WHITE[2] + base * b + tint * tb));
+      bytes[o + 3] = alpha;
+    }
+    return frameFromBytes(bytes, this.px, this.px);
+  }
+}
+
+/** 已经画好的底稿(按形状名)。 */
+const stencils = new Map<string, FlashStencil>();
+
+function flashFrame(kind: string, color: Color, size: number, draw: (stencil: FlashStencil) => void): SpriteFrame | null {
+  const id = key(kind, color);
+  const hit = cache.get(id);
+  if (hit) {
+    return hit;
+  }
+  try {
+    let stencil = stencils.get(kind);
+    if (!stencil) {
+      stencil = new FlashStencil(size, FLASH_SUPERSAMPLE);
+      draw(stencil);
+      stencil.seal();
+      stencils.set(kind, stencil);
+    }
+    const frame = stencil.toFrame(color);
+    cache.set(id, frame);
+    return frame;
+  } catch (error) {
+    console.warn('[LootChain] baked shape failed', id, error);
+    return null;
+  }
+}
+
+/** 命中爆闪的设计尺寸(正方形)。 */
+export const IMPACT_SIZE = 72;
+
+/** 命中爆闪:主色柔光 + 四长四短的细长星芒 + 白亮芯。长芒沿横竖方向,要斜着放就转节点。 */
+export function impactFrame(color: Color): SpriteFrame | null {
+  return flashFrame('impact2', color, IMPACT_SIZE, (s) => {
+    s.softDisc(31, PART_BASE, PART_BASE, 0.62, 0.26);
+    for (let i = 0; i < 4; i += 1) {
+      s.spike((i * Math.PI) / 2, 34, 9.5);
+    }
+    for (let i = 0; i < 4; i += 1) {
+      s.spike((i * Math.PI) / 2 + Math.PI / 4, 18, 6);
+    }
+    s.softDisc(10, PART_WHITE, PART_WARM, 1, 0.96);
+  });
+}
+
+/** 出手闪光的设计尺寸(正方形)。 */
+export const MUZZLE_SIZE = 96;
+
+/** 出手闪光:主色柔光 + 一道横向长光 + 一道竖向短光 + 白亮芯(原先是一个纯色圆饼)。 */
+export function muzzleFrame(color: Color): SpriteFrame | null {
+  return flashFrame('muzzle', color, MUZZLE_SIZE, (s) => {
+    s.softDisc(34, PART_BASE, PART_BASE, 0.62, 0.26);
+    s.spike(0, 46, 8);
+    s.spike(Math.PI, 46, 8);
+    s.spike(Math.PI / 2, 21, 6);
+    s.spike(-Math.PI / 2, 21, 6);
+    s.softDisc(10, PART_WHITE, PART_WARM, 1, 0.96);
   });
 }
 

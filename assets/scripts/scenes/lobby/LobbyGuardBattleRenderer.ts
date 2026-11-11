@@ -152,7 +152,7 @@ import { estimateGlassTextWidth, makeGlassText, mountGlassCloseButton, mountGlas
 import { applyBattleNumber, BATTLE_NUMBER_FONT_FRAME_PATH, battleNumberWidth, type BattleNumberStyle } from './BattleNumberFont';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { mountSceneNearLayer, preloadSceneNearEffect } from './GuardSceneNear';
-import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
+import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, IMPACT_SIZE, impactFrame, MUZZLE_SIZE, muzzleFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_PASSIVE_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
@@ -462,6 +462,8 @@ const GUARD_SETTINGS_H = 597;
 const GUARD_END_W = 910;
 const GUARD_END_H = 613;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
+/** 出手闪光的颜色(暖金)。 */
+const GUARD_MUZZLE_FLASH_COLOR = new Color(255, 222, 140, 255);
 /** 伤害数字一个落位(列 × 排)被占用多久后可以再放下一个:数字寿命约 0.8~0.95 秒,到这时旧数字已经上飘并开始淡出。 */
 const GUARD_DAMAGE_SLOT_MS = 460;
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
@@ -8103,7 +8105,7 @@ export class LobbyGuardBattleRenderer {
     return true;
   }
 
-  /** 命中爆闪:小十字星芒 0.18s。 */
+  /** 命中爆闪:柔光星芒(2026-11-11 重画,见 GuardBakedShapes.impactFrame),0.18s 弹大淡出;每次略转一个角度,连着几下不呆板。 */
   private spawnImpactFlash(x: number, y: number, color: Color): void {
     const field = this.fieldNode;
     if (!field) {
@@ -8111,7 +8113,8 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardImpact', x, y, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
-    this.mountBakedSprite(node, impactFrame(color), 0, 0, 48, 48);
+    node.angle = 14 + (Math.random() - 0.5) * 36;
+    this.mountBakedSprite(node, impactFrame(color), 0, 0, IMPACT_SIZE, IMPACT_SIZE);
     const opacity = node.addComponent(UIOpacity);
     tween(node).to(0.18, { scale: new Vec3(1.7, 1.7, 1) }).start();
     tween(opacity).to(0.2, { opacity: 0 }).call(() => { if (node.isValid) { node.destroy(); } }).start();
@@ -8227,12 +8230,16 @@ export class LobbyGuardBattleRenderer {
     for (const entry of pool) {
       const ally = this.snapshot?.allies[entry.sourceIndex] ?? null;
       const spec = resolveHeroAttackFx(entry.heroCode, ally?.heroClass ?? null, entry.role === 'melee');
+      // 命中爆闪的底稿(4 倍精度的渐变,手机上头一次画要二三十毫秒)和本阵容各主色先烘好,别等到交战中第一下命中才画;
+      // 其它颜色(控制效果、暗弹等)用到时只是按底稿混一遍色,很轻,不用预烘
+      impactFrame(rgba(spec.color[0], spec.color[1], spec.color[2]));
       if (seen.has(spec.sprite)) {
         continue;
       }
       seen.add(spec.sprite);
       resources.load(resolveAttackFxSpritePath(spec), SpriteFrame, () => { /* 仅预热缓存 */ });
     }
+    muzzleFrame(GUARD_MUZZLE_FLASH_COLOR);
     for (const entry of pool) {
       const spineSpec = resolveHeroAttackSpineFx(entry.heroCode);
       if (spineSpec) {
@@ -9498,13 +9505,12 @@ export class LobbyGuardBattleRenderer {
     const rangePx = Math.max(this.unitSize() * 1.5, this.xToPx(Math.min(GUARD_SPAWN_X, GUARD_ROLE_PROFILE[role].rangeCells)) - muzzleX);
     if (!group?.internal && !group?.anchorAt) {
       // 出手闪光:一眼看清技能从谁身前发出(2026-08-26 用户验收)。
+      // 2026-11-11:原先是程序画的纯色圆饼,改成烘焙的柔光 + 横向长光(GuardBakedShapes.muzzleFrame),还省掉一个 Graphics
       const flash = this.host.addChildPlainNode(field, 'GuardMuzzleFlash', muzzleX, muzzleY, 10, 10);
-      const flashG = flash.addComponent(Graphics);
-      flashG.fillColor = rgba(255, 230, 150, 210);
-      flashG.circle(0, 0, 16);
-      flashG.fill();
+      this.mountBakedSprite(flash, muzzleFrame(GUARD_MUZZLE_FLASH_COLOR), 0, 0, MUZZLE_SIZE, MUZZLE_SIZE);
       const flashOpacity = flash.addComponent(UIOpacity);
-      tween(flash).to(0.2, { scale: new Vec3(2.4, 2.4, 1) }).start();
+      flash.setScale(0.7, 0.7, 1);
+      tween(flash).to(0.2, { scale: new Vec3(1.3, 1.3, 1) }, { easing: 'quadOut' }).start();
       tween(flashOpacity).to(0.24, { opacity: 0 }).call(() => { if (flash.isValid) { flash.destroy(); } }).start();
     }
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);

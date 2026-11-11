@@ -296,6 +296,9 @@ async def run_view(name, port):
             if STEPS_FILE:
                 # 自定义步骤(做样片 / 前后对比用):JSON 数组,每步 {"js": 表达式(可用 H 里的 r / sim / M / cc / sleep,写成 async 函数体), "shot": 名字, "wait": 秒}
                 for step in json.load(open(STEPS_FILE, encoding='utf-8')):
+                    if step.get('cpu'):
+                        # {"cpu": 4}:处理器降速到 1/4(量「手机上这段代码要跑多久」用;量完记得 {"cpu": 1} 还原)
+                        await call('Emulation.setCPUThrottlingRate', {'rate': float(step['cpu'])})
                     if step.get('cast'):
                         # {"cast": {"idx": 0, "ult": true, "code": "UR_NYX"}}:放一次战技 / 大招并定格在亮度峰值
                         c = step['cast']
