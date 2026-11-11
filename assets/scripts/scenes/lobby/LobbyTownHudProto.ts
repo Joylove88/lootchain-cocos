@@ -43,7 +43,6 @@ export const TOWN_HUD_ASSETS = {
   joyBase: `${HUD}/joy_base/spriteFrame`,
   joyKnob: `${HUD}/joy_knob/spriteFrame`,
   /** 主城小地图底图(俯视城区:中央圆广场 + 放射道路 + 边缘树林) */
-  minimapCity: `${HUD}/minimap_city/spriteFrame`,
   iconQuest: `${HUD}/icon_quest/spriteFrame`,
   iconPortal: `${HUD}/icon_portal/spriteFrame`,
   mapTemple: `${HUD}/map_temple/spriteFrame`,

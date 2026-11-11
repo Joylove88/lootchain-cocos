@@ -1,0 +1,60 @@
+// 整图场景的遮挡条(2026-11-11 主城月夜):颜色直接取底图(cc_spriteTexture = 底图块,遮挡条的贴图区域就是底图上它盖住的那一块),
+// 透明度取同一块的半分辨率遮罩(maskTex,和底图块同一套 uv,R 通道 = 立在地面上的东西)。
+// 遮挡条和底图是同一张贴图的同一批像素,叠上去没有任何色差——第一版遮挡层是另存的一套 PNG(27MB),
+// 出包压成 256 色调色板后会和 JPG 底图对不上,人走过的地方会留一块块色斑。
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: occlude-vs:vert
+      frag: occlude-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+      properties:
+        maskTex: { value: black }
+}%
+
+CCProgram occlude-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram occlude-fs %{
+  precision highp float;
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  uniform sampler2D maskTex;
+
+  vec4 frag () {
+    vec4 base = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0);
+    float a = texture(maskTex, uv0).r;
+    return vec4(base.rgb * color.rgb, a * color.a);
+  }
+}%

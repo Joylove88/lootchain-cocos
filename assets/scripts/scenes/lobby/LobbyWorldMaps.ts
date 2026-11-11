@@ -5,27 +5,12 @@
  */
 import type { WorldMapCode } from '../../types/WorldTypes';
 import { TRAINING_FG, TRAINING_WALK_MASK } from './LobbyTrainingGround';
-import { cityDemoDef } from './LobbyCityDemo';
-import { CITY_WATER_BLOCKS, DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
+import { CITY_MOON, CITY_MOON_ENTRY } from './LobbyCityMoon';
+import { DEADWOOD_WATER_BLOCKS, GRAY_WATER_BLOCKS, VILLAGE_WATER_BLOCKS, WOODS_WATER_BLOCKS } from './LobbyWaterBlocks';
 import {
   DEAD_V4_AREAS, DEAD_V4_ASSETS, DEAD_V4_BRIDGE, DEAD_V4_CAMPS, DEAD_V4_CHESTS, DEAD_V4_EXITS, DEAD_V4_FLATS, DEAD_V4_LOW, DEAD_V4_NPCS,
   DEAD_V4_PLACES, DEAD_V4_POIS, DEAD_V4_ROADS, DEAD_V4_SIZE, DEAD_V4_SPAWN, DEAD_V4_STANDS, DEAD_V4_TALL, DEAD_V4_WAYPOINT,
 } from './LobbyDeadwoodLayout';
-import {
-  CITY_V4_AREAS,
-  CITY_V4_BOARD,
-  CITY_V4_EXITS,
-  CITY_V4_FLATS,
-  CITY_V4_LAMPS,
-  CITY_V4_LOW,
-  CITY_V4_NPCS,
-  CITY_V4_PLACES,
-  CITY_V4_ROADS,
-  CITY_V4_SIZE,
-  CITY_V4_SPAWN,
-  CITY_V4_STANDS,
-  CITY_V4_WAYPOINT,
-} from './LobbyCityLayout';
 import {
   GRAY_V4_AREAS,
   GRAY_V4_ASSETS,
@@ -301,9 +286,12 @@ export interface GroundSplatDef {
  * 这里给它配可走栅格 + 遮挡条 + 灯火烟雾 + 走动的人。坐标除 strips / walk 外都是世界单位。tools/qa/city_demo_build.py 生成数据。
  */
 export interface WorldSceneDef {
-  /** 遮挡层整图(RGBA:和底图同像素,只留立在地面上的东西);运行时按 strips 切成竖条。 */
-  fg: string;
-  /** 遮挡层图片像素尺寸 / 一个图片像素合多少世界单位(图片中心 = 地图原点)。 */
+  /**
+   * 底图块(和贴地件里那几张是同一批贴图)+ 各块的遮罩:带补边的整图按 tileW × tileH 切成 cols 列,pad = 四周补边(图片像素)。
+   * 遮挡条 = 底图块上的一条竖条 × 同一块的遮罩(R 通道 = 立在地面上的东西,半分辨率);颜色直接取底图,叠上去没有色差。
+   */
+  tiles: { base: string[]; masks: string[]; cols: number; tileW: number; tileH: number; pad: [number, number] };
+  /** 整图(不含补边)像素尺寸 / 一个图片像素合多少世界单位(图片中心 = 地图原点)。 */
   px: [number, number];
   unit: number;
   /** 遮挡条 [sx, sy, sw, sh, 脚线 y](图片像素,左上原点):人的脚线比它的脚线靠北,就被这条盖住。 */
@@ -395,6 +383,8 @@ export interface WorldMapDef {
   cameraZoom?: number;
   /** 整图场景(11-11):可走栅格 / 遮挡条 / 动效 / 走动的人;给了就不画地图外沿压暗(图自己带暗边)。 */
   scene?: WorldSceneDef;
+  /** 小地图 / 地图页用的整图鸟瞰(按地图宽高铺满);不给 = 主城用旧的方形底图、野外画程序地形。 */
+  minimapArt?: string;
 }
 
 const MONSTER_SPINE: Record<string, string> = {
@@ -758,95 +748,14 @@ const WOODS: WorldMapDef = {
   camps: WOODS_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
     camp(code, label, monster, count, level, x, y, !!elite, WOODS_CAMP_VARIANT[code])),
   // 11-04 用户「晨风村 → 林地 → 主城要一路跑过去」:林地西南出口回晨风村、东头(东林空地)出口通主城
-  exits: WOODS_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
+  exits: WOODS_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: e.toMap === 'CITY' ? { ...CITY_MOON_ENTRY.fromWoods } : { ...e.toSpawn } })),
   battleBg: 'battle_scene_field_forest',
 };
 
-const CITY_HALF_W = CITY_V4_SIZE.width / 2 - 50;
-/** 远景横条三段的原图像素宽 / 高(city_backdrop_install.py 输出);原图 1 像素 ≈ 0.97 世界单位(原型同比例)。 */
-const CITY_BACKDROP_PIECES = [1730, 1730, 1730];
-const CITY_BACKDROP_H = 489;
-const CITY_BACKDROP_SCALE = 0.97;
-const CITY_HALF_H = CITY_V4_SIZE.height / 2 - 50;
-
 /**
- * 主城 v4(2026-11-08 用户选写实原型 city_r1「晴天暖石城」+「主城就放任务 NPC / 活人 NPC / 地区商店 NPC,功能都在终端了」):
- * 14000×7000、镜头 1.4;罗盘广场(传送阵 + 公告板)/ 大教堂 / 佣兵公会 / 帝国学院 / 集市街 / 金麦酒馆 / 兵营 / 运河 / 城墙;
- * 原 9 栋功能建筑全部拆掉(召唤 / 英雄 / 锻造 / 水晶 / 试炼塔 / 掠夺 / 图鉴只走终端)。布局由 tools/qa/city_v4_gen.py 生成(LobbyCityLayout.ts)。
+ * 主城:11-11 重做成月夜整图场景(定义在 LobbyCityMoon.ts)。旧的 v4 主城(14000×7000、逐栋立物,LobbyCityLayout / city_v4_gen)已下线。
  */
-const CITY: WorldMapDef = {
-  code: 'CITY',
-  name: '主城',
-  levelText: '',
-  actorTint: [248, 242, 232],
-  ambient: true,
-  ambientDepth: true,
-  // 北墙外远景:王宫山丘 + 远山(tools/qa/city_backdrop_gen.py → city_backdrop_install.py;整条宽见安装脚本输出 × BACKDROP_SCALE)
-  backdrop: {
-    pieces: CITY_BACKDROP_PIECES.map((w, i) => ({ asset: worldAsset(`city4/backdrop_${i}`), w: w * CITY_BACKDROP_SCALE })),
-    height: CITY_BACKDROP_H * CITY_BACKDROP_SCALE,
-    parallax: 0.15,
-    reveal: 420,
-    biasFrom: 1900,
-    biasTo: 2850,
-  },
-  cameraZoom: 1.4,
-  width: CITY_V4_SIZE.width,
-  height: CITY_V4_SIZE.height,
-  walk: { left: -CITY_HALF_W, right: CITY_HALF_W, bottom: -CITY_HALF_H, top: CITY_HALF_H },
-  corridors: { half: 300, lines: CITY_V4_ROADS, areas: CITY_V4_AREAS.map(([x, y, rx, ry]) => ({ x, y, rx, ry })) },
-  openWalk: true,
-  // 运河挡块(world_water_blocks.py 按贴图像素生成,石桥按桥面留空)
-  blocks: CITY_WATER_BLOCKS as WorldMapBlock[],
-  spawn: { ...CITY_V4_SPAWN },
-  ground: TOWN_GROUND_ASSET,
-  groundTile: TOWN_GROUND_TILE,
-  // 多层地表:大石板 / 长苔石板 / 草坪 / 广场石板 / 主街(石板压暗);遮罩 tools/qa/city_ground_install.py,变体 city_ground_variants.py
-  groundSplat: {
-    mask: worldAsset('city4/ground_splat'),
-    mask2: worldAsset('city4/ground_splat2'),
-    floor: worldAsset('city4/tex_slab'),
-    moss: worldAsset('city4/tex_cobble_moss'),
-    meadow: worldAsset('city4/tex_grass'),
-    dirt: worldAsset('city4/tex_street'),
-    leaf: worldAsset('city4/tex_flagstone'),
-    // 11-10 实机「好别扭」:苔痕 / 主街原是另一套扇形铺石,跟底层石块对不齐拼成撕纸边 →
-    // 三层都由底层逐像素派生(tools/qa/city_ground_variants.py),平铺尺寸必须一致;
-    // 同日用户给场地参考 → 底层换大块旧石板 tex_slab(一格约 6 块,一块约 140 ≈ 一人高)
-    tiles: [840, 840, 600, 840, 600],
-    paved: true,
-    // 11-10 用户「地面后面看起来有立体感」
-    depth: [0.55, 0.16],
-  },
-  groundShadows: true,
-  // 高建筑的斜投影在街上压出整片暗块(实机 11-08)→ 主城再淡一些
-  castShadowOpacity: 64,
-  // 11-10 城墙投影把城垛缺口投成路面上一排白虚线 + 锯齿暗带(像马路标线)→ 城墙段不投影(角塔的圆影保留)
-  aoSkip: ['city4_terrace_wall'],
-  aoStrip: ['city4_house_', 'city4_guild_hall', 'city4_cathedral', 'city4_academy', 'city4_barracks', 'city4_tavern', 'city4_wall_h', 'city4_gatehouse', 'city4_stall_'],
-  aoRound: ['city4_fountain', 'city4_well'],
-  castShadowSkip: ['city4_wall_h', 'city4_terrace_wall', 'city4_banner', 'city4_stall_a', 'city4_stall_b', 'city4_flower_bed', 'city4_bench', 'city4_lamp', 'city4_notice_board', 'city4_statue', 'city4_well', 'city4_barrels'],
-  buildings: [
-    // 剧情任务公告板(docs/50 §4.1):罗盘广场东侧
-    { ...CITY_V4_BOARD, asset: worldAsset(CITY_V4_BOARD.asset), action: 'npc', npc: 'BOARD' },
-  ],
-  npcs: CITY_V4_NPCS.map((n) => ({ code: n.code as WorldNpcCode, name: n.name, asset: worldAsset(n.asset), x: n.x, y: n.y, height: n.height, flip: (n.flip < 0 ? -1 : 1) as 1 | -1 })),
-  props: [
-    // 贴地:罗盘广场 / 运河 / 小船 / 石桥
-    ...CITY_V4_FLATS.map((f) => ({ ...f, asset: worldAsset(f.asset), flat: true })),
-    // 立物:城墙 / 门楼 / 地标 / 民居 / 摊位 / 雕像 / 树 → 花箱 / 木桶 / 长椅 / 灌木
-    ...CITY_V4_STANDS.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
-    ...CITY_V4_LOW.map((s) => ({ ...s, asset: worldAsset(s.asset) })),
-  ],
-  lamps: CITY_V4_LAMPS.map((l) => ({ ...l })),
-  lampAsset: worldAsset('city4/city4_lamp'),
-  // 广场罗盘就是主城传送阵(贴地件自带罗盘,不另画底座)
-  waypoint: { ...CITY_V4_WAYPOINT, drawn: false },
-  places: CITY_V4_PLACES.map((p) => ({ ...p })),
-  camps: [],
-  // 南门回林地,东门去灰岩荒原;首次来要走到广场罗盘激活传送阵
-  exits: CITY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
-};
+const CITY: WorldMapDef = CITY_MOON;
 
 /** 灰岩荒原 v4 布局表的物件行 → 道具(同 woodsRows,素材表换成 GRAY_V4_ASSETS)。 */
 function grayRows(rows: number[][], tint?: [number, number, number]): WorldMapProp[] {
@@ -931,7 +840,7 @@ const GRAY: WorldMapDef = {
   camps: GRAY_V4_CAMPS.map(([code, label, monster, count, level, x, y, elite]) =>
     camp(code, label, monster, count, level, x, y, !!elite, GRAY_CAMP_VARIANT[code])),
   exits: [
-    ...GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: { ...e.toSpawn } })),
+    ...GRAY_V4_EXITS.map((e) => ({ ...e, toMap: e.toMap as WorldMapCode, toSpawn: e.toMap === 'CITY' ? { ...CITY_MOON_ENTRY.fromGray } : { ...e.toSpawn } })),
     // 11-09 东口 → 枯木林(Lv.20;落在枯木林西口精灵营地外)
     { key: 'to_deadwood', label: '前往 · 枯木林', x: GRAY_V4_SIZE.width / 2 - 140, y: -270, radius: 130, toMap: 'DEADWOOD' as WorldMapCode, toSpawn: { x: -8560, y: 157 } },
   ],
@@ -1023,8 +932,7 @@ const DEADWOOD: WorldMapDef = {
   battleBg: 'battle_scene_field_wasteland',
 };
 
-// 11-11 主城重做演示:本机预览地址带 ?cityDemo=moon|lit 时,主城换成对应画风的演示广场(线上地址不生效)
-export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY: cityDemoDef() ?? CITY, GRAY, DEADWOOD };
+export const WORLD_MAPS: Record<WorldMapCode, WorldMapDef> = { VILLAGE, WOODS, CITY, GRAY, DEADWOOD };
 // 自验 / 坐标导出脚本读地图定义用(tools/qa/export_world_geometry.py,docs/55)
 (globalThis as unknown as { __lootchainWorldMaps?: unknown }).__lootchainWorldMaps = WORLD_MAPS;
 
@@ -1060,7 +968,7 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     // 训练靶贴图(camp.dummy)
     ...def.camps.map((c) => c.dummy?.asset).filter((asset): asset is string => !!asset),
     // 地图页鸟瞰底图(tools/qa/map_overview_capture.py 截出的两张)
-    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' || code === 'CITY' || code === 'DEADWOOD' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
+    ...(code === 'VILLAGE' || code === 'WOODS' || code === 'GRAY' || code === 'DEADWOOD' ? [worldAsset(`overview/ov_${code.toLowerCase()}`)] : []),
     // 野外宝箱贴图(渲染层 CHEST_ART:关着 / 开盖空箱)
     ...(def.chests?.length ? Object.values(CHEST_ART) : []),
     // 兴趣点素材(docs/54)+ 场上头顶圆徽用的图标(进图前要在内存里,场上节点不会因贴图晚到而重绘)
@@ -1072,7 +980,8 @@ export function worldMapAssetPaths(code: WorldMapCode): string[] {
     ...(def.backdrop ? def.backdrop.pieces.map((p) => p.asset) : []),
     ...(def.ambientDepth ? [worldAsset('fx/mote'), worldAsset('fx/fg_canopy'), worldAsset('fx/cloud_shadow')] : []),
     // 整图场景:遮挡层 / 柔光点 / 站着的人(11-11)
-    ...(def.scene ? [def.scene.fg, def.scene.dot, ...def.scene.idlers.map((n) => n.asset)] : []),
+    ...(def.scene ? [...def.scene.tiles.masks, def.scene.dot, ...def.scene.idlers.map((n) => n.asset)] : []),
+    ...(def.minimapArt ? [def.minimapArt] : []),
     // 野外按只掉落的飞行图标 / 「本轮战果」卡图标(docs/52 §7)
     ...(def.camps.length ? Object.values(FIELD_DROP_ICON) : []),
     ...(def.chests?.length ? [worldAsset('mapui/map_chest')] : [])]));

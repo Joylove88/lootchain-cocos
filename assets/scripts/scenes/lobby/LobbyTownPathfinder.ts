@@ -3,6 +3,7 @@
  * 把地图可走区(LobbyTownRenderer.walkable:外框 / 走廊 / 建筑 / 挡块)按 CELL 网格采样缓存,A* 找格子路径,
  * 再按视线拉直成少量折点交给队长沿路走。目的地不可走时就近找可走格。
  */
+/** 默认格子边长(世界单位);整图场景的小巷 / 拱门比它窄,建寻路器时传更小的格子。 */
 const CELL = 80;
 const DIRS: Array<[number, number, number]> = [
   [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
@@ -19,9 +20,12 @@ export class TownPathfinder {
   private readonly rows: number;
   private readonly grid: Uint8Array;
 
-  constructor(private readonly left: number, private readonly bottom: number, width: number, height: number, walkable: (x: number, y: number) => boolean) {
-    this.cols = Math.max(1, Math.ceil(width / CELL));
-    this.rows = Math.max(1, Math.ceil(height / CELL));
+  constructor(
+    private readonly left: number, private readonly bottom: number, width: number, height: number, walkable: (x: number, y: number) => boolean,
+    private readonly cell: number = CELL,
+  ) {
+    this.cols = Math.max(1, Math.ceil(width / this.cell));
+    this.rows = Math.max(1, Math.ceil(height / this.cell));
     this.grid = new Uint8Array(this.cols * this.rows);
     for (let r = 0; r < this.rows; r += 1) {
       for (let c = 0; c < this.cols; c += 1) {
@@ -146,7 +150,7 @@ export class TownPathfinder {
   }
 
   private lineOpen(a: PathPoint, b: PathPoint): boolean {
-    const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (CELL * 0.5));
+    const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (this.cell * 0.5));
     for (let k = 1; k <= steps; k += 1) {
       const t = k / steps;
       if (!this.open(this.col(a.x + (b.x - a.x) * t), this.row(a.y + (b.y - a.y) * t))) {
@@ -156,9 +160,30 @@ export class TownPathfinder {
     return true;
   }
 
+  /**
+   * 从 a 到 b 的直线(连同左右各 1/4 格的余量)上全是可走格。比 lineOpen 采样密、还留了身位:
+   * 沿路走的时候判断「现在能不能直接去下一个折点」用——只按距离提前换折点,人还没绕过墙角就会顶在墙角上。
+   */
+  clear(ax: number, ay: number, bx: number, by: number): boolean {
+    const len = Math.hypot(bx - ax, by - ay);
+    const steps = Math.max(1, Math.ceil(len / (this.cell * 0.25)));
+    const ox = len > 0 ? (-(by - ay) / len) * this.cell * 0.25 : 0;
+    const oy = len > 0 ? ((bx - ax) / len) * this.cell * 0.25 : 0;
+    for (let k = 0; k <= steps; k += 1) {
+      const t = k / steps;
+      const x = ax + (bx - ax) * t;
+      const y = ay + (by - ay) * t;
+      if (!this.open(this.col(x), this.row(y)) || !this.open(this.col(x + ox), this.row(y + oy)) || !this.open(this.col(x - ox), this.row(y - oy))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** 最近的可走格(螺旋外扩,最多 12 圈);没有返回 -1。 */
   private nearestOpen(c: number, r: number): number {
-    for (let d = 0; d <= 12; d += 1) {
+    const rings = Math.ceil((12 * CELL) / this.cell);
+    for (let d = 0; d <= rings; d += 1) {
       for (let dr = -d; dr <= d; dr += 1) {
         for (let dc = -d; dc <= d; dc += 1) {
           if (Math.max(Math.abs(dc), Math.abs(dr)) !== d) {
@@ -178,19 +203,19 @@ export class TownPathfinder {
   }
 
   private col(x: number): number {
-    return Math.floor((x - this.left) / CELL);
+    return Math.floor((x - this.left) / this.cell);
   }
 
   private row(y: number): number {
-    return Math.floor((y - this.bottom) / CELL);
+    return Math.floor((y - this.bottom) / this.cell);
   }
 
   private cx(c: number): number {
-    return this.left + (c + 0.5) * CELL;
+    return this.left + (c + 0.5) * this.cell;
   }
 
   private cy(r: number): number {
-    return this.bottom + (r + 0.5) * CELL;
+    return this.bottom + (r + 0.5) * this.cell;
   }
 }
 

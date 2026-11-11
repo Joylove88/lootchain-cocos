@@ -47,7 +47,8 @@ export const AREA_MAP_OVERVIEW: Partial<Record<WorldMapCode, string>> = {
   // 11-08 灰岩荒原 v4:gray_v4_gen.py 离线渲染(近似多层地表 + 全部立物),实机可用后可换 map_overview_capture 截图
   GRAY: worldAsset('overview/ov_gray'),
   // 11-08 主城 v4:city_v4_gen.py 离线渲染
-  CITY: worldAsset('overview/ov_city'),
+  // 11-11 主城月夜重做:整城图缩小的鸟瞰(tools/qa/city_moon_build.py)
+  CITY: worldAsset('citymoon/overview'),
   // 11-09 枯木林 v4:dead_v4_gen.py 离线渲染
   DEADWOOD: worldAsset('overview/ov_deadwood'),
 };

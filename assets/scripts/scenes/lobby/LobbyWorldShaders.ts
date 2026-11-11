@@ -1,4 +1,4 @@
-import { EffectAsset, Material, Node, resources, Sprite, Vec4 } from 'cc';
+import { builtinResMgr, EffectAsset, gfx, Material, Node, resources, Sprite, Texture2D, Vec4 } from 'cc';
 
 /**
  * 跑图地图动态效果(2026-10-29 用户:小溪河流动态、树叶草地随风飘荡):
@@ -65,6 +65,69 @@ export function applyWorldShader(sprite: Sprite | null, kind: ShaderKind): void 
   }
   waiting[kind].push(sprite);
   load(kind);
+}
+
+let additiveMat: Material | null = null;
+
+/**
+ * 叠加发光(光晕 / 飞蛾 / 火星):所有精灵共用同一份材质(内置精灵着色器 + 叠加混合)。
+ * 11-11 实测:逐个精灵改混合系数(_updateBlendFunc)会各建一份材质实例,121 个光晕 = 121 次绘制;共用一份后同贴图的合成一批。
+ */
+export function applyAdditive(sprite: Sprite): void {
+  if (!additiveMat) {
+    const src = builtinResMgr.get<Material>('ui-sprite-material');
+    if (!src || !src.effectAsset) {
+      return;
+    }
+    const mat = new Material();
+    mat.initialize({
+      effectAsset: src.effectAsset,
+      defines: { USE_TEXTURE: true },
+      states: {
+        blendState: {
+          targets: [{
+            blend: true, blendSrc: gfx.BlendFactor.SRC_ALPHA, blendDst: gfx.BlendFactor.ONE,
+            blendSrcAlpha: gfx.BlendFactor.SRC_ALPHA, blendDstAlpha: gfx.BlendFactor.ONE_MINUS_SRC_ALPHA,
+          }],
+        },
+      },
+    });
+    additiveMat = mat;
+  }
+  sprite.customMaterial = additiveMat;
+}
+
+let occludeEffect: EffectAsset | null = null;
+let occludeLoading = false;
+const occludeMats = new WeakMap<Texture2D, Material>();
+
+/**
+ * 整图场景遮挡条的材质(effects/world-occlude):颜色取精灵自己的贴图(底图块),透明度取 mask 的 R 通道。
+ * 一张遮罩一份材质(同一块上的遮挡条共用,可合批)。着色器还没加载完返回 null,调用方稍后再试。
+ */
+export function occludeMaterial(mask: Texture2D): Material | null {
+  if (!occludeEffect) {
+    if (!occludeLoading) {
+      occludeLoading = true;
+      resources.load('effects/world-occlude', EffectAsset, (error, effect) => {
+        occludeLoading = false;
+        if (error || !effect) {
+          console.warn('[WorldShaders] load failed occlude', error);
+          return;
+        }
+        occludeEffect = effect;
+      });
+    }
+    return null;
+  }
+  let mat = occludeMats.get(mask);
+  if (!mat) {
+    mat = new Material();
+    mat.initialize({ effectAsset: occludeEffect });
+    mat.setProperty('maskTex', mask);
+    occludeMats.set(mask, mat);
+  }
+  return mat;
 }
 
 /** 每帧镜头更新后调:世界层的世界坐标 / 缩放 → 风的空间相位换算成地图坐标(走动时相位不跟着镜头变)。 */

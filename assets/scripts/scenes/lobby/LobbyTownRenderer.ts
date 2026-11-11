@@ -59,7 +59,7 @@ import { REALM_ULT_BASE, RealmUltShow, realmUltCfg, realmUltTiming } from './Rea
 import { resolveGuardMonsterProjectileFx, resolveHeroAttackSfxKey, resolveHeroSkillSfxKey } from './LobbyBattleAttackFxConfig';
 import { gameAudio } from '../../audio/GameAudio';
 import { TownAmbient } from './LobbyTownAmbient';
-import { TownScene, sceneWalkable } from './LobbyTownScene';
+import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
@@ -575,7 +575,8 @@ export class LobbyTownRenderer {
   private buildings: TownBuildingEntity[] = [];
   private lampNodes: Node[] = [];
   /** 非贴地装饰(树 / 货箱 / 石凳):参与前后遮挡。 */
-  private propNodes: Array<{ node: Node; y: number }> = [];
+  /** 立物(按脚线 y 排序);batch = 合批键(整图场景的遮挡条才有:贴图块编号)。 */
+  private propNodes: Array<{ node: Node; y: number; batch?: number }> = [];
   /**
    * 视野裁剪(11-08 林地 v4 约 2400 个物件,全开手机吃不消):物件包围盒(地图坐标),镜头外的关掉 active,
    * 不参与渲染 / 前后排序;镜头每挪 CULL_STEP 才重算一次。
@@ -610,7 +611,7 @@ export class LobbyTownRenderer {
   /** docs/50:当前所在地图 + 切图后的出生点。 */
   private mapCode: WorldMapCode = 'CITY';
   private pendingSpawn: { x: number; y: number } | null = null;
-  private npcNodes: Array<{ code: WorldNpcCode; node: Node; y: number }> = [];
+  private npcNodes: Array<{ code: WorldNpcCode; node: Node; y: number; x: number; h: number; art: Node; flip: 1 | -1; face: 1 | -1; phase: number }> = [];
   /** NPC 贴图没在缓存里时 ensureNpcs 会整只跳过(addSprite 只发加载返回 null),跑图很少整页重绘:每帧节流补建(11-07 训练场教官看不到)。 */
   private npcRetryAt = 0;
   private waypointNode: Node | null = null;
@@ -632,6 +633,9 @@ export class LobbyTownRenderer {
   private pathfinder: TownPathfinder | null = null;
   private pathfinderMap: WorldMapCode | null = null;
   private autoPath: PathPoint[] | null = null;
+  /** 自动寻路的终点 + 卡住检测(每 0.6 秒看一次挪了多远;几乎没动就从当前位置重新寻路,连着 3 次还不行就放弃)。 */
+  private autoGoal: { x: number; y: number } | null = null;
+  private autoProbe = { x: 0, y: 0, at: 0, replans: 0 };
   private minimapBottomY = 0;
   private lastPlayerLevel = 0;
   private trackerBottomY = 0;
@@ -1125,6 +1129,7 @@ export class LobbyTownRenderer {
     this.applyCamera(true);
     this.updateCulling();
     this.cullMonsters();
+    this.occludeScene();
     this.sortEntities(true);
     this.ensureAmbient();
   }
@@ -1136,7 +1141,39 @@ export class LobbyTownRenderer {
     if (!world || !world.isValid || !entities || !entities.isValid) {
       return;
     }
-    this.scene.mount(this.host, world, entities, this.def, (node, y) => this.propNodes.push({ node, y }));
+    this.scene.mount(this.host, world, entities, this.def, (node, y, batch) => this.propNodes.push({ node, y, batch }),
+      (node, x0, x1, y0, y1) => this.addCull(node, x0, x1, y0, y1));
+  }
+
+  /**
+   * 整图场景:把队伍 / 镜头里的 NPC / 怪的包围盒交给场景层,只打开挡在他们前面的遮挡条(TownScene.occlude);
+   * 镜头范围带 200 余量,外面走动的人不画。排序之前调(开关变了排序才知道)。
+   */
+  private occludeScene(): void {
+    if (!this.def.scene) {
+      return;
+    }
+    const boxes: OccludeBox[] = [];
+    for (const actor of [this.leader, ...this.followers]) {
+      if (actor && actor.node.isValid) {
+        boxes.push({ x0: actor.x - 120, x1: actor.x + 120, y0: actor.y - 30, y1: actor.y + 280, foot: actor.y });
+      }
+    }
+    for (const npc of this.npcNodes) {
+      if (npc.node.isValid && npc.node.active) {
+        boxes.push({ x0: npc.x - 110, x1: npc.x + 110, y0: npc.y - 20, y1: npc.y + npc.h + 90, foot: npc.y });
+      }
+    }
+    for (const monster of this.monsters) {
+      if (monster.node.isValid && monster.node.active) {
+        boxes.push({ x0: monster.x - 140, x1: monster.x + 140, y0: monster.y - 30, y1: monster.y + 300, foot: monster.y });
+      }
+    }
+    const view = this.viewSize();
+    this.scene.occlude(boxes, {
+      x0: this.camX - view.w / 2 - 200, x1: this.camX + view.w / 2 + 200,
+      y0: this.camY - view.h / 2 - 200, y1: this.camY + view.h / 2 + 200,
+    });
   }
 
   /** 环境动效(飘叶 / 云影):地图开了 ambient 才挂;世界层重建后重挂。 */
@@ -2234,6 +2271,7 @@ export class LobbyTownRenderer {
     this.stepRealmTrial();
     this.updateMonsterNames();
     this.retryMissingNpcs();
+    this.stepNpcs();
     if (!this.trial) {
       // 试炼石台是就地铺的:探索 / 隐藏点 / 坐标上报都停掉(站位可能在建筑 / 水面范围里,服务端坐标校验会拦)
       this.updateExplore();
@@ -2257,6 +2295,7 @@ export class LobbyTownRenderer {
     this.updateCanopyHoles(clamped);
     this.ensureScene();
     this.scene.step(clamped);
+    this.occludeScene();
     this.sortEntities(false);
     if (!this.trial) {
       this.updateNearBuilding();
@@ -2274,6 +2313,23 @@ export class LobbyTownRenderer {
   }
 
   /**
+   * 寻路网格。整图场景直接照它自己的可走栅格建(格子一一对应:11-11 实测按 80 / 24 采样时,
+   * 穿拱门的窄通道会因为采样点错位断开,集市和东门「走不到」);其余地图 80 一格。
+   */
+  private makePathfinder(): TownPathfinder {
+    const scene = this.def.scene;
+    if (scene) {
+      const cell = scene.walk.cell * scene.unit;
+      const rows = scene.walk.rows.length;
+      const left = (-scene.px[0] / 2) * scene.unit;
+      const bottom = (scene.px[1] / 2 - rows * scene.walk.cell) * scene.unit;
+      return new TownPathfinder(left, bottom, scene.walk.cols * cell, rows * cell, (px, py) => this.walkable(px, py), cell);
+    }
+    const w = this.def.walk;
+    return new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py));
+  }
+
+  /**
    * 自动寻路到地图上一点(10-30 用户:鸟瞰图点击 / NPC / 任务目标自动寻路)。走不到返回 false。
    * 网格按图懒建一次(林地约 1.4 万格),之后每次只跑 A*。
    */
@@ -2283,13 +2339,42 @@ export class LobbyTownRenderer {
       return false;
     }
     if (!this.pathfinder || this.pathfinderMap !== this.mapCode) {
-      const w = this.def.walk;
-      this.pathfinder = new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py));
+      this.pathfinder = this.makePathfinder();
       this.pathfinderMap = this.mapCode;
     }
     const path = this.pathfinder.find(leader.x, leader.y, x, y);
     this.autoPath = path && path.length > 0 ? path : null;
+    this.autoGoal = this.autoPath ? { x, y } : null;
+    this.autoProbe = { x: leader.x, y: leader.y, at: Date.now(), replans: 0 };
     return !!this.autoPath;
+  }
+
+  /**
+   * 自动寻路卡住兜底(11-11 主城实测:队长顶在拱门柱脚上原地抖,路线本身是通的):
+   * 每 0.6 秒看一次,挪了不到 12 就从当前位置重新寻路;连着 3 次还没挪动就放弃,把控制权还给玩家。
+   */
+  private watchAutoWalk(leader: TownActor, nowMs: number): void {
+    const probe = this.autoProbe;
+    if (!this.autoPath || !this.autoGoal || nowMs - probe.at < 600) {
+      return;
+    }
+    const moved = Math.hypot(leader.x - probe.x, leader.y - probe.y);
+    probe.x = leader.x;
+    probe.y = leader.y;
+    probe.at = nowMs;
+    if (moved >= 12) {
+      probe.replans = 0;
+      return;
+    }
+    const replans = probe.replans + 1;
+    if (replans > 3 || !this.pathfinder) {
+      this.autoPath = null;
+      this.autoGoal = null;
+      return;
+    }
+    const path = this.pathfinder.find(leader.x, leader.y, this.autoGoal.x, this.autoGoal.y);
+    this.autoPath = path && path.length > 0 ? path : null;
+    probe.replans = replans;
   }
 
   /** 地图页快照(10-30 用户:鸟瞰图 + NPC / 任务坐标 + 点击自动寻路)。 */
@@ -2355,8 +2440,7 @@ export class LobbyTownRenderer {
       return null;
     }
     if (!this.pathfinder || this.pathfinderMap !== this.mapCode) {
-      const w = this.def.walk;
-      this.pathfinder = new TownPathfinder(w.left, w.bottom, w.right - w.left, w.top - w.bottom, (px, py) => this.walkable(px, py));
+      this.pathfinder = this.makePathfinder();
       this.pathfinderMap = this.mapCode;
     }
     const path = this.pathfinder.find(leader.x, leader.y, x, y);
@@ -2370,12 +2454,30 @@ export class LobbyTownRenderer {
 
   cancelAutoWalk(): void {
     this.autoPath = null;
+    this.autoGoal = null;
   }
 
-  /** 朝下一个折点的单位方向;到点(< 48)就换下一个,走完清空。 */
+  /**
+   * 朝下一个折点的单位方向;到点就换下一个,走完清空。
+   * 到点半径:普通地图 48(寻路格 80 的一半多)。整图场景的寻路格只有 16 左右(11-11 主城),两条规矩:
+   * - 半径按格子收到 1.2 格;
+   * - 进了半径也不一定换:得从现在站的位置能直线走到下一个折点才换,否则接着走到折点跟前(10 以内)。
+   *   实测只按距离换的话,队长离折点还有 0.8 格、人还在隔壁那一行,就去追同一行远处的下一个折点,中间隔着两格篷布脚,
+   *   贴着格边蹭一辈子(拱门柱脚、集市篷布两处都卡过)。
+   * 最后一个折点(终点)仍用 48,免得贴着 NPC 来回蹭。
+   */
   private autoPathVector(leader: TownActor): { x: number; y: number } {
     const path = this.autoPath;
-    while (path && path.length > 0 && Math.hypot(path[0].x - leader.x, path[0].y - leader.y) < 48) {
+    const scene = this.def.scene;
+    const near = scene ? scene.walk.cell * scene.unit * 1.2 : 48;
+    while (path && path.length > 0) {
+      const dist = Math.hypot(path[0].x - leader.x, path[0].y - leader.y);
+      if (dist >= (path.length > 1 ? near : 48)) {
+        break;
+      }
+      if (scene && path.length > 1 && dist > 10 && this.pathfinder && !this.pathfinder.clear(leader.x, leader.y, path[1].x, path[1].y)) {
+        break;
+      }
       path.shift();
     }
     if (!path || path.length === 0) {
@@ -2401,7 +2503,8 @@ export class LobbyTownRenderer {
     if (v.x !== 0 || v.y !== 0 || this.inCombat) {
       this.autoPath = null;
     } else if (this.autoPath && this.autoPath.length > 0) {
-      v = this.autoPathVector(leader);
+      this.watchAutoWalk(leader, nowMs);
+      v = this.autoPath ? this.autoPathVector(leader) : v;
     }
     if (this.leaderDead || (nowMs < this.actionUntil && nowMs >= this.dashUntil)) {
       v = { x: 0, y: 0 };
@@ -2845,7 +2948,7 @@ export class LobbyTownRenderer {
     if (!root || !root.isValid) {
       return;
     }
-    const items: Array<{ node: Node; y: number }> = [];
+    const items: Array<{ node: Node; y: number; batch?: number }> = [];
     for (const building of this.buildings) {
       if (building.node.isValid && !building.cfg.flat) {
         items.push({ node: building.node, y: building.cfg.y });
@@ -2859,11 +2962,12 @@ export class LobbyTownRenderer {
     for (const prop of this.propNodes) {
       // 视野外关掉的不排(林地 v4 上千棵树,每帧全排太贵)
       if (prop.node.isValid && prop.node.active) {
-        items.push({ node: prop.node, y: prop.y });
+        items.push(prop);
       }
     }
     for (const npc of this.npcNodes) {
-      if (npc.node.isValid) {
+      // 镜头外的 NPC 关着(见 ensureNpcs 的裁剪登记),不排
+      if (npc.node.isValid && npc.node.active) {
         items.push({ node: npc.node, y: npc.y });
       }
     }
@@ -2885,6 +2989,24 @@ export class LobbyTownRenderer {
       }
     }
     items.sort((a, b) => b.y - a.y);
+    // 整图场景的遮挡条:相邻的一串条之间谁先画都一样(都是同一张画里互不遮挡的像素),按贴图块排到一起才能合批
+    for (let i = 0; i < items.length;) {
+      if (items[i].batch === undefined) {
+        i += 1;
+        continue;
+      }
+      let j = i + 1;
+      while (j < items.length && items[j].batch !== undefined) {
+        j += 1;
+      }
+      if (j - i > 2) {
+        const run = items.slice(i, j).sort((a, b) => (a.batch as number) - (b.batch as number));
+        for (let k = i; k < j; k += 1) {
+          items[k] = run[k - i];
+        }
+      }
+      i = j;
+    }
     const key = items.map((item) => item.node.name).join('|');
     if (!force && key === this.orderKey) {
       return;
@@ -3351,11 +3473,12 @@ export class LobbyTownRenderer {
     this.minimapContent = content;
     const wx = def.waypoint.x * mapScale;
     const wy = def.waypoint.y * mapScale;
-    const cityBg = this.mapCode === 'CITY' && !!this.host.addSprite('CityBg', TOWN_HUD_ASSETS.minimapCity, wx, wy, def.width * mapScale * 1.04, def.width * mapScale * 1.04, content);
+    // 11-11 整图场景的地图(主城)直接用自己的鸟瞰图当小地图底(按地图宽高铺满)
+    const cityBg = !!def.minimapArt && !!this.host.addSprite('CityBg', def.minimapArt, 0, 0, def.width * mapScale, def.height * mapScale, content);
     if (cityBg) {
-      // 主城底图偏亮偏黄:压一层暗色(原型是暗色广场,金色建筑图标才跳得出来)
+      // 月夜鸟瞰图本来就暗,只压一点(金色图标跳得出来就行)
       const shade = this.host.addChildPlainNode(content, 'CityShade', 0, 0, def.width * mapScale * 1.1, def.height * mapScale * 1.1).addComponent(Graphics);
-      shade.fillColor = rgba(12, 12, 16, 120);
+      shade.fillColor = rgba(12, 12, 16, 50);
       shade.rect(-def.width * mapScale * 0.55, -def.height * mapScale * 0.55, def.width * mapScale * 1.1, def.height * mapScale * 1.1);
       shade.fill();
     } else {
@@ -3839,8 +3962,11 @@ export class LobbyTownRenderer {
       const ow = frame?.originalSize.width ?? 1;
       const oh = frame?.originalSize.height ?? 1;
       const w = npc.height * (ow / Math.max(1, oh));
-      sprite.node.getComponent(UITransform)?.setContentSize(new Size(w, npc.height));
-      sprite.node.setPosition(0, npc.height / 2, 0);
+      // 脚底做锚点:原地呼吸(stepNpcs 每帧缩放)时脚不动
+      const artUi = sprite.node.getComponent(UITransform);
+      artUi?.setContentSize(new Size(w, npc.height));
+      artUi?.setAnchorPoint(0.5, 0);
+      sprite.node.setPosition(0, 0, 0);
       sprite.node.setScale(npc.flip, 1, 1);
       const shadow = node.addComponent(Graphics);
       shadow.fillColor = rgba(0, 0, 0, 110);
@@ -3859,7 +3985,32 @@ export class LobbyTownRenderer {
       marker.outlineWidth = 3;
       this.worldUi(marker.node);
       tween(marker.node).repeatForever(tween<Node>().by(0.6, { position: new Vec3(0, 8, 0) }).by(0.6, { position: new Vec3(0, -8, 0) })).start();
-      this.npcNodes.push({ code: npc.code, node, y: npc.y });
+      this.npcNodes.push({ code: npc.code, node, y: npc.y, x: npc.x, h: npc.height, art: sprite.node, flip: npc.flip, face: npc.flip, phase: (Math.abs(npc.x) * 0.013 + Math.abs(npc.y) * 0.007) % 6.28 });
+      // 镜头外不画(11-11 实测:主城 12 个 NPC 全开着,每个 3 次多绘制,其中大半不在镜头里)
+      this.addCull(node, npc.x - 180, npc.x + 180, npc.y - 60, npc.y + npc.height + 140);
+    }
+  }
+
+  /** NPC 原地呼吸 + 队长走近时转身朝向他(11-11 用户「部分摆件和NPC需要加入动效」;所有地图的 NPC 都生效)。 */
+  private stepNpcs(): void {
+    const leader = this.leader;
+    const t = Date.now() / 1000;
+    for (const npc of this.npcNodes) {
+      if (!npc.art.isValid || !npc.node.active) {
+        continue;
+      }
+      if (leader) {
+        const dx = leader.x - npc.x;
+        const near = Math.abs(dx) < 420 && Math.abs(leader.y - npc.y) < 320;
+        if (!near) {
+          npc.face = npc.flip;
+        } else if (Math.abs(dx) > 36) {
+          // 正上 / 正下方留一段死区,免得人从面前横穿时来回翻
+          npc.face = dx > 0 ? 1 : -1;
+        }
+      }
+      const k = 0.5 + 0.5 * Math.sin(t * 1.9 + npc.phase);
+      npc.art.setScale(npc.face * (1 + 0.008 * k), 1 + 0.02 * k, 1);
     }
   }
 

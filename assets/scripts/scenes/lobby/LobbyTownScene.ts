@@ -1,16 +1,19 @@
-import { gfx, Graphics, Node, Rect, resources, Size, sp, Sprite, SpriteFrame, tween, UIOpacity, UITransform, Vec2, Vec3 } from 'cc';
+import { Graphics, Material, Node, Rect, resources, Size, sp, Sprite, SpriteFrame, Texture2D, tween, UIOpacity, UITransform, Vec2, Vec3 } from 'cc';
 import { GUARD_MONSTER_DB_SCALE } from './GuardBattleModel';
 import { patchBattleUnitSpineRuntimeEnums, resolveBattleUnitSpineRuntimeData, resolveBattleUnitSpineSkinName } from './LobbyBattleUnitSpineRuntime';
 import { rgba } from './LobbyHudTypes';
-import { applyWorldShader } from './LobbyWorldShaders';
+import { applyAdditive, applyWorldShader, occludeMaterial } from './LobbyWorldShaders';
 import type { WorldMapDef, WorldSceneDef } from './LobbyWorldMaps';
 import { loadSharedSpineData } from './SpineDataStore';
 
 /**
  * 整图场景层(2026-11-11 主城重做演示,用户:「两个弄下,我看看效果」「部分摆件和NPC需要加入动效,或者动态」):
  * 地图底图是一张完整的画(贴地件),这一层负责让它「能进去、会动」:
- * - 遮挡条:遮挡层整图按 32px 竖条切成一堆小精灵(运行时从同一张贴图取子区域),各带一条脚线,和人物一起按脚线排序;
- *   条里的像素和底图一模一样,所以叠上去看不出来,只有人走到它后面时才显出遮挡;
+ * - 遮挡条:「立在地面上的东西」按 32px 竖条切成一堆小精灵,各带一条脚线,和人物一起按脚线排序;
+ *   每条直接取底图块上它盖住的那一块像素 × 同一块的遮罩(effects/world-occlude),和底图是同一张贴图,叠上去没有任何色差,
+ *   只有人走到它后面时才显出遮挡——
+ *   所以平时全关着,每帧只把「挡在某个人 / NPC / 走动的人 / 明火前面、且和它有重叠」的那几条打开(occlude);
+ *   11-11 实测全开时同屏 240 多条 = 117 次绘制 + 半屏重复填充,按需打开后同屏通常只剩十几二十条;
  * - 灯火:光晕(叠加混合,盖在所有东西上,人走近也被照亮)按各自相位明暗起伏;明火用程序火焰(effects/world-flame),火星往上飘;
  * - 烟 / 薄雾 / 飞蛾 / 飘雪:固定数量的节点循环复用;
  * - 走动的人 / 动物:现成怪物骨骼(待机 + 跑动放慢当走路)沿路线来回,到点停一会儿;站着的人 = 静态图 + 原地呼吸。
@@ -37,6 +40,11 @@ interface Walker {
   node: Node; art: Node; skeleton: sp.Skeleton | null;
   x: number; y: number; idx: number; dir: 1 | -1; wait: number; moving: boolean; facing: 1 | -1; base: number; idle: string; move: string;
 }
+/** 遮挡条:世界坐标包围盒 + 脚线;on = 当前是否打开;mark = 最近一次被需要的帧号。 */
+interface Strip { node: Node; x0: number; x1: number; y0: number; y1: number; foot: number; on: boolean; mark: number }
+interface FlameBox { node: Node; x0: number; x1: number; y0: number; y1: number; foot: number }
+/** 会被遮挡条挡住的东西(世界坐标包围盒 + 脚线 y)。 */
+export interface OccludeBox { x0: number; x1: number; y0: number; y1: number; foot: number }
 
 const walkCache = new WeakMap<WorldSceneDef, Uint8Array>();
 
@@ -59,13 +67,6 @@ export function sceneWalkable(scene: WorldSceneDef, x: number, y: number): boole
   return c >= 0 && c < cols && r >= 0 && r < rows.length && bits[r * cols + c] === 1;
 }
 
-function additive(sprite: Sprite): void {
-  const blend = sprite as unknown as { _srcBlendFactor: number; _dstBlendFactor: number; _updateBlendFunc: () => void };
-  blend._srcBlendFactor = gfx.BlendFactor.SRC_ALPHA;
-  blend._dstBlendFactor = gfx.BlendFactor.ONE;
-  blend._updateBlendFunc();
-}
-
 export class TownScene {
   private root: Node | null = null;
   private glows: Glow[] = [];
@@ -73,6 +74,13 @@ export class TownScene {
   private mists: Mist[] = [];
   private motes: Mote[] = [];
   private walkers: Walker[] = [];
+  private flameBoxes: FlameBox[] = [];
+  /** 遮挡条按列分桶(列宽 = 条宽),查「这个人挡在哪几条后面」只翻他身下那几列。 */
+  private stripCols: Strip[][] = [];
+  private stripColW = 1;
+  private stripLeft = 0;
+  private liveStrips: Strip[] = [];
+  private frame = 0;
   private t = 0;
   private seed = 7;
   private mapW = 0;
@@ -80,7 +88,11 @@ export class TownScene {
   private loadAsked = false;
 
   /** 世界层(重)建后挂一次;已挂在这个世界上就什么都不做。素材没到返回 false(调用方稍后再试)。 */
-  mount(host: TownSceneHost, world: Node, entities: Node, def: WorldMapDef, addStatic: (node: Node, y: number) => void): boolean {
+  mount(
+    host: TownSceneHost, world: Node, entities: Node, def: WorldMapDef,
+    addStatic: (node: Node, y: number, batch?: number) => void,
+    addCull: (node: Node, x0: number, x1: number, y0: number, y1: number) => void,
+  ): boolean {
     const scene = def.scene;
     if (!scene) {
       this.clear();
@@ -89,12 +101,15 @@ export class TownScene {
     if (this.root && this.root.isValid && this.root.parent === world) {
       return true;
     }
-    const full = resources.get<SpriteFrame>(scene.fg, SpriteFrame);
+    const tiles = scene.tiles.base.map((asset) => resources.get<SpriteFrame>(asset, SpriteFrame));
+    const masks = scene.tiles.masks.map((asset) => resources.get<SpriteFrame>(asset, SpriteFrame));
     const dot = resources.get<SpriteFrame>(scene.dot, SpriteFrame);
-    if (!full || !dot) {
-      if (!this.loadAsked) {
+    // 每块一份遮挡材质(着色器没到会返回 null,顺便触发加载)
+    const mats: Array<Material | null> = masks.map((mask) => (mask ? occludeMaterial(mask.texture as Texture2D) : null));
+    if (!dot || tiles.some((tile) => !tile) || mats.some((mat) => !mat)) {
+      if (!this.loadAsked && (!dot || tiles.some((tile) => !tile) || masks.some((mask) => !mask))) {
         this.loadAsked = true;
-        resources.load([scene.fg, scene.dot], SpriteFrame, () => { this.loadAsked = false; });
+        resources.load([...scene.tiles.base, ...scene.tiles.masks, scene.dot], SpriteFrame, () => { this.loadAsked = false; });
       }
       return false;
     }
@@ -107,19 +122,49 @@ export class TownScene {
     const [W, H] = scene.px;
     const u = scene.unit;
 
-    // ── 遮挡条 ──
+    // ── 遮挡条:一条一个精灵(跨两行底图块的切成两段),默认关着,occlude 每帧按需打开 ──
+    // 贴图区域 = 底图块上对应的那一条(底图块带补边:整图像素 + pad = 块里的像素),材质 = 这一块的遮罩
+    const { cols, tileW, tileH, pad } = scene.tiles;
+    const stripPx = Math.max(1, ...scene.strips.map((item) => item[2]));
+    this.stripColW = stripPx * u;
+    this.stripLeft = (-W / 2) * u;
     scene.strips.forEach(([sx, sy, sw, sh, foot], i) => {
       const footY = (H / 2 - foot) * u;
-      const node = host.addChildPlainNode(entities, `SceneStrip_${i}`, (sx + sw / 2 - W / 2) * u, footY, sw * u, sh * u);
-      const art = host.addChildPlainNode(node, 'Art', 0, (foot - (sy + sh / 2)) * u, sw * u, sh * u);
-      const sprite = art.addComponent(Sprite);
-      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-      const frame = new SpriteFrame();
-      frame.reset({ texture: full.texture, rect: new Rect(sx, sy, sw, sh), originalSize: new Size(sw, sh), offset: new Vec2(0, 0), isRotate: false });
-      frame.packable = false;
-      sprite.spriteFrame = frame;
-      art.getComponent(UITransform)?.setContentSize(new Size(sw * u, sh * u));
-      addStatic(node, footY);
+      const x = (sx + sw / 2 - W / 2) * u;
+      const tx = sx + pad[0];
+      const col = Math.min(cols - 1, Math.floor(tx / tileW));
+      let y = sy;
+      const yEnd = sy + sh;
+      let part = 0;
+      while (y < yEnd) {
+        const ty = y + pad[1];
+        const row = Math.floor(ty / tileH);
+        const index = row * cols + col;
+        const tile = tiles[index];
+        const mat = mats[index];
+        const y1 = Math.min(yEnd, (row + 1) * tileH - pad[1]);
+        const h = y1 - y;
+        if (!tile || !mat || h <= 0) {
+          break;
+        }
+        const node = host.addChildPlainNode(entities, `SceneStrip_${i}${part ? 'b' : ''}`, x, (H / 2 - (y + h / 2)) * u, sw * u, h * u);
+        const sprite = node.addComponent(Sprite);
+        sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+        const frame = new SpriteFrame();
+        frame.reset({ texture: tile.texture, rect: new Rect(tx - col * tileW, ty - row * tileH, sw, h), originalSize: new Size(sw, h), offset: new Vec2(0, 0), isRotate: false });
+        frame.packable = false;
+        sprite.spriteFrame = frame;
+        sprite.customMaterial = mat;
+        node.getComponent(UITransform)?.setContentSize(new Size(sw * u, h * u));
+        node.active = false;
+        const strip: Strip = { node, x0: x - (sw * u) / 2, x1: x + (sw * u) / 2, y0: (H / 2 - y1) * u, y1: (H / 2 - y) * u, foot: footY, on: false, mark: -1 };
+        const bucket = Math.floor(sx / stripPx);
+        (this.stripCols[bucket] ??= []).push(strip);
+        // 排序键 = 脚线;batch = 底图块编号(相邻的条按它排到一起才能合批)
+        addStatic(node, footY, index);
+        y = y1;
+        part += 1;
+      }
     });
 
     // ── 明火(按火盆 / 炉子的脚线排序,人站到火前面会挡住它)+ 火星 ──
@@ -133,6 +178,8 @@ export class TownScene {
       art.getComponent(UITransform)?.setContentSize(new Size(f.w, f.h));
       applyWorldShader(sprite, 'flame');
       addStatic(node, footY);
+      addCull(node, f.x - f.w, f.x + f.w, footY - 40, f.y + f.h + 40);
+      this.flameBoxes.push({ node, x0: f.x - f.w / 2, x1: f.x + f.w / 2, y0: Math.min(footY, f.y), y1: f.y + f.h, foot: footY });
       for (let k = 0; k < (f.embers ?? 0); k += 1) {
         this.addMote(host, root, dot, 'ember', f.x, f.y + f.h * 0.35, 7);
       }
@@ -146,44 +193,56 @@ export class TownScene {
       sprite.spriteFrame = dot;
       node.getComponent(UITransform)?.setContentSize(new Size(g.r * 2, g.r * 2));
       sprite.color = rgba(g.color[0], g.color[1], g.color[2]);
-      additive(sprite);
+      applyAdditive(sprite);
       const op = node.addComponent(UIOpacity);
       op.opacity = g.alpha;
       this.glows.push({ op, base: g.alpha, flicker: g.flicker, seed: this.rand() * 40 });
+      addCull(node, g.x - g.r, g.x + g.r, g.y - g.r, g.y + g.r);
       for (let k = 0; k < (g.moths ?? 0); k += 1) {
         this.addMote(host, root, dot, 'moth', g.x, g.y, 9);
       }
     });
 
-    // ── 烟囱烟 ──
-    scene.smokes.forEach((s, i) => {
-      for (let k = 0; k < SMOKE_PUFFS; k += 1) {
-        const sprite = host.addSprite(`Smoke_${i}_${k}`, FOG_ASSETS[(i + k) % 3], s.x, s.y, s.size, s.size * 0.82, root);
-        if (!sprite) {
-          continue;
-        }
-        sprite.color = rgba(s.tint[0], s.tint[1], s.tint[2]);
-        const op = sprite.node.addComponent(UIOpacity);
-        op.opacity = 0;
-        const life = 6 + this.rand() * 2.5;
-        this.puffs.push({ node: sprite.node, op, sx: s.x, sy: s.y, size: s.size, age: (k / SMOKE_PUFFS) * life, life, drift: 10 + this.rand() * 12, rise: 30 + this.rand() * 14, spin: (this.rand() - 0.5) * 16 });
-      }
-    });
-
-    // ── 薄雾:几大片很淡的云团慢慢横移 ──
+    // ── 烟囱烟 + 薄雾:按贴图分三轮建(同一张贴图的节点相邻才能合批;烟团之间谁先画无所谓)──
+    const mistSpecs: Array<{ x: number; y: number; w: number; v: number }> = [];
     if (scene.mist) {
       for (let i = 0; i < MIST_COUNT; i += 1) {
         const w = 1100 + this.rand() * 600;
         const x = (this.rand() - 0.5) * (def.width + w);
         const y = (i / (MIST_COUNT - 1) - 0.5) * def.height * 0.9 + (this.rand() - 0.5) * 120;
-        const sprite = host.addSprite(`Mist_${i}`, FOG_ASSETS[i % 3], x, y, w, w * 0.46, root);
+        mistSpecs.push({ x, y, w, v: (10 + this.rand() * 10) * (i % 2 === 0 ? 1 : -1) });
+      }
+    }
+    for (let tex = 0; tex < FOG_ASSETS.length; tex += 1) {
+      scene.smokes.forEach((smoke, i) => {
+        for (let k = 0; k < SMOKE_PUFFS; k += 1) {
+          if ((i + k) % FOG_ASSETS.length !== tex) {
+            continue;
+          }
+          const sprite = host.addSprite(`Smoke_${i}_${k}`, FOG_ASSETS[tex], smoke.x, smoke.y, smoke.size, smoke.size * 0.82, root);
+          if (!sprite) {
+            continue;
+          }
+          sprite.color = rgba(smoke.tint[0], smoke.tint[1], smoke.tint[2]);
+          const op = sprite.node.addComponent(UIOpacity);
+          op.opacity = 0;
+          const life = 6 + this.rand() * 2.5;
+          this.puffs.push({ node: sprite.node, op, sx: smoke.x, sy: smoke.y, size: smoke.size, age: (k / SMOKE_PUFFS) * life, life, drift: 10 + this.rand() * 12, rise: 30 + this.rand() * 14, spin: (this.rand() - 0.5) * 16 });
+        }
+      });
+      // 薄雾:几大片很淡的云团慢慢横移
+      mistSpecs.forEach((m, i) => {
+        if (!scene.mist || i % FOG_ASSETS.length !== tex) {
+          return;
+        }
+        const sprite = host.addSprite(`Mist_${i}`, FOG_ASSETS[tex], m.x, m.y, m.w, m.w * 0.46, root);
         if (!sprite) {
-          continue;
+          return;
         }
         sprite.color = rgba(scene.mist.tint[0], scene.mist.tint[1], scene.mist.tint[2]);
         sprite.node.addComponent(UIOpacity).opacity = scene.mist.alpha;
-        this.mists.push({ node: sprite.node, x, y, w, v: (10 + this.rand() * 10) * (i % 2 === 0 ? 1 : -1) });
-      }
+        this.mists.push({ node: sprite.node, x: m.x, y: m.y, w: m.w, v: m.v });
+      });
     }
 
     // ── 飘雪 ──
@@ -219,6 +278,7 @@ export class TownScene {
         tween<Node>().to(period, { scale: new Vec3(sx * 1.01, 1.022, 1) }, { easing: 'sineInOut' }).to(period, { scale: new Vec3(sx, 1, 1) }, { easing: 'sineInOut' }),
       ).start();
       addStatic(node, n.y);
+      addCull(node, n.x - w, n.x + w, n.y - 40, n.y + n.height + 40);
     });
 
     // ── 走动的人 / 动物 ──
@@ -275,11 +335,74 @@ export class TownScene {
   sortables(): Array<{ node: Node; y: number }> {
     const out: Array<{ node: Node; y: number }> = [];
     for (const w of this.walkers) {
-      if (w.node.isValid) {
+      if (w.node.isValid && w.node.active) {
         out.push({ node: w.node, y: w.cfg.perch ?? w.y });
       }
     }
     return out;
+  }
+
+  /**
+   * 每帧(排序之前)调:只打开「挡在某个东西前面、且和它有重叠」的遮挡条,其余关掉。
+   * boxes = 队伍 / 镜头里的 NPC / 怪;走动的人和明火由这一层自己补上。view = 镜头范围(带余量),外面的走动的人直接不画。
+   */
+  occlude(boxes: OccludeBox[], view: { x0: number; x1: number; y0: number; y1: number }): void {
+    if (!this.root || !this.root.isValid) {
+      return;
+    }
+    this.frame += 1;
+    const mark = this.frame;
+    const live: Strip[] = [];
+    const colW = this.stripColW;
+    const left = this.stripLeft;
+    const cols = this.stripCols;
+    const visit = (x0: number, x1: number, y0: number, y1: number, foot: number): void => {
+      const c0 = Math.max(0, Math.floor((x0 - left) / colW));
+      const c1 = Math.min(cols.length - 1, Math.floor((x1 - left) / colW));
+      for (let c = c0; c <= c1; c += 1) {
+        const list = cols[c];
+        if (!list) {
+          continue;
+        }
+        for (const s of list) {
+          if (s.mark !== mark && s.foot < foot && s.y1 > y0 && s.y0 < y1) {
+            s.mark = mark;
+            live.push(s);
+            if (!s.on) {
+              s.on = true;
+              s.node.active = true;
+            }
+          }
+        }
+      }
+    };
+    for (const b of boxes) {
+      visit(b.x0, b.x1, b.y0, b.y1, b.foot);
+    }
+    for (const w of this.walkers) {
+      const h = w.cfg.height;
+      const on = w.x + h > view.x0 && w.x - h < view.x1 && w.y + h * 1.4 > view.y0 && w.y - 60 < view.y1;
+      if (w.node.isValid && w.node.active !== on) {
+        // 关着的时候位置 / 动作照常推进(stepWalker 不看节点开关),重新进镜头直接接上
+        w.node.active = on;
+      }
+      if (on) {
+        const foot = w.cfg.perch ?? w.y;
+        visit(w.x - h * 0.6, w.x + h * 0.6, Math.min(foot, w.y) - 10, w.y + h * 1.25, foot);
+      }
+    }
+    for (const f of this.flameBoxes) {
+      if (f.node.isValid && f.node.active) {
+        visit(f.x0, f.x1, f.y0, f.y1, f.foot);
+      }
+    }
+    for (const s of this.liveStrips) {
+      if (s.mark !== mark) {
+        s.on = false;
+        s.node.active = false;
+      }
+    }
+    this.liveStrips = live;
   }
 
   step(dt: number): void {
@@ -418,7 +541,7 @@ export class TownScene {
       op.opacity = Math.round(mote.peak);
     } else {
       sprite.color = kind === 'ember' ? rgba(255, 170, 70) : rgba(255, 232, 170);
-      additive(sprite);
+      applyAdditive(sprite);
       mote.peak = kind === 'ember' ? 230 : 170;
       // 火星错开起跑
       mote.life = 1;
@@ -438,6 +561,9 @@ export class TownScene {
     this.mists = [];
     this.motes = [];
     this.walkers = [];
+    this.flameBoxes = [];
+    this.stripCols = [];
+    this.liveStrips = [];
   }
 
   private rand(): number {
