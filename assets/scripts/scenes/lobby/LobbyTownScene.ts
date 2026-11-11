@@ -39,6 +39,8 @@ interface Walker {
   cfg: WorldSceneDef['walkers'][number];
   node: Node; art: Node; skeleton: sp.Skeleton | null;
   x: number; y: number; idx: number; dir: 1 | -1; wait: number; moving: boolean; facing: 1 | -1; base: number; idle: string; move: string;
+  /** 素材本身朝左时 = -1(缩放 x 再翻一次)。 */
+  flipArt: 1 | -1;
 }
 /** 遮挡条:世界坐标包围盒 + 脚线;on = 当前是否打开;mark = 最近一次被需要的帧号。 */
 interface Strip { node: Node; x0: number; x1: number; y0: number; y1: number; foot: number; on: boolean; mark: number }
@@ -291,8 +293,8 @@ export class TownScene {
       shadow.fill();
       const art = host.addChildPlainNode(node, 'Spine', 0, 0, 200, 200);
       const skeleton = art.addComponent(sp.Skeleton);
-      skeleton.premultipliedAlpha = false;
-      const walker: Walker = { cfg, node, art, skeleton: null, x, y, idx: cfg.route.length > 1 ? 1 : 0, dir: 1, wait: this.rand() * 2, moving: false, facing: 1, base: 1, idle: '', move: '' };
+      skeleton.premultipliedAlpha = !!cfg.pma;
+      const walker: Walker = { cfg, node, art, skeleton: null, x, y, idx: cfg.route.length > 1 ? 1 : 0, dir: 1, wait: this.rand() * 2, moving: false, facing: 1, base: 1, idle: '', move: '', flipArt: 1 };
       this.walkers.push(walker);
       loadSharedSpineData(cfg.spine, null, 'TownScene', (data) => {
         if (!data || !node.isValid || !art.isValid) {
@@ -311,11 +313,14 @@ export class TownScene {
           }
           const runtime = data.getRuntimeData(true) as unknown as { height?: number; animations?: Array<{ name: string }> } | null;
           const names = (runtime?.animations ?? []).map((item) => item.name);
-          walker.idle = names.find((name) => name === 'idle') ?? names[0] ?? '';
-          walker.move = names.find((name) => name === 'run_b') ?? names.find((name) => name === 'run_h') ?? walker.idle;
+          // 怪物骨骼:idle / run_b / run_h;英雄战斗骨骼(act_*):stand / run
+          walker.idle = names.find((name) => name.toLowerCase() === 'idle') ?? names.find((name) => name.toLowerCase() === 'stand') ?? names[0] ?? '';
+          walker.move = names.find((name) => name === 'run_b') ?? names.find((name) => name === 'run_h') ?? names.find((name) => name === 'run') ?? walker.idle;
           const dir = cfg.spine.split('/')[2] ?? '';
-          walker.base = (cfg.height * (GUARD_MONSTER_DB_SCALE[dir] ?? 1)) / Math.max(40, runtime?.height ?? 200);
-          art.setScale(walker.base * walker.facing, walker.base, 1);
+          // bodyH 给了(新接的 NPC 素材):按可见身高直接缩;否则走怪物那张缩放表
+          walker.base = cfg.bodyH ? cfg.height / cfg.bodyH : (cfg.height * (GUARD_MONSTER_DB_SCALE[dir] ?? 1)) / Math.max(40, runtime?.height ?? 200);
+          walker.flipArt = cfg.faceLeft ? -1 : 1;
+          art.setScale(walker.base * walker.facing * walker.flipArt, walker.base, 1);
           if (def.actorTint) {
             skeleton.color = rgba(def.actorTint[0], def.actorTint[1], def.actorTint[2]);
           }
@@ -512,7 +517,7 @@ export class TownScene {
     if (!sk || !sk.isValid) {
       return;
     }
-    w.art.setScale(w.base * w.facing, w.base, 1);
+    w.art.setScale(w.base * w.facing * w.flipArt, w.base, 1);
     if (moving !== w.moving) {
       w.moving = moving;
       const anim = moving ? w.move : w.idle;

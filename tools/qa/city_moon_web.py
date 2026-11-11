@@ -18,7 +18,11 @@ import urllib.request
 
 import websockets
 
-import boss_bar_cdp as base
+# 独立端口 + 独立配置目录名:别的会话的截图脚本都用 9334,收尾时还会按 `lootchain-qa\edge_*` 清残留,
+# 用默认值的话我这边跑到一半会被连带关掉(11-11 两次「指定的网络名不再可用」都是这么来的)
+os.environ.setdefault('EDGE_PORT', '9341')
+
+import boss_bar_cdp as base  # noqa: E402
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 OUT = ARGS[0] if ARGS else os.path.join(base.SCRATCH, 'city_moon_web')
@@ -109,12 +113,31 @@ PROBE = """
 """
 
 
+# NPC 骨骼选型(--npc-sheet):把候选骨骼一排 8 个摆到广场上(走现成「走动的人」那套加载 / 缩放),截图给用户挑
+NPC_CANDIDATES = [
+    'spine/monster/temple_servant/servant_001', 'spine/monster/staff_priest/staff_001', 'spine/monster/wand_apprentice/wand_halidom_001',
+    'spine/monster/arcane_mage/wand_halidom_001', 'spine/monster/grand_magus/wand_warlock_001', 'spine/monster/halidom_keeper/halidom_001',
+    'spine/monster/cursed_caster/staff_001', 'spine/monster/infected_male/infected_bishop_001',
+    'spine/monster/spear_male/spear_001', 'spine/monster/sword_knight/sword_shield_001', 'spine/monster/crossbow_male/crossbow_001',
+    'spine/monster/bow_male/bow_001', 'spine/monster/sword_male/sword_001', 'spine/monster/blunt_male/blunt_001',
+    'spine/monster/twohand_soldier/twohand_hammer_001', 'spine/monster/hammer_tanker/hammer_shield_001',
+    'spine/monster/forge_overseer/hammer_001', 'spine/monster/dagger_female/dagger_001', 'spine/monster/mutant_fatman/mutant_001',
+    'spine/monster/abyss_jailer/jailer_001',
+]
+# 英雄战斗骨骼(act_*)的包围盒带技能特效,按「走动的人」那套缩放会小得看不见;要看它们加 --npc-sheet-heroes
+if '--npc-sheet-heroes' in sys.argv:
+    NPC_CANDIDATES = ['spine/hero/act_%s/act_%s' % (n, n) for n in ('1001', '1002', '1003', '1004', '1006', '1008', '1012', '1016', '1017', '1021', '1028', '1036',
+                                                                    '1037', '1038', '1045', '1046', '1047', '1048', '1052', '1053', '1057', '21006', '21023', '21053')]
+NPC_SHEET = '--npc-sheet' in sys.argv or '--npc-sheet-heroes' in sys.argv
+EVAL_FILE = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--eval-file=')), '')
+
+
 def js(body):
     return "(async ()=>{ const cc = window.__cc; " + ROOT_JS + " try { " + body + " } catch (e) { return 'err ' + e.message; } })()"
 
 
 async def main():
-    profile = base.PROFILE + '_citymoon'
+    profile = os.path.join(base.SCRATCH, 'citymoon_browser_profile')
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
                              '--window-size=1600,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     logs = []
@@ -213,6 +236,63 @@ async def main():
             print('reach', await ev(REACH, 600), flush=True)
             await shot('00_arrive')
             points = json.loads(await ev(POINTS))
+            if EVAL_FILE:
+                # 调试:进主城后执行一段 JS(文件内容 = async 函数体,可用 cc / root / t),打印返回值
+                body = open(EVAL_FILE, encoding='utf-8').read()
+                print('eval', await ev(body, 600), flush=True)
+                if '--shot' in sys.argv:
+                    await shot('eval')
+                return
+            if NPC_SHEET:
+                from PIL import Image, ImageDraw, ImageFont
+                try:
+                    font = ImageFont.truetype('msyh.ttc', 20)
+                except Exception:
+                    font = ImageFont.load_default()
+                info = json.loads(await ev("""
+                  const load = p => new Promise(res => cc.resources.load(p, cc.sp.SkeletonData, (e, d) => res(e ? null : d)));
+                  const out = {};
+                  for (const p of %s) { const d = await load(p); if (!d) { out[p] = null; continue; }
+                    const rt = d.getRuntimeData(true); out[p] = { anims: rt.animations.map(a => a.name), h: Math.round(rt.height), w: Math.round(rt.width), skins: rt.skins.map(k => k.name).slice(0, 6) }; }
+                  return JSON.stringify(out);""" % json.dumps(NPC_CANDIDATES), 900))
+                for p in NPC_CANDIDATES:
+                    print('spine', p.split('/', 2)[2], json.dumps(info.get(p), ensure_ascii=False)[:260], flush=True)
+                cam = (-150, -330)
+                await ev(TP.replace('{x}', str(cam[0])).replace('{y}', str(cam[1])))
+                await ev("t.npcNodes.forEach(n => { n.node.active = false; }); t.cullItems = t.cullItems.filter(c => !t.npcNodes.some(n => n.node === c.node)); return 1;")
+                pages = []
+                for b in range(0, len(NPC_CANDIDATES), 8):
+                    batch = NPC_CANDIDATES[b:b + 8]
+                    spots = [(-650 + i * 143, -70) for i in range(len(batch))]
+                    await ev("""
+                      const sc = t.def.scene;
+                      sc.walkers = %s.map((p, i) => ({ spine: p, height: 215, speed: 0, pause: [1, 2], route: [%s[i]] }));
+                      t.entityRoot.children.filter(n => /^Scene(Walker|Strip|Flame|Idler)_/.test(n.name)).forEach(n => n.destroy());
+                      t.propNodes = t.propNodes.filter(q => !/^Scene(Walker|Strip|Flame|Idler)_/.test(q.node.name));
+                      t.scene.clear(); t.ensureScene(); return 1;""" % (json.dumps(batch), json.dumps([list(v) for v in spots])))
+                    for _ in range(40):
+                        await asyncio.sleep(1.5)
+                        if await ev("return t.scene.walkers.length > 0 && t.scene.walkers.every(w => w.skeleton) ? 'ok' : 'wait';") == 'ok':
+                            break
+                    await asyncio.sleep(2)
+                    name = 'npcsheet_%d' % (b // 8)
+                    await shot(name)
+                    im = Image.open(os.path.join(OUT, name + '.jpg')).convert('RGB')
+                    d = ImageDraw.Draw(im)
+                    k = 1600 / 2080.0
+                    for i, (p, (wx, wy)) in enumerate(zip(batch, spots)):
+                        sx, sy = 800 + (wx - cam[0]) * k, 470 - (wy - cam[1]) * k
+                        text = '%d %s' % (b + i + 1, p.split('/')[2])
+                        tw = d.textlength(text, font=font)
+                        d.rectangle([sx - tw / 2 - 5, sy + 8, sx + tw / 2 + 5, sy + 36], fill=(0, 0, 0))
+                        d.text((sx - tw / 2, sy + 9), text, fill=(255, 230, 150), font=font)
+                    pages.append(im.crop((0, 60, 1600, 560)))
+                sheet = Image.new('RGB', (1600, 500 * len(pages)), (0, 0, 0))
+                for i, im in enumerate(pages):
+                    sheet.paste(im, (0, 500 * i))
+                sheet.save(os.path.join(OUT, 'npc_spine_sheet.jpg'), quality=90)
+                print('sheet', os.path.join(OUT, 'npc_spine_sheet.jpg'), sheet.size, flush=True)
+                return
             if DEBUG_WALK:
                 x0, y0, x1, y1 = [float(v) for v in DEBUG_WALK.split(',')]
                 await ev(TP.replace('{x}', str(x0)).replace('{y}', str(y0)))

@@ -66,8 +66,8 @@ export const BACKGROUND_ORDER = [
   'ui/gacha', 'spine/gacha', 'ui/hero', 'ui/hero-detail', 'ui/hero-roster', 'ui/forge', 'ui/equip', 'ui/bag', 'ui/shop', 'ui/mission',
   // 战斗界面 / 音乐
   'ui/battle', 'audio/',
-  // 主城、其余地图、玩法页
-  'ui/world/', 'ui/raid', 'ui/crystal', 'ui/guard', 'ui/daily', 'ui/codex', 'ui/formation', 'ui/profile', 'ui/adventure',
+  // 主城、其余地图、玩法页(spine/npc = 主城 NPC 骨骼,跟着地图素材一起下)
+  'ui/world/', 'spine/npc/', 'ui/raid', 'ui/crystal', 'ui/guard', 'ui/daily', 'ui/codex', 'ui/formation', 'ui/profile', 'ui/adventure',
   // 其余英雄 / 怪物骨骼,最后是技能特效
   'spine/hero/', 'spine/monster/', 'ui/', 'spine/effect/',
 ];

@@ -143,7 +143,21 @@ const SX = (px: number, py: number): { x: number; y: number } => {
   return { x: X(x), y: Y(y) };
 };
 
-const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, x, y, flip]) => ({ code, name, asset: CITY4(art), ...SX(x, y), height: 215, flip }));
+/**
+ * NPC 骨骼(11-11 用户「npc可以骨骼素材中找合适的用」「去D盘里找,很多素材的」):素材在 spine/npc/<名>/,
+ * 来自 D:\骨骼\失落之剑 素材包的「怪NPC」(4.1.24 → 4.2.43,沿用原图集;转换见 tools/qa/npc_spine_convert.ps1)。
+ * 没配的 NPC 仍是站立图 + 程序呼吸;骨骼加载失败也会自动退回站立图。
+ */
+const NPC_SPINE: Partial<Record<WorldNpcCode, NonNullable<WorldMapNpc['spine']>>> = {
+  // 摆摊老婆婆(整套带摊位:龙骨、兵器罐、盾、打盹的猫)。这批素材的待机动作会把根骨骼缩到 0.25(图集也按 0.25 出),
+  // 所以 bodyH / footY 要填「动起来以后」的尺寸 = 导出 json 里 skeleton.height × 0.25(452 → 113)。整摊显示 270 高,人约 150;
+  // 不转身(摊位翻过来很怪)
+  VENDOR: { path: 'spine/npc/audrey/audrey', bodyH: 113, height: 270, footY: -7, pma: true, noTurn: true },
+};
+
+const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, x, y, flip]) => ({
+  code, name, asset: CITY4(art), ...SX(x, y), height: 215, flip, ...(NPC_SPINE[code] ? { spine: NPC_SPINE[code] } : {}),
+}));
 
 const PROPS: WorldMapProp[] = [
   // 底图块:四周多补了一圈虚化暗边,比地图大,超宽屏看到的是暗边不是黑条

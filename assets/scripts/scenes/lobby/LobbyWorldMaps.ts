@@ -110,6 +110,13 @@ export interface WorldMapNpc {
   height: number;
   /** 1 = 图朝右不翻;-1 = 水平翻转。 */
   flip: 1 | -1;
+  /**
+   * 用骨骼代替站立图(11-11 用户「npc可以骨骼素材中找合适的用」):骨骼到了就换上(待机动作自己会动),没到 / 加载失败就一直用站立图。
+   * path = resources 路径(不带扩展名);bodyH = 骨骼摆好姿势时的可见高度(骨骼单位),按它把骨骼缩到 height(缺省 = 站立图的 height);
+   * footY = 脚底相对骨骼原点的高度(骨骼单位,原点不在脚底的素材才填);anim 缺省找 idle / stand;
+   * pma = 图集是预乘透明;faceLeft = 素材本身朝左(缺省朝右);noTurn = 队长走近也不转身(带摊位 / 铁砧的整套造型,翻过来很怪)。
+   */
+  spine?: { path: string; bodyH: number; height?: number; footY?: number; anim?: string; pma?: boolean; faceLeft?: boolean; noTurn?: boolean };
 }
 
 export interface WorldMapProp {
@@ -311,7 +318,15 @@ export interface WorldSceneDef {
   /** 飘雪片数。 */
   snow?: number;
   /** 走动的人 / 动物(骨骼):沿 route 来回,每到一点停 pause 秒;perch = 排序用的脚线(停在屋脊上的鸟要排到屋顶前面)。 */
-  walkers: Array<{ spine: string; height: number; route: number[][]; speed: number; pause: [number, number]; perch?: number; timeScale?: number }>;
+  walkers: Array<{
+    spine: string; height: number; route: number[][]; speed: number; pause: [number, number]; perch?: number; timeScale?: number;
+    /** 图集是预乘透明(怪物骨骼不是;新接的 NPC 素材有的是)。 */
+    pma?: boolean;
+    /** 骨骼摆好姿势时的可见高度(骨骼单位):给了就按它缩到 height,不走怪物那张缩放表。 */
+    bodyH?: number;
+    /** 素材本身朝左(缺省朝右)。 */
+    faceLeft?: boolean;
+  }>;
   /** 站着不走的人(静态图 + 原地呼吸)。 */
   idlers: Array<{ asset: string; x: number; y: number; height: number; flip?: boolean }>;
 }
@@ -994,6 +1009,15 @@ export function worldMapPackPrefixes(code: WorldMapCode): string[] {
     return [];
   }
   const set = new Set<string>(worldMapAssetPaths(code).map((path) => path.replace(/\/spriteFrame$/, '')));
+  // 骨骼 NPC / 整图场景里走动的人:骨骼目录也算进这张图
+  for (const npc of def.npcs) {
+    if (npc.spine) {
+      set.add(npc.spine.path.slice(0, npc.spine.path.lastIndexOf('/')));
+    }
+  }
+  for (const walker of def.scene?.walkers ?? []) {
+    set.add(walker.spine.slice(0, walker.spine.lastIndexOf('/')));
+  }
   for (const camp of def.camps) {
     if (camp.spine) {
       set.add(camp.spine.slice(0, camp.spine.lastIndexOf('/')));

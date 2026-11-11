@@ -63,7 +63,7 @@ import { TownScene, sceneWalkable, type OccludeBox } from './LobbyTownScene';
 import { TownPathfinder, townCoordText, type PathPoint } from './LobbyTownPathfinder';
 import { applyWorldShader, isSwayAsset, setWindHole, updateWorldShaderOrigin, useWindHole } from './LobbyWorldShaders';
 import { groundSplatReady, mountGroundSplat } from './LobbyGroundSplat';
-import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapDef, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
+import { CHEST_ART, distToLines, FIELD_DROP_ICON, POI_ASSET, POI_MAP_ICON, WORLD_MAPS, worldMapDef, type WorldMapBuilding, type WorldMapCamp, type WorldMapCampAura, type WorldMapDef, type WorldMapNpc, type WorldMapChest, type WorldMapExit, type WorldMapBlock, type WorldMapPoi, type WorldMapProp, type WorldNpcCode, worldAsset } from './LobbyWorldMaps';
 import type { WorldMapCode, WorldStateVO } from '../../types/WorldTypes';
 
 /**
@@ -611,7 +611,14 @@ export class LobbyTownRenderer {
   /** docs/50:当前所在地图 + 切图后的出生点。 */
   private mapCode: WorldMapCode = 'CITY';
   private pendingSpawn: { x: number; y: number } | null = null;
-  private npcNodes: Array<{ code: WorldNpcCode; node: Node; y: number; x: number; h: number; art: Node; flip: 1 | -1; face: 1 | -1; phase: number }> = [];
+  /**
+   * art = 身体节点(站立图,或换上的骨骼);base = 身体的基础缩放(站立图 1,骨骼 = 缩到目标身高的倍数);
+   * dir = 素材本身的朝向(1 朝右);breath = 要不要程序呼吸(骨骼的待机动作自己会动,不叠)。
+   */
+  private npcNodes: Array<{
+    code: WorldNpcCode; node: Node; y: number; x: number; h: number; art: Node; flip: 1 | -1; face: 1 | -1; phase: number;
+    base: number; dir: 1 | -1; breath: boolean; turn: boolean;
+  }> = [];
   /** NPC 贴图没在缓存里时 ensureNpcs 会整只跳过(addSprite 只发加载返回 null),跑图很少整页重绘:每帧节流补建(11-07 训练场教官看不到)。 */
   private npcRetryAt = 0;
   private waypointNode: Node | null = null;
@@ -3985,10 +3992,79 @@ export class LobbyTownRenderer {
       marker.outlineWidth = 3;
       this.worldUi(marker.node);
       tween(marker.node).repeatForever(tween<Node>().by(0.6, { position: new Vec3(0, 8, 0) }).by(0.6, { position: new Vec3(0, -8, 0) })).start();
-      this.npcNodes.push({ code: npc.code, node, y: npc.y, x: npc.x, h: npc.height, art: sprite.node, flip: npc.flip, face: npc.flip, phase: (Math.abs(npc.x) * 0.013 + Math.abs(npc.y) * 0.007) % 6.28 });
+      const entry = {
+        code: npc.code, node, y: npc.y, x: npc.x, h: npc.height, art: sprite.node, flip: npc.flip, face: npc.flip,
+        phase: (Math.abs(npc.x) * 0.013 + Math.abs(npc.y) * 0.007) % 6.28, base: 1, dir: 1 as 1 | -1, breath: true, turn: true,
+      };
+      this.npcNodes.push(entry);
+      if (npc.spine) {
+        this.mountNpcSpine(node, sprite.node, npc, entry);
+      }
       // 镜头外不画(11-11 实测:主城 12 个 NPC 全开着,每个 3 次多绘制,其中大半不在镜头里)
       this.addCull(node, npc.x - 180, npc.x + 180, npc.y - 60, npc.y + npc.height + 140);
     }
+  }
+
+  /**
+   * NPC 换骨骼(11-11 用户「npc可以骨骼素材中找合适的用」):骨骼数据到了就挂在站立图前面、把站立图关掉;
+   * 没到 / 加载失败什么都不改(站立图 + 程序呼吸照旧)。脚底对齐节点原点,按 bodyH 缩到 npc.height,染成本图的人物色调。
+   */
+  private mountNpcSpine(
+    node: Node, still: Node, npc: WorldMapNpc,
+    entry: { art: Node; base: number; dir: 1 | -1; breath: boolean; face: 1 | -1; flip: 1 | -1; h: number; turn: boolean },
+  ): void {
+    const cfg = npc.spine;
+    if (!cfg) {
+      return;
+    }
+    loadSharedSpineData(cfg.path, null, 'TownNpc', (data) => {
+      if (!data || !node.isValid || !still.isValid) {
+        return;
+      }
+      try {
+        const spineNode = this.host.addChildPlainNode(node, 'Spine', 0, 0, 200, 200);
+        spineNode.setSiblingIndex(still.getSiblingIndex() + 1);
+        const skeleton = spineNode.addComponent(sp.Skeleton);
+        skeleton.premultipliedAlpha = !!cfg.pma;
+        const runtimeData = resolveBattleUnitSpineRuntimeData(data);
+        if (runtimeData) {
+          patchBattleUnitSpineRuntimeEnums(data, runtimeData);
+        }
+        skeleton.skeletonData = data;
+        const runtime = data.getRuntimeData(true) as unknown as { animations?: Array<{ name: string }> } | null;
+        const names = (runtime?.animations ?? []).map((item) => item.name);
+        const lower = (name: string): string => name.toLowerCase();
+        const anim = (cfg.anim && names.includes(cfg.anim) ? cfg.anim : null)
+          ?? names.find((name) => lower(name) === 'idle') ?? names.find((name) => lower(name) === 'stand')
+          ?? names.find((name) => lower(name).includes('idle')) ?? names[0] ?? '';
+        if (anim) {
+          skeleton.setAnimation(0, anim, true);
+        }
+        const height = cfg.height ?? npc.height;
+        const base = height / Math.max(1, cfg.bodyH);
+        const dir: 1 | -1 = cfg.faceLeft ? -1 : 1;
+        if (cfg.noTurn) {
+          entry.turn = false;
+          entry.face = entry.flip;
+        }
+        spineNode.setPosition(0, -(cfg.footY ?? 0) * base, 0);
+        spineNode.setScale(entry.face * dir * base, base, 1);
+        this.applyActorTint(skeleton);
+        still.active = false;
+        entry.art = spineNode;
+        entry.base = base;
+        entry.dir = dir;
+        entry.breath = false;
+        // 骨骼和站立图身高不一样时:头顶名字 / 任务标记、遮挡包围盒跟着骨骼的身高走
+        if (height !== npc.height) {
+          entry.h = height;
+          node.getChildByName('Name')?.setPosition(0, height + 18, 0);
+          node.getChildByName('Marker')?.setPosition(0, height + 52, 0);
+        }
+      } catch (error) {
+        console.warn('[Town] npc spine failed', npc.code, cfg.path, error);
+      }
+    });
   }
 
   /** NPC 原地呼吸 + 队长走近时转身朝向他(11-11 用户「部分摆件和NPC需要加入动效」;所有地图的 NPC 都生效)。 */
@@ -3999,7 +4075,7 @@ export class LobbyTownRenderer {
       if (!npc.art.isValid || !npc.node.active) {
         continue;
       }
-      if (leader) {
+      if (leader && npc.turn) {
         const dx = leader.x - npc.x;
         const near = Math.abs(dx) < 420 && Math.abs(leader.y - npc.y) < 320;
         if (!near) {
@@ -4009,8 +4085,8 @@ export class LobbyTownRenderer {
           npc.face = dx > 0 ? 1 : -1;
         }
       }
-      const k = 0.5 + 0.5 * Math.sin(t * 1.9 + npc.phase);
-      npc.art.setScale(npc.face * (1 + 0.008 * k), 1 + 0.02 * k, 1);
+      const k = npc.breath ? 0.5 + 0.5 * Math.sin(t * 1.9 + npc.phase) : 0;
+      npc.art.setScale(npc.face * npc.dir * npc.base * (1 + 0.008 * k), npc.base * (1 + 0.02 * k), 1);
     }
   }
 
