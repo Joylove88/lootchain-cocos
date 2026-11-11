@@ -1,0 +1,22 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile tower-defense RPG battle screen, landscape 20:9 (about 1870x841).
+FOUR images are attached:
+- FIRST image = our APPROVED field battle HUD in the final in-game style (B style): round dark-frosted buttons with thin light outlines and white line icons, frosted dark capsules, thin clean bars, champagne only as a small accent.
+- SECOND image = our APPROVED backpack screen (frosted dark glass panels, thin champagne bar before section titles, champagne-gold primary pill, slate-grey secondary pill). Match its glass material, fonts and colours.
+- THIRD image = our APPROVED restyled tower-defense battle HUD (B style). Keep its HUD EXACTLY as it is (top capsule, coin chip, crystal bar, frosted hero slot plates, spell buttons, 战术 / 招募 buttons) and the same battlefield.
+- FOURTH image = our CURRENT (old style) hero info card that pops up when a hero is tapped. Use it ONLY to know which information exists; do NOT copy its spiky gold frame, ornaments or gold text.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass (#141821 at ~85% with background blur), rounded corners, 1px white outline at ~12% opacity with a soft uneven light along the top edge; no metal frames, no ornaments, no ribbons, no gems. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used sparingly. Rarity only as small coloured accents (purple #BA54F6 for this hero). Modern clean sans-serif typography. Simple flat white line icons. No glow, no sparkles. Calm, premium, matte (avoid AI look).
+
+SCENE: same battle as the third image, between two waves; the player has tapped one witch hero on the top row (she has a thin champagne ring on the ground under her slot).
+- Hero info card: a frosted glass card (about 420x330) floating next to that hero on the left side of the screen, with a small pointer notch towards her. Inside, top-down:
+  - Header row: round portrait (white-haired elf witch, thin purple outline) + bold white "契约魔女" + one champagne star + a small purple outline tag pill "SR" + on the right a tiny round ✕.
+  - A grey line "定位 远程 · 覆盖 8.5 格 · 普攻 元素球".
+  - Two stat chips in a row (dark frosted small capsules with white line icons): "攻击 27" and "攻速 0.8/秒".
+  - A thin divider, then two skill rows, each = small round white line icon + white name + grey state on the right:
+    "战技 · 烈焰领域" ... grey "2★ 解锁";
+    "专属大招 · 契约·朔夜降临" ... champagne "金色战术卡觉醒".
+  - A grey two-line description "在最前方敌人处生成 2.4-3.6 格宽的灼烧区,4 秒内每 0.5 秒对区内敌人造成 30% 攻击".
+  - Bottom line inside a dark frosted strip: grey "战术卡:暂无" + small champagne text link "点「战术」抽取 ›".
+- Between waves: directly under the top wave capsule and its row of dots, centred, a champagne-gold primary pill button (about 260x52) with dark text "提前迎战  +60 金币". The top-right grey text reads "下一波:小怪×12".
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.
