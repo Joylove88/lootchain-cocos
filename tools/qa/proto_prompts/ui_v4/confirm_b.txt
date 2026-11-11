@@ -1,0 +1,20 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack screen in the final in-game UI style (frosted dark glass panels, thin champagne bar before section titles, champagne-gold selected tab, light thin line icons). Match its fonts, colours, glass panel look and edge light exactly.
+- SECOND image = our APPROVED login screen in the same style. Use it for the exact look of the pill buttons (primary filled champagne-gold pill with dark text, secondary translucent slate-grey glass pill with white text) and the frosted glass card.
+- THIRD image = our CURRENT (old style) version of this confirm dialog over the field screen. Use it ONLY to know which information and controls exist and for the dimmed game scene behind; do NOT copy its red ribbon title band, spiky gold frame, red gems, or ornate red / gold buttons.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass panels (#141821 at ~85% with background blur), ~12px rounded corners, 1px white outline at ~12% opacity with a soft uneven light along the top edge; no metal frames, no ornaments, no ribbons, no gems. Hierarchy by size / weight / spacing. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used sparingly. Modern clean sans-serif typography. Simple flat white line icons with uniform stroke. No glow, no sparkles, no particles. Calm, premium, matte (avoid AI look).
+
+SCREEN: a small generic confirmation dialog ("are you sure?") shown over the field game screen. It is reused for many confirmations, so keep it simple and compact.
+- Behind: the field game screen from the third image (map, joystick, skill buttons, top-right menu) dimmed to about 35% brightness, slightly blurred.
+- Centre: ONE frosted dark glass dialog about 720x400, centred.
+  * Title row inside the top of the dialog: a short vertical champagne bar, then white title "转移装备" (about 30px, medium weight). A thin round line close "✕" at the top right. A thin faint divider under the title row.
+  * Body: three centred lines of white text (about 22px, comfortable line spacing):
+    "「烈焰之刃」正穿在 赤焰骑士 身上,"
+    "转移后对方该部位会空出。"
+    "确定转移给 夜帝?"
+  * Bottom: one centred row of two equal pill buttons (about 200x56, 32px apart): left = secondary translucent slate-grey glass pill "取消" with white text; right = primary filled champagne-gold pill "转移" with dark text.
+  * Nothing else inside the dialog: no icons, no illustrations, no extra decoration.
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.

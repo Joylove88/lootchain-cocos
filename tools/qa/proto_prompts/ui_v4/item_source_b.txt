@@ -1,0 +1,20 @@
+Generate ONE image: a finished UI mockup for a dark-fantasy mobile RPG, landscape 20:9 (about 1870x841).
+THREE images are attached:
+- FIRST image = our APPROVED backpack screen in the final in-game UI style (frosted dark glass panels, thin champagne bar before section titles, champagne-gold selected tab, light thin line icons). Match its fonts, colours, glass panel look and edge light exactly.
+- SECOND image = our APPROVED login screen in the same style. Use it for the exact look of the pill buttons (primary filled champagne-gold pill with dark text, secondary translucent slate-grey glass pill with white text) and the frosted glass card.
+- THIRD image = our CURRENT (old style) version of this popup over the field screen. Use it ONLY to know which information and controls exist and for the dimmed game scene behind; do NOT copy its red ribbon title band, spiky gold frame, red gems, gold medallions or ornate gold buttons.
+
+OUR UI STYLE (must follow exactly):
+STYLE B — modern frosted glass: dark translucent glass panels (#141821 at ~85% with background blur), ~12px rounded corners, 1px white outline at ~12% opacity with a soft uneven light along the top edge; no metal frames, no ornaments, no ribbons, no gems. Hierarchy by size / weight / spacing. Colour: white #F2F2F2 and grey #A3A8B3 text, ONE warm accent champagne gold #E3C48A used sparingly. A muted coral red #E07A6A only for "not enough" numbers. Modern clean sans-serif typography. Simple flat white line icons with uniform stroke. No glow, no sparkles, no particles. Calm, premium, matte (avoid AI look).
+
+SCREEN: the item-source popup ("where to get this item") shown over the field game screen.
+- Behind: the field game screen from the third image (map, joystick, skill buttons, top-right menu) dimmed to about 35% brightness, slightly blurred.
+- Centre: ONE frosted dark glass dialog about 900x560, centred.
+  * Title row inside the top of the dialog: a short vertical champagne bar, then white title "获取途径" (about 30px, medium weight), then a thin grey vertical divider and the item name "高级强化石" in white. A thin round line close "✕" at the top right. A thin faint divider under the title row.
+  * Item summary row under the divider: a small item icon (dark red-veined crystal shard, painted, matte) in ONE rounded frosted square frame with a thin purple bottom edge (rarity), next to it grey "持有" + coral "3" + grey " / 需要 10". Right-aligned small grey text "还差 7 个".
+  * A list of 3 route rows, each a slightly lighter translucent glass strip (rounded 10px, faint outline, about 84px tall), with generous left padding:
+    1) left: a round frosted glass icon tile (about 56px) with a white line icon of a dungeon gate; title white "每日副本 · 熔火矿脉"; under it grey "熔火矿脉Ⅲ起掉落 · 周一 / 四 / 日开放"; right: a disabled pill (dark, grey text, no outline glow) "未开放".
+    2) icon tile with a white line shopping-bag icon; title "商店 · 道具"; grey "30 钻石 / 个,每日限购 10 个"; right: secondary slate-grey glass pill "前往".
+    3) icon tile with a white line four-point-star summon icon; title "召唤 · 装备召唤"; grey "装备召唤产出"; right: secondary slate-grey glass pill "前往".
+  * No bottom buttons.
+All text exactly as written, Simplified Chinese, crisp. Output only the single finished mockup image, no annotations.
