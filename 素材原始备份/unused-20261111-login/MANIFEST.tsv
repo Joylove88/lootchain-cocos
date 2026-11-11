@@ -1,0 +1,30 @@
+backup_path	original_path
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/README.txt	assets/resources/login-bg/README.txt
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/base/README.txt	assets/resources/login-bg/base/README.txt
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/bgm/12_Orisols- 古魂 音乐组-古魂Orisols世界观设定OST.mp3	assets/resources/login-bg/bgm/12_Orisols- 古魂 音乐组-古魂Orisols世界观设定OST.mp3
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/cloud_vortex/README.txt	assets/resources/login-bg/cloud_vortex/README.txt
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/cloud_vortex/docs/README.txt	assets/resources/login-bg/cloud_vortex/docs/README.txt
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/docs/IMPLEMENTATION_GUIDE.md	assets/resources/login-bg/docs/IMPLEMENTATION_GUIDE.md
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/login_bg_first.jpg	assets/resources/login-bg/login_bg_first.jpg
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/login_bg_loop_1080p.mp4	assets/resources/login-bg/login_bg_loop_1080p.mp4
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/vortex_cloud_layer_pack_final/README_CN.md	assets/resources/login-bg/vortex_cloud_layer_pack_final/README_CN.md
+素材原始备份/unused-20261111-login/resources_login-bg/login-bg/vortex_cloud_layer_pack_final/layer_stack_guide.json	assets/resources/login-bg/vortex_cloud_layer_pack_final/layer_stack_guide.json
+素材原始备份/unused-20261111-login/ui_login/ai/btn_login.png	assets/resources/ui/login/ai/btn_login.png
+素材原始备份/unused-20261111-login/ui_login/ai/btn_register.png	assets/resources/ui/login/ai/btn_register.png
+素材原始备份/unused-20261111-login/ui_login/ai/check_on.png	assets/resources/ui/login/ai/check_on.png
+素材原始备份/unused-20261111-login/ui_login/ai/divider_left.png	assets/resources/ui/login/ai/divider_left.png
+素材原始备份/unused-20261111-login/ui_login/ai/divider_right.png	assets/resources/ui/login/ai/divider_right.png
+素材原始备份/unused-20261111-login/ui_login/ai/input_account.png	assets/resources/ui/login/ai/input_account.png
+素材原始备份/unused-20261111-login/ui_login/ai/input_password.png	assets/resources/ui/login/ai/input_password.png
+素材原始备份/unused-20261111-login/ui_login/ai/panel_bg.png	assets/resources/ui/login/ai/panel_bg.png
+素材原始备份/unused-20261111-login/ui_login/ai/social_a.png	assets/resources/ui/login/ai/social_a.png
+素材原始备份/unused-20261111-login/ui_login/ai/social_discord.png	assets/resources/ui/login/ai/social_discord.png
+素材原始备份/unused-20261111-login/ui_login/ai/social_g.png	assets/resources/ui/login/ai/social_g.png
+素材原始备份/unused-20261111-login/ui_login/ai/social_x.png	assets/resources/ui/login/ai/social_x.png
+素材原始备份/unused-20261111-login/ui_login/login_button_main.png	assets/resources/ui/login/login_button_main.png
+素材原始备份/unused-20261111-login/ui_login/login_logo.png	assets/resources/ui/login/login_logo.png
+素材原始备份/unused-20261111-login/ui_login/side_btn_notice.png	assets/resources/ui/login/side_btn_notice.png
+素材原始备份/unused-20261111-login/ui_login/side_btn_prophecy.png	assets/resources/ui/login/side_btn_prophecy.png
+素材原始备份/unused-20261111-login/ui_login/side_btn_repair.png	assets/resources/ui/login/side_btn_repair.png
+素材原始备份/unused-20261111-login/ui_login/side_btn_service.png	assets/resources/ui/login/side_btn_service.png
+# 11-11 登录页改 B 风格后下线:旧红金登录切图 + 龙骑视频背景 / 海报 + 旧登录 BGM。main.scene 里对应节点已设不启用并清空引用;放回时把文件挪回原路径并在场景里重新绑定。

@@ -9,7 +9,7 @@ import {
   resources,
   SpriteFrame,
 } from 'cc';
-import { LOGIN_B_ASSET_PATHS, LOGIN_UI_ASSETS } from './login/LoginRenderer';
+import { LOGIN_B_ASSET_PATHS } from './login/LoginRenderer';
 import { LOBBY_C1812_RESOURCE_ICON_ASSETS, LOBBY_PLAYER_INFO_PANEL_ASSET } from './lobby/LobbyHudTypes';
 import {
   BATTLE_C1812_BANNER_DEFEAT_ASSET,
@@ -516,17 +516,7 @@ export class UiSpriteFrameCache {
   }
 
   resolve(path: string, overrides: UiSpriteFrameOverrides): SpriteFrame | undefined {
-    // 场景 Inspector 绑定的资源用于快速替换美术，不需要改代码路径。
-    if (path === LOGIN_UI_ASSETS.logo && overrides.logoFrame) {
-      return overrides.logoFrame;
-    }
-    if (path === LOGIN_UI_ASSETS.mainButton && overrides.mainButtonFrame) {
-      return overrides.mainButtonFrame;
-    }
-    const railIndex = LOGIN_UI_ASSETS.rightRail.findIndex((asset) => asset.path === path);
-    if (railIndex >= 0 && overrides.rightRailFrames[railIndex]) {
-      return overrides.rightRailFrames[railIndex];
-    }
+    void overrides; // 11-11 旧登录页 Inspector 覆盖图(logo / 主按钮 / 右栏)随红金登录素材一起下线,保留参数免得动所有调用点
     const cached = this.spriteFrames.get(path);
     if (cached) {
       return cached;

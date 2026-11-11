@@ -278,6 +278,7 @@ function collectUiDirPaths(dirs: readonly string[]): string[] {
   return paths;
 }
 
+// 11-11 登录页改 B 风格:这两个节点与 Audio_BGM 在 main.scene 里已设为不启用、并解除了视频 / 海报 / BGM 引用(素材移 素材原始备份/unused-20261111-login)
 const LOGIN_SCENE_BACKGROUND_NODE_NAMES = [
   'Login_BG_Poster',
   'Login_BG_Video',
@@ -331,6 +332,7 @@ const LEVEL_CONTRACT_SOURCE: Record<string, string> = { V04: '祭坛的回应', 
 
 @ccclass('LootChainGameRoot')
 export class LootChainGameRoot extends Component {
+  // 11-11 旧登录页红金切图的 Inspector 覆盖位,素材已下线(场景里已清空),字段保留免得改序列化
   @property(SpriteFrame)
   logoFrame: SpriteFrame | null = null;
 

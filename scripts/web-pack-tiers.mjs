@@ -7,7 +7,8 @@
 
 export const CORE_PREFIXES = [
   // 启动 / 登录
-  'login-bg', 'ui/boot', 'ui/login',
+  // 11-11 启动页 / 登录页 B 风格共用识海背景(旧 login-bg 视频 + 红金切图已下线)
+  'ui/boot', 'ui/login', 'ui/protagonist/b/soul_sea_bg',
   // 大厅 / 跑图 HUD / 终端 / 共用组件 / 引导
   // ui/town 只取 HUD / 终端 / 邮件;主城建筑图(神殿 / 工坊 / 商行…)随主城的进图加载门下载
   'ui/common', 'ui/glass', 'ui/town/hud', 'ui/town/terminal', 'ui/town/mail', 'ui/lobby', 'ui/guide',

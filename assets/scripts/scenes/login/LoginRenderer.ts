@@ -18,21 +18,6 @@ import type { UiKitHost } from '../UiKit';
 import { glassLabel, glassProtoMap, GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassLine, mountGlassSlice } from '../UiGlassKit';
 
 /**
- * 旧版登录页切图(2026-09 红金雕花 logo / 主按钮 / 右栏图标)。11-11 改 B 风格后页面不再使用,
- * 只为 UiSpriteFrameCache 里「场景 Inspector 覆盖图」的兼容判断保留路径。
- */
-export const LOGIN_UI_ASSETS = {
-  logo: 'ui/login/login_logo/spriteFrame',
-  mainButton: 'ui/login/login_button_main/spriteFrame',
-  rightRail: [
-    { label: '预言', path: 'ui/login/side_btn_prophecy/spriteFrame' },
-    { label: '客服', path: 'ui/login/side_btn_service/spriteFrame' },
-    { label: '公告', path: 'ui/login/side_btn_notice/spriteFrame' },
-    { label: '修复', path: 'ui/login/side_btn_repair/spriteFrame' },
-  ],
-};
-
-/**
  * 登录页 B 风格素材(11-11,原型 周报截图/2026-11-11_登录页/proto/login_b.png,用户确认):
  * 背景 / 字标与启动加载页同一套;线条图标由 tools/qa/login_icons_gen.py 生成;玻璃件取 UiGlassKit。
  * 启动时 UiSpriteFrameCache.preload 预读,首屏就是完整样式(没到的走重绘补上)。

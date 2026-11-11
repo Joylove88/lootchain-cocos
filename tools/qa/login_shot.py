@@ -48,6 +48,8 @@ async def shoot(mobile: bool, suffix: str) -> None:
                 await call('Network.setUserAgentOverride', {'userAgent': UA, 'platform': 'Android'})
             else:
                 await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            await call('Page.addScriptToEvaluateOnNewDocument', {'source': "window.__lcConsoleErrors = []; const _e = console.error.bind(console); console.error = (...a) => { try { window.__lcConsoleErrors.push(a.map(String).join(' ').slice(0, 200)); } catch (x) {} _e(...a); }; window.addEventListener('error', (ev) => window.__lcConsoleErrors.push('onerror ' + ev.message));"})
+            await call('Runtime.enable')
             await call('Page.navigate', {'url': base.PAGE})
             await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             v = None
@@ -67,6 +69,8 @@ async def shoot(mobile: bool, suffix: str) -> None:
                     await asyncio.sleep(2)
             print(suffix, 'view', v, flush=True)
             await asyncio.sleep(6)
+            errs = await ev("return JSON.stringify((window.__lcConsoleErrors || []).slice(0, 20));")
+            print(suffix, 'consoleErrors', errs, flush=True)
             for name, js in (('login', ''), ('login_language', 'root.openLoginLanguageDialog();')):
                 if js:
                     await ev(js + ' return 1;')
