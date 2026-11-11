@@ -23,8 +23,8 @@ function isPowerOfTwo(value: number): boolean {
   return value > 0 && (value & (value - 1)) === 0;
 }
 
-/** 贴图在包里的资源路径(子资源形如 spine/hero/sz_x/zhangjiao/texture);查不到返回空串。 */
-function resourcePathOf(uuid: string): string {
+/** 资源在包里的路径(贴图子资源形如 spine/hero/sz_x/zhangjiao/texture,骨骼数据形如 spine/hero/sz_x/sz_x);查不到返回空串。 */
+export function resourcePathOf(uuid: string): string {
   if (!uuid) {
     return '';
   }

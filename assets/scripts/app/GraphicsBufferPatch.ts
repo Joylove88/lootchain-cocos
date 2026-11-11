@@ -1,5 +1,6 @@
 import { gfx, Graphics, Node, RenderingSubMesh, sp, Sprite } from 'cc';
 import { HTML5, NATIVE } from 'cc/env';
+import { installSpineHeroFxTrim } from './SpineHeroFxTrim';
 import { installSpineTextureMips } from './SpineTextureMips';
 
 /**
@@ -274,7 +275,7 @@ export function installSpriteReleasedFrameGuard(): void {
   };
 }
 
-/** 启动时调用:Graphics 显存按需增长 + 原生 Graphics 停用重启后保持绘制 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护 + 角色骨骼贴图缩小抗锯齿。 */
+/** 启动时调用:Graphics 显存按需增长 + 原生 Graphics 停用重启后保持绘制 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护 + 角色骨骼贴图缩小抗锯齿 + 英雄骨骼自带特效里盖住人的贴图不画。 */
 export function installEnginePerfPatches(): void {
   installGraphicsBufferPatch();
   installNativeGraphicsReenablePatch();
@@ -282,4 +283,5 @@ export function installEnginePerfPatches(): void {
   installSiblingIndexGuard();
   installSpriteReleasedFrameGuard();
   installSpineTextureMips();
+  installSpineHeroFxTrim();
 }

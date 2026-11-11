@@ -246,6 +246,8 @@ async def run_view(name, port):
                 print('  shot(page)', os.path.basename(path), str(data)[:60], flush=True)
 
         await call('Runtime.enable')
+        # 保证本页在前台(后台页不出帧):万一还有别的页被打开,也不至于把游戏页晾在后面
+        await call('Page.bringToFront')
         await call('Emulation.setDeviceMetricsOverride', {'width': w, 'height': h, 'deviceScaleFactor': dpr, 'mobile': mobile,
                                                            'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
         if mobile:
@@ -275,6 +277,19 @@ async def run_view(name, port):
             await asyncio.sleep(1.5)
         print(name, 'lobby', await ev("const cv = cc.game.canvas; return JSON.stringify({ view: root.currentView, map: t && t.def && t.def.code, canvas: [cv.width, cv.height], css: [cv.clientWidth, cv.clientHeight], dpr: window.devicePixelRatio, mobile: cc.sys.isMobile, gl: (() => { try { const g = cc.director.root.device.gl; const e = g.getExtension('WEBGL_debug_renderer_info'); return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'n/a'; } catch (e) { return 'err'; } })() });"), flush=True)
 
+        if ONLY == 'lobby':
+            # --only=lobby --steps=…:只在大厅里跑自定义步骤(不进战斗 / 野外),js 里可用 cc / root / sleep;看英雄详情等界面用
+            for step in (json.load(open(STEPS_FILE, encoding='utf-8')) if STEPS_FILE else []):
+                if step.get('js'):
+                    lobby_js = "(async () => { const sleep = ms => new Promise(z => setTimeout(z, ms)); const cc = window.__cc, root = window.__root; " + step['js'] + " })()"
+                    print(name, 'step', (str(await raw(lobby_js, 300)) or '')[:20000], flush=True)
+                if step.get('wait'):
+                    await asyncio.sleep(float(step['wait']))
+                if step.get('shot'):
+                    await shot(step['shot'])
+            if logs:
+                print(name, 'page exceptions:', *logs[:12], sep='\n  ', flush=True)
+            return
         if ONLY in ('', 'guard'):
             print(name, 'enter', await raw(ENTER, 600), flush=True)
             calm = 0
@@ -318,6 +333,8 @@ async def run_view(name, port):
                         await shot(step['shot'])
                 await raw(RESUME)
                 await raw(EXIT)
+                if logs:
+                    print(name, 'page exceptions:', *logs[:12], sep='\n  ', flush=True)
                 return
             await shot('guard_01_melee')
             print(name, 'density', await raw(DENSITY, 60), flush=True)
@@ -387,8 +404,11 @@ async def main():
     profile = os.path.join(base.SCRATCH, 'battlepolish_browser_profile')
     gpu = os.environ.get('QA_GPU', '1') != '0'
     flags = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] if gpu else ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+    # --disable-extensions 必须带:本机 Edge 给每个新配置目录自动装上 Grammarly / Monica 等扩展,它们会弹出引导页(还会去连外网)、
+    # 把游戏页挤到后台 → 后台页不出帧,游戏画面停更,脚本卡在「进入战斗」不返回(2026-11-11 实际遇到)
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
-                             '--no-default-browser-check', '--window-size=1920,1080', '--autoplay-policy=no-user-gesture-required'] + flags + ['about:blank'])
+                             '--no-default-browser-check', '--disable-extensions', '--disable-sync', '--disable-default-apps', '--disable-component-update',
+                             '--window-size=1920,1080', '--autoplay-policy=no-user-gesture-required'] + flags + ['about:blank'])
     try:
         for _ in range(100):
             try:
