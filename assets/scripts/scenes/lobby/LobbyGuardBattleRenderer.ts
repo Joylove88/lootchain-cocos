@@ -152,7 +152,8 @@ import { estimateGlassTextWidth, makeGlassText, mountGlassCloseButton, mountGlas
 import { applyBattleNumber, BATTLE_NUMBER_FONT_FRAME_PATH, battleNumberWidth, type BattleNumberStyle } from './BattleNumberFont';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { mountSceneNearLayer, preloadSceneNearEffect } from './GuardSceneNear';
-import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, IMPACT_SIZE, impactFrame, MUZZLE_SIZE, muzzleFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
+import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, HP_BAR_TEXEL, hpBarFrame, IMPACT_SIZE, impactFrame, MUZZLE_SIZE, muzzleFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
+import type { HpBarPart } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_PASSIVE_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
 import { resolveC1812HeroResultPortraitPath } from '../C1812CommonUiAssets';
@@ -173,6 +174,33 @@ import { GUARD_ARCHETYPE_LABEL, GUARD_BLUE_PERKS, GUARD_GIANT_VISUAL_SCALE, guar
 const GUARD_MONSTER_VISUAL_H_CAP = 0.52;
 /** BOSS 血条锚头顶(2026-09-18 用户拍板);置 false 可切回顶部横幅。 */
 const GUARD_BOSS_BAR_ON_HEAD = true;
+/**
+ * 怪物血条(2026-11-11 战斗画面精致化 · 样片 09,用户「按这版做」):
+ * 小怪 = 胶囊深色底托 + 上亮下暗的渐层填充 + 掉血残影,条宽按体型分档(原先一律 110,一群怪挤在一起时几条叠成一片);
+ * 首领 = 深色底托 + 细亮边(只画一次),填充 / 残影 / 高光是胶囊精灵,掉血只改长度。
+ */
+const GUARD_BOSS_HP_W = 280;
+const GUARD_BOSS_HP_H = 16;
+const GUARD_BOSS_HP_FILL_COLOR = new Color(206, 50, 44, 255);
+const GUARD_BOSS_HP_GLOSS_COLOR = new Color(255, 126, 102, 150);
+/** 首领血量低于 35% 时填充转橙(沿用旧规则)。 */
+const GUARD_BOSS_HP_LOW_RATIO = 0.35;
+const GUARD_BOSS_HP_LOW_FILL_COLOR = new Color(238, 124, 44, 255);
+const GUARD_BOSS_HP_LOW_GLOSS_COLOR = new Color(255, 198, 128, 150);
+const GUARD_BOSS_HP_TRAIL_COLOR = new Color(250, 206, 182, 240);
+/** 掉血残影:先原地停一下(毫秒)再收回;收回 = 指数衰减(时间常数,毫秒)+ 每毫秒再收条宽的一小截(保证收得干净)。 */
+const GUARD_HP_TRAIL_HOLD_MS = 120;
+const GUARD_HP_TRAIL_TAU_MS = 110;
+const GUARD_HP_TRAIL_LINEAR_PER_MS = 0.0005;
+
+/** 小怪血条总宽(设计像素):普通怪约 0.46 格、坦克再宽两成、精英约 0.75 格。 */
+function guardMonsterHpBarWidth(kind: GuardMonster['kind'], unit: number): number {
+  if (kind === 'elite') {
+    return Math.max(86, Math.min(132, Math.round(unit * 0.75)));
+  }
+  const base = Math.max(64, Math.min(84, Math.round(unit * 0.46)));
+  return kind === 'tank' ? Math.round(base * 1.2) : base;
+}
 
 const GUARD_HERO_SCALE_TWEAK_BY_ASSET: Record<string, number> = {
   Eulenspigel: 1.2,
@@ -355,9 +383,18 @@ export interface GuardUnitView {
   hitFlashUntil: number;
   /** 受击闪色(缺省红;升星被动用自己的颜色:破甲红 / 溅射金 / 反伤白金,docs/41 §6)。 */
   hitFlashColor?: Color;
-  /** 小怪血条(2026-10-09,共享条层里的两个白贴图精灵:底 / 填充);满血隐藏,受伤才建。 */
+  /** 小怪血条(2026-10-09 起在共享条层里;2026-11-11 改胶囊:底托 / 残影 / 填充三个精灵);满血隐藏,受伤才建。首领的填充 / 残影 / 高光也记在这里(在它自己的血条节点下)。 */
   hpBg?: Node;
   hpFill?: Node;
+  /** 掉血残影:掉血后先留一段浅色,再收回到当前血量。 */
+  hpTrail?: Node;
+  /** 首领血条填充上半的高光带(只有首领有)。 */
+  hpGloss?: Node;
+  /** 填充条 / 残影当前画出的长度(设计像素;undefined = 没在显示)。 */
+  hpShownW?: number;
+  hpTrailW?: number;
+  /** 残影从这个时刻起开始收回(Date.now 毫秒)。 */
+  hpTrailHoldUntil?: number;
   /** 小怪血条相对怪物节点的高度与总宽(建视图时定)。 */
   hpBarOffsetY?: number;
   hpBarW?: number;
@@ -558,6 +595,8 @@ export class LobbyGuardBattleRenderer {
    * 连续绘制合成一次;排在所有单位节点之后、特效之前(placeBarLayer),每帧跟随单位位置。
    */
   private barLayer: Node | null = null;
+  /** 血条残影还在收的怪(小怪 / 首领):每帧只动这几条。 */
+  private readonly hpTrailViews = new Set<GuardUnitView>();
   /** 命中爆点骨骼节点复用池(按特效键);伤害数字节点复用池(有 / 无暴击箭头)。场地重建时随旧场地一起销毁,取用时按 isValid / parent 校验。 */
   private readonly hitFxPool = new Map<string, Node[]>();
   private readonly projectileFxPool = new Map<string, Node[]>();
@@ -751,6 +790,7 @@ export class LobbyGuardBattleRenderer {
     this.snapshot = null;
     this.heroViews.clear();
     this.monsterViews.clear();
+    this.hpTrailViews.clear();
     this.settleRequested = false;
     this.overlayShown = false;
     this.dragFromCell = null;
@@ -1159,6 +1199,7 @@ export class LobbyGuardBattleRenderer {
       }
       this.updateProjectiles(frameMs);
       this.interpolateMonsterViews(now);
+      this.advanceHpTrails(now, frameMs);
       this.raid?.frame((now - this.lastTickWallMs + this.tickAccumulatorMs) / TICK_MS);
       this.followHeroBars();
     } catch (error) {
@@ -1267,6 +1308,7 @@ export class LobbyGuardBattleRenderer {
     this.statsPanelSignature = '';
     this.heroViews.clear();
     this.monsterViews.clear();
+    this.hpTrailViews.clear();
     this.pickupViews.clear();
     this.trapViews.clear();
     this.zoneViews.clear();
@@ -8769,29 +8811,132 @@ export class LobbyGuardBattleRenderer {
     }
   }
 
-  /** 小怪血条:hpKey = 可见长度像素(-1 = 满血不显示)。 */
+  /**
+   * 血条胶囊件(2026-11-11 样片 09):图集里的半圆头胶囊九宫格(底托 / 填充 / 残影 / 首领大胶囊)。
+   * 九宫格的圆头按贴图像素算、贴图是 HP_BAR_TEXEL 倍精度,所以节点内容尺寸乘它、节点缩放除它,圆头才不会被拉成扁椭圆。
+   * width / height 是设计像素;anchorX = 0 时左边缘定位。
+   */
+  private mountHpCapsule(parent: Node, name: string, part: HpBarPart, anchorX: number, width: number, height: number, color?: Color): Node {
+    const node = this.host.addChildPlainNode(parent, name, 0, 0, width * HP_BAR_TEXEL, height * HP_BAR_TEXEL);
+    const frame = hpBarFrame(part);
+    const sprite = node.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    sprite.trim = false;
+    sprite.type = Sprite.Type.SLICED;
+    if (frame) {
+      sprite.spriteFrame = frame;
+    }
+    if (color) {
+      sprite.color = color;
+    }
+    const transform = node.getComponent(UITransform);
+    transform?.setAnchorPoint(anchorX, 0.5);
+    transform?.setContentSize(width * HP_BAR_TEXEL, height * HP_BAR_TEXEL);
+    node.setScale(1 / HP_BAR_TEXEL, 1 / HP_BAR_TEXEL, 1);
+    return node;
+  }
+
+  /** 胶囊件改长度(设计像素;高度不变)。 */
+  private static setHpCapsuleWidth(node: Node, width: number): void {
+    const transform = node.getComponent(UITransform);
+    if (transform) {
+      transform.setContentSize(width * HP_BAR_TEXEL, transform.height);
+    }
+  }
+
+  /**
+   * 填充条从 before 变到 shown 之后处理残影:掉血 → 残影停在掉血前的位置,稍后由 advanceHpTrails 收回
+   * (上一段还没收完就接着掉血:残影不往回跳,继续从原处收);回血 → 残影直接收掉。
+   */
+  private noteHpBarChange(view: GuardUnitView, before: number, shown: number): void {
+    const trail = view.hpTrail;
+    if (!trail || !trail.isValid) {
+      return;
+    }
+    if (shown < before) {
+      if (view.hpTrailW === undefined || view.hpTrailW < before) {
+        view.hpTrailW = before;
+        view.hpTrailHoldUntil = Date.now() + GUARD_HP_TRAIL_HOLD_MS;
+      }
+      trail.active = true;
+      LobbyGuardBattleRenderer.setHpCapsuleWidth(trail, view.hpTrailW);
+      this.hpTrailViews.add(view);
+    } else if (shown > before) {
+      trail.active = false;
+      view.hpTrailW = undefined;
+      this.hpTrailViews.delete(view);
+    }
+  }
+
+  /** 血条残影每帧收回:只走还有残影的那几条(小怪的在条层里,首领的在它自己的血条节点下)。 */
+  private advanceHpTrails(now: number, frameMs: number): void {
+    if (this.hpTrailViews.size === 0) {
+      return;
+    }
+    this.hpTrailViews.forEach((view) => {
+      const trail = view.hpTrail;
+      if (!trail || !trail.isValid || view.hpTrailW === undefined || view.hpShownW === undefined) {
+        this.hpTrailViews.delete(view);
+        return;
+      }
+      if (now < (view.hpTrailHoldUntil ?? 0)) {
+        return;
+      }
+      // 线性那一截按条宽算、封顶 100:首领条很宽,不封顶的话残影一闪就没了
+      const span = Math.min(view.hpBarW ?? GUARD_BOSS_HP_W, 100);
+      const gap = (view.hpTrailW - view.hpShownW) * Math.exp(-frameMs / GUARD_HP_TRAIL_TAU_MS) - span * GUARD_HP_TRAIL_LINEAR_PER_MS * frameMs;
+      if (gap <= 0.5) {
+        trail.active = false;
+        view.hpTrailW = undefined;
+        this.hpTrailViews.delete(view);
+        return;
+      }
+      view.hpTrailW = view.hpShownW + gap;
+      LobbyGuardBattleRenderer.setHpCapsuleWidth(trail, view.hpTrailW);
+    });
+  }
+
+  /** 小怪血条:hpKey = 可见长度像素(-1 = 满血不显示)。胶囊底托 + 渐层填充,掉血先留一段浅色残影再收回(2026-11-11 样片 09)。 */
   private syncMonsterHpBar(view: GuardUnitView, monster: GuardMonster, hpKey: number): void {
     const layer = this.ensureBarLayer();
     if (!layer) {
       return;
     }
     if (hpKey < 0) {
-      if (view.hpBg?.isValid) {
-        view.hpBg.active = false;
+      for (const node of [view.hpBg, view.hpTrail, view.hpFill]) {
+        if (node && node.isValid) {
+          node.active = false;
+        }
       }
-      if (view.hpFill?.isValid) {
-        view.hpFill.active = false;
-      }
+      view.hpShownW = undefined;
+      view.hpTrailW = undefined;
+      this.hpTrailViews.delete(view);
       return;
     }
     const width = view.hpBarW ?? 0;
-    if (!view.hpBg || !view.hpBg.isValid || !view.hpFill || !view.hpFill.isValid) {
-      view.hpBg = this.mountBarSprite(layer, `${view.node.name}HpBg`, 'bar', rgba(8, 8, 10, 210), 0.5, width, 6);
-      view.hpFill = this.mountBarSprite(layer, `${view.node.name}HpFill`, 'bar', monster.kind === 'elite' ? rgba(255, 150, 60, 240) : rgba(224, 82, 64, 230), 0, width, 6);
+    const fillH = monster.kind === 'elite' ? 6 : 5;
+    if (!view.hpBg || !view.hpBg.isValid || !view.hpFill || !view.hpFill.isValid || !view.hpTrail || !view.hpTrail.isValid) {
+      for (const node of [view.hpBg, view.hpTrail, view.hpFill]) {
+        if (node && node.isValid) {
+          node.destroy();
+        }
+      }
+      // 建的顺序就是叠放顺序:底托(四边各比填充大 1)→ 残影 → 填充
+      view.hpBg = this.mountHpCapsule(layer, `${view.node.name}HpBg`, 'plate', 0.5, width + 2, fillH + 2);
+      view.hpTrail = this.mountHpCapsule(layer, `${view.node.name}HpTrail`, 'trail', 0, width, fillH);
+      view.hpFill = this.mountHpCapsule(layer, `${view.node.name}HpFill`, monster.kind === 'elite' ? 'amber' : 'red', 0, width, fillH);
+      view.hpTrail.active = false;
+      view.hpShownW = undefined;
+      view.hpTrailW = undefined;
     }
+    // 血条是受伤才出现的:第一次出现按「从满血掉下来」算残影
+    const before = view.hpShownW ?? width;
+    const shown = Math.max(fillH, hpKey);
     view.hpBg.active = true;
     view.hpFill.active = true;
-    view.hpFill.getComponent(UITransform)?.setContentSize(Math.max(1, hpKey), 6);
+    LobbyGuardBattleRenderer.setHpCapsuleWidth(view.hpFill, shown);
+    view.hpShownW = shown;
+    this.noteHpBarChange(view, before, shown);
     this.positionMonsterBars(view, view.node.position.x, view.node.position.y);
   }
 
@@ -8802,19 +8947,58 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     const barY = y + (view.hpBarOffsetY ?? 0);
+    const left = x - (view.hpBarW ?? 0) / 2;
     bg.setPosition(x, barY, 0);
-    fill.setPosition(x - (view.hpBarW ?? 0) / 2, barY, 0);
+    fill.setPosition(left, barY, 0);
+    const trail = view.hpTrail;
+    if (trail && trail.isValid && trail.active) {
+      trail.setPosition(left, barY, 0);
+    }
+  }
+
+  /** 首领血条:只改胶囊精灵的长度(底托和细亮边建视图时画好,不再重画);掉血留残影。 */
+  private syncBossHpBar(view: GuardUnitView, ratio: number): void {
+    const fill = view.hpFill;
+    if (!fill || !fill.isValid) {
+      return;
+    }
+    const before = view.hpShownW ?? GUARD_BOSS_HP_W;
+    const shown = Math.max(GUARD_BOSS_HP_H, Math.round(GUARD_BOSS_HP_W * ratio));
+    if (view.hpShownW === shown) {
+      return;
+    }
+    const low = ratio <= GUARD_BOSS_HP_LOW_RATIO;
+    const fillSprite = fill.getComponent(Sprite);
+    const fillColor = low ? GUARD_BOSS_HP_LOW_FILL_COLOR : GUARD_BOSS_HP_FILL_COLOR;
+    if (fillSprite && !fillSprite.color.equals(fillColor)) {
+      fillSprite.color = fillColor;
+    }
+    LobbyGuardBattleRenderer.setHpCapsuleWidth(fill, shown);
+    const gloss = view.hpGloss;
+    if (gloss && gloss.isValid) {
+      const glossSprite = gloss.getComponent(Sprite);
+      const glossColor = low ? GUARD_BOSS_HP_LOW_GLOSS_COLOR : GUARD_BOSS_HP_GLOSS_COLOR;
+      if (glossSprite && !glossSprite.color.equals(glossColor)) {
+        glossSprite.color = glossColor;
+      }
+      LobbyGuardBattleRenderer.setHpCapsuleWidth(gloss, Math.max(4, shown - 6));
+    }
+    view.hpShownW = shown;
+    this.noteHpBarChange(view, before, shown);
   }
 
   /** 单位离场 / 死亡:条层里属于它的条一起销毁。 */
   private destroyUnitBars(view: GuardUnitView): void {
-    for (const key of ['hpBg', 'hpFill', 'cdBg', 'cdFill'] as const) {
+    for (const key of ['hpBg', 'hpTrail', 'hpFill', 'hpGloss', 'cdBg', 'cdFill'] as const) {
       const node = view[key];
       if (node && node.isValid) {
         node.destroy();
       }
       view[key] = undefined;
     }
+    view.hpShownW = undefined;
+    view.hpTrailW = undefined;
+    this.hpTrailViews.delete(view);
   }
 
   /**
@@ -10396,25 +10580,16 @@ export class LobbyGuardBattleRenderer {
         }
       }
       const hpBar = monster.kind === 'boss' ? view.node.getChildByName('GuardMonsterHp') : null;
-      const hpGraphics = hpBar?.getComponent(Graphics);
-      const hpTransform = hpBar?.getComponent(UITransform);
-      if (hpBar && hpGraphics && hpTransform) {
+      if (hpBar) {
         const ratio = Math.max(0, monster.hp / monster.maxHp);
-        let hpDirty = true;
-        {
-          // BOSS 血条:头顶高度量定之前每 tick 都要走测量;量定后只在血量像素或文字变了才重画。
-          // 2026-10-11:数字按 1/500 血量量化——原来每一下命中都换一次数字,整条 Graphics 重画 + 文字重新栅格化上传,BOSS 战里一秒好几次
-          const hpStep = Math.max(1, Math.round(monster.maxHp / 500));
-          const bossKey = Math.round(hpTransform.width * ratio) * 1e6 + Math.ceil(monster.hp / hpStep) % 1e6;
-          hpDirty = !view.hpBarLocked || view.hpDrawnKey !== bossKey;
-          view.hpDrawnKey = bossKey;
-        }
+        // BOSS 血条:头顶高度量定之前每 tick 都要走测量;量定后只在血量像素或文字变了才动。
+        // 2026-10-11:数字按 1/500 血量量化——原来每一下命中都换一次数字,整条重画 + 文字重新栅格化上传,BOSS 战里一秒好几次
+        // 2026-11-11(样片 09):底托 + 细亮边建视图时画好不再重画,这里只改填充 / 残影 / 高光胶囊的长度和颜色
+        const hpStep = Math.max(1, Math.round(monster.maxHp / 500));
+        const bossKey = Math.round(GUARD_BOSS_HP_W * ratio) * 1e6 + Math.ceil(monster.hp / hpStep) % 1e6;
+        const hpDirty = !view.hpBarLocked || view.hpDrawnKey !== bossKey;
+        view.hpDrawnKey = bossKey;
         if (hpDirty) {
-          hpGraphics.clear();
-        }
-        if (!hpDirty) {
-          // 血条没变:跳过
-        } else if (monster.kind === 'boss') {
           // 血条贴真实头顶(2026-09-18 用户反馈离头太远):骨骼 json 的声明高度含武器/翅膀外扩,
           // 改按当前姿态顶点实测的最高点定位;每 15 帧测一次,先读渲染顶点缓冲、再退 spine-core,都测不到保留初值。
           // 2026-09-18 用户拍板:血条位置要固定,不能随动作上下跳。做法:骨骼就绪后的行走阶段每 3 帧量一次,
@@ -10436,17 +10611,7 @@ export class LobbyGuardBattleRenderer {
               }
             }
           }
-          const barW = hpTransform.width;
-          hpGraphics.fillColor = rgba(10, 8, 8, 225);
-          hpGraphics.roundRect(-barW / 2, -7, barW, 14, 7);
-          hpGraphics.fill();
-          hpGraphics.fillColor = ratio > 0.35 ? rgba(235, 60, 45, 250) : rgba(255, 140, 60, 250);
-          hpGraphics.roundRect(-barW / 2, -7, Math.max(8, barW * ratio), 14, 7);
-          hpGraphics.fill();
-          hpGraphics.strokeColor = rgba(255, 200, 120, 235);
-          hpGraphics.lineWidth = 2;
-          hpGraphics.roundRect(-barW / 2, -7, barW, 14, 7);
-          hpGraphics.stroke();
+          this.syncBossHpBar(view, ratio);
           const hpText = hpBar.getChildByName('GuardMonsterHpText')?.getComponent(Label);
           if (hpText) {
             hpText.string = `BOSS  ${Math.ceil(monster.hp)} / ${monster.maxHp}`;
@@ -10715,17 +10880,36 @@ export class LobbyGuardBattleRenderer {
     if (monster.kind !== 'boss') {
       // 小怪血条(2026-10-09):不再每只怪一个 Graphics;受伤后在共享条层里用白贴图精灵画,全部合成一次绘制
       view.hpBarOffsetY = hpBarY;
-      view.hpBarW = Math.min(baseSize * 0.9, 110);
+      // 2026-11-11(样片 09):条宽按体型分档(原先 min(体型 × 0.9, 110) 实际全是 110,一群怪的血条叠成一片)
+      view.hpBarW = guardMonsterHpBarWidth(monster.kind, unit);
       return view;
     }
-    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, hpBarY, 280, 14);
-    hpBar.addComponent(Graphics);
-    if (monster.kind === 'boss') {
-      const hpText = this.host.addChildLabel(hpBar, 'GuardMonsterHpText', '', 0, 0, 13, rgba(255, 244, 230, 252), new Size(260, 18));
-      hpText.enableOutline = true;
-      hpText.outlineColor = rgba(40, 12, 8, 255);
-      hpText.outlineWidth = 2;
-    }
+    // 首领血条(2026-11-11 样片 09):深色底托 + 细亮边在这里画一次,之后不再重画;残影 / 填充 / 高光是胶囊精灵,
+    // syncBossHpBar 只改它们的长度(原先每次血量变化整条 Graphics 重画)
+    const barW = GUARD_BOSS_HP_W;
+    const barH = GUARD_BOSS_HP_H;
+    const hpBar = this.host.addChildPlainNode(node, 'GuardMonsterHp', 0, hpBarY, barW, barH);
+    const plate = hpBar.addComponent(Graphics);
+    plate.fillColor = rgba(9, 9, 14, 226);
+    plate.roundRect(-barW / 2 - 2, -barH / 2 - 2, barW + 4, barH + 4, barH / 2 + 2);
+    plate.fill();
+    plate.strokeColor = rgba(255, 255, 255, 60);
+    plate.lineWidth = 1.5;
+    plate.roundRect(-barW / 2 - 2, -barH / 2 - 2, barW + 4, barH + 4, barH / 2 + 2);
+    plate.stroke();
+    view.hpTrail = this.mountHpCapsule(hpBar, 'GuardMonsterHpTrail', 'bossCap', 0, barW, barH, GUARD_BOSS_HP_TRAIL_COLOR);
+    view.hpTrail.setPosition(-barW / 2, 0, 0);
+    view.hpTrail.active = false;
+    view.hpFill = this.mountHpCapsule(hpBar, 'GuardMonsterHpFill', 'bossCap', 0, barW, barH, GUARD_BOSS_HP_FILL_COLOR);
+    view.hpFill.setPosition(-barW / 2, 0, 0);
+    // 填充上半的高光带:左右各缩 3,高 = 半条高 − 3
+    const glossH = barH / 2 - 3;
+    view.hpGloss = this.mountHpCapsule(hpBar, 'GuardMonsterHpGloss', 'bossCap', 0, barW - 6, glossH, GUARD_BOSS_HP_GLOSS_COLOR);
+    view.hpGloss.setPosition(-barW / 2 + 3, 1 + glossH / 2, 0);
+    const hpText = this.host.addChildLabel(hpBar, 'GuardMonsterHpText', '', 0, 0, 14, rgba(255, 255, 255, 255), new Size(260, 18));
+    hpText.enableOutline = true;
+    hpText.outlineColor = rgba(14, 10, 14, 255);
+    hpText.outlineWidth = 2;
     return view;
   }
 

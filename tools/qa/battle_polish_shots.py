@@ -314,6 +314,11 @@ async def run_view(name, port):
                     if step.get('cpu'):
                         # {"cpu": 4}:处理器降速到 1/4(量「手机上这段代码要跑多久」用;量完记得 {"cpu": 1} 还原)
                         await call('Emulation.setCPUThrottlingRate', {'rate': float(step['cpu'])})
+                    if step.get('metrics'):
+                        # {"metrics": "small"}:视口宽高各缩到 82%(触发战场重建,验「重建后还在不在」用);{"metrics": "restore"} 还原
+                        k = 0.82 if step['metrics'] == 'small' else 1
+                        await call('Emulation.setDeviceMetricsOverride', {'width': round(w * k), 'height': round(h * k), 'deviceScaleFactor': dpr, 'mobile': mobile,
+                                                                           'screenOrientation': {'type': 'landscapePrimary', 'angle': 90}})
                     if step.get('cast'):
                         # {"cast": {"idx": 0, "ult": true, "code": "UR_NYX"}}:放一次战技 / 大招并定格在亮度峰值
                         c = step['cast']

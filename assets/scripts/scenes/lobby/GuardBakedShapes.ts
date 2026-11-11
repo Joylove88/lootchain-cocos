@@ -99,6 +99,26 @@ class Canvas {
     }, color);
   }
 
+  /** 圆角矩形填充,颜色随纵向位置变(shade(t):t = 0 在贴图首行一侧 = 精灵的上沿,1 在下沿);做上亮下暗的条用。 */
+  fillRoundRectShadedAt(cx: number, cy: number, w: number, h: number, radius: number, shade: (t: number) => Rgba): void {
+    const s = SUPERSAMPLE;
+    const aa = 1 / s;
+    const r = Math.min(radius, w / 2, h / 2);
+    for (let py = 0; py < this.h; py += 1) {
+      const y = (py + 0.5 - this.h / 2) / s;
+      if (Math.abs(y - cy) > h / 2 + aa) {
+        continue;
+      }
+      const color = shade(Math.max(0, Math.min(1, (y - (cy - h / 2)) / h)));
+      const qy = Math.max(0, Math.abs(y - cy) - (h / 2 - r));
+      for (let px = 0; px < this.w; px += 1) {
+        const x = (px + 0.5 - this.w / 2) / s;
+        const qx = Math.max(0, Math.abs(x - cx) - (w / 2 - r));
+        this.blend(px, py, color, (r - Math.hypot(qx, qy)) / aa + 0.5);
+      }
+    }
+  }
+
   strokeLine(x0: number, y0: number, x1: number, y1: number, lineWidth: number, color: Rgba): void {
     const aa = 1 / SUPERSAMPLE;
     const dx = x1 - x0;
@@ -442,19 +462,73 @@ export function cellBurstSize(big: boolean): number {
  * 改成所有条共用同一张贴图、按 Sprite 颜色染色,放在同一层里连续绘制就能合成一次。
  * 一张贴图里两块:左边圆角条(设计 24×8、圆角 3,九宫格左右各切 4,拉长保留圆头),右边纯白方块(直角条)。
  * 两块必须在同一张贴图上——不同贴图的精灵交替排列就合不了批。
+ *
+ * 2026-11-11(战斗画面精致化 · 样片 09 怪物血条):同一张贴图里再加怪物血条的胶囊色块,和冷却条在同一层里仍然合成一次绘制。
+ * 第一排(高 8)接在圆角条 / 方块后面:深色底托、红 / 琥珀渐层填充、浅色残影;第二排(高 16):首领血条用的大号白胶囊(染色用)。
+ * 色块都是半圆头胶囊,九宫格左右各切一个半径;块与块之间留 2 设计像素空隙,缩小取样不串色。
  */
-const BAR_ATLAS = { w: 32, h: 8, pillW: 24, pillInset: 4, squareX: 27, squareW: 4 } as const;
-let barAtlas: { pill: SpriteFrame; bar: SpriteFrame } | null = null;
+const BAR_ATLAS = { w: 110, h: 26, rowH: 8, pillW: 24, pillInset: 4, squareX: 27, squareW: 4 } as const;
 
-function ensureBarAtlas(): { pill: SpriteFrame; bar: SpriteFrame } | null {
+/** 怪物血条色块在图集里的位置(设计像素,左上角为原点)。 */
+const HP_BLOCKS = {
+  plate: { x: 34, y: 0, w: 20, h: 8 },
+  red: { x: 56, y: 1, w: 16, h: 6 },
+  amber: { x: 74, y: 1, w: 16, h: 6 },
+  trail: { x: 92, y: 1, w: 16, h: 6 },
+  bossCap: { x: 0, y: 10, w: 40, h: 16 },
+} as const;
+
+export type HpBarPart = keyof typeof HP_BLOCKS;
+
+/** 渐层色标:[位置 0..1(上沿 → 下沿), r, g, b](0..255)。 */
+type ShadeStops = ReadonlyArray<readonly [number, number, number, number]>;
+const HP_SHADES: Record<'red' | 'amber' | 'trail', ShadeStops> = {
+  red: [[0, 255, 138, 112], [0.38, 236, 78, 62], [1, 170, 36, 36]],
+  amber: [[0, 255, 214, 134], [0.38, 250, 164, 60], [1, 198, 106, 26]],
+  trail: [[0, 255, 228, 206], [1, 244, 190, 164]],
+};
+const HP_PLATE_COLOR: Rgba = [9 / 255, 9 / 255, 14 / 255, 0.88];
+
+function shadeAt(stops: ShadeStops, t: number): Rgba {
+  let lo = stops[0];
+  let hi = stops[stops.length - 1];
+  for (let i = 0; i + 1 < stops.length; i += 1) {
+    if (t >= stops[i][0] && t <= stops[i + 1][0]) {
+      lo = stops[i];
+      hi = stops[i + 1];
+      break;
+    }
+  }
+  const k = hi[0] > lo[0] ? Math.max(0, Math.min(1, (t - lo[0]) / (hi[0] - lo[0]))) : 0;
+  return [(lo[1] + (hi[1] - lo[1]) * k) / 255, (lo[2] + (hi[2] - lo[2]) * k) / 255, (lo[3] + (hi[3] - lo[3]) * k) / 255, 1];
+}
+
+type BarAtlasFrames = { pill: SpriteFrame; bar: SpriteFrame } & Record<HpBarPart, SpriteFrame>;
+let barAtlas: BarAtlasFrames | null = null;
+
+function ensureBarAtlas(): BarAtlasFrames | null {
   if (barAtlas) {
     return barAtlas;
   }
+  // 烘焙画布以图集中心为原点、纵坐标随贴图行号增大;块的中心 = 左上角位置 + 半个块 − 半张图集
+  const centerX = (x: number, w: number): number => -BAR_ATLAS.w / 2 + x + w / 2;
+  const centerY = (y: number, h: number): number => -BAR_ATLAS.h / 2 + y + h / 2;
+  const rowY = centerY(0, BAR_ATLAS.rowH);
   const base = bake('whitebaratlas', BAR_ATLAS.w, BAR_ATLAS.h, (c) => {
-    // 左:圆角条,中心在 x = -w/2 + pillW/2
-    c.fillRoundRectAt(-BAR_ATLAS.w / 2 + BAR_ATLAS.pillW / 2, 0, BAR_ATLAS.pillW - 1, BAR_ATLAS.h - 1, 3, [1, 1, 1, 1]);
+    // 左:圆角条
+    c.fillRoundRectAt(centerX(0, BAR_ATLAS.pillW), rowY, BAR_ATLAS.pillW - 1, BAR_ATLAS.rowH - 1, 3, [1, 1, 1, 1]);
     // 右:纯白方块(比取样区大一圈,双线性取样不会混进透明边)
-    c.fillRoundRectAt(-BAR_ATLAS.w / 2 + BAR_ATLAS.squareX + BAR_ATLAS.squareW / 2, 0, BAR_ATLAS.squareW, BAR_ATLAS.h, 0, [1, 1, 1, 1]);
+    c.fillRoundRectAt(centerX(BAR_ATLAS.squareX, BAR_ATLAS.squareW), rowY, BAR_ATLAS.squareW, BAR_ATLAS.rowH, 0, [1, 1, 1, 1]);
+    // 怪物血条:底托(纯色)、三种渐层填充、首领大胶囊(纯白)
+    const plate = HP_BLOCKS.plate;
+    c.fillRoundRectAt(centerX(plate.x, plate.w), centerY(plate.y, plate.h), plate.w, plate.h, plate.h / 2, HP_PLATE_COLOR);
+    for (const name of ['red', 'amber', 'trail'] as const) {
+      const block = HP_BLOCKS[name];
+      const stops = HP_SHADES[name];
+      c.fillRoundRectShadedAt(centerX(block.x, block.w), centerY(block.y, block.h), block.w, block.h, block.h / 2, (t) => shadeAt(stops, t));
+    }
+    const cap = HP_BLOCKS.bossCap;
+    c.fillRoundRectAt(centerX(cap.x, cap.w), centerY(cap.y, cap.h), cap.w, cap.h, cap.h / 2, [1, 1, 1, 1]);
   });
   const texture = base?.texture as Texture2D | null | undefined;
   if (!texture) {
@@ -467,13 +541,31 @@ function ensureBarAtlas(): { pill: SpriteFrame; bar: SpriteFrame } | null {
     frame.reset({ texture, rect, originalSize: new Size(rect.width, rect.height), offset: new Vec2(0, 0), isRotate: false });
     return frame;
   };
-  const pill = sub(new Rect(0, 0, BAR_ATLAS.pillW * s, BAR_ATLAS.h * s));
+  const pill = sub(new Rect(0, 0, BAR_ATLAS.pillW * s, BAR_ATLAS.rowH * s));
   pill.insetLeft = BAR_ATLAS.pillInset * s;
   pill.insetRight = BAR_ATLAS.pillInset * s;
   // 取方块正中 2×2 设计像素,四周留 1 像素白边防取样渗色
   const bar = sub(new Rect((BAR_ATLAS.squareX + 1) * s, 3 * s, 2 * s, 2 * s));
-  barAtlas = { pill, bar };
+  const capsule = (name: HpBarPart): SpriteFrame => {
+    const block = HP_BLOCKS[name];
+    const frame = sub(new Rect(block.x * s, block.y * s, block.w * s, block.h * s));
+    frame.insetLeft = (block.h / 2) * s;
+    frame.insetRight = (block.h / 2) * s;
+    return frame;
+  };
+  barAtlas = { pill, bar, plate: capsule('plate'), red: capsule('red'), amber: capsule('amber'), trail: capsule('trail'), bossCap: capsule('bossCap') };
   return barAtlas;
+}
+
+/**
+ * 怪物血条色块的贴图精度(贴图像素 ÷ 设计像素)。九宫格的圆头按贴图像素算,
+ * 所以用的时候节点内容尺寸乘它、节点缩放除它,圆头才是正圆而不是被拉扁的椭圆。
+ */
+export const HP_BAR_TEXEL = SUPERSAMPLE;
+
+/** 怪物血条的胶囊色块:plate 深色底托、red / amber 渐层填充、trail 浅色残影、bossCap 首领血条用的大号白胶囊(Sprite.color 染色)。 */
+export function hpBarFrame(part: HpBarPart): SpriteFrame | null {
+  return ensureBarAtlas()?.[part] ?? null;
 }
 
 /** 直角纯白条(小怪血条):直接拉伸,颜色由 Sprite.color 给。 */
