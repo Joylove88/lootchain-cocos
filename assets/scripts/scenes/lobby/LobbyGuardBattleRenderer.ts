@@ -144,8 +144,9 @@ import { worldMapOfStage } from './LobbyWorldMaps';
 import { loadSharedSpineData } from './SpineDataStore';
 import { GuardRaidController, formatInt } from './GuardRaidController';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
+import { mountRingBase } from './LobbyTownHudProto';
 import type { UiKitHost } from '../UiKit';
-import { GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { GLASS_COLOR, GLASS_ICON, GLASS_SLICES, glassLabel, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { estimateGlassTextWidth, makeGlassText, mountGlassCloseButton, mountGlassPopupShell, type GlassPopupShell, type GlassPopupShellOptions } from './GlassPopupShell';
 import { applyBattleNumber, BATTLE_NUMBER_FONT_FRAME_PATH, battleNumberWidth, type BattleNumberStyle } from './BattleNumberFont';
@@ -487,11 +488,8 @@ const GUARD_WHEEL_SECTOR_ICON: Record<GuardWheelSector, string> = {
   teamAtk: 'ui/common/ai/ic_quest_dungeon/spriteFrame',
   jackpot: 'ui/hero/ai/star_filled/spriteFrame',
 };
-/** 左上「统计」按钮底图(开局预热,HUD 只建一次)。 */
-const GUARD_STATS_BUTTON_ART = 'ui/common/ai/bag_button_dark/spriteFrame';
 /** 开局预热的宝箱/轮盘贴图:mountSprite 未命中缓存走异步,首箱 28 枚金币/8 个扇区图标会晚 0.3~1.3s 才显示。 */
 const GUARD_CHEST_SPRITE_PRELOAD = [
-  GUARD_STATS_BUTTON_ART,
   'ui/guard/chest_closed/spriteFrame', 'ui/guard/chest_open/spriteFrame', 'ui/codex/ai/chest_ready/spriteFrame', 'ui/codex/ai/chest_opened/spriteFrame',
   'ui/guard/cast_flash/spriteFrame', 'ui/guard/coin_gold/spriteFrame', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 'ui/battle/c1812/effects/hit_ring/spriteFrame',
   'ui/common/ai/star_orange/spriteFrame', 'ui/common/ai/star_red/spriteFrame', 'ui/hero/ai/btn_star_up/spriteFrame',
@@ -546,25 +544,6 @@ interface GuardWheelParts {
   lastIdx: number;
   cards: Node[];
   closeShown: boolean;
-}
-
-/** 以原点为中心的胶囊形闭合路径(两端半圆用 16 段折线),供描边用。 */
-function pillStrokePath(g: Graphics, width: number, height: number): void {
-  const r = height / 2;
-  const half = Math.max(0, width / 2 - r);
-  const segments = 16;
-  g.moveTo(-half, r);
-  g.lineTo(half, r);
-  for (let i = 1; i <= segments; i += 1) {
-    const a = Math.PI / 2 - (Math.PI * i) / segments;
-    g.lineTo(half + Math.cos(a) * r, Math.sin(a) * r);
-  }
-  g.lineTo(-half, -r);
-  for (let i = 1; i <= segments; i += 1) {
-    const a = -Math.PI / 2 - (Math.PI * i) / segments;
-    g.lineTo(-half + Math.cos(a) * r, Math.sin(a) * r);
-  }
-  g.close();
 }
 
 export class LobbyGuardBattleRenderer {
@@ -1388,15 +1367,6 @@ export class LobbyGuardBattleRenderer {
     return node;
   }
 
-  /** 主按钮(素材=英雄详情升级按钮 btn_star_up 431×100,2026-08-26 用户拍板);标签由调用方叠加。 */
-  private mountPrimaryButton(parent: Node, name: string, x: number, y: number, w: number): Node {
-    const h = w * (100 / 431);
-    const button = this.host.addChildPlainNode(parent, name, x, y, w, h);
-    this.mountSprite(button, `${name}Art`, 'ui/hero/ai/btn_star_up/spriteFrame', 0, 0, w, h);
-    this.host.applyImageButtonFeedback(button);
-    return button;
-  }
-
   /** 战场背景(矿洞图 1536×1024):cover 等比铺满,裁洞顶保地面;顶部再压一条渐暗带保 HUD 可读。 */
   /**
    * 爬塔章节战场背景(2026-09-11 用户拍板:不同章节展示不同战场背景)。
@@ -1518,29 +1488,6 @@ export class LobbyGuardBattleRenderer {
       void error;
       return false;
     }
-  }
-
-  /**
-   * 英雄脚下石台按地图主题换皮(2026-10-13 用户:"英雄脚下地块跟随主题风格"):
-   * 限时副本 觉醒之门 / 秘法圣殿 / 深渊裂隙 用 ui/guard/ghud_cell_tile_<主题>[_active](384×288 透明底),
-   * 熔火矿脉与主线沿用熔岩石台;主题图未入库时回退熔岩石台。
-   */
-  private static readonly DAILY_CELL_TILE: Record<string, string> = {
-    AWAKEN: 'ghud_cell_tile_awaken',
-    ARCANE: 'ghud_cell_tile_arcane',
-    ABYSS: 'ghud_cell_tile_abyss',
-  };
-
-  private cellTilePath(active: boolean): string {
-    const base = active ? 'ui/guard/ghud_cell_tile_active/spriteFrame' : 'ui/guard/ghud_cell_tile/spriteFrame';
-    const stageCode = (this.host.currentLobbyBattleState().start?.stageCode ?? '').toUpperCase();
-    const daily = /^DAILY_([A-Z]+)_\d+$/.exec(stageCode);
-    const name = daily ? LobbyGuardBattleRenderer.DAILY_CELL_TILE[daily[1]] : undefined;
-    if (!name) {
-      return base;
-    }
-    const themed = `ui/guard/${name}${active ? '_active' : ''}/spriteFrame`;
-    return this.uiAssetKnown(themed) ? themed : base;
   }
 
   private resolveSceneBgPath(): string {
@@ -2156,6 +2103,58 @@ export class LobbyGuardBattleRenderer {
     return Math.max(1, nextAt - sim.summonCount);
   }
 
+  /** 英雄格板面中心相对格子矩形中心的 y 偏移(板子贴在英雄脚下)。 */
+  private cellPlateDy(tileH: number): number {
+    return -tileH * 0.08;
+  }
+
+  /**
+   * 英雄格 B 风格板面(2026-11-11):略带透视的梯形暗磨砂板(上沿收窄)+ 细浅边 + 顶沿一道淡高光;
+   * locked 更暗、selected / resonance 换香槟描边。画在 parent(格子矩形,中心原点)里。
+   */
+  private paintCellPlate(parent: Node, tileW: number, tileH: number, state: 'idle' | 'locked' | 'selected' | 'resonance'): Graphics {
+    const g = this.host.addChildPlainNode(parent, 'Plate', 0, this.cellPlateDy(tileH), tileW, tileH).addComponent(Graphics);
+    const w = tileW * 0.9;
+    const h = tileW * 0.34;
+    const inset = w * 0.07;
+    const r = Math.min(10, h * 0.28);
+    const path = (): void => {
+      // 梯形:下沿全宽、上沿两侧各收 inset;四角用二次曲线收圆
+      const corners = [{ x: -w / 2, y: -h / 2 }, { x: w / 2, y: -h / 2 }, { x: w / 2 - inset, y: h / 2 }, { x: -w / 2 + inset, y: h / 2 }];
+      const toward = (p: { x: number; y: number }, q: { x: number; y: number }, d: number): { x: number; y: number } => {
+        const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+        return { x: p.x + ((q.x - p.x) * d) / len, y: p.y + ((q.y - p.y) * d) / len };
+      };
+      corners.forEach((c, i) => {
+        const a = toward(c, corners[(i + 3) % 4], r);
+        const b = toward(c, corners[(i + 1) % 4], r);
+        if (i === 0) {
+          g.moveTo(a.x, a.y);
+        } else {
+          g.lineTo(a.x, a.y);
+        }
+        g.quadraticCurveTo(c.x, c.y, b.x, b.y);
+      });
+      g.close();
+    };
+    const hot = state === 'selected' || state === 'resonance';
+    // 浅磨砂(比地面亮一档,原型的半透明玻璃板);未解锁更淡
+    g.fillColor = state === 'locked' ? rgba(190, 198, 214, 22) : hot ? rgba(227, 196, 138, 60) : rgba(200, 208, 224, 44);
+    path();
+    g.fill();
+    g.lineWidth = hot ? 2.5 : 1.3;
+    g.strokeColor = hot ? rgba(227, 196, 138, 245) : state === 'locked' ? rgba(210, 216, 226, 80) : rgba(220, 226, 236, 150);
+    path();
+    g.stroke();
+    // 顶沿高光:上沿内侧一道淡白线
+    g.strokeColor = hot ? rgba(255, 236, 196, 90) : rgba(255, 255, 255, state === 'locked' ? 20 : 40);
+    g.lineWidth = 1;
+    g.moveTo(-w / 2 + inset + r, h / 2 - 2);
+    g.lineTo(w / 2 - inset - r, h / 2 - 2);
+    g.stroke();
+    return g;
+  }
+
   /** 车道+格子底图(解锁进度变化时重画;锁定格画暗卡,下一个待解锁格标倒数)。 */
   private repaintFieldBase(): void {
     const g = this.fieldBaseG;
@@ -2180,13 +2179,12 @@ export class LobbyGuardBattleRenderer {
       const locked = guardCellUnlockRank(cell) >= sim.unlockedCells;
       const card = this.host.addChildPlainNode(field, 'GuardCellCard', tile.x, tile.y, tile.w, tile.h);
       card.setSiblingIndex(1);
-      this.mountSprite(card, 'Img', this.cellTilePath(false), 0, 0, tile.w, tile.h);
-      const cardOpacity = card.addComponent(UIOpacity);
-      cardOpacity.opacity = locked ? 105 : 235;
+      // 2026-11-11 B(原型 guard_hud_b):雕花石台换贴地的暗磨砂圆角板 + 细浅边;未解锁只留白色线条锁
+      this.paintCellPlate(card, tile.w, tile.h, locked ? 'locked' : 'idle');
       if (locked) {
-        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', tile.x, tile.y + tile.h * 0.06, 26, 26);
+        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', tile.x, tile.y + this.cellPlateDy(tile.h), 26, 26);
         lockNode.setSiblingIndex(2);
-        this.mountSprite(lockNode, 'Img', 'ui/common/ai/ic_lock/spriteFrame', 0, 0, 26, 26);
+        this.mountSprite(lockNode, 'Img', GLASS_ICON.lock, 0, 0, 24, 24, rgba(236, 238, 242));
       }
     }
     field.getChildByName('GuardLockHint')?.destroy();
@@ -2194,11 +2192,11 @@ export class LobbyGuardBattleRenderer {
       const nextCell = guardCellFromUnlockRank(sim.unlockedCells);
       const tile = this.cellTileRect(nextCell);
       const hint = this.host.addChildLabel(field, 'GuardLockHint', `再招募 ${this.nextCellUnlockNeed(sim)} 次
-解锁此格`, tile.x, tile.y + tile.h * 0.72, 11, rgba(220, 202, 168, 225), new Size(tile.w * 1.2, 44));
+解锁此格`, tile.x, tile.y + tile.h * 0.72, 12, rgba(196, 202, 214, 235), new Size(tile.w * 1.2, 44));
       hint.node.setSiblingIndex(2);
       hint.enableOutline = true;
-      hint.outlineColor = rgba(20, 12, 6, 255);
-      hint.outlineWidth = 2;
+      hint.outlineColor = rgba(8, 10, 16, 200);
+      hint.outlineWidth = 1;
     }
     // 脏标记落在重建完成之后:中途抛异常时宁可下一帧重画,也不要被误标为"已画好"而留下半成品。
     this.paintedCellsKey = `${sim.unlockedCells}:${this.nextCellUnlockNeed(sim)}`;
@@ -2232,32 +2230,82 @@ export class LobbyGuardBattleRenderer {
     tween(holder)
       .repeatForever(tween().to(1.4, { scale: new Vec3(1.03, 1.03, 1) }).to(1.4, { scale: Vec3.ONE }))
       .start();
-    // 水晶血条挂在水晶头顶(2026-09-28 用户:"血条也要放到水晶上"),原左上角大血条移除;独立节点,不随水晶呼吸缩放。
-    const barW = Math.max(width * 1.35, 132);
-    // docs/61 掠夺(原型 battle_b3):细蓝条 + 数字(手机上水晶靠上,数字放条上方会压到左上输出面板 → 放条下方)
+    // 水晶血条挂在水晶头顶(2026-09-28 用户:"血条也要放到水晶上");独立节点,不随水晶呼吸缩放。
+    // 2026-11-11 B(原型 guard_hud_b):白字「守卫水晶」在条上方左对齐 + 细蓝条 + 条右侧灰色百分比;掠夺沿用数字在条下
+    const barW = Math.max(width * 1.2, 150);
     const raidSlim = this.isRaidStage() && !this.sim?.raidClear;
-    const barH = raidSlim ? 8 : 18;
-    // 水晶贴左缘:血条整体钳在屏幕内(左留 12px)
-    const barX = Math.max(x, -this.layoutWidth / 2 + 12 + barW / 2);
-    const bar = this.host.addChildPlainNode(field, 'GuardCrystalHpBar', barX, y + height / 2 + 22, barW, barH);
+    const barH = 8;
+    // 水晶贴左缘:血条整体钳在屏幕内(左留 16px;右侧给百分比留 64)
+    const barX = Math.max(x - 26, -this.layoutWidth / 2 + 16 + barW / 2);
+    const barY = y + height / 2 + 22;
+    const bar = this.host.addChildPlainNode(field, 'GuardCrystalHpBar', barX, barY, barW, barH);
     bar.addComponent(Graphics);
-    const hpText = this.host.addChildLabel(bar, 'GuardCrystalHpText', '', 0, raidSlim ? -barH / 2 - 12 : 0, raidSlim ? 17 : 14, rgba(255, 250, 235, 250), new Size(barW - 8, raidSlim ? 22 : barH));
-    hpText.enableOutline = true;
-    hpText.outlineColor = rgba(8, 14, 30, 255);
-    hpText.outlineWidth = 2;
-    hpText.isBold = true;
+    const hpText = raidSlim
+      ? glassLabel(this.kit, bar, 'GuardCrystalHpText', '', 0, -barH / 2 - 12, 17, GLASS_COLOR.text, barW - 8, HorizontalTextAlignment.CENTER, true)
+      : glassLabel(this.kit, bar, 'GuardCrystalHpText', '', barW / 2 + 8, 0, 16, GLASS_COLOR.sub, 70, HorizontalTextAlignment.LEFT);
     LobbyGuardBattleRenderer.hudCharCache(hpText);
-    if (this.isRaidStage() && !this.sim?.raidClear) {
+    if (raidSlim) {
       return;
     }
-    const cap = this.host.addChildPlainNode(field, 'GuardCrystalHpCap', barX, y + height / 2 + 22 + barH / 2 + 11, 120, 18);
-    const capLabel = this.host.addChildLabel(cap, 'Text', '守卫水晶', 0, 0, 14, rgba(170, 215, 255, 240), new Size(120, 18));
-    capLabel.enableOutline = true;
-    capLabel.outlineColor = rgba(8, 14, 30, 255);
-    capLabel.outlineWidth = 2;
+    const cap = this.host.addChildPlainNode(field, 'GuardCrystalHpCap', barX, barY + 22, barW, 26);
+    glassLabel(this.kit, cap, 'Text', '守卫水晶', -barW / 2, 0, 19, GLASS_COLOR.text, barW, HorizontalTextAlignment.LEFT, true);
   }
 
-  // ── HUD:1:1 复刻用户提供的整套素材(2026-08-28)──
+  // ── HUD(2026-11-11 B 毛玻璃,原型 周报截图/2026-11-11_守卫战HUD/proto/guard_hud_b.png;位置沿用旧版,只换外观)──
+  /** 顶部波次胶囊几何(提前迎战 / BOSS 血条 / 波次圆点都挂在它下沿)。 */
+  private topBannerGeom(): { w: number; h: number; y: number; bottom: number } {
+    const h = 54;
+    const w = Math.min(470, this.layoutWidth * 0.33);
+    const y = this.layoutHeight / 2 - 18 - h / 2;
+    return { w, h, y, bottom: y - h / 2 };
+  }
+
+  /** 磨砂圆钮底(野外 / 掠夺 HUD 同款 hud_disc;d = 可见直径)。 */
+  private mountHudDisc(parent: Node, d: number, hot = false): void {
+    mountRingBase(this.kit, parent, d / 0.82, hot);
+  }
+
+  /** 白色齿轮线稿(与掠夺 HUD 同款画法)。 */
+  private paintGearGlyph(parent: Node, size: number): void {
+    const gg = this.host.addChildPlainNode(parent, 'Glyph', 0, 0, size, size).addComponent(Graphics);
+    gg.fillColor = GLASS_COLOR.text;
+    const teeth = 8;
+    const ro = size * 0.38;
+    const ri = size * 0.28;
+    for (let i = 0; i < teeth * 2; i += 1) {
+      const a = (Math.PI * i) / teeth;
+      const r = i % 2 === 0 ? ro : ri;
+      const half = Math.PI / (teeth * 2.4);
+      const x1 = Math.cos(a - half) * r;
+      const y1 = Math.sin(a - half) * r;
+      if (i === 0) {
+        gg.moveTo(x1, y1);
+      } else {
+        gg.lineTo(x1, y1);
+      }
+      gg.lineTo(Math.cos(a + half) * r, Math.sin(a + half) * r);
+    }
+    gg.close();
+    gg.fill();
+    gg.fillColor = rgba(34, 38, 43, 255);
+    gg.circle(0, 0, size * 0.13);
+    gg.fill();
+  }
+
+  /** 白色柱状图线稿(「统计」钮)。 */
+  private paintBarsGlyph(parent: Node, size: number): void {
+    const g = this.host.addChildPlainNode(parent, 'Glyph', 0, 0, size, size).addComponent(Graphics);
+    g.fillColor = GLASS_COLOR.text;
+    const bw = size * 0.16;
+    [0.45, 0.8, 0.6].forEach((ratio, index) => {
+      const x = -size * 0.32 + index * size * 0.26;
+      g.roundRect(x, -size * 0.38, bw, size * 0.76 * ratio, bw * 0.3);
+    });
+    g.fill();
+    g.rect(-size * 0.42, -size * 0.44, size * 0.84, Math.max(1.5, size * 0.05));
+    g.fill();
+  }
+
   private renderHud(): void {
     const root = this.root;
     if (!root) {
@@ -2266,24 +2314,16 @@ export class LobbyGuardBattleRenderer {
     const width = this.layoutWidth;
     const height = this.layoutHeight;
     const hud = this.host.addChildPlainNode(root, 'GuardHud', 0, 0, width, height);
-    // 左侧信息暗底板(2026-08-28 用户验收:亮背景处信息看不清;2026-09-02 职业计数移除后收矮)
-    // 2026-09-15 用户反馈透明框难看:圆角平涂换四边羽化的柔和暗底(略放大让羽化边盖住内容外沿),仍保证亮背景可读。
-    const panelW = 250;
-    const panelH = height * 0.185;
-    this.mountSoftShade(hud, 'GuardLeftPanel', -width / 2 + 4 + panelW / 2, height / 2 - 4 - panelH / 2, panelW, panelH, 'blob');
-    // 水晶生命已挪到水晶头顶(renderCrystal,2026-09-28);左上只留"统计"按钮。
-    // 左侧改版(2026-09-02 用户拍板参考图):去掉职业计数竖条,换"统计"按钮展开每英雄输出贡献
-    const stripTop = height / 2 - 20;
-    // 2026-10-10 全界面美化:圆角平涂框换背包同款暗铁按钮切图(bag_button_dark 512×158,按原比 3.24 等比)
-    // 2026-10-11 用户:「统计」太小 → 加大一档
-    const statsBtnH = 54;
-    const statsBtnW = Math.round(statsBtnH * (512 / 158));
+    const kit = this.kit;
+    // 左上「统计」:磨砂胶囊 + 柱状图线稿 + 白字;点开 / 收起我方输出面板
+    const stripTop = height / 2 - 18;
+    const statsBtnH = 52;
+    const statsBtnW = 150;
     const statsBtn = this.host.addChildPlainNode(hud, 'GuardStatsButton', -width / 2 + 24 + statsBtnW / 2, stripTop - statsBtnH / 2, statsBtnW, statsBtnH);
-    this.mountSprite(statsBtn, 'Art', GUARD_STATS_BUTTON_ART, 0, 0, statsBtnW, statsBtnH);
-    const sbLabel = this.host.addChildLabel(statsBtn, 'Text', '统计', 0, 0, 24, rgba(244, 220, 166, 252), new Size(statsBtnW * 0.7, 32));
-    sbLabel.enableOutline = true;
-    sbLabel.outlineColor = rgba(12, 8, 6, 255);
-    sbLabel.outlineWidth = 2;
+    mountGlassSlice(kit, statsBtn, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, statsBtnW, statsBtnH, statsBtnH / 48);
+    this.paintBarsGlyph(statsBtn, 26);
+    statsBtn.getChildByName('Glyph')?.setPosition(-statsBtnW / 2 + 36, 0, 0);
+    glassLabel(kit, statsBtn, 'Text', '统计', -statsBtnW / 2 + 60, 0, 24, GLASS_COLOR.text, statsBtnW - 66, HorizontalTextAlignment.LEFT, true);
     statsBtn.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
       if (event) {
         event.propagationStopped = true;
@@ -2292,54 +2332,49 @@ export class LobbyGuardBattleRenderer {
       this.refreshStatsPanel(true);
     }, this);
     this.host.applyImageButtonFeedback(statsBtn, 1.05, 0.95);
-    // 2026-09-18 用户要求:左上角不再显示"全队攻击 +x%"与"等级·击杀"(强化改词条后攻击加成不再是主线数值)。
-    // 顶部中央:标题横幅(素材 704×110)
-    const bannerW = Math.min(600, width * 0.42);
-    const bannerH = bannerW * (110 / 704);
-    const banner = this.host.addChildPlainNode(hud, 'GuardTopBanner', 0, height / 2 - 16 - bannerH / 2, bannerW, bannerH);
-    this.mountSprite(banner, 'Img', 'ui/battle/ai/ghud_top_banner/spriteFrame', 0, 0, bannerW, bannerH);
-    const waveText = this.host.addChildLabel(banner, 'GuardWaveText', '', 0, 2, 20, rgba(255, 236, 190, 252), new Size(bannerW - 60, 26));
-    waveText.overflow = Label.Overflow.SHRINK;
-    waveText.enableOutline = true;
-    waveText.outlineColor = rgba(20, 12, 6, 255);
-    waveText.outlineWidth = 2;
+    // 顶部中央:波次胶囊(白字)
+    const top = this.topBannerGeom();
+    const banner = this.host.addChildPlainNode(hud, 'GuardTopBanner', 0, top.y, top.w, top.h);
+    mountGlassSlice(kit, banner, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, top.w, top.h, top.h / 48);
+    const waveText = glassLabel(kit, banner, 'GuardWaveText', '', 0, 0, 24, GLASS_COLOR.text, top.w - 50, HorizontalTextAlignment.CENTER, true);
+    LobbyGuardBattleRenderer.hudCharCache(waveText);
     // BOSS 顶部血条:名字 + 红条(名字在条上方,数字条内)
-    const bossName = this.host.addChildLabel(hud, 'GuardBossTopName', '', 0, height / 2 - 16 - bannerH - 16, 17, rgba(255, 224, 190, 252), new Size(500, 22));
+    const bossName = this.host.addChildLabel(hud, 'GuardBossTopName', '', 0, top.bottom - 16, 17, rgba(255, 224, 190, 252), new Size(500, 22));
     bossName.enableOutline = true;
     bossName.outlineColor = rgba(30, 10, 6, 255);
     bossName.outlineWidth = 2;
-    const bossBar = this.host.addChildPlainNode(hud, 'GuardBossTopBar', 0, height / 2 - 16 - bannerH - 40, 480, 24);
+    const bossBar = this.host.addChildPlainNode(hud, 'GuardBossTopBar', 0, top.bottom - 40, 480, 24);
     bossBar.addComponent(Graphics);
     const bossText = this.host.addChildLabel(bossBar, 'GuardBossTopBarText', '', 0, 0, 16, rgba(255, 244, 230, 252), new Size(440, 22));
     bossText.enableOutline = true;
     bossText.outlineColor = rgba(40, 12, 8, 255);
     bossText.outlineWidth = 2;
-    // 右上:战斗金币(素材 325×89)+ 设置 + 关闭
-    const pillW = 240;
-    const pillH = pillW * (89 / 325);
-    const goldPill = this.host.addChildPlainNode(hud, 'GuardGoldPill', width / 2 - 128 - pillW / 2, height / 2 - 20 - pillH / 2, pillW, pillH);
-    this.mountSprite(goldPill, 'Img', 'ui/battle/ai/ghud_gold_pill/spriteFrame', 0, 0, pillW, pillH);
-    const goldText = this.host.addChildLabel(goldPill, 'GuardGoldText', '', pillW * 0.08, 1, 21, rgba(255, 222, 130, 252), new Size(pillW * 0.66, 26), HorizontalTextAlignment.CENTER);
-    goldText.enableOutline = true;
-    goldText.outlineColor = rgba(24, 14, 6, 255);
-    goldText.outlineWidth = 2;
+    // 右上:金币胶囊(金币图标 + 白字)+ 设置 / 关闭圆钮
+    const pillW = 220;
+    const pillH = 52;
+    const goldPill = this.host.addChildPlainNode(hud, 'GuardGoldPill', width / 2 - 140 - pillW / 2, stripTop - pillH / 2, pillW, pillH);
+    mountGlassSlice(kit, goldPill, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, pillW, pillH, pillH / 48);
+    this.mountSprite(goldPill, 'Coin', 'ui/guard/coin_gold/spriteFrame', -pillW / 2 + 30, 0, 34, 34);
+    const goldText = glassLabel(kit, goldPill, 'GuardGoldText', '', -pillW / 2 + 58, 0, 24, GLASS_COLOR.text, pillW - 76, HorizontalTextAlignment.LEFT, true);
     LobbyGuardBattleRenderer.hudCharCache(goldText, true);
-    const settingsBtn = this.host.addChildPlainNode(hud, 'GuardSettingsButton', width / 2 - 82, height / 2 - 20 - pillH / 2, 42, 42);
-    this.mountSprite(settingsBtn, 'Img', 'ui/battle/ai/ghud_btn_settings/spriteFrame', 0, 0, 42, 42);
+    const discD = 50;
+    const settingsBtn = this.host.addChildPlainNode(hud, 'GuardSettingsButton', width / 2 - 100, stripTop - pillH / 2, discD + 12, discD + 12);
+    this.mountHudDisc(settingsBtn, discD);
+    this.paintGearGlyph(settingsBtn, 30);
     this.host.applyImageButtonFeedback(settingsBtn);
     settingsBtn.on(Node.EventType.TOUCH_END, () => this.openBattleSettings(), this);
-    const closeBtn = this.host.addChildPlainNode(hud, 'GuardCloseButton', width / 2 - 34, height / 2 - 20 - pillH / 2, 42, 42);
-    this.mountSprite(closeBtn, 'Img', 'ui/battle/ai/ghud_btn_close/spriteFrame', 0, 0, 42, 42);
+    const closeBtn = this.host.addChildPlainNode(hud, 'GuardCloseButton', width / 2 - 40, stripTop - pillH / 2, discD + 12, discD + 12);
+    this.mountHudDisc(closeBtn, discD);
+    kit.addSprite('X', GLASS_ICON.close, 0, 0, 26, 26, closeBtn);
     this.host.applyImageButtonFeedback(closeBtn);
     // 2026-09-24:× 不再一点就走,战斗进行中先弹退出确认(已结束/未开战直接返回)。
     closeBtn.on(Node.EventType.TOUCH_END, () => this.requestExitBattle(), this);
-    // 次级信息:下一波预告(右)/波次轨道(标准模式)
-    this.host.addChildLabel(hud, 'GuardPreviewText', '', width / 2 - 250, height / 2 - 26 - pillH - 16, 15, rgba(255, 190, 150, 240), new Size(440, 20), HorizontalTextAlignment.RIGHT);
-    const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, height / 2 - 16 - bannerH - 14, 320, 14);
+    // 次级信息:下一波预告(金币胶囊下,灰字右对齐)/ 波次圆点(标准模式)
+    glassLabel(kit, hud, 'GuardPreviewText', '', width / 2 - 140, stripTop - pillH - 18, 17, GLASS_COLOR.sub, 440, HorizontalTextAlignment.RIGHT);
+    const track = this.host.addChildPlainNode(hud, 'GuardWaveTrack', 0, top.bottom - 26, 320, 18);
     track.addComponent(Graphics);
-    // 2026-10-10 全界面巡检:原来居中横跨下排格子(手机字号抬到 20 后压在格子上);挪到下排格子与「强化」钮之间的空档,文案收短
-    const hintText = this.host.addChildLabel(hud, 'GuardHintText', '同名同星英雄可合成 · 拖到水晶出售', width * 0.07, -height / 2 + 16, 15, rgba(196, 180, 150, 200), new Size(width * 0.26, 21));
-    hintText.overflow = Label.Overflow.SHRINK;
+    // 2026-10-10 全界面巡检:挪到下排格子与「强化」钮之间的空档,文案收短
+    glassLabel(kit, hud, 'GuardHintText', '同名同星英雄可合成 · 拖到水晶出售', width * 0.07, -height / 2 + 16, 15, GLASS_COLOR.sub, width * 0.26, HorizontalTextAlignment.CENTER);
   }
 
   /**
@@ -2392,81 +2427,75 @@ export class LobbyGuardBattleRenderer {
 
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const hpW = Math.min(390, width * 0.29);
-    const hpH = hpW * (105 / 632);
-    const panelTop = height / 2 - 20 - hpH - 14 - 44;
-    const panelW = 340;
-    const headerH = 42;
-    const rowH = 60;
-    const pad = 12;
-    const avatar = 46;
-    const panelH = headerH + (entries.length === 0 ? 48 : entries.length * rowH) + pad;
+    // B 毛玻璃输出面板(原型「我方输出」):玻璃底 + 香槟竖条标题 + 右侧「收起 ˄」;每行 = 圆头像 + 白名字(首行 MVP)+ 右对齐伤害 + 细条(首行香槟,其余浅灰)
+    const kit = this.kit;
+    const panelTop = height / 2 - 18 - 52 - 12;
+    const panelW = 330;
+    const headerH = 46;
+    const rowH = 56;
+    const pad = 14;
+    const avatar = 42;
+    const panelH = headerH + (entries.length === 0 ? 48 : entries.length * rowH) + pad - 4;
     const panel = this.host.addChildPlainNode(hud, 'GuardStatsPanel', -width / 2 + 16 + panelW / 2, panelTop - panelH / 2, panelW, panelH);
-    const pg = panel.addComponent(Graphics);
-    pg.fillColor = rgba(10, 8, 7, 228);
-    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-    pg.fill();
-    pg.strokeColor = rgba(190, 150, 84, 200);
-    pg.lineWidth = 1.4;
-    pg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 12);
-    pg.stroke();
-    // 标题色带:参考图是整条独立色带压在面板顶部;本作配色用暗金,底角补方
-    const header = this.host.addChildPlainNode(panel, 'Header', 0, panelH / 2 - headerH / 2, panelW, headerH);
-    const hg = header.addComponent(Graphics);
-    hg.fillColor = rgba(128, 88, 34, 240);
-    hg.roundRect(-panelW / 2, -headerH / 2, panelW, headerH, 12);
-    hg.fill();
-    hg.rect(-panelW / 2, -headerH / 2, panelW, 14);
-    hg.fill();
-    hg.strokeColor = rgba(232, 190, 110, 160);
-    hg.lineWidth = 1;
-    hg.moveTo(-panelW / 2 + 10, -headerH / 2 + 0.5);
-    hg.lineTo(panelW / 2 - 10, -headerH / 2 + 0.5);
-    hg.stroke();
-    const title = this.host.addChildLabel(header, 'Title', '我方贡献统计', 0, 0, 19, rgba(255, 236, 190, 255), new Size(panelW - 20, 26));
-    title.enableOutline = true;
-    title.outlineColor = rgba(40, 24, 8, 255);
-    title.outlineWidth = 2;
+    mountGlassSlice(kit, panel, 'GlassBase', GLASS_SLICES.panel, 0, 0, panelW, panelH, 1);
+    mountGlassSlice(kit, panel, 'Glass', GLASS_SLICES.panel, 0, 0, panelW, panelH, 1);
+    const headY = panelH / 2 - headerH / 2 - 2;
+    kit.addSprite('TitleBar', GLASS_ICON.accent, -panelW / 2 + pad + 3, headY, 5, 24, panel);
+    glassLabel(kit, panel, 'Title', '我方输出', -panelW / 2 + pad + 14, headY, 20, GLASS_COLOR.text, 160, HorizontalTextAlignment.LEFT, true);
+    const fold = this.host.addChildPlainNode(panel, 'Fold', panelW / 2 - pad - 40, headY, 90, headerH);
+    glassLabel(kit, fold, 'Text', '收起 ˄', 40, 0, 15, GLASS_COLOR.sub, 90, HorizontalTextAlignment.RIGHT);
+    fold.on(Node.EventType.TOUCH_END, (event: { propagationStopped?: boolean }) => {
+      if (event) {
+        event.propagationStopped = true;
+      }
+      this.statsPanelOpen = false;
+      this.refreshStatsPanel(true);
+    }, this);
     if (entries.length === 0) {
-      this.host.addChildLabel(panel, 'Empty', '暂无输出记录', 0, -headerH / 2 - 2, 15, rgba(196, 182, 152, 220), new Size(panelW - 20, 21));
+      glassLabel(kit, panel, 'Empty', '暂无输出记录', 0, panelH / 2 - headerH - 22, 16, GLASS_COLOR.sub, panelW - 20, HorizontalTextAlignment.CENTER);
       return;
     }
     const nameX = -panelW / 2 + pad + avatar + 12;
     const rightX = panelW / 2 - pad;
     const barW = rightX - nameX;
     entries.forEach((entry, index) => {
-      const rowTop = panelH / 2 - headerH - 4 - rowH * index;
+      const rowTop = panelH / 2 - headerH - rowH * index;
       const rowCy = rowTop - rowH / 2;
-      if (index > 0) {
-        pg.strokeColor = rgba(255, 236, 200, 22);
-        pg.lineWidth = 1;
-        pg.moveTo(-panelW / 2 + pad, rowTop + 2);
-        pg.lineTo(panelW / 2 - pad, rowTop + 2);
-        pg.stroke();
-      }
-      // 头像:圆角方框 + 内容(有头像图直接贴;无图挂小骨骼露头)
+      // 圆头像:暗底 + 圆形遮罩 + 细灰环
       const frame = this.host.addChildPlainNode(panel, `Avatar_${index}`, -panelW / 2 + pad + avatar / 2, rowCy, avatar, avatar);
       const fg = frame.addComponent(Graphics);
-      fg.fillColor = rgba(28, 22, 18, 255);
-      fg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
+      fg.fillColor = rgba(14, 16, 22, 255);
+      fg.circle(0, 0, avatar / 2);
       fg.fill();
-      this.mountStatsAvatar(frame, entry, avatar - 6);
-      const ring = this.host.addChildPlainNode(frame, 'Ring', 0, 0, avatar, avatar);
-      const rg = ring.addComponent(Graphics);
-      rg.strokeColor = rgba(214, 168, 92, 230);
-      rg.lineWidth = 1.6;
-      rg.roundRect(-avatar / 2, -avatar / 2, avatar, avatar, 8);
-      rg.stroke();
-      // addChildLabel 对 LEFT/RIGHT 对齐把 x 当作左/右边界(工厂内部再偏移半宽),这里直接传边界(2026-09-14 用户反馈名字跑中间)。
-      const name = this.host.addChildLabel(panel, `Name_${index}`, entry.name, nameX, rowCy + 12, 17, rgba(240, 230, 204, 250), new Size(barW - 112, 24), HorizontalTextAlignment.LEFT);
+      const clip = this.host.addChildPlainNode(frame, 'Clip', 0, 0, avatar - 4, avatar - 4);
+      clip.addComponent(Mask).type = Mask.Type.GRAPHICS_ELLIPSE;
+      this.mountStatsAvatar(clip, entry, avatar - 4);
+      const ring = this.host.addChildPlainNode(frame, 'Ring', 0, 0, avatar, avatar).addComponent(Graphics);
+      ring.strokeColor = index === 0 ? rgba(227, 196, 138, 230) : rgba(176, 184, 198, 150);
+      ring.lineWidth = 1.5;
+      ring.circle(0, 0, avatar / 2 - 1);
+      ring.stroke();
+      // addChildLabel 对 LEFT/RIGHT 对齐把 x 当作左/右边界
+      const name = glassLabel(kit, panel, `Name_${index}`, entry.name, nameX, rowCy + 10, 17, GLASS_COLOR.text, barW - 150, HorizontalTextAlignment.LEFT);
       name.overflow = Label.Overflow.SHRINK;
-      const value = this.host.addChildLabel(panel, `Value_${index}`, this.formatDamageValue(entry.damage), rightX, rowCy + 12, 17, rgba(255, 214, 120, 255), new Size(108, 24), HorizontalTextAlignment.RIGHT);
-      value.enableOutline = true;
-      value.outlineColor = rgba(12, 8, 6, 255);
-      value.outlineWidth = 2;
-      const bar = this.host.addChildPlainNode(panel, `Bar_${index}`, nameX + barW / 2, rowCy - 13, barW, 9);
+      if (index === 0 && entries.length > 1) {
+        const nameW = Math.min(barW - 150, estimateGlassTextWidth(entry.name, 17));
+        const mvp = this.host.addChildPlainNode(panel, 'Mvp', nameX + nameW + 8 + 23, rowCy + 10, 46, 22);
+        const mg = mvp.addComponent(Graphics);
+        mg.fillColor = rgba(40, 32, 20, 200);
+        mg.roundRect(-23, -11, 46, 22, 11);
+        mg.fill();
+        mg.strokeColor = rgba(227, 196, 138, 255);
+        mg.lineWidth = 1.4;
+        mg.roundRect(-23, -11, 46, 22, 11);
+        mg.stroke();
+        const mvpText = glassLabel(kit, mvp, 'Text', 'MVP', 0, 0, 13, GLASS_COLOR.champagne, 44, HorizontalTextAlignment.CENTER, true);
+        mvpText.fontSize = 13;
+      }
+      glassLabel(kit, panel, `Value_${index}`, this.formatDamageValue(entry.damage), rightX, rowCy + 10, 17, GLASS_COLOR.text, 108, HorizontalTextAlignment.RIGHT);
+      const bar = this.host.addChildPlainNode(panel, `Bar_${index}`, nameX + barW / 2, rowCy - 12, barW, 6);
       bar.addComponent(Graphics);
-      this.paintStatsBar(bar, entry.damage / maxDamage);
+      this.paintStatsBar(bar, entry.damage / maxDamage, index === 0);
     });
   }
 
@@ -2479,24 +2508,24 @@ export class LobbyGuardBattleRenderer {
       }
       const bar = panel.getChildByName(`Bar_${index}`);
       if (bar && bar.isValid) {
-        this.paintStatsBar(bar, entry.damage / maxDamage);
+        this.paintStatsBar(bar, entry.damage / maxDamage, index === 0);
       }
     });
   }
 
-  /** 占比横条:深色轨 + 橙色填充(参考图橙条),圆角,最短保留一个圆头。 */
-  private paintStatsBar(bar: Node, ratio: number): void {
+  /** 占比细条:暗轨 + 填充(首名香槟,其余浅灰),圆头。 */
+  private paintStatsBar(bar: Node, ratio: number, lead = false): void {
     const g = bar.getComponent(Graphics);
     const w = bar.getComponent(UITransform)?.width ?? 0;
     if (!g || w <= 0) {
       return;
     }
-    const h = 9;
+    const h = 6;
     g.clear();
-    g.fillColor = rgba(46, 36, 26, 225);
+    g.fillColor = rgba(255, 255, 255, 26);
     g.roundRect(-w / 2, -h / 2, w, h, h / 2);
     g.fill();
-    g.fillColor = rgba(255, 150, 46, 248);
+    g.fillColor = lead ? rgba(227, 196, 138, 255) : rgba(176, 184, 198, 230);
     g.roundRect(-w / 2, -h / 2, Math.max(h, w * Math.max(0, Math.min(1, ratio))), h, h / 2);
     g.fill();
   }
@@ -2591,25 +2620,23 @@ export class LobbyGuardBattleRenderer {
     if (this.sameDrawKey(track, `${sim.wave}:${sim.maxWave}`)) {
       return;
     }
+    // B:一排小圆点(已过 = 白、当前 = 香槟细环、未到 = 暗灰;精英波橙点、BOSS 波红点),不画连线
     const step = trackW / (sim.maxWave - 1);
     g.clear();
-    g.strokeColor = rgba(120, 96, 60, 200);
-    g.lineWidth = 2;
-    g.moveTo(-trackW / 2, 0);
-    g.lineTo(trackW / 2, 0);
-    g.stroke();
     for (let wave = 1; wave <= sim.maxWave; wave += 1) {
       const x = -trackW / 2 + (wave - 1) * step;
       const isElite = wave % 5 === 0 && wave % 10 !== 0;
       const isBoss = wave % 10 === 0;
-      const reached = sim.wave >= wave;
-      const radius = isBoss ? 7 : isElite ? 6 : 4;
-      g.fillColor = isBoss
-        ? (reached ? rgba(240, 80, 60, 255) : rgba(120, 46, 40, 235))
-        : isElite
-          ? (reached ? rgba(255, 170, 80, 255) : rgba(120, 86, 46, 235))
-          : (reached ? rgba(255, 214, 110, 255) : rgba(70, 58, 44, 235));
-      g.circle(x, 0, radius);
+      if (wave === sim.wave) {
+        g.strokeColor = rgba(227, 196, 138, 255);
+        g.lineWidth = 2.5;
+        g.circle(x, 0, 7);
+        g.stroke();
+        continue;
+      }
+      const reached = sim.wave > wave;
+      g.fillColor = isBoss ? rgba(232, 86, 72, reached ? 255 : 220) : isElite ? rgba(240, 163, 52, reached ? 255 : 200) : reached ? rgba(242, 242, 242, 240) : rgba(150, 158, 172, 210);
+      g.circle(x, 0, isBoss ? 5 : 4);
       g.fill();
     }
   }
@@ -2639,25 +2666,23 @@ export class LobbyGuardBattleRenderer {
       const h = hpTransform.height;
       const r = h / 2;
       hpGraphics.clear();
-      hpGraphics.fillColor = rgba(8, 12, 22, 230);
+      hpGraphics.fillColor = rgba(8, 12, 20, 200);
       hpGraphics.roundRect(-w / 2, -h / 2, w, h, r);
       hpGraphics.fill();
-      const inset = h <= 10 ? 1.5 : 3;
+      // B:暗轨 + 浅蓝填充(≤35% 转红)+ 极淡细边,无金边无高光
+      const inset = 1.5;
       const fillW = Math.max(r, (w - inset * 2) * hpRatio);
-      hpGraphics.fillColor = hpRatio > 0.35 ? rgba(70, 165, 255, 250) : rgba(240, 86, 66, 250);
+      hpGraphics.fillColor = hpRatio > 0.35 ? rgba(104, 174, 255, 250) : rgba(236, 96, 80, 250);
       hpGraphics.roundRect(-w / 2 + inset, -h / 2 + inset, fillW, h - inset * 2, r - inset);
       hpGraphics.fill();
-      hpGraphics.fillColor = hpRatio > 0.35 ? rgba(190, 230, 255, 90) : rgba(255, 190, 170, 90);
-      hpGraphics.roundRect(-w / 2 + inset, 0, fillW, h / 2 - inset, r - inset);
-      hpGraphics.fill();
-      hpGraphics.strokeColor = h <= 10 ? rgba(200, 214, 232, 120) : rgba(214, 170, 96, 235);
-      hpGraphics.lineWidth = h <= 10 ? 1 : 1.5;
+      hpGraphics.strokeColor = rgba(200, 214, 232, 90);
+      hpGraphics.lineWidth = 1;
       hpGraphics.roundRect(-w / 2, -h / 2, w, h, r);
       hpGraphics.stroke();
     }
     const hpText = hpBar?.getChildByName('GuardCrystalHpText')?.getComponent(Label);
     if (hpText) {
-      const hpString = sim.mode === 'raid' ? `${formatInt(Math.ceil(sim.crystalHp))} / ${formatInt(sim.crystalMaxHp)}` : `${Math.ceil(sim.crystalHp)} / ${sim.crystalMaxHp}`;
+      const hpString = sim.mode === 'raid' ? `${formatInt(Math.ceil(sim.crystalHp))} / ${formatInt(sim.crystalMaxHp)}` : `${Math.ceil(hpRatio * 100)}%`;
       if (hpText.string !== hpString) {
         hpText.string = hpString;
       }
@@ -2719,11 +2744,18 @@ export class LobbyGuardBattleRenderer {
         const parentH = enhanceCostNode.parent?.getComponent(UITransform)?.height ?? 0;
         enhanceCostNode.setPosition(enhanceCostNode.position.x, enhanceDesc.string ? -parentH * 0.3 : -parentH * 0.17, 0);
       }
-      enhanceDesc.color = gold.available && gold.forced ? rgba(255, 220, 120, 255) : rgba(232, 214, 180, 240);
+      enhanceDesc.color = gold.available && gold.forced ? GLASS_COLOR.champagne : GLASS_COLOR.sub;
     }
     if (enhanceCost) {
       enhanceCost.string = nextEnhanceCost === null ? '—' : nextEnhanceCost === 0 ? `免费 ×${sim.freeEnhance}` : `${nextEnhanceCost}`;
-      enhanceCost.color = nextEnhanceCost === 0 ? rgba(150, 255, 170, 255) : rgba(255, 214, 110, 250);
+      enhanceCost.color = nextEnhanceCost === 0 ? GLASS_COLOR.green : GLASS_COLOR.text;
+      // 金币图标贴在数字左边(免费 / 选满时隐藏)
+      const coin = enhanceCost.node.parent?.getChildByName('GuardEnhanceCoin');
+      if (coin) {
+        coin.active = !!nextEnhanceCost;
+        const numW = estimateGlassTextWidth(enhanceCost.string, 20);
+        coin.setPosition(enhanceCost.node.position.x - numW / 2 - 16, enhanceCost.node.position.y, 0);
+      }
     }
     const freeBadge = this.root?.getChildByName('GuardEnhanceButton')?.getChildByName('GuardEnhanceFreeBadge');
     if (freeBadge) {
@@ -2757,33 +2789,33 @@ export class LobbyGuardBattleRenderer {
     const s = this.bottomHudScale();
     const button = this.host.addChildPlainNode(root, 'GuardEnhanceButton', width / 2 - 24 - (summonW + 16) * s - w * s / 2, -height / 2 + 18 + summonH * s / 2, w, h);
     button.setScale(s, s, 1);
-    this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_enhance/spriteFrame', 0, 0, w, h);
+    // 2026-11-11 B(原型 guard_hud_b):暗磨砂圆角块 + 左侧白色盾牌线稿 + 白「战术」+ 灰色概率 / 提示 + 金币消耗
+    const kit = this.kit;
+    mountGlassSlice(kit, button, 'GlassBase', GLASS_SLICES.panel, 0, 0, w, h, 1);
+    mountGlassSlice(kit, button, 'Glass', GLASS_SLICES.panel, 0, 0, w, h, 1);
+    this.mountSprite(button, 'Icon', 'ui/glass/battle_shield/spriteFrame', -w / 2 + 40, 0, 46, 46, rgba(236, 238, 242));
     this.host.applyImageButtonFeedback(button);
-    const title = this.host.addChildLabel(button, 'GuardEnhanceLabel', '战术', w * 0.1, h * 0.2, 22, rgba(255, 238, 190, 252), new Size(w * 0.6, 26));
-    title.enableOutline = true;
-    title.outlineColor = rgba(20, 12, 6, 255);
-    title.outlineWidth = 2;
+    const textX = w * 0.12;
+    const title = glassLabel(kit, button, 'GuardEnhanceLabel', '战术', textX, h * 0.24, 24, GLASS_COLOR.text, w * 0.6, HorizontalTextAlignment.CENTER, true);
     LobbyGuardBattleRenderer.hudCharCache(title, true);
-    const desc = this.host.addChildLabel(button, 'GuardEnhanceDesc', '', w * 0.14, -h * 0.08, 15, rgba(232, 214, 180, 240), new Size(w * 0.54, 16));
+    const desc = glassLabel(kit, button, 'GuardEnhanceDesc', '', textX, -h * 0.02, 15, GLASS_COLOR.sub, w * 0.6, HorizontalTextAlignment.CENTER);
     desc.overflow = Label.Overflow.SHRINK;
-    const cost = this.host.addChildLabel(button, 'GuardEnhanceCost', '', w * 0.1, -h * 0.3, 16, rgba(255, 214, 110, 250), new Size(w * 0.6, 20));
-    cost.enableOutline = true;
-    cost.outlineColor = rgba(24, 14, 6, 255);
-    cost.outlineWidth = 2;
+    const cost = glassLabel(kit, button, 'GuardEnhanceCost', '', textX + 10, -h * 0.3, 20, GLASS_COLOR.text, w * 0.56, HorizontalTextAlignment.CENTER, true);
     LobbyGuardBattleRenderer.hudCharCache(cost, true);
-    // 免费强化角标(波末赠送,docs/32 §2.2):按钮右上角绿点 + 呼吸缩放。
-    const badge = this.host.addChildPlainNode(button, 'GuardEnhanceFreeBadge', w * 0.4, h * 0.36, 44, 22);
+    this.mountSprite(button, 'GuardEnhanceCoin', 'ui/guard/coin_gold/spriteFrame', textX - 22, -h * 0.3, 22, 22);
+    // 免费战术角标(波末赠送,docs/32 §2.2):右上角绿色细边小胶囊 + 呼吸缩放。
+    const badge = this.host.addChildPlainNode(button, 'GuardEnhanceFreeBadge', w * 0.38, h * 0.42, 50, 24);
     const bg = badge.addComponent(Graphics);
-    bg.fillColor = rgba(40, 150, 80, 250);
-    bg.roundRect(-22, -11, 44, 22, 11);
+    bg.fillColor = rgba(26, 60, 38, 240);
+    bg.roundRect(-25, -12, 50, 24, 12);
     bg.fill();
-    bg.strokeColor = rgba(200, 255, 210, 250);
-    bg.lineWidth = 1.6;
-    bg.roundRect(-22, -11, 44, 22, 11);
+    bg.strokeColor = rgba(132, 214, 140, 255);
+    bg.lineWidth = 1.5;
+    bg.roundRect(-25, -12, 50, 24, 12);
     bg.stroke();
-    this.host.addChildLabel(badge, 'Text', '免费', 0, 0, 13, rgba(240, 255, 240), new Size(40, 16));
+    this.host.addChildLabel(badge, 'Text', '免费', 0, 0, 14, GLASS_COLOR.green, new Size(46, 18));
     badge.active = false;
-    tween(badge).repeatForever(tween<Node>().to(0.5, { scale: new Vec3(1.14, 1.14, 1) }).to(0.5, { scale: new Vec3(1, 1, 1) })).start();
+    tween(badge).repeatForever(tween<Node>().to(0.5, { scale: new Vec3(1.1, 1.1, 1) }).to(0.5, { scale: new Vec3(1, 1, 1) })).start();
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -2907,19 +2939,18 @@ export class LobbyGuardBattleRenderer {
     const s = this.bottomHudScale();
     const button = this.host.addChildPlainNode(root, 'GuardSummonButton', width / 2 - 24 - w * s / 2, -height / 2 + 18 + h * s / 2, w, h);
     button.setScale(s, s, 1);
-    this.mountSprite(button, 'Art', 'ui/battle/ai/ghud_btn_summon/spriteFrame', 0, 0, w, h);
+    // 2026-11-11 B(原型 guard_hud_b):香槟实心主钮 + 深色「招募」+ 金币消耗(只显示当前所需金币)
+    mountGlassSlice(this.kit, button, 'Pill', GLASS_SLICES.pillPrimary, 0, 0, w, h, 1);
     this.host.applyImageButtonFeedback(button);
-    const title = this.host.addChildLabel(button, 'GuardSummonLabel', '招募', w * 0.08, h * 0.14, 28, rgba(255, 244, 210, 255), new Size(w * 0.6, 34));
-    title.enableOutline = true;
-    title.outlineColor = rgba(60, 26, 8, 255);
-    title.outlineWidth = 3;
+    const title = this.host.addChildLabel(button, 'GuardSummonLabel', '招募', 0, h * 0.17, 32, GLASS_COLOR.onChampagne, new Size(w * 0.7, 40));
+    title.isBold = true;
+    title.enableOutline = false;
     LobbyGuardBattleRenderer.hudCharCache(title, true);
-    // 2026-10-11 用户:只显示当前所需金币 → 字号 16→22,居中在标题下
-    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', w * 0.08, -h * 0.22, 22, rgba(255, 224, 140, 250), new Size(w * 0.6, 28));
-    cost.enableOutline = true;
-    cost.outlineColor = rgba(50, 22, 8, 255);
-    cost.outlineWidth = 2;
+    const cost = this.host.addChildLabel(button, 'GuardSummonCost', '', 14, -h * 0.24, 24, GLASS_COLOR.onChampagne, new Size(w * 0.5, 30));
+    cost.isBold = true;
+    cost.enableOutline = false;
     LobbyGuardBattleRenderer.hudCharCache(cost, true);
+    this.mountSprite(button, 'GuardSummonCoin', 'ui/guard/coin_gold/spriteFrame', -30, -h * 0.24, 26, 26);
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
       if (!sim) {
@@ -4393,24 +4424,20 @@ export class LobbyGuardBattleRenderer {
         const tile = this.cellTileRect(cell);
         const node = this.host.addChildPlainNode(field, 'GuardResonance', tile.x, tile.y, tile.w, tile.h);
         node.setSiblingIndex(3);
-        const ray = this.mountSprite(node, 'Ray', 'ui/guard/cast_flash/spriteFrame', 0, 0, tile.w * 1.15, tile.w * 1.15, rgba(255, 214, 110));
-        ray.addComponent(UIOpacity).opacity = 150;
-        tween(ray).repeatForever(tween().by(10, { angle: -360 })).start();
+        // B:香槟描边板面呼吸 + 板下香槟小胶囊「共鸣 攻+40%」(去掉旋转光芒)
         const frame = this.host.addChildPlainNode(node, 'Frame', 0, 0, tile.w, tile.h);
-        const fg = frame.addComponent(Graphics);
-        fg.fillColor = rgba(255, 214, 110, 46);
-        fg.roundRect(-tile.w * 0.47, -tile.h * 0.45, tile.w * 0.94, tile.h * 0.9, 10);
-        fg.fill();
-        fg.strokeColor = rgba(255, 220, 120, 235);
-        fg.lineWidth = 3;
-        fg.roundRect(-tile.w * 0.47, -tile.h * 0.45, tile.w * 0.94, tile.h * 0.9, 10);
-        fg.stroke();
+        this.paintCellPlate(frame, tile.w, tile.h, 'resonance');
         const frameOp = frame.addComponent(UIOpacity);
-        tween(frameOp).repeatForever(tween().to(0.7, { opacity: 150 }).to(0.7, { opacity: 255 })).start();
-        const tag = this.host.addChildLabel(node, 'Tag', '共鸣 攻+40%', 0, -tile.h * 0.5 - 12, 15, rgba(255, 226, 140), new Size(tile.w * 1.3, 20));
-        tag.enableOutline = true;
-        tag.outlineColor = rgba(40, 24, 8, 255);
-        tag.outlineWidth = 2;
+        tween(frameOp).repeatForever(tween().to(0.8, { opacity: 140 }).to(0.8, { opacity: 255 })).start();
+        const tagW = 128;
+        const tagNode = this.host.addChildPlainNode(node, 'Tag', 0, this.cellPlateDy(tile.h) - tile.w * 0.17 - 16, tagW, 26);
+        const tg = tagNode.addComponent(Graphics);
+        tg.fillColor = rgba(227, 196, 138, 240);
+        tg.roundRect(-tagW / 2, -13, tagW, 26, 13);
+        tg.fill();
+        const tagLabel = this.host.addChildLabel(tagNode, 'Text', '共鸣 攻+40%', 0, 0, 15, GLASS_COLOR.onChampagne, new Size(tagW - 12, 24));
+        tagLabel.isBold = true;
+        tagLabel.overflow = Label.Overflow.SHRINK;
       }
       this.resonanceKey = key;
       if (sim.resonanceCells.length > 0) {
@@ -4611,139 +4638,45 @@ export class LobbyGuardBattleRenderer {
     const bar = this.host.addChildPlainNode(root, 'GuardSpellBar', this.spellBarCenterX(), this.spellBarY(), barW, size + 60);
     const hudScale = this.bottomHudScale();
     bar.setScale(hudScale, hudScale, 1);
-    // 2026-10-11 美化:条加高到 18;2026-10-15 金框改为条体自身的圆角金边 + 沿边绕行的流光 / 星芒(mountEnergyBarFx)
-    const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 26, barW, 18);
-    energyBg.addComponent(Graphics);
-    const energyFx = this.host.addChildPlainNode(bar, 'EnergyFx', 0, size / 2 + 26, barW, 18);
-    this.mountEnergyBarFx(energyFx, barW, 18);
-    const energyText = this.host.addChildLabel(bar, 'EnergyText', '', -barW / 2, size / 2 + 46, 15, rgba(170, 220, 255), new Size(barW, 20), HorizontalTextAlignment.LEFT);
-    energyText.enableOutline = true;
-    energyText.outlineColor = rgba(10, 16, 28, 255);
-    energyText.outlineWidth = 2;
+    // 2026-11-11 B(原型 guard_hud_b):灰字「水晶能量 n / max」在上、细蓝条在下(去掉金框流光);法术位 = 磨砂圆钮 + 法术画 + 左上 Lv 小签 + 右上能量数 + 白名字
+    const kit = this.kit;
+    const energyText = glassLabel(kit, bar, 'EnergyText', '', -barW / 2, size / 2 + 44, 17, GLASS_COLOR.sub, barW, HorizontalTextAlignment.LEFT);
     LobbyGuardBattleRenderer.hudCharCache(energyText, true);
+    const energyBg = this.host.addChildPlainNode(bar, 'Energy', 0, size / 2 + 24, barW, 10);
+    energyBg.addComponent(Graphics);
     sim.spellLoadout.forEach((id, index) => {
       const def = GUARD_SPELLS[id];
       const x = -barW / 2 + size / 2 + index * (size + gap);
       const slot = this.host.addChildPlainNode(bar, `Spell_${id}`, x, 0, size, size);
-      const g = slot.addComponent(Graphics);
-      g.fillColor = rgba(14, 10, 8, 225);
-      g.circle(0, 0, size / 2);
-      g.fill();
-      const iconSize = id === 'quake' ? size : size * 0.72;
+      this.mountHudDisc(slot, size);
+      const iconSize = id === 'quake' ? size * 0.92 : size * 0.7;
       this.mountSprite(slot, 'Icon', GUARD_SPELL_ICON[id], 0, 0, iconSize, iconSize);
       this.host.addChildPlainNode(slot, 'Charge', 0, 0, 10, 10).addComponent(Graphics);
-      // 档位边框(docs/39:T1 青铜 / T2 银 / T3 金,金边外加一圈细光环)——一眼看出法术等级
+      // 档位(docs/39:T1 / T2 / T3):B 风格只在圆钮外缘加一圈细环区分(T2 银、T3 香槟),不再是粗铜 / 银 / 金边
       const level = guardSpellLevel(sim, id);
       const tier = guardSpellTier(level);
-      const rim = this.host.addChildPlainNode(slot, 'Rim', 0, 0, 10, 10).addComponent(Graphics);
-      rim.strokeColor = GUARD_SPELL_TIER_RIM[tier - 1];
-      rim.lineWidth = tier === 3 ? 4 : 3;
-      rim.circle(0, 0, size / 2);
-      rim.stroke();
-      if (tier === 3) {
-        rim.strokeColor = rgba(255, 236, 160, 150);
+      if (tier >= 2) {
+        const rim = this.host.addChildPlainNode(slot, 'Rim', 0, 0, 10, 10).addComponent(Graphics);
+        rim.strokeColor = tier === 3 ? rgba(227, 196, 138, 235) : rgba(214, 220, 232, 200);
         rim.lineWidth = 2;
-        rim.circle(0, 0, size / 2 + 4);
+        rim.circle(0, 0, size / 2 + 3);
         rim.stroke();
       }
-      const lvBadge = this.host.addChildLabel(slot, 'Level', `Lv.${level}`, -size * 0.34, size * 0.36, 14, tier === 3 ? rgba(255, 224, 120) : tier === 2 ? rgba(226, 236, 255) : rgba(236, 214, 170), new Size(44, 18));
-      lvBadge.isBold = true;
-      lvBadge.overflow = Label.Overflow.SHRINK;
-      lvBadge.enableOutline = true;
-      lvBadge.outlineColor = rgba(16, 10, 6, 255);
-      lvBadge.outlineWidth = 2;
-      const cost = this.host.addChildLabel(slot, 'Cost', `${def.cost}`, size * 0.36, size * 0.36, 15, rgba(170, 220, 255), new Size(40, 20));
-      cost.enableOutline = true;
-      cost.outlineColor = rgba(10, 16, 28, 255);
-      cost.outlineWidth = 2;
-      LobbyGuardBattleRenderer.hudCharCache(cost, true);
-      const name = this.host.addChildLabel(slot, 'Name', def.name, 0, -size / 2 - 13, 15, rgba(240, 222, 186), new Size(size + gap, 20));
+      const chip = (name: string, text: string, cx: number, w: number, color: Color): void => {
+        const node = this.host.addChildPlainNode(slot, name, cx, size * 0.42, w, 22);
+        mountGlassSlice(kit, node, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, w, 22, 22 / 48);
+        const label = this.host.addChildLabel(node, 'Text', text, 0, 0, 14, color, new Size(w - 6, 20));
+        label.isBold = true;
+        label.overflow = Label.Overflow.SHRINK;
+        LobbyGuardBattleRenderer.hudCharCache(label, true);
+      };
+      chip('Level', `Lv.${level}`, -size * 0.34, 46, tier === 3 ? GLASS_COLOR.champagne : GLASS_COLOR.text);
+      chip('Cost', `${def.cost}`, size * 0.36, 42, GLASS_COLOR.text);
+      const name = glassLabel(kit, slot, 'Name', def.name, 0, -size / 2 - 14, 16, GLASS_COLOR.text, size + gap, HorizontalTextAlignment.CENTER, true);
       name.overflow = Label.Overflow.SHRINK;
-      name.enableOutline = true;
-      name.outlineColor = rgba(20, 12, 6, 255);
-      name.outlineWidth = 2;
       this.bindSpellSlot(slot, id);
     });
     this.refreshSpellBar();
-  }
-
-  /** 能量条特效:金框流光铺满条(用 sizePx=条宽,再按条高压扁)+ 蓝色光环「能量头」。特效没就绪时先预热,就绪后 refreshSpellBar 下一次重建时挂上。 */
-  /**
-   * 2026-10-15 用户「包裹能量条的长方形特效要圆角,并融合能量条的边框」:原 A49-394 是直角切角的序列帧框,
-   * 怎么缩放都出不了圆角,而且比条体大一圈、和条边框是两条线。改为:金边框 + 外发光由 refreshSpellBar 直接画在
-   * 条体圆角边上(同一条线);这里只挂两道沿圆角边框绕行的流光(烘焙光弹精灵)+ 三颗轮流闪的星芒,
-   * 全是普通精灵,无骨骼、无遮罩、不逐帧重画 Graphics。
-   */
-  private mountEnergyBarFx(holder: Node, barW: number, barH: number): void {
-    const r = barH / 2;
-    const straight = Math.max(0, barW - barH);
-    const arc = Math.PI * r;
-    const perimeter = straight * 2 + arc * 2;
-    // 沿圆角框顺时针取点(从上沿左端起):返回坐标 + 前进方向角(度),光弹头朝前进方向
-    const pointAt = (s0: number): { x: number; y: number; angle: number } => {
-      let d = ((s0 % perimeter) + perimeter) % perimeter;
-      if (d < straight) {
-        return { x: -straight / 2 + d, y: r, angle: 0 };
-      }
-      d -= straight;
-      if (d < arc) {
-        const a = Math.PI / 2 - d / r;
-        return { x: straight / 2 + Math.cos(a) * r, y: Math.sin(a) * r, angle: ((a - Math.PI / 2) * 180) / Math.PI };
-      }
-      d -= arc;
-      if (d < straight) {
-        return { x: straight / 2 - d, y: -r, angle: 180 };
-      }
-      d -= straight;
-      const a = -Math.PI / 2 - d / r;
-      return { x: -straight / 2 + Math.cos(a) * r, y: Math.sin(a) * r, angle: ((a - Math.PI / 2) * 180) / Math.PI };
-    };
-    const streakFrame = boltFrame(new Color(255, 214, 130, 255), 130, 140);
-    const period = Math.max(3, perimeter / 170);
-    [0, 0.5].forEach((phase, index) => {
-      if (!streakFrame) {
-        return;
-      }
-      const streak = this.host.addChildPlainNode(holder, `EnergyStreak_${index}`, 0, 0, 10, 10);
-      this.mountBakedSprite(streak, streakFrame, -BOLT_SIZE.originX * 0.8, 0, BOLT_SIZE.w * 0.8, barH * 0.95);
-      const place = (t: number): void => {
-        const pt = pointAt((t + phase) * perimeter);
-        streak.setPosition(pt.x, pt.y, 0);
-        streak.angle = pt.angle;
-      };
-      place(0);
-      const proxy = { t: 0 };
-      const tw: Tween<{ t: number }> = tween(proxy)
-        .repeatForever(tween(proxy).set({ t: 0 }).to(period, { t: 1 }, {
-          onUpdate: () => {
-            if (!streak.isValid) {
-              tw.stop();
-              return;
-            }
-            place(proxy.t);
-          },
-        }))
-        .start();
-    });
-    // 星芒:落在上下两条直边上随机位置,轮流放大闪一下
-    const sparkleFrame = impactFrame(new Color(255, 236, 190, 255));
-    for (let i = 0; i < 3 && sparkleFrame; i += 1) {
-      const sparkle = this.host.addChildPlainNode(holder, `EnergySparkle_${i}`, 0, 0, 10, 10);
-      this.mountBakedSprite(sparkle, sparkleFrame, 0, 0, barH * 1.2, barH * 1.2);
-      sparkle.setScale(0, 0, 1);
-      const reposition = (): void => {
-        const top = Math.random() < 0.5;
-        sparkle.setPosition(-straight / 2 + Math.random() * straight, top ? r : -r, 0);
-      };
-      tween(sparkle)
-        .delay(0.4 + i * 0.9)
-        .repeatForever(tween(sparkle)
-          .call(reposition)
-          .to(0.28, { scale: new Vec3(1, 1, 1) })
-          .to(0.4, { scale: new Vec3(0, 0, 1) })
-          .delay(1.4 + Math.random() * 1.2))
-        .start();
-    }
   }
 
   private refreshSpellBar(): void {
@@ -4759,33 +4692,19 @@ export class LobbyGuardBattleRenderer {
     const fillW = Math.max(8, barW * Math.min(1, energy / sim.spellEnergyMax));
     const full = energy >= sim.spellEnergyMax;
     if (eg && !this.sameDrawKey(eg.node, `${Math.round(barW)}:${Math.round(fillW)}:${full ? 1 : 0}`)) {
-      // 2026-10-11 美化:深底 + 双层蓝填充(下深上亮,顶部一道高光)+ 满能量转金白;外框由 EnergyFx 的金框流光承担
-      const h = 18;
+      // B:暗轨 + 浅蓝填充(满能量转香槟)+ 极淡细边
+      const h = 10;
       const r = h / 2;
       eg.clear();
-      // 2026-10-15:金边框 + 外发光直接画在条体圆角边上(先画外发光,内半边被深底盖住),流光 / 星芒见 mountEnergyBarFx。
-      // 描边不用 roundRect:半径 = 半高时两端留零长度竖边,描边会在左右端算出尖刺 → 两端半圆用折线自己画
-      eg.lineJoin = Graphics.LineJoin.ROUND;
-      eg.lineWidth = 7;
-      eg.strokeColor = full ? rgba(255, 210, 110, 70) : rgba(255, 190, 90, 45);
-      pillStrokePath(eg, barW, h);
-      eg.stroke();
-      eg.lineWidth = 4;
-      eg.strokeColor = full ? rgba(255, 220, 130, 120) : rgba(255, 200, 110, 80);
-      pillStrokePath(eg, barW, h);
-      eg.stroke();
-      eg.fillColor = rgba(6, 9, 20, 225);
+      eg.fillColor = rgba(8, 12, 20, 200);
       eg.roundRect(-barW / 2, -r, barW, h, r);
       eg.fill();
-      eg.fillColor = full ? rgba(255, 214, 120, 250) : rgba(40, 120, 230, 250);
-      eg.roundRect(-barW / 2 + 2, -r + 2, Math.max(4, fillW - 4), h - 4, r - 2);
+      eg.fillColor = full ? rgba(227, 196, 138, 255) : rgba(104, 174, 255, 250);
+      eg.roundRect(-barW / 2 + 1.5, -r + 1.5, Math.max(4, fillW - 3), h - 3, r - 1.5);
       eg.fill();
-      eg.fillColor = full ? rgba(255, 244, 200, 170) : rgba(140, 210, 255, 160);
-      eg.roundRect(-barW / 2 + 2, 0, Math.max(4, fillW - 4), r - 3, r - 3);
-      eg.fill();
-      eg.strokeColor = full ? rgba(255, 240, 190, 250) : rgba(255, 222, 150, 235);
-      eg.lineWidth = 1.6;
-      pillStrokePath(eg, barW, h);
+      eg.strokeColor = rgba(200, 214, 232, 90);
+      eg.lineWidth = 1;
+      eg.roundRect(-barW / 2, -r, barW, h, r);
       eg.stroke();
     }
 
@@ -4833,14 +4752,14 @@ export class LobbyGuardBattleRenderer {
         chargeOpacity.opacity = 255;
         if (frac < 1) {
           // 充能进度环(扇形一律 arc(..., true))
-          charge.strokeColor = rgba(110, 180, 255, 235);
-          charge.lineWidth = 5;
-          charge.arc(0, 0, size / 2 - 5, Math.PI / 2, Math.PI / 2 + Math.PI * 2 * frac, true);
+          charge.strokeColor = rgba(120, 186, 255, 235);
+          charge.lineWidth = 3;
+          charge.arc(0, 0, size / 2 - 2, Math.PI / 2, Math.PI / 2 + Math.PI * 2 * frac, true);
           charge.stroke();
         } else if (castable) {
-          charge.strokeColor = rgba(255, 224, 130, 240);
-          charge.lineWidth = 6;
-          charge.circle(0, 0, size / 2 + 3);
+          charge.strokeColor = rgba(227, 196, 138, 245);
+          charge.lineWidth = 3;
+          charge.circle(0, 0, size / 2 + 1);
           charge.stroke();
           tween(chargeOpacity).repeatForever(tween().to(0.5, { opacity: 150 }).to(0.5, { opacity: 255 })).start();
         }
@@ -5743,19 +5662,10 @@ export class LobbyGuardBattleRenderer {
     const button = this.host.addChildPlainNode(root, 'GuardTrapButton', this.trapButtonX(), this.spellBarY(), size, size);
     const hudScale = this.bottomHudScale();
     button.setScale(hudScale, hudScale, 1);
-    const g = button.addComponent(Graphics);
-    g.fillColor = rgba(24, 16, 10, 230);
-    g.circle(0, 0, size / 2);
-    g.fill();
-    g.strokeColor = rgba(214, 168, 92, 235);
-    g.lineWidth = 3;
-    g.circle(0, 0, size / 2);
-    g.stroke();
-    this.paintSpikes(button, size * 0.62, size * 0.36, rgba(200, 200, 210));
-    const label = this.host.addChildLabel(button, 'Label', '陷阱', 0, -size / 2 - 13, 15, rgba(240, 222, 186), new Size(90, 20));
-    label.enableOutline = true;
-    label.outlineColor = rgba(20, 12, 6, 255);
-    label.outlineWidth = 2;
+    // B:磨砂圆钮 + 白色尖刺线稿 + 白字
+    this.mountHudDisc(button, size, this.trapTrayOpen);
+    this.paintSpikes(button, size * 0.62, size * 0.36, rgba(236, 238, 242));
+    glassLabel(this.kit, button, 'Label', '陷阱', 0, -size / 2 - 14, 16, GLASS_COLOR.text, 90, HorizontalTextAlignment.CENTER, true);
     this.host.applyImageButtonFeedback(button);
     button.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
       (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
@@ -5789,14 +5699,8 @@ export class LobbyGuardBattleRenderer {
     const tray = this.host.addChildPlainNode(root, 'GuardTrapTray', trayX, trayY, trayW, trayH);
     tray.setScale(hudScale, hudScale, 1);
     tray.addComponent(BlockInputEvents);
-    const g = tray.addComponent(Graphics);
-    g.fillColor = rgba(14, 10, 8, 225);
-    g.roundRect(-trayW / 2, -trayH / 2, trayW, trayH, 12);
-    g.fill();
-    g.strokeColor = rgba(214, 168, 92, 220);
-    g.lineWidth = 2;
-    g.roundRect(-trayW / 2, -trayH / 2, trayW, trayH, 12);
-    g.stroke();
+    mountGlassSlice(this.kit, tray, 'GlassBase', GLASS_SLICES.panel, 0, 0, trayW, trayH, 1);
+    mountGlassSlice(this.kit, tray, 'Glass', GLASS_SLICES.panel, 0, 0, trayW, trayH, 1);
     GUARD_TRAP_KINDS.forEach((kind, index) => {
       const def = GUARD_TRAPS[kind];
       const x = -trayW / 2 + 14 + icon / 2 + index * (icon + gap);
@@ -6065,17 +5969,15 @@ export class LobbyGuardBattleRenderer {
     }
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const bannerW = Math.min(600, width * 0.42);
-    const bannerH = bannerW * (110 / 704);
-    const btnW = 230;
-    const btnH = btnW * (100 / 431);
-    const y = height / 2 - 16 - bannerH - 14 - 22 - btnH / 2;
-    const button = this.mountPrimaryButton(root, 'GuardCallWaveButton', 0, y, btnW);
-    const label = this.host.addChildLabel(button, 'GuardCallWaveLabel', '提前迎战', 0, 0, 20, rgba(255, 238, 190), new Size(btnW * 0.86, 28));
-    label.overflow = Label.Overflow.SHRINK;
-    label.enableOutline = true;
-    label.outlineColor = rgba(60, 20, 8, 255);
-    label.outlineWidth = 2;
+    // B:香槟主钮(原型 guard_hud_info_b),挂在波次圆点正下方
+    const btnW = 270;
+    const btnH = 52;
+    const y = this.topBannerGeom().bottom - 26 - 18 - btnH / 2;
+    const button = mountGlassButton(this.kit, root, 'GuardCallWaveButton', '提前迎战', 0, y, btnW, btnH, 1, 'primary', undefined, 22);
+    const label = button.getChildByName('Label');
+    if (label) {
+      label.name = 'GuardCallWaveLabel';
+    }
     button.active = false;
     button.on(Node.EventType.TOUCH_END, () => {
       const sim = this.sim;
@@ -8381,8 +8283,6 @@ export class LobbyGuardBattleRenderer {
       ...(layer ? [`ui/battle/${layer.name}_${layer.masked ? 'mask' : 'near'}/spriteFrame`, 'ui/battle/battle_fog_strip/spriteFrame'] : []),
       // 伤害数字位图字(2026-11-11)
       BATTLE_NUMBER_FONT_FRAME_PATH,
-      this.cellTilePath(false),
-      this.cellTilePath(true),
       'ui/battle/ai/battle_bg_cathedral/spriteFrame',
       'ui/common/ai/title_banner_new/spriteFrame',
     ]);
@@ -9029,12 +8929,16 @@ export class LobbyGuardBattleRenderer {
       this.attachUnitSpine(node, fallback, ally, size, false, pendingView);
     }
     // 名字宽度钳到格距内+SHRINK(视频验收:相邻列名字连成乱串);定位词收进详情卡,不再挤标签
-    const nameLabel = this.host.addChildLabel(node, 'GuardHeroName', pool?.displayName ?? hero.heroCode, 0, size * 0.6, 15, rgba(236, 224, 196), new Size(this.cellPitchPx() * 0.94, 20));
+    // B:白名字 + 香槟星,细暗描边保证亮地面上可读
+    const nameLabel = this.host.addChildLabel(node, 'GuardHeroName', pool?.displayName ?? hero.heroCode, 0, size * 0.6, 15, rgba(242, 242, 242), new Size(this.cellPitchPx() * 0.94, 20));
     nameLabel.overflow = Label.Overflow.SHRINK;
-    const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.46, 16, rgba(255, 220, 110), new Size(size * 1.4, 20));
+    nameLabel.enableOutline = true;
+    nameLabel.outlineColor = rgba(8, 10, 16, 190);
+    nameLabel.outlineWidth = 1;
+    const star = this.host.addChildLabel(node, 'GuardHeroStar', '★', 0, size * 0.46, 16, rgba(227, 196, 138), new Size(size * 1.4, 20));
     star.enableOutline = true;
-    star.outlineColor = rgba(40, 24, 10, 255);
-    star.outlineWidth = 2;
+    star.outlineColor = rgba(8, 10, 16, 190);
+    star.outlineWidth = 1;
     LobbyGuardBattleRenderer.hudCharCache(star, true);
     const atkLabel = this.host.addChildLabel(node, 'GuardHeroAtk', '', 0, -size * 0.58, 14, rgba(214, 196, 156, 230), new Size(size * 1.2, 18));
     LobbyGuardBattleRenderer.hudCharCache(atkLabel, true);
@@ -9267,11 +9171,16 @@ export class LobbyGuardBattleRenderer {
     g.stroke();
     // 选中格高亮:金光踏台(踏台改版配套,2026-09-02)
     const tile = this.cellTileRect(hero.cell);
-    this.mountSprite(layer, 'SelectedCard', this.cellTilePath(true), tile.x, tile.y, tile.w * 1.1, tile.h * 1.1);
+    const selectedCard = this.host.addChildPlainNode(layer, 'SelectedCard', tile.x, tile.y, tile.w, tile.h);
+    this.paintCellPlate(selectedCard, tile.w, tile.h, 'selected');
     this.showHeroInfo(hero);
   }
 
-  /** 选中英雄信息卡(2026-08-25 用户拍板:点击展示信息,再点消失):名/星/定位/攻击/攻速/射程。 */
+  /**
+   * 选中英雄信息卡(2026-08-25 用户拍板:点击展示信息,再点消失)。
+   * 2026-11-11 B(原型 周报截图/2026-11-11_守卫战HUD/proto/guard_hud_info_b.png):玻璃卡贴在英雄右侧(带指向她的小尖角):
+   * 头像 + 名字 + 星 + 稀有度签 + ✕ → 定位行 → 攻击 / 攻速两枚小胶囊 → 分隔线 → 战技 / 专属大招两行(右侧状态)→ 描述 → 底部暗条「战术卡」。
+   */
   private showHeroInfo(hero: GuardHeroUnit): void {
     const root = this.root;
     const sim = this.sim;
@@ -9279,56 +9188,129 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     root.getChildByName('GuardHeroInfoPanel')?.destroy();
+    const kit = this.kit;
     const pool = sim.pool.find((entry) => entry.heroCode === hero.heroCode);
     const profile = GUARD_ROLE_PROFILE[hero.role];
     const skill = GUARD_HERO_SKILL[hero.role];
-    // 放大+内容整体下移进框(2026-08-28 用户验收:名字盖住框顶);2026-09-21 加高:战技/专属大招分两行 + 已持有词条。
-    const w = 404;
-    const h = 408;
-    const panel = this.host.addChildPlainNode(root, 'GuardHeroInfoPanel', -this.layoutWidth / 2 + 88 + w / 2, this.layoutHeight / 2 - 226 - h / 2, w, h);
-    // 素净框(2026-08-28 用户验收:原框坠饰太多且全遮背景):细金线石板框 + 轻透明,背后英雄隐约可见
-    this.mountSprite(panel, 'Frame', 'ui/common/ai/bag_grid_panel/spriteFrame', 0, 0, w, h);
-    const panelOpacity = panel.addComponent(UIOpacity);
-    panelOpacity.opacity = 232;
-    const nameLabel = this.host.addChildLabel(panel, 'Name', pool?.displayName ?? hero.heroCode, 0, h / 2 - 58, 24, rgba(255, 234, 180), new Size(w - 96, 30));
+    const rarity = (pool?.rarity ?? 'R').toUpperCase();
+    const w = 440;
+    const h = 356;
+    // 位置:英雄格右侧,尖角对准英雄身体;整卡钳在屏幕内(顶部让开顶栏,底部让开法术栏)
+    const center = this.cellCenter(hero.cell);
+    const pitch = this.cellPitchPx();
+    const anchorY = center.y + this.unitSize() * 0.45;
+    const x = Math.min(this.layoutWidth / 2 - w / 2 - 16, center.x + pitch * 0.55 + 14 + w / 2);
+    const y = Math.max(-this.layoutHeight / 2 + h / 2 + 150, Math.min(this.layoutHeight / 2 - h / 2 - 96, anchorY - 30));
+    const panel = this.host.addChildPlainNode(root, 'GuardHeroInfoPanel', x, y, w, h);
+    panel.addComponent(BlockInputEvents);
+    mountGlassSlice(kit, panel, 'GlassBase', GLASS_SLICES.panel, 0, 0, w, h, 1);
+    mountGlassSlice(kit, panel, 'Glass', GLASS_SLICES.panel, 0, 0, w, h, 1);
+    // 尖角:卡左缘外侧的小三角,y 对准英雄(钳在卡内)
+    const notchY = Math.max(-h / 2 + 30, Math.min(h / 2 - 30, anchorY - y));
+    const notch = this.host.addChildPlainNode(panel, 'Notch', -w / 2 - 6, notchY, 14, 24).addComponent(Graphics);
+    notch.fillColor = rgba(24, 28, 38, 235);
+    notch.moveTo(7, 12);
+    notch.lineTo(-6, 0);
+    notch.lineTo(7, -12);
+    notch.close();
+    notch.fill();
+    notch.strokeColor = rgba(210, 216, 226, 70);
+    notch.lineWidth = 1;
+    notch.moveTo(6, 12);
+    notch.lineTo(-6, 0);
+    notch.lineTo(6, -12);
+    notch.stroke();
+    const left = -w / 2 + 22;
+    const top = h / 2;
+    // 头像(直径 74,稀有度色细环)
+    const avatarD = 74;
+    const avatar = this.host.addChildPlainNode(panel, 'Avatar', left + avatarD / 2, top - 22 - avatarD / 2, avatarD, avatarD);
+    const ag = avatar.addComponent(Graphics);
+    ag.fillColor = rgba(12, 14, 20, 255);
+    ag.circle(0, 0, avatarD / 2);
+    ag.fill();
+    const clip = this.host.addChildPlainNode(avatar, 'Clip', 0, 0, avatarD - 4, avatarD - 4);
+    clip.addComponent(Mask).type = Mask.Type.GRAPHICS_ELLIPSE;
+    this.mountStatsAvatar(clip, { name: pool?.displayName ?? hero.heroCode, rarity, ally: this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null }, avatarD - 4);
+    const rarityColor = rarity === 'UR' || rarity === 'SSR' ? rgba(240, 163, 52) : rarity === 'SR' ? rgba(186, 84, 246) : rarity === 'R' ? rgba(52, 132, 242) : rgba(160, 166, 178);
+    const ring = this.host.addChildPlainNode(avatar, 'Ring', 0, 0, avatarD, avatarD).addComponent(Graphics);
+    ring.strokeColor = rarityColor;
+    ring.lineWidth = 2;
+    ring.circle(0, 0, avatarD / 2 - 1);
+    ring.stroke();
+    // 名字 + 星 + 稀有度签
+    const textLeft = left + avatarD + 16;
+    const name = pool?.displayName ?? hero.heroCode;
+    const nameSize = 26;
+    const nameW = Math.min(170, estimateGlassTextWidth(name, nameSize));
+    const nameLabel = glassLabel(kit, panel, 'Name', name, textLeft, top - 44, nameSize, GLASS_COLOR.text, nameW + 8, HorizontalTextAlignment.LEFT, true);
     nameLabel.overflow = Label.Overflow.SHRINK;
-    this.host.addChildLabel(panel, 'Star', '★'.repeat(hero.star), 0, h / 2 - 88, 18, rgba(255, 220, 110), new Size(w - 60, 22));
+    const starLabel = glassLabel(kit, panel, 'Star', '★'.repeat(hero.star), textLeft + nameW + 10, top - 44, 20, GLASS_COLOR.champagne, 90, HorizontalTextAlignment.LEFT);
+    const tagX = textLeft + nameW + 16 + hero.star * 18;
+    const tag = this.host.addChildPlainNode(panel, 'Rarity', tagX + 22, top - 44, 44, 24);
+    const tg = tag.addComponent(Graphics);
+    tg.fillColor = rgba(rarityColor.r * 0.18, rarityColor.g * 0.18, rarityColor.b * 0.18, 220);
+    tg.roundRect(-22, -12, 44, 24, 12);
+    tg.fill();
+    tg.strokeColor = rarityColor;
+    tg.lineWidth = 1.5;
+    tg.roundRect(-22, -12, 44, 24, 12);
+    tg.stroke();
+    this.host.addChildLabel(tag, 'Text', rarity, 0, 0, 14, rgba(Math.min(255, rarityColor.r + 60), Math.min(255, rarityColor.g + 60), Math.min(255, rarityColor.b + 60)), new Size(42, 20)).isBold = true;
+    void starLabel;
+    // ✕(收起 = 取消选中)
+    const close = this.host.addChildPlainNode(panel, 'Close', w / 2 - 32, top - 32, 46, 46);
+    const cg = close.addComponent(Graphics);
+    cg.strokeColor = rgba(214, 218, 226, 190);
+    cg.lineWidth = 1.5;
+    cg.circle(0, 0, 16);
+    cg.stroke();
+    kit.addSprite('X', GLASS_ICON.close, 0, 0, 20, 20, close);
+    close.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
+      (event as unknown as { propagationStopped?: boolean }).propagationStopped = true;
+      this.clearRangeIndicator();
+    }, this);
+    // 定位行
     const roleName = GUARD_ROLE_LABEL[hero.role] ?? hero.role;
     const perkProfile = resolveGuardHeroPerkProfile(hero.heroCode, hero.role);
-    const roleLabel = this.host.addChildLabel(panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格 · 普攻 ${GUARD_ARCHETYPE_LABEL[perkProfile.archetype]}`, 0, h / 2 - 118, 16, rgba(226, 214, 188), new Size(w - 60, 20));
-    roleLabel.overflow = Label.Overflow.SHRINK;
-    this.host.addChildLabel(panel, 'Atk', this.heroInfoAtkText(hero), 0, h / 2 - 146, 16, rgba(255, 200, 150), new Size(w - 60, 22));
-    // 战技(2★ 自动施放,通用表现)与专属大招(金色词条觉醒)分两行
-    const skillTitle = this.host.addChildLabel(panel, 'SkillName', this.heroInfoSkillText(hero), 0, h / 2 - 178, 17, rgba(150, 220, 255), new Size(w - 64, 22));
-    skillTitle.overflow = Label.Overflow.SHRINK;
-    const ultTitle = this.host.addChildLabel(panel, 'UltName', '', 0, h / 2 - 204, 17, rgba(255, 214, 110), new Size(w - 64, 22));
-    ultTitle.overflow = Label.Overflow.SHRINK;
-    const desc = this.host.addChildLabel(panel, 'SkillDesc', skill.desc, 0, h / 2 - 240, 14, rgba(206, 196, 172), new Size(w - 76, 40));
+    const role = glassLabel(kit, panel, 'Role', `定位 ${roleName} · 覆盖 ${profile.rangeCells} 格 · 普攻 ${GUARD_ARCHETYPE_LABEL[perkProfile.archetype]}`, textLeft, top - 80, 16, GLASS_COLOR.sub, w / 2 - textLeft - 18);
+    role.overflow = Label.Overflow.SHRINK;
+    // 攻击 / 攻速小胶囊
+    const chipW = (w - 44 - 14) / 2;
+    const chipY = top - 128;
+    [{ key: 'Atk', icon: 'ui/glass/stat_atk/spriteFrame' }, { key: 'Spd', icon: 'ui/glass/stat_spd/spriteFrame' }].forEach((entry, index) => {
+      const chip = this.host.addChildPlainNode(panel, `${entry.key}Chip`, left + chipW / 2 + index * (chipW + 14), chipY, chipW, 38);
+      mountGlassSlice(kit, chip, 'Bg', GLASS_SLICES.hudCapsule, 0, 0, chipW, 38, 38 / 48);
+      this.mountSprite(chip, 'Icon', entry.icon, -chipW / 2 + 24, 0, 22, 22, rgba(236, 238, 242));
+      glassLabel(kit, chip, 'Text', '', -chipW / 2 + 44, 0, 17, GLASS_COLOR.text, chipW - 52, HorizontalTextAlignment.LEFT);
+    });
+    mountGlassLine(kit, panel, 'Divider', 0, top - 160, w - 44, 1, rgba(150, 158, 172, 70));
+    // 战技 / 专属大招两行:左图标 + 白字名,右侧状态
+    const rowY = [top - 186, top - 220];
+    [{ key: 'Skill', icon: 'ui/glass/profile_bolt/spriteFrame' }, { key: 'Ult', icon: 'ui/glass/profile_star/spriteFrame' }].forEach((entry, index) => {
+      this.mountSprite(panel, `${entry.key}Icon`, entry.icon, left + 11, rowY[index], 22, 22, rgba(236, 238, 242));
+      // 名字与右侧状态各占一段不重叠(手机字号下限 20 时名字自动缩字)
+      const label = glassLabel(kit, panel, `${entry.key}Name`, '', left + 32, rowY[index], 17, GLASS_COLOR.text, w * 0.5, HorizontalTextAlignment.LEFT);
+      label.overflow = Label.Overflow.SHRINK;
+      const state = glassLabel(kit, panel, `${entry.key}State`, '', w / 2 - 22, rowY[index], 15, GLASS_COLOR.sub, w * 0.3, HorizontalTextAlignment.RIGHT);
+      state.overflow = Label.Overflow.SHRINK;
+    });
+    const desc = glassLabel(kit, panel, 'SkillDesc', skill.desc, left, top - 266, 15, GLASS_COLOR.sub, w - 44);
+    desc.enableWrapText = true;
+    desc.lineHeight = 21;
     desc.overflow = Label.Overflow.SHRINK;
-    const perksLabel = this.host.addChildLabel(panel, 'Perks', '', 0, h / 2 - 316, 14, rgba(200, 220, 255), new Size(w - 76, 96));
-    perksLabel.overflow = Label.Overflow.SHRINK;
-    perksLabel.enableWrapText = true;
-    perksLabel.lineHeight = 19;
+    desc.node.getComponent(UITransform)?.setContentSize(w - 44, 46);
+    // 底部暗条:战术卡摘要(+ 没有时的「点「战术」抽取 ›」香槟提示)
+    const stripH = 44;
+    const strip = this.host.addChildPlainNode(panel, 'PerkStrip', 0, -h / 2 + 10 + stripH / 2, w - 20, stripH);
+    const sg = strip.addComponent(Graphics);
+    sg.fillColor = rgba(6, 8, 12, 120);
+    sg.roundRect(-(w - 20) / 2, -stripH / 2, w - 20, stripH, 10);
+    sg.fill();
+    const perks = glassLabel(kit, strip, 'Perks', '', -(w - 20) / 2 + 14, 0, 15, GLASS_COLOR.sub, w - 48);
+    perks.overflow = Label.Overflow.SHRINK;
+    glassLabel(kit, strip, 'PerksHint', '点「战术」抽取 ›', (w - 20) / 2 - 14, 0, 15, GLASS_COLOR.champagne, 160, HorizontalTextAlignment.RIGHT);
     this.refreshHeroInfoLive(hero);
-  }
-
-  private heroInfoAtkText(hero: GuardHeroUnit): string {
-    const sim = this.sim;
-    if (!sim) {
-      return '';
-    }
-    const profile = GUARD_ROLE_PROFILE[hero.role];
-    return `攻击 ${guardHeroAttackValue(sim, hero)} · 攻速 ${((1000 / profile.intervalMs) * guardPermanentFrequency(sim, hero.heroCode)).toFixed(1)}/秒`;
-  }
-
-  private heroInfoSkillText(hero: GuardHeroUnit): string {
-    const sim = this.sim;
-    if (!sim) {
-      return '';
-    }
-    const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
-    const skillState = guardHeroSkillUnlocked(sim, hero) ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁';
-    return `⚡ 战技 · ${GUARD_HERO_SKILL[hero.role].name} · ${skillState}`;
   }
 
   /** 已持有词条摘要:蓝卡按层、紫卡流派;词条按英雄编码存,合成重抽身份后换了谁就看谁的。 */
@@ -9366,32 +9348,35 @@ export class LobbyGuardBattleRenderer {
     if (!sim || !panel || !panel.isValid) {
       return;
     }
-    const skillLabel = panel.getChildByName('SkillName')?.getComponent(Label);
-    if (skillLabel) {
-      skillLabel.string = this.heroInfoSkillText(hero);
-    }
-    const ultLabel = panel.getChildByName('UltName')?.getComponent(Label);
-    if (ultLabel) {
-      const ultLv = guardHeroPerks(sim, hero.heroCode).ultLv;
-      const ultName = this.resolveGuardSkillDisplayName(hero.heroCode, '专属大招');
-      ultLabel.string = ultLv > 0 ? `✦ 专属大招 · ${ultName} · Lv${ultLv} 已觉醒` : `✦ 专属大招 · ${ultName} · 金色战术卡觉醒`;
-      ultLabel.color = ultLv > 0 ? rgba(255, 214, 110, 255) : rgba(170, 150, 110, 255);
-    }
-    const perksLabel = panel.getChildByName('Perks')?.getComponent(Label);
-    if (perksLabel) {
-      const text = this.heroInfoPerksText(hero);
-      if (perksLabel.string !== text) {
-        perksLabel.string = text;
+    const setText = (node: Node | null | undefined, text: string, color?: Color): void => {
+      const label = node?.getComponent(Label);
+      if (label && label.string !== text) {
+        label.string = text;
       }
+      if (label && color) {
+        label.color = color;
+      }
+    };
+    const profile = GUARD_ROLE_PROFILE[hero.role];
+    setText(panel.getChildByName('AtkChip')?.getChildByName('Text'), `攻击 ${guardHeroAttackValue(sim, hero)}`);
+    setText(panel.getChildByName('SpdChip')?.getChildByName('Text'), `攻速 ${((1000 / profile.intervalMs) * guardPermanentFrequency(sim, hero.heroCode)).toFixed(1)}/秒`);
+    // 战技:名字左、状态右(就绪绿 / 冷却灰 / 2★ 解锁灰)
+    const cdLeft = Math.max(0, (hero.skillReadyMs - sim.timeMs) / 1000);
+    const unlocked = guardHeroSkillUnlocked(sim, hero);
+    setText(panel.getChildByName('SkillName'), `战技 · ${GUARD_HERO_SKILL[hero.role].name}`);
+    setText(panel.getChildByName('SkillState'), unlocked ? (cdLeft <= 0 ? '就绪' : `冷却 ${cdLeft.toFixed(1)}s`) : '2★ 解锁', unlocked && cdLeft <= 0 ? GLASS_COLOR.green : GLASS_COLOR.sub);
+    const ultLv = guardHeroPerks(sim, hero.heroCode).ultLv;
+    setText(panel.getChildByName('UltName'), `专属大招 · ${this.resolveGuardSkillDisplayName(hero.heroCode, '专属大招')}`);
+    setText(panel.getChildByName('UltState'), ultLv > 0 ? `Lv${ultLv} 已觉醒` : '金色战术卡觉醒', GLASS_COLOR.champagne);
+    const strip = panel.getChildByName('PerkStrip');
+    const perksText = this.heroInfoPerksText(hero);
+    const none = perksText.startsWith('战术卡:暂无');
+    setText(strip?.getChildByName('Perks'), none ? '战术卡:暂无' : perksText);
+    const hint = strip?.getChildByName('PerksHint');
+    if (hint) {
+      hint.active = none;
     }
-    const atkLabel = panel.getChildByName('Atk')?.getComponent(Label);
-    if (atkLabel) {
-      atkLabel.string = this.heroInfoAtkText(hero);
-    }
-    const starLabel = panel.getChildByName('Star')?.getComponent(Label);
-    if (starLabel) {
-      starLabel.string = '★'.repeat(hero.star);
-    }
+    setText(panel.getChildByName('Star'), '★'.repeat(hero.star));
   }
 
   private clearRangeIndicator(): void {

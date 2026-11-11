@@ -56,7 +56,8 @@ STEPS = [
     ('settings_spells', "(async () => { %s r.renderSettingsPage(r.root.getChildByName('GuardSettingsOverlay'), 'spells'); await sleep(2500); return 1; })()" % SLEEP),
     ('exit', "(async () => { %s %s r.openExitConfirm(); await sleep(900); return 'exit=' + r.exitConfirmOpen; })()" % (SLEEP, CLEAN)),
     ('stats', "(async () => { %s %s const codes = (s.pool || []).map(p => p.heroCode).slice(0, 6); codes.forEach((c, i) => { s.heroDamage[c] = 24000 - i * 3100; }); r.statsPanelOpen = true; r.refreshStatsPanel(true); await sleep(1800); return codes.length; })()" % (SLEEP, CLEAN)),
-    ('hero_info', "(async () => { %s %s const h = s.heroes[0]; if (h) r.showHeroInfo(h); await sleep(1500); return !!h; })()" % (SLEEP, CLEAN)),
+    ('hero_info', "(async () => { %s %s const h = s.heroes[0]; if (h) { r.rangeShownUnitId = h.unitId; r.drawRangeIndicator(h); } await sleep(1500); return !!h; })()" % (SLEEP, CLEAN)),
+    ('callwave', "(async () => { %s %s r.clearRangeIndicator(); s.paused = true; r.refreshCallWaveButton = function () {}; const b = r.root.getChildByName('GuardCallWaveButton'); if (b) { b.active = true; const l = b.getChildByName('GuardCallWaveLabel'); if (l) l.getComponent(cc.Label).string = '提前迎战  +60 金币'; } await sleep(900); return !!b; })()" % (SLEEP, CLEAN)),
     ('victory', "(async () => { %s %s s.paused = true; r.showEndOverlay(true); await sleep(3500); return 1; })()" % (SLEEP, CLEAN)),
     ('victory_rewards', "(async () => { %s const h = r.host; const orig = h.currentLobbyBattleState; h.currentLobbyBattleState = function () { return Object.assign({}, orig.call(h), { settling: false, error: '', settlement: { message: '奖励已发放。', rewardGranted: true, rewardItems: [{ resourceType: 'CURRENCY', resourceCode: 'GOLD', resourceName: '金币', amount: 12800 }, { resourceType: 'ITEM', resourceCode: 'ENHANCE_STONE_HIGH', resourceName: '高阶强化石', amount: 3 }, { resourceType: 'ITEM', resourceCode: 'HERO_EXP_BOOK', resourceName: '英雄经验书', amount: 5 }, { resourceType: 'ITEM', resourceCode: 'GUARD_CORE', resourceName: '守卫晶核', amount: 2 }] } }); }; try { r.refreshEndOverlay(); } finally { h.currentLobbyBattleState = orig; } await sleep(7000); return 1; })()" % SLEEP),
     ('defeat', "(async () => { %s %s s.paused = true; r.showEndOverlay(false); await sleep(3500); return 1; })()" % (SLEEP, CLEAN)),
@@ -89,6 +90,21 @@ LOGIC = ("(async () => { %s %s const res = {}; "
          "return JSON.stringify(res); })()") % (SLEEP, CLEAN)
 if os.environ.get('GUARD_LOGIC'):
     STEPS.append(('_logic', LOGIC))
+
+# GUARD_HUD_LOGIC=1:HUD 按钮逻辑自检(统计开合 / 收起、信息卡 ✕、齿轮 → 设置、✕ → 退出确认、招募 / 战术扣金币)
+HUD_LOGIC = ("(async () => { %s %s const res = {}; "
+             "const find = (n, name) => { if (!n) return null; if (n.name === name) return n; for (const c of n.children) { const f = find(c, name); if (f) return f; } return null; }; "
+             "const tap = (n) => { if (n) n.emit(cc.Node.EventType.TOUCH_END, { propagationStopped: false }); return !!n; }; const hud = r.root.getChildByName('GuardHud'); "
+             "r.statsPanelOpen = false; r.refreshStatsPanel(true); tap(hud.getChildByName('GuardStatsButton')); await sleep(200); res.statsOpen = !!hud.getChildByName('GuardStatsPanel'); "
+             "tap(find(hud.getChildByName('GuardStatsPanel'), 'Fold')); await sleep(200); res.statsFold = !hud.getChildByName('GuardStatsPanel'); "
+             "const h = s.heroes[0]; r.rangeShownUnitId = h.unitId; r.drawRangeIndicator(h); await sleep(200); tap(find(r.root.getChildByName('GuardHeroInfoPanel'), 'Close')); await sleep(200); res.infoClose = !r.root.getChildByName('GuardHeroInfoPanel'); "
+             "tap(hud.getChildByName('GuardSettingsButton')); await sleep(300); res.gear = r.settingsOpen; r.closeBattleSettings(); await sleep(200); "
+             "tap(hud.getChildByName('GuardCloseButton')); await sleep(300); res.closeBtn = r.exitConfirmOpen; r.closeExitConfirm(); await sleep(200); "
+             "s.gold = 5000; const n0 = s.heroes.length; const g0 = s.gold; tap(r.root.getChildByName('GuardSummonButton')); await sleep(300); res.summon = s.heroes.length === n0 + 1 || s.gold < g0; "
+             "const lv = s.enhanceLevel; tap(r.root.getChildByName('GuardEnhanceButton')); await sleep(400); res.enhance = s.enhanceLevel === lv + 1 || !!s.pendingChoice; "
+             "return JSON.stringify(res); })()") % (SLEEP, CLEAN)
+if os.environ.get('GUARD_HUD_LOGIC'):
+    STEPS.append(('_hud_logic', HUD_LOGIC))
 
 
 async def shoot(mobile: bool, suffix: str) -> None:
