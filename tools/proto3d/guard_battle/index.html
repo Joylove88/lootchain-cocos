@@ -1558,6 +1558,7 @@ function resetSim() {
 // ═══════════════════════════ 10. 后期 / 画质档 / 尺寸 ═══════════════════════════
 let composer = null, gtao = null, bloom = null, gradePass = null;
 let forced = null;   // { w, h, pr }:调试时强制画布尺寸
+const sized = { w: 0, h: 0 };   // 上次套用的窗口尺寸
 /** 最后一个通道:ACES 调色(和 three.js 自带的那套逐行相同)+ 转 sRGB + 暗角 + 一点颗粒,一次做完(少一遍全屏读写)。 */
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uAspect: { value: 1.78 }, uExposure: { value: 1 } },
@@ -1598,6 +1599,7 @@ function buildComposer() {
 function resize() {
   const w = forced ? forced.w : window.innerWidth, h = forced ? forced.h : window.innerHeight;
   if (w < 2 || h < 2) return;   // 面板被收起时窗口是 0×0,等它再显示出来
+  sized.w = w; sized.h = h;
   let pr = Math.min(window.devicePixelRatio || 1, 2, (OPT.px || T.shortSide) / Math.min(w, h));
   if (OPT.dpr) pr = OPT.dpr; if (forced && forced.pr) pr = forced.pr;
   renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
@@ -1662,6 +1664,7 @@ function info() {
 function frame(now) {
   requestAnimationFrame(frame);
   if (!ready || busy) { stat.last = now; return; }
+  if (!forced && (window.innerWidth !== sized.w || window.innerHeight !== sized.h)) resize();   // 有的宿主窗口从隐藏变显示不发 resize 事件
   const dt = Math.min(0.05, (now - stat.last) / 1000 || 0.016); stat.last = now;
   stat.ms = lerp(stat.ms, dt * 1000, 0.06);
   if (!paused) update(dt);
