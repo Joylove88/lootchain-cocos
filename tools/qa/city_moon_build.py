@@ -22,6 +22,15 @@
   数据里多一个 hd 字段(块的位置 / 大小仍用标准图像素,scale = 2)。几何(可走栅格 / 遮挡条 / 点位 / 灯)两套完全共用。
   没有 mosaic_hi.png 就只出标准一套。
 自查图:%TEMP%/lootchain-qa/city_moon/build_classes.jpg / build_strips.jpg
+
+画风(环境变量 CITY_STYLE,11-11 晚起缺省 real):
+  real  用户选定的「实拍质感 · 月色更亮」:底图用 tools/qa/city_moon_restyle.py all 重绘出来的 restyle/mosaic.png(标准)和
+        restyle/mosaic_hi.png(2 倍)。布局没变,所以分割图、可走栅格仍以原图那一套为准:可走栅格直接沿用现有数据文件(冻结),
+        只有植被一类改用新图的分割结果 restyle/seg/seg_full.png(树冠 / 灌木轮廓跟着新图走)。
+        新图的分割:python tools/qa/city_moon_build.py seg(real 画风下读 restyle/mosaic.png、写 restyle/seg/)。
+        源图留底在 素材原始备份/citymoon-20261111-real/(临时目录被清了就从那里拷回 %TEMP%/lootchain-qa/city_moon/restyle/)。
+  moon  原来的插画风(mosaic.png + hires/mosaic_hi.png + seg_full.png),可走栅格按分割图重算。
+要改可走区(开门、加通道):先 CITY_STYLE=moon 跑一遍 build(重算可走栅格写进数据文件),再用缺省的 real 跑一遍(沿用刚算好的栅格、换回新画面)。
 """
 import json
 import os
@@ -42,8 +51,23 @@ ROOT = WG.ROOT
 SRC = GEN.OUT
 DST = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'citymoon')
 DST_HD = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'citymoon_hd')
-# 2 倍整城图;环境变量 CITY_HIRES 可以指到别的文件(比如先拿「标准图放大 2 倍」的假图把入库和运行时跑通)
-HIRES = os.environ.get('CITY_HIRES') or os.path.join(SRC, 'hires', 'mosaic_hi.png')
+# 画风(见文件头):real = 实拍质感 · 月色更亮(缺省),moon = 原插画风。下面几项各有环境变量可单独覆盖:
+#   CITY_PLATE    标准图
+#   CITY_HIRES    2 倍图
+#   CITY_SEG_DIR  seg 命令把分割结果写到哪个目录
+#   CITY_SEG_VEG  build 时植被一类改用这张分割图(其余类别和可走区仍用原分割图 SRC/seg_full.png);空 = 不换
+#   CITY_WALK_FREEZE=1 / 0  可走栅格 / 出生格直接沿用现有数据文件里的(换画风不该动玩法:房子、路、栏杆的位置没变)
+#   CITY_WARM=红下限,绿下限,红减蓝下限  自动找灯 / 亮窗的阈值(插画风 222,165,60;写实画面的灯没那么亮,205,150,60)
+STYLE = os.environ.get('CITY_STYLE') or 'real'
+assert STYLE in ('real', 'moon'), 'CITY_STYLE 只能是 real 或 moon'
+RESTYLE = os.path.join(SRC, 'restyle')
+REAL = STYLE == 'real'
+PLATE = os.environ.get('CITY_PLATE') or os.path.join(RESTYLE if REAL else SRC, 'mosaic.png')
+SEG_DIR = os.environ.get('CITY_SEG_DIR') or (os.path.join(RESTYLE, 'seg') if REAL else SRC)
+SEG_VEG = os.environ['CITY_SEG_VEG'] if 'CITY_SEG_VEG' in os.environ else (os.path.join(RESTYLE, 'seg', 'seg_full.png') if REAL else '')
+WALK_FREEZE = (os.environ.get('CITY_WALK_FREEZE') or ('1' if REAL else '0')) == '1'
+WARM_MIN = tuple(int(v) for v in (os.environ.get('CITY_WARM') or ('205,150,60' if REAL else '222,165,60')).split(','))
+HIRES = os.environ.get('CITY_HIRES') or (os.path.join(RESTYLE, 'mosaic_hi.png') if REAL else os.path.join(SRC, 'hires', 'mosaic_hi.png'))
 HD_SCALE = 2
 DATA_TS = os.path.join(ROOT, 'assets', 'scripts', 'scenes', 'lobby', 'LobbyCityMoonData.ts')
 BACKUP = os.path.join(ROOT, '素材原始备份', 'citymoon-20261111')
@@ -211,14 +235,16 @@ def split(n, limit, mult=1):
 
 def cmd_seg(redo=False):
     import battle_bg_layer_gen as B
-    mosaic = Image.open(os.path.join(SRC, 'mosaic.png')).convert('RGB')
+    os.makedirs(SEG_DIR, exist_ok=True)
+    mosaic = Image.open(PLATE).convert('RGB')
+    assert mosaic.size == (GEN.MW, GEN.MH), ('底图尺寸不对', mosaic.size)
     for name, (r, c) in WINDOWS.items():
-        dst = os.path.join(SRC, f'seg_{name}.png')
+        dst = os.path.join(SEG_DIR, f'seg_{name}.png')
         if os.path.exists(dst) and not redo:
             print('exists', dst)
             continue
         x0, y0 = GEN.origin(r, c)
-        crop = os.path.join(SRC, f'_segsrc_{name}.png')
+        crop = os.path.join(SEG_DIR, f'_segsrc_{name}.png')
         mosaic.crop((x0, y0, x0 + GEN.TW, y0 + GEN.TH)).save(crop)
         B.run_codex([crop], SEG_PROMPT, dst, f'moon_seg_{name}')
     # 拼整图:每个像素取中心离它最近的那个窗口(重叠带一分为二)
@@ -226,7 +252,7 @@ def cmd_seg(redo=False):
     best = np.full((GEN.MH, GEN.MW), 1e18, np.float64)
     yy, xx = np.mgrid[0:GEN.MH, 0:GEN.MW]
     for name, (r, c) in WINDOWS.items():
-        p = os.path.join(SRC, f'seg_{name}.png')
+        p = os.path.join(SEG_DIR, f'seg_{name}.png')
         if not os.path.exists(p):
             print('missing', p)
             continue
@@ -237,16 +263,25 @@ def cmd_seg(redo=False):
         take = d < win
         full[y0:y0 + GEN.TH, x0:x0 + GEN.TW][take] = seg[take]
         win[take] = d[take]
-    Image.fromarray(full).save(os.path.join(SRC, 'seg_full.png'))
-    print('wrote seg_full.png')
+    Image.fromarray(full).save(os.path.join(SEG_DIR, 'seg_full.png'))
+    print('wrote', os.path.join(SEG_DIR, 'seg_full.png'))
 
 
 def cmd_build():
     ensure_dir()
     os.makedirs(BACKUP, exist_ok=True)
-    for f in ('mosaic.png', 'seg_full.png'):
-        shutil.copy2(os.path.join(SRC, f), os.path.join(BACKUP, f))
-    plate = np.asarray(Image.open(os.path.join(SRC, 'mosaic.png')).convert('RGB'))
+    need = [PLATE, os.path.join(SRC, 'seg_full.png')] + ([SEG_VEG] if SEG_VEG else []) + ([HIRES] if REAL else [])
+    missing = [p for p in need if not os.path.exists(p)]
+    if missing:
+        print('缺源图:', missing)
+        print('临时目录被清过的话:原图那套从 素材原始备份/citymoon-20261111/ 拷回 %s,' % SRC)
+        print('实拍质感那套从 素材原始备份/citymoon-20261111-real/ 拷回 %s(seg_full_real.png → seg/seg_full.png)。' % RESTYLE)
+        sys.exit(1)
+    print('画风', STYLE, '| 底图', PLATE, '| 可走栅格', '沿用现有数据' if WALK_FREEZE else '按分割图重算')
+    if os.path.abspath(PLATE) == os.path.abspath(os.path.join(SRC, 'mosaic.png')):
+        for f in ('mosaic.png', 'seg_full.png'):
+            shutil.copy2(os.path.join(SRC, f), os.path.join(BACKUP, f))
+    plate = np.asarray(Image.open(PLATE).convert('RGB'))
     H, W = plate.shape[:2]
     seg = np.asarray(Image.open(os.path.join(SRC, 'seg_full.png')).convert('RGB').resize((W, H), Image.NEAREST))
     lab = classify(seg)
@@ -255,6 +290,24 @@ def cmd_build():
     sizes = ndimage.sum(lab == GROUND, g_cc, range(1, g_n + 1))
     small = np.isin(g_cc, [i for i, s in enumerate(sizes, 1) if s < 2500])
     lab[small] = SOLID
+    if SEG_VEG:
+        # 换画风后树冠 / 灌木的轮廓变了:植被一类改用新图的分割结果,别的类别不动。
+        # 新分割图漏掉的大块植被(旧图里够大、新图里认出来不到一半)保留旧轮廓,免得整棵树变成「地面」、人走到树冠上面去。
+        lab_new = classify(np.asarray(Image.open(SEG_VEG).convert('RGB').resize((W, H), Image.NEAREST)))
+        veg_new = lab_new == VEG
+        o_lab, o_n = ndimage.label(ndimage.binary_closing(lab == VEG, iterations=4))
+        kept_old = 0
+        for i, sl in enumerate(ndimage.find_objects(o_lab), 1):
+            comp = (o_lab[sl] == i) & (lab[sl] == VEG)
+            area = int(comp.sum())
+            if area >= 1500 and float(veg_new[sl][comp].mean()) < 0.5:
+                veg_new[sl] |= comp
+                kept_old += 1
+        gone = (lab == VEG) & ~veg_new
+        lab[gone] = np.where(lab_new[gone] == GROUND, GROUND, SOLID)
+        grow = veg_new & ((lab == GROUND) | (lab == SOLID))
+        lab[grow] = VEG
+        print('  植被改用新分割图:新增 %d 像素、去掉 %d 像素、新图漏认而保留旧轮廓的 %d 块' % (int(grow.sum()), int(gone.sum()), kept_old))
     ground, veg, cloth, water = lab == GROUND, lab == VEG, lab == CLOTH, lab == WATER
     solid_like = lab == SOLID
 
@@ -504,10 +557,23 @@ def cmd_build():
     for r in range(rows):
         bits = ''.join('1' if (c < cols and grid[r, c]) else '0' for c in range(hex_cols))
         walk_rows.append(''.join('%x' % int(bits[k:k + 4], 2) for k in range(0, hex_cols, 4)))
+    spawn_px = [sc * CELL + CELL // 2, sr * CELL + CELL // 2]
+    if WALK_FREEZE:
+        import re
+        prev = open(DATA_TS, encoding='utf-8').read()
+        old_rows = json.loads(re.search(r'"walk": (\[[^\]]*\])', prev).group(1))
+        old_spawn = json.loads(re.search(r'"spawn": (\[[^\]]*\])', prev).group(1))
+        assert len(old_rows) == rows and all(len(v) == hex_cols // 4 for v in old_rows), '现有数据文件里的可走栅格尺寸对不上'
+        frozen = np.zeros((rows, cols), bool)
+        for r, text in enumerate(old_rows):
+            bits = ''.join(bin(int(ch, 16))[2:].zfill(4) for ch in text)
+            frozen[r] = [bits[c] == '1' for c in range(cols)]
+        print('  可走栅格沿用现有数据(冻结):按新分割图重算会有 %d 格不同,不采用' % int((frozen != grid).sum()))
+        grid, walk_rows, spawn_px = frozen, old_rows, old_spawn
 
     # ── 灯光:暖色高亮连通块(灯芯 / 亮窗)──
     p = plate.astype(np.int32)
-    warm = (p[:, :, 0] >= 222) & (p[:, :, 1] >= 165) & (p[:, :, 0] - p[:, :, 2] >= 60)
+    warm = (p[:, :, 0] >= WARM_MIN[0]) & (p[:, :, 1] >= WARM_MIN[1]) & (p[:, :, 0] - p[:, :, 2] >= WARM_MIN[2])
     warm = ndimage.binary_closing(warm, iterations=2)
     l_lab, l_n = ndimage.label(warm)
     glows = []
@@ -618,7 +684,7 @@ def cmd_build():
         drop_orphan_metas(DST_HD)
     data = {'px': [W, H], 'pad': [PAD_X, PAD_Y], 'base': base_tiles, 'tiles': {'cols': bkx, 'tileW': bsx, 'tileH': bsy, 'masks': mask_names},
             'cell': CELL, 'cols': cols, 'walk': walk_rows, 'strips': strips, 'trees': trees, 'cloths': cloths, 'waters': waters,
-            'glows': [g[:3] for g in glows], 'spawn': [sc * CELL + CELL // 2, sr * CELL + CELL // 2]}
+            'glows': [g[:3] for g in glows], 'spawn': spawn_px}
     if hd:
         data['hd'] = hd
     with open(DATA_TS, 'w', encoding='utf-8', newline='\n') as f:

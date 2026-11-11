@@ -7,13 +7,16 @@ import { builtinResMgr, EffectAsset, gfx, Material, Node, resources, Sprite, Tex
  * 全部立物共用一份材质(可合批);着色器还没加载完就先不挂,加载完回调里补挂。
  * - 11-08 透视孔:同一个 wind 着色器再建一份「带孔」材质,只挂在当前挡住队伍的几棵树上(setWindHole 每帧给孔的位置 / 强度)。
  * - 11-11 主城重做演示:cloth = 挂旗 / 布篷(wind 着色器的「上端固定」模式,另一份材质);flame = 程序火焰(effects/world-flame)。
+ * - 11-11 主城换写实画面:waterAll = 贴图已按水面抠好、整块都当水(water 着色器的另一份材质;写实的暗水面靠颜色认不全)。
  */
-type ShaderKind = 'wind' | 'water' | 'cloth' | 'flame';
+type ShaderKind = 'wind' | 'water' | 'waterAll' | 'cloth' | 'flame';
 
-const EFFECT_PATH: Record<ShaderKind, string> = { wind: 'effects/world-wind', water: 'effects/world-water', cloth: 'effects/world-wind', flame: 'effects/world-flame' };
+const EFFECT_PATH: Record<ShaderKind, string> = {
+  wind: 'effects/world-wind', water: 'effects/world-water', waterAll: 'effects/world-water', cloth: 'effects/world-wind', flame: 'effects/world-flame',
+};
 const materials: Partial<Record<ShaderKind, Material>> = {};
 const loading = new Set<ShaderKind>();
-const waiting: Record<ShaderKind, Sprite[]> = { wind: [], water: [], cloth: [], flame: [] };
+const waiting: Record<ShaderKind, Sprite[]> = { wind: [], water: [], waterAll: [], cloth: [], flame: [] };
 const origin = new Vec4(0, 0, 1, 0);
 const hole = new Vec4(0, 0, 0, 0);
 /** 带透视孔的风材质(和 wind 同一个着色器)。 */
@@ -39,6 +42,9 @@ function load(kind: ShaderKind): void {
       holeMat.initialize({ effectAsset: effect });
       holeMat.setProperty('mapOrigin', origin);
       holeMat.setProperty('holeParams', hole);
+    } else if (kind === 'waterAll') {
+      // 扰动幅度 / 速度 / 整块都当水 / 闪光强度(写实水面闪光收一半)
+      mat.setProperty('waterParams', new Vec4(0.0028, 1.0, 1, 0.25));
     } else if (kind === 'cloth') {
       // 摆幅(占贴图宽)/ 速度 / 弯曲指数 / 上端固定
       mat.setProperty('windParams', new Vec4(0.05, 2.0, 1.3, 1));

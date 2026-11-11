@@ -213,6 +213,168 @@ def cmd_sheet(name):
     print(dst, sheet.size, 'panels', len(cells))
 
 
+# ── 整城重绘(11-11 用户选定 D「实拍质感 · 月色更亮」)──
+# 分块、出图顺序、断点续跑都和高清重绘(city_moon_hires.py all)一样,三处不同:
+#   1. 提示词换成选定的画风,另给一张画风基准图(用户选定的那张样片),每一块都照它的材质 / 亮度 / 色调出;
+#   2. 不做「低频换回原图」(那会把新色调拉回旧图);改成:新块先按重叠带里的均值向已拼好的部分对齐亮度 / 色调,
+#      再做两段式接缝——低频(色调、明暗)在整条重叠带里缓缓过渡,高频(石缝、瓦片)沿最小误差线硬切;
+#   3. 画风换了纹理对不上,对位检查改成只比结构(边缘强度图分块找位移)。
+ALL = os.path.join(OUT, 'all')
+STYLE = 'realblue'
+STYLE_REF = os.path.join(OUT, 'guild_realblue.png')
+KNOWN_NOTE = (
+    ' Note: a strip along the LEFT edge and/or the TOP edge of image 1 is already rendered in the final photographic look (you can '
+    'see it differs from the rest). Reproduce those strips unchanged, and render everything else in exactly that look, continuing '
+    'their paving, roofs, walls, foliage, colour and brightness seamlessly across the boundary.'
+)
+REF_NOTE = (
+    ' Image 2 is a finished plate of another corner of the same town in exactly the target look: match its materials, level of '
+    'detail, colour balance, brightness, contrast and lighting. Use image 2 ONLY as a look reference - do not copy any of its '
+    'objects or its layout into the new image.'
+)
+SHIFT_MED, SHIFT_NEAR = 2.0, 0.6     # 对位判据(高清图像素):位移中位数不超过 2,且至少六成的块在 4 像素内(树叶纹理会造出个别离群块)
+SIGMA_LOW = 24.0                      # 两段式接缝里「低频」的界线(高清图像素)
+GAIN_LIMIT = 0.12                     # 新块向已拼好的部分对齐亮度 / 色调,每个通道最多调这么多
+
+
+def struct_shifts(a_img, b_img, bs=160, search=8):
+    """两张同尺寸的图只比结构:缩小一半取边缘强度图,分块在 ±search 内找相关最大的位移。返回各块位移(高清图像素)。"""
+    import numpy as np
+    from scipy import ndimage
+
+    def edges(im):
+        g = np.asarray(im.convert('L').resize((PW // 2, PH // 2), Image.BILINEAR), np.float32)
+        g = ndimage.gaussian_filter(g, 1.5)
+        return np.hypot(ndimage.sobel(g, 0), ndimage.sobel(g, 1))
+    a, b = edges(a_img), edges(b_img)
+    h, w = a.shape
+    win = np.outer(np.hanning(bs), np.hanning(bs))
+    out = []
+    for y in range(0, h - bs + 1, bs // 2):
+        for x in range(0, w - bs + 1, bs // 2):
+            pa = (a[y:y + bs, x:x + bs] - a[y:y + bs, x:x + bs].mean()) * win
+            pb = (b[y:y + bs, x:x + bs] - b[y:y + bs, x:x + bs].mean()) * win
+            na, nb = float(np.sqrt((pa ** 2).sum())), float(np.sqrt((pb ** 2).sum()))
+            if na < 1e-3 or nb < 1e-3:
+                continue
+            cc = np.fft.ifft2(np.fft.fft2(pa) * np.conj(np.fft.fft2(pb))).real / (na * nb)
+            best = (-1.0, 0, 0)
+            for dy in range(-search, search + 1):
+                for dx in range(-search, search + 1):
+                    v = cc[dy % bs, dx % bs]
+                    if v > best[0]:
+                        best = (float(v), dx, dy)
+            if best[0] > 0.25:
+                out.append((best[1] * 2, best[2] * 2))
+    return np.array(out, np.float32) if out else np.zeros((0, 2), np.float32)
+
+
+def shift_stats(a_img, b_img):
+    """(位移中位数, 位移在 4 像素内的块占比, 测得出的块数);测得出的块不到 4 个 = 量不出来,按通过算。"""
+    import numpy as np
+    sh = struct_shifts(a_img, b_img)
+    if len(sh) < 4:
+        return 0.0, 1.0, len(sh)
+    mag = np.hypot(sh[:, 0], sh[:, 1])
+    return float(np.median(mag)), float((mag <= 4).mean()), len(sh)
+
+
+def cmd_all(redo, no_gen=False):
+    import numpy as np
+    from scipy import ndimage
+    import battle_bg_layer_gen as B
+    os.makedirs(ALL, exist_ok=True)
+    S, COLS, ROWS, HW, HH = HI.S, HI.COLS, HI.ROWS, HI.HW, HI.HH
+    mosaic = Image.open(os.path.join(SRC, 'mosaic.png')).convert('RGB')
+    hi = np.zeros((HH, HW, 3), np.uint8)
+    filled = np.zeros((HH, HW), bool)
+    prompt = STYLES[STYLE][1] + REF_NOTE
+
+    def blur3(arr, sigma):
+        return np.stack([ndimage.gaussian_filter(arr[..., k], sigma) for k in range(3)], -1)
+
+    for r, y0 in enumerate(ROWS):
+        for c, x0 in enumerate(COLS):
+            tag = '%d%d' % (r, c)
+            piece = os.path.join(ALL, 'piece_%s.png' % tag)
+            hx, hy = x0 * S, y0 * S
+            up_img = mosaic.crop((x0, y0, x0 + CW, y0 + CH)).resize((PW, PH), Image.LANCZOS)
+            up = np.asarray(up_img, np.float32)
+            known = filled[hy:hy + PH, hx:hx + PW].copy()
+            old = hi[hy:hy + PH, hx:hx + PW].astype(np.float32)
+            if (r, c) in redo and os.path.exists(piece):
+                os.remove(piece)
+            if not os.path.exists(piece) and no_gen:
+                rows_done = hy + (PH if c > 0 else 0)
+                part = hi[:max(PH, rows_done)]
+                Image.fromarray(part).save(os.path.join(OUT, 'mosaic_hi_partial.png'))
+                print('partial', tag, part.shape, flush=True)
+                return False
+            if not os.path.exists(piece):
+                guide = up.copy()
+                guide[known] = old[known]
+                gpath = os.path.join(ALL, '_guide_%s.png' % tag)
+                Image.fromarray(np.clip(guide, 0, 255).astype(np.uint8)).resize((HI.TW, HI.TH), Image.LANCZOS).save(gpath)
+                best = None
+                for attempt in range(HI.RETRIES + 1):
+                    tmp = os.path.join(ALL, '_try_%s_%d.png' % (tag, attempt))
+                    if not B.run_codex([gpath, STYLE_REF], prompt + (KNOWN_NOTE if known.any() else ''), tmp, 'real_%s#%d' % (tag, attempt)):
+                        continue
+                    res = Image.open(tmp).convert('RGB').resize((PW, PH), Image.LANCZOS)
+                    med, near, blocks = shift_stats(up_img, res)
+                    print('   piece %s try %d: blocks %d shift median %.1f within4 %.0f%%' % (tag, attempt, blocks, med, near * 100), flush=True)
+                    if best is None or (med, -near) < best[0]:
+                        best = ((med, -near), tmp)
+                    if med <= SHIFT_MED and near >= SHIFT_NEAR:
+                        break
+                if best is None:
+                    print('STOP: piece %s 生图失败,稍后重跑本命令续上' % tag, flush=True)
+                    return False
+                if best[0][0] > SHIFT_MED or -best[0][1] < SHIFT_NEAR:
+                    print('   WARN piece %s 对位偏差较大 %s(仍采用,拼好后重点看这一块)' % (tag, best[0]), flush=True)
+                os.replace(best[1], piece)
+                for f in os.listdir(ALL):
+                    if f.startswith('_try_%s_' % tag) or f == '_guide_%s.png' % tag:
+                        os.remove(os.path.join(ALL, f))
+            new = np.asarray(Image.open(piece).convert('RGB').resize((PW, PH), Image.LANCZOS), np.float32)
+            if known.any():
+                # 亮度 / 色调先向已拼好的部分对齐(按重叠带里的均值,逐通道)
+                gain = np.array([np.clip(old[..., k][known].mean() / max(1.0, new[..., k][known].mean()), 1 - GAIN_LIMIT, 1 + GAIN_LIMIT) for k in range(3)], np.float32)
+                new = new * gain
+                ow_x = (CW - (x0 - COLS[c - 1])) * S if c > 0 else 0
+                ow_y = (CH - (y0 - ROWS[r - 1])) * S if r > 0 else 0
+                base = np.where(known[..., None], old, new)
+                low_old, low_new = blur3(base, SIGMA_LOW), blur3(new, SIGMA_LOW)
+                ys, xs = np.mgrid[0:PH, 0:PW].astype(np.float32)
+                wl = np.zeros((PH, PW), np.float32)
+                if ow_x > 24 and known[:, :8].mean() > 0.9:
+                    wl = np.maximum(wl, np.clip(1 - xs / ow_x, 0, 1))
+                if ow_y > 24 and known[:8, :].mean() > 0.9:
+                    wl = np.maximum(wl, np.clip(1 - ys / ow_y, 0, 1))
+                wl = (wl * wl * (3 - 2 * wl))[..., None]
+                wh = HI.seam_weight(old, new, known, ow_x, ow_y)[..., None]
+                new = low_old * wl + low_new * (1 - wl) + (base - low_old) * wh + (new - low_new) * (1 - wh)
+                print('   gain %s' % ' '.join('%.3f' % g for g in gain), flush=True)
+            hi[hy:hy + PH, hx:hx + PW] = np.clip(new, 0, 255).astype(np.uint8)
+            filled[hy:hy + PH, hx:hx + PW] = True
+            print('placed', tag, flush=True)
+    assert filled.all(), '还有没覆盖到的像素'
+    full = Image.fromarray(hi)
+    full.save(os.path.join(OUT, 'mosaic_hi.png'))
+    full.resize((HW // S, HH // S), Image.LANCZOS).save(os.path.join(OUT, 'mosaic.png'))          # 标准版 = 高清图缩一半
+    full.resize((HW // 4, HH // 4), Image.LANCZOS).save(os.path.join(OUT, 'mosaic_hi_preview.jpg'), quality=88)
+    print('wrote', os.path.join(OUT, 'mosaic_hi.png'), (HW, HH), flush=True)
+    return True
+
+
+def cmd_status():
+    done = [(r, c) for r in range(len(HI.ROWS)) for c in range(len(HI.COLS)) if os.path.exists(os.path.join(ALL, 'piece_%d%d.png' % (r, c)))]
+    print('pieces %d / %d' % (len(done), len(HI.ROWS) * len(HI.COLS)))
+    for r in range(len(HI.ROWS)):
+        print('  ' + ' '.join('#' if (r, c) in done else '.' for c in range(len(HI.COLS))))
+    print('mosaic_hi.png', os.path.exists(os.path.join(OUT, 'mosaic_hi.png')))
+
+
 if __name__ == '__main__':
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
@@ -223,5 +385,18 @@ if __name__ == '__main__':
         cmd_matte(sys.argv[2], float(sys.argv[3]), float(sys.argv[4]))
     elif cmd == 'sheet':
         cmd_sheet(sys.argv[2])
+    elif cmd == 'all':
+        redo_set = set()
+        for arg in sys.argv[2:]:
+            if arg.startswith('--redo='):
+                rr, cc = arg.split('=', 1)[1].split(',')
+                redo_set.add((int(rr), int(cc)))
+        cmd_all(redo_set, '--no-gen' in sys.argv)
+    elif cmd == 'status':
+        cmd_status()
+    elif cmd == 'shift':
+        # 校对位检查:底稿 vs 某张样片
+        print(sys.argv[3], shift_stats(Image.open(os.path.join(OUT, f'{sys.argv[2]}_guide.png')).convert('RGB'),
+                                       Image.open(os.path.join(OUT, f'{sys.argv[2]}_{sys.argv[3]}.png')).convert('RGB').resize((PW, PH), Image.LANCZOS)))
     else:
         print(__doc__)

@@ -4,7 +4,8 @@
 
   PAGE_QS='?cityHd=0' QA_VIEW=2560x1440 python tools/qa/city_moon_web.py <标准版目录> --only=tour_
   QA_VIEW=2560x1440 python tools/qa/city_moon_web.py <高清版目录> --only=tour_
-  python tools/qa/city_moon_compare.py <标准版目录> <高清版目录> <输出目录>
+  python tools/qa/city_moon_compare.py <标准版目录> <高清版目录> <输出目录> [左标题 右标题]
+也用来比换画风前后(两个目录各放一版同视口的巡检图,标题自己给)。
 
 每个街区出一张 <输出目录>/cmp_<街区>.jpg(各裁 1100×760 原尺寸,尽量避开 HUD)。
 注意:预览页的游戏画面固定是设计分辨率 1920×1080,视口开大只是四周多一圈底色,对比的是 1080p 下的实机效果。
@@ -45,14 +46,16 @@ def label(im, text):
 
 def main():
     std_dir, hd_dir, out = sys.argv[1], sys.argv[2], sys.argv[3]
+    left_title = sys.argv[4] if len(sys.argv) > 5 else '现在(标准版)'
+    right_title = sys.argv[5] if len(sys.argv) > 5 else '2 倍重绘(高清版)'
     os.makedirs(out, exist_ok=True)
     for name, box in CROPS.items():
         a = os.path.join(std_dir, name + '.jpg')
         b = os.path.join(hd_dir, name + '.jpg')
         if not os.path.exists(a) or not os.path.exists(b):
             continue
-        left = label(Image.open(a).convert('RGB').crop(box), '现在(标准版)')
-        right = label(Image.open(b).convert('RGB').crop(box), '2 倍重绘(高清版)')
+        left = label(Image.open(a).convert('RGB').crop(box), left_title)
+        right = label(Image.open(b).convert('RGB').crop(box), right_title)
         sheet = Image.new('RGB', (left.width * 2 + 16, left.height), (0, 0, 0))
         sheet.paste(left, (0, 0))
         sheet.paste(right, (left.width + 16, 0))

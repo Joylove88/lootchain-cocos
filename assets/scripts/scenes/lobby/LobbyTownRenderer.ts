@@ -1520,7 +1520,7 @@ export class LobbyTownRenderer {
         // 贴地:中心对齐,排在地砖之后、压暗层之前
         sprite.node.setPosition(0, 0, 0);
         if (prop.water) {
-          applyWorldShader(sprite, 'water');
+          applyWorldShader(sprite, prop.waterAll ? 'waterAll' : 'water');
         }
         // 排在投影层 / 压暗层之前(投影要压在所有贴地件上面)
         const anchor = ground.getChildByName('Shadows') ?? ground.getChildByName('Vignette');

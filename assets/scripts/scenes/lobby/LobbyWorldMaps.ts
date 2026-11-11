@@ -132,6 +132,8 @@ export interface WorldMapProp {
   flipX?: boolean;
   /** 河道 / 瀑布件:挂流水着色器(effects/world-water,按颜色识别水面和白沫)。 */
   water?: boolean;
+  /** 配合 water:贴图已经按水面抠好(有透明度的像素都是水),整块都当水,不靠颜色认(主城写实画面的暗水面蓝得不够)。 */
+  waterAll?: boolean;
   /** 立物强制随风摆 / 不摆(默认按素材名判断:树 / 灌木 / 草丛)。 */
   sway?: boolean;
   /** 挂旗 / 布篷(11-11):上端固定、下摆随风起伏(风摆着色器的 cloth 材质)。 */

@@ -21,6 +21,8 @@ const D = CITY_MOON_DATA;
  * 高清一套(11-11 用户「美术可以更细腻吗」→「按 2 倍重绘」):电脑端用 ui/world/citymoon_hd(整城图 2 倍精度,底图 15 块),
  * 手持设备保留标准版 ui/world/citymoon(省显存和流量)。几何(可走栅格 / 遮挡条 / 点位 / 灯)两套完全共用,
  * 只有底图块、遮罩和树 / 布 / 水面抠图换目录;鸟瞰图、光点、占位图两套共用标准版目录里的。
+ * 11-11 晚:用户看完高清版「感觉还是AI感偏重」(一模一样的星形枫叶 / 花点 / 铺石纹路 + 满屏发光),选了「实拍质感 · 月色更亮」——
+ * 两套图都按真实照片质感原样重绘(tools/qa/city_moon_restyle.py all),房子 / 路 / 栏杆的位置不动,可走栅格沿用,只有植被遮罩重新分割。
  */
 const HD = useHdCityArt() && D.hd ? D.hd : null;
 const DIR = HD ? 'ui/world/citymoon_hd' : 'ui/world/citymoon';
@@ -176,7 +178,7 @@ const PROPS: WorldMapProp[] = [
   // 底图块:四周多补了一圈虚化暗边,比地图大,超宽屏看到的是暗边不是黑条
   ...BASE_TILES.map(([name, cx, cy, w]) => ({ asset: A(name), x: XF(cx), y: YF(cy), width: w * UNIT, flat: true })),
   // 水面:流水着色器(波纹 + 闪光)
-  ...D.waters.map(([name, cx, cy, w]) => ({ asset: A(name), x: XF(cx), y: YF(cy), width: w * UNIT, flat: true, water: true })),
+  ...D.waters.map(([name, cx, cy, w]) => ({ asset: A(name), x: XF(cx), y: YF(cy), width: w * UNIT, flat: true, water: true, waterAll: true })),
   // 树 / 大灌木:随风摆,人走到后面开透视孔
   ...D.trees.map(([name, cx, foot, w]) => ({ asset: A(name), x: XF(cx), y: YF(foot), width: w * UNIT, sway: true })),
   // 挂旗 / 布篷:上端固定随风起伏
