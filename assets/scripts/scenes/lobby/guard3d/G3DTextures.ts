@@ -13,9 +13,9 @@ export const GZ0 = -8.5;
 export const GW = 32;
 export const GD = 16;                      // 地面贴图覆盖 32 × 16 米(贴图 2:1)
 
-const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const smooth = (a: number, b: number, v: number): number => {
+export const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
+export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+export const smooth = (a: number, b: number, v: number): number => {
   const t = clamp((v - a) / (b - a), 0, 1);
   return t * t * (3 - 2 * t);
 };
@@ -29,12 +29,12 @@ export function mulberry32(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function hash2(ix: number, iy: number, seed: number): number {
+export function hash2(ix: number, iy: number, seed: number): number {
   let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(seed + 1, 1274126177);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
-function vnoise(x: number, y: number, seed: number): number {
+export function vnoise(x: number, y: number, seed: number): number {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
   const fx = x - ix;
@@ -43,7 +43,7 @@ function vnoise(x: number, y: number, seed: number): number {
   const uy = fy * fy * (3 - 2 * fy);
   return lerp(lerp(hash2(ix, iy, seed), hash2(ix + 1, iy, seed), ux), lerp(hash2(ix, iy + 1, seed), hash2(ix + 1, iy + 1, seed), ux), uy);
 }
-function fbm(x: number, y: number, oct: number, seed: number): number {
+export function fbm(x: number, y: number, oct: number, seed: number): number {
   let s = 0;
   let a = 0.5;
   let f = 1;
@@ -57,21 +57,21 @@ function fbm(x: number, y: number, oct: number, seed: number): number {
   return s / n;
 }
 
-type Cv = HTMLCanvasElement;
-type Ctx = CanvasRenderingContext2D;
-interface Tile { cv: Cv; cells: number }
+export type Cv = HTMLCanvasElement;
+export type Ctx = CanvasRenderingContext2D;
+export interface Tile { cv: Cv; cells: number }
 
-function makeCanvas(w: number, h: number): Cv {
+export function makeCanvas(w: number, h: number): Cv {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   return c;
 }
-function ctxOf(c: Cv): Ctx {
+export function ctxOf(c: Cv): Ctx {
   return c.getContext('2d') as Ctx;
 }
 /** 模糊一张画布(有 filter 用 filter,没有就缩小再放大)。 */
-function blurred(src: Cv, r: number): Cv {
+export function blurred(src: Cv, r: number): Cv {
   const w = src.width;
   const h = src.height;
   const out = makeCanvas(w, h);
@@ -96,7 +96,7 @@ function blurred(src: Cv, r: number): Cv {
   return out;
 }
 /** 可无缝平铺的噪声瓦片(灰度,以 128 为中性,叠加混合用)。cells = 最粗一层的格数。 */
-function noiseTile(size: number, cells: number, oct: number, seed: number, contrast: number): Tile {
+export function noiseTile(size: number, cells: number, oct: number, seed: number, contrast: number): Tile {
   const cv = makeCanvas(size, size);
   const ctx = ctxOf(cv);
   const img = ctx.createImageData(size, size);
@@ -135,7 +135,7 @@ function noiseTile(size: number, cells: number, oct: number, seed: number, contr
   return { cv, cells };
 }
 /** 把噪声瓦片按任意缩放 / 旋转铺满画布并以指定混合方式叠上去(多层不同比例和角度叠起来就看不出重复)。 */
-function overlayPattern(ctx: Ctx, tile: Cv, W: number, H: number, scale: number, alpha: number, mode: GlobalCompositeOperation, rot: number, ox: number, oy: number): void {
+export function overlayPattern(ctx: Ctx, tile: Cv, W: number, H: number, scale: number, alpha: number, mode: GlobalCompositeOperation, rot: number, ox: number, oy: number): void {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.globalCompositeOperation = mode;
@@ -149,7 +149,7 @@ function overlayPattern(ctx: Ctx, tile: Cv, W: number, H: number, scale: number,
 }
 
 let NT: { big: Tile; mid: Tile; fine: Tile; grain: Tile } | null = null;
-function tiles(): { big: Tile; mid: Tile; fine: Tile; grain: Tile } {
+export function tiles(): { big: Tile; mid: Tile; fine: Tile; grain: Tile } {
   if (!NT) {
     NT = { big: noiseTile(256, 3, 5, 101, 2.3), mid: noiseTile(256, 12, 4, 202, 2.4), fine: noiseTile(256, 48, 3, 303, 2.2), grain: noiseTile(256, 128, 1, 404, 1.5) };
   }
@@ -306,11 +306,22 @@ const PUDDLES = [
   { x: 2.3, z: 1.4, r: 0.55, s: 5 }, { x: -1.9, z: -5.6, r: 0.6, s: 6 }, { x: 3.9, z: -6.3, r: 0.7, s: 7 }, { x: -3.0, z: 1.2, r: 0.42, s: 8 }, { x: 0.6, z: -1.6, r: 0.5, s: 9 },
 ];
 
+/** 雨后积水的「低洼程度」(世界坐标):超过 puddleLevel(wet) 的地方有水。画地面贴图和溅涟漪共用。 */
+export function wetValue(wx: number, wz: number): number {
+  let v = fbm(wx * 0.21 + 7.3, wz * 0.21 + 2.1, 4, 911) * 0.72 + fbm(wx * 0.55 + 1.9, wz * 0.55 + 6.4, 3, 912) * 0.28;
+  v += 0.12 * (fbm(wx * 1.5, wz * 1.5, 2, 373) - 0.5);   // 水边碎一点
+  v -= 0.16 * grassP(wx, wz);                             // 草皮上少积水
+  return v;
+}
+export function puddleLevel(wet: number): number {
+  return 0.6 - 0.13 * wet;
+}
+
 export interface Contact { x: number; z: number; r: number }
 export interface PbrCanvases { albedo: Cv; normal: Cv; orm: Cv }
 
 /** 地面:泥土底 → 车辙 → 草皮 → 石板 → 青苔 → 铜嵌环 → 整体旧化 → 水洼。W = 贴图宽(高 = W / 2)。contacts = 道具落地的位置(画一圈接地暗影)。 */
-export function paintGround(W: number, contacts: Contact[]): PbrCanvases {
+export function paintGround(W: number, contacts: Contact[], wet = 0): PbrCanvases {
   const t = tiles();
   const H = W / 2;
   const s = W / GW;
@@ -712,6 +723,52 @@ export function paintGround(W: number, contacts: Contact[]): PbrCanvases {
   stamp(h, PDB, 'rgb(88,88,88)', 1);
   stamp(o, PDW, 'rgb(255,110,0)', 0.5);
   stamp(o, PDB, 'rgb(255,28,0)', 1);
+  // 9) 雨后(wet > 0,全 3D 样板用):低洼处连成片的积水 + 整体受潮。
+  //    积水是一层浅水膜:底下的石头还看得见(颜色只压深一点点)、表面极光滑、带四成金属度 ——
+  //    金属度是有意的夸张:俯视角下水面真实的反射率只有 6% 左右,倒影几乎看不见,抬一点火光和人影才映得出来
+  //    (倒影本身由引擎的平面反射提供);不给到全金属,是因为那样水面不吃光、看着像一个个黑洞。
+  if (wet > 0) {
+    const mw = W / 4;
+    const mh = H / 4;
+    const WM = makeCanvas(mw, mh);
+    const wctx = ctxOf(WM);
+    const img = wctx.createImageData(mw, mh);
+    const thr = puddleLevel(wet);
+    for (let y = 0; y < mh; y += 1) {
+      for (let x = 0; x < mw; x += 1) {
+        const wx = GX0 + ((x + 0.5) / mw) * GW;
+        const wz = GZ0 + ((y + 0.5) / mh) * GD;
+        const v = wetValue(wx, wz);
+        const i = (y * mw + x) * 4;
+        img.data[i] = 255;
+        img.data[i + 1] = 255;
+        img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(smooth(thr, thr + 0.05, v) * 255);
+      }
+    }
+    wctx.putImageData(img, 0, 0);
+    const WMF = makeCanvas(W, H);
+    const wf = ctxOf(WMF);
+    wf.imageSmoothingQuality = 'high';
+    wf.drawImage(WM, 0, 0, W, H);
+    const WMS = blurred(WMF, 0.06 * s);   // 水面
+    const WMW = blurred(WMF, 0.3 * s);    // 水洼周围更湿的一圈
+    a.save();
+    a.globalCompositeOperation = 'multiply';
+    a.fillStyle = 'rgb(150,154,162)';      // 整体受潮:颜色变深
+    a.fillRect(0, 0, W, H);
+    a.restore();
+    o.save();
+    o.globalCompositeOperation = 'multiply';
+    o.fillStyle = 'rgb(255,150,255)';      // 粗糙度打六折
+    o.fillRect(0, 0, W, H);
+    o.restore();
+    stamp(a, WMW, '#15171b', 0.16);
+    stamp(o, WMW, 'rgb(255,70,0)', 0.6);
+    stamp(a, WMS, '#3a4350', 0.2);
+    stamp(h, WMS, 'rgb(84,84,84)', 1);
+    stamp(o, WMS, 'rgb(255,10,105)', 1);
+  }
   // 高度 0~1 = 0~8.5 厘米;每个像素 GW / W 米
   return { albedo: A, normal: heightToNormal(HT, (0.085 * W) / (2 * GW), false), orm: OR };
 }

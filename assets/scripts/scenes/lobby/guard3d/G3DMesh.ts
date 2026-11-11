@@ -16,20 +16,20 @@ const _b = new Vec3();
 const _c = new Vec3();
 
 export class MeshBatch {
-  private positions: number[] = [];
-  private normals: number[] = [];
-  private uvs: number[] = [];
-  private tangents: number[] = [];
-  private colors: number[] = [];
-  private indices: number[] = [];
+  protected positions: number[] = [];
+  protected normals: number[] = [];
+  protected uvs: number[] = [];
+  protected tangents: number[] = [];
+  protected colors: number[] = [];
+  protected indices: number[] = [];
   private readonly meshes: Mesh[] = [];
   triangles = 0;
 
-  private count(): number {
+  protected count(): number {
     return this.positions.length / 3;
   }
 
-  private cut(): void {
+  protected cut(): void {
     if (!this.positions.length) {
       return;
     }
