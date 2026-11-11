@@ -304,7 +304,14 @@ async def run_view(name, port):
                         c = step['cast']
                         print(name, 'cast', await raw(cast_js(int(c.get('idx', 0)), bool(c.get('ult')), c.get('code', '')), 120), flush=True)
                     if step.get('js'):
-                        print(name, 'step', (str(await raw("(async () => { " + H + step['js'] + " })()", 300)) or '')[:20000], flush=True)
+                        res = await raw("(async () => { " + H + step['js'] + " })()", 300)
+                        if step.get('save') and isinstance(res, str) and res.startswith('data:image/'):
+                            # {"js": ..., "save": "文件名.png"}:js 返回一张图(data URL)时存成文件——页面里自己拼好的巡检图 / 对照图
+                            path = os.path.join(OUT, f"{name}_{step['save']}")
+                            open(path, 'wb').write(base64.b64decode(res.split(',', 1)[1]))
+                            print(name, 'saved', os.path.basename(path), flush=True)
+                        else:
+                            print(name, 'step', (str(res) or '')[:20000], flush=True)
                     if step.get('wait'):
                         await asyncio.sleep(float(step['wait']))
                     if step.get('shot'):
