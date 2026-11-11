@@ -130,7 +130,7 @@ import { LobbyFormationPanelRenderer, type LobbyFormationPanelHost, type LobbyFo
 import { LobbyHeroDetailPanelRenderer, type HeroDetailTab, type LobbyHeroDetailPanelHost } from './lobby/LobbyHeroDetailPanelRenderer';
 import { heroSkinCatalog, heroSkinPackPrefixes, heroSkinsOf, setHeroSkinCatalog } from './lobby/HeroSkins';
 import { openItemSourcePopup, type ItemSourcePopupOptions } from './lobby/ItemSourcePopup';
-import { openConfirmPopup } from './lobby/ConfirmPopup';
+import { CONFIRM_POPUP_NAME, openConfirmPopup, type ConfirmPopupOptions } from './lobby/ConfirmPopup';
 import { LobbyTownRenderer, REALM_TRIAL_LIMIT_MS, REALM_TRIAL_SPECS, type LobbyTownHost } from './lobby/LobbyTownRenderer';
 import { LobbyRealmRenderer, type RealmGender, type RealmRendererHost, type RealmTrialHudState } from './lobby/LobbyRealmRenderer';
 import { currentLoadingTip, mountLoadingScreen, type LoadingScreenHost } from './lobby/LobbyLoadingScreen';
@@ -1291,6 +1291,7 @@ export class LootChainGameRoot extends Component {
     // 整页重绘会清空 UI 根,商店弹窗是覆盖层:重绘完再挂回去(最后挂 = 最上层)。
     this.syncLobbyShopOverlay();
     this.restoreItemSourcePopup();
+    this.restoreConfirmPopup();
   }
 
   private renderCurrentViewInner(): void {
@@ -2965,6 +2966,35 @@ export class LootChainGameRoot extends Component {
     }
     if (!this.ensureContentRoot().getChildByName('ItemSourcePopup')) {
       openItemSourcePopup(this as unknown as Parameters<typeof openItemSourcePopup>[0], this.ensureContentRoot(), state.options);
+    }
+  }
+
+  /** 获取途径小窗概况行的稀有度细线:背包已加载时按物品编码查。 */
+  private itemSourceRarityOf(key: string): string | null {
+    const item = this.currentLobbyBagState().groups.flatMap((group) => group.items).find((entry) => entry.itemCode === key);
+    return item?.rarity || null;
+  }
+
+  /** 通用二次确认(11-11 B 风格):同获取途径,整页重建会清掉它 —— 记状态,同一页面重建后补挂(野外 HUD 会周期性整刷,没补挂时弹出即消失)。 */
+  private confirmPopupState: { options: ConfirmPopupOptions; view: string } | null = null;
+
+  private openConfirm(options: ConfirmPopupOptions): void {
+    const state: ConfirmPopupOptions = { ...options, onClose: () => { this.confirmPopupState = null; options.onClose?.(); } };
+    this.confirmPopupState = { options: state, view: this.currentView };
+    openConfirmPopup(this as unknown as Parameters<typeof openConfirmPopup>[0], this.ensureContentRoot(), state);
+  }
+
+  private restoreConfirmPopup(): void {
+    const state = this.confirmPopupState;
+    if (!state) {
+      return;
+    }
+    if (state.view !== this.currentView) {
+      this.confirmPopupState = null;
+      return;
+    }
+    if (!this.ensureContentRoot().getChildByName(CONFIRM_POPUP_NAME)) {
+      openConfirmPopup(this as unknown as Parameters<typeof openConfirmPopup>[0], this.ensureContentRoot(), state.options);
     }
   }
 
@@ -5319,7 +5349,7 @@ export class LootChainGameRoot extends Component {
       this.equipLobbyHeroEquipment(equipmentId);
       return;
     }
-    openConfirmPopup(this as unknown as Parameters<typeof openConfirmPopup>[0], this.ensureContentRoot(), {
+    this.openConfirm({
       title: '转移装备',
       message: `「${item.equipName}」正穿在 ${owner.heroName} 身上,
 转移后对方该部位会空出。

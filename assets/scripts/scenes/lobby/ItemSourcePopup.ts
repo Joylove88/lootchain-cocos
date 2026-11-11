@@ -1,14 +1,21 @@
-import { BlockInputEvents, Button, Color, HorizontalTextAlignment, Label, Node, Size, UITransform, view } from 'cc';
-import { mountRefButton, mountRefOrnateDialog, mountRefSliced, mountRefSlicedByWidth, mountRefSolid, mountRefTitleBand, REF_CLOSE_ASSET, REF_CLOSE_RING_ASSET, REF_DETAIL, REF_ICON_RING_ASSET, REF_ROW, REF_ULT, type RefKitHost } from '../UiRefKit';
-import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday, resolveItemSourceRoutes, type ItemSourceTarget } from './ItemSourceRoutes';
+import { Color, Graphics, HorizontalTextAlignment, Node } from 'cc';
+import type { UiKitHost } from '../UiKit';
+import { GLASS_COLOR, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassSlice } from '../UiGlassKit';
+import type { RefDetailSourceKind } from '../UiRefKit';
+import { estimateGlassTextWidth, GLASS_POPUP_DIVIDER_DY, mountGlassPopupShell } from './GlassPopupShell';
+import { DAILY_THEME_OPEN_DAYS, dailyThemeOpenToday, resolveItemSourceRoutes, type ItemSourceRoute, type ItemSourceTarget } from './ItemSourceRoutes';
+import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 
 /**
  * 获取途径小窗(2026-10-25 策划审核 P1-7 / P1-8,docs/45 §6-7):卡点时告诉玩家去哪拿。
- * 视觉沿用已确认的样式:终极技能弹窗的雕花金框 + 红标题带,途径行 = 背包物品详情「获取途径」行(圆徽 + 文字 + 右侧按钮)。
- * 挂在内容根最上层;整页重建会清掉它(等同关闭)。
+ * 2026-11-11 改 B 毛玻璃(原型 周报截图/2026-11-11_通用小窗/proto/item_source_b.png 1:1):面板宽 968,
+ * 标题「获取途径 | 物品名」+ 物品概况行(图标 + 持有 / 需要 + 还差)+ 途径玻璃条(圆形线条图标 + 标题 / 说明 + 前往)。
+ * 挂在内容根最上层;整页重建会清掉它(等同关闭),宿主按状态补挂。
  */
-export interface ItemSourcePopupHost extends RefKitHost {
+export interface ItemSourcePopupHost extends UiKitHost {
   navigateItemSource(target: ItemSourceTarget): void;
+  /** 物品稀有度(背包已加载时可查),给概况行图标底边的稀有度细线;查不到返回 null。 */
+  itemSourceRarityOf?(key: string): string | null;
 }
 
 export interface ItemSourcePopupOptions {
@@ -28,6 +35,55 @@ export interface ItemSourcePopupOptions {
 }
 
 const POPUP_NAME = 'ItemSourcePopup';
+const W = 968;
+/** 途径条:左右各缩 43,高 97,行距 111;概况区高 156(分隔线 → 首条上沿),无概况时 22;底部留 40。 */
+const ROW_INSET = 43;
+const ROW_H = 97;
+const ROW_PITCH = 111;
+const INFO_BLOCK = 156;
+/** 没有物品图标(等级上限等)时概况只有一行字:收成 96,字行中 dy = 分隔线 + 46。 */
+const INFO_TEXT_BLOCK = 96;
+const NO_INFO_BLOCK = 22;
+const BOTTOM_PAD = 40;
+
+/** 途径类型 → 白色线条图标(ui/glass 现成件,原型的拱门 / 钱袋 / 四芒星)。 */
+const ROUTE_ICON: Record<RefDetailSourceKind, string> = {
+  daily: 'ui/glass/battle_gate/spriteFrame',
+  tower: 'ui/glass/class_line_warrior/spriteFrame',
+  summon: 'ui/glass/codex_all/spriteFrame',
+  shop: 'ui/glass/shop_rail_item/spriteFrame',
+  forge: 'ui/glass/battle_pickaxe/spriteFrame',
+  quest: 'ui/glass/notice_scroll/spriteFrame',
+  event: 'ui/glass/profile_star/spriteFrame',
+  main: 'ui/glass/battle_shield/spriteFrame',
+  guard: 'ui/glass/battle_shield/spriteFrame',
+  other: 'ui/glass/notice_paper/spriteFrame',
+};
+
+function routeIcon(route: ItemSourceRoute): string {
+  if (route.target.type === 'shop' && route.target.kind === 'gold') {
+    return 'ui/glass/shop_rail_gold/spriteFrame';
+  }
+  return ROUTE_ICON[route.kind] ?? ROUTE_ICON.other;
+}
+
+function itemIconOf(key: string, rarity: string): string | null {
+  if (key === 'LEVEL_CAP') {
+    return null;
+  }
+  if (key.startsWith('FRAGMENT:')) {
+    return resolveBagStyleItemIconAsset(`HERO_FRAGMENT:${key.slice(9)}`, 'HERO_FRAGMENT', rarity);
+  }
+  return resolveBagStyleItemIconAsset(key, '', rarity);
+}
+
+/** 背包格同款稀有度细线色。 */
+function rarityLineColor(rarity: string): Color {
+  const key = rarity.toUpperCase();
+  return key === 'UR' || key === 'SSR' ? new Color(240, 163, 52, 255)
+    : key === 'SR' || key === 'EPIC' ? new Color(186, 84, 246, 255)
+      : key === 'R' || key === 'RARE' ? new Color(52, 132, 242, 255) : new Color(150, 158, 170, 255);
+}
 
 export function closeItemSourcePopup(root: Node): void {
   root.getChildByName(POPUP_NAME)?.destroy();
@@ -36,85 +92,104 @@ export function closeItemSourcePopup(root: Node): void {
 export function openItemSourcePopup(host: ItemSourcePopupHost, root: Node, options: ItemSourcePopupOptions): void {
   closeItemSourcePopup(root);
   const routes = resolveItemSourceRoutes(options.key, options.rarity ?? '').slice(0, 4);
-  const vis = view.getVisibleSize();
-  // 设计稿 1600 × 900;手机横屏可视区更矮,按短边放大到不小于 1(字号下限 20)
-  const u = Math.max(1, Math.min(vis.width / 1600, vis.height / 900) * 1.15);
-  const S = (v: number): number => v * u;
-  const overlay = host.addChildPlainNode(root, POPUP_NAME, 0, 0, vis.width * 2, vis.height * 2);
-  overlay.setSiblingIndex(root.children.length - 1);
-  overlay.addComponent(BlockInputEvents);
-  mountRefSolid(host, overlay, 'Dim', 0, 0, vis.width * 2, vis.height * 2, new Color(0, 0, 0, 150));
+  const hasCount = options.owned !== undefined && options.need !== undefined;
+  const hasInfo = !!options.note || hasCount;
+  const infoRarity = options.rarity || host.itemSourceRarityOf?.(options.key) || '';
+  const infoIcon = hasInfo ? itemIconOf(options.key, infoRarity) : null;
+  const rowsTop = GLASS_POPUP_DIVIDER_DY + (!hasInfo ? NO_INFO_BLOCK : infoIcon ? INFO_BLOCK : INFO_TEXT_BLOCK);
+  const infoDy = infoIcon ? 157 : GLASS_POPUP_DIVIDER_DY + 46;
+  const H = rowsTop + Math.max(1, routes.length) * ROW_PITCH - (ROW_PITCH - ROW_H) + BOTTOM_PAD;
+
+  let overlay: Node | null = null;
   const userClose = (): void => {
     options.onClose?.();
-    overlay.destroy();
+    overlay?.destroy();
   };
-  overlay.addComponent(Button);
-  overlay.on(Button.EventType.CLICK, userClose);
+  const shell = mountGlassPopupShell(host, root, { name: POPUP_NAME, width: W, height: H, title: '获取途径', subtitle: options.name, onClose: userClose });
+  overlay = shell.overlay;
+  const { panel, k, S, X, Y, T } = shell;
 
-  const rowH = 92;
-  const headerH = 122;
-  const infoH = options.note || (options.owned !== undefined && options.need !== undefined) ? 56 : 0;
-  const listH = Math.max(1, routes.length) * rowH + 24;
-  // 雕花金框按素材金线矩形(1507 × 790)等比缩放:弹窗宽高比必须跟它一致,否则框盖不满,标题带会压到框外沿
-  const designH = headerH + infoH + listH + 40;
-  const w = S(Math.max(820, designH * 1507 / 790));
-  const h = S(Math.max(designH, 820 * 790 / 1507));
-  const dialog = mountRefOrnateDialog(host, overlay, 'Dialog', 0, 0, w, h, u);
-  dialog.node.addComponent(BlockInputEvents);
-  const top = h / 2;
-  mountRefTitleBand(host, dialog.node, 'TitleBand', 0, top - S(46), S(520), S(84), u);
-  const title = host.addChildLabel(dialog.node, 'Title', `获取途径 · ${options.name}`, 0, top - S(50), S(32), new Color(255, 232, 170), new Size(S(460), S(44)));
-  title.overflow = Label.Overflow.SHRINK;
-  title.isBold = true;
-  const close = host.addChildPlainNode(dialog.node, 'Close', w / 2 - S(40), top - S(40), S(56), S(56));
-  // 2026-10-27 UI 审核:小叉点击区放大到 1.7 倍(图标大小不变),手机上好点
-  close.getComponent(UITransform)?.setContentSize((S(56)) * 1.7, (S(56)) * 1.7);
-  host.addSprite('Ring', REF_CLOSE_RING_ASSET, 0, 0, S(56), S(56), close);
-  host.addSprite('X', REF_CLOSE_ASSET, 0, 0, S(30), S(30), close);
-  close.addComponent(Button);
-  close.on(Button.EventType.CLICK, userClose);
-  host.applyImageButtonFeedback(close);
-
-  let cursor = top - S(headerH);
-  if (infoH > 0) {
-    const lack = options.owned !== undefined && options.need !== undefined && options.owned < options.need;
-    const text = options.note ?? `持有 ${formatCount(options.owned ?? 0)} / 需要 ${formatCount(options.need ?? 0)}`;
-    const info = host.addChildLabel(dialog.node, 'Info', text, 0, cursor - S(infoH / 2), S(24), lack ? new Color(255, 140, 120) : new Color(236, 222, 190), new Size(w - S(120), S(34)));
-    info.overflow = Label.Overflow.SHRINK;
-    cursor -= S(infoH);
+  if (hasInfo) {
+    // 概况行:图标框 (506..616) 中心 dx 110 / dy 160;文字左沿 dx 197、行中 dy 157;「还差」右沿距右缘 52
+    const rarity = infoRarity;
+    const icon = infoIcon;
+    let textX = 53;
+    if (icon) {
+      const box = S(110);
+      const frame = mountGlassFrame(host, panel, 'ItemFrame', X(110), Y(160), box, box, k);
+      host.addSprite('ItemIcon', icon, 0, S(3), box * 0.86, box * 0.86, frame);
+      if (rarity) {
+        mountGlassLine(host, frame, 'Rarity', 0, -box / 2 + S(4), box - S(7), Math.max(2, S(4)), rarityLineColor(rarity));
+      }
+      textX = 197;
+    }
+    if (options.note) {
+      T(panel, 'Note', options.note, X(textX), Y(infoDy), 24, GLASS_COLOR.text, S(W - textX - 52));
+    } else {
+      const owned = Math.max(0, Math.round(options.owned ?? 0));
+      const need = Math.max(0, Math.round(options.need ?? 0));
+      const lack = owned < need;
+      // 三段异色首尾相接:灰「持有 」+ 数(不够珊瑚红)+ 灰「 / 需要 b」
+      const parts: Array<[string, Color]> = [['持有 ', GLASS_COLOR.sub], [formatCount(owned), lack ? new Color(240, 122, 92, 255) : GLASS_COLOR.text], [` / 需要 ${formatCount(need)}`, GLASS_COLOR.sub]];
+      let x = textX;
+      parts.forEach(([text, color], index) => {
+        const width = estimateGlassTextWidth(text, 28);
+        T(panel, `Count_${index}`, text, X(x), Y(infoDy), 28, color, S(width + 24));
+        x += width;
+      });
+      if (lack) {
+        T(panel, 'Lack', `还差 ${formatCount(need - owned)} 个`, X(W - 52), Y(infoDy), 24, GLASS_COLOR.sub, S(260), HorizontalTextAlignment.RIGHT);
+      }
+    }
   }
+
   if (routes.length === 0) {
-    const empty = host.addChildLabel(dialog.node, 'Empty', '暂无可前往的获取途径', 0, cursor - S(rowH / 2), S(24), new Color(190, 176, 150), new Size(w - S(120), S(34)));
-    empty.overflow = Label.Overflow.SHRINK;
+    T(panel, 'Empty', '暂无可前往的获取途径', X(W / 2), Y(rowsTop + ROW_H / 2), 24, GLASS_COLOR.sub, S(W - 120), HorizontalTextAlignment.CENTER);
     return;
   }
-  const rowW = w - S(110);
+  const rowW = S(W - ROW_INSET * 2);
   routes.forEach((route, index) => {
-    const cy = cursor - S(12) - S(rowH / 2) - index * S(rowH);
-    const row = host.addChildPlainNode(dialog.node, `Row_${index}`, 0, cy, rowW, S(rowH - 12));
-    if (!mountRefSlicedByWidth(host, row, 'Bg', REF_ULT.costRow, 0, 0, rowW, S(rowH - 12))) {
-      mountRefSliced(host, row, 'Bg', REF_ROW, 0, 0, rowW, S(rowH - 12));
+    const rowDy = rowsTop + ROW_H / 2 + index * ROW_PITCH;
+    const row = host.addChildPlainNode(panel, `Row_${index}`, 0, Y(rowDy), rowW, S(ROW_H));
+    mountGlassSlice(host, row, 'Bg', GLASS_SLICES.panel, 0, 0, rowW, S(ROW_H), k);
+    // 行内坐标:原型 dx(面板左沿起)→ 行中心原点
+    const RX = (dx: number): number => S(dx - W / 2);
+    // 圆形图标位:中心 dx 113,直径 70;白色线条图标 34
+    // 单独子节点画(挂在 row 上会被后建的玻璃底盖住)
+    const discNode = host.addChildPlainNode(row, 'Disc', RX(113), 0, S(72), S(72));
+    const disc = discNode.addComponent(Graphics);
+    disc.fillColor = new Color(14, 18, 24, 150);
+    disc.circle(0, 0, S(35));
+    disc.fill();
+    disc.strokeColor = new Color(200, 206, 216, 120);
+    disc.lineWidth = Math.max(1.2, S(2));
+    disc.circle(0, 0, S(35));
+    disc.stroke();
+    // 图标素材四周留白约 20%:按 44 挂,可见本体约 34(原型)
+    const iconSprite = host.addSprite('Icon', routeIcon(route), RX(113), 0, S(44), S(44), row);
+    if (iconSprite) {
+      iconSprite.color = new Color(236, 238, 242, 255);
     }
-    const medal = S(64);
-    const medalX = -rowW / 2 + S(52);
-    if (!host.addSprite('Medal', REF_DETAIL.sourceIcon(route.kind), medalX, 0, medal, medal, row)) {
-      host.addSprite('Ring', REF_ICON_RING_ASSET, medalX, 0, medal * 0.9, medal * 0.9, row);
-    }
-    const textX = medalX + medal / 2 + S(16);
-    const textW = rowW - S(52) - medal / 2 - S(16) - S(190);
-    const name = host.addChildLabel(row, 'Title', route.title, textX, S(14), S(24), new Color(250, 236, 206), new Size(textW, S(30)), HorizontalTextAlignment.LEFT);
-    name.overflow = Label.Overflow.SHRINK;
-    name.isBold = true;
+    // 标题左沿 dx 180:标题行中 -20(字号 26 粗),说明行中 +16.5(字号 21 灰)
     const daily = route.target.type === 'daily' ? route.target.theme : null;
     const closedToday = daily ? !dailyThemeOpenToday(daily) : false;
     const desc = closedToday && daily ? `${route.desc} · ${DAILY_THEME_OPEN_DAYS[daily].label}` : route.desc;
-    const descLabel = host.addChildLabel(row, 'Desc', desc, textX, -S(16), S(20), new Color(196, 182, 152), new Size(textW, S(26)), HorizontalTextAlignment.LEFT);
-    descLabel.overflow = Label.Overflow.SHRINK;
+    const textW = S(W - 180 - 240);
+    T(row, 'Title', route.title, RX(180), S(20), 26, GLASS_COLOR.text, textW, HorizontalTextAlignment.LEFT, true);
+    T(row, 'Desc', desc, RX(180), -S(16.5), 21, GLASS_COLOR.sub, textW);
+    // 按钮:中心距面板右缘 143,178×52
+    if (closedToday) {
+      // 未开放:原型是比「前往」更暗的哑光胶囊 + 灰字(mountGlassButton 的 disabled 仍是次钮底,看着和前往一样亮)
+      const off = host.addChildPlainNode(row, 'Go', RX(W - 143), 0, S(178), S(52));
+      mountGlassSlice(host, off, 'Pill', GLASS_SLICES.pillDisabled, 0, 0, S(178), S(52), k);
+      T(off, 'Label', '未开放', 0, 0, 26, GLASS_COLOR.dim, S(150), HorizontalTextAlignment.CENTER);
+      return;
+    }
     const target = route.target;
-    mountRefButton(host, row, 'Go', closedToday ? '未开放' : '前往', rowW / 2 - S(96), 0, S(150), S(56), u, closedToday ? 'disabled' : 'secondary', closedToday ? undefined : () => {
+    mountGlassButton(host, row, 'Go', '前往', RX(W - 143), 0, S(178), S(52), k, 'secondary', () => {
       userClose();
       host.navigateItemSource(target);
-    }, { fontSize: S(24) });
+    }, 26);
   });
 }
 
