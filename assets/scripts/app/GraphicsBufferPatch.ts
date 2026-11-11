@@ -1,5 +1,6 @@
 import { gfx, Graphics, Node, RenderingSubMesh, sp, Sprite } from 'cc';
 import { HTML5, NATIVE } from 'cc/env';
+import { installSpineTextureMips } from './SpineTextureMips';
 
 /**
  * 引擎 Graphics 显存补丁(2026-10-07 用户「战斗一卡一卡的,流畅和极致都卡」)。
@@ -273,11 +274,12 @@ export function installSpriteReleasedFrameGuard(): void {
   };
 }
 
-/** 启动时调用:Graphics 显存按需增长 + 原生 Graphics 停用重启后保持绘制 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护。 */
+/** 启动时调用:Graphics 显存按需增长 + 原生 Graphics 停用重启后保持绘制 + 跳过无用的骨骼挂点索引 + 兄弟排序空保护 + 已释放贴图保护 + 角色骨骼贴图缩小抗锯齿。 */
 export function installEnginePerfPatches(): void {
   installGraphicsBufferPatch();
   installNativeGraphicsReenablePatch();
   installSpineSocketIndexPatch();
   installSiblingIndexGuard();
   installSpriteReleasedFrameGuard();
+  installSpineTextureMips();
 }

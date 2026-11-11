@@ -148,7 +148,9 @@ import type { UiKitHost } from '../UiKit';
 import { GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
 import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
 import { estimateGlassTextWidth, makeGlassText, mountGlassCloseButton, mountGlassPopupShell, type GlassPopupShell, type GlassPopupShellOptions } from './GlassPopupShell';
+import { applyBattleNumber, BATTLE_NUMBER_FONT_FRAME_PATH, battleNumberWidth, type BattleNumberStyle } from './BattleNumberFont';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
+import { mountSceneNearLayer, preloadSceneNearEffect } from './GuardSceneNear';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
 import { GUARD_BOSS_ANIMS, GUARD_BOSS_FX, GUARD_CHEST_FX, GUARD_MARK_FX, GUARD_PASSIVE_FX, GUARD_SPELL_FX, GUARD_SUPPORT_FX, GUARD_WARHORN_BURST_FX, LOBBY_CRYSTAL_FX, LOBBY_UI_FX, type GuardSpellFxSpec, guardMonsterProjectileFxSpecs, resolveAttackFxSpritePath, resolveAttackSpineFxResource, resolveGuardMonsterProjectileFx, resolveGuardPerkProcFx, resolveHeroAttackFx, resolveHeroAttackSfxKey, resolveHeroAttackSpineFx, resolveHeroSkillSfxKey, type BattleAttackFxSpec } from './LobbyBattleAttackFxConfig';
@@ -459,6 +461,8 @@ const GUARD_SETTINGS_H = 597;
 const GUARD_END_W = 910;
 const GUARD_END_H = 613;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
+/** 伤害数字一个落位(列 × 排)被占用多久后可以再放下一个:数字寿命约 0.8~0.95 秒,到这时旧数字已经上飘并开始淡出。 */
+const GUARD_DAMAGE_SLOT_MS = 460;
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 /** 偷金鼠金色染色(docs/37 D)。 */
 const GUARD_GREEDY_TINT = new Color(255, 214, 120, 255);
@@ -800,7 +804,7 @@ export class LobbyGuardBattleRenderer {
     this.projectiles.length = 0;
     this.heroFxLastAt.clear();
     this.beamFxLive = 0;
-    this.damageSlot = 0;
+    this.damageColumns.clear();
     this.liveDamageFloaters = 0;
   }
 
@@ -1620,13 +1624,18 @@ export class LobbyGuardBattleRenderer {
   private sceneNearNode: Node | null = null;
   private sceneNearY = 0;
 
-  private sceneBgLayer(): { name: string; ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean } | null {
+  /** masked = 高清版(2026-11-11):近景不另存图,用背景整图 + 遮罩(GuardSceneNear);否则是旧的 _near 透明图。 */
+  private sceneBgLayer(): { name: string; ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean; masked: boolean } | null {
     const name = this.resolveSceneBgName();
     const cfg = LobbyGuardBattleRenderer.SCENE_BG_LAYER[name];
-    return cfg && this.uiAssetKnown(`ui/battle/${name}_near/spriteFrame`) ? { name, ...cfg } : null;
+    if (!cfg) {
+      return null;
+    }
+    const masked = this.uiAssetKnown(`ui/battle/${name}_mask/spriteFrame`);
+    return masked || this.uiAssetKnown(`ui/battle/${name}_near/spriteFrame`) ? { name, ...cfg, masked } : null;
   }
 
-  private mountSceneLayers(root: Node, layer: { name: string; ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean }, bgW: number, bgH: number, centerY: number): void {
+  private mountSceneLayers(root: Node, layer: { name: string; ledge: number; fog: [number, number, number]; fogAlpha: number; mote: [number, number, number]; sky: boolean; masked: boolean }, bgW: number, bgH: number, centerY: number): void {
     const yOf = (ratio: number): number => centerY + bgH * (0.5 - ratio);
     const [r, g, b] = layer.fog;
     // 雾带:两张横向无缝雾图首尾相接,整条匀速左移一张宽后瞬移回原位(画面完全一样,看不出跳);远的那条更淡更慢
@@ -1675,7 +1684,13 @@ export class LobbyGuardBattleRenderer {
       }).start();
     }
     this.sceneNearY = centerY;
-    this.sceneNearNode = this.mountSprite(root, 'GuardSceneNear', `ui/battle/${layer.name}_near/spriteFrame`, 0, centerY, bgW, bgH);
+    if (layer.masked) {
+      const near = this.host.addChildPlainNode(root, 'GuardSceneNear', 0, centerY, bgW, bgH);
+      mountSceneNearLayer(near, `ui/battle/${layer.name}/spriteFrame`, `ui/battle/${layer.name}_mask/spriteFrame`);
+      this.sceneNearNode = near;
+    } else {
+      this.sceneNearNode = this.mountSprite(root, 'GuardSceneNear', `ui/battle/${layer.name}_near/spriteFrame`, 0, centerY, bgW, bgH);
+    }
   }
 
   /** 法术等级点缀用的白色柔光 / 光环纹理(运行时生成 64×64,按法术颜色染色)。 */
@@ -1914,7 +1929,7 @@ export class LobbyGuardBattleRenderer {
     }
     const dimNode = node;
     this.lastUltDimAt = Date.now();
-    this.placeUltDimBelowUlts(field, dimNode);
+    this.placeUltDimBehindUnits(dimNode);
     const holdSec = Math.max(0.2, (this.ultDimHoldUntil - Date.now()) / 1000);
     tween(opacity)
       .to(extend ? 0.05 : 0.12, { opacity: 120 })
@@ -1929,23 +1944,12 @@ export class LobbyGuardBattleRenderer {
   }
 
   /**
-   * 压暗层放在所有正在播放的大招特效之下、其余战场元素之上(2026-10-07 用户「大招看起来比普攻特效暗了很多」:
-   * 原先压暗层每次都挪到最顶层,而大招节点先建、压暗后挂,整段大招被压在 120/255 的黑幕下面;两个大招叠放时后一个的压暗也会盖住前一个)。
+   * 压暗层只压背景:放在战场层最底下,格子 / 英雄 / 怪物 / 特效都在它上面(2026-11-11 战斗画面精致化,用户确认样片)。
+   * 原先放在「大招特效之下、其余战场元素之上」(2026-10-07),英雄和怪物跟着一起被压到 120/255 的黑幕下面,
+   * 大招一出全场发闷、深色怪物几乎看不见;改成只压背景后,角色保持原亮度,大招照样有暗背景衬着。
    */
-  private placeUltDimBelowUlts(field: Node, dimNode: Node): void {
-    dimNode.setSiblingIndex(field.children.length - 1);
-    let lowest = -1;
-    for (const child of field.children) {
-      if (child !== dimNode && child.isValid && (child as Node & { __lcUltFx?: boolean }).__lcUltFx) {
-        const index = child.getSiblingIndex();
-        if (lowest < 0 || index < lowest) {
-          lowest = index;
-        }
-      }
-    }
-    if (lowest >= 0) {
-      dimNode.setSiblingIndex(lowest);
-    }
+  private placeUltDimBehindUnits(dimNode: Node): void {
+    dimNode.setSiblingIndex(0);
   }
 
   private pulseUltDim(): void {
@@ -1972,7 +1976,7 @@ export class LobbyGuardBattleRenderer {
     }
     const dimNode = node;
     this.lastUltDimAt = now;
-    this.placeUltDimBelowUlts(field, dimNode);
+    this.placeUltDimBehindUnits(dimNode);
     tween(opacity).to(0.08, { opacity: 100 }).delay(0.25).to(0.3, { opacity: 0 }).call(() => {
       if (dimNode.isValid) {
         dimNode.destroy();
@@ -7427,10 +7431,72 @@ export class LobbyGuardBattleRenderer {
     return `${text}${units[idx]}`;
   }
 
-  /** 伤害数字(2026-08-28 参考图重做):每次命中各自弹一个数字、环形四散,不再合并 ×N;
-   *  小额白字 / 大额与技能击红字带火焰箭头;同屏上限保性能(超限时小字让位给大字)。 */
-  private damageSlot = 0;
+  /**
+   * 伤害数字:每次命中各自弹一个数字(2026-08-28 起不合并 ×N)。
+   * 2026-11-11 战斗画面精致化(用户确认样片):改用粗斜体位图字(BattleNumberFont:普通 = 冷白,战技 / 大额 / 狂暴 = 橙红,
+   * 字高按格子大小定,手机电脑同比例),落位从「绕着目标 12 方位撒开」改成「按列往上叠」——见 placeDamageNumber。
+   * 位图字还没读到时退回原来的系统字体(开战加载门里已预读,正常不会走到)。同屏上限保性能(超限时小字让位给大字)。
+   */
   private liveDamageFloaters = 0;
+  /** 伤害数字占位:格键(横带 × 4096 + 列)→ 每一排最近一次被占用的时刻(毫秒)。 */
+  private readonly damageColumns = new Map<number, number[]>();
+
+  /**
+   * 伤害数字落位:屏幕按 0.3 格宽分列、0.31 格高分排(最多 3 排)。一个数字按自己的宽度占连续几列,
+   * 先在目标正上方从下往上找空排,正上方三排都占着再让到右 / 左邻位;全都占着才顶掉最旧的那个。
+   * 同一时刻的数字互不压住,又都贴着各自的目标(原先是绕着目标 12 方位撒开,一密就叠成一团)。
+   */
+  private placeDamageNumber(x: number, y: number, width: number): { px: number; py: number } {
+    const u = this.unitSize();
+    const colW = u * 0.3;
+    const rowH = u * 0.31;
+    const now = Date.now();
+    // 上下两路怪的数字各叠各的
+    const band = Math.round(y / (u * 0.9)) + 64;
+    const span = Math.max(1, Math.ceil((width + u * 0.04) / colW));
+    const rowsOf = (col: number): number[] => {
+      const key = band * 4096 + col + 2048;
+      let rows = this.damageColumns.get(key);
+      if (!rows) {
+        rows = [0, 0, 0];
+        this.damageColumns.set(key, rows);
+      }
+      return rows;
+    };
+    /** 从 start 列起连续 span 列的第 row 排,最晚一次被占是什么时候。 */
+    const takenAt = (start: number, row: number): number => {
+      let latest = 0;
+      for (let col = start; col < start + span; col += 1) {
+        latest = Math.max(latest, rowsOf(col)[row]);
+      }
+      return latest;
+    };
+    const centerStart = Math.round(x / colW - span / 2);
+    let bestStart = centerStart;
+    let bestRow = 0;
+    let bestAt = Number.POSITIVE_INFINITY;
+    let found = false;
+    for (const shift of [0, 1, -1, 2, -2]) {
+      for (let row = 0; row < 3 && !found; row += 1) {
+        const at = takenAt(centerStart + shift, row);
+        if (now - at >= GUARD_DAMAGE_SLOT_MS) {
+          found = true;
+        }
+        if (found || at < bestAt) {
+          bestStart = centerStart + shift;
+          bestRow = row;
+          bestAt = at;
+        }
+      }
+      if (found) {
+        break;
+      }
+    }
+    for (let col = bestStart; col < bestStart + span; col += 1) {
+      rowsOf(col)[bestRow] = now;
+    }
+    return { px: (bestStart + span / 2) * colW, py: y + u * 0.38 + bestRow * rowH };
+  }
 
   private queueDamage(targetId: number, amount: number, skill: boolean, x: number, y: number): void {
     if (targetId === this.raiderMonsterId || this.sim?.monsters.find((entry) => entry.monsterId === targetId)?.player) {
@@ -7451,67 +7517,51 @@ export class LobbyGuardBattleRenderer {
     if (!field) {
       return;
     }
-    this.damageSlot = (this.damageSlot + 1) % 12;
-    const slot = this.damageSlot;
-    // 12 方位角错开 + 半径分档:同一目标连续挨打时数字铺成一片,不叠在一个点上
-    const angle = (slot / 12) * Math.PI * 2 + (slot % 3) * 0.26;
-    const radius = this.unitSize() * (0.3 + (slot % 4) * 0.12);
-    const px = x + Math.cos(angle) * radius * 1.5;
-    const py = y + this.unitSize() * 0.32 + Math.sin(angle) * radius * 0.8;
+    const u = this.unitSize();
+    const rage = !big && this.rageActive();
     const valueText = this.formatDamageValue(amount);
+    // 字高按格子定(手机电脑同比例):普通 0.15 格(1080p 上 26 像素)、狂暴 0.165、大额 0.19、战技 0.21(约 36 像素)
+    const digitPx = u * (skill ? 0.21 : big ? 0.19 : rage ? 0.165 : 0.15);
+    const { px, py } = this.placeDamageNumber(x, y, battleNumberWidth(valueText, digitPx));
 
     // 伤害数字复用池(2026-10-10 长帧归因:每个数字 new 节点 + Label + 3 个 tween 再销毁,是长帧里最大的脚本开销):
-    // 按有无暴击箭头分两池,用完隐藏回池,下次只改文字 / 颜色 / 字号
+    // 用完隐藏回池,下次只改文字 / 字号。大小两池沿用(系统字体兜底时大数字带暴击箭头)。
     const pool = big ? this.damageNumPool.big : this.damageNumPool.small;
     let node = pool.pop() ?? null;
     while (node && (!node.isValid || node.parent !== field)) {
       node = pool.pop() ?? null;
     }
-    const rage = !big && this.rageActive();
-    const size = skill ? 24 : big ? 22 : rage ? 18 : 16;
-    const color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rage ? rgba(255, 150, 70, 250) : rgba(255, 248, 236, 240);
-    const labelX = big ? 26 : 0;
     let label = node?.getChildByName('Text')?.getComponent(Label) ?? null;
     if (!node || !label) {
       node = this.host.addChildPlainNode(field, 'GuardDamageNum', px, py, big ? 200 : 120, 32);
-      if (big) {
-        // 大额/技能击:火焰箭头素材 + 红色粗体大字(参考图)
-        this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -46, -2, 34, 34);
-      }
-      label = this.host.addChildLabel(node, 'Text', `-${valueText}`, labelX, 0, size, color, new Size(big ? 140 : 116, size + 10));
-      // 字符缓存(2026-10-07):数字字形进共享字符图集,不再每个飘字单独画一张画布 + 上传一张贴图 + 单独一次绘制。
-      label.cacheMode = Label.CacheMode.CHAR;
-      label.enableOutline = true;
-      label.outlineColor = rgba(40, 12, 6, 255);
+      label = this.host.addChildLabel(node, 'Text', '', 0, 0, 20, rgba(255, 255, 255, 255), new Size(big ? 140 : 116, 30));
       node.addComponent(UIOpacity);
     } else {
       Tween.stopAllByTarget(node);
       node.setPosition(px, py, 0);
       node.active = true;
-      label.string = `-${valueText}`;
-      label.fontSize = size;
-      label.lineHeight = size + 8;
-      label.color = color;
-      label.node.getComponent(UITransform)?.setContentSize(big ? 140 : 116, size + 10);
     }
-    // 引擎字形缓存的键不含画面缩放,切换画质 / 窗口缩放后旧字形大小不对:按当前缩放换一个等价字体名,让新缩放用新字形。
-    const family = LobbyGuardBattleRenderer.damageFontFamily();
-    if (label.fontFamily !== family) {
-      label.fontFamily = family;
+    if (applyBattleNumber(label, big || rage ? 'crit' : 'normal', valueText, digitPx)) {
+      label.color = rgba(255, 255, 255, 255);
+      label.node.setPosition(0, 0, 0);
+      const icon = node.getChildByName('Icon');
+      if (icon) {
+        icon.active = false;
+      }
+    } else {
+      this.applySystemDamageNumber(node, label, valueText, skill, big, rage);
     }
-    label.outlineWidth = big ? 3 : 2;
     node.setSiblingIndex(field.children.length - 1);
     this.liveDamageFloaters += 1;
     const opacity = node.getComponent(UIOpacity) ?? node.addComponent(UIOpacity);
     Tween.stopAllByTarget(opacity);
-    opacity.opacity = 250;
-    // 弹出:先小幅弹大再回落,升幅按槽位错开,整片数字有层次不齐步走
+    opacity.opacity = 255;
+    // 弹出:先小幅弹大再回落,再上飘淡出
     node.setScale(big ? 0.6 : 0.8, big ? 0.6 : 0.8, 1);
     tween(node).to(0.09, { scale: new Vec3(big ? 1.18 : 1.06, big ? 1.18 : 1.06, 1) }, { easing: 'backOut' })
       .to(0.1, { scale: Vec3.ONE }).start();
-    const rise = 30 + (slot % 4) * 9;
     const life = big ? 0.95 : 0.78;
-    tween(node).by(life, { position: new Vec3(0, rise, 0) }, { easing: 'quadOut' }).start();
+    tween(node).by(life, { position: new Vec3(0, u * 0.22, 0) }, { easing: 'quadOut' }).start();
     const released = node;
     tween(opacity).delay(life * 0.5).to(life * 0.45, { opacity: 0 }).call(() => {
       this.liveDamageFloaters = Math.max(0, this.liveDamageFloaters - 1);
@@ -7525,6 +7575,30 @@ export class LobbyGuardBattleRenderer {
         released.destroy();
       }
     }).start();
+  }
+
+  /** 位图字没读到时的兜底:原来的系统字体数字(Arial 字符缓存 + 描边,大数字带暴击箭头)。 */
+  private applySystemDamageNumber(node: Node, label: Label, valueText: string, skill: boolean, big: boolean, rage: boolean): void {
+    const size = skill ? 24 : big ? 22 : rage ? 18 : 16;
+    if (big && !node.getChildByName('Icon')) {
+      this.mountSprite(node, 'Icon', 'ui/guard/crit_marker/spriteFrame', -46, -2, 34, 34);
+    }
+    label.node.setPosition(big ? 26 : 0, 0, 0);
+    // 字符缓存(2026-10-07):数字字形进共享字符图集,不再每个飘字单独画一张画布 + 上传一张贴图 + 单独一次绘制。
+    label.cacheMode = Label.CacheMode.CHAR;
+    label.enableOutline = true;
+    label.outlineColor = rgba(40, 12, 6, 255);
+    label.outlineWidth = big ? 3 : 2;
+    label.string = `-${valueText}`;
+    label.fontSize = size;
+    label.lineHeight = size + 8;
+    label.color = skill ? rgba(255, 92, 92, 252) : big ? rgba(255, 120, 80, 250) : rage ? rgba(255, 150, 70, 250) : rgba(255, 248, 236, 240);
+    label.node.getComponent(UITransform)?.setContentSize(big ? 140 : 116, size + 10);
+    // 引擎字形缓存的键不含画面缩放,切换画质 / 窗口缩放后旧字形大小不对:按当前缩放换一个等价字体名,让新缩放用新字形。
+    const family = LobbyGuardBattleRenderer.damageFontFamily();
+    if (label.fontFamily !== family) {
+      label.fontFamily = family;
+    }
   }
 
   /** 命中结算:爆闪(近战=全尺寸斩击炸开)+伤害入聚合窗+目标受击红闪。 */
@@ -8297,10 +8371,16 @@ export class LobbyGuardBattleRenderer {
     const deferredSpine = new Set<string>();
     // 进场第一眼就要的图排最前:关卡背景(加载页也拿它当底图)、石台格子、标题横幅
     const layer = this.sceneBgLayer();
+    if (layer?.masked) {
+      // 高清背景的近景层要用遮罩着色器:加载门期间先读进来
+      preloadSceneNearEffect();
+    }
     const sprites = new Set<string>([
       this.resolveSceneBgPath(),
       // 分层背景的近景层 + 雾带(2026-11-10)
-      ...(layer ? [`ui/battle/${layer.name}_near/spriteFrame`, 'ui/battle/battle_fog_strip/spriteFrame'] : []),
+      ...(layer ? [`ui/battle/${layer.name}_${layer.masked ? 'mask' : 'near'}/spriteFrame`, 'ui/battle/battle_fog_strip/spriteFrame'] : []),
+      // 伤害数字位图字(2026-11-11)
+      BATTLE_NUMBER_FONT_FRAME_PATH,
       this.cellTilePath(false),
       this.cellTilePath(true),
       'ui/battle/ai/battle_bg_cathedral/spriteFrame',
@@ -8473,6 +8553,28 @@ export class LobbyGuardBattleRenderer {
   /** 飘字槽位轮转:连续飘字横向 3 槽×纵向 2 层错开,不再叠成一团(2026-08-26 用户验收)。 */
   private floaterCycle = 0;
 
+  /**
+   * 飘字是不是纯数字的伤害 / 回血,是的话用哪套位图字:
+   * 「-123」「123」= 伤害——红色系是我方掉血(保留负号),暖金 / 橙 / 紫是重击或大招,其余是普通命中;
+   * 「+123」只有绿色系算回血,别的颜色(击杀金币等)不动。带中文或别的符号的一律不是。
+   */
+  private static numericFloater(text: string, color: Color): { style: BattleNumberStyle; text: string } | null {
+    if (!/^[+-]?\d[\d.]*(K|M|B|T|Qa|Qi)?$/.test(text)) {
+      return null;
+    }
+    const { r, g, b } = color;
+    if (text.charAt(0) === '+') {
+      return g >= 225 && r <= 190 ? { style: 'heal', text } : null;
+    }
+    const digits = text.charAt(0) === '-' ? text.slice(1) : text;
+    if (r >= 215 && g <= 150 && b <= 150) {
+      return { style: 'hurt', text: `-${digits}` };
+    }
+    const warm = r >= 235 && g >= 140 && g <= 215 && b <= 140;
+    const purple = b >= 230 && r >= 190 && g <= 190;
+    return { style: warm || purple ? 'crit' : 'normal', text: digits };
+  }
+
   private spawnFloater(x: number, y: number, text: string, color: Color, fontSize = 16, throttled = false): void {
     const field = this.fieldNode;
     if (!field) {
@@ -8492,10 +8594,16 @@ export class LobbyGuardBattleRenderer {
     // 飘字按文字自适应尺寸、不换行(2026-10-02 用户:「金矿爆发 Lv.N +N 金币」超出 190 宽换到第二行,被裁成半截)
     label.enableWrapText = false;
     label.overflow = Label.Overflow.NONE;
-    label.enableOutline = true;
-    label.outlineColor = rgba(20, 12, 8, 255);
-    label.outlineWidth = fontSize >= 20 ? 3 : 2;
-    label.isBold = true;
+    // 纯数字的伤害 / 回血飘字(水晶掉血、掠夺里双方的伤害、治疗)和怪物头上的伤害数字用同一副位图字(2026-11-11);带文字的照旧
+    const numeric = LobbyGuardBattleRenderer.numericFloater(text, color);
+    if (numeric && applyBattleNumber(label, numeric.style, numeric.text, fontSize * 1.05)) {
+      label.color = rgba(255, 255, 255, 255);
+    } else {
+      label.enableOutline = true;
+      label.outlineColor = rgba(20, 12, 8, 255);
+      label.outlineWidth = fontSize >= 20 ? 3 : 2;
+      label.isBold = true;
+    }
     label.node.setSiblingIndex(field.children.length - 1);
     const opacity = label.node.addComponent(UIOpacity);
     opacity.opacity = 240;
@@ -9377,8 +9485,6 @@ export class LobbyGuardBattleRenderer {
     }
     const node = this.host.addChildPlainNode(field, 'GuardSkillFx', muzzleX, muzzleY, 10, 10);
     node.setSiblingIndex(field.children.length - 1);
-    // 大招特效节点打标:压暗层要放在它下面(placeUltDimBelowUlts)
-    (node as Node & { __lcUltFx?: boolean }).__lcUltFx = isUlt;
     const skeleton = node.addComponent(sp.Skeleton);
     skeleton.premultipliedAlpha = battleFxPremultiplied(spec.effect);
     if (isUlt) {
