@@ -92,3 +92,16 @@ box3 = (300, 250, 1500, 925)
 grid('08_三档画质_同一帧.jpg', [(load(PRO, f'pc_5_画质_{q}.png', PC).crop(box3), s) for q, s in (
     ('high', '高:4 倍抗锯齿 + 全分辨率环境光遮蔽 + 7 盏点光全算'), ('mid', '中(手机默认):半分辨率遮蔽,火盆 / 水晶的光改成贴地光斑'), ('low', '低:画布短边 720,不要环境反射和遮蔽,投影保留'))],
      3, (1200, 675), head='三档画质 · 同一帧局部')
+
+# ── 引擎里的技术验证(tools/proto3d/guard_battle/engine_shots.py 截的,目录 engine/;没有就跳过)──
+ENG = os.path.join(ROOT, 'engine')
+if os.path.exists(os.path.join(ENG, 'pc_g3d_01_开.png')):
+    side_by_side('09_引擎内_同一局_关3D_vs_开3D.jpg', load(ENG, 'pc_g3d_00_关.png', PC), load(ENG, 'pc_g3d_01_开.png', PC), '关:现在的 2D 背景图', '开:3D 场景垫在下面,格子 / 英雄 / 怪物 / 特效 / 界面原样不动',
+                 head='在游戏引擎里(Creator 预览,真实的一局守卫战):同一局、同一视口,只切 3D 层开关')
+    grid('10_引擎内_技能光打在地面上.jpg', [(load(ENG, f'pc_g3d_{n}.png'), t) for n, t in (
+        ('10_平时', '平时'), ('11_神雷', '水晶法术 · 九天神雷(落点周围的石板被冷光照亮)'), ('12_冰封', '水晶法术 · 冰封(一片青光)'),
+        ('13_震荡', '水晶法术 · 矿晶震荡'), ('14_战技', '英雄战技'), ('15_大招', '英雄大招(游戏原有的压暗层照常压在 3D 背景上)'))],
+         3, cell, head='在游戏引擎里:技能还是原来那套 2D 特效,3D 层在落点亮一盏灯')
+    if os.path.exists(os.path.join(ENG, 'phone_g3d_11_神雷.png')):
+        side_by_side('11_引擎内_手机视口.jpg', load(ENG, 'phone_g3d_16_大招_关3D同一帧.png', PH), load(ENG, 'phone_g3d_11_神雷.png', PH), '关(手机横屏 2400×1080)', '开 · 九天神雷', vertical=True,
+                     head='在游戏引擎里 · 手机横屏视口')
