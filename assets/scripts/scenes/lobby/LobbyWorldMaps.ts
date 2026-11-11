@@ -297,7 +297,11 @@ export interface WorldSceneDef {
    * 底图块(和贴地件里那几张是同一批贴图)+ 各块的遮罩:带补边的整图按 tileW × tileH 切成 cols 列,pad = 四周补边(图片像素)。
    * 遮挡条 = 底图块上的一条竖条 × 同一块的遮罩(R 通道 = 立在地面上的东西,半分辨率);颜色直接取底图,叠上去没有色差。
    */
-  tiles: { base: string[]; masks: string[]; cols: number; tileW: number; tileH: number; pad: [number, number] };
+  tiles: {
+    base: string[]; masks: string[]; cols: number; tileW: number; tileH: number; pad: [number, number];
+    /** 贴图像素 / 整图像素(高清一套 = 2;块的大小、遮挡条坐标仍按整图像素写,取贴图区域时乘它)。缺省 1。 */
+    scale?: number;
+  };
   /** 整图(不含补边)像素尺寸 / 一个图片像素合多少世界单位(图片中心 = 地图原点)。 */
   px: [number, number];
   unit: number;

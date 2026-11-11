@@ -127,6 +127,7 @@ export class TownScene {
     // ── 遮挡条:一条一个精灵(跨两行底图块的切成两段),默认关着,occlude 每帧按需打开 ──
     // 贴图区域 = 底图块上对应的那一条(底图块带补边:整图像素 + pad = 块里的像素),材质 = 这一块的遮罩
     const { cols, tileW, tileH, pad } = scene.tiles;
+    const texScale = scene.tiles.scale ?? 1;
     const stripPx = Math.max(1, ...scene.strips.map((item) => item[2]));
     this.stripColW = stripPx * u;
     this.stripLeft = (-W / 2) * u;
@@ -153,7 +154,11 @@ export class TownScene {
         const sprite = node.addComponent(Sprite);
         sprite.sizeMode = Sprite.SizeMode.CUSTOM;
         const frame = new SpriteFrame();
-        frame.reset({ texture: tile.texture, rect: new Rect(tx - col * tileW, ty - row * tileH, sw, h), originalSize: new Size(sw, h), offset: new Vec2(0, 0), isRotate: false });
+        frame.reset({
+          texture: tile.texture,
+          rect: new Rect((tx - col * tileW) * texScale, (ty - row * tileH) * texScale, sw * texScale, h * texScale),
+          originalSize: new Size(sw * texScale, h * texScale), offset: new Vec2(0, 0), isRotate: false,
+        });
         frame.packable = false;
         sprite.spriteFrame = frame;
         sprite.customMaterial = mat;

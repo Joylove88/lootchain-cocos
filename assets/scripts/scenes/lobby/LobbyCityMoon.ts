@@ -1,3 +1,4 @@
+import { useHdCityArt } from '../../app/DeviceTier';
 import { CITY_MOON_DATA } from './LobbyCityMoonData';
 import { TOWN_GROUND_ASSET, TOWN_GROUND_TILE, TOWN_LAMP_ASSET } from './LobbyTownConfig';
 import type { WorldMapBuilding, WorldMapDef, WorldMapNpc, WorldMapProp, WorldNpcCode, WorldSceneDef } from './LobbyWorldMaps';
@@ -15,11 +16,20 @@ import type { WorldMapBuilding, WorldMapDef, WorldMapNpc, WorldMapProp, WorldNpc
  * 西北 = 帝国学院,南 = 运河 + 石桥 + 南门,东南 = 码头,西南 = 马厩院。公园和学院这一版只是景(图上栅栏没开门,走不进去),
  * 要走进去得重出北边两块并给广场上沿的栅栏开门。
  */
-const DIR = 'ui/world/citymoon';
+const D = CITY_MOON_DATA;
+/**
+ * 高清一套(11-11 用户「美术可以更细腻吗」→「按 2 倍重绘」):电脑端用 ui/world/citymoon_hd(整城图 2 倍精度,底图 15 块),
+ * 手持设备保留标准版 ui/world/citymoon(省显存和流量)。几何(可走栅格 / 遮挡条 / 点位 / 灯)两套完全共用,
+ * 只有底图块、遮罩和树 / 布 / 水面抠图换目录;鸟瞰图、光点、占位图两套共用标准版目录里的。
+ */
+const HD = useHdCityArt() && D.hd ? D.hd : null;
+const DIR = HD ? 'ui/world/citymoon_hd' : 'ui/world/citymoon';
 const A = (name: string): string => `${DIR}/${name}/spriteFrame`;
+const SHARED = (name: string): string => `ui/world/citymoon/${name}/spriteFrame`;
+const BASE_TILES = HD ? HD.base : D.base;
+const TILE_GRID = HD ? HD.tiles : D.tiles;
 /** NPC 立绘沿用旧主城那批(ui/world/city4/city4_npc_*,荒原 / 枯木林的 NPC 也在用)。 */
 const CITY4 = (name: string): string => `ui/world/city4/${name}/spriteFrame`;
-const D = CITY_MOON_DATA;
 const [W, H] = D.px;
 /** 一屏图(1672 像素宽)铺成 2240 世界单位,和演示广场同一比例。 */
 const UNIT = 2240 / 1672;
@@ -27,6 +37,9 @@ const MAP_W = Math.round(W * UNIT);
 const MAP_H = Math.round(H * UNIT);
 const X = (px: number): number => Math.round((px - W / 2) * UNIT);
 const Y = (py: number): number => Math.round((H / 2 - py) * UNIT);
+/** 不取整的版本:底图块和抠出来的树 / 布 / 水面要和底图逐像素对齐(取整会让块之间露缝、抠图边缘重影)。 */
+const XF = (px: number): number => (px - W / 2) * UNIT;
+const YF = (py: number): number => (H / 2 - py) * UNIT;
 const WARM: [number, number, number] = [255, 178, 98];
 const SPEAR = 'spine/monster/spear_male/spear_001';
 const KNIGHT = 'spine/monster/sword_knight/sword_shield_001';
@@ -161,22 +174,25 @@ const NPC_LIST: WorldMapNpc[] = NPCS.map(([code, name, art, x, y, flip]) => ({
 
 const PROPS: WorldMapProp[] = [
   // 底图块:四周多补了一圈虚化暗边,比地图大,超宽屏看到的是暗边不是黑条
-  ...D.base.map(([name, cx, cy, w]) => ({ asset: A(name), x: X(cx), y: Y(cy), width: w * UNIT, flat: true })),
+  ...BASE_TILES.map(([name, cx, cy, w]) => ({ asset: A(name), x: XF(cx), y: YF(cy), width: w * UNIT, flat: true })),
   // 水面:流水着色器(波纹 + 闪光)
-  ...D.waters.map(([name, cx, cy, w]) => ({ asset: A(name), x: X(cx), y: Y(cy), width: w * UNIT, flat: true, water: true })),
+  ...D.waters.map(([name, cx, cy, w]) => ({ asset: A(name), x: XF(cx), y: YF(cy), width: w * UNIT, flat: true, water: true })),
   // 树 / 大灌木:随风摆,人走到后面开透视孔
-  ...D.trees.map(([name, cx, foot, w]) => ({ asset: A(name), x: X(cx), y: Y(foot), width: w * UNIT, sway: true })),
+  ...D.trees.map(([name, cx, foot, w]) => ({ asset: A(name), x: XF(cx), y: YF(foot), width: w * UNIT, sway: true })),
   // 挂旗 / 布篷:上端固定随风起伏
-  ...D.cloths.map(([name, cx, foot, w]) => ({ asset: A(name), x: X(cx), y: Y(foot), width: w * UNIT, sway: false, cloth: true })),
+  ...D.cloths.map(([name, cx, foot, w]) => ({ asset: A(name), x: XF(cx), y: YF(foot), width: w * UNIT, sway: false, cloth: true })),
 ];
 
 const SCENE: WorldSceneDef = {
-  tiles: { base: D.base.map(([name]) => A(name)), masks: D.tiles.masks.map(A), cols: D.tiles.cols, tileW: D.tiles.tileW, tileH: D.tiles.tileH, pad: [D.pad[0], D.pad[1]] },
+  tiles: {
+    base: BASE_TILES.map(([name]) => A(name)), masks: TILE_GRID.masks.map(A), cols: TILE_GRID.cols, tileW: TILE_GRID.tileW, tileH: TILE_GRID.tileH,
+    pad: [D.pad[0], D.pad[1]], scale: HD ? HD.scale : 1,
+  },
   px: [W, H],
   unit: UNIT,
   strips: D.strips,
   walk: { cell: D.cell, cols: D.cols, rows: D.walk },
-  dot: A('fx_dot'),
+  dot: SHARED('fx_dot'),
   // 灯 / 窗:生成器按暖色高亮自动找的(精简后,见 GLOWS);大灯(半径大的)配飞蛾
   glows: GLOWS.map(([x, y, r], i) => ({ x: X(x), y: Y(y), r: r * 0.8 * UNIT, color: WARM, alpha: r >= 150 ? 62 : 48, flicker: 0.12, moths: r >= 165 && i % 3 === 0 ? 2 : 0 })),
   flames: FLAMES.map(([x, y, w, h, foot, embers]) => ({ x: X(x), y: Y(y), w: w * UNIT, h: h * UNIT, foot: Y(foot), embers })),
@@ -193,7 +209,7 @@ const BOARD_BUILDING: WorldMapBuilding = {
   key: 'board',
   label: '公告板',
   // 板子是底图里画好的:这里只要名牌和交互点,贴一张透明占位图
-  asset: A('blank'),
+  asset: SHARED('blank'),
   action: 'npc',
   npc: 'BOARD',
   x: X(BOARD.x),
@@ -239,5 +255,5 @@ export const CITY_MOON: WorldMapDef = {
     { key: 'to_gray', label: '前往 · 灰岩荒原', ...SX(EXIT_EAST.x, EXIT_EAST.y), radius: 140, toMap: 'GRAY', toSpawn: { x: -8560, y: -190 } },
   ],
   scene: SCENE,
-  minimapArt: A('overview'),
+  minimapArt: SHARED('overview'),
 };

@@ -17,6 +17,10 @@
   水面   抠成贴地件 water_<i>.png,挂流水着色器(波纹 + 闪光)
   灯光   暖色高亮连通块 = 灯 / 窗,自动出光晕位置和大小
   可走   白色收边后 12px 一格,只留和出生点连通的一片;末尾打印探索度掩码(要抄到后端 FieldExploreRules 的 CITY 一项)
+高清一套(11-11 用户「按 2 倍重绘」,电脑端用):tools/qa/city_moon_hires.py all 出好 hires/mosaic_hi.png(2 倍整城图)后,
+  build 会另出一套到 citymoon_hd/:底图按 2 倍切块(≤ 2048,列宽是 2 倍条宽的整数倍)+ 各块遮罩 + 同名的树 / 布 / 水面抠图(2 倍),
+  数据里多一个 hd 字段(块的位置 / 大小仍用标准图像素,scale = 2)。几何(可走栅格 / 遮挡条 / 点位 / 灯)两套完全共用。
+  没有 mosaic_hi.png 就只出标准一套。
 自查图:%TEMP%/lootchain-qa/city_moon/build_classes.jpg / build_strips.jpg
 """
 import json
@@ -37,6 +41,10 @@ import city_moon_gen as GEN  # noqa: E402
 ROOT = WG.ROOT
 SRC = GEN.OUT
 DST = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'citymoon')
+DST_HD = os.path.join(ROOT, 'assets', 'resources', 'ui', 'world', 'citymoon_hd')
+# 2 倍整城图;环境变量 CITY_HIRES 可以指到别的文件(比如先拿「标准图放大 2 倍」的假图把入库和运行时跑通)
+HIRES = os.environ.get('CITY_HIRES') or os.path.join(SRC, 'hires', 'mosaic_hi.png')
+HD_SCALE = 2
 DATA_TS = os.path.join(ROOT, 'assets', 'scripts', 'scenes', 'lobby', 'LobbyCityMoonData.ts')
 BACKUP = os.path.join(ROOT, '素材原始备份', 'citymoon-20261111')
 
@@ -83,6 +91,9 @@ CLOTH_AREA = 1200
 WATER_AREA = 6000
 BODY_HALF = 64
 MAX_TEX = 2048
+MAX_CUT = MAX_TEX // HD_SCALE       # 抠图(水面)按这个尺寸切:高清一套放大 2 倍后仍不超过 2048
+# 底图块往右、往下各多带这么多标准图像素(和邻块重叠):块的位置是小数,两块正好对边的话镜头挪到某些位置会露一条缝
+TILE_OVERLAP = 2
 SPAWN = (GEN.STEP_X + 800, GEN.STEP_Y + 500)       # 中央广场石台左边的空地(整图像素)
 REFS = np.array([[255, 255, 255], [0, 255, 0], [255, 0, 0], [0, 0, 255], [0, 255, 255], [0, 0, 0]], np.float32)   # 白 绿 红 蓝 青 黑(黑按蓝算)
 GROUND, VEG, CLOTH, SOLID, WATER = 0, 1, 2, 3, 4
@@ -134,8 +145,8 @@ def soft_alpha(mask, blur=0.8):
     return np.asarray(Image.fromarray((mask * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(blur)))
 
 
-def save_png(name, rgba):
-    dst = os.path.join(DST, name + '.png')
+def save_png(name, rgba, folder=None):
+    dst = os.path.join(folder or DST, name + '.png')
     im = Image.fromarray(rgba, 'RGBA')
     im.save(dst, optimize=True)
     m = WG.meta_for(name, '.png', im.width, im.height, False, False)
@@ -144,27 +155,47 @@ def save_png(name, rgba):
     WG.write_meta(dst, m)
 
 
-def save_jpg(name, im):
-    dst = os.path.join(DST, name + '.jpg')
-    im.save(dst, quality=92, subsampling=0)
+def save_jpg(name, im, folder=None, quality=92, subsampling=0):
+    dst = os.path.join(folder or DST, name + '.jpg')
+    im.save(dst, quality=quality, subsampling=subsampling)
     WG.write_meta(dst, WG.meta_for(name, '.jpg', im.width, im.height, False, False))
 
 
-def ensure_dir():
-    os.makedirs(DST, exist_ok=True)
-    dm = DST + '.meta'
+def ensure_dir(folder=None):
+    folder = folder or DST
+    os.makedirs(folder, exist_ok=True)
+    dm = folder + '.meta'
     if not os.path.exists(dm):
         with open(dm, 'w', encoding='utf-8', newline='\n') as f:
             json.dump({'ver': '1.2.0', 'importer': 'directory', 'imported': True, 'uuid': str(uuid.uuid4()), 'files': [], 'subMetas': {}, 'userData': {}}, f, indent=2)
 
 
-def padded_base(plate):
-    arr = np.pad(plate, ((PAD_Y, PAD_Y), (PAD_X, PAD_X), (0, 0)), mode='reflect')
-    blur = np.asarray(Image.fromarray(arr, 'RGB').filter(ImageFilter.GaussianBlur(14))).astype(np.float32)
+GENERATED = ('tree_', 'cloth_', 'water_', 'base_', 'fg_', 'mask_')
+
+
+def clear_generated(folder):
+    """旧的逐件图清掉(数量每次不同)。.meta 先留着:write_meta 见到旧 meta 会沿用原来的编号——内容没变的图重跑后编号不变,
+    出包后的文件名也不变,上线后的玩家不用把整城图重下一遍;没了图的 meta 收尾时由 drop_orphan_metas 删。"""
+    for old in os.listdir(folder):
+        if old.startswith(GENERATED) and not old.endswith('.meta'):
+            os.remove(os.path.join(folder, old))
+
+
+def drop_orphan_metas(folder):
+    for old in os.listdir(folder):
+        if old.startswith(GENERATED) and old.endswith('.meta') and not os.path.exists(os.path.join(folder, old[:-5])):
+            os.remove(os.path.join(folder, old))
+
+
+def padded_base(plate, k=1):
+    """四周镜像补一圈虚化暗边;k = 精度倍数(高清一套的补边 / 虚化半径跟着放大)。"""
+    pad_x, pad_y = PAD_X * k, PAD_Y * k
+    arr = np.pad(plate, ((pad_y, pad_y), (pad_x, pad_x), (0, 0)), mode='reflect')
+    blur = np.asarray(Image.fromarray(arr, 'RGB').filter(ImageFilter.GaussianBlur(14 * k))).astype(np.float32)
     h, w = arr.shape[:2]
-    yy, xx = np.mgrid[0:h, 0:w]
-    dx = np.clip(np.maximum(PAD_X - xx, xx - (w - 1 - PAD_X)) / PAD_X, 0, 1)
-    dy = np.clip(np.maximum(PAD_Y - yy, yy - (h - 1 - PAD_Y)) / PAD_Y, 0, 1)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    dx = np.clip(np.maximum(pad_x - xx, xx - (w - 1 - pad_x)) / pad_x, 0, 1)
+    dy = np.clip(np.maximum(pad_y - yy, yy - (h - 1 - pad_y)) / pad_y, 0, 1)
     ramp = np.maximum(dx, dy)[:, :, None]
     out = (arr.astype(np.float32) * (1 - ramp) + blur * ramp) * (1 - 0.55 * ramp)
     return np.clip(out, 0, 255).astype(np.uint8)
@@ -227,9 +258,7 @@ def cmd_build():
     ground, veg, cloth, water = lab == GROUND, lab == VEG, lab == CLOTH, lab == WATER
     solid_like = lab == SOLID
 
-    for old in os.listdir(DST):   # 旧的逐件抠图清掉(数量每次不同)
-        if old.startswith(('tree_', 'cloth_', 'water_', 'base_', 'fg_', 'mask_')):
-            os.remove(os.path.join(DST, old))
+    clear_generated(DST)
 
     # ── 植被:先按「细脖子」拆开(腐蚀出芯,再把每个像素归给最近的芯),够高的连通块 = 树 ──
     # 树冠底下是能走的(只挡树干):可走判定里把树的像素换成「离它最近的非植被类别」(树冠盖着栏杆就还是栏杆,盖着铺地就是铺地)
@@ -237,6 +266,7 @@ def cmd_build():
     veg_c = ndimage.binary_closing(veg, iterations=8)
     core = ndimage.binary_erosion(veg_c, iterations=12)
     c_lab, c_n = ndimage.label(core)
+    cuts = []          # [名字, y0, x0, 遮罩, 柔边半径]:高清一套照着从 2 倍图里再抠一遍
     trees, tree_union = [], np.zeros((H, W), bool)
     canopy = np.zeros((H, W), bool)          # 所有树(不管抠不抠成立物)的像素
     trunks = np.zeros((H, W), bool)
@@ -276,7 +306,8 @@ def cmd_build():
                     continue
                 name = f'tree_{len(trees)}'
                 save_png(name, np.dstack([plate[by0:by1 + 1, a0:a1], soft_alpha(piece)]))
-                trees.append([name, round((a0 + a1 - 1) / 2, 1), int(by1), int(a1 - a0), int(by1 - by0 + 1)])
+                cuts.append((name, by0, a0, piece, 0.8))
+                trees.append([name, (a0 + a1) / 2, int(by1) + 1, int(a1 - a0), int(by1 - by0 + 1)])
                 tree_union[by0:by1 + 1, a0:a1] |= piece
     # 树冠底下的类别:取最近的非树像素
     lab_walk = lab.copy()
@@ -303,7 +334,8 @@ def cmd_build():
             continue
         name = f'cloth_{len(cloths)}'
         save_png(name, np.dstack([plate[sl], soft_alpha(mask)]))
-        cloths.append([name, round((sl[1].start + sl[1].stop - 1) / 2, 1), int(sl[0].stop - 1), int(sl[1].stop - sl[1].start), int(sl[0].stop - sl[0].start)])
+        cuts.append((name, sl[0].start, sl[1].start, mask, 0.8))
+        cloths.append([name, (sl[1].start + sl[1].stop) / 2, int(sl[0].stop), int(sl[1].stop - sl[1].start), int(sl[0].stop - sl[0].start)])
         cloth_union[sl] |= mask
 
     # ── 水面:贴地件(流水着色器按颜色认水,所以只给它水面那几块像素)──
@@ -315,8 +347,8 @@ def cmd_build():
             continue
         hh, ww = mask.shape
         # 太大的水面按 2048 切开
-        kx, sx = split(ww, MAX_TEX)
-        ky, sy = split(hh, MAX_TEX)
+        kx, sx = split(ww, MAX_CUT)
+        ky, sy = split(hh, MAX_CUT)
         for a in range(ky):
             for b in range(kx):
                 sub = mask[a * sy:(a + 1) * sy, b * sx:(b + 1) * sx]
@@ -325,6 +357,7 @@ def cmd_build():
                 yy0, xx0 = sl[0].start + a * sy, sl[1].start + b * sx
                 name = f'water_{len(waters)}'
                 save_png(name, np.dstack([plate[yy0:yy0 + sub.shape[0], xx0:xx0 + sub.shape[1]], soft_alpha(sub, 1.2)]))
+                cuts.append((name, yy0, xx0, sub, 1.2))
                 waters.append([name, xx0 + sub.shape[1] / 2, yy0 + sub.shape[0] / 2, sub.shape[1], sub.shape[0]])
 
     # ── 遮挡层 + 遮挡条 ──
@@ -502,16 +535,54 @@ def cmd_build():
     base_tiles, mask_names = [], []
     for a in range(bky):
         for b in range(bkx):
-            sub = base[a * bsy:(a + 1) * bsy, b * bsx:(b + 1) * bsx]
+            sub = base[a * bsy:(a + 1) * bsy + TILE_OVERLAP, b * bsx:(b + 1) * bsx + TILE_OVERLAP]
             name = f'base_{len(base_tiles)}'
-            save_jpg(name, Image.fromarray(sub, 'RGB'))
+            save_jpg(name, Image.fromarray(np.ascontiguousarray(sub), 'RGB'))
             # [贴图名, 中心 x, 中心 y(整图像素,不含补边), 宽, 高]
             base_tiles.append([name, b * bsx + sub.shape[1] / 2 - PAD_X, a * bsy + sub.shape[0] / 2 - PAD_Y, sub.shape[1], sub.shape[0]])
-            m = Image.fromarray(np.ascontiguousarray(alpha[a * bsy:(a + 1) * bsy, b * bsx:(b + 1) * bsx]))
+            m = Image.fromarray(np.ascontiguousarray(alpha[a * bsy:a * bsy + sub.shape[0], b * bsx:b * bsx + sub.shape[1]]))
             m = m.resize((-(-m.width // 2), -(-m.height // 2)), Image.BILINEAR)
             mname = f'mask_{len(mask_names)}'
             save_jpg(mname, Image.merge('RGB', [m, m, m]))
             mask_names.append(mname)
+    # ── 高清一套(有 2 倍整城图才出)──
+    hd = None
+    if os.path.exists(HIRES):
+        k = HD_SCALE
+        plate_hd = np.asarray(Image.open(HIRES).convert('RGB'))
+        assert plate_hd.shape[0] == H * k and plate_hd.shape[1] == W * k, ('2 倍整城图尺寸不对', plate_hd.shape, (H * k, W * k))
+        ensure_dir(DST_HD)
+        clear_generated(DST_HD)
+        base_hd = padded_base(plate_hd, k)
+        hbh, hbw = base_hd.shape[:2]
+        hkx, hsx = split(hbw, MAX_TEX, STRIP_W * k)
+        hky, hsy = split(hbh, MAX_TEX, k)
+        assert hsx % (STRIP_W * k) == 0 and hsy % k == 0
+        hd_tiles, hd_masks = [], []
+        for a in range(hky):
+            for b in range(hkx):
+                sub = base_hd[a * hsy:(a + 1) * hsy + TILE_OVERLAP * k, b * hsx:(b + 1) * hsx + TILE_OVERLAP * k]
+                name = f'base_{len(hd_tiles)}'
+                # 2 倍图的色度按 4:2:0 存:色度精度 = 标准图的全精度,文件小一半
+                save_jpg(name, Image.fromarray(np.ascontiguousarray(sub), 'RGB'), DST_HD, 88, 2)
+                # 位置 / 大小仍用标准图像素(不含补边)
+                hd_tiles.append([name, (b * hsx + sub.shape[1] / 2) / k - PAD_X, (a * hsy + sub.shape[0] / 2) / k - PAD_Y, sub.shape[1] / k, sub.shape[0] / k])
+                # 遮罩:这一块对应的标准图区域,半分辨率(= 高清块的 1/4)
+                m = Image.fromarray(np.ascontiguousarray(alpha[a * hsy // k:-(-(a * hsy + sub.shape[0]) // k), b * hsx // k:-(-(b * hsx + sub.shape[1]) // k)]))
+                m = m.resize((-(-m.width // 2), -(-m.height // 2)), Image.BILINEAR)
+                mname = f'mask_{len(hd_masks)}'
+                save_jpg(mname, Image.merge('RGB', [m, m, m]), DST_HD)
+                hd_masks.append(mname)
+        for name, cy0, cx0, cmask, cblur in cuts:
+            ch, cw = cmask.shape
+            a8 = Image.fromarray(soft_alpha(cmask, cblur)).resize((cw * k, ch * k), Image.BILINEAR)
+            rgb = plate_hd[cy0 * k:(cy0 + ch) * k, cx0 * k:(cx0 + cw) * k]
+            save_png(name, np.dstack([rgb, np.asarray(a8)]), DST_HD)
+        hd = {'scale': k, 'base': hd_tiles, 'tiles': {'cols': hkx, 'tileW': hsx // k, 'tileH': hsy // k, 'masks': hd_masks}}
+        print('  hd tiles', len(hd_tiles), (hsx, hsy), 'masks', len(hd_masks), 'cuts', len(cuts))
+    else:
+        print('  (没有 hires/mosaic_hi.png,只出标准一套)')
+
     # 占位透明图(告示板交互点用:只要名牌和交互,不画东西)
     save_png('blank', np.zeros((8, 8, 4), np.uint8))
     yy, xx = np.mgrid[0:128, 0:128]
@@ -542,18 +613,26 @@ def cmd_build():
         d.ellipse([x - rad, y - rad, x + rad, y + rad], outline=(255, 220, 80, 230), width=3)
     Image.alpha_composite(dbg, over).convert('RGB').resize((W // 2, H // 2), Image.LANCZOS).save(os.path.join(SRC, 'build_strips.jpg'), quality=86)
 
+    drop_orphan_metas(DST)
+    if hd:
+        drop_orphan_metas(DST_HD)
     data = {'px': [W, H], 'pad': [PAD_X, PAD_Y], 'base': base_tiles, 'tiles': {'cols': bkx, 'tileW': bsx, 'tileH': bsy, 'masks': mask_names},
             'cell': CELL, 'cols': cols, 'walk': walk_rows, 'strips': strips, 'trees': trees, 'cloths': cloths, 'waters': waters,
             'glows': [g[:3] for g in glows], 'spawn': [sc * CELL + CELL // 2, sr * CELL + CELL // 2]}
+    if hd:
+        data['hd'] = hd
     with open(DATA_TS, 'w', encoding='utf-8', newline='\n') as f:
         f.write('/**\n * 主城(月夜)整图场景数据(由 tools/qa/city_moon_build.py 生成,别手改)。坐标都是整图像素(左上原点,不含补边)。\n'
                 ' * base = 底图块 [贴图名, 中心 x, 中心 y, 宽, 高];tiles = 底图块的切法(带补边的像素)+ 各块的遮罩贴图;walk = 可走栅格(十六进制行,高位在左);\n'
                 ' * strips = 遮挡条 [x, y, w, h, 脚线 y];trees / cloths = 随风摆的件 [贴图名, 中心 x, 脚线 y, 宽, 高];waters = 水面贴地件 [贴图名, 中心 x, 中心 y, 宽, 高];\n'
-                ' * glows = 自动找到的灯 / 窗 [x, y, 光晕半径]。\n */\n/* eslint-disable */\n'
+                ' * glows = 自动找到的灯 / 窗 [x, y, 光晕半径]。\n'
+                ' * hd = 高清一套(ui/world/citymoon_hd,电脑端用):scale = 贴图像素 / 标准图像素;base / tiles 同上(坐标和块大小仍是标准图像素),\n'
+                ' *      树 / 布 / 水面是同名文件;没出高清图时没有这个字段。\n */\n/* eslint-disable */\n'
                 'export const CITY_MOON_DATA: { px: number[]; pad: number[]; base: Array<[string, number, number, number, number]>; '
                 'tiles: { cols: number; tileW: number; tileH: number; masks: string[] }; cell: number; cols: number; walk: string[]; strips: number[][]; '
                 'trees: Array<[string, number, number, number, number]>; cloths: Array<[string, number, number, number, number]>; '
-                'waters: Array<[string, number, number, number, number]>; glows: number[][]; spawn: number[] } = '
+                'waters: Array<[string, number, number, number, number]>; glows: number[][]; spawn: number[]; '
+                'hd?: { scale: number; base: Array<[string, number, number, number, number]>; tiles: { cols: number; tileW: number; tileH: number; masks: string[] } } } = '
                 + json.dumps(data, ensure_ascii=False, separators=(', ', ': ')) + ' as never;\n')
     print('size', (W, H), 'base tiles', len(base_tiles), (bsx, bsy), 'masks', len(mask_names), 'strips', len(strips), 'of', len(runs),
           'trees', len(trees), 'cloths', len(cloths), 'waters', len(waters), 'glows', len(glows), 'walk cells', int(grid.sum()),

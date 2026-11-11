@@ -1,5 +1,6 @@
 import { assetManager, sys } from 'cc';
 import { PREVIEW } from 'cc/env';
+import { unusedArtPrefixes } from './DeviceTier';
 
 /**
  * 静态资源离线缓存(2026-09-17 用户拍板;2026-09-25 改:首次只预载登录+大厅界面图,其余用到才下载):
@@ -190,6 +191,38 @@ export function isFullPackCached(): boolean {
   }
 }
 
+/**
+ * 这台设备用不到的素材从清单里拿掉(11-11:主城图有两套,电脑端用高清、手持设备用标准版,见 DeviceTier):
+ * 不下载、不计入开局包 / 后台下载的进度。万一运行时还是用到了(比如地址参数强制切换),照常走网络现取。
+ */
+function dropUnusedArt(manifest: AssetManifest): AssetManifest {
+  const tiered = manifest as AssetManifest & { res?: string[]; core?: number };
+  const skip = unusedArtPrefixes();
+  const res = tiered.res;
+  if (!res || skip.length === 0) {
+    return manifest;
+  }
+  const keep = res.map((path) => !skip.some((prefix) => path.startsWith(prefix)));
+  if (keep.every((flag) => flag)) {
+    return manifest;
+  }
+  const coreCount = tiered.core ?? tiered.files.length;
+  const files: Array<[string, number]> = [];
+  const keptRes: string[] = [];
+  let core = 0;
+  tiered.files.forEach((file, index) => {
+    if (!keep[index]) {
+      return;
+    }
+    files.push(file);
+    keptRes.push(res[index]);
+    if (index < coreCount) {
+      core += 1;
+    }
+  });
+  return { ...tiered, files, res: keptRes, core: tiered.core === undefined ? undefined : core } as AssetManifest;
+}
+
 /** 拉清单(不走缓存);预览 / 没有清单 / 网络失败 → null。 */
 export async function fetchAssetManifest(): Promise<AssetManifest | null> {
   if (!canUseCacheStorage()) {
@@ -204,7 +237,7 @@ export async function fetchAssetManifest(): Promise<AssetManifest | null> {
     if (!manifest || !Array.isArray(manifest.files) || manifest.files.length === 0) {
       return null;
     }
-    return manifest;
+    return dropUnusedArt(manifest);
   } catch (error) {
     void error;
     return null;

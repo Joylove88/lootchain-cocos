@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "aec572ef-24dd-4213-bcd7-346589f07a80",
+  "uuid": "dee25f00-5d58-4384-9093-c3582d3f6c30",
   "files": [
     ".json",
     ".png"
@@ -10,7 +10,7 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "aec572ef-24dd-4213-bcd7-346589f07a80@6c48a",
+      "uuid": "dee25f00-5d58-4384-9093-c3582d3f6c30@6c48a",
       "displayName": "water_1",
       "id": "6c48a",
       "name": "texture",
@@ -22,7 +22,7 @@
         "mipfilter": "none",
         "anisotropy": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "aec572ef-24dd-4213-bcd7-346589f07a80",
+        "imageUuidOrDatabaseUri": "dee25f00-5d58-4384-9093-c3582d3f6c30",
         "visible": false
       },
       "ver": "1.0.22",
@@ -34,7 +34,7 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "aec572ef-24dd-4213-bcd7-346589f07a80@f9941",
+      "uuid": "dee25f00-5d58-4384-9093-c3582d3f6c30@f9941",
       "displayName": "water_1",
       "id": "f9941",
       "name": "spriteFrame",
@@ -59,7 +59,7 @@
         "pivotY": 0.5,
         "meshType": 0,
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "aec572ef-24dd-4213-bcd7-346589f07a80@6c48a",
+        "imageUuidOrDatabaseUri": "dee25f00-5d58-4384-9093-c3582d3f6c30@6c48a",
         "atlasUuid": "",
         "trimType": "none",
         "vertices": {
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": true,
     "hasAlpha": true,
-    "redirect": "aec572ef-24dd-4213-bcd7-346589f07a80@6c48a",
+    "redirect": "dee25f00-5d58-4384-9093-c3582d3f6c30@6c48a",
     "compressSettings": {
       "useCompressTexture": false,
       "presetId": "lc-android-astc4"

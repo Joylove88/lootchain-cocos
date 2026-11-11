@@ -34,6 +34,8 @@ DEBUG_WALK = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--debug
 MAX_LEG = 320
 ONLY = next((a.split('=', 1)[1] for a in sys.argv if a.startswith('--only=')), '')
 ACCOUNT = os.environ.get('QA_ACCOUNT', 'selfchk1108')
+# 截图视口(环境变量 QA_VIEW=宽x高,缺省 1600x900;对比高清 / 标准版时用 2560x1440 更看得出差别)
+VIEW_W, VIEW_H = [int(v) for v in os.environ.get('QA_VIEW', '1600x900').lower().split('x')]
 os.makedirs(OUT, exist_ok=True)
 ROOT_JS = "let root=null; cc.director.getScene().walk(n=>{ if(!root){ const c=n.getComponent('LootChainGameRoot'); if(c) root=c; } }); const t = root && root.lobbyTownRenderer;"
 JS_CC = r"""(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms)); let cc = null; for (let i = 0; i < 40 && !cc; i++) { try { cc = await System.import('cc'); } catch (e) { await sleep(1500); } } if (!cc) return 'cc import failed'; window.__cc = cc; return 'ok'; })()"""
@@ -139,7 +141,7 @@ def js(body):
 async def main():
     profile = os.path.join(base.SCRATCH, 'citymoon_browser_profile')
     proc = subprocess.Popen([base.EDGE, '--headless=new', f'--remote-debugging-port={base.PORT}', f'--user-data-dir={profile}', '--no-first-run',
-                             '--window-size=1600,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
+                             f'--window-size={VIEW_W},{VIEW_H}', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'])
     logs = []
     try:
         for _ in range(100):
@@ -195,7 +197,7 @@ async def main():
                     await asyncio.sleep(2)
 
             await call('Runtime.enable')
-            await call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            await call('Emulation.setDeviceMetricsOverride', {'width': VIEW_W, 'height': VIEW_H, 'deviceScaleFactor': 1, 'mobile': False})
             await call('Page.navigate', {'url': base.PAGE})
             r = await call('Runtime.evaluate', {'expression': JS_CC, 'awaitPromise': True, 'returnByValue': True}, 400)
             print('cc', r.get('result', {}).get('result', {}).get('value'), flush=True)
