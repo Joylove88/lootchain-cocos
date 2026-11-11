@@ -2103,9 +2103,11 @@ export class LobbyGuardBattleRenderer {
     return Math.max(1, nextAt - sim.summonCount);
   }
 
-  /** 英雄格板面中心相对格子矩形中心的 y 偏移(板子贴在英雄脚下)。 */
+  /** 英雄格板面中心相对格子矩形中心的 y 偏移:脚底(格心 - 0.42 × 英雄尺寸)落在板面上部 40% 处(原型:人站在板子中上)。 */
   private cellPlateDy(tileH: number): number {
-    return -tileH * 0.08;
+    const pitch = tileH / 0.765;
+    const feetFromTile = pitch * 0.6 - this.heroDisplaySize() * 0.42;
+    return feetFromTile - pitch * 1.02 * 0.46 * 0.12;
   }
 
   /**
@@ -2113,46 +2115,80 @@ export class LobbyGuardBattleRenderer {
    * locked 更暗、selected / resonance 换香槟描边。画在 parent(格子矩形,中心原点)里。
    */
   private paintCellPlate(parent: Node, tileW: number, tileH: number, state: 'idle' | 'locked' | 'selected' | 'resonance'): Graphics {
+    // 2026-11-11 用户:原型的格子更清晰(浅磨砂 + 亮细边 + 下沿厚度),之前的薄暗板看着「显示不全」→ 加大加亮
     const g = this.host.addChildPlainNode(parent, 'Plate', 0, this.cellPlateDy(tileH), tileW, tileH).addComponent(Graphics);
-    const w = tileW * 0.9;
-    const h = tileW * 0.34;
-    const inset = w * 0.07;
-    const r = Math.min(10, h * 0.28);
-    const path = (): void => {
+    const w = tileW * 0.96;
+    const h = tileW * 0.46;
+    const inset = w * 0.08;
+    const r = Math.min(12, h * 0.26);
+    const lip = Math.max(3, h * 0.08);
+    const path = (dy: number): void => {
       // 梯形:下沿全宽、上沿两侧各收 inset;四角用二次曲线收圆
-      const corners = [{ x: -w / 2, y: -h / 2 }, { x: w / 2, y: -h / 2 }, { x: w / 2 - inset, y: h / 2 }, { x: -w / 2 + inset, y: h / 2 }];
+      const corners = [{ x: -w / 2, y: -h / 2 + dy }, { x: w / 2, y: -h / 2 + dy }, { x: w / 2 - inset, y: h / 2 + dy }, { x: -w / 2 + inset, y: h / 2 + dy }];
       const toward = (p: { x: number; y: number }, q: { x: number; y: number }, d: number): { x: number; y: number } => {
         const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
         return { x: p.x + ((q.x - p.x) * d) / len, y: p.y + ((q.y - p.y) * d) / len };
       };
       corners.forEach((c, i) => {
-        const a = toward(c, corners[(i + 3) % 4], r);
-        const b = toward(c, corners[(i + 1) % 4], r);
+        const a0 = toward(c, corners[(i + 3) % 4], r);
+        const b0 = toward(c, corners[(i + 1) % 4], r);
         if (i === 0) {
-          g.moveTo(a.x, a.y);
+          g.moveTo(a0.x, a0.y);
         } else {
-          g.lineTo(a.x, a.y);
+          g.lineTo(a0.x, a0.y);
         }
-        g.quadraticCurveTo(c.x, c.y, b.x, b.y);
+        g.quadraticCurveTo(c.x, c.y, b0.x, b0.y);
       });
       g.close();
     };
     const hot = state === 'selected' || state === 'resonance';
-    // 浅磨砂(比地面亮一档,原型的半透明玻璃板);未解锁更淡
-    g.fillColor = state === 'locked' ? rgba(190, 198, 214, 22) : hot ? rgba(227, 196, 138, 60) : rgba(200, 208, 224, 44);
-    path();
+    const locked = state === 'locked';
+    // 下沿厚度:同形状下移一点的暗面(板子像放在地上的一块玻璃砖)
+    g.fillColor = rgba(6, 8, 14, locked ? 70 : 110);
+    path(-lip);
     g.fill();
-    g.lineWidth = hot ? 2.5 : 1.3;
-    g.strokeColor = hot ? rgba(227, 196, 138, 245) : state === 'locked' ? rgba(210, 216, 226, 80) : rgba(220, 226, 236, 150);
-    path();
+    // 板面:浅磨砂
+    g.fillColor = locked ? rgba(196, 204, 220, 40) : hot ? rgba(227, 196, 138, 78) : rgba(206, 214, 230, 62);
+    path(0);
+    g.fill();
+    g.lineJoin = Graphics.LineJoin.ROUND;
+    g.lineWidth = hot ? 2.6 : 2;
+    g.strokeColor = hot ? rgba(232, 204, 150, 250) : locked ? rgba(222, 228, 238, 120) : rgba(232, 236, 244, 175);
+    path(0);
     g.stroke();
     // 顶沿高光:上沿内侧一道淡白线
-    g.strokeColor = hot ? rgba(255, 236, 196, 90) : rgba(255, 255, 255, state === 'locked' ? 20 : 40);
-    g.lineWidth = 1;
-    g.moveTo(-w / 2 + inset + r, h / 2 - 2);
-    g.lineTo(w / 2 - inset - r, h / 2 - 2);
+    g.strokeColor = hot ? rgba(255, 240, 210, 120) : rgba(255, 255, 255, locked ? 40 : 70);
+    g.lineWidth = 1.2;
+    g.moveTo(-w / 2 + inset + r, h / 2 - 3);
+    g.lineTo(w / 2 - inset - r, h / 2 - 3);
     g.stroke();
     return g;
+  }
+
+  /** 白色线条锁(原型格子上的锁):锁梁半圆环 + 圆角锁身描边 + 锁孔。 */
+  private paintLockGlyph(parent: Node, size: number): void {
+    const g = this.host.addChildPlainNode(parent, 'Lock', 0, 0, size, size).addComponent(Graphics);
+    const bw = size * 0.66;
+    const bh = size * 0.5;
+    const by = -size * 0.2;
+    g.lineWidth = Math.max(1.8, size * 0.085);
+    g.strokeColor = rgba(240, 242, 246, 235);
+    g.lineCap = Graphics.LineCap.ROUND;
+    // 锁梁:上半圆 + 两条竖边(扇形 / 弧一律传 true 走短弧)
+    const sr = size * 0.2;
+    const sy = by + bh / 2;
+    g.moveTo(-sr, sy);
+    for (let i = 0; i <= 12; i += 1) {
+      const a = Math.PI - (Math.PI * i) / 12;
+      g.lineTo(Math.cos(a) * sr, sy + size * 0.1 + Math.sin(a) * sr);
+    }
+    g.lineTo(sr, sy);
+    g.stroke();
+    g.roundRect(-bw / 2, by - bh / 2, bw, bh, size * 0.08);
+    g.stroke();
+    g.fillColor = rgba(240, 242, 246, 235);
+    g.circle(0, by + size * 0.03, size * 0.06);
+    g.fill();
   }
 
   /** 车道+格子底图(解锁进度变化时重画;锁定格画暗卡,下一个待解锁格标倒数)。 */
@@ -2182,9 +2218,9 @@ export class LobbyGuardBattleRenderer {
       // 2026-11-11 B(原型 guard_hud_b):雕花石台换贴地的暗磨砂圆角板 + 细浅边;未解锁只留白色线条锁
       this.paintCellPlate(card, tile.w, tile.h, locked ? 'locked' : 'idle');
       if (locked) {
-        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', tile.x, tile.y + this.cellPlateDy(tile.h), 26, 26);
+        const lockNode = this.host.addChildPlainNode(field, 'GuardLockIcon', tile.x, tile.y + this.cellPlateDy(tile.h), 30, 30);
         lockNode.setSiblingIndex(2);
-        this.mountSprite(lockNode, 'Img', GLASS_ICON.lock, 0, 0, 24, 24, rgba(236, 238, 242));
+        this.paintLockGlyph(lockNode, 30);
       }
     }
     field.getChildByName('GuardLockHint')?.destroy();
@@ -2235,20 +2271,21 @@ export class LobbyGuardBattleRenderer {
     const barW = Math.max(width * 1.2, 150);
     const raidSlim = this.isRaidStage() && !this.sim?.raidClear;
     const barH = 8;
-    // 水晶贴左缘:血条整体钳在屏幕内(左留 16px;右侧给百分比留 64)
+    // 水晶贴左缘:血条整体钳在屏幕内(左留 16px)
     const barX = Math.max(x - 26, -this.layoutWidth / 2 + 16 + barW / 2);
     const barY = y + height / 2 + 22;
     const bar = this.host.addChildPlainNode(field, 'GuardCrystalHpBar', barX, barY, barW, barH);
     bar.addComponent(Graphics);
     const hpText = raidSlim
       ? glassLabel(this.kit, bar, 'GuardCrystalHpText', '', 0, -barH / 2 - 12, 17, GLASS_COLOR.text, barW - 8, HorizontalTextAlignment.CENTER, true)
-      : glassLabel(this.kit, bar, 'GuardCrystalHpText', '', barW / 2 + 8, 0, 16, GLASS_COLOR.sub, 70, HorizontalTextAlignment.LEFT);
+      // 百分比放在「守卫水晶」同一行右端(放条右侧会被上排第一个英雄挡住,手机尤甚)
+      : glassLabel(this.kit, bar, 'GuardCrystalHpText', '', barW / 2, 22, 16, GLASS_COLOR.sub, 80, HorizontalTextAlignment.RIGHT);
     LobbyGuardBattleRenderer.hudCharCache(hpText);
     if (raidSlim) {
       return;
     }
     const cap = this.host.addChildPlainNode(field, 'GuardCrystalHpCap', barX, barY + 22, barW, 26);
-    glassLabel(this.kit, cap, 'Text', '守卫水晶', -barW / 2, 0, 19, GLASS_COLOR.text, barW, HorizontalTextAlignment.LEFT, true);
+    glassLabel(this.kit, cap, 'Text', '守卫水晶', -barW / 2, 0, 19, GLASS_COLOR.text, barW - 70, HorizontalTextAlignment.LEFT, true);
   }
 
   // ── HUD(2026-11-11 B 毛玻璃,原型 周报截图/2026-11-11_守卫战HUD/proto/guard_hud_b.png;位置沿用旧版,只换外观)──
@@ -4430,7 +4467,9 @@ export class LobbyGuardBattleRenderer {
         const frameOp = frame.addComponent(UIOpacity);
         tween(frameOp).repeatForever(tween().to(0.8, { opacity: 140 }).to(0.8, { opacity: 255 })).start();
         const tagW = 128;
-        const tagNode = this.host.addChildPlainNode(node, 'Tag', 0, this.cellPlateDy(tile.h) - tile.w * 0.17 - 16, tagW, 26);
+        // 胶囊在板下;下排贴近屏幕底边时往上收,不出屏(field 原点比屏幕中心低 3%)
+        const minTagY = -this.layoutHeight / 2 + 16 + this.layoutHeight * 0.03 - tile.y;
+        const tagNode = this.host.addChildPlainNode(node, 'Tag', 0, Math.max(minTagY, this.cellPlateDy(tile.h) - tile.w * 0.23 - 18), tagW, 26);
         const tg = tagNode.addComponent(Graphics);
         tg.fillColor = rgba(227, 196, 138, 240);
         tg.roundRect(-tagW / 2, -13, tagW, 26, 13);
@@ -8896,7 +8935,7 @@ export class LobbyGuardBattleRenderer {
       ringSprite.sizeMode = Sprite.SizeMode.CUSTOM;
       ringSprite.trim = false;
       ringSprite.spriteFrame = ringFrame;
-      ringSprite.color = rgba(roleColor.r, roleColor.g, roleColor.b, 200);
+      ringSprite.color = rgba(roleColor.r, roleColor.g, roleColor.b, 120);
       ring.getComponent(UITransform)?.setContentSize(ringSize.w, ringSize.h);
     } else {
       const g = node.addComponent(Graphics);
