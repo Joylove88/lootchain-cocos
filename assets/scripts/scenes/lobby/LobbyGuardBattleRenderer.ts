@@ -3,6 +3,7 @@
 // P1 视觉:英雄/怪物用现有骨骼(缺省回退色块),水晶/格子/按钮程序绘制;宝箱/三选一/水晶技能在 P2。
 import {
   BlockInputEvents,
+  Button,
   Color,
   EventTouch,
   Graphics,
@@ -33,7 +34,7 @@ import {
 import { gameAudio } from '../../audio/GameAudio';
 import { isPhoneDesign } from '../../app/ScreenAdapter';
 import { GRAPHICS_FRAME_RATES, getGraphicsFrameRate, getGraphicsMode, graphicsCaps, setGraphicsFrameRate, setGraphicsMode } from '../../app/GraphicsSettings';
-import { addPhoneDialogTitle, drawPhoneDialogFrame, phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
+import { phoneDialogSizeForStage } from './LobbyPhoneDialogFrame';
 import type { UiLayout } from './LobbyHudTypes';
 import type { LobbyBattlePanelState } from './LobbyBattleState';
 import type { LobbyHeroItemVO, LobbyHeroRosterPanelState } from '../../types/LobbyHeroTypes';
@@ -143,6 +144,10 @@ import { worldMapOfStage } from './LobbyWorldMaps';
 import { loadSharedSpineData } from './SpineDataStore';
 import { GuardRaidController, formatInt } from './GuardRaidController';
 import { mountLobbySpineFx } from './LobbyUiSpineFx';
+import type { UiKitHost } from '../UiKit';
+import { GLASS_COLOR, GLASS_ICON, GLASS_SLICES, mountGlassButton, mountGlassFrame, mountGlassLine, mountGlassSectionHeader, mountGlassSlice } from '../UiGlassKit';
+import { resolveBagStyleItemIconAsset } from './LobbyBagPanelRenderer';
+import { estimateGlassTextWidth, makeGlassText, mountGlassCloseButton, mountGlassPopupShell, type GlassPopupShell, type GlassPopupShellOptions } from './GlassPopupShell';
 import { prepareBattleFxData } from './BattleFxSlotFilter';
 import { BOLT_SIZE, boltFrame, cellBurstFrame, cellBurstSize, impactFrame, ringFrameSize, whiteBarFrame, whitePillFrame, whiteRingFrame } from './GuardBakedShapes';
 import { battleFxPremultiplied, lookupBattleFxBounds, lookupBattleFxCoreBounds, resolveBattleFxHiddenSlots, resolveBattleSkillEffectResource, resolveHeroGuardSkillEffect, resolveHeroUltEffect, type BattleFxMeasuredBounds, type BattleSkillEffectSpec } from './LobbyBattleSkillEffectConfig';
@@ -180,6 +185,8 @@ export interface LobbyGuardBattleHost {
   currentLobbyAdventureState?(): { adventure: { chapters: Array<{ stages: Array<{ stageCode: string; recommendedPower: number }> }>; maxCompletedStageCode?: string } | null };
   /** 输出试炼档位表(P3b near-miss 提示,缺省=不展示)。 */
   currentTrialOutputTiers?(): Array<{ tierCode: string; tierName: string; minScore: number }>;
+  /** 物品稀有度(背包已加载时可查;结算物品格底边细线用,缺省 = 按编码兜底)。 */
+  itemSourceRarityOf?(key: string): string | null;
   settleLobbyBattleSession(): void;
   returnToLobbyFromBattlePreview(): void;
   /** 等待页兜底:开战回执被作废(流程被重置)后重新发起开战(同 startLobbyBattleSession)。 */
@@ -436,8 +443,21 @@ const GUARD_WHITE_PERK_ICON: Record<string, { path: string; aspect: number }> = 
   gen_thorns: { path: 'ui/battle/ai/buff_shield/spriteFrame', aspect: 69 / 70 },
   gen_crystal_repair: { path: 'ui/battle/ai/ghud_crystal_tower/spriteFrame', aspect: 652 / 299 },
 };
+/** 战术卡 B 风格稀有度色(卡顶细线 / 标签描边 = line,标签字 = text;原型 guard_choice_b 取色)。 */
+const GUARD_PERK_GLASS_TONE: Record<GuardPerkRarity, { line: Color; text: Color }> = {
+  white: { line: new Color(150, 158, 172, 255), text: new Color(206, 212, 222, 255) },
+  blue: { line: new Color(64, 140, 240, 255), text: new Color(160, 204, 255, 255) },
+  purple: { line: new Color(176, 96, 244, 255), text: new Color(218, 178, 255, 255) },
+  gold: { line: new Color(230, 172, 76, 255), text: new Color(255, 216, 146, 255) },
+};
 /** 同屏 Spine 普攻弹体上限(每个都是一次骨骼更新 + 一次合批打断),超额回退静态贴图弹道。 */
 // 同屏上限改由画面设置决定(app/GraphicsSettings:流畅 6 / 极致 18)。
+/** 战斗设置弹层原型尺寸(guard_settings_b,像素)。 */
+const GUARD_SETTINGS_W = 939;
+const GUARD_SETTINGS_H = 597;
+/** 结算弹层原型尺寸(guard_result_b,像素)。 */
+const GUARD_END_W = 910;
+const GUARD_END_H = 613;
 const GUARD_HIT_FLASH_COLOR = new Color(255, 130, 110, 255);
 const GUARD_SPINE_WHITE = new Color(255, 255, 255, 255);
 /** 偷金鼠金色染色(docs/37 D)。 */
@@ -470,7 +490,7 @@ const GUARD_CHEST_SPRITE_PRELOAD = [
   GUARD_STATS_BUTTON_ART,
   'ui/guard/chest_closed/spriteFrame', 'ui/guard/chest_open/spriteFrame', 'ui/codex/ai/chest_ready/spriteFrame', 'ui/codex/ai/chest_opened/spriteFrame',
   'ui/guard/cast_flash/spriteFrame', 'ui/guard/coin_gold/spriteFrame', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 'ui/battle/c1812/effects/hit_ring/spriteFrame',
-  'ui/common/ai/star_orange/spriteFrame', 'ui/common/ai/star_red/spriteFrame', 'ui/hero/ai/refine_panel_bg/spriteFrame', 'ui/hero/ai/btn_star_up/spriteFrame',
+  'ui/common/ai/star_orange/spriteFrame', 'ui/common/ai/star_red/spriteFrame', 'ui/hero/ai/btn_star_up/spriteFrame',
   GUARD_WHEEL_SECTOR_ICON.gold, GUARD_WHEEL_SECTOR_ICON.summon, GUARD_WHEEL_SECTOR_ICON.teamAtk, GUARD_WHEEL_SECTOR_ICON.jackpot,
 ];
 
@@ -506,6 +526,12 @@ interface GuardWheelParts {
   titleY: number;
   /** 手机全屏弹层(横幅不能再挂到面板外沿上方)。 */
   sheet: boolean;
+  /** B 原型映射(2026-11-11):面板原型 1058×603 像素 → 面板中心原点设计坐标;T = 原型字号文字。 */
+  k: number;
+  S: (v: number) => number;
+  X: (dx: number) => number;
+  Y: (dy: number) => number;
+  T: GlassPopupShell['T'];
   phase: 'entering' | 'spinning' | 'stopped' | 'revealing' | 'done';
   timers: Array<ReturnType<typeof setTimeout>>;
   ticker: ReturnType<typeof setInterval> | null;
@@ -589,6 +615,10 @@ export class LobbyGuardBattleRenderer {
   private wheelOverlayOpen = false;
   /** 战斗内设置面板 / 退出确认框是否打开(打开期间暂停 sim)。 */
   private settingsOpen = false;
+  /** 战斗设置弹层外壳(切页时内容挂到它的面板上重画)。 */
+  private settingsShell: GlassPopupShell | null = null;
+  /** 结算弹层外壳(回执到达后往它的面板上挂物品格 / 返回钮)。 */
+  private endShell: GlassPopupShell | null = null;
   private exitConfirmOpen = false;
   /** 设置项:战斗震屏(默认开)、伤害数字精简模式(默认全部显示)。 */
   private shakeEnabled = readGuardPref(GUARD_PREF_SHAKE, '1') !== '0';
@@ -1361,13 +1391,6 @@ export class LobbyGuardBattleRenderer {
     this.mountSprite(button, `${name}Art`, 'ui/hero/ai/btn_star_up/spriteFrame', 0, 0, w, h);
     this.host.applyImageButtonFeedback(button);
     return button;
-  }
-
-  /** 弹框面板底:现有素材 popup_frame_large(926×543 金雕花黑石板,2026-08-25 用户拍板改素材);miss 时直载补图。 */
-  private paintOverlayPanel(parent: Node, w: number, h: number, y: number, asset = 'ui/common/ai/popup_frame_large/spriteFrame'): Node {
-    const panel = this.host.addChildPlainNode(parent, 'GuardOverlayPanel', 0, y, w, h);
-    this.mountSprite(panel, 'Frame', asset, 0, 0, w, h);
-    return panel;
   }
 
   /** 战场背景(矿洞图 1536×1024):cover 等比铺满,裁洞顶保地面;顶部再压一条渐暗带保 HUD 可读。 */
@@ -3839,34 +3862,6 @@ export class LobbyGuardBattleRenderer {
     return this.overlayShown || phase === 'victory' || phase === 'defeat';
   }
 
-  /** 全屏遮罩 + refine_panel_bg 面板(与词条/开箱弹层同款);点面板外回调 onOutside。 */
-  private mountSettingsOverlay(name: string, panelW: number, panelH: number, onOutside: (() => void) | null): Node | null {
-    const root = this.root;
-    if (!root) {
-      return null;
-    }
-    const width = this.layoutWidth;
-    const height = this.layoutHeight;
-    const overlay = this.host.addChildPlainNode(root, name, 0, 0, width, height);
-    overlay.addComponent(BlockInputEvents);
-    const og = overlay.addComponent(Graphics);
-    og.fillColor = rgba(8, 6, 6, 190);
-    og.rect(-width / 2, -height / 2, width, height);
-    og.fill();
-    this.paintDialogPanel(overlay, panelW, panelH);
-    if (onOutside) {
-      overlay.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
-        const transform = overlay.getComponent(UITransform);
-        const loc = event.getUILocation();
-        const local = transform ? transform.convertToNodeSpaceAR(new Vec3(loc.x, loc.y, 0)) : null;
-        if (local && (Math.abs(local.x) > panelW / 2 || Math.abs(local.y) > panelH / 2)) {
-          onOutside();
-        }
-      }, this);
-    }
-    return overlay;
-  }
-
   /**
    * 手机横屏(设计高 720)战斗内弹层一律全屏(2026-10-02 用户拍板 H5 横屏弹框全屏,内容重新排布用足空间);
    * 电脑 / 平板(设计高 1080)保持原居中弹框不变。
@@ -3875,105 +3870,45 @@ export class LobbyGuardBattleRenderer {
     return isPhoneDesign();
   }
 
+  /** UiGlassKit 用的宿主视图(宿主即 UiKitHost 的超集)。 */
+  private get kit(): UiKitHost {
+    return this.host as unknown as UiKitHost;
+  }
+
+  /**
+   * B 弹层缩放(2026-11-11):电脑 = 原型 1870×841 装进布局(同全站 glassProtoMap);
+   * 手机 = 面板撑满全屏弹层区(与旧版「战斗内弹层手机全屏」口径一致),放大封顶 1.2,小窗不至于大得离谱。
+   */
+  private glassK(protoW: number, protoH: number): number {
+    if (this.phoneSheet()) {
+      const sheet = this.phoneSheetSize();
+      return Math.min(1.2, sheet.w / protoW, sheet.h / protoH);
+    }
+    return Math.min(this.layoutWidth / 1870, this.layoutHeight / 841);
+  }
+
+  /** 战斗内 B 玻璃弹层外壳(压暗 + 双层玻璃面板,挂 root 最上层);坐标走原型像素。 */
+  private mountGuardGlass(name: string, protoW: number, protoH: number, options: Partial<GlassPopupShellOptions>): GlassPopupShell | null {
+    const root = this.root;
+    if (!root) {
+      return null;
+    }
+    return mountGlassPopupShell(this.kit, root, {
+      name,
+      width: protoW,
+      height: protoH,
+      title: '',
+      stage: { width: this.layoutWidth, height: this.layoutHeight },
+      k: this.glassK(protoW, protoH),
+      minFont: this.phoneSheet() ? 20 : 12,
+      ...options,
+    });
+  }
+
   /** 手机全屏弹层尺寸:与大厅全屏弹框同一口径(LobbyPhoneDialogFrame:左右留安全边距 40%,上下各 8)。 */
   private phoneSheetSize(): { w: number; h: number } {
     const size = phoneDialogSizeForStage(this.layoutWidth, this.layoutHeight);
     return { w: size.width, h: size.height };
-  }
-
-  /** 弹层面板底:电脑 refine_panel_bg(4:3 一体构图,等比);手机全屏改程序绘制面板(一体构图素材不许非等比拉伸)。 */
-  private paintDialogPanel(parent: Node, w: number, h: number): Node {
-    return this.phoneSheet() ? this.paintPhoneSheet(parent, w, h) : this.paintOverlayPanel(parent, w, h, 0, 'ui/hero/ai/refine_panel_bg/spriteFrame');
-  }
-
-  /** 手机全屏面板:用大厅全屏弹框的公共程序框(黑曜石底 + 双层细金线 + 四角 / 顶底小菱形),战斗内外观一致。 */
-  private paintPhoneSheet(parent: Node, w: number, h: number): Node {
-    const panel = this.host.addChildPlainNode(parent, 'GuardOverlayPanel', 0, 0, w, h);
-    drawPhoneDialogFrame(this.host, panel, w, h);
-    return panel;
-  }
-
-  /** 手机全屏弹层右上角 ×(面板铺满后没有"点面板外关闭"的空白可点)。 */
-  private mountSheetClose(parent: Node, panelW: number, panelH: number, onClose: () => void): void {
-    const size = 52;
-    // 往里收一点,别压到程序框右上角的小菱形。
-    const button = this.host.addChildPlainNode(parent, 'GuardSheetClose', panelW / 2 - size / 2 - 30, panelH / 2 - size / 2 - 24, size, size);
-    this.mountSprite(button, 'Img', 'ui/battle/ai/ghud_btn_close/spriteFrame', 0, 0, size, size);
-    this.host.applyImageButtonFeedback(button);
-    button.on(Node.EventType.TOUCH_END, onClose, this);
-  }
-
-  /** 弹层标题 + 两侧 title_divider(与开箱/词条弹层同一套估宽规则)。 */
-  private paintSettingsTitle(parent: Node, text: string, panelW: number, y: number): void {
-    if (this.phoneSheet()) {
-      // 手机全屏弹层:左上角标题牌(与英雄 / 背包页同款)
-      addPhoneDialogTitle(this.host, parent, panelW, y * 2, text, 0);
-      return;
-    }
-    const size = 34;
-    this.host.addChildLabel(parent, `${parent.name}Title`, text, 0, y, size, rgba(255, 232, 150), new Size(panelW * 0.6, 44));
-    const half = Array.from(text).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * size, 0) / 2;
-    const avail = panelW / 2 - half - 22 - 30;
-    if (avail >= 40) {
-      const dividerW = Math.min(150, avail);
-      const dividerX = half + 22 + dividerW / 2;
-      this.mountSprite(parent, `${parent.name}DividerL`, 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, y, dividerW, dividerW * (76 / 390));
-      this.mountSprite(parent, `${parent.name}DividerR`, 'ui/common/ai/title_divider_right/spriteFrame', dividerX, y, dividerW, dividerW * (73 / 392));
-    }
-  }
-
-  /** 退出类次要按钮:暗石底(bag_button_dark,158:512)+ 浅红字,与红色主按钮"继续战斗"拉开层级。 */
-  private mountDangerButton(parent: Node, name: string, x: number, y: number, w: number, text: string): Node {
-    const h = w * (158 / 512);
-    const button = this.host.addChildPlainNode(parent, name, x, y, w, h);
-    this.mountSprite(button, `${name}Art`, 'ui/common/ai/bag_button_dark/spriteFrame', 0, 0, w, h);
-    this.host.applyImageButtonFeedback(button);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 22, rgba(255, 176, 150), new Size(w - 24, h));
-    label.overflow = Label.Overflow.SHRINK;
-    return button;
-  }
-
-  private mountPrimaryTextButton(parent: Node, name: string, x: number, y: number, w: number, text: string): Node {
-    const button = this.mountPrimaryButton(parent, name, x, y, w);
-    const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 0, 22, rgba(255, 238, 190), new Size(w - 24, 28));
-    label.overflow = Label.Overflow.SHRINK;
-    return button;
-  }
-
-  /** 二选一胶囊开关(选中金底白字,未选暗底灰字);点未选中的一侧回调 onPick。 */
-  private mountSettingsSegment(parent: Node, name: string, x: number, y: number, options: string[], activeIndex: number, onPick: (index: number) => void, pillW = 118, pillH = 46, fontSize = 20): void {
-    const gap = 12;
-    // 两个选项按原尺寸;三个及以上(帧率 30 / 60 / 120)在同样的总宽度里等分,整行不变宽
-    const totalW = pillW * 2 + gap;
-    const twoW = pillW;
-    pillW = options.length <= 2 ? twoW : (totalW - gap * (options.length - 1)) / options.length;
-    options.forEach((text, index) => {
-      const active = index === activeIndex;
-      const px = x - totalW / 2 + pillW / 2 + index * (pillW + gap);
-      const node = this.host.addChildPlainNode(parent, `${name}_${index}`, px, y, pillW, pillH);
-      const g = node.addComponent(Graphics);
-      g.fillColor = active ? rgba(186, 128, 46, 245) : rgba(34, 27, 22, 235);
-      g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
-      g.fill();
-      g.strokeColor = active ? rgba(255, 222, 150, 255) : rgba(130, 102, 66, 210);
-      g.lineWidth = 2;
-      g.roundRect(-pillW / 2, -pillH / 2, pillW, pillH, pillH / 2);
-      g.stroke();
-      this.host.addChildLabel(node, `${name}_${index}Label`, text, 0, 0, fontSize, active ? rgba(255, 246, 224) : rgba(186, 168, 136), new Size(pillW - 12, pillH));
-      node.on(Node.EventType.TOUCH_END, () => {
-        if (!active) {
-          onPick(index);
-        }
-      }, this);
-    });
-  }
-
-  private settingsPanelSize(): { w: number; h: number } {
-    if (this.phoneSheet()) {
-      return this.phoneSheetSize();
-    }
-    const h = Math.min(660, this.layoutHeight * 0.82);
-    return { w: Math.min(this.layoutWidth * 0.92, h * (1448 / 1086)), h };
   }
 
   /** 本局一句话信息:车轮战=层数/BOSS 数;标准=波次/击杀/水晶。 */
@@ -3993,44 +3928,58 @@ export class LobbyGuardBattleRenderer {
     if (!this.root || !this.sim || this.settingsOpen || this.battleEnded()) {
       return;
     }
-    const { w, h } = this.settingsPanelSize();
-    const overlay = this.mountSettingsOverlay('GuardSettingsOverlay', w, h, () => this.closeBattleSettings());
-    if (!overlay) {
+    // 2026-11-11 B 毛玻璃(原型 周报截图/2026-11-11_守卫战弹层/proto/guard_settings_b.png 1:1):面板 939×597,点面板外关闭。
+    const shell = this.mountGuardGlass('GuardSettingsOverlay', GUARD_SETTINGS_W, GUARD_SETTINGS_H, { bare: true, onClose: () => this.closeBattleSettings() });
+    if (!shell) {
       return;
     }
+    this.settingsShell = shell;
     this.settingsOpen = true;
     this.syncBattlePause();
     gameAudio.sfx('ui_click');
-    this.renderSettingsPage(overlay, 'main');
+    this.renderSettingsPage(shell.overlay, 'main');
   }
 
   private closeBattleSettings(): void {
     this.root?.getChildByName('GuardSettingsOverlay')?.destroy();
+    this.settingsShell = null;
     this.settingsOpen = false;
     this.syncBattlePause();
   }
 
-  /** 设置面板内容页:main=信息 + 四个开关 + 玩法速查入口 + 退出/继续;help=玩法速查。切页/切开关整页重画。 */
+  /** 设置面板页头:竖条 + 标题(dy 42,34 粗)+ ✕ + 可选信息行(dy 83)+ 分隔线(dy 110)。 */
+  private paintSettingsHeader(shell: GlassPopupShell, content: Node, title: string, info: string): void {
+    const { k, S, X, Y, T } = shell;
+    const W = GUARD_SETTINGS_W;
+    this.kit.addSprite('TitleBar', GLASS_ICON.accent, X(46), Y(42), S(7), S(37), content);
+    T(content, 'Title', title, X(73), Y(42), 34, GLASS_COLOR.text, S(500), HorizontalTextAlignment.LEFT, true);
+    mountGlassCloseButton(this.kit, content, X(W - 50), Y(42), k, () => this.closeBattleSettings()).name = 'GuardSettingsClose';
+    if (info) {
+      T(content, 'Info', info, X(73), Y(83), 20, GLASS_COLOR.sub, S(W - 146));
+    }
+    mountGlassLine(this.kit, content, 'Divider', 0, Y(110), S(W - 82), Math.max(1, S(1.5)), new Color(150, 158, 172, 70));
+  }
+
+  /** 子页底部「返回」(灰玻璃,与主页按钮同一行)。 */
+  private mountSettingsBack(overlay: Node, shell: GlassPopupShell, content: Node, name: string): void {
+    const { k, S, X, Y } = shell;
+    mountGlassButton(this.kit, content, name, '返回', X(GUARD_SETTINGS_W / 2), Y(542), S(300), S(56), k, 'secondary', () => this.renderSettingsPage(overlay, 'main'), 28);
+  }
+
+  /** 设置面板内容页:main=信息 + 开关两栏 + 玩法速查 / 法术装备入口 + 退出/继续;help=玩法速查;spells=法术装备。切页/切开关整页重画。 */
   private renderSettingsPage(overlay: Node, page: 'main' | 'help' | 'spells'): void {
-    if (!overlay.isValid) {
+    const shell = this.settingsShell;
+    if (!overlay.isValid || !shell || shell.overlay !== overlay) {
       return;
     }
-    overlay.getChildByName('GuardSettingsContent')?.destroy();
-    const { w: panelW, h: panelH } = this.settingsPanelSize();
-    const content = this.host.addChildPlainNode(overlay, 'GuardSettingsContent', 0, 0, panelW, panelH);
-    const phone = this.phoneSheet();
-    // 手机全屏:标题贴近顶边、按钮贴近底边,中间整块给内容;右上补 ×。
-    const titleY = phone ? panelH / 2 - 54 : panelH / 2 - 112;
-    const buttonY = phone ? -panelH / 2 + 64 : -panelH / 2 + 97;
-    if (phone) {
-      this.mountSheetClose(content, panelW, panelH, () => this.closeBattleSettings());
-    }
+    shell.panel.getChildByName('GuardSettingsContent')?.destroy();
+    const content = this.host.addChildPlainNode(shell.panel, 'GuardSettingsContent', 0, 0, shell.S(GUARD_SETTINGS_W), shell.S(GUARD_SETTINGS_H));
     if (page === 'spells') {
-      this.renderSpellLoadoutPage(overlay, content, panelW, panelH, titleY, buttonY);
+      this.renderSpellLoadoutPage(overlay, shell, content);
       return;
     }
     if (page === 'help') {
-      this.paintSettingsTitle(content, '玩法速查', panelW, titleY);
+      this.paintSettingsHeader(shell, content, '玩法速查', '');
       const lines = [
         '招募:花金币随机招募一名上阵英雄(1★)放到空格,每次招募费用递增。',
         '合成:同名同星英雄拖到一起合成,局内星级 +1(最高 5★,离场重置),局内 2★ 起解锁战技。',
@@ -4048,25 +3997,28 @@ export class LobbyGuardBattleRenderer {
       if (this.sim?.mode === 'rush') {
         lines.push('车轮战:BOSS 一只比一只强,水晶碎裂或时间到即按层数结算。');
       }
-      if (phone) {
-        this.renderSettingsHelpPhone(content, lines, panelW, titleY, buttonY);
-        const phoneBack = this.mountPrimaryTextButton(content, 'GuardSettingsHelpBack', 0, buttonY, 260, '返回');
-        phoneBack.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
-        return;
-      }
-      const top = titleY - 70;
-      const step = Math.min(46, (top - (buttonY + 70)) / lines.length);
+      // 两栏,每条可折两行:栏宽 (939 - 106 - 30) / 2,内容区 dy 128 .. 500
+      const { S, X, Y, T } = shell;
+      const perCol = Math.ceil(lines.length / 2);
+      const colW = (GUARD_SETTINGS_W - 106 - 30) / 2;
+      const top = 128;
+      const step = (500 - top) / perCol;
       lines.forEach((text, index) => {
-        const label = this.host.addChildLabel(content, `GuardSettingsHelp_${index}`, text, -panelW * 0.37, top - index * step, 18, rgba(232, 214, 178), new Size(panelW * 0.74, step), HorizontalTextAlignment.LEFT);
+        const col = Math.floor(index / perCol);
+        const row = index % perCol;
+        const left = 53 + col * (colW + 30);
+        // 条目名(冒号前)用白、说明用灰会拆成两段 Label,折行对不齐;整条统一浅灰白
+        const label = T(content, `GuardSettingsHelp_${index}`, text, X(left), Y(top + step * (row + 0.5)), 18, new Color(214, 220, 230, 255), S(colW));
+        label.enableWrapText = true;
         label.overflow = Label.Overflow.SHRINK;
+        label.lineHeight = Math.round(label.fontSize * 1.35);
+        label.verticalAlign = VerticalTextAlignment.CENTER;
+        label.node.getComponent(UITransform)?.setContentSize(S(colW), S(step - 6));
       });
-      const back = this.mountPrimaryTextButton(content, 'GuardSettingsHelpBack', 0, buttonY, 236, '返回');
-      back.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
+      this.mountSettingsBack(overlay, shell, content, 'GuardSettingsHelpBack');
       return;
     }
-    this.paintSettingsTitle(content, '战斗设置', panelW, titleY);
-    const info = this.host.addChildLabel(content, 'GuardSettingsInfo', `已暂停 · ${this.battleInfoText()}`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.74, 26));
-    info.overflow = Label.Overflow.SHRINK;
+    this.paintSettingsHeader(shell, content, '战斗设置', `已暂停 · ${this.battleInfoText()}`);
     const rows: Array<{ key: string; label: string; options: string[]; active: number; pick: (index: number) => void }> = [
       { key: 'Bgm', label: '背景音乐', options: ['开', '关'], active: gameAudio.bgmEnabled() ? 0 : 1, pick: (index) => gameAudio.setBgmEnabled(index === 0) },
       {
@@ -4122,129 +4074,66 @@ export class LobbyGuardBattleRenderer {
         },
       },
     ];
-    this.renderSettingsMainColumns(overlay, content, rows, panelW, titleY, buttonY);
+    this.renderSettingsMainColumns(overlay, shell, content, rows);
   }
 
   /**
-   * 设置主页两栏排版(手机全屏与电脑弹框共用,尺寸按端区分):
-   * 左栏「声音与画面」5 个开关行,右栏「战斗」3 个开关行 + 玩法速查 / 法术装备 入口,底部说明 + 退出 / 继续 两键。
-   * 2026-10-02 / 10-06 手机、2026-10-09 电脑先后反馈 8 行堆一列时胶囊上下叠在一起。
+   * 设置主页两栏(原型 guard_settings_b):左栏「声音与画面」5 行、右栏「战斗」3 行 + 玩法速查 / 法术装备整行入口;
+   * 每行 = 左对齐名字(字号 24)+ 分段胶囊(选中暗金底白字,未选灰玻璃);底部说明一行 + 退出(灰玻璃)/ 继续(香槟)两键。
    */
   private renderSettingsMainColumns(
     overlay: Node,
+    shell: GlassPopupShell,
     content: Node,
     rows: Array<{ key: string; label: string; options: string[]; active: number; pick: (index: number) => void }>,
-    panelW: number,
-    titleY: number,
-    buttonY: number,
   ): void {
-    const phone = this.phoneSheet();
-    // 电脑弹框 refine_panel_bg 固定约 880×660,四边雕花框吃掉约 80,内容区比手机全屏窄矮得多,整体按约 0.72 缩。
-    const m = phone
-      ? { rowStep: 70, headerGap: 104, rowGap: 56, labelW: 150, pillW: 140, pillH: 52, labelFont: 23, pillFont: 22, headerFont: 22, colGap: 20, linkH: 54, linkFont: 24, hintFont: 18, hintGap: 58 }
-      : { rowStep: 50, headerGap: 94, rowGap: 44, labelW: 104, pillW: 98, pillH: 40, labelFont: 19, pillFont: 18, headerFont: 19, colGap: 26, linkH: 40, linkFont: 19, hintFont: 16, hintGap: 60 };
+    const { k, S, X, Y, T } = shell;
     const leftKeys = ['Bgm', 'Sfx', 'Graphics', 'Fps', 'Perf'];
     const left = rows.filter((row) => leftKeys.indexOf(row.key) >= 0);
     const right = rows.filter((row) => leftKeys.indexOf(row.key) < 0);
-    const rowStep = m.rowStep;
-    const headerY = titleY - m.headerGap;
-    const rowTop = headerY - m.rowGap;
-    const labelW = m.labelW;
-    const pillW = m.pillW;
-    const colW = labelW + 18 + pillW * 2 + 12;
-    const colCenters = phone ? [-panelW / 4 - m.colGap, panelW / 4 + m.colGap] : [-colW / 2 - m.colGap, colW / 2 + m.colGap];
-    const paintHeader = (x: number, text: string): void => {
-      const header = this.host.addChildLabel(content, `GuardSettingsGroup_${text}`, text, x, headerY, m.headerFont, rgba(245, 214, 140), new Size(colW, 32));
-      header.isBold = true;
-      // 标题两侧细金线
-      const lineW = (colW - Array.from(text).length * (m.headerFont + 2) - 40) / 2;
-      const g = this.host.addChildPlainNode(content, `GuardSettingsGroupLine_${text}`, x, headerY, colW, 4).addComponent(Graphics);
-      g.strokeColor = rgba(170, 130, 70, 170);
-      g.lineWidth = 1.5;
-      g.moveTo(-colW / 2, 0);
-      g.lineTo(-colW / 2 + lineW, 0);
-      g.moveTo(colW / 2 - lineW, 0);
-      g.lineTo(colW / 2, 0);
-      g.stroke();
-    };
-    const paintColumn = (list: typeof rows, x: number): number => {
-      const labelX = x - colW / 2 + labelW;
-      const segX = x + colW / 2 - pillW - 6;
+    // 两栏:名字左沿 53 / 503,胶囊组 193..439 / 654..901(宽 247),首行 dy 200,行距 54.5
+    const cols = [{ label: 53, segLeft: 193, header: 52 }, { label: 503, segLeft: 654, header: 503 }];
+    const segW = 247;
+    const rowDy = (index: number): number => 200 + index * 54.5;
+    mountGlassSectionHeader(this.kit, content, 'GuardSettingsGroupL', '声音与画面', X(cols[0].header), Y(147), k, 26);
+    mountGlassSectionHeader(this.kit, content, 'GuardSettingsGroupR', '战斗', X(cols[1].header), Y(147), k, 26);
+    const paintColumn = (list: typeof rows, col: typeof cols[number]): void => {
       list.forEach((row, index) => {
-        const y = rowTop - index * rowStep;
-        const label = this.host.addChildLabel(content, `GuardSettingsRow${row.key}`, row.label, labelX, y, m.labelFont, rgba(240, 222, 186), new Size(labelW, 36), HorizontalTextAlignment.RIGHT);
-        label.overflow = Label.Overflow.SHRINK;
-        this.mountSettingsSegment(content, `GuardSettings${row.key}`, segX, y, row.options, row.active, (picked) => {
-          row.pick(picked);
-          this.renderSettingsPage(overlay, 'main');
-        }, pillW, m.pillH, m.pillFont);
+        const dy = rowDy(index);
+        T(content, `GuardSettingsRow${row.key}`, row.label, X(col.label), Y(dy), 24, GLASS_COLOR.text, S(col.segLeft - col.label - 8));
+        const gap = 9;
+        const pillW = (segW - gap * (row.options.length - 1)) / row.options.length;
+        row.options.forEach((text, optionIndex) => {
+          const active = optionIndex === row.active;
+          const cx = col.segLeft + pillW / 2 + optionIndex * (pillW + gap);
+          mountGlassButton(this.kit, content, `GuardSettings${row.key}_${optionIndex}`, text, X(cx), Y(dy), S(pillW), S(40), k, active ? 'selected' : 'secondary', () => {
+            if (!active) {
+              row.pick(optionIndex);
+              this.renderSettingsPage(overlay, 'main');
+            }
+          }, 22);
+        });
       });
-      return rowTop - (list.length - 1) * rowStep;
     };
-    paintHeader(colCenters[0], '声音与画面');
-    paintHeader(colCenters[1], '战斗');
-    const leftBottom = paintColumn(left, colCenters[0]);
-    const rightBottom = paintColumn(right, colCenters[1]);
-    // 右栏开关下面接两个入口(与开关同宽),再下面是说明
-    const linkW = colW - 20;
-    const linkY1 = rightBottom - rowStep;
-    const linkY2 = linkY1 - rowStep;
-    const help = this.mountOutlineLink(content, 'GuardSettingsHelpLink', colCenters[1], linkY1, linkW, m.linkH, '玩法速查 ›', m.linkFont);
-    help.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'help'), this);
-    const spellsLink = this.mountOutlineLink(content, 'GuardSettingsSpellsLink', colCenters[1], linkY2, linkW, m.linkH, '法术装备 ›', m.linkFont);
-    spellsLink.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'spells'), this);
-    // 中线
-    const sepTop = headerY + 16;
-    const sepBottom = Math.min(leftBottom, linkY2) - 30;
-    const sep = this.host.addChildPlainNode(content, 'GuardSettingsSep', 0, (sepTop + sepBottom) / 2, 4, sepTop - sepBottom);
-    const sg = sep.addComponent(Graphics);
-    sg.strokeColor = rgba(150, 112, 62, 120);
-    sg.lineWidth = 1.5;
-    sg.moveTo(0, (sepTop - sepBottom) / 2);
-    sg.lineTo(0, -(sepTop - sepBottom) / 2);
-    sg.stroke();
-    // 说明一行,压在按钮上方
-    const hint = this.host.addChildLabel(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满(120 帧需要高刷屏)', 0, buttonY + m.hintGap, m.hintFont, rgba(170, 156, 128), new Size(phone ? panelW - 120 : colW * 2 + m.colGap * 2, 26));
-    hint.overflow = Label.Overflow.SHRINK;
-    const buttonX = phone ? 200 : 180;
-    const exitBtn = this.mountDangerButton(content, 'GuardSettingsExit', -buttonX, buttonY, phone ? 250 : 220, '退出战斗');
-    exitBtn.on(Node.EventType.TOUCH_END, () => this.openExitConfirm(), this);
-    const resume = this.mountPrimaryTextButton(content, 'GuardSettingsResume', buttonX, buttonY, phone ? 270 : 236, '继续战斗');
-    resume.on(Node.EventType.TOUCH_END, () => this.closeBattleSettings(), this);
-  }
-
-  /** 手机全屏玩法速查:两栏排布,每条可折两行(20 号字),不再挤成一列小字。 */
-  private renderSettingsHelpPhone(content: Node, lines: string[], panelW: number, titleY: number, buttonY: number): void {
-    const perCol = Math.ceil(lines.length / 2);
-    const colW = (panelW - 160) / 2;
-    const top = titleY - 66;
-    const bottom = buttonY + 52;
-    const step = Math.min(72, (top - bottom) / perCol);
-    lines.forEach((text, index) => {
-      const col = Math.floor(index / perCol);
-      const row = index % perCol;
-      const left = -panelW / 2 + 60 + col * (colW + 40);
-      const label = this.host.addChildLabel(content, `GuardSettingsHelp_${index}`, text, left, top - step / 2 - row * step, 20, rgba(232, 214, 178), new Size(colW, step - 6), HorizontalTextAlignment.LEFT);
-      label.enableWrapText = true;
-      label.lineHeight = 27;
-      label.overflow = Label.Overflow.SHRINK;
-    });
-  }
-
-  /** 描金边的透明胶囊入口(玩法速查 / 法术装备)。 */
-  private mountOutlineLink(parent: Node, name: string, x: number, y: number, w: number, h: number, text: string, fontSize = 24): Node {
-    const node = this.host.addChildPlainNode(parent, name, x, y, w, h);
-    const g = node.addComponent(Graphics);
-    g.fillColor = rgba(40, 28, 16, 160);
-    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-    g.fill();
-    g.strokeColor = rgba(220, 180, 110, 230);
-    g.lineWidth = 2;
-    g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-    g.stroke();
-    this.host.addChildLabel(node, `${name}Label`, text, 0, 0, fontSize, rgba(255, 226, 160), new Size(w - 20, h - 8));
-    this.host.applyImageButtonFeedback(node);
-    return node;
+    paintColumn(left, cols[0]);
+    paintColumn(right, cols[1]);
+    // 右栏开关下接两条整行入口:501..901 宽 400 高 46,dy 363 / 418;字左沿 +25,› 距右沿 28
+    const mountLink = (name: string, text: string, dy: number, onTap: () => void): void => {
+      const w = 400;
+      const node = this.host.addChildPlainNode(content, name, X(501 + w / 2), Y(dy), S(w), S(46));
+      mountGlassSlice(this.kit, node, 'Bg', GLASS_SLICES.pillSecondary, 0, 0, S(w), S(46), k);
+      T(node, 'Label', text, -S(w / 2 - 25), 0, 24, GLASS_COLOR.text, S(w - 80));
+      this.kit.addSprite('Chevron', GLASS_ICON.chevron, S(w / 2 - 28), 0, S(18), S(18), node);
+      node.addComponent(Button);
+      node.on(Button.EventType.CLICK, onTap, this);
+      this.host.applyImageButtonFeedback(node, 1.02, 0.97);
+    };
+    mountLink('GuardSettingsHelpLink', '玩法速查', 363, () => this.renderSettingsPage(overlay, 'help'));
+    mountLink('GuardSettingsSpellsLink', '法术装备', 418, () => this.renderSettingsPage(overlay, 'spells'));
+    T(content, 'GuardSettingsHint', '画面「流畅」:降低分辨率、减少同屏特效,卡顿时选它;「极致」全部拉满(120 帧需要高刷屏)', X(53), Y(478), 19, GLASS_COLOR.sub, S(GUARD_SETTINGS_W - 106));
+    // 退出(灰玻璃 353×56,中心 264.5)/ 继续(香槟 362×56,中心 680),行中 dy 542
+    mountGlassButton(this.kit, content, 'GuardSettingsExit', '退出战斗', X(264.5), Y(542), S(353), S(56), k, 'secondary', () => this.openExitConfirm(), 28);
+    mountGlassButton(this.kit, content, 'GuardSettingsResume', '继续战斗', X(680), Y(542), S(362), S(56), k, 'primary', () => this.closeBattleSettings(), 28);
   }
 
   /** ×:战斗进行中弹退出确认;未开战/已结束直接回大厅。 */
@@ -4264,35 +4153,25 @@ export class LobbyGuardBattleRenderer {
     if (!this.root || !this.sim || this.exitConfirmOpen) {
       return;
     }
-    // 手机全屏(2026-10-02):内容整体放大并居中,按钮加宽好点。
-    const phone = this.phoneSheet();
-    const panelW = phone ? this.phoneSheetSize().w : Math.min(this.layoutWidth * 0.8, 660);
-    const panelH = phone ? this.phoneSheetSize().h : panelW * (1086 / 1448);
-    const overlay = this.mountSettingsOverlay('GuardExitConfirmOverlay', panelW, panelH, () => this.closeExitConfirm());
-    if (!overlay) {
+    // 2026-11-11 B 毛玻璃:与通用二次确认小窗同一套(原型 周报截图/2026-11-11_通用小窗/proto/confirm_b.png,815×433):
+    // 标题 + ✕ + 居中两行说明 + 「确认退出(灰玻璃)/ 继续战斗(香槟)」;点面板外 = 继续战斗。
+    const shell = this.mountGuardGlass('GuardExitConfirmOverlay', 815, 433, { title: '退出战斗?', onClose: () => this.closeExitConfirm() });
+    if (!shell) {
       return;
     }
+    const { panel, k, S, X, Y, T } = shell;
     this.exitConfirmOpen = true;
     this.syncBattlePause();
     gameAudio.sfx('ui_click');
-    if (phone) {
-      this.mountSheetClose(overlay, panelW, panelH, () => this.closeExitConfirm());
-    }
-    // 手机:标题牌与其它全屏弹层同一位置(左上角;原先传 150 把牌子放到了半屏高,2026-10-09 用户截图)
-    this.paintSettingsTitle(overlay, '退出战斗?', panelW, phone ? panelH / 2 - 54 : panelH / 2 - 100);
     const rush = this.sim.mode === 'rush';
     const lines = [
       rush ? '退出后本局作废,已打到的层数不计入结算。' : '退出后本局作废,不结算奖励。',
       '本局尚未结算,不消耗体力,也不占用挑战次数。',
     ];
+    // 两行中心 dy 172 / 218(原型正文行距 46,字号 26),第一行白、第二行灰
     lines.forEach((text, index) => {
-      const label = phone
-        ? this.host.addChildLabel(overlay, `GuardExitConfirmLine_${index}`, text, 0, 46 - index * 52, 24, index === 0 ? rgba(255, 196, 170) : rgba(214, 196, 160), new Size(Math.min(panelW * 0.8, 900), 40))
-        : this.host.addChildLabel(overlay, `GuardExitConfirmLine_${index}`, text, 0, 22 - index * 38, 18, index === 0 ? rgba(255, 196, 170) : rgba(214, 196, 160), new Size(panelW * 0.76, 30));
-      label.overflow = Label.Overflow.SHRINK;
+      T(panel, `GuardExitConfirmLine_${index}`, text, X(407.5), Y(172 + index * 46), 26, index === 0 ? GLASS_COLOR.text : GLASS_COLOR.sub, S(815 - 120), HorizontalTextAlignment.CENTER);
     });
-    const buttonY = phone ? -150 : -panelH / 2 + 88;
-    const confirm = this.mountDangerButton(overlay, 'GuardExitConfirmOk', phone ? -200 : -panelW * 0.2, buttonY, phone ? 250 : 200, '确认退出');
     // 2026-10-10 用户手机上「点确认退出没反应」:按下即生效(不等抬起,避免手指稍微滑动就丢掉 TOUCH_END),只触发一次;
     // 退出出错时状态栏显示原因(returnToLobbyFromBattlePreview 内逐步兜底)
     let exiting = false;
@@ -4310,10 +4189,10 @@ export class LobbyGuardBattleRenderer {
         this.host.setStatus(`退出战斗时出现异常,请截图反馈:${String((error as Error)?.message ?? error).slice(0, 80)}`);
       }
     };
+    const confirm = mountGlassButton(this.kit, panel, 'GuardExitConfirmOk', '确认退出', X(253.5), Y(358.5), S(269), S(67), k, 'secondary', undefined, 28);
     confirm.on(Node.EventType.TOUCH_END, doExit, this);
     confirm.on(Node.EventType.TOUCH_CANCEL, doExit, this);
-    const cancel = this.mountPrimaryTextButton(overlay, 'GuardExitConfirmCancel', phone ? 200 : panelW * 0.2, buttonY, phone ? 270 : 216, '继续战斗');
-    cancel.on(Node.EventType.TOUCH_END, () => this.closeExitConfirm(), this);
+    mountGlassButton(this.kit, panel, 'GuardExitConfirmCancel', '继续战斗', X(562), Y(358.5), S(270), S(67), k, 'primary', () => this.closeExitConfirm(), 28);
   }
 
   // ── docs/37 P1 交互玩法 ──
@@ -5785,120 +5664,58 @@ export class LobbyGuardBattleRenderer {
   }
 
   /** 设置 → 法术装备:只读展示本局出战法术与格数(配置在大厅「水晶 → 法术装备」,服务端保存,docs/38 §9)。 */
-  private renderSpellLoadoutPage(overlay: Node, content: Node, panelW: number, panelH: number, titleY: number, buttonY: number): void {
+  private renderSpellLoadoutPage(overlay: Node, shell: GlassPopupShell, content: Node): void {
     // docs/38 §9:出战法术在大厅「水晶 → 法术装备」里配置并由服务端保存,开战快照带入;战斗内只展示,不再改。
     const sim = this.sim;
-    this.paintSettingsTitle(content, '法术装备', panelW, titleY);
     const unlocked = sim ? sim.unlockedSpells : (GUARD_DEFAULT_SPELL_LOADOUT.slice(0, GUARD_BASE_SPELL_SLOTS) as GuardSpellId[]);
     const equipped = sim ? sim.spellLoadout : [];
     const slots = sim ? sim.spellSlots : GUARD_BASE_SPELL_SLOTS;
-    const tip = this.host.addChildLabel(content, 'GuardSpellsTip', `本局出战 ${equipped.length}/${slots} 格 · 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · 更换请到大厅「水晶 → 法术装备」`, 0, titleY - 52, 18, rgba(214, 196, 160), new Size(panelW * 0.78, 26));
-    tip.overflow = Label.Overflow.SHRINK;
-    if (this.phoneSheet()) {
-      this.renderSpellCardsPhone(content, panelW, titleY, buttonY, unlocked, equipped);
-      const phoneBack = this.mountPrimaryTextButton(content, 'GuardSpellsBack', 0, buttonY, 260, '返回');
-      phoneBack.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
-      return;
-    }
-    const cardW = Math.min(260, panelW * 0.26);
-    // docs/39:卡片要放下按等级生成的描述(Lv5 约 5 行),加高;往下最多再占 30 设计像素,不压「返回」按钮
-    const cardH = 160;
-    const top = titleY - 140;
+    this.paintSettingsHeader(shell, content, '法术装备', `本局出战 ${equipped.length}/${slots} 格 · 守卫水晶 Lv.${sim ? sim.crystalLevel : 1} · 更换请到大厅「水晶 → 法术装备」`);
+    // 2026-11-11 B:3×2 玻璃卡(出战 = 金边选中格),内容区 dy 128..502;卡内图标 56 + 名字 / 能量,描述占下半
+    const { k, S, X, Y, T } = shell;
+    const gap = 16;
+    const cardW = (GUARD_SETTINGS_W - 106 - gap * 2) / 3;
+    const top = 128;
+    const cardH = (502 - top - gap) / 2;
     GUARD_SPELL_IDS.forEach((id, index) => {
       const def = GUARD_SPELLS[id];
       const col = index % 3;
       const row = Math.floor(index / 3);
-      const x = (col - 1) * (cardW + 18);
-      const y = top - row * (cardH + 16);
+      const cx = 53 + cardW / 2 + col * (cardW + gap);
+      const cy = top + cardH / 2 + row * (cardH + gap);
       const slotIndex = equipped.indexOf(id);
       const selected = slotIndex >= 0;
       const locked = unlocked.indexOf(id) < 0;
-      const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, x, y, cardW, cardH);
-      const g = card.addComponent(Graphics);
-      g.fillColor = selected ? rgba(60, 40, 16, 235) : rgba(20, 14, 10, 210);
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
-      g.fill();
-      g.strokeColor = selected ? rgba(255, 214, 110, 255) : rgba(150, 110, 60, 170);
-      g.lineWidth = selected ? 3 : 1.5;
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
-      g.stroke();
-      const iconSize = 56;
-      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], -cardW / 2 + 14 + iconSize / 2, 24, iconSize, iconSize);
+      const w = S(cardW);
+      const h = S(cardH);
+      const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, X(cx), Y(cy), w, h);
+      mountGlassSlice(this.kit, card, 'Glass', selected ? GLASS_SLICES.panelSel : GLASS_SLICES.panel, 0, 0, w, h, k);
+      const iconX = -w / 2 + S(16 + 28);
+      const iconY = h / 2 - S(14 + 28);
+      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], iconX, iconY, S(56), S(56));
       const cardLevel = sim ? guardSpellLevel(sim, id) : 1;
-      const nameLabel = this.host.addChildLabel(card, 'Name', `${def.name} Lv.${cardLevel}`, -cardW / 2 + 14 + iconSize + 10, 40, 20, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(cardW - iconSize - 34, 26), HorizontalTextAlignment.LEFT);
-      nameLabel.overflow = Label.Overflow.SHRINK;
-      this.host.addChildLabel(card, 'Cost', `能量 ${def.cost}`, -cardW / 2 + 14 + iconSize + 10, 14, 15, rgba(160, 210, 255), new Size(cardW - iconSize - 34, 20), HorizontalTextAlignment.LEFT);
-      const state = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : `${selected ? `出战第 ${slotIndex + 1} 格` : '未装备'} · ${guardSpellDescribe(id, cardLevel)}`;
-      const desc = this.host.addChildLabel(card, 'Desc', state, 0, -cardH / 2 + 40, 13, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 16, 76));
-      desc.enableWrapText = true;
-      desc.lineHeight = 15;
-      desc.overflow = Label.Overflow.SHRINK;
-      if (locked) {
-        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;
-        this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', -cardW / 2 + 14 + 28, 24, 26, 26);
-      } else if (!selected) {
-        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 190;
-      }
-    });
-    void panelH;
-    const back = this.mountPrimaryTextButton(content, 'GuardSpellsBack', 0, buttonY, 236, '返回');
-    back.on(Node.EventType.TOUCH_END, () => this.renderSettingsPage(overlay, 'main'), this);
-  }
-
-  /** 手机全屏法术装备:3×2 宽卡铺满内容区(图标 + 名称 / 能量一行,描述占卡片下半整宽,20 号字可折 4 行)。 */
-  private renderSpellCardsPhone(content: Node, panelW: number, titleY: number, buttonY: number, unlocked: readonly GuardSpellId[], equipped: readonly GuardSpellId[]): void {
-    const sim = this.sim;
-    const gap = 18;
-    const cardW = (panelW - 120 - gap * 2) / 3;
-    const top = titleY - 84;
-    const bottom = buttonY + 52;
-    const cardH = Math.min(240, (top - bottom - gap) / 2);
-    const iconSize = 64;
-    GUARD_SPELL_IDS.forEach((id, index) => {
-      const def = GUARD_SPELLS[id];
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      const x = (col - 1) * (cardW + gap);
-      const y = top - cardH / 2 - row * (cardH + gap);
-      const slotIndex = equipped.indexOf(id);
-      const selected = slotIndex >= 0;
-      const locked = unlocked.indexOf(id) < 0;
-      const card = this.host.addChildPlainNode(content, `GuardSpellCard_${id}`, x, y, cardW, cardH);
-      const g = card.addComponent(Graphics);
-      g.fillColor = selected ? rgba(60, 40, 16, 235) : rgba(20, 14, 10, 210);
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
-      g.fill();
-      g.strokeColor = selected ? rgba(255, 214, 110, 255) : rgba(150, 110, 60, 170);
-      g.lineWidth = selected ? 3 : 1.5;
-      g.roundRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
-      g.stroke();
-      const iconX = -cardW / 2 + 16 + iconSize / 2;
-      const iconY = cardH / 2 - 14 - iconSize / 2;
-      this.mountSprite(card, 'Icon', GUARD_SPELL_ICON[id], iconX, iconY, iconSize, iconSize);
-      const cardLevel = sim ? guardSpellLevel(sim, id) : 1;
-      const textX = iconX + iconSize / 2 + 14;
-      const textW = cardW / 2 - textX - 14;
-      const nameLabel = this.host.addChildLabel(card, 'Name', `${def.name} Lv.${cardLevel}`, textX, iconY + 15, 24, selected ? rgba(255, 226, 150) : rgba(236, 224, 196), new Size(textW, 32), HorizontalTextAlignment.LEFT);
-      nameLabel.overflow = Label.Overflow.SHRINK;
+      const textX = iconX + S(28 + 12);
+      const textW = w / 2 - textX - S(12);
+      T(card, 'Name', `${def.name} Lv.${cardLevel}`, textX, iconY + S(13), 22, selected ? GLASS_COLOR.champagne : GLASS_COLOR.text, textW, HorizontalTextAlignment.LEFT, true);
       const slotText = locked ? '未解锁' : selected ? `出战第 ${slotIndex + 1} 格` : '未装备';
-      const costLabel = this.host.addChildLabel(card, 'Cost', `能量 ${def.cost} · ${slotText}`, textX, iconY - 18, 20, rgba(160, 210, 255), new Size(textW, 28), HorizontalTextAlignment.LEFT);
-      costLabel.overflow = Label.Overflow.SHRINK;
+      T(card, 'Cost', `能量 ${def.cost} · ${slotText}`, textX, iconY - S(15), 17, locked ? GLASS_COLOR.dim : selected ? GLASS_COLOR.green : GLASS_COLOR.sub, textW);
       const descText = locked ? `守卫水晶 Lv.${GUARD_SPELL_UNLOCK_LEVEL[id]} 解锁` : guardSpellDescribe(id, cardLevel);
-      const descTop = iconY - iconSize / 2 - 8;
-      const descH = descTop - (-cardH / 2 + 10);
-      const desc = this.host.addChildLabel(card, 'Desc', descText, 0, descTop - descH / 2, 20, locked ? rgba(255, 170, 120) : selected ? rgba(150, 240, 160) : rgba(190, 176, 150), new Size(cardW - 28, descH));
+      const descTop = iconY - S(28 + 8);
+      const descH = descTop - (-h / 2 + S(10));
+      const desc = T(card, 'Desc', descText, -w / 2 + S(16), descTop - descH / 2, 16, locked ? new Color(232, 150, 120, 255) : new Color(200, 206, 216, 255), w - S(32));
       desc.enableWrapText = true;
-      desc.lineHeight = 26;
-      desc.verticalAlign = VerticalTextAlignment.TOP;
-      desc.horizontalAlign = HorizontalTextAlignment.LEFT;
       desc.overflow = Label.Overflow.SHRINK;
+      desc.lineHeight = Math.round(desc.fontSize * 1.35);
+      desc.verticalAlign = VerticalTextAlignment.TOP;
+      desc.node.getComponent(UITransform)?.setContentSize(w - S(32), descH);
       if (locked) {
         (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 150;
-        this.mountSprite(card, 'Lock', 'ui/common/ai/ic_lock/spriteFrame', iconX, iconY, 30, 30);
+        this.kit.addSprite('Lock', GLASS_ICON.lock, iconX, iconY, S(30), S(30), card);
       } else if (!selected) {
-        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 190;
+        (card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity)).opacity = 200;
       }
     });
+    this.mountSettingsBack(overlay, shell, content, 'GuardSpellsBack');
   }
 
   // ── docs/37 G 车道陷阱 ──
@@ -6363,27 +6180,34 @@ export class LobbyGuardBattleRenderer {
     sim.paused = true;
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const compact = height < 500;
-    // 几何:4:3 refine_panel_bg(2026-09-22 各弹层统一);手机横屏(高 <500)面板拉到 0.86 高;s=相对桌面 666 高的缩放,固定偏移全部 ×s。
-    // 手机(设计高 720)全屏(2026-10-02 用户拍板):面板铺满,轮盘 / 奖励栏按 16:9 内容宽排,不随超宽屏散到两边。
+    const compact = false;
+    // 2026-11-11 B 毛玻璃(原型 周报截图/2026-11-11_守卫战弹层/proto/guard_wheel_b.png 1:1):面板 1058×603,
+    // 标题行(竖条 + 标题 + 揭示时弹出的「5 连大奖」胶囊 + ✕)→ 左:暗玻璃转盘 + 香槟细环 + 灯珠 + 中心宝箱;右:「奖励」分区 + 玻璃奖励条 + 香槟「收下」。
+    const W = 1058;
+    const H = 603;
     const sheet = this.phoneSheet();
-    const panelH = sheet ? this.phoneSheetSize().h : compact ? height * 0.86 : Math.min(700, height * 0.74);
-    const panelW = sheet ? this.phoneSheetSize().w : Math.min(width * 0.92, panelH * (1448 / 1086));
-    const s = sheet ? 1 : panelH / 666;
-    const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
-    const R = sheet ? Math.min(200, panelH * 0.28) : Math.min(170, panelH * 0.245);
-    const spanW = sheet ? Math.min(panelW, panelH * 1.78) : panelW;
-    const wheelX = sheet ? -spanW * 0.24 : -panelW * 0.26;
-    const wheelY = sheet ? -24 : -height * 0.02;
-    const colX = sheet ? spanW * 0.22 : panelW * 0.24;
-    const colW = sheet ? spanW * 0.38 : panelW * 0.42;
-    const hot = deluxe ? rgba(255, 150, 90) : rgba(255, 214, 110);
+    const k = this.glassK(W, H);
+    const S = (v: number): number => v * k;
+    const X = (dx: number): number => (dx - W / 2) * k;
+    const Y = (dy: number): number => (H / 2 - dy) * k;
+    const T = makeGlassText(this.kit, k, sheet ? 20 : 12);
+    const panelW = S(W);
+    const panelH = S(H);
+    const s = k;
+    // 转盘:中心 (263, 320),盘面半径 200,香槟环在 206
+    const R = S(200);
+    const wheelX = X(263);
+    const wheelY = Y(320);
+    const colX = X(773.5);
+    const colW = S(503);
+    const titleY = Y(38);
+    const hot = deluxe ? rgba(255, 170, 110) : rgba(240, 214, 160);
     const overlay = this.host.addChildPlainNode(root, 'GuardWheelOverlay', 0, 0, width, height);
     // 2026-09-19 审计:全屏弹层必须挡住点击,否则点空白处会穿透到底下的强化/召唤按钮(扣金币、再弹词条)。
     overlay.addComponent(BlockInputEvents);
     const dim = this.host.addChildPlainNode(overlay, 'Dim', 0, 0, width, height);
     const og = dim.addComponent(Graphics);
-    og.fillColor = rgba(8, 6, 6, 190);
+    og.fillColor = rgba(4, 6, 10, 170);
     og.rect(-width / 2, -height / 2, width, height);
     og.fill();
     const dimOpacity = dim.addComponent(UIOpacity);
@@ -6395,157 +6219,99 @@ export class LobbyGuardBattleRenderer {
     panelRoot.setScale(0.86, 0.86, 1);
     tween(panelRoot).to(0.32, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
     gameAudio.sfx('panel_open');
-    this.paintDialogPanel(panelRoot, panelW, panelH);
+    mountGlassSlice(this.kit, panelRoot, 'GlassBase', GLASS_SLICES.panel, 0, 0, panelW, panelH, k);
+    mountGlassSlice(this.kit, panelRoot, 'Glass', GLASS_SLICES.panel, 0, 0, panelW, panelH, k);
     const titleText = deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
-    const titleSize = fs(34, 24);
-    const titleY = sheet ? panelH / 2 - 60 : panelH / 2 - 112 * s;
-    if (sheet) {
-      // 手机:标题统一成左上角标题牌(与英雄 / 背包页同款,2026-10-05 用户)
-      addPhoneDialogTitle(this.host, panelRoot, panelW, panelH, titleText, 44);
-    } else {
-      const title = this.host.addChildLabel(panelRoot, 'GuardWheelTitle', titleText, 0, titleY, titleSize, deluxe ? rgba(255, 200, 110) : rgba(255, 232, 150), new Size(panelW * 0.6, titleSize + 10));
-      title.enableOutline = true;
-      title.outlineColor = rgba(60, 30, 10, 255);
-      title.outlineWidth = 3;
-      const titleHalf = Array.from(titleText).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0) / 2;
-      const dividerAvail = panelW / 2 - titleHalf - 22 - 30;
-      if (dividerAvail >= 40) {
-        const dividerW = Math.min(150, dividerAvail);
-        const dividerX = titleHalf + 22 + dividerW / 2;
-        this.mountSprite(panelRoot, 'GuardWheelTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerX, titleY, dividerW, dividerW * (76 / 390));
-        this.mountSprite(panelRoot, 'GuardWheelTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerX, titleY, dividerW, dividerW * (73 / 392));
-      }
-    }
-    // ── 轮盘:只有 WheelDisc 转,其余(投影/外框/灯珠/高光/轴心/指针/高亮扇)不转 ──
+    this.kit.addSprite('GuardWheelTitleBar', GLASS_ICON.accent, X(45), titleY, S(7), S(37), panelRoot);
+    T(panelRoot, 'GuardWheelTitle', titleText, X(72), titleY, 34, GLASS_COLOR.text, S(420), HorizontalTextAlignment.LEFT, true);
+    mountGlassLine(this.kit, panelRoot, 'GuardWheelDivider', 0, Y(77), S(W - 84), Math.max(1, S(1.5)), new Color(150, 158, 172, 70));
+    mountGlassSectionHeader(this.kit, panelRoot, 'GuardWheelRewardHead', '奖励', X(525), Y(116), k, 26);
+    // ── 轮盘:只有 WheelDisc 转,其余(环/灯珠/轴心/指针/高亮扇)不转 ──
     const wheel = this.host.addChildPlainNode(panelRoot, 'GuardWheel', wheelX, wheelY, R * 2, R * 2);
-    const shadowG = this.host.addChildPlainNode(wheel, 'WheelShadow', 4, -8, 10, 10).addComponent(Graphics);
-    shadowG.fillColor = rgba(0, 0, 0, 150);
-    shadowG.circle(0, 0, R + 16);
-    shadowG.fill();
     const rimG = this.host.addChildPlainNode(wheel, 'WheelRim', 0, 0, 10, 10).addComponent(Graphics);
-    rimG.fillColor = rgba(52, 34, 18, 255);
-    rimG.circle(0, 0, R + 14);
+    rimG.fillColor = rgba(8, 10, 16, 200);
+    rimG.circle(0, 0, R + S(10));
     rimG.fill();
-    rimG.strokeColor = rgba(255, 208, 116, 255);
-    rimG.lineWidth = 4;
-    rimG.circle(0, 0, R + 14);
-    rimG.stroke();
-    rimG.strokeColor = rgba(28, 18, 10, 255);
-    rimG.lineWidth = 6;
-    rimG.circle(0, 0, R + 8);
-    rimG.stroke();
-    rimG.strokeColor = rgba(120, 80, 36, 255);
-    rimG.lineWidth = 2;
-    rimG.circle(0, 0, R + 2);
-    rimG.stroke();
-    // 灯珠:偶数颗在 A、奇数颗在 B,交替明暗就是"追光"
-    const bulbCount = compact ? 8 : 16;
+    // 灯珠:香槟小圆点坐在环上;偶数颗在 A、奇数颗在 B,交替明暗就是"追光"
+    const bulbCount = 16;
     const bulbs: UIOpacity[] = [];
     for (let group = 0; group < 2; group += 1) {
       const bulbNode = this.host.addChildPlainNode(wheel, group === 0 ? 'WheelBulbsA' : 'WheelBulbsB', 0, 0, 10, 10);
       const bg = bulbNode.addComponent(Graphics);
       for (let i = group; i < bulbCount; i += 2) {
-        const a = (i / bulbCount) * Math.PI * 2;
-        const bx = Math.cos(a) * (R + 8);
-        const by = Math.sin(a) * (R + 8);
-        bg.fillColor = rgba(255, 200, 90, 90);
-        bg.circle(bx, by, R * 0.06);
+        const a = ((i + 0.5) / bulbCount) * Math.PI * 2;
+        const bx = Math.cos(a) * (R + S(6));
+        const by = Math.sin(a) * (R + S(6));
+        bg.fillColor = rgba(240, 214, 160, 70);
+        bg.circle(bx, by, S(9));
         bg.fill();
-        bg.fillColor = rgba(255, 236, 170, 255);
-        bg.circle(bx, by, R * 0.03);
+        bg.fillColor = rgba(244, 226, 186, 255);
+        bg.circle(bx, by, S(4.5));
         bg.fill();
       }
       const op = bulbNode.addComponent(UIOpacity);
       op.opacity = group === 0 ? 255 : 90;
       bulbs.push(op);
     }
-    // 转盘本体:8 扇 × 3 层假径向渐变(中心亮外缘暗)+ 分割线 + 深红大奖扇
+    // 转盘本体:暗玻璃 8 扇(相邻微差明暗,大奖扇暖一档)+ 灰细分隔线;外圈香槟细环压在灯珠下
     const disc = this.host.addChildPlainNode(wheel, 'WheelDisc', 0, 0, R * 2, R * 2);
     const dg = disc.addComponent(Graphics);
-    // 2026-09-27 用户验收"转盘还要美化":扇区单层实色(金币亮金 / 召唤深黑 / 强攻赤铜 / 大奖深红,相邻明暗交替),
-    // 径向明暗不用叠 Graphics(多层楔形叠加实拍出放射状锯齿),改用中心一枚柔光贴图 + 外缘一圈暗晕收边。
-    const sectorColor: Record<GuardWheelSector, Color> = {
-      gold: rgba(138, 92, 34, 255),
-      summon: rgba(52, 36, 26, 255),
-      teamAtk: rgba(112, 62, 28, 255),
-      jackpot: rgba(160, 28, 34, 255),
-    };
-    GUARD_WHEEL_SECTORS.forEach((kind, k) => {
-      const a0 = (k / 8) * Math.PI * 2;
-      const a1 = ((k + 1) / 8) * Math.PI * 2;
+    GUARD_WHEEL_SECTORS.forEach((kind, idx) => {
+      const a0 = (idx / 8) * Math.PI * 2;
+      const a1 = ((idx + 1) / 8) * Math.PI * 2;
       // 注意:本引擎 Graphics.arc 的 counterclockwise=false 走长弧(2026-09-27 探针实拍,旧轮盘因此整盘同色),扇形一律传 true。
-      dg.fillColor = sectorColor[kind];
+      dg.fillColor = kind === 'jackpot' ? rgba(46, 40, 30, 245) : idx % 2 === 0 ? rgba(22, 27, 36, 245) : rgba(28, 33, 43, 245);
       dg.moveTo(0, 0);
       dg.arc(0, 0, R, a0, a1, true);
       dg.close();
       dg.fill();
     });
-    // 外缘暗晕(宽描边压在扇区上)
-    dg.strokeColor = rgba(0, 0, 0, 70);
-    dg.lineWidth = R * 0.22;
-    dg.circle(0, 0, R - R * 0.11);
-    dg.stroke();
-    // 分割线:金线 + 大奖扇两侧加粗;外缘一圈亮金细边、内缘一圈暗边收口
-    for (let k = 0; k < 8; k += 1) {
-      const a = (k / 8) * Math.PI * 2;
-      const jackpotEdge = k === 7 || k === 0;
-      dg.strokeColor = jackpotEdge ? rgba(255, 224, 130, 255) : rgba(236, 190, 110, 210);
-      dg.lineWidth = jackpotEdge ? 3 : 2;
-      dg.moveTo(Math.cos(a) * R * 0.3, Math.sin(a) * R * 0.3);
+    for (let idx = 0; idx < 8; idx += 1) {
+      const a = (idx / 8) * Math.PI * 2;
+      dg.strokeColor = rgba(170, 178, 192, 70);
+      dg.lineWidth = Math.max(1, S(1.5));
+      dg.moveTo(Math.cos(a) * R * 0.36, Math.sin(a) * R * 0.36);
       dg.lineTo(Math.cos(a) * R, Math.sin(a) * R);
       dg.stroke();
     }
-    dg.strokeColor = rgba(255, 236, 190, 90);
-    dg.lineWidth = 3;
-    dg.circle(0, 0, R - 2);
-    dg.stroke();
-    // 中心柔光:一枚金色 hit_burst 贴图盖在扇区上,做出"中心亮、外缘暗"的平滑打光
-    this.mountSprite(disc, 'WheelLight', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, R * 1.9, R * 1.9, rgba(255, 220, 150)).addComponent(UIOpacity).opacity = 130;
-    // 图标坐在深色圆徽上(0.78R,徽 0.17R + 金细边)、文字带 0.5R;大奖扇的星徽换成金色柔光呼吸,不再是细线空圈。
-    const iconSize = R * 0.26;
+    // 中心柔光:淡淡一层暖光托住宝箱
+    this.mountSprite(disc, 'WheelLight', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, R * 1.5, R * 1.5, rgba(240, 214, 160)).addComponent(UIOpacity).opacity = 55;
+    // 扇区:图标在上、名字在下,整组放一个容器(转动时容器反向转保持朝上);大奖扇的星换香槟柔光呼吸
     const segIcons: Node[] = [];
     const segLabels: Node[] = [];
-    GUARD_WHEEL_SECTORS.forEach((kind, k) => {
-      const a = ((k + 0.5) / 8) * Math.PI * 2;
-      const ix = Math.cos(a) * R * 0.78;
-      const iy = Math.sin(a) * R * 0.78;
+    GUARD_WHEEL_SECTORS.forEach((kind, idx) => {
+      const a = ((idx + 0.5) / 8) * Math.PI * 2;
+      const ix = Math.cos(a) * R * 0.73;
+      const iy = Math.sin(a) * R * 0.73;
+      const seg = this.host.addChildPlainNode(disc, `Seg_${idx}`, ix, iy, S(90), S(90));
       if (kind === 'jackpot') {
-        const glow = this.mountSprite(disc, 'JackpotGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', ix, iy, R * 0.5, R * 0.5, rgba(255, 214, 110));
+        const glow = this.mountSprite(seg, 'JackpotGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, S(14), S(90), S(90), rgba(240, 214, 160));
         const glowOp = glow.addComponent(UIOpacity);
-        glowOp.opacity = 200;
-        tween(glowOp).repeatForever(tween().to(0.6, { opacity: 90 }).to(0.6, { opacity: 220 })).start();
-        tween(glow).repeatForever(tween().to(0.6, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'sineInOut' }).to(0.6, { scale: new Vec3(0.9, 0.9, 1) }, { easing: 'sineInOut' })).start();
+        glowOp.opacity = 160;
+        tween(glowOp).repeatForever(tween().to(0.6, { opacity: 70 }).to(0.6, { opacity: 180 })).start();
       }
-      const medal = this.host.addChildPlainNode(disc, `SegMedal_${k}`, ix, iy, 10, 10).addComponent(Graphics);
-      medal.fillColor = kind === 'jackpot' ? rgba(60, 8, 14, 200) : rgba(0, 0, 0, 120);
-      medal.circle(0, 0, R * 0.17);
-      medal.fill();
-      medal.strokeColor = kind === 'jackpot' ? rgba(255, 224, 130, 240) : rgba(255, 208, 116, 150);
-      medal.lineWidth = kind === 'jackpot' ? 2.5 : 1.5;
-      medal.circle(0, 0, R * 0.17);
-      medal.stroke();
-      segIcons.push(this.mountSprite(disc, `SegIcon_${k}`, GUARD_WHEEL_SECTOR_ICON[kind], ix, iy, iconSize, iconSize));
-      if (R >= 120) {
-        const label = this.host.addChildLabel(disc, `SegLabel_${k}`, GUARD_WHEEL_SECTOR_LABEL[kind], Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, 18, kind === 'jackpot' ? rgba(255, 224, 130, 255) : rgba(255, 232, 178, 245), new Size(64, 24));
-        label.enableOutline = true;
-        label.outlineColor = rgba(40, 24, 8, 255);
-        label.outlineWidth = 2;
-        label.isBold = kind === 'jackpot';
-        segLabels.push(label.node);
+      const icon = this.mountSprite(seg, 'Icon', GUARD_WHEEL_SECTOR_ICON[kind], 0, S(14), S(48), S(48));
+      if (kind === 'jackpot') {
+        const sprite = icon.getComponent(Sprite);
+        if (sprite) {
+          sprite.color = rgba(240, 214, 160);
+        }
       }
+      T(seg, 'Label', GUARD_WHEEL_SECTOR_LABEL[kind], 0, -S(24), 19, kind === 'jackpot' ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(90), HorizontalTextAlignment.CENTER, kind === 'jackpot');
+      segIcons.push(seg);
     });
-    // 轴心(玻璃高光带已去掉:斜跨扇区的半透明弧看着像脏印)
-    const hubG = this.host.addChildPlainNode(wheel, 'WheelHub', 0, 0, 10, 10).addComponent(Graphics);
-    hubG.fillColor = rgba(28, 18, 12, 255);
-    hubG.circle(0, 0, R * 0.34);
-    hubG.fill();
-    hubG.strokeColor = rgba(255, 208, 116, 255);
-    hubG.lineWidth = 3;
-    hubG.circle(0, 0, R * 0.34);
-    hubG.stroke();
+    // 外圈香槟细环(盘面之上、灯珠之下)
+    const ringG = this.host.addChildPlainNode(wheel, 'WheelRing', 0, 0, 10, 10).addComponent(Graphics);
+    ringG.strokeColor = rgba(214, 186, 132, 235);
+    ringG.lineWidth = Math.max(2, S(3.5));
+    ringG.circle(0, 0, R + S(6));
+    ringG.stroke();
+    // 灯珠挪到环上方
+    wheel.getChildByName('WheelBulbsA')?.setSiblingIndex(wheel.children.length - 1);
+    wheel.getChildByName('WheelBulbsB')?.setSiblingIndex(wheel.children.length - 1);
     const sectorFlash = this.host.addChildPlainNode(wheel, 'SectorFlash', 0, 0, 10, 10);
     const sfG = sectorFlash.addComponent(Graphics);
-    sfG.fillColor = rgba(255, 236, 170, 120);
+    sfG.fillColor = rgba(240, 220, 170, 90);
     sfG.moveTo(0, 0);
     sfG.arc(0, 0, R, (67.5 / 180) * Math.PI, (112.5 / 180) * Math.PI, true);
     sfG.close();
@@ -6554,39 +6320,35 @@ export class LobbyGuardBattleRenderer {
     sectorFlashOp.opacity = 0;
     // 开箱光芒层(箱下)/ 中心宝箱 / 粒子层(箱上):先建空容器锁定层序
     const fxUnder = this.host.addChildPlainNode(wheel, 'OpenFxUnder', 0, 0, 10, 10);
-    const chestSize = R * 0.7;
+    const chestSize = R * 0.75;
     const chestNode = this.host.addChildPlainNode(wheel, 'GuardWheelChest', 0, R * 0.02, chestSize, chestSize);
     this.mountSprite(chestNode, 'Img', deluxe ? 'ui/codex/ai/chest_ready/spriteFrame' : 'ui/guard/chest_closed/spriteFrame', 0, 0, chestSize, chestSize);
     const fxOver = this.host.addChildPlainNode(wheel, 'OpenFxOver', 0, 0, 10, 10);
-    // 指针:金三角 + 红宝石,枢轴在底边,背后垫一枚柔光;入场从上方落下
-    const pointer = this.host.addChildPlainNode(wheel, 'WheelPointer', 0, R + 40, 10, 10);
-    this.mountSprite(pointer, 'PointerGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, -R * 0.05, R * 0.5, R * 0.5, hot).addComponent(UIOpacity).opacity = 120;
+    // 指针:香槟倒三角,底边贴环外、尖扎进盘面;入场从上方落下
+    const pointerY = R + S(10);
+    const pointer = this.host.addChildPlainNode(wheel, 'WheelPointer', 0, pointerY + S(30), 10, 10);
     const pg = pointer.addComponent(Graphics);
-    pg.fillColor = rgba(255, 214, 92, 255);
-    pg.strokeColor = rgba(90, 50, 10, 255);
-    pg.lineWidth = 2;
-    pg.moveTo(0, -R * 0.16);
-    pg.lineTo(-R * 0.09, R * 0.06);
-    pg.lineTo(R * 0.09, R * 0.06);
+    pg.fillColor = rgba(232, 204, 146, 255);
+    pg.strokeColor = rgba(90, 70, 40, 200);
+    pg.lineWidth = Math.max(1, S(1.5));
+    pg.moveTo(0, -S(22));
+    pg.lineTo(-S(14), S(4));
+    pg.lineTo(S(14), S(4));
     pg.close();
     pg.fill();
     pg.stroke();
-    pg.fillColor = rgba(230, 60, 60, 255);
-    pg.circle(0, R * 0.03, R * 0.035);
-    pg.fill();
-    pg.fillColor = rgba(255, 220, 220, 255);
-    pg.circle(-R * 0.01, R * 0.04, R * 0.012);
-    pg.fill();
-    tween(pointer).delay(0.1).to(0.2, { position: new Vec3(0, R + 14, 0) }, { easing: 'backOut' }).start();
-    // 结果标签(停格后在轮盘下方弹出)+ 提示行
-    const resultTag = this.host.addChildLabel(wheel, 'WheelResultTag', '', 0, -R - R * 0.3, fs(20, 16), rgba(255, 214, 92), new Size(R * 2.6, 30));
-    resultTag.enableOutline = true;
-    resultTag.outlineColor = rgba(40, 20, 8, 255);
-    resultTag.outlineWidth = 3;
-    resultTag.isBold = true;
+    tween(pointer).delay(0.1).to(0.2, { position: new Vec3(0, pointerY, 0) }, { easing: 'backOut' }).start();
+    // 结果标签(停格后在轮盘下方弹出,原型「大奖 ×5」dy 560)+ 提示行
+    const resultTag = T(wheel, 'WheelResultTag', '', 0, Y(560) - wheelY, 28, GLASS_COLOR.champagne, R * 2.6, HorizontalTextAlignment.CENTER, true);
     resultTag.node.active = false;
-    const hintLine = this.host.addChildLabel(wheel, 'WheelHintLine', skippable ? '点击任意处跳过' : '停在哪格就是第一件奖励', 0, -R - R * 0.3, fs(18, 15), rgba(200, 180, 140, 220), new Size(R * 2.6, 24));
-    hintLine.overflow = Label.Overflow.SHRINK;
+    const hintLine = T(wheel, 'WheelHintLine', skippable ? '点击任意处跳过' : '停在哪格就是第一件奖励', 0, Y(560) - wheelY, 20, GLASS_COLOR.sub, R * 2.6, HorizontalTextAlignment.CENTER);
+    // ✕:奖励全部到位(出现「收下」)后才响应,等同「收下」
+    let wheelParts: GuardWheelParts | null = null;
+    mountGlassCloseButton(this.kit, panelRoot, X(W - 48), titleY, k, () => {
+      if (wheelParts && wheelParts.closeShown) {
+        this.closeWheel(wheelParts);
+      }
+    }).name = 'GuardWheelX';
     // 落点:5 连/豪华落大奖扇,否则落第一件奖励同类扇;θ_end = 90 - 扇心角 - 整圈数 + 抖动(±14°,扇区 45° 留安全边)
     const firstKind = result.rewards[0]?.kind ?? 'gold';
     const candidates = jackpot ? [7] : GUARD_WHEEL_SECTORS.map((kind, k) => (kind === firstKind ? k : -1)).filter((k) => k >= 0);
@@ -6595,9 +6357,10 @@ export class LobbyGuardBattleRenderer {
     const thetaEnd = 90 - (landIdx + 0.5) * 45 - 360 * turns + (Math.random() * 2 - 1) * 14;
     const p: GuardWheelParts = {
       overlay, panelRoot, panelOpacity, dimOpacity, wheel, disc, pointer, sectorFlashOp, bulbs, segIcons, segLabels, chestNode, fxUnder, fxOver, resultTag, hintLine,
-      result, deluxe, jackpot, compact, panelW, panelH, s, R, colX, colW, titleY, sheet,
+      result, deluxe, jackpot, compact, panelW, panelH, s, R, colX, colW, titleY, sheet, k, S, X, Y, T,
       phase: 'entering', timers: [], ticker: null, skippable, thetaEnd, landIdx, tickCount: 0, lastIdx: -1, cards: [], closeShown: false,
     };
+    wheelParts = p;
     // 点空白:可跳过局里旋转段直跳停格、揭示段全卡到位;BlockInputEvents 只挡穿透,不影响 overlay 自身收事件。
     overlay.on(Node.EventType.TOUCH_END, () => {
       if (!p.skippable || !overlay.isValid) {
@@ -6606,6 +6369,7 @@ export class LobbyGuardBattleRenderer {
       if (p.phase === 'spinning') {
         Tween.stopAllByTarget(disc);
         disc.angle = p.thetaEnd + 6;
+        segIcons.forEach((icon) => { icon.angle = -disc.angle; });
         this.finishWheelSpin(p);
       } else if (p.phase === 'revealing') {
         this.snapWheelReveal(p);
@@ -6621,10 +6385,16 @@ export class LobbyGuardBattleRenderer {
     }
     p.phase = 'spinning';
     gameAudio.sfx('wheel_spin');
+    // 扇区(图标 + 名字)随盘面每帧反向转保持朝上;放在 tween 回调里,不靠下面的 16ms 定时器(定时器被节流时字会转歪)
+    const keepUpright = (): void => {
+      for (const icon of p.segIcons) {
+        icon.angle = -p.disc.angle;
+      }
+    };
     tween(p.disc)
-      .to(0.25, { angle: 18 }, { easing: 'quadOut' })
-      .to(0.4, { angle: -432 }, { easing: 'quadIn' })
-      .to(1.55, { angle: p.thetaEnd + 6 }, { easing: 'quartOut' })
+      .to(0.25, { angle: 18 }, { easing: 'quadOut', onUpdate: keepUpright })
+      .to(0.4, { angle: -432 }, { easing: 'quadIn', onUpdate: keepUpright })
+      .to(1.55, { angle: p.thetaEnd + 6 }, { easing: 'quartOut', onUpdate: keepUpright })
       .call(() => this.finishWheelSpin(p))
       .start();
     p.ticker = setInterval(() => {
@@ -6673,7 +6443,7 @@ export class LobbyGuardBattleRenderer {
     }
     p.phase = 'stopped';
     Tween.stopAllByTarget(p.disc);
-    tween(p.disc).to(0.14, { angle: p.thetaEnd }, { easing: 'backOut' }).start();
+    tween(p.disc).to(0.14, { angle: p.thetaEnd }, { easing: 'backOut', onUpdate: () => p.segIcons.forEach((icon) => { icon.angle = -p.disc.angle; }) }).start();
     gameAudio.sfx('wheel_stop');
     this.shakeField(p.deluxe ? 10 : 6);
     this.shakeNodeX(p.panelRoot, 6, 4);
@@ -6726,7 +6496,7 @@ export class LobbyGuardBattleRenderer {
           return;
         }
         chest.getChildByName('Img')?.destroy();
-        this.mountSprite(chest, 'Img', p.deluxe ? 'ui/codex/ai/chest_opened/spriteFrame' : 'ui/guard/chest_open/spriteFrame', 0, R * 0.06, R * 0.9, R * 0.9);
+        this.mountSprite(chest, 'Img', p.deluxe ? 'ui/codex/ai/chest_opened/spriteFrame' : 'ui/guard/chest_open/spriteFrame', 0, R * 0.05, R * 0.78, R * 0.78);
         this.spawnWheelOpenBurst(p);
       })
       .to(0.18, { scale: new Vec3(1.32, 1.32, 1) }, { easing: 'backOut' })
@@ -6832,27 +6602,31 @@ export class LobbyGuardBattleRenderer {
     }
     p.phase = 'revealing';
     const { tier, rewards } = p.result;
-    const s = p.s;
-    const fs = (nominal: number, min: number): number => Math.max(min, Math.round(nominal * Math.min(1, s * 1.6)));
-    const tierText = p.deluxe ? '★ 豪华 5 连大奖!★' : tier >= 5 ? '★ 5 连大奖!★' : tier >= 3 ? '3 连奖!' : '奖励';
-    const tierSize = p.jackpot ? fs(34, 24) : tier >= 3 ? fs(30, 22) : fs(24, 18);
-    // 手机全屏:大奖横幅压在标题行上(高 64),档位字再往下让开横幅;奖励卡加高、字号放大(铺满后右栏下方空着)。
-    const tierY = p.sheet ? p.titleY - 76 : p.titleY - 56 * s;
-    const tierLabel = this.host.addChildLabel(p.panelRoot, 'GuardWheelTier', tierText, p.colX, tierY, tierSize, p.jackpot ? rgba(255, 220, 90) : rgba(255, 236, 180), new Size(p.colW, tierSize + 12));
-    tierLabel.overflow = Label.Overflow.SHRINK;
-    tierLabel.enableOutline = true;
-    tierLabel.outlineColor = rgba(60, 30, 10, 255);
-    tierLabel.outlineWidth = 3;
-    tierLabel.isBold = true;
-    const tierOp = tierLabel.node.addComponent(UIOpacity);
-    if (tier >= 3) {
+    const { S, X, Y, T, k } = p;
+    // 档位:标题后弹出香槟描边胶囊(原型「5 连大奖」,替代旧红横幅 / 大字档位);1 连不出
+    const tierText = p.deluxe || tier >= 5 ? '5 连大奖' : tier >= 3 ? '3 连奖' : '';
+    if (tierText) {
+      const titleText = p.deluxe ? 'BOSS 豪华宝箱' : '矿脉宝箱';
+      const pillW = estimateGlassTextWidth(tierText, 24) + 40;
+      const pill = this.host.addChildPlainNode(p.panelRoot, 'GuardWheelTier', X(72 + estimateGlassTextWidth(titleText, 34) * 1.1 + 22 + pillW / 2), p.titleY, S(pillW), S(40));
+      const pg = pill.addComponent(Graphics);
+      pg.fillColor = rgba(40, 32, 20, 200);
+      pg.roundRect(-S(pillW) / 2, -S(20), S(pillW), S(40), S(12));
+      pg.fill();
+      pg.strokeColor = rgba(227, 196, 138, 255);
+      pg.lineWidth = Math.max(1.2, S(2));
+      pg.roundRect(-S(pillW) / 2, -S(20), S(pillW), S(40), S(12));
+      pg.stroke();
+      T(pill, 'Text', tierText, 0, 0, 24, GLASS_COLOR.champagne, S(pillW - 16), HorizontalTextAlignment.CENTER, true);
       const from = p.jackpot ? 2.4 : 1.8;
-      tierLabel.node.setScale(from, from, 1);
-      tierLabel.node.angle = -6;
-      tween(tierLabel.node).to(p.jackpot ? 0.3 : 0.25, { scale: Vec3.ONE, angle: 0 }, { easing: 'backOut' }).start();
-    } else {
-      tierOp.opacity = 0;
-      tween(tierOp).to(0.15, { opacity: 255 }).start();
+      pill.setScale(from, from, 1);
+      pill.angle = -6;
+      tween(pill).to(p.jackpot ? 0.3 : 0.25, { scale: Vec3.ONE, angle: 0 }, { easing: 'backOut' }).call(() => {
+        if (p.jackpot) {
+          this.shakeField(14);
+          this.shakeNodeX(p.panelRoot, 10, 5);
+        }
+      }).start();
     }
     if (p.jackpot) {
       this.playWheelJackpot(p);
@@ -6860,41 +6634,22 @@ export class LobbyGuardBattleRenderer {
       // 1/3 连:揭示短旋律(大奖走 chest_jackpot 铜管,不叠)
       gameAudio.sfx('chest_reveal');
     }
+    // 奖励条:503×52,首条行中 dy 177,行距 64;图标中心距左沿 46(48 见方),名字左沿 105,数额右沿距右缘 18
     const colW = p.colW;
-    const cardH = p.sheet ? 60 : p.compact && tier >= 5 ? 26 : Math.max(30, 46 * s);
-    const gap = p.sheet ? 10 : 6 * s;
+    const cardH = S(52);
     const stagger = tier >= 5 ? 0.16 : tier >= 3 ? 0.2 : 0;
-    const nameSize = p.sheet ? 22 : p.compact ? 16 : 18;
-    const amountSize = p.sheet ? 30 : p.compact ? 20 : 28;
-    const cardsTop = p.sheet ? p.titleY - 136 : p.titleY - 104 * s;
-    const amountW = colW * 0.3;
-    const nameW = Math.max(60, colW - cardH * 1.7 - amountW - 6);
     rewards.forEach((reward, i) => {
-      const y = cardsTop - i * (cardH + gap);
-      const card = this.host.addChildPlainNode(p.panelRoot, `GuardWheelRewardCard_${i}`, p.colX + 40, y, colW, cardH);
-      const cg = card.addComponent(Graphics);
-      cg.fillColor = rgba(20, 12, 10, 175);
-      cg.roundRect(-colW / 2, -cardH / 2, colW, cardH, 8);
-      cg.fill();
-      cg.strokeColor = p.jackpot ? rgba(255, 208, 116, 220) : rgba(190, 140, 70, 150);
-      cg.lineWidth = 1.5;
-      cg.roundRect(-colW / 2, -cardH / 2, colW, cardH, 8);
-      cg.stroke();
-      const iconSize = cardH * 0.74;
-      this.mountSprite(card, 'CardIcon', GUARD_WHEEL_SECTOR_ICON[reward.kind], -colW / 2 + cardH * 0.6, 0, iconSize, iconSize);
+      const y = Y(177 + i * 64);
+      const card = this.host.addChildPlainNode(p.panelRoot, `GuardWheelRewardCard_${i}`, p.colX + S(40), y, colW, cardH);
+      mountGlassSlice(this.kit, card, 'Glass', GLASS_SLICES.panel, 0, 0, colW, cardH, k);
+      this.mountSprite(card, 'CardIcon', GUARD_WHEEL_SECTOR_ICON[reward.kind], -colW / 2 + S(46), 0, S(44), S(44));
       const name = reward.kind === 'gold' ? (reward.label.startsWith('阵地已满') ? '阵地已满 → 金币' : '战斗金币') : reward.kind === 'summon' ? reward.label : '全队攻击';
-      // addChildLabel 的 LEFT/RIGHT 对齐把 x 当作左/右边缘
-      const nameLabel = this.host.addChildLabel(card, 'CardText', name, -colW / 2 + cardH * 1.3, 0, nameSize, rgba(236, 224, 196), new Size(nameW, nameSize + 6), HorizontalTextAlignment.LEFT);
-      nameLabel.overflow = Label.Overflow.SHRINK;
-      const amountX = colW / 2 - cardH * 0.4;
+      T(card, 'CardText', name, -colW / 2 + S(105), 0, 22, GLASS_COLOR.text, S(260));
+      const amountX = colW / 2 - S(18);
       if (reward.kind === 'summon') {
-        this.host.addChildLabel(card, 'CardAmount', '已上阵', amountX, 0, p.sheet ? 20 : 16, rgba(150, 240, 160), new Size(amountW, p.sheet ? 26 : 22), HorizontalTextAlignment.RIGHT);
+        T(card, 'CardAmount', '已上阵', amountX, 0, 22, GLASS_COLOR.green, S(130), HorizontalTextAlignment.RIGHT);
       } else {
-        const amount = this.host.addChildLabel(card, 'CardAmount', reward.kind === 'teamAtk' ? '+8%' : '+0', amountX, 0, amountSize, rgba(255, 214, 92), new Size(amountW, amountSize + 6), HorizontalTextAlignment.RIGHT);
-        amount.enableOutline = true;
-        amount.outlineColor = rgba(60, 30, 10, 255);
-        amount.outlineWidth = 2;
-        amount.isBold = true;
+        T(card, 'CardAmount', reward.kind === 'teamAtk' ? '+8%' : '+0', amountX, 0, 26, GLASS_COLOR.champagne, S(130), HorizontalTextAlignment.RIGHT, true);
       }
       const op = card.addComponent(UIOpacity);
       op.opacity = 0;
@@ -6975,61 +6730,7 @@ export class LobbyGuardBattleRenderer {
     glowOp.opacity = 0;
     tween(glow).to(0.45, { scale: new Vec3(1.15, 1.15, 1) }, { easing: 'quadOut' }).start();
     tween(glowOp).to(0.08, { opacity: 170 }).to(0.5, { opacity: 0 }, { easing: 'quadIn' }).call(() => { if (glow.isValid) { glow.destroy(); } }).start();
-    // 横幅:深红带 + 上下金线 + 两端斜切;scale 2.6 砸到 1 → 压扁回弹 → 呼吸
-    // 手机:左上角是标题牌(约占 500 宽),横幅排在它右边到关闭钮之间,不压标题(2026-10-05)
-    // 手机:横幅文字已含"BOSS 豪华宝箱",左上角标题牌退场、横幅居中铺满标题行(2026-10-09 用户「标题处需要美化」:原先两块并排挤在一起)
-    if (p.sheet) {
-      for (const name of ['PhoneDialogTitleBanner', 'PhoneDialogTitle']) {
-        const plate = p.panelRoot.getChildByName(name);
-        if (plate) {
-          const plateOpacity = plate.getComponent(UIOpacity) ?? plate.addComponent(UIOpacity);
-          tween(plateOpacity).to(0.25, { opacity: 0 }).call(() => { if (plate.isValid) { plate.active = false; } }).start();
-        }
-      }
-    }
-    const bannerW = p.sheet ? Math.min(p.panelW - 220, 1100) : p.panelW * 0.9;
-    const bannerH = p.sheet ? 64 : p.compact ? 44 : 84 * p.s;
-    // 手机全屏面板贴边,横幅改压在标题行上(挂到面板外沿会出屏)。
-    const bannerY = p.sheet ? p.titleY + 6 : p.panelH / 2 + (p.compact ? 30 : 18);
-    const banner = this.host.addChildPlainNode(p.panelRoot, 'GuardJackpotBanner', 0, bannerY, bannerW, bannerH);
-    const bg = banner.addComponent(Graphics);
-    const cutW = bannerH * 0.5;
-    bg.fillColor = rgba(122, 20, 26, 235);
-    bg.moveTo(-bannerW / 2 + cutW, bannerH / 2);
-    bg.lineTo(bannerW / 2 - cutW, bannerH / 2);
-    bg.lineTo(bannerW / 2, 0);
-    bg.lineTo(bannerW / 2 - cutW, -bannerH / 2);
-    bg.lineTo(-bannerW / 2 + cutW, -bannerH / 2);
-    bg.lineTo(-bannerW / 2, 0);
-    bg.close();
-    bg.fill();
-    bg.strokeColor = rgba(255, 208, 116, 255);
-    bg.lineWidth = 3;
-    bg.moveTo(-bannerW / 2 + cutW, bannerH / 2 - 2);
-    bg.lineTo(bannerW / 2 - cutW, bannerH / 2 - 2);
-    bg.moveTo(-bannerW / 2 + cutW, -bannerH / 2 + 2);
-    bg.lineTo(bannerW / 2 - cutW, -bannerH / 2 + 2);
-    bg.stroke();
-    const bannerSize = p.compact ? 22 : Math.max(24, Math.round(34 * Math.min(1, p.s * 1.6)));
-    const bannerLabel = this.host.addChildLabel(banner, 'Text', p.deluxe ? 'BOSS 豪华宝箱 · 5 连大奖' : 'JACKPOT · 5 连大奖', 0, 0, bannerSize, rgba(255, 220, 90), new Size(bannerW - cutW * 2 - 20, bannerSize + 10));
-    bannerLabel.overflow = Label.Overflow.SHRINK;
-    bannerLabel.enableOutline = true;
-    bannerLabel.outlineColor = rgba(60, 20, 10, 255);
-    bannerLabel.outlineWidth = 3;
-    bannerLabel.isBold = true;
-    const bannerOp = banner.addComponent(UIOpacity);
-    bannerOp.opacity = 0;
-    banner.setScale(2.6, 2.6, 1);
-    tween(bannerOp).to(0.2, { opacity: 255 }, { easing: 'quadIn' }).repeatForever(tween().to(0.8, { opacity: 210 }).to(0.8, { opacity: 255 })).start();
-    tween(banner)
-      .to(0.2, { scale: Vec3.ONE }, { easing: 'quadIn' })
-      .call(() => {
-        this.shakeField(14);
-        this.shakeNodeX(p.panelRoot, 10, 5);
-      })
-      .to(0.08, { scale: new Vec3(1.06, 0.94, 1) })
-      .to(0.1, { scale: Vec3.ONE })
-      .start();
+    // 2026-11-11 B 改版:红横幅去掉,档位改成标题后的「5 连大奖」胶囊(revealWheelRewards 里砸入 + 震屏)
     // 面板背后大光芒(压暗层之上、面板之下):新批次金色光丝聚拢爆开(与结算胜利同款);豪华箱染暖红。未就绪才回退旧星芒贴图。
     const rayTint = p.deluxe ? rgba(255, 120, 70) : rgba(255, 214, 110);
     const rayFx = LOBBY_UI_FX.victoryTitle;
@@ -7084,20 +6785,14 @@ export class LobbyGuardBattleRenderer {
       return;
     }
     p.closeShown = true;
-    const btnW = p.compact ? 180 : 236;
-    const btnH = btnW * (100 / 431);
-    const close = this.mountPrimaryButton(p.panelRoot, 'GuardWheelClose', p.colX, -p.panelH / 2 + (p.sheet ? 64 : p.compact ? 58 : 97 * p.s), btnW);
-    const glow = this.mountSprite(close, 'CloseGlow', 'ui/battle/c1812/effects/hit_burst/spriteFrame', 0, 0, btnH * 1.6, btnH * 1.6, rgba(255, 214, 110));
-    glow.setSiblingIndex(0);
-    glow.addComponent(UIOpacity).opacity = 90;
-    tween(glow).repeatForever(tween().to(0.5, { scale: new Vec3(1.1, 1.1, 1) }, { easing: 'sineInOut' }).to(0.5, { scale: new Vec3(0.95, 0.95, 1) }, { easing: 'sineInOut' })).start();
-    this.host.addChildLabel(close, 'GuardWheelCloseLabel', '收下', 0, 0, p.compact ? 18 : 22, rgba(255, 238, 190), new Size(btnW * 0.85, 28));
+    // 收下:香槟主钮 258×60,中心 (896, 542)
+    const close = mountGlassButton(this.kit, p.panelRoot, 'GuardWheelClose', '收下', p.X(896), p.Y(542), p.S(258), p.S(60), p.k, 'primary', undefined, 28);
     close.setScale(0.6, 0.6, 1);
     tween(close).to(0.25, { scale: Vec3.ONE }, { easing: 'backOut' }).start();
     if (p.result.tier !== 3) {
       gameAudio.sfx('reward_claim');
     }
-    close.on(Node.EventType.TOUCH_END, () => this.closeWheel(p), this);
+    close.on(Button.EventType.CLICK, () => this.closeWheel(p), this);
   }
 
   /** 收下:立即解锁 wheelOverlayOpen(防"点不动")→ 金币卡飞币到右上 HUD → 面板/压暗淡出 → 260ms 销毁并恢复战斗。 */
@@ -7206,185 +6901,154 @@ export class LobbyGuardBattleRenderer {
     }
     existing?.destroy();
     this.choiceOverlayLevel = sim.choiceSerial;
-    const width = this.layoutWidth;
-    const height = this.layoutHeight;
-    const overlay = this.host.addChildPlainNode(root, 'GuardChoiceOverlay', 0, 0, width, height);
-    overlay.addComponent(BlockInputEvents);
-    const og = overlay.addComponent(Graphics);
-    og.fillColor = rgba(8, 6, 6, 190);
-    og.rect(-width / 2, -height / 2, width, height);
-    og.fill();
-    // 面板底换素净框(2026-09-22 用户反馈 popup_frame_large 四角坠饰太大):洗练弹窗同款 refine_panel_bg(1448×1086,细金线 + 小顶饰),等比。
-    // 手机横屏全屏(2026-10-02 用户拍板):面板铺满,标题贴顶、按钮贴底,卡片放大(描述字不再挤成一团)。
-    const phone = this.phoneSheet();
-    const panelH = phone ? this.phoneSheetSize().h : height * 0.78;
-    const panelW = phone ? this.phoneSheetSize().w : Math.min(width * 0.92, panelH * (1448 / 1086));
-    this.paintDialogPanel(overlay, panelW, panelH);
+    // 2026-11-11 B 毛玻璃(原型 周报截图/2026-11-11_守卫战弹层/proto/guard_choice_b.png 1:1):面板 1042×646,
+    // 居中标题(香槟竖条 + 标题)+ 副标题 + 分隔线 → 三张玻璃卡(顶边稀有度细线 + 同色标签胶囊 + 圆形头像 / 图标 + 英雄名 + 卡名 + 描述)→ 卡下「✕ 放逐」→ 底部灰玻璃「刷新」。
+    const W = 1042;
+    const H = 646;
+    const shell = this.mountGuardGlass('GuardChoiceOverlay', W, H, { bare: true });
+    if (!shell) {
+      return;
+    }
+    const { panel, k, S, X, Y, T } = shell;
     const fromEnhance = sim.choiceSource === 'enhance';
     const hasGold = sim.pendingChoice.some((option) => option.rarity === 'gold');
-    // 标题 + 副标题(2026-09-22 用户参考图):金卡在场时"稀有词条出现!专属大招觉醒",两侧饰线。
     const titleCore = hasGold ? '稀有战术出现!专属大招觉醒' : fromEnhance ? `战术 ×${sim.enhanceLevel} · 选择一张战术卡` : `等级提升!Lv${sim.level} · 三选一`;
-    // 标题饰件用任务页同款 title_divider 左右两段(2026-09-22 用户要求),按标题估宽贴在两侧;标题较上一版下移 20px。
-    const titleY = phone ? panelH / 2 - 50 : panelH / 2 - 112;
-    const titleSize = phone ? 34 : 30;
-    const overlayTitle = this.host.addChildLabel(overlay, 'GuardChoiceTitle', titleCore, 0, titleY, titleSize, hasGold ? rgba(255, 214, 100) : rgba(255, 232, 150), new Size(width * 0.6, 40));
-    overlayTitle.overflow = Label.Overflow.SHRINK;
-    overlayTitle.enableOutline = true;
-    overlayTitle.outlineColor = hasGold ? rgba(90, 30, 10, 255) : rgba(40, 24, 10, 255);
-    overlayTitle.outlineWidth = 3;
-    const titleTextW = Array.from(titleCore).reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 1 : 0.55) * titleSize, 0);
-    const dividerW = 150;
-    const dividerGap = titleTextW / 2 + 22 + dividerW / 2;
-    this.mountSprite(overlay, 'GuardChoiceTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -dividerGap, titleY, dividerW, dividerW * (76 / 390));
-    this.mountSprite(overlay, 'GuardChoiceTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', dividerGap, titleY, dividerW, dividerW * (73 / 392));
-    const subtitle = this.host.addChildLabel(overlay, 'GuardChoiceSubtitle', '选择一张战术卡,获得强大的战斗增益', 0, titleY - 34, 17, rgba(212, 190, 150, 235), new Size(width * 0.6, 22));
-    subtitle.overflow = Label.Overflow.SHRINK;
+    // 标题组(竖条 7 + 间距 20 + 标题)整体居中;行中 dy 36,字号 34 粗
+    const titleW = estimateGlassTextWidth(titleCore, 34);
+    const groupLeft = W / 2 - (27 + titleW) / 2;
+    this.kit.addSprite('GuardChoiceTitleBar', GLASS_ICON.accent, X(groupLeft + 3.5), Y(36), S(7), S(33), panel);
+    T(panel, 'GuardChoiceTitle', titleCore, X(groupLeft + 27), Y(36), 34, hasGold ? GLASS_COLOR.champagne : GLASS_COLOR.text, S(W - 140), HorizontalTextAlignment.LEFT, true);
+    T(panel, 'GuardChoiceSubtitle', '选择一张战术卡,获得强大的战斗增益', X(W / 2), Y(77), 20, GLASS_COLOR.sub, S(W - 160), HorizontalTextAlignment.CENTER);
+    mountGlassLine(this.kit, panel, 'GuardChoiceDivider', 0, Y(103), S(W - 114), Math.max(1, S(1.5)), new Color(150, 158, 172, 70));
     if (hasGold) {
       gameAudio.sfx('gacha_rare');
     }
-    // 三张同宽竖卡(参考图三卡等大);每张按自己框的像素比定高,不拉伸。
-    const buttonY = phone ? -panelH / 2 + 50 : -panelH / 2 + 97;
-    const cardsTop = titleY - (phone ? 62 : 56);
-    const cardsBottom = buttonY + (phone ? 66 : 44);
-    // 卡宽压到可用高的 0.8、封顶 214(2026-09-22 用户反馈:内层卡框比外层面板框还重)。
-    // 2026-09-22 用户:缩得太多,再放大 25%(206 → 258)。手机全屏:可用高够,封顶放到 280 让描述字够大。
-    const cardW = Math.min(phone ? 280 : 258, ((cardsTop - cardsBottom) * 0.9) / (693 / 413), (panelW - 160) / 3 - 24);
-    const gap = Math.min(44, width * 0.028);
+    // 卡:277×390,上沿 dy 129,卡距 32,整组居中
+    const cardW = 277;
+    const cardH = 390;
+    const cardGap = 32;
     const count = sim.pendingChoice.length;
-    const totalW = cardW * count + gap * (count - 1);
-    const centerY = (cardsTop + cardsBottom) / 2;
+    const firstCx = W / 2 - ((count - 1) * (cardW + cardGap)) / 2;
+    const cardCy = 129 + cardH / 2;
     sim.pendingChoice.forEach((option, index) => {
       const isGold = option.rarity === 'gold';
-      const style = GUARD_PERK_CARD_STYLE[option.rarity] ?? GUARD_PERK_CARD_STYLE.white;
-      const w = cardW;
-      const h = cardW * style.aspect;
-      const x = -totalW / 2 + cardW / 2 + index * (cardW + gap);
-      const card = this.host.addChildPlainNode(overlay, `GuardChoiceCard_${index}`, x, centerY, w, h);
-      this.buildPerkCard(card, option, style, w, h);
-      // 入场:逐张弹入;红卡(专属大招)最后落下。
+      const cx = firstCx + index * (cardW + cardGap);
+      const card = this.host.addChildPlainNode(panel, `GuardChoiceCard_${index}`, X(cx), Y(cardCy), S(cardW), S(cardH));
+      this.buildPerkCard(card, option, shell, cardW, cardH);
+      // 入场:逐张弹入;金卡(专属大招)最后落下。
       card.setScale(0.6, 0.6, 1);
       tween(card).delay(0.06 * index + (isGold ? 0.12 : 0)).to(0.2, { scale: new Vec3(1.05, 1.05, 1) }, { easing: 'backOut' }).to(0.08, { scale: new Vec3(1, 1, 1) }).start();
-      this.host.applyImageButtonFeedback(card);
+      this.host.applyImageButtonFeedback(card, 1.03, 0.97);
       card.on(Node.EventType.TOUCH_END, () => {
         guardChooseOption(sim, index);
       }, this);
       if (!option.locked && sim.banishLeft > 0) {
-        const banish = this.host.addChildLabel(overlay, `GuardChoiceBanish_${index}`, '✕ 放逐', x, centerY - h / 2 - 16, 16, rgba(255, 140, 120, 230), new Size(w, 22));
-        banish.node.on(Node.EventType.TOUCH_END, () => {
+        // 「✕ 放逐」:卡下沿 + 24,字号 20 灰;点击区放大
+        const banish = this.host.addChildPlainNode(panel, `GuardChoiceBanish_${index}`, X(cx), Y(129 + cardH + 24), S(160), S(44));
+        T(banish, 'Label', '✕ 放逐', 0, 0, 20, GLASS_COLOR.sub, S(150), HorizontalTextAlignment.CENTER);
+        this.host.applyImageButtonFeedback(banish, 1.06, 0.95);
+        banish.on(Node.EventType.TOUCH_END, () => {
           if (guardBanishChoice(sim, index)) {
             this.choiceOverlayLevel = 0;
           }
         }, this);
       }
     });
-    // 跳过 / 刷新:用户提供的红底金边按钮(perk_btn_red 561×155,等比)
-    const makeButton = (name: string, text: string, x: number, onTap: () => void): void => {
-      const bw = Math.min(268, width * 0.17);
-      const bh = bw * (155 / 561);
-      const button = this.host.addChildPlainNode(overlay, name, x, buttonY, bw, bh);
-      this.mountSprite(button, `${name}Art`, 'ui/battle/ai/perk_btn_red/spriteFrame', 0, 0, bw, bh);
-      this.host.applyImageButtonFeedback(button);
-      const label = this.host.addChildLabel(button, `${name}Label`, text, 0, 1, 22, rgba(255, 238, 190), new Size(bw * 0.7, 28));
-      label.overflow = Label.Overflow.SHRINK;
-      label.enableOutline = true;
-      label.outlineColor = rgba(60, 10, 6, 255);
-      label.outlineWidth = 2;
-      button.on(Node.EventType.TOUCH_END, onTap, this);
-    };
-    // 强化付费弹出的词条不可跳过(只剩刷新,居中);升级三选一才有跳过。
-    if (!fromEnhance) {
-      makeButton('GuardChoiceSkip', '跳过 (+50 金币)', -160, () => {
-        guardSkipChoice(sim);
-      });
-    }
-    makeButton('GuardChoiceReroll', `刷新 (剩 ${sim.rerollLeft})`, fromEnhance ? 0 : 160, () => {
+    // 刷新(灰玻璃 279×52,行中 dy 600);升级三选一另有「跳过」,两键左右各让 160
+    const rerollX = fromEnhance ? W / 2 : W / 2 + 160;
+    mountGlassButton(this.kit, panel, 'GuardChoiceReroll', `刷新 (剩 ${sim.rerollLeft})`, X(rerollX), Y(600), S(279), S(52), k, 'secondary', () => {
       if (guardRerollChoice(sim)) {
         this.choiceOverlayLevel = 0;
       } else {
         this.host.setStatus('刷新次数已用完。');
       }
-    });
+    }, 22);
+    if (!fromEnhance) {
+      mountGlassButton(this.kit, panel, 'GuardChoiceSkip', '跳过 (+50 金币)', X(W / 2 - 160), Y(600), S(279), S(52), k, 'secondary', () => {
+        guardSkipChoice(sim);
+      }, 22);
+    }
   }
 
   /**
-   * 单张词条卡(2026-09-22 用户参考图):素材框等比铺满 → 标签写进框顶的带子 → 圆环里放英雄圆形头像(通用词条放图标)
-   * → 环下英雄名 → 词条名(红卡=专属大招名 + "专属大招觉醒")→ 效果描述。所有位置按框的实测比例算,不画任何底色。
+   * 单张战术卡(B 毛玻璃,原型 guard_choice_b):玻璃底 + 顶边稀有度细线 → 同色描边标签胶囊(卡顶 +40)→ 圆形头像 / 通用图标(+134,直径 122)
+   * → 英雄名(+213,17 灰)→ 卡名(+249,28 粗白;金卡 = 「专属大招名」香槟色 + 副题)→ 描述(首行 +290,20 号,行高 29)。坐标为卡内原型像素(从卡顶算)。
    */
-  private buildPerkCard(card: Node, option: GuardChoiceOption, style: GuardPerkCardStyle, w: number, h: number): void {
+  private buildPerkCard(card: Node, option: GuardChoiceOption, shell: GlassPopupShell, cardW: number, cardH: number): void {
     const sim = this.sim;
+    const { k, S, T } = shell;
     const isGold = option.rarity === 'gold';
-    const textTint = rgba(style.text[0], style.text[1], style.text[2], 255);
-    const top = h / 2;
-    const innerW = w * 0.75;
-    this.mountSprite(card, 'Frame', style.frame, 0, 0, w, h);
-    // 标签带
+    const tone = GUARD_PERK_GLASS_TONE[option.rarity] ?? GUARD_PERK_GLASS_TONE.white;
+    const CY = (dy: number): number => S(cardH / 2 - dy);
+    mountGlassSlice(this.kit, card, 'Glass', GLASS_SLICES.panel, 0, 0, S(cardW), S(cardH), k);
+    // 顶边细线:圆角内缩 10,高 4
+    mountGlassLine(this.kit, card, 'RarityLine', 0, CY(2), S(cardW - 20), Math.max(2, S(4)), tone.line);
     const heroMatch = /^【(.+?)】(.*)$/.exec(option.title);
     const heroName = heroMatch ? heroMatch[1] : '';
     const perkTitle = heroMatch ? heroMatch[2] : option.title;
+    const style = GUARD_PERK_CARD_STYLE[option.rarity] ?? GUARD_PERK_CARD_STYLE.white;
     const tagText = option.rarity === 'purple' && option.school ? `专属流派 · ${option.school}` : style.tag;
-    const tag = this.host.addChildLabel(card, 'Tag', tagText, 0, top - h * style.bandCy, Math.round(w * 0.07), textTint, new Size(w * 0.46, h * style.bandH * 0.8));
-    tag.overflow = Label.Overflow.SHRINK;
-    // 圆环:英雄圆形头像 / 通用图标
-    const ringY = top - h * style.ringCy;
-    const ringD = w * style.ringD;
+    // 标签胶囊:高 36,字号 18,左右各留 22;描边 = 稀有度色
+    const tagFont = 18;
+    const tagW = Math.min(cardW - 40, estimateGlassTextWidth(tagText, tagFont) + 44);
+    const tagNode = this.host.addChildPlainNode(card, 'Tag', 0, CY(40), S(tagW), S(36));
+    const tg = tagNode.addComponent(Graphics);
+    tg.fillColor = new Color(10, 14, 22, 170);
+    tg.roundRect(-S(tagW) / 2, -S(18), S(tagW), S(36), S(18));
+    tg.fill();
+    tg.strokeColor = tone.line;
+    tg.lineWidth = Math.max(1.2, S(1.8));
+    tg.roundRect(-S(tagW) / 2, -S(18), S(tagW), S(36), S(18));
+    tg.stroke();
+    const tagLabel = T(tagNode, 'Text', tagText, 0, 0, tagFont, tone.text, S(tagW - 20), HorizontalTextAlignment.CENTER, true);
+    tagLabel.fontSize = Math.max(12, Math.round(S(tagFont)));
+    tagLabel.lineHeight = tagLabel.fontSize + 4;
+    // 圆形头像位:暗底 + 细灰环
+    const ringD = S(122);
+    const ringY = CY(134);
+    const disc = this.host.addChildPlainNode(card, 'AvatarDisc', 0, ringY, ringD + 6, ringD + 6).addComponent(Graphics);
+    disc.fillColor = new Color(10, 12, 18, 220);
+    disc.circle(0, 0, ringD / 2);
+    disc.fill();
     if (option.heroCode && sim) {
       const pool = sim.pool.find((entry) => entry.heroCode.toUpperCase() === option.heroCode?.toUpperCase());
       const avatar = this.host.addChildPlainNode(card, 'Avatar', 0, ringY, ringD, ringD);
       const mask = avatar.addComponent(Mask);
       mask.type = Mask.Type.GRAPHICS_ELLIPSE;
-      const bg = this.host.addChildPlainNode(avatar, 'Bg', 0, 0, ringD, ringD);
-      const bgG = bg.addComponent(Graphics);
-      bgG.fillColor = rgba(10, 8, 12, 255);
-      bgG.circle(0, 0, ringD / 2);
-      bgG.fill();
       this.mountStatsAvatar(avatar, { name: pool?.displayName ?? option.heroCode, rarity: (pool?.rarity ?? 'R').toUpperCase(), ally: this.snapshot?.allies[pool?.sourceIndex ?? -1] ?? null }, ringD);
     } else {
       const icon = GUARD_WHITE_PERK_ICON[option.perkId];
       if (icon) {
-        const box = ringD * 0.78;
+        const box = ringD * 0.7;
         const iw = icon.aspect >= 1 ? box / icon.aspect : box;
         const ih = icon.aspect >= 1 ? box : box * icon.aspect;
         this.mountSprite(card, 'Icon', icon.path, 0, ringY, iw, ih);
       }
     }
-    // 文字区:英雄名 → 词条名 →(红卡副题)→ 描述
-    let y = top - h * style.textTop - 2;
-    const textBottom = top - h * style.textBottom;
+    const ring = this.host.addChildPlainNode(card, 'AvatarRing', 0, ringY, ringD + 6, ringD + 6).addComponent(Graphics);
+    ring.strokeColor = isGold ? new Color(227, 196, 138, 230) : new Color(176, 184, 198, 150);
+    ring.lineWidth = Math.max(1.2, S(2));
+    ring.circle(0, 0, ringD / 2);
+    ring.stroke();
+    const innerW = S(cardW - 40);
     if (heroName) {
-      const nameLabel = this.host.addChildLabel(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, y - 9, Math.round(w * 0.072), option.offField ? rgba(170, 160, 150) : rgba(236, 224, 196), new Size(innerW, 22));
-      nameLabel.overflow = Label.Overflow.SHRINK;
-      y -= 30;
+      T(card, 'Hero', option.offField ? `${heroName}(未上场)` : heroName, 0, CY(213), 17, option.offField ? GLASS_COLOR.dim : GLASS_COLOR.sub, innerW, HorizontalTextAlignment.CENTER);
     }
     const mainTitle = isGold ? `「${this.resolveGuardSkillDisplayName(option.heroCode, '专属大招')}」` : perkTitle;
-    const titleSize = Math.round(w * 0.098);
-    const title = this.host.addChildLabel(card, 'Title', mainTitle, 0, y - titleSize / 2, titleSize, isGold ? rgba(255, 226, 130) : rgba(255, 244, 214), new Size(innerW, titleSize + 8));
-    title.overflow = Label.Overflow.SHRINK;
-    title.enableOutline = true;
-    title.outlineColor = rgba(14, 8, 4, 255);
-    title.outlineWidth = 2;
-    y -= titleSize + 10;
+    T(card, 'Title', mainTitle, 0, CY(249), 28, isGold ? GLASS_COLOR.champagne : GLASS_COLOR.text, innerW, HorizontalTextAlignment.CENTER, true);
+    let detailTop = 276;
     if (isGold) {
-      const sub = this.host.addChildLabel(card, 'Sub', perkTitle, 0, y - 8, Math.round(w * 0.066), rgba(255, 200, 150), new Size(innerW, 20));
-      sub.overflow = Label.Overflow.SHRINK;
-      y -= 24;
+      T(card, 'Sub', perkTitle, 0, CY(282), 19, new Color(240, 200, 150, 255), innerW, HorizontalTextAlignment.CENTER);
+      detailTop = 300;
     }
-    const detailSize = Math.round(w * 0.076);
-    const detailH = Math.max(40, y - textBottom);
-    const detail = this.host.addChildLabel(card, 'Detail', option.detail, 0, y - detailH / 2, detailSize, rgba(222, 212, 190, 245), new Size(innerW, detailH));
-    detail.overflow = Label.Overflow.SHRINK;
+    const detailBottom = cardH - 18;
+    const detailH = S(detailBottom - detailTop);
+    const detail = T(card, 'Detail', option.detail, 0, CY((detailTop + detailBottom) / 2), 20, new Color(206, 212, 222, 255), innerW, HorizontalTextAlignment.CENTER);
     detail.enableWrapText = true;
-    // 2026-10-10 全界面巡检:一行放不下时在逗号处主动换行,避免自动折行把最后一个字孤零零甩到第二行(「可叠 / 加」)
-    const detailChars = Array.from(option.detail);
-    const perLine = Math.max(1, Math.floor(innerW / Math.max(1, detail.fontSize)));
-    if (detailChars.length > perLine && !option.detail.includes('\n')) {
-      const cut = option.detail.lastIndexOf(',', perLine);
-      if (cut > 0) {
-        detail.string = `${option.detail.slice(0, cut + 1)}\n${option.detail.slice(cut + 1)}`;
-      }
-    }
-    // 手机端工厂会把小字抬到 20 号,行高跟着实际字号走,否则多行互相压字。
-    detail.lineHeight = Math.round(Math.max(detailSize, detail.fontSize) * 1.3);
+    detail.overflow = Label.Overflow.SHRINK;
+    detail.lineHeight = Math.round(detail.fontSize * 1.45);
     detail.verticalAlign = VerticalTextAlignment.TOP;
+    detail.node.getComponent(UITransform)?.setContentSize(innerW, detailH);
     if (option.offField) {
       const shade = card.getComponent(UIOpacity) ?? card.addComponent(UIOpacity);
       shade.opacity = 190;
@@ -8706,8 +8370,9 @@ export class LobbyGuardBattleRenderer {
     guardMonsterProjectileFxSpecs().forEach((spec) => addFxTo(deferredSpine, spec));
     addFxTo(deferredSpine, GUARD_MARK_FX.ring);
     addFxTo(deferredSpine, GUARD_MARK_FX.burst);
-    // 强化三选一卡牌底图(每张 413×690):第一次强化时才上传显卡会顿 100ms 以上,进场后台先读
-    Object.values(GUARD_PERK_CARD_STYLE).forEach((style) => deferredSprites.add(style.frame));
+    // 局内弹层(三选一 / 轮盘 / 设置 / 结算,2026-11-11 改 B 毛玻璃)用到的玻璃九宫格与图标:首弹时才读会先空一帧
+    [GLASS_SLICES.panel, GLASS_SLICES.panelSel, GLASS_SLICES.pillPrimary, GLASS_SLICES.pillSecondary, GLASS_SLICES.pillGold, GLASS_SLICES.frame].forEach((item) => deferredSprites.add(item.path));
+    [GLASS_ICON.accent, GLASS_ICON.close, GLASS_ICON.chevron].forEach((path) => deferredSprites.add(path));
     GUARD_CHEST_SPRITE_PRELOAD.forEach((path) => deferredSprites.add(path));
     return {
       spine: Array.from(spine),
@@ -10937,18 +10602,14 @@ export class LobbyGuardBattleRenderer {
     gameAudio.sfx(victory ? 'victory' : 'defeat');
     const width = this.layoutWidth;
     const height = this.layoutHeight;
-    const overlay = this.host.addChildPlainNode(this.root, 'GuardEndOverlay', 0, 0, width, height);
-    overlay.addComponent(BlockInputEvents);
-    const g = overlay.addComponent(Graphics);
-    g.fillColor = rgba(8, 6, 6, 176);
-    g.rect(-width / 2, -height / 2, width, height);
-    g.fill();
     const sim = this.sim;
     const rush = sim?.mode === 'rush';
     const raid = sim?.mode === 'raid';
     if (raid && sim && !sim.raidClear && this.serverRaid && this.raid) {
       // docs/61(原型 result_b):结果 + 奖励 + 我方 / 敌方输出对比;按钮等结算回执到了再挂
-      g.clear();
+      const overlay = this.host.addChildPlainNode(this.root, 'GuardEndOverlay', 0, 0, width, height);
+      overlay.addComponent(BlockInputEvents);
+      const g = overlay.addComponent(Graphics);
       // 原型 result_b:战场压暗约 60%,战斗 HUD 由控制器藏掉
       g.fillColor = rgba(6, 8, 12, 196);
       g.rect(-width / 2, -height / 2, width, height);
@@ -10956,44 +10617,56 @@ export class LobbyGuardBattleRenderer {
       this.raid.mountResult(overlay, sim, victory, width, height);
       return;
     }
-    const panelH = height * 0.56;
-    this.paintOverlayPanel(overlay, panelH * 1.65, panelH, -height * 0.02);
+    // 2026-11-11 B 毛玻璃(原型 周报截图/2026-11-11_守卫战弹层/proto/guard_result_b.png 1:1):面板 910×613,
+    // 居中大标题 + 胜负签(WIN 绿 / LOSE 红,同掠夺结算)+ 战况一行 + 分隔线 →「本场奖励」分区 + 物品格(结算回执到了再挂)→ 说明一行 →「返回大厅」。
+    const W = GUARD_END_W;
+    const shell = this.mountGuardGlass('GuardEndOverlay', W, GUARD_END_H, { bare: true });
+    if (!shell) {
+      return;
+    }
+    this.endShell = shell;
+    const { overlay, panel, S, X, Y, T } = shell;
     const clear = !!sim?.raidClear;
     const title = clear ? (victory ? '清除完成!' : '撤退…') : raid ? (victory ? '掠夺成功!' : '掠夺失败') : rush ? '试炼结束!' : victory ? '守卫成功!' : '水晶破碎…';
     const detail = sim
       ? clear
-        ? `击败 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+        ? `击败 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 用时 ${formatGuardDuration(sim.timeMs)}`
         : raid
-        ? `击倒守卫 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 水晶剩余 ${Math.round((sim.crystalHp / sim.crystalMaxHp) * 100)}% · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+        ? `击倒守卫 ${sim.heroes.filter((hero) => hero.dead).length}/${sim.heroes.length} · 水晶剩余 ${Math.round((sim.crystalHp / sim.crystalMaxHp) * 100)}% · 用时 ${formatGuardDuration(sim.timeMs)}`
         : rush
-          ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
-          : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${Math.round(sim.timeMs / 1000)} 秒`
+          ? `层数 ${guardTrialLayers(sim)}(BOSS×${sim.bossKills} + 波次 ${sim.wave})· 击杀 ${sim.killCount} · 用时 ${formatGuardDuration(sim.timeMs)}`
+          : `坚守 ${sim.wave} 波 · 击杀 ${sim.killCount} · 用时 ${formatGuardDuration(sim.timeMs)}`
       : '';
-    if ((victory || rush) && LOBBY_UI_FX.victoryTitle) {
+    // 标题(字号 50 粗)+ 签(高 36,字号 18;胜绿 / 败红 / 试炼香槟)整组居中,行中 dy 55
+    const good = victory || rush;
+    const tagText = rush ? `${sim ? guardTrialLayers(sim) : 0} 层` : victory ? 'WIN' : 'LOSE';
+    const tagColor = rush ? GLASS_COLOR.champagne : victory ? new Color(110, 214, 120, 255) : new Color(236, 104, 92, 255);
+    const titleW = estimateGlassTextWidth(title, 50);
+    const tagW = estimateGlassTextWidth(tagText, 20) + 30;
+    const groupLeft = W / 2 - (titleW + 20 + tagW) / 2;
+    if (good && LOBBY_UI_FX.victoryTitle) {
       // docs/29 v3:胜利标题背后金色光丝聚拢再炸开(一次性);失败不放
       const titleFx = LOBBY_UI_FX.victoryTitle;
-      const titleFxHolder = this.host.addChildPlainNode(overlay, 'GuardEndTitleFx', 0, -height * 0.02 + panelH / 2 - 76, 10, 10);
+      const titleFxHolder = this.host.addChildPlainNode(overlay, 'GuardEndTitleFx', X(W / 2), Y(55), 10, 10);
+      titleFxHolder.setSiblingIndex(1);
       mountLobbySpineFx(this.host, titleFxHolder, titleFx, 0, 0, 300 * titleFx.size, titleFx.loop, titleFx.holdMs);
     }
-    this.host.addChildLabel(overlay, 'GuardEndTitle', title, 0, -height * 0.02 + panelH / 2 - 76, 34, victory || rush ? rgba(255, 232, 150) : rgba(255, 150, 130), new Size(width * 0.8, 46));
-    let endTitleTextW = 0;
-    for (const ch of title) {
-      endTitleTextW += (ch.codePointAt(0) ?? 0) > 255 ? 34 : 34 * 0.55;
-    }
-    const endDividerAvail = (panelH * 1.65) / 2 - endTitleTextW / 2 - 10 - 24;
-    if (endDividerAvail >= 40) {
-      const endDividerW = Math.min(160, endDividerAvail);
-      const endDividerX = endTitleTextW / 2 + 10 + endDividerW / 2;
-      const endTitleY = -height * 0.02 + panelH / 2 - 76;
-      this.mountSprite(overlay, 'GuardEndTitleDividerL', 'ui/common/ai/title_divider_left/spriteFrame', -endDividerX, endTitleY, endDividerW, endDividerW * (76 / 390));
-      this.mountSprite(overlay, 'GuardEndTitleDividerR', 'ui/common/ai/title_divider_right/spriteFrame', endDividerX, endTitleY, endDividerW, endDividerW * (73 / 392));
-    }
-    // 2026-10-10 全界面巡检:手机上标题(34 号)与本行贴得太近叠字 → 本行至少落在标题中线下 52,后面几行跟着下移同样距离
-    const endDetailShift = Math.min(0, (-height * 0.02 + panelH / 2 - 76 - 52) - height * 0.12);
-    // 文字宽以面板内宽为上限(2026-10-15 安卓真机:按屏宽 70% 算,20:9 手机上结算说明伸出框外),放不下先折行再缩字
-    const endTextW = this.endOverlayTextWidth();
-    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndDetail', detail, 0, height * 0.12 + endDetailShift, 20, rgba(226, 210, 180), new Size(endTextW, 28)), false);
-    // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER)。
+    T(panel, 'GuardEndTitle', title, X(groupLeft), Y(55), 50, GLASS_COLOR.text, S(titleW + 40), HorizontalTextAlignment.LEFT, true);
+    const tag = this.host.addChildPlainNode(panel, 'GuardEndTag', X(groupLeft + titleW + 20 + tagW / 2), Y(57), S(tagW), S(36));
+    const tg = tag.addComponent(Graphics);
+    tg.fillColor = new Color(tagColor.r * 0.16, tagColor.g * 0.16, tagColor.b * 0.16, 200);
+    tg.roundRect(-S(tagW) / 2, -S(18), S(tagW), S(36), S(8));
+    tg.fill();
+    tg.strokeColor = tagColor;
+    tg.lineWidth = Math.max(1.2, S(2));
+    tg.roundRect(-S(tagW) / 2, -S(18), S(tagW), S(36), S(8));
+    tg.stroke();
+    const tagLabel = T(tag, 'Text', tagText, 0, 0, 20, tagColor, S(tagW - 10), HorizontalTextAlignment.CENTER, true);
+    tagLabel.fontSize = Math.max(12, Math.round(S(20)));
+    T(panel, 'GuardEndDetail', detail, X(W / 2), Y(112), 24, GLASS_COLOR.sub, S(W - 120), HorizontalTextAlignment.CENTER);
+    mountGlassLine(this.kit, panel, 'GuardEndDivider', 0, Y(149), S(W - 104), Math.max(1, S(1.5)), new Color(150, 158, 172, 70));
+    mountGlassSectionHeader(this.kit, panel, 'GuardEndRewardHead', '本场奖励', X(57), Y(187), shell.k, 26);
+    // near-miss 提示(P3b,2026-09-04):本场档位 + 差几层升下一档(分=层×100,镜像后端 TrialRules.SCORE_PER_LAYER);放在分区标题右侧。
     if (rush && sim) {
       const layers = guardTrialLayers(sim);
       const score = Math.min(layers, 60) * 100;
@@ -11012,44 +10685,22 @@ export class LobbyGuardBattleRenderer {
         const nearMiss = next
           ? `本场 ${current.tierName}(${current.tierCode})档 · 再多 ${Math.ceil((next.minScore - score) / 100)} 层升 ${next.tierName}(${next.tierCode})档!`
           : `本场 ${current.tierName}(${current.tierCode})档 · 已是最高档!`;
-        this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndNearMiss', nearMiss, 0, height * 0.08 + endDetailShift, 17, next ? rgba(170, 235, 170) : rgba(255, 224, 130), new Size(endTextW, 22)), false);
+        T(panel, 'GuardEndNearMiss', nearMiss, X(W - 52), Y(187), 19, next ? GLASS_COLOR.green : GLASS_COLOR.champagne, S(560), HorizontalTextAlignment.RIGHT);
       }
     }
-    // 结算说明可能很长(服务端文案):两行高的框,折行 + 缩字;中线下移半行,上沿仍对齐原来的单行位置
+    // 结算说明:回执前「正在提交结算…」放在物品格区中间;回执到了挪到 dy 476
     const localRaid = raid && !this.serverRaid;
-    this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndSettle', localRaid ? 'P0 原型:本地模拟,不结算、不发奖' : '正在提交结算…', 0, height * 0.04 + endDetailShift - 12, 18, rgba(196, 182, 152), new Size(endTextW, 48)), true);
+    const settle = T(panel, 'GuardEndSettle', localRaid ? 'P0 原型:本地模拟,不结算、不发奖' : '正在提交结算…', X(W / 2), Y(320), 20, GLASS_COLOR.sub, S(W - 120), HorizontalTextAlignment.CENTER);
+    settle.enableWrapText = true;
+    settle.node.getComponent(UITransform)?.setContentSize(S(W - 120), S(56));
     if (localRaid) {
-      const backW = 220;
-      const backH = 60;
-      const back = this.host.addChildPlainNode(overlay, 'GuardRaidBack', 0, -height * 0.1 + endDetailShift, backW, backH);
-      const bg = back.addComponent(Graphics);
-      bg.fillColor = rgba(120, 28, 24, 240);
-      bg.roundRect(-backW / 2, -backH / 2, backW, backH, 10);
-      bg.fill();
-      bg.strokeColor = rgba(214, 170, 92, 240);
-      bg.lineWidth = 2;
-      bg.roundRect(-backW / 2, -backH / 2, backW, backH, 10);
-      bg.stroke();
-      const label = this.host.addChildLabel(back, 'Label', '返回主城', 0, 1, 24, rgba(255, 236, 190), new Size(backW - 20, 32));
-      label.isBold = true;
-      back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
-      this.host.applyImageButtonFeedback(back, 1.04, 0.96);
+      mountGlassButton(this.kit, panel, 'GuardRaidBack', '返回主城', X(W / 2), Y(546.5), S(327), S(65), shell.k, 'primary', () => this.host.returnToLobbyFromBattlePreview(), 30);
     }
   }
 
   /** NPC 矿可「再来一次」;真人矿有 24 小时限制,只回矿境。 */
   private selectedRaidRetryable(): boolean {
     return /^RAID_\d+$/i.test(this.host.currentLobbyBattleState().start?.stageCode ?? '');
-  }
-
-  /** 结算面板(宽 = 高 × 1.65,高 = 布局高 × 0.56)的文字可用宽度。 */
-  private endOverlayTextWidth(): number {
-    return Math.min(this.layoutWidth * 0.7, this.layoutHeight * 0.56 * 1.65 * 0.84);
-  }
-
-  private fitEndLabel(label: Label, wrap: boolean): void {
-    label.enableWrapText = wrap;
-    label.overflow = Label.Overflow.SHRINK;
   }
 
   /** 结算回执到达:更新覆盖层为奖励与返回按钮。 */
@@ -11063,14 +10714,6 @@ export class LobbyGuardBattleRenderer {
     if (!overlay) {
       return;
     }
-    const settleLabel = overlay.getChildByName('GuardEndSettle')?.getComponent(Label);
-    if (battleState.settling && settleLabel) {
-      settleLabel.string = '正在提交结算…';
-      return;
-    }
-    if (battleState.error && settleLabel) {
-      settleLabel.string = `结算失败:${battleState.error}`;
-    }
     if (overlay.getChildByName('GuardRaidResult') && this.raid) {
       this.raid.refreshResult(overlay, battleState, this.selectedRaidRetryable(), (retry) => {
         if (this.host.returnToLobbyRaidPanel) {
@@ -11081,19 +10724,65 @@ export class LobbyGuardBattleRenderer {
       });
       return;
     }
-    const settlement = battleState.settlement;
-    if (!settlement || overlay.getChildByName('GuardEndBack')) {
+    const shell = this.endShell;
+    if (!shell || shell.overlay !== overlay) {
       return;
     }
+    const { panel, k, S, X, Y, T } = shell;
+    const settleLabel = panel.getChildByName('GuardEndSettle')?.getComponent(Label);
+    if (battleState.settling && settleLabel) {
+      settleLabel.string = '正在提交结算…';
+      return;
+    }
+    if (battleState.error && settleLabel) {
+      settleLabel.string = `结算失败:${battleState.error}`;
+    }
+    const settlement = battleState.settlement;
+    if (!settlement || panel.getChildByName('GuardEndBack')) {
+      return;
+    }
+    const W = GUARD_END_W;
+    const items = (settlement.rewardItems ?? []).filter((item) => item.amount > 0).slice(0, 6);
     if (settleLabel) {
       settleLabel.string = settlement.message || (settlement.rewardGranted ? '奖励已发放。' : '本场未产生奖励。');
+      if (items.length > 0) {
+        settleLabel.node.setPosition(X(W / 2), Y(476), 0);
+      }
     }
-    const rewards = (settlement.rewardItems ?? []).slice(0, 6).map((item) => `${item.resourceName ?? item.resourceCode} ×${item.amount}`).join('  ');
-    if (rewards) {
-      this.fitEndLabel(this.host.addChildLabel(overlay, 'GuardEndRewards', rewards, 0, -this.layoutHeight * 0.05 - 12, 19, rgba(255, 226, 150), new Size(this.endOverlayTextWidth(), 50)), true);
-    }
-    const back = this.mountPrimaryButton(overlay, 'GuardEndBack', 0, -this.layoutHeight * 0.2, 236);
-    this.host.addChildLabel(back, 'GuardEndBackLabel', this.sim?.raidClear ? '返回地图' : '返回大厅', 0, 0, 22, rgba(255, 238, 190), new Size(220, 28));
-    back.on(Node.EventType.TOUCH_END, () => this.host.returnToLobbyFromBattlePreview(), this);
+    // 物品格:136 见方,中心 dy 295,格距 201(5~6 件时收到 112 / 142),整排居中;格底稀有度细线,格下数量(28 粗白)+ 名字(20 灰)
+    const n = items.length;
+    const box = n <= 4 ? 136 : 112;
+    const pitch = n <= 4 ? 201 : 142;
+    const firstCx = W / 2 - ((n - 1) * pitch) / 2;
+    items.forEach((item, index) => {
+      const cx = firstCx + index * pitch;
+      const rarity = this.host.itemSourceRarityOf?.(item.resourceCode) ?? '';
+      const frame = mountGlassFrame(this.kit, panel, `GuardEndReward_${index}`, X(cx), Y(295), S(box), S(box), k);
+      const icon = resolveBagStyleItemIconAsset(item.resourceCode, item.resourceType, rarity);
+      if (icon) {
+        // 用本渲染器的 mountSprite(缓存命中同步套用、未命中直载):宿主 addSprite 在手机预览里实测 7 秒仍有图标没挂上
+        this.mountSprite(frame, 'Icon', icon, 0, S(2), S(box * 0.8), S(box * 0.8));
+      }
+      mountGlassLine(this.kit, frame, 'Rarity', 0, -S(box / 2 - 4), S(box - 8), Math.max(2, S(4)), guardRewardRarityColor(rarity, item.resourceCode));
+      T(panel, `GuardEndRewardAmount_${index}`, `×${formatInt(item.amount)}`, X(cx), Y(295 + box / 2 + 27), 28, GLASS_COLOR.text, S(pitch - 6), HorizontalTextAlignment.CENTER, true);
+      T(panel, `GuardEndRewardName_${index}`, item.resourceName ?? item.resourceCode, X(cx), Y(295 + box / 2 + 61), 20, GLASS_COLOR.sub, S(pitch - 6), HorizontalTextAlignment.CENTER);
+    });
+    mountGlassButton(this.kit, panel, 'GuardEndBack', this.sim?.raidClear ? '返回地图' : '返回大厅', X(W / 2), Y(546.5), S(327), S(65), k, 'primary', () => this.host.returnToLobbyFromBattlePreview(), 30);
   }
+}
+
+/** 结算用时 m:ss(原型「用时 3:42」)。 */
+function formatGuardDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** 结算物品格底边稀有度色(背包格同款;查不到稀有度时金币 / 货币用灰,其余按编码里的档位词兜底)。 */
+function guardRewardRarityColor(rarity: string, code: string): Color {
+  const key = (rarity || '').toUpperCase();
+  const upper = code.toUpperCase();
+  const tier = key || (/_(UR|SSR)\b|LEGEND/.test(upper) ? 'SSR' : /_(SR|EPIC)\b|ADVANCED|HIGH/.test(upper) ? 'SR' : /_(R|RARE)\b/.test(upper) ? 'R' : '');
+  return tier === 'UR' || tier === 'SSR' ? new Color(240, 163, 52, 255)
+    : tier === 'SR' || tier === 'EPIC' ? new Color(186, 84, 246, 255)
+      : tier === 'R' || tier === 'RARE' ? new Color(52, 132, 242, 255) : new Color(150, 158, 170, 255);
 }

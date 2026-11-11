@@ -43,7 +43,7 @@ CLEAN = ("try { r.closeBattleSettings(); } catch (e) {} try { r.closeExitConfirm
          "['GuardWheelOverlay', 'GuardChoiceOverlay', 'GuardHeroInfoPanel', 'GuardEndOverlay'].forEach(n => { const o = r.root.getChildByName(n); if (o) o.destroy(); }); "
          "r.wheelOverlayOpen = false; r.overlayShown = false; r.choiceOverlayLevel = 0; for (let i = 0; i < 12 && s.pendingChoice; i++) M.guardSkipChoice(s); "
          "if (r.statsPanelOpen) { r.statsPanelOpen = false; r.refreshStatsPanel(true); } s.paused = false; await sleep(600); "
-         "for (let i = 0; i < 12 && s.pendingChoice; i++) M.guardSkipChoice(s); { const o = r.root.getChildByName('GuardChoiceOverlay'); if (o) o.destroy(); } await sleep(300);")
+         "for (let i = 0; i < 12 && s.pendingChoice; i++) M.guardSkipChoice(s); s.pendingChoice = null; { const o = r.root.getChildByName('GuardChoiceOverlay'); if (o) o.destroy(); } await sleep(300);")
 STEPS = [
     # 先召满英雄,不然统计 / 英雄卡都是空的
     ('_prep', "(async () => { %s s.crystalHp = s.crystalMaxHp = 1e9; for (let i = 0; i < 16 && s.heroes.length < 4; i++) { s.gold = Math.max(s.gold, 5000); const sb = r.root.getChildByName('GuardSummonButton'); if (sb) sb.emit(cc.Node.EventType.TOUCH_END); await sleep(300); } if (s.pendingChoice) M.guardSkipChoice(s); return 'heroes=' + s.heroes.length; })()" % SLEEP),
@@ -52,12 +52,43 @@ STEPS = [
     ('wheel_done', "(async () => { %s await sleep(9000); return 'wheel=' + r.wheelOverlayOpen; })()" % SLEEP),
     ('wheel_deluxe', "(async () => { %s %s s.chests.push({ chestId: 9902, x: 5, lane: 0, droppedAtMs: s.timeMs, grade: 'deluxe' }); r.openChestWithWheel(9902); await sleep(9500); return 'wheel=' + r.wheelOverlayOpen; })()" % (SLEEP, CLEAN)),
     ('settings', "(async () => { %s %s r.openBattleSettings(); await sleep(1500); return 1; })()" % (SLEEP, CLEAN)),
+    ('settings_help', "(async () => { %s r.renderSettingsPage(r.root.getChildByName('GuardSettingsOverlay'), 'help'); await sleep(1200); return 1; })()" % SLEEP),
+    ('settings_spells', "(async () => { %s r.renderSettingsPage(r.root.getChildByName('GuardSettingsOverlay'), 'spells'); await sleep(2500); return 1; })()" % SLEEP),
     ('exit', "(async () => { %s %s r.openExitConfirm(); await sleep(900); return 'exit=' + r.exitConfirmOpen; })()" % (SLEEP, CLEAN)),
     ('stats', "(async () => { %s %s const codes = (s.pool || []).map(p => p.heroCode).slice(0, 6); codes.forEach((c, i) => { s.heroDamage[c] = 24000 - i * 3100; }); r.statsPanelOpen = true; r.refreshStatsPanel(true); await sleep(1800); return codes.length; })()" % (SLEEP, CLEAN)),
     ('hero_info', "(async () => { %s %s const h = s.heroes[0]; if (h) r.showHeroInfo(h); await sleep(1500); return !!h; })()" % (SLEEP, CLEAN)),
     ('victory', "(async () => { %s %s s.paused = true; r.showEndOverlay(true); await sleep(3500); return 1; })()" % (SLEEP, CLEAN)),
+    ('victory_rewards', "(async () => { %s const h = r.host; const orig = h.currentLobbyBattleState; h.currentLobbyBattleState = function () { return Object.assign({}, orig.call(h), { settling: false, error: '', settlement: { message: '奖励已发放。', rewardGranted: true, rewardItems: [{ resourceType: 'CURRENCY', resourceCode: 'GOLD', resourceName: '金币', amount: 12800 }, { resourceType: 'ITEM', resourceCode: 'ENHANCE_STONE_HIGH', resourceName: '高阶强化石', amount: 3 }, { resourceType: 'ITEM', resourceCode: 'HERO_EXP_BOOK', resourceName: '英雄经验书', amount: 5 }, { resourceType: 'ITEM', resourceCode: 'GUARD_CORE', resourceName: '守卫晶核', amount: 2 }] } }); }; try { r.refreshEndOverlay(); } finally { h.currentLobbyBattleState = orig; } await sleep(7000); return 1; })()" % SLEEP),
     ('defeat', "(async () => { %s %s s.paused = true; r.showEndOverlay(false); await sleep(3500); return 1; })()" % (SLEEP, CLEAN)),
 ]
+
+# GUARD_LOGIC=1:B 弹层按钮逻辑自检(emit 按钮 click / 卡片 TOUCH_END,不是真实鼠标)
+LOGIC = ("(async () => { %s %s const res = {}; "
+         "const find = (n, name) => { if (!n) return null; if (n.name === name) return n; for (const c of n.children) { const f = find(c, name); if (f) return f; } return null; }; "
+         "const click = (n) => { if (n) n.emit('click'); return !!n; }; "
+         "r.openBattleSettings(); await sleep(400); const ov = r.root.getChildByName('GuardSettingsOverlay'); "
+         "click(find(ov, 'GuardSettingsShake_1')); await sleep(200); res.toggleOff = r.shakeEnabled === false; "
+         "click(find(ov, 'GuardSettingsShake_0')); await sleep(200); res.toggleOn = r.shakeEnabled === true; "
+         "click(find(ov, 'GuardSettingsHelpLink')); await sleep(200); res.help = !!find(ov, 'GuardSettingsHelpBack'); "
+         "click(find(ov, 'GuardSettingsHelpBack')); await sleep(200); res.back = !!find(ov, 'GuardSettingsResume'); "
+         "click(find(ov, 'GuardSettingsSpellsLink')); await sleep(200); res.spells = !!find(ov, 'GuardSpellsBack'); click(find(ov, 'GuardSpellsBack')); await sleep(200); "
+         "click(find(ov, 'GuardSettingsExit')); await sleep(300); res.exitOpen = r.exitConfirmOpen; "
+         "const ex = r.root.getChildByName('GuardExitConfirmOverlay'); click(find(ex, 'GuardExitConfirmCancel')); await sleep(200); res.exitCancel = !r.exitConfirmOpen && !r.root.getChildByName('GuardExitConfirmOverlay'); "
+         "click(find(ov, 'GuardSettingsClose')); await sleep(200); res.settingsX = !r.settingsOpen && !r.root.getChildByName('GuardSettingsOverlay') && !s.paused; "
+         "r.openBattleSettings(); await sleep(300); click(find(r.root.getChildByName('GuardSettingsOverlay'), 'GuardSettingsResume')); await sleep(200); res.resume = !r.settingsOpen; "
+         "r.openBattleSettings(); await sleep(300); r.root.getChildByName('GuardSettingsOverlay').emit('click'); await sleep(200); res.mask = !r.settingsOpen; "
+         "r.openExitConfirm(); await sleep(300); r.root.getChildByName('GuardExitConfirmOverlay').emit('click'); await sleep(200); res.exitMask = !r.exitConfirmOpen; "
+         "s.gold += 3000; M.guardEnhance(s); await sleep(1500); let co = r.root.getChildByName('GuardChoiceOverlay'); res.choiceOpen = !!co; "
+         "const rr = s.rerollLeft; click(find(co, 'GuardChoiceReroll')); await sleep(800); res.reroll = s.rerollLeft === rr - 1 && !!r.root.getChildByName('GuardChoiceOverlay'); "
+         "co = r.root.getChildByName('GuardChoiceOverlay'); const card = find(co, 'GuardChoiceCard_0'); if (card) card.emit(cc.Node.EventType.TOUCH_END); await sleep(800); res.choose = !s.pendingChoice && !r.root.getChildByName('GuardChoiceOverlay'); "
+         "s.chests.push({ chestId: 9903, x: 5, lane: 0, droppedAtMs: s.timeMs, grade: 'normal' }); r.openChestWithWheel(9903); await sleep(400); "
+         "click(find(r.root.getChildByName('GuardWheelOverlay'), 'GuardWheelX')); await sleep(300); res.wheelXEarlyIgnored = r.wheelOverlayOpen; await sleep(9000); "
+         "click(find(r.root.getChildByName('GuardWheelOverlay'), 'GuardWheelX')); await sleep(800); res.wheelX = !r.wheelOverlayOpen && !r.root.getChildByName('GuardWheelOverlay'); "
+         "s.chests.push({ chestId: 9904, x: 5, lane: 0, droppedAtMs: s.timeMs, grade: 'normal' }); r.openChestWithWheel(9904); await sleep(9500); "
+         "click(find(r.root.getChildByName('GuardWheelOverlay'), 'GuardWheelClose')); await sleep(800); res.wheelTake = !r.wheelOverlayOpen && !r.root.getChildByName('GuardWheelOverlay'); "
+         "return JSON.stringify(res); })()") % (SLEEP, CLEAN)
+if os.environ.get('GUARD_LOGIC'):
+    STEPS.append(('_logic', LOGIC))
 
 
 async def shoot(mobile: bool, suffix: str) -> None:
