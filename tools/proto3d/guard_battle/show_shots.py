@@ -9,6 +9,13 @@
   python tools/proto3d/guard_battle/show_shots.py bench <输出目录>            # 三档画质 × 1920x1080,中档再测 2400x1080
   python tools/proto3d/guard_battle/show_shots.py video <输出目录> [--q=high] [--size=1600x900] [--secs=12] [--fps=30] [--cam=battle]
   python tools/proto3d/guard_battle/show_shots.py look  <输出目录> [--q=high] [--cam=battle] [--t=3] [--cast=1.2]   # 随手看一眼
+
+带骨骼的角色(AI 图转 3D 的模型临时放在 assets/resources/g3d_char 时;流程见 tools/proto3d/char3d):
+  look  … --idle=1 --knights=0 --char=idle --chart=3.4 --cams=pair,pairFace,aiBody,aiFace,aiBack   # 定妆照:藏骑士、角色定在某个动作的第几秒
+  clips <输出目录> [--clips=idle,walk,slash,hurt,fall] [--times=0.4,1.1,1.8,2.5] [--cam=aiBody]      # 每个动作在几个时刻各截一张
+  video … --idle=1 --knights=0 --char=seq --cam=aiBody                                            # 不演战斗,只录角色轮流播动作
+  bench … [--tiers=high,mid] [--nochar=1] [--extra=&charbaked=1] [--name=_后缀]                    # 量角色本身的开销(藏起来 / 换成预烘焙骨骼)
+  eval  <输出目录> --js=<脚本文件>[,…] [--cams=…]                                                  # 调试:打开样板后执行脚本并打印返回值
 """
 import asyncio
 import base64
@@ -96,7 +103,7 @@ class Page:
         await self.call('Page.navigate', {'url': 'about:blank'})
         await self.call('HeapProfiler.collectGarbage')
         await asyncio.sleep(0.6)
-        await self.call('Page.navigate', {'url': f'{PREVIEW}?g3dshow=1&q={q}'})
+        await self.call('Page.navigate', {'url': f"{PREVIEW}?g3dshow=1&q={q}{opt('extra')}"})
         ok = False
         for _ in range(360):
             v = await self.js("(() => { const g = window.__g3dshow; return g ? JSON.stringify({ opened: g.stage.opened, err: g.stage.lastError }) : ''; })()")
@@ -112,6 +119,19 @@ class Page:
         if not ok:
             print('  样板没起来(预览开着吗?)', *self.logs[-6:], sep='\n  ', flush=True)
             return False
+        # 临时放进工程的带骨骼角色(resources/g3d_char,AI 图转 3D 的模型)是异步加载的:等它摆出来、动作挂好再往下走
+        probe = ("(() => { try { const P = cc.js.getClassByName('cc.Prefab'); const want = cc.resources.getDirWithPath('g3d_char', P).length;"
+                 " const cs = __g3dshow.stage.chars || []; return JSON.stringify({ want, have: cs.length, anim: cs.filter(c => c.names.length).length }); }"
+                 " catch (e) { return JSON.stringify({ want: 0, have: 0, anim: 0 }); } })()")
+        for i in range(320):
+            v = await self.js(probe)
+            st = json.loads(v) if isinstance(v, str) and v.startswith('{') else {}
+            want, have, anim = st.get('want', 0), st.get('have', 0), st.get('anim', 0)
+            if have >= want and (anim >= want or i > 300 or want == 0):
+                if want:
+                    print(f'  带骨骼角色 {have} 个,带动作 {anim} 个', flush=True)
+                break
+            await asyncio.sleep(0.25)
         await self.js(LAYOUT)
         await asyncio.sleep(1.2)
         await self.js(LAYOUT)
@@ -151,6 +171,11 @@ async def mode_look(p):
         await p.js("__g3dshow.stage.mode = 'idle'")
     if opt('cast'):
         print(' ', await p.js(cast_js(float(opt('cast')))), flush=True)
+    if opt('knights') == '0':            # 拍定妆照:把会走到镜头前的骑士藏起来
+        await p.js('__g3dshow.knights(false)')
+    if opt('char'):                      # 带骨骼的角色定在某个动作的第几秒:--char=walk --chart=0.6
+        await p.js(f"__g3dshow.char('{opt('char')}')")
+        await p.step(max(1, int(float(opt('chart', '0.5')) * 60)), 1 / 60)
     # --cams=a,b,c:同一个时刻换几个机位各截一张
     for cam in [c for c in opt('cams', opt('cam', 'battle')).split(',') if c]:
         await p.js(f"__g3dshow.cam('{cam}')")
@@ -217,9 +242,14 @@ BENCH = ("(() => { const gl = cc.director.root.device.gl; const px = new Uint8Ar
 
 async def mode_bench(p):
     rows = []
-    for q, w, h, mobile in [('ultra', 1920, 1080, False), ('high', 1920, 1080, False), ('mid', 1920, 1080, False), ('mid', 2400, 1080, True)]:
+    tiers = [('ultra', 1920, 1080, False), ('high', 1920, 1080, False), ('mid', 1920, 1080, False), ('mid', 2400, 1080, True)]
+    if opt('tiers'):                      # --tiers=high,mid:只测这几档
+        tiers = [t for t in tiers if t[0] in opt('tiers').split(',')]
+    for q, w, h, mobile in tiers:
         if not await p.open(w, h, q, mobile):
             continue
+        if opt('nochar'):                 # --nochar=1:把带骨骼的角色藏起来,量它本身占多少
+            await p.js("__g3dshow.stage.chars.forEach(c => { c.node.active = false; })")
         await p.step(150)
         v = await p.js(BENCH, 600)
         try:
@@ -232,7 +262,7 @@ async def mode_bench(p):
         rows.append(row)
         print(f"  {q:5s} {row['view']:14s} 画布 {row['canvas']}  每帧 {row['ms']['median']} ms(95% {row['ms']['p95']})  绘制 {row['draws']} 次  三角 {row['tris']}", flush=True)
     tag = {'low': '核显', '0': '软件渲染'}.get(os.environ.get('QA_GPU', '1'), '独显')
-    with open(os.path.join(OUT, f'bench_样板_{tag}.json'), 'w', encoding='utf-8') as f:
+    with open(os.path.join(OUT, f"bench_样板_{tag}{opt('name')}.json"), 'w', encoding='utf-8') as f:
         json.dump(rows, f, ensure_ascii=False, indent=1)
     if rows:
         print('  显卡:', rows[0].get('gpu'), flush=True)
@@ -249,7 +279,15 @@ async def mode_video(p):
     if not await p.open(w, h, q):
         return
     await p.step(140)
-    await p.js(f"__g3dshow.stage.mode = 'loop'; __g3dshow.cam('{opt('cam', 'battle')}'); __g3dshow.stage.nextCast = __g3dshow.stage.time + 1.6")
+    if opt('idle'):       # 不演战斗,只看角色自己的动作
+        await p.js(f"__g3dshow.stage.mode = 'idle'; __g3dshow.cam('{opt('cam', 'battle')}')")
+        await p.step(200)
+    else:
+        await p.js(f"__g3dshow.stage.mode = 'loop'; __g3dshow.cam('{opt('cam', 'battle')}'); __g3dshow.stage.nextCast = __g3dshow.stage.time + 1.6")
+    if opt('knights') == '0':
+        await p.js('__g3dshow.knights(false)')
+    if opt('char'):
+        await p.js(f"__g3dshow.char('{opt('char')}')")
     total = int(secs * fps)
     for i in range(total):
         await p.step(2, 1 / (fps * 2))
@@ -266,6 +304,41 @@ async def mode_video(p):
     print('  video', out, os.path.getsize(out) // 1024 if os.path.exists(out) else 0, 'KB', r.stderr[-300:], flush=True)
     if os.path.exists(out):
         shutil.rmtree(frames, ignore_errors=True)
+
+
+async def mode_clips(p):
+    """带骨骼的角色:每个动作在几个时刻各截一张。--clips=idle,walk,slash,hurt,fall --times=0.3,1.0,1.7,2.4 --cam=aiBody"""
+    w, h = size_of(opt('size', '1280x720'))
+    if not await p.open(w, h, opt('q', 'high')):
+        return
+    await p.js("__g3dshow.stage.mode = 'idle'")
+    await p.step(110)                     # 等上一次施法收完
+    await p.js(f"__g3dshow.knights(false); __g3dshow.cam('{opt('cam', 'aiBody')}')")
+    times = [float(t) for t in opt('times', '0.3,1.0,1.7,2.4').split(',') if t]
+    for clip in [c for c in opt('clips', 'idle,walk,slash,hurt,fall').split(',') if c]:
+        await p.js(f"__g3dshow.char('{clip}')")
+        now = 0.0
+        for t in times:
+            await p.step(max(1, round((t - now) * 60)), 1 / 60)
+            now = t
+            await p.shot(os.path.join(OUT, f"clip_{clip}_{t:.1f}.jpg"))
+    print(' ', await p.js('JSON.stringify(__g3dshow.info().chars)'), flush=True)
+
+
+async def mode_eval(p):
+    """调试:打开样板后依次执行 --js=<文件>[,<文件>…] 里的脚本并打印返回值(每个文件是一个表达式);--cams 可以顺手截几张。"""
+    w, h = size_of(opt('size', '1280x720'))
+    if not await p.open(w, h, opt('q', 'mid')):
+        return
+    if opt('idle'):
+        await p.js("__g3dshow.stage.mode = 'idle'")
+    await p.step(int(float(opt('t', '1')) * 30))
+    for f in [x for x in opt('js').split(',') if x]:
+        print(' ', os.path.basename(f), '→', await p.js(open(f, encoding='utf-8').read()), flush=True)
+    for cam in [c for c in opt('cams', '').split(',') if c]:
+        await p.js(f"__g3dshow.cam('{cam}')")
+        await p.step(2, 1 / 60)
+        await p.shot(os.path.join(OUT, f"eval_{opt('tag', 'x')}_{cam}.jpg"))
 
 
 async def main():
@@ -294,7 +367,7 @@ async def main():
             await p.call('Runtime.enable')
             await p.call('Page.enable')
             await p.call('Page.bringToFront')
-            await {'look': mode_look, 'shots': mode_shots, 'bench': mode_bench, 'video': mode_video}[MODE](p)
+            await {'look': mode_look, 'shots': mode_shots, 'bench': mode_bench, 'video': mode_video, 'eval': mode_eval, 'clips': mode_clips}[MODE](p)
             if p.logs:
                 print('  page logs:', *list(dict.fromkeys(p.logs))[:8], sep='\n    ', flush=True)
     finally:

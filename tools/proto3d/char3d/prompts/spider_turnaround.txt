@@ -1,0 +1,9 @@
+Generate one image. Do not write files, do not ask questions, just create the image.
+
+A creature design turnaround sheet for building a 3D game monster model: three full-body views of the SAME creature standing side by side on a plain, seamless light-grey studio background — FRONT view (head-on, facing the viewer) on the left, SIDE view (profile, head pointing to the right) in the middle, BACK view (seen from directly behind) on the right. Orthographic look with no perspective distortion; the same scale in all three views with all feet on the same baseline; evenly spaced with clear gaps, nothing overlapping, the whole creature with all of its legs inside the frame in every view with margin around it.
+
+Creature (an original design): a giant forest spider the size of a large dog, body about 1 m long, corrupted by a creeping darkness. A heavy, hairy, tarantula-like build with eight thick jointed legs. Dark brown-black bristly hair on the body and legs; a large abdomen banded in moss green and rust with a pale bone-colored marking on top; a few patches on the abdomen and the leg joints where the surface has hardened into dull black, glassy, obsidian-like crust with fine cracks (matte, NOT glowing). Eight small dark glossy eyes. Large curved fangs held closed. No web, no egg sac.
+
+Pose: neutral standing pose for 3D modeling — all eight legs evenly spread in a wide, perfectly symmetric stance, each leg clearly separated from the others, the body raised off the ground and level.
+
+Style: realistic, grounded, like a macro reference photograph of a real animal; physically plausible chitin, hair and mineral crust; natural muted colors. Soft, even studio lighting from the front; no rim light, no glow, no magic effects, no dramatic shadows, no shadow on the background. No text, no labels, no arrows, no borders, no UI. High detail, sharp focus. Wide 3:2 landscape image.

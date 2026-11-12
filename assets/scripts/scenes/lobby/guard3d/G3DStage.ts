@@ -1,4 +1,4 @@
-import { Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, Layers, Mat4, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, sys, Vec3, Vec4 } from 'cc';
+import { AnimationClip, Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, Layers, Mat4, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, SkeletalAnimation, SkinnedMeshRenderer, sys, Vec3, Vec4 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { Actor, actorMaterials, ActorTemplate, buildKnight, buildSorcerer, poseKnight, poseSorcerer } from './G3DActor';
 import { BRAZIERS, buildCourtyard, TER_BACK, TER_H, UVD } from './G3DCourtyard';
@@ -35,6 +35,24 @@ const REF = {
   statue: new Vec3(HERO.x + 1.45, 0.07, HERO.z - 1.75), statueH: 2.0, statueYaw: 0,
   bust: new Vec3(HERO.x + 0.05, 1.22, HERO.z + 0.85), bustH: 0.56, bustYaw: 90,
 };
+// AI 图转 3D 出来的带骨骼角色摆在哪(见 loadChars):术士靠镜头那一侧的石台上,和术士并排、同一套灯光。
+// height = 缩放到多高(头顶,和代码生成的术士一样高);yaw = 转到面朝 +x(敌人来的方向);baked = 用不用预烘焙的骨骼动画
+// (预烘焙省性能但动作之间不能过渡;关掉是每帧实时算骨骼,动作切换有过渡,以后要在骨架上叠程序姿势也得关)
+// albedo = 颜色贴图整体压多少:AI 出的颜色贴图里白的(胡子、交领)接近纯白,在这套给深色材质校过的灯下会曝成一片
+const CHAR = { at: new Vec3(HERO.x, 0.07, HERO.z + 1.75), height: 1.86, yaw: 0, baked: false, albedo: 0.84 };   // Tripo 出的模型本来就面朝 +x
+const CHAR_ORDER = ['idle', 'walk', 'run', 'slash', 'shoot', 'hurt', 'fall'];
+interface ShowChar {
+  node: Node;
+  anim: SkeletalAnimation | null;
+  names: string[];
+  cur: string;
+  t: number;
+  hold: number;
+  seq: number;
+  manual: boolean;
+  tris: number;
+  joints: number;
+}
 const OVERLAY_LAYER = 1 << 1;   // 贴在镜头前的暗角:只给主相机看,倒影相机不看
 const WET = 0.42;               // 地面有多湿(积水面积)
 const GROUND_LAYER = 1 << 2;    // 地面:倒影相机也不看(地面自己在采样倒影图,再画进倒影图就成了自己读自己)
@@ -115,6 +133,7 @@ class Stage {
   private crystalMat: Material | null = null;
   private refs: Node[] = [];
   private refStoneMat: Material | null = null;
+  chars: ShowChar[] = [];
   private crystalEdgeMat: Material | null = null;
   private crystalTips: Vec3[] = [];
   private crystalBits: Array<{ node: Node; r: number; h: number; a: number; w: number }> = [];
@@ -488,6 +507,7 @@ class Stage {
     this.stats.knightTris = this.knightTpl.triangles;
     this.setCam('battle');
     this.loadRefs();
+    this.loadChars();
     this.stats.buildMs = Math.round(performance.now() - t0);
   }
 
@@ -574,6 +594,175 @@ class Stage {
     }
   }
 
+  // ───────────────────────── AI 图转 3D 的角色 ─────────────────────────
+  /**
+   * AI 图转 3D 出来的带骨骼角色(2026-11-12:三视图设定图 → Tripo 多视图转 3D → 自动绑骨 → 预设动作,见 tools/proto3d/char3d):
+   * assets/resources/g3d_char 下有导入好的模型就摆出来,站在术士靠镜头那一侧的石台上,同一套灯光,轮流播它自带的动作。
+   * 那个目录平时是空的(模型放在仓库外,对比时临时拷进来,截完移出 —— 留着会被打进资源包),没有就什么都不做。
+   */
+  private loadChars(): void {
+    let infos: Array<{ path: string }> = [];
+    try {
+      infos = ((resources as any).getDirWithPath('g3d_char', Prefab) as Array<{ path: string }>) ?? [];
+    } catch (error) {
+      infos = [];
+    }
+    infos.forEach((info, index) => {
+      resources.load(info.path, Prefab, (err, prefab) => {
+        if (err || !prefab || !this.world || !this.world.isValid) {
+          return;
+        }
+        const n = instantiate(prefab);
+        // 用不用预烘焙必须在节点进场景之前设:引擎里动画状态一旦按「预烘焙」初始化过,之后再切成实时骨骼也不会去驱动骨头
+        // (skeletal-animation-state.ts 的 _doNotCreateEval 只在第一次初始化时定)—— 表现是时间在走、人站着不动。
+        const pre = n.getComponent(SkeletalAnimation) ?? n.getComponentInChildren(SkeletalAnimation);
+        if (pre) {
+            pre.useBakedAnimation = CHAR.baked;
+        }
+        this.world.addChild(n);
+        n.setRotationFromEuler(0, CHAR.yaw, 0);
+        n.updateWorldTransform();
+        // 量包围盒(站姿下的网格最小 / 最大点),缩放到目标身高、脚落到石台面上
+        const lo = new Vec3(1e9, 1e9, 1e9);
+        const hi = new Vec3(-1e9, -1e9, -1e9);
+        let tris = 0;
+        let joints = 0;
+        for (const mr of n.getComponentsInChildren(MeshRenderer)) {
+          mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
+          mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
+          if (CHAR.albedo !== 1) {
+            for (let i = 0; i < mr.sharedMaterials.length; i += 1) {
+              mr.getMaterialInstance(i)?.setProperty('albedoScale', new Vec3(CHAR.albedo, CHAR.albedo, CHAR.albedo));
+            }
+          }
+          const st = mr.mesh?.struct;
+          if (!st) {
+            continue;
+          }
+          for (const p of st.primitives) {
+            tris += p.indexView ? p.indexView.count / 3 : 0;
+          }
+          const skinned = mr as SkinnedMeshRenderer;
+          joints = Math.max(joints, skinned.skeleton?.joints.length ?? 0);
+          if (!st.minPosition || !st.maxPosition) {
+            continue;
+          }
+          // 蒙皮网格的顶点是相对骨架根算的(挂网格的那个节点自己的位移不算数),静态网格才按自己的节点算
+          const base = skinned.skinningRoot ?? mr.node;
+          base.updateWorldTransform();
+          for (let i = 0; i < 8; i += 1) {
+            _v.set(i & 1 ? st.maxPosition.x : st.minPosition.x, i & 2 ? st.maxPosition.y : st.minPosition.y, i & 4 ? st.maxPosition.z : st.minPosition.z);
+            Vec3.transformMat4(_v, _v, base.worldMatrix);
+            Vec3.min(lo, lo, _v);
+            Vec3.max(hi, hi, _v);
+          }
+        }
+        const s = CHAR.height / Math.max(0.01, hi.y - lo.y);
+        n.setScale(s, s, s);
+        n.setPosition(CHAR.at.x - ((lo.x + hi.x) / 2) * s, CHAR.at.y - lo.y * s, CHAR.at.z + index * 1.75 - ((lo.z + hi.z) / 2) * s);
+        const c: ShowChar = { node: n, anim: null, names: [], cur: '', t: 0, hold: 0, seq: -1, manual: false, tris, joints };
+        this.chars.push(c);
+        this.stats.charTris = (this.stats.charTris ?? 0) + tris;
+        this.stats.charJoints = joints;
+        const ready = (anim: SkeletalAnimation | null): void => {
+          if (!anim) {
+            return;
+          }
+          const rank = (name: string): number => {
+            const i = CHAR_ORDER.findIndex((k) => name.toLowerCase().indexOf(k) >= 0);
+            return i < 0 ? CHAR_ORDER.length : i;
+          };
+          c.anim = anim;
+          c.names = anim.clips.filter((clip) => !!clip).map((clip) => clip!.name).sort((a, b) => rank(a) - rank(b));
+          if (c.names.length) {
+            this.playChar(c, c.names[0], 0);
+            c.seq = 0;
+          }
+        };
+        const own = n.getComponent(SkeletalAnimation) ?? n.getComponentInChildren(SkeletalAnimation);
+        if (own && own.clips.some((clip) => !!clip)) {
+          ready(own);
+        } else {
+          // 预制体上没带动画组件:把同目录导入出来的动作片段挂上去
+          const dir = info.path.slice(0, info.path.lastIndexOf('/'));
+          resources.loadDir(dir, AnimationClip, (e2, clips) => {
+            if (e2 || !clips || !clips.length || !n.isValid) {
+              return;
+            }
+            const anim = own ?? n.addComponent(SkeletalAnimation);
+            anim.useBakedAnimation = CHAR.baked;   // 同样要赶在挂动作片段(建状态)之前
+            anim.clips = clips;
+            ready(anim);
+          });
+        }
+      });
+    });
+  }
+
+  private playChar(c: ShowChar, name: string, fade = 0.25): void {
+    const anim = c.anim;
+    const st = anim?.getState(name);
+    if (!anim || !st) {
+      return;
+    }
+    const lower = name.toLowerCase();
+    const loop = /idle|walk|run/.test(lower);
+    st.wrapMode = loop ? AnimationClip.WrapMode.Loop : AnimationClip.WrapMode.Normal;
+    anim.crossFade(name, fade);
+    c.cur = name;
+    c.t = 0;
+    // 循环动作播一会儿就换下一个;一次性的动作播完再停半秒(倒地多躺一会儿);平台给的预设动作有的很长(受击 14 秒),最多播 5 秒
+    c.hold = loop ? (lower.indexOf('idle') >= 0 ? 3.0 : 3.2) : Math.min(5, st.duration) + (lower.indexOf('fall') >= 0 ? 1.2 : 0.45);
+  }
+
+  /** 调试:拍定妆照时把骑士藏起来(他们会走到镜头前面挡住人)。 */
+  showKnights(on: boolean): void {
+    for (const k of this.knights) {
+      k.actor.root.active = on && k.state !== 'gone';
+    }
+  }
+
+  /** 轮流播角色自带的动作;动作的快慢跟着样板自己的时钟走(逐帧截图 / 录屏时引擎的帧间隔和样板的不一样)。 */
+  private stepChars(dt: number): void {
+    const engineDt = director.getDeltaTime();
+    const speed = engineDt > 1e-5 ? dt / engineDt : 1;
+    for (const c of this.chars) {
+      if (!c.anim || !c.names.length) {
+        continue;
+      }
+      const st = c.anim.getState(c.cur);
+      if (st) {
+        st.speed = speed;
+      }
+      c.t += dt;
+      if (!c.manual && c.t >= c.hold && c.names.length > 1) {
+        c.seq = (c.seq + 1) % c.names.length;
+        this.playChar(c, c.names[c.seq]);
+      }
+    }
+  }
+
+  /** 调试:指定播哪个动作(名字里含这个词就行);不传 / 传 seq = 恢复轮流播。返回每个角色有哪些动作。 */
+  charPlay(name?: string): string[][] {
+    for (const c of this.chars) {
+      if (!name || name === 'seq') {
+        // 恢复轮流播,从第一个动作(待机)重新开始
+        c.manual = false;
+        if (c.names.length) {
+          c.seq = 0;
+          this.playChar(c, c.names[0], 0);
+        }
+        continue;
+      }
+      const hit = c.names.find((k) => k.toLowerCase().indexOf(name.toLowerCase()) >= 0);
+      if (hit) {
+        c.manual = true;
+        this.playChar(c, hit);
+      }
+    }
+    return this.chars.map((c) => c.names);
+  }
+
   // ───────────────────────── 镜头 ─────────────────────────
   setCam(name: string): string {
     const cam = this.cam!;
@@ -587,6 +776,12 @@ class Stage {
       // 对照用:正面看术士的脸和旁边的胸像;中景看术士和雕像
       refFace: { pos: [HERO.x + 2.3, 1.62, HERO.z + 0.55], look: [HERO.x, 1.52, HERO.z + 0.42], fov: 24 },
       refBody: { pos: [HERO.x + 3.6, 1.7, HERO.z + 3.9], look: [HERO.x + 0.75, 1.05, HERO.z - 0.9], fov: 30 },
+      // AI 图转 3D 的角色(靠镜头的石台)和代码生成的术士(正中石台)并排,都面朝 +x:正面中景、两张脸、单看 AI 角色的全身 / 脸
+      pair: { pos: [HERO.x + 5.4, 1.5, HERO.z + 0.875], look: [HERO.x, 0.96, HERO.z + 0.875], fov: 30 },
+      pairFace: { pos: [HERO.x + 2.9, 1.74, HERO.z + 0.875], look: [HERO.x, 1.66, HERO.z + 0.875], fov: 24 },
+      aiBody: { pos: [HERO.x + 3.9, 1.3, HERO.z + 3.1], look: [HERO.x, 0.95, HERO.z + 1.75], fov: 30 },
+      aiFace: { pos: [HERO.x + 1.75, 1.76, HERO.z + 2.3], look: [HERO.x, 1.7, HERO.z + 1.75], fov: 22 },
+      aiBack: { pos: [HERO.x - 2.9, 1.5, HERO.z + 3.3], look: [HERO.x, 1.0, HERO.z + 1.75], fov: 30 },
     };
     const p = presets[name] ?? presets.battle;
     cam.fov = p.fov;
@@ -798,6 +993,7 @@ class Stage {
     Quat.multiply(_q2, hero.root.worldRotation, _q);
     hero.aim.staff = _q2.clone();
     hero.update(dt);
+    this.stepChars(dt);
     const staff = hero.joints.staff;
     Vec3.transformMat4(_v, _v2.set(0, 1.16, 0), staff.worldMatrix);   // 杖顶晶石
     const charge = this.cast;
@@ -1098,7 +1294,8 @@ class Stage {
   // ───────────────────────── 调试 ─────────────────────────
   info(): Record<string, unknown> {
     return { opened: this.opened, built: !!this.world, time: +this.time.toFixed(2), mode: this.mode, castT: +this.castT.toFixed(2), stats: this.stats, fx: this.fx?.stats, knights: this.knights.map((k) => `${k.state}@${k.x.toFixed(1)}`),
-      cfg: { ...SHOW }, kit: ['g3d-standard', 'g3d-bloom', 'g3d-fxaa'].filter((n) => !!keptMaterial(n)), lastError: this.lastError };
+      cfg: { ...SHOW }, kit: ['g3d-standard', 'g3d-bloom', 'g3d-fxaa'].filter((n) => !!keptMaterial(n)), lastError: this.lastError,
+      chars: this.chars.map((c) => ({ clips: c.names, cur: c.cur, tris: c.tris, joints: c.joints, baked: c.anim ? c.anim.useBakedAnimation : null })) };
   }
 
   /** 现场调参。 */
@@ -1136,6 +1333,9 @@ function boot(): void {
   } else if (sys.isMobile) {
     Object.assign(SHOW, TIERS.mid, { quality: 'mid' });
   }
+  if (param('charbaked') === '1') {
+    CHAR.baked = true;     // 测「预烘焙骨骼动画」的开销用
+  }
   // 等主场景起来再接管(脚本加载时场景还没进)
   const timer = setInterval(() => {
     const scene = director.getScene();
@@ -1148,7 +1348,7 @@ function boot(): void {
 }
 
 if (!EDITOR && sys.isBrowser) {
-  (globalThis as any).__g3dshow = { stage, info: () => stage.info(), set: (p: Partial<ShowCfg>) => stage.set(p), cam: (n: string) => stage.setCam(n), cast: () => stage.castNow(), cfg: SHOW };
+  (globalThis as any).__g3dshow = { stage, info: () => stage.info(), set: (p: Partial<ShowCfg>) => stage.set(p), cam: (n: string) => stage.setCam(n), cast: () => stage.castNow(), char: (n?: string) => stage.charPlay(n), knights: (on: boolean) => stage.showKnights(on), cfg: SHOW, charCfg: CHAR };
   if (param('g3dshow') === '1') {
     boot();
   }

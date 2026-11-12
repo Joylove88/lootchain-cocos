@@ -1,0 +1,9 @@
+Generate one image. Do not write files, do not ask questions, just create the image.
+
+A creature design turnaround sheet for building a 3D game monster model: three full-body views of the SAME creature standing side by side on a plain, seamless light-grey studio background — FRONT view (head-on, facing the viewer) on the left, SIDE view (profile, head pointing to the right) in the middle, BACK view (seen from directly behind) on the right. Orthographic look with no perspective distortion; the same scale in all three views with all paws on the same baseline; evenly spaced with clear gaps, nothing overlapping, the whole creature inside the frame in every view with margin around it.
+
+Creature (an original design): a large wasteland dire wolf that has been corrupted by a creeping darkness. About 1.1 m tall at the shoulder, gaunt but powerful. Coarse ash-grey fur with a darker charcoal back and a thick neck ruff. Along the spine and over the shoulders some of the fur has hardened into patches of dull black, glassy, obsidian-like crust with fine cracks (matte, NOT glowing). Pale yellow eyes. A scarred muzzle, mouth closed with only the tips of the fangs visible. A notch torn out of the left ear. Long legs with large paws and dark claws. A bushy tail hanging low and relaxed.
+
+Pose: neutral standing pose for 3D modeling — all four legs straight and evenly apart in a symmetric stance, body level, head held at shoulder height looking straight ahead, tail down, mouth closed.
+
+Style: realistic, grounded, like a wildlife reference photograph of a real animal; physically plausible fur, skin, claws and mineral crust; natural muted colors. Soft, even studio lighting from the front; no rim light, no glow, no magic effects, no dramatic shadows, no shadow on the background. No text, no labels, no arrows, no borders, no UI. High detail, sharp focus. Wide 3:2 landscape image.
