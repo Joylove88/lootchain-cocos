@@ -1,4 +1,4 @@
-import { Camera, Canvas, Color, DirectionalLight, director, Director, game, js, Layers, Mat4, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, rendering, sys, Vec3, Vec4 } from 'cc';
+import { Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, Layers, Mat4, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, sys, Vec3, Vec4 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { Actor, actorMaterials, ActorTemplate, buildKnight, buildSorcerer, poseKnight, poseSorcerer } from './G3DActor';
 import { BRAZIERS, buildCourtyard, TER_BACK, TER_H, UVD } from './G3DCourtyard';
@@ -30,6 +30,11 @@ const CAM_POS = new Vec3(-0.4, 16.8, 24.85);
 const MOON_DIR = new Vec3(0.34, -0.55, 0.76).normalize();
 const CRYSTAL = new Vec3(-7.6, 0, 0.3);
 const HERO = new Vec3(-4.2, 0, 0.9);
+// 对照模型摆在哪(见 loadRefs):雕像在术士斜后方那块石台上,胸像在术士身侧、头部同高
+const REF = {
+  statue: new Vec3(HERO.x + 1.45, 0.07, HERO.z - 1.75), statueH: 2.0, statueYaw: 0,
+  bust: new Vec3(HERO.x + 0.05, 1.22, HERO.z + 0.85), bustH: 0.56, bustYaw: 90,
+};
 const OVERLAY_LAYER = 1 << 1;   // 贴在镜头前的暗角:只给主相机看,倒影相机不看
 const WET = 0.42;               // 地面有多湿(积水面积)
 const GROUND_LAYER = 1 << 2;    // 地面:倒影相机也不看(地面自己在采样倒影图,再画进倒影图就成了自己读自己)
@@ -108,6 +113,8 @@ class Stage {
   private dyn: PointLight[] = [];
   private pulses: Pulse[] = [];
   private crystalMat: Material | null = null;
+  private refs: Node[] = [];
+  private refStoneMat: Material | null = null;
   private crystalEdgeMat: Material | null = null;
   private crystalTips: Vec3[] = [];
   private crystalBits: Array<{ node: Node; r: number; h: number; a: number; w: number }> = [];
@@ -322,6 +329,7 @@ class Stage {
     stoneMat.setProperty('roughness', 0.62);   // 淋过雨
     stoneMat.setProperty('metallic', 0);
     stoneMat.setProperty('albedoScale', new Vec3(0.72, 0.74, 0.78));
+    this.refStoneMat = stoneMat;
     const woodMat = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true });
     woodMat.setProperty('mainTexture', tex(woodTex.albedo, true));
     woodMat.setProperty('normalMap', tex(woodTex.normal, true));
@@ -479,6 +487,7 @@ class Stage {
     }
     this.stats.knightTris = this.knightTpl.triangles;
     this.setCam('battle');
+    this.loadRefs();
     this.stats.buildMs = Math.round(performance.now() - t0);
   }
 
@@ -504,6 +513,67 @@ class Stage {
     }
   }
 
+  // ───────────────────────── 对照模型 ─────────────────────────
+  /**
+   * 对照用的现成高精度模型(2026-11-12 验证「精细度卡在素材来源,不在引擎」):
+   * assets/resources/g3d_ref 下有导入好的模型就摆出来 —— 哥特雕像站在术士斜后方的石台上,大理石胸像摆到术士头部同高的石墩上;
+   * 那个目录平时是空的(素材放在仓库外,验证时临时拷进来),没有就什么都不做。
+   */
+  private loadRefs(): void {
+    let infos: Array<{ path: string }> = [];
+    try {
+      infos = ((resources as any).getDirWithPath('g3d_ref', Prefab) as Array<{ path: string }>) ?? [];
+    } catch (error) {
+      infos = [];
+    }
+    for (const info of infos) {
+      resources.load(info.path, Prefab, (err, prefab) => {
+        if (err || !prefab || !this.world || !this.world.isValid) {
+          return;
+        }
+        const n = instantiate(prefab);
+        this.world.addChild(n);
+        const bust = info.path.indexOf('bust') >= 0;
+        const yaw = bust ? REF.bustYaw : REF.statueYaw;
+        n.setRotationFromEuler(0, yaw, 0);
+        // 量一下它的包围盒(按网格自带的最小 / 最大点),缩放到目标高度、底面落到指定的高度上
+        const lo = new Vec3(1e9, 1e9, 1e9);
+        const hi = new Vec3(-1e9, -1e9, -1e9);
+        for (const mr of n.getComponentsInChildren(MeshRenderer)) {
+          mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
+          mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
+          const st = mr.mesh?.struct;
+          if (!st || !st.minPosition || !st.maxPosition) {
+            continue;
+          }
+          mr.node.updateWorldTransform();
+          for (let i = 0; i < 8; i += 1) {
+            _v.set(i & 1 ? st.maxPosition.x : st.minPosition.x, i & 2 ? st.maxPosition.y : st.minPosition.y, i & 4 ? st.maxPosition.z : st.minPosition.z);
+            Vec3.transformMat4(_v, _v, mr.node.worldMatrix);
+            Vec3.min(lo, lo, _v);
+            Vec3.max(hi, hi, _v);
+          }
+        }
+        const h = Math.max(0.01, hi.y - lo.y);
+        const s = (bust ? REF.bustH : REF.statueH) / h;
+        const at = bust ? REF.bust : REF.statue;
+        n.setScale(s, s, s);
+        n.setPosition(at.x - ((lo.x + hi.x) / 2) * s, at.y - lo.y * s, at.z - ((lo.z + hi.z) / 2) * s);
+        this.refs.push(n);
+        this.stats[bust ? 'refBust' : 'refStatue'] = 1;
+      });
+    }
+    if (infos.length && this.refStoneMat) {
+      // 胸像下面垫一个石墩
+      const b = new MeshBatch();
+      b.cylinder(0.2, 0.24, REF.bust.y - 0.04, 16, new Vec3(REF.bust.x, (REF.bust.y - 0.04) / 2, REF.bust.z), new Vec3(0, 30, 0), [0.62, 0.62, 0.64], UVD, () => 0.5, 0);
+      b.cylinder(0.27, 0.27, 0.05, 16, new Vec3(REF.bust.x, REF.bust.y - 0.025, REF.bust.z), new Vec3(0, 10, 0), [0.7, 0.7, 0.72], UVD, () => 0.5);
+      for (const m of b.build()) {
+        this.refs.push(addMesh(this.world!, 'ShowRefPlinth', m, this.refStoneMat, true, true));
+      }
+    }
+  }
+
   // ───────────────────────── 镜头 ─────────────────────────
   setCam(name: string): string {
     const cam = this.cam!;
@@ -514,6 +584,9 @@ class Stage {
       knights: { pos: [0.4, 1.5, 6.6], look: [3.0, 1.05, 0.6], fov: 26 },
       low: { pos: [-0.5, 2.3, 12.5], look: [-0.6, 1.2, 0], fov: 34 },
       crystal: { pos: [-3.6, 2.2, 6.4], look: [CRYSTAL.x + 0.6, 1.3, CRYSTAL.z], fov: 30 },
+      // 对照用:正面看术士的脸和旁边的胸像;中景看术士和雕像
+      refFace: { pos: [HERO.x + 2.3, 1.62, HERO.z + 0.55], look: [HERO.x, 1.52, HERO.z + 0.42], fov: 24 },
+      refBody: { pos: [HERO.x + 3.6, 1.7, HERO.z + 3.9], look: [HERO.x + 0.75, 1.05, HERO.z - 0.9], fov: 30 },
     };
     const p = presets[name] ?? presets.battle;
     cam.fov = p.fov;

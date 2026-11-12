@@ -102,3 +102,24 @@ if BEFORE and os.path.isdir(BEFORE):
     box = (40, 400, 840, 850)
     side_by_side('前后03_战场机位局部放大.jpg', crop(BEFORE, '01_战场全景_待机.jpg', box, S), crop(SHOW, '01_战场全景_待机.jpg', box, S), '精细化之前(战场机位,放大 2 倍)', '精细化之后(战场机位,放大 2 倍)',
                  head='战场机位下的水晶和术士:精细化前后')
+
+
+# --ref=ref_look:对照验证的两张图(同一个引擎、同一套灯光里,代码生成的术士和现成的高精度模型站在一起),拼一张带标注的
+REFDIR = os.path.join(ROOT, opt('ref')) if opt('ref') else ''
+if REFDIR and os.path.isdir(REFDIR):
+    a = load(REFDIR, 'look_ref_refBody.jpg', S)
+    b = load(REFDIR, 'look_ref_refFace.jpg', S)
+    pad, top = 8, 86
+    canvas = Image.new('RGB', (S[0] * 2 + pad, top + S[1]), (10, 12, 18))
+    canvas.paste(a, (0, top))
+    canvas.paste(b, (S[0] + pad, top))
+    d = ImageDraw.Draw(canvas)
+    d.text((24, 20), '同一个 Cocos 场景、同一套灯光:代码生成的术士 vs 现成的高精度模型(Poly Haven,CC0)', font=font(40), fill=(232, 236, 244))
+    k = S[0] / 1920
+    for x, y, text, gold in [(150, 150, '现成模型:大理石胸像', True), (330, 1010, '代码生成的术士', False), (1010, 1010, '现成模型:哥特雕像', True)]:
+        label(d, (int(x * k), top + int(y * k) - 30), text, size=30, fill=(255, 226, 160) if gold else (255, 255, 255))
+    for x, y, text, gold in [(300, 1010, '现成模型:大理石胸像', True), (1250, 1010, '代码生成的术士', False)]:
+        label(d, (S[0] + pad + int(x * k), top + int(y * k) - 30), text, size=30, fill=(255, 226, 160) if gold else (255, 255, 255))
+    path = os.path.join(OUT, '验证_同引擎同灯光_代码生成vs现成高精度模型.jpg')
+    canvas.save(path, quality=92)
+    print('saved', path, canvas.size)
