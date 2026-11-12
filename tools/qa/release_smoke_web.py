@@ -4,7 +4,7 @@
 全程收集页面异常 / console.error / 失败请求,最后按 asset-manifest.json 统计下载了哪一套主城图。
 正式包里拿不到预览的 import-map,所以战斗全走真实点击路径(招募 / 战术 / 三选一 / 轮盘 / 结算按钮),不直接调模型函数。
 
-用法:PYTHONIOENCODING=utf-8 python tools/qa/release_smoke_web.py [输出目录] [--only=city,guard,field]
+用法:PYTHONIOENCODING=utf-8 python tools/qa/release_smoke_web.py [输出目录] [--only=city,exits,guard,field]
 环境变量:PREVIEW_PORT(缺省 7460)、PAGE_QS(如 ?cityHd=0)、QA_ACCOUNT、QA_GPU=0 退回软件渲染、QA_STAGE 守卫战关卡码、QA_FIELD 野外地图码
 独立调试端口 9361 + 配置目录 release_smoke_profile(不以 edge_ 开头,别的会话收尾清残留时不会连带关掉);跑完自己删。
 退出码:0 = 没有页面异常且各段都走通;1 = 有问题(看末尾 SUMMARY)。
@@ -30,7 +30,7 @@ import city_moon_web as cm  # noqa: E402  只借它的可达性 / 巡检点 / �
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 OUT = ARGS[0] if ARGS else os.path.join(base.SCRATCH, 'release_smoke')
-ONLY = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), ['city', 'guard', 'field'])
+ONLY = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), ['city', 'exits', 'guard', 'field'])
 ACCOUNT = os.environ.get('QA_ACCOUNT', 'selfchk1108')
 # 测试号口令不在这里再写一份:沿用主城自验脚本登录那一行里的
 PASSWORD = os.environ.get('QA_PASSWORD') or re.search(r"\{\{string:'\{ACCOUNT\}'\}\}, \{\{string:'([^']+)'\}\}",
@@ -350,6 +350,50 @@ async def main():
                     await asyncio.sleep(2.5)
                     print(name, (px, py), 'drawCalls', await ev("return cc.director.root.device.numDrawCalls;"), flush=True)
                     await shot('11_' + name)
+
+            # ── 主城两个出口往返:踩进出口圈 → 到对面图 → 踩对面图回主城的出口 → 回到主城,落点要能站、离门内落点不远 ──
+            if 'exits' in ONLY:
+                await ev("if (t.def.code !== 'CITY') setTimeout(() => root.travelWorldMap('CITY', null), 50); return 1;")
+                await wait_map('CITY')
+                await settle(300)
+                await asyncio.sleep(3)
+                print('world', await ev("return JSON.stringify((root.worldState ? root.worldState.maps : []).map(m => m.mapCode + ':' + (m.unlocked ? 'open' : 'locked') + (m.activated ? '+wp' : '')));"), flush=True)
+                diag = ("let busy = []; root.node.walk(x => { if (/Loading$/.test(x.name) && x.activeInHierarchy) busy.push(x.name); });"
+                        " return JSON.stringify({ busy, exits: t.def.exits.map(v => [v.key, Math.round(Math.hypot(v.x - t.leader.x, v.y - t.leader.y)), v.radius]), battleLock: !!t.battleLock, trial: !!t.trial,"
+                        " cooldownMs: t.exitCooldownUntil - Date.now(), paused: cc.game.isPaused(), view: root.currentView, panel: !!root.worldMapPanel, mounted: t.isMounted() });")
+                where = "return JSON.stringify({ map: t.def.code, leader: [Math.round(t.leader.x), Math.round(t.leader.y)], ok: t.walkable(t.leader.x, t.leader.y) });"
+                trips = []
+                for key in json.loads(await ev("return JSON.stringify(t.def.exits.map(e => e.key));")):
+                    ex = json.loads(await ev(f"const e = t.def.exits.find(v => v.key === '{key}'); return JSON.stringify([e.x, e.y, e.toMap]);"))
+                    await ev(TP.replace('{x}', str(ex[0])).replace('{y}', str(ex[1])))
+                    went = await wait_map(ex[2], 60)
+                    await settle(200)
+                    there = await ev(where)
+                    if not went:
+                        print('exit', key, 'STUCK', there, await ev(diag), flush=True)
+                        await shot('12_stuck_' + key)
+                        trips.append(f'{key}:stuck')
+                        continue
+                    back = json.loads(await ev("const e = t.def.exits.find(v => v.toMap === 'CITY'); return JSON.stringify(e ? [e.x, e.y, e.toSpawn.x, e.toSpawn.y] : []);"))
+                    if not back:
+                        trips.append(f'{key}:no-exit-back')
+                        continue
+                    await shot('12_at_' + ex[2].lower())
+                    await ev(TP.replace('{x}', str(back[0])).replace('{y}', str(back[1])))
+                    came = await wait_map('CITY', 60)
+                    await settle(200)
+                    await asyncio.sleep(3)
+                    here = await ev(where)
+                    off = await ev(f"return Math.round(Math.hypot(t.leader.x - {back[2]}, t.leader.y - {back[3]}));")
+                    print('exit', key, '->', there, '-> back', here, 'off', off, flush=True)
+                    await shot('12_back_from_' + ex[2].lower())
+                    good = came and isinstance(off, (int, float)) and off < 400 and '"ok":true' in str(here)
+                    trips.append(f"{key}:{'ok' if good else 'bad'}")
+                    if not came:
+                        print('exit', key, 'STUCK ON WAY BACK', await ev(diag), flush=True)
+                        await ev("setTimeout(() => root.travelWorldMap('CITY', null), 50); return 1;")
+                        await wait_map('CITY')
+                stage('exits', len(trips) == 2 and all(v.endswith(':ok') for v in trips), str(trips))
 
             # ── 守卫战:打到结算再返回 ──
             if 'guard' in ONLY:
