@@ -65,6 +65,15 @@ def main():
     if start is not None:
         runs.append((start, W - 1))
     runs = sorted(sorted(runs, key=lambda r: r[1] - r[0], reverse=True)[:len(names)])
+    # 相邻两个视图挨在一起(老鼠尾巴伸到旁边、熊的毛边贴着)会被当成一个:把最宽的那段从中间最细的一列切开,直到数目够
+    while len(runs) < len(names):
+        a, b = max(runs, key=lambda r: r[1] - r[0])
+        lo, hi = a + int((b - a) * 0.2), a + int((b - a) * 0.8)
+        cut = min(range(lo, hi + 1), key=lambda x: (col[x], abs(x - (a + b) // 2)))
+        print(f'两个视图挨在一起,在第 {cut} 列切开(那一列只有 {col[cut]} 个前景像素)')
+        runs.remove((a, b))
+        runs += [(a, cut - 1), (cut + 1, b)]
+        runs.sort()
     if len(runs) != len(names):
         raise SystemExit(f'只找到 {len(runs)} 个人物,要 {len(names)} 个;调 --thr 试试')
 
