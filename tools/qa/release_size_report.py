@@ -6,7 +6,9 @@
   2. 主城两套图(ui/world/citymoon 标准版、ui/world/citymoon_hd 高清版)各多大、有没有混进开局包;
      按 AssetOfflineCache.dropUnusedArt 的规则算电脑端 / 手持端各剔除多少(前缀表与 DeviceTier.unusedArtPrefixes 保持一致);
   3. 资源路径反查不出来的文件(会被强制算进开局包,也没法按设备剔除);
-  4. 给了上一版清单就逐目录对比(可以直接给上一版的发版压缩包,脚本自己从里面取清单)。
+  4. 给了上一版清单就逐目录对比(可以直接给上一版的发版压缩包,脚本自己从里面取清单);
+     同时查「文件名没变但内容变了」的文件是不是都在启动核对清单 mutable 里——不在的话老玩家会一直用缓存里的旧文件
+     (按大小判断,大小恰好相同的改动看不出来)。
 
 用法:PYTHONUTF8=1 python tools/qa/release_size_report.py [当前清单] [上一版清单 或 上一版 tar.gz] [--png]
   当前清单缺省 build/web-mobile/asset-manifest.json;--png 会逐个打开开局包里的 PNG 看是不是调色板图(要 Pillow,十几秒)。
@@ -151,6 +153,14 @@ def main():
         print_totals('上一版', prev, prev_rows)
         pn, pb, pcn, pcb = totals(prev_rows)
         print(f'== 变化:整包 {(b - pb) / MB:+.1f} MB({n - pn:+d} 个文件),开局包 {(cb - pcb) / MB:+.1f} MB({cn - pcn:+d} 个文件)==')
+        prev_size = {rel: size for rel, size, _, _ in prev_rows}
+        mutable = cur.get('mutable') or {}
+        changed = [(rel, size) for rel, size, _, _ in rows if rel in prev_size and prev_size[rel] != size]
+        stale = [(rel, size) for rel, size in changed if rel not in mutable]
+        print(f'== 文件名没变但内容变了:{len(changed)} 个 {sum(s for _, s in changed) / MB:.1f} MB(老玩家要重新下);'
+              f'其中不在启动核对清单里的 {len(stale)} 个' + ('  ← 老玩家会一直用旧文件,查 scripts/asset-mutable-paths.json' if stale else '') + ' ==')
+        for rel, size in sorted(stale, key=lambda x: -x[1])[:8]:
+            print(f'  {size / 1024:8.1f} KB  {rel}')
         for title, core_only, depth in (('开局包', True, 3), ('整包', False, 3)):
             a, c = by_folder(rows, core_only, depth), by_folder(prev_rows, core_only, depth)
             diff = sorted(((a.get(k, [0, 0])[0] - c.get(k, [0, 0])[0], k) for k in set(a) | set(c)), key=lambda x: -abs(x[0]))
