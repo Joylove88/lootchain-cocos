@@ -154,6 +154,18 @@ class Page:
         return True
 
 
+def cam_js(cam):
+    """机位:普通名字走预设;「名字@body|face|side」是把镜头对准某个带骨骼的角色。"""
+    if '@' in cam:
+        who, kind = cam.split('@', 1)
+        return f"__g3dshow.camOn('{who}', '{kind}')"
+    return f"__g3dshow.cam('{cam}')"
+
+
+def cam_tag(cam):
+    return cam.replace('@', '-')
+
+
 def cast_js(at):
     """立刻开始施法,推到施法第 at 秒定格(蓄力 0~1.1,落雷 1.12,之后收势)。"""
     return (f"(() => {{ const st = __g3dshow.stage; st.fixedDt = 1 / 60; let n = 0; while (st.castT > {at} && n < 400) {{ cc.game.step(); n++; }}"
@@ -173,14 +185,16 @@ async def mode_look(p):
         print(' ', await p.js(cast_js(float(opt('cast')))), flush=True)
     if opt('knights') == '0':            # 拍定妆照:把会走到镜头前的骑士藏起来
         await p.js('__g3dshow.knights(false)')
+    if opt('hero') == '0':               # 只看 AI 图转 3D 的阵容:把代码生成的术士藏起来
+        await p.js('__g3dshow.hero(false)')
     if opt('char'):                      # 带骨骼的角色定在某个动作的第几秒:--char=walk --chart=0.6
         await p.js(f"__g3dshow.char('{opt('char')}')")
         await p.step(max(1, int(float(opt('chart', '0.5')) * 60)), 1 / 60)
     # --cams=a,b,c:同一个时刻换几个机位各截一张
     for cam in [c for c in opt('cams', opt('cam', 'battle')).split(',') if c]:
-        await p.js(f"__g3dshow.cam('{cam}')")
+        await p.js(cam_js(cam))
         await p.step(2, 1 / 60)
-        await p.shot(os.path.join(OUT, f"look_{opt('tag', q)}_{cam}.jpg"))
+        await p.shot(os.path.join(OUT, f"look_{opt('tag', q)}_{cam_tag(cam)}.jpg"))
     print(' ', await p.js('JSON.stringify(__g3dshow.info())'), flush=True)
 
 
@@ -280,12 +294,15 @@ async def mode_video(p):
         return
     await p.step(140)
     if opt('idle'):       # 不演战斗,只看角色自己的动作
-        await p.js(f"__g3dshow.stage.mode = 'idle'; __g3dshow.cam('{opt('cam', 'battle')}')")
+        await p.js("__g3dshow.stage.mode = 'idle'")
+        await p.js(cam_js(opt('cam', 'battle')))
         await p.step(200)
     else:
         await p.js(f"__g3dshow.stage.mode = 'loop'; __g3dshow.cam('{opt('cam', 'battle')}'); __g3dshow.stage.nextCast = __g3dshow.stage.time + 1.6")
     if opt('knights') == '0':
         await p.js('__g3dshow.knights(false)')
+    if opt('hero') == '0':
+        await p.js('__g3dshow.hero(false)')
     if opt('char'):
         await p.js(f"__g3dshow.char('{opt('char')}')")
     total = int(secs * fps)
@@ -313,7 +330,10 @@ async def mode_clips(p):
         return
     await p.js("__g3dshow.stage.mode = 'idle'")
     await p.step(110)                     # 等上一次施法收完
-    await p.js(f"__g3dshow.knights(false); __g3dshow.cam('{opt('cam', 'aiBody')}')")
+    await p.js('__g3dshow.knights(false)')
+    if opt('hero') == '0':
+        await p.js('__g3dshow.hero(false)')
+    await p.js(cam_js(opt('cam', 'aiBody')))
     times = [float(t) for t in opt('times', '0.3,1.0,1.7,2.4').split(',') if t]
     for clip in [c for c in opt('clips', 'idle,walk,slash,hurt,fall').split(',') if c]:
         await p.js(f"__g3dshow.char('{clip}')")
@@ -321,7 +341,7 @@ async def mode_clips(p):
         for t in times:
             await p.step(max(1, round((t - now) * 60)), 1 / 60)
             now = t
-            await p.shot(os.path.join(OUT, f"clip_{clip}_{t:.1f}.jpg"))
+            await p.shot(os.path.join(OUT, f"clip_{opt('tag', '')}{clip}_{t:.1f}.jpg"))
     print(' ', await p.js('JSON.stringify(__g3dshow.info().chars)'), flush=True)
 
 
@@ -336,9 +356,9 @@ async def mode_eval(p):
     for f in [x for x in opt('js').split(',') if x]:
         print(' ', os.path.basename(f), '→', await p.js(open(f, encoding='utf-8').read()), flush=True)
     for cam in [c for c in opt('cams', '').split(',') if c]:
-        await p.js(f"__g3dshow.cam('{cam}')")
+        await p.js(cam_js(cam))
         await p.step(2, 1 / 60)
-        await p.shot(os.path.join(OUT, f"eval_{opt('tag', 'x')}_{cam}.jpg"))
+        await p.shot(os.path.join(OUT, f"eval_{opt('tag', 'x')}_{cam_tag(cam)}.jpg"))
 
 
 async def main():

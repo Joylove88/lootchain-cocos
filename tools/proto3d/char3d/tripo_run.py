@@ -17,6 +17,7 @@
   python tripo_run.py rig <名字> [--type=biped] [--spec=mixamo] --ok=25
   python tripo_run.py anim <名字> idle,walk,slash,hurt,fall --ok=50   (一次最多 5 个;两足预设只有 idle walk run dive climb jump slash shoot hurt fall turn)
   python tripo_run.py wait <名字> <步骤>                           命令被打断后接着等那一步的任务并下载(不会重复扣费)
+  花积分的命令加 --nowait:只建任务不等结果(几个角色一起跑),之后用 wait 取回
   python tripo_run.py status <名字>
 
 价目(2026-11-12 查的 developers.tripo3d.com/en/pricing,H 系列):转 3D 带贴图 30、不带 20;高清贴图 +10、8K +20;
@@ -221,6 +222,8 @@ def start(name, step, path, body, cost):
     st['steps'][step] = {'task_id': tid, 'request': logged, 'expected_credits': cost, 'status': None, 'created': time.strftime('%Y-%m-%d %H:%M:%S')}
     save_state(name, st)
     print(f'[{step}] 任务已创建 {tid}')
+    if '--nowait' in sys.argv:          # 只建任务不等结果(几个角色一起跑时用),之后 wait <名字> <步骤> 取回
+        return st['steps'][step]
     return wait_and_fetch(name, step)
 
 

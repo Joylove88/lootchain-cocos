@@ -41,7 +41,24 @@ const REF = {
 // albedo = 颜色贴图整体压多少:AI 出的颜色贴图里白的(胡子、交领)接近纯白,在这套给深色材质校过的灯下会曝成一片
 const CHAR = { at: new Vec3(HERO.x, 0.07, HERO.z + 1.75), height: 1.86, yaw: 0, baked: false, albedo: 0.84 };   // Tripo 出的模型本来就面朝 +x
 const CHAR_ORDER = ['idle', 'walk', 'run', 'slash', 'shoot', 'hurt', 'fall'];
+// 每个角色站哪、多高、朝哪(按 g3d_char 下的文件夹名认);没登记的用 CHAR 的默认值,沿 z 往镜头方向排开。
+// 英雄站石台(台面高 0.07)、面朝 +x:术士和妮克丝在后排两侧,悟空顶在前排正中;怪物站在右边的地上、转 180 度面朝英雄。
+// height 是包围盒的高度(狼算到耳尖,蜘蛛算到背顶)。
+const slot = (ix: number, iz: number): Vec3 => new Vec3(HERO.x + ix * 1.45, 0.07, HERO.z + iz * 1.75);
+const CHAR_SPECS: Record<string, { at: Vec3; height: number; yaw: number }> = {
+  sorcerer: { at: slot(0, 1), height: 1.86, yaw: 0 },
+  nyx: { at: slot(0, -1), height: 1.8, yaw: 0 },
+  wukong: { at: slot(1, 0), height: 1.74, yaw: 0 },
+  wolf: { at: new Vec3(HERO.x + 5.0, 0, HERO.z + 1.5), height: 1.32, yaw: 180 },
+  spider: { at: new Vec3(HERO.x + 3.9, 0, HERO.z - 1.9), height: 0.74, yaw: 180 },
+};
 interface ShowChar {
+  name: string;
+  at: Vec3;
+  height: number;
+  yaw: number;
+  /** 水平方向上占多宽(缩放后),给镜头算距离用。 */
+  span: number;
   node: Node;
   anim: SkeletalAnimation | null;
   names: string[];
@@ -134,6 +151,7 @@ class Stage {
   private refs: Node[] = [];
   private refStoneMat: Material | null = null;
   chars: ShowChar[] = [];
+  private heroHidden = false;
   private crystalEdgeMat: Material | null = null;
   private crystalTips: Vec3[] = [];
   private crystalBits: Array<{ node: Node; r: number; h: number; a: number; w: number }> = [];
@@ -620,7 +638,9 @@ class Stage {
             pre.useBakedAnimation = CHAR.baked;
         }
         this.world.addChild(n);
-        n.setRotationFromEuler(0, CHAR.yaw, 0);
+        const key = info.path.split('/')[1] ?? '';
+        const spec = CHAR_SPECS[key] ?? { at: new Vec3(CHAR.at.x, CHAR.at.y, CHAR.at.z + index * 1.75), height: CHAR.height, yaw: CHAR.yaw };
+        n.setRotationFromEuler(0, spec.yaw, 0);
         n.updateWorldTransform();
         // 量包围盒(站姿下的网格最小 / 最大点),缩放到目标身高、脚落到石台面上
         const lo = new Vec3(1e9, 1e9, 1e9);
@@ -657,10 +677,11 @@ class Stage {
             Vec3.max(hi, hi, _v);
           }
         }
-        const s = CHAR.height / Math.max(0.01, hi.y - lo.y);
+        const s = spec.height / Math.max(0.01, hi.y - lo.y);
         n.setScale(s, s, s);
-        n.setPosition(CHAR.at.x - ((lo.x + hi.x) / 2) * s, CHAR.at.y - lo.y * s, CHAR.at.z + index * 1.75 - ((lo.z + hi.z) / 2) * s);
-        const c: ShowChar = { node: n, anim: null, names: [], cur: '', t: 0, hold: 0, seq: -1, manual: false, tris, joints };
+        n.setPosition(spec.at.x - ((lo.x + hi.x) / 2) * s, spec.at.y - lo.y * s, spec.at.z - ((lo.z + hi.z) / 2) * s);
+        const c: ShowChar = { name: key, at: spec.at.clone(), height: spec.height, yaw: spec.yaw, span: Math.max(hi.x - lo.x, hi.z - lo.z) * s,
+          node: n, anim: null, names: [], cur: '', t: 0, hold: 0, seq: -1, manual: false, tris, joints };
         this.chars.push(c);
         this.stats.charTris = (this.stats.charTris ?? 0) + tris;
         this.stats.charJoints = joints;
@@ -722,6 +743,49 @@ class Stage {
     }
   }
 
+  /** 调试:把代码生成的术士藏起来(只看 AI 图转 3D 的阵容时用)。 */
+  showHero(on: boolean): void {
+    this.heroHidden = !on;
+    if (this.hero) {
+      this.hero.root.active = on;
+    }
+  }
+
+  /**
+   * 调试:把镜头对准某个带骨骼的角色(文件夹名或序号)。
+   * kind = body 全身(正面偏镜头侧 24 度)/ side 侧面 / face 头部特写(人形才有意义)。
+   */
+  camOn(who: string | number, kind = 'body'): string {
+    const c = typeof who === 'number' ? this.chars[who] : this.chars.find((x) => x.name === who);
+    const cam = this.cam;
+    if (!c || !cam) {
+      return '';
+    }
+    for (const other of this.chars) {      // 单人特写:别的角色先藏起来(镜头常常正好落在别人身上)
+      other.node.active = other === c;
+    }
+    const h = c.height;
+    const yaw = (c.yaw * Math.PI) / 180;
+    const fx = Math.cos(yaw);          // 角色面朝的方向(模型本来面朝 +x,绕 y 转 yaw)
+    const fz = -Math.sin(yaw);
+    // 镜头从角色正前方往 +z(主镜头、补光那一侧)偏开
+    const swing = ((kind === 'side' ? 82 : 24) * Math.PI) / 180 * (fx >= 0 ? -1 : 1);
+    const dx = fx * Math.cos(swing) + fz * Math.sin(swing);
+    const dz = -fx * Math.sin(swing) + fz * Math.cos(swing);
+    const face = kind === 'face';
+    const fov = face ? 22 : 30;
+    const tall = face ? h * 0.42 : Math.max(h * 1.3, c.span * 0.72);     // 画面竖直方向要装下多高
+    const dist = tall / (2 * Math.tan((fov * Math.PI) / 360));
+    const lookY = c.at.y + h * (face ? 0.9 : 0.5);
+    cam.fov = fov;
+    this.camBase.set(c.at.x + dx * dist, lookY + h * (face ? 0.03 : 0.12), c.at.z + dz * dist);
+    cam.node.setPosition(this.camBase);
+    this.camLook.set(c.at.x, lookY, c.at.z);
+    cam.node.lookAt(this.camLook);
+    this.placeOverlays();
+    return `${c.name}@${kind}`;
+  }
+
   /** 轮流播角色自带的动作;动作的快慢跟着样板自己的时钟走(逐帧截图 / 录屏时引擎的帧间隔和样板的不一样)。 */
   private stepChars(dt: number): void {
     const engineDt = director.getDeltaTime();
@@ -766,7 +830,7 @@ class Stage {
   // ───────────────────────── 镜头 ─────────────────────────
   setCam(name: string): string {
     const cam = this.cam!;
-    const presets: Record<string, { pos: [number, number, number]; look?: [number, number, number]; fov: number }> = {
+    const presets: Record<string, { pos: [number, number, number]; look?: [number, number, number]; fov: number; only?: string[] }> = {
       battle: { pos: [CAM_POS.x, CAM_POS.y, CAM_POS.z], fov: FOV },
       hero: { pos: [-1.2, 1.75, 5.4], look: [HERO.x + 0.25, 1.22, HERO.z], fov: 24 },
       heroFace: { pos: [-2.55, 1.72, 2.6], look: [HERO.x + 0.1, 1.5, HERO.z], fov: 20 },
@@ -782,8 +846,16 @@ class Stage {
       aiBody: { pos: [HERO.x + 3.9, 1.3, HERO.z + 3.1], look: [HERO.x, 0.95, HERO.z + 1.75], fov: 30 },
       aiFace: { pos: [HERO.x + 1.75, 1.76, HERO.z + 2.3], look: [HERO.x, 1.7, HERO.z + 1.75], fov: 22 },
       aiBack: { pos: [HERO.x - 2.9, 1.5, HERO.z + 3.3], look: [HERO.x, 1.0, HERO.z + 1.75], fov: 30 },
+      // 阵容:左边三个英雄、右边两只怪。lineup 从侧面看两边对峙;lineupFront 从怪物身后看过去,能看到英雄的正脸
+      lineup: { pos: [HERO.x + 2.7, 2.0, HERO.z + 7.3], look: [HERO.x + 2.55, 0.9, HERO.z - 0.3], fov: 36 },
+      lineupFront: { pos: [HERO.x + 7.6, 2.3, HERO.z + 5.4], look: [HERO.x + 1.4, 0.95, HERO.z - 0.2], fov: 30 },
+      // 只看三个英雄的正面(怪物正好挡在这个方向上,这个机位把它们藏起来)
+      heroesFront: { pos: [HERO.x + 6.4, 1.55, HERO.z + 0.9], look: [HERO.x + 0.6, 1.0, HERO.z], fov: 32, only: ['sorcerer', 'wukong', 'nyx'] },
     };
     const p = presets[name] ?? presets.battle;
+    for (const c of this.chars) {          // 回到预设机位:被单人特写藏起来的角色全部放出来(机位自己指定了只看谁的除外)
+      c.node.active = !p.only || p.only.indexOf(c.name) >= 0;
+    }
     cam.fov = p.fov;
     this.camBase.set(p.pos[0], p.pos[1], p.pos[2]);
     cam.node.setPosition(this.camBase);
@@ -1000,8 +1072,8 @@ class Stage {
     const glow = 1.1 + 9 * charge * charge + 14 * this.strike;
     this.staffMat().setProperty('colorScale', new Vec3(glow * 0.75, glow * 0.92, glow));
     this.staffLight!.node.setPosition(_v.x + 0.15, _v.y + 0.1, _v.z + 0.3);
-    this.staffLight!.luminousFlux = (0.6 + 16 * charge * charge + 30 * this.strike) * SHOW.fluxK;
-    if (charge > 0.15) {
+    this.staffLight!.luminousFlux = this.heroHidden ? 0 : (0.6 + 16 * charge * charge + 30 * this.strike) * SHOW.fluxK;
+    if (charge > 0.15 && !this.heroHidden) {
       // 蓄力:杖顶噼啪的小电弧 + 往上聚的光点
       if (R() < charge * 0.9) {
         const a = new Vec3(_v.x, _v.y, _v.z);
@@ -1014,7 +1086,14 @@ class Stage {
         fx.emit({ x: HERO.x + Math.cos(ang) * rad, y: 0.1, z: HERO.z + Math.sin(ang) * rad, vx: -Math.cos(ang) * 0.5, vy: R(1.2, 2.4), vz: -Math.sin(ang) * 0.5, life: R(0.6, 1.0), s0: 0.03, s1: 0.012, c0: [0.5, 0.8, 1], a: 0.7 * charge, cell: FX_CELL.mote, drag: 0.4, stretch: 0.8 });
       }
     }
-    fx.blob(HERO.x, HERO.z, 0.75, 0.5);
+    if (!this.heroHidden) {
+      fx.blob(HERO.x, HERO.z, 0.75, 0.5);
+    }
+    for (const c of this.chars) {      // 带骨骼的角色脚下也垫一块接地的暗影
+      if (c.node.active) {
+        fx.blob(c.at.x, c.at.z, Math.max(0.55, c.span * 0.42), 0.45);
+      }
+    }
 
     // ── 骑士 ──
     for (const k of this.knights) {
@@ -1348,7 +1427,8 @@ function boot(): void {
 }
 
 if (!EDITOR && sys.isBrowser) {
-  (globalThis as any).__g3dshow = { stage, info: () => stage.info(), set: (p: Partial<ShowCfg>) => stage.set(p), cam: (n: string) => stage.setCam(n), cast: () => stage.castNow(), char: (n?: string) => stage.charPlay(n), knights: (on: boolean) => stage.showKnights(on), cfg: SHOW, charCfg: CHAR };
+  (globalThis as any).__g3dshow = { stage, info: () => stage.info(), set: (p: Partial<ShowCfg>) => stage.set(p), cam: (n: string) => stage.setCam(n), cast: () => stage.castNow(), char: (n?: string) => stage.charPlay(n), knights: (on: boolean) => stage.showKnights(on), hero: (on: boolean) => stage.showHero(on),
+    camOn: (who: string | number, kind?: string) => stage.camOn(who, kind), cfg: SHOW, charCfg: CHAR, charSpecs: CHAR_SPECS };
   if (param('g3dshow') === '1') {
     boot();
   }
