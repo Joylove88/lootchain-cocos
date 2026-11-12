@@ -6,8 +6,8 @@ import { FxWorld } from './G3DFx';
 import { addMesh, DynMesh, keptMaterial, loadKit, material, tex } from './G3DKit';
 import { MeshBatch } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
-import { buildEnvCube, FX_CELL, paintHaze, paintShaft, paintVignette } from './G3DSkins';
-import { GD, GW, GX0, GZ0, mulberry32, paintBackdrop, paintGround, paintRock, paintWood, puddleLevel, wetValue } from './G3DTextures';
+import { buildEnvCube, FX_CELL, paintCrystal, paintHaze, paintShaft, paintVignette } from './G3DSkins';
+import { GD, GW, GX0, GZ0, hash2, mulberry32, paintBackdrop, paintGround, paintRock, paintWood, puddleLevel, wetValue } from './G3DTextures';
 
 /**
  * 守卫战全 3D 样板(2026-11-12,用户要求「骨骼和技能特效全部换成 3D、自己生成制作」「做成 3A 的效果」,
@@ -53,6 +53,9 @@ export interface ShowCfg {
   dynLights: number;
   env: number;
   crystal: number;
+  /** 晶体芯子的自发光倍数 / 棱线的亮度。 */
+  crystalGlow: number;
+  crystalEdge: number;
   brazier: number;
   enemyFire: number;
   /** 前景两侧(画面外)的暖光:给角色朝镜头的这一面补光。 */
@@ -63,12 +66,12 @@ export interface ShowCfg {
 }
 const TIERS: Record<string, Partial<ShowCfg>> = {
   ultra: { ss: 2, shadow: 4096, ground: 4096, reflect: true, fillLights: true, dynLights: 3 },
-  high: { ss: 1, shadow: 2048, ground: 4096, reflect: true, fillLights: true, dynLights: 3 },
+  high: { ss: 1.5, shadow: 2048, ground: 4096, reflect: true, fillLights: true, dynLights: 3 },
   mid: { ss: 1, shadow: 1024, ground: 2048, reflect: false, fillLights: false, dynLights: 2 },
 };
 export const SHOW: ShowCfg = {
-  quality: 'high', moon: 70000, ambient: 15000, fluxK: 100, shadow: 2048, ground: 4096, ss: 1, bloom: 0.5, bloomThreshold: 1.0,
-  reflect: true, fillLights: true, dynLights: 3, env: 1, crystal: 80, brazier: 75, enemyFire: 260, fill: 620, rain: 1, fxScale: 5,
+  quality: 'high', moon: 70000, ambient: 15000, fluxK: 100, shadow: 2048, ground: 4096, ss: 1.5, bloom: 0.42, bloomThreshold: 1.15,
+  reflect: true, fillLights: true, dynLights: 3, env: 1, crystal: 48, crystalGlow: 1.0, crystalEdge: 1.5, brazier: 75, enemyFire: 260, fill: 520, rain: 1, fxScale: 5,
 };
 
 interface Pulse { x: number; y: number; z: number; r: number; g: number; b: number; peak: number; range: number; hold: number; tau: number; age: number }
@@ -105,6 +108,9 @@ class Stage {
   private dyn: PointLight[] = [];
   private pulses: Pulse[] = [];
   private crystalMat: Material | null = null;
+  private crystalEdgeMat: Material | null = null;
+  private crystalTips: Vec3[] = [];
+  private crystalBits: Array<{ node: Node; r: number; h: number; a: number; w: number }> = [];
   private hazes: Array<{ mat: Material; speed: number; off: number }> = [];
   private shaft: DynMesh | null = null;
   private shaftMat: Material | null = null;
@@ -155,7 +161,6 @@ class Stage {
     const { stone, wood, iron, contacts } = buildCourtyard();
     const rnd = mulberry32(77);
     const metal = new Sculpt();
-    const gem = new Sculpt();
 
     // ── 英雄站位:三排三列的圆石台(嵌一圈铜环),术士站正中那块 ──
     for (let ix = 0; ix < 3; ix += 1) {
@@ -168,25 +173,110 @@ class Stage {
         contacts.push({ x, z, r: 0.95 });
       }
     }
-    // ── 水晶:石座 + 铜箍 + 一簇六棱晶柱 ──
-    stone.cylinder(1.25, 1.4, 0.22, 10, new Vec3(CRYSTAL.x, 0.11, CRYSTAL.z), new Vec3(0, 12, 0), [0.8, 0.8, 0.82], UVD, rnd, 0);
-    stone.cylinder(0.92, 1.05, 0.2, 10, new Vec3(CRYSTAL.x, 0.32, CRYSTAL.z), new Vec3(0, 40, 0), [0.9, 0.9, 0.92], UVD, rnd);
+    // ── 水晶:两层石座 + 铜箍和六只铜爪 + 一圈深色的岩基,上面长出一大簇晶柱(十几根,粗细高矮、歪的方向都不一样)──
+    stone.cylinder(1.25, 1.4, 0.22, 10, new Vec3(CRYSTAL.x, 0.11, CRYSTAL.z), new Vec3(0, 12, 0), [0.44, 0.44, 0.46], UVD, rnd, 0);
+    stone.cylinder(0.92, 1.05, 0.2, 10, new Vec3(CRYSTAL.x, 0.32, CRYSTAL.z), new Vec3(0, 40, 0), [0.5, 0.5, 0.52], UVD, rnd);
     metal.lathe([[0.9, 0.4], [0.96, 0.44], [0.9, 0.48]], 30, { den: 2.9, tint: [0.52, 0.4, 0.22], smooth: false, xf: xform([CRYSTAL.x, 0, CRYSTAL.z]) });
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2 + 0.26;
+      metal.prism([[-0.045, -0.022], [0.045, -0.022], [0.045, 0.022], [-0.045, 0.022]], 0, 0.3, 0.45, [0.5, 0.38, 0.2], 2.9,
+        Mat4.multiply(new Mat4(), xform([CRYSTAL.x + Math.cos(a) * 0.8, 0.42, CRYSTAL.z + Math.sin(a) * 0.8], [Math.sin(a) * -24, 0, Math.cos(a) * 24]), xform([0, 0, 0], [0, (-a * 180) / Math.PI + 90, 0])));
+    }
+    for (let i = 0; i < 9; i += 1) {
+      const a = (i / 9) * Math.PI * 2 + rnd() * 0.5;
+      const rr = 0.42 + rnd() * 0.3;
+      const v = 0.3 + rnd() * 0.12;
+      stone.rock(0.17 + rnd() * 0.12, new Vec3(CRYSTAL.x + Math.cos(a) * rr, 0.47 + rnd() * 0.05, CRYSTAL.z + Math.sin(a) * rr), [v, v, v * 1.05], UVD * 2, rnd, 0.8);
+    }
     contacts.push({ x: CRYSTAL.x, z: CRYSTAL.z, r: 2.0 });
-    const hex = (r: number): Array<[number, number]> => [0, 1, 2, 3, 4, 5].map((i) => [Math.cos((i / 6) * Math.PI * 2) * r, Math.sin((i / 6) * Math.PI * 2) * r] as [number, number]);
-    const FACETS: Array<[number, number, number]> = [[0.62, 0.95, 1.0], [0.36, 0.8, 0.98], [0.2, 0.56, 0.84], [0.13, 0.4, 0.68], [0.22, 0.6, 0.86], [0.46, 0.88, 1.0]];
-    const shard = (dx: number, dz: number, r: number, h: number, tiltX: number, tiltZ: number, yaw: number): void => {
-      const m = xform([CRYSTAL.x + dx, 0.42, CRYSTAL.z + dz], [tiltX, yaw, tiltZ]);
-      gem.prism(hex(r), 0, h * 0.72, 0.86, FACETS, 1, m);
-      const m2 = Mat4.multiply(new Mat4(), m, xform([0, h * 0.72, 0]));
-      gem.prism(hex(r * 0.86), 0, h * 0.28, 0, FACETS.map((f) => [Math.min(1, f[0] * 1.25), Math.min(1, f[1] * 1.2), Math.min(1, f[2] * 1.1)] as [number, number, number]), 1, m2, false);
+    const crystal = new Sculpt();
+    const edge = new Sculpt();
+    /**
+     * 一根晶柱:六棱(每个角的半径、角度都抖一点,不是规整的正六边形),柱身 → 收肩 → 收尖三段;both = 两头都带尖(悬浮的碎晶)。
+     * 柱身用带贴图坐标的平直面(绕一圈 / 沿长度展开);每条棱再叠两片细长的加色亮线(一片贴着面、一片立在棱上),晶体的轮廓才是「利」的。
+     */
+    const growShard = (sc: Sculpt, ed: Sculpt, m: Mat4, r: number, h: number, seed: number, both = false): Vec3 => {
+      const rj: number[] = [];
+      const aj: number[] = [];
+      for (let i = 0; i < 6; i += 1) {
+        rj.push(r * (0.84 + 0.3 * hash2(i, seed, 11)));
+        aj.push((i / 6) * Math.PI * 2 + (hash2(i, seed, 12) - 0.5) * 0.22);
+      }
+      const rings: Array<[number, number]> = both
+        ? [[-0.5, 0.03], [-0.3, 0.52], [-0.17, 0.95], [0.17, 0.95], [0.3, 0.52], [0.5, 0.03]]
+        : [[0, 1], [0.62, 0.93], [0.86, 0.5], [1, 0.03]];
+      const P: Vec3[][] = rings.map(([ky, ks]) => rj.map((rr, i) => Vec3.transformMat4(new Vec3(), new Vec3(Math.cos(aj[i]) * rr * ks, ky * h, Math.sin(aj[i]) * rr * ks), m)));
+      const axis: Vec3[] = rings.map(([ky]) => Vec3.transformMat4(new Vec3(), new Vec3(0, ky * h, 0), m));
+      const y0 = rings[0][0];
+      const span = rings[rings.length - 1][0] - y0;
+      const vOf = (k: number): number => 1 - (rings[k][0] - y0) / span;
+      for (let k = 0; k < rings.length - 1; k += 1) {
+        for (let i = 0; i < 6; i += 1) {
+          const j = (i + 1) % 6;
+          const b = 0.74 + 0.5 * hash2(i, seed, 13);
+          sc.facet([P[k][i], P[k + 1][i], P[k + 1][j], P[k][j]], [[i / 6, vOf(k)], [i / 6, vOf(k + 1)], [(i + 1) / 6, vOf(k + 1)], [(i + 1) / 6, vOf(k)]], [b, b, b]);
+        }
+      }
+      // 棱线
+      const w = Math.max(0.0035, 0.0105 * Math.sqrt(r / 0.36));
+      const out = (k: number, i: number): Vec3 => Vec3.subtract(new Vec3(), P[k][i], axis[k]).normalize();
+      const seg = (A: Vec3, B: Vec3, O: Vec3, bright: number): void => {
+        const d = Vec3.subtract(new Vec3(), B, A);
+        if (d.lengthSqr() < 1e-10) {
+          return;
+        }
+        const T = Vec3.cross(new Vec3(), d, O).normalize().multiplyScalar(w);
+        const lift = O.clone().multiplyScalar(0.004);
+        const tint: [number, number, number] = [0.62 * bright, 0.9 * bright, bright];
+        const a0 = Vec3.add(new Vec3(), A, lift);
+        const b0 = Vec3.add(new Vec3(), B, lift);
+        ed.poly([Vec3.subtract(new Vec3(), a0, T), Vec3.add(new Vec3(), a0, T), Vec3.add(new Vec3(), b0, T), Vec3.subtract(new Vec3(), b0, T)], O, tint, 1, 0, 0);
+        const fin = O.clone().multiplyScalar(w * 1.7);
+        ed.poly([A, Vec3.add(new Vec3(), A, fin), Vec3.add(new Vec3(), B, fin), B], T, tint, 1, 0, 0);
+      };
+      for (let i = 0; i < 6; i += 1) {
+        const j = (i + 1) % 6;
+        for (let k = 0; k < rings.length - 1; k += 1) {
+          const O = out(k, i).add(out(k + 1, i)).normalize();
+          if (!both && k === 0) {
+            // 最下面一段:靠根部那 40% 不描,往上才亮起来(根埋在岩基里)
+            const mid = Vec3.lerp(new Vec3(), P[0][i], P[1][i], 0.4);
+            seg(mid, P[1][i], O, 0.5);
+          } else {
+            seg(P[k][i], P[k + 1][i], O, both ? 0.7 : 0.85);
+          }
+        }
+        for (let k = 1; k < rings.length - 1; k += 1) {
+          const O = out(k, i).add(out(k, j)).normalize();
+          seg(P[k][i], P[k][j], O, 0.6);
+        }
+      }
+      return P[rings.length - 1][0];
     };
-    shard(0, 0, 0.36, 2.5, 3, -2, 10);
-    shard(0.42, 0.18, 0.2, 1.5, 10, -17, 40);
-    shard(-0.4, 0.22, 0.22, 1.7, 8, 16, 75);
-    shard(0.12, -0.42, 0.18, 1.25, -18, -4, 20);
-    shard(-0.2, -0.36, 0.15, 0.95, -15, 12, 55);
-    shard(0.5, -0.2, 0.12, 0.75, -6, -26, 5);
+    const tips: Vec3[] = [];
+    const shard = (az: number, dist: number, r: number, h: number, lean: number, seed: number): void => {
+      const a = (az * Math.PI) / 180;
+      // 先绕自己的轴转一个角度,再整根朝外歪(两步分开乘,歪的方向才一定是朝外)
+      const m = Mat4.multiply(new Mat4(), xform([CRYSTAL.x + Math.cos(a) * dist, 0.44, CRYSTAL.z + Math.sin(a) * dist], [Math.sin(a) * lean, 0, -Math.cos(a) * lean]), xform([0, 0, 0], [0, seed * 37, 0]));
+      tips.push(growShard(crystal, edge, m, r, h, seed));
+    };
+    shard(0, 0, 0.36, 2.6, 2, 1);
+    shard(20, 0.4, 0.2, 1.7, 14, 2);
+    shard(95, 0.4, 0.23, 1.95, 11, 3);
+    shard(165, 0.42, 0.19, 1.5, 17, 4);
+    shard(235, 0.4, 0.22, 1.75, 13, 5);
+    shard(300, 0.42, 0.17, 1.3, 19, 6);
+    shard(58, 0.58, 0.12, 0.95, 27, 7);
+    shard(130, 0.6, 0.1, 0.8, 31, 8);
+    shard(200, 0.6, 0.13, 1.05, 25, 9);
+    shard(268, 0.58, 0.1, 0.75, 33, 10);
+    shard(335, 0.6, 0.12, 0.9, 28, 11);
+    shard(-15, 0.72, 0.07, 0.5, 40, 12);
+    shard(75, 0.74, 0.06, 0.42, 44, 13);
+    shard(150, 0.72, 0.075, 0.55, 38, 14);
+    shard(222, 0.74, 0.06, 0.4, 46, 15);
+    shard(290, 0.72, 0.07, 0.48, 41, 16);
+    this.crystalTips = tips;
 
     // ── 前景左下角:一截倒下的大柱子和碎块(压住画面的角,拉开前后层次)──
     stone.cylinder(0.56, 0.56, 2.6, 20, new Vec3(-10.9, 0.56, 5.0), new Vec3(0, 24, 90), [0.84, 0.84, 0.86], UVD, rnd, 0);
@@ -245,9 +335,19 @@ class Stage {
     const bronzeMat = material('builtin-standard', { USE_VERTEX_COLOR: true });
     bronzeMat.setProperty('roughness', 0.42);
     bronzeMat.setProperty('metallic', 1);
-    // 水晶:自己发冷光、不受场景灯影响;六个面明暗各不相同,看着才像有棱有面的晶体而不是一坨发光体
-    const crystalMat = material('builtin-unlit', { USE_VERTEX_COLOR: true });
+    // 水晶:光滑的晶体(受场景灯,每个面的高光都不一样)+ 一张自发光贴图(芯子里的亮脉)+ 生长纹的法线;
+    // 棱线另用一层加色的细线。亮度只让棱线和高光超过泛光的门槛,晶体本身不糊成一团光。
+    const cr = paintCrystal(512);
+    const crystalMat = material('builtin-standard', { USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_EMISSIVE_MAP: true, USE_VERTEX_COLOR: true });
+    crystalMat.setProperty('mainTexture', tex(cr.albedo, true, 8));
+    crystalMat.setProperty('normalMap', tex(cr.normal, true, 8));
+    crystalMat.setProperty('emissiveMap', tex(cr.emissive, true, 8));
+    crystalMat.setProperty('roughness', 0.1);
+    crystalMat.setProperty('metallic', 0.3);
+    crystalMat.setProperty('specularIntensity', 1);
     this.crystalMat = crystalMat;
+    const edgeMat = material('builtin-unlit', { USE_VERTEX_COLOR: true }, 2);
+    this.crystalEdgeMat = edgeMat;
 
     // ── 网格 ──
     for (const m of MeshBatch.groundTiles(GX0, GZ0, GW, GD, 8, 4)) {
@@ -260,11 +360,26 @@ class Stage {
     apron.setProperty('roughness', 0.9);
     addMesh(world, 'ShowApron', MeshBatch.groundTiles(-80, TER_BACK + 0.2, 160, 40, 1, 1, -0.03)[0], apron, false, true);
     let tris = 0;
-    for (const [batch, mat, name] of [[stone, stoneMat, 'ShowStone'], [wood, woodMat, 'ShowWood'], [iron, ironMat, 'ShowIron'], [metal, bronzeMat, 'ShowBronze'], [gem, crystalMat, 'ShowCrystal'], [cloth, actorMaterials().cloth, 'ShowBanner']] as Array<[MeshBatch, Material, string]>) {
+    for (const [batch, mat, name] of [[stone, stoneMat, 'ShowStone'], [wood, woodMat, 'ShowWood'], [iron, ironMat, 'ShowIron'], [metal, bronzeMat, 'ShowBronze'], [crystal, crystalMat, 'ShowCrystal'], [edge, edgeMat, 'ShowCrystalEdge'], [cloth, actorMaterials().cloth, 'ShowBanner']] as Array<[MeshBatch, Material, string]>) {
       for (const m of batch.build()) {
-        addMesh(world, name, m, mat, name !== 'ShowCrystal', name !== 'ShowCrystal');
+        addMesh(world, name, m, mat, name !== 'ShowCrystalEdge', name !== 'ShowCrystal' && name !== 'ShowCrystalEdge');
       }
       tris += batch.triangles;
+    }
+    // 绕着晶簇慢慢转的几块碎晶(两头带尖)
+    const bit = new Sculpt();
+    const bitEdge = new Sculpt();
+    growShard(bit, bitEdge, new Mat4(), 0.075, 0.44, 91, true);
+    const bitMesh = bit.build()[0];
+    const bitEdgeMesh = bitEdge.build()[0];
+    for (let i = 0; i < 5; i += 1) {
+      const n = new Node('ShowCrystalBit');
+      world.addChild(n);
+      const k = 0.7 + 0.5 * hash2(i, 5, 21);
+      n.setScale(k, k, k);
+      addMesh(n, 'body', bitMesh, crystalMat, true, false);
+      addMesh(n, 'edge', bitEdgeMesh, edgeMat, false, false);
+      this.crystalBits.push({ node: n, r: 1.2 + 0.4 * hash2(i, 6, 21), h: 1.25 + 1.25 * hash2(i, 7, 21), a: i * 1.257, w: (0.2 + 0.12 * hash2(i, 8, 21)) * (i % 2 ? 1 : -1) });
     }
     this.stats.sceneTris = tris;
     const quad = MeshBatch.quad();
@@ -284,10 +399,10 @@ class Stage {
     for (const b of BRAZIERS) {
       this.brazier.push(point('ShowBrazierLight', b.x, TER_H + 2.6, b.z + 1.4, new Color(255, 150, 86, 255), 15));
     }
-    this.crystalLight = point('ShowCrystalLight', CRYSTAL.x + 0.5, 2.3, CRYSTAL.z + 1.1, new Color(96, 200, 255, 255), 15);
+    this.crystalLight = point('ShowCrystalLight', CRYSTAL.x + 0.9, 3.3, CRYSTAL.z + 2.0, new Color(96, 200, 255, 255), 16);
     this.enemyLight = point('ShowEnemyFire', 12.5, 2.6, 1.2, new Color(255, 92, 40, 255), 19);
     this.staffLight = point('ShowStaffLight', HERO.x, 2.4, HERO.z, new Color(190, 225, 255, 255), 7);
-    this.fillLights.push(point('ShowFillL', -10, 6.5, 13, new Color(255, 200, 160, 255), 30));
+    this.fillLights.push(point('ShowFillL', -10, 6.5, 13, new Color(255, 216, 190, 255), 30));
     this.fillLights.push(point('ShowFillR', 9, 6.5, 13, new Color(255, 172, 122, 255), 30));
     for (let i = 0; i < 3; i += 1) {
       const L = point('ShowSkillLight', 0, 2, 0, new Color(255, 255, 255, 255), 10);
@@ -523,7 +638,7 @@ class Stage {
       toneMapping: { material: null },
       colorGrading: { enabled: false, material: null, contribute: 1, colorGradingMap: null },
       fsr: { enabled: false, material: null, sharpness: 0.8 },
-      fxaa: { enabled: !!fxaa, material: fxaa },
+      fxaa: { enabled: !!fxaa, material: fxaa },   // 超采样时也不能关:内置管线靠这一步把放大渲染的画面缩回窗口,关了只输出左下角一块
     };
     (rendering as any).forceResizeAllWindows?.();
   }
@@ -712,6 +827,11 @@ class Stage {
         fx.emit({ x: b.x + R(-0.15, 0.15), y: y0 + 0.2, z: b.z, vx: R(-0.5, 0.5), vy: R(1.5, 3.2), vz: R(-0.3, 0.6), life: R(1.2, 2.4), s0: 0.02, s1: 0.006, c0: [1, 0.62, 0.22], c1: [1, 0.2, 0.04], cell: FX_CELL.ember, grav: -0.04, drag: 0.5, stretch: 0.9 });
       }
     }
+    if (this.crystalTips.length && R() < dt * 2.6) {
+      // 晶尖上偶尔闪一下星芒
+      const tp = this.crystalTips[Math.floor(R() * this.crystalTips.length)];
+      fx.emit({ x: tp.x + R(-0.03, 0.03), y: tp.y - R(0, 0.12), z: tp.z + R(-0.03, 0.03), life: R(0.35, 0.6), s0: R(0.1, 0.2), s1: 0.02, c0: [0.8, 0.96, 1], a: 0.75, cell: FX_CELL.star, rot: R(0, 1.5), spin: R(-1.5, 1.5), fadeIn: 0.3 });
+    }
     if (R() < dt * 14) {
       const ang = R(0, 6.28);
       fx.emit({ x: CRYSTAL.x + Math.cos(ang) * R(0.4, 1.3), y: R(0.4, 1.4), z: CRYSTAL.z + Math.sin(ang) * R(0.4, 1.3), vy: R(0.25, 0.7), life: R(1.6, 3), s0: 0.028, s1: 0.008, c0: [0.45, 0.85, 1], a: 0.6, cell: FX_CELL.mote, drag: 0.2 });
@@ -749,8 +869,15 @@ class Stage {
     this.enemyLight!.luminousFlux = SHOW.enemyFire * SHOW.fluxK * (1 + 0.12 * Math.sin(t * 5.3) + 0.08 * Math.sin(t * 13.7));
     const breathe = 1 + 0.12 * Math.sin(t * 1.3) + 0.5 * this.cast;
     this.crystalLight!.luminousFlux = SHOW.crystal * SHOW.fluxK * breathe;
-    const e = 1.25 * breathe;
-    this.crystalMat!.setProperty('colorScale', new Vec3(e, e, e));
+    const e = SHOW.crystalGlow * breathe;
+    this.crystalMat!.setProperty('emissiveScale', new Vec3(e, e, e));
+    const el = SHOW.crystalEdge * (0.85 + 0.15 * Math.sin(t * 2.1)) * (1 + 0.6 * this.cast);
+    this.crystalEdgeMat!.setProperty('colorScale', new Vec3(el, el, el));
+    for (const b of this.crystalBits) {
+      const ang = b.a + t * b.w;
+      b.node.setPosition(CRYSTAL.x + Math.cos(ang) * b.r, b.h + 0.12 * Math.sin(t * 0.9 + b.a), CRYSTAL.z + Math.sin(ang) * b.r);
+      b.node.setRotationFromEuler(18 + 10 * Math.sin(t * 0.5 + b.a), t * 28 * (b.w > 0 ? 1 : -1) + b.a * 57, 14);
+    }
     const live: Array<{ p: Pulse; v: number }> = [];
     for (let i = this.pulses.length - 1; i >= 0; i -= 1) {
       const p = this.pulses[i];

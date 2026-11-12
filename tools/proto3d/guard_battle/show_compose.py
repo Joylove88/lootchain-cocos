@@ -9,9 +9,16 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else '.'
-REF = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(ROOT)), '2026-11-11_战斗3D光影小样', 'ref')
-SHOW, OUT = os.path.join(ROOT, 'show'), os.path.join(ROOT, 'compare')
+ARGV = [x for x in sys.argv[1:] if not x.startswith('--')]
+ROOT = ARGV[0] if ARGV else '.'
+REF = ARGV[1] if len(ARGV) > 1 else os.path.join(os.path.dirname(os.path.abspath(ROOT)), '2026-11-11_战斗3D光影小样', 'ref')
+def opt(name, default=''):
+    return next((x.split('=', 1)[1] for x in sys.argv if x.startswith(f'--{name}=')), default)
+
+
+# --show=show_v2 换一批样板截图;--out=compare_v2 换输出目录;--before=show 再拼一组「改之前 / 改之后」
+SHOW, OUT = os.path.join(ROOT, opt('show', 'show')), os.path.join(ROOT, opt('out', 'compare'))
+BEFORE = os.path.join(ROOT, opt('before')) if opt('before') else ''
 os.makedirs(OUT, exist_ok=True)
 FONT = next((p for p in (r'C:\Windows\Fonts\msyhbd.ttc', r'C:\Windows\Fonts\msyh.ttc', r'C:\Windows\Fonts\simhei.ttf') if os.path.exists(p)), None)
 
@@ -81,3 +88,17 @@ grid('分镜_蓄力_落雷_连锁_余烬.jpg', [(load(SHOW, '02_蓄力.jpg', C),
                              (load(SHOW, '04_连锁.jpg', C), '③ 连锁:电弧跳向旁边的敌人'), (load(SHOW, '05_余烬.jpg', C), '④ 余烬:裂纹、焦痕、倒地')], 2, C, head='全 3D 样板 · 一次落雷的四个瞬间(战场机位)')
 grid('近景_术士_骑士_水晶_低机位.jpg', [(load(SHOW, '07_术士_中景.jpg', C), '术士(布衣、露脸):中景'), (load(SHOW, '10_骑士_近景.jpg', C), '重甲骑士:近景'),
                               (load(SHOW, '08_水晶.jpg', C), '水晶'), (load(SHOW, '06_落雷_低机位.jpg', C), '落雷 · 低机位(可做大招特写镜头)')], 2, C, head='全 3D 样板 · 换机位看模型(同一个场景,实时)')
+
+
+def crop(folder, name, box, size):
+    im = Image.open(os.path.join(folder, name)).convert('RGB').crop(box)
+    return im.resize(size, Image.LANCZOS)
+
+
+if BEFORE and os.path.isdir(BEFORE):
+    # 改之前 / 改之后:同一个机位;战场机位再裁出水晶和英雄那一块放大看
+    side_by_side('前后01_水晶.jpg', load(BEFORE, '08_水晶.jpg', S), load(SHOW, '08_水晶.jpg', S), '精细化之前', '精细化之后', head='水晶:精细化前后(同一机位)')
+    side_by_side('前后02_术士.jpg', load(BEFORE, '07_术士_中景.jpg', S), load(SHOW, '07_术士_中景.jpg', S), '精细化之前', '精细化之后', head='术士:精细化前后(同一机位)')
+    box = (40, 400, 840, 850)
+    side_by_side('前后03_战场机位局部放大.jpg', crop(BEFORE, '01_战场全景_待机.jpg', box, S), crop(SHOW, '01_战场全景_待机.jpg', box, S), '精细化之前(战场机位,放大 2 倍)', '精细化之后(战场机位,放大 2 倍)',
+                 head='战场机位下的水晶和术士:精细化前后')

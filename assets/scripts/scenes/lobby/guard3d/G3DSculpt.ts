@@ -21,6 +21,10 @@ export interface SurfOpts {
   ov?: number;
   /** 贴图坐标直接用 (u, 1 - v) 铺满整张图(符纸这类「一张图贴一片」的)。 */
   uv01?: boolean;
+  /** v 方向单独的贴图密度(不给就和 den 一样):饰边这种「长条纹样」两个方向的比例不同。 */
+  denV?: number;
+  /** 贴图横竖对调:纹样沿 v 方向走(竖着的饰边)。 */
+  swapUV?: boolean;
 }
 export interface LatheOpts extends SurfOpts {
   /** 截面压扁:x / z 方向各自的倍率。 */
@@ -147,8 +151,10 @@ export class Sculpt extends MeshBatch {
           this.tangents.push(_t.x, _t.y, _t.z, w);
           if (o.uv01) {
             this.uvs.push(i / nu, 1 - j / nv);
+          } else if (o.swapUV) {
+            this.uvs.push(vL[j] * (o.denV ?? den) + ou, uL[i] * den + ov);
           } else {
-            this.uvs.push(uL[i] * den + ou, vL[j] * den + ov);
+            this.uvs.push(uL[i] * den + ou, vL[j] * (o.denV ?? den) + ov);
           }
           this.colors.push(tint[0], tint[1], tint[2], 1);
         }
@@ -300,6 +306,55 @@ export class Sculpt extends MeshBatch {
       for (let i = 1; i < n - 1; i += 1) {
         this.poly([lo[0], lo[i], lo[i + 1]], down, tint, den, 0, 0);
       }
+    }
+  }
+
+  /**
+   * 一个平直的面,贴图坐标由调用方逐点给(晶体:每个面要按「绕一圈 / 沿长度」展开,不能用平面投影)。
+   * 顶点按「从外面看逆时针」给;法线取面的真实法线,切线按贴图 u 增长的方向算。
+   */
+  facet(pts: Vec3[], uvs: Array<[number, number]>, tint: Tint): void {
+    if (this.count() + pts.length > 60000) {
+      this.cut();
+    }
+    const e1 = Vec3.subtract(new Vec3(), pts[1], pts[0]);
+    const e2 = Vec3.subtract(new Vec3(), pts[2], pts[0]);
+    const n = Vec3.cross(new Vec3(), e1, e2);
+    if (n.lengthSqr() < 1e-16) {
+      return;
+    }
+    n.normalize();
+    const du1 = uvs[1][0] - uvs[0][0];
+    const dv1 = uvs[1][1] - uvs[0][1];
+    const du2 = uvs[2][0] - uvs[0][0];
+    const dv2 = uvs[2][1] - uvs[0][1];
+    const det = du1 * dv2 - du2 * dv1;
+    const t = new Vec3();
+    const b = new Vec3();
+    if (Math.abs(det) < 1e-12) {
+      t.set(e1).normalize();
+      Vec3.cross(b, n, t);
+    } else {
+      t.set((e1.x * dv2 - e2.x * dv1) / det, (e1.y * dv2 - e2.y * dv1) / det, (e1.z * dv2 - e2.z * dv1) / det);
+      b.set((e2.x * du1 - e1.x * du2) / det, (e2.y * du1 - e1.y * du2) / det, (e2.z * du1 - e1.z * du2) / det);
+    }
+    t.subtract(_c.set(n).multiplyScalar(Vec3.dot(t, n)));
+    if (t.lengthSqr() < 1e-14) {
+      t.set(e1);
+    }
+    t.normalize();
+    const w = Vec3.dot(Vec3.cross(_c, n, t), b) < 0 ? -1 : 1;
+    const base = this.count();
+    for (let i = 0; i < pts.length; i += 1) {
+      this.positions.push(pts[i].x, pts[i].y, pts[i].z);
+      this.normals.push(n.x, n.y, n.z);
+      this.tangents.push(t.x, t.y, t.z, w);
+      this.uvs.push(uvs[i][0], uvs[i][1]);
+      this.colors.push(tint[0], tint[1], tint[2], 1);
+    }
+    for (let i = 1; i < pts.length - 1; i += 1) {
+      this.indices.push(base, base + i, base + i + 1);
+      this.triangles += 1;
     }
   }
 

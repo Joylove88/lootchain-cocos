@@ -500,3 +500,289 @@ export function buildEnvCube(lobes: EnvLobe[], sky: [number, number, number], ho
   cube.setMipFilter(TextureCube.Filter.LINEAR);
   return cube;
 }
+
+// ───────────────────────── 精细化(2026-11-12 用户:「水晶和英雄看起来太糊了」)─────────────────────────
+/** 两个方向周期各自给的可平铺噪声(发丝这种一个方向密、一个方向稀的纹理)。 */
+function tn2(x: number, y: number, px: number, py: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const wx = (i: number): number => ((i % px) + px) % px;
+  const wy = (i: number): number => ((i % py) + py) % py;
+  return lerp(lerp(hash2(wx(ix), wy(iy), seed), hash2(wx(ix + 1), wy(iy), seed), ux), lerp(hash2(wx(ix), wy(iy + 1), seed), hash2(wx(ix + 1), wy(iy + 1), seed), ux), uy);
+}
+
+/**
+ * 晶体:贴图的 u 绕晶柱一圈(可平铺),v = 0(图的上边)是晶尖、v = 1 是晶根。
+ * - 颜色:根部深蓝、往尖上变浅,带絮状的内含物;
+ * - 法线:一道道横向的生长纹 + 细碎的裂隙,高光才会碎成一条一条而不是一整片;
+ * - 自发光:芯子里流动的亮脉 + 零星的亮点,越往尖上越亮。
+ */
+export function paintCrystal(S = 512): { albedo: Cv; normal: Cv; emissive: Cv } {
+  // 内部的裂隙:十几道斜着的直线(真的晶体里是一片片平的解理面,不是弯弯曲曲的水波),横向可平铺
+  const fr = makeCanvas(S, S);
+  const fc = ctxOf(fr);
+  const rnd = mulberry32(7719);
+  fc.fillStyle = '#000';
+  fc.fillRect(0, 0, S, S);
+  fc.lineCap = 'round';
+  for (let i = 0; i < 26; i += 1) {
+    const x = rnd() * S;
+    const y = (0.08 + rnd() * 0.84) * S;
+    const ang = (rnd() < 0.5 ? 1 : -1) * (0.25 + rnd() * 0.75);
+    const len = (0.06 + rnd() * 0.2) * S;
+    const a = 0.25 + rnd() * 0.6;
+    for (const ox of [-S, 0, S]) {
+      fc.strokeStyle = `rgba(255,255,255,${a * 0.3})`;
+      fc.lineWidth = 5;
+      fc.beginPath();
+      fc.moveTo(x + ox - Math.sin(ang) * len, y - Math.cos(ang) * len);
+      fc.lineTo(x + ox + Math.sin(ang) * len, y + Math.cos(ang) * len);
+      fc.stroke();
+      fc.strokeStyle = `rgba(255,255,255,${a})`;
+      fc.lineWidth = 1.3;
+      fc.stroke();
+    }
+  }
+  const fd = fc.getImageData(0, 0, S, S).data;
+  const crack = (x: number, y: number): number => fd[(y * S + x) * 4] / 255;
+  const height = pixels(S, S, (x, y, o) => {
+    const t = y / S;
+    const lines = 0.5 + 0.5 * Math.sin(t * 170 + 3 * tfbm(x / S, t, 3, 2, 772));
+    const fine = tfbm(x / S, t, 48, 2, 773);
+    const g = clamp(0.5 + (lines - 0.5) * 0.26 + (fine - 0.5) * 0.12 - crack(x, y) * 0.45, 0, 1);
+    o[0] = g;
+    o[1] = g;
+    o[2] = g;
+  });
+  const albedo = pixels(S, S, (x, y, o) => {
+    const tip = 1 - y / S;
+    const cloud = tfbm(x / S, (y / S) * 0.35, 3, 3, 774);
+    const k = clamp(0.1 + 0.66 * tip + (cloud - 0.5) * 0.1, 0, 1);
+    const c = crack(x, y);
+    o[0] = lerp(0.03, 0.36, k) + c * 0.3;
+    o[1] = lerp(0.12, 0.64, k) + c * 0.34;
+    o[2] = lerp(0.25, 0.82, k) + c * 0.34;
+  });
+  const emissive = pixels(S, S, (x, y, o) => {
+    const tip = 1 - y / S;
+    const core = 0.06 + 0.4 * smooth(0.0, 0.92, tip);
+    const speck = hash2(x >> 1, y >> 1, 778) > 0.9978 ? 0.8 : 0;
+    const e = clamp(core * (0.9 + 0.1 * tfbm(x / S, (y / S) * 0.3, 2, 2, 776)) + speck + crack(x, y) * 0.75, 0, 1);
+    o[0] = lerp(0.02, 0.55, e * e);
+    o[1] = lerp(0.1, 0.96, e);
+    o[2] = lerp(0.3, 1.0, Math.sqrt(e));
+  });
+  return { albedo, normal: heightToNormal(height, 2.2, true), emissive };
+}
+
+/** 脸壳覆盖的经纬范围(度):经度 ±FACE.th(0 = 正前),纬度 FACE.p0 ~ FACE.p1。画脸和建脸壳用同一份。 */
+export const FACE = { th: 70, p0: -60, p1: 55 };
+
+/**
+ * 老者的脸(画在一张图上,贴到头的正面):肤色的明暗、眼窝、杏仁眼(眼白 / 虹膜 / 高光 / 上眼线)、
+ * 白而长的寿眉、鼻翼的影子、法令纹、嘴、额纹、鱼尾纹。纯手画的矢量,不拿任何现成图。
+ */
+export function paintFace(S = 512): Cv {
+  const cv = makeCanvas(S, S);
+  const c = ctxOf(cv);
+  const rnd = mulberry32(1881);
+  const X = (th: number): number => ((th + FACE.th) / (2 * FACE.th)) * S;
+  const Y = (ph: number): number => (1 - (ph - FACE.p0) / (FACE.p1 - FACE.p0)) * S;
+  const kx = S / (2 * FACE.th);
+  const ky = S / (FACE.p1 - FACE.p0);
+  const blob = (th: number, ph: number, rth: number, rph: number, color: string): void => {
+    const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+    g.addColorStop(0, color);
+    g.addColorStop(1, color.replace(/,[^,]*\)$/, ',0)'));
+    c.save();
+    c.translate(X(th), Y(ph));
+    c.scale(rth * kx, rph * ky);
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(0, 0, 1, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  };
+  // 底色 + 大块明暗:两侧和下颌暗下去,额头、鼻梁、颧骨提亮
+  c.fillStyle = 'rgb(166,138,122)';
+  c.fillRect(0, 0, S, S);
+  blob(0, 28, 34, 22, 'rgba(206,172,146,0.5)');
+  blob(0, -2, 12, 30, 'rgba(206,170,146,0.36)');
+  for (const s of [1, -1]) {
+    blob(s * 66, 0, 26, 70, 'rgba(96,60,44,0.62)');
+    blob(s * 30, -6, 13, 9, 'rgba(210,174,148,0.4)');      // 颧骨的亮面
+    blob(s * 33, -22, 15, 12, 'rgba(110,68,52,0.42)');     // 颧骨下的凹陷
+    blob(s * 30, -9, 13, 9, 'rgba(176,84,62,0.14)');       // 一点血色
+    blob(s * 21, 5, 13, 8.5, 'rgba(84,48,38,0.5)');        // 眼窝
+    blob(s * 21, -3.5, 10, 4, 'rgba(120,74,58,0.32)');     // 眼袋
+    blob(s * 7.5, -9.5, 4.2, 3.4, 'rgba(70,38,30,0.5)');   // 鼻翼的影子
+  }
+  blob(0, -52, 60, 16, 'rgba(92,58,44,0.6)');
+  blob(0, 52, 60, 10, 'rgba(120,84,64,0.4)');
+  // 皮肤的细碎斑驳
+  for (let i = 0; i < 900; i += 1) {
+    const v = rnd();
+    c.fillStyle = v < 0.5 ? `rgba(120,76,58,${0.03 + rnd() * 0.05})` : `rgba(240,204,172,${0.03 + rnd() * 0.05})`;
+    c.fillRect(rnd() * S, rnd() * S, 1 + rnd() * 2.2, 1 + rnd() * 2.2);
+  }
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  const line = (pts: number[][], width: number, color: string): void => {
+    c.strokeStyle = color;
+    c.lineWidth = width;
+    c.beginPath();
+    c.moveTo(X(pts[0][0]), Y(pts[0][1]));
+    if (pts.length === 3) {
+      c.quadraticCurveTo(X(pts[1][0]), Y(pts[1][1]), X(pts[2][0]), Y(pts[2][1]));
+    } else {
+      for (let i = 1; i < pts.length; i += 1) {
+        c.lineTo(X(pts[i][0]), Y(pts[i][1]));
+      }
+    }
+    c.stroke();
+  };
+  // 额纹(三道,每道下面跟一线亮边)
+  for (const [ph, a] of [[23, 0.3], [28.5, 0.26], [34, 0.2]]) {
+    line([[-24, ph - 1.2], [0, ph + 1.4], [24, ph - 1.2]], 1.8, `rgba(96,58,44,${a})`);
+    line([[-24, ph - 2.4], [0, ph + 0.2], [24, ph - 2.4]], 1.4, `rgba(236,198,166,${a * 0.6})`);
+  }
+  line([[-2.2, 13], [-2.8, 18]], 1.6, 'rgba(96,58,44,0.3)');     // 眉间纹
+  line([[2.2, 13], [2.8, 18]], 1.6, 'rgba(96,58,44,0.3)');
+  for (const s of [1, -1]) {
+    // 眼睛:先画眼白,再把虹膜裁在眼眶里
+    const eye = (): void => {
+      c.beginPath();
+      c.moveTo(X(s * 13), Y(3));
+      c.quadraticCurveTo(X(s * 21.5), Y(8.4), X(s * 30.5), Y(3.6));
+      c.quadraticCurveTo(X(s * 21.5), Y(-0.2), X(s * 13), Y(3));
+      c.closePath();
+    };
+    eye();
+    c.fillStyle = 'rgb(214,206,192)';
+    c.fill();
+    c.save();
+    eye();
+    c.clip();
+    c.fillStyle = 'rgba(60,40,34,0.35)';                            // 上眼睑投在眼白上的影子
+    c.fillRect(X(s * 21.5) - 60, Y(8.4), 120, 2.4 * ky);
+    c.fillStyle = 'rgb(58,40,28)';
+    c.beginPath();
+    c.arc(X(s * 21.2), Y(3.9), 3.0 * kx, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = 'rgb(12,9,8)';
+    c.beginPath();
+    c.arc(X(s * 21.2), Y(3.9), 1.35 * kx, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = 'rgba(255,250,240,0.92)';
+    c.beginPath();
+    c.arc(X(s * 21.2 - 1.2), Y(5.0), 0.62 * kx, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    line([[s * 12.4, 2.8], [s * 21.5, 8.9], [s * 31.6, 3.9]], 3.4, 'rgb(40,24,18)');      // 上眼线
+    line([[s * 13.6, 2.6], [s * 21.5, -0.5], [s * 30.2, 3.2]], 1.5, 'rgba(70,42,32,0.7)'); // 下眼睑
+    line([[s * 13, 6.6], [s * 21.5, 11.6], [s * 31, 7.2]], 1.6, 'rgba(84,50,38,0.5)');     // 双眼皮褶
+    for (const [dph, a] of [[4.5, 0.4], [1.5, 0.45], [-2.2, 0.36]]) {                      // 鱼尾纹
+      line([[s * 32.5, 3.6 + dph * 0.25], [s * 39, 3.8 + dph]], 1.3, `rgba(90,54,42,${a})`);
+    }
+    // 寿眉:一根根白毛,内侧短而上扬,外侧长而下垂
+    for (let i = 0; i < 90; i += 1) {
+      const t = rnd();
+      const th = 8.5 + t * 29;
+      const ph = 11.2 + 3.4 * Math.sin(t * Math.PI * 0.9) - t * 2.2 + (rnd() - 0.5) * 2.6;
+      const len = 2.4 + rnd() * 2.6 + t * 2.4;
+      const ang = (-12 + t * 46 + (rnd() - 0.5) * 30) * (Math.PI / 180);
+      const g = 190 + Math.floor(rnd() * 60);
+      line([[s * th, ph], [s * (th + Math.cos(ang) * len), ph - Math.sin(ang) * len]], 1 + rnd() * 1.3, `rgba(${g},${g},${g - 8},${0.55 + rnd() * 0.4})`);
+    }
+    line([[s * 8, -9], [s * 12, -17], [s * 17, -27]], 2.2, 'rgba(92,54,42,0.42)');          // 法令纹
+    line([[s * 9.4, -8.6], [s * 13.4, -17], [s * 18.4, -26.6]], 1.6, 'rgba(236,196,164,0.22)');
+  }
+  // 八字胡:从鼻下往两边嘴角外撇下去的一根根白须
+  for (const s of [1, -1]) {
+    for (let i = 0; i < 70; i += 1) {
+      const t = rnd();
+      const th0 = 1.5 + t * 6 + (rnd() - 0.5) * 2;
+      const ph0 = -15.5 - t * 2 + (rnd() - 0.5) * 1.6;
+      const th1 = th0 + 6 + t * 9 + rnd() * 3;
+      const ph1 = ph0 - 9 - t * 12 - rnd() * 5;
+      const g = 196 + Math.floor(rnd() * 56);
+      line([[s * th0, ph0], [s * (th0 + (th1 - th0) * 0.7), ph0 - 1.5], [s * th1, ph1]], 1.1 + rnd() * 1.5, `rgba(${g},${g},${g - 6},${0.6 + rnd() * 0.36})`);
+    }
+  }
+  // 嘴:一道线 + 下唇的亮面(大半被胡须盖住)
+  line([[-8.5, -23.4], [0, -24.6], [8.5, -23.4]], 2.6, 'rgb(92,50,42)');
+  blob(0, -27.5, 7.5, 2.6, 'rgba(206,150,128,0.5)');
+  blob(0, -31.5, 9, 2.4, 'rgba(96,58,46,0.32)');
+  return cv;
+}
+
+/** 衣饰的回纹饰边(可横向平铺):深褐底上暗金线的回纹,上下各压一道金边。8 个纹样一行。 */
+export function paintTrim(W = 512, H = 64): Cv {
+  const cv = makeCanvas(W, H);
+  const c = ctxOf(cv);
+  const rnd = mulberry32(64);
+  c.fillStyle = 'rgb(48,33,25)';
+  c.fillRect(0, 0, W, H);
+  for (let i = 0; i < 500; i += 1) {
+    c.fillStyle = `rgba(${20 + rnd() * 60},${14 + rnd() * 40},${10 + rnd() * 30},${0.08 + rnd() * 0.12})`;
+    c.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 3, 1 + rnd() * 2);
+  }
+  const gold = (a: number): string => `rgba(176,136,70,${a})`;
+  c.lineCap = 'square';
+  c.lineJoin = 'miter';
+  const cell = W / 8;
+  for (let k = 0; k < 8; k += 1) {
+    const x0 = k * cell;
+    c.strokeStyle = gold(0.86 + rnd() * 0.12);
+    c.lineWidth = 4.2;
+    c.beginPath();
+    const P = (x: number, y: number, first = false): void => (first ? c.moveTo(x0 + x, y) : c.lineTo(x0 + x, y));
+    P(6, 46, true);
+    P(6, 18);
+    P(58, 18);
+    P(58, 46);
+    P(20, 46);
+    P(20, 30);
+    P(44, 30);
+    c.stroke();
+  }
+  c.fillStyle = gold(0.95);
+  c.fillRect(0, 3, W, 4);
+  c.fillRect(0, H - 7, W, 4);
+  c.fillStyle = 'rgba(232,196,120,0.5)';
+  c.fillRect(0, 3, W, 1.2);
+  c.fillRect(0, H - 7, W, 1.2);
+  // 磨旧:随手蹭掉几处金线
+  for (let i = 0; i < 70; i += 1) {
+    c.fillStyle = `rgba(48,33,25,${0.25 + rnd() * 0.4})`;
+    c.fillRect(rnd() * W, rnd() * H, 2 + rnd() * 7, 1 + rnd() * 2.4);
+  }
+  return cv;
+}
+
+/** 发丝:顺着 v 方向的一根根细丝(u 方向很密、v 方向很长),颜色近白,靠顶点色调成灰白。 */
+export function paintHair(S = 256): Skin {
+  const strand = (x: number, y: number): number => {
+    const a = tn2((x / S) * 96, (y / S) * 3, 96, 3, 901);
+    const b = tn2((x / S) * 40, (y / S) * 2, 40, 2, 902);
+    const c2 = tn2((x / S) * 160, (y / S) * 5, 160, 5, 903);
+    return clamp(a * 0.5 + b * 0.3 + c2 * 0.2, 0, 1);
+  };
+  const height = pixels(S, S, (x, y, o) => {
+    const g = strand(x, y);
+    o[0] = g;
+    o[1] = g;
+    o[2] = g;
+  });
+  const albedo = pixels(S, S, (x, y, o) => {
+    const g = 0.52 + 0.48 * Math.pow(strand(x, y), 0.8);
+    o[0] = g;
+    o[1] = g;
+    o[2] = g * 0.99;
+  });
+  return { albedo, normal: heightToNormal(height, 3.2, true) };
+}

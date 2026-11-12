@@ -146,12 +146,16 @@ async def mode_look(p):
     q = opt('q', 'high')
     if not await p.open(w, h, q):
         return
-    await p.js(f"__g3dshow.cam('{opt('cam', 'battle')}')")
     await p.step(int(float(opt('t', '3')) * 30))
+    if opt('idle'):
+        await p.js("__g3dshow.stage.mode = 'idle'")
     if opt('cast'):
         print(' ', await p.js(cast_js(float(opt('cast')))), flush=True)
-    await p.step(1, 1 / 60)
-    await p.shot(os.path.join(OUT, f"look_{opt('tag', q)}.jpg"))
+    # --cams=a,b,c:同一个时刻换几个机位各截一张
+    for cam in [c for c in opt('cams', opt('cam', 'battle')).split(',') if c]:
+        await p.js(f"__g3dshow.cam('{cam}')")
+        await p.step(2, 1 / 60)
+        await p.shot(os.path.join(OUT, f"look_{opt('tag', q)}_{cam}.jpg"))
     print(' ', await p.js('JSON.stringify(__g3dshow.info())'), flush=True)
 
 

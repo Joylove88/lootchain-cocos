@@ -2,7 +2,7 @@ import { Color, Mat4, Material, Mesh, MeshRenderer, Node, Quat, Vec3 } from 'cc'
 import { material, tex } from './G3DKit';
 import { Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
-import { paintCloth, paintLeather, paintMetal, paintTalisman } from './G3DSkins';
+import { FACE, paintCloth, paintFace, paintHair, paintLeather, paintMetal, paintTalisman, paintTrim } from './G3DSkins';
 import { hash2, paintWood } from './G3DTextures';
 
 /**
@@ -21,7 +21,7 @@ const rgb = (r: number, g: number, b: number): Tint => [r / 255, g / 255, b / 25
 const mul = (t: Tint, k: number): Tint => [t[0] * k, t[1] * k, t[2] * k];
 const mix = (a: Tint, b: Tint, t: number): Tint => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
-const DEN = { cloth: 8, metal: 4.6, leather: 6.5, wood: 3, skin: 1, dark: 1, paper: 1, hair: 9 };
+const DEN = { cloth: 8, metal: 4.6, leather: 6.5, wood: 3, skin: 1, dark: 1, paper: 1, hair: 7, face: 1, trim: 1 };
 export type MatKey = keyof typeof DEN | 'glow';
 
 let MATS: Record<string, Material> | null = null;
@@ -45,11 +45,19 @@ export function actorMaterials(): Record<string, Material> {
   m.cloth = std({ USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true }, 0.92, 0);
   m.cloth.setProperty('mainTexture', tex(cloth.albedo, true));
   m.cloth.setProperty('normalMap', tex(cloth.normal, true));
-  m.cloth.setProperty('normalStrength', 0.5);
-  m.hair = std({ USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true }, 0.7, 0);
-  m.hair.setProperty('mainTexture', tex(cloth.albedo, true));
-  m.hair.setProperty('normalMap', tex(cloth.normal, true));
-  m.hair.setProperty('normalStrength', 0.8);
+  m.cloth.setProperty('normalStrength', 0.9);
+  // 头发 / 胡须:一根根发丝的贴图(顺着长度方向),不再借用布纹
+  const hair = paintHair(256);
+  m.hair = std({ USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true }, 0.52, 0);
+  m.hair.setProperty('mainTexture', tex(hair.albedo, true, 8));
+  m.hair.setProperty('normalMap', tex(hair.normal, true, 8));
+  m.hair.setProperty('normalStrength', 1.2);
+  // 脸:整张画出来的贴图(眼、眉、纹路);衣饰的回纹饰边
+  m.face = std({ USE_ALBEDO_MAP: true }, 0.56, 0);
+  m.face.setProperty('mainTexture', tex(paintFace(512), false, 8));
+  m.face.setProperty('roughness', 0.82);
+  m.trim = std({ USE_ALBEDO_MAP: true }, 0.6, 0);
+  m.trim.setProperty('mainTexture', tex(paintTrim(512, 64), true, 8));
   m.metal = std({ USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_PBR_MAP: true, USE_VERTEX_COLOR: true }, 0.95, 1);
   m.metal.setProperty('mainTexture', tex(metal.albedo, true));
   m.metal.setProperty('normalMap', tex(metal.normal, true));
@@ -61,7 +69,7 @@ export function actorMaterials(): Record<string, Material> {
   m.wood = std({ USE_ALBEDO_MAP: true, USE_NORMAL_MAP: true, USE_VERTEX_COLOR: true }, 0.7, 0);
   m.wood.setProperty('mainTexture', tex(wood.albedo, true));
   m.wood.setProperty('normalMap', tex(wood.normal, true));
-  m.skin = std({ USE_VERTEX_COLOR: true }, 0.58, 0);
+  m.skin = std({ USE_VERTEX_COLOR: true }, 0.82, 0);   // 皮肤要糙一点,不然一打光就是塑料的反光
   m.dark = std({}, 1, 0);
   m.dark.setProperty('mainColor', new Color(7, 7, 9, 255));
   m.paper = std({ USE_ALBEDO_MAP: true }, 0.85, 0);
@@ -263,16 +271,32 @@ function strip(sc: Sculpt, w: number, len: number, tint: Tint, den: number, curv
 }
 
 // ───────────────────────── 术士(布衣、露脸、持杖)─────────────────────────
-const C_OCHRE = rgb(146, 108, 56);
-const C_OCHRE_L = rgb(160, 124, 70);
+const C_OCHRE = rgb(134, 100, 56);
+const C_OCHRE_L = rgb(150, 116, 66);
 const C_INDIGO = rgb(44, 50, 66);
-const C_SASH = rgb(104, 40, 32);
+const C_SASH = rgb(130, 44, 34);
 const C_TRIM = rgb(50, 36, 28);
-const C_SKIN = rgb(192, 148, 118);
-const C_HAIR = rgb(186, 186, 180);
+const C_SKIN = rgb(164, 136, 120);
+const C_SKIN_SIDE = rgb(120, 98, 86);
+const C_HAIR = rgb(228, 228, 222);
+const C_CREAM = rgb(216, 206, 184);
 const C_WOODT = rgb(96, 70, 48);
 const C_BRONZE = rgb(160, 122, 68);
 const C_BOOT = rgb(48, 38, 30);
+const C_JADE = rgb(92, 150, 116);
+
+const sm01 = (t: number): number => {
+  const k = Math.min(1, Math.max(0, t));
+  return k * k * (3 - 2 * k);
+};
+const rad = (d: number): number => (d * Math.PI) / 180;
+
+/** 头的外形(骨头本地坐标):th = 经度(0 正前,正值朝角色左手边 +x),ph = 纬度;k = 放大系数。下半张脸往里收出下颌。 */
+function headPoint(th: number, ph: number, k: number, out: Vec3): void {
+  const jaw = 1 - 0.24 * sm01((-0.1 - ph) / 0.95);
+  const cp = Math.cos(ph);
+  out.set(Math.sin(th) * cp * 0.08 * jaw * k, 0.088 + Math.sin(ph) * 0.112 * k, 0.004 + Math.cos(th) * cp * 0.094 * (0.5 + 0.5 * jaw) * k);
+}
 
 export function buildSorcerer(): ActorTemplate {
   const T = new ActorTemplate();
@@ -289,11 +313,12 @@ export function buildSorcerer(): ActorTemplate {
   T.bone('staff', 'handR', 0, -0.05, 0.035);
   T.bone('sleeveL', 'foreL', 0, -0.2, -0.02, pend(0.27, 5));
   T.bone('sleeveR', 'foreR', 0, -0.2, -0.02, pend(0.27, 5));
-  T.bone('beard', 'head', 0, 0.0, 0.066, pend(0.3, 22, 0.9));
+  T.bone('beard', 'head', 0, 0.0, 0.064, pend(0.3, 22, 0.9));
   T.bone('wrapTail', 'head', 0, 0.12, -0.105, pend(0.3, 7));
   T.bone('sashA', 'hips', 0.06, -0.01, 0.168, pend(0.46, 6));
   T.bone('sashB', 'hips', 0.1, -0.01, 0.15, pend(0.36, 6));
   T.bone('gourd', 'hips', -0.205, -0.03, 0.06, pend(0.15, 9, 0.92));
+  T.bone('jade', 'hips', -0.1, -0.03, 0.165, pend(0.2, 7, 0.93));
   T.bone('tal1', 'hips', 0.2, -0.03, 0.07, pend(0.19, 5));
   T.bone('tal2', 'hips', 0.215, -0.03, 0.02, pend(0.19, 5));
   T.bone('tal3', 'hips', 0.2, -0.03, -0.035, pend(0.19, 5));
@@ -303,29 +328,51 @@ export function buildSorcerer(): ActorTemplate {
   T.bone('footL', 'hips', 0.09, -0.9, 0.02);
   T.bone('footR', 'hips', -0.09, -0.9, 0.02);
 
-  const dirt = (base: Tint, lo: number): ((u: number, v: number) => Tint) => (_u, v) => mul(base, lo + (1 - lo) * Math.min(1, v * 1.4));
-  // 外褂:前襟两条边和下摆一圈镶深色的边
-  const coatTint = (base: Tint, lo: number, hem: boolean): ((u: number, v: number) => Tint) => (u, v) => (u < 0.06 || u > 0.94 || (hem && v < 0.05) ? C_TRIM : mul(base, lo + (1 - lo) * Math.min(1, v * 1.4)));
+  // 衣褶:褶沟是尖的、褶峰是圆的(|sin|),褶沟里的颜色压深 —— 远看才分得出一道一道的褶,而不是一个光滑的筒
+  const pleat = (a: number, n: number, ph: number): number => Math.abs(Math.sin(n * 0.5 * a + ph));
+  const skirtFold = (a: number, v: number): number => 1 + 0.12 * Math.pow(1 - v, 1.5) * (1.5 * pleat(a, 9, 0.6) - 0.85 + 0.25 * Math.sin(13 * a + 2.1));
+  const coatFold = (a: number, v: number): number => 1 + 0.1 * Math.pow(1 - v, 1.4) * (1.5 * pleat(a, 8, 2.2) - 0.85 + 0.25 * Math.sin(11 * a + 0.4));
+  const grime = (v: number, lo: number): number => lo + (1 - lo) * Math.min(1, v * 1.4);   // 越往下摆越脏
+  const TRIM_U = 1 / 0.48;   // 回纹沿长度方向每 6 厘米一个(贴图一行 8 个)
 
-  // ── 下身:里袍的裙摆(整圈)+ 外褂的下摆(前面敞开)+ 腰带 ──
-  T.s('hips', 'cloth').lathe([[0.36, -0.87], [0.345, -0.8], [0.29, -0.55], [0.232, -0.28], [0.185, -0.06], [0.17, 0.03]], 30, {
-    sz: 0.8, den: DEN.cloth, tint: dirt(C_INDIGO, 0.55),
-    fold: (a, v) => 1 + 0.11 * Math.pow(1 - v, 1.6) * (0.6 * Math.sin(7 * a + 0.6) + 0.4 * Math.sin(12 * a + 2.1)),
+  // ── 下身:里袍的裙摆(整圈)+ 外褂的下摆(前面敞开,下摆和两条前襟镶回纹边)+ 腰带 ──
+  T.s('hips', 'cloth').lathe([[0.36, -0.87], [0.345, -0.8], [0.29, -0.55], [0.232, -0.28], [0.185, -0.06], [0.17, 0.03]], 46, {
+    sz: 0.8, den: DEN.cloth, fold: skirtFold,
+    tint: (u, v) => mul(C_INDIGO, grime(v, 0.55) * (0.66 + 0.34 * Math.pow(pleat(u * TAU, 9, 0.6), 0.7))),
   });
-  const coatGap = 0.5;
-  T.s('hips', 'cloth').lathe([[0.385, -0.72], [0.37, -0.66], [0.32, -0.45], [0.257, -0.22], [0.205, -0.03], [0.19, 0.04]], 30, {
-    sz: 0.82, den: DEN.cloth, tint: coatTint(C_OCHRE, 0.6, true), twoSided: true, arc: [FRONT + coatGap, FRONT - coatGap + TAU],
-    fold: (a, v) => 1 + 0.09 * Math.pow(1 - v, 1.5) * (0.6 * Math.sin(6 * a + 2.2) + 0.4 * Math.sin(11 * a + 0.4)),
+  const coatGap = 0.62;
+  const ca0 = FRONT + coatGap;
+  const ca1 = FRONT - coatGap + TAU;
+  const coatProf: Array<[number, number]> = [[0.385, -0.72], [0.37, -0.66], [0.32, -0.45], [0.257, -0.22], [0.205, -0.03], [0.19, 0.04]];
+  T.s('hips', 'cloth').lathe(coatProf, 44, {
+    sz: 0.82, den: DEN.cloth, twoSided: true, arc: [ca0, ca1], fold: coatFold,
+    tint: (u, v) => mul(C_OCHRE, grime(v, 0.62) * (0.68 + 0.32 * Math.pow(pleat(ca0 + (ca1 - ca0) * u, 8, 2.2), 0.7))),
   });
+  T.s('hips', 'trim').lathe([[0.39, -0.724], [0.372, -0.63]], 44, {
+    sz: 0.82, den: TRIM_U * 0.7, denV: 1 / 0.098, smooth: false, twoSided: true, arc: [ca0, ca1], fold: (a, v) => coatFold(a, v * 0.13),
+  });
+  for (const [e0, e1] of [[ca0, ca0 + 0.11], [ca1 - 0.11, ca1]]) {
+    T.s('hips', 'trim').lathe(coatProf, 2, {
+      sz: 0.82, den: 1 / 0.03, denV: TRIM_U, swapUV: true, twoSided: true, arc: [e0, e1], fold: (a, v) => coatFold(a, v) * 1.012,
+    });
+  }
   T.s('hips', 'cloth').lathe([[0.198, -0.04], [0.206, 0.0], [0.198, 0.045]], 24, { sz: 0.83, den: DEN.cloth, tint: C_SASH, smooth: false });
   T.s('hips', 'cloth').ball(0.05, 0.038, 0.032, [0.075, 0.0, 0.17], 10, { den: DEN.cloth, tint: mul(C_SASH, 1.1) });
   T.s('hips', 'metal').ball(0.03, 0.03, 0.012, [-0.02, 0.0, 0.172], 8, { den: DEN.metal, tint: C_BRONZE });
   strip(T.s('sashA', 'cloth'), 0.065, 0.46, C_SASH, DEN.cloth, 0.03);
   strip(T.s('sashB', 'cloth'), 0.06, 0.36, mul(C_SASH, 0.9), DEN.cloth, 0.02);
-  // 葫芦、符纸
+  // 葫芦、玉环、符纸
   T.s('gourd', 'wood').ball(0.058, 0.062, 0.058, [0, -0.13, 0], 12, { den: DEN.wood, tint: rgb(150, 108, 56) });
   T.s('gourd', 'wood').ball(0.038, 0.04, 0.038, [0, -0.055, 0], 10, { den: DEN.wood, tint: rgb(160, 118, 62) });
   T.s('gourd', 'wood').ball(0.012, 0.02, 0.012, [0, -0.012, 0], 6, { den: DEN.wood, tint: C_TRIM });
+  const jadeRing: Vec3[] = [];
+  for (let i = 0; i <= 14; i += 1) {
+    const a = (i / 14) * TAU;
+    jadeRing.push(new Vec3(Math.cos(a) * 0.026, -0.13 + Math.sin(a) * 0.026, 0));
+  }
+  T.s('jade', 'skin').tube(jadeRing, 0.0075, 6, { tint: C_JADE });
+  T.s('jade', 'cloth').capsule(0.003, 0.003, 0.1, 5, { den: DEN.cloth, tint: C_SASH });
+  T.s('jade', 'cloth').capsule(0.006, 0.012, 0.09, 6, { den: DEN.cloth, tint: C_SASH, xf: xform([0, -0.16, 0]) });
   for (const name of ['tal1', 'tal2', 'tal3']) {
     strip(T.s(name, 'paper'), 0.05, 0.19, [1, 1, 1], 1, 0.015, true);
   }
@@ -334,71 +381,126 @@ export function buildSorcerer(): ActorTemplate {
     T.s(f, 'leather').ball(0.058, 0.055, 0.125, [0, 0, 0.045], 12, { den: DEN.leather, tint: C_BOOT });
   }
 
-  // ── 上身:里袍 + 外褂(前襟敞开)+ 一圈搭在肩头的短披领(盖住肩关节)──
-  T.s('chest', 'cloth').lathe([[0.178, -0.21], [0.19, -0.1], [0.205, 0.02], [0.215, 0.12], [0.2, 0.2], [0.13, 0.265], [0.062, 0.3], [0.058, 0.33]], 22, {
-    sx: 1.1, sz: 0.74, den: DEN.cloth, tint: C_INDIGO,
+  // ── 上身:里袍(胸前露出米白的交领)+ 外褂(前襟敞开、镶回纹边)+ 搭在肩头的短披领(前面也敞开)──
+  const chestProf: Array<[number, number]> = [[0.178, -0.21], [0.19, -0.1], [0.205, 0.02], [0.215, 0.12], [0.2, 0.2], [0.13, 0.265], [0.062, 0.3], [0.058, 0.33]];
+  T.s('chest', 'cloth').lathe(chestProf, 26, { sx: 1.1, sz: 0.74, den: DEN.cloth, tint: C_INDIGO });
+  const rChest = (y: number): number => {
+    for (let i = 0; i < chestProf.length - 1; i += 1) {
+      if (y <= chestProf[i + 1][1]) {
+        const t = Math.min(1, Math.max(0, (y - chestProf[i][1]) / (chestProf[i + 1][1] - chestProf[i][1])));
+        return chestProf[i][0] + (chestProf[i + 1][0] - chestProf[i][0]) * t;
+      }
+    }
+    return chestProf[chestProf.length - 1][0];
+  };
+  /** 贴着里袍表面走的一条带子:pts = [偏离正前方的角度(弧度), 高度] 的折线。 */
+  const chestBand = (pts: Array<[number, number]>, width: number, lift: number, tint: Tint): void => {
+    const at = (t: number, out: Vec3, nrm: Vec3): void => {
+      const f = Math.min(pts.length - 1 - 1e-6, Math.max(0, t * (pts.length - 1)));
+      const i = Math.floor(f);
+      const k = f - i;
+      const d = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k;
+      const y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k;
+      const a = FRONT + d;
+      const r = rChest(y);
+      nrm.set(Math.cos(a) / 1.1, 0, Math.sin(a) / 0.74).normalize();
+      out.set(Math.cos(a) * r * 1.1 + nrm.x * lift, y, Math.sin(a) * r * 0.74 + nrm.z * lift);
+    };
+    const p0 = new Vec3();
+    const p1 = new Vec3();
+    const n0 = new Vec3();
+    const n1 = new Vec3();
+    T.s('chest', 'cloth').surf(2, 18, (u, v, out) => {
+      at(v, p0, n0);
+      at(Math.min(1, v + 0.02), p1, n1);
+      const dir = Vec3.subtract(new Vec3(), p1, p0);
+      if (dir.lengthSqr() < 1e-10) {
+        at(Math.max(0, v - 0.02), p1, n1);
+        dir.set(p0.x - p1.x, p0.y - p1.y, p0.z - p1.z);
+      }
+      const across = Vec3.cross(new Vec3(), n0, dir).normalize();
+      out.set(p0.x + across.x * (u - 0.5) * width, p0.y + across.y * (u - 0.5) * width, p0.z + across.z * (u - 0.5) * width);
+    }, { den: DEN.cloth, twoSided: true, tint: (u) => (u < 0.2 || u > 0.8 ? mul(tint, 0.78) : tint) });
+  };
+  chestBand([[-0.36, 0.292], [-0.27, 0.21], [-0.09, 0.085], [0.04, 0.0]], 0.04, 0.0045, mul(C_CREAM, 0.92));
+  chestBand([[0.36, 0.292], [0.27, 0.21], [0.09, 0.085], [-0.12, -0.04], [-0.3, -0.15]], 0.04, 0.0075, C_CREAM);
+  const cg = 0.42;
+  const cc0 = FRONT + cg;
+  const cc1 = FRONT - cg + TAU;
+  const coatChest: Array<[number, number]> = [[0.196, -0.2], [0.21, -0.09], [0.224, 0.03], [0.232, 0.13], [0.218, 0.21], [0.15, 0.272], [0.085, 0.305]];
+  T.s('chest', 'cloth').lathe(coatChest, 26, { sx: 1.1, sz: 0.76, den: DEN.cloth, tint: mul(C_OCHRE, 0.94), twoSided: true, arc: [cc0, cc1] });
+  for (const [e0, e1] of [[cc0, cc0 + 0.13], [cc1 - 0.13, cc1]]) {
+    T.s('chest', 'trim').lathe(coatChest, 2, { sx: 1.1, sz: 0.76, den: 1 / 0.03, denV: TRIM_U, swapUV: true, twoSided: true, arc: [e0, e1], fold: () => 1.014 });
+  }
+  const mg = 0.36;
+  const mantleFold = (a: number, v: number): number => 1 + 0.05 * (1 - v) * Math.sin(8 * a + 1.3);
+  T.s('chest', 'cloth').lathe([[0.262, 0.15], [0.254, 0.185], [0.207, 0.242], [0.126, 0.286], [0.08, 0.303]], 30, {
+    sx: 1.1, sz: 0.84, den: DEN.cloth, tint: (_u, v) => mul(C_OCHRE_L, 0.8 + 0.2 * v), twoSided: true, arc: [FRONT + mg, FRONT - mg + TAU], fold: mantleFold,
   });
-  T.s('chest', 'cloth').lathe([[0.196, -0.2], [0.21, -0.09], [0.224, 0.03], [0.232, 0.13], [0.218, 0.21], [0.15, 0.272], [0.085, 0.305]], 26, {
-    sx: 1.1, sz: 0.76, den: DEN.cloth, tint: coatTint(C_OCHRE, 0.9, false), twoSided: true, arc: [FRONT + 0.42, FRONT - 0.42 + TAU],
-  });
-  T.s('chest', 'cloth').lathe([[0.262, 0.15], [0.254, 0.185], [0.207, 0.242], [0.126, 0.286], [0.08, 0.303]], 28, {
-    sx: 1.1, sz: 0.84, den: DEN.cloth, tint: (_u, v) => (v < 0.13 ? C_TRIM : mul(C_OCHRE_L, 0.8 + 0.2 * v)), twoSided: true,
-    fold: (a, v) => 1 + 0.05 * (1 - v) * Math.sin(8 * a + 1.3),
+  T.s('chest', 'trim').lathe([[0.266, 0.147], [0.252, 0.2]], 30, {
+    sx: 1.1, sz: 0.84, den: TRIM_U, denV: 1 / 0.056, smooth: false, twoSided: true, arc: [FRONT + mg, FRONT - mg + TAU], fold: (a, v) => mantleFold(a, v * 0.33),
   });
 
-  // ── 头:脸(额、鼻、眉弓、眼窝、颧骨、下巴)、耳;灰白长发束成发髻,铜冠横插一根簪;长须、长眉 ──
+  // ── 头:一个往下收出下颌的头型;正面罩一层画好的脸(眼、眉、纹路都在贴图上);鼻子和耳朵是立体的;
+  //    灰白长发束成发髻,铜冠横插一根簪,额上勒一条深色抹额;长须 ──
   const H = T.s('head', 'skin');
-  H.lathe([[0.05, -0.08], [0.048, -0.01], [0.052, 0.03]], 10, { tint: mul(C_SKIN, 0.86), smooth: false });
-  H.ball(0.08, 0.108, 0.094, [0, 0.085, 0.004], 18, { tint: C_SKIN });
-  H.ball(0.058, 0.07, 0.062, [0, 0.022, 0.03], 12, { tint: mul(C_SKIN, 0.97) });
-  H.ball(0.014, 0.034, 0.026, [0, 0.066, 0.098], 8, { tint: mul(C_SKIN, 1.03) });
-  H.ball(0.066, 0.014, 0.026, [0, 0.106, 0.08], 10, { tint: mul(C_SKIN, 0.9) });
+  H.lathe([[0.05, -0.08], [0.048, -0.01], [0.052, 0.03]], 12, { tint: mul(C_SKIN, 0.8), smooth: false });
+  H.surf(24, 16, (u, v, out) => headPoint((u - 0.5) * TAU, (v - 0.5) * (Math.PI - 0.06), 1, out), { tint: C_SKIN_SIDE, closeU: true, flip: true });
+  T.s('head', 'face').surf(20, 18, (u, v, out) => headPoint(rad((u - 0.5) * 2 * FACE.th), rad(FACE.p0 + v * (FACE.p1 - FACE.p0)), 1.012, out), { uv01: true, flip: true });
+  H.ball(0.011, 0.026, 0.016, [0, 0.068, 0.0975], 10, { tint: mul(C_SKIN, 1.0) });
+  H.ball(0.013, 0.011, 0.013, [0, 0.05, 0.1], 8, { tint: mul(C_SKIN, 1.0) });
+  H.ball(0.008, 0.008, 0.008, [0.011, 0.047, 0.097], 6, { tint: mul(C_SKIN, 0.94) });
+  H.ball(0.008, 0.008, 0.008, [-0.011, 0.047, 0.097], 6, { tint: mul(C_SKIN, 0.94) });
   for (const sx of [1, -1]) {
-    H.ball(0.012, 0.026, 0.018, [sx * 0.082, 0.078, 0.0], 6, { tint: mul(C_SKIN, 0.9) });
-    H.ball(0.024, 0.022, 0.02, [sx * 0.043, 0.058, 0.066], 8, { tint: mul(C_SKIN, 0.98) });
-    T.s('head', 'dark').ball(0.016, 0.009, 0.008, [sx * 0.031, 0.09, 0.087], 6);
-    T.s('head', 'hair').ball(0.026, 0.006, 0.009, [sx * 0.035, 0.112, 0.09], 6, { den: DEN.hair, tint: C_HAIR, xf: xform([0, 0, 0], [0, 0, sx * -10]) });
-    T.s('head', 'hair').capsule(0.009, 0.004, 0.085, 6, { den: DEN.hair, tint: mul(C_HAIR, 0.96), xf: xform([sx * 0.02, 0.05, 0.094], [10, 0, sx * 24]) });
+    H.ball(0.012, 0.027, 0.018, [sx * 0.079, 0.08, -0.002], 8, { tint: mul(C_SKIN, 0.86) });
+    T.s('head', 'hair').capsule(0.0065, 0.003, 0.1, 6, { den: DEN.hair, tint: mul(C_HAIR, 0.9), xf: xform([sx * 0.072, 0.118, 0.04], [6, 0, sx * -6]) });
   }
   const HR = T.s('head', 'hair');
-  HR.ball(0.086, 0.1, 0.096, [0, 0.1, -0.014], 16, { den: DEN.hair, tint: mul(C_HAIR, 0.82) });
-  HR.lathe([[0.066, -0.11], [0.082, -0.03], [0.088, 0.06]], 16, {
-    sx: 0.96, den: DEN.hair, tint: (_u, v) => mul(C_HAIR, 0.66 + 0.2 * v), arc: [FRONT + 1.5, FRONT - 1.5 + TAU],
+  HR.ball(0.087, 0.106, 0.097, [0, 0.1, -0.016], 20, { den: DEN.hair, tint: mul(C_HAIR, 0.86) });
+  HR.lathe([[0.066, -0.11], [0.082, -0.03], [0.088, 0.06]], 20, {
+    sx: 0.96, den: DEN.hair, tint: (_u, v) => mul(C_HAIR, 0.7 + 0.2 * v), arc: [FRONT + 1.5, FRONT - 1.5 + TAU],
     fold: (a) => 1 + 0.05 * Math.sin(13 * a),
     bend: (_v, p) => {
       p.z -= 0.012;
     },
   });
-  HR.ball(0.037, 0.042, 0.037, [0, 0.222, -0.022], 10, { den: DEN.hair, tint: mul(C_HAIR, 0.9) });
-  T.s('head', 'metal').lathe([[0.033, 0.196], [0.043, 0.206], [0.033, 0.218]], 10, { den: DEN.metal, tint: C_BRONZE, smooth: false, xf: xform([0, 0, -0.022]) });
-  T.s('head', 'metal').box(0.2, 0.009, 0.009, new Vec3(0, 0.222, -0.022), new Vec3(0, 12, 0), C_BRONZE, DEN.metal, () => 0.5, 0.002);
-  T.s('head', 'cloth').lathe([[0.083, 0.128], [0.086, 0.139], [0.083, 0.15]], 18, { sz: 1.14, den: DEN.cloth, tint: C_INDIGO, smooth: false, xf: xform([0, 0, -0.004]) });
-  T.s('beard', 'hair').lathe([[0.004, -0.31], [0.026, -0.23], [0.044, -0.11], [0.05, -0.03], [0.044, 0.012]], 14, {
-    sz: 0.5, den: DEN.hair, tint: (_u, v) => mul(C_HAIR, 1.02 - 0.2 * v),
+  HR.ball(0.037, 0.042, 0.037, [0, 0.226, -0.022], 12, { den: DEN.hair, tint: mul(C_HAIR, 0.92) });
+  T.s('head', 'metal').lathe([[0.033, 0.199], [0.044, 0.21], [0.033, 0.222]], 12, { den: DEN.metal, tint: C_BRONZE, smooth: false, xf: xform([0, 0, -0.022]) });
+  T.s('head', 'metal').box(0.2, 0.009, 0.009, new Vec3(0, 0.226, -0.022), new Vec3(0, 12, 0), C_BRONZE, DEN.metal, () => 0.5, 0.002);
+  T.s('head', 'cloth').lathe([[0.083, 0.131], [0.0865, 0.142], [0.083, 0.153]], 20, { sz: 1.14, den: DEN.cloth, tint: C_INDIGO, smooth: false, xf: xform([0, 0, -0.004]) });
+  T.s('beard', 'hair').lathe([[0.004, -0.31], [0.026, -0.23], [0.044, -0.11], [0.05, -0.03], [0.044, 0.012]], 16, {
+    sz: 0.5, den: DEN.hair, tint: (_u, v) => mul(C_HAIR, 1.0 - 0.16 * v),
     fold: (a) => 1 + 0.13 * Math.sin(11 * a),
   });
   strip(T.s('wrapTail', 'cloth'), 0.05, 0.3, C_INDIGO, DEN.cloth, 0.05);
 
-  // ── 手臂:上臂袖筒、往手腕略放宽的袖口(镶边)、垂下来的袖摆、手 ──
+  // ── 手臂:上臂袖筒、往手腕略放宽的袖口(镶回纹边)、垂下来的袖摆、手(手指一根根分开)──
   for (const side of ['L', 'R']) {
     const sgn = side === 'L' ? 1 : -1;
-    T.s(`arm${side}`, 'cloth').capsule(0.088, 0.08, 0.27, 12, { den: DEN.cloth, tint: C_OCHRE });
-    T.s(`fore${side}`, 'cloth').lathe([[0.108, -0.24], [0.1, -0.17], [0.09, -0.08], [0.082, 0.02]], 16, {
-      den: DEN.cloth, tint: (_u, v) => (v < 0.14 ? C_TRIM : mul(C_OCHRE, 0.8 + 0.2 * v)), twoSided: true,
-      fold: (a, v) => 1 + 0.06 * (1 - v) * Math.sin(6 * a + 0.8),
+    T.s(`arm${side}`, 'cloth').capsule(0.088, 0.08, 0.27, 14, { den: DEN.cloth, tint: C_OCHRE });
+    const cuffFold = (a: number, v: number): number => 1 + 0.06 * (1 - v) * Math.sin(6 * a + 0.8);
+    T.s(`fore${side}`, 'cloth').lathe([[0.108, -0.24], [0.1, -0.17], [0.09, -0.08], [0.082, 0.02]], 18, {
+      den: DEN.cloth, tint: (_u, v) => mul(C_OCHRE, 0.8 + 0.2 * v), twoSided: true, fold: cuffFold,
     });
-    T.s(`fore${side}`, 'cloth').capsule(0.04, 0.034, 0.25, 8, { den: DEN.cloth, tint: C_INDIGO });
+    T.s(`fore${side}`, 'trim').lathe([[0.111, -0.243], [0.103, -0.18]], 18, { den: TRIM_U * 1.1, denV: 1 / 0.064, smooth: false, twoSided: true, fold: (a, v) => cuffFold(a, v * 0.25) });
+    T.s(`fore${side}`, 'cloth').capsule(0.04, 0.034, 0.25, 8, { den: DEN.cloth, tint: C_CREAM });
     T.s(`sleeve${side}`, 'cloth').lathe([[0.004, -0.27], [0.05, -0.21], [0.078, -0.12], [0.074, -0.04], [0.05, 0.005]], 14, {
       sx: 0.4, den: DEN.cloth, tint: (_u, v) => (v < 0.2 ? C_TRIM : mul(C_OCHRE, 0.7 + 0.3 * v)),
       fold: (a, v) => 1 + 0.08 * (1 - v) * Math.sin(5 * a),
     });
     const hand = T.s(`hand${side}`, 'skin');
     if (side === 'R') {
-      hand.ball(0.047, 0.046, 0.047, [0, -0.05, 0.03], 10, { tint: mul(C_SKIN, 0.96) });   // 握着法杖的拳头
+      hand.ball(0.045, 0.044, 0.045, [0, -0.05, 0.03], 12, { tint: mul(C_SKIN, 0.94) });   // 握着法杖的拳头
+      for (let i = 0; i < 4; i += 1) {
+        hand.ball(0.0125, 0.0125, 0.014, [0.036, -0.072 + i * 0.016, 0.052], 6, { tint: mul(C_SKIN, 0.99) });   // 指节
+      }
+      hand.capsule(0.011, 0.009, 0.045, 6, { tint: C_SKIN, xf: xform([0.012, -0.024, 0.068], [-70, 0, -30]) });   // 拇指搭在杖上
     } else {
-      hand.ball(0.04, 0.05, 0.021, [0, -0.045, 0], 10, { tint: C_SKIN });
-      hand.ball(0.036, 0.042, 0.018, [0, -0.098, 0.004], 8, { tint: mul(C_SKIN, 0.98) });
-      hand.ball(0.014, 0.03, 0.014, [sgn * -0.036, -0.04, 0.016], 6, { tint: C_SKIN });
+      hand.ball(0.04, 0.046, 0.019, [0, -0.045, 0], 10, { tint: C_SKIN });
+      for (let i = 0; i < 4; i += 1) {
+        hand.capsule(0.009, 0.0072, 0.05 + (i === 1 || i === 2 ? 0.01 : 0), 6, { tint: mul(C_SKIN, 0.99), xf: xform([-0.027 + i * 0.018, -0.084, 0.003], [-14 - i * 2, 0, (i - 1.5) * 4]) });
+      }
+      hand.capsule(0.011, 0.0085, 0.045, 6, { tint: C_SKIN, xf: xform([sgn * -0.038, -0.03, 0.012], [-20, 0, sgn * -38]) });
     }
   }
 
@@ -408,20 +510,20 @@ export function buildSorcerer(): ActorTemplate {
     const y = -1.0 + (2.02 * i) / 14;
     path.push(new Vec3(0.012 * Math.sin(3.1 * y + 1), y, 0.01 * Math.sin(2.3 * y)));
   }
-  T.s('staff', 'wood').tube(path, (t) => 0.025 - 0.006 * t, 8, { den: DEN.wood, tint: C_WOODT });
+  T.s('staff', 'wood').tube(path, (t) => 0.025 - 0.006 * t, 10, { den: DEN.wood, tint: C_WOODT });
   const ST = T.s('staff', 'metal');
-  ST.lathe([[0.028, -1.0], [0.029, -0.95], [0.025, -0.92]], 8, { den: DEN.metal, tint: C_BRONZE, smooth: false });
+  ST.lathe([[0.028, -1.0], [0.029, -0.95], [0.025, -0.92]], 10, { den: DEN.metal, tint: C_BRONZE, smooth: false });
   for (let i = 0; i < 9; i += 1) {
     const y = 0.2 + i * 0.08;
-    ST.lathe([[0.022, y - 0.011], [0.034, y], [0.022, y + 0.011]], 8, { den: DEN.metal, tint: mul(C_BRONZE, 0.9 + 0.2 * hash2(i, 3, 5)), smooth: false });
+    ST.lathe([[0.022, y - 0.011], [0.034, y], [0.022, y + 0.011]], 10, { den: DEN.metal, tint: mul(C_BRONZE, 0.9 + 0.2 * hash2(i, 3, 5)), smooth: false });
   }
   const ringPath: Vec3[] = [];
   for (let i = 0; i <= 18; i += 1) {
     const a = (i / 18) * TAU - Math.PI / 2;
     ringPath.push(new Vec3(Math.cos(a) * 0.1, 1.15 + Math.sin(a) * 0.1, 0));
   }
-  ST.tube(ringPath, 0.014, 6, { den: DEN.metal, tint: C_BRONZE });
-  ST.lathe([[0.019, 1.0], [0.03, 1.025], [0.017, 1.055]], 8, { den: DEN.metal, tint: C_BRONZE, smooth: false });
+  ST.tube(ringPath, 0.014, 8, { den: DEN.metal, tint: C_BRONZE });
+  ST.lathe([[0.019, 1.0], [0.03, 1.025], [0.017, 1.055]], 10, { den: DEN.metal, tint: C_BRONZE, smooth: false });
   const hex: Array<[number, number]> = [];
   for (let i = 0; i < 6; i += 1) {
     hex.push([Math.cos((i / 6) * TAU) * 0.04, Math.sin((i / 6) * TAU) * 0.04]);
