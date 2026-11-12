@@ -6,7 +6,7 @@ import { FxWorld } from './G3DFx';
 import { addMesh, DynMesh, keptMaterial, loadKit, material, tex } from './G3DKit';
 import { MeshBatch } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
-import { Frame, frameOf, poseBeastHit, poseBeastIdle, poseBite, poseCast, poseHit, Rig } from './G3DPose';
+import { analyzeBeast, BeastRig, Frame, frameOf, poseBeastHit, poseBeastIdle, poseBeastWalk, poseBite, poseCast, poseHit, Rig } from './G3DPose';
 import { buildEnvCube, FX_CELL, paintCrystal, paintHaze, paintShaft, paintVignette } from './G3DSkins';
 import { GD, GW, GX0, GZ0, hash2, mulberry32, paintBackdrop, paintGround, paintRock, paintWood, puddleLevel, wetValue } from './G3DTextures';
 
@@ -46,12 +46,27 @@ const CHAR_ORDER = ['idle', 'walk', 'run', 'slash', 'shoot', 'hurt', 'fall'];
 // 英雄站石台(台面高 0.07)、面朝 +x:术士和妮克丝在后排两侧,悟空顶在前排正中;怪物站在右边的地上、转 180 度面朝英雄。
 // height 是包围盒的高度(狼算到耳尖,蜘蛛算到背顶)。
 const slot = (ix: number, iz: number): Vec3 => new Vec3(HERO.x + ix * 1.45, 0.07, HERO.z + iz * 1.75);
-const CHAR_SPECS: Record<string, { at: Vec3; height: number; yaw: number }> = {
+const CHAR_SPECS: Record<string, { at: Vec3; height: number; yaw: number; procWalk?: boolean }> = {
   sorcerer: { at: slot(0, 1), height: 1.86, yaw: 0 },
   nyx: { at: slot(0, -1), height: 1.8, yaw: 0 },
   wukong: { at: slot(1, 0), height: 1.74, yaw: 0 },
   wolf: { at: new Vec3(HERO.x + 5.0, 0, HERO.z + 1.5), height: 1.32, yaw: 180 },
   spider: { at: new Vec3(HERO.x + 3.9, 0, HERO.z - 1.9), height: 0.74, yaw: 180 },
+  // 第二批 · 开局(11-12):男女主角 + 新手契约的六个英雄占满正中以外的八块石台(和第一批的站位有重叠,两批分开看);
+  // 村外林地的怪在右边排开(从小到大:幼鼠、毒蛛、狼、棕鬃熊、腐木巨熊)
+  hero_m: { at: slot(1, 0), height: 1.78, yaw: 0 },
+  hero_f: { at: slot(1, 1), height: 1.68, yaw: 0 },
+  huaxiong: { at: slot(1, -1), height: 1.88, yaw: 0 },
+  ganning: { at: slot(0, 1), height: 1.8, yaw: 0 },
+  dianwei: { at: slot(0, -1), height: 2.04, yaw: 0 },
+  taishici: { at: slot(-1, 1), height: 1.86, yaw: 0 },
+  xunyou: { at: slot(-1, 0), height: 1.78, yaw: 0 },
+  daqiao: { at: slot(-1, -1), height: 1.64, yaw: 0 },
+  rat: { at: new Vec3(HERO.x + 2.9, 0, HERO.z + 2.3), height: 0.46, yaw: 180 },
+  spider2: { at: new Vec3(HERO.x + 2.3, 0, HERO.z - 1.7), height: 0.74, yaw: 180 },
+  // 棕鬃熊:平台套上去的行走预设是坏的(整个身体被拧了 90 度),走路改用程序化行走
+  bear: { at: new Vec3(HERO.x + 7.2, 0, HERO.z - 0.9), height: 1.62, yaw: 180, procWalk: true },
+  rotbear: { at: new Vec3(HERO.x + 10.1, 0, HERO.z + 1.0), height: 2.2, yaw: 180 },
 };
 interface ShowChar {
   name: string;
@@ -69,6 +84,11 @@ interface ShowChar {
   hit: number;
   act: string;
   actT: number;
+  /** 怪物骨架的结构(按形状认出来的脊柱 / 头 / 腿);pwalk = 正在用程序化行走,walkPhase 是步伐相位;procWalk = 这只怪的行走一律走程序化。 */
+  beast: BeastRig | null;
+  pwalk: boolean;
+  walkPhase: number;
+  procWalk: boolean;
   node: Node;
   anim: SkeletalAnimation | null;
   names: string[];
@@ -696,6 +716,7 @@ class Stage {
         const kind = rig.j('Hips') && rig.j('Spine1') ? 'biped' : 'beast';
         const c: ShowChar = { name: key, at: spec.at.clone(), height: spec.height, yaw: spec.yaw, span: Math.max(hi.x - lo.x, hi.z - lo.z) * s,
           rig, frame: frameOf(spec.yaw), kind, rest: false, hit: 0, act: '', actT: 0,
+          beast: kind === 'beast' ? analyzeBeast(rig, frameOf(spec.yaw)) : null, pwalk: false, walkPhase: 0, procWalk: !!spec.procWalk,
           node: n, anim: null, names: [], cur: '', t: 0, hold: 0, seq: -1, manual: false, tris, joints };
         this.chars.push(c);
         this.stats.charTris = (this.stats.charTris ?? 0) + tris;
@@ -749,6 +770,7 @@ class Stage {
     st.wrapMode = loop ? AnimationClip.WrapMode.Loop : AnimationClip.WrapMode.Normal;
     anim.crossFade(name, c.rest ? 0 : fade);
     c.rest = false;
+    c.pwalk = false;
     c.cur = name;
     c.t = 0;
     // 循环动作播一会儿就换下一个;一次性的动作播完再停半秒(倒地多躺一会儿);平台给的预设动作有的很长(受击 14 秒),最多播 5 秒
@@ -778,14 +800,20 @@ class Stage {
           poseHit(rig, c.frame, c.hit);
         }
       } else {
-        if (c.rest) {
-          poseBeastIdle(rig, c.frame, this.time, c.at.x);
+        const b = c.beast;
+        if (!b) {
+          continue;
+        }
+        if (c.rest && c.pwalk) {
+          poseBeastWalk(rig, c.frame, b, c.walkPhase);
+        } else if (c.rest) {
+          poseBeastIdle(rig, c.frame, b, this.time, c.at.x);
         }
         if (c.act === 'bite') {
-          poseBite(rig, c.frame, c.actT);
+          poseBite(rig, c.frame, b, c.actT);
         }
         if (c.hit > 0.001) {
-          poseBeastHit(rig, c.frame, c.hit);
+          poseBeastHit(rig, c.frame, b, c.hit);
         }
       }
     }
@@ -808,6 +836,13 @@ class Stage {
     } else if (act === 'rest') {
       c.anim?.stop();
       c.rest = true;
+      c.pwalk = false;
+      c.manual = true;
+    } else if (act === 'pwalk' || (c.procWalk && act === 'walk')) {
+      // 程序化行走:不播动作片段,站姿上叠腿的摆动(平台的行走预设坏了 / 没买的怪物用)
+      c.anim?.stop();
+      c.rest = true;
+      c.pwalk = true;
       c.manual = true;
     } else {
       const hit = c.names.find((k) => k.toLowerCase().indexOf(act.toLowerCase()) >= 0);
@@ -891,6 +926,9 @@ class Stage {
     const speed = engineDt > 1e-5 ? dt / engineDt : 1;
     for (const c of this.chars) {
       c.hit = Math.max(0, c.hit - dt * 3.0);
+      if (c.pwalk) {
+        c.walkPhase += dt * Math.PI * 2 * 1.35;      // 每秒 1.35 步
+      }
       if (c.act) {
         c.actT += dt;
         if (c.actT > 0.85) {
@@ -925,7 +963,9 @@ class Stage {
         continue;
       }
       const hit = c.names.find((k) => k.toLowerCase().indexOf(name.toLowerCase()) >= 0);
-      if (hit) {
+      if (hit && c.procWalk && hit.toLowerCase().indexOf('walk') >= 0) {
+        this.charAct(c.name, 'pwalk');        // 这只怪的行走预设是坏的:走程序化行走
+      } else if (hit) {
         c.manual = true;
         this.playChar(c, hit);
       }
@@ -955,6 +995,11 @@ class Stage {
       // 阵容:左边三个英雄、右边两只怪。lineup 从侧面看两边对峙;lineupFront 从怪物身后看过去,能看到英雄的正脸
       lineup: { pos: [HERO.x + 2.7, 2.0, HERO.z + 7.3], look: [HERO.x + 2.55, 0.9, HERO.z - 0.3], fov: 36 },
       lineupFront: { pos: [HERO.x + 7.6, 2.3, HERO.z + 5.4], look: [HERO.x + 1.4, 0.95, HERO.z - 0.2], fov: 30 },
+      // 第二批的合影:八个英雄(从正前方偏高处看三排石台)、林地的怪(从侧面看一排)
+      heroes8: { pos: [HERO.x + 8.2, 3.6, HERO.z + 2.6], look: [HERO.x - 0.3, 0.85, HERO.z - 0.1], fov: 30,
+        only: ['hero_m', 'hero_f', 'huaxiong', 'ganning', 'dianwei', 'taishici', 'xunyou', 'daqiao'] },
+      monsters: { pos: [HERO.x + 6.4, 2.5, HERO.z + 10.4], look: [HERO.x + 6.3, 0.95, HERO.z + 0.2], fov: 38,
+        only: ['rat', 'spider2', 'wolf', 'bear', 'rotbear'] },
       // 只看三个英雄的正面(怪物正好挡在这个方向上,这个机位把它们藏起来)
       heroesFront: { pos: [HERO.x + 6.4, 1.55, HERO.z + 0.9], look: [HERO.x + 0.6, 1.0, HERO.z], fov: 32, only: ['sorcerer', 'wukong', 'nyx'] },
     };
@@ -1490,7 +1535,8 @@ class Stage {
   info(): Record<string, unknown> {
     return { opened: this.opened, built: !!this.world, time: +this.time.toFixed(2), mode: this.mode, castT: +this.castT.toFixed(2), stats: this.stats, fx: this.fx?.stats, knights: this.knights.map((k) => `${k.state}@${k.x.toFixed(1)}`),
       cfg: { ...SHOW }, kit: ['g3d-standard', 'g3d-bloom', 'g3d-fxaa'].filter((n) => !!keptMaterial(n)), lastError: this.lastError,
-      chars: this.chars.map((c) => ({ name: c.name, kind: c.kind, rest: c.rest, clips: c.names, cur: c.cur, tris: c.tris, joints: c.joints, baked: c.anim ? c.anim.useBakedAnimation : null })) };
+      chars: this.chars.map((c) => ({ name: c.name, kind: c.kind, rest: c.rest, pwalk: c.pwalk,
+        legs: c.beast ? c.beast.legs.map((l) => (l.front ? '前' : '后') + (l.left ? '左' : '右') + l.joints.length).join(' ') : '', spine: c.beast ? c.beast.spine.length : 0, head: c.beast ? c.beast.head.length : 0, clips: c.names, cur: c.cur, tris: c.tris, joints: c.joints, baked: c.anim ? c.anim.useBakedAnimation : null })) };
   }
 
   /** 现场调参。 */

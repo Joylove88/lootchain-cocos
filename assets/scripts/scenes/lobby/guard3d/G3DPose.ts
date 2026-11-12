@@ -167,43 +167,123 @@ export function poseHit(rig: Rig, f: Frame, h: number): void {
 }
 
 /**
+ * 怪物骨架的结构:脊柱(从根到头)、头颈、每条腿。
+ * 平台给非人形骨架起的名字不可靠(同一种熊,一只的前腿叫 Spine_2,另一只的骨盆叫 0_Left_Limb_0),
+ * 所以不看名字,按站姿下骨头的位置和分叉来认:贴地、偏在身体两侧的末端 = 脚,往上爬到分叉点为止 = 一条腿;
+ * 最靠前、位置高的末端 = 头;从根到头的那条路 = 脊柱。
+ */
+export interface BeastRig {
+  root: Node | null;
+  spine: Node[];
+  head: Node[];
+  legs: Array<{ joints: Node[]; front: boolean; left: boolean }>;
+  height: number;
+}
+
+export function analyzeBeast(rig: Rig, f: Frame): BeastRig {
+  const root = rig.j('Root') ?? rig.joints.find((n) => /root|hips|pelvis/i.test(n.name)) ?? null;
+  const all: Node[] = [];
+  const walk = (n: Node): void => {
+    all.push(n);
+    n.children.forEach(walk);
+  };
+  if (root) {
+    walk(root);
+  }
+  const info = all.map((n) => {
+    const p = n.worldPosition;
+    return { n, y: p.y, fw: Vec3.dot(p, f.fwd), side: Vec3.dot(p, f.right) };
+  });
+  if (!root || info.length < 4) {
+    return { root, spine: [], head: [], legs: [], height: 1 };
+  }
+  const minY = Math.min(...info.map((i) => i.y));
+  const maxY = Math.max(...info.map((i) => i.y));
+  const H = Math.max(1e-4, maxY - minY);
+  const mid = info.reduce((a, i) => a + i.side, 0) / info.length;
+  const maxSide = Math.max(...info.map((i) => Math.abs(i.side - mid)));
+  // 从一个末端往上爬,爬到分叉点(或根)为止
+  const climb = (leaf: Node): Node[] => {
+    const chain = [leaf];
+    let cur = leaf;
+    while (cur.parent && cur.parent !== root && all.indexOf(cur.parent) >= 0 && cur.parent.children.length === 1) {
+      cur = cur.parent;
+      chain.unshift(cur);
+    }
+    return chain;
+  };
+  const leaves = info.filter((i) => i.n.children.length === 0);
+  const feet = leaves.filter((i) => i.y < minY + 0.22 * H && Math.abs(i.side - mid) > maxSide * 0.25);
+  const fwMid = feet.length ? (Math.min(...feet.map((i) => i.fw)) + Math.max(...feet.map((i) => i.fw))) / 2 : 0;
+  const legs = feet.map((i) => ({ joints: climb(i.n), front: i.fw > fwMid, left: i.side - mid < 0 }));
+  const footSet = feet.map((i) => i.n);
+  const headLeaf = leaves.filter((i) => footSet.indexOf(i.n) < 0 && i.y > minY + 0.35 * H).sort((a, b) => b.fw - a.fw)[0] ?? null;
+  const head = headLeaf ? climb(headLeaf.n) : [];
+  const spine: Node[] = [];
+  let cur: Node | null = head.length ? head[0].parent : null;
+  while (cur && cur !== root && all.indexOf(cur) >= 0) {
+    spine.unshift(cur);
+    cur = cur.parent;
+  }
+  return { root, spine, head, legs, height: H };
+}
+
+/**
  * 四足 · 扑咬:t 是这一下走到第几秒(全程约 0.8 秒)。先压低蓄势,再往前窜、头甩上去咬,然后收回。
  * 返回这一刻往前窜了多远(米),调用方用来判定「咬到了」。
  */
-export function poseBite(rig: Rig, f: Frame, t: number, reach = 0.6): number {
+export function poseBite(rig: Rig, f: Frame, b: BeastRig, t: number): number {
   const wind = ease(t / 0.3) * (1 - ease((t - 0.3) / 0.12));          // 蓄势
   const lunge = ease((t - 0.3) / 0.12) * (1 - ease((t - 0.5) / 0.3)); // 窜出去再收回
-  const spine = rig.chain('Spine', f.fwd);
-  const head = rig.chain('Head', f.fwd);
-  const root = rig.j('Root') ?? spine[0] ?? null;
-  const ahead = lunge * reach - wind * 0.16;
-  rig.shift(root, f.fwd.x * ahead, -0.07 * wind + 0.04 * lunge, f.fwd.z * ahead);
+  const reach = Math.min(0.9, Math.max(0.25, b.height * 0.5));
+  const ahead = lunge * reach - wind * reach * 0.26;
+  rig.shift(b.root, f.fwd.x * ahead, b.height * (-0.06 * wind + 0.03 * lunge), f.fwd.z * ahead);
   // 前半身:蓄势时压低(鼻子朝下 = 绕右手轴转负角),扑出去时抬起来
-  const front = spine[spine.length - 1] ?? null;
-  rig.twist(front, f.right, -9 * wind + 7 * lunge);
-  rig.twist(head[0] ?? null, f.right, -14 * wind + 20 * lunge);
-  rig.twist(head[head.length - 1] ?? null, f.right, -6 * wind + 12 * lunge);
+  rig.twist(b.spine[b.spine.length - 1] ?? null, f.right, -9 * wind + 7 * lunge);
+  rig.twist(b.head[0] ?? null, f.right, -14 * wind + 20 * lunge);
+  rig.twist(b.head[b.head.length - 1] ?? null, f.right, -6 * wind + 12 * lunge);
   return Math.max(0, ahead);
 }
 
 /** 四足 · 受击:h 从 1 衰减到 0。被打得往后一挫、头甩向一边。 */
-export function poseBeastHit(rig: Rig, f: Frame, h: number): void {
+export function poseBeastHit(rig: Rig, f: Frame, b: BeastRig, h: number): void {
   const k = ease(h);
-  const spine = rig.chain('Spine', f.fwd);
-  const head = rig.chain('Head', f.fwd);
-  const root = rig.j('Root') ?? spine[0] ?? null;
-  rig.shift(root, -f.fwd.x * 0.22 * k, 0.03 * k, -f.fwd.z * 0.22 * k);
-  rig.twist(spine[spine.length - 1] ?? null, f.right, 8 * k);
-  rig.twist(head[0] ?? null, f.up, 26 * k);
-  rig.twist(head[0] ?? null, f.right, 10 * k);
+  const back = Math.min(0.3, b.height * 0.18);
+  rig.shift(b.root, -f.fwd.x * back * k, b.height * 0.02 * k, -f.fwd.z * back * k);
+  rig.twist(b.spine[b.spine.length - 1] ?? null, f.right, 8 * k);
+  rig.twist(b.head[0] ?? null, f.up, 26 * k);
+  rig.twist(b.head[0] ?? null, f.right, 10 * k);
 }
 
 /** 没有待机动作的怪物:站在绑定姿势上,只加一点呼吸起伏和头的小摆动。 */
-export function poseBeastIdle(rig: Rig, f: Frame, time: number, seed = 0): void {
+export function poseBeastIdle(rig: Rig, f: Frame, b: BeastRig, time: number, seed = 0): void {
   const breathe = Math.sin(time * 1.9 + seed);
-  const spine = rig.chain('Spine', f.fwd);
-  const head = rig.chain('Head', f.fwd);
-  rig.twist(spine[Math.floor(spine.length / 2)] ?? null, f.right, 1.2 * breathe);
-  rig.twist(head[0] ?? null, f.up, 5 * Math.sin(time * 0.6 + seed * 2));
-  rig.twist(head[0] ?? null, f.right, 2.5 * Math.sin(time * 0.9 + seed));
+  rig.twist(b.spine[Math.floor(b.spine.length / 2)] ?? null, f.right, 1.2 * breathe);
+  rig.twist(b.head[0] ?? null, f.up, 5 * Math.sin(time * 0.6 + seed * 2));
+  rig.twist(b.head[0] ?? null, f.right, 2.5 * Math.sin(time * 0.9 + seed));
+}
+
+/**
+ * 四足 / 多足 · 程序化行走(原地):phase 是步伐的相位(弧度,一圈 = 一个完整步子)。
+ * 对角的两条腿同相(左前 + 右后一组,右前 + 左后一组;多足的按前后顺序交替);腿根前后摆,往前迈的时候小腿往后收把脚抬起来;
+ * 身体跟着上下起伏、左右微摆。平台给的行走预设坏了(棕鬃熊)或者干脆不想买的时候用它。
+ */
+export function poseBeastWalk(rig: Rig, f: Frame, b: BeastRig, phase: number): void {
+  const sorted = b.legs.slice().sort((x, y) => Vec3.dot(y.joints[0].worldPosition, f.fwd) - Vec3.dot(x.joints[0].worldPosition, f.fwd));
+  const perSide = { L: 0, R: 0 };
+  for (const leg of sorted) {
+    const idx = leg.left ? perSide.L++ : perSide.R++;          // 这一侧从前往后第几条
+    const flip = (idx % 2 === 0) === leg.left;                 // 同侧相邻的腿交替,左右两侧错开半步
+    const ph = phase + (flip ? 0 : Math.PI);
+    const swing = Math.sin(ph);                                // +1 = 脚在最前
+    const lift = Math.max(0, Math.cos(ph));                    // 往前迈的那半程把脚抬起来
+    rig.twist(leg.joints[0], f.right, 15 * swing);             // 朝下的骨头绕右手轴转正角 = 末端往前
+    rig.twist(leg.joints[Math.min(1, leg.joints.length - 1)], f.right, -20 * lift);
+    if (leg.joints.length > 2) {
+      rig.twist(leg.joints[leg.joints.length - 2], f.right, 10 * lift);   // 脚掌回正一点,免得脚尖戳地
+    }
+  }
+  rig.shift(b.root, 0, b.height * 0.012 * Math.sin(phase * 2), 0);
+  rig.twist(b.spine[Math.floor(b.spine.length / 2)] ?? null, f.up, 2.5 * Math.sin(phase));
+  rig.twist(b.head[0] ?? null, f.right, 2 * Math.sin(phase * 2 + 0.6));
 }

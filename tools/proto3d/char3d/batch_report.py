@@ -7,7 +7,9 @@
 
 用法:python batch_report.py <截图目录> <设定图单视图目录> <输出目录> --tag=c2 --batch=第一批
       --chars="wukong:孙悟空:biped,nyx:妮克丝:biped,wolf:荒原狼:beast,spider:林地毒蛛:beast"
-      [--stats="wukong=5.8 万面 · 65 骨,…"] [--note=…]
+      [--stats="wukong=5.8 万面 · 65 骨;…"] [--note=…]
+      [--main=lineup] [--subs=heroesFront,battle] [--sublabels="三个英雄的正面,实际战斗的俯视机位"] [--title=…] [--name=阵容]
+  --main / --subs  合影用哪几个机位(主图一张大的,下面最多两张小的);--name 是输出文件名里的那一段
 """
 import os
 import sys
@@ -64,9 +66,11 @@ def main():
 
     # ── 阵容 ──
     W = 1920
-    a = fit(look('lineup'), W, 1080)
+    a = fit(look(opt('main', 'lineup')), W, 1080)
     parts = [a]
-    for cam in ('heroesFront', 'battle'):
+    subs = [c for c in opt('subs', 'heroesFront,battle').split(',') if c]
+    sublabels = opt('sublabels', '三个英雄的正面,实际战斗的俯视机位(人物在画面里就这么大)').split(',')
+    for cam in subs[:2]:
         if os.path.exists(os.path.join(src, f'look_{t}_{cam}.jpg')):
             parts.append(fit(look(cam), 956, 538))
     sheet = Image.new('RGB', (W, 70 + 1080 + (8 + 538 if len(parts) > 1 else 0)), BG)
@@ -74,12 +78,11 @@ def main():
     for i, im in enumerate(parts[1:]):
         sheet.paste(im, (i * 964, 70 + 1080 + 8))
     d = ImageDraw.Draw(sheet, 'RGBA')
-    d.text((24, 16), f'{batch}:全部是 AI 图转 3D 的角色,放在同一个引擎场景里(' + '、'.join(c[1] for c in chars) + ',加上先做的术士)', font=font(28, True), fill=(240, 240, 240))
-    if len(parts) > 1:
-        tag(d, (20, 70 + 1080 + 8 + 14), '三个英雄的正面', 22)
-    if len(parts) > 2:
-        tag(d, (964 + 20, 70 + 1080 + 8 + 14), '实际战斗的俯视机位(人物在画面里就这么大)', 22)
-    p = os.path.join(out, f'AI图转3D_04_{batch}_阵容.jpg')
+    d.text((24, 16), opt('title', f'{batch}:全部是 AI 图转 3D 的角色,放在同一个引擎场景里(' + '、'.join(c[1] for c in chars) + ')'), font=font(28, True), fill=(240, 240, 240))
+    for i in range(len(parts) - 1):
+        if i < len(sublabels) and sublabels[i]:
+            tag(d, (i * 964 + 20, 70 + 1080 + 8 + 14), sublabels[i], 22)
+    p = os.path.join(out, f"AI图转3D_{batch}_{opt('name', '阵容')}.jpg")
     sheet.save(p, quality=92)
     print('ok', p, sheet.size)
 
@@ -105,7 +108,7 @@ def main():
         det = det.crop((int(dw * 0.22), 0, int(dw * 0.94), dh)) if kind == 'biped' else det.crop((int(dw * 0.1), int(dh * 0.08), int(dw * 0.9), dh))
         sheet.paste(fit(det, cw[2], rh), (150 + cw[0] + cw[1] + 32, y))
         tag(d, (150 + cw[0] + cw[1] + 32 + 12, y + 10), '脸部特写' if kind == 'biped' else '侧面', 20)
-    p = os.path.join(out, f'AI图转3D_05_{batch}_设定图到引擎.jpg')
+    p = os.path.join(out, f"AI图转3D_{batch}_{opt('name', '阵容')}_设定图到引擎.jpg")
     sheet.save(p, quality=92)
     print('ok', p, sheet.size)
 
@@ -114,7 +117,7 @@ def main():
     rows = []
     for key, cn, kind in chars:
         if kind == 'biped':
-            cells = [(c, tm) for c in ('idle', 'walk', 'run', 'slash', 'fall') for tm in ('1.1', '1.8')]
+            cells = [(c, tm) for c in ('idle', 'walk', 'run', 'slash', 'shoot', 'fall') for tm in ('1.1', '1.8')]
         else:
             cells = [('walk', tm) for tm in ('0.3', '0.9', '1.5', '2.1')]
         cells = [(c, tm) for c, tm in cells if os.path.exists(os.path.join(src, f'clip_{key}_{c}_{float(tm):.1f}.jpg'))]
@@ -136,7 +139,7 @@ def main():
                 sheet.paste(fit(im, cw2, cell_h), (left + k * cw2, y))
                 tag(d, (left + k * cw2 + 8, y + 6), f'{CLIP_CN.get(c, c)} {tm} 秒', 17, False, pad=4)
         d.text((24, top + cell_h * len(rows) + 14), opt('note', ''), font=font(20), fill=(225, 205, 150))
-        p = os.path.join(out, f'AI图转3D_06_{batch}_动作定格.jpg')
+        p = os.path.join(out, f"AI图转3D_{batch}_{opt('name', '阵容')}_动作定格.jpg")
         sheet.save(p, quality=90)
         print('ok', p, sheet.size)
 
