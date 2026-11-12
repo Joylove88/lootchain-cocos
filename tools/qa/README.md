@@ -30,6 +30,7 @@ Get-ChildItem "$env:TEMP\lootchain-qa" -Directory -Filter 'edge_*' | Remove-Item
 | 脚本 | 用途 |
 |---|---|
 | `release_smoke_web.py [输出目录] [--only=city,guard,field]` | **发版前冒烟**:全新配置目录开正式包 7460,登录 → 主城(高清 / 标准探针、着色器、可达性)→ 守卫战打到结算并返回 → 野外清一群怪;收集全部页面异常 / 失败请求,统计下载了哪一套主城图。标准版加 `PAGE_QS='?cityHd=0'` |
+| `release_size_report.py [当前清单] [上一版清单或 tar.gz] [--png]` | **出包后的包体报告**(只读清单,不起浏览器):整包 / 开局包大小、开局包按目录分账、主城两套图有没有进开局包、电脑端 / 手持端各剔除哪一套、和上一版逐目录对比;`--png` 再看开局包里哪些 PNG 没被压 |
 | `rush_perf_cdp.py <tag> [smooth\|ultra] [秒]` | 正式包手机参数打一局:加载门逐资源耗时、每 10 秒帧间隔 / 显存 / 节点 / 骨骼数、中途 20 秒 CPU 剖析 |
 | `ult_hu_cdp.py <tag> [--codes A,B]` | 预览里逐个英雄放专属大招,峰值时刻定格截图 |
 | `hero_tour.py <tag> 844x390m 667x375m 1600x900` | 英雄详情各页签截图;`HERO_EXTRA=steps.json` 自定义步骤(见 `equip_tap_steps.json`) |
