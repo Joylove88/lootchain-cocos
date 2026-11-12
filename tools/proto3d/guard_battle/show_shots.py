@@ -16,6 +16,7 @@
   video … --idle=1 --knights=0 --char=seq --cam=aiBody                                            # 不演战斗,只录角色轮流播动作
   bench … [--tiers=high,mid] [--nochar=1] [--extra=&charbaked=1] [--name=_后缀]                    # 量角色本身的开销(藏起来 / 换成预烘焙骨骼)
   eval  <输出目录> --js=<脚本文件>[,…] [--cams=…]                                                  # 调试:打开样板后执行脚本并打印返回值
+  seq   <输出目录> --seq=<步骤表.json>                                                             # 按步骤表执行(脚本 / 换机位 / 推时间 / 施法 / 截图),见 tools/proto3d/char3d/seq/
 """
 import asyncio
 import base64
@@ -345,6 +346,55 @@ async def mode_clips(p):
     print(' ', await p.js('JSON.stringify(__g3dshow.info().chars)'), flush=True)
 
 
+async def mode_seq(p):
+    """按步骤表执行:--seq=<json 文件>,内容是一个列表,每项是下面之一(从上到下执行):
+      {"js": "…"}            执行一段脚本(返回值会打印)
+      {"cam": "名字或 名字@body"}  换机位
+      {"step": 秒}           往前推这么多秒(每帧 1/60)
+      {"cast": 秒}           立刻开始施法并推到施法的第几秒
+      {"shot": "文件名"}      截一张(存成 seq_<文件名>.jpg)
+      {"rec": "文件名"}       开始录屏:之后的 step 每 1/30 秒存一帧;{"rec": ""} 结束并压成 <文件名>.mp4
+    """
+    w, h = size_of(opt('size', '1280x720'))
+    if not await p.open(w, h, opt('q', 'high')):
+        return
+    fps = 30
+    frames = os.path.join(SCRATCH, 'g3dshow_seq_frames')
+    rec = None
+    for item in json.load(open(opt('seq'), encoding='utf-8')):
+        if 'js' in item:
+            print('  js →', str(await p.js(item['js']))[:200], flush=True)
+        elif 'cam' in item:
+            await p.js(cam_js(item['cam']))
+            await p.step(2, 1 / 60)
+        elif 'rec' in item:
+            if rec:                                   # 结束上一段
+                out = os.path.join(OUT, rec['name'] + '.mp4')
+                ff = shutil.which('ffmpeg')
+                if ff and rec['n']:
+                    subprocess.run([ff, '-y', '-loglevel', 'error', '-framerate', str(fps), '-i', os.path.join(frames, 'f%04d.jpg'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+                                    '-crf', opt('crf', '19'), '-preset', 'slow', '-movflags', '+faststart', out], capture_output=True, text=True)
+                    print('  video', os.path.basename(out), os.path.getsize(out) // 1024 if os.path.exists(out) else 0, 'KB', rec['n'], '帧', flush=True)
+                rec = None
+            if item['rec']:
+                shutil.rmtree(frames, ignore_errors=True)
+                os.makedirs(frames, exist_ok=True)
+                rec = {'name': item['rec'], 'n': 0}
+        elif 'step' in item and rec:
+            for _ in range(max(1, round(float(item['step']) * fps))):
+                await p.step(2, 1 / (fps * 2))
+                r = await p.call('Page.captureScreenshot', {'format': 'jpeg', 'quality': 92}, 120)
+                open(os.path.join(frames, f"f{rec['n']:04d}.jpg"), 'wb').write(base64.b64decode(r['result']['data']))
+                rec['n'] += 1
+        elif 'step' in item:
+            await p.step(max(1, round(float(item['step']) * 60)), 1 / 60)
+        elif 'cast' in item:
+            print(' ', await p.js(cast_js(float(item['cast']))), flush=True)
+        elif 'shot' in item:
+            await p.shot(os.path.join(OUT, f"seq_{item['shot']}.jpg"))
+    print(' ', await p.js('JSON.stringify(__g3dshow.info().chars)'), flush=True)
+
+
 async def mode_eval(p):
     """调试:打开样板后依次执行 --js=<文件>[,<文件>…] 里的脚本并打印返回值(每个文件是一个表达式);--cams 可以顺手截几张。"""
     w, h = size_of(opt('size', '1280x720'))
@@ -387,7 +437,7 @@ async def main():
             await p.call('Runtime.enable')
             await p.call('Page.enable')
             await p.call('Page.bringToFront')
-            await {'look': mode_look, 'shots': mode_shots, 'bench': mode_bench, 'video': mode_video, 'eval': mode_eval, 'clips': mode_clips}[MODE](p)
+            await {'look': mode_look, 'shots': mode_shots, 'bench': mode_bench, 'video': mode_video, 'eval': mode_eval, 'clips': mode_clips, 'seq': mode_seq}[MODE](p)
             if p.logs:
                 print('  page logs:', *list(dict.fromkeys(p.logs))[:8], sep='\n    ', flush=True)
     finally:

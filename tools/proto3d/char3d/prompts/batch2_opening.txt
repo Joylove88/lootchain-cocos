@@ -1,0 +1,79 @@
+# 第二批:开局顺序(2026-11-12 用户:「按开局顺序做」)
+# 男女主角(觉醒境,刚出新手村的样子)→ 新手契约六选三的英雄(异界神州 R)→ 村外林地的怪 → 灰岩荒原的怪。
+# 口径:原创设计、写实、不发光;人形尽量穿裤子 / 短下摆、不带披风长飘带(自动绑骨会把长袍当裤腿扯);空手(武器单独做);
+#       怪物 = 被「长夜」侵蚀:身上有哑光的黑色玻璃质硬壳和细裂纹。
+# 野犬 / 猎犬直接用第一批的荒原狼缩小,不另出图。
+
+### hero_m | 主角男 | biped
+Character (an original design): the hero of a fantasy adventure at the very start of his journey — a village youth of about nineteen from a small frontier village, lean and fit, of average height. Short, slightly tousled black hair; dark brown eyes; a determined but calm young face, mouth closed. A small dark sigil shaped like a broken ring is tattooed on the back of his right hand (flat dark ink, NOT glowing).
+Costume: simple, well-worn village clothes. A sleeveless brown leather vest with a thick grey-brown fur collar, worn open over a cream linen shirt with the sleeves rolled up to the elbows; leather wrist wraps; a wide leather belt with a small pouch and an EMPTY sword frog on the left hip; dark grey-green wool trousers tucked into sturdy brown leather boots. No armor, no cape, no hood, no long hanging cloth.
+
+### hero_f | 主角女 | biped
+Character (an original design): the heroine of a fantasy adventure at the very start of her journey — a village girl of about nineteen from a small frontier village, slim and fit, of average height. Black hair tied in a neat high ponytail that ends at the shoulder blades (compact, not flowing), a few short strands at the temples; dark brown eyes; a determined but calm young face, mouth closed, no heavy makeup. A small dark sigil shaped like a broken ring is tattooed on the back of her right hand (flat dark ink, NOT glowing).
+Costume: simple, well-worn village clothes, practical and fully covering. A sleeveless brown leather vest with a thick grey-brown fur collar, worn open over a cream linen shirt with the sleeves rolled up to the elbows; leather wrist wraps; a wide leather belt with a small pouch and an EMPTY sword frog on the left hip; dark grey-green wool trousers tucked into sturdy brown leather boots. No armor, no cape, no hood, no skirt, no long hanging cloth.
+
+### huaxiong | 华雄 | biped
+Character (an original design based on a figure from the public-domain Chinese classic Romance of the Three Kingdoms): Hua Xiong, a fierce frontier general of the late Han dynasty. A tall, powerfully built man in his mid-thirties with a broad weathered face, heavy brows, a short black beard and mustache, and black hair in a topknot bound with a dark red cloth. A stern, confident expression, mouth closed.
+Costume: Han-dynasty iron lamellar armor of small dark plates laced with dark red cord covering the chest, back and upper thighs, worn over a dark red padded tunic with fitted sleeves; compact layered iron shoulder guards; leather-and-iron bracers; a broad leather belt with a bronze beast-face buckle; dark trousers; leather boots with iron shin guards. A short dark red neck cloth tucked into the collar of the armor. NO cape, no helmet, no long hanging cloth.
+
+### daqiao | 大乔 | biped
+Character (an original design based on a figure from the public-domain Chinese classic Romance of the Three Kingdoms): Da Qiao, a gentle and graceful young noblewoman of the Jiangdong region in the late Han dynasty, about twenty, a healer. Slender; fair skin; a soft oval face with a calm, kind expression, mouth closed; black hair gathered into an elegant updo held with two jade hairpins and a small string of pearls (no loose hair hanging down).
+Costume: a practical travelling version of Han-style dress in pale celadon green and cream, modest and fully covering. A knee-length cross-collared tunic with fitted sleeves and narrow embroidered cuffs; a cream inner collar; a wide silk waist sash in soft coral with a small pearl ornament and a little cloth medicine pouch; under the tunic, loose cream trousers gathered at the ankles; soft embroidered cloth shoes. NO long trailing sleeves, NO floor-length skirt, NO floating ribbons, no cape.
+
+### ganning | 甘宁 | biped
+Character (an original design based on a figure from the public-domain Chinese classic Romance of the Three Kingdoms): Gan Ning, a dashing former river pirate turned warrior of the late Han dynasty, about twenty-eight, lean, sinewy and sun-tanned, with sharp eyes and a confident look, mouth closed; black hair tied back in a short tail, with a strip of patterned brocade tied around the forehead as a headband.
+Costume: a sleeveless dark leather jerkin over a sleeveless short tunic, leaving the muscular arms bare, with dark wave-pattern tattoos on the upper arms; a broad sash of richly patterned brocade in blue, gold and red wrapped around the waist, with three small bronze bells hanging from it; leather forearm wraps; loose dark-blue trousers bound at the shins with cloth wraps; light leather shoes. Two EMPTY weapon loops at the back of the belt. NO cape, no feathers, no long hanging cloth.
+
+### xunyou | 荀攸 | biped
+Character (an original design based on a figure from the public-domain Chinese classic Romance of the Three Kingdoms): Xun You, a calm and brilliant strategist of the late Han dynasty, about forty-five, slim, with a narrow thoughtful face, a short neat black beard and mustache, and hair in a topknot under a small black scholar's cap. A composed, observant expression, mouth closed.
+Costume: a scholar-official's clothes adapted for travel, in deep teal and grey. A knee-length cross-collared robe with fitted sleeves and plain dark borders; a pale grey inner collar; a narrow leather belt with a jade belt hook; a small flat case of bamboo writing slips hanging at the right hip; grey trousers; black cloth boots. NO wide hanging sleeves, NO floor-length robe, no cape, no fan, nothing in the hands.
+
+### taishici | 太史慈 | biped
+Character (an original design based on a figure from the public-domain Chinese classic Romance of the Three Kingdoms): Taishi Ci, an honest, tall and strong archer-warrior of the late Han dynasty, about thirty, with a square jaw, clear steady eyes, a trimmed black beard, and black hair in a topknot bound with a plain blue cloth. Mouth closed.
+Costume: light archer's armor. A hardened brown leather cuirass with a few bronze studs, worn over a dark blue tunic with fitted sleeves; a leather archer's arm guard on the left forearm and a three-finger leather shooting glove on the right hand; a leather quiver full of arrows worn on the back, held by a strap running diagonally across the chest; a leather belt; dark trousers; tall leather boots. NO bow (the bow is not shown), NO cape, no long hanging cloth.
+
+### dianwei | 典韦 | biped
+Character (an original design based on a figure from the public-domain Chinese classic Romance of the Three Kingdoms): Dian Wei, a giant bodyguard of legendary strength in the late Han dynasty, about thirty-five, very tall, extremely broad and muscular, with a shaved head, a thick black beard, a scarred brow and a grim, loyal expression, mouth closed.
+Costume: heavy but simple. A thick iron chest plate and a wide iron belly guard held by broad leather straps over a bare muscular torso, with bare upper arms; one large layered iron shoulder guard on the left shoulder; heavy leather-and-iron bracers; a rough dark cloth wrap around the waist over thick dark trousers; heavy leather boots with iron toe caps. NO cape, no helmet, no long hanging cloth, nothing in the hands.
+
+### rat | 幼鼠 | beast
+Creature (an original design): a large forest rat the size of a small dog, corrupted by a creeping darkness. A hunched, wiry body about 0.6 m long without the tail; matted grey-brown fur; a long bare scaly tail; oversized yellowed incisors just visible with the mouth closed; small dull pale eyes; ragged ears; long whiskers. Along the spine a few patches where the fur has hardened into dull black, glassy, obsidian-like crust with fine cracks (matte, NOT glowing).
+Pose: neutral standing pose for 3D modeling — standing on all four legs in a symmetric stance, legs clearly separated, back slightly arched, head level and looking straight ahead, the tail held straight out behind the body just above the ground.
+
+### spider2 | 林地毒蛛 | beast
+Creature (an original design): a giant forest spider the size of a large dog, body about 1 m long, corrupted by a creeping darkness. A heavy, hairy, tarantula-like build. Dark brown-black bristly hair; a large abdomen banded in moss green and rust with a pale bone-colored marking on top; a few patches on the abdomen where the surface has hardened into dull black, glassy, obsidian-like crust with fine cracks (matte, NOT glowing). Eight small dark glossy eyes. Large curved fangs held closed. No web.
+Pose: neutral standing pose for 3D modeling — the body raised well off the ground and level; all eight legs long, arched and spread wide and evenly around the body like the spokes of a wheel, perfectly symmetric; every leg clearly separated from its neighbours with a visible gap between them, no legs bunched together, crossing or touching each other.
+
+### bear | 棕鬃熊 | beast
+Creature (an original design): a huge wild brown bear with a thick, dark, mane-like ruff of long fur around its neck and shoulders, about 1.5 m tall at the shoulder on all fours. Heavy muscular build; dark brown fur, lighter on the muzzle; small dark eyes; long dark claws; old scars on the muzzle. On one shoulder and along the back, a few small patches where the fur has hardened into dull black, glassy, obsidian-like crust with fine cracks (matte, NOT glowing).
+Pose: neutral standing pose for 3D modeling — standing on all four legs in a symmetric stance, legs clearly separated, body level, head held level looking straight ahead, mouth closed.
+
+### rotbear | 腐木巨熊 | beast
+Creature (an original design): a giant bear, a forest guardian deeply corrupted by a creeping darkness, about 2 m tall at the shoulder on all fours. Much of its back and shoulders is overgrown with rotten wood: plates of grey cracked bark fused into the hide, pale bracket fungi, short tufts of hanging moss, and a few short, thick, broken dead branch stumps jutting up from the shoulders. Matted dark fur elsewhere. Large patches of dull black, glassy, obsidian-like crust with fine cracks across the face and the forelegs (matte, NOT glowing). One eye clouded white, the other small and dark. Long cracked claws.
+Pose: neutral standing pose for 3D modeling — standing on all four legs in a symmetric stance, legs clearly separated, body level, head held level looking straight ahead, mouth closed.
+
+### wolfking | 荒原狼王 | beast
+Creature (an original design): the king of the wasteland wolves — a massive wolf about 1.5 m tall at the shoulder, corrupted by a creeping darkness. Thick white and pale-grey fur, dirty and scarred; a broad heavy head; old scars across the muzzle; the right eye pale yellow, the left eye blind and milky. A ridge of jagged plates of dull black, glassy, obsidian-like crust runs along the top of the neck and the spine like a dark mane (matte, NOT glowing). Heavy paws with black claws. A thick bushy tail hanging low.
+Pose: neutral standing pose for 3D modeling — all four legs straight and evenly apart in a symmetric stance, body level, head held at shoulder height looking straight ahead, tail down, mouth closed.
+
+### bandit_scout | 匪探 | biped
+Character (an original design): a wasteland bandit scout, a wiry woman of about twenty-five, sun-browned, with a hard watchful face, a thin scar on one cheek, mouth closed; dark hair cropped short under a faded cloth head wrap; face uncovered.
+Costume: layered scavenged wasteland gear in dusty browns and greys, practical and fully covering. A short cloth cowl lying on the shoulders with the hood down; a patched leather vest over a long-sleeved tunic; fingerless leather gloves; a belt with small pouches and two EMPTY dagger sheaths at the back; fitted trousers with leather knee patches; soft ankle boots wrapped with cloth strips. NO cape, no mask, no long hanging cloth.
+
+### bandit_raider | 盗匪 | biped
+Character (an original design): a wasteland bandit raider, a lean unshaven man of about thirty with a broken nose, narrow eyes and a hard stare, mouth closed; a dented iron skullcap on his head; a dusty red neck scarf pulled down under the chin.
+Costume: scavenged wasteland gear. A stained padded jacket with a few mismatched iron plates riveted on the chest and on the right shoulder; leather bracers; a belt with an EMPTY sword scabbard on the left hip and a small pouch; patched brown trousers; worn leather boots. NO cape, no mask, no long hanging cloth.
+
+### bandit_brute | 重甲匪 | biped
+Character (an original design): a wasteland bandit brute, a huge heavy-set man of about forty with a bald head, a braided brown beard and a brutal scarred face, mouth closed.
+Costume: crude heavy armor of rusted iron plates and thick boiled leather worn over a fur-trimmed tunic; a big iron gorget around the neck; one iron shoulder plate with a few short blunt studs on the left shoulder; heavy iron-backed gauntlets; a wide belt with a hanging iron ring; thick dark trousers; iron-shod boots. NO cape, no helmet, no long hanging cloth.
+
+### gargoyle | 石像鬼 | biped
+Character (an original design): a gargoyle — a living stone statue corrupted by a creeping darkness. A gaunt humanoid about 1.8 m tall made of weathered grey granite, with a horned, bat-like face, pointed ears, a jutting lower jaw with short stone fangs, clawed hands and three-toed clawed feet. A pair of bat-like stone wings is folded tightly against the back, the wing tips pointing down behind the legs; the wings stay behind the body and do NOT touch or overlap the arms. Skin like cracked, lichen-spotted stone. A few patches of dull black, glassy, obsidian-like crust on the chest and on one horn (matte, NOT glowing). A broken rusty iron collar around the neck. No clothes other than a ragged stone-grey loincloth.
+
+### golem | 碎岩巨像 | biped
+Character (an original design): a rock golem — a massive, heavy-limbed humanoid about 3 m tall built from fractured blocks of grey wasteland rock, corrupted by a creeping darkness. A small head sunk between enormous shoulders, with two dark eye hollows and no mouth; huge forearms and fists; thick short legs. The blocks are bound together with rusted iron bands and a few heavy chains wrapped tight around the torso (nothing hanging loose). In the centre of the chest, a cluster of dull black, glassy, obsidian-like crust with fine cracks (matte, NOT glowing). Moss and dust in the cracks between the stones.
+
+### shadow | 影 | biped
+Character (an original design): a mysterious rival of the hero, known only as "Shadow" — a lean young man of about twenty, pale, with sharp features and cold grey eyes; straight black hair, chin-length, falling over the left eye; a guarded, unreadable expression, mouth closed. A small dark sigil shaped like a broken ring is tattooed on the back of his left hand (flat dark ink, NOT glowing).
+Costume: dark and close-fitting. A charcoal-black coat with a high collar and fitted sleeves, reaching to mid-thigh and split at the sides; a short mantle of black crow feathers lying flat across the shoulders (compact, not longer than the shoulder blades); black leather gloves; a narrow belt with a thin silver chain and a small crystal vial; dark trousers; tall black leather boots. EMPTY hands. NO long cape, no hood, no mask, no long hanging cloth.

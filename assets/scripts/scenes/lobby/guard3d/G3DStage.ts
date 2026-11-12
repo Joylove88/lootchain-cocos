@@ -6,6 +6,7 @@ import { FxWorld } from './G3DFx';
 import { addMesh, DynMesh, keptMaterial, loadKit, material, tex } from './G3DKit';
 import { MeshBatch } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
+import { Frame, frameOf, poseBeastHit, poseBeastIdle, poseBite, poseCast, poseHit, Rig } from './G3DPose';
 import { buildEnvCube, FX_CELL, paintCrystal, paintHaze, paintShaft, paintVignette } from './G3DSkins';
 import { GD, GW, GX0, GZ0, hash2, mulberry32, paintBackdrop, paintGround, paintRock, paintWood, puddleLevel, wetValue } from './G3DTextures';
 
@@ -59,6 +60,15 @@ interface ShowChar {
   yaw: number;
   /** 水平方向上占多宽(缩放后),给镜头算距离用。 */
   span: number;
+  /** 程序动作(G3DPose):骨架、朝向、是人形还是怪物;rest = 不播动画、站在绑定姿势上(怪物没有待机动作时的待机)。 */
+  rig: Rig | null;
+  frame: Frame;
+  kind: 'biped' | 'beast';
+  rest: boolean;
+  /** 受击反应的强度(1 → 0 衰减);act / actT = 正在做的一次性程序动作和它走到第几秒。 */
+  hit: number;
+  act: string;
+  actT: number;
   node: Node;
   anim: SkeletalAnimation | null;
   names: string[];
@@ -152,6 +162,7 @@ class Stage {
   private refStoneMat: Material | null = null;
   chars: ShowChar[] = [];
   private heroHidden = false;
+  private caster: ShowChar | null = null;
   private crystalEdgeMat: Material | null = null;
   private crystalTips: Vec3[] = [];
   private crystalBits: Array<{ node: Node; r: number; h: number; a: number; w: number }> = [];
@@ -187,6 +198,7 @@ class Stage {
         this.takeOver();
         this.opened = true;
         director.on(Director.EVENT_BEFORE_UPDATE, this.tick, this);
+        director.on(Director.EVENT_AFTER_UPDATE, this.afterUpdate, this);
         done?.();
       } catch (error) {
         this.lastError = String((error as any)?.stack ?? error);
@@ -680,7 +692,10 @@ class Stage {
         const s = spec.height / Math.max(0.01, hi.y - lo.y);
         n.setScale(s, s, s);
         n.setPosition(spec.at.x - ((lo.x + hi.x) / 2) * s, spec.at.y - lo.y * s, spec.at.z - ((lo.z + hi.z) / 2) * s);
+        const rig = new Rig(n);          // 这时候还没播过动画,骨头都在绑定姿势上
+        const kind = rig.j('Hips') && rig.j('Spine1') ? 'biped' : 'beast';
         const c: ShowChar = { name: key, at: spec.at.clone(), height: spec.height, yaw: spec.yaw, span: Math.max(hi.x - lo.x, hi.z - lo.z) * s,
+          rig, frame: frameOf(spec.yaw), kind, rest: false, hit: 0, act: '', actT: 0,
           node: n, anim: null, names: [], cur: '', t: 0, hold: 0, seq: -1, manual: false, tris, joints };
         this.chars.push(c);
         this.stats.charTris = (this.stats.charTris ?? 0) + tris;
@@ -695,7 +710,10 @@ class Stage {
           };
           c.anim = anim;
           c.names = anim.clips.filter((clip) => !!clip).map((clip) => clip!.name).sort((a, b) => rank(a) - rank(b));
-          if (c.names.length) {
+          if (c.kind === 'beast' && !c.names.some((k) => k.toLowerCase().indexOf('idle') >= 0)) {
+            c.rest = true;                // 怪物只有行走:平时站在绑定姿势上(叠呼吸),要走的时候再 char('walk')
+            c.manual = true;
+          } else if (c.names.length) {
             this.playChar(c, c.names[0], 0);
             c.seq = 0;
           }
@@ -729,17 +747,96 @@ class Stage {
     const lower = name.toLowerCase();
     const loop = /idle|walk|run/.test(lower);
     st.wrapMode = loop ? AnimationClip.WrapMode.Loop : AnimationClip.WrapMode.Normal;
-    anim.crossFade(name, fade);
+    anim.crossFade(name, c.rest ? 0 : fade);
+    c.rest = false;
     c.cur = name;
     c.t = 0;
     // 循环动作播一会儿就换下一个;一次性的动作播完再停半秒(倒地多躺一会儿);平台给的预设动作有的很长(受击 14 秒),最多播 5 秒
     c.hold = loop ? (lower.indexOf('idle') >= 0 ? 3.0 : 3.2) : Math.min(5, st.duration) + (lower.indexOf('fall') >= 0 ? 1.2 : 0.45);
   }
 
+  /**
+   * 程序动作:在动画系统摆完姿势之后再叠一层(见 G3DPose)。每帧都要重新叠 —— 动画系统下一帧会把骨头写回去。
+   */
+  private afterUpdate(): void {
+    if (!this.opened) {
+      return;
+    }
+    for (const c of this.chars) {
+      const rig = c.rig;
+      if (!rig || !c.node.active) {
+        continue;
+      }
+      if (c.rest) {
+        rig.toRest();
+      }
+      if (c.kind === 'biped') {
+        if (c === this.caster && (this.cast > 0.001 || this.strike > 0.001)) {
+          poseCast(rig, c.frame, this.cast, this.strike);
+        }
+        if (c.hit > 0.001) {
+          poseHit(rig, c.frame, c.hit);
+        }
+      } else {
+        if (c.rest) {
+          poseBeastIdle(rig, c.frame, this.time, c.at.x);
+        }
+        if (c.act === 'bite') {
+          poseBite(rig, c.frame, c.actT);
+        }
+        if (c.hit > 0.001) {
+          poseBeastHit(rig, c.frame, c.hit);
+        }
+      }
+    }
+  }
+
+  /**
+   * 调试:让某个角色做一个程序动作。hit 受击反应;bite 扑咬(怪物);rest 回到站姿待机(不播动画);
+   * 别的名字当动作片段名去播(同 char())。
+   */
+  charAct(who: string | number, act: string): string {
+    const c = typeof who === 'number' ? this.chars[who] : this.chars.find((x) => x.name === who);
+    if (!c) {
+      return '';
+    }
+    if (act === 'hit') {
+      c.hit = 1;
+    } else if (act === 'bite') {
+      c.act = 'bite';
+      c.actT = 0;
+    } else if (act === 'rest') {
+      c.anim?.stop();
+      c.rest = true;
+      c.manual = true;
+    } else {
+      const hit = c.names.find((k) => k.toLowerCase().indexOf(act.toLowerCase()) >= 0);
+      if (hit) {
+        c.manual = true;
+        this.playChar(c, hit);
+      }
+    }
+    return c.name + ':' + act;
+  }
+
+  /** 让一个 AI 图转 3D 的人形角色接管施法(蓄力火花、脚下法阵都挪到他身上),代码生成的术士藏起来;传空 = 还给代码生成的术士。 */
+  setCaster(who: string | null): string {
+    this.caster = who ? this.chars.find((x) => x.name === who && x.kind === 'biped') ?? null : null;
+    this.showHero(!this.caster);
+    return this.caster ? this.caster.name : '';
+  }
+
   /** 调试:拍定妆照时把骑士藏起来(他们会走到镜头前面挡住人)。 */
   showKnights(on: boolean): void {
     for (const k of this.knights) {
       k.actor.root.active = on && k.state !== 'gone';
+    }
+  }
+
+  /** 调试:只显示这几个带骨骼的角色(不传 = 全部显示)。换机位会重置,所以要在换机位之后调。 */
+  showChars(names?: string[]): void {
+    for (const c of this.chars) {
+      c.node.active = !names || names.indexOf(c.name) >= 0;
     }
   }
 
@@ -754,8 +851,10 @@ class Stage {
   /**
    * 调试:把镜头对准某个带骨骼的角色(文件夹名或序号)。
    * kind = body 全身(正面偏镜头侧 24 度)/ side 侧面 / face 头部特写(人形才有意义)。
+   * wide = 把视角放宽到多少度(距离不变,所以四周多露出一圈;怪物扑咬会窜出半米多,录屏时要用)。
+   * 视角只能从这里改:直接改 cam.fov 的话,贴在镜头前的暗角片和远景不会跟着重摆,画面中间会多出一块暗矩形。
    */
-  camOn(who: string | number, kind = 'body'): string {
+  camOn(who: string | number, kind = 'body', wide = 0): string {
     const c = typeof who === 'number' ? this.chars[who] : this.chars.find((x) => x.name === who);
     const cam = this.cam;
     if (!c || !cam) {
@@ -777,7 +876,7 @@ class Stage {
     const tall = face ? h * 0.42 : Math.max(h * 1.3, c.span * 0.72);     // 画面竖直方向要装下多高
     const dist = tall / (2 * Math.tan((fov * Math.PI) / 360));
     const lookY = c.at.y + h * (face ? 0.9 : 0.5);
-    cam.fov = fov;
+    cam.fov = wide > fov ? wide : fov;
     this.camBase.set(c.at.x + dx * dist, lookY + h * (face ? 0.03 : 0.12), c.at.z + dz * dist);
     cam.node.setPosition(this.camBase);
     this.camLook.set(c.at.x, lookY, c.at.z);
@@ -791,7 +890,14 @@ class Stage {
     const engineDt = director.getDeltaTime();
     const speed = engineDt > 1e-5 ? dt / engineDt : 1;
     for (const c of this.chars) {
-      if (!c.anim || !c.names.length) {
+      c.hit = Math.max(0, c.hit - dt * 3.0);
+      if (c.act) {
+        c.actT += dt;
+        if (c.actT > 0.85) {
+          c.act = '';
+        }
+      }
+      if (!c.anim || !c.names.length || c.rest) {
         continue;
       }
       const st = c.anim.getState(c.cur);
@@ -1029,7 +1135,7 @@ class Stage {
     if (this.mode === 'loop' && this.castT < 0 && t >= this.nextCast) {
       this.castT = 0;
       this.struck = false;
-      fx.decal('rune', 0, HERO.x, HERO.z, 0.5, 1.5, 3.4, [0.5, 0.82, 1], 0.75, 0.35, 2.3, 0.7, 0.085);
+      fx.decal('rune', 0, this.caster ? this.caster.at.x : HERO.x, this.caster ? this.caster.at.z : HERO.z, 0.5, 1.5, 3.4, [0.5, 0.82, 1], 0.75, 0.35, 2.3, 0.7, 0.085);
     }
     if (this.castT >= 0) {
       this.castT += dt;
@@ -1068,12 +1174,22 @@ class Stage {
     this.stepChars(dt);
     const staff = hero.joints.staff;
     Vec3.transformMat4(_v, _v2.set(0, 1.16, 0), staff.worldMatrix);   // 杖顶晶石
+    const casterHand = this.caster?.rig?.j('RightHand') ?? null;
+    const castX = this.caster ? this.caster.at.x : HERO.x;
+    const castZ = this.caster ? this.caster.at.z : HERO.z;
+    if (casterHand) {
+      _v.set(casterHand.worldPosition);                               // 接管施法的角色:火花和光从他的右手出来
+    }
+    const lampX = casterHand ? _v.x + this.caster!.frame.fwd.x * 0.55 : _v.x + 0.15;
+    const lampY = casterHand ? _v.y + 0.45 : _v.y + 0.1;
+    const lampZ = casterHand ? _v.z + this.caster!.frame.fwd.z * 0.55 + 0.35 : _v.z + 0.3;
     const charge = this.cast;
     const glow = 1.1 + 9 * charge * charge + 14 * this.strike;
     this.staffMat().setProperty('colorScale', new Vec3(glow * 0.75, glow * 0.92, glow));
-    this.staffLight!.node.setPosition(_v.x + 0.15, _v.y + 0.1, _v.z + 0.3);
-    this.staffLight!.luminousFlux = this.heroHidden ? 0 : (0.6 + 16 * charge * charge + 30 * this.strike) * SHOW.fluxK;
-    if (charge > 0.15 && !this.heroHidden) {
+    this.staffLight!.node.setPosition(lampX, lampY, lampZ);
+    this.staffLight!.luminousFlux = this.heroHidden && !casterHand ? 0
+      : (casterHand ? 7 * charge * charge + 9 * this.strike : 0.6 + 16 * charge * charge + 30 * this.strike) * SHOW.fluxK;
+    if (charge > 0.15 && (!this.heroHidden || casterHand)) {
       // 蓄力:杖顶噼啪的小电弧 + 往上聚的光点
       if (R() < charge * 0.9) {
         const a = new Vec3(_v.x, _v.y, _v.z);
@@ -1083,7 +1199,7 @@ class Stage {
       for (let i = 0; i < 2; i += 1) {
         const ang = R(0, 6.28);
         const rad = R(0.5, 1.3);
-        fx.emit({ x: HERO.x + Math.cos(ang) * rad, y: 0.1, z: HERO.z + Math.sin(ang) * rad, vx: -Math.cos(ang) * 0.5, vy: R(1.2, 2.4), vz: -Math.sin(ang) * 0.5, life: R(0.6, 1.0), s0: 0.03, s1: 0.012, c0: [0.5, 0.8, 1], a: 0.7 * charge, cell: FX_CELL.mote, drag: 0.4, stretch: 0.8 });
+        fx.emit({ x: castX + Math.cos(ang) * rad, y: 0.1, z: castZ + Math.sin(ang) * rad, vx: -Math.cos(ang) * 0.5, vy: R(1.2, 2.4), vz: -Math.sin(ang) * 0.5, life: R(0.6, 1.0), s0: 0.03, s1: 0.012, c0: [0.5, 0.8, 1], a: 0.7 * charge, cell: FX_CELL.mote, drag: 0.4, stretch: 0.8 });
       }
     }
     if (!this.heroHidden) {
@@ -1374,7 +1490,7 @@ class Stage {
   info(): Record<string, unknown> {
     return { opened: this.opened, built: !!this.world, time: +this.time.toFixed(2), mode: this.mode, castT: +this.castT.toFixed(2), stats: this.stats, fx: this.fx?.stats, knights: this.knights.map((k) => `${k.state}@${k.x.toFixed(1)}`),
       cfg: { ...SHOW }, kit: ['g3d-standard', 'g3d-bloom', 'g3d-fxaa'].filter((n) => !!keptMaterial(n)), lastError: this.lastError,
-      chars: this.chars.map((c) => ({ clips: c.names, cur: c.cur, tris: c.tris, joints: c.joints, baked: c.anim ? c.anim.useBakedAnimation : null })) };
+      chars: this.chars.map((c) => ({ name: c.name, kind: c.kind, rest: c.rest, clips: c.names, cur: c.cur, tris: c.tris, joints: c.joints, baked: c.anim ? c.anim.useBakedAnimation : null })) };
   }
 
   /** 现场调参。 */
@@ -1428,7 +1544,9 @@ function boot(): void {
 
 if (!EDITOR && sys.isBrowser) {
   (globalThis as any).__g3dshow = { stage, info: () => stage.info(), set: (p: Partial<ShowCfg>) => stage.set(p), cam: (n: string) => stage.setCam(n), cast: () => stage.castNow(), char: (n?: string) => stage.charPlay(n), knights: (on: boolean) => stage.showKnights(on), hero: (on: boolean) => stage.showHero(on),
-    camOn: (who: string | number, kind?: string) => stage.camOn(who, kind), cfg: SHOW, charCfg: CHAR, charSpecs: CHAR_SPECS };
+    act: (who: string | number, a: string) => stage.charAct(who, a), caster: (who: string | null) => stage.setCaster(who),
+    show: (names?: string[]) => stage.showChars(names),
+    camOn: (who: string | number, kind?: string, wide?: number) => stage.camOn(who, kind, wide), cfg: SHOW, charCfg: CHAR, charSpecs: CHAR_SPECS };
   if (param('g3dshow') === '1') {
     boot();
   }
