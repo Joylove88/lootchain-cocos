@@ -93,7 +93,11 @@ export class DynMesh {
   private readonly maxV: number;
   private readonly maxI: number;
 
-  constructor(parent: Node, name: string, mat: Material, maxVerts: number, maxIndices: number, lit = false, cast = false) {
+  /** 包围盒(不做视锥剔除用的大盒子):默认罩住守卫战的战场;野外的地图更大,由调用方给。 */
+  private readonly bounds: { min: [number, number, number]; max: [number, number, number] };
+
+  constructor(parent: Node, name: string, mat: Material, maxVerts: number, maxIndices: number, lit = false, cast = false, bounds?: { min: [number, number, number]; max: [number, number, number] }) {
+    this.bounds = bounds ?? { min: [-60, -4, -60], max: [60, 40, 60] };
     this.maxV = Math.min(65000, maxVerts);
     this.maxI = maxIndices;
     this.pos = new Float32Array(this.maxV * 3);
@@ -131,8 +135,8 @@ export class DynMesh {
     }
     if (withBounds) {
       // 包围盒给一个罩住整个战场的大盒子:不做视锥剔除,也就不用每帧重算
-      g.minPos = { x: -60, y: -4, z: -60 };
-      g.maxPos = { x: 60, y: 40, z: 60 };
+      g.minPos = { x: this.bounds.min[0], y: this.bounds.min[1], z: this.bounds.min[2] };
+      g.maxPos = { x: this.bounds.max[0], y: this.bounds.max[1], z: this.bounds.max[2] };
     }
     return g;
   }

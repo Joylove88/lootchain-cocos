@@ -42,10 +42,14 @@ export class FxWorld {
   private readonly blobs: number[] = [];
   private readonly rnd = mulberry32(977);
   readonly mats: Material[] = [];
+  /** 特效图集(别的模块要自己画条带时共用这一张)。 */
+  readonly atlas: Texture2D;
   stats = { particles: 0, bolts: 0, decals: 0 };
 
-  constructor(parent: Node) {
+  /** bounds = 特效会出现的范围(给动态网格当包围盒;不给 = 守卫战战场那么大)。 */
+  constructor(parent: Node, bounds?: { min: [number, number, number]; max: [number, number, number] }) {
     const atlas: Texture2D = tex(paintFxAtlas(), false, 2);
+    this.atlas = atlas;
     const mk = (technique: number, texture: Texture2D, scale: number): Material => {
       const m = material('builtin-unlit', { USE_TEXTURE: true, USE_VERTEX_COLOR: true }, technique);
       m.setProperty('mainTexture', texture);
@@ -54,10 +58,10 @@ export class FxWorld {
       return m;
     };
     // 顺序 = 画的先后:贴地的痕迹在最底下,其次烟,最后是发光的
-    this.scorchMesh = new DynMesh(parent, 'ShowFxScorch', mk(3, tex(paintScorch(256), false, 2), 1), 64 * 4, 64 * 6);
-    this.runeMesh = new DynMesh(parent, 'ShowFxRune', mk(2, tex(paintRune(512), false, 4), 3.2), 16 * 4, 16 * 6);
-    this.alphaMesh = new DynMesh(parent, 'ShowFxAlpha', mk(3, atlas, 1), 900 * 4, 900 * 6);
-    this.addMesh = new DynMesh(parent, 'ShowFxAdd', mk(2, atlas, 5), 5000 * 4, 5000 * 6);
+    this.scorchMesh = new DynMesh(parent, 'ShowFxScorch', mk(3, tex(paintScorch(256), false, 2), 1), 64 * 4, 64 * 6, false, false, bounds);
+    this.runeMesh = new DynMesh(parent, 'ShowFxRune', mk(2, tex(paintRune(512), false, 4), 3.2), 16 * 4, 16 * 6, false, false, bounds);
+    this.alphaMesh = new DynMesh(parent, 'ShowFxAlpha', mk(3, atlas, 1), 900 * 4, 900 * 6, false, false, bounds);
+    this.addMesh = new DynMesh(parent, 'ShowFxAdd', mk(2, atlas, 5), 5000 * 4, 5000 * 6, false, false, bounds);
   }
 
   rand(a = 0, b = 1): number {
