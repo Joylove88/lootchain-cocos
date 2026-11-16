@@ -5,6 +5,8 @@ import { G3DChar, hasChar, loadChar } from './G3DChar';
 import type { CharTemplate } from './G3DChar';
 import { loadKit } from './G3DKit';
 import { G3DStudio, STUDIO_LAYER } from './G3DStudio';
+import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
+import type { WorldCfg } from './TownWorld3D';
 
 /**
  * 野外即时战斗的 3D 单位层(实验,2026-11-16;默认关)。
@@ -12,8 +14,14 @@ import { G3DStudio, STUDIO_LAYER } from './G3DStudio';
  * 由来:用户 11-16 定「守卫战用 2D 挺好,3D 做野外即时战斗」。野外 = 主角带队在地图上跑、遇怪即时开打
  * (LobbyTownRenderer;主城也是它画的,所以主城里队伍也跟着变 3D)。
  *
- * 开:预览地址带 ?field3d=1,或 localStorage.lcField3d = '1',或控制台 __f3d.toggle(true)。关着的时候只多几次函数调用。
+ * 开:预览地址带 ?field3d=1(或 2),或 localStorage.lcField3d = '1' / '2',或控制台 __f3d.toggle(1 / 2)。关着的时候只多几次函数调用。
  * 开着的时候:有模型的队长 / 队友 / 怪换成带骨骼的 3D 角色,没有模型的照旧是 2D 骨骼。
+ *
+ * 两种开法(同一套「照着 2D 逻辑的状态演 3D 角色」,只是怎么显示不一样):
+ * - 1 = 第一版:3D 角色渲染成贴图贴回 2D 地图(下面说的摄影棚那一套),地图和特效还是 2D;
+ * - 2 = 真 3D 场景(TownWorld3D.ts,用户 11-16「地形,技能也可以用酷炫的 3D 素材」之后做的):地面、摆件、角色、技能都在同一个
+ *   3D 世界里。角色直接站在 3D 世界里;摆件见 TownProps3D.ts,没有模型的 2D 单位怎么进 3D 见 TownEnts3D.ts,技能特效见 TownFx3D.ts
+ *   (这三个都是登记进本文件 extras 的「跟班」:每帧跟在单位同步后面跑,整层撤掉时一起撤)。
  *
  * 只动表现层,战斗逻辑一行不碰:
  * - 3D 角色不直接画到屏幕上,而是实时渲染进一张贴图(G3DStudio,一人一格),再把那一格贴回这个单位原来的 2D 节点里、
@@ -152,6 +160,8 @@ interface Unit {
   top: number;
   /** 被视野裁掉多久了(秒);久了就把格子让出来。 */
   hidden: number;
+  /** 真 3D 场景:死后往地里沉了多少(0~1)。 */
+  sink: number;
 }
 
 const _foot = new Vec3();
@@ -166,25 +176,45 @@ function turn(cur: number, to: number, maxStep: number): number {
 /** 2D 地图上的一个方向(x 右、y 上 = 远离镜头)→ 模型要转多少度(模型本来面朝 +x)。 */
 const yawOf = (dx: number, dy: number): number => (Math.atan2(dy, dx) * 180) / Math.PI;
 
-/** 地址参数 / 本地存储里的开关只在第一次问的时候读一遍(这个函数每帧都会被问到);控制台 __f3d.toggle 现场切的优先。 */
-let flagFromPage: boolean | null = null;
-function flagOn(): boolean {
+/**
+ * 开关:0 = 关;1 = 3D 角色贴回 2D 地图(第一版);2 = 真 3D 场景(TownWorld3D:地面 / 摆件 / 角色 / 技能在同一个 3D 世界里)。
+ * 地址参数 / 本地存储里的开关只在第一次问的时候读一遍(这个函数每帧都会被问到);控制台 __f3d.toggle 现场切的优先。
+ */
+let flagFromPage: number | null = null;
+function flagMode(): number {
   const g = globalThis as any;
   if (g.__LC_FIELD3D !== undefined) {
-    return !!g.__LC_FIELD3D;
+    return g.__LC_FIELD3D === true ? 1 : Number(g.__LC_FIELD3D) || 0;
   }
   if (flagFromPage === null) {
     try {
-      flagFromPage = /[?&]field3d=1\b/.test(location.search) || localStorage.getItem('lcField3d') === '1';
+      const m = /[?&]field3d=(\d)\b/.exec(location.search);
+      flagFromPage = m ? Number(m[1]) : Number(localStorage.getItem('lcField3d')) || 0;
     } catch (error) {
-      flagFromPage = false;
+      flagFromPage = 0;
+    }
+    if (flagFromPage !== 1 && flagFromPage !== 2) {
+      flagFromPage = 0;
     }
   }
   return flagFromPage;
 }
 
+/** 真 3D 场景里跟着单位层一起跑的东西(摆件、技能特效):每帧在单位同步之后调一遍,整层撤掉时调 stop。 */
+export interface FieldExtra {
+  sync(self: any, world: TownWorld3D, dt: number, frozen: boolean): void;
+  late?(world: TownWorld3D): void;
+  stop(): void;
+  info?(): unknown;
+}
+
 class TownUnits3D {
   private on = false;
+  /** 现在开的是哪一种(见 flagMode)。 */
+  private mode = 0;
+  /** 真 3D 场景(mode 2 才有)。 */
+  world: TownWorld3D | null = null;
+  readonly extras: FieldExtra[] = [];
   private ready = false;          // 3D 标准材质的着色器到位了没有
   private kitAsked = false;
   private studio: G3DStudio | null = null;
@@ -213,10 +243,11 @@ class TownUnits3D {
   }
 
   // ───────────────────────── 开 / 关 ─────────────────────────
-  private start(self: any): void {
+  private start(self: any, mode: number): void {
     this.on = true;
+    this.mode = mode;
     this.owner = self;
-    if (!this.studio) {
+    if (mode !== 2 && !this.studio) {
       this.studio = new G3DStudio({ cell: CFG.cell, cols: CFG.cols, rows: CFG.rows, pitch: CFG.pitch, key: CFG.key, ambient: CFG.ambient, shadow: CFG.shadow, footV: 0.36 });
     }
     director.on(Director.EVENT_AFTER_UPDATE, this.late, this);
@@ -246,33 +277,58 @@ class TownUnits3D {
     this.fired.clear();
     this.pool.forEach((list) => list.forEach((c) => c.destroy()));
     this.pool.clear();
+    for (const x of this.extras) {
+      try {
+        x.stop();
+      } catch (error) {
+        console.warn('[f3d] extra stop', error);
+      }
+    }
     this.studio?.close();
+    this.world?.close();
     this.owner = null;
+    this.mode = 0;
   }
 
   // ───────────────────────── 每帧:跟在野外渲染器的 step 后面 ─────────────────────────
   sync(self: any, dt: number): void {
-    if (!flagOn()) {
+    let mode = flagMode();
+    if (mode === 2 && self.def?.scene) {
+      // 主城是「一整张画当地图 + 遮挡条」的做法,真 3D 场景没适配它(只在野外地图上做了):在主城里当作没开
+      mode = 0;
+    }
+    if (!mode) {
       this.stop();
       return;
     }
     if (!self.isMounted() || !self.layout || !self.leader || !self.entityRoot || !self.entityRoot.isValid) {
-      return;      // 野外没挂着(在别的界面 / 战斗里):late() 发现好几帧没同步会把摄影棚停掉
+      return;      // 野外没挂着(在别的界面 / 战斗里):late() 发现好几帧没同步会把摄影棚 / 3D 场景停掉
     }
-    if (!this.on || this.owner !== self) {
+    if (!this.on || this.owner !== self || this.mode !== mode) {
       this.stop();
-      this.start(self);
+      this.start(self, mode);
     }
-    if (!this.ready || !this.studio) {
+    if (!this.ready || (mode !== 2 && !this.studio)) {
       return;
     }
-    this.lastSyncFrame = director.getTotalFrames();
-    if (!this.studio.isOpen()) {
-      this.studio.open();
+    if (mode === 2 && !this.world) {
+      this.world = new TownWorld3D();      // 要等 3D 标准材质的着色器到位了才能建(否则材质是空的)
     }
     const now = Date.now();
     const step = Math.min(0.05, Math.max(0, dt));
     const frozen = now < (self.hitStopUntil ?? 0);       // 顿帧:全场定住
+    if (mode === 2) {
+      const w = this.world!;
+      if (!w.isOpen()) {
+        w.open();
+      }
+      if (!w.sync(self)) {
+        return;
+      }
+    } else if (!this.studio!.isOpen()) {
+      this.studio!.open();
+    }
+    this.lastSyncFrame = director.getTotalFrames();
     this.time += frozen ? 0 : step;
     try {
       const live = new Set<any>();
@@ -328,6 +384,9 @@ class TownUnits3D {
           continue;
         }
         u.hidden = 0;
+        if (mode === 2 && this.lastSyncFrame % 12 === 0) {
+          this.groundDecals(u);
+        }
         if (frozen) {
           u.char.setSpeed(0);      // 顿帧:定在这一刻,出手进度也不往前走(逻辑那边恢复时会把计时整体后移)
           continue;
@@ -336,6 +395,11 @@ class TownUnits3D {
           this.stepActor(u, self, step, now, tint);
         } else {
           this.stepMonster(u, self, step, now, tint);
+        }
+      }
+      if (mode === 2) {
+        for (const x of this.extras) {
+          x.sync(self, this.world!, frozen ? 0 : step, frozen);
         }
       }
       this.fired.clear();
@@ -350,18 +414,27 @@ class TownUnits3D {
 
   /** 帧尾(动画系统摆完骨头之后):叠程序动作。几帧没同步过 = 野外没在跑,把摄影棚停掉(不白画、灯光设置还给场景)。 */
   private late(): void {
-    if (!this.on || !this.studio) {
+    if (!this.on) {
       return;
     }
     if (director.getTotalFrames() - this.lastSyncFrame > 3) {
-      if (this.studio.isOpen()) {
+      if (this.studio?.isOpen()) {
         this.studio.close();
+      }
+      if (this.mode === 2) {
+        // 真 3D 场景动过 2D 那边的东西(贴图藏了、图层换了):野外不在跑的时候整层撤掉、全部还原,回来再重建
+        this.stop();
       }
       return;
     }
     for (const u of this.units.values()) {
       if (u.char && u.char.node.active) {
         u.char.pose(this.time);
+      }
+    }
+    if (this.mode === 2 && this.world) {
+      for (const x of this.extras) {
+        x.late?.(this.world);
       }
     }
   }
@@ -381,7 +454,7 @@ class TownUnits3D {
     const seed = Math.abs(Math.sin((owner.x ?? 0) * 12.9898 + (owner.y ?? 0) * 78.233 + this.units.size * 3.7)) % 1;
     const u: Unit = { hero, owner, spec, tpl: null, loading: true, char: null, cell: -1, sprite: null, spine: null, restore: [],
       yaw: owner.facing > 0 ? IDLE_YAW_RIGHT : IDLE_YAW_LEFT, lastX: owner.x, lastY: owner.y, vx: 0, vy: 0, phase: seed,
-      loop: '', act: '', actMs: 0, actClip: SLASH_FAST, hp: -1, flash: 0, windup: 0, dead: -1, alpha: 255, top: 0, hidden: 0 };
+      loop: '', act: '', actMs: 0, actClip: SLASH_FAST, hp: -1, flash: 0, windup: 0, dead: -1, alpha: 255, top: 0, hidden: 0, sink: 0 };
     this.units.set(owner, u);
     loadChar(spec.key, (tpl) => {
       u.loading = false;
@@ -395,6 +468,9 @@ class TownUnits3D {
 
   /** 模型读好了、2D 骨骼也就绪了、摄影棚还有空格:换成 3D。返回 false = 格子用完了(后面的也不用试了)。 */
   private materialize(u: Unit): boolean {
+    if (this.mode === 2) {
+      return this.materializeWorld(u);
+    }
     const owner = u.owner;
     const studio = this.studio!;
     const spine: Node | null = owner.spineNode ?? null;
@@ -471,6 +547,80 @@ class TownUnits3D {
     return true;
   }
 
+  /**
+   * 真 3D 场景里换成 3D:角色按真实身高直接站在 3D 世界里(位置每帧跟着单位的地图坐标走),2D 骨骼藏起来,
+   * 脚下的 2D 假影子藏起来(换成真投影),光圈这类贴地的东西交给地表相机画(压在 3D 角色下面)。
+   */
+  private materializeWorld(u: Unit): boolean {
+    const owner = u.owner;
+    const w = this.world!;
+    const spine: Node | null = owner.spineNode ?? null;
+    if (!u.tpl || !owner.skeleton || !spine || !spine.isValid || !owner.node.activeInHierarchy) {
+      return true;
+    }
+    w.toWorld(owner.x, owner.y, _foot);
+    const list = this.pool.get(u.tpl.key);
+    let c = list && list.length ? list.pop()! : null;
+    if (c && c.node.isValid) {
+      c.reset();
+      c.node.active = true;
+      c.setHeight(u.spec.height);
+      this.stats.reused += 1;
+    } else {
+      c = G3DChar.spawn(u.tpl, w.root, { height: u.spec.height, yaw: u.yaw, at: _foot, albedo: CFG.albedo, procWalk: u.spec.procWalk, inPlace: true });
+      c.node.walk((n) => {
+        n.layer = FIELD_LAYER;
+      });
+      this.stats.spawned += 1;
+    }
+    c.seed = u.phase * 9;
+    c.downSide = u.phase > 0.5 ? 1 : -1;
+    c.place(_foot.x, _foot.y, _foot.z, u.yaw);
+    u.char = c;
+    u.cell = -1;
+    u.sprite = null;
+    u.alpha = 255;
+    u.sink = 0;
+    spine.active = false;
+    u.spine = spine;
+    u.top = u.spec.height * w.upUnits();
+    const contact: Node | null = owner.node.getChildByName('Contact');
+    if (contact && contact.active) {
+      contact.active = false;
+      u.restore.push(() => contact.isValid && (contact.active = true));
+    }
+    this.groundDecals(u);
+    if (!u.hero) {
+      for (const [n, dy] of [[owner.hpBar?.node, 14], [owner.nameLabel?.node, 34]] as Array<[Node | undefined, number]>) {
+        if (n && n.isValid) {
+          const y0 = n.position.y;
+          n.setPosition(n.position.x, u.top + dy, 0);
+          u.restore.push(() => n.isValid && n.setPosition(n.position.x, y0, 0));
+        }
+      }
+    }
+    u.loop = '';
+    u.act = '';
+    u.hp = -1;
+    u.dead = -1;
+    u.hidden = 0;
+    return true;
+  }
+
+  /** 单位节点下面贴地的东西(队长光圈 / 精英光圈):交给地表相机画。之后才长出来的隔一会儿补一遍。 */
+  private groundDecals(u: Unit): void {
+    const w = this.world;
+    const node: Node = u.owner.node;
+    if (!w || !node || !node.isValid) {
+      return;
+    }
+    for (const child of node.children) {
+      if (/Ring$/.test(child.name) && child.layer === node.layer) {
+        u.restore.push(w.toGround(child));
+      }
+    }
+  }
+
   /** 把这个单位换回 2D(3D 角色回池子、格子让出来、2D 骨骼放回来);单位本身还留在名单里,之后还能再换成 3D。 */
   private release(u: Unit): void {
     // 单位节点已经被渲染器销毁的话(换阵容 / 换地图),贴图节点跟着没了,组件上的 node 是空的
@@ -543,14 +693,14 @@ class TownUnits3D {
     let want = a.facing > 0 ? IDLE_YAW_RIGHT : IDLE_YAW_LEFT;
     const target = leader ? self.lockTarget : a.target;
     if (u.act && target && !target.dead && target.node?.isValid) {
-      want = yawOf(target.x - a.x, target.y - a.y);
+      want = this.yawTo(target.x - a.x, target.y - a.y);
     } else if (speed > 60 && !u.act) {
-      want = yawOf(u.vx, u.vy);
+      want = this.yawTo(u.vx, u.vy);
     } else if (u.act) {
       want = a.facing > 0 ? -12 : 192;
     }
     u.yaw = turn(u.yaw, want, dt * 900);
-    c.place(c.at.x, c.at.y, c.at.z, u.yaw);
+    this.put(u, c);
 
     let cast = 0;
     let strike = 0;
@@ -642,6 +792,7 @@ class TownUnits3D {
       c.stand += (1 - c.stand) * Math.min(1, dt * 10);
       c.down = Math.min(1, u.dead / 0.38);
       c.setTint(1, 1, 1);
+      this.put(u, c);
       c.step(dt);
       return;
     }
@@ -657,12 +808,12 @@ class TownUnits3D {
     let want = m.facing > 0 ? IDLE_YAW_RIGHT : IDLE_YAW_LEFT;
     const victim = m.victim;
     if (victim && victim.node?.isValid) {
-      want = yawOf(victim.x - m.x, victim.y - m.y);
+      want = this.yawTo(victim.x - m.x, victim.y - m.y);
     } else if (speed > 40 && !flashing) {
-      want = yawOf(u.vx, u.vy);
+      want = this.yawTo(u.vx, u.vy);
     }
     u.yaw = turn(u.yaw, want, dt * 480);
-    c.place(c.at.x, c.at.y, c.at.z, u.yaw);
+    this.put(u, c);
     // 走 / 停
     const walking = !!m.moving && !staggered;
     if (u.loop !== 'walk') {
@@ -702,16 +853,36 @@ class TownUnits3D {
     const t1 = (tint?.[1] ?? 255) / 255;
     const t2 = (tint?.[2] ?? 255) / 255;
     if (flashing) {
-      c.setTint(1.75, 1.6, 1.5);          // 受击闪一下(2D 那边是闪白)
+      // 受击闪一下(2D 那边是闪白);真 3D 场景是线性直出,提太多会整只怪死白
+      c.setTint(this.mode === 2 ? 1.4 : 1.75, this.mode === 2 ? 1.3 : 1.6, this.mode === 2 ? 1.22 : 1.5);
     } else {
       c.setTint(t0, t1, t2);
     }
     c.step(dt * rate);
   }
 
-  /** 单位节点淡出时(怪死后),贴图是预乘透明的:颜色也要跟着乘。 */
+  /** 2D 地图上的方向 → 模型转多少度(真 3D 场景里纵深被俯角拉长过,要按 3D 世界里的方向算)。 */
+  private yawTo(dx: number, dy: number): number {
+    return this.mode === 2 && this.world ? this.world.yawOf(dx, dy) : yawOf(dx, dy);
+  }
+
+  /** 摆位置和朝向:贴回 2D 的那一版角色固定在摄影棚的格子里;真 3D 场景里跟着单位的地图坐标走(死后往地里沉)。 */
+  private put(u: Unit, c: G3DChar): void {
+    if (this.mode === 2 && this.world) {
+      this.world.toWorld(u.owner.x, u.owner.y, _foot, -u.sink * (u.spec.height * 0.55 + 0.25));
+      c.place(_foot.x, _foot.y, _foot.z, u.yaw);
+    } else {
+      c.place(c.at.x, c.at.y, c.at.z, u.yaw);
+    }
+  }
+
+  /** 单位节点淡出时(怪死后):贴回 2D 的那一版贴图是预乘透明的,颜色也要跟着乘;真 3D 场景里改成往地里沉。 */
   private fade(u: Unit): void {
     const op = u.owner.node.getComponent(UIOpacity)?.opacity ?? 255;
+    if (this.mode === 2) {
+      u.sink = 1 - op / 255;
+      return;
+    }
     if (op !== u.alpha && u.sprite && u.sprite.isValid) {
       u.alpha = op;
       u.sprite.color = new Color(op, op, op, 255);
@@ -722,6 +893,9 @@ class TownUnits3D {
   afterimage(self: any, actor: any, alpha: number): boolean {
     const u = this.unitOf(actor);
     const root: Node | null = self.entityRoot ?? null;
+    if (u && this.mode === 2) {
+      return true;      // 真 3D 场景:2D 骨骼的残影不出(骨骼是藏着的),翻滚的拖尾由技能特效那边出
+    }
     if (!u || !u.sprite || !root || !root.isValid || !this.studio) {
       return false;
     }
@@ -757,7 +931,8 @@ class TownUnits3D {
     this.pool.forEach((v, k) => {
       pool[k] = v.length;
     });
-    return { on: this.on, flag: flagOn(), ready: this.ready, studioOpen: !!this.studio?.isOpen(), cfg: { ...CFG }, units: list.length,
+    return { on: this.on, mode: this.mode, flag: flagMode(), ready: this.ready, studioOpen: !!this.studio?.isOpen(), world: this.world ? this.world.info() : null,
+      extras: this.extras.map((x) => (x.info ? x.info() : null)), cfg: { ...CFG }, units: list.length,
       heroes3d: list.filter((u) => u.hero && u.char).length, monsters3d: list.filter((u) => !u.hero && u.char).length, drawn: list.filter((u) => u.char && u.char.node.active).length,
       tris: list.reduce((s, u) => s + (u.char && u.char.node.active ? u.char.tris : 0), 0), freeCells: this.studio?.freeCells() ?? 0, pool,
       stats: { ...this.stats }, noModel: Array.from(this.noModel.entries()), lastError: this.lastError };
@@ -782,13 +957,31 @@ class TownUnits3D {
     return this.info();
   }
 
-  toggle(on: boolean): Record<string, unknown> {
+  /** 现场开关:true / 1 = 贴回 2D 的那一版,2 = 真 3D 场景,false / 0 = 关。 */
+  toggle(on: boolean | number): Record<string, unknown> {
     (globalThis as any).__LC_FIELD3D = on;
     if (!on) {
       this.stop();
     }
     return this.info();
   }
+
+  /** 真 3D 场景的灯光 / 镜头参数现场调。 */
+  setWorld(patch: Partial<WorldCfg>): Record<string, unknown> {
+    this.world?.applyCfg(patch);
+    return this.info();
+  }
+}
+
+/** 这个角色 / 怪现在是不是 3D 模型(真 3D 场景里);是的话返回它的身高(米),不是返回 0。 */
+export function fieldUnitHeight(owner: any): number {
+  const u = owner ? units.unitOf(owner) : null;
+  return u && units.world && units.world.isOpen() ? u.spec.height : 0;
+}
+
+/** 给摆件 / 技能特效这些模块登记用(它们在各自的文件里,模块加载时把自己挂进来)。 */
+export function addFieldExtra(extra: FieldExtra): void {
+  units.extras.push(extra);
 }
 
 const units = new TownUnits3D();
@@ -840,7 +1033,8 @@ function install(): void {
     }
     return orig.apply(this, args);
   });
-  (globalThis as any).__f3d = { toggle: (on: boolean) => units.toggle(on), info: () => units.info(), dump: () => units.dump(), set: (p: Partial<FieldCfg>) => units.set(p) };
+  (globalThis as any).__f3d = { toggle: (on: boolean | number) => units.toggle(on), info: () => units.info(), dump: () => units.dump(), set: (p: Partial<FieldCfg>) => units.set(p),
+    world: (p?: Partial<WorldCfg>) => (p ? units.setWorld(p) : units.world?.info() ?? null), raw: () => units };
 }
 
 if (!EDITOR && sys.isBrowser) {

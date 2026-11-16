@@ -40,6 +40,8 @@ OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1
 MODE = ARGS[0] if ARGS else 'look'
 OUT = ARGS[1] if len(ARGS) > 1 else os.path.join(tempfile.gettempdir(), 'lootchain-qa', 'f3d')
 QS = OPT.get('qs', '?field3d=1')
+# 开的是哪一种:1 = 3D 角色贴回 2D 地图(第一版),2 = 真 3D 场景(地面 / 摆件 / 角色 / 技能都在 3D 世界里)
+MODE3D = int(OPT.get('mode', '2' if 'field3d=2' in QS else '1'))      # switch 模式不带开关进图时用 --mode=2 指定现场开哪一种
 ACCOUNT = OPT.get('account', 'guidetest02')
 TEAM = [c for c in OPT.get('team', 'R_HUAXIONG,R_TAISHICI,R_XUNYOU').split(',') if c]
 MAP = OPT.get('map', 'WOODS')
@@ -113,8 +115,8 @@ BENCH = ("const dev = cc.director.root.device; const gl = dev.gl; const px = new
          " const run = (n) => { const ts = []; for (let i = 0; i < n; i++) { const t0 = performance.now(); cc.game.step(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ts.push(performance.now() - t0); }"
          " ts.sort((a, b) => a - b); return { median: +ts[ts.length >> 1].toFixed(2), avg: +(ts.reduce((a, b) => a + b, 0) / ts.length).toFixed(2), p95: +ts[Math.floor(ts.length * 0.95)].toFixed(2), draws: dev.numDrawCalls, tris: dev.numTris, instances: dev.numInstances }; };")
 # 切开关并等它切完(定格里靠 cc.game.step 推帧)
-SWITCH = ("const setOn = async (on) => { F.toggle(on); for (let i = 0; i < 120; i++) { cc.game.step(); await sleep(50); const u = F.info(); if (!on && !u.on) break;"
-          " if (on && u.on && u.ready && u.heroes3d >= 1 && i > 12) break; } for (let i = 0; i < 4; i++) cc.game.step(); return F.info(); };")
+SWITCH = ("const setOn = async (on) => { F.toggle(on ? %d : 0); for (let i = 0; i < 160; i++) { cc.game.step(); await sleep(50); const u = F.info(); if (!on && !u.on) break;"
+          " if (on && u.on && u.ready && u.heroes3d >= 1 && i > %d) break; } for (let i = 0; i < 4; i++) cc.game.step(); return F.info(); };" % (MODE3D, 40 if MODE3D == 2 else 12))
 
 
 def log(*a):
@@ -273,7 +275,7 @@ async def run(port):
             await frozen_shot('look_01_普攻出手')
             await asyncio.sleep(2.2)
             await frozen_shot('look_02_打了两秒')
-            if OPT.get('compare', '1') != '0' and 'field3d=1' in QS:
+            if OPT.get('compare', '1') != '0' and 'field3d=' in QS:
                 await compare('打怪中')
             await js("t.skillReadyAt = [0, 0, 0]; t.actionUntil = 0; t.leaderSkill(2); await sleep(420); return 1;")
             await frozen_shot('look_03_技能')
@@ -299,11 +301,14 @@ async def run(port):
                  " return { skyIllum: Math.round(g.ambient.skyIllum), sky: g.ambient.skyLightingColor.toString(), ground: g.ambient.groundLightingColor.toString(), shadows: g.shadows.enabled, shType: g.shadows.type, shSize: g.shadows.shadowMapSize,"
                  " env: g.skybox.envmap ? g.skybox.envmap.name || 'cube' : null, envType: g.skybox.envLightingType, mainLight: ml ? ml.getComponent(cc.DirectionalLight).enabled : null, mainCamVis: mc ? mc.getComponent(cc.Camera).visibility : null,"
                  " studio: !!(sc.getChildByName('G3DStudio') || {}).active, imps: (() => { let n = 0; t.entityRoot.walk(x => { if (x.name === 'G3DImp') n++; }); return n; })(),"
+                 " world3d: !!(sc.getChildByName('TownWorld3D') || {}).active, tone: g.postSettings ? g.postSettings.toneMappingType : null, mainCamOn: mc ? mc.getComponent(cc.Camera).enabled : null,"
+                 " offLayer: (() => { let n = 0; t.world.walk(x => { if (x.layer !== t.world.layer) n++; }); return n; })(), artHidden: (() => { let n = 0; t.entityRoot.children.forEach(x => { const a = x.getChildByName('Art'); if (a && !a.active) n++; }); return n; })(),"
+                 " shadowLayerOn: (() => { const s2 = t.groundRoot.getChildByName('Shadows'); return s2 ? s2.active : null; })(),"
                  " spinesHidden: [t.leader, ...t.followers].filter(a => a.spineNode && !a.spineNode.active).length }; };")
             before = await js(G + " return JSON.stringify({ f3d: F.info().on, snap: snap() });")
             log('关着(进图时没带开关)', before)
             await shot('switch_a_关着')
-            on = await js(G + " F.toggle(true); for (let i = 0; i < 100; i++) { await sleep(100); const u = F.info(); if (u.on && u.studioOpen && u.heroes3d >= 1) break; } await sleep(1500); return JSON.stringify({ f3d: F.info(), snap: snap() });")
+            on = await js(G + " F.toggle(%d); for (let i = 0; i < 100; i++) { await sleep(100); const u = F.info(); if (u.on && (u.studioOpen || (u.world && u.world.open)) && u.heroes3d >= 1) break; } await sleep(2500); return JSON.stringify({ f3d: F.info(), snap: snap() });" % MODE3D)
             log('开了', on)
             await shot('switch_b_开了')
             off = await js(G + " F.toggle(false); await sleep(800); return JSON.stringify({ f3d: F.info().on, snap: snap() });")
