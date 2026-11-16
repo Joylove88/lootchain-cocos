@@ -110,6 +110,23 @@ export class Rig {
     }
   }
 
+  /**
+   * 把一根骨头水平方向的位置钉回绑定姿势时的地方,高度照动画的。
+   * 平台给的跑步 / 行走片段带着「往前走」的位移(骨盆一路往前、循环时跳回来);在游戏里位移归逻辑管,
+   * 不钉住的话人会跑到自己影子前面一米多再闪回来。
+   */
+  pin(joint: Node | null): void {
+    const t = joint ? this.rest.get(joint) : undefined;
+    const parent = joint?.parent;
+    if (!joint || !t || !parent) {
+      return;
+    }
+    parent.updateWorldTransform();
+    Vec3.transformMat4(_a, t.p, parent.worldMatrix);
+    const p = joint.worldPosition;
+    joint.setWorldPosition(_a.x, p.y, _a.z);
+  }
+
   /** 绕一根世界轴转(以这根骨头自己为轴心)。 */
   twist(joint: Node | null, axis: Vec3, deg: number): void {
     if (!joint || Math.abs(deg) < 0.01) {

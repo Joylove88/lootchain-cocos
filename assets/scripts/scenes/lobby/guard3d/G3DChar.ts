@@ -40,6 +40,8 @@ export interface CharOpts {
   albedo?: number;
   /** 这只怪的行走一律走程序化(平台给的行走预设是坏的)。 */
   procWalk?: boolean;
+  /** 去掉动作片段自带的位移(跑步 / 行走时原地踏步,位移由游戏逻辑管)。展示模式不开,和原来一样。 */
+  inPlace?: boolean;
 }
 
 const templates = new Map<string, CharTemplate>();
@@ -158,6 +160,10 @@ export class G3DChar {
   loose = 0;
   /** 走着停下来的程度(0 = 照动画 / 照程序化行走走,1 = 站定):走的姿势按它往站姿上收。 */
   stand = 0;
+  /** 人形往前倾多少(0~1;冲刺 / 翻滚时整个人压低往前扑)。 */
+  lean = 0;
+  /** 去掉动作片段自带的位移(见 CharOpts.inPlace)。 */
+  inPlace = false;
   /** 怪物倒地(0 → 1);downSide = 往哪一侧倒。 */
   down = 0;
   downSide = 1;
@@ -261,6 +267,7 @@ export class G3DChar {
     this.at = opts.at.clone();
     this.span = Math.max(hi.x - lo.x, hi.z - lo.z) * this.scale;
     this.procWalk = !!opts.procWalk;
+    this.inPlace = !!opts.inPlace;
     model.setPosition(-(lo.x + hi.x) / 2, -lo.y, -(lo.z + hi.z) / 2);
     holder.setScale(this.scale, this.scale, this.scale);
     holder.setRotationFromEuler(0, this.yaw, 0);
@@ -301,6 +308,26 @@ export class G3DChar {
     this.rest = false;
     this.pwalk = false;
     this.cur = name;
+    return true;
+  }
+
+  /**
+   * 把一个片段定在某个时刻(秒):片段自己不走时间,每帧由调用方给时刻。
+   * 一次出手的进度由战斗逻辑的计时说了算(含顿帧、加速)的时候用它,动作和逻辑永远对得上。
+   * 第一次调(或换了片段)会先过渡到这个片段。
+   */
+  scrub(name: string, time: number, fade = 0.06): boolean {
+    if (this.cur !== name || this.rest) {
+      if (!this.play(name, fade, false)) {
+        return false;
+      }
+    }
+    const st = this.anim?.getState(name);
+    if (!st) {
+      return false;
+    }
+    st.speed = 0;
+    st.setTime(Math.max(0, Math.min(st.duration - 0.001, time)));
     return true;
   }
 
@@ -392,10 +419,18 @@ export class G3DChar {
     }
     if (this.rest) {
       rig.toRest();
-    } else if (this.stand > 0.001) {
-      rig.blendRest(this.stand);      // 走着停下来:从迈步的姿势收回站姿
+    } else {
+      if (this.inPlace) {
+        rig.pin(this.kind === 'biped' ? rig.j('Hips') : this.beast?.root ?? null);      // 片段自带的「往前走」不要
+      }
+      if (this.stand > 0.001) {
+        rig.blendRest(this.stand);      // 走着停下来:从迈步的姿势收回站姿
+      }
     }
     if (this.kind === 'biped') {
+      if (this.lean > 0.001) {
+        rig.twist(rig.j('Hips'), this.frame.right, -26 * this.lean);      // 绕右手轴转负角 = 前倾
+      }
       if (this.cast > 0.001 || this.strike > 0.001) {
         poseCast(rig, this.frame, this.cast, this.strike);
       }
@@ -425,7 +460,7 @@ export class G3DChar {
       poseBeastHit(rig, this.frame, b, this.hit);
     }
     if (this.down > 0.001) {
-      poseBeastDeath(rig, this.frame, b, this.down, this.at.y, this.downSide);
+      poseBeastDeath(rig, this.frame, b, this.down, this.node.worldPosition.y, this.downSide);
     }
   }
 
@@ -445,6 +480,7 @@ export class G3DChar {
     this.loose = 0;
     this.down = 0;
     this.stand = 0;
+    this.lean = 0;
     this.cur = '';
     this.setTint(1, 1, 1);
   }
