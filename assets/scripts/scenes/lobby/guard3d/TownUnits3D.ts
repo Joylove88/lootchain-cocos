@@ -166,16 +166,21 @@ function turn(cur: number, to: number, maxStep: number): number {
 /** 2D 地图上的一个方向(x 右、y 上 = 远离镜头)→ 模型要转多少度(模型本来面朝 +x)。 */
 const yawOf = (dx: number, dy: number): number => (Math.atan2(dy, dx) * 180) / Math.PI;
 
+/** 地址参数 / 本地存储里的开关只在第一次问的时候读一遍(这个函数每帧都会被问到);控制台 __f3d.toggle 现场切的优先。 */
+let flagFromPage: boolean | null = null;
 function flagOn(): boolean {
   const g = globalThis as any;
   if (g.__LC_FIELD3D !== undefined) {
     return !!g.__LC_FIELD3D;
   }
-  try {
-    return /[?&]field3d=1\b/.test(location.search) || localStorage.getItem('lcField3d') === '1';
-  } catch (error) {
-    return false;
+  if (flagFromPage === null) {
+    try {
+      flagFromPage = /[?&]field3d=1\b/.test(location.search) || localStorage.getItem('lcField3d') === '1';
+    } catch (error) {
+      flagFromPage = false;
+    }
   }
+  return flagFromPage;
 }
 
 class TownUnits3D {
