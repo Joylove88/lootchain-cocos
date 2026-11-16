@@ -1,4 +1,4 @@
-import { AnimationClip, Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, Layers, Mat4, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, SkeletalAnimation, SkinnedMeshRenderer, sys, Vec3, Vec4 } from 'cc';
+import { Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, Layers, Mat4, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, rendering, resources, sys, Vec3, Vec4 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { Actor, actorMaterials, ActorTemplate, buildKnight, buildSorcerer, poseKnight, poseSorcerer } from './G3DActor';
 import { BRAZIERS, buildCourtyard, TER_BACK, TER_H, UVD } from './G3DCourtyard';
@@ -6,7 +6,7 @@ import { FxWorld } from './G3DFx';
 import { addMesh, DynMesh, keptMaterial, loadKit, material, tex } from './G3DKit';
 import { MeshBatch } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
-import { analyzeBeast, BeastRig, Frame, frameOf, poseBeastHit, poseBeastIdle, poseBeastWalk, poseBite, poseCast, poseHit, Rig } from './G3DPose';
+import { charKeys, G3DChar, loadChar } from './G3DChar';
 import { buildEnvCube, FX_CELL, paintCrystal, paintHaze, paintShaft, paintVignette } from './G3DSkins';
 import { GD, GW, GX0, GZ0, hash2, mulberry32, paintBackdrop, paintGround, paintRock, paintWood, puddleLevel, wetValue } from './G3DTextures';
 
@@ -41,7 +41,6 @@ const REF = {
 // (预烘焙省性能但动作之间不能过渡;关掉是每帧实时算骨骼,动作切换有过渡,以后要在骨架上叠程序姿势也得关)
 // albedo = 颜色贴图整体压多少:AI 出的颜色贴图里白的(胡子、交领)接近纯白,在这套给深色材质校过的灯下会曝成一片
 const CHAR = { at: new Vec3(HERO.x, 0.07, HERO.z + 1.75), height: 1.86, yaw: 0, baked: false, albedo: 0.84 };   // Tripo 出的模型本来就面朝 +x
-const CHAR_ORDER = ['idle', 'walk', 'run', 'slash', 'shoot', 'hurt', 'fall'];
 // 每个角色站哪、多高、朝哪(按 g3d_char 下的文件夹名认);没登记的用 CHAR 的默认值,沿 z 往镜头方向排开。
 // 英雄站石台(台面高 0.07)、面朝 +x:术士和妮克丝在后排两侧,悟空顶在前排正中;怪物站在右边的地上、转 180 度面朝英雄。
 // height 是包围盒的高度(狼算到耳尖,蜘蛛算到背顶)。
@@ -68,38 +67,11 @@ const CHAR_SPECS: Record<string, { at: Vec3; height: number; yaw: number; procWa
   bear: { at: new Vec3(HERO.x + 7.2, 0, HERO.z - 0.9), height: 1.62, yaw: 180, procWalk: true },
   rotbear: { at: new Vec3(HERO.x + 10.1, 0, HERO.z + 1.0), height: 2.2, yaw: 180 },
 };
-interface ShowChar {
-  name: string;
-  at: Vec3;
-  height: number;
-  yaw: number;
-  /** 水平方向上占多宽(缩放后),给镜头算距离用。 */
-  span: number;
-  /** 程序动作(G3DPose):骨架、朝向、是人形还是怪物;rest = 不播动画、站在绑定姿势上(怪物没有待机动作时的待机)。 */
-  rig: Rig | null;
-  frame: Frame;
-  kind: 'biped' | 'beast';
-  rest: boolean;
-  /** 受击反应的强度(1 → 0 衰减);act / actT = 正在做的一次性程序动作和它走到第几秒。 */
-  hit: number;
-  act: string;
-  actT: number;
-  /** 怪物骨架的结构(按形状认出来的脊柱 / 头 / 腿);pwalk = 正在用程序化行走,walkPhase 是步伐相位;procWalk = 这只怪的行走一律走程序化。 */
-  beast: BeastRig | null;
-  pwalk: boolean;
-  walkPhase: number;
-  procWalk: boolean;
-  node: Node;
-  anim: SkeletalAnimation | null;
-  names: string[];
-  cur: string;
-  t: number;
-  hold: number;
-  seq: number;
-  manual: boolean;
-  tris: number;
-  joints: number;
-}
+/**
+ * 展示模式里的一个角色 = 共用的角色实例(G3DChar:模型、骨架、动作、程序动作)+ 轮播用的几个数:
+ * t / hold = 当前动作播了多久、播多久换下一个;seq = 轮到第几个;manual = 手动指定了动作,不再轮播。
+ */
+type ShowChar = G3DChar & { t: number; hold: number; seq: number; manual: boolean };
 const OVERLAY_LAYER = 1 << 1;   // 贴在镜头前的暗角:只给主相机看,倒影相机不看
 const WET = 0.42;               // 地面有多湿(积水面积)
 const GROUND_LAYER = 1 << 2;    // 地面:倒影相机也不看(地面自己在采样倒影图,再画进倒影图就成了自己读自己)
@@ -651,127 +623,37 @@ class Stage {
    * 那个目录平时是空的(模型放在仓库外,对比时临时拷进来,截完移出 —— 留着会被打进资源包),没有就什么都不做。
    */
   private loadChars(): void {
-    let infos: Array<{ path: string }> = [];
-    try {
-      infos = ((resources as any).getDirWithPath('g3d_char', Prefab) as Array<{ path: string }>) ?? [];
-    } catch (error) {
-      infos = [];
-    }
-    infos.forEach((info, index) => {
-      resources.load(info.path, Prefab, (err, prefab) => {
-        if (err || !prefab || !this.world || !this.world.isValid) {
+    charKeys().forEach((key, index) => {
+      loadChar(key, (tpl) => {
+        if (!tpl || !this.world || !this.world.isValid) {
           return;
         }
-        const n = instantiate(prefab);
-        // 用不用预烘焙必须在节点进场景之前设:引擎里动画状态一旦按「预烘焙」初始化过,之后再切成实时骨骼也不会去驱动骨头
-        // (skeletal-animation-state.ts 的 _doNotCreateEval 只在第一次初始化时定)—— 表现是时间在走、人站着不动。
-        const pre = n.getComponent(SkeletalAnimation) ?? n.getComponentInChildren(SkeletalAnimation);
-        if (pre) {
-            pre.useBakedAnimation = CHAR.baked;
-        }
-        this.world.addChild(n);
-        const key = info.path.split('/')[1] ?? '';
         const spec = CHAR_SPECS[key] ?? { at: new Vec3(CHAR.at.x, CHAR.at.y, CHAR.at.z + index * 1.75), height: CHAR.height, yaw: CHAR.yaw };
-        n.setRotationFromEuler(0, spec.yaw, 0);
-        n.updateWorldTransform();
-        // 量包围盒(站姿下的网格最小 / 最大点),缩放到目标身高、脚落到石台面上
-        const lo = new Vec3(1e9, 1e9, 1e9);
-        const hi = new Vec3(-1e9, -1e9, -1e9);
-        let tris = 0;
-        let joints = 0;
-        for (const mr of n.getComponentsInChildren(MeshRenderer)) {
-          mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
-          mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
-          if (CHAR.albedo !== 1) {
-            for (let i = 0; i < mr.sharedMaterials.length; i += 1) {
-              mr.getMaterialInstance(i)?.setProperty('albedoScale', new Vec3(CHAR.albedo, CHAR.albedo, CHAR.albedo));
-            }
-          }
-          const st = mr.mesh?.struct;
-          if (!st) {
-            continue;
-          }
-          for (const p of st.primitives) {
-            tris += p.indexView ? p.indexView.count / 3 : 0;
-          }
-          const skinned = mr as SkinnedMeshRenderer;
-          joints = Math.max(joints, skinned.skeleton?.joints.length ?? 0);
-          if (!st.minPosition || !st.maxPosition) {
-            continue;
-          }
-          // 蒙皮网格的顶点是相对骨架根算的(挂网格的那个节点自己的位移不算数),静态网格才按自己的节点算
-          const base = skinned.skinningRoot ?? mr.node;
-          base.updateWorldTransform();
-          for (let i = 0; i < 8; i += 1) {
-            _v.set(i & 1 ? st.maxPosition.x : st.minPosition.x, i & 2 ? st.maxPosition.y : st.minPosition.y, i & 4 ? st.maxPosition.z : st.minPosition.z);
-            Vec3.transformMat4(_v, _v, base.worldMatrix);
-            Vec3.min(lo, lo, _v);
-            Vec3.max(hi, hi, _v);
-          }
-        }
-        const s = spec.height / Math.max(0.01, hi.y - lo.y);
-        n.setScale(s, s, s);
-        n.setPosition(spec.at.x - ((lo.x + hi.x) / 2) * s, spec.at.y - lo.y * s, spec.at.z - ((lo.z + hi.z) / 2) * s);
-        const rig = new Rig(n);          // 这时候还没播过动画,骨头都在绑定姿势上
-        const kind = rig.j('Hips') && rig.j('Spine1') ? 'biped' : 'beast';
-        const c: ShowChar = { name: key, at: spec.at.clone(), height: spec.height, yaw: spec.yaw, span: Math.max(hi.x - lo.x, hi.z - lo.z) * s,
-          rig, frame: frameOf(spec.yaw), kind, rest: false, hit: 0, act: '', actT: 0,
-          beast: kind === 'beast' ? analyzeBeast(rig, frameOf(spec.yaw)) : null, pwalk: false, walkPhase: 0, procWalk: !!spec.procWalk,
-          node: n, anim: null, names: [], cur: '', t: 0, hold: 0, seq: -1, manual: false, tris, joints };
+        // 读模型、量包围盒缩放到目标身高、脚落到石台面上、认骨架 —— 都在共用的 G3DChar 里
+        const c = Object.assign(G3DChar.spawn(tpl, this.world, { at: spec.at, height: spec.height, yaw: spec.yaw, baked: CHAR.baked, albedo: CHAR.albedo, procWalk: spec.procWalk }),
+          { t: 0, hold: 0, seq: -1, manual: false }) as ShowChar;
+        c.seed = spec.at.x;
         this.chars.push(c);
-        this.stats.charTris = (this.stats.charTris ?? 0) + tris;
-        this.stats.charJoints = joints;
-        const ready = (anim: SkeletalAnimation | null): void => {
-          if (!anim) {
-            return;
-          }
-          const rank = (name: string): number => {
-            const i = CHAR_ORDER.findIndex((k) => name.toLowerCase().indexOf(k) >= 0);
-            return i < 0 ? CHAR_ORDER.length : i;
-          };
-          c.anim = anim;
-          c.names = anim.clips.filter((clip) => !!clip).map((clip) => clip!.name).sort((a, b) => rank(a) - rank(b));
-          if (c.kind === 'beast' && !c.names.some((k) => k.toLowerCase().indexOf('idle') >= 0)) {
-            c.rest = true;                // 怪物只有行走:平时站在绑定姿势上(叠呼吸),要走的时候再 char('walk')
-            c.manual = true;
-          } else if (c.names.length) {
-            this.playChar(c, c.names[0], 0);
-            c.seq = 0;
-          }
-        };
-        const own = n.getComponent(SkeletalAnimation) ?? n.getComponentInChildren(SkeletalAnimation);
-        if (own && own.clips.some((clip) => !!clip)) {
-          ready(own);
-        } else {
-          // 预制体上没带动画组件:把同目录导入出来的动作片段挂上去
-          const dir = info.path.slice(0, info.path.lastIndexOf('/'));
-          resources.loadDir(dir, AnimationClip, (e2, clips) => {
-            if (e2 || !clips || !clips.length || !n.isValid) {
-              return;
-            }
-            const anim = own ?? n.addComponent(SkeletalAnimation);
-            anim.useBakedAnimation = CHAR.baked;   // 同样要赶在挂动作片段(建状态)之前
-            anim.clips = clips;
-            ready(anim);
-          });
+        this.stats.charTris = (this.stats.charTris ?? 0) + c.tris;
+        this.stats.charJoints = c.joints;
+        if (c.kind === 'beast' && !c.names.some((k) => k.toLowerCase().indexOf('idle') >= 0)) {
+          c.rest = true;                // 怪物只有行走:平时站在绑定姿势上(叠呼吸),要走的时候再 char('walk')
+          c.manual = true;
+        } else if (c.names.length) {
+          this.playChar(c, c.names[0], 0);
+          c.seq = 0;
         }
       });
     });
   }
 
   private playChar(c: ShowChar, name: string, fade = 0.25): void {
-    const anim = c.anim;
-    const st = anim?.getState(name);
-    if (!anim || !st) {
+    if (!c.play(name, fade)) {
       return;
     }
+    const st = c.anim!.getState(name);
     const lower = name.toLowerCase();
     const loop = /idle|walk|run/.test(lower);
-    st.wrapMode = loop ? AnimationClip.WrapMode.Loop : AnimationClip.WrapMode.Normal;
-    anim.crossFade(name, c.rest ? 0 : fade);
-    c.rest = false;
-    c.pwalk = false;
-    c.cur = name;
     c.t = 0;
     // 循环动作播一会儿就换下一个;一次性的动作播完再停半秒(倒地多躺一会儿);平台给的预设动作有的很长(受击 14 秒),最多播 5 秒
     c.hold = loop ? (lower.indexOf('idle') >= 0 ? 3.0 : 3.2) : Math.min(5, st.duration) + (lower.indexOf('fall') >= 0 ? 1.2 : 0.45);
@@ -785,37 +667,10 @@ class Stage {
       return;
     }
     for (const c of this.chars) {
-      const rig = c.rig;
-      if (!rig || !c.node.active) {
-        continue;
-      }
-      if (c.rest) {
-        rig.toRest();
-      }
-      if (c.kind === 'biped') {
-        if (c === this.caster && (this.cast > 0.001 || this.strike > 0.001)) {
-          poseCast(rig, c.frame, this.cast, this.strike);
-        }
-        if (c.hit > 0.001) {
-          poseHit(rig, c.frame, c.hit);
-        }
-      } else {
-        const b = c.beast;
-        if (!b) {
-          continue;
-        }
-        if (c.rest && c.pwalk) {
-          poseBeastWalk(rig, c.frame, b, c.walkPhase);
-        } else if (c.rest) {
-          poseBeastIdle(rig, c.frame, b, this.time, c.at.x);
-        }
-        if (c.act === 'bite') {
-          poseBite(rig, c.frame, b, c.actT);
-        }
-        if (c.hit > 0.001) {
-          poseBeastHit(rig, c.frame, b, c.hit);
-        }
-      }
+      const casting = c === this.caster;      // 只有接管施法的那个角色做施法动作
+      c.cast = casting ? this.cast : 0;
+      c.strike = casting ? this.strike : 0;
+      c.pose(this.time);
     }
   }
 
@@ -834,18 +689,14 @@ class Stage {
       c.act = 'bite';
       c.actT = 0;
     } else if (act === 'rest') {
-      c.anim?.stop();
-      c.rest = true;
-      c.pwalk = false;
+      c.toRest(false);
       c.manual = true;
     } else if (act === 'pwalk' || (c.procWalk && act === 'walk')) {
       // 程序化行走:不播动作片段,站姿上叠腿的摆动(平台的行走预设坏了 / 没买的怪物用)
-      c.anim?.stop();
-      c.rest = true;
-      c.pwalk = true;
+      c.toRest(true);
       c.manual = true;
     } else {
-      const hit = c.names.find((k) => k.toLowerCase().indexOf(act.toLowerCase()) >= 0);
+      const hit = c.clip(act);
       if (hit) {
         c.manual = true;
         this.playChar(c, hit);
@@ -925,16 +776,7 @@ class Stage {
     const engineDt = director.getDeltaTime();
     const speed = engineDt > 1e-5 ? dt / engineDt : 1;
     for (const c of this.chars) {
-      c.hit = Math.max(0, c.hit - dt * 3.0);
-      if (c.pwalk) {
-        c.walkPhase += dt * Math.PI * 2 * 1.35;      // 每秒 1.35 步
-      }
-      if (c.act) {
-        c.actT += dt;
-        if (c.actT > 0.85) {
-          c.act = '';
-        }
-      }
+      c.step(dt);      // 受击衰减、程序化行走的相位(每秒 1.35 步)、一次性程序动作的计时
       if (!c.anim || !c.names.length || c.rest) {
         continue;
       }
@@ -1219,7 +1061,7 @@ class Stage {
     this.stepChars(dt);
     const staff = hero.joints.staff;
     Vec3.transformMat4(_v, _v2.set(0, 1.16, 0), staff.worldMatrix);   // 杖顶晶石
-    const casterHand = this.caster?.rig?.j('RightHand') ?? null;
+    const casterHand = this.caster?.rig.j('RightHand') ?? null;
     const castX = this.caster ? this.caster.at.x : HERO.x;
     const castZ = this.caster ? this.caster.at.z : HERO.z;
     if (casterHand) {

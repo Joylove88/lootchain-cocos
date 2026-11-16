@@ -15,6 +15,7 @@ const _q = new Quat();
 const _q2 = new Quat();
 const _a = new Vec3();
 const _b = new Vec3();
+const _a2 = new Vec3();
 const IDENT = new Quat();
 
 export interface Frame {
@@ -87,6 +88,25 @@ export class Rig {
   toRest(): void {
     for (const [n, t] of this.rest) {
       n.setRTS(t.r, t.p, t.s);
+    }
+  }
+
+  /**
+   * 把动画摆好的姿势往绑定姿势(站姿)上混:w = 0 不动,1 = 完全是站姿。
+   * 怪物只有行走一个动作:走着走着停下来的时候,用它从迈步的姿势平滑地收回站姿,不至于「咔」一下跳回去。
+   */
+  blendRest(w: number): void {
+    if (w <= 0.001) {
+      return;
+    }
+    if (w >= 0.999) {
+      this.toRest();
+      return;
+    }
+    for (const [n, t] of this.rest) {
+      Quat.slerp(_q, n.rotation, t.r, w);
+      Vec3.lerp(_a, n.position, t.p, w);
+      n.setRTS(_q, _a, t.s);
     }
   }
 
@@ -164,6 +184,24 @@ export function poseHit(rig: Rig, f: Frame, h: number): void {
   rig.aim(rig.j('LeftArm'), rig.j('LeftForeArm'), dirOf(f, -0.25, -0.8, -0.55), k * 0.45);
   rig.aim(rig.j('RightArm'), rig.j('RightForeArm'), dirOf(f, -0.25, -0.8, 0.55), k * 0.45);
   rig.shift(rig.j('Hips'), -f.fwd.x * 0.14 * k, -0.03 * k, -f.fwd.z * 0.14 * k);
+}
+
+/**
+ * 人形 · 拉弓放箭(叠在待机上;平台给的「射击」预设是端枪的姿势,弓手用不上):
+ * draw 0→1 = 侧身、左臂平举指向目标、右手拉到脸旁;loose 0→1 = 松手,右前臂往后弹开。
+ */
+export function poseShoot(rig: Rig, f: Frame, draw: number, loose: number): void {
+  const d = ease(draw);
+  const l = ease(loose);
+  // 侧身(左肩朝目标),头转回来看着目标
+  rig.twist(rig.j('Spine1'), f.up, -44 * d);
+  rig.twist(rig.j('Neck'), f.up, 32 * d);
+  rig.aim(rig.j('LeftArm'), rig.j('LeftForeArm'), dirOf(f, 1, 0.07, -0.04), d * 0.96);
+  rig.aim(rig.j('LeftForeArm'), rig.j('LeftHand'), dirOf(f, 1, 0.09, 0.02), d * 0.96);
+  rig.aim(rig.j('RightArm'), rig.j('RightForeArm'), dirOf(f, -0.8, 0.14, 0.55), d * 0.96);
+  // 右前臂:拉满时手在脸旁(朝前收),松手后往后外侧弹开
+  dirOf(f, 0.95 - 1.2 * l, 0.1 + 0.2 * l, -0.3 + 0.85 * l, _a2);
+  rig.aim(rig.j('RightForeArm'), rig.j('RightHand'), _a2, d * 0.96);
 }
 
 /**
@@ -255,12 +293,33 @@ export function poseBeastHit(rig: Rig, f: Frame, b: BeastRig, h: number): void {
   rig.twist(b.head[0] ?? null, f.right, 10 * k);
 }
 
+/**
+ * 四足 / 多足 · 倒地:k 0→1。整个身体往一侧翻倒(绕前进方向转),同时落到地上,头垂下去、腿往里收。
+ * groundY = 脚底所在的高度(用来算身体要落多少才贴地)。平台不给死亡动作,先用这个顶。
+ */
+export function poseBeastDeath(rig: Rig, f: Frame, b: BeastRig, k: number, groundY = 0, side = 1): void {
+  const root = b.root;
+  if (!root) {
+    return;
+  }
+  const t = ease(k);
+  const rootH = root.worldPosition.y - groundY;
+  // 先让腿软下去(往身体里收),再整体翻倒
+  for (const leg of b.legs) {
+    rig.twist(leg.joints[0], f.right, (leg.front ? -22 : 22) * t);
+    rig.twist(leg.joints[Math.min(1, leg.joints.length - 1)], f.right, (leg.front ? 30 : -30) * t);
+  }
+  rig.twist(b.head[0] ?? null, f.right, -18 * t);
+  rig.twist(root, f.fwd, 82 * t * side);
+  rig.shift(root, 0, -Math.max(0, rootH - b.height * 0.16) * t, 0);
+}
+
 /** 没有待机动作的怪物:站在绑定姿势上,只加一点呼吸起伏和头的小摆动。 */
-export function poseBeastIdle(rig: Rig, f: Frame, b: BeastRig, time: number, seed = 0): void {
+export function poseBeastIdle(rig: Rig, f: Frame, b: BeastRig, time: number, seed = 0, amp = 1): void {
   const breathe = Math.sin(time * 1.9 + seed);
-  rig.twist(b.spine[Math.floor(b.spine.length / 2)] ?? null, f.right, 1.2 * breathe);
-  rig.twist(b.head[0] ?? null, f.up, 5 * Math.sin(time * 0.6 + seed * 2));
-  rig.twist(b.head[0] ?? null, f.right, 2.5 * Math.sin(time * 0.9 + seed));
+  rig.twist(b.spine[Math.floor(b.spine.length / 2)] ?? null, f.right, 1.2 * breathe * amp);
+  rig.twist(b.head[0] ?? null, f.up, 5 * Math.sin(time * 0.6 + seed * 2) * amp);
+  rig.twist(b.head[0] ?? null, f.right, 2.5 * Math.sin(time * 0.9 + seed) * amp);
 }
 
 /**
@@ -268,22 +327,22 @@ export function poseBeastIdle(rig: Rig, f: Frame, b: BeastRig, time: number, see
  * 对角的两条腿同相(左前 + 右后一组,右前 + 左后一组;多足的按前后顺序交替);腿根前后摆,往前迈的时候小腿往后收把脚抬起来;
  * 身体跟着上下起伏、左右微摆。平台给的行走预设坏了(棕鬃熊)或者干脆不想买的时候用它。
  */
-export function poseBeastWalk(rig: Rig, f: Frame, b: BeastRig, phase: number): void {
+export function poseBeastWalk(rig: Rig, f: Frame, b: BeastRig, phase: number, amp = 1): void {
   const sorted = b.legs.slice().sort((x, y) => Vec3.dot(y.joints[0].worldPosition, f.fwd) - Vec3.dot(x.joints[0].worldPosition, f.fwd));
   const perSide = { L: 0, R: 0 };
   for (const leg of sorted) {
     const idx = leg.left ? perSide.L++ : perSide.R++;          // 这一侧从前往后第几条
     const flip = (idx % 2 === 0) === leg.left;                 // 同侧相邻的腿交替,左右两侧错开半步
     const ph = phase + (flip ? 0 : Math.PI);
-    const swing = Math.sin(ph);                                // +1 = 脚在最前
-    const lift = Math.max(0, Math.cos(ph));                    // 往前迈的那半程把脚抬起来
+    const swing = Math.sin(ph) * amp;                          // +1 = 脚在最前
+    const lift = Math.max(0, Math.cos(ph)) * amp;              // 往前迈的那半程把脚抬起来
     rig.twist(leg.joints[0], f.right, 15 * swing);             // 朝下的骨头绕右手轴转正角 = 末端往前
     rig.twist(leg.joints[Math.min(1, leg.joints.length - 1)], f.right, -20 * lift);
     if (leg.joints.length > 2) {
       rig.twist(leg.joints[leg.joints.length - 2], f.right, 10 * lift);   // 脚掌回正一点,免得脚尖戳地
     }
   }
-  rig.shift(b.root, 0, b.height * 0.012 * Math.sin(phase * 2), 0);
-  rig.twist(b.spine[Math.floor(b.spine.length / 2)] ?? null, f.up, 2.5 * Math.sin(phase));
-  rig.twist(b.head[0] ?? null, f.right, 2 * Math.sin(phase * 2 + 0.6));
+  rig.shift(b.root, 0, b.height * 0.012 * Math.sin(phase * 2) * amp, 0);
+  rig.twist(b.spine[Math.floor(b.spine.length / 2)] ?? null, f.up, 2.5 * Math.sin(phase) * amp);
+  rig.twist(b.head[0] ?? null, f.right, 2 * Math.sin(phase * 2 + 0.6) * amp);
 }
