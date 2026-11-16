@@ -75,11 +75,14 @@ class TownProps3D implements FieldExtra {
   private time = 0;
   private msaa: boolean | null = null;
   /**
-   * 现场开关:mesh = 登记了生成器的摆件换成代码生成的模型(G3DFlora);默认关 —— 2026-11-16 实测,镜头固定俯视时
-   * 手绘图立进 3D 世界的效果明显好于第一版程序模型(树偏平、岩石偏素),程序模型留着当对照,__f3dprops.set({ mesh: true }) 切。
+   * 现场开关:mesh = 登记了生成器的摆件用代码生成的模型(G3DFlora),没登记的还是手绘图立牌;false = 全部用立牌。
+   * 第一版程序模型不如手绘(树偏平、岩石偏素),当时默认关;用户 11-16「继续磨程序模型」「要 3A 级别的效果」之后重做了
+   * 第二版(整套材质贴图、断面折痕、叶团 / 针叶小枝、板条和倒角),默认开。__f3dprops.set({ mesh: false }) 切回立牌对照。
    */
-  cfg = { mesh: false, sway: true };
+  cfg = { mesh: true, sway: true };
   private stats = { cards: 0, meshes: 0, shown: 0, faded: 0 };
+  private worldRef: TownWorld3D | null = null;
+  private lineupRoot: Node | null = null;
 
   sync(self: any, world: TownWorld3D, dt: number): void {
     const entities: Node | null = self.entityRoot ?? null;
@@ -96,6 +99,7 @@ class TownProps3D implements FieldExtra {
       this.root.layer = FIELD_LAYER;
       world.root.addChild(this.root);
     }
+    this.worldRef = world;
     this.time += dt;
     this.tick += 1;
     const list: Array<{ node: Node; y: number }> = self.propNodes ?? [];
@@ -315,7 +319,82 @@ class TownProps3D implements FieldExtra {
     }
   }
 
+  /**
+   * 调试用的对照台:在地图 (x, y) 一带把几种摆件并排摆出来 —— 后排是手绘图立牌,前排是代码生成的模型(同一种连摆 n 个变体),
+   * 同一套灯、同一个镜头,对着磨模型用。keys = 贴图路径里的关键字(如 'w3_tree_pine');再调一次先清掉上一批。
+   */
+  lineup(keys: string[], x: number, y: number, n = 1, rowGap = 640): string {
+    const self = this.self;
+    const world = this.worldRef;
+    const entities = this.entities;
+    if (!self || !world || !entities || !this.root) {
+      return 'not ready';
+    }
+    if (this.lineupRoot && this.lineupRoot.isValid) {
+      this.lineupRoot.destroy();
+    }
+    const root = new Node('Lineup');
+    root.layer = FIELD_LAYER;
+    this.root.addChild(root);
+    this.lineupRoot = root;
+    const U = world.cfg.unitsPerM;
+    const out: string[] = [];
+    let cx = x;
+    for (const key of keys) {
+      const props: any[] = self.def?.props ?? [];
+      let index = -1;
+      let art: Node | null = null;
+      for (let i = 0; i < props.length; i += 1) {
+        if (props[i].flat || props[i].asset.indexOf(key) < 0) {
+          continue;
+        }
+        const a = entities.getChildByName(`TownProp_${i}`)?.getChildByName('Art') ?? null;
+        if (a && a.getComponent(Sprite)?.spriteFrame) {
+          index = i;
+          art = a;
+          break;
+        }
+      }
+      const frame = art?.getComponent(Sprite)?.spriteFrame ?? null;
+      const size = art?.getComponent(UITransform)?.contentSize ?? null;
+      if (index < 0 || !frame || !size) {
+        out.push(`${key}: 没找到`);
+        continue;
+      }
+      const prop = props[index];
+      const wM = size.width / U;
+      const hM = size.height / world.upUnits();
+      const place = (made: Built | null, mx: number, my: number): void => {
+        if (!made) {
+          return;
+        }
+        made.node.setParent(root);
+        made.node.setPosition(world.toWorld(mx, my, new Vec3()));
+        made.node.walk((node) => {
+          node.layer = FIELD_LAYER;
+        });
+      };
+      place(this.card(frame, wM, hM, false, prop.tint, true), cx + size.width / 2, y + rowGap / 2);
+      const b = builders.find((it) => it.match(prop.asset));
+      let mx = cx;
+      for (let k = 0; k < n; k += 1) {
+        if (b) {
+          try {
+            place(b.build(root, prop.asset, wM, hM, (k + 0.5) / n, false), mx + size.width / 2, y - rowGap / 2);
+          } catch (error) {
+            out.push(`${key}: ${String(error).slice(0, 120)}`);
+          }
+        }
+        mx += size.width + 60;
+      }
+      out.push(`${key}: ${Math.round(size.width)}x${Math.round(size.height)} @${Math.round(cx)}`);
+      cx = Math.max(mx, cx + size.width + 60) + 40;
+    }
+    return out.join(' | ');
+  }
+
   stop(): void {
+    this.lineupRoot = null;
     for (const item of this.items.values()) {
       if (item.art.isValid) {
         item.art.active = true;

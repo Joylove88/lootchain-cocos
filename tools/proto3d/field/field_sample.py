@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """野外真 3D 场景(?field3d=2)的交付图:借常驻预览(field_dev.py start 要先在后台跑着)截一套对比图。
 
-  python tools/proto3d/field/field_sample.py <输出目录> [--only=cmp,fx,props]
+  python tools/proto3d/field/field_sample.py <输出目录> [--only=cmp,fx,props,lineup]
 
 出的图:
   cmp   同一刻对比(定格后只切开关):入口营地、林间怪群旁 —— 左 = 真 3D 场景,右 = 现在线上的 2D
   fx    队长的普攻三段 + 三个技能,各取出手后的两个时刻
-  props 摆件的两种做法并排:手绘图立进 3D(默认) / 代码生成的模型(对照)
+  props 摆件的两种做法并排:代码生成的模型(默认) / 手绘图立进 3D(对照),整个场景
+  lineup 对照台:同一种摆件,后排手绘立牌、前排代码生成的模型(各摆几个变体),一类一张
 """
 import os
 import subprocess
@@ -22,7 +23,7 @@ SNIP = os.path.join(HERE, 'snippets')
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1:] if a.startswith('--'))
 OUT = ARGS[0] if ARGS else os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa', 'f3d_sample')
-ONLY = [x for x in OPT.get('only', 'cmp,fx,props').split(',') if x]
+ONLY = [x for x in OPT.get('only', 'cmp,fx,props,lineup').split(',') if x]
 RAW = os.path.join(OUT, '原图')
 os.makedirs(RAW, exist_ok=True)
 
@@ -126,15 +127,32 @@ def main():
         for name, x, y, box in (('入口营地', -8350, -2900, (0, 0, 1920, 1078)), ('林间', -6620, -1900, (0, 0, 1920, 1078))):
             tp(x, y, followers=False)
             js(FREEZE)
-            a = Image.open(shot('props_%s_card' % name)).convert('RGB').crop(box)
-            js("window.__f3dprops.set({ mesh: true }); await sleep(4000); return 1;")
-            b = Image.open(shot('props_%s_mesh' % name)).convert('RGB').crop(box)
-            js("window.__f3dprops.set({ mesh: false }); await sleep(3500); return 1;")
+            a = Image.open(shot('props_%s_mesh' % name)).convert('RGB').crop(box)
+            js("window.__f3dprops.set({ mesh: false }); await sleep(4000); return 1;")
+            b = Image.open(shot('props_%s_card' % name)).convert('RGB').crop(box)
+            js("window.__f3dprops.set({ mesh: true }); await sleep(4500); return 1;")
             js(UNFREEZE)
             size = (int(a.width * 0.6), int(a.height * 0.6))
-            tiles.append(tag(a.resize(size, Image.LANCZOS), name + ' · 手绘图立进 3D(默认)'))
-            tiles.append(tag(b.resize(size, Image.LANCZOS), name + ' · 代码生成的模型(第一版,对照)'))
+            tiles.append(tag(a.resize(size, Image.LANCZOS), name + ' · 代码生成的模型(第二版,默认)'))
+            tiles.append(tag(b.resize(size, Image.LANCZOS), name + ' · 手绘图立进 3D(对照)'))
         sheet(tiles, 2, '摆件的两种做法(同一个 3D 场景、同一套灯)', os.path.join(OUT, '04_摆件两种做法对照.jpg'))
+    if 'lineup' in ONLY:
+        groups = [
+            ('树', ['w3_tree_oak', 'w3_tree_pine', 'w3_tree_autumn'], 1, 640, (-8950, -3250), (-7950, -3190)),
+            ('岩石与枯树', ['fld_g_boulders_l', 'fld_rocks', 'w3_rock_small', 'fld_dead_tree'], 1, 560, (-8900, -3250), (-7950, -3200)),
+            ('营地', ['w3_camp_crates', 'w3_camp_tent', 'w3_camp_banner'], 1, 560, (-8700, -3300), (-7950, -3250)),
+            ('栅栏', ['w3_camp_palisade'], 1, 700, (-8700, -3250), (-7950, -3250)),
+            ('灌木蕨草', ['vil3_bush', 'w3_fern', 'vil3_grass_tuft', 'fld_g_grass_s', 'fld_g_grass_l'], 2, 420, (-8500, -3250), (-7950, -3190)),
+        ]
+        for i, (name, keys, n, gap, at, cam) in enumerate(groups):
+            js("window.__lineup = { keys: %s, at: [%d, %d], n: %d, cam: [%d, %d], gap: %d, wait: 3500 }; return 1;" % (repr(keys), at[0], at[1], n, cam[0], cam[1], gap))
+            print('lineup', name, js('@' + os.path.join(SNIP, 'lineup.js'))[:200].encode('unicode_escape').decode(), flush=True)
+            im = Image.open(shot('lineup_%s' % name)).convert('RGB')
+            tag(im, name + ' · 后排 = 手绘图立牌,前排 = 代码生成的模型(同一套灯、同一个镜头)')
+            path = os.path.join(OUT, '06_对照台_%d_%s.jpg' % (i + 1, name))
+            im.save(path, quality=90)
+            print(path, im.size, flush=True)
+        js("clearInterval(window.__lcKeepAlive); [t.leader, ...t.followers].forEach(a => { a.node.active = true; }); return 1;")
     js("clearInterval(window.__lcKeepAlive); t.hitStopUntil = 0; window.__hideFollowers = false; return 1;")
 
 
