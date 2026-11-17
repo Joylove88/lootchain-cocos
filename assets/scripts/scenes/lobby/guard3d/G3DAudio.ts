@@ -234,7 +234,7 @@ export class AudioRig {
    */
   play(name: string, o: PlayOpts = {}, when?: number): void {
     const t = Math.max(when ?? this.ctx.currentTime, this.ctx.currentTime) + 0.002;
-    const gap = name === 'step' || name === 'stepGrass' ? 0.12 : 0.03;
+    const gap = name === 'step' || name === 'stepGrass' || name === 'stepMud' ? 0.12 : 0.03;
     if (this.last[name] !== undefined && Math.abs(t - this.last[name]) < gap) {
       return;
     }
@@ -286,6 +286,30 @@ export class AudioRig {
         this.nz(out, t, this.r(0.08, 0.12), 'bandpass', [[0, this.r(2600, 3800)], [1, 1500]], 0.8, [[0, 0.001], [0.2, 0.6], [1, 0.001]]);
         this.tone(out, t, 0.07, 'sine', 95, 55, [[0, 0.45], [1, 0.001]]);
         this.nz(out, t + 0.02, 0.09, 'highpass', 5200, 0.5, [[0, 0.001], [0.3, 0.12], [1, 0.001]]);
+        break;
+      }
+      case 'stepMud': {
+        // 湿泥地:没有硬的脚跟声,一下软的闷响 + 泥被踩开的「噗嗤」(慢起的低频噪声),有时带一点水声
+        const out = this.bus(0.34 * g, pan, 0.06);
+        const f = this.r(0.85, 1.2);
+        this.tone(out, t, 0.07, 'sine', 105 * f, 52 * f, [[0, 0.7], [1, 0.001]]);
+        this.nz(out, t, this.r(0.09, 0.13), 'lowpass', [[0, 950], [1, 280]], 0.9, [[0, 0.001], [0.25, 0.75], [1, 0.001]]);
+        this.nz(out, t + 0.015, 0.03, 'bandpass', this.r(1500, 2200), 1.4, [[0, 0.22], [1, 0.001]]);
+        if (this.rnd() < 0.45) {
+          this.nz(out, t + 0.02, 0.09, 'bandpass', [[0, 2700], [1, 1300]], 2.2, [[0, 0.001], [0.2, 0.2], [1, 0.001]]);
+        }
+        break;
+      }
+      case 'owl': {
+        // 远处的猫头鹰:低低的两三声「呜 —— 呜呜」,大半是回声
+        const out = this.bus(0.1 * g, pan, 0.8);
+        const f = this.r(310, 380);
+        let tt = t;
+        for (const [d, k] of [[0.42, 1], [0.2, 0.96], [0.34, 0.94]] as Array<[number, number]>) {
+          this.tone(out, tt, d, 'sine', f * k * 1.03, f * k * 0.97, [[0, 0.001], [0.2, 0.9], [0.7, 0.7], [1, 0.001]], 700);
+          this.tone(out, tt, d, 'sine', f * k * 2.02, f * k * 1.96, [[0, 0.001], [0.2, 0.12], [1, 0.001]]);
+          tt += d + (d > 0.4 ? 0.34 : 0.09);
+        }
         break;
       }
       case 'dash': {
@@ -471,6 +495,39 @@ export class AudioRig {
       this.loop(this.noise, 'bandpass', 1500, 1.1, 0.022, 0.3, 0.8, 0.09);
       this.loop(this.noise, 'highpass', 4200, 0.5, 0.008, 0, 0.9, 0.13);
       this.loop(this.noise, 'lowpass', 110, 0.7, 0.1, 0);
+      this.fire = this.loop(this.crackle, 'highpass', 900, 0.6, 0, -0.15);
+      this.fireRoar = this.loop(this.noise, 'lowpass', 300, 0.8, 0, -0.15);
+      // 蟋蟀:很高的一个音,被一个几十赫兹的方波切成一粒一粒,再整体一阵一阵地响。两只,音高和快慢各不相同
+      for (const [freq, rate, slow, pan, vol] of [[4300, 58, 0.9, -0.5, 0.012], [3850, 47, 0.63, 0.55, 0.009]] as Array<[number, number, number, number, number]>) {
+        const car = this.ctx.createOscillator();
+        car.frequency.value = freq;
+        const chop = this.ctx.createGain();
+        chop.gain.value = 0.5;
+        const sq = this.ctx.createOscillator();
+        sq.type = 'square';
+        sq.frequency.value = rate;
+        const sqd = this.ctx.createGain();
+        sqd.gain.value = 0.5;
+        sq.connect(sqd);
+        sqd.connect(chop.gain);
+        const swell = this.ctx.createGain();
+        swell.gain.value = vol * 0.5;
+        const lfo = this.ctx.createOscillator();
+        lfo.frequency.value = slow;
+        const ld = this.ctx.createGain();
+        ld.gain.value = vol * 0.5;
+        lfo.connect(ld);
+        ld.connect(swell.gain);
+        const p = this.ctx.createStereoPanner();
+        p.pan.value = pan;
+        car.connect(chop);
+        chop.connect(swell);
+        swell.connect(p);
+        p.connect(this.amb!);
+        car.start();
+        sq.start();
+        lfo.start();
+      }
     }
   }
 
@@ -486,7 +543,7 @@ export class AudioRig {
     if (!this.amb) {
       return;
     }
-    const kinds: Array<[string, number, number]> = this.space === 'hall' ? [['drip', 1.2, 4.5]] : [['bird', 1.5, 6]];
+    const kinds: Array<[string, number, number]> = this.space === 'hall' ? [['drip', 1.2, 4.5]] : [['owl', 7, 19]];
     for (const [name, lo, hi] of kinds) {
       if (this.next[name] === undefined) {
         this.next[name] = this.ctx.currentTime + this.r(0.3, lo);
@@ -647,7 +704,7 @@ class Sfx {
     this.space = space;
     const out: Record<string, { peak: number; rms: number; secs: number; ok: boolean }> = {};
     const list: Array<[string, PlayOpts]> = [['swing', {}], ['swing', { heavy: true }], ['hit', {}], ['hit', { heavy: true }], ['step', {}], ['stepGrass', {}], ['dash', {}], ['slam', {}], ['wave', {}],
-      ['bite', {}], ['bite', { heavy: true }], ['fall', {}], ['drip', {}], ['bird', {}]];
+      ['bite', {}], ['bite', { heavy: true }], ['fall', {}], ['drip', {}], ['bird', {}], ['stepMud', {}], ['owl', {}]];
     for (const [name, o] of list) {
       const chs = await this.render([{ n: name, t: 0.05, o }], 3.2, false);
       let peak = 0;
@@ -678,7 +735,7 @@ class Sfx {
     this.space = space;
     const hall: Array<[string, PlayOpts, number]> = [['swing', {}, 0.6], ['swing', { heavy: true }, 0.7], ['hit', {}, 0.7], ['hit', { heavy: true }, 0.9], ['step', {}, 0.38], ['step', {}, 0.38], ['step', {}, 0.38], ['step', {}, 0.6],
       ['dash', {}, 1.1], ['slam', {}, 1.8], ['wave', {}, 1.5], ['bite', {}, 0.8], ['bite', { heavy: true }, 1.0], ['fall', {}, 0.9], ['fall', { heavy: true }, 1.2]];
-    const open: Array<[string, PlayOpts, number]> = [['stepGrass', {}, 0.38], ['stepGrass', {}, 0.38], ['stepGrass', {}, 0.38], ['stepGrass', {}, 0.7], ['swing', {}, 0.6], ['hit', {}, 0.8], ['slam', {}, 1.6], ['wave', {}, 1.4], ['bite', {}, 0.9], ['fall', {}, 1.0]];
+    const open: Array<[string, PlayOpts, number]> = [['stepMud', {}, 0.38], ['stepMud', {}, 0.38], ['stepMud', {}, 0.38], ['stepMud', {}, 0.7], ['owl', {}, 2.4], ['swing', {}, 0.6], ['hit', {}, 0.8], ['slam', {}, 1.6], ['wave', {}, 1.4], ['bite', {}, 0.9], ['fall', {}, 1.0]];
     const ev: Logged[] = [];
     const marks: Array<[number, string]> = [];
     let t = 1.0;

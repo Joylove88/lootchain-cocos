@@ -20,6 +20,9 @@ function hash(ix: number, iy: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+/** 给别的贴图模块用的同一个格点随机数。 */
+export const texHash = hash;
+
 /**
  * 砌石墙:一块贴图 = 4 米 × 4 米,8 层石块,层高有高有矮(0.38~0.62 米);每层 3~5 块,块宽各不相同,层与层之间错缝。
  * 石块之间是凹下去的灰缝;每块石头深浅、凸出多少都不一样,边角有崩口,表面有坑;竖着的一道道水渍更暗、更滑。
@@ -110,7 +113,7 @@ export interface FloorPlan {
 }
 
 /** 一张可平铺的噪声表(先算好,之后按像素双线性取 —— 整间房的地面有八百多万个像素,逐个现算分形噪声太慢)。 */
-class NoiseLut {
+export class NoiseLut {
   private readonly n: number;
   private readonly data: Float32Array;
 
