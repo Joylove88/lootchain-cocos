@@ -2,7 +2,8 @@
 """地宫小样的交付图:借常驻预览(dungeon_dev.py start 要先在后台跑着)截一套,再和参考 FPS 左右并排。
 
   python tools/proto3d/dungeon/dungeon_shots.py <输出目录> [--fps=<参考 FPS 截图目录>] [--only=shots,sheet,compare,versus] [--tag=第二版 --no=03]
-  --tag 给了就另存一套(原图放「原图_<tag>」,文件名带 tag、从 --no 开始编号),并多出一张「上一版 / 这一版」的前后对比(versus)。
+  --tag 给了就另存一套(原图放「原图_<tag>」,文件名带 tag、从 --no 开始编号),并多出一张前后对比(versus):
+  左边默认用「原图」那一套、叫「上一版」;--base=原图_第二版 --baseName=电脑档 可以换。
 
 出的图:
   01_地宫小样_六个镜头.jpg       大厅全景、贴地看倒影、玩家视角、铁栅门、石台和火盆、打怪
@@ -25,8 +26,9 @@ FPS = OPT.get('fps', '')
 ONLY = [x for x in OPT.get('only', 'shots,sheet,compare,versus').split(',') if x]
 TAG = OPT.get('tag', '')
 NO = int(OPT.get('no', '1'))
-OLD = os.path.join(OUT, '原图')
-RAW = os.path.join(OUT, '原图_' + TAG) if TAG else OLD
+OLD = os.path.join(OUT, OPT.get('base', '原图'))      # 前后对比的「左边」用哪一套原图
+OLD_NAME = OPT.get('baseName', '上一版')
+RAW = os.path.join(OUT, '原图_' + TAG) if TAG else os.path.join(OUT, '原图')
 os.makedirs(RAW, exist_ok=True)
 
 
@@ -127,8 +129,8 @@ def main():
     if 'versus' in ONLY and TAG and os.path.isdir(OLD):
         tiles = []
         for n, label in (('hall', '大厅'), ('follow', '玩家视角'), ('floor', '贴地'), ('dais', '石台')):
-            tiles += [tag(load(n, size, base=OLD), '上一版 · ' + label), tag(load(n, size), TAG + ' · ' + label)]
-        sheet(tiles, 2, '地宫小样 · 上一版(左)和%s(右),同样的机位' % TAG, os.path.join(OUT, '%02d_上一版和%s对比.jpg' % (NO + 2, TAG)))
+            tiles += [tag(load(n, size, base=OLD), OLD_NAME + ' · ' + label), tag(load(n, size), TAG + ' · ' + label)]
+        sheet(tiles, 2, '地宫小样 · %s(左)和%s(右),同样的机位' % (OLD_NAME, TAG), os.path.join(OUT, '%02d_%s和%s对比.jpg' % (NO + 2, OLD_NAME, TAG)))
 
 
 if __name__ == '__main__':

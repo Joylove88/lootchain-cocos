@@ -1,4 +1,4 @@
-import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, EventKeyboard, EventMouse, game, input, Input, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, SpotLight, sys, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { charKeys, G3DChar, loadChar } from './G3DChar';
 import { floorPbr, FloorPlan, masonryPbr, paintGlow, paintGrime, paintRunes } from './G3DDungeonTex';
@@ -93,6 +93,35 @@ export interface DungeonCfg {
   floorBump: number;
   /** 壁灯下面那片光锥的亮度。 */
   cone: number;
+  /** 画质档:pc / mid / phone(见 TIERS)。 */
+  tier: string;
+  /** 同时最多几处真灯(一盏壁灯算一处);离主角远的换成贴在地上 / 墙上的假光斑。 */
+  realLights: number;
+  /** 假光斑的亮度倍数。 */
+  fake: number;
+  /** 后期的内部分辨率倍数(0 = 用档位自带的)、要不要遮蔽、泛光几级。 */
+  postScale: number;
+  ao: boolean;
+  bloomLevels: number;
+  /** 墙 / 石头 / 木头贴图的尺寸倍数、最多放几只怪、烛台点不点真灯、点光照射范围的倍数。 */
+  texK: number;
+  maxMobs: number;
+  candleReal: boolean;
+  rangeK: number;
+  /** 左上角显示一行帧率。 */
+  hud: boolean;
+  /**
+   * 烘焙灯光(手机档):固定的灯照在场景上的漫反射,建场景时逐顶点算好乘进顶点颜色,运行时只靠一份均匀的环境光把它「显」出来。
+   * bakeAmb = 那份环境光的照度(只是个载体);bakeGain = 点光的光通量换算到环境光照度要乘多少(引擎里两者的量级差着几百倍,
+   * 500 是对着电脑档同机位的画面校出来的);realK = 开着烘焙时真灯的亮度打几折(烘焙里已经算过一遍了);bakeEdge = 大面细分到多细(米)。
+   */
+  bake: boolean;
+  bakeAmb: number;
+  bakeGain: number;
+  /** 烘焙时环境反射图里那几团灯光加亮几倍(湿地面、铁器靠它出高光;手机档不画倒影,全靠这个)。 */
+  bakeEnv: number;
+  realK: number;
+  bakeEdge: number;
   post: number;
   env: number;
   shaft: number;
@@ -105,17 +134,137 @@ export interface DungeonCfg {
 export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
+  tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7,
 };
+/**
+ * 画质档。电脑档 = 全开(21 盏灯都是真的)。
+ * 中档:最近 7 处真灯,原尺寸渲染 + 边缘抗锯齿,烛台不点真灯。
+ * 手机档:固定的灯烘进顶点颜色,只留最近 2 处真灯(打六折,主要给高光和凹凸);不做倒影和遮蔽,内部分辨率 0.8,投影图 / 贴图减小,最多 5 只怪。
+ */
+export const TIERS: Record<string, Partial<DungeonCfg>> = {
+  pc: {},
+  mid: { realLights: 7, post: 1, shadow: 2048, candleReal: false },
+  phone: { realLights: 2, post: 1, postScale: 0.8, ao: false, bloomLevels: 4, shadow: 1024, reflect: false, floor: 2048, texK: 0.5, maxMobs: 5, candleReal: false, rangeK: 0.9,
+    bake: true, fake: 0, fill: 0.5, moon: 4200000 },
+};
+const TIER_NAME: Record<string, string> = { pc: '电脑档', mid: '中档', phone: '手机档' };
 
 interface Mob {
   c: G3DChar; home: Vec3; x: number; z: number; yaw: number; hp: number; maxHp: number; speed: number; reach: number; radius: number;
   state: 'idle' | 'chase' | 'bite' | 'down' | 'gone'; t: number; cool: number; wander: number; tx: number; tz: number;
 }
-interface Flicker { light: PointLight; base: number; seed: number; amp: number }
+/** 一盏受「远近切换」管的灯:kind = 配置里哪一项是它的亮度;fx = 属于哪一处灯位;amp / seed = 火光的抖动。 */
+interface LightRec { L: PointLight | SpotLight; kind: string; fx: number; amp: number; seed: number }
+/** 一处灯位:w = 真灯的权重(1 = 真灯全亮,0 = 只剩假光斑);fake = 假光斑(贴在地上 / 墙上的叠加色圆斑)。 */
+interface Fixture { x: number; z: number; w: number; on: boolean; d: number; fake: Array<{ node: Node; mat: Material; k: number }> }
 interface Pulse { light: PointLight; age: number; life: number; peak: number }
 
 const _v = new Vec3();
 const _q = new Quat();
+
+/** 烘焙用的一盏灯:位置、颜色(线性)、光通量(流明)、照射范围;spot = 聚光的方向和半角的余弦(内 / 外)。 */
+interface BakeLight { x: number; y: number; z: number; r: number; g: number; b: number; flux: number; range: number; spot?: { dx: number; dy: number; dz: number; c0: number; c1: number } }
+const lin = (v: number): number => Math.pow(v / 255, 2.2);
+
+/**
+ * 把一批网格里边长超过 maxEdge 的三角形从长边的中点切开,反复切到都够短为止(顶点的各项属性取两端的平均)。
+ * 「一条边切不切」只看它自己的长度,所以共用一条边的两个三角形切法一致,不会出缝。
+ * 只为烘焙灯光用:原来一面墙就是两个大三角形,逐顶点的光没法过渡。
+ */
+function refine(batch: MeshBatch, maxEdge: number): void {
+  const b = batch as unknown as { positions: number[]; normals: number[]; uvs: number[]; tangents: number[]; colors: number[]; indices: number[]; triangles: number };
+  const P = b.positions;
+  const N = b.normals;
+  const U = b.uvs;
+  const T = b.tangents;
+  const C = b.colors;
+  const max2 = maxEdge * maxEdge;
+  const len2 = (i: number, j: number): number => (P[i * 3] - P[j * 3]) ** 2 + (P[i * 3 + 1] - P[j * 3 + 1]) ** 2 + (P[i * 3 + 2] - P[j * 3 + 2]) ** 2;
+  for (let pass = 0; pass < 7; pass += 1) {
+    const src = b.indices;
+    const out: number[] = [];
+    const mids = new Map<number, number>();
+    let changed = false;
+    const mid = (i: number, j: number): number => {
+      const key = i < j ? i * 2000003 + j : j * 2000003 + i;
+      const got = mids.get(key);
+      if (got !== undefined) {
+        return got;
+      }
+      const k = P.length / 3;
+      for (let a = 0; a < 3; a += 1) {
+        P.push((P[i * 3 + a] + P[j * 3 + a]) / 2);
+      }
+      let nx = N[i * 3] + N[j * 3];
+      let ny = N[i * 3 + 1] + N[j * 3 + 1];
+      let nz = N[i * 3 + 2] + N[j * 3 + 2];
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      nx /= nl;
+      ny /= nl;
+      nz /= nl;
+      N.push(nx, ny, nz);
+      U.push((U[i * 2] + U[j * 2]) / 2, (U[i * 2 + 1] + U[j * 2 + 1]) / 2);
+      let tx = T[i * 4] + T[j * 4];
+      let ty = T[i * 4 + 1] + T[j * 4 + 1];
+      let tz = T[i * 4 + 2] + T[j * 4 + 2];
+      const tl = Math.hypot(tx, ty, tz) || 1;
+      tx /= tl;
+      ty /= tl;
+      tz /= tl;
+      T.push(tx, ty, tz, T[i * 4 + 3]);
+      for (let a = 0; a < 4; a += 1) {
+        C.push((C[i * 4 + a] + C[j * 4 + a]) / 2);
+      }
+      mids.set(key, k);
+      return k;
+    };
+    for (let t = 0; t < src.length; t += 3) {
+      let a = src[t];
+      let bb = src[t + 1];
+      let c = src[t + 2];
+      let fa = len2(a, bb) > max2;
+      let fb = len2(bb, c) > max2;
+      let fc = len2(c, a) > max2;
+      const n = (fa ? 1 : 0) + (fb ? 1 : 0) + (fc ? 1 : 0);
+      if (n === 0) {
+        out.push(a, bb, c);
+        continue;
+      }
+      changed = true;
+      if (n === 3) {
+        const mab = mid(a, bb);
+        const mbc = mid(bb, c);
+        const mca = mid(c, a);
+        out.push(a, mab, mca, mab, bb, mbc, mca, mbc, c, mab, mbc, mca);
+        continue;
+      }
+      // 把顶点轮换到「要切的边从 a-b 开始」:一条边 → 切 a-b;两条边 → 切 a-b 和 b-c
+      for (let r = 0; r < 3 && !(n === 1 ? fa : fa && fb); r += 1) {
+        const ta = a;
+        a = bb;
+        bb = c;
+        c = ta;
+        const tf = fa;
+        fa = fb;
+        fb = fc;
+        fc = tf;
+      }
+      const mab = mid(a, bb);
+      if (n === 1) {
+        out.push(a, mab, c, mab, bb, c);
+      } else {
+        const mbc = mid(bb, c);
+        out.push(mab, bb, mbc, a, mab, mbc, a, mbc, c);
+      }
+    }
+    b.indices = out;
+    b.triangles = out.length / 3;
+    if (!changed) {
+      break;
+    }
+  }
+}
 
 class Dungeon {
   world: Node | null = null;
@@ -146,12 +295,19 @@ class Dungeon {
   mobs: Mob[] = [];
   private followers: Array<{ c: G3DChar; x: number; z: number; yaw: number; moving: boolean; ox: number; oz: number }> = [];
   private keys = new Set<number>();
-  private drag: { x: number; y: number } | null = null;
   private saved: any = null;
   private probeNode: Node | null = null;
   private groundNodes: Node[] = [];
   private halos: Node[] = [];
-  private flickers: Flicker[] = [];
+  private recs: LightRec[] = [];
+  private fixtures: Fixture[] = [];
+  private stick = { x: 0, y: 0 };
+  private ptrs = new Map<number, { kind: 'stick' | 'cam'; x: number; y: number; ox: number; oy: number; t: number; moved: number; touch: boolean }>();
+  private hudEl: HTMLDivElement | null = null;
+  private fpsAcc = { t: 0, n: 0, last: 0 };
+  fps = 0;
+  private mobCount = 0;
+  private bakeLights: BakeLight[] = [];
   private pulses: Pulse[] = [];
   private lights: Record<string, PointLight[]> = { lamp: [], brazier: [], gate: [], rune: [], torch: [], candle: [], hit: [], fill: [], bounce: [] };
   private shaftMat: Material | null = null;
@@ -196,6 +352,9 @@ class Dungeon {
     scene.addChild(world);
     this.world = world;
     const rnd = mulberry32(91);
+    if (DUNGEON.bake) {
+      this.collectBakeLights();
+    }
     // 每种材质一批;按「开间」(沿长边切成四段)分块 —— 点光是「每盏灯把它照得到的网格重画一遍」,切了块一盏灯只重画附近那一段
     const wall = new Sculpt();     // 砌石:墙、柱、梁、天花
     const rock = new Sculpt();     // 整块的石头:石台、石棺、柱础、碎石
@@ -642,6 +801,7 @@ class Dungeon {
         }
       }
       for (const batch of batches) {
+        this.bakeBatch(batch);
         batch.split();
       }
     }
@@ -661,16 +821,17 @@ class Dungeon {
       m.setProperty('metallic', 1);
       return m;
     };
-    const floorMat = std(floor, false, 16, false);
+    const floorMat = std(floor, false, 16, DUNGEON.bake);
     floorMat.setProperty('normalStrength', DUNGEON.floorBump);
     floorMat.setProperty('roughness', DUNGEON.gloss);
     this.floorMat = floorMat;
-    const wallMat = std(masonryPbr(1024), true, 8);
-    const rockMat = std(rockPbr(512), true, 8);
+    const TK = DUNGEON.texK;
+    const wallMat = std(masonryPbr(Math.round(1024 * TK)), true, 8);
+    const rockMat = std(rockPbr(Math.round(512 * TK)), true, 8);
     rockMat.setProperty('albedoScale', new Vec3(0.7, 0.72, 0.78));
     rockMat.setProperty('normalStrength', 0.6);
     const ironMat = std(ironPbr(256), true, 4);
-    const woodMat = std(woodPbr(512), true, 8);
+    const woodMat = std(woodPbr(Math.round(512 * TK)), true, 8);
     woodMat.setProperty('albedoScale', new Vec3(0.78, 0.74, 0.7));
     const bronzeMat = material('builtin-standard', { USE_VERTEX_COLOR: true });
     bronzeMat.setProperty('roughness', 0.38);
@@ -680,7 +841,37 @@ class Dungeon {
     this.stats.texMs = Math.round(performance.now() - t1);
 
     // ── 网格 ──
-    for (const m of MeshBatch.groundTiles(X0, Z0, X1 - X0, Z1 - Z0, 6, 3)) {
+    const floorMeshes: Mesh[] = [];
+    if (DUNGEON.bake) {
+      // 烘焙:地面按小格建(每格四个顶点各带一份算好的光),仍旧切成 6 × 3 块
+      const W = X1 - X0;
+      const Dp = Z1 - Z0;
+      for (let cz = 0; cz < 3; cz += 1) {
+        for (let cx = 0; cx < 6; cx += 1) {
+          const sc = new Sculpt();
+          const xa = X0 + (W * cx) / 6;
+          const za = Z0 + (Dp * cz) / 3;
+          const nx = Math.ceil(W / 6 / DUNGEON.bakeEdge);
+          const nz = Math.ceil(Dp / 3 / DUNGEON.bakeEdge);
+          for (let iz = 0; iz < nz; iz += 1) {
+            for (let ix = 0; ix < nx; ix += 1) {
+              const x0 = xa + (W / 6) * (ix / nx);
+              const x1 = xa + (W / 6) * ((ix + 1) / nx);
+              const z0 = za + (Dp / 3) * (iz / nz);
+              const z1 = za + (Dp / 3) * ((iz + 1) / nz);
+              sc.facet([V(x0, 0, z0), V(x0, 0, z1), V(x1, 0, z1), V(x1, 0, z0)],
+                [[(x0 - X0) / W, (z0 - Z0) / Dp], [(x0 - X0) / W, (z1 - Z0) / Dp], [(x1 - X0) / W, (z1 - Z0) / Dp], [(x1 - X0) / W, (z0 - Z0) / Dp]], [1, 1, 1]);
+            }
+          }
+          // 地面在电脑档里大半的亮度来自灯的反光(湿地面),烘焙只算了漫反射:整体提亮一些补回来
+          this.bakeBatch(sc, false, 1.9);
+          floorMeshes.push(...sc.build());
+        }
+      }
+    } else {
+      floorMeshes.push(...MeshBatch.groundTiles(X0, Z0, X1 - X0, Z1 - Z0, 6, 3));
+    }
+    for (const m of floorMeshes) {
       const gn = addMesh(world, 'DgFloor', m, floorMat, false, true);
       gn.layer = GROUND_LAYER;
       this.groundNodes.push(gn);
@@ -755,6 +946,11 @@ class Dungeon {
       sc.facet([P(hw, 0, t), P(hw, 0, -t), P(hw, h, -t), P(hw, h, t)], side, [1, 1, 1]);
       sc.facet([P(-hw, 0, -t), P(-hw, 0, t), P(-hw, h, t), P(-hw, h, -t)], side, [1, 1, 1]);
       sc.facet([P(-hw, h, t), P(hw, h, t), P(hw, h, -t), P(-hw, h, -t)], side, [1, 1, 1]);
+      if (DUNGEON.bake) {
+        // 石板的材质不带顶点颜色:整块按所在位置的光压一下(不然在烘焙用的那份环境光下是一块亮板)
+        const c = this.bakeAt(x, y0 + h / 2, z, 0, 0.3, 0);
+        m.setProperty('albedoScale', new Vec3(c[0], c[1], c[2]));
+      }
       for (const mesh of sc.build()) {
         addMesh(world, 'DgStele', mesh, m, true, true);
       }
@@ -797,12 +993,14 @@ class Dungeon {
     clothMat.setProperty('normalMap', tex(cl.normal, true, 4));
     clothMat.setProperty('roughness', 0.88);
     clothMat.setProperty('metallic', 0);
+    this.bakeBatch(cloth, false);
     for (const m of cloth.build()) {
       addMesh(world, 'DgBanner', m, clothMat, true, true);
     }
     const waxMat = material('builtin-standard', { USE_VERTEX_COLOR: true });
     waxMat.setProperty('roughness', 0.55);
     waxMat.setProperty('metallic', 0);
+    this.bakeBatch(wax, false);
     for (const m of wax.build()) {
       addMesh(world, 'DgWax', m, waxMat, true, true);
     }
@@ -872,43 +1070,79 @@ class Dungeon {
       n.setPosition(x, y, z);
       const L = n.addComponent(PointLight);
       L.color = color;
-      L.range = range;
+      L.range = range * DUNGEON.rangeK;
       L.luminousFlux = 0;
       this.lights[kind].push(L);
       return L;
     };
+    // 灯位:每处一组真灯 + 一组假光斑。真灯只亮离主角最近的几处(见 stepLights),别的灯位只画假光斑
+    const fixture = (x: number, z: number): number => {
+      this.fixtures.push({ x, z, w: 1, on: true, d: 0, fake: [] });
+      return this.fixtures.length - 1;
+    };
+    const rec = (L: PointLight | SpotLight, kind: string, fx: number, amp = 0, seed = 0): void => {
+      this.recs.push({ L, kind, fx, amp, seed });
+    };
+    /** 假光斑:一张软边的圆(叠加色)。wall = 0 贴在地上;±1 贴在墙上(墙朝房间里的方向)。 */
+    const fake = (fx: number, x: number, y: number, z: number, size: number, color: Color, k: number, wall = 0): void => {
+      const m = material('builtin-unlit', { USE_TEXTURE: true }, 2);
+      m.setProperty('mainTexture', glowTex);
+      m.setProperty('mainColor', color);
+      const n = addMesh(world, 'DgFakeGlow', quad, m, false, false);
+      n.setPosition(x, y, z);
+      n.setScale(size, size, 1);
+      n.setRotationFromEuler(wall === 0 ? -90 : 0, wall < 0 ? 180 : 0, 0);
+      n.active = false;
+      this.fixtures[fx].fake.push({ node: n, mat: m, k });
+    };
+    const COOL = new Color(150, 204, 255, 255);
+    const WARM = new Color(255, 150, 76, 255);
     for (const L of LAMPS) {
-      // 一盏点光照亮灯周围的墙,一盏往下打的聚光(带投影)照地面
-      point('lamp', L.x, 3.6, L.z + L.nz * 0.78, new Color(150, 204, 255, 255), 6.5);
+      // 一盏点光照亮灯周围的墙,一盏往下打的聚光照地面
+      const fx = fixture(L.x, L.z + L.nz * 1.6);
+      rec(point('lamp', L.x, 3.6, L.z + L.nz * 0.78, COOL, 6.5), 'lamp', fx);
       const sn = new Node('DgLampSpot');
       world.addChild(sn);
       sn.setPosition(L.x, 3.6, L.z + L.nz * 0.7);
       sn.lookAt(new Vec3(L.x, 0, L.z + L.nz * 3.3));
       const S = sn.addComponent(SpotLight);
-      S.color = new Color(150, 204, 255, 255);
-      S.range = 11;
+      S.color = COOL;
+      S.range = 11 * DUNGEON.rangeK;
       S.spotAngle = 112;
       S.luminousFlux = 0;
       this.spots.push(S);
+      rec(S, 'lampSpot', fx);
+      fake(fx, L.x, 0.03, L.z + L.nz * 2.4, 6.4, COOL, 0.13);
+      fake(fx, L.x, 3.0, L.z + L.nz * 0.03, 3.6, COOL, 0.2, L.nz);
     }
     BRAZIERS.forEach((b, i) => {
-      const L = point('brazier', b.x, 1.9, b.z, new Color(255, 146, 72, 255), 7.5);
-      this.flickers.push({ light: L, base: 1, seed: i * 3.7, amp: 0.16 });
+      const fx = fixture(b.x, b.z);
+      rec(point('brazier', b.x, 1.9, b.z, new Color(255, 146, 72, 255), 7.5), 'brazier', fx, 0.16, i * 3.7);
+      fake(fx, b.x, 0.03, b.z, 7, WARM, 0.16);
     });
-    point('gate', X0 - 0.9, 2.1, 0, new Color(255, 52, 38, 255), 9);
-    point('rune', 10.2, DAIS.h + 1.5, 0, new Color(60, 255, 140, 255), 7);
-    const torch = point('torch', HALL.x + 0.4, 1.9, Z1 + HALL.depth - 1.1, new Color(255, 132, 56, 255), 9);
-    this.flickers.push({ light: torch, base: 1, seed: 9.1, amp: 0.22 });
+    const gfx = fixture(X0 + 1, 0);
+    rec(point('gate', X0 - 0.9, 2.1, 0, new Color(255, 52, 38, 255), 9), 'gate', gfx);
+    fake(gfx, X0 + 1.7, 0.03, 0, 6.5, new Color(255, 50, 36, 255), 0.17);
+    const rfx = fixture(9, 0);
+    rec(point('rune', 10.2, DAIS.h + 1.5, 0, new Color(60, 255, 140, 255), 7), 'rune', rfx);
+    fake(rfx, 7.6, 0.03, 0, 5.5, new Color(60, 255, 140, 255), 0.1);
+    fake(rfx, 10.4, DAIS.h + 0.02, 0, 5, new Color(60, 255, 140, 255), 0.1);
+    const tfx = fixture(HALL.x, Z1 - 0.6);
+    rec(point('torch', HALL.x + 0.4, 1.9, Z1 + HALL.depth - 1.1, new Color(255, 132, 56, 255), 9), 'torch', tfx, 0.22, 9.1);
+    fake(tfx, HALL.x, 0.03, Z1 - 0.7, 4.6, WARM, 0.14);
     for (let i = 0; i < 2; i += 1) {
       const L = point('hit', 0, 1.2, 0, new Color(255, 214, 160, 255), 4.5);
       L.node.active = false;
     }
     point('fill', this.lx, 2.6, this.lz, new Color(214, 226, 255, 255), 4.6);
-    point('bounce', RING.x, 1.4, RING.z, new Color(150, 190, 255, 255), 7.5);
+    rec(point('bounce', RING.x, 1.4, RING.z, new Color(150, 190, 255, 255), 7.5), 'bounce', fixture(RING.x, RING.z));
     for (let i = 1; i < this.candles.length; i += 3) {
       const c = this.candles[i];      // 每座烛台三根蜡烛,取中间那根的位置
-      const L = point('candle', c.x, c.y + 0.12, c.z, new Color(255, 170, 92, 255), 3.8);
-      this.flickers.push({ light: L, base: 1, seed: i * 1.9, amp: 0.1 });
+      const fx = fixture(c.x, c.z);
+      if (DUNGEON.candleReal) {
+        rec(point('candle', c.x, c.y + 0.12, c.z, new Color(255, 170, 92, 255), 3.8), 'candle', fx, 0.1, i * 1.9);
+      }
+      fake(fx, c.x, 0.03, c.z, 3.4, WARM, 0.1);
     }
     // 月光:投影的范围以房间正中为心,要罩住整间房 —— 范围外的东西不进投影图,会被月光直接照到
     const moonNode = new Node('DgMoon');
@@ -964,20 +1198,25 @@ class Dungeon {
       c.play(c.clip('idle'), 0);
     });
     const mob = (key: string, x: number, z: number, height: number, hp: number, speed: number, reach: number, radius: number, procWalk = false): void => {
+      if (this.mobCount >= DUNGEON.maxMobs) {
+        return;
+      }
+      this.mobCount += 1;
       spawn(key, x, z, height, 180, (c) => {
         const m: Mob = { c, home: new Vec3(x, 0, z), x, z, yaw: 180, hp, maxHp: hp, speed, reach, radius, state: 'idle', t: this.rnd() * 3, cool: 0, wander: 1 + this.rnd() * 3, tx: x, tz: z };
         this.mobs.push(m);
         this.rest(m);
       }, procWalk);
     };
+    // 先每种放一只,再补同种的第二、三只(档位限了数量时,少的是重复的那几只)
     mob('rat', -0.6, -1.6, 0.46, 2, 2.3, 0.9, 0.35);
-    mob('rat', 0.5, -2.3, 0.42, 2, 2.4, 0.9, 0.35);
-    mob('rat', 1.2, -1.2, 0.5, 2, 2.2, 0.9, 0.35);
     mob('wolf', 3.2, 1.9, 0.98, 4, 2.9, 1.2, 0.5);
-    mob('wolf', 4.6, 0.6, 1.06, 4, 2.8, 1.2, 0.5);
     mob('spider2', 3.6, 4.4, 0.74, 3, 2.0, 1.1, 0.5);
     mob('bear', 6.4, -2.2, 1.62, 7, 1.7, 1.6, 0.8, true);
     mob('rotbear', 7.6, 0.4, 2.3, 12, 1.4, 1.9, 1.0);
+    mob('rat', 0.5, -2.3, 0.42, 2, 2.4, 0.9, 0.35);
+    mob('wolf', 4.6, 0.6, 1.06, 4, 2.8, 1.2, 0.5);
+    mob('rat', 1.2, -1.2, 0.5, 2, 2.2, 0.9, 0.35);
   }
 
   /** 怪站着不动:有待机动作就播,没有就站在绑定姿势上(叠呼吸)。 */
@@ -1031,9 +1270,9 @@ class Dungeon {
       canvas.node.addChild(b);
       this.blocker = b;
     }
-    amb.skyLightingColor = new Color(70, 92, 140, 255);
-    amb.groundLightingColor = new Color(46, 36, 30, 255);
-    amb.skyIllum = DUNGEON.ambient;
+    amb.skyLightingColor = DUNGEON.bake ? new Color(255, 255, 255, 255) : new Color(70, 92, 140, 255);
+    amb.groundLightingColor = DUNGEON.bake ? new Color(255, 255, 255, 255) : new Color(46, 36, 30, 255);
+    amb.skyIllum = DUNGEON.bake ? DUNGEON.bakeAmb : DUNGEON.ambient;
     try {
       // 环境反射:很暗的房间 + 几团灯的方向(铁、铜、湿石头靠它才有反光)
       const lobes = [
@@ -1043,7 +1282,13 @@ class Dungeon {
         { dir: [X0, 1, 0] as [number, number, number], color: [1.1, 0.14, 0.08] as [number, number, number], width: 0.24 },
         { dir: [X1, 1, 0] as [number, number, number], color: [0.16, 0.9, 0.4] as [number, number, number], width: 0.22 },
       ];
-      sky.envmap = buildEnvCube(lobes, [0.02, 0.025, 0.035], [0.03, 0.035, 0.045], [0.02, 0.02, 0.022], 64);
+      // 环境反射的亮度 = 这张图 × 环境光的照度:烘焙时环境光被当成载体放大了上千倍,这张图要同比例压回去
+      const ek = DUNGEON.bake ? DUNGEON.ambient / DUNGEON.bakeAmb : 1;
+      const lk = DUNGEON.bake ? ek * DUNGEON.bakeEnv : 1;
+      for (const lobe of lobes) {
+        lobe.color = [lobe.color[0] * lk, lobe.color[1] * lk, lobe.color[2] * lk];
+      }
+      sky.envmap = buildEnvCube(lobes, [0.02 * ek, 0.025 * ek, 0.035 * ek], [0.03 * ek, 0.035 * ek, 0.045 * ek], [0.02 * ek, 0.02 * ek, 0.022 * ek], 64);
       (sky as any).envLightingType = 1;
     } catch (error) {
       console.warn('[g3dd] env cube', error);
@@ -1071,11 +1316,22 @@ class Dungeon {
       shadowTint: [0.94, 1.0, 1.08], highlightTint: [1.04, 1.0, 0.96],
       vignette: 0.34, vignetteStart: 0.45, vignetteEnd: 1.1,
       fog: true, fogColor: [0.055, 0.085, 0.14], fogAway: [0.055, 0.085, 0.14], fogStart: 2, fogDensity: 0.075, fogMax: 0.66, fogLobe: 0 };
+    cfg.ao = DUNGEON.ao;
+    cfg.bloomLevels = DUNGEON.bloomLevels;
     this.post = new FieldPost(this.cam!, cfg);
     if (DUNGEON.post > 0) {
       this.post.enable(DUNGEON.post);
+      if (DUNGEON.postScale > 0) {
+        this.post.set({ scale: DUNGEON.postScale });
+      }
     }
     this.applyReflection();
+    if (DUNGEON.hud && typeof document !== 'undefined' && !this.hudEl) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;pointer-events:none;color:#d6e6ff;font:12px/1.5 monospace;background:rgba(0,0,0,.45);padding:2px 8px;border-radius:4px;white-space:pre';
+      document.body.appendChild(el);
+      this.hudEl = el;
+    }
     this.syncCam(0);
   }
 
@@ -1086,16 +1342,9 @@ class Dungeon {
         L.luminousFlux = v * k;
       }
     };
-    set('lamp', DUNGEON.lamp);
-    set('brazier', DUNGEON.brazier);
-    set('gate', DUNGEON.gate);
-    set('rune', DUNGEON.rune);
-    set('torch', DUNGEON.torch);
-    set('candle', DUNGEON.candle);
     set('fill', DUNGEON.fill);
-    set('bounce', DUNGEON.bounce);
+    this.stepLights(0);
     for (const S of this.spots) {
-      S.luminousFlux = DUNGEON.lampSpot * k;
       S.shadowEnabled = DUNGEON.spotShadow;
       if (DUNGEON.spotShadow) {
         S.shadowPcf = renderer.scene.PCFType.SOFT_2X;
@@ -1108,7 +1357,7 @@ class Dungeon {
     if (this.moon) {
       this.moon.illuminance = DUNGEON.moon;
     }
-    director.getScene()!.globals.ambient.skyIllum = DUNGEON.ambient;
+    director.getScene()!.globals.ambient.skyIllum = DUNGEON.bake ? DUNGEON.bakeAmb : DUNGEON.ambient;
     this.shaftMat?.setProperty('colorScale', new Vec3(DUNGEON.shaft, DUNGEON.shaft, DUNGEON.shaft));
     this.floorMat?.setProperty('roughness', DUNGEON.gloss);
   }
@@ -1137,42 +1386,263 @@ class Dungeon {
   }
 
   // ───────────────────────── 输入 ─────────────────────────
+  /**
+   * 输入直接听画布的指针事件和窗口的键盘事件(不走引擎的输入:界面那一层会把点击吞掉)。
+   * 键鼠:WASD / 方向键走,右键拖动转镜头,滚轮缩放,J / 左键出手。
+   * 触屏:左半屏按住拖动 = 摇杆(走),右半屏拖动 = 转镜头,右半屏点一下 = 出手。
+   */
   private bindInput(): void {
-    input.on(Input.EventType.KEY_DOWN, (e: EventKeyboard) => {
-      this.keys.add(e.keyCode);
-      if (e.keyCode === KeyCode.KEY_J) {
-        this.attack();
-      }
-    });
-    input.on(Input.EventType.KEY_UP, (e: EventKeyboard) => {
-      this.keys.delete(e.keyCode);
-    });
-    input.on(Input.EventType.MOUSE_DOWN, (e: EventMouse) => {
-      if (e.getButton() === EventMouse.BUTTON_RIGHT) {
-        this.drag = { x: e.getLocationX(), y: e.getLocationY() };
-      } else if (e.getButton() === EventMouse.BUTTON_LEFT) {
-        this.attack();
-      }
-    });
-    input.on(Input.EventType.MOUSE_UP, () => {
-      this.drag = null;
-    });
-    input.on(Input.EventType.MOUSE_MOVE, (e: EventMouse) => {
-      if (!this.drag) {
+    const cv = game.canvas;
+    if (!cv || typeof window === 'undefined') {
+      return;
+    }
+    const KEY: Record<string, number> = { KeyW: KeyCode.KEY_W, KeyA: KeyCode.KEY_A, KeyS: KeyCode.KEY_S, KeyD: KeyCode.KEY_D,
+      ArrowUp: KeyCode.ARROW_UP, ArrowDown: KeyCode.ARROW_DOWN, ArrowLeft: KeyCode.ARROW_LEFT, ArrowRight: KeyCode.ARROW_RIGHT };
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyJ') {
+        if (!e.repeat) {
+          this.attack();
+        }
         return;
       }
-      const k = 1920 / Math.max(640, game.canvas ? game.canvas.width : 1920);
-      this.view.yaw -= (e.getLocationX() - this.drag.x) * 0.22 * k;
-      this.view.pitch = Math.max(-4, Math.min(70, this.view.pitch - (e.getLocationY() - this.drag.y) * 0.16 * k));
-      this.drag = { x: e.getLocationX(), y: e.getLocationY() };
+      const k = KEY[e.code];
+      if (k !== undefined) {
+        this.keys.add(k);
+      }
     });
-    input.on(Input.EventType.MOUSE_WHEEL, (e: EventMouse) => {
-      this.view.dist = Math.max(1.6, Math.min(11, this.view.dist * (e.getScrollY() > 0 ? 0.9 : 1.1)));
+    window.addEventListener('keyup', (e) => {
+      const k = KEY[e.code];
+      if (k !== undefined) {
+        this.keys.delete(k);
+      }
     });
-    try {
-      game.canvas?.addEventListener('contextmenu', (ev) => ev.preventDefault());
-    } catch (error) {
-      // 没有画布(原生):不管
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+    });
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    cv.addEventListener('pointerdown', (e) => {
+      const r = cv.getBoundingClientRect();
+      const touch = e.pointerType !== 'mouse';
+      let kind: 'stick' | 'cam' | null = null;
+      if (touch) {
+        const left = (e.clientX - r.left) / Math.max(1, r.width) < 0.42;
+        let hasStick = false;
+        this.ptrs.forEach((p) => {
+          hasStick = hasStick || p.kind === 'stick';
+        });
+        kind = left && !hasStick ? 'stick' : 'cam';
+      } else if (e.button === 2) {
+        kind = 'cam';
+      } else if (e.button === 0) {
+        this.attack();
+      }
+      if (kind) {
+        this.ptrs.set(e.pointerId, { kind, x: e.clientX, y: e.clientY, ox: e.clientX, oy: e.clientY, t: performance.now(), moved: 0, touch });
+        try {
+          cv.setPointerCapture(e.pointerId);
+        } catch (error) {
+          // 有的浏览器不让抓:不抓也能用,只是手指滑出画布会断
+        }
+      }
+    });
+    cv.addEventListener('pointermove', (e) => {
+      const p = this.ptrs.get(e.pointerId);
+      if (!p) {
+        return;
+      }
+      const r = cv.getBoundingClientRect();
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      p.moved += Math.abs(dx) + Math.abs(dy);
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (p.kind === 'cam') {
+        const k = 1920 / Math.max(320, r.width);
+        this.view.yaw -= dx * 0.22 * k;
+        this.view.pitch = Math.max(-4, Math.min(70, this.view.pitch + dy * 0.16 * k));
+      } else {
+        const R = Math.max(36, r.height * 0.12);
+        let vx = (p.x - p.ox) / R;
+        let vy = (p.y - p.oy) / R;
+        const len = Math.hypot(vx, vy);
+        if (len > 1) {
+          vx /= len;
+          vy /= len;
+        }
+        this.stick.x = vx;
+        this.stick.y = -vy;
+      }
+    });
+    const up = (e: PointerEvent): void => {
+      const p = this.ptrs.get(e.pointerId);
+      if (!p) {
+        return;
+      }
+      this.ptrs.delete(e.pointerId);
+      if (p.kind === 'stick') {
+        this.stick.x = 0;
+        this.stick.y = 0;
+      } else if (p.touch && e.type === 'pointerup' && performance.now() - p.t < 240 && p.moved < 14) {
+        this.attack();
+      }
+    };
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', (e) => {
+      this.view.dist = Math.max(1.6, Math.min(11, this.view.dist * (e.deltaY < 0 ? 0.9 : 1.1)));
+      e.preventDefault();
+    }, { passive: false });
+  }
+
+  /** 烘焙用的灯表:位置和亮度照着「灯」那一段里真灯的摆法抄一份(聚光按点光的二十五分之一折算,这是对着画面校出来的)。 */
+  private collectBakeLights(): void {
+    const out = this.bakeLights;
+    const K = DUNGEON.fluxK;
+    const add = (x: number, y: number, z: number, c: [number, number, number], flux: number, range: number, spot?: BakeLight['spot']): void => {
+      if (flux > 0) {
+        out.push({ x, y, z, r: lin(c[0]), g: lin(c[1]), b: lin(c[2]), flux, range, spot });
+      }
+    };
+    for (const L of LAMPS) {
+      add(L.x, 3.6, L.z + L.nz * 0.78, [150, 204, 255], DUNGEON.lamp * K, 6.5);
+      const dl = Math.hypot(3.6, 2.6);
+      add(L.x, 3.6, L.z + L.nz * 0.7, [150, 204, 255], (DUNGEON.lampSpot * K) / 25, 11,
+        { dx: 0, dy: -3.6 / dl, dz: (L.nz * 2.6) / dl, c0: Math.cos((28 * Math.PI) / 180), c1: Math.cos((68 * Math.PI) / 180) });
+    }
+    for (const b of BRAZIERS) {
+      add(b.x, 1.9, b.z, [255, 146, 72], DUNGEON.brazier * K, 7.5);
+    }
+    add(X0 - 0.9, 2.1, 0, [255, 52, 38], DUNGEON.gate * K, 9);
+    add(10.2, DAIS.h + 1.5, 0, [60, 255, 140], DUNGEON.rune * K, 7);
+    add(HALL.x + 0.4, 1.9, Z1 + HALL.depth - 1.1, [255, 132, 56], DUNGEON.torch * K, 9);
+    add(RING.x, 1.4, RING.z, [150, 190, 255], DUNGEON.bounce * K, 7.5);
+    for (const px of PILLAR_X) {
+      for (const z of [-2.15, 2.15]) {
+        add(px + 0.75, 1.96, z, [255, 170, 92], DUNGEON.candle * K, 3.8);
+      }
+    }
+  }
+
+  /**
+   * 某一点、朝某个方向的面上,固定的灯加上原来那份环境光一共有多亮 —— 换算成「乘在颜色上的倍数」(对着 bakeAmb 那份载体环境光)。
+   * 不算遮挡(真灯里除了月光也都不投影,一致)。返回的是线性的倍数。
+   */
+  bakeAt(x: number, y: number, z: number, nx: number, ny: number, nz: number): [number, number, number] {
+    // 原来的环境光:天光色和地光色按朝向混
+    const k = 0.5 + 0.5 * ny;
+    let r = DUNGEON.ambient * (lin(46) + (lin(70) - lin(46)) * k) * 0.5;
+    let g = DUNGEON.ambient * (lin(36) + (lin(92) - lin(36)) * k) * 0.5;
+    let b = DUNGEON.ambient * (lin(30) + (lin(140) - lin(30)) * k) * 0.5;
+    for (const L of this.bakeLights) {
+      const dx = L.x - x;
+      const dy = L.y - y;
+      const dz = L.z - z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      const d = Math.sqrt(d2);
+      if (d >= L.range) {
+        continue;
+      }
+      const ndl = (dx * nx + dy * ny + dz * nz) / (d || 1);
+      const wrap = Math.max(0, (ndl + 0.2) / 1.2);
+      if (wrap <= 0) {
+        continue;
+      }
+      const q = (d / L.range) ** 4;
+      let e = (L.flux / (4 * Math.PI * (d2 + 0.06))) * wrap * (1 - q) * (1 - q);
+      if (L.spot) {
+        const c = -(dx * L.spot.dx + dy * L.spot.dy + dz * L.spot.dz) / (d || 1);
+        const t = Math.min(1, Math.max(0, (c - L.spot.c1) / (L.spot.c0 - L.spot.c1)));
+        e *= t * t * (3 - 2 * t);
+      }
+      r += e * L.r;
+      g += e * L.g;
+      b += e * L.b;
+    }
+    const A = DUNGEON.bakeAmb / DUNGEON.bakeGain;
+    return [r / A, g / A, b / A];
+  }
+
+  /** 把一批网格细分、逐顶点乘上算好的光(顶点颜色是按显示用的颜色存的,所以乘之前先开方回去)。不开烘焙时什么都不做。 */
+  private bakeBatch(batch: MeshBatch, subdivide = true, boost = 1): void {
+    if (!DUNGEON.bake) {
+      return;
+    }
+    if (subdivide) {
+      refine(batch, DUNGEON.bakeEdge);
+    }
+    const b = batch as unknown as { positions: number[]; normals: number[]; colors: number[] };
+    const P = b.positions;
+    const N = b.normals;
+    const C = b.colors;
+    for (let i = 0; i < P.length / 3; i += 1) {
+      const c = this.bakeAt(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], N[i * 3], N[i * 3 + 1], N[i * 3 + 2]);
+      C[i * 4] *= Math.pow(c[0] * boost, 1 / 2.2);
+      C[i * 4 + 1] *= Math.pow(c[1] * boost, 1 / 2.2);
+      C[i * 4 + 2] *= Math.pow(c[2] * boost, 1 / 2.2);
+    }
+  }
+
+  /**
+   * 灯按远近切换:有真灯的灯位里,离主角最近的 realLights 处亮真灯,其余只留假光斑;权重渐变,不跳。
+   * 所有受管的灯的亮度都在这里算(配置值 × 火光抖动 × 权重)。dt = 0(定格 / 刚改完配置)时直接到位。
+   */
+  private stepLights(dt: number): void {
+    const fxs = this.fixtures;
+    if (!fxs.length) {
+      return;
+    }
+    const cfg = DUNGEON as unknown as Record<string, number>;
+    let fxp = this.lx;
+    let fzp = this.lz;
+    if (this.free) {
+      fxp = this.free.pos.x;
+      fzp = this.free.pos.z;
+    }
+    const lit = new Set<number>();
+    for (const r of this.recs) {
+      if (r.fx >= 0 && cfg[r.kind] > 0) {
+        lit.add(r.fx);
+      }
+    }
+    const cand: Fixture[] = [];
+    fxs.forEach((f, i) => {
+      if (lit.has(i)) {
+        f.d = Math.hypot(f.x - fxp, f.z - fzp) * (f.on ? 0.85 : 1);     // 已经亮着的打八五折:站在两盏之间不来回跳
+        cand.push(f);
+      } else {
+        f.on = false;
+      }
+    });
+    cand.sort((a, b) => a.d - b.d);
+    cand.forEach((f, i) => {
+      f.on = i < DUNGEON.realLights;
+    });
+    for (const f of fxs) {
+      const target = f.on ? 1 : 0;
+      f.w = dt > 0 ? f.w + (target - f.w) * Math.min(1, dt * 3) : target;
+      if (Math.abs(target - f.w) < 0.01) {
+        f.w = target;
+      }
+      for (const g of f.fake) {
+        const k = g.k * (1 - f.w) * DUNGEON.fake;
+        g.node.active = k > 0.002;
+        if (g.node.active) {
+          g.mat.setProperty('colorScale', _v.set(k, k, k));
+        }
+      }
+    }
+    const t = this.time;
+    for (const r of this.recs) {
+      const w = r.fx >= 0 ? fxs[r.fx].w : 1;
+      const flick = r.amp ? 1 + r.amp * (0.5 * Math.sin(t * 9.7 + r.seed) + 0.3 * Math.sin(t * 23.1 + r.seed * 2.3) + 0.2 * Math.sin(t * 41.7 + r.seed * 5.1)) : 1;
+      const flux = cfg[r.kind] * DUNGEON.fluxK * flick * w * (DUNGEON.bake ? DUNGEON.realK : 1);
+      const on = flux > 1;
+      if (r.L.node.active !== on) {
+        r.L.node.active = on;
+      }
+      if (on) {
+        r.L.luminousFlux = flux;
+      }
     }
   }
 
@@ -1325,11 +1795,6 @@ class Dungeon {
         fx.emit({ x: OC.x + sx + R(-1.1, 1.1), y: H * (1 - k), z: OC.z + sz + R(-1.1, 1.1), vx: R(-0.05, 0.05), vy: R(-0.12, 0.04), vz: R(-0.05, 0.05), life: R(3, 6), s0: R(0.012, 0.022), s1: 0.008,
           c0: [0.75, 0.86, 1], a: 0.5, cell: FX_CELL.mote, drag: 0.1, fadeIn: 0.3 });
       }
-      for (const f of this.flickers) {
-        const n = 0.5 * Math.sin(t * 9.7 + f.seed) + 0.3 * Math.sin(t * 23.1 + f.seed * 2.3) + 0.2 * Math.sin(t * 41.7 + f.seed * 5.1);
-        const kind = this.lights.brazier.indexOf(f.light) >= 0 ? DUNGEON.brazier : this.lights.candle.indexOf(f.light) >= 0 ? DUNGEON.candle : DUNGEON.torch;
-        f.light.luminousFlux = kind * DUNGEON.fluxK * (1 + f.amp * n);
-      }
       for (let i = this.pulses.length - 1; i >= 0; i -= 1) {
         const p = this.pulses[i];
         p.age += dt;
@@ -1341,6 +1806,26 @@ class Dungeon {
         }
       }
     }
+    this.stepLights(dt);
+    // 帧率:半秒更新一次
+    const now = performance.now();
+    if (this.fpsAcc.last) {
+      this.fpsAcc.t += now - this.fpsAcc.last;
+      this.fpsAcc.n += 1;
+    }
+    this.fpsAcc.last = now;
+    if (this.fpsAcc.t >= 500) {
+      this.fps = (1000 * this.fpsAcc.n) / this.fpsAcc.t;
+      this.fpsAcc.t = 0;
+      this.fpsAcc.n = 0;
+      if (this.hudEl) {
+        const cv = game.canvas;
+        const k = this.post?.isOn() ? this.post.scale() : 1;
+        const on = this.fixtures.filter((f) => f.on).length;
+        this.hudEl.textContent = `地宫小样 · ${TIER_NAME[DUNGEON.tier] ?? DUNGEON.tier} · ${this.fps.toFixed(0)} 帧 · ${cv ? `${Math.round(cv.width * k)}×${Math.round(cv.height * k)}` : ''} · 真灯 ${on} 处`
+          + (sys.isMobile ? '\n左半屏拖动 = 走 · 右半屏拖动 = 转镜头 · 点一下右半屏 = 出手' : '');
+      }
+    }
     this.syncCam(dt);
     const camNode = this.cam!.node;
     // 补光跟着主角:放在镜头这一侧、头顶偏后
@@ -1349,6 +1834,24 @@ class Dungeon {
       camNode.getWorldPosition(_v);
       const fd = Math.max(0.5, Math.hypot(_v.x - this.lx, _v.z - this.lz));
       fill.node.setPosition(this.lx + ((_v.x - this.lx) / fd) * 1.4, 2.7, this.lz + ((_v.z - this.lz) / fd) * 1.4);
+    }
+    // 烘焙时角色不吃那份载体环境光的全亮:按所在位置的光整体染色(腰的高度、不分朝向)
+    if (DUNGEON.bake) {
+      const tint = (c: G3DChar, x: number, z: number): void => {
+        const a = this.bakeAt(x, Math.min(1.1, c.height * 0.6), z, 0, 0.35, 0);
+        c.setTint(Math.min(1.6, a[0]), Math.min(1.6, a[1]), Math.min(1.6, a[2]));
+      };
+      if (this.leader) {
+        tint(this.leader, this.lx, this.lz);
+      }
+      for (const f of this.followers) {
+        tint(f.c, f.x, f.z);
+      }
+      for (const m of this.mobs) {
+        if (m.state !== 'gone') {
+          tint(m.c, m.x, m.z);
+        }
+      }
     }
     // 角色脚下的接地影(只有月光有投影,别的灯下靠这一团压住脚)
     if (this.leader) {
@@ -1393,6 +1896,10 @@ class Dungeon {
     const K = this.keys;
     let ix = (K.has(KeyCode.KEY_D) || K.has(KeyCode.ARROW_RIGHT) ? 1 : 0) - (K.has(KeyCode.KEY_A) || K.has(KeyCode.ARROW_LEFT) ? 1 : 0);
     let iy = (K.has(KeyCode.KEY_W) || K.has(KeyCode.ARROW_UP) ? 1 : 0) - (K.has(KeyCode.KEY_S) || K.has(KeyCode.ARROW_DOWN) ? 1 : 0);
+    if (Math.hypot(this.stick.x, this.stick.y) > 0.22) {
+      ix = this.stick.x;
+      iy = this.stick.y;
+    }
     if (this.auto) {
       const ddx = this.auto.x - this.lx;
       const ddz = this.auto.z - this.lz;
@@ -1644,7 +2151,8 @@ class Dungeon {
   info(): Record<string, unknown> {
     const root: any = director.root;
     return { opened: this.opened, error: this.lastError, stats: this.stats, time: +this.time.toFixed(2), leader: this.leader ? [+this.lx.toFixed(2), +this.lz.toFixed(2), Math.round(this.lyaw)] : null,
-      mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, view: { ...this.view }, free: !!this.free,
+      mobs: this.mobs.map((m) => `${m.c.name}:${m.state}:${m.hp}`), followers: this.followers.length, tier: DUNGEON.tier, fps: +this.fps.toFixed(1),
+      real: this.fixtures.filter((f) => f.on).length, fixtures: this.fixtures.length, lightsOn: this.recs.filter((r) => r.L.node.active).length, stick: { ...this.stick }, view: { ...this.view }, free: !!this.free,
       post: this.post?.info(), draws: root?.device?.numDrawCalls, tris: root?.device?.numTris, fx: this.fx?.stats, cfg: { ...DUNGEON },
       canvas: game.canvas ? [game.canvas.width, game.canvas.height] : null };
   }
@@ -1711,6 +2219,11 @@ function param(name: string): string | null {
 }
 
 function boot(): void {
+  const q = param('dq') || (sys.isMobile ? 'phone' : 'pc');
+  if (TIERS[q]) {
+    Object.assign(DUNGEON, TIERS[q], { tier: q });
+  }
+  DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
   const post = param('dpost');
   if (post !== null && !Number.isNaN(Number(post))) {
     DUNGEON.post = Number(post);

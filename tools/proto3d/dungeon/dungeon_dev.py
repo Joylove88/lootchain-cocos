@@ -45,6 +45,9 @@ LAYOUT = ("(() => { const tb = document.querySelector('.toolbar'); if (tb) tb.st
           " for (const id of ['content', 'GameDiv']) { const e = document.getElementById(id); if (e) { e.style.position = 'absolute'; e.style.left = '0'; e.style.top = '0';"
           " e.style.width = innerWidth + 'px'; e.style.height = innerHeight + 'px'; e.style.margin = '0'; e.style.padding = '0'; e.style.transform = 'none'; } }"
           " document.body.style.overflow = 'hidden'; window.dispatchEvent(new Event('resize')); return [innerWidth, innerHeight]; })()")
+# 工具栏还在,或者画布没铺满视口(重载之后偶尔会按设计分辨率 1920×1080 建画布):要重新铺一遍
+NEED_LAYOUT = ("(() => { const tb = document.querySelector('.toolbar'); const cv = document.querySelector('canvas');"
+               " return !!(tb && tb.style.display !== 'none') || !!(cv && (Math.abs(cv.clientWidth - innerWidth) > 2 || Math.abs(cv.clientHeight - innerHeight) > 2)); })()")
 HJS = "const sleep = ms => new Promise(z => setTimeout(z, ms)); const D = window.__g3dd;"
 
 
@@ -114,6 +117,10 @@ async def enter(tab, qs):
         await asyncio.sleep(6)
     await tab.raw(LAYOUT)
     await asyncio.sleep(1.5)
+    if await tab.raw(NEED_LAYOUT):
+        await asyncio.sleep(1.5)
+        await tab.raw(LAYOUT)
+        await asyncio.sleep(1.5)
     log('ready', got, await tab.js("const i = D.info(); return JSON.stringify({ stats: i.stats, canvas: i.canvas, leader: i.leader, mobs: i.mobs.length, post: i.post && i.post.on });"))
 
 
@@ -193,7 +200,7 @@ async def cmd_client():
         elif CMD == 'shot':
             path = ARGS[1]
             # 预览页的工具栏有时晚于场景出来:还在的话先藏掉(画布会跟着铺满),等两帧再截
-            if await tab.raw("(() => { const tb = document.querySelector('.toolbar'); return !!(tb && tb.style.display !== 'none'); })()"):
+            if await tab.raw(NEED_LAYOUT):
                 await tab.raw(LAYOUT)
                 await asyncio.sleep(1.2)
             r = await tab.call('Page.captureScreenshot', {'format': 'png'})
