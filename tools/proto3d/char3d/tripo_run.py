@@ -13,6 +13,8 @@
   python tripo_run.py mv <名字> <正面图> --ok=10                 单图 → 四视图(确认平台的左 / 右视图约定用)
   python tripo_run.py gen <名字> --front=<图> [--right=<图>] [--back=<图>] [--left=<图>]
                          [--faces=60000] [--tex=detailed] [--geo=detailed] [--texver=v3.5-20260815] [--seed=20261112] --ok=60
+  python tripo_run.py gen1 <名字> <单张图> [--faces=100000] [--tex=detailed] [--geo=standard] --ok=40
+                         单图 → 3D(建筑、道具这类不绑骨的东西;图用四分之三视角、干净底色的设定图)
   python tripo_run.py rigcheck <名字>                              免费
   python tripo_run.py rig <名字> [--type=biped] [--spec=mixamo] --ok=25
   python tripo_run.py anim <名字> idle,walk,slash,hurt,fall --ok=50   (一次最多 5 个;两足预设只有 idle walk run dive climb jump slash shoot hurt fall turn)
@@ -277,6 +279,37 @@ def cmd_gen(name):
     start(name, 'gen', '/generation/multiview-to-model', body, cost)
 
 
+def cmd_gen1(name):
+    """单张图 → 3D(2026-11-17 查的文档 developers.tripo3d.com/en/docs/generation-image-to-model/standard:
+    POST /generation/image-to-model,input 是上传得到的 file_token 字符串;价格同多视图)。"""
+    if len(sys.argv) < 4 or sys.argv[3].startswith('--'):
+        raise SystemExit('用法:gen1 <名字> <单张图> --ok=<积分>')
+    tex, geo = opt('tex', 'detailed'), opt('geo', 'standard')
+    cost = 30 + {'standard': 0, 'fast': 0, 'detailed': 10, 'extreme': 20}[tex] + {'standard': 0, 'detailed': 20}[geo]
+    precheck(name, 'gen', cost)
+    seed = int(opt('seed', '20261117'))
+    body = {
+        'input': upload_image(sys.argv[3]),
+        'model': opt('model', 'v3.1-20260211'),
+        'texture': True,
+        'pbr': True,
+        'texture_quality': tex,
+        'geometry_quality': geo,
+        'texture_alignment': 'original_image',
+        'auto_size': True,
+        'model_seed': seed,
+        'texture_seed': seed,
+        'texture_version': opt('texver', 'v3.5-20260815'),      # 明确写这个版本时默认会去掉参考图里烘死的光影,适合进引擎重新打光
+    }
+    faces = int(opt('faces', '100000'))
+    if faces > 0:
+        body['face_limit'] = faces
+    st = load_state(name)
+    st['views'] = {'single': os.path.basename(sys.argv[3])}
+    save_state(name, st)
+    start(name, 'gen', '/generation/image-to-model', body, cost)
+
+
 def need_task(name, step):
     info = load_state(name)['steps'].get(step)
     if not info or info.get('status') != 'success':
@@ -329,6 +362,8 @@ def main():
         cmd_mv(name)
     elif cmd == 'gen':
         cmd_gen(name)
+    elif cmd == 'gen1':
+        cmd_gen1(name)
     elif cmd == 'rigcheck':
         cmd_rigcheck(name)
     elif cmd == 'rig':

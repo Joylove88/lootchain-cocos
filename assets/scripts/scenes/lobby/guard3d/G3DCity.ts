@@ -50,6 +50,11 @@ export interface CityScene {
   forge: { x: number; y: number; z: number };
   /** 铁匠铺的烟囱口(烟从这里冒)。 */
   smoke: { x: number; y: number; z: number };
+  /**
+   * 可以换成「图转 3D」模型的建筑:键、占地的中心、朝向(度)、占地的宽和进深(米)。
+   * 第五步(用户:「建筑和原型图还是差距比较大,需要还原下」→「先转铁匠铺试试」):代码拼的到不了原型的细节,换成从原型设定图转出来的模型。
+   */
+  bldSpots: Array<{ key: string; x: number; z: number; yaw: number; w: number; d: number }>;
   /** 镇民站的位置和朝向(度)。 */
   npcs: Array<{ x: number; z: number; yaw: number }>;
   plan: CityPlan;
@@ -57,12 +62,12 @@ export interface CityScene {
 
 const V = (x: number, y: number, z: number): Vec3 => new Vec3(x, y, z);
 
-export function buildCityScene(rnd: () => number): CityScene {
+export function buildCityScene(rnd: () => number, skip: string[] = []): CityScene {
   const mk = (): Sculpt => new Sculpt();
   const s: CityScene = {
     stone: mk(), rubble: mk(), plaster: mk(), timber: mk(), slate: mk(), iron: mk(), bark: mk(), cloth: mk(), goods: mk(), leaf: mk(),
     winHouse: mk(), winLancet: mk(), winRose: mk(), winDark: mk(), coal: mk(), glass: mk(),
-    solids: [], lamps: [], doorLamps: [], forge: { x: -10, y: 1.0, z: -13.2 }, smoke: { x: -6, y: 11, z: -11 }, npcs: [], plan: CITY_PLAN,
+    solids: [], lamps: [], doorLamps: [], bldSpots: [], forge: { x: -10, y: 1.0, z: -13.2 }, smoke: { x: -6, y: 11, z: -11 }, npcs: [], plan: CITY_PLAN,
   };
   const R = (a: number, b: number): number => a + (b - a) * rnd();
   const solid = (x: number, z: number, hx: number, hz: number, h: number): void => {
@@ -331,10 +336,28 @@ export function buildCityScene(rnd: () => number): CityScene {
   // 左边是山墙朝外的主屋(门、招牌),右边矮一截的是石砌的炉房(拱形的炉口、老虎窗、粗烟囱)
   const SMY = -30;
   const G = frame(-11.8, -11.8, SMY);
+  const smithyModel = skip.indexOf('smithy') >= 0;
   {
+    // 模型(12.5 米宽)比代码拼的那栋窄,而且炉口在它的左头:整栋顺着正面往右(往广场里)挪 6 米,炉口才落在进广场一眼看得到的位置
+    if (smithyModel) {
+      solidRot(G, -0.4, 12.6, -7.4, 0.4, 6);
+    } else {
+      solidRot(G, -7.6, 7.4, -8, 0.4, 6);
+    }
+    const bc = smithyModel ? G.P(6.1, 0, -3.65) : G.P(-0.1, 0, -4);
+    s.bldSpots.push({ key: 'smithy', x: bc.x, z: bc.z, yaw: SMY, w: smithyModel ? 12.5 : 15.6, d: 9 });
+  }
+  if (smithyModel) {
+    // 用转出来的模型:炉火和烟对到模型的炉口和左边那根烟囱(正对着正面截图量的:炉口中心在本地 x = 4.65、往里凹半米,炉台离地约 1.05 米)
+    const fp0 = G.P(4.65, 1.4, -0.45);
+    s.forge = { x: fp0.x, y: 1.4, z: fp0.z };
+    const sp0 = G.P(2.45, 8.4, -3.4);
+    s.smoke = { x: sp0.x, y: 8.4, z: sp0.z };
+    // 模型往右挪了之后,它左边空出来一块:补一栋普通的房子
+    house(-15.2, CITY.Z0 - 1.5, 0, 6.4, 8, { upper: 1, lit: 2, tone: 0.84 });
+  } else {
     const mp = G.P(-3.5, 0, 0);
     house(mp.x, mp.z, SMY, 8, 8, { upper: 1, gableFront: true, lit: 3, door: -1.6, tone: 0.9, steep: 0.68 });
-    solidRot(G, -7.6, 7.4, -8, 0.4, 6);
     // 炉房:石墙,屋檐朝外的陡屋顶
     const wp = G.P(3.9, 0, 0);
     const W = frame(wp.x, wp.z, SMY);
@@ -398,34 +421,40 @@ export function buildCityScene(rnd: () => number): CityScene {
   {
     // 门口的东西,沿着正面从左到右:梯子、门、门灯、招牌、两只桶、工作台、铁砧、淬火桶、(炉口)、一排工具、煤堆
     const f = G;
-    // 招牌:墙上伸出一根木梁,底下吊一块木牌(牌面朝着广场),两面都钉着铁砧的剪影
-    f.box(s.timber, -3.0, 3.72, 1.0, 0.12, 0.12, 1.5, TIMBER, 0.9, 0.01);
-    f.box(s.timber, -3.0, 3.36, 0.62, 0.09, 0.09, 0.8, TIMBER, 0.9, 0.01, [42, 0, 0]);
-    for (const sx of [-0.3, 0.3]) {
-      f.box(s.iron, -3.0 + sx, 3.5, 1.45, 0.02, 0.34, 0.02, [0.3, 0.3, 0.32], 1.6, 0);
+    // 摆件的位置(本地坐标):代码拼的那栋 / 换成模型之后各一套(模型的炉口在左头、门在中间、右边是带窗的偏屋)
+    const L = smithyModel
+      ? { bench: 9.7, anvil: [4.6, 2.4], tools: 1.5, coal: [2.7, 1.7], grind: [11.3, 2.6], barrels: [[1.3, 0.6, 0.9], [6.5, 0.6, 1.05], [12.1, 0.7, 0.8]], ladder: false }
+      : { bench: -0.5, anvil: [1.9, 1.7], tools: 5.7, coal: [6.3, 1.5], grind: [-1.9, 2.3], barrels: [[1.1, 0.6, 0.9], [-2.3, 0.7, 1.05], [-6.2, 0.6, 0.8]], ladder: true };
+    if (!smithyModel) {
+      // 招牌:墙上伸出一根木梁,底下吊一块木牌(牌面朝着广场),两面都钉着铁砧的剪影
+      f.box(s.timber, -3.0, 3.72, 1.0, 0.12, 0.12, 1.5, TIMBER, 0.9, 0.01);
+      f.box(s.timber, -3.0, 3.36, 0.62, 0.09, 0.09, 0.8, TIMBER, 0.9, 0.01, [42, 0, 0]);
+      for (const sx of [-0.3, 0.3]) {
+        f.box(s.iron, -3.0 + sx, 3.5, 1.45, 0.02, 0.34, 0.02, [0.3, 0.3, 0.32], 1.6, 0);
+      }
+      f.box(s.timber, -3.0, 2.86, 1.45, 0.86, 0.96, 0.07, [0.3, 0.25, 0.21], 0.9, 0.02);
+      for (const sz of [-0.045, 0.045]) {
+        f.box(s.iron, -3.0, 3.02, 1.45 + sz, 0.56, 0.12, 0.02, [0.62, 0.62, 0.66], 1.6, 0.005);
+        f.box(s.iron, -3.0, 2.88, 1.45 + sz, 0.22, 0.2, 0.02, [0.62, 0.62, 0.66], 1.6, 0.005);
+        f.box(s.iron, -3.0, 2.74, 1.45 + sz, 0.42, 0.1, 0.02, [0.62, 0.62, 0.66], 1.6, 0.005);
+      }
+      // 门边挂一盏小灯
+      f.box(s.iron, -3.95, 2.75, 0.3, 0.04, 0.04, 0.6, [0.3, 0.3, 0.32], 1.6, 0);
+      f.box(s.iron, -3.95, 2.66, 0.56, 0.2, 0.04, 0.2, [0.3, 0.3, 0.32], 1.6, 0);
+      f.box(s.glass, -3.95, 2.48, 0.56, 0.16, 0.3, 0.16, [1, 1, 1], 1, 0);
+      f.box(s.iron, -3.95, 2.3, 0.56, 0.2, 0.04, 0.2, [0.3, 0.3, 0.32], 1.6, 0);
+      s.doorLamps.push({ x: f.P(-3.95, 2.48, 0.9).x, y: 2.48, z: f.P(-3.95, 2.48, 0.9).z });
     }
-    f.box(s.timber, -3.0, 2.86, 1.45, 0.86, 0.96, 0.07, [0.3, 0.25, 0.21], 0.9, 0.02);
-    for (const sz of [-0.045, 0.045]) {
-      f.box(s.iron, -3.0, 3.02, 1.45 + sz, 0.56, 0.12, 0.02, [0.62, 0.62, 0.66], 1.6, 0.005);
-      f.box(s.iron, -3.0, 2.88, 1.45 + sz, 0.22, 0.2, 0.02, [0.62, 0.62, 0.66], 1.6, 0.005);
-      f.box(s.iron, -3.0, 2.74, 1.45 + sz, 0.42, 0.1, 0.02, [0.62, 0.62, 0.66], 1.6, 0.005);
-    }
-    // 门边挂一盏小灯
-    f.box(s.iron, -3.95, 2.75, 0.3, 0.04, 0.04, 0.6, [0.3, 0.3, 0.32], 1.6, 0);
-    f.box(s.iron, -3.95, 2.66, 0.56, 0.2, 0.04, 0.2, [0.3, 0.3, 0.32], 1.6, 0);
-    f.box(s.glass, -3.95, 2.48, 0.56, 0.16, 0.3, 0.16, [1, 1, 1], 1, 0);
-    f.box(s.iron, -3.95, 2.3, 0.56, 0.2, 0.04, 0.2, [0.3, 0.3, 0.32], 1.6, 0);
-    s.doorLamps.push({ x: f.P(-3.95, 2.48, 0.9).x, y: 2.48, z: f.P(-3.95, 2.48, 0.9).z });
     // 靠墙的梯子
-    for (const sd of [-1, 1]) {
+    for (const sd of L.ladder ? [-1, 1] : []) {
       f.box(s.timber, -7.0 + sd * 0.26, 1.75, 0.75, 0.06, 3.6, 0.06, [0.46, 0.4, 0.33], 0.9, 0, [-11, 0, 0]);
     }
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < (L.ladder ? 8 : 0); i += 1) {
       const t = 0.4 + i * 0.4;
       f.box(s.timber, -7.0, t * 0.98, 1.09 - t * 0.19, 0.5, 0.045, 0.045, [0.46, 0.4, 0.33], 0.9, 0);
     }
     // 工作台:台面上一把锤子、一把钳子、两块铁料
-    const BX = -0.5;
+    const BX = L.bench;
     f.box(s.timber, BX, 0.86, 0.75, 1.9, 0.1, 0.8, [0.46, 0.4, 0.34], 0.9, 0.015);
     for (const [lx2, lz2] of [[-0.85, 0.42], [0.85, 0.42], [-0.85, 1.08], [0.85, 1.08]]) {
       f.box(s.timber, BX + lx2, 0.41, lz2, 0.1, 0.82, 0.1, [0.4, 0.35, 0.3], 0.9, 0.01);
@@ -437,30 +466,30 @@ export function buildCityScene(rnd: () => number): CityScene {
     f.box(s.iron, BX + 0.5, 0.95, 0.55, 0.3, 0.07, 0.1, [0.5, 0.5, 0.53], 1.6, 0.005, [0, 30, 0]);
     solid(f.P(BX, 0, 0.75).x, f.P(BX, 0, 0.75).z, 1.0, 0.7, 0.9);
     // 铁砧(架在一截树桩上)
-    f.box(s.bark, 1.9, 0.3, 1.7, 0.5, 0.6, 0.5, [0.5, 0.45, 0.4], 0.5, 0.05);
-    f.box(s.iron, 1.9, 0.72, 1.7, 0.62, 0.2, 0.26, [0.4, 0.4, 0.43], 1.6, 0.02);
-    f.box(s.iron, 1.9, 0.86, 1.7, 0.8, 0.1, 0.22, [0.45, 0.45, 0.48], 1.6, 0.02);
-    solid(f.P(1.9, 0, 1.7).x, f.P(1.9, 0, 1.7).z, 0.42, 0.42, 0.9);
+    f.box(s.bark, L.anvil[0], 0.3, L.anvil[1], 0.5, 0.6, 0.5, [0.5, 0.45, 0.4], 0.5, 0.05);
+    f.box(s.iron, L.anvil[0], 0.72, L.anvil[1], 0.62, 0.2, 0.26, [0.4, 0.4, 0.43], 1.6, 0.02);
+    f.box(s.iron, L.anvil[0], 0.86, L.anvil[1], 0.8, 0.1, 0.22, [0.45, 0.45, 0.48], 1.6, 0.02);
+    solid(f.P(L.anvil[0], 0, L.anvil[1]).x, f.P(L.anvil[0], 0, L.anvil[1]).z, 0.42, 0.42, 0.9);
     // 炉口右边靠墙的一排工具、地上的煤堆
     for (let i = 0; i < 4; i += 1) {
-      f.box(s.timber, 5.7 + i * 0.22, 1.0, 0.35, 0.05, 2.0, 0.05, [0.48, 0.42, 0.36], 0.9, 0, [-9, 0, R(-4, 4)]);
+      f.box(s.timber, L.tools + i * 0.22, 1.0, 0.35, 0.05, 2.0, 0.05, [0.48, 0.42, 0.36], 0.9, 0, [-9, 0, R(-4, 4)]);
     }
     for (let i = 0; i < 14; i += 1) {
       const an = R(0, 6.28);
       const rr = Math.sqrt(rnd()) * 0.6;
-      const cp = f.P(6.3 + Math.cos(an) * rr, 0.08 + (0.6 - rr) * 0.45, 1.5 + Math.sin(an) * rr * 0.8);
+      const cp = f.P(L.coal[0] + Math.cos(an) * rr, 0.08 + (0.6 - rr) * 0.45, L.coal[1] + Math.sin(an) * rr * 0.8);
       s.goods.ball(R(0.1, 0.17), R(0.08, 0.13), R(0.1, 0.17), [cp.x, cp.y, cp.z], 5, { tint: [0.045, 0.045, 0.05] });
     }
-    solid(f.P(6.3, 0, 1.5).x, f.P(6.3, 0, 1.5).z, 0.6, 0.6, 0.5);
+    solid(f.P(L.coal[0], 0, L.coal[1]).x, f.P(L.coal[0], 0, L.coal[1]).z, 0.6, 0.6, 0.5);
     // 磨刀的砂轮
     for (const sd of [-1, 1]) {
-      f.box(s.timber, -1.9 + sd * 0.14, 0.4, 2.3, 0.06, 0.8, 0.5, [0.42, 0.36, 0.3], 0.9, 0.01);
+      f.box(s.timber, L.grind[0] + sd * 0.14, 0.4, L.grind[1], 0.06, 0.8, 0.5, [0.42, 0.36, 0.3], 0.9, 0.01);
     }
-    s.stone.cylinder(0.36, 0.36, 0.12, 16, f.P(-1.9, 0.86, 2.3), V(0, SMY, 90), [0.62, 0.6, 0.58], 0.5, rnd);
-    solid(f.P(-1.9, 0, 2.3).x, f.P(-1.9, 0, 2.3).z, 0.4, 0.4, 1.2);
-    barrel(f.P(1.1, 0, 0.6).x, f.P(1.1, 0, 0.6).z, 0.9);
-    barrel(f.P(-2.3, 0, 0.7).x, f.P(-2.3, 0, 0.7).z, 1.05);
-    barrel(f.P(-6.2, 0, 0.6).x, f.P(-6.2, 0, 0.6).z, 0.8);
+    s.stone.cylinder(0.36, 0.36, 0.12, 16, f.P(L.grind[0], 0.86, L.grind[1]), V(0, SMY, 90), [0.62, 0.6, 0.58], 0.5, rnd);
+    solid(f.P(L.grind[0], 0, L.grind[1]).x, f.P(L.grind[0], 0, L.grind[1]).z, 0.4, 0.4, 1.2);
+    for (const [bx, bz, bk] of L.barrels) {
+      barrel(f.P(bx, 0, bz).x, f.P(bx, 0, bz).z, bk);
+    }
   }
   house(3.4, CITY.Z0 - 1.2, 0, 9, 8, { upper: 2, lit: 3, tone: 0.86 });
   house(13.4, CITY.Z0 - 0.9, 0, 10.5, 8, { upper: 1, gableFront: true, lit: 2 });
@@ -824,8 +853,8 @@ export function buildCityScene(rnd: () => number): CityScene {
 
   // ── 水井:一圈石井栏、两根立柱撑着一个小顶棚、一根辘轳、一只桶 ──
   {
-    const wx = -1.6;
-    const wz = -6.4;
+    const wx = smithyModel ? 3.4 : -1.6;          // 铁匠铺换成模型后往广场里伸得更多,水井让到它右前方
+    const wz = smithyModel ? -5.6 : -6.4;
     s.stone.lathe([[1.0, 0], [1.02, 0.85], [0.92, 0.95], [0.7, 0.95], [0.68, 0.2], [0.0, 0.2]], 14, { xf: xform([wx, 0, wz]), tint: [0.72, 0.73, 0.78], den: 0.25, smooth: false });
     s.winDark.cylinder(0.68, 0.68, 0.02, 14, V(wx, 0.5, wz), V(0, 0, 0), [0.02, 0.025, 0.03], 1, rnd);
     for (const sd of [-1, 1]) {
@@ -888,7 +917,7 @@ export function buildCityScene(rnd: () => number): CityScene {
   stall(13.8, CITY.Z1 - 1.3, 180, 3.4);
   // 镇民:两个站在摊位前(面朝摊位),一个在井边(面朝井)。角色模型面朝 +x 时 yaw = 0
   s.npcs.forEach((n) => { n.yaw = -90; });
-  s.npcs.push({ x: 0.2, z: -5.3, yaw: 149 });
+  s.npcs.push(smithyModel ? { x: 5.1, z: -4.5, yaw: 147 } : { x: 0.2, z: -5.3, yaw: 149 });
 
   // ── 路灯:铸铁的灯柱,顶上一只四面玻璃的灯 ──
   const lamp = (x: number, z: number): void => {
@@ -909,7 +938,7 @@ export function buildCityScene(rnd: () => number): CityScene {
     s.lamps.push({ x, y: 3.7, z });
     solid(x, z, 0.2, 0.2, 4);
   };
-  lamp(-13.6, -7.4);
+  lamp(-13.3, -8.4);
   lamp(-13.2, 6.0);
   lamp(8.3, -11.6);
   lamp(16.2, -9.4);

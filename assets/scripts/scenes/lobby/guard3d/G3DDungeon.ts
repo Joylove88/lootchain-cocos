@@ -1,4 +1,4 @@
-import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Quat, renderer, SpotLight, sys, UITransform, Vec3 } from 'cc';
+import { BlockInputEvents, Camera, Canvas, Color, DirectionalLight, director, Director, game, instantiate, js, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, PointLight, Prefab, Quat, renderer, resources, SpotLight, sys, UITransform, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { sfx } from './G3DAudio';
 import { charKeys, G3DChar, hasMoves, loadChar } from './G3DChar';
@@ -145,6 +145,8 @@ export interface DungeonCfg {
   vol: number;
   /** 哪个场景:hall = 地宫大厅;wild = 野外(枯木林里的废弃营地,地址 ?g3dwild=1);city = 主城中心广场(?g3dcity=1)。 */
   scene: 'hall' | 'wild' | 'city';
+  /** 主城里哪些建筑换成「图转 3D」的模型(逗号隔开的键,地址 &bld=smithy);空 = 全用代码拼的。模型临时拷在 resources/g3d_bld/<键>/。 */
+  bld: string;
   /** 野外:天空那张图整体乘几倍(这套灯光是高动态的,天空要够亮才看得见);雾的浓度;地面薄雾 / 萤火虫的多少。 */
   skyK: number;
   /** 主城:天上那个月亮盘的亮度倍数(它也会被雾吃掉大半,所以给得高)。 */
@@ -171,7 +173,7 @@ export const DUNGEON: DungeonCfg = {
   moon: 1300000, ambient: 42, fluxK: 100, lamp: 11, lampSpot: 420, spotShadow: false, brazier: 17, gate: 17, rune: 9, torch: 14, candle: 3.2, hit: 9,
   shadow: 4096, floor: 4096, reflect: true, wet: 0.74, gloss: 0.3, floorBump: 0.55, post: 2, env: 1, shaft: 0.16, cone: 0.05, glow: 1, fill: 0.8, bounce: 8,
   tier: 'pc', realLights: 99, fake: 1, postScale: 0, ao: true, bloomLevels: 6, texK: 1, maxMobs: 8, candleReal: true, rangeK: 1, hud: false,
-  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
+  bake: false, bakeAmb: 50000, bakeGain: 1700, realK: 0.6, bakeEdge: 0.8, bakeEnv: 7, glint: 0, bakeShadow: true, pace: 1, snd: true, vol: 0.8, scene: 'hall', bld: '', skyK: 4200, moonDisc: 3.2, wildFog: 0.045, mist: 1, flies: 1,
 };
 /**
  * 画质档。电脑档 = 全开(21 盏灯都是真的)。
@@ -182,6 +184,10 @@ export const DUNGEON: DungeonCfg = {
 export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazier: 24, torch: 15, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 1.0, shaft: 0, bake: false };
 
 /** 主城场景在默认值上改的几项(不放怪;月光比野外略暗一点,靠路灯和窗子的暖光点缀)。 */
+/** 建筑模型的手调修正:转多少度(模型的正面朝哪是平台定的)、在「缩放到占地宽」的基础上再乘多少、挪多少米。 */
+const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; dz: number }> = {
+  smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
+};
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
 
 export const TIERS: Record<string, Partial<DungeonCfg>> = {
@@ -384,8 +390,10 @@ class Dungeon {
   private wildLanterns: Array<{ x: number; y: number; z: number }> = [];
   private cityLamps: Array<{ x: number; y: number; z: number }> = [];
   private citySmoke = { x: 0, y: 0, z: 0 };
+  private cityFireY = 0.98;
   /** 天上的月亮(一块板):每帧跟着镜头挪,和天空图里那团月晕始终对齐。 */
   private moonDisc: Node | null = null;
+  private cityBld: Record<string, { pivot: Node; spot: { key: string; x: number; z: number; yaw: number; w: number; d: number }; size: { x: number; y: number; z: number }; tris: number }> = {};
   /** 野外场景:这个位置是不是积水。 */
   private wildWet: ((x: number, z: number) => boolean) | null = null;
   private get wild(): boolean {
@@ -1354,12 +1362,14 @@ class Dungeon {
     const ground = plazaPbr(gw, Math.round((gw * CITY_GROUND.d) / CITY_GROUND.w), CITY_PLAN);
     this.stats.floorMs = Math.round(performance.now() - t1);
     this.wildWet = (x: number, z: number): boolean => wetAt(ground.wet, CITY_PLAN, x, z);
-    const C = buildCityScene(rnd);
+    const bldKeys = DUNGEON.bld.split(',').filter((k) => k);
+    const C = buildCityScene(rnd, bldKeys);
     this.solids.push(...C.solids);
     BRAZIERS.splice(0, BRAZIERS.length, { x: C.forge.x, z: C.forge.z });          // 火的特效和声音认这张表:城里就是铁匠铺的锻炉
     this.cityNpcSpots = C.npcs;
     this.cityLamps = C.lamps;
     this.citySmoke = C.smoke;
+    this.cityFireY = C.forge.y - 0.22;
     // 开场站在西边街口,镜头略偏北:左前方是铁匠铺的炉火,教堂在正前方偏右,右边露出集市的红篷(原型的构图)
     this.lx = -16.5;
     this.lz = 0.6;
@@ -1552,7 +1562,72 @@ class Dungeon {
     moon.color = new Color(200, 212, 244, 255);
     moon.illuminance = DUNGEON.moon;
     this.moon = moon;
+    this.loadCityBuildings(world, C.bldSpots.filter((b) => bldKeys.indexOf(b.key) >= 0));
     this.finishBuild(world, t0);
+  }
+
+  /**
+   * 把「图转 3D」的建筑模型摆进场景:模型的大小、朝向都是平台随意给的,所以量一下包围盒,缩放到占地那么宽、底面落地、中心对到占地中心。
+   * 每个模型另有一份手调的修正(BLD_FIX:转多少度、再放大多少、挪多少),调的时候用 __dg.bld('smithy', { yaw: 90 })。
+   */
+  private loadCityBuildings(world: Node, spots: Array<{ key: string; x: number; z: number; yaw: number; w: number; d: number }>): void {
+    // 模型文件里的预制体路径带着它自己的节点名(g3d_bld/<键>/<键>/<节点名>),所以先问资源表
+    const infos = ((resources as any).getDirWithPath('g3d_bld', Prefab) as Array<{ path: string }>) ?? [];
+    for (const sp of spots) {
+      const info = infos.find((i) => i.path.split('/')[1] === sp.key);
+      resources.load(info ? info.path : `g3d_bld/${sp.key}/${sp.key}`, Prefab, (err, prefab) => {
+        if (err || !prefab) {
+          console.warn('[g3dd] 建筑模型没找到(要先临时拷进 resources/g3d_bld)', sp.key);
+          return;
+        }
+        const pivot = new Node(`DgBld_${sp.key}`);
+        world.addChild(pivot);
+        const model = instantiate(prefab);
+        pivot.addChild(model);
+        const mn = new Vec3(1e9, 1e9, 1e9);
+        const mx = new Vec3(-1e9, -1e9, -1e9);
+        const p = new Vec3();
+        let tris = 0;
+        for (const mr of model.getComponentsInChildren(MeshRenderer)) {
+          mr.shadowCastingMode = MeshRenderer.ShadowCastingMode.ON;
+          mr.receiveShadow = MeshRenderer.ShadowReceivingMode.ON;
+          const st = mr.mesh?.struct;
+          if (!st || !st.minPosition || !st.maxPosition) {
+            continue;
+          }
+          for (const sub of st.primitives) {
+            tris += (sub.indexView ? sub.indexView.count : 0) / 3;
+          }
+          const wm = mr.node.worldMatrix;
+          for (let i = 0; i < 8; i += 1) {
+            p.set(i & 1 ? st.maxPosition.x : st.minPosition.x, i & 2 ? st.maxPosition.y : st.minPosition.y, i & 4 ? st.maxPosition.z : st.minPosition.z);
+            Vec3.transformMat4(p, p, wm);
+            Vec3.min(mn, mn, p);
+            Vec3.max(mx, mx, p);
+          }
+        }
+        const size = { x: mx.x - mn.x, y: mx.y - mn.y, z: mx.z - mn.z };
+        model.setPosition(-(mn.x + mx.x) / 2, -mn.y, -(mn.z + mx.z) / 2);
+        this.cityBld[sp.key] = { pivot, spot: sp, size, tris: Math.round(tris) };
+        this.tuneBld(sp.key, {});
+        console.log('[g3dd] 建筑模型', sp.key, JSON.stringify({ size, tris: Math.round(tris) }));
+      });
+    }
+  }
+
+  /** 调一栋建筑模型的摆法(转多少度、再放大多少、挪多少);不传的项用 BLD_FIX 里登记的。返回现在的值。 */
+  tuneBld(key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number }): unknown {
+    const b = this.cityBld[key];
+    if (!b) {
+      return null;
+    }
+    const fix = Object.assign(BLD_FIX[key] ?? (BLD_FIX[key] = { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 }), o);
+    const turned = Math.abs(Math.round(fix.yaw / 90)) % 2 === 1;
+    const k = (b.spot.w / (turned ? b.size.z : b.size.x)) * fix.k;
+    b.pivot.setScale(k, k, k);
+    b.pivot.setRotationFromEuler(0, b.spot.yaw + fix.yaw, 0);
+    b.pivot.setPosition(b.spot.x + fix.dx, fix.dy, b.spot.z + fix.dz);
+    return { fix, size: b.size, scale: k, tris: b.tris };
   }
 
   /** 主城每帧的小动静:锻炉冒的烟、从枫树上飘下来的红叶、路灯下打转的飞蛾、贴地的一点薄雾、落在积水里的水滴。 */
@@ -2668,7 +2743,7 @@ class Dungeon {
       this.stepFollowers(dt);
       this.stepMobs(dt);
       // 火:火盆的火苗和火星、侧廊的火把
-      const fy = this.city ? 0.98 : this.wild ? 0.14 : 1.18;          // 火从哪个高度起:火盆的碗口 / 地上的篝火 / 锻炉的炉膛
+      const fy = this.city ? this.cityFireY : this.wild ? 0.14 : 1.18;          // 火从哪个高度起:火盆的碗口 / 地上的篝火 / 锻炉的炉膛
       for (const b of BRAZIERS) {
         for (let i = 0; i < 2; i += 1) {
           fx.emit({ x: b.x + R(-0.2, 0.2), y: fy + R(0, 0.08), z: b.z + R(-0.2, 0.2), vx: R(-0.12, 0.12), vy: R(0.9, 1.7), life: R(0.4, 0.7), s0: R(0.26, 0.38), s1: 0.08,
@@ -3765,7 +3840,7 @@ function boot(): void {
     Object.assign(DUNGEON, WILD_CFG, { scene: 'wild' });
   }
   if (param('g3dcity') === '1') {
-    Object.assign(DUNGEON, CITY_CFG, { scene: 'city' });
+    Object.assign(DUNGEON, CITY_CFG, { scene: 'city', bld: param('bld') ?? '' });
     setArea(CITY);
   }
   DUNGEON.hud = param('dfps') === '1' || (sys.isMobile && param('dfps') !== '0');
@@ -3808,6 +3883,7 @@ if (!EDITOR && sys.isBrowser) {
     view: (v: any) => dungeon.setView(v), shot: (p?: any, l?: any, f?: number) => dungeon.shot(p, l, f), tp: (x: number, z: number, yaw?: number) => dungeon.tp(x, z, yaw),
     audio: sfx, attack: () => dungeon.attack(), skill: (k: string) => dungeon.input(k), clip: (name?: string, t = 0) => { dungeon.dbgClip = name ? { name, t } : null; return dungeon.leader?.names; }, go: (x: number, z: number) => { dungeon.auto = { x, z }; },
     post: (p: Partial<PostCfg>) => { dungeon.post?.set(p); return dungeon.post?.info(); },
+    bld: (key: string, o: { yaw?: number; k?: number; dx?: number; dy?: number; dz?: number } = {}) => dungeon.tuneBld(key, o),
     freeze: (on: boolean) => { dungeon.frozen = on; }, pause: (on: boolean) => { if (on) { game.pause(); } else { game.resume(); } }, step: (dt: number, n = 1) => { dungeon.fixedDt = dt; for (let i = 0; i < n; i += 1) { game.step(); } dungeon.fixedDt = 0; return dungeon.time; } };
   if (param('g3ddungeon') === '1' || param('g3dwild') === '1' || param('g3dcity') === '1') {
     boot();
