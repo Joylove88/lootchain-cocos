@@ -191,6 +191,14 @@ const BLD_FIX: Record<string, { yaw: number; k: number; dx: number; dy: number; 
   smithy: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },          // 平台给的模型正面朝后:转 180° 炉口和门才朝广场
   cathedral: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.48 },          // 模型的长轴是中殿,正面在一头:转 -90°;石头是浅灰的,月光下发白(0.72 还是白),颜色压到 0.48
   house: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },          // 带门的那面在侧边:转 -90°
+  // 第二批(挪到广场空地上转四个方向截图定的):平台给的正面多数朝 +x(要转 -90°),转角房朝 -z(转 180°),摊位 / 水井 / 路灯不用转
+  house_b: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },
+  house_c: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0 },
+  house_d: { yaw: 180, k: 1, dx: 0, dy: 0, dz: 0 },
+  stall: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
+  well: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
+  lamp: { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 },
+  statue: { yaw: -90, k: 1, dx: 0, dy: 0, dz: 0, a: 0.6 },
 };
 export const CITY_CFG: Partial<DungeonCfg> = { moon: 340000, ambient: 6300, brazier: 24, torch: 34, candle: 11, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 0.72, shaft: 0, bake: false, maxMobs: 0, mist: 0.5, flies: 0 };
 
@@ -395,9 +403,11 @@ class Dungeon {
   private cityLamps: Array<{ x: number; y: number; z: number }> = [];
   private citySmoke = { x: 0, y: 0, z: 0 };
   private cityFireY = 0.98;
+  /** 建筑模型的发光贴图:按源贴图缓存(同一个模型摆几栋只抠一次)。 */
+  private glowCache = new Map<unknown, ReturnType<typeof tex>>();
   /** 天上的月亮(一块板):每帧跟着镜头挪,和天空图里那团月晕始终对齐。 */
   private moonDisc: Node | null = null;
-  private cityBld: Record<string, { pivot: Node; spot: { key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number }; size: { x: number; y: number; z: number }; tris: number }> = {};
+  private cityBld: Record<string, { pivot: Node; spot: { key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean }; size: { x: number; y: number; z: number }; tris: number }> = {};
   /** 野外场景:这个位置是不是积水。 */
   private wildWet: ((x: number, z: number) => boolean) | null = null;
   private get wild(): boolean {
@@ -1574,7 +1584,7 @@ class Dungeon {
    * 把「图转 3D」的建筑模型摆进场景:模型的大小、朝向都是平台随意给的,所以量一下包围盒,缩放到占地那么宽、底面落地、中心对到占地中心。
    * 每个模型另有一份手调的修正(BLD_FIX:转多少度、再放大多少、挪多少),调的时候用 __dg.bld('smithy', { yaw: 90 })。
    */
-  private loadCityBuildings(world: Node, spots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number }>): void {
+  private loadCityBuildings(world: Node, spots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean }>): void {
     // 模型文件里的预制体路径带着它自己的节点名(g3d_bld/<键>/<键>/<节点名>),所以先问资源表
     const infos = ((resources as any).getDirWithPath('g3d_bld', Prefab) as Array<{ path: string }>) ?? [];
     for (const sp of spots) {
@@ -1639,6 +1649,8 @@ class Dungeon {
         if (!src || !img) {
           continue;
         }
+        let glow = this.glowCache.get(img);
+        if (!glow) {
         const S = 1024;
         const cv = document.createElement('canvas');
         cv.width = S;
@@ -1659,9 +1671,12 @@ class Dungeon {
           p[j + 3] = 255;
         }
         c.putImageData(d, 0, 0);
+        glow = tex(cv, false, 4);
+        this.glowCache.set(img, glow);
+        }
         const mi = mr.getMaterialInstance(i)!;
         mi.recompileShaders({ USE_EMISSIVE_MAP: true });
-        mi.setProperty('emissiveMap', tex(cv, false, 4));
+        mi.setProperty('emissiveMap', glow);
         mi.setProperty('emissive', new Color(255, 255, 255, 255));
         mi.setProperty('emissiveScale', new Vec3(k, k, k));
       } catch (error) {
@@ -1678,10 +1693,13 @@ class Dungeon {
     }
     const fix = Object.assign(BLD_FIX[key] ?? (BLD_FIX[key] = { ...(BLD_FIX[b.spot.key] ?? { yaw: 0, k: 1, dx: 0, dy: 0, dz: 0 }) }), o);
     const turned = Math.abs(Math.round(fix.yaw / 90)) % 2 === 1;
-    const k = (b.spot.w / (turned ? b.size.z : b.size.x)) * fix.k;
+    const k = (b.spot.h ? b.spot.h / b.size.y : b.spot.w / (turned ? b.size.z : b.size.x)) * fix.k;
+    // 占位给的是正面那条线的中点:顺着正面的反方向退半个进深
+    const back = b.spot.front ? ((turned ? b.size.x : b.size.z) * k) / 2 : 0;
+    const ya = (b.spot.yaw * Math.PI) / 180;
     b.pivot.setScale(k, k, k);
     b.pivot.setRotationFromEuler(0, b.spot.yaw + fix.yaw, 0);
-    b.pivot.setPosition(b.spot.x + fix.dx, (b.spot.y ?? 0) + fix.dy, b.spot.z + fix.dz);
+    b.pivot.setPosition(b.spot.x - Math.sin(ya) * back + fix.dx, (b.spot.y ?? 0) + fix.dy, b.spot.z - Math.cos(ya) * back + fix.dz);
     return { fix, size: b.size, scale: k, tris: b.tris };
   }
 

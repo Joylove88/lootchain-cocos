@@ -54,8 +54,12 @@ export interface CityScene {
    * 可以换成「图转 3D」模型的建筑:键、占地的中心、朝向(度)、占地的宽和进深(米)。
    * 第五步(用户:「建筑和原型图还是差距比较大,需要还原下」→「先转铁匠铺试试」):代码拼的到不了原型的细节,换成从原型设定图转出来的模型。
    */
-  /** key = 用哪个模型,id = 这一栋的名字(同一个模型可以摆几栋),y = 底面的高度(教堂站在台地上)。 */
-  bldSpots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number }>;
+  /**
+   * key = 用哪个模型,id = 这一栋的名字(同一个模型可以摆几栋),y = 底面的高度(教堂站在台地上)。
+   * w = 正面的宽(按它缩放);给了 h 就按高度缩放(水井、路灯这类摆件)。
+   * front = true 时 (x, z) 是正面那条线的中点(模型多深由它自己定,往后退半个进深);否则 (x, z) 是占地的中心。
+   */
+  bldSpots: Array<{ key: string; id: string; x: number; z: number; yaw: number; w: number; d: number; y?: number; h?: number; front?: boolean }>;
   /** 镇民站的位置和朝向(度)。 */
   npcs: Array<{ x: number; z: number; yaw: number }>;
   plan: CityPlan;
@@ -71,6 +75,15 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     solids: [], lamps: [], doorLamps: [], bldSpots: [], forge: { x: -10, y: 1.0, z: -13.2 }, smoke: { x: -6, y: 11, z: -11 }, npcs: [], plan: CITY_PLAN,
   };
   const R = (a: number, b: number): number => a + (b - a) * rnd();
+  const has = (k: string): boolean => skip.indexOf(k) >= 0;
+  /** 一栋房子的位置:这种样式的模型在用就登记占位(换成模型),否则用代码拼。(x, z) = 正面那条线的中点。 */
+  const slot = (key: string, id: string, x: number, z: number, yaw: number, w: number, proc: () => void): void => {
+    if (has(key)) {
+      s.bldSpots.push({ key, id, x, z, yaw, w, d: 7, front: true });
+    } else {
+      proc();
+    }
+  };
   const solid = (x: number, z: number, hx: number, hz: number, h: number): void => {
     s.solids.push({ x, z, hx, hz, h });
   };
@@ -355,7 +368,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     const sp0 = G.P(2.45, 8.4, -3.4);
     s.smoke = { x: sp0.x, y: 8.4, z: sp0.z };
     // 模型往右挪了之后,它左边空出来一块:补一栋普通的房子
-    house(-15.2, CITY.Z0 - 1.5, 0, 6.4, 8, { upper: 1, lit: 2, tone: 0.84 });
+    slot('house_c', 'house_c_nw', -15.2, CITY.Z0 - 1.5, 0, 4.8, () => house(-15.2, CITY.Z0 - 1.5, 0, 6.4, 8, { upper: 1, lit: 2, tone: 0.84 }));
   } else {
     const mp = G.P(-3.5, 0, 0);
     house(mp.x, mp.z, SMY, 8, 8, { upper: 1, gableFront: true, lit: 3, door: -1.6, tone: 0.9, steep: 0.68 });
@@ -492,7 +505,8 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
       barrel(f.P(bx, 0, bz).x, f.P(bx, 0, bz).z, bk);
     }
   }
-  house(3.4, CITY.Z0 - 1.2, 0, 9, 8, { upper: 2, lit: 3, tone: 0.86 });
+  // 第二批模型(民房 B 宽的 / C 高窄的 / D 带外楼梯的转角房):每种摆两栋,隔开摆
+  slot('house_b', 'house_b_n', 3.6, CITY.Z0 - 1.2, 0, 11, () => house(3.4, CITY.Z0 - 1.2, 0, 9, 8, { upper: 2, lit: 3, tone: 0.86 }));
   const houseModel = skip.indexOf('house') >= 0;
   if (houseModel) {
     // 换成模型的两栋:北排东头、南排集市后面(各一栋,离得远、大小朝向不一样,不会一眼看出是同一个模型)
@@ -504,10 +518,10 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     house(13.4, CITY.Z0 - 0.9, 0, 10.5, 8, { upper: 1, gableFront: true, lit: 2 });
     house(10.5, CITY.Z1 + 3.2, 180, 14, 8, { upper: 1, lit: 3, tone: 0.84 });
   }
-  house(-13.4, CITY.Z1 + 0.6, 180, 11, 8, { upper: 1, lit: 3 });
-  house(-2.2, CITY.Z1 + 1.1, 180, 9, 8, { upper: 2, gableFront: true, lit: 2, tone: 0.92 });
-  house(CITY.X0 - 0.5, -9.2, 90, 9.5, 8, { upper: 1, lit: 2 });
-  house(CITY.X0 - 0.5, 9.2, 90, 9.5, 8, { upper: 2, gableFront: true, lit: 2 });
+  slot('house_d', 'house_d_s', -13.4, CITY.Z1 + 0.6, 180, 8.6, () => house(-13.4, CITY.Z1 + 0.6, 180, 11, 8, { upper: 1, lit: 3 }));
+  slot('house_c', 'house_c_s', -2.2, CITY.Z1 + 1.1, 180, 5.0, () => house(-2.2, CITY.Z1 + 1.1, 180, 9, 8, { upper: 2, gableFront: true, lit: 2, tone: 0.92 }));
+  slot('house_d', 'house_d_w', CITY.X0 - 0.5, -9.2, 90, 8.4, () => house(CITY.X0 - 0.5, -9.2, 90, 9.5, 8, { upper: 1, lit: 2 }));
+  slot('house_b', 'house_b_w', CITY.X0 - 0.5, 9.6, 90, 10.4, () => house(CITY.X0 - 0.5, 9.2, 90, 9.5, 8, { upper: 2, gableFront: true, lit: 2 }));
   // 第二排(只露出屋顶和上层)、西边街口尽头的一栋
   house(-7, CITY.Z0 - 12, 0, 15, 8, { upper: 2, lit: 2, tone: 0.8 });
   house(9, CITY.Z0 - 12.5, 0, 13, 8, { upper: 2, gableFront: true, lit: 2, tone: 0.8 });
@@ -859,18 +873,26 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
         }, { closeU: true, tint: (u: number, v: number) => { const t = 0.8 + 0.7 * lump(u, v); return [0.014 * t, 0.026 * t, 0.016 * t] as Tint; } });
       }
     }
-    // 立像:石座上一个披着斗篷的人形(很概括:身子、头、一条抬起的手臂)
-    s.stone.box(1.5, 1.8, 1.5, V(23.4, TH + 0.9, -10.6), O0, [0.72, 0.73, 0.78], 0.5, rnd, 0.05);
-    s.stone.box(1.8, 0.24, 1.8, V(23.4, TH + 1.92, -10.6), O0, [0.66, 0.67, 0.72], 0.5, rnd, 0.04);
-    s.stone.lathe([[0.5, 0], [0.46, 0.5], [0.34, 1.3], [0.3, 1.9], [0.22, 2.1], [0.0, 2.15]], 10, { xf: xform([23.4, TH + 2.04, -10.6]), tint: [0.76, 0.77, 0.82], den: 0.5 });
-    s.stone.ball(0.2, 0.24, 0.2, [23.4, TH + 4.4, -10.6], 8, { tint: [0.78, 0.79, 0.84], den: 0.5 });
-    s.stone.box(0.14, 0.9, 0.14, V(23.05, TH + 3.6, -10.45), V(0, 0, 30), [0.76, 0.77, 0.82], 0.5, rnd, 0.03);
+    if (has('statue')) {
+      s.bldSpots.push({ key: 'statue', id: 'statue', x: 23.4, z: -10.6, yaw: -90, w: 2, d: 2, h: 5.0, y: TH });
+    } else {
+      // 立像:石座上一个披着斗篷的人形(很概括:身子、头、一条抬起的手臂)
+      s.stone.box(1.5, 1.8, 1.5, V(23.4, TH + 0.9, -10.6), O0, [0.72, 0.73, 0.78], 0.5, rnd, 0.05);
+      s.stone.box(1.8, 0.24, 1.8, V(23.4, TH + 1.92, -10.6), O0, [0.66, 0.67, 0.72], 0.5, rnd, 0.04);
+      s.stone.lathe([[0.5, 0], [0.46, 0.5], [0.34, 1.3], [0.3, 1.9], [0.22, 2.1], [0.0, 2.15]], 10, { xf: xform([23.4, TH + 2.04, -10.6]), tint: [0.76, 0.77, 0.82], den: 0.5 });
+      s.stone.ball(0.2, 0.24, 0.2, [23.4, TH + 4.4, -10.6], 8, { tint: [0.78, 0.79, 0.84], den: 0.5 });
+      s.stone.box(0.14, 0.9, 0.14, V(23.05, TH + 3.6, -10.45), V(0, 0, 30), [0.76, 0.77, 0.82], 0.5, rnd, 0.03);
+    }
   }
 
   // ── 水井:一圈石井栏、两根立柱撑着一个小顶棚、一根辘轳、一只桶 ──
   {
     const wx = smithyModel ? 3.4 : -1.6;          // 铁匠铺换成模型后往广场里伸得更多,水井让到它右前方
     const wz = smithyModel ? -5.6 : -6.4;
+    solid(wx, wz, 1.1, 1.1, 3);
+    if (has('well')) {
+      s.bldSpots.push({ key: 'well', id: 'well', x: wx, z: wz, yaw: 25, w: 3, d: 3, h: 3.8 });
+    } else {
     s.stone.lathe([[1.0, 0], [1.02, 0.85], [0.92, 0.95], [0.7, 0.95], [0.68, 0.2], [0.0, 0.2]], 14, { xf: xform([wx, 0, wz]), tint: [0.72, 0.73, 0.78], den: 0.25, smooth: false });
     s.winDark.cylinder(0.68, 0.68, 0.02, 14, V(wx, 0.5, wz), V(0, 0, 0), [0.02, 0.025, 0.03], 1, rnd);
     for (const sd of [-1, 1]) {
@@ -883,7 +905,7 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     f.face(s.slate, [[-1.5, 2.8, 1.1], [1.5, 2.8, 1.1], [1.5, 3.6, 0], [-1.5, 3.6, 0]], 0.42, SLATE);
     f.face(s.slate, [[1.5, 2.8, -1.1], [-1.5, 2.8, -1.1], [-1.5, 3.6, 0], [1.5, 3.6, 0]], 0.42, SLATE);
     f.box(s.timber, 0, 2.86, 0, 2.6, 0.12, 0.14, TIMBER, 0.9, 0.01);
-    solid(wx, wz, 1.1, 1.1, 3);
+    }
   }
 
   // ── 集市摊位(南边):四根木柱、一张案台、后面一排架子,上面斜搭一块暗红的篷布;案上摆着筐和货,旁边堆着麻袋和木桶 ──
@@ -928,15 +950,35 @@ export function buildCityScene(rnd: () => number, skip: string[] = []): CityScen
     solid(c.x, c.z, w / 2 + 0.5, 1.3, 2.4);
     s.npcs.push({ x: f.P(-w * 0.2, 0, 2.2).x, z: f.P(-w * 0.2, 0, 2.2).z, yaw: 0 });
   };
-  stall(2.6, CITY.Z1 - 1.8, 180, 3.6);
-  stall(8.2, CITY.Z1 - 1.5, 180, 3.8);
-  stall(13.8, CITY.Z1 - 1.3, 180, 3.4);
+  if (has('stall')) {
+    // 换成模型:同一个摊位摆三个会一眼看出是复制的,所以只摆两个(隔开、朝向和大小不一样),中间放几只桶和木箱
+    for (const [sx, sz, sy, sh, id] of [[3.4, CITY.Z1 - 1.9, 174, 3.5, 'stall_1'], [11.8, CITY.Z1 - 1.5, 188, 3.25, 'stall_2']] as Array<[number, number, number, number, string]>) {
+      s.bldSpots.push({ key: 'stall', id, x: sx, z: sz, yaw: sy, w: 3.6, d: 2.6, h: sh });
+      solid(sx, sz, 2.2, 1.5, 2.4);
+      s.npcs.push({ x: sx - 0.6, z: sz - 2.5, yaw: 0 });
+    }
+    barrel(7.2, CITY.Z1 - 1.3, 1);
+    barrel(8.0, CITY.Z1 - 1.8, 0.85);
+    s.timber.box(0.8, 0.6, 0.8, V(6.2, 0.3, CITY.Z1 - 1.6), V(0, 14, 0), [0.5, 0.45, 0.38], 0.9, rnd, 0.012);
+    solid(6.2, CITY.Z1 - 1.6, 0.4, 0.4, 0.6);
+  } else {
+    stall(2.6, CITY.Z1 - 1.8, 180, 3.6);
+    stall(8.2, CITY.Z1 - 1.5, 180, 3.8);
+    stall(13.8, CITY.Z1 - 1.3, 180, 3.4);
+  }
   // 镇民:两个站在摊位前(面朝摊位),一个在井边(面朝井)。角色模型面朝 +x 时 yaw = 0
   s.npcs.forEach((n) => { n.yaw = -90; });
   s.npcs.push(smithyModel ? { x: 5.1, z: -4.5, yaw: 147 } : { x: 0.2, z: -5.3, yaw: 149 });
 
   // ── 路灯:铸铁的灯柱,顶上一只四面玻璃的灯 ──
   const lamp = (x: number, z: number): void => {
+    if (has('lamp')) {
+      // 换成模型:灯光和光晕的位置照旧(灯笼在灯柱高度的八成半处)
+      s.bldSpots.push({ key: 'lamp', id: `lamp_${s.lamps.length}`, x, z, yaw: (s.lamps.length * 90) % 360, w: 0.7, d: 0.7, h: 4.4 });
+      s.lamps.push({ x, y: 3.75, z });
+      solid(x, z, 0.2, 0.2, 4);
+      return;
+    }
     s.iron.cylinder(0.16, 0.2, 0.3, 10, V(x, 0.15, z), V(0, 0, 0), [0.26, 0.26, 0.28], 1.6, rnd, 0);
     s.iron.cylinder(0.09, 0.12, 0.5, 8, V(x, 0.55, z), V(0, 0, 0), [0.26, 0.26, 0.28], 1.6, rnd);
     s.iron.cylinder(0.045, 0.06, 2.6, 8, V(x, 2.1, z), V(0, 0, 0), [0.26, 0.26, 0.28], 1.6, rnd);
