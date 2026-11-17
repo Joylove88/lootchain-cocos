@@ -68,6 +68,16 @@ export interface PostCfg {
   sharpen: number;
   dither: number;
   debug: number;
+  // 雾(按深度在调色那一步加;镜头放开之后看得远才用得上):颜色(线性)、从多远开始(米)、浓度(每米)、最浓到几成
+  fog: boolean;
+  fogColor: [number, number, number];
+  fogStart: number;
+  fogDensity: number;
+  fogMax: number;
+  /** 雾分两种颜色时(太阳很低的灯光方案):背着太阳那一侧的颜色、朝太阳的方向(世界坐标)、往太阳那边偏得多集中(0 = 只用 fogColor 一种)。 */
+  fogAway: [number, number, number];
+  fogSun: [number, number, number];
+  fogLobe: number;
 }
 
 /** 各档位带出来的设置。 */
@@ -87,6 +97,7 @@ export const POST_CFG: PostCfg = {
   shadowTint: [0.97, 1.0, 1.04], highlightTint: [1.03, 1.0, 0.97], splitAt: 0.5,
   vignette: 0.16, vignetteStart: 0.55, vignetteEnd: 1.05, vignetteRound: 0,
   sharpen: 0.18, dither: 1, debug: 0,
+  fog: false, fogColor: [0.5, 0.58, 0.68], fogStart: 16, fogDensity: 0.024, fogMax: 0.9, fogAway: [0.5, 0.58, 0.68], fogSun: [0, 1, 0], fogLobe: 0,
 };
 
 // ───────────────────────── 开关 / 档位 ─────────────────────────
@@ -271,9 +282,10 @@ class PostBuilder {
     if (!cc.lcPost) {
       return;
     }
-    cc.lcAo = this.cfg.ao && ppl.supportDepthSample;
-    if (cc.lcAo) {
-      cc.enableStoreSceneDepth = true;       // 正向渲染完把深度留下(平时画完就丢)
+    cc.lcDepth = (this.cfg.ao || this.cfg.fog) && ppl.supportDepthSample;
+    cc.lcAo = this.cfg.ao && cc.lcDepth;
+    if (cc.lcDepth) {
+      cc.enableStoreSceneDepth = true;       // 正向渲染完把深度留下(平时画完就丢):遮蔽和雾都要读
     }
     // 高动态时内置的「色调映射」步骤会自己加一遍(把画面转成显示用的颜色):这里的调色已经做了,让它别加。
     // 离屏贴图的格式在这之前已经按高动态定好了(半浮点),不受影响。
@@ -345,6 +357,12 @@ class PostBuilder {
 
     const { v0, v1, v2, v3 } = this;
     let p: any;
+    // 相机是正交还是透视:深度怎么换算成距离、画面上的偏移怎么换算成米,两种不一样
+    const persp = camera.projectionType === renderer.scene.CameraProjection.PERSPECTIVE ? 1 : 0;
+    const near = camera.nearClip;
+    const far = camera.farClip;
+    const tanY = Math.tan(camera.fov / 2);
+    const tanX = tanY * camera.aspect;
 
     // ── 环境光遮蔽 ──
     const ao0 = `LcAo0_${id}`;
@@ -355,14 +373,13 @@ class PostBuilder {
       const ah = Math.max(1, h >> 1);
       const halfH = camera.orthoHeight;
       const halfW = halfH * camera.aspect;
-      const near = camera.nearClip;
-      const far = camera.farClip;
       p = ppl.addRenderPass(aw, ah, 'lc-post-ao');
       p.addRenderTarget(ao0, LoadOp.CLEAR, StoreOp.STORE, WHITE);
       p.addTexture(depth, 'lcDepth', point);
       p.setVec4('lcP0', v0.set(1 / w, 1 / h, halfW, halfH));
       p.setVec4('lcP1', v1.set(near, far, cfg.aoRadius, cfg.aoBias));
       p.setVec4('lcP2', v2.set(cfg.aoIntensity, cfg.aoPower, cfg.aoReach, 0));
+      p.setVec4('lcP3', v3.set(persp, tanX, tanY, 0));
       p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 0);
       const sharp = (far - near) / Math.max(0.01, cfg.aoSharp);
       p = ppl.addRenderPass(aw, ah, 'lc-post-ao-blur');
@@ -426,6 +443,17 @@ class PostBuilder {
     p.addTexture(scene, 'lcTexA', point);
     p.addTexture(bloomOn ? b0 : scene, 'lcTexB', linear);
     p.addTexture(aoOn ? ao0 : scene, 'lcTexC', linear);
+    const fogOn = cfg.fog && !!depth && cfg.fogMax > 0 && !ldr;
+    p.addTexture(depth || scene, 'lcDepth', point);
+    p.setVec4('lcP4', v0.set(cfg.fogColor[0], cfg.fogColor[1], cfg.fogColor[2], fogOn ? cfg.fogMax : 0));
+    p.setVec4('lcP5', v0.set(near, far, persp, 0));
+    p.setVec4('lcP6', v0.set(cfg.fogStart, cfg.fogDensity, tanX, tanY));
+    // 朝太阳的方向换到相机坐标系里(只转方向,不带平移)
+    const mv = camera.matView;
+    const sd = cfg.fogSun;
+    p.setVec4('lcP7', v0.set(mv.m00 * sd[0] + mv.m04 * sd[1] + mv.m08 * sd[2], mv.m01 * sd[0] + mv.m05 * sd[1] + mv.m09 * sd[2], mv.m02 * sd[0] + mv.m06 * sd[1] + mv.m10 * sd[2],
+      persp ? cfg.fogLobe : 0));
+    p.setVec4('lcP8', v0.set(cfg.fogAway[0], cfg.fogAway[1], cfg.fogAway[2], 0));
     p.setVec4('lcP0', v0.set(cfg.exposure, bloomOn ? cfg.bloomIntensity : 0, cfg.contrast, cfg.pivot));
     p.setVec4('lcP1', v1.set(cfg.saturation, cfg.shoulder, ldr, (cfg.debug === 1 || cfg.debug === 4) && !aoOn ? 0 : cfg.debug));
     p.setVec4('lcP2', v2.set(cfg.shadowTint[0], cfg.shadowTint[1], cfg.shadowTint[2], cfg.splitAt));
@@ -454,7 +482,7 @@ class PostBuilder {
     p.setVec4('lcP1', v1.set(plain ? 0 : cfg.vignette, cfg.vignetteStart, cfg.vignetteEnd, cfg.vignetteRound));
     p.setVec4('lcP2', v2.set(plain ? 0 : cfg.dither, 1 / nw, 1 / nh, 0));
     p.addQueue(QueueHint.OPAQUE).addFullscreenQuad(mat, 7);
-    this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, bloom: bloomOn ? n : 0, fxaa: fxaaOn, depth: depth || null };
+    this.last = { size: [w, h], native: [nw, nh], hdr: !ldr, ao: aoOn, bloom: bloomOn ? n : 0, fxaa: fxaaOn, fog: fogOn, persp: !!persp, depth: depth || null };
     return p;
   }
 }

@@ -26,6 +26,10 @@ import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
  * 开了后期处理(TownPost3D)时每块平板后面再垫一块「只写深度」的平板(按透明度裁出轮廓、不出颜色):
  * 环境光遮蔽是照着深度图算的,2D 的东西不写深度的话,它身后的遮蔽会透到它身上、它脚下也压不出接地的暗部。
  *
+ * 自由视角(TownWorld3D.free)下镜头不再和 2D 画面对着:那台相机改成按地图上的一块正方形范围画(以队长为中心),
+ * 平板改成绕竖轴朝着镜头的纸片(老式 2.5D 游戏那种),贴图范围按地图坐标算。2D 骨骼是按俯视 45° 画的,镜头压得很低或
+ * 从背后看时会穿帮 —— 这是没有 3D 模型的东西在自由视角下的上限。
+ *
  * 已知的小毛病:两个这样的实体在画面上重叠、中间又夹着一个 3D 物体时,前面那块平板里会带着后面那个实体的像素
  * (贴图是整屏一张),夹在中间的 3D 物体会被它错误地盖住一小块。
  * 主城传送阵这类「平铺在地上」的图直接交给地表相机(画进地面),角色永远踩在它上面。
@@ -35,6 +39,17 @@ import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
 export const ENT_LAYER = 1 << 13;
 /** 换算贴图用的那块满屏方块单独一层:只有「换算相机」看。 */
 const ENT_FIX_LAYER = 1 << 14;
+/**
+ * 自由视角下那张贴图的排法:切成 5 × 5 格,每个 2D 的东西单独占一格(每格 600 × 600 地图单位),贴图边长 3072 像素。
+ * 做法是把它的 2D 画面节点挪到地图外面很远的一块「格子区」里对应的那一格去画(这个节点只有 2D 实体相机看,挪走不影响别的),
+ * 相机对着格子区。固定镜头时不用这么做 —— 那时纸片和 2D 画面是对着的,相邻的角色带进来的像素正好重合;
+ * 自由视角下纸片各自朝着镜头,带进来的邻居就成了重影。格子用完了(同屏超过 25 个)多出来的不显示。
+ */
+const CELLS = 5;
+const CELL = 600;
+const FREE_PX = 3072;
+/** 格子区左下角在地图上的位置(地图单位;远在地图外面)。 */
+const CELL_BASE = 200000;
 /** 2D 骨骼单位(英雄 / 怪)取多大一块(地图单位):左右各 HALF_W,脚线往下 BELOW、往上 ABOVE。 */
 const HALF_W = 300;
 const BELOW = 90;
@@ -47,6 +62,9 @@ interface Item {
   unit: boolean;
   card: Node;
   mat: Material;
+  /** 自由视角:占的是哪一格(-1 = 没占到);2D 画面节点原来的位置(撤掉时放回去)。 */
+  cell: number;
+  home: Vec3;
   /** 只写深度的那块(开了后期才有)。 */
   depthCard: Node | null;
   depthMat: Material | null;
@@ -55,6 +73,7 @@ interface Item {
 }
 
 const _p = new Vec3();
+const _q = new Vec3();
 const _to = new Vec4();
 
 /** 换算贴图用的着色器(读一次,全场共用);null = 还没读到 / 读失败(读失败就不换算:开后期时 2D 角色边缘会有一圈黑边,别的不受影响)。 */
@@ -91,6 +110,7 @@ class TownEnts3D implements FieldExtra {
   private base: Material | null = null;
   private depthBase: Material | null = null;
   private items = new Map<Node, Item>();
+  private cells: Array<Item | null> = [];
   private flat = new Map<Node, () => void>();
   private tick = 0;
   private stats = { cards: 0, flat: 0 };
@@ -124,6 +144,8 @@ class TownEnts3D implements FieldExtra {
     }
     this.ensure(world);
     this.tick += 1;
+    const lx = self.leader?.x ?? 0;
+    const ly = self.leader?.y ?? 0;
     const seen = new Set<Node>();
     // 2D 骨骼单位:骨骼节点还开着的(= 没有被 3D 模型顶替)
     const units: any[] = [self.leader, ...(self.followers ?? []), ...(self.monsters ?? [])];
@@ -147,9 +169,24 @@ class TownEnts3D implements FieldExtra {
             this.flat.set(art, world.toGround(art));       // 平铺在地上的:画进地面
             this.stats.flat += 1;
           }
+          if (world.free) {
+            // 自由视角:传送阵那圈贴地的光环 / 光晕也画进地面(留在界面那一层的话是一个不跟镜头转、竖在半空的圈)
+            const fx = node.getChildByName('TownWaypointFx');
+            for (const name2 of ['Flat', 'Glow']) {
+              const ring = fx?.getChildByName(name2) ?? null;
+              if (ring && !this.flat.has(ring)) {
+                this.flat.set(ring, world.toGround(ring));
+                this.stats.flat += 1;
+              }
+            }
+          }
           continue;
         }
         if (!/^Town(Chest|Poi|Npc)_/.test(name)) {
+          continue;
+        }
+        // 自由视角:贴图里一个东西占一格、一共 25 格,全地图的宝箱 / 采集点都收进来格子就不够了 —— 只收队长附近的
+        if (world.free && world.metres(node.position.x, node.position.y, lx, ly) > world.range.unit) {
           continue;
         }
         const art = node.getChildByName('Art') ?? node.getChildByName('Still');
@@ -159,7 +196,10 @@ class TownEnts3D implements FieldExtra {
       }
     }
     for (const [art, item] of Array.from(this.items)) {
-      const alive = art.isValid && item.card.isValid && (item.unit ? seen.has(art) : !!art.parent && art.parent.isValid);
+      let alive = art.isValid && item.card.isValid && (item.unit ? seen.has(art) : !!art.parent && art.parent.isValid);
+      if (alive && !item.unit && world.free && world.metres(item.owner.position.x, item.owner.position.y, lx, ly) > world.range.unit + 3) {
+        alive = false;       // 走远了:格子让出来(2D 的图放回去,由 TownOverlay3D 按「太远不画」藏掉)
+      }
       if (!alive) {
         this.remove(item);
         this.items.delete(art);
@@ -232,8 +272,8 @@ class TownEnts3D implements FieldExtra {
     const canvas = game.canvas!;
     // 后期的放大档位下 3D 画面比窗口大,这张贴图跟着放大(同地表贴图),免得 2D 角色被放大再缩小糊一遍
     const scale = world.post.scale();
-    const rw = Math.max(4, Math.round(canvas.width * scale));
-    const rh = Math.max(4, Math.round(canvas.height * scale));
+    const rw = world.free ? FREE_PX : Math.max(4, Math.round(canvas.width * scale));
+    const rh = world.free ? FREE_PX : Math.max(4, Math.round(canvas.height * scale));
     if (!this.rt || this.rt.width !== rw || this.rt.height !== rh) {
       const old = this.rt;
       const old2 = this.rt2;
@@ -289,15 +329,25 @@ class TownEnts3D implements FieldExtra {
       m.setProperty('alphaThreshold', 0.5);
       this.depthBase = m;
     }
-    // 取景跟界面相机一致(和地表相机同一套)
+    // 取景:固定镜头时跟界面相机一致(和地表相机同一套);自由视角时对着地图上以队长为中心的一块正方形
     const ui = world.uiCamera();
     if (ui && this.cam) {
       const n = this.cam.node;
-      n.setWorldPosition(ui.node.worldPosition);
       n.setWorldRotation(ui.node.worldRotation);
-      this.cam.orthoHeight = ui.orthoHeight;
       this.cam.near = ui.near;
       this.cam.far = ui.far;
+      const world2d: Node | null = this.self?.world ?? null;
+      const tf = world2d?.getComponent(UITransform) ?? null;
+      if (world.free && world2d && tf) {
+        const span = CELLS * CELL;
+        _p.set(CELL_BASE + span / 2, CELL_BASE + span / 2, 0);
+        tf.convertToWorldSpaceAR(_p, _q);
+        n.setWorldPosition(_q.x, _q.y, ui.node.worldPosition.z);
+        this.cam.orthoHeight = (span * world2d.worldScale.y) / 2;
+      } else {
+        n.setWorldPosition(ui.node.worldPosition);
+        this.cam.orthoHeight = ui.orthoHeight;
+      }
     }
   }
 
@@ -347,7 +397,7 @@ class TownEnts3D implements FieldExtra {
       oval.enabled = false;
       restore.push(() => oval.isValid && (oval.enabled = true));
     }
-    const item: Item = { art, owner, unit, card, mat, depthCard, depthMat, layers, restore };
+    const item: Item = { art, owner, unit, card, mat, cell: -1, home: art.position.clone(), depthCard, depthMat, layers, restore };
     this.items.set(art, item);
     this.place(world, item);
   }
@@ -373,30 +423,71 @@ class TownEnts3D implements FieldExtra {
       }
       const w = size.width * Math.abs(art.scale.x) + 24;
       const hh = size.height * Math.abs(art.scale.y) + 24;
-      const cx = node.position.x + art.position.x;
-      const cy = node.position.y + art.position.y;
+      // 图在地图上的位置按它原来的位置算(自由视角下这个节点被挪到格子区里去了)
+      const cx = node.position.x + item.home.x;
+      const cy = node.position.y + item.home.y;
       x0 = cx - w / 2;
       x1 = cx + w / 2;
       y0 = cy - hh / 2;
       h = hh;
     }
     const U = world.cfg.unitsPerM;
-    world.toWorld((x0 + x1) / 2, y0, _p);
-    item.card.setPosition(_p);
+    let visible = item.unit ? !!item.owner.node?.activeInHierarchy : item.art.activeInHierarchy;
+    const w = x1 - x0;
+    if (world.free) {
+      // 自由视角:纸片立在它脚下那一点上、绕竖轴朝着镜头;2D 画面节点挪到格子区里它那一格去画,取样范围就是那一格里它占的一块
+      if (item.cell < 0 && visible) {
+        const free = this.cells.findIndex((c, i) => i < CELLS * CELLS && !c);
+        const at = free >= 0 ? free : this.cells.length < CELLS * CELLS ? this.cells.length : -1;
+        if (at >= 0) {
+          this.cells[at] = item;
+          item.cell = at;
+        }
+      }
+      if (item.cell < 0 || w > CELL || h > CELL) {
+        visible = false;        // 格子用完了,或者这张图比一格还大:不显示
+      } else {
+        const col = item.cell % CELLS;
+        const row = Math.floor(item.cell / CELLS);
+        const span = CELLS * CELL;
+        // 这一格里它的那一块:横向居中;纵向从格子底边起
+        const cx0 = CELL_BASE + col * CELL + (CELL - w) / 2;
+        const cy0 = CELL_BASE + row * CELL;
+        // 2D 画面节点:原来画在地图上 (x0..x1, y0..y0+h) 这一块,平移到格子里
+        const parent = item.art.parent;
+        if (parent && parent.isValid) {
+          item.art.setPosition(item.home.x + (cx0 - x0), item.home.y + (cy0 - y0), item.home.z);
+        }
+        _to.set(w / span, h / span, (cx0 - CELL_BASE) / span, (cy0 - CELL_BASE) / span);
+        // 脚线(单位:脚下那一点;图片:图的底边往上一点)落在地面上,脚线以下那一截埋在地面下面
+        const footY = item.unit ? y0 + BELOW : y0 + Math.min(h * 0.12, 24);
+        world.toWorld((x0 + x1) / 2, footY, _p, -(footY - y0) / world.upUnits());
+        item.card.setPosition(_p);
+        item.card.setRotationFromEuler(0, world.camYaw(), 0);
+      }
+    } else {
+      world.toWorld((x0 + x1) / 2, y0, _p);
+      item.card.setPosition(_p);
+      // 画面在地图上的范围(地图单位):中心 = world.mapX / mapY,半宽半高 = 半个画面的米数 × U
+      const hw = world.halfW * U;
+      const hh2 = world.halfH * U;
+      _to.set((x1 - x0) / (2 * hw), h / (2 * hh2), (x0 - (world.mapX - hw)) / (2 * hw), (y0 - (world.mapY - hh2)) / (2 * hh2));
+    }
     item.card.setScale((x1 - x0) / U, h / world.upUnits(), 1);
-    const visible = item.unit ? !!item.owner.node?.activeInHierarchy : item.art.activeInHierarchy;
     if (item.card.active !== visible) {
       item.card.active = visible;
     }
-    // 画面在地图上的范围(地图单位):中心 = world.mapX / mapY,半宽半高 = 半个画面的米数 × U
-    const hw = world.halfW * U;
-    const hh2 = world.halfH * U;
-    _to.set((x1 - x0) / (2 * hw), h / (2 * hh2), (x0 - (world.mapX - hw)) / (2 * hw), (y0 - (world.mapY - hh2)) / (2 * hh2));
     item.mat.setProperty('tilingOffset', _to);
     if (item.depthCard && item.depthMat) {
       // 比出颜色的那块靠后 3 厘米(颜色那块的深度测试要「比已有的近」才过得去);顺着镜头的视线退,画面上的位置不变
-      const pr = (world.cfg.pitch * Math.PI) / 180;
-      item.depthCard.setPosition(_p.x, _p.y - Math.sin(pr) * 0.03, _p.z - Math.cos(pr) * 0.03);
+      if (world.free) {
+        Vec3.subtract(_q, _p, world.cam.node.position).normalize();
+        item.depthCard.setPosition(_p.x + _q.x * 0.03, _p.y + _q.y * 0.03, _p.z + _q.z * 0.03);
+        item.depthCard.setRotation(item.card.rotation);
+      } else {
+        const pr = (world.cfg.pitch * Math.PI) / 180;
+        item.depthCard.setPosition(_p.x, _p.y - Math.sin(pr) * 0.03, _p.z - Math.cos(pr) * 0.03);
+      }
       item.depthCard.setScale(item.card.scale);
       if (item.depthCard.active !== visible) {
         item.depthCard.active = visible;
@@ -406,6 +497,13 @@ class TownEnts3D implements FieldExtra {
   }
 
   private remove(item: Item): void {
+    if (item.cell >= 0) {
+      this.cells[item.cell] = null;
+      item.cell = -1;
+    }
+    if (item.art.isValid) {
+      item.art.setPosition(item.home);
+    }
     for (const [n, layer] of item.layers) {
       if (n.isValid) {
         n.layer = layer;
@@ -433,6 +531,7 @@ class TownEnts3D implements FieldExtra {
       this.remove(item);
     }
     this.items.clear();
+    this.cells = [];
     for (const fn of this.flat.values()) {
       fn();
     }

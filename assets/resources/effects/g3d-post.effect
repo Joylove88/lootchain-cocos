@@ -99,14 +99,19 @@ CCProgram post-ubo %{
     vec4 lcP3;
     vec4 lcP4;
     vec4 lcP5;
+    vec4 lcP6;
+    vec4 lcP7;
+    vec4 lcP8;
   };
 }%
 
 // ───────────────────────── 环境光遮蔽 ─────────────────────────
-// 相机是正交的:深度图的值和离镜头的距离成正比,画面上的偏移和世界里的偏移也成正比,所以一个像素的三维位置直接算得出来。
-// lcP0 = 深度图一个像素有多大(xy)、画面的一半有多宽多高(米,zw)
+// 由深度图反推每个像素在镜头坐标里的三维位置,再看周围的东西高出它所在平面多少。
+// 正交相机:深度和离镜头的距离成正比,画面上的偏移就是世界里的偏移;透视相机:深度要换算,画面上的偏移还要乘上距离。
+// lcP0 = 深度图一个像素有多大(xy)、正交相机画面的一半有多宽多高(米,zw)
 // lcP1 = 近平面、远平面、取样半径(米)、仰角偏置(低于这个仰角的不算遮挡:压掉平面上的噪点)
 // lcP2 = 强度、指数、有效距离(半径的几倍,平方)、每帧转一点的角度(现在不用,固定 0)
+// lcP3 = 透视标记(1 = 透视相机)、tan(半个横向视角)、tan(半个纵向视角)
 CCProgram ao-fs %{
   precision highp float;
   #include <post-ubo>
@@ -121,11 +126,17 @@ CCProgram ao-fs %{
   #define LC_AO_SAMPLES 12
 
   float viewDist (vec2 uv) {
-    return lcP1.x + texture(lcDepth, uv).r * (lcP1.y - lcP1.x);
+    float d = texture(lcDepth, uv).r;
+    return lcP3.x > 0.5 ? (lcP1.x * lcP1.y) / (lcP1.y - d * (lcP1.y - lcP1.x)) : lcP1.x + d * (lcP1.y - lcP1.x);
+  }
+
+  // 画面的一半在这个距离上有多宽多高(米)
+  vec2 extent (float d) {
+    return lcP3.x > 0.5 ? lcP3.yz * d : lcP0.zw;
   }
 
   vec3 viewPos (vec2 uv, float d) {
-    return vec3((uv * 2.0 - 1.0) * lcP0.zw, -d);
+    return vec3((uv * 2.0 - 1.0) * extent(d), -d);
   }
 
   void main () {
@@ -153,8 +164,10 @@ CCProgram ao-fs %{
       float r = R * sqrt((fi + 0.5) / float(LC_AO_SAMPLES));
       float a = rot + fi * 2.39996323;
       vec2 off = vec2(cos(a), sin(a)) * r;              // 画面平面上的偏移(米)
-      float sd = viewDist(v_uv + off / (2.0 * lcP0.zw));
-      vec3 v = vec3(off, dc - sd);                       // 取样点相对这个像素的位置
+      // 换成贴图坐标上的偏移;贴着镜头的东西半径会很大,封个顶
+      vec2 suv = v_uv + clamp(off / (2.0 * extent(dc)), vec2(-0.06), vec2(0.06));
+      float sd = viewDist(suv);
+      vec3 v = viewPos(suv, sd) - P;                     // 取样点相对这个像素的位置
       float vv = dot(v, v);
       float fall = max(1.0 - vv / reach, 0.0);           // 离得远的不算
       // 取样点高出这个像素所在平面的仰角(正弦):越高挡得越多
@@ -334,11 +347,18 @@ CCProgram bloom-up-fs %{
 }%
 
 // ───────────────────────── 调色 ─────────────────────────
-// lcTexA = 画面(线性高动态;低动态时是显示用的颜色)、lcTexB = 泛光、lcTexC = 遮蔽(只在调试时看)
+// lcTexA = 画面(线性高动态;低动态时是显示用的颜色)、lcTexB = 泛光、lcTexC = 遮蔽(只在调试时看)、lcDepth = 深度(雾用)
 // lcP0 = 曝光、泛光强度、对比、对比的轴心(线性亮度)
 // lcP1 = 饱和度、肩部从多亮开始(线性值)、低动态标记、调试(0 正常 / 1 只看遮蔽 / 2 只看泛光 / 3 不调色直出)
 // lcP2 = 暗部染色(rgb)、分色的分界亮度
 // lcP3 = 亮部染色(rgb)、暗部压黑(趾部力度)
+// lcP4 = 雾的颜色(rgb,线性)、最浓到几成(0 = 不加雾)
+// lcP5 = 近平面、远平面、透视标记、-
+// lcP6 = 雾从多远开始(米)、浓度(每米)、画面半宽 / 半高的正切(透视相机;算每个像素的视线方向用)
+// lcP7 = 朝太阳的方向(相机坐标系里)、雾的颜色往太阳那边偏得多集中(指数;0 = 雾只有一种颜色)
+// lcP8 = 背着太阳那一侧雾的颜色(rgb,线性;lcP4 的颜色是朝太阳那一侧的)
+// 雾放在这里按深度加:高动态下引擎自己的雾只给半透明的东西加(它的老流程里不透明物体的雾是另一步后期)。
+// 深度图里没有半透明的东西(特效不写深度),它们会按身后的东西的距离被雾盖 —— 所以亮过 1 的像素(发光的特效)少吃雾。
 CCProgram grade-fs %{
   precision highp float;
   #include <post-ubo>
@@ -352,12 +372,31 @@ CCProgram grade-fs %{
   uniform sampler2D lcTexB;
   #pragma rate lcTexC pass
   uniform sampler2D lcTexC;
+  #pragma rate lcDepth pass
+  uniform sampler2D lcDepth;
 
   layout(location = 0) out vec4 fragColor;
 
   void main () {
     vec3 c = texture(lcTexA, v_uv).rgb;
     c = lcP1.z > 0.5 ? c * c : c;
+    if (lcP4.w > 0.001) {
+      float d = texture(lcDepth, v_uv).r;
+      if (d < 0.99999) {                  // 深度到头的是天空,不加
+        float dist = lcP5.z > 0.5 ? (lcP5.x * lcP5.y) / (lcP5.y - d * (lcP5.y - lcP5.x)) : lcP5.x + d * (lcP5.y - lcP5.x);
+        float x = max(dist - lcP6.x, 0.0) * lcP6.y;
+        float fog = lcP4.w * (1.0 - exp(-x * x));
+        fog *= clamp(2.0 - max(c.r, max(c.g, c.b)), 0.0, 1.0);
+        vec3 fogC = lcP4.rgb;
+        if (lcP7.w > 0.0) {
+          // 黄昏这类太阳很低的:朝太阳看过去雾是暖的亮的,背着太阳是冷的暗的(只有一种颜色的话四面八方都像起了沙尘)
+          vec2 ndc = v_uv * 2.0 - 1.0;
+          vec3 vd = normalize(vec3(ndc.x * lcP6.z, ndc.y * lcP6.w, -1.0));
+          fogC = mix(lcP8.rgb, lcP4.rgb, pow(clamp(dot(vd, lcP7.xyz) * 0.5 + 0.5, 0.0, 1.0), lcP7.w));
+        }
+        c = mix(c, fogC, fog);
+      }
+    }
     vec3 bloom = texture(lcTexB, v_uv).rgb;
     float dbg = lcP1.w;
     if (dbg > 3.5) {

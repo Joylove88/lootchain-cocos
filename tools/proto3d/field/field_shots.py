@@ -317,7 +317,16 @@ async def run(port):
                  " spinesHidden: [t.leader, ...t.followers].filter(a => a.spineNode && !a.spineNode.active).length,"
                  " floatOut: !!cc.director.root.pipeline.getMacroBool('CC_USE_FLOAT_OUTPUT'), camPost: cc.director.root.cameraList.filter(c => c.pipelineSettings).length,"
                  " ovalOff: [t.leader, ...t.followers, ...t.monsters].filter(a => { const g = a.node && a.node.getComponent(cc.Graphics); return g && !g.enabled; }).length,"
-                 " contactOff: [t.leader, ...t.followers, ...t.monsters].filter(a => { const c = a.node && a.node.getChildByName('Contact'); return c && !c.active; }).length }; };")
+                 " contactOff: [t.leader, ...t.followers, ...t.monsters].filter(a => { const c = a.node && a.node.getChildByName('Contact'); return c && !c.active; }).length,"
+                 # 新地面 / 自由视角动过的东西(2026-11-17):天空盒开关、整图地表的材质、直接包过的图形接口函数、贴地层和实体层里开着的节点数、2D 骨骼的位置
+                 " skyOn: g.skybox.enabled, splatFx: (() => { const sp = t.groundRoot.getChildByName('Splat'); const m = sp && sp.getComponent(cc.Sprite).customMaterial; return m ? m.effectName : null; })(),"
+                 " glHook: Object.prototype.hasOwnProperty.call(cc.director.root.device.gl || {}, 'bindFramebuffer'),"
+                 " groundOn: t.groundRoot.children.filter(x => x.active).length, propsOn: t.entityRoot.children.filter(x => x.active && x.name.startsWith('TownProp_')).length,"
+                 " spinePos: [t.leader, ...t.followers].map(a => a.spineNode ? [Math.round(a.spineNode.position.x), Math.round(a.spineNode.position.y)] : null) }; };")
+            if OPT.get('free') or OPT.get('look') or OPT.get('ground'):
+                # 现场开的时候带上自由视角 / 新地面 / 灯光方案(--free=1 --ground=1 --look=dusk)
+                await js("window.__LC_FIELD_CAM = %d; window.__LC_FIELD_GROUND = %d; window.__LC_FIELD_LOOK = '%s'; return 1;"
+                         % (1 if OPT.get('free') else 0, 1 if OPT.get('ground') else 0, OPT.get('look', 'day')))
             before = await js(G + " return JSON.stringify({ f3d: F.info().on, snap: snap() });")
             log('关着(进图时没带开关)', before)
             await shot('switch_a_关着')
@@ -326,6 +335,8 @@ async def run(port):
             await shot('switch_b_开了')
             off = await js(G + " F.toggle(false); await sleep(800); return JSON.stringify({ f3d: F.info().on, snap: snap() });")
             log('再关掉', off)
+            log('关掉后的灯光 / 后期取值', await js("const w = F.raw().world; return JSON.stringify(w ? { sun: w.cfg.sun, ambient: w.cfg.ambient, shadow: w.cfg.shadow, shadowHalf: w.cfg.shadowHalf, sunDir: w.cfg.sunDir,"
+                                                " fog: w.post.cfg.fog, exposure: w.post.cfg.exposure, bloom: w.post.cfg.bloomIntensity, vignette: w.post.cfg.vignette, lobe: w.post.cfg.fogLobe } : null);"))
             await shot('switch_c_再关掉')
             try:
                 same = json.loads(before)['snap'] == json.loads(off)['snap']
@@ -349,6 +360,11 @@ async def run(port):
             rec_name = OPT.get('rec-name', '实战录屏')
             rec_t0 = 0.0
 
+            if OPT.get('orbit'):
+                # 自由视角的录屏:镜头绕着队长慢慢转、一高一低地摆(--orbit=每秒转多少度)
+                await js("clearInterval(window.__lcOrbit); const sp = %f; let last = performance.now(); window.__lcOrbit = setInterval(() => { const c = window.__f3dcam; const v = c && c.view(); if (!v) return;"
+                         " const now = performance.now(); const dt = Math.min(0.1, (now - last) / 1000); last = now;"
+                         " c.view({ yaw: v.yaw + sp * dt, pitch: 23 + 13 * Math.sin(now / 5200), dist: 10.5 + 2.5 * Math.sin(now / 7300) }, false); }, 16); return 1;" % float(OPT.get('orbit')))
             if REC > 0 and rec_from == 'walk' and await rec_start():
                 rec_t0 = time.time()
             # 自己走过去:游戏的自动寻路,走到怪群警戒圈边上

@@ -1237,7 +1237,7 @@ function addTufts(b: Leafy, rnd: () => number, spots: Array<[number, number, num
 }
 
 /** 一堆石头(宽 = 1):大的压着小的,脚边有碎石和几丛草,底下一圈接地的暗影。 */
-function buildRocks(hr: number, seed: number, style: 'pile' | 'boulder' | 'small'): Variant {
+function buildRocks(hr: number, seed: number, style: 'pile' | 'boulder' | 'small' | 'scatter'): Variant {
   const rnd = mulberry32(seed);
   const M = mats();
   const b = new Leafy();
@@ -1270,6 +1270,16 @@ function buildRocks(hr: number, seed: number, style: 'pile' | 'boulder' | 'small
     chunk(0.045, 0.24, 0.36, 1, 0.1);
     addContact(shade, -0.02, 0.04, 0.62, 0.5);
     spots.push([-0.46, 0.24, 0.18], [0.44, 0.28, 0.16], [0.14, 0.4, 0.14], [-0.16, -0.32, 0.16], [0.34, -0.2, 0.15]);
+  } else if (style === 'scatter') {
+    // 一摊碎石:没有主石,十几颗大小不一的小石子散在地上(2D 的图是「撒在地上的一片」,立成一张牌就成了悬在半空的黑点)
+    const n = 13 + Math.floor(rnd() * 5);
+    for (let i = 0; i < n; i += 1) {
+      const a = rnd() * TAU;
+      const d = Math.sqrt(rnd()) * 0.46;
+      const r = 0.022 + Math.pow(rnd(), 2.2) * 0.075;
+      chunk(r, Math.cos(a) * d, Math.sin(a) * d * 0.72, r > 0.06 ? 2 : 1, 0.15, 0.62);
+    }
+    addContact(shade, 0, 0, 0.5, 0.38, 0.5);
   } else {
     chunk(0.24, -0.1, 0, 3, 0.6, 1.1);
     chunk(0.18, 0.2, 0.06, 2, 0.45, 0.9);
@@ -1627,6 +1637,7 @@ function buildBanner(hr: number, seed: number): { pole: Variant; cloth: Variant;
 /**
  * 营帐(宽 = 1,斜着摆):两根立柱撑一根脊梁,帆布从脊梁搭到两侧的矮墙上再垂到地(布有垂度、有一道道褶),
  * 朝镜头的山墙是两扇掀开的门帘,里面是暗的;四角拉绳钉在地上。帆布是织出来的粗布(看得出布纹),下摆脏。
+ * 帆布全部两面都画:自由视角下会绕到它背后 / 侧面去看(只画一面的话,有一侧的矮墙和后山墙从外面看是空的)。
  */
 function buildTent(hr: number, seed: number): Variant {
   const rnd = mulberry32(seed);
@@ -1648,7 +1659,7 @@ function buildTent(hr: number, seed: number): Variant {
       const z = lerp(-D, D, u);
       const sag = Math.sin(v * Math.PI) * 0.03 * (0.6 + 0.4 * Math.sin(u * Math.PI)) + Math.sin(u * Math.PI * 7 + s) * 0.006 * Math.sin(v * Math.PI);
       out.set(s * lerp(W * 1.03, 0.004, v), lerp(wall, ridge, v) - sag, z);
-    }, { den: 3.2, xf: T, flip: s < 0, tint: (u, v, p) => {
+    }, { den: 3.2, xf: T, flip: s < 0, twoSided: true, tint: (u, v, p) => {
       const k = (0.8 + 0.2 * v - 0.07 * Math.abs(Math.sin(u * Math.PI * 7 + s))) * (0.92 + 0.08 * Math.sin(u * 23 + v * 9));
       void p;
       return [k, k * 0.985, k * 0.95];
@@ -1656,7 +1667,7 @@ function buildTent(hr: number, seed: number): Variant {
     // 侧墙:从墙头垂到地,下摆往外撇一点、发脏
     canvas.surf(12, 3, (u, v, out) => {
       out.set(s * (W * 1.03 + 0.03 * (1 - v) - 0.01 * Math.sin(u * Math.PI * 9)), wall * v, lerp(-D, D, u));
-    }, { den: 3.2, xf: T, flip: s < 0, tint: (u, v) => {
+    }, { den: 3.2, xf: T, flip: s < 0, twoSided: true, tint: (u, v) => {
       const k = dirt(wall * v) * (0.86 + 0.08 * Math.sin(u * Math.PI * 9));
       return [k, k * 0.97, k * 0.9];
     } });
@@ -1667,7 +1678,7 @@ function buildTent(hr: number, seed: number): Variant {
       const x = s * lerp(0, W * 1.03, u);
       const topY = lerp(ridge, wall, u);
       out.set(x, topY * v, -D - 0.01 * Math.sin(v * Math.PI));
-    }, { den: 3.2, xf: T, flip: s < 0, tint: (u, v) => {
+    }, { den: 3.2, xf: T, flip: s < 0, twoSided: true, tint: (u, v) => {
       const k = dirt(v * 0.4) * 0.82;
       return [k, k * 0.97, k * 0.9];
     } });
@@ -1753,6 +1764,7 @@ const KINDS: Kind[] = [
   { test: /fld_g_boulders_l|w3_rock_big/, count: 3, sway: 0, spin: true, make: (hr, seed) => buildRocks(hr, seed, 'boulder') },
   { test: /fld_rocks|fld_g_boulders_m|w3_rock_small/, count: 3, sway: 0, spin: true, make: (hr, seed) => buildRocks(hr, seed, 'pile') },
   { test: /fld_g_rocks_s/, count: 3, sway: 0, spin: true, make: (hr, seed) => buildRocks(hr, seed, 'small') },
+  { test: /fld_g_gravel|fld_g_stones/, count: 4, sway: 0, spin: true, make: (hr, seed) => buildRocks(hr, seed, 'scatter') },
   { test: /vil3_grass_tuft|fld_g_grass_l/, count: 3, sway: 2.6, spin: true, make: (hr, seed) => buildGrass(hr, seed, mats().grass) },
   { test: /fld_g_grass_s/, count: 3, sway: 2.6, spin: true, make: (hr, seed) => buildGrass(hr, seed, mats().dry) },
   { test: /w3_fern/, count: 3, sway: 1.8, spin: true, make: (hr, seed) => buildFern(hr, seed) },

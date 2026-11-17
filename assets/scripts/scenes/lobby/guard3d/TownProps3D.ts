@@ -1,4 +1,4 @@
-import { Color, gfx, Material, Mesh, MeshRenderer, Node, Sprite, SpriteFrame, sys, UITransform, utils, Vec3 } from 'cc';
+import { Color, game, gfx, Material, Mesh, MeshRenderer, Node, Sprite, SpriteFrame, sys, UITransform, utils, Vec3 } from 'cc';
 import { EDITOR } from 'cc/env';
 import { addFieldExtra } from './TownUnits3D';
 import type { FieldExtra } from './TownUnits3D';
@@ -24,6 +24,77 @@ import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
 /** 高过这个数(地图单位)的摆件才会挡住人 / 才值得淡出(同 LobbyTownRenderer 的 OCCLUDER_MIN_H)。 */
 const TALL = 260;
 const FADE_TO = 0.4;
+/**
+ * 自由视角下挡镜头的淡到多少(比固定镜头淡得多:镜头会钻到树冠里,半透明的一大片枝叶照样挡画面)。
+ * 这个数是「每一层叶片」的不透明度 —— 这种淡法不写深度,一棵树前后好几层叶片叠起来,实际看到的比这个数实得多。
+ */
+export const FADE_FREE = 0.06;
+
+/**
+ * 自由视角:一个高的东西(在 3D 世界里的位置 px / pz、半径 r 米)挡不挡镜头 —— 贴着镜头,或者正好夹在镜头和队长之间。
+ * 地图里的摆件和地图外那圈树(TownOutskirts3D)共用。
+ */
+export function blocksView(world: TownWorld3D, px: number, pz: number, r: number): boolean {
+  const c = world.cam.node.worldPosition;
+  const f = world.focus;
+  const dc = Math.hypot(px - c.x, pz - c.z);
+  if (dc < r + 2.0) {
+    return true;
+  }
+  const sx = f.x - c.x;
+  const sz = f.z - c.z;
+  const len2 = sx * sx + sz * sz;
+  if (len2 < 0.01) {
+    return false;
+  }
+  const t = ((px - c.x) * sx + (pz - c.z) * sz) / len2;
+  return t > 0.02 && t < 0.9 && Math.hypot(px - (c.x + sx * t), pz - (c.z + sz * t)) < r + 0.45;
+}
+
+/**
+ * 把一组网格淡到 fade(1 = 换回共用材质)。靠材质实例上的不透明度:
+ * - 有多重采样时:配合「透明度转覆盖率」得到半透明(不用排序);
+ * - 开了后期(没有多重采样)时:实例改成真的半透明混合。深度照写、裁切线跟着不透明度一起降(不然整棵被裁没)。
+ * ghost(自由视角下挡镜头的那种,淡得很厉害):不写深度、排到所有不透明的东西之后再画。写深度的话,一棵树里先画的那层叶片
+ * 会把后画的挡掉、后画的又叠在先画的上面,淡出来是一道道深浅不一的横条;不写深度就是每层都均匀地叠一遍。
+ */
+export function fadeRenderers(renderers: MeshRenderer[], shared: Material[], fade: number, ghost = false): void {
+  const soft = fieldSoftEdges();
+  for (let i = 0; i < renderers.length; i += 1) {
+    const mr = renderers[i];
+    if (!mr.isValid) {
+      continue;
+    }
+    if (fade >= 1) {
+      mr.setSharedMaterial(shared[i], 0);
+      continue;
+    }
+    const base0 = shared[i];
+    const fresh = mr.sharedMaterials[0] === base0;
+    const inst = mr.getMaterialInstance(0);
+    if (!inst) {
+      continue;
+    }
+    if (!soft && fresh) {
+      linearBlend(inst);       // 先摘「混合通道」的标记,再开混合(顺序反了着色器会按「直接输出显示颜色」的那一版编)
+      const blendState = { targets: [{ blend: true, blendSrc: gfx.BlendFactor.SRC_ALPHA, blendDst: gfx.BlendFactor.ONE_MINUS_SRC_ALPHA,
+        blendSrcAlpha: gfx.BlendFactor.ZERO, blendDstAlpha: gfx.BlendFactor.ONE }] };
+      if (ghost) {
+        inst.overridePipelineStates({ priority: 200, depthStencilState: { depthWrite: false }, blendState }, 0);
+      } else {
+        inst.overridePipelineStates({ blendState }, 0);
+      }
+    }
+    const base = (base0.getProperty('mainColor') as Color | null) ?? Color.WHITE;
+    inst.setProperty('mainColor', new Color(base.r, base.g, base.b, Math.round(255 * fade)));
+    if (!soft) {
+      const cut = base0.getProperty('alphaThreshold');
+      if (typeof cut === 'number') {
+        inst.setProperty('alphaThreshold', cut * fade);
+      }
+    }
+  }
+}
 
 /** 代码生成的摆件:build 返回挂好网格的节点(原点 = 脚底中心,+y 朝上,单位米)。 */
 export interface PropBuilder {
@@ -37,6 +108,12 @@ export interface Built { node: Node; renderers: MeshRenderer[]; sway?: Node[]; s
 const builders: PropBuilder[] = [];
 export function addPropBuilder(b: PropBuilder): void {
   builders.push(b);
+}
+
+/** 按贴图路径找生成器、建一个代码生成的摆件(地图外那圈树这类不在地图数据里的东西用)。没有对应的生成器返回 null。 */
+export function buildProp(parent: Node, asset: string, w: number, h: number, seed: number, flip = false): Built | null {
+  const b = builders.find((x) => x.match(asset));
+  return b ? b.build(parent, asset, w, h, seed, flip) : null;
 }
 
 interface Item {
@@ -58,6 +135,8 @@ interface Item {
   fade: number;
   seed: number;
   kind: 'card' | 'mesh';
+  /** 自由视角下立牌现在朝着哪个方向(度)。 */
+  yaw: number;
 }
 
 const _v = new Vec3();
@@ -115,6 +194,11 @@ class TownProps3D implements FieldExtra {
   private scan(self: any, world: TownWorld3D, list: Array<{ node: Node; y: number }>): void {
     let built = 0;
     let shown = 0;
+    // 自由视角:2D 那边的裁剪范围放大成了一个大方块,这里再按离队长多远收成圆 —— 大件看得远,小件(草、碎石)只留近处的
+    const free = world.free;
+    const lx = self.leader?.x ?? 0;
+    const ly = self.leader?.y ?? 0;
+    const props: any[] = self.def?.props ?? [];
     for (const entry of list) {
       const node = entry.node;
       if (!node || !node.isValid) {
@@ -125,7 +209,13 @@ class TownProps3D implements FieldExtra {
         index = Number(node.name.slice(node.name.lastIndexOf('_') + 1));
         this.indexOf.set(node, index);
       }
-      const on = node.active;
+      let on = node.active;
+      if (on && free) {
+        const prop = props[index];
+        if (prop) {
+          on = world.metres(prop.x, prop.y, lx, ly) < (prop.width >= 200 ? world.range.big : world.range.small);
+        }
+      }
       let item = this.items.get(index);
       if (!item && on && built < 60 && !this.failed.has(index)) {
         item = this.build(self, world, node, index) ?? undefined;
@@ -199,7 +289,7 @@ class TownProps3D implements FieldExtra {
       this.stats.meshes += 1;
     }
     return { index, node2d, art, node: made.node, renderers: made.renderers, shared: made.renderers.map((r) => r.sharedMaterials[0]!), sway: made.sway ?? [], swayAmp: made.swayAmp ?? 1, flat: kind === 'card',
-      x: prop.x, y: prop.y, w: size.width, h: size.height, tall: size.height >= TALL, fade: 1, seed, kind };
+      x: prop.x, y: prop.y, w: size.width, h: size.height, tall: size.height >= TALL, fade: 1, seed, kind, yaw: 0 };
   }
 
   // ───────────────────────── 立牌 ─────────────────────────
@@ -260,15 +350,26 @@ class TownProps3D implements FieldExtra {
   // ───────────────────────── 每帧:挡住队长的淡出、随风摆 ─────────────────────────
   private animate(self: any, dt: number): void {
     const leader = self.leader;
-    const k = 1 - Math.exp(-10 * dt);
+    // 淡出按真实的帧时间走(dt 在顿帧时是 0:镜头在顿帧里照样能转,挡镜头的树不能卡在不透明上)
+    const k = 1 - Math.exp(-10 * Math.min(0.05, Math.max(dt, game.deltaTime)));
+    const world = this.worldRef;
+    const yaw = world?.camYaw() ?? 0;
+    const free = !!world && world.free;
     let faded = 0;
     for (const item of this.items.values()) {
       if (!item.node.active) {
         continue;
       }
       if (item.tall) {
-        const covered = !!leader && leader.y > item.y + 8 && Math.abs(leader.x - item.x) < item.w * 0.42 && leader.y < item.y + item.h * 0.9;
-        const target = covered ? FADE_TO : 1;
+        let target = 1;
+        if (free) {
+          // 自由视角:按 3D 里的位置看它挡不挡镜头
+          const p = item.node.position;
+          target = blocksView(world!, p.x, p.z, (item.w / world!.cfg.unitsPerM) * 0.36) ? FADE_FREE : 1;
+        } else {
+          const covered = !!leader && leader.y > item.y + 8 && Math.abs(leader.x - item.x) < item.w * 0.42 && leader.y < item.y + item.h * 0.9;
+          target = covered ? FADE_TO : 1;
+        }
         if (item.fade !== target) {
           item.fade = Math.abs(target - item.fade) < 0.01 ? target : item.fade + (target - item.fade) * k;
           this.applyFade(item);
@@ -284,49 +385,20 @@ class TownProps3D implements FieldExtra {
         const a = (Math.sin(t * 1.3 - ph) * 0.7 + Math.sin(t * 2.9 - ph * 1.7) * 0.3) * item.swayAmp;
         const b = Math.sin(t * 1.7 - ph * 1.3) * 0.5 * item.swayAmp;
         for (let i = 0; i < item.sway.length; i += 1) {
-          item.sway[i].setRotationFromEuler(item.flat ? 0 : b, 0, a);
+          item.sway[i].setRotationFromEuler(item.flat ? 0 : b, item.flat ? yaw : 0, a);
         }
+      } else if (item.flat && item.yaw !== yaw) {
+        // 自由视角:手绘图立牌绕竖轴朝着镜头(不随风摆的也要跟着转)
+        item.yaw = yaw;
+        item.node.setRotationFromEuler(0, yaw, 0);
       }
     }
     this.stats.faded = faded;
   }
 
-  /**
-   * 淡出靠材质实例上的不透明度;恢复到 1 就换回共用材质。
-   * - 有多重采样时:配合「透明度转覆盖率」得到半透明(不用排序);
-   * - 开了后期(没有多重采样)时:实例改成真的半透明混合。深度照写、裁切线跟着不透明度一起降(不然整棵被裁没)。
-   */
+  /** 淡出靠材质实例上的不透明度;恢复到 1 就换回共用材质(见 fadeRenderers)。 */
   private applyFade(item: Item): void {
-    const soft = fieldSoftEdges();
-    for (let i = 0; i < item.renderers.length; i += 1) {
-      const mr = item.renderers[i];
-      if (!mr.isValid) {
-        continue;
-      }
-      if (item.fade >= 1) {
-        mr.setSharedMaterial(item.shared[i], 0);
-        continue;
-      }
-      const shared = item.shared[i];
-      const fresh = mr.sharedMaterials[0] === shared;
-      const inst = mr.getMaterialInstance(0);
-      if (!inst) {
-        continue;
-      }
-      if (!soft && fresh) {
-        linearBlend(inst);       // 先摘「混合通道」的标记,再开混合(顺序反了着色器会按「直接输出显示颜色」的那一版编)
-        inst.overridePipelineStates({ blendState: { targets: [{ blend: true, blendSrc: gfx.BlendFactor.SRC_ALPHA, blendDst: gfx.BlendFactor.ONE_MINUS_SRC_ALPHA,
-          blendSrcAlpha: gfx.BlendFactor.ZERO, blendDstAlpha: gfx.BlendFactor.ONE }] } }, 0);
-      }
-      const base = (shared.getProperty('mainColor') as Color | null) ?? Color.WHITE;
-      inst.setProperty('mainColor', new Color(base.r, base.g, base.b, Math.round(255 * item.fade)));
-      if (!soft) {
-        const cut = shared.getProperty('alphaThreshold');
-        if (typeof cut === 'number') {
-          inst.setProperty('alphaThreshold', cut * item.fade);
-        }
-      }
-    }
+    fadeRenderers(item.renderers, item.shared, item.fade, !!this.worldRef?.free);
   }
 
   /**

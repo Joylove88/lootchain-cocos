@@ -5,10 +5,12 @@ import { G3DChar, hasChar, loadChar } from './G3DChar';
 import type { CharTemplate } from './G3DChar';
 import { loadKit } from './G3DKit';
 import { G3DStudio, STUDIO_LAYER } from './G3DStudio';
+import { groundFlag, loadGround } from './TownGround3D';
+import type { GroundCfg } from './TownGround3D';
 import { loadPost, postLevel } from './TownPost3D';
 import type { PostCfg } from './TownPost3D';
-import { FIELD_LAYER, TownWorld3D } from './TownWorld3D';
-import type { WorldCfg } from './TownWorld3D';
+import { camFlag, FIELD_LAYER, TownWorld3D } from './TownWorld3D';
+import type { ViewCfg, WorldCfg } from './TownWorld3D';
 
 /**
  * 野外即时战斗的 3D 单位层(实验,2026-11-16;默认关)。
@@ -217,8 +219,10 @@ class TownUnits3D {
   /** 真 3D 场景(mode 2 才有)。 */
   world: TownWorld3D | null = null;
   readonly extras: FieldExtra[] = [];
-  private ready = false;          // 3D 标准材质的着色器到位了没有
+  private ready = false;          // 3D 标准材质的着色器(以及这次要用到的后期 / 新地面的着色器)到位了没有
   private kitAsked = false;
+  private kitDone = false;
+  private kitOk = false;
   private studio: G3DStudio | null = null;
   private owner: any = null;
   private units = new Map<any, Unit>();
@@ -230,6 +234,10 @@ class TownUnits3D {
   private lastSyncFrame = -10;
   private lastError = '';
   private stats = { spawned: 0, reused: 0, released: 0, actions: 0, bites: 0, hits: 0, deaths: 0, noCell: 0 };
+  /** 上一帧的 2D 世界节点(换地图时它会重建,用来发现「换地图了」)。 */
+  private mapNode: Node | null = null;
+  /** 真 3D 场景里对 2D 那边做过的零碎改动(不属于哪个单位的),整层撤掉时一起还原。 */
+  private worldRestore: Array<() => void> = [];
   private noModel = new Map<string, number>();
 
   /** 这个角色现在是不是 3D 的(给残影等钩子用)。 */
@@ -253,22 +261,38 @@ class TownUnits3D {
       this.studio = new G3DStudio({ cell: CFG.cell, cols: CFG.cols, rows: CFG.rows, pitch: CFG.pitch, key: CFG.key, ambient: CFG.ambient, shadow: CFG.shadow, footV: 0.36 });
     }
     director.on(Director.EVENT_AFTER_UPDATE, this.late, this);
+    // 后期 / 新地面的着色器先读好再建 3D 世界:开不开后期决定带透明边的材质用软边还是硬裁切,不能建到一半才知道。
+    // 每次开都对一遍(读过的立刻返回):开关是能现场改的,第一次开的时候没要新地面、后来要了,也得补读
+    const extras = (): void => {
+      const steps: Array<(next: () => void) => void> = [];
+      if (mode === 2 && postLevel() > 0) {
+        steps.push(loadPost);
+      }
+      if (mode === 2 && (groundFlag() || camFlag())) {
+        steps.push(loadGround);
+      }
+      const run = (i: number): void => {
+        if (i >= steps.length) {
+          this.ready = this.kitOk;
+          return;
+        }
+        steps[i](() => run(i + 1));
+      };
+      run(0);
+    };
     if (!this.kitAsked) {
       this.kitAsked = true;
       loadKit(['g3d-standard'], (missing) => {
-        const ok = missing.length === 0;
-        if (!ok) {
+        this.kitOk = missing.length === 0;
+        if (!this.kitOk) {
           this.lastError = 'missing g3d-standard';
         }
-        if (mode === 2 && postLevel() > 0) {
-          // 后期的着色器先读好再建 3D 世界:开不开后期决定带透明边的材质用软边还是硬裁切,不能建到一半才知道
-          loadPost(() => {
-            this.ready = ok;
-          });
-        } else {
-          this.ready = ok;
-        }
+        this.kitDone = true;
+        extras();
       });
+    } else if (this.kitDone) {
+      this.ready = false;
+      extras();
     }
   }
 
@@ -294,10 +318,31 @@ class TownUnits3D {
         console.warn('[f3d] extra stop', error);
       }
     }
+    for (const fn of this.worldRestore.splice(0)) {
+      try {
+        fn();
+      } catch (error) {
+        void error;
+      }
+    }
     this.studio?.close();
+    const wasFree = !!this.world?.free;
     this.world?.close();
+    // 自由视角把 2D 的视野裁剪范围放大过(打开了一大片屏幕外的摆件和怪):撤掉之后马上按原来的范围重算一遍,
+    // 不等它自己(它只在镜头挪动时重算,定格 / 站着不动时那一大片会一直开着白画)
+    const owner = this.owner;
+    if (wasFree && owner && owner.entityRoot && owner.entityRoot.isValid) {
+      try {
+        owner.cullKey = '';
+        owner.updateCulling();
+        owner.cullMonsters();
+      } catch (error) {
+        void error;
+      }
+    }
     this.owner = null;
     this.mode = 0;
+    this.mapNode = null;
   }
 
   // ───────────────────────── 每帧:跟在野外渲染器的 step 后面 ─────────────────────────
@@ -314,10 +359,16 @@ class TownUnits3D {
     if (!self.isMounted() || !self.layout || !self.leader || !self.entityRoot || !self.entityRoot.isValid) {
       return;      // 野外没挂着(在别的界面 / 战斗里):late() 发现好几帧没同步会把摄影棚 / 3D 场景停掉
     }
+    // 换了地图(2D 世界节点整个重建了):真 3D 场景里好些东西是按地图建的(整图地面的贴图集、地图外那圈地面和树、营地的灯),
+    // 整层撤掉重来,不去一样样对
+    if (this.on && mode === 2 && this.mapNode && this.mapNode !== self.world) {
+      this.stop();
+    }
     if (!this.on || this.owner !== self || this.mode !== mode) {
       this.stop();
       this.start(self, mode);
     }
+    this.mapNode = self.world ?? null;
     if (!this.ready || (mode !== 2 && !this.studio)) {
       return;
     }
@@ -330,7 +381,18 @@ class TownUnits3D {
     if (mode === 2) {
       const w = this.world!;
       if (!w.isOpen()) {
-        w.open();
+        w.open(self);
+        if (w.free) {
+          // 自由视角的可视范围比 2D 的大得多:进来的这一帧就按放大后的范围算一遍(不等 2D 那边 —— 顿帧 / 定格时它不算,
+          // 画面里就只有原来屏幕那么大一块里的摆件)
+          try {
+            self.cullKey = '';
+            self.updateCulling();
+            self.cullMonsters();
+          } catch (error) {
+            void error;
+          }
+        }
       }
       if (!w.sync(self)) {
         return;
@@ -408,6 +470,14 @@ class TownUnits3D {
         }
       }
       if (mode === 2) {
+        if (this.lastSyncFrame % 12 === 0) {
+          // 指引箭头(挂在队长节点下面、铺在地上的那三个箭头):交给地表相机画 —— 压在 3D 角色脚下;
+          // 自由视角下它也就成了真贴在地上、朝着目标的(留在界面那一层的话是一块不跟镜头转的 2D 图)
+          const gp: Node | null = self.guidePointer ?? null;
+          if (gp && gp.isValid && gp.layer === self.entityRoot.layer) {
+            this.worldRestore.push(this.world!.toGround(gp));
+          }
+        }
         for (const x of this.extras) {
           x.sync(self, this.world!, frozen ? 0 : step, frozen);
         }
@@ -1073,6 +1143,65 @@ function install(): void {
   (globalThis as any).__f3d = { toggle: (on: boolean | number) => units.toggle(on), info: () => units.info(), dump: () => units.dump(), set: (p: Partial<FieldCfg>) => units.set(p),
     world: (p?: Partial<WorldCfg>) => (p ? units.setWorld(p) : units.world?.info() ?? null), raw: () => units };
   (globalThis as any).__f3dpost = { level: (n: number) => units.postLevel(n), set: (p: Partial<PostCfg>) => units.setPost(p), info: () => units.world?.post.info() ?? null };
+  // ── 自由视角的配套(只在自由视角开着时起作用) ──
+  // 视野裁剪:2D 只留屏幕范围内的摆件和怪;镜头压低后看得远,范围改成「以镜头中心为准、前后左右各多少米」(见 TownWorld3D.range)
+  const wide = (name: string, pick: (w: TownWorld3D) => number): void => {
+    wrap(name, (orig) => function wideCull(this: any, ...args: any[]) {
+      const w = units.world;
+      if (!w || !w.free || !w.isOpen()) {
+        return orig.apply(this, args);
+      }
+      const R = pick(w);
+      const size = { w: 2 * R * w.cfg.unitsPerM, h: 2 * R * w.upUnits() };
+      this.viewSize = (): { w: number; h: number } => size;
+      try {
+        return orig.apply(this, args);
+      } finally {
+        delete this.viewSize;
+      }
+    });
+  };
+  wide('updateCulling', (w) => w.range.big);
+  wide('cullMonsters', (w) => w.range.unit);
+  // 摇杆 / 方向键:「上」= 离开镜头的方向。镜头转了多少度,输入的方向就跟着转多少度;
+  // 地图的纵向在 3D 里被拉长过(÷ sin 俯角),换回地图坐标时纵向要乘回去,不然往纵深跑会比横着跑快
+  wrap('inputVector', (orig) => function camInput(this: any, ...args: any[]) {
+    const v = orig.apply(this, args) as { x: number; y: number };
+    const w = units.world;
+    if (!w || !w.free || !w.isOpen() || (!v.x && !v.y)) {
+      return v;
+    }
+    const a = (w.camYaw() * Math.PI) / 180;
+    const sinP = Math.sin((w.cfg.pitch * Math.PI) / 180);
+    // 镜头绕到 a 度的位置上时:往前(离开镜头)= (-sin a, -cos a),往右 = (cos a, -sin a)(3D 的 x / z;a = 0 时镜头在 +z 一侧往 -z 看)
+    const wx = v.x * Math.cos(a) - v.y * Math.sin(a);
+    const wz = -v.x * Math.sin(a) - v.y * Math.cos(a);
+    return { x: wx, y: -wz * sinP };
+  });
+  (globalThis as any).__f3dcam = {
+    // 现场开 / 关自由视角:整层撤掉、下一帧按新设置重建
+    on: (v: boolean) => loadGround(() => {
+      (globalThis as any).__LC_FIELD_CAM = v ? 1 : 0;
+      units.stop();
+    }),
+    view: (p?: Partial<ViewCfg>, snap = true) => (units.world ? (p ? units.world.setView(p, snap) : units.world.view) : null),
+    // 现场换灯光方案('day' / 'dusk'):整层撤掉、下一帧按新方案重建
+    look: (name: string) => {
+      (globalThis as any).__LC_FIELD_LOOK = name;
+      units.stop();
+      return name;
+    },
+  };
+  (globalThis as any).__f3dground = {
+    // 现场开 / 关新做法的地面:整层撤掉、下一帧按新设置重建
+    on: (v: boolean) => loadGround(() => {
+      (globalThis as any).__LC_FIELD_GROUND = v ? 1 : 0;
+      units.stop();
+    }),
+    set: (p: Partial<GroundCfg>) => units.world?.ground3d.set(p),
+    info: () => units.world?.ground3d.info() ?? null,
+    raw: () => units.world?.ground3d ?? null,
+  };
 }
 
 if (!EDITOR && sys.isBrowser) {

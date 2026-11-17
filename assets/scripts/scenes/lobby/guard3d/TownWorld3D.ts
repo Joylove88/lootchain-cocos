@@ -1,6 +1,10 @@
-import { Camera, Color, DirectionalLight, director, game, Layers, Material, Mesh, MeshRenderer, Node, renderer, RenderTexture, UITransform, utils, Vec3 } from 'cc';
+import { Camera, Color, DirectionalLight, director, EventKeyboard, EventMouse, game, Input, input, KeyCode, Layers, Material, Mesh, MeshRenderer, Node, renderer, RenderTexture, TextureCube, UITransform, utils, Vec3 } from 'cc';
 import { material } from './G3DKit';
 import { buildEnvCube } from './G3DSkins';
+import { buildSkyCube } from './G3DSky';
+import type { SkyOpts } from './G3DSky';
+import type { PostCfg } from './TownPost3D';
+import { GROUND_STATIC_LAYER, groundFlag, groundReady, TownGround3D } from './TownGround3D';
 import { FieldPost, postLevel } from './TownPost3D';
 
 /**
@@ -62,11 +66,109 @@ export const WORLD_CFG: WorldCfg = {
   tilesX: 8, tilesZ: 5,
 };
 
+/** 自由视角开不开:控制台现场改的(__LC_FIELD_CAM)优先,否则地址参数 ?fcam=1 / localStorage.lcFieldCam。开着时地面一定用新做法。 */
+let camFromPage: boolean | null = null;
+export function camFlag(): boolean {
+  const g = globalThis as any;
+  if (g.__LC_FIELD_CAM !== undefined) {
+    return !!g.__LC_FIELD_CAM && g.__LC_FIELD_CAM !== '0';
+  }
+  if (camFromPage === null) {
+    try {
+      const m = /[?&]fcam=(\d)\b/.exec(location.search);
+      camFromPage = m ? m[1] !== '0' : localStorage.getItem('lcFieldCam') === '1';
+    } catch (error) {
+      camFromPage = false;
+    }
+  }
+  return camFromPage;
+}
+
+// ───────────────────────── 灯光方案 ─────────────────────────
+/**
+ * 一套「灯光方案」= 主光 / 环境光 + 天空 + 雾 + 调色的一组取值。day = 原来那套白天(对着手绘地表校过的,不改任何东西);
+ * dusk = 黄昏(2026-11-17 加的对照方案:用户说和参考的那个 FPS 差太多,差距里有一条是「人家是暗场景 + 很多盏带颜色的灯」,
+ * 这里给野外也配一套压暗的、低角度暖色太阳 + 冷色天光 + 营地火光的,摆出来对比,不替换白天)。
+ * 开关:控制台现场改的(__LC_FIELD_LOOK)优先,否则地址参数 ?flook=dusk / localStorage.lcFieldLook。
+ */
+export interface Look {
+  /** 盖在 WORLD_CFG 上的灯光取值。 */
+  cfg: Partial<WorldCfg>;
+  sky: Omit<SkyOpts, 'size' | 'seed' | 'sunDir'>;
+  /**
+   * 雾(只在自由视角下开):颜色自动取天空地平线的颜色再乘 tint;start / density / max 见 TownPost3D。
+   * lobe > 0 = 雾分两种颜色(朝太阳那一侧取 sky.horizon、背着太阳取 sky.horizonAway),数越大暖色越集中在太阳那一小块方向上。
+   */
+  fog: { tint: [number, number, number]; start: number; density: number; max: number; lobe?: number };
+  /** 盖在后期参数上的取值(曝光 / 泛光 / 冷暖)。 */
+  post: Partial<PostCfg>;
+  /** 营地 / 路灯的火光强不强(0 = 不点灯;见 TownLamps3D)。 */
+  lamps: number;
+}
+
+export const LOOKS: Record<string, Look> = {
+  day: {
+    cfg: {},
+    sky: { zenith: [0.2, 0.42, 0.84], horizon: [0.66, 0.78, 0.9], ground: [0.36, 0.38, 0.36], sunColor: [1.0, 0.9, 0.7], sunSize: 0.08,
+      cloud: [1.0, 0.99, 0.97], cloudShade: [0.56, 0.63, 0.76], cover: 0.5, cloudScale: 1.25 },
+    fog: { tint: [0.95, 0.97, 1.0], start: 14, density: 0.05, max: 0.94 },
+    post: {},
+    lamps: 0,
+  },
+  dusk: {
+    cfg: { sun: 84000, ambient: 21000, sunColor: [255, 176, 112], skyColor: [104, 122, 178], groundColor: [156, 134, 126], sunDir: [0.84, -0.3, -0.44] },
+    sky: { zenith: [0.14, 0.2, 0.44], horizon: [1.0, 0.6, 0.33], horizonAway: [0.44, 0.42, 0.6], ground: [0.2, 0.17, 0.18], sunColor: [1.5, 0.8, 0.36], sunSize: 0.11,
+      cloud: [1.0, 0.72, 0.54], cloudShade: [0.36, 0.31, 0.44], cover: 0.56, cloudScale: 1.25 },
+    fog: { tint: [0.9, 0.9, 0.96], start: 12, density: 0.04, max: 0.92, lobe: 2.4 },
+    post: { exposure: 1.08, bloomIntensity: 0.62, bloomThreshold: 1.0, shadowTint: [0.9, 0.96, 1.12], highlightTint: [1.07, 1.0, 0.9], vignette: 0.26, saturation: 1.1 },
+    lamps: 1,
+  },
+};
+
+let lookFromPage: string | null = null;
+export function lookFlag(): string {
+  const g = globalThis as any;
+  if (typeof g.__LC_FIELD_LOOK === 'string') {
+    return g.__LC_FIELD_LOOK;
+  }
+  if (lookFromPage === null) {
+    try {
+      const m = /[?&]flook=([a-z]+)\b/.exec(location.search);
+      lookFromPage = m ? m[1] : localStorage.getItem('lcFieldLook') || 'day';
+    } catch (error) {
+      lookFromPage = 'day';
+    }
+  }
+  return lookFromPage;
+}
+
+const toLinear = (v: number): number => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+
+/** 自由视角的镜头:绕着队长转的第三人称(度 / 米)。 */
+export interface ViewCfg {
+  /** 绕竖轴转多少度(0 = 和原来的固定镜头同一个方向,从南往北看)。 */
+  yaw: number;
+  /** 俯角(度):越小越平视。 */
+  pitch: number;
+  /** 离队长多远(米)。 */
+  dist: number;
+  /** 纵向视角(度)。 */
+  fov: number;
+  minPitch: number;
+  maxPitch: number;
+  minDist: number;
+  maxDist: number;
+}
+
 const _v = new Vec3();
 const _l = new Vec3();
 const _r = new Vec3();
 const _u = new Vec3();
 const _d = new Vec3();
+const _a = new Vec3();
+const _b = new Vec3();
+const _c = new Vec3();
+const skyCubes = new Map<string, TextureCube>();
 
 export class TownWorld3D {
   readonly root: Node;
@@ -74,6 +176,34 @@ export class TownWorld3D {
   readonly cfg: WorldCfg;
   /** 后期处理(环境光遮蔽 / 泛光 / 调色),挂在 3D 相机上;档位见 TownPost3D.postLevel()。 */
   readonly post: FieldPost;
+  /** 铺在世界里的地面(新做法,见 TownGround3D;开关 ?fground=1)。没开时用下面那块「对着镜头贴的平板」。 */
+  readonly ground3d = new TownGround3D();
+  /** 这一次打开用的是不是新做法的地面。 */
+  private worldGround = false;
+  /**
+   * 自由视角(?fcam=1):相机换成透视的第三人称,绕着队长转 —— 鼠标右键拖动转 / 压低,滚轮缩放,Z / C 键转、X 键回正
+   * (Q / E 不能用:E 是游戏里的交互键);不开时是原来那台对着 2D 画面的正交相机。view = 想要的镜头,eye = 这一帧平滑后的。
+   */
+  free = false;
+  readonly view: ViewCfg = { yaw: 0, pitch: 40, dist: 14, fov: 38, minPitch: 4, maxPitch: 80, minDist: 3.5, maxDist: 40 };
+  private eye = { yaw: 0, pitch: 40, dist: 14 };
+  private look = new Vec3();
+  private lookReady = false;
+  private drag = { on: false, x: 0, y: 0 };
+  private turn = 0;
+  private freeSaved: any = null;
+  /**
+   * 自由视角下的可视范围(米,以队长为中心):大件(树 / 石堆 / 营帐)、小件(草 / 蕨 / 碎石)、怪。
+   * 2D 那边的视野裁剪是按「屏幕那么大一块」来的,镜头压低后看得远,范围按这几个数放大(见 TownUnits3D 的 wide);
+   * 雾在这个距离上已经很浓,东西是从雾里淡出来的,不是凭空冒出来。
+   */
+  readonly range = { big: 46, small: 21, unit: 28 };
+  /** 现在用的是哪套灯光方案;打开时被它改掉的原值(关掉时放回去)。 */
+  lookName = 'day';
+  private lookSaved: { cfg: Record<string, unknown>; post: Record<string, unknown> } | null = null;
+  /** 这一帧界面相机的取景(把 3D 世界里的点换算回 2D 世界坐标用,见 project)。 */
+  private ui2d = { x: 0, y: 0, halfH: 1, aspect: 1, tf: null as UITransform | null };
+  private vpFrame = -1;
   /** 这一帧镜头正中对着的地面点(3D 世界坐标)、画面的一半有多宽多高(米)。 */
   readonly focus = new Vec3();
   halfW = 1;
@@ -124,7 +254,7 @@ export class TownWorld3D {
     this.root.addChild(gNode);
     const gcam = gNode.addComponent(Camera);
     gcam.projection = Camera.ProjectionType.ORTHO;
-    gcam.visibility = GROUND_LAYER;
+    gcam.visibility = GROUND_LAYER | GROUND_STATIC_LAYER;
     gcam.clearFlags = Camera.ClearFlag.SOLID_COLOR;
     gcam.clearColor = new Color(0, 0, 0, 255);
     gcam.priority = -20;
@@ -225,7 +355,8 @@ export class TownWorld3D {
   }
 
   // ───────────────────────── 开 / 关 ─────────────────────────
-  open(): void {
+  /** self = 野外渲染器(看这张地图适不适合自由视角)。 */
+  open(self?: any): void {
     if (this.opened) {
       return;
     }
@@ -247,16 +378,26 @@ export class TownWorld3D {
     }
     if (mainCam) {
       // 主相机平时只是清屏画一遍天空盒:开着 3D 时清屏由 3D 相机负责,它不用画了
-      mainCam.visibility &= ~(FIELD_LAYER | GROUND_LAYER);
+      mainCam.visibility &= ~(FIELD_LAYER | GROUND_LAYER | GROUND_STATIC_LAYER);
       mainCam.enabled = false;
     }
     if (post) {
       post.toneMappingType = 1;                // 线性输出:手绘地表 / 贴图在 1 倍光下就是原图的颜色
     }
+    // 地面用哪种做法:新做法 = 按地图坐标烘成贴图集、铺在 3D 世界里(原来那块对着镜头贴的平板和它的相机停用)。自由视角一定要新做法
+    // 有手绘房子的地图(晨风村)不给自由视角:房子是一张对着固定镜头画的图,没有别的面,镜头一转它只能跟着转 —— 整栋房子在原地打转
+    const painted = ((self?.def?.buildings as unknown[] | undefined)?.length ?? 0) > 0;
+    this.free = camFlag() && groundReady() && !painted;
+    this.worldGround = (groundFlag() || this.free) && groundReady();
+    const look = this.applyLook();
     try {
       const d = this.cfg.sunDir;
-      const cube = buildEnvCube([{ dir: [-d[0], -d[1], -d[2]], color: [2.2, 2.0, 1.6], width: 0.26 }], [0.44, 0.58, 0.86], [0.74, 0.78, 0.8], [0.2, 0.19, 0.15], 64);
-      sky.envmap = cube;
+      if (this.free || this.lookName !== 'day') {
+        // 看得见天的(自由视角)/ 换了灯光方案的:用带云的那张天空,同时当环境反射
+        sky.envmap = this.skyCube(this.lookName, look, this.free ? 256 : 128);
+      } else {
+        sky.envmap = buildEnvCube([{ dir: [-d[0], -d[1], -d[2]], color: [2.2, 2.0, 1.6], width: 0.26 }], [0.44, 0.58, 0.86], [0.74, 0.78, 0.8], [0.2, 0.19, 0.15], 64);
+      }
       (sky as any).envLightingType = 1;        // 半球漫反射 + 环境反射
     } catch (error) {
       console.warn('[f3d] env cube', error);
@@ -267,6 +408,238 @@ export class TownWorld3D {
     if (level > 0) {
       this.post.enable(level);
     }
+    this.ground.active = !this.worldGround;
+    this.groundCam.enabled = !this.worldGround;
+    if (this.free) {
+      this.enterFree();
+    }
+  }
+
+  /** 套上一套灯光方案:改主光 / 环境光、雾和调色(改之前的值记下来,close 时放回去)。返回用的是哪一套。 */
+  private applyLook(): Look {
+    const name = lookFlag();
+    const look = LOOKS[name] ?? LOOKS.day;
+    this.lookName = LOOKS[name] ? name : 'day';
+    const copy = (v: unknown): unknown => (Array.isArray(v) ? v.slice() : v);
+    const cfg = this.cfg as unknown as Record<string, unknown>;
+    const pc = this.post.cfg as unknown as Record<string, unknown>;
+    // 雾的颜色 = 天空地平线的颜色(天空盒画出来是「贴图颜色转线性 × 环境光倍数」),远处的东西淡进天边
+    const amb = (look.cfg.ambient ?? this.cfg.ambient) / 38400;
+    const h = look.sky.horizon;
+    const tint = look.fog.tint;
+    const fogColor = [toLinear(h[0]) * amb * tint[0], toLinear(h[1]) * amb * tint[1], toLinear(h[2]) * amb * tint[2]];
+    const ha = look.sky.horizonAway ?? h;
+    const fogAway = [toLinear(ha[0]) * amb * tint[0], toLinear(ha[1]) * amb * tint[1], toLinear(ha[2]) * amb * tint[2]];
+    const sd = (look.cfg.sunDir ?? this.cfg.sunDir) as [number, number, number];
+    const sm = Math.hypot(sd[0], sd[1], sd[2]) || 1;
+    const postPatch: Record<string, unknown> = { ...look.post, fogColor, fogStart: look.fog.start, fogDensity: look.fog.density, fogMax: look.fog.max,
+      fogAway, fogSun: [-sd[0] / sm, -sd[1] / sm, -sd[2] / sm], fogLobe: look.fog.lobe ?? 0 };
+    const saved = { cfg: {} as Record<string, unknown>, post: {} as Record<string, unknown> };
+    for (const k of Object.keys(look.cfg)) {
+      saved.cfg[k] = copy(cfg[k]);
+      cfg[k] = copy((look.cfg as Record<string, unknown>)[k]);
+    }
+    for (const k of Object.keys(postPatch)) {
+      saved.post[k] = copy(pc[k]);
+      pc[k] = copy(postPatch[k]);
+    }
+    this.lookSaved = saved;
+    this.applyCfg();
+    return look;
+  }
+
+  private restoreLook(): void {
+    const s = this.lookSaved;
+    this.lookSaved = null;
+    if (!s) {
+      return;
+    }
+    Object.assign(this.cfg, s.cfg);
+    Object.assign(this.post.cfg, s.post);
+    this.applyCfg();
+  }
+
+  /** 这套灯光方案的天空(立方体贴图;画一次要一百来毫秒,同一套同一个大小只画一次,全程留着)。 */
+  private skyCube(name: string, look: Look, size: number): TextureCube {
+    const d = this.cfg.sunDir;
+    const key = `${name}:${size}:${d.join(',')}`;
+    let cube = skyCubes.get(key);
+    if (!cube) {
+      cube = buildSkyCube({ ...look.sky, sunDir: [-d[0], -d[1], -d[2]], size, seed: 7 });
+      cube.addRef();
+      skyCubes.set(key, cube);
+    }
+    return cube;
+  }
+
+  /** 进自由视角:相机换成透视、清屏换成天空、投影的范围放大、打开雾,装上鼠标 / 键盘的转镜头操作。 */
+  private enterFree(): void {
+    const scene = director.getScene()!;
+    const sky = scene.globals.skybox;
+    const cam = this.cam;
+    this.freeSaved = { skyOn: sky.enabled, shadow: this.cfg.shadow, shadowHalf: this.cfg.shadowHalf, near: cam.near, far: cam.far, fog: this.post.cfg.fog };
+    cam.projection = Camera.ProjectionType.PERSPECTIVE;
+    cam.fov = this.view.fov;
+    cam.near = 0.3;
+    cam.far = 420;
+    cam.clearFlags = Camera.ClearFlag.SKYBOX;
+    sky.enabled = true;
+    // 看得远了:投影的范围跟着放大(阴影贴图也加大,每个像素对应的地面大小和原来差不多)。
+    // 范围是一块方的(半边 18 米),中心不在队长脚下,而是往镜头看过去的方向挪 6 米(见 aimSun):镜头背后那一片不用画影子。
+    // 实测(林间):前后左右各 24 米时,画影子那一遍要画 220 万个三角形(镜头看不到的树也在画),是画面本身的 4 倍
+    this.cfg.shadow = 4096;
+    this.cfg.shadowHalf = 18;
+    this.applyGlobals();
+    this.post.cfg.fog = true;
+    this.lookReady = false;
+    this.eye.yaw = this.view.yaw;
+    this.eye.pitch = this.view.pitch;
+    this.eye.dist = this.view.dist;
+    input.on(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
+    input.on(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
+    input.on(Input.EventType.MOUSE_UP, this.onMouseUp, this);
+    input.on(Input.EventType.MOUSE_WHEEL, this.onMouseWheel, this);
+    input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+    input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+    game.canvas?.addEventListener('contextmenu', this.noMenu);
+  }
+
+  private exitFree(): void {
+    const s = this.freeSaved;
+    this.freeSaved = null;
+    input.off(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
+    input.off(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
+    input.off(Input.EventType.MOUSE_UP, this.onMouseUp, this);
+    input.off(Input.EventType.MOUSE_WHEEL, this.onMouseWheel, this);
+    input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
+    input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+    game.canvas?.removeEventListener('contextmenu', this.noMenu);
+    this.drag.on = false;
+    this.turn = 0;
+    const cam = this.cam;
+    cam.projection = Camera.ProjectionType.ORTHO;
+    cam.clearFlags = Camera.ClearFlag.SOLID_COLOR;
+    cam.node.setRotationFromEuler(-this.cfg.pitch, 0, 0);
+    if (s) {
+      cam.near = s.near;
+      cam.far = s.far;
+      this.cfg.shadow = s.shadow;
+      this.cfg.shadowHalf = s.shadowHalf;
+      this.post.cfg.fog = s.fog;
+      const scene = director.getScene();
+      if (scene) {
+        scene.globals.skybox.enabled = s.skyOn;
+      }
+    }
+  }
+
+  private onMouseDown(e: EventMouse): void {
+    if (e.getButton() === EventMouse.BUTTON_RIGHT) {
+      this.drag.on = true;
+      this.drag.x = e.getLocationX();
+      this.drag.y = e.getLocationY();
+    }
+  }
+
+  private onMouseMove(e: EventMouse): void {
+    if (!this.drag.on) {
+      return;
+    }
+    const x = e.getLocationX();
+    const y = e.getLocationY();
+    // 往右拖 = 镜头绕到右边去(画面往左转);往上拖 = 镜头压低
+    this.view.yaw -= (x - this.drag.x) * 0.3;
+    this.view.pitch -= (y - this.drag.y) * 0.2;
+    this.drag.x = x;
+    this.drag.y = y;
+  }
+
+  private onMouseUp(e: EventMouse): void {
+    if (e.getButton() === EventMouse.BUTTON_RIGHT) {
+      this.drag.on = false;
+    }
+  }
+
+  private onMouseWheel(e: EventMouse): void {
+    this.view.dist *= e.getScrollY() > 0 ? 0.9 : 1.1;
+  }
+
+  private onKeyDown(e: EventKeyboard): void {
+    if (e.keyCode === KeyCode.KEY_Z) {
+      this.turn = 1;
+    } else if (e.keyCode === KeyCode.KEY_C) {
+      this.turn = -1;
+    } else if (e.keyCode === KeyCode.KEY_X) {
+      // 回正:转回固定镜头的那个方向(从南往北看)、默认的俯角和距离。转了好几圈的先折回最近的那一圈,不然要倒着转回去
+      this.view.yaw -= Math.round(this.view.yaw / 360) * 360;
+      this.eye.yaw -= Math.round(this.eye.yaw / 360) * 360;
+      this.view.yaw = 0;
+      this.view.pitch = 40;
+      this.view.dist = 14;
+    }
+  }
+
+  private onKeyUp(e: EventKeyboard): void {
+    if (e.keyCode === KeyCode.KEY_Z || e.keyCode === KeyCode.KEY_C) {
+      this.turn = 0;
+    }
+  }
+
+  /** 右键拖动是转镜头:别让浏览器弹右键菜单。 */
+  private noMenu = (e: Event): void => {
+    e.preventDefault();
+  };
+
+  /** 现场改镜头(调试 / 自验用)。snap = 不平滑,直接到位。 */
+  setView(patch: Partial<ViewCfg>, snap = false): ViewCfg {
+    Object.assign(this.view, patch);
+    if (snap) {
+      this.eye.yaw = this.view.yaw;
+      this.eye.pitch = this.view.pitch;
+      this.eye.dist = this.view.dist;
+      this.lookReady = false;
+    }
+    return this.view;
+  }
+
+  /** 这一帧镜头绕竖轴转了多少度(固定镜头 = 0):朝着镜头的纸片、摇杆方向都按它转。 */
+  camYaw(): number {
+    return this.free ? this.eye.yaw : 0;
+  }
+
+  /** 自由视角:相机绕着队长摆。 */
+  private syncFree(self: any, aspect: number): void {
+    const v = this.view;
+    const dt = Math.min(0.05, Math.max(0, game.deltaTime));
+    v.yaw += this.turn * 90 * dt;
+    v.pitch = Math.max(v.minPitch, Math.min(v.maxPitch, v.pitch));
+    v.dist = Math.max(v.minDist, Math.min(v.maxDist, v.dist));
+    const e = this.eye;
+    const k = 1 - Math.exp(-14 * dt);
+    e.yaw += (v.yaw - e.yaw) * k;
+    e.pitch += (v.pitch - e.pitch) * k;
+    e.dist += (v.dist - e.dist) * k;
+    const lead = self.leader;
+    // 看向队长胸口;镜头压平了就抬到头顶上面一点(不然人在画面正中、上半屏全是远处,下半屏全是脚边的地)
+    this.toWorld(lead?.x ?? 0, lead?.y ?? 0, _v, 1.0 + 0.9 * Math.max(0, 1 - e.pitch / 24));
+    if (!this.lookReady) {
+      this.look.set(_v);
+      this.lookReady = true;
+    } else {
+      Vec3.lerp(this.look, this.look, _v, 1 - Math.exp(-16 * dt));
+    }
+    const yaw = (e.yaw * Math.PI) / 180;
+    const pitch = (e.pitch * Math.PI) / 180;
+    const cp = Math.cos(pitch);
+    const cam = this.cam;
+    cam.fov = v.fov;
+    cam.node.setPosition(this.look.x + Math.sin(yaw) * cp * e.dist, this.look.y + Math.sin(pitch) * e.dist, this.look.z + Math.cos(yaw) * cp * e.dist);
+    cam.node.lookAt(this.look);
+    this.focus.set(this.look.x, 0, this.look.z);
+    this.mapX = lead?.x ?? 0;
+    this.mapY = lead?.y ?? 0;
+    this.halfH = e.dist * Math.tan((v.fov * Math.PI) / 360);
+    this.halfW = this.halfH * aspect;
   }
 
   close(): void {
@@ -274,7 +647,16 @@ export class TownWorld3D {
       return;
     }
     this.opened = false;
+    if (this.free) {
+      this.exitFree();
+      this.free = false;
+    }
     this.post.disable();
+    this.restoreLook();
+    this.ground3d.stop();
+    this.worldGround = false;
+    this.ground.active = true;
+    this.groundCam.enabled = true;
     this.root.active = false;
     this.unlayer();
     const s = this.saved;
@@ -328,6 +710,52 @@ export class TownWorld3D {
     return this.cfg.unitsPerM * this.cosP;
   }
 
+  /** 两点在 3D 世界里隔多少米(地图坐标;地图的纵向在 3D 里是拉长过的)。 */
+  metres(ax: number, ay: number, bx: number, by: number): number {
+    const U = this.cfg.unitsPerM;
+    return Math.hypot((ax - bx) / U, (ay - by) / (U * this.sinP));
+  }
+
+  /**
+   * 自由视角用:地图上的一点(离地 h 米)现在落在画面的哪里 —— 换算成「2D 世界节点里的坐标」
+   * (界面相机画 2D 世界时,摆在这个坐标上的东西正好落在画面的那个位置)。
+   * 返回这一点处「竖着 1 米在画面上有多长」相对固定镜头时的倍数(头顶的血条名字按它缩放);点在镜头后面返回 0。
+   */
+  project(mx: number, my: number, h: number, out: Vec3): number {
+    const tf = this.ui2d.tf;
+    if (!tf || !tf.isValid) {
+      return 0;
+    }
+    const cam = this.cam.camera;
+    const frame = director.getTotalFrames();
+    if (this.vpFrame !== frame) {
+      this.vpFrame = frame;
+      cam.update(true);
+    }
+    const m = cam.matViewProj;
+    const ui = this.ui2d;
+    const to2d = (p: Vec3, o: Vec3): boolean => {
+      const w = m.m03 * p.x + m.m07 * p.y + m.m11 * p.z + m.m15;
+      if (w <= 0.05) {
+        return false;
+      }
+      const nx = (m.m00 * p.x + m.m04 * p.y + m.m08 * p.z + m.m12) / w;
+      const ny = (m.m01 * p.x + m.m05 * p.y + m.m09 * p.z + m.m13) / w;
+      _c.set(ui.x + nx * ui.halfH * ui.aspect, ui.y + ny * ui.halfH, 0);
+      tf.convertToNodeSpaceAR(_c, o);
+      return true;
+    };
+    this.toWorld(mx, my, _a, h);
+    if (!to2d(_a, out)) {
+      return 0;
+    }
+    _a.y += 1;
+    if (!to2d(_a, _b)) {
+      return 0;
+    }
+    return Math.hypot(_b.x - out.x, _b.y - out.y) / this.upUnits();
+  }
+
   // ───────────────────────── 每帧:跟上 2D 的镜头 ─────────────────────────
   private findUiCam(world2d: Node): Camera | null {
     if (this.uiCam && this.uiCam.isValid && this.uiCam.node.activeInHierarchy) {
@@ -365,6 +793,18 @@ export class TownWorld3D {
     const k = world2d.worldScale.x;
     const canvas = game.canvas!;
     const aspect = canvas.width / Math.max(1, canvas.height);
+    this.ui2d.x = ui.node.worldPosition.x;
+    this.ui2d.y = ui.node.worldPosition.y;
+    this.ui2d.halfH = ui.orthoHeight;
+    this.ui2d.aspect = aspect;
+    this.ui2d.tf = tf;
+    if (this.free) {
+      this.syncFree(self, aspect);
+      this.ground3d.sync(self, this, ui, tf, k, game.deltaTime);
+      this.aimSun();
+      this.layerGround(self);
+      return true;
+    }
     // 画面正中对着地图上的哪一点
     tf.convertToNodeSpaceAR(ui.node.worldPosition, _v);
     this.mapX = _v.x;
@@ -386,12 +826,16 @@ export class TownWorld3D {
     g.orthoHeight = ui.orthoHeight;
     g.near = ui.near;
     g.far = ui.far;
-    // 开了后期的放大档位时 3D 画面比窗口大:地表贴图跟着放大(2D 地表按更高的分辨率画进来),不然地表会被「先放大再缩小」糊一遍
-    const s = this.post.scale();
-    const rw = Math.round(canvas.width * s);
-    const rh = Math.round(canvas.height * s);
-    if (!this.rt || this.rt.width !== rw || this.rt.height !== rh) {
-      this.resizeTarget(rw, rh);
+    if (this.worldGround) {
+      this.ground3d.sync(self, this, ui, tf, k, game.deltaTime);
+    } else {
+      // 开了后期的放大档位时 3D 画面比窗口大:地表贴图跟着放大(2D 地表按更高的分辨率画进来),不然地表会被「先放大再缩小」糊一遍
+      const s = this.post.scale();
+      const rw = Math.round(canvas.width * s);
+      const rh = Math.round(canvas.height * s);
+      if (!this.rt || this.rt.width !== rw || this.rt.height !== rh) {
+        this.resizeTarget(rw, rh);
+      }
     }
     this.aimSun();
     this.layerGround(self);
@@ -418,9 +862,16 @@ export class TownWorld3D {
     Vec3.cross(_r, _d, Vec3.UP).normalize();
     Vec3.cross(_u, _r, _d).normalize();
     const texel = cfg.shadow > 0 ? (cfg.shadowHalf * 2) / cfg.shadow : 0.01;
-    const fr = Math.round(Vec3.dot(this.focus, _r) / texel) * texel;
-    const fu = Math.round(Vec3.dot(this.focus, _u) / texel) * texel;
-    const fd = Vec3.dot(this.focus, _d);
+    // 投影范围的中心:固定镜头 = 画面正中;自由视角 = 队长往镜头看过去的方向 6 米
+    const f = _c.set(this.focus);
+    if (this.free) {
+      const a = (this.eye.yaw * Math.PI) / 180;
+      f.x -= Math.sin(a) * 6;
+      f.z -= Math.cos(a) * 6;
+    }
+    const fr = Math.round(Vec3.dot(f, _r) / texel) * texel;
+    const fu = Math.round(Vec3.dot(f, _u) / texel) * texel;
+    const fd = Vec3.dot(f, _d);
     _l.set(_r.x * fr + _u.x * fu + _d.x * (fd - 70), _r.y * fr + _u.y * fu + _d.y * (fd - 70), _r.z * fr + _u.z * fu + _d.z * (fd - 70));
     this.light.node.setPosition(_l);
     _v.set(_l.x + _d.x, _l.y + _d.y, _l.z + _d.z);
@@ -446,11 +897,18 @@ export class TownWorld3D {
       return;
     }
     this.layerCount = count;
-    ground.walk((n) => {
-      if (n.layer !== GROUND_LAYER) {
-        n.layer = GROUND_LAYER;
-      }
-    });
+    // 不会动的(整图地表 / 兜底的平铺底纹 / 贴地图片 / 地图外沿的压暗)单独一层,别的(光圈、预警圈…)一层:远处那张地面贴图只画前一种
+    for (const child of ground.children) {
+      const layer = /^(Splat|Tile_|TownProp_|Vignette)/.test(child.name) ? GROUND_STATIC_LAYER : GROUND_LAYER;
+      child.walk((n) => {
+        if (n.layer !== layer) {
+          n.layer = layer;
+        }
+      });
+    }
+    if (ground.layer !== GROUND_LAYER) {
+      ground.layer = GROUND_LAYER;
+    }
     const backdrop: Node | null = self.backdropNode ?? null;
     if (backdrop && backdrop.isValid) {
       backdrop.walk((n) => {
@@ -499,7 +957,8 @@ export class TownWorld3D {
 
   info(): Record<string, unknown> {
     return { open: this.opened, cfg: { ...this.cfg }, focus: [+this.focus.x.toFixed(2), +this.focus.z.toFixed(2)], half: [+this.halfW.toFixed(2), +this.halfH.toFixed(2)],
-      rt: this.rt ? [this.rt.width, this.rt.height] : null, uiCam: this.uiCam?.node.name ?? null, post: this.post.info() };
+      rt: this.rt ? [this.rt.width, this.rt.height] : null, uiCam: this.uiCam?.node.name ?? null, post: this.post.info(),
+      ground: this.worldGround ? this.ground3d.info() : null, free: this.free, view: this.free ? { ...this.view } : null, look: this.lookName };
   }
 
   destroy(): void {

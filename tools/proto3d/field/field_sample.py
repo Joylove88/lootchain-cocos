@@ -9,6 +9,8 @@
   props 摆件的两种做法并排:代码生成的模型(默认) / 手绘图立进 3D(对照),整个场景
   lineup 对照台:同一种摆件,后排手绘立牌、前排代码生成的模型(各摆几个变体),一类一张
   post  后期处理(TownPost3D):同一刻开 / 关对比、拆开看遮蔽这一层、技能的光晕、各档位的边缘细节
+  free  第四轮(--only=free;可再用 --free=ground,views,fight,looks,camp 细分):铺在世界里的新地面和原来的对比、
+        自由视角的几个角度、自由视角下打怪(血条 / 飘字对位)、白天 / 黄昏两套灯光方案、黄昏下营地的灯
 """
 import os
 import subprocess
@@ -26,6 +28,7 @@ OPT = dict(a[2:].split('=', 1) if '=' in a else (a[2:], '1') for a in sys.argv[1
 OUT = ARGS[0] if ARGS else os.path.join(os.environ.get('TEMP', '.'), 'lootchain-qa', 'f3d_sample')
 ONLY = [x for x in OPT.get('only', 'cmp,fx,props,lineup,post').split(',') if x]
 POSTONLY = [x for x in OPT.get('post', 'cmp,parts,fx,levels').split(',') if x]      # post 里只出哪几张(同一刻对比 / 遮蔽拆开 / 技能 / 各档位)
+FREEONLY = [x for x in OPT.get('free', 'ground,views,fight,looks,camp').split(',') if x]      # free 里只出哪几张
 RAW = os.path.join(OUT, '原图')
 os.makedirs(RAW, exist_ok=True)
 
@@ -190,6 +193,106 @@ def post_sheets():
         js(UNFREEZE)
         sheet([tiles[i] for i in (0, 2, 4, 6, 1, 3, 5, 7)], 4, '后期各档位 · 边缘和细节(局部放大 2 倍)', os.path.join(OUT, '11_后期_各档位细节.jpg'))
 
+# ───────────────────────── 第四轮:新地面 / 自由视角 / 灯光方案 ─────────────────────────
+def setup(ground=None, cam=None, look=None, settle=3200):
+    """换一种配置并等它重建完(整层撤掉重来;自由视角下要建的摆件多,多等一会儿)。"""
+    head = ''
+    if look is not None:
+        head += "window.__LC_FIELD_LOOK = '%s';" % look
+    if ground is not None:
+        head += " window.__LC_FIELD_GROUND = %d;" % (1 if ground else 0)
+    if cam is not None:
+        head += " window.__LC_FIELD_CAM = %d;" % (1 if cam else 0)
+    return js(head + " F.toggle(0); await sleep(600); F.toggle(2); for (let i = 0; i < 120; i++) { await sleep(150); const u = F.info(); const p = u.extras && u.extras[0] && u.extras[0].props;"
+              " if (u.on && u.world && u.world.open && u.heroes3d >= 1 && p && p.items >= p.shown - 3 && i > 16) break; } await sleep(%d);"
+              " const w = F.info().world; return JSON.stringify({ on: F.info().on, free: w && w.free, look: w && w.look, ground: !!(w && w.ground) });" % settle)
+
+
+def view(yaw, pitch, dist, fov=38, settle=1500):
+    """自由视角摆镜头(直接到位),等挡镜头的树淡完。"""
+    return js("window.__f3dcam.view({ yaw: %s, pitch: %s, dist: %s, fov: %s }); await sleep(%d); return 1;" % (yaw, pitch, dist, fov, settle))
+
+
+def grab(name, k=0.5, box=None):
+    im = Image.open(shot(name)).convert('RGB')
+    if box:
+        im = im.crop(box)
+    return im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS) if k != 1 else im
+
+
+def free_sheets():
+    plaza = (-8105, -3750)       # 入口营地的石板地 + 传送阵
+    if 'ground' in FREEONLY:
+        # 1. 新旧地面:固定镜头、同一刻,只换地面的做法;白天一组、黄昏(太阳低,起伏最明显)一组
+        tiles = []
+        crops = []
+        for look, label in (('day', '白天'), ('dusk', '黄昏')):
+            print('ground', look, setup(ground=False, cam=False, look=look), flush=True)
+            tp(plaza[0], plaza[1])
+            js("t.hitStopUntil = 0; t.keys.add(cc.KeyCode.KEY_D); await sleep(650); t.keys.delete(cc.KeyCode.KEY_D); await sleep(900); return 1;")
+            js(FREEZE)
+            a = Image.open(shot('ground_%s_old' % look)).convert('RGB')
+            print('  new', setup(ground=True, cam=False, look=look), flush=True)
+            b = Image.open(shot('ground_%s_new' % look)).convert('RGB')
+            js(UNFREEZE)
+            size = (960, 539)
+            tiles.append(tag(a.resize(size, Image.LANCZOS), label + ' · 原来:2D 地表贴成一块平板'))
+            tiles.append(tag(b.resize(size, Image.LANCZOS), label + ' · 新:铺在世界里,有凹凸、会反光'))
+            box = (600, 540, 1080, 810)
+            crops.append(tag(a.crop(box).resize(size, Image.LANCZOS), label + ' · 原来(局部放大 2 倍)'))
+            crops.append(tag(b.crop(box).resize(size, Image.LANCZOS), label + ' · 新(局部放大 2 倍)'))
+        sheet(tiles + crops, 4, '地面的两种做法(固定镜头、定格后只换地面;上排整幅,下排局部)', os.path.join(OUT, '12_地面_新旧对比.jpg'))
+    if 'views' in FREEONLY:
+        # 2. 自由视角的几个角度(白天)
+        print('views', setup(cam=True, look='day'), flush=True)
+        tp(-8350, -2900)
+        js(UNFREEZE)
+        tiles = []
+        for name, label, v in (('a', '默认(和原来的固定镜头同一个方向,俯角 40°)', (0, 40, 14)), ('b', '压低、凑近', (-25, 12, 8)),
+                               ('c', '绕到侧面', (-75, 16, 9.5)), ('d', '回头往地图外面看(外面补了一圈地面和树)', (150, 9, 9))):
+            view(*v)
+            tiles.append(tag(grab('views_' + name), label))
+        sheet(tiles, 2, '自由视角 · 同一个位置的四个角度(鼠标右键拖动转 / 压低,滚轮缩放,Z / C 键转,X 键回正)', os.path.join(OUT, '13_自由视角_四个角度.jpg'))
+    if 'fight' in FREEONLY:
+        # 3. 自由视角下打怪:血条 / 名字 / 飘字跟着 3D 的位置
+        print('fight', setup(cam=True, look='day'), flush=True)
+        tp(-6620, -1900)
+        tiles = []
+        for name, label, v, act, wait in (('a', '普攻 · 默认角度', (0, 40, 14), 'attack', 320), ('b', '重斩 · 压低', (-35, 20, 9), 0, 620),
+                                          ('c', '旋风斩 · 侧面', (-80, 24, 10), 2, 760), ('d', '突进斩 · 从怪这一侧回头看', (160, 16, 9), 1, 300)):
+            js(UNFREEZE)
+            view(*v, settle=1300)
+            js("window.__act = %s; window.__actWait = %d; return 1;" % ("'attack'" if act == 'attack' else act, wait))
+            js('@' + os.path.join(SNIP, 'fight.js'))
+            tiles.append(tag(grab('fight_' + name), label))
+        js(UNFREEZE)
+        sheet(tiles, 2, '自由视角 · 打怪(血条、名字、伤害数字按 3D 里的位置重新对位)', os.path.join(OUT, '14_自由视角_战斗.jpg'))
+    if 'looks' in FREEONLY:
+        # 4. 白天 / 黄昏:同样的两个镜头
+        shots = {}
+        for look in ('day', 'dusk'):
+            print('looks', look, setup(cam=True, look=look), flush=True)
+            tp(plaza[0], plaza[1])
+            js(UNFREEZE)
+            for name, v in (('a', (0, 40, 14)), ('b', (140, 9, 8.5))):
+                view(*v)
+                shots[(look, name)] = grab('looks_%s_%s' % (look, name))
+        tiles = [tag(shots[('day', 'a')], '白天 · 默认角度'), tag(shots[('dusk', 'a')], '黄昏 · 默认角度'),
+                 tag(shots[('day', 'b')], '白天 · 压低'), tag(shots[('dusk', 'b')], '黄昏 · 压低(朝太阳那边)')]
+        sheet(tiles, 2, '两套灯光方案(同一个位置、同一个镜头):白天 = 原来那套;黄昏 = 低角度暖色太阳 + 冷色天光 + 营地的灯', os.path.join(OUT, '15_白天黄昏对比.jpg'))
+    if 'camp' in FREEONLY:
+        # 5. 黄昏下的营地:营帐前的火把、旗杆上的挂灯、木箱上的灯
+        print('camp', setup(cam=True, look='dusk'), flush=True)
+        tp(-9150, -3350)
+        js(UNFREEZE)
+        tiles = []
+        for name, label, v in (('a', '营帐和火把', (20, 30, 11)), ('b', '压低看过去', (-60, 10, 8)), ('c', '背着太阳的一侧(雾是冷的)', (-140, 12, 9)), ('d', '俯看石板地(低角度的光把石缝照出来)', (30, 58, 12))):
+            view(*v)
+            tiles.append(tag(grab('camp_' + name), label))
+        sheet(tiles, 2, '黄昏方案 · 入口营地(每盏灯一个暖色点光,只照得到几米;灯芯会泛光)', os.path.join(OUT, '16_黄昏_营地的灯.jpg'))
+    print('back', setup(ground=False, cam=False, look='day'), flush=True)
+
+
 def main():
     print('dev', js("return JSON.stringify({ map: t.def.code, f3d: F.info().mode });"), flush=True)
     if 'cmp' in ONLY:
@@ -240,6 +343,8 @@ def main():
         js("clearInterval(window.__lcKeepAlive); [t.leader, ...t.followers].forEach(a => { a.node.active = true; }); return 1;")
     if 'post' in ONLY:
         post_sheets()
+    if 'free' in ONLY:
+        free_sheets()
     js("clearInterval(window.__lcKeepAlive); t.hitStopUntil = 0; window.__hideFollowers = false; return 1;")
 
 

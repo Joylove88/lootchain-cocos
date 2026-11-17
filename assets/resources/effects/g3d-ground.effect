@@ -1,0 +1,320 @@
+// 野外真 3D 场景 · 把 2D 地表「烘」成铺在 3D 世界里的地面要用的几个着色器(TownGround3D.ts,2026-11-17,实验)。
+//
+// 由来:用户「这个效果和我们参考的那个FPS游戏差太多了…地面也需要改的」「视角也可以调成自由的吧」。
+// 原来的做法是把 2D 地表对着固定镜头画成一张和屏幕一样大的图、贴成一块平板 —— 没有凹凸、不反光,镜头也动不了。
+// 现在改成:按地图坐标把一片地表画进贴图(颜色一张、「高度 / 粗糙度」一张),再从高度算出法线,
+// 贴到 3D 世界里真正铺开的地面上。光打上去有起伏、有反光,镜头从哪个角度看都对。
+//
+// 四套(材质用哪一套由 technique 选):
+//   0 splat-albedo  整图地表的颜色:和 2D 那边的 world-ground 混法一模一样,只去掉了「按屏幕位置」做的微光 / 暗角 / 景深
+//                   (那几样是对着固定画面调的,画进按地图铺开的贴图里会变成一块块跟着贴图走的明暗)
+//   1 splat-h       整图地表的「遮蔽 / 粗糙度 / 高度」:各层的权重照颜色那一套走,高度和粗糙度按各层自己的系数混
+//   2 sprite-h      贴地的图片(营地石板、遗迹地面、河、桥…)的「遮蔽 / 粗糙度 / 高度」:高度取图片的明暗
+//   3 emboss        从高度图算法线(画一块铺满的方块,顶点直接给屏幕坐标)
+// 输出的「遮蔽 / 粗糙度 / 高度」分别放在 R / G / B:引擎标准材质的 pbrMap 正好读 R = 遮蔽、G = 粗糙度(B 是金属度,材质上乘 0)。
+CCEffect %{
+  techniques:
+  - name: splat-albedo
+    passes:
+    - vert: sprite-vs:vert
+      frag: splat-albedo-fs:frag
+      depthStencilState: &ds
+        depthTest: false
+        depthWrite: false
+      rasterizerState: &rs
+        cullMode: none
+      properties: &splat
+        mask2Tex: { value: black }
+        floorTex: { value: white }
+        mossTex: { value: white }
+        meadowTex: { value: white }
+        dirtTex: { value: white }
+        leafTex: { value: white }
+        tiles: { value: [22.6, 10.9, 14.5, 7.0] }
+        tiles2: { value: [36.3, 17.5, 31.8, 15.3] }
+        tiles3: { value: [53.5, 25.8, 0.0, 0.0] }
+        grade: { value: [0.10, 0.0, 1.06, 0.0] }
+        layerH: { value: [1.0, 0.8, 0.9, 1.0] }
+        layerB: { value: [0.0, 0.06, 0.10, -0.08] }
+        layerR: { value: [0.86, 0.92, 0.9, 0.8] }
+        leafHBR: { value: [0.7, 0.04, 0.84, 0.74] }
+  - name: splat-h
+    passes:
+    - vert: sprite-vs:vert
+      frag: splat-h-fs:frag
+      depthStencilState: *ds
+      rasterizerState: *rs
+      properties: *splat
+  - name: sprite-h
+    passes:
+    - vert: sprite-vs:vert
+      frag: sprite-h-fs:frag
+      depthStencilState: *ds
+      rasterizerState: *rs
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendSrcAlpha: one
+          blendDstAlpha: one_minus_src_alpha
+      properties:
+        surf: { value: [1.0, 0.0, 0.8, 1.0] }
+  - name: emboss
+    passes:
+    - vert: quad-vs:vert
+      frag: emboss-fs:frag
+      depthStencilState: *ds
+      rasterizerState: *rs
+      properties:
+        mainTexture: { value: grey }
+        slope: { value: [0.001, 0.001, 1.0, 1.0] }
+}%
+
+CCProgram sprite-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+
+  out vec4 color;
+  out vec2 uv0;
+
+  vec4 vert () {
+    vec4 pos = cc_matViewProj * vec4(a_position, 1);
+    uv0 = a_texCoord;
+    color = a_color;
+    return pos;
+  }
+}%
+
+CCProgram quad-vs %{
+  precision highp float;
+
+  in vec3 a_position;
+  in vec2 a_texCoord;
+
+  out vec2 v_uv;
+
+  vec4 vert () {
+    v_uv = a_texCoord;
+    return vec4(a_position.xy * 2.0, 0.0, 1.0);
+  }
+}%
+
+// 整图地表两套共用:遮罩 + 五层材质 + 参数,和各层权重的算法(照抄 world-ground,改那边的混法这里要跟着改)
+CCProgram splat-common %{
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  uniform sampler2D mask2Tex;
+  uniform sampler2D floorTex;
+  uniform sampler2D mossTex;
+  uniform sampler2D meadowTex;
+  uniform sampler2D dirtTex;
+  uniform sampler2D leafTex;
+
+  uniform GroundFrag {
+    vec4 tiles;
+    vec4 tiles2;
+    vec4 tiles3;
+    vec4 grade;
+    vec4 layerH;     // 各层高度的起伏倍数:腐殖层 / 苔草 / 草甸 / 裸土土路
+    vec4 layerB;     // 各层高度的基准(草比土高、路比两边低)
+    vec4 layerR;     // 各层粗糙度
+    vec4 leafHBR;    // 落叶层:起伏倍数 / 基准 / 粗糙度;w = 土路的粗糙度(踩实了,比松土光一点)
+  };
+
+  float lum (vec3 c) {
+    return dot(c, vec3(0.333));
+  }
+
+  float hblend (float w, float ha, float hb) {
+    float x = w * 1.5 - 0.25 + (hb - ha) * 0.7;
+    return smoothstep(0.44, 0.56, x);
+  }
+}%
+
+CCProgram splat-albedo-fs %{
+  precision highp float;
+  #include <splat-common>
+
+  in vec4 color;
+  in vec2 uv0;
+
+  vec4 frag () {
+    vec3 m = texture(cc_spriteTexture, uv0).rgb;
+    vec3 m2 = texture(mask2Tex, uv0).rgb;
+    float n1 = m.r;
+    float wMeadow = m.g * 0.7;
+    float d = m.b * 512.0;
+    vec3 floorC = texture(floorTex, uv0 * tiles.xy).rgb;
+    vec3 moss = texture(mossTex, uv0 * tiles.zw).rgb;
+    vec3 meadow = texture(meadowTex, uv0 * tiles2.xy).rgb;
+    vec3 dirt = texture(dirtTex, uv0 * tiles2.zw).rgb;
+    vec3 leaf = texture(leafTex, uv0 * tiles3.xy).rgb;
+    float n2 = texture(mossTex, uv0 * tiles.zw * 0.13 + vec2(0.53, 0.29)).r;
+    float n3 = texture(meadowTex, uv0 * tiles2.xy * 0.37 + vec2(0.31, 0.17)).g;
+
+    vec3 base = floorC;
+    float hb = lum(floorC);
+    float paved = grade.w;
+    float wMoss = smoothstep(0.24, 0.6, n1);
+    float f = mix(hblend(wMoss, hb, lum(moss)), wMoss, paved);
+    base = mix(base, moss, f);
+    hb = mix(hb, lum(moss), f);
+    f = hblend(wMeadow * (0.75 + 0.25 * n3), hb, lum(meadow) + 0.05);
+    f = mix(f, smoothstep(0.35, 0.65, m.g + (n3 - 0.5) * 0.12), paved);
+    base = mix(base, meadow, f);
+    hb = mix(hb, lum(meadow), f);
+    f = smoothstep(0.25, 0.75, m2.r * 1.3 - 0.15 + (lum(leaf) - hb) * 0.5) * 0.85;
+    base = mix(base, leaf * vec3(1.12, 1.02, 0.86), f);
+    hb = mix(hb, lum(leaf), f);
+    float fb = hblend(m2.g, hb, lum(dirt) - 0.05);
+    base = mix(base, dirt * 0.9, fb);
+    hb = mix(hb, lum(dirt), fb);
+
+    float edge = 85.0 + n2 * 100.0;
+    float wDirt = 1.0 - smoothstep(edge - 45.0, edge + 45.0, d);
+    float wSoft = 1.0 - smoothstep(edge - 120.0, edge + 120.0, d);
+    float fd = mix(hblend(wDirt, hb, lum(dirt)), wSoft, paved);
+    float rim = (fd * (1.0 - fd) * 4.0 * 0.16 + exp(-pow((d - edge - 30.0) / 30.0, 2.0)) * 0.07) * (1.0 - paved);
+    float r0 = abs(d - 42.0) / 9.0;
+    float ruts = exp(-r0 * r0) * 0.14 * smoothstep(0.35, 0.6, n3) * fd * (1.0 - paved);
+    base = mix(base, dirt * (0.92 + 0.16 * n3), fd);
+    base *= 1.0 - rim - ruts;
+
+    base *= 0.9 + 0.18 * n1;
+    float l = lum(base);
+    base += (l - 0.5) * grade.x;
+    vec3 warm = vec3(1.05, 1.02, 0.95);
+    vec3 cool = vec3(0.95, 0.99, 1.05);
+    base *= mix(cool, warm, clamp(l * 1.4, 0.0, 1.0)) * grade.z;
+    // 2D 那边在这里还按屏幕位置加了微光 / 暗角 / 景深:这张图是按地图铺开的,不加(整体亮度补一个平均值)
+    base *= 1.01;
+    return vec4(clamp(base, 0.0, 1.0), 1.0) * color;
+  }
+}%
+
+CCProgram splat-h-fs %{
+  precision highp float;
+  #include <splat-common>
+
+  in vec4 color;
+  in vec2 uv0;
+
+  vec4 frag () {
+    vec3 m = texture(cc_spriteTexture, uv0).rgb;
+    vec3 m2 = texture(mask2Tex, uv0).rgb;
+    float n1 = m.r;
+    float wMeadow = m.g * 0.7;
+    float d = m.b * 512.0;
+    float lF = lum(texture(floorTex, uv0 * tiles.xy).rgb);
+    float lM = lum(texture(mossTex, uv0 * tiles.zw).rgb);
+    float lW = lum(texture(meadowTex, uv0 * tiles2.xy).rgb);
+    float lD = lum(texture(dirtTex, uv0 * tiles2.zw).rgb);
+    float lL = lum(texture(leafTex, uv0 * tiles3.xy).rgb);
+    float n2 = texture(mossTex, uv0 * tiles.zw * 0.13 + vec2(0.53, 0.29)).r;
+    float n3 = texture(meadowTex, uv0 * tiles2.xy * 0.37 + vec2(0.31, 0.17)).g;
+
+    // 各层的权重和颜色那一套走同一条路;高度 = (明暗 - 0.5) × 这一层的起伏倍数 + 这一层的基准
+    float hb = lF;
+    float height = (lF - 0.5) * layerH.x + layerB.x;
+    float rough = layerR.x;
+    float paved = grade.w;
+    float wMoss = smoothstep(0.24, 0.6, n1);
+    float f = mix(hblend(wMoss, hb, lM), wMoss, paved);
+    hb = mix(hb, lM, f);
+    height = mix(height, (lM - 0.5) * layerH.y + layerB.y, f);
+    rough = mix(rough, layerR.y, f);
+    f = hblend(wMeadow * (0.75 + 0.25 * n3), hb, lW + 0.05);
+    f = mix(f, smoothstep(0.35, 0.65, m.g + (n3 - 0.5) * 0.12), paved);
+    hb = mix(hb, lW, f);
+    height = mix(height, (lW - 0.5) * layerH.z + layerB.z, f);
+    rough = mix(rough, layerR.z, f);
+    f = smoothstep(0.25, 0.75, m2.r * 1.3 - 0.15 + (lL - hb) * 0.5) * 0.85;
+    hb = mix(hb, lL, f);
+    height = mix(height, (lL - 0.5) * leafHBR.x + leafHBR.y, f);
+    rough = mix(rough, leafHBR.z, f);
+    float fb = hblend(m2.g, hb, lD - 0.05);
+    hb = mix(hb, lD, fb);
+    height = mix(height, (lD - 0.5) * layerH.w + layerB.w * 0.5, fb);
+    rough = mix(rough, layerR.w, fb);
+
+    float edge = 85.0 + n2 * 100.0;
+    float wDirt = 1.0 - smoothstep(edge - 45.0, edge + 45.0, d);
+    float wSoft = 1.0 - smoothstep(edge - 120.0, edge + 120.0, d);
+    float fd = mix(hblend(wDirt, hb, lD), wSoft, paved);
+    float r0 = abs(d - 42.0) / 9.0;
+    float ruts = exp(-r0 * r0) * smoothstep(0.35, 0.6, n3) * fd * (1.0 - paved);
+    height = mix(height, (lD - 0.5) * layerH.w + layerB.w, fd);
+    height -= ruts * 0.12;                       // 车辙压下去一道
+    rough = mix(rough, leafHBR.w, fd);
+    rough -= ruts * 0.12;                        // 车辙里踩得更实
+    // 遮蔽:低洼处略暗(颜色图里本来就有明暗,这里只补一点)
+    float ao = clamp(0.92 + height * 0.4, 0.76, 1.0);
+    return vec4(ao, clamp(rough, 0.04, 1.0), clamp(height + 0.5, 0.0, 1.0), 1.0);
+  }
+}%
+
+// surf = 起伏倍数 / 基准 / 粗糙度 / 遮蔽。河是「倍数 0、粗糙度很低」= 一块平的会反光的面。
+CCProgram sprite-h-fs %{
+  precision highp float;
+  #include <builtin/internal/embedded-alpha>
+
+  in vec4 color;
+  in vec2 uv0;
+
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+
+  uniform SurfFrag {
+    vec4 surf;
+  };
+
+  vec4 frag () {
+    vec4 c = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0);
+    float h = (dot(c.rgb, vec3(0.333)) - 0.5) * surf.x + surf.y + 0.5;
+    return vec4(surf.w, surf.z, clamp(h, 0.0, 1.0), c.a * color.a);
+  }
+}%
+
+// slope = 一个像素有多大(xy,贴图坐标)、两个方向上「相邻像素高度差 1」对应多陡(zw)
+CCProgram emboss-fs %{
+  precision highp float;
+
+  in vec2 v_uv;
+
+  uniform sampler2D mainTexture;
+  uniform EmbossFrag {
+    vec4 slope;
+  };
+
+  // lod = 往更糊的那几级偏多少(高度图带多级渐远时才起作用:偏 2 级 = 先模糊 4 个像素再取;不带的话等于没偏)
+  float hAt (vec2 uv, float lod) {
+    return texture(mainTexture, uv, lod).b;
+  }
+
+  // 3×3 的索贝尔,取样点之间隔 s 个像素;返回「每个像素的高度差」(横、纵)
+  vec2 grad (float s, float lod) {
+    vec2 px = slope.xy * s;
+    float tl = hAt(v_uv + vec2(-px.x, px.y), lod);
+    float tc = hAt(v_uv + vec2(0.0, px.y), lod);
+    float tr = hAt(v_uv + vec2(px.x, px.y), lod);
+    float ml = hAt(v_uv + vec2(-px.x, 0.0), lod);
+    float mr = hAt(v_uv + vec2(px.x, 0.0), lod);
+    float bl = hAt(v_uv + vec2(-px.x, -px.y), lod);
+    float bc = hAt(v_uv + vec2(0.0, -px.y), lod);
+    float br = hAt(v_uv + vec2(px.x, -px.y), lod);
+    return vec2(tr + 2.0 * mr + br - tl - 2.0 * ml - bl, tl + 2.0 * tc + tr - bl - 2.0 * bc - br) * (0.125 / s);
+  }
+
+  vec4 frag () {
+    // 主要看「模糊过的高度」上隔 3.5 个像素的起伏(石块、石板缝、草丛这种看得见的形),没模糊的细节只掺一点:
+    // 高度是从手绘地表的明暗推出来的,细节全算进去的话整片地面是一层砂纸一样的粗颗粒(太阳一低特别明显)
+    vec2 g = grad(3.5, 2.0) * 0.86 + grad(1.5, 0.0) * 0.14;
+    vec3 n = normalize(vec3(-g.x * slope.z, -g.y * slope.w, 1.0));
+    return vec4(n * 0.5 + 0.5, 1.0);
+  }
+}%
