@@ -11,7 +11,7 @@ import { MeshBatch, Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
 import { buildEnvCube, FX_CELL, paintCloth, paintShaft } from './G3DSkins';
 import { buildSkyCube } from './G3DSky';
-import { buildWildScene, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
+import { buildWildScene, skirtPoint, WILD_GROUND, WILD_MOON, WILD_PLAN } from './G3DWild';
 import { mudPbr, paintTreeline, wetAt } from './G3DWildTex';
 import { mulberry32 } from './G3DTextures';
 import { FieldPost, loadPost, POST_CFG, PostCfg } from './TownPost3D';
@@ -168,7 +168,7 @@ export const DUNGEON: DungeonCfg = {
  * 手机档:固定的灯烘进顶点颜色,只留最近 2 处真灯(打六折,主要给高光和凹凸);不做倒影和遮蔽,内部分辨率 0.8,投影图 / 贴图减小,最多 5 只怪。
  */
 /** 野外场景在默认值上改的几项(月光是直接照下来的,不像地宫只从天井漏一束;泥地比石板糙)。 */
-export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazier: 30, torch: 15, fill: 0.5, gloss: 1.0, floorBump: 1.0, shaft: 0, bake: false };
+export const WILD_CFG: Partial<DungeonCfg> = { moon: 400000, ambient: 150, brazier: 24, torch: 15, fill: 0.5, hit: 3, gloss: 1.0, floorBump: 1.0, shaft: 0, bake: false };
 
 export const TIERS: Record<string, Partial<DungeonCfg>> = {
   pc: {},
@@ -1338,6 +1338,7 @@ class Dungeon {
       return m;
     };
     const floorMat = std(ground, false, 16, false);
+    floorMat.setProperty('specularIntensity', 0.2);          // 泥地的高光压低:迎着月光看,整片地面会泛白得像雪
     floorMat.setProperty('normalStrength', DUNGEON.floorBump);
     floorMat.setProperty('roughness', DUNGEON.gloss);
     this.floorMat = floorMat;
@@ -1381,34 +1382,7 @@ class Dungeon {
       this.groundNodes.push(gn);
     }
     const skirt = new Sculpt();
-    const cx = WILD_GROUND.x0 + WILD_GROUND.w / 2;
-    const cz = WILD_GROUND.z0 + WILD_GROUND.d / 2;
-    const hw = WILD_GROUND.w / 2;
-    const hd = WILD_GROUND.d / 2;
-    // 沿场地的四条边转一圈(u),再整体往外放大(v):里圈正好接着中间那块地面,外圈放大到 3.4 倍、抬高成缓坡
-    skirt.surf(96, 10, (u, v, out) => {
-      const per = 2 * (WILD_GROUND.w + WILD_GROUND.d);
-      let d = u * per;
-      let bx = 0;
-      let bz = 0;
-      if (d < WILD_GROUND.w) {
-        bx = -hw + d;
-        bz = -hd;
-      } else if ((d -= WILD_GROUND.w) < WILD_GROUND.d) {
-        bx = hw;
-        bz = -hd + d;
-      } else if ((d -= WILD_GROUND.d) < WILD_GROUND.w) {
-        bx = hw - d;
-        bz = hd;
-      } else {
-        d -= WILD_GROUND.w;
-        bx = -hw;
-        bz = hd - d;
-      }
-      const k = 1 + v * 2.4;
-      const bump = Math.sin(u * 37) * 0.35 + Math.sin(u * 91 + 1.3) * 0.2;
-      out.set(cx + bx * k, v === 0 ? -0.01 : 3.6 * v ** 1.5 + bump * v * 2.2, cz + bz * k);
-    }, { den: 0.22, closeU: true });
+    skirt.surf(96, 10, (u, v, out) => skirtPoint(u, v, out), { den: 0.22, closeU: true });
     for (const m of skirt.build()) {
       addMesh(world, 'DgSkirt', m, skirtMat, false, true);
     }
@@ -1679,7 +1653,7 @@ class Dungeon {
       fog: true, fogColor: [0.055, 0.085, 0.14], fogAway: [0.055, 0.085, 0.14], fogStart: 2, fogDensity: 0.075, fogMax: 0.66, fogLobe: 0 };
     if (this.wild) {
       // 野外:看得远,雾淡一些、但远处要吃得掉(林子的剪影靠它接到天上)
-      Object.assign(cfg, { fogColor: [0.1, 0.15, 0.25], fogAway: [0.1, 0.15, 0.25], fogStart: 4, fogDensity: DUNGEON.wildFog, fogMax: 0.93, vignette: 0.3, aoRadius: 0.7 });
+      Object.assign(cfg, { fogColor: [0.1, 0.15, 0.25], fogAway: [0.1, 0.15, 0.25], fogStart: 4, fogDensity: DUNGEON.wildFog, fogMax: 0.93, vignette: 0.3, aoRadius: 0.7, bloomIntensity: 0.55, exposure: 0.9 });
     }
     cfg.ao = DUNGEON.ao;
     cfg.bloomLevels = DUNGEON.bloomLevels;
@@ -2420,6 +2394,11 @@ class Dungeon {
           fx.emit({ x: R(X0 - 4, X1 + 4), y: R(0.25, 0.7), z: R(Z0 - 4, Z1 + 4), vx: R(0.12, 0.3), vz: R(-0.06, 0.06), life: R(7, 12), s0: R(2.4, 3.6), s1: R(3.6, 5),
             c0: [0.2, 0.26, 0.38], a: 0.045, cell: R(0, 1) < 0.5 ? FX_CELL.smokeA : FX_CELL.smokeB, add: false, rot: R(0, 6), drag: 0, fadeIn: 0.3 });
         }
+        // 被风贴着地面吹过去的落叶:零星几片,翻着跟头横穿场地
+        if (R(0, 1) < 0.07) {
+          fx.emit({ x: X0 - 5 + R(0, 6), y: R(0.08, 0.5), z: R(Z0 - 3, Z1 + 3), vx: R(1.6, 3.2), vy: R(0.1, 0.5), vz: R(-0.5, 0.5), life: R(2.5, 5), s0: R(0.03, 0.05), s1: 0.03,
+            c0: [0.3, 0.2, 0.1], c1: [0.2, 0.14, 0.08], a: 0.9, cell: FX_CELL.mote, add: false, grav: 0.35, drag: 0.15, fadeIn: 0.1 });
+        }
         // 雨后树上还在往下滴水:滴在积水里漾开一圈涟漪,偶尔听得见一声
         if (R(0, 1) < 0.16 && this.wildWet) {
           for (let i = 0; i < 6; i += 1) {
@@ -3049,7 +3028,8 @@ class Dungeon {
     if (any) {
       this.hitStop = Math.max(this.hitStop, h.heavy ? 0.085 : 0.04);
       this.shake = Math.max(this.shake, h.heavy ? 0.14 : 0.05);
-      this.flash(this.lx + fxn * 1.1, 1.2, this.lz + fzn * 1.1, h.heavy ? 1.6 : 1, 0.26);
+      // 闪光放在主角前面两米多(怪的那一侧、偏高):放近了主角自己的正面会被照得发白,连招快的时候几乎一直亮着,看不清人
+      this.flash(this.lx + fxn * 2.3, 1.7, this.lz + fzn * 2.3, h.heavy ? 1.6 : 1, 0.2);
     }
   }
 

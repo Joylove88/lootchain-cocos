@@ -97,6 +97,7 @@ export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
       let stone = 0;
       let sid = 0;
       let sid2 = 0;
+      let crackS = 0;
       if (onPath > 0.01) {
         const gx = wx / CELL;
         const gz = wz / CELL;
@@ -106,6 +107,8 @@ export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
         let f2 = 9;
         let bi = 0;
         let bj = 0;
+        let bcx = 0;
+        let bcz = 0;
         for (let j = -1; j <= 1; j += 1) {
           for (let i = -1; i <= 1; i += 1) {
             const cx = ix + i + 0.15 + 0.7 * texHash(ix + i, iz + j, 461);
@@ -116,6 +119,8 @@ export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
               f1 = d;
               bi = ix + i;
               bj = iz + j;
+              bcx = cx;
+              bcz = cz;
             } else if (d < f2) {
               f2 = d;
             }
@@ -125,9 +130,17 @@ export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
         sid2 = texHash(bi, bj, 479);
         const there = sid2 > 0.22 ? 1 : 0;                         // 两成多的石板不见了
         const edge = (f2 - f1) * CELL + (nf - 0.5) * 0.02;         // 到石板边的距离(米)
-        stone = sstep(0.025, 0.06, edge) * there * sstep(0.15, 0.6, onPath);
+        // 崩掉的角:石板边上零星缺一块(缺口里是泥)
+        const chip = sstep(0.6, 0.68, fine.at(wx / 0.5 + sid * 7, wz / 0.5 + sid2 * 3)) * (1 - sstep(0.04, 0.2, edge));
+        stone = sstep(0.025, 0.06, edge) * there * sstep(0.15, 0.6, onPath) * (1 - chip);
         if (stone > 0) {
-          const top = 0.5 + 0.07 * (sid - 0.5) + 0.25 * (nb - 0.5) + 0.03 * (nf - 0.5) + 0.012 * (ng - 0.5) - 0.02 * sstep(0.74, 0.8, fine.at(wx / 0.9 + 0.3, wz / 0.9 + 0.8));
+          // 每块石板:比泥地高出两三厘米,朝某个方向歪一点;边上磨圆了(越靠边越低);少数石板上有一道裂缝;表面有磨出来的浅坑
+          const ta = texHash(bi, bj, 491) * 6.283;
+          const tilt = ((gx - bcx) * Math.cos(ta) + (gz - bcz) * Math.sin(ta)) * 0.09 * texHash(bi, bj, 499);
+          const round = 1 - sstep(0.03, 0.2, edge);
+          crackS = sid > 0.66 ? (1 - sstep(0.004, 0.016, Math.abs(mid.at(wx / 2.3 + sid * 9, wz / 2.3 + sid2 * 5) - 0.5))) * sstep(0.08, 0.16, edge) : 0;
+          const pit = sstep(0.74, 0.8, fine.at(wx / 0.9 + 0.3, wz / 0.9 + 0.8));
+          const top = 0.6 + 0.07 * (sid - 0.5) + tilt + 0.22 * (nb - 0.5) + 0.035 * (nf - 0.5) + 0.014 * (ng - 0.5) - 0.11 * round * round - 0.07 * crackS - 0.025 * pit;
           h = mixn(h, top, stone);
         }
       }
@@ -155,7 +168,7 @@ export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
       cr *= 1 - 0.38 * damp;
       cg *= 1 - 0.36 * damp;
       cb *= 1 - 0.32 * damp;
-      rough = mixn(rough, 0.46 + 0.14 * nf, damp * 0.85);          // 湿泥只是半滑:太滑的话迎着月光看整片地面反白
+      rough = mixn(rough, 0.64 + 0.14 * nf, damp * 0.8);          // 湿泥只是半滑:太滑的话迎着月光看整片地面反白
       if (gmask > 0) {
         const dry = 0.5 + 0.5 * mid.at(wx / 2.1, wz / 2.1);
         const g = gmask * (0.55 + 0.45 * blade);
@@ -182,9 +195,12 @@ export function mudPbr(W: number, H: number, plan: WildPlan): MudOut {
         // 石板:深灰,每块深浅不同;表面有磨出来的花斑和细坑,边上发暗;长苔的地方偏暗绿(不是一块鲜绿)
         const tone = (0.7 + 0.5 * sid) * (0.7 + 0.5 * nb) * (0.82 + 0.36 * nf) * (0.9 + 0.2 * ng) * (0.55 + 0.45 * stone);
         const moss = sstep(0.5, 0.72, nm) * 0.6;
-        cr = mixn(cr, mixn(60, 34, moss) * tone, stone);
-        cg = mixn(cg, mixn(62, 44, moss) * tone, stone);
-        cb = mixn(cb, mixn(68, 30, moss) * tone, stone);
+        const warm = sstep(0.55, 0.9, sid2) * 0.6;          // 有几块偏黄褐(不是同一批石料)
+        const dk = 1 - 0.6 * crackS;
+        cr = mixn(cr, mixn(mixn(60, 72, warm), 34, moss) * tone * dk, stone);
+        cg = mixn(cg, mixn(mixn(62, 64, warm), 44, moss) * tone * dk, stone);
+        cb = mixn(cb, mixn(mixn(68, 52, warm), 30, moss) * tone * dk, stone);
+        ao = mixn(ao, 1 - 0.5 * crackS, stone);
         rough = mixn(rough, mixn(0.6, 0.88, moss) + 0.14 * (nf - 0.5), stone);
         ao = mixn(ao, 1, stone);
       }

@@ -1,4 +1,4 @@
-import { Vec3 } from 'cc';
+import { Mat4, Vec3 } from 'cc';
 import { fbm3 } from './G3DFieldTex';
 import type { Tint } from './G3DMesh';
 import { Sculpt, xform } from './G3DSculpt';
@@ -35,6 +35,59 @@ const V = (x: number, y: number, z: number): Vec3 => new Vec3(x, y, z);
 
 /** 地面那张大贴图管的范围(比可走的范围大一圈:围着场地的残墙、枯树也站在它上面)。 */
 export const WILD_GROUND = { x0: -17, z0: -11, w: 34, d: 22 };
+/** 场地外面那一圈坡地:沿场地四条边转一圈(u,0~1),再整体往外放大(v,0~1:里圈接着中间的地面,外圈放大到 3.4 倍、抬高成缓坡)。 */
+export function skirtPoint(u: number, v: number, out: Vec3): void {
+  const hw = WILD_GROUND.w / 2;
+  const hd = WILD_GROUND.d / 2;
+  const per = 2 * (WILD_GROUND.w + WILD_GROUND.d);
+  let d = u * per;
+  let bx = 0;
+  let bz = 0;
+  if (d < WILD_GROUND.w) {
+    bx = -hw + d;
+    bz = -hd;
+  } else if ((d -= WILD_GROUND.w) < WILD_GROUND.d) {
+    bx = hw;
+    bz = -hd + d;
+  } else if ((d -= WILD_GROUND.d) < WILD_GROUND.w) {
+    bx = hw - d;
+    bz = hd;
+  } else {
+    d -= WILD_GROUND.w;
+    bx = -hw;
+    bz = hd - d;
+  }
+  const k = 1 + v * 2.4;
+  const bump = Math.sin(u * 37) * 0.35 + Math.sin(u * 91 + 1.3) * 0.2;
+  out.set(bx * k, v === 0 ? -0.01 : 3.6 * v ** 1.5 + bump * v * 2.2, bz * k);
+}
+
+/** 坡地上某一点有多高(场地里面是 0)。 */
+export function skirtY(x: number, z: number): number {
+  const hw = WILD_GROUND.w / 2;
+  const hd = WILD_GROUND.d / 2;
+  const k = Math.max(Math.abs(x) / hw, Math.abs(z) / hd);
+  if (k <= 1) {
+    return 0;
+  }
+  const v = Math.min(1, (k - 1) / 2.4);
+  const bx = x / k;
+  const bz = z / k;
+  let d = 0;
+  if (Math.abs(bz + hd) < 1e-3) {
+    d = bx + hw;
+  } else if (Math.abs(bx - hw) < 1e-3) {
+    d = WILD_GROUND.w + bz + hd;
+  } else if (Math.abs(bz - hd) < 1e-3) {
+    d = WILD_GROUND.w + WILD_GROUND.d + hw - bx;
+  } else {
+    d = 2 * WILD_GROUND.w + WILD_GROUND.d + hd - bz;
+  }
+  const u = d / (2 * (WILD_GROUND.w + WILD_GROUND.d));
+  const bump = Math.sin(u * 37) * 0.35 + Math.sin(u * 91 + 1.3) * 0.2;
+  return 3.6 * v ** 1.5 + bump * v * 2.2;
+}
+
 /** 月亮在哪个方向照过来(从右后方斜着照:影子拖得长)。 */
 export const WILD_MOON = new Vec3(0.42, -0.62, 0.5).normalize();
 
@@ -299,16 +352,16 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
   stakes(X0 - 0.5, -1.6, X0 - 0.5, 2.9);
 
   // ── 枯树:主干是一根弯弯曲曲、往上收细的管子,根部鼓出来;枝往外上方岔,枝上再岔小枝 ──
-  const tree = (x: number, z: number, h: number, r0: number, seed: number, isSolid: boolean): void => {
+  const tree = (x: number, z: number, h: number, r0: number, seed: number, isSolid: boolean, y0 = 0): void => {
     const rr = (a: number, b: number): number => a + (b - a) * rnd();
     const lean = [rr(-0.14, 0.14), rr(-0.14, 0.14)];
     const wob = [rr(0, 6.28), rr(0, 6.28)];
-    const at = (t: number): Vec3 => V(x + lean[0] * h * t + Math.sin(wob[0] + t * 4) * 0.12 * h * 0.1 * t, h * t, z + lean[1] * h * t + Math.cos(wob[1] + t * 3.3) * 0.12 * h * 0.1 * t);
+    const at = (t: number): Vec3 => V(x + lean[0] * h * t + Math.sin(wob[0] + t * 4) * 0.12 * h * 0.1 * t, y0 + h * t, z + lean[1] * h * t + Math.cos(wob[1] + t * 3.3) * 0.12 * h * 0.1 * t);
     const trunk: Vec3[] = [];
     for (let i = 0; i <= 9; i += 1) {
       trunk.push(at(i / 9));
     }
-    trunk[0].y = -0.15;
+    trunk[0].y = y0 - 0.15;
     const tone = rr(0.5, 0.72);
     const tint: Tint = [tone, tone * 0.97, tone * 0.93];
     s.bark.tube(trunk, (t) => r0 * (1 - 0.82 * t) * (1 + 0.8 * Math.max(0, 1 - t * 9) ** 2), 9, { tint, den: 0.5 });
@@ -316,7 +369,7 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
     for (let i = 0; i < 4; i += 1) {
       const a = rr(0, 6.28);
       const len = r0 * rr(2.2, 3.6);
-      s.bark.tube([V(x + Math.cos(a) * r0 * 0.5, 0.28, z + Math.sin(a) * r0 * 0.5), V(x + Math.cos(a) * len * 0.5, 0.1, z + Math.sin(a) * len * 0.5), V(x + Math.cos(a) * len, -0.06, z + Math.sin(a) * len)],
+      s.bark.tube([V(x + Math.cos(a) * r0 * 0.5, y0 + 0.28, z + Math.sin(a) * r0 * 0.5), V(x + Math.cos(a) * len * 0.5, y0 + 0.1, z + Math.sin(a) * len * 0.5), V(x + Math.cos(a) * len, y0 - 0.06, z + Math.sin(a) * len)],
         (t) => r0 * 0.34 * (1 - 0.75 * t), 6, { tint, den: 0.5 });
     }
     const limb = (base: Vec3, dir: Vec3, len: number, rad: number, depth: number): void => {
@@ -362,7 +415,9 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
   for (let i = 0; i < 20; i += 1) {
     const a = (i / 20) * Math.PI * 2 + R(-0.12, 0.12);
     const rad = R(20, 27);
-    tree(Math.cos(a) * rad * 1.15, Math.sin(a) * rad * 0.8, R(8, 12), R(0.4, 0.6), 40 + i, false);
+    const tx = Math.cos(a) * rad * 1.15;
+    const tz = Math.sin(a) * rad * 0.8;
+    tree(tx, tz, R(8, 12), R(0.4, 0.6), 40 + i, false, skirtY(tx, tz) - 0.1);
   }
   // 原木:略弯、一头粗一头细,两头是带年轮的截面,身上留着一两截断枝
   const log = (x: number, y: number, z: number, len: number, r: number, yaw: number, tone: number): void => {
@@ -479,7 +534,7 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
   }
 
   // ── 枯灌木:一丛往外散开的细枝,枝上再岔一截(围在场地边上,把木栅、乱石之间的空当填上)──
-  const bush = (x: number, z: number, k: number): void => {
+  const bush = (x: number, z: number, k: number, y0 = 0): void => {
     const n = 9 + Math.floor(R(0, 7));
     const tone = R(0.36, 0.5);
     const tint: Tint = [tone, tone * 0.93, tone * 0.86];
@@ -487,10 +542,10 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
       const a = R(0, 6.28);
       const out = R(0.2, 0.6) * k;
       const h = R(0.45, 1.15) * k;
-      const p0 = V(x + Math.cos(a) * 0.05, -0.02, z + Math.sin(a) * 0.05);
-      const p1 = V(x + Math.cos(a) * out * 0.5, h * 0.55, z + Math.sin(a) * out * 0.5);
+      const p0 = V(x + Math.cos(a) * 0.05, y0 - 0.02, z + Math.sin(a) * 0.05);
+      const p1 = V(x + Math.cos(a) * out * 0.5, y0 + h * 0.55, z + Math.sin(a) * out * 0.5);
       const a2 = a + R(-0.6, 0.6);
-      const p2 = V(x + Math.cos(a2) * out, h, z + Math.sin(a2) * out);
+      const p2 = V(x + Math.cos(a2) * out, y0 + h, z + Math.sin(a2) * out);
       s.bark.tube([p0, p1, p2], (t) => 0.016 * k * (1 - 0.75 * t), 4, { tint, den: 0.6 });
       const a3 = a + (rnd() < 0.5 ? 1 : -1) * R(0.7, 1.4);
       s.bark.tube([p1.clone(), V(p1.x + Math.cos(a3) * 0.28 * k, p1.y + R(0.15, 0.4) * k, p1.z + Math.sin(a3) * 0.28 * k)], (t) => 0.008 * k * (1 - 0.6 * t), 3, { tint, den: 0.6 });
@@ -509,6 +564,85 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
   bush(10.6, 5.0, 1.1);
   bush(-3.6, 5.3, 0.9);
 
+  // ── 场地外的坡地:散着石头和枯灌木(原来是一整片光秃秃的暗色)──
+  for (let i = 0; i < 110; i += 1) {
+    const a = R(0, Math.PI * 2);
+    const k = R(1.04, 2.3);
+    const x = Math.cos(a) * WILD_GROUND.w * 0.5 * k * R(0.8, 1.15);
+    const z = Math.sin(a) * WILD_GROUND.d * 0.5 * k * R(0.8, 1.15);
+    const y = skirtY(x, z);
+    if (y <= 0.001) {
+      continue;
+    }
+    if (i % 3 === 0) {
+      const r = R(0.25, 0.95);
+      const tone = R(0.42, 0.6);
+      boulder(s.rock, r, V(x, y + r * 0.2, z), [tone, tone * 1.01, tone * 1.05], 0.7, rnd, 0.75);
+    } else {
+      bush(x, z, R(1.0, 1.9), y);
+    }
+  }
+
+  // ── 地上的零碎:小石子、掉下来的枯枝(泥地上原来太干净)──
+  for (let i = 0; i < 90; i += 1) {
+    const x = R(WILD_GROUND.x0 + 1, WILD_GROUND.x0 + WILD_GROUND.w - 1);
+    const z = R(WILD_GROUND.z0 + 1, WILD_GROUND.z0 + WILD_GROUND.d - 1);
+    if (isWater(x, z) || Math.hypot(x - s.fires[0].x, z - s.fires[0].z) < 1.6) {
+      continue;
+    }
+    const r = R(0.05, 0.14);
+    const tone = R(0.45, 0.66);
+    boulder(s.rock, r, V(x, r * 0.25, z), [tone, tone * 1.01, tone * 1.04], 0.9, rnd, 0.7);
+  }
+  for (let i = 0; i < 26; i += 1) {
+    const x = R(WILD_GROUND.x0 + 1.5, WILD_GROUND.x0 + WILD_GROUND.w - 1.5);
+    const z = R(WILD_GROUND.z0 + 1.5, WILD_GROUND.z0 + WILD_GROUND.d - 1.5);
+    if (isWater(x, z) || distToPath(x, z, s.plan.path) < s.plan.pathHalf * 0.7 || Math.hypot(x - s.fires[0].x, z - s.fires[0].z) < 2.2) {
+      continue;
+    }
+    const a = R(0, 6.28);
+    const len = R(0.7, 2.0);
+    const r = R(0.022, 0.045);
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const tone = R(0.4, 0.56);
+    const tint: Tint = [tone, tone * 0.94, tone * 0.88];
+    const mx = x + dx * len * 0.5 - dz * R(-0.12, 0.12);
+    const mz = z + dz * len * 0.5 + dx * R(-0.12, 0.12);
+    s.bark.tube([V(x, r, z), V(mx, r * 1.4, mz), V(x + dx * len, r * 0.8, z + dz * len)], (t) => r * (1 - 0.6 * t), 5, { tint, den: 0.6 });
+    const fa = a + (rnd() < 0.5 ? 0.6 : -0.6);
+    s.bark.tube([V(mx, r * 1.4, mz), V(mx + Math.cos(fa) * len * 0.35, r * 2.2, mz + Math.sin(fa) * len * 0.35)], (t) => r * 0.6 * (1 - 0.6 * t), 4, { tint, den: 0.6 });
+  }
+
+  // ── 墙上的枯藤:从墙脚往上爬的细藤,一路左右晃,分出几条短须 ──
+  const vine = (x: number, z: number, top: number, alongX: boolean): void => {
+    const pts: Vec3[] = [];
+    let off = 0;
+    const n = 7;
+    for (let i = 0; i <= n; i += 1) {
+      off += R(-0.16, 0.16);
+      const y = (top * i) / n;
+      pts.push(alongX ? V(x + off, y, z) : V(x, y, z + off));
+    }
+    const tint: Tint = [0.3, 0.27, 0.24];
+    s.bark.tube(pts, (t) => 0.018 * (1 - 0.7 * t), 4, { tint, den: 0.6 });
+    for (let i = 2; i < n; i += 2) {
+      const p = pts[i];
+      const side = rnd() < 0.5 ? -1 : 1;
+      const l = R(0.25, 0.6);
+      const q = alongX ? V(p.x + side * l, p.y + R(0.1, 0.35), p.z) : V(p.x, p.y + R(0.1, 0.35), p.z + side * l);
+      s.bark.tube([p.clone(), q], (t) => 0.009 * (1 - 0.6 * t), 3, { tint, den: 0.6 });
+    }
+  };
+  for (const vx of [-11.0, -9.8, -8.6, -7.2, 5.6, 6.6, 10.2, 11.4]) {
+    vine(vx, Z0 - 0.5 + 0.38, R(1.0, 2.4), true);
+  }
+  vine(-2.05, Z0 - 0.5 + 0.48, 2.8, true);
+  vine(1.05, Z0 - 0.5 + 0.48, 2.4, true);
+  for (const vz of [-5.4, -4.4, -3.4]) {
+    vine(X1 + 0.5 - 0.43, vz, R(1.6, 3.4), false);
+  }
+
   // ── 帐篷:一根脊杆撑起来的旧帆布,两头敞着,布面往下垂 ──
   const tent = (x: number, z: number, yaw: number, len: number, w: number, h: number): void => {
     const m = xform([x, 0, z], [0, yaw, 0]);
@@ -526,6 +660,26 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
       const ez = z - Math.sin((yaw * Math.PI) / 180) * e * (len / 2);
       s.wood.cylinder(0.045, 0.05, h + 0.1, 6, V(ex, (h + 0.1) / 2, ez), V(0, 0, 0), [0.55, 0.5, 0.45], 0.9, rnd, 0);
     }
+    // 两头各一根拉绳斜拉到地钉上;一头是封死的山墙,另一头是两片半掩的门帘
+    const ca = Math.cos((yaw * Math.PI) / 180);
+    const sa = -Math.sin((yaw * Math.PI) / 180);
+    const W2 = (lx: number, ly: number, lz: number): Vec3 => V(x + ca * lx - sa * lz, ly, z + sa * lx + ca * lz);
+    const cloth = (pts: Vec3[], tone: number): void => {
+      const t: Tint = [tone, tone * 0.96, tone * 0.9];
+      s.canvas.facet(pts, [[0, 0], [1.5, 0], [0.75, 2]], t);
+      s.canvas.facet([pts[2], pts[1], pts[0]], [[0.75, 2], [1.5, 0], [0, 0]], t);
+    };
+    for (const e of [-1, 1]) {
+      const ex = e * (len / 2);
+      s.wood.tube([W2(ex, h + 0.04, 0), W2(ex + e * 1.2, 0.06, 0)], 0.007, 4, { tint: [0.62, 0.56, 0.46], den: 2 });
+      s.wood.cylinder(0.018, 0.012, 0.3, 5, W2(ex + e * 1.25, 0.1, 0), V(0, yaw, e * 28), [0.5, 0.45, 0.4], 0.9, rnd);
+      for (const sd of [-1, 1]) {
+        s.wood.cylinder(0.016, 0.01, 0.24, 5, W2(ex * 0.8, 0.06, sd * (w / 2 + 0.06)), V(sd * 24, 0, 0), [0.5, 0.45, 0.4], 0.9, rnd);
+      }
+    }
+    cloth([W2(-len / 2 - 0.01, 0, -w / 2), W2(-len / 2 - 0.01, 0, w / 2), W2(-len / 2 - 0.01, h, 0)], 0.36);
+    cloth([W2(len / 2 + 0.01, 0, -w / 2), W2(len / 2 + 0.06, 0, -w * 0.12), W2(len / 2 + 0.01, h, 0)], 0.46);
+    cloth([W2(len / 2 + 0.01, 0, w / 2), W2(len / 2 + 0.1, 0, w * 0.2), W2(len / 2 + 0.01, h, 0)], 0.44);
     solid(x, z, len / 2, w / 2, h);
   };
   tent(2.4, -4.2, 62, 2.6, 2.2, 1.55);
@@ -539,9 +693,25 @@ export function buildWildScene(rnd: () => number, X0: number, X1: number, Z0: nu
     for (const side of [-1, 1]) {
       s.wood.box(2.3, 0.34, 0.06, V(cx + side * 0.2, 0.82, cz + side * 0.57), V(0, 20, -9), [0.56, 0.5, 0.44], 0.9, rnd, 0.01);
     }
-    s.wood.cylinder(0.56, 0.56, 0.09, 14, V(cx + 0.5, 0.56, cz - 0.82), V(90, 20, 0), [0.5, 0.45, 0.4], 0.9, rnd);
-    s.iron.cylinder(0.1, 0.1, 0.16, 8, V(cx + 0.5, 0.56, cz - 0.84), V(90, 20, 0), [0.6, 0.6, 0.62], 1.6, rnd);
-    s.wood.cylinder(0.56, 0.56, 0.09, 14, V(cx + 1.7, 0.08, cz + 1.3), V(4, 0, 6), [0.5, 0.45, 0.4], 0.9, rnd);
+    // 车轮:一圈木轮辋、八根辐条、中间的轮毂(一只还装在车上,一只掉在旁边的地上)
+    const wheel = (pos: [number, number, number], rot: [number, number, number]): void => {
+      const m: Mat4 = xform(pos, rot);
+      const P = (lx: number, ly: number, lz: number): Vec3 => Vec3.transformMat4(new Vec3(), V(lx, ly, lz), m);
+      const rim: Vec3[] = [];
+      for (let i = 0; i <= 20; i += 1) {
+        const a = (i / 20) * Math.PI * 2;
+        rim.push(P(Math.cos(a) * 0.52, 0, Math.sin(a) * 0.52));
+      }
+      s.wood.tube(rim, 0.05, 6, { tint: [0.48, 0.43, 0.38], den: 0.9 });
+      for (let i = 0; i < 8; i += 1) {
+        const a = (i / 8) * Math.PI * 2 + 0.2;
+        s.wood.tube([P(Math.cos(a) * 0.08, 0, Math.sin(a) * 0.08), P(Math.cos(a) * 0.5, 0, Math.sin(a) * 0.5)], 0.024, 5, { tint: [0.52, 0.47, 0.41], den: 0.9 });
+      }
+      s.wood.tube([P(0, -0.09, 0), P(0, 0.09, 0)], 0.1, 10, { tint: [0.44, 0.4, 0.36], den: 0.9 });
+      s.iron.tube([P(0, -0.11, 0), P(0, 0.11, 0)], 0.045, 8, { tint: [0.5, 0.5, 0.52], den: 1.6 });
+    };
+    wheel([cx + 0.5, 0.56, cz - 0.82], [90, 20, 0]);
+    wheel([cx + 1.7, 0.07, cz + 1.3], [4, 0, 6]);
     s.wood.cylinder(0.04, 0.045, 2.0, 6, V(cx - 1.9, 0.3, cz - 0.4), V(0, 24, 74), [0.56, 0.5, 0.44], 0.9, rnd);
     solid(cx, cz, 1.25, 0.8, 0.9);
   }
